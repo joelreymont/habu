@@ -98,9 +98,13 @@ public
 : GA-OP-BLOCKS? ( n -- bool ) {: op:n :}         \ op has no host oracle / reference?
    op OPR-COMPLETE? 0=  op EX-OP-OK? 0= or ;
 : GA-SUPPORTED? ( -- bool )
-   MIR-N@ 0 ?do  i MIR-OP@ GA-OP-BLOCKS? if false unloop exit then  loop  true ;
+   MIR-N@ 0 ?do
+      i MIR-NODE-ID MIR-OP@ GA-OP-BLOCKS? if false unloop exit then
+   loop true ;
 : GA-FIRST-BAD ( -- n )                           \ first blocking node's op, or -1
-   MIR-N@ 0 ?do  i MIR-OP@ dup GA-OP-BLOCKS? if unloop exit then drop  loop  -1 ;
+   MIR-N@ 0 ?do
+      i MIR-NODE-ID MIR-OP@ dup GA-OP-BLOCKS? if unloop exit then drop
+   loop -1 ;
 private
 
 \ ---- synthetic input synthesis (shared by golden self-consistency + GA-SAVE) --
@@ -112,51 +116,57 @@ private
 \ src_rows multiplier was rejected: it degenerates to constant 0 whenever the
 \ multiplier divides src_rows. src_rows comes from the gather node's data operand
 \ (min over all gathers indexing via the slot, so every consumer stays in range).
-: GA-SLOT-ELEMS ( n -- n ) {: s:n :}  s MIR-SLOT-ROWS@ s MIR-SLOT-COLS@ * ;
+: GA-SLOT-ELEMS ( MIR:input-slot -- n ) {: s:MIR:input-slot :}
+   s MIR-SLOT-ROWS@ s MIR-SLOT-COLS@ SHAPE-ELEMS DIM-RAW ;
 public
-: GA-IN-PTR ( n -- ptr a )  cells GA-IN-OFF + @ {: off:n :}  GA-ARENA off T-AT ;
+: GA-IN-PTR ( MIR:input-slot -- ptr a )
+   SLOT>RAW cells GA-IN-OFF + @ {: off:n :}  GA-ARENA off T-AT ;
 private
 
-: GA-NODE-IDX? ( n n -- bool ) {: nd:n s:n :}
+: GA-NODE-IDX? ( CAD-KIND:node-id MIR:input-slot -- bool )
+   {: nd:CAD-KIND:node-id s:MIR:input-slot :}
    nd MIR-OP@ OP-GATHER <> if false exit then
-   nd 1 MIR-IN@ {: r:n :}
+   nd 1 MIR-INPUT-IDX MIR-IN@ {: r:MIR:operand-ref :}
    r MIR-REF-INPUT? 0= if false exit then
-   r MIR-REF-SLOT s = ;
-: GA-SRC-ROWS ( n -- n ) {: nd:n :}              \ gather node's data-operand row count
-   nd 0 MIR-IN@ {: r:n :}
-   r MIR-REF-INPUT? if r MIR-REF-SLOT MIR-SLOT-ROWS@ else r MIR-ROWS@ then ;
+   r MIR-REF-SLOT s MIR-SLOT= ;
+: GA-SRC-ROWS ( CAD-KIND:node-id -- n ) {: nd:CAD-KIND:node-id :}
+   nd 0 MIR-INPUT-IDX MIR-IN@ {: r:MIR:operand-ref :}
+   r MIR-REF-INPUT?
+   if r MIR-REF-SLOT MIR-SLOT-ROWS@ else r MIR-REF-NODE MIR-ROWS@ then ROWS-RAW ;
 variable GA-IDX-MIN
-: GA-IDX-ROWS ( n -- n ) {: s:n :}               \ min src rows over gathers indexing slot s (0 = none)
+: GA-IDX-ROWS ( MIR:input-slot -- n ) {: s:MIR:input-slot :}
    0 GA-IDX-MIN !
    MIR-N@ 0 ?do
-      i s GA-NODE-IDX? if
-         i GA-SRC-ROWS {: r:n :}
+      i MIR-NODE-ID {: nd:CAD-KIND:node-id :}
+      nd s GA-NODE-IDX? if
+         nd GA-SRC-ROWS {: r:n :}
          GA-IDX-MIN @ 0=  r GA-IDX-MIN @ <  or if r GA-IDX-MIN ! then
       then
    loop
    GA-IDX-MIN @ ;
 : GA-IDX-VAL ( n n -- r ) {: rows:n e:n :}       \ reversed in-range source row for index elem e
    rows 1-  e rows mod  -  s>f ;
-: GA-FILL-VAL ( n n -- r ) {: s:n e:n :}
+: GA-FILL-VAL ( MIR:input-slot n -- r ) {: s:MIR:input-slot e:n :}
    s GA-IDX-ROWS {: rows:n :}
    rows 0 > if rows e GA-IDX-VAL exit then
-   s 5 * e +  13 mod  s>f  0.17 f*  0.4 f+ ;
-: GA-FILL-SLOT ( n -- ) {: s:n :}
+   s SLOT>RAW 5 * e +  13 mod  s>f  0.17 f*  0.4 f+ ;
+: GA-FILL-SLOT ( MIR:input-slot -- ) {: s:MIR:input-slot :}
    s GA-IN-PTR {: p:ptr :}
    s GA-SLOT-ELEMS 0 ?do  s i GA-FILL-VAL  p i T-SET  loop ;
-: GA-ALLOC-SLOT ( n -- ) {: s:n :}               \ carve arena space + record the offset
+: GA-ALLOC-SLOT ( MIR:input-slot -- ) {: s:MIR:input-slot :}
    s GA-SLOT-ELEMS {: e:n :}
    GA-BUMP @ {: off:n :}
    off e + GA-ARENA-CELLS > if E-GA-CAP throw then
-   off s cells GA-IN-OFF + !  off e + GA-BUMP ! ;
+   off s SLOT>RAW cells GA-IN-OFF + !  off e + GA-BUMP ! ;
 
 public
 : GA-BIND-SYNTH ( -- )                            \ reset EX; bind+fill synthetic inputs
    EX-RESET  0 GA-BUMP !
    MIR-IN-SLOTS@ 0 ?do
-      i GA-ALLOC-SLOT
-      i GA-IN-PTR i EX-BIND
-      i GA-FILL-SLOT
+      i MIR-SLOT-ID {: s:MIR:input-slot :}
+      s GA-ALLOC-SLOT
+      s GA-IN-PTR s EX-BIND
+      s GA-FILL-SLOT
    loop ;
 private
 
@@ -186,9 +196,10 @@ public
 private
 
 \ ---- tolerance --------------------------------------------------------------
-: GA-OUT-NODE ( -- n )  MIR-N@ 1- ;
-: GA-DEFAULT-TOL ( n -- n n ) {: dt:n :}          \ dtype -> atol-exp rtol-exp
-   dt DT-F32 = if GA-F32-ATOL-EXP GA-F32-RTOL-EXP else GA-LOW-ATOL-EXP GA-LOW-RTOL-EXP then ;
+: GA-OUT-NODE ( -- CAD-KIND:node-id )  MIR-N@ 1- MIR-NODE-ID ;
+: GA-DEFAULT-TOL ( CAD-KIND:dtype -- n n ) {: dt:CAD-KIND:dtype :}
+   dt DT-F32 DTYPE-EQUAL?
+   if GA-F32-ATOL-EXP GA-F32-RTOL-EXP else GA-LOW-ATOL-EXP GA-LOW-RTOL-EXP then ;
 : GA-SET-SAVE-TOL ( -- )                          \ tolerance for the model output dtype
    GA-OUT-NODE MIR-DT@ GA-DEFAULT-TOL GA-RTOL-EXP ! GA-ATOL-EXP ! ;
 
@@ -204,7 +215,9 @@ private
 : GA-T-FLOAT ( r -- )  SB-RESET GA-DECIMALS SB-FIX SB$ GA-T+ ;
 : GA-T-KEY ( ptr u8 n -- )  GA-T+ s" : " GA-T+ ;          \ "key: "
 : GA-T-IKEY ( ptr u8 n n -- ) {: idx:n :}  GA-T+ $2E GA-T-C idx GA-T-INT ;   \ "prefix.<idx>"
-: GA-WRITE-SHAPE ( n n -- ) {: rows:n cols:n :}  rows GA-T-INT $78 GA-T-C cols GA-T-INT ;
+: GA-WRITE-SHAPE ( CAD-KIND:rows CAD-KIND:cols -- )
+   {: rows:CAD-KIND:rows cols:CAD-KIND:cols :}
+   rows ROWS-RAW GA-T-INT $78 GA-T-C cols COLS-RAW GA-T-INT ;
 : GA-WRITE-DATA ( ptr a n -- ) {: p:ptr n:n :}
    n 0 ?do  i 0 > if $20 GA-T-C then  p i T-GET GA-T-FLOAT  loop ;
 
@@ -213,16 +226,19 @@ private
    s" artifact.tolerance.atol-exp" GA-T-KEY  GA-ATOL-EXP @ GA-T-INT GA-T-NL
    s" artifact.tolerance.rtol-exp" GA-T-KEY  GA-RTOL-EXP @ GA-T-INT GA-T-NL
    s" artifact.inputs" GA-T-KEY  MIR-IN-SLOTS@ GA-T-INT GA-T-NL ;
-: GA-WRITE-INPUT ( n -- ) {: s:n :}
-   s" input" s GA-T-IKEY  s" .shape" GA-T-KEY  s MIR-SLOT-ROWS@ s MIR-SLOT-COLS@ GA-WRITE-SHAPE GA-T-NL
-   s" input" s GA-T-IKEY  s" .data"  GA-T-KEY  s GA-IN-PTR s GA-SLOT-ELEMS GA-WRITE-DATA GA-T-NL ;
+: GA-WRITE-INPUT ( MIR:input-slot -- ) {: s:MIR:input-slot :}
+   s SLOT>RAW {: raw:n :}
+   s" input" raw GA-T-IKEY  s" .shape" GA-T-KEY
+      s MIR-SLOT-ROWS@ s MIR-SLOT-COLS@ GA-WRITE-SHAPE GA-T-NL
+   s" input" raw GA-T-IKEY  s" .data" GA-T-KEY
+      s GA-IN-PTR s GA-SLOT-ELEMS GA-WRITE-DATA GA-T-NL ;
 : GA-WRITE-OUTPUT ( -- )
-   GA-OUT-NODE {: nd:n :}
+   GA-OUT-NODE {: nd:CAD-KIND:node-id :}
    s" output.shape" GA-T-KEY  nd MIR-ROWS@ nd MIR-COLS@ GA-WRITE-SHAPE GA-T-NL
    s" output.data"  GA-T-KEY  nd EX-OUT@ nd EX-NODE-ELEMS GA-WRITE-DATA GA-T-NL ;
 : GA-BUILD-TEXT ( -- )
    GA-T-RESET  GA-WRITE-HEADER
-   MIR-IN-SLOTS@ 0 ?do  i GA-WRITE-INPUT  loop
+   MIR-IN-SLOTS@ 0 ?do  i MIR-SLOT-ID GA-WRITE-INPUT  loop
    GA-WRITE-OUTPUT ;
 
 public
@@ -295,8 +311,9 @@ private
    va xi GA-PARSE-INT-VAL
    va xi 1+ +  vu xi 1+ -  GA-PARSE-INT-VAL ;
 
-: GA-CHECK-SHAPE ( n n n n -- ) {: er:n ec:n ar:n ac:n :}   \ expected vs actual extents
-   er ar <> ec ac <> or if E-GA-SHAPE throw then ;
+: GA-CHECK-SHAPE ( n n CAD-KIND:rows CAD-KIND:cols -- )
+   {: ar:n ac:n er:CAD-KIND:rows ec:CAD-KIND:cols :}
+   ar er ROWS-RAW <> ac ec COLS-RAW <> or if E-GA-SHAPE throw then ;
 
 : GA-PARSE-TOL ( -- )
    s" artifact.tolerance.atol-exp: " GA-REQ-LINE  GA-VAL$ GA-PARSE-INT-VAL GA-ATOL-EXP !
@@ -304,15 +321,16 @@ private
 : GA-PARSE-COUNT ( -- )
    s" artifact.inputs: " GA-REQ-LINE  GA-VAL$ GA-PARSE-INT-VAL
    MIR-IN-SLOTS@ <> if E-GA-SHAPE throw then ;
-: GA-PARSE-INPUT ( n -- ) {: s:n :}
+: GA-PARSE-INPUT ( MIR:input-slot -- ) {: s:MIR:input-slot :}
+   s SLOT>RAW {: raw:n :}
    s GA-SLOT-ELEMS {: e:n :}
-   s s" .shape: " GA-IN-KEY$ GA-REQ-LINE  GA-VAL$ GA-PARSE-SHAPE
+   raw s" .shape: " GA-IN-KEY$ GA-REQ-LINE  GA-VAL$ GA-PARSE-SHAPE
       s MIR-SLOT-ROWS@ s MIR-SLOT-COLS@ GA-CHECK-SHAPE
    s GA-ALLOC-SLOT
-   s s" .data: " GA-IN-KEY$ GA-REQ-LINE  GA-VAL$ s GA-IN-PTR e GA-PARSE-FLOATS
+   raw s" .data: " GA-IN-KEY$ GA-REQ-LINE  GA-VAL$ s GA-IN-PTR e GA-PARSE-FLOATS
    s GA-IN-PTR s EX-BIND ;
 : GA-PARSE-OUTPUT ( -- )
-   GA-OUT-NODE {: nd:n :}
+   GA-OUT-NODE {: nd:CAD-KIND:node-id :}
    nd EX-NODE-ELEMS {: e:n :}
    e GA-EXP-CELLS > if E-GA-CAP throw then
    s" output.shape: " GA-REQ-LINE  GA-VAL$ GA-PARSE-SHAPE
@@ -322,7 +340,7 @@ private
 : GA-PARSE ( -- )
    GA-PARSE-TOL  GA-PARSE-COUNT
    EX-RESET  0 GA-BUMP !
-   MIR-IN-SLOTS@ 0 ?do  i GA-PARSE-INPUT  loop
+   MIR-IN-SLOTS@ 0 ?do  i MIR-SLOT-ID GA-PARSE-INPUT  loop
    GA-PARSE-OUTPUT ;
 
 public
@@ -363,7 +381,7 @@ public
 \ and compares its output to the loaded expected under the loaded tolerance.
 : GA-VERDICT ( -- n )
    MIR-N@ EX-RUN-N
-   GA-OUT-NODE {: nd:n :}
+   GA-OUT-NODE {: nd:CAD-KIND:node-id :}
    nd EX-OUT@  GA-EXP  GA-EXP-N @  GA-ATOL-EXP @  GA-RTOL-EXP @  GA-COMPARE
    if GA-PASS-REASON V-PASS else GA-FAIL-REASON V-FAIL then ;
 

@@ -55,15 +55,27 @@ private
 2    constant LMV-MAX-IN      \ copy kernels read at most two buffers (concat A/B, gather src/idx)
 4096 constant LMV-ARENA       \ v1 buffer element cap (mirrors lower-launch LLA-NCAP: 16 KB f32)
 
-create LMV-INS   LMV-MAX-IN cells allot   \ ordered buffer-operand refs (must be input slots)
+create LMV-INS LMV-MAX-IN cells allot
 variable LMV-NIN                           \ buffer-operand count (1 or 2)
 variable LMV-NODE                          \ the movement node
 variable LMV-RID                           \ region id being lowered
 variable LMV-PA  variable LMV-PB  variable LMV-PN   \ kernel u32 params
 variable LMV-BUILT?
 
+: LMV-REF! ( MIR:operand-ref n -- )
+   cells LMV-INS + ! ;
+
+: LMV-REF@ ( n -- MIR:operand-ref )
+   cells LMV-INS + @ ;
+
+: LMV-NODE! ( CAD-KIND:node-id -- )
+   LMV-NODE ! ;
+
+: LMV-NODE@ ( -- CAD-KIND:node-id )
+   LMV-NODE @ ;
+
 \ ---- region membership -----------------------------------------------------
-: LMV-IN-REGION? ( n n -- bool )  swap FP-RID@ = ;      \ node rid -- in-region?
+: LMV-IN-REGION? ( CAD-KIND:node-id n -- bool )  swap FP-RID@ = ;
 : LMV-COPY-OP? ( n -- bool ) {: op:n :}
    op OP-TRANSPOSE = op OP-SLICE = or op OP-CONCAT = or op OP-GATHER = or ;
 
@@ -71,47 +83,56 @@ variable LMV-BUILT?
 \ (slice 5 cross-region handoff - the whole-model run binds that producer's device buffer). A copy
 \ region is exactly one movement node, so an operand can only be a slot or a cross-region node; an
 \ un-materialized (interior) node would have no device buffer and fails closed (E-LMV-INPUT).
-: LMV-REF-ROWS ( n -- n ) {: ref:n :}
+: LMV-REF-ROWS ( MIR:operand-ref -- CAD-KIND:rows ) {: ref:MIR:operand-ref :}
    ref MIR-REF-INPUT? if  ref MIR-REF-SLOT MIR-SLOT-ROWS@  exit then
-   ref MIR-MAT@ 0= if E-LMV-INPUT throw then  ref MIR-ROWS@ ;
-: LMV-REF-COLS ( n -- n ) {: ref:n :}
+   ref MIR-REF-NODE {: node:CAD-KIND:node-id :}
+   node MIR-MAT@ 0= if E-LMV-INPUT throw then  node MIR-ROWS@ ;
+: LMV-REF-COLS ( MIR:operand-ref -- CAD-KIND:cols ) {: ref:MIR:operand-ref :}
    ref MIR-REF-INPUT? if  ref MIR-REF-SLOT MIR-SLOT-COLS@  exit then
-   ref MIR-MAT@ 0= if E-LMV-INPUT throw then  ref MIR-COLS@ ;
-: LMV-REF-ELEMS ( n -- n ) {: ref:n :}  ref LMV-REF-ROWS  ref LMV-REF-COLS * ;
+   ref MIR-REF-NODE {: node:CAD-KIND:node-id :}
+   node MIR-MAT@ 0= if E-LMV-INPUT throw then  node MIR-COLS@ ;
+: LMV-REF-ELEMS ( MIR:operand-ref -- n )
+   dup LMV-REF-ROWS swap LMV-REF-COLS SHAPE-ELEMS DIM-RAW ;
 
 \ ---- find the single materialized movement node ----------------------------
 : LMV-MEMBERS ( n -- n ) {: rid:n :}                   \ region member count
-   0 MIR-N@ 0 ?do  i rid LMV-IN-REGION? if 1+ then  loop ;
+   0 MIR-N@ 0 ?do  i MIR-NODE-ID rid LMV-IN-REGION? if 1+ then  loop ;
 : LMV-FIND-NODE ( n -- ) {: rid:n :}
    rid LMV-MEMBERS 1 <> if E-LMV-MULTI throw then      \ v1: a copy region is one node
-   -1 LMV-NODE !
-   MIR-N@ 0 ?do  i rid LMV-IN-REGION? if i LMV-NODE ! then  loop
-   LMV-NODE @ MIR-OP@ LMV-COPY-OP? 0= if E-LMV-OP throw then
-   LMV-NODE @ MIR-MAT@ 0= if E-LMV-NOOUT throw then ;  \ planner must materialize the output
+   MIR-N@ 0 ?do
+      i MIR-NODE-ID {: node:CAD-KIND:node-id :}
+      node rid LMV-IN-REGION? if node LMV-NODE! then
+   loop
+   LMV-NODE@ MIR-OP@ LMV-COPY-OP? 0= if E-LMV-OP throw then
+   LMV-NODE@ MIR-MAT@ 0= if E-LMV-NOOUT throw then ;  \ planner must materialize the output
 
 \ ---- collect buffer operands (transpose/slice: 1 ; concat/gather: 2) --------
 : LMV-COLLECT-INS ( -- )
-   LMV-NODE @ {: nd:n :}
+   LMV-NODE@ {: nd:CAD-KIND:node-id :}
    nd MIR-IN-COUNT@ {: c:n :}
    c LMV-MAX-IN > if E-LMV-REG throw then
    c LMV-NIN !
-   c 0 ?do  nd i MIR-IN@ dup LMV-REF-ROWS drop  LMV-INS i cells + !  loop ;
+   c 0 ?do
+      nd i MIR-INPUT-IDX MIR-IN@ {: ref:MIR:operand-ref :}
+      ref LMV-REF-ROWS drop
+      ref i LMV-REF!
+   loop ;
 
 \ ---- per-op derived dims + u32 params (p_a/p_b) -----------------------------
 : LMV-DIMS-TRANSPOSE ( -- )                            \ p_a=src_rows R, p_b=src_cols C
-   LMV-INS 0 cells + @ {: s:n :}
-   s LMV-REF-ROWS LMV-PA !  s LMV-REF-COLS LMV-PB ! ;
+   0 LMV-REF@ {: s:MIR:operand-ref :}
+   s LMV-REF-ROWS ROWS-RAW LMV-PA !  s LMV-REF-COLS COLS-RAW LMV-PB ! ;
 : LMV-DIMS-SLICE ( -- )                                \ p_a = r0*cols (source-flat offset)
-   LMV-NODE @ {: nd:n :}
-   nd MIR-ATTR@ MV-PA@  nd MIR-COLS@ *  LMV-PA !  0 LMV-PB ! ;
+   LMV-NODE@ {: nd:CAD-KIND:node-id :}
+   nd MIR-ATTR@ MV-PA@  nd MIR-COLS@ COLS-RAW *  LMV-PA !  0 LMV-PB ! ;
 : LMV-DIMS-CONCAT ( -- )                               \ p_a = split = A rows * A cols
-   LMV-INS 0 cells + @ {: a:n :}
-   a LMV-REF-ROWS  a LMV-REF-COLS *  LMV-PA !  0 LMV-PB ! ;
+   0 LMV-REF@ {: a:MIR:operand-ref :}
+   a LMV-REF-ROWS a LMV-REF-COLS SHAPE-ELEMS DIM-RAW LMV-PA !  0 LMV-PB ! ;
 : LMV-DIMS-GATHER ( -- )                               \ p_a = cols C (of the source rows)
-   LMV-INS 0 cells + @ LMV-REF-COLS LMV-PA !  0 LMV-PB ! ;
+   0 LMV-REF@ LMV-REF-COLS COLS-RAW LMV-PA !  0 LMV-PB ! ;
 : LMV-SET-DIMS ( -- )
-   LMV-NODE @ MIR-ROWS@ LMV-NODE @ MIR-COLS@ * LMV-PN !     \ N = output elems
-   LMV-NODE @ MIR-OP@ case
+   LMV-NODE@ MIR-ROWS@ LMV-NODE@ MIR-COLS@ SHAPE-ELEMS DIM-RAW LMV-PN !
+   LMV-NODE@ MIR-OP@ case
       OP-TRANSPOSE of LMV-DIMS-TRANSPOSE endof
       OP-SLICE     of LMV-DIMS-SLICE     endof
       OP-CONCAT    of LMV-DIMS-CONCAT    endof
@@ -121,7 +142,7 @@ variable LMV-BUILT?
 
 : LMV-CHECK-DIMS ( -- )
    LMV-PN @ LMV-ARENA > if E-LMV-DIMS throw then
-   LMV-NIN @ 0 ?do  LMV-INS i cells + @ LMV-REF-ELEMS LMV-ARENA > if E-LMV-DIMS throw then  loop ;
+   LMV-NIN @ 0 ?do  i LMV-REF@ LMV-REF-ELEMS LMV-ARENA > if E-LMV-DIMS throw then  loop ;
 
 public
 : LMV-ANALYZE ( n -- ) {: rid:n :}
@@ -136,10 +157,10 @@ public
 \ ---- analysis accessors (lower-launch / lower-golden read these) ------------
 : LMV-CK ( -- )  LMV-BUILT? @ 0= if E-LMV-STATE throw then ;
 : LMV-NIN@ ( -- n )       LMV-CK LMV-NIN @ ;
-: LMV-IN-REF@ ( n -- n ) {: i:n :}
-   i 0 < i LMV-NIN @ >= or if E-LMV-REG throw then  LMV-INS i cells + @ ;
+: LMV-IN-REF@ ( n -- MIR:operand-ref ) {: i:n :}
+   i 0 < i LMV-NIN @ >= or if E-LMV-REG throw then  i LMV-REF@ ;
 : LMV-IN-ELEMS@ ( n -- n ) {: i:n :}  i LMV-IN-REF@ LMV-REF-ELEMS ;   \ per-input upload size
-: LMV-OUT-NODE@ ( -- n )  LMV-CK LMV-NODE @ ;
+: LMV-OUT-NODE@ ( -- CAD-KIND:node-id )  LMV-CK LMV-NODE@ ;
 : LMV-ELEMS ( -- n )      LMV-CK LMV-PN @ ;
 : LMV-PA@ ( -- n )        LMV-CK LMV-PA @ ;
 : LMV-PB@ ( -- n )        LMV-CK LMV-PB @ ;
@@ -231,7 +252,7 @@ private
 
 : LMV-BODY ( -- )
    LMV-COORD
-   LMV-NODE @ MIR-OP@ case
+   LMV-NODE@ MIR-OP@ case
       OP-TRANSPOSE of LMV-BODY-TRANSPOSE endof
       OP-SLICE     of LMV-BODY-SLICE     endof
       OP-CONCAT    of LMV-BODY-CONCAT    endof

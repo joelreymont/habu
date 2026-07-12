@@ -73,8 +73,20 @@ variable LEW-NIN                            \ region input count
 variable LEW-OUTNODE                        \ the single materialized region-output node
 variable LEW-RID                            \ region id being lowered
 
+: LEW-REF! ( MIR:operand-ref n -- )
+   cells LEW-INS + ! ;
+
+: LEW-REF@ ( n -- MIR:operand-ref )
+   cells LEW-INS + @ ;
+
+: LEW-OUTNODE! ( CAD-KIND:node-id -- )
+   LEW-OUTNODE ! ;
+
+: LEW-OUTNODE@ ( -- CAD-KIND:node-id )
+   LEW-OUTNODE @ ;
+
 \ ---- region membership + class ---------------------------------------------
-: LEW-IN-REGION? ( n n -- bool )  swap FP-RID@ = ;        \ node rid -- in-region?
+: LEW-IN-REGION? ( CAD-KIND:node-id n -- bool )  swap FP-RID@ = ;
 \ class mix must contain the EW bit and nothing outside {EW, MOVEMENT}: a dissolved
 \ free-movement prologue (maki/move-view.f) folds into the flat kernel's load offset.
 : LEW-EW-ONLY? ( n -- bool ) {: rid:n :}
@@ -94,9 +106,10 @@ variable LEW-RID                            \ region id being lowered
 \ chained / mat / non-slot source before any emit).
 : LEW-CHECK-OPS ( n -- ) {: rid:n :}
    MIR-N@ 0 ?do
-      i rid LEW-IN-REGION? if
-         i MIR-MOVE? if i MVW-CHECK-EW
-         else i MIR-OP@ LEW-OP-OK? 0= if E-LEW-OP throw then then
+      i MIR-NODE-ID {: node:CAD-KIND:node-id :}
+      node rid LEW-IN-REGION? if
+         node MIR-MOVE? if node MIR-NODE-REF MVW-CHECK-EW
+         else node MIR-OP@ LEW-OP-OK? 0= if E-LEW-OP throw then then
       then
    loop ;
 
@@ -104,26 +117,31 @@ variable LEW-RID                            \ region id being lowered
 \ An operand ref is external to the region when it names a model-input slot or a
 \ producer node living in another region (a materialized boundary). Region-interior
 \ producers are register values, never kernel inputs.
-: LEW-REF-EXTERNAL? ( n n -- bool ) {: rid:n ref:n :}
+: LEW-REF-EXTERNAL? ( n MIR:operand-ref -- bool )
+   {: rid:n ref:MIR:operand-ref :}
    ref MIR-REF-INPUT? if true exit then
    ref MVW-DISSOLVED? if true exit then       \ a folded movement node is a virtual input
-   ref FP-RID@ rid <> ;
-: LEW-INS-IDX ( n -- n ) {: ref:n :}           \ index in LEW-INS, or -1
-   LEW-NIN @ 0 ?do  ref LEW-INS i cells + @ = if i unloop exit then  loop  -1 ;
-: LEW-INS-ADD ( n -- ) {: ref:n :}
+   ref MIR-REF-NODE FP-RID@ rid <> ;
+: LEW-INS-IDX ( MIR:operand-ref -- n ) {: ref:MIR:operand-ref :}
+   LEW-NIN @ 0 ?do  ref i LEW-REF@ MIR-REF= if i unloop exit then  loop  -1 ;
+: LEW-INS-ADD ( MIR:operand-ref -- ) {: ref:MIR:operand-ref :}
    ref LEW-INS-IDX -1 > if exit then           \ already recorded
    LEW-NIN @ LEW-MAX-IN >= if E-LEW-INPUTS throw then
-   ref LEW-INS LEW-NIN @ cells + !  LEW-NIN @ 1+ LEW-NIN ! ;
-: LEW-SCAN-INS ( n n -- ) {: rid:n nd:n :}
+   ref LEW-NIN @ LEW-REF!  LEW-NIN @ 1+ LEW-NIN ! ;
+: LEW-SCAN-INS ( n CAD-KIND:node-id -- )
+   {: rid:n nd:CAD-KIND:node-id :}
    nd MIR-IN-COUNT@ 0 ?do
-      nd i MIR-IN@ {: ref:n :}
+      nd i MIR-INPUT-IDX MIR-IN@ {: ref:MIR:operand-ref :}
       rid ref LEW-REF-EXTERNAL? if ref LEW-INS-ADD then
    loop ;
 \ only COMPUTE members contribute inputs; a movement member's source reaches the kernel
 \ as the virtual movement-node input its consumer scans, not as a direct input.
 : LEW-COLLECT-INS ( n -- ) {: rid:n :}
    0 LEW-NIN !
-   MIR-N@ 0 ?do  i rid LEW-IN-REGION? i MIR-MOVE? 0= and if rid i LEW-SCAN-INS then  loop ;
+   MIR-N@ 0 ?do
+      i MIR-NODE-ID {: node:CAD-KIND:node-id :}
+      node rid LEW-IN-REGION? node MIR-MOVE? 0= and if rid node LEW-SCAN-INS then
+   loop ;
 
 \ ---- single materialized output --------------------------------------------
 \ The planner plans EXACTLY ONE materialized output per region (maki/fusion-plan.f grows a
@@ -131,26 +149,32 @@ variable LEW-RID                            \ region id being lowered
 \ maki/fusion-mout-test.f). LEW-FIND-OUT asserts that invariant as defense-in-depth: != 1 is a
 \ corrupted plan (>1 structurally impossible, 0 a materialization-flag regression), never a v1 cap.
 : LEW-MAT-COUNT ( n -- n ) {: rid:n :}
-   0 MIR-N@ 0 ?do  i rid LEW-IN-REGION? i MIR-MAT@ and if 1+ then  loop ;
+   0 MIR-N@ 0 ?do
+      i MIR-NODE-ID {: node:CAD-KIND:node-id :}
+      node rid LEW-IN-REGION? node MIR-MAT@ and if 1+ then
+   loop ;
 : LEW-FIND-OUT ( n -- ) {: rid:n :}
    rid LEW-MAT-COUNT 1 <> if E-LEW-MULTIOUT throw then
-   -1 LEW-OUTNODE !
-   MIR-N@ 0 ?do  i rid LEW-IN-REGION? i MIR-MAT@ and if i LEW-OUTNODE ! then  loop ;
+   MIR-N@ 0 ?do
+      i MIR-NODE-ID {: node:CAD-KIND:node-id :}
+      node rid LEW-IN-REGION? node MIR-MAT@ and if node LEW-OUTNODE! then
+   loop ;
 
 \ ---- broadcast classification (flat kernel: each input reads a legal broadcast) -----
-: LEW-OUT-ELEMS ( -- n )  LEW-OUTNODE @ dup MIR-ROWS@ swap MIR-COLS@ * ;
-: LEW-ROWS ( -- n )  LEW-OUTNODE @ MIR-ROWS@ ;
-: LEW-COLS ( -- n )  LEW-OUTNODE @ MIR-COLS@ ;
-: LEW-REF-ROWS ( n -- n ) {: ref:n :}
-   ref MIR-REF-INPUT? if ref MIR-REF-SLOT MIR-SLOT-ROWS@ else ref MIR-ROWS@ then ;
-: LEW-REF-COLS ( n -- n ) {: ref:n :}
-   ref MIR-REF-INPUT? if ref MIR-REF-SLOT MIR-SLOT-COLS@ else ref MIR-COLS@ then ;
+: LEW-OUT-ELEMS ( -- n )
+   LEW-OUTNODE@ MIR-ROWS@ LEW-OUTNODE@ MIR-COLS@ SHAPE-ELEMS DIM-RAW ;
+: LEW-ROWS ( -- CAD-KIND:rows )  LEW-OUTNODE@ MIR-ROWS@ ;
+: LEW-COLS ( -- CAD-KIND:cols )  LEW-OUTNODE@ MIR-COLS@ ;
+: LEW-REF-ROWS ( MIR:operand-ref -- CAD-KIND:rows ) {: ref:MIR:operand-ref :}
+   ref MIR-REF-INPUT? if ref MIR-REF-SLOT MIR-SLOT-ROWS@ else ref MIR-REF-NODE MIR-ROWS@ then ;
+: LEW-REF-COLS ( MIR:operand-ref -- CAD-KIND:cols ) {: ref:MIR:operand-ref :}
+   ref MIR-REF-INPUT? if ref MIR-REF-SLOT MIR-SLOT-COLS@ else ref MIR-REF-NODE MIR-COLS@ then ;
 \ classify each input's shape vs the region shape; an illegal (non-1-non-full dim) fails
 \ closed, else record its broadcast class for the per-input load offset (LEW-LOAD-IN).
 : LEW-CLASSIFY-INS ( -- )
-   LEW-ROWS {: R:n :}  LEW-COLS {: C:n :}
+   LEW-ROWS {: R:CAD-KIND:rows :}  LEW-COLS {: C:CAD-KIND:cols :}
    LEW-NIN @ 0 ?do
-      LEW-INS i cells + @ {: ref:n :}
+      i LEW-REF@ {: ref:MIR:operand-ref :}
       ref LEW-REF-ROWS  ref LEW-REF-COLS  R C  BC-CLASS {: cls:n :}
       cls BC-ILLEGAL = if E-LEW-BCAST throw then
       cls LEW-IN-BC i cells + !
@@ -168,27 +192,32 @@ public
 
 \ ---- analysis accessors (lower-launch / lower-golden read these) ------------
 : LEW-NIN@ ( -- n )      LEW-NIN @ ;
-: LEW-IN-REF@ ( n -- n ) {: i:n :}
-   i 0 < i LEW-NIN @ >= or if E-LEW-REG throw then  LEW-INS i cells + @ ;
-: LEW-OUT-NODE@ ( -- n ) LEW-OUTNODE @ ;
+: LEW-IN-REF@ ( n -- MIR:operand-ref ) {: i:n :}
+   i 0 < i LEW-NIN @ >= or if E-LEW-REG throw then  i LEW-REF@ ;
+: LEW-OUT-NODE@ ( -- CAD-KIND:node-id ) LEW-OUTNODE@ ;
 : LEW-ELEMS ( -- n )     LEW-OUT-ELEMS ;
 : LEW-RID@ ( -- n )      LEW-RID @ ;
 
 private
 
 \ ---- register map (member node result reg + operand resolution) -------------
-: LEW-NR@ ( n -- n ) {: nd:n :}
-   nd 0 < nd LEW-NCAP >= or if E-LEW-REG throw then  LEW-NODE-REG nd cells + @ ;
-: LEW-NR! ( n n -- ) {: r:n nd:n :}
-   nd 0 < nd LEW-NCAP >= or if E-LEW-REG throw then  r LEW-NODE-REG nd cells + ! ;
+: LEW-NR@ ( CAD-KIND:node-id -- n ) {: nd:CAD-KIND:node-id :}
+   nd NODE>RAW {: raw:n :}
+   raw 0 < raw LEW-NCAP >= or if E-LEW-REG throw then  LEW-NODE-REG raw cells + @ ;
+: LEW-NR! ( n CAD-KIND:node-id -- ) {: r:n nd:CAD-KIND:node-id :}
+   nd NODE>RAW {: raw:n :}
+   raw 0 < raw LEW-NCAP >= or if E-LEW-REG throw then  r LEW-NODE-REG raw cells + ! ;
 
-: LEW-REF-REG ( n -- n ) {: ref:n :}
+: LEW-REF-REG ( MIR:operand-ref -- n ) {: ref:MIR:operand-ref :}
    ref LEW-INS-IDX {: k:n :}
    k -1 > if LEW-IN-REG k cells + @ exit then     \ external input: its loaded tile reg
-   ref 0 < if E-LEW-REG throw then                \ input slot that is not a region input
-   ref LEW-NR@ ;                                   \ interior producer: its result reg
-: LEW-OPREG  ( n n -- n )  MIR-IN@ LEW-REF-REG ;   \ node k -- reg
-: LEW-BINREGS ( n -- n n ) {: nd:n :}  nd 0 LEW-OPREG  nd 1 LEW-OPREG ;
+   ref MIR-REF-INPUT? if E-LEW-REG throw then
+   ref MIR-REF-NODE LEW-NR@ ;
+: LEW-OPREG  ( CAD-KIND:node-id MIR:input-index -- n )
+   MIR-IN@ LEW-REF-REG ;
+: LEW-BINREGS ( CAD-KIND:node-id -- n n ) {: nd:CAD-KIND:node-id :}
+   nd 0 MIR-INPUT-IDX LEW-OPREG
+   nd 1 MIR-INPUT-IDX LEW-OPREG ;
 
 \ ---- entry / regs / params scaffolding (K inputs + output + n) --------------
 : LEW-KNAME ( -- )  s" REGION_" CG-S LEW-RID @ SB-U ;
@@ -220,8 +249,8 @@ private
 : LEW-BC-OFF ( n n n -- n ) {: i:n off:n flatr:n :}
    i cells LEW-IN-BC + @ case
       BC-FULL   of off endof
-      BC-ROW    of flatr LEW-COLS EMIT-MOD-OFF endof
-      BC-COL    of flatr LEW-COLS EMIT-DIV-OFF endof
+      BC-ROW    of flatr LEW-COLS COLS-RAW EMIT-MOD-OFF endof
+      BC-COL    of flatr LEW-COLS COLS-RAW EMIT-DIV-OFF endof
       BC-SCALAR of EMIT-ZERO-OFF endof
       drop E-LEW-BCAST throw
    endcase ;
@@ -232,10 +261,11 @@ private
 \ materialization pass for uncoalesced loads; whether it wins over materialize-then-coalesced is
 \ a device question (measure-before-believing, docs/eval-triton.md 3c) - goldens pending-zed.
 : LEW-LOAD-IN ( n n n -- ) {: i:n off:n flatr:n :}
-   LEW-INS i cells + @ {: ref:n :}
+   i LEW-REF@ {: ref:MIR:operand-ref :}
    ref MVW-STAGED? if
-      ref MVW-XPOSE-DIMS {: dstc:n srcc:n :}
-      flatr dstc srcc EMIT-XPOSE-OFF {: roff:n :}
+      ref MIR-REF-NODE MVW-XPOSE-DIMS
+      {: dstc:CAD-KIND:cols srcc:CAD-KIND:rows :}
+      flatr dstc COLS-RAW srcc ROWS-RAW EMIT-XPOSE-OFF {: roff:n :}
       i 1+ roff EMIT-LOAD  LEW-IN-REG i cells + !
    else
       i off flatr LEW-BC-OFF {: ctxoff:n :}
@@ -243,11 +273,11 @@ private
    then ;
 : LEW-LOADS ( n n -- ) {: off:n flatr:n :}       \ load each input at its resolved ctx offset
    LEW-NIN @ 0 ?do  i off flatr LEW-LOAD-IN  loop ;
-: LEW-EMIT-NODE ( n -- ) {: nd:n :}
+: LEW-EMIT-NODE ( CAD-KIND:node-id -- ) {: nd:CAD-KIND:node-id :}
    nd MIR-OP@ case
-      OP-RELU          of nd 0 LEW-OPREG EMIT-RELU  endof
-      OP-GELU          of nd 0 LEW-OPREG EMIT-GELU  endof
-      OP-SILU          of nd 0 LEW-OPREG EMIT-SILU  endof
+      OP-RELU          of nd 0 MIR-INPUT-IDX LEW-OPREG EMIT-RELU  endof
+      OP-GELU          of nd 0 MIR-INPUT-IDX LEW-OPREG EMIT-GELU  endof
+      OP-SILU          of nd 0 MIR-INPUT-IDX LEW-OPREG EMIT-SILU  endof
       OP-ADD           of nd LEW-BINREGS EMIT-ADD   endof
       OP-RESIDUAL-ADD  of nd LEW-BINREGS EMIT-ADD   endof
       OP-BIAS          of nd LEW-BINREGS EMIT-ADD   endof
@@ -257,7 +287,10 @@ private
    endcase
    nd LEW-NR! ;
 : LEW-CHAIN ( -- )                               \ movement members emit no compute (folded)
-   MIR-N@ 0 ?do  i LEW-RID @ LEW-IN-REGION? i MIR-MOVE? 0= and if i LEW-EMIT-NODE then  loop ;
+   MIR-N@ 0 ?do
+      i MIR-NODE-ID {: node:CAD-KIND:node-id :}
+      node LEW-RID @ LEW-IN-REGION? node MIR-MOVE? 0= and if node LEW-EMIT-NODE then
+   loop ;
 
 \ fold each dissolved FREE movement input into a base-pointer offset (reshape 0 / slice
 \ r0*cols*4): the generic operand pointer is advanced before EMIT-LOAD cvta's it, so the flat
@@ -266,7 +299,7 @@ private
 \ per-element in LEW-LOAD-IN instead.
 : LEW-APPLY-VIEWS ( -- )
    LEW-NIN @ 0 ?do
-      LEW-INS i cells + @ {: ref:n :}
+      i LEW-REF@ {: ref:MIR:operand-ref :}
       ref MVW-STAGED? 0= if
          ref MVW-RESOLVE-OFF {: off:n :}
          off 0 > if
@@ -279,7 +312,7 @@ private
    EMIT-GRID-INDEX {: flatr:n :}                  \ the flat output index reg (staged remap reads it)
    off flatr LEW-LOADS
    LEW-CHAIN
-   LEW-OUTNODE @ LEW-NR@  LEW-NIN @ 1+  off  EMIT-STORE ;
+   LEW-OUTNODE@ LEW-NR@  LEW-NIN @ 1+  off  EMIT-STORE ;
 
 public
 \ LEW-EMIT prints the region's PTX module to the current PTX sink (stdout, or the

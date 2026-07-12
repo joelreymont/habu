@@ -44,6 +44,8 @@ s" CK-PASS ( CAD-KIND:pass-id -- CAD-KIND:pass-id )" YES
 s" CK-SCHEMA ( CAD-KIND:schema-id -- CAD-KIND:schema-id )" YES
 s" CK-DIM ( CAD-KIND:dim -- CAD-KIND:dim )" YES
 s" CK-SHAPE ( CAD-KIND:shape -- CAD-KIND:shape )" YES
+s" CK-ROWS ( CAD-KIND:rows -- CAD-KIND:rows )" YES
+s" CK-COLS ( CAD-KIND:cols -- CAD-KIND:cols )" YES
 s" CK-DTYPE ( CAD-KIND:dtype -- CAD-KIND:dtype )" YES
 s" CK-LAYOUT ( CAD-KIND:layout -- CAD-KIND:layout )" YES
 s" CK-SPACE ( CAD-KIND:address-space -- CAD-KIND:address-space )" YES
@@ -65,12 +67,14 @@ s" CK-X10 ( CAD-KIND:toolchain-id -- CAD-KIND:pass-id )" NO
 s" CK-X11 ( CAD-KIND:pass-id -- CAD-KIND:schema-id )" NO
 s" CK-X12 ( CAD-KIND:schema-id -- CAD-KIND:dim )" NO
 s" CK-X13 ( CAD-KIND:dim -- CAD-KIND:shape )" NO
-s" CK-X14 ( CAD-KIND:shape -- CAD-KIND:dtype )" NO
-s" CK-X15 ( CAD-KIND:dtype -- CAD-KIND:layout )" NO
-s" CK-X16 ( CAD-KIND:layout -- CAD-KIND:address-space )" NO
-s" CK-X17 ( CAD-KIND:address-space -- CAD-KIND:stage )" NO
-s" CK-X18 ( CAD-KIND:stage -- CAD-KIND:effect )" NO
-s" CK-X19 ( CAD-KIND:effect -- CAD-KIND:region )" NO
+s" CK-X14 ( CAD-KIND:shape -- CAD-KIND:rows )" NO
+s" CK-X15 ( CAD-KIND:rows -- CAD-KIND:cols )" NO
+s" CK-X16 ( CAD-KIND:cols -- CAD-KIND:dtype )" NO
+s" CK-X17 ( CAD-KIND:dtype -- CAD-KIND:layout )" NO
+s" CK-X18 ( CAD-KIND:layout -- CAD-KIND:address-space )" NO
+s" CK-X19 ( CAD-KIND:address-space -- CAD-KIND:stage )" NO
+s" CK-X20 ( CAD-KIND:stage -- CAD-KIND:effect )" NO
+s" CK-X21 ( CAD-KIND:effect -- CAD-KIND:region )" NO
 
 \ Generic typed memory keeps the declared role on store and fetch.
 s" CK-PUT ( CAD-KIND:design-id ptr CAD-KIND:design-id -- ) !" YES

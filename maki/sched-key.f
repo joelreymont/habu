@@ -62,16 +62,19 @@ variable SK-FOLD               \ scratch for little-endian byte decomposition
    h
    8 0 ?do  SK-FOLD @ $FF and FNV-BYTE  SK-FOLD @ 8 rshift SK-FOLD !  loop ;
 
-: RSIG-NODE ( n n -- n ) {: node:n :}           \ ( h node -- h' ) fold a node's facts
+: RSIG-NODE ( n CAD-KIND:node-id -- n ) {: node:CAD-KIND:node-id :}
    node MIR-OP@   FNV-CELL
-   node MIR-ROWS@ FNV-CELL
-   node MIR-COLS@ FNV-CELL
-   node MIR-DT@   FNV-CELL
-   node MIR-LAY@  FNV-CELL ;
+   node MIR-ROWS@ ROWS-RAW FNV-CELL
+   node MIR-COLS@ COLS-RAW FNV-CELL
+   node MIR-DT@ DTYPE-RAW FNV-CELL
+   node MIR-LAY@ LAYOUT-RAW FNV-CELL ;
 
 : RSIG ( n -- n ) {: r:n :}                     \ region -> content hash (nodes in order)
    FNV-BASIS
-   MIR-N@ 0 ?do  i FP-RID@ r = if i RSIG-NODE then  loop ;
+   MIR-N@ 0 ?do
+      i MIR-NODE-ID {: node:CAD-KIND:node-id :}
+      node FP-RID@ r = if node RSIG-NODE then
+   loop ;
 
 \ ---- hex render (16 digits, MSB first) into the shared builder --------------
 : HEX-NIB ( n -- n )  $F and dup 10 < if $30 + else $37 + then ;
@@ -85,19 +88,23 @@ variable SK-FOLD               \ scratch for little-endian byte decomposition
    $70 SB-APPEND-C  e NEXT-POW2 SB-INT
    e POW2? 0= if s" +t" SB-APPEND then ;
 
-: SHAPE-CLASS+ ( n n -- ) {: rows:n cols:n :}
-   rows DIM-CLASS+  $78 SB-APPEND-C  cols DIM-CLASS+ ;
+: SHAPE-CLASS+ ( CAD-KIND:rows CAD-KIND:cols -- )
+   {: rows:CAD-KIND:rows cols:CAD-KIND:cols :}
+   rows ROWS-RAW DIM-CLASS+ $78 SB-APPEND-C cols COLS-RAW DIM-CLASS+ ;
 
 \ ---- alignment class over the region's model-input reads --------------------
-: NODE-ALIGN ( n n -- n ) {: node:n :}          \ ( al node -- al' ) min input-slot alignment
+: NODE-ALIGN ( n CAD-KIND:node-id -- n ) {: node:CAD-KIND:node-id :}
    node MIR-IN-COUNT@ 0 ?do
-      node i MIR-IN@ dup MIR-REF-INPUT?
+      node i MIR-INPUT-IDX MIR-IN@ dup MIR-REF-INPUT?
       if MIR-REF-SLOT MIR-SLOT-AL@ min else drop then
    loop ;
 
 : REGION-ALIGN ( n -- n ) {: r:n :}
    AL-16
-   MIR-N@ 0 ?do  i FP-RID@ r = if i NODE-ALIGN then  loop ;
+   MIR-N@ 0 ?do
+      i MIR-NODE-ID {: node:CAD-KIND:node-id :}
+      node FP-RID@ r = if node NODE-ALIGN then
+   loop ;
 
 : AL-KEY ( n -- ptr u8 n )
    case
@@ -113,9 +120,13 @@ variable SK-FOLD               \ scratch for little-endian byte decomposition
 : SK-REGION-CK ( n -- n )
    dup 0 < over FP-REGION-COUNT >= or if E-SK-REGION throw then ;
 
-: REGION-REP ( n -- n ) {: r:n :}               \ last (output) node in the region
-   -1  MIR-N@ 0 ?do  i FP-RID@ r = if drop i then  loop
-   dup 0 < if E-SK-REGION throw then ;
+: REGION-REP ( n -- CAD-KIND:node-id ) {: r:n :}
+   MIR-N@
+   begin dup 0 > while
+      1- dup MIR-NODE-ID {: node:CAD-KIND:node-id :}
+      node FP-RID@ r = if drop node exit then
+   repeat
+   drop E-SK-REGION throw ;
 
 public
 
@@ -130,16 +141,17 @@ public
 : SK-PTXAS$  ( -- ptr u8 n )  s" unprobed" ;       \ no ptxas probed off-device
 
 \ representative (output) node of a region - the default-context source (rowlen/dtype)
-: SK-REGION-REP ( n -- n )  SK-REGION-CK REGION-REP ;
+: SK-REGION-REP ( n -- CAD-KIND:node-id )  SK-REGION-CK REGION-REP ;
 
 \ ---- individual key fields (standalone renders, for inspection + tests) ------
 : SK-RSIG$ ( n -- ptr u8 n )  SK-REGION-CK RSIG SB-RESET SK-HEX+ SB$ ;
-: SK-SHAPE-CLASS$ ( n n -- ptr u8 n )  SB-RESET SHAPE-CLASS+ SB$ ;   \ rows cols -> class
+: SK-SHAPE-CLASS$ ( CAD-KIND:rows CAD-KIND:cols -- ptr u8 n )
+   SB-RESET SHAPE-CLASS+ SB$ ;
 : SK-ALIGN$ ( n -- ptr u8 n )  SK-REGION-CK REGION-ALIGN AL-KEY ;
 
 \ ---- the full section 7.4 key as one "|"-joined string ----------------------
 : SK-KEY+ ( n -- ) {: r:n :}                     \ append the key to SB (already reset)
-   r REGION-REP {: rep:n :}
+   r REGION-REP {: rep:CAD-KIND:node-id :}
    r RSIG SK-HEX+
    $7C SB-APPEND-C  rep MIR-ROWS@ rep MIR-COLS@ SHAPE-CLASS+
    $7C SB-APPEND-C  rep MIR-DTYPE-KEY  SB-APPEND

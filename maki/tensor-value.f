@@ -3,9 +3,9 @@
 \ CAD-PLAN section 3 prerequisite. Today's eager maki ops pass a tensor as many
 \ stack cells (maki/linear.f: LINEAR ( ptr a ptr a ptr a ptr a n n n -- ); data,
 \ shape and dtype travel apart), so they cannot be re-typed onto descriptors. A
-\ `tensor` is instead ONE stack slot: an opaque DEFTYPE handle indexing a
+\ `tensor` is instead ONE stack slot: an opaque nominal handle indexing a
 \ module-owned record table that carries data pointer, 2D shape (rows cols),
-\ dtype, layout tag, and the alignment class recorded from the actual pointer.
+\ dtype, layout, address space, and the alignment class recorded from the pointer.
 \
 \ Representation hiding follows maki/report.f: a `tensor` is an opaque handle;
 \ every constructor/accessor takes or returns `tensor` plus primitive field
@@ -34,8 +34,8 @@ require maki/op-kind.f
 require lib/ffi-abi.f
 
 -5040 constant E-TV-FULL        \ tensor store capacity exceeded
--5041 constant E-TV-HANDLE      \ handle slot index out of range
--5042 constant E-TV-LAYOUT      \ layout tag out of range
+-5041 constant E-TV-HANDLE      \ stale, forged, or out-of-range tensor handle
+-5042 constant E-TV-GEN         \ tensor-store generation exhausted
 -5043 constant E-TV-NODATA      \ data requested from a descriptor (no buffer)
 -5044 constant E-TV-SHAPE       \ shape mismatch (eager linear inner dim)
 -5045 constant E-TV-PLAN-FULL   \ plan op or input-pool capacity exceeded
@@ -45,11 +45,6 @@ require lib/ffi-abi.f
 
 package MAKI
 public
-
-\ ---- layout tags (v1: contiguity order only; strides arrive with cad-1) ----
-0 constant LAY-ROW              \ row-major / C-contiguous
-1 constant LAY-COL             \ column-major
-2 constant LAY-N               \ range bound
 
 \ ---- alignment classes (recorded from the pointer, never assumed) ----
 0 constant AL-UNKNOWN          \ conservative: not measured (descriptors)
@@ -75,12 +70,18 @@ package TENSOR
 
 public
 
-DEFTYPE tensor                 \ opaque single-cell handle; internals swap to an ADT later
-                               \ (public: TENSOR:tensor>N is the audited handle-inspection cast)
+TYPEFAMILY tensor 0
 
 256 constant TV-CAP            \ max live tensor values (store capacity contract)
 
 private
+
+TRUSTED: RAW>TENSOR ( n -- tensor ) ;
+TRUSTED: TENSOR>RAW ( tensor -- n ) ;
+
+\ Typed descriptor facts cross into the legacy eager array kernel only here.
+TRUSTED: TYPED-LINEAR ( ptr a ptr a ptr a ptr a CAD-KIND:rows CAD-KIND:cols CAD-KIND:cols -- )
+   MAKI:LINEAR ;
 
 
 \ record table: one create-array per field so each keeps its own cell type
@@ -90,9 +91,13 @@ create TV-ROWS TV-CAP cells allot
 create TV-COLS TV-CAP cells allot
 create TV-DT   TV-CAP cells allot      \ dtype tag (maki/tensor.f DT-*)
 create TV-LAY  TV-CAP cells allot      \ layout tag (LAY-*)
+create TV-SPACE TV-CAP cells allot     \ address-space fact
 create TV-AL   TV-CAP cells allot      \ alignment class (AL-*)
 create TV-HAS  TV-CAP cells allot      \ 1 = has data buffer, 0 = descriptor
 variable TV-U                          \ free counter / live count
+variable TV-GEN                        \ store generation encoded into every handle
+
+$7FFFFFFFFFFFFF constant TV-GEN-MAX
 
 \ ---- alignment measurement ------------------------------------------------
 \ Record the pointer's real base alignment. P>N (lib/ffi-abi.f) is the audited
@@ -105,76 +110,95 @@ variable TV-U                          \ free counter / live count
    MAKI:AL-BYTE ;
 
 \ ---- store commit (validates every tag before writing a slot) -------------
-: TV-COMMIT ( ptr a n n n n n n -- tensor )    \ data rows cols dtype layout align has
-   {: base:ptr rows:n cols:n dt:n lay:n al:n has:n :}
-   dt MAKI:DT-VALID? 0= if E-MK-DTYPE throw then
-   lay 0 < lay MAKI:LAY-N >= or if E-TV-LAYOUT throw then
+: TV-ROWS-A ( -- ptr CAD-KIND:rows ) TV-ROWS ;
+: TV-COLS-A ( -- ptr CAD-KIND:cols ) TV-COLS ;
+: TV-DT-A ( -- ptr CAD-KIND:dtype ) TV-DT ;
+: TV-LAY-A ( -- ptr CAD-KIND:layout ) TV-LAY ;
+: TV-SPACE-A ( -- ptr CAD-KIND:address-space ) TV-SPACE ;
+
+: TV-COMMIT ( ptr a CAD-KIND:rows CAD-KIND:cols CAD-KIND:dtype CAD-KIND:layout CAD-KIND:address-space n n -- tensor )
+   {: base:ptr rows:CAD-KIND:rows cols:CAD-KIND:cols dt:CAD-KIND:dtype lay:CAD-KIND:layout space:CAD-KIND:address-space al:n has:n :}
    TV-U @ TV-CAP >= if E-TV-FULL throw then
    TV-U @ {: idx:n :}
    base  TV-DATA idx cells + !
-   rows  TV-ROWS idx cells + !
-   cols  TV-COLS idx cells + !
-   dt    TV-DT   idx cells + !
-   lay   TV-LAY  idx cells + !
+   rows  TV-ROWS-A idx cells + !
+   cols  TV-COLS-A idx cells + !
+   dt    TV-DT-A idx cells + !
+   lay   TV-LAY-A idx cells + !
+   space TV-SPACE-A idx cells + !
    al    TV-AL   idx cells + !
    has   TV-HAS  idx cells + !
    idx 1+ TV-U !
-   idx >tensor ;
+   TV-GEN @ TV-CAP * idx + RAW>TENSOR ;
 
 \ ---- handle -> validated slot index ---------------------------------------
 : TV-IX ( tensor -- n ) {: t:tensor :}
-   t tensor>N {: idx:n :}
+   t TENSOR>RAW {: raw:n :}
+   raw 0 < if E-TV-HANDLE throw then
+   raw TV-CAP / TV-GEN @ <> if E-TV-HANDLE throw then
+   raw TV-CAP mod {: idx:n :}
    idx 0 < idx TV-U @ >= or if E-TV-HANDLE throw then
    idx ;
+
+: TV-NEXT-GEN ( -- )
+   TV-GEN @ TV-GEN-MAX >= if E-TV-GEN throw then
+   TV-GEN @ 1+ TV-GEN ! ;
 
 \ ---- generic n-field read/write (data pointer handled separately) ---------
 : TV-N@ ( tensor ptr a -- n ) {: t:tensor base:ptr :}
    base t TV-IX cells + @ ;
-: TV-N! ( n tensor ptr a -- ) {: v:n t:tensor base:ptr :}
-   v base t TV-IX cells + ! ;
 
 public
 
 \ ---- constructors ----------------------------------------------------------
-\ TV-NEW-AS is the explicit form; alignment is measured from the data pointer.
-: TV-NEW-AS ( ptr a n n n n -- tensor )        \ data rows cols dtype layout
-   {: base:ptr rows:n cols:n dt:n lay:n :}
-   base rows cols dt lay  base TV-ALIGN-CLASS  1  TV-COMMIT ;
+\ Untyped eager pointers originate on the host. Device-space constructors must
+\ require provenance-bearing allocator results, not a caller-selected label.
+: TV-NEW-HOST ( ptr a CAD-KIND:rows CAD-KIND:cols CAD-KIND:dtype CAD-KIND:layout -- tensor )
+   {: base:ptr rows:CAD-KIND:rows cols:CAD-KIND:cols dt:CAD-KIND:dtype lay:CAD-KIND:layout :}
+   base rows cols dt lay MAKI:SPACE-HOST base TV-ALIGN-CLASS 1 TV-COMMIT ;
 
 \ TV-NEW defaults dtype f32 + row-major (the eager host-array convention).
-: TV-NEW ( ptr a n n -- tensor )               \ data rows cols
-   MAKI:DT-F32 MAKI:LAY-ROW TV-NEW-AS ;
+: TV-NEW ( ptr a CAD-KIND:rows CAD-KIND:cols -- tensor )
+   MAKI:DT-F32 MAKI:LAY-ROW TV-NEW-HOST ;
 
-\ TV-DESC builds a planning descriptor: shape/dtype/layout only, no buffer.
+\ TV-DESC builds a planning descriptor: typed facts only, no buffer.
 \ Alignment is AL-UNKNOWN (conservative) and TV-DATA@ fails closed. The data
 \ slot stores data-base purely as a never-read placeholder (HAS=0 guards it).
-: TV-DESC ( n n n n -- tensor )                \ rows cols dtype layout
-   {: rows:n cols:n dt:n lay:n :}
-   data-base rows cols dt lay  MAKI:AL-UNKNOWN  0  TV-COMMIT ;
+: TV-DESC ( CAD-KIND:rows CAD-KIND:cols CAD-KIND:dtype CAD-KIND:layout CAD-KIND:address-space -- tensor )
+   {: rows:CAD-KIND:rows cols:CAD-KIND:cols dt:CAD-KIND:dtype lay:CAD-KIND:layout space:CAD-KIND:address-space :}
+   data-base rows cols dt lay space MAKI:AL-UNKNOWN 0 TV-COMMIT ;
 
 \ ---- accessors (one per recorded fact) ------------------------------------
-: TV-ROWS@   ( tensor -- n )  TV-ROWS TV-N@ ;
-: TV-COLS@   ( tensor -- n )  TV-COLS TV-N@ ;
-: TV-DTYPE@  ( tensor -- n )  TV-DT   TV-N@ ;
-: TV-LAYOUT@ ( tensor -- n )  TV-LAY  TV-N@ ;
+: TV-ROWS@ ( tensor -- CAD-KIND:rows )
+   {: t:tensor :}
+   TV-ROWS-A t TV-IX cells + @ ;
+: TV-COLS@ ( tensor -- CAD-KIND:cols )
+   {: t:tensor :}
+   TV-COLS-A t TV-IX cells + @ ;
+: TV-DTYPE@ ( tensor -- CAD-KIND:dtype )
+   {: t:tensor :}
+   TV-DT-A t TV-IX cells + @ ;
+: TV-LAYOUT@ ( tensor -- CAD-KIND:layout )
+   {: t:tensor :}
+   TV-LAY-A t TV-IX cells + @ ;
+: TV-SPACE@ ( tensor -- CAD-KIND:address-space )
+   {: t:tensor :}
+   TV-SPACE-A t TV-IX cells + @ ;
 : TV-ALIGN@  ( tensor -- n )  TV-AL   TV-N@ ;
-: TV-ELEMS   ( tensor -- n )  {: t:tensor :}  t TV-ROWS@ t TV-COLS@ * ;
+: TV-ELEMS ( tensor -- CAD-KIND:dim )
+   {: t:tensor :}
+   t TV-ROWS@ t TV-COLS@ MAKI:SHAPE-ELEMS ;
 : TV-HAS-DATA? ( tensor -- bool )  TV-HAS TV-N@ 0= 0= ;
 
 : TV-DATA@ ( tensor -- ptr a ) {: t:tensor :}
    t TV-HAS-DATA? 0= if E-TV-NODATA throw then
    TV-DATA t TV-IX cells + @ ;
 
-\ ---- settable dtype / layout (validated) ----------------------------------
-: TV-DTYPE! ( tensor n -- tensor ) {: t:tensor dt:n :}
-   dt MAKI:DT-VALID? 0= if E-MK-DTYPE throw then
-   dt t TV-DT TV-N!  t ;
-: TV-LAYOUT! ( tensor n -- tensor ) {: t:tensor lay:n :}
-   lay 0 < lay MAKI:LAY-N >= or if E-TV-LAYOUT throw then
-   lay t TV-LAY TV-N!  t ;
-
 \ ---- store lifecycle -------------------------------------------------------
-: TV-RESET ( -- )  0 TV-U ! ;                  \ clears store; invalidates handles
+: TV-EQUAL? ( tensor tensor -- bool )
+   TENSOR>RAW swap TENSOR>RAW swap = ;
+
+: TV-RESET ( -- )  TV-NEXT-GEN 0 TV-U ! ;
 : TV-COUNT ( -- n )  TV-U @ ;
 
 public
@@ -221,6 +245,7 @@ public
 
 : PLAN-IN+ ( tensor -- ) {: t:tensor :}        \ stage one input for the open record
    PEND-ON @ 0= if E-TV-PLAN-STATE throw then
+   t TV-IX drop
    P-INS-U @ PLAN-INCAP >= if E-TV-PLAN-FULL throw then
    t P-INS P-INS-U @ cells + !
    P-INS-U @ 1+ P-INS-U !
@@ -232,6 +257,7 @@ public
 
 : PLAN-OP+ ( tensor -- ) {: out:tensor :}      \ commit the open record with its output
    PEND-ON @ 0= if E-TV-PLAN-STATE throw then
+   out TV-IX drop
    P-N @ PLAN-CAP >= if E-TV-PLAN-FULL throw then
    P-N @ {: idx:n :}
    PEND-KIND @  P-KIND  idx cells + !
@@ -243,26 +269,27 @@ public
    0 PEND-ON ! ;
 
 : PLAN-OP@ ( n -- n )        PLAN-IX cells P-KIND  + @ ;
-: PLAN-OUT@ ( n -- tensor )  PLAN-IX cells P-OUT   + @ ;
+: PLAN-OUT@ ( n -- tensor )
+   PLAN-IX cells P-OUT + @ dup TV-IX drop ;
 : PLAN-ATTR@ ( n -- n )      PLAN-IX cells P-ATTR  + @ ;
 : PLAN-IN-COUNT@ ( n -- n )  PLAN-IX cells P-INCNT + @ ;
 
 : PLAN-IN@ ( n n -- tensor ) {: idx:n k:n :}   \ k-th input tensor of op idx
    idx PLAN-IX drop
    k 0 < k P-INCNT idx cells + @ >= or if E-TV-PLAN-IDX throw then
-   P-INS  P-INOFF idx cells + @  k +  cells + @ ;
+   P-INS P-INOFF idx cells + @ k + cells + @ dup TV-IX drop ;
 
 \ ---- descriptor-mode model ops (append IR, do not compute) -----------------
 \ Output shape/dtype are inferred and recorded; both ops return a descriptor.
 : PLINEAR ( tensor tensor tensor -- tensor ) {: x:tensor w:tensor b:tensor :}
-   x TV-ROWS@ w TV-COLS@ x TV-DTYPE@ MAKI:LAY-ROW TV-DESC {: y:tensor :}
+   x TV-ROWS@ w TV-COLS@ x TV-DTYPE@ MAKI:LAY-ROW x TV-SPACE@ TV-DESC {: y:tensor :}
    MAKI:OP-LINEAR PLAN-OP-BEGIN
    x PLAN-IN+  w PLAN-IN+  b PLAN-IN+
    y PLAN-OP+
    y ;
 
 : PGELU ( tensor -- tensor ) {: x:tensor :}    \ elementwise: same shape/layout
-   x TV-ROWS@ x TV-COLS@ x TV-DTYPE@ x TV-LAYOUT@ TV-DESC {: y:tensor :}
+   x TV-ROWS@ x TV-COLS@ x TV-DTYPE@ x TV-LAYOUT@ x TV-SPACE@ TV-DESC {: y:tensor :}
    MAKI:OP-GELU PLAN-OP-BEGIN
    x PLAN-IN+
    y PLAN-OP+
@@ -273,9 +300,9 @@ public
 \ wrap the result back. Inner dims must agree (X cols = W rows) or fail closed.
 : TV-LINEAR ( tensor tensor tensor tensor -- tensor )   \ X W b Yout -> Yout
    {: x:tensor w:tensor b:tensor y:tensor :}
-   x TV-COLS@ w TV-ROWS@ <> if E-TV-SHAPE throw then
+   x TV-COLS@ w TV-ROWS@ MAKI:INNER-EQUAL? 0= if E-TV-SHAPE throw then
    x TV-DATA@  w TV-DATA@  b TV-DATA@  y TV-DATA@
-   x TV-ROWS@  x TV-COLS@  w TV-COLS@  MAKI:LINEAR
+   x TV-ROWS@ x TV-COLS@ w TV-COLS@ TYPED-LINEAR
    y ;
 
 end-package

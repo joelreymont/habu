@@ -46,6 +46,10 @@ $4000 constant GC-ARENA-CELLS  \ host input-buffer arena (float cells)
 create GC-ARENA  GC-ARENA-CELLS cells allot   \ per-input-slot host buffers
 create GC-IN-OFF GC-SCAP cells allot           \ per-slot arena offset (cells)
 variable GC-BUMP
+1 LAYOUT-BUFFER GC-MARK-BUF MIR:mark
+
+: GC-MARK! ( MIR:mark -- )  0 GC-MARK-BUF ! ;
+: GC-MARK@ ( -- MIR:mark )  0 GC-MARK-BUF @ ;
 
 : GC-H ( -- r )  0.001 ;                       \ central finite-difference step
 
@@ -68,29 +72,35 @@ public
 private
 
 \ ---- input-slot host buffers -----------------------------------------------
-: GC-SLOT-ELEMS ( n -- n ) {: s:n :}  s MIR-SLOT-ROWS@ s MIR-SLOT-COLS@ * ;
-: GC-IN-PTR ( n -- ptr a )  cells GC-IN-OFF + @ {: off:n :}  GC-ARENA off T-AT ;
+: GC-SLOT-ELEMS ( MIR:input-slot -- n ) {: s:MIR:input-slot :}
+   s MIR-SLOT-ROWS@ s MIR-SLOT-COLS@ SHAPE-ELEMS DIM-RAW ;
+: GC-IN-PTR ( MIR:input-slot -- ptr a )
+   SLOT>RAW cells GC-IN-OFF + @ {: off:n :}  GC-ARENA off T-AT ;
 
 \ deterministic non-degenerate fills (relu-safe: strictly positive, varied)
-: GC-INPUT-VAL ( n n -- r ) {: s:n e:n :}  s 7 * e +  17 mod  s>f  0.11 f*  0.3 f+ ;
+: GC-INPUT-VAL ( MIR:input-slot n -- r ) {: s:MIR:input-slot e:n :}
+   s SLOT>RAW 7 * e + 17 mod s>f 0.11 f* 0.3 f+ ;
 : GC-SEED-VAL  ( n -- r )   {: e:n :}      e 7 mod  s>f  0.13 f*  0.6 f+ ;
 
 \ an input slot is an index slot if a forward gather reads it as its index operand
-: GC-NODE-IDX? ( n n -- bool ) {: nd:n s:n :}
+: GC-NODE-IDX? ( CAD-KIND:node-id MIR:input-slot -- bool )
+   {: nd:CAD-KIND:node-id s:MIR:input-slot :}
    nd MIR-OP@ OP-GATHER <> if false exit then
-   nd 1 MIR-IN@ {: r:n :}
+   nd 1 MIR-INPUT-IDX MIR-IN@ {: r:MIR:operand-ref :}
    r MIR-REF-INPUT? 0= if false exit then
-   r MIR-REF-SLOT s = ;
+   r MIR-REF-SLOT s MIR-SLOT= ;
 
-: GC-INDEX-SLOT? ( n -- bool ) {: s:n :}
-   BW-FWD-N@ 0 ?do  i s GC-NODE-IDX? if unloop true exit then  loop  false ;
+: GC-INDEX-SLOT? ( MIR:input-slot -- bool ) {: s:MIR:input-slot :}
+   BW-FWD-N@ 0 ?do
+      i MIR-NODE-ID s GC-NODE-IDX? if unloop true exit then
+   loop false ;
 
-: GC-FILL-VAL ( n n -- r ) {: s:n e:n :}       \ value for slot s element e
-   s BW-SEED-SLOT@ = if e GC-SEED-VAL exit then
+: GC-FILL-VAL ( MIR:input-slot n -- r ) {: s:MIR:input-slot e:n :}
+   s BW-SEED-SLOT@ MIR-SLOT= if e GC-SEED-VAL exit then
    s GC-INDEX-SLOT? if 0.0 exit then           \ index slot: valid (row 0) indices
    s e GC-INPUT-VAL ;
 
-: GC-FILL-SLOT ( n -- ) {: s:n :}
+: GC-FILL-SLOT ( MIR:input-slot -- ) {: s:MIR:input-slot :}
    s GC-IN-PTR {: p:ptr :}
    s GC-SLOT-ELEMS 0 ?do  s i GC-FILL-VAL  p i T-SET  loop ;
 
@@ -99,30 +109,31 @@ private
    EX-RESET
    0 GC-BUMP !
    MIR-IN-SLOTS@ 0 ?do
-      i GC-SLOT-ELEMS {: e:n :}
+      i MIR-SLOT-ID {: s:MIR:input-slot :}
+      s GC-SLOT-ELEMS {: e:n :}
       GC-BUMP @ {: off:n :}
       off e + GC-ARENA-CELLS > if E-GC-CAP throw then
-      off i cells GC-IN-OFF + !
+      off s SLOT>RAW cells GC-IN-OFF + !
       off e + GC-BUMP !
-      i GC-IN-PTR i EX-BIND
-      i GC-FILL-SLOT
+      s GC-IN-PTR s EX-BIND
+      s GC-FILL-SLOT
    loop ;
 
 \ ---- loss L = sum_k seed_k * output_k (the backward's seeded loss) -----------
 : GC-OUT-SUM ( -- r )
-   BW-FWD-N@ 1- {: out:n :}
+   BW-FWD-N@ 1- MIR-NODE-ID {: out:CAD-KIND:node-id :}
    out EX-OUT@ {: op:ptr :}
    BW-SEED-SLOT@ GC-IN-PTR {: sp:ptr :}
    0.0  out EX-NODE-ELEMS 0 ?do  op i T-GET  sp i T-GET  f*  f+  loop ;
 
 \ ---- analytic gradient element = the backward node's output element ----------
-: GC-ANALYTIC-EL ( n n -- r ) {: s:n e:n :}
-   s BW-SLOT-GRAD@ {: g:n :}
+: GC-ANALYTIC-EL ( MIR:input-slot n -- r ) {: s:MIR:input-slot e:n :}
+   s BW-SLOT-GRAD@ {: g:MIR:operand-ref :}
    g MIR-REF-INPUT? if g MIR-REF-SLOT GC-IN-PTR e T-GET
-   else g EX-OUT@ e T-GET then ;
+   else g MIR-REF-NODE EX-OUT@ e T-GET then ;
 
 \ ---- central finite difference dL/d(input s element e) over the forward slice -
-: GC-FD-SUM ( n n -- r ) {: s:n e:n :}
+: GC-FD-SUM ( MIR:input-slot n -- r ) {: s:MIR:input-slot e:n :}
    s GC-IN-PTR {: p:ptr :}
    p e T-GET {: base:r :}
    base GC-H f+ p e T-SET  BW-FWD-N@ EX-RUN-N  GC-OUT-SUM {: yp:r :}
@@ -131,14 +142,14 @@ private
    yp ym f-  GC-H 2.0 f* f/ ;
 
 \ one sampled element: full run (analytic), then finite-diff the forward slice
-: GC-SAMPLE-OK? ( n n -- bool ) {: s:n e:n :}
+: GC-SAMPLE-OK? ( MIR:input-slot n -- bool ) {: s:MIR:input-slot e:n :}
    MIR-N@ EX-RUN-N
    s e GC-ANALYTIC-EL {: a:r :}
    s e GC-FD-SUM {: fd:r :}
    a fd GC-CLOSE? ;
 
 \ sample the corners + middle of an input buffer (bounded runtime)
-: GC-CHECK-SLOT? ( n -- bool ) {: s:n :}
+: GC-CHECK-SLOT? ( MIR:input-slot -- bool ) {: s:MIR:input-slot :}
    s GC-SLOT-ELEMS {: e:n :}
    s 0 GC-SAMPLE-OK? 0= if false exit then
    e 1 > if s e 1- GC-SAMPLE-OK? 0= if false exit then then
@@ -146,16 +157,19 @@ private
    true ;
 
 \ ---- verdict reasons -------------------------------------------------------
-: GC-FAIL-REASON ( n -- ) {: s:n :}
-   GC-RE-RESET s" host: input " GC-RE+ s GC-RE-INT s"  analytic != finite-diff" GC-RE+ ;
+: GC-FAIL-REASON ( MIR:input-slot -- ) {: s:MIR:input-slot :}
+   GC-RE-RESET s" host: input " GC-RE+ s SLOT>RAW GC-RE-INT
+   s"  analytic != finite-diff" GC-RE+ ;
 : GC-PASS-REASON ( -- )
-   GC-RE-RESET s" host: " GC-RE+ BW-SEED-SLOT@ GC-RE-INT s"  input(s) gradchecked" GC-RE+ ;
+   GC-RE-RESET s" host: " GC-RE+ BW-SEED-SLOT@ SLOT>RAW GC-RE-INT
+   s"  input(s) gradchecked" GC-RE+ ;
 
 \ check every model data slot that received a gradient; V-PASS or V-FAIL (named slot)
 : GC-CHECK-ALL ( -- n )
-   BW-SEED-SLOT@ 0 ?do
-      i BW-HAS-GRAD? if
-         i GC-CHECK-SLOT? 0= if  i GC-FAIL-REASON  V-FAIL unloop exit  then
+   BW-SEED-SLOT@ SLOT>RAW 0 ?do
+      i MIR-SLOT-ID {: s:MIR:input-slot :}
+      s BW-HAS-GRAD? if
+         s GC-CHECK-SLOT? 0= if s GC-FAIL-REASON V-FAIL unloop exit then
       then
    loop
    GC-PASS-REASON  V-PASS ;
@@ -163,7 +177,7 @@ private
 \ ---- blocking-op classification (only cast / no-adjoint / unsupported remain) -
 : GC-FIRST-BAD ( -- n )
    MIR-N@ 0 ?do
-      i MIR-OP@ {: op:n :}
+      i MIR-NODE-ID MIR-OP@ {: op:n :}
       op ADJ-HAS? 0=  op ADJ-SUP? 0= or  op EX-OP-OK? 0= or
       if i unloop drop op exit then
    loop  -1 ;
@@ -181,11 +195,11 @@ public
    MIR-N@ 0= if GC-RE-RESET s" host: empty model" GC-RE+ V-NOTRUN exit then
    GC-FIRST-BAD {: bad:n :}
    bad 0< 0= if bad GC-REASON-BAD V-NOTRUN exit then
-   MIR-MARK {: nn:n sn:n iu:n :}                  \ restore-marks (nodes slots ins-u)
+   MIR-MARK GC-MARK!
    BW-BUILD
    GC-BIND-INPUTS
    GC-CHECK-ALL {: v:n :}
-   nn sn iu MIR-RELEASE                            \ drop the throwaway backward pass
+   GC-MARK@ MIR-RELEASE                           \ drop the throwaway backward pass
    v ;
 
 \ ---- cad.f gate wiring ------------------------------------------------------

@@ -21,7 +21,7 @@
 \ from operand descriptors. maki -> habu only; move-facts owns -5068..-5071.
 
 require maki/op-kind.f
-require maki/tensor-value.f
+require maki/tensor.f
 
 -5068 constant E-MV-TF       \ movement transform tag out of range
 -5069 constant E-MV-VD       \ dissolution verdict tag out of range
@@ -87,13 +87,14 @@ $FFFFF constant MV-PMASK     \ 20-bit param mask (max 1048575)
 4 constant MV-VEC            \ vectorization lane width (f32x4); slice offset must
                              \ be lane-aligned to stay a pure offset rewrite (4.1 tail)
 
-: MV-RESHAPE-VERDICT ( n -- n )                \ in-layout -> free (contiguous) | materialize
-   LAY-ROW = if MVV-FREE else MVV-MATERIALIZE then ;
+: MV-RESHAPE-VERDICT ( CAD-KIND:layout -- n )
+   LAY-ROW LAYOUT-EQUAL? if MVV-FREE else MVV-MATERIALIZE then ;
 
 : MV-TRANSPOSE-VERDICT ( -- n )  MVV-STAGED ;  \ always dissolves inside a staged region
 
-: MV-SLICE-VERDICT ( n n n -- n ) {: lay:n r0:n cols:n :}   \ in-layout r0 cols -> verdict
-   lay LAY-ROW <> if MVV-MATERIALIZE exit then \ strided rows -> materialize
+: MV-SLICE-VERDICT ( CAD-KIND:layout n n -- n )
+   {: lay:CAD-KIND:layout r0:n cols:n :}
+   lay LAY-ROW LAYOUT-EQUAL? 0= if MVV-MATERIALIZE exit then
    r0 cols * MV-VEC mod 0= if MVV-FREE else MVV-MATERIALIZE then ;
 
 : MV-CONCAT-VERDICT ( -- n )  MVV-MATERIALIZE ; \ v1: lane-range dispatch is a later extension

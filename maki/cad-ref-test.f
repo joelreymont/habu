@@ -31,7 +31,10 @@ variable CR-VA  variable CR-VU
    CAP-BEGIN 0 CAP-PEND-PUSH  CAP-FINISH ;
 : CR-TRY-UNBOUND   ( -- )  s" H9" OP-KIND drop ;                      \ unbound reference = unknown token
 : CR-TRY-REF-BADSHAPE ( -- )                                         \ a residual param whose shape != the data operand
-   TENSOR:TV-RESET  4 8 DT-F32 LAY-ROW TENSOR:TV-DESC  2 3 DT-F32 LAY-ROW TENSOR:TV-DESC  OP-RESIDUAL-ADD EW-SHAPE-CHECK ;
+   TENSOR:TV-RESET
+   4 8 SHAPE DT-F32 LAY-ROW SPACE-HOST TENSOR:TV-DESC
+   2 3 SHAPE DT-F32 LAY-ROW SPACE-HOST TENSOR:TV-DESC
+   OP-RESIDUAL-ADD EW-SHAPE-CHECK ;
 
 T-RESET
 

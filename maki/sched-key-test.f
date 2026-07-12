@@ -14,30 +14,37 @@ package MAKI
 create KT-BUF KT-CAP allot  variable KT-BU
 : KT-COPY ( ptr u8 n -- ) {: a:ptr u:n :}  a KT-BUF u BYTE-COPY  u KT-BU ! ;
 : KT-BUF$ ( -- ptr u8 n )  KT-BUF KT-BU @ ;
+: KT-SLOT ( n -- MIR:input-slot )  MIR-SLOT-ID ;
+: KT-SLOT-AL! ( n n -- ) {: raw:n al:n :}  raw KT-SLOT al MIR-SLOT-AL! ;
 
 \ ---- IR builders (one gelu/relu elementwise chain over a single input) ------
 : BUILD ( n n -- ) {: rows:n cols:n :}
    MIR-RESET
-   rows cols DT-F32 LAY-ROW MIR-INPUT+ drop
-   OP-GELU MIR-OP-BEGIN 0 MIR-IN-REF MIR-IN+ rows cols DT-F32 LAY-ROW 0 1 MIR-OP+ drop
-   OP-RELU MIR-OP-BEGIN 0 MIR-IN+        rows cols DT-F32 LAY-ROW 0 1 MIR-OP+ drop ;
-: BUILD-DT ( n n n -- ) {: rows:n cols:n dt:n :}   \ same chain, chosen input dtype
+   rows cols SHAPE DT-F32 LAY-ROW MIR-INPUT+ {: s:MIR:input-slot :}
+   OP-GELU MIR-OP-BEGIN s MIR-IN-REF MIR-IN+
+      rows cols SHAPE DT-F32 LAY-ROW 0 1 MIR-OP+ {: nd:CAD-KIND:node-id :}
+   OP-RELU MIR-OP-BEGIN nd MIR-NODE-REF MIR-IN+
+      rows cols SHAPE DT-F32 LAY-ROW 0 1 MIR-OP+ drop ;
+: BUILD-DT ( n n CAD-KIND:dtype -- )
+   {: rows:n cols:n dt:CAD-KIND:dtype :}
    MIR-RESET
-   rows cols dt LAY-ROW MIR-INPUT+ drop
-   OP-GELU MIR-OP-BEGIN 0 MIR-IN-REF MIR-IN+ rows cols dt LAY-ROW 0 1 MIR-OP+ drop
-   OP-RELU MIR-OP-BEGIN 0 MIR-IN+        rows cols dt LAY-ROW 0 1 MIR-OP+ drop ;
+   rows cols SHAPE dt LAY-ROW MIR-INPUT+ {: s:MIR:input-slot :}
+   OP-GELU MIR-OP-BEGIN s MIR-IN-REF MIR-IN+
+      rows cols SHAPE dt LAY-ROW 0 1 MIR-OP+ {: nd:CAD-KIND:node-id :}
+   OP-RELU MIR-OP-BEGIN nd MIR-NODE-REF MIR-IN+
+      rows cols SHAPE dt LAY-ROW 0 1 MIR-OP+ drop ;
 
 T-RESET
 
 \ ---- shape class: exact <= 64, else pow2 bucket + tail flag, ? for unbound ---
-2   4   SK-SHAPE-CLASS$ s" 2x4"           T$=
-64  64  SK-SHAPE-CLASS$ s" 64x64"         T$=
-2   100 SK-SHAPE-CLASS$ s" 2xp128+t"      T$=
-65  1   SK-SHAPE-CLASS$ s" p128+tx1"      T$=
-128 128 SK-SHAPE-CLASS$ s" p128xp128"     T$=
-256 256 SK-SHAPE-CLASS$ s" p256xp256"     T$=
-200 300 SK-SHAPE-CLASS$ s" p256+txp512+t" T$=
-0   65  SK-SHAPE-CLASS$ s" ?xp128+t"      T$=
+2   4   SHAPE SK-SHAPE-CLASS$ s" 2x4"           T$=
+64  64  SHAPE SK-SHAPE-CLASS$ s" 64x64"         T$=
+2   100 SHAPE SK-SHAPE-CLASS$ s" 2xp128+t"      T$=
+65  1   SHAPE SK-SHAPE-CLASS$ s" p128+tx1"      T$=
+128 128 SHAPE SK-SHAPE-CLASS$ s" p128xp128"     T$=
+256 256 SHAPE SK-SHAPE-CLASS$ s" p256xp256"     T$=
+200 300 SHAPE SK-SHAPE-CLASS$ s" p256+txp512+t" T$=
+0   65  SHAPE SK-SHAPE-CLASS$ s" ?xp128+t"      T$=
 
 \ ---- key fields: honest v1 constants + the real engine content key -----------
 SK-TARGET$ s" sm_87"    T$=
@@ -46,7 +53,7 @@ SK-ENGINE$ nip 64       T=              \ a 64-char SHA-256 hex digest, not a pl
 SK-PTXAS$  s" unprobed"  T$=
 
 \ ---- full section 7.4 key over a built region ------------------------------
-2 100 BUILD  0 AL-16 MIR-SLOT-AL!  FP-BUILD
+2 100 BUILD  0 AL-16 KT-SLOT-AL!  FP-BUILD
 0 SK-RSIG$ s" 431E24867468A764" T$=                 \ deterministic FNV-1a signature
 \ exact full-key equality: copy the actual out (SK-KEY$ builds in the shared SB
 \ builder), then splice the binary-dependent engine key into the expected string.
@@ -67,7 +74,7 @@ KT-BUF$ SB$ STR= TTRUE
 2 100 DT-F16 BUILD-DT FP-BUILD  0 SK-RSIG$ KT-BUF$ STR= TFALSE \ dtype change -> different
 
 \ ---- replay table: cad-5 store seam ----------------------------------------
-2 100 BUILD 0 AL-16 MIR-SLOT-AL! FP-BUILD
+2 100 BUILD 0 AL-16 KT-SLOT-AL! FP-BUILD
 SK-TAB-RESET
 0 SK-KEY$ SK-GET nip TFALSE                          \ miss -> not found
 0 SK-KEY$ SK-GET drop -1 T=                          \ miss selection is -1 (use defaults)

@@ -55,9 +55,9 @@ public
 
 \ ---- movement ops (layout rewrites; scalar params travel on the stack) -------
 \ Pure re-exports: the appenders already carry the op-kind, verdict, and packed attrs.
-: RESHAPE   ( tensor n n -- tensor )      MAKI:PLAN-RESHAPE ;
+: RESHAPE   ( tensor CAD-KIND:rows CAD-KIND:cols -- tensor ) MAKI:PLAN-RESHAPE ;
 : TRANSPOSE ( tensor -- tensor )          MAKI:PLAN-TRANSPOSE ;
-: SLICE     ( tensor n n -- tensor )      MAKI:PLAN-SLICE ;
+: SLICE     ( tensor CAD-KIND:rows CAD-KIND:rows -- tensor ) MAKI:PLAN-SLICE ;
 : CONCAT    ( tensor tensor -- tensor )   MAKI:PLAN-CONCAT ;
 : GATHER    ( tensor tensor -- tensor )   MAKI:PLAN-GATHER ;
 

@@ -47,6 +47,9 @@ variable DM-VA  variable DM-VU
 : DM-SAVE  ( ptr u8 n -- )  DM-VU ! DM-VA ! ;
 : DM-IN    ( ptr u8 n -- )  DM-VA @ DM-VU @ 2swap CONTAINS? TTRUE ;
 : DM-NOTIN ( ptr u8 n -- )  DM-VA @ DM-VU @ 2swap CONTAINS? TFALSE ;
+: DM-SLOT ( n -- MIR:input-slot )  MIR-SLOT-ID ;
+: DM-GRAD-NODE ( n -- CAD-KIND:node-id )
+   DM-SLOT BW-SLOT-GRAD@ MIR-REF-NODE ;
 
 \ ---- traffic-reduction line built from the report's byte fields --------------
 \ ratio = bytes-before / bytes-after in hundredths -> "demo: traffic <i>.<ff>x reduced".
@@ -242,10 +245,10 @@ PROMOTE dup REPORT:CACHE$ s" FFN-SKIP" T$= drop
 \ so its cotangent SUMS the two paths -> the input-0 gradient node is an OP-ADD. The
 \ r-input FFN-DEMO had NO fan-out on x (x fed only the first linear -> a matmul grad).
 BW-BUILD
-0 BW-HAS-GRAD? TTRUE
-0 BW-SLOT-GRAD@ MIR-OP@   OP-ADD T=
-0 BW-SLOT-GRAD@ MIR-ROWS@ 4 T=
-0 BW-SLOT-GRAD@ MIR-COLS@ 8 T=
+0 DM-SLOT BW-HAS-GRAD? TTRUE
+0 DM-GRAD-NODE MIR-OP@ OP-ADD T=
+0 DM-GRAD-NODE MIR-ROWS@ 4 T=
+0 DM-GRAD-NODE MIR-COLS@ 8 T=
 
 STORE-RESET                                        \ leave the store as we found it
 T-REPORT

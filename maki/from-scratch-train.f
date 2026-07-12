@@ -55,7 +55,8 @@ private
 create SC-SEED SC-BATCH SC-OUT * cells allot
 
 \ ---- forward output access (mu = col 0, logvar = col 1, per row) ------------
-: SC-OUT-NODE ( -- n )  BW-FWD-N@ 1- ;                  \ last forward node = the 8x2 output
+: SC-OUT-NODE ( -- CAD-KIND:node-id )  BW-FWD-N@ 1- MIR-NODE-ID ;
+: SC-SLOT ( n -- MIR:input-slot )  MIR-SLOT-ID ;
 : SC-OUT-MU ( ptr a n -- r ) {: ob:ptr r:n :}  ob r SC-OUT *    T-GET ;
 : SC-OUT-LV ( ptr a n -- r ) {: ob:ptr r:n :}  ob r SC-OUT * 1+ T-GET ;
 
@@ -76,7 +77,7 @@ create SC-SEED SC-BATCH SC-OUT * cells allot
 
 \ parameter gradient buffer: its backward node's output. EX-OUT@ fails closed
 \ (E-EX-NODE) if a slot ever carried no gradient node (never, for this model).
-: SC-GRAD-AT ( n -- ptr a )  BW-SLOT-GRAD@ EX-OUT@ ;
+: SC-GRAD-AT ( n -- ptr a )  SC-SLOT BW-SLOT-GRAD@ MIR-REF-NODE EX-OUT@ ;
 
 \ SGD one parameter buffer in place from its backward gradient node
 : SC-UPD ( ptr a n n -- ) {: wp:ptr s:n len:n :}
@@ -116,11 +117,11 @@ public
    SC-GEN-DATA
    BW-BUILD                              \ forward+backward once; adds the seed slot
    EX-RESET
-   SC-X  SC-X-SLOT  EX-BIND
-   SC-W1 SC-W1-SLOT EX-BIND
-   SC-B1 SC-B1-SLOT EX-BIND
-   SC-W2 SC-W2-SLOT EX-BIND
-   SC-B2 SC-B2-SLOT EX-BIND
+   SC-X  SC-X-SLOT SC-SLOT EX-BIND
+   SC-W1 SC-W1-SLOT SC-SLOT EX-BIND
+   SC-B1 SC-B1-SLOT SC-SLOT EX-BIND
+   SC-W2 SC-W2-SLOT SC-SLOT EX-BIND
+   SC-B2 SC-B2-SLOT SC-SLOT EX-BIND
    SC-SEED BW-SEED-SLOT@ EX-BIND ;
 
 public

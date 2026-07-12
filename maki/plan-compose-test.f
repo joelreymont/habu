@@ -50,21 +50,22 @@ package MAKI
    h g OP-ADD PLAN-BIN-EW ;             \ n2: add(n1, n0)      <- branches join
 
 \ ---- descriptor seeding + plan-store probes (read the captured IR node facts) ----
-: PCT-DESC ( n n -- tensor ) {: rows:n cols:n :}   \ f32 row-major planning descriptor
-   rows cols DT-F32 LAY-ROW TENSOR:TV-DESC ;
-: PCT-IN ( n n -- n ) {: node:n k:n :}  node k TENSOR:PLAN-IN@ TENSOR:tensor>N ;   \ k-th input handle
-: PCT-OUT ( n -- n ) {: node:n :}  node TENSOR:PLAN-OUT@ TENSOR:tensor>N ;         \ output handle
+: PCT-DESC ( CAD-KIND:rows CAD-KIND:cols -- tensor )
+   {: rows:CAD-KIND:rows cols:CAD-KIND:cols :}
+   rows cols DT-F32 LAY-ROW SPACE-GLOBAL TENSOR:TV-DESC ;
+: PCT-IN ( n n -- tensor ) {: node:n k:n :} node k TENSOR:PLAN-IN@ ;
+: PCT-OUT ( n -- tensor ) TENSOR:PLAN-OUT@ ;
 
 \ ---- scenario drivers (seed descriptors, run the block, assert the captured plan) ----
 \ PCT-SKIP: a checker-verified 5-node plan with the residual re-rooted onto x (skip) and
 \ x fanning out to node 0 and node 3.
 : PCT-RUN-SKIP ( -- )
    TENSOR:TV-RESET TENSOR:PLAN-RESET
-   4 8 PCT-DESC {: x:tensor :}          \ handle 0
-   8 16 PCT-DESC {: w1:tensor :}        \ handle 1
-   1 16 PCT-DESC {: b1:tensor :}        \ handle 2
-   16 8 PCT-DESC {: w2:tensor :}        \ handle 3
-   1 8 PCT-DESC {: b2:tensor :}         \ handle 4
+   4 8 SHAPE PCT-DESC {: x:tensor :}          \ handle 0
+   8 16 SHAPE PCT-DESC {: w1:tensor :}        \ handle 1
+   1 16 SHAPE PCT-DESC {: b1:tensor :}        \ handle 2
+   16 8 SHAPE PCT-DESC {: w2:tensor :}        \ handle 3
+   1 8 SHAPE PCT-DESC {: b2:tensor :}         \ handle 4
    x w1 b1 w2 b2 PCT-SKIP {: y:tensor :}
    TENSOR:PLAN-N@ 5 T=                         \ five IR nodes captured
    0 TENSOR:PLAN-OP@ OP-LINEAR       T=
@@ -73,33 +74,54 @@ package MAKI
    3 TENSOR:PLAN-OP@ OP-RESIDUAL-ADD T=
    4 TENSOR:PLAN-OP@ OP-RMSNORM      T=
    3 TENSOR:PLAN-IN-COUNT@ 2 T=
-   0 0 PCT-IN x TENSOR:tensor>N T=             \ node0.in0 = x
-   3 1 PCT-IN x TENSOR:tensor>N T=             \ node3.in1 = x   (the skip)
-   3 0 PCT-IN 2 PCT-OUT   T=            \ node3.in0 = node2 output (data = running value)
-   y TENSOR:TV-ROWS@ 4 T=  y TENSOR:TV-COLS@ 8 T=     \ shape flows through the whole composition
-   4 TENSOR:PLAN-OUT@ TENSOR:TV-ROWS@ 4 T=  4 TENSOR:PLAN-OUT@ TENSOR:TV-COLS@ 8 T= ;
+   0 0 PCT-IN x TENSOR:TV-EQUAL? TTRUE
+   3 1 PCT-IN x TENSOR:TV-EQUAL? TTRUE
+   3 0 PCT-IN 2 PCT-OUT TENSOR:TV-EQUAL? TTRUE
+   y TENSOR:TV-ROWS@ y TENSOR:TV-COLS@ 4 8 SHAPE-IS? TTRUE
+   4 TENSOR:PLAN-OUT@ {: out:tensor :}
+   out TENSOR:TV-ROWS@ out TENSOR:TV-COLS@ 4 8 SHAPE-IS? TTRUE ;
 
 \ PCT-BRANCH: a DAG (re-root + fan-out + join) the v1 capture cannot express.
 : PCT-RUN-BRANCH ( -- )
    TENSOR:TV-RESET TENSOR:PLAN-RESET
-   4 8 PCT-DESC {: x:tensor :}          \ handle 0
-   8 8 PCT-DESC {: w:tensor :}          \ handle 1
-   1 8 PCT-DESC {: b:tensor :}          \ handle 2
+   4 8 SHAPE PCT-DESC {: x:tensor :}          \ handle 0
+   8 8 SHAPE PCT-DESC {: w:tensor :}          \ handle 1
+   1 8 SHAPE PCT-DESC {: b:tensor :}          \ handle 2
    x w b PCT-BRANCH {: y:tensor :}
    TENSOR:PLAN-N@ 3 T=
    0 TENSOR:PLAN-OP@ OP-GELU   T=
    1 TENSOR:PLAN-OP@ OP-LINEAR T=
    2 TENSOR:PLAN-OP@ OP-ADD    T=
-   0 0 PCT-IN x TENSOR:tensor>N T=             \ node0.in0 = x   (gelu re-rooted onto x)
-   1 0 PCT-IN x TENSOR:tensor>N T=             \ node1.in0 = x   (x fanned out again)
-   2 0 PCT-IN 1 PCT-OUT   T=            \ node2.in0 = linear output
-   2 1 PCT-IN 0 PCT-OUT   T=            \ node2.in1 = gelu output
+   0 0 PCT-IN x TENSOR:TV-EQUAL? TTRUE
+   1 0 PCT-IN x TENSOR:TV-EQUAL? TTRUE
+   2 0 PCT-IN 1 PCT-OUT TENSOR:TV-EQUAL? TTRUE
+   2 1 PCT-IN 0 PCT-OUT TENSOR:TV-EQUAL? TTRUE
    2 TENSOR:PLAN-IN-COUNT@ 2 T=
-   y TENSOR:TV-ROWS@ 4 T=  y TENSOR:TV-COLS@ 8 T= ;
+   y TENSOR:TV-ROWS@ y TENSOR:TV-COLS@ 4 8 SHAPE-IS? TTRUE ;
+
+: PCT-RUN-MOVES ( -- )
+   TENSOR:TV-RESET TENSOR:PLAN-RESET
+   4 8 SHAPE PCT-DESC {: x:tensor :}
+   2 1 SHAPE PCT-DESC {: idx:tensor :}
+   x PLAN-TRANSPOSE {: tr:tensor :}
+   tr TENSOR:TV-ROWS@ tr TENSOR:TV-COLS@ 8 4 SHAPE-IS? TTRUE
+   tr PLAN-TRANSPOSE {: tr2:tensor :}
+   tr2 TENSOR:TV-ROWS@ tr2 TENSOR:TV-COLS@ 4 8 SHAPE-IS? TTRUE
+   x 2 16 SHAPE PLAN-RESHAPE {: rs:tensor :}
+   rs TENSOR:TV-ROWS@ rs TENSOR:TV-COLS@ 2 16 SHAPE-IS? TTRUE
+   x 1 1 SHAPE drop 3 1 SHAPE drop PLAN-SLICE {: sl:tensor :}
+   sl TENSOR:TV-ROWS@ sl TENSOR:TV-COLS@ 2 8 SHAPE-IS? TTRUE
+   sl sl PLAN-CONCAT {: cc:tensor :}
+   cc TENSOR:TV-ROWS@ cc TENSOR:TV-COLS@ 4 8 SHAPE-IS? TTRUE
+   x idx PLAN-GATHER {: ga:tensor :}
+   ga TENSOR:TV-ROWS@ ga TENSOR:TV-COLS@ 2 8 SHAPE-IS? TTRUE
+   ga TENSOR:TV-SPACE@ SPACE-GLOBAL ADDRESS-SPACE-EQUAL? TTRUE
+   TENSOR:PLAN-N@ 6 T= ;
 
 T-RESET
 PCT-RUN-SKIP
 PCT-RUN-BRANCH
+PCT-RUN-MOVES
 T-REPORT
 
 end-package

@@ -12,6 +12,12 @@ require maki/from-scratch-model.f
 
 package MAKI
 
+: FSM-NODE ( n -- CAD-KIND:node-id )  MIR-NODE-ID ;
+: FSM-ROWS@ ( n -- CAD-KIND:rows )  FSM-NODE MIR-ROWS@ ;
+: FSM-COLS@ ( n -- CAD-KIND:cols )  FSM-NODE MIR-COLS@ ;
+: FSM-DT@ ( n -- CAD-KIND:dtype )  FSM-NODE MIR-DT@ ;
+: FSM-LAY@ ( n -- CAD-KIND:layout )  FSM-NODE MIR-LAY@ ;
+
 \ round a float to signed milli-units (round half away from zero)
 : SMT-MILLI ( r -- n )  1000.0 f*  dup f0< if 0.5 f- else 0.5 f+ then  f>s ;
 
@@ -26,9 +32,10 @@ MODEL: SCRATCH-MLP ( x:8x6 w1:6x16 b1:1x16 w2:16x2 b2:1x2 -- y ) LINEAR GELU LIN
 MODEL-DEFINED? TTRUE
 MIR-N@ 3 T=                                   \ LINEAR, GELU, LINEAR
 MIR-IN-SLOTS@ 5 T=                            \ x, w1, b1, w2, b2
-2 MIR-ROWS@ 8 T=  2 MIR-COLS@ 2 T=            \ output y = 8x2 (mu, logvar)
-2 MIR-DT@ DT-F32 T=  2 MIR-LAY@ LAY-ROW T=
-0 MIR-ROWS@ 8 T=  0 MIR-COLS@ 16 T=           \ hidden = 8x16
+2 FSM-ROWS@ 8 ROWS-IS? TTRUE  2 FSM-COLS@ 2 COLS-IS? TTRUE
+2 FSM-DT@ DT-F32 DTYPE-EQUAL? TTRUE
+2 FSM-LAY@ LAY-ROW LAYOUT-EQUAL? TTRUE
+0 FSM-ROWS@ 8 ROWS-IS? TTRUE  0 FSM-COLS@ 16 COLS-IS? TTRUE
 
 \ ---- committed dataset: deterministic + in range ----------------------------
 SC-GEN-DATA

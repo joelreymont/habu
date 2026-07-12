@@ -33,9 +33,16 @@ require maki/fusion-plan.f
 
 package MAKI
 
+: MOUT-NODE ( n -- CAD-KIND:node-id )  MIR-NODE-ID ;
+: MOUT-NREF ( n -- MIR:operand-ref )  MOUT-NODE MIR-NODE-REF ;
+: MOUT-SREF ( n -- MIR:operand-ref )  MIR-SLOT-ID MIR-IN-REF ;
+
 \ materialized outputs planned into region r
 : MOUT-RGN ( n -- n ) {: r:n :}
-   0  MIR-N@ 0 ?do  i FP-RID@ r =  i MIR-MAT@  and if 1+ then  loop ;
+   0 MIR-N@ 0 ?do
+      i MOUT-NODE {: node:CAD-KIND:node-id :}
+      node FP-RID@ r = node MIR-MAT@ and if 1+ then
+   loop ;
 
 \ the maximum materialized-output count over every planned region (FP-BUILD must have run)
 : MOUT-MAX ( -- n )
@@ -83,22 +90,22 @@ MOUT-MAX 1 T=  MOUT-BAD 0 T=
 \ n0 -> three independent relus, recombined by two adds. n0 is used 3x, each relu once.
 MIR-RESET
 0 0 DT-F32 LAY-ROW MIR-INPUT+ drop                                              \ i0
-OP-GELU MIR-OP-BEGIN  0 MIR-IN-REF MIR-IN+  0 0 DT-F32 LAY-ROW 0 1 MIR-OP+ drop \ n0=GELU(i0)
-OP-RELU MIR-OP-BEGIN  0 MIR-IN+            0 0 DT-F32 LAY-ROW 0 1 MIR-OP+ drop  \ n1=RELU(n0)
-OP-RELU MIR-OP-BEGIN  0 MIR-IN+            0 0 DT-F32 LAY-ROW 0 1 MIR-OP+ drop  \ n2=RELU(n0)
-OP-RELU MIR-OP-BEGIN  0 MIR-IN+            0 0 DT-F32 LAY-ROW 0 1 MIR-OP+ drop  \ n3=RELU(n0)
-OP-ADD  MIR-OP-BEGIN  1 MIR-IN+ 2 MIR-IN+  0 0 DT-F32 LAY-ROW 0 1 MIR-OP+ drop  \ n4=ADD(n1,n2)
-OP-ADD  MIR-OP-BEGIN  4 MIR-IN+ 3 MIR-IN+  0 0 DT-F32 LAY-ROW 0 1 MIR-OP+ drop  \ n5=ADD(n4,n3)
+OP-GELU MIR-OP-BEGIN  0 MOUT-SREF MIR-IN+  0 0 DT-F32 LAY-ROW 0 1 MIR-OP+ drop \ n0=GELU(i0)
+OP-RELU MIR-OP-BEGIN  0 MOUT-NREF MIR-IN+            0 0 DT-F32 LAY-ROW 0 1 MIR-OP+ drop  \ n1=RELU(n0)
+OP-RELU MIR-OP-BEGIN  0 MOUT-NREF MIR-IN+            0 0 DT-F32 LAY-ROW 0 1 MIR-OP+ drop  \ n2=RELU(n0)
+OP-RELU MIR-OP-BEGIN  0 MOUT-NREF MIR-IN+            0 0 DT-F32 LAY-ROW 0 1 MIR-OP+ drop  \ n3=RELU(n0)
+OP-ADD  MIR-OP-BEGIN  1 MOUT-NREF MIR-IN+ 2 MOUT-NREF MIR-IN+  0 0 DT-F32 LAY-ROW 0 1 MIR-OP+ drop  \ n4=ADD(n1,n2)
+OP-ADD  MIR-OP-BEGIN  4 MOUT-NREF MIR-IN+ 3 MOUT-NREF MIR-IN+  0 0 DT-F32 LAY-ROW 0 1 MIR-OP+ drop  \ n5=ADD(n4,n3)
 FP-BUILD
 FP-REGION-COUNT 4 T=  MOUT-MAX 1 T=  MOUT-BAD 0 T=
 
 \ diamond: n0 -> {relu, silu} -> add (producer used in op0 and op1 of the join)
 MIR-RESET
 0 0 DT-F32 LAY-ROW MIR-INPUT+ drop                                              \ i0
-OP-GELU MIR-OP-BEGIN  0 MIR-IN-REF MIR-IN+  0 0 DT-F32 LAY-ROW 0 1 MIR-OP+ drop \ n0=GELU(i0)
-OP-RELU MIR-OP-BEGIN  0 MIR-IN+            0 0 DT-F32 LAY-ROW 0 1 MIR-OP+ drop  \ n1=RELU(n0)
-OP-SILU MIR-OP-BEGIN  0 MIR-IN+            0 0 DT-F32 LAY-ROW 0 1 MIR-OP+ drop  \ n2=SILU(n0)
-OP-ADD  MIR-OP-BEGIN  1 MIR-IN+ 2 MIR-IN+  0 0 DT-F32 LAY-ROW 0 1 MIR-OP+ drop  \ n3=ADD(n1,n2)
+OP-GELU MIR-OP-BEGIN  0 MOUT-SREF MIR-IN+  0 0 DT-F32 LAY-ROW 0 1 MIR-OP+ drop \ n0=GELU(i0)
+OP-RELU MIR-OP-BEGIN  0 MOUT-NREF MIR-IN+            0 0 DT-F32 LAY-ROW 0 1 MIR-OP+ drop  \ n1=RELU(n0)
+OP-SILU MIR-OP-BEGIN  0 MOUT-NREF MIR-IN+            0 0 DT-F32 LAY-ROW 0 1 MIR-OP+ drop  \ n2=SILU(n0)
+OP-ADD  MIR-OP-BEGIN  1 MOUT-NREF MIR-IN+ 2 MOUT-NREF MIR-IN+  0 0 DT-F32 LAY-ROW 0 1 MIR-OP+ drop  \ n3=ADD(n1,n2)
 FP-BUILD
 FP-REGION-COUNT 3 T=  MOUT-MAX 1 T=  MOUT-BAD 0 T=
 

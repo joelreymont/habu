@@ -49,15 +49,19 @@ public
 private
 
 \ ---- operand-ref descriptor (input slot or producer node) -------------------
-: SV-REF-ROWS ( n -- n ) {: r:n :}  r MIR-REF-INPUT? if r MIR-REF-SLOT MIR-SLOT-ROWS@ else r MIR-ROWS@ then ;
-: SV-REF-COLS ( n -- n ) {: r:n :}  r MIR-REF-INPUT? if r MIR-REF-SLOT MIR-SLOT-COLS@ else r MIR-COLS@ then ;
-: SV-REF-DT   ( n -- n ) {: r:n :}  r MIR-REF-INPUT? if r MIR-REF-SLOT MIR-SLOT-DT@   else r MIR-DT@   then ;
+: SV-REF-ROWS ( MIR:operand-ref -- CAD-KIND:rows ) {: r:MIR:operand-ref :}
+   r MIR-REF-INPUT? if r MIR-REF-SLOT MIR-SLOT-ROWS@ else r MIR-REF-NODE MIR-ROWS@ then ;
+: SV-REF-COLS ( MIR:operand-ref -- CAD-KIND:cols ) {: r:MIR:operand-ref :}
+   r MIR-REF-INPUT? if r MIR-REF-SLOT MIR-SLOT-COLS@ else r MIR-REF-NODE MIR-COLS@ then ;
+: SV-REF-DT ( MIR:operand-ref -- CAD-KIND:dtype ) {: r:MIR:operand-ref :}
+   r MIR-REF-INPUT? if r MIR-REF-SLOT MIR-SLOT-DT@ else r MIR-REF-NODE MIR-DT@ then ;
 
-: SV-REF-ELEMS ( n -- n ) {: r:n :}  r SV-REF-ROWS r SV-REF-COLS * ;
-: SV-REF-BYTES ( n -- n ) {: r:n :}  r SV-REF-ELEMS r SV-REF-DT DT-BYTES * ;
+: SV-REF-ELEMS ( MIR:operand-ref -- n )
+   {: r:MIR:operand-ref :} r SV-REF-ROWS r SV-REF-COLS SHAPE-ELEMS DIM-RAW ;
+: SV-REF-BYTES ( MIR:operand-ref -- n ) {: r:MIR:operand-ref :}  r SV-REF-ELEMS r SV-REF-DT DT-BYTES * ;
 
 \ a node ref is recomputable (a node produces it); a model input is not
-: SV-RECOMPUTABLE? ( n -- bool )  MIR-REF-INPUT? 0= ;
+: SV-RECOMPUTABLE? ( MIR:operand-ref -- bool )  MIR-REF-INPUT? 0= ;
 
 public
 
@@ -68,15 +72,18 @@ public
    s" cost" s" global" s" flop-bytes" CALIB-GET if SV-FBR-PARSE else 2drop SAVED-FBR-DEFAULT then ;
 
 \ ---- the two costs (byte-equivalents) --------------------------------------
-: SAVED-SAVE-COST ( n -- n )  SV-REF-BYTES 2 * ;
+: SAVED-SAVE-COST ( MIR:operand-ref -- n )  SV-REF-BYTES 2 * ;
 
 \ producer flops = flops/elem(producer op) * elems ; upstream = producer's input bytes
-: SAVED-RECOMPUTE-COST ( n -- n ) {: ref:n :}
-   ref MIR-OP@ OPR-FLOPS  ref SV-REF-ELEMS *  SAVED-FBR *
-   0  ref MIR-IN-COUNT@ 0 ?do  ref i MIR-IN@ SV-REF-BYTES +  loop  + ;
+: SAVED-RECOMPUTE-COST ( MIR:operand-ref -- n ) {: ref:MIR:operand-ref :}
+   ref MIR-REF-NODE {: node:CAD-KIND:node-id :}
+   node MIR-OP@ OPR-FLOPS ref SV-REF-ELEMS * SAVED-FBR *
+   0 node MIR-IN-COUNT@ 0 ?do
+      node i MIR-INPUT-IDX MIR-IN@ SV-REF-BYTES +
+   loop + ;
 
 \ ---- the decision (floor? = the tensor is a matmul/linear operand) ----------
-: SAVED-DECIDE ( n bool -- n ) {: ref:n floor:bool :}
+: SAVED-DECIDE ( MIR:operand-ref bool -- n ) {: ref:MIR:operand-ref floor:bool :}
    floor if SV-SAVE exit then
    ref SV-RECOMPUTABLE? 0= if SV-SAVE exit then
    ref SAVED-RECOMPUTE-COST  ref SAVED-SAVE-COST  < if SV-RECOMPUTE else SV-SAVE then ;
@@ -84,14 +91,15 @@ public
 private
 
 \ ---- report row (one decision per needed tensor) ---------------------------
-: SV-REF+ ( n -- ) {: r:n :}                    \ append "n<idx>" or "i<slot>"
-   r MIR-REF-INPUT? if s" i" SB-APPEND r MIR-REF-SLOT SB-INT
-   else s" n" SB-APPEND r SB-INT then ;
+: SV-REF+ ( MIR:operand-ref -- ) {: r:MIR:operand-ref :}
+   r MIR-REF-INPUT?
+   if s" i" SB-APPEND r MIR-REF-SLOT SLOT>RAW SB-INT
+   else s" n" SB-APPEND r MIR-REF-NODE NODE>RAW SB-INT then ;
 
 : SV-CMP+ ( n n -- ) {: s:n r:n :}              \ the honest save-vs-recompute operator
    s r < if s" < " else s r = if s" = " else s" > " then then SB-APPEND ;
 
-: SV-ROW$ ( n bool -- ptr u8 n ) {: ref:n floor:bool :}
+: SV-ROW$ ( MIR:operand-ref bool -- ptr u8 n ) {: ref:MIR:operand-ref floor:bool :}
    ref floor SAVED-DECIDE {: v:n :}
    SB-RESET
    v SV-SAVE = if s" backward.saved: " else s" backward.recompute: " then SB-APPEND
@@ -105,20 +113,23 @@ private
 
 \ SAVE-INPUT saves every forward operand the adjoint reads (unary -> operand 0;
 \ mul/matmul -> both). The policy floor rides through as the matmul-class flag.
-: SV-INPUT-SAVES ( report n bool -- report ) {: fn:n floor:bool :}
-   fn MIR-IN-COUNT@ 0 ?do  fn i MIR-IN@ floor SV-ROW$ REPORT:WARN+  loop ;
+: SV-INPUT-SAVES ( report CAD-KIND:node-id bool -- report )
+   {: fn:CAD-KIND:node-id floor:bool :}
+   fn MIR-IN-COUNT@ 0 ?do
+      fn i MIR-INPUT-IDX MIR-IN@ floor SV-ROW$ REPORT:WARN+
+   loop ;
 
-: SV-NODE-INTO ( report n -- report ) {: fn:n :}
+: SV-NODE-INTO ( report CAD-KIND:node-id -- report ) {: fn:CAD-KIND:node-id :}
    fn MIR-OP@ ADJ-SAVE {: sv:n :}
    sv SAVE-NONE = if exit then
    fn MIR-OP@ OPR-CLASS CLASS-MATMUL = {: floor:bool :}
-   sv SAVE-OUTPUT = if  fn floor SV-ROW$ REPORT:WARN+  exit then
+   sv SAVE-OUTPUT = if fn MIR-NODE-REF floor SV-ROW$ REPORT:WARN+ exit then
    fn floor SV-INPUT-SAVES ;
 
 public
 
 \ write one save-vs-recompute decision row per forward tensor an adjoint needs.
 : SAVED-INTO ( report -- report )
-   MIR-N@ 0 ?do  i SV-NODE-INTO  loop ;
+   MIR-N@ 0 ?do  i MIR-NODE-ID SV-NODE-INTO  loop ;
 
 end-package

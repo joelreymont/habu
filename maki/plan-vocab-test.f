@@ -54,20 +54,21 @@ end-package
 \ drivers call the PLAN blocks as PLAN:PVT-SKIP / PLAN:PVT-BRANCH.
 package MAKI
 
-: PVT-DESC ( n n -- tensor ) {: rows:n cols:n :}   \ f32 row-major planning descriptor
-   rows cols DT-F32 LAY-ROW TENSOR:TV-DESC ;
-: PVT-IN ( n n -- n ) {: node:n k:n :}  node k TENSOR:PLAN-IN@ TENSOR:tensor>N ;   \ k-th input handle
-: PVT-OUT ( n -- n ) {: node:n :}  node TENSOR:PLAN-OUT@ TENSOR:tensor>N ;         \ output handle
+: PVT-DESC ( CAD-KIND:rows CAD-KIND:cols -- tensor )
+   {: rows:CAD-KIND:rows cols:CAD-KIND:cols :}
+   rows cols DT-F32 LAY-ROW SPACE-GLOBAL TENSOR:TV-DESC ;
+: PVT-IN ( n n -- tensor ) {: node:n k:n :} node k TENSOR:PLAN-IN@ ;
+: PVT-OUT ( n -- tensor ) TENSOR:PLAN-OUT@ ;
 
 \ PVT-SKIP: a checker-verified 5-node plan with the residual re-rooted onto x (skip) and x
 \ fanning out to node 0 and node 3.
 : PVT-RUN-SKIP ( -- )
    TENSOR:TV-RESET TENSOR:PLAN-RESET
-   4 8 PVT-DESC {: x:tensor :}          \ handle 0
-   8 16 PVT-DESC {: w1:tensor :}        \ handle 1
-   1 16 PVT-DESC {: b1:tensor :}        \ handle 2
-   16 8 PVT-DESC {: w2:tensor :}        \ handle 3
-   1 8 PVT-DESC {: b2:tensor :}         \ handle 4
+   4 8 SHAPE PVT-DESC {: x:tensor :}          \ handle 0
+   8 16 SHAPE PVT-DESC {: w1:tensor :}        \ handle 1
+   1 16 SHAPE PVT-DESC {: b1:tensor :}        \ handle 2
+   16 8 SHAPE PVT-DESC {: w2:tensor :}        \ handle 3
+   1 8 SHAPE PVT-DESC {: b2:tensor :}         \ handle 4
    x w1 b1 w2 b2 PLAN:PVT-SKIP {: y:tensor :}
    TENSOR:PLAN-N@ 5 T=                         \ five IR nodes captured
    0 TENSOR:PLAN-OP@ OP-LINEAR       T=
@@ -76,29 +77,30 @@ package MAKI
    3 TENSOR:PLAN-OP@ OP-RESIDUAL-ADD T=
    4 TENSOR:PLAN-OP@ OP-RMSNORM      T=
    3 TENSOR:PLAN-IN-COUNT@ 2 T=
-   0 0 PVT-IN x TENSOR:tensor>N T=             \ node0.in0 = x
-   3 1 PVT-IN x TENSOR:tensor>N T=             \ node3.in1 = x   (the skip)
-   3 0 PVT-IN 2 PVT-OUT   T=            \ node3.in0 = node2 output (data = running value)
-   y TENSOR:TV-ROWS@ 4 T=  y TENSOR:TV-COLS@ 8 T=     \ shape flows through the whole composition
-   4 TENSOR:PLAN-OUT@ TENSOR:TV-ROWS@ 4 T=  4 TENSOR:PLAN-OUT@ TENSOR:TV-COLS@ 8 T= ;
+   0 0 PVT-IN x TENSOR:TV-EQUAL? TTRUE
+   3 1 PVT-IN x TENSOR:TV-EQUAL? TTRUE
+   3 0 PVT-IN 2 PVT-OUT TENSOR:TV-EQUAL? TTRUE
+   y TENSOR:TV-ROWS@ y TENSOR:TV-COLS@ 4 8 SHAPE-IS? TTRUE
+   4 TENSOR:PLAN-OUT@ {: out:tensor :}
+   out TENSOR:TV-ROWS@ out TENSOR:TV-COLS@ 4 8 SHAPE-IS? TTRUE ;
 
 \ PVT-BRANCH: a DAG (re-root + fan-out + join).
 : PVT-RUN-BRANCH ( -- )
    TENSOR:TV-RESET TENSOR:PLAN-RESET
-   4 8 PVT-DESC {: x:tensor :}          \ handle 0
-   8 8 PVT-DESC {: w:tensor :}          \ handle 1
-   1 8 PVT-DESC {: b:tensor :}          \ handle 2
+   4 8 SHAPE PVT-DESC {: x:tensor :}          \ handle 0
+   8 8 SHAPE PVT-DESC {: w:tensor :}          \ handle 1
+   1 8 SHAPE PVT-DESC {: b:tensor :}          \ handle 2
    x w b PLAN:PVT-BRANCH {: y:tensor :}
    TENSOR:PLAN-N@ 3 T=
    0 TENSOR:PLAN-OP@ OP-GELU   T=
    1 TENSOR:PLAN-OP@ OP-LINEAR T=
    2 TENSOR:PLAN-OP@ OP-ADD    T=
-   0 0 PVT-IN x TENSOR:tensor>N T=             \ node0.in0 = x   (gelu re-rooted onto x)
-   1 0 PVT-IN x TENSOR:tensor>N T=             \ node1.in0 = x   (x fanned out again)
-   2 0 PVT-IN 1 PVT-OUT   T=            \ node2.in0 = linear output
-   2 1 PVT-IN 0 PVT-OUT   T=            \ node2.in1 = gelu output
+   0 0 PVT-IN x TENSOR:TV-EQUAL? TTRUE
+   1 0 PVT-IN x TENSOR:TV-EQUAL? TTRUE
+   2 0 PVT-IN 1 PVT-OUT TENSOR:TV-EQUAL? TTRUE
+   2 1 PVT-IN 0 PVT-OUT TENSOR:TV-EQUAL? TTRUE
    2 TENSOR:PLAN-IN-COUNT@ 2 T=
-   y TENSOR:TV-ROWS@ 4 T=  y TENSOR:TV-COLS@ 8 T= ;
+   y TENSOR:TV-ROWS@ y TENSOR:TV-COLS@ 4 8 SHAPE-IS? TTRUE ;
 
 end-package
 
@@ -117,7 +119,7 @@ package PLAN
 \ positive controls: well-formed compositions certify (arity + tensor discipline hold)
 s" PVOK-LIN ( tensor tensor tensor -- tensor ) LINEAR GELU"                                   EVAL:CHECK-PASSES? TTRUE
 s" PVOK-SKIP ( tensor tensor tensor tensor tensor -- tensor ) {: x w1 b1 w2 b2 :} x w1 b1 LINEAR GELU w2 b2 LINEAR x RESIDUAL-ADD RMSNORM"  EVAL:CHECK-PASSES? TTRUE
-s" PVOK-RESHAPE ( tensor n n -- tensor ) RESHAPE"                                             EVAL:CHECK-PASSES? TTRUE
+s" PVOK-RESHAPE ( tensor CAD-KIND:rows CAD-KIND:cols -- tensor ) RESHAPE"                     EVAL:CHECK-PASSES? TTRUE
 \ negatives: arity underflow (binary / ternary / movement ops missing operands)
 s" PVBAD-ADD ( tensor -- tensor ) ADD"                                                        EVAL:CHECK-PASSES? TFALSE
 s" PVBAD-LINEAR ( tensor tensor -- tensor ) LINEAR"                                           EVAL:CHECK-PASSES? TFALSE

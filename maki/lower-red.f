@@ -92,9 +92,13 @@ create LRED-NODE-REG LRED-NCAP cells allot    \ result %f register per region-me
 variable LRED-NIN                              \ region input count
 variable LRED-OUTNODE                          \ the single materialized region-output node
 variable LRED-RID                              \ region id being lowered
+: LRED-REF! ( MIR:operand-ref n -- )  cells LRED-INS + ! ;
+: LRED-REF@ ( n -- MIR:operand-ref )  cells LRED-INS + @ ;
+: LRED-OUTNODE! ( CAD-KIND:node-id -- )  LRED-OUTNODE ! ;
+: LRED-OUTNODE@ ( -- CAD-KIND:node-id )  LRED-OUTNODE @ ;
 
 \ ---- region membership + class ---------------------------------------------
-: LRED-IN-REGION? ( n n -- bool )  swap FP-RID@ = ;      \ node rid -- in-region?
+: LRED-IN-REGION? ( CAD-KIND:node-id n -- bool )  swap FP-RID@ = ;
 
 \ class mix must contain the ROW-REDUCE bit and nothing outside {EW, ROW-REDUCE, MOVEMENT};
 \ a dissolved free-movement prologue (maki/move-view.f) folds into the row-span base offset.
@@ -113,16 +117,18 @@ variable LRED-RID                              \ region id being lowered
    op OP-BIAS = or op OP-SCALE = or ;             \ broadcast binary prologue/epilogue (1xC / 1x1)
 
 : LRED-RED-COUNT ( n -- n ) {: rid:n :}          \ reduction nodes in the region
-   0 MIR-N@ 0 ?do  i rid LRED-IN-REGION? i MIR-OP@ LRED-RED-OP? and if 1+ then  loop ;
+   0 MIR-N@ 0 ?do i MIR-NODE-ID {: node:CAD-KIND:node-id :}
+      node rid LRED-IN-REGION? node MIR-OP@ LRED-RED-OP? and if 1+ then loop ;
 
 \ compute members must be a reduction or v1 EW op; movement members must be v1-foldable
 \ dissolved movements (MVW-CHECK fails closed on staged / mat / non-slot source).
 : LRED-CHECK-OPS ( n -- ) {: rid:n :}
    MIR-N@ 0 ?do
-      i rid LRED-IN-REGION? if
-         i MIR-MOVE? if i MVW-CHECK
+      i MIR-NODE-ID {: node:CAD-KIND:node-id :}
+      node rid LRED-IN-REGION? if
+         node MIR-MOVE? if node MIR-NODE-REF MVW-CHECK
          else
-            i MIR-OP@ {: op:n :}
+            node MIR-OP@ {: op:n :}
             op LRED-RED-OP? op LRED-EW-OP? or 0= if E-LRED-OP throw then
          then
       then
@@ -130,26 +136,27 @@ variable LRED-RID                              \ region id being lowered
    rid LRED-RED-COUNT 1 <> if E-LRED-MULTIRED throw then ;
 
 \ ---- external-input collection (first-appearance order, capped) -------------
-: LRED-REF-EXTERNAL? ( n n -- bool ) {: rid:n ref:n :}
+: LRED-REF-EXTERNAL? ( n MIR:operand-ref -- bool ) {: rid:n ref:MIR:operand-ref :}
    ref MIR-REF-INPUT? if true exit then
    ref MVW-DISSOLVED? if true exit then       \ a folded movement node is a virtual input
-   ref FP-RID@ rid <> ;
-: LRED-INS-IDX ( n -- n ) {: ref:n :}            \ index in LRED-INS, or -1
-   LRED-NIN @ 0 ?do  ref LRED-INS i cells + @ = if i unloop exit then  loop  -1 ;
-: LRED-INS-ADD ( n -- ) {: ref:n :}
+   ref MIR-REF-NODE FP-RID@ rid <> ;
+: LRED-INS-IDX ( MIR:operand-ref -- n ) {: ref:MIR:operand-ref :}
+   LRED-NIN @ 0 ?do ref i LRED-REF@ MIR-REF= if i unloop exit then loop -1 ;
+: LRED-INS-ADD ( MIR:operand-ref -- ) {: ref:MIR:operand-ref :}
    ref LRED-INS-IDX -1 > if exit then            \ already recorded
    LRED-NIN @ LRED-MAX-IN >= if E-LRED-INPUTS throw then
-   ref LRED-INS LRED-NIN @ cells + !  LRED-NIN @ 1+ LRED-NIN ! ;
-: LRED-SCAN-INS ( n n -- ) {: rid:n nd:n :}
+   ref LRED-NIN @ LRED-REF! LRED-NIN @ 1+ LRED-NIN ! ;
+: LRED-SCAN-INS ( n CAD-KIND:node-id -- ) {: rid:n nd:CAD-KIND:node-id :}
    nd MIR-IN-COUNT@ 0 ?do
-      nd i MIR-IN@ {: ref:n :}
+      nd i MIR-INPUT-IDX MIR-IN@ {: ref:MIR:operand-ref :}
       rid ref LRED-REF-EXTERNAL? if ref LRED-INS-ADD then
    loop ;
 \ only COMPUTE members contribute inputs; a movement member reaches the kernel as the
 \ virtual movement-node input its consumer scans, not as a direct input.
 : LRED-COLLECT-INS ( n -- ) {: rid:n :}
    0 LRED-NIN !
-   MIR-N@ 0 ?do  i rid LRED-IN-REGION? i MIR-MOVE? 0= and if rid i LRED-SCAN-INS then  loop ;
+   MIR-N@ 0 ?do i MIR-NODE-ID {: node:CAD-KIND:node-id :}
+      node rid LRED-IN-REGION? node MIR-MOVE? 0= and if rid node LRED-SCAN-INS then loop ;
 
 \ ---- single materialized output --------------------------------------------
 \ The planner plans EXACTLY ONE materialized output per region (linear operand-0 chain, the
@@ -157,26 +164,27 @@ variable LRED-RID                              \ region id being lowered
 \ LRED-FIND-OUT asserts that invariant as defense-in-depth: != 1 is a corrupted plan (>1
 \ structurally impossible, 0 a materialization-flag regression), never a v1 cap.
 : LRED-MAT-COUNT ( n -- n ) {: rid:n :}
-   0 MIR-N@ 0 ?do  i rid LRED-IN-REGION? i MIR-MAT@ and if 1+ then  loop ;
+   0 MIR-N@ 0 ?do i MIR-NODE-ID {: node:CAD-KIND:node-id :}
+      node rid LRED-IN-REGION? node MIR-MAT@ and if 1+ then loop ;
 : LRED-FIND-OUT ( n -- ) {: rid:n :}
    rid LRED-MAT-COUNT 1 <> if E-LRED-MULTIOUT throw then
-   -1 LRED-OUTNODE !
-   MIR-N@ 0 ?do  i rid LRED-IN-REGION? i MIR-MAT@ and if i LRED-OUTNODE ! then  loop ;
+   MIR-N@ 0 ?do i MIR-NODE-ID {: node:CAD-KIND:node-id :}
+      node rid LRED-IN-REGION? node MIR-MAT@ and if node LRED-OUTNODE! then loop ;
 
 \ ---- broadcast classification (row kernel: each input is full / row / scalar) --
-: LRED-REF-ROWS ( n -- n ) {: ref:n :}
-   ref MIR-REF-INPUT? if ref MIR-REF-SLOT MIR-SLOT-ROWS@ else ref MIR-ROWS@ then ;
-: LRED-REF-COLS ( n -- n ) {: ref:n :}
-   ref MIR-REF-INPUT? if ref MIR-REF-SLOT MIR-SLOT-COLS@ else ref MIR-COLS@ then ;
+: LRED-REF-ROWS ( MIR:operand-ref -- CAD-KIND:rows ) {: ref:MIR:operand-ref :}
+   ref MIR-REF-INPUT? if ref MIR-REF-SLOT MIR-SLOT-ROWS@ else ref MIR-REF-NODE MIR-ROWS@ then ;
+: LRED-REF-COLS ( MIR:operand-ref -- CAD-KIND:cols ) {: ref:MIR:operand-ref :}
+   ref MIR-REF-INPUT? if ref MIR-REF-SLOT MIR-SLOT-COLS@ else ref MIR-REF-NODE MIR-COLS@ then ;
 \ classify each input; FULL/ROW/SCALAR/COL load with the row loader (row 0 pinned for a
 \ row/scalar broadcast, a stride-1 span for an Rx1 column); an illegal dim fails closed.
 \ Input 0 must be the FULL data operand - LRED-BODY hardwires its full row span - so a
 \ broadcast in position 0 also fails closed. Record the class for LRED-BODY's loads.
 : LRED-CLASSIFY-INS ( -- )
-   LRED-OUTNODE @ {: out:n :}
-   out MIR-ROWS@ {: R:n :}  out MIR-COLS@ {: C:n :}
+   LRED-OUTNODE@ {: out:CAD-KIND:node-id :}
+   out MIR-ROWS@ {: R:CAD-KIND:rows :}  out MIR-COLS@ {: C:CAD-KIND:cols :}
    LRED-NIN @ 0 ?do
-      LRED-INS i cells + @ {: ref:n :}
+      i LRED-REF@ {: ref:MIR:operand-ref :}
       ref LRED-REF-ROWS  ref LRED-REF-COLS  R C  BC-CLASS {: cls:n :}
       cls BC-ILLEGAL = if E-LRED-BCAST throw then
       i 0=  cls BC-FULL <>  and if E-LRED-BCAST throw then
@@ -192,33 +200,38 @@ public
    rid LRED-COLLECT-INS
    rid LRED-FIND-OUT
    LRED-CLASSIFY-INS
-   LRED-OUTNODE @ MIR-COLS@ LRED-BLOCK > if E-LRED-COLS throw then ;
+   LRED-OUTNODE@ MIR-COLS@ COLS-RAW LRED-BLOCK > if E-LRED-COLS throw then ;
 
 \ ---- analysis accessors (lower-launch / lower-golden read these) ------------
 : LRED-NIN@ ( -- n )      LRED-NIN @ ;
-: LRED-IN-REF@ ( n -- n ) {: i:n :}
-   i 0 < i LRED-NIN @ >= or if E-LRED-REG throw then  LRED-INS i cells + @ ;
-: LRED-OUT-NODE@ ( -- n ) LRED-OUTNODE @ ;
-: LRED-ROWS@ ( -- n )     LRED-OUTNODE @ MIR-ROWS@ ;
-: LRED-COLS@ ( -- n )     LRED-OUTNODE @ MIR-COLS@ ;
-: LRED-ELEMS ( -- n )     LRED-ROWS@ LRED-COLS@ * ;
+: LRED-IN-REF@ ( n -- MIR:operand-ref ) {: i:n :}
+   i 0 < i LRED-NIN @ >= or if E-LRED-REG throw then i LRED-REF@ ;
+: LRED-OUT-NODE@ ( -- CAD-KIND:node-id ) LRED-OUTNODE@ ;
+: LRED-ROWS@ ( -- CAD-KIND:rows ) LRED-OUTNODE@ MIR-ROWS@ ;
+: LRED-COLS@ ( -- CAD-KIND:cols ) LRED-OUTNODE@ MIR-COLS@ ;
+: LRED-ELEMS ( -- n )     LRED-ROWS@ LRED-COLS@ SHAPE-ELEMS DIM-RAW ;
 : LRED-RID@ ( -- n )      LRED-RID @ ;
 
 private
 
 \ ---- register map (member node result reg + operand resolution) -------------
-: LRED-NR@ ( n -- n ) {: nd:n :}
-   nd 0 < nd LRED-NCAP >= or if E-LRED-REG throw then  LRED-NODE-REG nd cells + @ ;
-: LRED-NR! ( n n -- ) {: r:n nd:n :}
-   nd 0 < nd LRED-NCAP >= or if E-LRED-REG throw then  r LRED-NODE-REG nd cells + ! ;
+: LRED-NR@ ( CAD-KIND:node-id -- n ) {: nd:CAD-KIND:node-id :}
+   nd NODE>RAW {: raw:n :}
+   raw 0 < raw LRED-NCAP >= or if E-LRED-REG throw then
+   LRED-NODE-REG raw cells + @ ;
+: LRED-NR! ( n CAD-KIND:node-id -- ) {: r:n nd:CAD-KIND:node-id :}
+   nd NODE>RAW {: raw:n :}
+   raw 0 < raw LRED-NCAP >= or if E-LRED-REG throw then
+   r LRED-NODE-REG raw cells + ! ;
 
-: LRED-REF-REG ( n -- n ) {: ref:n :}
+: LRED-REF-REG ( MIR:operand-ref -- n ) {: ref:MIR:operand-ref :}
    ref LRED-INS-IDX {: k:n :}
    k -1 > if LRED-IN-REG k cells + @ exit then     \ external input: its loaded tile reg
-   ref 0 < if E-LRED-REG throw then                \ input slot that is not a region input
-   ref LRED-NR@ ;                                   \ interior producer: its result reg
-: LRED-OPREG ( n n -- n )  MIR-IN@ LRED-REF-REG ;   \ node k -- reg
-: LRED-BINREGS ( n -- n n ) {: nd:n :}  nd 0 LRED-OPREG  nd 1 LRED-OPREG ;
+   ref MIR-REF-INPUT? if E-LRED-REG throw then
+   ref MIR-REF-NODE LRED-NR@ ;
+: LRED-OPREG ( CAD-KIND:node-id MIR:input-index -- n ) MIR-IN@ LRED-REF-REG ;
+: LRED-BINREGS ( CAD-KIND:node-id -- n n ) {: nd:CAD-KIND:node-id :}
+   nd 0 MIR-INPUT-IDX LRED-OPREG nd 1 MIR-INPUT-IDX LRED-OPREG ;
 
 \ ---- reduction glue emitters (no collective covers these; use the cg primitives) --
 : LRED-EMIT-COLS-F ( -- n )                      \ uniform f = float(k) from %r1
@@ -258,31 +271,32 @@ private
    e s EMIT-B/ ;
 
 \ ---- per-node emit (elementwise prologue/epilogue, then the reduction) ------
-: LRED-EMIT-NODE ( n -- ) {: nd:n :}
+: LRED-EMIT-NODE ( CAD-KIND:node-id -- ) {: nd:CAD-KIND:node-id :}
    nd MIR-OP@ case
-      OP-RELU          of nd 0 LRED-OPREG EMIT-RELU     endof
-      OP-GELU          of nd 0 LRED-OPREG EMIT-GELU     endof
-      OP-SILU          of nd 0 LRED-OPREG EMIT-SILU     endof
+      OP-RELU          of nd 0 MIR-INPUT-IDX LRED-OPREG EMIT-RELU     endof
+      OP-GELU          of nd 0 MIR-INPUT-IDX LRED-OPREG EMIT-GELU     endof
+      OP-SILU          of nd 0 MIR-INPUT-IDX LRED-OPREG EMIT-SILU     endof
       OP-ADD           of nd LRED-BINREGS EMIT-ADD      endof
       OP-RESIDUAL-ADD  of nd LRED-BINREGS EMIT-ADD      endof
       OP-BIAS          of nd LRED-BINREGS EMIT-ADD      endof
       OP-MUL           of nd LRED-BINREGS EMIT-MUL      endof
       OP-SCALE         of nd LRED-BINREGS EMIT-MUL      endof
-      OP-LAYERNORM     of nd 0 LRED-OPREG LRED-EMIT-LN  endof
-      OP-RMSNORM       of nd 0 LRED-OPREG LRED-EMIT-RMS endof
-      OP-SOFTMAX-ROW   of nd 0 LRED-OPREG LRED-EMIT-SM  endof
+      OP-LAYERNORM     of nd 0 MIR-INPUT-IDX LRED-OPREG LRED-EMIT-LN  endof
+      OP-RMSNORM       of nd 0 MIR-INPUT-IDX LRED-OPREG LRED-EMIT-RMS endof
+      OP-SOFTMAX-ROW   of nd 0 MIR-INPUT-IDX LRED-OPREG LRED-EMIT-SM  endof
       E-LRED-OP throw
    endcase
    nd LRED-NR! ;
 : LRED-CHAIN ( -- )                              \ movement members emit no compute (folded)
-   MIR-N@ 0 ?do  i LRED-RID @ LRED-IN-REGION? i MIR-MOVE? 0= and if i LRED-EMIT-NODE then  loop ;
+   MIR-N@ 0 ?do i MIR-NODE-ID {: node:CAD-KIND:node-id :}
+      node LRED-RID @ LRED-IN-REGION? node MIR-MOVE? 0= and if node LRED-EMIT-NODE then loop ;
 
 \ fold each dissolved movement input into a base-pointer offset (reshape 0 / slice r0*cols*4):
 \ the generic operand pointer is advanced before EMIT-ROW-SPAN cvta's it, so each block reads
 \ the movement's source row window with no other change (maki/move-view.f).
 : LRED-APPLY-VIEWS ( -- )
    LRED-NIN @ 0 ?do
-      LRED-INS i cells + @ MVW-RESOLVE-OFF {: off:n :}
+      i LRED-REF@ MVW-RESOLVE-OFF {: off:n :}
       off 0 > if
          SB-RESET s" add.u64 %rd" CG-S i 1+ SB-U s" , %rd" CG-S i 1+ SB-U s" , " CG-S off SB-U s" ;" CG-S CG-LINE
       then
@@ -335,7 +349,7 @@ private
    sp0 ctx EMIT-ROW-LOAD  LRED-IN-REG 0 cells + !
    LRED-NIN @ 1 ?do  i r ctx LRED-LOAD-IN  loop
    LRED-CHAIN
-   LRED-OUTNODE @ LRED-NR@  LRED-OUT-BASE r EMIT-ROW-SPAN  ctx EMIT-ROW-STORE ;
+   LRED-OUTNODE@ LRED-NR@ LRED-OUT-BASE r EMIT-ROW-SPAN ctx EMIT-ROW-STORE ;
 
 public
 \ LRED-EMIT prints the region's PTX module to the current PTX sink (stdout, or the

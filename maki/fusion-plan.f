@@ -80,28 +80,34 @@ variable FP-BUILT?
 : FP-SP-REASON-AT ( n -- ptr reason )  FP-SP-REASON ;
 
 \ ---- dataflow queries ------------------------------------------------------
-: FP-CLASS ( n -- n )  MIR-OP@ OPR-CLASS ;   \ node -> op class
+: FP-CLASS ( CAD-KIND:node-id -- n )  MIR-OP@ OPR-CLASS ;
 
-\ occurrences of operand ref among a node's operands  ( node ref -- count )
-: FP-USES ( n n -- n ) {: nd:n ref:n :}
-   0  nd MIR-IN-COUNT@ 0 ?do  nd i MIR-IN@ ref = if 1+ then  loop ;
+\ occurrences of operand ref among a node's operands
+: FP-USES ( CAD-KIND:node-id MIR:operand-ref -- n )
+   {: nd:CAD-KIND:node-id ref:MIR:operand-ref :}
+   0 nd MIR-IN-COUNT@ 0 ?do
+      nd i MIR-INPUT-IDX MIR-IN@ ref MIR-REF= if 1+ then
+   loop ;
 
-\ total times producer node's output is consumed across the table  ( prod -- count )
-: FP-REF-USES ( n -- n ) {: prod:n :}
-   0  MIR-N@ 0 ?do  i prod FP-USES +  loop ;
+\ total times producer node's output is consumed across the table
+: FP-REF-USES ( CAD-KIND:node-id -- n )
+   MIR-NODE-REF {: ref:MIR:operand-ref :}
+   0 MIR-N@ 0 ?do
+      i MIR-NODE-ID ref FP-USES +
+   loop ;
 
-\ chain producer: operand-0 node ref, or -1 when it names a model input / none
-: FP-PROD ( n -- n ) {: nd:n :}
-   nd MIR-IN-COUNT@ 0= if -1 exit then
-   nd 0 MIR-IN@ {: ref:n :}
-   ref MIR-REF-INPUT? if -1 else ref then ;
+\ chain producer reference; call only when the node has an operand.
+: FP-PROD ( CAD-KIND:node-id -- MIR:operand-ref )
+   0 MIR-INPUT-IDX MIR-IN@ ;
 
 \ ---- movement dissolution (verdict facts, maki/move-facts.f) ----------------
-: NODE-MAT-VD? ( n -- bool ) {: nd:n :}   \ movement w/ materialize|gathered verdict
+: NODE-MAT-VD? ( CAD-KIND:node-id -- bool )
+   {: nd:CAD-KIND:node-id :}
    nd MIR-MOVE? 0= if false exit then
    nd MIR-MOVE-VERDICT@ MV-VD-REPORTS? ;
 
-: NODE-DISSOLVE? ( n -- bool ) {: nd:n :} \ movement w/ free|staged verdict
+: NODE-DISSOLVE? ( CAD-KIND:node-id -- bool )
+   {: nd:CAD-KIND:node-id :}
    nd MIR-MOVE? 0= if false exit then
    nd MIR-MOVE-VERDICT@ MV-VD-REPORTS? 0= ;
 
@@ -182,11 +188,12 @@ variable FP-MV-FUSE?                          \ movements dissolve/fuse? (defaul
       r cells FP-MMC + @ 0=  r cells FP-RRC + @ 2 <  and  exit then
    true ;
 
-: FP-RID-RAW ( n -- n )  cells FP-RID + @ ;   \ node -> region id (unchecked)
+: FP-RID-RAW ( CAD-KIND:node-id -- n )
+   NODE>RAW cells FP-RID + @ ;
 
-\ does consumer K fuse into producer P's region?  ( K P -- bool )
-: FP-JOIN? ( n n -- bool ) {: k:n p:n :}
-   p 0 < if false exit then
+\ does consumer K fuse into producer P's region?
+: FP-JOIN? ( CAD-KIND:node-id CAD-KIND:node-id -- bool )
+   {: k:CAD-KIND:node-id p:CAD-KIND:node-id :}
    p FP-REF-USES 1 > if false exit then       \ multi-use producer is materialized
    k MIR-MOVE? if
       FP-MV-FUSE? @ 0= if false exit then     \ OFF: a movement never dissolves -> its own region
@@ -211,29 +218,41 @@ variable FP-MV-FUSE?                          \ movements dissolve/fuse? (defaul
    FP-RN @ 1+ FP-RN !
    r ;
 
-: FP-ADD ( n n -- ) {: k:n r:n :}            \ place K in region r; bump facts + budgets
-   r k cells FP-RID + !
+: FP-ADD ( CAD-KIND:node-id n -- )
+   {: k:CAD-KIND:node-id r:n :}
+   r k NODE>RAW cells FP-RID + !
    r cells FP-MEM + dup @ 1+ swap !
    k FP-CLASS {: c:n :}
    1 c lshift  r cells FP-MIX + dup @ rot or swap !
    c CLASS-MATMUL     = if r cells FP-MMC + dup @ 1+ swap ! then
    c CLASS-ROW-REDUCE = if r cells FP-RRC + dup @ 1+ swap ! then ;
 
-: FP-STEP ( n -- ) {: k:n :}
-   k FP-PROD {: p:n :}
-   k p FP-JOIN? if  k p FP-RID-RAW FP-ADD  else  k FP-NEW-REGION FP-ADD  then ;
+: FP-STEP ( CAD-KIND:node-id -- ) {: k:CAD-KIND:node-id :}
+   k MIR-IN-COUNT@ 0= if k FP-NEW-REGION FP-ADD exit then
+   k FP-PROD {: ref:MIR:operand-ref :}
+   ref MIR-REF-INPUT? if k FP-NEW-REGION FP-ADD exit then
+   ref MIR-REF-NODE {: p:CAD-KIND:node-id :}
+   k p FP-JOIN? if
+      k p FP-RID-RAW FP-ADD
+   else
+      k FP-NEW-REGION FP-ADD
+   then ;
 
 : FP-ASSIGN ( -- )
    0 FP-RN !
-   MIR-N@ 0 ?do  i FP-STEP  loop ;
+   MIR-N@ 0 ?do  i MIR-NODE-ID FP-STEP  loop ;
 
 \ ---- materialization flags (interior cleared; boundaries set) ---------------
-: FP-REGION-OUT? ( n -- bool ) {: nd:n :}    \ consumed by a node in another region
+: FP-REGION-OUT? ( CAD-KIND:node-id -- bool )
+   {: nd:CAD-KIND:node-id :}
+   nd MIR-NODE-REF {: ref:MIR:operand-ref :}
    MIR-N@ 0 ?do
-      i nd FP-USES 0 >  i FP-RID-RAW nd FP-RID-RAW <>  and if unloop true exit then
+      i MIR-NODE-ID {: node:CAD-KIND:node-id :}
+      node ref FP-USES 0 >
+      node FP-RID-RAW nd FP-RID-RAW <> and if unloop true exit then
    loop false ;
 
-: FP-MAT-FLAG ( n -- bool ) {: nd:n :}
+: FP-MAT-FLAG ( CAD-KIND:node-id -- bool ) {: nd:CAD-KIND:node-id :}
    \ A model output (no consumer) always materializes - whether it is a compute node
    \ or a trailing movement node (a standalone/trailing TRANSPOSE/SLICE that IS the model
    \ output; without this its region has zero materialized outputs -> lower E-LMV-NOOUT).
@@ -245,11 +264,15 @@ variable FP-MV-FUSE?                          \ movements dissolve/fuse? (defaul
    nd FP-REGION-OUT? ;                          \ region output
 
 : FP-MARK ( -- )
-   MIR-N@ 0 ?do  i FP-MAT-FLAG i MIR-MAT!  loop ;
+   MIR-N@ 0 ?do
+      i MIR-NODE-ID {: node:CAD-KIND:node-id :}
+      node FP-MAT-FLAG node MIR-MAT!
+   loop ;
 
 \ ---- split classification (typed reason per broken chain edge) --------------
-\ ( K P -- tag ): P>=0, P not multi-use, K did not fuse into P
-: FP-REASON ( n n -- reason ) {: k:n p:n :}
+\ K did not fuse into P; both are committed nodes.
+: FP-REASON ( CAD-KIND:node-id CAD-KIND:node-id -- reason )
+   {: k:CAD-KIND:node-id p:CAD-KIND:node-id :}
    k MIR-MOVE? if k NODE-MAT-VD? if MAKI-REASON:LAYOUT exit then then
    p NODE-MAT-VD? if MAKI-REASON:LAYOUT exit then
    p FP-CLASS CLASS-MATMUL = k FP-CLASS CLASS-MATMUL = and if MAKI-REASON:MATMUL exit then
@@ -262,24 +285,32 @@ variable FP-MV-FUSE?                          \ movements dissolve/fuse? (defaul
 \ append one split row. The reason enum arrives on TOP and is stored first: a
 \ width-1 layout value cannot be bound into a local (it is a whole bundle), so it
 \ stays on the stack and crosses `!` through its typed slot with no juggling.
-: FP-SPLIT+ ( n reason -- )                  \ node reason --
+: FP-SP-NODE! ( CAD-KIND:node-id n -- )
+   cells FP-SP-NODE + ! ;
+
+: FP-SP-NODE@ ( n -- CAD-KIND:node-id )
+   cells FP-SP-NODE + @ ;
+
+: FP-SPLIT+ ( CAD-KIND:node-id reason -- )
    FP-SP-N @ FP-CAP >= if E-FP-CAP throw then
-   FP-SP-N @ FP-SP-REASON-AT !               \ reason (top) -> its `ptr reason` slot
-   FP-SP-N @ cells FP-SP-NODE + !            \ node id -> the node column
+   FP-SP-N @ FP-SP-REASON-AT !
+   FP-SP-N @ FP-SP-NODE!
    FP-SP-N @ 1+ FP-SP-N ! ;
 
 \ one node's contribution: its own multi-use materialize row, then its broken edge
-: FP-SPLIT-STEP ( n -- ) {: k:n :}
+: FP-SPLIT-STEP ( CAD-KIND:node-id -- ) {: k:CAD-KIND:node-id :}
    k FP-REF-USES 1 > if k MAKI-REASON:MULTI-USE FP-SPLIT+ then
-   k FP-PROD {: p:n :}
-   p 0 < if exit then
+   k MIR-IN-COUNT@ 0= if exit then
+   k FP-PROD {: ref:MIR:operand-ref :}
+   ref MIR-REF-INPUT? if exit then
+   ref MIR-REF-NODE {: p:CAD-KIND:node-id :}
    k FP-RID-RAW p FP-RID-RAW = if exit then   \ fused: no split
    p FP-REF-USES 1 > if exit then              \ producer already reported multi-use
    k  k p FP-REASON  FP-SPLIT+ ;
 
 : FP-SPLITS ( -- )
    0 FP-SP-N !
-   MIR-N@ 0 ?do  i FP-SPLIT-STEP  loop ;
+   MIR-N@ 0 ?do  i MIR-NODE-ID FP-SPLIT-STEP  loop ;
 
 public
 
@@ -298,8 +329,11 @@ public
 
 : FP-REGION-COUNT ( -- n )  FP-CK FP-RN @ ;
 
-: FP-RID@ ( n -- n ) {: nd:n :}              \ node -> region id (checked)
-   nd 0 < nd MIR-N@ >= or if E-FP-IDX throw then
+: FP-RID@ ( CAD-KIND:node-id -- n )
+   {: nd:CAD-KIND:node-id :}
+   FP-CK
+   nd NODE>RAW {: raw:n :}
+   raw 0 < raw MIR-N@ >= or if E-FP-IDX throw then
    nd FP-RID-RAW ;
 
 : FP-RGN-CK ( n -- n )  FP-CK  dup 0 < over FP-RN @ >= or if E-FP-IDX throw then ;
@@ -308,7 +342,7 @@ public
 
 : FP-SPLIT-COUNT ( -- n )  FP-CK FP-SP-N @ ;
 : FP-SP-CK ( n -- n )  FP-CK  dup 0 < over FP-SP-N @ >= or if E-FP-IDX throw then ;
-: FP-SPLIT-NODE@   ( n -- n )  FP-SP-CK cells FP-SP-NODE   + @ ;
+: FP-SPLIT-NODE@ ( n -- CAD-KIND:node-id )  FP-SP-CK FP-SP-NODE@ ;
 : FP-SPLIT-REASON@ ( n -- reason )  FP-SP-CK FP-SP-REASON-AT @ ;
 
 \ the one reason render boundary: enum -> report text. Exhaustive MATCH means a bad
@@ -327,7 +361,7 @@ public
 : FP-SPLIT-ROW$ ( n -- ptr u8 n ) {: i:n :}
    SB-RESET
    i FP-SPLIT-REASON@ FP-REASON-NAME SB-APPEND
-   s"  at node " SB-APPEND  i FP-SPLIT-NODE@ SB-INT
+   s"  at node " SB-APPEND i FP-SPLIT-NODE@ NODE>RAW SB-INT
    SB$ ;
 
 : FP-REPORT+ ( report -- report )

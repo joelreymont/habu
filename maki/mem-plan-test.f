@@ -5,6 +5,7 @@
 
 require lib/test.f
 require lib/string.f
+require test/checker-assert.f
 require maki/move-facts.f
 require maki/fusion-plan.f
 require maki/mem-plan.f
@@ -17,12 +18,21 @@ variable PT-VA  variable PT-VU
 : PT-IN ( ptr u8 n -- )  PT-VA @ PT-VU @ 2swap CONTAINS? TTRUE ;
 : PT-NOTIN ( ptr u8 n -- )  PT-VA @ PT-VU @ 2swap CONTAINS? TFALSE ;
 
+: PT-SLOT ( n -- MIR:input-slot )  MIR-SLOT-ID ;
+: PT-SLOT-AL@ ( n -- n )  PT-SLOT MIR-SLOT-AL@ ;
+: PT-SLOT-AL! ( n n -- ) {: raw:n al:n :}  raw PT-SLOT al MIR-SLOT-AL! ;
+: PT-SLOT-REF ( n -- MIR:operand-ref )  PT-SLOT MIR-IN-REF ;
+: PT-NODE-REF ( n -- MIR:operand-ref )  MIR-NODE-ID MIR-NODE-REF ;
+
 \ ---- IR builders (a single elementwise chain over one input slot) ----------
-: MP-EW ( n n n -- )  {: rows:n cols:n lay:n :}    \ x:rows x cols (lay) -> GELU RELU
+: MP-EW ( n n CAD-KIND:layout -- )
+   {: rows:n cols:n lay:CAD-KIND:layout :}
    MIR-RESET
-   rows cols DT-F32 lay MIR-INPUT+ drop
-   OP-GELU MIR-OP-BEGIN 0 MIR-IN-REF MIR-IN+ rows cols DT-F32 LAY-ROW 0 1 MIR-OP+ drop
-   OP-RELU MIR-OP-BEGIN 0 MIR-IN+        rows cols DT-F32 LAY-ROW 0 1 MIR-OP+ drop ;
+   rows cols SHAPE DT-F32 lay MIR-INPUT+ {: s:MIR:input-slot :}
+   OP-GELU MIR-OP-BEGIN s MIR-IN-REF MIR-IN+
+      rows cols SHAPE DT-F32 LAY-ROW 0 1 MIR-OP+ {: nd:CAD-KIND:node-id :}
+   OP-RELU MIR-OP-BEGIN nd MIR-NODE-REF MIR-IN+
+      rows cols SHAPE DT-F32 LAY-ROW 0 1 MIR-OP+ drop ;
 
 T-RESET
 
@@ -45,19 +55,19 @@ AL-16      4 4 LAY-COL MP-CLASSIFY CO-STRIDED      T=
 
 \ ---- slot-alignment fact: default AL-UNKNOWN, setter records, fails closed ---
 MIR-RESET
-2 4 DT-F32 LAY-ROW MIR-INPUT+ drop
-1 1 DT-F32 LAY-ROW MIR-INPUT+ drop
-0 MIR-SLOT-AL@ AL-UNKNOWN T=                        \ unrecorded default
-0 AL-16 MIR-SLOT-AL!
-0 MIR-SLOT-AL@ AL-16 T=                             \ recorded
-1 MIR-SLOT-AL@ AL-UNKNOWN T=                        \ untouched slot unchanged
-: TRY-AL-BAD  ( -- )  MIR-RESET 1 1 DT-F32 LAY-ROW MIR-INPUT+ drop  0 AL-N MIR-SLOT-AL! ;
-: TRY-AL-SLOT ( -- )  MIR-RESET 5 MIR-SLOT-AL@ drop ;
+2 4 SHAPE DT-F32 LAY-ROW MIR-INPUT+ drop
+1 1 SHAPE DT-F32 LAY-ROW MIR-INPUT+ drop
+0 PT-SLOT-AL@ AL-UNKNOWN T=                         \ unrecorded default
+0 AL-16 PT-SLOT-AL!
+0 PT-SLOT-AL@ AL-16 T=                              \ recorded
+1 PT-SLOT-AL@ AL-UNKNOWN T=                         \ untouched slot unchanged
+: TRY-AL-BAD  ( -- )
+   MIR-RESET 1 1 SHAPE DT-F32 LAY-ROW MIR-INPUT+ AL-N MIR-SLOT-AL! ;
 ' TRY-AL-BAD  E-MIR-ALIGN  TTHROWS
-' TRY-AL-SLOT E-MIR-INSLOT TTHROWS
+s" MP-RAW-SLOT ( n -- n ) MIR-SLOT-AL@" CHECK-QUIET-CANDIDATE! 0 T=
 
 \ ---- (1) 2x4 f32 chain, 16B RECORDED input -> coalesced-v4 -----------------
-2 4 LAY-ROW MP-EW  0 AL-16 MIR-SLOT-AL!  FP-BUILD
+2 4 LAY-ROW MP-EW  0 AL-16 PT-SLOT-AL!  FP-BUILD
 REPORT:NEW MEM-PLAN-INTO
 dup REPORT:HOT-COUNT 2 T=
 dup 0 REPORT:HOT-NAME@   s" i0" T$=
@@ -78,22 +88,23 @@ s" coalesce.status.0: unaligned"                      PT-IN
 s" memory.align: input 0 unknown alignment -> scalar" PT-IN
 
 \ ---- (3) column-major input -> strided -------------------------------------
-2 4 LAY-COL MP-EW  0 AL-16 MIR-SLOT-AL!  FP-BUILD
+2 4 LAY-COL MP-EW  0 AL-16 PT-SLOT-AL!  FP-BUILD
 REPORT:NEW MEM-PLAN-INTO
 dup 0 REPORT:HOT-STATUS@ CO-STRIDED T=
 REPORT:RENDER PT-SAVE  s" coalesce.status.0: strided" PT-IN
 
 \ ---- (4) extent 2x5 -> masked-tail row (5 mod 4 = 1) -----------------------
-2 5 LAY-ROW MP-EW  0 AL-16 MIR-SLOT-AL!  FP-BUILD
+2 5 LAY-ROW MP-EW  0 AL-16 PT-SLOT-AL!  FP-BUILD
 REPORT:NEW MEM-PLAN-INTO
 dup 0 REPORT:HOT-STATUS@ CO-COALESCED-V4 T=            \ v4 with a masked tail
 REPORT:RENDER PT-SAVE  s" memory.tail: i0 5 mod 4 = 1" PT-IN
 
 \ ---- (5) 1xC bias into a 2D op -> broadcast-register -----------------------
 MIR-RESET
-2 4 DT-F32 LAY-ROW MIR-INPUT+ drop  0 AL-16 MIR-SLOT-AL!    \ slot0 x  (2x4)
-1 4 DT-F32 LAY-ROW MIR-INPUT+ drop  1 AL-16 MIR-SLOT-AL!    \ slot1 b  (1x4)
-OP-ADD MIR-OP-BEGIN 0 MIR-IN-REF MIR-IN+ 1 MIR-IN-REF MIR-IN+ 2 4 DT-F32 LAY-ROW 0 1 MIR-OP+ drop
+2 4 SHAPE DT-F32 LAY-ROW MIR-INPUT+ AL-16 MIR-SLOT-AL!             \ slot0 x  (2x4)
+1 4 SHAPE DT-F32 LAY-ROW MIR-INPUT+ AL-16 MIR-SLOT-AL!             \ slot1 b  (1x4)
+OP-ADD MIR-OP-BEGIN 0 PT-SLOT-REF MIR-IN+ 1 PT-SLOT-REF MIR-IN+
+   2 4 SHAPE DT-F32 LAY-ROW 0 1 MIR-OP+ drop
 FP-BUILD
 REPORT:NEW MEM-PLAN-INTO
 dup 1 REPORT:HOT-NAME@   s" i1" T$=
@@ -102,10 +113,10 @@ drop
 
 \ ---- (6) gather data read -> gathered --------------------------------------
 MIR-RESET
-4 8 DT-F32 LAY-ROW MIR-INPUT+ drop  0 AL-16 MIR-SLOT-AL!    \ slot0 x   (data)
-3 1 DT-I32 LAY-ROW MIR-INPUT+ drop  1 AL-16 MIR-SLOT-AL!    \ slot1 idx
-OP-GATHER MIR-OP-BEGIN 0 MIR-IN-REF MIR-IN+ 1 MIR-IN-REF MIR-IN+
-   3 8 DT-F32 LAY-ROW  MV-GATHER MVV-GATHERED 0 0 MV-PACK  1  MIR-OP+ drop
+4 8 SHAPE DT-F32 LAY-ROW MIR-INPUT+ AL-16 MIR-SLOT-AL!             \ slot0 x   (data)
+3 1 SHAPE DT-I32 LAY-ROW MIR-INPUT+ AL-16 MIR-SLOT-AL!             \ slot1 idx
+OP-GATHER MIR-OP-BEGIN 0 PT-SLOT-REF MIR-IN+ 1 PT-SLOT-REF MIR-IN+
+   3 8 SHAPE DT-F32 LAY-ROW  MV-GATHER MVV-GATHERED 0 0 MV-PACK  1  MIR-OP+ drop
 FP-BUILD
 REPORT:NEW MEM-PLAN-INTO
 dup 0 REPORT:HOT-NAME@   s" i0" T$=

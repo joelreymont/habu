@@ -19,7 +19,6 @@ variable FT-VA  variable FT-VU
 
 \ ---- fail-closed probes ----------------------------------------------------
 : TRY-STATE  ( -- )  FP-RESET FP-REGION-COUNT drop ;      \ accessor before build
-: TRY-RID    ( -- )  99 FP-RID@ drop ;                    \ node index out of range
 : TRY-RGN    ( -- )  99 FP-REGION-MEMBERS drop ;          \ region index out of range
 : TRY-RSN-LOW  ( -- )  -1 FP-SP-REASON-AT drop ;
 : TRY-RSN-HIGH ( -- )  FP-CAP FP-SP-REASON-AT drop ;
@@ -33,6 +32,12 @@ variable FT-VA  variable FT-VU
 : FT-REASON= ( n ptr u8 n -- )  {: sa:ptr su:n :}        \ split-idx expected-name --
    FP-SPLIT-REASON@ FP-REASON-NAME sa su T$= ;
 
+: FT-RID@ ( n -- n )  MIR-NODE-ID FP-RID@ ;
+: FT-MAT@ ( n -- bool )  MIR-NODE-ID MIR-MAT@ ;
+: FT-SPLIT-NODE@ ( n -- n )  FP-SPLIT-NODE@ NODE>RAW ;
+: FT-SLOT-REF ( n -- MIR:operand-ref )  MIR-SLOT-ID MIR-IN-REF ;
+: FT-NODE-REF ( n -- MIR:operand-ref )  MIR-NODE-ID MIR-NODE-REF ;
+
 T-RESET
 
 \ ---- accessor before FP-BUILD fails closed ---------------------------------
@@ -44,21 +49,21 @@ FP-BUILD
 FP-REGION-COUNT      1 T=
 0 FP-REGION-MEMBERS  3 T=
 FP-SPLIT-COUNT       0 T=
-0 FP-RID@ 0 T=  1 FP-RID@ 0 T=  2 FP-RID@ 0 T=
+0 FT-RID@ 0 T=  1 FT-RID@ 0 T=  2 FT-RID@ 0 T=
 \ interior nodes cleared; only the model output materializes
-0 MIR-MAT@ TFALSE  1 MIR-MAT@ TFALSE  2 MIR-MAT@ TTRUE
+0 FT-MAT@ TFALSE  1 FT-MAT@ TFALSE  2 FT-MAT@ TTRUE
 
 \ ---- FFN LINEAR GELU LINEAR: gelu fuses as matmul epilogue; second matmul ----
 \ splits (one contraction per region) -> 2 regions, matmul-boundary at node 2.
 MODEL: FFN ( x:2x3 w1:3x4 b1:1x4 w2:4x5 b2:1x5 -- y ) LINEAR GELU LINEAR ;
 FP-BUILD
 FP-REGION-COUNT 2 T=
-0 FP-RID@ 0 T=  1 FP-RID@ 0 T=  2 FP-RID@ 1 T=
+0 FT-RID@ 0 T=  1 FT-RID@ 0 T=  2 FT-RID@ 1 T=
 FP-SPLIT-COUNT 1 T=
-0 FP-SPLIT-NODE@   2 T=
+0 FT-SPLIT-NODE@ 2 T=
 0 s" matmul-boundary" FT-REASON=
 \ node0 (first linear) is interior; node1 (region output) + node2 (model out) set
-0 MIR-MAT@ TFALSE  1 MIR-MAT@ TTRUE  2 MIR-MAT@ TTRUE
+0 FT-MAT@ TFALSE  1 FT-MAT@ TTRUE  2 FT-MAT@ TTRUE
 \ report row wording
 REPORT:NEW FP-REPORT+ REPORT:RENDER FT-SAVE
 s" matmul-boundary at node 2" FT-IN
@@ -74,13 +79,13 @@ FP-BUILD
 FP-REGION-COUNT     2 T=
 0 FP-REGION-MEMBERS 2 T=
 1 FP-REGION-MEMBERS 2 T=
-0 FP-RID@ 0 T=  1 FP-RID@ 0 T=  2 FP-RID@ 1 T=  3 FP-RID@ 1 T=
+0 FT-RID@ 0 T=  1 FT-RID@ 0 T=  2 FT-RID@ 1 T=  3 FT-RID@ 1 T=
 FP-SPLIT-COUNT      1 T=
 0 s" backend-capability" FT-REASON=
-0 FP-SPLIT-NODE@    2 T=
+0 FT-SPLIT-NODE@ 2 T=
 \ prologue interior (gelu) cleared; prologue output (silu) materialized; matmul interior;
 \ model output (relu) materialized.
-0 MIR-MAT@ TFALSE  1 MIR-MAT@ TTRUE  2 MIR-MAT@ TFALSE  3 MIR-MAT@ TTRUE
+0 FT-MAT@ TFALSE  1 FT-MAT@ TTRUE  2 FT-MAT@ TFALSE  3 FT-MAT@ TTRUE
 REPORT:NEW FP-REPORT+ REPORT:RENDER FT-SAVE
 s" backend-capability at node 2" FT-IN
 
@@ -90,7 +95,7 @@ MODEL: MVB ( x:4x8 -- y ) GELU RESHAPE:8x4 RELU ;
 FP-BUILD
 FP-REGION-COUNT 1 T=
 FP-SPLIT-COUNT  0 T=
-1 MIR-MAT@ TFALSE                         \ the free reshape stays dissolved
+1 FT-MAT@ TFALSE
 
 \ ---- matmul -> matmul splits (matmul-boundary) -----------------------------
 MODEL: MM2 ( x:2x3 w1:3x4 w2:4x5 -- y ) MATMUL MATMUL ;
@@ -98,7 +103,7 @@ FP-BUILD
 FP-REGION-COUNT    2 T=
 FP-SPLIT-COUNT     1 T=
 0 s" matmul-boundary" FT-REASON=
-0 FP-SPLIT-NODE@   1 T=
+0 FT-SPLIT-NODE@ 1 T=
 
 \ ---- a materialize-verdict movement node splits (layout-conflict) ----------
 \ GELU CONCAT: concat is MVV-MATERIALIZE, so it cannot dissolve into gelu's region.
@@ -107,7 +112,7 @@ FP-BUILD
 FP-REGION-COUNT    2 T=
 FP-SPLIT-COUNT     1 T=
 0 s" layout-conflict" FT-REASON=
-0 FP-SPLIT-NODE@   1 T=
+0 FT-SPLIT-NODE@ 1 T=
 
 \ ---- two same-row reductions fuse (softmax max+sum budget) ------------------
 MODEL: RR2 ( x:4x8 -- y ) LAYERNORM SOFTMAX-ROW ;
@@ -121,20 +126,25 @@ FP-BUILD
 FP-REGION-COUNT    2 T=
 FP-SPLIT-COUNT     1 T=
 0 s" barrier-boundary" FT-REASON=
-0 FP-SPLIT-NODE@   2 T=
+0 FT-SPLIT-NODE@ 2 T=
 
 \ ---- multi-use producer materializes + splits (hand-built IR) --------------
 \ node0 = GELU(i0) ; node1 = ADD(n0, n0) -> n0 used twice -> not single-use.
 MIR-RESET
 0 0 DT-F32 LAY-ROW MIR-INPUT+ drop
-OP-GELU MIR-OP-BEGIN  0 MIR-IN-REF MIR-IN+  0 0 DT-F32 LAY-ROW 0 1 MIR-OP+ drop
-OP-ADD  MIR-OP-BEGIN  0 MIR-IN+ 0 MIR-IN+  0 0 DT-F32 LAY-ROW 0 1 MIR-OP+ drop
+OP-GELU MIR-OP-BEGIN
+   0 FT-SLOT-REF MIR-IN+
+   0 0 DT-F32 LAY-ROW 0 1 MIR-OP+ drop
+OP-ADD MIR-OP-BEGIN
+   0 FT-NODE-REF MIR-IN+
+   0 FT-NODE-REF MIR-IN+
+   0 0 DT-F32 LAY-ROW 0 1 MIR-OP+ drop
 FP-BUILD
 FP-REGION-COUNT    2 T=
 FP-SPLIT-COUNT     1 T=
 0 s" multi-use-materialize" FT-REASON=
-0 FP-SPLIT-NODE@   0 T=                    \ reported at the materialized producer
-0 MIR-MAT@ TTRUE                            \ multi-use producer is materialized
+0 FT-SPLIT-NODE@ 0 T=
+0 FT-MAT@ TTRUE
 
 \ ---- a trailing movement that IS the model output materializes (mat-flag fix) ----------
 \ Slice-4 gap (dot maki-fusion-plan): FP-MAT-FLAG left a free/staged movement model-output at
@@ -143,14 +153,14 @@ FP-SPLIT-COUNT     1 T=
 MODEL: MVT ( x:4x8 -- y ) TRANSPOSE ;             \ staged verdict, standalone model output
 FP-BUILD
 FP-REGION-COUNT 1 T=
-0 MIR-MAT@ TTRUE
+0 FT-MAT@ TTRUE
 MODEL: MVS ( x:4x8 -- y ) SLICE:0..2 ;            \ free verdict (r0=0 aligned), model output
 FP-BUILD
 FP-REGION-COUNT 1 T=
-0 MIR-MAT@ TTRUE
+0 FT-MAT@ TTRUE
 
 \ ---- fail-closed accessor paths (after a valid build) ----------------------
-' TRY-RID    E-FP-IDX TTHROWS
+s" FT-RAW-RID ( n -- n ) FP-RID@" CHECK-QUIET-CANDIDATE! 0 T=
 ' TRY-RGN    E-FP-IDX TTHROWS
 ' TRY-RSN-LOW  E-LAYOUT-BOUNDS TTHROWS
 ' TRY-RSN-HIGH E-LAYOUT-BOUNDS TTHROWS

@@ -214,6 +214,8 @@ Also add domain index kinds:
 
 - dim;
 - shape;
+- rows;
+- cols;
 - dtype;
 - layout;
 - address-space;
@@ -225,6 +227,10 @@ Why required:
 
 All of these are one-cell values physically. Treating them as n permits
 semantically catastrophic swaps that ordinary stack checking cannot detect.
+`rows` and `cols` are distinct even though both are dimensions: a generic
+`dim` cannot reject a transposed constructor call, swapped matrix descriptor,
+or row/column table access. Shape algebra owns the only checked role-changing
+operations, such as transpose and contraction.
 
 Acceptance:
 
@@ -296,7 +302,7 @@ Tracked implementation slices:
 - package declarations and checker fixtures:
   `habu-v2-r3-declare-3fcdeebb`;
 - model-IR node/reference identity: `habu-v2-r3-type-dfe5609e`;
-- tensor dimension/shape/dtype/layout identity:
+- tensor dimension/rows/cols/dtype/layout/address-space identity:
   `habu-v2-r3-type-9f89d1e9`;
 - stage/effect/region identity: `habu-v2-r3-type-5809bec6`;
 - design/revision/object/analysis/plan/pass/schema identity:

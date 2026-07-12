@@ -20,6 +20,8 @@ TYPEFAMILY schema-id 0
 \ Model and lowering domain roles.
 TYPEFAMILY dim 0
 TYPEFAMILY shape 0
+TYPEFAMILY rows 0
+TYPEFAMILY cols 0
 TYPEFAMILY dtype 0
 TYPEFAMILY layout 0
 TYPEFAMILY address-space 0

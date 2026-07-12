@@ -28,49 +28,60 @@ package MAKI
 public
 
 \ ---- dtype byte width (fail closed on an unknown dtype) ---------------------
-: DT-BYTES ( n -- n )
-   case
-      DT-F32  of 4 endof
-      DT-F16  of 2 endof
-      DT-BF16 of 2 endof
-      DT-U32  of 4 endof
-      DT-I32  of 4 endof
-      E-MK-DTYPE throw
-   endcase ;
+: DT-BYTES ( CAD-KIND:dtype -- n )  DT-SIZE DIM-RAW ;
 
 private
 
 \ ---- element / byte counts (slot and node outputs) -------------------------
-: TRF-SLOT-ELEMS ( n -- n ) {: s:n :}  s MIR-SLOT-ROWS@ s MIR-SLOT-COLS@ * ;
-: TRF-NODE-ELEMS ( n -- n ) {: nd:n :}  nd MIR-ROWS@ nd MIR-COLS@ * ;
-: TRF-SLOT-BYTES ( n -- n ) {: s:n :}  s TRF-SLOT-ELEMS s MIR-SLOT-DT@ DT-BYTES * ;
-: TRF-NODE-BYTES ( n -- n ) {: nd:n :}  nd TRF-NODE-ELEMS nd MIR-DT@ DT-BYTES * ;
+: TRF-SLOT-ELEMS ( MIR:input-slot -- n ) {: s:MIR:input-slot :}
+   s MIR-SLOT-ROWS@ s MIR-SLOT-COLS@ SHAPE-ELEMS DIM-RAW ;
+: TRF-NODE-ELEMS ( CAD-KIND:node-id -- n ) {: nd:CAD-KIND:node-id :}
+   nd MIR-ROWS@ nd MIR-COLS@ SHAPE-ELEMS DIM-RAW ;
+: TRF-SLOT-BYTES ( MIR:input-slot -- n ) {: s:MIR:input-slot :}
+   s TRF-SLOT-ELEMS s MIR-SLOT-DT@ DT-BYTES * ;
+: TRF-NODE-BYTES ( CAD-KIND:node-id -- n ) {: nd:CAD-KIND:node-id :}
+   nd TRF-NODE-ELEMS nd MIR-DT@ DT-BYTES * ;
 
 \ operand ref -> the bytes of the tensor it names (input slot or producer node)
-: TRF-REF-BYTES ( n -- n ) {: ref:n :}
-   ref MIR-REF-INPUT? if ref MIR-REF-SLOT TRF-SLOT-BYTES else ref TRF-NODE-BYTES then ;
+: TRF-REF-BYTES ( MIR:operand-ref -- n ) {: ref:MIR:operand-ref :}
+   ref MIR-REF-INPUT? if
+      ref MIR-REF-SLOT TRF-SLOT-BYTES
+   else
+      ref MIR-REF-NODE TRF-NODE-BYTES
+   then ;
 
 \ ---- boundness (an unbound extent poisons the whole estimate) ---------------
-: TRF-SLOT-BOUND? ( n -- bool ) {: s:n :}  s MIR-SLOT-ROWS@ 0 >  s MIR-SLOT-COLS@ 0 >  and ;
-: TRF-NODE-BOUND? ( n -- bool ) {: nd:n :}  nd MIR-ROWS@ 0 >  nd MIR-COLS@ 0 >  and ;
+: TRF-SLOT-BOUND? ( MIR:input-slot -- bool ) {: s:MIR:input-slot :}
+   s MIR-SLOT-ROWS@ ROWS-RAW 0 > s MIR-SLOT-COLS@ COLS-RAW 0 > and ;
+: TRF-NODE-BOUND? ( CAD-KIND:node-id -- bool ) {: nd:CAD-KIND:node-id :}
+   nd MIR-ROWS@ ROWS-RAW 0 > nd MIR-COLS@ COLS-RAW 0 > and ;
 
 public
 
 : TRF-BOUND? ( -- bool )
-   MIR-IN-SLOTS@ 0 ?do  i TRF-SLOT-BOUND? 0= if unloop false exit then  loop
-   MIR-N@       0 ?do  i TRF-NODE-BOUND? 0= if unloop false exit then  loop
+   MIR-IN-SLOTS@ 0 ?do
+      i MIR-SLOT-ID TRF-SLOT-BOUND? 0= if unloop false exit then
+   loop
+   MIR-N@ 0 ?do
+      i MIR-NODE-ID TRF-NODE-BOUND? 0= if unloop false exit then
+   loop
    true ;
 
 private
 
 \ ---- before-fusion traffic (every node reads inputs + writes output) --------
-: TRF-NODE-IN-BYTES ( n -- n ) {: nd:n :}
-   0  nd MIR-IN-COUNT@ 0 ?do  nd i MIR-IN@ TRF-REF-BYTES +  loop ;
+: TRF-NODE-IN-BYTES ( CAD-KIND:node-id -- n ) {: nd:CAD-KIND:node-id :}
+   0 nd MIR-IN-COUNT@ 0 ?do
+      nd i MIR-INPUT-IDX MIR-IN@ TRF-REF-BYTES +
+   loop ;
 
 public
 
 : TRF-BEFORE ( -- n )
-   0  MIR-N@ 0 ?do  i TRF-NODE-IN-BYTES  i TRF-NODE-BYTES +  +  loop ;
+   0 MIR-N@ 0 ?do
+      i MIR-NODE-ID {: node:CAD-KIND:node-id :}
+      node TRF-NODE-IN-BYTES node TRF-NODE-BYTES + +
+   loop ;
 
 private
 
@@ -80,31 +91,44 @@ create TRF-SRC TRF-SCAP cells allot   variable TRF-SRC-N
 
 : TRF-SRC-RESET ( -- )  0 TRF-SRC-N ! ;
 
-: TRF-SRC-HAS? ( n -- bool ) {: ref:n :}
-   TRF-SRC-N @ 0 ?do  i cells TRF-SRC + @ ref = if unloop true exit then  loop  false ;
+: TRF-SRC@ ( n -- MIR:operand-ref )  cells TRF-SRC + @ ;
+: TRF-SRC! ( MIR:operand-ref n -- )  cells TRF-SRC + ! ;
 
-: TRF-SRC-ADD ( n -- ) {: ref:n :}         \ intern a distinct external source ref
+: TRF-SRC-HAS? ( MIR:operand-ref -- bool ) {: ref:MIR:operand-ref :}
+   TRF-SRC-N @ 0 ?do
+      i TRF-SRC@ ref MIR-REF= if unloop true exit then
+   loop
+   false ;
+
+: TRF-SRC-ADD ( MIR:operand-ref -- ) {: ref:MIR:operand-ref :}
    ref TRF-SRC-HAS? if exit then
    TRF-SRC-N @ TRF-SCAP >= if E-TRF-CAP throw then
-   ref TRF-SRC-N @ cells TRF-SRC + !  TRF-SRC-N @ 1+ TRF-SRC-N ! ;
+   ref TRF-SRC-N @ TRF-SRC!
+   TRF-SRC-N @ 1+ TRF-SRC-N ! ;
 
 \ is operand ref external to region r? (an input slot, or a node in another region)
-: TRF-EXT? ( n n -- bool ) {: ref:n r:n :}
+: TRF-EXT? ( MIR:operand-ref n -- bool ) {: ref:MIR:operand-ref r:n :}
    ref MIR-REF-INPUT? if true exit then
-   ref FP-RID@ r <> ;
+   ref MIR-REF-NODE FP-RID@ r <> ;
 
-: TRF-NODE-READS+ ( n n -- ) {: nd:n r:n :}
+: TRF-NODE-READS+ ( CAD-KIND:node-id n -- ) {: nd:CAD-KIND:node-id r:n :}
    nd MIR-IN-COUNT@ 0 ?do
-      nd i MIR-IN@  dup r TRF-EXT? if TRF-SRC-ADD else drop then
+      nd i MIR-INPUT-IDX MIR-IN@ dup r TRF-EXT? if TRF-SRC-ADD else drop then
    loop ;
 
 : TRF-RGN-READS ( n -- n ) {: r:n :}
    TRF-SRC-RESET
-   MIR-N@ 0 ?do  i FP-RID@ r = if i r TRF-NODE-READS+ then  loop
-   0  TRF-SRC-N @ 0 ?do  i cells TRF-SRC + @ TRF-REF-BYTES +  loop ;
+   MIR-N@ 0 ?do
+      i MIR-NODE-ID {: node:CAD-KIND:node-id :}
+      node FP-RID@ r = if node r TRF-NODE-READS+ then
+   loop
+   0 TRF-SRC-N @ 0 ?do  i TRF-SRC@ TRF-REF-BYTES +  loop ;
 
 : TRF-RGN-WRITES ( n -- n ) {: r:n :}
-   0  MIR-N@ 0 ?do  i FP-RID@ r =  i MIR-MAT@  and if i TRF-NODE-BYTES + then  loop ;
+   0 MIR-N@ 0 ?do
+      i MIR-NODE-ID {: node:CAD-KIND:node-id :}
+      node FP-RID@ r = node MIR-MAT@ and if node TRF-NODE-BYTES + then
+   loop ;
 
 public
 
@@ -117,32 +141,45 @@ private
 \ Append shape dims into SB directly: MIR-*-SHAPE-KEY reset the shared SB and would
 \ clobber a row under construction, so we render "RxC" (unbound extent -> "?") here.
 : TRF-DIM+ ( n -- )  dup 0= if drop s" ?" SB-APPEND else SB-INT then ;
-: TRF-SHAPE+ ( n n -- ) {: rows:n cols:n :}  rows TRF-DIM+  $78 SB-APPEND-C  cols TRF-DIM+ ;
+: TRF-SHAPE+ ( CAD-KIND:rows CAD-KIND:cols -- )
+   {: rows:CAD-KIND:rows cols:CAD-KIND:cols :}
+   rows ROWS-RAW TRF-DIM+ $78 SB-APPEND-C cols COLS-RAW TRF-DIM+ ;
 
-: TRF-GATHERED-ROW$ ( n -- ptr u8 n ) {: nd:n :}
-   SB-RESET s" traffic.gathered: node " SB-APPEND nd SB-INT
+: TRF-GATHERED-ROW$ ( CAD-KIND:node-id -- ptr u8 n )
+   {: nd:CAD-KIND:node-id :}
+   SB-RESET s" traffic.gathered: node " SB-APPEND nd NODE>RAW SB-INT
    $20 SB-APPEND-C nd MIR-OP@ OPR-NAME SB-APPEND
    s"  indexed read (non-coalesced)" SB-APPEND SB$ ;
 
-: TRF-UNBOUND-SLOT$ ( n -- ptr u8 n ) {: s:n :}
-   SB-RESET s" traffic.unbound: input " SB-APPEND s SB-INT
+: TRF-UNBOUND-SLOT$ ( MIR:input-slot -- ptr u8 n ) {: s:MIR:input-slot :}
+   SB-RESET s" traffic.unbound: input " SB-APPEND s SLOT>RAW SB-INT
    s"  shape " SB-APPEND s MIR-SLOT-ROWS@ s MIR-SLOT-COLS@ TRF-SHAPE+ SB$ ;
 
-: TRF-UNBOUND-NODE$ ( n -- ptr u8 n ) {: nd:n :}
-   SB-RESET s" traffic.unbound: node " SB-APPEND nd SB-INT
+: TRF-UNBOUND-NODE$ ( CAD-KIND:node-id -- ptr u8 n )
+   {: nd:CAD-KIND:node-id :}
+   SB-RESET s" traffic.unbound: node " SB-APPEND nd NODE>RAW SB-INT
    $20 SB-APPEND-C nd MIR-OP@ OPR-NAME SB-APPEND
    s"  shape " SB-APPEND nd MIR-ROWS@ nd MIR-COLS@ TRF-SHAPE+ SB$ ;
 
 : TRF-GATHERED+ ( report -- report )
    MIR-N@ 0 ?do
-      i MIR-MOVE? if
-         i MIR-MOVE-VERDICT@ MVV-GATHERED = if i TRF-GATHERED-ROW$ REPORT:WARN+ then
+      i MIR-NODE-ID {: node:CAD-KIND:node-id :}
+      node MIR-MOVE? if
+         node MIR-MOVE-VERDICT@ MVV-GATHERED = if
+            node TRF-GATHERED-ROW$ REPORT:WARN+
+         then
       then
    loop ;
 
 : TRF-UNBOUND+ ( report -- report )
-   MIR-IN-SLOTS@ 0 ?do  i TRF-SLOT-BOUND? 0= if i TRF-UNBOUND-SLOT$ REPORT:WARN+ then  loop
-   MIR-N@       0 ?do  i TRF-NODE-BOUND? 0= if i TRF-UNBOUND-NODE$ REPORT:WARN+ then  loop ;
+   MIR-IN-SLOTS@ 0 ?do
+      i MIR-SLOT-ID {: s:MIR:input-slot :}
+      s TRF-SLOT-BOUND? 0= if s TRF-UNBOUND-SLOT$ REPORT:WARN+ then
+   loop
+   MIR-N@ 0 ?do
+      i MIR-NODE-ID {: node:CAD-KIND:node-id :}
+      node TRF-NODE-BOUND? 0= if node TRF-UNBOUND-NODE$ REPORT:WARN+ then
+   loop ;
 
 public
 

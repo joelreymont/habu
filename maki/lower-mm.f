@@ -102,9 +102,15 @@ variable LMM-OUTNODE                          \ the single materialized region-o
 variable LMM-RID                              \ region id being lowered
 variable LMM-M  variable LMM-N  variable LMM-K \ C = A(MxK) . B(KxN)
 variable LMM-BLK                               \ 1 = shape fits the register-blocked 64x64 tile
+: LMM-REF! ( MIR:operand-ref n -- )  cells LMM-INS + ! ;
+: LMM-REF@ ( n -- MIR:operand-ref )  cells LMM-INS + @ ;
+: LMM-MMNODE! ( CAD-KIND:node-id -- )  LMM-MMNODE ! ;
+: LMM-MMNODE@ ( -- CAD-KIND:node-id )  LMM-MMNODE @ ;
+: LMM-OUTNODE! ( CAD-KIND:node-id -- )  LMM-OUTNODE ! ;
+: LMM-OUTNODE@ ( -- CAD-KIND:node-id )  LMM-OUTNODE @ ;
 
 \ ---- region membership + class ---------------------------------------------
-: LMM-IN-REGION? ( n n -- bool )  swap FP-RID@ = ;      \ node rid -- in-region?
+: LMM-IN-REGION? ( CAD-KIND:node-id n -- bool )  swap FP-RID@ = ;
 
 \ class mix must contain the MATMUL bit and nothing outside {EW, MATMUL, MOVEMENT};
 \ a dissolved free-movement operand (maki/move-view.f) folds into the K-loop's A base offset.
@@ -119,16 +125,18 @@ variable LMM-BLK                               \ 1 = shape fits the register-blo
 : LMM-EPI-OP? ( n -- bool ) {: op:n :}  op OP-RELU = op OP-GELU = or op OP-SILU = or ; \ v1 unary EW epilogue
 
 : LMM-MM-COUNT ( n -- n ) {: rid:n :}          \ contraction nodes in the region
-   0 MIR-N@ 0 ?do  i rid LMM-IN-REGION? i MIR-OP@ LMM-MM-OP? and if 1+ then  loop ;
+   0 MIR-N@ 0 ?do i MIR-NODE-ID {: node:CAD-KIND:node-id :}
+      node rid LMM-IN-REGION? node MIR-OP@ LMM-MM-OP? and if 1+ then loop ;
 
 \ compute members must be the contraction or a v1 unary EW epilogue; movement members must
 \ be v1-foldable dissolved movements (MVW-CHECK fails closed on staged / mat / non-slot source).
 : LMM-CHECK-OPS ( n -- ) {: rid:n :}
    MIR-N@ 0 ?do
-      i rid LMM-IN-REGION? if
-         i MIR-MOVE? if i MVW-CHECK
+      i MIR-NODE-ID {: node:CAD-KIND:node-id :}
+      node rid LMM-IN-REGION? if
+         node MIR-MOVE? if node MIR-NODE-REF MVW-CHECK
          else
-            i MIR-OP@ {: op:n :}
+            node MIR-OP@ {: op:n :}
             op LMM-MM-OP? op LMM-EPI-OP? or 0= if E-LMM-OP throw then
          then
       then
@@ -136,8 +144,8 @@ variable LMM-BLK                               \ 1 = shape fits the register-blo
    rid LMM-MM-COUNT 1 <> if E-LMM-MULTIMM throw then ;
 
 : LMM-FIND-MM ( n -- ) {: rid:n :}             \ the sole contraction node (count checked already)
-   -1 LMM-MMNODE !
-   MIR-N@ 0 ?do  i rid LMM-IN-REGION? i MIR-OP@ LMM-MM-OP? and if i LMM-MMNODE ! then  loop ;
+   MIR-N@ 0 ?do i MIR-NODE-ID {: node:CAD-KIND:node-id :}
+      node rid LMM-IN-REGION? node MIR-OP@ LMM-MM-OP? and if node LMM-MMNODE! then loop ;
 
 \ ---- prologue guard: the contraction's operands must all be external ---------
 \ An EW region-member whose output is a contraction operand is a fused PROLOGUE; the
@@ -145,22 +153,22 @@ variable LMM-BLK                               \ 1 = shape fits the register-blo
 \ A dissolved FREE movement operand folds into the A-base K-loop offset (maki/move-view.f);
 \ a NON-movement interior producer is a compute prologue the epilogue-only v1 kernel cannot run.
 : LMM-CHECK-PROLOGUE ( -- )
-   LMM-MMNODE @ {: mm:n :}  LMM-RID @ {: rid:n :}
+   LMM-MMNODE@ {: mm:CAD-KIND:node-id :} LMM-RID @ {: rid:n :}
    mm MIR-IN-COUNT@ 0 ?do
-      mm i MIR-IN@ {: ref:n :}
+      mm i MIR-INPUT-IDX MIR-IN@ {: ref:MIR:operand-ref :}
       ref MIR-REF-INPUT? 0= if
          ref MVW-DISSOLVED? if ref MVW-CHECK            \ folded free-movement operand: allowed
-         else ref FP-RID@ rid = if E-LMM-PROLOGUE throw then then
+         else ref MIR-REF-NODE FP-RID@ rid = if E-LMM-PROLOGUE throw then then
       then
    loop ;
 
 \ ---- contraction operands become the kernel inputs (A, B, [bias]) -----------
 : LMM-COLLECT-INS ( -- )
-   LMM-MMNODE @ {: mm:n :}
+   LMM-MMNODE@ {: mm:CAD-KIND:node-id :}
    mm MIR-IN-COUNT@ {: c:n :}
    c LMM-MAX-IN > if E-LMM-REG throw then
    c LMM-NIN !
-   c 0 ?do  mm i MIR-IN@  LMM-INS i cells + !  loop ;
+   c 0 ?do mm i MIR-INPUT-IDX MIR-IN@ i LMM-REF! loop ;
 
 \ ---- single materialized output --------------------------------------------
 \ The planner plans EXACTLY ONE materialized output per region (linear operand-0 chain, the
@@ -168,35 +176,38 @@ variable LMM-BLK                               \ 1 = shape fits the register-blo
 \ LMM-FIND-OUT asserts that invariant as defense-in-depth: != 1 is a corrupted plan (>1
 \ structurally impossible, 0 a materialization-flag regression), never a v1 cap.
 : LMM-MAT-COUNT ( n -- n ) {: rid:n :}
-   0 MIR-N@ 0 ?do  i rid LMM-IN-REGION? i MIR-MAT@ and if 1+ then  loop ;
+   0 MIR-N@ 0 ?do i MIR-NODE-ID {: node:CAD-KIND:node-id :}
+      node rid LMM-IN-REGION? node MIR-MAT@ and if 1+ then loop ;
 : LMM-FIND-OUT ( n -- ) {: rid:n :}
    rid LMM-MAT-COUNT 1 <> if E-LMM-MULTIOUT throw then
-   -1 LMM-OUTNODE !
-   MIR-N@ 0 ?do  i rid LMM-IN-REGION? i MIR-MAT@ and if i LMM-OUTNODE ! then  loop ;
+   MIR-N@ 0 ?do i MIR-NODE-ID {: node:CAD-KIND:node-id :}
+      node rid LMM-IN-REGION? node MIR-MAT@ and if node LMM-OUTNODE! then loop ;
 
 \ ---- operand-ref shape (input slot or interior producer) --------------------
-: LMM-REF-ROWS ( n -- n ) {: ref:n :}
-   ref MIR-REF-INPUT? if ref MIR-REF-SLOT MIR-SLOT-ROWS@ else ref MIR-ROWS@ then ;
-: LMM-REF-COLS ( n -- n ) {: ref:n :}
-   ref MIR-REF-INPUT? if ref MIR-REF-SLOT MIR-SLOT-COLS@ else ref MIR-COLS@ then ;
+: LMM-REF-ROWS ( MIR:operand-ref -- CAD-KIND:rows ) {: ref:MIR:operand-ref :}
+   ref MIR-REF-INPUT? if ref MIR-REF-SLOT MIR-SLOT-ROWS@ else ref MIR-REF-NODE MIR-ROWS@ then ;
+: LMM-REF-COLS ( MIR:operand-ref -- CAD-KIND:cols ) {: ref:MIR:operand-ref :}
+   ref MIR-REF-INPUT? if ref MIR-REF-SLOT MIR-SLOT-COLS@ else ref MIR-REF-NODE MIR-COLS@ then ;
+: LMM-REF-NROWS ( MIR:operand-ref -- n ) LMM-REF-ROWS ROWS-RAW ;
+: LMM-REF-NCOLS ( MIR:operand-ref -- n ) LMM-REF-COLS COLS-RAW ;
 
 \ ---- dims (M/N from the contraction output; K from A's cols) ----------------
 : LMM-SET-DIMS ( -- )
-   LMM-MMNODE @ {: mm:n :}
-   mm MIR-ROWS@ LMM-M !
-   mm MIR-COLS@ LMM-N !
-   LMM-INS 0 cells + @ LMM-REF-COLS LMM-K ! ;
+   LMM-MMNODE@ {: mm:CAD-KIND:node-id :}
+   mm MIR-ROWS@ ROWS-RAW LMM-M !
+   mm MIR-COLS@ COLS-RAW LMM-N !
+   0 LMM-REF@ LMM-REF-NCOLS LMM-K ! ;
 
 \ shapes must be self-consistent (defense-in-depth: A MxK, B KxN, bias 1xN) ----
 : LMM-CHECK-SHAPES ( -- )
    LMM-M @ {: M:n :}  LMM-N @ {: N:n :}  LMM-K @ {: K:n :}
-   LMM-INS 0 cells + @ {: a:n :}
-   a LMM-REF-ROWS M <>  a LMM-REF-COLS K <>  or if E-LMM-DIMS throw then
-   LMM-INS 1 cells + @ {: b:n :}
-   b LMM-REF-ROWS K <>  b LMM-REF-COLS N <>  or if E-LMM-DIMS throw then
+   0 LMM-REF@ {: a:MIR:operand-ref :}
+   a LMM-REF-NROWS M <>  a LMM-REF-NCOLS K <>  or if E-LMM-DIMS throw then
+   1 LMM-REF@ {: b:MIR:operand-ref :}
+   b LMM-REF-NROWS K <>  b LMM-REF-NCOLS N <>  or if E-LMM-DIMS throw then
    LMM-NIN @ 3 = if
-      LMM-INS 2 cells + @ {: bias:n :}
-      bias LMM-REF-ROWS 1 <>  bias LMM-REF-COLS N <>  or if E-LMM-DIMS throw then
+      2 LMM-REF@ {: bias:MIR:operand-ref :}
+      bias LMM-REF-NROWS 1 <>  bias LMM-REF-NCOLS N <>  or if E-LMM-DIMS throw then
    then ;
 
 : LMM-CHECK-DIMS ( -- )
@@ -230,11 +241,12 @@ public
 
 \ ---- analysis accessors (lower-launch / lower-golden read these) ------------
 : LMM-NIN@ ( -- n )       LMM-NIN @ ;
-: LMM-IN-REF@ ( n -- n ) {: i:n :}
-   i 0 < i LMM-NIN @ >= or if E-LMM-REG throw then  LMM-INS i cells + @ ;
+: LMM-IN-REF@ ( n -- MIR:operand-ref ) {: i:n :}
+   i 0 < i LMM-NIN @ >= or if E-LMM-REG throw then i LMM-REF@ ;
 : LMM-IN-ELEMS@ ( n -- n ) {: i:n :}             \ input i's element count (A/B/bias differ)
-   i LMM-IN-REF@ {: ref:n :}  ref LMM-REF-ROWS  ref LMM-REF-COLS * ;
-: LMM-OUT-NODE@ ( -- n )  LMM-OUTNODE @ ;
+   i LMM-IN-REF@ {: ref:MIR:operand-ref :}
+   ref LMM-REF-ROWS ref LMM-REF-COLS SHAPE-ELEMS DIM-RAW ;
+: LMM-OUT-NODE@ ( -- CAD-KIND:node-id ) LMM-OUTNODE@ ;
 : LMM-M@ ( -- n )         LMM-M @ ;
 : LMM-N@ ( -- n )         LMM-N @ ;
 : LMM-K@ ( -- n )         LMM-K @ ;
@@ -246,14 +258,19 @@ public
 private
 
 \ ---- register map (member node result reg; epilogue operand resolution) -----
-: LMM-NR@ ( n -- n ) {: nd:n :}
-   nd 0 < nd LMM-NCAP >= or if E-LMM-REG throw then  LMM-NODE-REG nd cells + @ ;
-: LMM-NR! ( n n -- ) {: r:n nd:n :}
-   nd 0 < nd LMM-NCAP >= or if E-LMM-REG throw then  r LMM-NODE-REG nd cells + ! ;
+: LMM-NR@ ( CAD-KIND:node-id -- n ) {: nd:CAD-KIND:node-id :}
+   nd NODE>RAW {: raw:n :}
+   raw 0 < raw LMM-NCAP >= or if E-LMM-REG throw then
+   LMM-NODE-REG raw cells + @ ;
+: LMM-NR! ( n CAD-KIND:node-id -- ) {: r:n nd:CAD-KIND:node-id :}
+   nd NODE>RAW {: raw:n :}
+   raw 0 < raw LMM-NCAP >= or if E-LMM-REG throw then
+   r LMM-NODE-REG raw cells + ! ;
 
 \ a unary epilogue node reads operand-0 (the contraction or a prior epilogue reg)
-: LMM-EPI-OPREG ( n -- n ) {: nd:n :}  nd 0 MIR-IN@ LMM-NR@ ;
-: LMM-EPI-NODE ( n -- ) {: nd:n :}
+: LMM-EPI-OPREG ( CAD-KIND:node-id -- n ) {: nd:CAD-KIND:node-id :}
+   nd 0 MIR-INPUT-IDX MIR-IN@ MIR-REF-NODE LMM-NR@ ;
+: LMM-EPI-NODE ( CAD-KIND:node-id -- ) {: nd:CAD-KIND:node-id :}
    nd MIR-OP@ case
       OP-RELU of nd LMM-EPI-OPREG EMIT-RELU endof
       OP-GELU of nd LMM-EPI-OPREG EMIT-GELU endof
@@ -263,7 +280,9 @@ private
    nd LMM-NR! ;
 : LMM-EPI-CHAIN ( -- )                           \ epilogue nodes in topo order (skip folded movement)
    MIR-N@ 0 ?do
-      i LMM-RID @ LMM-IN-REGION?  i LMM-MMNODE @ <>  and  i MIR-MOVE? 0= and if i LMM-EPI-NODE then
+      i MIR-NODE-ID {: node:CAD-KIND:node-id :}
+      node LMM-RID @ LMM-IN-REGION? node LMM-MMNODE@ MIR-NODE= 0= and
+      node MIR-MOVE? 0= and if node LMM-EPI-NODE then
    loop ;
 
 \ fold each dissolved free-movement contraction operand into a base-pointer offset (reshape 0 /
@@ -271,7 +290,7 @@ private
 \ K-loop reads the movement's source window with no other change (maki/move-view.f).
 : LMM-APPLY-VIEWS ( -- )
    LMM-NIN @ 0 ?do
-      LMM-INS i cells + @ MVW-RESOLVE-OFF {: off:n :}
+      i LMM-REF@ MVW-RESOLVE-OFF {: off:n :}
       off 0 > if
          SB-RESET s" add.u64 %rd" CG-S i 1+ SB-U s" , %rd" CG-S i 1+ SB-U s" , " CG-S off SB-U s" ;" CG-S CG-LINE
       then
@@ -349,7 +368,7 @@ private
    s" add.rn.f32 %f1, %f1, %f2;" PTX-L ;
 
 : LMM-STORE ( -- )                                 \ C[row*N + col] = the output-node register
-   LMM-OUTNODE @ LMM-NR@ {: outf:n :}
+   LMM-OUTNODE@ LMM-NR@ {: outf:n :}
    s" mad.lo.u32 %r13, %r7, %r2, %r11;" PTX-L
    s" mul.wide.u32 %rd10, %r13, 4;" PTX-L
    SB-RESET s" add.u64 %rd11, %rd" CG-S LMM-OUT-BASE SB-U s" , %rd10;" CG-S CG-LINE
@@ -358,8 +377,8 @@ private
 : LMM-BODY ( -- )
    LMM-COORDS
    LMM-KLOOP
-   LMM-MMNODE @ MIR-OP@ OP-LINEAR = if LMM-BIAS then
-   1 LMM-MMNODE @ LMM-NR!                          \ contraction result = %f1 (after any bias)
+   LMM-MMNODE@ MIR-OP@ OP-LINEAR = if LMM-BIAS then
+   1 LMM-MMNODE@ LMM-NR!                          \ contraction result = %f1 (after any bias)
    LMM-RESET-REGS
    LMM-EPI-CHAIN
    LMM-STORE ;
@@ -389,7 +408,7 @@ private
    SB-RESET s" add.u32 %r43, %r41, " CG-S i SB-U s" ;" CG-S CG-LINE       \ cCol = cCol0 + i
    s" mad.lo.u32 %r44, %r42, %r2, %r43;" PTX-L                            \ gidx = cRow*N + cCol
    10 j 4 * + i + {: accf:n :}                                           \ accumulator %f(10+j*4+i)
-   LMM-MMNODE @ MIR-OP@ OP-LINEAR = if                                   \ bias fusion: acc += bias[cCol]
+   LMM-MMNODE@ MIR-OP@ OP-LINEAR = if                                   \ bias fusion: acc += bias[cCol]
       s" mul.wide.u32 %rd10, %r43, 4;" PTX-L
       s" add.u64 %rd11, %rd3, %rd10;" PTX-L
       s" ld.global.f32 %f4, [%rd11];" PTX-L
@@ -397,9 +416,9 @@ private
       5
    else accf then {: srcf:n :}
    40 CG-NF !                                                            \ epilogue temps above tile/staging regs
-   srcf LMM-MMNODE @ LMM-NR!
+   srcf LMM-MMNODE@ LMM-NR!
    LMM-EPI-CHAIN
-   LMM-OUTNODE @ LMM-NR@ {: outf:n :}
+   LMM-OUTNODE@ LMM-NR@ {: outf:n :}
    s" mul.wide.u32 %rd10, %r44, 4;" PTX-L
    SB-RESET s" add.u64 %rd11, %rd" CG-S LMM-OUT-BASE SB-U s" , %rd10;" CG-S CG-LINE
    SB-RESET s" st.global.f32 [%rd11], %f" CG-S outf SB-U s" ;" CG-S CG-LINE ;
@@ -427,7 +446,7 @@ private
 \ over the mma.sync (gRow0/gRow1, col0/col1) output mapping instead of the contiguous 4x4 tile.
 : LMM-MMA-ELEM ( n n n -- ) {: rr:n cr:n accf:n :}
    SB-RESET s" mad.lo.u32 %r44, %r" CG-S rr SB-U s" , %r2, %r" CG-S cr SB-U s" ;" CG-S CG-LINE  \ gidx = row*N + col
-   LMM-MMNODE @ MIR-OP@ OP-LINEAR = if                                   \ bias fusion: acc += bias[col]
+   LMM-MMNODE@ MIR-OP@ OP-LINEAR = if                                   \ bias fusion: acc += bias[col]
       SB-RESET s" mul.wide.u32 %rd10, %r" CG-S cr SB-U s" , 4;" CG-S CG-LINE
       s" add.u64 %rd11, %rd3, %rd10;" PTX-L
       s" ld.global.f32 %f4, [%rd11];" PTX-L
@@ -435,9 +454,9 @@ private
       5
    else accf then {: srcf:n :}
    40 CG-NF !                                                            \ epilogue temps above tile/staging regs
-   srcf LMM-MMNODE @ LMM-NR!
+   srcf LMM-MMNODE@ LMM-NR!
    LMM-EPI-CHAIN
-   LMM-OUTNODE @ LMM-NR@ {: outf:n :}
+   LMM-OUTNODE@ LMM-NR@ {: outf:n :}
    s" mul.wide.u32 %rd10, %r44, 4;" PTX-L
    SB-RESET s" add.u64 %rd11, %rd" CG-S LMM-OUT-BASE SB-U s" , %rd10;" CG-S CG-LINE
    SB-RESET s" st.global.f32 [%rd11], %f" CG-S outf SB-U s" ;" CG-S CG-LINE ;

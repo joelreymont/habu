@@ -47,7 +47,7 @@ private
 \ ---- per-node self-consistency: composed output == re-exec from its inputs ---
 : GO-DIFF? ( r r -- bool ) {: a:r b:r :}  a b f- fabs  0.000001  f< 0= ;
 
-: GO-NODE-OK? ( n -- bool ) {: nd:n :}
+: GO-NODE-OK? ( CAD-KIND:node-id -- bool ) {: nd:CAD-KIND:node-id :}
    nd EX-NODE-ELEMS {: e:n :}
    e GO-SNAP-CELLS > if E-GOLD-CAP throw then
    nd EX-OUT@ {: op:ptr :}
@@ -57,7 +57,9 @@ private
    true ;
 
 : GO-SELF? ( -- bool )
-   MIR-N@ 0 ?do  i GO-NODE-OK? 0= if false unloop exit then  loop  true ;
+   MIR-N@ 0 ?do
+      i MIR-NODE-ID GO-NODE-OK? 0= if false unloop exit then
+   loop true ;
 
 \ ---- reason buffer ---------------------------------------------------------
 128 constant GO-RE-CAP

@@ -5,6 +5,7 @@
 
 require lib/test.f
 require lib/string.f
+require test/checker-assert.f
 require maki/cad.f
 require maki/fusion-plan.f
 require maki/traffic.f
@@ -14,8 +15,14 @@ package MAKI
 variable TT-VA  variable TT-VU
 : TT-SAVE ( ptr u8 n -- )  TT-VU ! TT-VA ! ;
 : TT-IN ( ptr u8 n -- )  TT-VA @ TT-VU @ 2swap CONTAINS? TTRUE ;
-
-: TRY-DT ( -- )  99 DT-BYTES drop ;                       \ unknown dtype fails closed
+: TT-BUILD-BCAST ( -- )
+   MIR-RESET
+   2 4 SHAPE DT-F32 LAY-ROW MIR-INPUT+ {: x:MIR:input-slot :}
+   2 4 SHAPE DT-F32 LAY-ROW MIR-INPUT+ {: b:MIR:input-slot :}
+   OP-ADD MIR-OP-BEGIN x MIR-IN-REF MIR-IN+ b MIR-IN-REF MIR-IN+
+   2 4 SHAPE DT-F32 LAY-ROW 0 1 MIR-OP+ {: nd:CAD-KIND:node-id :}
+   OP-ADD MIR-OP-BEGIN nd MIR-NODE-REF MIR-IN+ b MIR-IN-REF MIR-IN+
+   2 4 SHAPE DT-F32 LAY-ROW 0 1 MIR-OP+ drop ;
 
 T-RESET
 
@@ -25,7 +32,7 @@ DT-F16  DT-BYTES 2 T=
 DT-BF16 DT-BYTES 2 T=
 DT-U32  DT-BYTES 4 T=
 DT-I32  DT-BYTES 4 T=
-' TRY-DT E-MK-DTYPE TTHROWS
+s" TT-RAW-DTYPE ( n -- n ) DT-BYTES" CHECK-QUIET-CANDIDATE! 0 T=
 
 \ ---- fused elementwise pair: GELU RELU on 2x4 (f32) ------------------------
 \ before: 2 nodes * (read 8 + write 8) * 4B = 128; after: read x(8) + write y(8) = 64.
@@ -37,11 +44,7 @@ TRF-AFTER   64 T=
 
 \ ---- broadcast discount: an input read by two nodes IN ONE region counts once -
 \ node0 = ADD(x, b) ; node1 = ADD(n0, b) -> b (slot1) read twice, discounted once.
-MIR-RESET
-2 4 DT-F32 LAY-ROW MIR-INPUT+ drop
-2 4 DT-F32 LAY-ROW MIR-INPUT+ drop
-OP-ADD MIR-OP-BEGIN 0 MIR-IN-REF MIR-IN+ 1 MIR-IN-REF MIR-IN+ 2 4 DT-F32 LAY-ROW 0 1 MIR-OP+ drop
-OP-ADD MIR-OP-BEGIN 0 MIR-IN+ 1 MIR-IN-REF MIR-IN+ 2 4 DT-F32 LAY-ROW 0 1 MIR-OP+ drop
+TT-BUILD-BCAST
 FP-BUILD
 FP-REGION-COUNT 1 T=
 TRF-BEFORE 192 T=                          \ 48 elems * 4

@@ -16,34 +16,40 @@ package MAKI
 
 \ ---- deliberately-wrong-adjoint fixture (hand-built) -----------------------
 create GX 4 cells allot   create GS 4 cells allot
+: GCT-SLOT ( n -- MIR:input-slot )  MIR-SLOT-ID ;
+: GCT-NODE ( n -- CAD-KIND:node-id )  MIR-NODE-ID ;
+: GCT-BIND ( ptr a n -- )  GCT-SLOT EX-BIND ;
+: GCT-OUT@ ( n -- ptr a )  GCT-NODE EX-OUT@ ;
 
 : DET-BUILD ( -- )        \ slot0=x, n0=gelu(x), slot1=seed, n1=WRONG relu-bwd(seed,x)
    MIR-RESET
-   2 2 DT-F32 LAY-ROW MIR-INPUT+ drop
-   OP-GELU MIR-OP-BEGIN 0 MIR-IN-REF MIR-IN+ 2 2 DT-F32 LAY-ROW 0 1 MIR-OP+ drop
-   2 2 DT-F32 LAY-ROW MIR-INPUT+ drop
-   OP-RELU-BWD MIR-OP-BEGIN 1 MIR-IN-REF MIR-IN+ 0 MIR-IN-REF MIR-IN+
-      2 2 DT-F32 LAY-ROW 0 1 MIR-OP+ drop ;
+   2 2 SHAPE DT-F32 LAY-ROW MIR-INPUT+ {: x:MIR:input-slot :}
+   OP-GELU MIR-OP-BEGIN x MIR-IN-REF MIR-IN+
+      2 2 SHAPE DT-F32 LAY-ROW 0 1 MIR-OP+ drop
+   2 2 SHAPE DT-F32 LAY-ROW MIR-INPUT+ {: seed:MIR:input-slot :}
+   OP-RELU-BWD MIR-OP-BEGIN seed MIR-IN-REF MIR-IN+ x MIR-IN-REF MIR-IN+
+      2 2 SHAPE DT-F32 LAY-ROW 0 1 MIR-OP+ drop ;
 
 : DET-BUILD-OK ( -- )     \ same fixture with the CORRECT gelu-bwd adjoint
    MIR-RESET
-   2 2 DT-F32 LAY-ROW MIR-INPUT+ drop
-   OP-GELU MIR-OP-BEGIN 0 MIR-IN-REF MIR-IN+ 2 2 DT-F32 LAY-ROW 0 1 MIR-OP+ drop
-   2 2 DT-F32 LAY-ROW MIR-INPUT+ drop
-   OP-GELU-BWD MIR-OP-BEGIN 1 MIR-IN-REF MIR-IN+ 0 MIR-IN-REF MIR-IN+
-      2 2 DT-F32 LAY-ROW 0 1 MIR-OP+ drop ;
+   2 2 SHAPE DT-F32 LAY-ROW MIR-INPUT+ {: x:MIR:input-slot :}
+   OP-GELU MIR-OP-BEGIN x MIR-IN-REF MIR-IN+
+      2 2 SHAPE DT-F32 LAY-ROW 0 1 MIR-OP+ drop
+   2 2 SHAPE DT-F32 LAY-ROW MIR-INPUT+ {: seed:MIR:input-slot :}
+   OP-GELU-BWD MIR-OP-BEGIN seed MIR-IN-REF MIR-IN+ x MIR-IN-REF MIR-IN+
+      2 2 SHAPE DT-F32 LAY-ROW 0 1 MIR-OP+ drop ;
 
 : DET-RUN ( -- )          \ fill x + seed, run the whole hand-built IR
    0.7 GX 0 T-SET 1.3 GX 1 T-SET 0.9 GX 2 T-SET 1.7 GX 3 T-SET
    1.0 GS 4 T-FILL
-   EX-RESET  GX 0 EX-BIND  GS 1 EX-BIND  EX-RUN ;
+   EX-RESET  GX 0 GCT-BIND  GS 1 GCT-BIND  EX-RUN ;
 
-: DET-ANALYTIC ( -- r )  1 EX-OUT@ 0 T-GET ;      \ backward node 1, element 0
+: DET-ANALYTIC ( -- r )  1 GCT-OUT@ 0 T-GET ;      \ backward node 1, element 0
 
 : DET-FD ( -- r )         \ central diff of the forward gelu node 0 at element 0
    GX 0 T-GET {: base:r :}
-   base 0.001 f+ GX 0 T-SET  1 EX-RUN-N  0 EX-OUT@ 0 T-GET {: yp:r :}
-   base 0.001 f- GX 0 T-SET  1 EX-RUN-N  0 EX-OUT@ 0 T-GET {: ym:r :}
+   base 0.001 f+ GX 0 T-SET  1 EX-RUN-N  0 GCT-OUT@ 0 T-GET {: yp:r :}
+   base 0.001 f- GX 0 T-SET  1 EX-RUN-N  0 GCT-OUT@ 0 T-GET {: ym:r :}
    base GX 0 T-SET
    yp ym f-  0.002 f/ ;
 
