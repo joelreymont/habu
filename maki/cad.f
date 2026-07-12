@@ -742,7 +742,7 @@ private
 
 \ replay lookup is the cad-5 store seam: a miss means the shape class is unmeasured.
 : TILE-REPLAY-NOTE ( report n -- report ) {: r:n :}
-   r SK-KEY$ SK-GET nip if exit then
+   r TARGET:SM87 SK-KEY$ SK-GET nip if exit then
    s" schedule: unmeasured shape class -> using defaults" REPORT:WARN+ ;
 
 : TILE-INTO ( report -- report )
@@ -751,7 +751,7 @@ private
    0 SK-REGION-REP {: rep:CAD-KIND:node-id :}
    fam TILE-CANDS+
    fam rep MIR-COLS@ COLS-RAW rep REGION-MAXVEC FAM-DEFAULT REPORT:SELECT!
-   0 SK-KEY$ REPORT:CACHE!
+   0 TARGET:SM87 SK-KEY$ REPORT:CACHE!
    0 TILE-REPLAY-NOTE
    s" schedule: defaults (unmeasured shape class - cad-6 tunes)" REPORT:WARN+
    s" schedule: family from region 0 only (v1 limitation)" REPORT:WARN+ ;
@@ -844,8 +844,8 @@ private
    dup G-GRADCHECK REPORT:GATE-TAG@ {: gc:n :}
    dup G-PROFILE   REPORT:GATE-TAG@ {: p:n :}
    dup REPORT:SELECT@ {: sel:n :}
-   0 SK-KEY$ c g gc p GOLDEN-DEV? GOLDEN-PREC@ EVID-PUT-G  \ golden=device-<v>:<prec> when the device leg ran
-   0 SK-KEY$ sel SCHED-PUT ;
+   0 TARGET:SM87 SK-KEY$ c g gc p GOLDEN-DEV? GOLDEN-PREC@ EVID-PUT-G  \ golden=device-<v>:<prec> when the device leg ran
+   0 TARGET:SM87 SK-KEY$ sel SCHED-PUT ;
 
 : OPTIMIZE-PROMOTE ( report -- report )        \ record the decision, never throw
    PROMOTE-OK? if

@@ -16,6 +16,11 @@ create KT-BUF KT-CAP allot  variable KT-BU
 : KT-BUF$ ( -- ptr u8 n )  KT-BUF KT-BU @ ;
 : KT-SLOT ( n -- MIR:input-slot )  MIR-SLOT-ID ;
 : KT-SLOT-AL! ( n n -- ) {: raw:n al:n :}  raw KT-SLOT al MIR-SLOT-AL! ;
+: KT-ALT-TARGET ( -- CAD-KIND:target-id )
+   s" sm_87-noasync"
+   TARGET:ISA-PTX 87 32 1024 49152
+   TARGET:CAP-ALL TARGET:CAP-ASYNC invert and TARGET:DESCRIPTOR
+   TARGET:REGISTER ;
 
 \ ---- IR builders (one gelu/relu elementwise chain over a single input) ------
 : BUILD ( n n -- ) {: rows:n cols:n :}
@@ -47,7 +52,7 @@ T-RESET
 0   65  SHAPE SK-SHAPE-CLASS$ s" ?xp128+t"      T$=
 
 \ ---- key fields: honest v1 constants + the real engine content key -----------
-SK-TARGET$ s" sm_87"    T$=
+TARGET:SM87 SK-TARGET$ s" sm_87"    T$=
 SK-ENGINE$ ENGINE-KEY$  T$=              \ engine field is the real bin/hb content key
 SK-ENGINE$ nip 64       T=              \ a 64-char SHA-256 hex digest, not a placeholder
 SK-PTXAS$  s" unprobed"  T$=
@@ -57,11 +62,12 @@ SK-PTXAS$  s" unprobed"  T$=
 0 SK-RSIG$ s" 431E24867468A764" T$=                 \ deterministic FNV-1a signature
 \ exact full-key equality: copy the actual out (SK-KEY$ builds in the shared SB
 \ builder), then splice the binary-dependent engine key into the expected string.
-0 SK-KEY$ KT-COPY
+0 TARGET:SM87 SK-KEY$ KT-COPY
 SB-RESET
 s" 431E24867468A764|2xp128+t|f32|row|al16|sm_87|" SB-APPEND
 ENGINE-KEY$ SB-APPEND  s" |unprobed" SB-APPEND
 KT-BUF$ SB$ STR= TTRUE
+0 KT-ALT-TARGET SK-KEY$ KT-BUF$ STR= TFALSE
 0 SK-ALIGN$ s" al16" T$=
 
 \ ---- alignment class falls back to al? for an unrecorded input --------------
@@ -76,21 +82,21 @@ KT-BUF$ SB$ STR= TTRUE
 \ ---- replay table: cad-5 store seam ----------------------------------------
 2 100 BUILD 0 AL-16 KT-SLOT-AL! FP-BUILD
 SK-TAB-RESET
-0 SK-KEY$ SK-GET nip TFALSE                          \ miss -> not found
-0 SK-KEY$ SK-GET drop -1 T=                          \ miss selection is -1 (use defaults)
+0 TARGET:SM87 SK-KEY$ SK-GET nip TFALSE              \ miss -> not found
+0 TARGET:SM87 SK-KEY$ SK-GET drop -1 T=              \ miss selection is -1 (use defaults)
 SK-TAB-COUNT 0 T=
-0 SK-KEY$ 7 SK-PUT
-0 SK-KEY$ SK-GET nip  TTRUE                          \ now found
-0 SK-KEY$ SK-GET drop 7 T=                           \ roundtrips the stored selection
+0 TARGET:SM87 SK-KEY$ 7 SK-PUT
+0 TARGET:SM87 SK-KEY$ SK-GET nip  TTRUE              \ now found
+0 TARGET:SM87 SK-KEY$ SK-GET drop 7 T=               \ roundtrips the stored selection
 SK-TAB-COUNT 1 T=
-0 SK-KEY$ 9 SK-PUT                                   \ same key -> update in place
+0 TARGET:SM87 SK-KEY$ 9 SK-PUT                       \ same key -> update in place
 SK-TAB-COUNT 1 T=
-0 SK-KEY$ SK-GET drop 9 T=
+0 TARGET:SM87 SK-KEY$ SK-GET drop 9 T=
 
 \ ---- fail-closed throws -----------------------------------------------------
 : PUTN ( n -- ) {: n:n :}  SB-RESET s" k" SB-APPEND n SB-INT SB$ n SK-PUT ;
 : TRY-FULL   ( -- )  SK-TAB-RESET 33 0 ?do i PUTN loop ;   \ 33 > SK-TAB-CAP (32)
-: TRY-REGION ( -- )  99 SK-KEY$ 2drop ;                     \ region 99 out of range
+: TRY-REGION ( -- )  99 TARGET:SM87 SK-KEY$ 2drop ;         \ region 99 out of range
 : TRY-ALIGN  ( -- )  AL-N AL-KEY 2drop ;                    \ AL-N is out of the AL-* domain
 ' TRY-FULL   E-SK-FULL   TTHROWS
 ' TRY-REGION E-SK-REGION TTHROWS

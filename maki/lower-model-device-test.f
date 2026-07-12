@@ -115,7 +115,7 @@ create LMDM-RP   FS-PATH-CAP allot  variable LMDM-RP-U
    drop
    s" == PROMOTE (evidence row) ==" type cr
    PROMOTE drop
-   0 SK-KEY$ EVID-GET {: ra:ptr ru:n found:bool :}
+   0 TARGET:SM87 SK-KEY$ EVID-GET {: ra:ptr ru:n found:bool :}
    found TTRUE
    ra ru type cr                                          \ verbatim evidence row
    ra ru s" golden=device-pass:f32" CONTAINS? TTRUE      \ device leg + its licensed precision

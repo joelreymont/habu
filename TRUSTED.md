@@ -671,6 +671,8 @@ that source is explicitly certified; they are not stale-checked by the default
 | INPUT-INDEX>RAW | `MIR:input-index -- n` | Private input-ordinal projection used only after the node handle is validated and before the node-local bound check. | `maki/model-ir-test.f` | maki/model-ir.f | 2026-07-12 |
 | RAW>REF-POS | `n -- MIR:ref-pos` | Private flat-reference-table position refinement after signed and capacity validation. | `maki/model-ir-test.f` | maki/model-ir.f | 2026-07-12 |
 | REF-POS>RAW | `MIR:ref-pos -- n` | Private flat-reference-table projection used only by bounded owner-table load/store helpers. | `maki/model-ir-test.f` | maki/model-ir.f | 2026-07-12 |
+| RAW>TARGET-ID | `n -- CAD-KIND:target-id` | Private target-registry refinement after semantic descriptor validation, capacity validation, and append-only slot allocation. | `maki/target/target-test.f` | maki/target/target.f | 2026-07-12 |
+| TARGET-ID>RAW | `CAD-KIND:target-id -- n` | Private target identity projection used only by bounds validation and owner-table access; no public raw conversion is exported. | `maki/target/target-test.f` | maki/target/target.f | 2026-07-12 |
 | DIM-REFINE | `n -- CAD-KIND:dim` | Private validated nominal representation boundary for tensor dimensions; tracked by `habu-v2-r3-type-9f89d1e9`. | `maki/tensor-test.f` | maki/tensor.f | 2026-07-12 |
 | DIM-RAW | `CAD-KIND:dim -- n` | Private dimension projection used only by checked shape algebra and numeric execution boundaries. | `maki/tensor-test.f` | maki/tensor.f | 2026-07-12 |
 | ROWS-REFINE | `n -- CAD-KIND:rows` | Private validated row-role refinement; public construction goes through `SHAPE`. | `maki/tensor-test.f` | maki/tensor.f | 2026-07-12 |
@@ -1306,6 +1308,8 @@ maki/model-ir.f:RAW>INPUT-INDEX prim-axiom habu-epic-model-cad-70b629a9
 maki/model-ir.f:INPUT-INDEX>RAW prim-axiom habu-epic-model-cad-70b629a9
 maki/model-ir.f:RAW>REF-POS prim-axiom habu-epic-model-cad-70b629a9
 maki/model-ir.f:REF-POS>RAW prim-axiom habu-epic-model-cad-70b629a9
+maki/target/target.f:RAW>TARGET-ID prim-axiom habu-epic-model-cad-70b629a9
+maki/target/target.f:TARGET-ID>RAW prim-axiom habu-epic-model-cad-70b629a9
 maki/tensor-value.f:RAW>TENSOR prim-axiom habu-epic-model-cad-70b629a9
 maki/tensor-value.f:TENSOR>RAW prim-axiom habu-epic-model-cad-70b629a9
 maki/tensor-value.f:TYPED-LINEAR stdlib-boundary habu-epic-model-cad-70b629a9

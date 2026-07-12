@@ -3587,3 +3587,10 @@ unchanged (148855). Keys for milestone 2:
 - **Prove retired keywords against the exact candidate process.** In-process
   `evaluate` can surface a caught checker throw, while a hardcoded `bin/hb` may
   lag the candidate. Spawn `GE-HB$` and assert its rc plus diagnostic.
+- **Test private package authority by lookup, not candidate rejection.** An
+  undefined private qualified word makes a checker candidate uncheckable rather
+  than ill-typed. `search-wl` proves the authority is absent; negative candidates
+  remain for public cross-role calls whose signatures are visible.
+- **Assert append-only registries relative to their entry count.** Sequential
+  suites share one process, so an earlier consumer may intern valid objects.
+  Capture the starting count, then prove dedup preserves it and insertion adds one.

@@ -1022,6 +1022,12 @@ A target records:
 
 Planner policy reads target objects. sm_87 constants do not remain scattered.
 
+The R3 identity owner is `maki/target/target.f`: immutable semantic descriptors
+intern to validated `CAD-KIND:target-id` values, with labels kept outside the
+identity facts. Schedule keys now require that nominal identity and project its
+stable label only at the rendering boundary. Rich driver/toolchain/calibration
+facts remain V2-7 schema work rather than raw fields scattered through planners.
+
 ### 15.2 Unified Cost Model
 
 One model supplies fusion extraction, materialization, schedule pruning/ranking,

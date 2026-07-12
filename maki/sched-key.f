@@ -21,7 +21,8 @@
 \
 \ Alignment class: the most conservative model-input alignment the region reads
 \ (AL-16 when it reads no model input - compiler-allocated buffers are aligned by
-\ construction). Target is the "sm_87" v1 constant; the engine hash is the real
+\ construction). Target comes from its validated nominal descriptor; the engine
+\ hash is the real
 \ SHA-256 content key over bin/hb (lib/engine-id.f, resolved engine-side, lazy +
 \ cached); ptxas version is the honest "unprobed" placeholder (no ptxas is probed
 \ on a host without a device).
@@ -42,6 +43,7 @@ require lib/engine-id.f
 require maki/model-ir.f
 require maki/fusion-plan.f
 require maki/schedule.f
+require maki/target/target.f
 
 -5084 constant E-SK-REGION     \ region id out of range / empty
 -5085 constant E-SK-ALIGN      \ alignment class out of range (AL-* domain)
@@ -131,7 +133,7 @@ variable SK-FOLD               \ scratch for little-endian byte decomposition
 public
 
 \ ---- key field placeholders -------------------------------------------------
-: SK-TARGET$ ( -- ptr u8 n )  s" sm_87" ;         \ single supported target (v1)
+: SK-TARGET$ ( CAD-KIND:target-id -- ptr u8 n )  TARGET:LABEL$ ;
 \ Real engine content key: the SHA-256 of bin/hb, resolved engine-side from the
 \ kernel-provided self-path and hashed once on first request, then cached
 \ (lib/engine-id.f). It distinguishes schedules produced by different engine builds
@@ -150,18 +152,22 @@ public
 : SK-ALIGN$ ( n -- ptr u8 n )  SK-REGION-CK REGION-ALIGN AL-KEY ;
 
 \ ---- the full section 7.4 key as one "|"-joined string ----------------------
-: SK-KEY+ ( n -- ) {: r:n :}                     \ append the key to SB (already reset)
+: SK-KEY+ ( n CAD-KIND:target-id -- )
+   {: r:n target:CAD-KIND:target-id :}            \ append the key to SB (already reset)
    r REGION-REP {: rep:CAD-KIND:node-id :}
    r RSIG SK-HEX+
    $7C SB-APPEND-C  rep MIR-ROWS@ rep MIR-COLS@ SHAPE-CLASS+
    $7C SB-APPEND-C  rep MIR-DTYPE-KEY  SB-APPEND
    $7C SB-APPEND-C  rep MIR-LAYOUT-KEY SB-APPEND
    $7C SB-APPEND-C  r REGION-ALIGN AL-KEY SB-APPEND
-   $7C SB-APPEND-C  SK-TARGET$ SB-APPEND
+   $7C SB-APPEND-C  target SK-TARGET$ SB-APPEND
    $7C SB-APPEND-C  SK-ENGINE$ SB-APPEND
    $7C SB-APPEND-C  SK-PTXAS$  SB-APPEND ;
 
-: SK-KEY$ ( n -- ptr u8 n )  SK-REGION-CK SB-RESET SK-KEY+ SB$ ;
+: SK-KEY$ ( n CAD-KIND:target-id -- ptr u8 n )
+   {: r:n target:CAD-KIND:target-id :}
+   r SK-REGION-CK drop target TARGET:VALIDATE drop
+   SB-RESET r target SK-KEY+ SB$ ;
 
 private
 

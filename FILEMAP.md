@@ -524,6 +524,10 @@ points stay listed.
   indexes, shape/layout domains, effects, and regions.
 - `maki/cad-kinds-test.f` — qualified identity, cross-role rejection, typed
   memory, and repair-diagnostic regressions for the nominal CAD kinds.
+- `maki/target/target.f` — immutable target descriptors, semantic interning,
+  canonical facts/digests, and the validated `CAD-KIND:target-id` owner API.
+- `maki/target/target-test.f` — target identity, descriptor validation,
+  round-trip, capability non-aliasing, role rejection, and privacy regressions.
 - `maki/cuda-types.f` — thin re-export of `lib/ptx/cuda-driver.f` preserving the
   historical maki spellings (cuda-* roles, `CUDA-HANDLE0`/`CUDA-RC0`, `E-MK-GPU`).
 - `maki/cuda-types-test.f` — runtime regressions for CUDA handle and rc

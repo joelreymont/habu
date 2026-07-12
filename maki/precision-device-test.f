@@ -92,7 +92,7 @@ variable PDT-PTX-U                                         \ correct-module text
    MDL-CUBINS-RESET  PTXTC:CUBIN$ 0 MDL-CUBIN!    \ region 0 = the CORRECT cubin
    STORE-RESET
    PROMOTE drop
-   0 SK-KEY$ EVID-GET {: ra:ptr ru:n found:bool :}
+   0 TARGET:SM87 SK-KEY$ EVID-GET {: ra:ptr ru:n found:bool :}
    found TTRUE
    ra ru type cr                                  \ verbatim evidence row
    ra ru s" golden=device-pass:tf32" CONTAINS? TTRUE
