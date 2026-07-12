@@ -21,9 +21,9 @@
 \ mean-scaled seed cotangents; (3) run the WHOLE IR (its deterministic forward
 \ recompute + the backward region reading the seed); (4) apply Adam to every
 \ parameter from its backward node buffer. Rematerialization here is that full
-\ deterministic forward recompute; docs/maki/train.md names gradient
-\ checkpointing only as roadmap and specifies no concrete checkpoint policy,
-\ so none is invented here.
+\ deterministic forward recompute; the segment-boundary checkpointing mode
+\ (docs/maki/train.md "Gradient checkpointing", maki/checkpoint.f) is the
+\ bit-identical lower-memory alternative to steps (1)/(3).
 \
 \ Preconditions mirror the from-scratch trainer: AMT-SETUP needs a fresh
 \ MODEL: SCRATCH-MLP capture, ATN-SETUP a fresh MODEL: ADAM-ATTN capture

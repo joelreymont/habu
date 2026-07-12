@@ -22,7 +22,9 @@
 \ rotation.
 \
 \ Model-input buffers are supplied by the caller (EX-BIND), validated against the slot
-\ table; node buffers are the executor's own arena. One concern: EXECUTION ONLY - no
+\ table; node buffers are the executor's own arena. EX-RUN(-N) assigns one arena slot
+\ per node (EX-PLAN); the checkpoint hooks EX-OFF!/EX-STEP let maki/checkpoint.f place
+\ node buffers itself and execute nodes selectively. One concern: EXECUTION ONLY - no
 \ planning, no gradients, no reporting. Fail closed: an op with no host reference
 \ (cast / decode) is E-EX-UNSUP; an unbound input is E-EX-UNBOUND; arena / index
 \ overflow is E-EX-CAP; a bad slot / node index is E-EX-SLOT / E-EX-NODE. Gather
@@ -394,6 +396,22 @@ public
 \ ---- run a node prefix (forward slice) or the whole IR ---------------------
 : EX-RUN-N ( n -- )  dup EX-PLAN  EX-EXEC ;
 : EX-RUN ( -- )      MIR-N@ EX-RUN-N ;
+
+\ ---- external buffer plan + single-node execution (the checkpoint hooks) ----
+\ maki/checkpoint.f places node buffers itself (persistent boundaries + one
+\ shared interior scratch window; docs/maki/train.md "Gradient checkpointing")
+\ and runs nodes selectively. EX-OFF! validates the node index and the buffer
+\ end against the arena; EX-STEP validates the index and executes one node
+\ under the CURRENT offsets. EX-RUN(-N) overwrites the offsets (EX-PLAN), so a
+\ custom plan is valid only until the next EX-RUN(-N).
+: EX-OFF! ( n n -- ) {: off:n nd:n :}   \ arena offset (cells), node index
+   nd 0 < nd MIR-N@ >= or if E-EX-NODE throw then
+   off 0 <  off nd EX-NODE-ELEMS + EX-ARENA-CELLS >  or if E-EX-CAP throw then
+   off nd cells EX-OFF + ! ;
+
+: EX-STEP ( n -- ) {: nd:n :}           \ execute one node under the current plan
+   nd 0 < nd MIR-N@ >= or if E-EX-NODE throw then
+   nd EX-NODE ;
 
 \ ---- read a node's output buffer (after EX-RUN / EX-RUN-N) ------------------
 : EX-OUT@ ( n -- ptr a ) {: nd:n :}

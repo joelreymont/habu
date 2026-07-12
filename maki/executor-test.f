@@ -2,8 +2,9 @@
 \ Builds tiny model-IR node tables by hand, binds host input buffers, runs EX-RUN,
 \ and checks node outputs against HAND-COMPUTED values for every dispatch family:
 \ matmul/linear, elementwise (unary + broadcast binary), row words, movement,
-\ reduce/scatter backward, rope, plus a multi-node topo-order chain and every
-\ fail-closed path (cast, unbound input, bad slot / node index).
+\ reduce/scatter backward, rope, plus a multi-node topo-order chain, the
+\ EX-OFF!/EX-STEP checkpoint hooks (hand buffer plan + single-node runs), and
+\ every fail-closed path (cast, unbound input, bad slot / node / offset).
 
 require lib/test.f
 require lib/float.f
@@ -36,6 +37,15 @@ create SB 8 cells allot   create CB 8 cells allot   create IB 4 cells allot
    EX-RESET  XB 0 EX-BIND  EX-RUN  5 EX-OUT@ drop ;
 : TRY-BINDSLOT ( -- )
    MIR-RESET  2 2 MAKI-DTYPE:DF32 MAKI-LAYOUT:ROW MIR-INPUT+ drop  XB 7 EX-BIND ;
+
+\ one 2x2 gelu node (the EX-OFF!/EX-STEP fail-closed fixture)
+: EXH-ONE ( -- )
+   MIR-RESET  2 2 MAKI-DTYPE:DF32 MAKI-LAYOUT:ROW MIR-INPUT+ drop
+   MAKI-OPKIND:GELU MIR-OP-BEGIN 0 MIR-IN-REF MIR-IN+ 2 2 MAKI-DTYPE:DF32 MAKI-LAYOUT:ROW 0 1 MIR-OP+ drop ;
+: TRY-OFF-ND  ( -- )  EXH-ONE  0 5 EX-OFF! ;
+: TRY-STEP-ND ( -- )  EXH-ONE  5 EX-STEP ;
+: TRY-OFF-NEG ( -- )  EXH-ONE  -1 0 EX-OFF! ;
+: TRY-OFF-CAP ( -- )  EXH-ONE  EX-ARENA-CELLS 0 EX-OFF! ;
 
 T-RESET
 
@@ -210,6 +220,16 @@ EX-RESET  XB 0 EX-BIND  WB 1 EX-BIND  EX-RUN
 EX-RESET  XB 0 EX-BIND  WB 1 EX-BIND  1 EX-RUN-N
 0 EX-OUT@ 0 >I 1 T=
 
+\ ---- EX-OFF! / EX-STEP: external buffer plan + single-node execution --------
+\ same chain under a hand plan (n0 placed ABOVE n1, the reverse of EX-PLAN):
+\ each EX-STEP runs one node under the current offsets; values match EX-RUN's.
+EX-RESET  XB 0 EX-BIND  WB 1 EX-BIND
+8 0 EX-OFF!  0 1 EX-OFF!
+0 EX-STEP  1 EX-STEP
+0 EX-OUT@ 0 >I 1 T=                                  \ n0[0,0] = 1 (at offset 8)
+0 EX-OUT@ 3 >I 4 T=                                  \ n0[1,1] = 4
+1 EX-OUT@ 0 >M 841 T=                                \ n1 = gelu(n0) read n0's new home
+
 \ ---- membership predicate --------------------------------------------------
 OP-GELU   EX-OP-OK? TTRUE
 OP-MATMUL EX-OP-OK? TTRUE
@@ -220,6 +240,10 @@ OP-CAST   EX-OP-OK? TFALSE
 ' TRY-UNBOUND  E-EX-UNBOUND TTHROWS
 ' TRY-NODE     E-EX-NODE    TTHROWS
 ' TRY-BINDSLOT E-EX-SLOT    TTHROWS
+' TRY-OFF-ND   E-EX-NODE    TTHROWS
+' TRY-STEP-ND  E-EX-NODE    TTHROWS
+' TRY-OFF-NEG  E-EX-CAP     TTHROWS
+' TRY-OFF-CAP  E-EX-CAP     TTHROWS
 
 T-REPORT
 
