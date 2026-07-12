@@ -1168,6 +1168,10 @@ variable TDECL-I
 \ The axiom rows keep them checker-known - the seal-time internal-word marking
 \ pass (src/core/internal-mark.f) fails closed on any engine-prefix word
 \ without a checker-known effect (dot habu-hb-crash-bare-c5be6634).
+\ UNSAFE-TOK? rejects the openers inside checked bodies (they parse the live
+\ input stream and mutate the type registry at run time, which ( -- ) does not
+\ express — dot habu-checker-in-body-af7cf855, LAYOUT-BUFFER parity), so the
+\ axioms add no checked-code capability.
 PRIM: TYPEFAMILY PRIM;
 PRIM: SUMTYPE PRIM;
 PRIM: ENUM PRIM;

@@ -230,6 +230,46 @@ create IWG-EMPTY 1 allot            \ zero-length stdin
    s" : IWG-LBAD ( n -- ) LAYOUT-BUFFER ;" SB-APPEND IWG-LF
    SB$ ;
 
+\ --- type-DSL openers are top-level-interpret-only: their ( -- ) axiom rows
+\ hide runtime input parsing + registry mutation, so UNSAFE-TOK? rejects them
+\ inside checked bodies (dot habu-checker-in-body-af7cf855, LBUF parity). ----
+
+: IWG-TDSL-TOP-FORGE$ ( -- ptr u8 n )    \ TYPEFAMILY/PRODUCT still work at top level
+   SB-RESET
+   s" TYPEFAMILY iwgtf 0" SB-APPEND IWG-LF
+   s" PRODUCT iwgpr 0 FIELD x n ;PRODUCT" SB-APPEND IWG-LF
+   SB$ ;
+
+: IWG-OPENER-BODY-FORGE$ ( ptr u8 n -- ptr u8 n )   \ ": IWG-OBAD ( -- ) <opener> ;"
+   SB-RESET
+   s" : IWG-OBAD ( -- ) " SB-APPEND
+   SB-APPEND
+   s"  ;" SB-APPEND IWG-LF
+   SB$ ;
+
+: IWG-OPENER-DIAG$ ( ptr u8 n -- ptr u8 n )   \ pinned reject site "at '<opener>'"
+   SB-RESET
+   s" at '" SB-APPEND
+   SB-APPEND
+   s" '" SB-APPEND
+   SB$ ;
+
+: IWG-NEG-OPENER ( ptr u8 n -- )         \ in-body opener at empty declared stack rejects
+   2dup IWG-OPENER-BODY-FORGE$ IWG-RUN-LOAD
+   IWG-OPENER-DIAG$ IWG-ASSERT-DIAG ;
+
+: IWG-OPENER-CASES ( -- )
+   s" TYPEFAMILY/PRODUCT DSL still works at top level" T-LABEL
+   IWG-TDSL-TOP-FORGE$ IWG-RUN-LOAD IWG-ASSERT-OK
+   s" TYPEFAMILY in a checked body is rejected unsafe" T-LABEL
+   s" TYPEFAMILY" IWG-NEG-OPENER
+   s" SUMTYPE in a checked body is rejected unsafe" T-LABEL
+   s" SUMTYPE" IWG-NEG-OPENER
+   s" ENUM in a checked body is rejected unsafe" T-LABEL
+   s" ENUM" IWG-NEG-OPENER
+   s" PRODUCT in a checked body is rejected unsafe" T-LABEL
+   s" PRODUCT" IWG-NEG-OPENER ;
+
 : IWG-POSITIVES ( -- )
    s" undefined word still reports E-UNDEFINED" T-LABEL
    IWG-UNDEF-FORGE$ IWG-RUN-LOAD
@@ -272,6 +312,7 @@ create IWG-EMPTY 1 allot            \ zero-length stdin
    IWG-NEG-BARE
    IWG-NEG-SHAPES
    IWG-POSITIVES
+   IWG-OPENER-CASES
    IWG-CLEANUP
    T-REPORT
    s" internal-word-gate: ok" type cr ;

@@ -1,6 +1,6 @@
 # habu — Status
 
-Last verified: 2026-07-12
+Last verified: 2026-07-13
 Merged state: the type-families campaign (TFAM 9/10/12/14/15 engine — pass-2 width
 lowering, construct/MATCH lowering, record staging) merged into fable (Model CAD:
 subsystem packages, EVAL/GPU packages, 76-suite maki manifest, the set-check

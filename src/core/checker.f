@@ -6886,10 +6886,18 @@ s" <input>" DIAG-FILE!
    na nu TOKFOLD drop
    sa su  TKF TKFU @  CHECKER-USIG-ADD ;
 
+\ The type-DSL block openers (sumtype.f) are top-level-interpret-only: their
+\ axiom rows say ( -- ), but executing one from a compiled body parses the
+\ live input stream and mutates the type registry (or throws at EOF) — side
+\ effects no effect row expresses (dot habu-checker-in-body-af7cf855).
 : UNSAFE-TOK? {: a u :}
    a u s" evaluate" CORE-STR= IF RES-TRUE EXIT THEN
    a u s" trust" CORE-STR= IF RES-TRUE EXIT THEN
    a u s" layout-buffer" CORE-STR= IF RES-TRUE EXIT THEN
+   a u s" typefamily" CORE-STR= IF RES-TRUE EXIT THEN
+   a u s" sumtype" CORE-STR= IF RES-TRUE EXIT THEN
+   a u s" enum" CORE-STR= IF RES-TRUE EXIT THEN
+   a u s" product" CORE-STR= IF RES-TRUE EXIT THEN
    a u s" set-check" CORE-STR= IF RES-TRUE EXIT THEN
    a u s" postpone" CORE-STR= IF RES-TRUE EXIT THEN
    a u s" compile," CORE-STR= IF RES-TRUE EXIT THEN
