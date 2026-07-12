@@ -3632,3 +3632,7 @@ unchanged (148855). Keys for milestone 2:
   still a production backdoor. Compose an isolated, content-keyed test image
   whose cold emitter calls the unpublished routine, and keep ordinary lookup
   unable to name it.
+- **Scoped build fixtures must restore every build-global cell.** Reset temp and
+  engine overrides, pin state, recorded digests, and extension capabilities on
+  both success and throw; deleting the artifact tree while globals still point
+  at it makes later resident gates order-dependent.

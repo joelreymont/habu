@@ -33,10 +33,21 @@ variable HB-U
    s" HABU_UNDER_TEST" GETENV dup 0 > if BF-ENGINE! else 2drop then ;
 
 : BUILD-IMAGE ( -- )
-   s" test/owner-wid-emitter.f" BUILD-EXT:SET
    BF-PIN-RESET BF-PIN-ON!
    BF-RECORD-RESET
-   BF-BUILD-STDIN-FRESH ;
+   BUILD-EXT:OWNER-WID-STDIN ;
+
+: BUILD-RESET ( -- )
+   BF-RECORD-RESET
+   BF-PIN-OFF!
+   BF-PIN-RESET
+   BF-ENGINE-RESET
+   BF-TMP-RESET ;
+
+: BUILD-ACT ( -- )
+   ROOT-BUF ROOT-U @ BF-TMP!
+   CANDIDATE-ENGINE
+   BUILD-IMAGE ;
 
 public
 
@@ -50,10 +61,8 @@ public
 : BUILD ( -- )
    s" habu-owner-wid-image" TMPDIR-MKDIR ROOT!
    ROOT CLEANUP-TREE+
-   ROOT BF-TMP!
-   CANDIDATE-ENGINE
-   [: BUILD-IMAGE ;] catch {: code:n :}
-   BUILD-EXT:CLEAR
+   [: BUILD-ACT ;] catch {: code:n :}
+   BUILD-RESET
    code 0 <> if code throw then ;
 
 ;package

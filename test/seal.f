@@ -482,11 +482,14 @@ variable USED
    s" require lib/test.f" $+ LF
    s" T-RESET" $+ LF
    s" package OWNER-WID-CHECK" $+ LF
+   s" variable PROT0" $+ LF
+   s" data-base PROT-WID-N-CELL + @ PROT0 !" $+ LF
    s" public" $+ LF
    s" : PREFLIGHT ( n n n -- bool ) owner-wid-preflight? ;" $+ LF
    s" : PUBLIC? ( n -- bool ) owner-wid-public? ;" $+ LF
    s" : PRIVATE? ( n -- bool ) owner-wid-private? ;" $+ LF
    s" : MEMBER? ( n -- bool ) owner-wid? ;" $+ LF
+   s" : CONSTRUCTOR-ADDED? ( -- bool ) data-base PROT-WID-N-CELL + @ PROT0 @ 1+ = ;" $+ LF
    s" ;package" $+ LF
    s" data-base OWNER-WID-N-CELL + @ 0 T=" $+ LF
    s" $1000 $2000 1 OWNER-WID-CHECK:PREFLIGHT TTRUE" $+ LF
@@ -509,8 +512,14 @@ variable USED
    s" $10FF OWNER-WID-CHECK:MEMBER? TFALSE" $+ LF
    s" $20FF OWNER-WID-CHECK:MEMBER? TFALSE" $+ LF ;
 
+: CONSTRUCTOR ( -- )
+   \ Type-family and variant tails are lowercase system vocabulary.
+   s" SUMTYPE owf 1 VARIANT same a ;VARIANT ;SUMTYPE" $+ LF
+   s" OWNER-WID-CHECK:CONSTRUCTOR-ADDED? TTRUE" $+ LF
+   s" data-base OWNER-WID-N-CELL + @ 0 T=" $+ LF ;
+
 : SOURCE$ ( -- ptr u8 n )
-   RESET HEADER ROLES
+   RESET HEADER ROLES CONSTRUCTOR
    s" T-REPORT" $+ LF
    BUF USED @ ;
 

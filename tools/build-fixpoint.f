@@ -493,14 +493,16 @@ variable PATH-U
 : PATH@ ( -- ptr u8 )
    PATH-FIELD @ ;
 
-public
-
 : CLEAR ( -- )
    0 PATH-U ! ;
 
 : SET ( ptr u8 n -- )
    PATH-U !
    PATH-FIELD ! ;
+
+CLEAR
+
+public
 
 : ASSERT-EMPTY ( -- )
    PATH-U @ 0 <> if s" build-fixpoint: production extension enabled" BF-BUILD-RC die then ;
@@ -509,8 +511,6 @@ public
    PATH-U @ 0 > if out outu PATH@ PATH-U @ BF-APPEND-SOURCE then ;
 
 ;package
-
-BUILD-EXT:CLEAR
 
 : BF-READ-SOURCE ( ptr u8 n -- )
    BF-SOURCE-BUF BF-SOURCE-CAP READ-ALL BF-SOURCE-LEN ! ;
@@ -1059,6 +1059,23 @@ BUILD-EXT:CLEAR
 : BF-BUILD-STDIN-FRESH ( -- )
    BF-STAGE-FIXPOINT
    BF-BUILD-STDIN-FROM-STAGE ;
+
+package BUILD-EXT
+
+private
+
+: OWNER-WID-ACT ( -- )
+   BF-BUILD-STDIN-FRESH ;
+
+public
+
+: OWNER-WID-STDIN ( -- )
+   s" test/owner-wid-emitter.f" SET
+   [: OWNER-WID-ACT ;] catch {: code:n :}
+   CLEAR
+   code 0 <> if code throw then ;
+
+;package
 
 : BF-BUILD-SNAP-FROM-STDIN ( -- )
    BF-SNAP-SOURCE

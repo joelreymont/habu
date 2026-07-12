@@ -33,6 +33,13 @@ variable ERR-U
 
 : BODY ( -- )
    OWNER-WID-IMAGE:BUILD
+   BUILD-EXT:ASSERT-EMPTY
+   BF-TMP-U @ 0 T=
+   BF-ENGINE-U @ 0 T=
+   BF-PIN-N @ 0 T=
+   BF-PIN-ON @ 0 T=
+   BF-REC-STAGE? @ 0 T=
+   BF-REC-STDIN? @ 0 T=
    s" test/owner-wid-state.f" RUN-FILE 0 T=
    OUT$ s" owner-wid-state-test: ok" CONTAINS? TTRUE
    s" test/owner-wid-call.f" RUN-FILE 70 T=

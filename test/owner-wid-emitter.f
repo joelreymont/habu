@@ -40,7 +40,7 @@ package OWNER-WID-COLD-TEST
    17 255 CMPI,  C-LT loop BCOND, ;
 
 : EMIT ( -- )
-   LBL LBL {: fail:label done:label :}
+   LBL LBL LBL {: fail:label done:label msg:label :}
    SP SP 16 SUBI,  30 SP 0 STR,
    15 DATA OWNER-WID-END LDRW,
    16 DATA OWNER-WID-END 4 + LDRW,
@@ -68,7 +68,10 @@ package OWNER-WID-COLD-TEST
    9 DATA OWNER-WID-END 4 + LDRW,  9 16 CMP,  C-NE fail BCOND,
    30 SP 0 LDR,  SP SP 16 ADDI,
    done B,
-   fail LBL,  BRK,
+   fail LBL,
+   0 2 MOVZ,  1 msg ADR,  2 31 MOVZ,  NR-WRITE SYS,
+   0 70 MOVZ,  NR-EXIT-GROUP SYS,
+   msg LBL,  s" hb: owner-WID cold proof failed" BYTES,
    done LBL, ;
 
 ' EMIT OWNER-WID-EMIT:COLD-HOOK!
