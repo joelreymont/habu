@@ -1,6 +1,6 @@
 ---
 title: "V2 R3: declare CAD nominal kinds"
-status: open
+status: active
 priority: 1
 issue-type: task
 created-at: "2026-07-12T07:09:02.620171+02:00"
