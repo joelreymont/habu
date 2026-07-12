@@ -53,21 +53,28 @@ Two more fact families in `package MAKI`:
   real pointer** at construction (`P>N` low bits), never assumed; a descriptor
   with no buffer records `unknown`.
 
-The tensor value itself lives in `package TENSOR`: `DEFTYPE tensor` is an
-opaque one-cell handle indexing a fixed-capacity record table (`TV-CAP` = 256,
-free counter `TV-U`); the record layout never leaks (representation hiding per
-`maki/report.f`), and the family-typed columns are reachable only through typed
-slot accessors, so a raw `n` or a foreign family can never enter a descriptor
-cell.
+The tensor value itself lives in `package TENSOR`: `TYPEFAMILY tensor 0` is an
+opaque nominal one-cell handle indexing a fixed-capacity record table
+(`TV-CAP` = 256, free counter `TV-U`); handles carry the store GENERATION, so a
+handle from before a `TV-RESET` fails closed (`E-TV-HANDLE`), and no raw-`n`
+public conversion exists (identity is `TV-EQUAL?`). The record layout never
+leaks (representation hiding per `maki/report.f`), and the family-typed columns
+are reachable only through typed slot accessors, so a raw `n` or a foreign
+family can never enter a descriptor cell. Shape extents are the nominal
+`CAD-KIND:rows` / `CAD-KIND:cols` kinds (`maki/tensor.f SHAPE` constructs);
+the address-space fact is `CAD-KIND:address-space` (Model-CAD V2 R3).
 
-- Constructors: `TV-NEW-AS ( ptr a n n dtype layout -- tensor )`,
-  `TV-NEW ( ptr a n n -- tensor )` (defaults f32 + row-major),
-  `TV-DESC ( n n dtype layout -- tensor )` (planning descriptor: no buffer,
-  align `unknown`, `TV-DATA@` fails closed with `E-TV-NODATA`).
-- Accessors, one per recorded fact: `TV-ROWS@` `TV-COLS@` `TV-ELEMS`
+- Constructors: `TV-NEW-HOST ( ptr a CAD-KIND:rows CAD-KIND:cols dtype layout -- tensor )`
+  (host space, measured alignment),
+  `TV-NEW ( ptr a CAD-KIND:rows CAD-KIND:cols -- tensor )` (defaults f32 + row-major),
+  `TV-DESC ( CAD-KIND:rows CAD-KIND:cols dtype layout CAD-KIND:address-space -- tensor )`
+  (planning descriptor: no buffer, align `unknown`, `TV-DATA@` fails closed
+  with `E-TV-NODATA`).
+- Accessors, one per recorded fact: `TV-ROWS@` `TV-COLS@` `TV-SPACE@` `TV-ELEMS`
   `TV-DTYPE@ ( tensor -- dtype )` `TV-LAYOUT@ ( tensor -- layout )`
-  `TV-ALIGN@ ( tensor -- align )` `TV-HAS-DATA?` `TV-DATA@ ( tensor -- ptr a )`;
-  setters `TV-DTYPE!` / `TV-LAYOUT!` take family values.
+  `TV-ALIGN@ ( tensor -- align )` `TV-HAS-DATA?` `TV-DATA@ ( tensor -- ptr a )`.
+  The settable dtype/layout mutators are gone with R3 (descriptor facts are
+  fixed at construction).
 - Lifecycle: `TV-RESET` (invalidates outstanding handles), `TV-COUNT`;
   bad handle = `E-TV-HANDLE`, full store = `E-TV-FULL`.
 - **Plan mode** (descriptor-vocabulary base): `PLINEAR ( tensor tensor tensor
@@ -119,13 +126,16 @@ constructed spans never unify by accident; agreement must be constructed
 
 The dtype/layout/align (and op-kind) families travel as family values from
 construction into the Model IR (`maki/model-ir.f` — `MIR-INPUT+` /
-`MIR-OP+ ( n n dtype layout n n -- n )`) and out to every consumer; integer
-codes appear only at the named wire/hash boundaries above. The field-swap holes
-are closed by the checker: a dtype<->layout swap at `MIR-INPUT+` / `MIR-OP+` /
-`TV-NEW-AS` rejects in both directions (pinned in `maki/model-ir-test.f` and
-`maki/tensor-value-test.f`), and the schedule key is a `DERIVE eq` `PRODUCT`
-over dimclass/dtype/layout/align enum fields (`maki/sched-key.f`), so a
-role-swapped key cannot be constructed.
+`MIR-OP+ ( CAD-KIND:rows CAD-KIND:cols dtype layout n n -- CAD-KIND:node-id )`)
+and out to every consumer; integer codes appear only at the named wire/hash
+boundaries above. Graph handles are nominal too: `CAD-KIND:node-id`,
+`MIR:input-slot`, `MIR:operand-ref`, and `MIR:input-index`. The field-swap
+holes are closed by the checker: a dtype<->layout swap at `MIR-INPUT+` /
+`MIR-OP+` / `TV-NEW-HOST` rejects in both directions, a rows<->cols swap and a
+raw-`n` extent reject at the same boundaries (pinned in `maki/model-ir-test.f`
+and `maki/tensor-value-test.f`), and the schedule key is a `DERIVE eq`
+`PRODUCT` over dimclass/dtype/layout/align enum fields (`maki/sched-key.f`),
+so a role-swapped key cannot be constructed.
 
 ## Design intent (unchanged)
 

@@ -87,24 +87,61 @@ create SYN-SLOT SYN-CAP cells allot            \ synthetic constant -> MIR input
 create SYN-OFF  SYN-CAP cells allot            \ synthetic constant -> arena offset (cells)
 variable SYN-N
 
+OGN-CAP constant IMP-NODE-CAP
+create IMP-NODES IMP-NODE-CAP cells allot      \ import-order MIR node identities
+variable IMP-NODE-N
+
+: IMP-REF! ( MIR:operand-ref n -- )  cells IMP-REF + ! ;
+: IMP-REF@ ( n -- MIR:operand-ref )  cells IMP-REF + @ ;
+: IMP-IN-SLOT! ( MIR:input-slot n -- )  cells IMP-INSLOT + ! ;
+: IMP-IN-SLOT@ ( n -- MIR:input-slot )  cells IMP-INSLOT + @ ;
+: IMP-INIT-SLOT! ( MIR:input-slot n -- )  cells IMP-SLOT + ! ;
+: IMP-INIT-SLOT@ ( n -- MIR:input-slot )  cells IMP-SLOT + @ ;
+: SYN-SLOT! ( MIR:input-slot n -- )  cells SYN-SLOT + ! ;
+: SYN-SLOT@ ( n -- MIR:input-slot )  cells SYN-SLOT + @ ;
+: IMP-NODE! ( CAD-KIND:node-id n -- )  cells IMP-NODES + ! ;
+: IMP-NODE@ ( n -- CAD-KIND:node-id )  cells IMP-NODES + @ ;
+
+: IMP-NODE+ ( CAD-KIND:node-id -- CAD-KIND:node-id )
+   {: node:CAD-KIND:node-id :}
+   IMP-NODE-N @ IMP-NODE-CAP >= if E-ONNX-CAP throw then
+   node IMP-NODE-N @ IMP-NODE!
+   IMP-NODE-N @ 1+ IMP-NODE-N !
+   node ;
+
+\ the importer's own audited raw-extent boundary (Model-CAD V2 R3: the module
+\ that decodes/indexes wire integers owns a private refinement, no public raw API)
+TRUSTED: IMP-ROWS-N ( CAD-KIND:rows -- n ) ;
+TRUSTED: IMP-COLS-N ( CAD-KIND:cols -- n ) ;
+
 : IMP-RESET ( -- )
-   0 IMP-BUMP !  0 IMP-IN-N !  0 SYN-N !
+   0 IMP-BUMP !  0 IMP-IN-N !  0 SYN-N !  0 IMP-NODE-N !
    OGN-CAP 0 ?do  0 IMP-SET i cells + !  loop ;
 
-: IMP-BIND ( n n -- ) {: ni:n ref:n :}         \ bind a name slot to a MIR ref (SSA)
+: IMP-BIND ( n MIR:operand-ref -- ) {: ni:n ref:MIR:operand-ref :}   \ bind a name slot to a MIR ref (SSA)
    IMP-SET ni cells + @ 0<> if E-ONNX-NAME throw then
-   ref IMP-REF ni cells + !
+   ref ni IMP-REF!
    1 IMP-SET ni cells + ! ;
 
-: IMP-RESOLVE ( n -- n ) {: ni:n :}            \ name slot -> MIR ref; unbound fails closed
+: IMP-RESOLVE ( n -- MIR:operand-ref ) {: ni:n :}   \ name slot -> MIR ref; unbound fails closed
    IMP-SET ni cells + @ 0= if E-ONNX-TOPO throw then
-   IMP-REF ni cells + @ ;
+   ni IMP-REF@ ;
 
 \ ---- operand-ref shape facts (input slot or producer node) ------------------
-: IMP-REF-ROWS ( n -- n ) {: r:n :}
-   r MAKI:MIR-REF-INPUT? if r MAKI:MIR-REF-SLOT MAKI:MIR-SLOT-ROWS@ else r MAKI:MIR-ROWS@ then ;
-: IMP-REF-COLS ( n -- n ) {: r:n :}
-   r MAKI:MIR-REF-INPUT? if r MAKI:MIR-REF-SLOT MAKI:MIR-SLOT-COLS@ else r MAKI:MIR-COLS@ then ;
+: IMP-REF-ROWS ( MIR:operand-ref -- CAD-KIND:rows ) {: r:MIR:operand-ref :}
+   r MAKI:MIR-REF-INPUT? if
+      r MAKI:MIR-REF-SLOT MAKI:MIR-SLOT-ROWS@
+   else
+      r MAKI:MIR-REF-NODE MAKI:MIR-ROWS@
+   then ;
+: IMP-REF-COLS ( MIR:operand-ref -- CAD-KIND:cols ) {: r:MIR:operand-ref :}
+   r MAKI:MIR-REF-INPUT? if
+      r MAKI:MIR-REF-SLOT MAKI:MIR-SLOT-COLS@
+   else
+      r MAKI:MIR-REF-NODE MAKI:MIR-COLS@
+   then ;
+: IMP-REF-NROWS ( MIR:operand-ref -- n )  IMP-REF-ROWS IMP-ROWS-N ;
+: IMP-REF-NCOLS ( MIR:operand-ref -- n )  IMP-REF-COLS IMP-COLS-N ;
 
 \ ---- inputs: graph inputs first (initializer-listed ones defer), then initializers --
 : IMP-INIT-FIND ( n -- n bool ) {: ni:n :}     \ name slot -> initializer index?
@@ -119,17 +156,18 @@ variable SYN-N
          if E-ONNX-SHAPE throw then            \ shapes must agree; the initializer binds it
       exit then
    drop
-   gi OGIN-ROWS@ gi OGIN-COLS@ MAKI-DTYPE:DF32 MAKI-LAYOUT:ROW MAKI:MIR-INPUT+ {: s:n :}
+   gi OGIN-ROWS@ gi OGIN-COLS@ MAKI:SHAPE MAKI-DTYPE:DF32 MAKI-LAYOUT:ROW MAKI:MIR-INPUT+
+      {: s:MIR:input-slot :}
    ni s MAKI:MIR-IN-REF IMP-BIND
-   s  IMP-IN-N @ cells IMP-INSLOT + !
+   s IMP-IN-N @ IMP-IN-SLOT!
    gi IMP-IN-N @ cells IMP-INGI + !
    IMP-IN-N @ 1+ IMP-IN-N ! ;
 
 : IMP-INIT-1 ( n -- ) {: iz:n :}
    iz OGI-ROWS@ {: rows:n :}  iz OGI-COLS@ {: cols:n :}
-   rows cols MAKI-DTYPE:DF32 MAKI-LAYOUT:ROW MAKI:MIR-INPUT+ {: s:n :}
+   rows cols MAKI:SHAPE MAKI-DTYPE:DF32 MAKI-LAYOUT:ROW MAKI:MIR-INPUT+ {: s:MIR:input-slot :}
    iz OGI-NAME@ s MAKI:MIR-IN-REF IMP-BIND
-   s iz cells IMP-SLOT + !
+   s iz IMP-INIT-SLOT!
    rows cols * {: e:n :}
    IMP-BUMP @ e + IMP-ARENA-CELLS > if E-ONNX-CAP throw then
    IMP-BUMP @ iz cells IMP-AOFF + !
@@ -154,36 +192,44 @@ variable SYN-N
 : IMP-ARITY-OK ( n n -- ) {: j:n want:n :}
    j OND-IN# want <> if E-ONNX-ARITY throw then ;
 
-: IMP-COMMIT ( n n n -- ) {: j:n rows:n cols:n :}   \ close the staged MIR node; bind its output
-   rows cols MAKI-DTYPE:DF32 MAKI-LAYOUT:ROW 0 1 MAKI:MIR-OP+ {: k:n :}
-   j OND-OUT@ k IMP-BIND ;
+: IMP-COMMIT ( n CAD-KIND:rows CAD-KIND:cols -- )   \ close the staged MIR node; bind its output
+   {: j:n rows:CAD-KIND:rows cols:CAD-KIND:cols :}
+   rows cols MAKI-DTYPE:DF32 MAKI-LAYOUT:ROW 0 1 MAKI:MIR-OP+ IMP-NODE+
+      {: k:CAD-KIND:node-id :}
+   j OND-OUT@ k MAKI:MIR-NODE-REF IMP-BIND ;
 
 \ movement nodes carry MV-PACK'd attrs and materialize only on a materialize/gathered
 \ verdict (the BRIDGE-MAT rule maki/cad.f uses), so the imported IR matches MODEL: capture.
 : IMP-MOVE-MAT ( n -- n ) {: attr:n :}         \ movement materialization flag from the packed verdict
    attr MAKI:MV-VD@ MAKI:MV-VD-REPORTS? if 1 else 0 then ;
 
-: IMP-COMMIT-MOVE ( n n n n -- ) {: j:n rows:n cols:n attr:n :}   \ close a movement node
-   rows cols MAKI-DTYPE:DF32 MAKI-LAYOUT:ROW  attr  attr IMP-MOVE-MAT  MAKI:MIR-OP+ {: k:n :}
-   j OND-OUT@ k IMP-BIND ;
+: IMP-COMMIT-MOVE ( n CAD-KIND:rows CAD-KIND:cols n -- )   \ close a movement node
+   {: j:n rows:CAD-KIND:rows cols:CAD-KIND:cols attr:n :}
+   rows cols MAKI-DTYPE:DF32 MAKI-LAYOUT:ROW  attr  attr IMP-MOVE-MAT  MAKI:MIR-OP+ IMP-NODE+
+      {: k:CAD-KIND:node-id :}
+   j OND-OUT@ k MAKI:MIR-NODE-REF IMP-BIND ;
 
 \ ---- internal node construction (Gemm composition builds a multi-node chain) ------
 \ These commit a staged node and return its MIR node ref WITHOUT binding an ONNX name;
 \ only the last node in a composed chain binds the graph output name (IMP-COMMIT).
-: MK-COMPUTE ( n n -- n ) {: rows:n cols:n :}   \ close a compute node (materialized); return its ref
-   rows cols MAKI-DTYPE:DF32 MAKI-LAYOUT:ROW 0 1 MAKI:MIR-OP+ ;
+: MK-COMPUTE ( CAD-KIND:rows CAD-KIND:cols -- MIR:operand-ref )
+   {: rows:CAD-KIND:rows cols:CAD-KIND:cols :}   \ close a compute node (materialized); return its ref
+   rows cols MAKI-DTYPE:DF32 MAKI-LAYOUT:ROW 0 1 MAKI:MIR-OP+
+   IMP-NODE+ MAKI:MIR-NODE-REF ;
 
-: MK-MOVE ( n n n -- n ) {: rows:n cols:n attr:n :}   \ close a movement node; return its ref
-   rows cols MAKI-DTYPE:DF32 MAKI-LAYOUT:ROW  attr  attr IMP-MOVE-MAT  MAKI:MIR-OP+ ;
+: MK-MOVE ( CAD-KIND:rows CAD-KIND:cols n -- MIR:operand-ref )
+   {: rows:CAD-KIND:rows cols:CAD-KIND:cols attr:n :}   \ close a movement node; return its ref
+   rows cols MAKI-DTYPE:DF32 MAKI-LAYOUT:ROW  attr  attr IMP-MOVE-MAT  MAKI:MIR-OP+
+   IMP-NODE+ MAKI:MIR-NODE-REF ;
 
 \ a synthetic 1x1 f32 constant holding v (written into the arena now); returns its MIR input ref
-: SYN-CONST ( r -- n ) {: v:r :}
+: SYN-CONST ( r -- MIR:operand-ref ) {: v:r :}
    SYN-N @ SYN-CAP >= if E-ONNX-CAP throw then
    IMP-BUMP @ 1+ IMP-ARENA-CELLS > if E-ONNX-CAP throw then
-   1 1 MAKI-DTYPE:DF32 MAKI-LAYOUT:ROW MAKI:MIR-INPUT+ {: s:n :}
+   1 1 MAKI:SHAPE MAKI-DTYPE:DF32 MAKI-LAYOUT:ROW MAKI:MIR-INPUT+ {: s:MIR:input-slot :}
    v IMP-ARENA IMP-BUMP @ T-SET
    IMP-BUMP @ SYN-N @ cells SYN-OFF + !
-   s SYN-N @ cells SYN-SLOT + !
+   s SYN-N @ SYN-SLOT!
    IMP-BUMP @ 1+ IMP-BUMP !
    SYN-N @ 1+ SYN-N !
    s MAKI:MIR-IN-REF ;
@@ -201,13 +247,13 @@ variable SYN-N
 \ resolved against the data rows (GA-IDX) THEN bridged to its float value - the executor
 \ reads FLOAT indices (EX-BUILD-IDX rounds), so negative-index resolution must happen at
 \ import, the same way SYN-CONST synthesizes a Gemm scalar. Returns the slot's MIR input ref.
-: SYN-IVEC ( n n -- n ) {: c:n rows:n :}       \ OGIC constant index + data rows -> MIR input ref
+: SYN-IVEC ( n n -- MIR:operand-ref ) {: c:n rows:n :}   \ OGIC constant index + data rows -> MIR input ref
    c OGIC-NVAL@ {: k:n :}
    SYN-N @ SYN-CAP >= if E-ONNX-CAP throw then
    IMP-BUMP @ k + IMP-ARENA-CELLS > if E-ONNX-CAP throw then
-   k 1 MAKI-DTYPE:DF32 MAKI-LAYOUT:ROW MAKI:MIR-INPUT+ {: s:n :}
+   k 1 MAKI:SHAPE MAKI-DTYPE:DF32 MAKI-LAYOUT:ROW MAKI:MIR-INPUT+ {: s:MIR:input-slot :}
    IMP-BUMP @ SYN-N @ cells SYN-OFF + !
-   s SYN-N @ cells SYN-SLOT + !
+   s SYN-N @ SYN-SLOT!
    k 0 ?do  c i OGIC-VAL@ rows GA-IDX s>f  IMP-ARENA  IMP-BUMP @ i +  T-SET  loop
    IMP-BUMP @ k + IMP-BUMP !
    SYN-N @ 1+ SYN-N !
@@ -220,27 +266,29 @@ variable SYN-N
 \ scalar. Add -> OP-ADD (full) / OP-BIAS (1xC); Mul -> OP-MUL (full) / OP-SCALE (1x1).
 \ Every other numpy shape (Rx1 column, 1x1 into Add, 1xC into Mul, ragged) is outside
 \ the legal classes and fails closed E-ONNX-SHAPE.
-: IMP-EW-REFS ( n -- n n ) {: j:n :}           \ attr+arity gate; resolve both operands -> r0 r1
+: IMP-EW-REFS ( n -- MIR:operand-ref MIR:operand-ref ) {: j:n :}   \ attr+arity gate; resolve both operands -> r0 r1
    j 0 IMP-ATTRS-OK  j 2 IMP-ARITY-OK
    j 0 OND-IN@ IMP-RESOLVE  j 1 OND-IN@ IMP-RESOLVE ;
 
-: IMP-EW-BC ( n n -- n ) {: r0:n r1:n :}        \ operand-1 broadcast class against operand-0's RxC
+: IMP-EW-BC ( MIR:operand-ref MIR:operand-ref -- n )
+   {: r0:MIR:operand-ref r1:MIR:operand-ref :}    \ operand-1 broadcast class against operand-0's RxC
    r1 IMP-REF-ROWS r1 IMP-REF-COLS  r0 IMP-REF-ROWS r0 IMP-REF-COLS  MAKI:BC-CLASS ;
 
-: IMP-EW-BUILD ( n opkind n n -- ) {: r0:n r1:n :}   \ ( j op r0 r1 ) commit op(r0,r1); output = operand-0 shape
+: IMP-EW-BUILD ( n opkind MIR:operand-ref MIR:operand-ref -- )
+   {: r0:MIR:operand-ref r1:MIR:operand-ref :}   \ ( j op r0 r1 ) commit op(r0,r1); output = operand-0 shape
    MAKI:MIR-OP-BEGIN {: j:n :}                       \ op family cannot bind: consumed off the top first
    r0 MAKI:MIR-IN+  r1 MAKI:MIR-IN+
    j  r0 IMP-REF-ROWS  r0 IMP-REF-COLS  IMP-COMMIT ;
 
 : IMP-ADD ( n -- ) {: j:n :}                   \ same shape -> OP-ADD ; 1xC second operand -> OP-BIAS
-   j IMP-EW-REFS {: r0:n r1:n :}
+   j IMP-EW-REFS {: r0:MIR:operand-ref r1:MIR:operand-ref :}
    r0 r1 IMP-EW-BC {: bc:n :}
    bc MAKI:BC-FULL = if j MAKI-OPKIND:ADD  r0 r1 IMP-EW-BUILD exit then
    bc MAKI:BC-ROW  = if j MAKI-OPKIND:BIAS r0 r1 IMP-EW-BUILD exit then
    E-ONNX-SHAPE throw ;
 
 : IMP-MUL ( n -- ) {: j:n :}                   \ same shape -> OP-MUL ; 1x1 second operand -> OP-SCALE
-   j IMP-EW-REFS {: r0:n r1:n :}
+   j IMP-EW-REFS {: r0:MIR:operand-ref r1:MIR:operand-ref :}
    r0 r1 IMP-EW-BC {: bc:n :}
    bc MAKI:BC-FULL   = if j MAKI-OPKIND:MUL   r0 r1 IMP-EW-BUILD exit then
    bc MAKI:BC-SCALAR = if j MAKI-OPKIND:SCALE r0 r1 IMP-EW-BUILD exit then
@@ -248,7 +296,7 @@ variable SYN-N
 
 : IMP-UNARY ( n opkind -- ) swap {: j:n :}     \ ( j op ) shape-preserving one-input op; op stays on the stack
    j 1 IMP-ARITY-OK
-   j 0 OND-IN@ IMP-RESOLVE {: r0:n :}
+   j 0 OND-IN@ IMP-RESOLVE {: r0:MIR:operand-ref :}
    MAKI:MIR-OP-BEGIN  r0 MAKI:MIR-IN+
    j  r0 IMP-REF-ROWS  r0 IMP-REF-COLS  IMP-COMMIT ;
 
@@ -273,50 +321,64 @@ variable SYN-N
    j OND-ALPHA@ F32-ONE =  and  j OND-BETA@ F32-ONE =  and ;
 
 : IMP-GEMM-SIMPLE ( n -- ) {: j:n :}           \ 2 inputs -> matmul; 3 -> linear (bias 1xN)
-   j 0 OND-IN@ IMP-RESOLVE {: rx:n :}
-   j 1 OND-IN@ IMP-RESOLVE {: rw:n :}
-   rx IMP-REF-COLS rw IMP-REF-ROWS <> if E-ONNX-SHAPE throw then
-   rx IMP-REF-ROWS {: m:n :}  rw IMP-REF-COLS {: nc:n :}
+   j 0 OND-IN@ IMP-RESOLVE {: rx:MIR:operand-ref :}
+   j 1 OND-IN@ IMP-RESOLVE {: rw:MIR:operand-ref :}
+   rx IMP-REF-COLS rw IMP-REF-ROWS MAKI:INNER-EQUAL? 0= if E-ONNX-SHAPE throw then
+   rx IMP-REF-ROWS {: m:CAD-KIND:rows :}
+   rw IMP-REF-COLS {: nc:CAD-KIND:cols :}
    j OND-IN# 2 = if
       MAKI-OPKIND:MATMUL MAKI:MIR-OP-BEGIN  rx MAKI:MIR-IN+  rw MAKI:MIR-IN+
       j m nc IMP-COMMIT exit then
-   j 2 OND-IN@ IMP-RESOLVE {: rb:n :}
-   rb IMP-REF-ROWS 1 <>  rb IMP-REF-COLS nc <>  or if E-ONNX-SHAPE throw then
+   j 2 OND-IN@ IMP-RESOLVE {: rb:MIR:operand-ref :}
+   rb IMP-REF-ROWS 1 MAKI:ROWS-IS? 0=
+   rb IMP-REF-COLS nc MAKI:COLS-EQUAL? 0= or if E-ONNX-SHAPE throw then
    MAKI-OPKIND:LINEAR MAKI:MIR-OP-BEGIN  rx MAKI:MIR-IN+  rw MAKI:MIR-IN+  rb MAKI:MIR-IN+
    j m nc IMP-COMMIT ;
 
 \ transA/transB: return the operand, transposed by an inserted TRANSPOSE node when the flag is set
-: GEMM-T ( n -- n ) {: r:n :}                  \ insert TRANSPOSE(r) -> r^T ref
+: GEMM-T ( MIR:operand-ref -- MIR:operand-ref ) {: r:MIR:operand-ref :}   \ insert TRANSPOSE(r) -> r^T ref
    MAKI-OPKIND:TRANSPOSE MAKI:MIR-OP-BEGIN  r MAKI:MIR-IN+
    MAKI:MV-TRANSPOSE MAKI:MVV-STAGED 0 0 MAKI:MV-PACK {: attr:n :}
-   r IMP-REF-COLS  r IMP-REF-ROWS  attr  MK-MOVE ;
-: GEMM-MAYBE-T ( n n -- n ) {: r:n t:n :}  t 0<> if r GEMM-T else r then ;
+   r IMP-REF-ROWS r IMP-REF-COLS MAKI:TRANSPOSE-SHAPE attr MK-MOVE ;
+: GEMM-MAYBE-T ( MIR:operand-ref n -- MIR:operand-ref )
+   {: r:MIR:operand-ref t:n :}  t 0<> if r GEMM-T else r then ;
 
 \ non-unit alpha/beta: insert an OP-SCALE node multiplying ref r by the scalar a (1x1 constant)
-: GEMM-SCALE ( n r -- n ) {: r:n a:r :}
-   a SYN-CONST {: cs:n :}
+: GEMM-SCALE ( MIR:operand-ref r -- MIR:operand-ref ) {: r:MIR:operand-ref a:r :}
+   a SYN-CONST {: cs:MIR:operand-ref :}
    MAKI-OPKIND:SCALE MAKI:MIR-OP-BEGIN  r MAKI:MIR-IN+  cs MAKI:MIR-IN+
    r IMP-REF-ROWS  r IMP-REF-COLS  MK-COMPUTE ;
 
 \ apply the C operand under beta: 0 drops C, 1 adds it as a bias, else scales C by beta then adds
-: GEMM-C ( n n -- n ) {: j:n acc:n :}          \ j acc -- result ref
+: GEMM-C ( n MIR:operand-ref -- MIR:operand-ref )
+   {: j:n acc:MIR:operand-ref :}                 \ j acc -- result ref
    j OND-BETA@ 0= if acc exit then
-   j 2 OND-IN@ IMP-RESOLVE {: rc:n :}
-   rc IMP-REF-ROWS 1 <>  rc IMP-REF-COLS acc IMP-REF-COLS <>  or if E-ONNX-SHAPE throw then
-   j OND-BETA@ F32-ONE <> if  rc j OND-BETA@ F32>F64 GEMM-SCALE  else rc  then  {: rc2:n :}
+   j 2 OND-IN@ IMP-RESOLVE {: rc:MIR:operand-ref :}
+   rc IMP-REF-ROWS 1 MAKI:ROWS-IS? 0=
+   rc IMP-REF-COLS acc IMP-REF-COLS MAKI:COLS-EQUAL? 0= or if E-ONNX-SHAPE throw then
+   j OND-BETA@ F32-ONE <> if
+      rc j OND-BETA@ F32>F64 GEMM-SCALE
+   else
+      rc
+   then {: rc2:MIR:operand-ref :}
    MAKI-OPKIND:BIAS MAKI:MIR-OP-BEGIN  acc MAKI:MIR-IN+  rc2 MAKI:MIR-IN+
    acc IMP-REF-ROWS  acc IMP-REF-COLS  MK-COMPUTE ;
 
 \ composed form: (transA?A^T:A) @ (transB?B^T:B), then alpha scale, then beta*C bias-add
 : IMP-GEMM-COMPOSED ( n -- ) {: j:n :}
-   j 0 OND-IN@ IMP-RESOLVE  j OND-TA@ GEMM-MAYBE-T {: ra:n :}
-   j 1 OND-IN@ IMP-RESOLVE  j OND-TB@ GEMM-MAYBE-T {: rb:n :}
-   ra IMP-REF-COLS rb IMP-REF-ROWS <> if E-ONNX-SHAPE throw then
-   ra IMP-REF-ROWS {: m:n :}  rb IMP-REF-COLS {: nc:n :}
+   j 0 OND-IN@ IMP-RESOLVE  j OND-TA@ GEMM-MAYBE-T {: ra:MIR:operand-ref :}
+   j 1 OND-IN@ IMP-RESOLVE  j OND-TB@ GEMM-MAYBE-T {: rb:MIR:operand-ref :}
+   ra IMP-REF-COLS rb IMP-REF-ROWS MAKI:INNER-EQUAL? 0= if E-ONNX-SHAPE throw then
+   ra IMP-REF-ROWS {: m:CAD-KIND:rows :}
+   rb IMP-REF-COLS {: nc:CAD-KIND:cols :}
    MAKI-OPKIND:MATMUL MAKI:MIR-OP-BEGIN  ra MAKI:MIR-IN+  rb MAKI:MIR-IN+
-   m nc MK-COMPUTE {: acc:n :}
-   j OND-ALPHA@ F32-ONE <> if  acc j OND-ALPHA@ F32>F64 GEMM-SCALE  else acc  then  {: acc2:n :}
-   j OND-IN# 3 = if  j acc2 GEMM-C  else acc2  then  {: acc3:n :}
+   m nc MK-COMPUTE {: acc:MIR:operand-ref :}
+   j OND-ALPHA@ F32-ONE <> if
+      acc j OND-ALPHA@ F32>F64 GEMM-SCALE
+   else
+      acc
+   then {: acc2:MIR:operand-ref :}
+   j OND-IN# 3 = if j acc2 GEMM-C else acc2 then {: acc3:MIR:operand-ref :}
    j OND-OUT@ acc3 IMP-BIND ;
 
 : IMP-GEMM ( n -- ) {: j:n :}
@@ -359,12 +421,12 @@ variable SYN-N
    j 1 OND-IN@ OGIC-FIND 0= if E-ONNX-DYNSHAPE throw then   \ shape not a static constant -> dynamic
    {: c:n :}
    c OGIC-NVAL@ 2 <> if E-ONNX-RANK throw then              \ the 2D IR needs a [R,C] target
-   j 0 OND-IN@ IMP-RESOLVE {: r0:n :}
-   c 0 OGIC-VAL@  c 1 OGIC-VAL@  r0 IMP-REF-ROWS  r0 IMP-REF-COLS  RS-RESOLVE {: tr:n tc:n :}
-   r0 IMP-REF-ROWS r0 IMP-REF-COLS *  tr tc *  <> if E-ONNX-SHAPE throw then   \ element count must agree
+   j 0 OND-IN@ IMP-RESOLVE {: r0:MIR:operand-ref :}
+   c 0 OGIC-VAL@  c 1 OGIC-VAL@  r0 IMP-REF-NROWS  r0 IMP-REF-NCOLS  RS-RESOLVE {: tr:n tc:n :}
+   r0 IMP-REF-NROWS r0 IMP-REF-NCOLS *  tr tc *  <> if E-ONNX-SHAPE throw then   \ element count must agree
    MAKI-OPKIND:RESHAPE MAKI:MIR-OP-BEGIN  r0 MAKI:MIR-IN+
    MAKI:MV-RESHAPE MAKI:MVV-FREE tr tc MAKI:MV-PACK {: attr:n :}   \ row-major reshape is a free rewrite
-   j  tr tc  attr  IMP-COMMIT-MOVE ;
+   j  tr tc MAKI:SHAPE  attr  IMP-COMMIT-MOVE ;
 
 : IMP-TRANSPOSE ( n -- ) {: j:n :}             \ 2D transpose; perm absent (reverse) or exactly [1,0]
    j ATTR-PERM IMP-ATTRS-OK
@@ -374,22 +436,22 @@ variable SYN-N
       j OND-PERM0@ 1 <>  j OND-PERM1@ 0 <>  or if E-ONNX-ATTR throw then
    then
    j 1 IMP-ARITY-OK
-   j 0 OND-IN@ IMP-RESOLVE {: r0:n :}
+   j 0 OND-IN@ IMP-RESOLVE {: r0:MIR:operand-ref :}
    MAKI-OPKIND:TRANSPOSE MAKI:MIR-OP-BEGIN  r0 MAKI:MIR-IN+
    MAKI:MV-TRANSPOSE MAKI:MVV-STAGED 0 0 MAKI:MV-PACK {: attr:n :}
-   j  r0 IMP-REF-COLS  r0 IMP-REF-ROWS  attr  IMP-COMMIT-MOVE ;
+   j  r0 IMP-REF-ROWS r0 IMP-REF-COLS MAKI:TRANSPOSE-SHAPE  attr  IMP-COMMIT-MOVE ;
 
 : IMP-CONCAT ( n -- ) {: j:n :}                \ 2-input row concat (axis 0): RxC + SxC -> (R+S)xC
    j ATTR-AXIS IMP-ATTRS-OK
    j OND-ATTRS@ ATTR-AXIS and 0= if E-ONNX-ATTR throw then  \ Concat requires an axis
    j OND-AXIS@ 0 <> if E-ONNX-ATTR throw then               \ only axis 0 (row append) in v1
    j 2 IMP-ARITY-OK
-   j 0 OND-IN@ IMP-RESOLVE {: ra:n :}
-   j 1 OND-IN@ IMP-RESOLVE {: rb:n :}
-   ra IMP-REF-COLS rb IMP-REF-COLS <> if E-ONNX-SHAPE throw then
+   j 0 OND-IN@ IMP-RESOLVE {: ra:MIR:operand-ref :}
+   j 1 OND-IN@ IMP-RESOLVE {: rb:MIR:operand-ref :}
+   ra IMP-REF-COLS rb IMP-REF-COLS MAKI:COLS-EQUAL? 0= if E-ONNX-SHAPE throw then
    MAKI-OPKIND:CONCAT MAKI:MIR-OP-BEGIN  ra MAKI:MIR-IN+  rb MAKI:MIR-IN+
    MAKI:MV-CONCAT MAKI:MVV-MATERIALIZE 0 0 MAKI:MV-PACK {: attr:n :}
-   j  ra IMP-REF-ROWS rb IMP-REF-ROWS +  ra IMP-REF-COLS  attr  IMP-COMMIT-MOVE ;
+   j  ra IMP-REF-ROWS rb IMP-REF-ROWS MAKI:ROWS+  ra IMP-REF-COLS  attr  IMP-COMMIT-MOVE ;
 
 \ Slice-13 takes starts/ends (+ optional axes/steps) as rank-1 INT64 operands. They are
 \ static graph constants (the OGIC table); a runtime-computed range fails E-ONNX-DYNSHAPE.
@@ -418,20 +480,20 @@ variable SYN-N
    nin 5 >= if j 4 OND-IN@ SLICE-STEP1 then     \ steps present -> must be [1]
    j 1 OND-IN@ SLICE-VEC1 {: st:n :}
    j 2 OND-IN@ SLICE-VEC1 {: en:n :}
-   j 0 OND-IN@ IMP-RESOLVE {: r0:n :}
-   r0 IMP-REF-ROWS {: rows:n :}  r0 IMP-REF-COLS {: cols:n :}
+   j 0 OND-IN@ IMP-RESOLVE {: r0:MIR:operand-ref :}
+   r0 IMP-REF-NROWS {: rows:n :}  r0 IMP-REF-NCOLS {: cols:n :}
    st rows SLICE-CLAMP {: s0:n :}  en rows SLICE-CLAMP {: s1:n :}
    s0 s1 >= if E-ONNX-SHAPE throw then          \ empty (s0=s1) or inverted clamped range: v1 fail-closed
    MAKI-OPKIND:SLICE MAKI:MIR-OP-BEGIN  r0 MAKI:MIR-IN+
    MAKI:MV-SLICE  MAKI-LAYOUT:ROW s0 cols MAKI:MV-SLICE-VERDICT  s0 s1 MAKI:MV-PACK {: attr:n :}
-   j  s1 s0 -  cols  attr  IMP-COMMIT-MOVE ;
+   j  s1 s0 -  cols MAKI:SHAPE  attr  IMP-COMMIT-MOVE ;
 
 \ Gather (axis 0) selects rows of the data operand by an INT64 indices operand. The
 \ executor reads FLOAT indices, so the int64 constant is materialized into the float
 \ arena as a Kx1 slot (SYN-IVEC, indices resolved against the data rows) at import.
 \ axis absent-or-0; runtime indices -> E-ONNX-DYNSHAPE; a FLOAT indices initializer
 \ (wrong dtype) -> E-ONNX-DTYPE; an out-of-range index -> E-ONNX-SHAPE (GA-IDX).
-: GATHER-IDX ( n n -- n n ) {: ni:n rows:n :}  \ indices name slot + data rows -> slot ref + count
+: GATHER-IDX ( n n -- MIR:operand-ref n ) {: ni:n rows:n :}   \ indices name slot + data rows -> slot ref + count
    ni OGIC-FIND if {: c:n :}
       c OGIC-NVAL@ {: k:n :}  c rows SYN-IVEC  k  exit then
    drop
@@ -444,11 +506,11 @@ variable SYN-N
       j OND-AXIS@ 0 <> if E-ONNX-ATTR throw then \ axis present -> must be 0
    then
    j 2 IMP-ARITY-OK
-   j 0 OND-IN@ IMP-RESOLVE {: rx:n :}
-   j 1 OND-IN@  rx IMP-REF-ROWS  GATHER-IDX {: ridx:n k:n :}
+   j 0 OND-IN@ IMP-RESOLVE {: rx:MIR:operand-ref :}
+   j 1 OND-IN@  rx IMP-REF-NROWS  GATHER-IDX {: ridx:MIR:operand-ref k:n :}
    MAKI-OPKIND:GATHER MAKI:MIR-OP-BEGIN  rx MAKI:MIR-IN+  ridx MAKI:MIR-IN+
    MAKI:MV-GATHER MAKI:MVV-GATHERED 0 0 MAKI:MV-PACK {: attr:n :}
-   j  k  rx IMP-REF-COLS  attr  IMP-COMMIT-MOVE ;
+   j  k  rx IMP-REF-NCOLS MAKI:SHAPE  attr  IMP-COMMIT-MOVE ;
 
 \ one node: LOWER (compute) + MOVE-KIND (movement) are the fail-closed coverage; then IR map
 : IMP-NODE ( n -- ) {: j:n :}
@@ -469,10 +531,13 @@ variable SYN-N
 \ ---- v1 output contract: one graph output, and it is the last node -----------
 : IMP-CHECK-OUT ( -- )
    OGO# 1 <> if E-ONNX-OUTPUT throw then
-   MAKI:MIR-N@ 0= if E-ONNX-OUTPUT throw then
-   0 OGO-NAME@ IMP-RESOLVE {: r:n :}
-   r MAKI:MIR-N@ 1- <> if E-ONNX-OUTPUT throw then
-   r IMP-REF-ROWS 0 OGO-ROWS@ <>  r IMP-REF-COLS 0 OGO-COLS@ <>  or
+   IMP-NODE-N @ 0= if E-ONNX-OUTPUT throw then
+   0 OGO-NAME@ IMP-RESOLVE {: r:MIR:operand-ref :}
+   r MAKI:MIR-REF-INPUT? if E-ONNX-OUTPUT throw then
+   r MAKI:MIR-REF-NODE
+   IMP-NODE-N @ 1- IMP-NODE@ MAKI:MIR-NODE= 0= if E-ONNX-OUTPUT throw then
+   r IMP-REF-ROWS 0 OGO-ROWS@ MAKI:ROWS-IS? 0=
+   r IMP-REF-COLS 0 OGO-COLS@ MAKI:COLS-IS? 0= or
       if E-ONNX-SHAPE throw then ;
 
 public
@@ -506,24 +571,30 @@ public
 : IN-CK ( n -- n )
    dup 0 < over IMP-IN-N @ >= or if E-ONNX-IDX throw then ;
 
-: IN-SLOT@ ( n -- n )  IN-CK cells IMP-INSLOT + @ ;
+: IN-SLOT@ ( n -- MIR:input-slot )  IN-CK IMP-IN-SLOT@ ;
 : IN-NAME$ ( n -- ptr u8 n )  IN-CK cells IMP-INGI + @  OGIN-NAME@ OGN$ ;
 
 \ ---- materialized initializers -------------------------------------------------
 : INIT# ( -- n )  OGI# ;
-: INIT-SLOT@ ( n -- n )  OGI-CK cells IMP-SLOT + @ ;
+: INIT-SLOT@ ( n -- MIR:input-slot )  OGI-CK IMP-INIT-SLOT@ ;
 : INIT-DATA@ ( n -- ptr a )  OGI-CK cells IMP-AOFF + @  IMP-ARENA swap T-AT ;
 
 \ bind every initializer buffer + synthetic Gemm constant to its executor slot (after MAKI:EX-RESET)
 : BIND-INITS ( -- )
    INIT# 0 ?do  i INIT-DATA@ i INIT-SLOT@ MAKI:EX-BIND  loop
    SYN-N @ 0 ?do
-      IMP-ARENA i cells SYN-OFF + @ T-AT   i cells SYN-SLOT + @   MAKI:EX-BIND
+      IMP-ARENA i cells SYN-OFF + @ T-AT   i SYN-SLOT@   MAKI:EX-BIND
    loop ;
 
 \ ---- the imported model's output node -------------------------------------------
-: OUT-NODE@ ( -- n )
-   MAKI:MIR-N@ 0= if E-ONNX-OUTPUT throw then
-   MAKI:MIR-N@ 1- ;
+: NODE# ( -- n )  IMP-NODE-N @ ;
+
+: NODE@ ( n -- CAD-KIND:node-id )
+   dup 0 < over IMP-NODE-N @ >= or if E-ONNX-IDX throw then
+   IMP-NODE@ ;
+
+: OUT-NODE@ ( -- CAD-KIND:node-id )
+   IMP-NODE-N @ 0= if E-ONNX-OUTPUT throw then
+   IMP-NODE-N @ 1- IMP-NODE@ ;
 
 end-package

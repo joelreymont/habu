@@ -51,9 +51,9 @@ package MAKI
 
 \ ---- descriptor seeding + plan-store probes (read the captured IR node facts) ----
 : PCT-DESC ( n n -- tensor ) {: rows:n cols:n :}   \ f32 row-major planning descriptor
-   rows cols MAKI-DTYPE:DF32 MAKI-LAYOUT:ROW TENSOR:TV-DESC ;
-: PCT-IN ( n n -- n ) {: node:n k:n :}  node k TENSOR:PLAN-IN@ TENSOR:tensor>N ;   \ k-th input handle
-: PCT-OUT ( n -- n ) {: node:n :}  node TENSOR:PLAN-OUT@ TENSOR:tensor>N ;         \ output handle
+   rows cols SHAPE MAKI-DTYPE:DF32 MAKI-LAYOUT:ROW SPACE-HOST TENSOR:TV-DESC ;
+: PCT-IN ( n n -- tensor ) {: node:n k:n :}  node k TENSOR:PLAN-IN@ ;   \ k-th input handle
+: PCT-OUT ( n -- tensor ) {: node:n :}  node TENSOR:PLAN-OUT@ ;         \ output handle
 
 \ ---- scenario drivers (seed descriptors, run the block, assert the captured plan) ----
 \ PCT-SKIP: a checker-verified 5-node plan with the residual re-rooted onto x (skip) and
@@ -73,11 +73,11 @@ package MAKI
    3 TENSOR:PLAN-OP@ OPKIND>N OP-RESIDUAL-ADD T=
    4 TENSOR:PLAN-OP@ OPKIND>N OP-RMSNORM      T=
    3 TENSOR:PLAN-IN-COUNT@ 2 T=
-   0 0 PCT-IN x TENSOR:tensor>N T=             \ node0.in0 = x
-   3 1 PCT-IN x TENSOR:tensor>N T=             \ node3.in1 = x   (the skip)
-   3 0 PCT-IN 2 PCT-OUT   T=            \ node3.in0 = node2 output (data = running value)
-   y TENSOR:TV-ROWS@ 4 T=  y TENSOR:TV-COLS@ 8 T=     \ shape flows through the whole composition
-   4 TENSOR:PLAN-OUT@ TENSOR:TV-ROWS@ 4 T=  4 TENSOR:PLAN-OUT@ TENSOR:TV-COLS@ 8 T= ;
+   0 0 PCT-IN x TENSOR:TV-EQUAL? TTRUE             \ node0.in0 = x
+   3 1 PCT-IN x TENSOR:TV-EQUAL? TTRUE             \ node3.in1 = x   (the skip)
+   3 0 PCT-IN 2 PCT-OUT TENSOR:TV-EQUAL? TTRUE            \ node3.in0 = node2 output (data = running value)
+   y TENSOR:TV-ROWS@ ROWS-RAW 4 T=  y TENSOR:TV-COLS@ COLS-RAW 8 T=     \ shape flows through the whole composition
+   4 TENSOR:PLAN-OUT@ TENSOR:TV-ROWS@ ROWS-RAW 4 T=  4 TENSOR:PLAN-OUT@ TENSOR:TV-COLS@ COLS-RAW 8 T= ;
 
 \ PCT-BRANCH: a DAG (re-root + fan-out + join) the v1 capture cannot express.
 : PCT-RUN-BRANCH ( -- )
@@ -90,12 +90,12 @@ package MAKI
    0 TENSOR:PLAN-OP@ OPKIND>N OP-GELU   T=
    1 TENSOR:PLAN-OP@ OPKIND>N OP-LINEAR T=
    2 TENSOR:PLAN-OP@ OPKIND>N OP-ADD    T=
-   0 0 PCT-IN x TENSOR:tensor>N T=             \ node0.in0 = x   (gelu re-rooted onto x)
-   1 0 PCT-IN x TENSOR:tensor>N T=             \ node1.in0 = x   (x fanned out again)
-   2 0 PCT-IN 1 PCT-OUT   T=            \ node2.in0 = linear output
-   2 1 PCT-IN 0 PCT-OUT   T=            \ node2.in1 = gelu output
+   0 0 PCT-IN x TENSOR:TV-EQUAL? TTRUE             \ node0.in0 = x   (gelu re-rooted onto x)
+   1 0 PCT-IN x TENSOR:TV-EQUAL? TTRUE             \ node1.in0 = x   (x fanned out again)
+   2 0 PCT-IN 1 PCT-OUT TENSOR:TV-EQUAL? TTRUE            \ node2.in0 = linear output
+   2 1 PCT-IN 0 PCT-OUT TENSOR:TV-EQUAL? TTRUE            \ node2.in1 = gelu output
    2 TENSOR:PLAN-IN-COUNT@ 2 T=
-   y TENSOR:TV-ROWS@ 4 T=  y TENSOR:TV-COLS@ 8 T= ;
+   y TENSOR:TV-ROWS@ ROWS-RAW 4 T=  y TENSOR:TV-COLS@ COLS-RAW 8 T= ;
 
 T-RESET
 PCT-RUN-SKIP

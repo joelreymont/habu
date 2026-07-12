@@ -14,6 +14,8 @@ package MAKI
 variable SVT-VA  variable SVT-VU
 : SVT-SAVE ( ptr u8 n -- )  SVT-VU ! SVT-VA ! ;
 : SVT-IN ( ptr u8 n -- )  SVT-VA @ SVT-VU @ 2swap CONTAINS? TTRUE ;
+: SVT-NODE-REF ( n -- MIR:operand-ref )  MIR-NODE-ID MIR-NODE-REF ;
+: SVT-SLOT-REF ( n -- MIR:operand-ref )  MIR-SLOT-ID MIR-IN-REF ;
 
 \ ---- fail-closed probe ------------------------------------------------------
 : SVT-TRY-CALIB ( -- )  s" not-a-number" SV-FBR-PARSE drop ;
@@ -31,11 +33,11 @@ s" 1" SV-FBR-PARSE 1 T=
 \   save(n0)      = 2 * 8elems * 4B = 64B
 \   recompute(n0) = relu flops(1)*8 * 1  +  upstream i0 bytes(32) = 40B  -> RECOMPUTE
 MODEL: RG ( x:2x4 -- y ) RELU GELU ;
-0 SAVED-SAVE-COST      64 T=
-0 SAVED-RECOMPUTE-COST 40 T=
-0 false SAVED-DECIDE   SV-RECOMPUTE T=
+0 SVT-NODE-REF SAVED-SAVE-COST      64 T=
+0 SVT-NODE-REF SAVED-RECOMPUTE-COST 40 T=
+0 SVT-NODE-REF false SAVED-DECIDE   SV-RECOMPUTE T=
 \ relu's saved input is the model input i0 (ref -1): not recomputable -> SAVE
-0 MIR-IN-REF false SAVED-DECIDE SV-SAVE T=
+0 SVT-SLOT-REF false SAVED-DECIDE SV-SAVE T=
 REPORT:NEW SAVED-INTO REPORT:RENDER SVT-SAVE
 s" backward.recompute: n0 (save 64B > recompute 40B)" SVT-IN
 s" backward.saved: i0 (model input; not recomputable)" SVT-IN
@@ -44,17 +46,17 @@ s" backward.saved: i0 (model input; not recomputable)" SVT-IN
 \   save(n0)      = 2 * 32elems * 4B = 256B
 \   recompute(n0) = softmax flops(5)*32 * 1  +  upstream i0 bytes(128) = 288B -> SAVE
 MODEL: SMX ( x:4x8 -- y ) SOFTMAX-ROW ;
-0 SAVED-SAVE-COST      256 T=
-0 SAVED-RECOMPUTE-COST 288 T=
-0 false SAVED-DECIDE   SV-SAVE T=
+0 SVT-NODE-REF SAVED-SAVE-COST      256 T=
+0 SVT-NODE-REF SAVED-RECOMPUTE-COST 288 T=
+0 SVT-NODE-REF false SAVED-DECIDE   SV-SAVE T=
 REPORT:NEW SAVED-INTO REPORT:RENDER SVT-SAVE
 s" backward.saved: n0 (save 256B < recompute 288B)" SVT-IN
 
 \ ---- MATMUL (2x3, 3x4): operands ALWAYS saved by the policy floor --------------
 MODEL: MM ( x:2x3 w:3x4 -- y ) MATMUL ;
 \ both operands are model inputs; the floor forces SAVE regardless of any comparison
-0 MIR-IN-REF true SAVED-DECIDE SV-SAVE T=
-1 MIR-IN-REF true SAVED-DECIDE SV-SAVE T=
+0 SVT-SLOT-REF true SAVED-DECIDE SV-SAVE T=
+1 SVT-SLOT-REF true SAVED-DECIDE SV-SAVE T=
 REPORT:NEW SAVED-INTO REPORT:RENDER SVT-SAVE
 s" backward.saved: i0 (matmul operand; policy floor)" SVT-IN
 s" backward.saved: i1 (matmul operand; policy floor)" SVT-IN

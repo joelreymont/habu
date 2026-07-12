@@ -71,8 +71,9 @@ variable CK-BUILT?
    MIR-N@ CK-NF !
    FP-RESET FP-BUILD
    CK-NF @ 0 ?do
-      i FP-RID@                  i cells CK-SEG + !
-      i MIR-MAT@ if 1 else 0 then  i cells CK-BND + !
+      i MIR-NODE-ID {: node:CAD-KIND:node-id :}
+      node FP-RID@                  i cells CK-SEG + !
+      node MIR-MAT@ if 1 else 0 then  i cells CK-BND + !
    loop
    FP-REGION-COUNT CK-SEGS ! ;
 
@@ -97,7 +98,8 @@ variable CK-IMAX     \ max interior buffers in one segment
 variable CK-W        \ current segment's interior cells (plan walk)
 variable CK-I        \ current segment's interior buffers (plan walk)
 
-: CK-PLACE ( n -- ) {: nd:n :}          \ persistent slot at the bump pointer
+: CK-PLACE ( n -- ) {: raw:n :}          \ persistent slot at the bump pointer
+   raw MIR-NODE-ID {: nd:CAD-KIND:node-id :}
    CK-BUMP @ nd EX-OFF!
    CK-BUMP @ nd EX-NODE-ELEMS + CK-BUMP ! ;
 
@@ -108,7 +110,8 @@ variable CK-I        \ current segment's interior buffers (plan walk)
    loop
    CK-BUMP @ CK-SCR0 ! ;
 
-: CK-INT-PLACE ( n -- ) {: nd:n :}      \ interior slot inside the scratch window
+: CK-INT-PLACE ( n -- ) {: raw:n :}      \ interior slot inside the scratch window
+   raw MIR-NODE-ID {: nd:CAD-KIND:node-id :}
    CK-SCR0 @ CK-W @ + nd EX-OFF!
    CK-W @ nd EX-NODE-ELEMS + CK-W !
    CK-I @ 1+ CK-I ! ;
@@ -144,13 +147,13 @@ public
 private
 
 : CK-INT-RUN ( n -- ) {: nd:n :}        \ run one interior; it now owns the scratch
-   nd EX-STEP  nd CK-SEG@ CK-CUR ! ;
+   nd MIR-NODE-ID EX-STEP  nd CK-SEG@ CK-CUR ! ;
 
 \ re-run one segment's interiors into the scratch window (deterministic ->
 \ bit-identical to the discarded forward values)
 : CK-REMAT ( n -- ) {: s:n :}
    s cells CK-HI + @ 1+  s cells CK-LO + @ ?do
-      i CK-BND? 0= if i EX-STEP then
+      i CK-BND? 0= if i MIR-NODE-ID EX-STEP then
    loop
    s CK-CUR !
    CK-REMATS @ 1+ CK-REMATS ! ;
@@ -158,27 +161,29 @@ private
 \ ---- the one interior segment a backward node reads (or -1) ------------------
 variable CK-NEED-V
 
-: CK-REF-SEG ( n -- n ) {: ref:n :}     \ operand ref -> needed interior segment or -1
+: CK-REF-SEG ( MIR:operand-ref -- n ) {: ref:MIR:operand-ref :}   \ operand ref -> needed interior segment or -1
    ref MIR-REF-INPUT? if -1 exit then
-   ref CK-NF @ >= if -1 exit then       \ backward operand: persistent buffer
-   ref CK-BND? if -1 exit then          \ boundary: saved buffer
-   ref CK-SEG@ ;
+   ref MIR-REF-NODE NODE>RAW {: raw:n :}
+   raw CK-NF @ >= if -1 exit then       \ backward operand: persistent buffer
+   raw CK-BND? if -1 exit then          \ boundary: saved buffer
+   raw CK-SEG@ ;
 
-: CK-NEED-1 ( n -- ) {: ref:n :}
+: CK-NEED-1 ( MIR:operand-ref -- ) {: ref:MIR:operand-ref :}
    ref CK-REF-SEG {: s:n :}
    s 0< if exit then
    CK-NEED-V @ 0< if s CK-NEED-V ! exit then
    CK-NEED-V @ s <> if E-CK-CROSS throw then ;
 
-: CK-NEED ( n -- n ) {: nd:n :}
+: CK-NEED ( n -- n ) {: raw:n :}
+   raw MIR-NODE-ID {: nd:CAD-KIND:node-id :}
    -1 CK-NEED-V !
-   nd MIR-IN-COUNT@ 0 ?do  nd i MIR-IN@ CK-NEED-1  loop
+   nd MIR-IN-COUNT@ 0 ?do  nd i MIR-INPUT-IDX MIR-IN@ CK-NEED-1  loop
    CK-NEED-V @ ;
 
 : CK-BWD-STEP ( n -- ) {: nd:n :}
    nd CK-NEED {: s:n :}
    s 0<  s CK-CUR @ =  or 0= if s CK-REMAT then
-   nd EX-STEP ;
+   nd MIR-NODE-ID EX-STEP ;
 
 public
 
@@ -187,7 +192,7 @@ public
    CK-CK
    -1 CK-CUR !
    CK-NF @ 0 ?do
-      i CK-BND? if i EX-STEP else i CK-INT-RUN then
+      i CK-BND? if i MIR-NODE-ID EX-STEP else i CK-INT-RUN then
    loop ;
 
 : CK-BWD ( -- )

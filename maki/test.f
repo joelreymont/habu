@@ -166,6 +166,8 @@ TEST:SUITE maki/ablate-fusion-test.f
 TEST:;SUITE
 TEST:SUITE maki/report-test.f
 TEST:;SUITE
+TEST:SUITE maki/cad-kinds-test.f
+TEST:;SUITE
 TEST:SUITE maki/cad-test.f
 TEST:;SUITE
 TEST:SUITE maki/cad-bind-test.f

@@ -55,7 +55,7 @@ require maki/scatter.f
 -5131 constant E-EX-UNSUP     \ op-kind has no host-executable reference (cast / decode)
 -5132 constant E-EX-UNBOUND   \ an operand names a model-input slot with no bound buffer
 -5133 constant E-EX-SLOT      \ model-input slot index out of range
--5134 constant E-EX-NODE      \ node index out of range (EX-OUT@)
+-5134 constant E-EX-NODE      \ node index out of range (EX-OUT@ / EX-OFF! / EX-STEP)
 
 package MAKI
 private
@@ -74,28 +74,34 @@ create EX-IN-SET EX-IN-CAP cells allot          \ per-slot bound flag (0 = unbou
 create EX-IDX    EX-IDX-CAP cells allot          \ int index scratch (gather/scatter)
 
 \ ---- slot / node addressing ------------------------------------------------
-: EX-IN-CK ( n -- n )                   \ validate a model-input slot index
+: EX-IN-CK ( n -- n )                   \ validate a raw model-input slot index
    dup 0 < over MIR-IN-SLOTS@ >= or if E-EX-SLOT throw then ;
 
-: EX-SLOT-PTR ( n -- ptr a ) {: s:n :}  \ bound buffer for an input slot (fail closed)
-   s EX-IN-CK drop
-   s cells EX-IN-SET + @ 0= if E-EX-UNBOUND throw then
-   EX-IN-PTR s cells + @ ;
+: EX-SLOT-PTR ( MIR:input-slot -- ptr a ) {: s:MIR:input-slot :}   \ bound buffer (fail closed)
+   s SLOT>RAW EX-IN-CK {: raw:n :}
+   raw cells EX-IN-SET + @ 0= if E-EX-UNBOUND throw then
+   EX-IN-PTR raw cells + @ ;
 
-: EX-OFF@ ( n -- n )        cells EX-OFF + @ ;
-: EX-NODE-PTR ( n -- ptr a )  EX-OFF@ {: off:n :}  EX-ARENA off T-AT ;
+: EX-OFF@ ( CAD-KIND:node-id -- n )  NODE>RAW cells EX-OFF + @ ;
+: EX-NODE-PTR ( CAD-KIND:node-id -- ptr a )  EX-OFF@ {: off:n :}  EX-ARENA off T-AT ;
 
 \ ---- operand-ref descriptor (input slot or producer node) -------------------
-: EX-REF-PTR ( n -- ptr a ) {: r:n :}
-   r MIR-REF-INPUT? if r MIR-REF-SLOT EX-SLOT-PTR else r EX-NODE-PTR then ;
-: EX-REF-ROWS ( n -- n ) {: r:n :}
-   r MIR-REF-INPUT? if r MIR-REF-SLOT MIR-SLOT-ROWS@ else r MIR-ROWS@ then ;
-: EX-REF-COLS ( n -- n ) {: r:n :}
-   r MIR-REF-INPUT? if r MIR-REF-SLOT MIR-SLOT-COLS@ else r MIR-COLS@ then ;
-: EX-REF-ELEMS ( n -- n ) {: r:n :}  r EX-REF-ROWS  r EX-REF-COLS  * ;
+: EX-REF-PTR ( MIR:operand-ref -- ptr a ) {: r:MIR:operand-ref :}
+   r MIR-REF-INPUT? if r MIR-REF-SLOT EX-SLOT-PTR else r MIR-REF-NODE EX-NODE-PTR then ;
+: EX-REF-ROWS ( MIR:operand-ref -- CAD-KIND:rows ) {: r:MIR:operand-ref :}
+   r MIR-REF-INPUT? if r MIR-REF-SLOT MIR-SLOT-ROWS@ else r MIR-REF-NODE MIR-ROWS@ then ;
+: EX-REF-COLS ( MIR:operand-ref -- CAD-KIND:cols ) {: r:MIR:operand-ref :}
+   r MIR-REF-INPUT? if r MIR-REF-SLOT MIR-SLOT-COLS@ else r MIR-REF-NODE MIR-COLS@ then ;
+: EX-REF-ELEMS ( MIR:operand-ref -- n ) {: r:MIR:operand-ref :}
+   r EX-REF-ROWS  r EX-REF-COLS  SHAPE-ELEMS DIM-RAW ;
+: EX-REF-NROWS ( MIR:operand-ref -- n )  EX-REF-ROWS ROWS-RAW ;
+: EX-REF-NCOLS ( MIR:operand-ref -- n )  EX-REF-COLS COLS-RAW ;
+: EX-NODE-NROWS ( CAD-KIND:node-id -- n )  MIR-ROWS@ ROWS-RAW ;
+: EX-NODE-NCOLS ( CAD-KIND:node-id -- n )  MIR-COLS@ COLS-RAW ;
 
 public
-: EX-NODE-ELEMS ( n -- n ) {: nd:n :}  nd MIR-ROWS@ nd MIR-COLS@ * ;
+: EX-NODE-ELEMS ( CAD-KIND:node-id -- n ) {: nd:CAD-KIND:node-id :}
+   nd MIR-ROWS@ nd MIR-COLS@ SHAPE-ELEMS DIM-RAW ;
 private
 
 \ ---- elementwise: scalar reference mapped over elements ---------------------
@@ -121,8 +127,8 @@ private
       gelu-bwd2 OF E-EX-UNSUP throw ENDOF
    ;MATCH ;
 
-: EX-U ( n -- ) {: nd:n :}
-   nd 0 MIR-IN@ EX-REF-PTR {: ap:ptr :}
+: EX-U ( CAD-KIND:node-id -- ) {: nd:CAD-KIND:node-id :}
+   nd 0 MIR-INPUT-IDX MIR-IN@ EX-REF-PTR {: ap:ptr :}
    nd EX-NODE-PTR {: ob:ptr :}
    nd EX-NODE-ELEMS 0 ?do  ap i T-GET  nd MIR-OP@ EX-U-EL  ob i T-SET  loop ;
 
@@ -152,11 +158,11 @@ private
       scatter-add OF E-EX-UNSUP throw ENDOF
    ;MATCH ;
 
-: EX-EW2 ( n -- ) {: nd:n :}
-   nd 0 MIR-IN@ EX-REF-PTR {: ap:ptr :}
-   nd 1 MIR-IN@ {: bref:n :}
-   bref EX-REF-PTR {: bp:ptr :}  bref EX-REF-ROWS {: br:n :}  bref EX-REF-COLS {: bc:n :}
-   nd EX-NODE-PTR {: ob:ptr :}  nd MIR-COLS@ {: C:n :}
+: EX-EW2 ( CAD-KIND:node-id -- ) {: nd:CAD-KIND:node-id :}
+   nd 0 MIR-INPUT-IDX MIR-IN@ EX-REF-PTR {: ap:ptr :}
+   nd 1 MIR-INPUT-IDX MIR-IN@ {: bref:MIR:operand-ref :}
+   bref EX-REF-PTR {: bp:ptr :}  bref EX-REF-NROWS {: br:n :}  bref EX-REF-NCOLS {: bc:n :}
+   nd EX-NODE-PTR {: ob:ptr :}  nd EX-NODE-NCOLS {: C:n :}
    nd EX-NODE-ELEMS 0 ?do
       ap i T-GET   bp br bc  i C /  i C mod  EX-BC@   nd MIR-OP@ EX-EW2-EL   ob i T-SET
    loop ;
@@ -182,10 +188,10 @@ private
       gelu-bwd2 OF E-EX-UNSUP throw ENDOF
    ;MATCH ;
 
-: EX-ROW-FWD ( n -- ) {: nd:n :}
-   nd 0 MIR-IN@ EX-REF-PTR {: xb:ptr :}
+: EX-ROW-FWD ( CAD-KIND:node-id -- ) {: nd:CAD-KIND:node-id :}
+   nd 0 MIR-INPUT-IDX MIR-IN@ EX-REF-PTR {: xb:ptr :}
    nd EX-NODE-PTR {: ob:ptr :}
-   nd MIR-ROWS@ {: R:n :}  nd MIR-COLS@ {: C:n :}
+   nd EX-NODE-NROWS {: R:n :}  nd EX-NODE-NCOLS {: C:n :}
    R 0 ?do  xb i C * T-AT   ob i C * T-AT   C   nd MIR-OP@   EX-ROW-FWD-1  loop ;
 
 : EX-ROW-BWD-1 ( ptr a ptr a ptr a n opkind -- )
@@ -209,79 +215,86 @@ private
    ;MATCH ;
 
 \ p0 = cotangent row ; p1 = saved input (norms) or saved output (softmax) row.
-: EX-ROW-BWD ( n -- ) {: nd:n :}
-   nd 0 MIR-IN@ EX-REF-PTR {: p0:ptr :}
-   nd 1 MIR-IN@ EX-REF-PTR {: p1:ptr :}
+: EX-ROW-BWD ( CAD-KIND:node-id -- ) {: nd:CAD-KIND:node-id :}
+   nd 0 MIR-INPUT-IDX MIR-IN@ EX-REF-PTR {: p0:ptr :}
+   nd 1 MIR-INPUT-IDX MIR-IN@ EX-REF-PTR {: p1:ptr :}
    nd EX-NODE-PTR {: ob:ptr :}
-   nd MIR-ROWS@ {: R:n :}  nd MIR-COLS@ {: C:n :}
+   nd EX-NODE-NROWS {: R:n :}  nd EX-NODE-NCOLS {: C:n :}
    R 0 ?do  p0 i C * T-AT   p1 i C * T-AT   ob i C * T-AT   C   nd MIR-OP@   EX-ROW-BWD-1  loop ;
 
 \ ---- matmul / linear (inner dim = data-operand cols) ------------------------
-: EX-MATMUL ( n -- ) {: nd:n :}
-   nd 0 MIR-IN@ {: xr:n :}  nd 1 MIR-IN@ {: wr:n :}
+: EX-MATMUL ( CAD-KIND:node-id -- ) {: nd:CAD-KIND:node-id :}
+   nd 0 MIR-INPUT-IDX MIR-IN@ {: xr:MIR:operand-ref :}
+   nd 1 MIR-INPUT-IDX MIR-IN@ {: wr:MIR:operand-ref :}
    xr EX-REF-PTR  wr EX-REF-PTR  nd EX-NODE-PTR
-   nd MIR-ROWS@  xr EX-REF-COLS  nd MIR-COLS@  MATMUL ;
+   nd EX-NODE-NROWS  xr EX-REF-NCOLS  nd EX-NODE-NCOLS  MATMUL ;
 
-: EX-LINEAR ( n -- ) {: nd:n :}
-   nd 0 MIR-IN@ {: xr:n :}  nd 1 MIR-IN@ {: wr:n :}  nd 2 MIR-IN@ {: br:n :}
+: EX-LINEAR ( CAD-KIND:node-id -- ) {: nd:CAD-KIND:node-id :}
+   nd 0 MIR-INPUT-IDX MIR-IN@ {: xr:MIR:operand-ref :}
+   nd 1 MIR-INPUT-IDX MIR-IN@ {: wr:MIR:operand-ref :}
+   nd 2 MIR-INPUT-IDX MIR-IN@ {: br:MIR:operand-ref :}
    xr EX-REF-PTR  wr EX-REF-PTR  br EX-REF-PTR  nd EX-NODE-PTR
-   nd MIR-ROWS@  xr EX-REF-COLS  nd MIR-COLS@  LINEAR ;
+   nd EX-NODE-NROWS  xr EX-REF-NCOLS  nd EX-NODE-NCOLS  LINEAR ;
 
 \ ---- movement (attrs carry slice offsets; gather reads an int index scratch) -
-: EX-BUILD-IDX ( n -- n ) {: r:n :}     \ float index operand -> EX-IDX ints; count
+: EX-BUILD-IDX ( MIR:operand-ref -- n ) {: r:MIR:operand-ref :}   \ float index operand -> EX-IDX ints; count
    r EX-REF-ELEMS {: n:n :}
    n EX-IDX-CAP > if E-EX-CAP throw then
    r EX-REF-PTR {: p:ptr :}
    n 0 ?do  p i T-GET 0.5 f+ f>s  EX-IDX i cells + !  loop
    n ;
 
-: EX-RESHAPE ( n -- ) {: nd:n :}
-   nd 0 MIR-IN@ {: r:n :}
-   r EX-REF-PTR  r EX-REF-ROWS  r EX-REF-COLS
-   nd EX-NODE-PTR  nd MIR-ROWS@  nd MIR-COLS@  MOVE-RESHAPE ;
+: EX-RESHAPE ( CAD-KIND:node-id -- ) {: nd:CAD-KIND:node-id :}
+   nd 0 MIR-INPUT-IDX MIR-IN@ {: r:MIR:operand-ref :}
+   r EX-REF-PTR  r EX-REF-NROWS  r EX-REF-NCOLS
+   nd EX-NODE-PTR  nd EX-NODE-NROWS  nd EX-NODE-NCOLS  MOVE-RESHAPE ;
 
-: EX-TRANSPOSE ( n -- ) {: nd:n :}
-   nd 0 MIR-IN@ {: r:n :}
-   r EX-REF-PTR  r EX-REF-ROWS  r EX-REF-COLS
-   nd EX-NODE-PTR  nd MIR-ROWS@  nd MIR-COLS@  MOVE-TRANSPOSE ;
+: EX-TRANSPOSE ( CAD-KIND:node-id -- ) {: nd:CAD-KIND:node-id :}
+   nd 0 MIR-INPUT-IDX MIR-IN@ {: r:MIR:operand-ref :}
+   r EX-REF-PTR  r EX-REF-NROWS  r EX-REF-NCOLS
+   nd EX-NODE-PTR  nd EX-NODE-NROWS  nd EX-NODE-NCOLS  MOVE-TRANSPOSE ;
 
-: EX-SLICE ( n -- ) {: nd:n :}
-   nd 0 MIR-IN@ {: r:n :}  nd MIR-ATTR@ {: attr:n :}
-   r EX-REF-PTR  r EX-REF-ROWS  r EX-REF-COLS
+: EX-SLICE ( CAD-KIND:node-id -- ) {: nd:CAD-KIND:node-id :}
+   nd 0 MIR-INPUT-IDX MIR-IN@ {: r:MIR:operand-ref :}  nd MIR-ATTR@ {: attr:n :}
+   r EX-REF-PTR  r EX-REF-NROWS  r EX-REF-NCOLS
    attr MV-PA@  attr MV-PB@  nd EX-NODE-PTR  MOVE-SLICE ;
 
-: EX-CONCAT ( n -- ) {: nd:n :}
-   nd 0 MIR-IN@ {: ra:n :}  nd 1 MIR-IN@ {: rb:n :}
-   ra EX-REF-PTR  ra EX-REF-ROWS  ra EX-REF-COLS
-   rb EX-REF-PTR  rb EX-REF-ROWS  rb EX-REF-COLS
+: EX-CONCAT ( CAD-KIND:node-id -- ) {: nd:CAD-KIND:node-id :}
+   nd 0 MIR-INPUT-IDX MIR-IN@ {: ra:MIR:operand-ref :}
+   nd 1 MIR-INPUT-IDX MIR-IN@ {: rb:MIR:operand-ref :}
+   ra EX-REF-PTR  ra EX-REF-NROWS  ra EX-REF-NCOLS
+   rb EX-REF-PTR  rb EX-REF-NROWS  rb EX-REF-NCOLS
    nd EX-NODE-PTR  MOVE-CONCAT ;
 
-: EX-GATHER ( n -- ) {: nd:n :}
-   nd 0 MIR-IN@ {: rs:n :}  nd 1 MIR-IN@ {: rix:n :}
+: EX-GATHER ( CAD-KIND:node-id -- ) {: nd:CAD-KIND:node-id :}
+   nd 0 MIR-INPUT-IDX MIR-IN@ {: rs:MIR:operand-ref :}
+   nd 1 MIR-INPUT-IDX MIR-IN@ {: rix:MIR:operand-ref :}
    rix EX-BUILD-IDX {: nix:n :}
-   rs EX-REF-PTR  rs EX-REF-ROWS  rs EX-REF-COLS
+   rs EX-REF-PTR  rs EX-REF-NROWS  rs EX-REF-NCOLS
    EX-IDX  nix  nd EX-NODE-PTR  MOVE-GATHER ;
 
 \ ---- reduce / scatter backward references ----------------------------------
-: EX-ROWSUM ( n -- ) {: nd:n :}
-   nd 0 MIR-IN@ {: r:n :}
-   r EX-REF-PTR  r EX-REF-ROWS  r EX-REF-COLS
-   nd EX-NODE-PTR  nd MIR-COLS@  ROWSUM-BWD ;
+: EX-ROWSUM ( CAD-KIND:node-id -- ) {: nd:CAD-KIND:node-id :}
+   nd 0 MIR-INPUT-IDX MIR-IN@ {: r:MIR:operand-ref :}
+   r EX-REF-PTR  r EX-REF-NROWS  r EX-REF-NCOLS
+   nd EX-NODE-PTR  nd EX-NODE-NCOLS  ROWSUM-BWD ;
 
-: EX-FULLSUM ( n -- ) {: nd:n :}
-   nd 0 MIR-IN@ {: rc:n :}  nd 1 MIR-IN@ {: rx:n :}
+: EX-FULLSUM ( CAD-KIND:node-id -- ) {: nd:CAD-KIND:node-id :}
+   nd 0 MIR-INPUT-IDX MIR-IN@ {: rc:MIR:operand-ref :}
+   nd 1 MIR-INPUT-IDX MIR-IN@ {: rx:MIR:operand-ref :}
    rc EX-REF-PTR  rx EX-REF-PTR  rc EX-REF-ELEMS  nd EX-NODE-PTR  FULLSUM-DOT-BWD ;
 
-: EX-PAD-SCATTER ( n -- ) {: nd:n :}
-   nd 0 MIR-IN@ {: r:n :}  nd MIR-ATTR@ {: attr:n :}
-   r EX-REF-PTR  r EX-REF-ROWS  r EX-REF-COLS
-   attr MV-PA@  nd MIR-ROWS@  nd EX-NODE-PTR  PAD-SCATTER ;
+: EX-PAD-SCATTER ( CAD-KIND:node-id -- ) {: nd:CAD-KIND:node-id :}
+   nd 0 MIR-INPUT-IDX MIR-IN@ {: r:MIR:operand-ref :}  nd MIR-ATTR@ {: attr:n :}
+   r EX-REF-PTR  r EX-REF-NROWS  r EX-REF-NCOLS
+   attr MV-PA@  nd EX-NODE-NROWS  nd EX-NODE-PTR  PAD-SCATTER ;
 
-: EX-SCATTER-ADD ( n -- ) {: nd:n :}
-   nd 0 MIR-IN@ {: rc:n :}  nd 1 MIR-IN@ {: rix:n :}
+: EX-SCATTER-ADD ( CAD-KIND:node-id -- ) {: nd:CAD-KIND:node-id :}
+   nd 0 MIR-INPUT-IDX MIR-IN@ {: rc:MIR:operand-ref :}
+   nd 1 MIR-INPUT-IDX MIR-IN@ {: rix:MIR:operand-ref :}
    rix EX-BUILD-IDX drop
-   rc EX-REF-PTR  rc EX-REF-ROWS  rc EX-REF-COLS
-   EX-IDX  nd MIR-ROWS@  nd EX-NODE-PTR  SCATTER-ADD ;
+   rc EX-REF-PTR  rc EX-REF-NROWS  rc EX-REF-NCOLS
+   EX-IDX  nd EX-NODE-NROWS  nd EX-NODE-PTR  SCATTER-ADD ;
 
 \ ---- rope (adjacent column pairs; cos/sin at the pair's base column) --------
 : EX-PAIR! ( r r ptr a n -- ) {: re:r im:r orow:ptr c0:n :}
@@ -301,24 +314,24 @@ private
       orow c0  EX-PAIR!
    loop ;
 
-: EX-ROPE-FWD ( n -- ) {: nd:n :}
-   nd 0 MIR-IN@ EX-REF-PTR {: xp:ptr :}
-   nd 1 MIR-IN@ EX-REF-PTR {: cp:ptr :}
-   nd 2 MIR-IN@ EX-REF-PTR {: sp:ptr :}
+: EX-ROPE-FWD ( CAD-KIND:node-id -- ) {: nd:CAD-KIND:node-id :}
+   nd 0 MIR-INPUT-IDX MIR-IN@ EX-REF-PTR {: xp:ptr :}
+   nd 1 MIR-INPUT-IDX MIR-IN@ EX-REF-PTR {: cp:ptr :}
+   nd 2 MIR-INPUT-IDX MIR-IN@ EX-REF-PTR {: sp:ptr :}
    nd EX-NODE-PTR {: ob:ptr :}
-   nd MIR-ROWS@ {: R:n :}  nd MIR-COLS@ {: C:n :}
+   nd EX-NODE-NROWS {: R:n :}  nd EX-NODE-NCOLS {: C:n :}
    R 0 ?do  xp i C * T-AT  cp i C * T-AT  sp i C * T-AT  ob i C * T-AT  C  EX-ROPE-ROW  loop ;
 
-: EX-ROPE-BWD ( n -- ) {: nd:n :}
-   nd 0 MIR-IN@ EX-REF-PTR {: dp:ptr :}
-   nd 1 MIR-IN@ EX-REF-PTR {: cp:ptr :}
-   nd 2 MIR-IN@ EX-REF-PTR {: sp:ptr :}
+: EX-ROPE-BWD ( CAD-KIND:node-id -- ) {: nd:CAD-KIND:node-id :}
+   nd 0 MIR-INPUT-IDX MIR-IN@ EX-REF-PTR {: dp:ptr :}
+   nd 1 MIR-INPUT-IDX MIR-IN@ EX-REF-PTR {: cp:ptr :}
+   nd 2 MIR-INPUT-IDX MIR-IN@ EX-REF-PTR {: sp:ptr :}
    nd EX-NODE-PTR {: ob:ptr :}
-   nd MIR-ROWS@ {: R:n :}  nd MIR-COLS@ {: C:n :}
+   nd EX-NODE-NROWS {: R:n :}  nd EX-NODE-NCOLS {: C:n :}
    R 0 ?do  dp i C * T-AT  cp i C * T-AT  sp i C * T-AT  ob i C * T-AT  C  EX-ROPE-ROW-BWD  loop ;
 
 \ ---- per-node dispatch (fail closed on a non-executable op) -----------------
-: EX-NODE ( n -- ) {: nd:n :}
+: EX-NODE ( CAD-KIND:node-id -- ) {: nd:CAD-KIND:node-id :}
    nd MIR-OP@ MATCH opkind
       relu            OF nd EX-U            ENDOF
       gelu            OF nd EX-U            ENDOF
@@ -359,12 +372,12 @@ private
    0 EX-BUMP !
    n 0 ?do
       EX-BUMP @  i cells EX-OFF + !
-      EX-BUMP @  i EX-NODE-ELEMS +  {: nb:n :}
+      EX-BUMP @  i MIR-NODE-ID EX-NODE-ELEMS +  {: nb:n :}
       nb EX-ARENA-CELLS > if E-EX-CAP throw then
       nb EX-BUMP !
    loop ;
 
-: EX-EXEC ( n -- )  0 ?do  i EX-NODE  loop ;
+: EX-EXEC ( n -- )  0 ?do  i MIR-NODE-ID EX-NODE  loop ;
 
 public
 
@@ -388,10 +401,10 @@ public
 \ ---- input binding + lifecycle ---------------------------------------------
 : EX-RESET ( -- )  EX-IN-CAP 0 ?do  0 i cells EX-IN-SET + !  loop ;
 
-: EX-BIND ( ptr a n -- ) {: p:ptr s:n :}   \ bind a model-input slot's host buffer
-   s EX-IN-CK drop
-   p  EX-IN-PTR s cells +  !
-   1  EX-IN-SET s cells +  ! ;
+: EX-BIND ( ptr a MIR:input-slot -- ) {: p:ptr s:MIR:input-slot :}   \ bind a model-input slot's host buffer
+   s SLOT>RAW EX-IN-CK {: raw:n :}
+   p  EX-IN-PTR raw cells +  !
+   1  EX-IN-SET raw cells +  ! ;
 
 \ ---- run a node prefix (forward slice) or the whole IR ---------------------
 : EX-RUN-N ( n -- )  dup EX-PLAN  EX-EXEC ;
@@ -404,18 +417,21 @@ public
 \ end against the arena; EX-STEP validates the index and executes one node
 \ under the CURRENT offsets. EX-RUN(-N) overwrites the offsets (EX-PLAN), so a
 \ custom plan is valid only until the next EX-RUN(-N).
-: EX-OFF! ( n n -- ) {: off:n nd:n :}   \ arena offset (cells), node index
-   nd 0 < nd MIR-N@ >= or if E-EX-NODE throw then
+: EX-OFF! ( n CAD-KIND:node-id -- ) {: off:n nd:CAD-KIND:node-id :}   \ arena offset (cells), node
+   nd NODE>RAW {: raw:n :}
+   raw 0 < raw MIR-N@ >= or if E-EX-NODE throw then
    off 0 <  off nd EX-NODE-ELEMS + EX-ARENA-CELLS >  or if E-EX-CAP throw then
-   off nd cells EX-OFF + ! ;
+   off raw cells EX-OFF + ! ;
 
-: EX-STEP ( n -- ) {: nd:n :}           \ execute one node under the current plan
-   nd 0 < nd MIR-N@ >= or if E-EX-NODE throw then
+: EX-STEP ( CAD-KIND:node-id -- ) {: nd:CAD-KIND:node-id :}   \ execute one node under the current plan
+   nd NODE>RAW {: raw:n :}
+   raw 0 < raw MIR-N@ >= or if E-EX-NODE throw then
    nd EX-NODE ;
 
 \ ---- read a node's output buffer (after EX-RUN / EX-RUN-N) ------------------
-: EX-OUT@ ( n -- ptr a ) {: nd:n :}
-   nd 0 < nd MIR-N@ >= or if E-EX-NODE throw then
+: EX-OUT@ ( CAD-KIND:node-id -- ptr a ) {: nd:CAD-KIND:node-id :}
+   nd NODE>RAW {: raw:n :}
+   raw 0 < raw MIR-N@ >= or if E-EX-NODE throw then
    nd EX-NODE-PTR ;
 
 end-package

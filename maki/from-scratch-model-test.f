@@ -26,9 +26,9 @@ MODEL: SCRATCH-MLP ( x:8x6 w1:6x16 b1:1x16 w2:16x2 b2:1x2 -- y ) LINEAR GELU LIN
 MODEL-DEFINED? TTRUE
 MIR-N@ 3 T=                                   \ LINEAR, GELU, LINEAR
 MIR-IN-SLOTS@ 5 T=                            \ x, w1, b1, w2, b2
-2 MIR-ROWS@ 8 T=  2 MIR-COLS@ 2 T=            \ output y = 8x2 (mu, logvar)
-2 MIR-DT@ DTYPE>N DT-F32 T=  2 MIR-LAY@ LAYOUT>N LAY-ROW T=
-0 MIR-ROWS@ 8 T=  0 MIR-COLS@ 16 T=           \ hidden = 8x16
+2 MIR-NODE-ID MIR-ROWS@ ROWS-RAW 8 T=  2 MIR-NODE-ID MIR-COLS@ COLS-RAW 2 T=            \ output y = 8x2 (mu, logvar)
+2 MIR-NODE-ID MIR-DT@ DTYPE>N DT-F32 T=  2 MIR-NODE-ID MIR-LAY@ LAYOUT>N LAY-ROW T=
+0 MIR-NODE-ID MIR-ROWS@ ROWS-RAW 8 T=  0 MIR-NODE-ID MIR-COLS@ COLS-RAW 16 T=           \ hidden = 8x16
 
 \ ---- committed dataset: deterministic + in range ----------------------------
 SC-GEN-DATA

@@ -55,9 +55,9 @@ end-package
 package MAKI
 
 : PVT-DESC ( n n -- tensor ) {: rows:n cols:n :}   \ f32 row-major planning descriptor
-   rows cols MAKI-DTYPE:DF32 MAKI-LAYOUT:ROW TENSOR:TV-DESC ;
-: PVT-IN ( n n -- n ) {: node:n k:n :}  node k TENSOR:PLAN-IN@ TENSOR:tensor>N ;   \ k-th input handle
-: PVT-OUT ( n -- n ) {: node:n :}  node TENSOR:PLAN-OUT@ TENSOR:tensor>N ;         \ output handle
+   rows cols SHAPE MAKI-DTYPE:DF32 MAKI-LAYOUT:ROW SPACE-HOST TENSOR:TV-DESC ;
+: PVT-IN ( n n -- tensor ) {: node:n k:n :}  node k TENSOR:PLAN-IN@ ;   \ k-th input handle
+: PVT-OUT ( n -- tensor ) {: node:n :}  node TENSOR:PLAN-OUT@ ;         \ output handle
 
 \ PVT-SKIP: a checker-verified 5-node plan with the residual re-rooted onto x (skip) and x
 \ fanning out to node 0 and node 3.
@@ -76,11 +76,11 @@ package MAKI
    3 TENSOR:PLAN-OP@ OPKIND>N OP-RESIDUAL-ADD T=
    4 TENSOR:PLAN-OP@ OPKIND>N OP-RMSNORM      T=
    3 TENSOR:PLAN-IN-COUNT@ 2 T=
-   0 0 PVT-IN x TENSOR:tensor>N T=             \ node0.in0 = x
-   3 1 PVT-IN x TENSOR:tensor>N T=             \ node3.in1 = x   (the skip)
-   3 0 PVT-IN 2 PVT-OUT   T=            \ node3.in0 = node2 output (data = running value)
-   y TENSOR:TV-ROWS@ 4 T=  y TENSOR:TV-COLS@ 8 T=     \ shape flows through the whole composition
-   4 TENSOR:PLAN-OUT@ TENSOR:TV-ROWS@ 4 T=  4 TENSOR:PLAN-OUT@ TENSOR:TV-COLS@ 8 T= ;
+   0 0 PVT-IN x TENSOR:TV-EQUAL? TTRUE             \ node0.in0 = x
+   3 1 PVT-IN x TENSOR:TV-EQUAL? TTRUE             \ node3.in1 = x   (the skip)
+   3 0 PVT-IN 2 PVT-OUT TENSOR:TV-EQUAL? TTRUE            \ node3.in0 = node2 output (data = running value)
+   y TENSOR:TV-ROWS@ ROWS-RAW 4 T=  y TENSOR:TV-COLS@ COLS-RAW 8 T=     \ shape flows through the whole composition
+   4 TENSOR:PLAN-OUT@ TENSOR:TV-ROWS@ ROWS-RAW 4 T=  4 TENSOR:PLAN-OUT@ TENSOR:TV-COLS@ COLS-RAW 8 T= ;
 
 \ PVT-BRANCH: a DAG (re-root + fan-out + join).
 : PVT-RUN-BRANCH ( -- )
@@ -93,12 +93,12 @@ package MAKI
    0 TENSOR:PLAN-OP@ OPKIND>N OP-GELU   T=
    1 TENSOR:PLAN-OP@ OPKIND>N OP-LINEAR T=
    2 TENSOR:PLAN-OP@ OPKIND>N OP-ADD    T=
-   0 0 PVT-IN x TENSOR:tensor>N T=             \ node0.in0 = x   (gelu re-rooted onto x)
-   1 0 PVT-IN x TENSOR:tensor>N T=             \ node1.in0 = x   (x fanned out again)
-   2 0 PVT-IN 1 PVT-OUT   T=            \ node2.in0 = linear output
-   2 1 PVT-IN 0 PVT-OUT   T=            \ node2.in1 = gelu output
+   0 0 PVT-IN x TENSOR:TV-EQUAL? TTRUE             \ node0.in0 = x   (gelu re-rooted onto x)
+   1 0 PVT-IN x TENSOR:TV-EQUAL? TTRUE             \ node1.in0 = x   (x fanned out again)
+   2 0 PVT-IN 1 PVT-OUT TENSOR:TV-EQUAL? TTRUE            \ node2.in0 = linear output
+   2 1 PVT-IN 0 PVT-OUT TENSOR:TV-EQUAL? TTRUE            \ node2.in1 = gelu output
    2 TENSOR:PLAN-IN-COUNT@ 2 T=
-   y TENSOR:TV-ROWS@ 4 T=  y TENSOR:TV-COLS@ 8 T= ;
+   y TENSOR:TV-ROWS@ ROWS-RAW 4 T=  y TENSOR:TV-COLS@ COLS-RAW 8 T= ;
 
 end-package
 
@@ -117,7 +117,9 @@ package PLAN
 \ positive controls: well-formed compositions certify (arity + tensor discipline hold)
 s" PVOK-LIN ( tensor tensor tensor -- tensor ) LINEAR GELU"                                   EVAL:CHECK-PASSES? TTRUE
 s" PVOK-SKIP ( tensor tensor tensor tensor tensor -- tensor ) {: x w1 b1 w2 b2 :} x w1 b1 LINEAR GELU w2 b2 LINEAR x RESIDUAL-ADD RMSNORM"  EVAL:CHECK-PASSES? TTRUE
-s" PVOK-RESHAPE ( tensor n n -- tensor ) RESHAPE"                                             EVAL:CHECK-PASSES? TTRUE
+s" PVOK-RESHAPE ( tensor CAD-KIND:rows CAD-KIND:cols -- tensor ) RESHAPE"                     EVAL:CHECK-PASSES? TTRUE
+\ a raw-n reshape target is a checker reject (Model-CAD V2 R3 nominal extents)
+s" PVBAD-RESHAPE-N ( tensor n n -- tensor ) RESHAPE"                                          EVAL:CHECK-PASSES? TFALSE
 \ negatives: arity underflow (binary / ternary / movement ops missing operands)
 s" PVBAD-ADD ( tensor -- tensor ) ADD"                                                        EVAL:CHECK-PASSES? TFALSE
 s" PVBAD-LINEAR ( tensor tensor -- tensor ) LINEAR"                                           EVAL:CHECK-PASSES? TFALSE

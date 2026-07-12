@@ -242,10 +242,10 @@ PROMOTE dup REPORT:CACHE$ s" FFN-SKIP" T$= drop
 \ so its cotangent SUMS the two paths -> the input-0 gradient node is an OP-ADD. The
 \ r-input FFN-DEMO had NO fan-out on x (x fed only the first linear -> a matmul grad).
 BW-BUILD
-0 BW-HAS-GRAD? TTRUE
-0 BW-SLOT-GRAD@ MIR-OP@   OPKIND>N OP-ADD T=
-0 BW-SLOT-GRAD@ MIR-ROWS@ 4 T=
-0 BW-SLOT-GRAD@ MIR-COLS@ 8 T=
+0 MIR-SLOT-ID BW-HAS-GRAD? TTRUE
+0 MIR-SLOT-ID BW-SLOT-GRAD@ MIR-REF-NODE MIR-OP@   OPKIND>N OP-ADD T=
+0 MIR-SLOT-ID BW-SLOT-GRAD@ MIR-REF-NODE MIR-ROWS@ ROWS-RAW 4 T=
+0 MIR-SLOT-ID BW-SLOT-GRAD@ MIR-REF-NODE MIR-COLS@ COLS-RAW 8 T=
 
 STORE-RESET                                        \ leave the store as we found it
 T-REPORT

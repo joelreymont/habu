@@ -3561,6 +3561,24 @@ unchanged (148855). Keys for milestone 2:
 - **Package words still compete with immediate core syntax.** A packaged word
   named `BEGIN` resolves as the control word while compiling a body; use a
   domain verb such as `START` even when the package would otherwise disambiguate.
+- **Generic storage does not retain a nominal pointee between definitions.** A
+  probe stored `n` through a `variable` and fetched the same cell as
+  `CAD-KIND:node-id`; both definitions certified because each use instantiated
+  the generic pointer independently. Model IR therefore keeps raw storage and
+  identity projections private, exposes typed accessors, and pins cross-role
+  rejection instead of treating `variable` or `create` as a typed container.
+- **Never base parallel workspaces on a mutable working-copy commit.** Global
+  descendant rewrites stale sibling workspaces, and `workspace update-stale`
+  can discard files not yet snapshotted by jj. Branch each workspace from a
+  stable commit and apply reviewed API changes independently, or serialize.
+- **Rows and columns need different nominal roles.** A single dimension kind
+  validates magnitude but cannot reject transpose-order mistakes. Keep role
+  changes inside checked shape algebra and project to numbers only at execution,
+  rendering, hashing, or ABI boundaries.
+- **Transfer trust-row ownership before retiring a dot.** The inventory can stay
+  count-green while strict mode is red because classification rows still name a
+  removed capability dot. Reassign landed boundaries to a live permanent owner
+  in the same change that removes the capability dot.
 
 - **A failing `jj diff` with "sibling of the working copy's operation" mid-gate
   means the snapshot you are gating may be EMPTY — back up edited files BEFORE

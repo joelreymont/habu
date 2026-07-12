@@ -529,6 +529,10 @@ points stay listed.
   (staging + accumulation + the warp/D-fragment store mapping).
 - `maki/README.md` / `maki/STATUS.md` — Maki framework overview and current
   verification status outside the Habu trust root.
+- `maki/cad-kinds.f` — package-scoped nominal identities for Model CAD handles,
+  indexes, shape/layout domains, effects, and regions.
+- `maki/cad-kinds-test.f` — qualified identity, cross-role rejection, typed
+  memory, and repair-diagnostic regressions for the nominal CAD kinds.
 - `maki/cuda-types.f` — thin re-export of `lib/ptx/cuda-driver.f` preserving the
   historical maki spellings (cuda-* roles, `CUDA-HANDLE0`/`CUDA-RC0`, `E-MK-GPU`).
 - `maki/cuda-types-test.f` — runtime regressions for CUDA handle and rc

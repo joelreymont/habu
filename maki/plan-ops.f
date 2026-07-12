@@ -22,7 +22,8 @@ public
 
 \ ---- same-shape output descriptor (elementwise: like the data operand) ------
 : PLAN-LIKE ( tensor -- tensor ) {: x:tensor :}
-   x TENSOR:TV-ROWS@  x TENSOR:TV-COLS@  x TENSOR:TV-DTYPE@  x TENSOR:TV-LAYOUT@  TENSOR:TV-DESC ;
+   x TENSOR:TV-ROWS@ x TENSOR:TV-COLS@ x TENSOR:TV-DTYPE@
+   x TENSOR:TV-LAYOUT@ x TENSOR:TV-SPACE@ TENSOR:TV-DESC ;
 
 \ ---- elementwise appenders (parametric on op-kind) --------------------------
 \ op is the family arg on top; it cannot bind into a local, so PLAN-OP-BEGIN
@@ -46,8 +47,12 @@ private
 
 \ ---- contraction output descriptor (rows from data, cols from weight) -------
 : PLAN-MM-DESC ( tensor tensor -- tensor ) {: x:tensor w:tensor :}
-   x TENSOR:TV-COLS@ w TENSOR:TV-ROWS@ <> if E-TV-SHAPE throw then
-   x TENSOR:TV-ROWS@  w TENSOR:TV-COLS@  x TENSOR:TV-DTYPE@  MAKI-LAYOUT:ROW  TENSOR:TV-DESC ;
+   x TENSOR:TV-COLS@ w TENSOR:TV-ROWS@ INNER-EQUAL? 0= if E-TV-SHAPE throw then
+   x TENSOR:TV-ROWS@ w TENSOR:TV-COLS@ x TENSOR:TV-DTYPE@
+   MAKI-LAYOUT:ROW x TENSOR:TV-SPACE@ TENSOR:TV-DESC ;
+
+: PLAN-GATHER-ROWS ( CAD-KIND:dim -- CAD-KIND:rows )
+   DIM-RAW ROWS-REFINE ;
 
 public
 
@@ -74,36 +79,44 @@ public
 
 \ reshape: same elements, target RxC (params); free on contiguous else materialize.
 \ (the layout family cannot bind into a local, so each use refetches from x)
-: PLAN-RESHAPE ( tensor n n -- tensor ) {: x:tensor tr:n tc:n :}
-   x TENSOR:TV-ELEMS  tr tc *  <> if E-TV-SHAPE throw then
-   tr tc x TENSOR:TV-DTYPE@ x TENSOR:TV-LAYOUT@ TENSOR:TV-DESC {: y:tensor :}
-   MV-RESHAPE  x TENSOR:TV-LAYOUT@ MV-RESHAPE-VERDICT  tr tc MV-PACK {: attr:n :}
+: PLAN-RESHAPE ( tensor CAD-KIND:rows CAD-KIND:cols -- tensor )
+   {: x:tensor tr:CAD-KIND:rows tc:CAD-KIND:cols :}
+   x TENSOR:TV-ELEMS tr tc SHAPE-ELEMS DIM-EQUAL? 0= if E-TV-SHAPE throw then
+   tr tc x TENSOR:TV-DTYPE@ x TENSOR:TV-LAYOUT@ x TENSOR:TV-SPACE@ TENSOR:TV-DESC {: y:tensor :}
+   MV-RESHAPE  x TENSOR:TV-LAYOUT@ MV-RESHAPE-VERDICT
+   tr ROWS-RAW tc COLS-RAW MV-PACK {: attr:n :}
    MAKI-OPKIND:RESHAPE TENSOR:PLAN-OP-BEGIN  x TENSOR:PLAN-IN+  attr TENSOR:PLAN-ATTR!  y TENSOR:PLAN-OP+  y ;
 
 \ transpose: RxC -> CxR (no params); dissolves inside a staged region.
 : PLAN-TRANSPOSE ( tensor -- tensor ) {: x:tensor :}
-   x TENSOR:TV-COLS@ x TENSOR:TV-ROWS@ x TENSOR:TV-DTYPE@ x TENSOR:TV-LAYOUT@ TENSOR:TV-DESC {: y:tensor :}
+   x TENSOR:TV-ROWS@ x TENSOR:TV-COLS@ TRANSPOSE-SHAPE
+   x TENSOR:TV-DTYPE@ x TENSOR:TV-LAYOUT@ x TENSOR:TV-SPACE@ TENSOR:TV-DESC {: y:tensor :}
    MV-TRANSPOSE  MV-TRANSPOSE-VERDICT  0 0 MV-PACK {: attr:n :}
    MAKI-OPKIND:TRANSPOSE TENSOR:PLAN-OP-BEGIN  x TENSOR:PLAN-IN+  attr TENSOR:PLAN-ATTR!  y TENSOR:PLAN-OP+  y ;
 
 \ slice: rows [r0,r1) (params); free when the offset is lane-aligned else materialize.
-: PLAN-SLICE ( tensor n n -- tensor ) {: x:tensor r0:n r1:n :}
-   r0 0 < r1 x TENSOR:TV-ROWS@ > or  r0 r1 > or if E-TV-SHAPE throw then
-   x TENSOR:TV-COLS@ {: cols:n :}
-   r1 r0 -  cols  x TENSOR:TV-DTYPE@ x TENSOR:TV-LAYOUT@ TENSOR:TV-DESC {: y:tensor :}
-   MV-SLICE  x TENSOR:TV-LAYOUT@ r0 cols MV-SLICE-VERDICT  r0 r1 MV-PACK {: attr:n :}
+: PLAN-SLICE ( tensor CAD-KIND:rows CAD-KIND:rows -- tensor )
+   {: x:tensor r0:CAD-KIND:rows r1:CAD-KIND:rows :}
+   r1 ROWS-RAW x TENSOR:TV-ROWS@ ROWS-RAW >
+   r0 ROWS-RAW r1 ROWS-RAW > or if E-TV-SHAPE throw then
+   x TENSOR:TV-COLS@ {: cols:CAD-KIND:cols :}
+   r1 r0 ROWS- cols x TENSOR:TV-DTYPE@ x TENSOR:TV-LAYOUT@ x TENSOR:TV-SPACE@ TENSOR:TV-DESC {: y:tensor :}
+   MV-SLICE  x TENSOR:TV-LAYOUT@ r0 ROWS-RAW cols COLS-RAW MV-SLICE-VERDICT
+   r0 ROWS-RAW r1 ROWS-RAW MV-PACK {: attr:n :}
    MAKI-OPKIND:SLICE TENSOR:PLAN-OP-BEGIN  x TENSOR:PLAN-IN+  attr TENSOR:PLAN-ATTR!  y TENSOR:PLAN-OP+  y ;
 
 \ concat: row-append b to x (cols must agree); v1 always materializes.
 : PLAN-CONCAT ( tensor tensor -- tensor ) {: x:tensor b:tensor :}
-   x TENSOR:TV-COLS@ b TENSOR:TV-COLS@ <> if E-TV-SHAPE throw then
-   x TENSOR:TV-ROWS@ b TENSOR:TV-ROWS@ +  x TENSOR:TV-COLS@  x TENSOR:TV-DTYPE@ x TENSOR:TV-LAYOUT@ TENSOR:TV-DESC {: y:tensor :}
+   x TENSOR:TV-COLS@ b TENSOR:TV-COLS@ COLS-EQUAL? 0= if E-TV-SHAPE throw then
+   x TENSOR:TV-ROWS@ b TENSOR:TV-ROWS@ ROWS+  x TENSOR:TV-COLS@
+   x TENSOR:TV-DTYPE@ x TENSOR:TV-LAYOUT@ x TENSOR:TV-SPACE@ TENSOR:TV-DESC {: y:tensor :}
    MV-CONCAT  MV-CONCAT-VERDICT  0 0 MV-PACK {: attr:n :}
    MAKI-OPKIND:CONCAT TENSOR:PLAN-OP-BEGIN  x TENSOR:PLAN-IN+  b TENSOR:PLAN-IN+  attr TENSOR:PLAN-ATTR!  y TENSOR:PLAN-OP+  y ;
 
 \ gather: select idx rows of x (output rows = index element count); reported gathered.
 : PLAN-GATHER ( tensor tensor -- tensor ) {: x:tensor idx:tensor :}
-   idx TENSOR:TV-ELEMS  x TENSOR:TV-COLS@  x TENSOR:TV-DTYPE@ x TENSOR:TV-LAYOUT@ TENSOR:TV-DESC {: y:tensor :}
+   idx TENSOR:TV-ELEMS PLAN-GATHER-ROWS  x TENSOR:TV-COLS@
+   x TENSOR:TV-DTYPE@ x TENSOR:TV-LAYOUT@ x TENSOR:TV-SPACE@ TENSOR:TV-DESC {: y:tensor :}
    MV-GATHER  MV-GATHER-VERDICT  0 0 MV-PACK {: attr:n :}
    MAKI-OPKIND:GATHER TENSOR:PLAN-OP-BEGIN  x TENSOR:PLAN-IN+  idx TENSOR:PLAN-IN+  attr TENSOR:PLAN-ATTR!  y TENSOR:PLAN-OP+  y ;
 

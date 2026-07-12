@@ -23,10 +23,14 @@ variable PT-VA  variable PT-VU
 \ swaps under it for MIR-INPUT+, and the extents are read back from the slot
 : MP-EW ( n n layout -- )                          \ x:rows x cols (input layout) -> GELU RELU
    MIR-RESET
-   MAKI-DTYPE:DF32 swap MIR-INPUT+ drop
-   0 MIR-SLOT-ROWS@ 0 MIR-SLOT-COLS@ {: rows:n cols:n :}
-   MAKI-OPKIND:GELU MIR-OP-BEGIN 0 MIR-IN-REF MIR-IN+ rows cols MAKI-DTYPE:DF32 MAKI-LAYOUT:ROW 0 1 MIR-OP+ drop
-   MAKI-OPKIND:RELU MIR-OP-BEGIN 0 MIR-IN+        rows cols MAKI-DTYPE:DF32 MAKI-LAYOUT:ROW 0 1 MIR-OP+ drop ;
+   >r {: r:n c:n :}                                \ layout rides the return stack
+   r c SHAPE  MAKI-DTYPE:DF32  r>  MIR-INPUT+ drop
+   0 MIR-SLOT-ID MIR-SLOT-ROWS@ 0 MIR-SLOT-ID MIR-SLOT-COLS@
+   {: rows:CAD-KIND:rows cols:CAD-KIND:cols :}
+   MAKI-OPKIND:GELU MIR-OP-BEGIN 0 MIR-SLOT-ID MIR-IN-REF MIR-IN+
+   rows cols MAKI-DTYPE:DF32 MAKI-LAYOUT:ROW 0 1 MIR-OP+ drop
+   MAKI-OPKIND:RELU MIR-OP-BEGIN 0 MIR-NODE-ID MIR-NODE-REF MIR-IN+
+   rows cols MAKI-DTYPE:DF32 MAKI-LAYOUT:ROW 0 1 MIR-OP+ drop ;
 
 T-RESET
 
@@ -51,20 +55,20 @@ s" MPT-LAY-NIN ( align n n n -- n ) MP-CLASSIFY" CHECK-QUIET-CANDIDATE! 0 T=
 
 \ ---- slot-alignment fact: default AL-UNKNOWN, setter records, fails closed ---
 MIR-RESET
-2 4 MAKI-DTYPE:DF32 MAKI-LAYOUT:ROW MIR-INPUT+ drop
-1 1 MAKI-DTYPE:DF32 MAKI-LAYOUT:ROW MIR-INPUT+ drop
-0 MIR-SLOT-AL@ ALIGN>N AL-UNKNOWN T=                        \ unrecorded default
-0 MAKI-ALIGN:A16 MIR-SLOT-AL!
-0 MIR-SLOT-AL@ ALIGN>N AL-16 T=                             \ recorded
-1 MIR-SLOT-AL@ ALIGN>N AL-UNKNOWN T=                        \ untouched slot unchanged
+2 4 SHAPE MAKI-DTYPE:DF32 MAKI-LAYOUT:ROW MIR-INPUT+ drop
+1 1 SHAPE MAKI-DTYPE:DF32 MAKI-LAYOUT:ROW MIR-INPUT+ drop
+0 MIR-SLOT-ID MIR-SLOT-AL@ ALIGN>N AL-UNKNOWN T=            \ unrecorded default
+0 MIR-SLOT-ID MAKI-ALIGN:A16 MIR-SLOT-AL!
+0 MIR-SLOT-ID MIR-SLOT-AL@ ALIGN>N AL-16 T=                 \ recorded
+1 MIR-SLOT-ID MIR-SLOT-AL@ ALIGN>N AL-UNKNOWN T=            \ untouched slot unchanged
 \ a raw n where the setter expects an align family is a CHECKER reject
 \ (replaces the old AL-N -> E-MIR-ALIGN runtime throw, now unrepresentable)
-s" MPT-AL-BAD ( n n -- ) MIR-SLOT-AL!" CHECK-QUIET-CANDIDATE! 0 T=
-: TRY-AL-SLOT ( -- )  MIR-RESET 5 MIR-SLOT-AL@ ALIGN>N drop ;
+s" MPT-AL-BAD ( MIR:input-slot n -- ) MIR-SLOT-AL!" CHECK-QUIET-CANDIDATE! 0 T=
+: TRY-AL-SLOT ( -- )  MIR-RESET 5 MIR-SLOT-ID MIR-SLOT-AL@ ALIGN>N drop ;
 ' TRY-AL-SLOT E-MIR-INSLOT TTHROWS
 
 \ ---- (1) 2x4 f32 chain, 16B RECORDED input -> coalesced-v4 -----------------
-2 4 MAKI-LAYOUT:ROW MP-EW  0 MAKI-ALIGN:A16 MIR-SLOT-AL!  FP-BUILD
+2 4 MAKI-LAYOUT:ROW MP-EW  0 MIR-SLOT-ID MAKI-ALIGN:A16 MIR-SLOT-AL!  FP-BUILD
 REPORT:NEW MEM-PLAN-INTO
 dup REPORT:HOT-COUNT 2 T=
 dup 0 REPORT:HOT-NAME@   s" i0" T$=
@@ -85,22 +89,22 @@ s" coalesce.status.0: unaligned"                      PT-IN
 s" memory.align: input 0 unknown alignment -> scalar" PT-IN
 
 \ ---- (3) column-major input -> strided -------------------------------------
-2 4 MAKI-LAYOUT:COL MP-EW  0 MAKI-ALIGN:A16 MIR-SLOT-AL!  FP-BUILD
+2 4 MAKI-LAYOUT:COL MP-EW  0 MIR-SLOT-ID MAKI-ALIGN:A16 MIR-SLOT-AL!  FP-BUILD
 REPORT:NEW MEM-PLAN-INTO
 dup 0 REPORT:HOT-STATUS@ CO-STRIDED T=
 REPORT:RENDER PT-SAVE  s" coalesce.status.0: strided" PT-IN
 
 \ ---- (4) extent 2x5 -> masked-tail row (5 mod 4 = 1) -----------------------
-2 5 MAKI-LAYOUT:ROW MP-EW  0 MAKI-ALIGN:A16 MIR-SLOT-AL!  FP-BUILD
+2 5 MAKI-LAYOUT:ROW MP-EW  0 MIR-SLOT-ID MAKI-ALIGN:A16 MIR-SLOT-AL!  FP-BUILD
 REPORT:NEW MEM-PLAN-INTO
 dup 0 REPORT:HOT-STATUS@ CO-COALESCED-V4 T=            \ v4 with a masked tail
 REPORT:RENDER PT-SAVE  s" memory.tail: i0 5 mod 4 = 1" PT-IN
 
 \ ---- (5) 1xC bias into a 2D op -> broadcast-register -----------------------
 MIR-RESET
-2 4 MAKI-DTYPE:DF32 MAKI-LAYOUT:ROW MIR-INPUT+ drop  0 MAKI-ALIGN:A16 MIR-SLOT-AL!    \ slot0 x  (2x4)
-1 4 MAKI-DTYPE:DF32 MAKI-LAYOUT:ROW MIR-INPUT+ drop  1 MAKI-ALIGN:A16 MIR-SLOT-AL!    \ slot1 b  (1x4)
-MAKI-OPKIND:ADD MIR-OP-BEGIN 0 MIR-IN-REF MIR-IN+ 1 MIR-IN-REF MIR-IN+ 2 4 MAKI-DTYPE:DF32 MAKI-LAYOUT:ROW 0 1 MIR-OP+ drop
+2 4 SHAPE MAKI-DTYPE:DF32 MAKI-LAYOUT:ROW MIR-INPUT+ drop  0 MIR-SLOT-ID MAKI-ALIGN:A16 MIR-SLOT-AL!    \ slot0 x  (2x4)
+1 4 SHAPE MAKI-DTYPE:DF32 MAKI-LAYOUT:ROW MIR-INPUT+ drop  1 MIR-SLOT-ID MAKI-ALIGN:A16 MIR-SLOT-AL!    \ slot1 b  (1x4)
+MAKI-OPKIND:ADD MIR-OP-BEGIN 0 MIR-SLOT-ID MIR-IN-REF MIR-IN+ 1 MIR-SLOT-ID MIR-IN-REF MIR-IN+ 2 4 SHAPE MAKI-DTYPE:DF32 MAKI-LAYOUT:ROW 0 1 MIR-OP+ drop
 FP-BUILD
 REPORT:NEW MEM-PLAN-INTO
 dup 1 REPORT:HOT-NAME@   s" i1" T$=
@@ -109,10 +113,10 @@ drop
 
 \ ---- (6) gather data read -> gathered --------------------------------------
 MIR-RESET
-4 8 MAKI-DTYPE:DF32 MAKI-LAYOUT:ROW MIR-INPUT+ drop  0 MAKI-ALIGN:A16 MIR-SLOT-AL!    \ slot0 x   (data)
-3 1 MAKI-DTYPE:DI32 MAKI-LAYOUT:ROW MIR-INPUT+ drop  1 MAKI-ALIGN:A16 MIR-SLOT-AL!    \ slot1 idx
-MAKI-OPKIND:GATHER MIR-OP-BEGIN 0 MIR-IN-REF MIR-IN+ 1 MIR-IN-REF MIR-IN+
-   3 8 MAKI-DTYPE:DF32 MAKI-LAYOUT:ROW  MV-GATHER MVV-GATHERED 0 0 MV-PACK  1  MIR-OP+ drop
+4 8 SHAPE MAKI-DTYPE:DF32 MAKI-LAYOUT:ROW MIR-INPUT+ drop  0 MIR-SLOT-ID MAKI-ALIGN:A16 MIR-SLOT-AL!    \ slot0 x   (data)
+3 1 SHAPE MAKI-DTYPE:DI32 MAKI-LAYOUT:ROW MIR-INPUT+ drop  1 MIR-SLOT-ID MAKI-ALIGN:A16 MIR-SLOT-AL!    \ slot1 idx
+MAKI-OPKIND:GATHER MIR-OP-BEGIN 0 MIR-SLOT-ID MIR-IN-REF MIR-IN+ 1 MIR-SLOT-ID MIR-IN-REF MIR-IN+
+   3 8 SHAPE MAKI-DTYPE:DF32 MAKI-LAYOUT:ROW  MV-GATHER MVV-GATHERED 0 0 MV-PACK  1  MIR-OP+ drop
 FP-BUILD
 REPORT:NEW MEM-PLAN-INTO
 dup 0 REPORT:HOT-NAME@   s" i0" T$=

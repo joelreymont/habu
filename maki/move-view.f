@@ -40,20 +40,21 @@ public
 
 \ Is this operand ref an interior DISSOLVED movement node the region reads through?
 \ (a movement op-kind, committed node, MIR-MAT@ = 0 i.e. not a materialized boundary)
-: MVW-DISSOLVED? ( n -- bool ) {: ref:n :}
+: MVW-DISSOLVED? ( MIR:operand-ref -- bool ) {: ref:MIR:operand-ref :}
    ref MIR-REF-INPUT? if false exit then
-   ref MIR-MOVE? 0= if false exit then
-   ref MIR-MAT@ 0= ;
+   ref MIR-REF-NODE {: mv:CAD-KIND:node-id :}
+   mv MIR-MOVE? 0= if false exit then
+   mv MIR-MAT@ 0= ;
 
 \ a dissolved movement's ultimate source (operand 0) - v1 requires it to be a model slot
-: MVW-SRC-REF ( n -- n ) {: mv:n :}
-   mv 0 MIR-IN@ {: src:n :}
+: MVW-SRC-REF ( CAD-KIND:node-id -- MIR:operand-ref ) {: mv:CAD-KIND:node-id :}
+   mv 0 MIR-INPUT-IDX MIR-IN@ {: src:MIR:operand-ref :}
    src MIR-REF-INPUT? 0= if E-MVW-SRC throw then
    src ;
 
 \ ---- foldable element offset (reshape identity 0 ; slice r0*cols) ------------
 \ fail closed on staged / mat verdicts and on any non {reshape,slice} movement op.
-: MVW-OFF-ELEMS ( n -- n ) {: mv:n :}
+: MVW-OFF-ELEMS ( CAD-KIND:node-id -- n ) {: mv:CAD-KIND:node-id :}
    mv MIR-MOVE-VERDICT@ {: vd:n :}
    vd MVV-FREE <> if
       vd MVV-STAGED = if E-MVW-STAGED throw then
@@ -61,14 +62,14 @@ public
    then
    mv MIR-OP@                                        \ ( op )  family stays on the stack
    dup MAKI-OPKIND:RESHAPE MAKI-OPKIND:EQ if drop 0 exit then  \ contiguous reshape: identity flat
-   MAKI-OPKIND:SLICE MAKI-OPKIND:EQ if mv MIR-ATTR@ MV-PA@  mv MIR-COLS@ *  exit then   \ r0 * cols (source stride)
+   MAKI-OPKIND:SLICE MAKI-OPKIND:EQ if mv MIR-ATTR@ MV-PA@  mv MIR-COLS@ COLS-RAW *  exit then   \ r0 * cols (source stride)
    E-MVW-OP throw ;
 
 \ source-buffer element count to upload (reshape = output elems ; slice = full source rows ;
 \ transpose = full source, permuted per element by the fold)
-: MVW-SRC-ELEMS ( n -- n ) {: mv:n :}
-   mv MVW-SRC-REF MIR-REF-SLOT {: s:n :}
-   s MIR-SLOT-ROWS@ s MIR-SLOT-COLS@ * ;
+: MVW-SRC-ELEMS ( CAD-KIND:node-id -- n ) {: mv:CAD-KIND:node-id :}
+   mv MVW-SRC-REF MIR-REF-SLOT {: s:MIR:input-slot :}
+   s MIR-SLOT-ROWS@ s MIR-SLOT-COLS@ SHAPE-ELEMS DIM-RAW ;
 
 \ ---- staged transpose fold (dst[i,j]=src[j,i]) -------------------------------
 \ Unlike a FREE reshape/slice (a constant base offset), a STAGED transpose is a lane
@@ -76,39 +77,42 @@ public
 \ pointer. MVW-STAGED? gates that path; MVW-XPOSE-DIMS exposes the remap dims so the
 \ consumer emits src_flat = (e mod dstC)*srcC + e/dstC over its flat output index e
 \ (dstC = output cols = source rows ; srcC = output rows = source cols).
-: MVW-STAGED? ( n -- bool ) {: ref:n :}
+: MVW-STAGED? ( MIR:operand-ref -- bool ) {: ref:MIR:operand-ref :}
    ref MVW-DISSOLVED? 0= if false exit then
-   ref MIR-MOVE-VERDICT@ MVV-STAGED = ;
+   ref MIR-REF-NODE MIR-MOVE-VERDICT@ MVV-STAGED = ;
 
-: MVW-XPOSE-DIMS ( n -- n n ) {: mv:n :}
+: MVW-XPOSE-DIMS ( CAD-KIND:node-id -- CAD-KIND:cols CAD-KIND:rows )
+   {: mv:CAD-KIND:node-id :}
    mv MIR-OP@ MAKI-OPKIND:TRANSPOSE MAKI-OPKIND:EQ 0= if E-MVW-OP throw then   \ the staged verdict is transpose-only (v1)
    mv MVW-SRC-REF drop                                 \ v1: source must be a model slot (E-MVW-SRC)
    mv MIR-COLS@  mv MIR-ROWS@ ;                         \ dstC (out cols = src rows) ; srcC (out rows = src cols)
 
 \ ---- resolution for a region operand (movement node or plain external ref) ---
 \ the source ref a folded operand actually uploads (its slot), else the ref itself
-: MVW-RESOLVE-SRC ( n -- n ) {: ref:n :}
-   ref MVW-DISSOLVED? if ref MVW-SRC-REF else ref then ;
+: MVW-RESOLVE-SRC ( MIR:operand-ref -- MIR:operand-ref ) {: ref:MIR:operand-ref :}
+   ref MVW-DISSOLVED? if ref MIR-REF-NODE MVW-SRC-REF else ref then ;
 
 \ the byte offset the fold bakes into that operand's base pointer (0 for a plain ref)
-: MVW-RESOLVE-OFF ( n -- n ) {: ref:n :}
-   ref MVW-DISSOLVED? if ref MVW-OFF-ELEMS 4 * else 0 then ;
+: MVW-RESOLVE-OFF ( MIR:operand-ref -- n ) {: ref:MIR:operand-ref :}
+   ref MVW-DISSOLVED? if ref MIR-REF-NODE MVW-OFF-ELEMS 4 * else 0 then ;
 
 \ prove a region's dissolved movement members are all v1-foldable (free, slot source);
 \ a staged/chained/mat one throws here BEFORE any PTX is emitted. This is the RED/MM
 \ contract (they fold FREE offsets only); EW additionally folds a staged transpose and
 \ uses MVW-CHECK-EW below.
-: MVW-CHECK ( n -- ) {: ref:n :}
+: MVW-CHECK ( MIR:operand-ref -- ) {: ref:MIR:operand-ref :}
    ref MVW-DISSOLVED? 0= if exit then
-   ref MVW-OFF-ELEMS drop  ref MVW-SRC-REF drop ;
+   ref MIR-REF-NODE {: mv:CAD-KIND:node-id :}
+   mv MVW-OFF-ELEMS drop  mv MVW-SRC-REF drop ;
 
 \ EW foldability: FREE via a base offset (MVW-OFF-ELEMS) OR a STAGED transpose via the
 \ per-element remap (MVW-XPOSE-DIMS). A chained (non-slot source) or unexpected-op one
 \ still throws here BEFORE any PTX is emitted; the flat EW kernel is the only v1 consumer
 \ whose load index can absorb a full lane permutation.
-: MVW-CHECK-EW ( n -- ) {: ref:n :}
+: MVW-CHECK-EW ( MIR:operand-ref -- ) {: ref:MIR:operand-ref :}
    ref MVW-DISSOLVED? 0= if exit then
-   ref MVW-STAGED? if ref MVW-XPOSE-DIMS 2drop exit then
-   ref MVW-OFF-ELEMS drop  ref MVW-SRC-REF drop ;
+   ref MIR-REF-NODE {: mv:CAD-KIND:node-id :}
+   ref MVW-STAGED? if mv MVW-XPOSE-DIMS 2drop exit then
+   mv MVW-OFF-ELEMS drop  mv MVW-SRC-REF drop ;
 
 end-package

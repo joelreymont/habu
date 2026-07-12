@@ -43,7 +43,7 @@ variable CR-VA  variable CR-VU
 : CR-TRY-TR-UNBOUND ( -- )  CAP-BEGIN s" Z^T" CAP-TOKEN ;             \ transposed ref to an unbound name
 : CR-TRY-TR-NAME   ( -- )  CAP-BEGIN s" K^T" NT-BIND drop ;           \ '^' is reserved in value names
 : CR-TRY-REF-BADSHAPE ( -- )                                         \ a residual param whose shape != the data operand
-   TENSOR:TV-RESET  4 8 MAKI-DTYPE:DF32 MAKI-LAYOUT:ROW TENSOR:TV-DESC  2 3 MAKI-DTYPE:DF32 MAKI-LAYOUT:ROW TENSOR:TV-DESC  MAKI-OPKIND:RESIDUAL-ADD EW-SHAPE-CHECK ;
+   TENSOR:TV-RESET  4 8 SHAPE MAKI-DTYPE:DF32 MAKI-LAYOUT:ROW SPACE-HOST TENSOR:TV-DESC  2 3 SHAPE MAKI-DTYPE:DF32 MAKI-LAYOUT:ROW SPACE-HOST TENSOR:TV-DESC  MAKI-OPKIND:RESIDUAL-ADD EW-SHAPE-CHECK ;
 
 T-RESET
 
@@ -134,11 +134,11 @@ create RQ 6 cells allot   create RK 6 cells allot
    6 0 ?do  i 7 + s>f  RK i T-SET  loop ;
 MODEL: RTRX ( q:2x3 k:2x3 -- y ) k^T MATMUL ;
 RTR-FILL
-EX-RESET  RQ 0 EX-BIND  RK 1 EX-BIND  EX-RUN
-1 EX-OUT@ 0 T-GET f>s  50 T=
-1 EX-OUT@ 1 T-GET f>s  68 T=
-1 EX-OUT@ 2 T-GET f>s 122 T=
-1 EX-OUT@ 3 T-GET f>s 167 T=
+EX-RESET  RQ 0 MIR-SLOT-ID EX-BIND  RK 1 MIR-SLOT-ID EX-BIND  EX-RUN
+1 MIR-NODE-ID EX-OUT@ 0 T-GET f>s  50 T=
+1 MIR-NODE-ID EX-OUT@ 1 T-GET f>s  68 T=
+1 MIR-NODE-ID EX-OUT@ 2 T-GET f>s 122 T=
+1 MIR-NODE-ID EX-OUT@ 3 T-GET f>s 167 T=
 
 T-REPORT
 

@@ -67,7 +67,7 @@ T-RESET
 \ so the copy kernel runs without forcing - div/rem row remap, one buffer, no shared mem.
 MODEL: TP ( x:4x8 -- y ) TRANSPOSE ;
 FP-BUILD
-0 MIR-MAT@ TTRUE                             \ mat-flag fix: the trailing movement output materializes
+0 MIR-NODE-ID MIR-MAT@ TTRUE                 \ mat-flag fix: the trailing movement output materializes
 LMVT-CAP-MV
 s" .visible .entry REGION_0"    LMVT-ONCE
 s" .param .u64 p_in0"           LMVT-IN
@@ -164,7 +164,7 @@ s" fma.rn.f32"                  LMVT-IN      \ contraction K-loop unchanged
 MODEL: TG ( x:4x8 -- y ) TRANSPOSE GELU ;
 FP-BUILD
 1 FP-REGION-COUNT T=                         \ transpose dissolves into gelu's region (one region)
-0 MIR-MAT@ TFALSE                            \ the transpose is dissolved (folded), not materialized
+0 MIR-NODE-ID MIR-MAT@ TFALSE                \ the transpose is dissolved (folded), not materialized
 LMVT-CAP-EW
 s" .version"                    LMVT-ONCE    \ exactly one module header (a well-formed single module)
 s" .visible .entry REGION_0"    LMVT-ONCE
@@ -180,9 +180,9 @@ s" .param .u64 p_in1"           LMVT-ABSENT  \ one region input (the transpose s
 MODEL: TN ( x:4x8 -- y ) TRANSPOSE RMSNORM ;
 FP-BUILD
 2 FP-REGION-COUNT T=                         \ two regions: transpose copy + rmsnorm
-0 MIR-MAT@ TTRUE                             \ the transpose is materialized (its own copy region)
-0 FP-RID@ 0 T=                               \ transpose is region 0
-1 FP-RID@ 1 T=                               \ rmsnorm  is region 1
+0 MIR-NODE-ID MIR-MAT@ TTRUE                 \ the transpose is materialized (its own copy region)
+0 MIR-NODE-ID FP-RID@ 0 T=                               \ transpose is region 0
+1 MIR-NODE-ID FP-RID@ 1 T=                               \ rmsnorm  is region 1
 1 LRED-ANALYZE                               \ region 1 (rmsnorm) lowers, reading the transpose node
 0 LRED-IN-REF@ MIR-REF-INPUT? TFALSE         \ its input 0 is the transpose node (materialized), not a slot
 0 LRED-IN-REF@ 0 T=                          \ specifically node 0 (the transpose)
@@ -196,9 +196,9 @@ s" mad.lo.u32 %r10, %r9, %r2"   LMVT-IN
 MODEL: TM ( x:8x8 w:8x16 -- y ) TRANSPOSE MATMUL ;
 FP-BUILD
 2 FP-REGION-COUNT T=                         \ two regions: transpose copy + matmul
-0 MIR-MAT@ TTRUE                             \ the transpose is materialized
-0 FP-RID@ 0 T=                               \ transpose is region 0
-1 FP-RID@ 1 T=                               \ matmul is region 1
+0 MIR-NODE-ID MIR-MAT@ TTRUE                 \ the transpose is materialized
+0 MIR-NODE-ID FP-RID@ 0 T=                               \ transpose is region 0
+1 MIR-NODE-ID FP-RID@ 1 T=                               \ matmul is region 1
 1 LMM-ANALYZE                                \ region 1 (matmul) lowers, reading the transpose node
 0 LMM-IN-REF@ MIR-REF-INPUT? TFALSE          \ A operand is the transpose node (materialized), not a slot
 0 LMM-IN-REF@ 0 T=                           \ specifically node 0 (the transpose)
@@ -208,11 +208,11 @@ FP-BUILD
 \ (FP-STAGED-FOLDABLE? = EW only), so this is now unreachable by checked planning; the hand-built
 \ plan (dissolve mat=0 + poke the transpose into the consumer region) proves the guard directly.
 MODEL: TNX ( x:4x8 -- y ) TRANSPOSE RMSNORM ;
-FP-BUILD  0 0 MIR-MAT!  1 0 cells FP-RID + !   \ dissolve the transpose, force it into the rmsnorm region
+FP-BUILD  0 0= 0= 0 MIR-NODE-ID MIR-MAT!  1 0 cells FP-RID + !
 ' LMVT-TRY-RED1 E-MVW-STAGED TTHROWS
 
 MODEL: TMX ( x:8x8 w:8x16 -- y ) TRANSPOSE MATMUL ;
-FP-BUILD  0 0 MIR-MAT!  1 0 cells FP-RID + !   \ dissolve the transpose, force it into the matmul region
+FP-BUILD  0 0= 0= 0 MIR-NODE-ID MIR-MAT!  1 0 cells FP-RID + !
 ' LMVT-TRY-MM1 E-MVW-STAGED TTHROWS
 
 \ ---- a non-movement EW op feeding the contraction is a rejected prologue (hand-forced) -----
@@ -231,7 +231,7 @@ FP-BUILD
 \ un-materialized plan the copy analyzer must still reject (E-LMV-NOOUT is now unreachable by
 \ checked planning, so this hand-built plan proves the guard directly).
 MODEL: TU ( x:4x8 -- y ) TRANSPOSE ;
-FP-BUILD  0 0 MIR-MAT!
+FP-BUILD  0 0= 0= 0 MIR-NODE-ID MIR-MAT!
 ' LMVT-TRY-MV E-LMV-NOOUT TTHROWS
 
 \ ---- a copy region must be exactly one movement node -------------------------------------
@@ -258,7 +258,7 @@ LMVT-TRY-MV1                                  \ 1 LMV-ANALYZE: no longer throws
 \ Force the gelu producer mat=0 (a corrupted plan): the concat's A operand is now an interior
 \ node with no device buffer, so the copy region rejects it (defense-in-depth, E-LMV-INPUT).
 MODEL: GC2 ( x:4x8 b:4x8 -- y ) GELU CONCAT ;
-FP-BUILD  0 0 MIR-MAT!
+FP-BUILD  0 0= 0= 0 MIR-NODE-ID MIR-MAT!
 ' LMVT-TRY-MV1 E-LMV-INPUT TTHROWS
 
 T-REPORT

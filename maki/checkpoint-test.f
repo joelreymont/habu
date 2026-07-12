@@ -67,7 +67,7 @@ variable CKM-L
    SC-B1-SLOT SC-GRAD-AT MGB1 SC-B1N CKT-COPY
    SC-W2-SLOT SC-GRAD-AT MGW2 SC-W2N CKT-COPY
    SC-B2-SLOT SC-GRAD-AT MGB2 SC-B2N CKT-COPY
-   0 EX-OUT@ MN0 SC-BATCH SC-HID * CKT-COPY ;
+   0 MIR-NODE-ID EX-OUT@ MN0 SC-BATCH SC-HID * CKT-COPY ;
 
 : CKT-MLP-CKPT ( -- r )              \ precondition: fresh SCRATCH-MLP capture
    SC-INIT-PARAMS
@@ -75,10 +75,10 @@ variable CKM-L
    CK-SETUP
    EX-RESET
    SC-X  SC-X-SLOT  EX-BIND
-   SC-W1 SC-W1-SLOT EX-BIND
-   SC-B1 SC-B1-SLOT EX-BIND
-   SC-W2 SC-W2-SLOT EX-BIND
-   SC-B2 SC-B2-SLOT EX-BIND
+   SC-W1 SC-W1-SLOT MIR-SLOT-ID EX-BIND
+   SC-B1 SC-B1-SLOT MIR-SLOT-ID EX-BIND
+   SC-W2 SC-W2-SLOT MIR-SLOT-ID EX-BIND
+   SC-B2 SC-B2-SLOT MIR-SLOT-ID EX-BIND
    SC-SEED BW-SEED-SLOT@ EX-BIND
    CK-FWD
    SC-LOSS-SEED {: loss:r :}
@@ -100,14 +100,14 @@ variable CKA-L
    ATN-KT-SLOT SC-GRAD-AT AGK ATN-EN CKT-COPY
    ATN-S-SLOT  SC-GRAD-AT AGS ATN-SN CKT-COPY
    ATN-V-SLOT  SC-GRAD-AT AGV ATN-EN CKT-COPY
-   0 EX-OUT@ AN0 16 CKT-COPY ;
+   0 MIR-NODE-ID EX-OUT@ AN0 16 CKT-COPY ;
 
 : CKT-ATN-CKPT ( -- r )              \ precondition: fresh ADAM-ATTN capture
    ATN-INIT
    CK-SETUP
    EX-RESET
    ATN-Q   ATN-Q-SLOT  EX-BIND
-   ATN-KT  ATN-KT-SLOT EX-BIND
+   ATN-KT  ATN-KT-SLOT MIR-SLOT-ID EX-BIND
    ATN-S   ATN-S-SLOT  EX-BIND
    ATN-V   ATN-V-SLOT  EX-BIND
    ATN-SEED BW-SEED-SLOT@ EX-BIND
@@ -152,8 +152,8 @@ create DGB3 DP-B3N cells allot    create DN0  DP-N0N cells allot
 
 : DP-BIND ( -- )                     \ slots 0..6 in signature order + the seed
    EX-RESET
-   DP-X  0 EX-BIND  DP-W1 1 EX-BIND  DP-B1 2 EX-BIND
-   DP-W2 3 EX-BIND  DP-B2 4 EX-BIND  DP-W3 5 EX-BIND  DP-B3 6 EX-BIND
+   DP-X  0 MIR-SLOT-ID EX-BIND  DP-W1 1 MIR-SLOT-ID EX-BIND  DP-B1 2 MIR-SLOT-ID EX-BIND
+   DP-W2 3 MIR-SLOT-ID EX-BIND  DP-B2 4 MIR-SLOT-ID EX-BIND  DP-W3 5 MIR-SLOT-ID EX-BIND  DP-B3 6 MIR-SLOT-ID EX-BIND
    DP-SEED BW-SEED-SLOT@ EX-BIND ;
 
 : CKT-DEEP-BASE ( -- )               \ precondition: fresh CKPT-DEEP capture
@@ -168,7 +168,7 @@ create DGB3 DP-B3N cells allot    create DN0  DP-N0N cells allot
    4 SC-GRAD-AT DGB2 DP-B2N CKT-COPY
    5 SC-GRAD-AT DGW3 DP-W3N CKT-COPY
    6 SC-GRAD-AT DGB3 DP-B3N CKT-COPY
-   0 EX-OUT@ DN0 DP-N0N CKT-COPY ;
+   0 MIR-NODE-ID EX-OUT@ DN0 DP-N0N CKT-COPY ;
 
 : CKT-DEEP-CKPT ( -- )               \ precondition: fresh CKPT-DEEP capture
    DP-FILLS
@@ -180,18 +180,19 @@ create DGB3 DP-B3N cells allot    create DN0  DP-N0N cells allot
 \ ---- fail closed: non-interval segments ---------------------------------------
 \ n0 gelu(i0) opens seg0; n1 matmul(i0,i1) opens seg1; n2 relu(n0) rejoins seg0
 \ -> seg0 = {0,2} is not an interval -> CK-SETUP throws before BW-BUILD.
-: CKT-IN+ ( -- )  2 2 MAKI-DTYPE:DF32 MAKI-LAYOUT:ROW MIR-INPUT+ drop ;
-: CKT-U+ ( n opkind -- )             \ unary 2x2 node over operand ref
-   MIR-OP-BEGIN MIR-IN+ 2 2 MAKI-DTYPE:DF32 MAKI-LAYOUT:ROW 0 1 MIR-OP+ drop ;
-: CKT-MM+ ( n n -- )                 \ matmul 2x2 node over two operand refs
-   MAKI-OPKIND:MATMUL MIR-OP-BEGIN {: a:n b:n :}  a MIR-IN+  b MIR-IN+
-   2 2 MAKI-DTYPE:DF32 MAKI-LAYOUT:ROW 0 1 MIR-OP+ drop ;
+: CKT-IN+ ( -- )  2 2 SHAPE MAKI-DTYPE:DF32 MAKI-LAYOUT:ROW MIR-INPUT+ drop ;
+: CKT-U+ ( MIR:operand-ref opkind -- )   \ unary 2x2 node over operand ref
+   MIR-OP-BEGIN MIR-IN+ 2 2 SHAPE MAKI-DTYPE:DF32 MAKI-LAYOUT:ROW 0 1 MIR-OP+ drop ;
+: CKT-MM+ ( MIR:operand-ref MIR:operand-ref -- )   \ matmul 2x2 node over two operand refs
+   MAKI-OPKIND:MATMUL MIR-OP-BEGIN {: a:MIR:operand-ref b:MIR:operand-ref :}
+   a MIR-IN+  b MIR-IN+
+   2 2 SHAPE MAKI-DTYPE:DF32 MAKI-LAYOUT:ROW 0 1 MIR-OP+ drop ;
 
 : CKT-TRY-INTERVAL ( -- )
    MIR-RESET  CKT-IN+  CKT-IN+
-   0 MIR-IN-REF MAKI-OPKIND:GELU CKT-U+
-   0 MIR-IN-REF 1 MIR-IN-REF CKT-MM+
-   0 MAKI-OPKIND:RELU CKT-U+
+   0 MIR-SLOT-ID MIR-IN-REF MAKI-OPKIND:GELU CKT-U+
+   0 MIR-SLOT-ID MIR-IN-REF 1 MIR-SLOT-ID MIR-IN-REF CKT-MM+
+   0 MIR-NODE-ID MIR-NODE-REF MAKI-OPKIND:RELU CKT-U+
    CK-SETUP ;
 
 \ ---- fail closed: one backward node reading interiors of two segments --------
@@ -207,16 +208,16 @@ create CXA 4 cells allot   create CXB 4 cells allot   create CXS 4 cells allot
 
 : CKT-TRY-CROSS ( -- )
    MIR-RESET  CKT-IN+  CKT-IN+
-   0 MIR-IN-REF MAKI-OPKIND:GELU CKT-U+
-   0 MAKI-OPKIND:RELU CKT-U+
-   1 1 MIR-IN-REF CKT-MM+
-   2 MAKI-OPKIND:SILU CKT-U+
+   0 MIR-SLOT-ID MIR-IN-REF MAKI-OPKIND:GELU CKT-U+
+   0 MIR-NODE-ID MIR-NODE-REF MAKI-OPKIND:RELU CKT-U+
+   1 MIR-NODE-ID MIR-NODE-REF 1 MIR-SLOT-ID MIR-IN-REF CKT-MM+
+   2 MIR-NODE-ID MIR-NODE-REF MAKI-OPKIND:SILU CKT-U+
    CK-SETUP
    CKT-CROSS-FILL
-   EX-RESET  CXA 0 EX-BIND  CXB 1 EX-BIND  CXS BW-SEED-SLOT@ EX-BIND
+   EX-RESET  CXA 0 MIR-SLOT-ID EX-BIND  CXB 1 MIR-SLOT-ID EX-BIND  CXS BW-SEED-SLOT@ EX-BIND
    CK-FWD
-   MAKI-OPKIND:MUL MIR-OP-BEGIN 0 MIR-IN+ 2 MIR-IN+
-   2 2 MAKI-DTYPE:DF32 MAKI-LAYOUT:ROW 0 1 MIR-OP+ drop
+   MAKI-OPKIND:MUL MIR-OP-BEGIN 0 MIR-NODE-ID MIR-NODE-REF MIR-IN+ 2 MIR-NODE-ID MIR-NODE-REF MIR-IN+
+   2 2 SHAPE MAKI-DTYPE:DF32 MAKI-LAYOUT:ROW 0 1 MIR-OP+ drop
    CK-BWD ;
 
 T-RESET
@@ -236,7 +237,7 @@ SC-W1-SLOT SC-GRAD-AT MGW1 SC-W1N CKT-EQ? TTRUE
 SC-B1-SLOT SC-GRAD-AT MGB1 SC-B1N CKT-EQ? TTRUE
 SC-W2-SLOT SC-GRAD-AT MGW2 SC-W2N CKT-EQ? TTRUE
 SC-B2-SLOT SC-GRAD-AT MGB2 SC-B2N CKT-EQ? TTRUE
-0 EX-OUT@ MN0 SC-BATCH SC-HID * CKT-EQ? TTRUE
+0 MIR-NODE-ID EX-OUT@ MN0 SC-BATCH SC-HID * CKT-EQ? TTRUE
 
 \ committed plan facts: 2 segments {linear,gelu}{linear}, n0 the one interior;
 \ one interior segment -> the scratch still holds it after CK-FWD -> ZERO remats
@@ -258,7 +259,7 @@ ATN-Q-SLOT  SC-GRAD-AT AGQ ATN-EN CKT-EQ? TTRUE
 ATN-KT-SLOT SC-GRAD-AT AGK ATN-EN CKT-EQ? TTRUE
 ATN-S-SLOT  SC-GRAD-AT AGS ATN-SN CKT-EQ? TTRUE
 ATN-V-SLOT  SC-GRAD-AT AGV ATN-EN CKT-EQ? TTRUE
-0 EX-OUT@ AN0 16 CKT-EQ? TTRUE
+0 MIR-NODE-ID EX-OUT@ AN0 16 CKT-EQ? TTRUE
 
 \ committed plan facts: 3 segments {matmul,scale}{softmax}{matmul}; the interior
 \ q@kt matmul sits in seg0 alone -> still zero remats (spec: recompute begins
@@ -284,7 +285,7 @@ CKT-DEEP-CKPT
 4 SC-GRAD-AT DGB2 DP-B2N CKT-EQ? TTRUE
 5 SC-GRAD-AT DGW3 DP-W3N CKT-EQ? TTRUE
 6 SC-GRAD-AT DGB3 DP-B3N CKT-EQ? TTRUE
-0 EX-OUT@ DN0 DP-N0N CKT-EQ? TTRUE             \ the recomputed interior, exact
+0 MIR-NODE-ID EX-OUT@ DN0 DP-N0N CKT-EQ? TTRUE             \ the recomputed interior, exact
 
 \ committed plan facts: interiors n0 (seg0) + n2 (seg1) -> exactly one remat
 \ (seg1 is still live after CK-FWD; seg0 is re-run when the gelu adjoint needs n0)

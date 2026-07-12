@@ -86,6 +86,10 @@ create LLA-IN-REF LLA-MAX-IN cells allot            \ per-input operand ref (RES
 create LLA-IN-ELEMS LLA-MAX-IN cells allot          \ per-input element count (heterogeneous buffers)
 variable LLA-PM  variable LLA-PN  variable LLA-PK   \ matmul u32 kernel params (M, N, K)
 variable LLA-CPA variable LLA-CPB                   \ movement copy-kernel u32 params (p_a, p_b)
+: LLA-IN-REF! ( MIR:operand-ref n -- )  cells LLA-IN-REF + ! ;
+: LLA-IN-REF@ ( n -- MIR:operand-ref )  cells LLA-IN-REF + @ ;
+: LLA-OUT-NODE! ( CAD-KIND:node-id -- )  LLA-OUT-NODE ! ;
+: LLA-STAGED-NODE@ ( -- CAD-KIND:node-id )  LLA-OUT-NODE @ ;
 
 \ ---- cubin path (the device tool assembles then hands the path here) --------
 : LLA-CUBIN! ( ptr u8 n -- ) {: a:ptr u:n :}
@@ -94,7 +98,7 @@ variable LLA-CPA variable LLA-CPB                   \ movement copy-kernel u32 p
 : LLA-CUBIN$ ( -- ptr u8 n )  LLA-CUBIN LLA-CUBIN-U @ ;
 
 \ ---- staged accessors (the golden reads these regardless of shape) ----------
-: LLA-OUT-NODE@ ( -- n )  LLA-OUT-NODE @ ;
+: LLA-OUT-NODE@ ( -- CAD-KIND:node-id ) LLA-STAGED-NODE@ ;
 : LLA-ELEMS@ ( -- n )     LLA-ELEMS @ ;
 
 private
@@ -103,8 +107,8 @@ private
 : LLA-DBUF-I ( n -- ptr a )  cells LLA-DBUF + ;             \ i-th devptr cell
 
 \ region input i -> its model-input slot (fail closed on a non-slot input)
-: LLA-SLOT ( n -- n ) {: i:n :}
-   LLA-IN-REF i cells + @ {: ref:n :}
+: LLA-SLOT ( n -- MIR:input-slot ) {: i:n :}
+   i LLA-IN-REF@ {: ref:MIR:operand-ref :}
    ref MIR-REF-INPUT? 0= if E-LLA-INPUT throw then
    ref MIR-REF-SLOT ;
 
@@ -118,12 +122,15 @@ private
    i LLA-SLOT GA-IN-PTR  i LLA-IN-ELEMS-I  i LLA-HIN-I  F32-PACK ;
 
 \ resolve one region operand ref (a movement node folds to its source slot) into staging
-: LLA-REF-ELEMS ( n -- n ) {: ref:n :}
-   ref MIR-REF-INPUT? if ref MIR-REF-SLOT dup MIR-SLOT-ROWS@ swap MIR-SLOT-COLS@ *
-   else ref dup MIR-ROWS@ swap MIR-COLS@ * then ;
-: LLA-STAGE-IN ( n n -- ) {: i:n ref:n :}
-   ref MVW-RESOLVE-SRC {: src:n :}
-   src  LLA-IN-REF i cells + !
+: LLA-REF-ELEMS ( MIR:operand-ref -- n ) {: ref:MIR:operand-ref :}
+   ref MIR-REF-INPUT?
+   if ref MIR-REF-SLOT dup MIR-SLOT-ROWS@ swap MIR-SLOT-COLS@ SHAPE-ELEMS DIM-RAW
+   else ref MIR-REF-NODE {: node:CAD-KIND:node-id :}
+      node MIR-ROWS@ node MIR-COLS@ SHAPE-ELEMS DIM-RAW
+   then ;
+: LLA-STAGE-IN ( n MIR:operand-ref -- ) {: i:n ref:MIR:operand-ref :}
+   ref MVW-RESOLVE-SRC {: src:MIR:operand-ref :}
+   src i LLA-IN-REF!
    src LLA-REF-ELEMS  LLA-IN-ELEMS i cells + ! ;
 
 : LLA-FNAME ( n -- ) {: rid:n :}                 \ build the REGION_<rid> cstring
@@ -198,26 +205,26 @@ private
 \ the source element count; LLA-STAGE-IN). The kernel's baked base offset does the rest.
 : LLA-STAGE-EW ( n -- ) {: rid:n :}
    rid LEW-ANALYZE
-   LEW-NIN@ LLA-NIN !  LEW-ELEMS LLA-ELEMS !  LEW-OUT-NODE@ LLA-OUT-NODE !
+   LEW-NIN@ LLA-NIN ! LEW-ELEMS LLA-ELEMS ! LEW-OUT-NODE@ LLA-OUT-NODE!
    LEW-NIN@ 0 ?do  i  i LEW-IN-REF@  LLA-STAGE-IN  loop ;
 
 : LLA-STAGE-RED ( n -- ) {: rid:n :}
    rid LRED-ANALYZE
-   LRED-NIN@ LLA-NIN !  LRED-ELEMS LLA-ELEMS !  LRED-OUT-NODE@ LLA-OUT-NODE !
+   LRED-NIN@ LLA-NIN ! LRED-ELEMS LLA-ELEMS ! LRED-OUT-NODE@ LLA-OUT-NODE!
    LRED-NIN@ 0 ?do  i  i LRED-IN-REF@  LLA-STAGE-IN  loop ;
 
 : LLA-STAGE-MM ( n -- ) {: rid:n :}
    rid LMM-ANALYZE
-   LMM-NIN@ LLA-NIN !  LMM-ELEMS LLA-ELEMS !  LMM-OUT-NODE@ LLA-OUT-NODE !
+   LMM-NIN@ LLA-NIN ! LMM-ELEMS LLA-ELEMS ! LMM-OUT-NODE@ LLA-OUT-NODE!
    LMM-NIN@ 0 ?do  i  i LMM-IN-REF@  LLA-STAGE-IN  loop
    LMM-M@ LLA-PM !  LMM-N@ LLA-PN !  LMM-K@ LLA-PK ! ;
 
 \ movement copy region (maki/lower-move.f): 1-2 buffer operands are already input slots
 : LLA-STAGE-MV ( n -- ) {: rid:n :}
    rid LMV-ANALYZE
-   LMV-NIN@ LLA-NIN !  LMV-ELEMS LLA-ELEMS !  LMV-OUT-NODE@ LLA-OUT-NODE !
+   LMV-NIN@ LLA-NIN ! LMV-ELEMS LLA-ELEMS ! LMV-OUT-NODE@ LLA-OUT-NODE!
    LMV-NIN@ 0 ?do
-      i LMV-IN-REF@    LLA-IN-REF i cells + !
+      i LMV-IN-REF@ i LLA-IN-REF!
       i LMV-IN-ELEMS@  LLA-IN-ELEMS i cells + !
    loop
    LMV-PA@ LLA-CPA !  LMV-PB@ LLA-CPB ! ;
@@ -287,7 +294,7 @@ private
    n LLA-NVAR !
    n LLA-BLOCK + 1 - LLA-BLOCK / ;
 : LLA-GRID-RED ( -- n )
-   LRED-ROWS@ {: rows:n :}  LRED-COLS@ {: cols:n :}
+   LRED-ROWS@ ROWS-RAW {: rows:n :}  LRED-COLS@ COLS-RAW {: cols:n :}
    rows cols LLA-BLOCK PTX-ROW-LAUNCH-CHECK
    cols LLA-NVAR !
    rows ;
@@ -313,7 +320,8 @@ public
 : LLA-REGION-REDUCE? ( n -- bool )  FP-REGION-CLASSMIX  1 CLASS-ROW-REDUCE lshift  and  0= 0= ;
 : LLA-REGION-MOVE? ( n -- bool ) {: rid:n :}
    MIR-N@ 0 ?do
-      i FP-RID@ rid =  i MIR-MOVE?  and  i MIR-MAT@  and if unloop true exit then
+      i MIR-NODE-ID {: node:CAD-KIND:node-id :}
+      node FP-RID@ rid = node MIR-MOVE? and node MIR-MAT@ and if unloop true exit then
    loop false ;
 
 private
@@ -337,8 +345,9 @@ variable MDL-PROBE-RID                             \ rid carried into the lowera
    rid cells MDL-CUBIN-LEN + @ {: u:n :}
    u 0= if E-MDL-CUBIN throw then
    MDL-CUBINS rid FS-PATH-CAP * +  u ;
-: MDL-DEVPTR@ ( n -- n )  cells MDL-BUF + @ ;
-: MDL-DEVPTR! ( n n -- ) {: dp:n nd:n :}  dp nd cells MDL-BUF + ! ;
+: MDL-DEVPTR@ ( CAD-KIND:node-id -- n ) NODE>RAW cells MDL-BUF + @ ;
+: MDL-DEVPTR! ( n CAD-KIND:node-id -- ) {: dp:n node:CAD-KIND:node-id :}
+   dp node NODE>RAW cells MDL-BUF + ! ;
 : MDL-BUF-RESET ( -- )  MDL-CAP 0 ?do  0 i cells MDL-BUF + !  loop ;
 
 \ per-input buffer provision: upload a model slot, or bind an already-produced node buffer
@@ -349,19 +358,19 @@ variable MDL-PROBE-RID                             \ rid carried into the lowera
    i LLA-DBUF-I @ >CUDA-DEVPTR  i LLA-HIN-I  ib >LEN CUDA:CUMEMCPYHTOD CUDA:RC0
    1 i cells MDL-OWN + ! ;
 : MDL-BIND-NODE ( n -- ) {: i:n :}
-   LLA-IN-REF i cells + @ {: nd:n :}               \ a producer node ref (>=0)
-   nd MDL-DEVPTR@ {: dp:n :}
+   i LLA-IN-REF@ MIR-REF-NODE {: node:CAD-KIND:node-id :}
+   node MDL-DEVPTR@ {: dp:n :}
    dp 0= if E-MDL-UNRESOLVED throw then             \ topo order must have produced it
    dp i LLA-DBUF-I !                                \ reuse the producer's device buffer
    0 i cells MDL-OWN + ! ;
 : MDL-PROVIDE-INPUTS ( -- )
    LLA-NIN @ 0 ?do
-      LLA-IN-REF i cells + @ MIR-REF-INPUT? if i MDL-UP-SLOT else i MDL-BIND-NODE then
+      i LLA-IN-REF@ MIR-REF-INPUT? if i MDL-UP-SLOT else i MDL-BIND-NODE then
    loop ;
 : MDL-ALLOC-OUT ( -- )                             \ region output buffer; record it under its node
    LLA-ELEMS @ 4 * {: ob:n :}
    LLA-NIN @ LLA-DBUF-I ob >LEN CUDA:CUMEMALLOC CUDA:RC0
-   LLA-NIN @ LLA-DBUF-I @  LLA-OUT-NODE @ MDL-DEVPTR! ;
+   LLA-NIN @ LLA-DBUF-I @ LLA-STAGED-NODE@ MDL-DEVPTR! ;
 : MDL-FREE-OWNED ( -- )                            \ free only the per-region uploaded inputs
    LLA-NIN @ 0 ?do
       i cells MDL-OWN + @ if  i LLA-DBUF-I @ >CUDA-DEVPTR CUDA:CUMEMFREE CUDA:RC0  then
@@ -408,19 +417,19 @@ variable MDL-PROBE-RID                             \ rid carried into the lowera
 \ read the final model output node's device buffer back into LLA-HOUT (guarded), and point
 \ the golden accessors (LLA-OUT-NODE / LLA-ELEMS) at it so LG-COMPARE-LIN reads the model output.
 : MDL-READBACK ( -- )
-   MIR-N@ 1- {: out:n :}
-   out MIR-ROWS@ out MIR-COLS@ * {: e:n :}
+   MIR-N@ 1- MIR-NODE-ID {: out:CAD-KIND:node-id :}
+   out MIR-ROWS@ out MIR-COLS@ SHAPE-ELEMS DIM-RAW {: e:n :}
    out MDL-DEVPTR@ {: dp:n :}
    dp 0= if E-MDL-NOOUT throw then
    e 4 * {: ob:n :}
    LLA-HRB ob PTXSENT:FILL
    LLA-HRB  dp >CUDA-DEVPTR  ob >LEN CUDA:CUMEMCPYDTOH CUDA:RC0
    e 0 ?do  LLA-HRB i 4 * + SF-LD PTXSENT:GUARD F32>F64  LLA-HOUT i T-SET  loop
-   out LLA-OUT-NODE !  e LLA-ELEMS ! ;
+   out LLA-OUT-NODE! e LLA-ELEMS ! ;
 : MDL-FREE-ALL ( -- )
    MIR-N@ 0 ?do
-      i MDL-DEVPTR@ {: dp:n :}
-      dp 0= 0= if  dp >CUDA-DEVPTR CUDA:CUMEMFREE CUDA:RC0  0 i MDL-DEVPTR!  then
+      i MIR-NODE-ID {: node:CAD-KIND:node-id :} node MDL-DEVPTR@ {: dp:n :}
+      dp 0= 0= if dp >CUDA-DEVPTR CUDA:CUMEMFREE CUDA:RC0 0 node MDL-DEVPTR! then
    loop ;
 
 public
@@ -437,15 +446,17 @@ public
 \ kernels; without them the gate must fall back to the host leg rather than throw E-MDL-CUBIN).
 : MDL-CUBINS-READY? ( -- bool )
    MIR-N@ 0 ?do
-      i MIR-MAT@ if  i FP-RID@ cells MDL-CUBIN-LEN + @ 0= if  false unloop exit  then  then
+      i MIR-NODE-ID {: node:CAD-KIND:node-id :}
+      node MIR-MAT@ if node FP-RID@ cells MDL-CUBIN-LEN + @ 0= if false unloop exit then then
    loop  true ;
 
 \ ---- per-class region tally over the materialized nodes (tolerance composition inputs) ----
 : MDL-COUNT-REGIONS ( -- )
    0 MDL-NEW !  0 MDL-NRED !  0 MDL-NMM !  0 MDL-NMV !  0 MDL-NR !
    MIR-N@ 0 ?do
-      i MIR-MAT@ if
-         i FP-RID@ {: rid:n :}
+      i MIR-NODE-ID {: node:CAD-KIND:node-id :}
+      node MIR-MAT@ if
+         node FP-RID@ {: rid:n :}
          MDL-NR @ 1+ MDL-NR !
          rid LLA-REGION-MOVE? if     MDL-NMV  @ 1+ MDL-NMV !
          else rid LLA-REGION-MATMUL? if MDL-NMM @ 1+ MDL-NMM !
@@ -466,8 +477,9 @@ public
 : MDL-LOWERABLE? ( -- bool )
    GA-SUPPORTED? 0= if false exit then
    MIR-N@ 0 ?do
-      i MIR-MAT@ if
-         i FP-RID@ MDL-PROBE-RID !
+      i MIR-NODE-ID {: node:CAD-KIND:node-id :}
+      node MIR-MAT@ if
+         node FP-RID@ MDL-PROBE-RID !
          [: MDL-PROBE-RID @ MDL-STAGE ;] catch 0<> if  false unloop exit  then
       then
    loop  true ;
@@ -480,7 +492,8 @@ public
    LLA-CTX-OPEN
    MDL-BUF-RESET
    MIR-N@ 0 ?do
-      i MIR-MAT@ if  i FP-RID@ MDL-EXEC-REGION  then
+      i MIR-NODE-ID {: node:CAD-KIND:node-id :}
+      node MIR-MAT@ if node FP-RID@ MDL-EXEC-REGION then
    loop
    MDL-READBACK
    MDL-FREE-ALL

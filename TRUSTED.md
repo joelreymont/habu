@@ -661,6 +661,29 @@ that source is explicitly certified; they are not stale-checked by the default
 | TMP-PATH-COPY-SRC | `ptr u8 n --` | Copies a script path suffix into the fixed target temp-path scratch using raw byte offsets. | `test/run.f`, `tools/build-fixpoint-test.f` | src/os/env-base.f | 2026-06-29 |
 | ENGINE-SELF-MACOS | `-- n` | Resolves the running engine's own executable path from the macOS `apple[]` `executable_path` entry (contiguous after envp on the startup stack); the NUL-terminated pointer walk and NULL tests are outside checker inference. | `lib/engine-id-test.f`, `test/run.f` | lib/engine-id.f | 2026-07-04 |
 | ENGINE-SELF-LINUX | `-- n` | Resolves the running engine's own executable path via `readlink("/proc/self/exe")` into a raw byte buffer; the raw path-buffer pointer view is outside checker inference. | `lib/engine-id-test.f`, `test/run.f` | lib/engine-id.f | 2026-07-04 |
+| RAW>NODE | `n -- CAD-KIND:node-id` | Private Model IR refinement after the allocator or node-range validator proves the raw table position names a committed or newly allocated node. | `maki/model-ir-test.f` | maki/model-ir.f | 2026-07-12 |
+| NODE>RAW | `CAD-KIND:node-id -- n` | Private representation projection used only before Model IR bounds validation or indexing of the owner table; no public raw cast is exported. | `maki/model-ir-test.f` | maki/model-ir.f | 2026-07-12 |
+| RAW>SLOT | `n -- MIR:input-slot` | Private Model IR refinement after the slot allocator or slot-range validator proves the raw position names a live input slot. | `maki/model-ir-test.f` | maki/model-ir.f | 2026-07-12 |
+| SLOT>RAW | `MIR:input-slot -- n` | Private representation projection used only by Model IR slot validators, owner-table accessors, and canonical rendering. | `maki/model-ir-test.f` | maki/model-ir.f | 2026-07-12 |
+| RAW>REF | `n -- MIR:operand-ref` | Private operand-reference refinement after node or slot identity validation; the signed wire encoding remains owned by Model IR. | `maki/model-ir-test.f` | maki/model-ir.f | 2026-07-12 |
+| REF>RAW | `MIR:operand-ref -- n` | Private representation projection used by the signed-reference validator and renderer; callers cannot erase the public operand role. | `maki/model-ir-test.f` | maki/model-ir.f | 2026-07-12 |
+| RAW>INPUT-INDEX | `n -- MIR:input-index` | Private input-ordinal refinement after signed and global-capacity validation; each accessor rechecks the node-local operand count. | `maki/model-ir-test.f` | maki/model-ir.f | 2026-07-12 |
+| INPUT-INDEX>RAW | `MIR:input-index -- n` | Private input-ordinal projection used only after the node handle is validated and before the node-local bound check. | `maki/model-ir-test.f` | maki/model-ir.f | 2026-07-12 |
+| RAW>REF-POS | `n -- MIR:ref-pos` | Private flat-reference-table position refinement after signed and capacity validation. | `maki/model-ir-test.f` | maki/model-ir.f | 2026-07-12 |
+| REF-POS>RAW | `MIR:ref-pos -- n` | Private flat-reference-table projection used only by bounded owner-table load/store helpers. | `maki/model-ir-test.f` | maki/model-ir.f | 2026-07-12 |
+| DIM-REFINE | `n -- CAD-KIND:dim` | Private validated nominal representation boundary for tensor dimensions; tracked by `habu-v2-r3-type-9f89d1e9`. | `maki/tensor-test.f` | maki/tensor.f | 2026-07-12 |
+| DIM-RAW | `CAD-KIND:dim -- n` | Private dimension projection used only by checked shape algebra and numeric execution boundaries. | `maki/tensor-test.f` | maki/tensor.f | 2026-07-12 |
+| ROWS-REFINE | `n -- CAD-KIND:rows` | Private validated row-role refinement; public construction goes through `SHAPE`. | `maki/tensor-test.f` | maki/tensor.f | 2026-07-12 |
+| ROWS-RAW | `CAD-KIND:rows -- n` | Private row projection used by checked shape algebra and numeric execution boundaries. | `maki/tensor-test.f` | maki/tensor.f | 2026-07-12 |
+| COLS-REFINE | `n -- CAD-KIND:cols` | Private validated column-role refinement; public construction goes through `SHAPE`. | `maki/tensor-test.f` | maki/tensor.f | 2026-07-12 |
+| COLS-RAW | `CAD-KIND:cols -- n` | Private column projection used by checked shape algebra and numeric execution boundaries. | `maki/tensor-test.f` | maki/tensor.f | 2026-07-12 |
+| SPACE-REFINE | `n -- CAD-KIND:address-space` | Private validated address-space refinement behind named constructors and `ADDRESS-SPACE-DECODE`. | `maki/tensor-test.f` | maki/tensor.f | 2026-07-12 |
+| SPACE-RAW | `CAD-KIND:address-space -- n` | Private address-space projection used by equality and ABI boundaries. | `maki/tensor-test.f` | maki/tensor.f | 2026-07-12 |
+| IMP-ROWS-N | `CAD-KIND:rows -- n` | Private ONNX-importer raw-extent projection: the importer decodes and indexes wire integers against validated slot/node extents (Model-CAD V2 R3 owner-module refinement rule); no public raw conversion is exported. | `maki/onnx/import-test.f` | maki/onnx/import.f | 2026-07-12 |
+| IMP-COLS-N | `CAD-KIND:cols -- n` | Private ONNX-importer raw-extent projection for column extents (same owner-module boundary as `IMP-ROWS-N`). | `maki/onnx/import-test.f` | maki/onnx/import.f | 2026-07-12 |
+| TYPED-LINEAR | `ptr a ptr a ptr a ptr a CAD-KIND:rows CAD-KIND:cols CAD-KIND:cols --` | Private adapter from nominal tensor descriptors to the legacy native `LINEAR` ABI; the typed caller validates all roles before this boundary. | `maki/tensor-value-test.f`, `maki/plan-compose-test.f` | maki/tensor-value.f | 2026-07-12 |
+| RAW>TENSOR | `n -- tensor` | Private tensor-handle refinement after generation and slot packing; no raw constructor is public. | `maki/tensor-value-test.f` | maki/tensor-value.f | 2026-07-12 |
+| TENSOR>RAW | `tensor -- n` | Private tensor-handle projection used only for generation/slot validation and nominal equality. | `maki/tensor-value-test.f` | maki/tensor-value.f | 2026-07-12 |
 
 ## Ratchet baseline
 
@@ -1218,14 +1241,14 @@ lib/ptx/collective.f:U/ stdlib-boundary habu-ptx-phantom-preserving-3df9db92
 lib/ptx/collective.f:EXP. stdlib-boundary habu-ptx-phantom-preserving-3df9db92
 lib/ptx/collective.f:BROADCAST stdlib-boundary habu-ptx-phantom-preserving-3df9db92
 lib/ptx/collective.f:BLOCK-MAX-SELECT stdlib-boundary habu-ptx-phantom-preserving-3df9db92
-lib/ptx/tile-acc.f:ACC-ZERO stdlib-boundary habu-checker-capability-typed-e0c76a02
-lib/ptx/tile-acc.f:ACC-FMA stdlib-boundary habu-checker-capability-typed-e0c76a02
-lib/ptx/tile-acc.f:ACC-TILE stdlib-boundary habu-checker-capability-typed-e0c76a02
-lib/ptx/tile-acc.f:ACC-LOOP stdlib-boundary habu-checker-capability-typed-e0c76a02
-lib/ptx/tile-loop.f:TILE-LOOP stdlib-boundary habu-checker-capability-typed-e0c76a02
-lib/ptx/tile-smem.f:STAGE stdlib-boundary habu-checker-capability-typed-e0c76a02
-lib/ptx/tile-smem.f:SLOAD stdlib-boundary habu-checker-capability-typed-e0c76a02
-lib/ptx/tile-smem.f:SSTORE stdlib-boundary habu-checker-capability-typed-e0c76a02
+lib/ptx/tile-acc.f:ACC-ZERO stdlib-boundary habu-permanent-owner-for-83401fcc
+lib/ptx/tile-acc.f:ACC-FMA stdlib-boundary habu-permanent-owner-for-83401fcc
+lib/ptx/tile-acc.f:ACC-TILE stdlib-boundary habu-permanent-owner-for-83401fcc
+lib/ptx/tile-acc.f:ACC-LOOP stdlib-boundary habu-permanent-owner-for-83401fcc
+lib/ptx/tile-loop.f:TILE-LOOP stdlib-boundary habu-permanent-owner-for-83401fcc
+lib/ptx/tile-smem.f:STAGE stdlib-boundary habu-permanent-owner-for-83401fcc
+lib/ptx/tile-smem.f:SLOAD stdlib-boundary habu-permanent-owner-for-83401fcc
+lib/ptx/tile-smem.f:SSTORE stdlib-boundary habu-permanent-owner-for-83401fcc
 lib/ptx/tile-v4.f:GRID-CTX-V4 stdlib-boundary habu-ptx-phantom-preserving-3df9db92
 lib/ptx/tile-v4.f:LOAD-V4 stdlib-boundary habu-ptx-phantom-preserving-3df9db92
 lib/ptx/tile-v4.f:STORE-V4 stdlib-boundary habu-ptx-phantom-preserving-3df9db92
@@ -1271,6 +1294,29 @@ lib/test/snap.f:SNAP= test-metaprog habu-typed-depth-introspection-18f0efda
 lib/test/assert.f:TTHROWS-RAW test-metaprog habu-typed-depth-introspection-18f0efda
 maki/cad.f:CAP-COMPILE-RUN test-metaprog habu-primitive-effect-axiom-1119f176
 maki/eval.f:CHECK-PASSES? test-metaprog habu-primitive-effect-axiom-1119f176
+maki/model-ir.f:RAW>NODE prim-axiom habu-epic-model-cad-70b629a9
+maki/model-ir.f:NODE>RAW prim-axiom habu-epic-model-cad-70b629a9
+maki/model-ir.f:RAW>SLOT prim-axiom habu-epic-model-cad-70b629a9
+maki/model-ir.f:SLOT>RAW prim-axiom habu-epic-model-cad-70b629a9
+maki/model-ir.f:RAW>REF prim-axiom habu-epic-model-cad-70b629a9
+maki/model-ir.f:REF>RAW prim-axiom habu-epic-model-cad-70b629a9
+maki/model-ir.f:RAW>INPUT-INDEX prim-axiom habu-epic-model-cad-70b629a9
+maki/model-ir.f:INPUT-INDEX>RAW prim-axiom habu-epic-model-cad-70b629a9
+maki/model-ir.f:RAW>REF-POS prim-axiom habu-epic-model-cad-70b629a9
+maki/model-ir.f:REF-POS>RAW prim-axiom habu-epic-model-cad-70b629a9
+maki/tensor-value.f:RAW>TENSOR prim-axiom habu-epic-model-cad-70b629a9
+maki/tensor-value.f:TENSOR>RAW prim-axiom habu-epic-model-cad-70b629a9
+maki/tensor-value.f:TYPED-LINEAR stdlib-boundary habu-epic-model-cad-70b629a9
+maki/tensor.f:DIM-REFINE prim-axiom habu-epic-model-cad-70b629a9
+maki/tensor.f:DIM-RAW prim-axiom habu-epic-model-cad-70b629a9
+maki/tensor.f:ROWS-REFINE prim-axiom habu-epic-model-cad-70b629a9
+maki/tensor.f:ROWS-RAW prim-axiom habu-epic-model-cad-70b629a9
+maki/tensor.f:COLS-REFINE prim-axiom habu-epic-model-cad-70b629a9
+maki/tensor.f:COLS-RAW prim-axiom habu-epic-model-cad-70b629a9
+maki/tensor.f:SPACE-REFINE prim-axiom habu-epic-model-cad-70b629a9
+maki/tensor.f:SPACE-RAW prim-axiom habu-epic-model-cad-70b629a9
+maki/onnx/import.f:IMP-ROWS-N prim-axiom habu-epic-model-cad-70b629a9
+maki/onnx/import.f:IMP-COLS-N prim-axiom habu-epic-model-cad-70b629a9
 test/checker-assert.f:CHECK-QUIET-CANDIDATE! test-metaprog habu-primitive-effect-axiom-1119f176
 test/bootstrap-wide-memory-src.f:BWM-UN2 test-metaprog habu-permanent-owner-for-83401fcc
 test/bootstrap-wide-memory-src.f:BWM-UN4 test-metaprog habu-permanent-owner-for-83401fcc

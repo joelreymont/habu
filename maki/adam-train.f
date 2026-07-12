@@ -199,7 +199,7 @@ create ATN-VM ATN-EN cells allot   create ATN-VV ATN-EN cells allot
 \ ---- mean-MSE loss over the output + its mean-scaled seed cotangents --------
 : ATN-INV-N ( -- r )  1.0 ATN-EN s>f f/ ;
 
-: ATN-OUT ( -- ptr a )  BW-FWD-N@ 1- EX-OUT@ ;   \ last forward node = 4x3 output
+: ATN-OUT ( -- ptr a )  BW-FWD-N@ 1- MIR-NODE-ID EX-OUT@ ;   \ last forward node = 4x3 output
 
 : ATN-SEED-SCALE! ( -- )    \ TT-MSE-DY writes 2*(o-t); scale to the MEAN loss
    ATN-EN 0 ?do  ATN-SEED i T-GET ATN-INV-N f*  ATN-SEED i T-SET  loop ;
@@ -225,10 +225,10 @@ MODEL: ADAM-ATTN ( q:4x3 kt:3x4 s:1x1 v:4x3 -- o ) MATMUL SCALE SOFTMAX-ROW MATM
    ATN-INIT
    BW-BUILD
    EX-RESET
-   ATN-Q   ATN-Q-SLOT  EX-BIND
-   ATN-KT  ATN-KT-SLOT EX-BIND
-   ATN-S   ATN-S-SLOT  EX-BIND
-   ATN-V   ATN-V-SLOT  EX-BIND
+   ATN-Q   ATN-Q-SLOT  SC-SLOT EX-BIND
+   ATN-KT  ATN-KT-SLOT SC-SLOT EX-BIND
+   ATN-S   ATN-S-SLOT  SC-SLOT EX-BIND
+   ATN-V   ATN-V-SLOT  SC-SLOT EX-BIND
    ATN-SEED BW-SEED-SLOT@ EX-BIND ;
 
 \ forward -> loss + seed -> full IR; returns the pre-update mean MSE

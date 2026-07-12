@@ -19,29 +19,34 @@ create KT-BUF KT-CAP allot  variable KT-BU
 \ ---- IR builders (one gelu/relu elementwise chain over a single input) ------
 : BUILD ( n n -- ) {: rows:n cols:n :}
    MIR-RESET
-   rows cols MAKI-DTYPE:DF32 MAKI-LAYOUT:ROW MIR-INPUT+ drop
-   MAKI-OPKIND:GELU MIR-OP-BEGIN 0 MIR-IN-REF MIR-IN+ rows cols MAKI-DTYPE:DF32 MAKI-LAYOUT:ROW 0 1 MIR-OP+ drop
-   MAKI-OPKIND:RELU MIR-OP-BEGIN 0 MIR-IN+        rows cols MAKI-DTYPE:DF32 MAKI-LAYOUT:ROW 0 1 MIR-OP+ drop ;
+   rows cols SHAPE MAKI-DTYPE:DF32 MAKI-LAYOUT:ROW MIR-INPUT+ drop
+   MAKI-OPKIND:GELU MIR-OP-BEGIN 0 MIR-SLOT-ID MIR-IN-REF MIR-IN+
+   rows cols SHAPE MAKI-DTYPE:DF32 MAKI-LAYOUT:ROW 0 1 MIR-OP+ drop
+   MAKI-OPKIND:RELU MIR-OP-BEGIN 0 MIR-NODE-ID MIR-NODE-REF MIR-IN+
+   rows cols SHAPE MAKI-DTYPE:DF32 MAKI-LAYOUT:ROW 0 1 MIR-OP+ drop ;
 \ same chain, chosen input dtype; the dtype family cannot bind into a local, so
 \ it rides the stack into MIR-INPUT+ and the nodes read it back from the slot
 : BUILD-DT ( n n dtype -- )
    MIR-RESET
-   MAKI-LAYOUT:ROW MIR-INPUT+ drop
-   0 MIR-SLOT-ROWS@ 0 MIR-SLOT-COLS@ {: rows:n cols:n :}
-   MAKI-OPKIND:GELU MIR-OP-BEGIN 0 MIR-IN-REF MIR-IN+ rows cols 0 MIR-SLOT-DT@ MAKI-LAYOUT:ROW 0 1 MIR-OP+ drop
-   MAKI-OPKIND:RELU MIR-OP-BEGIN 0 MIR-IN+        rows cols 0 MIR-SLOT-DT@ MAKI-LAYOUT:ROW 0 1 MIR-OP+ drop ;
+   >r SHAPE r> MAKI-LAYOUT:ROW MIR-INPUT+ drop
+   0 MIR-SLOT-ID MIR-SLOT-ROWS@ 0 MIR-SLOT-ID MIR-SLOT-COLS@
+   {: rows:CAD-KIND:rows cols:CAD-KIND:cols :}
+   MAKI-OPKIND:GELU MIR-OP-BEGIN 0 MIR-SLOT-ID MIR-IN-REF MIR-IN+
+   rows cols 0 MIR-SLOT-ID MIR-SLOT-DT@ MAKI-LAYOUT:ROW 0 1 MIR-OP+ drop
+   MAKI-OPKIND:RELU MIR-OP-BEGIN 0 MIR-NODE-ID MIR-NODE-REF MIR-IN+
+   rows cols 0 MIR-SLOT-ID MIR-SLOT-DT@ MAKI-LAYOUT:ROW 0 1 MIR-OP+ drop ;
 
 T-RESET
 
 \ ---- shape class: exact <= 64, else pow2 bucket + tail flag, ? for unbound ---
-2   4   SK-SHAPE-CLASS$ s" 2x4"           T$=
-64  64  SK-SHAPE-CLASS$ s" 64x64"         T$=
-2   100 SK-SHAPE-CLASS$ s" 2xp128+t"      T$=
-65  1   SK-SHAPE-CLASS$ s" p128+tx1"      T$=
-128 128 SK-SHAPE-CLASS$ s" p128xp128"     T$=
-256 256 SK-SHAPE-CLASS$ s" p256xp256"     T$=
-200 300 SK-SHAPE-CLASS$ s" p256+txp512+t" T$=
-0   65  SK-SHAPE-CLASS$ s" ?xp128+t"      T$=
+2   4   SHAPE SK-SHAPE-CLASS$ s" 2x4"           T$=
+64  64  SHAPE SK-SHAPE-CLASS$ s" 64x64"         T$=
+2   100 SHAPE SK-SHAPE-CLASS$ s" 2xp128+t"      T$=
+65  1   SHAPE SK-SHAPE-CLASS$ s" p128+tx1"      T$=
+128 128 SHAPE SK-SHAPE-CLASS$ s" p128xp128"     T$=
+256 256 SHAPE SK-SHAPE-CLASS$ s" p256xp256"     T$=
+200 300 SHAPE SK-SHAPE-CLASS$ s" p256+txp512+t" T$=
+0   65  SHAPE SK-SHAPE-CLASS$ s" ?xp128+t"      T$=
 
 \ ---- dimclass: typed field identity == rendered single-dim text identity -----
 \ Encode each extent as (dimclass, magnitude) through DIM>CLASS and prove the
@@ -54,7 +59,7 @@ T-RESET
    a DIM-CLS b DIM-CLS MAKI-DIMCLASS:EQ
    a DIM-MAG b DIM-MAG = and ;
 : DIM-TXT= ( e e -- bool ) {: a:n b:n :}                 \ rendered single-dim text equality
-   a 1 SK-SHAPE-CLASS$ KT-COPY  b 1 SK-SHAPE-CLASS$ KT-BUF$ STR= ;
+   a 1 SHAPE SK-SHAPE-CLASS$ KT-COPY  b 1 SHAPE SK-SHAPE-CLASS$ KT-BUF$ STR= ;
 \ field-eq and text-eq return the SAME verdict on both sides of every bucket
 \ boundary -> the (dimclass, magnitude) encoding IS rendered-text identity:
 63  64  DIM-FEQ TFALSE     63  64  DIM-TXT= TFALSE    \ exact/63 vs exact/64
@@ -73,7 +78,7 @@ SK-ENGINE$ nip 64       T=              \ a 64-char SHA-256 hex digest, not a pl
 SK-PTXAS$  s" unprobed"  T$=
 
 \ ---- full section 7.4 key over a built region ------------------------------
-2 100 BUILD  0 MAKI-ALIGN:A16 MIR-SLOT-AL!  FP-BUILD
+2 100 BUILD  0 MIR-SLOT-ID MAKI-ALIGN:A16 MIR-SLOT-AL!  FP-BUILD
 0 SK-RSIG$ s" 431E24867468A764" T$=                 \ deterministic FNV-1a signature
 \ exact full-key equality: copy the actual out (SK-KEY$ builds in the shared SB
 \ builder), then splice the binary-dependent engine key into the expected string.
@@ -146,7 +151,7 @@ s" SKN4 ( n n n dimclass n dtype layout align -- skey ) MAKI-SKEY:MAKE"        C
 2 100 MAKI-DTYPE:DF16 BUILD-DT FP-BUILD  0 SK-RSIG$ KT-BUF$ STR= TFALSE \ dtype change -> different
 
 \ ---- replay table: cad-5 store seam ----------------------------------------
-2 100 BUILD 0 MAKI-ALIGN:A16 MIR-SLOT-AL! FP-BUILD
+2 100 BUILD 0 MIR-SLOT-ID MAKI-ALIGN:A16 MIR-SLOT-AL! FP-BUILD
 SK-TAB-RESET
 0 SK-KEY$ SK-GET nip TFALSE                          \ miss -> not found
 0 SK-KEY$ SK-GET drop -1 T=                          \ miss selection is -1 (use defaults)

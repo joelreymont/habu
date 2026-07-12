@@ -91,52 +91,70 @@ create MP-NM MP-NM-CAP allot  variable MP-NM-U
 : MP-NAME$ ( -- ptr u8 n )  MP-NM MP-NM-U @ ;
 
 \ ---- override detection (input-only: gathered read + broadcast register) -----
-: MP-USES ( n n -- n ) {: nd:n ref:n :}            \ times node nd reads operand ref
-   0 nd MIR-IN-COUNT@ 0 ?do  nd i MIR-IN@ ref = if 1+ then  loop ;
+: MP-USES ( CAD-KIND:node-id MIR:operand-ref -- n )
+   {: nd:CAD-KIND:node-id ref:MIR:operand-ref :}    \ times node nd reads operand ref
+   0 nd MIR-IN-COUNT@ 0 ?do
+      nd i MIR-INPUT-IDX MIR-IN@ ref MIR-REF= if 1+ then
+   loop ;
 
-: MP-SLOT-CONSUMER ( n -- n ) {: s:n :}            \ first node reading slot s, or -1
-   s MIR-IN-REF {: ref:n :}
-   MIR-N@ 0 ?do  i ref MP-USES 0 > if i unloop exit then  loop  -1 ;
-
-: MP-SLOT-GATHERED? ( n -- bool ) {: s:n :}        \ s is the data operand (0) of a gather
-   s MIR-IN-REF {: ref:n :}
+: MP-SLOT-READ? ( MIR:input-slot -- bool ) {: s:MIR:input-slot :}
+   s MIR-IN-REF {: ref:MIR:operand-ref :}
    MIR-N@ 0 ?do
-      i MIR-OP@ MAKI-OPKIND:GATHER MAKI-OPKIND:EQ  i MIR-IN-COUNT@ 0 >  and if
-         i 0 MIR-IN@ ref = if unloop true exit then
+      i MIR-NODE-ID ref MP-USES 0 > if unloop true exit then
+   loop false ;
+
+: MP-SLOT-GATHERED? ( MIR:input-slot -- bool ) {: s:MIR:input-slot :}
+   s MIR-IN-REF {: ref:MIR:operand-ref :}
+   MIR-N@ 0 ?do
+      i MIR-NODE-ID {: nd:CAD-KIND:node-id :}
+      nd MIR-OP@ MAKI-OPKIND:GATHER MAKI-OPKIND:EQ  nd MIR-IN-COUNT@ 0 >  and if
+         nd 0 MIR-INPUT-IDX MIR-IN@ ref MIR-REF= if unloop true exit then
       then
    loop false ;
 
-: MP-SLOT-BROADCAST? ( n -- bool ) {: s:n :}       \ 1-row/1-col input into a wider compute op
-   s MP-SLOT-CONSUMER {: nd:n :}
-   nd 0 < if false exit then
+: MP-BROADCAST-AT? ( MIR:input-slot CAD-KIND:node-id -- bool )
+   {: s:MIR:input-slot nd:CAD-KIND:node-id :}       \ 1-row/1-col input into a wider compute op
    nd MIR-MOVE? if false exit then                  \ movement operands are not register-hoisted
-   s MIR-SLOT-ROWS@ 1 =  nd MIR-ROWS@ 1 >  and if true exit then
-   s MIR-SLOT-COLS@ 1 =  nd MIR-COLS@ 1 >  and if true exit then
-   false ;
+   s MIR-SLOT-ROWS@ ROWS-RAW 1 = nd MIR-ROWS@ ROWS-RAW 1 > and if true exit then
+   s MIR-SLOT-COLS@ COLS-RAW 1 = nd MIR-COLS@ COLS-RAW 1 > and ;
 
-: MP-SLOT-OVERRIDE ( n -- n ) {: s:n :}            \ slot -> CO override or -1
+: MP-SLOT-BROADCAST? ( MIR:input-slot -- bool ) {: s:MIR:input-slot :}
+   s MIR-IN-REF {: ref:MIR:operand-ref :}
+   MIR-N@ 0 ?do
+      i MIR-NODE-ID {: nd:CAD-KIND:node-id :}
+      nd ref MP-USES 0 > if s nd MP-BROADCAST-AT? unloop exit then
+   loop false ;
+
+: MP-SLOT-OVERRIDE ( MIR:input-slot -- n ) {: s:MIR:input-slot :}
    s MP-SLOT-GATHERED?  if CO-GATHERED exit then
    s MP-SLOT-BROADCAST? if CO-BROADCAST exit then
    -1 ;
 
 \ ---- stage a slot read / a node write ---------------------------------------
-: MP-SET-SLOT ( n -- ) {: s:n :}
-   s MIR-SLOT-AL@         MP-AL-AT !
-   s MIR-SLOT-DT@ DT-SIZE MP-ES !
-   s MIR-SLOT-COLS@       MP-EXT !                  \ innermost extent (row-major: cols)
-   s MIR-SLOT-LAY@        MP-LAY-AT !
-   s                      MP-SLOT !
-   s MP-SLOT-OVERRIDE     MP-OVR !
-   SB-RESET s" i" SB-APPEND s SB-INT SB$ MP-NM! ;
+: MP-SLOT! ( MIR:input-slot -- )  MP-SLOT ! ;
+: MP-SLOT@ ( -- MIR:input-slot )  MP-SLOT @ ;
 
-: MP-SET-NODE ( n -- ) {: nd:n :}
+: MP-SET-SLOT ( MIR:input-slot -- ) {: s:MIR:input-slot :}
+   s MIR-SLOT-AL@         MP-AL-AT !
+   s MIR-SLOT-DT@ DT-SIZE DIM-RAW MP-ES !
+   s MIR-SLOT-COLS@ COLS-RAW MP-EXT !               \ innermost extent (row-major: cols)
+   s MIR-SLOT-LAY@        MP-LAY-AT !
+   s                      MP-SLOT!
+   s MP-SLOT-OVERRIDE     MP-OVR !
+   SB-RESET s" i" SB-APPEND s SLOT>RAW SB-INT SB$ MP-NM! ;
+
+: MP-SET-NODE ( CAD-KIND:node-id -- ) {: nd:CAD-KIND:node-id :}
    MAKI-ALIGN:A16         MP-AL-AT !                \ compiler-allocated write: aligned by construction
-   nd MIR-DT@ DT-SIZE     MP-ES !
-   nd MIR-COLS@           MP-EXT !
+   nd MIR-DT@ DT-SIZE DIM-RAW MP-ES !
+   nd MIR-COLS@ COLS-RAW  MP-EXT !
    nd MIR-LAY@            MP-LAY-AT !
+   \ keep the stale-slot invariant fail-obvious: MP-ALIGN-WARN$ is unreachable
+   \ for node writes only while every dtype's element size is <= 16 bytes
+   \ (AL-16 write can never classify CO-UNALIGNED); if that ever changes, a
+   \ stale slot number must never render, so the cursor is reset here.
    -1                     MP-SLOT !
    -1                     MP-OVR !
-   SB-RESET s" n" SB-APPEND nd SB-INT SB$ MP-NM! ;
+   SB-RESET s" n" SB-APPEND nd NODE>RAW SB-INT SB$ MP-NM! ;
 
 \ ---- read staged facts ------------------------------------------------------
 : MP-OVERRIDDEN? ( -- bool )  MP-OVR @ 0 >= ;
@@ -160,7 +178,7 @@ create MP-NM MP-NM-CAP allot  variable MP-NM-U
 
 \ ---- warning rows -----------------------------------------------------------
 : MP-ALIGN-WARN$ ( -- ptr u8 n )
-   SB-RESET s" memory.align: input " SB-APPEND MP-SLOT @ SB-INT
+   SB-RESET s" memory.align: input " SB-APPEND MP-SLOT@ SLOT>RAW SB-INT
    MP-AL-AT @ ALIGN-UNKNOWN? if s"  unknown alignment -> scalar"
                              else s"  sub-4B alignment -> scalar" then SB-APPEND
    SB$ ;
@@ -178,11 +196,11 @@ create MP-NM MP-NM-CAP allot  variable MP-NM-U
    MP-HAS-TAIL?           if MP-TAIL-WARN$  REPORT:WARN+ then ;
 
 \ ---- per-tensor iteration ---------------------------------------------------
-: MP-INPUT-STEP ( report n -- report ) {: s:n :}
-   s MP-SLOT-CONSUMER 0 < if exit then              \ unread slot: no global access
+: MP-INPUT-STEP ( report MIR:input-slot -- report ) {: s:MIR:input-slot :}
+   s MP-SLOT-READ? 0= if exit then                  \ unread slot: no global access
    s MP-SET-SLOT  MP-EMIT+ ;
 
-: MP-OUTPUT-STEP ( report n -- report ) {: nd:n :}
+: MP-OUTPUT-STEP ( report CAD-KIND:node-id -- report ) {: nd:CAD-KIND:node-id :}
    nd MIR-MAT@ 0= if exit then                       \ only materialized (global) tensors
    nd MIR-MOVE?   if exit then                       \ movement writes: MEM-MOVE-ROWS owns them
    nd MP-SET-NODE  MP-EMIT+ ;
@@ -192,7 +210,7 @@ public
 \ emit per-hot-tensor coalescing rows into a report; caller runs FP-BUILD first so
 \ the materialization flags reflect the fusion plan.
 : MEM-PLAN-INTO ( report -- report )
-   MIR-IN-SLOTS@ 0 ?do  i MP-INPUT-STEP   loop
-   MIR-N@        0 ?do  i MP-OUTPUT-STEP  loop ;
+   MIR-IN-SLOTS@ 0 ?do  i MIR-SLOT-ID MP-INPUT-STEP   loop
+   MIR-N@        0 ?do  i MIR-NODE-ID MP-OUTPUT-STEP  loop ;
 
 end-package

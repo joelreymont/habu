@@ -180,7 +180,7 @@ FP-BUILD
 \ MATMUL node materialized simulates a bad plan; LMM-ANALYZE must not trust it.
 MODEL: MO ( x:8x8 w:8x8 -- y ) MATMUL RELU ;
 FP-BUILD
--1 0 MIR-MAT!
+0 0= 0 MIR-NODE-ID MIR-MAT!
 ' LMMT-TRY E-LMM-MULTIOUT TTHROWS
 
 \ ---- fail closed: a corrupted plan with two contractions in one region -------------

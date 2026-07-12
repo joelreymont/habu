@@ -17,6 +17,8 @@ require maki/golden.f
 
 package MAKI
 
+: GT-IN-PTR ( n -- ptr a )  MIR-SLOT-ID GA-IN-PTR ;
+
 variable GT-VA  variable GT-VU
 : GT-SAVE ( ptr u8 n -- )  GT-VU ! GT-VA ! ;
 : GT-IN ( ptr u8 n -- )  GT-VA @ GT-VU @ 2swap CONTAINS? TTRUE ;
@@ -98,18 +100,18 @@ drop
 \ non-identity - so the golden exercises a real index->row mapping, not row 0 only.
 MODEL: GA-GAT ( x:4x2 idx:3x1 -- y ) GATHER ;
 GA-BIND-SYNTH
-1 GA-IN-PTR 0 T-GET 0.5 f+ f>s 3 T=
-1 GA-IN-PTR 1 T-GET 0.5 f+ f>s 2 T=
-1 GA-IN-PTR 2 T-GET 0.5 f+ f>s 1 T=
+1 GT-IN-PTR 0 T-GET 0.5 f+ f>s 3 T=
+1 GT-IN-PTR 1 T-GET 0.5 f+ f>s 2 T=
+1 GT-IN-PTR 2 T-GET 0.5 f+ f>s 1 T=
 
 \ ---- ...and the executed gather output under that fill DISCRIMINATES ---------
 \ y row0 = x row idx[0]=3 (flat 6 -> 6*0.17+0.4 = 1.42). The old all-0.0 fill and
 \ an index-IGNORING positional-copy kernel would both put x[0,0] = 0.40 there, so
 \ this output separates real row selection from both failure shapes.
 MIR-N@ EX-RUN-N
-0 EX-OUT@ 0 T-GET 100.0 f* 0.5 f+ f>s 142 T=      \ y[0,0] = x[3,0], NOT...
-0 GA-IN-PTR 0 T-GET 100.0 f* 0.5 f+ f>s  40 T=    \ ...the row-0 value 0.40
-0 EX-OUT@ 4 T-GET 100.0 f* 0.5 f+ f>s  74 T=      \ y[2,0] = x[1,0] (flat 2: 0.74)
+0 MIR-NODE-ID EX-OUT@ 0 T-GET 100.0 f* 0.5 f+ f>s 142 T=      \ y[0,0] = x[3,0], NOT...
+0 GT-IN-PTR 0 T-GET 100.0 f* 0.5 f+ f>s  40 T=    \ ...the row-0 value 0.40
+0 MIR-NODE-ID EX-OUT@ 4 T-GET 100.0 f* 0.5 f+ f>s  74 T=      \ y[2,0] = x[1,0] (flat 2: 0.74)
 
 \ ---- gather artifact round-trip: save -> check PASSes under the varied fill ---
 GA-SAVE

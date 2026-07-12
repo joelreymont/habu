@@ -14,7 +14,8 @@
 \ own owned error code (E-LEW-BCAST / E-LRED-BCAST). Capture-time shape legality
 \ (maki/cad.f SHP-LEGAL?) already restricts which class each op may broadcast, so this
 \ classifier is the fail-closed re-derivation at lowering, not a policy of its own.
-\ maki -> habu only; needs no library beyond core (pure shape arithmetic).
+
+require maki/tensor.f
 
 package MAKI
 public
@@ -28,11 +29,12 @@ public
 \ Classify an operand shape br x bc against the target R x C (fail-closed sentinel on
 \ an illegal shape; the caller maps BC-ILLEGAL to its owned throw). FULL is tested first
 \ so a degenerate R=1 or C=1 target (where classes coincide) picks the cheapest load.
-: BC-CLASS ( n n n n -- n ) {: br:n bc:n r:n c:n :}
-   br r = bc c = and if BC-FULL   exit then
-   br 1 = bc c = and if BC-ROW    exit then
-   br r = bc 1 = and if BC-COL    exit then
-   br 1 = bc 1 = and if BC-SCALAR exit then
+: BC-CLASS ( CAD-KIND:rows CAD-KIND:cols CAD-KIND:rows CAD-KIND:cols -- n )
+   {: br:CAD-KIND:rows bc:CAD-KIND:cols r:CAD-KIND:rows c:CAD-KIND:cols :}
+   br r ROWS-EQUAL? bc c COLS-EQUAL? and if BC-FULL   exit then
+   br 1 ROWS-IS? bc c COLS-EQUAL? and if BC-ROW    exit then
+   br r ROWS-EQUAL? bc 1 COLS-IS? and if BC-COL    exit then
+   br 1 ROWS-IS? bc 1 COLS-IS? and if BC-SCALAR exit then
    BC-ILLEGAL ;
 
 end-package

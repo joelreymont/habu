@@ -294,26 +294,33 @@ $5E constant TR-C                                  \ '^' - the reserved transpos
 \ LINEAR routes its bias through the BIAS class against the OUTPUT cols. An unbound
 \ (0) extent defers: capture passes and BIND-SHAPES re-propagation re-checks once
 \ bound. Ops with no documented class (rope / synthesized backward ops) are unconstrained.
-: SHP-BOUND? ( n n n n -- bool ) {: dr:n dc:n pr:n pc:n :}   \ all four extents bound (nonzero)
-   dr 0<> dc 0<> and  pr 0<> and  pc 0<> and ;
-: SHP-SAME? ( n n n n -- bool ) {: dr:n dc:n pr:n pc:n :}    \ param EQUALS data
-   pr dr =  pc dc =  and ;
-: SHP-ROW? ( n n n -- bool ) {: dc:n pr:n pc:n :}            \ param is 1 x dc
-   pr 1 =  pc dc =  and ;
-: SHP-SCALAR? ( n n -- bool ) {: pr:n pc:n :}                \ param is 1 x 1
-   pr 1 =  pc 1 =  and ;
+: SHP-BOUND? ( CAD-KIND:rows CAD-KIND:cols CAD-KIND:rows CAD-KIND:cols -- bool )
+   {: dr:CAD-KIND:rows dc:CAD-KIND:cols pr:CAD-KIND:rows pc:CAD-KIND:cols :}
+   dr 0 ROWS-IS? 0= dc 0 COLS-IS? 0= and
+   pr 0 ROWS-IS? 0= and pc 0 COLS-IS? 0= and ;      \ all four extents bound (nonzero)
+: SHP-SAME? ( CAD-KIND:rows CAD-KIND:cols CAD-KIND:rows CAD-KIND:cols -- bool )
+   SHAPE-EQUAL? ;                                   \ param EQUALS data
+: SHP-ROW? ( CAD-KIND:cols CAD-KIND:rows CAD-KIND:cols -- bool )
+   {: dc:CAD-KIND:cols pr:CAD-KIND:rows pc:CAD-KIND:cols :}   \ param is 1 x dc
+   pr 1 ROWS-IS?  pc dc COLS-EQUAL?  and ;
+: SHP-SCALAR? ( CAD-KIND:rows CAD-KIND:cols -- bool )
+   {: pr:CAD-KIND:rows pc:CAD-KIND:cols :}          \ param is 1 x 1
+   pr 1 ROWS-IS?  pc 1 COLS-IS?  and ;
 \ per-class broadcast legality; an unbound (0) extent defers to BIND-SHAPES reprop
-: SHP-ROW-OK? ( n n n n -- bool ) {: dr:n dc:n pr:n pc:n :}        \ BIAS: param 1 x dc
+: SHP-ROW-OK? ( CAD-KIND:rows CAD-KIND:cols CAD-KIND:rows CAD-KIND:cols -- bool )
+   {: dr:CAD-KIND:rows dc:CAD-KIND:cols pr:CAD-KIND:rows pc:CAD-KIND:cols :}
    dr dc pr pc SHP-BOUND? 0= if true exit then  dc pr pc SHP-ROW? ;
-: SHP-SAME-OK? ( n n n n -- bool ) {: dr:n dc:n pr:n pc:n :}       \ ADD/MUL/RESIDUAL: param == data
+: SHP-SAME-OK? ( CAD-KIND:rows CAD-KIND:cols CAD-KIND:rows CAD-KIND:cols -- bool )
+   {: dr:CAD-KIND:rows dc:CAD-KIND:cols pr:CAD-KIND:rows pc:CAD-KIND:cols :}
    dr dc pr pc SHP-BOUND? 0= if true exit then  dr dc pr pc SHP-SAME? ;
-: SHP-SCALE-OK? ( n n n n -- bool ) {: dr:n dc:n pr:n pc:n :}      \ SCALE: param == data OR 1 x 1
+: SHP-SCALE-OK? ( CAD-KIND:rows CAD-KIND:cols CAD-KIND:rows CAD-KIND:cols -- bool )
+   {: dr:CAD-KIND:rows dc:CAD-KIND:cols pr:CAD-KIND:rows pc:CAD-KIND:cols :}
    dr dc pr pc SHP-BOUND? 0= if true exit then  dr dc pr pc SHP-SAME?  pr pc SHP-SCALAR? or ;
 
 \ param-operand broadcast legality dispatched on the op family (exhaustive MATCH:
 \ adding an op forces a broadcast-class decision here). BIAS/SCALE/ADD/MUL/RESIDUAL
 \ carry a documented class; every other op is unconstrained (any param shape legal).
-: SHP-LEGAL? ( n n n n opkind -- bool )
+: SHP-LEGAL? ( CAD-KIND:rows CAD-KIND:cols CAD-KIND:rows CAD-KIND:cols opkind -- bool )
    MATCH opkind
       bias            OF SHP-ROW-OK?   ENDOF
       scale           OF SHP-SCALE-OK? ENDOF
@@ -348,7 +355,7 @@ $5E constant TR-C                                  \ '^' - the reserved transpos
       scatter-add     OF 2drop 2drop true ENDOF
       gelu-bwd2       OF 2drop 2drop true ENDOF
    ;MATCH ;
-: SHP-CHECK ( n n n n opkind -- )
+: SHP-CHECK ( CAD-KIND:rows CAD-KIND:cols CAD-KIND:rows CAD-KIND:cols opkind -- )
    SHP-LEGAL? 0= if E-CAD-PARAM-SHAPE throw then ;
 
 \ capture entry points: elementwise param vs its data operand; linear bias vs output cols.
@@ -375,9 +382,26 @@ $5E constant TR-C                                  \ '^' - the reserved transpos
 : PLAN-SHP-ALL ( -- )  TENSOR:PLAN-N@ 0 ?do  i PLAN-SHP-NODE  loop ;
 
 \ ---- bridge the captured plan into the model-IR node table -----------------
-: PLAN-REF ( tensor -- n )                      \ plan tensor handle -> MIR operand ref
-   TENSOR:tensor>N {: h:n :}
-   h CAP-IN-N @ < if h MIR-IN-REF else h CAP-IN-N @ - then ;
+\ Handles are nominal (no raw cast): resolve a plan tensor by IDENTITY against the
+\ declared inputs, then against committed plan outputs; an unknown handle fails
+\ closed (E-CAD-REF).
+: CAP-IN-A ( -- ptr tensor )  CAP-INS ;
+: CAP-IN! ( tensor n -- )  cells CAP-IN-A + ! ;
+: CAP-IN@ ( n -- tensor )  cells CAP-IN-A + @ ;
+: CAP-IN-FIND ( tensor -- n bool ) {: t:tensor :}
+   CAP-IN-N @ 0 ?do
+      t i CAP-IN@ TENSOR:TV-EQUAL? if i true unloop exit then
+   loop
+   0 false ;
+: PLAN-OUT-FIND ( tensor -- n bool ) {: t:tensor :}
+   TENSOR:PLAN-N@ 0 ?do
+      t i TENSOR:PLAN-OUT@ TENSOR:TV-EQUAL? if i true unloop exit then
+   loop
+   0 false ;
+: PLAN-REF ( tensor -- MIR:operand-ref ) {: t:tensor :}
+   t CAP-IN-FIND if MIR-SLOT-ID MIR-IN-REF exit then drop
+   t PLAN-OUT-FIND if MIR-NODE-ID MIR-NODE-REF exit then drop
+   E-CAD-REF throw ;
 
 \ movement nodes materialize only on a materialize/gathered verdict; compute nodes
 \ stay materialized (the conservative cad-1 default until the fusion planner lands).
@@ -452,8 +476,9 @@ $5E constant TR-C                                  \ '^' - the reserved transpos
 : SIG-INPUT ( ptr u8 n -- ) {: a:ptr u:n :}
    CAP-IN-N @ CAP-CAP >= if E-CAD-INPUTS throw then
    a u PARSE-SHAPE {: rows:n cols:n :}
-   rows cols MAKI-DTYPE:DF32 MAKI-LAYOUT:ROW TENSOR:TV-DESC TENSOR:tensor>N  CAP-INS CAP-IN-N @ cells + !   \ handle for the seed
-   rows cols MAKI-DTYPE:DF32 MAKI-LAYOUT:ROW MIR-INPUT+ drop                 \ register the IR input slot
+   rows cols SHAPE MAKI-DTYPE:DF32 MAKI-LAYOUT:ROW SPACE-HOST TENSOR:TV-DESC
+   CAP-IN-N @ CAP-IN!                                                        \ handle for the seed
+   rows cols SHAPE MAKI-DTYPE:DF32 MAKI-LAYOUT:ROW MIR-INPUT+ drop           \ register the IR input slot
    a u SPEC-NAME {: na:ptr nu:n :}
    nu 0 > if  na nu NT-BIND drop  else  CAP-SYNTH-NAME  then
    CAP-IN-N @ 1+ CAP-IN-N ! ;
@@ -478,13 +503,17 @@ $5E constant TR-C                                  \ '^' - the reserved transpos
    a di            PARSE-INT                          \ r0
    a di 2 + +  u di 2 + -  PARSE-INT ;                \ r1
 
-\ "MOVE:params" body token (RESHAPE:RxC | SLICE:R0..R1): emit the scalar params then the word.
-\ The scalar params are the vocab word's ( tensor n n -- tensor ) integer operands.
+\ a slice row param is emitted as a nominal CAD-KIND:rows value ("<n> 1 MAKI:SHAPE drop")
+: EMIT-ROW-PARAM ( n -- )
+   MSRC-INT s"  1 MAKI:SHAPE drop " MSRC+ ;
+
+\ "MOVE:params" body token (RESHAPE:RxC | SLICE:R0..R1): emit nominal params then the word.
 : EMIT-MOVE-PARAM ( ptr u8 n ptr u8 n -- ) {: op:ptr opu:n pa:ptr pu:n :}
    op opu OP-KIND                                    \ ( mop )  op family cannot bind into a local
    dup MAKI-OPKIND:RESHAPE MAKI-OPKIND:EQ if  drop  pa pu PARSE-SHAPE  swap MSRC-INT MSRC-SP MSRC-INT MSRC-SP
+      s" MAKI:SHAPE " MSRC+
       op opu CAP-EMIT-OP  exit  then
-   MAKI-OPKIND:SLICE MAKI-OPKIND:EQ if  pa pu PARSE-RANGE  swap MSRC-INT MSRC-SP MSRC-INT MSRC-SP
+   MAKI-OPKIND:SLICE MAKI-OPKIND:EQ if  pa pu PARSE-RANGE  swap EMIT-ROW-PARAM EMIT-ROW-PARAM
       op opu CAP-EMIT-OP  exit  then
    E-CAD-SYNTAX throw ;                              \ only reshape/slice carry ':' params
 
@@ -553,7 +582,7 @@ $5E constant TR-C                                  \ '^' - the reserved transpos
 \ and the dynamic-arity descriptor push are metaprogramming the checker cannot express;
 \ the compiled body is fully checked by the active hook (dot habu-checker-reentrancy-certify).
 TRUSTED: CAP-COMPILE-RUN ( -- )
-   CAP-IN-N @ 0 ?do  i cells CAP-INS + @  loop     \ push all N input descriptor handles
+   CAP-IN-N @ 0 ?do  i CAP-IN@  loop               \ push all N input descriptor handles
    MSRC$ evaluate                                  \ compile + run the capture word
    drop ;                                          \ discard the captured output descriptor
 
@@ -588,45 +617,56 @@ private
 \ row-reduce forward ops keep the data operand's shape; matmul/linear take rows from
 \ the data operand and cols from the weight (inner dim must agree); each movement op
 \ recomputes its extents from its attrs and re-derives its dissolution verdict.
-: RB-REF-ROWS ( n -- n ) {: r:n :}
-   r MIR-REF-INPUT? if r MIR-REF-SLOT MIR-SLOT-ROWS@ else r MIR-ROWS@ then ;
-: RB-REF-COLS ( n -- n ) {: r:n :}
-   r MIR-REF-INPUT? if r MIR-REF-SLOT MIR-SLOT-COLS@ else r MIR-COLS@ then ;
-: RB-REF-LAY ( n -- layout ) {: r:n :}
-   r MIR-REF-INPUT? if r MIR-REF-SLOT MIR-SLOT-LAY@ else r MIR-LAY@ then ;
+: RB-REF-ROWS ( MIR:operand-ref -- CAD-KIND:rows ) {: r:MIR:operand-ref :}
+   r MIR-REF-INPUT? if r MIR-REF-SLOT MIR-SLOT-ROWS@ else r MIR-REF-NODE MIR-ROWS@ then ;
+: RB-REF-COLS ( MIR:operand-ref -- CAD-KIND:cols ) {: r:MIR:operand-ref :}
+   r MIR-REF-INPUT? if r MIR-REF-SLOT MIR-SLOT-COLS@ else r MIR-REF-NODE MIR-COLS@ then ;
+: RB-REF-LAY ( MIR:operand-ref -- layout ) {: r:MIR:operand-ref :}
+   r MIR-REF-INPUT? if r MIR-REF-SLOT MIR-SLOT-LAY@ else r MIR-REF-NODE MIR-LAY@ then ;
 
 \ elementwise / row-reduce forward: output = data operand (operand 0) shape
-: RB-DATA ( n -- n n ) {: nd:n :}  nd 0 MIR-IN@ {: r:n :}  r RB-REF-ROWS  r RB-REF-COLS ;
+: RB-DATA ( CAD-KIND:node-id -- CAD-KIND:rows CAD-KIND:cols ) {: nd:CAD-KIND:node-id :}
+   nd 0 MIR-INPUT-IDX MIR-IN@ {: r:MIR:operand-ref :}
+   r RB-REF-ROWS  r RB-REF-COLS ;
 
 \ contraction: rows from data operand, cols from weight; inner dim must agree
-: RB-MM ( n -- n n ) {: nd:n :}
-   nd 0 MIR-IN@ {: xr:n :}  nd 1 MIR-IN@ {: wr:n :}
-   xr RB-REF-COLS wr RB-REF-ROWS <> if E-CAD-BIND-SHAPE throw then
+: RB-MM ( CAD-KIND:node-id -- CAD-KIND:rows CAD-KIND:cols ) {: nd:CAD-KIND:node-id :}
+   nd 0 MIR-INPUT-IDX MIR-IN@ {: xr:MIR:operand-ref :}
+   nd 1 MIR-INPUT-IDX MIR-IN@ {: wr:MIR:operand-ref :}
+   xr RB-REF-COLS wr RB-REF-ROWS INNER-EQUAL? 0= if E-CAD-BIND-SHAPE throw then
    xr RB-REF-ROWS  wr RB-REF-COLS ;
 
 \ movement extents per op (attrs carry reshape target / slice range; the rest come
 \ from operand extents). Each binds its locals at entry (no branch-local rebinds).
-: RB-RESHAPE ( n -- n n ) {: nd:n :}
-   nd MIR-ATTR@ {: attr:n :}  nd 0 MIR-IN@ {: r0:n :}
+: RB-RESHAPE ( CAD-KIND:node-id -- CAD-KIND:rows CAD-KIND:cols ) {: nd:CAD-KIND:node-id :}
+   nd MIR-ATTR@ {: attr:n :}
+   nd 0 MIR-INPUT-IDX MIR-IN@ {: r0:MIR:operand-ref :}
    attr MV-PA@ {: tr:n :}  attr MV-PB@ {: tc:n :}
-   r0 RB-REF-ROWS r0 RB-REF-COLS *  tr tc *  <> if E-CAD-BIND-SHAPE throw then
-   tr tc ;
-: RB-TRANSPOSE ( n -- n n ) {: nd:n :}
-   nd 0 MIR-IN@ {: r0:n :}  r0 RB-REF-COLS  r0 RB-REF-ROWS ;
-: RB-SLICE ( n -- n n ) {: nd:n :}
-   nd MIR-ATTR@ {: attr:n :}  nd 0 MIR-IN@ {: r0:n :}
+   r0 RB-REF-ROWS r0 RB-REF-COLS SHAPE-ELEMS
+   tr tc SHAPE SHAPE-ELEMS DIM-EQUAL? 0= if E-CAD-BIND-SHAPE throw then
+   tr tc SHAPE ;
+: RB-TRANSPOSE ( CAD-KIND:node-id -- CAD-KIND:rows CAD-KIND:cols ) {: nd:CAD-KIND:node-id :}
+   nd 0 MIR-INPUT-IDX MIR-IN@ {: r0:MIR:operand-ref :}
+   r0 RB-REF-ROWS r0 RB-REF-COLS TRANSPOSE-SHAPE ;
+: RB-SLICE ( CAD-KIND:node-id -- CAD-KIND:rows CAD-KIND:cols ) {: nd:CAD-KIND:node-id :}
+   nd MIR-ATTR@ {: attr:n :}
+   nd 0 MIR-INPUT-IDX MIR-IN@ {: r0:MIR:operand-ref :}
    attr MV-PA@ {: a:n :}  attr MV-PB@ {: b:n :}
-   a 0 < b r0 RB-REF-ROWS > or  a b > or if E-CAD-BIND-SHAPE throw then
-   b a -  r0 RB-REF-COLS ;
-: RB-CONCAT ( n -- n n ) {: nd:n :}
-   nd 0 MIR-IN@ {: r0:n :}  nd 1 MIR-IN@ {: r1:n :}
-   r0 RB-REF-COLS r1 RB-REF-COLS <> if E-CAD-BIND-SHAPE throw then
-   r0 RB-REF-ROWS r1 RB-REF-ROWS +  r0 RB-REF-COLS ;
-: RB-GATHER ( n -- n n ) {: nd:n :}
-   nd 0 MIR-IN@ {: r0:n :}  nd 1 MIR-IN@ {: r1:n :}
-   r1 RB-REF-ROWS r1 RB-REF-COLS *  r0 RB-REF-COLS ;
+   a 0 < b r0 RB-REF-ROWS ROWS-RAW > or  a b > or if E-CAD-BIND-SHAPE throw then
+   b a -  r0 RB-REF-COLS COLS-RAW  SHAPE ;
+: RB-CONCAT ( CAD-KIND:node-id -- CAD-KIND:rows CAD-KIND:cols ) {: nd:CAD-KIND:node-id :}
+   nd 0 MIR-INPUT-IDX MIR-IN@ {: r0:MIR:operand-ref :}
+   nd 1 MIR-INPUT-IDX MIR-IN@ {: r1:MIR:operand-ref :}
+   r0 RB-REF-COLS r1 RB-REF-COLS COLS-EQUAL? 0= if E-CAD-BIND-SHAPE throw then
+   r0 RB-REF-ROWS ROWS-RAW r1 RB-REF-ROWS ROWS-RAW +
+   r0 RB-REF-COLS COLS-RAW  SHAPE ;
+: RB-GATHER ( CAD-KIND:node-id -- CAD-KIND:rows CAD-KIND:cols ) {: nd:CAD-KIND:node-id :}
+   nd 0 MIR-INPUT-IDX MIR-IN@ {: r0:MIR:operand-ref :}
+   nd 1 MIR-INPUT-IDX MIR-IN@ {: r1:MIR:operand-ref :}
+   r1 RB-REF-ROWS r1 RB-REF-COLS SHAPE-ELEMS DIM-RAW
+   r0 RB-REF-COLS COLS-RAW  SHAPE ;
 
-: RB-MOVE-SHAPE ( n -- n n ) {: nd:n :}
+: RB-MOVE-SHAPE ( CAD-KIND:node-id -- CAD-KIND:rows CAD-KIND:cols ) {: nd:CAD-KIND:node-id :}
    nd MIR-OP@ MATCH opkind
       reshape         OF nd RB-RESHAPE   ENDOF
       transpose       OF nd RB-TRANSPOSE ENDOF
@@ -664,10 +704,14 @@ private
 
 \ movement dissolution verdict re-derived from the new extents (slice re-checks its
 \ offset/col alignment; the rest are layout- or constant-determined).
-: RB-VD-RESHAPE ( n -- n ) {: nd:n :}  nd 0 MIR-IN@ RB-REF-LAY MV-RESHAPE-VERDICT ;
-: RB-VD-SLICE ( n n -- n ) {: nd:n cols:n :}
-   nd 0 MIR-IN@ RB-REF-LAY  nd MIR-ATTR@ MV-PA@  cols  MV-SLICE-VERDICT ;
-: RB-MOVE-VD ( n n -- n ) {: nd:n cols:n :}
+: RB-VD-RESHAPE ( CAD-KIND:node-id -- n ) {: nd:CAD-KIND:node-id :}
+   nd 0 MIR-INPUT-IDX MIR-IN@ RB-REF-LAY MV-RESHAPE-VERDICT ;
+: RB-VD-SLICE ( CAD-KIND:node-id CAD-KIND:cols -- n )
+   {: nd:CAD-KIND:node-id cols:CAD-KIND:cols :}
+   nd 0 MIR-INPUT-IDX MIR-IN@ RB-REF-LAY
+   nd MIR-ATTR@ MV-PA@  cols COLS-RAW  MV-SLICE-VERDICT ;
+: RB-MOVE-VD ( CAD-KIND:node-id CAD-KIND:cols -- n )
+   {: nd:CAD-KIND:node-id cols:CAD-KIND:cols :}
    nd MIR-OP@ MATCH opkind
       reshape         OF nd RB-VD-RESHAPE     ENDOF
       transpose       OF MV-TRANSPOSE-VERDICT ENDOF
@@ -703,8 +747,8 @@ private
       gelu-bwd2       OF E-CAD-BIND-SHAPE throw ENDOF
    ;MATCH ;
 
-: REPROP-MOVE ( n -- ) {: nd:n :}
-   nd RB-MOVE-SHAPE {: rows:n cols:n :}
+: REPROP-MOVE ( CAD-KIND:node-id -- ) {: nd:CAD-KIND:node-id :}
+   nd RB-MOVE-SHAPE {: rows:CAD-KIND:rows cols:CAD-KIND:cols :}
    nd MIR-ATTR@ {: attr:n :}
    attr MV-TF@  nd cols RB-MOVE-VD  attr MV-PA@  attr MV-PB@  MV-PACK  nd MIR-ATTR!
    rows cols nd MIR-SHAPE! ;
@@ -712,25 +756,28 @@ private
 \ param-operand legality re-check over IR operands (mirrors the capture SHP-CHECK):
 \ operand 1 must broadcast-match operand 0 under the node op's class. Unary elementwise
 \ and row-reduce ops have no param operand (count < 2) and skip.
-: RB-EW-PARAM ( n -- ) {: nd:n :}
+: RB-EW-PARAM ( CAD-KIND:node-id -- ) {: nd:CAD-KIND:node-id :}
    nd MIR-IN-COUNT@ 2 < if exit then
-   nd 0 MIR-IN@ {: d:n :}  nd 1 MIR-IN@ {: p:n :}
+   nd 0 MIR-INPUT-IDX MIR-IN@ {: d:MIR:operand-ref :}
+   nd 1 MIR-INPUT-IDX MIR-IN@ {: p:MIR:operand-ref :}
    d RB-REF-ROWS d RB-REF-COLS  p RB-REF-ROWS p RB-REF-COLS  nd MIR-OP@  SHP-CHECK ;
 
 \ contraction re-check: the linear bias (operand 2) must be 1 x (output cols); matmul
 \ (no bias operand) skips. Inner-dim agreement stays in RB-MM.
-: RB-MM-BIAS ( n -- ) {: nd:n :}
+: RB-MM-BIAS ( CAD-KIND:node-id -- ) {: nd:CAD-KIND:node-id :}
    nd MIR-IN-COUNT@ 3 < if exit then
-   nd 0 MIR-IN@ {: x:n :}  nd 1 MIR-IN@ {: w:n :}  nd 2 MIR-IN@ {: b:n :}
+   nd 0 MIR-INPUT-IDX MIR-IN@ {: x:MIR:operand-ref :}
+   nd 1 MIR-INPUT-IDX MIR-IN@ {: w:MIR:operand-ref :}
+   nd 2 MIR-INPUT-IDX MIR-IN@ {: b:MIR:operand-ref :}
    x RB-REF-ROWS w RB-REF-COLS  b RB-REF-ROWS b RB-REF-COLS  MAKI-OPKIND:BIAS  SHP-CHECK ;
 
-: REPROP-NODE ( n -- ) {: nd:n :}
+: REPROP-NODE ( CAD-KIND:node-id -- ) {: nd:CAD-KIND:node-id :}
    nd MIR-OP@ OPR-CLASS {: cls:n :}
    cls CLASS-MOVEMENT = if nd REPROP-MOVE exit then
    cls CLASS-MATMUL   = if nd RB-MM-BIAS nd RB-MM nd MIR-SHAPE! exit then
    nd RB-EW-PARAM  nd RB-DATA nd MIR-SHAPE! ;
 
-: REPROP-ALL ( -- )  MIR-N@ 0 ?do  i REPROP-NODE  loop ;
+: REPROP-ALL ( -- )  MIR-N@ 0 ?do  i MIR-NODE-ID REPROP-NODE  loop ;
 
 \ ---- BIND-SHAPES parse: positional "[name:]RxC" specs, one per input slot ------
 64 constant BS-CAP
@@ -755,13 +802,20 @@ variable BS-N
    again ;
 
 \ merge one extent: unbound (0) takes the spec; a bound extent must equal the spec.
-: BS-DIM ( n n -- n ) {: cur:n new:n :}
-   cur 0= if new exit then
-   cur new <> if E-CAD-BIND-CONFLICT throw then
+: BS-ROW ( CAD-KIND:rows n -- CAD-KIND:rows )
+   {: cur:CAD-KIND:rows new:n :}
+   cur 0 ROWS-IS? if new 1 SHAPE drop exit then
+   cur new ROWS-IS? 0= if E-CAD-BIND-CONFLICT throw then
    cur ;
-: BS-APPLY ( n -- ) {: s:n :}
-   s MIR-SLOT-ROWS@  BS-ROWS s cells + @  BS-DIM
-   s MIR-SLOT-COLS@  BS-COLS s cells + @  BS-DIM
+: BS-COL ( CAD-KIND:cols n -- CAD-KIND:cols )
+   {: cur:CAD-KIND:cols new:n :}
+   cur 0 COLS-IS? if 1 new SHAPE nip exit then
+   cur new COLS-IS? 0= if E-CAD-BIND-CONFLICT throw then
+   cur ;
+: BS-APPLY ( n -- ) {: i:n :}
+   i MIR-SLOT-ID {: s:MIR:input-slot :}
+   s MIR-SLOT-ROWS@  BS-ROWS i cells + @  BS-ROW
+   s MIR-SLOT-COLS@  BS-COLS i cells + @  BS-COL
    s MIR-SLOT-SHAPE! ;
 : BS-BIND ( -- )
    BS-N @ MIR-IN-SLOTS@ <> if E-CAD-BIND-COUNT throw then
@@ -803,7 +857,7 @@ private
 
 : LOWER-KEYS ( report -- report )              \ shape/dtype/layout of the model output
    MIR-N@ 0= if exit then
-   MIR-N@ 1- {: out:n :}
+   MIR-N@ 1- MIR-NODE-ID {: out:CAD-KIND:node-id :}
    out MIR-SHAPE-KEY  REPORT:SHAPE!
    out MIR-DTYPE-KEY  REPORT:DTYPE!
    out MIR-LAYOUT-KEY REPORT:LAYOUT! ;
@@ -825,21 +879,22 @@ private
    TRF-INTO ;
 
 \ ---- movement materialization rows (MEMORY reads the IR facts) --------------
-: MOVE-WARN$ ( n -- ptr u8 n ) {: node:n :}     \ one movement node's traffic-cost row
+: MOVE-WARN$ ( CAD-KIND:node-id -- ptr u8 n )
+   {: node:CAD-KIND:node-id :}                    \ one movement node's traffic-cost row
    SB-RESET
-   s" memory.move: node " SB-APPEND  node SB-INT
+   s" memory.move: node " SB-APPEND  node NODE>RAW SB-INT
    $20 SB-APPEND-C  node MIR-OP@ OPR-NAME SB-APPEND
    s"  verdict=" SB-APPEND  node MIR-MOVE-VERDICT@ MV-VD-NAME SB-APPEND
    s"  reason="  SB-APPEND  node MIR-OP@ MV-REASON$ SB-APPEND
    SB$ ;
 
-: MEM-MOVE-ROW+ ( report n -- report ) {: node:n :}
+: MEM-MOVE-ROW+ ( report CAD-KIND:node-id -- report ) {: node:CAD-KIND:node-id :}
    node MIR-MOVE? 0= if exit then                          \ compute nodes carry no row
    node MIR-MOVE-VERDICT@ MV-VD-REPORTS? 0= if exit then   \ free/staged: no traffic cost
    node MOVE-WARN$ REPORT:WARN+ ;
 
 : MEM-MOVE-ROWS ( report -- report )
-   MIR-N@ 0 ?do  i MEM-MOVE-ROW+  loop ;
+   MIR-N@ 0 ?do  i MIR-NODE-ID MEM-MOVE-ROW+  loop ;
 
 : MEMORY-INTO ( report -- report )
    FP-BUILD                                          \ region + materialization flags (6.x)
@@ -853,7 +908,8 @@ private
 \ cad-4 has no measurements (those land in cad-5/cad-6).
 : REGION-HAS-SOFTMAX? ( n -- bool ) {: r:n :}   \ region carries a softmax-row op (two reductions)
    MIR-N@ 0 ?do
-      i FP-RID@ r =  i MIR-OP@ MAKI-OPKIND:SOFTMAX-ROW MAKI-OPKIND:EQ  and if unloop true exit then
+      i MIR-NODE-ID {: node:CAD-KIND:node-id :}
+      node FP-RID@ r =  node MIR-OP@ MAKI-OPKIND:SOFTMAX-ROW MAKI-OPKIND:EQ  and if unloop true exit then
    loop false ;
 
 : REGION-FAM ( n -- n ) {: r:n :}               \ region -> schedule family id
@@ -861,9 +917,9 @@ private
 
 \ max legal vector width for the region output's compiler-allocated (AL-16) write;
 \ this is the elementwise default's "max legal vec" (else scalar for a strided write).
-: REGION-MAXVEC ( n -- n ) {: rep:n :}
+: REGION-MAXVEC ( CAD-KIND:node-id -- n ) {: rep:CAD-KIND:node-id :}
    rep MIR-LAY@ LAYOUT-ROW? 0= if 1 exit then
-   MAKI-ALIGN:A16  rep MIR-DT@ DT-SIZE  rep MIR-COLS@  MP-W ;
+   MAKI-ALIGN:A16  rep MIR-DT@ DT-SIZE DIM-RAW  rep MIR-COLS@ COLS-RAW  MP-W ;
 
 : TILE-CANDS+ ( report n -- report ) {: fam:n :}   \ emit every candidate row of a family
    fam FAM-SPACE 0 ?do  fam i CAND$ REPORT:CAND+  loop ;
@@ -876,9 +932,9 @@ private
 : TILE-INTO ( report -- report )
    FP-BUILD
    0 REGION-FAM {: fam:n :}
-   0 SK-REGION-REP {: rep:n :}
+   0 SK-REGION-REP {: rep:CAD-KIND:node-id :}
    fam TILE-CANDS+
-   fam  rep MIR-COLS@  rep REGION-MAXVEC  FAM-DEFAULT  REPORT:SELECT!
+   fam  rep MIR-COLS@ COLS-RAW  rep REGION-MAXVEC  FAM-DEFAULT  REPORT:SELECT!
    0 SK-KEY$ REPORT:CACHE!
    0 TILE-REPLAY-NOTE
    s" schedule: defaults (unmeasured shape class - cad-6 tunes)" REPORT:WARN+
