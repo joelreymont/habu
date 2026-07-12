@@ -1,8 +1,8 @@
 \ maki/target/toolchain-test.f - toolchain identity owner tests.
 \
-\ Low-level tests use TOOLCHAIN's bounded audited TEST-* seam. The arena-capacity
-\ regression reopens the owner only inside this test image and calls its pure private
-\ guard; no public production word exposes or mutates arena state.
+\ Low-level tests reopen TOOLCHAIN privately only inside this test image. The
+\ production owner exports no test seam, and no qualified name reaches the private
+\ invariant or arena-capacity probes.
 \
 \ Regressions cover delimiter-injection aliasing, ids that outlive RESET, mutable
 \ projection aliases, and discovery rounds that previously shared partial state.
@@ -447,7 +447,7 @@ s" TC-NEG-PRIV-COMMIT ( n -- CAD-KIND:toolchain-id ) TOOLCHAIN:COMMIT" UNDEF
 s" TC-NEG-PRIV-ROW ( n -- CAD-KIND:toolchain-id ) TOOLCHAIN:ROW>ID" UNDEF
 s" TC-NEG-PRIV-ID-ROW ( CAD-KIND:toolchain-id -- n ) TOOLCHAIN:ID>ROW" UNDEF
 
-\ invariant probes exist only in this test file's private package reopen
+\ the removed production TEST-* seam stays absent
 s" TC-NEG-TEST-REFINE ( CAD-KIND:toolchain-id -- bool ) TOOLCHAIN:TEST-REFINEMENTS?" UNDEF
 s" TC-NEG-TEST-HIT ( CAD-KIND:toolchain-id ptr u8 n -- bool ) TOOLCHAIN:TEST-HIT-AGREES?" UNDEF
 s" TC-NEG-TEST-STALE ( -- n ) TOOLCHAIN:TEST-STALE-RC" UNDEF
@@ -457,6 +457,20 @@ s" TC-NEG-TEST-ROW-NEG ( -- n ) TOOLCHAIN:TEST-ROW-NEG-RC" UNDEF
 s" TC-NEG-TEST-ROW-HIGH ( -- n ) TOOLCHAIN:TEST-ROW-HIGH-RC" UNDEF
 s" TC-NEG-TEST-COLLIDE ( -- n ) TOOLCHAIN:TEST-COLLIDE-RC" UNDEF
 s" TC-NEG-TEST-EPOCH ( -- n ) TOOLCHAIN:TEST-EPOCH-RC" UNDEF
+
+\ actual test-image probes stay private across the package reopen
+s" TC-NEG-PROBE-REFINE ( CAD-KIND:toolchain-id -- bool ) TOOLCHAIN:PROBE-REFINEMENTS?" UNDEF
+s" TC-NEG-PROBE-HIT-GOOD ( -- bool ) TOOLCHAIN:PROBE-HIT-GOOD?" UNDEF
+s" TC-NEG-PROBE-HIT-BAD ( -- bool ) TOOLCHAIN:PROBE-HIT-BAD?" UNDEF
+s" TC-NEG-PROBE-STALE ( -- n ) TOOLCHAIN:PROBE-STALE-RC" UNDEF
+s" TC-NEG-PROBE-FORGE-GEN ( -- n ) TOOLCHAIN:PROBE-FORGE-GEN-RC" UNDEF
+s" TC-NEG-PROBE-FORGE-ROW ( -- n ) TOOLCHAIN:PROBE-FORGE-ROW-RC" UNDEF
+s" TC-NEG-PROBE-ROW-NEG ( -- n ) TOOLCHAIN:PROBE-ROW-NEG-RC" UNDEF
+s" TC-NEG-PROBE-ROW-HIGH ( -- n ) TOOLCHAIN:PROBE-ROW-HIGH-RC" UNDEF
+s" TC-NEG-PROBE-COLLIDE ( -- n ) TOOLCHAIN:PROBE-COLLIDE-RC" UNDEF
+s" TC-NEG-PROBE-EPOCH ( -- n ) TOOLCHAIN:PROBE-EPOCH-RC" UNDEF
+s" TC-NEG-CAP-PROBE ( -- ) TOOLCHAIN:CAP-PROBE" UNDEF
+s" TC-NEG-CAP-PROBE-RC ( -- n ) TOOLCHAIN:CAP-PROBE-RC" UNDEF
 
 T-REPORT
 
