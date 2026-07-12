@@ -194,17 +194,26 @@ codes, never silent; named constants; and a `T{ … -> … }T` test for every wo
   rebased tree; then push with
   `jj git push --bookmark master --remote origin`. A competing claim aborts the
   dispatch; preserve its owner and release the losing local claim. Verify the
-  fetched remote dot with `jj file show -r master@origin <dot-file>`.
-  Immediately before spawning, rerun only `dot show <exact-id>` and require the
-  same claim, `Status: active`, and clean `jj st`. Do not rerun `dot on` on an
-  active dot because it rewrites metadata. If
+  fetched remote dot with `jj file show -r master@origin <dot-file>`, then rebase
+  the empty worker workspace with
+  `jj rebase -s <workspace-name>@ -d master@origin`. Immediately before
+  spawning, verify from `.jj-ws/<dot-id>` that its parent is `master@origin`, the
+  dot has the same claim and `Status: active`, and `jj st` is clean. Do not rerun
+  `dot on` on an active dot because it rewrites metadata. If
   any transition, synchronization, or verification fails, do not dispatch.
   The dot remains active through implementation, destruction review,
   integration, and owning gates; run `dot off <exact-id> -r "..."` only after
-  the reviewed commit is merged and verified. Commit and push the closure,
-  fetch, and verify the remote has no active/open copy. Preflight, workspace creation,
+  the reviewed commit is merged and verified. Rerun `dot-dep-lint` and every
+  required master gate on the closure tree before committing, fast-forwarding,
+  and pushing it; fetch and verify the remote has no active/open copy. Preflight,
+  workspace creation,
   or assigning a read-only scout does not make a dot active. Never dispatch an
   `open`, blocked, or already-active dot owned by another worker.
+- **Dot mutation publication (BLOCKING):** every add, description/dependency/
+  claim edit, reopen, closure, or removal must pass the configured gates on the
+  exact post-mutation tree, be committed on a feature change, fast-forwarded to
+  and pushed on green `master`, then verified at `master@origin` before another
+  lane relies on it.
 - Gate: use the target/checker/env prelude and native gate command from
   `docs/bootstrap.md` — Habu-native, no gforth. If `bin/hb`
   is missing, recover with `HABU_ALLOW_BOOTSTRAP=1 tools/bootstrap.sh` as

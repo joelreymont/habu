@@ -40,10 +40,12 @@ gate.
    `jj git push --bookmark master --remote origin`.
    A competing claim aborts dispatch; preserve its owner and release the losing
    local claim. Verify the remote claim with
-   `jj file show -r master@origin <dot-file>`. Immediately before spawning,
-   rerun only `dot show`; spawn only while the same pushed agent/workspace is
-   active and `jj st` is clean. Do not rerun `dot on` on an active dot because
-   it rewrites metadata. Never claim a parent epic, queued dot, or read-only scout.
+   `jj file show -r master@origin <dot-file>`, then rebase the empty workspace
+   with `jj rebase -s <workspace-name>@ -d master@origin`. Immediately before
+   spawning, verify from `.jj-ws/<dot-id>` that its parent is `master@origin`,
+   the same claim is active, and `jj st` is clean. Do not rerun `dot on` on an
+   active dot because it rewrites metadata. Never claim a parent epic, queued
+   dot, or read-only scout.
 4. The worker commits its own completed work with `jj commit -m "<short title>"`
    and reports changed files, tests run, and unresolved risks.
 5. The main workspace may continue only on non-overlapping files while workers
@@ -61,9 +63,10 @@ gate.
 6. Keep each dot active through fresh destruction review, integration, and the
    owning gates. Only then close it with
    `dot off <id> -r "implemented, reviewed, merged, gates green: <summary>"`.
-   Commit and push the closure, fetch, and verify the remote has no active/open
-   copy.
-7. Clean up extra workspaces and temporary logs.
+7. Rerun `dot-dep-lint` and every required master gate on the closure tree,
+   commit it on a feature change, fast-forward and push `master`, then fetch and
+   verify the remote has no active/open copy.
+8. Clean up extra workspaces and temporary logs.
 
 ## Conflict Rules
 
@@ -72,5 +75,8 @@ gate.
   broadening its write scope.
 - If a dot is too large, split it immediately with `dot add` child dots before
   implementation continues.
+- Every dot add, description/dependency/claim edit, reopen, closure, or removal
+  must pass gates on the exact post-mutation tree, be committed, pushed to green
+  `master`, and verified at `master@origin` before another lane relies on it.
 - The orchestrator never closes a dot until the merged main workspace passes the
   relevant tests.
