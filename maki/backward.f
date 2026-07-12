@@ -140,15 +140,15 @@ variable BW-BUILT?
 : BW-RS ( MIR:operand-ref CAD-KIND:rows CAD-KIND:cols MIR:operand-ref -- MIR:operand-ref )
    {: ct:MIR:operand-ref tr:CAD-KIND:rows tc:CAD-KIND:cols dref:MIR:operand-ref :}
    MV-RESHAPE  dref REF-LAY MV-RESHAPE-VERDICT
-   tr ROWS-RAW tc COLS-RAW MV-PACK {: attr:n :}
+   tr tc MV-PACK-SHAPE {: attr:n :}
    MAKI-OPKIND:RESHAPE MIR-OP-BEGIN  ct MIR-IN+
    tr tc  dref REF-DT  dref REF-LAY  attr  1  MIR-OP+ MIR-NODE-REF ;
 
 \ slice rows [r0,r1) of the cotangent; output descriptor from a reference tensor
-: BW-SL ( MIR:operand-ref n n MIR:operand-ref -- MIR:operand-ref )
-   {: ct:MIR:operand-ref r0:n r1:n dref:MIR:operand-ref :}
-   MV-SLICE  ct REF-LAY r0 dref REF-COLS COLS-RAW MV-SLICE-VERDICT
-   r0 r1 MV-PACK {: attr:n :}
+: BW-SL ( MIR:operand-ref CAD-KIND:rows CAD-KIND:rows MIR:operand-ref -- MIR:operand-ref )
+   {: ct:MIR:operand-ref r0:CAD-KIND:rows r1:CAD-KIND:rows dref:MIR:operand-ref :}
+   MV-SLICE  ct REF-LAY r0 dref REF-COLS MV-SLICE-VD
+   r0 r1 MV-PACK-ROWS {: attr:n :}
    MAKI-OPKIND:SLICE MIR-OP-BEGIN  ct MIR-IN+
    dref REF-ROWS dref REF-COLS dref REF-DT dref REF-LAY  attr  1  MIR-OP+ MIR-NODE-REF ;
 
@@ -252,9 +252,9 @@ variable BW-BUILT?
    {: fn:CAD-KIND:node-id ct:MIR:operand-ref :}
    fn 0 MIR-INPUT-IDX MIR-IN@ {: a:MIR:operand-ref :}
    fn 1 MIR-INPUT-IDX MIR-IN@ {: b:MIR:operand-ref :}
-   a REF-ROWS ROWS-RAW {: ra:n :}  b REF-ROWS ROWS-RAW {: rb:n :}
-   ct 0 ra a BW-SL  a BW-ACCUM
-   ct ra  ra rb +  b BW-SL  b BW-ACCUM ;
+   a REF-ROWS {: ra:CAD-KIND:rows :}  b REF-ROWS {: rb:CAD-KIND:rows :}
+   ct ZERO-ROWS ra a BW-SL  a BW-ACCUM
+   ct ra  ra rb ROWS+  b BW-SL  b BW-ACCUM ;
 
 \ bias adjoint: dx = ct (copy) ; d-bias = row-reduce of ct over its broadcast rows -> 1xC
 : BW-STEP-BIAS ( CAD-KIND:node-id MIR:operand-ref -- )

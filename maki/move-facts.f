@@ -108,6 +108,17 @@ $FFFFF constant MV-PMASK     \ 20-bit param mask (max 1048575)
    tf MV-TF-CK drop  vd MV-VD-CK drop  pa MV-PARAM-CK drop  pb MV-PARAM-CK drop
    tf  vd MV-VD-SH lshift or  pa MV-PA-SH lshift or  pb MV-PB-SH lshift or ;
 
+\ typed extent packers (Model-CAD V2 R3): the row/col params project to raw n
+\ only HERE, inside the encode boundary, so a call site cannot silently swap
+\ the A/B param fields (reshape target rows/cols; slice r0/r1).
+: MV-PACK-SHAPE ( n n CAD-KIND:rows CAD-KIND:cols -- n )
+   {: tf:n vd:n tr:CAD-KIND:rows tc:CAD-KIND:cols :}
+   tf vd tr ROWS-RAW tc COLS-RAW MV-PACK ;
+
+: MV-PACK-ROWS ( n n CAD-KIND:rows CAD-KIND:rows -- n )
+   {: tf:n vd:n r0:CAD-KIND:rows r1:CAD-KIND:rows :}
+   tf vd r0 ROWS-RAW r1 ROWS-RAW MV-PACK ;
+
 : MV-TF@ ( n -- n )  MV-NIB and ;
 : MV-VD@ ( n -- n )  MV-VD-SH rshift MV-NIB and ;
 : MV-PA@ ( n -- n )  MV-PA-SH rshift MV-PMASK and ;
@@ -137,6 +148,13 @@ $FFFFF constant MV-PMASK     \ 20-bit param mask (max 1048575)
 : MV-SLICE-VERDICT ( layout n n -- n ) {: r0:n cols:n :}    \ in-layout r0 cols -> verdict
    LAYOUT-ROW? 0= if MVV-MATERIALIZE exit then \ strided rows -> materialize
    r0 cols * MV-VEC mod 0= if MVV-FREE else MVV-MATERIALIZE then ;
+
+\ typed slice verdict for capture sites holding typed extents (the raw variant
+\ above stays for the attr-decode and wire-decode boundaries, whose inputs are
+\ raw by nature); the layout family stays on the stack below the typed locals.
+: MV-SLICE-VD ( layout CAD-KIND:rows CAD-KIND:cols -- n )
+   {: r0:CAD-KIND:rows cols:CAD-KIND:cols :}
+   r0 ROWS-RAW cols COLS-RAW MV-SLICE-VERDICT ;
 
 : MV-CONCAT-VERDICT ( -- n )  MVV-MATERIALIZE ; \ v1: lane-range dispatch is a later extension
 : MV-GATHER-VERDICT ( -- n )  MVV-GATHERED ;

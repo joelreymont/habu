@@ -269,12 +269,16 @@ private
 \ PERF: the transpose read is STRIDED (adjacent lanes stride by srcC), so folding trades a
 \ materialization pass for uncoalesced loads; whether it wins over materialize-then-coalesced is
 \ a device question (measure-before-believing, docs/eval-triton.md 3c) - goldens pending-zed.
+\ the remap dims stay role-typed up to the emit call; the raw projection is
+\ confined to this one codegen-boundary shim (a dstC/srcC swap = checker reject)
+: LEW-XPOSE-OFF ( n CAD-KIND:cols CAD-KIND:rows -- n )
+   {: flatr:n dstc:CAD-KIND:cols srcc:CAD-KIND:rows :}
+   flatr dstc COLS-RAW srcc ROWS-RAW EMIT-XPOSE-OFF ;
+
 : LEW-LOAD-IN ( n n n -- ) {: i:n off:n flatr:n :}
    i LEW-REF@ {: ref:MIR:operand-ref :}
    ref MVW-STAGED? if
-      ref MIR-REF-NODE MVW-XPOSE-DIMS
-      {: dstc:CAD-KIND:cols srcc:CAD-KIND:rows :}
-      flatr dstc COLS-RAW srcc ROWS-RAW EMIT-XPOSE-OFF {: roff:n :}
+      flatr ref MIR-REF-NODE MVW-XPOSE-DIMS LEW-XPOSE-OFF {: roff:n :}
       i 1+ roff EMIT-LOAD  LEW-IN-REG i cells + !
    else
       i off flatr LEW-BC-OFF {: ctxoff:n :}

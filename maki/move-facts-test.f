@@ -4,6 +4,7 @@
 
 require lib/test.f
 require lib/string.f
+require test/checker-assert.f
 require maki/move-facts.f
 
 package MAKI
@@ -31,6 +32,23 @@ dup MV-PB@ 9               T=
 drop
 MV-RESHAPE MVV-FREE MV-PMASK 0 MV-PACK MV-PA@ MV-PMASK T=   \ 20-bit param survives
 
+\ ---- typed extent packers (the confined raw boundary; R3) -------------------
+MV-RESHAPE MVV-FREE 8 4 SHAPE MV-PACK-SHAPE
+dup MV-TF@ MV-RESHAPE T=
+dup MV-VD@ MVV-FREE   T=
+dup MV-PA@ 8          T=   \ param A = target rows
+dup MV-PB@ 4          T=   \ param B = target cols
+drop
+MV-SLICE MVV-MATERIALIZE 5 1 SHAPE drop 9 1 SHAPE drop MV-PACK-ROWS
+dup MV-PA@ 5          T=   \ param A = r0
+dup MV-PB@ 9          T=   \ param B = r1
+drop
+
+\ swapped shape roles into a typed packer reject BEFORE runtime
+s" MVF-PACK-SHAPE-OK ( n n CAD-KIND:rows CAD-KIND:cols -- n ) MV-PACK-SHAPE" CHECK-QUIET-CANDIDATE! -1 T=
+s" MVF-NEG-PACK-SWAP ( n n CAD-KIND:cols CAD-KIND:rows -- n ) MV-PACK-SHAPE" CHECK-QUIET-CANDIDATE! 0 T=
+s" MVF-NEG-PACK-RAW ( n n n n -- n ) MV-PACK-SHAPE" CHECK-QUIET-CANDIDATE! 0 T=
+
 \ ---- verdict text ----------------------------------------------------------
 MVV-FREE        MV-VD-NAME s" free"        T$=
 MVV-STAGED      MV-VD-NAME s" staged"      T$=
@@ -46,6 +64,12 @@ MAKI-LAYOUT:ROW 1 3 MV-SLICE-VERDICT MVV-MATERIALIZE T=  \ offset 3 not lane-ali
 MAKI-LAYOUT:COL 0 8 MV-SLICE-VERDICT MVV-MATERIALIZE T=  \ column-major rows strided
 MV-CONCAT-VERDICT MVV-MATERIALIZE T=
 MV-GATHER-VERDICT MVV-GATHERED    T=
+
+\ typed slice verdict mirrors the raw classifier; swapped roles reject
+MAKI-LAYOUT:ROW 0 8 SHAPE MV-SLICE-VD MVV-FREE        T=
+MAKI-LAYOUT:ROW 1 3 SHAPE MV-SLICE-VD MVV-MATERIALIZE T=
+MAKI-LAYOUT:COL 0 8 SHAPE MV-SLICE-VD MVV-MATERIALIZE T=
+s" MVF-NEG-VD-SWAP ( layout CAD-KIND:cols CAD-KIND:rows -- n ) MV-SLICE-VD" CHECK-QUIET-CANDIDATE! 0 T=
 
 \ ---- report gating + reason text -------------------------------------------
 MVV-MATERIALIZE MV-VD-REPORTS? TTRUE

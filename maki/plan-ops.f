@@ -51,9 +51,6 @@ private
    x TENSOR:TV-ROWS@ w TENSOR:TV-COLS@ x TENSOR:TV-DTYPE@
    MAKI-LAYOUT:ROW x TENSOR:TV-SPACE@ TENSOR:TV-DESC ;
 
-: PLAN-GATHER-ROWS ( CAD-KIND:dim -- CAD-KIND:rows )
-   DIM-RAW ROWS-REFINE ;
-
 public
 
 \ the contraction descriptor (PLAN-MM-DESC) can throw on an inner-dim mismatch, so
@@ -84,7 +81,7 @@ public
    x TENSOR:TV-ELEMS tr tc SHAPE-ELEMS DIM-EQUAL? 0= if E-TV-SHAPE throw then
    tr tc x TENSOR:TV-DTYPE@ x TENSOR:TV-LAYOUT@ x TENSOR:TV-SPACE@ TENSOR:TV-DESC {: y:tensor :}
    MV-RESHAPE  x TENSOR:TV-LAYOUT@ MV-RESHAPE-VERDICT
-   tr ROWS-RAW tc COLS-RAW MV-PACK {: attr:n :}
+   tr tc MV-PACK-SHAPE {: attr:n :}
    MAKI-OPKIND:RESHAPE TENSOR:PLAN-OP-BEGIN  x TENSOR:PLAN-IN+  attr TENSOR:PLAN-ATTR!  y TENSOR:PLAN-OP+  y ;
 
 \ transpose: RxC -> CxR (no params); dissolves inside a staged region.
@@ -101,8 +98,8 @@ public
    r0 ROWS-RAW r1 ROWS-RAW > or if E-TV-SHAPE throw then
    x TENSOR:TV-COLS@ {: cols:CAD-KIND:cols :}
    r1 r0 ROWS- cols x TENSOR:TV-DTYPE@ x TENSOR:TV-LAYOUT@ x TENSOR:TV-SPACE@ TENSOR:TV-DESC {: y:tensor :}
-   MV-SLICE  x TENSOR:TV-LAYOUT@ r0 ROWS-RAW cols COLS-RAW MV-SLICE-VERDICT
-   r0 ROWS-RAW r1 ROWS-RAW MV-PACK {: attr:n :}
+   MV-SLICE  x TENSOR:TV-LAYOUT@ r0 cols MV-SLICE-VD
+   r0 r1 MV-PACK-ROWS {: attr:n :}
    MAKI-OPKIND:SLICE TENSOR:PLAN-OP-BEGIN  x TENSOR:PLAN-IN+  attr TENSOR:PLAN-ATTR!  y TENSOR:PLAN-OP+  y ;
 
 \ concat: row-append b to x (cols must agree); v1 always materializes.
@@ -115,7 +112,7 @@ public
 
 \ gather: select idx rows of x (output rows = index element count); reported gathered.
 : PLAN-GATHER ( tensor tensor -- tensor ) {: x:tensor idx:tensor :}
-   idx TENSOR:TV-ELEMS PLAN-GATHER-ROWS  x TENSOR:TV-COLS@
+   idx TENSOR:TV-ELEMS DIM>ROWS  x TENSOR:TV-COLS@
    x TENSOR:TV-DTYPE@ x TENSOR:TV-LAYOUT@ x TENSOR:TV-SPACE@ TENSOR:TV-DESC {: y:tensor :}
    MV-GATHER  MV-GATHER-VERDICT  0 0 MV-PACK {: attr:n :}
    MAKI-OPKIND:GATHER TENSOR:PLAN-OP-BEGIN  x TENSOR:PLAN-IN+  idx TENSOR:PLAN-IN+  attr TENSOR:PLAN-ATTR!  y TENSOR:PLAN-OP+  y ;

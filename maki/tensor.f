@@ -86,6 +86,7 @@ public
 
 : UNIT-ROWS ( -- CAD-KIND:rows ) 1 ROWS-REFINE ;
 : UNIT-COLS ( -- CAD-KIND:cols ) 1 COLS-REFINE ;
+: ZERO-ROWS ( -- CAD-KIND:rows ) 0 ROWS-REFINE ;
 
 : ADDRESS-SPACE-DECODE ( n -- CAD-KIND:address-space )
    SPACE-N E-MK-SPACE RANGE SPACE-REFINE ;
@@ -231,5 +232,10 @@ ENUM dtype DERIVE eq
    {: rows:CAD-KIND:rows cols:CAD-KIND:cols :}
    cols COLS-RAW ROWS-REFINE
    rows ROWS-RAW COLS-REFINE ;
+
+\ owner-sanctioned role conversion: an element count reused as a row extent
+\ (a gather's output rows = its index tensor's elems); nonneg by construction.
+: DIM>ROWS ( CAD-KIND:dim -- CAD-KIND:rows )
+   DIM-RAW ROWS-REFINE ;
 
 end-package
