@@ -102,12 +102,22 @@ GC-RUN V-PASS T=
 MODEL: GC-RES ( x:4x8 -- y ) GELU x RESIDUAL-ADD ;
 GC-RUN V-PASS T=
 \ ATTENTION block: O = softmax(Q @ Kt * s) @ V, composed from covered ops (matmul, scale,
-\ softmax-row, matmul). K is supplied pre-transposed (kt:DxL) because the single running
-\ value MODEL: DSL cannot express an internal Q @ K^T (a transpose of a non-running input;
-\ tracked for a DSL A@B^T / input-transpose capability). The backward still emits the matmul
-\ transpose adjoints, softmax-row-bwd, and the scale factor's fullsum-dot, so the whole
-\ block's VJP (dQ/dKt/ds/dV) is gradchecked against central finite differences.
+\ softmax-row, matmul). K is supplied pre-transposed (kt:DxL) here - the pre-^T caller
+\ workaround form, kept as a regression alongside the natural GC-ATTN-T below. The
+\ backward emits the matmul transpose adjoints, softmax-row-bwd, and the scale factor's
+\ fullsum-dot, so the whole block's VJP (dQ/dKt/ds/dV) is gradchecked against central
+\ finite differences.
 MODEL: GC-ATTN ( q:4x3 kt:3x4 s:1x1 v:4x3 -- o ) MATMUL SCALE SOFTMAX-ROW MATMUL ;
+GC-RUN V-PASS T=
+s" host: 4 input(s) gradchecked" GCT-REASON-IN
+
+\ NATURAL attention (the DSL A@B^T capability): O = softmax((Q @ K^T) * s) @ V with K
+\ declared in its natural LxD orientation and transposed IN the body via the "k^T"
+\ reference form - no caller pre-transposition. The translator inserts an ordinary
+\ transpose movement node feeding the first matmul; the backward differentiates
+\ THROUGH it (the transpose adjoint transposes the cotangent back onto k), so the
+\ natural block's VJP (dQ/dK/ds/dV) is gradchecked against central finite differences.
+MODEL: GC-ATTN-T ( q:4x3 k:4x3 s:1x1 v:4x3 -- o ) k^T MATMUL s SCALE SOFTMAX-ROW v MATMUL ;
 GC-RUN V-PASS T=
 s" host: 4 input(s) gradchecked" GCT-REASON-IN
 

@@ -31,17 +31,23 @@
 \   - a signature input name (the "x" in "x:RxC") binds to that input's value;
 \   - ">V NAME" binds NAME to the CURRENT value (the last op's output);
 \   - a bare NAME token pushes that value as the NEXT op's parameter operand (FIFO
-\     across a multi-operand op), instead of consuming the next declared input.
+\     across a multi-operand op), instead of consuming the next declared input;
+\   - "NAME^T" pushes the TRANSPOSE of that value instead: the translator wraps the
+\     reference in the vocab TRANSPOSE, so an ordinary movement node (staged verdict,
+\     the existing transpose adjoint) feeds the op - "k^T MATMUL" is Q @ K^T with K
+\     in its natural orientation (the DSL A@B^T capability), no caller pre-transpose.
+\     '^' is reserved for the marker: a value name may not contain it.
 \ So "LINEAR GELU LINEAR x RESIDUAL-ADD RMSNORM" adds the ORIGINAL input x back (a
 \ real skip), and ">V H1 ... H1 RESIDUAL-ADD" fans a named intermediate out to two
 \ consumers. The translator resolves references at MODEL: time by name; the compiled
 \ body threads them as explicit stack operands so the checker sees the whole DAG.
 \
-\ Fail closed: unknown op / unbound reference token -> E-CAD-OP; empty body ->
-\ E-CAD-EMPTY; malformed signature/shape -> E-CAD-SYNTAX; too many inputs -> E-CAD-INPUTS;
-\ a bad named value (duplicate, op-shadow, oversized, table full) -> E-CAD-NAME; ">V" with
-\ no current value -> E-CAD-NOVALUE; a reference the following op cannot accept ->
-\ E-CAD-REF. An op with too few operands (arity underflow) is a CHECKER diagnostic from
+\ Fail closed: unknown op / unbound reference token (transposed or not) -> E-CAD-OP;
+\ empty body -> E-CAD-EMPTY; malformed signature/shape or a malformed transpose marker
+\ (anything but a single trailing "^T") -> E-CAD-SYNTAX; too many inputs -> E-CAD-INPUTS;
+\ a bad named value (duplicate, op-shadow, oversized, table full, reserved '^') ->
+\ E-CAD-NAME; ">V" with no current value -> E-CAD-NOVALUE; a reference the following op
+\ cannot accept -> E-CAD-REF. An op with too few operands (arity underflow) is a CHECKER diagnostic from
 \ the nested compile (load-time exit 70), no longer a runtime E-CAD-ARITY throw. A param
 \ operand whose shape is illegal for the op's broadcast class
 \ (add/mul/residual-add need same-shape, bias 1xC, scale 1x1 or same-shape, linear
@@ -128,6 +134,7 @@ variable NT-N
 \ pending reference queue: NT slot indices drained (FIFO) into the next op's parameter slots
 4 constant CAP-PEND-CAP                    \ max pending references before one op
 create CAP-PEND CAP-PEND-CAP cells allot   \ pending reference NT slot indices
+create CAP-PEND-TR CAP-PEND-CAP cells allot \ per-reference "^T" transpose flags (0/1)
 variable CAP-PEND-N                        \ tail (push index)
 variable CAP-PEND-HD                       \ head (dequeue index)
 
@@ -194,13 +201,23 @@ private
 \ ---- pending reference queue (FIFO NT slot indices; the next op drains them into params) --
 : CAP-PEND-RESET ( -- )  0 CAP-PEND-N !  0 CAP-PEND-HD ! ;
 : CAP-PEND-CNT ( -- n )  CAP-PEND-N @ CAP-PEND-HD @ - ;      \ remaining pending refs
-: CAP-PEND-PUSH ( n -- )
+: CAP-PEND-PUSH ( n n -- ) {: sl:n tr:n :}      \ NT slot index + "^T" transpose flag
    CAP-PEND-N @ CAP-PEND-CAP >= if E-CAD-REF throw then
-   CAP-PEND-N @ cells CAP-PEND + !  CAP-PEND-N @ 1+ CAP-PEND-N ! ;
-: CAP-PEND-DEQ ( -- n )
-   CAP-PEND-HD @ cells CAP-PEND + @  CAP-PEND-HD @ 1+ CAP-PEND-HD ! ;
+   sl CAP-PEND-N @ cells CAP-PEND + !
+   tr CAP-PEND-N @ cells CAP-PEND-TR + !
+   CAP-PEND-N @ 1+ CAP-PEND-N ! ;
+: CAP-PEND-DEQ ( -- n n )                       \ NT slot index + "^T" transpose flag
+   CAP-PEND-HD @ cells CAP-PEND + @
+   CAP-PEND-HD @ cells CAP-PEND-TR + @
+   CAP-PEND-HD @ 1+ CAP-PEND-HD ! ;
 
 \ ---- name set (input names slots 0..N-1, then ">V" names; slot index is the ref handle) --
+$5E constant TR-C                                  \ '^' - the reserved transpose-marker byte
+: TR-MARKED? ( ptr u8 n -- bool )                  \ span contains the marker byte?
+   TR-C INDEX-OF MATCH option
+     none OF false ENDOF
+     some OF IDX>N drop true ENDOF
+   ;MATCH ;
 : NT-RESET ( -- )  0 NT-N ! ;
 : NT-SLOT ( n -- ptr u8 )  NT-NAME-CAP *  NT-NAMES + ;
 : NT-NAME ( n -- ptr u8 n ) {: i:n :}  i NT-SLOT  i cells NT-LENS + @ ;   \ slot -> name text
@@ -210,6 +227,7 @@ private
    loop  0 false ;
 : NT-BIND ( ptr u8 n -- n ) {: a:ptr u:n :}        \ intern a name, return its slot index
    u NT-NAME-CAP > if E-CAD-NAME throw then                 \ name too long
+   a u TR-MARKED? if E-CAD-NAME throw then                  \ '^' is reserved for "NAME^T" references
    a u OP-LOOKUP nip if E-CAD-NAME throw then               \ a name may not shadow an op token
    a u NT-FIND   nip if E-CAD-NAME throw then               \ no duplicate name
    NT-N @ NT-CAP >= if E-CAD-NAME throw then                \ table full
@@ -240,11 +258,19 @@ private
       CAP-IP @ NT-NAME MSRC+ MSRC-SP  CAP-IP @ 1+ CAP-IP !
    then ;
 
+\ emit one pending reference: push the named value; a "^T"-marked reference is wrapped
+\ in the vocab transpose, so an ORDINARY movement node (staged verdict, the existing
+\ transpose adjoint) enters the plan feeding the op - no new op kind, no new adjoint.
+: CAP-EMIT-PEND ( -- )
+   CAP-PEND-DEQ {: sl:n tr:n :}
+   sl NT-NAME MSRC+ MSRC-SP
+   tr 0<> if s" PLAN:TRANSPOSE " MSRC+ then ;
+
 \ emit k parameter operands: pending references first (FIFO), then declared inputs
 : CAP-EMIT-PARAMS ( n -- ) {: k:n :}
    CAP-PEND-CNT k > if E-CAD-REF throw then        \ more refs than the op accepts (e.g. ref before a unary op)
    k 0 ?do
-      CAP-PEND-CNT 0 > if  CAP-PEND-DEQ NT-NAME MSRC+ MSRC-SP
+      CAP-PEND-CNT 0 > if  CAP-EMIT-PEND
       else  CAP-EMIT-DECL  then
    loop ;
 
@@ -475,10 +501,23 @@ private
    ;MATCH {: ci:n :}
    a ci  a ci 1+ +  u ci 1+ -  EMIT-MOVE-PARAM ;                   \ "OP:params"
 
-\ one body token: a known name is a pending reference; else an op token to translate
+\ "NAME^T": a transposed reference. The marker must be exactly "T" (a malformed
+\ marker fails closed, E-CAD-SYNTAX); the base must be a bound value name (an
+\ unbound transposed reference is an unknown token, E-CAD-OP).
+: CAP-TR-REF ( ptr u8 n ptr u8 n -- ) {: na:ptr nu:n ma:ptr mu:n :}
+   ma mu s" T" STR= 0= if E-CAD-SYNTAX throw then
+   na nu NT-FIND 0= if E-CAD-OP throw then
+   1 CAP-PEND-PUSH ;
+
+\ one body token: a known name is a pending reference; a token carrying the '^'
+\ marker is a transposed reference; else an op token to translate
 : CAP-TOKEN ( ptr u8 n -- ) {: a:ptr u:n :}
-   a u NT-FIND if  CAP-PEND-PUSH  exit  then  drop
-   a u EMIT-OP-TOKEN ;
+   a u NT-FIND if  0 CAP-PEND-PUSH  exit  then  drop
+   a u TR-C INDEX-OF MATCH option
+     none OF  a u EMIT-OP-TOKEN  exit  ENDOF
+     some OF IDX>N ENDOF
+   ;MATCH {: ci:n :}
+   a ci  a ci 1+ +  u ci 1+ -  CAP-TR-REF ;
 
 \ ">V NAME": name the current value (read the name token from the body)
 : PARSE-NAMED ( -- )
