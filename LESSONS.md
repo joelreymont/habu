@@ -3767,3 +3767,8 @@ unchanged (148855). Keys for milestone 2:
 - **Erase and verify package words in their owning WID.** Qualified names are
   not entries in wordlist zero. Reopen the package, select `public` or `private`,
   then `undefine` and `search-wl` each unqualified tail in `get-current`.
+- **STATUS date rolls use the gate's UTC day, not the local calendar.** The
+  run.f stale-status slice computes today from epoch-seconds (UTC). Rolling
+  "Last verified" to the local date after midnight CEST made pushed master red
+  for the hours until UTC caught up. Check `date -u +%F` before any date roll,
+  and pass that same UTC day to manual stale-status/trust-lint invocations.
