@@ -32,7 +32,9 @@ require tools/boot-pin.f
                                     \ layout-buffer.f +layout-buffer-seal.f +layout-valid.f
                                     \ +lower-cert-base.f +lower-cert-seal.f (wide-ADT stack +
                                     \ LAYOUT-BUFFER + verified-lowering seals, tfam lane
-                                    \ 2026-07-12; growth surfaced to the user at merge).
+                                    \ 2026-07-12; APPROVED by orchestrator review - dot
+                                    \ habu-boot-pin-26-ca4bffb4: one reviewed gated commit,
+                                    \ byte-identical dual-chain engines, suite green at 31).
 
 create BPT-D1   80 allot            \ pristine digest hex
 create BPT-HEX  80 allot            \ scratch digest hex
