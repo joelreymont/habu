@@ -3573,3 +3573,7 @@ unchanged (148855). Keys for milestone 2:
   validates magnitude but cannot reject transpose-order mistakes. Keep role
   changes inside checked shape algebra and project to numbers only at execution,
   rendering, hashing, or ABI boundaries.
+- **Transfer trust-row ownership before retiring a dot.** The inventory can stay
+  count-green while strict mode is red because classification rows still name a
+  removed capability dot. Reassign landed boundaries to a live permanent owner
+  in the same change that removes the capability dot.
