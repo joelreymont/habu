@@ -4,6 +4,11 @@
 
 Last updated: 2026-07-12
 
+- **Package privacy is not package sealing:** ordinary `package NAME` reopening can
+  reach private words by design. Generated constructor packages are protected
+  automatically, but a generic owner package needs a compiler-supported seal;
+  calling `prot-wid-add` directly from application code is not that public capability.
+
 - **Describe bootstrap parity at the implementation boundary:** when the
   Gforth recovery host mirrors pass-2 lowering, calling parity merely
   behavioral or claiming there is no mirror contradicts the code. Name the
