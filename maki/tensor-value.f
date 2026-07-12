@@ -157,22 +157,20 @@ DEFTYPE tensor                 \ opaque single-cell handle; internals swap to an
 private
 
 
-\ record table: one create-array per field so each keeps its own cell type
-\ (TV-DATA holds a pointer; the rest hold n). Indexed by slot 0..TV-U-1.
+\ record table: one array per field so each keeps its own cell type (TV-DATA
+\ holds a pointer; the plain columns hold n). Indexed by slot 0..TV-U-1. The
+\ family-typed columns are generative LAYOUT-BUFFER columns (the only typed-
+\ layout pointer introduction form): each owns extent, stride, bounds, and
+\ family provenance and publishes its own checked accessor, so a raw n (or a
+\ foreign family) can never enter or leave a descriptor cell.
 create TV-DATA TV-CAP cells allot      \ data pointer (materialized tensors only)
 create TV-ROWS TV-CAP cells allot
 create TV-COLS TV-CAP cells allot
-create TV-DT   TV-CAP cells allot      \ dtype (family value; typed slot TV-DT-AT)
-create TV-LAY  TV-CAP cells allot      \ layout (family value; typed slot TV-LAY-AT)
-create TV-AL   TV-CAP cells allot      \ align (family value; typed slot TV-AL-AT)
+TV-CAP LAYOUT-BUFFER TV-DT-AT  dtype   \ dtype column ( n -- ptr dtype )
+TV-CAP LAYOUT-BUFFER TV-LAY-AT layout  \ layout column ( n -- ptr layout )
+TV-CAP LAYOUT-BUFFER TV-AL-AT  align   \ align column ( n -- ptr align )
 create TV-HAS  TV-CAP cells allot      \ 1 = has data buffer, 0 = descriptor
 variable TV-U                          \ free counter / live count
-
-\ typed slot addresses: the descriptor columns are reachable only through these,
-\ so a raw n (or a foreign family) can never enter or leave a descriptor cell.
-: TV-DT-AT  ( n -- ptr dtype )   cells TV-DT  + ;
-: TV-LAY-AT ( n -- ptr layout )  cells TV-LAY + ;
-: TV-AL-AT  ( n -- ptr align )   cells TV-AL  + ;
 
 \ ---- alignment measurement ------------------------------------------------
 \ Record the pointer's real base alignment. P>N (lib/ffi-abi.f) is the audited
@@ -276,7 +274,11 @@ private
 
 256 constant PLAN-INCAP         \ max total input slots across the plan
 
-create P-KIND  PLAN-CAP cells allot     \ op-kind (family value; typed slot P-KIND-AT)
+\ typed op-kind column (dot habu-cad-adt-swap): a generative LAYOUT-BUFFER
+\ column owning extent, stride, bounds, and family provenance, so a raw n or a
+\ foreign family can never enter or leave. An opkind cannot bind into a local,
+\ so it rides the stack.
+PLAN-CAP LAYOUT-BUFFER P-KIND-AT opkind \ op-kind column ( n -- ptr opkind )
 create P-OUT   PLAN-CAP cells allot     \ output tensor
 create P-INOFF PLAN-CAP cells allot     \ input window start in P-INS
 create P-INCNT PLAN-CAP cells allot     \ input window length
@@ -284,7 +286,7 @@ create P-ATTR  PLAN-CAP cells allot     \ movement attrs (packed; 0 for compute 
 variable P-N                            \ committed op count
 create P-INS   PLAN-INCAP cells allot   \ flat input-tensor pool
 variable P-INS-U
-variable PEND-KIND                      \ pending record staging
+1 LAYOUT-BUFFER PEND-KIND opkind        \ pending record staging (typed slot)
 variable PEND-OFF
 variable PEND-CNT
 variable PEND-ATTR                       \ pending attrs (0 unless a movement appender sets it)
@@ -294,11 +296,8 @@ variable PEND-ON                        \ 1 while a record is being staged
    idx 0 < idx P-N @ >= or if E-TV-PLAN-IDX throw then
    idx ;
 
-\ typed op-kind slots (dot habu-cad-adt-swap): the op-kind column and the pending
-\ staging cell are reachable only through these, so a raw n or a foreign family
-\ can never enter or leave. An opkind cannot bind into a local, so it rides the stack.
-: P-KIND-AT     ( n -- ptr opkind )  cells P-KIND + ;
-: PEND-KIND-AT  ( -- ptr opkind )    PEND-KIND ;
+\ the pending staging cell is a one-slot generative buffer behind this typed slot
+: PEND-KIND-AT  ( -- ptr opkind )    0 PEND-KIND ;
 
 public
 

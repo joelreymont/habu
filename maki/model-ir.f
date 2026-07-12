@@ -89,14 +89,18 @@ private
 384 constant MIR-INCAP        \ max operand refs across the table
 64  constant MIR-IN-CAP       \ max model-input slots
 
-\ node table: one create-array per field (keeps each field's cell independent)
-create MI-OP    MIR-CAP cells allot     \ op-kind (family value; typed slot MI-OP-AT)
+\ node table: one array per field (keeps each field's cell independent). The
+\ family-typed columns are generative LAYOUT-BUFFER columns (dot habu-cad-adt-swap;
+\ the only typed-layout pointer introduction form): each owns extent, stride,
+\ bounds, and family provenance and publishes its own checked accessor, so a raw
+\ n or a foreign family can never enter or leave a descriptor cell.
+MIR-CAP LAYOUT-BUFFER MI-OP-AT opkind   \ op-kind column ( n -- ptr opkind )
 create MI-INOFF MIR-CAP cells allot     \ operand window start in MI-INS
 create MI-INCNT MIR-CAP cells allot     \ operand window length
 create MI-ROWS  MIR-CAP cells allot     \ output descriptor facts
 create MI-COLS  MIR-CAP cells allot
-create MI-DT    MIR-CAP cells allot     \ dtype (family value; typed slot MI-DT-AT)
-create MI-LAY   MIR-CAP cells allot     \ layout (family value; typed slot MI-LAY-AT)
+MIR-CAP LAYOUT-BUFFER MI-DT-AT dtype    \ dtype column ( n -- ptr dtype )
+MIR-CAP LAYOUT-BUFFER MI-LAY-AT layout  \ layout column ( n -- ptr layout )
 create MI-ATTR  MIR-CAP cells allot     \ attrs cell (variant/axis/eps, op-typed)
 create MI-MAT   MIR-CAP cells allot     \ materialization flag
 create MI-AD    MIR-CAP cells allot     \ autograd metadata (reserved)
@@ -108,40 +112,31 @@ variable MIR-INS-U
 \ model-input slots (their own descriptor facts)
 create MI-IS-ROWS MIR-IN-CAP cells allot
 create MI-IS-COLS MIR-IN-CAP cells allot
-create MI-IS-DT   MIR-IN-CAP cells allot     \ dtype (family value)
-create MI-IS-LAY  MIR-IN-CAP cells allot     \ layout (family value)
-create MI-IS-AL   MIR-IN-CAP cells allot     \ align (family value; unknown default)
+MIR-IN-CAP LAYOUT-BUFFER MI-IS-DT-AT  dtype    \ dtype column ( n -- ptr dtype )
+MIR-IN-CAP LAYOUT-BUFFER MI-IS-LAY-AT layout   \ layout column ( n -- ptr layout )
+MIR-IN-CAP LAYOUT-BUFFER MI-IS-AL-AT  align    \ align column (zero image = unknown)
 variable MIR-IS-N
-
-\ typed slot addresses (dot habu-cad-adt-swap): the descriptor columns are
-\ reachable only through these, so a raw n or a foreign family can never enter
-\ or leave a descriptor cell.
-: MI-OP-AT     ( n -- ptr opkind )  cells MI-OP     + ;
-: MI-DT-AT     ( n -- ptr dtype )   cells MI-DT     + ;
-: MI-LAY-AT    ( n -- ptr layout )  cells MI-LAY    + ;
-: MI-IS-DT-AT  ( n -- ptr dtype )   cells MI-IS-DT  + ;
-: MI-IS-LAY-AT ( n -- ptr layout )  cells MI-IS-LAY + ;
-: MI-IS-AL-AT  ( n -- ptr align )   cells MI-IS-AL  + ;
 
 \ model name (denormalized into the IR so the golden artifact store can key a file
 \ by model below the cad.f layer without a load-order cycle). Reset with the table.
 64  constant MIR-NAME-CAP
 create MI-NAME MIR-NAME-CAP allot   variable MI-NAME-U
 
-\ provenance cell: a family value, so it rides through this typed slot (a prov
+\ provenance cell: a family value behind a one-slot generative buffer (a prov
 \ cannot bind into a local); reset to none with the table, set by the producers.
-variable MIR-PROV-V
-: MIR-PROV-AT ( -- ptr prov )  MIR-PROV-V ;
+1 LAYOUT-BUFFER MIR-PROV-V prov
+: MIR-PROV-AT ( -- ptr prov )  0 MIR-PROV-V ;
 
 \ pending-node staging (any-arity records with the fixed-arity ref pool)
-variable MIR-PEND-KIND
+1 LAYOUT-BUFFER MIR-PEND-KIND opkind
 variable MIR-PEND-OFF
 variable MIR-PEND-CNT
 variable MIR-PEND-ON
 
 \ the pending op-kind is a family value, so it rides through this typed slot (an
-\ opkind cannot bind into a local); MIR-OP-BEGIN stores it, MIR-OP+ moves it to MI-OP.
-: MIR-PEND-KIND-AT ( -- ptr opkind )  MIR-PEND-KIND ;
+\ opkind cannot bind into a local); MIR-OP-BEGIN stores it, MIR-OP+ moves it to
+\ the MI-OP-AT column.
+: MIR-PEND-KIND-AT ( -- ptr opkind )  0 MIR-PEND-KIND ;
 
 : MIR-CK ( n -- n )                     \ validate a committed node index
    dup 0 < over MIR-N @ >= or if E-MIR-IDX throw then ;

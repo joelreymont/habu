@@ -72,11 +72,13 @@ public
 private
 
 \ ---- staged access facts (filled per tensor, read by the emitter) -----------
-\ MP-AL / MP-LAY hold family values behind typed variable slots (the report.f
-\ F-ROOFLINE-AT precedent); the others stay n cells.
-variable MP-AL   variable MP-ES   variable MP-EXT   variable MP-LAY
-: MP-AL-AT  ( -- ptr align )   MP-AL ;
-: MP-LAY-AT ( -- ptr layout )  MP-LAY ;
+\ MP-AL / MP-LAY hold family values behind one-slot generative buffers (the
+\ report.f F-ROOFLINE-AT precedent); the others stay n cells.
+1 LAYOUT-BUFFER MP-AL  align
+1 LAYOUT-BUFFER MP-LAY layout
+variable MP-ES   variable MP-EXT
+: MP-AL-AT  ( -- ptr align )   0 MP-AL ;
+: MP-LAY-AT ( -- ptr layout )  0 MP-LAY ;
 variable MP-OVR                    \ broadcast/gathered override status, or -1
 variable MP-SLOT                   \ input-slot index for the align warning, or -1
 64 constant MP-NM-CAP
