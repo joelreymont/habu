@@ -51,11 +51,12 @@ variable MXVA  variable MXVU
    \ --- rendered schema: the recorded pass@k round + honest placeholders ---
    EVAL:MATRIX-RENDER MXSAVE
    s" | task | target |" MXHAS
+   s" | graded | tok-src |" MXHAS
    s" | saxpy | habu-ptx | 5 | 5 | 1000 | 1000 | 1000 | 0 | 0 | " MXHAS
    s" | softmax | habu-ptx | 5 | 3 | 600 | 900 | 1000 | 2 | 3 | " MXHAS
    s" | softmax | triton | 5 | 5 | 1000 | 1000 | 1000 | 0 | 0 | 0 | not-run | not-run | recorded |" MXHAS
-   s" | not-run | not-run | checker |" MXHAS
-   s" | not-run | not-run | recorded |" MXHAS
+   s" | not-run | not-run | checker | proxy |" MXHAS    \ v1 replay: proxy-marked tokens
+   s" | not-run | not-run | recorded | - |" MXHAS       \ recorded arm: no token data
    s" | mixed |" MXHASNT
 
    \ --- device wiring: setters land in the row's columns ---
@@ -77,7 +78,21 @@ variable MXVA  variable MXVU
    EVAL:MATRIX-FROM-TS
    EVAL:MATRIX-RENDER MXSAVE
    s" | gemm | habu-ptx | 0 | 0 | - | - | - | " MXHAS
-   s" | not-run | not-run | - |" MXHAS
+   s" | not-run | not-run | - | - |" MXHAS
+
+   \ --- a v1.1 model-token transcript renders the honest `model` marker ---
+   EVAL:MATRIX-RESET
+   EVAL:TS-RESET
+   s" habu-eval-transcript v1.1" EVAL:TS-LINE
+   s" target habu-ptx" EVAL:TS-LINE
+   s" task saxpy" EVAL:TS-LINE
+   s" sample m1" EVAL:TS-LINE
+   s" candidate K ( n -- n ) 1+" EVAL:TS-LINE
+   s" tokens 120" EVAL:TS-LINE
+   EVAL:TS-END
+   EVAL:MATRIX-FROM-TS
+   EVAL:MATRIX-RENDER MXSAVE
+   s" | saxpy | habu-ptx | 1 | 1 | 1000 | - | - | 0 | 0 | 120 | not-run | not-run | checker | model |" MXHAS
 
    \ --- fail closed ---
    ['] MXT-DUP     E-MX-DUP TTHROWS

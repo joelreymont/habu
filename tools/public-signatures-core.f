@@ -17,7 +17,10 @@ $10000 constant PS-FILE-CAP
 13 constant PS-CR
 12 constant PS-FF
 34 constant PS-DQ
+36 constant PS-DOLLAR-C
 44 constant PS-COMMA-C
+45 constant PS-MINUS-C
+46 constant PS-DOT-C
 48 constant PS-ZERO
 58 constant PS-COLON-C
 91 constant PS-LBRACK-C
@@ -326,6 +329,68 @@ variable PS-DEF-SIG-U
    repeat drop
    PS-HAS-ALPHA? @ IF PS-TRUE ELSE PS-FALSE THEN ;
 
+\ Number-parser-claimable names (mirrors reserved-name-lint RNL-NUM-CLAIMED? so
+\ both tools agree): hb parses numeric literals BEFORE dictionary lookup, so a
+\ definition named like a literal - all digits (42), float (.0, 1.5, -.5), or
+\ $hex ($FF), optionally minus-signed - is unreachable, yet it is a real
+\ definition and must get a manifest row. PS-PROJECT-WORD? alone skipped these
+\ (no alpha byte): exactly how lib/fmt.f's old `.0` escaped its lib/std.manifest
+\ row. E-NUMERIC-DEFINITION rejects new ones; the manifest must still SEE
+\ historical ones instead of silently dropping them.
+: PS-DIGIT? ( n -- bool )
+   dup 47 > swap 58 < and ;
+
+: PS-HEX-LETTER? ( n -- bool ) {: c:n :}
+   c 64 > c 71 < and IF PS-TRUE exit THEN
+   c 96 > c 103 < and ;
+
+: PS-HEX-DIGIT? ( n -- bool ) {: c:n :}
+   c PS-DIGIT? IF PS-TRUE exit THEN
+   c PS-HEX-LETTER? ;
+
+: PS-DIGITS? ( ptr u8 n -- bool ) {: a:ptr u:n :}   \ nonempty, all decimal digits
+   u 0= IF PS-FALSE exit THEN
+   u 0 ?do
+      a i + c@ PS-DIGIT? 0= IF PS-FALSE unloop exit THEN
+   loop PS-TRUE ;
+
+: PS-DIGITS-OPT? ( ptr u8 n -- bool ) {: a:ptr u:n :}   \ empty or all digits
+   u 0= IF PS-TRUE exit THEN
+   a u PS-DIGITS? ;
+
+: PS-HEX-DIGITS? ( ptr u8 n -- bool ) {: a:ptr u:n :}   \ nonempty, all hex digits
+   u 0= IF PS-FALSE exit THEN
+   u 0 ?do
+      a i + c@ PS-HEX-DIGIT? 0= IF PS-FALSE unloop exit THEN
+   loop PS-TRUE ;
+
+: PS-FLOAT-AT? ( ptr u8 n n -- bool ) {: a:ptr u:n dot:n :}   \ digits* '.'@dot digits+
+   a dot PS-DIGITS-OPT?
+   a dot 1+ + u dot 1+ - PS-DIGITS?
+   and ;
+
+: PS-FLOAT-NAME? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   a u PS-DOT-C LINT-INDEX-OF MATCH option
+     none OF PS-FALSE ENDOF
+     some OF a u rot PS-FLOAT-AT? ENDOF
+   ;MATCH ;
+
+: PS-HEX-NAME? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   u 2 < IF PS-FALSE exit THEN
+   a c@ PS-DOLLAR-C <> IF PS-FALSE exit THEN
+   a 1+ u 1- PS-HEX-DIGITS? ;
+
+: PS-NUM-BODY? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   a u PS-DIGITS? IF PS-TRUE exit THEN
+   a u PS-FLOAT-NAME? IF PS-TRUE exit THEN
+   a u PS-HEX-NAME? ;
+
+: PS-NUM-CLAIMED? ( ptr u8 n -- bool ) {: a:ptr u:n :}   \ number parser owns the token
+   a u PS-NUM-BODY? IF PS-TRUE exit THEN
+   u 2 < IF PS-FALSE exit THEN
+   a c@ PS-MINUS-C <> IF PS-FALSE exit THEN
+   a 1+ u 1- PS-NUM-BODY? ;
+
 : PS-UPPER$ ( ptr u8 n -- ptr u8 n ) {: a:ptr u:n :}
    u PS-WORD-CAP > IF s" public-signatures: word too long" PS-DIE THEN
    a u PS-WORD-BUF COPY-UPPER
@@ -542,6 +607,7 @@ variable PS-DEF-SIG-U
    PS-PKG-PUBLIC? IF PS-TRUE exit THEN
    PS-IN-PKG @ IF PS-FALSE exit THEN
    PS-EXPORTED? IF PS-TRUE exit THEN
+   PS-NAME-A@ PS-NAME-U @ PS-NUM-CLAIMED? IF PS-TRUE exit THEN
    PS-NAME-A@ PS-NAME-U @ PS-PROJECT-WORD? ;
 
 : PS-EXPORTED-FLAG ( -- bool )

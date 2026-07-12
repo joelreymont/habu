@@ -8,6 +8,9 @@
 \ `not-run` and only carry values when an on-device run (tools/ptx/bandwidth.f
 \ for GB/s; MAKI:GRADE-AUTHOR device goldens - Orin only) sets them through
 \ MATRIX-GBS! / MATRIX-DEVICE!. Nothing on the host path fakes a device number.
+\ The tok-src column marks the tokens-to-green unit per row: `model` (v1.1
+\ generator-reported `tokens` directives), `proxy` (whitespace source-token
+\ proxy), or `-` (no replayed token data) - never a silent mix (E-TS-TOKENS).
 \ Duplicate (task,target) rows and out-of-range writes fail closed.
 
 require lib/errors.f
@@ -33,7 +36,7 @@ create MX-TASKS   MX-ROW-MAX MX-NAME-CAP * allot
 create MX-TASK-US MX-ROW-MAX cells allot
 create MX-TGTS    MX-ROW-MAX MX-NAME-CAP * allot
 create MX-TGT-US  MX-ROW-MAX cells allot
-8 constant MX-SLOTS
+9 constant MX-SLOTS
 0 constant MXL-N        \ samples graded
 1 constant MXL-GREEN    \ first-attempt passes (pass@k c)
 2 constant MXL-REPAIRED \ green after >=1 repair round
@@ -42,6 +45,7 @@ create MX-TGT-US  MX-ROW-MAX cells allot
 5 constant MXL-REC      \ externally recorded samples
 6 constant MXL-GBS      \ measured GB/s x10, -1 = not-run
 7 constant MXL-DEV      \ device verdict tag (MAKI:V-*), default not-run
+8 constant MXL-TOKSRC   \ TOKENS unit marker (TS-TOK-*), default TS-TOK-NONE
 create MX-TAB MX-ROW-MAX MX-SLOTS * cells allot
 variable MX-ROW#
 
@@ -84,6 +88,7 @@ variable MX-OUT-U
    MX-SLOTS 0 ?do 0 MX-ROW# @ i MX-SLOT ! loop
    -1 MX-ROW# @ MXL-GBS MX-SLOT !
    MAKI:V-NOTRUN MX-ROW# @ MXL-DEV MX-SLOT !
+   TS-TOK-NONE MX-ROW# @ MXL-TOKSRC MX-SLOT !
    MX-ROW# @  MX-ROW# @ 1+ MX-ROW# ! ;
 
 \ ---- render buffer (report.f OUT- pattern) ---------------------------------------
@@ -118,6 +123,14 @@ variable MX-OUT-U
    dup MAKI:V-FAIL = if drop s" fail" MXO+ exit then
    drop s" not-run" MXO+ ;
 
+\ tokens-to-green unit, HONEST per row: generator-reported model tokens vs the
+\ whitespace source-token proxy (a transcript never mixes the two; `-` = no data)
+: MXR-TOKSRC ( n -- ) {: row:n :}
+   row MXL-TOKSRC MX-SLOT @
+   dup TS-TOK-MODEL = if drop s" model" MXO+ exit then
+   dup TS-TOK-PROXY = if drop s" proxy" MXO+ exit then
+   drop s" -" MXO+ ;
+
 \ how the row was graded: live checker replay, recorded external verdicts, or both
 : MXR-SRC ( n -- ) {: row:n :}
    row MXL-N MX-SLOT @ 0= if s" -" MXO+ exit then
@@ -126,7 +139,7 @@ variable MX-OUT-U
    s" mixed" MXO+ ;
 
 : MXR-HEADER ( -- )
-   s" | task | target | n | green | pass@1-x1000 | pass@2-x1000 | pass@3-x1000 | repaired | repair-rounds | tokens-to-green | GB/s-x10 | device | graded |"
+   s" | task | target | n | green | pass@1-x1000 | pass@2-x1000 | pass@3-x1000 | repaired | repair-rounds | tokens-to-green | GB/s-x10 | device | graded | tok-src |"
       MXO+ MXO-NL ;
 
 : MXR-ROW ( n -- ) {: row:n :}
@@ -143,7 +156,8 @@ variable MX-OUT-U
    row MXL-TOKENS MX-SLOT @ MXO-INT  MXO-SEP
    row MXR-GBS  MXO-SEP
    row MXR-DEV  MXO-SEP
-   row MXR-SRC
+   row MXR-SRC  MXO-SEP
+   row MXR-TOKSRC
    s"  |" MXO+ MXO-NL ;
 
 public
@@ -160,6 +174,7 @@ public
       i TS-ROUNDS@   row MXL-ROUNDS   MX-SLOT !
       i TS-TOKENS@   row MXL-TOKENS   MX-SLOT !
       i TS-REC@      row MXL-REC      MX-SLOT !
+      i TS-TOKSRC@   row MXL-TOKSRC   MX-SLOT !
    loop ;
 
 : MATRIX-ROWS@ ( -- n )  MX-ROW# @ ;

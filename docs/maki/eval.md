@@ -33,18 +33,34 @@ device-correctness regressions for the GEMM/attention kernels are
 
 ## The durable pass@k harness: transcripts -> matrix
 A generation run is recorded as a plain-text **transcript** file and replayed from the
-committed tree — no `/tmp` scripts, no ad hoc subagent logs. Format v1 (line-oriented,
-LF; blank lines and `\ ...` comments ignored; one transcript = one target arm):
+committed tree — no `/tmp` scripts, no ad hoc subagent logs. Formats v1 and v1.1
+(line-oriented, LF; blank lines and `\ ...` comments ignored; one transcript = one
+target arm):
 
 ```
-habu-eval-transcript v1
+habu-eval-transcript v1      header; `habu-eval-transcript v1.1` enables `tokens`
 target habu-ptx              once, before any task
 task saxpy                   opens/rejoins the task's tally row
 sample s1                    one generation sample
 candidate <kernel source>    one authoring round: draft, then repairs, in order
+tokens 137                   v1.1 only, optional per TRANSCRIPT not per candidate:
+                             generator-reported model-token count for the candidate
+                             line above (e.g. the claude CLI JSON `usage` tokens);
+                             replaces that candidate's whitespace source-token
+                             proxy in tokens-to-green. A transcript that uses
+                             `tokens` at all must carry one on EVERY candidate,
+                             including ignored post-green rounds (E-TS-TOKENS)
 result green|fail            recorded verdict for an EXTERNALLY graded sample
                              (e.g. the Triton arm); either candidates OR one result
 ```
+
+A `tokens` directive belongs to the candidate line directly above it (at most one;
+`N` >= 1; misplaced, duplicate, or malformed fails closed). Token units are never
+silently mixed: within one transcript either every candidate carries `tokens` or none
+does — a mixed file is rejected (`E-TS-TOKENS`), so every tokens-to-green sum is
+unit-pure. The matrix marks the unit per row in the `tok-src` column: `model`
+(generator-reported), `proxy` (whitespace source tokens; all v1 transcripts), or `-`
+(no replayed token data, e.g. recorded-only arms).
 
 `maki/eval-transcript.f` replays every `candidate` line through the shared repair
 metric engine (`maki/eval-repair-loop.f` -> `EVAL:CHECK-PASSES?`, the checker as
@@ -75,5 +91,8 @@ The `/tmp` graders are retired into committed checked-Habu tools, and sampled pa
 rounds now replay from committed transcript files (`habu-eval-matrix-live`).
 Remaining: the live-model generation arm stays external/user-gated (record each run
 as a transcript file), the corrected-ROW-STORE softmax re-run (`habu-re-run-habu`),
-and the real generation-token eval (`habu-eval-real-gen`). **No "better target" claim
-beyond what the committed, measured matrix supports.**
+and the rest of the real generation-token eval (`habu-eval-real-gen`): transcripts
+can now carry generator-reported `tokens` (format v1.1 above), so future rounds
+record the claude CLI `usage` token counts instead of the whitespace proxy; a live
+model-token round and the collective/2D/attention authoring tasks remain. **No
+"better target" claim beyond what the committed, measured matrix supports.**

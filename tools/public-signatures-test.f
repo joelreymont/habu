@@ -50,6 +50,7 @@ create PST-NOPEN-BUF FS-PATH-CAP allot
 create PST-NMID-BUF FS-PATH-CAP allot
 create PST-NENTRY-BUF FS-PATH-CAP allot
 create PST-SUM-BUF FS-PATH-CAP allot
+create PST-NUM-BUF FS-PATH-CAP allot
 create PST-OUT PST-BUF-CAP allot
 create PST-ERR PST-BUF-CAP allot
 variable PST-DEP-U
@@ -61,6 +62,7 @@ variable PST-NOPEN-U
 variable PST-NMID-U
 variable PST-NENTRY-U
 variable PST-SUM-U
+variable PST-NUM-U
 
 : PST-COPY! ( ptr u8 n ptr u8 ptr n -- ) {: a:ptr u dst:ptr lenp:ptr :}
    a dst u BYTE-COPY
@@ -438,6 +440,41 @@ variable PST-SUM-U
    PST-OUT outu s" .slot0" CONTAINS? TFALSE
    PST-OUT outu s" .tag" CONTAINS? TFALSE ;
 
+: PST-NUM ( -- ptr u8 n )    PST-NUM-BUF PST-NUM-U @ ;
+
+\ Number-parser-claimable definition names (all digits, float shape, $hex,
+\ optional minus) have no alpha byte, so PS-PROJECT-WORD? alone skipped them
+\ silently - how lib/fmt.f's old `.0` escaped its lib/std.manifest row. The
+\ scanner must SEE them (defensive for historical trees; E-NUMERIC-DEFINITION
+\ rejects new ones). Punctuation-only names the number parser does NOT claim
+\ (`...`) stay invisible - no over-correction.
+: PST-NUM-SRC$ ( -- ptr u8 n )
+   SB-RESET
+   s" : .0 ( n -- n ) dup ;" SB-APPEND PST-LF
+   s" : 42 ( -- n ) 7 ;" SB-APPEND PST-LF
+   s" : 1.5 ( -- n ) 3 ;" SB-APPEND PST-LF
+   s" : -42 ( -- n ) 9 ;" SB-APPEND PST-LF
+   s" : $f0 ( -- n ) 240 ;" SB-APPEND PST-LF
+   s" : ... ( -- ) ;" SB-APPEND PST-LF
+   SB$ ;
+
+: PST-PREPARE-NUM ( -- )
+   PST-ROOT s" ps-num-name.f" PST-NUM-BUF JOIN-PATH PST-NUM-U !
+   PST-NUM CLEANUP+
+   PST-NUM PST-NUM-SRC$ WRITE-ALL ;
+
+: PST-TEST-NUM-NAMES ( -- )
+   PST-PREPARE-NUM
+   PST-NUM PST-RUN 0 PST-EXPECT-EXIT {: outu:n erru:n :}
+   erru 0 T=
+   PST-OUT outu s" .0" PST-WORD$ CONTAINS? TTRUE
+   PST-OUT outu s" (n -- n)" PST-SIG$ CONTAINS? TTRUE
+   PST-OUT outu s" 42" PST-WORD$ CONTAINS? TTRUE
+   PST-OUT outu s" 1.5" PST-WORD$ CONTAINS? TTRUE
+   PST-OUT outu s" -42" PST-WORD$ CONTAINS? TTRUE
+   PST-OUT outu s" $F0" PST-WORD$ CONTAINS? TTRUE   \ lowercase hex, uppercased row
+   PST-OUT outu s" ..." PST-WORD$ CONTAINS? TFALSE ;
+
 \ item 13: the registered public ENUM `pstcolor` publishes one synthesized
 \ nullary constructor per variant, `PSTCOLOR:<VARIANT> ( -- pstcolor )`.
 : PST-TEST-ENUM-CTORS ( -- )
@@ -470,6 +507,7 @@ variable PST-SUM-U
    PST-PREPARE
    PST-TEST-GOOD
    PST-TEST-FIXTURE
+   PST-TEST-NUM-NAMES
    PST-TEST-ENUM-CTORS
    PST-TEST-TRUST
    PST-TEST-NOARG
