@@ -112,3 +112,14 @@ FOLLOW-UP LEGS (not in this change):
   Add/Mul (map 1xC/1x1 onto the OP-BIAS/OP-SCALE classes).
 - Multi-output graphs / output at a non-final node (relax the v1 contract).
 - Gemm transA/transB/alpha/beta by composing transpose/scale nodes.
+
+ONNXRUNTIME GOLDEN LANDED 2026-07-12 (fable 9bdd59ac): the user-gated real-model
+golden is DONE host-side - a real exported ModelProto (2-layer Gemm+Relu MLP,
+405 bytes, committed as fail-closed hex with a byte-identity proof against the
+encode.f DSL re-encoding) imported by ONNX:IMPORT, EX-RUN on committed
+exact-binary-fraction inputs, elementwise-matched against committed onnxruntime
+1.27.0 outputs (measured max |diff| 1.24e-7, tol 1e-5). Regeneration provenance
+in the fixture headers. The PyTorch grad-parity twin landed alongside
+(adam-torch-ref: worst rel-L2 1.34e-8 over 3 Adam steps, same gelu-tanh
+constants both sides, LCG streams bit-exactly mirrored). Remaining here:
+Transpose rank>2 (needs >2D IR) only.
