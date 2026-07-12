@@ -11,7 +11,7 @@ require maki/sched-key.f   \ transitively brings fusion-plan + model-ir (float b
 package MAKI
 
 \ stable copy (the shared SB builder is overwritten by the next render) ---------
-256 constant KT-CAP                       \ holds a full section-7.4 key (~120 bytes)
+256 constant KT-CAP                       \ holds a full section-7.4 key (~170 bytes with the facts-based target field)
 create KT-BUF KT-CAP allot  variable KT-BU
 : KT-COPY ( ptr u8 n -- ) {: a:ptr u:n :}  a KT-BUF u BYTE-COPY  u KT-BU ! ;
 : KT-BUF$ ( -- ptr u8 n )  KT-BUF KT-BU @ ;
@@ -19,6 +19,13 @@ create KT-BUF KT-CAP allot  variable KT-BU
    s" sm_87-noasync"
    TARGET:ISA-PTX 87 32 1024 49152
    TARGET:CAP-ALL TARGET:CAP-ASYNC invert and TARGET:DESCRIPTOR
+   TARGET:REGISTER ;
+\ same label as SM87, DIFFERENT facts (arch 86): TARGET:REGISTER dedups by
+\ descriptor, never by label, so this label collision is legal by design and
+\ the durable key must still separate the two targets (facts-based field).
+: KT-DUP-LABEL ( -- CAD-KIND:target-id )
+   s" sm_87"
+   TARGET:ISA-PTX 86 32 1024 49152 TARGET:CAP-ALL TARGET:DESCRIPTOR
    TARGET:REGISTER ;
 
 \ ---- IR builders (one gelu/relu elementwise chain over a single input) ------
@@ -76,8 +83,9 @@ T-RESET
 0   64  DIM-FEQ TFALSE     0   64  DIM-TXT= TFALSE    \ unbound vs exact/64
 64  64  DIM-FEQ TTRUE      64  64  DIM-TXT= TTRUE      \ exact vs exact, same magnitude
 
-\ ---- key fields: honest v1 constants + the real engine content key -----------
-TARGET:SM87 SK-TARGET$ s" sm_87"    T$=
+\ ---- key fields: facts-based target identity + the real engine content key ---
+TARGET:SM87 SK-TARGET$ s" isa=1,arch=87,warp=32,threads=1024,shared=49152,caps=127" T$=
+TARGET:SM87 TARGET:LABEL$ s" sm_87" T$=  \ the label is presentation only; it never enters the durable key
 SK-ENGINE$ ENGINE-KEY$  T$=              \ engine field is the real bin/hb content key
 SK-ENGINE$ nip 64       T=              \ a 64-char SHA-256 hex digest, not a placeholder
 SK-PTXAS$  s" unprobed"  T$=
@@ -89,10 +97,16 @@ SK-PTXAS$  s" unprobed"  T$=
 \ builder), then splice the binary-dependent engine key into the expected string.
 0 FP-REGION-ID TARGET:SM87 SK-KEY$ KT-COPY
 SB-RESET
-s" 431E24867468A764|2xp128+t|f32|row|al16|sm_87|" SB-APPEND
+s" 431E24867468A764|2xp128+t|f32|row|al16|isa=1,arch=87,warp=32,threads=1024,shared=49152,caps=127|" SB-APPEND
 ENGINE-KEY$ SB-APPEND  s" |unprobed" SB-APPEND
 KT-BUF$ SB$ STR= TTRUE
-0 FP-REGION-ID KT-ALT-TARGET SK-KEY$ KT-BUF$ STR= TFALSE   \ a different target -> different durable key
+0 FP-REGION-ID KT-ALT-TARGET SK-KEY$ KT-BUF$ STR= TFALSE   \ different facts (caps) -> different durable key
+\ label collision negative: same label, different facts -> DIFFERENT key. This is
+\ the row-poisoning hazard (label-keyed rows would replay target-A schedules
+\ under target B); the facts-based field closes it.
+KT-DUP-LABEL TARGET:LABEL$ TARGET:SM87 TARGET:LABEL$ STR= TTRUE   \ labels equal by construction
+KT-DUP-LABEL TARGET:SM87 TARGET:EQUAL? TFALSE                     \ facts differ
+0 FP-REGION-ID KT-DUP-LABEL SK-KEY$ KT-BUF$ STR= TFALSE           \ -> durable keys differ
 0 FP-REGION-ID SK-ALIGN$ s" al16" T$=
 
 \ ---- typed schedule key (skey product): construction, identity, field roles --

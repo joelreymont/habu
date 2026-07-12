@@ -174,7 +174,7 @@ dup 0 REPORT:CAND@ s" gemm-tf32-v1 bm=64 bn=64 bk=32 warps=4 stages=1" T$=
 \ full section-7.4 cache key, exact: the report arena copy is stable, so build the
 \ expected key in SB with the binary-dependent engine field spliced in, then compare.
 dup REPORT:CACHE$
-SB-RESET s" CDFF1E0D197DD30A|2x4|f32|row|al?|sm_87|" SB-APPEND
+SB-RESET s" CDFF1E0D197DD30A|2x4|f32|row|al?|isa=1,arch=87,warp=32,threads=1024,shared=49152,caps=127|" SB-APPEND
 ENGINE-KEY$ SB-APPEND  s" |unprobed" SB-APPEND  SB$
 STR= TTRUE
 dup REPORT:RENDER CT-SAVE

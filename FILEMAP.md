@@ -537,6 +537,11 @@ points stay listed.
   canonical facts/digests, and the validated `CAD-KIND:target-id` owner API.
 - `maki/target/target-test.f` — target identity, descriptor validation,
   round-trip, capability non-aliasing, role rejection, and privacy regressions.
+- `maki/sched-key.f` — section-7.4 schedule keys: the typed `skey` product, the
+  durable `SK-KEY$` render (region signature, shape class, dtype/layout/align,
+  facts-based target field, engine content key), and the replay-table seam.
+- `maki/sched-key-test.f` — shape-class/dimclass identity, full-key pins, the
+  same-label different-facts target negative, and replay-table regressions.
 - `maki/cuda-types.f` — thin re-export of `lib/ptx/cuda-driver.f` preserving the
   historical maki spellings (cuda-* roles, `CUDA-HANDLE0`/`CUDA-RC0`, `E-MK-GPU`).
 - `maki/cuda-types-test.f` — runtime regressions for CUDA handle and rc

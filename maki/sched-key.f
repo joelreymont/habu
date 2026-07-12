@@ -30,11 +30,12 @@
 \
 \ Alignment class: the most conservative model-input alignment the region reads
 \ (AL-16 when it reads no model input - compiler-allocated buffers are aligned by
-\ construction). Target comes from its validated nominal descriptor; the engine
-\ hash is the real
-\ SHA-256 content key over bin/hb (lib/engine-id.f, resolved engine-side, lazy +
-\ cached); ptxas version is the honest "unprobed" placeholder (no ptxas is probed
-\ on a host without a device).
+\ construction). Target is the caller's validated nominal descriptor rendered as
+\ its SEMANTIC FACTS (SK-TARGET+, injective over TARGET:EQUAL?) - never the
+\ presentation label, which TARGET:REGISTER does not dedup; the engine hash is
+\ the real SHA-256 content key over bin/hb (lib/engine-id.f, resolved
+\ engine-side, lazy + cached); ptxas version is the honest "unprobed"
+\ placeholder (no ptxas is probed on a host without a device).
 \
 \ Replay: a bounded in-memory key->selection table with GET/PUT. This is the cad-5
 \ store SEAM - a query that misses returns (-1 false) so the caller falls back to the
@@ -85,10 +86,12 @@ ENUM dimclass DERIVE eq
 \ (the semantic-role hole the string key left open). DERIVE eq gives the typed
 \ identity MAKI-SKEY:EQ; every enum field family also derives eq (else the
 \ declaration throws). target is the caller-supplied validated nominal descriptor
-\ id (maki/target/target.f) and engine / ptxas are per-process invariants (one
-\ engine build, one ptxas per running process): they live in the DURABLE render
-\ (SK-KEY$) ONLY and are not product fields - the field-eq == text-eq contract
-\ below is pinned per target. The persistent schedules.rows store stays keyed by that render
+\ id (maki/target/target.f), rendered into the durable key as its semantic FACTS
+\ (SK-TARGET+; injective over TARGET:EQUAL?, so two same-label descriptors never
+\ collide); engine / ptxas are per-process invariants (one engine build, one
+\ ptxas per running process). None of the three are product fields: they live in
+\ the DURABLE render (SK-KEY$) ONLY, and the field-eq == text-eq contract below
+\ is pinned per target. The persistent schedules.rows store stays keyed by that render
 \ (see the SK-GET/SK-PUT boundary note below). Fields (slot order, deepest first):
 \ rsig = FNV-1a region signature (n); rk/rm = representative rows class+magnitude;
 \ ck/cm = representative cols class+magnitude; dt/lay = representative dtype/layout;
@@ -214,8 +217,24 @@ private
 
 public
 
-\ ---- key field placeholders -------------------------------------------------
-: SK-TARGET$ ( CAD-KIND:target-id -- ptr u8 n )  TARGET:LABEL$ ;
+\ ---- key fields: target facts, engine content key, ptxas placeholder ---------
+\ Durable target field = the descriptor's SEMANTIC FACTS, never the label:
+\ TARGET:REGISTER interns by descriptor but does NOT dedup labels, so two
+\ distinct descriptors can share one label - a label-keyed row would replay
+\ target-A schedules under target B (schedules.rows/evidence.rows poisoning).
+\ Fixed field order + canonical SB-INT integers make the render injective over
+\ TARGET:EQUAL? (facts-eq == field-text-eq). The inner separator is ',' so the
+\ outer '|' join in SK-KEY+ stays unambiguous (TARGET:FACTS$ is '|'-separated
+\ AND builds in the same shared SB, so it cannot be spliced into a live key
+\ build; the field is rendered here from the fact accessors instead).
+: SK-TARGET+ ( CAD-KIND:target-id -- ) {: t:CAD-KIND:target-id :}
+   s" isa=" SB-APPEND t TARGET:ISA@ SB-INT
+   s" ,arch=" SB-APPEND t TARGET:ARCH@ SB-INT
+   s" ,warp=" SB-APPEND t TARGET:WARP@ SB-INT
+   s" ,threads=" SB-APPEND t TARGET:THREADS@ SB-INT
+   s" ,shared=" SB-APPEND t TARGET:SHARED@ SB-INT
+   s" ,caps=" SB-APPEND t TARGET:CAPS@ SB-INT ;
+: SK-TARGET$ ( CAD-KIND:target-id -- ptr u8 n )  SB-RESET SK-TARGET+ SB$ ;
 \ Real engine content key: the SHA-256 of bin/hb, resolved engine-side from the
 \ kernel-provided self-path and hashed once on first request, then cached
 \ (lib/engine-id.f). It distinguishes schedules produced by different engine builds
@@ -242,7 +261,7 @@ public
    $7C SB-APPEND-C  rep MIR-DTYPE-KEY  SB-APPEND
    $7C SB-APPEND-C  rep MIR-LAYOUT-KEY SB-APPEND
    $7C SB-APPEND-C  r REGION-ALIGN AL-KEY SB-APPEND
-   $7C SB-APPEND-C  target SK-TARGET$ SB-APPEND
+   $7C SB-APPEND-C  target SK-TARGET+
    $7C SB-APPEND-C  SK-ENGINE$ SB-APPEND
    $7C SB-APPEND-C  SK-PTXAS$  SB-APPEND ;
 
@@ -291,7 +310,7 @@ private
 \ (dot habu-checker-capability-typed-a480c423 S2); until then the table stays
 \ text-keyed as the durable store's in-memory mirror.
 32   constant SK-TAB-CAP
-$1000 constant SK-ARENA-CAP
+$2000 constant SK-ARENA-CAP        \ 32 full keys at ~170 bytes each (facts-based target field)
 create SK-ARENA SK-ARENA-CAP allot   variable SK-ARENA-U
 create SK-KO  SK-TAB-CAP cells allot     \ per-entry key offset
 create SK-KL  SK-TAB-CAP cells allot     \ per-entry key length
