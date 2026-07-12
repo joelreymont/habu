@@ -92,7 +92,7 @@ internal `LFIND` routine (`habu1.f:2079`, `forth.fs:836`) plus `search-wl`.
 | checker.f:3904 | `CHECKER-UNDEFINE` | remove a sig from the registry. |
 | checker.f:3910 | `CHECKER-DEFTYPE` | register an opaque type. |
 | checker.f:3913 | `CHECKER-DEFLINEAR` | register a linear type. |
-| axioms | checker.f:3355-3364 (`PRIM: CHECKER-USIGS-TRUNCATE-FROM/UNDEFINE/DEFTYPE/DEFLINEAR/DEFRECORD/DEFER/PACKAGE/PUBLIC/PRIVATE/END-PACKAGE`) | these are declared as prims so the checker doesn't recurse; both axiom + impl live in checker.f. |
+| axioms | checker.f:3355-3364 (`PRIM: CHECKER-USIGS-TRUNCATE-FROM/UNDEFINE/DEFTYPE/DEFLINEAR/DEFRECORD/DEFER/PACKAGE/PUBLIC/PRIVATE/;package`) | these are declared as prims so the checker doesn't recurse; both axiom + impl live in checker.f. |
 
 ### 2b. Native call-hooks into the checker (`src/habu/habu2.f`)
 | Site | Word | Note |
@@ -246,7 +246,7 @@ pair, not a generic execute dispatch; the real execute lowering is `BEXEC`
 | habu2.f:2873 | `C-PACKAGE-NEW-PRIVATE-WID` | allocs a private WID. |
 | habu2.f:2884 | `C-PACKAGE-NEW-RECORD` | writes a new package record (`C-QUALIFY-CAP` 1465), `LHIDXADD`. |
 | habu2.f:2861 | `C-PACKAGE-NAME-GUARD` | rejects `:` in package token (only existing guard). |
-| habu2.f:2993-2996 | keyword registration (`KEEP?`) | `package`/`public`/`private`/`end-package` → the above. |
+| habu2.f:2993-2996 | keyword registration (`KEEP?`) | `package`/`public`/`private`/`;package` → the above. |
 
 `CUR-CELL` set by `C-PACKAGE/PUBLIC/PRIVATE` is exactly `set-current`'s target;
 a qualified/plain `:` then publishes into whatever `CUR-CELL` points to. Every

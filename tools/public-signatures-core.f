@@ -614,7 +614,7 @@ variable PS-DEF-SIG-U
    PS-FALSE PS-PKG-PUBLIC ! ;
 
 : PS-PACKAGE-CLOSE? ( ptr u8 n -- bool ) {: a:ptr u:n :}
-   a u s" end-package" LINT-STR=CI IF PS-TRUE exit THEN
+   a u s" ;package" LINT-STR=CI IF PS-TRUE exit THEN
    a u s" ;package" LINT-STR=CI ;
 
 : PS-SCOPE-TOKEN? ( ptr u8 n -- bool ) {: a:ptr u:n :}
@@ -661,7 +661,7 @@ variable PS-DEF-SIG-U
    repeat ;
 
 \ Replay residual scope in true load order (EC:LOAD-ORDER is depth-first,
-\ post-order), threading package open/public/private/end-package state
+\ post-order), threading package open/public/private/;package state
 \ file-by-file exactly where each dep's content would load. A package left
 \ UNCLOSED across transitively-nested deps then settles to the same residual the
 \ real loader would leave. The entry file is always the last ordered element, so

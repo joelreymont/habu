@@ -340,4 +340,4 @@ variable FIELD-I
 
 ' FULL-PRODUCE FULL-INSTALL
 
-end-package
+;package

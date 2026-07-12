@@ -338,7 +338,7 @@ s" global effect hidden inside the package" T-LABEL
 s" CBAD-PRES-GLOB ( -- n ) T-PRESO" CHECK-QUIET-CANDIDATE! 0 T=
 s" public resolves unqualified inside the package" T-LABEL
 s" COK-PRES-PUB-IN ( -- n ) ES-PRES-PUB" CHECK-QUIET-CANDIDATE! -1 T=
-end-package
+;package
 s" global effect restored outside the package" T-LABEL
 s" COK-PRES-GLOB ( -- n ) T-PRESO" CHECK-QUIET-CANDIDATE! -1 T=
 s" private row does not resolve qualified" T-LABEL
@@ -1364,7 +1364,7 @@ SUMTYPE wide 0
 : PTR ( -- ptr wide ) 0 BUF ;
 : FETCH ( -- wide ) PTR @ ;
 
-end-package
+;package
 
 LOWER-CERT:NEEDS-CELL LOWER-CERT:CELL@ 1 T=
 s" CERT-BYTES-BAD ( -- ptr u8 n ) LOWER-CERT:BYTES" T-CHECK-REJECTS
@@ -1374,7 +1374,7 @@ package CERT-ALT-TEST
 
 : SCALAR ( n -- n ) 1 + ;
 
-end-package
+;package
 
 LOWER-CERT:CELL-COUNT 10 T=
 LOWER-CERT:NEEDS-CELL LOWER-CERT:CELL@ 0 T=

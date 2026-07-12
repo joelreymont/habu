@@ -143,6 +143,6 @@ public
    GB-MM
    GB-MMM ;
 
-end-package
+;package
 
 GEMMBENCH:GB-ALL

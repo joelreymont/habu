@@ -209,4 +209,4 @@ MIR-IN-SLOTS@ 1 T=
 
 T-REPORT
 
-end-package
+;package

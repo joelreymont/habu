@@ -101,4 +101,4 @@ public
    ENC-D @ 0<> if E-ONNX-ENC throw then
    ENC-LVL ENC-LEN@ ;
 
-end-package
+;package

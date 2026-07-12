@@ -132,7 +132,7 @@ variable PDT-PTX-U                                         \ correct-module text
    PTXTC:CLEAN  MAKI-GRADE:CLEAN
    T-REPORT ;
 
-end-package
+;package
 
 package MAKI
 PDT-BEGIN
@@ -146,4 +146,4 @@ PDT-INVERSE
 PDT-RESET
 
 PDT-END
-end-package
+;package

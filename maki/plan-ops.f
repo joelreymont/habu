@@ -109,4 +109,4 @@ public
    MV-GATHER  MV-GATHER-VERDICT  0 0 MV-PACK {: attr:n :}
    OP-GATHER TENSOR:PLAN-OP-BEGIN  x TENSOR:PLAN-IN+  idx TENSOR:PLAN-IN+  attr TENSOR:PLAN-ATTR!  y TENSOR:PLAN-OP+  y ;
 
-end-package
+;package

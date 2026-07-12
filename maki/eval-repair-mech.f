@@ -244,4 +244,4 @@ public
       MECH-APPLY 0= if MECH-UNREPAIRABLE exit then
    again ;
 
-end-package
+;package

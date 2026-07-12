@@ -48,6 +48,6 @@ public
    PREPARE-CLEANS-OLD
    T-REPORT ;
 
-end-package
+;package
 
 PTXTC-TEST:RUN

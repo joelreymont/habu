@@ -304,7 +304,7 @@ public
    MP-COMPARE MP-REPORT
    PTXTC:CLEAN ;
 
-end-package
+;package
 
 MMAPROBE:MP-ALL
 MMAPROBE:MP-LDM-ALL

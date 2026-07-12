@@ -357,4 +357,4 @@ public
    raw 0 < raw MIR-N@ >= or if E-EX-NODE throw then
    nd EX-NODE-PTR ;
 
-end-package
+;package

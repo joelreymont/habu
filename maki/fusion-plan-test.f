@@ -182,4 +182,4 @@ s" FPT-RSN-BARE ( n -- ptr a ) FP-SP-REASON-AT" CHECK-QUIET-CANDIDATE! 0 T=
 
 T-REPORT
 
-end-package
+;package

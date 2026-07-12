@@ -208,6 +208,6 @@ TEST:SUITE maki/device-smoke.f
 TEST:;SUITE
 TEST:;GROUP
 
-end-package
+;package
 
 TEST:RUN

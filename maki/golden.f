@@ -124,4 +124,4 @@ public
    PREC-F32 GOLDEN-PREC-V !
    GA-EXISTS? if GO-GATE-ARTIFACT else GO-GATE-SELF then ;
 
-end-package
+;package

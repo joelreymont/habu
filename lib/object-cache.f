@@ -116,4 +116,4 @@ public
    KEY-BUF OBJ:KEY-HEX
    KEY-BUF KEY-U key keyu STR= 0= if E-OBJ-SCHEMA throw then ;
 
-end-package
+;package

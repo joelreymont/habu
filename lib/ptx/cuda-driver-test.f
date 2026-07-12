@@ -37,4 +37,4 @@ package CUDA-DRIVER-TEST
 
 RUN
 
-end-package
+;package

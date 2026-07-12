@@ -25,7 +25,7 @@ package XRT
 public
 : XRT-PUBLIC ( -- n )
    XRT-PRIVATE 1 + ;
-end-package
+;package
 
 : XRT-CALLER ( n -- n )
    XRT-SAMPLE + ;

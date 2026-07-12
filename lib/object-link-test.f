@@ -478,6 +478,6 @@ public
    OBJECT-OVERFLOW-FAILS
    T-REPORT ;
 
-end-package
+;package
 
 OBJLINK-TEST:MAIN

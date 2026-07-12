@@ -84,4 +84,4 @@ public
 : COUNT= ( ptr u8 n n -- ) {: needle:ptr needleu:n want:n :}
    needle needleu COUNT want T= ;
 
-end-package
+;package

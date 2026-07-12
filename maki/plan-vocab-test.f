@@ -47,7 +47,7 @@ public
    x w b LINEAR {: h:tensor :}          \ n1: linear(x, w, b)  <- x fans out
    h g ADD ;                            \ n2: add(n1, n0)      <- branches join
 
-end-package
+;package
 
 \ ---- descriptor seeding + plan-store probes + scenario drivers -------------------
 \ MAKI scope: the plan store, descriptor constructor and op-kind constants are MAKI words; the
@@ -102,7 +102,7 @@ package MAKI
    2 TENSOR:PLAN-IN-COUNT@ 2 T=
    y TENSOR:TV-ROWS@ y TENSOR:TV-COLS@ 4 8 SHAPE-IS? TTRUE ;
 
-end-package
+;package
 
 T-RESET
 
@@ -110,7 +110,7 @@ T-RESET
 package MAKI
 PVT-RUN-SKIP
 PVT-RUN-BRANCH
-end-package
+;package
 
 \ ---- proof 2: the checker REJECTS malformed compositions at load (EVAL:CHECK-PASSES?) --
 \ Inside package PLAN so the candidate's bare vocabulary words resolve. Positive controls
@@ -128,6 +128,6 @@ s" PVBAD-RESHAPE ( tensor -- tensor ) RESHAPE"                                  
 s" PVBAD-TYPE ( n -- tensor ) GELU"                                                           EVAL:CHECK-PASSES? TFALSE
 \ negative: leftover value (two inputs, one unary op) - result arity != declared output
 s" PVBAD-LEFT ( tensor tensor -- tensor ) GELU"                                               EVAL:CHECK-PASSES? TFALSE
-end-package
+;package
 
 T-REPORT

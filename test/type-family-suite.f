@@ -477,7 +477,7 @@ package pkpk
 ENUM pkpke red green blue ;ENUM
 SUMTYPE pkpks 1 VARIANT none ;VARIANT VARIANT some a ;VARIANT ;SUMTYPE
 PRODUCT pkpkp 0 FIELD x n FIELD y n ;PRODUCT
-end-package
+;package
 \ enum (3 variants, no payload): tag-only u8 -> size 1 align 1 tagw 1
 s" pkpk" s" pkpke" TFAM-FIND-IN drop PKI !
 PKI @ PACKED-DESC PTW ! PAL ! PSZ !
@@ -552,7 +552,7 @@ PQL @ LAY-SIZE@ 16 T=  PQL @ LAY-ALIGN@ 8 T=   PQL @ LAY-TAGW@ 0 T=
 41 PKAC-P-RT 41 T=
 41 PKAC-S-RT 41 T=
 7 PKAC-P-RT 7 PKAC-S-RT T=
-end-package
+;package
 
 \ ---------------------------------------------------------------------------
 \ report: "ok" on success, nonzero exit on any failure.

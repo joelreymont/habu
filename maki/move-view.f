@@ -115,4 +115,4 @@ public
    ref MVW-STAGED? if mv MVW-XPOSE-DIMS 2drop exit then
    mv MVW-OFF-ELEMS drop  mv MVW-SRC-REF drop ;
 
-end-package
+;package

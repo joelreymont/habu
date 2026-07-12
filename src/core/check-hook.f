@@ -25,4 +25,4 @@ TRUSTED: INSTALL ( -- )
 
 INSTALL
 
-end-package
+;package

@@ -49,6 +49,6 @@ public
    PREPARE-CLEANS-OLD
    T-REPORT ;
 
-end-package
+;package
 
 MAKI-GRADE-TEST:RUN

@@ -31,4 +31,4 @@ package CUDA-TEST
 
 RUN
 
-end-package
+;package

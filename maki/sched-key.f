@@ -208,4 +208,4 @@ public
    e 0 < if -1 false exit then
    e cells SK-SEL + @  true ;
 
-end-package
+;package

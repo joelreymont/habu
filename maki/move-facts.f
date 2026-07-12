@@ -117,4 +117,4 @@ $FFFFF constant MV-PMASK     \ 20-bit param mask (max 1048575)
       E-MV-TF throw
    endcase ;
 
-end-package
+;package

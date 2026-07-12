@@ -57,4 +57,4 @@ public
 30 constant OP-SCATTER-ADD       \ add ct rows into zero RxC at gathered idx (gather adj; ref: SCATTER-ADD)
 31 constant OP-N               \ op-kind range bound
 
-end-package
+;package

@@ -3354,7 +3354,7 @@ unchanged (148855). Keys for milestone 2:
   same-session fix.
 - **Token lints must match dictionary-significant words case-insensitively.**
   The dictionary is case-insensitive, so `CREATE BUF` defines a global and
-  `END-PACKAGE` closes a package exactly like the lower-case spellings — a
+  `;package` closes a package exactly like the lower-case spellings — a
   lint matching definers/`package` with `LINT-STR=` has both an evasion vector
   (upper `CREATE`, upper closer leaving depth stuck > 0 hides every later def)
   and a false-positive vector (upper opener not counted). Proven red-first in

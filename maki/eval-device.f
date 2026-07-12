@@ -163,4 +163,4 @@ variable DEVICE-PASS  variable DEVICE-TOTAL
 : DEVICE-SCORE ( ptr u8 n -- )
    GRADE-CANDIDATE  2 = if DEVICE-PASS @ 1+ DEVICE-PASS ! then  DEVICE-TOTAL @ 1+ DEVICE-TOTAL ! ;
 
-end-package
+;package

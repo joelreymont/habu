@@ -434,7 +434,7 @@ public
 : RUN ( -- )
    SOURCE CHECK-QUIET-CANDIDATE! -1 T= ;
 
-end-package
+;package
 
 LOCAL-BIND-CAP-TEST:RUN
 
@@ -800,7 +800,7 @@ SUMTYPE tres 1
 ;SUMTYPE
 private
 TYPEFAMILY tpriv 1
-end-package
+;package
 s" tdpa" s" tres" TFAM-FIND-IN TDOK ! TDF !
 TDOK @ -1 T=
 TDF @ TFAM-VIS@ CHECKER-PACKAGE-PUBLIC T=
@@ -813,7 +813,7 @@ TDF @ TFAM-VIS@ CHECKER-PACKAGE-PRIVATE T=
 package tdpb
 public
 TYPEFAMILY tres 1
-end-package
+;package
 s" tdpb" s" tres" TFAM-FIND-IN TDOK ! TDF !
 TDOK @ -1 T=
 s" tdpa" s" tres" TFAM-FIND-IN TDOK ! TDX !
@@ -841,7 +841,7 @@ private
 SUMTYPE tsec 1
   VARIANT hidden a ;VARIANT
 ;SUMTYPE
-end-package
+;package
 s" tdp8" s" tsec" TFAM-FIND-IN TDOK ! TDF !   TDOK @ -1 T=
 TDF @ TFAM-VIS@ CHECKER-PACKAGE-PRIVATE T=
 TDF @ TFAM-VAR-START@ TDV0 !
@@ -857,7 +857,7 @@ package tdpa
 s" TPOK-LOCAL ( tres<n> -- tres<n> )" CHECK-QUIET-CANDIDATE! -1 T=
 s" TPOK-PRIV ( tpriv<n> -- tpriv<n> )" CHECK-QUIET-CANDIDATE! -1 T=
 s" TPOK-QSELF ( tdpa:tpriv<n> -- tdpa:tpriv<n> )" CHECK-QUIET-CANDIDATE! -1 T=
-end-package
+;package
 \ cross-package: a private family never resolves, qualified or not...
 s" TXBAD-PRIV ( tpriv<n> -- ) drop" CHECK-QUIET-CANDIDATE! 0 T=
 s" TXBAD-QPRIV ( tdpa:tpriv<n> -- ) drop" CHECK-QUIET-CANDIDATE! 0 T=
@@ -875,7 +875,7 @@ s" TQBAD-XUNIFY2 ( tdpb:tres<n> -- tdpa:tres<n> )" CHECK-QUIET-CANDIDATE! 0 T=
 package tdpb
 s" TPOK-OWN ( tres<n> -- tdpb:tres<n> )" CHECK-QUIET-CANDIDATE! -1 T=
 s" TPBAD-OTHER ( tres<n> -- tdpa:tres<n> ) " CHECK-QUIET-CANDIDATE! 0 T=
-end-package
+;package
 \ unknown qualifiers and malformed multi-colon tokens reject as unknown types.
 s" TQBAD-NOPKG ( nopkg:tres<n> -- ) drop" CHECK-QUIET-CANDIDATE! 0 T=
 s" TQBAD-COLONS ( tdpa:tres:x<n> -- ) drop" CHECK-QUIET-CANDIDATE! 0 T=
@@ -918,7 +918,7 @@ s" TYPEFAMILY span 3" E-TFAM-DUP TDT-NEG
 \ ...while shadowing a global family from inside a package is reserved.
 package tshad
 s" TYPEFAMILY span 3" E-TDECL-NAME TDT-NEG
-end-package
+;package
 \ variant names may not collide with any family the declaring scope resolves,
 \ in ANY scope: builtin tails, prior user families, and (inside a package)
 \ the package's own tails all reject; the verdict matches across scopes.
@@ -929,7 +929,7 @@ package tvshad
 s" SUMTYPE tdvres3 1 VARIANT span a ;VARIANT ;SUMTYPE" E-TDECL-NAME TDT-NEG
 TYPEFAMILY tvloc 1
 s" SUMTYPE tdvres4 1 VARIANT tvloc a ;VARIANT ;SUMTYPE" E-TDECL-NAME TDT-NEG
-end-package
+;package
 \ family declarations must reject a prior in-scope variant tail too; otherwise
 \ the collision verdict depends on declaration order.
 ENUM tdvowner tdfuture ;ENUM
@@ -937,14 +937,14 @@ s" TYPEFAMILY tdfuture 0" E-TDECL-NAME TDT-NEG
 package tvorder
 ENUM tvowner tvfuture ;ENUM
 s" TYPEFAMILY tvfuture 0" E-TDECL-NAME TDT-NEG
-end-package
+;package
 \ Package-local variant tails do not reserve unrelated package namespaces.
 package tvordera
 ENUM tvowner tvlocal ;ENUM
-end-package
+;package
 package tvorderb
 TYPEFAMILY tvlocal 0
-end-package
+;package
 \ ...and an unreserved variant name in the same shape still accepts.
 SUMTYPE tdvok 1
   VARIANT fine a ;VARIANT
@@ -1081,7 +1081,7 @@ SUMTYPE tdpoldef 1
   VARIANT none   ;VARIANT
   VARIANT some a ;VARIANT
 ;SUMTYPE
-end-package
+;package
 s" tpol" s" tdpol" TFAM-FIND-IN TDOK ! TDF !
 TDOK @ -1 T=
 TDF @ TFAM-KIND@ TK-SUM T=
@@ -1145,7 +1145,7 @@ package tdrp
 SUMTYPE tdrec6 1
   VARIANT node ptr u8 ;VARIANT
 ;SUMTYPE
-end-package
+;package
 s" tdrp" s" tdrec6" TFAM-FIND-IN TDOK ! TDF !
 TDOK @ -1 T=
 TDF @ TFAM-KIND@ TK-SUM T=

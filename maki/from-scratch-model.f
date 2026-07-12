@@ -125,4 +125,4 @@ public
 \ every consumer re-issues this exact line before use; this is the reference.
 MODEL: SCRATCH-MLP ( x:8x6 w1:6x16 b1:1x16 w2:16x2 b2:1x2 -- y ) LINEAR GELU LINEAR ;
 
-end-package
+;package

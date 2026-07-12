@@ -79,7 +79,7 @@ create LD-QO  $1000 allot  create LD-QE  $2000 allot
    PTXTC:CLEAN  MAKI-GRADE:CLEAN
    T-REPORT ;
 
-end-package
+;package
 
 package MAKI
 LD-BEGIN
@@ -101,4 +101,4 @@ MODEL: MS ( x:4x8 s:1x1 -- y ) SCALE ;  FP-BUILD
 s" MODEL: MS ( x:4x8 s:1x1 -- y ) SCALE ;" LD-GOLD1
 
 LD-END
-end-package
+;package

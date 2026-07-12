@@ -30,4 +30,4 @@ public
    s" GB/s_x1000=" type gbs U.0 s"  mem_roof_util_x1000=" type memu U.0 cr
    s" GFLOP/s_x1000=" type gflops U.0 s"  fp32_roof_util_x1000=" type fpu U.0 cr ;
 
-end-package
+;package

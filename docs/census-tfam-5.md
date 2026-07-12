@@ -80,7 +80,7 @@ structural change to how the buffer is fed, not a local patch.
 ## 3. Support-form replay — what is / is NOT replayed
 
 ### verify-source.f preverify re-driver (`RECORD-DEFINER?` `src/habu/verify-source.f:373-387`)
-Replays: `package` (`:374`→`RECORD-PACKAGE :331`), `public`/`private`/`end-package`
+Replays: `package` (`:374`→`RECORD-PACKAGE :331`), `public`/`private`/`;package`
 (`:375-377`), `deftype` (`:378`→`CHECKER-DEFTYPE`), `deflinear` (`:379`),
 `value-record` (`:380`→`RECORD-VALUE-RECORD :358-371`), `constant` (`:381` **hardcoded
 `-- a`**), `create` (`:382` `-- ptr a`), `variable` (`:383` `-- ptr a`), `defer`
@@ -90,7 +90,7 @@ Replays: `package` (`:374`→`RECORD-PACKAGE :331`), `public`/`private`/`end-pac
 `immediate`, `EXPORT`, top-level bare `TRUST`.
 
 ### check-all-errors-core.f support collector (`CA-COLLECT-SUPPORT` `tools/check-all-errors-core.f:427-438`)
-Collects (as replayable source lines): `package`/`public`/`private`/`end-package`
+Collects (as replayable source lines): `package`/`public`/`private`/`;package`
 (`:428-431`), `TRUSTED:` (`:432`→`CA-ADD-SUPPORT-TRUSTED :377-380`), `defer` (`:433`),
 `undefine` (`:434`), `create` (`:435`), `variable` (`:436`), `constant`
 (`:437`→`CA-ADD-SUPPORT-CONSTANT :357-362`, replays the *literal* `N constant NAME`

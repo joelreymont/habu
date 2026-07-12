@@ -197,4 +197,4 @@ variable NDATA
 
 MAIN
 
-end-package
+;package

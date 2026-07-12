@@ -93,4 +93,4 @@ public
 \ T-SGD! on the f32-marshalled inputs - the optimizer step runs on device.
 : SGD ( r -- )  fnegate LAUNCH ;
 
-end-package
+;package

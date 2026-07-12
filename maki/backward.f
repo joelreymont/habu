@@ -404,4 +404,4 @@ public
       s BW-SEED @ MIR-SLOT= 0= if s BW-GRAD-ROW$ REPORT:WARN+ then
    loop ;
 
-end-package
+;package

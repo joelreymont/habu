@@ -13,7 +13,7 @@ variable ACTIVE
 : DISARM ( -- ) 0 0= 0= ACTIVE ! ;
 public
 : BUILDING? ( -- bool ) ACTIVE? ;
-end-package
+;package
 \ runtime instruction-word constants the JIT compiler stamps out
 $D65F03C0 constant W-RET
 $F9000269 constant W-PUSH0
@@ -184,7 +184,7 @@ public
 : SPAN ( n label -- ) BLOB-SPAN ;
 : ADDR ( n label -- ) BLOB-ADDR ;
 
-end-package
+;package
 
 \ Span-aware protected-memory guard. addr and len name runtime registers. A
 \ zero-length write is inert. Any address+length wrap traps before the region

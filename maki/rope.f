@@ -20,4 +20,4 @@ public
    dre c f*  dim s f*  f+
    dim c f*  dre s f*  f- ;
 
-end-package
+;package

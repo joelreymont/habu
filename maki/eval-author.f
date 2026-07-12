@@ -29,4 +29,4 @@ public
       E-MK-EVAL throw
    endcase ;
 
-end-package
+;package

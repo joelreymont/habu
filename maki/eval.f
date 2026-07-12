@@ -38,4 +38,4 @@ public
 \ score one candidate and tally it
 : SCORE ( ptr u8 n -- )  CHECK-PASSES? RECORD ;
 
-end-package
+;package

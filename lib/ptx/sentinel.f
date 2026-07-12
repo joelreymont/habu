@@ -39,4 +39,4 @@ $DEADBEEF constant POISON
 : GUARD ( n -- n )                            \ throw if a readback cell is still the sentinel
    dup POISON = if E-PTX-READBACK throw then ;
 
-end-package
+;package

@@ -45,4 +45,4 @@ BUILD
 READ
 s" ok" type cr
 
-end-package
+;package

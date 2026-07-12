@@ -9,4 +9,4 @@ package PTXBW
 DEFAULTS
 REPORT
 
-end-package
+;package

@@ -46,7 +46,7 @@ subsystem name.
   throws on a hit), wired into the native gate lint slice as `maki-dep-lint` +
   `maki-dep-lint-fixtures`.
 - **Layered package namespaces (the runtime package feature, `docs/forth.md` "Packages").**
-  `package NAME` / `public` / `private` / `end-package` gives each module a real wordlist
+  `package NAME` / `public` / `private` / `;package` gives each module a real wordlist
   namespace; a bare `WORD` reference from habu core does not resolve, enforcing the one-way
   seam at the *dictionary* level. The layering:
   - **`MAKI` is the public interface** — model import, training, eval, and CPU reference

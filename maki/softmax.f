@@ -42,4 +42,4 @@ public
 : SM-BWD ( ptr a ptr a ptr a n -- ) {: dyb:ptr yb:ptr dxb:ptr n:n :}
    dyb yb dxb n  dyb yb n SM-DOT  SM-DX! ;
 
-end-package
+;package

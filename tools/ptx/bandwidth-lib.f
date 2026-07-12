@@ -111,4 +111,4 @@ public
 : REPORT ( -- )
    MEASURE REPORT-NS ;
 
-end-package
+;package

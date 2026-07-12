@@ -340,7 +340,7 @@ public
 : SEAL ( ptr u8 n -- )
    s" SEAL-FRIEND" BF-APPEND-LINE ;
 
-end-package
+;package
 
 : BF-APPEND-HIDE-CALL ( ptr u8 n ptr u8 n ptr u8 n -- ) {: out:ptr outu:n name:ptr nameu:n word:ptr wordu:n :}
    out outu s" s" BF-APPEND-BYTES

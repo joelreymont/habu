@@ -95,6 +95,6 @@ public
    CLEANUP-RUN
    T-REPORT ;
 
-end-package
+;package
 
 OBJRES-TEST:MAIN

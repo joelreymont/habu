@@ -145,4 +145,4 @@ KERNEL: CHECKED ( matrix<space-global,f32,extent-q,extent-d> matrix<space-global
    1 Q-REG  2 K-REG  3 V-REG  4 O-REG  CHECKED
    s" ret;" PTX-L  s" }" PTX-L ;
 
-end-package
+;package

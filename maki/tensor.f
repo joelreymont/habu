@@ -212,4 +212,4 @@ public
    cols COLS-RAW ROWS-REFINE
    rows ROWS-RAW COLS-REFINE ;
 
-end-package
+;package

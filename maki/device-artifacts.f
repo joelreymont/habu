@@ -59,4 +59,4 @@ public
       2drop s" /usr/local/cuda-12.6/bin/ptxas"
    then ;
 
-end-package
+;package

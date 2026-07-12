@@ -121,4 +121,4 @@ public
    REC-BUF KEY-BUF KEY-U BYTE-COPY
    KEY-BUF KEY-U TRUE ;
 
-end-package
+;package

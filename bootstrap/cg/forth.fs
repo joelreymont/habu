@@ -2115,7 +2115,7 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
    LKWKERNEL @ LBL, s" kernel:" BYTES,
    LKWTRUST @ LBL, s" trust" BYTES,      LKWCHKDOES @ LBL, s" check-does!" BYTES,
    LKWPACKAGE @ LBL, s" package" BYTES,  LKWPUBLIC @ LBL, s" public" BYTES,
-   LKWPRIVATE @ LBL, s" private" BYTES,  LKWENDPACKAGE @ LBL, s" end-package" BYTES,
+   LKWPRIVATE @ LBL, s" private" BYTES,  LKWENDPACKAGE @ LBL, s" ;package" BYTES,
    LKWSEMIPACKAGE @ LBL, s" ;package" BYTES,
    LCHKPACKAGE @ LBL, s" checker-package" BYTES,  LCHKPUB @ LBL, s" checker-public" BYTES,
    LCHKPRI @ LBL, s" checker-private" BYTES,  LCHKENDPKG @ LBL, s" checker-end-package" BYTES,

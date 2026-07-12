@@ -21,4 +21,4 @@ public
 
 : SILU-BWD ( r r -- r ) {: dz:r x:r :}  dz  x SILU-GRAD  f* ;
 
-end-package
+;package

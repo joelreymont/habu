@@ -136,7 +136,7 @@ Emitted field order (verbatim keys):
 - `public-signatures-core.f:513-519` — `PS-EMIT-PUBLIC`: routes to trust-entry or PS-EMIT-DEF.
 - `public-signatures-core.f:521-532` — `PS-PUBLIC?` / `PS-EXPORTED?` / `PS-EXPORTED-FLAG`: visibility gate (524 = PS-PUBLIC?). Synthesized constructors bypass source-visibility and are public by metadata.
 - `public-signatures-core.f:550-555` — `PS-MAYBE-TRUST-DEFINER` (552): recognizes `constant`/`create`/`variable` and synthesizes `-- a` etc. **This is the existing precedent for metadata-synthesized signatures** — the constructor synthesizer should follow this pattern (fabricate a signature string, feed the emit path).
-- `public-signatures-core.f:557-570` — `PS-PACKAGE-NAME!` / `PS-SCOPE-TOKEN?`: package/public/private/end-package scope; constructor packages are keyed by family package.
+- `public-signatures-core.f:557-570` — `PS-PACKAGE-NAME!` / `PS-SCOPE-TOKEN?`: package/public/private/;package scope; constructor packages are keyed by family package.
 
 ### Test fixture (public-signatures-test.f)
 - `public-signatures-test.f:65-78` — `PST-FIXTURE$`: builds the source fixture. **Line 68 = `EXPORT lower`** (plan-cited). Line 77 = `( : COMMENTED ... )` a legit standalone comment (must stay a comment). **A `(CMP)` line must be ADDED to prove the paren-word stays visible** — no such case exists today.

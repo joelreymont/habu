@@ -35,4 +35,4 @@ TRUSTED: SET ( n n n -- )
    payload addr !
    tag addr cell+ ! ;
 
-end-package
+;package

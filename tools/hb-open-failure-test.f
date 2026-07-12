@@ -77,4 +77,4 @@ variable HOF-EXE-U
 
 HB-OPEN-FAILURE-TEST-MAIN
 
-end-package
+;package

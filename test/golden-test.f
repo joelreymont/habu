@@ -58,4 +58,4 @@ package GT-TEST
 
 MAIN
 
-end-package
+;package

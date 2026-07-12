@@ -71,4 +71,4 @@ KERNEL: FANIN-BWD ( ptr<space-global,f32> ptr<space-global,f32> -- )  GRID: ceil
 
 MAIN
 
-end-package
+;package

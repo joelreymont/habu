@@ -115,4 +115,4 @@ $493E0 constant DEV-TIMEOUT-MS   \ 300000 ms: emit + ship + ptxas + launch
 
 MAIN
 
-end-package
+;package

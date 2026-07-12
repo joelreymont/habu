@@ -207,7 +207,7 @@ variable ST-QP-U
 \ Package context splits EXPORT's roles (dot habu-compiler-pkg-re-688212c1):
 \ an in-package `EXPORT NAME` is the re-export declaration and passes through
 \ untouched; only top-level directive lines are commented, including after
-\ the package block closes (both `end-package` and `;package` closers).
+\ the package block closes (both `;package` and `;package` closers).
 : ST-EXPORT-PKG-CASE! ( -- )
    SB-RESET
    s" EXPORT TOP1" SB-APPEND ST-LF

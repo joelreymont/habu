@@ -219,7 +219,7 @@ s" TVT-NEG-LAYOUT-SPACE ( CAD-KIND:rows CAD-KIND:cols CAD-KIND:dtype CAD-KIND:ad
 s" TVT-NEG-HOST-SPACE ( ptr a CAD-KIND:rows CAD-KIND:cols CAD-KIND:dtype CAD-KIND:layout CAD-KIND:address-space -- tensor ) TENSOR:TV-NEW-HOST" CHECK-QUIET-CANDIDATE! 0 T=
 s" TVT-NEG-RAW-HANDLE ( n -- tensor )" CHECK-QUIET-CANDIDATE! 0 T=
 
-end-package
+;package
 
 package TENSOR
 private
@@ -240,10 +240,10 @@ TV-GEN-MAX TV-GEN !
 ' TV-RESET E-TV-GEN TTHROWS
 0 TV-GEN ! 0 TV-U !
 
-end-package
+;package
 
 package MAKI
 
 T-REPORT
 
-end-package
+;package

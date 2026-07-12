@@ -263,13 +263,13 @@ SUMTYPE msec 0
   VARIANT hide n ;VARIANT
 ;SUMTYPE
 s" MS1=" type s" S1 ( msec -- n ) MATCH msec hide OF ENDOF ;MATCH" CHECK-QUIET-CANDIDATE! -1 T=
-end-package
+;package
 package mpub
 public
 SUMTYPE mpres 0
   VARIANT yes n ;VARIANT
 ;SUMTYPE
-end-package
+;package
 s" MS2=" type s" S2 ( mpub:mpres -- n ) MATCH mpres yes OF ENDOF ;MATCH" CHECK-QUIET-CANDIDATE! -1 T=
 s" MS3=" type s" S3 ( mpub:mpres -- n ) MATCH mpub:mpres yes OF ENDOF ;MATCH" CHECK-QUIET-CANDIDATE! -1 T=
 s" MATCH-SCOPE" type cr

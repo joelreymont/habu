@@ -626,7 +626,7 @@ public
       1+
    repeat drop ;
 
-end-package
+;package
 : AXNAME$ ( -- ptr u8 n )  AXNAME-BUF AXNAME-U @ ;
 
 \ ---- MEM operand recipes (real AXBUF; LDR/STR tolerate the buffer) -----------

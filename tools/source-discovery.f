@@ -260,4 +260,4 @@ public
    repeat drop
    SD-EMIT-LEN @ LEN>N ;
 
-end-package
+;package

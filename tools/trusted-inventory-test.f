@@ -506,4 +506,4 @@ variable DF-FILE-U
 
 TIT-MAIN
 
-end-package
+;package

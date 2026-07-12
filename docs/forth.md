@@ -19,7 +19,7 @@ file.
   follows the opener). Never `BEGIN-FOO`/`END-FOO`, `FOO-END`, or `ENDFOO`
   pairs. ANS core control words (`begin … until`, `case … endcase`,
   `do … loop`, `of … endof`) stay as-is. Legacy pairs
-  (`BEGIN-STRUCTURE`/`END-STRUCTURE`, `end-package`) are being renamed under
+  (`BEGIN-STRUCTURE`/`END-STRUCTURE`, `;package`) are being renamed under
   dots; do not add new uses.
 - **Hyphens, never underscores — in word names *and* file names.** `T-CON`,
   `TV-RESET`, `MAX-TV` — not `T_CON`. Source files too: `camera-tracker.f`,
@@ -88,7 +88,7 @@ file.
   subsystem code belongs in `package NAME` unless it is a documented core
   language/prelude file. `package NAME` opens NAME's private wordlist, `public`
   switches definitions to NAME's exported wordlist, `private` switches back to
-  internal definitions, and `end-package` restores the previous current
+  internal definitions, and `;package` restores the previous current
   wordlist. The exported API is the words defined in the `public` section and
   called as `NAME:WORD`; private helpers are visible only while the package is
   open, including reopened package blocks. Do not fake a namespace by prefixing
@@ -121,7 +121,7 @@ private
 : INTERNAL ( -- n )
    COUNT 1 + ;
 
-end-package
+;package
 ```
 
 - `package NAME` consumes the next token, rejects a missing name, rejects names
@@ -137,7 +137,7 @@ end-package
 - `private` is valid only inside a package and switches new definitions back to
   the package private wordlist. Private words are visible by unqualified name
   only while that package is open; `NAME:PRIVATE-WORD` must not resolve.
-- `end-package` is valid only inside a package. It restores the saved current
+- `;package` is valid only inside a package. It restores the saved current
   wordlist and clears both runtime and checker package scope.
 - Reopening the same package with `package NAME` resumes the same public
   wordlist and the same private wordlist; it does not create a new module scope.
@@ -174,7 +174,7 @@ public
 : CORE ( -- n )
    HELPER ;
 
-end-package
+;package
 ```
 
 ```forth
@@ -188,7 +188,7 @@ public
 : RUN ( -- n )
    CORE ;
 
-end-package
+;package
 ```
 
   `include path/to/file.f` parses the next whitespace-delimited filename and
@@ -262,7 +262,7 @@ end-package
 - Every package feature must have native gate coverage for runtime lookup,
   checker certification, private isolation, public export, reopen behavior,
   case-insensitive lookup, and fail-closed misuse (`public`/`private`/
-  `end-package` outside a package, nested packages, missing package names, and
+  `;package` outside a package, nested packages, missing package names, and
   qualified package names).
 
 ### Structures And Enums
@@ -698,7 +698,7 @@ TEST:RUN
 RUN-N @ 1 T=
 T-REPORT
 
-end-package
+;package
 ```
 
   `lib/test.f` is the public framework interface: `T*` words are assertions,

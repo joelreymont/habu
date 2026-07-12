@@ -101,6 +101,6 @@ public
    CLEANUP-RUN
    T-REPORT ;
 
-end-package
+;package
 
 OBJIMG-TEST:MAIN

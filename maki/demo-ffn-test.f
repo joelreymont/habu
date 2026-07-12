@@ -253,4 +253,4 @@ BW-BUILD
 STORE-RESET                                        \ leave the store as we found it
 T-REPORT
 
-end-package
+;package

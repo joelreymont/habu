@@ -6,11 +6,11 @@ undefine CHECKER-CERT:PRODUCE
 
 package CHECKER-CERT
 undefine PRODUCER-XT
-end-package
+;package
 
 package LOWER-CERT
 undefine FULL-INSTALL
 undefine FULL-PRODUCE
 undefine DISPATCH
 undefine FULL-XT
-end-package
+;package

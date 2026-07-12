@@ -254,4 +254,4 @@ FP-BUILD  0 0= 0= 0 MIR-NODE-ID MIR-MAT!
 
 T-REPORT
 
-end-package
+;package

@@ -4399,7 +4399,7 @@ public
    PRODUCER-XT @ 0= if s" checker: lowering certificate producer unavailable" 76 die then
    a u verdict PRODUCER-XT @ CHECKER-CERT-CALL ;
 
-end-package
+;package
 
 : CHECKER-COLON-SCAN ( ptr u8 n -- ) {: a:ptr u:n :}
    0 CHECKER-COLON-N !

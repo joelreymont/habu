@@ -552,4 +552,4 @@ variable OGA-PERM-N
    a 0 u OGW-MODEL
    OGW-GRAPH? @ 0= if E-ONNX-NOGRAPH throw then ;
 
-end-package
+;package

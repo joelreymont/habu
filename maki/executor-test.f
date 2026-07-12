@@ -226,4 +226,4 @@ s" XT-RAW-SLOT ( ptr a n -- ) EX-BIND" XT-CHECK-NO
 
 T-REPORT
 
-end-package
+;package

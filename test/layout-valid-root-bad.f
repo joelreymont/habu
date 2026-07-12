@@ -11,4 +11,4 @@ package LAYOUT-VALID-GUARD
 s" LAYOUT-VALID-ROOT-ARMED" type cr
 READ-ROOT
 
-end-package
+;package

@@ -56,7 +56,7 @@ public
 
 : AL-VALID? ( n -- bool ) {: al:n :}  al 0 < 0=  al AL-N <  and ;
 
-end-package
+;package
 
 \ ---------------------------------------------------------------------------
 \ The stateful tensor-value store + descriptor plan builder is a real subsystem
@@ -305,4 +305,4 @@ public
    x TV-ROWS@ x TV-COLS@ w TV-COLS@ TYPED-LINEAR
    y ;
 
-end-package
+;package

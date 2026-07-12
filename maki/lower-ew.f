@@ -358,10 +358,10 @@ public
    ma mu                   LEW-D+ LEW-D-NL
    s" FP-BUILD"            LEW-D+ LEW-D-NL
    rid LEW-D-INT  s"  "    LEW-D+  emita emitu LEW-D+ LEW-D-NL
-   s" end-package"         LEW-D+ LEW-D-NL
+   s" ;package"         LEW-D+ LEW-D-NL
    pa pu  LEW-DRV LEW-DRV-U @  WRITE-ALL ;
 
 : LEW-WRITE-DRIVER ( ptr u8 n n ptr u8 n -- ) {: ma:ptr mu:n rid:n pa:ptr pu:n :}
    ma mu  s" require maki/lower-ew.f"  s" LEW-EMIT"  rid  pa pu  LOWER-DRIVER! ;
 
-end-package
+;package

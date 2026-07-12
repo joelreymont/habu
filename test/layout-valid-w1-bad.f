@@ -20,4 +20,4 @@ TRUSTED: RAW ( ptr lv-color -- ptr n ) ;
 
 GO
 
-end-package
+;package

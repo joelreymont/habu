@@ -24,4 +24,4 @@ public
       lr b1 b2 eps c1 c2 wp gp mp vp i TT-ADAM-AT!
    loop ;
 
-end-package
+;package

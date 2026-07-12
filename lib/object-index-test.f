@@ -86,6 +86,6 @@ public
    CLEANUP-RUN
    T-REPORT ;
 
-end-package
+;package
 
 OBJIDX-TEST:MAIN

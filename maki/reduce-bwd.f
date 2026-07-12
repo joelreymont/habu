@@ -35,4 +35,4 @@ public
    0.0  n 0 ?do  ct i T-GET  x i T-GET  f*  f+  loop
    d 0 T-SET ;
 
-end-package
+;package

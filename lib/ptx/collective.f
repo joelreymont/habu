@@ -75,7 +75,7 @@ TRUSTED: B/ ( tile<t,b,m> uniform<t> -- tile<t,b,m> )
 TRUSTED: U/ ( uniform<t> uniform<t> -- uniform<t> )
    EMIT-U/ ;
 
-end-package
+;package
 
 TRUSTED: EXP. ( tile<f32,b,m> -- tile<f32,b,m> )
    EMIT-EXP ;

@@ -116,14 +116,14 @@ variable GD-START-NS
    s" : H ( -- n ) 9 ;" GD-SB-LINE
    s" public" GD-SB-LINE
    s" : CORE ( -- n ) H ;" GD-SB-LINE
-   s" end-package" GD-SB-LINE
+   s" ;package" GD-SB-LINE
    GD-INC-CORE$ SB$ WRITE-ALL ;
 
 : GD-WRITE-API-BODY ( -- )
    s" package APP" GD-SB-LINE
    s" public" GD-SB-LINE
    s" : GET ( -- n ) H ;" GD-SB-LINE
-   s" end-package" GD-SB-LINE ;
+   s" ;package" GD-SB-LINE ;
 
 : GD-WRITE-API-NOINC ( -- )
    SB-RESET
@@ -158,7 +158,7 @@ variable GD-START-NS
    SB-RESET
    s" package APP" GD-SB-LINE
    s" : H ( -- n ) 1 ;" GD-SB-LINE
-   s" end-package" GD-SB-LINE
+   s" ;package" GD-SB-LINE
    GD-INC-DUP$ SB$ WRITE-ALL ;
 
 : GD-LONG-DICTIONARY-SOURCE ( -- )
@@ -369,7 +369,7 @@ variable GD-START-NS
    s" package HBT" GE-SRC-LINE
    s" public" GE-SRC-LINE
    s" TRUSTED: GD-TRUSTED ( -- n ) 7 ;" GE-SRC-LINE
-   s" end-package" GE-SRC-LINE
+   s" ;package" GE-SRC-LINE
    s" GD-COUNT ." GE-SRC-LINE
    s" HB:GD-COUNT ." GE-SRC-LINE
    s" USE-HB ( -- n ) HB:GD-COUNT" GE-SRC-CHECK-LINE
@@ -412,7 +412,7 @@ variable GD-START-NS
    s" : HIDDEN2 ( -- n ) EXPOSED 5 + ;" GE-SRC-LINE
    s" public" GE-SRC-LINE
    s" : EXPOSED2 ( -- n ) HIDDEN2 ;" GE-SRC-LINE
-   s" end-package" GE-SRC-LINE
+   s" ;package" GE-SRC-LINE
    s" HB:EXPOSED ." GE-SRC-LINE
    s" HB:EXPOSED2 ." GE-SRC-LINE
    s" : CALL-HB ( -- n ) HB:EXPOSED ;" GE-SRC-LINE
@@ -427,7 +427,7 @@ variable GD-START-NS
    s" public" GE-SRC-LINE
    s" : MORE ( -- n ) EXPOSED 10 + ;" GE-SRC-LINE
    s" : AGAIN ( -- n ) HIDDEN 7 + ;" GE-SRC-LINE
-   s" end-package" GE-SRC-LINE
+   s" ;package" GE-SRC-LINE
    s" HB:MORE ." GE-SRC-LINE
    s" HB:AGAIN ." GE-SRC-LINE ;
 
@@ -477,7 +477,7 @@ variable GD-START-NS
    s" : HELP ( -- n ) 2 ;" GE-SRC-LINE
    s" public" GE-SRC-LINE
    s" : EXPORTED ( -- n ) HELP 5 + ;" GE-SRC-LINE
-   s" end-package" GE-SRC-LINE
+   s" ;package" GE-SRC-LINE
    s" USE-CK ( -- n ) CK:EXPORTED" GE-SRC-CHECK-LINE
    s" BAD-CK ( -- n ) HELP" GE-SRC-CHECK-LINE ;
 
@@ -486,7 +486,7 @@ variable GD-START-NS
    s" : HELP ( -- n ) 2 ;" GE-SRC-LINE
    s" public" GE-SRC-LINE
    s" : EXPORTED ( -- n ) HELP 5 + ;" GE-SRC-LINE
-   s" end-package" GE-SRC-LINE
+   s" ;package" GE-SRC-LINE
    s" : USE-CK ( -- n ) CK:EXPORTED ;" GE-SRC-LINE ;
 
 : GD-CHECK-BUF-ACT ( -- )
@@ -556,7 +556,7 @@ variable GD-START-NS
    s" package GD-NR" GE-SRC-LINE
    s" public" GE-SRC-LINE
    s" : STOP ( -- ) 1 throw ;" GE-SRC-LINE
-   s" end-package" GE-SRC-LINE
+   s" ;package" GE-SRC-LINE
    s" : GD-NR-OK ( n -- n ) dup 0 < if GD-NR:STOP then 1 + ;" GE-SRC-LINE ;
 
 : GD-PACKAGE-CHECK ( -- )
@@ -574,20 +574,20 @@ variable GD-START-NS
    s" package GD-NR" GE-SRC-LINE
    s" public" GE-SRC-LINE
    s" : STOP ( -- ) 1 throw ;" GE-SRC-LINE
-   s" end-package" GE-SRC-LINE
+   s" ;package" GE-SRC-LINE
    s" : GD-NR-BAD ( n -- n ) dup 0 < if GD-NR:STOP 0 then 1 + ;" GE-SRC-LINE
    $46 s" gd-nr-bad" s" checker package no-return rejects live tail" GD-CHECK-BUF-BAD
    GE-SRC-RESET
    s" package GD-NRA" GE-SRC-LINE
    s" public" GE-SRC-LINE
    s" : STOP ( -- ) 1 throw ;" GE-SRC-LINE
-   s" end-package" GE-SRC-LINE
+   s" ;package" GE-SRC-LINE
    s" package GD-NRB" GE-SRC-LINE
    s" public" GE-SRC-LINE
    s" : STOP ( -- ) 2 throw ;" GE-SRC-LINE
    s" undefine STOP" GE-SRC-LINE
    s" : STOP ( -- n ) 7 ;" GE-SRC-LINE
-   s" end-package" GE-SRC-LINE
+   s" ;package" GE-SRC-LINE
    s" : GD-NRA-BAD ( n -- n ) dup 0 < if GD-NRA:STOP 0 then 1 + ;" GE-SRC-LINE
    $46 s" gd-nra-bad" s" package undefine keeps other no-return symbol" GD-CHECK-BUF-BAD ;
 
@@ -607,31 +607,31 @@ variable GD-START-NS
    s" public" GE-SRC-LINE
    s" : RESET ( -- n ) 1 ;" GE-SRC-LINE
    s" : RESET ( -- n ) 2 ;" GE-SRC-LINE
-   s" end-package" GE-SRC-LINE
+   s" ;package" GE-SRC-LINE
    $4E s" RESET" s" package rejects duplicate public word" GD-RUN-BAD-SOURCE
    GE-SRC-RESET
    s" package APP" GE-SRC-LINE
    s" : H ( -- n ) 1 ;" GE-SRC-LINE
-   s" end-package" GE-SRC-LINE
+   s" ;package" GE-SRC-LINE
    s" package APP" GE-SRC-LINE
    s" : H ( -- n ) 2 ;" GE-SRC-LINE
    s" public" GE-SRC-LINE
    s" : GET ( -- n ) H ;" GE-SRC-LINE
-   s" end-package" GE-SRC-LINE
+   s" ;package" GE-SRC-LINE
    $4E s" duplicate definition" s" package rejects duplicate private word across reopen" GD-CHECK-BUF-BAD
    GE-SRC-RESET
    s" package APP" GE-SRC-LINE
    s" public" GE-SRC-LINE
    s" : RESET ( -- n ) 1 ;" GE-SRC-LINE
    s" : reset ( -- n ) 2 ;" GE-SRC-LINE
-   s" end-package" GE-SRC-LINE
+   s" ;package" GE-SRC-LINE
    $4E s" duplicate definition" s" package rejects case-variant duplicate word" GD-CHECK-BUF-BAD
    GE-SRC-RESET
    s" package APP" GE-SRC-LINE
    s" public" GE-SRC-LINE
    s" variable CELL" GE-SRC-LINE
    s" variable cell" GE-SRC-LINE
-   s" end-package" GE-SRC-LINE
+   s" ;package" GE-SRC-LINE
    $4E s" cell" s" package rejects duplicate variable word" GD-RUN-BAD-SOURCE
    GE-SRC-RESET
    s" : RESET ( -- n ) 1 ;" GE-SRC-LINE
@@ -657,16 +657,16 @@ variable GD-START-NS
    s" package GD-RPKG" GE-SRC-LINE
    s" public" GE-SRC-LINE
    s" : RESET ( -- n ) 3 ;" GE-SRC-LINE
-   s" end-package" GE-SRC-LINE
+   s" ;package" GE-SRC-LINE
    s" package GD-RPKG-B" GE-SRC-LINE
    s" public" GE-SRC-LINE
    s" : RESET ( -- n ) 6 ;" GE-SRC-LINE
-   s" end-package" GE-SRC-LINE
+   s" ;package" GE-SRC-LINE
    s" package GD-RPKG" GE-SRC-LINE
    s" public" GE-SRC-LINE
    s" undefine RESET" GE-SRC-LINE
    s" : RESET ( -- n ) 4 ;" GE-SRC-LINE
-   s" end-package" GE-SRC-LINE
+   s" ;package" GE-SRC-LINE
    s" GD-RPKG:RESET ." GE-SRC-LINE
    s" GD-RPKG-B:RESET ." GE-SRC-LINE
    s" defer GD-RV ( -- n )" GE-SRC-LINE
@@ -701,15 +701,15 @@ variable GD-START-NS
    s" package APP" GE-SRC-LINE
    s" public" GE-SRC-LINE
    s" : COUNT ( -- n ) 7 ;" GE-SRC-LINE
-   s" end-package" GE-SRC-LINE
+   s" ;package" GE-SRC-LINE
    s" package MK" GE-SRC-LINE
    s" public" GE-SRC-LINE
    s" : RESET ( -- n ) 2 ;" GE-SRC-LINE
-   s" end-package" GE-SRC-LINE
+   s" ;package" GE-SRC-LINE
    s" package APP" GE-SRC-LINE
    s" public" GE-SRC-LINE
    s" : RESET ( -- n ) 1 ;" GE-SRC-LINE
-   s" end-package" GE-SRC-LINE
+   s" ;package" GE-SRC-LINE
    s" APP:COUNT ." GE-SRC-LINE
    s" APP:RESET ." GE-SRC-LINE
    s" MK:RESET ." GE-SRC-LINE
@@ -729,7 +729,7 @@ variable GD-START-NS
    s" public" GE-SRC-LINE
    s" : RESET ( -- n ) 1 ;" GE-SRC-LINE
    s" : RESET ( -- n ) 2 ;" GE-SRC-LINE
-   s" end-package" GE-SRC-LINE
+   s" ;package" GE-SRC-LINE
    $4E s" duplicate definition" s" checker rejects package duplicate definition" GD-CHECK-BUF-BAD ;
 
 : GD-RUN-LOAD-ONE ( ptr u8 n ptr u8 n -- ) {: path:ptr pathu:n label:ptr labelu:n :}
@@ -792,7 +792,7 @@ variable GD-START-NS
    GD-INC-DUP$ GD-SB-INCLUDE-LINE
    s" package APP" GD-SB-LINE
    s" : H ( -- n ) 2 ;" GD-SB-LINE
-   s" end-package" GD-SB-LINE
+   s" ;package" GD-SB-LINE
    GD-INC-MAIN$ SB$ WRITE-ALL
    $4E s" duplicate definition" s" hb include rejects duplicate package reopen" GD-RUN-LOAD-BAD ;
 
@@ -802,8 +802,8 @@ variable GD-START-NS
    $4B s" public" s" package rejects public outside" GD-RUN-BAD-SOURCE
    GE-SRC-RESET  s" private" GE-SRC-LINE
    $4B s" private" s" package rejects private outside" GD-RUN-BAD-SOURCE
-   GE-SRC-RESET  s" end-package" GE-SRC-LINE
-   $4B s" end-package" s" package rejects end outside" GD-RUN-BAD-SOURCE
+   GE-SRC-RESET  s" ;package" GE-SRC-LINE
+   $4B s" ;package" s" package rejects end outside" GD-RUN-BAD-SOURCE
    GE-SRC-RESET  s" ;package" GE-SRC-LINE
    $4B s" ;package" s" package rejects semicolon closer outside" GD-RUN-BAD-SOURCE
    GE-SRC-RESET  s" package A" GE-SRC-LINE  s" package B" GE-SRC-LINE
@@ -815,20 +815,20 @@ variable GD-START-NS
    GE-SRC-RESET
    s" package P" GE-SRC-LINE
    s" : H ( -- n ) 1 ;" GE-SRC-LINE
-   s" end-package" GE-SRC-LINE
+   s" ;package" GE-SRC-LINE
    s" P:H ." GE-SRC-LINE
    $46 s" P:H" s" package hides private qualified word" GD-RUN-BAD-CHILD
    GE-SRC-RESET
    s" package P" GE-SRC-LINE
    s" : H ( -- n ) 1 ;" GE-SRC-LINE
-   s" end-package" GE-SRC-LINE
+   s" ;package" GE-SRC-LINE
    s" : BAD ( -- n ) H ;" GE-SRC-LINE
    $46 s" at 'H'" s" package rejects private checked call" GD-RUN-BAD-CHILD
    GE-SRC-RESET
    s" package P" GE-SRC-LINE
    s" public" GE-SRC-LINE
    s" : E ( -- n ) 1 ;" GE-SRC-LINE
-   s" end-package" GE-SRC-LINE
+   s" ;package" GE-SRC-LINE
    s" E ." GE-SRC-LINE
    $46 s" E" s" package hides public word from global lookup" GD-RUN-BAD-CHILD ;
 
@@ -912,7 +912,7 @@ variable GD-START-NS
    s" package GD-EV" GE-SRC-LINE
    s" public" GE-SRC-LINE
    s" 100 ENUM+ CODE-A ENUM4+ CODE-B drop" GE-SRC-LINE
-   s" end-package" GE-SRC-LINE
+   s" ;package" GE-SRC-LINE
    s" GD-EV:CODE-A ." GE-SRC-LINE
    s" GD-EV:CODE-B ." GE-SRC-LINE
    s" hb enums sequence and package scope" GE-EVAL-RUN-STDIN
@@ -968,7 +968,7 @@ variable GD-START-NS
    s" defer RUN ( -- i64 )" GE-SRC-LINE
    s" : FIVE ( -- i64 ) 5 ;" GE-SRC-LINE
    s" : INSTALL ( -- ) [: FIVE ;] is RUN ;" GE-SRC-LINE
-   s" end-package" GE-SRC-LINE
+   s" ;package" GE-SRC-LINE
    s" : GD-XV-PKG-CALL ( -- i64 ) GDXV:INSTALL GDXV:RUN ;" GE-SRC-LINE ;
 
 : GD-EXEC-VECTOR-PACKAGE ( -- )
@@ -979,7 +979,7 @@ variable GD-START-NS
    s" defer RUN ( -- i64 )" GE-SRC-LINE
    s" : FIVE ( -- i64 ) 5 ;" GE-SRC-LINE
    s" : INSTALL ( -- ) [: FIVE ;] is RUN ;" GE-SRC-LINE
-   s" end-package" GE-SRC-LINE
+   s" ;package" GE-SRC-LINE
    s" GDXV:INSTALL" GE-SRC-LINE
    s" GDXV:RUN ." GE-SRC-LINE
    s" hb package execution vector" GE-EVAL-RUN-STDIN
@@ -1024,7 +1024,7 @@ variable GD-START-NS
    s" package GDCASE" GE-SRC-LINE
    s" public" GE-SRC-LINE
    s" : PICK ( n -- n ) case 7 of 70 endof 80 swap endcase ;" GE-SRC-LINE
-   s" end-package" GE-SRC-LINE
+   s" ;package" GE-SRC-LINE
    s" : GD-CASE-PKG ( n -- n ) GDCASE:PICK ;" GE-SRC-LINE ;
 
 : GD-CASE-SOURCE ( -- )

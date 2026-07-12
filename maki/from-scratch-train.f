@@ -168,4 +168,4 @@ public
    s"  converged=" SB-APPEND SC-CONVERGED? if 1 else 0 then SB-INT
    SB$ ;
 
-end-package
+;package

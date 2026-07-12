@@ -36,4 +36,4 @@ RT-DX 1 T-GET  1000.0 f* 0.5 f- f>s  -500 T=
 
 T-REPORT
 
-end-package
+;package

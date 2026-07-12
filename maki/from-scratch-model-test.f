@@ -72,4 +72,4 @@ SC-Y 5 T-GET SMT-Y @ f= TTRUE
 
 T-REPORT
 
-end-package
+;package

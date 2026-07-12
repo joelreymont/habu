@@ -30,4 +30,4 @@ public
 
 : GELU-BWD ( r r -- r ) {: dz:r x:r :}  dz  x GELU-GRAD  f* ;
 
-end-package
+;package

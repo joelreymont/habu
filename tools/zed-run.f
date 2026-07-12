@@ -34,4 +34,4 @@ package ZED
 
 MAIN
 
-end-package
+;package

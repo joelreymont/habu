@@ -20,4 +20,4 @@ public
 : SOFTMAX-CE-BWD ( ptr a ptr a ptr a n -- ) {: yb:ptr tb:ptr dlb:ptr n:n :}
    n 0 ?do  yb i T-GET  tb i T-GET  f-  dlb i T-SET  loop ;
 
-end-package
+;package

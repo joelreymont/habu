@@ -880,4 +880,4 @@ public
 \ CAD-SHOW renders a report's machine view to stdout (interactive convenience).
 : CAD-SHOW ( report -- )  REPORT:RENDER type cr ;
 
-end-package
+;package

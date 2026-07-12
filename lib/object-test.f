@@ -238,6 +238,6 @@ public
    FAILURES
    T-REPORT ;
 
-end-package
+;package
 
 OBJ-TEST:MAIN

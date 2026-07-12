@@ -59,4 +59,4 @@ STORE-RESET  SK-TAB-RESET
 STORE-RESET
 T-REPORT
 
-end-package
+;package

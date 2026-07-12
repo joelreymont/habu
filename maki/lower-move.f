@@ -274,4 +274,4 @@ public
       s" }" PTX-L
    }PTX-MODULE ;
 
-end-package
+;package

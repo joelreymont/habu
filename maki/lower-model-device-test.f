@@ -136,7 +136,7 @@ create LMDM-RP   FS-PATH-CAP allot  variable LMDM-RP-U
    LMDM-DIR LMDM-DIR-U @ REMOVE-TREE
    T-REPORT ;
 
-end-package
+;package
 
 package MAKI
 LMDM-BEGIN
@@ -157,4 +157,4 @@ MODEL: MGC ( x:4x8 b:4x8 -- y ) GELU CONCAT ;  FP-BUILD
 s" MODEL: MGC ( x:4x8 b:4x8 -- y ) GELU CONCAT ;" LMDM-GOLD
 
 LMDM-END
-end-package
+;package

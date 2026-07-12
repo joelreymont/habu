@@ -93,7 +93,7 @@ variable EC-ORD-N
 
 \ Load-faithful (depth-first, post-order) closure. BUILD produces the same set
 \ breadth-first, which is right for content keying but not for replaying package
-\ open/public/private/end-package scope that stays UNCLOSED across nested deps:
+\ open/public/private/;package scope that stays UNCLOSED across nested deps:
 \ that residual must be threaded file-by-file in true load order. This DFS mirrors
 \ tools/check-core.f CHK-EXPAND-ID - each file's own require/include closure is
 \ fully expanded (post-order pushed) before the file itself, so a dep's scope
@@ -193,4 +193,4 @@ public
 
 : ORDER-PATH$ ( i -- ptr u8 n )   cells EC-ORDER + @ EC-PATH$ ;
 
-end-package
+;package

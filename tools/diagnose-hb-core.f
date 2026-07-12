@@ -139,4 +139,4 @@ public
    then
    REPORT-OK ;
 
-end-package
+;package

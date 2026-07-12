@@ -66,4 +66,4 @@ public
    src srcu target targetu checker checkeru compiler compileru CHECK-HEADERS
    TRUE ;
 
-end-package
+;package

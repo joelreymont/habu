@@ -334,7 +334,7 @@ create SLV-EMPTY 1 allot            \ zero-length stdin
    s" package SLFPKG" SB-APPEND SLV-LF
    s" public" SB-APPEND SLV-LF
    s" : WIN ( -- n ) 7 ;" SB-APPEND SLV-LF
-   s" end-package" SB-APPEND SLV-LF
+   s" ;package" SB-APPEND SLV-LF
    s" TRUSTED: SLF-TRUSTX ( -- n ) 3 ;" SB-APPEND SLV-LF
    s" defer SLF-ACT ( -- n )" SB-APPEND SLV-LF
    s" : SLF-SETUP ( -- ) [: SLF-TRUSTX ;] is SLF-ACT ;" SB-APPEND SLV-LF

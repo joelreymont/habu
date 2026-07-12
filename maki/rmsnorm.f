@@ -48,4 +48,4 @@ public
    dyb xb n RMS-DOT  n s>f f/  r f/  r f/  {: coef:r :}
    dyb xb dxb n  r  coef  RMS-DX! ;
 
-end-package
+;package

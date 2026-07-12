@@ -85,4 +85,4 @@ s" TENSOR-NEG-ROWS-COLS ( CAD-KIND:cols CAD-KIND:rows -- CAD-KIND:dim ) MAKI:SHA
 
 T-REPORT
 
-end-package
+;package

@@ -70,4 +70,4 @@ GC-RUN V-PASS T=
 
 T-REPORT
 
-end-package
+;package

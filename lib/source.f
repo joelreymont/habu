@@ -200,7 +200,7 @@ variable SOURCE-LS-LINE#
 \ the re-export declaration and must reach the compiler; only TOP-LEVEL
 \ `EXPORT ` lines are the hb-build --repl directive to comment out. The
 \ tracker is line-based like the strip itself (canonical line-leading
-\ `package NAME` openers and `end-package`/`;package` closers). Both miss
+\ `package NAME` openers and `;package`/`;package` closers). Both miss
 \ modes fail safe: an uncommented top-level directive compiles as the engine
 \ keyword's no-op, and a wrongly-commented in-package re-export leaves the
 \ alias undefined so the build rejects loudly.
@@ -215,7 +215,7 @@ variable SOURCE-PKG-DEPTH
 
 : SOURCE-PACKAGE-CLOSE-LINE? ( ptr u8 len -- bool )
    SOURCE-LINE-LEAD$ {: a:ptr u:n :}
-   a u s" end-package" STARTS-WITH? if 0 0= exit then
+   a u s" ;package" STARTS-WITH? if 0 0= exit then
    a u s" ;package" STARTS-WITH? ;
 
 : SOURCE-LINE-PKG-TRACK ( ptr u8 len -- ) {: line:ptr lineu:len :}

@@ -91,4 +91,4 @@ s" => the static checker catches the type/stack bug class for free; that is the 
 
 T-REPORT
 
-end-package
+;package

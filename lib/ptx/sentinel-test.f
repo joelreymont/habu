@@ -29,6 +29,6 @@ public
    GUARD-THROWS
    T-REPORT ;
 
-end-package
+;package
 
 PTXSENT-TEST:RUN

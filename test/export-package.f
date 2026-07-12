@@ -83,7 +83,7 @@ create XPK-EMPTY 1 allot
    s" package XA" XPK-LINE
    s" public" XPK-LINE
    s" : W ( n -- n ) 2 * ;" XPK-LINE
-   s" end-package" XPK-LINE ;
+   s" ;package" XPK-LINE ;
 
 : XPK-OK-FORGE$ ( -- ptr u8 n )               \ dual-name execution + checked callers
    SB-RESET
@@ -91,7 +91,7 @@ create XPK-EMPTY 1 allot
    s" package XB" XPK-LINE
    s" public" XPK-LINE
    s" EXPORT XA:W" XPK-LINE
-   s" end-package" XPK-LINE
+   s" ;package" XPK-LINE
    s" : U1 ( n -- n ) XB:W ;" XPK-LINE
    s" : U2 ( n -- n ) XA:W ;" XPK-LINE
    s" 7 XA:W . cr" XPK-LINE
@@ -113,7 +113,7 @@ create XPK-EMPTY 1 allot
    s" package XB" XPK-LINE
    s" public" XPK-LINE
    s" EXPORT NOSUCH-EXPORT-SRC" XPK-LINE
-   s" end-package" XPK-LINE
+   s" ;package" XPK-LINE
    SB$ ;
 
 : XPK-SEALED-FORGE$ ( -- ptr u8 n )           \ sealed system-package source rejects
@@ -121,7 +121,7 @@ create XPK-EMPTY 1 allot
    s" package XB" XPK-LINE
    s" public" XPK-LINE
    s" EXPORT tfam:anything" XPK-LINE
-   s" end-package" XPK-LINE
+   s" ;package" XPK-LINE
    SB$ ;
 
 : XPK-NONAME-FORGE$ ( -- ptr u8 n )           \ EXPORT with no name rejects
@@ -138,7 +138,7 @@ create XPK-EMPTY 1 allot
    s" public" XPK-LINE
    s" EXPORT XA:W" XPK-LINE
    s" EXPORT XA:W" XPK-LINE
-   s" end-package" XPK-LINE
+   s" ;package" XPK-LINE
    SB$ ;
 
 : XPK-SELF-FORGE$ ( -- ptr u8 n )             \ self-export in the same section rejects
@@ -147,7 +147,7 @@ create XPK-EMPTY 1 allot
    s" public" XPK-LINE
    s" : SW ( -- n ) 1 ;" XPK-LINE
    s" EXPORT SW" XPK-LINE
-   s" end-package" XPK-LINE
+   s" ;package" XPK-LINE
    SB$ ;
 
 : XPK-PRIM-FORGE$ ( -- ptr u8 n )             \ primitive source rejects (E-EXPORT-PRIM)
@@ -155,7 +155,7 @@ create XPK-EMPTY 1 allot
    s" package XB" XPK-LINE
    s" public" XPK-LINE
    s" EXPORT dup" XPK-LINE
-   s" end-package" XPK-LINE
+   s" ;package" XPK-LINE
    SB$ ;
 
 : XPK-PRIV-FORGE$ ( -- ptr u8 n )             \ private word behind a closed package
@@ -163,11 +163,11 @@ create XPK-EMPTY 1 allot
    s" package XA" XPK-LINE
    s" : PW ( -- n ) 1 ;" XPK-LINE
    s" public" XPK-LINE
-   s" end-package" XPK-LINE
+   s" ;package" XPK-LINE
    s" package XB" XPK-LINE
    s" public" XPK-LINE
    s" EXPORT XA:PW" XPK-LINE
-   s" end-package" XPK-LINE
+   s" ;package" XPK-LINE
    SB$ ;
 
 \ Generated constructor sources are closed-but-callable: re-exporting one under
@@ -182,7 +182,7 @@ create XPK-EMPTY 1 allot
    s" package XC" XPK-LINE
    s" public" XPK-LINE
    s" EXPORT xpw:ok" XPK-LINE
-   s" end-package" XPK-LINE
+   s" ;package" XPK-LINE
    s" : MK ( n -- xpw ) XC:ok ;" XPK-LINE
    S\" s\" ctor-alias-ok\" type cr" XPK-LINE
    SB$ ;
@@ -204,7 +204,7 @@ create XPK-EMPTY 1 allot
    s" package XC" XPK-LINE
    s" public" XPK-LINE
    s" EXPORT xpw:ok" XPK-LINE
-   s" end-package" XPK-LINE
+   s" ;package" XPK-LINE
    S\" s\" pre-wide\" type cr" XPK-LINE
    s" 1 XC:ok" XPK-LINE
    SB$ ;

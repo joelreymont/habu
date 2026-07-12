@@ -61,4 +61,4 @@ public
 : CONCAT    ( tensor tensor -- tensor )   MAKI:PLAN-CONCAT ;
 : GATHER    ( tensor tensor -- tensor )   MAKI:PLAN-GATHER ;
 
-end-package
+;package

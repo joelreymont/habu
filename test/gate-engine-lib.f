@@ -602,7 +602,7 @@ public
    s" bin/hb" s" large lowering transaction on bin/hb"
       TXN-LARGE-SUITE-ON ;
 
-end-package
+;package
 
 : GE-TYPE-EXPORT-SUITE-ON ( ptr u8 n ptr u8 n -- ) {: exe:ptr exeu:n label:ptr labelu:n :}
    GE-HB-RESET
@@ -792,7 +792,7 @@ end-package
    s" SUMTYPE gefr 0" GE-SRC-LINE
    s"   VARIANT yes n ;VARIANT" GE-SRC-LINE
    s" ;SUMTYPE" GE-SRC-LINE
-   s" end-package" GE-SRC-LINE
+   s" ;package" GE-SRC-LINE
    s" : GE-BADF ( n -- gefr ) construct gefr yes ;" GE-SRC-LINE
    GE-HB$ GE-SRC-BUF GE-SRC-U @ GE-TIMEOUT-MS GE-RUN-STDIN
    70 s" foreign-package construct fails closed" GE-EXPECT-RC

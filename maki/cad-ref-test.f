@@ -88,4 +88,4 @@ s" node.1.in: n0 i0"  CR-IN
 
 T-REPORT
 
-end-package
+;package

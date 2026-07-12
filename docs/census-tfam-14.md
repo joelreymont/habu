@@ -120,7 +120,7 @@ Tree-wide word-boundary sweep `rg -rn '\bENUM4?\+' .` (excluding `.jj-ws/`,
     — sequence `GD-E0=0 GD-E1=1 GD-E4=2 GD-E8=6` (`ENUM4+` after value 2 → 6),
     expected out `0 1 2 6 …` (`:906-913`).
   - `:900` `s" 100 ENUM+ CODE-A ENUM4+ CODE-B drop"` inside `package GD-EV /
-    public / end-package` (`:898-903`) — proves package-scoped publication.
+    public / ;package` (`:898-903`) — proves package-scoped publication.
   - `:915-916` `s" 0 ENUM+ GD-EDUP ENUM+ GD-EDUP drop"` +
     `$4E s" GD-EDUP" s" enums reject duplicate constant names" GD-RUN-BAD-SOURCE`
     — the duplicate-name reject (throw `$4E`).

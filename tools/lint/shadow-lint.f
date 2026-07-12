@@ -107,4 +107,4 @@ variable BAD  variable LI
    BAD @ 0 > IF  s" shadow-lint: " type BAD @ . s"  collision(s)" type cr  1 die
    ELSE  s" shadow-lint: clean (" type PN# @ . s"  prims checked)" type cr  THEN ;
 SHADOW-LINT
-end-package
+;package

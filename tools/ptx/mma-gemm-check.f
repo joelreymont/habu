@@ -143,6 +143,6 @@ public
    0 MGC-MODE  1 MGC-MODE  2 MGC-MODE
    0 MMA-LMODE ! ;                                     \ restore the committed default (baseline scalar+cvt)
 
-end-package
+;package
 
 MMAGEMMCHECK:MGC-ALL

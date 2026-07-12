@@ -40,4 +40,4 @@ public
    w m2 v2 lr eps bc1 bc2 ADAM-W
    m2 v2 ;
 
-end-package
+;package

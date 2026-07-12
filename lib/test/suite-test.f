@@ -151,7 +151,7 @@ THROW-N @ 1 T=
 THROW-LATE-N @ 1 T=
 T-REPORT
 
-end-package
+;package
 
 \ Grammar regression: block terminators are FOO … ;FOO and GROUP takes a
 \ positional SEQ|PARA mode before the name. Reopen package TEST to reach the
@@ -196,4 +196,4 @@ GROUP-CUR @ GROUP-MODE@ GROUP-PARALLEL T=
 
 T-REPORT
 
-end-package
+;package

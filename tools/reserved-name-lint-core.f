@@ -162,7 +162,7 @@ variable RNL-NUM-I
    a u s" package" LINT-STR=CI if LINT-TRUE exit then
    a u s" public" LINT-STR=CI if LINT-TRUE exit then
    a u s" private" LINT-STR=CI if LINT-TRUE exit then
-   a u s" end-package" LINT-STR=CI if LINT-TRUE exit then
+   a u s" ;package" LINT-STR=CI if LINT-TRUE exit then
    a u s" ;package" LINT-STR=CI if LINT-TRUE exit then
    a u s" export" LINT-STR=CI if LINT-TRUE exit then    \ EXPORT re-export keyword + hb-build directive
    a u s" typefamily" LINT-STR=CI if LINT-TRUE exit then

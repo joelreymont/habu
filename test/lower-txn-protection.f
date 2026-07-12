@@ -65,7 +65,7 @@ variable OUT-U
    s"   SEEN @ 0= if 1 throw then" LINE
    s"   CLEAN? 0= if 1 throw then ;" LINE
    s" private" LINE
-   s" end-package" LINE
+   s" ;package" LINE
    s" DTP:CHECK" LINE
    s" DTP:RUN" LINE ;
 
@@ -129,6 +129,6 @@ public
    T-REPORT
    s" lower-txn-protection: ok" type cr ;
 
-end-package
+;package
 
 LOWER-TXN-PROTECTION-TEST:RUN

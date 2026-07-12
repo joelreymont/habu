@@ -124,4 +124,4 @@ PCT-RUN-BRANCH
 PCT-RUN-MOVES
 T-REPORT
 
-end-package
+;package

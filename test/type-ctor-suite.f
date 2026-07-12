@@ -116,7 +116,7 @@ SUMTYPE tres 0
 ;SUMTYPE
 private
 TYPEFAMILY zonly 1
-end-package
+;package
 \ package mode continued private after generation ran inside the block.
 s" zpub" s" zonly" TFAM-FIND-IN TCOK ! TCF !   TCOK @ -1 T=
 TCF @ TFAM-VIS@ CHECKER-PACKAGE-PRIVATE T=
@@ -188,7 +188,7 @@ private
 SUMTYPE zsec 0
   VARIANT hide n ;VARIANT
 ;SUMTYPE
-end-package
+;package
 s" zp8" s" zsec" TFAM-FIND-IN TCOK ! TCF !   TCOK @ -1 T=
 TCF @ TFAM-VAR-START@ SUMV-CTOR-PKG$ nip 0 T=
 s" ZB7 ( n -- n ) ZP8-ZSEC:HIDE" CHECK-QUIET-CANDIDATE! 1 T=   \ undefined word -> uncheckable
@@ -228,7 +228,7 @@ s" ZRES:OK" CHECKER-RECORD-SYM  TCF @ TFAM-VAR-START@ SUMV-CTOR-SYM@  T=
 s" package zres" TCE-CATCH E-CTOR-PROTECTED T=
 s" package ZRES" TCE-CATCH E-CTOR-PROTECTED T=
 s" package Zres" TCE-CATCH E-CTOR-PROTECTED T=
-s" package zok end-package" TCE-CATCH 0 T=
+s" package zok ;package" TCE-CATCH 0 T=
 \ undefine of a generated word rejects before retirement...
 s" undefine ZRES:OK" TCE-CATCH E-CTOR-PROTECTED T=
 s" undefine zres:ok" TCE-CATCH E-CTOR-PROTECTED T=
@@ -317,7 +317,7 @@ SUMTYPE cnsec 0
   VARIANT hide n ;VARIANT
 ;SUMTYPE
 s" CP2 ( n -- cnsec ) construct cnsec hide" CHECK-QUIET-CANDIDATE! -1 T=
-end-package
+;package
 s" CB13 ( n -- cnpub:cnres ) construct cnres yes" CHECK-QUIET-CANDIDATE! 0 T=
 s" CB14 ( n -- cnpub:cnres ) construct cnpub:cnres yes" CHECK-QUIET-CANDIDATE! 0 T=
 s" CP3 ( n -- cnpub:cnres ) CNPUB-CNRES:YES" CHECK-QUIET-CANDIDATE! -1 T=   \ the public cross-package path
@@ -406,7 +406,7 @@ public
 PRODUCT prow 0
   FIELD v n
 ;PRODUCT
-end-package
+;package
 : ZPPK-MK ( n -- zppk:prow ) ZPPK-PROW:MAKE ;
 : ZPPK-UN ( zppk:prow -- n ) ZPPK-PROW:UNMAKE ;
 s" GEN-PRODUCT-PKG" type cr
@@ -416,7 +416,7 @@ private
 PRODUCT phid 0
   FIELD v n
 ;PRODUCT
-end-package
+;package
 s" zpsec" s" phid" TFAM-FIND-IN TCOK ! TCF !   TCOK @ -1 T=
 TCF @ TFAM-VAR-START@ SUMV-CTOR-PKG$ nip 0 T=
 s" PS1 ( n -- n ) ZPSEC-PHID:MAKE" CHECK-QUIET-CANDIDATE! 1 T=   \ undefined word -> uncheckable

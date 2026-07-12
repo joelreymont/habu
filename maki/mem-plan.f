@@ -200,4 +200,4 @@ public
    MIR-IN-SLOTS@ 0 ?do  i MIR-SLOT-ID MP-INPUT-STEP   loop
    MIR-N@        0 ?do  i MIR-NODE-ID MP-OUTPUT-STEP  loop ;
 
-end-package
+;package

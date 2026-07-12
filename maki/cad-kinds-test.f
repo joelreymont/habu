@@ -98,4 +98,4 @@ DIAG-END
 
 T-REPORT
 
-end-package
+;package

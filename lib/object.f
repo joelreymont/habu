@@ -461,6 +461,6 @@ public
    DG CK-DIGEST+
    dst CK-FINAL-HEX ;
 
-end-package
+;package
 
 OBJ:RESET

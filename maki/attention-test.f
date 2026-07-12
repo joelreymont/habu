@@ -53,4 +53,4 @@ ATDK 1 T-GET  1000.0 f* 0.5 f+ f>s
 
 T-REPORT
 
-end-package
+;package

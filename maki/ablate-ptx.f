@@ -34,4 +34,4 @@ public
    pos ru + su pos - tu - + ABL-PTX-U ! ;
 : ABL-PTX$ ( -- ptr u8 n )  ABL-PTX ABL-PTX-U @ ;
 
-end-package
+;package

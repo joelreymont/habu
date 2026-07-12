@@ -58,4 +58,4 @@ ST-A @ ST-B @ f= TTRUE
 
 T-REPORT
 
-end-package
+;package

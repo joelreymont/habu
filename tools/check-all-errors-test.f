@@ -722,7 +722,7 @@ create CAE-LF-BYTE 10 c,
    s" package CAEXB" SB-APPEND CAE-LF
    s" public" SB-APPEND CAE-LF
    s" EXPORT CAEXA:AW" SB-APPEND CAE-LF
-   s" end-package" SB-APPEND CAE-LF
+   s" ;package" SB-APPEND CAE-LF
    s" : CAE-AL-USE ( i64 -- i64 ) CAEXB:AW ;" SB-APPEND CAE-LF
    SB$ ;
 
@@ -731,11 +731,11 @@ create CAE-LF-BYTE 10 c,
    s" package CAEXC" SB-APPEND CAE-LF
    s" public" SB-APPEND CAE-LF
    s" : CW ( i64 -- i64 ) 1 + ;" SB-APPEND CAE-LF
-   s" end-package" SB-APPEND CAE-LF
+   s" ;package" SB-APPEND CAE-LF
    s" package CAEXD" SB-APPEND CAE-LF
    s" public" SB-APPEND CAE-LF
    s" EXPORT CAEXC:CW" SB-APPEND CAE-LF
-   s" end-package" SB-APPEND CAE-LF
+   s" ;package" SB-APPEND CAE-LF
    s" : CAE-AL-BAD ( -- i64 ) CAEXD:CW ;" SB-APPEND CAE-LF
    SB$ ;
 

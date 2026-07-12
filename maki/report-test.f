@@ -198,7 +198,7 @@ s" repair=run-device-golden"          HAS
 s" repro=model:FFN"                   HAS
 drop
 
-end-package
+;package
 
 \ ---- roofline swapped-role negatives (dot habu-cad-adt-swap; capability S1) --
 \ F-ROOFLINE stores a real `roofline` ENUM behind the unchanged RC-* n accessors;
@@ -263,6 +263,6 @@ s" RT-HOT-NOUT ( n -- n ) HOT-ST-AT @"            CHECK-QUIET-CANDIDATE! 0 T=
 \ cross-column swap: a verdict can never land in a hot-status cell
 s" RT-HOT-VERD ( verdict n -- ) HOT-ST-AT !"      CHECK-QUIET-CANDIDATE! 0 T=
 
-end-package
+;package
 
 T-REPORT

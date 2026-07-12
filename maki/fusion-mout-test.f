@@ -111,4 +111,4 @@ FP-REGION-COUNT 3 T=  MOUT-MAX 1 T=  MOUT-BAD 0 T=
 
 T-REPORT
 
-end-package
+;package

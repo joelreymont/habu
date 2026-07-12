@@ -173,12 +173,12 @@ s" xrb2:XP-THR" CTL-FLAGS 0 T=
 package XPE
 public
 : XPE-DBL ( n -- n ) 2 * ;
-end-package
+;package
 
 package XPF
 public
 EXPORT XPE:XPE-DBL
-end-package
+;package
 
 7 XPE:XPE-DBL 14 T=
 7 XPF:XPE-DBL 14 T=
@@ -192,7 +192,7 @@ package XPG
 : XPG-HID ( n -- n ) 3 + ;
 public
 EXPORT XPG-HID
-end-package
+;package
 4 XPG:XPG-HID 7 T=
 
 \ ---------------------------------------------------------------------------
