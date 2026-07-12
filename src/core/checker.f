@@ -3308,6 +3308,7 @@ BEGIN-STRUCTURE EFF-REC
    CELL +FIELD ER.TVN
    CELL +FIELD ER.RVN
    CELL +FIELD ER.SYM
+   CELL +FIELD ER.MINI            \ din cell count (certified min input arity; dot habu-habu-certified-words-84e84eaf)
 END-STRUCTURE
 
 BEGIN-STRUCTURE EFF-NODE
@@ -3520,7 +3521,7 @@ EC-RV MAXTV E-MAP-CLEAR   0 EC-RV-HW !
 : E-REC-INIT ( ptr a -- ) {: p :}
    0 p ER.NEXT !  0 p ER.ACTIVE !
    0 p ER.DIN !   0 p ER.DOUT !  0 p ER.RIN !  0 p ER.ROUT !
-   0 p ER.HASR !  0 p ER.TVN !   0 p ER.RVN !
+   0 p ER.HASR !  0 p ER.TVN !   0 p ER.RVN !  0 p ER.MINI !
    CHECKER-REC-SYM @ p ER.SYM ! ;
 
 : E-REC-START ( -- ptr a )
@@ -3535,6 +3536,16 @@ EC-RV MAXTV E-MAP-CLEAR   0 EC-RV-HW !
    UEND @ swap ER.NEXT !
    UTERM! ;
 
+\ ROW-CELLS: total cell width of a row's fixed entries — the minimum stack
+\ depth any call must provide for that row. Row-polymorphic tails match zero
+\ cells, so the fixed prefix IS the floor (dot habu-habu-certified-words-84e84eaf).
+: ROW-CELLS ( n -- n ) {: s:n :}
+   0 s                                   \ ( acc cur )
+   BEGIN R-RES dup TAG S-PUSH = WHILE
+      dup P>TYPE T-RES T-WIDTH rot + swap
+      P>REST
+   REPEAT drop ;
+
 : E-BUILD-EFFECT ( n n n n bool -- n ) {: din:n dout:n rin:n rout:n hasr:bool :}
    E-REC-START E-OFF >r
    E-COPY-MAPS-RESET
@@ -3548,6 +3559,8 @@ EC-RV MAXTV E-MAP-CLEAR   0 EC-RV-HW !
    hasr r@ E-PTR ER.HASR !
    EC-TVN @ r@ E-PTR ER.TVN !
    EC-RVN @ r@ E-PTR ER.RVN !
+   din ROW-CELLS dup 255 > IF s" checker: min-in exceeds record field" 76 die THEN
+   r@ E-PTR ER.MINI !
    r@ E-PTR E-REC-FINISH
    r> ;
 
@@ -3591,6 +3604,18 @@ variable RECW   0 RECW !
    RECW @ 0 <> IF wide-mark THEN
    0 RECW ! ;
 
+\ RECMI: latch holding the din cell count of the LAST effect record — the
+\ certified minimum input arity (dot habu-habu-certified-words-84e84eaf).
+\ Same discipline as RECW above: stored BY VALUE at the single record choke
+\ point (E-ADD-EFFECT), zeroed on deleted/bad rows and by CHECK-RESET, and
+\ consumed by the engine publish tails after ndict++ (habu2.f
+\ EM-REC-WIDE-PUBLISH reads it through REC-MIN-IN@ and pokes DNAME-MIN-IN
+\ bits 52-59 of the just-published record) so EM-INTERPRET-FIND can fail
+\ closed on an underdepth bare call before the body runs.
+variable RECMI   0 RECMI !
+: REC-MIN-IN@ ( -- n )
+   RECMI @  0 RECMI ! ;
+
 \ E-ADD-EFFECT/E-ADD-DELETED are the only creators of USER records (prims go
 \ through PE-CLOSE/E-BUILD-EFFECT directly), so they own the in-place cache
 \ update: the record just built IS the current effect for its symbol. The
@@ -3600,6 +3625,7 @@ variable RECW   0 RECW !
    hasr IF rin ROW-WIDE? or  rout ROW-WIDE? or THEN
    RECW !
    din dout rin rout hasr E-BUILD-EFFECT {: off:n :}
+   off E-PTR ER.MINI @ RECMI !
    CHECKER-REC-SYM @ 0 <> HIDX-VALID @ and IF
       off 1 + CHECKER-REC-SYM @ HIDX-EFF!
       UEND @ HIDX-EFF-DEP+
@@ -3607,6 +3633,7 @@ variable RECW   0 RECW !
 
 : E-ADD-DELETED ( -- )
    0 RECW !
+   0 RECMI !
    E-REC-START E-OFF >r
    EFF-DELETED r@ E-PTR ER.ACTIVE !
    r> E-PTR E-REC-FINISH
@@ -3637,6 +3664,7 @@ variable BADSIG-XT   0 BADSIG-XT !      \ ( sig-a sig-u n name-a name-u n -- )
 
 : USIG-ADD-BAD ( ptr u8 n ptr u8 n -- ) {: sa:ptr su:n na:ptr nu:n :}
    0 RECW !                              \ no record stored: nothing to publish wide
+   0 RECMI !                             \ ... and no min-in to poke
    MULTI-ERR? 0= IF
       2 sa su write drop                 \ name the offending stored sig text
       s" : checker: bad stored signature" 76 die
@@ -4260,6 +4288,7 @@ PRIM: WF-NEEDS-P2? PE-F PE-OUT PRIM;
 PRIM: WF-W-AT PE-N PE-IN  PE-N PE-IN  PE-N PE-OUT PRIM;
 PRIM: wide-mark PRIM;
 PRIM: REC-WIDE-PUBLISH PRIM;
+PRIM: REC-MIN-IN@ PE-N PE-OUT PRIM;
 PRIM: LOCW-HW@ PE-N PE-IN  PE-N PE-OUT PRIM;
 PRIM: LOCW-HW-N@ PE-N PE-OUT PRIM;
 PPRIM: LOWER-CERT MAGIC PE-N PE-OUT PPRIM;
@@ -4616,6 +4645,14 @@ $20 constant CK-SEAL-LATCH-OFF          \ = layout.f FRIEND-LATCH-CELL
    FEP-HIT? IF RES-TRUE EXIT THEN
    a u CHECKER-FIND-ACTIVE-SYM PRIM-FIRST-SYM
    dup 0 <> IF E-PTR FEP-SET RES-TRUE ELSE drop RES-FALSE THEN ;
+
+\ SIG-MIN-IN: din cell count for a NAME's active effect (user row or prim
+\ axiom); -1 when the checker knows no effect. Seal-time consumer:
+\ src/core/internal-mark.f pokes known engine-prefix records with it (dot
+\ habu-habu-certified-words-84e84eaf).
+: SIG-MIN-IN ( ptr u8 n -- n )
+   FIND-SIG 0= IF -1 EXIT THEN
+   FEP @ ER.MINI @ ;
 
 \ HIDX-DFR-SYNC ( -- ) : flush the cache when DFERS rewound below a cached defer
 \ answer. Rollback frames restore DFER-END, so a cached flag whose scan reached a
@@ -7175,7 +7212,7 @@ variable MEO-BL  variable MEO-BC  variable MEO-BB   \ buffer start's file line/c
    0 THDROW !  0 THRROW !  0 THSET !
    SGBAD-CLEAR  0 UNSAFE !  0 LOCALBAD !  0 LINLOCBAD !  0 UNDEFERR !  0 QUALBAD !  0 QDUPBAD !  0 CAPREQ !
    0 LOCSEQ !
-   0 WF-N !  0 RECW !
+   0 WF-N !  0 RECW !  0 RECMI !
    0 RECEFF !  0 RECEFF-ON !  0 RECEFF-UEND ! ;
 
 : CHECK-SCAN ( -- )

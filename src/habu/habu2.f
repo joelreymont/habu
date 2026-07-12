@@ -128,6 +128,8 @@ variable LWIDE   variable LWIDEMSG   variable LDIAGRET   \ interpret-mode wide-e
 33 constant WIDEMSG-LEN   \ byte length of "hb: interpret-mode layout value: " (LWIDEMSG)
 variable LINTERNAL   variable LINTMSG   \ interpret-mode internal-word reject (DNAME-INT) + its message
 26 constant INTMSG-LEN    \ byte length of "hb: internal engine word: " (LINTMSG)
+variable LMININ   variable LMINMSG   \ interpret-mode certified-word underdepth reject (DNAME-MIN-IN) + its message
+32 constant MINMSG-LEN    \ byte length of "hb: interpret stack underdepth: " (LMINMSG)
 31 constant CONFMSG-LEN   \ byte length of "hb: construct: unknown family: " (EM-COMPILE-ADT-MODE)
 32 constant CONVMSG-LEN   \ byte length of "hb: construct: unknown variant: " (EM-COMPILE-ADT-MODE)
 27 constant MFAMMSG-LEN   \ byte length of "hb: match: unknown family: " (EM-ADT-MATCH-FAM)
@@ -328,6 +330,7 @@ s" c-bp-watch-dump" s" label label --" TRUST
    LUNCMSG LABEL@ LBL, s" hb: uncaught throw code " BYTES,     \ UNCMSG-LEN bytes; LUNCAUGHT appends the signed code + newline
    LWIDEMSG LABEL@ LBL, s" hb: interpret-mode layout value: " BYTES,     \ WIDEMSG-LEN bytes; LWIDE appends the token + newline
    LINTMSG LABEL@ LBL, s" hb: internal engine word: " BYTES,             \ INTMSG-LEN bytes; LINTERNAL appends the token + newline
+   LMINMSG LABEL@ LBL, s" hb: interpret stack underdepth: " BYTES,       \ MINMSG-LEN bytes; LMININ appends the token + newline
    LDICTFULL LABEL@ LBL, s" hb: dictionary full at: " BYTES,             \ CAPMSG-LEN bytes; capacity arms append the token + newline
    LCODEFULL LABEL@ LBL, s" hb: code space full at: " BYTES,             \ CAPMSG-LEN bytes
    LSNAPBAD LABEL@ LBL, s" hb: snapshot trailer corrupt" BYTES,  NL-KW 1 BYTES,               \ SNAPBAD-MSG-LEN bytes incl. newline
@@ -1081,7 +1084,7 @@ create LBRACE-KW 123 c, 58 c,
 create ENDLOC-KW 58 c, 125 c,
 $4842444546455201 constant DEFER-MAGIC
 variable LKWDEFER  variable LKWIS  variable LKWDEFERUNSET
-variable LCHKDEFER  variable LSIGPTRA  variable LSIGA  variable LRECWPUB  variable LP2DOESW
+variable LCHKDEFER  variable LSIGPTRA  variable LSIGA  variable LRECWPUB  variable LRECMIQ  variable LP2DOESW
 \ ADT lowering keywords (TFAM 10, docs §16): `construct` dispatches through the
 \ CMM-CELL mode machine (J-CONSTRUCT + EM-COMPILE-ADT-MODE, slice 2; execution
 \ gate-pinned by GE-CONSTRUCT-EXEC). The MATCH rows are data-only until slice 3
@@ -1142,7 +1145,7 @@ here RESTAB-BUF - constant RESTAB-LEN
    LKWTRUSTED LABEL@ LBL, s" trusted:" BYTES,
    LKWKERNEL LABEL@ LBL, s" kernel:" BYTES,
    LKWTRUST LABEL@ LBL, s" trust" BYTES,      LKWCHKDOES LABEL@ LBL, s" check-does!" BYTES,  LKWPACKAGE LABEL@ LBL, s" package" BYTES,  LKWPUBLIC LABEL@ LBL, s" public" BYTES,
-   LKWPRIVATE LABEL@ LBL, s" private" BYTES,  LKWSEMIPACKAGE LABEL@ LBL, s" ;package" BYTES,  LKWDUPDEF LABEL@ LBL, s" duplicate definition: " BYTES,  LKWQUOT LABEL@ LBL,  QUOT-KW 2 BYTES,   LKWSEMIQ LABEL@ LBL,  SEMIQ-KW 2 BYTES,  LKWDEFER LABEL@ LBL, s" defer" BYTES,  LKWIS LABEL@ LBL, s" is" BYTES,  LKWDEFERUNSET LABEL@ LBL, s" defer-unset" BYTES,  LCHKPACKAGE LABEL@ LBL, s" checker-package" BYTES,  LCHKPUB LABEL@ LBL, s" checker-public" BYTES,  LCHKPRI LABEL@ LBL, s" checker-private" BYTES,  LCHKENDPKG LABEL@ LBL, s" checker-end-package" BYTES,  LCHKDEFER LABEL@ LBL, s" checker-defer" BYTES,  LRESTAB LABEL@ LBL, RESTAB-BUF RESTAB-LEN BYTES,  LSIGPTRA LABEL@ LBL, s" -- ptr a" BYTES,  LSIGA LABEL@ LBL, s" -- a" BYTES,  LRECWPUB LABEL@ LBL, s" rec-wide-publish" BYTES,  LP2DOESW LABEL@ LBL, s" hb: does>-split cannot lower layout width facts: " BYTES,
+   LKWPRIVATE LABEL@ LBL, s" private" BYTES,  LKWSEMIPACKAGE LABEL@ LBL, s" ;package" BYTES,  LKWDUPDEF LABEL@ LBL, s" duplicate definition: " BYTES,  LKWQUOT LABEL@ LBL,  QUOT-KW 2 BYTES,   LKWSEMIQ LABEL@ LBL,  SEMIQ-KW 2 BYTES,  LKWDEFER LABEL@ LBL, s" defer" BYTES,  LKWIS LABEL@ LBL, s" is" BYTES,  LKWDEFERUNSET LABEL@ LBL, s" defer-unset" BYTES,  LCHKPACKAGE LABEL@ LBL, s" checker-package" BYTES,  LCHKPUB LABEL@ LBL, s" checker-public" BYTES,  LCHKPRI LABEL@ LBL, s" checker-private" BYTES,  LCHKENDPKG LABEL@ LBL, s" checker-end-package" BYTES,  LCHKDEFER LABEL@ LBL, s" checker-defer" BYTES,  LRESTAB LABEL@ LBL, RESTAB-BUF RESTAB-LEN BYTES,  LSIGPTRA LABEL@ LBL, s" -- ptr a" BYTES,  LSIGA LABEL@ LBL, s" -- a" BYTES,  LRECWPUB LABEL@ LBL, s" rec-wide-publish" BYTES,  LRECMIQ LABEL@ LBL, s" rec-min-in@" BYTES,  LP2DOESW LABEL@ LBL, s" hb: does>-split cannot lower layout width facts: " BYTES,
    LKWEXPORT LABEL@ LBL, s" export" BYTES,  LCHKEXPORT LABEL@ LBL, s" checker-export" BYTES,
    LKWCONSTRUCT LABEL@ LBL, s" construct" BYTES,  LKWMATCH LABEL@ LBL, s" match" BYTES,  LKWSEMIMATCH LABEL@ LBL, s" ;match" BYTES,
    LTFLCONFAM LABEL@ LBL, s" tfl-con-fam?" BYTES,  LTFLCVAR LABEL@ LBL, s" tfl-cvar?" BYTES,
@@ -1461,12 +1464,30 @@ s" c-call-checker-defer" s" --" TRUST
 \ point stored for THIS definition's effect and, when wide, `wide-mark`s the
 \ just-published record (ndict-1) DNAME-WIDE. Hook-guarded: during the engine
 \ prefix self-load (no checker hook) nothing marks — the prefix has no
-\ wide-effect rows (verified) and user source only loads post-hook.
+\ wide-effect rows (verified) and user source only loads post-hook; the
+\ engine-prefix records certified between check-hook.f and the seal are
+\ re-poked by the seal-time pass (src/core/internal-mark.f).
+\ Certified min-in (dot habu-habu-certified-words-84e84eaf): the same tail
+\ then drains the checker's RECMI latch through rec-min-in@ (checker.f, loads
+\ before check-hook.f, so it is always resolvable once the hook is live) and
+\ pokes DNAME-MIN-IN (flags bits 52-59) of the just-published record inside
+\ the LPROT RW window, so the interpret-find dispatch can fail closed on a
+\ bare underdepth call. min-in 0 (unchecked/no-signature boundary) pokes nothing.
 : EM-REC-WIDE-PUBLISH ( -- )
-   LBL {: nohook:label :}
+   LBL LBL {: nohook:label nomark:label :}
    9 DATA HOOK-CELL LDR,  9 nohook CBZ,
    LRECWPUB 16 C-FIND-GLOBAL
    C-CALL-X11-SAVED
+   LRECMIQ 11 C-FIND-GLOBAL
+   C-CALL-X11-SAVED
+   10 G-POP                                            \ x10 = latched min-in cells (0 = none)
+   10 nomark CBZ,
+      2 3 MOVZ,  LPROT LABEL@ BL,
+      9 NDICT 0 ADDI,  9 9 1 SUBI,  12 DREC MOVZ,  9 9 12 MUL,  9 DBASE 9 ADD,
+      10 10 $FF ANDI,  10 10 52 LSLI,                  \ min-in byte -> DNAME-MIN-IN bits 52-59
+      12 9 16 LDR,  12 12 10 ORR,  12 9 16 STR,
+      2 5 MOVZ,  LPROT LABEL@ BL,
+   nomark LBL,
    nohook LBL, ;
 
 : C-DIE-DOES ( -- )
@@ -1781,7 +1802,7 @@ s" c-dup-def-fail" s" --" TRUST
    nloop LBL,
       6 nend CBZ,
       14 5 40 LDR,  15 DATA DEF-WL-CELL LDR,  14 15 CMP,  C-NE nnext BCOND,
-      14 5 16 LDR,  14 14 4 LSLI,  14 14 4 LSRI,
+      14 5 16 LDR,  14 14 12 LSLI,  14 14 12 LSRI,
       15 DATA TKL-CELL LDR,  14 15 CMP,  C-NE nnext BCOND,
       16 5 24 ADDI,
       14 5 16 LDR,  14 14 DNAME-EXT ANDI,  14 ninl CBZ,
@@ -1889,7 +1910,7 @@ s" c-qualify-seal-guard" s" --" TRUST
    nloop LBL,
       6 nend CBZ,
       14 5 40 LDR,  15 0 MOVN,  14 15 CMP,  C-NE nnext BCOND,
-      14 5 16 LDR,  14 14 4 LSLI,  14 14 4 LSRI,  14 17 CMP,  C-NE nnext BCOND,
+      14 5 16 LDR,  14 14 12 LSLI,  14 14 12 LSRI,  14 17 CMP,  C-NE nnext BCOND,
       16 5 24 ADDI,
       14 5 16 LDR,  14 14 DNAME-EXT ANDI,  14 ninl CBZ,
          16 5 24 LDR,
@@ -2978,7 +2999,7 @@ s" c-local-ref" s" label label --" TRUST
 \ blob offset to CP+offset, and hash-indexing it (LHIDXADD). All records first, so
 \ EM-AOT-PATCH-SITES can resolve sibling calls by name.
 \ Each source record is a compact 12 bytes (word0 = blob-off u16 | end u16<<16;
-\ word1 = name-off u16 | flags u8<<16 | pad u8<<24; word2 = wid u32); expand it to
+\ word1 = name-off u16 | flags u8<<16 | min-in u8<<24; word2 = wid u32); expand it to
 \ the full 48B dict record, rebasing [0] xt to CP+blob-off and reconstructing [16]
 \ flags|len, the [24..40) inline name (from the deduped LAOTNAMES pool, zero-padded),
 \ and [40] wid (full u32 so wordlist IDs above 255 survive) -- the EXACT inverse of
@@ -3001,7 +3022,9 @@ s" c-local-ref" s" label label --" TRUST
       7 LAOTNAMES LABEL@ ADR,  4 7 4 ADD,           \ x4 = pool entry ptr (len byte)
       5 4 0 LDRB,                                   \ x5 = name length = pool[entry]
       7 6 16 LSRI,  3 $FF LIT64,  7 7 3 AND,        \ x7 = flags = (word1>>16)&0xFF
-      7 7 60 LSLI,  7 7 5 ORR,  7 10 16 STR,        \ [16] = flags<<60 | len
+      7 7 60 LSLI,  7 7 5 ORR,                      \ flags<<60 | len
+      3 6 24 LSRI,  3 3 $FF ANDI,  3 3 52 LSLI,     \ min-in byte = word1>>24 -> DNAME-MIN-IN bits 52-59
+      7 7 3 ORR,  7 10 16 STR,                      \ [16] = flags<<60 | min-in<<52 | len
       2 0 MOVZ,  2 10 24 STR,  2 10 32 STR,         \ zero [24..40)
       4 4 1 ADDI,                                   \ x4 = name src (entry+1)
       3 0 MOVZ,                                     \ x3 = i
@@ -3347,7 +3370,7 @@ TRUSTED: EM-DATA-VA>N ( -- n ) DATA-VA ;
    snhave B,                                                       \ legacy v0 trailer: no version check
    snnew LBL,
       14 13 40 LDR,                                                \ x14 = image format version
-      5 1 MOVZ,  14 5 CMP,  C-GT snbadver BCOND,                   \ x5 = max supported version (SNAP-FORMAT-VERSION)
+      5 2 MOVZ,  14 5 CMP,  C-GT snbadver BCOND,                   \ x5 = max supported version (SNAP-FORMAT-VERSION; v2 = DNAME-MIN-IN record band)
    snhave LBL,
       12 13 0 ADDI,                                                \ x12 = resolved trailer base
    5 IMAGE-TEXT-CONTENT-ADJ LIT64,  11 11 5 SUB,
@@ -3577,7 +3600,7 @@ s" c-package-existing-private" s" label --" TRUST
 : C-PACKAGE-RECORD-MATCH ( label label -- ) {: hit:label miss:label :}
    LBL LBL {: cmp:label inline:label :}
    14 5 40 LDR,  15 0 MOVN,  14 15 CMP,  C-NE miss BCOND,
-   14 5 16 LDR,  14 14 4 LSLI,  14 14 4 LSRI,
+   14 5 16 LDR,  14 14 12 LSLI,  14 14 12 LSRI,
    15 DATA TKL-CELL LDR,  14 15 CMP,  C-NE miss BCOND,
    16 5 24 ADDI,
    14 5 16 LDR,  14 14 DNAME-EXT ANDI,  14 inline CBZ,
@@ -3772,6 +3795,7 @@ s" c-export-tail!" s" --" TRUST
    15 9 16 LDR,
    16 14 2 ANDI,  16 16 59 LSLI,  15 15 16 ORR,         \ flag bit1 -> DNAME-IMM
    16 14 8 ANDI,  16 16 59 LSLI,  15 15 16 ORR,         \ flag bit3 -> DNAME-WIDE
+   16 14 $FF00 ANDI,  16 16 44 LSLI,  15 15 16 ORR,     \ flag bits 8-15 -> DNAME-MIN-IN (same body, same certified arity)
    15 9 16 STR,
    NDICT NDICT 1 ADDI,  LHIDXADD LABEL@ BL,
    2 5 MOVZ,  LPROT LABEL@ BL,
@@ -3810,10 +3834,16 @@ s" em-interpret-string-keywords" s" --" TRUST
 s" em-interpret-number" s" label --" TRUST
 
 : EM-INTERPRET-FIND ( -- )
+   LBL {: depthok:label :}
    9 DATA TKA-CELL LDR,  10 DATA TKL-CELL LDR,  LFIND LABEL@ BL,
    13 LUNDEF LABEL@ CBZ,
    14 13 8 ANDI,  14 LWIDE LABEL@ CBNZ,                \ DNAME-WIDE effect (TFAM): fail closed, never land a bundle on the interpret stack (x13 still holds the LFIND dict flags)
    14 13 16 ANDI,  14 LINTERNAL LABEL@ CBNZ,           \ DNAME-INT: engine-internal word with no checker-known effect - fail closed before the body runs on the untyped interpret stack
+   14 13 $FF00 ANDI,  14 depthok CBZ,                  \ DNAME-MIN-IN (x13 bits 8-15): certified min input arity; 0 = unguarded boundary
+      14 14 8 LSRI,                                    \ x14 = min-in cells
+      9 DATA S0-CELL LDR,  10 XDS 9 SUB,  10 10 3 ASRI, \ x10 = interpret depth in cells
+      10 14 CMP,  C-LT LMININ LABEL@ BCOND,            \ depth < declared inputs -> named reject BEFORE the body can read below base
+   depthok LBL,
    LARITY LABEL@ BL,          \ pre-exec arity guard (fable): deref/execute prims fault on a shallow
    11 BLR,  LMAIN LABEL@ B, ; \ stack before the LMAIN depth-floor guard sees it; diverts to LUNDERFLOW
 s" em-interpret-find" s" --" TRUST
@@ -5089,6 +5119,11 @@ s" em-repl-recover" s" --" TRUST
    0 2 MOVZ,  1 LINTMSG LABEL@ ADR,  2 INTMSG-LEN MOVZ,  NR-WRITE SYS,
    0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,
    0 2 MOVZ,  1 LQNL LABEL@ ADR,  1 1 1 ADDI,  2 1 MOVZ,  NR-WRITE SYS,
+   LDIAGRET LABEL@ B,
+   LMININ LABEL@ LBL,                                  \ branch target: TKA/TKL still hold the token (DNAME-MIN-IN underdepth reject)
+   0 2 MOVZ,  1 LMINMSG LABEL@ ADR,  2 MINMSG-LEN MOVZ,  NR-WRITE SYS,
+   0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,
+   0 2 MOVZ,  1 LQNL LABEL@ ADR,  1 1 1 ADDI,  2 1 MOVZ,  NR-WRITE SYS,
    LDIAGRET LABEL@ B, ;
 s" em-compile-undef" s" --" TRUST
 
@@ -5415,8 +5450,11 @@ s" em-compile" s" --" TRUST
    EM-STARTUP  EM-COMMENT  EM-INTERPRET  EM-COMPILE  EM-INTERPRET-UNDERFLOW ;
 s" emit-main" s" --" TRUST
 
-\ Pre-execution arity guard (LARITY). A deref/execute primitive (@ ! +! c@ c!
-\ atomic@ atomic! atomic-add atomic-cas count type execute run-in-stack) as the
+\ Pre-execution arity guard (LARITY). A deref/execute/dispatch primitive (@ !
+\ +! c@ c! atomic@ atomic! atomic-add atomic-cas count type execute
+\ run-in-stack int-mark min-in-mark owner-wid-*, plus the census additions of
+\ dot habu-habu-certified-words-84e84eaf: evaluate catch ffi-call* patch32
+\ search-wl set-check cp! ndict! - see the habu1.f GDEREF table) as the
 \ LITERAL FIRST top-level token faults inside the primitive body (SIGSEGV, crash
 \ handler exit 134) BEFORE the post-token LMAIN depth-floor guard (EM-COMMENT /
 \ EM-INTERPRET-UNDERFLOW) can observe XDS < S0. The interpret-find dispatch BLs here
@@ -5485,7 +5523,7 @@ s" SRCA@" s" -- ptr u8" TRUST
    LBL LKWPACKAGE !  LBL LKWPUBLIC !  LBL LKWPRIVATE !  LBL LKWSEMIPACKAGE !
    LBL LKWDUPDEF !
    LBL LCHKPACKAGE !  LBL LCHKPUB !  LBL LCHKPRI !  LBL LCHKENDPKG !
-   LBL LCHKDEFER !  LBL LRESTAB !  LBL LRECWPUB !  LBL LP2DOESW !
+   LBL LCHKDEFER !  LBL LRESTAB !  LBL LRECWPUB !  LBL LRECMIQ !  LBL LP2DOESW !
    LBL LKWEXPORT !  LBL LCHKEXPORT !
    LBL LKWQUOT !  LBL LKWSEMIQ !  LBL LKWDEFER !  LBL LKWIS !  LBL LKWDEFERUNSET !
    LBL LSIGPTRA !  LBL LSIGA !
@@ -5502,6 +5540,7 @@ s" SRCA@" s" -- ptr u8" TRUST
    LBL LUNCAUGHT !  LBL LUNCMSG !
    LBL LWIDE !  LBL LWIDEMSG !  LBL LDIAGRET !
    LBL LINTERNAL !  LBL LINTMSG !
+   LBL LMININ !  LBL LMINMSG !
    LBL LDICTFULL !  LBL LCODEFULL !
    LBL LSNAPBAD !  LBL LSNAPVER !
    LBL LSRCFULL !  LBL LSRCREAD !  LBL LBADSTR !
@@ -5571,7 +5610,7 @@ create AOT-BLOB-BUF AOT-BLOB-CAP allot    variable AOT-BLOB-LEN
 256 constant AOT-REC-MAX
 \ AOT-REC-BUF holds three regions (all viewed via AOT-REC-BUF@, no extra TRUST):
 \   [0 .. MAX*48)          verbatim 48B dict records (capture source of truth)
-\   [MAX*48 .. +MAX*12)    compact 12B records (baked; blob-off u16 + end u16 + name-off u16 + flags u8 + pad u8 + wid u32)
+\   [MAX*48 .. +MAX*12)    compact 12B records (baked; blob-off u16 + end u16 + name-off u16 + flags u8 + min-in u8 + wid u32)
 \   [+MAX*12 .. +48)       48B scratch for the build-time expand==verbatim proof
 create AOT-REC-BUF AOT-REC-MAX 48 * AOT-REC-MAX 12 * + 48 + allot    variable AOT-REC-N
 2048 constant AOT-SITE-MAX

@@ -743,7 +743,7 @@ variable BFT-DOC-CODE
    BFT-BYTES-READ
    BFT-MAGIC-LAST!
    BFT-MAG-LAST @ {: mag:n :}
-   mag BFT-TRL-VERSION + BFT-BYTE@ 1 T=
+   mag BFT-TRL-VERSION + BFT-BYTE@ 2 T=   \ SNAP-FORMAT-VERSION (v2 = DNAME-MIN-IN record band)
    mag BFT-TRL-VERSION + $FF BFT-DOCTORED-CAPTURE
    80 s" hb: snapshot format version unsupported" BFT-ASSERT-SNAP-EXIT
    \ +4/+3: a MIDDLE byte of the 8-byte field keeps the value positive but

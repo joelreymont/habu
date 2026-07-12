@@ -36,7 +36,7 @@ s" AOT-CELL@" s" ptr a -- n" TRUST
 : AOT-REC ( n -- ptr a ) 48 * AOT-DBASE swap + ;
 : AOT-RXT ( ptr a -- n ) AOT-CELL@ ;                          \ [0] code entry (xt)
 : AOT-RFLAGS ( ptr a -- n ) 16 + AOT-CELL@ ;                  \ [16] flags | name len
-: AOT-RNLEN ( ptr a -- n ) AOT-RFLAGS $0FFFFFFFFFFFFFFF and ;
+: AOT-RNLEN ( ptr a -- n ) AOT-RFLAGS $000FFFFFFFFFFFFF and ;   \ = DNAME-LEN-MASK (top 12 bits are flags + DNAME-MIN-IN)
 : AOT-REXT? ( ptr a -- bool ) AOT-RFLAGS $2000000000000000 and 0= 0= ;
 : AOT-RNPTR ( ptr a -- ptr u8 )
    dup AOT-REXT? if 24 + AOT-CELL@ AOT-N>U8 else AOT-A>U8 24 + then ;
@@ -130,14 +130,17 @@ variable AOT-EXT-N   variable AOT-UNRES-N     \ kept-source counters: EXT names 
    k AOT-REC AOT-RXT bstart -  d AOT-N-C!                     \ [0] = xt - blob-start
    AOT-REC-N @ 1+ AOT-REC-N ! ;
 
-\ --- compact 12B records: blob-off u16 + end u16 + name-off u16 + flags u8 + pad u8
-\ + wid u32. Built from the verbatim 48B records; each record's inline name is added
-\ to the deduped pool. EM-AOT-REGISTER-RECS expands each 12B record back to the full
-\ 48B dict record at boot. All the constant/derivable fields (flags nibble, wid, name
-\ length, and the [24..40) inline-name zero padding) are asserted or reconstructed;
-\ the ACAP-PROVE-RECS pass then proves the expansion is byte-identical. The wid is a
-\ full u32 (matching the verbatim [40] cell's checked u32 domain) so wordlist IDs
-\ above 255 round-trip through the seed -- the field was a truncating u8. ---
+\ --- compact 12B records: blob-off u16 + end u16 + name-off u16 + flags u8 +
+\ min-in u8 + wid u32. Built from the verbatim 48B records; each record's inline
+\ name is added to the deduped pool. EM-AOT-REGISTER-RECS expands each 12B record
+\ back to the full 48B dict record at boot. All the constant/derivable fields
+\ (flags nibble, DNAME-MIN-IN byte, wid, name length, and the [24..40)
+\ inline-name zero padding) are asserted or reconstructed; the ACAP-PROVE-RECS
+\ pass then proves the expansion is byte-identical. The wid is a full u32
+\ (matching the verbatim [40] cell's checked u32 domain) so wordlist IDs above
+\ 255 round-trip through the seed -- the field was a truncating u8. The min-in
+\ byte (record [16] bits 52-59, dot habu-habu-certified-words-84e84eaf) rides
+\ the former pad byte so certified arity survives the seed round-trip. ---
 : ACAP-CREC-DST ( n -- ptr u8 ) 12 * AOT-REC-MAX 48 * +  AOT-REC-BUF@ swap + ;
 : ACAP-REC48@ ( -- ptr u8 ) AOT-REC-MAX 48 * AOT-REC-MAX 12 * +  AOT-REC-BUF@ swap + ;
 : ACAP-COMPACT-RECS ( -- )
@@ -147,7 +150,8 @@ variable AOT-EXT-N   variable AOT-UNRES-N     \ kept-source counters: EXT names 
       v 12 + ACAP-W32@ 0= 0= if s" aot-capture: rec end exceeds u32" 74 die then
       v 44 + ACAP-W32@ 0= 0= if s" aot-capture: rec wid exceeds u32" 74 die then
       v 20 + ACAP-W32@ 28 rshift $F and {: flags:n :}         \ flag nibble ([16] bits 60-63)
-      v 20 + ACAP-W32@ $0FFFFFFF and 0= 0= if s" aot-capture: rec [16] stray high bits" 74 die then
+      v 20 + ACAP-W32@ 20 rshift $FF and {: minin:n :}        \ DNAME-MIN-IN byte ([16] bits 52-59)
+      v 20 + ACAP-W32@ $000FFFFF and 0= 0= if s" aot-capture: rec [16] stray high bits" 74 die then
       flags 2 and 0= 0= if s" aot-capture: rec has EXT name (uncompactable)" 74 die then
       v 16 + ACAP-W32@ {: len:n :}                            \ name length ([16] low word)
       len 16 > if s" aot-capture: rec name too long for inline" 74 die then
@@ -157,8 +161,8 @@ variable AOT-EXT-N   variable AOT-UNRES-N     \ kept-source counters: EXT names 
       rend $FFFF > if s" aot-capture: rec end (codelen-4) exceeds u16" 74 die then
       v 24 + len ACAP-POOL-ADD {: noff:n :}                   \ inline name -> deduped pool entry
       noff $FFFF > if s" aot-capture: rec name-off exceeds u16" 74 die then
-      i ACAP-CREC-DST {: c:ptr :}                             \ 12B: blob-off u16 + end u16 + name-off u16 + flags u8 + pad u8 + wid u32
-      boff c AOT-P16!  rend c 2 + AOT-P16!  noff c 4 + AOT-P16!  flags c 6 + c!  0 c 7 + c!  wid c 8 + AOT-P32!
+      i ACAP-CREC-DST {: c:ptr :}                             \ 12B: blob-off u16 + end u16 + name-off u16 + flags u8 + min-in u8 + wid u32
+      boff c AOT-P16!  rend c 2 + AOT-P16!  noff c 4 + AOT-P16!  flags c 6 + c!  minin c 7 + c!  wid c 8 + AOT-P32!
    loop ;
 
 \ Expand a compact 12B record to a 48B dict record image -- the EXACT algorithm
@@ -171,7 +175,8 @@ variable AOT-EXT-N   variable AOT-UNRES-N     \ kept-source counters: EXT names 
    c 4 + ACAP-U16@ {: noff:n :}                               \ name-off u16
    AOT-NAMES-BUF@ noff + c@ {: len:n :}                       \ len = pool[entry]
    c 6 + c@ {: flags:n :}
-   flags 60 lshift len or  s 16 + AOT-N-C!                    \ [16] = flags<<60 | len
+   c 7 + c@ {: minin:n :}
+   flags 60 lshift  minin 52 lshift or  len or  s 16 + AOT-N-C!   \ [16] = flags<<60 | min-in<<52 | len
    0 s 24 + AOT-N-C!  0 s 32 + AOT-N-C!                       \ zero [24..40)
    len 0 ?do  AOT-NAMES-BUF@ noff 1+ + i + c@  s 24 + i + c!  loop
    c 8 + ACAP-W32@ s 40 + AOT-N-C! ;                          \ [40..48) = wid (u32 -> u64, hi=0)

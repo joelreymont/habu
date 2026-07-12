@@ -85,13 +85,18 @@ s" fprim" s" ptr u8 n n --" TRUST
 s" fprim-l" s" ptr u8 n n --" TRUST
 
 \ --- deref/execute arity-guard table (for the interpret-boundary guard) ---
-\ A deref/execute prim (@ ! +! c@ c! atomic@ atomic! atomic-add atomic-cas count
-\ type execute run-in-stack) faults inside its own body on a shallow stack, before
-\ the post-token LMAIN depth-floor guard can see it. GDEREF-L / GDEREF-F register
-\ such a prim like FPRIM-L / FPRIM and, when the prim is kept, record its entry
-\ label + minimum input depth so EMIT-ARITY-GUARD can bake a pre-BLR depth check
-\ keyed by the runtime xt (= entry-label address). Every other word stays min-in 0.
-32 constant GDR-CAP
+\ A deref/execute/dispatch prim (@ ! +! c@ c! atomic@ atomic! atomic-add
+\ atomic-cas count type execute run-in-stack int-mark min-in-mark owner-wid-*,
+\ plus the census additions of dot habu-habu-certified-words-84e84eaf: evaluate
+\ catch ffi-call* patch32 search-wl set-check cp! ndict!) consumes garbage into
+\ a user-space deref, a BLR, or an engine control cell on a shallow stack,
+\ before the post-token LMAIN depth-floor guard can see it. GDEREF-L / GDEREF-F
+\ register such a prim like FPRIM-L / FPRIM and, when the prim is kept, record
+\ its entry label + minimum input depth so EMIT-ARITY-GUARD can bake a pre-BLR
+\ depth check keyed by the runtime xt (= entry-label address). Every other word
+\ stays min-in 0. Certified/signed dictionary words are guarded separately by
+\ the DNAME-MIN-IN record band (EM-INTERPRET-FIND).
+48 constant GDR-CAP
 create GDR-LBL GDR-CAP cells allot   create GDR-MIN GDR-CAP cells allot
 variable GDR-N
 variable GD-MIN
@@ -1982,6 +1987,24 @@ s" linux-stat-fix" s" n --" TRUST
    C A 16 LDR,  C C DNAME-INT ORRI,  C A 16 STR,
    2 5 MOVZ,  LPROT LABEL@ BL, ;
 
+\ min-in-mark ( n n -- ): OR the certified minimum input arity ( rec-idx min )
+\ into DNAME-MIN-IN (flags bits 52-59) of dict record rec-idx. Engine half of
+\ the certified-word underdepth gate (dot habu-habu-certified-words-84e84eaf):
+\ the seal-time pass (src/core/internal-mark.f) pokes every engine-prefix
+\ record with a checker-known effect, and EM-INTERPRET-FIND fails closed on a
+\ bare call with fewer interpret-stack cells. LPROT bracket as in BINTMARK -
+\ the dict region is read-only at runtime. Marking is monotonic (OR, no clear
+\ prim) and the seal pass marks this prim's own record internal alongside
+\ int-mark, so user source cannot re-drive it.
+: BMININMARK ( -- )
+   2 3 MOVZ,  LPROT LABEL@ BL,
+   B G-POP                               \ x10 = min-in cells
+   A G-POP                               \ x9  = record index
+   C DREC MOVZ,  A A C MUL,  A DBASE A ADD,
+   B B $FF ANDI,  B B 52 LSLI,
+   C A 16 LDR,  C C B ORR,  C A 16 STR,
+   2 5 MOVZ,  LPROT LABEL@ BL, ;
+
 : BPROTWIDADD ( -- )
    LBL LBL LBL {: room:label done:label msg:label :}
    9 G-POP
@@ -2012,7 +2035,7 @@ s" linux-stat-fix" s" n --" TRUST
    3 $20 MOVZ,  5 DBASE 0 ADDI,  6 NDICT 0 ADDI,  11 0 MOVZ,
    SWL-LOOP LABEL@ LBL,  6 SWL-END LABEL@ CBZ,
       9 5 40 LDR,  9 2 CMP,  C-NE SWL-NEXT LABEL@ BCOND,
-      9 5 16 LDR,  9 9 4 LSLI,  9 9 4 LSRI,  9 1 CMP,  C-NE SWL-NEXT LABEL@ BCOND,
+      9 5 16 LDR,  9 9 12 LSLI,  9 9 12 LSRI,  9 1 CMP,  C-NE SWL-NEXT LABEL@ BCOND,
       16 5 24 ADDI,
       9 5 16 LDR,  9 9 DNAME-EXT ANDI,  9 SWL-INL LABEL@ CBZ,
          16 5 24 LDR,
@@ -2089,7 +2112,7 @@ s" linux-stat-fix" s" n --" TRUST
    s" compile," ['] BCOMPILE FPRIM
    s" create" ['] BCREATE FPRIM
    s" parse-name" ['] BPARSE-NAME FPRIM
-   s" evaluate" ['] B-EVAL FPRIM-L ;
+   s" evaluate" ['] B-EVAL 2 GDEREF-L ;
 
 : EMIT-PROCESS-PRIMS ( -- )
    s" run-rc" ['] BRUNRC FPRIM-L
@@ -2109,11 +2132,12 @@ s" linux-stat-fix" s" n --" TRUST
    s" cp@" ['] BCPFETCH FPRIM-L   s" dbase@" ['] BDBASEFETCH FPRIM-L
    s" data-base" ['] BDATAFETCH FPRIM-L
    s" ndict@" ['] BNDICTFETCH FPRIM-L
-   s" cp!" ['] BCPSET FPRIM-L   s" ndict!" ['] BNDSET FPRIM-L
+   s" cp!" ['] BCPSET 1 GDEREF-L   s" ndict!" ['] BNDSET 1 GDEREF-L
    s" SEAL-CAPTURE" ['] BSEALCAP FPRIM-L
    s" SEAL-FRIEND" ['] BSEALFRIEND FPRIM-L
    s" wide-mark" ['] BWIDEMARK FPRIM
    s" int-mark" ['] BINTMARK 1 GDEREF-F
+   s" min-in-mark" ['] BMININMARK 2 GDEREF-F
    s" prot-wid-add" ['] BPROTWIDADD FPRIM
    s" epoch-seconds" ['] BEPOCHSECONDS FPRIM-L
    s" mono-ns" ['] BMONONS FPRIM-L
@@ -2122,13 +2146,13 @@ s" linux-stat-fix" s" n --" TRUST
 : EMIT-FS-PRIMS ( -- )
    s" open" ['] BOPEN FPRIM-L   s" write" ['] BWRITE FPRIM-L   s" read" ['] BREAD FPRIM-L   s" ioctl" ['] BIOCTL FPRIM-L
    s" mmap" ['] BMMAP FPRIM-L
-   s" ffi-call" ['] BFFI-CALL FPRIM
-   s" ffi-call-n" ['] BFFI-CALL-N FPRIM
-   s" ffi-call-bounded" ['] BFFI-CALL-BOUNDED FPRIM
-   s" ffi-call-abi-bounded" ['] BFFI-CALL-ABI-BOUNDED FPRIM
-   s" ffi-call-abi-r-bounded" ['] BFFI-CALL-ABI-R-BOUNDED FPRIM
-   s" ffi-call-abi" ['] BFFI-CALL-ABI FPRIM
-   s" ffi-call-abi-r" ['] BFFI-CALL-ABI-R FPRIM
+   s" ffi-call" ['] BFFI-CALL 2 GDEREF-F
+   s" ffi-call-n" ['] BFFI-CALL-N 3 GDEREF-F
+   s" ffi-call-bounded" ['] BFFI-CALL-BOUNDED 4 GDEREF-F
+   s" ffi-call-abi-bounded" ['] BFFI-CALL-ABI-BOUNDED 7 GDEREF-F
+   s" ffi-call-abi-r-bounded" ['] BFFI-CALL-ABI-R-BOUNDED 7 GDEREF-F
+   s" ffi-call-abi" ['] BFFI-CALL-ABI 5 GDEREF-F
+   s" ffi-call-abi-r" ['] BFFI-CALL-ABI-R 5 GDEREF-F
    s" open-rd" ['] BOPENRD FPRIM-L
    s" access" ['] BACCESS FPRIM-L
    s" unlink" ['] BUNLINK FPRIM-L   s" rename" ['] BRENAME FPRIM-L   s" chmod" ['] BCHMOD FPRIM-L
@@ -2136,15 +2160,15 @@ s" linux-stat-fix" s" n --" TRUST
    s" mkdir" ['] BMKDIR FPRIM-L     s" rmdir" ['] BRMDIR FPRIM-L
    s" stat64" ['] BSTAT64 FPRIM-L   s" lstat64" ['] BLSTAT64 FPRIM-L
    s" getdirentries64" ['] BGETDIRENTRIES64 FPRIM-L
-   s" patch32" ['] BPATCH32 FPRIM
+   s" patch32" ['] BPATCH32 2 GDEREF-F
    s" close" ['] BCLOSE FPRIM-L
    s" rbase" ['] BRBASE FPRIM-L ;
 
 : EMIT-CHECKER-PRIMS ( -- )
-   s" catch" ['] BCATCH FPRIM   s" throw" ['] BTHROW FPRIM-L
+   s" catch" ['] BCATCH 1 GDEREF-F   s" throw" ['] BTHROW FPRIM-L
    s" wordlist" ['] BWORDLIST FPRIM-L   s" get-current" ['] BGETCUR FPRIM-L
-   s" set-current" ['] BSETCUR FPRIM-L  s" search-wl" ['] BSWL FPRIM-L
-   s" set-check" ['] BSETCHECK FPRIM-L   s" check@" ['] BCHECKFETCH FPRIM-L ;
+   s" set-current" ['] BSETCUR FPRIM-L  s" search-wl" ['] BSWL 3 GDEREF-L
+   s" set-check" ['] BSETCHECK 1 GDEREF-L   s" check@" ['] BCHECKFETCH FPRIM-L ;
 
 : EMIT-PRIMS ( -- )
    EMIT-ARITH-PRIMS  EMIT-COMPARE-PRIMS  EMIT-STACK-PRIMS
@@ -2374,7 +2398,7 @@ variable LHIDXBUILD
    5 DREC MOVZ,  5 3 5 MUL,  5 DBASE 5 ADD,
    2 5 40 LDR,
    16 5 24 ADDI,
-   15 5 16 LDR,  15 15 4 LSLI,  15 15 4 LSRI,
+   15 5 16 LDR,  15 15 12 LSLI,  15 15 12 LSRI,
    4 5 16 LDR,  4 4 DNAME-EXT ANDI,  4 rinl CBZ,
       16 5 24 LDR,
    rinl LBL,
@@ -2413,7 +2437,7 @@ variable LHIDXBUILD
       4 3 1 SUBI,  4 NDICT CMP,  C-GE dnext BCOND,           \ stale index
       5 DREC MOVZ,  5 4 5 MUL,  5 DBASE 5 ADD,               \ x5 = record ptr
       4 5 40 LDR,  15 DATA DEF-WL-CELL LDR,  4 15 CMP,  C-NE dnext BCOND,          \ wid mismatch
-      4 5 16 LDR,  4 4 4 LSLI,  4 4 4 LSRI,  15 DATA TKL-CELL LDR,  4 15 CMP,  C-NE dnext BCOND,  \ len mismatch
+      4 5 16 LDR,  4 4 12 LSLI,  4 4 12 LSRI,  15 DATA TKL-CELL LDR,  4 15 CMP,  C-NE dnext BCOND,  \ len mismatch
       16 5 24 ADDI,
       4 5 16 LDR,  4 4 DNAME-EXT ANDI,  4 dinl CBZ,
          16 5 24 LDR,
@@ -2536,7 +2560,7 @@ variable FIND-HMATCH
    FIND-NLOOP LABEL@ LBL,
       6 FIND-NEND LABEL@ CBZ,
       14 5 40 LDR,  15 0 MOVN,  14 15 CMP,  C-NE FIND-NNEXT LABEL@ BCOND,
-      14 5 16 LDR,  14 14 4 LSLI,  14 14 4 LSRI,  14 17 CMP,  C-NE FIND-NNEXT LABEL@ BCOND,
+      14 5 16 LDR,  14 14 12 LSLI,  14 14 12 LSRI,  14 17 CMP,  C-NE FIND-NNEXT LABEL@ BCOND,
       16 5 24 ADDI,
       14 5 16 LDR,  14 14 DNAME-EXT ANDI,  14 FIND-NINL LABEL@ CBZ,
          16 5 24 LDR,
@@ -2574,7 +2598,7 @@ variable FIND-HMATCH
       4 3 1 SUBI,  4 NDICT CMP,  C-GE FIND-HNEXT LABEL@ BCOND, \ stale (truncated) index
       5 DREC MOVZ,  5 4 5 MUL,  5 DBASE 5 ADD,                \ x5 = record ptr
       16 5 40 LDR,  16 2 CMP,  C-NE FIND-HNEXT LABEL@ BCOND,  \ wid mismatch (retired=-2 / other wl)
-      16 5 16 LDR,  16 16 4 LSLI,  16 16 4 LSRI,  16 10 CMP,  C-NE FIND-HNEXT LABEL@ BCOND,  \ name-len mismatch
+      16 5 16 LDR,  16 16 12 LSLI,  16 16 12 LSRI,  16 10 CMP,  C-NE FIND-HNEXT LABEL@ BCOND,  \ name-len mismatch
       16 5 24 ADDI,
       3 5 16 LDR,  3 3 DNAME-EXT ANDI,  3 FIND-HINL LABEL@ CBZ,
          16 5 24 LDR,
@@ -2594,6 +2618,8 @@ variable FIND-HMATCH
          15 14 DNAME-WIDE ANDI,  15 15 59 LSRI,               \ wide-effect bit -> 8
          16 14 DNAME-INT ANDI,  16 16 59 LSRI,                \ internal bit -> 16
          15 15 16 ORR,
+         16 14 DNAME-MIN-IN-MASK ANDI,  16 16 44 LSRI,        \ certified min-in byte -> bits 8-15
+         15 15 16 ORR,
          14 14 DNAME-IMM ANDI,  14 14 59 LSRI,                \ immediate bit -> 2
          14 14 15 ORR,
          13 1 MOVZ,  13 13 14 ORR,  RET,
@@ -2605,7 +2631,7 @@ variable FIND-HMATCH
    FIND-LOOP LABEL@ LBL,
       6 FIND-DONE LABEL@ CBZ,
       14 5 40 LDR,  14 2 CMP,  C-NE FIND-NEXT LABEL@ BCOND,
-      14 5 16 LDR,  14 14 4 LSLI,  14 14 4 LSRI,  14 10 CMP,  C-NE FIND-NEXT LABEL@ BCOND,
+      14 5 16 LDR,  14 14 12 LSLI,  14 14 12 LSRI,  14 10 CMP,  C-NE FIND-NEXT LABEL@ BCOND,
       16 5 24 ADDI,
       14 5 16 LDR,  14 14 DNAME-EXT ANDI,  14 FIND-INL LABEL@ CBZ,
          16 5 24 LDR,
@@ -2624,6 +2650,8 @@ variable FIND-HMATCH
          14 5 16 LDR,
          15 14 DNAME-WIDE ANDI,  15 15 59 LSRI,               \ wide-effect bit -> 8
          16 14 DNAME-INT ANDI,  16 16 59 LSRI,                \ internal bit -> 16
+         15 15 16 ORR,
+         16 14 DNAME-MIN-IN-MASK ANDI,  16 16 44 LSRI,        \ certified min-in byte -> bits 8-15
          15 15 16 ORR,
          14 14 DNAME-IMM ANDI,  14 14 59 LSRI,                \ immediate bit -> 2
          14 14 15 ORR,

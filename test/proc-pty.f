@@ -299,6 +299,18 @@ variable PTYNUM
    s" 49" EXPECT
    s"  ok" EXPECT ;
 
+\ Certified word on an empty interpret stack: named underdepth reject, then
+\ the REPL recovers and the next line evaluates (LDIAGRET recovery leg; dot
+\ habu-habu-certified-words-84e84eaf).
+: PTY-UNDERDEPTH ( -- )
+   s" SQ" STEP-LN
+   s" hb: interpret stack underdepth: SQ" EXPECT
+   s" habu> " EXPECT
+   s"  ok" REJECT
+   s" 6 SQ ." STEP-LN
+   s" 36" EXPECT
+   s"  ok" EXPECT ;
+
 : PTY-BACKSPACE ( -- )
    s" 1 2 + .." SEND-S
    127 SEND-C
@@ -602,7 +614,8 @@ variable PTYNUM
    PTY-PROMPT
    PTY-ARITH
    PTY-UNKNOWN
-   PTY-SQUARE ;
+   PTY-SQUARE
+   PTY-UNDERDEPTH ;
 
 : PTY-EDITOR ( -- )
    PTY-BACKSPACE

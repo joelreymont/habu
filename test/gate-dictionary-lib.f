@@ -885,7 +885,10 @@ variable GD-START-NS
 : GD-STRUCTURE-MISUSE ( -- )
    GE-HB-RESET
    GE-SRC-RESET
-   s" CELL +FIELD GD-NO-STRUCT.FIELD" GE-SRC-LINE
+   \ Depth satisfies +FIELD's declared inputs ( ptr a n n ) so the body's own
+   \ state check is reached: an underdepth bare call now fails closed earlier
+   \ with `hb: interpret stack underdepth:` (test/underdepth-gate.f).
+   s" 0 0 CELL +FIELD GD-NO-STRUCT.FIELD" GE-SRC-LINE
    $4C s" structure: no active structure" s" structures reject field outside begin" GD-RUN-BAD-SOURCE
    GE-SRC-RESET
    s" BEGIN-STRUCTURE OUTER" GE-SRC-LINE

@@ -826,6 +826,13 @@ points stay listed.
   fail closed with `hb: internal engine word:` + rc 70 on both cold-prefix
   paths; positives pin E-UNDEFINED/E-UNDERFLOW, unchecked user words, TRUST/
   TRUSTED:, the structures + type-family DSLs, and XREF introspection.
+- `test/underdepth-gate.f` — certified-word interpret underdepth gate
+  regressions (dot habu-habu-certified-words-84e84eaf): a certified/TRUSTED:/
+  defer/axiom'd word executed at bare top level with fewer cells than its
+  declared inputs fails closed with `hb: interpret stack underdepth:` + rc 70
+  on both cold-prefix paths; positives pin exact/surplus depth, unguarded
+  compiled calls, the unchecked-word boundary, catchable evaluate rejects, and
+  the CHECK! probe. REPL recovery smoke: test/proc-pty.f PTY-UNDERDEPTH.
 - `test/seal.f` — friend-arena seal regressions: one negative forge per guarded
   PROT-GUARD sink (`!`/`c!`/`+!`/`atomic!`/`atomic-add`/`atomic-cas` plus the
   `read`/`ioctl`/`poll`/`readlink`/`stat64`/`lstat64`/`getdirentries64`/`mmap`

@@ -16,7 +16,12 @@
 \ distinct exit status (80, mirroring the snbad rc-79 corrupt-trailer path).
 \ Version 0 (an old 40-byte trailer) still restores. Bump on any layout change
 \ that a prior engine would misread.
-1 constant SNAP-FORMAT-VERSION
+\ Version 2: dict record [16] bits 52-59 became the DNAME-MIN-IN certified
+\ input-arity band (dot habu-habu-certified-words-84e84eaf); a pre-change
+\ engine restoring a post-change snapshot would fold the band into name
+\ lengths (its length reads clear only the top 4 bits), so it must fail
+\ closed rc 80 instead of misreading the dictionary.
+2 constant SNAP-FORMAT-VERSION
 create TRL 48 allot
 variable STB  variable STSZ  variable SDB  variable SCL  variable SDL
 variable SNL  variable SFTS  variable SPAD  variable SFD

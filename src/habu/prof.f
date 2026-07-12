@@ -22,7 +22,7 @@ $0042 constant MACOS-SA-PROF-FLAGS
       0 1 MOVZ,  1 5 24 ADDI,  2 5 16 LDR,
       9 2 DNAME-EXT ANDI,  9 pinl CBZ,
          1 5 24 LDR,
-      pinl LBL,  2 2 4 LSLI,  2 2 4 LSRI,  NR-WRITE SYS,
+      pinl LBL,  2 2 12 LSLI,  2 2 12 LSRI,  NR-WRITE SYS,
       SP SP 16 SUBI,  12 32 MOVZ,  12 SP 0 STRB,
       0 1 MOVZ,  1 SP 0 ADDI,  2 1 MOVZ,  NR-WRITE SYS,
       SP SP 16 ADDI,

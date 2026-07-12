@@ -27,7 +27,14 @@ $C1000  constant DICT-SIZE     \ dict + control-flow stack; code area follows
                                \ mirrors src/habu/layout.f)
 48      constant DREC          \ dict record: addr(8) clen(8) name-len|flags(8) name|ptr(16) wid(8)
 16      constant DNAME-INL
-$0FFFFFFFFFFFFFFF constant DNAME-LEN-MASK
+$000FFFFFFFFFFFFF constant DNAME-LEN-MASK
+\ DNAME-MIN-IN (bits 52-59): certified minimum input arity band, poked by the
+\ native checker/seal pass (src/habu/layout.f, dot
+\ habu-habu-certified-words-84e84eaf). Stage0 never sets the band (no checker),
+\ so narrowing the length mask and the 12-bit LSLI/LSRI length reads below is
+\ behavior-identical here and keeps the mirror's record layout numerically
+\ equal to the native one on the recovery path.
+$0FF0000000000000 constant DNAME-MIN-IN-MASK
 $1000000000000000 constant DNAME-IMM
 $2000000000000000 constant DNAME-EXT
 \ DNAME-WIDE (bit 62): recorded effect carries a wider-than-cell layout value;
@@ -886,7 +893,7 @@ previous definitions
    3 $20 MOVZ,  5 DBASE 0 ADDI,  6 NDICT 0 ADDI,  11 0 MOVZ,   \ fold mask, rec, count, result
    wl LBL,  6 wend CBZ,
       9 5 40 LDR,  9 2 CMP,  C-NE wnext BCOND,    \ wid mismatch
-      9 5 16 LDR,  9 9 4 LSLI,  9 9 4 LSRI,  9 1 CMP,  C-NE wnext BCOND,    \ namelen mismatch
+      9 5 16 LDR,  9 9 12 LSLI,  9 9 12 LSRI,  9 1 CMP,  C-NE wnext BCOND,    \ namelen mismatch
       16 5 24 ADDI,
       9 5 16 LDR,  9 9 DNAME-EXT ANDI,  9 winl CBZ,
          16 5 24 LDR,
@@ -1171,7 +1178,7 @@ previous definitions
    qloop LBL,
       6 qmiss CBZ,
       14 5 40 LDR,  15 0 MOVN,  14 15 CMP,  C-NE qnext BCOND,
-      14 5 16 LDR,  14 14 4 LSLI,  14 14 4 LSRI,  14 7 CMP,  C-NE qnext BCOND,
+      14 5 16 LDR,  14 14 12 LSLI,  14 14 12 LSRI,  14 7 CMP,  C-NE qnext BCOND,
       16 5 24 ADDI,
       14 5 16 LDR,  14 14 DNAME-EXT ANDI,  14 qinl CBZ,
          16 5 24 LDR,
@@ -1209,7 +1216,7 @@ previous definitions
          8 2 CMP,  C-NE fnext BCOND,  14 1 MOVZ,
       fcmp LBL,
       14 7 CMP,  C-LT fnext BCOND,
-      15 5 16 LDR,  15 15 4 LSLI,  15 15 4 LSRI,  15 4 CMP,  C-NE fnext BCOND,
+      15 5 16 LDR,  15 15 12 LSLI,  15 15 12 LSRI,  15 4 CMP,  C-NE fnext BCOND,
       16 5 24 ADDI,
       15 5 16 LDR,  15 15 DNAME-EXT ANDI,  15 finl CBZ,
          16 5 24 LDR,
@@ -2362,7 +2369,7 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
       9 12 24 LDR,
    pinl LBL,
    9 G-PUSH
-   9 12 16 LDR,  9 9 4 LSLI,  9 9 4 LSRI,  9 G-PUSH ;
+   9 12 16 LDR,  9 9 12 LSLI,  9 9 12 LSRI,  9 G-PUSH ;
 
 : C-PUSH-DATA-CELL ( n -- ) {: off :}
    9 DATA off LDR,  9 G-PUSH ;
@@ -2699,7 +2706,7 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
    nloop LBL,
       6 nmake CBZ,
       14 5 40 LDR,  15 0 MOVN,  14 15 CMP,  C-NE nnext BCOND,
-      14 5 16 LDR,  14 14 4 LSLI,  14 14 4 LSRI,  14 17 CMP,  C-NE nnext BCOND,
+      14 5 16 LDR,  14 14 12 LSLI,  14 14 12 LSRI,  14 17 CMP,  C-NE nnext BCOND,
       16 5 24 ADDI,
       14 5 16 LDR,  14 14 DNAME-EXT ANDI,  14 ninl CBZ,
          16 5 24 LDR,
@@ -2895,7 +2902,7 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
    {: hit miss :}
    LBL LBL {: cmp inl :} \ typed-local-lint: allow-bare-local
    14 5 40 LDR,  15 0 MOVN,  14 15 CMP,  C-NE miss BCOND,
-   14 5 16 LDR,  14 14 4 LSLI,  14 14 4 LSRI,
+   14 5 16 LDR,  14 14 12 LSLI,  14 14 12 LSRI,
    15 DATA TKL-CELL LDR,  14 15 CMP,  C-NE miss BCOND,
    16 5 24 ADDI,
    14 5 16 LDR,  14 14 DNAME-EXT ANDI,  14 inl CBZ,

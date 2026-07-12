@@ -17,7 +17,19 @@ $48425350414E5321 constant SNAP-MAGIC
 $C1000 constant DICT-SIZE
 48 constant DREC
 16 constant DNAME-INL
-$0FFFFFFFFFFFFFFF constant DNAME-LEN-MASK
+$000FFFFFFFFFFFFF constant DNAME-LEN-MASK
+\ DNAME-MIN-IN (bits 52-59): certified minimum input arity in cells, poked at
+\ certification time (checker RECMI latch -> publish tails / seal-time
+\ internal-mark pass; dot habu-habu-certified-words-84e84eaf). LFIND folds the
+\ byte into x13 bits 8-15; EM-INTERPRET-FIND fails closed BEFORE the BLR when
+\ the interpret stack holds fewer cells, so a certified word can never consume
+\ below-base garbage at bare top level. 0 = unmarked (unchecked words and
+\ words without signatures: the documented boundary). Compiled calls inside
+\ checked words are checker-proven and carry no guard. Claimed band: bits
+\ 52-59 of the record flags cell [16], below IMM/EXT/WIDE/INT (bits 60-63)
+\ and above the narrowed name-length field (bits 0-51); native length reads
+\ clear the top 12 bits (LSLI 12 / LSRI 12).
+$0FF0000000000000 constant DNAME-MIN-IN-MASK
 $1000000000000000 constant DNAME-IMM
 $2000000000000000 constant DNAME-EXT
 \ DNAME-WIDE (bit 62): the word's recorded stack effect carries a

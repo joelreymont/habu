@@ -27,7 +27,16 @@
 \ 148855-byte page floor, so the macOS ratchet is unchanged on the merged fixpoint.
 \ 2026-07-12 macOS measurement remains 148855 after the staged `;package`
 \ migration removed the legacy keyword data/dispatch entry.
-148855 constant GB-SIZE-BASELINE-MACOS
+\ 2026-07-13 macOS bump 148855 -> 165367: certified-word underdepth gate (dot
+\ habu-habu-certified-words-84e84eaf): DNAME-MIN-IN fold in LFIND, the
+\ EM-INTERPRET-FIND depth guard + LMININ diagnostic leg, the publish-tail
+\ min-in poke, the min-in-mark prim, the AOT compact-record min-in byte, and
+\ ~14 new LARITY guard rows (evaluate/catch/ffi-call*/patch32/search-wl/
+\ set-check/cp!/ndict!). ~1 KB of emitted code crossing the 16 KB page floor
+\ plus the code-signature growth accounts for the page-granular delta. The
+\ Linux row is untouched; its next lane run fails closed with the measured
+\ size to commit.
+165367 constant GB-SIZE-BASELINE-MACOS
 102592 constant GB-SIZE-BASELINE-LINUX   \ fable re-measure 2026-07-04 (Orin, habu-re-measure-set);
                                          \ STALE for the merged engine (adds the TFAM +1269-line
                                          \ lowering) — the next Linux lane run fails closed with the

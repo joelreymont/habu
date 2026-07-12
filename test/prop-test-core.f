@@ -577,6 +577,9 @@ create AXBUF AXBUF-CAP allot
 \ newest published dict record inside an mprotect bracket (a live dictionary
 \ mutation, seal-capture class), and rec-wide-publish consumes the checker's
 \ RECW latch and may call it — neither can run under census dummies.
+\ rec-min-in@ drains the checker's RECMI publish latch the same way (dot
+\ habu-habu-certified-words-84e84eaf): a census execution would desync the
+\ latch the engine publish tail consumes for the DNAME-MIN-IN record poke.
 \ prot-wid-add mutates the sealed friend-band protected-WID registry (a
 \ seal-capture-class live seal mutation) and its overflow path exits the
 \ process (NR-EXIT-GROUP rc 84), so it can never take a dummy operand.
@@ -595,7 +598,7 @@ create AXBUF AXBUF-CAP allot
 \ internal-word marking pass leaves them top-level executable (dot
 \ habu-hb-crash-bare-c5be6634).
 : AX-NOEXEC-C ( -- ptr u8 n )
-   s"  seal-capture seal-friend prot-wid-add wf-tokix@ wf-off@ wf-pos@ wf-fam@ wf-width@ wf-term@ wf-flags@ tfam-width@ locw-hw@ p2-carve-w p2-live-w@ p2-live-cum@ p2-locseq-reset wide-mark rec-wide-publish layout-valid-desc-cell tfam-name$ tfam-arity@ tfam-kind@ tfam-public? tfam-derive-eq? tfam-derive-hash? tfam-var-start@ tfam-var-count@ sumv-name$ sumv-ctor-pkg$ lower-cert:cell@ lower-cert:bytes trust check check! typefamily sumtype enum product layout-buffer " ;
+   s"  seal-capture seal-friend prot-wid-add wf-tokix@ wf-off@ wf-pos@ wf-fam@ wf-width@ wf-term@ wf-flags@ tfam-width@ locw-hw@ p2-carve-w p2-live-w@ p2-live-cum@ p2-locseq-reset wide-mark rec-wide-publish rec-min-in@ layout-valid-desc-cell tfam-name$ tfam-arity@ tfam-kind@ tfam-public? tfam-derive-eq? tfam-derive-hash? tfam-var-start@ tfam-var-count@ sumv-name$ sumv-ctor-pkg$ lower-cert:cell@ lower-cert:bytes trust check check! typefamily sumtype enum product layout-buffer " ;
 
 : AX-CAT ( ptr u8 n -- n )
    2dup AX-HAS-QUOTE? if 2drop AX-NOEXEC exit then

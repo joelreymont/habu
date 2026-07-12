@@ -104,7 +104,11 @@ variable BAD  variable LI
    s" src/habu/regalloc.f"  LINT-FILE   s" src/habu/jit.f"       LINT-FILE
    s" src/habu/habu2.f"     LINT-FILE   s" src/habu/snap-lib.f"  LINT-FILE
    s" src/habu/snap.f"      LINT-FILE
-   BAD @ 0 > IF  s" shadow-lint: " type BAD @ . s"  collision(s)" type cr  1 die
+   \ `1 die` alone left die's message operands to the CALLER's stack — a
+   \ latent below-base read the certified-underdepth gate now rejects (dot
+   \ habu-habu-certified-words-84e84eaf); die carries its own message.
+   BAD @ 0 > IF  s" shadow-lint: " type BAD @ . s"  collision(s)" type cr
+      s" shadow-lint: prim-name collision(s)" 1 die
    ELSE  s" shadow-lint: clean (" type PN# @ . s"  prims checked)" type cr  THEN ;
 SHADOW-LINT
 ;package
