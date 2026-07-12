@@ -478,111 +478,114 @@ variable USED
 : LF ( -- )
    10 C+ ;
 
-: HEX-C ( n -- ) {: n:n :}
-   n 10 < if n $30 + else n 10 - $41 + then C+ ;
-
-: HEX4 ( n -- ) {: n:n :}
-   $24 C+
-   n $1000 / $F and HEX-C
-   n $100 / $F and HEX-C
-   n $10 / $F and HEX-C
-   n $F and HEX-C ;
-
-: ADD-ROW ( n -- ) {: i:n :}
-   $1000 i + HEX4 32 C+
-   $2000 i + HEX4
-   s"  owner-wid-add TTRUE" $+ LF ;
-
 : HEADER ( -- )
    s" require lib/test.f" $+ LF
    s" T-RESET" $+ LF
-   s" variable OWT-PROT0" $+ LF
-   s" data-base PROT-WID-N-CELL + @ OWT-PROT0 !" $+ LF
+   s" package OWNER-WID-CHECK" $+ LF
+   s" public" $+ LF
+   s" : PREFLIGHT ( n n n -- bool ) owner-wid-preflight? ;" $+ LF
+   s" : PUBLIC? ( n -- bool ) owner-wid-public? ;" $+ LF
+   s" : PRIVATE? ( n -- bool ) owner-wid-private? ;" $+ LF
+   s" : MEMBER? ( n -- bool ) owner-wid? ;" $+ LF
+   s" ;package" $+ LF
    s" data-base OWNER-WID-N-CELL + @ 0 T=" $+ LF
-   s" $1000 $2000 0 owner-wid-preflight? TFALSE" $+ LF
-   s" 0 $2000 OWNER-WID-MAX owner-wid-preflight? TFALSE" $+ LF
-   s" $1000 0 OWNER-WID-MAX owner-wid-preflight? TFALSE" $+ LF
-   s" $1000 $1000 OWNER-WID-MAX owner-wid-preflight? TFALSE" $+ LF
-   s" $100000000 $2000 OWNER-WID-MAX owner-wid-preflight? TFALSE" $+ LF
-   s" $1000 $100000000 OWNER-WID-MAX owner-wid-preflight? TFALSE" $+ LF
-   s" $1000 $2000 OWNER-WID-MAX 1+ owner-wid-preflight? TFALSE" $+ LF
-   s" 0 $2000 owner-wid-add TFALSE" $+ LF
-   s" $1000 $1000 owner-wid-add TFALSE" $+ LF
-   s" $100000000 $2000 owner-wid-add TFALSE" $+ LF
+   s" $1000 $2000 1 OWNER-WID-CHECK:PREFLIGHT TTRUE" $+ LF
+   s" $1000 $2000 0 OWNER-WID-CHECK:PREFLIGHT TFALSE" $+ LF
+   s" 0 $2000 OWNER-WID-MAX OWNER-WID-CHECK:PREFLIGHT TFALSE" $+ LF
+   s" $1000 0 OWNER-WID-MAX OWNER-WID-CHECK:PREFLIGHT TFALSE" $+ LF
+   s" $1000 $1000 OWNER-WID-MAX OWNER-WID-CHECK:PREFLIGHT TFALSE" $+ LF
+   s" $100000000 $2000 OWNER-WID-MAX OWNER-WID-CHECK:PREFLIGHT TFALSE" $+ LF
+   s" $1000 $100000000 OWNER-WID-MAX OWNER-WID-CHECK:PREFLIGHT TFALSE" $+ LF
+   s" $1000 $2000 OWNER-WID-MAX 1+ OWNER-WID-CHECK:PREFLIGHT TFALSE" $+ LF
    s" data-base OWNER-WID-N-CELL + @ 0 T=" $+ LF
    s" data-base OWNER-WID-OFF + @ 0 T=" $+ LF ;
 
-: EXACT-CAP ( -- )
-   0 ADD-ROW
-   s" $1000 $2000 owner-wid-add TFALSE" $+ LF
-   s" $2000 $1000 owner-wid-add TFALSE" $+ LF
-   s" $3000 $1000 owner-wid-add TFALSE" $+ LF
-   s" data-base OWNER-WID-N-CELL + @ 1 T=" $+ LF
-   s" data-base OWNER-WID-OFF + @ $200000001000 T=" $+ LF
-   s" data-base OWNER-WID-OFF OWNER-WID-ROW + + @ 0 T=" $+ LF
-   255 1 ?do i ADD-ROW loop
-   s" $10FF $20FF 255 owner-wid-preflight? TFALSE" $+ LF
-   s" data-base OWNER-WID-N-CELL + @ 255 T=" $+ LF
-   s" data-base OWNER-WID-OFF OWNER-WID-ROW 255 * + + @ 0 T=" $+ LF
-   255 ADD-ROW
-   s" data-base OWNER-WID-N-CELL + @ OWNER-WID-MAX T=" $+ LF ;
-
-: REJECTS ( -- )
-   s" $1100 $2100 owner-wid-add TFALSE" $+ LF
-   s" $1000 $2000 owner-wid-add TFALSE" $+ LF
-   s" $2000 $1000 owner-wid-add TFALSE" $+ LF
-   s" $3000 $1000 owner-wid-add TFALSE" $+ LF
-   s" data-base OWNER-WID-N-CELL + @ OWNER-WID-MAX T=" $+ LF
-   s" data-base OWNER-WID-OFF + @ $200000001000 T=" $+ LF
-   s" data-base OWNER-WID-OFF OWNER-WID-ROW 255 * + + @ $20FF000010FF T=" $+ LF ;
-
 : ROLES ( -- )
-   s" $1000 owner-wid-public? TTRUE" $+ LF
-   s" $1000 owner-wid-private? TFALSE" $+ LF
-   s" $2000 owner-wid-private? TTRUE" $+ LF
-   s" $2000 owner-wid-public? TFALSE" $+ LF
-   s" $10FF owner-wid? TTRUE" $+ LF
-   s" $20FF owner-wid? TTRUE" $+ LF
-   s" $3000 owner-wid? TFALSE" $+ LF ;
-
-: CONSTRUCTOR ( -- )
-   s" SUMTYPE owf 1 VARIANT same a ;VARIANT ;SUMTYPE" $+ LF
-   s" data-base PROT-WID-N-CELL + @ OWT-PROT0 @ 1+ T=" $+ LF
-   s" data-base OWNER-WID-N-CELL + @ OWNER-WID-MAX T=" $+ LF
-   s" T-REPORT" $+ LF ;
+   s" $1000 OWNER-WID-CHECK:PUBLIC? TFALSE" $+ LF
+   s" $2000 OWNER-WID-CHECK:PRIVATE? TFALSE" $+ LF
+   s" $1000 OWNER-WID-CHECK:MEMBER? TFALSE" $+ LF
+   s" $10FF OWNER-WID-CHECK:PUBLIC? TFALSE" $+ LF
+   s" $20FF OWNER-WID-CHECK:PRIVATE? TFALSE" $+ LF
+   s" $10FF OWNER-WID-CHECK:MEMBER? TFALSE" $+ LF
+   s" $20FF OWNER-WID-CHECK:MEMBER? TFALSE" $+ LF ;
 
 : SOURCE$ ( -- ptr u8 n )
-   RESET HEADER EXACT-CAP REJECTS ROLES CONSTRUCTOR
+   RESET HEADER ROLES
+   s" T-REPORT" $+ LF
    BUF USED @ ;
 
 public
 
+: ADD-FORGE$ ( -- ptr u8 n )
+   SB-RESET
+   s" : OWT-FORGE ( n n -- bool ) owner-wid-add ;" SB-APPEND SLV-LF
+   SB$ ;
+
+: ADD-LOOKUP-FORGE$ ( -- ptr u8 n )
+   SB-RESET
+   s" require lib/test.f" SB-APPEND SLV-LF
+   s" T-RESET" SB-APPEND SLV-LF
+   S\" s\" owner-wid-add\" 0 search-wl 0 T=" SB-APPEND SLV-LF
+   s" T-REPORT" SB-APPEND SLV-LF
+   SB$ ;
+
+: BAD$ ( ptr u8 n ptr u8 n -- ptr u8 n ) {: ins:ptr inu:n prim:ptr primu:n :}
+   SB-RESET
+   s" : OWT-BAD ( " SB-APPEND
+   ins inu SB-APPEND
+   s"  -- n ) " SB-APPEND
+   prim primu SB-APPEND
+   s"  ;" SB-APPEND SLV-LF
+   SB$ ;
+
+: ASSERT-ADD-HIDDEN ( -- )
+   SLV-EXITED @ TTRUE
+   SLV-RC @ 70 T=
+   SLV-ERR$ s" owner-wid-add" CONTAINS? TTRUE ;
+
+: ASSERT-CHECKER-BOOL ( -- )
+   SLV-EXITED @ TTRUE
+   SLV-RC @ 70 T=
+   SLV-ERR$ s" expected: n" CONTAINS? TTRUE
+   SLV-ERR$ s" actual: bool" CONTAINS? TTRUE ;
+
+: CHECKER-REJECTS ( -- )
+   s" n n n" s" owner-wid-preflight?" BAD$ SLV-RUN-LOAD ASSERT-CHECKER-BOOL
+   s" n" s" owner-wid-public?" BAD$ SLV-RUN-LOAD ASSERT-CHECKER-BOOL
+   s" n" s" owner-wid-private?" BAD$ SLV-RUN-LOAD ASSERT-CHECKER-BOOL
+   s" n" s" owner-wid?" BAD$ SLV-RUN-LOAD ASSERT-CHECKER-BOOL ;
+
 : COUNT-FORGE$ ( -- ptr u8 n )
    SB-RESET
-   s" data-base $47C0 + 0 swap !" SB-APPEND SLV-LF
+   s" $47C0 constant SLF-OWNER-N" SB-APPEND SLV-LF
+   s" data-base SLF-OWNER-N + 0 swap !" SB-APPEND SLV-LF
    SB$ ;
 
 : TABLE-FORGE$ ( -- ptr u8 n )
    SB-RESET
-   s" data-base $47C8 + 9 swap c!" SB-APPEND SLV-LF
+   s" $47C8 constant SLF-OWNER-ROWS" SB-APPEND SLV-LF
+   s" data-base SLF-OWNER-ROWS + 9 swap c!" SB-APPEND SLV-LF
    SB$ ;
 
 : END-FORGE$ ( -- ptr u8 n )
    SB-RESET
-   s" data-base $4FC7 + 0 swap c!" SB-APPEND SLV-LF
+   s" $4FC8 constant SLF-OWNER-END" SB-APPEND SLV-LF
+   s" data-base SLF-OWNER-END 1- + 0 swap c!" SB-APPEND SLV-LF
    SB$ ;
 
 : PAST-FORGE$ ( -- ptr u8 n )
    SB-RESET
-   s" data-base $4FC8 + dup @ swap !" SB-APPEND SLV-LF
+   s" $4FC8 constant SLF-OWNER-END" SB-APPEND SLV-LF
+   s" data-base SLF-OWNER-END + dup @ swap !" SB-APPEND SLV-LF
    SB$ ;
 
 : FFI-FORGE$ ( -- ptr u8 n )
    SB-RESET
    s" require lib/ffi.f" SB-APPEND SLV-LF
+   s" $47C0 constant SLF-OWNER-N" SB-APPEND SLV-LF
    s" TRUSTED: OWF-RET ( -- n ) cp@ {: fn:n :} $D65F03C0 fn patch32 fn ;" SB-APPEND SLV-LF
    s" TRUSTED: OWF-WRITE ( ptr a -- n ) {: p:ptr :} FFI:RESET p 16 0 FFI:WRITABLE! FFI:ARGS FFI:REG-LENS 1 OWF-RET ffi-call-bounded ;" SB-APPEND SLV-LF
-   s" data-base $47B8 + OWF-WRITE drop" SB-APPEND SLV-LF
+   s" data-base SLF-OWNER-N 8 - + OWF-WRITE drop" SB-APPEND SLV-LF
    SB$ ;
 
 : LAYOUT ( -- )
@@ -591,13 +594,20 @@ public
    OWNER-WID-ROW 8 T=
    OWNER-WID-PUB 0 T=
    OWNER-WID-PRI 4 T=
+   EVAL-FRAME EVAL-MAX-DEPTH EVAL-FRAME-SIZE * + OWNER-WID-N-CELL <= TTRUE
    OWNER-WID-OFF OWNER-WID-MAX OWNER-WID-ROW * + OWNER-WID-END T=
    OWNER-WID-END TXN-STATE-OFF <= TTRUE ;
 
 : RUN ( -- )
+   s" checked source cannot call the internal owner-WID mutator" T-LABEL
+   ADD-FORGE$ SLV-RUN-LOAD ASSERT-ADD-HIDDEN
+   s" ordinary source cannot look up the internal owner-WID mutator" T-LABEL
+   ADD-LOOKUP-FORGE$ SLV-RUN-LOAD SLV-ASSERT-OK
+   s" owner-WID query primitives retain exact checked bool effects" T-LABEL
+   CHECKER-REJECTS
    s" owner WID registry layout fits before lowering state" T-LABEL
    LAYOUT
-   s" owner WID pairs reserve atomically through exact capacity" T-LABEL
+   s" owner-WID preflight and role queries are checked and read-only" T-LABEL
    SOURCE$ SLV-RUN-LOAD SLV-ASSERT-OK ;
 
 ;package

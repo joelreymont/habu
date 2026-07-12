@@ -814,6 +814,12 @@ points stay listed.
   post-seal language features still update protected cells via engine primitives.
   `patch32`/`snap-rebase` are compiler-internal and hand-review only (noted in
   the file).
+- `test/owner-wid-emitter.f` — test-image-only cold emitter hook that drives the
+  unpublished owner-pair mutator through exact capacity and atomic rejection.
+- `test/owner-wid-image.f` / `test/owner-wid-internal.f` — isolated native image
+  builder and owning runner for the cold owner-registry proof.
+- `test/owner-wid-state.f` / `test/owner-wid-call.f` — read-only role/capacity
+  assertions and hostile unresolved-call fixture executed by that runner.
 - `test/wide-store-seal.f` — generated checked W=2 ADT store forges proving
   ordinary storage and first/later-cell protected-band intersections: zero-valued
   payload/tag attempts against the seal latch must trap `E-SEAL-VIOLATION`

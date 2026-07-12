@@ -2741,45 +2741,61 @@ variable LPUBQ
 variable LPRIQ
 variable LANYQ
 variable LPREF
+variable LADD
+variable COLD-XT
+0 COLD-XT !
+
+: SCAN-INIT ( -- )
+   13 0 MOVZ,
+   6 DATA OWNER-WID-N-CELL LDR,
+   7 0 MOVZ,
+   5 OWNER-WID-OFF MOVZ,  5 DATA 5 ADD, ;
+
+: SCAN-NEXT ( label -- ) {: loop:label :}
+   5 5 OWNER-WID-ROW ADDI,
+   7 7 1 ADDI,
+   loop B, ;
+
+: ROLE-ROW ( label label n -- ) {: next:label done:label role:n :}
+   14 5 role LDRW,
+   14 9 CMP,  C-NE next BCOND,
+   13 1 MOVZ,
+   done B, ;
 
 : ROLE ( label n -- ) {: entry:label role:n :}
    LBL LBL LBL {: loop:label next:label done:label :}
    entry LBL,
-   13 0 MOVZ,
-   6 DATA OWNER-WID-N-CELL LDR,
-   7 0 MOVZ,
-   5 OWNER-WID-OFF MOVZ,  5 DATA 5 ADD,
+   SCAN-INIT
    loop LBL,
-      7 6 CMP,  C-GE done BCOND,
-      14 5 role LDRW,  14 9 CMP,  C-NE next BCOND,
-         13 1 MOVZ,  done B,
-      next LBL,
-      5 5 OWNER-WID-ROW ADDI,  7 7 1 ADDI,  loop B,
+   7 6 CMP,  C-GE done BCOND,
+   next done role ROLE-ROW
+   next LBL,  loop SCAN-NEXT
    done LBL,  RET, ;
+
+: ANY-ROW ( label label -- ) {: next:label done:label :}
+   14 5 OWNER-WID-PUB LDRW,
+   14 9 CMP,  C-EQ done BCOND,
+   14 5 OWNER-WID-PRI LDRW,
+   14 9 CMP,  C-NE next BCOND,
+   done B, ;
+
+: ANY-DONE ( -- )
+   LBL {: miss:label :}
+   7 6 CMP,  C-GE miss BCOND,
+   13 1 MOVZ,
+   miss LBL,  RET, ;
 
 : ANY ( -- )
    LBL LBL LBL {: loop:label next:label done:label :}
    LANYQ LABEL@ LBL,
-   13 0 MOVZ,
-   6 DATA OWNER-WID-N-CELL LDR,
-   7 0 MOVZ,
-   5 OWNER-WID-OFF MOVZ,  5 DATA 5 ADD,
+   SCAN-INIT
    loop LBL,
-      7 6 CMP,  C-GE done BCOND,
-      14 5 OWNER-WID-PUB LDRW,  14 9 CMP,  C-EQ done BCOND,
-      14 5 OWNER-WID-PRI LDRW,  14 9 CMP,  C-NE next BCOND,
-      done B,
-      next LBL,
-      5 5 OWNER-WID-ROW ADDI,  7 7 1 ADDI,  loop B,
-   done LBL,
-   LBL {: miss:label :}
-   7 6 CMP,  C-GE miss BCOND,
-      13 1 MOVZ,
-   miss LBL,  RET, ;
+   7 6 CMP,  C-GE done BCOND,
+   next done ANY-ROW
+   next LBL,  loop SCAN-NEXT
+   done LBL,  ANY-DONE ;
 
-: PREFLIGHT ( -- )
-   LBL LBL LBL LBL {: loop:label next:label ok:label done:label :}
-   LPREF LABEL@ LBL,
+: PREFLIGHT-ARGS ( label -- ) {: done:label :}
    13 0 MOVZ,
    11 OWNER-WID-MAX CMPI,  C-HI done BCOND,
    6 DATA OWNER-WID-N-CELL LDR,
@@ -2787,36 +2803,53 @@ variable LPREF
    9 done CBZ,  10 done CBZ,
    14 9 32 LSRI,  14 done CBNZ,
    14 10 32 LSRI,  14 done CBNZ,
-   9 10 CMP,  C-EQ done BCOND,
+   9 10 CMP,  C-EQ done BCOND, ;
+
+: PREFLIGHT-ROW ( label -- ) {: done:label :}
+   14 5 OWNER-WID-PUB LDRW,
+   14 9 CMP,  C-EQ done BCOND,
+   14 10 CMP,  C-EQ done BCOND,
+   14 5 OWNER-WID-PRI LDRW,
+   14 9 CMP,  C-EQ done BCOND,
+   14 10 CMP,  C-EQ done BCOND, ;
+
+: PREFLIGHT ( -- )
+   LBL LBL LBL {: loop:label ok:label done:label :}
+   LPREF LABEL@ LBL,
+   done PREFLIGHT-ARGS
    7 0 MOVZ,
    5 OWNER-WID-OFF MOVZ,  5 DATA 5 ADD,
    loop LBL,
-      7 6 CMP,  C-GE ok BCOND,
-      14 5 OWNER-WID-PUB LDRW,
-      14 9 CMP,  C-EQ done BCOND,
-      14 10 CMP,  C-EQ done BCOND,
-      14 5 OWNER-WID-PRI LDRW,
-      14 9 CMP,  C-EQ done BCOND,
-      14 10 CMP,  C-EQ done BCOND,
-      next LBL,
-      5 5 OWNER-WID-ROW ADDI,  7 7 1 ADDI,  loop B,
+   7 6 CMP,  C-GE ok BCOND,
+   done PREFLIGHT-ROW
+   loop SCAN-NEXT
    ok LBL,  13 1 MOVZ,
    done LBL,  RET, ;
 
-: BADD ( -- )
-   LBL {: done:label :}
-   10 G-POP  9 G-POP
-   11 OWNER-WID-MAX MOVZ,  LPREF LABEL@ BL,
-   13 done CBZ,
+: STORE-PAIR ( -- )
    6 DATA OWNER-WID-N-CELL LDR,
    5 OWNER-WID-OFF MOVZ,  5 DATA 5 ADD,
    7 6 3 LSLI,  5 5 7 ADD,
    9 5 OWNER-WID-PUB STRW,
    10 5 OWNER-WID-PRI STRW,
-   6 6 1 ADDI,  6 DATA OWNER-WID-N-CELL STR,
+   6 6 1 ADDI,
+   6 DATA OWNER-WID-N-CELL STR, ;
+
+: ADD-BODY ( -- )
+   LBL {: done:label :}
+   10 G-POP  9 G-POP
+   11 OWNER-WID-MAX MOVZ,  LPREF LABEL@ BL,
+   13 done CBZ,
+   STORE-PAIR
    13 1 MOVZ,
    done LBL,
    13 SP 13 SUB,  13 G-PUSH ;
+
+: ADD-ROUTINE ( -- )
+   LADD LABEL@ LBL,
+   SP SP 16 SUBI,  30 SP 0 STR,
+   ADD-BODY
+   30 SP 0 LDR,  SP SP 16 ADDI,  RET, ;
 
 : BPRE? ( -- )
    11 G-POP  10 G-POP  9 G-POP
@@ -2838,10 +2871,21 @@ variable LPREF
 public
 
 : LABELS ( -- )
-   LBL LPUBQ !  LBL LPRIQ !  LBL LANYQ !  LBL LPREF ! ;
+   LBL LPUBQ !  LBL LPRIQ !  LBL LANYQ !  LBL LPREF !  LBL LADD ! ;
+
+: ADD-LABEL@ ( -- label )
+   LADD LABEL@ ;
+
+: PREFLIGHT-LABEL@ ( -- label )
+   LPREF LABEL@ ;
+
+: COLD-HOOK! ( [ -- ] -- )
+   COLD-XT ! ;
+
+: COLD-HOOK ( -- )
+   COLD-XT @ dup 0= if drop exit then execute ;
 
 : PRIMS ( -- )
-   s" owner-wid-add" ['] BADD 2 GDEREF-F
    s" owner-wid-preflight?" ['] BPRE? 3 GDEREF-F
    s" owner-wid-public?" ['] BPUB? 1 GDEREF-F
    s" owner-wid-private?" ['] BPRI? 1 GDEREF-F
@@ -2851,6 +2895,7 @@ public
    LPUBQ LABEL@ OWNER-WID-PUB ROLE
    LPRIQ LABEL@ OWNER-WID-PRI ROLE
    ANY
-   PREFLIGHT ;
+   PREFLIGHT
+   ADD-ROUTINE ;
 
 ;package

@@ -112,4 +112,6 @@ TR-FILES: TR-UNDER-SOURCE-FILES
    src/habu/driver-io.f src/core/include.f src/habu/aot-capture.f
    src/habu/stage2.f src/habu/stdin.f src/habu/snap-lib.f src/habu/snap.f src/habu/repl.f
    src/habu/debug-watch.f src/habu/stepper.f src/habu/debug.f
+   test/owner-wid-emitter.f test/owner-wid-image.f
+   test/owner-wid-internal.f test/owner-wid-state.f test/owner-wid-call.f
 ;TR-FILES

@@ -3627,3 +3627,8 @@ unchanged (148855). Keys for milestone 2:
   owner-registry test package's private `LF` shadowed the outer `SLV-LF`, so
   multi-line forge source was concatenated and exited rc 74. Qualify the outer
   helper explicitly when two builder scopes share a natural tail.
+- **Test hidden native authority through a separate image, never a runtime
+  switch.** A build-time environment flag that publishes an internal mutator is
+  still a production backdoor. Compose an isolated, content-keyed test image
+  whose cold emitter calls the unpublished routine, and keep ordinary lookup
+  unable to name it.

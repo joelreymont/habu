@@ -482,6 +482,36 @@ public
    src srcu out outu BF-OUT$ BF-APPEND-FILE-STREAM
    out outu BF-APPEND-LF ;
 
+package BUILD-EXT
+
+variable PATH-A
+variable PATH-U
+
+: PATH-FIELD ( -- ptr ptr u8 )
+   PATH-A 0 ptr-field ;
+
+: PATH@ ( -- ptr u8 )
+   PATH-FIELD @ ;
+
+public
+
+: CLEAR ( -- )
+   0 PATH-U ! ;
+
+: SET ( ptr u8 n -- )
+   PATH-U !
+   PATH-FIELD ! ;
+
+: ASSERT-EMPTY ( -- )
+   PATH-U @ 0 <> if s" build-fixpoint: production extension enabled" BF-BUILD-RC die then ;
+
+: APPEND ( ptr u8 n -- ) {: out:ptr outu:n :}
+   PATH-U @ 0 > if out outu PATH@ PATH-U @ BF-APPEND-SOURCE then ;
+
+;package
+
+BUILD-EXT:CLEAR
+
 : BF-READ-SOURCE ( ptr u8 n -- )
    BF-SOURCE-BUF BF-SOURCE-CAP READ-ALL BF-SOURCE-LEN ! ;
 
@@ -710,6 +740,7 @@ public
    out outu BF-APPEND-IMAGE-BYTES
    out outu BF-APPEND-TARGET-IMAGE
    out outu s" src/habu/habu1.f" BF-APPEND-SOURCE
+   out outu BUILD-EXT:APPEND
    out outu s" src/habu/prof.f" BF-APPEND-SOURCE
    out outu s" src/habu/regalloc.f" BF-APPEND-SOURCE
    out outu s" src/habu/jit.f" BF-APPEND-SOURCE
@@ -1043,9 +1074,11 @@ public
    s" snapshot image OK: candidate validated" type cr ;
 
 : BF-BUILD-ALL ( -- )
+   BUILD-EXT:ASSERT-EMPTY
    BF-BUILD-STDIN-FRESH ;
 
 : BF-BUILD-SNAP-FRESH ( -- )
+   BUILD-EXT:ASSERT-EMPTY
    BF-BUILD-ALL
    BF-BUILD-SNAP-FROM-STDIN ;
 
@@ -1089,6 +1122,7 @@ public
    s" bin" [: BF-REMOVE-BIN-OTHER ;] WALK-FILES ;
 
 : BF-INSTALL ( -- )
+   BUILD-EXT:ASSERT-EMPTY
    BF-BUILD-STDIN-FRESH
    BF-INSTALL-HB
    BF-CLEAN-BIN
@@ -1262,6 +1296,7 @@ public
    SCRIPT-ARGC ;
 
 : BF-MAIN ( -- )
+   BUILD-EXT:ASSERT-EMPTY
    BF-PARSE-FORCE {: argn:n :}
    BF-PIN-RESET BF-PIN-ON!
    argn 0= if BF-BUILD-ALL-CACHED exit then

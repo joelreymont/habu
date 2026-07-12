@@ -376,6 +376,10 @@ TEST:SUITE friend-arena-seal
    test/seal.f
 TEST:;SUITE
 
+TEST:SUITE owner-wid-internal
+   test/owner-wid-internal.f
+TEST:;SUITE
+
 TEST:SUITE friend-arena-absence
    test/seal-absence.f
 TEST:;SUITE
