@@ -61,8 +61,10 @@ bin/hb --load maki/eval-matrix-main.f -- run1.txt run2.txt ...
 ```
 
 With no arguments it replays the committed synthetic fixtures under
-`maki/transcripts/` (mirroring the 2026-06-27 recorded round: SAXPY 5/5; softmax 3/5
-first-try, repairs green in 1 and 2 rounds -> pass@1/2/3 = 600/900/1000 per-mille),
+`maki/transcripts/` (mirroring the 2026-06-27 recorded round: every saxpy sample
+green first try; the softmax misses repair green in one and two rounds, so its
+pass@k column climbs to full pass by the third attempt — the replayed table
+itself is the pinned source for the exact per-mille numbers),
 which is also how the maki suite exercises the exact durable command. The maki model
 train/eval leg is `maki/eval-train.f`: it runs the committed Adam MLP + attention
 trainers end-to-end and reports steps, milli-loss initial/final, and the committed
