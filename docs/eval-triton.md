@@ -654,3 +654,59 @@ then sweeps ALL THREE modes through the full K-looping `MMM` — **element-exact
   licensed tf32 golden row is bit-identical to rung 1). The ldmatrix mechanism
   stays committed, device-proven, and selectable for the higher-reuse rung where
   the per-fragment cost amortizes 8× and Bs can be swizzled.
+
+## Live pass@k round via the transcript harness (2026-07-12)
+
+The first pass@k round recorded and graded entirely through the committed
+transcript harness — no `/tmp` scripts, no ad hoc subagent logs. This is the
+durable re-run the 2026-06-27 section's "Reproduction status" asked for: the
+in-tree grader (`maki/eval-matrix-main.f`) is the judge, the generation run is a
+committed transcript, and the softmax prompt carries the **corrected**
+`ROW-STORE` order (`tile span rowctx`).
+
+Protocol: generator = independent **claude-opus-4-8** subagents (`claude` CLI
+print mode, `--tools "" --safe-mode`, one fresh session per sample — blind to
+each other, to the grader, and to the repo), **n = 5 per task**, each given only
+the task statement + the committed authoring-surface stack effects (the
+`lib/ptx/tile.f` / `collective.f` / `tile-v4.f` contracts). Judge = the
+committed checker via the replay harness. Repair = at most ONE round: the raw
+checker diagnostic fed back to the SAME generator session, the repair recorded
+as the sample's next candidate line. Candidates are verbatim model output.
+Transcript: `maki/transcripts/live-habu-ptx-2026-07-12.txt`; replay:
+
+```
+bin/hb --load maki/eval-matrix-main.f -- maki/transcripts/live-habu-ptx-2026-07-12.txt
+```
+
+| task | target | n | green | pass@1-x1000 | pass@2-x1000 | pass@3-x1000 | repaired | repair-rounds | tokens-to-green | GB/s-x10 | device | graded |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| saxpy | habu-ptx | 5 | 4 | 800 | 1000 | 1000 | 1 | 1 | 172 | not-run | not-run | checker |
+| softmax | habu-ptx | 5 | 5 | 1000 | 1000 | 1000 | 0 | 0 | 292 | not-run | not-run | checker |
+| fused-relu | habu-ptx | 5 | 5 | 1000 | 1000 | 1000 | 0 | 0 | 150 | not-run | not-run | checker |
+
+- **Softmax 5/5 first-try with the corrected prompt.** This discharges the
+  2026-06-27 caveat: the earlier 3/5 was the mis-specified `ROW-STORE` order in
+  the prompt, not softmax being harder in Habu-PTX. With the committed contract
+  quoted correctly, every sample used the natural tile-on-stack idiom and
+  certified first try.
+- **The one live failure was exactly the checker's home turf.** The saxpy sx1
+  draft built three separate `GRID-CTX` contexts (one per access) instead of
+  reusing one; the checker rejected at author time, zero GPU, with the located
+  diagnostic `in k: at '+.' expected: tile<f32,a,fresh-mask-live-a>
+  tile<f32,a,fresh-mask-live-a> actual: tile<f32,b,fresh-mask-live-b>
+  tile<f32,a,fresh-mask-live-a>` — the fresh-mask discipline catching a
+  duplicated-context bug that would compile clean in an unchecked target (each
+  load/store is individually well-formed; only the composition is wrong). Fed
+  that raw diagnostic, the same session repaired to the single-context idiom in
+  one round. Unbiased pass@k (n=5, c=4): pass@1 = 0.8, pass@2 = pass@3 = 1.0.
+- **The fused chain stayed 5/5** (`relu(a*x+y)` over the v4 vocabulary),
+  consistent with the 2026-06-27 fused-relu round: chain length added no
+  first-try failures when the surface contracts are stated precisely.
+- Honest scope: host-only round (GB/s + device columns stay `not-run`; the
+  device-golden arm is unchanged from the measured sections above). Generator
+  population is Claude subagents — a statement about this model family, not all
+  LLMs. There is no Triton arm in this round: nothing here revises the recorded
+  Triton column.
+- Durability: the transcripts are committed static files, so the graded tallies
+  above are deterministic replay — `maki/eval-live-test.f` (in the maki suite)
+  re-replays the transcript and pins every cell of this table.

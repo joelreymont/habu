@@ -1,0 +1,17 @@
+Authoring surface you may use (word : exact stack effect : semantics). One thread block processes one matrix row:
+- ROW : ( -- rowidx<e> ) : this block's row index
+- ROW-SPAN : ( matrix<space-global,t,e,k> rowidx<e> -- span<space-global,t,k> ) : the row's 1-D span within the matrix
+- ROW-CTX : ( span<space-global,t,k> -- rowctx<b,k,fresh-mask-live> ) : per-row addressing context (bounds mask over the row's columns); reusable for every load/store on spans of the same width
+- ROW-LOAD : ( span<space-global,t,k> rowctx<b,k,m> -- tile<t,b,m> ) : masked load of this thread's row elements
+- ROW-STORE : ( tile<t,b,m> span<space-global,t,k> rowctx<b,k,m> -- ) : masked store of the tile into the row; note the order: the tile is the DEEPEST argument, then the span, then the rowctx on top
+- BLOCK-MAX : ( tile<f32,b,m> -- uniform<f32> ) : block-wide max reduction over the tile
+- BLOCK-SUM : ( tile<f32,b,m> -- uniform<f32> ) : block-wide sum reduction over the tile
+- PTX:B- : ( tile<t,b,m> uniform<t> -- tile<t,b,m> ) : subtract the uniform from every element (call it with the exact name PTX:B-)
+- PTX:B/ : ( tile<t,b,m> uniform<t> -- tile<t,b,m> ) : divide every element by the uniform (call it with the exact name PTX:B/)
+- EXP. : ( tile<f32,b,m> -- tile<f32,b,m> ) : elementwise exp
+
+Task: numerically stable row softmax. The kernel receives an input matrix and an output matrix (same shape). For each row r: out[r] = exp(in[r] - max(in[r])) / sum(exp(in[r] - max(in[r]))). Use the block-wide reductions for the max and the sum.
+
+The declared effect must be exactly:
+K ( matrix<space-global,f32,extent-r,extent-c> matrix<space-global,f32,extent-r,extent-c> -- )
+where the first matrix is the input, the second is the output.

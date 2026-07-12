@@ -1,0 +1,12 @@
+Authoring surface you may use (word : exact stack effect : semantics):
+- GRID-CTX : ( span<space-global,t,e> -- gridctx<b,e,fresh-mask-live> ) : build the grid-strided, bounds-masked addressing context covering the span (does not consume the span's usability; you still need the span itself for LOAD/STORE)
+- LOAD : ( span<space-global,t,e> gridctx<b,e,m> -- tile<t,b,m> ) : masked load of this thread's elements from the span
+- STORE : ( tile<t,b,m> span<space-global,t,e> gridctx<b,e,m> -- ) : masked store of the tile into the span
+- SCALE : ( tile<t,b,m> uniform<t> -- tile<t,b,m> ) : multiply every element of the tile by the uniform scalar
+- +. : ( tile<t,b,m> tile<t,b,m> -- tile<t,b,m> ) : elementwise add of two tiles
+
+Task: SAXPY. The kernel receives x (1-D f32 span of extent n), y (1-D f32 span of extent n), and a (uniform f32 scalar), and must compute y = a*x + y elementwise (grid-strided, bounds-masked; result stored back into y).
+
+The declared effect must be exactly:
+K ( span<space-global,f32,extent-n> span<space-global,f32,extent-n> uniform<f32> -- )
+where the first span is x, the second span is y, and the uniform is a.

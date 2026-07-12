@@ -1,0 +1,13 @@
+Authoring surface you may use (word : exact stack effect : semantics). These are the vectorized (v4, 4 elements per thread) tile words:
+- GRID-CTX-V4 : ( span<space-global,t,e> -- gridctx<b,e,fresh-mask-live> ) : build the v4 grid-strided, bounds-masked addressing context covering the span (does not consume the span's usability; you still need the span itself for LOAD-V4/STORE-V4)
+- LOAD-V4 : ( span<space-global,t,e> gridctx<b,e,m> -- tile<t,b,m> ) : masked vectorized load of this thread's 4 elements from the span
+- STORE-V4 : ( tile<t,b,m> span<space-global,t,e> gridctx<b,e,m> -- ) : masked vectorized store of the tile into the span
+- SCALE-V4 : ( tile<t,b,m> uniform<t> -- tile<t,b,m> ) : multiply every element of the tile by the uniform scalar
+- ADD-V4 : ( tile<t,b,m> tile<t,b,m> -- tile<t,b,m> ) : elementwise add of two tiles
+- RELU-V4 : ( tile<t,b,m> -- tile<t,b,m> ) : elementwise max(element, 0)
+
+Task: fused scale-add-relu. The kernel receives x (1-D f32 span of extent n), y (1-D f32 span of extent n), and a (uniform f32 scalar), and must compute y = relu(a*x + y) elementwise in ONE fused pass (no intermediate global stores: keep intermediates in tiles, store only the final result into y).
+
+The declared effect must be exactly:
+K ( span<space-global,f32,extent-n> span<space-global,f32,extent-n> uniform<f32> -- )
+where the first span is x, the second span is y, and the uniform is a.

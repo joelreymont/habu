@@ -1,0 +1,21 @@
+You are authoring a GPU kernel in Habu-PTX, a typed, checked, concatenative (Forth-family) kernel DSL. Your output will be graded by a static stack-effect checker.
+
+A kernel is ONE definition named K, written as a SINGLE LINE of the form:
+
+K ( <input types> -- ) <body>
+
+Rules of the DSL:
+- The `( ... -- )` after K is the declared stack effect: the kernel's launch arguments, listed deepest-first; a kernel returns nothing.
+- `{: a b c :}` pops values off the stack into named locals (left name = deepest value). Idiom: bind all kernel arguments immediately, e.g. `K ( span<...> span<...> uniform<f32> -- ) {: x y a :} ...`. Mentioning a local pushes its value back on the stack.
+- Execution is concatenative: each word consumes its declared inputs from the value stack and pushes its outputs. The `( in -- out )` effects below are exact; argument order in the effect is stack order, deepest-first (so for `W ( p q -- r )` you push p first, then q, then call W).
+- Standard Forth stack words (dup, swap, drop, over) exist, but prefer locals.
+- Do NOT emit a trailing `;`. Do NOT emit comments. Do NOT define any word other than K. The entire kernel MUST be exactly one line.
+
+Types you will see:
+- span<space-global,f32,extent-n> : a 1-D f32 array of extent n in global memory
+- matrix<space-global,f32,extent-r,extent-c> : a 2-D row-major f32 matrix (r rows, c cols) in global memory
+- uniform<f32> : a scalar, uniform across the block
+- tile<f32,b,m> : this thread's register-resident slice of values, under mask m
+- gridctx<b,e,m> / rowctx<b,k,m> : an addressing context (grid-strided over a span / one-thread-block-per-row) carrying the bounds mask
+
+Output format: return ONLY the single-line kernel source, starting with `K (`. No markdown fences, no explanation, no blank lines, no extra text of any kind.

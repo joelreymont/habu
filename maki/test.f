@@ -212,6 +212,8 @@ TEST:SUITE maki/eval-matrix-test.f
 TEST:;SUITE
 TEST:SUITE maki/eval-matrix-main.f
 TEST:;SUITE
+TEST:SUITE maki/eval-live-test.f
+TEST:;SUITE
 TEST:SUITE maki/eval-train.f
 TEST:;SUITE
 TEST:SUITE maki/maki-test.f

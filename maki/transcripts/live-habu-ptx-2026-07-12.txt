@@ -1,0 +1,48 @@
+habu-eval-transcript v1
+\ LIVE model-generated pass@k round, 2026-07-12 (dot habu-eval-matrix-live).
+\ Generator: independent claude-opus-4-8 subagents (claude CLI -p, --tools ""
+\ --safe-mode, one fresh blind session per sample; n=5 per task), each given
+\ only the task statement + the committed authoring surface effects (with the
+\ CORRECTED ROW-STORE order: tile span rowctx). Judge: the committed checker
+\ (EVAL:CHECK-PASSES? via this replay harness). Repair protocol: at most ONE
+\ diagnostic-guided repair round, the raw checker reject fed back to the SAME
+\ generator session; the repair is the next candidate line of the sample.
+\ Candidates are verbatim model output - orchestration assembled, never edited.
+\ Generation prompts (durable provenance): maki/transcripts/prompts-live-2026-07-12/
+\ (common.txt = the shared authoring surface; saxpy/softmax/fused-relu.txt per task).
+target habu-ptx
+task saxpy
+sample sx1
+\ draft built three separate GRID-CTX masks -> author reject at '+.' (mask mismatch); repaired green in 1 round
+candidate K ( span<space-global,f32,extent-n> span<space-global,f32,extent-n> uniform<f32> -- ) {: x y a :} x x GRID-CTX LOAD a SCALE y y GRID-CTX LOAD +. y y GRID-CTX STORE
+candidate K ( span<space-global,f32,extent-n> span<space-global,f32,extent-n> uniform<f32> -- ) {: x y a :} x GRID-CTX {: c :} x c LOAD a SCALE y c LOAD +. y c STORE
+sample sx2
+candidate K ( span<space-global,f32,extent-n> span<space-global,f32,extent-n> uniform<f32> -- ) {: x y a :} x GRID-CTX {: c :} x c LOAD a SCALE y c LOAD +. y c STORE
+sample sx3
+candidate K ( span<space-global,f32,extent-n> span<space-global,f32,extent-n> uniform<f32> -- ) {: x y a :} x GRID-CTX {: c :} x c LOAD a SCALE y c LOAD +. y c STORE
+sample sx4
+candidate K ( span<space-global,f32,extent-n> span<space-global,f32,extent-n> uniform<f32> -- ) {: x y a :} x GRID-CTX {: g :} x g LOAD a SCALE y g LOAD +. y g STORE
+sample sx5
+candidate K ( span<space-global,f32,extent-n> span<space-global,f32,extent-n> uniform<f32> -- ) {: x y a :} x GRID-CTX {: c :} x c LOAD a SCALE y c LOAD +. y c STORE
+task softmax
+sample sh1
+candidate K ( matrix<space-global,f32,extent-r,extent-c> matrix<space-global,f32,extent-r,extent-c> -- ) {: inp out :} ROW {: r :} inp r ROW-SPAN {: ins :} ins ROW-CTX {: ctx :} ins ctx ROW-LOAD {: t :} t BLOCK-MAX {: mx :} t mx PTX:B- EXP. {: e :} e BLOCK-SUM {: s :} e s PTX:B/ out r ROW-SPAN ctx ROW-STORE
+sample sh2
+candidate K ( matrix<space-global,f32,extent-r,extent-c> matrix<space-global,f32,extent-r,extent-c> -- ) {: inp outp :} ROW {: r :} inp r ROW-SPAN {: irow :} outp r ROW-SPAN {: orow :} irow ROW-CTX {: ctx :} irow ctx ROW-LOAD {: t :} t BLOCK-MAX {: mx :} t mx PTX:B- EXP. {: e :} e BLOCK-SUM {: s :} e s PTX:B/ orow ctx ROW-STORE
+sample sh3
+candidate K ( matrix<space-global,f32,extent-r,extent-c> matrix<space-global,f32,extent-r,extent-c> -- ) {: mi mo :} mi ROW ROW-SPAN {: irow :} mo ROW ROW-SPAN {: orow :} irow ROW-CTX {: ctx :} irow ctx ROW-LOAD {: t :} t BLOCK-MAX {: mx :} t mx PTX:B- EXP. {: e :} e BLOCK-SUM {: s :} e s PTX:B/ orow ctx ROW-STORE
+sample sh4
+candidate K ( matrix<space-global,f32,extent-r,extent-c> matrix<space-global,f32,extent-r,extent-c> -- ) {: xs ys :} ROW {: r :} xs r ROW-SPAN {: xrow :} ys r ROW-SPAN {: yrow :} xrow ROW-CTX {: ctx :} xrow ctx ROW-LOAD {: t :} t BLOCK-MAX {: mx :} t mx PTX:B- EXP. {: e :} e BLOCK-SUM {: sm :} e sm PTX:B/ yrow ctx ROW-STORE
+sample sh5
+candidate K ( matrix<space-global,f32,extent-r,extent-c> matrix<space-global,f32,extent-r,extent-c> -- ) {: xin xout :} ROW {: r :} xin r ROW-SPAN {: irow :} xout r ROW-SPAN {: orow :} irow ROW-CTX {: ctx :} irow ctx ROW-LOAD {: x :} x BLOCK-MAX {: mx :} x mx PTX:B- EXP. {: e :} e BLOCK-SUM {: s :} e s PTX:B/ orow ctx ROW-STORE
+task fused-relu
+sample sf1
+candidate K ( span<space-global,f32,extent-n> span<space-global,f32,extent-n> uniform<f32> -- ) {: x y a :} x GRID-CTX-V4 {: c :} x c LOAD-V4 a SCALE-V4 y c LOAD-V4 ADD-V4 RELU-V4 y c STORE-V4
+sample sf2
+candidate K ( span<space-global,f32,extent-n> span<space-global,f32,extent-n> uniform<f32> -- ) {: x y a :} x GRID-CTX-V4 {: c :} x c LOAD-V4 a SCALE-V4 y c LOAD-V4 ADD-V4 RELU-V4 y c STORE-V4
+sample sf3
+candidate K ( span<space-global,f32,extent-n> span<space-global,f32,extent-n> uniform<f32> -- ) {: x y a :} x GRID-CTX-V4 {: g :} x g LOAD-V4 a SCALE-V4 y g LOAD-V4 ADD-V4 RELU-V4 y g STORE-V4
+sample sf4
+candidate K ( span<space-global,f32,extent-n> span<space-global,f32,extent-n> uniform<f32> -- ) {: x y a :} x GRID-CTX-V4 {: c :} x c LOAD-V4 a SCALE-V4 y c LOAD-V4 ADD-V4 RELU-V4 y c STORE-V4
+sample sf5
+candidate K ( span<space-global,f32,extent-n> span<space-global,f32,extent-n> uniform<f32> -- ) {: x y a :} x GRID-CTX-V4 {: g :} x g LOAD-V4 a SCALE-V4 y g LOAD-V4 ADD-V4 RELU-V4 y g STORE-V4
