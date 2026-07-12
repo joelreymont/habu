@@ -19,6 +19,22 @@ consistent with README.md + docs/positioning.md.
    gate, error battery - just cite paths). Report as one table with
    per-row gate paths.
 
+10. Host rows: DONE 2026-07-12. Landed from the tree (every number verified
+   against its owning suite): ONNX external golden (onnx 1.22.0 byte-identical
+   fixture + onnxruntime 1.27.0 parity, measured 1.24e-7 max abs —
+   maki/onnx/ort-ref-test.f) in Section 5 Import; Adam trainer + torch 2.13.0
+   per-step parity (worst rel-L2 1.4e-8, loss 7e-10, tol 2e-6 —
+   maki/adam-torch-ref-test.f), second-order gelu pilot (backward-test.f
+   2nd-BW-BUILD wiring + gelu-test.f gelu'' gradcheck), gradient checkpointing
+   (docs/maki/train.md spec, bit-identical maki/checkpoint-test.f), and suite
+   growth 77->88 in Section 6; live 2026-07-12 pass@k round
+   (checker-as-judge transcript harness, saxpy 4/5+1-repair, softmax 5/5,
+   fused-relu 5/5 — docs/eval-triton.md, maki/eval-live-test.f) in Section 7;
+   Section 4.1 adoption paragraph refreshed to the landed family-typed CAD
+   internals (descriptor trio + opkind + SKEY product, field swaps =
+   checker rejects — .dots/habu-cad-adt-swap-7bf0bb1f.md). Device/GB/s rows
+   untouched; no forward-looking performance claims added.
+
 9. Section 4.1 (Type Families): DONE 2026-07-10. Written from the merged
    implementation (TFAM 9/10/12/14/15) and its negative regressions: 228
    reject fixtures across type-{decl,ctor,match,linear}-suite.f, the

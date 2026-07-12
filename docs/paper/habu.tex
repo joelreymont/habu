@@ -8,7 +8,7 @@
 
 \title{Habu: A Checked Concatenative Kernel Target\\and Model CAD for GPUs}
 \author{Joel Reymont\\\texttt{joelr1@gmail.com}}
-\date{Draft of July 4, 2026}
+\date{Draft of July 12, 2026}
 
 \begin{document}
 \maketitle
@@ -267,8 +267,17 @@ non-topological reference, or a rebound SSA name is a named load-time
 error, never a silent default---26 negative fixtures pin these paths. An
 imported two-node \code{Gemm}$\to$\code{Relu} graph host-executes to
 hand-computed values and fuses into a single region under the same
-planner; real-model scale (movement operators, broadcast mapping) is
-staged work recorded in the tree.
+planner. The import path also carries an \emph{external} golden: a
+\code{ModelProto} exported by \code{onnx}~1.22.0 is committed
+byte-for-byte (the checked encoder fixture reproduces the exported bytes
+exactly, so the fixture \emph{is} the artifact, not a lookalike), and its
+imported, host-executed output matches \code{onnxruntime}~1.27.0
+elementwise within the committed $10^{-5}$ tolerance---the measured
+maximum gap is $1.24\times10^{-7}$, the pure f32-versus-f64 rounding
+floor of the accumulation chain (a few f32 ulps), so any wrong element,
+op, or layout (which shows $\ge 10^{-2}$ here) still fails. Real-model
+scale (movement operators, broadcast mapping) is staged work recorded in
+the tree.
 
 \paragraph{Fusion.} The planner groups nodes into regions under typed
 legality---elementwise chains fuse; a contraction admits an elementwise
@@ -384,6 +393,53 @@ gradchecked before training. The convergence thresholds are committed as
 a regression: a planner or numeric change that breaks learning fails the
 gate like any wrong answer.
 
+\paragraph{Optimizer parity against an external autograd.} An Adam
+trainer runs the same pipeline (the windowed MLP and an attention block,
+each with a committed end-to-end convergence gate; the exact attention IR
+that trains also gradchecks). Its gradients are proven twice: per step
+against an independent element-level reverse pass hand-composed from the
+scalar VJP rules, and externally against committed \code{torch}~2.13.0
+references computed on the identical seeded floats---three Adam steps,
+asserting each step's pre-update loss, all five gradients, and the
+post-step parameters, so gradient parity proves the backward chain and
+parameter parity proves the optimizer chain compounding on top of it. The
+measured worst relative-L2 across all steps and tensors is
+$1.4\times10^{-8}$ (loss relative error $7\times10^{-10}$); the residual
+gap is Habu's committed polynomial \code{exp} core versus libm
+transcendentals, and the committed tolerance ($2\times10^{-6}$) keeps two
+orders of margin above that floor while staying orders below any real
+defect (a wrong rule or constant shows $\ge10^{-3}$).
+
+\paragraph{Second order.} Because backward nodes are ordinary IR nodes, a
+second reverse transform differentiates the combined
+forward-plus-backward region---a Hessian-vector product with exactly the
+first build's seeding semantics. The committed pilot is gelu: the second
+build emits the seed's gradient by reusing the first derivative and the
+input's gradient through a dedicated $\mathrm{gelu}''$ op, with the
+operand wiring pinned node-by-node in the suite, and $\mathrm{gelu}''$
+itself gradchecked against a finite difference of the first VJP. Every
+other backward op kind fails closed with a named error until its own
+adjoint row lands: no silent partial second derivative.
+
+\paragraph{Gradient checkpointing.} Save-versus-recompute is also a
+whole-model policy with a written spec its implementation cites
+section-by-section: segment-boundary activations (exactly the buffers the
+fusion planner materializes anyway, so the marginal save cost is one
+read) are saved across the forward--backward cut, and segment interiors
+are recomputed on demand into one shared scratch overlay, bounding live
+forward-activation buffers by $B + \max_s I_s$ (boundaries plus one
+segment's interior) instead of all $N_{fwd}$. Host execution is
+deterministic, so the correctness obligation is exact: checkpointed
+backward must produce \emph{bit-identical} losses, gradients, and
+rematerialized interiors versus the full-materialization path---asserted
+with exact float equality on the committed MLP and attention models plus
+a two-segment case where the overlay actually destroys and recomputes
+values. Any tolerance there would be a bug.
+
+Each facility above is committed as suites in the model layer's gate,
+which grew from 77 to 88 checked test files over the campaign that landed
+them---run green (exit status 0) at each landing.
+
 \section{Error-Class Measurement}\label{sec:errors}
 Against real Triton~3.5.1 on the same device, a six-candidate error
 battery (a correct kernel plus seeded authoring mistakes) shows the
@@ -391,7 +447,29 @@ checked target catching the stack-discipline and composition classes at
 author time---located diagnostic, zero GPU---where Triton surfaces them
 at runtime or not at all. Authoring studies with independent generators
 show pass@1 $=3/3$ on both targets for a fused chain: reachability is
-comparable; \emph{where bugs are caught} is the difference. The earned
+comparable; \emph{where bugs are caught} is the difference.
+
+A live generation round (2026-07-12) is recorded and graded entirely
+through a committed transcript harness with the \emph{checker as judge}:
+five independent generator sessions per task, blind to each other, to the
+grader, and to the repository, given only the task statement and the
+committed authoring-surface stack effects, with at most one repair round
+fed nothing but the raw checker diagnostic. Results: SAXPY 4/5 first-try
+with the single failure repaired to green in one round (unbiased pass@1
+$=0.8$, pass@2 $=1.0$); softmax 5/5; the fused
+\code{relu($a{\cdot}x{+}y$)} chain 5/5. The one live failure was the
+checker's home turf: the candidate built three separate grid contexts
+instead of reusing one, and the fresh-mask discipline rejected the
+composition at author time with a located diagnostic---each load and
+store individually well-formed, only the composition wrong, exactly the
+class an unchecked target compiles clean. An earlier round's softmax gap
+(3/5) is discharged as a prompt artifact: with the authoring contract
+quoted correctly, softmax certifies 5/5 first-try. The transcripts are
+committed static files and the graded tallies are pinned by a suite that
+re-replays them through the current checker, so the table is
+deterministic replay, not an anecdote; the round is host-only by
+construction, and no bandwidth or device numbers are claimed for it.
+The earned
 claim is deliberately narrow: the checker types stack discipline and
 roles, not semantics---numeric correctness is the golden gate's job, and
 that division of labor is by design.
@@ -595,24 +673,33 @@ entry (\code{tools/hb-build.f --preseed-entry}), folded into the artifact key,
 restores and dies with the same \code{E-BAD-TAG}, so a stale normal object
 cannot silently satisfy it.
 
-\paragraph{Adoption is deliberately not yet claimed.} By design (\S17 of the
+\paragraph{Adoption inside Model CAD.} By design (\S17 of the
 type-families note) an ADT value is \emph{stack-only}: $M$ payload cells plus a
 tag, with no heap, GC, or boxing, so it stays register- and stack-friendly and
-its layout is predictable for future lowering---but it cannot be stored to
-memory, compared, or nested as another family's field until later layout
-policies land. The intended adoption target---swapping the Model-CAD
-internals (the schedule key to a product record with
-\code{dtype}/\code{layout}/\code{align} enum fields, gate verdicts to a
-\code{pass|fail} sum) so that a field swap or a tag confusion becomes a
-compile error---was audited against the merged surface and found blocked on
-exactly that stack-only discipline: every CAD representation stores its tag as
-an integer in a memory-backed record, which the checker (correctly) refuses
-for a layout value. The audit is regression-pinned
-(\code{type-decl-suite.f}), and the three enabling capabilities (a typed ADT
-store, derived equality, layout-kinded parameters) are tracked as open
-capability tasks in the tree. The checked-ADT \emph{capability} has therefore
-landed and is gated; its adoption inside CAD has not, and this paper claims
-only the former.
+its layout is predictable for future lowering. The intended adoption
+target---swapping the Model-CAD internals so that a field swap or a tag
+confusion becomes a compile error---was first audited and found blocked on
+exactly that discipline (every CAD representation stored its tag as an
+integer in a memory-backed record, which the checker correctly refuses for a
+layout value); the audit is regression-pinned (\code{type-decl-suite.f}).
+The enabling capabilities have since landed in tiers, and on the width-1
+tier the adoption is now real: \code{dtype}, \code{layout}, alignment
+class, and op-kind are enum families carried from construction through the
+model-IR and tensor-value stores (typed slot addresses, so a raw integer or
+a foreign family can never enter a column) to every consumer---accessors
+return families, dispatchers are exhaustive \code{MATCH}es, and the integer
+codes survive only at named wire/hash render boundaries. The field-swap
+holes are closed \emph{by the checker}: a dtype-for-layout swap at the IR
+constructors rejects in both directions, the report's gate-verdict,
+roofline, and coalescing columns reject foreign families, and the schedule
+key is a derived-equality product over
+dimclass/\code{dtype}/\code{layout}/\code{align} enum fields, so a
+role-swapped key cannot be constructed---each closure pinned by committed
+negative fixtures. Honestly unclaimed remainders: multi-cell typed-column
+stores (evidence rows, measurement history) await the next store tier; the
+replay table still keys on the durable text render, retained as a
+documented boundary after its encoding was proven injective against the
+typed key's field equality; and recursive by-value IR stays deferred.
 
 \section{Limitations}
 V1 caps are explicit and fail closed: one contraction per region;
