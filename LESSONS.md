@@ -3608,3 +3608,6 @@ unchanged (148855). Keys for milestone 2:
   expose lowercase engine primitives; package-scoped checked wrappers belong to
   the dependent syntax/API leaf. Do not widen file ownership to impose the final
   surface before its layer is ready.
+- **`dot on` is a transition, not an active-status probe.** Running it again on
+  an active dot rewrites quoted metadata. Activate once, publish the claim, then
+  use `dot show` for the final pre-spawn owner/status verification.

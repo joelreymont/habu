@@ -183,12 +183,17 @@ codes, never silent; named constants; and a `T{ … -> … }T` test for every wo
 - Parallel dot execution follows `docs/parallel-agents.md`: read-only scouts do
   not edit the current tree; workers edit isolated jj workspaces unless their
   file ownership is disjoint.
-- **Dot dispatch status (BLOCKING):** before claiming, create `.jj-ws/<dot-id>`,
-  verify it with `jj workspace list` and clean `jj st`, and prove write sets do
-  not overlap. Record `Claim: agent=<name> workspace=.jj-ws/<dot-id>` in the
-  exact leaf, run `dot on <exact-id>`, commit and push the claim, fetch/rebase,
-  and verify the pushed claim. Immediately before spawning, rerun `dot on` and
-  verify `dot show <exact-id>` reports the same claim and `Status: active`. If
+- **Dot dispatch status (BLOCKING):** before claiming, create the workspace with
+  `jj workspace add .jj-ws/<dot-id> --name <name> -r <verified-base>`, verify
+  `@- == <verified-base>`, clean `jj st`, and disjoint write sets. Record
+  `Claim: agent=<name> workspace=.jj-ws/<dot-id>` in the exact leaf, run
+  `dot on <exact-id>`, commit the claim on a feature change, run claim gates,
+  fetch/rebase, then fast-forward green `master` and push it explicitly with
+  `jj git push --bookmark master --remote origin`. A competing claim aborts the
+  dispatch; preserve its owner and release the losing local claim. Immediately
+  before spawning, rerun only `dot show <exact-id>` and require the same claim,
+  `Status: active`, and clean `jj st`. Do not rerun `dot on` on an active dot
+  because it rewrites metadata. If
   any transition, synchronization, or verification fails, do not dispatch.
   The dot remains active through implementation, destruction review,
   integration, and owning gates; run `dot off <exact-id> -r "..."` only after
