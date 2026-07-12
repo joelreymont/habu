@@ -1,9 +1,9 @@
 ---
 title: "V2 R3: type fusion region owner"
-status: open
+status: active
 priority: 2
 issue-type: task
-created-at: "2026-07-12T07:41:25.362360+02:00"
+created-at: "\"2026-07-12T07:41:25.362360+02:00\""
 blocks:
   - habu-v2-r3-type-dfe5609e
   - habu-checker-seal-nominal-0b2eaece

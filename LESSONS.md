@@ -1384,6 +1384,12 @@ lesson — keep the specific word/code/path, cut the prose.
   `$`, Forth punctuation). Handoff: leave the dot open, record commit + pending
   edits + definition-of-done in the committed doc, close only after the validated
   commit; add step-level child dots for in-progress work.
+- **Worker ownership starts with `dot on`, not the spawn call.** I dispatched
+  isolated workers while their dots still said `open`, so another orchestrator
+  could legally select the same work from `dot ready`. The blocking rule now
+  lives in `AGENTS.md`: activate and verify the exact leaf immediately before
+  dispatch, keep it active through review and integration, and close it only
+  after the reviewed commit and owning gates land.
 - **Keep debugger docs in the agent index:** list `docs/debugging.md` (`.s`, watch
   cells, REPL `step`, breakpoints, `jitdump`, `imgdump`) in `FILEMAP.md`, guarded
   by `tools/filemap-lint.f`, so RCA starts with existing tools.

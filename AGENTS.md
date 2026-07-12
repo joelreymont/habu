@@ -183,6 +183,14 @@ codes, never silent; named constants; and a `T{ … -> … }T` test for every wo
 - Parallel dot execution follows `docs/parallel-agents.md`: read-only scouts do
   not edit the current tree; workers edit isolated jj workspaces unless their
   file ownership is disjoint.
+- **Dot dispatch status (BLOCKING):** immediately before spawning any worker for
+  a dot, run `dot on <exact-id>` and verify `dot show <exact-id>` reports
+  `Status: active`. If the transition or verification fails, do not dispatch.
+  The dot remains active through implementation, destruction review,
+  integration, and owning gates; run `dot off <exact-id> -r "..."` only after
+  the reviewed commit is merged and verified. Preflight, workspace creation,
+  or assigning a read-only scout does not make a dot active. Never dispatch an
+  `open`, blocked, or already-active dot owned by another worker.
 - Gate: use the target/checker/env prelude and native gate command from
   `docs/bootstrap.md` — Habu-native, no gforth. If `bin/hb`
   is missing, recover with `HABU_ALLOW_BOOTSTRAP=1 tools/bootstrap.sh` as

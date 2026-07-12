@@ -1,9 +1,9 @@
 ---
 title: "V2 R3: type region analysis consumers"
-status: open
+status: active
 priority: 2
 issue-type: task
-created-at: "2026-07-12T07:41:37.208194+02:00"
+created-at: "\"2026-07-12T07:41:37.208194+02:00\""
 blocks:
   - habu-v2-r3-type-5c26f1cb
 ---
