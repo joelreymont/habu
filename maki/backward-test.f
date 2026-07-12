@@ -4,13 +4,17 @@
 \ the seeded output cotangent, per-input gradient reporting, that a backward
 \ elementwise chain fuses under FP-BUILD, and every fail-closed path. cad-9e adds the
 \ reduce/scatter adjoint emission (bias/linear/slice/gather/scale) with shape asserts
-\ and the scale partial-broadcast fail-closed boundary.
+\ and the scale partial-broadcast fail-closed boundary. The concat-backward integration
+\ model pins the split cotangent's EXACT row windows (both BW-SL range args are
+\ CAD-KIND:rows, so an r0/r1 transposition is checker-invisible) and gradchecks
+\ numerically through the concat boundary.
 
 require lib/test.f
 require lib/string.f
 require maki/cad.f
 require maki/backward.f
 require maki/fusion-plan.f
+require maki/gradcheck.f
 
 package MAKI
 
@@ -196,6 +200,31 @@ BW-BWD-COUNT 2 T=
 2 OP-FULLSUM-DOT-BWD BT-OP=                 \ d-scale = full-reduce dot -> 1x1
 2 1 BT-ROWS=  2 1 BT-COLS=
 0 1 BT-GRAD-NODE=  1 2 BT-GRAD-NODE=
+
+\ ---- concat-backward integration: the cotangent splits at the forward row seam ----
+\ CONCAT(a:2x4, b:3x4) -> 5x4 feeds GELU. The concat adjoint slices the upstream
+\ cotangent at the row split: d-a = ct[0,2), d-b = ct[2,5). Both BW-SL row-range
+\ args are CAD-KIND:rows, so a transposed r0/r1 passes the checker - the attr pins
+\ below are the only guard. GC-RUN (throwaway build, rolled back) FD-verifies the
+\ gradient numerically through the concat boundary before the structural build.
+MODEL: CCM ( a:2x4 b:3x4 -- y ) CONCAT GELU ;
+BW-CAN? TTRUE
+GC-RUN V-PASS T=
+BW-BUILD
+BW-FWD-N@ 2 T=                                 \ concat + gelu
+BW-BWD-COUNT 3 T=                              \ gelu-bwd + two cotangent slices
+BW-SEED-SLOT@ 2 MIR-SLOT-ID MIR-SLOT= TTRUE    \ slots: 0 = a, 1 = b, 2 = seed
+2 OP-GELU-BWD BT-OP=
+3 OP-SLICE BT-OP=                              \ d-a slice
+4 OP-SLICE BT-OP=                              \ d-b slice
+3 0 2 BT-IN-NODE=  4 0 2 BT-IN-NODE=           \ both slices read the gelu-bwd cotangent
+3 2 BT-ROWS=  3 4 BT-COLS=                     \ d-a is 2x4
+4 3 BT-ROWS=  4 4 BT-COLS=                     \ d-b is 3x4
+\ EXACT row windows (fails if the two BW-SL ranges were transposed)
+3 MIR-NODE-ID MIR-ATTR@ MV-PA@ 0 T=  3 MIR-NODE-ID MIR-ATTR@ MV-PB@ 2 T=   \ d-a [0,2)
+4 MIR-NODE-ID MIR-ATTR@ MV-PA@ 2 T=  4 MIR-NODE-ID MIR-ATTR@ MV-PB@ 5 T=   \ d-b [2,5)
+0 3 BT-GRAD-NODE=                              \ d-a <- slice node 3
+1 4 BT-GRAD-NODE=                              \ d-b <- slice node 4
 
 \ ---- SECOND ORDER (grad-of-grad pilot): a 2nd BW-BUILD over the combined IR --
 \ After build 1 over GELU: node 0 = gelu(x), node 1 = gelu-bwd(s, x) = dL/dx (the
