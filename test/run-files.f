@@ -108,10 +108,10 @@ TR-FILES: TR-UNDER-SOURCE-FILES
    src/core/combinators.f src/habu/treeshake.f
    src/habu/rt.f src/habu/crash.f src/os/image-bytes.f src/habu/habu1.f
    src/habu/prof.f src/habu/regalloc.f src/habu/jit.f src/habu/habu2.f
-   src/habu/xref.f src/core/layout-buffer-seal.f src/core/lower-cert-seal.f
+   src/habu/xref.f src/habu/owner-wid-emit-seal.f src/core/layout-buffer-seal.f src/core/lower-cert-seal.f
    src/habu/driver-io.f src/core/include.f src/habu/aot-capture.f
    src/habu/stage2.f src/habu/stdin.f src/habu/snap-lib.f src/habu/snap.f src/habu/repl.f
    src/habu/debug-watch.f src/habu/stepper.f src/habu/debug.f
-   test/owner-wid-emitter.f test/owner-wid-image.f test/owner-wid-child.f
+   test/owner-wid-emitter.f test/owner-wid-image.f test/owner-wid-child.f test/owner-wid-build-forge.f
    test/owner-wid-internal.f test/owner-wid-state.f test/owner-wid-call.f
 ;TR-FILES

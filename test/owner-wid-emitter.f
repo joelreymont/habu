@@ -23,6 +23,9 @@ package OWNER-WID-COLD-TEST
    7 want LIT64,
    6 7 CMP,  C-NE fail BCOND, ;
 
+: END-A ( -- )
+   4 OWNER-WID-END MOVZ,  4 DATA 4 ADD, ;
+
 : PREFLIGHT-FALSE ( label -- ) {: fail:label :}
    9 $10FF MOVZ,  10 $20FF MOVZ,  11 255 MOVZ,
    OWNER-WID-EMIT:PREFLIGHT-LABEL@ BL,
@@ -39,11 +42,27 @@ package OWNER-WID-COLD-TEST
    17 17 1 ADDI,
    17 255 CMPI,  C-LT loop BCOND, ;
 
+: REENTER ( label -- ) {: fail:label :}
+   LBL {: ready:label :}
+   END-A  15 4 0 LDRW,
+   15 ready CBNZ,
+   9 $300000003000 LIT64,  9 DATA OWNER-WID-OFF STR,
+   9 $400000004000 LIT64,  9 DATA OWNER-WID-END OWNER-WID-ROW - STR,
+   9 2 MOVZ,  9 DATA OWNER-WID-N-CELL STR,
+   15 1 MOVZ,  15 4 0 STRW,
+   30 SP 0 LDR,  SP SP 16 ADDI,
+   OWNER-WID-EMIT:COLD-LABEL@ B,
+   ready LBL,
+   0 fail COUNT=
+   0 0 fail ROW=
+   255 0 fail ROW= ;
+
 : EMIT ( -- )
    LBL LBL LBL {: fail:label done:label msg:label :}
    SP SP 16 SUBI,  30 SP 0 STR,
-   15 DATA OWNER-WID-END LDRW,
-   16 DATA OWNER-WID-END 4 + LDRW,
+   fail REENTER
+   END-A  15 4 0 LDRW,
+   16 4 4 LDRW,
    $1000 $2000 YES fail ADD
    $1000 $2000 NO fail ADD
    $2000 $1000 NO fail ADD
@@ -64,8 +83,8 @@ package OWNER-WID-COLD-TEST
    256 fail COUNT=
    0 $200000001000 fail ROW=
    255 $20FF000010FF fail ROW=
-   9 DATA OWNER-WID-END LDRW,  9 15 CMP,  C-NE fail BCOND,
-   9 DATA OWNER-WID-END 4 + LDRW,  9 16 CMP,  C-NE fail BCOND,
+   END-A  9 4 0 LDRW,  9 15 CMP,  C-NE fail BCOND,
+   9 4 4 LDRW,  9 16 CMP,  C-NE fail BCOND,
    30 SP 0 LDR,  SP SP 16 ADDI,
    done B,
    fail LBL,

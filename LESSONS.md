@@ -3636,3 +3636,14 @@ unchanged (148855). Keys for milestone 2:
   engine, pin, digest, and extension globals does not restore preexisting
   caller state. Run the whole build in a child, assert its captured result, and
   let process exit revoke every build capability and artifact pointer at once.
+- **Private package names are organization, not authority.** Packages reopen by
+  design, exposing private words to the reopened scope. After compiling exact
+  callers, `undefine` mutable capability names and prove reopen cannot recover
+  them.
+- **Publish append-only rows with an atomic row and release count.** Store each
+  aligned pair in one write, release-store the count last, and acquire-load it
+  before scans; clearing only the count on cold reentry leaves stale authority
+  material in raw DATA, so erase every reserved row too.
+- **Materialize addresses beyond scaled-immediate reach.** A direct `LDRW` at a
+  DATA offset above 16380 encoded the wrong cell and made a cold-reentry proof
+  loop forever. Build the full address in a register before word loads/stores.

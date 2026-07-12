@@ -234,7 +234,9 @@ $40C0 constant UNCGH-CELL
 \ the lowering transaction at $5000. A 256-row table occupies $808 bytes and leaves
 \ $38 bytes of separation, so no runtime scratch range moves and old constructor
 \ offsets remain byte-for-byte stable. PROT-GUARD treats this as its own protected
-\ interval; only owner-wid-add writes it, with the count committed last. ---
+\ interval; the hidden mutator stores each aligned pair atomically, then
+\ release-publishes the count consumed by acquire scans. Cold entry clears the
+\ count and every row before any test-only build hook runs. ---
 $47C0 constant OWNER-WID-N-CELL
 $47C8 constant OWNER-WID-OFF
 8 constant OWNER-WID-ROW

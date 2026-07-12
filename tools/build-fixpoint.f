@@ -746,6 +746,7 @@ public
    out outu s" src/habu/jit.f" BF-APPEND-SOURCE
    out outu s" src/habu/habu2.f" BF-APPEND-SOURCE
    out outu s" src/habu/xref.f" BF-APPEND-SOURCE
+   out outu s" src/habu/owner-wid-emit-seal.f" BF-APPEND-SOURCE
    out outu s" src/core/layout-buffer-seal.f" BF-APPEND-SOURCE
    out outu s" src/core/lower-cert-seal.f" BF-APPEND-SOURCE ;
 
@@ -847,6 +848,7 @@ public
    out outu s" src/habu/regalloc.f" BF-APPEND-SOURCE
    out outu s" src/habu/jit.f" BF-APPEND-SOURCE
    out outu s" src/habu/habu2.f" BF-APPEND-SOURCE
+   out outu s" src/habu/owner-wid-emit-seal.f" BF-APPEND-SOURCE
    out outu BF-APPEND-DRIVER-IO ;
 
 : BF-EMIT-SNAP-RUN-SOURCE ( ptr u8 n ptr u8 n -- ) {: out:ptr outu:n driver:ptr driveru:n :}
@@ -1383,3 +1385,15 @@ variable BF-FAIL-N
 : BF-CLI ( -- )
    [: BF-MAIN ;] catch {: rc:n :}
    rc 0 <> if rc BF-FAIL-DIE then ;
+
+\ Compiled callers retain direct xts; erase the mutable extension authority so
+\ reopening BUILD-EXT cannot select an arbitrary source file.
+package BUILD-EXT
+undefine SET
+undefine CLEAR
+undefine PATH@
+undefine PATH-FIELD
+undefine PATH-A
+undefine PATH-U
+undefine OWNER-WID-ACT
+;package

@@ -2742,12 +2742,24 @@ variable LPRIQ
 variable LANYQ
 variable LPREF
 variable LADD
+variable LCOLD
 variable COLD-XT
 0 COLD-XT !
 
+$C8DFFCA6 constant W-COUNT-LDAR
+$C89FFCA6 constant W-COUNT-STLR
+
+: COUNT@, ( -- )
+   5 OWNER-WID-N-CELL MOVZ,  5 DATA 5 ADD,
+   W-COUNT-LDAR EMITW ;
+
+: COUNT!, ( -- )
+   5 OWNER-WID-N-CELL MOVZ,  5 DATA 5 ADD,
+   W-COUNT-STLR EMITW ;
+
 : SCAN-INIT ( -- )
    13 0 MOVZ,
-   6 DATA OWNER-WID-N-CELL LDR,
+   COUNT@,
    7 0 MOVZ,
    5 OWNER-WID-OFF MOVZ,  5 DATA 5 ADD, ;
 
@@ -2798,7 +2810,7 @@ variable COLD-XT
 : PREFLIGHT-ARGS ( label -- ) {: done:label :}
    13 0 MOVZ,
    11 OWNER-WID-MAX CMPI,  C-HI done BCOND,
-   6 DATA OWNER-WID-N-CELL LDR,
+   COUNT@,
    6 11 CMP,  C-GE done BCOND,
    9 done CBZ,  10 done CBZ,
    14 9 32 LSRI,  14 done CBNZ,
@@ -2827,13 +2839,13 @@ variable COLD-XT
    done LBL,  RET, ;
 
 : STORE-PAIR ( -- )
-   6 DATA OWNER-WID-N-CELL LDR,
+   COUNT@,
    5 OWNER-WID-OFF MOVZ,  5 DATA 5 ADD,
    7 6 3 LSLI,  5 5 7 ADD,
-   9 5 OWNER-WID-PUB STRW,
-   10 5 OWNER-WID-PRI STRW,
+   14 10 32 LSLI,  14 14 9 ORR,
+   14 5 0 STR,
    6 6 1 ADDI,
-   6 DATA OWNER-WID-N-CELL STR, ;
+   COUNT!, ;
 
 : ADD-BODY ( -- )
    LBL {: done:label :}
@@ -2871,7 +2883,7 @@ variable COLD-XT
 public
 
 : LABELS ( -- )
-   LBL LPUBQ !  LBL LPRIQ !  LBL LANYQ !  LBL LPREF !  LBL LADD ! ;
+   LBL LPUBQ !  LBL LPRIQ !  LBL LANYQ !  LBL LPREF !  LBL LADD !  LBL LCOLD ! ;
 
 : ADD-LABEL@ ( -- label )
    LADD LABEL@ ;
@@ -2884,6 +2896,23 @@ public
 
 : COLD-HOOK ( -- )
    COLD-XT @ dup 0= if drop exit then execute ;
+
+: COLD-RESET ( -- )
+   LBL {: loop:label :}
+   LCOLD LABEL@ LBL,
+   6 0 MOVZ,  COUNT!,
+   9 0 MOVZ,
+   5 OWNER-WID-OFF MOVZ,  5 DATA 5 ADD,
+   7 OWNER-WID-MAX MOVZ,
+   loop LBL,
+   9 5 0 STR,
+   5 5 OWNER-WID-ROW ADDI,
+   7 7 1 SUBI,
+   7 loop CBNZ,
+   COLD-HOOK ;
+
+: COLD-LABEL@ ( -- label )
+   LCOLD LABEL@ ;
 
 : PRIMS ( -- )
    s" owner-wid-preflight?" ['] BPRE? 3 GDEREF-F

@@ -37,7 +37,9 @@ variable ERR-U
    s" test/owner-wid-state.f" RUN-FILE 0 T=
    OUT$ s" owner-wid-state-test: ok" CONTAINS? TTRUE
    s" test/owner-wid-call.f" RUN-FILE 70 T=
-   ERR$ s" owner-wid-add" CONTAINS? TTRUE ;
+   ERR$ s" owner-wid-add" CONTAINS? TTRUE
+   s" test/owner-wid-build-forge.f" RUN-FILE 70 T=
+   ERR$ s" SET" CONTAINS? TTRUE ;
 
 public
 

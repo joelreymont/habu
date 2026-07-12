@@ -816,9 +816,13 @@ points stay listed.
   the file).
 - `test/owner-wid-emitter.f` — test-image-only cold emitter hook that drives the
   unpublished owner-pair mutator through exact capacity and atomic rejection.
+- `src/habu/owner-wid-emit-seal.f` — post-xref erasure of every build-time
+  owner-registry label, hook, and mutable emitter capability.
 - `test/owner-wid-image.f` / `test/owner-wid-child.f` /
   `test/owner-wid-internal.f` — native image builder, process-isolated build
   worker, and owning parent runner for the cold owner-registry proof.
+- `test/owner-wid-build-forge.f` — negative package-reopen fixture proving the
+  exact owner proof builder cannot be redirected to arbitrary source.
 - `test/owner-wid-state.f` / `test/owner-wid-call.f` — read-only role/capacity
   assertions and hostile unresolved-call fixture executed by that runner.
 - `test/wide-store-seal.f` — generated checked W=2 ADT store forges proving
