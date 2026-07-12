@@ -33,10 +33,12 @@ gate.
    `@- == <verified-base>` with `jj -R .jj-ws/<dot-id> log -r '@-'`, plus
    `jj workspace list` and clean `jj -R .jj-ws/<dot-id> st`.
 3. Record `Claim: agent=<name> workspace=.jj-ws/<dot-id>` in the exact leaf,
-   run `dot on <exact-id>`, verify the claim and `Status: active`, then commit it
-   on a feature change and fetch/rebase. On the exact rebased tree run
+   run `dot on <exact-id>`, verify the claim and `Status: active`, inspect the
+   diff, and run `HB_TMP=<private-root> bin/hb --load tools/dot-dep-lint.f` plus
+   focused mutation gates before committing; require exit 0 and `0 finding(s)`.
+   Commit on a feature change and fetch/rebase. On the exact rebased tree run
    `maki/test.f`, ptx-stdlib plus touched native slices, `host-lint`,
-   `filemap-lint`, and `dot-dep-lint`; then fast-forward `master` and push with
+   `filemap-lint`, and the native dot gate; then fast-forward `master` and push with
    `jj git push --bookmark master --remote origin`.
    A competing claim aborts dispatch; preserve its owner and release the losing
    local claim. Verify the remote claim with
@@ -63,7 +65,7 @@ gate.
 6. Keep each dot active through fresh destruction review, integration, and the
    owning gates. Only then close it with
    `dot off <id> -r "implemented, reviewed, merged, gates green: <summary>"`.
-7. Rerun `dot-dep-lint` and every required master gate on the closure tree,
+7. Rerun the native dot gate and every required master gate on the closure tree,
    commit it on a feature change, fast-forward and push `master`, then fetch and
    verify the remote has no active/open copy.
 8. Clean up extra workspaces and temporary logs.
