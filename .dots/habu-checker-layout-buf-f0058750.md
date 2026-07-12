@@ -1,9 +1,0 @@
----
-title: "checker: LAYOUT-BUFFER for TK-CELL nominal-scalar families + governed ptr introduction"
-status: active
-priority: 2
-issue-type: task
-created-at: "\"2026-07-12T20:58:32.606379+02:00\""
----
-
-FOR THE TYPE-SYSTEM LANE. Capability gap proven 2026-07-12 (probe fixtures in the typed-storage worker report, dot habu-maki-typed-storage-2279c4b0). FIXTURE: '1 LAYOUT-BUFFER TS-PROBE-BUF CAD-KIND:region' -> uncaught 7121 E-LAYOUT-BUFFER rc 67; control '1 LAYOUT-BUFFER B dtype' (enum) passes; control 'TYPEFAMILY tscell 0 / 1 LAYOUT-BUFFER B tscell' fails 7121 -> the rejection is the TK-CELL kind, not qualification/package. TRACE: layout-buffer.f:50 LBUF-VALIDATE -> checker.f:2569 CHECKER-LAYOUT-INFO -> checker.f:971 LAYOUT-PARAM? -> type-family.f:221 TFAM-LAYOUT? = product|sum|enum only. THE SEAM ALREADY WORKS: typed '!'/'@' on ptr CAD-KIND:region enforce nominal identity fail-closed (M1-M5 probes: typed store/fetch certify; raw n and wrong-family reject) via the generic nominal unification path (checker.f:5361 fallthrough). TWO-PART CAPABILITY: (1) admit TK-CELL families (W=1 nominal scalar) in CHECKER-LAYOUT-INFO/TFAM-LAYOUT?-for-layout-buffer so LAYOUT-BUFFER becomes the introduction form; (2) CLOSE the ungoverned variable->ptr-family unification for TK-CELL (P1/P2 probes: the SAME plain variable certifies as ptr CAD-KIND:region AND ptr CAD-KIND:cols) mirroring the layout-family pointee-bind guard from the wide-ADT landing (S1-relax removal precedent: LAYOUT-BUFFER is the ONLY typed-layout pointer introduction) - without (2), (1)'s guarantee is bypassable by any raw variable. Regressions: TK-CELL LAYOUT-BUFFER round-trip positive, raw-store negative, variable-as-ptr-family negative (P1/P2 flipped to rejects), plus the existing layout-family suite untouched. CONSUMER: habu-maki-typed-storage-2279c4b0 (maki scratch cells LEW-RID/LMM-RID/LRED-RID/MDL-PROBE-RID migrate the day this lands).
