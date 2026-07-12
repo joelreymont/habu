@@ -1,24 +1,37 @@
-\ owner-wid-internal.f - build and run the isolated cold owner proof.
+\ owner-wid-internal.f - run the owner proof builder in an isolated process.
 
-require test/owner-wid-image.f
+require lib/errors.f
+require lib/string.f
 require lib/test.f
+require lib/memory.f
+require lib/fs.f
+require lib/process.f
+require lib/process-argv.f
+require lib/process-env.f
 
 package OWNER-WID-INTERNAL
 
 $4000 constant CAP
-120000 constant TIMEOUT-MS
+180000 constant TIMEOUT-MS
 create OUT CAP allot
 create ERR CAP allot
 variable OUT-U
 variable ERR-U
 
-: RUN-FILE ( ptr u8 n -- n ) {: file:ptr fileu:n :}
+: HB$ ( -- ptr u8 n )
+   s" HABU_UNDER_TEST" >LEN PROC-ENV-DEFAULT$? if LEN>N exit then
+   2drop
+   s" HABU_UNDER_TEST" GETENV dup 0= if
+      2drop s" bin/hb" exit
+   then ;
+
+: RUN-CHILD ( -- n )
    PROC-ARGV-RESET
    PROC-ENV-RESET
    PROC-ENV-INHERIT-MISSING
    s" --load" >LEN PROC-ARGV+
-   file fileu >LEN PROC-ARGV+
-   OWNER-WID-IMAGE:HB$ >LEN
+   s" test/owner-wid-child.f" >LEN PROC-ARGV+
+   HB$ >LEN
    OUT CAP >LEN ERR CAP >LEN TIMEOUT-MS >MS
    RUN-ARGV-ENV-CAPTURE {: outu:len erru:len code:rc :}
    outu LEN>N OUT-U !
@@ -32,27 +45,15 @@ variable ERR-U
    ERR ERR-U @ ;
 
 : BODY ( -- )
-   OWNER-WID-IMAGE:BUILD
-   BUILD-EXT:ASSERT-EMPTY
-   BF-TMP-U @ 0 T=
-   BF-ENGINE-U @ 0 T=
-   BF-PIN-N @ 0 T=
-   BF-PIN-ON @ 0 T=
-   BF-REC-STAGE? @ 0 T=
-   BF-REC-STDIN? @ 0 T=
-   s" test/owner-wid-state.f" RUN-FILE 0 T=
-   OUT$ s" owner-wid-state-test: ok" CONTAINS? TTRUE
-   s" test/owner-wid-call.f" RUN-FILE 70 T=
-   ERR$ s" owner-wid-add" CONTAINS? TTRUE ;
+   RUN-CHILD 0 T=
+   OUT$ s" owner-wid-child-test: ok" CONTAINS? TTRUE
+   ERR-U @ 0 T= ;
 
 public
 
 : RUN ( -- )
    T-RESET
-   CLEANUP-RESET
-   [: BODY ;] catch {: code:n :}
-   CLEANUP-RUN
-   code 0 <> if code throw then
+   BODY
    T-REPORT
    s" owner-wid-internal-test: ok" type cr ;
 

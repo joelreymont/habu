@@ -579,11 +579,14 @@ create AXBUF AXBUF-CAP allot
 \ RECW latch and may call it — neither can run under census dummies.
 \ prot-wid-add mutates the sealed friend-band protected-WID registry (a
 \ seal-capture-class live seal mutation) and its overflow path exits the
-\ process (NR-EXIT-GROUP rc 84), so it can never take a dummy operand.
+\ process (NR-EXIT-GROUP rc 84), so it can never take a dummy operand. The
+\ owner-wid predicates observe the mutable protected owner registry; generic
+\ census stacks cannot supply a meaningful registry state, so they are
+\ state-dependent noexec axioms rather than pure generated cases.
 \ tfam-ctor-word? is a pure registry-read predicate and stays difftested in
 \ AX-MEM-LIST (empty census registry -> false, one flag out).
 : AX-NOEXEC-C ( -- ptr u8 n )
-   s"  seal-capture seal-friend prot-wid-add wf-tokix@ wf-off@ wf-pos@ wf-fam@ wf-width@ wf-term@ wf-flags@ tfam-width@ locw-hw@ p2-carve-w p2-live-w@ p2-live-cum@ p2-locseq-reset wide-mark rec-wide-publish layout-valid-desc-cell tfam-name$ tfam-arity@ tfam-kind@ tfam-public? tfam-derive-eq? tfam-derive-hash? tfam-var-start@ tfam-var-count@ sumv-name$ sumv-ctor-pkg$ lower-cert:cell@ lower-cert:bytes " ;
+   s"  seal-capture seal-friend prot-wid-add owner-wid-preflight? owner-wid-public? owner-wid-private? owner-wid? wf-tokix@ wf-off@ wf-pos@ wf-fam@ wf-width@ wf-term@ wf-flags@ tfam-width@ locw-hw@ p2-carve-w p2-live-w@ p2-live-cum@ p2-locseq-reset wide-mark rec-wide-publish layout-valid-desc-cell tfam-name$ tfam-arity@ tfam-kind@ tfam-public? tfam-derive-eq? tfam-derive-hash? tfam-var-start@ tfam-var-count@ sumv-name$ sumv-ctor-pkg$ lower-cert:cell@ lower-cert:bytes " ;
 
 : AX-CAT ( ptr u8 n -- n )
    2dup AX-HAS-QUOTE? if 2drop AX-NOEXEC exit then
