@@ -425,7 +425,8 @@ variable TL-COPY-T
    TL-LS @ TL-LU @ < IF TL-LU @ TL-DO-SRC-LINE THEN ;
 
 : TL-SCAN-SRC-FILE ( ptr u8 n -- ) {: a:ptr u :}
-   a u s" .f" HAS-EXT? 0= IF exit THEN
+   a u s" .f" HAS-EXT?
+   a u s" .fs" HAS-EXT? or 0= if exit then
    a u TL-REL$ TL-CUR-PATH-U ! TL-CUR-PATH-A!
    a u TL-FILE-A@ TL-FILE-LIMIT @ READ-FILE TL-FOR-SRC-LINES ;
 
@@ -660,20 +661,28 @@ variable TL-COPY-T
    sk TL-CHECK-AUDIT-DATE ;
 
 : TL-SCANNED-SITE? ( ptr u8 n -- bool )
-   2dup s" src/" LINT-STARTS-WITH? IF 2drop TL-TRUE exit THEN
-   s" lib/" LINT-STARTS-WITH? ;
+   2dup s" src/" LINT-STARTS-WITH? if 2drop TL-TRUE exit then
+   2dup s" lib/" LINT-STARTS-WITH? if 2drop TL-TRUE exit then
+   2dup s" maki/" LINT-STARTS-WITH? if 2drop TL-TRUE exit then
+   s" tools/" LINT-STARTS-WITH? ;
 
 : TL-CHECK-STALE-ROW ( n -- ) {: mk :}
    mk TL-M-KEY-PATH$ TL-SCANNED-SITE? TL-NOT IF exit THEN
    mk TL-FIND-SITE-FOR-MAN 0 < IF
       s" STALE-ROW TRUSTED.md " TL-OUT mk TL-M-KEY-PATH$ TL-OUT
       s" : `" TL-OUT mk TL-M-NAME$ TL-OUT
-      s" ` has a row but no TRUST site in src/ or lib/ scanned roots" TL-OUT TL-NL
+      s" ` has a row but no TRUST site in an audited source root" TL-OUT TL-NL
       TL-BAD+
    THEN ;
 
-: TL-SCAN-OPTIONAL-ROOT ( ptr u8 n -- ) {: a:ptr u :}
-   a u TL-ROOTED$ 2dup EXISTS? IF [: TL-SCAN-SRC-FILE ;] WALK-FILES ELSE 2drop THEN ;
+: TL-MISSING-ROOT ( ptr u8 n -- )
+   s" MISSING-ROOT " TL-OUT TL-OUT
+   s" : required audited source root is missing" TL-OUT TL-NL
+   E-FS-DIR throw ;
+
+: TL-SCAN-ROOT ( ptr u8 n -- ) {: a:ptr u:n :}
+   a u TL-ROOTED$ 2dup DIR? 0= if 2drop a u TL-MISSING-ROOT then
+   [: TL-SCAN-SRC-FILE ;] WALK-FILES ;
 
 : TL-RESET ( -- )
    TL-ALLOC-TABLES
@@ -708,8 +717,10 @@ variable TL-COPY-T
 
 : TRUST-LINT ( -- )
    TRUST-LINT-RESET
-   s" src" TL-SCAN-OPTIONAL-ROOT
-   s" lib" TL-SCAN-OPTIONAL-ROOT
+   s" src" TL-SCAN-ROOT
+   s" lib" TL-SCAN-ROOT
+   s" maki" TL-SCAN-ROOT
+   s" tools" TL-SCAN-ROOT
    TL-SCAN-MANIFEST
    TL-CHECK-SITES
    TL-CHECK-STALE-ROWS

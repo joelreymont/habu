@@ -4,6 +4,12 @@
 
 Last updated: 2026-07-12
 
+- **An optional lint root is an audit bypass:** `trust-lint` silently skipped
+  absent roots and audited only `src/` plus `lib/`, leaving 16 existing
+  `maki/` and `tools/` TRUST sites outside `TRUSTED.md`. Keep one explicit,
+  required root set, recurse over both `.f` and `.fs`, and regress nested
+  unmanifested sites by exact `file:line: word` diagnostics.
+
 - **Describe bootstrap parity at the implementation boundary:** when the
   Gforth recovery host mirrors pass-2 lowering, calling parity merely
   behavioral or claiming there is no mirror contradicts the code. Name the

@@ -32,12 +32,18 @@ variable TLT-ROOT-U
 variable TLT-CASE-U
 variable TLT-SRC-U
 variable TLT-LIB-U
+variable TLT-MAKI-U
+variable TLT-TOOLS-U
 variable TLT-MAN-U
 variable TLT-SRC-TRUST-U
 variable TLT-LIB-TRUST-U
 variable TLT-LIB-DEF-U
 variable TLT-BENCH-U
 variable TLT-BENCH-TRUST-U
+variable TLT-MAKI-TARGET-U
+variable TLT-MAKI-TRUST-U
+variable TLT-TOOLS-NEST-U
+variable TLT-TOOLS-TRUST-U
 variable TLT-CORE-SRC-A
 variable TLT-CORE-SRC-U
 variable TLT-I
@@ -46,12 +52,18 @@ create TLT-ROOT-BUF FS-PATH-CAP allot
 create TLT-CASE-BUF FS-PATH-CAP allot
 create TLT-SRC-BUF FS-PATH-CAP allot
 create TLT-LIB-BUF FS-PATH-CAP allot
+create TLT-MAKI-BUF FS-PATH-CAP allot
+create TLT-TOOLS-BUF FS-PATH-CAP allot
 create TLT-MAN-BUF FS-PATH-CAP allot
 create TLT-SRC-TRUST-BUF FS-PATH-CAP allot
 create TLT-LIB-TRUST-BUF FS-PATH-CAP allot
 create TLT-LIB-DEF-BUF FS-PATH-CAP allot
 create TLT-BENCH-BUF FS-PATH-CAP allot
 create TLT-BENCH-TRUST-BUF FS-PATH-CAP allot
+create TLT-MAKI-TARGET-BUF FS-PATH-CAP allot
+create TLT-MAKI-TRUST-BUF FS-PATH-CAP allot
+create TLT-TOOLS-NEST-BUF FS-PATH-CAP allot
+create TLT-TOOLS-TRUST-BUF FS-PATH-CAP allot
 create TLT-OUT TLT-CAP allot
 create TLT-ERR TLT-CAP allot
 create TLT-STR-BUF TLT-STR-CAP allot
@@ -88,6 +100,12 @@ TLT-LF TLT-LF-BUF c!
 : TLT-LIB ( -- ptr u8 n )
    TLT-LIB-BUF TLT-LIB-U @ ;
 
+: TLT-MAKI ( -- ptr u8 n )
+   TLT-MAKI-BUF TLT-MAKI-U @ ;
+
+: TLT-TOOLS ( -- ptr u8 n )
+   TLT-TOOLS-BUF TLT-TOOLS-U @ ;
+
 : TLT-MAN ( -- ptr u8 n )
    TLT-MAN-BUF TLT-MAN-U @ ;
 
@@ -105,6 +123,18 @@ TLT-LF TLT-LF-BUF c!
 
 : TLT-BENCH-TRUST ( -- ptr u8 n )
    TLT-BENCH-TRUST-BUF TLT-BENCH-TRUST-U @ ;
+
+: TLT-MAKI-TARGET ( -- ptr u8 n )
+   TLT-MAKI-TARGET-BUF TLT-MAKI-TARGET-U @ ;
+
+: TLT-MAKI-TRUST ( -- ptr u8 n )
+   TLT-MAKI-TRUST-BUF TLT-MAKI-TRUST-U @ ;
+
+: TLT-TOOLS-NEST ( -- ptr u8 n )
+   TLT-TOOLS-NEST-BUF TLT-TOOLS-NEST-U @ ;
+
+: TLT-TOOLS-TRUST ( -- ptr u8 n )
+   TLT-TOOLS-TRUST-BUF TLT-TOOLS-TRUST-U @ ;
 
 : TLT-CORE-SRC! ( ptr u8 n -- ) {: a:ptr u:n :}
    a TLT-CORE-SRC-A!
@@ -163,6 +193,12 @@ TLT-LF TLT-LF-BUF c!
    s"   here ;" SB-APPEND TLT-LF+
    SB$ ;
 
+: TLT-NESTED-TRUST$ ( ptr u8 n -- ptr u8 n ) {: name:ptr nameu:n :}
+   SB-RESET
+   s" TRUSTED: " SB-APPEND name nameu SB-APPEND s"  ( -- n )" SB-APPEND TLT-LF+
+   s"    1 ;" SB-APPEND TLT-LF+
+   SB$ ;
+
 : TLT-GROW-ROW$ ( n -- ptr u8 n ) {: i:n :}
    SB-RESET
    s" | ROW-" SB-APPEND i TLT-U+
@@ -183,12 +219,22 @@ TLT-LF TLT-LF-BUF c!
    TLT-CASE MAKE-DIR
    TLT-CASE s" src" TLT-SRC-BUF TLT-SRC-U TLT-PATH!
    TLT-CASE s" lib" TLT-LIB-BUF TLT-LIB-U TLT-PATH!
+   TLT-CASE s" maki" TLT-MAKI-BUF TLT-MAKI-U TLT-PATH!
+   TLT-CASE s" tools" TLT-TOOLS-BUF TLT-TOOLS-U TLT-PATH!
    TLT-CASE s" TRUSTED.md" TLT-MAN-BUF TLT-MAN-U TLT-PATH!
    TLT-SRC s" trust.f" TLT-SRC-TRUST-BUF TLT-SRC-TRUST-U TLT-PATH!
    TLT-LIB s" trust.f" TLT-LIB-TRUST-BUF TLT-LIB-TRUST-U TLT-PATH!
    TLT-LIB s" trusted-def.f" TLT-LIB-DEF-BUF TLT-LIB-DEF-U TLT-PATH!
    TLT-CASE s" bench" TLT-BENCH-BUF TLT-BENCH-U TLT-PATH!
-   TLT-BENCH s" trust.f" TLT-BENCH-TRUST-BUF TLT-BENCH-TRUST-U TLT-PATH! ;
+   TLT-BENCH s" trust.f" TLT-BENCH-TRUST-BUF TLT-BENCH-TRUST-U TLT-PATH!
+   TLT-MAKI s" target/deep" TLT-MAKI-TARGET-BUF TLT-MAKI-TARGET-U TLT-PATH!
+   TLT-MAKI-TARGET s" trust.f" TLT-MAKI-TRUST-BUF TLT-MAKI-TRUST-U TLT-PATH!
+   TLT-TOOLS s" nested/deep" TLT-TOOLS-NEST-BUF TLT-TOOLS-NEST-U TLT-PATH!
+   TLT-TOOLS-NEST s" trust.fs" TLT-TOOLS-TRUST-BUF TLT-TOOLS-TRUST-U TLT-PATH!
+   TLT-SRC MAKE-DIRS
+   TLT-LIB MAKE-DIRS
+   TLT-MAKI MAKE-DIRS
+   TLT-TOOLS MAKE-DIRS ;
 
 : TLT-WRITE-MAN-HEADER ( -- )
    TLT-MAN TLT-HEADER$ WRITE-ALL ;
@@ -203,7 +249,6 @@ TLT-LF TLT-LF-BUF c!
 
 : TLT-MAKE-BASE ( ptr u8 n -- )
    TLT-CASE!
-   TLT-SRC MAKE-DIR
    TLT-SRC-TRUST TLT-BASE-SRC$ WRITE-ALL
    TLT-BASE-ROW$ TLT-WRITE-MAN-ROW ;
 
@@ -229,6 +274,18 @@ TLT-LF TLT-LF-BUF c!
 
 : TLT-ADD-GOOD-BENCH-ROW ( -- )
    s" | bench-trusted | `-- ptr u8` | fixture | `test/t-bench-fixture.fs` | bench/trust.f | 2026-06-13 |" TLT-APPEND-MAN ;
+
+: TLT-ADD-MAKI-TRUST ( -- )
+   TLT-MAKI-TARGET MAKE-DIRS
+   TLT-MAKI-TRUST s" MAKI-HIDDEN" TLT-NESTED-TRUST$ WRITE-ALL ;
+
+: TLT-ADD-TOOLS-TRUST ( -- )
+   TLT-TOOLS-NEST MAKE-DIRS
+   TLT-TOOLS-TRUST s" TOOLS-HIDDEN" TLT-NESTED-TRUST$ WRITE-ALL ;
+
+: TLT-ADD-GOOD-NESTED-ROWS ( -- )
+   s" | MAKI-HIDDEN | `-- n` | fixture | `test/t-maki-fixture.fs` | maki/target/deep/trust.f | 2026-06-13 |" TLT-APPEND-MAN
+   s" | TOOLS-HIDDEN | `-- n` | fixture | `test/t-tools-fixture.fs` | tools/nested/deep/trust.fs | 2026-06-13 |" TLT-APPEND-MAN ;
 
 : TLT-APPEND-GROW-ROWS ( n -- ) {: rows:n :}
    0 TLT-I !
@@ -372,6 +429,12 @@ TLT-LF TLT-LF-BUF c!
 : TLT-EXPECT-BAD-CONTAINS ( ptr u8 n ptr u8 n -- ) {: code:ptr codeu needle:ptr needleu :}
    code codeu s" 2026-06-16" needle needleu TLT-EXPECT-BAD-TODAY ;
 
+: TLT-EXPECT-MISSING-ROOT ( -- )
+   TLT-RUN-DEFAULT E-FS-DIR T=
+   {: outu:n erru:n :}
+   erru 0 T=
+   TLT-OUT outu s" MISSING-ROOT tools" CONTAINS? TTRUE ;
+
 : TLT-TEST-GOOD ( -- )
    s" good" TLT-MAKE-BASE
    1 1 TLT-EXPECT-OK ;
@@ -389,6 +452,28 @@ TLT-LF TLT-LF-BUF c!
    TLT-ADD-GOOD-BENCH-ROW
    1 2 TLT-EXPECT-OK
    TLT-BENCH-TRUST 1 2 TLT-EXPECT-SOURCE-OK ;
+
+: TLT-TEST-NESTED-ROOTS-GOOD ( -- )
+   s" nested-roots-good" TLT-MAKE-BASE
+   TLT-ADD-MAKI-TRUST
+   TLT-ADD-TOOLS-TRUST
+   TLT-ADD-GOOD-NESTED-ROWS
+   3 3 TLT-EXPECT-OK ;
+
+: TLT-TEST-UNMANIFESTED-MAKI ( -- )
+   s" unmanifested-maki" TLT-MAKE-BASE
+   TLT-ADD-MAKI-TRUST
+   s" UNMANIFESTED" s" maki/target/deep/trust.f:1: `MAKI-HIDDEN`" TLT-EXPECT-BAD-CONTAINS ;
+
+: TLT-TEST-UNMANIFESTED-TOOLS ( -- )
+   s" unmanifested-tools" TLT-MAKE-BASE
+   TLT-ADD-TOOLS-TRUST
+   s" UNMANIFESTED" s" tools/nested/deep/trust.fs:1: `TOOLS-HIDDEN`" TLT-EXPECT-BAD-CONTAINS ;
+
+: TLT-TEST-MISSING-ROOT ( -- )
+   s" missing-root" TLT-MAKE-BASE
+   TLT-TOOLS REMOVE-DIR
+   TLT-EXPECT-MISSING-ROOT ;
 
 : TLT-TEST-UNMANIFESTED-LIB ( -- )
    s" unmanifested-lib" TLT-MAKE-BASE
@@ -430,7 +515,6 @@ TLT-LF TLT-LF-BUF c!
 
 : TLT-TEST-DUP-NAME-MISSING-SITE ( -- )
    s" duplicate-name-missing-site" TLT-CASE!
-   TLT-SRC MAKE-DIR
    TLT-SRC-TRUST TLT-BASE-SRC$ WRITE-ALL
    TLT-WRITE-MAN-HEADER
    s" | foo | `n -- n` | fixture | `test/t-fixture.fs` | src/other.f | 2026-06-13 |" TLT-APPEND-MAN
@@ -529,6 +613,10 @@ TLT-LF TLT-LF-BUF c!
    TLT-TEST-GOOD
    TLT-TEST-GOOD-LIB
    TLT-TEST-GOOD-NONROOT-ROW
+   TLT-TEST-NESTED-ROOTS-GOOD
+   TLT-TEST-UNMANIFESTED-MAKI
+   TLT-TEST-UNMANIFESTED-TOOLS
+   TLT-TEST-MISSING-ROOT
    TLT-TEST-UNMANIFESTED-LIB
    TLT-TEST-UNMANIFESTED-TRUSTED
    TLT-TEST-STALE-LIB-ROW
