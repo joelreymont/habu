@@ -3577,3 +3577,7 @@ unchanged (148855). Keys for milestone 2:
   count-green while strict mode is red because classification rows still name a
   removed capability dot. Reassign landed boundaries to a live permanent owner
   in the same change that removes the capability dot.
+- **Give every native refresh a private `HB_TMP`.** A refresh overlapping other
+  build work surfaced `E-PROC-SPAWN`; the same source reached fixpoint in a fresh
+  artifact root. Isolate fixed-name build artifacts and avoid overlapping proof
+  builds before treating a process-launch failure as compiler corruption.

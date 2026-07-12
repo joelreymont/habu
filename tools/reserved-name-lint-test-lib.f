@@ -80,6 +80,7 @@ variable RNLT-CONTROL-U
    s" : variant ( -- ) ;" SB-APPEND RNLT-LF
    s" : ;VARIANT ( -- ) ;" SB-APPEND RNLT-LF
    s" : ;sumtype ( -- ) ;" SB-APPEND RNLT-LF
+   s" : ;package ( -- ) ;" SB-APPEND RNLT-LF
    s" : Export ( -- ) ;" SB-APPEND RNLT-LF
    s" : LAYOUT-BUFFER ( -- ) ;" SB-APPEND RNLT-LF
    SB$ ;
@@ -187,6 +188,7 @@ variable RNLT-CONTROL-U
    RNLT-OUT outu s" `variant`" CONTAINS? TTRUE
    RNLT-OUT outu s" `;VARIANT`" CONTAINS? TTRUE
    RNLT-OUT outu s" `;sumtype`" CONTAINS? TTRUE
+   RNLT-OUT outu s" `;package`" CONTAINS? TTRUE
    RNLT-OUT outu s" `Export`" CONTAINS? TTRUE
    RNLT-OUT outu s" `LAYOUT-BUFFER`" CONTAINS? TTRUE ;
 

@@ -718,7 +718,7 @@ create CAE-LF-BYTE 10 c,
    s" package CAEXA" SB-APPEND CAE-LF
    s" public" SB-APPEND CAE-LF
    s" : AW ( i64 -- i64 ) 1 + ;" SB-APPEND CAE-LF
-   s" end-package" SB-APPEND CAE-LF
+   s" ;PaCkAgE" SB-APPEND CAE-LF
    s" package CAEXB" SB-APPEND CAE-LF
    s" public" SB-APPEND CAE-LF
    s" EXPORT CAEXA:AW" SB-APPEND CAE-LF

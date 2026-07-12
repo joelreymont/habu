@@ -25,6 +25,8 @@
 \ checker-xt validation, BCHECKFETCH, undefined-word EVAL recovery (code 70), and the
 \ engine-id/underflow-guard/boot-pin work; those fable fixes fit within the existing
 \ 148855-byte page floor, so the macOS ratchet is unchanged on the merged fixpoint.
+\ 2026-07-12 macOS measurement remains 148855 after adding the distinct `;package`
+\ keyword data/dispatch entry; the alias fits inside the existing page floor.
 148855 constant GB-SIZE-BASELINE-MACOS
 102592 constant GB-SIZE-BASELINE-LINUX   \ fable re-measure 2026-07-04 (Orin, habu-re-measure-set);
                                          \ STALE for the merged engine (adds the TFAM +1269-line

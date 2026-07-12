@@ -613,11 +613,15 @@ variable PS-DEF-SIG-U
    PS-TRUE PS-IN-PKG !
    PS-FALSE PS-PKG-PUBLIC ! ;
 
+: PS-PACKAGE-CLOSE? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   a u s" end-package" LINT-STR=CI IF PS-TRUE exit THEN
+   a u s" ;package" LINT-STR=CI ;
+
 : PS-SCOPE-TOKEN? ( ptr u8 n -- bool ) {: a:ptr u:n :}
    a u s" package" LINT-STR=CI IF PS-PACKAGE-NAME! PS-TRUE exit THEN
    a u s" public" LINT-STR=CI IF PS-IN-PKG @ IF PS-TRUE PS-PKG-PUBLIC ! THEN PS-TRUE exit THEN
    a u s" private" LINT-STR=CI IF PS-IN-PKG @ IF PS-FALSE PS-PKG-PUBLIC ! THEN PS-TRUE exit THEN
-   a u s" end-package" LINT-STR=CI IF PS-FALSE PS-IN-PKG ! PS-FALSE PS-PKG-PUBLIC ! PS-TRUE exit THEN
+   a u PS-PACKAGE-CLOSE? IF PS-FALSE PS-IN-PKG ! PS-FALSE PS-PKG-PUBLIC ! PS-TRUE exit THEN
    PS-FALSE ;
 
 : PS-RESET-SCOPE ( -- )

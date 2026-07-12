@@ -447,6 +447,20 @@ variable GD-START-NS
    s" 10" GE-OUT-LINE
    SB$ s" hb package public/private/reopen output" GE-EXPECT-OUT ;
 
+: GD-PACKAGE-SEMICOLON ( -- )
+   GE-HB-RESET
+   GE-SRC-RESET
+   s" package GD-SPA" GE-SRC-LINE
+   s" public" GE-SRC-LINE
+   s" : VALUE ( -- n ) 41 ;" GE-SRC-LINE
+   s" ;PaCkAgE" GE-SRC-LINE
+   s" : GD-SPA-AFTER ( -- n ) 1 ;" GE-SRC-LINE
+   s" GD-SPA:VALUE GD-SPA-AFTER + ." GE-SRC-LINE
+   s" hb semicolon package alias" GE-EVAL-RUN-STDIN
+   SB-RESET
+   s" 42" GE-OUT-LINE
+   SB$ s" hb semicolon package alias output" GE-EXPECT-OUT ;
+
 : GD-PACKAGE-JIT-STACK-ISOLATION ( -- )
    GE-HB-RESET
    GE-SRC-RESET
@@ -790,6 +804,8 @@ variable GD-START-NS
    $4B s" private" s" package rejects private outside" GD-RUN-BAD-SOURCE
    GE-SRC-RESET  s" end-package" GE-SRC-LINE
    $4B s" end-package" s" package rejects end outside" GD-RUN-BAD-SOURCE
+   GE-SRC-RESET  s" ;package" GE-SRC-LINE
+   $4B s" ;package" s" package rejects semicolon closer outside" GD-RUN-BAD-SOURCE
    GE-SRC-RESET  s" package A" GE-SRC-LINE  s" package B" GE-SRC-LINE
    $4B s" package" s" package rejects nesting" GD-RUN-BAD-SOURCE
    GE-SRC-RESET  s" package" GE-SRC-LINE
@@ -1125,6 +1141,7 @@ variable GD-START-NS
    s" dictionary/literal-first" [: GD-LITERAL-FIRST ;] GD-RUN
    s" dictionary/namespace" [: GD-NAMESPACE-QUALIFIED ;] GD-RUN
    s" dictionary/package-runtime" [: GD-PACKAGE-RUNTIME ;] GD-RUN
+   s" dictionary/package-semicolon" [: GD-PACKAGE-SEMICOLON ;] GD-RUN
    s" dictionary/package-jit-stack" [: GD-PACKAGE-JIT-STACK-ISOLATION ;] GD-RUN
    s" dictionary/package-check" [: GD-PACKAGE-CHECK ;] GD-RUN
    s" dictionary/package-noret" [: GD-PACKAGE-NORET ;] GD-RUN

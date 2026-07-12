@@ -519,7 +519,7 @@ create HBT-EXP-HEX2 64 allot
    s" package XA" SB-APPEND HBB-LF SB-APPEND-C
    s" public" SB-APPEND HBB-LF SB-APPEND-C
    s" : W ( i64 -- i64 ) dup * ;" SB-APPEND HBB-LF SB-APPEND-C
-   s" end-package" SB-APPEND HBB-LF SB-APPEND-C ;
+   s" ;package" SB-APPEND HBB-LF SB-APPEND-C ;
 
 : HBT-EXP-REF-SRC$ ( -- ptr u8 n )
    SB-RESET
@@ -533,7 +533,7 @@ create HBT-EXP-HEX2 64 allot
    s" package XB" SB-APPEND HBB-LF SB-APPEND-C
    s" public" SB-APPEND HBB-LF SB-APPEND-C
    s" EXPORT XA:W" SB-APPEND HBB-LF SB-APPEND-C
-   s" end-package" SB-APPEND HBB-LF SB-APPEND-C
+   s" ;package" SB-APPEND HBB-LF SB-APPEND-C
    s" : MAIN ( -- ) 5 XA:W . cr 5 XB:W . cr ;" SB-APPEND HBB-LF SB-APPEND-C
    SB$ ;
 

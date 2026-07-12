@@ -349,7 +349,7 @@ variable PST-SUM-U
    s" : NESTED ( -- ) ;" SB-APPEND PST-LF
    s" public" SB-APPEND PST-LF
    s" : SHOWN ( -- ) ;" SB-APPEND PST-LF
-   s" end-package" SB-APPEND PST-LF
+   s" ;PaCkAgE" SB-APPEND PST-LF
    SB$ ;
 
 : PST-PREPARE-NESTED ( -- )
