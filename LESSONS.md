@@ -3772,3 +3772,12 @@ unchanged (148855). Keys for milestone 2:
   "Last verified" to the local date after midnight CEST made pushed master red
   for the hours until UTC caught up. Check `date -u +%F` before any date roll,
   and pass that same UTC day to manual stale-status/trust-lint invocations.
+- **Stored checker effect rows are EN-node encoded — live-row walkers do not
+  apply.** Deriving a fact (like min-in cell count) from a stored effect means
+  re-walking the encoded rows; compute it once from the live row at build time
+  and persist it in EFF-REC instead (ER.MINI pattern).
+- **`type`-then-bare-`die` reads below base.** `die` is ( a u code -- ); a
+  failure branch that prints its message first and then calls `1 die` hands
+  die's operands to an empty stack (shadow-lint had exactly this latent bug,
+  exposed by the underdepth guard). Always keep die's message on the stack for
+  die itself.

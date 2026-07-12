@@ -125,3 +125,22 @@ layout-buf-f0058750, certified-words-84e84eaf, checker-in-body-af7cf855,
 diagnostic-renderer-66c3e741. tfam coordination: they were at ae4019e5 (their
 claim tfam-2b-sealed active) - master ff means their next push rebases onto the
 unified tree; the dots + this record are the channel.
+
+## STATUS 2026-07-13 (UTC 07-12 eve): checker/engine campaign COMPLETE
+
+master = fable = 3329ca69. All four claimed dots landed + closed through
+review->fix-round->full-ladder windows: in-body openers (UNSAFE-TOK? parity),
+diag renderer (interned family names; TKF-clobber RCA), TK-CELL nominal-scalar
+LAYOUT-BUFFER + governed ptr introduction (also closed the typed-storage
+consumer), FOO2 underdepth guard (DNAME-MIN-IN band; LARITY census fixed real
+bare-crash prims; snap v2; mirror parity). Boot prefix stays 32; engine
+165367B (page-floor bump, reviewed). INCIDENT LOGGED: local-date STATUS roll
+made master red briefly (UTC lesson recorded).
+OPEN QUEUE now: friend latch (tfam claim, live), design dots (value-intro
+governance d6533898, DEFTYPE-class 8e9d1dc5, parametric cells 071ec3a7, JSON
+family hint f52e2375, M/N/K seam 19483695, MP-SLOT sentinel c4836a39,
+owner-wid standalone guards cda624c9, behavioral bootstrap-hide db928688,
+core-dictionary-vs 2a5273f0), gated backlog (zed device, user eval rounds).
+Next session: fetch master first (tfam rebases onto the unified tree), then
+pick from the design dots by value - value-intro governance is the deepest;
+JSON family hint + owner-wid guards are quick wins.
