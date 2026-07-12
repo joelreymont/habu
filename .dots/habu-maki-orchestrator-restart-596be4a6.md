@@ -34,3 +34,18 @@ RESTART CONTEXT for the maki/Model-CAD orchestrator. Start every session in ~/Wo
   becomes conflict-free adoption.
 - Known repo debris (tfam-lane, untouched): conflicted bookmark maki-layout-valid;
   divergent changes xvznslzy/xxxqnrku/klwoxorp/snwrzmwt/wmromqny/zkmpnxlk/rxxvroyr.
+
+## PROTOCOL AMENDMENT 2026-07-12: stage-then-fan-out (user-directed)
+
+Multi-file missions are NOT one long worker. Decompose every dispatch:
+1. CORE stage (serial, one worker): resolve the semantic core / policy
+   decisions / target API on the minimal file set; publish the contract in
+   the report.
+2. FAN-OUT stage (parallel workers): dependent file clusters under DISJOINT
+   file ownership - one workspace is fine when ownership is disjoint; brief
+   each worker with the stage-1 contract.
+3. INTEGRATE stage (serial): one agent runs the exact-tree gate ladder.
+Reviews run as a PANEL of disjoint lenses (loss-hunt / acceptance probes /
+semantic attack / generalist), not one generalist. Fix rounds fan out one
+worker per disjoint finding cluster. Only the core contract, the merge commit
+itself, and the bookmark/push window are inherently serial.

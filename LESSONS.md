@@ -3652,4 +3652,14 @@ unchanged (148855). Keys for milestone 2:
   moment of dispatch — a pushed `active` status is the cross-lane claim
   signal; `dot off` only at landing; parked dots go back to `open` so
   `active` never lies.
+- **Stage-then-fan-out beats one long worker on multi-file missions.** The R3
+  reconciliation (50 files, ~2h) ran as a single agent; only the semantic core
+  (the files where the policy decisions live and the API is fixed) needed one
+  head. Correct shape: stage 1 = one worker resolves the core and publishes
+  the target API/contract; stage 2 = parallel workers port the dependent file
+  clusters under disjoint file ownership (one workspace is fine when ownership
+  is disjoint); stage 3 = one integrator runs the exact-tree gates. Same rule
+  for review (panel of disjoint lenses) and for fix rounds (one worker per
+  disjoint finding cluster). Serial is only for: the core contract, the merge
+  commit itself, and the gate-ladder/bookmark window.
 
