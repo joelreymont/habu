@@ -582,8 +582,18 @@ create AXBUF AXBUF-CAP allot
 \ process (NR-EXIT-GROUP rc 84), so it can never take a dummy operand.
 \ tfam-ctor-word? is a pure registry-read predicate and stays difftested in
 \ AX-MEM-LIST (empty census registry -> false, one flag out).
+\ trust records a live checker signature from its string operands (a checker
+\ substrate mutation; UNSAFE-TOK? bans it inside checked bodies anyway);
+\ check/check! spawn a full checker run over their string operand (a dummy
+\ pointer would be lexed); typefamily/sumtype/enum/product are top-level parser
+\ words that consume their own block tokens up to the ;NAME closer, so a census
+\ runner has no input to feed them; layout-buffer likewise parses its own
+\ name + type tokens after its count operand (and UNSAFE-TOK? bans it inside
+\ checked bodies). Their axioms keep them checker-known so the seal-time
+\ internal-word marking pass leaves them top-level executable (dot
+\ habu-hb-crash-bare-c5be6634).
 : AX-NOEXEC-C ( -- ptr u8 n )
-   s"  seal-capture seal-friend prot-wid-add wf-tokix@ wf-off@ wf-pos@ wf-fam@ wf-width@ wf-term@ wf-flags@ tfam-width@ locw-hw@ p2-carve-w p2-live-w@ p2-live-cum@ p2-locseq-reset wide-mark rec-wide-publish layout-valid-desc-cell tfam-name$ tfam-arity@ tfam-kind@ tfam-public? tfam-derive-eq? tfam-derive-hash? tfam-var-start@ tfam-var-count@ sumv-name$ sumv-ctor-pkg$ lower-cert:cell@ lower-cert:bytes " ;
+   s"  seal-capture seal-friend prot-wid-add wf-tokix@ wf-off@ wf-pos@ wf-fam@ wf-width@ wf-term@ wf-flags@ tfam-width@ locw-hw@ p2-carve-w p2-live-w@ p2-live-cum@ p2-locseq-reset wide-mark rec-wide-publish layout-valid-desc-cell tfam-name$ tfam-arity@ tfam-kind@ tfam-public? tfam-derive-eq? tfam-derive-hash? tfam-var-start@ tfam-var-count@ sumv-name$ sumv-ctor-pkg$ lower-cert:cell@ lower-cert:bytes trust check check! typefamily sumtype enum product layout-buffer " ;
 
 : AX-CAT ( ptr u8 n -- n )
    2dup AX-HAS-QUOTE? if 2drop AX-NOEXEC exit then

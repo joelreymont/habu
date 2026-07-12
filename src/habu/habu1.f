@@ -1967,6 +1967,21 @@ s" linux-stat-fix" s" n --" TRUST
    10 9 16 LDR,  10 10 DNAME-WIDE ORRI,  10 9 16 STR,
    2 5 MOVZ,  LPROT LABEL@ BL, ;
 
+\ int-mark ( n -- ): set DNAME-INT on dictionary record n. Engine half of the
+\ seal-time internal-word marking pass (src/core/internal-mark.f, dot
+\ habu-hb-crash-bare-c5be6634): the pass classifies engine-prefix records with
+\ no checker-known effect, and interpret-mode execute/tick fail closed on the
+\ flag (habu2.f LINTERNAL). LPROT bracket as in BWIDEMARK - the dict region is
+\ read-only at runtime, so a raw store SIGBUSes. Marking is monotonic (no clear
+\ prim exists) and the pass marks int-mark's own record last, so user source
+\ cannot reach it.
+: BINTMARK ( -- )
+   2 3 MOVZ,  LPROT LABEL@ BL,
+   A G-POP
+   C DREC MOVZ,  A A C MUL,  A DBASE A ADD,
+   C A 16 LDR,  C C DNAME-INT ORRI,  C A 16 STR,
+   2 5 MOVZ,  LPROT LABEL@ BL, ;
+
 : BPROTWIDADD ( -- )
    LBL LBL LBL {: room:label done:label msg:label :}
    9 G-POP
@@ -2098,6 +2113,7 @@ s" linux-stat-fix" s" n --" TRUST
    s" SEAL-CAPTURE" ['] BSEALCAP FPRIM-L
    s" SEAL-FRIEND" ['] BSEALFRIEND FPRIM-L
    s" wide-mark" ['] BWIDEMARK FPRIM
+   s" int-mark" ['] BINTMARK 1 GDEREF-F
    s" prot-wid-add" ['] BPROTWIDADD FPRIM
    s" epoch-seconds" ['] BEPOCHSECONDS FPRIM-L
    s" mono-ns" ['] BMONONS FPRIM-L
@@ -2576,6 +2592,8 @@ variable FIND-HMATCH
          11 5 0 LDR,  12 5 8 LDR,
          14 5 16 LDR,
          15 14 DNAME-WIDE ANDI,  15 15 59 LSRI,               \ wide-effect bit -> 8
+         16 14 DNAME-INT ANDI,  16 16 59 LSRI,                \ internal bit -> 16
+         15 15 16 ORR,
          14 14 DNAME-IMM ANDI,  14 14 59 LSRI,                \ immediate bit -> 2
          14 14 15 ORR,
          13 1 MOVZ,  13 13 14 ORR,  RET,
@@ -2605,6 +2623,8 @@ variable FIND-HMATCH
          11 5 0 LDR,  12 5 8 LDR,
          14 5 16 LDR,
          15 14 DNAME-WIDE ANDI,  15 15 59 LSRI,               \ wide-effect bit -> 8
+         16 14 DNAME-INT ANDI,  16 16 59 LSRI,                \ internal bit -> 16
+         15 15 16 ORR,
          14 14 DNAME-IMM ANDI,  14 14 59 LSRI,                \ immediate bit -> 2
          14 14 15 ORR,
          13 1 MOVZ,  13 13 14 ORR,  FIND-NEXT LABEL@ B,

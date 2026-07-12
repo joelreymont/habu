@@ -122,3 +122,12 @@ variable LBUF-EVAL-U
    src srcu pna pnu LBUF-EVAL
    dup 0 <> if LBUF-ROLLBACK then
    drop ;
+
+\ LAYOUT-BUFFER is the public top-level introduction form: it consumes the
+\ count operand and parses its own name + type tokens. The axiom keeps it
+\ checker-known so the seal-time internal-word marking pass
+\ (src/core/internal-mark.f) leaves it executable at top level (dot
+\ habu-hb-crash-bare-c5be6634). UNSAFE-TOK? rejects `layout-buffer` inside
+\ checked bodies (it evaluates generated accessor source via LBUF-EVAL), so
+\ the axiom adds no checked-code capability.
+PRIM: LAYOUT-BUFFER PE-N PE-IN PRIM;

@@ -46,6 +46,19 @@ variable TCE-A   variable TCE-U
    [: TCE-GO ;] catch ;
 
 variable TCF   variable TCOK
+\ whitebox boundary (dot habu-hb-crash-bare-c5be6634): checker-internal colon
+\ words probed at top level go through named trusted shims.
+TRUSTED: TWX-CHECKER-RECORD-SYM ( ptr u8 n -- n ) CHECKER-RECORD-SYM ;
+TRUSTED: TWX-FRESH ( -- n ) FRESH ;
+TRUSTED: TWX-MULTI-ERR-BEGIN ( -- ) MULTI-ERR-BEGIN ;
+TRUSTED: TWX-MULTI-ERR-END ( -- n ) MULTI-ERR-END ;
+TRUSTED: TWX-NEW ( -- ) NEW ;
+TRUSTED: TWX-SUMV-CTOR-SYM@ ( n -- n ) SUMV-CTOR-SYM@ ;
+TRUSTED: TWX-SUMV-PAYCELLS@ ( n -- n ) SUMV-PAYCELLS@ ;
+TRUSTED: TWX-SYMS ( -- ptr a ) SYMS ;
+TRUSTED: TWX-TFAM-FIND-IN ( ptr u8 n ptr u8 n -- n bool ) TFAM-FIND-IN ;
+TRUSTED: TWX-TFAM-VIS@ ( n -- n ) TFAM-VIS@ ;
+
 
 \ ---------------------------------------------------------------------------
 \ top-level public arity-0 sum: constructors exist, certify, enforce payloads.
@@ -118,8 +131,8 @@ private
 TYPEFAMILY zonly 1
 end-package
 \ package mode continued private after generation ran inside the block.
-s" zpub" s" zonly" TFAM-FIND-IN TCOK ! TCF !   TCOK @ -1 T=
-TCF @ TFAM-VIS@ CHECKER-PACKAGE-PRIVATE T=
+s" zpub" s" zonly" TWX-TFAM-FIND-IN TCOK ! TCF !   TCOK @ -1 T=
+TCF @ TWX-TFAM-VIS@ CHECKER-PACKAGE-PRIVATE T=
 \ the generated word is globally addressable; qualified sig type resolves.
 : ZMK-YES ( n -- zpub:tres ) ZPUB-TRES:YES ;
 s" GEN-PKG" type cr
@@ -139,7 +152,7 @@ s" GEN-AFTER" type cr
 SUMTYPE zpar 1
   VARIANT psome a ;VARIANT
 ;SUMTYPE
-s" " s" zpar" TFAM-FIND-IN TCOK ! TCF !   TCOK @ -1 T=
+s" " s" zpar" TWX-TFAM-FIND-IN TCOK ! TCF !   TCOK @ -1 T=
 TCF @ TFAM-VAR-START@ SUMV-CTOR-PKG$ s" ZPAR" T$=
 s" ZB6 ( n -- zpar<n> ) ZPAR:PSOME" CHECK-QUIET-CANDIDATE! -1 T=   \ publishes + certifies
 
@@ -189,7 +202,7 @@ SUMTYPE zsec 0
   VARIANT hide n ;VARIANT
 ;SUMTYPE
 end-package
-s" zp8" s" zsec" TFAM-FIND-IN TCOK ! TCF !   TCOK @ -1 T=
+s" zp8" s" zsec" TWX-TFAM-FIND-IN TCOK ! TCF !   TCOK @ -1 T=
 TCF @ TFAM-VAR-START@ SUMV-CTOR-PKG$ nip 0 T=
 s" ZB7 ( n -- n ) ZP8-ZSEC:HIDE" CHECK-QUIET-CANDIDATE! 1 T=   \ undefined word -> uncheckable
 
@@ -197,9 +210,9 @@ s" ZB7 ( n -- n ) ZP8-ZSEC:HIDE" CHECK-QUIET-CANDIDATE! 1 T=   \ undefined word 
 \ rejected declarations generate nothing: a duplicate family neither redefines
 \ nor duplicates the existing constructor words (load survives = proof).
 \ ---------------------------------------------------------------------------
-MULTI-ERR-BEGIN
+TWX-MULTI-ERR-BEGIN
 s" SUMTYPE zres 0 VARIANT no n ;VARIANT ;SUMTYPE" TCE-CATCH 0 T=
-MULTI-ERR-END 1 T=
+TWX-MULTI-ERR-END 1 T=
 : ZMK-OK2 ( n -- zres ) ZRES:OK ;
 s" DUP-DECL-SAFE" type cr
 
@@ -207,10 +220,10 @@ s" DUP-DECL-SAFE" type cr
 \ linear payloads stay rejected until TFAM 11 (regression pins).
 \ ---------------------------------------------------------------------------
 \ concrete linear payload rejects at declaration (v1 payload grammar).
-MULTI-ERR-BEGIN
+TWX-MULTI-ERR-BEGIN
 s" SUMTYPE zlin 0 VARIANT keep own ;VARIANT ;SUMTYPE" TCE-CATCH 0 T=
-MULTI-ERR-END 1 T=
-s" " s" zlin" TFAM-FIND-IN TCOK ! drop   TCOK @ 0 T=
+TWX-MULTI-ERR-END 1 T=
+s" " s" zlin" TWX-TFAM-FIND-IN TCOK ! drop   TCOK @ 0 T=
 
 \ ---------------------------------------------------------------------------
 \ slice 3: protection. Generated packages are closed-but-callable: `package`
@@ -219,10 +232,10 @@ s" " s" zlin" TFAM-FIND-IN TCOK ! drop   TCOK @ 0 T=
 \ tail cannot certify into the constructor package. SV.CTOR-SYM records the
 \ published checker symbol.
 \ ---------------------------------------------------------------------------
-s" " s" zres" TFAM-FIND-IN TCOK ! TCF !   TCOK @ -1 T=
-TCF @ TFAM-VAR-START@ SUMV-CTOR-SYM@ 0 <> -1 T=
-TCF @ TFAM-VAR-START@ 1 + SUMV-CTOR-SYM@ 0 <> -1 T=
-s" ZRES:OK" CHECKER-RECORD-SYM  TCF @ TFAM-VAR-START@ SUMV-CTOR-SYM@  T=
+s" " s" zres" TWX-TFAM-FIND-IN TCOK ! TCF !   TCOK @ -1 T=
+TCF @ TFAM-VAR-START@ TWX-SUMV-CTOR-SYM@ 0 <> -1 T=
+TCF @ TFAM-VAR-START@ 1 + TWX-SUMV-CTOR-SYM@ 0 <> -1 T=
+s" ZRES:OK" TWX-CHECKER-RECORD-SYM  TCF @ TFAM-VAR-START@ TWX-SUMV-CTOR-SYM@  T=
 \ package reopen rejects, case-insensitively; state rolls back (a later
 \ package still opens cleanly).
 s" package zres" TCE-CATCH E-CTOR-PROTECTED T=
@@ -336,14 +349,14 @@ PRODUCT zpt 0
   FIELD y n
 ;PRODUCT
 \ metadata: two generator-owned rows, ctor package derived, syms recorded.
-s" " s" zpt" TFAM-FIND-IN TCOK ! TCF !   TCOK @ -1 T=
+s" " s" zpt" TWX-TFAM-FIND-IN TCOK ! TCF !   TCOK @ -1 T=
 TCF @ TFAM-VAR-COUNT@ 2 T=
 TCF @ TFAM-VAR-START@ SUMV-NAME$ s" make" T$=
 TCF @ TFAM-VAR-START@ 1 + SUMV-NAME$ s" unmake" T$=
 TCF @ TFAM-VAR-START@ SUMV-CTOR-PKG$ s" ZPT" T$=
-TCF @ TFAM-VAR-START@ SUMV-PAYCELLS@ 2 T=
-TCF @ TFAM-VAR-START@ SUMV-CTOR-SYM@ 0 <> -1 T=
-TCF @ TFAM-VAR-START@ 1 + SUMV-CTOR-SYM@ 0 <> -1 T=
+TCF @ TFAM-VAR-START@ TWX-SUMV-PAYCELLS@ 2 T=
+TCF @ TFAM-VAR-START@ TWX-SUMV-CTOR-SYM@ 0 <> -1 T=
+TCF @ TFAM-VAR-START@ 1 + TWX-SUMV-CTOR-SYM@ 0 <> -1 T=
 \ checked construction/destructure compile through ordinary calls.
 : ZPT-MK ( n n -- zpt ) ZPT:MAKE ;
 : ZPT-UN ( zpt -- n n ) ZPT:UNMAKE ;
@@ -417,7 +430,7 @@ PRODUCT phid 0
   FIELD v n
 ;PRODUCT
 end-package
-s" zpsec" s" phid" TFAM-FIND-IN TCOK ! TCF !   TCOK @ -1 T=
+s" zpsec" s" phid" TWX-TFAM-FIND-IN TCOK ! TCF !   TCOK @ -1 T=
 TCF @ TFAM-VAR-START@ SUMV-CTOR-PKG$ nip 0 T=
 s" PS1 ( n -- n ) ZPSEC-PHID:MAKE" CHECK-QUIET-CANDIDATE! 1 T=   \ undefined word -> uncheckable
 \ protection: the derived package is closed (reopen/undefine reject), and the

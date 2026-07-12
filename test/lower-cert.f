@@ -78,6 +78,13 @@ PRODUCT scalar 0
    FAILS @ 0= if s" ok" type cr exit then
    FAILS @ . s" lower-cert: failures" 1 die ;
 
+\ Whitebox multi-error boundaries: MULTI-ERR-BEGIN/END are engine-internal
+\ (DNAME-INT after the seal-time marking pass), so the forced-success
+\ publication below reaches them through TRUSTED: wrappers, matching the
+\ type-decl suite convention (dot habu-hb-crash-bare-c5be6634).
+TRUSTED: LCT-MULTI-ERR-BEGIN ( -- ) MULTI-ERR-BEGIN ;
+TRUSTED: LCT-MULTI-ERR-END ( -- n ) MULTI-ERR-END ;
+
 s" LC-ENUM ( ptr color -- color ) @" 2dup SOURCE! CHECK! -1 EQ
 SNAPSHOT
 21 1 1 1 HEADER
@@ -96,9 +103,9 @@ LOWER-CERT:FETCH-DATA-CELLS-CELL BLOB@ 4 EQ
 
 \ A forced-success multi-error publication must not freeze the prior enum
 \ fetch descriptor. The hook replaces it with a canonical empty certificate.
-MULTI-ERR-BEGIN
+LCT-MULTI-ERR-BEGIN
 s" : LC-MULTI-BAD ( n -- n ) drop ;" evaluate
-MULTI-ERR-END 1 EQ
+LCT-MULTI-ERR-END 1 EQ
 CLEARED-CERT
 
 s" LC-SCALAR ( ptr scalar -- scalar ) @" 2dup SOURCE! CHECK! -1 EQ

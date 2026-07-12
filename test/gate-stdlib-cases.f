@@ -378,6 +378,10 @@ TEST:SUITE friend-arena-seal
    test/seal.f
 TEST:;SUITE
 
+TEST:SUITE internal-word-gate
+   test/internal-word-gate.f
+TEST:;SUITE
+
 TEST:SUITE friend-arena-absence
    test/seal-absence.f
 TEST:;SUITE

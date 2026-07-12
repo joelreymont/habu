@@ -60,6 +60,11 @@ points stay listed.
 - `src/core/type-family-sha.f` — installs the constructor package-name SHA-256 fallback hook (TF-SHA16) after sha256.f loads.
 - `src/core/sha-check.f` — standalone SHA-256 self-test against FIPS-180 vectors.
 - `src/core/check-hook.f` — default native source checker hook installation.
+- `src/core/internal-mark.f` — seal-time internal-word marking pass (last
+  cold-prefix source): sets `DNAME-INT` on every engine-prefix COLON record
+  with no checker-known effect so bare top-level execution and tick fail
+  closed (`hb: internal engine word:`, rc 70); data records are exempt
+  (push-only, engine-auto-trusted class); self-sealing unchecked boundary.
 - `src/core/combinators.f` — legacy higher-order library words baked into
   `bin/hb` (audited unchecked boundary; new higher-order words are checked).
 
@@ -803,6 +808,11 @@ points stay listed.
   run or be ticked from interpretation state.
 - `test/atomics-smoke.f` / `test/run-in-stack-smoke.f` — tasking primitive
   smoke tests for atomics and the in-stack runner.
+- `test/internal-word-gate.f` — engine-internal word execution gate regressions
+  (dot habu-hb-crash-bare-c5be6634): bare/ticked internal checker colon words
+  fail closed with `hb: internal engine word:` + rc 70 on both cold-prefix
+  paths; positives pin E-UNDEFINED/E-UNDERFLOW, unchecked user words, TRUST/
+  TRUSTED:, the structures + type-family DSLs, and XREF introspection.
 - `test/seal.f` — friend-arena seal regressions: one negative forge per guarded
   PROT-GUARD sink (`!`/`c!`/`+!`/`atomic!`/`atomic-add`/`atomic-cas` plus the
   `read`/`ioctl`/`poll`/`readlink`/`stat64`/`lstat64`/`getdirentries64`/`mmap`

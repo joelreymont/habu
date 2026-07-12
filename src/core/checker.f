@@ -4162,6 +4162,12 @@ PRIM: DIAG-BUFFER$   PE-PTR-U8 PE-OUT PE-N PE-OUT PRIM;
 PRIM: CHECKER-SCOPE-START PRIM;
 PRIM: CHECKER-SCOPE-DONE PRIM;
 PRIM: CHECK-CANDIDATE! PE-PTR-U8 PE-IN PE-N PE-IN  PE-N PE-OUT PRIM;
+\ CHECK / CHECK! are the public verdict words (`s" ..." CHECK! .` is the
+\ documented top-level probing idiom); the axioms keep them checker-known so
+\ the seal-time internal-word marking pass leaves them executable at top level
+\ (dot habu-hb-crash-bare-c5be6634).
+PRIM: CHECK  PE-PTR-U8 PE-IN PE-N PE-IN  PE-N PE-OUT PRIM;
+PRIM: CHECK! PE-PTR-U8 PE-IN PE-N PE-IN  PE-N PE-OUT PRIM;
 PRIM: CHECKER-CANDIDATE-SCOPE-START PRIM;
 PRIM: CHECKER-CANDIDATE-SCOPE-DONE PRIM;
 PRIM: CHECKER-USIGS-TRUNCATE-FROM PE-PTR-U8 PE-IN PE-N PE-IN PRIM;
@@ -4184,6 +4190,12 @@ PRIM: CHECKER-DEFLAYOUT-BUFFER
    PE-PTR-U8 PE-IN PE-N PE-IN PRIM;
 PRIM: CHECKER-LBUF-NAME-GUARD PE-PTR-U8 PE-IN PE-N PE-IN PRIM;
 PRIM: CHECKER-DEFINED? PE-PTR-U8 PE-IN PE-N PE-IN  PE-F PE-OUT PRIM;
+\ TRUST is the public top-level effect-declaration word ( name$ effect$ -- ).
+\ The axiom keeps it checker-known so the seal-time internal-word marking pass
+\ (src/core/internal-mark.f) leaves it executable at top level (dot
+\ habu-hb-crash-bare-c5be6634); UNSAFE-TOK? still rejects `trust` inside
+\ checked bodies, so the axiom adds no checked-code capability.
+PRIM: TRUST PE-PTR-U8 PE-IN PE-N PE-IN PE-PTR-U8 PE-IN PE-N PE-IN PRIM;
 PRIM: TFAM-N@ PE-N PE-OUT PRIM;
 PRIM: TFAM-WIDTH@ PE-N PE-IN  PE-N PE-OUT PRIM;
 \ Public-signature metadata: registry accessors so the checked public-signatures
@@ -6873,6 +6885,7 @@ s" <input>" DIAG-FILE!
 : UNSAFE-TOK? {: a u :}
    a u s" evaluate" CORE-STR= IF RES-TRUE EXIT THEN
    a u s" trust" CORE-STR= IF RES-TRUE EXIT THEN
+   a u s" layout-buffer" CORE-STR= IF RES-TRUE EXIT THEN
    a u s" set-check" CORE-STR= IF RES-TRUE EXIT THEN
    a u s" postpone" CORE-STR= IF RES-TRUE EXIT THEN
    a u s" compile," CORE-STR= IF RES-TRUE EXIT THEN

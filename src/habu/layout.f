@@ -20,7 +20,7 @@ $C1000 constant DICT-SIZE
 $0FFFFFFFFFFFFFFF constant DNAME-LEN-MASK
 $1000000000000000 constant DNAME-IMM
 $2000000000000000 constant DNAME-EXT
-\ DNAME-WIDE (bit 62; 63 stays free): the word's recorded stack effect carries a
+\ DNAME-WIDE (bit 62): the word's recorded stack effect carries a
 \ wider-than-cell layout value in some row, so executing it at INTERPRET level
 \ would land a multi-cell bundle on the untyped interpret stack where scalar
 \ dup/drop/swap silently corrupt it (dot habu-tfam-12-interpret-10b385b1).
@@ -29,6 +29,18 @@ $2000000000000000 constant DNAME-EXT
 \ record time once the sequenced src/core/checker.f half lands. Compile-mode
 \ calls inside checked definitions are unaffected (pass-2 lowers them).
 $4000000000000000 constant DNAME-WIDE
+\ DNAME-INT (bit 63): engine-internal executable word - a COLON record defined
+\ by the engine-prefix source with no checker-known effect (no certified or
+\ trusted signature and no primitive axiom). Set by the seal-time marking pass
+\ (src/core/internal-mark.f) so the executable top-level name universe equals
+\ the checker's; data records (create/variable/constant, does>-instances) are
+\ exempt - push-only bodies, auto-trusted by C-CALL-TRUST-LASTC-* whenever a
+\ hook is installed. LFIND folds the bit into x13 bit 4; EM-INTERPRET-FIND and
+\ interpret ' fail closed on it with `hb: internal engine word: <token>` +
+\ rc 70 (dot habu-hb-crash-bare-c5be6634). Compile-mode references (explicitly
+\ unchecked user code, TRUSTED: bodies, hide.f refresh shims) are unaffected:
+\ those are declared trusted boundaries.
+$8000000000000000 constant DNAME-INT
 16384 constant DICT-CAP
 $C0000 constant CFSTK-OFF
 24 constant CF-REC

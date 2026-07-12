@@ -55,10 +55,13 @@ SUMTYPE tlp-en 0
 ;SUMTYPE
 
 variable TLOK   variable TLF   variable TLX
-s" " s" tlp-res" TFAM-FIND-IN TLOK ! TLF !
+\ whitebox boundary (dot habu-hb-crash-bare-c5be6634): the internal registry
+\ probe goes through a named trusted shim.
+TRUSTED: TWX-TFAM-FIND-IN ( ptr u8 n ptr u8 n -- n bool ) TFAM-FIND-IN ;
+s" " s" tlp-res" TWX-TFAM-FIND-IN TLOK ! TLF !
 TLOK @ -1 T=
 TLF @ TFAM-WIDTH@ 2 T=
-s" " s" tlp-mix" TFAM-FIND-IN TLOK ! TLX !
+s" " s" tlp-mix" TWX-TFAM-FIND-IN TLOK ! TLX !
 TLOK @ -1 T=
 TLX @ TFAM-WIDTH@ 4 T=
 

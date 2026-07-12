@@ -369,9 +369,11 @@ end-package
    out outu word wordu BF-APPEND-BYTES
    out outu BF-APPEND-LF ;
 
+\ IMK-NDICT0 is util.f's first definition (new engines); SEQ is the fallback
+\ marker for older stage engines that predate it.
 : BF-STAGE2-HIDE-DEFS ( ptr u8 n -- )
    2dup s" BFR-USIGS-RESET" BF-APPEND-LINE
-   s" SEQ" s" T-CON" s" BFR-HIDE-DICT-FROM-EARLIEST" BF-APPEND-HIDE2-CALL ;
+   s" IMK-NDICT0" s" SEQ" s" BFR-HIDE-DICT-FROM-EARLIEST" BF-APPEND-HIDE2-CALL ;
 
 : BF-APP-CLOSE ( ptr n -- ) {: p:ptr :}
    p @ dup 0 >= if close else drop then

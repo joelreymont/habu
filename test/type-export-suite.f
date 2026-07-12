@@ -26,6 +26,17 @@ variable #CASE
 
 variable FOUNDF   variable TC
 variable P-SYMN   variable P-SYMU   variable P-DEPTH
+\ whitebox boundary (dot habu-hb-crash-bare-c5be6634): checker-internal colon
+\ words probed at top level go through named trusted shims.
+TRUSTED: TWX-CAND-START ( -- ) CHECK-CANDIDATE-START ;
+TRUSTED: TWX-CAND-DONE ( n -- n ) CHECK-CANDIDATE-DONE ;
+TRUSTED: TWX-FIND-DEFER ( ptr u8 n -- bool ) CHECKER-FIND-ACTIVE-DEFER ;
+TRUSTED: TWX-FIND-USIG ( ptr u8 n -- bool ) CHECKER-FIND-USIG ;
+TRUSTED: TWX-USIG-ADD ( ptr u8 n ptr u8 n -- ) CHECKER-USIG-ADD ;
+TRUSTED: TWX-CTL-FLAGS ( ptr u8 n -- n ) CTL-FLAGS ;
+TRUSTED: TWX-NORET-ADD ( ptr u8 n n -- ) NORET-ADD ;
+
+
 
 \ ---------------------------------------------------------------------------
 \ 1. cross-package alias fidelity: EXPORT xps:XP-INC into xpd publishes the
@@ -33,15 +44,15 @@ variable P-SYMN   variable P-SYMU   variable P-DEPTH
 \    declared sig through the alias still rejects.
 \ ---------------------------------------------------------------------------
 s" xps" CHECKER-PACKAGE   CHECKER-PUBLIC
-s" n -- n" s" XP-INC" CHECKER-USIG-ADD
+s" n -- n" s" XP-INC" TWX-USIG-ADD
 CHECKER-END-PACKAGE
 
 s" xpd" CHECKER-PACKAGE   CHECKER-PUBLIC
 s" xps:XP-INC" CHECKER-EXPORT
 CHECKER-END-PACKAGE
 
-s" xpd:XP-INC" CHECKER-FIND-USIG FOUNDF !  FOUNDF @ -1 T=
-s" xps:XP-INC" CHECKER-FIND-USIG FOUNDF !  FOUNDF @ -1 T=
+s" xpd:XP-INC" TWX-FIND-USIG FOUNDF !  FOUNDF @ -1 T=
+s" xps:XP-INC" TWX-FIND-USIG FOUNDF !  FOUNDF @ -1 T=
 s" XPU1 ( n -- n ) xpd:XP-INC" CHECK! -1 T=
 s" XPU2 ( n -- n ) xps:XP-INC" CHECK! -1 T=
 s" XPU3 ( -- n ) xpd:XP-INC" CHECK! 0 T=
@@ -52,11 +63,11 @@ s" XPU4 ( n -- n n ) xpd:XP-INC" CHECK! 0 T=
 \    package's private scope and publishes under the public tail.
 \ ---------------------------------------------------------------------------
 s" xpp" CHECKER-PACKAGE
-s" n -- n" s" XP-HID" CHECKER-USIG-ADD
+s" n -- n" s" XP-HID" TWX-USIG-ADD
 CHECKER-PUBLIC
 s" XP-HID" CHECKER-EXPORT
 CHECKER-END-PACKAGE
-s" xpp:XP-HID" CHECKER-FIND-USIG FOUNDF !  FOUNDF @ -1 T=
+s" xpp:XP-HID" TWX-FIND-USIG FOUNDF !  FOUNDF @ -1 T=
 s" XPU5 ( n -- n ) xpp:XP-HID" CHECK! -1 T=
 
 \ ---------------------------------------------------------------------------
@@ -64,27 +75,27 @@ s" XPU5 ( n -- n ) xpp:XP-HID" CHECK! -1 T=
 \    neither.
 \ ---------------------------------------------------------------------------
 s" xpf" CHECKER-PACKAGE   CHECKER-PUBLIC
-s" n -- n" s" XP-DEF" CHECKER-USIG-ADD
+s" n -- n" s" XP-DEF" TWX-USIG-ADD
 s" XP-DEF" CHECKER-DEFER
-s" --" s" XP-THR" CHECKER-USIG-ADD
-s" XP-THR" CTL-THROW NORET-ADD
+s" --" s" XP-THR" TWX-USIG-ADD
+s" XP-THR" CTL-THROW TWX-NORET-ADD
 CHECKER-END-PACKAGE
 
 s" xpf2" CHECKER-PACKAGE   CHECKER-PUBLIC
 s" xpf:XP-DEF" CHECKER-EXPORT
 s" xpf:XP-THR" CHECKER-EXPORT
 CHECKER-END-PACKAGE
-s" xpf2:XP-DEF" CHECKER-FIND-ACTIVE-DEFER FOUNDF !  FOUNDF @ -1 T=
-s" xpf2:XP-THR" CTL-FLAGS CTL-THROW T=
-s" xpf2:XP-DEF" CTL-FLAGS 0 T=
-s" xpf2:XP-THR" CHECKER-FIND-ACTIVE-DEFER FOUNDF !  FOUNDF @ 0 T=
+s" xpf2:XP-DEF" TWX-FIND-DEFER FOUNDF !  FOUNDF @ -1 T=
+s" xpf2:XP-THR" TWX-CTL-FLAGS CTL-THROW T=
+s" xpf2:XP-DEF" TWX-CTL-FLAGS 0 T=
+s" xpf2:XP-THR" TWX-FIND-DEFER FOUNDF !  FOUNDF @ 0 T=
 
 \ ---------------------------------------------------------------------------
 \ 4. quotation scheme fidelity: a higher-order sig survives the alias copy;
 \    a wrong quotation argument through the alias rejects.
 \ ---------------------------------------------------------------------------
 s" xpq" CHECKER-PACKAGE   CHECKER-PUBLIC
-s" [ n -- n ] n -- n" s" XP-HOF" CHECKER-USIG-ADD
+s" [ n -- n ] n -- n" s" XP-HOF" TWX-USIG-ADD
 CHECKER-END-PACKAGE
 s" xpq2" CHECKER-PACKAGE   CHECKER-PUBLIC
 s" xpq:XP-HOF" CHECKER-EXPORT
@@ -119,7 +130,7 @@ s" xps:XP-INC" ' CHECKER-EXPORT catch TC ! 2drop  TC @ $4E T=
 CHECKER-END-PACKAGE
 \ self-export in the same section is the duplicate case.
 s" xpz" CHECKER-PACKAGE   CHECKER-PUBLIC
-s" n -- n" s" XP-SELF" CHECKER-USIG-ADD
+s" n -- n" s" XP-SELF" TWX-USIG-ADD
 s" XP-SELF" ' CHECKER-EXPORT catch TC ! 2drop  TC @ $4E T=
 CHECKER-END-PACKAGE
 
@@ -127,7 +138,7 @@ CHECKER-END-PACKAGE
 \ record it AFTER the reject probes so the earlier lookup could not see it, then
 \ prove a private record still does not resolve via the public qualifier.
 s" xps" CHECKER-PACKAGE
-s" n -- n" s" XP-PRIV" CHECKER-USIG-ADD
+s" n -- n" s" XP-PRIV" TWX-USIG-ADD
 CHECKER-END-PACKAGE
 s" xpr2" CHECKER-PACKAGE   CHECKER-PUBLIC
 s" xps:XP-PRIV" ' CHECKER-EXPORT catch TC ! 2drop  TC @ E-EXPORT-UNDEFINED T=
@@ -141,28 +152,28 @@ SYM-N @ P-SYMN !   SYM-STR-U @ P-SYMU !
 CHECKER-SCOPE-START
    s" xrb" CHECKER-PACKAGE   CHECKER-PUBLIC
    s" xps:XP-INC" CHECKER-EXPORT
-   s" xrb:XP-INC" CHECKER-FIND-USIG FOUNDF !  FOUNDF @ -1 T=
+   s" xrb:XP-INC" TWX-FIND-USIG FOUNDF !  FOUNDF @ -1 T=
 CHECKER-SCOPE-DONE
 SYM-N @ P-SYMN @ T=
 SYM-STR-U @ P-SYMU @ T=
-s" xrb:XP-INC" CHECKER-FIND-USIG FOUNDF !  FOUNDF @ 0 T=
+s" xrb:XP-INC" TWX-FIND-USIG FOUNDF !  FOUNDF @ 0 T=
 
 \ ---------------------------------------------------------------------------
 \ 7. candidate rollback: alias effect, defer flag, and control flags all
 \    retire; the frame depth balances.
 \ ---------------------------------------------------------------------------
 RBF-DEPTH @ P-DEPTH !
-CHECK-CANDIDATE-START
+TWX-CAND-START
    s" xrb2" CHECKER-PACKAGE   CHECKER-PUBLIC
    s" xpf:XP-DEF" CHECKER-EXPORT
    s" xpf:XP-THR" CHECKER-EXPORT
-   s" xrb2:XP-DEF" CHECKER-FIND-ACTIVE-DEFER FOUNDF !  FOUNDF @ -1 T=
-   s" xrb2:XP-THR" CTL-FLAGS CTL-THROW T=
-0 CHECK-CANDIDATE-DONE drop
+   s" xrb2:XP-DEF" TWX-FIND-DEFER FOUNDF !  FOUNDF @ -1 T=
+   s" xrb2:XP-THR" TWX-CTL-FLAGS CTL-THROW T=
+0 TWX-CAND-DONE drop
 RBF-DEPTH @ P-DEPTH @ T=
-s" xrb2:XP-DEF" CHECKER-FIND-USIG FOUNDF !  FOUNDF @ 0 T=
-s" xrb2:XP-DEF" CHECKER-FIND-ACTIVE-DEFER FOUNDF !  FOUNDF @ 0 T=
-s" xrb2:XP-THR" CTL-FLAGS 0 T=
+s" xrb2:XP-DEF" TWX-FIND-USIG FOUNDF !  FOUNDF @ 0 T=
+s" xrb2:XP-DEF" TWX-FIND-DEFER FOUNDF !  FOUNDF @ 0 T=
+s" xrb2:XP-THR" TWX-CTL-FLAGS 0 T=
 
 \ ---------------------------------------------------------------------------
 \ 8. engine keyword half: real package blocks, EXPORT publishes a callable

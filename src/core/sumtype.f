@@ -1162,3 +1162,13 @@ variable TDECL-I
    THEN
    na nu TDECL-BUF TDECL-U @ CHECKER-DEFPRODUCT
    TDECL-CTOR-WORDS ;
+
+\ Public top-level surface of the type-family DSL: the block openers parse
+\ their own body tokens up to the ;NAME closer, so their cell effect is ( -- ).
+\ The axiom rows keep them checker-known - the seal-time internal-word marking
+\ pass (src/core/internal-mark.f) fails closed on any engine-prefix word
+\ without a checker-known effect (dot habu-hb-crash-bare-c5be6634).
+PRIM: TYPEFAMILY PRIM;
+PRIM: SUMTYPE PRIM;
+PRIM: ENUM PRIM;
+PRIM: PRODUCT PRIM;

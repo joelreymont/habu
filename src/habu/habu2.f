@@ -126,6 +126,8 @@ variable LUNCRPT   variable LUNCPOS   variable LUNCLOOP   variable LUNCDONE   \ 
 24 constant UNCMSG-LEN   \ byte length of "hb: uncaught throw code " (LUNCMSG)
 variable LWIDE   variable LWIDEMSG   variable LDIAGRET   \ interpret-mode wide-effect reject + its message + shared recovery tail
 33 constant WIDEMSG-LEN   \ byte length of "hb: interpret-mode layout value: " (LWIDEMSG)
+variable LINTERNAL   variable LINTMSG   \ interpret-mode internal-word reject (DNAME-INT) + its message
+26 constant INTMSG-LEN    \ byte length of "hb: internal engine word: " (LINTMSG)
 31 constant CONFMSG-LEN   \ byte length of "hb: construct: unknown family: " (EM-COMPILE-ADT-MODE)
 32 constant CONVMSG-LEN   \ byte length of "hb: construct: unknown variant: " (EM-COMPILE-ADT-MODE)
 27 constant MFAMMSG-LEN   \ byte length of "hb: match: unknown family: " (EM-ADT-MATCH-FAM)
@@ -151,7 +153,7 @@ variable LPUTIL         variable LPSTRUCTURES   variable LPBYTES        variable
 variable LPLOWERCERTBASE
 variable LPTYPESCHEMA   variable LPTYPEFAM      variable LPSUMTYPE      variable LPLAYOUTBUF  variable LPLAYOUTVALID
 variable LPHOOK         variable LPSTRUCTEFF    variable LPHABULAYOUT   variable LPENVBASE      variable LPINCLUDE
-variable LPSCRIPTARGV
+variable LPSCRIPTARGV   variable LPINTMARK
 variable LPROLES
 variable LPENUMS        variable LPEXECVECTOR   variable LPSHA256       variable LPTFAMSHA
 variable LPCOMBINATORS  variable LPXREF  variable LPLAYOUTSEAL  variable LPLOWERCERTSEAL
@@ -325,6 +327,7 @@ s" c-bp-watch-dump" s" label label --" TRUST
    LOPENNL LABEL@ LBL, NL-KW 1 BYTES,
    LUNCMSG LABEL@ LBL, s" hb: uncaught throw code " BYTES,     \ UNCMSG-LEN bytes; LUNCAUGHT appends the signed code + newline
    LWIDEMSG LABEL@ LBL, s" hb: interpret-mode layout value: " BYTES,     \ WIDEMSG-LEN bytes; LWIDE appends the token + newline
+   LINTMSG LABEL@ LBL, s" hb: internal engine word: " BYTES,             \ INTMSG-LEN bytes; LINTERNAL appends the token + newline
    LDICTFULL LABEL@ LBL, s" hb: dictionary full at: " BYTES,             \ CAPMSG-LEN bytes; capacity arms append the token + newline
    LCODEFULL LABEL@ LBL, s" hb: code space full at: " BYTES,             \ CAPMSG-LEN bytes
    LSNAPBAD LABEL@ LBL, s" hb: snapshot trailer corrupt" BYTES,  NL-KW 1 BYTES,               \ SNAPBAD-MSG-LEN bytes incl. newline
@@ -528,9 +531,24 @@ s" c-bp-watch-dump" s" label label --" TRUST
    PFX-LOAD-SCRIPT-ARGV
    done LBL, ;
 
+\ internal-mark.f is the LAST prefix source (dot habu-hb-crash-bare-c5be6634):
+\ its marking pass must see every prefix definition and every recorded effect
+\ (structures-effects.f TRUST rows, xref/script-argv signatures) before it
+\ classifies the remaining sig-less prefix words as DNAME-INT internal.
+: PFX-LOAD-INTMARK ( -- )
+   PFX-COMMON LPINTMARK      s" src/core/internal-mark.f" PFX-LOAD-ROW ;
+
+: PFX-LOAD-INTMARK-COLD ( -- )
+   LBL {: done:label :}
+   12 DATA SNAP-CELL LDR,
+   12 done CBNZ,
+   PFX-LOAD-INTMARK
+   done LBL, ;
+
 : PFX-LOAD-FILES ( -- )
    PFX-LOAD-BASE-FILES
-   PFX-LOAD-SCRIPT-ARGV ;
+   PFX-LOAD-SCRIPT-ARGV
+   PFX-LOAD-INTMARK ;
 
 : PFX-PATH-FILES ( -- )
    PFX-COMMON LPUTIL         s" src/core/util.f"        PFX-PATH-ROW
@@ -555,6 +573,7 @@ s" c-bp-watch-dump" s" label label --" TRUST
    PFX-COMMON LPENVBASE      s" src/os/env-base.f"      PFX-PATH-ROW
    PFX-COMMON LPINCLUDE      s" src/core/include.f"     PFX-PATH-ROW
    PFX-COMMON LPSCRIPTARGV   s" src/os/script-argv.f"   PFX-PATH-ROW
+   PFX-COMMON LPINTMARK      s" src/core/internal-mark.f" PFX-PATH-ROW
    PFX-COMMON LPENUMS        s" src/core/enums.f"       PFX-PATH-ROW
    PFX-COMMON LPEXECVECTOR   s" src/core/exec-vector.f" PFX-PATH-ROW
    PFX-COMMON LPSHA256       s" src/core/sha256.f"      PFX-PATH-ROW
@@ -774,6 +793,7 @@ variable LCOLDPFX variable LCOLDPFXB variable LAPPPROV
    PFX-COMMON LPENVBASE      s" src/os/env-base.f"      PFX-PROVIDE-ROW
    PFX-COMMON LPINCLUDE      s" src/core/include.f"     PFX-PROVIDE-ROW
    PFX-COMMON LPSCRIPTARGV   s" src/os/script-argv.f"   PFX-PROVIDE-ROW
+   PFX-COMMON LPINTMARK      s" src/core/internal-mark.f" PFX-PROVIDE-ROW
    PFX-COMMON LPENUMS        s" src/core/enums.f"       PFX-PROVIDE-ROW
    PFX-COMMON LPEXECVECTOR   s" src/core/exec-vector.f" PFX-PROVIDE-ROW
    PFX-COMMON LPSHA256       s" src/core/sha256.f"      PFX-PROVIDE-ROW
@@ -952,6 +972,7 @@ variable LCOLDPFX variable LCOLDPFXB variable LAPPPROV
    body LBL,
       EMIT-COLD-PREFIX
       PFX-LOAD-SCRIPT-ARGV-COLD
+      PFX-LOAD-INTMARK-COLD                        \ LAST prefix source: seal-time internal-word marking pass
       PFX-PROVIDE-FILES
       EMIT-SEAL-CAPTURE-TOKEN                      \ watermark token at the true engine-prefix end
       12 SP 8 LDR,  12 noseal CBNZ,
@@ -2433,6 +2454,7 @@ variable LAOTWIDGATE   \ AOT boot sealed-WID reject routine (TFAM 2b-v)
    9 DATA TKA-CELL LDR,  10 DATA TKL-CELL LDR,  LFIND LABEL@ BL,
    13 tk CBZ,
    14 13 8 ANDI,  14 LWIDE LABEL@ CBNZ,                  \ `' <wide-effect word>` would launder the bundle past the dispatch gate
+   14 13 16 ANDI,  14 LINTERNAL LABEL@ CBNZ,             \ `' <internal word>` would launder the xt past the dispatch gate (execute)
    11 G-PUSH  tk LBL, ;
 
 : C-BTICK ( -- )
@@ -3790,6 +3812,7 @@ s" em-interpret-number" s" label --" TRUST
    9 DATA TKA-CELL LDR,  10 DATA TKL-CELL LDR,  LFIND LABEL@ BL,
    13 LUNDEF LABEL@ CBZ,
    14 13 8 ANDI,  14 LWIDE LABEL@ CBNZ,                \ DNAME-WIDE effect (TFAM): fail closed, never land a bundle on the interpret stack (x13 still holds the LFIND dict flags)
+   14 13 16 ANDI,  14 LINTERNAL LABEL@ CBNZ,           \ DNAME-INT: engine-internal word with no checker-known effect - fail closed before the body runs on the untyped interpret stack
    LARITY LABEL@ BL,          \ pre-exec arity guard (fable): deref/execute prims fault on a shallow
    11 BLR,  LMAIN LABEL@ B, ; \ stack before the LMAIN depth-floor guard sees it; diverts to LUNDERFLOW
 s" em-interpret-find" s" --" TRUST
@@ -5060,6 +5083,11 @@ s" em-repl-recover" s" --" TRUST
    0 2 MOVZ,  1 LWIDEMSG LABEL@ ADR,  2 WIDEMSG-LEN MOVZ,  NR-WRITE SYS,
    0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,
    0 2 MOVZ,  1 LQNL LABEL@ ADR,  1 1 1 ADDI,  2 1 MOVZ,  NR-WRITE SYS,
+   LDIAGRET LABEL@ B,
+   LINTERNAL LABEL@ LBL,                               \ branch target: TKA/TKL still hold the token (DNAME-INT reject)
+   0 2 MOVZ,  1 LINTMSG LABEL@ ADR,  2 INTMSG-LEN MOVZ,  NR-WRITE SYS,
+   0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,
+   0 2 MOVZ,  1 LQNL LABEL@ ADR,  1 1 1 ADDI,  2 1 MOVZ,  NR-WRITE SYS,
    LDIAGRET LABEL@ B, ;
 s" em-compile-undef" s" --" TRUST
 
@@ -5472,6 +5500,7 @@ s" SRCA@" s" -- ptr u8" TRUST
    LBL LSRCRD !  LBL LSHBANG !  LBL LOPENERR !  LBL LOPENNL !
    LBL LUNCAUGHT !  LBL LUNCMSG !
    LBL LWIDE !  LBL LWIDEMSG !  LBL LDIAGRET !
+   LBL LINTERNAL !  LBL LINTMSG !
    LBL LDICTFULL !  LBL LCODEFULL !
    LBL LSNAPBAD !  LBL LSNAPVER !
    LBL LSRCFULL !  LBL LSRCREAD !  LBL LBADSTR !
@@ -5485,7 +5514,7 @@ s" SRCA@" s" -- ptr u8" TRUST
    LBL LPUTIL !  LBL LPSTRUCTURES !  LBL LPBYTES !  LBL LPCHECKER !  LBL LPLOWERCERTBASE !  LBL LPRENDER !  LBL LPHOOK !
    LBL LPTYPESCHEMA !  LBL LPTYPEFAM !  LBL LPSUMTYPE !  LBL LPLAYOUTBUF !  LBL LPLAYOUTVALID !
    LBL LPSTRUCTEFF !  LBL LPHABULAYOUT !
-   LBL LPENVBASE !  LBL LPINCLUDE !  LBL LPSCRIPTARGV !  LBL LPROLES !
+   LBL LPENVBASE !  LBL LPINCLUDE !  LBL LPSCRIPTARGV !  LBL LPINTMARK !  LBL LPROLES !
    LBL LPENUMS !  LBL LPEXECVECTOR !  LBL LPSHA256 !  LBL LPTFAMSHA !
    LBL LPCOMBINATORS !  LBL LPXREF !  LBL LPLAYOUTSEAL !  LBL LPLOWERCERTSEAL ! ;
 

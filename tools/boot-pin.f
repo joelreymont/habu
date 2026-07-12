@@ -117,7 +117,8 @@ variable BP-SET
    s" src/os/linux/layout.f" ;
 
 \ Canonical boot-prefix path list — the single source of truth. Order MUST match
-\ src/habu/habu2.f PFX-LOAD-BASE-FILES then PFX-LOAD-SCRIPT-ARGV; the cross-check
+\ src/habu/habu2.f PFX-LOAD-BASE-FILES then PFX-LOAD-SCRIPT-ARGV then
+\ PFX-LOAD-INTMARK; the cross-check
 \ test enforces membership + count against that source. The hash and the test
 \ sandbox-copy both drive this, so the list lives in exactly one place.
 : BP-EACH ( [ ptr u8 n -- ] -- ) {: q :}  \ typed-local-lint: allow-bare-local - quotation bound as ordinary local (docs/forth.md)
@@ -148,7 +149,8 @@ variable BP-SET
    s" src/habu/xref.f" q execute
    s" src/core/layout-buffer-seal.f" q execute
    s" src/core/lower-cert-seal.f" q execute
-   s" src/os/script-argv.f" q execute ;
+   s" src/os/script-argv.f" q execute
+   s" src/core/internal-mark.f" q execute ;
 
 : BP-HASH ( -- )                                          \ -> BP-GOT (+ BP-OK)
    BP-TRUE BP-OK !  0 BP-MAN-U !  [: BP-ACC ;] BP-EACH

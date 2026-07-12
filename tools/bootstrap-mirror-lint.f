@@ -93,6 +93,7 @@ variable BML-NUM-I
    k 1- LEX-TOK s" +:" LINT-STR= if LINT-TRUE exit then
    k 1- LEX-TOK s" TRUSTED:" LINT-STR=CI if LINT-TRUE exit then
    k 1- LEX-TOK s" KERNEL:" LINT-STR=CI if LINT-TRUE exit then
+   k 1- LEX-TOK s" PRIM:" LINT-STR=CI if LINT-TRUE exit then
    k 1- LEX-TOK s" create" LINT-STR=CI if LINT-TRUE exit then
    k 1- LEX-TOK s" variable" LINT-STR=CI if LINT-TRUE exit then
    k 1- LEX-TOK s" constant" LINT-STR=CI if LINT-TRUE exit then

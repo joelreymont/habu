@@ -52,6 +52,7 @@ variable BMT-FIX-U
    s" : ENUM ( -- ) ;" SB-APPEND $0A SB-APPEND-C
    s" ' SUMTYPE drop" SB-APPEND $0A SB-APPEND-C
    s" postpone product" SB-APPEND $0A SB-APPEND-C
+   s" PRIM: SUMTYPE PRIM;" SB-APPEND $0A SB-APPEND-C
    SB$ ;
 
 : BMT-TEST-OVERLAY-FIRES ( -- )
