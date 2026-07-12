@@ -133,6 +133,30 @@ variable RATOM-I
    dup 10 >= IF dup 10 / RECURSE THEN
    10 mod 48 + EMIT1 ;
 
+\ a T-PARAM's stored name span may point into a transient scan buffer (the TKF
+\ token-fold buffer for a {: :} annotation, a callee-sig scratch for an
+\ on-stack term) that later tokens overwrite before DIAG-PRINT/REC-SIG render.
+\ The family id is the term's identity, so the renderer reads the interned
+\ registry name instead — qualified `pkg:tail` for a foreign named package;
+\ the global "" package and the reserved internal "@" package render the bare
+\ tail. An out-of-range id (negative, or >= TFAM-N: a term minted before the
+\ registry loads) takes the stored-span fallback; a partial rollback that
+\ repurposes a still-in-range slot renders the new occupant's name — no crash,
+\ wrong spelling, and unreachable on the command path because a mismatch
+\ diagnostic renders inline, before any rollback.
+: FAM-INTERNED? ( n -- f ) {: fam:n :}
+   fam 0 >=  fam TFAM-N@ <  and ;
+: FAM-FOREIGN? ( n -- f ) {: fam:n :}
+   fam TFAM-PKG$ {: pa:ptr pu:n :}
+   pu 0 = IF RES-FALSE EXIT THEN
+   pa pu s" @" CORE-STR= IF RES-FALSE EXIT THEN
+   pa pu TFAM-ACTIVE-PKG$ CORE-STR= 0= ;
+: FAM-NAME-REND ( n -- ) {: t:n :}
+   t PARAM>FAM {: fam:n :}
+   fam FAM-INTERNED? 0= IF t PARAM>NAME-A t PARAM>NAME-U RSTR EXIT THEN
+   fam FAM-FOREIGN? IF fam TFAM-PKG$ RSTR 58 EMIT1 THEN
+   fam TFAM-NAME$ RSTR ;
+
 \ a hidden physical field renders as the diagnostic-only '@family.slotN<args>' /
 \ '@family.tag<args>' form (docs §20) and sets RQM so REC-SIG never records a
 \ sig containing a lone hidden cell. Full runs never reach here: row rendering
@@ -141,7 +165,7 @@ variable RATOM-I
    t HIDDEN-PARAM? IF
       1 RQM !
       64 EMIT1
-      t PARAM>NAME-A t PARAM>NAME-U RSTR
+      t FAM-NAME-REND
       46 EMIT1
       t HIDDEN-SLOT@  t PARAM>FAM TFAM-WIDTH@* 1 -  = IF
          s" tag" RSTR
@@ -149,7 +173,7 @@ variable RATOM-I
          s" slot" RSTR  t HIDDEN-SLOT@ RNUM
       THEN
    ELSE
-      t PARAM>NAME-A t PARAM>NAME-U RSTR
+      t FAM-NAME-REND
    THEN
    60 EMIT1 ;
 

@@ -1608,6 +1608,34 @@ s" TDLB7 ( tdsv -- tdsv ) {: x :} x" CHECK-QUIET-CANDIDATE! -1 T=
 TYPEFAMILY tdlnom 0
 s" TDLB8 ( tdlnom -- tdlnom ) {: x:tdlnom :} x" CHECK-QUIET-CANDIDATE! -1 T=
 s" TDLB9 ( n -- tdlnom ) {: x:tdlnom :} x" CHECK-QUIET-CANDIDATE! 0 T=
+
+\ ---------------------------------------------------------------------------
+\ E-MISMATCH family-name render (dot habu-checker-diagnostic-renderer): a
+\ locals-annotation family term's stored name span points into the shared TKF
+\ token-fold buffer, which later body tokens overwrite before DIAG-PRINT runs
+\ (pre-fix TDLR1 rendered 'actual: oplnom<>'). The renderer reads the interned
+\ registry name from the term's family id, so a locals-sourced term pins the
+\ SAME exact row as a signature-declared one, and a foreign-package family
+\ renders the qualified pkg:tail spelling.
+\ ---------------------------------------------------------------------------
+TDIAG-BUF 8192 DIAG-BUFFER!
+s" TDLR1 ( tdlnom -- n ) {: q:tdlnom :} q dup drop" CHECK-CANDIDATE! 0 T=
+DIAG-BUFFER$ s" expected: n actual: tdlnom<> " TDT-CONTAINS? -1 T=
+TDIAG-BUF 8192 DIAG-BUFFER!
+s" TDLR2 ( tdlnom -- n ) dup drop" CHECK-CANDIDATE! 0 T=
+DIAG-BUFFER$ s" expected: n actual: tdlnom<> " TDT-CONTAINS? -1 T=
+\ enum-tier annotation term on the EXPECTED side of the :} bind check
+\ (pre-fix rendered 'expected: oplv<>').
+TDIAG-BUF 8192 DIAG-BUFFER!
+s" TDLR3 ( tdlp -- n ) {: q:tdlv :} q dup drop" CHECK-CANDIDATE! 0 T=
+DIAG-BUFFER$ s" expected: tdlv<> actual: tdlp<> " TDT-CONTAINS? -1 T=
+\ foreign-package family: the interned name renders qualified pkg:tail.
+s" tdlrpk" CHECKER-PACKAGE   CHECKER-PUBLIC
+TYPEFAMILY tdlrfam 0
+CHECKER-END-PACKAGE
+TDIAG-BUF 8192 DIAG-BUFFER!
+s" TDLR4 ( tdlrpk:tdlrfam -- n ) {: q:tdlrpk:tdlrfam :} q dup drop" CHECK-CANDIDATE! 0 T=
+DIAG-BUFFER$ s" expected: n actual: tdlrpk:tdlrfam<> " TDT-CONTAINS? -1 T=
 DIAG-BUFFER-OFF
 
 : REPORT ( -- )

@@ -85,15 +85,15 @@ s" CK-BAD-STORE ( CAD-KIND:node-id ptr CAD-KIND:design-id -- ) !" NO
 s" CK-BAD-ID ( CAD-KIND:design-id -- CAD-KIND:node-id )" DIAG<
 s\" \"expected\"" DIAG?
 s\" \"actual\"" DIAG?
-s" CAD-KIND:design-id" DIAG?
-s" CAD-KIND:node-id" DIAG?
+s" cad-kind:design-id<> " DIAG?
+s" cad-kind:node-id<> " DIAG?
 DIAG-END
 
 s" CK-BAD-STORE-DIAG ( CAD-KIND:node-id ptr CAD-KIND:design-id -- ) !" DIAG<
 s\" \"expected\"" DIAG?
 s\" \"actual\"" DIAG?
-s" CAD-KIND:design-id" DIAG?
-s" CAD-KIND:node-id" DIAG?
+s" cad-kind:design-id<> " DIAG?
+s" cad-kind:node-id<> " DIAG?
 DIAG-END
 
 T-REPORT

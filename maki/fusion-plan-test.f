@@ -204,9 +204,10 @@ s" FPT-NEG-EQ-PLAN ( CAD-KIND:region CAD-KIND:plan-id -- bool ) FP-RGN=" CHECK-Q
 s" FPT-NEG-MEM-RAW ( n -- n ) FP-REGION-MEMBERS"                         CHECK-QUIET-CANDIDATE! 0 T=
 
 \ ---- rendered mismatch pins the qualified family name -----------------------
-\ Signature-declared types only (FP-RID@'s declared output vs the candidate's
-\ declared node-id output); locals-sourced actuals are garbled by the renderer
-\ (known bug, dot habu-checker-diagnostic-renderer-66c3e741).
+\ The renderer emits the INTERNED qualified name (case-folded package, exactly
+\ as word names fold in diagnostics) regardless of term provenance; the
+\ locals-sourced regression is pinned in test/type-decl-suite.f (dot
+\ habu-checker-diagnostic-renderer-66c3e741).
 create FPT-DBUF 4096 allot
 : FPT-DIAG< ( ptr u8 n -- )
    FPT-DBUF 4096 DIAG-BUFFER!
@@ -218,8 +219,8 @@ create FPT-DBUF 4096 allot
 s" FPT-DIAG-SWAP ( CAD-KIND:node-id -- CAD-KIND:node-id ) FP-RID@" FPT-DIAG<
 s\" \"expected\"" FPT-DIAG?
 s\" \"actual\"" FPT-DIAG?
-s" CAD-KIND:region" FPT-DIAG?
-s" CAD-KIND:node-id" FPT-DIAG?
+s" cad-kind:region<> " FPT-DIAG?
+s" cad-kind:node-id<> " FPT-DIAG?
 FPT-DIAG-END
 
 T-REPORT
