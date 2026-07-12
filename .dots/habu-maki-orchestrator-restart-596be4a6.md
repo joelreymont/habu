@@ -107,3 +107,21 @@ merge proves the full owning gates on the exact fable tree, FAST-FORWARD MASTER
 to fable and push (master-is-green rule: master moves only by verified-green ff
 from a branch; fable is that branch). This discharges habu-for-tfam-boot-
 1a6fba72 (master's latent boot-pin red) at the first ff.
+
+## STATUS 2026-07-12 latest: MASTER FF'D — single unified tree
+
+master = fable = 8ac18d48 "Key durable schedule rows on target facts, not label"
+(first verified-green master ff under the corrected protocol; full ladder on the
+exact tree: test/run.f PASS, maki 90, boot-pin 32, six lints, trust 645/671/0,
+strict rc0, internal-word gate live). The owner-seal merge reconciled: DNAME-INT
+bit63 x OWNER-WID band orthogonal; ;package sweep total; bootstrap.sh
+earliest-marker hide fix (+behavioral-test dot db928688); target campaign
+reconciled with a fact-injective durable key (label-collision HIGH fixed with
+KT-DUP-LABEL negative). habu-for-tfam-boot DISCHARGED. Engine: main bin/hb is
+the post-merge fixpoint (old engines cannot parse ;package - Gforth recovery
+works, do NOT clobber a workspace engine with a stale one; cost me one rebuild).
+IN FLIGHT NEXT: the four claimed checker/engine dots dispatch on this base -
+layout-buf-f0058750, certified-words-84e84eaf, checker-in-body-af7cf855,
+diagnostic-renderer-66c3e741. tfam coordination: they were at ae4019e5 (their
+claim tfam-2b-sealed active) - master ff means their next push rebases onto the
+unified tree; the dots + this record are the channel.
