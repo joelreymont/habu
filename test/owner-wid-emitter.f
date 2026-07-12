@@ -91,9 +91,9 @@ $C89FFCA6 constant COUNT-STLR
    p 4 + e want recurse ;
 
 : NEXT-PHASE ( n n -- n ) {: phase:n w:n :}
-   phase 0 = w COUNT-LDAR = and if 1 exit then
-   phase 1 = w ROW-STR = and if 2 exit then
-   phase 2 = w COUNT-STLR = and if 3 exit then
+   w COUNT-LDAR = if phase 0 <> if -1 exit then 1 exit then
+   w ROW-STR = if phase 1 <> if -1 exit then 2 exit then
+   w COUNT-STLR = if phase 2 <> if -1 exit then 3 exit then
    phase ;
 
 : ORDERED? ( ptr u8 ptr u8 n -- bool ) {: p:ptr e:ptr phase:n :}

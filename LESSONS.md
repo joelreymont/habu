@@ -3654,3 +3654,6 @@ unchanged (148855). Keys for milestone 2:
   files to native builders, recovery composition, cache content keys, file
   inventories, and tests together; one omitted path preserves authority or
   reuses stale output.
+- **Erase and verify package words in their owning WID.** Qualified names are
+  not entries in wordlist zero. Reopen the package, select `public` or `private`,
+  then `undefine` and `search-wl` each unqualified tail in `get-current`.

@@ -1,22 +1,23 @@
 \ owner-wid-emit-seal.f - erase sealed-owner image-construction authority.
 \ Loaded after habu2 compiles every exact caller and xref installs undefine.
 
-undefine OWNER-WID-EMIT:LABELS
-undefine OWNER-WID-EMIT:ADD-LABEL@
-undefine OWNER-WID-EMIT:PREFLIGHT-LABEL@
-undefine OWNER-WID-EMIT:PUBLIC-LABEL@
-undefine OWNER-WID-EMIT:PRIVATE-LABEL@
-undefine OWNER-WID-EMIT:ANY-LABEL@
-undefine OWNER-WID-EMIT:COLD-HOOK!
-undefine OWNER-WID-EMIT:COLD-HOOK
-undefine OWNER-WID-EMIT:PROOF-HOOK!
-undefine OWNER-WID-EMIT:PROOF-HOOK
-undefine OWNER-WID-EMIT:COLD-RESET
-undefine OWNER-WID-EMIT:COLD-LABEL@
-undefine OWNER-WID-EMIT:PRIMS
-undefine OWNER-WID-EMIT:ROUTINES
-
 package OWNER-WID-EMIT
+public
+undefine LABELS
+undefine ADD-LABEL@
+undefine PREFLIGHT-LABEL@
+undefine PUBLIC-LABEL@
+undefine PRIVATE-LABEL@
+undefine ANY-LABEL@
+undefine COLD-HOOK!
+undefine COLD-HOOK
+undefine PROOF-HOOK!
+undefine PROOF-HOOK
+undefine COLD-RESET
+undefine COLD-LABEL@
+undefine PRIMS
+undefine ROUTINES
+private
 undefine LPUBQ
 undefine LPRIQ
 undefine LANYQ
@@ -48,25 +49,29 @@ undefine BPRI?
 undefine BANY?
 ;package
 
-: OWNER-WID-SEAL-ABSENT ( ptr u8 n n -- )
-   search-wl 0 <> if s" owner-WID emitter authority survived seal" 70 die then ;
-
-s" OWNER-WID-EMIT:LABELS" 0 OWNER-WID-SEAL-ABSENT
-s" OWNER-WID-EMIT:ADD-LABEL@" 0 OWNER-WID-SEAL-ABSENT
-s" OWNER-WID-EMIT:PREFLIGHT-LABEL@" 0 OWNER-WID-SEAL-ABSENT
-s" OWNER-WID-EMIT:PUBLIC-LABEL@" 0 OWNER-WID-SEAL-ABSENT
-s" OWNER-WID-EMIT:PRIVATE-LABEL@" 0 OWNER-WID-SEAL-ABSENT
-s" OWNER-WID-EMIT:ANY-LABEL@" 0 OWNER-WID-SEAL-ABSENT
-s" OWNER-WID-EMIT:COLD-HOOK!" 0 OWNER-WID-SEAL-ABSENT
-s" OWNER-WID-EMIT:COLD-HOOK" 0 OWNER-WID-SEAL-ABSENT
-s" OWNER-WID-EMIT:PROOF-HOOK!" 0 OWNER-WID-SEAL-ABSENT
-s" OWNER-WID-EMIT:PROOF-HOOK" 0 OWNER-WID-SEAL-ABSENT
-s" OWNER-WID-EMIT:COLD-RESET" 0 OWNER-WID-SEAL-ABSENT
-s" OWNER-WID-EMIT:COLD-LABEL@" 0 OWNER-WID-SEAL-ABSENT
-s" OWNER-WID-EMIT:PRIMS" 0 OWNER-WID-SEAL-ABSENT
-s" OWNER-WID-EMIT:ROUTINES" 0 OWNER-WID-SEAL-ABSENT
+: OWNER-WID-SEAL-ABSENT ( ptr u8 n n -- ) {: a:ptr u:n wid:n :}
+   a u wid search-wl 0 <> if
+      s" owner-WID emitter authority survived seal: " type a u type cr
+      s" owner-WID emitter authority survived seal" 70 die
+   then ;
 
 package OWNER-WID-EMIT
+public
+s" LABELS" get-current OWNER-WID-SEAL-ABSENT
+s" ADD-LABEL@" get-current OWNER-WID-SEAL-ABSENT
+s" PREFLIGHT-LABEL@" get-current OWNER-WID-SEAL-ABSENT
+s" PUBLIC-LABEL@" get-current OWNER-WID-SEAL-ABSENT
+s" PRIVATE-LABEL@" get-current OWNER-WID-SEAL-ABSENT
+s" ANY-LABEL@" get-current OWNER-WID-SEAL-ABSENT
+s" COLD-HOOK!" get-current OWNER-WID-SEAL-ABSENT
+s" COLD-HOOK" get-current OWNER-WID-SEAL-ABSENT
+s" PROOF-HOOK!" get-current OWNER-WID-SEAL-ABSENT
+s" PROOF-HOOK" get-current OWNER-WID-SEAL-ABSENT
+s" COLD-RESET" get-current OWNER-WID-SEAL-ABSENT
+s" COLD-LABEL@" get-current OWNER-WID-SEAL-ABSENT
+s" PRIMS" get-current OWNER-WID-SEAL-ABSENT
+s" ROUTINES" get-current OWNER-WID-SEAL-ABSENT
+private
 s" LPUBQ" get-current OWNER-WID-SEAL-ABSENT
 s" LPRIQ" get-current OWNER-WID-SEAL-ABSENT
 s" LANYQ" get-current OWNER-WID-SEAL-ABSENT
