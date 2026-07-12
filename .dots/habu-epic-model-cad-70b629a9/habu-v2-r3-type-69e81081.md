@@ -1,9 +1,11 @@
 ---
 title: "V2 R3: type region analysis consumers"
-status: active
+status: closed
 priority: 2
 issue-type: task
-created-at: "\"2026-07-12T07:41:37.208194+02:00\""
+created-at: "\"\\\"2026-07-12T07:41:37.208194+02:00\\\"\""
+closed-at: "2026-07-13T01:18:52.031636+02:00"
+close-reason: "Satisfied by 804bb7e9: traffic/sched-key/cad consumers take CAD-KIND:region; schedule.f verified region-free (FAM-SELECT takes classmix bitmask); canonical bytes unchanged (RSIG golden + full key pins byte-identical); REGION_<id> render behind RGN>RAW boundary"
 blocks:
   - habu-v2-r3-type-5c26f1cb
 ---

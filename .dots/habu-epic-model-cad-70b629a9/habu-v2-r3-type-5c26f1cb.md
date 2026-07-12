@@ -1,9 +1,11 @@
 ---
 title: "V2 R3: type fusion region owner"
-status: active
+status: closed
 priority: 2
 issue-type: task
-created-at: "\"2026-07-12T07:41:25.362360+02:00\""
+created-at: "\"\\\"2026-07-12T07:41:25.362360+02:00\\\"\""
+closed-at: "2026-07-13T01:18:52.027743+02:00"
+close-reason: "Satisfied by 804bb7e9 (dot habu-maki-apply-cad-27b7a7d7, landed via merge to unified tree): FP-RID storage + FP-RID@/FP-REGION-MEMBERS/CLASSMIX carry CAD-KIND:region, private RGN>RAW bounds-validated projections, TRUSTED.md rows; acceptance proven by the region acceptance review (swap rejects, storage preserves family, no public n handle)"
 blocks:
   - habu-v2-r3-type-dfe5609e
   - habu-checker-seal-nominal-0b2eaece
