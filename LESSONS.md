@@ -1323,9 +1323,11 @@ lesson — keep the specific word/code/path, cut the prose.
 - **stdlib gained `ffi`/`float`/`fmt`:** `lib/ffi.f` (typed `DLOPEN`/`DLSYM`/
   `CALL0..6`/`>CSTR` over the `ffi-call` trampoline), `lib/float.f` (`STR>FLOAT`
   decimal→f64 + `POW10`), `lib/fmt.f` (`SB-U`/`SB-INT`/`SB-FIX` builders +
-  `U.0`/`F.N`). Registering a new lib = `std.manifest` rows for every public
+  `.U`/`F.N` — renamed 2026-07 from `U.0`/`.0`: number-shaped names are
+  parser-claimable and now lint-rejected, E-NUMERIC-DEFINITION). Registering a
+  new lib = `std.manifest` rows for every public
   colon word (match `tools/public-signatures.f` output *exactly* —
-  `TRUSTED:`/constants/`.0`-style names are NOT extracted, so they get no row), a
+  `TRUSTED:`/constants are NOT extracted, so they get no row), a
   `FILEMAP.md` row, a `TEST:SUITE` entry, and `TRUSTED.md` rows for any
   `TRUSTED:`. The doc-contract check is a curated spot-list, not per-module.
 - **Warm image entries cannot hide dependencies behind include:** a normal
@@ -3335,6 +3337,20 @@ unchanged (148855). Keys for milestone 2:
   object-cache assertion run without `HABU_BUILD_CACHE` can only miss, while a
   shared warm artifact may bypass object production entirely. Bind a fresh
   gate-local cache before proving store, restore, or relink transitions.
+- **Snapshot main-workspace file writes with a jj command IMMEDIATELY, or an
+  op-state repair will silently revert them.** Three dots created via `dot add`
+  in the main workspace were lost this campaign: concurrent worker-workspace jj
+  ops fork the operation log, and the next `jj workspace update-stale` resets
+  the working copy to the recorded op, discarding unsnapshotted files. Rule:
+  after any main-workspace write while workers are live, run `jj st` at once;
+  before any `update-stale`, back the working copy up first.
+- **A falsification can itself be wrong — record probe CONTEXT.** One review
+  "falsified" the .0 literal-parse hazard with a probe in a different resolution
+  context (checked-candidate vs colon-compile); a later worker's probe plus a
+  structural corroboration (the word missing from the manifest because the
+  tokenizer skips parser-claimable names) proved the hazard real. Probes must
+  name their context (interpret / colon / candidate), and disagreeing probes
+  mean the SEMANTICS are inconsistent — itself a finding (dotted for core).
 - **Gate retries need FRESH `XDG_CACHE_HOME` + `HB_TMP` per attempt.** A reused
   cache dir replays a timeout-poisoned result-cache PASS/RED verdict, so the
   retry reproduces the first attempt's flake as a false persistent red. Mint
