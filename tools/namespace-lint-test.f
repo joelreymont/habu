@@ -49,7 +49,7 @@ require tools/namespace-lint-core.f
    s" package MK KERNEL: K dup ; ;package"    NL-COUNT 0 T=
    s" package MK 2 LAYOUT-BUFFER BUF sample ;package" NL-COUNT 0 T=
    s" package MK ;package : LATE dup ;"       NL-COUNT 1 T=
-   s" package MK ;package : LATE dup ;"          NL-COUNT 1 T= ;
+   s" package MK end-package : LATE dup ;"    NL-COUNT 0 T= ;
 
 : MNLT-WHITELIST ( -- )
    \ E-* cross-cutting error constants are exempt

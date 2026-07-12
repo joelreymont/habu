@@ -614,7 +614,6 @@ variable PS-DEF-SIG-U
    PS-FALSE PS-PKG-PUBLIC ! ;
 
 : PS-PACKAGE-CLOSE? ( ptr u8 n -- bool ) {: a:ptr u:n :}
-   a u s" ;package" LINT-STR=CI IF PS-TRUE exit THEN
    a u s" ;package" LINT-STR=CI ;
 
 : PS-SCOPE-TOKEN? ( ptr u8 n -- bool ) {: a:ptr u:n :}

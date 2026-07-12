@@ -3581,3 +3581,9 @@ unchanged (148855). Keys for milestone 2:
   build work surfaced `E-PROC-SPAWN`; the same source reached fixpoint in a fresh
   artifact root. Isolate fixed-name build artifacts and avoid overlapping proof
   builds before treating a process-launch failure as compiler corruption.
+- **Retire staged syntax across every token owner.** Removing a compiler keyword
+  is incomplete while verifiers, source analyzers, or lints still recognize it;
+  sweep those owners and require an exact `E-UNDEFINED` regression.
+- **Prove retired keywords against the exact candidate process.** In-process
+  `evaluate` can surface a caught checker throw, while a hardcoded `bin/hb` may
+  lag the candidate. Spawn `GE-HB$` and assert its rc plus diagnostic.

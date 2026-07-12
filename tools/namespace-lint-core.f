@@ -153,7 +153,6 @@ variable NL-QI
    nptr nu NL-HIT ;
 
 : NL-PACKAGE-CLOSE? ( ptr u8 n -- bool ) {: a:ptr u:n :}
-   a u s" ;package" LINT-STR=CI if LINT-TRUE exit then
    a u s" ;package" LINT-STR=CI ;
 
 : NL-STEP ( n -- n ) {: i:n :}          \ handle token i, return next index

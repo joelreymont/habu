@@ -596,7 +596,7 @@ variable GD-START-NS
 
 : GD-RUN-BAD-CHILD ( n ptr u8 n ptr u8 n -- )
    {: rc:n needle:ptr needleu:n label:ptr labelu:n :}
-   s" bin/hb" GE-SRC-BUF GE-SRC-U @ GE-TIMEOUT-MS GE-RUN-STDIN
+   GE-HB$ GE-SRC-BUF GE-SRC-U @ GE-TIMEOUT-MS GE-RUN-STDIN
    rc label labelu GE-EXPECT-RC
    needle needleu label labelu GE-EXPECT-ERR-HAS ;
 
@@ -802,8 +802,8 @@ variable GD-START-NS
    $4B s" public" s" package rejects public outside" GD-RUN-BAD-SOURCE
    GE-SRC-RESET  s" private" GE-SRC-LINE
    $4B s" private" s" package rejects private outside" GD-RUN-BAD-SOURCE
-   GE-SRC-RESET  s" ;package" GE-SRC-LINE
-   $4B s" ;package" s" package rejects end outside" GD-RUN-BAD-SOURCE
+   GE-SRC-RESET  s" end-package" GE-SRC-LINE
+   $46 s" E-UNDEFINED: end-package" s" package rejects legacy closer" GD-RUN-BAD-CHILD
    GE-SRC-RESET  s" ;package" GE-SRC-LINE
    $4B s" ;package" s" package rejects semicolon closer outside" GD-RUN-BAD-SOURCE
    GE-SRC-RESET  s" package A" GE-SRC-LINE  s" package B" GE-SRC-LINE
