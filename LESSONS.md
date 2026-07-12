@@ -3603,3 +3603,7 @@ unchanged (148855). Keys for milestone 2:
 - **Never interpolate Markdown backticks into a shell command.** Shell command
   substitution executes them even inside a quoted argument. Pass dot text as
   data or patch the generated record, then inspect the exact stored description.
+- **Keep worker prompts inside the claimed leaf.** A native-registry leaf may
+  expose lowercase engine primitives; package-scoped checked wrappers belong to
+  the dependent syntax/API leaf. Do not widen file ownership to impose the final
+  surface before its layer is ready.
