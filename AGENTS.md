@@ -183,9 +183,13 @@ codes, never silent; named constants; and a `T{ … -> … }T` test for every wo
 - Parallel dot execution follows `docs/parallel-agents.md`: read-only scouts do
   not edit the current tree; workers edit isolated jj workspaces unless their
   file ownership is disjoint.
-- **Dot dispatch status (BLOCKING):** immediately before spawning any worker for
-  a dot, run `dot on <exact-id>` and verify `dot show <exact-id>` reports
-  `Status: active`. If the transition or verification fails, do not dispatch.
+- **Dot dispatch status (BLOCKING):** before claiming, create `.jj-ws/<dot-id>`,
+  verify it with `jj workspace list` and clean `jj st`, and prove write sets do
+  not overlap. Record `Claim: agent=<name> workspace=.jj-ws/<dot-id>` in the
+  exact leaf, run `dot on <exact-id>`, commit and push the claim, fetch/rebase,
+  and verify the pushed claim. Immediately before spawning, rerun `dot on` and
+  verify `dot show <exact-id>` reports the same claim and `Status: active`. If
+  any transition, synchronization, or verification fails, do not dispatch.
   The dot remains active through implementation, destruction review,
   integration, and owning gates; run `dot off <exact-id> -r "..."` only after
   the reviewed commit is merged and verified. Preflight, workspace creation,

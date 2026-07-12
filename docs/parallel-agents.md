@@ -22,17 +22,23 @@ gate.
    `read-only` and `must not edit the current working tree`.
 3. Scouts return findings, file paths, tests, and proposed dots. The orchestrator
    creates missing work with `dot add "Title" -d "Full context..."`.
-4. The orchestrator chooses the next concrete implementation dots and marks each
-   active one with `dot on <id>`.
+4. The orchestrator chooses only unblocked leaves printed by `dot ready`, checks
+   each full brief with `dot show <id>`, and proves the ownership sets disjoint.
 
 ## Work Phase
 
 1. Give every worker one dot, one ownership scope, and a disjoint file set.
-2. If a worker will edit files, create an isolated workspace:
-   `jj workspace add "$wsdir" --name minion-<name>`.
-3. The worker commits its own completed work with `jj commit -m "<short title>"`
+2. If a worker will edit files, create `.jj-ws/<dot-id>` and verify it with
+   `jj workspace list` and clean `jj st`.
+3. Record `Claim: agent=<name> workspace=.jj-ws/<dot-id>` in the exact leaf,
+   run `dot on <exact-id>`, verify the claim and `Status: active`, then commit
+   and push the claim. Fetch/rebase and reject any competing claim. Immediately
+   before spawning, rerun `dot on` plus `dot show`; spawn only while the same
+   pushed agent/workspace is active. Never claim a parent epic, queued dot, or
+   read-only scout.
+4. The worker commits its own completed work with `jj commit -m "<short title>"`
    and reports changed files, tests run, and unresolved risks.
-4. The main workspace may continue only on non-overlapping files while workers
+5. The main workspace may continue only on non-overlapping files while workers
    run. Do not let two workers edit the same files in parallel.
 
 ## Reduce Phase
@@ -44,7 +50,9 @@ gate.
 4. Resolve conflicts in the main workspace, rerun the relevant focused tests,
    then move to the next worker.
 5. After all merges, run the full native gate command from `docs/bootstrap.md`.
-6. Close completed dots with `dot off <id> -r "completed: <summary>"`.
+6. Keep each dot active through fresh destruction review, integration, and the
+   owning gates. Only then close it with
+   `dot off <id> -r "implemented, reviewed, merged, gates green: <summary>"`.
 7. Clean up extra workspaces and temporary logs.
 
 ## Conflict Rules

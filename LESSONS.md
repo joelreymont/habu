@@ -1387,9 +1387,10 @@ lesson — keep the specific word/code/path, cut the prose.
 - **Worker ownership starts with `dot on`, not the spawn call.** I dispatched
   isolated workers while their dots still said `open`, so another orchestrator
   could legally select the same work from `dot ready`. The blocking rule now
-  lives in `AGENTS.md`: activate and verify the exact leaf immediately before
-  dispatch, keep it active through review and integration, and close it only
-  after the reviewed commit and owning gates land.
+  lives in `AGENTS.md`: record the agent/workspace, activate and publish the
+  exact leaf, synchronize, then re-verify immediately before dispatch. Keep it
+  active through review and integration, and close it only after the reviewed
+  commit and owning gates land. An unpushed active bit is not a cross-lane claim.
 - **Keep debugger docs in the agent index:** list `docs/debugging.md` (`.s`, watch
   cells, REPL `step`, breakpoints, `jitdump`, `imgdump`) in `FILEMAP.md`, guarded
   by `tools/filemap-lint.f`, so RCA starts with existing tools.
