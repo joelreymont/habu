@@ -294,11 +294,16 @@ private
    n PTX-LAUNCH-POSITIVE  LLA-BLOCK PTX-BLOCK-CHECK
    n LLA-NVAR !
    n LLA-BLOCK + 1 - LLA-BLOCK / ;
+\ typed rows/cols -> row-launch grid + u32 param: the raw projection is confined
+\ HERE (grid=rows, p_k=cols), so a rows/cols swap at a call site is a checker
+\ reject; the runtime PTX-ROW-LAUNCH-CHECK stays behind the seam (defense in depth).
+: LLA-ROW-GRID ( CAD-KIND:rows CAD-KIND:cols -- n )
+   {: rows:CAD-KIND:rows cols:CAD-KIND:cols :}
+   rows ROWS-RAW cols COLS-RAW LLA-BLOCK PTX-ROW-LAUNCH-CHECK
+   cols COLS-RAW LLA-NVAR !
+   rows ROWS-RAW ;
 : LLA-GRID-RED ( -- n )
-   LRED-ROWS@ ROWS-RAW {: rows:n :}  LRED-COLS@ COLS-RAW {: cols:n :}
-   rows cols LLA-BLOCK PTX-ROW-LAUNCH-CHECK
-   cols LLA-NVAR !
-   rows ;
+   LRED-ROWS@ LRED-COLS@ LLA-ROW-GRID ;
 \ grid tiles the OUTPUT by the emitted kernel's tile edge (LMM-OUT-TILE@ = 64 register-blocked
 \ / 16 naive); the block shape stays 16x16 = 256 threads for both (LLA-MM-TILE). LLA-STAGE-MM
 \ (LMM-ANALYZE) fixed the blocked/naive choice before this runs, so the divisor matches the emit.

@@ -13,6 +13,7 @@
 
 require lib/test.f
 require lib/string.f
+require test/checker-assert.f
 require maki/cad.f
 require maki/lower-golden.f
 require maki/lower-mm.f
@@ -26,6 +27,10 @@ package MAKI
 \ if/then is compile-only - not usable at the interpreter top level.)
 : LMT-OFFDEV-NOTRUN ( -- )
    CUDA:OPEN? 0= if  LOWER-MODEL-GOLDEN V-NOTRUN T=  then ;
+
+\ cols wider than the launch block: the runtime row-launch check behind the
+\ typed seam (LLA-ROW-GRID) must still fail closed (E-PTX-BLOCK, defense in depth)
+: LMT-ROWGRID-WIDE ( -- )  1 512 SHAPE LLA-ROW-GRID drop ;
 
 T-RESET
 
@@ -54,6 +59,18 @@ MIR-MAT-COUNT   3 T=
 2 FP-REGION-ID LRED-ANALYZE
 0 LRED-IN-REF@ 2 T=                       \ operand 0 = node 2 (linear2, cross-region producer)
 0 LRED-IN-REF@ MIR-REF-INPUT? TFALSE
+
+\ typed row-launch seam (LLA-ROW-GRID): grid=rows / p_k=cols is static; byte-identity
+\ on the analyzed rmsnorm region (4x8): grid = 4 rows, u32 param = 8 cols.
+LLA-GRID-RED 4 T=                         \ grid = region rows
+LLA-NVAR @ 8 T=                           \ u32 kernel param = region cols
+512 1 SHAPE LLA-ROW-GRID 512 T=           \ rows drive the grid...
+LLA-NVAR @ 1 T=                           \ ...cols the param, not vice versa
+' LMT-ROWGRID-WIDE E-PTX-BLOCK TTHROWS    \ runtime row-launch check stays reachable
+\ swapped roles into the typed seam reject BEFORE runtime (same arity)
+s" LMT-RG-OK       ( CAD-KIND:rows CAD-KIND:cols -- n ) LLA-ROW-GRID" CHECK-QUIET-CANDIDATE! -1 T=
+s" LMT-NEG-RG-SWAP ( CAD-KIND:cols CAD-KIND:rows -- n ) LLA-ROW-GRID" CHECK-QUIET-CANDIDATE! 0 T=
+s" LMT-NEG-RG-RAW  ( n n -- n ) LLA-ROW-GRID"                         CHECK-QUIET-CANDIDATE! 0 T=
 
 \ tolerance composition inputs: 2 matmul regions + 1 row-reduce region, summed across the chain
 MDL-COUNT-REGIONS

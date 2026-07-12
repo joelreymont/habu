@@ -14,6 +14,7 @@
 
 require lib/test.f
 require lib/string.f
+require test/checker-assert.f
 require maki/cad.f
 require maki/lower-ew.f
 require maki/lower-red.f
@@ -260,6 +261,18 @@ LMVT-TRY-MV1                                  \ 1 LMV-ANALYZE: no longer throws
 MODEL: GC2 ( x:4x8 b:4x8 -- y ) GELU CONCAT ;
 FP-BUILD  0 0= 0= 0 MIR-NODE-ID MIR-MAT!
 ' LMVT-TRY-MV1 E-LMV-INPUT TTHROWS
+
+\ ---- typed rows/cols -> p_a/p_b seam (LMV-RC-PARAMS!): param order is static ----
+\ byte-identity: a 4x8 transpose stages p_a = src rows = 4, p_b = src cols = 8.
+MODEL: TPS ( x:4x8 -- y ) TRANSPOSE ;
+FP-BUILD
+LMVT-TRY-MV
+LMV-PA@ 4 T=                                  \ p_a = src rows
+LMV-PB@ 8 T=                                  \ p_b = src cols
+\ swapped roles into the typed setter reject BEFORE runtime (same arity)
+s" LMVT-RC-OK       ( CAD-KIND:rows CAD-KIND:cols -- ) LMV-RC-PARAMS!" CHECK-QUIET-CANDIDATE! -1 T=
+s" LMVT-NEG-RC-SWAP ( CAD-KIND:cols CAD-KIND:rows -- ) LMV-RC-PARAMS!" CHECK-QUIET-CANDIDATE! 0 T=
+s" LMVT-NEG-RC-RAW  ( n n -- ) LMV-RC-PARAMS!"                          CHECK-QUIET-CANDIDATE! 0 T=
 
 T-REPORT
 

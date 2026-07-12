@@ -129,9 +129,14 @@ variable LMV-BUILT?
    loop ;
 
 \ ---- per-op derived dims + u32 params (p_a/p_b) -----------------------------
+\ typed rows/cols -> the ORDERED u32 param slots (p_a, p_b): the raw projection
+\ is confined HERE, so a rows/cols swap at a call site is a checker reject.
+: LMV-RC-PARAMS! ( CAD-KIND:rows CAD-KIND:cols -- )
+   {: r:CAD-KIND:rows c:CAD-KIND:cols :}
+   r ROWS-RAW LMV-PA !  c COLS-RAW LMV-PB ! ;
 : LMV-DIMS-TRANSPOSE ( -- )                            \ p_a=src_rows R, p_b=src_cols C
    0 LMV-REF@ {: s:MIR:operand-ref :}
-   s LMV-REF-ROWS ROWS-RAW LMV-PA !  s LMV-REF-COLS COLS-RAW LMV-PB ! ;
+   s LMV-REF-ROWS  s LMV-REF-COLS  LMV-RC-PARAMS! ;
 : LMV-DIMS-SLICE ( -- )                                \ p_a = r0*cols (source-flat offset)
    LMV-NODE@ {: nd:CAD-KIND:node-id :}
    nd MIR-ATTR@ MV-PA@  nd MIR-COLS@ COLS-RAW *  LMV-PA !  0 LMV-PB ! ;
