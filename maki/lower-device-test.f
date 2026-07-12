@@ -33,7 +33,7 @@ create LD-QO  $1000 allot  create LD-QE  $2000 allot
 
 \ ---- spawn bin/hb to emit region 0's PTX into PTXTC:PTX$ (child re-builds the IR) --
 : LD-EMIT ( ptr u8 n -- ) {: sa:ptr su:n :}
-   sa su  s" require maki/lower-ew.f"  s" LEW-EMIT"  0  MAKI-GRADE:DRIVER$  LOWER-DRIVER!
+   sa su  s" require maki/lower-ew.f"  s" LEW-EMIT"  0 FP-REGION-ID  MAKI-GRADE:DRIVER$  LOWER-DRIVER!
    PROC-ARGV-RESET
    s" --load"           >LEN PROC-ARGV+
    MAKI-GRADE:DRIVER$   >LEN PROC-ARGV+
@@ -61,7 +61,7 @@ create LD-QO  $1000 allot  create LD-QE  $2000 allot
    sa su LD-EMIT
    LD-PTXAS PTXTC:ASM-REPORT 0 T=                         \ ptxas rc 0 (stderr surfaced on failure)
    PTXTC:CUBIN$ LLA-CUBIN!
-   0 LOWER-GOLDEN {: v:n :}
+   0 FP-REGION-ID LOWER-GOLDEN {: v:n :}
    LOWER-GOLDEN-REASON$ type cr
    LD-EVIDENCE
    v V-PASS T= ;

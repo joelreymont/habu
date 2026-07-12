@@ -72,7 +72,9 @@ variable CK-BUILT?
    FP-RESET FP-BUILD
    CK-NF @ 0 ?do
       i MIR-NODE-ID {: node:CAD-KIND:node-id :}
-      node FP-RID@                  i cells CK-SEG + !
+      \ segment id = the region's raw table position (RGN>RAW is the one
+      \ region->segment store boundary; the segment domain is checkpoint-owned)
+      node FP-RID@ RGN>RAW          i cells CK-SEG + !
       node MIR-MAT@ if 1 else 0 then  i cells CK-BND + !
    loop
    FP-REGION-COUNT CK-SEGS ! ;

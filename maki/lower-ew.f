@@ -71,7 +71,7 @@ create LEW-IN-BC  LEW-MAX-IN cells allot   \ broadcast class per external input 
 create LEW-NODE-REG LEW-NCAP cells allot   \ result %f register per region-member node
 variable LEW-NIN                            \ region input count
 variable LEW-OUTNODE                        \ the single materialized region-output node
-variable LEW-RID                            \ region id being lowered
+variable LEW-RID                            \ region id being lowered (typed CAD-KIND:region cell)
 
 : LEW-REF! ( MIR:operand-ref n -- )
    cells LEW-INS + ! ;
@@ -86,10 +86,10 @@ variable LEW-RID                            \ region id being lowered
    LEW-OUTNODE @ ;
 
 \ ---- region membership + class ---------------------------------------------
-: LEW-IN-REGION? ( CAD-KIND:node-id n -- bool )  swap FP-RID@ = ;
+: LEW-IN-REGION? ( CAD-KIND:node-id CAD-KIND:region -- bool )  swap FP-RID@ FP-RGN= ;
 \ class mix must contain the EW bit and nothing outside {EW, MOVEMENT}: a dissolved
 \ free-movement prologue (maki/move-view.f) folds into the flat kernel's load offset.
-: LEW-EW-ONLY? ( n -- bool ) {: rid:n :}
+: LEW-EW-ONLY? ( CAD-KIND:region -- bool ) {: rid:CAD-KIND:region :}
    rid FP-REGION-CLASSMIX {: mix:n :}
    mix 1 CLASS-EW lshift and 0= if false exit then
    mix  1 CLASS-EW lshift  1 CLASS-MOVEMENT lshift or  invert and 0= ;
@@ -113,7 +113,7 @@ variable LEW-RID                            \ region id being lowered
 \ compute members must be v1 EW ops; movement members must be EW-foldable dissolved
 \ movements (MVW-CHECK-EW folds a FREE offset OR a STAGED transpose, and fails closed on a
 \ chained / mat / non-slot source before any emit).
-: LEW-CHECK-OPS ( n -- ) {: rid:n :}
+: LEW-CHECK-OPS ( CAD-KIND:region -- ) {: rid:CAD-KIND:region :}
    MIR-N@ 0 ?do
       i MIR-NODE-ID {: node:CAD-KIND:node-id :}
       node rid LEW-IN-REGION? if
@@ -126,26 +126,26 @@ variable LEW-RID                            \ region id being lowered
 \ An operand ref is external to the region when it names a model-input slot or a
 \ producer node living in another region (a materialized boundary). Region-interior
 \ producers are register values, never kernel inputs.
-: LEW-REF-EXTERNAL? ( n MIR:operand-ref -- bool )
-   {: rid:n ref:MIR:operand-ref :}
+: LEW-REF-EXTERNAL? ( CAD-KIND:region MIR:operand-ref -- bool )
+   {: rid:CAD-KIND:region ref:MIR:operand-ref :}
    ref MIR-REF-INPUT? if true exit then
    ref MVW-DISSOLVED? if true exit then       \ a folded movement node is a virtual input
-   ref MIR-REF-NODE FP-RID@ rid <> ;
+   ref MIR-REF-NODE FP-RID@ rid FP-RGN= 0= ;
 : LEW-INS-IDX ( MIR:operand-ref -- n ) {: ref:MIR:operand-ref :}   \ index in LEW-INS, or -1
    LEW-NIN @ 0 ?do  ref i LEW-REF@ MIR-REF= if i unloop exit then  loop  -1 ;
 : LEW-INS-ADD ( MIR:operand-ref -- ) {: ref:MIR:operand-ref :}
    ref LEW-INS-IDX -1 > if exit then           \ already recorded
    LEW-NIN @ LEW-MAX-IN >= if E-LEW-INPUTS throw then
    ref LEW-NIN @ LEW-REF!  LEW-NIN @ 1+ LEW-NIN ! ;
-: LEW-SCAN-INS ( n CAD-KIND:node-id -- )
-   {: rid:n nd:CAD-KIND:node-id :}
+: LEW-SCAN-INS ( CAD-KIND:region CAD-KIND:node-id -- )
+   {: rid:CAD-KIND:region nd:CAD-KIND:node-id :}
    nd MIR-IN-COUNT@ 0 ?do
       nd i MIR-INPUT-IDX MIR-IN@ {: ref:MIR:operand-ref :}
       rid ref LEW-REF-EXTERNAL? if ref LEW-INS-ADD then
    loop ;
 \ only COMPUTE members contribute inputs; a movement member's source reaches the kernel
 \ as the virtual movement-node input its consumer scans, not as a direct input.
-: LEW-COLLECT-INS ( n -- ) {: rid:n :}
+: LEW-COLLECT-INS ( CAD-KIND:region -- ) {: rid:CAD-KIND:region :}
    0 LEW-NIN !
    MIR-N@ 0 ?do
       i MIR-NODE-ID {: node:CAD-KIND:node-id :}
@@ -157,12 +157,12 @@ variable LEW-RID                            \ region id being lowered
 \ linear operand-0 chain whose only materialized node is the tail; proof + fan-out battery in
 \ maki/fusion-mout-test.f). LEW-FIND-OUT asserts that invariant as defense-in-depth: != 1 is a
 \ corrupted plan (>1 structurally impossible, 0 a materialization-flag regression), never a v1 cap.
-: LEW-MAT-COUNT ( n -- n ) {: rid:n :}
+: LEW-MAT-COUNT ( CAD-KIND:region -- n ) {: rid:CAD-KIND:region :}
    0 MIR-N@ 0 ?do
       i MIR-NODE-ID {: node:CAD-KIND:node-id :}
       node rid LEW-IN-REGION? node MIR-MAT@ and if 1+ then
    loop ;
-: LEW-FIND-OUT ( n -- ) {: rid:n :}
+: LEW-FIND-OUT ( CAD-KIND:region -- ) {: rid:CAD-KIND:region :}
    rid LEW-MAT-COUNT 1 <> if E-LEW-MULTIOUT throw then
    MIR-N@ 0 ?do
       i MIR-NODE-ID {: node:CAD-KIND:node-id :}
@@ -190,7 +190,7 @@ variable LEW-RID                            \ region id being lowered
    loop ;
 
 public
-: LEW-ANALYZE ( n -- ) {: rid:n :}
+: LEW-ANALYZE ( CAD-KIND:region -- ) {: rid:CAD-KIND:region :}
    rid FP-REGION-MEMBERS drop                   \ validates FP-BUILD ran + rid range
    rid LEW-RID !
    rid LEW-EW-ONLY? 0= if E-LEW-NOTEW throw then
@@ -205,7 +205,7 @@ public
    i 0 < i LEW-NIN @ >= or if E-LEW-REG throw then  i LEW-REF@ ;
 : LEW-OUT-NODE@ ( -- CAD-KIND:node-id ) LEW-OUTNODE@ ;
 : LEW-ELEMS ( -- n )     LEW-OUT-ELEMS ;
-: LEW-RID@ ( -- n )      LEW-RID @ ;
+: LEW-RID@ ( -- CAD-KIND:region )  LEW-RID @ ;
 
 private
 
@@ -229,7 +229,8 @@ private
    nd 1 MIR-INPUT-IDX LEW-OPREG ;
 
 \ ---- entry / regs / params scaffolding (K inputs + output + n) --------------
-: LEW-KNAME ( -- )  s" REGION_" CG-S LEW-RID @ SB-U ;
+\ RGN>RAW is the one kernel-name render boundary (REGION_<rid>)
+: LEW-KNAME ( -- )  s" REGION_" CG-S LEW-RID @ RGN>RAW SB-U ;
 : LEW-ENTRY ( -- )
    SB-RESET
    s" .visible .entry " CG-S LEW-KNAME s" (" CG-S
@@ -340,7 +341,7 @@ private
 public
 \ LEW-EMIT prints the region's PTX module to the current PTX sink (stdout, or the
 \ in-process capture buffer). Analysis first, so a rejected region emits nothing.
-: LEW-EMIT ( n -- )
+: LEW-EMIT ( CAD-KIND:region -- )
    LEW-ANALYZE
    PTX-MODULE{
       LEW-ENTRY  LEW-OPEN  LEW-PARAMS  LEW-RESET-REGS
@@ -372,19 +373,21 @@ public
 \ inside package MAKI (MODEL:/FP-BUILD/*-EMIT are MAKI publics), to the path `pa/pu`.
 \ Both the elementwise (LEW-EMIT) and the row-reduce (LRED-EMIT) device legs spawn a
 \ fresh bin/hb through this one writer.
-: LOWER-DRIVER! ( ptr u8 n ptr u8 n ptr u8 n n ptr u8 n -- )
-   {: ma:ptr mu:n reqa:ptr requ:n emita:ptr emitu:n rid:n pa:ptr pu:n :}
+: LOWER-DRIVER! ( ptr u8 n ptr u8 n ptr u8 n CAD-KIND:region ptr u8 n -- )
+   {: ma:ptr mu:n reqa:ptr requ:n emita:ptr emitu:n rid:CAD-KIND:region pa:ptr pu:n :}
    LEW-D-RESET
    s" require maki/cad.f"  LEW-D+ LEW-D-NL
    reqa requ               LEW-D+ LEW-D-NL
    s" package MAKI"        LEW-D+ LEW-D-NL
    ma mu                   LEW-D+ LEW-D-NL
    s" FP-BUILD"            LEW-D+ LEW-D-NL
-   rid LEW-D-INT  s"  "    LEW-D+  emita emitu LEW-D+ LEW-D-NL
+   \ the child re-refines the rendered raw id (RGN>RAW is the render boundary)
+   rid RGN>RAW LEW-D-INT  s"  FP-REGION-ID "  LEW-D+  emita emitu LEW-D+ LEW-D-NL
    s" end-package"         LEW-D+ LEW-D-NL
    pa pu  LEW-DRV LEW-DRV-U @  WRITE-ALL ;
 
-: LEW-WRITE-DRIVER ( ptr u8 n n ptr u8 n -- ) {: ma:ptr mu:n rid:n pa:ptr pu:n :}
+: LEW-WRITE-DRIVER ( ptr u8 n CAD-KIND:region ptr u8 n -- )
+   {: ma:ptr mu:n rid:CAD-KIND:region pa:ptr pu:n :}
    ma mu  s" require maki/lower-ew.f"  s" LEW-EMIT"  rid  pa pu  LOWER-DRIVER! ;
 
 end-package

@@ -58,7 +58,7 @@ private
 create LMV-INS   LMV-MAX-IN cells allot   \ ordered buffer-operand refs (must be input slots)
 variable LMV-NIN                           \ buffer-operand count (1 or 2)
 variable LMV-NODE                          \ the movement node
-variable LMV-RID                           \ region id being lowered
+variable LMV-RID                           \ region id being lowered (typed CAD-KIND:region cell)
 variable LMV-PA  variable LMV-PB  variable LMV-PN   \ kernel u32 params
 variable LMV-BUILT?
 
@@ -75,7 +75,7 @@ variable LMV-BUILT?
    LMV-NODE @ ;
 
 \ ---- region membership -----------------------------------------------------
-: LMV-IN-REGION? ( CAD-KIND:node-id n -- bool )  swap FP-RID@ = ;
+: LMV-IN-REGION? ( CAD-KIND:node-id CAD-KIND:region -- bool )  swap FP-RID@ FP-RGN= ;
 : LMV-COPY-OP? ( opkind -- bool )
    MATCH opkind
       transpose OF true ENDOF  slice OF true ENDOF  concat OF true ENDOF  gather OF true ENDOF
@@ -105,9 +105,9 @@ variable LMV-BUILT?
    dup LMV-REF-ROWS swap LMV-REF-COLS SHAPE-ELEMS DIM-RAW ;
 
 \ ---- find the single materialized movement node ----------------------------
-: LMV-MEMBERS ( n -- n ) {: rid:n :}                   \ region member count
+: LMV-MEMBERS ( CAD-KIND:region -- n ) {: rid:CAD-KIND:region :}   \ region member count
    0 MIR-N@ 0 ?do  i MIR-NODE-ID rid LMV-IN-REGION? if 1+ then  loop ;
-: LMV-FIND-NODE ( n -- ) {: rid:n :}
+: LMV-FIND-NODE ( CAD-KIND:region -- ) {: rid:CAD-KIND:region :}
    rid LMV-MEMBERS 1 <> if E-LMV-MULTI throw then      \ v1: a copy region is one node
    MIR-N@ 0 ?do
       i MIR-NODE-ID {: node:CAD-KIND:node-id :}
@@ -168,7 +168,7 @@ variable LMV-BUILT?
    LMV-NIN @ 0 ?do  i LMV-REF@ LMV-REF-ELEMS LMV-ARENA > if E-LMV-DIMS throw then  loop ;
 
 public
-: LMV-ANALYZE ( n -- ) {: rid:n :}
+: LMV-ANALYZE ( CAD-KIND:region -- ) {: rid:CAD-KIND:region :}
    rid FP-REGION-MEMBERS drop                          \ validates FP-BUILD ran + rid range
    rid LMV-RID !
    rid LMV-FIND-NODE
@@ -187,12 +187,13 @@ public
 : LMV-ELEMS ( -- n )      LMV-CK LMV-PN @ ;
 : LMV-PA@ ( -- n )        LMV-CK LMV-PA @ ;
 : LMV-PB@ ( -- n )        LMV-CK LMV-PB @ ;
-: LMV-RID@ ( -- n )       LMV-CK LMV-RID @ ;
+: LMV-RID@ ( -- CAD-KIND:region )  LMV-CK LMV-RID @ ;
 
 private
 
 \ ---- entry / regs / params (K buffers + out + a,b,n; cvta the pointers) ------
-: LMV-KNAME ( -- )  s" REGION_" CG-S LMV-RID @ SB-U ;
+\ RGN>RAW is the one kernel-name render boundary (REGION_<rid>)
+: LMV-KNAME ( -- )  s" REGION_" CG-S LMV-RID @ RGN>RAW SB-U ;
 : LMV-OUT-BASE ( -- n )  LMV-NIN @ 1+ ;                \ rd index of p_out (rd1..rdK buffers)
 : LMV-ENTRY ( -- )
    SB-RESET
@@ -300,7 +301,7 @@ private
 public
 \ LMV-EMIT prints the region's copy-kernel PTX module to the current PTX sink. Analysis
 \ first, so a rejected region emits nothing.
-: LMV-EMIT ( n -- )
+: LMV-EMIT ( CAD-KIND:region -- )
    LMV-ANALYZE
    PTX-MODULE{
       LMV-ENTRY  LMV-OPEN  LMV-PARAMS

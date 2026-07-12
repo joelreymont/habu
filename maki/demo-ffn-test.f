@@ -175,9 +175,9 @@ drop
 
 \ ==== 10. PROMOTE: artifact promoted; store evidence + schedule rows land ====
 PROMOTE dup REPORT:CACHE$ s" FFN-DEMO" T$= drop
-0 SK-KEY$ EVID-GET TTRUE
+0 FP-REGION-ID SK-KEY$ EVID-GET TTRUE
 s" certify=pass|golden=pass|gradcheck=pass|profile=not-run" T$=
-0 SK-KEY$ SCHED-GET TTRUE 0 T=                     \ region-0 selection = gemm default (candidate 0)
+0 FP-REGION-ID SK-KEY$ SCHED-GET TTRUE 0 T=                     \ region-0 selection = gemm default (candidate 0)
 
 \ ==== 11. Comparison vs the unfused baseline ================================
 \ unfused traffic 3040 B, fused 2272 B: the flagship win, computed from the report's

@@ -104,33 +104,38 @@ create TRF-SRC TRF-SCAP cells allot   variable TRF-SRC-N
    TRF-SRC-N @ 1+ TRF-SRC-N ! ;
 
 \ is operand ref external to region r? (an input slot, or a node in another region)
-: TRF-EXT? ( MIR:operand-ref n -- bool ) {: ref:MIR:operand-ref r:n :}
+: TRF-EXT? ( MIR:operand-ref CAD-KIND:region -- bool )
+   {: ref:MIR:operand-ref r:CAD-KIND:region :}
    ref MIR-REF-INPUT? if true exit then
-   ref MIR-REF-NODE FP-RID@ r <> ;
+   ref MIR-REF-NODE FP-RID@ r FP-RGN= 0= ;
 
-: TRF-NODE-READS+ ( CAD-KIND:node-id n -- ) {: nd:CAD-KIND:node-id r:n :}
+: TRF-NODE-READS+ ( CAD-KIND:node-id CAD-KIND:region -- )
+   {: nd:CAD-KIND:node-id r:CAD-KIND:region :}
    nd MIR-IN-COUNT@ 0 ?do
       nd i MIR-INPUT-IDX MIR-IN@ dup r TRF-EXT? if TRF-SRC-ADD else drop then
    loop ;
 
-: TRF-RGN-READS ( n -- n ) {: r:n :}
+: TRF-RGN-READS ( CAD-KIND:region -- n ) {: r:CAD-KIND:region :}
    TRF-SRC-RESET
    MIR-N@ 0 ?do
       i MIR-NODE-ID {: node:CAD-KIND:node-id :}
-      node FP-RID@ r = if node r TRF-NODE-READS+ then
+      node FP-RID@ r FP-RGN= if node r TRF-NODE-READS+ then
    loop
    0 TRF-SRC-N @ 0 ?do  i TRF-SRC@ TRF-REF-BYTES +  loop ;
 
-: TRF-RGN-WRITES ( n -- n ) {: r:n :}
+: TRF-RGN-WRITES ( CAD-KIND:region -- n ) {: r:CAD-KIND:region :}
    0 MIR-N@ 0 ?do
       i MIR-NODE-ID {: node:CAD-KIND:node-id :}
-      node FP-RID@ r = node MIR-MAT@ and if node TRF-NODE-BYTES + then
+      node FP-RID@ r FP-RGN= node MIR-MAT@ and if node TRF-NODE-BYTES + then
    loop ;
 
 public
 
 : TRF-AFTER ( -- n )
-   0  FP-REGION-COUNT 0 ?do  i TRF-RGN-READS +  i TRF-RGN-WRITES +  loop ;
+   0  FP-REGION-COUNT 0 ?do
+      i FP-REGION-ID {: r:CAD-KIND:region :}
+      r TRF-RGN-READS +  r TRF-RGN-WRITES +
+   loop ;
 
 private
 

@@ -39,19 +39,19 @@ create LMDM-DIR  FS-PATH-CAP allot  variable LMDM-DIR-U
 create LMDM-RP   FS-PATH-CAP allot  variable LMDM-RP-U
 
 \ ---- per-region class -> (require, emit) for the spawned emit child ----------
-: LMDM-REQ$ ( n -- ptr u8 n ) {: rid:n :}
+: LMDM-REQ$ ( CAD-KIND:region -- ptr u8 n ) {: rid:CAD-KIND:region :}
    rid LLA-REGION-MOVE?   if s" require maki/lower-move.f" exit then
    rid LLA-REGION-MATMUL? if s" require maki/lower-mm.f"   exit then
    rid LLA-REGION-REDUCE? if s" require maki/lower-red.f"  exit then
    s" require maki/lower-ew.f" ;
-: LMDM-EMIT$ ( n -- ptr u8 n ) {: rid:n :}
+: LMDM-EMIT$ ( CAD-KIND:region -- ptr u8 n ) {: rid:CAD-KIND:region :}
    rid LLA-REGION-MOVE?   if s" LMV-EMIT"  exit then
    rid LLA-REGION-MATMUL? if s" LMM-EMIT"  exit then
    rid LLA-REGION-REDUCE? if s" LRED-EMIT" exit then
    s" LEW-EMIT" ;
 
 \ ---- spawn bin/hb to emit region rid's PTX into PTXTC:PTX$ (child re-builds the IR) --
-: LMDM-EMIT ( ptr u8 n n -- ) {: ma:ptr mu:n rid:n :}
+: LMDM-EMIT ( ptr u8 n CAD-KIND:region -- ) {: ma:ptr mu:n rid:CAD-KIND:region :}
    ma mu  rid LMDM-REQ$  rid LMDM-EMIT$  rid  MAKI-GRADE:DRIVER$  LOWER-DRIVER!
    PROC-ARGV-RESET
    s" --load"           >LEN PROC-ARGV+
@@ -64,13 +64,14 @@ create LMDM-RP   FS-PATH-CAP allot  variable LMDM-RP-U
 : LMDM-PTXAS ( -- n )  LMDM-QO $1000 >LEN LMDM-QE $2000 >LEN PTXTC:ASSEMBLE ;
 
 \ ---- per-region cubin path under a private model dir -------------------------
-: LMDM-RP$ ( n -- ptr u8 n ) {: rid:n :}
-   SB-RESET s" region" SB-APPEND rid SB-INT s" .cubin" SB-APPEND SB$ {: na:ptr nu:n :}
+\ RGN>RAW is the one per-region path render boundary (region<rid>.cubin)
+: LMDM-RP$ ( CAD-KIND:region -- ptr u8 n ) {: rid:CAD-KIND:region :}
+   SB-RESET s" region" SB-APPEND rid RGN>RAW SB-INT s" .cubin" SB-APPEND SB$ {: na:ptr nu:n :}
    LMDM-DIR LMDM-DIR-U @  na nu  LMDM-RP JOIN-PATH LMDM-RP-U !
    LMDM-RP LMDM-RP-U @ ;
 
 \ emit -> ptxas -> copy the cubin to a per-region path -> register it for the model run
-: LMDM-ASSEMBLE-REGION ( ptr u8 n n -- ) {: ma:ptr mu:n rid:n :}
+: LMDM-ASSEMBLE-REGION ( ptr u8 n CAD-KIND:region -- ) {: ma:ptr mu:n rid:CAD-KIND:region :}
    ma mu rid LMDM-EMIT
    LMDM-PTXAS PTXTC:ASM-REPORT 0 T=                       \ ptxas rc 0 (stderr surfaced on failure)
    PTXTC:CUBIN$ LMDM-CBUF $20000 READ-ALL {: got:n :}
@@ -80,7 +81,7 @@ create LMDM-RP   FS-PATH-CAP allot  variable LMDM-RP-U
 
 : LMDM-BUILD-CUBINS ( ptr u8 n -- ) {: ma:ptr mu:n :}
    MDL-CUBINS-RESET
-   FP-REGION-COUNT 0 ?do  ma mu i LMDM-ASSEMBLE-REGION  loop ;
+   FP-REGION-COUNT 0 ?do  ma mu i FP-REGION-ID LMDM-ASSEMBLE-REGION  loop ;
 
 \ ---- per-element evidence (final model output: device value | host value rounded to f32) -----
 : LMDM-FP ( r -- )  SB-RESET 6 SB-FIX SB$ type ;
@@ -115,7 +116,7 @@ create LMDM-RP   FS-PATH-CAP allot  variable LMDM-RP-U
    drop
    s" == PROMOTE (evidence row) ==" type cr
    PROMOTE drop
-   0 SK-KEY$ EVID-GET {: ra:ptr ru:n found:bool :}
+   0 FP-REGION-ID SK-KEY$ EVID-GET {: ra:ptr ru:n found:bool :}
    found TTRUE
    ra ru type cr                                          \ verbatim evidence row
    ra ru s" golden=device-pass:f32" CONTAINS? TTRUE      \ device leg + its licensed precision

@@ -20,7 +20,9 @@ variable FT-VA  variable FT-VU
 \ ---- fail-closed probes ----------------------------------------------------
 : TRY-STATE  ( -- )  FP-RESET FP-REGION-COUNT drop ;      \ accessor before build
 : TRY-RID    ( -- )  99 MIR-NODE-ID FP-RID@ drop ;        \ node index rejects at the id refinement
-: TRY-RGN    ( -- )  99 FP-REGION-MEMBERS drop ;          \ region index out of range
+: TRY-RGN    ( -- )  99 FP-REGION-ID drop ;               \ region index rejects at the id refinement
+: TRY-RID-STATE ( -- )  0 MIR-NODE-ID FP-RID@ drop ;      \ FP-RID@ keeps its FP-CK guard
+: TRY-ID-STATE  ( -- )  0 FP-REGION-ID drop ;             \ FP-REGION-ID keeps its FP-CK guard
 : TRY-RSN-LOW  ( -- )  -1 FP-SP-REASON-AT drop ;
 : TRY-RSN-HIGH ( -- )  FP-CAP FP-SP-REASON-AT drop ;
 
@@ -42,9 +44,11 @@ T-RESET
 MODEL: CHAIN ( x:4x8 -- y ) GELU SILU RELU ;
 FP-BUILD
 FP-REGION-COUNT      1 T=
-0 FP-REGION-MEMBERS  3 T=
+0 FP-REGION-ID FP-REGION-MEMBERS  3 T=
 FP-SPLIT-COUNT       0 T=
-0 MIR-NODE-ID FP-RID@ 0 T=  1 MIR-NODE-ID FP-RID@ 0 T=  2 MIR-NODE-ID FP-RID@ 0 T=
+0 MIR-NODE-ID FP-RID@ 0 FP-REGION-ID FP-RGN= TTRUE
+1 MIR-NODE-ID FP-RID@ 0 FP-REGION-ID FP-RGN= TTRUE
+2 MIR-NODE-ID FP-RID@ 0 FP-REGION-ID FP-RGN= TTRUE
 \ interior nodes cleared; only the model output materializes
 0 MIR-NODE-ID MIR-MAT@ TFALSE  1 MIR-NODE-ID MIR-MAT@ TFALSE  2 MIR-NODE-ID MIR-MAT@ TTRUE
 
@@ -53,7 +57,9 @@ FP-SPLIT-COUNT       0 T=
 MODEL: FFN ( x:2x3 w1:3x4 b1:1x4 w2:4x5 b2:1x5 -- y ) LINEAR GELU LINEAR ;
 FP-BUILD
 FP-REGION-COUNT 2 T=
-0 MIR-NODE-ID FP-RID@ 0 T=  1 MIR-NODE-ID FP-RID@ 0 T=  2 MIR-NODE-ID FP-RID@ 1 T=
+0 MIR-NODE-ID FP-RID@ 0 FP-REGION-ID FP-RGN= TTRUE
+1 MIR-NODE-ID FP-RID@ 0 FP-REGION-ID FP-RGN= TTRUE
+2 MIR-NODE-ID FP-RID@ 1 FP-REGION-ID FP-RGN= TTRUE
 FP-SPLIT-COUNT 1 T=
 0 FP-SPLIT-NODE@ 2 MIR-NODE-ID MIR-NODE= TTRUE
 0 s" matmul-boundary" FT-REASON=
@@ -72,10 +78,12 @@ s" matmul-boundary at node 2" FT-IN
 MODEL: MIX ( x:2x2 w:2x2 -- y ) GELU SILU MATMUL RELU ;
 FP-BUILD
 FP-REGION-COUNT     2 T=
-0 FP-REGION-MEMBERS 2 T=
-1 FP-REGION-MEMBERS 2 T=
-0 MIR-NODE-ID FP-RID@ 0 T=  1 MIR-NODE-ID FP-RID@ 0 T=
-2 MIR-NODE-ID FP-RID@ 1 T=  3 MIR-NODE-ID FP-RID@ 1 T=
+0 FP-REGION-ID FP-REGION-MEMBERS 2 T=
+1 FP-REGION-ID FP-REGION-MEMBERS 2 T=
+0 MIR-NODE-ID FP-RID@ 0 FP-REGION-ID FP-RGN= TTRUE
+1 MIR-NODE-ID FP-RID@ 0 FP-REGION-ID FP-RGN= TTRUE
+2 MIR-NODE-ID FP-RID@ 1 FP-REGION-ID FP-RGN= TTRUE
+3 MIR-NODE-ID FP-RID@ 1 FP-REGION-ID FP-RGN= TTRUE
 FP-SPLIT-COUNT      1 T=
 0 s" backend-capability" FT-REASON=
 0 FP-SPLIT-NODE@ 2 MIR-NODE-ID MIR-NODE= TTRUE
@@ -160,6 +168,11 @@ FP-REGION-COUNT 1 T=
 ' TRY-RSN-LOW  E-LAYOUT-BOUNDS TTHROWS
 ' TRY-RSN-HIGH E-LAYOUT-BOUNDS TTHROWS
 
+\ ---- FP-RID@ / FP-REGION-ID keep the FP-CK guard (executed E-FP-STATE) ------
+FP-RESET
+' TRY-RID-STATE E-FP-STATE TTHROWS
+' TRY-ID-STATE  E-FP-STATE TTHROWS
+
 \ ---- swapped-role negatives (dot habu-cad-adt-swap; capability S1) ----------
 \ The reason column is addressed only through `ptr reason` (FP-SP-REASON-AT), so
 \ the checker rejects any attempt to launder a raw n -- or reach the column past a
@@ -174,6 +187,40 @@ s" FPT-RSN-NIN ( n n -- ) FP-SP-REASON-AT !"          CHECK-QUIET-CANDIDATE! 0 T
 s" FPT-RSN-NOUT ( n -- n ) FP-SP-REASON-AT @"         CHECK-QUIET-CANDIDATE! 0 T=
 \ The migrated accessor cannot be weakened to a plain cell pointer.
 s" FPT-RSN-BARE ( n -- ptr a ) FP-SP-REASON-AT" CHECK-QUIET-CANDIDATE! 0 T=
+
+\ ---- region-id swapped-role negatives (dot habu-maki-apply-cad-27b7a7d7) ----
+\ A fusion region id is a CAD-KIND:region: laundering it into a raw n, a
+\ node-id, or a plan-id (and back) rejects before runtime; positives certify.
+s" FPT-RGN-OK ( CAD-KIND:node-id -- CAD-KIND:region ) FP-RID@"           CHECK-QUIET-CANDIDATE! -1 T=
+s" FPT-RGN-ID-OK ( n -- CAD-KIND:region ) FP-REGION-ID"                  CHECK-QUIET-CANDIDATE! -1 T=
+s" FPT-RGN-EQ-OK ( CAD-KIND:region CAD-KIND:region -- bool ) FP-RGN="    CHECK-QUIET-CANDIDATE! -1 T=
+s" FPT-RGN-MEM-OK ( CAD-KIND:region -- n ) FP-REGION-MEMBERS"            CHECK-QUIET-CANDIDATE! -1 T=
+s" FPT-NEG-RGN-AS-N ( CAD-KIND:node-id -- n ) FP-RID@"                   CHECK-QUIET-CANDIDATE! 0 T=
+s" FPT-NEG-RGN-AS-NODE ( CAD-KIND:node-id -- CAD-KIND:node-id ) FP-RID@" CHECK-QUIET-CANDIDATE! 0 T=
+s" FPT-NEG-RGN-AS-PLAN ( CAD-KIND:node-id -- CAD-KIND:plan-id ) FP-RID@" CHECK-QUIET-CANDIDATE! 0 T=
+s" FPT-NEG-ID-AS-NODE ( n -- CAD-KIND:node-id ) FP-REGION-ID"            CHECK-QUIET-CANDIDATE! 0 T=
+s" FPT-NEG-EQ-NODE ( CAD-KIND:region CAD-KIND:node-id -- bool ) FP-RGN=" CHECK-QUIET-CANDIDATE! 0 T=
+s" FPT-NEG-EQ-PLAN ( CAD-KIND:region CAD-KIND:plan-id -- bool ) FP-RGN=" CHECK-QUIET-CANDIDATE! 0 T=
+s" FPT-NEG-MEM-RAW ( n -- n ) FP-REGION-MEMBERS"                         CHECK-QUIET-CANDIDATE! 0 T=
+
+\ ---- rendered mismatch pins the qualified family name -----------------------
+\ Signature-declared types only (FP-RID@'s declared output vs the candidate's
+\ declared node-id output); locals-sourced actuals are garbled by the renderer
+\ (known bug, dot habu-checker-diagnostic-renderer-66c3e741).
+create FPT-DBUF 4096 allot
+: FPT-DIAG< ( ptr u8 n -- )
+   FPT-DBUF 4096 DIAG-BUFFER!
+   0 0= DIAG-JSON!
+   CHECK-CANDIDATE! 0 T= ;
+: FPT-DIAG? ( ptr u8 n -- )  DIAG-BUFFER$ 2swap CONTAINS? TTRUE ;
+: FPT-DIAG-END ( -- )  0 0= 0= DIAG-JSON!  DIAG-BUFFER-OFF ;
+
+s" FPT-DIAG-SWAP ( CAD-KIND:node-id -- CAD-KIND:node-id ) FP-RID@" FPT-DIAG<
+s\" \"expected\"" FPT-DIAG?
+s\" \"actual\"" FPT-DIAG?
+s" CAD-KIND:region" FPT-DIAG?
+s" CAD-KIND:node-id" FPT-DIAG?
+FPT-DIAG-END
 
 T-REPORT
 

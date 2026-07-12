@@ -40,14 +40,14 @@ variable LEWT-VA  variable LEWT-VU
    ;MATCH ;
 : LEWT-ONCE ( ptr u8 n -- )  LEWT$ 2swap LEWT-ONCE? TTRUE ;
 
-: LEWT-CAP0 ( -- )  PTX-CAPTURE-ON  0 LEW-EMIT  PTX-CAPTURE-OFF  PTX-CAPTURE$ LEWT-SAVE ;
+: LEWT-CAP0 ( -- )  PTX-CAPTURE-ON  0 FP-REGION-ID LEW-EMIT  PTX-CAPTURE-OFF  PTX-CAPTURE$ LEWT-SAVE ;
 
 \ ---- fail-closed probes (each acts on the current model) --------------------
-: LEWT-TRY-NOTEW  ( -- )  0 LEW-EMIT ;      \ non-elementwise region -> reject before emit
-: LEWT-TRY-OP     ( -- )  0 LEW-ANALYZE ;   \ unsupported elementwise op
-: LEWT-TRY-INPUTS ( -- )  0 LEW-ANALYZE ;   \ more than the v1 input cap
-: LEWT-TRY-BCAST  ( -- )  0 LEW-ANALYZE ;   \ illegal broadcast shape (a dim neither 1 nor full)
-: LEWT-TRY-MOUT   ( -- )  0 LEW-ANALYZE ;   \ >1 materialized output in the region (corrupted plan)
+: LEWT-TRY-NOTEW  ( -- )  0 FP-REGION-ID LEW-EMIT ;      \ non-elementwise region -> reject before emit
+: LEWT-TRY-OP     ( -- )  0 FP-REGION-ID LEW-ANALYZE ;   \ unsupported elementwise op
+: LEWT-TRY-INPUTS ( -- )  0 FP-REGION-ID LEW-ANALYZE ;   \ more than the v1 input cap
+: LEWT-TRY-BCAST  ( -- )  0 FP-REGION-ID LEW-ANALYZE ;   \ illegal broadcast shape (a dim neither 1 nor full)
+: LEWT-TRY-MOUT   ( -- )  0 FP-REGION-ID LEW-ANALYZE ;   \ >1 materialized output in the region (corrupted plan)
 
 T-RESET
 

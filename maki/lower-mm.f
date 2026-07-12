@@ -99,7 +99,7 @@ create LMM-NODE-REG LMM-NCAP cells allot     \ result %f register per region-mem
 variable LMM-NIN                              \ contraction operand count (2 or 3)
 variable LMM-MMNODE                           \ the single contraction node (matmul / linear)
 variable LMM-OUTNODE                          \ the single materialized region-output node
-variable LMM-RID                              \ region id being lowered
+variable LMM-RID                              \ region id being lowered (typed CAD-KIND:region cell)
 variable LMM-M  variable LMM-N  variable LMM-K \ C = A(MxK) . B(KxN)
 variable LMM-BLK                               \ 1 = shape fits the register-blocked 64x64 tile
 
@@ -111,11 +111,11 @@ variable LMM-BLK                               \ 1 = shape fits the register-blo
 : LMM-OUTNODE@ ( -- CAD-KIND:node-id )  LMM-OUTNODE @ ;
 
 \ ---- region membership + class ---------------------------------------------
-: LMM-IN-REGION? ( CAD-KIND:node-id n -- bool )  swap FP-RID@ = ;
+: LMM-IN-REGION? ( CAD-KIND:node-id CAD-KIND:region -- bool )  swap FP-RID@ FP-RGN= ;
 
 \ class mix must contain the MATMUL bit and nothing outside {EW, MATMUL, MOVEMENT};
 \ a dissolved free-movement operand (maki/move-view.f) folds into the K-loop's A base offset.
-: LMM-CLASS-OK? ( n -- bool ) {: rid:n :}
+: LMM-CLASS-OK? ( CAD-KIND:region -- bool ) {: rid:CAD-KIND:region :}
    rid FP-REGION-CLASSMIX {: mix:n :}
    mix 1 CLASS-MATMUL lshift and 0= if false exit then
    mix  1 CLASS-EW lshift  1 CLASS-MATMUL lshift or  1 CLASS-MOVEMENT lshift or
@@ -149,7 +149,7 @@ variable LMM-BLK                               \ 1 = shape fits the register-blo
       scatter-add OF false ENDOF  gelu-bwd2 OF false ENDOF
    ;MATCH ;
 
-: LMM-MM-COUNT ( n -- n ) {: rid:n :}          \ contraction nodes in the region
+: LMM-MM-COUNT ( CAD-KIND:region -- n ) {: rid:CAD-KIND:region :}   \ contraction nodes in the region
    0 MIR-N@ 0 ?do
       i MIR-NODE-ID {: node:CAD-KIND:node-id :}
       node rid LMM-IN-REGION? node MIR-OP@ LMM-MM-OP? and if 1+ then
@@ -157,7 +157,7 @@ variable LMM-BLK                               \ 1 = shape fits the register-blo
 
 \ compute members must be the contraction or a v1 unary EW epilogue; movement members must
 \ be v1-foldable dissolved movements (MVW-CHECK fails closed on staged / mat / non-slot source).
-: LMM-CHECK-OPS ( n -- ) {: rid:n :}
+: LMM-CHECK-OPS ( CAD-KIND:region -- ) {: rid:CAD-KIND:region :}
    MIR-N@ 0 ?do
       i MIR-NODE-ID {: node:CAD-KIND:node-id :}
       node rid LMM-IN-REGION? if
@@ -169,7 +169,7 @@ variable LMM-BLK                               \ 1 = shape fits the register-blo
    loop
    rid LMM-MM-COUNT 1 <> if E-LMM-MULTIMM throw then ;
 
-: LMM-FIND-MM ( n -- ) {: rid:n :}             \ the sole contraction node (count checked already)
+: LMM-FIND-MM ( CAD-KIND:region -- ) {: rid:CAD-KIND:region :}   \ the sole contraction node (count checked already)
    MIR-N@ 0 ?do
       i MIR-NODE-ID {: node:CAD-KIND:node-id :}
       node rid LMM-IN-REGION? node MIR-OP@ LMM-MM-OP? and if node LMM-MMNODE! then
@@ -181,12 +181,12 @@ variable LMM-BLK                               \ 1 = shape fits the register-blo
 \ A dissolved FREE movement operand folds into the A-base K-loop offset (maki/move-view.f);
 \ a NON-movement interior producer is a compute prologue the epilogue-only v1 kernel cannot run.
 : LMM-CHECK-PROLOGUE ( -- )
-   LMM-MMNODE@ {: mm:CAD-KIND:node-id :}  LMM-RID @ {: rid:n :}
+   LMM-MMNODE@ {: mm:CAD-KIND:node-id :}  LMM-RID @ {: rid:CAD-KIND:region :}
    mm MIR-IN-COUNT@ 0 ?do
       mm i MIR-INPUT-IDX MIR-IN@ {: ref:MIR:operand-ref :}
       ref MIR-REF-INPUT? 0= if
          ref MVW-DISSOLVED? if ref MVW-CHECK            \ folded free-movement operand: allowed
-         else ref MIR-REF-NODE FP-RID@ rid = if E-LMM-PROLOGUE throw then then
+         else ref MIR-REF-NODE FP-RID@ rid FP-RGN= if E-LMM-PROLOGUE throw then then
       then
    loop ;
 
@@ -203,12 +203,12 @@ variable LMM-BLK                               \ 1 = shape fits the register-blo
 \ tail its sole materialized node; proof + fan-out battery in maki/fusion-mout-test.f).
 \ LMM-FIND-OUT asserts that invariant as defense-in-depth: != 1 is a corrupted plan (>1
 \ structurally impossible, 0 a materialization-flag regression), never a v1 cap.
-: LMM-MAT-COUNT ( n -- n ) {: rid:n :}
+: LMM-MAT-COUNT ( CAD-KIND:region -- n ) {: rid:CAD-KIND:region :}
    0 MIR-N@ 0 ?do
       i MIR-NODE-ID {: node:CAD-KIND:node-id :}
       node rid LMM-IN-REGION? node MIR-MAT@ and if 1+ then
    loop ;
-: LMM-FIND-OUT ( n -- ) {: rid:n :}
+: LMM-FIND-OUT ( CAD-KIND:region -- ) {: rid:CAD-KIND:region :}
    rid LMM-MAT-COUNT 1 <> if E-LMM-MULTIOUT throw then
    MIR-N@ 0 ?do
       i MIR-NODE-ID {: node:CAD-KIND:node-id :}
@@ -257,7 +257,7 @@ variable LMM-BLK                               \ 1 = shape fits the register-blo
    0= if 1 else 0 then LMM-BLK ! ;
 
 public
-: LMM-ANALYZE ( n -- ) {: rid:n :}
+: LMM-ANALYZE ( CAD-KIND:region -- ) {: rid:CAD-KIND:region :}
    rid FP-REGION-MEMBERS drop                    \ validates FP-BUILD ran + rid range
    rid LMM-RID !
    rid LMM-CLASS-OK? 0= if E-LMM-NOTMM throw then
@@ -283,7 +283,7 @@ public
 : LMM-N@ ( -- n )         LMM-N @ ;
 : LMM-K@ ( -- n )         LMM-K @ ;
 : LMM-ELEMS ( -- n )      LMM-M @ LMM-N @ * ;
-: LMM-RID@ ( -- n )       LMM-RID @ ;
+: LMM-RID@ ( -- CAD-KIND:region )  LMM-RID @ ;
 : LMM-BLOCKED? ( -- bool ) LMM-BLK @ 0= 0= ;    \ register-blocked tile chosen for this shape?
 : LMM-OUT-TILE@ ( -- n )  LMM-BLK @ if MM-BM else LMM-TILE then ;  \ launch-grid output-tile edge
 
@@ -340,7 +340,8 @@ private
    loop ;
 
 \ ---- entry / regs / params (K inputs + output + M,N,K) ----------------------
-: LMM-KNAME ( -- )  s" REGION_" CG-S LMM-RID @ SB-U ;
+\ RGN>RAW is the one kernel-name render boundary (REGION_<rid>)
+: LMM-KNAME ( -- )  s" REGION_" CG-S LMM-RID @ RGN>RAW SB-U ;
 : LMM-OUT-BASE ( -- n )  LMM-NIN @ 1+ ;          \ rd index of p_out (rd1..rdK inputs, rd K+1 out)
 : LMM-ENTRY ( -- )
    SB-RESET
@@ -527,7 +528,7 @@ private
 public
 \ LMM-EMIT prints the region's PTX module to the current PTX sink (stdout, or the
 \ in-process capture buffer). Analysis first, so a rejected region emits nothing.
-: LMM-EMIT ( n -- )
+: LMM-EMIT ( CAD-KIND:region -- )
    LMM-ANALYZE
    PTX-MODULE{
       LMM-ENTRY  LMM-OPEN

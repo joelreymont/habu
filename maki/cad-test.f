@@ -238,8 +238,8 @@ drop
 \ evidence row records profile=not-run (mandatory-to-run, non-blocking off-device).
 STORE-RESET
 PROMOTE dup REPORT:CACHE$ s" FFN" T$= drop
-0 SK-KEY$ SCHED-GET TTRUE 0 T=                     \ region-0 selection = gemm default (candidate 0)
-0 SK-KEY$ EVID-GET TTRUE
+0 FP-REGION-ID SK-KEY$ SCHED-GET TTRUE 0 T=                     \ region-0 selection = gemm default (candidate 0)
+0 FP-REGION-ID SK-KEY$ EVID-GET TTRUE
 s" certify=pass|golden=pass|gradcheck=pass|profile=not-run" T$=
 STORE-RESET
 
@@ -262,8 +262,8 @@ GOLDEN dup G-GOLDEN REPORT:GATE-TAG@ V-NOTRUN T= drop
 FULL-REPORT PROMOTE-OK? TFALSE drop
 STORE-RESET
 ' TRY-PROMOTE E-CAD-GATE TTHROWS
-0 SK-KEY$ SCHED-GET nip TFALSE
-0 SK-KEY$ EVID-GET  nip TFALSE
+0 FP-REGION-ID SK-KEY$ SCHED-GET nip TFALSE
+0 FP-REGION-ID SK-KEY$ EVID-GET  nip TFALSE
 STORE-RESET
 
 \ ---- movement ops: capture grammar, IR facts, verdicts, MEMORY rows ---------

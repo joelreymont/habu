@@ -133,8 +133,9 @@ private
    src i LLA-IN-REF!
    src LLA-REF-ELEMS  LLA-IN-ELEMS i cells + ! ;
 
-: LLA-FNAME ( n -- ) {: rid:n :}                 \ build the REGION_<rid> cstring
-   SB-RESET s" REGION_" SB-APPEND rid SB-INT  SB$ LLA-FN >CSTR ;
+\ RGN>RAW is the one kernel-name render boundary (REGION_<rid>)
+: LLA-FNAME ( CAD-KIND:region -- ) {: rid:CAD-KIND:region :}   \ build the REGION_<rid> cstring
+   SB-RESET s" REGION_" SB-APPEND rid RGN>RAW SB-INT  SB$ LLA-FN >CSTR ;
 
 \ context lifecycle is split from module lifecycle: the whole-model run (LOWER-MODEL-RUN)
 \ opens the context ONCE and loads/unloads a module PER region (device buffers are
@@ -189,7 +190,7 @@ private
    LLA-MOD-CLOSE  LLA-CTX-CLOSE ;
 
 \ ---- shared execute over the staged region (upload + launch grid + readback) ----
-: LLA-EXEC ( n n -- ) {: rid:n grid:n :}
+: LLA-EXEC ( CAD-KIND:region n -- ) {: rid:CAD-KIND:region grid:n :}
    LLA-ELEMS @ LLA-NCAP > if E-LLA-CAP throw then
    LLA-NIN @ 0 ?do  i LLA-IN-ELEMS-I LLA-NCAP > if E-LLA-CAP throw then  loop
    LLA-ELEMS @ 4 * {: obytes:n :}
@@ -203,24 +204,24 @@ private
 \ ---- per-shape staging (copy the analyzer's facts into launch-local state) ----
 \ each staging resolves per-input (a dissolved movement operand folds to its source slot +
 \ the source element count; LLA-STAGE-IN). The kernel's baked base offset does the rest.
-: LLA-STAGE-EW ( n -- ) {: rid:n :}
+: LLA-STAGE-EW ( CAD-KIND:region -- ) {: rid:CAD-KIND:region :}
    rid LEW-ANALYZE
    LEW-NIN@ LLA-NIN ! LEW-ELEMS LLA-ELEMS ! LEW-OUT-NODE@ LLA-OUT-NODE!
    LEW-NIN@ 0 ?do  i  i LEW-IN-REF@  LLA-STAGE-IN  loop ;
 
-: LLA-STAGE-RED ( n -- ) {: rid:n :}
+: LLA-STAGE-RED ( CAD-KIND:region -- ) {: rid:CAD-KIND:region :}
    rid LRED-ANALYZE
    LRED-NIN@ LLA-NIN ! LRED-ELEMS LLA-ELEMS ! LRED-OUT-NODE@ LLA-OUT-NODE!
    LRED-NIN@ 0 ?do  i  i LRED-IN-REF@  LLA-STAGE-IN  loop ;
 
-: LLA-STAGE-MM ( n -- ) {: rid:n :}
+: LLA-STAGE-MM ( CAD-KIND:region -- ) {: rid:CAD-KIND:region :}
    rid LMM-ANALYZE
    LMM-NIN@ LLA-NIN ! LMM-ELEMS LLA-ELEMS ! LMM-OUT-NODE@ LLA-OUT-NODE!
    LMM-NIN@ 0 ?do  i  i LMM-IN-REF@  LLA-STAGE-IN  loop
    LMM-M@ LLA-PM !  LMM-N@ LLA-PN !  LMM-K@ LLA-PK ! ;
 
 \ movement copy region (maki/lower-move.f): 1-2 buffer operands are already input slots
-: LLA-STAGE-MV ( n -- ) {: rid:n :}
+: LLA-STAGE-MV ( CAD-KIND:region -- ) {: rid:CAD-KIND:region :}
    rid LMV-ANALYZE
    LMV-NIN@ LLA-NIN ! LMV-ELEMS LLA-ELEMS ! LMV-OUT-NODE@ LLA-OUT-NODE!
    LMV-NIN@ 0 ?do
@@ -247,7 +248,7 @@ private
    CUDA:CUCTXSYNCHRONIZE CUDA:RC0
    obytes LLA-READBACK ;
 
-: LLA-EXEC-MM ( n n n -- ) {: rid:n gx:n gy:n :}
+: LLA-EXEC-MM ( CAD-KIND:region n n -- ) {: rid:CAD-KIND:region gx:n gy:n :}
    LLA-ELEMS @ LLA-NCAP > if E-LLA-CAP throw then
    LLA-NIN @ 0 ?do  i LLA-IN-ELEMS-I LLA-NCAP > if E-LLA-CAP throw then  loop
    LLA-ELEMS @ 4 * {: obytes:n :}
@@ -276,7 +277,7 @@ private
    CUDA:CUCTXSYNCHRONIZE CUDA:RC0
    obytes LLA-READBACK ;
 
-: LLA-EXEC-MV ( n n -- ) {: rid:n grid:n :}
+: LLA-EXEC-MV ( CAD-KIND:region n -- ) {: rid:CAD-KIND:region grid:n :}
    LLA-ELEMS @ LLA-NCAP > if E-LLA-CAP throw then
    LLA-NIN @ 0 ?do  i LLA-IN-ELEMS-I LLA-NCAP > if E-LLA-CAP throw then  loop
    LLA-ELEMS @ 4 * {: obytes:n :}
@@ -316,12 +317,12 @@ public
 
 \ ---- region class dispatch (a region never mixes contraction/reduction; the golden reuses
 \ these). A materialized-movement region is a single movement node with MIR-MAT@ set. -------
-: LLA-REGION-MATMUL? ( n -- bool )  FP-REGION-CLASSMIX  1 CLASS-MATMUL     lshift  and  0= 0= ;
-: LLA-REGION-REDUCE? ( n -- bool )  FP-REGION-CLASSMIX  1 CLASS-ROW-REDUCE lshift  and  0= 0= ;
-: LLA-REGION-MOVE? ( n -- bool ) {: rid:n :}
+: LLA-REGION-MATMUL? ( CAD-KIND:region -- bool )  FP-REGION-CLASSMIX  1 CLASS-MATMUL     lshift  and  0= 0= ;
+: LLA-REGION-REDUCE? ( CAD-KIND:region -- bool )  FP-REGION-CLASSMIX  1 CLASS-ROW-REDUCE lshift  and  0= 0= ;
+: LLA-REGION-MOVE? ( CAD-KIND:region -- bool ) {: rid:CAD-KIND:region :}
    MIR-N@ 0 ?do
       i MIR-NODE-ID {: node:CAD-KIND:node-id :}
-      node FP-RID@ rid = node MIR-MOVE? and node MIR-MAT@ and if unloop true exit then
+      node FP-RID@ rid FP-RGN= node MIR-MOVE? and node MIR-MAT@ and if unloop true exit then
    loop false ;
 
 private
@@ -339,12 +340,14 @@ create MDL-CUBIN-LEN MDL-CAP cells allot            \ per-region cubin path leng
 create MDL-BUF       MDL-CAP cells allot            \ per-node device buffer (devptr int; 0 = none)
 create MDL-OWN       LLA-MAX-IN cells allot         \ per-input "uploaded (owned)" flag, current region
 variable MDL-NEW  variable MDL-NRED  variable MDL-NMM  variable MDL-NMV  variable MDL-NR
-variable MDL-PROBE-RID                             \ rid carried into the lowerability probe (catch wants a ( -- ) body)
+variable MDL-PROBE-RID                             \ typed CAD-KIND:region cell carried into the lowerability probe (catch wants a ( -- ) body)
 
-: MDL-CUBIN$ ( n -- ptr u8 n ) {: rid:n :}
-   rid cells MDL-CUBIN-LEN + @ {: u:n :}
+\ region-indexed cubin tables: RGN>RAW is the one owner-file table-index boundary
+: MDL-CUBIN$ ( CAD-KIND:region -- ptr u8 n ) {: rid:CAD-KIND:region :}
+   rid RGN>RAW {: r:n :}
+   r cells MDL-CUBIN-LEN + @ {: u:n :}
    u 0= if E-MDL-CUBIN throw then
-   MDL-CUBINS rid FS-PATH-CAP * +  u ;
+   MDL-CUBINS r FS-PATH-CAP * +  u ;
 : MDL-DEVPTR@ ( CAD-KIND:node-id -- n ) NODE>RAW cells MDL-BUF + @ ;
 : MDL-DEVPTR! ( n CAD-KIND:node-id -- ) {: dp:n node:CAD-KIND:node-id :}
    dp node NODE>RAW cells MDL-BUF + ! ;
@@ -387,14 +390,14 @@ variable MDL-PROBE-RID                             \ rid carried into the lowera
    CUDA:CUCTXSYNCHRONIZE CUDA:RC0 ;
 
 \ stage a region by class (analysis + per-input operand resolution into launch staging)
-: MDL-STAGE ( n -- ) {: rid:n :}
+: MDL-STAGE ( CAD-KIND:region -- ) {: rid:CAD-KIND:region :}
    rid LLA-REGION-MOVE?   if rid LLA-STAGE-MV  exit then
    rid LLA-REGION-MATMUL? if rid LLA-STAGE-MM  exit then
    rid LLA-REGION-REDUCE? if rid LLA-STAGE-RED exit then
    rid LLA-STAGE-EW ;
 
 \ grid + param bind + launch by class (LLA-DBUF already holds inputs + output devptrs)
-: MDL-DISPATCH ( n -- ) {: rid:n :}
+: MDL-DISPATCH ( CAD-KIND:region -- ) {: rid:CAD-KIND:region :}
    rid LLA-REGION-MOVE? if
       LLA-GRID-MV {: g0:n :}  LLA-BIND-PARAMS-MV  g0 MDL-LAUNCH-1D  exit then
    rid LLA-REGION-MATMUL? if
@@ -403,7 +406,7 @@ variable MDL-PROBE-RID                             \ rid carried into the lowera
       LLA-GRID-RED {: g1:n :}  LLA-BIND-PARAMS  g1 MDL-LAUNCH-1D  exit then
    LLA-GRID-EW {: g2:n :}  LLA-BIND-PARAMS  g2 MDL-LAUNCH-1D ;
 
-: MDL-EXEC-REGION ( n -- ) {: rid:n :}
+: MDL-EXEC-REGION ( CAD-KIND:region -- ) {: rid:CAD-KIND:region :}
    rid MDL-STAGE
    MDL-CHECK-CAPS
    rid LLA-FNAME                                   \ LLA-FN = REGION_<rid>
@@ -435,11 +438,12 @@ variable MDL-PROBE-RID                             \ rid carried into the lowera
 public
 
 \ ---- per-region cubin registry (device tool assembles REGION_<rid>, one cubin per region) --
-: MDL-CUBIN! ( ptr u8 n n -- ) {: a:ptr u:n rid:n :}
-   rid 0 < rid MDL-CAP >= or if E-MDL-CUBIN throw then
+: MDL-CUBIN! ( ptr u8 n CAD-KIND:region -- ) {: a:ptr u:n rid:CAD-KIND:region :}
+   rid RGN>RAW {: r:n :}                              \ table-index boundary (RGN>RAW)
+   r 0 < r MDL-CAP >= or if E-MDL-CUBIN throw then
    u FS-PATH-CAP > if E-FS-PATH throw then
-   a  MDL-CUBINS rid FS-PATH-CAP * +  u BYTE-COPY
-   u rid cells MDL-CUBIN-LEN + ! ;
+   a  MDL-CUBINS r FS-PATH-CAP * +  u BYTE-COPY
+   u r cells MDL-CUBIN-LEN + ! ;
 : MDL-CUBINS-RESET ( -- )  MDL-CAP 0 ?do  0 i cells MDL-CUBIN-LEN + !  loop ;
 
 \ every materialized-node region has a registered cubin (the device golden gate needs assembled
@@ -447,7 +451,10 @@ public
 : MDL-CUBINS-READY? ( -- bool )
    MIR-N@ 0 ?do
       i MIR-NODE-ID {: node:CAD-KIND:node-id :}
-      node MIR-MAT@ if node FP-RID@ cells MDL-CUBIN-LEN + @ 0= if false unloop exit then then
+      node MIR-MAT@ if
+         node FP-RID@ RGN>RAW cells MDL-CUBIN-LEN + @   \ table-index boundary (RGN>RAW)
+         0= if false unloop exit then
+      then
    loop  true ;
 
 \ ---- per-class region tally over the materialized nodes (tolerance composition inputs) ----
@@ -456,7 +463,7 @@ public
    MIR-N@ 0 ?do
       i MIR-NODE-ID {: node:CAD-KIND:node-id :}
       node MIR-MAT@ if
-         node FP-RID@ {: rid:n :}
+         node FP-RID@ {: rid:CAD-KIND:region :}
          MDL-NR @ 1+ MDL-NR !
          rid LLA-REGION-MOVE? if     MDL-NMV  @ 1+ MDL-NMV !
          else rid LLA-REGION-MATMUL? if MDL-NMM @ 1+ MDL-NMM !
@@ -479,7 +486,7 @@ public
    MIR-N@ 0 ?do
       i MIR-NODE-ID {: node:CAD-KIND:node-id :}
       node MIR-MAT@ if
-         node FP-RID@ MDL-PROBE-RID !
+         node FP-RID@ MDL-PROBE-RID !            \ typed region round-trips through the cell
          [: MDL-PROBE-RID @ MDL-STAGE ;] catch 0<> if  false unloop exit  then
       then
    loop  true ;
@@ -504,25 +511,25 @@ public
 \ LLA-RUN analyzes elementwise region rid, uploads its synthetic inputs, launches the
 \ REGION_<rid> flat kernel (grid = ceil(N/256)) from LLA-CUBIN$, and unpacks the device
 \ output into LLA-HOUT. GA-BIND-SYNTH must have run so GA-IN-PTR holds the inputs.
-: LLA-RUN ( n -- ) {: rid:n :}
+: LLA-RUN ( CAD-KIND:region -- ) {: rid:CAD-KIND:region :}
    rid LLA-STAGE-EW  LLA-GRID-EW {: grid:n :}  rid grid LLA-EXEC ;
 
 \ LRED-RUN analyzes row-reduce region rid and launches its REGION_<rid> block-per-row
 \ kernel (grid = rows, p_k = cols). Same synthetic-input upload + guarded readback.
-: LRED-RUN ( n -- ) {: rid:n :}
+: LRED-RUN ( CAD-KIND:region -- ) {: rid:CAD-KIND:region :}
    rid LLA-STAGE-RED  LLA-GRID-RED {: grid:n :}  rid grid LLA-EXEC ;
 
 \ LMM-RUN analyzes matmul/linear region rid and launches its REGION_<rid> tiled-GEMM
 \ kernel (2D grid ceil(N/16) x ceil(M/16), block 16x16, params M/N/K). Contraction
 \ operands (A, B, [bias]) upload at their own sizes; same guarded readback into LLA-HOUT.
-: LMM-RUN ( n -- ) {: rid:n :}
+: LMM-RUN ( CAD-KIND:region -- ) {: rid:CAD-KIND:region :}
    rid LLA-STAGE-MM  LLA-GRID-MM {: gx:n gy:n :}  rid gx gy LLA-EXEC-MM ;
 
 \ LMV-RUN analyzes a materialized movement region (maki/lower-move.f) and launches its
 \ REGION_<rid> copy kernel (grid = ceil(N/256), one elem/thread, p_a/p_b/p_n u32). Buffer
 \ operands upload at their own sizes (concat A/B, gather source+index differ). Same guarded
 \ readback into LLA-HOUT.
-: LMV-RUN ( n -- ) {: rid:n :}
+: LMV-RUN ( CAD-KIND:region -- ) {: rid:CAD-KIND:region :}
    rid LLA-STAGE-MV  LLA-GRID-MV {: grid:n :}  rid grid LLA-EXEC-MV ;
 
 \ device output element (f64 = the widened device f32) after LLA-RUN / LRED-RUN / LMM-RUN

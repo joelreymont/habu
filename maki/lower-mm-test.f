@@ -40,12 +40,12 @@ variable LMMT-VA  variable LMMT-VU
    ;MATCH ;
 : LMMT-ONCE ( ptr u8 n -- )  LMMT$ 2swap LMMT-ONCE? TTRUE ;
 
-: LMMT-CAP0 ( -- )  PTX-CAPTURE-ON  0 LMM-EMIT  PTX-CAPTURE-OFF  PTX-CAPTURE$ LMMT-SAVE ;
+: LMMT-CAP0 ( -- )  PTX-CAPTURE-ON  0 FP-REGION-ID LMM-EMIT  PTX-CAPTURE-OFF  PTX-CAPTURE$ LMMT-SAVE ;
 
 \ ---- fail-closed probes (each acts on the current model / plan) --------------
-: LMMT-TRY-EMIT ( -- )  0 LMM-EMIT ;      \ non-matmul region -> reject before emit
-: LMMT-TRY      ( -- )  0 LMM-ANALYZE ;   \ analysis-only fail-closed checks (region 0)
-: LMMT-TRY1     ( -- )  1 LMM-ANALYZE ;   \ analysis-only fail-closed checks (region 1)
+: LMMT-TRY-EMIT ( -- )  0 FP-REGION-ID LMM-EMIT ;      \ non-matmul region -> reject before emit
+: LMMT-TRY      ( -- )  0 FP-REGION-ID LMM-ANALYZE ;   \ analysis-only fail-closed checks (region 0)
+: LMMT-TRY1     ( -- )  1 FP-REGION-ID LMM-ANALYZE ;   \ analysis-only fail-closed checks (region 1)
 
 T-RESET
 

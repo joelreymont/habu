@@ -171,10 +171,10 @@ variable ODT-VA  variable ODT-VU
    ;MATCH ;
 : ODT-ONCE ( ptr u8 n -- )  ODT$ 2swap ODT-ONCE? TTRUE ;
 
-: ODT-CAP-MM  ( -- )  PTX-CAPTURE-ON  0 MAKI:LMM-EMIT  PTX-CAPTURE-OFF  PTX-CAPTURE$ ODT-SAVE ;
-: ODT-CAP-EW  ( -- )  PTX-CAPTURE-ON  0 MAKI:LEW-EMIT  PTX-CAPTURE-OFF  PTX-CAPTURE$ ODT-SAVE ;
-: ODT-CAP-RED ( -- )  PTX-CAPTURE-ON  0 MAKI:LRED-EMIT PTX-CAPTURE-OFF  PTX-CAPTURE$ ODT-SAVE ;
-: ODT-CAP-MV  ( -- )  PTX-CAPTURE-ON  0 MAKI:LMV-EMIT  PTX-CAPTURE-OFF  PTX-CAPTURE$ ODT-SAVE ;
+: ODT-CAP-MM  ( -- )  PTX-CAPTURE-ON  0 MAKI:FP-REGION-ID MAKI:LMM-EMIT  PTX-CAPTURE-OFF  PTX-CAPTURE$ ODT-SAVE ;
+: ODT-CAP-EW  ( -- )  PTX-CAPTURE-ON  0 MAKI:FP-REGION-ID MAKI:LEW-EMIT  PTX-CAPTURE-OFF  PTX-CAPTURE$ ODT-SAVE ;
+: ODT-CAP-RED ( -- )  PTX-CAPTURE-ON  0 MAKI:FP-REGION-ID MAKI:LRED-EMIT PTX-CAPTURE-OFF  PTX-CAPTURE$ ODT-SAVE ;
+: ODT-CAP-MV  ( -- )  PTX-CAPTURE-ON  0 MAKI:FP-REGION-ID MAKI:LMV-EMIT  PTX-CAPTURE-OFF  PTX-CAPTURE$ ODT-SAVE ;
 
 \ ---- CAD-surface boundary probes (no-model fail-closed + capture-only refusal) ----
 : TRY-CAD-LOWER   ( -- )  MAKI:LOWER drop ;
@@ -229,11 +229,11 @@ drop
 \ ---- imported Gemm+Relu -> ONE matmul region -> the tiled-GEMM forward kernel ----
 MODEL-A  IMP!
 MAKI:FP-REGION-COUNT 1 T=                      \ Gemm -> Relu fuses (matmul + EW epilogue)
-0 MAKI:LLA-REGION-MATMUL? TTRUE
+0 MAKI:FP-REGION-ID MAKI:LLA-REGION-MATMUL? TTRUE
 MAKI:MDL-COUNT-REGIONS
 MAKI:MDL-N-REGIONS@ 1 T=  MAKI:MDL-N-MM@ 1 T=
 MAKI:MDL-LOWERABLE? TTRUE                      \ the whole imported model is device-lowerable
-0 MAKI:LMM-ANALYZE
+0 MAKI:FP-REGION-ID MAKI:LMM-ANALYZE
 MAKI:LMM-M@ 2 T=  MAKI:LMM-N@ 2 T=  MAKI:LMM-K@ 2 T=
 MAKI:LMM-NIN@ 3 T=                             \ x + w + b (OP-LINEAR operands)
 ODT-CAP-MM
@@ -252,7 +252,7 @@ MAKI:FP-REGION-COUNT 1 T=
 MAKI:MDL-COUNT-REGIONS
 MAKI:MDL-N-REGIONS@ 1 T=  MAKI:MDL-N-EW@ 1 T=
 MAKI:MDL-LOWERABLE? TTRUE
-0 MAKI:LEW-ANALYZE
+0 MAKI:FP-REGION-ID MAKI:LEW-ANALYZE
 MAKI:LEW-NIN@ 2 T=                             \ x + the materialized c initializer slot
 ODT-CAP-EW
 s" .visible .entry REGION_0"    ODT-ONCE
@@ -265,7 +265,7 @@ s" st.global.f32"               ODT-IN
 \ ---- imported Mul+Softmax -> ONE row-reduce region -> the block-per-row kernel ----
 MODEL-C  IMP!
 MAKI:FP-REGION-COUNT 1 T=                      \ the Mul prologue fuses into the reduction
-0 MAKI:LLA-REGION-REDUCE? TTRUE
+0 MAKI:FP-REGION-ID MAKI:LLA-REGION-REDUCE? TTRUE
 MAKI:MDL-COUNT-REGIONS
 MAKI:MDL-N-REGIONS@ 1 T=  MAKI:MDL-N-RED@ 1 T=
 MAKI:MDL-LOWERABLE? TTRUE
@@ -281,7 +281,7 @@ ODT-OFFDEV-NOTRUN
 \ ---- imported Concat -> ONE materialized movement region -> the copy kernel -------
 MODEL-CC  IMP!
 MAKI:FP-REGION-COUNT 1 T=
-0 MAKI:LLA-REGION-MOVE? TTRUE
+0 MAKI:FP-REGION-ID MAKI:LLA-REGION-MOVE? TTRUE
 MAKI:MDL-COUNT-REGIONS
 MAKI:MDL-N-REGIONS@ 1 T=  MAKI:MDL-N-MV@ 1 T=
 MAKI:MDL-LOWERABLE? TTRUE

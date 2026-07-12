@@ -39,19 +39,19 @@ FP-REGION-COUNT 3 T=
 MIR-MAT-COUNT   3 T=
 
 \ region class routing (the whole-model dispatch reuses these)
-0 LLA-REGION-MATMUL? TTRUE
-1 LLA-REGION-MATMUL? TTRUE
-2 LLA-REGION-REDUCE? TTRUE
-2 LLA-REGION-MATMUL? TFALSE
-0 LLA-REGION-MOVE?   TFALSE
+0 FP-REGION-ID LLA-REGION-MATMUL? TTRUE
+1 FP-REGION-ID LLA-REGION-MATMUL? TTRUE
+2 FP-REGION-ID LLA-REGION-REDUCE? TTRUE
+2 FP-REGION-ID LLA-REGION-MATMUL? TFALSE
+0 FP-REGION-ID LLA-REGION-MOVE?   TFALSE
 
 \ cross-region operand resolution: region 1's contraction A operand is the gelu node (n1), and
 \ region 2's reduction input is the linear node (n2) - both cross-region producers, not slots.
-1 LMM-ANALYZE
+1 FP-REGION-ID LMM-ANALYZE
 0 LMM-IN-REF@ 1 T=                       \ operand 0 = node 1 (gelu, cross-region producer)
 0 LMM-IN-REF@ MIR-REF-INPUT? TFALSE
 1 LMM-IN-REF@ MIR-REF-INPUT? TTRUE        \ operand 1 = the w2 input slot
-2 LRED-ANALYZE
+2 FP-REGION-ID LRED-ANALYZE
 0 LRED-IN-REF@ 2 T=                       \ operand 0 = node 2 (linear2, cross-region producer)
 0 LRED-IN-REF@ MIR-REF-INPUT? TFALSE
 
@@ -72,9 +72,9 @@ LMT-OFFDEV-NOTRUN
 MODEL: MGC ( x:4x8 b:4x8 -- y ) GELU CONCAT ;
 FP-BUILD
 FP-REGION-COUNT 2 T=
-0 LLA-REGION-MATMUL? TFALSE
-0 LLA-REGION-REDUCE? TFALSE
-1 LLA-REGION-MOVE?   TTRUE                \ region 1 = a materialized movement copy
+0 FP-REGION-ID LLA-REGION-MATMUL? TFALSE
+0 FP-REGION-ID LLA-REGION-REDUCE? TFALSE
+1 FP-REGION-ID LLA-REGION-MOVE?   TTRUE   \ region 1 = a materialized movement copy
 MDL-COUNT-REGIONS
 MDL-N-EW@ 1 T=                            \ the gelu region
 MDL-N-MV@ 1 T=                            \ the copy region

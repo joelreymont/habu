@@ -57,7 +57,7 @@ variable PDT-PTX-U                                         \ correct-module text
 \ In-process (not a spawned child) so LMM-EMIT's LMM-MMA? dispatch sees the parent's PREC!
 \ request: tf32 -> the mma.sync kernel, f32 -> the blocked fma kernel. Captured to PDT-OUT.
 : PDT-EMIT-INPROC ( -- )
-   PTX-CAPTURE-ON  0 LMM-EMIT  PTX-CAPTURE-OFF
+   PTX-CAPTURE-ON  0 FP-REGION-ID LMM-EMIT  PTX-CAPTURE-OFF
    PTX-CAPTURE$ {: ca:ptr cu:n :}
    ca PDT-OUT cu BYTE-COPY  cu PDT-PTX-U ! ;
 : PDT-PTX$ ( -- ptr u8 n )  PDT-OUT PDT-PTX-U @ ;
@@ -70,7 +70,7 @@ variable PDT-PTX-U                                         \ correct-module text
 
 \ ---- one golden run: reason printed verbatim, verdict + judged precision asserted -----
 : PDT-GOLDEN ( n n -- ) {: want:n prec:n :}
-   0 LOWER-GOLDEN {: v:n :}
+   0 FP-REGION-ID LOWER-GOLDEN {: v:n :}
    LOWER-GOLDEN-REASON$ type cr
    v want T=
    LG-PREC-USED@ prec T= ;
@@ -89,10 +89,10 @@ variable PDT-PTX-U                                         \ correct-module text
 : PDT-EVIDENCE ( -- )
    CUDA:OPEN? 0= if exit then
    s"  (2) PROMOTE under the tf32 request: evidence row records the license" type cr
-   MDL-CUBINS-RESET  PTXTC:CUBIN$ 0 MDL-CUBIN!    \ region 0 = the CORRECT cubin
+   MDL-CUBINS-RESET  PTXTC:CUBIN$ 0 FP-REGION-ID MDL-CUBIN!    \ region 0 = the CORRECT cubin
    STORE-RESET
    PROMOTE drop
-   0 SK-KEY$ EVID-GET {: ra:ptr ru:n found:bool :}
+   0 FP-REGION-ID SK-KEY$ EVID-GET {: ra:ptr ru:n found:bool :}
    found TTRUE
    ra ru type cr                                  \ verbatim evidence row
    ra ru s" golden=device-pass:tf32" CONTAINS? TTRUE

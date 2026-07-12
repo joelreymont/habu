@@ -44,8 +44,10 @@ package MAKI
 create ABL-QO  $1000 allot  create ABL-QE $2000 allot
 
 \ ---- correct-kernel capture (in-process; no child spawn, no emitter edit) ---------------------
-: ABL-CAP-EW  ( n -- ptr u8 n ) {: rid:n :}  PTX-CAPTURE-ON rid LEW-EMIT  PTX-CAPTURE-OFF PTX-CAPTURE$ ;
-: ABL-CAP-RED ( n -- ptr u8 n ) {: rid:n :}  PTX-CAPTURE-ON rid LRED-EMIT PTX-CAPTURE-OFF PTX-CAPTURE$ ;
+: ABL-CAP-EW  ( CAD-KIND:region -- ptr u8 n ) {: rid:CAD-KIND:region :}
+   PTX-CAPTURE-ON rid LEW-EMIT  PTX-CAPTURE-OFF PTX-CAPTURE$ ;
+: ABL-CAP-RED ( CAD-KIND:region -- ptr u8 n ) {: rid:CAD-KIND:region :}
+   PTX-CAPTURE-ON rid LRED-EMIT PTX-CAPTURE-OFF PTX-CAPTURE$ ;
 
 \ ---- write PTX -> ptxas -> register the cubin for LOWER-GOLDEN's launch ------------------------
 : ABL-ASSEMBLE-RAW ( ptr u8 n -- ) {: pa:ptr pu:n :}
@@ -57,7 +59,7 @@ create ABL-QO  $1000 allot  create ABL-QE $2000 allot
 \ ---- one golden fault: assemble the poked PTX, run the golden, assert V-FAIL -------------------
 : ABL-FAIL ( -- )
    ABL-ASSEMBLE
-   0 LOWER-GOLDEN {: v:n :}
+   0 FP-REGION-ID LOWER-GOLDEN {: v:n :}
    LOWER-GOLDEN-REASON$ type cr
    v V-FAIL T= ;                                    \ the gate MUST reject the corrupted kernel
 
@@ -65,31 +67,31 @@ create ABL-QO  $1000 allot  create ABL-QE $2000 allot
 : ABL-G1 ( -- )
    CUDA:OPEN? 0= if exit then
    s"  (1) wrong index: drop the input load offset add -> every lane reads element 0" type cr
-   0 ABL-CAP-EW  s" add.u64 %rd4, %rd4, %rd3;"  s" "  ABL-MUTATE
+   0 FP-REGION-ID ABL-CAP-EW  s" add.u64 %rd4, %rd4, %rd3;"  s" "  ABL-MUTATE
    ABL-FAIL ;
 
 \ ============================= (2) transposed/mis-addressed operand read [EW MUL] ==============
 : ABL-G2 ( -- )
    CUDA:OPEN? 0= if exit then
    s"  (2) operand read: input-1 base %rd2 -> %rd1 -> kernel computes x*x, not x*y" type cr
-   0 ABL-CAP-EW  s" cvta.to.global.u64 %rd6, %rd2;"  s" cvta.to.global.u64 %rd6, %rd1;"  ABL-MUTATE
+   0 FP-REGION-ID ABL-CAP-EW  s" cvta.to.global.u64 %rd6, %rd2;"  s" cvta.to.global.u64 %rd6, %rd1;"  ABL-MUTATE
    ABL-FAIL ;
 
 \ ============================= (3) dropped mask [RED RMSNORM] ==================================
 : ABL-G3 ( -- )
    CUDA:OPEN? 0= if exit then
    s"  (3) dropped mask: strip @%p2 from the reduction identity seed -> tid>=k leak +inf" type cr
-   0 ABL-CAP-RED  s" @%p2"  s" "  ABL-MUTATE
+   0 FP-REGION-ID ABL-CAP-RED  s" @%p2"  s" "  ABL-MUTATE
    ABL-FAIL ;
 
 \ ============================= (4) stale cubin [EW GELU-kernel vs RELU-model] ==================
 : ABL-G4-BUILD-A ( -- )                             \ current IR = A (GELU): assemble+register A's cubin
    CUDA:OPEN? 0= if exit then
-   0 ABL-CAP-EW ABL-ASSEMBLE-RAW ;
+   0 FP-REGION-ID ABL-CAP-EW ABL-ASSEMBLE-RAW ;
 : ABL-G4-GOLDEN ( -- )                              \ current IR = B (RELU): golden runs B host vs A device
    CUDA:OPEN? 0= if exit then
    s"  (4) stale cubin: registered kernel = GELU, current model = RELU (same 4x8 shape)" type cr
-   0 LOWER-GOLDEN {: v:n :}
+   0 FP-REGION-ID LOWER-GOLDEN {: v:n :}
    LOWER-GOLDEN-REASON$ type cr
    v V-FAIL T= ;
 
@@ -100,11 +102,11 @@ create ABL-QO  $1000 allot  create ABL-QE $2000 allot
 \ device->host copy is dropped. LLA-RELEASE always runs (device buffers freed) before re-throw.
 : ABL-LAUNCH-NO-DTOH ( -- )
    GA-BIND-SYNTH                                    \ synthetic inputs (GA-IN-PTR) for the packer
-   0 LLA-STAGE-EW
+   0 FP-REGION-ID LLA-STAGE-EW
    LLA-GRID-EW {: grid:n :}
    LLA-ELEMS @ 4 * {: obytes:n :}
    LLA-NIN @ 0 ?do  i LLA-PACK-INPUT  loop
-   0 LLA-FNAME
+   0 FP-REGION-ID LLA-FNAME
    LLA-SETUP
    obytes LLA-ALLOC-UPLOAD
    LLA-BIND-PARAMS
@@ -118,7 +120,7 @@ create ABL-QO  $1000 allot  create ABL-QE $2000 allot
 : ABL-SENT ( -- )
    CUDA:OPEN? 0= if exit then
    s"  (B) sentinel: launch with the copy-back skipped -> GUARD must throw E-PTX-READBACK" type cr
-   0 ABL-CAP-EW ABL-ASSEMBLE-RAW                    \ a correct kernel to launch
+   0 FP-REGION-ID ABL-CAP-EW ABL-ASSEMBLE-RAW                    \ a correct kernel to launch
    [: ABL-LAUNCH-NO-DTOH ;] E-PTX-READBACK TTHROWSQ
    s"   sentinel fired: E-PTX-READBACK (dropped copy-back caught)" type cr ;
 

@@ -34,19 +34,19 @@ require maki/fusion-plan.f
 package MAKI
 
 \ materialized outputs planned into region r
-: MOUT-RGN ( n -- n ) {: r:n :}
+: MOUT-RGN ( CAD-KIND:region -- n ) {: r:CAD-KIND:region :}
    0  MIR-N@ 0 ?do
       i MIR-NODE-ID {: node:CAD-KIND:node-id :}
-      node FP-RID@ r =  node MIR-MAT@  and if 1+ then
+      node FP-RID@ r FP-RGN=  node MIR-MAT@  and if 1+ then
    loop ;
 
 \ the maximum materialized-output count over every planned region (FP-BUILD must have run)
 : MOUT-MAX ( -- n )
-   0  FP-REGION-COUNT 0 ?do  i MOUT-RGN max  loop ;
+   0  FP-REGION-COUNT 0 ?do  i FP-REGION-ID MOUT-RGN max  loop ;
 
 \ regions whose materialized-output count is not exactly one (the invariant violation count)
 : MOUT-BAD ( -- n )
-   0  FP-REGION-COUNT 0 ?do  i MOUT-RGN 1 <> if 1+ then  loop ;
+   0  FP-REGION-COUNT 0 ?do  i FP-REGION-ID MOUT-RGN 1 <> if 1+ then  loop ;
 
 T-RESET
 

@@ -125,11 +125,11 @@ variable SK-FOLD               \ scratch for little-endian byte decomposition
    node MIR-DT@  DTYPE>N  FNV-CELL
    node MIR-LAY@ LAYOUT>N FNV-CELL ;
 
-: RSIG ( n -- n ) {: r:n :}                     \ region -> content hash (nodes in order)
+: RSIG ( CAD-KIND:region -- n ) {: r:CAD-KIND:region :}   \ region -> content hash (nodes in order)
    FNV-BASIS
    MIR-N@ 0 ?do
       i MIR-NODE-ID {: node:CAD-KIND:node-id :}
-      node FP-RID@ r = if node RSIG-NODE then
+      node FP-RID@ r FP-RGN= if node RSIG-NODE then
    loop ;
 
 \ ---- hex render (16 digits, MSB first) into the shared builder --------------
@@ -177,11 +177,11 @@ private
       if MIR-REF-SLOT MIR-SLOT-AL@ ALIGN>N min else drop then
    loop ;
 
-: REGION-ALIGN ( n -- n ) {: r:n :}
+: REGION-ALIGN ( CAD-KIND:region -- n ) {: r:CAD-KIND:region :}
    AL-16
    MIR-N@ 0 ?do
       i MIR-NODE-ID {: node:CAD-KIND:node-id :}
-      node FP-RID@ r = if node NODE-ALIGN then
+      node FP-RID@ r FP-RGN= if node NODE-ALIGN then
    loop ;
 
 : AL-KEY ( n -- ptr u8 n )
@@ -195,14 +195,17 @@ private
    endcase ;
 
 \ ---- region validation + representative (output) node -----------------------
-: SK-REGION-CK ( n -- n )
-   dup 0 < over FP-REGION-COUNT >= or if E-SK-REGION throw then ;
+\ revalidates the typed handle against the CURRENT plan (a stale region id held
+\ across an FP-BUILD rebuild rejects here with sched-key's own code)
+: SK-REGION-CK ( CAD-KIND:region -- CAD-KIND:region ) {: r:CAD-KIND:region :}
+   r RGN>RAW dup 0 < swap FP-REGION-COUNT >= or if E-SK-REGION throw then
+   r ;
 
-: REGION-REP ( n -- CAD-KIND:node-id ) {: r:n :}   \ last (output) node in the region
+: REGION-REP ( CAD-KIND:region -- CAD-KIND:node-id ) {: r:CAD-KIND:region :}   \ last (output) node in the region
    MIR-N@
    begin dup 0 > while
       1- dup MIR-NODE-ID {: node:CAD-KIND:node-id :}
-      node FP-RID@ r = if drop node exit then
+      node FP-RID@ r FP-RGN= if drop node exit then
    repeat
    drop E-SK-REGION throw ;
 
@@ -219,16 +222,16 @@ public
 : SK-PTXAS$  ( -- ptr u8 n )  s" unprobed" ;       \ no ptxas probed off-device
 
 \ representative (output) node of a region - the default-context source (rowlen/dtype)
-: SK-REGION-REP ( n -- CAD-KIND:node-id )  SK-REGION-CK REGION-REP ;
+: SK-REGION-REP ( CAD-KIND:region -- CAD-KIND:node-id )  SK-REGION-CK REGION-REP ;
 
 \ ---- individual key fields (standalone renders, for inspection + tests) ------
-: SK-RSIG$ ( n -- ptr u8 n )  SK-REGION-CK RSIG SB-RESET SK-HEX+ SB$ ;
+: SK-RSIG$ ( CAD-KIND:region -- ptr u8 n )  SK-REGION-CK RSIG SB-RESET SK-HEX+ SB$ ;
 : SK-SHAPE-CLASS$ ( CAD-KIND:rows CAD-KIND:cols -- ptr u8 n )
    SB-RESET SHAPE-CLASS+ SB$ ;
-: SK-ALIGN$ ( n -- ptr u8 n )  SK-REGION-CK REGION-ALIGN AL-KEY ;
+: SK-ALIGN$ ( CAD-KIND:region -- ptr u8 n )  SK-REGION-CK REGION-ALIGN AL-KEY ;
 
 \ ---- the full section 7.4 key as one "|"-joined string ----------------------
-: SK-KEY+ ( n -- ) {: r:n :}                     \ append the key to SB (already reset)
+: SK-KEY+ ( CAD-KIND:region -- ) {: r:CAD-KIND:region :}   \ append the key to SB (already reset)
    r REGION-REP {: rep:CAD-KIND:node-id :}
    r RSIG SK-HEX+
    $7C SB-APPEND-C  rep MIR-ROWS@ rep MIR-COLS@ SHAPE-CLASS+
@@ -239,7 +242,7 @@ public
    $7C SB-APPEND-C  SK-ENGINE$ SB-APPEND
    $7C SB-APPEND-C  SK-PTXAS$  SB-APPEND ;
 
-: SK-KEY$ ( n -- ptr u8 n )  SK-REGION-CK SB-RESET SK-KEY+ SB$ ;
+: SK-KEY$ ( CAD-KIND:region -- ptr u8 n )  SK-REGION-CK SB-RESET SK-KEY+ SB$ ;
 
 \ ---- the typed section-7.4 key (the durable render's semantic twin) ----------
 \ SK-KEY builds the same eight facts SK-KEY+ renders, but as a typed `skey`
@@ -250,7 +253,7 @@ public
 \ into MAKE (they cannot bind into locals); only the region ids are locals.
 \ MAKI-SKEY:EQ over two SK-KEY values is the typed identity the durable string
 \ key serializes (field-eq == SK-KEY$ text-eq, pinned in sched-key-test.f).
-: SK-KEY ( n -- skey ) {: r:n :}
+: SK-KEY ( CAD-KIND:region -- skey ) {: r:CAD-KIND:region :}
    r SK-REGION-CK drop
    r REGION-REP {: rep:CAD-KIND:node-id :}
    r RSIG

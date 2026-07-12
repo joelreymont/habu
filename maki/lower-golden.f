@@ -80,14 +80,15 @@ variable LG-BADI                                \ first mismatched element index
    loop
    LG-BADI @ 0 < ;
 
-: LG-PASS-REASON ( n -- ) {: rid:n :}
+\ RGN>RAW is the one verdict-reason render boundary (REGION_<rid>)
+: LG-PASS-REASON ( CAD-KIND:region -- ) {: rid:CAD-KIND:region :}
    LG-RE-RESET
-   s" lower-golden: REGION_" LG-RE+ rid LG-RE-INT
+   s" lower-golden: REGION_" LG-RE+ rid RGN>RAW LG-RE-INT
    s"  device==host within " LG-RE+ LG-PREC$ LG-RE+
    s"  tol (" LG-RE+ LLA-ELEMS@ LG-RE-INT s"  elems)" LG-RE+ ;
-: LG-FAIL-REASON ( n -- ) {: rid:n :}
+: LG-FAIL-REASON ( CAD-KIND:region -- ) {: rid:CAD-KIND:region :}
    LG-RE-RESET
-   s" lower-golden: REGION_" LG-RE+ rid LG-RE-INT
+   s" lower-golden: REGION_" LG-RE+ rid RGN>RAW LG-RE-INT
    s"  mismatch beyond " LG-RE+ LG-PREC$ LG-RE+
    s"  tol at elem " LG-RE+ LG-BADI @ LG-RE-INT ;
 
@@ -95,21 +96,21 @@ variable LG-BADI                                \ first mismatched element index
 \ a reduction bit routes to the row kernel; otherwise the flat elementwise kernel. A region
 \ never mixes a contraction with a reduction (maki/fusion-plan.f), so the order is disjoint.
 \ region class routing is owned by lower-launch (LOWER-MODEL-RUN reuses it); alias here.
-: LG-MATMUL? ( n -- bool )  LLA-REGION-MATMUL? ;
-: LG-REDUCE? ( n -- bool )  LLA-REGION-REDUCE? ;
+: LG-MATMUL? ( CAD-KIND:region -- bool )  LLA-REGION-MATMUL? ;
+: LG-REDUCE? ( CAD-KIND:region -- bool )  LLA-REGION-REDUCE? ;
 
 \ a MATERIALIZED movement region (the region's output node is a movement copy, not a fold)
 \ routes to the copy-kernel launch; a dissolved-fold region keeps its EW/RED/MM class route.
-: LG-MOVE? ( n -- bool )  LLA-REGION-MOVE? ;
+: LG-MOVE? ( CAD-KIND:region -- bool )  LLA-REGION-MOVE? ;
 
 \ region -> op-registry class id (the tolerance row + precision axis)
-: LG-CLASS ( n -- n ) {: rid:n :}
+: LG-CLASS ( CAD-KIND:region -- n ) {: rid:CAD-KIND:region :}
    rid LG-MOVE?   if CLASS-MOVEMENT   exit then
    rid LG-MATMUL? if CLASS-MATMUL     exit then
    rid LG-REDUCE? if CLASS-ROW-REDUCE exit then
    CLASS-EW ;
 
-: LG-RUN ( n n -- ) {: rid:n cls:n :}           \ launch the region on its class route
+: LG-RUN ( CAD-KIND:region n -- ) {: rid:CAD-KIND:region cls:n :}   \ launch the region on its class route
    cls CLASS-MOVEMENT   = if rid LMV-RUN  exit then
    cls CLASS-MATMUL     = if rid LMM-RUN  exit then
    cls CLASS-ROW-REDUCE = if rid LRED-RUN exit then
@@ -119,7 +120,7 @@ public
 \ LOWER-GOLDEN ( rid -- verdict ). Requires the region's cubin already assembled and its
 \ path set via LLA-CUBIN! (the device tool does emit+ptxas first). The tolerance is the
 \ region class's ACTIVE precision row (maki/precision.f); the verdict names it.
-: LOWER-GOLDEN ( n -- n ) {: rid:n :}
+: LOWER-GOLDEN ( CAD-KIND:region -- n ) {: rid:CAD-KIND:region :}
    PREC-F32 LG-PREC-V !
    CUDA:OPEN? 0= if
       LG-RE-RESET s" lower-golden: off-device (libcuda unavailable)" LG-RE+  V-NOTRUN exit then

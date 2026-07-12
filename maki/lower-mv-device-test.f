@@ -36,7 +36,7 @@ create LMD-QO  $1000 allot  create LMD-QE  $2000 allot
 \ ---- spawn bin/hb to emit region 0's PTX into PTXTC:PTX$ (child re-builds the IR) --
 \ require/emit vary per lowering leg (copy kernel vs dissolved EW/RED/MM fold).
 : LMD-EMIT ( ptr u8 n ptr u8 n ptr u8 n -- ) {: sa:ptr su:n ra:ptr ru:n ea:ptr eu:n :}
-   sa su  ra ru  ea eu  0  MAKI-GRADE:DRIVER$  LOWER-DRIVER!
+   sa su  ra ru  ea eu  0 FP-REGION-ID  MAKI-GRADE:DRIVER$  LOWER-DRIVER!
    PROC-ARGV-RESET
    s" --load"           >LEN PROC-ARGV+
    MAKI-GRADE:DRIVER$   >LEN PROC-ARGV+
@@ -64,7 +64,7 @@ create LMD-QO  $1000 allot  create LMD-QE  $2000 allot
    sa su ra ru ea eu LMD-EMIT
    LMD-PTXAS PTXTC:ASM-REPORT 0 T=                        \ ptxas rc 0 (stderr surfaced on failure)
    PTXTC:CUBIN$ LLA-CUBIN!
-   0 LOWER-GOLDEN {: v:n :}
+   0 FP-REGION-ID LOWER-GOLDEN {: v:n :}
    LOWER-GOLDEN-REASON$ type cr
    LMD-EVIDENCE
    v V-PASS T= ;

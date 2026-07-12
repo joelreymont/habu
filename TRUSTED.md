@@ -671,6 +671,8 @@ that source is explicitly certified; they are not stale-checked by the default
 | INPUT-INDEX>RAW | `MIR:input-index -- n` | Private input-ordinal projection used only after the node handle is validated and before the node-local bound check. | `maki/model-ir-test.f` | maki/model-ir.f | 2026-07-12 |
 | RAW>REF-POS | `n -- MIR:ref-pos` | Private flat-reference-table position refinement after signed and capacity validation. | `maki/model-ir-test.f` | maki/model-ir.f | 2026-07-12 |
 | REF-POS>RAW | `MIR:ref-pos -- n` | Private flat-reference-table projection used only by bounded owner-table load/store helpers. | `maki/model-ir-test.f` | maki/model-ir.f | 2026-07-12 |
+| RAW>RGN | `n -- CAD-KIND:region` | Private fusion-planner region refinement after `FP-CK` and the region-range validator prove the raw table position names a planned region (R3 owner-module rule, dot `habu-maki-apply-cad-27b7a7d7`). | `maki/fusion-plan-test.f` | maki/fusion-plan.f | 2026-07-12 |
+| RGN>RAW | `CAD-KIND:region -- n` | Private region projection used only by fusion-plan bounds revalidation, region-indexed owner tables, and the `REGION_<rid>` render boundaries; no public raw cast is exported (dot `habu-maki-apply-cad-27b7a7d7`). | `maki/fusion-plan-test.f` | maki/fusion-plan.f | 2026-07-12 |
 | DIM-REFINE | `n -- CAD-KIND:dim` | Private validated nominal representation boundary for tensor dimensions; tracked by `habu-v2-r3-type-9f89d1e9`. | `maki/tensor-test.f` | maki/tensor.f | 2026-07-12 |
 | DIM-RAW | `CAD-KIND:dim -- n` | Private dimension projection used only by checked shape algebra and numeric execution boundaries. | `maki/tensor-test.f` | maki/tensor.f | 2026-07-12 |
 | ROWS-REFINE | `n -- CAD-KIND:rows` | Private validated row-role refinement; public construction goes through `SHAPE`. | `maki/tensor-test.f` | maki/tensor.f | 2026-07-12 |
@@ -1294,6 +1296,8 @@ lib/test/snap.f:SNAP= test-metaprog habu-typed-depth-introspection-18f0efda
 lib/test/assert.f:TTHROWS-RAW test-metaprog habu-typed-depth-introspection-18f0efda
 maki/cad.f:CAP-COMPILE-RUN test-metaprog habu-primitive-effect-axiom-1119f176
 maki/eval.f:CHECK-PASSES? test-metaprog habu-primitive-effect-axiom-1119f176
+maki/fusion-plan.f:RAW>RGN prim-axiom habu-maki-apply-cad-27b7a7d7
+maki/fusion-plan.f:RGN>RAW prim-axiom habu-maki-apply-cad-27b7a7d7
 maki/model-ir.f:RAW>NODE prim-axiom habu-epic-model-cad-70b629a9
 maki/model-ir.f:NODE>RAW prim-axiom habu-epic-model-cad-70b629a9
 maki/model-ir.f:RAW>SLOT prim-axiom habu-epic-model-cad-70b629a9

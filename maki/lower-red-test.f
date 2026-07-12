@@ -44,11 +44,11 @@ variable LREDT-VA  variable LREDT-VU
    ;MATCH ;
 : LREDT-ONCE ( ptr u8 n -- )  LREDT$ 2swap LREDT-ONCE? TTRUE ;
 
-: LREDT-CAP0 ( -- )  PTX-CAPTURE-ON  0 LRED-EMIT  PTX-CAPTURE-OFF  PTX-CAPTURE$ LREDT-SAVE ;
+: LREDT-CAP0 ( -- )  PTX-CAPTURE-ON  0 FP-REGION-ID LRED-EMIT  PTX-CAPTURE-OFF  PTX-CAPTURE$ LREDT-SAVE ;
 
 \ ---- fail-closed probes (each acts on the current model / plan) --------------
-: LREDT-TRY-EMIT ( -- )  0 LRED-EMIT ;      \ non-reduction region -> reject before emit
-: LREDT-TRY      ( -- )  0 LRED-ANALYZE ;   \ analysis-only fail-closed checks
+: LREDT-TRY-EMIT ( -- )  0 FP-REGION-ID LRED-EMIT ;      \ non-reduction region -> reject before emit
+: LREDT-TRY      ( -- )  0 FP-REGION-ID LRED-ANALYZE ;   \ analysis-only fail-closed checks
 
 T-RESET
 

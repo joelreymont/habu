@@ -28,24 +28,24 @@ T-RESET
 \ ---- durable put lands in both the table and schedules.rows -----------------
 STORE-RESET  SK-TAB-RESET
 2 100 SRT-BUILD  0 MIR-SLOT-ID MAKI-ALIGN:A16 MIR-SLOT-AL!  FP-BUILD
-0 SK-KEY$ 7 SK-PUT-DURABLE
-0 SK-KEY$ SK-GET drop 7 T=            \ hot table
+0 FP-REGION-ID SK-KEY$ 7 SK-PUT-DURABLE
+0 FP-REGION-ID SK-KEY$ SK-GET drop 7 T=            \ hot table
 SK-TAB-COUNT 1 T=
-0 SK-KEY$ SCHED-GET drop 7 T=         \ durable file
+0 FP-REGION-ID SK-KEY$ SCHED-GET drop 7 T=         \ durable file
 
 \ ---- reload durability into a cleared table ---------------------------------
 SK-TAB-RESET
 SK-TAB-COUNT 0 T=
-0 SK-KEY$ SK-GET nip TFALSE           \ table empty after reset
+0 FP-REGION-ID SK-KEY$ SK-GET nip TFALSE           \ table empty after reset
 STORE-REPLAY-LOAD
-0 SK-KEY$ SK-GET drop 7 T=            \ file -> memory
+0 FP-REGION-ID SK-KEY$ SK-GET drop 7 T=            \ file -> memory
 SK-TAB-COUNT 1 T=
 
 \ ---- latest row per key wins on reload --------------------------------------
-0 SK-KEY$ 9 SK-PUT-DURABLE            \ memory update-in-place + newer file row
+0 FP-REGION-ID SK-KEY$ 9 SK-PUT-DURABLE            \ memory update-in-place + newer file row
 SK-TAB-RESET
 STORE-REPLAY-LOAD
-0 SK-KEY$ SK-GET drop 9 T=
+0 FP-REGION-ID SK-KEY$ SK-GET drop 9 T=
 SK-TAB-COUNT 1 T=                     \ still one distinct key
 
 \ ---- capacity-guarded load (33 distinct rows > SK-TAB-CAP=32) ---------------

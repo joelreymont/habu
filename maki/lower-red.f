@@ -91,7 +91,7 @@ create LRED-IN-BC   LRED-MAX-IN cells allot   \ broadcast class per external inp
 create LRED-NODE-REG LRED-NCAP cells allot    \ result %f register per region-member node
 variable LRED-NIN                              \ region input count
 variable LRED-OUTNODE                          \ the single materialized region-output node
-variable LRED-RID                              \ region id being lowered
+variable LRED-RID                              \ region id being lowered (typed CAD-KIND:region cell)
 
 : LRED-REF! ( MIR:operand-ref n -- )  cells LRED-INS + ! ;
 : LRED-REF@ ( n -- MIR:operand-ref )  cells LRED-INS + @ ;
@@ -99,11 +99,11 @@ variable LRED-RID                              \ region id being lowered
 : LRED-OUTNODE@ ( -- CAD-KIND:node-id )  LRED-OUTNODE @ ;
 
 \ ---- region membership + class ---------------------------------------------
-: LRED-IN-REGION? ( CAD-KIND:node-id n -- bool )  swap FP-RID@ = ;
+: LRED-IN-REGION? ( CAD-KIND:node-id CAD-KIND:region -- bool )  swap FP-RID@ FP-RGN= ;
 
 \ class mix must contain the ROW-REDUCE bit and nothing outside {EW, ROW-REDUCE, MOVEMENT};
 \ a dissolved free-movement prologue (maki/move-view.f) folds into the row-span base offset.
-: LRED-CLASS-OK? ( n -- bool ) {: rid:n :}
+: LRED-CLASS-OK? ( CAD-KIND:region -- bool ) {: rid:CAD-KIND:region :}
    rid FP-REGION-CLASSMIX {: mix:n :}
    mix 1 CLASS-ROW-REDUCE lshift and 0= if false exit then
    mix  1 CLASS-EW lshift  1 CLASS-ROW-REDUCE lshift or  1 CLASS-MOVEMENT lshift or
@@ -136,7 +136,7 @@ variable LRED-RID                              \ region id being lowered
       pad-scatter OF false ENDOF  scatter-add OF false ENDOF  gelu-bwd2 OF false ENDOF
    ;MATCH ;
 
-: LRED-RED-COUNT ( n -- n ) {: rid:n :}          \ reduction nodes in the region
+: LRED-RED-COUNT ( CAD-KIND:region -- n ) {: rid:CAD-KIND:region :}   \ reduction nodes in the region
    0 MIR-N@ 0 ?do
       i MIR-NODE-ID {: node:CAD-KIND:node-id :}
       node rid LRED-IN-REGION? node MIR-OP@ LRED-RED-OP? and if 1+ then
@@ -144,7 +144,7 @@ variable LRED-RID                              \ region id being lowered
 
 \ compute members must be a reduction or v1 EW op; movement members must be v1-foldable
 \ dissolved movements (MVW-CHECK fails closed on staged / mat / non-slot source).
-: LRED-CHECK-OPS ( n -- ) {: rid:n :}
+: LRED-CHECK-OPS ( CAD-KIND:region -- ) {: rid:CAD-KIND:region :}
    MIR-N@ 0 ?do
       i MIR-NODE-ID {: node:CAD-KIND:node-id :}
       node rid LRED-IN-REGION? if
@@ -157,24 +157,25 @@ variable LRED-RID                              \ region id being lowered
    rid LRED-RED-COUNT 1 <> if E-LRED-MULTIRED throw then ;
 
 \ ---- external-input collection (first-appearance order, capped) -------------
-: LRED-REF-EXTERNAL? ( n MIR:operand-ref -- bool ) {: rid:n ref:MIR:operand-ref :}
+: LRED-REF-EXTERNAL? ( CAD-KIND:region MIR:operand-ref -- bool )
+   {: rid:CAD-KIND:region ref:MIR:operand-ref :}
    ref MIR-REF-INPUT? if true exit then
    ref MVW-DISSOLVED? if true exit then       \ a folded movement node is a virtual input
-   ref MIR-REF-NODE FP-RID@ rid <> ;
+   ref MIR-REF-NODE FP-RID@ rid FP-RGN= 0= ;
 : LRED-INS-IDX ( MIR:operand-ref -- n ) {: ref:MIR:operand-ref :}   \ index in LRED-INS, or -1
    LRED-NIN @ 0 ?do  ref i LRED-REF@ MIR-REF= if i unloop exit then  loop  -1 ;
 : LRED-INS-ADD ( MIR:operand-ref -- ) {: ref:MIR:operand-ref :}
    ref LRED-INS-IDX -1 > if exit then            \ already recorded
    LRED-NIN @ LRED-MAX-IN >= if E-LRED-INPUTS throw then
    ref LRED-NIN @ LRED-REF!  LRED-NIN @ 1+ LRED-NIN ! ;
-: LRED-SCAN-INS ( n CAD-KIND:node-id -- ) {: rid:n nd:CAD-KIND:node-id :}
+: LRED-SCAN-INS ( CAD-KIND:region CAD-KIND:node-id -- ) {: rid:CAD-KIND:region nd:CAD-KIND:node-id :}
    nd MIR-IN-COUNT@ 0 ?do
       nd i MIR-INPUT-IDX MIR-IN@ {: ref:MIR:operand-ref :}
       rid ref LRED-REF-EXTERNAL? if ref LRED-INS-ADD then
    loop ;
 \ only COMPUTE members contribute inputs; a movement member reaches the kernel as the
 \ virtual movement-node input its consumer scans, not as a direct input.
-: LRED-COLLECT-INS ( n -- ) {: rid:n :}
+: LRED-COLLECT-INS ( CAD-KIND:region -- ) {: rid:CAD-KIND:region :}
    0 LRED-NIN !
    MIR-N@ 0 ?do
       i MIR-NODE-ID {: node:CAD-KIND:node-id :}
@@ -186,12 +187,12 @@ variable LRED-RID                              \ region id being lowered
 \ tail its sole materialized node; proof + fan-out battery in maki/fusion-mout-test.f).
 \ LRED-FIND-OUT asserts that invariant as defense-in-depth: != 1 is a corrupted plan (>1
 \ structurally impossible, 0 a materialization-flag regression), never a v1 cap.
-: LRED-MAT-COUNT ( n -- n ) {: rid:n :}
+: LRED-MAT-COUNT ( CAD-KIND:region -- n ) {: rid:CAD-KIND:region :}
    0 MIR-N@ 0 ?do
       i MIR-NODE-ID {: node:CAD-KIND:node-id :}
       node rid LRED-IN-REGION? node MIR-MAT@ and if 1+ then
    loop ;
-: LRED-FIND-OUT ( n -- ) {: rid:n :}
+: LRED-FIND-OUT ( CAD-KIND:region -- ) {: rid:CAD-KIND:region :}
    rid LRED-MAT-COUNT 1 <> if E-LRED-MULTIOUT throw then
    MIR-N@ 0 ?do
       i MIR-NODE-ID {: node:CAD-KIND:node-id :}
@@ -219,7 +220,7 @@ variable LRED-RID                              \ region id being lowered
    loop ;
 
 public
-: LRED-ANALYZE ( n -- ) {: rid:n :}
+: LRED-ANALYZE ( CAD-KIND:region -- ) {: rid:CAD-KIND:region :}
    rid FP-REGION-MEMBERS drop                    \ validates FP-BUILD ran + rid range
    rid LRED-RID !
    rid LRED-CLASS-OK? 0= if E-LRED-NOTRED throw then
@@ -237,7 +238,7 @@ public
 : LRED-ROWS@ ( -- CAD-KIND:rows )  LRED-OUTNODE@ MIR-ROWS@ ;
 : LRED-COLS@ ( -- CAD-KIND:cols )  LRED-OUTNODE@ MIR-COLS@ ;
 : LRED-ELEMS ( -- n )     LRED-ROWS@ LRED-COLS@ SHAPE-ELEMS DIM-RAW ;
-: LRED-RID@ ( -- n )      LRED-RID @ ;
+: LRED-RID@ ( -- CAD-KIND:region )  LRED-RID @ ;
 
 private
 
@@ -339,7 +340,8 @@ private
    loop ;
 
 \ ---- entry / regs / params scaffolding (K inputs + output + k) --------------
-: LRED-KNAME ( -- )  s" REGION_" CG-S LRED-RID @ SB-U ;
+\ RGN>RAW is the one kernel-name render boundary (REGION_<rid>)
+: LRED-KNAME ( -- )  s" REGION_" CG-S LRED-RID @ RGN>RAW SB-U ;
 : LRED-ENTRY ( -- )
    SB-RESET
    s" .visible .entry " CG-S LRED-KNAME s" (" CG-S
@@ -390,7 +392,7 @@ private
 public
 \ LRED-EMIT prints the region's PTX module to the current PTX sink (stdout, or the
 \ in-process capture buffer). Analysis first, so a rejected region emits nothing.
-: LRED-EMIT ( n -- )
+: LRED-EMIT ( CAD-KIND:region -- )
    LRED-ANALYZE
    LRED-BLOCK %BLOCK                             \ block-per-row reduction schedule (matches launch)
    PTX-MODULE{

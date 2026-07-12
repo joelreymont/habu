@@ -45,19 +45,19 @@ variable LMVT-VA  variable LMVT-VU
    ;MATCH ;
 : LMVT-ONCE ( ptr u8 n -- )  LMVT$ 2swap LMVT-ONCE? TTRUE ;
 
-: LMVT-CAP-MV  ( -- )  PTX-CAPTURE-ON  0 LMV-EMIT  PTX-CAPTURE-OFF  PTX-CAPTURE$ LMVT-SAVE ;
-: LMVT-CAP-EW  ( -- )  PTX-CAPTURE-ON  0 LEW-EMIT  PTX-CAPTURE-OFF  PTX-CAPTURE$ LMVT-SAVE ;
-: LMVT-CAP-RED ( -- )  PTX-CAPTURE-ON  0 LRED-EMIT PTX-CAPTURE-OFF  PTX-CAPTURE$ LMVT-SAVE ;
-: LMVT-CAP-MM  ( -- )  PTX-CAPTURE-ON  0 LMM-EMIT  PTX-CAPTURE-OFF  PTX-CAPTURE$ LMVT-SAVE ;
+: LMVT-CAP-MV  ( -- )  PTX-CAPTURE-ON  0 FP-REGION-ID LMV-EMIT  PTX-CAPTURE-OFF  PTX-CAPTURE$ LMVT-SAVE ;
+: LMVT-CAP-EW  ( -- )  PTX-CAPTURE-ON  0 FP-REGION-ID LEW-EMIT  PTX-CAPTURE-OFF  PTX-CAPTURE$ LMVT-SAVE ;
+: LMVT-CAP-RED ( -- )  PTX-CAPTURE-ON  0 FP-REGION-ID LRED-EMIT PTX-CAPTURE-OFF  PTX-CAPTURE$ LMVT-SAVE ;
+: LMVT-CAP-MM  ( -- )  PTX-CAPTURE-ON  0 FP-REGION-ID LMM-EMIT  PTX-CAPTURE-OFF  PTX-CAPTURE$ LMVT-SAVE ;
 
 \ ---- fail-closed probes (each acts on the current model / plan) --------------
-: LMVT-TRY-MV  ( -- )  0 LMV-ANALYZE ;
-: LMVT-TRY-MV1 ( -- )  1 LMV-ANALYZE ;
-: LMVT-TRY-EW  ( -- )  0 LEW-ANALYZE ;
-: LMVT-TRY-RED ( -- )  0 LRED-ANALYZE ;
-: LMVT-TRY-RED1 ( -- ) 1 LRED-ANALYZE ;
-: LMVT-TRY-MM  ( -- )  0 LMM-ANALYZE ;
-: LMVT-TRY-MM1 ( -- )  1 LMM-ANALYZE ;
+: LMVT-TRY-MV  ( -- )  0 FP-REGION-ID LMV-ANALYZE ;
+: LMVT-TRY-MV1 ( -- )  1 FP-REGION-ID LMV-ANALYZE ;
+: LMVT-TRY-EW  ( -- )  0 FP-REGION-ID LEW-ANALYZE ;
+: LMVT-TRY-RED ( -- )  0 FP-REGION-ID LRED-ANALYZE ;
+: LMVT-TRY-RED1 ( -- ) 1 FP-REGION-ID LRED-ANALYZE ;
+: LMVT-TRY-MM  ( -- )  0 FP-REGION-ID LMM-ANALYZE ;
+: LMVT-TRY-MM1 ( -- )  1 FP-REGION-ID LMM-ANALYZE ;
 
 T-RESET
 
@@ -181,9 +181,9 @@ MODEL: TN ( x:4x8 -- y ) TRANSPOSE RMSNORM ;
 FP-BUILD
 2 FP-REGION-COUNT T=                         \ two regions: transpose copy + rmsnorm
 0 MIR-NODE-ID MIR-MAT@ TTRUE                 \ the transpose is materialized (its own copy region)
-0 MIR-NODE-ID FP-RID@ 0 T=                               \ transpose is region 0
-1 MIR-NODE-ID FP-RID@ 1 T=                               \ rmsnorm  is region 1
-1 LRED-ANALYZE                               \ region 1 (rmsnorm) lowers, reading the transpose node
+0 MIR-NODE-ID FP-RID@ 0 FP-REGION-ID FP-RGN= TTRUE       \ transpose is region 0
+1 MIR-NODE-ID FP-RID@ 1 FP-REGION-ID FP-RGN= TTRUE       \ rmsnorm  is region 1
+1 FP-REGION-ID LRED-ANALYZE                  \ region 1 (rmsnorm) lowers, reading the transpose node
 0 LRED-IN-REF@ MIR-REF-INPUT? TFALSE         \ its input 0 is the transpose node (materialized), not a slot
 0 LRED-IN-REF@ 0 T=                          \ specifically node 0 (the transpose)
 LMVT-CAP-MV                                   \ region 0 is the transpose copy kernel (div/rem row remap)
@@ -197,9 +197,9 @@ MODEL: TM ( x:8x8 w:8x16 -- y ) TRANSPOSE MATMUL ;
 FP-BUILD
 2 FP-REGION-COUNT T=                         \ two regions: transpose copy + matmul
 0 MIR-NODE-ID MIR-MAT@ TTRUE                 \ the transpose is materialized
-0 MIR-NODE-ID FP-RID@ 0 T=                               \ transpose is region 0
-1 MIR-NODE-ID FP-RID@ 1 T=                               \ matmul is region 1
-1 LMM-ANALYZE                                \ region 1 (matmul) lowers, reading the transpose node
+0 MIR-NODE-ID FP-RID@ 0 FP-REGION-ID FP-RGN= TTRUE       \ transpose is region 0
+1 MIR-NODE-ID FP-RID@ 1 FP-REGION-ID FP-RGN= TTRUE       \ matmul is region 1
+1 FP-REGION-ID LMM-ANALYZE                   \ region 1 (matmul) lowers, reading the transpose node
 0 LMM-IN-REF@ MIR-REF-INPUT? TFALSE          \ A operand is the transpose node (materialized), not a slot
 0 LMM-IN-REF@ 0 T=                           \ specifically node 0 (the transpose)
 

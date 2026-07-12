@@ -70,7 +70,7 @@ BW-BWD-COUNT   2 T=
 BW-SEED-SLOT@ 1 MIR-SLOT-ID MIR-SLOT= TTRUE                             \ slots: 0 = x, 1 = seed
 \ the backward elementwise chain fuses into ONE region
 FP-BUILD
-2 MIR-NODE-ID FP-RID@ 3 MIR-NODE-ID FP-RID@ T=
+2 MIR-NODE-ID FP-RID@ 3 MIR-NODE-ID FP-RID@ FP-RGN= TTRUE
 \ input x receives a gradient (produced by the last backward node)
 0 3 BT-GRAD-NODE=
 

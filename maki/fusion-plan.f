@@ -331,16 +331,44 @@ public
 
 : FP-REGION-COUNT ( -- n )  FP-CK FP-RN @ ;
 
-: FP-RID@ ( CAD-KIND:node-id -- n )           \ node -> region id (checked)
+private
+
+\ ---- nominal region handle (Model-CAD V2 R3, dot habu-maki-apply-cad-27b7a7d7)
+\ These private identity boundaries are the only raw representation authority;
+\ the public constructors (FP-REGION-ID / FP-RID@) validate the raw table
+\ position first, and the FP-RID table stays indexed behind RGN>RAW.
+TRUSTED: RAW>RGN ( n -- CAD-KIND:region ) ;
+TRUSTED: RGN>RAW ( CAD-KIND:region -- n ) ;
+
+: RGN-RAW-CK ( n -- n )
+   dup 0 < over FP-RN @ >= or if E-FP-IDX throw then ;
+
+public
+
+\ ---- validated raw-index refinement (loop counters enter here) --------------
+: FP-REGION-ID ( n -- CAD-KIND:region )
+   FP-CK RGN-RAW-CK RAW>RGN ;
+
+: FP-RID@ ( CAD-KIND:node-id -- CAD-KIND:region )   \ node -> region id (checked)
    {: nd:CAD-KIND:node-id :}
    FP-CK
    nd NODE>RAW {: raw:n :}
    raw 0 < raw MIR-N@ >= or if E-FP-IDX throw then
-   nd FP-RID-RAW ;
+   nd FP-RID-RAW RAW>RGN ;
 
-: FP-RGN-CK ( n -- n )  FP-CK  dup 0 < over FP-RN @ >= or if E-FP-IDX throw then ;
-: FP-REGION-MEMBERS  ( n -- n )  FP-RGN-CK cells FP-MEM + @ ;
-: FP-REGION-CLASSMIX ( n -- n )  FP-RGN-CK cells FP-MIX + @ ;
+: FP-RGN= ( CAD-KIND:region CAD-KIND:region -- bool )
+   RGN>RAW swap RGN>RAW = ;
+
+private
+
+\ region -> revalidated raw table position (a stale id after a rebuild rejects)
+: FP-RGN-CK ( CAD-KIND:region -- n )
+   FP-CK RGN>RAW RGN-RAW-CK ;
+
+public
+
+: FP-REGION-MEMBERS  ( CAD-KIND:region -- n )  FP-RGN-CK cells FP-MEM + @ ;
+: FP-REGION-CLASSMIX ( CAD-KIND:region -- n )  FP-RGN-CK cells FP-MIX + @ ;
 
 : FP-SPLIT-COUNT ( -- n )  FP-CK FP-SP-N @ ;
 : FP-SP-CK ( n -- n )  FP-CK  dup 0 < over FP-SP-N @ >= or if E-FP-IDX throw then ;
