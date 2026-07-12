@@ -185,19 +185,24 @@ codes, never silent; named constants; and a `T{ … -> … }T` test for every wo
   file ownership is disjoint.
 - **Dot dispatch status (BLOCKING):** before claiming, create the workspace with
   `jj workspace add .jj-ws/<dot-id> --name <name> -r <verified-base>`, verify
-  `@- == <verified-base>`, clean `jj st`, and disjoint write sets. Record
+  `@- == <verified-base>` with `jj -R .jj-ws/<dot-id> log -r '@-'`, clean
+  `jj -R .jj-ws/<dot-id> st`, and disjoint write sets. Record
   `Claim: agent=<name> workspace=.jj-ws/<dot-id>` in the exact leaf, run
-  `dot on <exact-id>`, commit the claim on a feature change, run claim gates,
-  fetch/rebase, then fast-forward green `master` and push it explicitly with
+  `dot on <exact-id>`, commit the claim on a feature change, and fetch/rebase.
+  Before fast-forwarding `master`, run `maki/test.f`, ptx-stdlib plus touched
+  native slices, `host-lint`, `filemap-lint`, and `dot-dep-lint` on the exact
+  rebased tree; then push with
   `jj git push --bookmark master --remote origin`. A competing claim aborts the
-  dispatch; preserve its owner and release the losing local claim. Immediately
-  before spawning, rerun only `dot show <exact-id>` and require the same claim,
-  `Status: active`, and clean `jj st`. Do not rerun `dot on` on an active dot
-  because it rewrites metadata. If
+  dispatch; preserve its owner and release the losing local claim. Verify the
+  fetched remote dot with `jj file show -r master@origin <dot-file>`.
+  Immediately before spawning, rerun only `dot show <exact-id>` and require the
+  same claim, `Status: active`, and clean `jj st`. Do not rerun `dot on` on an
+  active dot because it rewrites metadata. If
   any transition, synchronization, or verification fails, do not dispatch.
   The dot remains active through implementation, destruction review,
   integration, and owning gates; run `dot off <exact-id> -r "..."` only after
-  the reviewed commit is merged and verified. Preflight, workspace creation,
+  the reviewed commit is merged and verified. Commit and push the closure,
+  fetch, and verify the remote has no active/open copy. Preflight, workspace creation,
   or assigning a read-only scout does not make a dot active. Never dispatch an
   `open`, blocked, or already-active dot owned by another worker.
 - Gate: use the target/checker/env prelude and native gate command from

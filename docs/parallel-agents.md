@@ -21,7 +21,7 @@ gate.
 2. For broad work, launch read-only scouts first. Their prompt must say
    `read-only` and `must not edit the current working tree`.
 3. Scouts return findings, file paths, tests, and proposed dots. The orchestrator
-   creates missing work with `dot add "Title" -d "Full context..."`.
+   creates missing work with `dot add "Title" -d "Problem: ... Acceptance: ... Files: ... Verify: ... Depends: ... Ownership: ... Claim: unassigned."`.
 4. The orchestrator chooses only unblocked leaves printed by `dot ready`, checks
    each full brief with `dot show <id>`, and proves the ownership sets disjoint.
 
@@ -30,16 +30,20 @@ gate.
 1. Give every worker one dot, one ownership scope, and a disjoint file set.
 2. If a worker will edit files, create it from the verified integration base:
    `jj workspace add .jj-ws/<dot-id> --name <name> -r <verified-base>`. Verify
-   `@- == <verified-base>`, `jj workspace list`, and clean `jj st`.
+   `@- == <verified-base>` with `jj -R .jj-ws/<dot-id> log -r '@-'`, plus
+   `jj workspace list` and clean `jj -R .jj-ws/<dot-id> st`.
 3. Record `Claim: agent=<name> workspace=.jj-ws/<dot-id>` in the exact leaf,
    run `dot on <exact-id>`, verify the claim and `Status: active`, then commit it
-   on a feature change and run claim gates. Fetch/rebase, fast-forward green
-   `master`, and push with `jj git push --bookmark master --remote origin`.
+   on a feature change and fetch/rebase. On the exact rebased tree run
+   `maki/test.f`, ptx-stdlib plus touched native slices, `host-lint`,
+   `filemap-lint`, and `dot-dep-lint`; then fast-forward `master` and push with
+   `jj git push --bookmark master --remote origin`.
    A competing claim aborts dispatch; preserve its owner and release the losing
-   local claim. Immediately before spawning, rerun only `dot show`; spawn only
-   while the same pushed agent/workspace is active and `jj st` is clean. Do not
-   rerun `dot on` on an active dot because it rewrites metadata. Never claim a
-   parent epic, queued dot, or read-only scout.
+   local claim. Verify the remote claim with
+   `jj file show -r master@origin <dot-file>`. Immediately before spawning,
+   rerun only `dot show`; spawn only while the same pushed agent/workspace is
+   active and `jj st` is clean. Do not rerun `dot on` on an active dot because
+   it rewrites metadata. Never claim a parent epic, queued dot, or read-only scout.
 4. The worker commits its own completed work with `jj commit -m "<short title>"`
    and reports changed files, tests run, and unresolved risks.
 5. The main workspace may continue only on non-overlapping files while workers
@@ -57,6 +61,8 @@ gate.
 6. Keep each dot active through fresh destruction review, integration, and the
    owning gates. Only then close it with
    `dot off <id> -r "implemented, reviewed, merged, gates green: <summary>"`.
+   Commit and push the closure, fetch, and verify the remote has no active/open
+   copy.
 7. Clean up extra workspaces and temporary logs.
 
 ## Conflict Rules

@@ -3616,4 +3616,6 @@ unchanged (148855). Keys for milestone 2:
   surface before its layer is ready.
 - **`dot on` is a transition, not an active-status probe.** Running it again on
   an active dot rewrites quoted metadata. Activate once, publish the claim, then
-  use `dot show` for the final pre-spawn owner/status verification.
+  inspect the fetched remote dot file and use local `dot show` for the final
+  pre-spawn owner/status verification. A local clean status does not prove the
+  coordination bookmark contains the claim.
