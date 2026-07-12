@@ -1,9 +1,10 @@
 ---
 title: "V2 R3: declare CAD nominal kinds"
-status: active
+status: closed
 priority: 1
 issue-type: task
 created-at: "2026-07-12T07:09:02.620171+02:00"
+closed-at: "2026-07-12T07:21:07.726262+02:00"
 blocks:
   - habu-v2-types-design-70831db1
 ---
