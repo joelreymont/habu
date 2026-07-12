@@ -27,6 +27,8 @@
 \ PFX-LOAD-SCRIPT-ARGV. The order MUST match src/habu/habu2.f; the cross-check
 \ test (test/boot-pin-test.f) enforces the path list against that source.
 
+require lib/memory.f
+
 32 constant BP-LEN                  \ SHA-256 digest bytes
 64 constant BP-HEX-LEN              \ SHA-256 hex digest chars
 $400 constant BP-MAN-INIT            \ initial manifest bytes; grows with prefix rows
@@ -51,12 +53,19 @@ variable BP-SET
 
 : BP-MANIFEST ( -- ptr a ) BP-MAN-P @ ;
 
+\ Geometric grow via the public checked allocator (lib/memory.f): alloc the new
+\ extent, copy the live bytes, repoint. The superseded mapping is process-local
+\ and leaks like an arena grain; growth is geometric, the tool short-lived.
+\ (ARENA-BYTES-GROW is checker-internal scratch machinery, outside the published
+\ checked surface — a tool must not allocate in the checker's arenas.)
 : BP-MAN-ENSURE ( n -- ) {: need:n :}
    need BP-MAN-CAP @ <= if exit then
    need 0 <= if s" boot-pin: manifest capacity overflow" BP-DRIFT-RC die then
    BP-MAN-CAP @ $3FFFFFFFFFFFFFFF <= if BP-MAN-CAP @ 2 * need max else need then
    {: cap:n :}
-   BP-MAN-P @ BP-MAN-CAP @ cap ARENA-BYTES-GROW BP-MAN-P !
+   cap MEM-ALLOC-PTR {: nb:ptr :}
+   BP-MANIFEST nb BP-MAN-CAP @ BYTE-COPY
+   nb BP-MAN-P !
    cap BP-MAN-CAP ! ;
 
 : BP-TRUE ( -- bool )  0 0= ;

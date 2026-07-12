@@ -33,7 +33,6 @@ require tools/boot-pin.f
                                     \ +lower-cert-base.f +lower-cert-seal.f (wide-ADT stack +
                                     \ LAYOUT-BUFFER + verified-lowering seals, tfam lane
                                     \ 2026-07-12; growth surfaced to the user at merge).
->>>>>>> conflict 1 of 1 ends
 
 create BPT-D1   80 allot            \ pristine digest hex
 create BPT-HEX  80 allot            \ scratch digest hex
