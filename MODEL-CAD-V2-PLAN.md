@@ -487,7 +487,62 @@ Acceptance:
 - analysis-only contexts cannot publish persistent artifacts;
 - cache keys include every capability-controlled semantic input.
 
-### R9. Type-System Dependency Order
+### R9. Generated Machine-State Integrity
+
+The checked host word that emits an instruction and the generated instruction
+operate on different machines. A correct Forth stack effect proves only the
+emitter's data stack; it does not prove the generated GPR, SIMD, NZCV, SP,
+frame-slot, label, fixup, call, or return state. Generated code therefore needs
+its own typed instruction and routine-effect layer.
+
+Required forms:
+
+- package-scoped instruction operands indexed by register class, address
+  space, bounded immediate, frame slot, label, fixup kind, and control effect;
+- one inferred or declared routine contract for every callable emitted label,
+  including live-ins, reads, writes, returns, preserves, flags, SP delta and
+  alignment, no-return paths, syscalls, direct calls, and indirect calls;
+- path-sensitive liveness and frame verification over the actual emitted CFG
+  and resolved fixups, not a linear source-token approximation;
+- linear region ownership and phase capabilities for scratch buffers, capture
+  artifacts, frame storage, and one-shot hooks;
+- an independently checkable allocation certificate bound to the exact IR,
+  target, CFG, machine code, frame, and verifier version.
+
+Why required:
+
+Register clobbers, branch-only restores, frame overlap, scratch-buffer aliasing,
+and same-cell operand swaps can all preserve the host stack effect. Handwritten
+name-to-mask tables detect only enumerated cases and drift when emitter syntax
+or call graphs change. These failures must reject before generated code or an
+artifact can be promoted.
+
+Acceptance:
+
+- missing or contradictory callable contracts reject;
+- wrong register class, fixup kind, frame slot, or control effect rejects;
+- live-in through call to later read, one-branch restore, loop-carried clobber,
+  unsaved LR, SP imbalance/misalignment, callee-save destruction, NZCV loss,
+  SIMD clobber, and untyped indirect calls reject on the emitted CFG;
+- nested scratch reuse, escaped borrows, overlapping fixed DATA ranges, and
+  out-of-order capture phases reject;
+- bounded differential execution agrees with every machine-effect row;
+- allocation certificates reject any code, CFG, assignment, spill, frame,
+  call-effect, or content-hash mutation.
+
+Tracked slices:
+
+- `habu-define-typed-arm64-4ab8894f`;
+- `habu-idx-arm64-operands-98280863`;
+- `habu-verify-emitted-arm64-efd5eb61`;
+- `habu-add-bounded-host-b40b048f`;
+- `habu-add-lexical-mutable-725b49eb`;
+- `habu-derive-fixed-data-853cb615`;
+- `habu-add-linear-capture-172b29da`;
+- `habu-differentially-test-arm64-7b6e4269`;
+- `habu-emit-proof-carrying-058f43b6`.
+
+### R10. Type-System Dependency Order
 
 ~~~text
 R1  wide layout storage and typed arrays
@@ -498,10 +553,13 @@ R5  existential packaging and runtime refinement
 R6  region owner/reference capabilities
 R7  typestate and artifact-indexed evidence
 R8  explicit CAD effect capabilities
+R9  generated instruction, machine-state, and resource effects
 ~~~
 
 R1-R3 unblock the design database. R4-R5 unblock a genuinely typed Model/Tensor
 IR. R6-R8 unblock safe transactions, transformation, caching, and promotion.
+R6 and the audited primitive-effect table unblock R9; R9 makes native and
+device code generation independently verifiable.
 
 Do not implement the V2 database using parallel untyped columns while waiting
 for R1-R3. That would make the migration itself architectural debt.
@@ -1348,17 +1406,23 @@ Exit:
 Deliver:
 
 - Kernel IR;
+- indexed machine operands and control effects;
+- callable routine-effect contracts;
+- emitted-CFG liveness and frame verification;
 - plan-to-kernel lowering;
 - kernel verifier;
 - PTX IR/module;
 - renderer/assembler bridge;
 - provenance maps;
+- proof-carrying register-allocation evidence;
 - migration of elementwise, reduction, movement, GEMM, and backward paths.
 
 Exit:
 
 - host/device goldens pass;
 - plan/code divergence rejects before ptxas;
+- generated register, flag, stack, frame, call, and fixup violations reject
+  before artifact publication;
 - equal keys produce equal artifacts;
 - raw text emitters no longer own compiler semantics.
 
@@ -1412,6 +1476,13 @@ v2-type-existentials
 v2-type-region-owner
 v2-type-typestate
 v2-type-effects
+v2-type-machine-effects
+v2-type-machine-operands
+v2-verify-emitted-cfg
+v2-type-scratch-regions
+v2-data-layout-proof
+v2-machine-effect-differential
+v2-register-allocation-certificate
 v2-db-object-envelope
 v2-db-memory-store
 v2-db-persistent-store
@@ -2202,3 +2273,6 @@ blocks; device-required policies cannot be satisfied off-device.
     deployed canary without unstructured human intervention.
 26. Autonomous-navigation deployment remains gated on simulator,
     hardware-in-the-loop, timing, uncertainty, and safety-envelope evidence.
+27. Every emitted callable, CFG edge, machine operand, register/flag/frame
+    effect, scratch region, and allocation is typed or independently certified;
+    generated-state clobbers reject before artifact publication.

@@ -3838,3 +3838,9 @@ unchanged (148855). Keys for milestone 2:
   float grammar was digit-leading-only; the engine always claimed dot-leading)
   - recording "context: colon body" instead of "layer: checker grammar" kept
   the false mystery alive across three campaigns.
+- **Host stack effects do not certify generated machine state.** An emitter can
+  be perfectly stack-correct while its output clobbers a live register, flags,
+  frame slot, SP, or a caller-owned buffer. Give emitted operands and callable
+  routines first-class effects, then verify liveness and frame invariants over
+  the resolved CFG; handwritten name-to-mask tables remain only transitional
+  diagnostics.
