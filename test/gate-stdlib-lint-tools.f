@@ -53,6 +53,10 @@
    s" maki-dep-lint" [: MAKI-DEP-LINT ;] GSI-RUN
    s" tools/maki-dep-lint-test.f" GSI-INCLUDE ;
 
+: GSI-LINT-TOOLS-REFINE ( -- )
+   s" refine-lint" [: REFINE-LINT ;] GSI-RUN
+   s" tools/refine-lint-test.f" GSI-INCLUDE ;
+
 : GSI-LINT-TOOLS-HOST ( -- )
    s" tools/host-lint-test.f" GSI-INCLUDE ;
 
@@ -69,6 +73,7 @@
    s" lint-tools/status" GSI-FORK-TIMEOUT-MS [: GSI-LINT-TOOLS-STATUS ;] GT-POOL-START-FORK
    s" lint-tools/dot" GSI-FORK-TIMEOUT-MS [: GSI-LINT-TOOLS-DOT ;] GT-POOL-START-FORK
    s" lint-tools/maki" GSI-FORK-TIMEOUT-MS [: GSI-LINT-TOOLS-MAKI ;] GT-POOL-START-FORK
+   s" lint-tools/refine" GSI-FORK-TIMEOUT-MS [: GSI-LINT-TOOLS-REFINE ;] GT-POOL-START-FORK
    s" lint-tools/host" GSI-FORK-TIMEOUT-MS [: GSI-LINT-TOOLS-HOST ;] GT-POOL-START-FORK
    s" lint-tools/trusted-inventory" GSI-FORK-TIMEOUT-MS [: GSI-LINT-TOOLS-TRUSTED-INVENTORY ;] GT-POOL-START-FORK
    s" lint-tools/bootstrap-mirror" GSI-FORK-TIMEOUT-MS [: GSI-LINT-TOOLS-BOOTSTRAP-MIRROR ;] GT-POOL-START-FORK

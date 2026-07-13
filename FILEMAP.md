@@ -677,6 +677,9 @@ points stay listed.
 - `tools/trust-lint-test.f` — checked fixture coverage for `TRUSTED.md` drift lint.
 - `tools/trusted-inventory.f` — TRUSTED ratchet: lexer-backed TSV inventory of `TRUSTED:`/`TRUST`/`0 set-check` sites plus baseline compare against `TRUSTED.md`.
 - `tools/trusted-inventory-test.f` — checked fixture coverage for the trusted-inventory ratchet.
+- `tools/refine-lint-core.f` — inventory-driven confinement lint for TRUSTED refinement mints (rows shaped `n -- <nominal family>`): references outside the owning file are findings unless cited by the row's Tests cell or an explicit allowlist; a seed list cross-checked against `TRUSTED.md` plus a mint-shape scan keeps the set from rotting. Interim until the TVK-RAW checker capability lands.
+- `tools/refine-lint.f` — CLI wrapper for the refinement-mint confinement lint.
+- `tools/refine-lint-test.f` — checked fixture coverage: shape/policy fixtures, a red scratch-file mint call outside the tree, and the green live tree run.
 - `tools/host-lint-test.f` — focused coverage for host-script lint policy helpers.
 - `tools/stale-status-lint-core.f` — reusable stale status/count lint core.
 - `tools/stale-status-lint.f` — CLI wrapper for stale status/count lint.

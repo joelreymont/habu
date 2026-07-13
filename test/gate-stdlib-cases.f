@@ -62,6 +62,14 @@ TEST:SUITE maki-dep-lint-fixtures
    tools/maki-dep-lint-test.f
 TEST:;SUITE
 
+TEST:SUITE refine-lint
+   tools/refine-lint.f
+TEST:;SUITE
+
+TEST:SUITE refine-lint-fixtures
+   tools/refine-lint-test.f
+TEST:;SUITE
+
 TEST:SUITE namespace-lint
    tools/namespace-lint.f
 TEST:;SUITE

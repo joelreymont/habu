@@ -363,6 +363,7 @@ variable GSI-TL-FILE-A
    s" tools/stale-status-lint-core.f" GSI-REQUIRE
    s" tools/dot-dep-lint-core.f" GSI-REQUIRE
    s" tools/maki-dep-lint-core.f" GSI-REQUIRE
+   s" tools/refine-lint-core.f" GSI-REQUIRE
    GSI-TEST! ;
 
 : GSI-LINT-TOOLS ( -- )
