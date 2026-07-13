@@ -198,3 +198,9 @@
 -4299 constant E-SUITE-LAST
 -4200 constant E-SUITE-MODE   \ GROUP mode token missing or not SEQ/PARA
 -4201 constant E-SUITE-NAME   \ GROUP name missing or a reserved DSL keyword
+
+\ Evaluation grader: -4300..-4399
+-4300 constant E-EVAL-FIRST
+-4399 constant E-EVAL-LAST
+-4300 constant E-EVAL-EMIT    \ candidate emit infrastructure failed
+-4301 constant E-EVAL-VOCAB   \ judge image lacks a task-required word

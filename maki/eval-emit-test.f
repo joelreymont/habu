@@ -24,6 +24,41 @@ require maki/eval-emit.f
 
 T-RESET
 
+package EVAL
+
+: TEST-MISSING-DRIVER$ ( -- ptr u8 n )
+   s" maki/no-such-eval-driver.f" ;
+
+: TEST-EMPTY-DRIVER$ ( -- ptr u8 n )
+   s" /dev/null" ;
+
+: TEST-GEMM ( -- )
+   s" K ( matrix<space-global,f32,extent-m,extent-k> matrix<space-global,f32,extent-k,extent-n> matrix<space-global,f32,extent-m,extent-n> -- ) MM-BEGIN MM-K-LOOP MM-STORE"
+   GRADE-GEMM drop ;
+
+: TEST-BROKEN-CHILD ( -- )
+   [: TEST-MISSING-DRIVER$ ;] is EE-DRIVER$
+   [: TEST-GEMM ;] catch {: rc:n :}
+   EE-DRIVER-LIVE!
+   rc throw ;
+
+: TEST-ZERO-PTX ( -- )
+   [: TEST-EMPTY-DRIVER$ ;] is EE-DRIVER$
+   [: TEST-GEMM ;] catch {: rc:n :}
+   EE-DRIVER-LIVE!
+   rc throw ;
+
+: TEST-CLEAN? ( -- bool )
+   MAKI-GRADE:DRIVER$ FILE? 0= ;
+
+' TEST-BROKEN-CHILD E-EVAL-EMIT TTHROWS
+TEST-CLEAN? TTRUE
+EE-ERR$ s" cannot open" CONTAINS? TTRUE
+' TEST-ZERO-PTX E-EVAL-EMIT TTHROWS
+TEST-CLEAN? TTRUE
+
+;package
+
 \ ---- sumnorm: out[r] = in[r] / sum(in[r]) ------------------------------------
 s" sumnorm green" T-LABEL
    s" K ( matrix<space-global,f32,extent-r,extent-c> matrix<space-global,f32,extent-r,extent-c> -- ) {: in out :} ROW {: r :} in r ROW-SPAN {: xs :} xs ROW-CTX {: c :} xs c ROW-LOAD {: x :} x BLOCK-SUM {: s :} x s PTX:B/ out r ROW-SPAN c ROW-STORE"

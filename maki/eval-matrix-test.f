@@ -8,7 +8,74 @@
 \ class (duplicate row, bad index, bad value).
 
 require lib/ptx/test-prelude.f
-require maki/eval-matrix.f
+require maki/eval-matrix-main.f
+
+T-RESET
+
+package EVAL
+
+: TEST-MISS-GEMM? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   a u s" MM-K-LOOP" STR= if 0 0= 0= exit then
+   0 0= ;
+
+: TEST-MISS-ATTN? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   a u s" ATTN:SCORE" STR= if 0 0= 0= exit then
+   0 0= ;
+
+: TEST-MISSING-GEMM ( -- )
+   [: TEST-MISS-GEMM? ;] is VOCAB-WORD?
+   [: EM-VOCAB-CHECK ;] catch {: rc:n :}
+   VOCAB-LIVE!
+   rc throw ;
+
+: TEST-MISSING-ATTN ( -- )
+   [: TEST-MISS-ATTN? ;] is VOCAB-WORD?
+   [: EM-VOCAB-CHECK ;] catch {: rc:n :}
+   VOCAB-LIVE!
+   rc throw ;
+
+: TEST-UNKNOWN-TASK ( -- )
+   TS-RESET
+   s" habu-eval-transcript v1" TS-LINE
+   s" target habu-ptx" TS-LINE
+   s" task future-kernel" TS-LINE
+   TS-END
+   VOCAB-TASKS-CHECK ;
+
+' TEST-MISSING-GEMM E-EVAL-VOCAB TTHROWS
+' TEST-MISSING-ATTN E-EVAL-VOCAB TTHROWS
+' TEST-UNKNOWN-TASK E-EVAL-VOCAB TTHROWS
+
+;package
+
+EVAL:EM-VOCAB-CHECK
+
+package EVAL
+
+\ Restore the unloaded entry-module state for the following resident-suite row.
+private
+undefine VOCAB-STDERR-FD
+undefine VOCAB-WORD?
+undefine VOCAB-LIVE?
+undefine VOCAB-LIVE!
+undefine VOCAB-FAIL
+undefine VOCAB-MISSING-WORD
+undefine VOCAB-NEED
+undefine VOCAB-SAXPY
+undefine VOCAB-COLLECTIVE
+undefine VOCAB-FUSED-RELU
+undefine VOCAB-GEMM
+undefine VOCAB-ATTN
+undefine VOCAB-TASK?
+undefine VOCAB-MISSING-TASK
+undefine VOCAB-TASKS-CHECK
+undefine EM-REPLAY
+undefine EM-FIXTURES
+public
+undefine EM-VOCAB-CHECK
+undefine EM-MAIN
+
+;package
 
 package MAKI
 
@@ -35,8 +102,6 @@ variable MXVA  variable MXVU
 : MXT-BAD-DEV ( -- )  MXT-LOAD 0 9 EVAL:MATRIX-DEVICE! ;
 
 : EVAL-MATRIX-MAIN ( -- )
-   T-RESET
-
    \ --- rows assembled from both fixture arms ---
    MXT-LOAD
    EVAL:MATRIX-ROWS@ 4 T=

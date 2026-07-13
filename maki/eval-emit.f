@@ -8,7 +8,7 @@
 \ absent). The device-golden leg for these tasks is recorded as a SKIP by the
 \ suites (device-FFI SKIP pattern, maki/device-smoke.f). Verdicts mirror
 \ GRADE-CANDIDATE: 2 GREEN (certifies + emit + structure), 1 TYPED-WRONG
-\ (certifies but the emit or a structural gate fails - e.g. sum-normalize
+\ (certifies but a structural gate fails - e.g. sum-normalize
 \ written with BLOCK-MAX, or a GEMM that skips the K-loop), 0 REJECTED.
 \
 \ Tasks and their structural gates (pinned from the committed emitters):
@@ -29,8 +29,9 @@
 \
 \ Like the device graders, the candidate is compiled and emitted by a spawned
 \ bin/hb child, never in-process: untrusted generated source must not mutate
-\ this grader's dictionary, and a crashing candidate is a graded failure, not
-\ a grader casualty. Load after maki/eval.f; this file owns its process setup.
+\ this grader's dictionary. A failed emit child aborts grading with
+\ E-EVAL-EMIT; infrastructure failure is never a candidate verdict. Load after
+\ maki/eval.f; this file owns its process setup.
 
 require lib/errors.f
 require lib/string.f
@@ -58,17 +59,34 @@ package EVAL
 private
 
 $10000 constant EE-OUT-CAP
-create EE-OUT EE-OUT-CAP allot  create EE-ERR $1000 allot
+$1000 constant EE-ERR-CAP
+20000 constant EE-TIMEOUT-MS
+2 constant EE-STDERR-FD
+create EE-OUT EE-OUT-CAP allot
+create EE-ERR EE-ERR-CAP allot
 variable EE-OUT-U
+variable EE-ERR-U
+PTR-VARIABLE EE-CAND-A
+variable EE-CAND-U
+variable EE-GRADE
 
-\ ---- driver: %BLOCK line + candidate K + one scaffold line + bye ----
+defer EE-DRIVER$ ( -- ptr u8 n )
+
+: EE-DRIVER-LIVE$ ( -- ptr u8 n )
+   MAKI-GRADE:DRIVER$ ;
+
+: EE-DRIVER-LIVE! ( -- )
+   [: EE-DRIVER-LIVE$ ;] is EE-DRIVER$ ;
+
+EE-DRIVER-LIVE!
+
+\ ---- driver: %BLOCK line + candidate K + one scaffold line ----
 : EE-WRITE-DRIVER ( ptr u8 n ptr u8 n ptr u8 n -- )
    {: ba:ptr bu:n ca:ptr cu:n sa:ptr su:n :}
    SB-RESET
-   ba bu SB-APPEND  10 SB-APPEND-C
-   s" : " SB-APPEND  ca cu SB-APPEND  s"  ;" SB-APPEND  10 SB-APPEND-C
-   sa su SB-APPEND  10 SB-APPEND-C
-   s" bye" SB-APPEND  10 SB-APPEND-C
+   ba bu SB-APPEND  STR-LF SB-APPEND-C
+   s" : " SB-APPEND  ca cu SB-APPEND  s"  ;" SB-APPEND  STR-LF SB-APPEND-C
+   sa su SB-APPEND  STR-LF SB-APPEND-C
    MAKI-GRADE:DRIVER$ SB$ WRITE-ALL ;
 
 \ ---- spawn bin/hb over the shared PTX layers + task layers + the driver ----
@@ -80,16 +98,32 @@ variable EE-OUT-U
    s" src/arch/ptx/emit.f"  >LEN PROC-ARGV+  s" lib/ptx/cg.f" >LEN PROC-ARGV+
    s" lib/ptx/header.f"     >LEN PROC-ARGV+ ;
 
-\ the emit child exits via the driver's `bye` (FFI-file convention, nonzero);
+: EE-ERR-WRITE ( n -- ) {: u:n :}
+   u 0= if exit then
+   EE-STDERR-FD EE-ERR u write u <> if E-EVAL-EMIT throw then ;
+
+: EE-EMIT-FAIL ( n -- )
+   EE-ERR-WRITE
+   E-EVAL-EMIT throw ;
+
 \ the signal is the captured PTX on stdout, exactly as in maki/eval-device.f
 : EE-EMIT ( -- n )
-   MAKI-GRADE:DRIVER$      >LEN PROC-ARGV+
-   s" bin/hb" >LEN  EE-OUT EE-OUT-CAP >LEN  EE-ERR $1000 >LEN  20000 >MS  RUN-ARGV-CAPTURE
+   0 EE-OUT-U !
+   0 EE-ERR-U !
+   EE-DRIVER$              >LEN PROC-ARGV+
+   s" bin/hb" >LEN
+   EE-OUT EE-OUT-CAP >LEN
+   EE-ERR EE-ERR-CAP >LEN
+   EE-TIMEOUT-MS >MS RUN-ARGV-CAPTURE
    {: outu:len erru:len rc:rc :}
+   erru LEN>N EE-ERR-U !
+   rc RC>N 0 <> outu LEN>N 0= or if erru LEN>N EE-EMIT-FAIL then
    outu LEN>N EE-OUT-U !
    MAKI-GRADE:PTX$ EE-OUT outu LEN>N WRITE-ALL  outu LEN>N ;
 
 : EE-PTX$ ( -- ptr u8 n )  EE-OUT EE-OUT-U @ ;
+
+: EE-ERR$ ( -- ptr u8 n )  EE-ERR EE-ERR-U @ ;
 
 : EE-HAS? ( ptr u8 n -- bool ) {: a:ptr u:n :}
    EE-PTX$ a u CONTAINS? ;
@@ -121,10 +155,24 @@ variable EE-OUT-U
 : EE-VERDICT ( bool -- n )
    if 2 else 1 then ;
 
-public
+: EE-CLEAN-ACT ( -- )
+   MAKI-GRADE:CLEAN ;
 
-: GRADE-SUMNORM ( ptr u8 n -- n ) {: a:ptr u:n :}
-   a u CHECK-PASSES? 0= if 0 exit then
+: EE-CLEAN-THROW ( n -- )
+   {: rc:n :}
+   [: EE-CLEAN-ACT ;] catch {: cleanrc:n :}
+   \ Cleanup cannot propagate a second throw; preserve the primary grader error.
+   rc 0 <> if rc throw then
+   cleanrc 0 <> if cleanrc throw then ;
+
+: EE-CAND! ( ptr u8 n -- )
+   EE-CAND-U !
+   EE-CAND-A ! ;
+
+: EE-CAND$ ( -- ptr u8 n )
+   EE-CAND-A @ EE-CAND-U @ ;
+
+: EE-SUMNORM ( ptr u8 n -- n ) {: a:ptr u:n :}
    s" habu-grade-sumnorm" MAKI-GRADE:PREPARE
    s" 256 %BLOCK"  a u
    s" CG-SM-RESET CG-HEADER CG-SM-ENTRY CG-SM-OPEN CG-SM-PARAMS 1 MATRIX-REG 2 MATRIX-REG K CG-SM-RET CG-SM-CLOSE"
@@ -132,32 +180,56 @@ public
    EE-ARGV-COMMON
    s" lib/ptx/cg-collective.f" >LEN PROC-ARGV+
    s" lib/ptx/collective.f"    >LEN PROC-ARGV+
-   EE-EMIT 0 = if MAKI-GRADE:CLEAN 1 exit then
-   SUMNORM-STRUCT? EE-VERDICT {: v:n :}
-   MAKI-GRADE:CLEAN v ;
+   EE-EMIT drop
+   SUMNORM-STRUCT? EE-VERDICT ;
 
-: GRADE-GEMM ( ptr u8 n -- n ) {: a:ptr u:n :}
-   a u CHECK-PASSES? 0= if 0 exit then
+: EE-GEMM ( ptr u8 n -- n ) {: a:ptr u:n :}
    s" habu-grade-gemm" MAKI-GRADE:PREPARE
    s" 256 %BLOCK"  a u
    s" MM-AUTHOR-OPEN K MM-AUTHOR-CLOSE"
    EE-WRITE-DRIVER
    EE-ARGV-COMMON
    s" lib/ptx/cg-matmul.f" >LEN PROC-ARGV+
-   EE-EMIT 0 = if MAKI-GRADE:CLEAN 1 exit then
-   GEMM-STRUCT? EE-VERDICT {: v:n :}
-   MAKI-GRADE:CLEAN v ;
+   EE-EMIT drop
+   GEMM-STRUCT? EE-VERDICT ;
 
-: GRADE-ATTN ( ptr u8 n -- n ) {: a:ptr u:n :}
-   a u CHECK-PASSES? 0= if 0 exit then
+: EE-ATTN ( ptr u8 n -- n ) {: a:ptr u:n :}
    s" habu-grade-attn" MAKI-GRADE:PREPARE
    s" 128 %BLOCK"  a u
    s" ATTN:AUTHOR-OPEN K ATTN:AUTHOR-CLOSE"
    EE-WRITE-DRIVER
    EE-ARGV-COMMON
    s" lib/ptx/cg-attention.f" >LEN PROC-ARGV+
-   EE-EMIT 0 = if MAKI-GRADE:CLEAN 1 exit then
-   ATTN-STRUCT? EE-VERDICT {: v:n :}
-   MAKI-GRADE:CLEAN v ;
+   EE-EMIT drop
+   ATTN-STRUCT? EE-VERDICT ;
+
+: EE-SUMNORM-ACT ( -- )
+   EE-CAND$ EE-SUMNORM EE-GRADE ! ;
+
+: EE-GEMM-ACT ( -- )
+   EE-CAND$ EE-GEMM EE-GRADE ! ;
+
+: EE-ATTN-ACT ( -- )
+   EE-CAND$ EE-ATTN EE-GRADE ! ;
+
+public
+
+: GRADE-SUMNORM ( ptr u8 n -- n ) {: a:ptr u:n :}
+   a u CHECK-PASSES? 0= if 0 exit then
+   a u EE-CAND!
+   [: EE-SUMNORM-ACT ;] catch EE-CLEAN-THROW
+   EE-GRADE @ ;
+
+: GRADE-GEMM ( ptr u8 n -- n ) {: a:ptr u:n :}
+   a u CHECK-PASSES? 0= if 0 exit then
+   a u EE-CAND!
+   [: EE-GEMM-ACT ;] catch EE-CLEAN-THROW
+   EE-GRADE @ ;
+
+: GRADE-ATTN ( ptr u8 n -- n ) {: a:ptr u:n :}
+   a u CHECK-PASSES? 0= if 0 exit then
+   a u EE-CAND!
+   [: EE-ATTN-ACT ;] catch EE-CLEAN-THROW
+   EE-GRADE @ ;
 
 ;package
