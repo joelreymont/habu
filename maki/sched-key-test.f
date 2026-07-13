@@ -1,7 +1,8 @@
 \ maki/sched-key-test.f - checked tests for the cad-4 schedule keys + replay table.
 \ Shape-class bucketing, the FNV-1a region signature (determinism + sensitivity), the
 \ full section 7.4 key string, the alignment-class field, and the cad-5 replay-table
-\ seam (miss -> defaults, hit roundtrip, update-in-place, fail-closed overflow/region).
+\ seam (miss -> defaults, hit roundtrip, update-in-place, entry/arena growth past the
+\ boot capacities, fail-closed region/align throws).
 
 require lib/test.f
 require lib/string.f
@@ -185,13 +186,28 @@ SK-TAB-COUNT 1 T=
 SK-TAB-COUNT 1 T=
 0 FP-REGION-ID TARGET:SM87 SK-KEY$ SK-GET drop 9 T=
 
+\ ---- growth: no capacity wall on entries or interned key bytes ---------------
+\ 64 distinct ~131-byte keys exceed BOTH boot capacities (32 entries, $2000
+\ arena bytes), so the entry vectors double and the key arena reallocates;
+\ every selection - first, boundary, last - must survive the relocations.
+: KT-PAD ( -- )  128 0 ?do $78 SB-APPEND-C loop ;           \ 128 x'es pad the key
+: KT-GROW-KEY$ ( n -- ptr u8 n ) {: k:n :}  SB-RESET KT-PAD k SB-INT SB$ ;
+: KT-GROW-PUT ( n -- ) {: k:n :}  k KT-GROW-KEY$ k SK-PUT ;
+: KT-GROW-FILL ( -- )  SK-TAB-RESET 64 0 ?do i KT-GROW-PUT loop ;
+: KT-GROW-GET ( n -- n bool )  KT-GROW-KEY$ SK-GET ;
+KT-GROW-FILL
+SK-TAB-COUNT 64 T=
+0  KT-GROW-GET TTRUE 0  T=                                  \ first key survives growth
+32 KT-GROW-GET TTRUE 32 T=                                  \ old-cap boundary key
+63 KT-GROW-GET TTRUE 63 T=                                  \ last key (post-growth)
+33 KT-GROW-KEY$ 99 SK-PUT                                    \ update-in-place in the grown table
+33 KT-GROW-GET TTRUE 99 T=
+SK-TAB-COUNT 64 T=
+
 \ ---- fail-closed throws -----------------------------------------------------
-: PUTN ( n -- ) {: n:n :}  SB-RESET s" k" SB-APPEND n SB-INT SB$ n SK-PUT ;
-: TRY-FULL   ( -- )  SK-TAB-RESET 33 0 ?do i PUTN loop ;   \ 33 > SK-TAB-CAP (32)
 : TRY-REGION ( -- )  99 FP-REGION-ID TARGET:SM87 SK-KEY$ 2drop ;   \ region 99 rejects at the id refinement
 : TRY-ALIGN  ( -- )  AL-N AL-KEY 2drop ;                    \ AL-N is out of the AL-* domain
 : TRY->ALIGN ( -- )  AL-N >ALIGN drop ;                     \ the n->align lift is fail-closed too
-' TRY-FULL   E-SK-FULL   TTHROWS
 ' TRY-REGION E-FP-IDX    TTHROWS
 ' TRY-ALIGN  E-SK-ALIGN  TTHROWS
 ' TRY->ALIGN E-TV-ALIGN  TTHROWS

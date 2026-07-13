@@ -9,10 +9,21 @@
 \ stays a cheap lookup) and schedules.rows (so a fresh process can rehydrate). Memory
 \ first - the hot table must succeed; the durable append is best-effort and its IO
 \ errors propagate (never swallowed). STORE-REPLAY-LOAD replays schedules.rows back
-\ into the table in file order, so the LATEST row for a key wins (append-only), and it
-\ is capacity-guarded: SK-PUT throws E-SK-FULL past SK-TAB-CAP. LOAD merges (update in
-\ place per key) rather than resetting - the caller SK-TAB-RESETs first for a clean
+\ into the table in file order, so the LATEST row for a key wins (append-only); the
+\ table GROWS on demand (maki/sched-key.f), so a store with any legal number of
+\ distinct keys rehydrates without a capacity wall. LOAD merges (update in place per
+\ key) rather than resetting - the caller SK-TAB-RESETs first for a clean
 \ durable->memory rebuild.
+\
+\ schedules.rows stays APPEND-ONLY, uncompacted (dot habu-maki-sk-table-59bb1d4d
+\ considered compact-on-load). Append is the one crash-safe file mutation available
+\ (lib/fs-mutate has no atomic replace; a compactor that truncates+rewrites on load
+\ could tear the store under a crash or a concurrent process), latest-wins on load
+\ already gives correct semantics over superseded rows, and the file is loudly
+\ capped (E-STORE-FULL at maki/store.f STORE-READ-CAP) rather than silently
+\ unbounded. Real compaction belongs to the V2 design database's atomic
+\ content-addressed store (MODEL-CAD-V2-PLAN.md section 9.5), which replaces this
+\ file wholesale.
 \
 \ Session latch (REPLAY-READY? / REPLAY-ENSURE): production callers never load the
 \ file explicitly - they call REPLAY-ENSURE, which MERGES schedules.rows into the
@@ -65,7 +76,7 @@ public
 : REPLAY-RESET  ( -- )  0 SRP-READY ! ;
 
 \ merge schedules.rows into the live table once per process. The latch is set
-\ BEFORE the load: one attempt per session, so a throwing load (E-SK-FULL, IO)
+\ BEFORE the load: one attempt per session, so a throwing load (IO, E-STORE-*)
 \ surfaces loudly to its first caller instead of re-merging on every lookup.
 \ No SK-TAB-RESET: rows already live in memory keep their entries; a same-key
 \ file row updates in place, which is safe on every production path because

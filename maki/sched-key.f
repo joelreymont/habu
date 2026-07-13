@@ -37,15 +37,17 @@
 \ engine-side, lazy + cached); ptxas version is the honest "unprobed"
 \ placeholder (no ptxas is probed on a host without a device).
 \
-\ Replay: a bounded in-memory key->selection table with GET/PUT. This is the cad-5
+\ Replay: a growable in-memory key->selection table with GET/PUT. This is the cad-5
 \ store SEAM - a query that misses returns (-1 false) so the caller falls back to the
 \ closed-form defaults ("unmeasured shape class -> using defaults"), since cad-4 has no
 \ measurements (those land in cad-5/cad-6).
 \
-\ Fail closed: an out-of-range region id or alignment class and a table/arena overflow
-\ are named throws. maki -> habu only; sched-key owns -5084..-5086.
+\ Fail closed: an out-of-range region id or alignment class are named throws.
+\ maki -> habu only; sched-key owns -5084..-5085.
 
 require lib/prelude.f
+require lib/memory.f
+require lib/vector.f
 require lib/string.f
 require lib/float.f
 require lib/fmt.f
@@ -57,7 +59,6 @@ require maki/target/target.f
 
 -5084 constant E-SK-REGION     \ region id out of range / empty
 -5085 constant E-SK-ALIGN      \ alignment class out of range (AL-* domain)
--5086 constant E-SK-FULL       \ replay table / key arena capacity exceeded
 
 package MAKI
 public
@@ -308,46 +309,92 @@ private
 \ parallel typed columns keyed by MAKI-SKEY:EQ waits on the W>1 typed-column store
 \ (dot habu-checker-capability-typed-a480c423 S2); until then the table stays
 \ text-keyed as the durable store's in-memory mirror.
-32   constant SK-TAB-CAP
-$2000 constant SK-ARENA-CAP        \ 32 full keys at ~170 bytes each (facts-based target field)
-create SK-ARENA SK-ARENA-CAP allot   variable SK-ARENA-U
-create SK-KO  SK-TAB-CAP cells allot     \ per-entry key offset
-create SK-KL  SK-TAB-CAP cells allot     \ per-entry key length
-create SK-SEL SK-TAB-CAP cells allot     \ per-entry selection (candidate index)
-variable SK-TAB-N
+\ GROWTH, NOT EVICTION (dot habu-maki-sk-table-59bb1d4d). This table is the
+\ COMPLETE in-memory mirror of the durable schedules.rows: REPLAY-ENSURE
+\ (maki/store-replay.f) merges the whole file, and SK-GET must replay ANY
+\ stored selection. An eviction policy would silently drop durable selections
+\ (an evicted key's TILE misses -> defaults -> re-certify -> re-PROMOTE appends
+\ a duplicate row), thrashing the append-only store the mirror exists to serve.
+\ So a full table GROWS instead: the entry columns are lib/vector.f cell
+\ vectors (doubling), and the interned key bytes grow by 64K spans
+\ (lib/memory.f, the lib/json-write.f pattern). Both allocate lazily at first
+\ PUT - never at load time, so no mmap pointer can bake into a snapshot. A
+\ fresh session's mirror is bounded by the store read cap (E-STORE-FULL in
+\ maki/store.f); in-session growth is bounded by OS allocation (E-MEM-MAP).
+32    constant SK-TAB-CAP0           \ boot entry capacity (vectors double on demand)
+$2000 constant SK-ARENA-CAP0         \ boot key-arena bytes (~32 facts-based keys)
+
+create SK-KO-VEC  VEC-HEADER-CELLS cells allot   \ per-entry key offset
+create SK-KL-VEC  VEC-HEADER-CELLS cells allot   \ per-entry key length
+create SK-SEL-VEC VEC-HEADER-CELLS cells allot   \ per-entry selection (candidate index)
+variable SK-VECS?                    \ nonzero once the entry vectors are allocated
+variable SK-ARENA-A                  \ interned key bytes (lazy mmap; grows)
+variable SK-ARENA-CAP
+variable SK-ARENA-U
+
+: SK-ARENA-FIELD ( -- ptr ptr u8 )  SK-ARENA-A 0 ptr-field ;
+: SK-ARENA@ ( -- ptr u8 )  SK-ARENA-FIELD @ ;
+
+: SK-TAB-ENSURE ( -- )               \ lazy entry-vector allocation (first PUT)
+   SK-VECS? @ 0<> if exit then
+   SK-KO-VEC  SK-TAB-CAP0 VEC-CAP-COUNT VEC-INIT
+   SK-KL-VEC  SK-TAB-CAP0 VEC-CAP-COUNT VEC-INIT
+   SK-SEL-VEC SK-TAB-CAP0 VEC-CAP-COUNT VEC-INIT
+   -1 SK-VECS? ! ;
+
+: SK-ARENA-COPY-OLD ( ptr u8 -- ) {: dst:ptr :}
+   SK-ARENA-U @ 0 > if SK-ARENA@ dst SK-ARENA-U @ BYTE-COPY then ;
+
+: SK-ARENA-SPAN! ( ptr u8 n -- )  SK-ARENA-CAP !  SK-ARENA-FIELD ! ;
+
+: SK-ARENA-GROW ( n -- )             \ total bytes needed; allocates in 64K spans
+   dup SK-ARENA-CAP0 < if drop SK-ARENA-CAP0 then
+   MEM-ALLOC-64K-SPAN
+   over SK-ARENA-COPY-OLD
+   SK-ARENA-SPAN! ;
+
+: SK-ARENA-ROOM ( n -- ) {: add:n :} \ ensure room for add more interned bytes
+   SK-ARENA-U @ add + SK-ARENA-CAP @ > if SK-ARENA-U @ add + SK-ARENA-GROW then ;
 
 : SK-INTERN ( ptr u8 n -- n n ) {: a:ptr u:n :}
-   SK-ARENA-U @ u + SK-ARENA-CAP > if E-SK-FULL throw then
+   u SK-ARENA-ROOM
    SK-ARENA-U @ {: off:n :}
-   a  SK-ARENA off +  u BYTE-COPY
+   a  SK-ARENA@ off +  u BYTE-COPY
    off u + SK-ARENA-U !
    off u ;
 
+: SK-N ( -- n )                       \ live entry count (0 before first PUT)
+   SK-VECS? @ 0= if 0 exit then
+   SK-KO-VEC VEC-LEN@ LEN>N ;
+
 : SK-ENTRY$ ( n -- ptr u8 n ) {: i:n :}
-   SK-ARENA i cells SK-KO + @ +  i cells SK-KL + @ ;
+   SK-ARENA@ SK-KO-VEC i VEC-IDX VEC-N@ +  SK-KL-VEC i VEC-IDX VEC-N@ ;
 
 : SK-FIND ( ptr u8 n -- n ) {: a:ptr u:n :}      \ key -> entry index or -1
-   SK-TAB-N @ 0 ?do  a u i SK-ENTRY$ STR= if i unloop exit then  loop  -1 ;
+   SK-N 0 ?do  a u i SK-ENTRY$ STR= if i unloop exit then  loop  -1 ;
 
 public
 
-: SK-TAB-RESET ( -- )  0 SK-ARENA-U !  0 SK-TAB-N ! ;
-: SK-TAB-COUNT ( -- n )  SK-TAB-N @ ;
+: SK-TAB-RESET ( -- )                \ empty the table; grown capacity persists
+   0 SK-ARENA-U !
+   SK-VECS? @ 0<> if
+      SK-KO-VEC VEC-CLEAR  SK-KL-VEC VEC-CLEAR  SK-SEL-VEC VEC-CLEAR
+   then ;
+: SK-TAB-COUNT ( -- n )  SK-N ;
 
 : SK-PUT ( ptr u8 n n -- ) {: a:ptr u:n sel:n :}  \ key selection -> store / update
    a u SK-FIND {: e:n :}
-   e 0 < 0= if sel e cells SK-SEL + ! exit then   \ update existing key
-   SK-TAB-N @ SK-TAB-CAP >= if E-SK-FULL throw then
+   e 0 < 0= if sel SK-SEL-VEC e VEC-IDX VEC-N! exit then   \ update existing key
+   SK-TAB-ENSURE
    a u SK-INTERN {: off:n len:n :}
-   off SK-TAB-N @ cells SK-KO  + !
-   len SK-TAB-N @ cells SK-KL  + !
-   sel SK-TAB-N @ cells SK-SEL + !
-   SK-TAB-N @ 1+ SK-TAB-N ! ;
+   off SK-KO-VEC  VEC-PUSH-N drop
+   len SK-KL-VEC  VEC-PUSH-N drop
+   sel SK-SEL-VEC VEC-PUSH-N drop ;
 
 \ cad-5 store seam: a miss returns (-1 false) so the caller uses the defaults.
 : SK-GET ( ptr u8 n -- n bool ) {: a:ptr u:n :}
    a u SK-FIND {: e:n :}
    e 0 < if -1 false exit then
-   e cells SK-SEL + @  true ;
+   SK-SEL-VEC e VEC-IDX VEC-N@  true ;
 
 ;package
