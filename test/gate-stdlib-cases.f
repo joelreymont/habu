@@ -350,6 +350,10 @@ TEST:SUITE codegen-role
    tools/codegen-role-test.f
 TEST:;SUITE
 
+TEST:SUITE icode-capacity
+   test/icode-capacity.f
+TEST:;SUITE
+
 TEST:SUITE tail-pure-fixtures
    lib/json-write-test.f
    lib/json-read-test.f

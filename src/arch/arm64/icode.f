@@ -5,9 +5,10 @@
 $1ff000 constant CODE-CAP-BYTES  \ MPAGE-CODE-OFF: full 2 MB executable window
 CODE-CAP-BYTES 4 / constant CODE-CAP-WORDS  \ derived: guard can never drift from the mmap
 $1002 constant ICODE-MAP-PRIVATE-ANON
-$2000 constant ICODE-TAB-CELLS  \ measured owner AOT emitter: 4104 fixups
-$4 constant ICODE-TAB-COUNT
-ICODE-TAB-CELLS ICODE-TAB-COUNT * cells constant ICODE-TAB-BYTES
+$1000 constant ICODE-LBL-CELLS
+$2000 constant ICODE-FX-CELLS  \ measured owner AOT emitter: 4104 fixups
+$3 constant ICODE-FX-TABS
+ICODE-LBL-CELLS ICODE-FX-CELLS ICODE-FX-TABS * + cells constant ICODE-TAB-BYTES
 variable CODE-A
 variable ICODE-TAB-A
 variable ASM-CP
@@ -38,8 +39,8 @@ s" CODE" s" -- ptr u8" TRUST
    ICODE-TAB-A @ ;
 s" ICODE-TABS" s" -- ptr n" TRUST
 
-: ICODE-TAB ( n -- ptr n )
-   ICODE-TABS swap ICODE-TAB-CELLS * cells + ;
+: ICODE-FX-TAB ( n -- ptr n )
+   ICODE-FX-CELLS * cells ICODE-LBL-CELLS cells + ICODE-TABS + ;
 
 : ARESET ( -- )
    CODE drop
@@ -74,14 +75,14 @@ variable EP
    I-W @ $10 rshift $FF and EP@ 2 CODE-BYTE+ c@ or EP@ 2 CODE-BYTE+ c!
    I-W @ $18 rshift $FF and EP@ 3 CODE-BYTE+ c@ or EP@ 3 CODE-BYTE+ c! ;
 \ labels: LBLP[id] = defining word pos, or -1 if pending.
-ICODE-TAB-CELLS constant LBL-CAP
+ICODE-LBL-CELLS constant LBL-CAP
 \ Keep the historical table names as accessors so emitter code stays readable.
-: LBLP ( -- ptr n ) 0 ICODE-TAB ;
+: LBLP ( -- ptr n ) ICODE-TABS ;
 variable NLBL
 \ fixups: site word-pos, target label, kind (0=B26, 1=cond/CBZ 19-bit, 2=ADR)
-: FXS ( -- ptr n ) 1 ICODE-TAB ;
-: FXL ( -- ptr n ) 2 ICODE-TAB ;
-: FXK ( -- ptr n ) 3 ICODE-TAB ;
+: FXS ( -- ptr n ) 0 ICODE-FX-TAB ;
+: FXL ( -- ptr n ) 1 ICODE-FX-TAB ;
+: FXK ( -- ptr n ) 2 ICODE-FX-TAB ;
 variable NFX
 
 : ASM-INIT ( -- )
@@ -96,7 +97,7 @@ variable NFX
 : ?LBL ( -- )  NLBL @ LBL-CAP 1- > IF s" icode: out of labels" 72 die THEN ;
 
 : FX? ( -- )
-   NFX @ ICODE-TAB-CELLS 1 - > IF
+   NFX @ ICODE-FX-CELLS 1 - > IF
       s" icode: out of fixups" 72 die
    THEN ;
 

@@ -16,7 +16,10 @@ package ICODE-CAPACITY
 
 $1000 constant RETIRED-CAP
 $2000 constant ACTIVE-CAP
-72 constant ICODE-RC
+$1000 constant LABEL-CAP
+$48 constant ICODE-RC
+$7 constant TEST-LABEL
+$2 constant TEST-KIND
 $100 constant CAPTURE-CAP
 60000 constant TIMEOUT-MS
 create OUT CAPTURE-CAP allot
@@ -24,16 +27,23 @@ create ERR CAPTURE-CAP allot
 
 : APPEND-TO ( n -- ) {: cap:n :}
    begin NFX @ cap < while
-      NFX @ 0 >LABEL 0 FX+
+      NFX @ TEST-LABEL >LABEL TEST-KIND FX+
    repeat ;
 
-: ASSERT-LAST ( -- )
-   ACTIVE-CAP 1- cells FXS + @ ACTIVE-CAP 1- T=
-   ACTIVE-CAP 1- cells FXL + @ 0 T=
-   ACTIVE-CAP 1- cells FXK + @ 0 T= ;
+: ASSERT-ROW ( n -- ) {: idx:n :}
+   idx cells FXS + @ idx T=
+   idx cells FXL + @ TEST-LABEL T=
+   idx cells FXK + @ TEST-KIND T= ;
 
 : OVERFLOW ( -- )
-   NFX @ 0 >LABEL 0 FX+ ;
+   NFX @ TEST-LABEL >LABEL TEST-KIND FX+ ;
+
+: ASSERT-LABEL-CAP ( -- )
+   ASM-INIT
+   LBL LABEL>N 0 T=
+   LABEL-CAP 2 - 0 ?do LBL LABEL>N drop loop
+   LBL LABEL>N LABEL-CAP 1- T=
+   NLBL @ LABEL-CAP T= ;
 
 : MODE? ( -- bool )
    s" HABU_ICODE_OVERFLOW" GETENV nip 0 > ;
@@ -63,12 +73,14 @@ public
 
 : RUN ( -- )
    T-RESET
+   ASSERT-LABEL-CAP
    ASM-INIT
    RETIRED-CAP APPEND-TO
    NFX @ RETIRED-CAP T=
+   RETIRED-CAP 1- ASSERT-ROW
    ACTIVE-CAP APPEND-TO
    NFX @ ACTIVE-CAP T=
-   ASSERT-LAST
+   ACTIVE-CAP 1- ASSERT-ROW
    ASSERT-OVERFLOW
    T-REPORT ;
 
