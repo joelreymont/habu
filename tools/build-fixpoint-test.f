@@ -962,7 +962,7 @@ variable BFT-OVF-ERR-U
 \ Per-file TFAM-prefix certification: type-schema.f, type-family.f, render.f,
 \ and sumtype.f certify clean via the same VERIFY:SOURCE-BUF path, each
 \ verified as the tail of its exact BF-APPEND-CHECKER-BOOT prefix context
-\ (util, structures, checker, then the earlier TFAM files), so de-typing any
+\ (util, cell, structures, checker, then the earlier TFAM files), so de-typing any
 \ one file fails its own assert. render.f sits between type-family.f and
 \ sumtype.f in the real prefix and certifies since its typed cleanup
 \ (habu-make-fixpoint-certify-a11dbad5).
@@ -972,6 +972,7 @@ variable BFT-OVF-ERR-U
 : BFT-CERT-TFAM-BASE ( -- )
    s" cert-tfam" BF-RESET-OUT
    s" cert-tfam" s" src/core/util.f" BF-APPEND-SOURCE
+   s" cert-tfam" s" src/core/cell.f" BF-APPEND-SOURCE
    s" cert-tfam" s" src/core/structures.f" BF-APPEND-SOURCE
    s" cert-tfam" s" src/core/checker.f" BF-APPEND-SOURCE
    s" cert-tfam" s" src/core/lower-cert-base.f" BF-APPEND-SOURCE ;

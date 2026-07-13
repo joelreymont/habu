@@ -4023,3 +4023,9 @@ unchanged (148855). Keys for milestone 2:
   still grade GREEN — only a device numeric golden closes that class. Pin those
   wrong-but-green shapes as acknowledged regressions so a future grader
   strengthening flips them intentionally, not silently.
+- **Bootstrap constants need their own earliest shared owner.** A target-width
+  constant used by pre-checker records cannot live in a legacy definer file;
+  load one invariant-owning source after `util.f` and before every consumer in
+  native, recovery, fixpoint, pin, diagnostic, and cache manifests. Register
+  its post-hook effects in a matching one-concern file, never a legacy DSL's
+  effect owner.

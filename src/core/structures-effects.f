@@ -1,6 +1,5 @@
 \ structures-effects.f - checker effects for early structure defining words.
 
-s" CELL" s" -- n" TRUST
 s" STRUCT-BYTE+" s" ptr a n -- ptr u8" TRUST
 s" BEGIN-STRUCTURE" s" -- ptr a n" TRUST
 s" +FIELD" s" ptr a n n -- ptr a n" TRUST
