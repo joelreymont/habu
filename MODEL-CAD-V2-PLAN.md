@@ -651,10 +651,10 @@ the V2 authority model.
 #### B5.1 Package And Scalar Roles
 
 The owner is package `CAD-NUM`. Its constituent files are assembled while the
-package is reopenable; the final owner-migration file seals it only after every
-constructor, arithmetic word, witness table, and consumer-facing API has been
-defined. A partially assembled `CAD-NUM` is not an authority boundary and must
-not be loaded by a production V2 entry point.
+package is reopenable; the dedicated CAD-NUM final-assembly file seals it only
+after every scalar constructor, arithmetic word, and owner API has been defined.
+A partially assembled `CAD-NUM` is not an authority boundary and must not be
+loaded by a production V2 entry point.
 
 `CAD-NUM` declares public arity-zero nominal families for the reusable scalar
 facts:
@@ -667,7 +667,6 @@ CAD-NUM:index       nonnegative ordinal, not yet bounded
 CAD-NUM:byte-off    nonnegative byte offset
 CAD-NUM:cell-off    nonnegative cell offset
 CAD-NUM:alignment   positive power-of-two alignment
-CAD-NUM:divisor     nonzero signed divisor
 CAD-NUM:positive-divisor positive divisor for unit-preserving extent arithmetic
 ~~~
 
@@ -690,19 +689,15 @@ and whose error variants are payloadless:
 - overflow;
 - underflow;
 - bad-alignment;
-- misaligned;
-- out-of-bounds;
-- wrong-owner;
-- stale;
-- invalid-handle.
+- misaligned.
 
 This specialized family is expressible with the current sum machinery for a
-one-cell nominal scalar or opaque witness handle. Storing the sum in memory
-still waits for R1 wide layout storage. Expected validation failures return
-`CAD-NUM:numeric-result<a>`; they do not throw and they do not collapse
-different failures into a flag. Wrong-owner, stale-generation, and invalid
-witness handles use their named result variants. I/O, allocation, or corrupted
-owner-table failures remain ordinary propagated errors at their owning boundary.
+one-cell nominal scalar. On-stack use needs no new capability; a closed
+instantiation can already be stored through the landed `LAYOUT-BUFFER` when
+needed. Expected validation failures return `CAD-NUM:numeric-result<a>`; they do
+not throw and they do not collapse different failures into a flag. I/O,
+allocation, or corrupted owner-state failures remain ordinary propagated errors
+at their owning boundary.
 
 The checker cannot prove that an `n` satisfying a runtime predicate has become
 an arity-zero nominal family. Every raw-to-role mint is therefore a private,
@@ -718,7 +713,6 @@ CAD-NUM:INDEX      ( n -- CAD-NUM:numeric-result<CAD-NUM:index> )
 CAD-NUM:BYTE-OFF   ( n -- CAD-NUM:numeric-result<CAD-NUM:byte-off> )
 CAD-NUM:CELL-OFF   ( n -- CAD-NUM:numeric-result<CAD-NUM:cell-off> )
 CAD-NUM:ALIGNMENT  ( n -- CAD-NUM:numeric-result<CAD-NUM:alignment> )
-CAD-NUM:DIVISOR    ( n -- CAD-NUM:numeric-result<CAD-NUM:divisor> )
 CAD-NUM:POSITIVE-DIVISOR
   ( n -- CAD-NUM:numeric-result<CAD-NUM:positive-divisor> )
 ~~~
@@ -733,10 +727,10 @@ public signature.
 
 Ordinary reopenable packages cannot protect these private mints. `CAD-NUM` is
 not unforgeable while its constituent files are being assembled. Permanent
-sealing is the final owner-migration step owned by
-`habu-seal-owners-migrate-2dda16df`, after the package-seal capability lands;
-only the fully assembled and sealed load path may claim authority. Evidence
-stored in memory likewise uses typed nominal storage; an untyped
+sealing belongs to the dedicated CAD-NUM final assembly/seal implementation dot
+that must be created before dispatch, after the package-seal capability lands;
+only the fully assembled and sealed load path may claim authority. Any
+scalar/result storage uses the landed typed `LAYOUT-BUFFER`; an untyped
 `create ... cells allot` table plus trusted casts is not an acceptable
 substitute.
 
@@ -775,77 +769,30 @@ CAD-NUM:REM-COUNT ( CAD-NUM:item-count CAD-NUM:positive-divisor
   -- CAD-NUM:numeric-result<CAD-NUM:item-count> )
 ~~~
 
-Generic signed quotient/remainder over raw `n` is not a CAD numeric-role
-operation and no `CAD-NUM:DIV ( n ... -- n )` exists. If a consumer needs it,
-the integer-arithmetic owner exposes a checked signed div/rem operation that
-accepts `CAD-NUM:divisor`, defines quotient/remainder sign semantics, and
-returns overflow for signed minimum divided by negative one. Keeping that word
-outside `CAD-NUM` avoids claiming that a raw signed quotient preserves an
-extent, count, index, or offset unit.
-
 A successful typed result proves that this operation completed without the
 named numeric failure. It does not prove a general value equation between
 arbitrary future operands. Shape element-count equalities, symbolic products,
 and rewrite algebra remain R4/R5 constraints rather than an accidental general
 dependent-arithmetic system in B5.
 
-#### B5.3 Relational Witnesses
+#### B5.3 Relational Evidence Is Out Of Scope
 
-Bounds and alignment are relations, not unary labels. A reusable witness must
-carry the identity whose state made the relation true, not just two equal-sized
-integers. The logical owner records are:
+B5 is scalar-only. It does not define, store, mint, or migrate
+`bounded-index`, `aligned-size`, owner, region, extent, or generation evidence.
+Bounds and alignment are relations over identities, so their parameterized
+evidence remains owned by R5 and `habu-add-bounded-host-b40b048f`, including
+runtime reification and container/span integration. `CAD-NUM:index`,
+`CAD-NUM:item-count`, `CAD-NUM:byte-len`, and `CAD-NUM:alignment` are merely
+validated scalar inputs to those owners; none proves a relation by itself.
 
-~~~text
-CAD-NUM:bounded-index = {
-  owner-or-region, generation, index, limit
-}
-CAD-NUM:aligned-size = {
-  owner-or-region, generation, byte-len, alignment
-}
-~~~
-
-For an immutable R5 existential, the fresh rigid region/extent identity replaces
-the mutable owner-plus-generation pair. Two containers with equal numeric
-limits still have different identities. A mutable vector clear, shrink,
-reallocation, or owner replacement advances the generation and invalidates all
-older witnesses.
-
-Both public names are arity-zero opaque handle families. They are not PRODUCTs,
-have no generated public field constructor, and are not renamed scalar casts.
-Their one-cell handles index owner-managed R1 typed storage containing the full
-logical record. Every handle lookup validates table bounds, occupied state,
-owner/region identity, and generation before returning typed fields; raw or
-stale handles fail closed. Only private table code can allocate or populate a
-record. A plain table index must never silently name a recycled record: v1 does
-not reuse witness slots within an owner lifetime; any later recycling design
-must encode and validate a slot generation in the one-cell handle.
-
-`CAD-NUM:BOUND` validates the supplied container/span identity and current
-generation, proves `0 <= index < limit`, stores all four facts, and returns
-`CAD-NUM:numeric-result<CAD-NUM:bounded-index>`. `CAD-NUM:ALIGNED-SIZE`
-validates the same identity, proves that the byte length is exactly divisible by
-the supplied alignment, stores the complete record, and returns
-`CAD-NUM:numeric-result<CAD-NUM:aligned-size>`. Public construction is
-validation-only. These APIs do not land before R5/bounded-host generative
-identity exists. Their runtime representation remains an owner/generation-
-checked handle. The checker enforces the owner/span capability roles at each
-API boundary, but the arity-zero handle does not itself encode a static owner
-parameter; the owner lookup rejects cross-container or stale runtime identity.
-
-These witnesses deliberately prove only their recorded arithmetic relation.
-A bounded index cannot be paired with an arbitrary pointer, equal-sized second
-container, different length, or newer generation. An aligned size does not
-prove that a pointer has that alignment. Memory access therefore consumes the
-corresponding R5 existential evidence or bounded-host
-`span<region,type,extent,access,persistence>` capability and validates that its
-region/owner, extent, generation, and alignment identity equal the stored
-witness record. R5 may later lift that equality into a fresh static identity;
-the arity-zero handle remains the runtime representation.
-
-Until typed witness storage plus R5 or bounded-host identity are available, the
-implementation may retain a checked runtime bounds test but must not publish a
-scalar `bounded-index` or `aligned-size` and claim relational soundness. The
-package is authoritative only after final owner sealing.
+The R5 and bounded-host implementations must ensure that owner/region identities
+and mutable generations are never reused or allowed to wrap into a previously
+observable identity. Monotonic allocation either succeeds with a fresh identity
+or fails closed on exhaustion; clear, shrink, reallocation, and owner replacement
+invalidate prior evidence. Their owning dots must add wrap/exhaustion,
+cross-container same-size, owner-recreation, and stale-after-clear/shrink
+regressions before implementation is assigned. B5 neither duplicates those
+records nor claims their runtime or checker guarantees.
 
 #### B5.4 Static And Runtime Proof Matrix
 
@@ -874,20 +821,16 @@ Negative checker candidates:
 ~~~
 
 The positive candidates must return accepted and every negative candidate must
-return rejected through the standard quiet candidate harness. Once the R5 or
-bounded-host owner types exist, focused candidates additionally prove that the
-accepted `CAD-NUM:BOUND`/`CAD-NUM:ALIGNED-SIZE` signatures consume the owning
-capability roles and reject a different capability kind. Cross-container values
-of the same static handle family and stale generations are runtime owner-lookup
-negatives, not checker claims. Do not write a placeholder signature that
-pretends those owner types exist before their owning capability lands.
+return rejected through the standard quiet candidate harness. R5 and
+bounded-host maintain their own relational-evidence checker/runtime matrices;
+B5 does not restate placeholder signatures for capabilities it does not own.
 
 Runtime `T{ ... -> ... }T` fixtures then prove the value predicates:
 
 - negative length/count/index/offset returns negative; zero length, count,
   index, and offset constructors succeed;
-- zero `CAD-NUM:DIVISOR` returns zero, positive and negative nonzero divisors
-  succeed, and `CAD-NUM:POSITIVE-DIVISOR` rejects both zero and negative input;
+- `CAD-NUM:POSITIVE-DIVISOR` accepts positive input, returns zero for zero, and
+  returns negative for negative input;
 - checked addition proves `0 + 0`, `x + 0`, and the maximum-safe sum, and
   returns overflow for the next sum;
 - checked multiplication proves zero times maximum in both operand orders and
@@ -905,20 +848,8 @@ Runtime `T{ ... -> ... }T` fixtures then prove the value predicates:
   overflow;
 - unit-preserving quotient/remainder proves zero dividend, exact division,
   nonzero remainder, and quotient/remainder reconstruction for every admitted
-  role;
-- the external checked signed div/rem owner pins truncation toward zero,
-  remainder with the dividend's sign, all numerator/divisor sign combinations,
-  and returns overflow for signed minimum divided by negative one for the
-  quotient, remainder, and combined quotient/remainder entry points;
-- `index = limit` and every index into a zero limit return out-of-bounds, while
-  `index = limit - 1` succeeds; a negative raw index is rejected earlier by
-  `CAD-NUM:INDEX` with negative;
-- a witness from container A rejects against equal-sized container B; a witness
-  created before clear, shrink, reallocation, or generation advance rejects;
-  forged negative/out-of-range handles, empty table slots, and wrong witness
-  family reject before record access;
-- aligned-size evidence rejects against a different owner/region or generation,
-  even when byte length and numeric alignment are equal.
+  role. Relational bound/alignment, identity wrap/exhaustion, and stale-evidence
+  cases remain in their R5/bounded-host owning suites.
 
 No test may claim that `CHECK!` rejects `-1`, zero, or an overflowing literal
 unless value refinement has separately landed. Those are runtime validator
@@ -931,26 +862,31 @@ Dependency order:
 1. package-scoped nominal families and the on-stack SUMTYPE machinery are the
    existing base; `CAD-NUM:numeric-result<a>` is expressible for cell-kinded
    payloads without nested-layout support;
-2. the raw-storage kind fix and typed nominal storage prevent generic cells from
-   minting or erasing scalar roles, while R1 typed family storage supports the
-   witness table and any stored numeric-result values;
-3. scalar declarations, audited private `TRUSTED:` mints, public validators,
+2. the landed `LAYOUT-BUFFER` supports closed non-linear layouts and arity-zero
+   nominal scalars with checked fixed-capacity indexing, typed store/fetch,
+   extent overflow checks, rollback, and zero initialization. This is sufficient
+   for any private fixed-capacity scalar/result storage B5 actually needs;
+3. `habu-nominal-storage-raw-a3430ef2` remains required because generic
+   `variable`/`create`/`constant` value flow can still mint or erase nominal
+   scalar roles. B5 cannot claim unforgeability until its TVK-RAW fix lands;
+4. scalar declarations, audited private `TRUSTED:` mints, public validators,
    and checked arithmetic are assembled across focused `CAD-NUM` constituent
    files, but remain an unsealed non-authority during assembly;
-4. relational witness handles land only after R5 existential identity or the
-   bounded-host region/generation capability exists;
-5. the final owner-migration file loads every constituent and permanently seals
-   `CAD-NUM`; no later file adds owner behavior;
+5. a new dedicated CAD-NUM assembly/seal implementation dot loads every
+   constituent and permanently seals `CAD-NUM`; no later file adds owner
+   behavior. It depends on the package-seal syntax/capability and the raw-storage
+   fix and does not overlap existing owner migrations;
 6. consumers migrate at their existing ownership seams only from the complete,
    sealed entry point.
 
 Existing owners remain authoritative:
 
 - `habu-checker-seal-owner-f7de26ff` owns permanent owner-package sealing;
-- `habu-seal-owners-migrate-2dda16df` owns the final `CAD-NUM` assembly and
-  seal operation;
-- `habu-nominal-storage-raw-a3430ef2` and
-  `habu-nominal-storage-typed-c5f44d66` own nominal variable/buffer storage;
+- `habu-seal-owners-migrate-2dda16df` owns migration of its already named
+  TARGET, TOOLCHAIN, fusion-region, artifact, evidence, and store owners. It
+  does not own CAD-NUM and must not be silently expanded;
+- `habu-nominal-storage-raw-a3430ef2` owns the still-open raw value-laundering
+  fix;
 - `habu-checker-shape-kind-4c6a3f4c` and
   `habu-v2-types-existential-cce4a41a` own value-indexed shape and existential
   evidence;
@@ -965,6 +901,15 @@ representation would add an explicit dependency on
 actual checker defect, that defect receives its own negative regression and
 checker-owned dot rather than expanding a library migration.
 
+The current storage facts are pinned by `docs/type-families.md` and
+`test/layout-buffer.f`: `LAYOUT-BUFFER` already admits arity-zero nominal
+families and closed sums/products. A live checker probe still accepts
+`variable V : X ( n -- CAD-KIND:region ) V ! V @ ;`, proving the distinct
+TVK-RAW gap remains. No `TYPED-VARIABLE` or `TYPED-BUFFER` definer exists in
+the current source. B5 does not require those generic convenience definers;
+`habu-nominal-storage-typed-c5f44d66` must be amended to describe only genuine
+residual work before assignment and is not a B5 prerequisite.
+
 Bounded implementation slices, in order:
 
 1. define `CAD-NUM` scalar roles and `numeric-result<a>`, then add public
@@ -972,26 +917,23 @@ Bounded implementation slices, in order:
    constructor probes; do not seal or publish a production authority yet;
 2. add unit-preserving division/remainder, products, addition, subtraction,
    cell/byte conversion, and alignment arithmetic with the complete boundary
-   matrix; generic signed div/rem stays with the integer-arithmetic owner;
-3. after R1 and R5/bounded-host prerequisites, add arity-zero witness handles,
-   typed owner storage, generation invalidation, validators, and cross-owner /
-   stale-handle probes;
-4. in the owner-migration slice owned by
-   `habu-seal-owners-migrate-2dda16df`, load all `CAD-NUM` constituents, verify
-   trusted-inventory coverage, and seal the package permanently; this is the
-   first load path allowed to claim unforgeability;
-5. migrate `lib/memory.f` to byte-length/cell-count conversions and allocation
+   matrix;
+3. create a separate, non-overlapping CAD-NUM final assembly/seal implementation
+   dot before dispatch. It owns only the final CAD-NUM entry point, seal action,
+   trusted-inventory integration, and hostile reopen/qualified-publication
+   probes; this is the first load path allowed to claim unforgeability;
+4. migrate `lib/memory.f` to byte-length/cell-count conversions and allocation
    boundaries;
-6. migrate `lib/string.f` to byte lengths/offsets and preserve substring bounds;
-7. migrate `lib/vector.f` to item counts/indexes and container-owned bound
-   validation, including clear/shrink invalidation;
-8. migrate `maki/model-ir.f` operand counts/positions without overlapping its
+5. migrate `lib/string.f` to byte lengths/offsets and preserve substring bounds;
+6. migrate `lib/vector.f` to scalar item counts/indexes; relational bound
+   evidence remains in the vector/bounded-host owner;
+7. migrate `maki/model-ir.f` operand counts/positions without overlapping its
    nominal-storage owner;
-9. run a read-only census of lower-shape product sites. Classify uses already
+8. run a read-only census of lower-shape product sites. Classify uses already
    owned by Maki `DIM*`, `SHAPE-ELEMS`, and `TENSOR-BYTES`; do not edit, rename,
    or duplicate those owners. Only concrete remaining raw sites receive new,
    separately owned consumer dots before any lowering change;
-10. update manifests, file maps, public-signature audits, and the canonical plan
+9. update manifests, file maps, public-signature audits, and the canonical plan
    only after the owning migrations pass.
 
 Each implementation slice owns disjoint source and focused tests, runs the
