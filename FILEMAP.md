@@ -571,6 +571,9 @@ points stay listed.
 - `test/stage-source-capacity.f` — synchronized stage2/maker source-watermark
   regression proving the retired edge succeeds and the active edge fails with
   the exact owning diagnostic.
+- `test/icode-capacity.f` — arm64 assembler fixup-table boundary regression
+  proving the retired 4096-entry edge, active 8192-entry edge, and guarded
+  overflow diagnostic.
 - `tools/boot-pin.f` — boot-prefix content-pin tool: print/verify the digest of the checker/core source the engine re-reads at boot.
 - `tools/boot-pin-main.f` — CLI entrypoint for the boot-prefix pin tool.
 - `tools/lint/json-writer.f` — compact JSON writer for native lint diagnostics.

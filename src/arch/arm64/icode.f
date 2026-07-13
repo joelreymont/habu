@@ -5,7 +5,7 @@
 $1ff000 constant CODE-CAP-BYTES  \ MPAGE-CODE-OFF: full 2 MB executable window
 CODE-CAP-BYTES 4 / constant CODE-CAP-WORDS  \ derived: guard can never drift from the mmap
 $1002 constant ICODE-MAP-PRIVATE-ANON
-$1000 constant ICODE-TAB-CELLS
+$2000 constant ICODE-TAB-CELLS  \ measured owner AOT emitter: 4104 fixups
 $4 constant ICODE-TAB-COUNT
 ICODE-TAB-CELLS ICODE-TAB-COUNT * cells constant ICODE-TAB-BYTES
 variable CODE-A
