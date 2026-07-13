@@ -6,6 +6,7 @@ issue-type: task
 created-at: "2026-07-13T17:15:59.125233+02:00"
 blocks:
   - habu-core-records-remove-07fdf718
+  - habu-owner-seal-persist-1f23e205
 ---
 
 Own remaining checker control, MATCH, locals-width, and lowering frame layouts
