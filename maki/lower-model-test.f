@@ -31,8 +31,86 @@ package MAKI
 \ cols wider than the launch block: the runtime row-launch check behind the
 \ typed seam (LLA-ROW-GRID) must still fail closed (E-PTX-BLOCK, defense in depth)
 : LMT-ROWGRID-WIDE ( -- )  1 512 SHAPE LLA-ROW-GRID drop ;
+: LMT-BAD-MOVE-RID ( -- )  MDL-CAP RAW>RGN LLA-REGION-MOVE? drop ;
+: LMT-BAD-CUBIN-RID ( -- ) s" bad" MDL-CAP RAW>RGN MDL-CUBIN! ;
 
 T-RESET
+
+\ The complete node -> region -> analyze -> emit -> launch chain stays nominally typed for
+\ every lowering class. These are checker-only candidates: device execution remains in the
+\ focused device goldens.
+s" LMT-RGN-EW ( CAD-KIND:node-id -- ) FP-RID@ dup dup LEW-ANALYZE LEW-EMIT LLA-RUN" CHECK-QUIET-CANDIDATE! -1 T=
+s" LMT-RGN-RED ( CAD-KIND:node-id -- ) FP-RID@ dup dup LRED-ANALYZE LRED-EMIT LRED-RUN" CHECK-QUIET-CANDIDATE! -1 T=
+s" LMT-RGN-MM ( CAD-KIND:node-id -- ) FP-RID@ dup dup LMM-ANALYZE LMM-EMIT LMM-RUN" CHECK-QUIET-CANDIDATE! -1 T=
+s" LMT-RGN-MV ( CAD-KIND:node-id -- ) FP-RID@ dup dup LMV-ANALYZE LMV-EMIT LMV-RUN" CHECK-QUIET-CANDIDATE! -1 T=
+
+\ Every public region entry rejects effect, stage, and node ids before runtime. MDL-STAGE and
+\ MDL-DISPATCH are private orchestration boundaries, but are pinned too because the dot names
+\ them explicitly.
+s" LMT-LEW-A-EF ( CAD-KIND:effect -- ) LEW-ANALYZE" CHECK-QUIET-CANDIDATE! 0 T=
+s" LMT-LEW-A-ST ( CAD-KIND:stage -- ) LEW-ANALYZE" CHECK-QUIET-CANDIDATE! 0 T=
+s" LMT-LEW-A-ND ( CAD-KIND:node-id -- ) LEW-ANALYZE" CHECK-QUIET-CANDIDATE! 0 T=
+s" LMT-LEW-E-EF ( CAD-KIND:effect -- ) LEW-EMIT" CHECK-QUIET-CANDIDATE! 0 T=
+s" LMT-LEW-E-ST ( CAD-KIND:stage -- ) LEW-EMIT" CHECK-QUIET-CANDIDATE! 0 T=
+s" LMT-LEW-E-ND ( CAD-KIND:node-id -- ) LEW-EMIT" CHECK-QUIET-CANDIDATE! 0 T=
+s" LMT-LRED-A-EF ( CAD-KIND:effect -- ) LRED-ANALYZE" CHECK-QUIET-CANDIDATE! 0 T=
+s" LMT-LRED-A-ST ( CAD-KIND:stage -- ) LRED-ANALYZE" CHECK-QUIET-CANDIDATE! 0 T=
+s" LMT-LRED-A-ND ( CAD-KIND:node-id -- ) LRED-ANALYZE" CHECK-QUIET-CANDIDATE! 0 T=
+s" LMT-LRED-E-EF ( CAD-KIND:effect -- ) LRED-EMIT" CHECK-QUIET-CANDIDATE! 0 T=
+s" LMT-LRED-E-ST ( CAD-KIND:stage -- ) LRED-EMIT" CHECK-QUIET-CANDIDATE! 0 T=
+s" LMT-LRED-E-ND ( CAD-KIND:node-id -- ) LRED-EMIT" CHECK-QUIET-CANDIDATE! 0 T=
+s" LMT-LMM-A-EF ( CAD-KIND:effect -- ) LMM-ANALYZE" CHECK-QUIET-CANDIDATE! 0 T=
+s" LMT-LMM-A-ST ( CAD-KIND:stage -- ) LMM-ANALYZE" CHECK-QUIET-CANDIDATE! 0 T=
+s" LMT-LMM-A-ND ( CAD-KIND:node-id -- ) LMM-ANALYZE" CHECK-QUIET-CANDIDATE! 0 T=
+s" LMT-LMM-E-EF ( CAD-KIND:effect -- ) LMM-EMIT" CHECK-QUIET-CANDIDATE! 0 T=
+s" LMT-LMM-E-ST ( CAD-KIND:stage -- ) LMM-EMIT" CHECK-QUIET-CANDIDATE! 0 T=
+s" LMT-LMM-E-ND ( CAD-KIND:node-id -- ) LMM-EMIT" CHECK-QUIET-CANDIDATE! 0 T=
+s" LMT-LMV-A-EF ( CAD-KIND:effect -- ) LMV-ANALYZE" CHECK-QUIET-CANDIDATE! 0 T=
+s" LMT-LMV-A-ST ( CAD-KIND:stage -- ) LMV-ANALYZE" CHECK-QUIET-CANDIDATE! 0 T=
+s" LMT-LMV-A-ND ( CAD-KIND:node-id -- ) LMV-ANALYZE" CHECK-QUIET-CANDIDATE! 0 T=
+s" LMT-LMV-E-EF ( CAD-KIND:effect -- ) LMV-EMIT" CHECK-QUIET-CANDIDATE! 0 T=
+s" LMT-LMV-E-ST ( CAD-KIND:stage -- ) LMV-EMIT" CHECK-QUIET-CANDIDATE! 0 T=
+s" LMT-LMV-E-ND ( CAD-KIND:node-id -- ) LMV-EMIT" CHECK-QUIET-CANDIDATE! 0 T=
+
+s" LMT-LD-EF ( ptr u8 n ptr u8 n ptr u8 n CAD-KIND:effect ptr u8 n -- ) LOWER-DRIVER!" CHECK-QUIET-CANDIDATE! 0 T=
+s" LMT-LD-ST ( ptr u8 n ptr u8 n ptr u8 n CAD-KIND:stage ptr u8 n -- ) LOWER-DRIVER!" CHECK-QUIET-CANDIDATE! 0 T=
+s" LMT-LD-ND ( ptr u8 n ptr u8 n ptr u8 n CAD-KIND:node-id ptr u8 n -- ) LOWER-DRIVER!" CHECK-QUIET-CANDIDATE! 0 T=
+s" LMT-WD-EF ( ptr u8 n CAD-KIND:effect ptr u8 n -- ) LEW-WRITE-DRIVER" CHECK-QUIET-CANDIDATE! 0 T=
+s" LMT-WD-ST ( ptr u8 n CAD-KIND:stage ptr u8 n -- ) LEW-WRITE-DRIVER" CHECK-QUIET-CANDIDATE! 0 T=
+s" LMT-WD-ND ( ptr u8 n CAD-KIND:node-id ptr u8 n -- ) LEW-WRITE-DRIVER" CHECK-QUIET-CANDIDATE! 0 T=
+
+s" LMT-RMM-EF ( CAD-KIND:effect -- bool ) LLA-REGION-MATMUL?" CHECK-QUIET-CANDIDATE! 0 T=
+s" LMT-RMM-ST ( CAD-KIND:stage -- bool ) LLA-REGION-MATMUL?" CHECK-QUIET-CANDIDATE! 0 T=
+s" LMT-RMM-ND ( CAD-KIND:node-id -- bool ) LLA-REGION-MATMUL?" CHECK-QUIET-CANDIDATE! 0 T=
+s" LMT-RRD-EF ( CAD-KIND:effect -- bool ) LLA-REGION-REDUCE?" CHECK-QUIET-CANDIDATE! 0 T=
+s" LMT-RRD-ST ( CAD-KIND:stage -- bool ) LLA-REGION-REDUCE?" CHECK-QUIET-CANDIDATE! 0 T=
+s" LMT-RRD-ND ( CAD-KIND:node-id -- bool ) LLA-REGION-REDUCE?" CHECK-QUIET-CANDIDATE! 0 T=
+s" LMT-RMV-EF ( CAD-KIND:effect -- bool ) LLA-REGION-MOVE?" CHECK-QUIET-CANDIDATE! 0 T=
+s" LMT-RMV-ST ( CAD-KIND:stage -- bool ) LLA-REGION-MOVE?" CHECK-QUIET-CANDIDATE! 0 T=
+s" LMT-RMV-ND ( CAD-KIND:node-id -- bool ) LLA-REGION-MOVE?" CHECK-QUIET-CANDIDATE! 0 T=
+
+s" LMT-CU-EF ( ptr u8 n CAD-KIND:effect -- ) MDL-CUBIN!" CHECK-QUIET-CANDIDATE! 0 T=
+s" LMT-CU-ST ( ptr u8 n CAD-KIND:stage -- ) MDL-CUBIN!" CHECK-QUIET-CANDIDATE! 0 T=
+s" LMT-CU-ND ( ptr u8 n CAD-KIND:node-id -- ) MDL-CUBIN!" CHECK-QUIET-CANDIDATE! 0 T=
+s" LMT-REW-EF ( CAD-KIND:effect -- ) LLA-RUN" CHECK-QUIET-CANDIDATE! 0 T=
+s" LMT-REW-ST ( CAD-KIND:stage -- ) LLA-RUN" CHECK-QUIET-CANDIDATE! 0 T=
+s" LMT-REW-ND ( CAD-KIND:node-id -- ) LLA-RUN" CHECK-QUIET-CANDIDATE! 0 T=
+s" LMT-RR-EF ( CAD-KIND:effect -- ) LRED-RUN" CHECK-QUIET-CANDIDATE! 0 T=
+s" LMT-RR-ST ( CAD-KIND:stage -- ) LRED-RUN" CHECK-QUIET-CANDIDATE! 0 T=
+s" LMT-RR-ND ( CAD-KIND:node-id -- ) LRED-RUN" CHECK-QUIET-CANDIDATE! 0 T=
+s" LMT-RM-EF ( CAD-KIND:effect -- ) LMM-RUN" CHECK-QUIET-CANDIDATE! 0 T=
+s" LMT-RM-ST ( CAD-KIND:stage -- ) LMM-RUN" CHECK-QUIET-CANDIDATE! 0 T=
+s" LMT-RM-ND ( CAD-KIND:node-id -- ) LMM-RUN" CHECK-QUIET-CANDIDATE! 0 T=
+s" LMT-RV-EF ( CAD-KIND:effect -- ) LMV-RUN" CHECK-QUIET-CANDIDATE! 0 T=
+s" LMT-RV-ST ( CAD-KIND:stage -- ) LMV-RUN" CHECK-QUIET-CANDIDATE! 0 T=
+s" LMT-RV-ND ( CAD-KIND:node-id -- ) LMV-RUN" CHECK-QUIET-CANDIDATE! 0 T=
+
+s" LMT-MS-EF ( CAD-KIND:effect -- ) MDL-STAGE" CHECK-QUIET-CANDIDATE! 0 T=
+s" LMT-MS-ST ( CAD-KIND:stage -- ) MDL-STAGE" CHECK-QUIET-CANDIDATE! 0 T=
+s" LMT-MS-ND ( CAD-KIND:node-id -- ) MDL-STAGE" CHECK-QUIET-CANDIDATE! 0 T=
+s" LMT-MD-EF ( CAD-KIND:effect -- ) MDL-DISPATCH" CHECK-QUIET-CANDIDATE! 0 T=
+s" LMT-MD-ST ( CAD-KIND:stage -- ) MDL-DISPATCH" CHECK-QUIET-CANDIDATE! 0 T=
+s" LMT-MD-ND ( CAD-KIND:node-id -- ) MDL-DISPATCH" CHECK-QUIET-CANDIDATE! 0 T=
 
 \ ==== the multi-region FFN-class model: LINEAR GELU LINEAR RMSNORM ============================
 \ region 0 = LINEAR + GELU epilogue (matmul); region 1 = LINEAR (matmul boundary); region 2 =
@@ -42,6 +120,8 @@ MODEL-K 4 T=
 FP-BUILD
 FP-REGION-COUNT 3 T=
 MIR-MAT-COUNT   3 T=
+' LMT-BAD-MOVE-RID E-FP-IDX TTHROWS
+' LMT-BAD-CUBIN-RID E-MDL-CUBIN TTHROWS
 
 \ region class routing (the whole-model dispatch reuses these)
 0 FP-REGION-ID LLA-REGION-MATMUL? TTRUE

@@ -335,6 +335,7 @@ public
 : LLA-REGION-MATMUL? ( CAD-KIND:region -- bool )  FP-REGION-CLASSMIX  1 CLASS-MATMUL     lshift  and  0= 0= ;
 : LLA-REGION-REDUCE? ( CAD-KIND:region -- bool )  FP-REGION-CLASSMIX  1 CLASS-ROW-REDUCE lshift  and  0= 0= ;
 : LLA-REGION-MOVE? ( CAD-KIND:region -- bool ) {: rid:CAD-KIND:region :}
+   rid FP-REGION-MEMBERS drop
    MIR-N@ 0 ?do
       i MIR-NODE-ID {: node:CAD-KIND:node-id :}
       node FP-RID@ rid FP-RGN= node MIR-MOVE? and node MIR-MAT@ and if unloop true exit then
@@ -358,8 +359,13 @@ variable MDL-NEW  variable MDL-NRED  variable MDL-NMM  variable MDL-NMV  variabl
 1 LAYOUT-BUFFER MDL-PROBE-RID CAD-KIND:region      \ typed region cell carried into the lowerability probe (catch wants a ( -- ) body)
 
 \ region-indexed cubin tables: RGN>RAW is the one owner-file table-index boundary
-: MDL-CUBIN$ ( CAD-KIND:region -- ptr u8 n ) {: rid:CAD-KIND:region :}
+: MDL-RIDX ( CAD-KIND:region -- n ) {: rid:CAD-KIND:region :}
    rid RGN>RAW {: r:n :}
+   r 0 < r MDL-CAP >= or if E-MDL-CUBIN throw then
+   r FP-REGION-COUNT >= if E-MDL-CUBIN throw then
+   r ;
+: MDL-CUBIN$ ( CAD-KIND:region -- ptr u8 n ) {: rid:CAD-KIND:region :}
+   rid MDL-RIDX {: r:n :}
    r cells MDL-CUBIN-LEN + @ {: u:n :}
    u 0= if E-MDL-CUBIN throw then
    MDL-CUBINS r FS-PATH-CAP * +  u ;
@@ -454,8 +460,7 @@ public
 
 \ ---- per-region cubin registry (device tool assembles REGION_<rid>, one cubin per region) --
 : MDL-CUBIN! ( ptr u8 n CAD-KIND:region -- ) {: a:ptr u:n rid:CAD-KIND:region :}
-   rid RGN>RAW {: r:n :}                              \ table-index boundary (RGN>RAW)
-   r 0 < r MDL-CAP >= or if E-MDL-CUBIN throw then
+   rid MDL-RIDX {: r:n :}                             \ validated table-index boundary
    u FS-PATH-CAP > if E-FS-PATH throw then
    a  MDL-CUBINS r FS-PATH-CAP * +  u BYTE-COPY
    u r cells MDL-CUBIN-LEN + ! ;
@@ -467,7 +472,7 @@ public
    MIR-N@ 0 ?do
       i MIR-NODE-ID {: node:CAD-KIND:node-id :}
       node MIR-MAT@ if
-         node FP-RID@ RGN>RAW cells MDL-CUBIN-LEN + @   \ table-index boundary (RGN>RAW)
+         node FP-RID@ MDL-RIDX cells MDL-CUBIN-LEN + @  \ validated table-index boundary
          0= if false unloop exit then
       then
    loop  true ;

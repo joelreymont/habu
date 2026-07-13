@@ -105,8 +105,7 @@ variable LMV-BUILT?
    dup LMV-REF-ROWS swap LMV-REF-COLS SHAPE-ELEMS DIM-RAW ;
 
 \ ---- find the single materialized movement node ----------------------------
-: LMV-MEMBERS ( CAD-KIND:region -- n ) {: rid:CAD-KIND:region :}   \ region member count
-   0 MIR-N@ 0 ?do  i MIR-NODE-ID rid LMV-IN-REGION? if 1+ then  loop ;
+: LMV-MEMBERS ( CAD-KIND:region -- n )  FP-REGION-MEMBERS ;       \ validated owner count
 : LMV-FIND-NODE ( CAD-KIND:region -- ) {: rid:CAD-KIND:region :}
    rid LMV-MEMBERS 1 <> if E-LMV-MULTI throw then      \ v1: a copy region is one node
    MIR-N@ 0 ?do
