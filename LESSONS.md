@@ -3993,3 +3993,10 @@ unchanged (148855). Keys for milestone 2:
   from legacy enum syntax must delete counter definers such as `ENUM+` and
   `ENUM4+` too; zero production consumers do not make a second declaration
   surface compatible with the one-DSL invariant.
+- **Fixed source arenas need composite byte budgets.** The stage2 source and
+  cold-prefix sources share `IBUFSZ`; measure both, preserve useful assertions,
+  and derive near-cap and cap-plus-one tests from the owner constant before
+  increasing it with explicit headroom.
+- **Unsupported dot subcommands create dots.** `dot dep --help` is parsed as a
+  quick-add for title `dep`; inspect `dot --help`, use `dot add -a` for blockers,
+  and remove accidental tracker entries before committing.

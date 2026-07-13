@@ -4,6 +4,8 @@ status: active
 priority: 1
 issue-type: task
 created-at: "\"2026-07-13T17:15:50.404414+02:00\""
+blocks:
+  - habu-core-bootstrap-resize-5c07f625
 ---
 
 Own checker registry record declarations in src/core/checker.f: symbol, effect,
