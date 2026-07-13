@@ -775,9 +775,9 @@ the inventory counts it as `TRUST-BARE` rather than `TRUST` — never silently.
 
 ## Inventory classification
 
-Every trust site carries a class and an owning dot in the inventory TSV, and this
+Every trust site carries a class and an owner in the inventory TSV, and this
 block is also the single source of truth for the ratchet ceiling (there is no
-separate count block). Each row is `file[:name] class dot [count]`: a bare `file`
+separate count block). Each row is `file[:name] class owner [count]`: a bare `file`
 row classifies every site in that file no named row owns and carries an explicit
 site count `N`; a `file:name` row overrides the file row for the site(s) called
 `name` and implies count 1 unless it carries an explicit count (a name that
@@ -787,11 +787,16 @@ emitters and raw layout boundaries), `stdlib-boundary` (library-level trusted
 boundaries), `test-metaprog` (test-owned fixtures and metaprogramming
 harnesses), `prim-axiom` (nominal identity casts and primitive models the
 checker treats as axioms), `discharge-candidate` (sites believed checkable
-today). Sites without a row report class `-` and count as unclassified;
-`bin/hb --load tools/trusted-inventory.f -- strict` fails while any remain, and
-also fails for every owning dot referenced below that does not exist in
-`.dots/` (as `<id>.md` or `<id>/<id>.md`), so closed or never-minted owners
-cannot linger in the mapping. `strict` also prints a `by-file` line per source
+today). Sites without a row report class `-` and count as unclassified. An owner
+is either a live dot id or a declared permanent capability id. Live dot ids must
+exist in `.dots/` as `<id>.md` or `<id>/<id>.md`. Permanent ids use canonical
+lower-kebab `cap:<name>` syntax and must appear once, in sorted order, in the
+registry below together with a repository-relative Markdown path and explicit
+anchor. `strict` verifies the file and exact anchor, so a misspelled or deleted
+owner document fails closed. Move rows from a dot to a permanent capability only
+after the implementation and its owning tests are complete; open residual work
+remains dot-owned. `bin/hb --load tools/trusted-inventory.f -- strict` fails on
+every violation. `strict` also prints a `by-file` line per source
 with its non-zero per-class site counts, so classification drift is visible per
 file, not just as a repo total.
 The block is being refined from file granularity to `file:name` row granularity
@@ -851,6 +856,29 @@ exceeds the committed baseline — so a new coarse row cannot creep in, and
 splitting a remaining fold prompts lowering the baseline in the same change
 (decrease-only, the PARSE-COUNT ratchet shape). A missing `fold-baseline` row
 is itself a strict failure (fail-closed).
+
+<a id="permanent-capability-owners"></a>
+### Permanent capability owners
+
+The machine-readable registry binds stable capability identity to its canonical
+audit documentation. The anchors are explicit rather than inferred from heading
+rendering, so the checker can validate them without a Markdown implementation.
+
+| Owner | Completed semantic boundary | Owning evidence |
+|---|---|---|
+| <a id="cap-checker-hook-identity"></a>`cap:checker-hook-identity` | Intentional engine-hook primitive boundary: trusted hook installation preserves one canonical checker identity across engine, AOT, snapshot, lint, and tests; checked application code cannot install hooks. | `test/engine-suite.f`, `test/prop-test-core.f`, `tools/codegen-role.f` |
+| <a id="cap-fetched-adt-validation"></a>`cap:fetched-adt-validation` | Test-only hostile whitebox access constructs malformed fetched ADT layouts and proves growth, guard, product, and width-one rejection. | `test/layout-valid-growth.f`, `test/layout-valid-guard-base.f`, `test/layout-valid-product-bad.f`, `test/layout-valid-w1-bad.f` |
+| <a id="cap-qualified-family-payloads"></a>`cap:qualified-family-payloads` | Test-only nominal payload casts construct and inspect qualified family values after schema resolution. | `test/type-decl-suite.f` |
+| <a id="cap-sealed-family-pointers"></a>`cap:sealed-family-pointers` | Test-only representation accessor verifies that layout-buffer family pointers remain sealed behind the typed buffer API. | `test/layout-buffer.f` |
+| <a id="cap-wide-memory-lowering"></a>`cap:wide-memory-lowering` | Test-only native bootstrap probes inspect wide PRODUCT representation and raw image memory after lowering. | `test/bootstrap-wide-memory-src.f`, `test/bootstrap-wide-memory.f` |
+
+<!-- trusted-inventory-owners
+cap:checker-hook-identity TRUSTED.md#cap-checker-hook-identity
+cap:fetched-adt-validation TRUSTED.md#cap-fetched-adt-validation
+cap:qualified-family-payloads TRUSTED.md#cap-qualified-family-payloads
+cap:sealed-family-pointers TRUSTED.md#cap-sealed-family-pointers
+cap:wide-memory-lowering TRUSTED.md#cap-wide-memory-lowering
+-->
 
 <!-- trusted-inventory-classes
 fold-baseline 2
@@ -1223,15 +1251,15 @@ lib/ptx/cg-matmul.f:MM-A-REG stdlib-boundary habu-re-express-tiled-9cc4a73a
 lib/ptx/cg-matmul.f:MM-B-REG stdlib-boundary habu-re-express-tiled-9cc4a73a
 lib/ptx/cg-matmul.f:MM-C-REG stdlib-boundary habu-re-express-tiled-9cc4a73a
 lib/ptx/cg-matmul.f:MM-STATE stdlib-boundary habu-re-express-tiled-9cc4a73a
-lib/ptx/cg-attention.f:Q-REG stdlib-boundary habu-permanent-owner-for-83401fcc
-lib/ptx/cg-attention.f:K-REG stdlib-boundary habu-permanent-owner-for-83401fcc
-lib/ptx/cg-attention.f:V-REG stdlib-boundary habu-permanent-owner-for-83401fcc
-lib/ptx/cg-attention.f:O-REG stdlib-boundary habu-permanent-owner-for-83401fcc
-lib/ptx/cg-attention.f:STATE stdlib-boundary habu-permanent-owner-for-83401fcc
-lib/ptx/cg-attention.f:STAGE-Q stdlib-boundary habu-permanent-owner-for-83401fcc
-lib/ptx/cg-attention.f:SCORE stdlib-boundary habu-permanent-owner-for-83401fcc
-lib/ptx/cg-attention.f:SOFTMAX stdlib-boundary habu-permanent-owner-for-83401fcc
-lib/ptx/cg-attention.f:OUTPUT stdlib-boundary habu-permanent-owner-for-83401fcc
+lib/ptx/cg-attention.f:Q-REG stdlib-boundary habu-ptx-phantom-preserving-3df9db92
+lib/ptx/cg-attention.f:K-REG stdlib-boundary habu-ptx-phantom-preserving-3df9db92
+lib/ptx/cg-attention.f:V-REG stdlib-boundary habu-ptx-phantom-preserving-3df9db92
+lib/ptx/cg-attention.f:O-REG stdlib-boundary habu-ptx-phantom-preserving-3df9db92
+lib/ptx/cg-attention.f:STATE stdlib-boundary habu-ptx-phantom-preserving-3df9db92
+lib/ptx/cg-attention.f:STAGE-Q stdlib-boundary habu-ptx-phantom-preserving-3df9db92
+lib/ptx/cg-attention.f:SCORE stdlib-boundary habu-ptx-phantom-preserving-3df9db92
+lib/ptx/cg-attention.f:SOFTMAX stdlib-boundary habu-ptx-phantom-preserving-3df9db92
+lib/ptx/cg-attention.f:OUTPUT stdlib-boundary habu-ptx-phantom-preserving-3df9db92
 lib/ptx/cg.f:SPAN-REG stdlib-boundary habu-ptx-phantom-preserving-3df9db92
 lib/ptx/cg.f:UNIFORM-REG stdlib-boundary habu-ptx-phantom-preserving-3df9db92
 lib/ptx/cg.f:PTR-REG stdlib-boundary habu-ptx-phantom-preserving-3df9db92
@@ -1261,14 +1289,14 @@ lib/ptx/collective.f:U/ stdlib-boundary habu-ptx-phantom-preserving-3df9db92
 lib/ptx/collective.f:EXP. stdlib-boundary habu-ptx-phantom-preserving-3df9db92
 lib/ptx/collective.f:BROADCAST stdlib-boundary habu-ptx-phantom-preserving-3df9db92
 lib/ptx/collective.f:BLOCK-MAX-SELECT stdlib-boundary habu-ptx-phantom-preserving-3df9db92
-lib/ptx/tile-acc.f:ACC-ZERO stdlib-boundary habu-permanent-owner-for-83401fcc
-lib/ptx/tile-acc.f:ACC-FMA stdlib-boundary habu-permanent-owner-for-83401fcc
-lib/ptx/tile-acc.f:ACC-TILE stdlib-boundary habu-permanent-owner-for-83401fcc
-lib/ptx/tile-acc.f:ACC-LOOP stdlib-boundary habu-permanent-owner-for-83401fcc
-lib/ptx/tile-loop.f:TILE-LOOP stdlib-boundary habu-permanent-owner-for-83401fcc
-lib/ptx/tile-smem.f:STAGE stdlib-boundary habu-permanent-owner-for-83401fcc
-lib/ptx/tile-smem.f:SLOAD stdlib-boundary habu-permanent-owner-for-83401fcc
-lib/ptx/tile-smem.f:SSTORE stdlib-boundary habu-permanent-owner-for-83401fcc
+lib/ptx/tile-acc.f:ACC-ZERO stdlib-boundary habu-ptx-phantom-preserving-3df9db92
+lib/ptx/tile-acc.f:ACC-FMA stdlib-boundary habu-ptx-phantom-preserving-3df9db92
+lib/ptx/tile-acc.f:ACC-TILE stdlib-boundary habu-ptx-phantom-preserving-3df9db92
+lib/ptx/tile-acc.f:ACC-LOOP stdlib-boundary habu-ptx-phantom-preserving-3df9db92
+lib/ptx/tile-loop.f:TILE-LOOP stdlib-boundary habu-ptx-phantom-preserving-3df9db92
+lib/ptx/tile-smem.f:STAGE stdlib-boundary habu-ptx-phantom-preserving-3df9db92
+lib/ptx/tile-smem.f:SLOAD stdlib-boundary habu-ptx-phantom-preserving-3df9db92
+lib/ptx/tile-smem.f:SSTORE stdlib-boundary habu-ptx-phantom-preserving-3df9db92
 lib/ptx/tile-v4.f:GRID-CTX-V4 stdlib-boundary habu-ptx-phantom-preserving-3df9db92
 lib/ptx/tile-v4.f:LOAD-V4 stdlib-boundary habu-ptx-phantom-preserving-3df9db92
 lib/ptx/tile-v4.f:STORE-V4 stdlib-boundary habu-ptx-phantom-preserving-3df9db92
@@ -1342,17 +1370,17 @@ maki/tensor.f:SPACE-RAW prim-axiom habu-epic-model-cad-70b629a9
 maki/onnx/import.f:IMP-ROWS-N prim-axiom habu-epic-model-cad-70b629a9
 maki/onnx/import.f:IMP-COLS-N prim-axiom habu-epic-model-cad-70b629a9
 test/checker-assert.f:CHECK-QUIET-CANDIDATE! test-metaprog habu-primitive-effect-axiom-1119f176
-test/bootstrap-wide-memory-src.f:BWM-UN2 test-metaprog habu-permanent-owner-for-83401fcc
-test/bootstrap-wide-memory-src.f:BWM-UN4 test-metaprog habu-permanent-owner-for-83401fcc
-test/bootstrap-wide-memory-src.f:BWM-XT test-metaprog habu-permanent-owner-for-83401fcc
-test/bootstrap-wide-memory-src.f:BWM-W32 test-metaprog habu-permanent-owner-for-83401fcc
-test/layout-buffer.f:LB-UN test-metaprog habu-permanent-owner-for-83401fcc
+test/bootstrap-wide-memory-src.f:BWM-UN2 test-metaprog cap:wide-memory-lowering
+test/bootstrap-wide-memory-src.f:BWM-UN4 test-metaprog cap:wide-memory-lowering
+test/bootstrap-wide-memory-src.f:BWM-XT test-metaprog cap:wide-memory-lowering
+test/bootstrap-wide-memory-src.f:BWM-W32 test-metaprog cap:wide-memory-lowering
+test/layout-buffer.f:LB-UN test-metaprog cap:sealed-family-pointers
 test/layout-buffer.f:N>LBTK test-metaprog habu-epic-type-system-b88c9ecc
 test/layout-buffer.f:LBTK>N test-metaprog habu-epic-type-system-b88c9ecc
-test/layout-valid-growth.f:NAME$ test-metaprog habu-permanent-owner-for-83401fcc
-test/layout-valid-growth.f:BUILD test-metaprog habu-permanent-owner-for-83401fcc
-test/layout-valid-guard-base.f:RAW test-metaprog habu-permanent-owner-for-83401fcc
-test/layout-valid-guard-base.f:SET test-metaprog habu-permanent-owner-for-83401fcc
+test/layout-valid-growth.f:NAME$ test-metaprog cap:fetched-adt-validation
+test/layout-valid-growth.f:BUILD test-metaprog cap:fetched-adt-validation
+test/layout-valid-guard-base.f:RAW test-metaprog cap:fetched-adt-validation
+test/layout-valid-guard-base.f:SET test-metaprog cap:fetched-adt-validation
 test/layout-valid-guard-base.f:LVG-TFAM-ACTIVE-PKG$ test-metaprog habu-seal-set-check-b3676b33
 test/layout-valid-guard-base.f:LVG-TFAM-DECL test-metaprog habu-seal-set-check-b3676b33
 test/layout-valid-guard-base.f:LVG-SCHEMA-APP test-metaprog habu-seal-set-check-b3676b33
@@ -1363,13 +1391,13 @@ test/layout-valid-guard-base.f:LVG-TFAM-SLOTS! test-metaprog habu-seal-set-check
 test/layout-valid-guard-base.f:LVG-TFAM-VAR-RANGE! test-metaprog habu-seal-set-check-b3676b33
 test/lower-cert.f:LCT-MULTI-ERR-BEGIN test-metaprog habu-seal-set-check-b3676b33
 test/lower-cert.f:LCT-MULTI-ERR-END test-metaprog habu-seal-set-check-b3676b33
-test/layout-valid-product-bad.f:RAW test-metaprog habu-permanent-owner-for-83401fcc
-test/layout-valid-w1-bad.f:RAW test-metaprog habu-permanent-owner-for-83401fcc
+test/layout-valid-product-bad.f:RAW test-metaprog cap:fetched-adt-validation
+test/layout-valid-w1-bad.f:RAW test-metaprog cap:fetched-adt-validation
 test/type-layout-lower-pending.f test-metaprog habu-interpret-wide-gate-1d70acf7 4
 test/type-layout-lower-pending.f:TWX-TFAM-FIND-IN test-metaprog habu-seal-set-check-b3676b33
 test/type-match-suite.f:FREE-MTOK test-metaprog habu-tfam-11-linear-99fa9990
 test/engine-suite.f:T-CHECK-PASSES test-metaprog habu-primitive-effect-axiom-1119f176
-test/engine-suite.f:T-RDF test-metaprog habu-police-set-check-850bc543 2
+test/engine-suite.f:T-RDF test-metaprog cap:checker-hook-identity 2
 test/engine-suite.f:T-SCV test-metaprog habu-primitive-effect-axiom-1119f176
 test/engine-suite.f:T-CTV test-metaprog habu-primitive-effect-axiom-1119f176
 test/engine-suite.f:T-SCOPED-W test-metaprog habu-primitive-effect-axiom-1119f176
@@ -1416,7 +1444,7 @@ test/engine-suite.f:T-SPAWN-DUP2-ACTION test-metaprog habu-builder-trust-rows-c5
 test/engine-suite.f:T-SPAWN-DARWIN-FINISH test-metaprog habu-builder-trust-rows-c5d41af6
 test/engine-suite.f:P5 test-metaprog habu-primitive-effect-axiom-1119f176
 test/engine-suite.f:ES-PATCH32 test-metaprog habu-checker-capability-gate-14022ba9
-test/engine-suite.f:set-check test-metaprog habu-police-set-check-850bc543
+test/engine-suite.f:set-check test-metaprog cap:checker-hook-identity
 test/engine-suite.f test-metaprog habu-seal-set-check-b3676b33 6
 test/engine-suite.f:ES-REND-SIG$ test-metaprog habu-seal-set-check-b3676b33
 test/engine-suite.f:ES-JSON-DIAGS! test-metaprog habu-seal-set-check-b3676b33
@@ -1473,8 +1501,8 @@ test/type-ctor-suite.f:TWX-SUMV-PAYCELLS@ test-metaprog habu-seal-set-check-b367
 test/type-ctor-suite.f:TWX-SYMS test-metaprog habu-seal-set-check-b3676b33
 test/type-ctor-suite.f:TWX-TFAM-FIND-IN test-metaprog habu-seal-set-check-b3676b33
 test/type-ctor-suite.f:TWX-TFAM-VIS@ test-metaprog habu-seal-set-check-b3676b33
-test/type-decl-suite.f:TQX<QS test-metaprog habu-permanent-owner-for-83401fcc
-test/type-decl-suite.f:TQX>QS test-metaprog habu-permanent-owner-for-83401fcc
+test/type-decl-suite.f:TQX<QS test-metaprog cap:qualified-family-payloads
+test/type-decl-suite.f:TQX>QS test-metaprog cap:qualified-family-payloads
 test/type-decl-suite.f:TWX-CAND-DONE test-metaprog habu-seal-set-check-b3676b33
 test/type-decl-suite.f:TWX-CAND-START test-metaprog habu-seal-set-check-b3676b33
 test/type-decl-suite.f:TWX-CHECKER-FIND-USIG test-metaprog habu-seal-set-check-b3676b33
@@ -1625,7 +1653,7 @@ test/gate-common-lib.f:JSON-DIAGS test-metaprog habu-primitive-effect-axiom-1119
 test/gate-common-lib.f:GE-EVAL-SOURCE-ACT test-metaprog habu-primitive-effect-axiom-1119f176
 test/gate-common-lib.f:GE-EVAL-SOURCE test-metaprog habu-primitive-effect-axiom-1119f176
 test/prop-test-core.f test-metaprog habu-seal-set-check-b3676b33 2
-test/prop-test-core.f:PROP-INSTALL-HOOK test-metaprog habu-police-set-check-850bc543
+test/prop-test-core.f:PROP-INSTALL-HOOK test-metaprog cap:checker-hook-identity
 test/prop-test-core.f:CLEAR-MEAS test-metaprog habu-typed-depth-introspection-18f0efda
 test/prop-test-core.f:ERR@ test-metaprog habu-typed-depth-introspection-18f0efda
 test/prop-test-core.f:MARK test-metaprog habu-primitive-effect-axiom-1119f176
@@ -1682,15 +1710,15 @@ tools/image-bytes-test.f:MSIZE test-metaprog habu-builder-trust-rows-c5d41af6
 tools/codegen-role.f test-metaprog habu-seal-set-check-b3676b33 1
 tools/codegen-role.f:CGR-EVALUATE test-metaprog habu-primitive-effect-axiom-1119f176
 tools/codegen-role.f:CGR-CHECK! test-metaprog habu-primitive-effect-axiom-1119f176
-tools/codegen-role.f:CGR-EVALUATE-UNCHECKED test-metaprog habu-police-set-check-850bc543
-src/core/check-hook.f:HOOK stdlib-boundary habu-police-set-check-850bc543
-src/core/check-hook.f:INSTALL stdlib-boundary habu-police-set-check-850bc543
-src/habu/aot.f:USER-HOOK builder-emit habu-police-set-check-850bc543
-src/habu/snap-lib.f:SNAP-CHECK-HOOK builder-emit habu-police-set-check-850bc543 2
-tools/check-core.f:CHK-CHECK-HOOK stdlib-boundary habu-police-set-check-850bc543
-tools/lint/text.f:LINT-CHECK-HOOK stdlib-boundary habu-police-set-check-850bc543
-test/engine-suite.f:ES-VERDICT-HOOK test-metaprog habu-police-set-check-850bc543 2
-test/prop-test-core.f:PROP-CHECK-HOOK test-metaprog habu-police-set-check-850bc543 4
-tools/codegen-role.f:CGR-HOOK test-metaprog habu-police-set-check-850bc543 2
-tools/codegen-role.f:CGR-HOOK! test-metaprog habu-police-set-check-850bc543
+tools/codegen-role.f:CGR-EVALUATE-UNCHECKED test-metaprog cap:checker-hook-identity
+src/core/check-hook.f:HOOK stdlib-boundary cap:checker-hook-identity
+src/core/check-hook.f:INSTALL stdlib-boundary cap:checker-hook-identity
+src/habu/aot.f:USER-HOOK builder-emit cap:checker-hook-identity
+src/habu/snap-lib.f:SNAP-CHECK-HOOK builder-emit cap:checker-hook-identity 2
+tools/check-core.f:CHK-CHECK-HOOK stdlib-boundary cap:checker-hook-identity
+tools/lint/text.f:LINT-CHECK-HOOK stdlib-boundary cap:checker-hook-identity
+test/engine-suite.f:ES-VERDICT-HOOK test-metaprog cap:checker-hook-identity 2
+test/prop-test-core.f:PROP-CHECK-HOOK test-metaprog cap:checker-hook-identity 4
+tools/codegen-role.f:CGR-HOOK test-metaprog cap:checker-hook-identity 2
+tools/codegen-role.f:CGR-HOOK! test-metaprog cap:checker-hook-identity
 -->

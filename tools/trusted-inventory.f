@@ -6,13 +6,14 @@
 \ installs (HOOK-INSTALL, named by the installed hook), and the fail-closed
 \ TRUST-BARE catch-all, then
 \ prints a deterministic TSV report (kind TAB file TAB line TAB name TAB effect
-\ TAB class TAB dot, sorted by file then line) plus a summary footer. Class, owning
-\ dot, and coverage count come from the committed classification block in
-\ TRUSTED.md; strict mode fails on unclassified sites, on owning dots that do not
-\ exist in .dots/, and on dead (unmatched) or duplicate mapping rows.
+\ TAB class TAB owner, sorted by file then line) plus a summary footer. Class,
+\ owner, and coverage count come from the committed classification block in
+\ TRUSTED.md. An owner is either a live dot or a declared permanent `cap:` owner
+\ bound to an existing documentation anchor. Strict mode fails on unclassified
+\ sites, unresolved owners, and dead (unmatched) or duplicate mapping rows.
 \ Ratchet mode derives the ceiling from the classification block itself, so there
 \ is no separate hand-edited count that conflicts on every parallel merge. Each
-\ `file:name` row covers exactly one site; each `file class dot N` file-level row
+\ `file:name` row covers exactly one site; each `file class owner N` file-level row
 \ carries its own site count N. The ratchet fails if any site is uncovered (a new
 \ trust site added without an audited row), if a file-level row's committed count
 \ grew or shrank against the live tree, if a file-level row is missing its count,
@@ -47,21 +48,26 @@ private
 79 constant E-TINV-BASELINE
 80 constant E-TINV-CLASSES
 81 constant E-TINV-STRICT
+82 constant E-TINV-OWNERS
 
 8192 constant ROW-MAX
 9 constant TAB#
 variable FB-COUNT   \ committed `fold-baseline N` (separable file-level rows allowed)
 1024 constant CMAX   \ row-granularity classification block (fold split) exceeds 512
+64 constant OWNER-MAX
 11 constant CTAB#
 -1 constant COUNT-UNSET
 $80000 constant FILE-CAP   \ >= largest scanned source (checker.f grew past $40000)
 $40000 constant STR-CAP
 $10000 constant CSTR-CAP
+$4000 constant OWNER-CAP
 32 constant NUM-CAP
 9 constant CH-TAB
 10 constant CH-LF
 40 constant CH-LPAREN
 41 constant CH-RPAREN
+35 constant CH-HASH
+45 constant CH-DASH
 48 constant CH-ZERO
 58 constant CH-COLON
 92 constant CH-BSLASH
@@ -117,6 +123,17 @@ variable MD-J
 variable MD-N
 variable DV-DEAD
 variable DV-DUP
+variable OWN-N
+variable OWN-END
+variable OP-M
+variable OP-E
+variable OP-L
+variable OP-I
+variable OP-S
+variable OP-OK
+variable OR-HASH
+variable OR-I
+variable OR-MISS
 
 \ streaming scanner state
 variable SRC-PA
@@ -153,6 +170,16 @@ create NUM-BUF NUM-CAP allot
 
 1024 constant DOTP-CAP
 create DOTP-BUF DOTP-CAP allot
+
+create OWNER-BUF OWNER-CAP allot
+create OWNER-ID-O OWNER-MAX cells allot
+create OWNER-ID-U OWNER-MAX cells allot
+create OWNER-REF-O OWNER-MAX cells allot
+create OWNER-REF-U OWNER-MAX cells allot
+
+$400 constant DOCM-CAP
+create DOCM-BUF DOCM-CAP allot
+variable DOCM-U
 
 \ Injectable dots root (default s" .dots/"). Production leaves the default so
 \ output/behaviour is unchanged; tests point it at a scratch fixture tree so the
@@ -559,6 +586,87 @@ variable DOTS-ROOT-U
    repeat
    u v < ;
 
+\ ---- permanent capability-owner declarations ------------------------------
+: OWNER-CELL@ ( ptr a n -- n )
+   cells + @ ;
+
+: OWNER-CELL! ( n ptr a n -- )
+   cells + ! ;
+
+: OWN-STORE$ ( ptr u8 n -- n n ) {: a:ptr u:n :}
+   OWN-END @ u + OWNER-CAP > if s" trusted-inventory: owner arena overflow" 1 die then
+   a OWNER-BUF OWN-END @ + u LINT-BMOVE
+   OWN-END @ u
+   OWN-END @ u + OWN-END ! ;
+
+: OWNER$ ( n -- ptr u8 n ) {: k:n :}
+   OWNER-ID-O k OWNER-CELL@ OWNER-BUF +
+   OWNER-ID-U k OWNER-CELL@ ;
+
+: OWNER-REF$ ( n -- ptr u8 n ) {: k:n :}
+   OWNER-REF-O k OWNER-CELL@ OWNER-BUF +
+   OWNER-REF-U k OWNER-CELL@ ;
+
+: OWNER+ ( ptr u8 n ptr u8 n -- ) {: ia:ptr iu:n ra:ptr ru:n :}
+   OWN-N @ OWNER-MAX >= if s" trusted-inventory: owner registry overflow" 1 die then
+   ia iu OWN-STORE$ OWNER-ID-U OWN-N @ OWNER-CELL! OWNER-ID-O OWN-N @ OWNER-CELL!
+   ra ru OWN-STORE$ OWNER-REF-U OWN-N @ OWNER-CELL! OWNER-REF-O OWN-N @ OWNER-CELL!
+   OWN-N @ 1+ OWN-N ! ;
+
+: ASCII-LOWER? ( n -- bool )
+   dup 97 >= swap 122 <= and ;
+
+: ASCII-DIGIT? ( n -- bool )
+   dup 48 >= swap 57 <= and ;
+
+: LOWER-KEBAB? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   u 0= if LINT-FALSE exit then
+   a c@ CH-DASH = if LINT-FALSE exit then
+   a u 1- + c@ CH-DASH = if LINT-FALSE exit then
+   0 OR-I !
+   begin OR-I @ u < while
+      a OR-I @ + c@ dup ASCII-LOWER? swap ASCII-DIGIT? or 0= if
+         a OR-I @ + c@ CH-DASH <> if LINT-FALSE exit then
+         OR-I @ 0 > if a OR-I @ 1- + c@ CH-DASH = if LINT-FALSE exit then then
+      then
+      OR-I @ 1+ OR-I !
+   repeat LINT-TRUE ;
+
+: PERMANENT-OWNER? ( ptr u8 n -- bool )
+   s" cap:" LINT-STARTS-WITH? ;
+
+: OWNER-CANONICAL? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   a u PERMANENT-OWNER? 0= if LINT-FALSE exit then
+   u 4 <= if LINT-FALSE exit then
+   a 4 + u 4 - LOWER-KEBAB? ;
+
+: DOC-PATH-CANONICAL? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   u 0= if LINT-FALSE exit then
+   a c@ 47 = if LINT-FALSE exit then
+   a u s" ./" LINT-STARTS-WITH? if LINT-FALSE exit then
+   a u s" .." LINT-CONTAINS? if LINT-FALSE exit then
+   a u s" TRUSTED.md" LINT-STR= 0= if
+      a u s" docs/" LINT-STARTS-WITH? 0= if LINT-FALSE exit then
+   then
+   a u s" .md" LINT-ENDS-WITH? ;
+
+: DOC-REF-SPLIT ( ptr u8 n -- ptr u8 n ptr u8 n ) {: a:ptr u:n :}
+   a u CH-HASH LINT-INDEX-OF MATCH option
+     none OF a 0 a 0 ENDOF
+     some OF OR-HASH !
+        a OR-HASH @
+        a OR-HASH @ 1+ + u OR-HASH @ 1+ - ENDOF
+   ;MATCH ;
+
+: DOC-REF-CANONICAL? ( ptr u8 n -- bool )
+   DOC-REF-SPLIT {: pa:ptr pu:n aa:ptr au:n :}
+   pa pu DOC-PATH-CANONICAL? 0= if LINT-FALSE exit then
+   aa au LOWER-KEBAB? ;
+
+: OWNER-SORTED+? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   OWN-N @ 0= if LINT-TRUE exit then
+   OWN-N @ 1- OWNER$ a u STR< ;
+
 : COUNT-CLASS ( n -- n ) {: c:n :}
    0 CC-N !
    0 CC-I !
@@ -579,6 +687,8 @@ public
    0 ARENA-END !
    0 CM# !
    0 C-END !
+   0 OWN-N !
+   0 OWN-END !
    COUNT-UNSET FB-COUNT ! ;
 
 : RESET ( -- )
@@ -650,7 +760,7 @@ public
    repeat
    R-IX ROW# @ [: ROW-BEFORE? ;] SORT! ;
 
-\ ---- committed classification mapping (class + owning dot per site) ---------
+\ ---- committed classification mapping (class + owner per site) -------------
 private
 
 : CMAP-FILE$ ( n -- ptr u8 n ) {: k:n :}
@@ -701,13 +811,58 @@ private
    a u s" prim-axiom" LINT-STR= if LINT-TRUE exit then
    a u s" discharge-candidate" LINT-STR= ;
 
+: OWNER-FIND ( ptr u8 n -- n ) {: a:ptr u:n :}
+   0 OR-I !
+   begin OR-I @ OWN-N @ < while
+      OR-I @ OWNER$ a u LINT-STR= if OR-I @ exit then
+      OR-I @ 1+ OR-I !
+   repeat -1 ;
+
+: OWNER-REF-FIND ( ptr u8 n -- n ) {: a:ptr u:n :}
+   0 OR-I !
+   begin OR-I @ OWN-N @ < while
+      OR-I @ OWNER-REF$ a u LINT-STR= if OR-I @ exit then
+      OR-I @ 1+ OR-I !
+   repeat -1 ;
+
+: OWNER-ROW-PARSE ( ptr u8 n -- bool )
+   SPLIT-WHITESPACE
+   SN# @ 0= if LINT-TRUE exit then
+   SN# @ 2 <> if LINT-FALSE exit then
+   0 S@ OWNER-CANONICAL? 0= if LINT-FALSE exit then
+   1 S@ DOC-REF-CANONICAL? 0= if LINT-FALSE exit then
+   0 S@ OWNER-SORTED+? 0= if LINT-FALSE exit then
+   1 S@ OWNER-REF-FIND 0 >= if LINT-FALSE exit then
+   0 S@ 1 S@ OWNER+
+   LINT-TRUE ;
+
+: OWNER-LINES ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   LINT-TRUE OP-OK !
+   0 OP-S !
+   0 OP-I !
+   begin OP-I @ u < while
+      a OP-I @ + c@ CH-LF = if
+         a OP-S @ + OP-I @ OP-S @ - OWNER-ROW-PARSE 0= if LINT-FALSE OP-OK ! then
+         OP-I @ 1+ OP-S !
+      then
+      OP-I @ 1+ OP-I !
+   repeat
+   OP-S @ u < if
+      a OP-S @ + u OP-S @ - OWNER-ROW-PARSE 0= if LINT-FALSE OP-OK ! then
+   then
+   OP-OK @ ;
+
+: OWNER-TOKEN-VALID? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   a u PERMANENT-OWNER? if a u OWNER-CANONICAL? exit then
+   u 0 > ;
+
 : PARSE-COUNT ( ptr u8 n -- option<n> )   \ SOME ratchet count >= 1, else NONE
    STR>NUMBER? MATCH option
      none OF OPTION:NONE ENDOF
      some OF dup 1 < if drop OPTION:NONE else OPTION:SOME then ENDOF
    ;MATCH ;
 
-\ One classification row `key class dot [count]`. `key` is `file:name` (names the
+\ One classification row `key class owner [count]`. `key` is `file:name` (names the
 \ site(s) called `name` in `file`) or bare `file` (a file-level row covering the
 \ sites no named row owns). The count is the derived ratchet ceiling for the row:
 \ a three-token named row defaults to 1 (override with an explicit count when a
@@ -727,11 +882,13 @@ private
    0 S@ KEY-SPLIT {: fa:ptr fu:n na:ptr nu:n :}
    SN# @ 3 = if
       1 S@ CLASS-VALID? 0= if LINT-FALSE exit then
+      2 S@ OWNER-TOKEN-VALID? 0= if LINT-FALSE exit then
       nu 0 > if 1 else COUNT-UNSET then {: cnt:n :}
       fa fu na nu 1 S@ 2 S@ cnt CMAP+ LINT-TRUE exit
    then
    SN# @ 4 = if
       1 S@ CLASS-VALID? 0= if LINT-FALSE exit then
+      2 S@ OWNER-TOKEN-VALID? 0= if LINT-FALSE exit then
       3 S@ PARSE-COUNT MATCH option
         none OF LINT-FALSE exit ENDOF
         some OF ENDOF
@@ -777,6 +934,46 @@ private
 
 public
 
+: OWNERS-RESET ( -- )
+   0 OWN-N !
+   0 OWN-END ! ;
+
+: OWNERS# ( -- n )
+   OWN-N @ ;
+
+: OWNER-DECLARED? ( ptr u8 n -- bool )
+   OWNER-FIND 0 >= ;
+
+: OWNERS-MARKER? ( ptr u8 n -- bool )
+   s" trusted-inventory-owners" LINT-CONTAINS? ;
+
+: OWNERS-DUP-MARKER? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   a OP-M @ 1+ + u OP-M @ 1+ - s" trusted-inventory-owners" LINT-FIND-SUB MATCH option
+     none OF LINT-FALSE ENDOF
+     some OF drop LINT-TRUE ENDOF
+   ;MATCH ;
+
+: OWNERS-ROWS ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   a OP-M @ + OP-E @ CH-LF LINT-INDEX-OF MATCH option
+     none OF LINT-TRUE ENDOF
+     some OF OP-L !
+        a OP-M @ + OP-L @ 1+ + OP-E @ OP-L @ 1+ - OWNER-LINES ENDOF
+   ;MATCH ;
+
+: OWNERS-END ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   a OP-M @ + u OP-M @ - s" -->" LINT-FIND-SUB MATCH option
+     none OF LINT-FALSE ENDOF
+     some OF OP-E ! a u OWNERS-ROWS ENDOF
+   ;MATCH ;
+
+: PARSE-OWNERS$ ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   OWNERS-RESET
+   a u s" trusted-inventory-owners" LINT-FIND-SUB MATCH option
+     none OF LINT-FALSE ENDOF
+     some OF OP-M !
+        a u OWNERS-DUP-MARKER? if LINT-FALSE else a u OWNERS-END then ENDOF
+   ;MATCH ;
+
 : CLASSES-RESET ( -- )
    0 CM# !
    0 C-END ! ;
@@ -787,7 +984,7 @@ public
 : CLASSES-MARKER? ( ptr u8 n -- bool )
    s" trusted-inventory-classes" LINT-CONTAINS? ;
 
-\ Parse the machine-readable block: one `file[:name] class dot` row per line.
+\ Parse the machine-readable block: one `file[:name] class owner` row per line.
 \ A second marker occurrence rejects so a shadowed block cannot win silently.
 : PC-DUP-MARKER? ( ptr u8 n -- bool ) {: a:ptr u:n :}   \ a second marker after PC-M shadows the block
    a PC-M @ 1+ +  u PC-M @ 1+ -  s" trusted-inventory-classes" LINT-FIND-SUB MATCH option
@@ -816,11 +1013,21 @@ public
         a u PC-DUP-MARKER? if LINT-FALSE else a u PC-END then ENDOF
    ;MATCH ;
 
+: PARSE-MANIFEST$ ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   a u PARSE-OWNERS$ 0= if LINT-FALSE exit then
+   a u PARSE-CLASSES$ ;
+
 : CLASSES-FROM ( ptr u8 n -- ) {: a:ptr u:n :}
+   OWNERS-RESET
    CLASSES-RESET
    a u FILE? 0= if exit then
    a u FILE-BUF FILE-CAP READ-FILE
    2dup CLASSES-MARKER? 0= if 2drop exit then
+   2dup PARSE-OWNERS$ 0= if
+      2drop
+      s" trusted-inventory: invalid owner registry in " OUT a u OUT OUT-NL
+      E-TINV-OWNERS throw
+   then
    PARSE-CLASSES$ 0= if
       s" trusted-inventory: invalid classification block in " OUT a u OUT OUT-NL
       E-TINV-CLASSES throw
@@ -833,6 +1040,9 @@ public
 : ROW-DOT$ ( n -- ptr u8 n )
    CLASS-FIND dup 0 < if drop s" -" exit then
    CMAP-DOT$ ;
+
+: ROW-OWNER$ ( n -- ptr u8 n )
+   ROW-DOT$ ;
 
 : UNCLASSIFIED# ( -- n )
    0 UC-N !
@@ -884,30 +1094,82 @@ DOTS-ROOT-RESET
 
 private
 
-: DOT-BEFORE? ( n -- bool ) {: k:n :}
+: DOCM-APPEND ( ptr u8 n -- ) {: a:ptr u:n :}
+   DOCM-U @ u + DOCM-CAP > if s" trusted-inventory: document marker overflow" 1 die then
+   a DOCM-BUF DOCM-U @ + u LINT-BMOVE
+   DOCM-U @ u + DOCM-U ! ;
+
+: DOCM$ ( -- ptr u8 n )
+   DOCM-BUF DOCM-U @ ;
+
+: DOC-MARKER! ( ptr u8 n -- ) {: a:ptr u:n :}
+   0 DOCM-U !
+   S\" <a id=\q" DOCM-APPEND
+   a u DOCM-APPEND
+   S\" \q></a>" DOCM-APPEND ;
+
+: DOC-REF-EXISTS? ( ptr u8 n -- bool )
+   DOC-REF-SPLIT {: pa:ptr pu:n aa:ptr au:n :}
+   pa pu FILE? 0= if LINT-FALSE exit then
+   pa pu FILE-BUF FILE-CAP READ-FILE
+   aa au DOC-MARKER!
+   DOCM$ LINT-CONTAINS? ;
+
+: OWNER-DOCS-MISSING# ( -- n )
+   0 OR-MISS !
+   0 OR-I !
+   begin OR-I @ OWN-N @ < while
+      OR-I @ OWNER-REF$ DOC-REF-EXISTS? 0= if
+         s" trusted-inventory: missing permanent owner documentation " OUT
+         OR-I @ OWNER-REF$ OUT OUT-NL
+         OR-MISS @ 1+ OR-MISS !
+      then
+      OR-I @ 1+ OR-I !
+   repeat OR-MISS @ ;
+
+: OWNER-BEFORE? ( n -- bool ) {: k:n :}
    0 DB-I !
    begin DB-I @ k < while
       DB-I @ CMAP-DOT$ k CMAP-DOT$ LINT-STR= if LINT-TRUE exit then
       DB-I @ 1+ DB-I !
    repeat LINT-FALSE ;
 
+: CMAP-OWNER-RESOLVED? ( n -- bool ) {: k:n :}
+   k CMAP-DOT$ 2dup PERMANENT-OWNER? if OWNER-DECLARED? exit then
+   DOT-EXISTS? ;
+
 public
 
-\ Report each distinct owning dot referenced by the mapping that is missing
-\ from .dots/; strict mode fails while any remain.
-: DOTS-MISSING# ( -- n )
-   0 DV-N !
+\ Report missing documentation for every declared permanent owner, then each
+\ distinct mapping owner that is neither a declaration nor a live dot.
+: OWNERS-MISSING# ( -- n )
+   OWNER-DOCS-MISSING# DV-N !
    0 DV-I !
    begin DV-I @ CM# @ < while
-      DV-I @ DOT-BEFORE? 0= if
-         DV-I @ CMAP-DOT$ DOT-EXISTS? 0= if
-            s" trusted-inventory: missing owning dot " OUT
-            DV-I @ CMAP-DOT$ OUT OUT-NL
+      DV-I @ OWNER-BEFORE? 0= if
+         DV-I @ CMAP-OWNER-RESOLVED? 0= if
+            DV-I @ CMAP-DOT$ 2dup PERMANENT-OWNER? if
+               s" trusted-inventory: missing permanent owner declaration " OUT
+            else
+               s" trusted-inventory: missing owning dot " OUT
+            then
+            OUT OUT-NL
             DV-N @ 1+ DV-N !
          then
       then
       DV-I @ 1+ DV-I !
    repeat DV-N @ ;
+
+: DOTS-MISSING# ( -- n )
+   OWNERS-MISSING# ;
+
+: STRICT-OWNERS ( -- )
+   OWNERS-MISSING# DV-MISS !
+   DV-MISS @ 0 > if
+      s" trusted-inventory: strict FAILED - " OUT DV-MISS @ OUT-U
+      s"  invalid owner(s); declare permanent capabilities or keep live dots" OUT OUT-NL
+      E-TINV-STRICT throw
+   then ;
 
 private
 
@@ -1012,7 +1274,7 @@ private
    k ROW-NAME$ OUT OUT-TAB
    k ROW-EFFECT$ OUT OUT-TAB
    k ROW-CLASS$ OUT OUT-TAB
-   k ROW-DOT$ OUT OUT-NL ;
+   k ROW-OWNER$ OUT OUT-NL ;
 
 : FOOTER ( -- )
    s" trusted-inventory: TRUSTED " OUT TRUSTED# OUT-U
@@ -1094,7 +1356,7 @@ public
    FOOTER ;
 
 \ ---- derived ratchet: the classification block is the ceiling ----------------
-\ Each `file:name` row covers exactly one site; each `file class dot N`
+\ Each `file:name` row covers exactly one site; each `file class owner N`
 \ file-level row covers the sites in its file that no named row owns, bounded by
 \ its committed count N. RATCHET-TALLY resolves every scanned site to its winning
 \ row (CLASS-FIND) and tallies the per-row matched count, so the ratchet compares
@@ -1295,12 +1557,7 @@ public
       s"  unclassified site(s); add classification rows to TRUSTED.md" OUT OUT-NL
       E-TINV-STRICT throw
    then
-   DOTS-MISSING# DV-MISS !
-   DV-MISS @ 0 > if
-      s" trusted-inventory: strict FAILED - " OUT DV-MISS @ OUT-U
-      s"  missing owning dot(s); mint them in .dots/ or reassign the rows" OUT OUT-NL
-      E-TINV-STRICT throw
-   then
+   STRICT-OWNERS
    CMAP-DEAD# DV-DEAD !
    CMAP-DUP# DV-DUP !
    DV-DEAD @ DV-DUP @ + 0 > if

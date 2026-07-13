@@ -78,7 +78,8 @@ variable SORT-I
 \ it must parse and, tallied against the live scanned rows, show no grown, stale,
 \ uncovered, or count-unset row.
 : LIVE-BASELINE ( -- )
-   s" TRUSTED.md" MD-BUF MD-CAP READ-FILE TINV:PARSE-CLASSES$ TTRUE
+   s" TRUSTED.md" MD-BUF MD-CAP READ-FILE TINV:PARSE-MANIFEST$ TTRUE
+   TINV:OWNERS# 0 > TTRUE
    TINV:RATCHET-TALLY
    TINV:RATCHET-BAD# 0 T=
    TINV:RATCHET-STALE# 0 T= ;
@@ -319,15 +320,15 @@ variable SORT-I
    S\" TRUSTED: TIF-A ( -- )\ns\q TIF-W\q s\q -- \q TRUST" FIX-SCAN
    TINV:ROWS 2 T=
    0 TINV:ROW-CLASS$ s" test-metaprog" T$=
-   0 TINV:ROW-DOT$ s" dot-a" T$=
+   0 TINV:ROW-OWNER$ s" dot-a" T$=
    1 TINV:ROW-CLASS$ s" prim-axiom" T$=
-   1 TINV:ROW-DOT$ s" dot-b" T$=
+   1 TINV:ROW-OWNER$ s" dot-b" T$=
    TINV:UNCLASSIFIED# 0 T=
    TINV:RESET
    s" unmapped.f" s" 0 set-check" TINV:SCAN-SOURCE
    TINV:ROWS 1 T=
    0 TINV:ROW-CLASS$ s" -" T$=
-   0 TINV:ROW-DOT$ s" -" T$=
+   0 TINV:ROW-OWNER$ s" -" T$=
    TINV:UNCLASSIFIED# 1 T=
    s" no marker anywhere" TINV:PARSE-CLASSES$ TFALSE
    S\" <!-- trusted-inventory-classes\nfixture.f bogus-class dot-x\n-->" TINV:PARSE-CLASSES$ TFALSE
@@ -338,6 +339,25 @@ variable SORT-I
    TINV:CLASSES-RESET
    S\" <!-- trusted-inventory-classes\na.f test-metaprog d\n-->\n<!-- trusted-inventory-classes\nb.f test-metaprog d\n-->" TINV:PARSE-CLASSES$ TFALSE
    TINV:CLASSES-RESET ;
+
+\ ---- permanent capability-owner registry ----------------------------------
+: FIX-OWNERS-PARSE ( -- )
+   S\" <!-- trusted-inventory-owners\ncap:alpha TRUSTED.md#permanent-capability-owners\ncap:beta-two docs/forth.md#trust-is-audited-not-permanent\n-->" TINV:PARSE-OWNERS$ TTRUE
+   TINV:OWNERS# 2 T=
+   s" cap:alpha" TINV:OWNER-DECLARED? TTRUE
+   s" cap:missing" TINV:OWNER-DECLARED? TFALSE
+   s" no owner marker" TINV:PARSE-OWNERS$ TFALSE
+   S\" <!-- trusted-inventory-owners\ncap:Alpha TRUSTED.md#alpha\n-->" TINV:PARSE-OWNERS$ TFALSE
+   S\" <!-- trusted-inventory-owners\ncap:alpha--beta TRUSTED.md#alpha-beta\n-->" TINV:PARSE-OWNERS$ TFALSE
+   S\" <!-- trusted-inventory-owners\ncap:alpha TRUSTED.md#alpha extra\n-->" TINV:PARSE-OWNERS$ TFALSE
+   S\" <!-- trusted-inventory-owners\ncap:alpha TRUSTED.md\n-->" TINV:PARSE-OWNERS$ TFALSE
+   S\" <!-- trusted-inventory-owners\ncap:alpha .dots/owner.md#alpha\n-->" TINV:PARSE-OWNERS$ TFALSE
+   S\" <!-- trusted-inventory-owners\ncap:beta TRUSTED.md#beta\ncap:alpha TRUSTED.md#alpha\n-->" TINV:PARSE-OWNERS$ TFALSE
+   S\" <!-- trusted-inventory-owners\ncap:alpha TRUSTED.md#alpha\ncap:alpha TRUSTED.md#alpha\n-->" TINV:PARSE-OWNERS$ TFALSE
+   S\" <!-- trusted-inventory-owners\ncap:alpha TRUSTED.md#same\ncap:beta TRUSTED.md#same\n-->" TINV:PARSE-OWNERS$ TFALSE
+   S\" <!-- trusted-inventory-owners\ncap:alpha TRUSTED.md#alpha\n-->\n<!-- trusted-inventory-owners\ncap:beta TRUSTED.md#beta\n-->" TINV:PARSE-OWNERS$ TFALSE
+   S\" <!-- trusted-inventory-classes\nfixture.f test-metaprog dot\n-->" TINV:PARSE-MANIFEST$ TFALSE
+   TINV:OWNERS-RESET ;
 
 \ ---- scratch owning-dot fixture tree (no dependence on live .dots/) ----------
 \ FIX-DOTS builds a private temp tree with one plain-layout dot (<id>.md) and one
@@ -416,13 +436,41 @@ variable DF-FILE-U
    DF-PARENT-ID TINV:DOT-EXISTS? TTRUE
    DF-MISSING-ID TINV:DOT-EXISTS? TFALSE
    \ Plain id resolves in the scratch tree; the missing id (referenced twice) is
-   \ reported once, so DOTS-MISSING# dedupes to 1.
+   \ reported once, so OWNERS-MISSING# dedupes to 1.
    S\" <!-- trusted-inventory-classes\nfixture.f test-metaprog tinv-fix-plain-00000001\nother.f test-metaprog tinv-fix-missing-00000003\nthird.f test-metaprog tinv-fix-missing-00000003\n-->" TINV:PARSE-CLASSES$ TTRUE
    TIT-BUF TIT-CAP LINT-OUT-BUFFER!
-   TINV:DOTS-MISSING# 1 T=
+   TINV:OWNERS-MISSING# 1 T=
    LINT-OUT-BUFFER-OFF
    LINT-OUT$ s" missing owning dot tinv-fix-missing-00000003" CONTAINS? TTRUE
    TINV:CLASSES-RESET
+   DF-TEARDOWN ;
+
+\ Strict accepts live dot owners and declared permanent capability owners, but
+\ fails closed when a cap: token has no canonical registry declaration. Each
+\ distinct missing owner is reported once even when multiple rows cite it.
+: FIX-STRICT-OWNERS ( -- )
+   DF-SETUP
+   S\" <!-- trusted-inventory-owners\ncap:fixture TRUSTED.md#permanent-capability-owners\n-->" TINV:PARSE-OWNERS$ TTRUE
+   S\" <!-- trusted-inventory-classes\nfixture.f test-metaprog cap:fixture\nother.f test-metaprog tinv-fix-plain-00000001\n-->" TINV:PARSE-CLASSES$ TTRUE
+   [: TINV:STRICT-OWNERS ;] catch 0 T=
+   S\" <!-- trusted-inventory-classes\nfixture.f test-metaprog cap:missing\nother.f test-metaprog cap:missing\n-->" TINV:PARSE-CLASSES$ TTRUE
+   TIT-BUF TIT-CAP LINT-OUT-BUFFER!
+   [: TINV:STRICT-OWNERS ;] catch 0 <> TTRUE
+   LINT-OUT-BUFFER-OFF
+   LINT-OUT$ s" missing permanent owner declaration cap:missing" CONTAINS? TTRUE
+   S\" <!-- trusted-inventory-owners\ncap:broken docs/missing-owner-doc.md#broken\n-->" TINV:PARSE-OWNERS$ TTRUE
+   TINV:CLASSES-RESET
+   TIT-BUF TIT-CAP LINT-OUT-BUFFER!
+   [: TINV:STRICT-OWNERS ;] catch 0 <> TTRUE
+   LINT-OUT-BUFFER-OFF
+   LINT-OUT$ s" missing permanent owner documentation docs/missing-owner-doc.md#broken" CONTAINS? TTRUE
+   S\" <!-- trusted-inventory-owners\ncap:broken TRUSTED.md#missing-owner-anchor\n-->" TINV:PARSE-OWNERS$ TTRUE
+   TIT-BUF TIT-CAP LINT-OUT-BUFFER!
+   [: TINV:STRICT-OWNERS ;] catch 0 <> TTRUE
+   LINT-OUT-BUFFER-OFF
+   LINT-OUT$ s" missing permanent owner documentation TRUSTED.md#missing-owner-anchor" CONTAINS? TTRUE
+   TINV:CLASSES-RESET
+   TINV:OWNERS-RESET
    DF-TEARDOWN ;
 
 \ Strict reports mapping rows no scanned site matches (dead) and repeated
@@ -497,7 +545,9 @@ variable DF-FILE-U
    FIX-SORT
    FIX-EFFECTS
    FIX-CLASSES
+   FIX-OWNERS-PARSE
    FIX-DOTS
+   FIX-STRICT-OWNERS
    FIX-CMAP-DEAD-DUP
    FIX-BY-FILE
    FIX-RATCHET
