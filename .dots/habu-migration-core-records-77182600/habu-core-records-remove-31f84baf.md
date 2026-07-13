@@ -4,8 +4,6 @@ status: open
 priority: 1
 issue-type: task
 created-at: "2026-07-13T17:15:42.353492+02:00"
-blocks:
-  - habu-type-dsl-specify-db2bf883
 ---
 
 Own the seven private record declarations in src/core/type-schema.f and

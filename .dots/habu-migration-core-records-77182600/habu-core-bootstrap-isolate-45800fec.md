@@ -4,8 +4,6 @@ status: open
 priority: 1
 issue-type: task
 created-at: "2026-07-13T18:00:18.070811+02:00"
-blocks:
-  - habu-type-dsl-specify-db2bf883
 ---
 
 Move PTR-VARIABLE out of src/core/structures.f into an independent one-concern
