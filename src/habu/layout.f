@@ -59,11 +59,11 @@ $C0000 constant CFSTK-OFF
 8 constant CF-LOCN
 16 constant CF-LOCF
 
-$180000 constant IBUFSZ   \ boot source-prefix + program input buffer; the copy
+$200000 constant IBUFSZ   \ boot source-prefix + program input buffer; the copy
                            \ loops + EMIT-SOURCE-READ exit a LABELED rc-74 at this
                            \ cap ("hb: source prefix buffer full", habu2 SRC-SFAIL/
-                           \ SRC-BFAIL/sbufull) - grown 1M->1.5M when the src/core
-                           \ prefix neared the wall (item 12 slice-3a; keep the
+                           \ SRC-BFAIL/sbufull) - grown 1.5M->2M when the checked
+                           \ stdin metabuild crossed the prior cap; keep the
                            \ bootstrap mirror in cg/forth.fs in sync)
 20 constant DATA
 

@@ -554,12 +554,9 @@ create BFT-CHECK-OFF-LINE
    BFT-READ-BUF u s" : ATOMA-FIELD" CONTAINS? TTRUE
    BFT-READ-BUF u s" 0 constant T-CON" CONTAINS? TTRUE
    BFT-READ-BUF u s" LOWER-CERT-HOOK:INSTALL" CONTAINS? TTRUE
-   BFT-READ-BUF u s" undefine FULL-XT" FIND-SUB {: seal-base:n :}
-   BFT-READ-BUF u seal-base s" SEAL-FRIEND" BFT-FIND-AFTER {: seal:n :}
-   BFT-READ-BUF u seal s" \ driver-io.f" BFT-FIND-AFTER {: driver:n :}
-   seal-base BFT-FOUND
-   seal BFT-FOUND
-   driver BFT-FOUND
+   BFT-READ-BUF u s" undefine FULL-XT" FIND-SUB BFT-FOUND {: seal-base:n :}
+   BFT-READ-BUF u seal-base s" SEAL-FRIEND" BFT-FIND-AFTER BFT-FOUND {: seal:n :}
+   BFT-READ-BUF u seal s" \ driver-io.f" BFT-FIND-AFTER BFT-FOUND {: driver:n :}
    seal-base seal < TTRUE
    seal driver < TTRUE
    BFT-READ-BUF u BFT-CHECK-OFF-LINE$ CONTAINS? TFALSE
@@ -599,16 +596,11 @@ create BFT-CHECK-OFF-LINE
    BFT-ROOT BF-TMP!
    BF-SNAP-SOURCE
    BFT-SNAP BFT-READ {: u :}
-   BFT-READ-BUF u s" : SNAP-TAIL-MARK" FIND-SUB {: mark:n :}
-   BFT-READ-BUF u mark s" ' LOWER-CERT-HOOK:HOOK constant HOOK-XT" BFT-FIND-AFTER {: hook:n :}
-   BFT-READ-BUF u hook s" SEAL-FRIEND" BFT-FIND-AFTER {: seal:n :}
-   BFT-READ-BUF u seal s" : ASM-CODELEN!" BFT-FIND-AFTER {: build:n :}
-   BFT-READ-BUF u build s" SNAP-BUILD:HOOK-XT set-check" BFT-FIND-AFTER {: on:n :}
-   mark BFT-FOUND
-   hook BFT-FOUND
-   seal BFT-FOUND
-   build BFT-FOUND
-   on BFT-FOUND
+   BFT-READ-BUF u s" : SNAP-TAIL-MARK" FIND-SUB BFT-FOUND {: mark:n :}
+   BFT-READ-BUF u mark s" ' LOWER-CERT-HOOK:HOOK constant HOOK-XT" BFT-FIND-AFTER BFT-FOUND {: hook:n :}
+   BFT-READ-BUF u hook s" SEAL-FRIEND" BFT-FIND-AFTER BFT-FOUND {: seal:n :}
+   BFT-READ-BUF u seal s" : ASM-CODELEN!" BFT-FIND-AFTER BFT-FOUND {: build:n :}
+   BFT-READ-BUF u build s" SNAP-BUILD:HOOK-XT set-check" BFT-FIND-AFTER BFT-FOUND {: on:n :}
    mark hook < TTRUE
    hook seal < TTRUE
    seal build < TTRUE
@@ -754,8 +746,10 @@ variable BFT-DOC-CODE
    79 s" hb: snapshot trailer corrupt" BFT-ASSERT-SNAP-EXIT
    BF-TMP-RESET ;
 
-\ ---- source buffer IBUFSZ overflow labeled exit (dot habu-name-silent-engine-9b28ac13) ----
-\ A --load source larger than IBUFSZ ($180000) fills the input buffer mid-read;
+\ ---- source buffer IBUFSZ capacity + labeled overflow ----
+\ A zero-filled --load source between the retired 1.5 MiB cap and IBUFSZ proves
+\ the checked-input growth. A source larger than IBUFSZ ($200000) fills the
+\ input buffer mid-read;
 \ EMIT-SOURCE-READ's sbufull leg (split from the read()-fault sreaderr leg) now
 \ names the buffer on fd 2 before the rc-74 exit ("hb: source prefix buffer
 \ full", the same message SRC-SFAIL/SRC-BFAIL emit). Content is irrelevant -- the
@@ -763,19 +757,20 @@ variable BFT-DOC-CODE
 \ verbatim. Red-first: a bare rc-74 exit (pre-fix) leaves stderr empty and the
 \ CONTAINS assertion fails; the earlier "hb: cannot read source" wording (before
 \ the sbufull split) also fails this assertion.
-$1A0000 constant BFT-SRCFULL-SZ   \ 1703936 > IBUFSZ 1572864: guarantees the read overflow
+$120000 constant BFT-SRC-OLD-EDGE   \ prefix + 1179648 crossed retired IBUFSZ and fits current cap
+$220000 constant BFT-SRCFULL-SZ     \ 2228224 > IBUFSZ 2097152: guarantees the read overflow
 
-variable BFT-OVF-EXITED
-variable BFT-OVF-CODE
-variable BFT-OVF-ERR-U
+variable BFT-SRC-EXITED
+variable BFT-SRC-CODE
+variable BFT-SRC-ERR-U
 
-: BFT-OVF-ERR$ ( -- ptr u8 n )
-   BFT-ERR BFT-OVF-ERR-U @ ;
+: BFT-SRC-ERR$ ( -- ptr u8 n )
+   BFT-ERR BFT-SRC-ERR-U @ ;
 
-: BFT-SRCFULL-WRITE ( -- )                     \ write an oversized (>IBUFSZ) source file into the tmp root
-   s" bft-srcfull.f" BF-A$ BFT-SRCFULL-SZ MEM-ALLOC-BYTES WRITE-ALL ;
+: BFT-SOURCE-WRITE ( n -- ) {: size:n :}
+   s" bft-srcfull.f" BF-A$ size MEM-ALLOC-BYTES WRITE-ALL ;
 
-: BFT-SRCFULL-RUN ( -- )                       \ run bin/hb --load <oversized>, capture stderr + exit outcome
+: BFT-SOURCE-RUN ( -- )
    PROC-ARGV-RESET
    s" --load" >LEN PROC-ARGV+
    s" bft-srcfull.f" BF-A$ >LEN PROC-ARGV+
@@ -783,19 +778,28 @@ variable BFT-OVF-ERR-U
    BFT-OUT BFT-CAPTURE-CAP >LEN  BFT-ERR BFT-CAPTURE-CAP >LEN  BFT-TIMEOUT-MS >MS
    RUN-ARGV-STDIN-CAPTURE-OUTCOME
    MATCH outcome
-     exited OF BFT-OVF-CODE ! 0 0= BFT-OVF-EXITED ! ENDOF
-     signaled OF BFT-OVF-CODE ! 0 0= 0= BFT-OVF-EXITED ! ENDOF
-     timeout OF 0 BFT-OVF-CODE ! 0 0= 0= BFT-OVF-EXITED ! ENDOF
+     exited OF BFT-SRC-CODE ! 0 0= BFT-SRC-EXITED ! ENDOF
+     signaled OF BFT-SRC-CODE ! 0 0= 0= BFT-SRC-EXITED ! ENDOF
+     timeout OF 0 BFT-SRC-CODE ! 0 0= 0= BFT-SRC-EXITED ! ENDOF
    ;MATCH {: ou:len eu:len :}
-   eu LEN>N BFT-OVF-ERR-U ! ;
+   eu LEN>N BFT-SRC-ERR-U ! ;
 
 : BFT-TEST-SOURCE-OVERFLOW ( -- )
    BFT-ROOT BF-TMP!
-   BFT-SRCFULL-WRITE
-   BFT-SRCFULL-RUN
-   BFT-OVF-EXITED @ TTRUE
-   BFT-OVF-CODE @ 74 T=
-   BFT-OVF-ERR$ s" hb: source prefix buffer full" CONTAINS? TTRUE
+   BFT-SRCFULL-SZ BFT-SOURCE-WRITE
+   BFT-SOURCE-RUN
+   BFT-SRC-EXITED @ TTRUE
+   BFT-SRC-CODE @ 74 T=
+   BFT-SRC-ERR$ s" hb: source prefix buffer full" CONTAINS? TTRUE
+   BF-TMP-RESET ;
+
+: BFT-TEST-SOURCE-OLD-EDGE ( -- )
+   BFT-ROOT BF-TMP!
+   BFT-SRC-OLD-EDGE BFT-SOURCE-WRITE
+   BFT-SOURCE-RUN
+   BFT-SRC-EXITED @ TTRUE
+   BFT-SRC-CODE @ 0 T=
+   BFT-SRC-ERR$ s" hb: source prefix buffer full" CONTAINS? TFALSE
    BF-TMP-RESET ;
 
 : BFT-TEST-TMP-OVERRIDE ( -- )
@@ -982,6 +986,7 @@ variable BFT-OVF-ERR-U
    s" checked regalloc" [: BFT-TEST-CHECKED-REGALLOC ;] BFT-STEP
    s" snap source" [: BFT-TEST-SNAP-SOURCE ;] BFT-STEP
    s" snap trailer" [: BFT-TEST-SNAP-TRAILER ;] BFT-STEP
+   s" source old edge" [: BFT-TEST-SOURCE-OLD-EDGE ;] BFT-STEP
    s" source overflow" [: BFT-TEST-SOURCE-OVERFLOW ;] BFT-STEP
    CLEANUP-RUN
    BFT-ROOT EXISTS? TFALSE
