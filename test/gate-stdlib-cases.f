@@ -401,6 +401,10 @@ TEST:SUITE immediate-model
    test/immediate-model-test.f
 TEST:;SUITE
 
+TEST:SUITE pointer-storage
+   test/pointer-storage-test.f
+TEST:;SUITE
+
 TEST:SUITE underdepth-gate
    test/underdepth-gate.f
 TEST:;SUITE

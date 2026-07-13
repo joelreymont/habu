@@ -1128,20 +1128,34 @@ public
    [: s" stage2-src" s" stage2-src" BF-A$ BF-CERTIFY-GENERATED ;] E-BUILD-CERTIFY TTHROWSQ
    BF-TMP-RESET ;
 
-\ Self-certification guard: the checker's own source and the pre-compile source
-\ verifier must certify clean via the same VERIFY:SOURCE-BUF path the fixpoint
-\ install uses, so any future de-typing of checker.f/verify-source.f turns this
-\ suite red immediately. The whole stage2/stdin sources now certify rc 0 and
-\ certification is BLOCKING (BFT-TEST-CERTIFY-BLOCKING); the fixpoint install
-\ is the end-to-end assertion.
+\ Self-certification guard: checker.f must certify as the tail of its exact
+\ pre-hook prefix. Its layout assertions consume cell.f's CORE-LAYOUT-RC and
+\ PTR-VARIABLE now has its own pre-checker owner, so checking checker.f alone
+\ tests a fictitious load path. The source verifier remains independently
+\ checked through the same VERIFY:SOURCE-BUF path.
+: BFT-CERT-CHECKER$ ( -- ptr u8 n )
+   s" cert-checker" BF-A$ ;
+
+: BFT-CERT-CHECKER-BASE ( ptr u8 n -- ) {: out:ptr outu:n :}
+   out outu BF-RESET-OUT
+   out outu s" src/core/util.f" BF-APPEND-SOURCE
+   out outu s" src/core/cell.f" BF-APPEND-SOURCE
+   out outu s" src/core/pointer-storage.f" BF-APPEND-SOURCE
+   out outu s" src/core/structures.f" BF-APPEND-SOURCE
+   out outu s" src/core/checker.f" BF-APPEND-SOURCE ;
+
 : BFT-TEST-CERTIFY-CHECKER-SELF ( -- )
-   s" checker-self" s" src/core/checker.f" BF-CERTIFY-RC 0 T=
-   s" verify-source-self" s" src/habu/verify-source.f" BF-CERTIFY-RC 0 T= ;
+   BFT-ROOT BF-TMP!
+   s" cert-checker" BFT-CERT-CHECKER-BASE
+   s" checker-self" BFT-CERT-CHECKER$ BF-CERTIFY-RC 0 T=
+   s" verify-source-self" s" src/habu/verify-source.f" BF-CERTIFY-RC 0 T=
+   BF-TMP-RESET ;
 
 \ Per-file TFAM-prefix certification: type-schema.f, type-family.f, render.f,
 \ and sumtype.f certify clean via the same VERIFY:SOURCE-BUF path, each
 \ verified as the tail of its exact BF-APPEND-CHECKER-BOOT prefix context
-\ (util, cell, structures, checker, then the earlier TFAM files), so de-typing any
+\ (util, cell, pointer storage, structures, checker, then the earlier TFAM files),
+\ so de-typing any
 \ one file fails its own assert. render.f sits between type-family.f and
 \ sumtype.f in the real prefix and certifies since its typed cleanup
 \ (habu-make-fixpoint-certify-a11dbad5).
@@ -1149,12 +1163,8 @@ public
    s" cert-tfam" BF-A$ ;
 
 : BFT-CERT-TFAM-BASE ( -- )
-   s" cert-tfam" BF-RESET-OUT
-   s" cert-tfam" s" src/core/util.f" BF-APPEND-SOURCE
-   s" cert-tfam" s" src/core/cell.f" BF-APPEND-SOURCE
-   s" cert-tfam" s" src/core/structures.f" BF-APPEND-SOURCE
-   s" cert-tfam" s" src/core/checker.f" BF-APPEND-SOURCE
-   s" cert-tfam" s" src/core/lower-cert-base.f" BF-APPEND-SOURCE ;
+   s" cert-tfam" 2dup BFT-CERT-CHECKER-BASE
+   s" src/core/lower-cert-base.f" BF-APPEND-SOURCE ;
 
 : BFT-TEST-CERTIFY-TFAM-PREFIX ( -- )
    BFT-ROOT BF-TMP!

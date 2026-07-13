@@ -94,12 +94,13 @@ TR-FILES: TR-AOT-NEG-PHASE-FILES
 
 TR-FILES: TR-UNDER-SOURCE-FILES
    tools/build-fixpoint.f tools/stdin-closure-lib.f src/habu/hide.f src/core/util.f
-   src/core/cell.f src/core/structures.f src/core/checker.f
+   src/core/cell.f src/core/pointer-storage.f src/core/structures.f src/core/checker.f
    src/core/lower-cert-base.f
    src/core/type-schema.f src/core/type-family.f
    src/core/render.f src/core/sumtype.f
    src/core/layout-buffer.f src/core/layout-valid.f
-   src/core/check-hook.f src/core/cell-effects.f src/core/structures-effects.f
+   src/core/check-hook.f src/core/cell-effects.f
+   src/core/pointer-storage-effects.f src/core/structures-effects.f
    src/core/roles.f src/core/bytes.f
    src/arch/arm64/asm.f src/arch/arm64/icode.f src/arch/arm64/mnem.f
    src/habu/layout.f src/os/env-base.f src/os/script-argv.f

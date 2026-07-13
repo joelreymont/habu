@@ -190,14 +190,16 @@ public
    s" a u ZBYTES ;" BCG-MUST-LACK
    s" LPLINUXTARGET @ LBL, s" BCG-MUST-LACK
    s" PFX-COMMON LPUTIL" s" PFX-COMMON LPCELL" BCG-MUST-BEFORE
-   s" PFX-COMMON LPCELL" s" PFX-COMMON LPSTRUCTURES" BCG-MUST-BEFORE
+   s" PFX-COMMON LPCELL" s" PFX-COMMON LPPTRSTORAGE" BCG-MUST-BEFORE
+   s" PFX-COMMON LPPTRSTORAGE" s" PFX-COMMON LPSTRUCTURES" BCG-MUST-BEFORE
    s" PFX-COMMON LPSTRUCTURES" s" PFX-COMMON LPCHECKER" BCG-MUST-BEFORE
    s" PFX-COMMON LPCHECKER" s" PFX-LINUX  LPLINUXTARGET" BCG-MUST-BEFORE
    s" PFX-COMMON LPCHECKER" s" PFX-MACOS  LPMACOSTARGET" BCG-MUST-BEFORE
    s" PFX-COMMON LPHOOK" s" PFX-LINUX  LPLINUXTARGET" BCG-MUST-BEFORE
    s" PFX-COMMON LPHOOK" s" PFX-MACOS  LPMACOSTARGET" BCG-MUST-BEFORE
    s" PFX-COMMON LPHOOK" s" PFX-COMMON LPCELLEFF" BCG-MUST-BEFORE
-   s" PFX-COMMON LPCELLEFF" s" PFX-COMMON LPSTRUCTEFF" BCG-MUST-BEFORE
+   s" PFX-COMMON LPCELLEFF" s" PFX-COMMON LPPTRSTORAGEEFF" BCG-MUST-BEFORE
+   s" PFX-COMMON LPPTRSTORAGEEFF" s" PFX-COMMON LPSTRUCTEFF" BCG-MUST-BEFORE
    s" PFX-COMMON LPSTRUCTEFF" s" PFX-COMMON LPROLES" BCG-MUST-BEFORE
    s" PFX-COMMON LPROLES" s" PFX-COMMON LPBYTES" BCG-MUST-BEFORE
    s" PFX-COMMON LPBYTES" s" PFX-LINUX  LPLINUXTARGET" BCG-MUST-BEFORE
@@ -252,16 +254,20 @@ public
 : BCG-TEST-CELL-BOOTSTRAP ( -- )
    s" tools/bootstrap.sh" BCG-LOAD
    s" cat src/core/util.f" s" cat src/core/cell.f" BCG-MUST-BEFORE
-   s" cat src/core/cell.f" s" cat src/core/structures.f" BCG-MUST-BEFORE
+   s" cat src/core/cell.f" s" cat src/core/pointer-storage.f" BCG-MUST-BEFORE
+   s" cat src/core/pointer-storage.f" s" cat src/core/structures.f" BCG-MUST-BEFORE
    s" cat src/core/check-hook.f" s" cat src/core/cell-effects.f" BCG-MUST-BEFORE
-   s" cat src/core/cell-effects.f" s" cat src/core/structures-effects.f" BCG-MUST-BEFORE ;
+   s" cat src/core/cell-effects.f" s" cat src/core/pointer-storage-effects.f" BCG-MUST-BEFORE
+   s" cat src/core/pointer-storage-effects.f" s" cat src/core/structures-effects.f" BCG-MUST-BEFORE ;
 
 : BCG-TEST-CELL-FIXPOINT ( -- )
    s" tools/build-fixpoint.f" BCG-LOAD
    s" src/core/util.f" s" src/core/cell.f" BCG-MUST-BEFORE
-   s" src/core/cell.f" s" src/core/structures.f" BCG-MUST-BEFORE
+   s" src/core/cell.f" s" src/core/pointer-storage.f" BCG-MUST-BEFORE
+   s" src/core/pointer-storage.f" s" src/core/structures.f" BCG-MUST-BEFORE
    s" src/core/check-hook.f" s" src/core/cell-effects.f" BCG-MUST-BEFORE
-   s" src/core/cell-effects.f" s" src/core/structures-effects.f" BCG-MUST-BEFORE ;
+   s" src/core/cell-effects.f" s" src/core/pointer-storage-effects.f" BCG-MUST-BEFORE
+   s" src/core/pointer-storage-effects.f" s" src/core/structures-effects.f" BCG-MUST-BEFORE ;
 
 : BCG-TEST-CELL-PARITY ( -- )
    BCG-TEST-CELL-RUNTIME

@@ -1425,11 +1425,11 @@ variable LTRAPH   variable LBPH
 variable LSRCRD   variable LSHBANG
 variable LPLINUXTARGET  variable LPMACOSTARGET
 variable LPLINUXLAYOUT  variable LPMACOSLAYOUT
-variable LPUTIL         variable LPCELL         variable LPSTRUCTURES
+variable LPUTIL         variable LPCELL         variable LPPTRSTORAGE  variable LPSTRUCTURES
 variable LPBYTES        variable LPCHECKER      variable LPRENDER
 variable LPLOWERCERTBASE
 variable LPTYPESCHEMA   variable LPTYPEFAM      variable LPSUMTYPE      variable LPLAYOUTBUF  variable LPLAYOUTVALID
-variable LPHOOK         variable LPCELLEFF      variable LPSTRUCTEFF
+variable LPHOOK         variable LPCELLEFF      variable LPPTRSTORAGEEFF  variable LPSTRUCTEFF
 variable LPHABULAYOUT   variable LPENVBASE      variable LPINCLUDE
 variable LPSCRIPTARGV   variable LPROLES
 variable LPENUMS        variable LPEXECVECTOR   variable LPSHA256       variable LPTFAMSHA
@@ -1593,6 +1593,7 @@ create ZBYTE 0 c,
 : PFX-LOAD-BASE-FILES ( -- )
    PFX-COMMON LPUTIL         s" src/core/util.f"        PFX-LOAD-ROW
    PFX-COMMON LPCELL         s" src/core/cell.f"        PFX-LOAD-ROW
+   PFX-COMMON LPPTRSTORAGE   s" src/core/pointer-storage.f" PFX-LOAD-ROW
    PFX-COMMON LPSTRUCTURES   s" src/core/structures.f"  PFX-LOAD-ROW
    PFX-COMMON LPCHECKER      s" src/core/checker.f"     PFX-LOAD-ROW
    PFX-COMMON LPLOWERCERTBASE s" src/core/lower-cert-base.f" PFX-LOAD-ROW
@@ -1604,6 +1605,7 @@ create ZBYTE 0 c,
    PFX-COMMON LPLAYOUTVALID  s" src/core/layout-valid.f" PFX-LOAD-ROW
    PFX-COMMON LPHOOK         s" src/core/check-hook.f"  PFX-LOAD-ROW
    PFX-COMMON LPCELLEFF      s" src/core/cell-effects.f" PFX-LOAD-ROW
+   PFX-COMMON LPPTRSTORAGEEFF s" src/core/pointer-storage-effects.f" PFX-LOAD-ROW
    PFX-COMMON LPSTRUCTEFF    s" src/core/structures-effects.f" PFX-LOAD-ROW
    PFX-COMMON LPROLES        s" src/core/roles.f"       PFX-LOAD-ROW
    PFX-COMMON LPBYTES        s" src/core/bytes.f"       PFX-LOAD-ROW
@@ -1639,6 +1641,7 @@ create ZBYTE 0 c,
 : PFX-PATH-FILES ( -- )
    PFX-COMMON LPUTIL         s" src/core/util.f"        PFX-PATH-ROW
    PFX-COMMON LPCELL         s" src/core/cell.f"        PFX-PATH-ROW
+   PFX-COMMON LPPTRSTORAGE   s" src/core/pointer-storage.f" PFX-PATH-ROW
    PFX-COMMON LPSTRUCTURES   s" src/core/structures.f"  PFX-PATH-ROW
    PFX-COMMON LPCHECKER      s" src/core/checker.f"     PFX-PATH-ROW
    PFX-COMMON LPLOWERCERTBASE s" src/core/lower-cert-base.f" PFX-PATH-ROW
@@ -1650,6 +1653,7 @@ create ZBYTE 0 c,
    PFX-COMMON LPLAYOUTVALID  s" src/core/layout-valid.f" PFX-PATH-ROW
    PFX-COMMON LPHOOK         s" src/core/check-hook.f"  PFX-PATH-ROW
    PFX-COMMON LPCELLEFF      s" src/core/cell-effects.f" PFX-PATH-ROW
+   PFX-COMMON LPPTRSTORAGEEFF s" src/core/pointer-storage-effects.f" PFX-PATH-ROW
    PFX-COMMON LPSTRUCTEFF    s" src/core/structures-effects.f" PFX-PATH-ROW
    PFX-COMMON LPROLES        s" src/core/roles.f"       PFX-PATH-ROW
    PFX-COMMON LPBYTES        s" src/core/bytes.f"       PFX-PATH-ROW
@@ -1862,6 +1866,7 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
 : PFX-PROVIDE-FILES ( -- )
    PFX-COMMON LPUTIL         s" src/core/util.f"        PFX-PROVIDE-ROW
    PFX-COMMON LPCELL         s" src/core/cell.f"        PFX-PROVIDE-ROW
+   PFX-COMMON LPPTRSTORAGE   s" src/core/pointer-storage.f" PFX-PROVIDE-ROW
    PFX-COMMON LPSTRUCTURES   s" src/core/structures.f"  PFX-PROVIDE-ROW
    PFX-COMMON LPCHECKER      s" src/core/checker.f"     PFX-PROVIDE-ROW
    PFX-COMMON LPLOWERCERTBASE s" src/core/lower-cert-base.f" PFX-PROVIDE-ROW
@@ -1873,6 +1878,7 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
    PFX-COMMON LPLAYOUTVALID  s" src/core/layout-valid.f" PFX-PROVIDE-ROW
    PFX-COMMON LPHOOK         s" src/core/check-hook.f"  PFX-PROVIDE-ROW
    PFX-COMMON LPCELLEFF      s" src/core/cell-effects.f" PFX-PROVIDE-ROW
+   PFX-COMMON LPPTRSTORAGEEFF s" src/core/pointer-storage-effects.f" PFX-PROVIDE-ROW
    PFX-COMMON LPSTRUCTEFF    s" src/core/structures-effects.f" PFX-PROVIDE-ROW
    PFX-COMMON LPROLES        s" src/core/roles.f"       PFX-PROVIDE-ROW
    PFX-COMMON LPBYTES        s" src/core/bytes.f"       PFX-PROVIDE-ROW
@@ -5376,9 +5382,10 @@ variable P2SK
 : EMIT-LABEL-SOURCES ( -- )
    LBL LPLINUXTARGET !  LBL LPMACOSTARGET !
    LBL LPLINUXLAYOUT !  LBL LPMACOSLAYOUT !
-   LBL LPUTIL !  LBL LPCELL !  LBL LPSTRUCTURES !
-   LBL LPBYTES !  LBL LPCHECKER !  LBL LPLOWERCERTBASE !
-   LBL LPRENDER !  LBL LPHOOK !  LBL LPCELLEFF !
+   LBL LPUTIL !  LBL LPCELL !  LBL LPPTRSTORAGE !
+   LBL LPSTRUCTURES !  LBL LPBYTES !  LBL LPCHECKER !
+   LBL LPLOWERCERTBASE !  LBL LPRENDER !  LBL LPHOOK !
+   LBL LPCELLEFF !  LBL LPPTRSTORAGEEFF !
    LBL LPTYPESCHEMA !  LBL LPTYPEFAM !  LBL LPSUMTYPE !  LBL LPLAYOUTBUF !  LBL LPLAYOUTVALID !
    LBL LPSTRUCTEFF !  LBL LPHABULAYOUT !
    LBL LPENVBASE !  LBL LPINCLUDE !  LBL LPSCRIPTARGV !  LBL LPROLES !

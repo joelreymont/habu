@@ -78,6 +78,8 @@ variable BAD  variable LI
    s" tools/lint/text.f" LINT-FILE   s" tools/lint/token.f" LINT-FILE s" tools/lint/lib.f" LINT-FILE
    s" tools/lint/shadow-lint.f" LINT-FILE
    s" src/core/util.f"      LINT-FILE   s" src/core/cell.f"      LINT-FILE
+   s" src/core/pointer-storage.f" LINT-FILE
+   s" src/core/pointer-storage-effects.f" LINT-FILE
    s" src/core/checker.f"   LINT-FILE
    s" src/core/lower-cert-base.f" LINT-FILE
    s" src/core/type-schema.f" LINT-FILE s" src/core/type-family.f" LINT-FILE

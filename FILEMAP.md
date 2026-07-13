@@ -42,6 +42,8 @@ points stay listed.
 - `src/core/util.f` — shared subset helpers.
 - `src/core/cell.f` — target cell-width constant and load-time native/recovery invariant.
 - `src/core/cell-effects.f` — post-hook checked effects for target cell-width words.
+- `src/core/pointer-storage.f` — one-concern `PTR-VARIABLE` pointer-cell definer.
+- `src/core/pointer-storage-effects.f` — post-hook checked effect for `PTR-VARIABLE`.
 - `src/core/bytes.f` — core byte-buffer helpers (`BYTE+`, `BYTE-COPY-LEN`,
   `BYTE-COPY`) loaded before stdlib/tool sources so low-level modules do not
   depend on `lib/string.f` order.
@@ -951,6 +953,7 @@ points stay listed.
   slices.
 - `test/gate-hb-build-repl.f` — checked runner for `hb-build --repl` checks.
 - `test/boot-pin-test.f` — regression: boot-prefix digest determinism, drift detection, CLI verify, and path-list consistency with habu2.f.
+- `test/pointer-storage-test.f` — focused pointer-cell initialization, typed address, round-trip, verifier-effect, and source-isolation regressions.
 - `test/gate-pool.f` — bounded checked process pool used by native gate runners.
 - `test/gate-pool-test.f` — focused fork-backed pool worker coverage.
 - `test/gate-pool-orphan-test.f` — regression: pool workers reaped on parent death.

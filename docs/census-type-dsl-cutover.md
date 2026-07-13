@@ -61,9 +61,12 @@ rg -ni 'ENUM[4]?\+' src lib maki tools test bootstrap examples --glob '*.f' --gl
 - Core registry records: `src/core/checker.f`, `src/core/type-family.f`,
   `src/core/type-schema.f`.
 - Library records: `lib/vector.f`, `lib/task.f`, `lib/ptx/ir.f`.
-- Definition/effect owners and generated fixtures:
+- Composite definition/effect owners and generated fixtures:
   `src/core/structures.f`, `src/core/structures-effects.f`,
   `test/gate-dictionary-lib.f`, `test/internal-word-gate.f`.
+- Pointer-storage definition/effect owner and focused regression:
+  `src/core/pointer-storage.f`, `src/core/pointer-storage-effects.f`,
+  `test/pointer-storage-test.f`.
 
 `habu-migration-core-records-77182600` owns core declarations and the removal
 of hand-threaded byte offsets from core clients.

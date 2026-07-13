@@ -15,6 +15,23 @@ Last updated: 2026-07-14
   commits, update and commit the claim before continuing in the new workspace;
   stale claims defeat overlap detection and review routing.
 
+- **Scan every active dot's claimed files before dispatch, not only sibling
+  workspaces.** The pointer-storage worker overlapped the active owner-persist
+  lane in both engine emitters and recovery inventories. A workspace boundary
+  prevents filesystem collisions; only an active-dot ownership census prevents
+  semantic merge collisions.
+- **Source certification must reproduce the real prefix, not rely on the live
+  dictionary.** Once checker layout assertions consumed `CORE-LAYOUT-RC`, the
+  standalone checker-self fixture failed while the real util/cell/checker load
+  was valid. Build one reusable exact-prefix fixture and extend it for later
+  layers; a fictitious standalone source is neither a positive nor a negative
+  proof.
+- **A pre-checker definer and its post-hook effect are one source-order unit:**
+  isolating `PTR-VARIABLE` requires the definer before `checker.f` and its sole
+  `TRUST` row after `check-hook.f` in every native, recovery, pin, cache, and
+  diagnostic inventory; moving only the body breaks cold boot, while moving
+  only the effect preserves the wrong owner.
+
 - **Null-check the backing cell before refining a pointer field:** `ptr-field @`
   returns a typed pointer, so comparing it with numeric zero violates the
   checker contract. Test the raw address cell before allocating, then use the

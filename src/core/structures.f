@@ -27,9 +27,6 @@ variable STRUCT-ACTIVE
    dup CELL mod 0 <> if s" structure: pointer field alignment" STRUCT-RC die then
    create dup CELL / , CELL + does> ( ptr a -- ptr ptr a ) @ ptr-field ;
 
-: PTR-VARIABLE ( -- )
-   create 0 , does> ( -- ptr ptr a ) 0 ptr-field ;
-
 : CFIELD: ( ptr a n -- ptr a n )
    STRUCT-REQUIRE-OPEN
    create dup , 1 + does> ( ptr a -- ptr u8 ) @ STRUCT-BYTE+ ;

@@ -124,6 +124,7 @@ variable BP-SET
 : BP-EACH ( [ ptr u8 n -- ] -- ) {: q :}  \ typed-local-lint: allow-bare-local - quotation bound as ordinary local (docs/forth.md)
    s" src/core/util.f" q execute
    s" src/core/cell.f" q execute
+   s" src/core/pointer-storage.f" q execute
    s" src/core/structures.f" q execute
    s" src/core/checker.f" q execute
    s" src/core/lower-cert-base.f" q execute
@@ -135,6 +136,7 @@ variable BP-SET
    s" src/core/layout-valid.f" q execute
    s" src/core/check-hook.f" q execute
    s" src/core/cell-effects.f" q execute
+   s" src/core/pointer-storage-effects.f" q execute
    s" src/core/structures-effects.f" q execute
    s" src/core/roles.f" q execute
    s" src/core/bytes.f" q execute

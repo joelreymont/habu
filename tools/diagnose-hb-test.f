@@ -13,7 +13,7 @@ package DHT
 
 $4000 constant CAP
 10000 constant TIMEOUT-MS
-28 constant COMMON-N
+30 constant COMMON-N
 
 variable OUT-A
 variable ERR-A

@@ -519,6 +519,7 @@ HBB-INSTALL-CHILD-LINTS
    s" src/habu/hide.f" HBB-KEY-FILE+
    s" src/core/util.f" HBB-KEY-FILE+
    s" src/core/cell.f" HBB-KEY-FILE+
+   s" src/core/pointer-storage.f" HBB-KEY-FILE+
    s" src/core/structures.f" HBB-KEY-FILE+
    s" src/core/checker.f" HBB-KEY-FILE+
    s" src/core/lower-cert-base.f" HBB-KEY-FILE+
@@ -530,6 +531,7 @@ HBB-INSTALL-CHILD-LINTS
    s" src/core/layout-valid.f" HBB-KEY-FILE+
    s" src/core/check-hook.f" HBB-KEY-FILE+
    s" src/core/cell-effects.f" HBB-KEY-FILE+
+   s" src/core/pointer-storage-effects.f" HBB-KEY-FILE+
    s" src/core/structures-effects.f" HBB-KEY-FILE+
    s" src/core/roles.f" HBB-KEY-FILE+
    s" src/core/bytes.f" HBB-KEY-FILE+

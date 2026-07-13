@@ -151,11 +151,11 @@ variable LFLAGMATCH  variable LSRCBADFLAG  variable LFLAGTAB
 variable LBADFLAG    variable LUSAGE1      variable LUSAGE2     variable LSPC
 variable LPLINUXTARGET  variable LPMACOSTARGET
 variable LPLINUXLAYOUT  variable LPMACOSLAYOUT
-variable LPUTIL         variable LPCELL         variable LPSTRUCTURES
+variable LPUTIL         variable LPCELL         variable LPPTRSTORAGE  variable LPSTRUCTURES
 variable LPBYTES        variable LPCHECKER      variable LPRENDER
 variable LPLOWERCERTBASE
 variable LPTYPESCHEMA   variable LPTYPEFAM      variable LPSUMTYPE      variable LPLAYOUTBUF  variable LPLAYOUTVALID
-variable LPHOOK         variable LPCELLEFF      variable LPSTRUCTEFF
+variable LPHOOK         variable LPCELLEFF      variable LPPTRSTORAGEEFF  variable LPSTRUCTEFF
 variable LPHABULAYOUT   variable LPENVBASE      variable LPINCLUDE
 variable LPSCRIPTARGV   variable LPINTMARK
 variable LPROLES
@@ -498,6 +498,7 @@ s" c-bp-watch-dump" s" label label --" TRUST
 : PFX-LOAD-BASE-FILES ( -- )
    PFX-COMMON LPUTIL         s" src/core/util.f"        PFX-LOAD-ROW
    PFX-COMMON LPCELL         s" src/core/cell.f"        PFX-LOAD-ROW
+   PFX-COMMON LPPTRSTORAGE   s" src/core/pointer-storage.f" PFX-LOAD-ROW
    PFX-COMMON LPSTRUCTURES   s" src/core/structures.f"  PFX-LOAD-ROW
    PFX-COMMON LPCHECKER      s" src/core/checker.f"     PFX-LOAD-ROW
    PFX-COMMON LPLOWERCERTBASE s" src/core/lower-cert-base.f" PFX-LOAD-ROW
@@ -509,6 +510,7 @@ s" c-bp-watch-dump" s" label label --" TRUST
    PFX-COMMON LPLAYOUTVALID  s" src/core/layout-valid.f" PFX-LOAD-ROW
    PFX-COMMON LPHOOK         s" src/core/check-hook.f"  PFX-LOAD-ROW
    PFX-COMMON LPCELLEFF      s" src/core/cell-effects.f" PFX-LOAD-ROW
+   PFX-COMMON LPPTRSTORAGEEFF s" src/core/pointer-storage-effects.f" PFX-LOAD-ROW
    PFX-COMMON LPSTRUCTEFF    s" src/core/structures-effects.f" PFX-LOAD-ROW
    PFX-COMMON LPROLES        s" src/core/roles.f"       PFX-LOAD-ROW
    PFX-COMMON LPBYTES        s" src/core/bytes.f"       PFX-LOAD-ROW
@@ -540,7 +542,7 @@ s" c-bp-watch-dump" s" label label --" TRUST
 
 \ internal-mark.f is the LAST prefix source (dot habu-hb-crash-bare-c5be6634):
 \ its marking pass must see every prefix definition and every recorded effect
-\ (cell-effects.f/structures-effects.f TRUST rows, xref/script-argv signatures) before it
+\ (cell/pointer-storage/structures effect rows, xref/script-argv signatures) before it
 \ classifies the remaining sig-less prefix words as DNAME-INT internal.
 : PFX-LOAD-INTMARK ( -- )
    PFX-COMMON LPINTMARK      s" src/core/internal-mark.f" PFX-LOAD-ROW ;
@@ -560,6 +562,7 @@ s" c-bp-watch-dump" s" label label --" TRUST
 : PFX-PATH-FILES ( -- )
    PFX-COMMON LPUTIL         s" src/core/util.f"        PFX-PATH-ROW
    PFX-COMMON LPCELL         s" src/core/cell.f"        PFX-PATH-ROW
+   PFX-COMMON LPPTRSTORAGE   s" src/core/pointer-storage.f" PFX-PATH-ROW
    PFX-COMMON LPSTRUCTURES   s" src/core/structures.f"  PFX-PATH-ROW
    PFX-COMMON LPCHECKER      s" src/core/checker.f"     PFX-PATH-ROW
    PFX-COMMON LPLOWERCERTBASE s" src/core/lower-cert-base.f" PFX-PATH-ROW
@@ -571,6 +574,7 @@ s" c-bp-watch-dump" s" label label --" TRUST
    PFX-COMMON LPLAYOUTVALID  s" src/core/layout-valid.f" PFX-PATH-ROW
    PFX-COMMON LPHOOK         s" src/core/check-hook.f"  PFX-PATH-ROW
    PFX-COMMON LPCELLEFF      s" src/core/cell-effects.f" PFX-PATH-ROW
+   PFX-COMMON LPPTRSTORAGEEFF s" src/core/pointer-storage-effects.f" PFX-PATH-ROW
    PFX-COMMON LPSTRUCTEFF    s" src/core/structures-effects.f" PFX-PATH-ROW
    PFX-COMMON LPROLES        s" src/core/roles.f"       PFX-PATH-ROW
    PFX-COMMON LPBYTES        s" src/core/bytes.f"       PFX-PATH-ROW
@@ -790,6 +794,7 @@ variable LCOLDPFX variable LCOLDPFXB variable LAPPPROV
 : PFX-PROVIDE-FILES ( -- )
    PFX-COMMON LPUTIL         s" src/core/util.f"        PFX-PROVIDE-ROW
    PFX-COMMON LPCELL         s" src/core/cell.f"        PFX-PROVIDE-ROW
+   PFX-COMMON LPPTRSTORAGE   s" src/core/pointer-storage.f" PFX-PROVIDE-ROW
    PFX-COMMON LPSTRUCTURES   s" src/core/structures.f"  PFX-PROVIDE-ROW
    PFX-COMMON LPCHECKER      s" src/core/checker.f"     PFX-PROVIDE-ROW
    PFX-COMMON LPLOWERCERTBASE s" src/core/lower-cert-base.f" PFX-PROVIDE-ROW
@@ -801,6 +806,7 @@ variable LCOLDPFX variable LCOLDPFXB variable LAPPPROV
    PFX-COMMON LPLAYOUTVALID  s" src/core/layout-valid.f" PFX-PROVIDE-ROW
    PFX-COMMON LPHOOK         s" src/core/check-hook.f"  PFX-PROVIDE-ROW
    PFX-COMMON LPCELLEFF      s" src/core/cell-effects.f" PFX-PROVIDE-ROW
+   PFX-COMMON LPPTRSTORAGEEFF s" src/core/pointer-storage-effects.f" PFX-PROVIDE-ROW
    PFX-COMMON LPSTRUCTEFF    s" src/core/structures-effects.f" PFX-PROVIDE-ROW
    PFX-COMMON LPROLES        s" src/core/roles.f"       PFX-PROVIDE-ROW
    PFX-COMMON LPBYTES        s" src/core/bytes.f"       PFX-PROVIDE-ROW
@@ -5625,9 +5631,10 @@ s" SRCA@" s" -- ptr u8" TRUST
 : EMIT-LABEL-SOURCES ( -- )
    LBL LPLINUXTARGET !  LBL LPMACOSTARGET !
    LBL LPLINUXLAYOUT !  LBL LPMACOSLAYOUT !
-   LBL LPUTIL !  LBL LPCELL !  LBL LPSTRUCTURES !
-   LBL LPBYTES !  LBL LPCHECKER !  LBL LPLOWERCERTBASE !
-   LBL LPRENDER !  LBL LPHOOK !  LBL LPCELLEFF !
+   LBL LPUTIL !  LBL LPCELL !  LBL LPPTRSTORAGE !
+   LBL LPSTRUCTURES !  LBL LPBYTES !  LBL LPCHECKER !
+   LBL LPLOWERCERTBASE !  LBL LPRENDER !  LBL LPHOOK !
+   LBL LPCELLEFF !  LBL LPPTRSTORAGEEFF !
    LBL LPTYPESCHEMA !  LBL LPTYPEFAM !  LBL LPSUMTYPE !  LBL LPLAYOUTBUF !  LBL LPLAYOUTVALID !
    LBL LPSTRUCTEFF !  LBL LPHABULAYOUT !
    LBL LPENVBASE !  LBL LPINCLUDE !  LBL LPSCRIPTARGV !  LBL LPINTMARK !  LBL LPROLES !

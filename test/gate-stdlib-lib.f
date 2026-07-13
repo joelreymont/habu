@@ -265,6 +265,7 @@ variable SUITE-TIMINGS
    s" argv-stdlib-mocks" SUITE-LABEL= if SUITE-TRUE exit then
    s" argv-stdlib-script-args" SUITE-LABEL= if SUITE-TRUE exit then
    s" stdlib-source-default" SUITE-LABEL= if SUITE-TRUE exit then
+   s" pointer-storage" SUITE-LABEL= if SUITE-TRUE exit then
    SUITE-FALSE ;
 
 : SUITE-RUN? ( -- bool )

@@ -412,6 +412,7 @@ variable GSI-TL-FILE-A
    s" lib/json-read-test.f" GSI-FORK-INCLUDE
    s" lib/memory-test.f" GSI-FORK-INCLUDE
    s" lib/vector-test.f" GSI-FORK-INCLUDE
+   s" test/pointer-storage-test.f" GSI-FORK-INCLUDE
    s" lib/fs-test.f" GSI-FORK-INCLUDE
    s" tools/bootstrap-codegen-test.f" GSI-FORK-INCLUDE
    s" tools/asm-src-test.f" GSI-FORK-INCLUDE
