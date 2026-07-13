@@ -816,6 +816,30 @@ variable CHK-TFAM-NAME-I
    CHK-DECL-FAIL
    nxt ;
 
+\ Package blocks (dot habu-tools-check-scanner-685b735e) mirror verify-source's
+\ RECORD-PACKAGE/-PUBLIC/-PRIVATE/-END-PACKAGE at the checker level, so the
+\ TYPEFAMILY/SUMTYPE/ENUM/PRODUCT registrations above land in the declaring
+\ package under the live visibility mode (TDECL reads CHECKER-PACKAGE-*), and
+\ qualified pkg:tail signature uses resolve public-only exactly as native.
+\ The CHECKER-SCOPE frame wrapping the nominal pass saves/restores package
+\ state (RBF.PKGMODE/PKGU). Boundary: the name must be the plain next word
+\ token — a missing or comment-shaped name rejects fail-closed here, while
+\ native-loader misuse (nesting, public outside a package, ':' in a name)
+\ stays fail-closed through preverify and the child run.
+: CHK-PKG-REGISTER ( n -- n ) {: k:n :}   \ k at 'package'; next scan index
+   k 1+ CHK-WORD-TOK? 0= if
+      s" check.f: missing package name" CHK-E-CHECK CHK-FAIL
+   then
+   k 1+ LEX-TOK CHECKER-PACKAGE
+   k 2 + ;
+
+: CHK-PKG-STEP ( n -- n bool ) {: k:n :}   \ package-word dispatch: next index, handled
+   k s" package" CHK-TOK=CI if k CHK-PKG-REGISTER LINT-TRUE exit then
+   k s" public" CHK-TOK=CI if CHECKER-PUBLIC k 1+ LINT-TRUE exit then
+   k s" private" CHK-TOK=CI if CHECKER-PRIVATE k 1+ LINT-TRUE exit then
+   k s" ;package" CHK-TOK=CI if CHECKER-END-PACKAGE k 1+ LINT-TRUE exit then
+   k LINT-FALSE ;
+
 : CHK-TOK-SEMI? ( n -- bool )
    s" ;" CHK-TOK=CI ;
 
@@ -831,6 +855,7 @@ variable CHK-TFAM-NAME-I
 
 : CHK-NOM-STEP ( n -- n ) {: k:n :}
    k CHK-DEF-OPENER? if k 1+ CHK-SKIP-DEF exit then
+   k CHK-PKG-STEP if exit then drop
    k s" deftype" CHK-TOK=CI if
       k k 1+ CHK-NOM-REGISTER
       k 2 + exit

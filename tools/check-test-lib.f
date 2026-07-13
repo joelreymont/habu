@@ -443,6 +443,61 @@ private
 
 ;package
 
+\ Scanner package-block support (dot habu-tools-check-scanner-685b735e):
+\ CHK-NOM-STEP replays package/public/private/;package at the checker level,
+\ so family registrations land in the declaring package and the check CLI can
+\ reach the foreign qualified pkg:tail contract end to end.
+package CKT-PKG-FAM
+
+private
+
+: GOOD$ ( -- ptr u8 n )        \ foreign public family, qualified good use
+   SB-RESET
+   s" package CKFA" SB-APPEND $0a SB-APPEND-C
+   s" public" SB-APPEND $0a SB-APPEND-C
+   s" SUMTYPE ckffam 0 VARIANT keep n ;VARIANT ;SUMTYPE" SB-APPEND $0a SB-APPEND-C
+   s" ;package" SB-APPEND $0a SB-APPEND-C
+   s" : CKF-PASS ( ckfa:ckffam -- ckfa:ckffam ) ;" SB-APPEND
+   SB$ ;
+
+: TWO$ ( -- ptr u8 n )         \ same tail in two packages: no spurious dup reject
+   SB-RESET
+   s" package CKFT1" SB-APPEND $0a SB-APPEND-C
+   s" public" SB-APPEND $0a SB-APPEND-C
+   s" SUMTYPE ckfsame 0 VARIANT keep n ;VARIANT ;SUMTYPE" SB-APPEND $0a SB-APPEND-C
+   s" ;package" SB-APPEND $0a SB-APPEND-C
+   s" package CKFT2" SB-APPEND $0a SB-APPEND-C
+   s" public" SB-APPEND $0a SB-APPEND-C
+   s" SUMTYPE ckfsame 0 VARIANT keep n ;VARIANT ;SUMTYPE" SB-APPEND $0a SB-APPEND-C
+   s" ;package" SB-APPEND $0a SB-APPEND-C
+   s" : CKF-TWO ( ckft1:ckfsame -- ckft1:ckfsame ) ;" SB-APPEND
+   SB$ ;
+
+: BOGUS$ ( -- ptr u8 n )       \ family qualified into a never-declared package
+   s" : CKF-BOGUS ( ckfno:ckffam -- ckfno:ckffam ) ;" ;
+
+: JSON$ ( -- ptr u8 n )        \ foreign family mismatch: qualified JSON family pin
+   SB-RESET
+   s" package CKFJ" SB-APPEND $0a SB-APPEND-C
+   s" public" SB-APPEND $0a SB-APPEND-C
+   s" SUMTYPE ckfjfam 0 VARIANT keep n ;VARIANT ;SUMTYPE" SB-APPEND $0a SB-APPEND-C
+   s" ;package" SB-APPEND $0a SB-APPEND-C
+   s" : CKF-JBAD ( n -- ckfj:ckfjfam ) ;" SB-APPEND
+   SB$ ;
+
+: PRIV$ ( -- ptr u8 n )        \ private family: qualified lookup is public-only
+   SB-RESET
+   s" package CKFP" SB-APPEND $0a SB-APPEND-C
+   s" SUMTYPE ckfpfam 0 VARIANT keep n ;VARIANT ;SUMTYPE" SB-APPEND $0a SB-APPEND-C
+   s" ;package" SB-APPEND $0a SB-APPEND-C
+   s" : CKF-PRIV ( ckfp:ckfpfam -- ckfp:ckfpfam ) ;" SB-APPEND
+   SB$ ;
+
+: NONAME$ ( -- ptr u8 n )      \ scanner boundary: package without a name token
+   s" package" ;
+
+;package
+
 : CKT-SCAN-NOMINAL ( -- n )
    CHECKER-SCOPE-START
    [: CKT-LIST$ CHK-RUN-NOMINAL-FILE ;] catch {: rc:n :}
@@ -781,6 +836,51 @@ public
 
 ;package
 
+package CKT-PKG-FAM
+
+public
+
+: GOOD ( -- )
+   GOOD$ CKT-DIRECT-STDIN 0 T=
+   {: outu:n erru:n :}
+   outu 0 T=
+   erru 0 T= ;
+
+: TWO ( -- )
+   TWO$ CKT-DIRECT-STDIN 0 T=
+   {: outu:n erru:n :}
+   outu 0 T=
+   erru 0 T= ;
+
+: BOGUS ( -- )
+   BOGUS$ CKT-DIRECT-JSON-STDIN 70 T=
+   {: outu:n erru:n :}
+   outu 0 T=
+   CKT-ERR erru s" E-UNKNOWN-SIGNATURE-TYPE" CONTAINS? TTRUE
+   CKT-ERR erru s" ckfno:ckffam" CONTAINS? TTRUE ;
+
+: JSON-PIN ( -- )
+   JSON$ CKT-DIRECT-JSON-STDIN 70 T=
+   {: outu:n erru:n :}
+   outu 0 T=
+   CKT-ERR erru s" E-MISMATCH" CONTAINS? TTRUE
+   CKT-ERR erru s\" \"family\":\"ckfj:ckfjfam\"" CONTAINS? TTRUE ;
+
+: PRIV ( -- )
+   PRIV$ CKT-DIRECT-JSON-STDIN 70 T=
+   {: outu:n erru:n :}
+   outu 0 T=
+   CKT-ERR erru s" E-UNKNOWN-SIGNATURE-TYPE" CONTAINS? TTRUE
+   CKT-ERR erru s" ckfp:ckfpfam" CONTAINS? TTRUE ;
+
+: NONAME ( -- )
+   NONAME$ CKT-DIRECT-STDIN 70 T=
+   {: outu:n erru:n :}
+   outu 0 T=
+   CKT-ERR erru s" check.f: missing package name" CONTAINS? TTRUE ;
+
+;package
+
 : CKT-TEST-REQUIRE-FACADE ( -- )
    s" lib/test/suite-test.f" CKT-DIRECT-PREVERIFY-PATH 0 T=
    {: outu:n erru:n :}
@@ -1021,6 +1121,12 @@ variable CKTP-DOC-U
    s" check/package-deftype-cross" [: CKT-PKG-DEFTYPE:CROSS ;] CKT-RUN
    s" check/package-deftype-global" [: CKT-PKG-DEFTYPE:GLOBAL ;] CKT-RUN
    s" check/package-deftype-distinct" [: CKT-PKG-DEFTYPE:DISTINCT ;] CKT-RUN
+   s" check/package-family-good" [: CKT-PKG-FAM:GOOD ;] CKT-RUN
+   s" check/package-family-two" [: CKT-PKG-FAM:TWO ;] CKT-RUN
+   s" check/package-family-bogus" [: CKT-PKG-FAM:BOGUS ;] CKT-RUN
+   s" check/package-family-json-pin" [: CKT-PKG-FAM:JSON-PIN ;] CKT-RUN
+   s" check/package-family-private" [: CKT-PKG-FAM:PRIV ;] CKT-RUN
+   s" check/package-missing-name" [: CKT-PKG-FAM:NONAME ;] CKT-RUN
    s" check/require-facade" [: CKT-TEST-REQUIRE-FACADE ;] CKT-RUN
    s" check/included-dep" [: CKT-TEST-INCLUDED-DEP ;] CKT-RUN
    s" check/closure-parity" [: CKT-TEST-CLOSURE-PARITY ;] CKT-RUN
