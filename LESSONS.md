@@ -3918,3 +3918,8 @@ unchanged (148855). Keys for milestone 2:
   proving nothing about the type wall. Assert exact candidate verdicts
   (-1/0/1) and pair every negative with a certifying positive control that
   names the derived ctor package (docs/type-families.md sec 12).
+- **Runtime completion events are not persistent audit identities.** A CUDA or
+  executor event is an ephemeral synchronization resource, while an artifact's
+  creation event must survive replay and participate in canonical provenance.
+  Give them distinct nominal families, and freeze wire ordering, compatibility,
+  and digest coverage before implementing the artifact codec.
