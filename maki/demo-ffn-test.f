@@ -29,7 +29,8 @@
 \      both, and FFN-SKIP's backward makes x's gradient SUM two paths (fan-out).
 \
 \ The store (GA-SAVE artifact + PROMOTE evidence/schedule rows) is bracketed by
-\ STORE-RESET so the test leaks nothing. maki -> habu only.
+\ STORE-RESET, and the tail also resets the shared replay table + session latch
+\ (PROMOTE SK-PUTs into both) so the test leaks nothing. maki -> habu only.
 
 require lib/test.f
 require lib/string.f
@@ -247,7 +248,11 @@ BW-BUILD
 0 MIR-SLOT-ID BW-SLOT-GRAD@ MIR-REF-NODE MIR-ROWS@ ROWS-RAW 4 T=
 0 MIR-SLOT-ID BW-SLOT-GRAD@ MIR-REF-NODE MIR-COLS@ COLS-RAW 8 T=
 
-STORE-RESET                                        \ leave the store as we found it
+\ leave the store, replay table, and session latch as we found them: PROMOTE
+\ wrote keys through SK-PUT-DURABLE into the shared table (maki/test.f is one
+\ process, so a dirty tail leaks into later suites)
+STORE-RESET  SK-TAB-RESET  REPLAY-RESET
+SK-TAB-COUNT 0 T=
 T-REPORT
 
 ;package

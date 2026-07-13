@@ -218,6 +218,13 @@ KT-STALE-SET
 2 100 BUILD FP-BUILD                     \ rebuild: one region; the held id is now out of range
 ' KT-TRY-STALE E-SK-REGION TTHROWS
 
+\ ---- suite hygiene: leave the shared replay table empty ----------------------
+\ maki/test.f runs every suite in ONE process; the table is a shared maki
+\ singleton, so a suite that fills it must reset at its tail or a later suite's
+\ production SK-PUT inherits the entries.
+SK-TAB-RESET
+SK-TAB-COUNT 0 T=
+
 T-REPORT
 
 ;package
