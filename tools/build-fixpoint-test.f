@@ -18,10 +18,10 @@ require lib/process-cwd.f
 require lib/build.f
 require lib/codesign.f
 require tools/build-fixpoint.f
+require tools/source-arena-policy.f
 
 8192 constant BFT-CAPTURE-CAP
 $40000 constant BFT-BIG-CAP
-$100000 constant BFT-READ-CAP
 120000 constant BFT-TIMEOUT-MS
 13 constant BFT-BUILD-ARGV#
 
@@ -55,6 +55,7 @@ variable BFT-BIG-OUT-A
 variable BFT-BIG-ERR-A
 variable BFT-BUILD-FILES
 variable BFT-READ-A
+variable BFT-READ-CAP
 variable BFT-BYTES-A
 variable BFT-BYTES-N
 variable BFT-MAG-I
@@ -99,8 +100,10 @@ create BFT-ERR BFT-CAPTURE-CAP allot
 : BFT-READ-BUF ( -- ptr u8 )
    BFT-READ-FIELD @ ;
 
-: BFT-ALLOC-READ ( -- )
-   BFT-READ-CAP MEM-ALLOC-BYTES drop BFT-READ-BUF! ;
+: BFT-ALLOC-READ ( n -- )
+   dup BFT-READ-CAP @ <= if drop exit then
+   dup MEM-ALLOC-BYTES drop BFT-READ-BUF!
+   BFT-READ-CAP ! ;
 
 : BFT-COPY! ( ptr u8 n ptr u8 ptr n -- ) {: a:ptr u dst:ptr lenp:ptr :}
    u FS-PATH-CAP > if E-FS-PATH throw then
@@ -194,7 +197,6 @@ create BFT-ERR BFT-CAPTURE-CAP allot
    CLEANUP-RESET
    s" habu-build-fixpoint" TMPDIR-MKDIR {: a:ptr u :}
    a u BFT-ROOT-BUF BFT-ROOT-U BFT-COPY!
-   BFT-ALLOC-READ
    BFT-ROOT CLEANUP-TREE+
    BFT-ROOT s" hb-new" BFT-HB-NEW-BUF BFT-HB-NEW-U BFT-PATH!
    BFT-ROOT s" hb-stdin" BFT-HB-BUF BFT-HB-U BFT-PATH!
@@ -422,8 +424,9 @@ create BFT-ERR BFT-CAPTURE-CAP allot
    BF-STAMP-MATCH? TTRUE
    BFT-STAMP-UNSCOPE ;
 
-: BFT-READ ( ptr u8 n -- n )
-   BFT-READ-BUF BFT-READ-CAP READ-ALL ;
+: BFT-READ ( ptr u8 n -- n ) {: pa:ptr pu:n :}
+   pa pu FILE-SIZE BFT-ALLOC-READ
+   pa pu BFT-READ-BUF BFT-READ-CAP @ READ-ALL ;
 
 \ Stale-seed install regression: a refresh child that dies (here: a crash baked
 \ into the fixture's src/habu/hide.f, the first stage2 prefix file, so the
@@ -773,49 +776,225 @@ variable BFT-DOC-CODE
    79 s" hb: snapshot trailer corrupt" BFT-ASSERT-SNAP-EXIT
    BF-TMP-RESET ;
 
-\ ---- source buffer IBUFSZ overflow labeled exit (dot habu-name-silent-engine-9b28ac13) ----
-\ A --load source larger than IBUFSZ ($180000) fills the input buffer mid-read;
-\ EMIT-SOURCE-READ's sbufull leg (split from the read()-fault sreaderr leg) now
-\ names the buffer on fd 2 before the rc-74 exit ("hb: source prefix buffer
-\ full", the same message SRC-SFAIL/SRC-BFAIL emit). Content is irrelevant -- the
-\ read overflows before any byte is parsed -- so a zeroed mmap buffer is written
-\ verbatim. Red-first: a bare rc-74 exit (pre-fix) leaves stderr empty and the
-\ CONTAINS assertion fails; the earlier "hb: cannot read source" wording (before
-\ the sbufull split) also fails this assertion.
-$1A0000 constant BFT-SRCFULL-SZ   \ 1703936 > IBUFSZ 1572864: guarantees the read overflow
+\ ---- effective source boundary --------------------------------------------
+\ The cold prefix already occupies IBUFSZ and the reader performs an EOF probe,
+\ so IBUFSZ+1 is not the runtime input boundary. Bracket the boundary with a
+\ bounded exponential search, refine it by binary search, then rerun the adjacent
+\ successful/failing sizes against the freshly built candidate's --build path.
+package BFT-CAP
 
-variable BFT-OVF-EXITED
-variable BFT-OVF-CODE
-variable BFT-OVF-ERR-U
+$10000 constant PROBE-START
+1 constant EOF-BYTES
 
-: BFT-OVF-ERR$ ( -- ptr u8 n )
-   BFT-ERR BFT-OVF-ERR-U @ ;
+variable EXITED
+variable EXIT-CODE
+variable ERR-U
+variable SRC-A
+variable OK-N
+variable BAD-N
 
-: BFT-SRCFULL-WRITE ( -- )                     \ write an oversized (>IBUFSZ) source file into the tmp root
-   s" bft-srcfull.f" BF-A$ BFT-SRCFULL-SZ MEM-ALLOC-BYTES WRITE-ALL ;
+: SRC-FIELD ( -- ptr ptr u8 )
+   SRC-A 0 ptr-field ;
 
-: BFT-SRCFULL-RUN ( -- )                       \ run bin/hb --load <oversized>, capture stderr + exit outcome
-   PROC-ARGV-RESET
-   s" --load" >LEN PROC-ARGV+
-   s" bft-srcfull.f" BF-A$ >LEN PROC-ARGV+
-   s" bin/hb" >LEN  BFT-EMPTY$ >LEN
-   BFT-OUT BFT-CAPTURE-CAP >LEN  BFT-ERR BFT-CAPTURE-CAP >LEN  BFT-TIMEOUT-MS >MS
-   RUN-ARGV-STDIN-CAPTURE-OUTCOME
+: SRC-BUF ( -- ptr u8 )
+   SRC-FIELD @ ;
+
+: SRC-ALLOC ( -- )
+   SRC-A @ 0 <> if exit then
+   SOURCE-ARENA-CAP MEM-ALLOC-BYTES drop SRC-FIELD !
+   SOURCE-ARENA-CAP 0 ?do 32 SRC-BUF i + c! loop ;
+
+: ERR$ ( -- ptr u8 n )
+   BFT-ERR ERR-U @ ;
+
+: WRITE-SRC ( n -- ) {: bytes:n :}
+   s" bft-srcfull.f" BF-A$ SRC-BUF bytes WRITE-ALL ;
+
+: RUN-CANDIDATE ( -- )
+   PROC-ENV-RESET
+   s" HB_TMP" >LEN BFT-ROOT >LEN PROC-ENV+
+   PROC-ENV-INHERIT-MISSING
+   BFT-HB >LEN BFT-OUT BFT-CAPTURE-CAP >LEN
+   BFT-ERR BFT-CAPTURE-CAP >LEN BFT-TIMEOUT-MS >MS
+   RUN-ARGV-ENV-CAPTURE-OUTCOME
    MATCH outcome
-     exited OF BFT-OVF-CODE ! 0 0= BFT-OVF-EXITED ! ENDOF
-     signaled OF BFT-OVF-CODE ! 0 0= 0= BFT-OVF-EXITED ! ENDOF
-     timeout OF 0 BFT-OVF-CODE ! 0 0= 0= BFT-OVF-EXITED ! ENDOF
+     exited OF EXIT-CODE ! 0 0= EXITED ! ENDOF
+     signaled OF EXIT-CODE ! 0 0= 0= EXITED ! ENDOF
+     timeout OF 0 EXIT-CODE ! 0 0= 0= EXITED ! ENDOF
    ;MATCH {: ou:len eu:len :}
-   eu LEN>N BFT-OVF-ERR-U ! ;
+   eu LEN>N ERR-U ! ;
 
-: BFT-TEST-SOURCE-OVERFLOW ( -- )
+: RUN-SOURCE ( -- )
+   PROC-ARGV-RESET
+   s" --build" >LEN PROC-ARGV+
+   s" bft-srcfull.f" BF-A$ >LEN PROC-ARGV+
+   RUN-CANDIDATE ;
+
+: PROBE ( n -- bool ) {: bytes:n :}
+   bytes WRITE-SRC
+   RUN-SOURCE
+   EXITED @ 0= if
+      EXITED @ TTRUE
+      0 0= 0= exit
+   then
+   EXIT-CODE @ 0= if
+      ERR-U @ 0 T=
+      0 0= exit
+   then
+   EXIT-CODE @ 74 T=
+   ERR$ s" hb: source prefix buffer full" CONTAINS? TTRUE
+   0 0= 0= ;
+
+: EXP-NEXT ( -- n )
+   OK-N @ 2 * SOURCE-ARENA-CAP min ;
+
+: EXP-STEP ( -- bool )
+   EXP-NEXT {: bytes:n :}
+   bytes PROBE if
+      bytes SOURCE-ARENA-CAP < {: below:bool :}
+      below TTRUE
+      below if
+         bytes OK-N !
+         0 0= 0= exit
+      then
+      bytes BAD-N !
+      0 0= exit
+   then
+   bytes BAD-N !
+   0 0= ;
+
+: EXP ( -- )
+   PROBE-START PROBE TTRUE
+   PROBE-START OK-N !
+   begin EXP-STEP until ;
+
+: MID ( -- n )
+   OK-N @ BAD-N @ OK-N @ - 2 / + ;
+
+: BINARY ( -- )
+   begin BAD-N @ OK-N @ - 1 > while
+      MID {: bytes:n :}
+      bytes PROBE if
+         bytes OK-N !
+      else
+         bytes BAD-N !
+      then
+   repeat ;
+
+: LIVE-SIZE ( -- n )
+   SOURCE-ARENA-CAP OK-N @ - EOF-BYTES > TTRUE
+   SOURCE-ARENA-CAP OK-N @ - EOF-BYTES -
+   BF-STAGE2-SOURCE
+   s" stage2-src" BF-A$ FILE-SIZE + ;
+
+: POLICY ( -- )
+   LIVE-SIZE SOURCE-ARENA:NEED {: need:n :}
+   SOURCE-ARENA-CAP need >= TTRUE
+   need SOURCE-ARENA:NEXT-POW2 SOURCE-ARENA-CAP T= ;
+
+public
+
+: SOURCE-BOUNDARY ( -- )
    BFT-ROOT BF-TMP!
-   BFT-SRCFULL-WRITE
-   BFT-SRCFULL-RUN
-   BFT-OVF-EXITED @ TTRUE
-   BFT-OVF-CODE @ 74 T=
-   BFT-OVF-ERR$ s" hb: source prefix buffer full" CONTAINS? TTRUE
+   SRC-ALLOC
+   EXP
+   BINARY
+   BAD-N @ OK-N @ 1 + T=
+   OK-N @ PROBE TTRUE
+   BAD-N @ PROBE TFALSE
+   POLICY
    BF-TMP-RESET ;
+
+private
+
+: RUN-BUILD ( ptr u8 n -- )
+   PROC-ARGV-RESET
+   s" --build" >LEN PROC-ARGV+
+   >LEN PROC-ARGV+
+   RUN-CANDIDATE ;
+
+: EXPECT-OK ( -- )
+   EXITED @ TTRUE
+   EXIT-CODE @ 0 T=
+   ERR-U @ 0 T= ;
+
+: EXPECT-74 ( ptr u8 n -- ) {: diag:ptr diagu:n :}
+   EXITED @ TTRUE
+   EXIT-CODE @ 74 T=
+   ERR$ diag diagu T$= ;
+
+: STAGE2-DRIVER$ ( -- ptr u8 n )
+   s" bft-stage2-driver.f" ;
+
+: STAGE2-DRIVER ( -- ptr u8 n )
+   STAGE2-DRIVER$ BF-A$ ;
+
+: DRIVER-BASE ( ptr u8 n -- ) {: out:ptr outu:n :}
+   out outu BF-RESET-OUT
+   out outu BF-APPEND-RUN-PRELUDE
+   out outu BF-APPEND-COMMON
+   out outu COMPILER-BUILD:SEAL
+   out outu BF-APPEND-DRIVER-IO ;
+
+: WRITE-STAGE2-DRIVER ( -- )
+   STAGE2-DRIVER$ {: out:ptr outu:n :}
+   out outu DRIVER-BASE
+   out outu s" src/habu/stage2.f" s" : S2-RUN" BF-APPEND-SOURCE-BEFORE
+   out outu s" : BFT-S2-READ-EXIT ( -- ) READ-SRC DRV-EXIT-OK ;" BF-APPEND-LINE
+   out outu s" BFT-S2-READ-EXIT" BF-APPEND-LINE ;
+
+: WRITE-SPACES ( ptr u8 n n -- ) {: path:ptr pathu:n u:n :}
+   path pathu SRC-BUF u WRITE-ALL ;
+
+public
+
+: STAGE2 ( -- )
+   BFT-ROOT BF-TMP!
+   SRC-ALLOC
+   WRITE-STAGE2-DRIVER
+   BFT-STAGE2 SOURCE-ARENA-CAP 1 - WRITE-SPACES
+   STAGE2-DRIVER RUN-BUILD
+   EXPECT-OK
+   BFT-STAGE2 SRC-BUF 1 APPEND-FILE
+   STAGE2-DRIVER RUN-BUILD
+   s" stage2: source exceeds buffer" EXPECT-74
+   BF-TMP-RESET ;
+
+private
+
+: MAKER-SOURCE ( -- ptr u8 n )
+   s" hb-maker-src" BF-A$ ;
+
+: MAKER-DRIVER$ ( -- ptr u8 n )
+   s" bft-maker-driver.f" ;
+
+: MAKER-DRIVER ( -- ptr u8 n )
+   MAKER-DRIVER$ BF-A$ ;
+
+: WRITE-MAKER-DRIVER ( -- )
+   MAKER-DRIVER$ {: out:ptr outu:n :}
+   out outu DRIVER-BASE
+   out outu s" src/habu/maker.f" s" : MK-RUN" BF-APPEND-SOURCE-BEFORE
+   out outu s" LOWER-CERT-HOOK:INSTALL" BF-APPEND-LINE
+   out outu S\" s\" MK-READ-SRC\" s\" --\" TRUST" BF-APPEND-LINE
+   out outu s" : BFT-MK-READ-EXIT ( -- ) MK-READ-SRC DRV-EXIT-OK ;" BF-APPEND-LINE
+   out outu s" BFT-MK-READ-EXIT" BF-APPEND-LINE ;
+
+public
+
+: MAKER ( -- )
+   BFT-ROOT BF-TMP!
+   SRC-ALLOC
+   WRITE-MAKER-DRIVER
+   MAKER-SOURCE SOURCE-ARENA-CAP 1 - WRITE-SPACES
+   MAKER-DRIVER RUN-BUILD
+   EXPECT-OK
+   MAKER-SOURCE SRC-BUF 1 APPEND-FILE
+   MAKER-DRIVER RUN-BUILD
+   s" maker: source exceeds buffer" EXPECT-74
+   BF-TMP-RESET ;
+
+;package
 
 : BFT-TEST-TMP-OVERRIDE ( -- )
    BFT-ROOT BF-TMP!
@@ -1069,7 +1248,9 @@ variable BFT-OVF-ERR-U
    s" checked regalloc" [: BFT-TEST-CHECKED-REGALLOC ;] BFT-STEP
    s" snap source" [: BFT-TEST-SNAP-SOURCE ;] BFT-STEP
    s" snap trailer" [: BFT-TEST-SNAP-TRAILER ;] BFT-STEP
-   s" source overflow" [: BFT-TEST-SOURCE-OVERFLOW ;] BFT-STEP
+   s" source boundary" [: BFT-CAP:SOURCE-BOUNDARY ;] BFT-STEP
+   s" stage2 source cap" [: BFT-CAP:STAGE2 ;] BFT-STEP
+   s" maker source cap" [: BFT-CAP:MAKER ;] BFT-STEP
    CLEANUP-RUN
    BFT-ROOT EXISTS? TFALSE
    T-REPORT

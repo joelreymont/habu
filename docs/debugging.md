@@ -88,6 +88,36 @@ On Linux, `objdump -d` or `readelf -l` can inspect ELF text and load segments.
 On macOS, `otool -tv` can inspect `__text`; verify page hashes against the
 embedded CodeDirectory when signature behavior is involved.
 
+## Source arenas
+
+Three independent source arenas share one capacity policy but have different
+contents and failure boundaries:
+
+- `IBUFSZ` holds the cold source prefix and the later program input in the
+  generated engine. Its effective maximum input is below `IBUFSZ` because the
+  prefix is already resident and the reader reserves an EOF probe. Discover the
+  boundary with bounded `--build` probes against the freshly built candidate so
+  the measurement uses `LCOLDPFXB`; never assume `IBUFSZ+1` is the first failing
+  file. Overflow exits 74 with `hb: source prefix buffer full`.
+- `S2-SOURCE-CAP` is the anonymous mapping used by `src/habu/stage2.f` to read
+  the generated fixpoint compiler source. It is not the engine input arena. A
+  candidate-backed regression proves cap-minus-one succeeds and exact-cap exits
+  74 with `stage2: source exceeds buffer`.
+- `MK-SOURCE-CAP` is the dictionary allocation used by `src/habu/maker.f` to
+  read the generated AOT/REPL maker source. It is not the stage2 mapping. Its
+  candidate-backed reader regression proves the same adjacent boundary with the
+  exact `maker: source exceeds buffer` diagnostic.
+
+`SOURCE-HEADROOM-PCT` requires at least 25 percent above the live composite,
+then `SOURCE-ARENA-CAP` is the smallest power of two meeting that requirement.
+The 2026-07-13 measurements are selection history, not enforcement constants.
+The fixpoint regression regenerates the stage2 source, derives cold-prefix
+occupancy from the candidate's probed boundary minus the required EOF-read byte,
+and enforces the policy from those live sizes. The hb-build regression generates
+both REPL and AOT `hb-maker-src` inputs and enforces the policy against their live
+maximum. Native layout and Gforth recovery carry matching owner tokens; stage2
+and maker alias that owner rather than carrying independent numeric ceilings.
+
 ## Standalone gotchas a stepper catches fast
 - A 2nd `{: :}` locals group mis-reads its slot (use a variable instead).
 - Declaring locals inside `IF`/loop corrupts the frame.

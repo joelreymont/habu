@@ -23,6 +23,7 @@ require tools/build-fixpoint.f
 require tools/cli-run.f
 require tools/object-image.f
 require tools/hb-build-lib.f
+require tools/source-arena-policy.f
 
 64 constant HBT-KEY-U
 65536 constant HBT-CAPTURE-CAP
@@ -267,6 +268,36 @@ create HBT-EXP-HEX2 64 allot
 : HBT-HBB-BUILD-OUT ( -- )
    HBB-BUILD
    BF-TMP-RESET ;
+
+package HBT-CAP
+
+variable REPL-N
+variable AOT-N
+
+: SOURCE-SIZE ( -- n )
+   HBB-MAKER-SOURCE
+   HBB-MAKER-SRC-NAME$ BF-A$ FILE-SIZE ;
+
+: MEASURE-REPL ( -- )
+   HBT-REPL-SRC HBT-REPL-OUT HBT-HBB-PREPARE-REPL
+   SOURCE-SIZE REPL-N !
+   BF-TMP-RESET ;
+
+: MEASURE-AOT ( -- )
+   HBT-AOT-SRC HBT-AOT-OUT HBT-HBB-PREPARE-AOT
+   SOURCE-SIZE AOT-N !
+   BF-TMP-RESET ;
+
+public
+
+: CHECK ( -- )
+   MEASURE-REPL
+   MEASURE-AOT
+   REPL-N @ AOT-N @ max SOURCE-ARENA:NEED {: need:n :}
+   SOURCE-ARENA-CAP need >= TTRUE
+   need SOURCE-ARENA:NEXT-POW2 SOURCE-ARENA-CAP T= ;
+
+;package
 
 : HBT-REMOVE-FILE? ( ptr u8 n -- )
    2dup FILE? if REMOVE-FILE else 2drop then ;
@@ -676,6 +707,7 @@ create HBT-EXP-HEX2 64 allot
    HBT-MAKER-DIE-MSG
    HBT-MAKER-KEY-FOLDS-MANIFEST
    HBT-PREPARE
+   HBT-CAP:CHECK
    HBT-BUILD-REPL
    HBT-REBUILD-REPL-CACHE
    HBT-CACHE-KEY-CHANGES

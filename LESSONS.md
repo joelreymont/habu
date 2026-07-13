@@ -4,6 +4,16 @@
 
 Last updated: 2026-07-13
 
+- **Null-check the backing cell before refining a pointer field:** `ptr-field @`
+  returns a typed pointer, so comparing it with numeric zero violates the
+  checker contract. Test the raw address cell before allocating, then use the
+  refined field accessor after it is nonzero.
+
+- **Grow-on-demand readers consume the requested size exactly once:** duplicating
+  a `FILE-SIZE` result before the grow helper left one `n` under `READ-ALL` and
+  the checker rejected the reader's declared single-result effect. Let the grow
+  helper own the size; read afterward from its stored capacity.
+
 - **A checker-acceptance tightening breaks fixture files that only fail at
   LOAD time:** the wide-PRODUCT minimum-accounting fix made `FIND-SUB`'s
   `option<idx>` reject when bound to an `:n` local, and

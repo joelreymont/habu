@@ -5,7 +5,13 @@ require lib/errors.f
 require lib/string.f
 require lib/adt/option.f                 \ option<idx> FIND-SUB consumer (switchover wave A)
 require lib/test.f
+require lib/memory.f
+require lib/vector.f
 require lib/fs.f
+require tools/lint/text.f
+require tools/lint/token.f
+require tools/lint/lib.f
+require tools/lint/source-lex.f
 
 $40000 constant BCG-CAP
 
@@ -35,6 +41,93 @@ variable BCG-LEN
      none OF STR-FALSE TTRUE -1 ENDOF
      some OF STR-TRUE TTRUE IDX>N ENDOF
    ;MATCH ;
+
+package BCG-CAP
+
+32 constant TOK-CAP
+
+create PCT-TOK TOK-CAP allot
+create CAP-TOK TOK-CAP allot
+create IBUF-TOK TOK-CAP allot
+variable PCT-U
+variable CAP-U
+variable IBUF-U
+variable DEF-I
+variable DEF-N
+
+: TOK=CI ( n ptr u8 n -- bool ) {: idx:n a:ptr u:n :}
+   idx LEX-TOK a u LINT-STR=CI ;
+
+: DEF? ( n ptr u8 n -- bool ) {: idx:n name:ptr nameu:n :}
+   idx 0 <= if 0 0= 0= exit then
+   idx 1 + L# @ >= if 0 0= 0= exit then
+   idx 1 - LK@ L-WORD <> if 0 0= 0= exit then
+   idx LK@ L-WORD <> if 0 0= 0= exit then
+   idx 1 + LK@ L-WORD <> if 0 0= 0= exit then
+   idx s" constant" TOK=CI 0= if 0 0= 0= exit then
+   idx 1 + name nameu TOK=CI ;
+
+: DEF-SCAN ( ptr u8 n -- ) {: name:ptr nameu:n :}
+   BCG-SOURCE LEX-SOURCE
+   -1 DEF-I !
+   0 DEF-N !
+   0 begin dup L# @ < while
+      dup name nameu DEF? if
+         dup DEF-I !
+         DEF-N @ 1 + DEF-N !
+      then
+      1+
+   repeat drop ;
+
+: DEF-VALUE ( ptr u8 n -- ptr u8 n )
+   DEF-SCAN
+   DEF-N @ 1 = dup TTRUE 0= if s" " exit then
+   DEF-I @ 1 - LEX-TOK ;
+
+: TOK-SAVE ( ptr u8 n ptr u8 ptr n -- )
+   {: src:ptr u:n dst:ptr lenp:ptr :}
+   u TOK-CAP <= TTRUE
+   src dst u BYTE-COPY
+   u lenp ! ;
+
+: SAVE-TOKENS ( -- )
+   s" SOURCE-HEADROOM-PCT" DEF-VALUE
+   PCT-TOK PCT-U TOK-SAVE
+   s" SOURCE-ARENA-CAP" DEF-VALUE
+   CAP-TOK CAP-U TOK-SAVE
+   s" IBUFSZ" DEF-VALUE
+   IBUF-TOK IBUF-U TOK-SAVE ;
+
+: CHECK-TOKENS ( -- )
+   s" SOURCE-HEADROOM-PCT" DEF-VALUE
+   PCT-TOK PCT-U @ T$=
+   s" SOURCE-ARENA-CAP" DEF-VALUE
+   CAP-TOK CAP-U @ T$=
+   s" IBUFSZ" DEF-VALUE
+   IBUF-TOK IBUF-U @ T$= ;
+
+: OWNER ( -- )
+   s" SOURCE-HEADROOM-PCT" DEF-SCAN DEF-N @ 1 T=
+   s" SOURCE-ARENA-CAP" DEF-SCAN DEF-N @ 1 T=
+   s" IBUFSZ" DEF-SCAN DEF-N @ 1 T= ;
+
+public
+
+: TEST ( -- )
+   SOURCE-HEADROOM-PCT 25 T=
+   SOURCE-ARENA-CAP IBUFSZ T=
+   s" src/habu/layout.f" BCG-LOAD
+   OWNER
+   SAVE-TOKENS
+   s" bootstrap/cg/forth.fs" BCG-LOAD
+   OWNER
+   CHECK-TOKENS
+   s" src/habu/stage2.f" BCG-LOAD
+   s" S2-SOURCE-CAP" DEF-VALUE s" SOURCE-ARENA-CAP" T$=
+   s" src/habu/maker.f" BCG-LOAD
+   s" MK-SOURCE-CAP" DEF-VALUE s" SOURCE-ARENA-CAP" T$= ;
+
+;package
 
 : BCG-MUST-BEFORE ( ptr u8 n ptr u8 n -- ) {: earlier:ptr earlieru later:ptr lateru :}
    earlier earlieru BCG-POS-FOUND
@@ -369,6 +462,7 @@ public
    BCG-TEST-FORTH-SDQ-COMMENT
    BCG-TEST-PREFIX-LIST
    BCG-TEST-CELL-PARITY
+   BCG-CAP:TEST
    BCG-TEST-BAKED-SOURCE-PREFIX
    BCG-TEST-TRUST-CALLS
    BCG-TEST-IMAGE-BUFFER

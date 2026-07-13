@@ -337,6 +337,7 @@ points stay listed.
 - `tools/include-events-test.f` — checked fixtures for the source-composition event log and loader instrumentation.
 - `tools/source-discovery.f` — whole-file source-composition discovery pass that lexes the entire token stream (colon bodies included), replays every literal loader form against a fresh require registry, and emits the ordered event artifact; dynamic paths, loader shadow/undefine/retirement, and unsupported openers reject fail-closed unless the entry is a declared dynamic-tail boundary.
 - `tools/source-discovery-test.f` — checked fixtures for the whole-file discovery pass (ordering, multiplicity, dedup, fresh registry, colon-body capture, byte-exact spans, shared emitter, fail-closed rejection, dynamic-tail manifest boundary).
+- `tools/source-arena-policy.f` — checked shared headroom and power-of-two policy for native, stage2, and maker source arenas.
 - `tools/dynamic-tail-manifest.f` — declared dynamic-tail boundary table (path + reason) consumed by the discovery pass; a listed file's dynamic/retired loader forms are tolerated instead of rejected.
 - `tools/event-closure-lib.f` — ordered transitive source-composition closure list built by replaying the discovery pass breadth-first over the event log.
 - `tools/event-closure-test.f` — checked fixtures for the closure list (order, dedup, transitive descent, provided/missing exclusion, colon-wrapped deps) and closure key sensitivity.

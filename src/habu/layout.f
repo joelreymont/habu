@@ -59,12 +59,14 @@ $C0000 constant CFSTK-OFF
 8 constant CF-LOCN
 16 constant CF-LOCF
 
-$180000 constant IBUFSZ   \ boot source-prefix + program input buffer; the copy
-                           \ loops + EMIT-SOURCE-READ exit a LABELED rc-74 at this
-                           \ cap ("hb: source prefix buffer full", habu2 SRC-SFAIL/
-                           \ SRC-BFAIL/sbufull) - grown 1M->1.5M when the src/core
-                           \ prefix neared the wall (item 12 slice-3a; keep the
-                           \ bootstrap mirror in cg/forth.fs in sync)
+25 constant SOURCE-HEADROOM-PCT
+$200000 constant SOURCE-ARENA-CAP
+SOURCE-ARENA-CAP constant IBUFSZ
+\ The 2026-07-13 baseline composite was 1,580,308 bytes; 25% headroom required
+\ 1,975,385, so the smallest power of two meeting it selected SOURCE-ARENA-CAP.
+\ The fixpoint regression enforces the policy from live stage2 and cold-prefix
+\ measurements.
+\ IBUFSZ overflow is labeled rc 74. Keep the bootstrap mirror token-identical.
 20 constant DATA
 
 0 constant DP-CELL
