@@ -3882,9 +3882,10 @@ unchanged (148855). Keys for milestone 2:
   the stale handle against the guarded consumer. This reaches the defensive
   range check without expanding raw refinement authority into a test file.
 - **Do not guess dot CLI subcommands.** `dot dep check` was parsed as a request
-  to create a task titled `dep`, leaving a stray tracker file. Use only the
-  documented dot commands and run dependency validation through the repository's
-  Habu-native `tools/dot-dep-lint.f`.
+  to create a task titled `dep`, and even `<unknown> --help` is quick-add syntax,
+  leaving stray tracker files. Use only commands listed by `dot --help`; inspect
+  or patch dependency frontmatter directly, then validate it through the
+  repository's Habu-native `tools/dot-dep-lint.f`.
 - **Do not shrink a semantic capacity around checker overcounting.** A W34
   PRODUCT and a repeated W12 input both exceeded the 255-cell minimum-input
   field even though their physical minima were 34 and 24. Reduce and fix

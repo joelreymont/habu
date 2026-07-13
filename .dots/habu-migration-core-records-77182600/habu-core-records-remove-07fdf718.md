@@ -5,7 +5,12 @@ priority: 1
 issue-type: task
 created-at: "2026-07-13T17:15:50.404414+02:00"
 blocks:
-  - habu-core-records-remove-31f84baf
+  - habu-type-dsl-specify-db2bf883
 ---
 
-Own checker registry record declarations in src/core/checker.f: symbol/effect/primitive/defer/value-record families. Replace raw structure definers with named offsets, sizes, alignments, and assertions while preserving arena, snapshot, and cache ABIs. Add focused registry growth/rollback tests.
+Own checker registry record declarations in src/core/checker.f: symbol, effect,
+primitive, defer, and value-record registries. Replace raw structure definers
+with named cell/byte offsets, named strides, ordinary accessors, and load-time
+offset, size, alignment, and pointer-role assertions while preserving arena,
+snapshot, and cache ABIs. Add focused registry growth/rollback tests and no
+pre-checker declaration machinery.

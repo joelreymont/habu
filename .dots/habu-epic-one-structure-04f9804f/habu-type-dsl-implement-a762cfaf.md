@@ -9,4 +9,11 @@ blocks:
   - habu-enum-expose-named-5bfe8bb0
 ---
 
-Extend ENUM ... ;ENUM into the sole variant definer. Support named inline FIELD declarations inside VARIANT blocks, generic parameters, nested record/enum fields, POLICY, and DERIVE clauses. Reuse the exact STRUCTURE field schema; never synthesize hidden record families for variants. Infer tag-only layout when every variant is payloadless and tagged-union layout otherwise. Generate checked constructors and exhaustive MATCH effects with field-aware diagnostics/reflection. Reject mixed positional payloads, duplicate fields, and malformed shorthand.
+Implement the sole post-hook ENUM ... ;ENUM variant definer. Full mode requires
+numeric arity and VARIANT blocks and may use POLICY/DERIVE; compact mode is
+exactly ENUM name variant ... ;ENUM with implicit arity zero and no header
+clauses. Consume the shared declaration-event transaction and STRUCTURE field
+schema; never synthesize hidden record families. Infer tag-only layout only
+when every variant is payloadless. Generate checked constructors and exhaustive
+MATCH effects. Reject mixed modes, positional payloads, duplicate fields,
+compact headers, and malformed full declarations transactionally.

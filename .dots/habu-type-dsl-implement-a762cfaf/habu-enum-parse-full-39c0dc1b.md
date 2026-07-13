@@ -8,4 +8,9 @@ blocks:
   - habu-type-dsl-unify-b65d46c1
 ---
 
-Own src/core/enum-decl.f and declaration tests. Implement numeric-arity full mode with VARIANT/FIELD/;VARIANT plus payloadless compact mode selected by a nonnumeric first variant. Reject mixed modes, positional payloads, missing delimiters, duplicates, reserved names, and malformed arity transactionally.
+Own src/core/enum-decl.f and declaration tests. Consume shared syntax events for
+numeric-arity full mode with optional headers and VARIANT/FIELD/;VARIANT, plus
+compact ENUM name variant ... ;ENUM selected by the first bare variant with
+implicit arity zero and no headers. Reject mixed modes, an arity followed by
+compact variants, compact headers, positional payloads, missing delimiters,
+duplicates, reserved names, and malformed arity transactionally.

@@ -8,4 +8,8 @@ blocks:
   - habu-core-records-remove-07fdf718
 ---
 
-Own remaining checker control, MATCH, locals-width, and lowering frame layouts in src/core/checker.f plus focused engine tests. Replace raw structure definers with named offset/size/alignment constants and assertions; preserve stack-state, snapshot, and diagnostic semantics exactly.
+Own remaining checker control, MATCH, locals-width, and lowering frame layouts
+in src/core/checker.f plus focused engine tests. Replace raw structure definers
+with named cell/byte offsets, named strides, ordinary accessors, and load-time
+offset, size, alignment, and pointer-role assertions; preserve stack-state,
+snapshot, and diagnostic semantics exactly.

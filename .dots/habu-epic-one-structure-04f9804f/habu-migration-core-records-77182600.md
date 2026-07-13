@@ -1,18 +1,20 @@
 ---
-title: "Migration: core records to STRUCTURE"
+title: "Core records: remove boot DSL"
 status: open
 priority: 1
 issue-type: task
 created-at: "2026-07-13T16:46:05.263733+02:00"
 blocks:
-  - habu-compiler-lower-unified-5f599080
-  - habu-core-records-remove-0d8ff4e2
+  - habu-type-dsl-specify-db2bf883
+  - habu-core-records-install-cf779d06
 ---
 
-Mechanically migrate src/core and src/habu declarations from BEGIN-STRUCTURE/END-STRUCTURE, VALUE-RECORD, and PRODUCT to typed STRUCTURE ... ;STRUCTURE. Preserve field offsets, pointer roles, generics, visibility, effects, snapshots, and ABI layouts exactly. Convert consumers to generated package APIs and typed accessors; remove raw prefixed access where package fields exist. Run exact core loads, engine suites, source certification, typed-local diff lint, trust lint, and fixpoint stage gate.
-
-Bootstrap correction: pre-checker implementation records cannot use the typed
-public STRUCTURE definer without a cycle. The child dots replace those internal
-layouts with named offset/size/alignment constants plus assertions. Typed
-STRUCTURE remains the sole public composite-record syntax and loads only after
-checker/type-family initialization; no private or raw record DSL survives.
+Remove the pre-checker record DSL from checker, type-schema, and type-family.
+Replace each private implementation record with named cell/byte offsets, a
+named stride, ordinary accessors, and load-time offset/size/alignment/pointer
+role assertions. Preserve arena, cache, snapshot, diagnostic, and recovery ABIs
+exactly. Establish identical native/recovery layouts and move the sole public
+STRUCTURE/ENUM parser after render and check-hook. No pre-checker family ids,
+reflection, constructors, parser, definer, descriptor arena, adoption phase,
+snapshot rows, or AOT rows survive. Run exact core loads, engine suites,
+source certification, typed-local diff lint, trust lint, and fixpoint gate.

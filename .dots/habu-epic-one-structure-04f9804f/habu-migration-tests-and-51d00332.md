@@ -14,4 +14,10 @@ blocks:
   - habu-tests-retire-auxiliary-67147cae
 ---
 
-Rewrite test, examples, and benchmark source fixtures to STRUCTURE and payload-capable ENUM, including source strings, golden diagnostics, package constructor spellings, negative declarations, AOT fixtures, and bootstrap inputs. Preserve intentional hard-rejection fixtures for removed keywords in one dedicated legacy-syntax suite. Run run-files coverage, full engine/type suites, property tests, examples, and benchmark compile checks.
+Rewrite test, examples, and benchmark source fixtures to STRUCTURE and
+payload-capable ENUM, including test/export-package.f, source strings, golden
+diagnostics, package constructor spellings, negative declarations, AOT
+fixtures, and bootstrap inputs. Preserve removed keywords only as
+non-executable data in one explicitly allowlisted hard-rejection suite. Run
+run-files coverage, full engine/type suites, property tests, examples, and
+benchmark compile checks.

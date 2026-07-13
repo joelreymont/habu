@@ -10,4 +10,13 @@ blocks:
   - habu-delete-legacy-type-36040d18
 ---
 
-Hard-delete PRODUCT, ;PRODUCT, SUMTYPE, ;SUMTYPE, VALUE-RECORD, END-VALUE-RECORD, BEGIN-STRUCTURE, END-STRUCTURE, ENUM+, ENUM4+, positional VARIANT payload parsing, their checker events, native/Gforth/bootstrap branches, generated-source emitters, TRUST rows, documentation, and compatibility aliases. Reserve removed tokens so use fails with a precise migration diagnostic rather than resolving as user words. Keep internal algebraic product/sum kinds only. Acceptance: authoritative token-aware scan finds removed tokens only in the dedicated rejection fixtures and migration history; runtime lookup cannot find any removed definer.
+Hard-delete TYPEFAMILY, PRODUCT, ;PRODUCT, SUMTYPE, ;SUMTYPE, VALUE-RECORD,
+END-VALUE-RECORD, BEGIN-STRUCTURE, END-STRUCTURE, +FIELD, PTR-FIELD:, CFIELD:,
+STRUCT-BYTE+, STRUCT-ACTIVE, ENUM+, ENUM4+, positional VARIANT payload parsing,
+src/core/structures.f, src/core/structures-effects.f, src/core/enums.f, their
+checker/native/recovery branches, generated-source emitters, effects, TRUST
+rows, docs, and aliases. PTR-VARIABLE and CELL must already have independent
+owners and do not keep legacy files alive. Keep internal algebraic kinds only.
+Acceptance: case-insensitive token-aware scans find spellings only in the
+error-only tombstone table, explicitly allowlisted non-executable negative
+fixtures, and migration history; runtime lookup finds no removed definer.

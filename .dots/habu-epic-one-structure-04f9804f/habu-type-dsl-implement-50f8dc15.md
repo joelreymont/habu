@@ -9,4 +9,11 @@ blocks:
   - habu-structure-prove-generic-efb21e9c
 ---
 
-Extend STRUCTURE ... ;STRUCTURE into the sole record definer. Parse arity, typed named fields, nested family types, pointer/byte fields, POLICY, and DERIVE clauses transactionally. Generate checked PACKAGE:MAKE and PACKAGE:UNMAKE plus typed field accessors from the shared schema. Lower each STRUCTURE to the internal product kind, including generic instantiation, width, offsets, alignment, and hidden-field expansion. Replace the old raw offset-only behavior rather than layering a second record DSL. Add declaration, generics, nested-field, layout, and negative regressions.
+Implement the sole post-hook STRUCTURE ... ;STRUCTURE record definer. Consume
+the shared declaration-event transaction to parse mandatory arity, typed named
+fields, nested family types, pointer/byte fields, POLICY, and DERIVE clauses.
+Generate checked PACKAGE:MAKE and PACKAGE:UNMAKE plus typed field accessors from
+the shared schema. Lower each declaration to the internal product kind. Add no
+cold parser, transient descriptors, adoption path, bootstrap-only semantics, or
+raw offset definer. Add declaration, generics, nested-field, layout, and
+negative regressions.

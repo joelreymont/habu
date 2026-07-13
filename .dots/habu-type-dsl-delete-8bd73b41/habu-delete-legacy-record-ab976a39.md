@@ -12,4 +12,10 @@ blocks:
   - habu-migration-maki-models-c965e65d
 ---
 
-Hard-delete BEGIN-STRUCTURE, END-STRUCTURE, +FIELD, PTR-FIELD:, PRODUCT, ;PRODUCT, VALUE-RECORD, and END-VALUE-RECORD implementations, checker events, preverify branches, load rows, effects, and aliases after every consumer migration. Keep only precise reserved-token rejection.
+Hard-delete BEGIN-STRUCTURE, END-STRUCTURE, +FIELD, PTR-FIELD:, CFIELD:,
+STRUCT-BYTE+, STRUCT-ACTIVE, PRODUCT, ;PRODUCT, VALUE-RECORD,
+END-VALUE-RECORD, src/core/structures.f, and
+src/core/structures-effects.f implementations, checker events, preverify
+branches, load rows, effects, TRUST rows, generated fixtures, and aliases after
+every consumer migration. CELL and PTR-VARIABLE must already live in independent
+owners. Keep only precise error-only tombstones and allowlisted negative data.

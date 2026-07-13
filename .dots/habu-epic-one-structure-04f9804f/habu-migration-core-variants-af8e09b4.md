@@ -1,5 +1,5 @@
 ---
-title: "Migration: core variants to ENUM"
+title: "Core variants: prove zero census"
 status: open
 priority: 1
 issue-type: task
@@ -8,11 +8,11 @@ blocks:
   - habu-compiler-lower-unified-5f599080
 ---
 
-Migrate src/core and src/habu SUMTYPE declarations and payloadless raw-tag families to unified ENUM variants with named inline fields. Preserve constructor package spellings where the family name is unchanged, MATCH semantics, tag ordinals, layout policy, derived operations, serialized identities, and checker diagnostics. Remove positional payload syntax from core sources. Run type-family, declaration, lowering, engine, snapshot, AOT, and fixpoint gates.
-
-Census correction: current master has no live src/core or src/habu SUMTYPE
-declaration. Treat this as a bounded destruction pass after unified lowering:
-prove the core declaration census is empty, migrate any raw-tag family the
-token-aware census identifies, and otherwise close with the zero-finding
-artifact. Parser, scanner, and rejection cleanup belongs to the delete/tool
-dots and must not be duplicated here.
+Run a bounded, case-insensitive token-aware census after unified lowering and
+prove src/core and src/habu contain no live SUMTYPE or legacy payloadless enum
+declarations. If the census identifies a raw-tag family, migrate it to unified
+ENUM while preserving package spelling, tag ordinal, layout, serialized
+identity, and diagnostics. Otherwise close with the zero-finding artifact.
+Parser, scanner, generated-source, tombstone, and rejection cleanup belongs to
+the delete/tool dots and must not be duplicated here. Run family, lowering,
+engine, snapshot, AOT, and fixpoint gates.

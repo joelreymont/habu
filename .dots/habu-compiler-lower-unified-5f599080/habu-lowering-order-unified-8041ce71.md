@@ -8,4 +8,8 @@ blocks:
   - habu-lowering-consume-unified-3265d046
 ---
 
-Own native source/load ordering, manifests, and focused closure tests for the new declaration files. Load STRUCTURE/ENUM only after checker/type-family/shared fields, keep encoder/target closures deterministic, and prove no declaration parser is silently absent in stage, stdin, snapshot, or build modes.
+Own post-hook declaration-file capture order, manifests, and focused closure
+tests. Consume the native/recovery boot order established by
+habu-core-records-install-cf779d06; keep encoder/target closures deterministic
+and prove no declaration parser is absent in stage, stdin, snapshot, or build
+modes. Do not own or reproduce pre-checker layout loading.
