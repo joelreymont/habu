@@ -638,19 +638,259 @@ must preserve quotation/local capture rules and effect visibility.
 
 ### B5. Refined Numeric Roles
 
-Add checked constructors/evidence for:
+This section is the canonical design anchor for the refined-numeric design dot;
+older line-number references to this requirement refer here.
 
-- nonnegative lengths/counts;
-- bounded indexes;
-- byte/cell offsets;
-- aligned sizes;
-- nonzero divisors;
-- overflow-checked products.
+All of these values occupy one cell, but they do not have interchangeable
+meaning. A byte length is not a cell count, an index is not an offset, and an
+alignment is not a divisor merely because all can currently pass through `n`.
+Global `>LEN`, `>COUNT`, `>IDX`, and `>OFF` casts establish nominal identity
+only: they do not validate a predicate and remain compatibility boundaries, not
+the V2 authority model.
+
+#### B5.1 Package And Scalar Roles
+
+The owner is sealed package `CAD-NUM`. It declares public arity-zero nominal
+families for the reusable scalar facts:
+
+~~~text
+CAD-NUM:byte-len    nonnegative extent measured in bytes
+CAD-NUM:item-count  nonnegative logical element count
+CAD-NUM:cell-count  nonnegative machine-cell count
+CAD-NUM:index       nonnegative ordinal, not yet bounded
+CAD-NUM:byte-off    nonnegative byte offset
+CAD-NUM:cell-off    nonnegative cell offset
+CAD-NUM:alignment   positive power-of-two alignment
+CAD-NUM:divisor     nonzero signed divisor
+~~~
+
+The lowercase tails are checker type-family vocabulary. Public Forth words are
+uppercase and package-qualified, for example `CAD-NUM:BYTE-LEN` and
+`CAD-NUM:CELLS>BYTES`. Do not introduce global `CAD-NUM-*` prefix words or new
+checker tokens.
+
+`CAD-NUM` also owns `CAD-NUM:error`, a closed outcome family with at least:
+
+- negative;
+- zero;
+- overflow;
+- bad-alignment;
+- misaligned;
+- out-of-bounds.
+
+Expected validation failures return the shared
+`result<value,CAD-NUM:error>` family. They do not throw and they do not collapse
+different failures into a flag. I/O, allocation, or corrupted-owner failures
+remain ordinary propagated errors at their owning boundary.
+
+The only raw-to-role mints are private checked helpers inside the sealed owner.
+Each public constructor validates first:
+
+~~~forth
+CAD-NUM:BYTE-LEN   ( n -- result<CAD-NUM:byte-len,CAD-NUM:error> )
+CAD-NUM:ITEM-COUNT ( n -- result<CAD-NUM:item-count,CAD-NUM:error> )
+CAD-NUM:CELL-COUNT ( n -- result<CAD-NUM:cell-count,CAD-NUM:error> )
+CAD-NUM:INDEX      ( n -- result<CAD-NUM:index,CAD-NUM:error> )
+CAD-NUM:BYTE-OFF   ( n -- result<CAD-NUM:byte-off,CAD-NUM:error> )
+CAD-NUM:CELL-OFF   ( n -- result<CAD-NUM:cell-off,CAD-NUM:error> )
+CAD-NUM:ALIGNMENT  ( n -- result<CAD-NUM:alignment,CAD-NUM:error> )
+CAD-NUM:DIVISOR    ( n -- result<CAD-NUM:divisor,CAD-NUM:error> )
+~~~
+
+No public unchecked raw mint exists. A role-specific refined-to-`n` projection
+may exist only where a primitive adapter cannot consume the role directly. It
+is explicit proof erasure, never paired with a public inverse, and must not
+appear in a V2 public signature.
+
+This authority claim depends on owner-package sealing. Ordinary reopenable
+packages cannot protect a private mint, so `CAD-NUM` is not accepted as
+unforgeable until the checker package-seal capability lands and the package is
+sealed. Evidence stored in memory likewise uses typed nominal storage; an
+untyped `create ... cells allot` table plus trusted casts is not an acceptable
+substitute.
+
+#### B5.2 Checked Arithmetic
+
+Role-changing arithmetic is owned and named. It validates the operation before
+minting the result, preserves units, and returns a typed outcome. The minimum
+surface includes:
+
+- cell-count to byte-length and cell-offset to byte-offset conversion with
+  overflow checks;
+- byte-offset to cell-offset conversion with exact-divisibility evidence;
+- checked addition and multiplication for each admitted role combination;
+- division and remainder that require `CAD-NUM:divisor` and reject the signed
+  minimum divided by negative one overflow case;
+- alignment validation, checked align-up, and exact alignment tests;
+- subtraction that rejects a negative result rather than wrapping it into a
+  refined role.
+
+There is no generic `CAD-NUM:MUL ( n n -- n )`. Each exported operation states
+its operand and result roles, for example:
+
+~~~forth
+CAD-NUM:CELLS>BYTES ( CAD-NUM:cell-count
+  -- result<CAD-NUM:byte-len,CAD-NUM:error> )
+CAD-NUM:CELL-OFF>BYTE-OFF ( CAD-NUM:cell-off
+  -- result<CAD-NUM:byte-off,CAD-NUM:error> )
+CAD-NUM:BYTE-OFF>CELL-OFF ( CAD-NUM:byte-off
+  -- result<CAD-NUM:cell-off,CAD-NUM:error> )
+CAD-NUM:MUL-COUNT ( CAD-NUM:item-count CAD-NUM:item-count
+  -- result<CAD-NUM:item-count,CAD-NUM:error> )
+CAD-NUM:DIV ( n CAD-NUM:divisor
+  -- result<n,CAD-NUM:error> )
+~~~
+
+A successful typed result proves that this operation completed without the
+named numeric failure. It does not prove a general value equation between
+arbitrary future operands. Shape element-count equalities, symbolic products,
+and rewrite algebra remain R4/R5 constraints rather than an accidental general
+dependent-arithmetic system in B5.
+
+#### B5.3 Relational Witnesses
+
+Bounds and alignment are relations, not unary labels. Their logical witnesses
+carry both validated operands:
+
+~~~text
+CAD-NUM:bounded-index = { index, limit }
+CAD-NUM:aligned-size  = { byte-len, alignment }
+~~~
+
+Both names are public opaque evidence families, not additional one-cell scalar
+casts. Their physical representation is owner-managed typed storage for the
+complete logical payload.
+
+`CAD-NUM:BOUND` proves `0 <= index < limit` and returns an immutable opaque
+`CAD-NUM:bounded-index`. `CAD-NUM:ALIGNED-SIZE` proves that the byte length is
+exactly divisible by the supplied alignment and returns an immutable opaque
+`CAD-NUM:aligned-size`. The evidence owner stores both typed operands; neither
+witness is a renamed copy of only the index or size. Public construction is
+validation-only, and generated/raw constructors remain inaccessible after the
+owner package is sealed.
+
+These witnesses deliberately prove only their recorded arithmetic relation.
+A bounded index cannot be paired with an arbitrary pointer or a different
+length. An aligned size does not prove that a pointer has that alignment.
+Memory access therefore consumes the corresponding R5 existential evidence or
+the bounded-host `span<region,type,extent,access,persistence>` capability, whose
+extent, region, generation, and alignment identity agree with the witness.
+Mutable containers must invalidate or regenerate evidence when their logical
+extent changes; a vector clear or shrink cannot leave a reusable bound token.
+
+Until owner sealing, typed witness storage, and the R5 or bounded-host identity
+are available, the implementation may retain a checked runtime bounds test but
+must not publish a scalar `bounded-index` or `aligned-size` and claim relational
+soundness.
+
+#### B5.4 Static And Runtime Proof Matrix
+
+`CHECK!` proves role flow, not numeric predicates over literal values. Candidate
+fixtures therefore separate checker rejection from runtime result tests.
+
+Positive checker candidates:
+
+~~~forth
+: GOOD-OFF-SWAP ( CAD-NUM:byte-off CAD-NUM:cell-off
+  -- CAD-NUM:cell-off CAD-NUM:byte-off ) swap ;
+: GOOD-BOUND ( CAD-NUM:index CAD-NUM:item-count
+  -- result<CAD-NUM:bounded-index,CAD-NUM:error> ) CAD-NUM:BOUND ;
+: GOOD-DIV ( n CAD-NUM:divisor
+  -- result<n,CAD-NUM:error> ) CAD-NUM:DIV ;
+~~~
+
+Negative checker candidates:
+
+~~~forth
+: BAD-OFF-SWAP ( CAD-NUM:byte-off CAD-NUM:cell-off
+  -- CAD-NUM:byte-off CAD-NUM:cell-off ) swap ;
+: BAD-RAW-OFF ( n -- CAD-NUM:byte-off ) ;
+: BAD-BOUND-ROLE ( CAD-NUM:index CAD-NUM:byte-len
+  -- result<CAD-NUM:bounded-index,CAD-NUM:error> ) CAD-NUM:BOUND ;
+: BAD-DIV-ROLE ( n CAD-NUM:alignment
+  -- result<n,CAD-NUM:error> ) CAD-NUM:DIV ;
+: BAD-MUL-ROLE ( CAD-NUM:item-count CAD-NUM:byte-len
+  -- result<CAD-NUM:item-count,CAD-NUM:error> ) CAD-NUM:MUL-COUNT ;
+~~~
+
+The positive candidates must return accepted and every negative candidate must
+return rejected through the standard quiet candidate harness. Runtime `T{ ...
+-> ... }T` fixtures then prove the value predicates:
+
+- negative length/count/index/offset returns negative;
+- zero divisor returns zero, while positive and negative nonzero divisors pass;
+- maximum-safe product succeeds and the next product returns overflow;
+- signed minimum divided by negative one returns overflow;
+- zero or non-power-of-two alignment returns bad-alignment;
+- a non-divisible byte offset or size returns misaligned;
+- `index = limit` and every index into a zero limit return out-of-bounds, while
+  `index = limit - 1` succeeds; a negative raw index is rejected earlier by
+  `CAD-NUM:INDEX` with negative;
+- exact cell/byte conversion and align-up boundary cases succeed.
+
+No test may claim that `CHECK!` rejects `-1`, zero, or an overflowing literal
+unless value refinement has separately landed. Those are runtime validator
+outcomes in this bounded design.
+
+#### B5.5 Dependencies, Owners, And Implementation Slices
+
+Dependency order:
+
+1. package-scoped nominal families and shared `result` are the existing base;
+2. owner-package sealing makes the private mint non-forgeable;
+3. R1 typed family storage and typed nominal storage preserve scalar and
+   witness identities in memory;
+4. scalar constructors and checked arithmetic land in `CAD-NUM`;
+5. relational witnesses land with R5 existential identities or bounded-host
+   spans, not ahead of them;
+6. consumers migrate at their existing ownership seams.
+
+Existing owners remain authoritative:
+
+- `habu-checker-seal-owner-f7de26ff` owns permanent owner-package sealing;
+- `habu-nominal-storage-raw-a3430ef2` and
+  `habu-nominal-storage-typed-c5f44d66` own nominal variable/buffer storage;
+- `habu-checker-shape-kind-4c6a3f4c` and
+  `habu-v2-types-existential-cce4a41a` own value-indexed shape and existential
+  evidence;
+- `habu-add-bounded-host-b40b048f` owns pointer region, extent, alignment,
+  lifetime, and borrow safety.
+
+B5 does not duplicate those capabilities and requires no checker arithmetic
+extension for its scalar nominal wrappers. If a minimal candidate exposes an
+actual checker defect, that defect receives its own negative regression and
+checker-owned dot rather than expanding a library migration.
+
+Bounded implementation slices, in order:
+
+1. define and seal `CAD-NUM` scalar roles, outcome family, checked constructors,
+   and static/runtime constructor probes;
+2. add checked division, products, subtraction, cell/byte conversion, and
+   alignment arithmetic with boundary fixtures;
+3. add opaque relational witness storage and validators after sealing and typed
+   storage, then connect them to R5/bounded-host identity;
+4. migrate `lib/memory.f` to byte-length/cell-count conversions and allocation
+   boundaries;
+5. migrate `lib/string.f` to byte lengths/offsets and preserve substring bounds;
+6. migrate `lib/vector.f` to item counts/indexes and container-owned bound
+   validation, including clear/shrink invalidation;
+7. migrate `maki/model-ir.f` operand counts/positions without overlapping its
+   nominal-storage owner;
+8. replace raw shape products in lowering with the existing Maki `DIM*`,
+   `SHAPE-ELEMS`, and `TENSOR-BYTES` owners; do not recreate rows, cols, or dim;
+9. update manifests, file maps, public-signature audits, and the canonical plan
+   only after the owning migrations pass.
+
+Each implementation slice owns disjoint source and focused tests, runs the
+exact native load path for those files, and commits one verified change. Shared
+manifest/file-map edits are a final integration slice so parallel workers do
+not overlap.
 
 Benefit:
 
 Object encoding, bufferization, shape arithmetic, and file parsing reject more
-same-cell semantic-role bugs before memory access.
+same-cell semantic-role bugs before memory access without committing V2 to
+unrestricted dependent arithmetic.
 
 ## 8. Awesome-To-Have Type-System Improvements
 
