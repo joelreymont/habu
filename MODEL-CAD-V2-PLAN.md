@@ -612,6 +612,8 @@ Acceptance:
 
 Tracked slices:
 
+- `habu-specify-ptx-generated-5a3a902d` owns the PTX virtual-machine-state,
+  `ptxas`, cubin/SASS, and device-evidence boundary census and decomposition;
 - `habu-define-typed-arm64-4ab8894f`;
 - `habu-idx-arm64-operands-98280863`;
 - `habu-verify-emitted-arm64-efd5eb61`;

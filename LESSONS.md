@@ -3883,3 +3883,8 @@ unchanged (148855). Keys for milestone 2:
   gates caused a pooled repository lint to throw `E-FS-OPEN` while the same
   exact tree passed alone. Parallelize focused gates together, then give
   `test/run.f` the host by itself.
+- **Generated-state proofs need a backend-specific last-mile boundary.** ARM64
+  CFG/register verification does not cover PTX merely because both begin with
+  typed emitters. PTX must separately bind virtual def/use, predicates,
+  barriers, address spaces, `ptxas` facts, cubin/SASS identity, and device
+  evidence to the exact target and toolchain before promotion.
