@@ -107,6 +107,8 @@ TRUSTED: TWX-SUMV-SCH-START@ ( n -- n ) SUMV-SCH-START@ ;
 TRUSTED: TWX-SUMV-TAG@ ( n -- n ) SUMV-TAG@ ;
 TRUSTED: TWX-TDECL-POLICY ( n -- ) TDECL-POLICY ;
 TRUSTED: TWX-TDECL-THROW ( ptr u8 n ptr u8 n n -- ) TDECL-THROW ;
+TRUSTED: TWX-CAND-START ( -- ) CHECK-CANDIDATE-START ;
+TRUSTED: TWX-CAND-DONE ( n -- n ) CHECK-CANDIDATE-DONE ;
 TRUSTED: TWX-TFAM-CELL? ( n -- bool ) TFAM-CELL? ;
 TRUSTED: TWX-TFAM-DECL ( ptr u8 n n ptr u8 n n n -- n ) TFAM-DECL ;
 TRUSTED: TWX-TFAM-ENUM? ( n -- bool ) TFAM-ENUM? ;
@@ -1207,6 +1209,130 @@ SUMTYPE tdrec6 1
 s" tdrp" s" tdrec6" TWX-TFAM-FIND-IN TDOK ! TDF !
 TDOK @ -1 T=
 TDF @ TFAM-KIND@ TK-SUM T=
+
+\ ---------------------------------------------------------------------------
+\ payload family references resolve in SIGNATURE scope (dot habu-checker-
+\ tdecl-payload-1efe0326): qualified PKG:tail payloads resolve exactly like a
+\ signature reference (public cross-package, private in-package), and an
+\ arity-0 CELL family (nominal scalar, TYPEFAMILY x 0) is as admissible as a
+\ layout family — the same type a signature, LAYOUT-BUFFER, or option<...>
+\ argument already accepts. A PRIVATE family in another package must NOT
+\ become reachable; a QUALIFIED self-reference rejects recursive by resolved
+\ family identity (the bare spelling already rejected — the qualified spelling
+\ used to bypass the token compare and crash constructor generation).
+\ ---------------------------------------------------------------------------
+package tdqp
+public
+TYPEFAMILY qslot 0
+SUMTYPE qsum 0
+  VARIANT qa n ;VARIANT
+;SUMTYPE
+private
+TYPEFAMILY qpriv 0
+;package
+
+\ cross-package qualified CELL-family payload: the dot's exact shape.
+SUMTYPE tdqw 0
+  VARIANT qsome tdqp:qslot ;VARIANT
+  VARIANT qnone ;VARIANT
+;SUMTYPE
+s" " s" tdqw" TWX-TFAM-FIND-IN TDOK ! TDF !
+TDOK @ -1 T=
+TDF @ TFAM-KIND@ TK-SUM T=
+TDF @ TWX-TFAM-SLOTS@ 1 T=
+TDF @ TFAM-WIDTH@ 2 T=
+\ the payload schema node is a family APPLICATION carrying the RESOLVED id of
+\ tdqp:qslot — nominal identity, not a washed-out scalar.
+s" tdqp" s" qslot" TWX-TFAM-FIND-IN TDOK ! TDX !
+TDOK @ -1 T=
+TDX @ TWX-TFAM-CELL? -1 T=
+TDF @ TFAM-VAR-START@ TDV0 !
+TDV0 @ SUMV-NAME$ s" qsome" T$=
+TDV0 @ TWX-SUMV-SCH-COUNT@ 1 T=
+TDV0 @ TWX-SUMV-PAYCELLS@ 1 T=
+TDV0 @ TWX-SUMV-SCH-START@ TWX-SCHEMA-ROOT@ TWX-SCHEMA-APP? -1 T=
+TDV0 @ TWX-SUMV-SCH-START@ TWX-SCHEMA-ROOT@ TWX-SCHEMA-A@ TDX @ T=
+\ constructor + MATCH round-trip. Checked: the constructor input IS the
+\ qualified nominal scalar (an n is not), and the qsome arm refines back to it.
+s" TDQ-ID ( tdqp:qslot -- tdqw ) TDQW:QSOME" CHECK-QUIET-CANDIDATE! -1 T=
+s" TDQ-BADN ( n -- tdqw ) TDQW:QSOME" CHECK-QUIET-CANDIDATE! 0 T=
+\ runtime: construct with the generated ctor, eliminate with MATCH, value back.
+TRUSTED: TQX>QS ( n -- tdqp:qslot ) ;
+TRUSTED: TQX<QS ( tdqp:qslot -- n ) ;
+: TDQ-MK ( n -- tdqw ) TQX>QS TDQW:QSOME ;
+: TDQ-GET ( tdqw -- n )
+   MATCH tdqw
+      qsome OF TQX<QS ENDOF
+      qnone OF 0 ENDOF
+   ;MATCH ;
+: TDQ-RT ( n -- n ) TDQ-MK TDQ-GET ;
+42 TDQ-RT 42 T=
+\ cross-package qualified LAYOUT-family payload (uppercase qualifier folds):
+\ paycells = the referenced family's full width (tag included).
+SUMTYPE tdqv 0
+  VARIANT qwrap TDQP:qsum ;VARIANT
+;SUMTYPE
+s" " s" tdqv" TWX-TFAM-FIND-IN TDOK ! TDF !
+TDOK @ -1 T=
+TDF @ TWX-TFAM-SLOTS@ 2 T=
+TDF @ TFAM-WIDTH@ 3 T=
+s" tdqp" s" qsum" TWX-TFAM-FIND-IN TDOK ! TDX !
+TDOK @ -1 T=
+TDF @ TFAM-VAR-START@ TWX-SUMV-SCH-START@ TWX-SCHEMA-ROOT@ TWX-SCHEMA-A@ TDX @ T=
+\ in-package: a package's OWN private cell family is a payload by bare tail,
+\ and a product FIELD takes the qualified public cell family.
+package tdqc
+TYPEFAMILY cslot 0
+SUMTYPE cwrap 0
+  VARIANT cv cslot ;VARIANT
+;SUMTYPE
+PRODUCT cprod 0
+  FIELD child tdqp:qslot
+;PRODUCT
+;package
+s" tdqc" s" cwrap" TWX-TFAM-FIND-IN TDOK ! TDF !
+TDOK @ -1 T=
+TDF @ TWX-TFAM-SLOTS@ 1 T=
+s" tdqc" s" cprod" TWX-TFAM-FIND-IN TDOK ! TDF !
+TDOK @ -1 T=
+TDF @ s" child" TWX-PF-FIND TDOK ! TDY !
+TDOK @ -1 T=
+s" tdqp" s" qslot" TWX-TFAM-FIND-IN TDOK ! TDX !   TDOK @ -1 T=
+TDY @ TWX-PF-SCH@ TWX-SCHEMA-ROOT@ TWX-SCHEMA-APP? -1 T=
+TDY @ TWX-PF-SCH@ TWX-SCHEMA-ROOT@ TWX-SCHEMA-A@ TDX @ T=
+\ negatives: named code + full registry rollback each time.
+\ a bogus qualifier never resolves.
+s" SUMTYPE tdqb1 0 VARIANT bv nopkg:qslot ;VARIANT ;SUMTYPE" E-TDECL-PAYLOAD TDT-NEG
+\ a PRIVATE family in another package stays unreachable, qualified or bare.
+s" SUMTYPE tdqb2 0 VARIANT bv tdqp:qpriv ;VARIANT ;SUMTYPE" E-TDECL-PAYLOAD TDT-NEG
+s" SUMTYPE tdqb3 0 VARIANT bv qpriv ;VARIANT ;SUMTYPE" E-TDECL-PAYLOAD TDT-NEG
+\ malformed multi-colon tokens and non-canonical tails never split/resolve.
+s" SUMTYPE tdqb4 0 VARIANT bv tdqp:qslot:x ;VARIANT ;SUMTYPE" E-TDECL-PAYLOAD TDT-NEG
+s" SUMTYPE tdqb5 0 VARIANT bv tdqp:QSLOT ;VARIANT ;SUMTYPE" E-TDECL-PAYLOAD TDT-NEG
+\ a QUALIFIED self-reference is the same recursion as the bare spelling —
+\ private, public, ptr-wrapped, and product-field forms all reject recursive
+\ (this used to crash the engine in constructor generation).
+package tdqs
+s" SUMTYPE qself 0 VARIANT wv tdqs:qself ;VARIANT ;SUMTYPE" E-TDECL-RECURSIVE TDT-NEG
+s" SUMTYPE qselfr 0 VARIANT wv ptr tdqs:qselfr ;VARIANT ;SUMTYPE" E-TDECL-RECURSIVE TDT-NEG
+s" PRODUCT qsprod 0 FIELD child tdqs:qsprod ;PRODUCT" E-TDECL-RECURSIVE TDT-NEG
+public
+s" SUMTYPE qselfp 0 VARIANT wv tdqs:qselfp ;VARIANT ;SUMTYPE" E-TDECL-RECURSIVE TDT-NEG
+;package
+\ candidate-scope declare + rollback: a qualified-payload declaration made
+\ inside a candidate frame vanishes at CHECK-CANDIDATE-DONE (private family —
+\ metadata only, no dictionary constructors to leak).
+package tdqcd
+TDT-BASE!
+TWX-CAND-START
+s" SUMTYPE qcand 0 VARIANT qcv tdqp:qslot ;VARIANT ;SUMTYPE" TDT-EVAL-CATCH 0 T=
+s" tdqcd" s" qcand" TWX-TFAM-FIND-IN TDOK ! drop
+TDOK @ -1 T=
+0 TWX-CAND-DONE drop
+s" tdqcd" s" qcand" TWX-TFAM-FIND-IN TDOK ! drop
+TDOK @ 0 T=
+TDT-BASE=
+;package
 
 \ ---------------------------------------------------------------------------
 \ declaration diagnostic packet: declaration-shaped, through the standard

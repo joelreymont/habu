@@ -1473,6 +1473,10 @@ test/type-ctor-suite.f:TWX-SUMV-PAYCELLS@ test-metaprog habu-seal-set-check-b367
 test/type-ctor-suite.f:TWX-SYMS test-metaprog habu-seal-set-check-b3676b33
 test/type-ctor-suite.f:TWX-TFAM-FIND-IN test-metaprog habu-seal-set-check-b3676b33
 test/type-ctor-suite.f:TWX-TFAM-VIS@ test-metaprog habu-seal-set-check-b3676b33
+test/type-decl-suite.f:TQX<QS test-metaprog habu-permanent-owner-for-83401fcc
+test/type-decl-suite.f:TQX>QS test-metaprog habu-permanent-owner-for-83401fcc
+test/type-decl-suite.f:TWX-CAND-DONE test-metaprog habu-seal-set-check-b3676b33
+test/type-decl-suite.f:TWX-CAND-START test-metaprog habu-seal-set-check-b3676b33
 test/type-decl-suite.f:TWX-CHECKER-FIND-USIG test-metaprog habu-seal-set-check-b3676b33
 test/type-decl-suite.f:TWX-CON-OF test-metaprog habu-seal-set-check-b3676b33
 test/type-decl-suite.f:TWX-FRESH test-metaprog habu-seal-set-check-b3676b33

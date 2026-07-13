@@ -12,7 +12,8 @@
 \ Registration is metadata only — constructors (item 8), hidden layout rows
 \ (item 7), and MATCH (item 9) land later. v1 payload elements are positional
 \ letter params (a.. within arity), concrete cell types, `ptr T`, and closed,
-\ non-linear, arity-0 layout families. Parametric family applications,
+\ non-linear, arity-0 layout or cell (nominal scalar) families, resolved in
+\ signature scope — qualified `PKG:tail` included. Parametric family applications,
 \ quotations, and atoms as payloads reject (E-TDECL-PAYLOAD). Comments are not supported
 \ inside a declaration block (VALUE-RECORD parity); stray tokens reject.
 \ Every failure path is transactional: the registry high-water marks are
@@ -40,6 +41,7 @@ variable TDB-A   variable TDB-U      \ body (SUMTYPE token buffer / arity token)
 variable TDT-A   variable TDT-U      \ offending token (diagnostics)
 variable TDW-A   variable TDW-U      \ short reason (diagnostics)
 variable TDECL-OVERSIZE             \ a collection buffer capped an over-cap body (item 13 C2)
+variable TDECL-CUR-FAM              \ family id being declared (-1 outside a body)
 
 : TDECL-TOK! ( ptr u8 n -- ) TDT-U ! TDT-A ! ;
 : TDECL-WHY! ( ptr u8 n -- ) TDW-U ! TDW-A ! ;
@@ -88,6 +90,7 @@ variable TDECL-FAM-REG   \ family id registered by the LAST successful sum (-1 =
    TDN-U ! TDN-A !
    TDK-U ! TDK-A !
    0 TDT-U !  0 TDT-A !
+   -1 TDECL-CUR-FAM !
    s" declaration failed" TDECL-WHY! ;
 
 \ Reject an over-cap declaration body through the declaration packet (§24 C2):
@@ -280,7 +283,10 @@ variable TDECL-FAM-ARITY
 \ it is unrepresentable. Since packed/niche/boxed all still reject at the POLICY
 \ clause, every family reaching payload parsing is stack-cell-tag, so a self-ref
 \ always rejects here with the docs §24 recursive-sum diagnostic (was the generic
-\ E-TDECL-PAYLOAD "unknown payload type"). The boxed accept sub-slice will route a
+\ E-TDECL-PAYLOAD "unknown payload type"). This token compare catches the exact
+\ bare spelling; a QUALIFIED self-reference (PKG:self inside PKG) resolves to the
+\ just-registered row instead, so TDECL-PAY-FAM? repeats the reject on resolved
+\ family identity (TDECL-CUR-FAM). The boxed accept sub-slice will route a
 \ boxed family's self-ref to a pointer layout before this reject. Mutual recursion
 \ (A -> B -> A) needs a schema cycle walk and is a later sub-slice; this is the
 \ direct case only.
@@ -288,12 +294,22 @@ variable TDECL-FAM-ARITY
    a u TDN-A @ TDN-U @ CORE-STR= ;
 
 \ A bare family payload is one logical schema root whose physical width is the
-\ referenced closed layout width. Parametric applications need argument parsing
-\ and remain rejected; concrete linear payloads remain forbidden.
+\ referenced closed width: an arity-0 layout family (sum/enum/product) or an
+\ arity-0 cell family (nominal scalar, one cell — the same reference a signature
+\ admits). Resolution is signature scope (TFAM-SIG-RESOLVE: own package
+\ private+public first, else the unique public; qualified PKG:tail folds the
+\ qualifier; a PRIVATE family in another package never resolves). A resolved id
+\ equal to the family being declared is the qualified self-reference and rejects
+\ recursive (the bare spelling already rejected at TDECL-SELF-REF?). Parametric
+\ applications need argument parsing and remain rejected; concrete linear
+\ payloads and evidence families remain forbidden.
 : TDECL-PAY-FAM? ( ptr u8 n -- n bool ) {: a:ptr u:n :}
    TFAM-ACTIVE-PKG$ a u TFAM-SIG-RESOLVE 0= IF drop 0 RES-FALSE EXIT THEN
    {: id:n :}
-   id TFAM-LAYOUT? 0= IF 0 RES-FALSE EXIT THEN
+   id TDECL-CUR-FAM @ = IF
+      a u s" invalid layout policy for recursive sum" E-TDECL-RECURSIVE TDECL-THROW
+   THEN
+   id TFAM-LAYOUT? id TFAM-CELL? or 0= IF 0 RES-FALSE EXIT THEN
    id TFAM-ARITY@ 0 <> IF 0 RES-FALSE EXIT THEN
    id TFAM-CONCRETE-LINEAR? IF 0 RES-FALSE EXIT THEN
    id RES-TRUE ;
@@ -502,6 +518,7 @@ variable TDD-I   variable TDD-J   variable TDD-K
    TDECL-NEXT TDECL-ARITY {: ar:n :}
    ar TDECL-FAM-ARITY !
    ar TK-SUM TDECL-FAMILY {: fam:n :}
+   fam TDECL-CUR-FAM !                    \ payload self-references reject by id
    fam TDECL-POLICY                       \ optional POLICY clause before the variants
    fam TDECL-DERIVE                       \ optional DERIVE clause (derive S2)
    SUMV-N @ {: vstart:n :}
@@ -609,8 +626,9 @@ variable TDP-W   \ cumulative product cell width / next field's cell OFFSET
 \ family, UNMAKE reproduces it, and a swapped same-width enum field is a
 \ checker reject. Resolution is signature scope (TFAM-SIG-RESOLVE: own package
 \ first, else the unique public; qualified PKG:tail accepted; ambiguity maps to
-\ unresolved). Wider, parametric, product-kinded (incl. self-referential), and
-\ linear layout fields fall through to the payload grammar's E-TDECL-PAYLOAD.
+\ unresolved). Everything else falls through to the payload grammar, which
+\ admits concrete non-linear layout/cell families (self-references reject
+\ recursive) and rejects parametric, linear, and unknown types (E-TDECL-PAYLOAD).
 : TDECL-FIELD-FAM? ( ptr u8 n -- n bool ) {: a:ptr u:n :}
    TFAM-ACTIVE-PKG$ a u TFAM-SIG-RESOLVE 0= IF drop 0 RES-FALSE EXIT THEN
    {: id:n :}
@@ -666,6 +684,7 @@ variable TDP-W   \ cumulative product cell width / next field's cell OFFSET
    TDECL-NEXT TDECL-ARITY {: ar:n :}
    ar TDECL-FAM-ARITY !
    ar TK-PRODUCT TDECL-FAMILY {: fam:n :}
+   fam TDECL-CUR-FAM !                    \ field self-references reject by id
    fam TDECL-POLICY                       \ optional POLICY clause before the fields
    fam TDECL-DERIVE                       \ optional DERIVE clause (derive S2)
    PF-N @ {: fstart:n :}
