@@ -1,9 +1,11 @@
 ---
 title: Specify PTX generated-state integrity
-status: active
+status: closed
 priority: 1
 issue-type: task
-created-at: "\"2026-07-13T15:01:03.173380+02:00\""
+created-at: "\"\\\"2026-07-13T15:01:03.173380+02:00\\\"\""
+closed-at: "2026-07-13T17:27:36.218169+02:00"
+close-reason: Frozen PTX virtual-state, ptxas attestation, and cubin/SASS integrity contracts; created three reviewed dependency-correct implementation leaves; focused lints, Maki, PTX stdlib/toolchain, and full native gate green on rebased tree.
 blocks:
   - habu-v2-types-artifact-6ee556f8
 ---
