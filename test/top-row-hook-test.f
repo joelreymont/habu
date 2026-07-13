@@ -37,7 +37,6 @@ package TOP-ROW-HOOK-TEST
 32 constant TRH-CAP
 512 constant TRH-ARENA-CAP
 23 constant TRH-WINDOW-N            \ events expected from the probe window below
--7301 constant E-TRH-FULL
 1 constant TRH-WORD-FLAGS           \ LFIND: found, no certified min-in (prims, data records)
 3 constant TRH-IMM-FLAGS            \ LFIND: found + DNAME-IMM
 $101 constant TRH-PROBE-FLAGS       \ LFIND: found + certified min-in 1 (bits 8-15)
@@ -59,8 +58,23 @@ variable TRH-OK-A
    cells + ;
 
 : TRH-ROOM! ( n -- )                \ reject a window larger than the fixture log
-   TRH-AU @ + TRH-ARENA-CAP > if E-TRH-FULL throw then
-   TRH-N @ TRH-CAP < 0= if E-TRH-FULL throw then ;
+   TRH-AU @ + TRH-ARENA-CAP > if E-TEST-CAPACITY throw then
+   TRH-N @ TRH-CAP < 0= if E-TEST-CAPACITY throw then ;
+
+: TRH-ARENA-FULL ( -- )
+   TRH-RESET
+   TRH-ARENA-CAP 1+ TRH-ROOM! ;
+
+: TRH-ROW-FULL ( -- )
+   TRH-RESET
+   TRH-CAP TRH-N !
+   0 TRH-ROOM! ;
+
+: TRH-CAPACITY-TESTS ( -- )
+   s" arena saturation throws the reserved test capacity code" T-LABEL
+   [: TRH-ARENA-FULL ;] E-TEST-CAPACITY TTHROWSQ
+   s" event-row saturation throws the reserved test capacity code" T-LABEL
+   [: TRH-ROW-FULL ;] E-TEST-CAPACITY TTHROWSQ ;
 
 \ The installed top-row hook: record ( class, token bytes, flags ) per event.
 \ typed-local-lint: allow-bare-local - a keeps the ptr u8 byte-span role for BYTE-COPY
@@ -131,6 +145,7 @@ variable TRH-OK-A
 \ `0 set-top-check` events (the word event fires pre-BLR, so the uninstall call
 \ itself is the last logged event).
 T-RESET
+TRH-CAPACITY-TESTS
 TRH-RESET
 ' TRH-LOG set-top-check
 top-check@ ' TRH-LOG = TRH-OK-A !

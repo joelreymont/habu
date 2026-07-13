@@ -204,3 +204,8 @@
 -4399 constant E-EVAL-LAST
 -4300 constant E-EVAL-EMIT    \ candidate emit infrastructure failed
 -4301 constant E-EVAL-VOCAB   \ judge image lacks a task-required word
+
+\ Test infrastructure: -4400..-4499
+-4400 constant E-TEST-FIRST
+-4499 constant E-TEST-LAST
+-4400 constant E-TEST-CAPACITY
