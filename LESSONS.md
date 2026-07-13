@@ -3888,3 +3888,8 @@ unchanged (148855). Keys for milestone 2:
   typed emitters. PTX must separately bind virtual def/use, predicates,
   barriers, address spaces, `ptxas` facts, cubin/SASS identity, and device
   evidence to the exact target and toolchain before promotion.
+- **A representable by-value bound is not a semantic composition bound.** A
+  127-cell effect row fits `ER.MINI`, but only carries 25 exact bindings and
+  fails ordinary repeated call-site composition. Large canonical typed sets
+  need opaque nominal handles over sealed immutable content; handles, offsets,
+  allocation order, and hashes must never become authority or identity.

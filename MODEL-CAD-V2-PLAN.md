@@ -483,9 +483,23 @@ capability, or quotation capture. Local declarations start with an empty path;
 original resolvable slot. One atom may have several bindings, so weight and bias reads
 do not collapse. Different atoms may bind the same slot, so an atomic state
 write can express both facts. Direct duplicate insertion rejects; canonical
-`CAD-EFFECT:UNION` is associative, commutative, and idempotent. Its capacity is
-a named composition bound for stored words and quotations, not a bound inferred
-from the largest current Maki op, and overflow returns a typed diagnostic.
+`CAD-EFFECT:UNION` is associative, commutative, and idempotent. It imposes no
+small semantic composition bound on stored words or quotations. Versioned wire
+counts and checked allocation/resource budgets are explicit protocol and policy
+boundaries, and their overflow or exhaustion returns a typed diagnostic.
+
+The public row value is a one-cell opaque nominal handle backed by a sealed
+immutable layout arena, not a wide by-value `PRODUCT`. Handle numbers, arena
+offsets, pointers, allocation order, and internal hashes are implementation
+references only. Canonical sorted binding contents define equality,
+serialization, diagnostics, replay, AOT, fixpoint bytes, and cache identity.
+Persistent site paths and chunked rows have no small fixed composition or path
+depth bound; a versioned wire count plus checked allocation/resource failures
+provide the protocol boundary. A private linear transactional builder streams
+sorted union/remap results and freezes once, so transitive composition is not
+quadratic. Rollback restores every high-water/index before a handle escapes,
+and published arena spans are permanently immutable and protected from raw
+stores, atomics, FFI/syscall outputs, remapping, and writable reprotection.
 
 Static rows contain no artifact digest, pointer, process-local address, mutable
 generation, RNG position, or authority instance. Stored-word and quotation
@@ -550,8 +564,12 @@ Acceptance:
 
 Tracked implementation slices:
 
-- `habu-fix-wide-product-5c81dada` repairs checker width accounting before a
-  defensible composed row can land;
+- `habu-fix-wide-product-5c81dada` landed the independent checker correction
+  that counts lowered wide PRODUCT cells once instead of quadratically;
+- `habu-protect-dynamic-immutable-eccd0489` owns permanent dynamic protected
+  spans and the complete raw-mutation/remap sink boundary;
+- `habu-add-immutable-nominal-9290a81f` owns opaque handles, canonical immutable
+  row storage, transactional builders, and rollback/snapshot/AOT/replay scale;
 - `habu-define-finite-cad-0bdf52ad` owns static row vocabulary, remap, union,
   and legality tables;
 - `habu-seal-cad-effect-49cac404` owns the final authority boundary;
