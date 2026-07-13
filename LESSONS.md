@@ -3923,3 +3923,7 @@ unchanged (148855). Keys for milestone 2:
   creation event must survive replay and participate in canonical provenance.
   Give them distinct nominal families, and freeze wire ordering, compatibility,
   and digest coverage before implementing the artifact codec.
+- **Remove satisfied blocker edges when their owner is archived.** `dot off`
+  removes a completed dot from the live graph, so descendants must no longer
+  name it in `blocks:`. Close a dependency chain leaf-to-root, delete each
+  satisfied edge, and run `dot-dep-lint` before the closure commit.
