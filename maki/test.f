@@ -200,6 +200,10 @@ TEST:SUITE maki/adam-torch-ref-test.f
 TEST:;SUITE
 TEST:SUITE maki/checkpoint-test.f
 TEST:;SUITE
+TEST:SUITE maki/async-dag-test.f
+TEST:;SUITE
+TEST:SUITE maki/plan-ir-test.f
+TEST:;SUITE
 TEST:SUITE maki/cuda-types-test.f
 TEST:;SUITE
 TEST:SUITE maki/cuda-driver-test.f

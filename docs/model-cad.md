@@ -161,6 +161,64 @@ If implementation uncovers further gaps, the rule from `CLAUDE.md` applies:
 dot the missing capability; no local workarounds, no checker edits on this
 branch (checker files are owned by the TFAM campaign).
 
+## Async execution DAG (V2 §22.3, host schema)
+
+Landed 2026-07-13 (dot `habu-v2-typed-async-ae7c9bd5`): streams, events, and
+dependencies are typed resources, not hidden driver state. `maki/async-dag.f`
+owns the schema; `maki/plan-ir.f` owns the plan-IR → execution handoff.
+
+**Schema.** Node identities, stream identities, and event identities are
+nominal arity-0 families (`ADAG:node-id`, `ADAG:stream-id`, `ADAG:event-id`) —
+a raw `n` cannot forge one, and the private `RAW>ANODE`/`RAW>ASTREAM`/
+`RAW>AEVENT` mints are the only representation authority (TRUSTED.md rows,
+R3 owner-module rule). The node kind is the enum sum `akind` —
+`kernel copy memset event-record event-wait` (`DERIVE eq`,
+`AKIND-KEY` render boundary) — stored in a generative `LAYOUT-BUFFER` column
+beside typed stream/event/kernel-payload columns, so a foreign family can
+never enter a cell. A `kernel` node's payload is the model-IR node it
+launches (`CAD-KIND:node-id`); `copy`/`memset` carry dst/src-or-value/bytes
+scalars; record/wait carry their event. `ADAG:stats` is a `PRODUCT` snapshot
+of the table counts.
+
+**Ordering.** Every ordering fact is an explicit edge: appending a node adds
+the same-stream program-order edge from its stream tail; `ADAG-WAIT+` adds
+the record→wait edge from the event's latest record node; `ADAG-DEP+` adds an
+explicit same-stream producer→consumer edge. Cross-stream ordering is only
+expressible through an event record/wait pair — a raw cross-stream
+`ADAG-DEP+` rejects (`E-ADAG-XSTREAM`) and a wait on a never-recorded event
+is use-before-ready (`E-ADAG-UNREADY`).
+
+**Seal and deterministic replay.** `ADAG-SEAL` freezes the graph — every
+later mutation rejects (`E-ADAG-SEALED`) — and fixes the canonical replay
+order once with Kahn's algorithm under a smallest-ready-index tie break, so
+the same DAG always yields the byte-identical order (`ADAG-RENDER` is the
+canonical byte form; the tests compare two independent builds with `T$=`). A
+leftover node at seal is a dependency cycle (`E-ADAG-CYCLE`). Event
+destruction is handle-lifecycle bookkeeping, not graph mutation: double
+destroy rejects (`E-ADAG-EDESTROY`), record/wait on a destroyed event rejects
+(`E-ADAG-EUSE`).
+
+**Rejection ledger.** Static (checker): identity forging from raw `n`,
+stream/event/node role swaps, DAG-node ↔ IR-node collapse, and identity
+erasure back to `n` (pinned in `maki/async-dag-test.f` with resolving positive
+controls). Named runtime validation (`-5290..-5299`): use-before-ready,
+cross-stream missing wait, double destroy, use-after-destroy, cycle, sealed
+mutation, unsealed replay, wrong-kind payload access, stale handles after
+`ADAG-RESET`, capacities.
+
+**Handoff.** `PIR-BUILD` lowers the adopted model IR into a sealed one-stream
+DAG (one kernel node per IR node, every IR node-operand edge an explicit
+dependency); `PIR-RUN` replays the sealed order through the host executor
+(`EX-PLAN-N` once, then `EX-STEP` per kernel) — the typed replacement for
+`EX-EXEC`'s hidden index order, proven numerically identical to `EX-RUN` in
+`maki/plan-ir-test.f`. Event nodes are ordering-only on the host; `copy`/
+`memset` fail closed (`E-PIR-UNSUP`, codes `-5300..-5309`).
+
+**Device residue (Orin-gated, dot `habu-v2-checked-async-8d460576`).**
+Executing this schema on real driver streams — overlap of two independent
+branches on device, stream-ordered allocation, CUDA Graph capture/replay —
+is the device leg and lives with `tools/ptx/cuda-launch.f`, not here.
+
 ## Product language rules
 
 The README and all user-facing copy follow `docs/positioning.md`: honest and

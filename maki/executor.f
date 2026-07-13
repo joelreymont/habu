@@ -410,6 +410,11 @@ public
 : EX-RUN-N ( n -- )  dup EX-PLAN  EX-EXEC ;
 : EX-RUN ( -- )      MIR-N@ EX-RUN-N ;
 
+\ plan node buffers only (no execution): the async-DAG replay driver
+\ (maki/plan-ir.f) places the arena once, then EX-STEPs nodes in the sealed
+\ deterministic replay order instead of EX-EXEC's hidden index order.
+: EX-PLAN-N ( n -- )  EX-PLAN ;
+
 \ ---- external buffer plan + single-node execution (the checkpoint hooks) ----
 \ maki/checkpoint.f places node buffers itself (persistent boundaries + one
 \ shared interior scratch window; docs/maki/train.md "Gradient checkpointing")

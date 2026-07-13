@@ -672,6 +672,12 @@ that source is explicitly certified; they are not stale-checked by the default
 | INPUT-INDEX>RAW | `MIR:input-index -- n` | Private input-ordinal projection used only after the node handle is validated and before the node-local bound check. | `maki/model-ir-test.f` | maki/model-ir.f | 2026-07-12 |
 | RAW>REF-POS | `n -- MIR:ref-pos` | Private flat-reference-table position refinement after signed and capacity validation. | `maki/model-ir-test.f` | maki/model-ir.f | 2026-07-12 |
 | REF-POS>RAW | `MIR:ref-pos -- n` | Private flat-reference-table projection used only by bounded owner-table load/store helpers. | `maki/model-ir-test.f` | maki/model-ir.f | 2026-07-12 |
+| RAW>ANODE | `n -- ADAG:node-id` | Private async-DAG node refinement after the allocator or node-range validator proves the raw table position names a committed DAG node. | `maki/async-dag-test.f` | maki/async-dag.f | 2026-07-13 |
+| ANODE>RAW | `ADAG:node-id -- n` | Private async-DAG node projection used only before bounds revalidation, owner-table indexing, and the render boundary; no public raw cast is exported. | `maki/async-dag-test.f` | maki/async-dag.f | 2026-07-13 |
+| RAW>ASTREAM | `n -- ADAG:stream-id` | Private async-DAG stream refinement after the stream allocator or stream-range validator proves the raw position names a live stream. | `maki/async-dag-test.f` | maki/async-dag.f | 2026-07-13 |
+| ASTREAM>RAW | `ADAG:stream-id -- n` | Private async-DAG stream projection used only by bounds revalidation, the cross-stream dependency guard, and the render boundary. | `maki/async-dag-test.f` | maki/async-dag.f | 2026-07-13 |
+| RAW>AEVENT | `n -- ADAG:event-id` | Private async-DAG event refinement after the event allocator or event-range validator proves the raw position names a created event. | `maki/async-dag-test.f` | maki/async-dag.f | 2026-07-13 |
+| AEVENT>RAW | `ADAG:event-id -- n` | Private async-DAG event projection used only by bounds revalidation and the liveness/record owner-table accessors. | `maki/async-dag-test.f` | maki/async-dag.f | 2026-07-13 |
 | RAW>RGN | `n -- CAD-KIND:region` | Private fusion-planner region refinement after `FP-CK` and the region-range validator prove the raw table position names a planned region (R3 owner-module rule; landed by the closed dot `habu-maki-apply-cad-27b7a7d7`, owned by `habu-epic-model-cad-70b629a9`). | `maki/fusion-plan-test.f` | maki/fusion-plan.f | 2026-07-12 |
 | RGN>RAW | `CAD-KIND:region -- n` | Private region projection used only by fusion-plan bounds revalidation, region-indexed owner tables, and the `REGION_<rid>` render boundaries; no public raw cast is exported (landed by the closed dot `habu-maki-apply-cad-27b7a7d7`, owned by `habu-epic-model-cad-70b629a9`). | `maki/fusion-plan-test.f` | maki/fusion-plan.f | 2026-07-12 |
 | RAW>TARGET-ID | `n -- CAD-KIND:target-id` | Private target-registry refinement after semantic descriptor validation, capacity validation, and append-only slot allocation. | `maki/target/target-test.f` | maki/target/target.f | 2026-07-12 |
@@ -1354,6 +1360,12 @@ maki/model-ir.f:RAW>INPUT-INDEX prim-axiom habu-epic-model-cad-70b629a9
 maki/model-ir.f:INPUT-INDEX>RAW prim-axiom habu-epic-model-cad-70b629a9
 maki/model-ir.f:RAW>REF-POS prim-axiom habu-epic-model-cad-70b629a9
 maki/model-ir.f:REF-POS>RAW prim-axiom habu-epic-model-cad-70b629a9
+maki/async-dag.f:RAW>ANODE prim-axiom habu-epic-model-cad-9549fdd8
+maki/async-dag.f:ANODE>RAW prim-axiom habu-epic-model-cad-9549fdd8
+maki/async-dag.f:RAW>ASTREAM prim-axiom habu-epic-model-cad-9549fdd8
+maki/async-dag.f:ASTREAM>RAW prim-axiom habu-epic-model-cad-9549fdd8
+maki/async-dag.f:RAW>AEVENT prim-axiom habu-epic-model-cad-9549fdd8
+maki/async-dag.f:AEVENT>RAW prim-axiom habu-epic-model-cad-9549fdd8
 maki/target/target.f:RAW>TARGET-ID prim-axiom habu-epic-model-cad-70b629a9
 maki/target/target.f:TARGET-ID>RAW prim-axiom habu-epic-model-cad-70b629a9
 maki/tensor-value.f:RAW>TENSOR prim-axiom habu-epic-model-cad-70b629a9

@@ -556,6 +556,20 @@ points stay listed.
   cleanup, and `PTXAS` resolution helpers for device graders.
 - `maki/device-artifacts-test.f` — focused coverage for grader artifact
   uniqueness and cleanup.
+- `maki/async-dag.f` — typed immutable async execution DAG (V2 §22.3 host
+  schema): nominal stream/event/node identities, the `akind` node sum
+  (kernel/copy/memset/event-record/event-wait), explicit ordering edges, and
+  the sealed deterministic topological replay order.
+- `maki/async-dag-test.f` — identity-forging/role-swap checker negatives plus
+  runtime coverage: replay determinism (byte-identical renders),
+  use-before-ready, cross-stream missing wait, event double-destroy, cycle,
+  sealed/unsealed misuse, wrong-kind payloads, stale handles, capacities.
+- `maki/plan-ir.f` — plan-IR → execution handoff: lowers the adopted model IR
+  into a sealed one-stream async DAG and replays the sealed order through the
+  host executor (the typed replacement for hidden index-order sequencing).
+- `maki/plan-ir-test.f` — handoff regressions: replay outputs match `EX-RUN`,
+  order/kernel-payload pins, byte-identical rebuild renders, event no-op
+  replay, and the empty/unsealed/unsupported fail-closed paths.
 - `maki/maki.f` — Maki one-file entry point: host-framework `require` aggregator
   plus the curated top-level `MAKI:` surface, re-exporting the model-authoring /
   train / eval workflow words (losses, optimizers, ONNX import, checker-as-judge

@@ -3946,3 +3946,14 @@ unchanged (148855). Keys for milestone 2:
   quick-add title, so probes such as `dot dep --help` create stray tasks. Consult
   `dot --help`, use only listed subcommands, and inspect `jj diff` immediately
   after every tracker command so accidental records cannot enter a commit.
+- **Constructive ordering rules can make every legal edge forward — keep the
+  seal-time cycle check anyway.** The async DAG's program-order threading,
+  record-before-wait rule, and same-stream-only explicit deps mean insertion
+  order is already a topological order, so smallest-index Kahn reproduces it
+  byte-identically; the seal's Kahn pass exists to verify acyclicity against a
+  buggy or adversarial builder, not to discover an order. Stating that in the
+  file header avoided a "why is replay always 0..N-1?" review round.
+- **PRODUCT values cannot ride the interpret-mode stack.** A top-level test
+  line calling a `( -- fam-product )` accessor dies with `interpret-mode
+  layout value`; wrap the construct/UNMAKE/assert sequence in one checked test
+  word and call that from top level.
