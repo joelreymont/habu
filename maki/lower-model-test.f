@@ -31,11 +31,9 @@ package MAKI
 \ cols wider than the launch block: the runtime row-launch check behind the
 \ typed seam (LLA-ROW-GRID) must still fail closed (E-PTX-BLOCK, defense in depth)
 : LMT-ROWGRID-WIDE ( -- )  1 512 SHAPE LLA-ROW-GRID drop ;
-: LMT-BAD-MOVE-RID ( -- )  MDL-CAP RAW>RGN LLA-REGION-MOVE? drop ;
-: LMT-BAD-CUBIN-NEG-RID ( -- )  s" bad" -1 RAW>RGN MDL-CUBIN! ;
-: LMT-BAD-CUBIN-CAP-RID ( -- )  s" bad" MDL-CAP RAW>RGN MDL-CUBIN! ;
-: LMT-BAD-CUBIN-ACTIVE-RID ( -- )
-   s" bad" FP-REGION-COUNT RAW>RGN MDL-CUBIN! ;
+1 LAYOUT-BUFFER LMT-STALE-RID CAD-KIND:region
+: LMT-BAD-CUBIN-STALE-RID ( -- )
+   s" bad" 0 LMT-STALE-RID @ MDL-CUBIN! ;
 
 T-RESET
 
@@ -132,10 +130,7 @@ MODEL-K 4 T=
 FP-BUILD
 FP-REGION-COUNT 3 T=
 MIR-MAT-COUNT   3 T=
-' LMT-BAD-MOVE-RID E-FP-IDX TTHROWS
-' LMT-BAD-CUBIN-NEG-RID E-MDL-CUBIN TTHROWS
-' LMT-BAD-CUBIN-CAP-RID E-MDL-CUBIN TTHROWS
-' LMT-BAD-CUBIN-ACTIVE-RID E-MDL-CUBIN TTHROWS
+2 FP-REGION-ID 0 LMT-STALE-RID !              \ save a valid id across the next plan rebuild
 
 \ region class routing (the whole-model dispatch reuses these)
 0 FP-REGION-ID LLA-REGION-MATMUL? TTRUE
@@ -198,6 +193,7 @@ LMT-OFFDEV-NOTRUN
 MODEL: MGC ( x:4x8 b:4x8 -- y ) GELU CONCAT ;
 FP-BUILD
 FP-REGION-COUNT 2 T=
+' LMT-BAD-CUBIN-STALE-RID E-MDL-CUBIN TTHROWS  \ old rid=2 equals the new upper bound
 0 FP-REGION-ID LLA-REGION-MATMUL? TFALSE
 0 FP-REGION-ID LLA-REGION-REDUCE? TFALSE
 1 FP-REGION-ID LLA-REGION-MOVE?   TTRUE   \ region 1 = a materialized movement copy
