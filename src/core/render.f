@@ -151,11 +151,13 @@ variable RATOM-I
    pu 0 = IF RES-FALSE EXIT THEN
    pa pu s" @" CORE-STR= IF RES-FALSE EXIT THEN
    pa pu TFAM-ACTIVE-PKG$ CORE-STR= 0= ;
+: FAM-QNAME-REND ( n -- ) {: fam:n :}    \ interned qualified name: pkg:tail if foreign, else bare tail
+   fam FAM-FOREIGN? IF fam TFAM-PKG$ RSTR 58 EMIT1 THEN
+   fam TFAM-NAME$ RSTR ;
 : FAM-NAME-REND ( n -- ) {: t:n :}
    t PARAM>FAM {: fam:n :}
    fam FAM-INTERNED? 0= IF t PARAM>NAME-A t PARAM>NAME-U RSTR EXIT THEN
-   fam FAM-FOREIGN? IF fam TFAM-PKG$ RSTR 58 EMIT1 THEN
-   fam TFAM-NAME$ RSTR ;
+   fam FAM-QNAME-REND ;
 
 \ a hidden physical field renders as the diagnostic-only '@family.slotN<args>' /
 \ '@family.tag<args>' form (docs §20) and sets RQM so REC-SIG never records a
@@ -642,7 +644,12 @@ variable JPOS  variable JLINE  variable JCOL
 
 \ ADT family field (item 13): the exact failed type pair captured by U-FAIL.
 \ Expected takes precedence over actual; unrelated matched row cells cannot leak
-\ into the diagnostic, and a scalar pair emits no family.
+\ into the diagnostic, and a scalar pair emits no family. The hint carries the
+\ interned qualified spelling (FAM-QNAME-REND: pkg:tail for a foreign package,
+\ bare tail for the global/internal package) so it matches the expected/actual
+\ rows and resolves from the failing definition's scope. Family and package
+\ names are registry-validated lowercase identifiers, so the quoted raw emit
+\ needs no JSON escaping (the JROW pattern).
 : TERM-FAM ( n -- n )                    \ layout-family id for one type term, else -1
    T-RES dup LAYOUT-PARAM? IF PARAM>FAM EXIT THEN
    drop -1 ;
@@ -672,7 +679,7 @@ variable JPOS  variable JLINE  variable JCOL
 : DIAG-FAMILY ( -- )
    DF-EXP @ TERM-FAM  DF-ACT @ TERM-FAM  DIAG-FAM-ID {: fam:n :}
    fam 0 >= IF
-      44 EMIT1 s" family" JKEY  fam TFAM-NAME$ JSTR
+      44 EMIT1 s" family" JKEY  34 EMIT1 fam FAM-QNAME-REND 34 EMIT1
    THEN
    DIAG-VARIANT ;
 : DIAG-JSON

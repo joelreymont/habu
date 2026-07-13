@@ -554,7 +554,10 @@ variable GDX-TRUST-MAN-U
    s" actual: " s" wide diagnostic row must still render the mismatch" GE-EXPECT-ERR-HAS ;
 
 \ Item 13 repair-packet family field: a layout (ADT) type mismatch must carry the
-\ involved type-family name as `"family"`; a pure-scalar mismatch must not.
+\ involved type-family name as `"family"`; a pure-scalar mismatch must not. The
+\ field carries the interned qualified spelling — bare tail for these global
+\ families; the foreign-package pkg:tail form is pinned in test/type-decl-suite.f
+\ (TDLRJ2), since tools/check.f's scanner has no package-block support yet.
 : GDX-ADT-FAMILY ( -- )
    GE-HB-RESET
    GE-SRC-RESET

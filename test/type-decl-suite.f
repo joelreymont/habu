@@ -1636,6 +1636,27 @@ CHECKER-END-PACKAGE
 TDIAG-BUF 8192 DIAG-BUFFER!
 s" TDLR4 ( tdlrpk:tdlrfam -- n ) {: q:tdlrpk:tdlrfam :} q dup drop" CHECK-CANDIDATE! 0 T=
 DIAG-BUFFER$ s" expected: n actual: tdlrpk:tdlrfam<> " TDT-CONTAINS? -1 T=
+
+\ ---------------------------------------------------------------------------
+\ E-MISMATCH JSON 'family' hint (dot habu-checker-json-family): the machine
+\ packet's family field carries the SAME interned qualified spelling as the
+\ rendered expected/actual rows — bare tail for a global-package sum family,
+\ pkg:tail for a foreign-package one (pre-fix it rendered the bare tail via
+\ TFAM-NAME$, unresolvable for a foreign package). Layout families only: the
+\ hint fires through TERM-FAM/LAYOUT-PARAM?, so both fixtures are SUMTYPEs.
+\ ---------------------------------------------------------------------------
+SUMTYPE tdlrjg 0 VARIANT keep n ;VARIANT ;SUMTYPE
+s" tdlrjp" CHECKER-PACKAGE   CHECKER-PUBLIC
+SUMTYPE tdlrjs 0 VARIANT keep n ;VARIANT ;SUMTYPE
+CHECKER-END-PACKAGE
+TDIAG-BUF 8192 DIAG-BUFFER!  -1 DIAG-JSON!
+s" TDLRJ1 ( n -- tdlrjg )" CHECK-CANDIDATE! 0 T=
+DIAG-BUFFER$ s\" \"family\":\"tdlrjg\"" TDT-CONTAINS? -1 T=
+TDIAG-BUF 8192 DIAG-BUFFER!
+s" TDLRJ2 ( n -- tdlrjp:tdlrjs )" CHECK-CANDIDATE! 0 T=
+DIAG-BUFFER$ s\" \"family\":\"tdlrjp:tdlrjs\"" TDT-CONTAINS? -1 T=
+DIAG-BUFFER$ s\" \"family\":\"tdlrjs\"" TDT-CONTAINS? 0 T=
+0 DIAG-JSON!
 DIAG-BUFFER-OFF
 
 : REPORT ( -- )
