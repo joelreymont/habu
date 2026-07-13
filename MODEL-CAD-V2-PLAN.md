@@ -732,6 +732,9 @@ values. Zero is invalid only where the role says so: `alignment`,
 first construct a zero-admitting extent/count, then explicitly pass through the
 corresponding `AS-ALLOC-*` validator. The validator returns the `zero` variant;
 it does not throw and no allocator accepts a zero-admitting scalar role.
+`AS-ALLOC-CELL-COUNT` succeeds only for `1 <= count <= MAX-N / CELL-BYTES`;
+zero returns `zero`, and the first count whose `cells` conversion would exceed
+`MAX-N` returns `overflow` before an allocation primitive is reachable.
 
 Every mint and any unavoidable role-to-`n` primitive adapter receives a
 `TRUSTED.md` row, a trusted-inventory classification, a focused validation test,
@@ -888,9 +891,11 @@ Runtime `T{ ... -> ... }T` fixtures then prove the value predicates:
 - alignment construction accepts one and the largest positive power of two,
   while zero, negative, `MAX-N`, and other non-powers-of-two return
   bad-alignment;
-- quotient/remainder reconstruction is checked for bytes, items, and cells only.
-  Relational bound/alignment, identity wrap/exhaustion, and stale-evidence cases
-  remain in their R5/bounded-host owning suites.
+- division tests zero dividend, divisor one, exact division, and maximum
+  dividend; remainder tests zero dividend, exact zero remainder, and a nonzero
+  remainder, separately for bytes, items, and cells. Relational bound/alignment,
+  identity wrap/exhaustion, and stale-evidence cases remain in their
+  R5/bounded-host owning suites.
 
 No test may claim that `CHECK!` rejects `-1`, zero, or an overflowing literal
 unless value refinement has separately landed. Those are runtime validator
@@ -976,6 +981,28 @@ workspace.
 | Model IR | `maki/model-ir.f`, `maki/model-ir-test.f` | Reopen package `MIR` for `MIR:NODE-COUNT@`, `MIR:SLOT-COUNT@`, `MIR:OPERAND-COUNT@`, and `MIR:MATERIALIZED-COUNT`, all returning `item-count`. Keep `MIR:input-index`, `MIR:ref-pos`, and `MIR:operand-ref`; never replace them with scalar `index`. Operand-count callers are exactly `maki/backward-test.f`, `maki/backward.f`, `maki/cad.f`, `maki/checkpoint.f`, `maki/fusion-plan.f`, `maki/lower-ew.f`, `maki/lower-mm.f`, `maki/lower-move.f`, `maki/lower-red.f`, `maki/mem-plan.f`, `maki/saved.f`, `maki/sched-key.f`, and `maki/traffic.f`. Count accessors are added first; those caller files move in separately owned commits, and the old MAKI-prefixed count accessors are removed only after the listed set is empty. | `bin/hb --load maki/model-ir-test.f`, then `bin/hb --load maki/test.f`; zero-node/zero-operand state, maximum capacities, count-versus-index checker negatives, rollback counts | sealed CAD-NUM; existing MIR nominal handles; no typed-storage-definer dependency and no ownership of MI-* storage migration |
 | Shape census | Read-only census of `maki/tensor.f`, `maki/tensor-value.f`, `maki/cad.f`, `maki/executor.f`, `maki/golden-artifact.f`, `maki/gradcheck.f`, `maki/lower-ew.f`, `maki/lower-launch.f`, `maki/lower-mm.f`, `maki/lower-move.f`, `maki/lower-red.f`, `maki/move-view.f`, `maki/plan-ops.f`, `maki/saved.f`, and `maki/traffic.f`; only the census result is added to this plan | Classify every current product as already owned by `MAKI:DIM*`, `MAKI:SHAPE-ELEMS`, or `MAKI:TENSOR-BYTES`, or name an exact residual file/word for a new dot. This row edits no Maki source and adds no CAD-NUM multiplication. | `bin/hb --load maki/tensor-test.f` and `bin/hb --load maki/tensor-value-test.f`; the census records zero/overflow semantics of each owner | read-only after B5.2; any residual becomes a separate owner dot |
 | Final integration | `src/habu/habu2.f`, `FILEMAP.md`, `TRUSTED.md`, `MODEL-CAD-V2-PLAN.md`, `STATUS.md`, and `tools/public-signatures-test.f` only | Load the sealed `lib/cad-num.f`, register the three new owner/test files, audit trusted mints and packaged public signatures, and prove the V2 production entry point uses no legacy global numeric cast or allocation boundary. It does not migrate consumers or change arithmetic. | exact public-signature/trust/filemap/status gates, native fixpoint, then the full owning gates on the rebased tree | every dispatched owner/caller dot above green and integrated |
+
+The memory owner contains exactly two private representation projections:
+
+~~~forth
+package MEM
+private
+TRUSTED: ALLOC-BYTES>N
+  ( CAD-NUM:alloc-byte-len -- n ) ;
+TRUSTED: ALLOC-CELLS>N
+  ( CAD-NUM:alloc-cell-count -- n ) ;
+;package
+~~~
+
+Source definitions and calls use the bare names inside `MEM`; documentation may
+render them as `MEM:ALLOC-BYTES>N` and `MEM:ALLOC-CELLS>N` only to identify the
+owner. `ALLOC-BYTES>N` appears solely at the `mmap` size operand, and
+`ALLOC-CELLS>N` solely before the `cells` primitive used by the cell-allocation
+sink. They are never public conversions or general arithmetic adapters. Each
+has a `TRUSTED.md` row, refine-lint classification, trust-inventory ownership,
+and focused tests proving qualified lookup/export is unavailable and byte/cell
+roles cannot swap. Their removal condition is that the corresponding primitive
+accepts the nominal allocation role directly.
 
 The string, vector, and Model IR rows mean these exact public effects; no
 additional overload is implicit:
