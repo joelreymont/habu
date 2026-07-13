@@ -31,6 +31,9 @@ points stay listed.
 - `docs/autograd.md` — Habu→PTX reverse-mode autograd: AD as a syntactic reversal; verified gradients.
 - `docs/eval-triton.md` — eval matrix: checked Habu-PTX vs real Triton on the Orin (install, reproduction, results).
 - `docs/seed.md` — native seed trust root and no-binary recovery.
+- `docs/typed-top-level.md` — checker-modeled typed top level design (top-row
+  tracker, xt<effect> typing, adoption tiers) plus the parametric-cell V2
+  verdict.
 - `docs/swiftforth-task-api.md` — SwiftForth multitasking surface captured for
   Habu `TASK` package parity.
 
