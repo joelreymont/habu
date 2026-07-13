@@ -3904,3 +3904,9 @@ unchanged (148855). Keys for milestone 2:
   contract has landed. Transfer durable ownership to a checked permanent-owner
   registry, close the implementation dot on evidence, and depend on that
   completed milestone.
+- **Signal handlers need asynchronous-entry effects, not ordinary call
+  effects.** The kernel supplies target-specific live registers and a ucontext
+  frame, while the handler may edit saved PC/SP state and terminate through
+  `sigreturn` or a no-return syscall. A BL routine contract cannot prove that
+  boundary; type its frame, allowed operations, reentrancy, and terminator
+  explicitly for each target.
