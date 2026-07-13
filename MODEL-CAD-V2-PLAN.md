@@ -668,6 +668,8 @@ CAD-NUM:byte-off    nonnegative byte offset
 CAD-NUM:cell-off    nonnegative cell offset
 CAD-NUM:alignment   positive power-of-two alignment
 CAD-NUM:positive-divisor positive divisor for unit-preserving extent arithmetic
+CAD-NUM:alloc-byte-len positive byte extent accepted by an allocator
+CAD-NUM:alloc-cell-count positive cell count accepted by a cell allocator
 ~~~
 
 The lowercase tails are checker type-family vocabulary. Public Forth words are
@@ -715,7 +717,21 @@ CAD-NUM:CELL-OFF   ( n -- CAD-NUM:numeric-result<CAD-NUM:cell-off> )
 CAD-NUM:ALIGNMENT  ( n -- CAD-NUM:numeric-result<CAD-NUM:alignment> )
 CAD-NUM:POSITIVE-DIVISOR
   ( n -- CAD-NUM:numeric-result<CAD-NUM:positive-divisor> )
+CAD-NUM:AS-ALLOC-BYTE-LEN
+  ( CAD-NUM:byte-len
+    -- CAD-NUM:numeric-result<CAD-NUM:alloc-byte-len> )
+CAD-NUM:AS-ALLOC-CELL-COUNT
+  ( CAD-NUM:cell-count
+    -- CAD-NUM:numeric-result<CAD-NUM:alloc-cell-count> )
 ~~~
+
+Zero is valid for `byte-len`, `item-count`, `cell-count`, `index`, and both
+offsets: empty tensors, strings, vectors, and zero-distance ranges are ordinary
+values. Zero is invalid only where the role says so: `alignment`,
+`positive-divisor`, `alloc-byte-len`, and `alloc-cell-count`. Allocation callers
+first construct a zero-admitting extent/count, then explicitly pass through the
+corresponding `AS-ALLOC-*` validator. The validator returns the `zero` variant;
+it does not throw and no allocator accepts a zero-admitting scalar role.
 
 Every mint and any unavoidable role-to-`n` primitive adapter receives a
 `TRUSTED.md` row, a trusted-inventory classification, a focused validation test,
@@ -736,38 +752,53 @@ substitute.
 
 #### B5.2 Checked Arithmetic
 
-Role-changing arithmetic is owned and named. It validates the operation before
-minting the result, preserves units, and returns a typed outcome. The minimum
-surface includes:
+Role-changing arithmetic is owned and named. This table is the complete B5
+algebra; an omitted pair is statically unavailable. Operand order is canonical
+and no reversed overload is implied. `R<t>` below abbreviates
+`CAD-NUM:numeric-result<t>` only inside the B5 design tables.
+Unqualified lowercase type tails in those tables are all `CAD-NUM` families;
+for example, `byte-len` means `CAD-NUM:byte-len`, not a global checker token.
 
-- cell-count to byte-length and cell-offset to byte-offset conversion with
-  overflow checks;
-- byte-offset to cell-offset conversion with exact-divisibility evidence;
-- checked addition and multiplication for each admitted role combination;
-- unit-preserving division and remainder for each admitted role, requiring
-  `CAD-NUM:positive-divisor` so the result remains nonnegative and in the same
-  unit;
-- alignment validation, checked align-up, and exact alignment tests;
-- subtraction that rejects a negative result rather than wrapping it into a
-  refined role.
+| Word | Exact stack effect | Required boundary classes |
+|------|--------------------|---------------------------|
+| `CAD-NUM:ADD-BYTES` | `( byte-len byte-len -- R<byte-len> )` | zero identity; maximum-safe sum; first overflow |
+| `CAD-NUM:ADD-ITEMS` | `( item-count item-count -- R<item-count> )` | zero identity; maximum-safe sum; first overflow |
+| `CAD-NUM:ADD-CELLS` | `( cell-count cell-count -- R<cell-count> )` | zero identity; maximum-safe sum; first overflow |
+| `CAD-NUM:ADVANCE-BYTE-OFF` | `( byte-off byte-len -- R<byte-off> )` | zero distance; maximum-safe advance; first overflow |
+| `CAD-NUM:ADVANCE-CELL-OFF` | `( cell-off cell-count -- R<cell-off> )` | zero distance; maximum-safe advance; first overflow |
+| `CAD-NUM:ADVANCE-INDEX` | `( index item-count -- R<index> )` | zero distance; maximum-safe advance; first overflow |
+| `CAD-NUM:SUB-BYTES` | `( byte-len byte-len -- R<byte-len> )` | equal gives zero; positive difference; first underflow |
+| `CAD-NUM:SUB-ITEMS` | `( item-count item-count -- R<item-count> )` | equal gives zero; positive difference; first underflow |
+| `CAD-NUM:SUB-CELLS` | `( cell-count cell-count -- R<cell-count> )` | equal gives zero; positive difference; first underflow |
+| `CAD-NUM:RETREAT-BYTE-OFF` | `( byte-off byte-len -- R<byte-off> )` | zero distance; exact-to-zero; first underflow |
+| `CAD-NUM:RETREAT-CELL-OFF` | `( cell-off cell-count -- R<cell-off> )` | zero distance; exact-to-zero; first underflow |
+| `CAD-NUM:RETREAT-INDEX` | `( index item-count -- R<index> )` | zero distance; exact-to-zero; first underflow |
+| `CAD-NUM:BYTE-DISTANCE` | `( byte-off byte-off -- R<byte-len> )` | equal gives zero; positive distance; reversed underflow |
+| `CAD-NUM:CELL-DISTANCE` | `( cell-off cell-off -- R<cell-count> )` | equal gives zero; positive distance; reversed underflow |
+| `CAD-NUM:INDEX-DISTANCE` | `( index index -- R<item-count> )` | equal gives zero; positive distance; reversed underflow |
+| `CAD-NUM:MUL-ITEMS` | `( item-count item-count -- R<item-count> )` | zero in either position; maximum-safe product; first overflow |
+| `CAD-NUM:SCALE-BYTES` | `( byte-len item-count -- R<byte-len> )` | zero in either position; maximum-safe product; first overflow |
+| `CAD-NUM:SCALE-CELLS` | `( cell-count item-count -- R<cell-count> )` | zero in either position; maximum-safe product; first overflow |
+| `CAD-NUM:DIV-BYTES` | `( byte-len positive-divisor -- byte-len )` | zero dividend; divisor one; maximum dividend; total, so no error variant |
+| `CAD-NUM:REM-BYTES` | `( byte-len positive-divisor -- byte-len )` | zero dividend; exact zero remainder; nonzero remainder; total, so no error variant |
+| `CAD-NUM:DIV-ITEMS` | `( item-count positive-divisor -- item-count )` | zero dividend; divisor one; maximum dividend; total, so no error variant |
+| `CAD-NUM:REM-ITEMS` | `( item-count positive-divisor -- item-count )` | zero dividend; exact zero remainder; nonzero remainder; total, so no error variant |
+| `CAD-NUM:DIV-CELLS` | `( cell-count positive-divisor -- cell-count )` | zero dividend; divisor one; maximum dividend; total, so no error variant |
+| `CAD-NUM:REM-CELLS` | `( cell-count positive-divisor -- cell-count )` | zero dividend; exact zero remainder; nonzero remainder; total, so no error variant |
+| `CAD-NUM:CELLS>BYTES` | `( cell-count -- R<byte-len> )` | zero; maximum-safe cell count; first overflow |
+| `CAD-NUM:CELL-OFF>BYTE-OFF` | `( cell-off -- R<byte-off> )` | zero; maximum-safe cell offset; first overflow |
+| `CAD-NUM:BYTES>CELLS` | `( byte-len -- R<cell-count> )` | zero; exact maximum; first misaligned byte length; no overflow class |
+| `CAD-NUM:BYTE-OFF>CELL-OFF` | `( byte-off -- R<cell-off> )` | zero; exact maximum; first misaligned byte offset; no overflow class |
+| `CAD-NUM:ALIGN-UP-BYTES` | `( byte-len alignment -- R<byte-len> )` | zero; alignment one; already aligned maximum; first overflowing round-up |
+| `CAD-NUM:ALIGN-UP-BYTE-OFF` | `( byte-off alignment -- R<byte-off> )` | zero; alignment one; already aligned maximum; first overflowing round-up |
+| `CAD-NUM:BYTES-ALIGNED?` | `( byte-len alignment -- bool )` | zero is aligned; exact and non-exact values; no overflow/underflow class |
+| `CAD-NUM:BYTE-OFF-ALIGNED?` | `( byte-off alignment -- bool )` | zero is aligned; exact and non-exact offsets; no overflow/underflow class |
 
-There is no generic `CAD-NUM:MUL ( n n -- n )`. Each exported operation states
-its operand and result roles, for example:
-
-~~~forth
-CAD-NUM:CELLS>BYTES ( CAD-NUM:cell-count
-  -- CAD-NUM:numeric-result<CAD-NUM:byte-len> )
-CAD-NUM:CELL-OFF>BYTE-OFF ( CAD-NUM:cell-off
-  -- CAD-NUM:numeric-result<CAD-NUM:byte-off> )
-CAD-NUM:BYTE-OFF>CELL-OFF ( CAD-NUM:byte-off
-  -- CAD-NUM:numeric-result<CAD-NUM:cell-off> )
-CAD-NUM:MUL-COUNT ( CAD-NUM:item-count CAD-NUM:item-count
-  -- CAD-NUM:numeric-result<CAD-NUM:item-count> )
-CAD-NUM:DIV-COUNT ( CAD-NUM:item-count CAD-NUM:positive-divisor
-  -- CAD-NUM:numeric-result<CAD-NUM:item-count> )
-CAD-NUM:REM-COUNT ( CAD-NUM:item-count CAD-NUM:positive-divisor
-  -- CAD-NUM:numeric-result<CAD-NUM:item-count> )
-~~~
+The table intentionally rejects `index + index`, `offset + offset`,
+`length + offset` in reversed order, alignment arithmetic, cross-unit add/sub,
+and multiplication or division of indexes or offsets. It also rejects generic
+raw-`n` arithmetic. New combinations require a consumer, unit proof, boundary
+matrix, and a plan amendment; they are not inferred from representation size.
 
 A successful typed result proves that this operation completed without the
 named numeric failure. It does not prove a general value equation between
@@ -805,7 +836,7 @@ Positive checker candidates:
 : GOOD-OFF-SWAP ( CAD-NUM:byte-off CAD-NUM:cell-off
   -- CAD-NUM:cell-off CAD-NUM:byte-off ) swap ;
 : GOOD-DIV-COUNT ( CAD-NUM:item-count CAD-NUM:positive-divisor
-  -- CAD-NUM:numeric-result<CAD-NUM:item-count> ) CAD-NUM:DIV-COUNT ;
+  -- CAD-NUM:item-count ) CAD-NUM:DIV-ITEMS ;
 ~~~
 
 Negative checker candidates:
@@ -815,9 +846,11 @@ Negative checker candidates:
   -- CAD-NUM:byte-off CAD-NUM:cell-off ) swap ;
 : BAD-RAW-OFF ( n -- CAD-NUM:byte-off ) ;
 : BAD-DIV-ROLE ( CAD-NUM:item-count CAD-NUM:alignment
-  -- CAD-NUM:numeric-result<CAD-NUM:item-count> ) CAD-NUM:DIV-COUNT ;
+  -- CAD-NUM:item-count ) CAD-NUM:DIV-ITEMS ;
 : BAD-MUL-ROLE ( CAD-NUM:item-count CAD-NUM:byte-len
-  -- CAD-NUM:numeric-result<CAD-NUM:item-count> ) CAD-NUM:MUL-COUNT ;
+  -- CAD-NUM:numeric-result<CAD-NUM:item-count> ) CAD-NUM:MUL-ITEMS ;
+: BAD-INDEX-PLUS-INDEX ( CAD-NUM:index CAD-NUM:index
+  -- CAD-NUM:numeric-result<CAD-NUM:index> ) CAD-NUM:ADVANCE-INDEX ;
 ~~~
 
 The positive candidates must return accepted and every negative candidate must
@@ -825,31 +858,39 @@ return rejected through the standard quiet candidate harness. R5 and
 bounded-host maintain their own relational-evidence checker/runtime matrices;
 B5 does not restate placeholder signatures for capabilities it does not own.
 
+The memory owner adds the following candidates only after a real public package
+`MEM` exists and the allocator has its final checked signature; a placeholder
+word cannot make this negative pass:
+
+~~~forth
+: GOOD-ALLOC ( CAD-NUM:alloc-byte-len
+  -- ptr u8 CAD-NUM:alloc-byte-len ) MEM:ALLOC-BYTES ;
+: BAD-ZEROABLE-ALLOC ( CAD-NUM:byte-len
+  -- ptr u8 CAD-NUM:alloc-byte-len ) MEM:ALLOC-BYTES ;
+~~~
+
+The owner first creates/reopens `MEM`, lands and tests `MEM:ALLOC-BYTES`, then
+migrates every legacy direct caller and removes or tightens the old global
+`MEM-ALLOC-BYTES` signature. Only that exact post-migration tree may claim the
+positive/negative allocator candidates.
+
 Runtime `T{ ... -> ... }T` fixtures then prove the value predicates:
 
 - negative length/count/index/offset returns negative; zero length, count,
   index, and offset constructors succeed;
 - `CAD-NUM:POSITIVE-DIVISOR` accepts positive input, returns zero for zero, and
   returns negative for negative input;
-- checked addition proves `0 + 0`, `x + 0`, and the maximum-safe sum, and
-  returns overflow for the next sum;
-- checked multiplication proves zero times maximum in both operand orders and
-  the maximum-safe nonzero product, and returns overflow for the next product;
-- cell-count/cell-offset to byte conversion proves zero, maximum-safe, and
-  first-overflow cases; byte-to-cell conversion proves zero, exact maximum,
-  and non-divisible misaligned cases;
-- subtraction proves equal operands produce zero and returns underflow when the
-  subtrahend is larger;
+- each `AS-ALLOC-*` validator accepts one and its maximum representation,
+  returns zero for zero, and cannot be called with the other allocation unit;
+- every algebra row runs exactly the zero, overflow, underflow, and
+  misalignment classes named in its table row; the total positive-divisor
+  operations return their role directly and expose no impossible error variant;
 - alignment construction accepts one and the largest positive power of two,
   while zero, negative, `MAX-N`, and other non-powers-of-two return
   bad-alignment;
-- align-up proves zero, alignment one, already-aligned maximum, and an ordinary
-  round-up, while a near-maximum value whose round-up exceeds `MAX-N` returns
-  overflow;
-- unit-preserving quotient/remainder proves zero dividend, exact division,
-  nonzero remainder, and quotient/remainder reconstruction for every admitted
-  role. Relational bound/alignment, identity wrap/exhaustion, and stale-evidence
-  cases remain in their R5/bounded-host owning suites.
+- quotient/remainder reconstruction is checked for bytes, items, and cells only.
+  Relational bound/alignment, identity wrap/exhaustion, and stale-evidence cases
+  remain in their R5/bounded-host owning suites.
 
 No test may claim that `CHECK!` rejects `-1`, zero, or an overflowing literal
 unless value refinement has separately landed. Those are runtime validator
@@ -910,31 +951,144 @@ the current source. B5 does not require those generic convenience definers;
 `habu-nominal-storage-typed-c5f44d66` must be amended to describe only genuine
 residual work before assignment and is not a B5 prerequisite.
 
-Bounded implementation slices, in order:
+The implementation is split into these disjoint core owners:
 
-1. define `CAD-NUM` scalar roles and `numeric-result<a>`, then add public
-   validators around private audited `TRUSTED:` mints with static/runtime
-   constructor probes; do not seal or publish a production authority yet;
-2. add unit-preserving division/remainder, products, addition, subtraction,
-   cell/byte conversion, and alignment arithmetic with the complete boundary
-   matrix;
-3. create a separate, non-overlapping CAD-NUM final assembly/seal implementation
-   dot before dispatch. It owns only the final CAD-NUM entry point, seal action,
-   trusted-inventory integration, and hostile reopen/qualified-publication
-   probes; this is the first load path allowed to claim unforgeability;
-4. migrate `lib/memory.f` to byte-length/cell-count conversions and allocation
-   boundaries;
-5. migrate `lib/string.f` to byte lengths/offsets and preserve substring bounds;
-6. migrate `lib/vector.f` to scalar item counts/indexes; relational bound
-   evidence remains in the vector/bounded-host owner;
-7. migrate `maki/model-ir.f` operand counts/positions without overlapping its
-   nominal-storage owner;
-8. run a read-only census of lower-shape product sites. Classify uses already
-   owned by Maki `DIM*`, `SHAPE-ELEMS`, and `TENSOR-BYTES`; do not edit, rename,
-   or duplicate those owners. Only concrete remaining raw sites receive new,
-   separately owned consumer dots before any lowering change;
-9. update manifests, file maps, public-signature audits, and the canonical plan
-   only after the owning migrations pass.
+1. `lib/cad-num-types.f` and `lib/cad-num-types-test.f` own only scalar family
+   declarations, `numeric-result<a>`, constructors, `AS-ALLOC-*`, and audited
+   mints. They depend on SUMTYPE/package support and TVK-RAW, and do not seal the
+   package.
+2. `lib/cad-num-arithmetic.f` and `lib/cad-num-arithmetic-test.f` own exactly the
+   B5.2 table. They depend on slice 1 and add no roles or overloads.
+3. A separately dotted `lib/cad-num.f` plus `lib/cad-num-seal-test.f` owns only
+   final assembly, permanent sealing, trusted-inventory integration, and hostile
+   reopen/qualified-publication probes. It depends on slices 1-2, TVK-RAW, and
+   package sealing; it is the first production authority.
+
+Consumer work uses the following bounded contracts. A consumer dot copies its
+row verbatim before dispatch; files in another row are not edited in the same
+workspace.
+
+| Owner | Owned files | Exact API and callers | Focused proof | Dependencies |
+|-------|-------------|-----------------------|---------------|--------------|
+| Memory | `lib/memory.f`, `lib/memory-test.f` | Create/reopen public package `MEM` and add exactly `MEM:CELLS>BYTES ( cell-count -- R<byte-len> )`, `MEM:64K-BYTES ( item-count -- R<byte-len> )`, `MEM:64K-COUNT-FOR ( byte-len -- R<item-count> )`, `MEM:64K-SPAN-BYTES ( byte-len -- R<byte-len> )`, `MEM:ALLOC-BYTES ( alloc-byte-len -- ptr u8 alloc-byte-len )`, `MEM:ALLOC-CELLS ( alloc-cell-count -- ptr a )`, and `MEM:ALLOC-64K ( -- ptr u8 alloc-byte-len )`. Allocation sinks have no zero-admitting overload. The existing global `MEM-ALLOC-BYTES` is removed or tightened only after the exact caller waves below migrate; `MEM-ALLOC-CELLS` and the multi-64K legacy conveniences remain explicitly out of this B5 wave. | `bin/hb --load lib/memory-test.f`; package-first positive signature, zero scalar calculation succeeds, zero allocation conversion returns `zero`, maximum-safe conversions pass, and first overflow/over-allocation fails before `mmap` | sealed CAD-NUM; B5.2 conversions; existing `mmap` boundary |
+| String | `lib/string.f`, `lib/string-test.f` | Add packaged typed `STR:LENGTH`, `STR:OFFSET`, `STR:COUNT`, `STR:FIND-SUB`, `STR:INDEX-OF`, `STR:SPLIT-NEXT`, `STR:BUF-RESET`, `STR:BUF-LEN@`, and `STR:BUF-APPEND`. Only owner-internal calls and `lib/string-test.f` move in this row; the existing `ptr u8 n` global surface remains a named legacy boundary for separate caller dots. Empty strings and empty needles retain zero lengths/offsets. | `bin/hb --load lib/string-test.f`; empty, first/last/not-found substring cases; offset advance overflow; swapped length/offset checker negatives | sealed CAD-NUM; B5.2 byte/index algebra; existing cell-polymorphic `option<a>` carries `CAD-NUM:index` without an option-owner change |
+| Vector | `lib/vector.f`, `lib/vector-test.f` | Add packaged `VEC:INIT`, `VEC:CLEAR`, `VEC:LEN@`, `VEC:CAP@`, `VEC:RESIZE`, `VEC:ENSURE`, `VEC:@`, `VEC:!`, `VEC:PUSH`, and `VEC:EACH`. Length/capacity are `item-count`, access/push uses `index`, and only the private one-cell-per-item adapter produces `cell-count` then `alloc-cell-count`. Assigned direct callers are exactly `maki/sched-key.f`, `tools/lint/intern.f`, and `tools/lint/source-lex.f`; the first is one combined sched-key vector/Model-IR caller commit, and the latter pair belong to the combined memory/vector tool caller commit described below. | `bin/hb --load lib/vector-test.f`, then `bin/hb --load maki/sched-key-test.f` and `bin/hb --load tools/lint/text-foundation-test.f`; zero length remains valid, zero capacity allocation rejects, growth overflow and index/count swaps reject | sealed CAD-NUM; packaged MEM API; bounded-host owns relational bounds/generations, not this row |
+| Model IR | `maki/model-ir.f`, `maki/model-ir-test.f` | Reopen package `MIR` for `MIR:NODE-COUNT@`, `MIR:SLOT-COUNT@`, `MIR:OPERAND-COUNT@`, and `MIR:MATERIALIZED-COUNT`, all returning `item-count`. Keep `MIR:input-index`, `MIR:ref-pos`, and `MIR:operand-ref`; never replace them with scalar `index`. Operand-count callers are exactly `maki/backward-test.f`, `maki/backward.f`, `maki/cad.f`, `maki/checkpoint.f`, `maki/fusion-plan.f`, `maki/lower-ew.f`, `maki/lower-mm.f`, `maki/lower-move.f`, `maki/lower-red.f`, `maki/mem-plan.f`, `maki/saved.f`, `maki/sched-key.f`, and `maki/traffic.f`. Count accessors are added first; those caller files move in separately owned commits, and the old MAKI-prefixed count accessors are removed only after the listed set is empty. | `bin/hb --load maki/model-ir-test.f`, then `bin/hb --load maki/test.f`; zero-node/zero-operand state, maximum capacities, count-versus-index checker negatives, rollback counts | sealed CAD-NUM; existing MIR nominal handles; no typed-storage-definer dependency and no ownership of MI-* storage migration |
+| Shape census | Read-only census of `maki/tensor.f`, `maki/tensor-value.f`, `maki/cad.f`, `maki/executor.f`, `maki/golden-artifact.f`, `maki/gradcheck.f`, `maki/lower-ew.f`, `maki/lower-launch.f`, `maki/lower-mm.f`, `maki/lower-move.f`, `maki/lower-red.f`, `maki/move-view.f`, `maki/plan-ops.f`, `maki/saved.f`, and `maki/traffic.f`; only the census result is added to this plan | Classify every current product as already owned by `MAKI:DIM*`, `MAKI:SHAPE-ELEMS`, or `MAKI:TENSOR-BYTES`, or name an exact residual file/word for a new dot. This row edits no Maki source and adds no CAD-NUM multiplication. | `bin/hb --load maki/tensor-test.f` and `bin/hb --load maki/tensor-value-test.f`; the census records zero/overflow semantics of each owner | read-only after B5.2; any residual becomes a separate owner dot |
+| Final integration | `src/habu/habu2.f`, `FILEMAP.md`, `TRUSTED.md`, `MODEL-CAD-V2-PLAN.md`, `STATUS.md`, and `tools/public-signatures-test.f` only | Load the sealed `lib/cad-num.f`, register the three new owner/test files, audit trusted mints and packaged public signatures, and prove the V2 production entry point uses no legacy global numeric cast or allocation boundary. It does not migrate consumers or change arithmetic. | exact public-signature/trust/filemap/status gates, native fixpoint, then the full owning gates on the rebased tree | every dispatched owner/caller dot above green and integrated |
+
+The string, vector, and Model IR rows mean these exact public effects; no
+additional overload is implicit:
+
+~~~forth
+STR:LENGTH ( n -- CAD-NUM:numeric-result<CAD-NUM:byte-len> )
+STR:OFFSET ( n -- CAD-NUM:numeric-result<CAD-NUM:byte-off> )
+STR:COUNT ( n -- CAD-NUM:numeric-result<CAD-NUM:item-count> )
+STR:FIND-SUB
+  ( ptr u8 CAD-NUM:byte-len ptr u8 CAD-NUM:byte-len
+    -- option<CAD-NUM:index> )
+STR:INDEX-OF
+  ( ptr u8 CAD-NUM:byte-len n -- option<CAD-NUM:index> )
+STR:SPLIT-NEXT
+  ( ptr u8 CAD-NUM:byte-len n CAD-NUM:index
+    -- ptr u8 CAD-NUM:byte-len CAD-NUM:index bool )
+STR:BUF-RESET ( ptr CAD-NUM:byte-len -- )
+STR:BUF-LEN@ ( ptr CAD-NUM:byte-len -- CAD-NUM:byte-len )
+STR:BUF-APPEND
+  ( ptr u8 CAD-NUM:byte-len ptr u8 CAD-NUM:byte-len
+    ptr CAD-NUM:byte-len -- )
+
+VEC:INIT ( ptr a CAD-NUM:item-count -- )
+VEC:CLEAR ( ptr a -- )
+VEC:LEN@ ( ptr a -- CAD-NUM:item-count )
+VEC:CAP@ ( ptr a -- CAD-NUM:item-count )
+VEC:RESIZE ( ptr a CAD-NUM:item-count -- )
+VEC:ENSURE ( ptr a CAD-NUM:item-count -- )
+VEC:@ ( ptr a CAD-NUM:index -- a )
+VEC:! ( a ptr a CAD-NUM:index -- )
+VEC:PUSH ( a ptr a -- CAD-NUM:index )
+VEC:EACH
+  ( R ptr a [ R CAD-NUM:index a -- R ] -- R )
+
+MIR:NODE-COUNT@ ( -- CAD-NUM:item-count )
+MIR:SLOT-COUNT@ ( -- CAD-NUM:item-count )
+MIR:OPERAND-COUNT@ ( CAD-KIND:node-id -- CAD-NUM:item-count )
+MIR:MATERIALIZED-COUNT ( -- CAD-NUM:item-count )
+~~~
+
+The Model IR caller census is frozen per replaced accessor:
+
+- node count: `maki/backward.f`, `maki/cad.f`, `maki/checkpoint.f`,
+  `maki/executor.f`, `maki/from-scratch-model-test.f`,
+  `maki/fusion-mout-test.f`, `maki/fusion-plan.f`,
+  `maki/golden-artifact-test.f`, `maki/golden-artifact.f`, `maki/golden.f`,
+  `maki/gradcheck-test.f`, `maki/gradcheck.f`, `maki/lower-ew.f`,
+  `maki/lower-golden.f`, `maki/lower-launch.f`, `maki/lower-mm.f`,
+  `maki/lower-move.f`, `maki/lower-red.f`, `maki/mem-plan.f`,
+  `maki/mlp-bwd-test.f`, `maki/onnx/import-test.f`,
+  `maki/onnx/ort-ref-test.f`, `maki/saved.f`, `maki/sched-key.f`, and
+  `maki/traffic.f`;
+- slot count: `maki/backward.f`, `maki/cad.f`, `maki/executor.f`,
+  `maki/from-scratch-model-test.f`, `maki/golden-artifact.f`,
+  `maki/gradcheck-test.f`, `maki/gradcheck.f`, `maki/mem-plan.f`,
+  `maki/onnx/import-test.f`, and `maki/traffic.f`;
+- operand count: the thirteen files named in the Model IR contract row;
+- materialized count: `maki/cad.f` and `maki/lower-model-test.f`.
+
+Each owning Maki caller commit migrates all count accessors in its file. The old
+MAKI-prefixed accessors are removed only after a fresh fixed-string `rg` census
+for all four names is empty outside `maki/model-ir.f` and its focused test.
+
+`VEC:INIT`, `VEC:RESIZE`, and `VEC:ENSURE` accept zero-admitting logical counts
+because empty state and no-op ensure are domain operations. Immediately before
+allocation, the private vector representation adapter converts the positive
+item count to `cell-count`, checks cell scaling, and requires
+`AS-ALLOC-CELL-COUNT`; zero or overflow maps explicitly to the existing named
+vector capacity result/throw at that owner boundary. No zero-admitting value
+reaches `MEM:ALLOC-CELLS`.
+
+The frozen direct-caller set for the one legacy memory sink changed by this B5
+wave, `MEM-ALLOC-BYTES`, is split into disjoint caller dots:
+
+- library callers: `lib/codesign.f`, `lib/content-key.f`, `lib/object-cache.f`,
+  `lib/process-argv.f`, `lib/process-env.f`, and `lib/source.f`;
+- Maki callers: `maki/eval-repair-mech.f`, `maki/eval-transcript.f`, and
+  `maki/onnx/import.f`;
+- test callers: `test/gate-build-common.f`, `test/gate-engine-lib.f`,
+  `test/gate-pool.f`, `test/gate-stdlib-inline-lib.f`,
+  `test/run-result-cache-test.f`, and `test/seal-absence.f`;
+- tool callers: `tools/aot-call-report-test.f`, `tools/build-fixpoint-test.f`,
+  `tools/build-fixpoint.f`, `tools/check-core.f`, `tools/check-test-lib.f`,
+  `tools/codegen-role-test.f`, `tools/codegen-role.f`,
+  `tools/diag-origin-core.f`, `tools/diagnose-hb-test.f`,
+  `tools/examples-test.f`, `tools/hb-build-lib.f`,
+  `tools/json-only-test-lib.f`, `tools/json-only.f`, `tools/lint/intern.f`,
+  `tools/lint/text-foundation-test.f`, `tools/refine-lint-core.f`,
+  `tools/repair-packet-core.f`, `tools/repair-packet-test.f`,
+  `tools/repair-schema-doc-test.f`, `tools/signature-lint-core.f`,
+  `tools/stdlib-manifest-test.f`, `tools/trust-lint.f`, and
+  `tools/trusted-inventory.f`.
+
+Each caller dot owns its listed files plus their already-associated focused
+tests, converts a raw size through `CAD-NUM:BYTE-LEN` and
+`CAD-NUM:AS-ALLOC-BYTE-LEN`, and calls the real packaged allocator. The memory
+owner changes the legacy signature and activates `BAD-ZEROABLE-ALLOC` only after
+all four caller dots are green; a fresh `rg` census must equal this list before
+the change.
+
+Overlap is resolved by ownership, not concurrent edits: the tool caller dot also
+migrates `VEC` use in `tools/lint/intern.f` and `tools/lint/source-lex.f` after
+both packaged APIs land, while the sched-key caller dot migrates both its `VEC`
+and Model IR count use. No other caller dot may edit those three files.
+
+The active `habu-v2-types-refined-519fd2d1` design dot still claims bounded
+indexes, alignment evidence, obsolete divisor scope, and overlapping consumer
+files. The orchestrator must amend it to this scalar-only algebra and allocation
+contract before implementation dispatch. The
+`habu-nominal-storage-typed-c5f44d66` dot also still claims that
+`LAYOUT-BUFFER` rejects arity-zero families; the orchestrator must remove that
+landed premise and retain only genuinely residual generic-definer work. This
+plan change does not mutate either tracker entry.
 
 Each implementation slice owns disjoint source and focused tests, runs the
 exact native load path for those files, and commits one verified change. Shared
