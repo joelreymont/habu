@@ -19,18 +19,24 @@ variable MK-SLEN
 variable MK-FD
 variable MK-RD
 
-$100000 constant MK-SOURCE-CAP  \ engine source cap - same growth watermark as stage2.f
-                                \ S2-SOURCE-CAP (crossed $C0000 with the DNAME-WIDE gate);
-                                \ keep the two caps in step.
+$200000 constant MK-SOURCE-CAP  \ mmap'd source cap shared with stage2.f. The owner-bearing
+                                \ stage source measured 1,050,737 bytes, crossing the retired
+                                \ $100000 edge by 2,161 bytes; grow to the next power of two.
+$1002 constant MK-MAP-PRIVATE-ANON
 
 : MK-SBUF@ ( -- ptr u8 )
    MK-SBUF @ ;
 s" MK-SBUF@" s" -- ptr u8" TRUST
 
+: MK-ALLOC-SOURCE ( -- )
+   0 MK-SOURCE-CAP 3 MK-MAP-PRIVATE-ANON -1 0 mmap
+   dup 0 < if s" maker: source mmap failed" 74 die then
+   MK-SBUF ! ;
+
 : MK-READ-SRC ( -- )
    MK-IN PATH0 0 0 open MK-FD !
    MK-FD @ 0 < IF s" maker: cannot open source" 74 die THEN
-   here MK-SBUF !  MK-SOURCE-CAP allot  0 MK-SLEN !
+   MK-ALLOC-SOURCE  0 MK-SLEN !
    begin
       MK-FD @ MK-SBUF@ MK-SLEN @ + MK-SOURCE-CAP MK-SLEN @ - read MK-RD !
       MK-RD @ 0 >
