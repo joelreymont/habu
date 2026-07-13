@@ -17,6 +17,9 @@ SUMTYPE bwm4 3
 variable BWM-FAILS
 variable BWM-CASES
 
+: BWM-ORDINARY ( -- ) ;
+: BWM-IMMEDIATE ( -- ) ; immediate
+
 : BWM-FAIL ( -- )
    BWM-FAILS @ 1 + BWM-FAILS ! ;
 
@@ -177,6 +180,9 @@ variable BWM-GXT
    s" BWM-FETCH4-G" $D2800089 3 1 BWM-FETCH-GOLD ;
 
 : BWM-TEST-RUNTIME ( -- )
+   s" BWM-ORDINARY" tok-imm? 0 BWM=
+   s" BWM-IMMEDIATE" tok-imm? 2 BWM=
+   s" BWM-MISSING" tok-imm? 0 BWM=
    BWM-TEST:NAMESPACE
    BWM-RUN2 0 BWM= 7 BWM=
    BWM-RUN4 0 BWM= 93 BWM= 92 BWM= 91 BWM=

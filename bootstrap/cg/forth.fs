@@ -926,6 +926,15 @@ previous definitions
       9 0 MOVZ,  9 G-PUSH
    done LBL, ;
 
+\ tok-imm? ( ptr u8 n -- n ): Gforth recovery mirror of habu2.f's live
+\ dictionary immediate probe. LFIND returns the immediate bit in flag bit 1;
+\ FPRIM preserves x30 across the nested call.
+: BTOKIMM ( -- )
+   10 G-POP  9 G-POP
+   LFIND @ BL,
+   9 13 2 ANDI,
+   A G-PUSH ;
+
 : EMIT-ARITH-PRIMS ( -- )
    s" +"    ['] B+    FPRIM-L   s" -"    ['] B-    FPRIM-L   s" *"    ['] B*    FPRIM-L
    s" /"    ['] BDIV  FPRIM-L   s" mod"  ['] BMOD  FPRIM-L   s" /mod" ['] BDIVMOD FPRIM-L
@@ -992,7 +1001,8 @@ previous definitions
    s" catch" ['] BCATCH FPRIM   s" throw" ['] BTHROW FPRIM-L
    s" wordlist" ['] BWORDLIST FPRIM-L   s" get-current" ['] BGETCUR FPRIM-L
    s" set-current" ['] BSETCUR FPRIM-L  s" search-wl" ['] BSWL FPRIM-L
-   s" set-check" ['] BSETCHECK FPRIM-L ;
+   s" set-check" ['] BSETCHECK FPRIM-L
+   s" tok-imm?" ['] BTOKIMM FPRIM ;
 
 : EMIT-PRIMS ( -- )
    EMIT-ARITH-PRIMS  EMIT-COMPARE-PRIMS  EMIT-STACK-PRIMS

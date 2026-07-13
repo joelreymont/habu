@@ -2,7 +2,13 @@
 
 # FIXME: Rewrite this to be concise without losing precision
 
-Last updated: 2026-07-13
+Last updated: 2026-07-14
+
+- **A boot-prefix primitive is not implemented until both emitters execute its
+  focused behavior.** `tok-imm?` existed in `src/habu/habu2.f` but not
+  `bootstrap/cg/forth.fs`; native fixpoint passed while no-binary recovery died
+  with rc 70. Pair source-shape registration assertions with an actual Gforth
+  stage-0 execution before claiming recovery parity.
 
 - **A dot claim names the actual implementation workspace, not the first
   workspace that exposed the bug.** When review splits mixed work into separate
