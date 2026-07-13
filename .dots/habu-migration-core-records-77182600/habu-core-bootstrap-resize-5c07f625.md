@@ -4,8 +4,6 @@ status: open
 priority: 1
 issue-type: task
 created-at: "2026-07-13T18:40:14.505036+02:00"
-blocks:
-  - habu-core-bootstrap-relocate-a54406ac
 ---
 
 Checker registry migration exhausts the composite IBUFSZ 0x180000 arena:

@@ -7,7 +7,6 @@ created-at: "2026-07-13T17:55:26.678113+02:00"
 blocks:
   - habu-core-records-remove-31f84baf
   - habu-core-records-remove-0d8ff4e2
-  - habu-core-bootstrap-relocate-a54406ac
   - habu-core-bootstrap-isolate-45800fec
 ---
 
