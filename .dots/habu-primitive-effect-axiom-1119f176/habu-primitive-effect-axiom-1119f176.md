@@ -4,6 +4,8 @@ status: open
 priority: 2
 issue-type: task
 created-at: "2026-07-01T22:54:40.831796+02:00"
+blocks:
+  - habu-link-arm64-contracts-8cca6cc1
 ---
 
 Consolidate scattered primitive effect assertions (PRIM: rows in src/core/checker.f:2167-2216 PES table + TRUST rows on engine primitives) into ONE audited axiom table - the explicit, minimal trust root for typing. Each axiom gets a differential test: execute the primitive on generated stacks and compare observed depth/value behavior against the declared effect (extend test/prop-test-core.f machinery once habu-unfreeze-checker-prop lands). Deliverable: docs section naming the axiom set + gate suite proving every axiom has a difftest; inventory ratchet counts axioms separately from discharged TRUSTED.
@@ -31,3 +33,11 @@ evidence, not rubber-stamped:
 the fail-closed-accessor and seal-capture classes. Remaining scope of this dot
 (fold engine-primitive TRUST rows into the audited table + difftests) is
 untouched and stays open.
+
+## Completion split (2026-07-13)
+
+The remaining work is owned by three ordered children: the independent live-row
+ratchet, per-row proof recipes, and the stable ARM64 contract link. Engine
+emitter TRUST conversion remains owned by habu-builder-trust-rows-c5d41af6.
+This parent closes only after the three evidence leaves land; consumers depend
+on the narrow leaf they need rather than this durable owner lifecycle.

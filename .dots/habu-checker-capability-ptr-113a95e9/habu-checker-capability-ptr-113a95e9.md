@@ -4,6 +4,8 @@ status: open
 priority: 2
 issue-type: task
 created-at: "2026-07-01T23:07:20.859895+02:00"
+blocks:
+  - habu-publish-canonical-checked-8b7b763d
 ---
 
 Pointee-polymorphic pointer arithmetic: prim rows for ptr T + n -> ptr T (and -, 1+, cell+) plus an explicit ptr a -> ptr u8 byte-view word. Retires ~38 TRUSTED: sites: every *-BYTE+ helper (struct/M-/SHK-/CODE-/CRH-/BFR-), src/os env-base ARGV/GETENV/TMP-PATH cascade, script-argv x7, bundle-argv x4. Add negative regressions (ptr T + ptr T rejected; cross-pointee unify rejected). Effort S/M (~4d). Touches src/core/checker.f prim table + docs/effects.md.
@@ -17,3 +19,13 @@ CBAD-PTR-WIDEN-CELL/U32/NEST, CBAD-PTR-UNIFY-EQ/-REV all T-CHECK-REJECTS).
 Remaining scope: the explicit `ptr a -> ptr u8` byte-view mint word and the
 consumer migration of the ~38 TRUSTED: sites (env-base cascade, script-argv x7,
 bundle-argv x4, *-BYTE+ helpers) onto the new rows.
+
+## Completion refresh (2026-07-13)
+
+The checker capability, strict pointee invariance, byte-view rule, and negative
+regressions are landed. The old 38-site migration premise is stale: startup
+image rows belong to habu-raw-self-path-4514ffd3; builder casts belong to
+habu-builder-trust-rows-c5d41af6; STRUCT-BYTE+ belongs to the primitive-effect
+owner. This parent now closes after the canonical checked BYTE-VIEW child lands;
+bounded host regions consume the landed pointer capability and do not wait for
+those unrelated migrations.
