@@ -3857,3 +3857,11 @@ unchanged (148855). Keys for milestone 2:
   later package reopening; it cannot be the first slice of a multi-file API.
   Keep raw-to-nominal mints private and audited while assembling, then let the
   final owner-migration slice seal them and prove no public conversion remains.
+- **Test nominal runtime bounds with a valid stale value, not a private mint.**
+  Save a publicly validated handle, advance or rebuild its owner, then exercise
+  the stale handle against the guarded consumer. This reaches the defensive
+  range check without expanding raw refinement authority into a test file.
+- **Do not guess dot CLI subcommands.** `dot dep check` was parsed as a request
+  to create a task titled `dep`, leaving a stray tracker file. Use only the
+  documented dot commands and run dependency validation through the repository's
+  Habu-native `tools/dot-dep-lint.f`.
