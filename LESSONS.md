@@ -3792,6 +3792,14 @@ unchanged (148855). Keys for milestone 2:
   verifier replay that registers only the nominal leaves valid cast calls
   undefined. Recreate both derived signatures before leaving that package mode,
   so reopening works while cross-package and global lookup stay closed.
+- **`dot off` is not done until its file deletion is COMMITTED.** Closures run
+  between merge windows in the main workspace get orphaned by the next
+  `jj new <tip>` (the archive copy persists on disk, the tracked open copy
+  returns with the checkout, and the CLI then sees both → Ambiguous ID). Six
+  closures were silently lost this way in one session. Rule: every dot off
+  is immediately followed by dot-dep-lint + `jj commit` in the same breath —
+  batch closures if needed, never leave them in the working copy across a
+  window.
 - **Name the LAYER, not just the context, when recording probe results.** An
   E-UNDEFINED from a checked colon body is a CHECKER-layer verdict about the
   token grammar, not evidence about the runtime resolver. The dictionary-vs-
