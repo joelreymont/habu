@@ -60,6 +60,14 @@ variable OUT-U
    s"   STATE {: a:n cap:n :}" LINE
    s"   a 0= cap 0= and ;" LINE
    s" public" LINE
+   \ PROBE is a signature-carrying immediate, so a checked RUN would reject rc
+   \ 70 (p5 wrong-certificate reject) BEFORE the engine-level protection this
+   \ fixture proves. Declaring it an effect-neutral immediate (parse-imm 0,
+   \ payload-free GRID: class) keeps RUN checked and the compile-time attack +
+   \ seal trap (rc 83) exercised: PROBE's ( -- ) certificate is true of its
+   \ empty runtime step; the compile-time attack is exactly what the
+   \ transaction seal exists to catch.
+   S\" s\" PROBE\" 0 parse-imm" LINE
    s" : RUN ( -- ) PROBE 37 construct res ok 0 MEM ! ;" LINE
    s" : CHECK ( -- )" LINE
    s"   SEEN @ 0= if 1 throw then" LINE

@@ -36,6 +36,8 @@ that source is explicitly certified; they are not stale-checked by the default
 | STDIN? | `-- ptr bool` | Engine-builder mode cell that checked drivers set before emitting stdin or file-backed startup behavior. | `test/run.f`, `tools/build-fixpoint-test.f` | src/habu/habu1.f | 2026-06-26 |
 | fprim | `ptr u8 n n --` | Raw-asm prim emitter: lays a REG-PRIM frame + `xt execute`s a code-emitting handler; no Forth effect to infer. | `test/run.f` | src/habu/habu1.f | 2026-06-24 |
 | fprim-l | `ptr u8 n n --` | Leaf variant of FPRIM (no x30 frame); same `xt execute` of a code emitter. | `test/run.f` | src/habu/habu1.f | 2026-06-24 |
+| tok-imm? | `ptr u8 n -- n` | Engine primitive axiom: LFIND the token in the live dictionary and push flags&2 (the DNAME-IMM bit), so DO-TOK1 can reject a signature-carrying live immediate as a checked body step (p5 wrong-certificate class, dot habu-checker-fitting-arity-70dc94e4). | `test/immediate-model-test.f`, `test/run.f` | src/core/checker.f | 2026-07-13 |
+| parse-imm | `ptr u8 n n --` | Declares a parsing immediate's compile-time payload token count to the checker (GRID: 1, WHERE 3), exempting it from the p5 immediate reject and skipping its payload in the body scan. A wrong count skips live code, so each declaration site is an audited soundness boundary; UNSAFE-TOK? bars it from checked bodies (top-level only). | `lib/ptx/header-test.f`, `test/immediate-model-test.f`, `test/run.f` | src/core/checker.f | 2026-07-13 |
 | linux-spawn-fail | `reg --` | Linux child-side spawn failure reporter: consumes the target register holding the exec-error pipe, emits raw `write`, and exits the child without returning to Forth. | `lib/process-test.f`, `test/run.f` | src/habu/habu1.f | 2026-06-26 |
 | linux-dup2-fd | `reg fd reg --` | Linux child-side raw syscall emitter for conditional `dup2`: source fd register, destination fd immediate, and exec-error-pipe register are role-typed; raw label/syscall code remains the boundary. | `lib/process-test.f`, `test/run.f`, `test/engine-suite.f` | src/habu/habu1.f | 2026-06-26 |
 | linux-chdir-fd | `reg reg --` | Linux child-side raw syscall emitter for optional `chdir`: cwd pointer register and exec-error-pipe register are role-typed; raw label/syscall code remains the boundary. | `lib/process-cwd-test.f`, `test/run.f` | src/habu/habu1.f | 2026-06-26 |
@@ -1135,6 +1137,8 @@ src/core/checker.f:USIGS-CELL-AT discharge-candidate habu-checker-self-typing-9f
 src/core/checker.f:HIDX-MEM-NULL discharge-candidate habu-checker-self-typing-9ff8ba86
 src/core/checker.f:HIDX-RC>PTR discharge-candidate habu-checker-self-typing-9ff8ba86
 src/core/checker.f:CHECKER-CERT-CALL prim-axiom habu-primitive-effect-axiom-1119f176
+src/core/checker.f:tok-imm? prim-axiom habu-primitive-effect-axiom-1119f176
+src/core/checker.f:parse-imm prim-axiom habu-primitive-effect-axiom-1119f176
 src/core/roles.f:DTC-EVAL prim-axiom habu-typed-defining-words-aa224eb5
 src/core/roles.f:>IDX prim-axiom habu-primitive-effect-axiom-1119f176
 src/core/roles.f:IDX>N prim-axiom habu-primitive-effect-axiom-1119f176
@@ -1491,6 +1495,10 @@ test/engine-suite.f:T-LINUX-SPAWN test-metaprog habu-builder-trust-rows-c5d41af6
 test/engine-suite.f:T-SPAWN-DUP2-ACTION test-metaprog habu-builder-trust-rows-c5d41af6
 test/engine-suite.f:T-SPAWN-DARWIN-FINISH test-metaprog habu-builder-trust-rows-c5d41af6
 test/engine-suite.f:P5 test-metaprog habu-primitive-effect-axiom-1119f176
+test/engine-suite.f:ES-TI test-metaprog habu-primitive-effect-axiom-1119f176
+test/engine-suite.f:TP test-metaprog habu-primitive-effect-axiom-1119f176
+test/engine-suite.f:TPN2 test-metaprog habu-primitive-effect-axiom-1119f176
+test/immediate-model-test.f:IMT-PASSES test-metaprog habu-primitive-effect-axiom-1119f176
 test/engine-suite.f:ES-PATCH32 test-metaprog habu-checker-capability-gate-14022ba9
 test/engine-suite.f:set-check test-metaprog cap:checker-hook-identity
 test/engine-suite.f test-metaprog habu-seal-set-check-b3676b33 6

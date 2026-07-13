@@ -1390,13 +1390,23 @@ s" CBAD-LOCAL-DEAD ( i64 -- i64 ) exit {: x:i64 :} x" T-CHECK-REJECTS
 
 \ immediate / postpone / compile,
 : IM5 ( -- n ) 5 ; immediate
-: ES-TI ( -- n ) IM5 ;
+\ ES-TI deliberately exercises the ENGINE's compile-time immediate execution:
+\ IM5 pushes 5 while ES-TI compiles, so ES-TI's runtime body is empty and the
+\ `ES-TI 5 T=` below reads the compile-time leftover. A checked body naming a
+\ signature-carrying immediate is now a wrong-certificate reject (p5, dot
+\ habu-checker-fitting-arity-70dc94e4; pinned by test/immediate-model-test.f),
+\ so this whitebox fixture is a TRUSTED: boundary like P5 below.
+TRUSTED: ES-TI ( -- n ) IM5 ;
 ES-TI 5 T=
 \ POSTPONE is compiler-manipulating; this fixture tests the runtime primitive,
 \ not checked user code. TP must compile through P5 while the trusted immediate
 \ boundary is active.
 TRUSTED: P5 ( -- i64 ) postpone IM5 ; immediate
-: TP ( -- n ) P5 ;
+\ TP compiles through the trusted immediate P5 (postpone expands IM5 into TP's
+\ body, so P5's declared effect IS TP's runtime step) - but the checker cannot
+\ verify a compile-time expansion, so TP is a TRUSTED: boundary under the p5
+\ immediate reject like ES-TI above.
+TRUSTED: TP ( -- n ) P5 ;
 TP 5 T=
 
 \ child processes: run-rc spawns + waits (paths need a NUL)
@@ -1513,7 +1523,11 @@ TLR 78 T=
 : KL ( n -- n ) {: a:n :} a a + a + ;
 5 KL 15 T=
 \ ...a call spills and invalidates (the ref after must reload from the frame)
-: KC ( n -- n ) {: a:n :} P5 drop a ;
+\ (KC used to call through the trusted immediate P5; any compiled call spills
+\ the cache, and a plain callee keeps this codegen fixture checked under the
+\ p5 immediate reject.)
+: KC-SPILL ( -- n ) 5 ;
+: KC ( n -- n ) {: a:n :} KC-SPILL drop a ;
 3 KC 3 T=
 \ ...and the cache claim survives a BEGIN back edge (loop-resident local)
 : KR ( n -- n ) {: a:n :} 0 begin a + dup 15 < 0= until ;
@@ -1526,7 +1540,10 @@ TLR 78 T=
 : TPN1 ( -- ) parse-name 5 T= c@ 97 T= ;
 TPN1 alpha
 : TPNI ( -- ) parse-name 4 T= c@ 98 T= ; immediate
-: TPN2 ( -- n ) TPNI beta 7 ;
+\ TPN2's compile eats `beta` via TPNI's compile-time parse - a checked body
+\ naming a signature-carrying immediate is a wrong-certificate reject (p5), so
+\ this engine-parser fixture is a TRUSTED: boundary like ES-TI/P5 above.
+TRUSTED: TPN2 ( -- n ) TPNI beta 7 ;
 TPN2 7 T=
 
 \ evaluate frame storage must not overlap the JIT virtual value stack.

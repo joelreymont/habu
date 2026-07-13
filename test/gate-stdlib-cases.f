@@ -397,6 +397,10 @@ TEST:SUITE internal-word-gate
    test/internal-word-gate.f
 TEST:;SUITE
 
+TEST:SUITE immediate-model
+   test/immediate-model-test.f
+TEST:;SUITE
+
 TEST:SUITE underdepth-gate
    test/underdepth-gate.f
 TEST:;SUITE

@@ -18,7 +18,16 @@ public
 : HOOK ( ptr u8 n -- n )
    CHECK! REPORT-UNCHECKABLE
    MULTI-ERR? if drop -1 exit then
-   dup -1 <> if CHECK-RC throw then ;
+   dup -1 <> if
+      \ never die bare: with no DIAGXT installed an uncheckable (verdict 1)
+      \ definition used to exit rc 70 with NO diagnostic - an opaque exit in
+      \ fork/gate captures. Name the definition and its failing token to fd 2.
+      2 s" hook: non-certified definition: " write drop
+      2 NMB NMU @ write drop
+      2 s"  at '" write drop
+      2 FAILTK FAILTU @ write drop
+      2 S\" '\n" write drop
+      CHECK-RC throw then ;
 
 TRUSTED: INSTALL ( -- )
    ['] HOOK set-check ;

@@ -50,3 +50,13 @@ variable PTX-BLOCK-N
    PTX-PARSE-REQ {: op:ptr opu:n :}
    PTX-PARSE-REQ {: rhs:ptr rhsu:n :}
    lhs lhsu op opu rhs rhsu PTX-WHERE-CHECK ; immediate
+
+\ GRID:/WHERE are parsing immediates: their header payload is consumed at
+\ COMPILE time (one token / three tokens) and contributes nothing at runtime,
+\ so their ( -- ) certificates are true of the empty runtime step. Declare the
+\ payload counts to the checker so KERNEL: bodies skip the header tokens and
+\ the immediate wrong-certificate reject (p5, habu-checker-fitting-arity-
+\ 70dc94e4) exempts them. AUDITED COUNTS: a wrong count would skip live body
+\ code or eat real tokens - keep in lockstep with PTX-SKIP-ONE/PTX-WHERE-CHECK.
+s" GRID:" 1 parse-imm
+s" WHERE" 3 parse-imm

@@ -874,6 +874,12 @@ points stay listed.
   fail closed with `hb: internal engine word:` + rc 70 on both cold-prefix
   paths; positives pin E-UNDEFINED/E-UNDERFLOW, unchecked user words, TRUST/
   TRUSTED:, the structures + type-family DSLs, and XREF introspection.
+- `test/immediate-model-test.f` — p5 wrong-certificate regressions (dot
+  habu-checker-fitting-arity-70dc94e4): a signature-carrying live immediate in
+  a checked body rejects (fitting-arity and no-op shapes), pinning that the
+  checker never certifies a declared effect the empty runtime body cannot
+  deliver; declared parsing immediates (`parse-imm`) stay green on both the
+  raw-text and engine-hook scan paths.
 - `test/underdepth-gate.f` — certified-word interpret underdepth gate
   regressions (dot habu-habu-certified-words-84e84eaf): a certified/TRUSTED:/
   defer/axiom'd word executed at bare top level with fewer cells than its

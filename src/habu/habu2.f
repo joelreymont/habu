@@ -5776,10 +5776,23 @@ s" AOT-PWID-BUF@" s" -- ptr u8" TRUST
    LAOTPWID LABEL@ LBL,                                                      \ then N u32 WIDs (TFAM 2b-v)
    AOT-PWID-N @ 0 > IF AOT-PWID-BUF@ AOT-PWID-N @ 4 * BYTES, THEN ;
 
+\ tok-imm? ( ptr u8 n -- n ): live-dictionary immediate probe for the checker
+\ (dot habu-checker-fitting-arity-70dc94e4). Pops a token name, runs the same
+\ LFIND the interpret dispatch uses, and pushes flags&2 - the DNAME-IMM bit
+\ (habu1.f FIND-HMATCH folds it to bit 1) - so DO-TOK1 can reject a live
+\ immediate as a checked body step. LFIND clobbers x3-x16 and preserves XDS
+\ (x19)/DATA (x20); the FPRIM frame (GDEREF-F) holds our x30 across the BL.
+: BTOKIMM ( -- )
+   10 G-POP  9 G-POP                   \ x10 = len (TOS), x9 = addr: LFIND's token registers
+   LFIND LABEL@ BL,                    \ x13 = found | imm<<1 | min-in byte | int flags
+   9 13 2 ANDI,
+   A G-PUSH ;
+
 : EMIT-PRIMITIVE-SECTIONS ( -- )
    EMIT-PRIMS  OWNER-WID-EMIT:PRIMS
    EMIT-ARITY-GUARD             \ bake LARITY after prims so guarded entry labels resolve
    s" snap-rebase" ['] BSNAPREBASE FPRIM
+   s" tok-imm?" ['] BTOKIMM 2 GDEREF-F
    EMIT-PROF-PRIMS
    EMIT-FP-PRIMS
    EMIT-CEMIT

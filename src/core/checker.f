@@ -5393,6 +5393,7 @@ variable CURSYM
    a u s" deflinear" CORE-STR=CI IF RES-TRUE EXIT THEN
    a u s" value-record" CORE-STR=CI IF RES-TRUE EXIT THEN
    a u s" set-check" CORE-STR=CI IF RES-TRUE EXIT THEN
+   a u s" parse-imm" CORE-STR=CI IF RES-TRUE EXIT THEN
    a u s" postpone" CORE-STR=CI IF RES-TRUE EXIT THEN
    a u s" compile," CORE-STR=CI IF RES-TRUE EXIT THEN
    a u s" immediate" CORE-STR=CI IF RES-TRUE EXIT THEN
@@ -7310,6 +7311,88 @@ s" <input>" DIAG-FILE!
 : REJECT-UNSAFE ( -- )
    -1 UNSAFE !  0 OK !  -1 FAILSET ! ;
 
+\ p5 certificate soundness (dot habu-checker-fitting-arity-70dc94e4): an
+\ IMMEDIATE word executes at COMPILE time, so a checked body that names one
+\ contributes an EMPTY runtime step while the checker would apply the word's
+\ DECLARED effect - a wrong certificate that downstream checked callers then
+\ unify against. Until immediates' compile-time expansion is modeled, a
+\ signature-carrying live-dictionary immediate in a checked body is a
+\ fail-closed reject (the design doc's interim, mirroring the opener
+\ treatment). Modeled parsing immediates ([char]/char via PARSE-LIT?) stay
+\ green; engine prims are modeled by TRY-PRIMS and carry no usig row;
+\ signature-less immediates already land on the uncheckable path; TRUSTED:
+\ immediates are audited boundaries outside the usig table.
+s" tok-imm?" s" ptr u8 n -- n" TRUST
+
+variable IMMERR
+
+\ --- declared parsing immediates (modeled compile-time expansion, minimal form).
+\ A parsing immediate consumes a fixed number of source tokens at COMPILE time
+\ and contributes only its declared runtime effect to the body (GRID: eats one
+\ header token, WHERE eats three). Declaring one teaches the body scan to skip
+\ its payload and exempts it from the wrong-certificate reject below. The
+\ declaration is itself a checking-soundness boundary (a wrong count skips live
+\ code or eats real tokens), so `parse-imm` is UNSAFE-TOK?-listed: top-level
+\ declarations only, never a checked body step. Symbol-keyed like UNSAFE-SYMS;
+\ monotonic, never rolled back (a retired symbol id is never reused, so a stale
+\ entry can never match a new word).
+16 constant PIMM-CAP
+create PIMM-SYMS PIMM-CAP cells allot
+create PIMM-NS PIMM-CAP cells allot
+variable PIMM-N
+0 PIMM-N !
+
+: PIMM-IX ( n -- n ) {: sym:n :}   \ declaration index for sym, -1 = undeclared
+   sym 0= IF -1 EXIT THEN
+   0 BEGIN dup PIMM-N @ < WHILE
+      dup cells PIMM-SYMS + @ sym = IF EXIT THEN
+      1 +
+   REPEAT drop -1 ;
+
+: PIMM-CNT@ ( n -- n )             \ payload token count at declaration index
+   cells PIMM-NS + @ ;
+
+: PARSE-IMM ( ptr u8 n n -- ) {: a:ptr u:n cnt:n :}
+   PIMM-N @ PIMM-CAP < 0= IF s" checker: parse-imm table full" 76 die THEN
+   cnt 0 < IF s" checker: parse-imm needs a non-negative token count" 76 die THEN
+   a u CHECKER-FIND-ACTIVE-SYM {: sym:n :}
+   sym 0= IF s" checker: parse-imm names an unknown word" 76 die THEN
+   sym PIMM-N @ cells PIMM-SYMS + !
+   cnt PIMM-N @ cells PIMM-NS + !
+   PIMM-N @ 1 + PIMM-N ! ;
+\ the TRUST row keeps parse-imm out of the internal-word marking (a library
+\ declares its parsing immediates at top level; UNSAFE-TOK? already bars it
+\ from checked bodies).
+s" parse-imm" s" ptr u8 n n --" TRUST
+
+: PIMM-SKIP ( n -- ) {: cnt:n :}   \ skip cnt payload tokens of a declared parsing immediate
+   0 BEGIN dup cnt < WHILE
+      SKIP-PARSE-LIT-PAYLOAD
+      1 +
+   REPEAT drop ;
+
+\ PIMM-STREAM: -1 while checking an ENGINE-RECONSTRUCTED definition buffer: the
+\ engine already EXECUTED each immediate during compilation, so its parsed
+\ payload is structurally ABSENT from the buffer and the scan must NOT skip (it
+\ would eat live body tokens - proven by GRID: ceil-n-256 {: x .. :} losing its
+\ locals opener at load). This is the DEFAULT, because every hook-driven load
+\ path hands reconstructed buffers - including user-installed strict hooks
+\ (tools/lint/text.f) the checker cannot see. Only the explicit CANDIDATE scans
+\ (CHECK-CANDIDATE!/CHECKER-CANDIDATE-SCOPE-*) receive raw source text where
+\ the payload is still present, and they bracket the flag to 0 themselves.
+variable PIMM-STREAM
+-1 PIMM-STREAM !
+
+: IMM-BODY-TOK? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   a u PARSE-LIT? IF RES-FALSE EXIT THEN
+   a u CHECKER-FIND-ACTIVE-SYM {: sym:n :}
+   sym CHECKER-FIND-USIG-SYM 0= IF RES-FALSE EXIT THEN
+   sym PIMM-IX 0 < 0= IF RES-FALSE EXIT THEN
+   a u tok-imm? 0 <> ;
+
+: REJECT-IMMEDIATE ( -- )
+   -1 IMMERR !  0 OK !  -1 FAILSET ! ;
+
 variable ISQ
 variable IS-TA
 variable IS-TU
@@ -7483,12 +7566,18 @@ variable CONFAM    \ resolved family id while CONM = 2
    TKF TKFU @ HIDROW-STEP? 0= IF                       \ depth/.s fail closed over hidden cells
    TKF TKFU @ XPORT-STEP? 0= IF                        \ whole-bundle transport row surgery
    TKF TKFU @ RS-TOK? 0= IF
+   TKF TKFU @ IMM-BODY-TOK? IF REJECT-IMMEDIATE THEN   \ live immediate with a usig: wrong-certificate reject (p5)
    TKF TKFU @ DO-TOK
    OK @ IF TKF TKFU @ THROW-CUR? IF THROW-EDGE THEN THEN
    OK @ IF TKF TKFU @ DEAD-CUR? IF a u DEAD-OWNER! -1 DEADP ! THEN THEN
    TKF TKFU @ ESCAPED-STRING-OPENER? IF SKIP-ESCAPED-STRING-PAYLOAD ELSE
    TKF TKFU @ NORMAL-STRING-OPENER? IF SKIP-STRING-PAYLOAD THEN THEN
    TKF TKFU @ PARSE-LIT? IF SKIP-PARSE-LIT-PAYLOAD THEN
+   \ declared parsing immediate: skip its payload tokens - raw-text scans only
+   \ (engine-reconstructed load buffers already lack the payload, PIMM-STREAM).
+   PIMM-STREAM @ 0 = IF
+      CURSYM @ PIMM-IX dup 0 < 0= IF PIMM-CNT@ PIMM-SKIP ELSE drop THEN
+   THEN
    THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN
    LIN-TAINT-SCAN
    OK @ 0=  FAILSET @ 0=  and IF -1 FAILSET ! THEN
@@ -7538,7 +7627,7 @@ variable MEO-BL  variable MEO-BC  variable MEO-BB   \ buffer start's file line/c
    0 TOKIX !  0 FAILIX !  0 DVERD !
    0 FAILB !  0 FAILE !  0 XSET !  0 DEADP !  0 DEADERR !  0 DEADTA !  0 DEADTU !
    0 THDROW !  0 THRROW !  0 THSET !
-   SGBAD-CLEAR  0 UNSAFE !  0 LOCALBAD !  0 LINLOCBAD !  0 UNDEFERR !  0 QUALBAD !  0 QDUPBAD !  0 CAPREQ !
+   SGBAD-CLEAR  0 UNSAFE !  0 IMMERR !  0 LOCALBAD !  0 LINLOCBAD !  0 UNDEFERR !  0 QUALBAD !  0 QDUPBAD !  0 CAPREQ !
    0 LOCSEQ !
    0 WF-N !  0 RECW !  0 RECMI !
    0 RECEFF !  0 RECEFF-ON !  0 RECEFF-UEND ! ;
@@ -7591,7 +7680,7 @@ variable MEO-BL  variable MEO-BC  variable MEO-BB   \ buffer start's file line/c
    CHECK-SIG? SGHASR? and ;
 
 : CHECK-VERDICT ( -- n )
-   SGBAD @ UNSAFE @ or  LOCALBAD @ or  LINLOCBAD @ or  QDUPBAD @ or  CAPREQ @ or  MREJ @ or 0 <> IF 0 ELSE
+   SGBAD @ UNSAFE @ or  IMMERR @ or  LOCALBAD @ or  LINLOCBAD @ or  QDUPBAD @ or  CAPREQ @ or  MREJ @ or 0 <> IF 0 ELSE
    UNCK @ 0 <> IF 1 ELSE OK @ THEN THEN ;
 
 \ CERT-REPOINT-ROWS ( -- ) : restore the REND-SIG contract after certifying.
@@ -7830,9 +7919,11 @@ variable RBF-DEPTH   0 RBF-DEPTH !
 : CHECK-CANDIDATE-START ( -- )
    RBF-PUSH
    -1 CHK-CAND !
-   -1 VSIG ! ;
+   -1 VSIG !
+   0 PIMM-STREAM ! ;   \ candidate text is RAW source: parsing-immediate payloads present
 
 : CHECK-CANDIDATE-DONE ( n -- n )
+   -1 PIMM-STREAM !    \ back to the engine-stream default (hook loads)
    RBF-POP ;
 
 variable CAND-A   variable CAND-U   variable CAND-VERDICT

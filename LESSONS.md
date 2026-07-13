@@ -4059,3 +4059,22 @@ unchanged (148855). Keys for milestone 2:
 - **A test boundary may cover only one genuinely unmodeled operation.** Keep
   checker-known scope, definer, and rollback calls in checked orchestration;
   isolate each pre-hook registry mutation in its own typed `TRUSTED:` leaf.
+- **A new engine primitive used by boot-prefix source lands in TWO stages.** The
+  running binary reloads the boot prefix from disk at ITS boot, so checker.f
+  cannot reference a primitive the current engine lacks (`E-UNDEFINED` before
+  any build step runs). Stage 1: emit + register the primitive and put its
+  TRUST row in the prefix (the literal token also keeps it through treeshake);
+  build. Stage 2: add the prefix code that CALLS it; build again. The final
+  tree still self-hosts (its binary has the prim), and the Gforth recovery
+  compiles habu2.f before booting the prefix, so the recovery path holds.
+- **The checker scans two different buffer kinds, and a token-skip must know
+  which.** Hook-driven loads hand ENGINE-RECONSTRUCTED definition buffers in
+  which an immediate's parsed payload is structurally absent (the immediate ran
+  during compilation); candidate probes scan RAW text where the payload is
+  still present. A payload skip that fires on the wrong kind eats live body
+  tokens (`GRID: ceil-n-256 {: x .. :}` lost its locals opener). Default to
+  the reconstructed kind: USER-INSTALLED strict hooks (tools/lint/text.f) are
+  invisible to the checker, so only the explicit candidate entries may mark
+  raw-text. And never exit a check hook bare: verdict-1 with no DIAGXT used to
+  throw rc 70 with zero diagnostics - the exact opaque-exit class the
+  debugging doc bans; check-hook.f now names the definition and failing token.
