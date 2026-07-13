@@ -3767,8 +3767,9 @@ unchanged (148855). Keys for milestone 2:
   suites share one process, so an earlier consumer may intern valid objects.
   Capture the starting count, then prove dedup preserves it and insertion adds one.
 - **Never interpolate Markdown backticks into a shell command.** Shell command
-  substitution executes them even inside a quoted argument. Pass dot text as
-  data or patch the generated record, then inspect the exact stored description.
+  substitution executes them even inside a quoted argument and can silently
+  erase a stack effect from `dot add -d`. Pass dot text as data or patch the
+  generated record, then inspect the exact stored description.
 - **Keep worker prompts inside the claimed leaf.** A native-registry leaf may
   expose lowercase engine primitives; package-scoped checked wrappers belong to
   the dependent syntax/API leaf. Do not widen file ownership to impose the final

@@ -7,6 +7,16 @@ created-at: "2026-07-13T17:55:26.678113+02:00"
 blocks:
   - habu-core-records-remove-31f84baf
   - habu-core-records-remove-0d8ff4e2
+  - habu-core-bootstrap-relocate-a54406ac
+  - habu-core-bootstrap-isolate-45800fec
 ---
 
-Own src/habu/habu2.f, bootstrap/cg/forth.fs, and tools/bootstrap.sh load order. Establish utilities -> checker explicit layouts -> lower-cert base -> type-schema explicit layouts -> type-family explicit layouts -> render -> check-hook -> unified STRUCTURE/ENUM -> remaining core in both native and recovery paths. Move CELL to the earliest bootstrap constant owner and PTR-VARIABLE to an independent checked owner. Remove structures.f/effects from the pre-checker prefix. Prove exact native/recovery offset, stride, alignment, pointer-role, load-order, and fixpoint parity; no cold parser, descriptor arena, adoption, or bootstrap-only declaration semantics.
+Own src/habu/habu2.f, bootstrap/cg/forth.fs, and tools/bootstrap.sh load order.
+Establish utilities -> checker explicit layouts -> lower-cert base -> type-schema
+explicit layouts -> type-family explicit layouts -> render -> check-hook ->
+unified STRUCTURE/ENUM -> remaining core in both native and recovery paths.
+Consume the independent CELL and PTR-VARIABLE owners and remove structures.f
+and structures-effects.f from the pre-checker prefix. Prove exact
+native/recovery offset, stride, alignment, pointer-role, load-order, and
+fixpoint parity; no cold parser, descriptor arena, adoption, or bootstrap-only
+declaration semantics.
