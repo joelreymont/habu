@@ -547,6 +547,7 @@ that source is explicitly certified; they are not stale-checked by the default
 | SND-ZERO-CELL | `n --` | Zeroes one loader-overwritten live cell in the data scratch copy by layout offset. | `test/run.f snap`, `tools/build-fixpoint-test.f` | src/habu/snap-lib.f | 2026-07-02 |
 | SND-ZERO-SPAN-CELL | `n --` | Zeroes one evaluate-frame cell in the data scratch copy by layout offset. | `test/run.f snap`, `tools/build-fixpoint-test.f` | src/habu/snap-lib.f | 2026-07-02 |
 | SND-QUARANTINE@ | `n -- n` | Reads one quarantined dangling-pointer offset from the create table for scratch zeroing. | `test/run.f snap`, `tools/build-fixpoint-test.f` | src/habu/snap-lib.f | 2026-07-02 |
+| SNAP-RETIRE-GO | `--` | Snapshot build driver retires the builder tail and writes the image; SNAPGO lives in require'd snap-lib.f outside the assembled snap source that the staged fixpoint pre-pass certifies, and the snapshot-prepare words are prefix-internal with no charted effects. Replaces snap.f's former `0 set-check` window so the generated snap source stays free of raw check-off lines for BF-AUDIT-BOUNDARY. | `tools/build-fixpoint-test.f`, `test/run.f` | src/habu/snap.f | 2026-07-13 |
 | S2-PATH-CAP | `-- n` | Fixed path-buffer capacity for the stage2 fixpoint driver. | `test/run.f`, `tools/build-fixpoint-test.f` | src/habu/stage2.f | 2026-06-26 |
 | S2-PATH-BUF | `-- ptr u8` | Stage2 fixpoint path scratch buffer used while building private artifact paths. | `test/run.f`, `tools/build-fixpoint-test.f` | src/habu/stage2.f | 2026-06-26 |
 | SBUF@ | `-- ptr u8` | Reads the stage2 source buffer pointer stored in a raw variable. | `test/run.f` | src/habu/stage2.f | 2026-06-26 |
@@ -1008,8 +1009,7 @@ src/habu/snap-lib.f:SND-ZERO-CELL builder-emit habu-builder-trust-rows-c5d41af6
 src/habu/snap-lib.f:SND-ZERO-SPAN-CELL builder-emit habu-builder-trust-rows-c5d41af6
 src/habu/snap-lib.f:SND-QUARANTINE@ builder-emit habu-builder-trust-rows-c5d41af6
 src/habu/snap-lib.f:SNAP-INSTALL-HOOK builder-emit habu-builder-trust-rows-c5d41af6
-src/habu/snap.f builder-emit habu-builder-trust-rows-c5d41af6 1
-src/habu/snap.f:set-check builder-emit habu-builder-trust-rows-c5d41af6
+src/habu/snap.f:SNAP-RETIRE-GO builder-emit habu-builder-trust-rows-c5d41af6
 src/habu/stage2.f:S2-PATH-CAP builder-emit habu-builder-trust-rows-c5d41af6
 src/habu/stage2.f:S2-PATH-BUF builder-emit habu-builder-trust-rows-c5d41af6
 src/habu/stage2.f:SBUF@ builder-emit habu-builder-trust-rows-c5d41af6

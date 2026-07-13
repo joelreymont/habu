@@ -89,9 +89,6 @@ create BFT-NL 10 c,
 create BFT-KEY1 64 allot
 create BFT-OUT BFT-CAPTURE-CAP allot
 create BFT-ERR BFT-CAPTURE-CAP allot
-create BFT-CHECK-OFF-LINE
-10 c, 48 c, 32 c, 115 c, 101 c, 116 c, 45 c,
-99 c, 104 c, 101 c, 99 c, 107 c, 10 c,
 
 : BFT-READ-FIELD ( -- ptr ptr u8 )
    BFT-READ-A 0 ptr-field ;
@@ -186,9 +183,6 @@ create BFT-CHECK-OFF-LINE
 : BFT-EMPTY$ ( -- ptr u8 n )
    SB-RESET
    SB$ ;
-
-: BFT-CHECK-OFF-LINE$ ( -- ptr u8 n )
-   BFT-CHECK-OFF-LINE 13 ;
 
 : BFT-ENV$ ( -- ptr u8 n )
    BFT-ROOT ;
@@ -515,6 +509,34 @@ create BFT-CHECK-OFF-LINE
    BFT-STALE-HB s" bin/hb" BF-FILE= TTRUE
    BFT-STALE-STAMP FILE? TFALSE ;
 
+\ Staged-fixpoint refusal regression (dot habu-staged-fixpoint-src-0b5fc6e6):
+\ a deliberately type-broken CHECKED definition in a source file of the
+\ assembled stage list (here appended to the sandbox copy of src/habu/hide.f,
+\ the first emitted file, so the certify scan reaches it early) must make the
+\ refresh REFUSE at the blocking pre-pass: deterministic BF-BUILD-RC exit, the
+\ certify diagnostic naming the injected word on stdout, the E-BUILD-CERTIFY
+\ name on stderr, the sandbox engine byte-unchanged, and no stamp. Runs in the
+\ BFT-STALE sandbox tree (private tmp + scratch install target - the real
+\ workspace bin/hb is never touched) with a fresh sabotage replacing the
+\ stale-seed one.
+: BFT-CERT-INJ-SABOTAGE ( -- )
+   s" src/habu/hide.f" BFT-READ {: u:n :}
+   BFT-STALE-HIDE BFT-READ-BUF u WRITE-ALL
+   BFT-STALE-HIDE s" : BFT-CERT-INJ ( n -- n ) drop ;" APPEND-FILE
+   BFT-STALE-HIDE BFT-NL 1 APPEND-FILE ;
+
+: BFT-TEST-CERT-INJECT-INSTALL ( -- )
+   BFT-CERT-INJ-SABOTAGE
+   BFT-STALE-ARGV
+   BFT-STALE-SPAWN {: outu:n erru:n rcn:n :}
+   rcn BF-BUILD-RC T=
+   BFT-BIG-OUT outu s" certify: stage2-src rejected" CONTAINS? TTRUE
+   BFT-BIG-OUT outu s" bft-cert-inj" CONTAINS? TTRUE
+   BFT-BIG-ERR erru s" build-fixpoint: failed" CONTAINS? TTRUE
+   BFT-BIG-ERR erru s" E-BUILD-CERTIFY" CONTAINS? TTRUE
+   BFT-STALE-HB s" bin/hb" BF-FILE= TTRUE
+   BFT-STALE-STAMP FILE? TFALSE ;
+
 : BFT-FIND-AFTER ( ptr u8 n n ptr u8 n -- option<idx> ) {: a:ptr u:n start:n needle:ptr nu:n :}
    start 0 < if OPTION:NONE exit then
    start u >= if OPTION:NONE exit then
@@ -554,15 +576,12 @@ create BFT-CHECK-OFF-LINE
    BFT-READ-BUF u s" : ATOMA-FIELD" CONTAINS? TTRUE
    BFT-READ-BUF u s" 0 constant T-CON" CONTAINS? TTRUE
    BFT-READ-BUF u s" LOWER-CERT-HOOK:INSTALL" CONTAINS? TTRUE
-   BFT-READ-BUF u s" undefine FULL-XT" FIND-SUB {: seal-base:n :}
-   BFT-READ-BUF u seal-base s" SEAL-FRIEND" BFT-FIND-AFTER {: seal:n :}
-   BFT-READ-BUF u seal s" \ driver-io.f" BFT-FIND-AFTER {: driver:n :}
-   seal-base BFT-FOUND
-   seal BFT-FOUND
-   driver BFT-FOUND
+   BFT-READ-BUF u s" undefine FULL-XT" FIND-SUB BFT-FOUND {: seal-base:n :}
+   BFT-READ-BUF u seal-base s" SEAL-FRIEND" BFT-FIND-AFTER BFT-FOUND {: seal:n :}
+   BFT-READ-BUF u seal s" \ driver-io.f" BFT-FIND-AFTER BFT-FOUND {: driver:n :}
    seal-base seal < TTRUE
    seal driver < TTRUE
-   BFT-READ-BUF u BFT-CHECK-OFF-LINE$ CONTAINS? TFALSE
+   BFT-READ-BUF u BF-BOUNDARY-RAW-OFF$ CONTAINS? TFALSE
    BFT-READ-BUF u s\" s\" ASM-CODE\" s\" -- asm\" TRUST" CONTAINS? TFALSE
    BFT-READ-BUF u s" STDIN-OUT" CONTAINS? TTRUE ;
 
@@ -586,7 +605,7 @@ create BFT-CHECK-OFF-LINE
    BFT-READ-BUF u s" : ASM-CODELEN!" FIND-SUB BFT-FOUND BFT-IMG-I !
    BFT-READ-BUF u BFT-IMG-I @ s" : BUILD-IMAGE" BFT-FIND-AFTER BFT-FOUND BFT-IMG-BUILD-I !
    BFT-READ-BUF u BFT-IMG-BUILD-I @ s" : RPD@" BFT-FIND-AFTER BFT-FOUND BFT-HABU1-I !
-   BFT-READ-BUF u BFT-IMG-I @ BFT-CHECK-OFF-LINE$ BFT-FIND-AFTER BFT-NOT-FOUND
+   BFT-READ-BUF u BFT-IMG-I @ BF-BOUNDARY-RAW-OFF$ BFT-FIND-AFTER BFT-NOT-FOUND
    BFT-IMG-I @ BFT-IMG-BUILD-I @ < TTRUE
    BFT-IMG-BUILD-I @ BFT-HABU1-I @ < TTRUE ;
 
@@ -595,24 +614,22 @@ create BFT-CHECK-OFF-LINE
    BFT-READ-BUF u s" S2-SOURCE-CAP allot" CONTAINS? TFALSE
    BFT-READ-BUF u s" stage2: source mmap failed" CONTAINS? TTRUE ;
 
+\ The snap tail's SNAP-RETIRE-GO is a named TRUSTED: boundary (TRUSTED.md),
+\ not a `0 set-check` window: the emitted snap source must carry NO raw
+\ check-off line so BF-AUDIT-BOUNDARY can pin the refresh prelude's
+\ BFR-CHECK-OFF as the only checking-disabled span.
 : BFT-TEST-SNAP-SOURCE ( -- )
    BFT-ROOT BF-TMP!
    BF-SNAP-SOURCE
    BFT-SNAP BFT-READ {: u :}
-   BFT-READ-BUF u s" : SNAP-TAIL-MARK" FIND-SUB {: mark:n :}
-   BFT-READ-BUF u mark s" ' LOWER-CERT-HOOK:HOOK constant HOOK-XT" BFT-FIND-AFTER {: hook:n :}
-   BFT-READ-BUF u hook s" SEAL-FRIEND" BFT-FIND-AFTER {: seal:n :}
-   BFT-READ-BUF u seal s" : ASM-CODELEN!" BFT-FIND-AFTER {: build:n :}
-   BFT-READ-BUF u build s" SNAP-BUILD:HOOK-XT set-check" BFT-FIND-AFTER {: on:n :}
-   mark BFT-FOUND
-   hook BFT-FOUND
-   seal BFT-FOUND
-   build BFT-FOUND
-   on BFT-FOUND
-   mark hook < TTRUE
-   hook seal < TTRUE
+   BFT-READ-BUF u s" : SNAP-TAIL-MARK" FIND-SUB BFT-FOUND {: mark:n :}
+   BFT-READ-BUF u mark s" SEAL-FRIEND" BFT-FIND-AFTER BFT-FOUND {: seal:n :}
+   BFT-READ-BUF u seal s" : ASM-CODELEN!" BFT-FIND-AFTER BFT-FOUND {: build:n :}
+   BFT-READ-BUF u build s" TRUSTED: SNAP-RETIRE-GO ( -- )" BFT-FIND-AFTER BFT-FOUND {: retire:n :}
+   mark seal < TTRUE
    seal build < TTRUE
-   build on < TTRUE
+   build retire < TTRUE
+   BFT-READ-BUF u BF-BOUNDARY-RAW-OFF$ CONTAINS? TFALSE
    BFT-READ-BUF u s" : ATOMA-FIELD ( n -- ptr ptr u8 )" CONTAINS? TTRUE
    BFT-READ-BUF u s" TRUSTED: INCLUDE-MMAP-PTR ( n -- ptr u8 )" CONTAINS? TTRUE
    BFT-READ-BUF u s" TRUSTED: INCLUDE-EVALUATE ( ptr u8 n -- )" CONTAINS? TTRUE
@@ -626,11 +643,12 @@ create BFT-CHECK-OFF-LINE
 \ (src/habu/habu2.f) validates the 48-byte format-versioned trailer before
 \ restoring regions - version cell > SNAP-FORMAT-VERSION exits 80
 \ (E-SNAP-VERSION), an oversized region-len/data-len/ndict field exits 79
-\ (corrupt trailer). The snapshot binary is built through the WORKING runtime
-\ route the pipeline itself uses (hb-stdin --build hb-snap-src -> hb-snap0, the
-\ BF-BUILD-SNAP-FROM-STDIN mechanism minus its certify gate: BF-CERTIFY-SNAP
-\ fails closed on snap.f's 0 set-check boundary until VERIFY:SOURCE-BUF
-\ honors injected set-check spans - dot habu-tfam-12-item-346f03c2).
+\ (corrupt trailer). The snapshot binary is built through the SAME gated route
+\ the pipeline uses (BF-SNAP-SOURCE + BF-CERTIFY-SNAP + hb-stdin --build
+\ hb-snap-src -> hb-snap0, the BF-BUILD-SNAP-FROM-STDIN mechanism): snap.f's
+\ former 0 set-check window is now the TRUSTED: SNAP-RETIRE-GO boundary, so
+\ the emitted snap source certifies clean and the `-- snap` route is gated
+\ end-to-end again (dot habu-tfam-12-item-346f03c2 part 1).
 \ Measured facts this fixture encodes (macOS/arm64, 2026-07-09):
 \ - The trailer magic is NOT at FILE-SIZE-48: SNAP-EXTRA-SIZE padding and the
 \   codesign blob follow it, so the fixture SCANS for the LAST SNAP-MAGIC
@@ -655,6 +673,7 @@ create BFT-CHECK-OFF-LINE
 
 : BFT-SNAP0-BUILD ( -- )
    BF-SNAP-SOURCE
+   BF-CERTIFY-SNAP
    s" hb-snap0" BF-REMOVE-TMP
    s" hb-stdin" s" hb-snap-src" COMPILER-BUILD:RUN-TMP BF-RC0
    s" hb-snap0" BF-EXPECT
@@ -857,17 +876,78 @@ variable BFT-OVF-ERR-U
    s" retire-spawn-underflow" BFT-CERT BF-CERTIFY-RC 70 T=
    BF-CERT-DIAG-U @ 0 > TTRUE ;
 
+\ Minimal boundary-audit-clean prelude for scratch generated-source fixtures:
+\ one BFR-CHECK-OFF line followed by one LOWER-CERT-HOOK:INSTALL line, exactly
+\ the documented refresh-prelude window BF-AUDIT-BOUNDARY pins.
+: BFT-CERT-PRELUDE+ ( -- )
+   s\" \\ audit prelude\nBFR-CHECK-OFF\nLOWER-CERT-HOOK:INSTALL\n" SB-APPEND ;
+
+: BFT-CERT-SB-WRITE ( -- )
+   BFT-CERT SB$ WRITE-ALL ;
+
+: BFT-CERT-LINE+ ( ptr u8 n -- )
+   SB-APPEND
+   BF-LF SB-APPEND-C ;
+
 \ Certification is BLOCKING: a generated stage source that rejects must fail
-\ the build with E-BUILD-STATUS, not warn and proceed (fail-open). The
-\ install-path proof is the red/green install pair recorded on
-\ habu-make-fixpoint-certify-a11dbad5; this pins the unit behavior.
+\ the build with E-BUILD-CERTIFY, not warn and proceed (fail-open). The
+\ install-path proof is BFT-TEST-CERT-INJECT-INSTALL below; this pins the
+\ unit behavior on an audit-clean scratch source whose only defect is the
+\ type-broken definition.
 : BFT-TEST-CERTIFY-BLOCKING ( -- )
-   s" : BFT-CERT-BAD2 ( n -- n ) drop ;" BFT-CERT-WRITE
-   [: s" cert-blocking" BFT-CERT BF-CERTIFY-GENERATED ;] E-BUILD-STATUS TTHROWSQ ;
+   SB-RESET
+   BFT-CERT-PRELUDE+
+   s" : BFT-CERT-BAD2 ( n -- n ) drop ;" BFT-CERT-LINE+
+   BFT-CERT-SB-WRITE
+   [: s" cert-blocking" BFT-CERT BF-CERTIFY-GENERATED ;] E-BUILD-CERTIFY TTHROWSQ ;
 
 : BFT-TEST-CERTIFY-GOOD-PASSES ( -- )
-   s" : BFT-CERT-GOOD2 ( n -- n ) 1 + ;" BFT-CERT-WRITE
+   SB-RESET
+   BFT-CERT-PRELUDE+
+   s" : BFT-CERT-GOOD2 ( n -- n ) 1 + ;" BFT-CERT-LINE+
+   BFT-CERT-SB-WRITE
    s" cert-good2" BFT-CERT BF-CERTIFY-GENERATED ;
+
+\ Boundary audit (BF-AUDIT-BOUNDARY): the generated-source certify refuses any
+\ unchecked-window drift with E-BUILD-CERTIFY - a missing or duplicated
+\ BFR-CHECK-OFF line, a raw `0 set-check` line, or a hook reinstall that does
+\ not follow the check-off. Each case is a scratch source differing from the
+\ audit-clean prelude in exactly the violation under test.
+: BFT-AUDIT-EXPECT-REJECT ( -- )
+   [: s" cert-audit" BFT-CERT BF-CERTIFY-GENERATED ;] E-BUILD-CERTIFY TTHROWSQ ;
+
+: BFT-TEST-AUDIT-MISSING-BOUNDARY ( -- )
+   s" : BFT-AUD-OK1 ( n -- n ) 1 + ;" BFT-CERT-WRITE
+   BFT-AUDIT-EXPECT-REJECT ;
+
+: BFT-TEST-AUDIT-DOUBLE-BOUNDARY ( -- )
+   SB-RESET
+   BFT-CERT-PRELUDE+
+   s" BFR-CHECK-OFF" BFT-CERT-LINE+
+   BFT-CERT-SB-WRITE
+   BFT-AUDIT-EXPECT-REJECT ;
+
+: BFT-TEST-AUDIT-RAW-OFF ( -- )
+   SB-RESET
+   BFT-CERT-PRELUDE+
+   s" 0 set-check" BFT-CERT-LINE+
+   BFT-CERT-SB-WRITE
+   BFT-AUDIT-EXPECT-REJECT ;
+
+: BFT-TEST-AUDIT-ORDER ( -- )
+   SB-RESET
+   s\" \\ audit order\nLOWER-CERT-HOOK:INSTALL\nBFR-CHECK-OFF\n" SB-APPEND
+   BFT-CERT-SB-WRITE
+   BFT-AUDIT-EXPECT-REJECT ;
+
+\ Real-list audit injection: the REAL emitted stage2 source plus one appended
+\ raw `0 set-check` line must refuse at the audit, before the checker scan.
+: BFT-TEST-AUDIT-REAL-INJECT ( -- )
+   BFT-ROOT BF-TMP!
+   BF-STAGE2-SOURCE
+   s" stage2-src" BF-A$ s\" 0 set-check\n" APPEND-FILE
+   [: s" stage2-src" s" stage2-src" BF-A$ BF-CERTIFY-GENERATED ;] E-BUILD-CERTIFY TTHROWSQ
+   BF-TMP-RESET ;
 
 \ Self-certification guard: the checker's own source and the pre-compile source
 \ verifier must certify clean via the same VERIFY:SOURCE-BUF path the fixpoint
@@ -961,6 +1041,7 @@ variable BFT-OVF-ERR-U
    s" cached skip" [: BFT-TEST-CACHED-SKIP ;] BFT-STEP
    s" build fail no stamp" [: BFT-TEST-BUILD-FAIL-NO-STAMP ;] BFT-STEP
    s" stale seed install" [: BFT-TEST-STALE-INSTALL ;] BFT-STEP
+   s" cert inject install" [: BFT-TEST-CERT-INJECT-INSTALL ;] BFT-STEP
    s" stamp source key" [: BFT-TEST-STAMP-SOURCE-KEY ;] BFT-STEP
    s" stamp corrupt" [: BFT-TEST-STAMP-CORRUPT ;] BFT-STEP
    s" stamp engine" [: BFT-TEST-STAMP-ENGINE ;] BFT-STEP
@@ -971,6 +1052,11 @@ variable BFT-OVF-ERR-U
    s" certify bad" [: BFT-TEST-CERTIFY-BAD ;] BFT-STEP
    s" retire regression" [: BFT-TEST-RETIRE-REGRESSION ;] BFT-STEP
    s" certify blocking" [: BFT-TEST-CERTIFY-BLOCKING ;] BFT-STEP
+   s" audit missing boundary" [: BFT-TEST-AUDIT-MISSING-BOUNDARY ;] BFT-STEP
+   s" audit double boundary" [: BFT-TEST-AUDIT-DOUBLE-BOUNDARY ;] BFT-STEP
+   s" audit raw off" [: BFT-TEST-AUDIT-RAW-OFF ;] BFT-STEP
+   s" audit order" [: BFT-TEST-AUDIT-ORDER ;] BFT-STEP
+   s" audit real inject" [: BFT-TEST-AUDIT-REAL-INJECT ;] BFT-STEP
    s" boot pin mismatch" [: BFT-TEST-BOOT-PIN ;] BFT-STEP
    s" certify good passes" [: BFT-TEST-CERTIFY-GOOD-PASSES ;] BFT-STEP
    s" certify checker self" [: BFT-TEST-CERTIFY-CHECKER-SELF ;] BFT-STEP

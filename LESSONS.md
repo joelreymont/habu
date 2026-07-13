@@ -4,6 +4,15 @@
 
 Last updated: 2026-07-13
 
+- **A checker-acceptance tightening breaks fixture files that only fail at
+  LOAD time:** the wide-PRODUCT minimum-accounting fix made `FIND-SUB`'s
+  `option<idx>` reject when bound to an `:n` local, and
+  tools/build-fixpoint-test.f had two such latent bindings that turned the
+  whole build-fixpoint suite red at load (rc 70) though no checker gate was
+  red. After tightening acceptance, run the suites that LOAD tool fixtures,
+  not only the checker gates; convert at the producer
+  (`FIND-SUB BFT-FOUND {: idx:n :}`), never bind the sum to a scalar local.
+
 - **A reusable buffer is live until its last semantic consumer:** owner-row
   freeze reused `AOT-REC-BUF` after record proof but before boot-manifest lookup,
   so fixture success depended on target records landing beyond the overwritten
@@ -146,13 +155,15 @@ Last updated: 2026-07-13
   rejection legs are version>max (rc 80) and a positive-but-oversized
   region-len/ndict middle byte (rc 79) — data-len top bytes can SIGSEGV
   instead. Fixture: BFT-TEST-SNAP-TRAILER.
-- **`-- snap` is certify-blocked; the runtime snapshot route works and is
-  cheap:** BF-CERTIFY-SNAP rejects snap.f because VERIFY:SOURCE-BUF does not
-  honor `0 set-check` (undefined SNAPGO from require'd snap-lib.f; regressed
-  by "Make fixpoint source certification blocking", owned by
-  habu-staged-fixpoint-src-0b5fc6e6). Tests needing a snapshot binary use the
-  pipeline's own runtime route hb-stdin < hb-snap-src -> hb-snap0 (0.63s),
-  then codesign — not the blocked `-- snap` CLI.
+- **An assembled-source certify pass makes file-local `0 set-check` windows
+  false-reject; convert the window to a named TRUSTED: boundary instead of
+  teaching the verifier to skip:** BF-CERTIFY-SNAP rejected snap.f (undefined
+  SNAPGO from require'd snap-lib.f inside its `0 set-check` window) and
+  blocked `-- snap`. Making VERIFY:SOURCE-BUF honor set-check spans would
+  have weakened every generated-source certify; converting SNAP-RETIRE-GO to
+  `TRUSTED:` (body skipped by the scanner, effect audited in TRUSTED.md)
+  fixed the route, let BF-AUDIT-BOUNDARY pin BFR-CHECK-OFF as the only
+  check-off line in generated sources, and retired snap-build.f outright.
 - **Generated constructor WID protection belongs after emission, not inside
   `C-STORE`:** a `C-STORE`-time predicate re-enters Forth while the native
   definition machinery is mid-publish and has no stable generated-word identity.

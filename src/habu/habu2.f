@@ -586,6 +586,14 @@ s" c-bp-watch-dump" s" label label --" TRUST
    PFX-COMMON LPLAYOUTSEAL   s" src/core/layout-buffer-seal.f" PFX-PATH-ROW
    PFX-COMMON LPLOWERCERTSEAL s" src/core/lower-cert-seal.f" PFX-PATH-ROW ;
 
+\ The prefix reload below zeroes HOOK-CELL, so the boot-time load of the
+\ checker/core prefix is itself unchecked. The staged fixpoint pre-pass
+\ closes that trust hole for every installed engine: the refresh's stage-N
+\ binary certifies the FULL assembled stage-N+1 source (this prefix included)
+\ before any stage compile (tools/build-fixpoint.f BF-CERTIFY-*, blocking),
+\ and the BF-PIN content hashes close the mid-build reload TOCTOU. Remaining
+\ gap: a post-install disk edit is reloaded unchecked at next boot until the
+\ pin is baked into the image (dot habu-boot-pin-bake-8b284046).
 : EMIT-HOST-LOAD-PREFIX ( -- )
    16 0 MOVZ,  16 DATA HOOK-CELL STR,
    PFX-TARGET-OK

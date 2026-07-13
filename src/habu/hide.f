@@ -17,7 +17,12 @@ TRUSTED: BFR-N>U8 ( n -- ptr u8 ) ;
 TRUSTED: BFR-USIG-END-PTR ( -- ptr a ) USIGS UEND @ + ;
 TRUSTED: BFR-UEND! ( n -- ) UEND ! ;
 TRUSTED: BFR-NDICT! ( n -- ) ndict! ;
-\ Dissolves with staged fixpoint source checking: habu-staged-fixpoint-src-0b5fc6e6.
+\ Named refresh-prelude boundary (staged fixpoint source checking,
+\ habu-staged-fixpoint-src-0b5fc6e6): the stage compile loads the checker-boot
+\ region with the hook silenced, but the blocking pre-pass (tools/
+\ build-fixpoint.f BF-CERTIFY-*) statically checks THROUGH the window, and
+\ BF-AUDIT-BOUNDARY pins this call as the only check-off line a generated
+\ stage source may carry.
 TRUSTED: BFR-CHECK-OFF ( -- ) 0 set-check ;
 
 : BFR-REC-ADDR ( n -- n )

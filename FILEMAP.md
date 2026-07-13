@@ -86,8 +86,6 @@ points stay listed.
 - `src/habu/build.f` — `hb-build --repl` bundle driver.
 - `src/habu/maker.f` — generic maker-image build driver for `hb-build`.
 - `src/habu/snap-lib.f` — checked snapshot writer definitions.
-- `src/habu/snap-build.f` — tail-owned snapshot checker installer resolved
-  before the friend seal and retired before image publication.
 - `src/habu/snap.f` — snapshot writer entry point.
 - `src/habu/stdin.f` — internal stdin/interactive engine builder.
 - `src/habu/rt.f` — native runtime routines emitted for the engine builder

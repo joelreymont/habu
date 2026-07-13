@@ -14,20 +14,21 @@
 \ this process, which is all SNAPGO needs; the REPL hook in the image is the
 \ standard HOOK from the retained check-hook.f.
 \
-\ SNAP-RETIRE-GO compiles with checking off: it must resolve every name
-\ before the retire runs, and CHECKER-SNAPSHOT-PREPARE/INCLUDE-SNAPSHOT-
-\ PREPARE are prefix-internal words with no charted effects. It is a named
-\ build-driver boundary that never survives into the image (its own entry
-\ and code sit above the retired marker).
-\ Dissolves with staged fixpoint source checking: habu-staged-fixpoint-src-0b5fc6e6.
+\ SNAP-RETIRE-GO is a named TRUSTED: build-driver boundary (audited in
+\ TRUSTED.md): SNAPGO lives in require'd snap-lib.f outside the assembled
+\ snap source the staged fixpoint pre-pass certifies, and CHECKER-SNAPSHOT-
+\ PREPARE/INCLUDE-SNAPSHOT-PREPARE are prefix-internal words with no charted
+\ effects. The word never survives into the image (its own entry and code sit
+\ above the retired marker). It was previously a `0 set-check` window; the
+\ trusted form keeps the emitted snap source free of raw check-off lines so
+\ the pre-pass boundary audit (tools/build-fixpoint.f BF-AUDIT-BOUNDARY) can
+\ pin the refresh prelude's BFR-CHECK-OFF as the only one.
 
 require src/habu/snap-lib.f
 
-0 set-check
-: SNAP-RETIRE-GO ( -- )
+TRUSTED: SNAP-RETIRE-GO ( -- )
    s" SNAP-TAIL-MARK" FORGET-DEFS-FROM
    CHECKER-SNAPSHOT-PREPARE
    INCLUDE-SNAPSHOT-PREPARE
    SNAPGO ;
-SNAP-BUILD:HOOK-XT set-check
 SNAP-RETIRE-GO
