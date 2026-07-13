@@ -3987,3 +3987,7 @@ unchanged (148855). Keys for milestone 2:
   `refine-lint` which owner and cited tests may call it. Add the seed name/owner
   and focused confinement fixtures in the same change; Maki tests do not cover
   the full lint-tools gate.
+- **A sole public type surface includes auxiliary definers.** A hard cutover
+  from legacy enum syntax must delete counter definers such as `ENUM+` and
+  `ENUM4+` too; zero production consumers do not make a second declaration
+  surface compatible with the one-DSL invariant.
