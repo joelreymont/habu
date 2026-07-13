@@ -3767,6 +3767,12 @@ unchanged (148855). Keys for milestone 2:
 - **Erase and verify package words in their owning WID.** Qualified names are
   not entries in wordlist zero. Reopen the package, select `public` or `private`,
   then `undefine` and `search-wl` each unqualified tail in `get-current`.
+- **`jj new` off the tip immediately after moving bookmarks onto it.** Leaving
+  @ ON a just-pushed commit means the next `jj commit`/snapshot AMENDS it,
+  rewriting a pushed commit and forcing sideways bookmark pushes (happened
+  with the claim commit amending the pushed DEFTYPE-replay merge). The window
+  protocol ends with: move bookmarks, push, `jj new <tip>` — in that order,
+  every time.
 - **STATUS date rolls use the gate's UTC day, not the local calendar.** The
   run.f stale-status slice computes today from epoch-seconds (UTC). Rolling
   "Last verified" to the local date after midnight CEST made pushed master red
