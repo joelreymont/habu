@@ -4,24 +4,116 @@ variable LBAD
 variable LCALL
 variable LEXITGROUP
 variable LRET
+variable LX13-CALLEE
+variable LX13-CALLER
+variable LX13-CLEAN
+variable LP2CWAT
+variable LCEMIT
+variable LHIDXADD
+variable LRETURN-USE
+variable LPRESERVE-X13
+variable LPRESERVE-X17
 
 : EMIT-SYS-X8-BAD ( -- )
-   LBAD @ LBL,
+   LBAD LABEL@ LBL,
    8 9 0 ADDI,
    NR-CLOSE SYS,
    4 8 0 LDRB,
    RET, ;
 
 : EMIT-LR-BAD ( -- )
-   LCALL @ LBL,
-   LRET @ BL,
+   LCALL LABEL@ LBL,
+   LRET LABEL@ BL,
    RET,
-   LRET @ LBL,
+   LRET LABEL@ LBL,
    RET, ;
 
 : EMIT-EXIT-GROUP-OK ( -- )
-   LEXITGROUP @ LBL,
+   LEXITGROUP LABEL@ LBL,
    16 9 0 ADDI,
    NR-EXIT-GROUP SYS,
    4 16 0 LDRB,
+   RET, ;
+
+: EMIT-X13-CALLEE ( -- )
+   LX13-CALLEE LABEL@ LBL,
+   13 0 MOVZ,
+   RET, ;
+
+: EMIT-X13-CALLER-BAD ( -- )
+   LX13-CALLER LABEL@ LBL,
+   SP SP 16 SUBI,
+   30 SP 0 STR,
+   13 9 0 ADDI,
+   LX13-CALLEE LABEL@ BL,
+   4 13 0 LDRB,
+   30 SP 0 LDR,
+   SP SP 16 ADDI,
+   RET, ;
+
+: EMIT-X13-CALLER-OK ( -- )
+   LX13-CLEAN LABEL@ LBL,
+   SP SP 16 SUBI,
+   30 SP 0 STR,
+   13 9 0 ADDI,
+   LX13-CALLEE LABEL@ BL,
+   13 9 0 ADDI,
+   4 13 0 LDRB,
+   30 SP 0 LDR,
+   SP SP 16 ADDI,
+   RET, ;
+
+: EMIT-RETURNS-X10 ( -- )
+   LP2CWAT LABEL@ LBL,
+   10 1 MOVZ,
+   RET, ;
+
+: EMIT-USES-RETURNED-X10 ( -- )
+   LRETURN-USE LABEL@ LBL,
+   SP SP 16 SUBI,
+   30 SP 0 STR,
+   LP2CWAT LABEL@ BL,
+   4 10 0 LDRB,
+   30 SP 0 LDR,
+   SP SP 16 ADDI,
+   RET, ;
+
+: EMIT-PRESERVES-X13 ( -- )
+   LCEMIT LABEL@ LBL,
+   SP SP 16 SUBI,
+   13 SP 0 STR,
+   13 0 MOVZ,
+   13 SP 0 LDR,
+   SP SP 16 ADDI,
+   RET, ;
+
+: EMIT-KEEPS-X13 ( -- )
+   LPRESERVE-X13 LABEL@ LBL,
+   SP SP 16 SUBI,
+   30 SP 0 STR,
+   13 9 0 ADDI,
+   LCEMIT LABEL@ BL,
+   4 13 0 LDRB,
+   30 SP 0 LDR,
+   SP SP 16 ADDI,
+   RET, ;
+
+: EMIT-PRESERVES-X17 ( -- )
+   LHIDXADD LABEL@ LBL,
+   SP SP 16 SUBI,
+   17 SP 0 STR,
+   17 0 MOVZ,
+   17 SP 0 LDR,
+   SP SP 16 ADDI,
+   RET, ;
+
+: EMIT-KEEPS-X17 ( -- )
+   LPRESERVE-X17 LABEL@ LBL,
+   SP SP 16 SUBI,
+   30 SP 0 STR,
+   17 9 0 ADDI,
+   LHIDXADD LABEL@ BL,
+   4 17 0 LDRB,
+   30 SP 0 LDR,
+   SP SP 16 ADDI,
    RET, ;

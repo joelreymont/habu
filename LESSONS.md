@@ -14,6 +14,20 @@ Last updated: 2026-07-13
   making a future clean result vacuous after its fixed input cap is repaired.
   Assert nonzero routine and edge counts against authoritative sources so token
   grammar drift fails closed.
+- **Generated-call liveness needs explicit return and preserve contracts:** once
+  current `LABEL@` calls became visible, seven of nine reports were legitimate
+  saved-register or returned-register flows, while `LPROTWIDQ` exposed the real
+  x5/x6 loop-state clobber. Keep contract fixtures beside a genuinely clobbering
+  control, and back each preserve row with concrete save/restore code until the
+  typed machine-effect schema replaces the table.
+- **Make the native-process preflight a separate blocking step:** printing
+  `pgrep` output and then starting a gate in the same shell still launches the
+  gate when another workspace is active. Inspect a standalone process census,
+  wait for zero real Habu children, and only then issue the native command.
+- **Regenerate the typed-diff artifact after the final edit:** a later census
+  helper introduced bare locals after the first lint pass, and only the commit
+  checkpoint caught it. The proof must describe the exact tree being committed,
+  not an earlier patch snapshot.
 
 - **An optional lint root is an audit bypass:** `trust-lint` silently skipped
   absent roots and audited only `src/` plus `lib/`, leaving 16 existing

@@ -2337,12 +2337,14 @@ s" emit-fp-prims" s" --" TRUST
 \ wid is recorded in the protected-WID registry (PROT-WID-N-CELL entries of the
 \ u32 PROT-WID-OFF table, both inside the sealed friend arena), else 0. Linear
 \ scan — the registry is tiny (sealed system + generated constructor package WIDs
-\ only). Clobbers x5 x6 x7 x14; x9 is preserved. Called by the sealed-WID guards
+\ only). Preserves x5 x6 x7 x9 x14; x13 is the result. Called by the sealed-WID guards
 \ (record publish, AOT relocation/bootrun, snap-rebase) and the AOT registry
 \ restore's dedup.
 : EMIT-PROTWID ( -- )
    LBL LBL LBL {: qloop:label qnext:label qdone:label :}
    LPROTWIDQ LABEL@ LBL,
+   SP SP 32 SUBI,
+   5 SP 0 STR,  6 SP 8 STR,  7 SP 16 STR,  14 SP 24 STR,
    13 0 MOVZ,                                   \ result = 0 (not protected)
    6 DATA PROT-WID-N-CELL LDR,                  \ x6 = registry count
    7 0 MOVZ,                                    \ x7 = i
@@ -2351,7 +2353,9 @@ s" emit-fp-prims" s" --" TRUST
       14 5 0 LDRW,  14 9 CMP,  C-NE qnext BCOND, \ table[i] == wid?
          13 1 MOVZ,  qdone B,                    \ found -> protected
       qnext LBL,  5 5 4 ADDI,  7 7 1 ADDI,  qloop B,
-   qdone LBL,  RET, ;
+   qdone LBL,
+   5 SP 0 LDR,  6 SP 8 LDR,  7 SP 16 LDR,  14 SP 24 LDR,
+   SP SP 32 ADDI,  RET, ;
 
 : EMIT-FLUSH ( -- )
    LFLUSH LABEL@ LBL,

@@ -1,6 +1,8 @@
 \ text.f — checked text/file helpers for native lint tools.
 
 require lib/string.f
+require lib/memory.f
+require lib/fs.f
 require lib/adt/option.f                      \ option<n> finders (switchover: lint finder trio)
 
 \ ---- whole-file read -------------------------------------------------------
@@ -98,6 +100,54 @@ variable RPATH-U
    THEN
    RFD @ close
    buf RLEN @ ;
+
+\ Runtime-sized whole-source storage shared by linters whose authoritative
+\ inputs grow over time. One live buffer is sufficient because TOKENIZE callers
+\ consume each file before loading the next one; a larger later file may replace
+\ the backing region, while smaller files reuse it.
+package LINT-SOURCE
+
+$1000000 constant MAX-BYTES
+
+variable BUF-A
+variable CAP
+variable LEN
+
+: BUF-FIELD ( -- ptr ptr u8 )
+   BUF-A 0 ptr-field ;
+
+: BUF@ ( -- ptr u8 )
+   BUF-FIELD @ ;
+
+: BUF! ( ptr u8 -- )
+   BUF-FIELD ! ;
+
+: ALLOC-NEED ( n -- n )
+   dup 0 <= IF drop 1 THEN ;
+
+: ALLOC ( n -- )
+   ALLOC-NEED MEM-ALLOC-64K-SPAN CAP ! BUF! ;
+
+: TOO-LARGE ( ptr u8 n n -- ) {: path:ptr pathu:n size:n :}
+   s" lint-source: file exceeds maximum: " type path pathu type cr
+   s" lint-source: bytes=" type size .
+   E-FS-CAPACITY throw ;
+
+: ENSURE-CAPACITY ( ptr u8 n n -- ) {: path:ptr pathu:n size:n :}
+   size MAX-BYTES > IF path pathu size TOO-LARGE THEN
+   BUF@ 0= size CAP @ > or IF size ALLOC THEN ;
+
+public
+
+: LOAD ( ptr u8 n -- ) {: path:ptr pathu:n :}
+   path pathu FILE-SIZE {: size:n :}
+   path pathu size ENSURE-CAPACITY
+   path pathu BUF@ CAP @ READ-ALL LEN ! ;
+
+: TEXT ( -- ptr u8 n )
+   BUF@ LEN @ ;
+
+;package
 
 \ ---- string ops ------------------------------------------------------------
 : LINT-STR= ( ptr u8 n ptr u8 n -- bool ) {: a:ptr u b:ptr v :}

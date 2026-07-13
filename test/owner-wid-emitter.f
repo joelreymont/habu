@@ -49,6 +49,16 @@ $C89FFCA6 constant COUNT-STLR
    OWNER-WID-EMIT:PREFLIGHT-LABEL@ BL,
    13 0 CMPI,  C-NE fail BCOND, ;
 
+: PROTWID-PRESERVES ( label -- ) {: fail:label :}
+   5 111 MOVZ,  6 222 MOVZ,  7 333 MOVZ,  14 444 MOVZ,
+   9 $1234 MOVZ,
+   LPROTWIDQ LABEL@ BL,
+   3 111 MOVZ,  5 3 CMP,  C-NE fail BCOND,
+   3 222 MOVZ,  6 3 CMP,  C-NE fail BCOND,
+   3 333 MOVZ,  7 3 CMP,  C-NE fail BCOND,
+   3 444 MOVZ,  14 3 CMP,  C-NE fail BCOND,
+   13 0 CMPI,  C-NE fail BCOND, ;
+
 : FILL ( label -- ) {: fail:label :}
    LBL {: loop:label :}
    17 1 MOVZ,
@@ -135,6 +145,7 @@ $C89FFCA6 constant COUNT-STLR
    LBL LBL LBL {: fail:label done:label msg:label :}
    SP SP 16 SUBI,  30 SP 0 STR,
    fail REENTER
+   fail PROTWID-PRESERVES
    END-A  15 4 0 LDRW,
    16 4 4 LDRW,
    $1000 $2000 YES fail ADD

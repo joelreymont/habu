@@ -8,10 +8,46 @@ require tools/lint/text.f
 require tools/lint/token.f
 require tools/lint/lib.f
 
-$40000 constant FB-CAP   \ file buffer: >= the largest scanned emitter (habu2.f grew past $20000)
-create FB FB-CAP allot
-
 : NL  ( -- )  10 emit ;
+
+package CLOBBER-CENSUS
+
+301 constant MIN-ROUTINES   \ observed production floor; lower counts need review
+447 constant MIN-CALLS      \ observed production floor; lower counts need review
+
+variable ROUTINE-N
+variable CALL-N
+
+public
+
+: RESET ( -- )
+   0 ROUTINE-N !
+   0 CALL-N ! ;
+
+: ROUTINE+ ( -- )
+   ROUTINE-N @ 1+ ROUTINE-N ! ;
+
+: CALL+ ( -- )
+   CALL-N @ 1+ CALL-N ! ;
+
+: COUNTS ( -- n n )
+   ROUTINE-N @ CALL-N @ ;
+
+: PROVE ( -- )
+   ROUTINE-N @ MIN-ROUTINES < IF
+      s" clobber-lint: routines=" type ROUTINE-N @ .
+      s" clobber-lint: routine census below floor" 1 die
+   THEN
+   CALL-N @ MIN-CALLS < IF
+      s" clobber-lint: calls=" type CALL-N @ .
+      s" clobber-lint: call census below floor" 1 die
+   THEN ;
+
+: REPORT ( -- )
+   s" clobber-lint: routines=" type ROUTINE-N @ .
+   s" clobber-lint: calls=" type CALL-N @ . ;
+
+;package
 
 \ ---- register sets --------------------------------------------------------
 variable WMSK  variable RMSK
@@ -53,6 +89,9 @@ variable RX  variable RACC
 \ ---- string/token helpers -------------------------------------------------
 : START-L?  ( ptr u8 n -- bool ) {: a:ptr u :}
    u 0 > if a c@ LINT-FOLD 108 = else LINT-FALSE then ;
+: LABEL-ACCESS? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   a u s" LABEL@" LINT-STR=CI IF LINT-TRUE exit THEN
+   u 7 > IF a u s" :LABEL@" LINT-SUFFIX? ELSE LINT-FALSE THEN ;
 : ENDS-COMMA?  ( ptr u8 n -- bool ) {: a:ptr u :}
    u 0 > if a u 1- + c@ 44 = else LINT-FALSE then ;
 : START-DOLLAR?  ( ptr u8 n -- bool ) {: a:ptr u :}
@@ -90,6 +129,7 @@ variable RX  variable RACC
    a u s" Lvswapx" LINT-STR=CI if 0 13 CL-ADD exit then
    a u s" Lvnipx" LINT-STR=CI if 0 13 CL-ADD exit then
    a u s" Lvcopy" LINT-STR=CI if 0 13 CL-ADD exit then
+   a u s" Lp2cwat" LINT-STR=CI if 0 10 CL-ADD exit then
    0 ;
 : PRESERVE-MASK  ( ptr u8 n -- n ) {: a:ptr u :}
    a u s" Lvpushc" LINT-STR=CI if 0 11 CL-ADD exit then
@@ -100,6 +140,13 @@ variable RX  variable RACC
    a u s" Lvbit" LINT-STR=CI if 0 7 CL-ADD exit then
    a u s" Lbcap" LINT-STR=CI if 0 0 CL-ADD 1 CL-ADD 2 CL-ADD 16 CL-ADD exit then
    a u s" Lbcs" LINT-STR=CI if 0 0 CL-ADD 1 CL-ADD 2 CL-ADD 16 CL-ADD exit then
+   a u s" Lcemit" LINT-STR=CI if 0 12 CL-ADD 13 CL-ADD exit then
+   a u s" Laotwidgate" LINT-STR=CI if 0 11 CL-ADD exit then
+   a u s" Lprotwidq" LINT-STR=CI if 0 5 CL-ADD 6 CL-ADD 7 CL-ADD 14 CL-ADD exit then
+   a u s" Lhidxadd" LINT-STR=CI if
+      0 2 CL-ADD 3 CL-ADD 4 CL-ADD 5 CL-ADD 6 CL-ADD 7 CL-ADD 8 CL-ADD
+        14 CL-ADD 15 CL-ADD 16 CL-ADD 17 CL-ADD exit
+   then
    0 ;
 
 : PSEUDO?  ( ptr u8 n -- bool ) {: a:ptr u :}
@@ -222,9 +269,9 @@ variable RK
    a u PSEUDO? if a u PSEUDO-EFFECTS then ;
 
 \ ---- clobber table + BL graph --------------------------------------------
-$100 constant CMAX
-$400 constant EMAX
-8192 constant CNBUF-CAP
+$800 constant CMAX      \ callable labels plus discovered call targets
+$2000 constant EMAX     \ unique BL graph edges
+$10000 constant CNBUF-CAP
 create CNBUF CNBUF-CAP allot   variable CEND
 create CNOFF CMAX cells allot   create CNLEN CMAX cells allot
 create CWS CMAX cells allot     variable CN#
@@ -282,16 +329,22 @@ variable RNEXT  variable LASTSTOP  variable RDONE  variable CUR
    OPENINGS ON# @ cells + !  ON# @ 1+ ON# ! ;
 : LABEL-OPEN?  {: k hi :}  ( -- f )
    k 2 + hi >= if LINT-FALSE exit then
-   k TOK START-L?  k 1+ TOK s" @" LINT-STR= and  k 2 + TOK s" LBL," LINT-STR= and ;
+   k TOK START-L?  k 1+ TOK LABEL-ACCESS? and  k 2 + TOK s" LBL," LINT-STR= and ;
+: BL-CALL-SITE? {: k:n hi:n :} ( -- bool )
+   k 2 + hi >= IF LINT-FALSE exit THEN
+   k TOK START-L?
+   k 1+ TOK LABEL-ACCESS? and
+   k 2 + TOK s" BL," LINT-STR= and ;
 : COLLECT-OPENINGS  {: lo hi :}  ( -- )
    0 ON# !  lo OX !
    begin OX @ hi < while
-      OX @ hi LABEL-OPEN? if OX @ OPEN+ then
+      OX @ hi LABEL-OPEN? if OX @ OPEN+ CLOBBER-CENSUS:ROUTINE+ then
+      OX @ hi BL-CALL-SITE? if CLOBBER-CENSUS:CALL+ then
       OX @ 1+ OX !
    repeat ;
 : CALLEE?  {: lo hi :}  ( -- f )
    hi lo - 2 < if LINT-FALSE exit then
-   hi 1- TOK s" @" LINT-STR= 0= if LINT-FALSE exit then
+   hi 1- TOK LABEL-ACCESS? 0= if LINT-FALSE exit then
    hi 2 - TOK START-L? 0= if LINT-FALSE exit then
    hi 2 - TOK  CALU ! CALA !  LINT-TRUE ;
 
@@ -358,7 +411,7 @@ variable RNEXT  variable LASTSTOP  variable RDONE  variable CUR
 
 variable WI  variable WE
 : PASS1-FILE  {: pa pu :}  ( -- )
-   pa pu FB FB-CAP READ-FILE  TOKENIZE
+   pa pu LINT-SOURCE:LOAD  LINT-SOURCE:TEXT TOKENIZE
    0 WI !
    begin WI @ TN# @ 1- < while
       WI @ TOK s" :" LINT-STR= if
@@ -503,7 +556,7 @@ variable TRACK-LR
       DI @ 1+ DI !
    repeat ;
 : PASS2-FILE  {: pa pu :}  ( -- )
-   pa pu FB FB-CAP READ-FILE  TOKENIZE
+   pa pu LINT-SOURCE:LOAD  LINT-SOURCE:TEXT TOKENIZE
    0 WI !
    begin WI @ TN# @ 1- < while
       WI @ TOK s" :" LINT-STR= if
@@ -528,7 +581,9 @@ variable TRACK-LR
    s" src/habu/prof.f" PASS2-FILE  s" src/habu/rt.f" PASS2-FILE
    s" src/habu/crash.f" PASS2-FILE ;
 : CLOBBER-LINT  ( -- )
-   0 PARENS? !  ALL-PASS1  CLOSE-CLOBBERS  0 BAD !  ALL-PASS2
+   0 PARENS? !  CLOBBER-CENSUS:RESET  ALL-PASS1
+   CLOBBER-CENSUS:PROVE  CLOSE-CLOBBERS  0 BAD !  ALL-PASS2
+   CLOBBER-CENSUS:REPORT
    BAD @ 0 > if
       s" clobber-lint: " type BAD @ . s"  finding(s)" type NL
       s" clobber-lint: findings" 1 die

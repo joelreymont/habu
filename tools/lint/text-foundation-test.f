@@ -272,6 +272,18 @@ variable BIG-LEX-U
    8192 LEX-TOK s" x" ASSERT$
    BIG-LEX-TOKENS 1- LEX-TOK s" x" ASSERT$ ;
 
+: TEST-LINT-SOURCE ( -- )
+   s" tools/lint/text.f" 2dup FILE-SIZE {: path:ptr pathu:n size:n :}
+   path pathu LINT-SOURCE:LOAD
+   LINT-SOURCE:TEXT {: source:ptr sourceu:n :}
+   sourceu size ASSERT=
+   source sourceu s" package LINT-SOURCE" LINT-CONTAINS? ASSERT
+   s" src/habu/habu2.f" 2dup FILE-SIZE {: large:ptr largeu:n largesize:n :}
+   large largeu LINT-SOURCE:LOAD
+   LINT-SOURCE:TEXT {: largesource:ptr largesourceu:n :}
+   largesourceu largesize ASSERT=
+   largesource largesourceu s" LABEL@" LINT-CONTAINS? ASSERT ;
+
 : TEXT-FOUNDATION-TEST  ( -- )
    1 TEST-N !
    INIT-FIXTURES
@@ -282,6 +294,7 @@ variable BIG-LEX-U
    TEST-LEXER-UNTERM-QUOTE
    TEST-TOKENIZER
    TEST-BIG-LEXER
+   TEST-LINT-SOURCE
    s" text-foundation-test: ok (" type TEST-N @ 1- . s"  assertions)" type cr ;
 
 TEXT-FOUNDATION-TEST
