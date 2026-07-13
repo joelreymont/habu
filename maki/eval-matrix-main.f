@@ -60,6 +60,7 @@ VOCAB-LIVE!
    s" saxpy" s" GRID-CTX"  VOCAB-NEED
    s" saxpy" s" LOAD"      VOCAB-NEED
    s" saxpy" s" SCALE"     VOCAB-NEED
+   s" saxpy" s" +."        VOCAB-NEED
    s" saxpy" s" STORE"     VOCAB-NEED ;
 
 : VOCAB-COLLECTIVE ( -- )

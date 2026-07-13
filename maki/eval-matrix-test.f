@@ -14,25 +14,34 @@ T-RESET
 
 package EVAL
 
-: TEST-MISS-GEMM? ( ptr u8 n -- bool ) {: a:ptr u:n :}
-   a u s" MM-K-LOOP" STR= if 0 0= 0= exit then
-   0 0= ;
+PTR-VARIABLE TEST-MISS-A
+variable TEST-MISS-U
 
-: TEST-MISS-ATTN? ( ptr u8 n -- bool ) {: a:ptr u:n :}
-   a u s" ATTN:SCORE" STR= if 0 0= 0= exit then
-   0 0= ;
+: TEST-MISS! ( ptr u8 n -- )
+   TEST-MISS-U !
+   TEST-MISS-A ! ;
+
+: TEST-MISS$ ( -- ptr u8 n )
+   TEST-MISS-A @ TEST-MISS-U @ ;
+
+: TEST-MISS? ( ptr u8 n -- bool )
+   TEST-MISS$ STR= 0= ;
+
+: TEST-MISSING-VOCAB ( ptr u8 n -- )
+   TEST-MISS!
+   [: TEST-MISS? ;] is VOCAB-WORD?
+   [: EM-VOCAB-CHECK ;] catch {: rc:n :}
+   VOCAB-LIVE!
+   rc throw ;
+
+: TEST-MISSING-SAXPY ( -- )
+   s" +." TEST-MISSING-VOCAB ;
 
 : TEST-MISSING-GEMM ( -- )
-   [: TEST-MISS-GEMM? ;] is VOCAB-WORD?
-   [: EM-VOCAB-CHECK ;] catch {: rc:n :}
-   VOCAB-LIVE!
-   rc throw ;
+   s" MM-K-LOOP" TEST-MISSING-VOCAB ;
 
 : TEST-MISSING-ATTN ( -- )
-   [: TEST-MISS-ATTN? ;] is VOCAB-WORD?
-   [: EM-VOCAB-CHECK ;] catch {: rc:n :}
-   VOCAB-LIVE!
-   rc throw ;
+   s" ATTN:SCORE" TEST-MISSING-VOCAB ;
 
 : TEST-UNKNOWN-TASK ( -- )
    TS-RESET
@@ -42,7 +51,8 @@ package EVAL
    TS-END
    VOCAB-TASKS-CHECK ;
 
-' TEST-MISSING-GEMM E-EVAL-VOCAB TTHROWS
+' TEST-MISSING-SAXPY E-EVAL-VOCAB TTHROWS
+' TEST-MISSING-GEMM  E-EVAL-VOCAB TTHROWS
 ' TEST-MISSING-ATTN E-EVAL-VOCAB TTHROWS
 ' TEST-UNKNOWN-TASK E-EVAL-VOCAB TTHROWS
 
