@@ -1295,6 +1295,422 @@ ONNX and future formats become auditable frontends with exact mapping proofs.
 Not required for the first V2 import vertical slice, which can use canonical IR
 round-trips and external goldens.
 
+## R7 Design Addendum: Stage, Evidence, And Promotion Families
+
+Design deliverable of dot `habu-v2-types-artifact-6ee556f8` for the
+"### R7. Typestate And Evidence Families" section above (cited as
+MODEL-CAD-V2-PLAN.md:335-368 at claim time; anchor by heading, not line).
+This addendum is append-only; it changes no other section.
+
+### Census: proven V1 mixing/bypass paths
+
+How report tags flow today: gates write verdicts through the public
+`REPORT:GATE! ( report ptr u8 n n n -- report )` (maki/report.f:592-599) into a
+singleton typed verdict column; `PROMOTE` gates on `PROMOTE-OK?`
+(maki/cad.f:1026-1030) reading `REPORT:GATE-TAG@`; on pass, `PROMOTE-EVIDENCE`
+(maki/cad.f:1046-1054) re-reads the four tags as raw `n` and writes evidence
+and replay rows through `EVID-PUT-G` (maki/store.f:345-354) and
+`SK-PUT-DURABLE`, keyed by a raw key string.
+
+Probe census, all green through
+`HB_TMP=/private/tmp/claude-501/fable-arttype-hbtmp bin/hb --load
+promote-census-probe.f` on 2026-07-13 (fixture in the worker scratch; every
+probe is a CHECK!-certified program — the census point is that the checker
+accepts these today):
+
+1. Verdict/gate-id slot mixing. The two trailing `REPORT:GATE!` arguments are
+   both raw `n`, so the swapped call `s" swapped" G-CERTIFY V-NOTRUN
+   REPORT:GATE!` certifies (`CHECK-CANDIDATE!` verdict -1) and at runtime
+   records `V-PASS` on `G-GRADCHECK` (`V-NOTRUN` = 2 = `G-GRADCHECK`,
+   `G-CERTIFY` = 0 = `V-PASS`) while the intended CERTIFY slot silently keeps
+   its `REPORT:NEW` default. The internal `verdict` ENUM column
+   (maki/report.f:162) protects the storage cell, not the accessor arguments.
+2. Forgeable promotion readout. The exact reads `PROMOTE-OK?` performs are
+   public-surface reproducible and satisfiable by three `REPORT:GATE!` writes
+   with no gate machinery behind them. Promotion-worthiness is a runtime tag
+   readout, not proof that any gate ran.
+3. Store bypass and wrong-artifact evidence. `EVID-PUT` (maki/store.f:355) and
+   `SCHED-PUT` (maki/store.f:293) are public `MAKI` words over raw key strings
+   plus raw verdict ints. Any call path can plant
+   `certify=pass|golden=pass|gradcheck=pass|profile=pass` under any artifact
+   key, and can plant a replay selection PROMOTE never recorded; `TILE-REPLAY`
+   (maki/cad.f:943-946) then replays it as "the selection PROMOTE recorded".
+   Nothing ties a verdict to the artifact it was measured on.
+
+Additionally, device-golden provenance is ambient process state:
+`GOLDEN-DEV-FLAG`/`GOLDEN-PREC-V` (maki/golden.f:105-111) are globals set by
+one leg and read back later by `PROMOTE-EVIDENCE`, not fields of an evidence
+value.
+
+### Reused machinery (no parallel system)
+
+Everything below composes landed words; the probe fixture exercised each shape:
+
+- arity-zero `TYPEFAMILY` package kinds: `CHECKER-DEFPRODUCT`/`TDECL-FAMILY`
+  grammar in src/core/sumtype.f; landed pattern maki/cad-kinds.f:7-33
+  (`CAD-KIND`), R3 above.
+- `SUMTYPE`/`ENUM`/`PRODUCT`/`MATCH`: src/core/sumtype.f:1-8;
+  docs/type-families.md §9, §13-14; landed examples maki/model-ir.f:70-74
+  (`PRODUCT mark 0` inside `package MIR`, ctor `MIR-MARK:MAKE` used at
+  maki/model-ir.f:295), maki/report.f:53-96 (`verdict`/`roofline`/`costatus`
+  ENUMs), lib/adt/result.f:35 (`SUMTYPE result 2`), lib/adt/option.f:26.
+- Cell-family product fields: `TDECL-PAY-FAM?` (src/core/sumtype.f) admits
+  TK-CELL and layout families at arity 0. Probe-verified: `FIELD art
+  CAD-KIND:artifact-id` compiles; `MAKE` is born-typed; a same-width foreign
+  id family (`CAD-KIND:evidence-id`) and raw `n` both reject (verdict 0).
+- Products as variant payloads and sums as product fields: `TFAM-LAYOUT?`
+  (src/core/type-family.f:221-222) includes TK-PRODUCT. Probe-verified: an
+  evidence-slot sum (`VARIANT got certified ;VARIANT VARIANT absent ;VARIANT`),
+  a bundle product holding that sum, and `UNMAKE`+`MATCH` elimination all
+  certify; a payload product where the slot sum is expected rejects.
+- Sealed construction: docs/type-families.md §12 — public families construct
+  only through the generated ctor package (derived escaped spelling: package
+  `MODEL` + family `elab` publishes `MODEL-ELAB:MAKE`; a hyphenated segment
+  escapes, e.g. `PX-PROBE`+`pxevid` derives `PX--PROBE-PXEVID`). Private sums
+  construct only via owner-scoped `construct family variant` (cross-package or
+  qualified operands never resolve); private products have no construction
+  surface at all (§9.4, fail-closed).
+- Private audited raw mints: `TRUSTED: RAW>TARGET-ID` kept private in
+  maki/target/target.f:54-55 — the R3 refinement pattern for proof tokens.
+- Derived equality for policy fields: `DERIVE eq` (docs §9.3.1;
+  src/core/sumtype.f:429).
+- Candidate verdict convention for fixtures: `CHECK-CANDIDATE!` returns
+  -1 certified / 0 rejected / 1 uncheckable (src/core/checker.f:7355); an
+  unresolvable word (e.g. a sealed private mint referenced cross-package)
+  reads as 1, a type mismatch as 0. Fixtures assert the exact verdict and pair
+  every negative with a resolving positive control.
+
+### Stage families
+
+One arity-zero `TYPEFAMILY` per (IR level, stage), declared in the stage
+owner's package — not one `stage` ENUM: distinct stages must be distinct
+TYPES so wrong order is a signature mismatch. The existing generic
+`CAD-KIND:stage` kind (maki/cad-kinds.f:31) remains for rendering/diagnostic
+data and is never an ordering authority. Parameterized nominal application
+(`plan<complete>`) is not yet in the declaration grammar (docs §9.4), so the
+plan's `model<elaborated>` notation is realized as flat per-stage families; a
+later parametric-application capability can migrate them mechanically.
+
+~~~text
+package MODEL  (maki/ir/model)    decl-proof, elab-proof;  decl, elab
+package TIR    (maki/ir/tensor)   solved-proof;            drafted, solved
+package RIR    (maki/ir/region)   legal-proof;             drafted, legal
+package PLAN   (maki/ir/plan)     complete-proof;          draft, complete
+package KIR    (maki/ir/kernel)   verified-proof;          drafted, verified
+package CAND   (maki/backend/ptx) emitted-proof;           emitted
+package ART    (maki/evidence)    built-proof, promoted-proof; built, promoted
+~~~
+
+Each staged value is a PRODUCT pairing the persistent identity with a
+package-sealed proof token:
+
+~~~forth
+package PLAN
+public
+TYPEFAMILY complete-proof 0
+
+PRODUCT complete 0
+   FIELD plan CAD-KIND:plan-id
+   FIELD rev  CAD-KIND:rev-id
+   FIELD tok  complete-proof
+;PRODUCT
+~~~
+
+Sealing decision: the generated `PLAN-COMPLETE:MAKE` is public
+(closed-but-callable ctor package), so the seal is the proof-token FIELD. The
+only producer of a `complete-proof` cell is a private
+`TRUSTED: MINT-COMPLETE-PROOF ( -- complete-proof )` inside the owning
+package, invoked by the transition word after its independent verifier
+succeeds — the maki/target/target.f:54 pattern, with a TRUSTED.md row and a
+focused test per mint. Outside code cannot produce the token, so it cannot
+forge the staged product even though `MAKE` resolves. Private products were
+considered and rejected: they have no construction surface at all (docs §9.4),
+including for the owner. Staged values are NOT linear: revisions are immutable
+(§9.3), so re-consuming a solved handle is legal; linearity stays reserved for
+R6 resource ownership.
+
+### Artifact-indexed evidence families
+
+One PRODUCT per evidence class in package `EVID` (maki/evidence/), each
+carrying the exact artifact id plus a class-private proof token; the class is
+the FAMILY, not a tag value:
+
+~~~forth
+package EVID
+public
+TYPEFAMILY certify-proof 0
+TYPEFAMILY golden-proof 0
+TYPEFAMILY gradcheck-proof 0
+TYPEFAMILY profile-proof 0
+
+ENUM golden-leg DERIVE eq  host external device ;ENUM
+ENUM prec-class DERIVE eq  f32 tf32 ;ENUM
+
+PRODUCT certified 0
+   FIELD art CAD-KIND:artifact-id
+   FIELD tok certify-proof
+;PRODUCT
+
+PRODUCT golden 0
+   FIELD art  CAD-KIND:artifact-id
+   FIELD leg  golden-leg
+   FIELD prec prec-class
+   FIELD tok  golden-proof
+;PRODUCT
+
+PRODUCT gradchecked 0
+   FIELD art CAD-KIND:artifact-id
+   FIELD tok gradcheck-proof
+;PRODUCT
+
+PRODUCT profiled 0
+   FIELD art CAD-KIND:artifact-id
+   FIELD us  n
+   FIELD tok profile-proof
+;PRODUCT
+~~~
+
+Consequences: probe 1's verdict/gate-id swap becomes unrepresentable (there is
+no `(tag, gate-id)` raw pair anywhere); the ambient
+`GOLDEN-DEV-FLAG`/`GOLDEN-PREC-V` globals become the `leg`/`prec` fields of
+the golden value. A failing gate produces `err diag-set` through
+`result<_,_>` (lib/adt/result.f:35) — there is no pass-shaped failure object;
+"not-run" is the absence of the evidence value under the policy check. The V1
+`verdict` ENUM survives only at the report render boundary.
+
+Evidence presence is typed with per-class slot sums plus one bundle product
+(probe-verified shape; parametric `option<...>` fields are not admissible
+product fields at arity 0, so the slots are flat sums):
+
+~~~forth
+SUMTYPE certify-slot 0
+   VARIANT got certified ;VARIANT
+   VARIANT absent ;VARIANT
+;SUMTYPE
+\ golden-slot / gradcheck-slot / profile-slot identically
+
+PRODUCT bundle 0
+   FIELD cert  certify-slot
+   FIELD gold  golden-slot
+   FIELD grad  gradcheck-slot
+   FIELD prof  profile-slot
+;PRODUCT
+~~~
+
+### Promotion-policy products
+
+Policies are ordinary public data (inputs, not proofs); the grant is sealed.
+Per §16, a different policy is a different typed object and hash: `pol` is the
+policy's canonical schema identity and participates in the release key.
+
+~~~forth
+package POLICY
+public
+TYPEFAMILY grant-proof 0
+
+ENUM req-class DERIVE eq
+   required-blocking          \ evidence must exist and carry this artifact
+   required-when-supported    \ required unless a typed unsupported reason exists
+   required-recorded          \ must exist; content never blocks (profile)
+   informational              \ may be absent
+;ENUM
+
+PRODUCT promote-policy 0
+   FIELD cert req-class
+   FIELD gold req-class
+   FIELD grad req-class
+   FIELD prof req-class
+   FIELD pol  CAD-KIND:schema-id
+;PRODUCT
+
+PRODUCT granted 0
+   FIELD art CAD-KIND:artifact-id
+   FIELD pol CAD-KIND:schema-id
+   FIELD tok grant-proof
+;PRODUCT
+~~~
+
+The V1 inference gate set (maki/cad.f:1019-1030) is exactly the default
+policy `cert=required-blocking gold=required-blocking
+grad=required-when-supported prof=required-recorded`.
+
+`POLICY:CHECK` is the single sealed site of the value-level artifact binding:
+for each slot the policy marks required, the evidence value must be `got` and
+its `art` field must equal the artifact under promotion (typed diagnostic
+`E-EVID-ARTIFACT` on mismatch). This boundary is explicit and honest (§24
+Proof Theater): the type system guarantees provenance (proof tokens only
+exist downstream of a real gate run), class separation (distinct families),
+and stage order; same-family artifact-id equality is a value fact checked
+once, inside the only word that can mint `POLICY:granted`.
+
+### Transition words
+
+Exact conceptual signatures (each wraps §12 `PASS:RUN`/`PASS:VERIFY` plus the
+owner's independent verifier; every success mints its proof token privately):
+
+~~~forth
+MODEL:ELABORATE ( MODEL:decl -- result<MODEL:elab,diag-set> )
+TIR:SOLVE       ( MODEL:elab -- result<TIR:solved,diag-set> )
+RIR:LEGALIZE    ( TIR:solved -- result<RIR:legal,diag-set> )
+PLAN:FINISH     ( RIR:legal PLAN:draft -- result<PLAN:complete,diag-set> )
+KIR:VERIFY      ( PLAN:complete KIR:drafted -- result<KIR:verified,diag-set> )
+CAND:EMIT       ( KIR:verified CAD-KIND:target-id -- result<CAND:emitted,diag-set> )
+ART:BUILD       ( CAND:emitted CAD-KIND:toolchain-id -- result<ART:built,diag-set> )
+EVID:CERTIFY    ( ART:built -- result<EVID:certified,diag-set> )
+EVID:GOLDEN     ( ART:built golden-ctx -- result<EVID:golden,diag-set> )
+EVID:GRADCHECK  ( ART:built -- result<EVID:gradchecked,diag-set> )
+EVID:PROFILE    ( ART:built device-ctx -- result<EVID:profiled,diag-set> )
+POLICY:CHECK    ( ART:built EVID:bundle POLICY:promote-policy
+                  -- result<POLICY:granted,diag-set> )
+ART:PROMOTE     ( ART:built POLICY:granted -- result<ART:promoted,diag-set> )
+~~~
+
+`ART:PROMOTE` owns the §16 atomic publication and is the ONLY writer of
+evidence/schedule store rows: the V1 public raw row writers (`EVID-PUT`,
+`EVID-PUT-G`, `SCHED-PUT` reachable as generic `MAKI` words) become private to
+the promotion/store owner or take the typed products, closing probe 3.
+Decoders validate before refining (R2 canonical codecs; a rehydrated row never
+mints a proof token — replay rows feed schedule defaults only after key
+validation, and promoted status is re-derived from stored evidence plus policy
+identity by a validator, never by a raw trust cast). The report becomes a
+RENDERING of typed evidence: `REPORT:GATE!` is demoted to the render boundary
+and fed only from evidence values, retiring the raw `V-*`/`G-*` pair from the
+promotion path (closing probes 1 and 2).
+
+### Acceptance fixtures (must fail to certify)
+
+Concrete checked sketches for the v2 typestate suite
+(`maki/typestate-test.f` style: `CHECK-QUIET-CANDIDATE!` per
+test/checker-assert.f, exact-verdict asserts, each negative paired with a
+resolving positive control per LESSONS). Verdict 0 = type reject; verdict 1 =
+unresolvable (sealed word not visible); both are "fails to certify".
+
+~~~forth
+\ positive controls: the staged pipeline in the right order certifies
+s" TS-OK1 ( TIR:solved -- ) RIR:LEGALIZE RESULT-DROP"
+   CHECK-QUIET-CANDIDATE! -1 T=
+s" TS-OK2 ( PLAN:complete KIR:drafted -- ) KIR:VERIFY RESULT-DROP"
+   CHECK-QUIET-CANDIDATE! -1 T=
+
+\ 1. untypeable-wrong-order: unconstrained Model IR cannot enter region
+\    planning (R7 acceptance 1); expected/actual name qualified stage families.
+s" TS-BAD-ORDER ( MODEL:elab -- ) RIR:LEGALIZE RESULT-DROP"
+   CHECK-QUIET-CANDIDATE! 0 T=
+
+\ 2. incomplete-plan: a draft plan cannot enter lowering (R7 acceptance 2).
+s" TS-BAD-PLAN ( PLAN:draft KIR:drafted -- ) KIR:VERIFY RESULT-DROP"
+   CHECK-QUIET-CANDIDATE! 0 T=
+
+\ 3. wrong-artifact-evidence, type layer: evidence cannot be forged for an
+\    artifact because no public word produces the proof token; a raw cell or a
+\    foreign id family in the token/id slot rejects, and the private mint does
+\    not resolve outside its owner.
+s" TS-BAD-EVID-RAW ( CAD-KIND:artifact-id n -- EVID:certified ) EVID-CERTIFIED:MAKE"
+   CHECK-QUIET-CANDIDATE! 0 T=
+s" TS-BAD-EVID-ID ( CAD-KIND:evidence-id EVID:certify-proof -- EVID:certified ) EVID-CERTIFIED:MAKE"
+   CHECK-QUIET-CANDIDATE! 0 T=
+s" TS-BAD-EVID-MINT ( CAD-KIND:artifact-id -- EVID:certified ) MINT-CERTIFY-PROOF EVID-CERTIFIED:MAKE"
+   CHECK-QUIET-CANDIDATE! 1 T=
+\    value layer (runtime negative, sealed boundary): a bundle whose golden
+\    evidence names artifact B refuses to grant for artifact A with
+\    E-EVID-ARTIFACT — asserted as an err result in an executed test, since
+\    same-family id equality is a value fact by design.
+
+\ 4. missing-gate: promotion without the policy grant is untypeable, and the
+\    grant cannot be minted around POLICY:CHECK.
+s" TS-BAD-PROMOTE ( ART:built -- ) ART:PROMOTE RESULT-DROP"
+   CHECK-QUIET-CANDIDATE! 0 T=
+s" TS-BAD-GRANT ( CAD-KIND:artifact-id CAD-KIND:schema-id n -- POLICY:granted ) POLICY-GRANTED:MAKE"
+   CHECK-QUIET-CANDIDATE! 0 T=
+
+\ regression pinning the retired V1 surface: the raw (verdict, gate-id) writer
+\ is no longer reachable from the promotion path.
+s" TS-OLD-GATE ( report ptr u8 n n n -- report ) REPORT:GATE!"
+   CHECK-QUIET-CANDIDATE! 1 T=
+~~~
+
+The analogous shapes were executed against landed machinery in the census
+probe (product field family mismatch 0, raw `n` 0, unresolvable ctor 1,
+correct construction -1), so these fixtures compile conceptually today; the
+implementation sub-dots make the named words real and wire the suite into the
+maki gate.
+
+### Implementation sub-dots
+
+Bounded decomposition (children of §21 `v2-type-typestate`,
+`v2-evidence-schema`, `v2-promotion`; the orchestrator mints the actual dots).
+
+1. Title: v2-typestate-stage-kinds.
+   Problem: pipeline order is enforced by runtime guards (`NEED-MODEL`,
+   `NEED-CAPTURE`, maki/cad.f) and by each command re-running earlier phases;
+   no type distinguishes a drafted from a verified object.
+   Acceptance: stage proof-token families and staged products declared per
+   this addendum for MODEL/TIR/RIR/PLAN/KIR/CAND/ART; private mints with
+   TRUSTED.md rows; positive/negative candidate matrix TS-OK1/2,
+   TS-BAD-ORDER, TS-BAD-PLAN green; wrong-stage diagnostics name qualified
+   families.
+   Files: maki/ir/*/stage.f (new, one per level), maki/typestate-test.f (new),
+   TRUSTED.md.
+   Verify: `HB_TMP=<tmp> bin/hb --load maki/typestate-test.f`;
+   `bin/hb --load maki/test.f`.
+2. Title: v2-evidence-schema-products.
+   Problem: evidence is four raw `n` tags in a singleton report plus ambient
+   golden-leg globals (census probes 1-2); nothing binds a verdict to an
+   artifact or to the gate that produced it.
+   Acceptance: `EVID` products/slots/bundle per this addendum; gate transition
+   words return `result<_,diag-set>`; golden leg/precision are fields;
+   TS-BAD-EVID-RAW/ID/MINT green; report render consumes evidence values.
+   Files: maki/evidence/schema.f (new), maki/golden.f, maki/gradcheck.f,
+   maki/report.f (render boundary only), maki/typestate-test.f.
+   Verify: `HB_TMP=<tmp> bin/hb --load maki/typestate-test.f` and the golden/
+   gradcheck suites through `bin/hb --load maki/test.f`.
+3. Title: v2-promotion-policy-products.
+   Problem: the promotion gate set is a hard-coded word body
+   (`PROMOTE-OK?`, maki/cad.f:1026-1030); policy variation would be flags.
+   Acceptance: `req-class`/`promote-policy`/`granted` per this addendum;
+   `POLICY:CHECK` performs the sealed artifact-id binding with
+   `E-EVID-ARTIFACT`; default inference policy reproduces V1 semantics
+   exactly (pinned by an executed matrix); TS-BAD-GRANT green; policy id
+   participates in the release key.
+   Files: maki/evidence/policy.f (new), maki/typestate-test.f, src/config.fs
+   (named code).
+   Verify: `HB_TMP=<tmp> bin/hb --load maki/typestate-test.f`.
+4. Title: v2-promotion-transition-store-seal.
+   Problem: `EVID-PUT`/`EVID-PUT-G`/`SCHED-PUT` are public raw-string/raw-tag
+   writers; any call path plants evidence and replay rows (census probe 3).
+   Acceptance: `ART:PROMOTE` is the only evidence/schedule row writer; raw
+   writers private to the store owner or retyped over evidence products;
+   rehydration validates rows and never mints proof tokens; the probe-3
+   plant-and-replay program no longer compiles against the public surface
+   (negative candidates pinned).
+   Files: maki/store.f, maki/store-replay.f, maki/cad.f, maki/store-test.f.
+   Verify: `HB_TMP=<tmp> bin/hb --load maki/store-test.f`;
+   `bin/hb --load maki/test.f`.
+5. Title: v2-report-render-demotion.
+   Problem: `REPORT:GATE!` raw `(verdict, gate-id)` pair certifies swapped
+   arguments (census probe 1) and is the source of promotion truth.
+   Acceptance: report gate cells are fed only from typed evidence at the
+   render boundary; the public raw pair is retired (TS-OLD-GATE verdict 1) or
+   retyped `( report verdict gate -- report )` over the ENUM plus a gate
+   family; report-test.f candidates updated; EXPLAIN/packet output unchanged
+   for passing paths.
+   Files: maki/report.f, maki/report-test.f, maki/cad.f, maki/golden.f,
+   maki/gradcheck.f.
+   Verify: `HB_TMP=<tmp> bin/hb --load maki/report-test.f`;
+   `bin/hb --load maki/test.f`.
+6. Title: v2-typestate-store-rehydrate.
+   Problem: stored evidence/schedule rows are trusted on read (latest-wins
+   string scan); a planted or stale row replays as PROMOTE's decision.
+   Acceptance: rehydration validates key shape, engine build, and policy
+   identity before feeding replay; invalid rows produce typed diagnostics,
+   never silent defaults; stale-evidence and cross-key negative tests green.
+   Files: maki/store-replay.f, maki/sched-key.f, maki/store-test.f.
+   Verify: `HB_TMP=<tmp> bin/hb --load maki/store-test.f` plus a fresh-process
+   replay test through `bin/hb --load maki/test.f`.
+
+Dependency order: 1 → 2 → 3 → 4 → (5, 6). Sub-dots 1-3 are pure additions;
+4-6 migrate V1 surfaces and must keep `maki/test.f` green per commit.
+
 ## 9. Design Database
 
 ### 9.1 Object Identity

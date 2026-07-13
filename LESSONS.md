@@ -3910,3 +3910,11 @@ unchanged (148855). Keys for milestone 2:
   `sigreturn` or a no-return syscall. A BL routine contract cannot prove that
   boundary; type its frame, allowed operations, reentrancy, and terminator
   explicitly for each target.
+- **Package-scoped family ctors live in a DERIVED escaped package.** A
+  `PRODUCT pxevid` inside `package PX-PROBE` publishes
+  `PX--PROBE-PXEVID:MAKE`, not `PXEVID:MAKE`; the unescaped spelling does not
+  resolve, and a candidate probe returns verdict 1 (uncheckable), not 0
+  (reject) — which silently satisfies a "not certified" expectation while
+  proving nothing about the type wall. Assert exact candidate verdicts
+  (-1/0/1) and pair every negative with a certifying positive control that
+  names the derived ctor package (docs/type-families.md sec 12).
