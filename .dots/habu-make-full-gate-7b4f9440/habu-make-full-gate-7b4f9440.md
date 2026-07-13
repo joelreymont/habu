@@ -18,7 +18,9 @@ runs exactly two more attempts and passes only when at least two of three are
 pass-band. Any hard fail or invalid/missing evidence fails closed.
 
 Every admitted attempt uses distinct fresh `HB_TMP`, `XDG_CACHE_HOME`, and
-`HABU_BUILD_CACHE`, reports zero candidate/maker/artifact/result-cache hits,
-and carries the same exact-tree under-test SHA. Correctness and performance are
+`HABU_BUILD_CACHE`, proves those roots contained no artifact from a prior
+attempt, and carries the same exact-tree under-test SHA. Expected cache-hit
+fixtures inside one attempt remain valid and must match their committed counter
+contract; they are not cross-attempt reuse. Correctness and performance are
 separate verdict fields. Implement the pure policy package first, then the
 runner/evidence integration; no new host primitive is currently required.

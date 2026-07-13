@@ -3927,3 +3927,7 @@ unchanged (148855). Keys for milestone 2:
   removes a completed dot from the live graph, so descendants must no longer
   name it in `blocks:`. Close a dependency chain leaf-to-root, delete each
   satisfied edge, and run `dot-dep-lint` before the closure commit.
+- **A fresh gate root does not imply zero aggregate cache hits.** The full suite
+  deliberately proves maker and artifact cache-hit paths inside one attempt.
+  Retry isolation must reject artifacts inherited from a prior attempt while
+  preserving and checking the expected within-attempt hit-counter contract.

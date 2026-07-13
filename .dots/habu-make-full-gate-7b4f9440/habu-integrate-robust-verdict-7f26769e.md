@@ -12,12 +12,13 @@ Problem: the full native runner currently emits one calibrated wall-clock
 verdict and cannot execute the frozen marginal retry rule without risking cache
 reuse, recursive retries, SHA drift, or missing evidence. Fix: integrate the
 landed `PERF-VERDICT` policy at the top/under-test phase boundary; bracket each
-attempt with calibration, allocate distinct fresh roots and build cache, assert
-zero candidate/maker/artifact/result-cache hits, pin one exact-tree under-test
-SHA, and render deterministic attempt plus final verdict rows. Initial pass runs
+attempt with calibration, allocate distinct fresh roots and build cache, prove
+no prior-attempt artifact is visible, validate the expected within-attempt cache
+counter contract, pin one exact-tree under-test SHA, and render deterministic
+attempt plus final verdict rows. Initial pass runs
 once; initial marginal runs exactly two additional fresh attempts; any invalid
 or hard-fail attempt fails closed. Acceptance: process-level fixtures prove
-fresh-root isolation, no recursion, SHA equality, zero reuse, exact attempt
+fresh-root isolation, no recursion, SHA equality, no cross-attempt reuse, exact attempt
 count, correctness/performance separation, 2-of-3 aggregation, and preservation
 of existing cold/warm correctness semantics. Files: test/run.f, test/run-lib.f,
 test/gate-stats.f, test/gate-stats-test.f, test/run-files.f, docs/bootstrap.md.
