@@ -3893,3 +3893,8 @@ unchanged (148855). Keys for milestone 2:
   fails ordinary repeated call-site composition. Large canonical typed sets
   need opaque nominal handles over sealed immutable content; handles, offsets,
   allocation order, and hashes must never become authority or identity.
+- **Preflight old implementation dots against current code, not their original
+  premise.** Shared hardening can land through another owner while a residual
+  dot stays open. Re-scope the dot to the exact missing regression or parity
+  seam before claiming it; otherwise a worker will duplicate production code
+  and miss the remaining proof gap.
