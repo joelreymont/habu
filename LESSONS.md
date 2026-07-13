@@ -3878,3 +3878,8 @@ unchanged (148855). Keys for milestone 2:
   every claimed prerequisite with `dot show` before wiring downstream work.
   Capability documentation must label planned enforcement as planned; future
   linear-kind checks must never be described as protecting current code.
+- **Run the full native gate without external Habu oversubscription.** Its own
+  macOS profile already runs a 10-way pool; overlapping eight standalone Habu
+  gates caused a pooled repository lint to throw `E-FS-OPEN` while the same
+  exact tree passed alone. Parallelize focused gates together, then give
+  `test/run.f` the host by itself.
