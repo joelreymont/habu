@@ -4029,3 +4029,10 @@ unchanged (148855). Keys for milestone 2:
   native, recovery, fixpoint, pin, diagnostic, and cache manifests. Register
   its post-hook effects in a matching one-concern file, never a legacy DSL's
   effect owner.
+- **Fixed source arenas need composite byte budgets.** The stage2 source and
+  cold-prefix sources share `IBUFSZ`; measure both, preserve useful assertions,
+  and derive near-cap and cap-plus-one tests from the owner constant before
+  increasing it with explicit headroom.
+- **Unsupported dot subcommands create dots.** `dot dep --help` is parsed as a
+  quick-add for title `dep`; inspect `dot --help`, use `dot add -a` for blockers,
+  and remove accidental tracker entries before committing.
