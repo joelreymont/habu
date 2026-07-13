@@ -1,9 +1,9 @@
 ---
 title: Specify PTX generated-state integrity
-status: open
+status: active
 priority: 1
 issue-type: task
-created-at: "2026-07-13T15:01:03.173380+02:00"
+created-at: "\"2026-07-13T15:01:03.173380+02:00\""
 blocks:
   - habu-v2-types-artifact-6ee556f8
 ---
