@@ -3973,3 +3973,8 @@ unchanged (148855). Keys for milestone 2:
   device evidence consumes a new attestation, the consumer blocks on the
   producer; reversing that edge makes the documented implementation order
   impossible even when dependency lint finds no missing ID.
+- **A new TRUSTED nominal mint must update the confinement seed atomically.**
+  `TRUSTED.md` rows alone make the boundary auditable but do not teach
+  `refine-lint` which owner and cited tests may call it. Add the seed name/owner
+  and focused confinement fixtures in the same change; Maki tests do not cover
+  the full lint-tools gate.

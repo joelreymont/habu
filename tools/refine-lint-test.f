@@ -62,6 +62,7 @@ create RFLT-OUT-BUF RFLT-OUT-CAP allot
    s" 7 MAKI:ROWS-REFINE drop" RFL-COUNT-STR 1 T=      \ qualified reference is still a reference
    s" 7 rows-refine drop" RFL-COUNT-STR 1 T=           \ the dictionary is case-insensitive
    s" 1 RAW>NODE 2 RAW>SLOT" RFL-COUNT-STR 2 T=
+   s" 1 RAW>ANODE 2 RAW>ASTREAM 3 RAW>AEVENT" RFL-COUNT-STR 3 T=
    s" 3 N>LBTK drop" RFL-COUNT-STR 1 T= ;              \ seed-only mint without a manifest row
 
 : RFLT-STR-CONTENT$ ( -- ptr u8 n )
@@ -92,8 +93,11 @@ create RFLT-OUT-BUF RFLT-OUT-CAP allot
    s" maki/tensor.f" s" 1 ROWS-REFINE drop" RFL-COUNT-STR-AT 0 T=
    \ a file cited by the mint's TRUSTED.md Tests cell is allowed
    s" maki/model-ir-test.f" s" 0 RAW>SLOT drop" RFL-COUNT-STR-AT 0 T=
+   s" maki/async-dag.f" s" 0 RAW>ANODE drop" RFL-COUNT-STR-AT 0 T=
+   s" maki/async-dag-test.f" s" 0 RAW>ASTREAM drop" RFL-COUNT-STR-AT 0 T=
    \ another mint's owner is not this mint's boundary
    s" maki/tensor.f" s" 0 RAW>SLOT drop" RFL-COUNT-STR-AT 1 T=
+   s" maki/eval.f" s" 0 RAW>AEVENT drop" RFL-COUNT-STR-AT 1 T=
    \ any other tree file is a finding
    s" maki/eval.f" s" 0 RAW>SLOT drop" RFL-COUNT-STR-AT 1 T= ;
 
@@ -172,9 +176,8 @@ create RFLT-OUT-BUF RFLT-OUT-CAP allot
    RFL-REPORT-OFF
    0 RFL-BAD !
    RFL-SELECT
-   \ 1 SEED-DRIFT (row site moved off the seed owner) + 14 STALE-SEED (every
-   \ in-root seed, drifted ROWS-REFINE included, lacks a matching-site row in
-   \ the synthetic manifest; the test/-owned seed is exempt)
+   \ 1 SEED-DRIFT plus one STALE-SEED per in-root seed; the test/-owned seed
+   \ is exempt, so the total remains exactly RFL-SEED#.
    RFL-BAD @ RFL-SEED# T=
    0 RFL-BAD !
    RFL-REPORT-ON ;

@@ -33,7 +33,7 @@
 
 $40000 constant RFL-STR-CAP     \ trust-lint manifest string store
 $80000 constant RFL-FILE-CAP    \ largest scanned source watermark (checker.f class)
-15 constant RFL-SEED#
+18 constant RFL-SEED#
 8 constant RFL-ALLOW-MAX
 32 constant RFL-NUM-CAP
 
@@ -146,6 +146,9 @@ variable RFL-LE
       12 of s" IMP-ROWS-N" endof
       13 of s" IMP-COLS-N" endof
       14 of s" N>LBTK" endof
+      15 of s" RAW>ANODE" endof
+      16 of s" RAW>ASTREAM" endof
+      17 of s" RAW>AEVENT" endof
       E-TBL-BOUNDS throw
    endcase ;
 
@@ -166,6 +169,9 @@ variable RFL-LE
       12 of s" maki/onnx/import.f" endof
       13 of s" maki/onnx/import.f" endof
       14 of s" test/layout-buffer.f" endof
+      15 of s" maki/async-dag.f" endof
+      16 of s" maki/async-dag.f" endof
+      17 of s" maki/async-dag.f" endof
       E-TBL-BOUNDS throw
    endcase ;
 
