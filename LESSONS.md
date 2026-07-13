@@ -196,6 +196,15 @@ Last updated: 2026-07-13
   second call:** TF-CTOR-PKG$ returns TF-CTOR-BUF; asserting determinism by
   calling twice compared the buffer with itself (vacuously green) until the
   first result was TF-INTERNed. Copy-out before re-deriving in tests.
+- **A "free" DATA offset next to a guarded band may be someone's base pointer:**
+  $40C8 (just past the PROT-REG band) looked like the natural home for the
+  sealed TOP-HOOK-CELL, but it IS lib/task.f TASK-USER-BASE and test/seal.f
+  pins it writable. New sealed cells go into an rg-verified reclaimed hole
+  ($27F0, the retired descriptor-hook slot) with their own GUARD-SPAN/
+  PROT-GUARD band instead of growing an existing band whose end is a public
+  boundary. Also: a pre-BLR dispatch event means the uninstalling
+  `0 set-top-check` call logs itself — event-sequence fixtures must count the
+  trailing two events.
 
 Concise findings only: what worked, what failed, why. Coding standards live in
 `docs/forth.md`; API details in `docs/` near their feature. One tight bullet per

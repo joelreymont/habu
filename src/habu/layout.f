@@ -312,9 +312,33 @@ $258 constant DEF-TKL-CELL
 \ $250..$350, and DEF-TKA/DEF-TKL survive inside it only because their liveness
 \ is confined to the definition NAME token, when the virtual stack is empty.
 $27A8 constant CMM-CELL
-\ PKG-* ($27C0..$27D8), DEFER-* ($27E0..$27E8), the retired descriptor hook at
-\ $27F0, and the old $2780..$27A0 pass-2 cells are reclaimed by the immutable
-\ lowering transaction.
+\ PKG-* ($27C0..$27D8), DEFER-* ($27E0..$27E8), and the old $2780..$27A0
+\ pass-2 cells are reclaimed by the immutable lowering transaction. The
+\ retired descriptor-hook slot $27F0 is reused by TOP-HOOK-CELL below.
+\ TOP-HOOK-CELL: top-row token hook xt (dot habu-typed-top-engine-2b2e88aa,
+\ docs/typed-top-level.md §2.1). 0 = no hook: the interpret dispatch is
+\ byte-for-byte today's behavior (tier 0). Installed only through the
+\ fail-closed `set-top-check` prim (habu1.f BSETTOPCHECK), which mirrors
+\ `set-check`/BSETCHECK's live-code install window; the cell is its own
+\ PROT-GUARD band (habu1.f GUARD-SPAN/PROT-GUARD) so a post-seal raw store
+\ traps E-SEAL-VIOLATION exactly like the HOOK-CELL crown jewel. It sits in
+\ the reclaimed band between TRUSTED-CELL ($27B8) and RSTK-OFF ($2800) and is
+\ snapshot-persistent (< DATA-START) like HOOK-CELL. When installed, the
+\ interpret dispatch points (habu2.f EM-INTERPRET-FIND / EM-INTERPRET-NUMBER
+\ / the pushing string keywords / C-TICK / C-CHAR) emit one pre-continue
+\ event per token through LTOPHOOK; the hook's effect is
+\ ( ptr u8 n n n -- ): token addr, token len, class (TOP-EV-*), LFIND flags
+\ (word/tick classes; 0 for literal classes).
+$27F0 constant TOP-HOOK-CELL
+\ Top-row event class codes: the protocol between the interpret dispatch and
+\ an installed top-row hook. Word/tick events pass the LFIND flag word
+\ (bit 0 found, bit 1 DNAME-IMM, bits 8-15 DNAME-MIN-IN); literals pass 0.
+1 constant TOP-EV-NUM       \ number literal pushed ( n )
+2 constant TOP-EV-STR       \ s" / S\" literal pushed ( ptr u8 n )
+3 constant TOP-EV-CSTR      \ c" / C\" counted literal pushed ( ptr )
+4 constant TOP-EV-CHAR      \ char literal pushed ( n )
+5 constant TOP-EV-TICK      \ ' pushed a found word's xt
+6 constant TOP-EV-WORD      \ found word about to execute (pre-BLR)
 $2800 constant RSTK-OFF
 
 \ Compiler lowering transaction. All mutable pass-2 authority lives in one

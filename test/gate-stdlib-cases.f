@@ -394,6 +394,10 @@ TEST:SUITE underdepth-gate
    test/underdepth-gate.f
 TEST:;SUITE
 
+TEST:SUITE top-row-hook
+   test/top-row-hook-test.f
+TEST:;SUITE
+
 TEST:SUITE owner-wid-internal
    test/owner-wid-internal.f
 TEST:;SUITE

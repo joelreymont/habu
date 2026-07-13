@@ -2395,6 +2395,53 @@ variable LAOTWIDGATE   \ AOT boot sealed-WID reject routine (TFAM 2b-v)
 : C-ESC-COPY-X17 ( -- )
    LESCCOPY LABEL@ BL, ;
 
+\ ---- top-row hook events (dot habu-typed-top-engine-2b2e88aa) --------------
+\ With a hook installed through `set-top-check` (layout.f TOP-HOOK-CELL), each
+\ interpret-dispatch class emits one event through the shared LTOPHOOK routine
+\ (EMIT-TOPHOOK): x15 = TOP-EV-* class, x16 = LFIND flags (0 for literals);
+\ LTOPHOOK adds the TKA/TKL token bytes and runs the hook. The site guard is
+\ one load + CBZ, so the uninstalled path is today's dispatch unchanged.
+variable LTOPHOOK
+
+: C-TOPHOOK-LIT ( n -- ) {: class:n :}     \ literal event: flags 0
+   LBL {: nohk:label :}
+   9 DATA TOP-HOOK-CELL LDR,  9 nohk CBZ,
+   15 class MOVZ,  16 0 MOVZ,
+   LTOPHOOK LABEL@ BL,
+   nohk LBL, ;
+
+: C-TOPHOOK-FLAGS ( n -- ) {: class:n :}   \ word/tick event: flags from x13 (LFIND)
+   LBL {: nohk:label :}
+   9 DATA TOP-HOOK-CELL LDR,  9 nohk CBZ,
+   15 class MOVZ,  16 13 0 ADDI,
+   LTOPHOOK LABEL@ BL,
+   nohk LBL, ;
+
+: C-TOPHOOK-CALL ( -- )                    \ pre-BLR word event: x11 (xt) preserved
+   LBL {: nohk:label :}
+   9 DATA TOP-HOOK-CELL LDR,  9 nohk CBZ,
+   SP SP 16 SUBI,  11 SP 0 STR,
+   15 TOP-EV-WORD MOVZ,  16 13 0 ADDI,
+   LTOPHOOK LABEL@ BL,
+   11 SP 0 LDR,  SP SP 16 ADDI,
+   nohk LBL, ;
+
+\ LTOPHOOK: shared top-row event trampoline, BL-called from the guarded event
+\ sites. Entry: x15 = class, x16 = flags, hook known installed. Pushes
+\ ( token-a token-u class flags ) and BLRs the hook word — the hook consumes
+\ exactly those four cells; a hook throw unwinds through BTHROW like any
+\ executed word's. Clobbers x9-x17.
+: EMIT-TOPHOOK ( -- )
+   LTOPHOOK LABEL@ LBL,
+   SP SP 16 SUBI,  30 SP 0 STR,
+   9 DATA TKA-CELL LDR,  9 G-PUSH
+   9 DATA TKL-CELL LDR,  9 G-PUSH
+   15 G-PUSH
+   16 G-PUSH
+   9 DATA TOP-HOOK-CELL LDR,
+   9 BLR,
+   30 SP 0 LDR,  SP SP 16 ADDI,  RET, ;
+
 : C-ISDQ ( -- )
    C-QUOTE-START
    C-QUOTE-SCAN
@@ -2407,7 +2454,8 @@ variable LAOTWIDGATE   \ AOT boot sealed-WID reject routine (TFAM 2b-v)
       14 11 0 LDRB,  14 12 0 STRB,  12 12 1 ADDI,  11 11 1 ADDI,  9 9 1 SUBI,  cl B,
    cd LBL,
    12 DATA 0 STR,                                       \ allot: DP advances past the copy
-   15 G-PUSH  10 G-PUSH ;
+   15 G-PUSH  10 G-PUSH
+   TOP-EV-STR C-TOPHOOK-LIT ;
 
 : C-ICQ ( -- )
    C-QUOTE-START
@@ -2424,7 +2472,8 @@ variable LAOTWIDGATE   \ AOT boot sealed-WID reject routine (TFAM 2b-v)
       14 11 0 LDRB,  14 12 0 STRB,  12 12 1 ADDI,  11 11 1 ADDI,  9 9 1 SUBI,  cl B,
    cd LBL,
    12 DATA 0 STR,
-   15 G-PUSH ;
+   15 G-PUSH
+   TOP-EV-CSTR C-TOPHOOK-LIT ;
 
 : C-IDOTQ ( -- )
    C-QUOTE-START
@@ -2441,7 +2490,8 @@ variable LAOTWIDGATE   \ AOT boot sealed-WID reject routine (TFAM 2b-v)
    14 17 10 ADD,  14 DP-CHECK
    C-ESC-COPY-X17
    17 DATA 0 STR,  11 17 10 SUB,
-   11 G-PUSH  10 G-PUSH ;
+   11 G-PUSH  10 G-PUSH
+   TOP-EV-STR C-TOPHOOK-LIT ;
 
 : C-EICQ ( -- )
    LBL {: capok:label :}
@@ -2456,7 +2506,8 @@ variable LAOTWIDGATE   \ AOT boot sealed-WID reject routine (TFAM 2b-v)
    10 17 0 STRB,  17 17 1 ADDI,
    C-ESC-COPY-X17
    17 DATA 0 STR,  11 17 10 SUB,  11 11 1 SUBI,
-   11 G-PUSH ;
+   11 G-PUSH
+   TOP-EV-CSTR C-TOPHOOK-LIT ;
 
 : C-EIDOTQ ( -- )
    C-QUOTE-START
@@ -2471,7 +2522,8 @@ variable LAOTWIDGATE   \ AOT boot sealed-WID reject routine (TFAM 2b-v)
 
 : C-CHAR ( -- )
    LTOK LABEL@ BL,  LBCAP LABEL@ BL,
-   9 DATA TKA-CELL LDR,  9 9 0 LDRB,  9 G-PUSH ;
+   9 DATA TKA-CELL LDR,  9 9 0 LDRB,  9 G-PUSH
+   TOP-EV-CHAR C-TOPHOOK-LIT ;
 
 : C-BCHAR ( -- )
    LTOK LABEL@ BL,  LBCAP LABEL@ BL,
@@ -2484,7 +2536,9 @@ variable LAOTWIDGATE   \ AOT boot sealed-WID reject routine (TFAM 2b-v)
    13 tk CBZ,
    14 13 8 ANDI,  14 LWIDE LABEL@ CBNZ,                  \ `' <wide-effect word>` would launder the bundle past the dispatch gate
    14 13 16 ANDI,  14 LINTERNAL LABEL@ CBNZ,             \ `' <internal word>` would launder the xt past the dispatch gate (execute)
-   11 G-PUSH  tk LBL, ;
+   11 G-PUSH
+   TOP-EV-TICK C-TOPHOOK-FLAGS
+   tk LBL, ;
 
 : C-BTICK ( -- )
    LBL {: bk :}
@@ -3424,7 +3478,7 @@ TRUSTED: EM-DATA-VA>N ( -- n ) DATA-VA ;
 
    9 0 MOVZ,  9 DATA CUR-CELL STR,
    9 1 MOVZ,  9 DATA WIDN-CELL STR,
-   9 0 MOVZ,  9 DATA HOOK-CELL STR,
+   9 0 MOVZ,  9 DATA HOOK-CELL STR,  9 DATA TOP-HOOK-CELL STR,
    9 0 MOVZ,  9 DATA PROT-WID-N-CELL STR,  \ constructor registry starts empty
    OWNER-WID-EMIT:COLD-RESET
    cwok LBL,  9 0 MOVZ,
@@ -3838,7 +3892,9 @@ s" em-interpret-string-keywords" s" --" TRUST
 
 : EM-INTERPRET-NUMBER ( label -- ) {: lnotnum:label :}
    9 DATA TKA-CELL LDR,  10 DATA TKL-CELL LDR,  LNUM LABEL@ BL,
-   12 lnotnum CBZ,  11 G-PUSH  LMAIN LABEL@ B, ;
+   12 lnotnum CBZ,  11 G-PUSH
+   TOP-EV-NUM C-TOPHOOK-LIT
+   LMAIN LABEL@ B, ;
 s" em-interpret-number" s" label --" TRUST
 
 : EM-INTERPRET-FIND ( -- )
@@ -3853,7 +3909,9 @@ s" em-interpret-number" s" label --" TRUST
       10 14 CMP,  C-LT LMININ LABEL@ BCOND,            \ depth < declared inputs -> named reject BEFORE the body can read below base
    depthok LBL,
    LARITY LABEL@ BL,          \ pre-exec arity guard (fable): deref/execute prims fault on a shallow
-   11 BLR,  LMAIN LABEL@ B, ; \ stack before the LMAIN depth-floor guard sees it; diverts to LUNDERFLOW
+                              \ stack before the LMAIN depth-floor guard sees it; diverts to LUNDERFLOW
+   C-TOPHOOK-CALL             \ every native gate passed: emit the pre-BLR word event (x13 = LFIND flags)
+   11 BLR,  LMAIN LABEL@ B, ;
 s" em-interpret-find" s" --" TRUST
 
 : EM-INTERPRET-WORDS ( -- )
@@ -5510,7 +5568,7 @@ s" SRCA@" s" -- ptr u8" TRUST
    LBL LBCAP !  LBL LBCS !  LBL LESCDEC !  LBL LESCHEX !  LBL LESCSCAN !  LBL LESCCOPY !
    LBL LSNAPRBD !  LBL LSNAPRBC !  LBL LHIDXADD !  LBL LHIDXBUILD !
    LBL LAOTWIDGATE !
-   LBL LCFPUSH !  LBL LCFPOP !  LBL LPAT !  LBL LKWCMP ! ;
+   LBL LCFPUSH !  LBL LCFPOP !  LBL LPAT !  LBL LKWCMP !  LBL LTOPHOOK ! ;
 
 : EMIT-LABEL-CONTROL ( -- )
    LBL LKWIF !  LBL LKWTHEN !  LBL LKWELSE !  LBL LKWBEGIN !
@@ -5722,7 +5780,8 @@ s" AOT-PWID-BUF@" s" -- ptr u8" TRUST
    EMIT-FLUSH
    EMIT-FIND
    EMIT-HIDX
-   EMIT-NUM ;
+   EMIT-NUM
+   EMIT-TOPHOOK ;
 
 : EMIT-DICTIONARY-SECTIONS ( -- )
    EMIT-CREATE

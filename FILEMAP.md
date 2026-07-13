@@ -853,6 +853,15 @@ points stay listed.
   on both cold-prefix paths; positives pin exact/surplus depth, unguarded
   compiled calls, the unchecked-word boundary, catchable evaluate rejects, and
   the CHECK! probe. REPL recovery smoke: test/proc-pty.f PTY-UNDERDEPTH.
+- `test/top-row-hook-test.f` — top-row hook engine regressions (dot
+  habu-typed-top-engine-2b2e88aa): an in-process logging hook observes the
+  exact (class, token, flags) event per interpret-dispatch token class
+  (number/string/counted-string/char literals, tick, pre-BLR word calls,
+  including certified min-in arity in the LFIND flags); `top-check@`
+  round-trips; child forges prove `set-top-check` fails closed rc 70 with the
+  named diagnostic on both cold-prefix paths and that a raw store into the
+  sealed TOP-HOOK-CELL band traps `E-SEAL-VIOLATION` while both one-cell
+  neighbors stay writable.
 - `test/seal.f` — friend-arena seal regressions: one negative forge per guarded
   PROT-GUARD sink (`!`/`c!`/`+!`/`atomic!`/`atomic-add`/`atomic-cas` plus the
   `read`/`ioctl`/`poll`/`readlink`/`stat64`/`lstat64`/`getdirentries64`/`mmap`

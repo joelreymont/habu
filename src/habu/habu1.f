@@ -205,6 +205,7 @@ public
    EREG addr CMP,  C-CC trap BCOND,     \ unsigned wrap
    addr FRIEND-ARENA FRIEND-ARENA-LEN trap GUARD-BAND
    addr PROT-REG-OFF PROT-REG-LEN trap GUARD-BAND  addr OWNER-REG-OFF OWNER-REG-LEN trap GUARD-BAND
+   addr TOP-HOOK-CELL 1 cells trap GUARD-BAND
    addr BODYBUF-OFF BODYBUF-CAP 2 + trap GUARD-BAND
    addr TXN-STATE-OFF TXN-STATE-LEN trap GUARD-BAND
    addr trap GUARD:SPAN
@@ -219,6 +220,7 @@ public
    DREG ok CBZ,
    addr FRIEND-ARENA FRIEND-ARENA-LEN trap GUARD-ADDR-BAND
    addr PROT-REG-OFF PROT-REG-LEN trap GUARD-ADDR-BAND  addr OWNER-REG-OFF OWNER-REG-LEN trap GUARD-ADDR-BAND
+   addr TOP-HOOK-CELL 1 cells trap GUARD-ADDR-BAND
    addr BODYBUF-OFF BODYBUF-CAP 2 + trap GUARD-ADDR-BAND
    addr TXN-STATE-OFF TXN-STATE-LEN trap GUARD-ADDR-BAND
    addr trap GUARD:ADDR
@@ -1141,6 +1143,7 @@ s" spawn-darwin-finish" s" label label --" TRUST
 : BDBASEFETCH ( -- ) 9 DBASE 0 ADDI,  A G-PUSH ;  \ ( -- addr ) region base
 : BDATAFETCH ( -- ) 9 DATA 0 ADDI,  A G-PUSH ;   \ ( -- addr ) live DATA base
 : BCHECKFETCH ( -- ) 9 DATA HOOK-CELL LDR,  A G-PUSH ;  \ ( -- xt ) live checker hook — getter for set-check ([x20/DATA + HOOK-CELL])
+: BTOPCHECKFETCH ( -- ) 9 DATA TOP-HOOK-CELL LDR,  A G-PUSH ;  \ ( -- xt ) live top-row hook — getter for set-top-check ([x20/DATA + TOP-HOOK-CELL])
 
 : B-TASK-LIVE-GUARD ( -- )
    LBL {: ok:label :}
@@ -1943,6 +1946,29 @@ s" linux-stat-fix" s" n --" TRUST
    msg LBL,  s" set-check: invalid checker xt" BYTES,
    done LBL, ;
 
+\ set-top-check ( xt -- ): install the top-row token hook (dot
+\ habu-typed-top-engine-2b2e88aa, docs/typed-top-level.md §2.1), fail-closed
+\ at install with exactly BSETCHECK's window: 0 uninstalls (tier 0, today's
+\ dispatch byte for byte); a non-zero argument must be a live JIT code entry,
+\ DBASE <= xt < CP, or the install dies with a named rc-70 diagnostic instead
+\ of the dispatch BLRing into garbage at the next token. The cell is a
+\ PROT-GUARD band (layout.f TOP-HOOK-CELL), so this direct STR is the only
+\ post-seal writer — mirroring how BSETCHECK updates the sealed HOOK-CELL.
+: BSETTOPCHECK ( -- )
+   LBL LBL LBL LBL {: bad:label ok:label done:label msg:label :}
+   A G-POP                               \ x9 = candidate xt
+   9 ok CBZ,                             \ 0 -> hook off, install as-is
+      9 DBASE CMP,  C-CC bad BCOND,      \ xt < DBASE (unsigned) -> reject
+      9 CP CMP,     C-CS bad BCOND,      \ xt >= CP (unsigned) -> reject
+   ok LBL,
+      A DATA TOP-HOOK-CELL STR,
+      done B,
+   bad LBL,
+      0 2 MOVZ,  1 msg ADR,  2 38 MOVZ,  NR-WRITE SYS,
+      0 70 MOVZ,  NR-EXIT-GROUP SYS,
+   msg LBL,  s" set-top-check: invalid top-row hook xt" BYTES,
+   done LBL, ;
+
 \ TFAM 2b-iii: capture the seal-time dictionary-truncation watermark. Called from
 \ SEAL-CAPTURE source tokens - the xref.f baseline plus the cold-prefix
 \ assembler's token at the true engine-prefix end (habu2.f
@@ -2168,7 +2194,8 @@ s" linux-stat-fix" s" n --" TRUST
    s" catch" ['] BCATCH 1 GDEREF-F   s" throw" ['] BTHROW FPRIM-L
    s" wordlist" ['] BWORDLIST FPRIM-L   s" get-current" ['] BGETCUR FPRIM-L
    s" set-current" ['] BSETCUR FPRIM-L  s" search-wl" ['] BSWL 3 GDEREF-L
-   s" set-check" ['] BSETCHECK 1 GDEREF-L   s" check@" ['] BCHECKFETCH FPRIM-L ;
+   s" set-check" ['] BSETCHECK 1 GDEREF-L   s" check@" ['] BCHECKFETCH FPRIM-L
+   s" set-top-check" ['] BSETTOPCHECK 1 GDEREF-L   s" top-check@" ['] BTOPCHECKFETCH FPRIM-L ;
 
 : EMIT-PRIMS ( -- )
    EMIT-ARITH-PRIMS  EMIT-COMPARE-PRIMS  EMIT-STACK-PRIMS
