@@ -1,6 +1,6 @@
 ---
 title: Habu-native kernel benchmark and profile workflow
-status: active
+status: open
 priority: 1
 issue-type: task
 created-at: "\"2026-07-01T18:24:40.268057+02:00\""
@@ -37,3 +37,18 @@ Checkpoint 2026-07-01 genericization:
 
 Remaining: make each M9/GEMM/attention optimization carry its own profile row
 and keep perf-regression gating dotted there.
+
+## Parked 2026-07-13 (session limit, BLOCK on review)
+Worker (kbench) committed bed31988 in .jj-ws/fable-kbench: perf-row registry
+(tools/ptx/perf-rows.tsv + perf-registry.f), perf-compare.f + perf-regress.f,
+kernel-perf-lint{,-core,-test}.f, wired into TEST:SUITE ptx-toolchain.
+Destruction review verdict BLOCK: the new tests are wired only into the SPAWNED
+slice, not the inprocess duplicate list GSI-LINT-LIBS-PTX-TOOL
+(test/gate-stdlib-inline-lib.f), so test/run.f never runs them (orphan-suite
+class). Plus cheap correctness fixes: ROW-CELL bounds-checks capacity not row
+count; DATE-OK? accepts 2026-99-99; bad TSV row fails as bare -7300 with no line
+context; dead PERF:LINE@. Fix round dispatched then died at the session limit
+with nothing committed. DO NOT MERGE as-is. Resume: add the 7 entries to
+GSI-LINT-LIBS-PTX-TOOL + the correctness fixes, rerun test/run.f. Claim released.
+Advisories (dot separately): hunk-aware diff parsing, waiver ratchet, watch-set
+extension for lib/ptx/tile*.f/opt*.f/ir.f.
