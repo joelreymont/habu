@@ -3865,3 +3865,12 @@ unchanged (148855). Keys for milestone 2:
   to create a task titled `dep`, leaving a stray tracker file. Use only the
   documented dot commands and run dependency validation through the repository's
   Habu-native `tools/dot-dep-lint.f`.
+- **Do not shrink a semantic capacity around checker overcounting.** A W34
+  PRODUCT and a repeated W12 input both exceeded the 255-cell minimum-input
+  field even though their physical minima were 34 and 24. Reduce and fix
+  `ROW-CELLS`/effect recording; a smaller effect row would only hide the
+  compiler defect and make composition arbitrarily incomplete.
+- **Structural ADTs are untrusted until a validator establishes semantics.** A
+  public PRODUCT constructor proves layout and field roles, not mask, ordering,
+  bound, or cache-legality invariants. Validate every parser, artifact,
+  persistence, FFI, and registry ingress before any permissive decision.
