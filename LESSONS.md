@@ -4049,3 +4049,7 @@ unchanged (148855). Keys for milestone 2:
 - **Pre-checker layout assertions need an owner that survives the cutover.**
   Keep `CORE-LAYOUT-RC` with earliest-loaded `CELL`; schema and family layout
   checks must not retain a dependency on the structure definer being removed.
+- **Replay gates need one exact candidate at both execution seams.** A parent
+  run from a fresh candidate while spawned fixtures call a stale workspace
+  `bin/hb` changes the engine-key component and creates false cache misses;
+  install the exact candidate copy before running persistence/replay suites.
