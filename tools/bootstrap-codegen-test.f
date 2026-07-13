@@ -261,6 +261,66 @@ variable BCG-LEN
    s" BOOT-HIDE-DICT-FROM-EARLIEST" BCG-MUST-HAVE
    s" T-CON" BCG-MUST-LACK ;
 
+\ --- earliest-marker hide behavior ---
+\ tools/bootstrap.sh's BOOT-* hide prelude mirrors src/habu/hide.f's BFR-*
+\ words, so the native mirror is the executable spec and is driven directly
+\ below; no shell is spawned (that would add host-glue surface), so the script
+\ body itself stays pinned by the substring assertions above. hide.f is baked
+\ into the engine prelude and truncated away after use, so `require` would be
+\ skipped as already provided; include reloads the BFR-* words here.
+include src/habu/hide.f
+
+variable BCGH-MID                            \ ndict watermark between the duplicate fixture records
+
+package BCGH-EARLY
+public
+: BCGH-DUP-MARK ( -- ) ;
+;package
+
+ndict@ BCGH-MID !
+
+package BCGH-LATE
+public
+: BCGH-DUP-MARK ( -- ) ;
+;package
+
+: BCGH-FIND ( ptr u8 n -- n )
+   BFR-FIND-FIRST-INDEX ;
+
+: BCGH-IMK ( -- n )
+   s" IMK-NDICT0" BCGH-FIND ;
+
+: BCGH-SEQ ( -- n )
+   s" SEQ" BCGH-FIND ;
+
+\ The production markers exist in the live dictionary with IMK-NDICT0 (util.f's
+\ first record) earlier than SEQ; the hide index must pick the earlier record
+\ in either argument order.
+: BCG-TEST-HIDE-EARLIEST-MARKER ( -- )
+   BCGH-IMK 0 >= TTRUE
+   BCGH-SEQ 0 >= TTRUE
+   BCGH-IMK BCGH-SEQ < TTRUE
+   s" IMK-NDICT0" s" SEQ" BFR-MARKER-INDEX BCGH-IMK T=
+   s" SEQ" s" IMK-NDICT0" BFR-MARKER-INDEX BCGH-IMK T= ;
+
+\ Earliest-hide depends on FIND-FIRST returning the FIRST record of a name:
+\ the duplicate fixture record defined before the BCGH-MID watermark must win,
+\ and the match must fold case like the shell's BOOT-XREF-STR=CI.
+: BCG-TEST-HIDE-FIRST-RECORD ( -- )
+   s" BCGH-DUP-MARK" BCGH-FIND 0 >= TTRUE
+   s" BCGH-DUP-MARK" BCGH-FIND BCGH-MID @ < TTRUE
+   s" bcgh-dup-mark" BCGH-FIND s" BCGH-DUP-MARK" BCGH-FIND T= ;
+
+\ One marker missing falls back to the found one; both missing is asserted at
+\ the component level (FIND -> NOT-FOUND, MIN-FOUND keeps NOT-FOUND) because
+\ BFR-MARKER-INDEX's both-missing path is a process exit (die 76) by design.
+: BCG-TEST-HIDE-MISSING-FALLBACK ( -- )
+   s" IMK-NDICT0" s" BCGH-ABSENT-MARKER" BFR-MARKER-INDEX BCGH-IMK T=
+   s" BCGH-ABSENT-MARKER" s" IMK-NDICT0" BFR-MARKER-INDEX BCGH-IMK T=
+   s" BCGH-ABSENT-MARKER" BCGH-FIND BFR-NOT-FOUND T=
+   BFR-NOT-FOUND BFR-NOT-FOUND BFR-MIN-FOUND BFR-NOT-FOUND T=
+   5 BFR-REQUIRE-INDEX 5 T= ;
+
 : BCG-TEST-BOOTSTRAP-SMALL-BIN ( -- )
    s" tools/bootstrap.sh" BCG-LOAD
    s" hb-new" BCG-MUST-LACK
@@ -287,6 +347,9 @@ variable BCG-LEN
    BCG-TEST-PUBLISH-HOOK-SPLIT
    BCG-TEST-BOOTSTRAP-LOCAL-SHADOW
    BCG-TEST-BOOTSTRAP-HIDE-PRELUDE
+   BCG-TEST-HIDE-EARLIEST-MARKER
+   BCG-TEST-HIDE-FIRST-RECORD
+   BCG-TEST-HIDE-MISSING-FALLBACK
    BCG-TEST-BOOTSTRAP-SMALL-BIN
    T-REPORT
    s" bootstrap-codegen-test: ok" type cr ;
