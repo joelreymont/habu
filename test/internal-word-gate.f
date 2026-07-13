@@ -32,6 +32,7 @@ require lib/process-env.f
 2048 constant IWG-CAP
 10000 constant IWG-TIMEOUT-MS
 70 constant IWG-REJECT-RC           \ interpret-level reject exit (RC-REJECT)
+67 constant IWG-THROW-RC            \ engine uncaught-throw boundary exit
 
 variable IWG-ROOT-U
 variable IWG-CHILD-U
@@ -240,6 +241,66 @@ create IWG-EMPTY 1 allot            \ zero-length stdin
    s" PRODUCT iwgpr 0 FIELD x n ;PRODUCT" SB-APPEND IWG-LF
    SB$ ;
 
+\ The roles.f nominal definers are the same hazard class as the openers but
+\ admitted via certified usigs, not PRIM: axioms (dot
+\ habu-checker-deftype-deflinear-8e9d1dc5): declare + use each at top level.
+
+: IWG-ROLES-TOP-FORGE$ ( -- ptr u8 n )   \ DEFTYPE/DEFLINEAR/VALUE-RECORD at top level
+   SB-RESET
+   s" DEFTYPE iwgid" SB-APPEND IWG-LF
+   s" : IWG-ID-RT ( n -- n ) >iwgid iwgid>N ;" SB-APPEND IWG-LF
+   s" 7 IWG-ID-RT . cr" SB-APPEND IWG-LF
+   s" DEFLINEAR iwgown" SB-APPEND IWG-LF
+   s" : IWG-OWN-PASS ( iwgown -- iwgown ) ;" SB-APPEND IWG-LF
+   s" VALUE-RECORD iwgpt x n y n END-VALUE-RECORD" SB-APPEND IWG-LF
+   s" : IWG-PT-KEEP ( iwgpt -- iwgpt ) ;" SB-APPEND IWG-LF
+   SB$ ;
+
+\ EXPORT must not mint a qualified alias for an UNSAFE-TOK? name: the alias
+\ spelling (PKG:NAME) would escape the name-keyed body reject (dot
+\ habu-checker-unsafety-must-d12bc784 part a). Pinned like export-package.f's
+\ E-EXPORT-PRIM case: uncaught named code E-EXPORT-UNSAFE 7120 -> rc 67.
+
+: IWG-EXPORT-FORGE$ ( ptr u8 n -- ptr u8 n )   \ "package .. EXPORT <name> ;package"
+   SB-RESET
+   s" package IWGXP" SB-APPEND IWG-LF
+   s" public" SB-APPEND IWG-LF
+   s" EXPORT " SB-APPEND SB-APPEND IWG-LF
+   s" ;package" SB-APPEND IWG-LF
+   SB$ ;
+
+: IWG-ASSERT-EXPORT-UNSAFE ( -- )        \ child threw E-EXPORT-UNSAFE (code named)
+   IWG-EXITED @ TTRUE
+   IWG-RC @ IWG-THROW-RC T=
+   IWG-ERR$ s" 7120" CONTAINS? TTRUE ;
+
+: IWG-NEG-EXPORT ( ptr u8 n -- )         \ EXPORT of an unsafe name rejects
+   IWG-EXPORT-FORGE$ IWG-RUN-LOAD
+   IWG-ASSERT-EXPORT-UNSAFE ;
+
+: IWG-EXPORT-BODY-FORGE$ ( -- ptr u8 n ) \ alias-minting line is the reject; the body never checks
+   SB-RESET
+   s" package IWGXP" SB-APPEND IWG-LF
+   s" public" SB-APPEND IWG-LF
+   s" EXPORT DEFTYPE" SB-APPEND IWG-LF
+   s" ;package" SB-APPEND IWG-LF
+   s" : IWG-XBAD ( -- ) IWGXP:DEFTYPE ;" SB-APPEND IWG-LF
+   SB$ ;
+
+: IWG-EXPORT-OK-FORGE$ ( -- ptr u8 n )   \ EXPORT of a normal checked word still works
+   SB-RESET
+   s" package IWGXA" SB-APPEND IWG-LF
+   s" public" SB-APPEND IWG-LF
+   s" : IWGW ( -- n ) 3 ;" SB-APPEND IWG-LF
+   s" ;package" SB-APPEND IWG-LF
+   s" package IWGXB" SB-APPEND IWG-LF
+   s" public" SB-APPEND IWG-LF
+   s" EXPORT IWGXA:IWGW" SB-APPEND IWG-LF
+   s" ;package" SB-APPEND IWG-LF
+   s" : IWG-XOK ( -- n ) IWGXB:IWGW ;" SB-APPEND IWG-LF
+   s" IWG-XOK . cr" SB-APPEND IWG-LF
+   SB$ ;
+
 : IWG-OPENER-BODY-FORGE$ ( ptr u8 n -- ptr u8 n )   \ ": IWG-OBAD ( -- ) <opener> ;"
    SB-RESET
    s" : IWG-OBAD ( -- ) " SB-APPEND
@@ -268,7 +329,28 @@ create IWG-EMPTY 1 allot            \ zero-length stdin
    s" ENUM in a checked body is rejected unsafe" T-LABEL
    s" ENUM" IWG-NEG-OPENER
    s" PRODUCT in a checked body is rejected unsafe" T-LABEL
-   s" PRODUCT" IWG-NEG-OPENER ;
+   s" PRODUCT" IWG-NEG-OPENER
+   s" DEFTYPE/DEFLINEAR/VALUE-RECORD still work at top level" T-LABEL
+   IWG-ROLES-TOP-FORGE$ IWG-RUN-LOAD IWG-ASSERT-OK
+   s" DEFTYPE in a checked body is rejected unsafe" T-LABEL
+   s" DEFTYPE" IWG-NEG-OPENER
+   s" DEFLINEAR in a checked body is rejected unsafe" T-LABEL
+   s" DEFLINEAR" IWG-NEG-OPENER
+   s" VALUE-RECORD in a checked body is rejected unsafe" T-LABEL
+   s" VALUE-RECORD" IWG-NEG-OPENER
+   s" EXPORT of a checked word still works" T-LABEL
+   IWG-EXPORT-OK-FORGE$ IWG-RUN-LOAD IWG-ASSERT-OK
+   s" EXPORT DEFTYPE rejects E-EXPORT-UNSAFE" T-LABEL
+   s" DEFTYPE" IWG-NEG-EXPORT
+   s" EXPORT DEFLINEAR rejects E-EXPORT-UNSAFE" T-LABEL
+   s" DEFLINEAR" IWG-NEG-EXPORT
+   s" EXPORT VALUE-RECORD rejects E-EXPORT-UNSAFE" T-LABEL
+   s" VALUE-RECORD" IWG-NEG-EXPORT
+   s" EXPORT SUMTYPE rejects E-EXPORT-UNSAFE" T-LABEL
+   s" SUMTYPE" IWG-NEG-EXPORT
+   s" qualified unsafe alias for a body cannot be minted" T-LABEL
+   IWG-EXPORT-BODY-FORGE$ IWG-RUN-LOAD
+   IWG-ASSERT-EXPORT-UNSAFE ;
 
 : IWG-POSITIVES ( -- )
    s" undefined word still reports E-UNDEFINED" T-LABEL

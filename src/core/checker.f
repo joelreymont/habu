@@ -5123,6 +5123,35 @@ variable CURSYM
    a u s" throw" CORE-STR= IF RES-TRUE EXIT THEN
    CTL-FLAGS-CUR CTL-THROW and 0 <> ;
 
+\ Tokens whose execution from a checked body is unsound whatever their
+\ admitting row says: the type-DSL block openers (sumtype.f, PRIM: axioms)
+\ and the roles.f nominal definers (checked words with certified ( -- )
+\ usigs) parse the live input stream and mutate the type registry (or throw
+\ at EOF) — side effects no effect row expresses (dots
+\ habu-checker-in-body-af7cf855, habu-checker-deftype-deflinear-8e9d1dc5).
+\ DO-TOK1 consults this set before DO-TOK's usig/prim lookup, so BARE
+\ spellings reject in bodies via both admission paths; qualified spellings
+\ cannot arise because EXPORT refuses to mint an alias for these names
+\ (E-EXPORT-UNSAFE below). CI compares: DO-TOK1 passes folded tokens,
+\ EXPORT-RESOLVE passes raw source tails.
+: UNSAFE-TOK? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   a u s" evaluate" CORE-STR=CI IF RES-TRUE EXIT THEN
+   a u s" trust" CORE-STR=CI IF RES-TRUE EXIT THEN
+   a u s" layout-buffer" CORE-STR=CI IF RES-TRUE EXIT THEN
+   a u s" typefamily" CORE-STR=CI IF RES-TRUE EXIT THEN
+   a u s" sumtype" CORE-STR=CI IF RES-TRUE EXIT THEN
+   a u s" enum" CORE-STR=CI IF RES-TRUE EXIT THEN
+   a u s" product" CORE-STR=CI IF RES-TRUE EXIT THEN
+   a u s" deftype" CORE-STR=CI IF RES-TRUE EXIT THEN
+   a u s" deflinear" CORE-STR=CI IF RES-TRUE EXIT THEN
+   a u s" value-record" CORE-STR=CI IF RES-TRUE EXIT THEN
+   a u s" set-check" CORE-STR=CI IF RES-TRUE EXIT THEN
+   a u s" postpone" CORE-STR=CI IF RES-TRUE EXIT THEN
+   a u s" compile," CORE-STR=CI IF RES-TRUE EXIT THEN
+   a u s" immediate" CORE-STR=CI IF RES-TRUE EXIT THEN
+   a u s" [" CORE-STR=CI IF RES-TRUE EXIT THEN
+   a u s" ]" CORE-STR=CI ;
+
 \ --- EXPORT: alias an existing word's checked effect under its own tail -----
 \ (dot habu-compiler-pkg-re-688212c1). `EXPORT NAME` in an open package section
 \ publishes NAME's effect under NAME's tail in the CURRENT package scope: one
@@ -5139,6 +5168,11 @@ variable CURSYM
 \   overloaded; copying the first row would silently narrow the effect);
 \ - E-EXPORT-UNDEFINED: source has no checked signature (undefined, private in
 \   a closed package — qualified lookup is public-only — or uncertified);
+\ - E-EXPORT-UNSAFE: source tail is an UNSAFE-TOK? name (openers, roles.f
+\   definers, trust/evaluate class): the alias would give the unsafe word a
+\   qualified spelling that escapes the name-keyed body reject (short-term
+\   fail-closed leg of dot habu-checker-unsafety-must-d12bc784; the sym-set
+\   endpoint stays dotted);
 \ - duplicate tail in the current section (CHECKER-CERT-DUP? -> $4E).
 \ INTO a generated ctor package is structurally unreachable: CHECKER-PACKAGE
 \ rejects opening one (E-CTOR-PROTECTED), so the current package can never be
@@ -5148,6 +5182,7 @@ variable CURSYM
 7113 constant E-EXPORT-UNDEFINED
 7114 constant E-EXPORT-SEALED
 7115 constant E-EXPORT-PRIM
+7120 constant E-EXPORT-UNSAFE    \ 7116-7119 = sumtype.f E-TDECL block
 
 \ sealed system-package names: checker mirror of the native RESTAB table
 \ (src/habu/habu2.f) — foundational and stable, like CK-SEAL-LATCH-OFF.
@@ -5156,17 +5191,18 @@ variable CURSYM
    a u CHECKER-QUALIFIED? 0= IF EXIT THEN
    CHECKER-QPKG$ CHECKER-SEALED-PKG? IF E-EXPORT-SEALED throw THEN ;
 
+: EXPORT-TAIL$ ( ptr u8 n -- ptr u8 n ) {: a:ptr u:n :}
+   a u CHECKER-QUALIFIED? IF CHECKER-QTAIL$ EXIT THEN
+   a u ;
+
 \ PRIM-FIRST-IDX, not PRIM-FIRST-SYM: the latter returns an effect OFFSET,
 \ and the first PES row legitimately lives at USIGS offset 0.
 : EXPORT-RESOLVE ( ptr u8 n -- ) {: a:ptr u:n :}
+   a u EXPORT-TAIL$ UNSAFE-TOK? IF E-EXPORT-UNSAFE throw THEN
    a u CHECKER-FIND-ACTIVE-SIG
    FEP-HIT? IF EXIT THEN
    a u CHECKER-FIND-ACTIVE-SYM PRIM-FIRST-IDX 0 <> IF E-EXPORT-PRIM throw THEN
    E-EXPORT-UNDEFINED throw ;
-
-: EXPORT-TAIL$ ( ptr u8 n -- ptr u8 n ) {: a:ptr u:n :}
-   a u CHECKER-QUALIFIED? IF CHECKER-QTAIL$ EXIT THEN
-   a u ;
 
 \ EXPORT-EFF-INST ( ptr a -- n n n n bool ) : instantiate the source record's
 \ rows into fresh working terms (din dout rin rout hasr, E-ADD-EFFECT intake).
@@ -6960,25 +6996,7 @@ s" <input>" DIAG-FILE!
    na nu TOKFOLD drop
    sa su  TKF TKFU @  CHECKER-USIG-ADD ;
 
-\ The type-DSL block openers (sumtype.f) are top-level-interpret-only: their
-\ axiom rows say ( -- ), but executing one from a compiled body parses the
-\ live input stream and mutates the type registry (or throws at EOF) — side
-\ effects no effect row expresses (dot habu-checker-in-body-af7cf855).
-: UNSAFE-TOK? {: a u :}
-   a u s" evaluate" CORE-STR= IF RES-TRUE EXIT THEN
-   a u s" trust" CORE-STR= IF RES-TRUE EXIT THEN
-   a u s" layout-buffer" CORE-STR= IF RES-TRUE EXIT THEN
-   a u s" typefamily" CORE-STR= IF RES-TRUE EXIT THEN
-   a u s" sumtype" CORE-STR= IF RES-TRUE EXIT THEN
-   a u s" enum" CORE-STR= IF RES-TRUE EXIT THEN
-   a u s" product" CORE-STR= IF RES-TRUE EXIT THEN
-   a u s" set-check" CORE-STR= IF RES-TRUE EXIT THEN
-   a u s" postpone" CORE-STR= IF RES-TRUE EXIT THEN
-   a u s" compile," CORE-STR= IF RES-TRUE EXIT THEN
-   a u s" immediate" CORE-STR= IF RES-TRUE EXIT THEN
-   a u s" [" CORE-STR= IF RES-TRUE EXIT THEN
-   a u s" ]" CORE-STR= ;
-
+\ UNSAFE-TOK? lives above the EXPORT block (it also gates alias minting there).
 : REJECT-UNSAFE ( -- )
    -1 UNSAFE !  0 OK !  -1 FAILSET ! ;
 

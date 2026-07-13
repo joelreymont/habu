@@ -73,6 +73,20 @@ TRUSTED: DTC-EVAL ( -- ) DTC-BUF DTC-U @ evaluate ;
    DTC-BUILD-OUT
    DTC-EVAL ;
 
+\ DEFTYPE / DEFLINEAR / VALUE-RECORD are top-level-interpret-only, like the
+\ sumtype.f block openers: executing one parses the live input stream and
+\ mutates the type registry (DEFTYPE also evaluates generated TRUSTED: source
+\ via DTC-EVAL) — side effects their ( -- ) rows do not express. Unlike the
+\ openers (PRIM: axioms) these are checked words, so certifying this file
+\ records a usig per definer. UNSAFE-TOK? rejects the BARE tokens inside
+\ checked bodies BEFORE the usig is consulted (DO-TOK1 order), and EXPORT
+\ refuses to mint a qualified alias for these names (E-EXPORT-UNSAFE), so no
+\ spelling reaches the usig from a checked body. The usig therefore adds no
+\ checked-code capability — it only keeps the definers checker-known so the
+\ seal-time internal-word marking pass (src/core/internal-mark.f) leaves
+\ them executable at top level (LAYOUT-BUFFER parity, dots
+\ habu-checker-deftype-deflinear-8e9d1dc5,
+\ habu-checker-unsafety-must-d12bc784).
 : DEFTYPE ( -- )
    parse-name dup 0= IF s" deftype: missing name" 70 die THEN
    2dup CHECKER-DEFTYPE
