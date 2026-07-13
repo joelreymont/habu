@@ -298,7 +298,8 @@ that source is explicitly certified; they are not stale-checked by the default
 | USIGS-CELL-AT | `n -- ptr a` | Refines a cell-aligned offset inside the byte-addressed transient signature store so checker metadata can write cell headers (e.g. the USIGS-CLEAR head cell) while byte-copy paths keep `ptr u8`. | `tools/check-test.f`, `tools/build-fixpoint-test.f`, `test/run.f` | src/core/checker.f | 2026-07-04 |
 | HIDX-MEM-NULL | `-- ptr a` | The unallocated symbol-index cache sentinel is a null pointer; the checker cannot type a literal `0` as `ptr a`, so this one-line refinement supplies the typed null that `HIDX-MEM-CLEAR` stores and `HIDX-MEM-READY?` tests. | `tools/check-test.f`, `tools/build-fixpoint-test.f`, `test/run.f` | src/core/checker.f | 2026-07-04 |
 | HIDX-RC>PTR | `n -- ptr n` | Thin identity refinement from a checked, nonnegative anonymous `mmap` result into the checker's symbol-index cell table; syscall-result pointer typing is outside checker inference. | `tools/check-test.f`, `tools/build-fixpoint-test.f`, `test/run.f` | src/core/checker.f | 2026-07-03 |
-| CELL | `-- n` | Structure layouts load before the checker so checker records can use them; this row publishes the already-defined cell-size constant to checked users. | `test/gate-dictionary.f`, `lib/vector-test.f`, `test/run.f` | src/core/structures-effects.f | 2026-06-30 |
+| CELL | `-- n` | The target cell-width source loads before the checker so pre-checker records can use it; this row publishes the already-defined constant to checked users. | `tools/bootstrap-codegen-test.f`, `test/run.f` | src/core/cell-effects.f | 2026-07-13 |
+| CELL-WIDTH-CHECK | `--` | The target-width assertion must execute during the pre-checker prefix; its post-hook row lets the focused checked bootstrap regression execute the identical body again. | `tools/bootstrap-codegen-test.f`, `test/run.f` | src/core/cell-effects.f | 2026-07-13 |
 | STRUCT-BYTE+ | `ptr a n -- ptr u8` | `CFIELD:` needs to refine a structure base plus byte offset into a byte pointer; generic `+` can produce only `ptr a`, and `BYTE+` requires an existing byte pointer. | `test/gate-dictionary.f`, `test/run.f` | src/core/structures-effects.f | 2026-06-30 |
 | BEGIN-STRUCTURE | `-- ptr a n` | Structure defining words use `CREATE`/`DOES>` and parse definition names, so the checker needs declared effects for the top-level layout DSL. | `test/gate-dictionary.f`, `lib/vector-test.f`, `test/run.f` | src/core/structures-effects.f | 2026-06-30 |
 | +FIELD | `ptr a n n -- ptr a n` | Field definers consume and return the in-progress layout cursor while creating accessor words through `CREATE`/`DOES>`. | `test/gate-dictionary.f`, `lib/vector-test.f`, `test/run.f` | src/core/structures-effects.f | 2026-06-30 |
@@ -811,8 +812,9 @@ and reassigned from the `habu-audit-trusted-inventory-3a950436` placeholder to
 each site's real capability/discharge owner: `src/core/roles.f` (all 34
 nominal-cast axioms) and `test/prop-test-core.f` (test-metaprog fixtures) carry
 per-site rows, and the whole `prim-axiom` class — the nominal-cast axioms plus
-the engine-primitive TRUST rows in `src/core/structures-effects.f`,
-`tools/check-core.f`, and `src/core/include.f` — is now owned by its real owner
+the engine-primitive TRUST rows in `src/core/cell-effects.f`,
+`src/core/structures-effects.f`, `tools/check-core.f`, and `src/core/include.f`
+— is now owned by its real owner
 `habu-primitive-effect-axiom-1119f176` (the audited axiom table).
 `test/prop-test-core.f` keeps a file-level row because its `0 set-check`
 boundaries have no nameable key. The self-contained `stdlib-boundary` files are
@@ -1156,7 +1158,8 @@ src/core/roles.f:>IMG prim-axiom habu-primitive-effect-axiom-1119f176
 src/core/roles.f:IMG>N prim-axiom habu-primitive-effect-axiom-1119f176
 src/core/roles.f:>SNAP prim-axiom habu-primitive-effect-axiom-1119f176
 src/core/roles.f:SNAP>N prim-axiom habu-primitive-effect-axiom-1119f176
-src/core/structures-effects.f:CELL prim-axiom habu-primitive-effect-axiom-1119f176
+src/core/cell-effects.f:CELL prim-axiom habu-primitive-effect-axiom-1119f176
+src/core/cell-effects.f:CELL-WIDTH-CHECK prim-axiom habu-primitive-effect-axiom-1119f176
 src/core/structures-effects.f:STRUCT-BYTE+ prim-axiom habu-primitive-effect-axiom-1119f176
 src/core/structures-effects.f:BEGIN-STRUCTURE prim-axiom habu-primitive-effect-axiom-1119f176
 src/core/structures-effects.f:+FIELD prim-axiom habu-primitive-effect-axiom-1119f176

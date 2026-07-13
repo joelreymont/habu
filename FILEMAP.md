@@ -42,6 +42,8 @@ points stay listed.
 ## Core Checker
 
 - `src/core/util.f` — shared subset helpers.
+- `src/core/cell.f` — target cell-width constant and load-time native/recovery invariant.
+- `src/core/cell-effects.f` — post-hook checked effects for target cell-width words.
 - `src/core/bytes.f` — core byte-buffer helpers (`BYTE+`, `BYTE-COPY-LEN`,
   `BYTE-COPY`) loaded before stdlib/tool sources so low-level modules do not
   depend on `lib/string.f` order.

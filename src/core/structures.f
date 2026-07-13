@@ -1,6 +1,5 @@
 \ structures.f - checked structure and field defining words.
 
-$8 constant CELL
 $4C constant STRUCT-RC
 
 variable STRUCT-ACTIVE
