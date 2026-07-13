@@ -77,6 +77,96 @@ explicit typed artifacts and pass contracts.
 14. V2 does not normalize missing checker capability with raw n conversions,
     unchecked tables, or local TRUSTED boundaries.
 
+### 3.1 Unified Type Declaration Hard Cutover
+
+Model CAD V2 has exactly two public type declaration blocks:
+
+```forth
+STRUCTURE name arity [ POLICY policy ] [ DERIVE feature ... ]
+  FIELD field-name type
+;STRUCTURE
+
+ENUM name arity [ POLICY policy ] [ DERIVE feature ... ]
+  VARIANT variant-name
+    FIELD field-name type
+  ;VARIANT
+;ENUM
+```
+
+The compact `ENUM name arity variant ... ;ENUM` form is legal only when every
+variant is payloadless. The first variant selects compact or block mode for the
+whole declaration; the modes cannot mix. Type, field, and variant tails are
+lowercase. Project packages and generated words remain uppercase. Both arities
+are mandatory.
+
+`STRUCTURE` unifies opaque cell families, pointer-layout records, value
+records, and products. Zero fields mean an opaque one-cell family with no
+generic raw constructor. One or more fields mean a nominal product with one
+checker-owned schema driving stack width, storage layout, typed address
+projection, reflection, codecs, snapshots, and AOT metadata. Public
+field-bearing structures generate a closed package containing checked
+`MAKE`/`UNMAKE` and typed field operations. Field-address words use exactly
+`FAMILY:FIELD ( ptr family<a,...> -- ptr field-type )`.
+
+`ENUM` unifies payloadless enums and payload-bearing sums. Each variant payload
+uses the same named `FIELD` schema as `STRUCTURE`; the compiler selects the
+payloadless enum kind only when every variant has no fields. Public enums
+generate one checked constructor per variant in a closed package. `MATCH`
+remains the checked eliminator. Constructor inputs and `MATCH` payload bindings
+use field declaration order, deepest first.
+
+Both blocks write one field registry keyed by `(family-id,
+optional-variant-id, field-tail)`. A row owns slot, schema root, width,
+alignment, byte offset, visibility, and source span. Structure fields use no
+variant id; enum payload fields use their variant id. Field-name reflection,
+constructors, `UNMAKE`, `MATCH`, codecs, snapshots, and AOT all consume those
+same ordered rows. Existing constructor-package spelling is preserved through
+the current injective uppercase escape/join algorithm (`point` -> `POINT`,
+package `PX-PROBE` plus `pxevid` -> `PX--PROBE-PXEVID`).
+
+The raw-structure bootstrap cycle is closed without a second definer. The
+native and recovery compilers recognize the same `STRUCTURE`/`FIELD` tokens
+from cold start. Before the type registry loads, the parser accepts only closed
+primitive fields required by core boot records, writes canonical ordered
+descriptors, and emits the final `FAMILY:FIELD` accessors. Registry startup
+transactionally adopts and revalidates those descriptors into the one field
+registry, then seals and erases the transient arena. It is
+not snapshotted, AOT-persisted, or callable as a registry. Native and Gforth
+recovery compilers emit the same descriptor format. No bootstrap-only source
+spelling or raw public layout definer survives.
+
+This is a hard cutover. The implementation removes `TYPEFAMILY`, `PRODUCT`,
+`;PRODUCT`, `VALUE-RECORD`, `END-VALUE-RECORD`, `BEGIN-STRUCTURE`,
+`END-STRUCTURE`, `+FIELD`, `PTR-FIELD:`, `CFIELD:`, `SUMTYPE`, `;SUMTYPE`,
+`ENUM+`, and `ENUM4+`. They have no aliases, shims, desugaring path, or second
+registry. Error-only compiler tombstones report `E-REMOVED-TYPE-SYNTAX`; they
+cannot execute or mutate metadata. Mixed compact/block enums, anonymous variant
+payloads, legacy field words/closers inside new blocks, and missing arities
+reject at the exact token.
+
+The implementation dependency chain is:
+
+1. `habu-type-dsl-specify-db2bf883` — freeze grammar, census, and migration ownership.
+2. `habu-type-dsl-unify-b65d46c1` — one transaction and field/variant schema.
+3. `habu-type-dsl-implement-50f8dc15` — typed `STRUCTURE` and generated operations.
+4. `habu-type-dsl-implement-a762cfaf` — payload-aware `ENUM` and compact payloadless form.
+5. `habu-checker-certify-unified-5d56fe73` — certification, diagnostics, replay, and rollback.
+6. `habu-compiler-lower-unified-5f599080` — compiler capture, lowering, bootstrap, snapshot, and AOT parity.
+7. `habu-migration-core-records-77182600` and
+   `habu-migration-core-variants-af8e09b4` — core migration.
+8. `habu-migration-libs-to-4e798110`,
+   `habu-migration-tools-to-d4e8fcf8`,
+   `habu-migration-tests-and-51d00332`, and
+   `habu-migration-maki-models-c965e65d` — consumer migration.
+9. `habu-type-dsl-delete-8bd73b41` — delete every old definer, registry path,
+   generated operation, snapshot row, and AOT row.
+10. `habu-type-dsl-enforce-19a93c1a` — zero-occurrence lint and retired-token diagnostics.
+11. `habu-type-dsl-prove-93da83c4` — fixpoint, recovery, snapshot/AOT, full gate, and final census proof.
+
+No dependent V2 schema is complete while it uses a removed declaration. The
+exact baseline and file-to-owner routing live in
+`docs/census-type-dsl-cutover.md`.
+
 ## 4. Architecture
 
 ~~~text
@@ -247,7 +337,7 @@ Acceptance:
 
 Design decision:
 
-- use public arity-zero `TYPEFAMILY` declarations in package `CAD-KIND`, not
+- use public zero-field `STRUCTURE` declarations in package `CAD-KIND`, not
   `DEFTYPE` and not new checker tokens;
 - inside `CAD-KIND`, signatures use the unqualified lowercase family tail;
   outside it, signatures use the qualified form
@@ -277,7 +367,7 @@ Registry and transaction contract:
 - `CHECKER-SNAPSHOT-PREPARE` persists grown `TFAM` stores and rejects snapshots
   inside a live rollback frame;
 - native load, verify-source, check-core, and all-errors support replay all
-  recognize `TYPEFAMILY`, so a declaration has one source-replay meaning;
+  recognize `STRUCTURE`, so a declaration has one source-replay meaning;
 - derived products/sums refer to the same family ids; encoders render a kind
   only at the canonical wire boundary and decoders validate before refining.
 
@@ -1492,7 +1582,8 @@ value.
 
 ### Reused machinery (no parallel system)
 
-Everything below composes landed words; the probe fixture exercised each shape:
+Everything below describes the landed pre-cutover machinery the unified DSL
+must preserve; the cited spellings are migration sites, not V2 syntax:
 
 - arity-zero `TYPEFAMILY` package kinds: `CHECKER-DEFPRODUCT`/`TDECL-FAMILY`
   grammar in src/core/sumtype.f; landed pattern maki/cad-kinds.f:7-33
@@ -1530,8 +1621,8 @@ Everything below composes landed words; the probe fixture exercised each shape:
 
 ### Stage families
 
-One arity-zero `TYPEFAMILY` per (IR level, stage), declared in the stage
-owner's package — not one `stage` ENUM: distinct stages must be distinct
+One zero-field `STRUCTURE` per (IR level, stage), declared in the stage owner's
+package — not one `stage` enum value: distinct stages must be distinct
 TYPES so wrong order is a signature mismatch. The existing generic
 `CAD-KIND:stage` kind (maki/cad-kinds.f:31) remains for rendering/diagnostic
 data and is never an ordering authority. Parameterized nominal application
@@ -1549,19 +1640,19 @@ package CAND   (maki/backend/ptx) emitted-proof;           emitted
 package ART    (maki/evidence)    built-proof, promoted-proof; built, promoted
 ~~~
 
-Each staged value is a PRODUCT pairing the persistent identity with a
+Each staged value is a `STRUCTURE` pairing the persistent identity with a
 package-sealed proof token:
 
 ~~~forth
 package PLAN
 public
-TYPEFAMILY complete-proof 0
+STRUCTURE complete-proof 0 ;STRUCTURE
 
-PRODUCT complete 0
+STRUCTURE complete 0
    FIELD plan CAD-KIND:plan-id
    FIELD rev  CAD-KIND:rev-id
    FIELD tok  complete-proof
-;PRODUCT
+;STRUCTURE
 ~~~
 
 Sealing decision: the generated `PLAN-COMPLETE:MAKE` is public
@@ -1579,43 +1670,43 @@ R6 resource ownership.
 
 ### Artifact-indexed evidence families
 
-One PRODUCT per evidence class in package `EVID` (maki/evidence/), each
+One `STRUCTURE` per evidence class in package `EVID` (maki/evidence/), each
 carrying the exact artifact id plus a class-private proof token; the class is
 the FAMILY, not a tag value:
 
 ~~~forth
 package EVID
 public
-TYPEFAMILY certify-proof 0
-TYPEFAMILY golden-proof 0
-TYPEFAMILY gradcheck-proof 0
-TYPEFAMILY profile-proof 0
+STRUCTURE certify-proof 0 ;STRUCTURE
+STRUCTURE golden-proof 0 ;STRUCTURE
+STRUCTURE gradcheck-proof 0 ;STRUCTURE
+STRUCTURE profile-proof 0 ;STRUCTURE
 
-ENUM golden-leg DERIVE eq  host external device ;ENUM
-ENUM prec-class DERIVE eq  f32 tf32 ;ENUM
+ENUM golden-leg 0 DERIVE eq  host external device ;ENUM
+ENUM prec-class 0 DERIVE eq  f32 tf32 ;ENUM
 
-PRODUCT certified 0
+STRUCTURE certified 0
    FIELD art CAD-KIND:artifact-id
    FIELD tok certify-proof
-;PRODUCT
+;STRUCTURE
 
-PRODUCT golden 0
+STRUCTURE golden 0
    FIELD art  CAD-KIND:artifact-id
    FIELD leg  golden-leg
    FIELD prec prec-class
    FIELD tok  golden-proof
-;PRODUCT
+;STRUCTURE
 
-PRODUCT gradchecked 0
+STRUCTURE gradchecked 0
    FIELD art CAD-KIND:artifact-id
    FIELD tok gradcheck-proof
-;PRODUCT
+;STRUCTURE
 
-PRODUCT profiled 0
+STRUCTURE profiled 0
    FIELD art CAD-KIND:artifact-id
    FIELD us  n
    FIELD tok profile-proof
-;PRODUCT
+;STRUCTURE
 ~~~
 
 Consequences: probe 1's verdict/gate-id swap becomes unrepresentable (there is
@@ -1631,18 +1722,18 @@ Evidence presence is typed with per-class slot sums plus one bundle product
 product fields at arity 0, so the slots are flat sums):
 
 ~~~forth
-SUMTYPE certify-slot 0
-   VARIANT got certified ;VARIANT
+ENUM certify-slot 0
+   VARIANT got FIELD evidence certified ;VARIANT
    VARIANT absent ;VARIANT
-;SUMTYPE
+;ENUM
 \ golden-slot / gradcheck-slot / profile-slot identically
 
-PRODUCT bundle 0
+STRUCTURE bundle 0
    FIELD cert  certify-slot
    FIELD gold  golden-slot
    FIELD grad  gradcheck-slot
    FIELD prof  profile-slot
-;PRODUCT
+;STRUCTURE
 ~~~
 
 ### Promotion-policy products
@@ -1654,28 +1745,28 @@ policy's canonical schema identity and participates in the release key.
 ~~~forth
 package POLICY
 public
-TYPEFAMILY grant-proof 0
+STRUCTURE grant-proof 0 ;STRUCTURE
 
-ENUM req-class DERIVE eq
+ENUM req-class 0 DERIVE eq
    required-blocking          \ evidence must exist and carry this artifact
    required-when-supported    \ required unless a typed unsupported reason exists
    required-recorded          \ must exist; content never blocks (profile)
    informational              \ may be absent
 ;ENUM
 
-PRODUCT promote-policy 0
+STRUCTURE promote-policy 0
    FIELD cert req-class
    FIELD gold req-class
    FIELD grad req-class
    FIELD prof req-class
    FIELD pol  CAD-KIND:schema-id
-;PRODUCT
+;STRUCTURE
 
-PRODUCT granted 0
+STRUCTURE granted 0
    FIELD art CAD-KIND:artifact-id
    FIELD pol CAD-KIND:schema-id
    FIELD tok grant-proof
-;PRODUCT
+;STRUCTURE
 ~~~
 
 The V1 inference gate set (maki/cad.f:1019-1030) is exactly the default

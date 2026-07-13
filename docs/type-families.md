@@ -1,7 +1,7 @@
 # Habu Type Families and Algebraic Data Types
 
 **Proposed repository path:** `docs/type-families.md`  
-**Status:** design proposal  
+**Status:** normative hard-cutover design  
 **Primary goal:** implement generic, efficient, checked algebraic data types in Habu without turning `Result` into a one-off special case.
 
 ---
@@ -34,14 +34,18 @@ Use the generic term internally and the specific terms externally:
 | Enum | `enum-family` | `color` |
 | Capability / proof / evidence token | `evidence-family` | `aligned<ptr,t,align-16>` |
 
-Recommended public defining words:
+The sole public defining words are:
 
 ```forth
-TYPEFAMILY span 3
-PRODUCT pair 2 ... ;PRODUCT
-SUMTYPE result 2 ... ;SUMTYPE
-ENUM color ... ;ENUM
+STRUCTURE pair 2 ... ;STRUCTURE
+ENUM result 2 ... ;ENUM
 ```
+
+`STRUCTURE` covers ordinary cell families, pointer-layout records, and by-value
+products through one typed field schema. `ENUM` covers payloadless enums and
+payload-bearing sums; the compiler selects the payloadless representation when
+every variant has no fields. All prior declaration words are removed, not
+aliased.
 
 Recommended internal registry prefix:
 
@@ -84,7 +88,202 @@ So: **call the document “Type Families and Algebraic Data Types.”**
 
 ---
 
-## 2. Design position
+## 2. Normative hard-cutover grammar
+
+### 2.1 Lexical grammar
+
+```text
+structure-decl = STRUCTURE type-name arity header-clause* field* ;STRUCTURE
+enum-decl      = ENUM type-name arity header-clause*
+                 (variant-block+ | compact-variant+)
+                 ;ENUM
+
+header-clause  = POLICY policy-name
+               | DERIVE derive-name+
+
+field          = FIELD field-name type-expr
+
+variant-block  = VARIANT variant-name field* ;VARIANT
+compact-variant = variant-name
+```
+
+`type-name`, `field-name`, `variant-name`, and every family tail inside a
+`type-expr` are lowercase. Package qualifiers remain uppercase project package
+names. `arity` is mandatory for both declarations; arity parameters are the
+positional lowercase tokens `a`, `b`, and so on. Header clauses occur after the
+arity and before the first field or variant. A clause may occur at most once;
+`DERIVE` features are order-independent and duplicates reject.
+
+The compact `ENUM name arity v0 v1 ... ;ENUM` form is legal only when every
+variant is payloadless. The first token after the header selects compact or
+block mode for the whole declaration: bare variant tails and `VARIANT` blocks
+cannot mix. A block variant accepts only zero or more named `FIELD` clauses
+before `;VARIANT`; anonymous payload tokens are invalid.
+
+Examples:
+
+```forth
+STRUCTURE point 0
+  FIELD x n
+  FIELD y n
+;STRUCTURE
+
+ENUM color 0 red green blue ;ENUM
+
+ENUM message 0
+  VARIANT quit ;VARIANT
+  VARIANT move
+    FIELD x n
+    FIELD y n
+  ;VARIANT
+  VARIANT write
+    FIELD text ptr u8
+    FIELD len n
+  ;VARIANT
+  VARIANT change-color
+    FIELD red n
+    FIELD green n
+    FIELD blue n
+  ;VARIANT
+;ENUM
+```
+
+### 2.2 `STRUCTURE` semantics
+
+A structure is one nominal, single-shape type family. A zero-field declaration
+is an opaque one-cell family and publishes no generic raw constructor,
+destructor, cast, or field operation. This is the authority-safe replacement
+for `TYPEFAMILY`. A declaration with fields is a product; its fields are the
+sole schema source for checker expansion, stack width, storage size, alignment,
+field offsets, codecs, reflection, snapshot rows, and AOT metadata.
+Field order is declaration order, deepest stack field first. Field types may be
+arity parameters, concrete checker types, pointers, or closed nested families.
+Direct recursion, unknown types, duplicate fields, open nested
+applications, and layout-policy cycles reject transactionally.
+
+A public declaration with fields publishes one closed generated package:
+
+```text
+POINT:MAKE      ( field... -- point )
+POINT:UNMAKE    ( point -- field... )
+POINT:X         ( ptr point -- ptr n )
+```
+
+`FAMILY:FIELD` is the sole field-address spelling. For a generic declaration its
+effect is `( ptr family<a,...> -- ptr field-type )`; callers use the field
+type's normal checked load/store operations. The generated words are ordinary
+checked words or compiler-certified metadata operations; none is a raw cast.
+The accessor is available only where the storage/layout policy gives an
+addressable field.
+Private declarations expose generated operations only inside their owning
+package. Generated packages are sealed after publication.
+
+Former `TYPEFAMILY` declarations become zero-field structures. Authority-bearing
+ids keep raw representation refinement and decoding private to the validating
+owner; there is no universal `n` cast or generated `MAKE`. Former
+pointer-layout structures use the same field schema and typed address
+projections instead of byte-size-threading definers.
+Former `VALUE-RECORD` and `PRODUCT` declarations become ordinary structures;
+there is no second record registry or compatibility layer.
+
+### 2.3 `ENUM` semantics
+
+An enum is one nominal sum-family. Every variant has a named structure-shaped
+payload; a payloadless variant has an empty field list. The compiler derives
+the kind from the schema:
+
+- all variants payloadless: enum layout;
+- any variant with fields: tagged-sum layout.
+
+The distinction is metadata, never public syntax. Physical width is the
+selected policy's tag plus the widest variant payload. Padding is canonical
+zero. Nested structures and enums contribute their full physical widths.
+
+A public declaration publishes one closed generated package with one checked
+constructor per variant (`MESSAGE:QUIT`, `MESSAGE:MOVE`, and so on). Constructor
+inputs and `MATCH` payload bindings follow field declaration order, deepest
+first. Private constructors resolve only in the owning package.
+
+Generated package spelling is unchanged by the cutover. Every package and
+family segment uses the existing injective uppercase escape/join algorithm: a
+top-level `point` derives `POINT`; `pxevid` inside `PX-PROBE` derives
+`PX--PROBE-PXEVID`. Structure operation tails and enum variant tails retain
+their declaration spellings after uppercase folding. This preserves existing
+closed-package identity, snapshot rows, and AOT references while replacing the
+declaration registry.
+
+### 2.4 Unified field registry
+
+Both declarations write one field registry keyed by:
+
+```text
+(family-id, optional-variant-id, field-tail)
+```
+
+`optional-variant-id` is absent for a structure field and present for an enum
+payload field. A row stores declaration slot, schema root, physical width,
+alignment, byte offset, visibility, and source span. Variant rows retain tag and
+payload-start/count metadata, but payload order comes exclusively from their
+field rows. Reflection enumerates field names and types in declaration order;
+constructors, `UNMAKE`, `MATCH`, codecs, hashing, snapshots, and AOT metadata
+all consume that same order. No product-field, value-record-field, anonymous
+sum-payload, or pointer-layout field registry survives the cutover.
+
+### 2.5 Header clauses and transactions
+
+`POLICY` selects a registered layout policy. `DERIVE` requests generated
+operations such as `eq`, `hash`, `order`, or canonical codecs. Both blocks use
+the same registry transaction: parse and validate the entire declaration,
+reserve names, register schema/layout metadata, generate operations, certify
+them, seal the generated package, then publish atomically. Any failure restores
+all family, schema, wordlist, signature, reflection, snapshot, and AOT rows.
+
+### 2.6 Bootstrap cycle
+
+`STRUCTURE` is needed by checker/type-family records before the checker and
+type-family Forth sources exist. The cycle is broken inside the compiler, not by
+retaining a raw public definer:
+
+1. `STRUCTURE`, `FIELD`, and `;STRUCTURE` are compiler-reserved tokens from
+   cold start in both the native engine and Gforth recovery compiler.
+2. Before the unified registry is installed, the same parser accepts only the
+   closed primitive field types needed by boot records and writes canonical
+   bootstrap descriptors: package/name/arity plus ordered field name/type/size/
+   alignment/offset rows. It generates the same `FAMILY:FIELD` accessors.
+3. Registry initialization transactionally adopts those descriptors into the
+   one field/family registry, assigns resolved family ids, and verifies every
+   recorded width, alignment, offset, accessor effect, and name.
+4. Adoption seals and erases the transient descriptor arena. It is neither a
+   second live registry nor a snapshot/AOT surface. Every later declaration
+   enters the same registry directly.
+5. The recovery compiler emits byte-identical descriptor and accessor metadata;
+   native fixpoint, recovery, snapshot, and AOT tests prove parity.
+
+There is no `BEGIN-STRUCTURE`, raw offset-threading word, alternate field word,
+or bootstrap-only source spelling. A non-primitive nested field used before
+registry adoption rejects rather than creating an unresolved descriptor.
+
+### 2.7 Removed syntax
+
+These words have no executable compatibility definition after cutover:
+
+```text
+BEGIN-STRUCTURE END-STRUCTURE +FIELD PTR-FIELD: CFIELD:
+VALUE-RECORD END-VALUE-RECORD
+TYPEFAMILY PRODUCT ;PRODUCT SUMTYPE ;SUMTYPE ENUM+ ENUM4+
+```
+
+The compiler keeps only error tombstones so each removed token reports
+`E-REMOVED-TYPE-SYNTAX` with its `STRUCTURE` or `ENUM` replacement. A tombstone
+cannot define, replay, lower, or mutate metadata. Inside new blocks, legacy
+closers/field words, anonymous variant payloads, mixed compact/block variants,
+and a missing mandatory arity reject at the exact token. The final source lint
+requires zero occurrences in live code and generated source.
+
+The exact source census and migration owner for every old surface is
+`docs/census-type-dsl-cutover.md`.
+
+### 2.8 Design position
 
 A real Rust-like `result<t,e>` is not just a parametric type expression.
 
@@ -189,10 +388,10 @@ where `M` is the maximum payload width, in stack cells, across all variants.
 Examples:
 
 ```forth
-SUMTYPE result 2
-  VARIANT ok  a ;VARIANT
-  VARIANT err b ;VARIANT
-;SUMTYPE
+ENUM result 2
+  VARIANT ok  FIELD value a ;VARIANT
+  VARIANT err FIELD error b ;VARIANT
+;ENUM
 ```
 
 Physical layout:
@@ -202,10 +401,10 @@ slot0 tag
 ```
 
 ```forth
-SUMTYPE option 1
-  VARIANT none   ;VARIANT
-  VARIANT some a ;VARIANT
-;SUMTYPE
+ENUM option 1
+  VARIANT none ;VARIANT
+  VARIANT some FIELD value a ;VARIANT
+;ENUM
 ```
 
 Physical layout:
@@ -217,7 +416,7 @@ slot0 tag
 For `none`, `slot0` is padding.
 
 ```forth
-ENUM color
+ENUM color 0
   red
   green
   blue
@@ -365,10 +564,10 @@ SUMV record:
 For:
 
 ```forth
-SUMTYPE result 2
-  VARIANT ok  a ;VARIANT
-  VARIANT err b ;VARIANT
-;SUMTYPE
+ENUM result 2
+  VARIANT ok  FIELD value a ;VARIANT
+  VARIANT err FIELD error b ;VARIANT
+;ENUM
 ```
 
 The registry contains:
@@ -392,7 +591,7 @@ variant err:
 For:
 
 ```forth
-ENUM color
+ENUM color 0
   red
   green
   blue
@@ -452,10 +651,13 @@ err payload schema:
 For:
 
 ```forth
-SUMTYPE parse-result 1
-  VARIANT ok  a ;VARIANT
-  VARIANT err ptr u8 n ;VARIANT
-;SUMTYPE
+ENUM parse-result 1
+  VARIANT ok FIELD value a ;VARIANT
+  VARIANT err
+    FIELD message ptr u8
+    FIELD len n
+  ;VARIANT
+;ENUM
 ```
 
 The `err` payload schema is:
@@ -478,11 +680,15 @@ err payload => ptr u8 n
 
 ---
 
-## 9. Public defining words
+## 9. Pre-cutover declaration inventory
 
-### 9.1 `TYPEFAMILY`
+This section records the implementation being removed so registry and checker
+behavior are not lost during migration. None of its declaration spellings is a
+post-cutover public API. The normative grammar is §2.
 
-For ordinary one-cell parametric types:
+### 9.1 Removed `TYPEFAMILY`
+
+Pre-cutover ordinary one-cell parametric types used:
 
 ```forth
 TYPEFAMILY span 3
@@ -515,9 +721,9 @@ validates its range, generation, schema, or provenance first. Use `DEFTYPE`
 only when a global nominal plus its generated raw converter pair is the desired
 contract.
 
-### 9.2 `SUMTYPE`
+### 9.2 Removed `SUMTYPE`
 
-Syntax:
+Pre-cutover syntax:
 
 ```forth
 SUMTYPE result 2
@@ -538,9 +744,10 @@ Arity is stored in growable schema lists. Do not bake `PARAM-MAX-ARGS` into the
 type-family design; the old four-argument checker storage is an implementation
 limit to remove.
 
-### 9.3 `ENUM`
+### 9.3 Pre-cutover payloadless `ENUM`
 
-Syntax:
+Pre-cutover syntax omitted the mandatory arity and could not carry named
+payload fields:
 
 ```forth
 ENUM color
@@ -656,9 +863,9 @@ derived hashes across engine versions — consumers (e.g. the SKEY replay
 table) must key in-memory tables only and keep their durable formats on
 stable renders (SK-KEY$ stays the on-disk contract).
 
-### 9.4 `PRODUCT`
+### 9.4 Removed `PRODUCT`
 
-Syntax:
+Pre-cutover syntax:
 
 ```forth
 PRODUCT pair 2
@@ -715,17 +922,20 @@ eliminated only by `UNMAKE` and constructed only by `MAKE`, so a PRIVATE
 product currently has no construction surface (fail-closed by design until a
 product form is specified).
 
-Verdict (item 15, decided by evidence): `VALUE-RECORD` is NOT subsumed. It
-remains a typed, tested compatibility layer over its own registry (VREC) with
-touchable `field<...>` cells — its fixtures rely on ordinary
-`drop`/`nip`/`over over` destructuring and the field-to-inner output
-coercion, which the hidden-field model deliberately forbids. New by-value
-records should use `PRODUCT`; `VALUE-RECORD` stays for the existing engine
-fixtures and PTX IR until those migrate.
+Hard-cutover verdict: `VALUE-RECORD` and `PRODUCT` are both subsumed by
+`STRUCTURE`. Their distinct registries and coercions are migration inputs, not
+compatibility contracts. The unified checker must preserve every sound
+construction, destruction, projection, linearity, and nested-width invariant
+before both old paths are deleted.
 
 ---
 
 ## 10. Hidden physical field types
+
+Sections 10-25 describe the existing registry, checker, layout, and lowering
+invariants that the unified implementation must preserve. Any old declaration
+spelling shown there is pre-cutover evidence; translate it through §2 before
+using it in source.
 
 Logical layout-bearing types expand to hidden physical fields.
 
@@ -1492,7 +1702,7 @@ WIDTH(boxed<...>)         = 1
 v1 should keep type parameters cell-kinded:
 
 ```forth
-SUMTYPE result 2
+ENUM result 2
 ```
 
 means:
@@ -1510,19 +1720,9 @@ option<result<n,n>>
 
 because `result<n,n>` is a layout value, not a cell type.
 
-Later syntax:
-
-```forth
-SUMTYPE option 1
-  PARAM a layout
-  VARIANT none   ;VARIANT
-  VARIANT some a ;VARIANT
-;SUMTYPE
-```
-
-could allow layout-polymorphic parameters.
-
-Store parameter kinds now even if v1 exposes only cell parameters.
+Store parameter kinds now even though the hard-cutover grammar initially
+exposes only cell parameters. A later parameter-kind header feature must extend
+the one grammar; it may not add a third declaration form.
 
 ---
 
@@ -1656,14 +1856,13 @@ always at depth 0 at snapshot time, like the `HIDX` mapping.
 ### 22.0 The `POLICY` header clause
 
 A family selects its physical representation with an optional `POLICY <name>`
-clause on its declaration header — after the arity on a `SUMTYPE`/`PRODUCT`, and
-after the name on an `ENUM`, before the first `VARIANT`/`FIELD`:
+clause after the mandatory arity and before the first `VARIANT` or `FIELD`:
 
 ```forth
-SUMTYPE option 1 POLICY stack-cell-tag
-  VARIANT none   ;VARIANT
-  VARIANT some a ;VARIANT
-;SUMTYPE
+ENUM option 1 POLICY stack-cell-tag
+  VARIANT none ;VARIANT
+  VARIANT some FIELD value a ;VARIANT
+;ENUM
 ```
 
 `POLICY` is a reserved token: it may not name a family, variant, or field.
@@ -1743,8 +1942,9 @@ alignment     = CELL when M > 0, else tag-byte-width (byte for the empty case)
 size          = align_up(payload-bytes + tag-byte-width, alignment)   \ array stride
 ```
 
-Examples: `ENUM` of 3 → `size 1, align 1, tagw 1`; `SUMTYPE` of 2 variants,
-`M=1` → `size 16, align 8, tagw 1`; `PRODUCT` of two cell fields → `size 16,
+Examples: payloadless `ENUM` of 3 -> `size 1, align 1, tagw 1`;
+payload-bearing `ENUM` of 2 variants with `M=1` ->
+`size 16, align 8, tagw 1`; `STRUCTURE` of two cell fields -> `size 16,
 align 8, tagw 0`. These land in the `LAY-*` registry (`LAY.SIZE/ALIGN/TAGW`) —
 this is the ABI the maki store/fetch capability reads; habu defines it, the
 capability marshals against it. A mixed narrow-width payload tier (an explicit
@@ -1763,10 +1963,10 @@ marshalling that CONSUMES the descriptor is the separate maki capability
 Later:
 
 ```forth
-SUMTYPE option 1 POLICY niche-null
-  VARIANT none   ;VARIANT
-  VARIANT some nonnull-ptr<a> ;VARIANT
-;SUMTYPE
+ENUM option 1 POLICY niche-null
+  VARIANT none ;VARIANT
+  VARIANT some FIELD value nonnull-ptr<a> ;VARIANT
+;ENUM
 ```
 
 Representation:
@@ -1784,10 +1984,13 @@ Do not make this implicit for arbitrary pointers. Require a non-null type or cap
 Later:
 
 ```forth
-SUMTYPE tree 1 POLICY boxed
-  VARIANT leaf a ;VARIANT
-  VARIANT node ptr tree<a> ptr tree<a> ;VARIANT
-;SUMTYPE
+ENUM tree 1 POLICY boxed
+  VARIANT leaf FIELD value a ;VARIANT
+  VARIANT node
+    FIELD left ptr tree<a>
+    FIELD right ptr tree<a>
+  ;VARIANT
+;ENUM
 ```
 
 Stack representation:
@@ -1807,10 +2010,10 @@ Do not start with boxed layout.
 ### Result
 
 ```forth
-SUMTYPE result 2
-  VARIANT ok  a ;VARIANT
-  VARIANT err b ;VARIANT
-;SUMTYPE
+ENUM result 2
+  VARIANT ok  FIELD value a ;VARIANT
+  VARIANT err FIELD error b ;VARIANT
+;ENUM
 
 : OK-PTR ( ptr u8 -- result<ptr u8,n> )
   RESULT:OK ;
@@ -1832,10 +2035,10 @@ SUMTYPE result 2
 ### Option
 
 ```forth
-SUMTYPE option 1
-  VARIANT none   ;VARIANT
-  VARIANT some a ;VARIANT
-;SUMTYPE
+ENUM option 1
+  VARIANT none ;VARIANT
+  VARIANT some FIELD value a ;VARIANT
+;ENUM
 
 : FIND ( n -- option<ptr u8> )
   dup 0 = IF
@@ -1859,7 +2062,7 @@ SUMTYPE option 1
 ### Enum
 
 ```forth
-ENUM color
+ENUM color 0
   red
   green
   blue
@@ -2129,7 +2332,11 @@ save/restore paths, or field coercions outside constructors and `MATCH`.
 
 ---
 
-## 26. Implementation phases
+## 26. Historical implementation phases
+
+These phases record how the pre-cutover substrate landed. They are superseded
+by the unified hard-cutover dot chain in §2 and
+`docs/census-type-dsl-cutover.md`; none authorizes a compatibility surface.
 
 ### Phase 1: Type-family registry
 
@@ -2258,10 +2465,8 @@ FIELD
 ;PRODUCT
 ```
 
-Then decide whether existing `VALUE-RECORD` becomes sugar over `PRODUCT` or remains as a compatibility feature.
-
-Landed (item 15): the grammar plus generated `PKG:MAKE`/`PKG:UNMAKE`; decided
-by evidence that `VALUE-RECORD` remains a typed compatibility feature (§9.4).
+The hard cutover replaces both this grammar and `VALUE-RECORD` with
+`STRUCTURE`; no sugar or compatibility word remains.
 
 ### Phase 8: Layout policies
 
