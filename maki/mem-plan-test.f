@@ -67,6 +67,22 @@ s" MPT-AL-BAD ( MIR:input-slot n -- ) MIR-SLOT-AL!" CHECK-QUIET-CANDIDATE! 0 T=
 : TRY-AL-SLOT ( -- )  MIR-RESET 5 MIR-SLOT-ID MIR-SLOT-AL@ ALIGN>N drop ;
 ' TRY-AL-SLOT E-MIR-INSLOT TTHROWS
 
+\ ---- typed no-slot cursor (option<MIR:input-slot>) --------------------------
+\ the old raw -1 sentinel is unrepresentable: a raw n, an unwrapped slot, and a
+\ raw fetch are CHECKER rejects; only the some/none constructors cross the cell
+s" MPT-SLOT-RAW  ( n -- ) MP-SLOT-AT !"              CHECK-QUIET-CANDIDATE! 0 T=
+s" MPT-SLOT-BARE ( MIR:input-slot -- ) MP-SLOT-AT !" CHECK-QUIET-CANDIDATE! 0 T=
+s" MPT-SLOT-NFT  ( -- n ) MP-SLOT-AT @"              CHECK-QUIET-CANDIDATE! 0 T=
+s" MPT-SLOT-OK   ( MIR:input-slot -- ) MP-SLOT!"     CHECK-QUIET-CANDIDATE! -1 T=
+\ a staged node write has NO slot: the align-warning reader fails closed on the
+\ structural none instead of rendering a stale slot number
+: TRY-MP-NOSLOT ( -- )  MP-SLOT@ SLOT>RAW drop ;
+2 4 MAKI-LAYOUT:ROW MP-EW
+1 MIR-NODE-ID MP-SET-NODE
+' TRY-MP-NOSLOT E-MP-NOSLOT TTHROWS
+0 MIR-SLOT-ID MP-SET-SLOT                            \ a slot read stages some
+MP-SLOT@ SLOT>RAW 0 T=
+
 \ ---- (1) 2x4 f32 chain, 16B RECORDED input -> coalesced-v4 -----------------
 2 4 MAKI-LAYOUT:ROW MP-EW  0 MIR-SLOT-ID MAKI-ALIGN:A16 MIR-SLOT-AL!  FP-BUILD
 REPORT:NEW MEM-PLAN-INTO

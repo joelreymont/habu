@@ -23,9 +23,12 @@
 \ is strided; the data read of a gather is gathered (6.3).
 \
 \ Fail closed: a name overflow is a named throw; an out-of-range alignment class
-\ is a checker reject (the align family cannot hold one).
+\ is a checker reject (the align family cannot hold one); a raw or unwrapped
+\ store into the staged slot cursor is a checker reject (option<MIR:input-slot>),
+\ and reading it while a node write is staged is a named throw (E-MP-NOSLOT).
 \ maki -> habu only; mem-plan owns -5076..-5079 (schedule/sched-key own -5080..-5089).
 
+require lib/adt/option.f
 require lib/string.f
 require lib/fmt.f
 require maki/report.f
@@ -34,6 +37,7 @@ require maki/model-ir.f
 \ -5076 (E-MP-ALIGN) retired: the align family makes an out-of-range class a
 \ checker reject; the code stays reserved to mem-plan.
 -5077 constant E-MP-NAME      \ staged tensor name exceeds the name buffer
+-5078 constant E-MP-NOSLOT    \ align-warning slot read while a node write is staged
 
 package MAKI
 private
@@ -80,7 +84,11 @@ variable MP-ES   variable MP-EXT
 : MP-AL-AT  ( -- ptr align )   0 MP-AL ;
 : MP-LAY-AT ( -- ptr layout )  0 MP-LAY ;
 variable MP-OVR                    \ broadcast/gathered override status, or -1
-variable MP-SLOT                   \ input-slot index for the align warning, or -1
+\ staged input slot for the align warning; none = a node write is staged. The
+\ option cell replaces the old raw -1 sentinel (a raw n or an unwrapped slot
+\ can no longer enter), and the LAYOUT-BUFFER zero image IS none.
+1 LAYOUT-BUFFER MP-SLOT option<MIR:input-slot>
+: MP-SLOT-AT ( -- ptr option<MIR:input-slot> )  0 MP-SLOT ;
 64 constant MP-NM-CAP
 create MP-NM MP-NM-CAP allot  variable MP-NM-U
 
@@ -131,8 +139,12 @@ create MP-NM MP-NM-CAP allot  variable MP-NM-U
    -1 ;
 
 \ ---- stage a slot read / a node write ---------------------------------------
-: MP-SLOT! ( MIR:input-slot -- )  MP-SLOT ! ;
-: MP-SLOT@ ( -- MIR:input-slot )  MP-SLOT @ ;
+: MP-SLOT! ( MIR:input-slot -- )  OPTION:SOME MP-SLOT-AT ! ;
+: MP-SLOT@ ( -- MIR:input-slot )                 \ staged slot; none (node write) fails closed
+   MP-SLOT-AT @ MATCH option
+      none OF E-MP-NOSLOT throw ENDOF
+      some OF ENDOF
+   ;MATCH ;
 
 : MP-SET-SLOT ( MIR:input-slot -- ) {: s:MIR:input-slot :}
    s MIR-SLOT-AL@         MP-AL-AT !
@@ -148,11 +160,12 @@ create MP-NM MP-NM-CAP allot  variable MP-NM-U
    nd MIR-DT@ DT-SIZE DIM-RAW MP-ES !
    nd MIR-COLS@ COLS-RAW  MP-EXT !
    nd MIR-LAY@            MP-LAY-AT !
-   \ keep the stale-slot invariant fail-obvious: MP-ALIGN-WARN$ is unreachable
-   \ for node writes only while every dtype's element size is <= 16 bytes
-   \ (AL-16 write can never classify CO-UNALIGNED); if that ever changes, a
-   \ stale slot number must never render, so the cursor is reset here.
-   -1                     MP-SLOT !
+   \ the stale-slot invariant is structural: MP-ALIGN-WARN$ is unreachable for
+   \ node writes only while every dtype's element size is <= 16 bytes (an AL-16
+   \ write can never classify CO-UNALIGNED); if that ever changes, a stale slot
+   \ number must never render - the typed none makes MP-SLOT@ throw E-MP-NOSLOT
+   \ instead of rendering whatever slot was staged last.
+   OPTION:NONE            MP-SLOT-AT !
    -1                     MP-OVR !
    SB-RESET s" n" SB-APPEND nd NODE>RAW SB-INT SB$ MP-NM! ;
 
