@@ -32,7 +32,10 @@ package MAKI
 \ typed seam (LLA-ROW-GRID) must still fail closed (E-PTX-BLOCK, defense in depth)
 : LMT-ROWGRID-WIDE ( -- )  1 512 SHAPE LLA-ROW-GRID drop ;
 : LMT-BAD-MOVE-RID ( -- )  MDL-CAP RAW>RGN LLA-REGION-MOVE? drop ;
-: LMT-BAD-CUBIN-RID ( -- ) s" bad" MDL-CAP RAW>RGN MDL-CUBIN! ;
+: LMT-BAD-CUBIN-NEG-RID ( -- )  s" bad" -1 RAW>RGN MDL-CUBIN! ;
+: LMT-BAD-CUBIN-CAP-RID ( -- )  s" bad" MDL-CAP RAW>RGN MDL-CUBIN! ;
+: LMT-BAD-CUBIN-ACTIVE-RID ( -- )
+   s" bad" FP-REGION-COUNT RAW>RGN MDL-CUBIN! ;
 
 T-RESET
 
@@ -46,7 +49,8 @@ s" LMT-RGN-MV ( CAD-KIND:node-id -- ) FP-RID@ dup dup LMV-ANALYZE LMV-EMIT LMV-R
 
 \ Every public region entry rejects effect, stage, and node ids before runtime. MDL-STAGE and
 \ MDL-DISPATCH are private orchestration boundaries, but are pinned too because the dot names
-\ them explicitly.
+\ them explicitly. Correct-signature controls prove that each target resolves and accepts its
+\ intended region role, preventing a misspelled or unavailable target from making negatives pass.
 s" LMT-LEW-A-EF ( CAD-KIND:effect -- ) LEW-ANALYZE" CHECK-QUIET-CANDIDATE! 0 T=
 s" LMT-LEW-A-ST ( CAD-KIND:stage -- ) LEW-ANALYZE" CHECK-QUIET-CANDIDATE! 0 T=
 s" LMT-LEW-A-ND ( CAD-KIND:node-id -- ) LEW-ANALYZE" CHECK-QUIET-CANDIDATE! 0 T=
@@ -72,23 +76,29 @@ s" LMT-LMV-E-EF ( CAD-KIND:effect -- ) LMV-EMIT" CHECK-QUIET-CANDIDATE! 0 T=
 s" LMT-LMV-E-ST ( CAD-KIND:stage -- ) LMV-EMIT" CHECK-QUIET-CANDIDATE! 0 T=
 s" LMT-LMV-E-ND ( CAD-KIND:node-id -- ) LMV-EMIT" CHECK-QUIET-CANDIDATE! 0 T=
 
+s" LMT-LD-OK ( ptr u8 n ptr u8 n ptr u8 n CAD-KIND:region ptr u8 n -- ) LOWER-DRIVER!" CHECK-QUIET-CANDIDATE! -1 T=
 s" LMT-LD-EF ( ptr u8 n ptr u8 n ptr u8 n CAD-KIND:effect ptr u8 n -- ) LOWER-DRIVER!" CHECK-QUIET-CANDIDATE! 0 T=
 s" LMT-LD-ST ( ptr u8 n ptr u8 n ptr u8 n CAD-KIND:stage ptr u8 n -- ) LOWER-DRIVER!" CHECK-QUIET-CANDIDATE! 0 T=
 s" LMT-LD-ND ( ptr u8 n ptr u8 n ptr u8 n CAD-KIND:node-id ptr u8 n -- ) LOWER-DRIVER!" CHECK-QUIET-CANDIDATE! 0 T=
+s" LMT-WD-OK ( ptr u8 n CAD-KIND:region ptr u8 n -- ) LEW-WRITE-DRIVER" CHECK-QUIET-CANDIDATE! -1 T=
 s" LMT-WD-EF ( ptr u8 n CAD-KIND:effect ptr u8 n -- ) LEW-WRITE-DRIVER" CHECK-QUIET-CANDIDATE! 0 T=
 s" LMT-WD-ST ( ptr u8 n CAD-KIND:stage ptr u8 n -- ) LEW-WRITE-DRIVER" CHECK-QUIET-CANDIDATE! 0 T=
 s" LMT-WD-ND ( ptr u8 n CAD-KIND:node-id ptr u8 n -- ) LEW-WRITE-DRIVER" CHECK-QUIET-CANDIDATE! 0 T=
 
+s" LMT-RMM-OK ( CAD-KIND:region -- bool ) LLA-REGION-MATMUL?" CHECK-QUIET-CANDIDATE! -1 T=
 s" LMT-RMM-EF ( CAD-KIND:effect -- bool ) LLA-REGION-MATMUL?" CHECK-QUIET-CANDIDATE! 0 T=
 s" LMT-RMM-ST ( CAD-KIND:stage -- bool ) LLA-REGION-MATMUL?" CHECK-QUIET-CANDIDATE! 0 T=
 s" LMT-RMM-ND ( CAD-KIND:node-id -- bool ) LLA-REGION-MATMUL?" CHECK-QUIET-CANDIDATE! 0 T=
+s" LMT-RRD-OK ( CAD-KIND:region -- bool ) LLA-REGION-REDUCE?" CHECK-QUIET-CANDIDATE! -1 T=
 s" LMT-RRD-EF ( CAD-KIND:effect -- bool ) LLA-REGION-REDUCE?" CHECK-QUIET-CANDIDATE! 0 T=
 s" LMT-RRD-ST ( CAD-KIND:stage -- bool ) LLA-REGION-REDUCE?" CHECK-QUIET-CANDIDATE! 0 T=
 s" LMT-RRD-ND ( CAD-KIND:node-id -- bool ) LLA-REGION-REDUCE?" CHECK-QUIET-CANDIDATE! 0 T=
+s" LMT-RMV-OK ( CAD-KIND:region -- bool ) LLA-REGION-MOVE?" CHECK-QUIET-CANDIDATE! -1 T=
 s" LMT-RMV-EF ( CAD-KIND:effect -- bool ) LLA-REGION-MOVE?" CHECK-QUIET-CANDIDATE! 0 T=
 s" LMT-RMV-ST ( CAD-KIND:stage -- bool ) LLA-REGION-MOVE?" CHECK-QUIET-CANDIDATE! 0 T=
 s" LMT-RMV-ND ( CAD-KIND:node-id -- bool ) LLA-REGION-MOVE?" CHECK-QUIET-CANDIDATE! 0 T=
 
+s" LMT-CU-OK ( ptr u8 n CAD-KIND:region -- ) MDL-CUBIN!" CHECK-QUIET-CANDIDATE! -1 T=
 s" LMT-CU-EF ( ptr u8 n CAD-KIND:effect -- ) MDL-CUBIN!" CHECK-QUIET-CANDIDATE! 0 T=
 s" LMT-CU-ST ( ptr u8 n CAD-KIND:stage -- ) MDL-CUBIN!" CHECK-QUIET-CANDIDATE! 0 T=
 s" LMT-CU-ND ( ptr u8 n CAD-KIND:node-id -- ) MDL-CUBIN!" CHECK-QUIET-CANDIDATE! 0 T=
@@ -105,9 +115,11 @@ s" LMT-RV-EF ( CAD-KIND:effect -- ) LMV-RUN" CHECK-QUIET-CANDIDATE! 0 T=
 s" LMT-RV-ST ( CAD-KIND:stage -- ) LMV-RUN" CHECK-QUIET-CANDIDATE! 0 T=
 s" LMT-RV-ND ( CAD-KIND:node-id -- ) LMV-RUN" CHECK-QUIET-CANDIDATE! 0 T=
 
+s" LMT-MS-OK ( CAD-KIND:region -- ) MDL-STAGE" CHECK-QUIET-CANDIDATE! -1 T=
 s" LMT-MS-EF ( CAD-KIND:effect -- ) MDL-STAGE" CHECK-QUIET-CANDIDATE! 0 T=
 s" LMT-MS-ST ( CAD-KIND:stage -- ) MDL-STAGE" CHECK-QUIET-CANDIDATE! 0 T=
 s" LMT-MS-ND ( CAD-KIND:node-id -- ) MDL-STAGE" CHECK-QUIET-CANDIDATE! 0 T=
+s" LMT-MD-OK ( CAD-KIND:region -- ) MDL-DISPATCH" CHECK-QUIET-CANDIDATE! -1 T=
 s" LMT-MD-EF ( CAD-KIND:effect -- ) MDL-DISPATCH" CHECK-QUIET-CANDIDATE! 0 T=
 s" LMT-MD-ST ( CAD-KIND:stage -- ) MDL-DISPATCH" CHECK-QUIET-CANDIDATE! 0 T=
 s" LMT-MD-ND ( CAD-KIND:node-id -- ) MDL-DISPATCH" CHECK-QUIET-CANDIDATE! 0 T=
@@ -121,7 +133,9 @@ FP-BUILD
 FP-REGION-COUNT 3 T=
 MIR-MAT-COUNT   3 T=
 ' LMT-BAD-MOVE-RID E-FP-IDX TTHROWS
-' LMT-BAD-CUBIN-RID E-MDL-CUBIN TTHROWS
+' LMT-BAD-CUBIN-NEG-RID E-MDL-CUBIN TTHROWS
+' LMT-BAD-CUBIN-CAP-RID E-MDL-CUBIN TTHROWS
+' LMT-BAD-CUBIN-ACTIVE-RID E-MDL-CUBIN TTHROWS
 
 \ region class routing (the whole-model dispatch reuses these)
 0 FP-REGION-ID LLA-REGION-MATMUL? TTRUE
