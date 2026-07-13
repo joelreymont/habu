@@ -3844,3 +3844,16 @@ unchanged (148855). Keys for milestone 2:
   routines first-class effects, then verify liveness and frame invariants over
   the resolved CFG; handwritten name-to-mask tables remain only transitional
   diagnostics.
+- **A rejecting candidate needs a resolving positive control.** A misspelled,
+  unavailable, or unmodeled target can produce the same quiet rejection as the
+  intended nominal mismatch. Pair each negative matrix with the correct
+  signature or assert the exact expected/actual diagnostic before calling the
+  type boundary covered.
+- **Inspect stored blockers after every multi-dependency `dot add`.** The local
+  CLI retained only the last repeated `-a` argument, silently dropping earlier
+  prerequisites. Patch the exact frontmatter, run dot-dep-lint, and verify the
+  rendered tree before publishing or dispatching the leaf.
+- **Seal an owner only after all constituent files are loaded.** Sealing blocks
+  later package reopening; it cannot be the first slice of a multi-file API.
+  Keep raw-to-nominal mints private and audited while assembling, then let the
+  final owner-migration slice seal them and prove no public conversion remains.
