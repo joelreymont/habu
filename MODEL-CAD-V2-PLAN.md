@@ -628,10 +628,157 @@ Acceptance:
 - allocation certificates reject any code, CFG, assignment, spill, frame,
   call-effect, or content-hash mutation.
 
+#### R9 PTX Generated-State Contract
+
+PTX is not an exception to R9 merely because it is virtual. Habu does not own
+the final NVIDIA physical-register allocation or instruction schedule, but it
+does own the generated PTX virtual machine, the exact assembler boundary, and
+the identity carried into launch and promotion. The proof chain is therefore
+split at the proprietary boundary instead of pretending that a host stack
+effect or a successful `ptxas` process proves more than it does.
+
+The generated PTX state is target-indexed. A `PTX-STATE<TARGET>` contains:
+
+- the exact target and feature set used to admit every instruction;
+- nominal virtual-register identities with register class, scalar/vector
+  element type, definition site, and one-definition state;
+- predicate definitions and the control region in which each predicate is
+  valid;
+- labels, edges, dominance, reconvergence regions, and path-join live state;
+- pointer value type, address space, alignment fact, and access width;
+- parameter, register, shared, local, and constant resource declarations and
+  their observed use;
+- collective identity, mask/uniformity fact, and barrier phase supplied by the
+  M5 owner;
+- canonical instruction, CFG, target, and verifier-version digests.
+
+The instruction verifier is a separate checked consumer of the generated
+instruction graph. It does not trust emitter-local counters, text spelling,
+paths, traversal order, or a prior compiler pass. PTX text may be rendered only
+from a verified state. Any compatibility renderer that still accepts raw text
+is an explicit boundary, cannot produce promotable evidence, and must be
+retired by the PTX-state implementation leaf.
+
+Its static invariants are:
+
+1. Every virtual register has exactly one definition and every use is dominated
+   by that definition on every incoming path.
+2. Definition and use agree on register class, value type, vector width, and
+   target capability; spelling equality is never type authority.
+3. Every predicate is defined before use, has predicate class, and is used only
+   in a compatible control region.
+4. Branch joins agree on live register, predicate, address-space, resource, and
+   collective phase state; an absent or contradictory join rejects.
+5. Memory instructions agree with pointer address space, value type, access
+   width, alignment evidence, and the enclosing extent/mask authority.
+6. Resource declarations are complete and agree with instruction use; undeclared
+   shared/local/parameter state or conflicting declarations reject.
+7. Barrier and reconvergence legality comes from the M5 uniformity model and is
+   checked against the actual instruction CFG, not inferred from PTX text.
+8. The verification evidence names the exact instruction graph, CFG, target,
+   and verifier version; any mutation requires re-verification.
+
+#### PTX Boundary Layers
+
+The layers intentionally prove different facts:
+
+| Layer | Subject | Proved fact | Not proved |
+|---|---|---|---|
+| Habu checker | emitter definition | The host Forth stack effect and package/type-family contracts compose. | Generated virtual-register or CFG state. |
+| `PTX-STATE:VERIFY` | target-indexed PTX instruction graph | Virtual def/use, type, predicate/control, address-space, resource, collective, and CFG legality. | NVIDIA physical allocation, scheduling, or SASS semantics. |
+| `PTXAS-ATTEST:ASSEMBLE` | verified PTX plus target/toolchain/config | Exact input provenance, assembler success, typed resource report, exact cubin digest, and opaque-backend status. | Correctness of proprietary allocation or scheduling. |
+| `CUBIN-INTEGRITY:VERIFY` | cubin/SASS artifact | Payload identity, target/toolchain/PTX/attestation binding, symbol/ABI binding, and optional policy-required disassembly evidence. | Kernel semantics for arbitrary inputs. |
+| device semantic verifier | exact cubin launch subject | Golden, numeric, safety, or performance evidence for the named environment, inputs, launch, and policy. | Evidence for another cubin, environment, or policy. |
+| promotion verifier | artifact plus required evidence set | All required evidence has the same subject and satisfies the promotion policy. | Any omitted or mismatched claim. |
+
+`ptxas` allocation and scheduling are proprietary. Habu must not emit a
+proof-carrying allocation certificate for those decisions unless an
+independent verifier can actually reconstruct them. The accepted boundary is
+an opaque-backend attestation bound to canonical verified PTX, immutable target
+and toolchain descriptors, exact invocation policy, parsed resource facts,
+diagnostics, cubin bytes, and attestation version. This proves provenance and
+observable facts. Device evidence supplies bounded semantic evidence. The
+proof-carrying allocation-certificate dot remains limited to allocations Habu
+owns and can independently verify.
+
+Unsupported backends are policy outcomes, not implicit fallbacks. If a target
+policy requires a resource field, disassembly verifier, or independent subject
+binding that the backend cannot provide, compilation may produce a typed
+non-promotable diagnostic artifact, but promotion rejects.
+
+#### Fixed PTX Call-Graph Census
+
+This is the fixed implementation census for the three PTX leaves. Files outside
+it require a new reviewed census; they are not silently absorbed into a leaf.
+
+1. Maki lowering originates in `maki/lower-ew.f`, `maki/lower-red.f`,
+   `maki/lower-mm.f`, and `maki/lower-move.f`.
+2. Expression construction and checked kernel semantics pass through
+   `lib/ptx/ir.f`, `lib/ptx/cg.f`, `lib/ptx/header.f`,
+   `lib/ptx/collective.f`, and the collective renderer
+   `lib/ptx/cg-collective.f`; the local baseline encoder is
+   `src/arch/ptx/emit.f`.
+3. Assembly crosses `lib/ptx/toolchain.f` and the independent smoke path
+   `tools/ptx/ptxas-smoke.f`. Device assembly fixtures are consumers of the
+   same attestation package, not alternate proof paths.
+4. Cubin registration, module loading, ABI binding, and launch cross
+   `maki/lower-launch.f`.
+5. Device semantic evidence is produced by `maki/lower-golden.f` and exercised
+   end to end by `maki/lower-model-device-test.f`.
+6. Evidence presentation, promotion policy, and durable rows cross
+   `maki/report.f`, `maki/cad.f`, and `maki/store.f`.
+
+The fixed path is therefore:
+
+~~~text
+maki/lower-*
+  -> lib/ptx/{ir,cg,header,collective} + src/arch/ptx/emit
+  -> lib/ptx/toolchain + tools/ptx/ptxas-smoke
+  -> maki/lower-launch
+  -> maki/lower-golden + maki/lower-model-device-test
+  -> maki/report + maki/cad + maki/store
+~~~
+
+#### Fail-Closed Ownership
+
+| Failure | Sole owner |
+|---|---|
+| Undefined use, duplicate definition, wrong register class, incompatible join, predicate/control mismatch, address-space/type mismatch, or declaration/use mismatch | `habu-verify-ptx-virtual-50281017` |
+| Divergent barrier or invalid collective reachability | `habu-ptx-m5-mask-eb0716f1` |
+| Lost kernel phantom through checked emitters | `habu-ptx-phantom-preserving-3df9db92` |
+| Unknown, incomplete, or stale target/toolchain identity | `habu-v2-r3-define-987402c7`, consumed by the `ptxas` leaf |
+| Missing assembler, failed process, input/config mismatch, malformed resource report, report drift, or unverifiable opaque backend | `habu-attest-proprietary-ptxas-6ce9fda2` |
+| Predicted-versus-attested resource error or invalid occupancy | `habu-v2-resource-model-985a0b0e` |
+| Cubin mutation, wrong region/symbol/ABI/launch subject, stale device evidence, or wrong-subject promotion | `habu-bind-cubin-and-c1103e74` |
+| Generic artifact-envelope mismatch | `habu-v2-canonical-artifact-ee5121b4` |
+| Proof-domain, independence-policy, or required-environment mismatch | `habu-v2-proof-obligation-6cf70b4f` |
+| CUDA rc, cleanup, readback, or launch failure | `habu-make-ptx-device-c0eb12a3` |
+| Committed kernel device-golden regression | `habu-committed-device-correctness-9ca4cbc6` |
+| Independently certified allocation owned by Habu | `habu-emit-proof-carrying-058f43b6` |
+
+No failure has two implementation owners. Consumers depend on the named owner
+and preserve its typed evidence rather than restating the check.
+
+#### PTX Implementation Leaves
+
+- `habu-verify-ptx-virtual-50281017` adds the target-indexed instruction/state
+  ADTs, actual-CFG verifier, structured diagnostics, and render gate. It follows
+  the M5 uniformity/barrier and phantom-preservation owners.
+- `habu-attest-proprietary-ptxas-6ce9fda2` adds exact `ptxas` provenance,
+  typed resource-report parsing, opaque-backend attestation, and deterministic
+  replay. It follows PTX state verification, R3 toolchain identity, and generic
+  proof obligations. The resource-model dot consumes its attested facts.
+- `habu-bind-cubin-and-c1103e74` adds immutable cubin/SASS identity through
+  typed registration, pre-load verification, launch, device evidence, durable
+  replay, and promotion. It follows the `ptxas` attestation and fail-closed
+  device-proof infrastructure; committed device goldens consume it.
+
 Tracked slices:
 
-- `habu-specify-ptx-generated-5a3a902d` owns the PTX virtual-machine-state,
-  `ptxas`, cubin/SASS, and device-evidence boundary census and decomposition;
+- `habu-specify-ptx-generated-5a3a902d` freezes the PTX boundary census and
+  delegates implementation to `habu-verify-ptx-virtual-50281017`,
+  `habu-attest-proprietary-ptxas-6ce9fda2`, and
+  `habu-bind-cubin-and-c1103e74`;
 - `habu-define-typed-arm64-4ab8894f`;
 - `habu-idx-arm64-operands-98280863`;
 - `habu-verify-emitted-arm64-efd5eb61`;
@@ -3269,3 +3416,8 @@ blocks; device-required policies cannot be satisfied off-device.
 27. Every emitted callable, CFG edge, machine operand, register/flag/frame
     effect, scratch region, and allocation is typed or independently certified;
     generated-state clobbers reject before artifact publication.
+28. Every promoted PTX artifact binds one verified virtual instruction/CFG
+    subject to the exact target, toolchain, `ptxas` attestation, cubin/SASS
+    identity, launch ABI/configuration, device evidence, and promotion policy;
+    proprietary allocation remains explicitly opaque and every mutation,
+    stale report, unsupported verifier, or wrong-subject evidence rejects.

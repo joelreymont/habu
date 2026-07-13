@@ -165,6 +165,119 @@ knowledge is required:
 - **Zero ecosystem** vs PyTorch-integrated incumbents; the wedge must be
   safety/LLM, not generality.
 
+## Generated-state integrity
+
+A checked Habu emitter and the PTX program it emits execute on different
+machines. The host stack effect proves that the emitter composes correctly; it
+does not prove that PTX virtual registers, predicates, control flow, address
+spaces, resources, or barriers are legal. A successful `ptxas` process proves
+still less about semantics. Promotable device code therefore follows five
+separate, content-bound verification layers.
+
+### Target-indexed PTX state
+
+Package `PTX-INSTRUCTION` owns typed instruction and operand values. Package
+`PTX-STATE` independently verifies the resulting instruction graph before
+package `PTX-RENDER` may produce text. The state is indexed by the exact target
+and includes:
+
+- nominal virtual-register identities, one-definition state, register class,
+  scalar/vector value type, definition site, and dominance;
+- predicate definition and its valid control region;
+- labels, CFG edges, path joins, reconvergence, and live state;
+- pointer address space, value type, access width, alignment fact, and extent
+  or mask authority;
+- declared and used parameter, register, shared, local, and constant resources;
+- collective identity, uniformity/mask fact, and barrier phase;
+- canonical instruction, CFG, target, and verifier-version digests.
+
+`PTX-STATE:VERIFY` rejects undefined use, duplicate definition, wrong register
+class, use-before-definition predicates, predicate/control mismatches,
+incompatible branch joins, address-space/type mismatches, incomplete or
+contradictory resource declarations, and M5-invalid barrier reachability. A
+rendered PTX string is output, never verification authority. Text-only legacy
+paths cannot produce promotable evidence.
+
+M5 remains the sole owner of uniformity and divergent-barrier semantics. The
+phantom-preservation dot remains the sole owner of carrying kernel type-family
+parameters through checked emitters. The PTX-state verifier consumes both; it
+does not reimplement them.
+
+### Proprietary `ptxas` boundary
+
+NVIDIA `ptxas` owns physical-register allocation, scheduling, and SASS
+selection. Habu cannot honestly emit an independent allocation certificate for
+those proprietary decisions. `PTXAS-ATTEST:ASSEMBLE` instead records an
+opaque-backend attestation containing:
+
+- the verified PTX instruction/CFG digest and canonical PTX byte digest;
+- immutable target, feature, toolchain, version, configuration, and invocation
+  policy identities;
+- process result and content-bound diagnostics;
+- typed register, shared, local, constant, stack, and spill report facts;
+- the exact cubin payload digest and attestation/verifier version.
+
+That attestation proves provenance, successful assembly, report well-formedness,
+and observable resource facts. It does not claim that Habu proved allocation,
+scheduling, or SASS semantics. `habu-v2-resource-model-985a0b0e` consumes the
+attested resource row for prediction calibration; it remains the sole owner of
+occupancy and prediction-error policy.
+
+Unknown toolchains, version/config drift, malformed or duplicate required
+fields, resource-report drift, failed assembly, missing output, input/output
+mutation, and unsupported required verifier policies fail closed. A backend may
+produce a typed diagnostic artifact when policy allows it, but it cannot become
+promotable by silently omitting evidence.
+
+### Cubin/SASS identity through promotion
+
+Package `CUBIN-INTEGRITY` binds the `ptxas` output to target, toolchain,
+verified PTX, attestation, cubin payload, kernel symbol, ABI schema, launch
+configuration, environment, and verifier version. Cubin bytes are hashed at
+registration and immediately before module load. Launch, golden, profile,
+replay, and promotion evidence all name the same immutable subject.
+
+Optional SASS/disassembly evidence is content-bound and policy-indexed. A policy
+that requires independent disassembly rejects if the verifier is unavailable;
+it does not downgrade to a path or verdict tag. A cubin byte mutation, region
+swap, wrong symbol/ABI, target/toolchain mismatch, changed grid/block/shared
+configuration, stale environment, wrong-subject device result, or promotion
+with unbound verdict tags rejects before launch or promotion.
+
+The generic canonical-artifact and proof-obligation owners define the envelope
+and evidence policy. The device-proof owners define CUDA failure handling and
+golden execution. The proof-carrying allocation owner applies only to
+allocations Habu can independently verify. `CUBIN-INTEGRITY` preserves those
+facts through the PTX-specific chain without duplicating them.
+
+### Fixed call graph and implementation ownership
+
+The reviewed call graph is fixed to:
+
+~~~text
+maki/lower-{ew,red,mm,move}.f
+  -> lib/ptx/{ir,cg,header,collective}.f
+     + lib/ptx/cg-collective.f
+     + src/arch/ptx/emit.f
+  -> lib/ptx/toolchain.f + tools/ptx/ptxas-smoke.f
+  -> maki/lower-launch.f
+  -> maki/lower-golden.f + maki/lower-model-device-test.f
+  -> maki/report.f + maki/cad.f + maki/store.f
+~~~
+
+The three missing implementation owners are deliberately disjoint:
+
+1. `habu-verify-ptx-virtual-50281017`: instruction/state ADTs, actual-CFG
+   verification, diagnostics, and the render gate.
+2. `habu-attest-proprietary-ptxas-6ce9fda2`: exact assembler provenance,
+   resource-report parsing, opaque-backend attestation, and replay.
+3. `habu-bind-cubin-and-c1103e74`: cubin/SASS identity through typed launch,
+   device evidence, persistence, and promotion.
+
+Any newly discovered emitter, assembler, launch, evidence, or promotion bypass
+outside this census requires review and explicit ownership before it may emit a
+promotable PTX artifact.
+
 ## Landed foundation and remaining gaps
 
 The plan review originally surfaced FFI and parametric stack types as
@@ -185,7 +298,8 @@ CUDA device proof remains Linux/Orin-specific:
 
 The remaining PTX foundation work is semantic, not bootstrap: correct generic
 collective uniformity/barrier lowering, typed v4 alignment proofs, int-vs-float
-arithmetic capability constraints, and durable device proof/gate hardening listed
+arithmetic capability constraints, PTX virtual-state verification, exact
+`ptxas`/cubin integrity evidence, and durable device proof/gate hardening listed
 above.
 
 ## Decisions (locked)
