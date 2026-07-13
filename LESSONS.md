@@ -3898,3 +3898,9 @@ unchanged (148855). Keys for milestone 2:
   dot stays open. Re-scope the dot to the exact missing regression or parity
   seam before claiming it; otherwise a worker will duplicate production code
   and miss the remaining proof gap.
+- **Dependencies must name closable implementation milestones, not permanent
+  trust-row owners.** A capability dot retained only so `TRUSTED.md` rows keep
+  resolving can leave unrelated implementation work blocked after its usable
+  contract has landed. Transfer durable ownership to a checked permanent-owner
+  registry, close the implementation dot on evidence, and depend on that
+  completed milestone.
