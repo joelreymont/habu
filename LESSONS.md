@@ -2,7 +2,18 @@
 
 # FIXME: Rewrite this to be concise without losing precision
 
-Last updated: 2026-07-12
+Last updated: 2026-07-13
+
+- **A reusable buffer is live until its last semantic consumer:** owner-row
+  freeze reused `AOT-REC-BUF` after record proof but before boot-manifest lookup,
+  so fixture success depended on target records landing beyond the overwritten
+  prefix. Give independently live artifacts disjoint regions, and regress the
+  final consumer after every intervening phase.
+- **A source lint needs a production census, not only mutation fixtures:** the
+  clobber lint retained legacy label syntax while production moved to `LABEL@`,
+  making a future clean result vacuous after its fixed input cap is repaired.
+  Assert nonzero routine and edge counts against authoritative sources so token
+  grammar drift fails closed.
 
 - **An optional lint root is an audit bypass:** `trust-lint` silently skipped
   absent roots and audited only `src/` plus `lib/`, leaving 16 existing
@@ -3724,11 +3735,13 @@ unchanged (148855). Keys for milestone 2:
   expose lowercase engine primitives; package-scoped checked wrappers belong to
   the dependent syntax/API leaf. Do not widen file ownership to impose the final
   surface before its layer is ready.
-- **`dot on` is a transition, not an active-status probe.** Running it again on
-  an active dot rewrites quoted metadata. Activate once, publish the claim, then
-  inspect the fetched remote dot file and use local `dot show` for the final
-  pre-spawn owner/status verification. A local clean status does not prove the
-  coordination bookmark contains the claim.
+- **`dot on` is a transition, not an active-status probe.** The deployed
+  serializer re-quotes `created-at` even on the first transition; repair that
+  exact scalar until the CLI upgrade lands, and never run `dot on` again on an
+  active dot because each rewrite compounds metadata drift. Activate once,
+  publish the claim, then inspect the fetched remote dot file and use local
+  `dot show` for final pre-spawn owner/status verification. A local clean status
+  does not prove the coordination bookmark contains the claim.
 - **Native primitive additions must grow the emitter registry deliberately.**
   Five sealed-owner WID primitives crossed `src/habu/habu1.f`'s 160-row
   `PRIM-CAP` and stopped fixpoint with `primitive registry full`; keep the
