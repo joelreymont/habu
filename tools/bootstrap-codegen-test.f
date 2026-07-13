@@ -483,5 +483,4 @@ public
    T-REPORT
    s" bootstrap-codegen-test: ok" type cr ;
 
-CORE-LAYOUT-RC $4C T=
 BCG-MAIN
