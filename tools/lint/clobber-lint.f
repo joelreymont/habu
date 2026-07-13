@@ -327,22 +327,22 @@ variable RNEXT  variable LASTSTOP  variable RDONE  variable CUR
 : OPEN+  ( n -- )
    ON# @ OMAX >= if s" clobber-lint: too many labels in definition" 1 die then
    OPENINGS ON# @ cells + !  ON# @ 1+ ON# ! ;
-: LABEL-OPEN?  {: k hi :}  ( -- f )
+: LABEL-OPEN? ( n n -- bool ) {: k:n hi:n :}
    k 2 + hi >= if LINT-FALSE exit then
    k TOK START-L?  k 1+ TOK LABEL-ACCESS? and  k 2 + TOK s" LBL," LINT-STR= and ;
-: BL-CALL-SITE? {: k:n hi:n :} ( -- bool )
+: BL-CALL-SITE? ( n n -- bool ) {: k:n hi:n :}
    k 2 + hi >= IF LINT-FALSE exit THEN
    k TOK START-L?
    k 1+ TOK LABEL-ACCESS? and
    k 2 + TOK s" BL," LINT-STR= and ;
-: COLLECT-OPENINGS  {: lo hi :}  ( -- )
+: COLLECT-OPENINGS ( n n -- ) {: lo:n hi:n :}
    0 ON# !  lo OX !
    begin OX @ hi < while
       OX @ hi LABEL-OPEN? if OX @ OPEN+ CLOBBER-CENSUS:ROUTINE+ then
       OX @ hi BL-CALL-SITE? if CLOBBER-CENSUS:CALL+ then
       OX @ 1+ OX !
    repeat ;
-: CALLEE?  {: lo hi :}  ( -- f )
+: CALLEE? ( n n -- bool ) {: lo:n hi:n :}
    hi lo - 2 < if LINT-FALSE exit then
    hi 1- TOK LABEL-ACCESS? 0= if LINT-FALSE exit then
    hi 2 - TOK START-L? 0= if LINT-FALSE exit then
@@ -410,7 +410,7 @@ variable RNEXT  variable LASTSTOP  variable RDONE  variable CUR
    repeat ;
 
 variable WI  variable WE
-: PASS1-FILE  {: pa pu :}  ( -- )
+: PASS1-FILE ( ptr u8 n -- ) {: pa:ptr pu:n :}
    pa pu LINT-SOURCE:LOAD  LINT-SOURCE:TEXT TOKENIZE
    0 WI !
    begin WI @ TN# @ 1- < while
@@ -555,7 +555,7 @@ variable TRACK-LR
       then
       DI @ 1+ DI !
    repeat ;
-: PASS2-FILE  {: pa pu :}  ( -- )
+: PASS2-FILE ( ptr u8 n -- ) {: pa:ptr pu:n :}
    pa pu LINT-SOURCE:LOAD  LINT-SOURCE:TEXT TOKENIZE
    0 WI !
    begin WI @ TN# @ 1- < while

@@ -28,6 +28,10 @@ Last updated: 2026-07-13
   helper introduced bare locals after the first lint pass, and only the commit
   checkpoint caught it. The proof must describe the exact tree being committed,
   not an earlier patch snapshot.
+- **A typed-locals group does not replace the caller-visible effect:** putting
+  `( -- result )` after locals can describe the post-binding stack while hiding
+  the inputs from readers. State the full public effect before `{: ... :}` so
+  reviews and tools see the same contract.
 
 - **An optional lint root is an audit bypass:** `trust-lint` silently skipped
   absent roots and audited only `src/` plus `lib/`, leaving 16 existing
