@@ -1,9 +1,9 @@
 ---
 title: Staged fixpoint source checking
-status: open
+status: active
 priority: 2
 issue-type: task
-created-at: "2026-07-01T22:54:40.821289+02:00"
+created-at: "\"2026-07-01T22:54:40.821289+02:00\""
 ---
 
 Implement the trust induction: the RUNNING bin/hb (stage N) must CHECK the full stage N+1 source list - checker.f, render.f, habu1.f, habu2.f, jit.f, util/structures, everything the fixpoint compiles - BEFORE building it, refusing to build on any reject. Wire as a mandatory pre-pass in tools/build-fixpoint.f (same authoritative source list the build uses; do not fork a parallel list). This dissolves the EMIT-HOST-LOAD-PREFIX unchecked-prefix hole (src/habu/habu2.f:412-415): source is only ever executed by a binary whose own source was checked by its predecessor; byte-for-byte fixpoint ties the knot. Subsumes habu-self-check-checker-e10ce327 as its first rung. Depends on: checker soundness (habu-fix-sig-clobber) landed; checker perf (habu-hash-idx-checker, habu-high-water-checker) makes ~14k-line pre-pass affordable; builder TRUST conversion (habu-builder-trust-checked) reduces what the pre-pass must accept as boundaries. Gate: refresh fails closed on any unchecked-source reject.
@@ -45,3 +45,5 @@ are GONE: the emitted stage source no longer contains any generated
 image-writers, build-fixpoint half). The image writers compile checked in
 stage2. Remaining injected boundaries for the pre-pass: the refresh
 prelude's BFR-CHECK-OFF before the checker-boot region only.
+
+Claim: agent=fixsrc workspace=.jj-ws/fable-fixsrc
