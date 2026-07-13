@@ -282,6 +282,13 @@ public
 : LMM-M@ ( -- n )         LMM-M @ ;
 : LMM-N@ ( -- n )         LMM-N @ ;
 : LMM-K@ ( -- n )         LMM-K @ ;
+\ typed M/N sources for the launch-param seam (lower-launch LLA-SET-MNK!):
+\ M/N are the contraction OUTPUT's rows/cols (the same node LMM-SET-DIMS read),
+\ so they carry the genuine CAD-KIND roles. K = cols(A) = rows(B) has no honest
+\ single role (the contraction collapses it; V2 R4 makes K-consistency a shape
+\ CONSTRAINT, not a kind), so it stays the raw LMM-K@ by design.
+: LMM-ROWS@ ( -- CAD-KIND:rows )  LMM-MMNODE@ MIR-ROWS@ ;
+: LMM-COLS@ ( -- CAD-KIND:cols )  LMM-MMNODE@ MIR-COLS@ ;
 : LMM-ELEMS ( -- n )      LMM-M @ LMM-N @ * ;
 : LMM-RID@ ( -- CAD-KIND:region )  0 LMM-RID @ ;
 : LMM-BLOCKED? ( -- bool ) LMM-BLK @ 0= 0= ;    \ register-blocked tile chosen for this shape?

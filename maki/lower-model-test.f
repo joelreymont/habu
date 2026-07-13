@@ -72,6 +72,21 @@ s" LMT-RG-OK       ( CAD-KIND:rows CAD-KIND:cols -- n ) LLA-ROW-GRID" CHECK-QUIE
 s" LMT-NEG-RG-SWAP ( CAD-KIND:cols CAD-KIND:rows -- n ) LLA-ROW-GRID" CHECK-QUIET-CANDIDATE! 0 T=
 s" LMT-NEG-RG-RAW  ( n n -- n ) LLA-ROW-GRID"                         CHECK-QUIET-CANDIDATE! 0 T=
 
+\ typed matmul-param seam (LLA-SET-MNK!): p_m/p_n/p_k order is static; byte-identity
+\ on the real staged GEMM region 1 (C(4x8) = A(4x16) . B(16x8) + b(1x8)).
+1 FP-REGION-ID LLA-STAGE-MM
+LLA-PM @ 4  T=                            \ p_m = M = rows(C)
+LLA-PN @ 8  T=                            \ p_n = N = cols(C)
+LLA-PK @ 16 T=                            \ p_k = K = cols(A)
+LLA-PM @ LMM-M@ T=  LLA-PN @ LMM-N@ T=  LLA-PK @ LMM-K@ T=
+\ ANY transposition of the (M, N, K) triple into the typed seam rejects BEFORE
+\ runtime; K is a bare n by design, and a role never unifies with it either way
+s" LMT-MNK-OK       ( CAD-KIND:rows CAD-KIND:cols n -- ) LLA-SET-MNK!" CHECK-QUIET-CANDIDATE! -1 T=
+s" LMT-NEG-MNK-SWAP ( CAD-KIND:cols CAD-KIND:rows n -- ) LLA-SET-MNK!" CHECK-QUIET-CANDIDATE! 0 T=
+s" LMT-NEG-MNK-MK   ( n CAD-KIND:cols CAD-KIND:rows -- ) LLA-SET-MNK!" CHECK-QUIET-CANDIDATE! 0 T=
+s" LMT-NEG-MNK-NK   ( CAD-KIND:rows n CAD-KIND:cols -- ) LLA-SET-MNK!" CHECK-QUIET-CANDIDATE! 0 T=
+s" LMT-NEG-MNK-RAW  ( n n n -- ) LLA-SET-MNK!"                         CHECK-QUIET-CANDIDATE! 0 T=
+
 \ tolerance composition inputs: 2 matmul regions + 1 row-reduce region, summed across the chain
 MDL-COUNT-REGIONS
 MDL-N-REGIONS@ 3 T=

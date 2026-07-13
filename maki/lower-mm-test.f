@@ -82,6 +82,11 @@ s" fma.rn.f32"                  LMMT-IN
 s" add.rn.f32"                  LMMT-IN     \ acc += bias[col]
 s" ex2.approx"                  LMMT-ABSENT \ no epilogue activation
 s" max.f32"                     LMMT-ABSENT
+\ typed M/N sources agree with the staged raw dims (C(4x16) = A(4x8) . B(8x16));
+\ K stays raw by design (cols(A) = rows(B): no honest single CAD-KIND role)
+LMM-ROWS@ ROWS-RAW 4  T=  LMM-ROWS@ ROWS-RAW LMM-M@ T=
+LMM-COLS@ COLS-RAW 16 T=  LMM-COLS@ COLS-RAW LMM-N@ T=
+LMM-K@ 8 T=
 
 \ ---- LINEAR GELU 4x8@8x16: bias then a fused gelu epilogue on the accumulator -----
 MODEL: LG ( x:4x8 w:8x16 b:1x16 -- y ) LINEAR GELU ;

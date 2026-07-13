@@ -214,11 +214,21 @@ private
    LRED-NIN@ LLA-NIN ! LRED-ELEMS LLA-ELEMS ! LRED-OUT-NODE@ LLA-OUT-NODE!
    LRED-NIN@ 0 ?do  i  i LRED-IN-REF@  LLA-STAGE-IN  loop ;
 
+\ typed M/N + raw K -> the ORDERED matmul u32 param slots (p_m, p_n, p_k): the
+\ raw projection is confined HERE (the LLA-ROW-GRID / LMV-RC-PARAMS! seam), so
+\ ANY transposition of the same-cell triple at a call site is a checker reject
+\ (rows vs cols for M/N; a role never unifies with the bare-n K). K carries no
+\ CAD-KIND role by design: cols(A) = rows(B), and MODEL-CAD-V2-PLAN R4 makes
+\ K-consistency a shape constraint, not a nominal kind.
+: LLA-SET-MNK! ( CAD-KIND:rows CAD-KIND:cols n -- )
+   {: pm:CAD-KIND:rows pn:CAD-KIND:cols pk:n :}
+   pm ROWS-RAW LLA-PM !  pn COLS-RAW LLA-PN !  pk LLA-PK ! ;
+
 : LLA-STAGE-MM ( CAD-KIND:region -- ) {: rid:CAD-KIND:region :}
    rid LMM-ANALYZE
    LMM-NIN@ LLA-NIN ! LMM-ELEMS LLA-ELEMS ! LMM-OUT-NODE@ LLA-OUT-NODE!
    LMM-NIN@ 0 ?do  i  i LMM-IN-REF@  LLA-STAGE-IN  loop
-   LMM-M@ LLA-PM !  LMM-N@ LLA-PN !  LMM-K@ LLA-PK ! ;
+   LMM-ROWS@ LMM-COLS@ LMM-K@ LLA-SET-MNK! ;
 
 \ movement copy region (maki/lower-move.f): 1-2 buffer operands are already input slots
 : LLA-STAGE-MV ( CAD-KIND:region -- ) {: rid:CAD-KIND:region :}
