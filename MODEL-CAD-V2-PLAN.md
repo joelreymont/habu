@@ -473,6 +473,58 @@ Use explicit capability tokens and op-schema effect rows for:
 - allocation/free;
 - persistent publication.
 
+R8 has two related but deliberately separate representations.
+
+The **static effect row** is package-owned by sealed `CAD-EFFECT`. `PURE` is
+the unique empty row. Every non-pure entry names an atom, a stable site path, a
+slot kind, and a slot index relative to an op schema, word signature, declared
+capability, or quotation capture. Local declarations start with an empty path;
+`CAD-EFFECT:REMAP` prefixes caller/call-site path segments while preserving the
+original resolvable slot. One atom may have several bindings, so weight and bias reads
+do not collapse. Different atoms may bind the same slot, so an atomic state
+write can express both facts. Direct duplicate insertion rejects; canonical
+`CAD-EFFECT:UNION` is associative, commutative, and idempotent. Its capacity is
+a named composition bound for stored words and quotations, not a bound inferred
+from the largest current Maki op, and overflow returns a typed diagnostic.
+
+Static rows contain no artifact digest, pointer, process-local address, mutable
+generation, RNG position, or authority instance. Stored-word and quotation
+metadata keep bindings relative to declared inputs and captures. At a call or
+quotation boundary the checker must apply capture-avoiding
+`CAD-EFFECT:REMAP` into a stable caller/call-site namespace before union. Raw
+union of two callee-local slot numbers is unsound because both callees may call
+their first resource `slot 0`. Primitive declarations, stored effects,
+quotations, registry rows, replay records, and snapshots validate through the
+sealed owner before any permissive decision.
+
+The **resolved semantic binding set** is execution-specific. One checked
+resolver combines a static row with typed invocation operands, attributes,
+capability tokens, canonical artifact metadata, and a stable semantic site
+derived from revision/node/call structure. It produces sorted entries of the
+form `(atom, site-path, slot-kind, slot-index, semantic-fact)` or a typed
+uncacheable/unresolved reason. Parameter reads resolve immutable payload
+digests; state and random effects bind owner plus generation or sequence; IO,
+device, allocation, atomic, collective, and publication bind the exact
+authority facts permitted by policy. Addresses and insertion order never enter
+the result. Only an exact repeated full tuple is intentionally idempotent. The
+same atom/site/slot resolving to different semantic facts is a conflict, while
+different sites or slots remain distinct even when their local slot numbers or
+payload digests match.
+
+Fusion and recompute legality consume sealed rows plus successfully resolved
+bindings. Only `PURE` and immutable digest-bound parameter reads may duplicate;
+unresolved reads and every mutable or externally observable effect are
+conservative barriers. Schedule, compile, result, replay, evidence, and
+promotion caches do not all depend on the same subset. A sealed versioned
+projection policy derives a domain-specific digest plus completeness evidence
+from the full resolved set. Each owner consumes that projection rather than
+filtering bindings privately. Every omitted fact has an explicit tested
+irrelevance rule; an unknown atom, domain, or unproved omission falls back to
+the full digest or a typed uncacheable result. The policy version participates
+in the key. This R8 model covers
+semantic effects of the generated operation; generated register, flag, frame,
+and control clobbers remain the separate R9 machine-state contract.
+
 Why required:
 
 Rewrite, fusion, recomputation, caching, and pass scheduling are unsound if
@@ -485,7 +537,35 @@ Acceptance:
 - writes and atomics cannot cross illegal reorder/fusion boundaries;
 - pure passes run without IO/device authority;
 - analysis-only contexts cannot publish persistent artifacts;
-- cache keys include every capability-controlled semantic input.
+- two callees or quotations that each bind local slot zero remain distinct after
+  checker remapping, while replaying the same remapped binding is idempotent;
+- weight, bias, mutable generation, RNG position, target/device authority, and
+  publication scope mutations change the exact affected key or make it
+  explicitly uncacheable;
+- each cache key includes every capability-controlled semantic input relevant
+  to its artifact class, every omission has completeness evidence, and no key
+  depends on addresses or traversal order;
+- package sealing, every metadata/registry ingress, snapshot, replay, and
+  fixpoint preserve canonical row authority.
+
+Tracked implementation slices:
+
+- `habu-fix-wide-product-5c81dada` repairs checker width accounting before a
+  defensible composed row can land;
+- `habu-define-finite-cad-0bdf52ad` owns static row vocabulary, remap, union,
+  and legality tables;
+- `habu-seal-cad-effect-49cac404` owns the final authority boundary;
+- `habu-persist-cad-semantic-028c0881` owns checker metadata and call-site
+  substitution;
+- `habu-require-maki-op-b14ccc89` owns mandatory static Maki schema rows;
+- `habu-infer-linear-kinds-1f77b4c4` and
+  `habu-add-explicit-cad-58a05453` close polymorphic capability laundering and
+  expose explicit authority tokens;
+- `habu-resolve-runtime-cad-2864336f` owns execution-specific resolution;
+- `habu-enforce-effect-aware-cf9181b8` owns fusion/recompute legality;
+- `habu-census-cad-effect-3240237b` freezes cache dependency domains and splits
+  disjoint owners; `habu-define-complete-cad-90a9945c` owns sealed projection
+  policies before `habu-key-caches-by-fddcea19` integrates the key migration.
 
 ### R9. Generated Machine-State Integrity
 
