@@ -594,7 +594,9 @@ variable DOTS-ROOT-U
    cells + ! ;
 
 : OWN-STORE$ ( ptr u8 n -- n n ) {: a:ptr u:n :}
-   OWN-END @ u + OWNER-CAP > if s" trusted-inventory: owner arena overflow" 1 die then
+   OWN-END @ u + OWNER-CAP > if
+      s" trusted-inventory: owner arena overflow" E-TINV-OWNERS die
+   then
    a OWNER-BUF OWN-END @ + u LINT-BMOVE
    OWN-END @ u
    OWN-END @ u + OWN-END ! ;
@@ -608,7 +610,9 @@ variable DOTS-ROOT-U
    OWNER-REF-U k OWNER-CELL@ ;
 
 : OWNER+ ( ptr u8 n ptr u8 n -- ) {: ia:ptr iu:n ra:ptr ru:n :}
-   OWN-N @ OWNER-MAX >= if s" trusted-inventory: owner registry overflow" 1 die then
+   OWN-N @ OWNER-MAX >= if
+      s" trusted-inventory: owner registry overflow" E-TINV-OWNERS die
+   then
    ia iu OWN-STORE$ OWNER-ID-U OWN-N @ OWNER-CELL! OWNER-ID-O OWN-N @ OWNER-CELL!
    ra ru OWN-STORE$ OWNER-REF-U OWN-N @ OWNER-CELL! OWNER-REF-O OWN-N @ OWNER-CELL!
    OWN-N @ 1+ OWN-N ! ;
@@ -1095,7 +1099,9 @@ DOTS-ROOT-RESET
 private
 
 : DOCM-APPEND ( ptr u8 n -- ) {: a:ptr u:n :}
-   DOCM-U @ u + DOCM-CAP > if s" trusted-inventory: document marker overflow" 1 die then
+   DOCM-U @ u + DOCM-CAP > if
+      s" trusted-inventory: document marker overflow" E-TINV-OWNERS die
+   then
    a DOCM-BUF DOCM-U @ + u LINT-BMOVE
    DOCM-U @ u + DOCM-U ! ;
 

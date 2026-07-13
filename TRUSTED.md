@@ -866,7 +866,7 @@ rendering, so the checker can validate them without a Markdown implementation.
 
 | Owner | Completed semantic boundary | Owning evidence |
 |---|---|---|
-| <a id="cap-checker-hook-identity"></a>`cap:checker-hook-identity` | Intentional engine-hook primitive boundary: trusted hook installation preserves one canonical checker identity across engine, AOT, snapshot, lint, and tests; checked application code cannot install hooks. | `test/engine-suite.f`, `test/prop-test-core.f`, `tools/codegen-role.f` |
+| <a id="cap-checker-hook-identity"></a>`cap:checker-hook-identity` | Audited hook-identity gate only: checked-boundary lint rejects installed names outside the landed canonical allowlist across engine, AOT, snapshot, lint, and tests. It does not claim post-seal compiler/friend-latch authorization; that residual remains owned by live dot `habu-seal-set-check-b3676b33`. | `test/engine-suite.f`, `test/prop-test-core.f`, `tools/codegen-role.f` |
 | <a id="cap-fetched-adt-validation"></a>`cap:fetched-adt-validation` | Test-only hostile whitebox access constructs malformed fetched ADT layouts and proves growth, guard, product, and width-one rejection. | `test/layout-valid-growth.f`, `test/layout-valid-guard-base.f`, `test/layout-valid-product-bad.f`, `test/layout-valid-w1-bad.f` |
 | <a id="cap-qualified-family-payloads"></a>`cap:qualified-family-payloads` | Test-only nominal payload casts construct and inspect qualified family values after schema resolution. | `test/type-decl-suite.f` |
 | <a id="cap-sealed-family-pointers"></a>`cap:sealed-family-pointers` | Test-only representation accessor verifies that layout-buffer family pointers remain sealed behind the typed buffer API. | `test/layout-buffer.f` |
