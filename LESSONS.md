@@ -3874,3 +3874,7 @@ unchanged (148855). Keys for milestone 2:
   public PRODUCT constructor proves layout and field roles, not mask, ordering,
   bound, or cache-legality invariants. Validate every parser, artifact,
   persistence, FFI, and registry ingress before any permissive decision.
+- **A prose dot reference is not a dependency until the ID resolves.** Verify
+  every claimed prerequisite with `dot show` before wiring downstream work.
+  Capability documentation must label planned enforcement as planned; future
+  linear-kind checks must never be described as protecting current code.

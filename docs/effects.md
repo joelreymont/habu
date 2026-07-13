@@ -98,9 +98,9 @@ underflows. A resource can neither be silently dropped nor duplicated.
 
 Conservation alone only sees linear *cons* on the stack, so it is blind to
 *polymorphic laundering* — a value duplicated or dropped while its type is still
-a polymorphic variable that only later unifies with a linear con. The **linear
-kind discipline** (`src/core/checker.f`, gated on any `DEFLINEAR` being declared)
-tracks linearity through type variables and closes that gap on two fronts:
+a polymorphic variable that only later unifies with a linear con. The required
+**linear kind discipline** is not implemented yet; it is tracked by
+`habu-infer-linear-kinds-1f77b4c4` and must close the gap on two fronts:
 
 - **Polarity-aware multiplicity at effect application.** When applying a word or
   primitive, any type variable in its effect that binds to a linear con must
@@ -117,11 +117,11 @@ tracks linearity through type variables and closes that gap on two fronts:
   and `[: over FREE ;] execute`, where the copy happens before `FREE` binds the
   variable to the linear.
 
-Both are additive rejections layered on concrete-count conservation, and both
-are inert unless a `DEFLINEAR` type is in scope, so non-linear polymorphic code
-(`[: dup ;] execute` on a plain value, `KEEP`/`DIP` over non-linear data) is
-unaffected. `KEEP`/`BI`/`TRI` and self-duplicating quotations may again be
-trusted to uphold linearity (tracked by `habu-linear-kind-inference-c31475b8`).
+The implementation must make both checks additive to concrete-count
+conservation and inert unless a `DEFLINEAR` type is in scope, so non-linear
+polymorphic code (`[: dup ;] execute` on a plain value, `KEEP`/`DIP` over
+non-linear data) remains unaffected. Until that dot lands, `KEEP`/`BI`/`TRI`
+and self-duplicating quotations are not sound linear capability boundaries.
 
 `VALUE-RECORD name field type ... END-VALUE-RECORD` declares a legacy by-value
 record token for signatures. The token expands to TOUCHABLE `field<rec,name,t>`
