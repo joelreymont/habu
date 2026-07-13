@@ -234,7 +234,6 @@ public
    s" ,threads=" SB-APPEND t TARGET:THREADS@ SB-INT
    s" ,shared=" SB-APPEND t TARGET:SHARED@ SB-INT
    s" ,caps=" SB-APPEND t TARGET:CAPS@ SB-INT ;
-: SK-TARGET$ ( CAD-KIND:target-id -- ptr u8 n )  SB-RESET SK-TARGET+ SB$ ;
 \ Real engine content key: the SHA-256 of bin/hb, resolved engine-side from the
 \ kernel-provided self-path and hashed once on first request, then cached
 \ (lib/engine-id.f). It distinguishes schedules produced by different engine builds

@@ -88,13 +88,19 @@ public
 : UNIT-COLS ( -- CAD-KIND:cols ) 1 COLS-REFINE ;
 : ZERO-ROWS ( -- CAD-KIND:rows ) 0 ROWS-REFINE ;
 
+\ Address spaces beyond SPACE-HOST are declared-ahead surface (dead-code audit
+\ 2026-07-13): today they cover the live TV-DESC space column round trip
+\ (maki/tensor-value-test.f); device materialization itself is zed-gated.
+\ Pending owners: dot habu-nominal-storage-migrate-47ee0f93 (typed tensor-value
+\ columns + address-space swap rejection) and dot habu-v2-checked-async-8d460576
+\ (typed global->shared pipeline). The kept cluster is ADDRESS-SPACE-DECODE/
+\ -VALID?/-EQUAL?, SPACE-GLOBAL/SPACE-SHARED, RANGE, and trusted SPACE-RAW.
 : ADDRESS-SPACE-DECODE ( n -- CAD-KIND:address-space )
    SPACE-N E-MK-SPACE RANGE SPACE-REFINE ;
 
 : SPACE-HOST ( -- CAD-KIND:address-space ) 0 SPACE-REFINE ;
 : SPACE-GLOBAL ( -- CAD-KIND:address-space ) 1 SPACE-REFINE ;
 : SPACE-SHARED ( -- CAD-KIND:address-space ) 2 SPACE-REFINE ;
-: SPACE-LOCAL ( -- CAD-KIND:address-space ) 3 SPACE-REFINE ;
 
 : ADDRESS-SPACE-VALID? ( n -- bool )
    {: value:n :}
@@ -158,24 +164,14 @@ ENUM dtype DERIVE eq
 : ROWS+ ( CAD-KIND:rows CAD-KIND:rows -- CAD-KIND:rows )
    ROWS-RAW swap ROWS-RAW swap SUM-DIM ROWS-REFINE ;
 
-: COLS+ ( CAD-KIND:cols CAD-KIND:cols -- CAD-KIND:cols )
-   COLS-RAW swap COLS-RAW swap SUM-DIM COLS-REFINE ;
-
 : ROWS- ( CAD-KIND:rows CAD-KIND:rows -- CAD-KIND:rows )
    ROWS-RAW swap ROWS-RAW swap SUB-DIM ROWS-REFINE ;
-
-: COLS- ( CAD-KIND:cols CAD-KIND:cols -- CAD-KIND:cols )
-   COLS-RAW swap COLS-RAW swap SUB-DIM COLS-REFINE ;
 
 : DIM-BCAST? ( CAD-KIND:dim CAD-KIND:dim -- bool )
    DIM-RAW swap DIM-RAW swap BCAST-DIM? ;
 
 : DIM-EQUAL? ( CAD-KIND:dim CAD-KIND:dim -- bool )
    DIM-RAW swap DIM-RAW swap SAME-DIM? ;
-
-: DIM-IS? ( CAD-KIND:dim n -- bool )
-   {: value:CAD-KIND:dim expected:n :}
-   value DIM-RAW expected SAME-DIM? ;
 
 : ROWS-EQUAL? ( CAD-KIND:rows CAD-KIND:rows -- bool )
    ROWS-RAW swap ROWS-RAW swap SAME-DIM? ;
@@ -213,11 +209,6 @@ ENUM dtype DERIVE eq
    {: r1:CAD-KIND:rows c1:CAD-KIND:cols r2:CAD-KIND:rows c2:CAD-KIND:cols :}
    r1 ROWS-RAW r2 ROWS-RAW SAME-DIM?
    c1 COLS-RAW c2 COLS-RAW SAME-DIM? and ;
-
-: SHAPE-IS? ( CAD-KIND:rows CAD-KIND:cols n n -- bool )
-   {: rows:CAD-KIND:rows cols:CAD-KIND:cols expected-rows:n expected-cols:n :}
-   rows ROWS-RAW expected-rows SAME-DIM?
-   cols COLS-RAW expected-cols SAME-DIM? and ;
 
 : BCAST-SHAPE ( CAD-KIND:rows CAD-KIND:cols CAD-KIND:rows CAD-KIND:cols -- CAD-KIND:rows CAD-KIND:cols )
    {: r1:CAD-KIND:rows c1:CAD-KIND:cols r2:CAD-KIND:rows c2:CAD-KIND:cols :}

@@ -84,7 +84,7 @@ T-RESET
 64  64  DIM-FEQ TTRUE      64  64  DIM-TXT= TTRUE      \ exact vs exact, same magnitude
 
 \ ---- key fields: facts-based target identity + the real engine content key ---
-TARGET:SM87 SK-TARGET$ s" isa=1,arch=87,warp=32,threads=1024,shared=49152,caps=127" T$=
+SB-RESET TARGET:SM87 SK-TARGET+ SB$ s" isa=1,arch=87,warp=32,threads=1024,shared=49152,caps=127" T$=
 TARGET:SM87 TARGET:LABEL$ s" sm_87" T$=  \ the label is presentation only; it never enters the durable key
 SK-ENGINE$ ENGINE-KEY$  T$=              \ engine field is the real bin/hb content key
 SK-ENGINE$ nip 64       T=              \ a 64-char SHA-256 hex digest, not a placeholder

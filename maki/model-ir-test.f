@@ -67,7 +67,7 @@ MIR-IN-SLOTS@  3 T=
 \ ---- node facts -------------------------------------------------------------
 MT-N0@ MIR-OP@ OPKIND>N OP-LINEAR T=
 MT-N1@ MIR-OP@ OPKIND>N OP-GELU   T=
-MT-N1@ dup MIR-ROWS@ swap MIR-COLS@ 2 4 SHAPE-IS? TTRUE
+MT-N1@ dup MIR-ROWS@ swap MIR-COLS@ 2 4 SHAPE SHAPE-EQUAL? TTRUE
 MT-N1@ MIR-DT@   DTYPE>N DT-F32   T=
 MT-N1@ MIR-LAY@  LAYOUT>N LAY-ROW T=
 MT-N0@ MIR-IN-COUNT@ 2 T=

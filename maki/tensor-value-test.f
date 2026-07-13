@@ -20,7 +20,7 @@ create TVT-BX 4 cells allot
 
 : TVT-SHAPE? ( tensor n n -- bool )
    {: t:tensor rows:n cols:n :}
-   t TENSOR:TV-ROWS@ t TENSOR:TV-COLS@ rows cols SHAPE-IS? ;
+   t TENSOR:TV-ROWS@ t TENSOR:TV-COLS@ rows cols SHAPE SHAPE-EQUAL? ;
 
 \ ---- default constructor: f32 + row-major + host, materialized --------------
 TVT-BX 2 2 SHAPE TENSOR:TV-NEW
@@ -28,7 +28,7 @@ dup 2 2 TVT-SHAPE? TTRUE
 dup TENSOR:TV-DTYPE@   MAKI-DTYPE:DF32 MAKI-DTYPE:EQ TTRUE
 dup TENSOR:TV-LAYOUT@  MAKI-LAYOUT:ROW MAKI-LAYOUT:EQ TTRUE
 dup TENSOR:TV-SPACE@   SPACE-HOST ADDRESS-SPACE-EQUAL? TTRUE
-dup TENSOR:TV-ELEMS    4 DIM-IS? TTRUE
+dup TENSOR:TV-ELEMS    2 2 SHAPE SHAPE-ELEMS DIM-EQUAL? TTRUE
 dup TENSOR:TV-HAS-DATA?        TTRUE
 dup TENSOR:TV-DATA@ TVT-BX =   TTRUE
 drop

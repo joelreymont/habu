@@ -42,6 +42,17 @@ variable BASE-N
    TARGET:ISA-PTX 89 32 1024 49152 TARGET:CAP-PTX
    TARGET:DESCRIPTOR TARGET:RESOLVE drop ;
 
+: CAP-DESC ( n -- TARGET:descriptor )   \ distinct arch per fill registration
+   TARGET:ISA-PTX swap 32 1024 49152 TARGET:CAP-PTX TARGET:DESCRIPTOR ;
+
+: CAP-FILL ( -- )   \ fill the append-only registry to its cap (TGT-CAP = 16)
+   16 TARGET:COUNT - 0 ?do
+      s" cap-fill" 100 i + CAP-DESC TARGET:REGISTER drop
+   loop ;
+
+: CAP-17TH ( -- )
+   s" cap-over" 900 CAP-DESC TARGET:REGISTER drop ;
+
 T-RESET
 
 TARGET:COUNT BASE-N !
@@ -78,6 +89,26 @@ s" TGT-TOOL ( CAD-KIND:toolchain-id -- ptr u8 n ) TARGET:LABEL$" NO
 s" TGT-ART ( CAD-KIND:artifact-id -- ptr u8 n ) TARGET:LABEL$" NO
 s" TARGET:RAW>TARGET-ID" 0 search-wl 0= TTRUE
 
-T-REPORT
+\ capacity: the seventeenth distinct descriptor rejects. The registry is
+\ process-global and append-only, so this fill runs LAST; no later maki/test.f
+\ suite registers targets (sched-key-test runs earlier).
+CAP-FILL
+TARGET:COUNT 16 T=
+' CAP-17TH E-TARGET-CAP TTHROWS
 
 ;package
+
+\ Nominal-id corruption seam: a bad CAD-KIND:target-id is only mintable via the
+\ private refinement, so reopen the owning package for the E-TARGET-ID
+\ negatives (qualified lookup is public-only; TT- names are test-owned).
+package TARGET
+
+: TT-ID-NEG ( -- )  -1 RAW>TARGET-ID VALIDATE drop ;
+: TT-ID-BIG ( -- )  99 RAW>TARGET-ID DESCRIPTOR@ drop ;
+
+' TT-ID-NEG E-TARGET-ID TTHROWS
+' TT-ID-BIG E-TARGET-ID TTHROWS
+
+;package
+
+T-REPORT

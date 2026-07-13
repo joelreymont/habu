@@ -587,12 +587,6 @@ public
    loop ;
 
 \ ---- the imported model's output node -------------------------------------------
-: NODE# ( -- n )  IMP-NODE-N @ ;
-
-: NODE@ ( n -- CAD-KIND:node-id )
-   dup 0 < over IMP-NODE-N @ >= or if E-ONNX-IDX throw then
-   IMP-NODE@ ;
-
 : OUT-NODE@ ( -- CAD-KIND:node-id )
    IMP-NODE-N @ 0= if E-ONNX-OUTPUT throw then
    IMP-NODE-N @ 1- IMP-NODE@ ;

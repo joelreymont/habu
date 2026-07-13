@@ -57,6 +57,13 @@ TRUSTED: TARGET-ID>RAW ( CAD-KIND:target-id -- n ) ;
 $cbf29ce484222325 constant TGT-HASH-BASIS
 $100000001b3 constant TGT-HASH-PRIME
 
+\ Declared-ahead identity surface (dead-code audit 2026-07-13, keep): the
+\ DESC-HASH chain plus public DIGEST@/EQUAL?/FACTS$/LABEL$/RESOLVE/COUNT serve
+\ Model-CAD V2 section 9.1 content-addressed object identity - the artifact DB
+\ keys objects by semantic digest (epic habu-epic-model-cad-70b629a9), matching
+\ the idle CAD-KIND identity kinds precedent. Focused suites are today's only
+\ callers; do not re-flag these as dead.
+
 : DESC-UN ( descriptor -- n n n n n n )
    MATCH descriptor
       value OF ENDOF
