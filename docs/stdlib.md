@@ -392,11 +392,16 @@ level code does not depend on broad library ordering such as loading
 `lib/string.f` before `lib/ffi.f`.
 
 ```forth
+BYTE-VIEW       ( ptr a -- ptr u8 )
 BYTE+           ( ptr u8 n -- ptr u8 )
 BYTE@           ( ptr u8 n -- n )
 BYTE-COPY-LEN   ( ptr u8 ptr u8 len -- )
 BYTE-COPY       ( ptr u8 ptr u8 n -- )
 ```
+
+`BYTE-VIEW` preserves the pointer address while exposing byte-granularity
+access. The resulting `ptr u8` supports `c@` and `c!`; checked code rejects
+cell-sized `@` and `!` through that view.
 
 ## String
 
