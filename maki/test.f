@@ -204,6 +204,8 @@ TEST:SUITE maki/async-dag-test.f
 TEST:;SUITE
 TEST:SUITE maki/plan-ir-test.f
 TEST:;SUITE
+TEST:SUITE maki/typestate-test.f
+TEST:;SUITE
 TEST:SUITE maki/cuda-types-test.f
 TEST:;SUITE
 TEST:SUITE maki/cuda-driver-test.f

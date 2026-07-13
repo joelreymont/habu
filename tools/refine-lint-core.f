@@ -33,7 +33,7 @@
 
 $40000 constant RFL-STR-CAP     \ trust-lint manifest string store
 $80000 constant RFL-FILE-CAP    \ largest scanned source watermark (checker.f class)
-18 constant RFL-SEED#
+28 constant RFL-SEED#
 8 constant RFL-ALLOW-MAX
 32 constant RFL-NUM-CAP
 
@@ -149,6 +149,16 @@ variable RFL-LE
       15 of s" RAW>ANODE" endof
       16 of s" RAW>ASTREAM" endof
       17 of s" RAW>AEVENT" endof
+      18 of s" RAW>DECL" endof
+      19 of s" RAW>ELAB" endof
+      20 of s" RAW>SOLVED" endof
+      21 of s" RAW>LEGAL" endof
+      22 of s" RAW>DRAFT" endof
+      23 of s" RAW>COMPLETE" endof
+      24 of s" RAW>DRAFTED" endof
+      25 of s" RAW>VERIFIED" endof
+      26 of s" RAW>EMITTED" endof
+      27 of s" RAW>BUILT" endof
       E-TBL-BOUNDS throw
    endcase ;
 
@@ -172,6 +182,16 @@ variable RFL-LE
       15 of s" maki/async-dag.f" endof
       16 of s" maki/async-dag.f" endof
       17 of s" maki/async-dag.f" endof
+      18 of s" maki/typestate.f" endof
+      19 of s" maki/typestate.f" endof
+      20 of s" maki/typestate.f" endof
+      21 of s" maki/typestate.f" endof
+      22 of s" maki/typestate.f" endof
+      23 of s" maki/typestate.f" endof
+      24 of s" maki/typestate.f" endof
+      25 of s" maki/typestate.f" endof
+      26 of s" maki/typestate.f" endof
+      27 of s" maki/typestate.f" endof
       E-TBL-BOUNDS throw
    endcase ;
 

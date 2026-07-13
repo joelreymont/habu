@@ -587,6 +587,13 @@ points stay listed.
 - `maki/plan-ir-test.f` — handoff regressions: replay outputs match `EX-RUN`,
   order/kernel-payload pins, byte-identical rebuild renders, event no-op
   replay, and the empty/unsealed/unsupported fail-closed paths.
+- `maki/typestate.f` — R7 stage typestate skeleton: one package per IR level
+  (MODEL/TIR/RIR/PLAN/KIR/CAND/ART) with sealed arity-0 stage nominals and the
+  transition words that thread the one legal pipeline order, so a wrong-stage
+  input is a checker reject before runtime.
+- `maki/typestate-test.f` — stage-order acceptance: per-transition positive
+  controls, wrong-stage negatives (unconstrained-model, draft-plan,
+  unverified-KIR, reverse-stage), and a runnable MODEL→KIR pipeline.
 - `maki/maki.f` — Maki one-file entry point: host-framework `require` aggregator
   plus the curated top-level `MAKI:` surface, re-exporting the model-authoring /
   train / eval workflow words (losses, optimizers, ONNX import, checker-as-judge

@@ -679,6 +679,16 @@ that source is explicitly certified; they are not stale-checked by the default
 | ASTREAM>RAW | `ADAG:stream-id -- n` | Private async-DAG stream projection used only by bounds revalidation, the cross-stream dependency guard, and the render boundary. | `maki/async-dag-test.f` | maki/async-dag.f | 2026-07-13 |
 | RAW>AEVENT | `n -- ADAG:event-id` | Private async-DAG event refinement after the event allocator or event-range validator proves the raw position names a created event. | `maki/async-dag-test.f` | maki/async-dag.f | 2026-07-13 |
 | AEVENT>RAW | `ADAG:event-id -- n` | Private async-DAG event projection used only by bounds revalidation and the liveness/record owner-table accessors. | `maki/async-dag-test.f` | maki/async-dag.f | 2026-07-13 |
+| RAW>DECL | `n -- decl` | Private R7 stage mint: seeds a declared Model IR object; the only public entry is `MODEL:DECLARE`, so a raw n cannot forge a stage. | `maki/typestate-test.f` | maki/typestate.f | 2026-07-13 |
+| RAW>ELAB | `n -- elab` | Private R7 stage mint: the elaborated-model witness, minted only by `MODEL:ELABORATE` from a `MODEL:decl`. | `maki/typestate-test.f` | maki/typestate.f | 2026-07-13 |
+| RAW>SOLVED | `n -- solved` | Private R7 stage mint: the type/shape-solved witness, minted only by `TIR:SOLVE` from a `MODEL:elab`. | `maki/typestate-test.f` | maki/typestate.f | 2026-07-13 |
+| RAW>LEGAL | `n -- legal` | Private R7 stage mint: the region-legalized witness, minted only by `RIR:LEGALIZE` from a `TIR:solved`. | `maki/typestate-test.f` | maki/typestate.f | 2026-07-13 |
+| RAW>DRAFT | `n -- draft` | Private R7 stage mint: seeds an incomplete plan (`PLAN:DRAFT`); a draft cannot enter lowering until `PLAN:FINISH` promotes it. | `maki/typestate-test.f` | maki/typestate.f | 2026-07-13 |
+| RAW>COMPLETE | `n -- complete` | Private R7 stage mint: the completed-plan witness, minted only by `PLAN:FINISH` from a `RIR:legal` + `PLAN:draft`. | `maki/typestate-test.f` | maki/typestate.f | 2026-07-13 |
+| RAW>DRAFTED | `n -- drafted` | Private R7 stage mint: seeds a drafted kernel IR (`KIR:DRAFT`); unverified, so it cannot enter target emission. | `maki/typestate-test.f` | maki/typestate.f | 2026-07-13 |
+| RAW>VERIFIED | `n -- verified` | Private R7 stage mint: the verified-kernel witness, minted only by `KIR:VERIFY` from a `PLAN:complete` + `KIR:drafted`. | `maki/typestate-test.f` | maki/typestate.f | 2026-07-13 |
+| RAW>EMITTED | `n -- emitted` | Private R7 stage mint: the emitted-candidate witness, minted only by `CAND:EMIT` from a `KIR:verified` + `CAD-KIND:target-id`. | `maki/typestate-test.f` | maki/typestate.f | 2026-07-13 |
+| RAW>BUILT | `n -- built` | Private R7 stage mint: the built-artifact witness, minted only by `ART:BUILD` from a `CAND:emitted` + `CAD-KIND:toolchain-id`. | `maki/typestate-test.f` | maki/typestate.f | 2026-07-13 |
 | RAW>RGN | `n -- CAD-KIND:region` | Private fusion-planner region refinement after `FP-CK` and the region-range validator prove the raw table position names a planned region (R3 owner-module rule; landed by the closed dot `habu-maki-apply-cad-27b7a7d7`, owned by `habu-epic-model-cad-70b629a9`). | `maki/fusion-plan-test.f` | maki/fusion-plan.f | 2026-07-12 |
 | RGN>RAW | `CAD-KIND:region -- n` | Private region projection used only by fusion-plan bounds revalidation, region-indexed owner tables, and the `REGION_<rid>` render boundaries; no public raw cast is exported (landed by the closed dot `habu-maki-apply-cad-27b7a7d7`, owned by `habu-epic-model-cad-70b629a9`). | `maki/fusion-plan-test.f` | maki/fusion-plan.f | 2026-07-12 |
 | RAW>TARGET-ID | `n -- CAD-KIND:target-id` | Private target-registry refinement after semantic descriptor validation, capacity validation, and append-only slot allocation. | `maki/target/target-test.f` | maki/target/target.f | 2026-07-12 |
@@ -1369,6 +1379,16 @@ maki/async-dag.f:RAW>ASTREAM prim-axiom habu-epic-model-cad-70b629a9
 maki/async-dag.f:ASTREAM>RAW prim-axiom habu-epic-model-cad-70b629a9
 maki/async-dag.f:RAW>AEVENT prim-axiom habu-epic-model-cad-70b629a9
 maki/async-dag.f:AEVENT>RAW prim-axiom habu-epic-model-cad-70b629a9
+maki/typestate.f:RAW>DECL prim-axiom habu-epic-model-cad-70b629a9
+maki/typestate.f:RAW>ELAB prim-axiom habu-epic-model-cad-70b629a9
+maki/typestate.f:RAW>SOLVED prim-axiom habu-epic-model-cad-70b629a9
+maki/typestate.f:RAW>LEGAL prim-axiom habu-epic-model-cad-70b629a9
+maki/typestate.f:RAW>DRAFT prim-axiom habu-epic-model-cad-70b629a9
+maki/typestate.f:RAW>COMPLETE prim-axiom habu-epic-model-cad-70b629a9
+maki/typestate.f:RAW>DRAFTED prim-axiom habu-epic-model-cad-70b629a9
+maki/typestate.f:RAW>VERIFIED prim-axiom habu-epic-model-cad-70b629a9
+maki/typestate.f:RAW>EMITTED prim-axiom habu-epic-model-cad-70b629a9
+maki/typestate.f:RAW>BUILT prim-axiom habu-epic-model-cad-70b629a9
 maki/target/target.f:RAW>TARGET-ID prim-axiom habu-epic-model-cad-70b629a9
 maki/target/target.f:TARGET-ID>RAW prim-axiom habu-epic-model-cad-70b629a9
 maki/tensor-value.f:RAW>TENSOR prim-axiom habu-epic-model-cad-70b629a9
