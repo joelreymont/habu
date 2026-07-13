@@ -14,13 +14,12 @@ file.
   lower-case (`and`, `cells`, `allot`, `: ;`, `?do`). Never upper-case a built-in.
 - **Block constructs are `FOO … ;FOO`.** Every project-defined block/definer
   pair opens with `FOO` and closes with `;FOO`: `STRUCTURE … ;STRUCTURE`,
-  `SUMTYPE … ;SUMTYPE`, `VARIANT … ;VARIANT`, `ENUM … ;ENUM`,
-  `PRODUCT … ;PRODUCT`, `MATCH … ;MATCH`, `package … ;package` (keyword case
-  follows the opener). Never `BEGIN-FOO`/`END-FOO`, `FOO-END`, or `ENDFOO`
-  pairs. ANS core control words (`begin … until`, `case … endcase`,
-  `do … loop`, `of … endof`) stay as-is. Legacy pairs
-  (`BEGIN-STRUCTURE`/`END-STRUCTURE`, `;package`) are being renamed under
-  dots; do not add new uses.
+  `VARIANT … ;VARIANT`, `ENUM … ;ENUM`, `MATCH … ;MATCH`, and
+  `package … ;package` (keyword case follows the opener). Never
+  `BEGIN-FOO`/`END-FOO`, `FOO-END`, or `ENDFOO` pairs. ANS core control
+  words (`begin … until`, `case … endcase`, `do … loop`,
+  `of … endof`) stay as-is. Removed type delimiters have no compatibility
+  spelling; see **Structures And Enums**.
 - **Hyphens, never underscores — in word names *and* file names.** `T-CON`,
   `TV-RESET`, `MAX-TV` — not `T_CON`. Source files too: `camera-tracker.f`,
   `latency-xcorr.f`, `timestamp-metrics.f` — not `camera_tracker.f`. Underscores
@@ -32,10 +31,8 @@ file.
 - **Scope pairs are `FOO` … `;FOO`** (decision 2026-07-04). Every word pair that
   opens and closes a scope/region uses the opener's name with a `;` prefix as
   the closer: `STRUCTURE … ;STRUCTURE`, `package … ;package`. New scope words
-  follow this from birth (type families, kernels, suites). `BEGIN-`/`END-` and
-  `X`/`END-X` pairs are legacy shapes being renamed (dots
-  `habu-convention-scope-pairs`, `habu-core-structures-dsl`). The bare `;`
-  (definition closer) and non-scope `;`-words are unaffected — only paired
+  follow this from birth (type families, kernels, suites). The bare `;`
+  (definition closer) and non-scope `;`-words are unaffected; only paired
   scope delimiters follow the rule.
 - Short names per the global naming rules: abbreviate common terms (`buf`, `ctx`,
   `idx`, `nv`, `ki`, `ko`); single letters are fine in tight scope only when
@@ -287,83 +284,57 @@ public
 
 ### Structures And Enums
 
-Structures are a checked Forth layout DSL. Use the SwiftForth-style stack
-protocol: `BEGIN-STRUCTURE NAME` opens a structure and creates `NAME` as the
-final byte-size word; field words thread the offset; `END-STRUCTURE` seals the
-size. Do not define raw offset constants by hand when this DSL fits.
+Habu has exactly two public composite-type declaration blocks:
+`STRUCTURE … ;STRUCTURE` and `ENUM … ;ENUM`. Both use the transactional typed
+schema in [type-families.md](type-families.md); no raw offset-threading, product,
+sumtype, value-record, or counter-enum declaration surface exists.
 
 ```forth
-BEGIN-STRUCTURE POINT
-   CELL +FIELD POINT.X
-   CELL +FIELD POINT.Y
-   PTR-FIELD: POINT.NAME
-   CFIELD: POINT.FLAGS
-END-STRUCTURE
+STRUCTURE point 0
+   FIELD x n
+   FIELD y n
+;STRUCTURE
+
+ENUM message 0
+   VARIANT quit ;VARIANT
+   VARIANT move
+      FIELD x n
+      FIELD y n
+   ;VARIANT
+;ENUM
+
+ENUM color red green blue ;ENUM
 ```
 
-- `CELL` is the machine cell byte size. Prefer it to raw `$8` in field layouts.
-- `+FIELD` has defining-time effect `( ptr a n n -- ptr a n )` and creates a
-  field accessor with runtime effect `( ptr a -- ptr a )`; use `@`/`!` for cell
-  fields.
-- `PTR-FIELD:` has defining-time effect `( ptr a n -- ptr a n )` and creates a
-  pointer-valued cell accessor with runtime effect `( ptr a -- ptr ptr a )`; use
-  it instead of `+FIELD` when a field stores a typed pointer, then use normal
-  `@`/`!`.
+- `STRUCTURE name arity [ POLICY p ] [ DERIVE ... ] FIELD name type ...
+  ;STRUCTURE` is the sole record form. Arity is mandatory. Zero fields declare
+  an opaque nominal cell family; one or more fields declare a nominal product.
+  Field order is declaration order.
+- A public field-bearing structure generates sealed `FAMILY:MAKE`,
+  `FAMILY:UNMAKE`, and typed `FAMILY:FIELD` address operations. Accessors have
+  effect `( ptr family<a,...> -- ptr field-type )`; use the field type's checked
+  load/store operations.
+- Full `ENUM name arity [ POLICY p ] [ DERIVE ... ] VARIANT ... ;VARIANT
+  ... ;ENUM` is the sole payload-bearing variant form. Every payload member is
+  a named `FIELD`; positional payload tokens reject.
+- Compact `ENUM name variant ... ;ENUM` omits arity and header clauses, is
+  implicitly arity zero, and is legal only for payloadless variants. A decimal
+  token after the name selects full mode; a bare variant selects compact mode.
+  The modes cannot mix.
+- `ENUM` derives a tag-only representation only when every variant is
+  payloadless; otherwise it derives a tagged union. Generated constructors and
+  `MATCH` payload bindings use field declaration order.
+- Type, field, and variant names are lowercase. Project-defined syntax and
+  generated words are uppercase.
+- `TYPEFAMILY`, `PRODUCT`, `;PRODUCT`, `SUMTYPE`, `;SUMTYPE`,
+  `VALUE-RECORD`, `END-VALUE-RECORD`, `BEGIN-STRUCTURE`,
+  `END-STRUCTURE`, `+FIELD`, `PTR-FIELD:`, `CFIELD:`, `ENUM+`, and
+  `ENUM4+` are removed syntax. They have no executable aliases or desugaring
+  path; compiler tombstones report `E-REMOVED-TYPE-SYNTAX`.
+
 - `PTR-VARIABLE` creates a pointer-valued cell with runtime effect
   `( -- ptr ptr a )`; use it instead of `variable` plus `0 ptr-field` wrappers
   for global pointer slots.
-- `CFIELD:` has defining-time effect `( ptr a n -- ptr a n )` and creates a
-  field accessor with runtime effect `( ptr a -- ptr u8 )`; use `c@`/`c!` for
-  byte fields. A byte field followed by cell `@` must reject under the checker.
-- `BEGIN-STRUCTURE` rejects nesting and field words reject use outside an active
-  structure. Add a gate test when introducing a new field-defining word.
-- Keep field names qualified by the structure (`POINT.X`, `POINT.FLAGS`) so the
-  dictionary and xref output communicate ownership.
-- The structure definers load before `checker.f` so checker-internal records can
-  use the same DSL. Their checker effects live in
-  `src/core/structures-effects.f`; add a `TRUSTED.md` row and a dictionary gate
-  test for any new field definer.
-
-Value records are by-value stack records, not pointer layouts. Use
-`VALUE-RECORD name field type ... END-VALUE-RECORD` when a signature should
-carry a fixed group of stack cells as one nominal value:
-
-```forth
-VALUE-RECORD point x n y n END-VALUE-RECORD
-: >POINT ( n n -- point ) ;
-: POINT> ( point -- n n ) ;
-: POINT-DUP ( point -- point point ) over over ;
-: POINT-X ( point -- n ) drop ;
-: POINT-Y ( point -- n ) nip ;
-: POINT-X! ( n point -- point ) swap drop ;
-: POINT-Y! ( point n -- point ) >r drop r> ;
-```
-
-The checker expands `point` to hidden field tokens (`field<point,x,n>`,
-`field<point,y,n>`). Declared outputs may construct or destructure the record at
-zero runtime cost, but hidden fields keep same-shape records distinct:
-`( point -- rect )` rejects even when both records contain two `n` fields.
-Accessors, updaters, copies, constructors, and destructors are ordinary checked
-words over the expanded stack cells; no runtime header or heap object is created.
-Fields may use any signature type, including type variables and parametric types:
-`VALUE-RECORD box value a END-VALUE-RECORD` is a polymorphic one-field record.
-
-`ENUM+`/`ENUM4+` are checked counter-advancing defining words built on
-`create ... does>`. Use them for named integer/status families instead of
-hand-maintained numeric drift:
-
-```forth
-0 ENUM+ E-OK
-  ENUM+ E-OPEN
-  ENUM4+ E-RANGE
-drop
-```
-
-`ENUM+` defines the next name as the current value and returns `value + 1`;
-`ENUM4+` returns `value + 4`. Definitions publish through the active wordlist, so
-package scope, duplicate-definition rejection, and case-insensitive lookup apply
-exactly as for `:`, `create`, `variable`, and `constant`. The bare `ENUM` token
-is reserved for the block-style `ENUM ... END-ENUM` type family.
 
 SwiftForth-style relocatable linked-list words (`@REL`, `!REL`, `,REL`,
 `>LINK`, `<LINK`, `CALLS`) are not part of Habu's checked surface. They encode

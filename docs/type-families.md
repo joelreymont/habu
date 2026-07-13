@@ -34,7 +34,7 @@ Use the generic term internally and the specific terms externally:
 | Enum | `enum-family` | `color` |
 | Capability / proof / evidence token | `evidence-family` | `aligned<ptr,t,align-16>` |
 
-The sole public defining words are:
+The sole public composite/type-family declaration blocks are:
 
 ```forth
 STRUCTURE pair 2 ... ;STRUCTURE
@@ -94,9 +94,9 @@ So: **call the document “Type Families and Algebraic Data Types.”**
 
 ```text
 structure-decl = STRUCTURE type-name arity header-clause* field* ;STRUCTURE
-enum-decl      = ENUM type-name arity header-clause*
-                 (variant-block+ | compact-variant+)
-                 ;ENUM
+enum-decl      = ENUM type-name (full-enum | compact-enum) ;ENUM
+full-enum      = arity header-clause* variant-block+
+compact-enum   = compact-variant+
 
 header-clause  = POLICY policy-name
                | DERIVE derive-name+
@@ -109,16 +109,19 @@ compact-variant = variant-name
 
 `type-name`, `field-name`, `variant-name`, and every family tail inside a
 `type-expr` are lowercase. Package qualifiers remain uppercase project package
-names. `arity` is mandatory for both declarations; arity parameters are the
-positional lowercase tokens `a`, `b`, and so on. Header clauses occur after the
-arity and before the first field or variant. A clause may occur at most once;
+names. `arity` is mandatory for `STRUCTURE` and full `ENUM`; arity parameters
+are the positional lowercase tokens `a`, `b`, and so on. Compact `ENUM`
+omits both arity and header clauses and is implicitly arity zero. Header clauses
+occur after the arity in full declarations. A clause may occur at most once;
 `DERIVE` features are order-independent and duplicates reject.
 
-The compact `ENUM name arity v0 v1 ... ;ENUM` form is legal only when every
-variant is payloadless. The first token after the header selects compact or
-block mode for the whole declaration: bare variant tails and `VARIANT` blocks
-cannot mix. A block variant accepts only zero or more named `FIELD` clauses
-before `;VARIANT`; anonymous payload tokens are invalid.
+The compact `ENUM name v0 v1 ... ;ENUM` form is legal only when every variant
+is payloadless. The first token after the enum name selects the form: a decimal
+arity selects full block mode; a bare variant selects compact mode. A header
+clause without a preceding arity is a malformed full declaration. Bare variant
+tails and `VARIANT` blocks cannot mix. A block variant accepts only zero or
+more named `FIELD` clauses before `;VARIANT`; anonymous payload tokens are
+invalid.
 
 Examples:
 
@@ -128,7 +131,7 @@ STRUCTURE point 0
   FIELD y n
 ;STRUCTURE
 
-ENUM color 0 red green blue ;ENUM
+ENUM color red green blue ;ENUM
 
 ENUM message 0
   VARIANT quit ;VARIANT
@@ -240,28 +243,40 @@ all family, schema, wordlist, signature, reflection, snapshot, and AOT rows.
 
 ### 2.6 Bootstrap cycle
 
-`STRUCTURE` is needed by checker/type-family records before the checker and
-type-family Forth sources exist. The cycle is broken inside the compiler, not by
-retaining a raw public definer:
+The bootstrap cycle is removed rather than solved with a second declaration
+machine. Records needed before the checker hook are private implementation
+layouts with:
 
-1. `STRUCTURE`, `FIELD`, and `;STRUCTURE` are compiler-reserved tokens from
-   cold start in both the native engine and Gforth recovery compiler.
-2. Before the unified registry is installed, the same parser accepts only the
-   closed primitive field types needed by boot records and writes canonical
-   bootstrap descriptors: package/name/arity plus ordered field name/type/size/
-   alignment/offset rows. It generates the same `FAMILY:FIELD` accessors.
-3. Registry initialization transactionally adopts those descriptors into the
-   one field/family registry, assigns resolved family ids, and verifies every
-   recorded width, alignment, offset, accessor effect, and name.
-4. Adoption seals and erases the transient descriptor arena. It is neither a
-   second live registry nor a snapshot/AOT surface. Every later declaration
-   enters the same registry directly.
-5. The recovery compiler emits byte-identical descriptor and accessor metadata;
-   native fixpoint, recovery, snapshot, and AOT tests prove parity.
+- named cell or byte offsets and a named record stride;
+- ordinary accessor words, never a macro or definer;
+- load-time assertions for every expected offset, stride, alignment, and
+  pointer-field role; and
+- exact native/recovery layout-parity tests.
 
-There is no `BEGIN-STRUCTURE`, raw offset-threading word, alternate field word,
-or bootstrap-only source spelling. A non-primitive nested field used before
-registry adoption rejects rather than creating an unresolved descriptor.
+These records have no family ids, reflection, constructors, parser, definer,
+descriptor arena, adoption transaction, snapshot rows, or AOT rows. `CELL` is
+owned by the earliest bootstrap constant layer rather than by legacy structure
+support.
+
+The canonical load order in both native and recovery sources is:
+
+```text
+utilities
+checker private layouts
+lower-certificate base
+type-schema private layouts
+type-family private layouts
+render support
+checker hook
+unified STRUCTURE and ENUM
+remaining core
+```
+
+The final `STRUCTURE`/`ENUM` parser is therefore the only executable
+composite/type-family declaration language and always runs through the
+installed checker hook. There
+is no cold parser, transient descriptor format, adoption path, bootstrap-only
+source spelling, or raw public layout definer.
 
 ### 2.7 Removed syntax
 
@@ -275,10 +290,13 @@ TYPEFAMILY PRODUCT ;PRODUCT SUMTYPE ;SUMTYPE ENUM+ ENUM4+
 
 The compiler keeps only error tombstones so each removed token reports
 `E-REMOVED-TYPE-SYNTAX` with its `STRUCTURE` or `ENUM` replacement. A tombstone
-cannot define, replay, lower, or mutate metadata. Inside new blocks, legacy
+cannot define, replay, lower, or mutate metadata. Explicitly allowlisted
+negative fixtures may contain removed spellings only as non-executable test
+data. Inside new blocks, legacy
 closers/field words, anonymous variant payloads, mixed compact/block variants,
-and a missing mandatory arity reject at the exact token. The final source lint
-requires zero occurrences in live code and generated source.
+and a missing arity on `STRUCTURE` or full `ENUM` reject at the exact token.
+The final source lint requires zero occurrences in live executable or generated
+source outside the tombstone table and explicitly allowlisted negative fixtures.
 
 The exact source census and migration owner for every old surface is
 `docs/census-type-dsl-cutover.md`.
@@ -416,7 +434,7 @@ slot0 tag
 For `none`, `slot0` is padding.
 
 ```forth
-ENUM color 0
+ENUM color
   red
   green
   blue
@@ -591,7 +609,7 @@ variant err:
 For:
 
 ```forth
-ENUM color 0
+ENUM color
   red
   green
   blue
@@ -774,7 +792,11 @@ with a `DERIVE eq` header clause (after the optional `POLICY`, before the
 variants/fields):
 
 ```forth
-ENUM color DERIVE eq  red green blue ;ENUM
+ENUM color 0 DERIVE eq
+  VARIANT red   ;VARIANT
+  VARIANT green ;VARIANT
+  VARIANT blue  ;VARIANT
+;ENUM
 SUMTYPE shape 0 DERIVE eq
   VARIANT dot ;VARIANT
   VARIANT seg n n ;VARIANT
@@ -2062,7 +2084,7 @@ ENUM option 1
 ### Enum
 
 ```forth
-ENUM color 0
+ENUM color
   red
   green
   blue

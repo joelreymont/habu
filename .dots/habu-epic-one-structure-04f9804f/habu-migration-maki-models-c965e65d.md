@@ -13,6 +13,7 @@ blocks:
   - habu-maki-migrate-schedule-cbd63114
   - habu-maki-migrate-schedule-5711a314
   - habu-maki-migrate-target-241cad15
+  - habu-maki-migrate-async-70c64d90
 ---
 
 Migrate maki model IR, schedules, devices, artifacts, evidence, transactions, and codecs to STRUCTURE and payload-capable ENUM with named fields. Preserve durable schema/version semantics, hashes, replay identity, PTX generation, and public APIs. Replace raw semantic kind/status/error codes with ENUM plus exhaustive external codecs where needed. Run maki/test.f, ptx-stdlib, touched native slices, replay/determinism, codec, and artifact gates.

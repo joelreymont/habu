@@ -1,14 +1,15 @@
 # Unified Type DSL Hard-Cutover Census
 
-**Snapshot:** `master` at `67f76bc2`  
+**Snapshot:** `master` at `beb9ca05`  
 **Cutover parent:** `habu-epic-one-structure-04f9804f`
 
-This census is the migration contract for replacing every public type definer
-with exactly two declaration blocks:
+This census is the migration contract for replacing every public composite or
+type-family declaration block with exactly two blocks:
 
 ```forth
 STRUCTURE name arity ... ;STRUCTURE
-ENUM name arity ... ;ENUM
+ENUM name arity ... VARIANT ... ;VARIANT ... ;ENUM
+ENUM name variant ... ;ENUM
 ```
 
 There are no aliases, compatibility definers, or mixed-syntax transition
@@ -26,23 +27,31 @@ Generated-source strings and token-recognition code are inventoried separately.
 | Removed surface | Declarations | Files | Migration owner |
 |---|---:|---:|---|
 | `BEGIN-STRUCTURE ... END-STRUCTURE` | 20 | 6 | `habu-migration-core-records-77182600`, `habu-migration-libs-to-4e798110` |
-| `VALUE-RECORD ... END-VALUE-RECORD` | 10 | 3 | `habu-migration-core-records-77182600`, `habu-migration-tests-and-51d00332`, `habu-migration-maki-models-c965e65d` |
-| `TYPEFAMILY` | 40 | 6 | `habu-migration-tests-and-51d00332`, `habu-migration-maki-models-c965e65d` |
-| `PRODUCT ... ;PRODUCT` | 29 | 11 | `habu-migration-libs-to-4e798110`, `habu-migration-tests-and-51d00332`, `habu-migration-maki-models-c965e65d` |
-| `SUMTYPE ... ;SUMTYPE` | 75 | 17 | `habu-migration-core-variants-af8e09b4`, `habu-migration-libs-to-4e798110`, `habu-migration-tests-and-51d00332`, `habu-migration-maki-models-c965e65d` |
-| legacy payloadless `ENUM ... ;ENUM` | 36 | 20 | `habu-migration-libs-to-4e798110`, `habu-migration-tests-and-51d00332`, `habu-migration-maki-models-c965e65d` |
+| `VALUE-RECORD ... END-VALUE-RECORD` | 10 | 3 | `habu-migration-tests-and-51d00332`, `habu-migration-maki-models-c965e65d` |
+| `TYPEFAMILY` | 43 | 7 | `habu-migration-tests-and-51d00332`, `habu-migration-maki-models-c965e65d` |
+| `PRODUCT ... ;PRODUCT` | 30 | 12 | `habu-migration-libs-to-4e798110`, `habu-migration-tests-and-51d00332`, `habu-migration-maki-models-c965e65d` |
+| `SUMTYPE ... ;SUMTYPE` | 75 | 17 | `habu-migration-libs-to-4e798110`, `habu-migration-tests-and-51d00332`, `habu-migration-maki-models-c965e65d` |
+| legacy payloadless `ENUM ... ;ENUM` | 37 | 21 | `habu-migration-libs-to-4e798110`, `habu-migration-tests-and-51d00332`, `habu-migration-maki-models-c965e65d` |
 | `ENUM+` / `ENUM4+` counter definers | 2 | 1 | `habu-type-dsl-delete-8bd73b41` |
 
 Reproduce the baseline with:
 
 ```text
-rg -n '^[[:space:]]*BEGIN-STRUCTURE[[:space:]]' src lib maki tools test bootstrap examples --glob '*.f' --glob '*.fs'
-rg -n '^[[:space:]]*VALUE-RECORD[[:space:]]' src lib maki tools test bootstrap examples --glob '*.f' --glob '*.fs'
-rg -n '^[[:space:]]*TYPEFAMILY[[:space:]]' src lib maki tools test bootstrap examples --glob '*.f' --glob '*.fs'
-rg -n '^[[:space:]]*PRODUCT[[:space:]]' src lib maki tools test bootstrap examples --glob '*.f' --glob '*.fs'
-rg -n '^[[:space:]]*SUMTYPE[[:space:]]' src lib maki tools test bootstrap examples --glob '*.f' --glob '*.fs'
-rg -n '^[[:space:]]*ENUM[[:space:]]' src lib maki tools test bootstrap examples --glob '*.f' --glob '*.fs'
-rg -n 'ENUM[4]?\+' src lib maki tools test bootstrap examples --glob '*.f' --glob '*.fs'
+rg -ni '^[[:space:]]*BEGIN-STRUCTURE[[:space:]]' src lib maki tools test bootstrap examples --glob '*.f' --glob '*.fs'
+rg -ni '^[[:space:]]*VALUE-RECORD[[:space:]]' src lib maki tools test bootstrap examples --glob '*.f' --glob '*.fs'
+rg -ni '^[[:space:]]*TYPEFAMILY[[:space:]]' src lib maki tools test bootstrap examples --glob '*.f' --glob '*.fs'
+rg -ni '^[[:space:]]*PRODUCT[[:space:]]' src lib maki tools test bootstrap examples --glob '*.f' --glob '*.fs'
+rg -ni '^[[:space:]]*SUMTYPE[[:space:]]' src lib maki tools test bootstrap examples --glob '*.f' --glob '*.fs'
+rg -ni '^[[:space:]]*ENUM[[:space:]]' src lib maki tools test bootstrap examples --glob '*.f' --glob '*.fs'
+rg -ni '^[[:space:]]*:[[:space:]]+ENUM[4]?\+[[:space:]]' src lib maki tools test bootstrap examples --glob '*.f' --glob '*.fs'
+```
+
+The last command counts the two defining words. Inventory generated source and
+negative fixtures separately; those matches do not change the declaration
+count:
+
+```text
+rg -ni 'ENUM[4]?\+' src lib maki tools test bootstrap examples --glob '*.f' --glob '*.fs'
 ```
 
 ## Declaration sites
@@ -69,7 +78,7 @@ of hand-threaded byte offsets from core clients.
   `tools/check-core.f`, `tools/check-all-errors-test.f`,
   `tools/check-test-lib.f`, `tools/public-signatures-test.f`, and
   `test/internal-word-gate.f`.
-- Product declarations: `lib/ptx/ir.f`, `maki/model-ir.f`,
+- Product declarations: `lib/ptx/ir.f`, `maki/async-dag.f`, `maki/model-ir.f`,
   `maki/sched-key.f`, `test/layout-buffer.f`,
   `test/layout-valid-product-bad.f`, `test/lower-cert.f`,
   `test/type-ctor-suite.f`, `test/type-decl-suite.f`,
@@ -80,14 +89,14 @@ of hand-threaded byte offsets from core clients.
   `tools/check-test-lib.f`, `tools/public-signatures-core.f`, and
   `tools/public-signatures-test.f`.
 
-Core product/value-record metadata converges under
-`habu-type-dsl-unify-b65d46c1`; declaration parsing and generated checked
-operations land under `habu-type-dsl-implement-50f8dc15`. Source migrations
-remain owned by the directory-specific migration dots above.
+Shared syntax events, field/variant transactions, and product/value-record
+metadata converge under `habu-type-dsl-unify-b65d46c1`. Generated checked
+structure operations land under `habu-type-dsl-implement-50f8dc15`. Source
+migrations remain owned by the directory-specific migration dots above.
 
 ### Cell families, sums, and enums
 
-- Cell-family declarations: `maki/cad-kinds.f`, `maki/model-ir.f`,
+- Cell-family declarations: `maki/async-dag.f`, `maki/cad-kinds.f`, `maki/model-ir.f`,
   `maki/tensor-value.f`, `test/layout-buffer.f`,
   `test/type-ctor-suite.f`, and `test/type-decl-suite.f`.
 - Sum declarations: `lib/adt/option.f`, `lib/adt/result.f`, `lib/map.f`,
@@ -99,7 +108,7 @@ remain owned by the directory-specific migration dots above.
   `test/type-family-suite.f`, `test/type-layout-lower-pending.f`,
   `test/type-linear-suite.f`, `test/type-match-suite.f`, and
   `tools/public-signatures-test.f`.
-- Enum declarations: `lib/map.f`, `maki/fusion-plan.f`, `maki/model-ir.f`,
+- Enum declarations: `lib/map.f`, `maki/async-dag.f`, `maki/fusion-plan.f`, `maki/model-ir.f`,
   `maki/op-kind.f`, `maki/report.f`, `maki/report-test.f`,
   `maki/sched-key.f`, `maki/tensor-value.f`, `maki/tensor.f`,
   `test/layout-buffer-depth-7.f`, `test/layout-buffer.f`,
@@ -117,7 +126,7 @@ remain owned by the directory-specific migration dots above.
   `tools/check-test-lib.f`, `tools/gate-json-assert-core.f`,
   `tools/public-signatures-core.f`, `tools/repair-packet-test.f`,
   `tools/repair-schema-doc-test.f`,
-  `tools/reserved-name-lint-test-lib.f`, and the `test/gate-*`,
+  `tools/reserved-name-lint-test-lib.f`, `test/export-package.f`, and the `test/gate-*`,
   `test/lower-txn-*`, `test/seal*`, and `test/wide-store-seal.f` fixtures.
 - Numeric counter definers exist only in `src/core/enums.f`; their only live
   consumer is generated test source in `test/gate-dictionary-lib.f`. The delete
@@ -125,8 +134,9 @@ remain owned by the directory-specific migration dots above.
   typed names to the unified `ENUM` and unrelated integer sequences to named
   `constant` declarations.
 
-`habu-type-dsl-implement-a762cfaf` owns the unified payload/no-payload parser
-and generated variant surface. `habu-checker-certify-unified-5d56fe73` owns
+`habu-type-dsl-unify-b65d46c1` owns the shared parser events and declaration
+transaction. `habu-type-dsl-implement-a762cfaf` owns enum-specific validation
+and the generated variant surface. `habu-checker-certify-unified-5d56fe73` owns
 checker certification and diagnostics. `habu-compiler-lower-unified-5f599080`
 owns compiler capture, lowering, snapshots, AOT metadata, and recovery parity.
 
@@ -165,14 +175,19 @@ Package spelling keeps the existing injective uppercase escape/join algorithm;
 the cutover does not rename callable constructors or persisted WIDs. Field
 accessors use exactly `FAMILY:FIELD ( ptr family<a,...> -- ptr field-type )`.
 
-The early-load cycle at `src/habu/habu2.f` and
-`bootstrap/cg/forth.fs` is owned by `habu-type-dsl-implement-50f8dc15` and
-`habu-compiler-lower-unified-5f599080`. The cold compiler recognizes the final
-`STRUCTURE`/`FIELD` grammar, admits only closed primitive boot fields, emits
-canonical transient descriptors plus final accessors, and later adopts those
-descriptors into the unified registry. Adoption verifies then erases the
-transient arena. No second public definer, live registry, snapshot row, or AOT
-surface is permitted.
+The early-load cycle at `src/habu/habu2.f`, `bootstrap/cg/forth.fs`, and
+`tools/bootstrap.sh` is owned by `habu-migration-core-records-77182600`.
+Pre-checker records use explicit named offsets, strides, ordinary accessors, and
+load-time offset/size/alignment/pointer-role assertions. They have no parser,
+definer, family metadata, descriptors, adoption phase, snapshot rows, or AOT
+rows. Native and recovery layouts must be exact mirrors.
+
+Both load paths use this order: utilities, checker private layouts,
+lower-certificate base, type-schema private layouts, type-family private
+layouts, render support, checker hook, unified `STRUCTURE`/`ENUM`, then the
+remaining core. `habu-type-dsl-implement-50f8dc15` owns the sole post-hook
+composite declaration parser; `habu-compiler-lower-unified-5f599080` mirrors
+only that final checked language.
 
 `habu-type-dsl-unify-b65d46c1` owns the shared schema and transaction model.
 `habu-type-dsl-delete-8bd73b41` owns deletion of duplicate registries,
@@ -187,7 +202,9 @@ to compatibility code. `habu-type-dsl-prove-93da83c4` owns native fixpoint,
 bootstrap recovery, snapshot/AOT parity, exact diagnostics, filemap/trust lints,
 the full native gate, and the final census assertion.
 
-Completion requires zero live code or generated-source occurrences of:
+Completion requires zero live executable or generated-source occurrences,
+except the error-only tombstone table and explicitly allowlisted negative
+fixtures, of:
 
 ```text
 BEGIN-STRUCTURE END-STRUCTURE +FIELD PTR-FIELD: CFIELD:
@@ -197,4 +214,4 @@ TYPEFAMILY PRODUCT ;PRODUCT SUMTYPE ;SUMTYPE ENUM+ ENUM4+
 
 `VARIANT`, `;VARIANT`, `FIELD`, `ENUM`, and `;ENUM` remain only as parts of the
 new grammar. The final lint distinguishes those legal contexts from every
-legacy form.
+legacy form and proves every exception is non-executable test data.

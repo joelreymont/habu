@@ -79,7 +79,7 @@ explicit typed artifacts and pass contracts.
 
 ### 3.1 Unified Type Declaration Hard Cutover
 
-Model CAD V2 has exactly two public type declaration blocks:
+Model CAD V2 has exactly two public composite/type-family declaration blocks:
 
 ```forth
 STRUCTURE name arity [ POLICY policy ] [ DERIVE feature ... ]
@@ -93,11 +93,13 @@ ENUM name arity [ POLICY policy ] [ DERIVE feature ... ]
 ;ENUM
 ```
 
-The compact `ENUM name arity variant ... ;ENUM` form is legal only when every
-variant is payloadless. The first variant selects compact or block mode for the
-whole declaration; the modes cannot mix. Type, field, and variant tails are
-lowercase. Project packages and generated words remain uppercase. Both arities
-are mandatory.
+The compact `ENUM name variant ... ;ENUM` form omits the arity and header
+clauses and is legal only for payloadless variants. The first token after the
+name selects the form: a decimal arity selects block mode; a bare variant
+selects compact mode. The modes cannot mix. Type, field, and variant tails are
+lowercase. Project packages and generated words remain uppercase. Arity is
+mandatory for `STRUCTURE` and block `ENUM`, while compact `ENUM` is
+implicitly arity zero.
 
 `STRUCTURE` unifies opaque cell families, pointer-layout records, value
 records, and products. Zero fields mean an opaque one-cell family with no
@@ -124,16 +126,15 @@ same ordered rows. Existing constructor-package spelling is preserved through
 the current injective uppercase escape/join algorithm (`point` -> `POINT`,
 package `PX-PROBE` plus `pxevid` -> `PX--PROBE-PXEVID`).
 
-The raw-structure bootstrap cycle is closed without a second definer. The
-native and recovery compilers recognize the same `STRUCTURE`/`FIELD` tokens
-from cold start. Before the type registry loads, the parser accepts only closed
-primitive fields required by core boot records, writes canonical ordered
-descriptors, and emits the final `FAMILY:FIELD` accessors. Registry startup
-transactionally adopts and revalidates those descriptors into the one field
-registry, then seals and erases the transient arena. It is
-not snapshotted, AOT-persisted, or callable as a registry. Native and Gforth
-recovery compilers emit the same descriptor format. No bootstrap-only source
-spelling or raw public layout definer survives.
+The raw-structure bootstrap cycle is removed instead of generalized. Internal
+records needed before the checker hook use explicit named cell or byte offsets,
+record strides, ordinary accessor words, and load-time assertions for every
+offset, size, alignment, and pointer-field role. These implementation layouts
+have no family ids, reflection, constructors, parser, definer, descriptor
+arena, adoption phase, snapshot rows, or AOT rows. Native and Gforth recovery
+sources carry exactly the same layouts and parity tests. The sole executable
+`STRUCTURE`/`ENUM` parser loads only after the checker, type registries, render
+support, and checker hook.
 
 This is a hard cutover. The implementation removes `TYPEFAMILY`, `PRODUCT`,
 `;PRODUCT`, `VALUE-RECORD`, `END-VALUE-RECORD`, `BEGIN-STRUCTURE`,
@@ -141,27 +142,32 @@ This is a hard cutover. The implementation removes `TYPEFAMILY`, `PRODUCT`,
 `ENUM+`, and `ENUM4+`. They have no aliases, shims, desugaring path, or second
 registry. Error-only compiler tombstones report `E-REMOVED-TYPE-SYNTAX`; they
 cannot execute or mutate metadata. Mixed compact/block enums, anonymous variant
-payloads, legacy field words/closers inside new blocks, and missing arities
-reject at the exact token.
+payloads, legacy field words/closers inside new blocks, and a missing arity on
+`STRUCTURE` or block `ENUM` reject at the exact token.
 
 The implementation dependency chain is:
 
 1. `habu-type-dsl-specify-db2bf883` — freeze grammar, census, and migration ownership.
-2. `habu-type-dsl-unify-b65d46c1` — one transaction and field/variant schema.
-3. `habu-type-dsl-implement-50f8dc15` — typed `STRUCTURE` and generated operations.
-4. `habu-type-dsl-implement-a762cfaf` — payload-aware `ENUM` and compact payloadless form.
-5. `habu-checker-certify-unified-5d56fe73` — certification, diagnostics, replay, and rollback.
-6. `habu-compiler-lower-unified-5f599080` — compiler capture, lowering, bootstrap, snapshot, and AOT parity.
-7. `habu-migration-core-records-77182600` and
-   `habu-migration-core-variants-af8e09b4` — core migration.
-8. `habu-migration-libs-to-4e798110`,
+2. `habu-migration-core-records-77182600` — replace every pre-checker raw record
+   with explicit asserted implementation layouts and establish native/recovery
+   load-order parity.
+3. `habu-type-dsl-unify-b65d46c1` — one transaction and field/variant schema.
+4. `habu-type-dsl-implement-50f8dc15` — the sole post-hook typed `STRUCTURE`
+   parser and generated operations.
+5. `habu-type-dsl-implement-a762cfaf` — payload-aware `ENUM` and compact payloadless form.
+6. `habu-checker-certify-unified-5d56fe73` — certification, diagnostics, replay, and rollback.
+7. `habu-compiler-lower-unified-5f599080` — compiler capture, lowering, snapshot,
+   and AOT parity for the post-hook language only.
+8. `habu-migration-core-variants-af8e09b4` — core enum migration and bounded
+   declaration-census proof.
+9. `habu-migration-libs-to-4e798110`,
    `habu-migration-tools-to-d4e8fcf8`,
    `habu-migration-tests-and-51d00332`, and
    `habu-migration-maki-models-c965e65d` — consumer migration.
-9. `habu-type-dsl-delete-8bd73b41` — delete every old definer, registry path,
+10. `habu-type-dsl-delete-8bd73b41` — delete every old definer, registry path,
    generated operation, snapshot row, and AOT row.
-10. `habu-type-dsl-enforce-19a93c1a` — zero-occurrence lint and retired-token diagnostics.
-11. `habu-type-dsl-prove-93da83c4` — fixpoint, recovery, snapshot/AOT, full gate, and final census proof.
+11. `habu-type-dsl-enforce-19a93c1a` — zero-occurrence lint and retired-token diagnostics.
+12. `habu-type-dsl-prove-93da83c4` — fixpoint, recovery, snapshot/AOT, full gate, and final census proof.
 
 No dependent V2 schema is complete while it uses a removed declaration. The
 exact baseline and file-to-owner routing live in
@@ -1682,8 +1688,15 @@ STRUCTURE golden-proof 0 ;STRUCTURE
 STRUCTURE gradcheck-proof 0 ;STRUCTURE
 STRUCTURE profile-proof 0 ;STRUCTURE
 
-ENUM golden-leg 0 DERIVE eq  host external device ;ENUM
-ENUM prec-class 0 DERIVE eq  f32 tf32 ;ENUM
+ENUM golden-leg 0 DERIVE eq
+   VARIANT host ;VARIANT
+   VARIANT external ;VARIANT
+   VARIANT device ;VARIANT
+;ENUM
+ENUM prec-class 0 DERIVE eq
+   VARIANT f32 ;VARIANT
+   VARIANT tf32 ;VARIANT
+;ENUM
 
 STRUCTURE certified 0
    FIELD art CAD-KIND:artifact-id
@@ -1748,10 +1761,10 @@ public
 STRUCTURE grant-proof 0 ;STRUCTURE
 
 ENUM req-class 0 DERIVE eq
-   required-blocking          \ evidence must exist and carry this artifact
-   required-when-supported    \ required unless a typed unsupported reason exists
-   required-recorded          \ must exist; content never blocks (profile)
-   informational              \ may be absent
+   VARIANT required-blocking ;VARIANT       \ evidence must exist and carry this artifact
+   VARIANT required-when-supported ;VARIANT \ required unless a typed unsupported reason exists
+   VARIANT required-recorded ;VARIANT       \ must exist; content never blocks (profile)
+   VARIANT informational ;VARIANT           \ may be absent
 ;ENUM
 
 STRUCTURE promote-policy 0
