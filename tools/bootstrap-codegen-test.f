@@ -234,7 +234,7 @@ public
    s" src/core/cell.f" BCG-LOAD
    s" $8 constant CELL" BCG-MUST-HAVE
    s" 1 cells CELL <>" BCG-MUST-HAVE
-   s" E-CELL-WIDTH die" BCG-MUST-HAVE ;
+   s" CORE-LAYOUT-RC die" BCG-MUST-HAVE ;
 
 : BCG-TEST-CELL-BOOTSTRAP ( -- )
    s" tools/bootstrap.sh" BCG-LOAD

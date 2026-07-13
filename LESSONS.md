@@ -4046,3 +4046,6 @@ unchanged (148855). Keys for milestone 2:
 - **Unsupported dot subcommands create dots.** `dot dep --help` is parsed as a
   quick-add for title `dep`; inspect `dot --help`, use `dot add -a` for blockers,
   and remove accidental tracker entries before committing.
+- **Pre-checker layout assertions need an owner that survives the cutover.**
+  Keep `CORE-LAYOUT-RC` with earliest-loaded `CELL`; schema and family layout
+  checks must not retain a dependency on the structure definer being removed.
