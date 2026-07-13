@@ -50,3 +50,53 @@ moved to an audited boundary. Then byte-identical fixpoint x2 and wire
 test/immediate-model-test.f into a gate. Cost MEDIUM per the design doc; this is
 a codebase-wide soundness tightening, not a local edit — do it deliberately, not
 at a session tail. Claim released.
+
+## Instruction-level implementation (derived 2026-07-13, orchestrator)
+The checker CANNOT track immediate-ness itself: CHECK (checker.f:7413) processes
+ONE definition's body via DO-TOK1; the top-level `immediate` token that marks a
+word lives between definitions and is handled by the engine interpret loop, not
+CHECK. And CHECKER-FIND-ACTIVE-SYM (4600) resolves to a CHECKER symbol, not the
+engine dict record that carries DNAME-IMM. So "consult DNAME-IMM" needs a
+live-dict query exposed to the checker as an engine primitive (the word IS marked
+immediate by the time its caller is checked - source loads in order).
+
+STEP 1 - engine primitive `tok-imm?` in src/habu/habu2.f (after LFIND is defined,
+in the FPRIM registration block near :5782). Body emitter + registration:
+  : BTOKIMM ( -- )   \ ( ptr u8 n -- n )  n = LFIND-flags & 2 (2 = immediate, 0 = not)
+     10 G-POP  9 G-POP            \ x10=len (TOS), x9=addr  (LFIND's input regs)
+     LFIND LABEL@ BL,             \ x13 = found|imm(bit1)|min-in|int flags
+     9 13 2 ANDI,                 \ x9 = flags & 2
+     A G-PUSH ;                   \ push x9   (A=x9; G-PUSH stores [XDS], XDS+=8)
+  s" tok-imm?" ['] BTOKIMM 1 GDEREF-F   \ FRAMED (LFIND is a BL): saves x30
+  VERIFY: XDS register must survive LFIND (LFIND clobbers x5-x16, habu2.f:2640-
+  2690). Confirm XDS != x5..x16 in src/habu/layout.f (DATA=x20; find XDS). If XDS
+  is in the clobber range, save/restore it around the BL. Data-stack string is
+  ( ptr u8 n ) = (addr,len) 2 cells, top=len (see BTYPE habu1.f:1474: 2 G-POP 1
+  G-POP). Bool convention: return raw 0/2 as `n`; the caller tests 0<>.
+
+STEP 2 - checker reject in src/core/checker.f DO-TOK (5584). After CURSYM is
+resolved (5589) and BEFORE the effect apply (5592 FEP @ EFF-APPLY), insert:
+     a u TOK-IMM? 0<> IF  -1 UNDEFERR ! -1 UNCK !  <named reject>  EXIT THEN
+  Add E-IMMEDIATE-BODY to lib/errors.f. Modeled control immediates (if/then/else/
+  [:/;]/s"/do/loop) never reach DO-TOK - DO-TOK1 (7226) filters CF-TOK? (7244),
+  string openers (7253-55), RS-TOK?, construct/match/{: first - so any immediate
+  reaching DO-TOK is an unmodeled user/engine immediate that must reject. Note
+  the checker-boot region loads with the hook silenced (fixsrc's BFR-CHECK-OFF),
+  so tok-imm? used in DO-TOK needs no self-check effect for the stage compile;
+  the staged pre-pass (VERIFY:SOURCE-BUF) checks with the PRIOR engine which
+  already has tok-imm? once the fixpoint ties.
+
+STEP 3 - fixpoint rebuild (docs/bootstrap.md full prelude, install --force) x2
+byte-identical. If the prior engine lacks tok-imm?, bootstrap once via Gforth
+(HABU_ALLOW_BOOTSTRAP=1 tools/bootstrap.sh) then refresh.
+
+STEP 4 - REPAIR the breakage the acceptance names: postpone; src/core/include.f
+(require/include if used in checked bodies); engine-suite IM5/P5/TPNI fixtures.
+Run test/run.f + engine-suite; each rejected site is either re-authored, moved to
+an audited TRUSTED boundary, or (if its compile-time expansion is modelable)
+handled like POSTPONE. This is a codebase-wide soundness tightening - the reason
+it must be done deliberately with debugger-backed RCA, not trial-and-error.
+
+STEP 5 - wire test/immediate-model-test.f (commit b5ecba4, workspace fable-p5imm)
+into a gate; it must now PASS (the two IMT-REJECTS assertions go green). Add
+E-IMMEDIATE-BODY negative regressions. Byte-identical fixpoint before merge.
