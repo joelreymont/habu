@@ -3957,3 +3957,19 @@ unchanged (148855). Keys for milestone 2:
   line calling a `( -- fam-product )` accessor dies with `interpret-mode
   layout value`; wrap the construct/UNMAKE/assert sequence in one checked test
   word and call that from top level.
+- **A `catch` effect is sound only if runtime restores the whole typed frame.**
+  Restoring data SP and machine SP is insufficient when the checker also
+  promises return- and loop-stack preservation; handler frames must save and
+  restore every modeled stack before resuming the caller.
+- **Balanced stack effects do not prove bounded execution.** A word can return
+  every stack to its declared row while recursion retains a live return value or
+  loop frame and grows without bound. Pair runtime extent guards with
+  compositional peak-use certificates and capacity-checked execution targets.
+- **PTX declarations and `ptxas` observations have different authority.** PTX
+  state can verify declared parameters, virtual registers, and memory spaces;
+  stack and spill facts arise only at the proprietary assembler boundary and
+  belong in its content-bound attestation.
+- **Tracker dependency arrows must agree with prose ownership.** If resource or
+  device evidence consumes a new attestation, the consumer blocks on the
+  producer; reversing that edge makes the documented implementation order
+  impossible even when dependency lint finds no missing ID.
