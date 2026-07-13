@@ -1326,7 +1326,8 @@ accepts these today):
    its `REPORT:NEW` default. The internal `verdict` ENUM column
    (maki/report.f:162) protects the storage cell, not the accessor arguments.
 2. Forgeable promotion readout. The exact reads `PROMOTE-OK?` performs are
-   public-surface reproducible and satisfiable by three `REPORT:GATE!` writes
+   public-surface reproducible and satisfiable by two `REPORT:GATE!` writes
+   (`REPORT:NEW` defaults already satisfy the gradcheck/profile reads)
    with no gate machinery behind them. Promotion-worthiness is a runtime tag
    readout, not proof that any gate ran.
 3. Store bypass and wrong-artifact evidence. `EVID-PUT` (maki/store.f:355) and
@@ -1375,7 +1376,7 @@ Everything below composes landed words; the probe fixture exercised each shape:
 - Derived equality for policy fields: `DERIVE eq` (docs §9.3.1;
   src/core/sumtype.f:429).
 - Candidate verdict convention for fixtures: `CHECK-CANDIDATE!` returns
-  -1 certified / 0 rejected / 1 uncheckable (src/core/checker.f:7355); an
+  -1 certified / 0 rejected / 1 uncheckable (src/core/checker.f:7551); an
   unresolvable word (e.g. a sealed private mint referenced cross-package)
   reads as 1, a type mismatch as 0. Fixtures assert the exact verdict and pair
   every negative with a resolving positive control.
