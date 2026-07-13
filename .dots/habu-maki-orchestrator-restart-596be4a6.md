@@ -144,3 +144,22 @@ core-dictionary-vs 2a5273f0), gated backlog (zed device, user eval rounds).
 Next session: fetch master first (tfam rebases onto the unified tree), then
 pick from the design dots by value - value-intro governance is the deepest;
 JSON family hint + owner-wid guards are quick wins.
+
+## STATUS 2026-07-13 final: GOAL e93371de COMPLETE — backlog drained to the gates
+
+master = fable = 52382a77. Session total since the R3 merge: 25+ dots landed+
+closed through claim->worker->review->window; 4-role gaps audit executed with
+every finding landed; the drain converged (final wave minted nothing new).
+Landed highlights: internal-word gate, FOO2 min-in, TK-CELL nominal scalars +
+typed storage, in-body openers + DEFTYPE class + EXPORT-alias bypass
+(E-EXPORT-UNSAFE), diag renderer + qualified JSON family hint, float-grammar
+alignment (checker mirrored EMIT-NUM; qualified self-ref SIGSEGV rider-fixed),
+region kinds, fact-injective durable key, durable replay loop wired, refine-
+lint, check-scanner package support, rollback+wide-memory suites gate-wired,
+owner-wid standalone guards, SK growth. NEXT CAMPAIGNS (all dotted): typed-top
+sub-dot chain (p5 immediate model fix 70dc94e4 FIRST - HIGH), unsafety sym-set
+endpoint d12bc784, TVK-RAW (tfam a3430ef2) then typed-storage value side,
+type-habu epic tail, V2 program (tfam), zed device backlog. tfam claims live:
+owner-seal-persist, tfam-2b. Process rules added this session: dot claims at
+dispatch; closures commit in the same breath; stage-then-fan-out; UTC date
+rolls; jj new off the tip after bookmark moves.
