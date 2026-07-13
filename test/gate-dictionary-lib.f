@@ -600,6 +600,81 @@ variable GD-START-NS
    rc label labelu GE-EXPECT-RC
    needle needleu label labelu GE-EXPECT-ERR-HAS ;
 
+\ One literal grammar everywhere (engine + checker): int -?d+ | -?$h+, float
+\ -?d*.d+ — dot-leading spellings (.5 -.5 .0) ARE float literals; 5. and ..5
+\ are words. The engine number parser claims literals before dictionary lookup
+\ (GD-LITERAL-FIRST), so the checker must claim exactly the same token set or a
+\ number-shaped word certifies with an effect the runtime never executes (the
+\ lib/fmt.f .0 incident). Number-shaped definitions appear only inside child
+\ source strings here; reserved-name-lint forbids them in committed code.
+: GD-LITERAL-FLOAT-SRC ( -- )
+   GE-SRC-RESET
+   s" : FRUN ( -- r ) .5 ;" GE-SRC-LINE
+   s" FRUN ." GE-SRC-LINE
+   s" .0 ." GE-SRC-LINE
+   s" -.5 ." GE-SRC-LINE
+   s" 1.5 ." GE-SRC-S"  s"  evaluate" GE-SRC-LINE
+   s" -$FF ." GE-SRC-LINE
+   s" FLOK1 ( -- r ) .5" GE-SRC-CHECK-LINE
+   s" FLOK2 ( -- r ) -.5" GE-SRC-CHECK-LINE
+   s" FLOK3 ( -- r ) .0" GE-SRC-CHECK-LINE
+   s" FLOK4 ( -- r ) 1.5" GE-SRC-CHECK-LINE
+   s" FLOK5 ( -- n ) -$FF" GE-SRC-CHECK-LINE
+   s" FLBAD1 ( -- r ) 5." GE-SRC-CHECK-LINE
+   s" FLBAD2 ( -- r ) ..5" GE-SRC-CHECK-LINE
+   s" FLBAD3 ( -- n ) .5" GE-SRC-CHECK-LINE
+   s" : .0 ( n -- ) drop ;" GE-SRC-LINE
+   s" 60 .0 . ." GE-SRC-LINE
+   s" SHOK ( -- r ) .0" GE-SRC-CHECK-LINE
+   s" SHBAD ( n -- ) .0" GE-SRC-CHECK-LINE ;
+
+: GD-LITERAL-FLOAT-OUT ( -- )
+   SB-RESET
+   s" 4602678819172646912" GE-OUT-LINE
+   s" 0" GE-OUT-LINE
+   s" -4620693217682128896" GE-OUT-LINE
+   s" 4609434218613702656" GE-OUT-LINE
+   s" -255" GE-OUT-LINE
+   s" -1" GE-OUT-LINE s" -1" GE-OUT-LINE s" -1" GE-OUT-LINE
+   s" -1" GE-OUT-LINE s" -1" GE-OUT-LINE
+   s" 1" GE-OUT-LINE s" 1" GE-OUT-LINE s" 0" GE-OUT-LINE
+   s" 0" GE-OUT-LINE s" 60" GE-OUT-LINE
+   s" -1" GE-OUT-LINE s" 0" GE-OUT-LINE ;
+
+: GD-LITERAL-FLOAT-FIRST ( -- )
+   GE-HB-RESET
+   GD-LITERAL-FLOAT-SRC
+   s" hb float literal grammar engine+checker" GE-HB-RUN-STDIN
+   GD-LITERAL-FLOAT-OUT
+   SB$ s" hb float literal-first output" GE-EXPECT-OUT
+   GE-HB-RESET
+   GE-SRC-RESET
+   s" : .0 ( n -- ) drop ;" GE-SRC-LINE
+   s" : SHRUN ( n -- ) .0 ;" GE-SRC-LINE
+   70 s" at '.0'" s" hb rejects call to number-shaped word" GD-RUN-BAD-CHILD
+   GE-HB-RESET
+   GE-SRC-RESET
+   s" 5. ." GE-SRC-LINE
+   70 s" E-UNDEFINED: 5." s" hb engine keeps trailing-dot token a word" GD-RUN-BAD-CHILD
+   GE-HB-RESET
+   GE-SRC-RESET
+   s" ..5 ." GE-SRC-LINE
+   70 s" E-UNDEFINED: ..5" s" hb engine keeps double-dot token a word" GD-RUN-BAD-CHILD ;
+
+: GD-LITERAL-FLOAT-EVAL ( -- )
+   GE-HB-RESET
+   GE-SRC-RESET
+   s" : FRUN2 ( -- r ) -.5 ;" GE-SRC-LINE
+   s" FRUN2 ." GE-SRC-LINE
+   s" FLEV1 ( -- r ) .5" GE-SRC-CHECK-LINE
+   s" FLEV2 ( -- n ) .5" GE-SRC-CHECK-LINE
+   s" hb resident evaluate float literal-first" GE-EVAL-RUN-STDIN
+   SB-RESET
+   s" -4620693217682128896" GE-OUT-LINE
+   s" -1" GE-OUT-LINE
+   s" 0" GE-OUT-LINE
+   SB$ s" hb resident evaluate float literal-first output" GE-EXPECT-OUT ;
+
 : GD-DUPLICATE-DEFINITION-REJECTS ( -- )
    GE-HB-RESET
    GE-SRC-RESET
@@ -1142,6 +1217,8 @@ variable GD-START-NS
    s" dictionary/local-quot-compile" [: GD-LOCAL-QUOT-COMPILE-FAIL ;] GD-RUN
    s" dictionary/local-first" [: GD-LOCAL-FIRST ;] GD-RUN
    s" dictionary/literal-first" [: GD-LITERAL-FIRST ;] GD-RUN
+   s" dictionary/literal-float" [: GD-LITERAL-FLOAT-FIRST ;] GD-RUN
+   s" dictionary/literal-float-eval" [: GD-LITERAL-FLOAT-EVAL ;] GD-RUN
    s" dictionary/namespace" [: GD-NAMESPACE-QUALIFIED ;] GD-RUN
    s" dictionary/package-runtime" [: GD-PACKAGE-RUNTIME ;] GD-RUN
    s" dictionary/package-semicolon" [: GD-PACKAGE-SEMICOLON ;] GD-RUN

@@ -5317,9 +5317,14 @@ variable TSEEN  variable TSOK  variable TFA
    TSOK @ 0 <> ;
 variable FLD  variable FLI  variable FLO  variable FLC
 
-: FLODIG? ( ptr u8 n -- bool ) {: a:ptr u:n :}     \ -?d+.d+ (one interior dot) -> float literal
+\ float literal: -?d*.d+ — exactly one dot, >=1 digit after it, digits-before-dot
+\ optional. Mirrors the engine number parser (habu1.f EMIT-NUM/C-NUM-DOT) exactly:
+\ dot-leading spellings (.5 -.5 .0) ARE engine float literals, and the checker
+\ must claim precisely the tokens the runtime claims (GD-LITERAL-FIRST) or a
+\ number-shaped word certifies as a call the runtime can never reach.
+: FLODIG? ( ptr u8 n -- bool ) {: a:ptr u:n :}
    0 FLD !  0 FLI !  -1 FLO !
-   u 3 < IF 0 FLO ! THEN
+   u 2 < IF 0 FLO ! THEN
    a c@ 45 = IF 1 FLI ! THEN
    FLI @ BEGIN dup u < WHILE
      a over + c@ FLC !
@@ -5327,8 +5332,7 @@ variable FLD  variable FLI  variable FLO  variable FLC
      ELSE FLC @ 47 > FLC @ 58 < and 0= IF 0 FLO ! THEN THEN
      1 + REPEAT drop
    FLD @ 1 = FLO @ 0 <> and
-   u 0 > IF a u 1 - + c@ 46 = IF drop RES-FALSE THEN THEN
-   a FLI @ + c@ 46 = IF drop RES-FALSE THEN ;
+   u 0 > IF a u 1 - + c@ 46 = IF drop RES-FALSE THEN THEN ;
 
 : DEFINER-TOK ( ptr u8 n -- bool ) {: a:ptr u:n :}
    SGSEEN @ 0= IF RES-FALSE EXIT THEN

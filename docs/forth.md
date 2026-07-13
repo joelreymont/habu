@@ -72,7 +72,16 @@ file.
   `.INT`/`.U`). `tools/reserved-name-lint.f` rejects both classes as
   `E-NUMERIC-DEFINITION`. Dot-letter printers (`.U`, `.INT`, `F.N`) and
   digit-leading names that cannot parse as a number (`1STNZ`, `0<>`, `2DUP`)
-  remain legal.
+  remain legal. The literal grammar is ONE grammar in every context —
+  interpret, colon-compile, `evaluate`, and the checker: int `-?d+ | -?$h+`,
+  float `-?d*.d+` (exactly one dot, at least one digit after it, digits before
+  it optional — so dot-leading `.5`/`-.5`/`.0` ARE float literals, while `5.`
+  and `..5` are ordinary words). The checker's literal claim
+  (`LITERAL-TOK?`/`ALLDIG?`/`FLODIG?` in `src/core/checker.f`) mirrors the
+  engine number parser (`EMIT-NUM` in `src/habu/habu1.f`) token for token;
+  `test/gate-dictionary-lib.f` GD-LITERAL-FLOAT-FIRST pins the whole matrix,
+  including that a call to a number-shaped word is rejected by the checker
+  instead of certifying an effect the runtime never executes.
 - **Prefer hex for numeric literals.** Use `$...` for byte values, masks,
   addresses, offsets, syscall/exit constants, instruction encodings, and other
   machine-adjacent numbers. Decimal is acceptable for small counts and ordinary
