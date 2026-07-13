@@ -158,7 +158,7 @@ region kinds, fact-injective durable key, durable replay loop wired, refine-
 lint, check-scanner package support, rollback+wide-memory suites gate-wired,
 owner-wid standalone guards, SK growth. NEXT CAMPAIGNS (all dotted): typed-top
 sub-dot chain (p5 immediate model fix 70dc94e4 FIRST - HIGH), unsafety sym-set
-endpoint d12bc784, TVK-RAW (tfam a3430ef2) then typed-storage value side,
+endpoint 1c537c1f, TVK-RAW (tfam a3430ef2) then typed-storage value side,
 type-habu epic tail, V2 program (tfam), zed device backlog. tfam claims live:
 owner-seal-persist, tfam-2b. Process rules added this session: dot claims at
 dispatch; closures commit in the same breath; stage-then-fan-out; UTC date

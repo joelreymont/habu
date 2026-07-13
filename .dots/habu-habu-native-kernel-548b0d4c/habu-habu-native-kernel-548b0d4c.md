@@ -1,9 +1,9 @@
 ---
 title: Habu-native kernel benchmark and profile workflow
-status: open
+status: active
 priority: 1
 issue-type: task
-created-at: "2026-07-01T18:24:40.268057+02:00"
+created-at: "\"2026-07-01T18:24:40.268057+02:00\""
 ---
 
 User requirement 2026-07-01: kernel work must add benchmarking/profiling and use
