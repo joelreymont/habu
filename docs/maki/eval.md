@@ -28,8 +28,10 @@ scores every candidate through both `EVAL:GRADE-CANDIDATE` and a
 throwaway `0 set-check` emit/ptxas/device path; on the SAXPY fixture, the checker
 catches 5/6 bugs before execution while the no-checker arm catches 0/6 before
 execution and all six buggy candidates fail only at the device golden. The committed
-device-correctness regressions for the GEMM/attention kernels are
-`tools/ptx/{matmul,attention}-device-test.f`.
+device-correctness regression for the GEMM kernel is
+`tools/ptx/matmul-device-test.f`; the attention kernel's device regression is not
+yet committed — it is tracked by the zed-gated dot
+`habu-committed-device-correctness-9ca4cbc6`.
 
 ## The durable pass@k harness: transcripts -> matrix
 A generation run is recorded as a plain-text **transcript** file and replayed from the

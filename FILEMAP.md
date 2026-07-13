@@ -818,7 +818,9 @@ points stay listed.
   stage0 compiler and requires the wide-memory subject to print `ok`.
 - `test/bootstrap-wide-memory-src.f` — checked W2/W4 ADT store/fetch subject;
   pins stage0 instruction goldens, canonical cell order, mixed/branch locals,
-  and runtime round trips.
+  and runtime round trips. Runs under the Gforth recovery gate AND natively in
+  the engine validate slice (gate-engine-lib GE-WIDE-MEMORY-SUITE), so native
+  codegen drift from the recovery path fails in the ordinary gate.
 - `test/bootstrap-wide-interpret-src.f` / `test/bootstrap-wide-tick-src.f` —
   stage0 negative execution fixtures proving published wide-effect words cannot
   run or be ticked from interpretation state.

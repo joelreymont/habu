@@ -45,16 +45,19 @@ AD-REVERSE ( forward-body -- backward-body ):
 ```
 
 A forward pipeline `w1 w2 … wn` has gradient `VJP[wn] … VJP[w1]`. The adjoint of each
-token comes from two tables:
+token comes from **one table** (`src/arch/ptx/vjp.f`), looked up through
+`VJP-ADJOINT`; `VJP-EXPAND` is an alias of the same lookup (`lib/ptx/ad.f` defines it
+as `VJP-ADJOINT`), kept as the expansion-flavored spelling. The entries fall into two
+classes:
 
-- **`VJP-ADJOINT`** — the *linear, data-free* primitive adjoints:
+- the *linear, data-free* primitive adjoints (single-token expansions):
   `+.`↔`DUP`, `BLOCK-SUM`↔`BROADCAST`, `STORE`→`LOAD`,
   ordinary `LOAD`→`SCATTER-ADD`, `ROW-STORE`→`ROW-LOAD`,
   ordinary `ROW-LOAD`→`ROW-SCATTER-ADD`, `LOAD-ONCE`→`STORE-ONCE`,
   `ROW-LOAD-ONCE`→`ROW-STORE-ONCE`, `NEG`↔`NEG`.
   (Reverse of a reduce is a broadcast; reverse of an ordinary load conservatively
   accumulates. Plain store requires the checked once-space witness.)
-- **`VJP-EXPAND`** — the *nonlinear* ops, whose adjoint is a multi-word **expansion** that
+- the *nonlinear* ops, whose adjoint is a multi-word **expansion** that
   references saved primals/outputs (`SAVED-X` / `SAVED-Y` / `SAVED-MX` / …):
   - `EXP.` → `SAVED-Y *.` (dz·y, y = saved output)
   - `BLOCK-MAX` → `SAVED-X SAVED-MX BLOCK-MAX-SELECT` (scatter cotangent to the arg-max lane)

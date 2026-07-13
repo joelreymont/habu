@@ -1414,6 +1414,12 @@ s" package tdrv" E-CTOR-PROTECTED TDT-NEG
 s" ENUM tdrb2 DERIVE order aa bb ;ENUM" E-TDECL-DERIVE TDT-NEG
 s" ENUM tdrb3 DERIVE frobnicate aa bb ;ENUM" E-TDECL-DERIVE TDT-NEG
 s" ENUM tdrb4 DERIVE ;ENUM" E-TDECL-DERIVE TDT-NEG
+\ visibility gate (docs §9.3.1): DERIVE requires a PUBLIC family — a family
+\ declared in a private package section rejects with full registry rollback.
+package tdprv
+private
+s" ENUM tdrb11 DERIVE eq aa bb ;ENUM" E-TDECL-DERIVE TDT-NEG
+;package
 \ (S1 kind-gated sums/products; derive S2 accepts them — pinned positively in
 \ the S2 section below, so the old enum-only rejects are retired.)
 \ adjacent `eq` after the clause reads as a redundant FEATURE (order-free

@@ -171,6 +171,51 @@ here LB-DP 0 ptr-field !
 LBTK-DUP-RC $4E T=
 here LB-DP 0 ptr-field @ = -1 T=
 
+\ ---- PRODUCT positive: MAKE -> typed store -> fetch -> UNMAKE round-trip ----
+\ (mirrors the type-decl-suite TDS2/TDP executed round-trips; the product
+\ coverage above is reject-only, this pins the accepting memory path.)
+ENUM lbhue red green blue ;ENUM
+
+PRODUCT lbrec 0
+  FIELD hue lbhue
+  FIELD cnt n
+;PRODUCT
+
+3 LAYOUT-BUFFER LBP-BUF lbrec
+
+: LBP-HUE-CODE ( lbhue -- n )
+   MATCH lbhue
+     red OF 0 ENDOF
+     green OF 1 ENDOF
+     blue OF 2 ENDOF
+   ;MATCH ;
+: LBP-PUT ( lbrec n -- ) LBP-BUF ! ;
+: LBP-HUE@ ( n -- n ) LBP-BUF @ LBREC:UNMAKE drop LBP-HUE-CODE ;
+: LBP-CNT@ ( n -- n ) LBP-BUF @ LBREC:UNMAKE nip ;
+
+\ single-slot round-trip: every field survives typed product memory.
+: LBP-ONE! ( -- ) LBHUE:GREEN 42 LBREC:MAKE 0 LBP-PUT ;
+LBP-ONE!
+0 LBP-HUE@ 1 T=
+0 LBP-CNT@ 42 T=
+
+\ multi-element positive: distinct values at three indices stay independent,
+\ and a compiled walk over every slot asserts the stored values (the depth
+\ suite pins no-throw only; this pins the values).
+: LBP-FILL ( -- )
+   LBHUE:RED 10 LBREC:MAKE 0 LBP-PUT
+   LBHUE:GREEN 20 LBREC:MAKE 1 LBP-PUT
+   LBHUE:BLUE 30 LBREC:MAKE 2 LBP-PUT ;
+: LBP-WALK-SUM ( -- n )   \ fold hue-code*100 + cnt across all slots
+   0 3 0 ?do
+      i LBP-HUE@ 100 * i LBP-CNT@ + +
+   loop ;
+LBP-FILL
+0 LBP-HUE@ 0 T=   0 LBP-CNT@ 10 T=
+1 LBP-HUE@ 1 T=   1 LBP-CNT@ 20 T=
+2 LBP-HUE@ 2 T=   2 LBP-CNT@ 30 T=
+LBP-WALK-SUM 360 T=
+
 : REPORT ( -- )
    #FAIL @ 0= if s" ok" type cr exit then
    #FAIL @ . s" layout-buffer failures" 1 die ;

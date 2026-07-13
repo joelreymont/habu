@@ -223,6 +223,11 @@ Also add domain index kinds:
 - effect;
 - region.
 
+Landed deviation: `dtype` and `layout` shipped as maki ENUM families
+(`maki/tensor.f`, `maki/tensor-value.f`) rather than CAD-KIND rows — strictly
+stronger (real layout values with MATCH/derived eq), per merge-policy dot
+habu-merge-policy-master-961bb2b7.
+
 Why required:
 
 All of these are one-cell values physically. Treating them as n permits

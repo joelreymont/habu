@@ -368,6 +368,21 @@ GE-FILES: GE-REPAIR-HINTS-RUN-FILES
    GE-CANDIDATE$ s" type-family suite on Habu-under-test" GE-TYPE-FAMILY-SUITE-ON
    s" bin/hb" s" type-family suite on bin/hb" GE-TYPE-FAMILY-SUITE-ON ;
 
+: GE-TYPE-FAMILY-ROLLBACK-SUITE-ON ( ptr u8 n ptr u8 n -- )
+   {: exe:ptr exeu:n label:ptr labelu:n :}
+   GE-HB-RESET
+   GE-SRC-RESET
+   s" test/type-family-rollback-suite.f" GE-SRC-FILE+
+   exe exeu label labelu GE-SUITE-RUN ;
+
+\ transactional candidate/scope rollback frames (incl. LAY rows): the only
+\ regression proving depth-safe registry restore across reject/throw paths.
+: GE-TYPE-FAMILY-ROLLBACK-SUITE ( -- )
+   GE-CANDIDATE$ s" type-family-rollback suite on Habu-under-test"
+      GE-TYPE-FAMILY-ROLLBACK-SUITE-ON
+   s" bin/hb" s" type-family-rollback suite on bin/hb"
+      GE-TYPE-FAMILY-ROLLBACK-SUITE-ON ;
+
 : GE-TYPE-DECL-SUITE-ON ( ptr u8 n ptr u8 n -- ) {: exe:ptr exeu:n label:ptr labelu:n :}
    GE-HB-RESET
    GE-SRC-RESET
@@ -625,6 +640,20 @@ public
 : GE-TYPE-EXPORT-SUITE ( -- )
    GE-CANDIDATE$ s" type-export suite on Habu-under-test" GE-TYPE-EXPORT-SUITE-ON
    s" bin/hb" s" type-export suite on bin/hb" GE-TYPE-EXPORT-SUITE-ON ;
+
+: GE-WIDE-MEMORY-SUITE-ON ( ptr u8 n ptr u8 n -- )
+   {: exe:ptr exeu:n label:ptr labelu:n :}
+   GE-HB-RESET
+   GE-SRC-RESET
+   s" test/bootstrap-wide-memory-src.f" GE-SRC-FILE+
+   exe exeu label labelu GE-SUITE-RUN ;
+
+\ the stage0 wide-memory subject also runs natively: its instruction goldens
+\ pin the shared codegen lineage, so native drift from the Gforth recovery
+\ path (tools/bootstrap.sh bootstrap_wide_gate) fails here first.
+: GE-WIDE-MEMORY-SUITE ( -- )
+   GE-CANDIDATE$ s" wide-memory suite on Habu-under-test" GE-WIDE-MEMORY-SUITE-ON
+   s" bin/hb" s" wide-memory suite on bin/hb" GE-WIDE-MEMORY-SUITE-ON ;
 
 \ The former GE-CAND-SMOKE (hook-installed / checked-compile-run / baked-word-
 \ resolves) is now three T= probes inside test/engine-suite.f, so it rides the
@@ -1335,6 +1364,7 @@ variable GE-DFULL-I                 \ copy/definition loop index
    GE-CANDIDATE-SIZE-CHECK
    GE-ENGINE-SUITE
    GE-TYPE-FAMILY-SUITE
+   GE-TYPE-FAMILY-ROLLBACK-SUITE
    GE-TYPE-DECL-SUITE
    GE-TYPE-CTOR-SUITE
    GE-TYPE-LINEAR-SUITE
@@ -1345,7 +1375,8 @@ variable GE-DFULL-I                 \ copy/definition loop index
    GE-PROTECTION-SPAN-SUITE
    GENG:LOWER-TXN-PROTECTION-SUITE
    GENG:TXN-LARGE-SUITE
-   GE-TYPE-EXPORT-SUITE ;
+   GE-TYPE-EXPORT-SUITE
+   GE-WIDE-MEMORY-SUITE ;
 
 : GENG-VALIDATE-SLICE ( -- )
    s" hb-gate-engine-validate" GT-START

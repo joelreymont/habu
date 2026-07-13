@@ -80,6 +80,8 @@ s" CK-X21 ( CAD-KIND:effect -- CAD-KIND:region )" NO
 s" CK-PUT ( CAD-KIND:design-id ptr CAD-KIND:design-id -- ) !" YES
 s" CK-GET ( ptr CAD-KIND:design-id -- CAD-KIND:design-id ) @" YES
 s" CK-BAD-STORE ( CAD-KIND:node-id ptr CAD-KIND:design-id -- ) !" NO
+\ Plan R3 verbatim fixture: mixed-role inputs cannot manufacture evidence.
+s" CK-BAD-STAGE ( CAD-KIND:artifact-id CAD-KIND:stage -- CAD-KIND:evidence-id )" NO
 
 \ Failure packets expose both qualified roles to a repair agent.
 s" CK-BAD-ID ( CAD-KIND:design-id -- CAD-KIND:node-id )" DIAG<
