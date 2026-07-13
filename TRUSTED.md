@@ -886,6 +886,7 @@ rendering, so the checker can validate them without a Markdown implementation.
 | Owner | Completed semantic boundary | Owning evidence |
 |---|---|---|
 | <a id="cap-checker-hook-identity"></a>`cap:checker-hook-identity` | Audited hook-identity gate only: checked-boundary lint rejects installed names outside the landed canonical allowlist across engine, AOT, snapshot, lint, and tests. It does not claim post-seal compiler/friend-latch authorization; that residual remains owned by live dot `habu-seal-set-check-b3676b33`. | `test/engine-suite.f`, `test/prop-test-core.f`, `tools/codegen-role.f` |
+| <a id="cap-checker-registry-whitebox"></a>`cap:checker-registry-whitebox` | Test-only leaves expose pre-hook checker registry layout metadata, marks, and individual unmodeled mutations so checked orchestration proves growth and exact rollback. | `test/engine-suite.f` |
 | <a id="cap-fetched-adt-validation"></a>`cap:fetched-adt-validation` | Test-only hostile whitebox access constructs malformed fetched ADT layouts and proves growth, guard, product, and width-one rejection. | `test/layout-valid-growth.f`, `test/layout-valid-guard-base.f`, `test/layout-valid-product-bad.f`, `test/layout-valid-w1-bad.f` |
 | <a id="cap-qualified-family-payloads"></a>`cap:qualified-family-payloads` | Test-only nominal payload casts construct and inspect qualified family values after schema resolution. | `test/type-decl-suite.f` |
 | <a id="cap-sealed-family-pointers"></a>`cap:sealed-family-pointers` | Test-only representation accessor verifies that layout-buffer family pointers remain sealed behind the typed buffer API. | `test/layout-buffer.f` |
@@ -893,6 +894,7 @@ rendering, so the checker can validate them without a Markdown implementation.
 
 <!-- trusted-inventory-owners
 cap:checker-hook-identity TRUSTED.md#cap-checker-hook-identity
+cap:checker-registry-whitebox TRUSTED.md#cap-checker-registry-whitebox
 cap:fetched-adt-validation TRUSTED.md#cap-fetched-adt-validation
 cap:qualified-family-payloads TRUSTED.md#cap-qualified-family-payloads
 cap:sealed-family-pointers TRUSTED.md#cap-sealed-family-pointers
@@ -1433,6 +1435,17 @@ test/type-layout-lower-pending.f:TWX-TFAM-FIND-IN test-metaprog habu-seal-set-ch
 test/type-match-suite.f:FREE-MTOK test-metaprog habu-tfam-11-linear-99fa9990
 test/engine-suite.f:T-CHECK-PASSES test-metaprog habu-primitive-effect-axiom-1119f176
 test/engine-suite.f:T-RDF test-metaprog cap:checker-hook-identity 2
+test/engine-suite.f:TR-SYM-LAYOUT-RAW test-metaprog cap:checker-registry-whitebox
+test/engine-suite.f:TR-EFF-REC-LAYOUT-RAW test-metaprog cap:checker-registry-whitebox
+test/engine-suite.f:TR-EFF-NODE-LAYOUT-RAW test-metaprog cap:checker-registry-whitebox
+test/engine-suite.f:TR-PE-LAYOUT-RAW test-metaprog cap:checker-registry-whitebox
+test/engine-suite.f:TR-DFER-LAYOUT-RAW test-metaprog cap:checker-registry-whitebox
+test/engine-suite.f:TR-NORET-LAYOUT-RAW test-metaprog cap:checker-registry-whitebox
+test/engine-suite.f:TR-CORE-MARKS@ test-metaprog cap:checker-registry-whitebox
+test/engine-suite.f:TR-VREC-MARKS@ test-metaprog cap:checker-registry-whitebox
+test/engine-suite.f:TR-SYM-ADD test-metaprog cap:checker-registry-whitebox
+test/engine-suite.f:TR-USIG-ADD test-metaprog cap:checker-registry-whitebox
+test/engine-suite.f:TR-NORET-ADD test-metaprog cap:checker-registry-whitebox
 test/engine-suite.f:T-SCV test-metaprog habu-primitive-effect-axiom-1119f176
 test/engine-suite.f:T-CTV test-metaprog habu-primitive-effect-axiom-1119f176
 test/engine-suite.f:T-SCOPED-W test-metaprog habu-primitive-effect-axiom-1119f176

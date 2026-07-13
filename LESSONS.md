@@ -4053,3 +4053,9 @@ unchanged (148855). Keys for milestone 2:
   run from a fresh candidate while spawned fixtures call a stale workspace
   `bin/hb` changes the engine-key component and creates false cache misses;
   install the exact candidate copy before running persistence/replay suites.
+- **A folded predicate must seed its boolean before using `and`.** Whitebox
+  layout probes return metadata before their predicate; the first comparison
+  uses `=`, and only later comparisons use `= and`.
+- **A test boundary may cover only one genuinely unmodeled operation.** Keep
+  checker-known scope, definer, and rollback calls in checked orchestration;
+  isolate each pre-hook registry mutation in its own typed `TRUSTED:` leaf.

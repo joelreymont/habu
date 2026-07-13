@@ -756,6 +756,178 @@ variable TR-S-LC variable TR-S-STRLC
    0 HIDX-MEM !  0 HIDX-VALID ! ;        \ rebuild a fresh index from the restored SYMS
 LOWER-CERT-HOOK:INSTALL
 TR-SYMS-WHITEBOX
+
+\ Registry internals predate the checker hook. These trusted leaves expose only
+\ measured metadata, predicates, and transaction operations; all assertions and
+\ orchestration below remain checked.
+create TR-REG-REC 11 cells allot
+variable TR-REG-SYM-MARK
+variable TR-REG-UEND-MARK
+variable TR-REG-DFER-MARK
+variable TR-REG-NORET-MARK
+variable TR-VREC-N-MARK
+variable TR-VREC-FIELD-MARK
+variable TR-VREC-NODE-MARK
+variable TR-VNARG-MARK
+variable TR-VREC-STR-MARK
+
+TRUSTED: TR-SYM-LAYOUT-RAW ( -- n n n bool )
+   SYM-REC SYM-REC-ALIGN SYM-REC-PTR-MASK
+   TR-REG-REC SYM.PKG-A TR-REG-REC SYM-PKG-A-OFF + =
+   TR-REG-REC SYM.PKG-U TR-REG-REC SYM-PKG-U-OFF + = and
+   TR-REG-REC SYM.NAME-A TR-REG-REC SYM-NAME-A-OFF + = and
+   TR-REG-REC SYM.NAME-U TR-REG-REC SYM-NAME-U-OFF + = and
+   TR-REG-REC SYM.VIS TR-REG-REC SYM-VIS-OFF + = and ;
+
+TRUSTED: TR-EFF-REC-LAYOUT-RAW ( -- n n n bool )
+   EFF-REC EFF-REC-ALIGN EFF-REC-PTR-MASK
+   TR-REG-REC ER.NEXT TR-REG-REC ER-NEXT-OFF + =
+   TR-REG-REC ER.MINI TR-REG-REC ER-MINI-OFF + = and ;
+
+TRUSTED: TR-EFF-NODE-LAYOUT-RAW ( -- n n n bool )
+   EFF-NODE EFF-NODE-ALIGN EFF-NODE-PTR-MASK
+   TR-REG-REC EN.TAG TR-REG-REC EN-TAG-OFF + =
+   TR-REG-REC EN.H TR-REG-REC EN-H-OFF + = and ;
+
+TRUSTED: TR-PE-LAYOUT-RAW ( -- n n n bool )
+   PE-REC PE-REC-ALIGN PE-REC-PTR-MASK
+   TR-REG-REC PE.SYM TR-REG-REC PE-SYM-OFF + =
+   TR-REG-REC PE.FLAGS TR-REG-REC PE-FLAGS-OFF + = and ;
+
+TRUSTED: TR-DFER-LAYOUT-RAW ( -- n n n bool )
+   DFER-REC DFER-REC-ALIGN DFER-REC-PTR-MASK
+   TR-REG-REC DFER.SYM TR-REG-REC DFER-SYM-OFF + =
+   TR-REG-REC DFER.FLAG TR-REG-REC DFER-FLAG-OFF + = and ;
+
+TRUSTED: TR-NORET-LAYOUT-RAW ( -- n n n bool )
+   NORET-ENTRY NORET-ENTRY-ALIGN NORET-ENTRY-PTR-MASK
+   TR-REG-REC NORET.SYM TR-REG-REC NORET-SYM-OFF + =
+   TR-REG-REC NORET.FLAG TR-REG-REC NORET-FLAG-OFF + = and ;
+
+TRUSTED: TR-CORE-MARKS@ ( -- n n n n )
+   SYM-N @ UEND @ DFER-END @ NORET-END @ ;
+
+TRUSTED: TR-VREC-MARKS@ ( -- n n n n n )
+   VREC-N @ VREC-FIELD-N @ VREC-NODE-N @ VNARG-N @ VREC-STR-U @ ;
+
+TRUSTED: TR-SYM-ADD ( -- )
+   s" " SYM-GLOBAL s" TRREGSCOPE" SYM-INTERN drop
+;
+
+TRUSTED: TR-USIG-ADD ( -- )
+   s" n -- n" s" TRREGSCOPE" CHECKER-USIG-ADD ;
+
+TRUSTED: TR-NORET-ADD ( -- )
+   s" TRREGSCOPE" CTL-DEAD NORET-ADD ;
+
+: TR-BOOL= ( bool -- )
+   if -1 else 0 then -1 T= ;
+
+: TR-SYM-LAYOUT ( -- )
+   TR-SYM-LAYOUT-RAW {: stride:n align:n mask:n ok:bool :}
+   s" sym-record-layout" T-LABEL
+   stride 5 cells T=
+   align $8 T=
+   mask $5 T=
+   ok TR-BOOL= ;
+
+: TR-EFF-REC-LAYOUT ( -- )
+   TR-EFF-REC-LAYOUT-RAW {: stride:n align:n mask:n ok:bool :}
+   s" effect-record-layout" T-LABEL
+   stride 11 cells T=  align $8 T=  mask 0 T=
+   ok TR-BOOL= ;
+
+: TR-EFF-NODE-LAYOUT ( -- )
+   TR-EFF-NODE-LAYOUT-RAW {: stride:n align:n mask:n ok:bool :}
+   s" effect-node-layout" T-LABEL
+   stride 9 cells T=  align $8 T=  mask 0 T=
+   ok TR-BOOL= ;
+
+: TR-PE-LAYOUT ( -- )
+   TR-PE-LAYOUT-RAW {: stride:n align:n mask:n ok:bool :}
+   s" primitive-record-layout" T-LABEL
+   stride 3 cells T=  align $8 T=  mask 0 T=
+   ok TR-BOOL= ;
+
+: TR-DFER-LAYOUT ( -- )
+   TR-DFER-LAYOUT-RAW {: stride:n align:n mask:n ok:bool :}
+   s" defer-record-layout" T-LABEL
+   stride 2 cells T=  align $8 T=  mask 0 T=
+   ok TR-BOOL= ;
+
+: TR-NORET-LAYOUT ( -- )
+   TR-NORET-LAYOUT-RAW {: stride:n align:n mask:n ok:bool :}
+   s" control-record-layout" T-LABEL
+   stride 2 cells T=  align $8 T=  mask 0 T=
+   ok TR-BOOL= ;
+
+: TR-CORE-MARKS! ( -- )
+   TR-CORE-MARKS@
+   TR-REG-NORET-MARK !  TR-REG-DFER-MARK !
+   TR-REG-UEND-MARK !  TR-REG-SYM-MARK ! ;
+
+: TR-VREC-MARKS! ( -- )
+   TR-VREC-MARKS@
+   TR-VREC-STR-MARK !  TR-VNARG-MARK !  TR-VREC-NODE-MARK !
+   TR-VREC-FIELD-MARK !  TR-VREC-N-MARK ! ;
+
+: TR-CORE-GROW-ASSERT ( -- )
+   TR-CORE-MARKS@ {: sym:n uend:n dfer:n noret:n :}
+   sym TR-REG-SYM-MARK @ > TR-BOOL=
+   uend TR-REG-UEND-MARK @ > TR-BOOL=
+   dfer TR-REG-DFER-MARK @ > TR-BOOL=
+   noret TR-REG-NORET-MARK @ > TR-BOOL= ;
+
+: TR-VREC-GROW-ASSERT ( -- )
+   TR-VREC-MARKS@ {: rec:n field:n node:n arg:n str:n :}
+   rec TR-VREC-N-MARK @ > TR-BOOL=
+   field TR-VREC-FIELD-MARK @ > TR-BOOL=
+   node TR-VREC-NODE-MARK @ > TR-BOOL=
+   arg TR-VNARG-MARK @ > TR-BOOL=
+   str TR-VREC-STR-MARK @ > TR-BOOL= ;
+
+: TR-CORE-ROLLBACK-ASSERT ( -- )
+   TR-CORE-MARKS@ {: sym:n uend:n dfer:n noret:n :}
+   sym TR-REG-SYM-MARK @ T=
+   uend TR-REG-UEND-MARK @ T=
+   dfer TR-REG-DFER-MARK @ T=
+   noret TR-REG-NORET-MARK @ T= ;
+
+: TR-VREC-ROLLBACK-ASSERT ( -- )
+   TR-VREC-MARKS@ {: rec:n field:n node:n arg:n str:n :}
+   rec TR-VREC-N-MARK @ T=
+   field TR-VREC-FIELD-MARK @ T=
+   node TR-VREC-NODE-MARK @ T=
+   arg TR-VNARG-MARK @ T=
+   str TR-VREC-STR-MARK @ T= ;
+
+: TR-REG-GROW-PROBE ( -- )
+   TR-CORE-MARKS!  TR-VREC-MARKS!
+   CHECKER-SCOPE-START
+   TR-SYM-ADD
+   TR-USIG-ADD
+   s" TRREGSCOPE" CHECKER-DEFER
+   TR-NORET-ADD
+   s" trreg-vrec" s" member n" CHECKER-DEFRECORD
+   s" registry-scope-grows" T-LABEL
+   TR-CORE-GROW-ASSERT  TR-VREC-GROW-ASSERT ;
+
+: TR-REG-ROLLBACK-PROBE ( -- )
+   CHECKER-SCOPE-DONE
+   s" registry-scope-rolls-back" T-LABEL
+   TR-CORE-ROLLBACK-ASSERT  TR-VREC-ROLLBACK-ASSERT ;
+
+: TR-REG-ROLLBACK ( -- )
+   TR-REG-GROW-PROBE
+   TR-REG-ROLLBACK-PROBE ;
+
+TR-SYM-LAYOUT
+TR-EFF-REC-LAYOUT
+TR-EFF-NODE-LAYOUT
+TR-PE-LAYOUT
+TR-DFER-LAYOUT
+TR-NORET-LAYOUT
+TR-REG-ROLLBACK
 \ --- unification trail: prim-overload trials (TRY-EFF) undo speculative binds by
 \ popping the trail, not by copying the whole TVT/RVT pool. Crossing the trail
 \ init cap mid-check grows it without corrupting undo; a backtracking body still
