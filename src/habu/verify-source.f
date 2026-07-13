@@ -329,6 +329,17 @@ TRUSTED: CHECK-DOES-BODY ( ptr u8 n ptr u8 n -- n )
 TRUSTED: TRUST-SIGNATURE ( ptr u8 n ptr u8 n -- )
    TRUST ;
 
+: CAST-TRUST ( -- )
+   DTC-NAME$ DTC-SIG$ TRUST-SIGNATURE ;
+
+: RECORD-CAST-IN ( ptr u8 n -- )
+   DTC-BUILD-IN
+   CAST-TRUST ;
+
+: RECORD-CAST-OUT ( ptr u8 n -- )
+   DTC-BUILD-OUT
+   CAST-TRUST ;
+
 : FOLD-C ( n -- n )
    dup $41 < IF EXIT THEN
    dup $5A > IF EXIT THEN
@@ -392,7 +403,9 @@ TRUSTED: TRUST-SIGNATURE ( ptr u8 n ptr u8 n -- )
 : RECORD-DEFTYPE ( -- )
    NEXT-SCAN {: name:ptr nameu:n :}
    nameu 0= IF s" verify-source: missing deftype name" 74 die THEN
-   name nameu CHECKER-DEFTYPE ;
+   name nameu CHECKER-DEFTYPE
+   name nameu RECORD-CAST-IN
+   name nameu RECORD-CAST-OUT ;
 
 : RECORD-DEFLINEAR ( -- )
    NEXT-SCAN {: name:ptr nameu:n :}

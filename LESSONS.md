@@ -3781,3 +3781,8 @@ unchanged (148855). Keys for milestone 2:
   die's operands to an empty stack (shadow-lint had exactly this latent bug,
   exposed by the underdepth guard). Always keep die's message on the stack for
   die itself.
+- **Replay generated words in the definer's active package section.** Native
+  `DEFTYPE` publishes its derived casts through the current private/public WID;
+  verifier replay that registers only the nominal leaves valid cast calls
+  undefined. Recreate both derived signatures before leaving that package mode,
+  so reopening works while cross-package and global lookup stay closed.
