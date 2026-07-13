@@ -3792,3 +3792,10 @@ unchanged (148855). Keys for milestone 2:
   verifier replay that registers only the nominal leaves valid cast calls
   undefined. Recreate both derived signatures before leaving that package mode,
   so reopening works while cross-package and global lookup stay closed.
+- **Name the LAYER, not just the context, when recording probe results.** An
+  E-UNDEFINED from a checked colon body is a CHECKER-layer verdict about the
+  token grammar, not evidence about the runtime resolver. The dictionary-vs-
+  literal "contradiction" was three probes hitting different layers (checker
+  float grammar was digit-leading-only; the engine always claimed dot-leading)
+  - recording "context: colon body" instead of "layer: checker grammar" kept
+  the false mystery alive across three campaigns.
