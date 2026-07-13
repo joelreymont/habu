@@ -5,7 +5,7 @@ priority: 1
 issue-type: task
 created-at: "\"2026-07-13T17:15:42.353492+02:00\""
 blocks:
-  - habu-core-bootstrap-resize-5c07f625
+  - habu-core-layout-own-6f11e5ce
 ---
 
 Own the seven private record declarations in src/core/type-schema.f and
@@ -15,4 +15,4 @@ alignment, and pointer-role assertions. Preserve every ABI and focused
 family/schema test. Add no parser, definer, descriptor, adoption, family,
 reflection, snapshot, or AOT surface.
 
-Claim: agent=schema_boot workspace=.jj-ws/type-dsl-schema
+Claim: agent=sol workspace=.jj-ws/type-dsl-schema

@@ -28,12 +28,36 @@
 7103 constant E-SCHEMA-BAD
 
 \ --- node record layout (interleaved cell arena, one grow buffer).
-BEGIN-STRUCTURE SCH-REC
-   CELL +FIELD SCH.TAG
-   CELL +FIELD SCH.A
-   CELL +FIELD SCH.B
-   CELL +FIELD SCH.C
-END-STRUCTURE
+\ Bit i in a PTR-MASK marks slot i as a relocating pointer. Schema records
+\ contain only scalar ids/codes, so both masks are zero.
+0 cells constant SCH.TAG-OFF
+1 cells constant SCH.A-OFF
+2 cells constant SCH.B-OFF
+3 cells constant SCH.C-OFF
+4 cells constant SCH-REC
+CELL constant SCH-REC-ALIGN
+0 constant SCH-REC-PTR-MASK
+
+: SCH.TAG ( ptr a -- ptr a ) SCH.TAG-OFF + ;
+: SCH.A ( ptr a -- ptr a ) SCH.A-OFF + ;
+: SCH.B ( ptr a -- ptr a ) SCH.B-OFF + ;
+: SCH.C ( ptr a -- ptr a ) SCH.C-OFF + ;
+
+: SCH-LAYOUT= ( n n -- )
+   <> if s" type-schema: layout drift" CORE-LAYOUT-RC die then ;
+
+SCH.TAG-OFF 0 cells SCH-LAYOUT=
+SCH.A-OFF 1 cells SCH-LAYOUT=
+SCH.B-OFF 2 cells SCH-LAYOUT=
+SCH.C-OFF 3 cells SCH-LAYOUT=
+SCH-REC 4 cells SCH-LAYOUT=
+SCH-REC-ALIGN CELL SCH-LAYOUT=
+SCH-REC SCH-REC-ALIGN mod 0 SCH-LAYOUT=
+SCH-REC-PTR-MASK 0 SCH-LAYOUT=
+0 SCH.TAG SCH.TAG-OFF SCH-LAYOUT=
+0 SCH.A SCH.A-OFF SCH-LAYOUT=
+0 SCH.B SCH.B-OFF SCH-LAYOUT=
+0 SCH.C SCH.C-OFF SCH-LAYOUT=
 
 4 constant SCH-CAP-INIT         \ small seed; grows geometrically (doubles) on demand
 4 constant SCH-ROOT-INIT        \ small seed schema-root pool cells; grows on demand
@@ -175,10 +199,23 @@ SCHEMA-RESET
 \ pointer-free, so restoring the counters fully retires the entries. Pushed/popped
 \ in lockstep with checker.f's core frame via the REG-EXT-RB-* hooks.
 \ ---------------------------------------------------------------------------
-BEGIN-STRUCTURE SCH-RBF-REC
-   CELL +FIELD SCHRB.N
-   CELL +FIELD SCHRB.ROOTN
-END-STRUCTURE
+0 cells constant SCHRB.N-OFF
+1 cells constant SCHRB.ROOTN-OFF
+2 cells constant SCH-RBF-REC
+CELL constant SCH-RBF-REC-ALIGN
+0 constant SCH-RBF-REC-PTR-MASK
+
+: SCHRB.N ( ptr a -- ptr a ) SCHRB.N-OFF + ;
+: SCHRB.ROOTN ( ptr a -- ptr a ) SCHRB.ROOTN-OFF + ;
+
+SCHRB.N-OFF 0 cells SCH-LAYOUT=
+SCHRB.ROOTN-OFF 1 cells SCH-LAYOUT=
+SCH-RBF-REC 2 cells SCH-LAYOUT=
+SCH-RBF-REC-ALIGN CELL SCH-LAYOUT=
+SCH-RBF-REC SCH-RBF-REC-ALIGN mod 0 SCH-LAYOUT=
+SCH-RBF-REC-PTR-MASK 0 SCH-LAYOUT=
+0 SCHRB.N SCHRB.N-OFF SCH-LAYOUT=
+0 SCHRB.ROOTN SCHRB.ROOTN-OFF SCH-LAYOUT=
 
 16 constant SCH-RBF-CAP-INIT
 variable SCH-RBF-CAP-V   SCH-RBF-CAP-INIT SCH-RBF-CAP-V !

@@ -133,6 +133,31 @@ TRUSTED: TWX-TFL-VAR? ( ptr u8 n n -- n bool ) TFL-VAR? ;
 TRUSTED: TWX-TFL-VPADS ( n n -- n ) TFL-VPADS ;
 
 
+\ Explicit pre-checker layouts: offsets/accessors assert during prefix load;
+\ this pins each private record's stride, alignment, and pointer-role metadata.
+SCH-REC 4 cells T=
+SCH-REC-ALIGN CELL T=
+SCH-REC-PTR-MASK 0 T=
+SCH-RBF-REC 2 cells T=
+SCH-RBF-REC-ALIGN CELL T=
+SCH-RBF-REC-PTR-MASK 0 T=
+TF-REC 19 cells T=
+TF-REC-ALIGN CELL T=
+TF-REC-PTR-MASK 0 T=
+SUMV-REC 10 cells T=
+SUMV-REC-ALIGN CELL T=
+SUMV-REC-PTR-MASK 0 T=
+PF-REC 5 cells T=
+PF-REC-ALIGN CELL T=
+PF-REC-PTR-MASK 0 T=
+LAY-REC 5 cells T=
+LAY-REC-ALIGN CELL T=
+LAY-REC-PTR-MASK 0 T=
+TF-RBF-REC 6 cells T=
+TF-RBF-REC-ALIGN CELL T=
+TF-RBF-REC-PTR-MASK 0 T=
+
+
 \ clean slate (nothing declares families during prefix load, but be explicit).
 TWX-TFAM-RESET
 TWX-SCHEMA-RESET

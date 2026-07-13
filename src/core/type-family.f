@@ -145,27 +145,96 @@ variable TF-PK-N   0 TF-PK-N !
 \ ---------------------------------------------------------------------------
 \ TFAM record arena.
 \ ---------------------------------------------------------------------------
-BEGIN-STRUCTURE TF-REC
-   CELL +FIELD TF.PKG-OFF
-   CELL +FIELD TF.PKG-U
-   CELL +FIELD TF.VIS
-   CELL +FIELD TF.NAME-OFF
-   CELL +FIELD TF.NAME-U
-   CELL +FIELD TF.ARITY
-   CELL +FIELD TF.KIND
-   CELL +FIELD TF.PK-START
-   CELL +FIELD TF.LAYOUT
-   CELL +FIELD TF.SLOTS
-   CELL +FIELD TF.VAR-START
-   CELL +FIELD TF.VAR-COUNT
-   CELL +FIELD TF.FLD-START
-   CELL +FIELD TF.FLD-COUNT
-   CELL +FIELD TF.TAGW
-   CELL +FIELD TF.SCHEMA-ROOT
-   CELL +FIELD TF.SPAN-OFF
-   CELL +FIELD TF.SPAN-U
-   CELL +FIELD TF.DERIVE          \ opt-in derived-word bitmask (DRV-EQ; derive S1)
-END-STRUCTURE
+\ Bit i in a PTR-MASK marks slot i as a relocating pointer. Every registry
+\ record below contains only scalar ids, counts, codes, or interned offsets.
+: TF-LAYOUT= ( n n -- )
+   <> if s" type-family: layout drift" CORE-LAYOUT-RC die then ;
+
+0 cells constant TF.PKG-OFF-AT
+1 cells constant TF.PKG-U-OFF
+2 cells constant TF.VIS-OFF
+3 cells constant TF.NAME-OFF-AT
+4 cells constant TF.NAME-U-OFF
+5 cells constant TF.ARITY-OFF
+6 cells constant TF.KIND-OFF
+7 cells constant TF.PK-START-OFF
+8 cells constant TF.LAYOUT-OFF
+9 cells constant TF.SLOTS-OFF
+10 cells constant TF.VAR-START-OFF
+11 cells constant TF.VAR-COUNT-OFF
+12 cells constant TF.FLD-START-OFF
+13 cells constant TF.FLD-COUNT-OFF
+14 cells constant TF.TAGW-OFF
+15 cells constant TF.SCHEMA-ROOT-OFF
+16 cells constant TF.SPAN-OFF-AT
+17 cells constant TF.SPAN-U-OFF
+18 cells constant TF.DERIVE-OFF
+19 cells constant TF-REC
+CELL constant TF-REC-ALIGN
+0 constant TF-REC-PTR-MASK
+
+: TF.PKG-OFF ( ptr a -- ptr a ) TF.PKG-OFF-AT + ;
+: TF.PKG-U ( ptr a -- ptr a ) TF.PKG-U-OFF + ;
+: TF.VIS ( ptr a -- ptr a ) TF.VIS-OFF + ;
+: TF.NAME-OFF ( ptr a -- ptr a ) TF.NAME-OFF-AT + ;
+: TF.NAME-U ( ptr a -- ptr a ) TF.NAME-U-OFF + ;
+: TF.ARITY ( ptr a -- ptr a ) TF.ARITY-OFF + ;
+: TF.KIND ( ptr a -- ptr a ) TF.KIND-OFF + ;
+: TF.PK-START ( ptr a -- ptr a ) TF.PK-START-OFF + ;
+: TF.LAYOUT ( ptr a -- ptr a ) TF.LAYOUT-OFF + ;
+: TF.SLOTS ( ptr a -- ptr a ) TF.SLOTS-OFF + ;
+: TF.VAR-START ( ptr a -- ptr a ) TF.VAR-START-OFF + ;
+: TF.VAR-COUNT ( ptr a -- ptr a ) TF.VAR-COUNT-OFF + ;
+: TF.FLD-START ( ptr a -- ptr a ) TF.FLD-START-OFF + ;
+: TF.FLD-COUNT ( ptr a -- ptr a ) TF.FLD-COUNT-OFF + ;
+: TF.TAGW ( ptr a -- ptr a ) TF.TAGW-OFF + ;
+: TF.SCHEMA-ROOT ( ptr a -- ptr a ) TF.SCHEMA-ROOT-OFF + ;
+: TF.SPAN-OFF ( ptr a -- ptr a ) TF.SPAN-OFF-AT + ;
+: TF.SPAN-U ( ptr a -- ptr a ) TF.SPAN-U-OFF + ;
+: TF.DERIVE ( ptr a -- ptr a ) TF.DERIVE-OFF + ;
+
+TF.PKG-OFF-AT 0 cells TF-LAYOUT=
+TF.PKG-U-OFF 1 cells TF-LAYOUT=
+TF.VIS-OFF 2 cells TF-LAYOUT=
+TF.NAME-OFF-AT 3 cells TF-LAYOUT=
+TF.NAME-U-OFF 4 cells TF-LAYOUT=
+TF.ARITY-OFF 5 cells TF-LAYOUT=
+TF.KIND-OFF 6 cells TF-LAYOUT=
+TF.PK-START-OFF 7 cells TF-LAYOUT=
+TF.LAYOUT-OFF 8 cells TF-LAYOUT=
+TF.SLOTS-OFF 9 cells TF-LAYOUT=
+TF.VAR-START-OFF 10 cells TF-LAYOUT=
+TF.VAR-COUNT-OFF 11 cells TF-LAYOUT=
+TF.FLD-START-OFF 12 cells TF-LAYOUT=
+TF.FLD-COUNT-OFF 13 cells TF-LAYOUT=
+TF.TAGW-OFF 14 cells TF-LAYOUT=
+TF.SCHEMA-ROOT-OFF 15 cells TF-LAYOUT=
+TF.SPAN-OFF-AT 16 cells TF-LAYOUT=
+TF.SPAN-U-OFF 17 cells TF-LAYOUT=
+TF.DERIVE-OFF 18 cells TF-LAYOUT=
+TF-REC 19 cells TF-LAYOUT=
+TF-REC-ALIGN CELL TF-LAYOUT=
+TF-REC TF-REC-ALIGN mod 0 TF-LAYOUT=
+TF-REC-PTR-MASK 0 TF-LAYOUT=
+0 TF.PKG-OFF TF.PKG-OFF-AT TF-LAYOUT=
+0 TF.PKG-U TF.PKG-U-OFF TF-LAYOUT=
+0 TF.VIS TF.VIS-OFF TF-LAYOUT=
+0 TF.NAME-OFF TF.NAME-OFF-AT TF-LAYOUT=
+0 TF.NAME-U TF.NAME-U-OFF TF-LAYOUT=
+0 TF.ARITY TF.ARITY-OFF TF-LAYOUT=
+0 TF.KIND TF.KIND-OFF TF-LAYOUT=
+0 TF.PK-START TF.PK-START-OFF TF-LAYOUT=
+0 TF.LAYOUT TF.LAYOUT-OFF TF-LAYOUT=
+0 TF.SLOTS TF.SLOTS-OFF TF-LAYOUT=
+0 TF.VAR-START TF.VAR-START-OFF TF-LAYOUT=
+0 TF.VAR-COUNT TF.VAR-COUNT-OFF TF-LAYOUT=
+0 TF.FLD-START TF.FLD-START-OFF TF-LAYOUT=
+0 TF.FLD-COUNT TF.FLD-COUNT-OFF TF-LAYOUT=
+0 TF.TAGW TF.TAGW-OFF TF-LAYOUT=
+0 TF.SCHEMA-ROOT TF.SCHEMA-ROOT-OFF TF-LAYOUT=
+0 TF.SPAN-OFF TF.SPAN-OFF-AT TF-LAYOUT=
+0 TF.SPAN-U TF.SPAN-U-OFF TF-LAYOUT=
+0 TF.DERIVE TF.DERIVE-OFF TF-LAYOUT=
 
 4 constant TF-CAP-INIT
 variable TF-CAP-V   TF-CAP-INIT TF-CAP-V !
@@ -345,18 +414,55 @@ variable TFAM-N   0 TFAM-N !
 \ ---------------------------------------------------------------------------
 \ SUMV: sum/enum variant records, keyed by (family-id, variant tail).
 \ ---------------------------------------------------------------------------
-BEGIN-STRUCTURE SUMV-REC
-   CELL +FIELD SV.FAM
-   CELL +FIELD SV.NAME-OFF
-   CELL +FIELD SV.NAME-U
-   CELL +FIELD SV.TAG
-   CELL +FIELD SV.SCH-START
-   CELL +FIELD SV.SCH-COUNT
-   CELL +FIELD SV.PAYCELLS
-   CELL +FIELD SV.CTOR-SYM
-   CELL +FIELD SV.CTOR-PKG-OFF
-   CELL +FIELD SV.CTOR-PKG-U
-END-STRUCTURE
+0 cells constant SV.FAM-OFF
+1 cells constant SV.NAME-OFF-AT
+2 cells constant SV.NAME-U-OFF
+3 cells constant SV.TAG-OFF
+4 cells constant SV.SCH-START-OFF
+5 cells constant SV.SCH-COUNT-OFF
+6 cells constant SV.PAYCELLS-OFF
+7 cells constant SV.CTOR-SYM-OFF
+8 cells constant SV.CTOR-PKG-OFF-AT
+9 cells constant SV.CTOR-PKG-U-OFF
+10 cells constant SUMV-REC
+CELL constant SUMV-REC-ALIGN
+0 constant SUMV-REC-PTR-MASK
+
+: SV.FAM ( ptr a -- ptr a ) SV.FAM-OFF + ;
+: SV.NAME-OFF ( ptr a -- ptr a ) SV.NAME-OFF-AT + ;
+: SV.NAME-U ( ptr a -- ptr a ) SV.NAME-U-OFF + ;
+: SV.TAG ( ptr a -- ptr a ) SV.TAG-OFF + ;
+: SV.SCH-START ( ptr a -- ptr a ) SV.SCH-START-OFF + ;
+: SV.SCH-COUNT ( ptr a -- ptr a ) SV.SCH-COUNT-OFF + ;
+: SV.PAYCELLS ( ptr a -- ptr a ) SV.PAYCELLS-OFF + ;
+: SV.CTOR-SYM ( ptr a -- ptr a ) SV.CTOR-SYM-OFF + ;
+: SV.CTOR-PKG-OFF ( ptr a -- ptr a ) SV.CTOR-PKG-OFF-AT + ;
+: SV.CTOR-PKG-U ( ptr a -- ptr a ) SV.CTOR-PKG-U-OFF + ;
+
+SV.FAM-OFF 0 cells TF-LAYOUT=
+SV.NAME-OFF-AT 1 cells TF-LAYOUT=
+SV.NAME-U-OFF 2 cells TF-LAYOUT=
+SV.TAG-OFF 3 cells TF-LAYOUT=
+SV.SCH-START-OFF 4 cells TF-LAYOUT=
+SV.SCH-COUNT-OFF 5 cells TF-LAYOUT=
+SV.PAYCELLS-OFF 6 cells TF-LAYOUT=
+SV.CTOR-SYM-OFF 7 cells TF-LAYOUT=
+SV.CTOR-PKG-OFF-AT 8 cells TF-LAYOUT=
+SV.CTOR-PKG-U-OFF 9 cells TF-LAYOUT=
+SUMV-REC 10 cells TF-LAYOUT=
+SUMV-REC-ALIGN CELL TF-LAYOUT=
+SUMV-REC SUMV-REC-ALIGN mod 0 TF-LAYOUT=
+SUMV-REC-PTR-MASK 0 TF-LAYOUT=
+0 SV.FAM SV.FAM-OFF TF-LAYOUT=
+0 SV.NAME-OFF SV.NAME-OFF-AT TF-LAYOUT=
+0 SV.NAME-U SV.NAME-U-OFF TF-LAYOUT=
+0 SV.TAG SV.TAG-OFF TF-LAYOUT=
+0 SV.SCH-START SV.SCH-START-OFF TF-LAYOUT=
+0 SV.SCH-COUNT SV.SCH-COUNT-OFF TF-LAYOUT=
+0 SV.PAYCELLS SV.PAYCELLS-OFF TF-LAYOUT=
+0 SV.CTOR-SYM SV.CTOR-SYM-OFF TF-LAYOUT=
+0 SV.CTOR-PKG-OFF SV.CTOR-PKG-OFF-AT TF-LAYOUT=
+0 SV.CTOR-PKG-U SV.CTOR-PKG-U-OFF TF-LAYOUT=
 
 4 constant SUMV-CAP-INIT
 variable SUMV-CAP-V   SUMV-CAP-INIT SUMV-CAP-V !
@@ -573,13 +679,35 @@ variable TF-SHA16-XT   0 TF-SHA16-XT !   \ friend xt ( ptr u8 n ptr u8 -- ): 16 
 \ ---------------------------------------------------------------------------
 \ product fields, keyed by (family-id, field tail).
 \ ---------------------------------------------------------------------------
-BEGIN-STRUCTURE PF-REC
-   CELL +FIELD PF.FAM
-   CELL +FIELD PF.NAME-OFF
-   CELL +FIELD PF.NAME-U
-   CELL +FIELD PF.SCH
-   CELL +FIELD PF.SLOT
-END-STRUCTURE
+0 cells constant PF.FAM-OFF
+1 cells constant PF.NAME-OFF-AT
+2 cells constant PF.NAME-U-OFF
+3 cells constant PF.SCH-OFF
+4 cells constant PF.SLOT-OFF
+5 cells constant PF-REC
+CELL constant PF-REC-ALIGN
+0 constant PF-REC-PTR-MASK
+
+: PF.FAM ( ptr a -- ptr a ) PF.FAM-OFF + ;
+: PF.NAME-OFF ( ptr a -- ptr a ) PF.NAME-OFF-AT + ;
+: PF.NAME-U ( ptr a -- ptr a ) PF.NAME-U-OFF + ;
+: PF.SCH ( ptr a -- ptr a ) PF.SCH-OFF + ;
+: PF.SLOT ( ptr a -- ptr a ) PF.SLOT-OFF + ;
+
+PF.FAM-OFF 0 cells TF-LAYOUT=
+PF.NAME-OFF-AT 1 cells TF-LAYOUT=
+PF.NAME-U-OFF 2 cells TF-LAYOUT=
+PF.SCH-OFF 3 cells TF-LAYOUT=
+PF.SLOT-OFF 4 cells TF-LAYOUT=
+PF-REC 5 cells TF-LAYOUT=
+PF-REC-ALIGN CELL TF-LAYOUT=
+PF-REC PF-REC-ALIGN mod 0 TF-LAYOUT=
+PF-REC-PTR-MASK 0 TF-LAYOUT=
+0 PF.FAM PF.FAM-OFF TF-LAYOUT=
+0 PF.NAME-OFF PF.NAME-OFF-AT TF-LAYOUT=
+0 PF.NAME-U PF.NAME-U-OFF TF-LAYOUT=
+0 PF.SCH PF.SCH-OFF TF-LAYOUT=
+0 PF.SLOT PF.SLOT-OFF TF-LAYOUT=
 
 4 constant PF-CAP-INIT
 variable PF-CAP-V   PF-CAP-INIT PF-CAP-V !
@@ -676,13 +804,35 @@ variable TFCL-NODE-XT
 \ ---------------------------------------------------------------------------
 \ logical layout records, one per family that has a resolved physical layout.
 \ ---------------------------------------------------------------------------
-BEGIN-STRUCTURE LAY-REC
-   CELL +FIELD LAY.FAM
-   CELL +FIELD LAY.POLICY
-   CELL +FIELD LAY.SIZE
-   CELL +FIELD LAY.ALIGN
-   CELL +FIELD LAY.TAGW
-END-STRUCTURE
+0 cells constant LAY.FAM-OFF
+1 cells constant LAY.POLICY-OFF
+2 cells constant LAY.SIZE-OFF
+3 cells constant LAY.ALIGN-OFF
+4 cells constant LAY.TAGW-OFF
+5 cells constant LAY-REC
+CELL constant LAY-REC-ALIGN
+0 constant LAY-REC-PTR-MASK
+
+: LAY.FAM ( ptr a -- ptr a ) LAY.FAM-OFF + ;
+: LAY.POLICY ( ptr a -- ptr a ) LAY.POLICY-OFF + ;
+: LAY.SIZE ( ptr a -- ptr a ) LAY.SIZE-OFF + ;
+: LAY.ALIGN ( ptr a -- ptr a ) LAY.ALIGN-OFF + ;
+: LAY.TAGW ( ptr a -- ptr a ) LAY.TAGW-OFF + ;
+
+LAY.FAM-OFF 0 cells TF-LAYOUT=
+LAY.POLICY-OFF 1 cells TF-LAYOUT=
+LAY.SIZE-OFF 2 cells TF-LAYOUT=
+LAY.ALIGN-OFF 3 cells TF-LAYOUT=
+LAY.TAGW-OFF 4 cells TF-LAYOUT=
+LAY-REC 5 cells TF-LAYOUT=
+LAY-REC-ALIGN CELL TF-LAYOUT=
+LAY-REC LAY-REC-ALIGN mod 0 TF-LAYOUT=
+LAY-REC-PTR-MASK 0 TF-LAYOUT=
+0 LAY.FAM LAY.FAM-OFF TF-LAYOUT=
+0 LAY.POLICY LAY.POLICY-OFF TF-LAYOUT=
+0 LAY.SIZE LAY.SIZE-OFF TF-LAYOUT=
+0 LAY.ALIGN LAY.ALIGN-OFF TF-LAYOUT=
+0 LAY.TAGW LAY.TAGW-OFF TF-LAYOUT=
 
 4 constant LAY-CAP-INIT
 variable LAY-CAP-V   LAY-CAP-INIT LAY-CAP-V !
@@ -787,14 +937,39 @@ TFAM-RESET
 \ scan [0,N), and re-adding under the same name interns fresh at the restored
 \ pool end. Pushed/popped in lockstep with checker.f's core frame.
 \ ---------------------------------------------------------------------------
-BEGIN-STRUCTURE TF-RBF-REC
-   CELL +FIELD TFRB.TFAMN
-   CELL +FIELD TFRB.STRU
-   CELL +FIELD TFRB.PKN
-   CELL +FIELD TFRB.SUMVN
-   CELL +FIELD TFRB.PFN
-   CELL +FIELD TFRB.LAYN
-END-STRUCTURE
+0 cells constant TFRB.TFAMN-OFF
+1 cells constant TFRB.STRU-OFF
+2 cells constant TFRB.PKN-OFF
+3 cells constant TFRB.SUMVN-OFF
+4 cells constant TFRB.PFN-OFF
+5 cells constant TFRB.LAYN-OFF
+6 cells constant TF-RBF-REC
+CELL constant TF-RBF-REC-ALIGN
+0 constant TF-RBF-REC-PTR-MASK
+
+: TFRB.TFAMN ( ptr a -- ptr a ) TFRB.TFAMN-OFF + ;
+: TFRB.STRU ( ptr a -- ptr a ) TFRB.STRU-OFF + ;
+: TFRB.PKN ( ptr a -- ptr a ) TFRB.PKN-OFF + ;
+: TFRB.SUMVN ( ptr a -- ptr a ) TFRB.SUMVN-OFF + ;
+: TFRB.PFN ( ptr a -- ptr a ) TFRB.PFN-OFF + ;
+: TFRB.LAYN ( ptr a -- ptr a ) TFRB.LAYN-OFF + ;
+
+TFRB.TFAMN-OFF 0 cells TF-LAYOUT=
+TFRB.STRU-OFF 1 cells TF-LAYOUT=
+TFRB.PKN-OFF 2 cells TF-LAYOUT=
+TFRB.SUMVN-OFF 3 cells TF-LAYOUT=
+TFRB.PFN-OFF 4 cells TF-LAYOUT=
+TFRB.LAYN-OFF 5 cells TF-LAYOUT=
+TF-RBF-REC 6 cells TF-LAYOUT=
+TF-RBF-REC-ALIGN CELL TF-LAYOUT=
+TF-RBF-REC TF-RBF-REC-ALIGN mod 0 TF-LAYOUT=
+TF-RBF-REC-PTR-MASK 0 TF-LAYOUT=
+0 TFRB.TFAMN TFRB.TFAMN-OFF TF-LAYOUT=
+0 TFRB.STRU TFRB.STRU-OFF TF-LAYOUT=
+0 TFRB.PKN TFRB.PKN-OFF TF-LAYOUT=
+0 TFRB.SUMVN TFRB.SUMVN-OFF TF-LAYOUT=
+0 TFRB.PFN TFRB.PFN-OFF TF-LAYOUT=
+0 TFRB.LAYN TFRB.LAYN-OFF TF-LAYOUT=
 
 16 constant TF-RBF-CAP-INIT
 variable TF-RBF-CAP-V   TF-RBF-CAP-INIT TF-RBF-CAP-V !
