@@ -20,8 +20,6 @@ points stay listed.
 - `docs/bootstrap.md` — no-binary recovery, native refresh, and porting.
 - `docs/forth.md` — blocking Forth style rules.
 - `docs/type-families.md` — generic lowercase type-family/ADT design plan.
-- `docs/census-type-dsl-cutover.md` — exact legacy declaration/token census,
-  unified `STRUCTURE`/`ENUM` hard-cutover owners, and zero-occurrence exit gate.
 - `docs/census-switchover.md` — site-level inventory for the post-TFAM switchover: sentinel-return conventions to migrate to option/result, legacy enum clusters, value-record/PTX-IR products, ADT-dischargeable trust rows, and the wave-ordered migration plan.
 - `docs/gate.md` — native gate architecture, proof subjects, metrics, and
   process-boundary rules.
@@ -521,6 +519,21 @@ points stay listed.
   `tools/ptx/fusion-compare.f` — reusable Orin kernel profile metrics, generic
   CUDA Driver launch plus CUDA-event device timing, scalar/v4 SAXPY bandwidth,
   and fused-vs-unfused kernel comparison for the Habu-PTX column.
+- `tools/ptx/bandwidth-lib-test.f` — host-side coverage for the bandwidth
+  runner configuration math (device leg is a recorded SKIP off-device).
+- `tools/ptx/perf-rows.tsv` — durable kernel profile-row registry: one row per
+  kernel-optimization rung/shape/metric (GBS, GFLOPS, PCT-ROOF, WAIVER) with
+  launch config, device, and date; owned by `tools/ptx/perf-registry.f`.
+- `tools/ptx/perf-registry.f` — checked parser/validator for the profile-row
+  registry (package PERF): row model, TSV parse, fail-closed row validation.
+- `tools/ptx/perf-registry-test.f` — registry fixtures plus validation of the
+  committed `tools/ptx/perf-rows.tsv`.
+- `tools/ptx/perf-compare.f` — perf-regression compare over registry rows:
+  latest same-key pair per kernel+config+device+metric vs `PERF:TOL-MILLI`.
+- `tools/ptx/perf-compare-test.f` — improve/regress/tolerance-edge/missing-row
+  compare fixtures.
+- `tools/ptx/perf-regress.f` — CLI perf-regression gate over the committed
+  registry; exits nonzero on any regression.
 - `tools/ptx/gemm-bench.f` — CUDA-event GEMM benchmark: times the naive (MMN)
   and register-blocked (MM) SGEMM kernels on square shapes for the
   GEMM-vs-Triton baseline recorded in `docs/eval-triton.md`.
@@ -616,6 +629,9 @@ points stay listed.
 - `tools/typed-local-diff-lint-core.f` — reusable diff scanner that rejects newly added bare locals.
 - `tools/typed-local-diff-lint.f` — CLI wrapper for typed-local diff lint.
 - `tools/typed-local-diff-lint-test.f` — checked fixture coverage for typed-local diff lint.
+- `tools/kernel-perf-lint-core.f` — reusable diff scanner requiring kernel codegen changes to carry a profile/waiver row in `tools/ptx/perf-rows.tsv`.
+- `tools/kernel-perf-lint.f` — CLI wrapper for the kernel profile-row diff lint.
+- `tools/kernel-perf-lint-test.f` — checked fixture coverage for the kernel profile-row diff lint.
 - `tools/aot-lint-core.f` — reusable stripped-AOT unsupported-word scanner.
 - `tools/aot-lint.f` — CLI wrapper for stripped-AOT unsupported-word lint.
 - `tools/aot-lint-test-lib.f` — load-only stripped-AOT lint fixture library for resident runner tests.

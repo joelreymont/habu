@@ -497,7 +497,17 @@ variable GSI-TL-FILE-A
    s" lib/ptx/toolchain-test.f" GSI-INCLUDE \ ( -- )
    s" tools/ptx/profile-test.f" GSI-INCLUDE \ ( -- )
    s" tools/ptx/bench-test.f" GSI-INCLUDE \ ( -- )
-   s" tools/ptx/saxpy-test.f" GSI-INCLUDE ; \ ( -- )
+   s" tools/ptx/saxpy-test.f" GSI-INCLUDE \ ( -- )
+   s" tools/ptx/perf-registry-test.f" GSI-INCLUDE \ ( -- )
+   s" tools/ptx/perf-compare-test.f" GSI-INCLUDE \ ( -- )
+   s" tools/ptx/perf-regress.f" GSI-INCLUDE \ ( -- )
+   s" tools/kernel-perf-lint-test.f" GSI-INCLUDE ; \ ( -- )
+\ NOTE: the device/bench tools (bandwidth-lib-test, fusion-compare, gemm-bench)
+\ run only in the SPAWNED ptx-toolchain slice (test/gate-stdlib-cases.f), where
+\ they compile-check + device-SKIP in a fresh image. Loaded into the resident
+\ full-runner image they SIGBUS, so the inprocess list carries the unit tests +
+\ the perf-regress scan (the substantive gate); the spawned list stays a
+\ superset. Retire the duplication per habu-derive-inprocess-spawned-a54e760d.
 
 : GSI-LINT-MANIFEST ( -- )
    s" stdlib/lint-manifest" GSI-GROUP-SEQ GSI-GROUP-HEADER

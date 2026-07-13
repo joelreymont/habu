@@ -63,6 +63,13 @@ package PTXBW
    RUN-FUSED-RELU-V4 {: fused:n :}
    sax relu + fused REPORT-SPEEDUP ;
 
-MAIN
+: RUN ( -- )   \ off-device (no libcuda) the compare is a recorded SKIP so the file still check-loads
+   CUDA:OPEN? 0= if
+      s" fusion-compare: libcuda.so.1 unavailable -> device compare SKIPPED (off-device)" type cr
+      exit
+   then
+   MAIN ;
+
+RUN
 
 ;package

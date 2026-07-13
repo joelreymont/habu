@@ -1,6 +1,6 @@
 ---
 title: "Eval: real generation-token count + collective/attention tasks"
-status: open
+status: active
 priority: 3
 issue-type: task
 created-at: "\"2026-06-27T12:37:56.243001+02:00\""

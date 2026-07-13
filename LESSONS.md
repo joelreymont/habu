@@ -3993,3 +3993,15 @@ unchanged (148855). Keys for milestone 2:
   from legacy enum syntax must delete counter definers such as `ENUM+` and
   `ENUM4+` too; zero production consumers do not make a second declaration
   surface compatible with the one-DSL invariant.
+- **Every device tool's top-level entry gates on `CUDA:OPEN?`.** A bare `MAIN`
+  that assumes libcuda throws an opaque `E-CUDA` off-device and reads as a
+  broken file in host gates (fusion-compare did exactly this while gemm-bench
+  skipped cleanly). Follow the GB-ALL shape: probe `CUDA:OPEN?`, print a
+  recorded SKIP line, exit — then the tool composes into host-side suites.
+- **A `TEST:SUITE` block is ONE `bin/hb --load` spawn, not one per row.** All
+  listed files load into the same image sequentially, so suite files must be
+  package-scoped, duplicate-definition-safe, and tolerant of an earlier file's
+  installed check hook (tools/lint/text.f's strict hook) and shared library
+  state. The resident full-runner adds even more shared state: device/bench
+  tools that pass in a fresh spawn can SIGBUS inprocess, so the resident
+  inprocess suite list is a subset of the spawned slice, not a mirror.

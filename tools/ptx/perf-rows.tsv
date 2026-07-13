@@ -1,0 +1,30 @@
+# habu kernel profile-row registry v1 (tools/ptx/perf-registry.f owns the format)
+# One row per kernel-optimization rung, shape, and metric. Tab-separated, 12 fields:
+# kernel	grid	gridy	block	blocky	iters	work	metric	value_x1000	device	date	note
+# metric: GBS (GB/s x1000), GFLOPS (GFLOP/s x1000), PCT-ROOF (permille of the owning roof), WAIVER (device-gated, value 0, note documents why).
+# Values are CUDA-event device timings via tools/ptx/bench.f unless the note says otherwise.
+SAXPY	4096	1	256	1	200	1048576	GBS	42865	orin-nx-15w	2026-07-01	M9 scalar baseline, 1 elem/thread (dot 548b0d4c checkpoint)
+SAXPY-V4	1024	1	256	1	200	1048576	GBS	64209	orin-nx-15w	2026-07-01	M9 v4 tile, 4 elems/thread; memory-roof parity with Triton (docs/eval-triton.md)
+UNFUSED-SAXPY-V4+RELU-V4	1024	1	256	1	200	1048576	GBS	63292	orin-nx-15w	2026-07-01	two launches, 66.269 ms / 200 iters, 20 B/elem (tools/ptx/fusion-compare.f)
+FUSED-RELU-V4	1024	1	256	1	200	1048576	GBS	64183	orin-nx-15w	2026-07-01	fused relu(a*x+y), 39.209 ms / 200 iters; fusion_elapsed_ratio_x1000=1690
+SAXPY-V4	1024	1	256	1	200	1048576	PCT-ROOF	1019	orin-nx-15w	2026-07-01	vs 63 GB/s measured memory roof (docs/kernel-principles.md)
+MMN	32	32	16	16	200	262144	GFLOPS	55002	orin-nx-15w	2026-07-05	naive GEMM 512^3, 1 elem/thread (docs/eval-triton.md GEMM step 1)
+MMN	64	64	16	16	80	1048576	GFLOPS	55226	orin-nx-15w	2026-07-05	naive GEMM 1024^3
+MMN	128	128	16	16	30	4194304	GFLOPS	54619	orin-nx-15w	2026-07-05	naive GEMM 2048^3
+MM-BK16	8	8	16	16	200	262144	GFLOPS	356588	orin-nx-15w	2026-07-05	register-blocked 64x64 tile, bk=16, 512^3 (step 1)
+MM-BK16	16	16	16	16	80	1048576	GFLOPS	374984	orin-nx-15w	2026-07-05	register-blocked 64x64 tile, bk=16, 1024^3
+MM-BK16	32	32	16	16	30	4194304	GFLOPS	380501	orin-nx-15w	2026-07-05	register-blocked 64x64 tile, bk=16, 2048^3
+MM-BK32-V4	8	8	16	16	200	262144	GFLOPS	378584	orin-nx-15w	2026-07-05	step 2 +A: bk=32 + ld.shared.v4 B, 512^3
+MM-BK32-V4	16	16	16	16	80	1048576	GFLOPS	397206	orin-nx-15w	2026-07-05	step 2 +A, 1024^3
+MM-BK32-V4	32	32	16	16	30	4194304	GFLOPS	402526	orin-nx-15w	2026-07-05	step 2 +A, 2048^3
+MM-CPASYNC	8	8	16	16	200	262144	GFLOPS	416684	orin-nx-15w	2026-07-05	step 2 +B: cp.async double-buffered, stages=2, 512^3
+MM-CPASYNC	16	16	16	16	80	1048576	GFLOPS	436774	orin-nx-15w	2026-07-05	step 2 +B, 1024^3
+MM-CPASYNC	32	32	16	16	30	4194304	GFLOPS	441801	orin-nx-15w	2026-07-05	step 2 +B, 2048^3
+MM-CPASYNC	32	32	16	16	30	4194304	PCT-ROOF	470	orin-nx-15w	2026-07-05	vs 940 GFLOP/s FP32 CUDA-core roof
+MMM-TF32	8	8	16	16	200	262144	GFLOPS	375600	orin-nx-15w	2026-07-05	step 3 tensor-core mma.sync TF32, cp.async staging, 512^3
+MMM-TF32	16	16	16	16	80	1048576	GFLOPS	393500	orin-nx-15w	2026-07-05	step 3, 1024^3
+MMM-TF32	32	32	16	16	30	4194304	GFLOPS	398500	orin-nx-15w	2026-07-05	step 3, 2048^3 (tensor-core roof; does not yet beat MM-CPASYNC)
+MMM-TF32-LDM	8	8	16	16	200	262144	GFLOPS	370000	orin-nx-15w	2026-07-05	step 3c ldmatrix.x4 A-fragment ablation - NEGATIVE, default stays scalar+cvt, 512^3
+MMM-TF32-LDM	16	16	16	16	80	1048576	GFLOPS	388900	orin-nx-15w	2026-07-05	step 3c ablation, 1024^3
+MMM-TF32-LDM	32	32	16	16	30	4194304	GFLOPS	394300	orin-nx-15w	2026-07-05	step 3c ablation, 2048^3
+ATTENTION	0	0	0	0	0	0	WAIVER	0	orin-nx-15w	2026-07-13	device-gated: Orin unavailable this session; profile row owed on the next device pass (parallel-softmax divergence fix is the dotted attention lever)

@@ -307,6 +307,13 @@ TEST:SUITE ptx-toolchain
    tools/ptx/profile-test.f
    tools/ptx/bench-test.f
    tools/ptx/saxpy-test.f
+   tools/ptx/perf-registry-test.f
+   tools/ptx/perf-compare-test.f
+   tools/ptx/perf-regress.f
+   tools/kernel-perf-lint-test.f
+   tools/ptx/bandwidth-lib-test.f
+   tools/ptx/fusion-compare.f
+   tools/ptx/gemm-bench.f
 TEST:;SUITE
 
 TEST:SUITE-STDIN source-stdlib-stdin DATA

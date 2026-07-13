@@ -147,6 +147,36 @@ GEMM is where we can move strictly fewer bytes than hand-fused Triton** (dotted
   row: v4 SAXPY + v4 RELU as separate launches sums to 66.269 ms / 200 iters, while
   fused v4 RELU is 39.209 ms / 200 iters (`fusion_elapsed_ratio_x1000=1690`).
 
+## Profile-row registry & perf-regression workflow (BLOCKING)
+
+Measured rows are durable, not prose: every kernel-optimization rung carries its
+own row in **`tools/ptx/perf-rows.tsv`** — kernel id, launch config
+(grid/gridy/block/blocky/iters/work-items), metric kind (`GBS`, `GFLOPS`,
+`PCT-ROOF`, all value×1000), value, device, date, note. The checked owner is
+`tools/ptx/perf-registry.f` (package `PERF`); rows fail closed under
+`PERF:LOAD`/`PERF:LINE-OK?`.
+
+- **Changing kernel codegen requires a row.** `tools/kernel-perf-lint.f` scans a
+  `jj diff --git` artifact and fails when the diff touches a kernel emitter
+  (`lib/ptx/cg.f`, `lib/ptx/cg-*.f`, `tools/ptx/*-cg.f`, `src/arch/ptx/emit.f`)
+  without adding a registry row. Run it alongside `tools/typed-local-diff-lint.f`
+  in the pre-commit Forth gate:
+  `bin/hb --load tools/kernel-perf-lint.f -- diff.patch`.
+- **Off-device sessions add a WAIVER row instead.** When the Orin is
+  unavailable, add a `WAIVER` row (value 0) whose note documents the
+  device-gated reason and the owed measurement; the lint accepts it and the row
+  stays as the visible debt until the next device pass replaces it.
+- **Re-measurements are appended, never edited**, so the latest same-key pair is
+  comparable. `tools/ptx/perf-compare.f` flags a new value more than
+  `PERF:TOL-MILLI` (50 permille = 5%) below its baseline as a regression;
+  `bin/hb tools/ptx/perf-regress.f` runs that scan over the committed registry
+  and exits nonzero on any regression.
+- **Gate wiring:** the `ptx-toolchain` suite (lint-libs slice of
+  `test/gate-stdlib.f`) runs the registry/compare/lint tests, validates the
+  committed registry, runs the regression scan, and host-loads the bench stack
+  (`bench.f`, `bandwidth-lib.f`, `fusion-compare.f`, `gemm-bench.f`) with device
+  legs as recorded SKIPs off-device.
+
 ## The one-line instinct (say it on every op)
 
 "What's its arithmetic intensity vs the ridge? Elementwise/norm sit far left →
