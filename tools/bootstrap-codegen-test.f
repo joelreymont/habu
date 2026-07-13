@@ -233,6 +233,7 @@ public
 : BCG-TEST-CELL-SOURCE ( -- )
    s" src/core/cell.f" BCG-LOAD
    s" $8 constant CELL" BCG-MUST-HAVE
+   s" $4C constant CORE-LAYOUT-RC" BCG-MUST-HAVE
    s" 1 cells CELL <>" BCG-MUST-HAVE
    s" CORE-LAYOUT-RC die" BCG-MUST-HAVE ;
 
@@ -482,4 +483,5 @@ public
    T-REPORT
    s" bootstrap-codegen-test: ok" type cr ;
 
+CORE-LAYOUT-RC $4C T=
 BCG-MAIN
