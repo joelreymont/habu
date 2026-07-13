@@ -35,6 +35,7 @@ variable LVA  variable LVU
    0 EVAL:TS-REPAIRED@ 1 T=      \ sx1: mask-mismatch reject at '+.'
    0 EVAL:TS-ROUNDS@   1 T=      \ ...repaired green in one round
    0 EVAL:TS-TOKENS@ 172 T=
+   0 EVAL:TS-EST@    372 T=
    0 EVAL:TS-REC@      0 T=
    1 EVAL:TS-TASK$ s" softmax" T$=
    1 EVAL:TS-N@        5 T=
@@ -42,20 +43,22 @@ variable LVA  variable LVU
    1 EVAL:TS-REPAIRED@ 0 T=
    1 EVAL:TS-ROUNDS@   0 T=
    1 EVAL:TS-TOKENS@ 292 T=
+   1 EVAL:TS-EST@    638 T=
    2 EVAL:TS-TASK$ s" fused-relu" T$=
    2 EVAL:TS-N@        5 T=
    2 EVAL:TS-GREEN@    5 T=
    2 EVAL:TS-REPAIRED@ 0 T=
    2 EVAL:TS-ROUNDS@   0 T=
    2 EVAL:TS-TOKENS@ 150 T=
+   2 EVAL:TS-EST@    380 T=
 
    \ --- the rendered matrix rows the docs section quotes ---
    EVAL:MATRIX-RESET
    EVAL:MATRIX-FROM-TS
    EVAL:MATRIX-RENDER LVSAVE
-   s" | saxpy | habu-ptx | 5 | 4 | 800 | 1000 | 1000 | 1 | 1 | 172 | not-run | not-run | checker |" LVHAS
-   s" | softmax | habu-ptx | 5 | 5 | 1000 | 1000 | 1000 | 0 | 0 | 292 | not-run | not-run | checker |" LVHAS
-   s" | fused-relu | habu-ptx | 5 | 5 | 1000 | 1000 | 1000 | 0 | 0 | 150 | not-run | not-run | checker |" LVHAS
+   s" | saxpy | habu-ptx | 5 | 4 | 800 | 1000 | 1000 | 1 | 1 | 172 | 372 | not-run | not-run | checker |" LVHAS
+   s" | softmax | habu-ptx | 5 | 5 | 1000 | 1000 | 1000 | 0 | 0 | 292 | 638 | not-run | not-run | checker |" LVHAS
+   s" | fused-relu | habu-ptx | 5 | 5 | 1000 | 1000 | 1000 | 0 | 0 | 150 | 380 | not-run | not-run | checker |" LVHAS
 
    T-REPORT ;
 

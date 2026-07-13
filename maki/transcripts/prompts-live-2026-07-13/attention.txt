@@ -1,0 +1,13 @@
+Authoring surface you may use (word : exact stack effect : semantics). The kernel is a fused attention pipeline over phase-typed contexts: each phase word consumes the previous stage's context and produces the next stage's, so the phases compose in exactly one order. Call every word with its exact qualified name:
+- ATTN:START : ( matrix<space-global,f32,q,d> matrix<space-global,f32,q,d> matrix<space-global,f32,q,d> matrix<space-global,f32,q,d> -- attnctx<q,d,attn-stage-q> attnacc<f32,block-128,mask-live> ) : bind Q, K, V, O and open the phase pipeline
+- ATTN:STAGE-Q : ( attnctx<q,d,attn-stage-q> attnacc<f32,b,m> -- attnctx<q,d,attn-stage-score> attnacc<f32,b,m> ) : stage this block's query row into shared memory
+- ATTN:SCORE : ( attnctx<q,d,attn-stage-score> attnacc<f32,b,m> -- attnctx<q,d,attn-stage-softmax> attnacc<f32,b,m> ) : compute this query's row of Q*K^T scores into shared memory
+- ATTN:SOFTMAX : ( attnctx<q,d,attn-stage-softmax> attnacc<f32,b,m> -- attnctx<q,d,attn-stage-output> attnacc<f32,b,m> ) : row-softmax the scores in place
+- ATTN:OUTPUT : ( attnctx<q,d,attn-stage-output> attnacc<f32,b,m> -- attnctx<q,d,attn-stage-done> attnacc<f32,b,m> ) : accumulate O = P*V and store the output row
+- ATTN:FINISH : ( attnctx<q,d,attn-stage-done> attnacc<f32,b,m> -- ) : close the pipeline
+
+Task: fused single-head attention, O = softmax(Q*K^T)*V, one query row per thread block. Compose the checked phase pipeline in the correct order.
+
+The declared effect must be exactly:
+K ( matrix<space-global,f32,extent-q,extent-d> matrix<space-global,f32,extent-q,extent-d> matrix<space-global,f32,extent-q,extent-d> matrix<space-global,f32,extent-q,extent-d> -- )
+where the matrices are Q, K, V, O in that order.

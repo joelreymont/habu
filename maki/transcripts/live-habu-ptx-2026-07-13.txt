@@ -1,0 +1,51 @@
+habu-eval-transcript v1
+\ LIVE model-generated pass@k round, 2026-07-13 (dot habu-eval-real-gen-dab1b6cd).
+\ Tasks: the three OFF-DEVICE authoring tasks (sumnorm / gemm / attention);
+\ maki/eval-emit.f grades them at checker/emit level with PTX structural
+\ gates - the device-golden leg is Orin-gated and recorded as a SKIP.
+\ Generator: independent opus-model subagents (orchestrator Agent tool, model
+\ override "opus"; one fresh blind session per sample, zero tool uses; n=5 per
+\ task), each given ONLY the shared authoring preamble + the task statement
+\ (maki/transcripts/prompts-live-2026-07-13/: common.txt + sumnorm.txt /
+\ gemm.txt / attention.txt). Judge: the committed checker (EVAL:CHECK-PASSES?
+\ via this replay harness). Repair protocol: at most ONE diagnostic-guided
+\ repair round, the raw checker reject fed back to the SAME session; no sample
+\ in this round needed a repair. Candidates are verbatim model output -
+\ orchestration assembled, never edited. Generator-reported token counts are
+\ not exposed by the Agent tool, so this file stays format v1 (whitespace
+\ proxy unit); the matrix additionally records the source-derived GEN-TOK-EST
+\ estimate per row (tok-est column).
+target habu-ptx
+task sumnorm
+sample n1
+candidate K ( matrix<space-global,f32,extent-r,extent-c> matrix<space-global,f32,extent-r,extent-c> -- ) {: in out :} in ROW ROW-SPAN {: si :} si ROW-CTX {: ctx :} si ctx ROW-LOAD {: t :} t t BLOCK-SUM PTX:B/ out ROW ROW-SPAN ctx ROW-STORE
+sample n2
+candidate K ( matrix<space-global,f32,extent-r,extent-c> matrix<space-global,f32,extent-r,extent-c> -- ) {: min mout :} min ROW ROW-SPAN {: sin :} mout ROW ROW-SPAN {: sout :} sin ROW-CTX {: ctx :} sin ctx ROW-LOAD {: t :} t BLOCK-SUM {: s :} t s PTX:B/ sout ctx ROW-STORE
+sample n3
+candidate K ( matrix<space-global,f32,extent-r,extent-c> matrix<space-global,f32,extent-r,extent-c> -- ) {: min mout :} min ROW ROW-SPAN ROW-CTX {: ctx :} min ROW ROW-SPAN ctx ROW-LOAD {: t :} t t BLOCK-SUM PTX:B/ mout ROW ROW-SPAN ctx ROW-STORE
+sample n4
+candidate K ( matrix<space-global,f32,extent-r,extent-c> matrix<space-global,f32,extent-r,extent-c> -- ) {: min mout :} min ROW ROW-SPAN {: sin :} sin ROW-CTX {: ctx :} sin ctx ROW-LOAD dup BLOCK-SUM PTX:B/ mout ROW ROW-SPAN ctx ROW-STORE
+sample n5
+candidate K ( matrix<space-global,f32,extent-r,extent-c> matrix<space-global,f32,extent-r,extent-c> -- ) {: min mout :} ROW {: r :} min r ROW-SPAN {: sin :} mout r ROW-SPAN {: sout :} sin ROW-CTX {: ctx :} sin ctx ROW-LOAD {: t :} t BLOCK-SUM {: s :} t s PTX:B/ sout ctx ROW-STORE
+task gemm
+sample g1
+candidate K ( matrix<space-global,f32,extent-m,extent-k> matrix<space-global,f32,extent-k,extent-n> matrix<space-global,f32,extent-m,extent-n> -- ) MM-BEGIN MM-K-LOOP MM-STORE
+sample g2
+candidate K ( matrix<space-global,f32,extent-m,extent-k> matrix<space-global,f32,extent-k,extent-n> matrix<space-global,f32,extent-m,extent-n> -- ) MM-BEGIN MM-K-LOOP MM-STORE
+sample g3
+candidate K ( matrix<space-global,f32,extent-m,extent-k> matrix<space-global,f32,extent-k,extent-n> matrix<space-global,f32,extent-m,extent-n> -- ) MM-BEGIN MM-K-LOOP MM-STORE
+sample g4
+candidate K ( matrix<space-global,f32,extent-m,extent-k> matrix<space-global,f32,extent-k,extent-n> matrix<space-global,f32,extent-m,extent-n> -- ) MM-BEGIN MM-K-LOOP MM-STORE
+sample g5
+candidate K ( matrix<space-global,f32,extent-m,extent-k> matrix<space-global,f32,extent-k,extent-n> matrix<space-global,f32,extent-m,extent-n> -- ) MM-BEGIN MM-K-LOOP MM-STORE
+task attention
+sample a1
+candidate K ( matrix<space-global,f32,extent-q,extent-d> matrix<space-global,f32,extent-q,extent-d> matrix<space-global,f32,extent-q,extent-d> matrix<space-global,f32,extent-q,extent-d> -- ) ATTN:START ATTN:STAGE-Q ATTN:SCORE ATTN:SOFTMAX ATTN:OUTPUT ATTN:FINISH
+sample a2
+candidate K ( matrix<space-global,f32,extent-q,extent-d> matrix<space-global,f32,extent-q,extent-d> matrix<space-global,f32,extent-q,extent-d> matrix<space-global,f32,extent-q,extent-d> -- ) ATTN:START ATTN:STAGE-Q ATTN:SCORE ATTN:SOFTMAX ATTN:OUTPUT ATTN:FINISH
+sample a3
+candidate K ( matrix<space-global,f32,extent-q,extent-d> matrix<space-global,f32,extent-q,extent-d> matrix<space-global,f32,extent-q,extent-d> matrix<space-global,f32,extent-q,extent-d> -- ) {: q k v o :} q k v o ATTN:START ATTN:STAGE-Q ATTN:SCORE ATTN:SOFTMAX ATTN:OUTPUT ATTN:FINISH
+sample a4
+candidate K ( matrix<space-global,f32,extent-q,extent-d> matrix<space-global,f32,extent-q,extent-d> matrix<space-global,f32,extent-q,extent-d> matrix<space-global,f32,extent-q,extent-d> -- ) ATTN:START ATTN:STAGE-Q ATTN:SCORE ATTN:SOFTMAX ATTN:OUTPUT ATTN:FINISH
+sample a5
+candidate K ( matrix<space-global,f32,extent-q,extent-d> matrix<space-global,f32,extent-q,extent-d> matrix<space-global,f32,extent-q,extent-d> matrix<space-global,f32,extent-q,extent-d> -- ) {: q k v o :} q k v o ATTN:START ATTN:STAGE-Q ATTN:SCORE ATTN:SOFTMAX ATTN:OUTPUT ATTN:FINISH

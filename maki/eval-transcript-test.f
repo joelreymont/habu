@@ -125,6 +125,7 @@ package MAKI
    0 EVAL:TS-ROUNDS@   0 T=
    0 EVAL:TS-REC@      0 T=
    0 EVAL:TS-TOKENS@ 0 > TTRUE
+   0 EVAL:TS-EST@ 0 EVAL:TS-TOKENS@ > TTRUE   \ punct-heavy source: est > proxy
    1 EVAL:TS-TASK$ s" softmax" T$=
    1 EVAL:TS-N@        5 T=
    1 EVAL:TS-GREEN@    3 T=      \ pass@1 c: first-attempt greens only
@@ -143,6 +144,7 @@ package MAKI
    0 EVAL:TS-REC@   5 T=
    1 EVAL:TS-REC@   5 T=
    1 EVAL:TS-TOKENS@ 0 T=
+   1 EVAL:TS-EST@   0 T=
    1 EVAL:TS-TOKSRC@ EVAL:TS-TOK-NONE T=    \ recorded-only: no token data at all
 
    \ --- v1.1 model-token path: `tokens` overrides the whitespace proxy ---
@@ -152,12 +154,14 @@ package MAKI
    0 EVAL:TS-REPAIRED@ 1 T=
    0 EVAL:TS-ROUNDS@   1 T=
    0 EVAL:TS-TOKENS@ 230 T=     \ m1 120 + m2 (50+60); the post-green 999 ignored
+   0 EVAL:TS-EST@     26 T=     \ est stays source-derived: m1 9 + m2 (8+9)
    0 EVAL:TS-TOKSRC@ EVAL:TS-TOK-MODEL T=
 
    \ --- v1.1 proxy path: no tokens directives -> proxy tally, marked proxy ---
    TST11-PROXY
    0 EVAL:TS-N@        2 T=
    0 EVAL:TS-TOKENS@  21 T=     \ whitespace proxy: 7 + (7+7) source tokens
+   0 EVAL:TS-EST@     26 T=     \ same est as the model path: unit-independent
    0 EVAL:TS-TOKSRC@ EVAL:TS-TOK-PROXY T=
 
    \ --- fail-closed parse classes ---

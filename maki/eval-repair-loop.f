@@ -6,7 +6,10 @@
 \ repair round per checker rejection and sums authored tokens until the checker
 \ certifies (green). repair-rounds = number of checker-guided fixes; tokens-to-green
 \ = total kernel-source tokens authored until certification. The checker
-\ (EVAL:CHECK-PASSES?) is the in-environment judge.
+\ (EVAL:CHECK-PASSES?) is the in-environment judge. Each step also sums the
+\ deterministic model-token estimate (maki/eval-tokest.f GEN-TOK-EST) so every
+\ run reports BOTH units: raw whitespace source tokens (REPAIR-TOKENS@) and the
+\ tokenizer-approximation estimate (REPAIR-EST@).
 \
 \ This engine is ARM-AGNOSTIC: the difference between rich EXPLAIN-packet feedback
 \ and minimal status-quo feedback is expressed purely by WHICH candidate trajectory
@@ -15,6 +18,7 @@
 
 require lib/ptx/test-prelude.f
 require maki/eval.f
+require maki/eval-tokest.f
 
 package EVAL
 
@@ -29,19 +33,21 @@ variable ER-NTOK  variable ER-ST
    repeat
    2drop drop  ER-NTOK @ ;
 
-variable ER-ROUND  variable ER-TOKENS  variable ER-GREEN
+variable ER-ROUND  variable ER-TOKENS  variable ER-GREEN  variable ER-EST
 
 public
 
-: REPAIR-RESET ( -- )  0 ER-ROUND !  0 ER-TOKENS !  0 ER-GREEN ! ;
-\ one authoring step: count its tokens, check it; reject -> +1 repair round,
-\ certify -> green. Steps after green are ignored (the loop has converged).
+: REPAIR-RESET ( -- )  0 ER-ROUND !  0 ER-TOKENS !  0 ER-GREEN !  0 ER-EST ! ;
+\ one authoring step: count its tokens (both units), check it; reject -> +1
+\ repair round, certify -> green. Steps after green are ignored (converged).
 : REPAIR-STEP ( ptr u8 n -- )
    ER-GREEN @ if 2drop exit then
-   2dup COUNT-TOKS  ER-TOKENS @ +  ER-TOKENS !
+   2dup COUNT-TOKS  ER-TOKENS +!
+   2dup GEN-TOK-EST  ER-EST +!
    CHECK-PASSES? if  -1 ER-GREEN !  else  ER-ROUND @ 1+ ER-ROUND !  then ;
 : REPAIR-ROUNDS@ ( -- n )  ER-ROUND @ ;
 : REPAIR-TOKENS@ ( -- n )  ER-TOKENS @ ;
+: REPAIR-EST@ ( -- n )  ER-EST @ ;
 : REPAIR-GREEN? ( -- bool )  ER-GREEN @ ;      \ -1 (green) / 0 (not), already canonical
 
 ;package

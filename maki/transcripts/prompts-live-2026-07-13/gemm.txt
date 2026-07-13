@@ -1,0 +1,10 @@
+Authoring surface you may use (word : exact stack effect : semantics). The kernel is a tiled GEMM composed of three checked phase words; each emits a whole pipeline stage:
+- MM-BEGIN : ( matrix<space-global,f32,m,k> matrix<space-global,f32,k,q> matrix<space-global,f32,m,q> -- mmctx<m,k,q> mmacc<f32,block-256,mask-live> ) : bind A[M,K], B[K,N], C[M,N], zero the per-thread accumulator tile, and open the phase context
+- MM-K-LOOP : ( mmctx<m,k,q> mmacc<f32,block-256,mask-live> -- mmctx<m,k,q> mmacc<f32,block-256,mask-live> ) : run the staged K-loop: double-buffered shared-memory tiles plus the FMA compute over every K tile
+- MM-STORE : ( mmctx<m,k,q> mmacc<f32,block-256,mask-live> -- ) : write the accumulated C micro-tile to global memory and close the phase context
+
+Task: tiled GEMM, C = A*B. Compose the checked phase pipeline so the kernel stages tiles, accumulates over the full K range, and stores C.
+
+The declared effect must be exactly:
+K ( matrix<space-global,f32,extent-m,extent-k> matrix<space-global,f32,extent-k,extent-n> matrix<space-global,f32,extent-m,extent-n> -- )
+where the matrices are A, B, C in that order.

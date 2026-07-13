@@ -4005,3 +4005,21 @@ unchanged (148855). Keys for milestone 2:
   state. The resident full-runner adds even more shared state: device/bench
   tools that pass in a fresh spawn can SIGBUS inprocess, so the resident
   inprocess suite list is a subset of the spawned slice, not a mirror.
+- **Record token metrics in the unit you actually have, next to a slot for the
+  unit you want.** An orchestrator Agent-tool generation round exposes no
+  per-sample `usage` token counts, so the 2026-07-13 live transcript stayed
+  format v1 (whitespace proxy) instead of inventing model counts; the
+  source-derived `GEN-TOK-EST` column is computed at replay, so BOTH units land
+  on every row (old transcripts included) without editing artifacts, and real
+  v1.1 `tokens` counts slot in later. Estimators belong in the replay engine,
+  not the recorded artifact.
+- **Phase-token task surfaces make authoring pass@1 near-trivial by design —
+  say so in the eval report.** Live gemm/attention rounds went 5/5 first-try
+  because the checked phase words admit exactly one type-correct order; the
+  honest claim is "the checked-pipeline surface is reliably authorable", not
+  "the model wrote a GEMM". The emit-level structural required/forbidden gates
+  catch only the SEEDED bug shapes: same-type role swaps (in/out, Q/K, O-into-V),
+  dead-value stores, and double-phase kernels retain every required token and
+  still grade GREEN — only a device numeric golden closes that class. Pin those
+  wrong-but-green shapes as acknowledged regressions so a future grader
+  strengthening flips them intentionally, not silently.

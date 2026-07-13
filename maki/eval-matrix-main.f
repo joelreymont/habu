@@ -13,6 +13,11 @@
 \ and device graders fill them through EVAL:MATRIX-GBS! / EVAL:MATRIX-DEVICE!.
 
 require lib/ptx/test-prelude.f
+\ the replay judge image must carry EVERY committed task's authoring surface:
+\ the checker rejects unknown vocabulary, so a missing require silently grades
+\ that task 0 green (the gemm/attention phase words live outside test-prelude)
+require lib/ptx/cg-matmul.f
+require lib/ptx/cg-attention.f
 require maki/eval-matrix.f
 
 package EVAL

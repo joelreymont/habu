@@ -3,8 +3,9 @@
 \ Assembles per-(task,target) rows from replayed/recorded transcript tallies
 \ (maki/eval-transcript.f) and renders the eval matrix (a superset of the docs/eval-triton.md recorded table):
 \ samples, first-attempt green, unbiased pass@1..3 (per-mille, exact via
-\ maki/eval-passk.f), repair rounds, tokens-to-green, GB/s, and the device
-\ verdict. The GB/s and device columns are HOST-HONEST: they default to
+\ maki/eval-passk.f), repair rounds, tokens-to-green, the tok-est model-token
+\ estimate (maki/eval-tokest.f GEN-TOK-EST, always source-derived), GB/s, and
+\ the device verdict. The GB/s and device columns are HOST-HONEST: they default to
 \ `not-run` and only carry values when an on-device run (tools/ptx/bandwidth.f
 \ for GB/s; MAKI:GRADE-AUTHOR device goldens - Orin only) sets them through
 \ MATRIX-GBS! / MATRIX-DEVICE!. Nothing on the host path fakes a device number.
@@ -36,7 +37,7 @@ create MX-TASKS   MX-ROW-MAX MX-NAME-CAP * allot
 create MX-TASK-US MX-ROW-MAX cells allot
 create MX-TGTS    MX-ROW-MAX MX-NAME-CAP * allot
 create MX-TGT-US  MX-ROW-MAX cells allot
-9 constant MX-SLOTS
+10 constant MX-SLOTS
 0 constant MXL-N        \ samples graded
 1 constant MXL-GREEN    \ first-attempt passes (pass@k c)
 2 constant MXL-REPAIRED \ green after >=1 repair round
@@ -46,6 +47,7 @@ create MX-TGT-US  MX-ROW-MAX cells allot
 6 constant MXL-GBS      \ measured GB/s x10, -1 = not-run
 7 constant MXL-DEV      \ device verdict tag (MAKI:V-*), default not-run
 8 constant MXL-TOKSRC   \ TOKENS unit marker (TS-TOK-*), default TS-TOK-NONE
+9 constant MXL-EST      \ GEN-TOK-EST tokens-to-green over green replayed samples
 create MX-TAB MX-ROW-MAX MX-SLOTS * cells allot
 variable MX-ROW#
 
@@ -139,7 +141,7 @@ variable MX-OUT-U
    s" mixed" MXO+ ;
 
 : MXR-HEADER ( -- )
-   s" | task | target | n | green | pass@1-x1000 | pass@2-x1000 | pass@3-x1000 | repaired | repair-rounds | tokens-to-green | GB/s-x10 | device | graded | tok-src |"
+   s" | task | target | n | green | pass@1-x1000 | pass@2-x1000 | pass@3-x1000 | repaired | repair-rounds | tokens-to-green | tok-est | GB/s-x10 | device | graded | tok-src |"
       MXO+ MXO-NL ;
 
 : MXR-ROW ( n -- ) {: row:n :}
@@ -154,6 +156,7 @@ variable MX-OUT-U
    row MXL-REPAIRED MX-SLOT @ MXO-INT  MXO-SEP
    row MXL-ROUNDS MX-SLOT @ MXO-INT  MXO-SEP
    row MXL-TOKENS MX-SLOT @ MXO-INT  MXO-SEP
+   row MXL-EST MX-SLOT @ MXO-INT  MXO-SEP
    row MXR-GBS  MXO-SEP
    row MXR-DEV  MXO-SEP
    row MXR-SRC  MXO-SEP
@@ -173,6 +176,7 @@ public
       i TS-REPAIRED@ row MXL-REPAIRED MX-SLOT !
       i TS-ROUNDS@   row MXL-ROUNDS   MX-SLOT !
       i TS-TOKENS@   row MXL-TOKENS   MX-SLOT !
+      i TS-EST@      row MXL-EST      MX-SLOT !
       i TS-REC@      row MXL-REC      MX-SLOT !
       i TS-TOKSRC@   row MXL-TOKSRC   MX-SLOT !
    loop ;

@@ -25,7 +25,9 @@
 \ deterministic from the committed tree. Per-task tallies: n samples, GREEN =
 \ first-attempt passes (the pass@k c), REPAIRED = green only after >=1
 \ checker-guided repair, ROUNDS/TOKENS summed over green-reaching replayed
-\ samples, REC = externally recorded samples. Malformed input fails closed.
+\ samples, EST = the GEN-TOK-EST model-token estimate summed over the same
+\ samples (always source-derived, independent of the TOKENS unit), REC =
+\ externally recorded samples. Malformed input fails closed.
 \ One transcript never mixes token units: either every candidate carries a
 \ `tokens` directive (TS-TOKSRC@ = TS-TOK-MODEL) or none does (TS-TOK-PROXY);
 \ a mixed file is rejected so a tokens-to-green sum is always unit-pure.
@@ -65,13 +67,14 @@ $40000 constant TS-FILE-CAP
 \ ---- per-task tally table ----------------------------------------------------
 create TS-NAMES TS-TASK-MAX TS-NAME-CAP * allot
 create TS-NAME-US TS-TASK-MAX cells allot
-6 constant TS-SLOTS
+7 constant TS-SLOTS
 0 constant TSL-N         \ samples graded
 1 constant TSL-GREEN     \ first-attempt passes (pass@k c)
 2 constant TSL-REPAIRED  \ green only after >=1 repair round
 3 constant TSL-ROUNDS    \ repair rounds summed over green replayed samples
 4 constant TSL-TOKENS    \ tokens-to-green summed over green replayed samples
 5 constant TSL-REC       \ externally recorded samples
+6 constant TSL-EST       \ GEN-TOK-EST tokens-to-green over green replayed samples
 create TS-TAB TS-TASK-MAX TS-SLOTS * cells allot
 
 \ ---- parser state --------------------------------------------------------------
@@ -120,7 +123,8 @@ variable TS-ADJ       \ open sample: model tokens minus proxy over counted candi
    REPAIR-GREEN? 0= if exit then
    REPAIR-ROUNDS@ 0= if TSL-GREEN 1 TS-BUMP else TSL-REPAIRED 1 TS-BUMP then
    TSL-ROUNDS REPAIR-ROUNDS@ TS-BUMP
-   TSL-TOKENS REPAIR-TOKENS@ TS-ADJ @ + TS-BUMP ;
+   TSL-TOKENS REPAIR-TOKENS@ TS-ADJ @ + TS-BUMP
+   TSL-EST REPAIR-EST@ TS-BUMP ;
 
 : TS-CLOSE-RECORDED ( -- )
    TSL-N 1 TS-BUMP
@@ -294,6 +298,7 @@ public
 : TS-REPAIRED@ ( n -- n )  TS-CK-IDX TSL-REPAIRED TS-SLOT @ ;
 : TS-ROUNDS@   ( n -- n )  TS-CK-IDX TSL-ROUNDS   TS-SLOT @ ;
 : TS-TOKENS@   ( n -- n )  TS-CK-IDX TSL-TOKENS   TS-SLOT @ ;
+: TS-EST@      ( n -- n )  TS-CK-IDX TSL-EST      TS-SLOT @ ;
 : TS-REC@      ( n -- n )  TS-CK-IDX TSL-REC      TS-SLOT @ ;
 \ unit of the task's TOKENS sum; unit-pure by the E-TS-TOKENS mixing rejection
 : TS-TOKSRC@   ( n -- n )

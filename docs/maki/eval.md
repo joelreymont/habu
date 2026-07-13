@@ -64,6 +64,14 @@ unit-pure. The matrix marks the unit per row in the `tok-src` column: `model`
 (generator-reported), `proxy` (whitespace source tokens; all v1 transcripts), or `-`
 (no replayed token data, e.g. recorded-only arms).
 
+Every replayed row additionally carries `tok-est`: the deterministic model-token
+ESTIMATE (`maki/eval-tokest.f` `EVAL:GEN-TOK-EST` — one token per alphanumeric run
+plus one per non-whitespace punctuation byte, a dependency-free BPE approximation).
+It is always computed from the candidate source at replay time, independent of the
+`tok-src` unit, so a row records the raw source-token proxy AND the estimate side by
+side, and a future generator-reported count (v1.1 `tokens`) can be compared against
+both. `tok-est` is never a claim of exact model usage.
+
 `maki/eval-transcript.f` replays every `candidate` line through the shared repair
 metric engine (`maki/eval-repair-loop.f` -> `EVAL:CHECK-PASSES?`, the checker as
 judge) and tallies per task: samples, first-attempt greens (the pass@k `c`),
@@ -88,13 +96,30 @@ train/eval leg is `maki/eval-train.f`: it runs the committed Adam MLP + attentio
 trainers end-to-end and reports steps, milli-loss initial/final, and the committed
 convergence verdict.
 
+## Off-device authoring tasks (collective / 2D-GEMM / attention)
+`maki/eval-emit.f` extends the autograder past the device-golden tasks with three
+AUTHORING tasks graded off-device: **sumnorm** (row sum-normalize over the
+collective vocabulary; forbidden `max.f32`/`ex2.approx` catch a softmax
+pattern-match that certifies but is semantically wrong), **gemm** (the
+`MM-BEGIN MM-K-LOOP MM-STORE` checked phase pipeline; a skipped K-loop certifies
+but fails the required `fma.rn.f32`/`cp.async` gate), and **attention** (the
+`ATTN:START..FINISH` phase-token pipeline, where omission/reordering is a checker
+reject). GRADE = certify AND child-process PTX emit AND structural gates
+(required features present, forbidden patterns absent); verdicts mirror
+`GRADE-CANDIDATE` (2/1/0). The device-golden leg of these tasks is Orin-gated and
+recorded as a SKIP by the suites (device-FFI SKIP pattern). Prompt specs live at
+`maki/transcripts/prompts-live-2026-07-13/`; the live 2026-07-13 round
+(`live-habu-ptx-2026-07-13.txt`, pinned by `maki/eval-live-author-test.f`) went
+15/15 first-try green across all three tasks (docs/eval-triton.md).
+
 ## Design intent + roadmap
 The `/tmp` graders are retired into committed checked-Habu tools, and sampled pass@k
 rounds now replay from committed transcript files (`habu-eval-matrix-live`).
-Remaining: the live-model generation arm stays external/user-gated (record each run
-as a transcript file), the corrected-ROW-STORE softmax re-run (`habu-re-run-habu`),
-and the rest of the real generation-token eval (`habu-eval-real-gen`): transcripts
-can now carry generator-reported `tokens` (format v1.1 above), so future rounds
-record the claude CLI `usage` token counts instead of the whitespace proxy; a live
-model-token round and the collective/2D/attention authoring tasks remain. **No
-"better target" claim beyond what the committed, measured matrix supports.**
+Tokens-to-green is recorded in two units per row — the whitespace source-token
+proxy plus the `GEN-TOK-EST` estimate (`tok-est`) — and format v1.1 `tokens`
+directives can slot in real generator-reported counts. Remaining: the live-model
+generation arm stays external/user-gated (record each run as a transcript file;
+an Agent-tool round cannot see `usage` counts, so a real model-token round needs
+the `claude` CLI recording path), and the device goldens for the sumnorm/gemm/
+attention tasks are Orin-gated follow-ups. **No "better target" claim beyond what
+the committed, measured matrix supports.**

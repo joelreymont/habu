@@ -136,13 +136,21 @@ TRUSTED: OUTPUT ( attnctx<q,d,attn-stage-output> attnacc<f32,b,m> -- attnctx<q,d
 KERNEL: CHECKED ( matrix<space-global,f32,extent-q,extent-d> matrix<space-global,f32,extent-q,extent-d> matrix<space-global,f32,extent-q,extent-d> matrix<space-global,f32,extent-q,extent-d> -- )  GRID: extent-q
    START STAGE-Q SCORE SOFTMAX OUTPUT FINISH ;
 
-: EMIT ( -- )
+\ authoring scaffold: header/entry/shared up to the four matrix registers, so a
+\ checked phase pipeline (CHECKED, or a graded candidate K - maki/eval-emit.f)
+\ can sit between AUTHOR-OPEN and AUTHOR-CLOSE.
+: AUTHOR-OPEN ( -- matrix<space-global,f32,extent-q,extent-d> matrix<space-global,f32,extent-q,extent-d> matrix<space-global,f32,extent-q,extent-d> matrix<space-global,f32,extent-q,extent-d> )
    PTX-HEADER-SM87  PTX-NL
    s" .visible .entry ATTN(.param .u64 pQ,.param .u64 pK,.param .u64 pV,.param .u64 pO,.param .u32 pN,.param .u32 pD)" PTX-L
    s" {" PTX-L
    s" .reg .pred %p<4>;" PTX-L  s" .reg .f32 %f<16>;" PTX-L  s" .reg .b32 %r<32>;" PTX-L  s" .reg .b64 %rd<24>;" PTX-L
    SB-RESET s" .shared .align 4 .b8 SH[" SB-APPEND L-OFF 8 + SB-U s" ];" SB-APPEND SB$ PTX-L
-   1 Q-REG  2 K-REG  3 V-REG  4 O-REG  CHECKED
+   1 Q-REG  2 K-REG  3 V-REG  4 O-REG ;
+
+: AUTHOR-CLOSE ( -- )
    s" ret;" PTX-L  s" }" PTX-L ;
+
+: EMIT ( -- )
+   AUTHOR-OPEN  CHECKED  AUTHOR-CLOSE ;
 
 ;package

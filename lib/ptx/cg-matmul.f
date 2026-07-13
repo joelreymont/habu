@@ -221,12 +221,20 @@ KERNEL: MM-CHECKED ( matrix<space-global,f32,extent-m,extent-k> matrix<space-glo
    MM-K-LOOP
    MM-STORE ;
 
-: EMIT-MATMUL ( -- )
+\ authoring scaffold: header/entry/params up to the three matrix registers, so a
+\ checked kernel body (MM-CHECKED, or a graded candidate K - maki/eval-emit.f)
+\ can sit between MM-AUTHOR-OPEN and MM-AUTHOR-CLOSE.
+: MM-AUTHOR-OPEN ( -- matrix<space-global,f32,extent-m,extent-k> matrix<space-global,f32,extent-k,extent-n> matrix<space-global,f32,extent-m,extent-n> )
    PTX-HEADER-SM87  PTX-NL
    s" .visible .entry MM(.param .u64 pA,.param .u64 pB,.param .u64 pC,.param .u32 pM,.param .u32 pN,.param .u32 pK)" PTX-L
    s" {" PTX-L
    s" .reg .pred %p<4>;" PTX-L  s" .reg .f32 %f<48>;" PTX-L  s" .reg .b32 %r<64>;" PTX-L  s" .reg .b64 %rd<48>;" PTX-L
    SB-RESET s" .shared .align 16 .b8 SH[" SB-APPEND MM-SMEM SB-U s" ];" SB-APPEND SB$ PTX-L
    MM-PARAMS
-   1 MM-A-REG  2 MM-B-REG  3 MM-C-REG  MM-CHECKED
+   1 MM-A-REG  2 MM-B-REG  3 MM-C-REG ;
+
+: MM-AUTHOR-CLOSE ( -- )
    s" ret;" PTX-L  s" }" PTX-L ;
+
+: EMIT-MATMUL ( -- )
+   MM-AUTHOR-OPEN  MM-CHECKED  MM-AUTHOR-CLOSE ;

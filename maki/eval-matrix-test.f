@@ -51,10 +51,11 @@ variable MXVA  variable MXVU
    \ --- rendered schema: the recorded pass@k round + honest placeholders ---
    EVAL:MATRIX-RENDER MXSAVE
    s" | task | target |" MXHAS
+   s" | tokens-to-green | tok-est | GB/s-x10 |" MXHAS
    s" | graded | tok-src |" MXHAS
-   s" | saxpy | habu-ptx | 5 | 5 | 1000 | 1000 | 1000 | 0 | 0 | " MXHAS
-   s" | softmax | habu-ptx | 5 | 3 | 600 | 900 | 1000 | 2 | 3 | " MXHAS
-   s" | softmax | triton | 5 | 5 | 1000 | 1000 | 1000 | 0 | 0 | 0 | not-run | not-run | recorded |" MXHAS
+   s" | saxpy | habu-ptx | 5 | 5 | 1000 | 1000 | 1000 | 0 | 0 | 156 | 321 | not-run |" MXHAS
+   s" | softmax | habu-ptx | 5 | 3 | 600 | 900 | 1000 | 2 | 3 | 460 | 1010 | not-run |" MXHAS
+   s" | softmax | triton | 5 | 5 | 1000 | 1000 | 1000 | 0 | 0 | 0 | 0 | not-run | not-run | recorded |" MXHAS
    s" | not-run | not-run | checker | proxy |" MXHAS    \ v1 replay: proxy-marked tokens
    s" | not-run | not-run | recorded | - |" MXHAS       \ recorded arm: no token data
    s" | mixed |" MXHASNT
@@ -92,7 +93,7 @@ variable MXVA  variable MXVU
    EVAL:TS-END
    EVAL:MATRIX-FROM-TS
    EVAL:MATRIX-RENDER MXSAVE
-   s" | saxpy | habu-ptx | 1 | 1 | 1000 | - | - | 0 | 0 | 120 | not-run | not-run | checker | model |" MXHAS
+   s" | saxpy | habu-ptx | 1 | 1 | 1000 | - | - | 0 | 0 | 120 | 9 | not-run | not-run | checker | model |" MXHAS
 
    \ --- fail closed ---
    ['] MXT-DUP     E-MX-DUP TTHROWS

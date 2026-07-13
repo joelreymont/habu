@@ -678,11 +678,16 @@ Transcript: `maki/transcripts/live-habu-ptx-2026-07-12.txt`; replay:
 bin/hb --load maki/eval-matrix-main.f -- maki/transcripts/live-habu-ptx-2026-07-12.txt
 ```
 
-| task | target | n | green | pass@1-x1000 | pass@2-x1000 | pass@3-x1000 | repaired | repair-rounds | tokens-to-green | GB/s-x10 | device | graded |
-|---|---|---|---|---|---|---|---|---|---|---|---|---|
-| saxpy | habu-ptx | 5 | 4 | 800 | 1000 | 1000 | 1 | 1 | 172 | not-run | not-run | checker |
-| softmax | habu-ptx | 5 | 5 | 1000 | 1000 | 1000 | 0 | 0 | 292 | not-run | not-run | checker |
-| fused-relu | habu-ptx | 5 | 5 | 1000 | 1000 | 1000 | 0 | 0 | 150 | not-run | not-run | checker |
+| task | target | n | green | pass@1-x1000 | pass@2-x1000 | pass@3-x1000 | repaired | repair-rounds | tokens-to-green | tok-est | GB/s-x10 | device | graded | tok-src |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| saxpy | habu-ptx | 5 | 4 | 800 | 1000 | 1000 | 1 | 1 | 172 | 372 | not-run | not-run | checker | proxy |
+| softmax | habu-ptx | 5 | 5 | 1000 | 1000 | 1000 | 0 | 0 | 292 | 638 | not-run | not-run | checker | proxy |
+| fused-relu | habu-ptx | 5 | 5 | 1000 | 1000 | 1000 | 0 | 0 | 150 | 380 | not-run | not-run | checker | proxy |
+
+(The `tok-est` and `tok-src` columns were added 2026-07-13: `tok-est` is the
+deterministic `GEN-TOK-EST` model-token estimate computed from the same
+committed candidates at replay time; `tok-src` marks the tokens-to-green unit —
+`proxy` here, since this round predates generator-reported counts.)
 
 - **Softmax 5/5 first-try with the corrected prompt.** This discharges the
   2026-06-27 caveat: the earlier 3/5 was the mis-specified `ROW-STORE` order in
@@ -710,3 +715,66 @@ bin/hb --load maki/eval-matrix-main.f -- maki/transcripts/live-habu-ptx-2026-07-
 - Durability: the transcripts are committed static files, so the graded tallies
   above are deterministic replay — `maki/eval-live-test.f` (in the maki suite)
   re-replays the transcript and pins every cell of this table.
+
+## Live authoring round: collective / 2D-GEMM / attention tasks (2026-07-13)
+
+The second live round extends the task set past the 1-D tile kernels to the
+three OFF-DEVICE authoring tasks graded by the new emit-structural autograder
+(`maki/eval-emit.f`): **sumnorm** (row sum-normalize over the collective
+vocabulary — same surface as softmax; the prompt names the block-wide sum
+reduction, and the forbidden `max.f32`/`ex2.approx` gates catch a softmax
+pattern-match), **gemm** (the tiled-GEMM checked phase pipeline
+`MM-BEGIN MM-K-LOOP MM-STORE`), and **attention** (the fused phase-token
+pipeline `ATTN:START .. ATTN:FINISH`, where omitting or reordering a phase is a
+checker reject). GREEN for these tasks = certify + child-process PTX emit +
+structural gates (required instructions present, forbidden patterns absent);
+the device-golden leg is Orin-gated and recorded as a SKIP in the suites.
+
+Protocol: generator = independent **opus-model subagents** (orchestrator Agent
+tool, one fresh blind session per sample, zero tool uses), **n = 5 per task**,
+each given only the shared authoring preamble + the task statement
+(`maki/transcripts/prompts-live-2026-07-13/`). Judge = the committed checker
+via the replay harness, plus the emit-structural grade per distinct candidate
+shape. Repair budget = one diagnostic-guided round; **no sample needed it**.
+Transcript: `maki/transcripts/live-habu-ptx-2026-07-13.txt`; replay:
+
+```
+bin/hb --load maki/eval-matrix-main.f -- maki/transcripts/live-habu-ptx-2026-07-13.txt
+```
+
+| task | target | n | green | pass@1-x1000 | pass@2-x1000 | pass@3-x1000 | repaired | repair-rounds | tokens-to-green | tok-est | GB/s-x10 | device | graded | tok-src |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| sumnorm | habu-ptx | 5 | 5 | 1000 | 1000 | 1000 | 0 | 0 | 194 | 472 | not-run | not-run | checker | proxy |
+| gemm | habu-ptx | 5 | 5 | 1000 | 1000 | 1000 | 0 | 0 | 50 | 320 | not-run | not-run | checker | proxy |
+| attention | habu-ptx | 5 | 5 | 1000 | 1000 | 1000 | 0 | 0 | 90 | 469 | not-run | not-run | checker | proxy |
+
+- **15/15 first-try green, and every distinct shape also passed the
+  emit + structural gates** (GREEN 2 through `GRADE-SUMNORM` / `GRADE-GEMM` /
+  `GRADE-ATTN`): no sample pattern-matched softmax into sumnorm (the forbidden
+  `max.f32` / `ex2.approx` gates stayed silent), every gemm sample composed the
+  full three-phase pipeline (fma + cp.async present), and every attention
+  sample threaded the phase tokens in the one type-correct order.
+- **What GREEN(2) does NOT prove (honest limit).** The emit-structural gates
+  check instruction presence/absence, not numeric correctness, so a same-type
+  ROLE or VALUE swap grades GREEN while computing the wrong result: sumnorm
+  in/out swap, div-by-sum-squared, gemm double-accumulate (`2·A·B`), attention
+  Q/K swap and output-into-V all pass structure. These are pinned at grade 2 as
+  acknowledged wrong-but-green regressions in `maki/eval-emit-test.f`; only a
+  device NUMERIC golden closes the class (`habu-eval-device-numeric-c2e98ec4`).
+  So the 15/15 headline means "the checked-pipeline surface is reliably
+  authorable", not "the model wrote a numerically-correct kernel".
+- **Token units:** `tokens-to-green` is the whitespace source-token proxy;
+  `tok-est` is the `GEN-TOK-EST` model-token estimate (alnum runs + punctuation
+  bytes) from the same committed candidates. Generator-reported counts are not
+  exposed by the Agent tool, so the transcript stays format v1; a future round
+  recorded through the `claude` CLI can carry real `usage` counts as v1.1
+  `tokens` directives and the matrix will mark that row `model`.
+- Honest scope: host-only round (GB/s + device columns `not-run`; the sumnorm/
+  gemm/attention device goldens are tracked Orin work). Phase-word tasks (gemm,
+  attention) measure *composition* authoring — the phase implementations are
+  committed library emitters — so their pass@1 says the checked-pipeline
+  surface is trivially and reliably authorable, not that the model wrote the
+  inner PTX. Generator population is one Claude-family model; n=5 per task.
+- Durability: `maki/eval-live-author-test.f` (in the maki suite) re-replays the
+  transcript, pins every cell of this table, and re-grades each distinct live
+  candidate through the emit-structural autograder.
