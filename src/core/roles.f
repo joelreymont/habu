@@ -232,3 +232,10 @@ variable VRDEF-I
       THEN
       VRDEF-TOKEN+
    AGAIN ;
+
+\ Seal the aliasable-unsafe words (this file's DEFTYPE/DEFLINEAR/VALUE-RECORD and
+\ the earlier sumtype.f/type-family.f openers) into the checker's identity set so
+\ EXPORT rejects re-exporting any of them BY SYMBOL, not just by their canonical
+\ spelling (dot habu-checker-unsafety-as-1c537c1f). Every definer/opener is
+\ interned by now, so each name resolves to its permanent symbol.
+UNSAFE-SET-SEAL

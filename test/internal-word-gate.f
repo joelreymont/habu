@@ -348,9 +348,42 @@ create IWG-EMPTY 1 allot            \ zero-length stdin
    s" VALUE-RECORD" IWG-NEG-EXPORT
    s" EXPORT SUMTYPE rejects E-EXPORT-UNSAFE" T-LABEL
    s" SUMTYPE" IWG-NEG-EXPORT
+   s" EXPORT ENUM rejects E-EXPORT-UNSAFE" T-LABEL
+   s" ENUM" IWG-NEG-EXPORT
+   s" EXPORT PRODUCT rejects E-EXPORT-UNSAFE" T-LABEL
+   s" PRODUCT" IWG-NEG-EXPORT
+   s" EXPORT TYPEFAMILY rejects E-EXPORT-UNSAFE" T-LABEL
+   s" TYPEFAMILY" IWG-NEG-EXPORT
    s" qualified unsafe alias for a body cannot be minted" T-LABEL
    IWG-EXPORT-BODY-FORGE$ IWG-RUN-LOAD
    IWG-ASSERT-EXPORT-UNSAFE ;
+
+\ --- defer/is laundering (dot habu-checker-unsafety-as-1c537c1f, acceptance b).
+\ A checked `is` installs a QUOTATION whose body is checked, and a raw xt from
+\ tick has a different checker type than a quotation — so neither `['] <unsafe>
+\ is X` nor `[: <unsafe> ;] is X` can bind an unsafe target from a checked body.
+\ The first rejects at `is` (xt is not a quotation), the second rejects at the
+\ unsafe token inside the quotation body (identity/name reject). Both are
+\ in-body checker rejects: rc 70 with an `at '<token>'` diagnostic. ----
+: IWG-DEFER-TICK-FORGE$ ( -- ptr u8 n )  \ ['] <unsafe> is X : rejects at 'is'
+   SB-RESET
+   s" defer IWG-DACT ( -- )" SB-APPEND IWG-LF
+   s" : IWG-DSET ( -- ) ['] deftype is IWG-DACT ;" SB-APPEND IWG-LF
+   SB$ ;
+
+: IWG-DEFER-QUOT-FORGE$ ( -- ptr u8 n )  \ [: <unsafe> ;] is X : rejects at 'deftype'
+   SB-RESET
+   s" defer IWG-DACT2 ( -- )" SB-APPEND IWG-LF
+   s" : IWG-DSET2 ( -- ) [: deftype ;] is IWG-DACT2 ;" SB-APPEND IWG-LF
+   SB$ ;
+
+: IWG-DEFER-CASES ( -- )
+   s" ['] <unsafe> is X (tick laundering) rejects at 'is'" T-LABEL
+   IWG-DEFER-TICK-FORGE$ IWG-RUN-LOAD
+   s" at 'is'" IWG-ASSERT-DIAG
+   s" [: <unsafe> ;] is X (quotation laundering) rejects at 'deftype'" T-LABEL
+   IWG-DEFER-QUOT-FORGE$ IWG-RUN-LOAD
+   s" at 'deftype'" IWG-ASSERT-DIAG ;
 
 : IWG-POSITIVES ( -- )
    s" undefined word still reports E-UNDEFINED" T-LABEL
@@ -395,6 +428,7 @@ create IWG-EMPTY 1 allot            \ zero-length stdin
    IWG-NEG-SHAPES
    IWG-POSITIVES
    IWG-OPENER-CASES
+   IWG-DEFER-CASES
    IWG-CLEANUP
    T-REPORT
    s" internal-word-gate: ok" type cr ;

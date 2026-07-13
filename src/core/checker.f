@@ -5163,6 +5163,61 @@ variable CURSYM
    a u s" [" CORE-STR=CI IF RES-TRUE EXIT THEN
    a u s" ]" CORE-STR=CI ;
 
+\ --- unsafe-symbol set (dot habu-checker-unsafety-as-1c537c1f) ----------------
+\ Unsafety is a property of the WORD, not its spelling. UNSAFE-TOK? above keeps
+\ the canonical name list for the DO-TOK1 body reject and for the symbol-less
+\ engine/syntax tokens ([, ], postpone, immediate, compile,, evaluate, trust,
+\ set-check) that never intern a checker symbol. The definers/openers (deftype,
+\ deflinear, value-record, sumtype, enum, product, typefamily, layout-buffer)
+\ DO intern a symbol, and those are exactly the words that carry a checked
+\ signature or a prim axiom — so they are the only ones an EXPORT alias could
+\ mint. UNSAFE-SET-SEAL interns their symbol IDs here at seal time; the EXPORT
+\ gate (EXPORT-RESOLVE) then refuses to re-export any of them BY IDENTITY: a
+\ qualified reference (PKG:DEFTYPE), a differently-spelled reference, or any
+\ future rename that still resolves to the same symbol is rejected, not just the
+\ bare canonical spelling the tail-name check catches. Storing IDs (not
+\ pointers) keeps the set snapshot-stable; it is monotonic and never rolled back
+\ because these are permanent engine-prefix words above every checking watermark.
+32 constant UNSAFE-SYM-CAP
+create UNSAFE-SYMS UNSAFE-SYM-CAP cells allot
+variable UNSAFE-SYM-N
+0 UNSAFE-SYM-N !
+
+: UNSAFE-SYM-AT ( n -- ptr a ) {: i:n :}
+   UNSAFE-SYMS i cells + ;
+
+: UNSAFE-SYM? ( n -- bool ) {: sym:n :}
+   sym 0= IF RES-FALSE EXIT THEN
+   0 BEGIN dup UNSAFE-SYM-N @ < WHILE
+      dup UNSAFE-SYM-AT @ sym = IF drop RES-TRUE EXIT THEN
+      1 +
+   REPEAT drop RES-FALSE ;
+
+: UNSAFE-SYM-ADD ( n -- ) {: sym:n :}
+   sym 0= IF EXIT THEN
+   sym UNSAFE-SYM? IF EXIT THEN
+   UNSAFE-SYM-N @ UNSAFE-SYM-CAP >= IF
+      s" checker: unsafe-symbol set full" 76 die
+   THEN
+   sym UNSAFE-SYM-N @ UNSAFE-SYM-AT !
+   UNSAFE-SYM-N @ 1 + UNSAFE-SYM-N ! ;
+
+: UNSAFE-NAME-ADD ( ptr u8 n -- )
+   CHECKER-FIND-ACTIVE-SYM UNSAFE-SYM-ADD ;
+
+\ Seal the aliasable unsafe words into the identity set. Called once after every
+\ definer/opener is interned (end of roles.f). Idempotent: UNSAFE-SYM-ADD dedups,
+\ and an unresolved name (symbol 0) is skipped.
+: UNSAFE-SET-SEAL ( -- )
+   s" deftype"       UNSAFE-NAME-ADD
+   s" deflinear"     UNSAFE-NAME-ADD
+   s" value-record"  UNSAFE-NAME-ADD
+   s" sumtype"       UNSAFE-NAME-ADD
+   s" enum"          UNSAFE-NAME-ADD
+   s" product"       UNSAFE-NAME-ADD
+   s" typefamily"    UNSAFE-NAME-ADD
+   s" layout-buffer" UNSAFE-NAME-ADD ;
+
 \ --- EXPORT: alias an existing word's checked effect under its own tail -----
 \ (dot habu-compiler-pkg-re-688212c1). `EXPORT NAME` in an open package section
 \ publishes NAME's effect under NAME's tail in the CURRENT package scope: one
@@ -5179,11 +5234,13 @@ variable CURSYM
 \   overloaded; copying the first row would silently narrow the effect);
 \ - E-EXPORT-UNDEFINED: source has no checked signature (undefined, private in
 \   a closed package — qualified lookup is public-only — or uncertified);
-\ - E-EXPORT-UNSAFE: source tail is an UNSAFE-TOK? name (openers, roles.f
-\   definers, trust/evaluate class): the alias would give the unsafe word a
-\   qualified spelling that escapes the name-keyed body reject (short-term
-\   fail-closed leg of dot habu-checker-unsafety-must-d12bc784; the sym-set
-\   endpoint stays dotted);
+\ - E-EXPORT-UNSAFE: the source is an unsafe word, caught two ways — its tail is
+\   an UNSAFE-TOK? name (openers, roles.f definers, trust/evaluate class), and
+\   its resolved symbol is in the UNSAFE-SYM? identity set (dot
+\   habu-checker-unsafety-as-1c537c1f). Either way the alias would give the
+\   unsafe word a second spelling that escapes the name-keyed body reject; the
+\   symbol leg rejects by IDENTITY so a qualified or renamed reference that
+\   resolves to the same symbol cannot launder it past this gate;
 \ - duplicate tail in the current section (CHECKER-CERT-DUP? -> $4E).
 \ INTO a generated ctor package is structurally unreachable: CHECKER-PACKAGE
 \ rejects opening one (E-CTOR-PROTECTED), so the current package can never be
@@ -5210,6 +5267,7 @@ variable CURSYM
 \ and the first PES row legitimately lives at USIGS offset 0.
 : EXPORT-RESOLVE ( ptr u8 n -- ) {: a:ptr u:n :}
    a u EXPORT-TAIL$ UNSAFE-TOK? IF E-EXPORT-UNSAFE throw THEN
+   a u CHECKER-FIND-ACTIVE-SYM UNSAFE-SYM? IF E-EXPORT-UNSAFE throw THEN
    a u CHECKER-FIND-ACTIVE-SIG
    FEP-HIT? IF EXIT THEN
    a u CHECKER-FIND-ACTIVE-SYM PRIM-FIRST-IDX 0 <> IF E-EXPORT-PRIM throw THEN
