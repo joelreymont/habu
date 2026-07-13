@@ -857,6 +857,9 @@ points stay listed.
   exact owner proof builder cannot be redirected to arbitrary source.
 - `test/owner-wid-state.f` / `test/owner-wid-call.f` — read-only role/capacity
   assertions and hostile unresolved-call fixture executed by that runner.
+- `test/owner-wid-guard.f` — load-head guard the owner-wid suites require so a
+  standalone engine invocation dies fast with a named message and rc instead of
+  misleading missing-build-context failures.
 - `test/wide-store-seal.f` — generated checked W=2 ADT store forges proving
   ordinary storage and first/later-cell protected-band intersections: zero-valued
   payload/tag attempts against the seal latch must trap `E-SEAL-VIOLATION`

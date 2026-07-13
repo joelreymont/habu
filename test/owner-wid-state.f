@@ -1,5 +1,8 @@
 \ owner-wid-state.f - read-only proof of the isolated cold owner image.
 
+require test/owner-wid-guard.f
+OWNER-WID-GUARD:REQUIRE-FORGED
+
 require lib/test.f
 
 T-RESET

@@ -28,6 +28,7 @@ variable ERR-U
 : RUN-CHILD ( -- n )
    PROC-ARGV-RESET
    PROC-ENV-RESET
+   s" HABU_OWNER_WID_HARNESS" >LEN s" 1" >LEN PROC-ENV+
    PROC-ENV-INHERIT-MISSING
    s" --load" >LEN PROC-ARGV+
    s" test/owner-wid-child.f" >LEN PROC-ARGV+

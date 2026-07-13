@@ -2,6 +2,21 @@
 
 package OWNER-WID-COLD-TEST
 
+\ Standalone guard. This file is bundle-injected by BUILD-EXT:OWNER-WID-STDIN;
+\ a require would bypass the build pin, so the guard is inline with the same
+\ message and rc as test/owner-wid-guard.f. The emitter vocabulary (LIT64,)
+\ only exists in the image-build stage, never in an installed engine.
+78 constant OWE-GUARD-RC
+
+: OWE-BUILD-STAGE? ( -- bool )
+   s" LIT64," 0 search-wl 0 <> ;
+
+: OWE-GUARD ( -- )
+   OWE-BUILD-STAGE? if exit then
+   s" owner-wid suites run inside test/run.f's forge harness" OWE-GUARD-RC die ;
+
+OWE-GUARD
+
 0 0= constant YES
 0 0= 0= constant NO
 $C8DFFCA6 constant COUNT-LDAR
