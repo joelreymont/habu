@@ -382,6 +382,17 @@ variable CKT-PAR-U
    s" : CKT-BAD-PARTIAL ( n -- point ) ;" SB-APPEND
    SB$ ;
 
+\ Unterminated block declarations must print their check.f diagnostic before
+\ the rc-70 throw; the CHK-THROW message shape dropped the text silently.
+: CKT-ENUM-NOEND$ ( -- ptr u8 n )
+   s" ENUM enoend red green" ;
+
+: CKT-PROD-NOEND$ ( -- ptr u8 n )
+   s" PRODUCT pnoend 0 FIELD x n" ;
+
+: CKT-VREC-NOEND$ ( -- ptr u8 n )
+   s" VALUE-RECORD vnoend x n" ;
+
 : CKT-NOM-SCAN-BODY$ ( -- ptr u8 n )
    SB-RESET
    s" : DEFTYPE ( -- ) ;" SB-APPEND
@@ -791,6 +802,41 @@ create CKT-BIG $2000 allot   variable CKT-BIG-U
    outu 0 T=
    erru 0 T= ;
 
+: CKT-TEST-ENUM-NOEND ( -- )
+   CKT-ENUM-NOEND$ CKT-DIRECT-STDIN 70 T=
+   {: outu:n erru:n :}
+   outu 0 T=
+   CKT-ERR erru s" check.f: missing ;ENUM" CONTAINS? TTRUE ;
+
+: CKT-TEST-PROD-NOEND ( -- )
+   CKT-PROD-NOEND$ CKT-DIRECT-STDIN 70 T=
+   {: outu:n erru:n :}
+   outu 0 T=
+   CKT-ERR erru s" check.f: missing ;PRODUCT" CONTAINS? TTRUE ;
+
+: CKT-TEST-VREC-NOEND ( -- )
+   CKT-VREC-NOEND$ CKT-DIRECT-STDIN 70 T=
+   {: outu:n erru:n :}
+   outu 0 T=
+   CKT-ERR erru s" check.f: missing END-VALUE-RECORD" CONTAINS? TTRUE ;
+
+\ Same arm through the real CLI entry: `bin/hb tools/check.f fixture` must
+\ carry the diagnostic on stderr with the rc unchanged.
+: CKT-HB-CHECK-ENUM-NOEND ( -- n n n )
+   CKT-BAD$ CKT-ENUM-NOEND$ WRITE-ALL
+   PROC-ARGV-RESET
+   s" tools/check.f" >LEN PROC-ARGV+
+   CKT-BAD$ >LEN PROC-ARGV+
+   CKT-HB$ >LEN CKT-OUT CKT-BUF-CAP >LEN
+   CKT-ERR CKT-BUF-CAP >LEN $2710 >MS RUN-ARGV-CAPTURE
+   CKT-CAPTURE>N ;
+
+: CKT-TEST-ENUM-NOEND-CLI ( -- )
+   CKT-HB-CHECK-ENUM-NOEND 70 T=
+   {: outu:n erru:n :}
+   outu 0 T=
+   CKT-ERR erru s" check.f: missing ;ENUM" CONTAINS? TTRUE ;
+
 : CKT-TEST-VALUE-RECORD-PARTIAL ( -- )
    CKT-VREC-PARTIAL$ CKT-DIRECT-JSON-STDIN 70 T=
    {: outu:n erru:n :}
@@ -1116,6 +1162,10 @@ variable CKTP-DOC-U
    s" check/product-good" [: CKT-TEST-PRODUCT-GOOD ;] CKT-RUN
    s" check/product-bad" [: CKT-TEST-PRODUCT-BAD ;] CKT-RUN
    s" check/product-all-errors" [: CKT-TEST-PRODUCT-ALL-ERRORS ;] CKT-RUN
+   s" check/enum-noend" [: CKT-TEST-ENUM-NOEND ;] CKT-RUN
+   s" check/product-noend" [: CKT-TEST-PROD-NOEND ;] CKT-RUN
+   s" check/value-record-noend" [: CKT-TEST-VREC-NOEND ;] CKT-RUN
+   s" check/enum-noend-cli" [: CKT-TEST-ENUM-NOEND-CLI ;] CKT-RUN
    s" check/nominal-scan-top-level" [: CKT-TEST-NOMINAL-SCAN-TOP-LEVEL ;] CKT-RUN
    s" check/package-deftype-good" [: CKT-PKG-DEFTYPE:GOOD ;] CKT-RUN
    s" check/package-deftype-cross" [: CKT-PKG-DEFTYPE:CROSS ;] CKT-RUN

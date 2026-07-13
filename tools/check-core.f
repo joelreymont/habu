@@ -707,7 +707,7 @@ variable CHK-VREC-NAME-I
       dup LEX-TOK CHK-VREC-TOKEN+
       1+
    repeat
-   s" check.f: missing END-VALUE-RECORD" CHK-E-CHECK CHK-THROW ;
+   s" check.f: missing END-VALUE-RECORD" CHK-E-CHECK CHK-FAIL ;
 
 variable CHK-TFAM-NAME-I
 
@@ -798,7 +798,7 @@ variable CHK-TFAM-NAME-I
 
 : CHK-ENUM-REGISTER ( n -- n ) {: k:n :}   \ k at 'enum'; next scan index
    k s" ;ENUM" CHK-BLOCK-COLLECT 0= if
-      drop s" check.f: missing ;ENUM" CHK-E-CHECK CHK-THROW
+      drop s" check.f: missing ;ENUM" CHK-E-CHECK CHK-FAIL
    then {: nxt:n :}
    CHK-DECL-CAPTURE
    [: CHK-ENUM-DO-DEF ;] catch
@@ -808,7 +808,7 @@ variable CHK-TFAM-NAME-I
 
 : CHK-PROD-REGISTER ( n -- n ) {: k:n :}   \ k at 'product'; next scan index
    k s" ;PRODUCT" CHK-BLOCK-COLLECT 0= if
-      drop s" check.f: missing ;PRODUCT" CHK-E-CHECK CHK-THROW
+      drop s" check.f: missing ;PRODUCT" CHK-E-CHECK CHK-FAIL
    then {: nxt:n :}
    CHK-DECL-CAPTURE
    [: CHK-PROD-DO-DEF ;] catch
