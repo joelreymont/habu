@@ -779,6 +779,90 @@ TDF @ TWX-TFAM-SLOTS@ 2 T=
 TDF @ TFAM-WIDTH@ 3 T=
 TDF @ TFAM-VAR-START@ TWX-SUMV-SCH-START@ TWX-SCHEMA-ROOT@ TWX-SCHEMA-APP? -1 T=
 s" TDP-NEST-MAKE ( n -- tdpnest ) construct tdpw one construct tdpnest value" CHECK-QUIET-CANDIDATE! -1 T=
+
+\ A closed wide PRODUCT is one logical value backed by one hidden parameter per
+\ physical cell.  Effect minima count those hidden entries once, not once per
+\ family width: two W12 values require 24 cells, W34 MAKE/UNMAKE require 34,
+\ and two W34 values require 68.
+PRODUCT tdw12 0
+  FIELD f0 n
+  FIELD f1 n
+  FIELD f2 n
+  FIELD f3 n
+  FIELD f4 n
+  FIELD f5 n
+  FIELD f6 n
+  FIELD f7 n
+  FIELD f8 n
+  FIELD f9 n
+  FIELD f10 n
+  FIELD f11 n
+;PRODUCT
+s" TDW12-PAIR ( tdw12 tdw12 -- tdw12 tdw12 )" CHECK-QUIET-CANDIDATE! -1 T=
+REC-MIN-IN@ 24 T=
+PRODUCT tdw34 0
+  FIELD f0 n
+  FIELD f1 n
+  FIELD f2 n
+  FIELD f3 n
+  FIELD f4 n
+  FIELD f5 n
+  FIELD f6 n
+  FIELD f7 n
+  FIELD f8 n
+  FIELD f9 n
+  FIELD f10 n
+  FIELD f11 n
+  FIELD f12 n
+  FIELD f13 n
+  FIELD f14 n
+  FIELD f15 n
+  FIELD f16 n
+  FIELD f17 n
+  FIELD f18 n
+  FIELD f19 n
+  FIELD f20 n
+  FIELD f21 n
+  FIELD f22 n
+  FIELD f23 n
+  FIELD f24 n
+  FIELD f25 n
+  FIELD f26 n
+  FIELD f27 n
+  FIELD f28 n
+  FIELD f29 n
+  FIELD f30 n
+  FIELD f31 n
+  FIELD f32 n
+  FIELD f33 n
+;PRODUCT
+s" TDW34-MAKE ( n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n -- tdw34 ) TDW34:MAKE" CHECK-QUIET-CANDIDATE! -1 T=
+REC-MIN-IN@ 34 T=
+s" TDW34-UNMAKE ( tdw34 -- n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n n ) TDW34:UNMAKE" CHECK-QUIET-CANDIDATE! -1 T=
+REC-MIN-IN@ 34 T=
+s" TDW34-PAIR ( tdw34 tdw34 -- tdw34 tdw34 )" CHECK-QUIET-CANDIDATE! -1 T=
+REC-MIN-IN@ 68 T=
+\ Nested quotations retain the surrounding physical floor.
+s" TDW34-QUOTE ( tdw34 -- tdw34 n ) [: ;] catch" CHECK-QUIET-CANDIDATE! -1 T=
+REC-MIN-IN@ 34 T=
+\ A published effect must replay with the same minimum in later checks.
+: TDW34-STORED ( tdw34 -- tdw34 ) ;
+s" TDW34-REPLAY ( tdw34 -- tdw34 ) TDW34-STORED" CHECK-QUIET-CANDIDATE! -1 T=
+REC-MIN-IN@ 34 T=
+\ Rejection rolls the candidate back without damaging the stored wide effect.
+s" TDW34-BAD ( tdw34 -- n )" CHECK-QUIET-CANDIDATE! 0 T=
+s" TDW34-BAD" TWX-CHECKER-FIND-USIG 0 T=
+s" TDW34-REPLAY2 ( tdw34 -- tdw34 ) TDW34-STORED" CHECK-QUIET-CANDIDATE! -1 T=
+REC-MIN-IN@ 34 T=
+\ A product containing W34 has the same physical width and minimum, not W34^2.
+PRODUCT tdw34nest 0
+  FIELD inner tdw34
+;PRODUCT
+s" " s" tdw34nest" TWX-TFAM-FIND-IN TDOK ! TDF !
+TDOK @ -1 T=
+TDF @ TFAM-WIDTH@ 34 T=
+s" TDW34-NEST ( tdw34nest -- tdw34nest )" CHECK-QUIET-CANDIDATE! -1 T=
+REC-MIN-IN@ 34 T=
 TDT-BASE!
 
 \ --- item 12 slice-2: logical width metadata (docs §18 WIDTH function).

@@ -3536,17 +3536,27 @@ EC-RV MAXTV E-MAP-CLEAR   0 EC-RV-HW !
    UEND @ swap ER.NEXT !
    UTERM! ;
 
-\ ROW-CELLS: total cell width of a row's fixed entries — the minimum stack
+\ A hidden layout parameter already denotes one physical cell; charging its
+\ family's full logical width again would turn a W-cell bundle into W^2 cells.
+: ROW-TERM-CELLS ( n -- n ) {: t:n :}
+   t T-RES dup HIDDEN-PARAM? if drop 1 exit then
+   T-WIDTH ;
+
+\ ROW-CELLS: total physical width of a row's fixed entries — the minimum stack
 \ depth any call must provide for that row. Row-polymorphic tails match zero
 \ cells, so the fixed prefix IS the floor (dot habu-habu-certified-words-84e84eaf).
 : ROW-CELLS ( n -- n ) {: s:n :}
    0 s                                   \ ( acc cur )
    BEGIN R-RES dup TAG S-PUSH = WHILE
-      dup P>TYPE T-RES T-WIDTH rot + swap
+      dup P>TYPE ROW-TERM-CELLS rot + swap
       P>REST
    REPEAT drop ;
 
+: EFFECT-MIN-IN ( n -- n )
+   ROW-CELLS dup 255 > if s" checker: min-in exceeds record field" 76 die then ;
+
 : E-BUILD-EFFECT ( n n n n bool -- n ) {: din:n dout:n rin:n rout:n hasr:bool :}
+   din EFFECT-MIN-IN {: minin:n :}
    E-REC-START E-OFF >r
    E-COPY-MAPS-RESET
    EFF-ACTIVE r@ E-PTR ER.ACTIVE !
@@ -3559,8 +3569,7 @@ EC-RV MAXTV E-MAP-CLEAR   0 EC-RV-HW !
    hasr r@ E-PTR ER.HASR !
    EC-TVN @ r@ E-PTR ER.TVN !
    EC-RVN @ r@ E-PTR ER.RVN !
-   din ROW-CELLS dup 255 > IF s" checker: min-in exceeds record field" 76 die THEN
-   r@ E-PTR ER.MINI !
+   minin r@ E-PTR ER.MINI !
    r@ E-PTR E-REC-FINISH
    r> ;
 
@@ -3621,6 +3630,7 @@ variable RECMI   0 RECMI !
 \ update: the record just built IS the current effect for its symbol. The
 \ cache stores offset+1 because offset 0 is legal after USIGS-RESET.
 : E-ADD-EFFECT ( n n n n bool -- ) {: din:n dout:n rin:n rout:n hasr:bool :}
+   din EFFECT-MIN-IN drop
    din ROW-WIDE?  dout ROW-WIDE? or
    hasr IF rin ROW-WIDE? or  rout ROW-WIDE? or THEN
    RECW !
@@ -4004,6 +4014,7 @@ variable PE-EFF-ID
    parse-name PE-OPEN ;
 
 : PE-CLOSE-SYM ( n -- )
+   PE-DIN @ EFFECT-MIN-IN drop
    dup PE-SYM-ID ! CHECKER-REC-SYM !
    PE-DIN @ PE-DOUT @ PE-RIN @ PE-ROUT @ PE-HASR @
    E-BUILD-EFFECT PE-EFF-ID !
@@ -6258,6 +6269,7 @@ variable RECEFF   variable RECEFF-ON   variable RECEFF-UEND   variable RECEFF-SY
 \ The record carries sym 0 so signature lookup never sees it.
 : SIG-EFF-CACHE!
    SGBAD @ IF EXIT THEN
+   SGIN @ EFFECT-MIN-IN drop
    UEND @ RECEFF-UEND !
    CHECKER-REC-SYM @ RECEFF-SYM !
    0 CHECKER-REC-SYM !
