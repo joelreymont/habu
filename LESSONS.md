@@ -3931,3 +3931,7 @@ unchanged (148855). Keys for milestone 2:
   deliberately proves maker and artifact cache-hit paths inside one attempt.
   Retry isolation must reject artifacts inherited from a prior attempt while
   preserving and checking the expected within-attempt hit-counter contract.
+- **`dot` has no free-form help namespace.** An unknown command is treated as a
+  quick-add title, so probes such as `dot dep --help` create stray tasks. Consult
+  `dot --help`, use only listed subcommands, and inspect `jj diff` immediately
+  after every tracker command so accidental records cannot enter a commit.
