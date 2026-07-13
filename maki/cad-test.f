@@ -4,6 +4,11 @@
 
 require lib/test.f
 require lib/string.f
+require lib/fs.f
+require lib/process.f
+require lib/process-argv.f          \ RUN-ARGV-CAPTURE: the fresh-process replay child
+require lib/fs-mutate.f             \ WRITE-ALL: the replay child driver file
+require maki/device-artifacts.f     \ MAKI-GRADE: private tmp driver path (PREPARE/DRIVER$/CLEAN)
 require maki/report.f
 require maki/cad.f
 require maki/eval.f                 \ EVAL:CHECK-PASSES?: drive the checker over the translated body
@@ -58,7 +63,36 @@ variable CT-VA  variable CT-VU
    s" " V-PASS G-GRADCHECK  REPORT:GATE!
    s" " V-PASS G-PROFILE    REPORT:GATE! ;
 
+\ ---- fresh-process replay child (durable loop: PROMOTE here, TILE there) -----
+\ The child is a fresh bin/hb that defines the SAME model (identical region facts
+\ -> identical section 7.4 key: same engine binary, same target facts, inherited
+\ cwd -> same store root) and renders TILE to stdout; the parent asserts the
+\ render replays the selection this process PROMOTEd - the rehydration path
+\ through the production TILE entry, in a genuinely fresh process.
+create RPL-OUT $4000 allot   create RPL-ERR $1000 allot
+
+: RPL-NL ( -- )  $0A SB-APPEND-C ;
+: RPL-DRIVER! ( -- )
+   SB-RESET
+   s" require maki/cad.f" SB-APPEND RPL-NL
+   s" package MAKI" SB-APPEND RPL-NL
+   s" MODEL: FFN ( x:2x3 w1:3x4 b1:1x4 w2:4x5 b2:1x5 -- y ) LINEAR GELU LINEAR ;" SB-APPEND RPL-NL
+   s" TILE CAD-SHOW" SB-APPEND RPL-NL
+   s" ;package" SB-APPEND RPL-NL
+   MAKI-GRADE:DRIVER$ SB$ WRITE-ALL ;
+
+: RPL-CHILD-TILE$ ( -- ptr u8 n )               \ spawn the child; return its stdout
+   PROC-ARGV-RESET
+   s" --load"           >LEN PROC-ARGV+
+   MAKI-GRADE:DRIVER$   >LEN PROC-ARGV+
+   s" bin/hb" >LEN  RPL-OUT $4000 >LEN  RPL-ERR $1000 >LEN  30000 >MS  RUN-ARGV-CAPTURE
+   {: outu:len erru:len rc:rc :}
+   rc RC>N 0 <> if RPL-ERR erru LEN>N type cr then   \ surface child stderr on failure
+   rc RC>N 0 T=
+   RPL-OUT outu LEN>N ;
+
 T-RESET
+STORE-RESET  SK-TAB-RESET  REPLAY-RESET   \ hermetic: no stale rows, table entries, or warm latch
 
 \ ---- no model defined: every command fails closed --------------------------
 ' TRY-NOMODEL E-CAD-NOMODEL TTHROWS
@@ -241,7 +275,42 @@ PROMOTE dup REPORT:CACHE$ s" FFN" T$= drop
 0 FP-REGION-ID TARGET:SM87 SK-KEY$ SCHED-GET TTRUE 0 T=         \ region-0 selection = gemm default (candidate 0)
 0 FP-REGION-ID TARGET:SM87 SK-KEY$ EVID-GET TTRUE
 s" certify=pass|golden=pass|gradcheck=pass|profile=not-run" T$=
-STORE-RESET
+
+\ ---- same-process replay: the promoted selection replays into TILE ----------
+\ PROMOTE wrote the schedules row through SK-PUT-DURABLE (hot table + file in one
+\ step), so this session's next TILE is a replay HIT: the report renders the hit
+\ row and drops both "defaults" rows.
+TILE
+dup REPORT:SELECT@ 0 T=
+dup REPORT:RENDER CT-SAVE
+s" schedule: replay hit -> stored selection 0"                CT-IN
+s" schedule: unmeasured shape class -> using defaults"        CT-NOTIN
+s" schedule: defaults (unmeasured shape class - cad-6 tunes)" CT-NOTIN
+drop
+
+\ ---- a stored non-default selection overrides the closed-form default -------
+0 FP-REGION-ID TARGET:SM87 SK-KEY$ 7 SK-PUT-DURABLE
+TILE
+dup REPORT:SELECT@ 7 T=
+dup REPORT:RENDER CT-SAVE  s" schedule: replay hit -> stored selection 7" CT-IN
+drop
+
+\ ---- cold-session rehydration: cleared table + latch reload from the file ----
+SK-TAB-RESET  REPLAY-RESET
+0 FP-REGION-ID TARGET:SM87 SK-KEY$ SK-GET nip TFALSE            \ the table really is cold
+TILE
+dup REPORT:SELECT@ 7 T=                                         \ rehydrated; latest row wins
+dup REPORT:RENDER CT-SAVE  s" schedule: replay hit -> stored selection 7" CT-IN
+drop
+
+\ ---- fresh-process replay: a spawned bin/hb TILEs the same shape -> HIT ------
+s" habu-cad-replay" MAKI-GRADE:PREPARE
+RPL-DRIVER!
+RPL-CHILD-TILE$ CT-SAVE
+s" schedule: replay hit -> stored selection 7"         CT-IN
+s" schedule: unmeasured shape class -> using defaults" CT-NOTIN
+MAKI-GRADE:CLEAN
+STORE-RESET  SK-TAB-RESET  REPLAY-RESET   \ leave the store, table, and latch clean
 
 \ ---- EXPLAIN: repair packets for the non-pass gates ------------------------
 \ certify + golden + gradcheck all pass on host, so only PROFILE (device) emits a packet.

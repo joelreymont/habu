@@ -1,7 +1,11 @@
 \ maki/store-replay-test.f - checked tests for the durable replay backing (dot cad-5).
 \ SK-PUT-DURABLE writes memory + schedules.rows; STORE-REPLAY-LOAD rehydrates the
 \ in-memory table from the file (latest row per key wins); the load is capacity-guarded
-\ (E-SK-FULL past SK-TAB-CAP). Writes only under the store root; STORE-RESET cleans up.
+\ (E-SK-FULL past SK-TAB-CAP). The session latch (REPLAY-READY? / REPLAY-ENSURE) merges
+\ the file once per process, before the first lookup and before the first durable write
+\ (load-before-first-write: rehydration never clobbers a fresher production row), and
+\ a missing store is a clean no-op. Writes only under the store root; STORE-RESET +
+\ SK-TAB-RESET + REPLAY-RESET leave no rows, table entries, or warm latch behind.
 
 require lib/test.f
 require lib/string.f
@@ -48,12 +52,37 @@ STORE-REPLAY-LOAD
 0 FP-REGION-ID TARGET:SM87 SK-KEY$ SK-GET drop 9 T=
 SK-TAB-COUNT 1 T=                     \ still one distinct key
 
+\ ---- session latch: merge once per process, never re-merge -------------------
+REPLAY-RESET
+REPLAY-READY? TFALSE
+SK-TAB-RESET
+REPLAY-ENSURE                                                  \ cold latch -> merge the file rows
+REPLAY-READY? TTRUE
+0 FP-REGION-ID TARGET:SM87 SK-KEY$ SK-GET drop 9 T=
+0 FP-REGION-ID TARGET:SM87 SK-KEY$ 11 SK-PUT                   \ fresher memory-only row
+REPLAY-ENSURE                                                  \ warm latch: no re-merge...
+0 FP-REGION-ID TARGET:SM87 SK-KEY$ SK-GET drop 11 T=           \ ...so the live row survives
+
+\ ---- load-before-first-write: a durable put is never clobbered by rehydration -
+REPLAY-RESET  SK-TAB-RESET
+0 FP-REGION-ID TARGET:SM87 SK-KEY$ 11 SK-PUT-DURABLE           \ ensures (merges 9) BEFORE writing 11
+REPLAY-READY? TTRUE                                            \ the durable put warmed the latch
+0 FP-REGION-ID TARGET:SM87 SK-KEY$ SK-GET drop 11 T=           \ the fresh row wins in memory
+SK-TAB-RESET  STORE-REPLAY-LOAD
+0 FP-REGION-ID TARGET:SM87 SK-KEY$ SK-GET drop 11 T=           \ and is the latest durable row
+
+\ ---- fail-safe miss: ENSURE without a store is a clean no-op ------------------
+STORE-RESET  SK-TAB-RESET  REPLAY-RESET
+REPLAY-ENSURE
+REPLAY-READY? TTRUE
+SK-TAB-COUNT 0 T=
+
 \ ---- capacity-guarded load (33 distinct rows > SK-TAB-CAP=32) ---------------
 STORE-RESET  SK-TAB-RESET
 33 SRT-WRITE
 ' SRT-CAP-LOAD E-SK-FULL TTHROWS
 
-STORE-RESET
+STORE-RESET  SK-TAB-RESET  REPLAY-RESET   \ leave no rows, table entries, or warm latch
 T-REPORT
 
 ;package

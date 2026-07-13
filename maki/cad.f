@@ -55,7 +55,8 @@
 \ LOWER reports REAL node facts (op
 \ count + shape/dtype/layout keys from the IR); FUSE plans real regions + traffic
 \ (maki/fusion-plan.f, maki/traffic.f); MEMORY plans per-hot coalescing status +
-\ vector-width/tail facts (maki/mem-plan.f, cad-3); TILE stays conservative (cad-4).
+\ vector-width/tail facts (maki/mem-plan.f, cad-3); TILE selects conservative
+\ defaults and replays a PROMOTEd selection by its section 7.4 key (cad-4/cad-5).
 \ GOLDEN/GRADCHECK are REAL on the host now; PROFILE stays honest not-run without a
 \ GPU. PROMOTE (CAD 7c gate set) refuses (E-CAD-GATE) unless CERTIFY passes, GOLDEN
 \ passes, and GRADCHECK did not FAIL (not-run clears it); PROFILE is mandatory-to-run
@@ -87,6 +88,7 @@ require maki/mem-plan.f
 require maki/schedule.f
 require maki/sched-key.f
 require maki/store.f
+require maki/store-replay.f          \ durable replay bridge: SK-PUT-DURABLE + REPLAY-ENSURE
 require maki/golden.f
 require maki/lower-golden.f
 require maki/gradcheck.f
@@ -899,11 +901,12 @@ private
    MEM-PLAN-INTO                                     \ per-hot coalescing status + tail/align rows
    MEM-MOVE-ROWS ;                                   \ movement materialization rows (landed)
 
-\ ---- schedule (cad-4): family selection + all candidates + closed-form default -
+\ ---- schedule (cad-4/cad-5): family selection + candidates + durable replay ---
 \ TILE picks the schedule family from region 0's class mix (v1 first-region only),
 \ prints every candidate of that family, selects the deterministic default, renders
-\ the section 7.4 cache key, and reports the replay miss ("using defaults"), since
-\ cad-4 has no measurements (those land in cad-5/cad-6).
+\ the section 7.4 cache key, then consults the replay table (rehydrated once per
+\ process from schedules.rows): a hit replays the selection PROMOTE recorded for
+\ this exact key; a miss keeps the defaults ("using defaults" - cad-6 tunes).
 : REGION-HAS-SOFTMAX? ( CAD-KIND:region -- bool ) {: r:CAD-KIND:region :}   \ region carries a softmax-row op (two reductions)
    MIR-N@ 0 ?do
       i MIR-NODE-ID {: node:CAD-KIND:node-id :}
@@ -922,10 +925,25 @@ private
 : TILE-CANDS+ ( report n -- report ) {: fam:n :}   \ emit every candidate row of a family
    fam FAM-SPACE 0 ?do  fam i CAND$ REPORT:CAND+  loop ;
 
-\ replay lookup is the cad-5 store seam: a miss means the shape class is unmeasured.
-: TILE-REPLAY-NOTE ( report CAD-KIND:region -- report ) {: r:CAD-KIND:region :}
-   r TARGET:SM87 SK-KEY$ SK-GET nip if exit then
-   s" schedule: unmeasured shape class -> using defaults" REPORT:WARN+ ;
+\ replay lookup is the cad-5 store seam, session-aware: REPLAY-ENSURE merges
+\ schedules.rows into the hot table once per process, so a fresh process replays
+\ what an earlier session's PROMOTE recorded. A hit REPLACES the closed-form
+\ default selection - the stored row is the selection PROMOTE recorded for exactly
+\ this key, and the key's engine field pins it to this engine build, so the index
+\ is valid for the family by construction. A miss keeps the defaults and says so.
+: TILE-HIT+ ( report n -- report ) {: sel:n :}
+   sel REPORT:SELECT!
+   SB-RESET  s" schedule: replay hit -> stored selection " SB-APPEND  sel SB-INT
+   SB$ REPORT:WARN+ ;
+
+: TILE-MISS+ ( report -- report )
+   s" schedule: unmeasured shape class -> using defaults" REPORT:WARN+
+   s" schedule: defaults (unmeasured shape class - cad-6 tunes)" REPORT:WARN+ ;
+
+: TILE-REPLAY ( report CAD-KIND:region -- report ) {: r:CAD-KIND:region :}
+   REPLAY-ENSURE
+   r TARGET:SM87 SK-KEY$ SK-GET if TILE-HIT+ exit then
+   drop TILE-MISS+ ;
 
 : TILE-INTO ( report -- report )
    FP-BUILD
@@ -935,8 +953,7 @@ private
    fam TILE-CANDS+
    fam  rep MIR-COLS@ COLS-RAW  rep REGION-MAXVEC  FAM-DEFAULT  REPORT:SELECT!
    r0 TARGET:SM87 SK-KEY$ REPORT:CACHE!
-   r0 TILE-REPLAY-NOTE
-   s" schedule: defaults (unmeasured shape class - cad-6 tunes)" REPORT:WARN+
+   r0 TILE-REPLAY
    s" schedule: family from region 0 only (v1 limitation)" REPORT:WARN+ ;
 
 : TUNE-INTO ( report -- report )
@@ -954,10 +971,12 @@ private
 \ installed via golden.f's device hook); else the host self-consistency oracle runs. Off-device
 \ the device leg is inert, so the host legs are unchanged. GOLDEN-INTO is provided by maki/golden.f.
 
-\ GRADCHECK is REAL on the host now (maki/gradcheck.f): a numeric model-level
-\ gradcheck for reference-complete, host-executable (elementwise) models; models with
-\ a reduction/matmul/rope op or a missing adjoint stay honestly not-run (named reason).
-\ GRADCHECK-INTO is provided by maki/gradcheck.f.
+\ GRADCHECK is REAL on the host (maki/gradcheck.f): a numeric model-level gradcheck
+\ that drives the full-tensor executor over the whole IR (forward + emitted backward),
+\ so every host-executable, reference-complete model gradchecks - matmul/linear,
+\ norms, softmax, rope, movement, reduce/scatter included; only an op with no host
+\ reference (cast/decode) or no supported adjoint stays honestly not-run (named
+\ reason). GRADCHECK-INTO is provided by maki/gradcheck.f.
 
 : PROFILE-INTO ( report -- report )
    s" no-device" V-NOTRUN G-PROFILE REPORT:GATE! ;
@@ -1021,6 +1040,9 @@ private
 \ an evidence row (the four gate verdicts) and a schedules row (region-0 selection),
 \ both keyed by the section 7.4 key of region 0 (the same key TILE/OPTIMIZE cache). A
 \ refused promote throws in PROMOTE-REPORT before this runs, so no partial rows land.
+\ The schedules row goes through SK-PUT-DURABLE (maki/store-replay.f) - hot table AND
+\ schedules.rows in one step - so the SAME session's next TILE replays it from memory
+\ and a FRESH process rehydrates it from the file (the closed replay loop).
 : PROMOTE-EVIDENCE ( report -- report )
    dup G-CERTIFY   REPORT:GATE-TAG@ {: c:n :}
    dup G-GOLDEN    REPORT:GATE-TAG@ {: g:n :}
@@ -1029,7 +1051,7 @@ private
    dup REPORT:SELECT@ {: sel:n :}
    0 FP-REGION-ID {: r0:CAD-KIND:region :}
    r0 TARGET:SM87 SK-KEY$ c g gc p GOLDEN-DEV? GOLDEN-PREC@ EVID-PUT-G  \ golden=device-<v>:<prec> when the device leg ran
-   r0 TARGET:SM87 SK-KEY$ sel SCHED-PUT ;
+   r0 TARGET:SM87 SK-KEY$ sel SK-PUT-DURABLE ;
 
 : OPTIMIZE-PROMOTE ( report -- report )        \ record the decision, never throw
    PROMOTE-OK? if

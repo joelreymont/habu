@@ -39,11 +39,13 @@
 \ this file's ON-DISK encoding, deliberately owned here so the wire format stays
 \ stable even if maki/report.f changes its human-facing verdict render.
 \
-\ Consumers land later: schedules is backed by the replay table now
-\ (maki/store-replay.f) and written by PROMOTE (maki/cad.f); profitability feeds the
-\ section 5.7 planner rollback, calibration feeds section 9 self-calibration, and
-\ measurement history feeds cad-6-tune / cad-7 regression detection. v1 is schema +
-\ append + query + tests only for those classes - no consumers wired yet.
+\ Consumers: schedules is LIVE end to end - PROMOTE (maki/cad.f) records the region-0
+\ selection through SK-PUT-DURABLE (maki/store-replay.f: hot table + schedules.rows in
+\ one step) and TILE/TUNE rehydrate the table once per process (REPLAY-ENSURE) and
+\ replay the stored selection by key, same-process and fresh-process. The other
+\ classes await their consumers: profitability feeds the section 5.7 planner rollback,
+\ calibration feeds section 9 self-calibration, and measurement history feeds
+\ cad-6-tune / cad-7 regression detection - schema + append + query + tests only.
 \
 \ Fail closed: IO errors from lib/fs / lib/fs-mutate propagate (never swallowed); an
 \ empty key or a newline in the key/any field is a named throw; an oversized row or

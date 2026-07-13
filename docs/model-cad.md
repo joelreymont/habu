@@ -263,7 +263,11 @@ per shape/dtype/layout/target.
   decode-v1 (PBD-style chains — the driving workload's family; its ops and
   references arrive with the LA-port dots). The schedule object does not
   carry save/recompute policy — that is a fusion-plan field (CAD-PLAN §12).
-- Exists: dot `habu-ptx-m9-bench` (bench harness; no autotuner exists yet).
+- Exists: dot `habu-ptx-m9-bench` (bench harness; no autotuner exists yet),
+  and the durable schedule-replay loop is wired: `PROMOTE` persists the
+  region-0 selection through `SK-PUT-DURABLE` (hot table + `schedules.rows`)
+  and `TILE`/`TUNE` rehydrate once per process and replay it by key, in the
+  same process and in a fresh one.
   New dots: `cad-4-schedule` (the object + cache key; depends on derive dot
   for keys or hand-written compare until it lands), `cad-5-store` (the
   artifact store: on-disk layout + schema for kernels, evidence, measurement
