@@ -4,6 +4,11 @@
 
 Last updated: 2026-07-13
 
+- **A dot claim names the actual implementation workspace, not the first
+  workspace that exposed the bug.** When review splits mixed work into separate
+  commits, update and commit the claim before continuing in the new workspace;
+  stale claims defeat overlap detection and review routing.
+
 - **Null-check the backing cell before refining a pointer field:** `ptr-field @`
   returns a typed pointer, so comparing it with numeric zero violates the
   checker contract. Test the raw address cell before allocating, then use the
