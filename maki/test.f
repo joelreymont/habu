@@ -244,6 +244,8 @@ TEST:SUITE maki/eval-emit-test.f
 TEST:;SUITE
 TEST:SUITE maki/eval-live-author-test.f
 TEST:;SUITE
+TEST:SUITE maki/eval-emit-device-test.f
+TEST:;SUITE
 TEST:SUITE maki/eval-train.f
 TEST:;SUITE
 TEST:SUITE maki/maki-test.f
