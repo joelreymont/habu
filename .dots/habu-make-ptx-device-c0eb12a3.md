@@ -91,3 +91,19 @@ ptx-toolchain suite; needs the gpu.f self-emit treatment + failure-class tests.
 /tmp/*.cubin though its launchers self-emit - reconcile. REMAINING: fusion-
 compare self-emit, matmul-device-test.f orphan (in-process FFI launch), bench
 self-emit (PTXBENCH emit gap), cuda-launch.f, on-device failure-class runs.
+
+FUSION-COMPARE LANDED 2026-07-14 (devproof worker, "ptx: fusion-compare
+self-emits v4 cubins"): ALL THREE shared /tmp cubin loads were the same
+fail-open class (saxpy-v4/relu-v4/fused-relu-v4, none produced by the repo) -
+the on-device death just happened to hit fused-relu because stale leftovers of
+the other two existed. tools/ptx/fusion-emit.f (device-FFI-free, in-process
+safe) now self-emits each checked v4 producer to a private per-run PTXTC root,
+fail-closed: missing producer / emit rc!=0 -> PTXTC:EMIT-GUARD E-PTX-EMIT with
+child stderr surfaced; ptxas rc!=0 -> ASM-REPORT stderr + E-PTX-EMIT; missing-
+cubin-at-load eliminated by construction (throw precedes cuModuleLoad).
+Host proof tools/ptx/fusion-emit-test.f in the ptx-toolchain suite (both gate
+tables). On-device fusion-compare run pending - the perf re-measure lane
+(habu-perf-registry-re-6be03867) exercises it on the Orin and is its evidence.
+REMAINING: on-device failure-class runs (6be03867 evidence), matmul-device-
+test.f orphan, bench self-emit (PTXBENCH emit gap), cuda-launch.f,
+zed-device-suite.f /tmp reconcile.

@@ -4172,3 +4172,9 @@ unchanged (148855). Keys for milestone 2:
   can land a maki/ reference in the stdlib gate layer and stay green until the
   resident run.f. Integrator must run the slice that owns each touched file
   class, not just the suites the diff obviously participates in.
+- Publication chains must be `&&`-guarded end to end: a closure commit went to
+  master with dot-dep-lint RED because the chain ran the lint but did not gate
+  the commit/push on its exit status (dangling blocker left by the closed dot).
+  Run the dot gate, CHECK it, then commit - never `cmd; commit; push` in one
+  unguarded script. Closing a dot must also sweep frontmatter `blocks:` lists
+  that reference it.
