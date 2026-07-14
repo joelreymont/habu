@@ -240,6 +240,8 @@ TEST:SUITE maki/eval-train.f
 TEST:;SUITE
 TEST:SUITE maki/maki-test.f
 TEST:;SUITE
+TEST:SUITE maki/gpu-emit-test.f
+TEST:;SUITE
 TEST:SUITE maki/device-smoke.f
 TEST:;SUITE
 TEST:;GROUP
