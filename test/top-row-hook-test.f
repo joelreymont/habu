@@ -63,7 +63,8 @@ variable TRH-OK-A
 
 : TRH-ARENA-FULL ( -- )
    TRH-RESET
-   TRH-ARENA-CAP 1+ TRH-ROOM! ;
+   TRH-ARENA-CAP TRH-AU !
+   1 TRH-ROOM! ;
 
 : TRH-ROW-FULL ( -- )
    TRH-RESET
