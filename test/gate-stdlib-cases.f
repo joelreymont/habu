@@ -365,6 +365,10 @@ TEST:SUITE codegen-role
    tools/codegen-role-test.f
 TEST:;SUITE
 
+TEST:SUITE icode-fixup
+   test/icode-fixup-test.f
+TEST:;SUITE
+
 TEST:SUITE tail-pure-fixtures
    lib/json-write-test.f
    lib/json-read-test.f

@@ -4,6 +4,26 @@
 
 Last updated: 2026-07-14
 
+- **Resolved fixups are not live assembler state:** counting historical rows
+  exhausted `NFX` after `$1000` sequential forward references and made `LBL,`
+  quadratic. Keep per-label pending chains, reclaim their slots through a free
+  list, and make `NFX` count only simultaneous pending relocations.
+
+- **Single-pass relocation patching validates signed reach before masking:**
+  `D26`, `D19`, and `ENC-ADRD` currently wrap out-of-range deltas silently,
+  unlike the recovery assembler. Keep in-range opcode regressions while the
+  separately tracked relocation-range fix adds fail-closed bounds.
+
+- **A dependency edge names what the new dot blocks:** `dot add -a TARGET`
+  records the new dot as blocking `TARGET`. For successor work, add successor
+  IDs to the predecessor's `blocks:` and verify the resulting order with
+  `dot ready`.
+
+- **A live low-level word does not prove a matching require-registry row:**
+  resident images can contain assembler words while `require` reloads their
+  source and hits duplicate definitions. Capability-probe before conditional
+  includes, then run both fresh-process and resident focused gates.
+
 - **A boot-prefix primitive is not implemented until both emitters execute its
   focused behavior.** `tok-imm?` existed in `src/habu/habu2.f` but not
   `bootstrap/cg/forth.fs`; native fixpoint passed while no-binary recovery died

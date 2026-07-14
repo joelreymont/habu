@@ -6,7 +6,7 @@ $1ff000 constant CODE-CAP-BYTES  \ MPAGE-CODE-OFF: full 2 MB executable window
 CODE-CAP-BYTES 4 / constant CODE-CAP-WORDS  \ derived: guard can never drift from the mmap
 $1002 constant ICODE-MAP-PRIVATE-ANON
 $1000 constant ICODE-TAB-CELLS
-$4 constant ICODE-TAB-COUNT
+$5 constant ICODE-TAB-COUNT
 ICODE-TAB-CELLS ICODE-TAB-COUNT * cells constant ICODE-TAB-BYTES
 variable CODE-A
 variable ICODE-TAB-A
@@ -73,32 +73,48 @@ variable EP
    I-W @ $8 rshift $FF and EP@ 1 CODE-BYTE+ c@ or EP@ 1 CODE-BYTE+ c!
    I-W @ $10 rshift $FF and EP@ 2 CODE-BYTE+ c@ or EP@ 2 CODE-BYTE+ c!
    I-W @ $18 rshift $FF and EP@ 3 CODE-BYTE+ c@ or EP@ 3 CODE-BYTE+ c! ;
-\ labels: LBLP[id] = defining word pos, or -1 if pending.
+\ labels: LBLP[id] = defining word pos, or -1 while pending.
 ICODE-TAB-CELLS constant LBL-CAP
 \ Keep the historical table names as accessors so emitter code stays readable.
 : LBLP ( -- ptr n ) 0 ICODE-TAB ;
 variable NLBL
-\ fixups: site word-pos, target label, kind (0=B26, 1=cond/CBZ 19-bit, 2=ADR)
+\ fixups: site word-pos, next slot, kind (0=B26, 1=cond/CBZ 19-bit, 2=ADR),
+\ and one pending-chain head per label. Target identity is the owning FXH chain.
 : FXS ( -- ptr n ) 1 ICODE-TAB ;
-: FXL ( -- ptr n ) 2 ICODE-TAB ;
+: FXN ( -- ptr n ) 2 ICODE-TAB ;
 : FXK ( -- ptr n ) 3 ICODE-TAB ;
+: FXH ( -- ptr n ) 4 ICODE-TAB ;
 variable NFX
+variable FX-FREE
+variable FX-NEW
+
+: FX-INIT ( -- )
+   -1 FX-FREE !
+   0 FX-NEW ! ;
 
 : ASM-INIT ( -- )
    ARESET
    0 NLBL !
    0 NFX !
-   0 BEGIN
+   FX-INIT
+   0 begin
       dup cells LBLP + -1 swap !
+      dup cells FXH + -1 swap !
       1 + dup LBL-CAP 1 - >
-   UNTIL drop ;
+   until drop ;
 
 : ?LBL ( -- )  NLBL @ LBL-CAP 1- > IF s" icode: out of labels" 72 die THEN ;
 
+: FX-FREE-BAD? ( -- bool )
+   FX-FREE @ -1 <
+   FX-FREE @ ICODE-TAB-CELLS >= or
+   FX-FREE @ 0 < FX-NEW @ ICODE-TAB-CELLS >= and or ;
+
 : FX? ( -- )
-   NFX @ ICODE-TAB-CELLS 1 - > IF
+   NFX @ ICODE-TAB-CELLS 1 - > if
       s" icode: out of fixups" 72 die
-   THEN ;
+   then
+   FX-FREE-BAD? if s" icode: fixup free list corrupt" 72 die then ;
 
 : LBL ( -- label )  ?LBL  NLBL @ dup 1 + NLBL !  >LABEL ;
 
@@ -106,10 +122,31 @@ variable NFX
 
 : LABEL! ( label ptr n -- ) swap LABEL>N swap ! ;
 
+: FX-TAKE ( -- n )
+   FX?
+   FX-FREE @ 0 >= if
+      FX-FREE @ dup cells FXN + @ FX-FREE !
+   else
+      FX-NEW @ dup 1 + FX-NEW !
+   then
+   NFX @ 1 + NFX ! ;
+
+: FX-PUT ( n -- )
+   dup FX-FREE @ swap cells FXN + !
+   FX-FREE !
+   NFX @ 1 - NFX ! ;
+
+: FX-LINK ( n -- )
+   I-W !
+   I-LBL @ cells FXH + @ I-W @ cells FXN + !
+   I-W @ I-LBL @ cells FXH + ! ;
+
 : FX+ ( n label n -- )
-   I-KIND ! LABEL>N I-LBL ! I-SITE !  FX?          \ record a forward fixup
-   I-SITE @ NFX @ cells FXS + !  I-LBL @ NFX @ cells FXL + !
-   I-KIND @ NFX @ cells FXK + !  NFX @ 1 + NFX ! ;
+   I-KIND ! LABEL>N I-LBL ! I-SITE !
+   FX-TAKE I-W !
+   I-SITE @ I-W @ cells FXS + !
+   I-KIND @ I-W @ cells FXK + !
+   I-W @ FX-LINK ;
 
 \ encode a word delta into the branch word for a kind
 : D26 ( n -- n )  $3FFFFFF and ;                               \ B/BL: bits 0..25 (26-bit field)
@@ -143,20 +180,27 @@ variable BBASE  variable BKIND
    I-LBL @ cells LBLP + @ dup 0 < IF
      drop  ASM-CP @ I-LBL @ >LABEL 2 FX+  I-RD @ 0 ENC-ADR EMITW
    ELSE  ASM-CP @ - $4 *  I-RD @ swap ENC-ADR EMITW  THEN ;
-\ define a label here; backpatch all pending fixups that target it
+\ define a label here; backpatch and reclaim only that label's pending chain
 variable LBI
 
+: FX-PATCH ( -- )
+   ASM-CP @ LBI @ cells FXS + @ -                \ delta = here - site (words)
+   LBI @ cells FXK + @ 0 = if D26 else
+      LBI @ cells FXK + @ 1 = if D19 else $4 * ENC-ADRD then
+   then
+   LBI @ cells FXS + @ PATCH ;
+
 : LBL, ( label -- )
-   LABEL>N I-LBL !  ASM-CP @ I-LBL @ cells LBLP + !
-   0 LBI ! BEGIN LBI @ NFX @ < WHILE
-     LBI @ cells FXL + @ I-LBL @ = IF
-       ASM-CP @ LBI @ cells FXS + @ -                \ delta = here - site (words)
-       LBI @ cells FXK + @ 0 = IF D26 ELSE
-         LBI @ cells FXK + @ 1 = IF D19 ELSE $4 * ENC-ADRD THEN THEN
-       LBI @ cells FXS + @ PATCH
-     THEN
-     LBI @ 1 + LBI !
-   REPEAT ;
+   LABEL>N I-LBL !
+   I-LBL @ cells FXH + @ LBI !
+   -1 I-LBL @ cells FXH + !
+   ASM-CP @ I-LBL @ cells LBLP + !
+   begin LBI @ 0 >= while
+      FX-PATCH
+      LBI @ cells FXN + @ I-N !
+      LBI @ FX-PUT
+      I-N @ LBI !
+   repeat ;
 
 \ --- data layer ---
 : DCQ, ( n -- )

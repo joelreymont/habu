@@ -8,8 +8,8 @@
 \ the object-image writer drives), executed, and the emitted machine words plus
 \ fixup records are decoded and asserted:
 \ - CLOC-MAIN role (src/habu/habu2.f C-LOCAL-REF): every CLOC-MAIN use must
-\   record exactly one pending label-relative B26 branch fixup targeting the
-\   CLOC-MAIN label (opcode B, zero delta, site recorded) - never a raw fetch.
+\   record exactly one pending label-relative B26 branch fixup on the
+\   CLOC-MAIN label chain (opcode B, zero delta, site recorded) - never a raw fetch.
 \ - spawn descriptor-slot role (src/habu/habu1.f SPAWN-DARWIN-ZERO-ADESC /
 \   -ZERO-ATTR): the zero loop must store the zeroed register to [SP, off] for
 \   exactly the full 8-byte slot progression base..base+size-8 (the SZA-I
@@ -486,8 +486,12 @@ variable CGR-USES
       s" codegen-role: CLOC-MAIN fixup is not B26 kind" type cr
       E-CGR-CLOC throw
    then
-   0 cells FXL + @ CGR-LBL-N @ <> if
-      s" codegen-role: CLOC-MAIN fixup targets another label" type cr
+   CGR-LBL-N @ cells FXH + @ 0 <> if
+      s" codegen-role: CLOC-MAIN label chain misses its fixup" type cr
+      E-CGR-CLOC throw
+   then
+   0 cells FXN + @ -1 <> if
+      s" codegen-role: CLOC-MAIN fixup chain has an extra row" type cr
       E-CGR-CLOC throw
    then
    0 cells FXS + @ 0 <> if
