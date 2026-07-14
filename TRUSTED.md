@@ -699,6 +699,7 @@ that source is explicitly certified; they are not stale-checked by the default
 | AID>RAW | `CAD-KIND:artifact-id -- n` | Private artifact-id identity projection used only by `POLICY:CHECK`'s value-level artifact equality (`AID=`); no public raw conversion is exported (the maki/target/target.f `TARGET-ID>RAW` pattern). | `maki/evidence/policy-test.f` | maki/evidence/policy.f | 2026-07-14 |
 | T>AID | `n -- CAD-KIND:artifact-id` | Test-only artifact-id fabrication: the promotion suite needs runtime artifact ids to exercise the value-level binding, but no public producer exists yet; confined to the policy suite. | `maki/evidence/policy-test.f` | maki/evidence/policy-test.f | 2026-07-14 |
 | T>SID | `n -- CAD-KIND:schema-id` | Test-only schema-id fabrication: the promotion suite needs a runtime policy identity to assert DEFAULT-POLICY equals the V1 gate set; no public producer exists yet; confined to the policy suite. | `maki/evidence/policy-test.f` | maki/evidence/policy-test.f | 2026-07-14 |
+| RAW>PROMOTED | `n -- promoted` | Private R7 stage mint: the promoted-artifact witness, minted only by `ART:PROMOTE` from an `ART:built` + a sealed `POLICY:granted`, so a raw n cannot forge a promoted artifact and no caller can fabricate one around the sealed promotion transition. | `maki/evidence/promote-test.f` | maki/evidence/promote.f | 2026-07-14 |
 | RAW>RGN | `n -- CAD-KIND:region` | Private fusion-planner region refinement after `FP-CK` and the region-range validator prove the raw table position names a planned region (R3 owner-module rule; landed by the closed dot `habu-maki-apply-cad-27b7a7d7`, owned by `habu-epic-model-cad-70b629a9`). | `maki/fusion-plan-test.f` | maki/fusion-plan.f | 2026-07-12 |
 | RGN>RAW | `CAD-KIND:region -- n` | Private region projection used only by fusion-plan bounds revalidation, region-indexed owner tables, and the `REGION_<rid>` render boundaries; no public raw cast is exported (landed by the closed dot `habu-maki-apply-cad-27b7a7d7`, owned by `habu-epic-model-cad-70b629a9`). | `maki/fusion-plan-test.f` | maki/fusion-plan.f | 2026-07-12 |
 | RAW>TARGET-ID | `n -- CAD-KIND:target-id` | Private target-registry refinement after semantic descriptor validation, capacity validation, and append-only slot allocation. | `maki/target/target-test.f` | maki/target/target.f | 2026-07-12 |
@@ -1412,6 +1413,7 @@ maki/evidence/policy.f:MINT-GRANT-PROOF prim-axiom habu-epic-model-cad-70b629a9
 maki/evidence/policy.f:AID>RAW prim-axiom habu-epic-model-cad-70b629a9
 maki/evidence/policy-test.f:T>AID prim-axiom habu-epic-model-cad-70b629a9
 maki/evidence/policy-test.f:T>SID prim-axiom habu-epic-model-cad-70b629a9
+maki/evidence/promote.f:RAW>PROMOTED prim-axiom habu-epic-model-cad-70b629a9
 maki/target/target.f:RAW>TARGET-ID prim-axiom habu-epic-model-cad-70b629a9
 maki/target/target.f:TARGET-ID>RAW prim-axiom habu-epic-model-cad-70b629a9
 maki/tensor-value.f:RAW>TENSOR prim-axiom habu-epic-model-cad-70b629a9

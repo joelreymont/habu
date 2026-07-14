@@ -628,6 +628,17 @@ points stay listed.
   token, foreign class, id-swap, private-mint, non-gate-set input), and executed
   white-box value cores (AID= equality, the SLOT-ERR decision table incl. the
   wrong-artifact E-EVID-ARTIFACT fact, the V1-gate-set default).
+- `maki/evidence/promote.f` — R7 promotion transition + store seal: the sealed
+  `ART:PROMOTE ( ART:built POLICY:granted -- ART:promoted )` (promotion needs the
+  sealed grant, so a forged tag readout cannot reach `ART:promoted`), the private
+  `RAW>PROMOTED` stage mint. Companion to the maki/store.f store-row-writer seal and
+  the maki/cad.f golden-provenance threading that retires the maki/golden.f ambient
+  globals.
+- `maki/evidence/promote-test.f` — promotion + store-seal acceptance: the
+  ART:PROMOTE positive control, the missing-grant / private-mint negatives (forged
+  promotion rejects through the checked path), and the store-bypass regression that
+  the sealed `MAKI:EVID-PUT` / `MAKI:EVID-PUT-G` / `MAKI:SCHED-PUT` writers no longer
+  resolve while the read surface still does.
 - `maki/maki.f` — Maki one-file entry point: host-framework `require` aggregator
   plus the curated top-level `MAKI:` surface, re-exporting the model-authoring /
   train / eval workflow words (losses, optimizers, ONNX import, checker-as-judge

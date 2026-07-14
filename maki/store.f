@@ -290,10 +290,19 @@ public
    u 0 > if a u EXISTS? if a u REMOVE-TREE then then ;
 
 \ ---- schedules -------------------------------------------------------------
+\ SEALED WRITER (R7 store seal, dot habu-v2-typestate-promotion-2266b236): SCHED-PUT
+\ leaves the public MAKI surface so nothing outside the promote/store owner can plant a
+\ schedule row (census probe 3, MODEL-CAD-V2-PLAN.md:1576-1583). It stays reachable to the
+\ package-MAKI durable writer SK-PUT-DURABLE (maki/store-replay.f) and the store suite
+\ (both package-MAKI reopens); a cross-package / qualified `MAKI:SCHED-PUT` no longer
+\ resolves (proven by maki/evidence/promote-test.f). Retiring the full durable-write path
+\ behind a typed grant is the store-rehydrate sub-dot (habu-v2-typestate-store-57afdc0a).
+private
 : SCHED-PUT ( ptr u8 n n -- ) {: ka:ptr ku:n sel:n :}
    ka ku STORE-CK-KEY
    SROW-RESET  ka ku SROW+  SROW-PIPE  sel SROW-N  SROW-NL
    CLS-SCHED STORE-APPEND ;
+public
 
 : SCHED-GET ( ptr u8 n -- n bool ) {: ka:ptr ku:n :}
    CLS-SCHED ka ku STORE-QUERY 0= if 2drop -1 false exit then
@@ -337,6 +346,16 @@ public
 \ (slice 5) writes "golden=device-<v>:<prec>" so a promoted artifact carries both the
 \ proof the device leg ran and the precision row that licensed it; the host
 \ self-consistency / artifact legs write the plain "golden=<v>" (no precision axis).
+\ SEALED WRITERS (R7 store seal, dot habu-v2-typestate-promotion-2266b236): the evidence
+\ row writers leave the public MAKI surface so nothing outside the promote/store owner can
+\ plant a `certify=pass|golden=pass|gradcheck=pass|profile=pass` row under any key (census
+\ probe 3, MODEL-CAD-V2-PLAN.md:1576-1583). They stay reachable to the package-MAKI promote
+\ path (maki/cad.f PROMOTE-EVIDENCE) and the store suite; a cross-package / qualified
+\ `MAKI:EVID-PUT` / `MAKI:EVID-PUT-G` no longer resolves (maki/evidence/promote-test.f).
+\ The golden leg/precision reach the wire encoding as raw ids projected from the typed
+\ EVID:golden-leg / EVID:prec-class the promote path threads (maki/cad.f PROMOTE-EVIDENCE),
+\ retiring the maki/golden.f ambient globals; the store owns its on-disk encoding.
+private
 : EVID-GOLDEN+ ( n bool n -- ) {: g:n gdev?:bool prec:n :}
    s" golden=" SROW+
    gdev? if s" device-" SROW+ then
@@ -354,6 +373,7 @@ public
    CLS-EVID STORE-APPEND ;
 : EVID-PUT ( ptr u8 n n n n n -- ) {: ka:ptr ku:n c:n g:n gc:n p:n :}
    ka ku c g gc p false PREC-F32 EVID-PUT-G ;
+public
 
 : EVID-GET ( ptr u8 n -- ptr u8 n bool ) {: ka:ptr ku:n :}
    CLS-EVID ka ku STORE-QUERY ;

@@ -13,12 +13,11 @@
 \
 \ Device-golden provenance is a VALUE, not ambient process state: the golden
 \ product's `leg` (golden-leg) and `prec` (prec-class) FIELDS are the typed home of
-\ what maki/golden.f's GOLDEN-DEV-FLAG / GOLDEN-PREC-V globals track today
-\ (host-vs-device leg, judged precision). Those globals survive only as the V1
-\ bridge to the promotion writer PROMOTE-EVIDENCE (maki/cad.f:1046-1054) /
-\ EVID-PUT-G (maki/store.f); retiring them is the store-seal sub-dot's work
-\ (habu-v2-typestate-promotion-2266b236), which owns the cad.f/store.f consumer.
-\ See maki/golden.f for the documented boundary.
+\ what maki/golden.f's GOLDEN-DEV-FLAG / GOLDEN-PREC-V globals used to track
+\ (host-vs-device leg, judged precision). Those ambient globals are now RETIRED by the
+\ store-seal sub-dot (habu-v2-typestate-promotion-2266b236): the promote path (maki/cad.f)
+\ threads these typed EVID:golden-leg / EVID:prec-class values from the golden gate into the
+\ (now sealed) evidence writer, so provenance is a value in transit, not process state.
 \
 \ DEVIATION from the R7 addendum's `result<EVID:class,diag-set>` transition
 \ signatures: like the stage transitions (maki/typestate.f), the skeleton evidence

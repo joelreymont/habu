@@ -92,6 +92,7 @@ require maki/store-replay.f          \ durable replay bridge: SK-PUT-DURABLE + R
 require maki/golden.f
 require maki/lower-golden.f
 require maki/gradcheck.f
+require maki/evidence/schema.f      \ EVID:golden-leg / EVID:prec-class: the typed home of the promote path's golden provenance (retires the maki/golden.f ambient globals)
 
 -5020 constant E-CAD-NOMODEL   \ command issued with no model defined
 -5021 constant E-CAD-OP        \ unknown op token in a MODEL: body
@@ -989,24 +990,51 @@ private
 \ of each region class's ACTIVE precision (maki/precision.f - the licensed-precision rows).
 \ Off-device (or without cubins / a non-lowerable model) GOLDEN-GATE-INTO is exactly GOLDEN-INTO,
 \ so the host gates are unchanged.
-: GOLDEN-GATE-DEVICE ( report -- report )
+\ ---- typed golden provenance projections (retire the maki/golden.f ambient globals) ---
+\ The golden leg + precision now travel as typed EVID values (EVID:golden-leg /
+\ EVID:prec-class) threaded through the promote path, not as ambient process state. These
+\ project the raw maki/precision id at the device boundary and, at the sealed store writer,
+\ back to the store's raw wire encoding (the store owns its on-disk format via STORE-P$).
+: ID>GPREC ( n -- EVID:prec-class )              \ raw precision id (LG-PREC-USED@) -> typed class
+   PREC-TF32 = if EVID-PREC--CLASS:PREC-TF32 else EVID-PREC--CLASS:PREC-F32 then ;
+: GLEG>DEV? ( EVID:golden-leg -- bool )          \ device leg? (drives the store golden=device- prefix)
+   MATCH golden-leg
+      host     OF false ENDOF
+      external OF false ENDOF
+      device   OF true  ENDOF
+   ;MATCH ;
+: GPREC>ID ( EVID:prec-class -- n )              \ typed class -> raw store wire id
+   MATCH prec-class
+      prec-f32  OF PREC-F32  ENDOF
+      prec-tf32 OF PREC-TF32 ENDOF
+   ;MATCH ;
+
+: GOLDEN-GATE-DEVICE ( report -- report EVID:golden-leg EVID:prec-class )
    LOWER-MODEL-GOLDEN {: v:n :}
-   -1 GOLDEN-DEV!                                  \ evidence: the device leg produced this verdict
-   LG-PREC-USED@ GOLDEN-PREC!                      \ evidence: the precision it was judged under
    LOWER-GOLDEN-REASON$ v G-GOLDEN REPORT:GATE!
-   s" golden: device model golden (cross-region vs host, composed licensed-precision tolerance)" REPORT:WARN+ ;
-: GOLDEN-GATE-INTO ( report -- report )
-   GA-EXISTS? if GOLDEN-INTO exit then             \ external artifact wins (GOLDEN-INTO selects it)
+   s" golden: device model golden (cross-region vs host, composed licensed-precision tolerance)" REPORT:WARN+
+   EVID-GOLDEN--LEG:DEVICE  LG-PREC-USED@ ID>GPREC ;   \ leg=device + judged precision (was GOLDEN-DEV!/GOLDEN-PREC!)
+\ GOLDEN-GATE-G threads the golden provenance out of the gate; GOLDEN-GATE-INTO is the
+\ provenance-dropping wrapper the standalone GOLDEN command and FULL-REPORT (OPTIMIZE/EXPLAIN) use.
+: GOLDEN-GATE-G ( report -- report EVID:golden-leg EVID:prec-class )
+   GA-EXISTS? if GOLDEN-INTO EVID-GOLDEN--LEG:EXTERNAL EVID-PREC--CLASS:PREC-F32 exit then  \ external artifact wins
    CUDA:OPEN? if
       FP-BUILD                                     \ the device legs read the region plan
       MDL-CUBINS-READY? if MDL-LOWERABLE? if GOLDEN-GATE-DEVICE exit then then
    then
-   GOLDEN-INTO ;                                   \ host self-consistency (device flag cleared there)
+   GOLDEN-INTO EVID-GOLDEN--LEG:HOST EVID-PREC--CLASS:PREC-F32 ;   \ host self-consistency (no precision axis)
+: GOLDEN-GATE-INTO ( report -- report )  GOLDEN-GATE-G 2drop ;
 
-\ full conservative report over every phase (PROMOTE / OPTIMIZE / EXPLAIN)
-: FULL-REPORT ( -- report )
+\ full conservative report over every phase (PROMOTE / OPTIMIZE / EXPLAIN). FULL-REPORT-G
+\ additionally threads the golden leg/precision provenance (EVID:golden-leg / EVID:prec-class)
+\ captured at the golden gate; PROMOTE consumes it, OPTIMIZE/EXPLAIN use the dropping FULL-REPORT.
+: FULL-REPORT-G ( -- report EVID:golden-leg EVID:prec-class )
    REPORT:NEW LOWER-INTO FUSE-INTO MEMORY-INTO TILE-INTO
-   CERTIFY-INTO GOLDEN-GATE-INTO GRADCHECK-INTO PROFILE-INTO ;
+   CERTIFY-INTO GOLDEN-GATE-G
+   {: leg:EVID:golden-leg prec:EVID:prec-class :}   \ hold provenance while the later gates render
+   GRADCHECK-INTO PROFILE-INTO
+   leg prec ;
+: FULL-REPORT ( -- report )  FULL-REPORT-G 2drop ;
 
 \ ---- promotion gate (CAD 7c gate-set alignment) ----------------------------
 : GATE-PASS? ( report n -- report bool )
@@ -1036,21 +1064,25 @@ private
    PROMOTE-OK? 0= if E-CAD-GATE throw then
    CACHE-KEY-INTO ;
 
-\ On a passing PROMOTE, write the artifact record to the CAD store (maki/store.f):
-\ an evidence row (the four gate verdicts) and a schedules row (region-0 selection),
-\ both keyed by the section 7.4 key of region 0 (the same key TILE/OPTIMIZE cache). A
-\ refused promote throws in PROMOTE-REPORT before this runs, so no partial rows land.
-\ The schedules row goes through SK-PUT-DURABLE (maki/store-replay.f) - hot table AND
-\ schedules.rows in one step - so the SAME session's next TILE replays it from memory
-\ and a FRESH process rehydrates it from the file (the closed replay loop).
-: PROMOTE-EVIDENCE ( report -- report )
+\ On a passing PROMOTE, write the artifact record to the CAD store (maki/store.f) through the
+\ SEALED (now package-MAKI-private) row writers: an evidence row (the four gate verdicts + the
+\ golden leg/precision provenance) and a schedules row (region-0 selection), both keyed by the
+\ section 7.4 key of region 0. A refused promote throws in PROMOTE-REPORT before this runs, so
+\ no partial rows land. The schedules row goes through SK-PUT-DURABLE (maki/store-replay.f) -
+\ hot table AND schedules.rows in one step - so the SAME session's next TILE replays it from
+\ memory and a FRESH process rehydrates it from the file (the closed replay loop).
+\ The golden leg/precision arrive as TYPED EVID values (EVID:golden-leg / EVID:prec-class)
+\ threaded from the golden gate via FULL-REPORT-G - NOT read from ambient globals (retired) -
+\ and are projected to the store's raw wire encoding at the sealed writer call.
+: PROMOTE-EVIDENCE ( report EVID:golden-leg EVID:prec-class -- report )
+   {: leg:EVID:golden-leg prec:EVID:prec-class :}
    dup G-CERTIFY   REPORT:GATE-TAG@ {: c:n :}
    dup G-GOLDEN    REPORT:GATE-TAG@ {: g:n :}
    dup G-GRADCHECK REPORT:GATE-TAG@ {: gc:n :}
    dup G-PROFILE   REPORT:GATE-TAG@ {: p:n :}
    dup REPORT:SELECT@ {: sel:n :}
    0 FP-REGION-ID {: r0:CAD-KIND:region :}
-   r0 TARGET:SM87 SK-KEY$ c g gc p GOLDEN-DEV? GOLDEN-PREC@ EVID-PUT-G  \ golden=device-<v>:<prec> when the device leg ran
+   r0 TARGET:SM87 SK-KEY$ c g gc p  leg GLEG>DEV?  prec GPREC>ID  EVID-PUT-G  \ golden=device-<v>:<prec> when the device leg ran
    r0 TARGET:SM87 SK-KEY$ sel SK-PUT-DURABLE ;
 
 : OPTIMIZE-PROMOTE ( report -- report )        \ record the decision, never throw
@@ -1074,8 +1106,13 @@ public
 : TUNE ( -- report )       REPORT:NEW LOWER-INTO TUNE-INTO ;
 
 \ PROMOTE refuses (named throw) unless every gate passes; on success caches the key
-\ and writes the artifact + evidence rows to the CAD store.
-: PROMOTE ( -- report )  FULL-REPORT PROMOTE-REPORT PROMOTE-EVIDENCE ;
+\ and writes the artifact + evidence rows to the CAD store. The golden provenance
+\ (EVID:golden-leg / EVID:prec-class) is threaded from FULL-REPORT-G around the gate check
+\ into the sealed evidence writer.
+: PROMOTE ( -- report )
+   FULL-REPORT-G {: leg:EVID:golden-leg prec:EVID:prec-class :}
+   PROMOTE-REPORT
+   leg prec PROMOTE-EVIDENCE ;
 
 \ OPTIMIZE composes lower -> fuse -> memory -> tile -> gates -> promote decision.
 : OPTIMIZE ( -- report )  FULL-REPORT OPTIMIZE-PROMOTE ;

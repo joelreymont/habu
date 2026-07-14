@@ -25,7 +25,6 @@ require lib/float.f
 require lib/fmt.f
 require maki/op-kind.f
 require maki/op-registry.f
-require maki/precision.f
 require maki/model-ir.f
 require maki/executor.f
 require maki/report.f
@@ -98,32 +97,20 @@ public
 \ ---- golden leg marker (which leg produced the verdict) --------------------
 \ GOLDEN-INTO here is the HOST gate: external reference artifact, else self-consistency. The
 \ DEVICE model-golden leg is composed one layer up in maki/cad.f (GOLDEN-GATE-INTO), which owns
-\ the device dependency; golden.f stays device-free. GOLDEN-DEV-FLAG records whether the device
-\ leg produced the verdict so PROMOTE's evidence row can read golden=device-pass:<prec>, and
-\ GOLDEN-PREC-V records the precision the device verdict was judged under (maki/precision.f);
-\ the host legs here clear both (host legs carry no precision suffix).
+\ the device dependency; golden.f stays device-free.
 \
-\ BOUNDARY (R7 sub-dot 2, dot habu-v2-typestate-evidence-f124dc85): the TYPED home
-\ of this provenance is now the `leg` (EVID:golden-leg) and `prec` (EVID:prec-class)
-\ FIELDS of the EVID:golden product (maki/evidence/schema.f) - provenance as a
-\ value, not ambient process state. These two globals are NOT yet retired: they
-\ remain the V1 bridge from the golden gate to the promotion writer PROMOTE-EVIDENCE
-\ (maki/cad.f:1046-1054) -> EVID-PUT-G (maki/store.f), which reads them via
-\ GOLDEN-DEV?/GOLDEN-PREC@ at maki/cad.f:1053. Threading an EVID:golden value into
-\ that writer instead is the store-seal sub-dot's work
-\ (habu-v2-typestate-promotion-2266b236), which owns the cad.f/store.f consumer;
-\ that sub-dot removes these globals. Producing an EVID:golden here now would be
-\ dead code (nothing in golden.f consumes provenance), so the value home lands in
-\ the schema and the consumer migration is deferred to its owner.
-variable GOLDEN-DEV-FLAG           \ -1 once the device golden leg produced the verdict, else 0
-variable GOLDEN-PREC-V             \ precision id of the device golden verdict (PREC-F32 default)
-public
-: GOLDEN-DEV! ( n -- )  GOLDEN-DEV-FLAG ! ;
-: GOLDEN-DEV? ( -- bool )  GOLDEN-DEV-FLAG @ 0= 0= ;
-: GOLDEN-PREC! ( n -- )  GOLDEN-PREC-V ! ;
-: GOLDEN-PREC@ ( -- n )  GOLDEN-PREC-V @ ;
-private
+\ RETIRED (R7 store-seal sub-dot, dot habu-v2-typestate-promotion-2266b236): the ambient
+\ GOLDEN-DEV-FLAG / GOLDEN-PREC-V globals that used to record device-leg provenance are GONE.
+\ Device-golden provenance was ambient process state (set by one leg, read back later by
+\ PROMOTE-EVIDENCE, MODEL-CAD-V2-PLAN.md:1584-1587); its TYPED home is now the `leg`
+\ (EVID:golden-leg) and `prec` (EVID:prec-class) fields of the EVID:golden product
+\ (maki/evidence/schema.f). The promote path (maki/cad.f) THREADS those typed values from the
+\ golden gate through FULL-REPORT-G into PROMOTE-EVIDENCE as stack values - provenance is a
+\ value in transit, not a global - so golden.f neither sets nor clears any provenance state.
+\ (Threading a full EVID:golden VALUE through the promote path waits on public artifact-id /
+\ ART:built producers, dot habu-public-producers-for-7084d81c.)
 
+private
 \ ---- cad.f gate wiring: prefer an external reference artifact, else self-consistency --
 : GO-GATE-ARTIFACT ( report -- report )
    GA-CHECK {: v:n :}  GA-RE$ v G-GOLDEN REPORT:GATE!
@@ -134,8 +121,6 @@ private
 
 public
 : GOLDEN-INTO ( report -- report )              \ host golden gate (device leg is cad.f's GOLDEN-GATE-INTO)
-   0 GOLDEN-DEV-FLAG !
-   PREC-F32 GOLDEN-PREC-V !
-   GA-EXISTS? if GO-GATE-ARTIFACT else GO-GATE-SELF then ;
+   GA-EXISTS? if GO-GATE-ARTIFACT else GO-GATE-SELF then ;   \ leg/prec provenance is threaded by maki/cad.f, not stored here
 
 ;package

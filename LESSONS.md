@@ -4220,3 +4220,22 @@ unchanged (148855). Keys for milestone 2:
   spawned ptx-toolchain minus the documented SIGBUS bench set. Wire a new lint
   into BOTH the cases suite + the scheduled lint-tools GSI fork, or the lint that
   kills orphans becomes an orphan itself.
+- **Package privacy is per-PACKAGE, not per-file: a `private` word is visible to
+  any later `package X` reopen in ANY file, but NOT to non-X code or to a
+  qualified `X:WORD` from outside.** This is the store-seal mechanism (dot
+  habu-v2-typestate-promotion-2266b236): making EVID-PUT/EVID-PUT-G/SCHED-PUT
+  `private` inside `package MAKI` keeps every package-MAKI reopen caller working
+  (maki/cad.f PROMOTE-EVIDENCE, maki/store-replay.f SK-PUT-DURABLE, the store
+  suite - all `package MAKI`) while a cross-package / top-level `MAKI:EVID-PUT`
+  stops resolving. So the store-bypass regression is a verdict-1 (unresolvable)
+  CHECK-QUIET-CANDIDATE!, proven non-vacuous by a paired `MAKI:EVID-GET` read
+  control that still certifies -1 (same qualification mechanism). The threat model
+  the R7 candidate suites use is exactly this: cross-package/top-level forging is
+  rejected; reopening the owning package is inside the trust boundary (the same
+  reason POLICY:MINT-GRANT-PROOF is "sealed" though a package POLICY reopen sees it).
+- **A hyphenated ENUM/family in a package doubles the hyphen in its ctor package
+  name: `EVID` + `golden-leg` -> `EVID-GOLDEN--LEG:DEVICE` (not `-GOLDEN-LEG:`),
+  16 chars so no SHA fallback; `EVID-PREC--CLASS:PREC-F32` likewise.** Assuming the
+  single-hyphen spelling gives E-UNDEFINED. The variant tail after the `:` is NOT
+  doubled (`:PREC-F32`). MATCH still uses the bare family/variant (`MATCH golden-leg
+  host OF ... device OF ... ;MATCH`) cross-package after a require.
