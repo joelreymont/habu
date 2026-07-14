@@ -4239,3 +4239,12 @@ unchanged (148855). Keys for milestone 2:
   single-hyphen spelling gives E-UNDEFINED. The variant tail after the `:` is NOT
   doubled (`:PREC-F32`). MATCH still uses the bare family/variant (`MATCH golden-leg
   host OF ... device OF ... ;MATCH`) cross-package after a require.
+- A pipeline eats the exit status the chain is supposed to guard on:
+  `bin/hb --load lint.f | tail -1 && jj commit ...` guards on TAIL's exit, so a
+  RED lint still commits and pushes (this shipped a red dot gate to master
+  TWICE - the same closure/dangling-blocker class both times). Either
+  `set -o pipefail` at the top of every publication chain, or capture the exit
+  first (`out=$(cmd); rc=$?`). Also: `rg -rln PATTERN` is `--replace ln`, not
+  list-files - the closure sweep displayed the dangling blocker with its id
+  rewritten to "-ln" and it was misread as prose. Sweep with
+  `rg -n 'PATTERN' .dots/` and read the raw lines.

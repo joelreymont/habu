@@ -6,7 +6,6 @@ issue-type: task
 created-at: "2026-07-13T16:58:06.385858+02:00"
 blocks:
   - habu-define-checked-bench-5341ffc8
-  - habu-v2-typestate-promotion-2266b236
   - habu-v2-typestate-store-57afdc0a
 ---
 
