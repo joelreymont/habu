@@ -365,6 +365,8 @@ variable GSI-TL-FILE-A
    s" tools/maki-dep-lint-core.f" GSI-REQUIRE
    s" tools/refine-lint-core.f" GSI-REQUIRE
    s" tools/suite-coverage-lint-core.f" GSI-REQUIRE
+   s" tools/namespace-lint-core.f" GSI-REQUIRE
+   s" tools/error-code-lint-core.f" GSI-REQUIRE
    GSI-TEST! ;
 
 : GSI-LINT-TOOLS ( -- )

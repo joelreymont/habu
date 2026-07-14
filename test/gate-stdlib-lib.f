@@ -192,6 +192,10 @@ variable SUITE-TIMINGS
    s" refine-lint" SUITE-LABEL= if SUITE-TRUE exit then
    s" refine-lint-fixtures" SUITE-LABEL= if SUITE-TRUE exit then
    s" suite-coverage-lint" SUITE-LABEL= if SUITE-TRUE exit then
+   s" namespace-lint" SUITE-LABEL= if SUITE-TRUE exit then
+   s" namespace-lint-fixtures" SUITE-LABEL= if SUITE-TRUE exit then
+   s" error-code-lint" SUITE-LABEL= if SUITE-TRUE exit then
+   s" error-code-lint-fixtures" SUITE-LABEL= if SUITE-TRUE exit then
    s" host-lint-fixtures" SUITE-LABEL= if SUITE-TRUE exit then
    s" trusted-inventory" SUITE-LABEL= if SUITE-TRUE exit then
    SUITE-FALSE ;

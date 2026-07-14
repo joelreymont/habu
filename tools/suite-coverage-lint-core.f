@@ -182,12 +182,9 @@ variable SC-NUM-L
    s" tools/object-image-test.f" q execute
    s" tools/imgdump-test.f" q execute
    s" tools/imagedisasm-test.f" q execute
-   \ lint suites wired only into the standalone `lint`/`lint-tools` slice, not the
-   \ scheduled lint-tools GSI group (candidates to wire later; documented for now)
-   s" tools/error-code-lint.f" q execute
-   s" tools/error-code-lint-test.f" q execute
-   s" tools/namespace-lint.f" q execute
-   s" tools/namespace-lint-test.f" q execute
+   \ shadow-lint fixtures: shadow-lint.f is GSI-INCLUDEd in the scheduled
+   \ lint-tools/repo fork, but its -test.f fixtures run only in the standalone
+   \ `lint`/`lint-tools` slice (candidate to wire later; documented for now)
    s" tools/lint/shadow-lint-test.f" q execute
    \ misc test/-tree suites not mirrored into resident groups
    s" test/load-reject-diag-test.f" q execute
@@ -214,7 +211,9 @@ variable SC-NUM-L
    s" tools/dot-dep-lint.f" SC-SCHED+
    s" tools/maki-dep-lint.f" SC-SCHED+
    s" tools/refine-lint.f" SC-SCHED+
-   s" tools/suite-coverage-lint.f" SC-SCHED+ ;
+   s" tools/suite-coverage-lint.f" SC-SCHED+
+   s" tools/namespace-lint.f" SC-SCHED+
+   s" tools/error-code-lint.f" SC-SCHED+ ;
 
 \ ---- table membership ------------------------------------------------------
 : SC-QF! ( ptr u8 n -- ) {: a:ptr u:n :}

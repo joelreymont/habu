@@ -61,6 +61,14 @@
    s" suite-coverage-lint" [: SUITE-COVERAGE-LINT ;] GSI-RUN
    s" tools/suite-coverage-lint-test.f" GSI-INCLUDE ;
 
+: GSI-LINT-TOOLS-NAMESPACE ( -- )
+   s" namespace-lint" [: NAMESPACE-LINT-STRICT ;] GSI-RUN
+   s" tools/namespace-lint-test.f" GSI-INCLUDE ;
+
+: GSI-LINT-TOOLS-ERROR-CODE ( -- )
+   s" error-code-lint" [: ERROR-CODE-LINT-STRICT ;] GSI-RUN
+   s" tools/error-code-lint-test.f" GSI-INCLUDE ;
+
 : GSI-LINT-TOOLS-HOST ( -- )
    s" tools/host-lint-test.f" GSI-INCLUDE ;
 
@@ -79,6 +87,8 @@
    s" lint-tools/maki" GSI-FORK-TIMEOUT-MS [: GSI-LINT-TOOLS-MAKI ;] GT-POOL-START-FORK
    s" lint-tools/refine" GSI-FORK-TIMEOUT-MS [: GSI-LINT-TOOLS-REFINE ;] GT-POOL-START-FORK
    s" lint-tools/suite-coverage" GSI-FORK-TIMEOUT-MS [: GSI-LINT-TOOLS-SUITE-COVERAGE ;] GT-POOL-START-FORK
+   s" lint-tools/namespace" GSI-FORK-TIMEOUT-MS [: GSI-LINT-TOOLS-NAMESPACE ;] GT-POOL-START-FORK
+   s" lint-tools/error-code" GSI-FORK-TIMEOUT-MS [: GSI-LINT-TOOLS-ERROR-CODE ;] GT-POOL-START-FORK
    s" lint-tools/host" GSI-FORK-TIMEOUT-MS [: GSI-LINT-TOOLS-HOST ;] GT-POOL-START-FORK
    s" lint-tools/trusted-inventory" GSI-FORK-TIMEOUT-MS [: GSI-LINT-TOOLS-TRUSTED-INVENTORY ;] GT-POOL-START-FORK
    s" lint-tools/bootstrap-mirror" GSI-FORK-TIMEOUT-MS [: GSI-LINT-TOOLS-BOOTSTRAP-MIRROR ;] GT-POOL-START-FORK
