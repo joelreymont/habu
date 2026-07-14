@@ -90,6 +90,14 @@ public
 \ record a schedule selection in the hot table AND durably in schedules.rows.
 \ THE production write path: it rehydrates first (load-before-first-write), so
 \ the fresh row lands after the durable merge and can never be shadowed by it.
+\ SEALED WRITER (R7 store rehydrate, dot habu-v2-typestate-store-57afdc0a): SK-PUT-DURABLE
+\ leaves the public MAKI surface so nothing outside the promote/store owner (package MAKI)
+\ can plant a DURABLE schedule row - the direct SCHED-PUT plant was already sealed by the
+\ promotion sub-dot (maki/store.f, census probe 3, MODEL-CAD-V2-PLAN.md:1576-1583); this
+\ closes the durable side. It stays reachable to the package-MAKI promote path (maki/cad.f
+\ PROMOTE-EVIDENCE) and the store suites (all package-MAKI reopens); a cross-package /
+\ qualified MAKI:SK-PUT-DURABLE no longer resolves (maki/store-rehydrate-test.f).
+private
 : SK-PUT-DURABLE ( ptr u8 n n -- ) {: a:ptr u:n sel:n :}
    REPLAY-ENSURE
    a u sel SK-PUT

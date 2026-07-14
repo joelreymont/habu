@@ -639,6 +639,17 @@ points stay listed.
   promotion rejects through the checked path), and the store-bypass regression that
   the sealed `MAKI:EVID-PUT` / `MAKI:EVID-PUT-G` / `MAKI:SCHED-PUT` writers no longer
   resolve while the read surface still does.
+- `maki/store-rehydrate.f` — R7 typed rehydration boundary for persisted store rows:
+  `EVID-ROW-DECODE` parses an untrusted evidence-row suffix into its typed fields (four
+  verdicts + `EVID:golden-leg` + `EVID:prec-class`) so a bad field count / unknown label
+  / out-of-domain verdict / bad precision rejects with a named throw (never silent,
+  never raw), plus the typed-render projections that go back through the sealed wire
+  owner. No proof tokens minted on read; no new store-planting surface.
+- `maki/store-rehydrate-test.f` — rehydrate acceptance: the typed-fields positive
+  control, one negative per failure class (`E-EVID-ROW-*`: bad field count, unknown
+  label, bad verdict, bad precision), the device+host round-trip goldens
+  (persist→rehydrate→re-persist byte-identical), and the `SK-PUT-DURABLE` store-seal
+  regression (sealed writer verdict-1, paired read control).
 - `maki/maki.f` — Maki one-file entry point: host-framework `require` aggregator
   plus the curated top-level `MAKI:` surface, re-exporting the model-authoring /
   train / eval workflow words (losses, optimizers, ONNX import, checker-as-judge

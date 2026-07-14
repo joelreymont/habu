@@ -140,6 +140,8 @@ TEST:SUITE maki/store-test.f
 TEST:;SUITE
 TEST:SUITE maki/store-replay-test.f
 TEST:;SUITE
+TEST:SUITE maki/store-rehydrate-test.f
+TEST:;SUITE
 TEST:SUITE maki/embedding-test.f
 TEST:;SUITE
 TEST:SUITE maki/attention-test.f

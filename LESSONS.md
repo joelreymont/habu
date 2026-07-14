@@ -4248,3 +4248,23 @@ unchanged (148855). Keys for milestone 2:
   list-files - the closure sweep displayed the dangling blocker with its id
   rewritten to "-ln" and it was misread as prose. Sweep with
   `rg -n 'PATTERN' .dots/` and read the raw lines.
+- **`filemap-lint` treats ANY backtick token containing `/` (or a `.f`/`.fs`
+  extension) as a path that must exist** (tools/filemap-lint.f LINT-CONTAINS?
+  "/" / HAS-EXT?). A FILEMAP.md prose entry like `` `E-FOO/-BAR/-BAZ` `` (compact
+  throw-code list) is read as the path `E-FOO/-BAR/-BAZ` and fails FILEMAP-STALE.
+  Keep slashes out of backticks in FILEMAP prose: write `` `E-EVID-ROW-*` `` or
+  spell the codes separately.
+- **Typed store rehydration recovers FIELDS, not proof-carrying products, and
+  mints no proof token** (R7 sub-dot 6, maki/store-rehydrate.f). A persisted row
+  is untrusted text; `EVID-ROW-DECODE` parses each evidence field through its
+  family (verdict / `EVID:golden-leg` / `EVID:prec-class`) so a bad field count /
+  unknown label / out-of-domain enum throws a named `E-EVID-ROW-*`, never a silent
+  default. It deliberately does NOT build `EVID:certified`/`golden` (those need the
+  class-private MINT-*-PROOF and would forge provenance a mere read never earned -
+  addendum :1824). Re-render goes back through the sealed `EVID-PUT-G` so the
+  read boundary duplicates no wire format and adds no store-planting surface. The
+  schedule KEY can't be re-typed on read (no region facts at load -> no `skey`
+  FNV hash; sched-key.f durable-text boundary), so the schedule side is closed by
+  SEALING the writer (`SK-PUT-DURABLE` -> package-MAKI-private) plus the
+  pre-existing fail-closed SCHED-LINE parse, not by key-shape validation (which
+  would break the synthetic-key mirror the growth test relies on).
