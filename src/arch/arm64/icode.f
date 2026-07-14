@@ -106,11 +106,18 @@ variable FX-NEW
 : ?LBL ( -- )  NLBL @ LBL-CAP 1- > IF s" icode: out of labels" 72 die THEN ;
 
 : FX-FREE-BAD? ( -- bool )
-   FX-FREE @ -1 <
-   FX-FREE @ ICODE-TAB-CELLS >= or
-   FX-FREE @ 0 < FX-NEW @ ICODE-TAB-CELLS >= and or ;
+   FX-NEW @ 0 <
+   FX-NEW @ ICODE-TAB-CELLS > or
+   FX-FREE @ -1 < or
+   FX-FREE @ 0 >= if
+      FX-FREE @ FX-NEW @ >= or
+   else
+      FX-NEW @ ICODE-TAB-CELLS >=
+      NFX @ ICODE-TAB-CELLS < and or
+   then ;
 
 : FX? ( -- )
+   NFX @ 0 < if s" icode: fixup count corrupt" 72 die then
    NFX @ ICODE-TAB-CELLS 1 - > if
       s" icode: out of fixups" 72 die
    then

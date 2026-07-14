@@ -9,6 +9,10 @@ Last updated: 2026-07-14
   quadratic. Keep per-label pending chains, reclaim their slots through a free
   list, and make `NFX` count only simultaneous pending relocations.
 
+- **A free-list head must name an allocated slot:** bounds against capacity do
+  not reject a head in the never-allocated suffix. Validate it against the
+  allocation frontier before dereferencing its link.
+
 - **Single-pass relocation patching validates signed reach before masking:**
   `D26`, `D19`, and `ENC-ADRD` currently wrap out-of-range deltas silently,
   unlike the recovery assembler. Keep in-range opcode regressions while the

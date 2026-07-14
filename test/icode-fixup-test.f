@@ -170,9 +170,14 @@ variable WP
    LBL {: target:label :}
    ICODE-TAB-CELLS 1 + 0 ?do target B, loop ;
 
-: EMIT-CORRUPT ( -- )
+: EMIT-CORRUPT-LOW ( -- )
    ASM-INIT
    -2 FX-FREE !
+   LBL B, ;
+
+: EMIT-CORRUPT-FUTURE ( -- )
+   ASM-INIT
+   0 FX-FREE !
    LBL B, ;
 
 : CHILD-MODE? ( ptr u8 n -- bool )
@@ -206,7 +211,8 @@ variable WP
    s" overflow" s" icode: out of fixups" TEST-DIAG ;
 
 : TEST-CORRUPT ( -- )
-   s" corrupt" s" icode: fixup free list corrupt" TEST-DIAG ;
+   s" corrupt-low" s" icode: fixup free list corrupt" TEST-DIAG
+   s" corrupt-future" s" icode: fixup free list corrupt" TEST-DIAG ;
 
 : MAIN ( -- )
    T-RESET
@@ -220,7 +226,8 @@ variable WP
 
 : RUN ( -- )
    s" overflow" CHILD-MODE? if EMIT-OVERFLOW exit then
-   s" corrupt" CHILD-MODE? if EMIT-CORRUPT exit then
+   s" corrupt-low" CHILD-MODE? if EMIT-CORRUPT-LOW exit then
+   s" corrupt-future" CHILD-MODE? if EMIT-CORRUPT-FUTURE exit then
    MAIN ;
 
 RUN
