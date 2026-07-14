@@ -154,6 +154,12 @@ s" LBTK-CAST ( ptr a -- ptr lbtk )" CHECK-QUIET-CANDIDATE! 0 T=
 s" LBTK-CELL+ ( ptr lbtk -- ptr lbtk ) cell+" CHECK-QUIET-CANDIDATE! 0 T=
 \ value laundering through the typed cell rejects (typed-storage ST2 pin)
 s" LBTK-LAUNDER ( n -- lbtk ) 0 LBTK-AT ! 0 LBTK-AT @" CHECK-QUIET-CANDIDATE! 0 T=
+\ raw-definer VALUE mint (habu-nominal-storage-raw): a fetch from a raw `here`
+\ cell is a TVK-RAW var that cannot bind a nominal family in value position, so a
+\ `here`-laundered nominal scalar rejects; a plain scalar round-trip through the
+\ same raw cell still certifies (the RAW cell admits a plain representation).
+s" LBTK-HERE-MINT ( n -- lbtk ) here ! here @" CHECK-QUIET-CANDIDATE! 0 T=
+s" LBTK-HERE-N ( n -- n ) here ! here @" CHECK-QUIET-CANDIDATE! -1 T=
 
 \ rejected nominal-scalar declarations roll back allocation and define nothing
 \ (LAYOUT-BUFFER never touches the TFAM registry; dictionary + data space are

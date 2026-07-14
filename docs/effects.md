@@ -278,6 +278,25 @@ later callers; use `TRUST` only when the body itself cannot be checked.
   verifies the `DOES>` body as `( in ptr a -- out )`: the created word pushes its
   data-field pointer before entering the `DOES>` body. Use typed pointer steps
   such as `cell+`, not raw integer `+`, when moving through that data field.
+- **Raw storage definers publish RAW cells.** `here`, `create`, `variable`, and
+  `constant` hand back a generic polymorphic value/pointer, which would otherwise
+  let raw dictionary storage *mint any nominal family*: a `variable V` fetched by
+  `V @` is a fresh var that could bind an arity-0 `CAD-KIND` id (target,
+  toolchain, region, node) in value position, forging a validated identity. To
+  stop this the checker gives every type var a **kind** — `TVK-ANY` (ordinary) or
+  `TVK-RAW` — and marks the cells these definers publish `TVK-RAW`. A `TVK-RAW`
+  var admits a plain scalar (and a plain pointer, checked recursively), and a
+  fetch/store meets the kind through unification (with rollback + snapshot
+  persistence), but it **rejects a nominal-family or layout value** — so
+  `: N>ID ( n -- CAD-KIND:region ) V ! V @ ;` no longer certifies, while a
+  numeric `variable`/`constant`/`here` round-trip still does. This is the
+  value-position mirror of the pointee-side `ptr family` seal. Nominal *role*
+  atoms (`idx`/`len`/`label`/… and `DEFTYPE` names) and execution tokens stay
+  admitted in raw storage for now, because the engine's own codegen keeps labels
+  and xts in raw scratch cells; fencing those out as well needs that role/xt
+  scratch migrated to typed cells first (tracked follow-on). The `here` seal is a
+  baked primitive effect; `create`/`variable`/`constant` are sealed through the
+  verify-source definer registration (`RAW-TRUST-NEXT`).
 - **Literal-argument `PICK`/`ROLL` are folded** to a concrete shuffle at check
   time: `0 PICK`≡`DUP`, `1 PICK`≡`OVER`, `2 PICK ( a b c -- a b c a )`;
   `1 ROLL`≡`SWAP`, `2 ROLL`≡`ROT`. A **dynamic** (runtime-computed) index can't be

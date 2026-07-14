@@ -532,6 +532,7 @@ that source is explicitly certified; they are not stale-checked by the default
 | CHECK-DOES-BODY | `ptr u8 n ptr u8 n -- n` | Shared source pre-verification routes `DOES>` bodies through the checker's dedicated `CHECK-DOES!` entrypoint; ordinary `CHECK!` cannot model the created-word data-field pointer. | `tools/check-test.f`, `test/run.f` | src/habu/verify-source.f | 2026-06-28 |
 | TRUST-SIGNATURE | `ptr u8 n ptr u8 n --` | Shared source pre-verification records source-order defining-word signatures for parsed names; the checker cannot infer a dynamic mutation of its signature table from scanner state. | `tools/hb-build-test.f`, `test/gate-dictionary.f`, `test/run.f` | src/habu/verify-source.f | 2026-06-28 |
 | MULTI-ERR-MODE? | `-- bool` | Shared source pre-verification reads the checker-internal multi-error mode flag; the checker registry does not publish `MULTI-ERR?` to later checked loads, so the verify loop's continue-past-reject decision rides the same verifier boundary as `CHECK-BODY`. | `tools/check-all-errors-test.f`, `test/run.f` | src/habu/verify-source.f | 2026-07-07 |
+| SIG-RAW-MODE! | `n --` | Shared source pre-verification toggles the checker-internal raw-definer signature mode (`SIG-RAW-DEFINER!`) around a raw storage definer's effect string, so create/variable/constant publish TVK-RAW cells; the checker registry does not publish `SIG-RAW-DEFINER!` to later checked loads, so it rides the same verifier boundary as `MULTI-ERR-MODE?`. | `test/pointer-storage-test.f`, `test/run.f` | src/habu/verify-source.f | 2026-07-15 |
 | CA-MULTI-BEGIN | `--` | The all-errors driver arms the checker-internal multi-error load mode around its single whole-buffer verify pass; mode control words are not registry-published to checked tool loads. | `tools/check-all-errors-test.f` | tools/check-all-errors-core.f | 2026-07-07 |
 | CA-MULTI-END | `-- n` | Reads the multi-error reject count and clears the mode for the fail-closed exit decision; same unpublished-mode-word boundary as `CA-MULTI-BEGIN`. | `tools/check-all-errors-test.f` | tools/check-all-errors-core.f | 2026-07-07 |
 | AOT-PB@ | `-- ptr u8` | Reads the AOT build source buffer pointer stored in a raw variable. | `test/run.f`, `tools/hb-build.f` | src/habu/aot-lib.f | 2026-06-24 |
@@ -1068,6 +1069,7 @@ src/habu/treeshake.f:TU builder-emit habu-builder-trust-rows-c5d41af6
 src/habu/treeshake.f:SCAN-MODE builder-emit habu-builder-trust-rows-c5d41af6
 src/habu/verify-source.f:CHECK-BODY builder-emit habu-builder-trust-rows-c5d41af6
 src/habu/verify-source.f:MULTI-ERR-MODE? builder-emit habu-builder-trust-rows-c5d41af6
+src/habu/verify-source.f:SIG-RAW-MODE! builder-emit habu-builder-trust-rows-c5d41af6
 src/habu/verify-source.f:CHECK-DOES-BODY builder-emit habu-builder-trust-rows-c5d41af6
 src/habu/verify-source.f:TRUST-SIGNATURE builder-emit habu-builder-trust-rows-c5d41af6
 src/habu/verify-source.f:TRUST builder-emit habu-builder-trust-rows-c5d41af6

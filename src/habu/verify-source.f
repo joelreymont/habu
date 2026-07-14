@@ -358,6 +358,22 @@ TRUSTED: TRUST-SIGNATURE ( ptr u8 n ptr u8 n -- )
    dup 0= IF s" verify-source: missing defining-word name" 74 die THEN
    sig sigu TRUST-SIGNATURE ;
 
+\ SIG-RAW-DEFINER! is a checker-internal word (no charted effect), so it rides a
+\ TRUSTED: boundary here exactly like MULTI-ERR-MODE? above.
+TRUSTED: SIG-RAW-MODE! ( n -- ) SIG-RAW-DEFINER! ;
+
+\ RAW-TRUST-NEXT: like TRUST-NEXT, but registers the created word's effect with
+\ TVK-RAW type vars (SIG-RAW-MODE! brackets the checker's signature parse).
+\ Used for the raw storage definers create/variable/constant/PTR-VARIABLE so a
+\ fetch from their raw cell yields a RAW value that cannot launder into a nominal
+\ atom or family (habu-nominal-storage-raw, VALUE side).
+: RAW-TRUST-NEXT ( ptr u8 n -- ) {: sig:ptr sigu:n :}
+   NEXT-SCAN
+   dup 0= IF s" verify-source: missing defining-word name" 74 die THEN
+   -1 SIG-RAW-MODE!
+   sig sigu TRUST-SIGNATURE
+   0 SIG-RAW-MODE! ;
+
 : TRUST-DEFER-SIGNATURE ( ptr u8 n -- ) {: name:ptr nameu:n :}
    name nameu REQUIRE-SIGNATURE TRUST-SIGNATURE
    name nameu CHECKER-DEFER ;
@@ -599,10 +615,10 @@ TRUSTED: TRUST-SIGNATURE ( ptr u8 n ptr u8 n -- )
    \ value never lands there (DNAME-WIDE dispatch gate). Any layout USE of the
    \ constant fails closed downstream; parity locked by check-all-errors-test
    \ const-layout-narrow.
-   a u s" constant" STR=CI IF s" -- a" TRUST-NEXT 0 0= EXIT THEN
-   a u s" create" STR=CI IF s" -- ptr a" TRUST-NEXT 0 0= EXIT THEN
-   a u s" variable" STR=CI IF s" -- ptr a" TRUST-NEXT 0 0= EXIT THEN
-   a u s" PTR-VARIABLE" STR=CI IF s" -- ptr ptr a" TRUST-NEXT 0 0= EXIT THEN
+   a u s" constant" STR=CI IF s" -- a" RAW-TRUST-NEXT 0 0= EXIT THEN
+   a u s" create" STR=CI IF s" -- ptr a" RAW-TRUST-NEXT 0 0= EXIT THEN
+   a u s" variable" STR=CI IF s" -- ptr a" RAW-TRUST-NEXT 0 0= EXIT THEN
+   a u s" PTR-VARIABLE" STR=CI IF s" -- ptr ptr a" RAW-TRUST-NEXT 0 0= EXIT THEN
    a u s" defer" STR=CI IF TRUST-DEFER 0 0= EXIT THEN
    a u s" PRIM:" STR=CI IF RECORD-PRIM 0 0= EXIT THEN
    a u s" trusted:" STR=CI IF TRUSTED-DEFINITION 0 0= EXIT THEN

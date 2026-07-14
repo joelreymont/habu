@@ -43,6 +43,13 @@ TRUSTED: ARENA-RC>PTR ( n -- ptr a ) ;
       ARENA-UB-I @ 1 + ARENA-UB-I !
    repeat ;
 
+: ARENA-CELLS-ZERO ( ptr a n n -- ) {: base:ptr from:n to:n :}   \ set [from,to) to 0
+   from ARENA-UB-I !
+   begin ARENA-UB-I @ to < while
+      0 ARENA-UB-I @ cells base + !
+      ARENA-UB-I @ 1 + ARENA-UB-I !
+   repeat ;
+
 \ ARENA-BYTES-GROW ( ptr a n n -- ptr a ) : alloc newbytes, copy oldbytes from
 \ base, return the new base. For record/cell stores counted in raw elements the
 \ callers reset counters per definition, so no tail init is needed.
@@ -67,19 +74,30 @@ create VRC-TV-BOOT MAXTV-INIT cells allot    create VRC-RV-BOOT MAXTV-INIT cells
 create VRI-TV-BOOT MAXTV-INIT cells allot     create VRI-RV-BOOT MAXTV-INIT cells allot
 create EC-TV-BOOT MAXTV-INIT cells allot      create EC-RV-BOOT MAXTV-INIT cells allot
 create EI-TV-BOOT MAXTV-INIT cells allot      create EI-RV-BOOT MAXTV-INIT cells allot
+\ TVK: per-type-var KIND (nominal-storage raw discipline, habu-nominal-storage-raw).
+\ 0 = TVK-ANY (an ordinary polymorphic var); 1 = TVK-RAW (a var minted by a raw
+\ storage definer -- here/,/create/variable/constant -- whose cell admits only a
+\ plain scalar representation and must NEVER absorb a nominal atom, arity-0
+\ family, layout, or nominal-bearing pointer). It rides the shared TV arena so a
+\ fresh var id indexes it too, is zeroed (ANY) on grow/reset/trial-rollback, and
+\ persists on stored effect records (EN.B on var nodes) across snapshot/AOT.
+create TVK-BOOT MAXTV-INIT cells allot
 variable TVT-P     variable RVT-P
 variable VRC-TV-P  variable VRC-RV-P   variable VRI-TV-P  variable VRI-RV-P
 variable EC-TV-P   variable EC-RV-P    variable EI-TV-P   variable EI-RV-P
+variable TVK-P
 
 : TV-ARENA-BOOT ( -- )         \ point every var-id store at its boot buffer
    TVT-BOOT TVT-P !            RVT-BOOT RVT-P !
    VRC-TV-BOOT VRC-TV-P !      VRC-RV-BOOT VRC-RV-P !
    VRI-TV-BOOT VRI-TV-P !      VRI-RV-BOOT VRI-RV-P !
    EC-TV-BOOT EC-TV-P !        EC-RV-BOOT EC-RV-P !
-   EI-TV-BOOT EI-TV-P !        EI-RV-BOOT EI-RV-P ! ;
+   EI-TV-BOOT EI-TV-P !        EI-RV-BOOT EI-RV-P !
+   TVK-BOOT TVK-P ! ;
 TV-ARENA-BOOT
 
 : TVT ( -- ptr a ) TVT-P @ ;         : RVT ( -- ptr a ) RVT-P @ ;
+: TVK ( -- ptr a ) TVK-P @ ;
 : VRC-TV ( -- ptr a ) VRC-TV-P @ ;   : VRC-RV ( -- ptr a ) VRC-RV-P @ ;
 : VRI-TV ( -- ptr a ) VRI-TV-P @ ;   : VRI-RV ( -- ptr a ) VRI-RV-P @ ;
 : EC-TV ( -- ptr a ) EC-TV-P @ ;     : EC-RV ( -- ptr a ) EC-RV-P @ ;
@@ -91,6 +109,14 @@ TV-ARENA-BOOT
    nb oc nc ARENA-CELLS-UNBOUND
    nb pv ! ;
 
+\ TVK grows like TV-GROW-ONE but its fresh tail is TVK-ANY (0), not UNBOUND: an
+\ un-raised var id is always ANY.
+: TVK-GROW-ONE ( ptr a n n -- ) {: pv:ptr oc:n nc:n :}
+   nc cells ARENA-ALLOC {: nb:ptr :}
+   pv @ nb oc cells ARENA-COPY
+   nb oc nc ARENA-CELLS-ZERO
+   nb pv ! ;
+
 : TV-GROW ( n -- ) {: need:n :}
    need TV-CAP @ 2 * max {: nc:n :}   \ geometric: at least double
    TV-CAP @ {: oc:n :}
@@ -99,6 +125,7 @@ TV-ARENA-BOOT
    VRI-TV-P oc nc TV-GROW-ONE    VRI-RV-P oc nc TV-GROW-ONE
    EC-TV-P oc nc TV-GROW-ONE     EC-RV-P oc nc TV-GROW-ONE
    EI-TV-P oc nc TV-GROW-ONE     EI-RV-P oc nc TV-GROW-ONE
+   TVK-P oc nc TVK-GROW-ONE
    nc TV-CAP ! ;
 
 : TV-ENSURE ( n -- ) {: need:n :}   \ ensure cap >= need
@@ -109,9 +136,18 @@ TV-ARENA-BOOT
    0 BEGIN
      dup cells TVT + UNBOUND swap !
      dup cells RVT + UNBOUND swap !
+     dup cells TVK + 0 swap !
      1 + dup MAXTV 1 - >
    UNTIL drop ;
 TVINIT
+
+0 constant TVK-ANY   \ ordinary polymorphic type var
+1 constant TVK-RAW   \ minted by a raw storage definer; admits only plain scalars
+: TVK@ ( n -- n ) cells TVK + @ ;
+: TVK-RAW? ( n -- bool ) TVK@ TVK-RAW = ;
+\ permanent (untrailed) RAW mark for build-time contexts (prim/signature build,
+\ freshening); the trailed TVK-RAISE below is used inside unification.
+: TVK-RAW! ( n -- ) TVK-RAW swap cells TVK + ! ;
 
 : TAG 7 and ;
 
@@ -159,16 +195,26 @@ TRAIL-BOOT TRAIL-P !   TRAIL-INIT TRAIL-CAP !   0 TRAIL-N !
    need TRAIL-CAP @ 2 * max {: nc:n :}
    TRAIL-P @ TRAIL-CAP @ cells nc cells ARENA-BYTES-GROW TRAIL-P !
    nc TRAIL-CAP ! ;
-: TRAIL-PUSH ( n n -- ) {: id:n row:n :}   \ record a binding to var `id` (row? 1:0)
+: TRAIL-PUSH ( n n -- ) {: id:n tag:n :}   \ record a mutation to var `id`; tag 0=TVT 1=RVT 2=TVK
    TRAIL-N @ 1 + TRAIL-ENSURE
-   id 2 * row +  TRAIL-N @ cells TRAIL + !
+   id 4 * tag +  TRAIL-N @ cells TRAIL + !
    TRAIL-N @ 1 + TRAIL-N ! ;
-: TRAIL-UNWIND ( n -- ) {: mark:n :}     \ pop+unbind every binding above `mark`
+: TRAIL-UNWIND ( n -- ) {: mark:n :}     \ pop+undo every mutation above `mark`
    BEGIN TRAIL-N @ mark > WHILE
       TRAIL-N @ 1 - TRAIL-N !
       TRAIL-N @ cells TRAIL + @ {: e:n :}
-      e 1 and 0= 0= IF UNBOUND e 2 / cells RVT + ! ELSE UNBOUND e 2 / cells TVT + ! THEN
+      e 3 and {: tag:n :}   e 2 rshift {: id:n :}
+      tag 0= IF UNBOUND id cells TVT + ! ELSE
+      tag 1 = IF UNBOUND id cells RVT + ! ELSE
+      TVK-ANY id cells TVK + ! THEN THEN
    REPEAT ;
+\ TVK-RAISE ( id -- ) : raise var `id` to TVK-RAW inside unification, trailed so a
+\ failed prim-overload trial (TRIAL-REST) or definition reject restores TVK-ANY.
+\ Idempotent: a var already RAW records nothing (so no spurious trail growth).
+: TVK-RAISE ( n -- )
+   dup TVK-RAW? IF drop EXIT THEN
+   dup 2 TRAIL-PUSH
+   TVK-RAW! ;
 
 \ --- linear/affine kind discipline (habu-linear-kind-inference) --------------
 \ Concrete-count conservation only sees linear CONS on the stack. It is defeated
@@ -1175,6 +1221,34 @@ variable LLC-N
    THEN
    RES-TRUE ;
 
+\ --- nominal-storage RAW value discipline (habu-nominal-storage-raw). A RAW type
+\ var is minted by a raw storage definer (here/create/variable/constant); a fetch
+\ from that cell yields the SAME (RAW) var, so `RAW-var ~ nominal-family` in value
+\ position is the mint the checker must refuse -- otherwise raw dictionary storage
+\ forges the validated arity-0 CAD-KIND identities (target/toolchain/region/node).
+\ This is the VALUE-position mirror of NOMPTR-BLOCK? (which governs the pointee
+\ position). Ordinary (TVK-ANY) vars are unaffected, so a typed LAYOUT-BUFFER
+\ fetch, a constructor, and role/converter words keep binding a family in value
+\ position -- only a raw-storage-minted var is fenced. RAW-OK? both DECIDES
+\ admissibility and PROPAGATES the kind (a var arg is raised RAW -- the meet; a
+\ pointer's pointee is checked recursively). It REJECTS a NOMINAL-FAMILY / LAYOUT
+\ value (a T-PARAM) and a LINEAR con, and ADMITS a plain scalar/role con, a plain
+\ pointer, and an atom/xt: the engine's own codegen legitimately raw-stores role
+\ cons (`LBL RT-LPOS !`) and xts (defer/hook cells like `cold-hook!`). Fencing
+\ nominal ROLE atoms (idx/len/DEFTYPE) out of raw storage too needs that role/xt
+\ scratch migrated to typed cells first, so it is a documented follow-on; this
+\ dot closes the arity-0 nominal-family / layout mint, the epic's forgery target.
+: RAW-OK? ( n -- bool )   \ may a RAW cell absorb resolved `term`? (meets var/pointee RAW)
+   T-RES
+   dup ISVAR IF PAY TVK-RAISE RES-TRUE EXIT THEN     \ var: meet -> RAW (trailed)
+   dup TAG T-PARAM = IF drop RES-FALSE EXIT THEN     \ nominal family / layout -> reject (the mint)
+   dup TAG T-CON = IF PAY CT-LINEAR? 0= EXIT THEN    \ plain scalar / role OK; linear con NO
+   dup TAG T-PTR = IF PTR>INNER RECURSE EXIT THEN    \ ptr: pointee must also be RAW-admissible
+   drop RES-TRUE ;                                    \ atom / xt / row: engine raw-stores these -> admit
+: RAW-BLOCK? ( n n -- bool )   \ binding var `vid` to `term` violates the RAW cell discipline?
+   over TVK-RAW? 0= IF 2drop RES-FALSE EXIT THEN     \ ordinary var: never blocks
+   nip RAW-OK? 0= ;                                   \ RAW var: `term` must be RAW-admissible
+
 : U-TYPE   \ ( t1 t2 -- ) resolve both; bind a var side, or require equal cons
    T-RES swap T-RES swap
    2dup = IF 2drop ELSE
@@ -1193,9 +1267,11 @@ variable LLC-N
      2dup PARAM-HID-OK? IF 2dup PARAM-PAIR-ARGS 2drop ELSE U-FAIL THEN ELSE   \ item 12 slice-3a: hidden field pairs only same-family same-slot
    2dup LAYOUT-BLOCK? IF U-FAIL ELSE   \ item 12: only a whole-bundle transport op may bind a layout cell
    over ISVAR IF
-     over PAY over TY-OCC? IF U-FAIL ELSE swap PAY TV! THEN ELSE
+     over PAY over TY-OCC? IF U-FAIL ELSE
+       over PAY over RAW-BLOCK? IF U-FAIL ELSE swap PAY TV! THEN THEN ELSE   \ raw discipline: RAW var rejects nominal/atom/layout
    dup ISVAR IF
-     dup PAY  rot  tuck TY-OCC? IF U-FAIL ELSE swap PAY TV! THEN ELSE
+     dup PAY  rot  tuck TY-OCC? IF U-FAIL ELSE
+       over PAY over RAW-BLOCK? IF U-FAIL ELSE swap PAY TV! THEN THEN ELSE
    over TAG T-CON =  over TAG T-CON =  and IF
      2dup CON-OK? IF 2drop ELSE U-FAIL THEN
    ELSE U-FAIL THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN ;
@@ -1287,6 +1363,7 @@ variable FV
    0 BEGIN dup FV @ < WHILE
      dup cells TVT + UNBOUND swap !
      dup cells RVT + UNBOUND swap !
+     dup cells TVK + 0 swap !
      1 +
    REPEAT drop ;
 variable OK   variable DCUR   variable UNCK   variable BROW
@@ -2181,12 +2258,22 @@ variable CAPREQ              \ a TRUSTED-only capability prim (patch32/code-gen 
        1 + REPEAT drop THEN
    NRES @ ;
 
+\ SIG-RAW-MODE: while set, every type var minted by the signature parser is
+\ TVK-RAW. verify-source (and the two-stage native definer hook) bracket the
+\ effect string of a raw storage definer -- create/variable/constant/PTR-VARIABLE
+\ -- with SIG-RAW-DEFINER! so the created word's stored effect carries RAW vars,
+\ closing the VALUE-side mint that raw dictionary storage would otherwise publish
+\ as an unrestricted polymorphic effect. Off for ordinary sigs, prim builds, and
+\ user TRUST rows, so nothing else is affected.
+variable SIG-RAW-MODE   0 SIG-RAW-MODE !
+: SIG-RAW-DEFINER! ( bool -- ) SIG-RAW-MODE ! ;
+
 \ NB: avoid a 2nd {: :} group here — `{: c :} … {: i :}` mis-reads the slot in the
 \ standalone, collapsing every var to one. Compute the slot address on the stack.
 : VAR-OF ( n -- n ) {: c:n :}
    c 97 - cells NMAP +
    dup @ UNBOUND = IF FRESH over ! THEN
-   @ MK-VAR ;
+   @ SIG-RAW-MODE @ IF dup TVK-RAW! THEN MK-VAR ;
 
 \ NB: declare locals at word top, never inside IF/loop (corrupts the locals frame).
 \ concrete width types get distinct con codes; n(1)/f(1) stay the GENERIC int
@@ -3613,6 +3700,7 @@ EC-RV MAXTV E-MAP-CLEAR   0 EC-RV-HW !
       T-VAR of
          EN-VAR E-NODE-NEW E-OFF >r
          x E-RES PAY E-TV-ID r@ E-PTR EN.A !
+         x E-RES PAY TVK@ r@ E-PTR EN.B !   \ persist the var kind (TVK-ANY/TVK-RAW) for freshening + snapshot
          r>
       endof
       S-ROW of
@@ -3948,7 +4036,11 @@ variable FMEND
    off E-PTR >r
    r@ EN.TAG @ case
       EN-CON of r@ EN.A @ MK-CON r> drop endof
-      EN-VAR of r@ EN.A @ E-I-TV r> drop endof
+      EN-VAR of
+         r@ EN.A @ E-I-TV                                  \ fresh var term
+         r@ EN.B @ TVK-RAW = IF dup PAY TVK-RAW! THEN       \ restore persisted RAW kind on the fresh var
+         r> drop
+      endof
       EN-ROW of r@ EN.A @ E-I-RV r> drop endof
       EN-PTR of r@ EN.A @ RECURSE MK-PTR r> drop endof
       EN-PUSH of r@ EN.A @ RECURSE r@ EN.B @ RECURSE MK-PUSH r> drop endof
@@ -4258,6 +4350,12 @@ variable PE-EFF-ID
 : PE-PTR-N ( -- n ) PE-N PE-PTR ;
 : PE-PTR-U8 ( -- n ) PE-U8 PE-PTR ;
 : PE-PTR-PTR-B ( -- n ) PE-B PE-PTR PE-PTR ;
+\ RAW-kinded prototype var for raw storage-definer prims (here/data-base): the
+\ minted pointee is TVK-RAW, so a fetch through it yields a RAW value that cannot
+\ launder into a nominal atom/family. E-COPY reads the kind at PE-CLOSE and bakes
+\ it onto the stored effect (EN.B), and E-INST re-freshens it per application.
+: PE-A-RAW ( -- n ) PE-A dup PAY TVK-RAW! ;
+: PE-PTR-A-RAW ( -- n ) PE-A-RAW PE-PTR ;
 
 : PTABLE-START ( -- )
    0 #PE !
@@ -4350,7 +4448,7 @@ PRIM: count      PE-PTR-U8 PE-IN  PE-PTR-U8 PE-OUT PE-N PE-OUT PRIM;
 PRIM: .            PE-N PE-IN PRIM;
 PRIM: .s           PRIM;
 PRIM: depth        PE-N PE-OUT PRIM;
-PRIM: here         PE-PTR-A PE-OUT PRIM;
+PRIM: here         PE-PTR-A-RAW PE-OUT PRIM;
 PRIM: allot        PE-N PE-IN PRIM;
 PRIM: ,            PE-N PE-IN PRIM;
 PRIM: c,           PE-N PE-IN PRIM;
@@ -5161,6 +5259,7 @@ variable NORET-GROW-CAP   variable NORET-GROW-NEXT
    0 FV !
    TVT-BOOT 0 MAXTV-INIT ARENA-CELLS-UNBOUND   \ FV=0 means TV-RESET clears nothing,
    RVT-BOOT 0 MAXTV-INIT ARENA-CELLS-UNBOUND   \ so unbind the boot pool ourselves
+   TVK-BOOT 0 MAXTV-INIT ARENA-CELLS-ZERO      \ and reset var kinds to TVK-ANY
    EC-TV MAXTV-INIT E-MAP-CLEAR   0 EC-TV-HW !
    EC-RV MAXTV-INIT E-MAP-CLEAR   0 EC-RV-HW ! ;
 
@@ -5572,6 +5671,7 @@ variable SV-TRAIL
 : TRIAL-CLEAR-NEW
    SV-FV @ BEGIN dup FV @ < WHILE
       UNBOUND over cells TVT + !  UNBOUND over cells RVT + !
+      0 over cells TVK + !
       1 +
    REPEAT drop ;
 
