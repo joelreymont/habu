@@ -618,6 +618,16 @@ points stay listed.
 - `maki/evidence/schema-test.f` — evidence acceptance: born-typed construction
   positive controls, wrong-artifact-evidence negatives (raw token, foreign id,
   private-mint), wrong-class negatives, and bundle slot-order pins.
+- `maki/evidence/policy.f` — R7 promotion-policy products: the `req` requirement
+  ENUM (DERIVE eq), the `gate-set` promotion policy, the sealed `granted` grant
+  (private grant-proof token), DEFAULT-POLICY (exactly the V1 gate set), and
+  POLICY:CHECK — the one value-level artifact-binding site (E-EVID-ARTIFACT /
+  E-EVID-MISSING refusals over the EVID bundle/slot schema).
+- `maki/evidence/policy-test.f` — promotion acceptance: DEFAULT-POLICY /
+  POLICY:CHECK / grant positive controls, missing-gate + forge negatives (raw
+  token, foreign class, id-swap, private-mint, non-gate-set input), and executed
+  white-box value cores (AID= equality, the SLOT-ERR decision table incl. the
+  wrong-artifact E-EVID-ARTIFACT fact, the V1-gate-set default).
 - `maki/maki.f` — Maki one-file entry point: host-framework `require` aggregator
   plus the curated top-level `MAKI:` surface, re-exporting the model-authoring /
   train / eval workflow words (losses, optimizers, ONNX import, checker-as-judge

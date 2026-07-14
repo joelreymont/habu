@@ -4178,3 +4178,30 @@ unchanged (148855). Keys for milestone 2:
   Run the dot gate, CHECK it, then commit - never `cmd; commit; push` in one
   unguarded script. Closing a dot must also sweep frontmatter `blocks:` lists
   that reference it.
+- **Generated ctor-package names silently SHA-fall-back over 16 chars
+  (TF-CTOR-NAME-LIMIT, src/core/type-family.f:604), making the family
+  unconstructable in readable source.** A hyphenated family in a packaged
+  namespace whose escaped `PKG-FAMILY` name exceeds 16 (e.g. `POLICY-REQ--CLASS`
+  17, `POLICY-PROMOTE--POLICY` 22, EVID's `EVID-CERTIFY--SLOT` 18) gets an opaque
+  `Thexhash-TAIL` ctor package instead of `PKG-FAMILY:MAKE`. It is stable
+  (deterministic SHA) but unreadable and fragile, so it cannot appear in
+  committed source. Keep `len(PKG) + 1 + len(escaped-family) <= 16` for any
+  family a caller must construct (hyphens double: `req-class` -> `REQ--CLASS`);
+  this is why R7's `req-class`/`promote-policy` became `req`/`gate-set`, and why
+  EVID's slot sums cannot be built cross-package (blocks bundle construction).
+- **Multi-cell layout values (products, tagged sums with payload) cannot be
+  typed locals or `result`/`option` payload params - only single-cell types
+  (TYPEFAMILY, payloadless ENUM) can.** `{: s:EVID:certified :}` and
+  `result<POLICY:granted,n>` both reject ("unknown type ... in signature" /
+  "expected: a actual: granted<>"). Consume multi-cell values straight off the
+  stack via `UNMAKE`/`MATCH` (keep them DEEPEST so single-cell operands pop as
+  locals first), and signal a fallible product-returning transition by THROWing
+  a named code rather than a `result<product,_>` - the same wall the schema.f
+  RESULT-DROP deviation names (dot habu-typestate-result-drop-5ae048a7).
+- **A near-full fixed arena is a latent capacity bug a downstream lane inherits:
+  trusted-inventory's class arena (CSTR-CAP) sat at 65528/65536 with 879
+  classification rows, so adding 4 TRUSTED.md rows overflowed it with a bare
+  `class arena overflow` die.** The ratchet ceiling is derived from row COUNT
+  (fine to grow), but the byte arena was sized with no headroom; bumped
+  $10000 -> $20000 to cover CMAX=1024 rows. Whoever grows a ratcheted manifest
+  must budget the scratch arena, not just the count.

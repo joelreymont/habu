@@ -208,6 +208,8 @@ TEST:SUITE maki/typestate-test.f
 TEST:;SUITE
 TEST:SUITE maki/evidence/schema-test.f
 TEST:;SUITE
+TEST:SUITE maki/evidence/policy-test.f
+TEST:;SUITE
 TEST:SUITE maki/cuda-types-test.f
 TEST:;SUITE
 TEST:SUITE maki/cuda-driver-test.f

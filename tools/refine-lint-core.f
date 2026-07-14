@@ -33,7 +33,7 @@
 
 $40000 constant RFL-STR-CAP     \ trust-lint manifest string store
 $80000 constant RFL-FILE-CAP    \ largest scanned source watermark (checker.f class)
-32 constant RFL-SEED#
+35 constant RFL-SEED#
 8 constant RFL-ALLOW-MAX
 32 constant RFL-NUM-CAP
 
@@ -163,6 +163,9 @@ variable RFL-LE
       29 of s" MINT-GOLDEN-PROOF" endof
       30 of s" MINT-GRADCHECK-PROOF" endof
       31 of s" MINT-PROFILE-PROOF" endof
+      32 of s" MINT-GRANT-PROOF" endof
+      33 of s" T>AID" endof
+      34 of s" T>SID" endof
       E-TBL-BOUNDS throw
    endcase ;
 
@@ -200,6 +203,9 @@ variable RFL-LE
       29 of s" maki/evidence/schema.f" endof
       30 of s" maki/evidence/schema.f" endof
       31 of s" maki/evidence/schema.f" endof
+      32 of s" maki/evidence/policy.f" endof
+      33 of s" maki/evidence/policy-test.f" endof
+      34 of s" maki/evidence/policy-test.f" endof
       E-TBL-BOUNDS throw
    endcase ;
 

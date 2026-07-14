@@ -695,6 +695,10 @@ that source is explicitly certified; they are not stale-checked by the default
 | MINT-GOLDEN-PROOF | `-- golden-proof` | Private R7 evidence mint: the class-private golden proof token, minted only by `EVID:GOLDEN`; leg/precision provenance rides the `EVID:golden` product fields. | `maki/evidence/schema-test.f` | maki/evidence/schema.f | 2026-07-14 |
 | MINT-GRADCHECK-PROOF | `-- gradcheck-proof` | Private R7 evidence mint: the class-private gradcheck proof token, minted only by `EVID:GRADCHECK`. | `maki/evidence/schema-test.f` | maki/evidence/schema.f | 2026-07-14 |
 | MINT-PROFILE-PROOF | `-- profile-proof` | Private R7 evidence mint: the class-private profile proof token, minted only by `EVID:PROFILE`. | `maki/evidence/schema-test.f` | maki/evidence/schema.f | 2026-07-14 |
+| MINT-GRANT-PROOF | `-- grant-proof` | Private R7 promotion mint: the sealed grant token, minted only by `POLICY:CHECK` after the value-level artifact binding holds, so a raw n cannot forge `POLICY:granted`. | `maki/evidence/policy-test.f` | maki/evidence/policy.f | 2026-07-14 |
+| AID>RAW | `CAD-KIND:artifact-id -- n` | Private artifact-id identity projection used only by `POLICY:CHECK`'s value-level artifact equality (`AID=`); no public raw conversion is exported (the maki/target/target.f `TARGET-ID>RAW` pattern). | `maki/evidence/policy-test.f` | maki/evidence/policy.f | 2026-07-14 |
+| T>AID | `n -- CAD-KIND:artifact-id` | Test-only artifact-id fabrication: the promotion suite needs runtime artifact ids to exercise the value-level binding, but no public producer exists yet; confined to the policy suite. | `maki/evidence/policy-test.f` | maki/evidence/policy-test.f | 2026-07-14 |
+| T>SID | `n -- CAD-KIND:schema-id` | Test-only schema-id fabrication: the promotion suite needs a runtime policy identity to assert DEFAULT-POLICY equals the V1 gate set; no public producer exists yet; confined to the policy suite. | `maki/evidence/policy-test.f` | maki/evidence/policy-test.f | 2026-07-14 |
 | RAW>RGN | `n -- CAD-KIND:region` | Private fusion-planner region refinement after `FP-CK` and the region-range validator prove the raw table position names a planned region (R3 owner-module rule; landed by the closed dot `habu-maki-apply-cad-27b7a7d7`, owned by `habu-epic-model-cad-70b629a9`). | `maki/fusion-plan-test.f` | maki/fusion-plan.f | 2026-07-12 |
 | RGN>RAW | `CAD-KIND:region -- n` | Private region projection used only by fusion-plan bounds revalidation, region-indexed owner tables, and the `REGION_<rid>` render boundaries; no public raw cast is exported (landed by the closed dot `habu-maki-apply-cad-27b7a7d7`, owned by `habu-epic-model-cad-70b629a9`). | `maki/fusion-plan-test.f` | maki/fusion-plan.f | 2026-07-12 |
 | RAW>TARGET-ID | `n -- CAD-KIND:target-id` | Private target-registry refinement after semantic descriptor validation, capacity validation, and append-only slot allocation. | `maki/target/target-test.f` | maki/target/target.f | 2026-07-12 |
@@ -1404,6 +1408,10 @@ maki/evidence/schema.f:MINT-CERTIFY-PROOF prim-axiom habu-epic-model-cad-70b629a
 maki/evidence/schema.f:MINT-GOLDEN-PROOF prim-axiom habu-epic-model-cad-70b629a9
 maki/evidence/schema.f:MINT-GRADCHECK-PROOF prim-axiom habu-epic-model-cad-70b629a9
 maki/evidence/schema.f:MINT-PROFILE-PROOF prim-axiom habu-epic-model-cad-70b629a9
+maki/evidence/policy.f:MINT-GRANT-PROOF prim-axiom habu-epic-model-cad-70b629a9
+maki/evidence/policy.f:AID>RAW prim-axiom habu-epic-model-cad-70b629a9
+maki/evidence/policy-test.f:T>AID prim-axiom habu-epic-model-cad-70b629a9
+maki/evidence/policy-test.f:T>SID prim-axiom habu-epic-model-cad-70b629a9
 maki/target/target.f:RAW>TARGET-ID prim-axiom habu-epic-model-cad-70b629a9
 maki/target/target.f:TARGET-ID>RAW prim-axiom habu-epic-model-cad-70b629a9
 maki/tensor-value.f:RAW>TENSOR prim-axiom habu-epic-model-cad-70b629a9

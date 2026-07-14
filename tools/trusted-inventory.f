@@ -59,7 +59,7 @@ variable FB-COUNT   \ committed `fold-baseline N` (separable file-level rows all
 -1 constant COUNT-UNSET
 $80000 constant FILE-CAP   \ >= largest scanned source (checker.f grew past $40000)
 $40000 constant STR-CAP
-$10000 constant CSTR-CAP
+$20000 constant CSTR-CAP
 $4000 constant OWNER-CAP
 32 constant NUM-CAP
 9 constant CH-TAB
