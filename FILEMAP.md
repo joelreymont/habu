@@ -597,6 +597,14 @@ points stay listed.
 - `maki/typestate-test.f` — stage-order acceptance: per-transition positive
   controls, wrong-stage negatives (unconstrained-model, draft-plan,
   unverified-KIR, reverse-stage), and a runnable MODEL→KIR pipeline.
+- `maki/evidence/schema.f` — R7 artifact-indexed evidence families: one PRODUCT
+  per class (certified/golden/gradchecked/profiled) binding a CAD-KIND:artifact-id
+  and a class-private proof token, golden leg/precision as fields, per-class
+  presence slots + the promotion bundle, and the EVID:CERTIFY/GOLDEN/GRADCHECK/
+  PROFILE mint transitions.
+- `maki/evidence/schema-test.f` — evidence acceptance: born-typed construction
+  positive controls, wrong-artifact-evidence negatives (raw token, foreign id,
+  private-mint), wrong-class negatives, and bundle slot-order pins.
 - `maki/maki.f` — Maki one-file entry point: host-framework `require` aggregator
   plus the curated top-level `MAKI:` surface, re-exporting the model-authoring /
   train / eval workflow words (losses, optimizers, ONNX import, checker-as-judge

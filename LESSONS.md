@@ -4,6 +4,28 @@
 
 Last updated: 2026-07-14
 
+- **The R7 plan's type-schema spellings are pseudocode; probe the checker, don't
+  transcribe them.** The addendum writes `STRUCTURE`/`FIELD`/`DERIVE eq`/
+  `VARIANT got ... ;VARIANT`, but the real keywords are `TYPEFAMILY` (arity-0
+  proof tokens, per sub-dot 1) / `PRODUCT` / `SUMTYPE` (concrete payload
+  `VARIANT name type ;VARIANT`), `ENUM` takes no arity, and two footguns bite:
+  bare dtype tails like `f32`/`tf32` are RESERVED atom tokens (rejected as
+  variant names — class-prefix them), and variant names are PACKAGE-scoped
+  (`TDECL-VAR-SCOPE?`), so N same-package slot sums cannot all reuse `got`/
+  `absent`. Building the schema file + a `CHECK-QUIET-CANDIDATE!` probe and
+  iterating on real checker output found both in minutes; guessing from the
+  plan would have wasted a load cycle each.
+
+- **Nullary proof-token mints (`( -- proof )`) aren't "mint-shaped" to
+  refine-lint, but still seed them.** `RFL-MINT-SHAPE?` keys on `n -- family`
+  (raw-in, family-out), so a `( -- certify-proof )` mint never trips the
+  NEW-MINT shape scan — but the refine-lint seed list is the CONFINEMENT set
+  (owner-file-only references), independent of shape. Seed private mints there
+  anyway (mirroring sub-dot 1's `RAW>*`) so they can't leak, and give each a
+  TRUSTED.md main-table row + classification row. The confinement scan skips
+  `s" ... "` bodies, so a mint name inside a `CHECK-QUIET-CANDIDATE!` fixture
+  string does not count as an outside reference.
+
 - **Resolved fixups are not live assembler state:** counting historical rows
   exhausted `NFX` after `$1000` sequential forward references and made `LBL,`
   quadratic. Keep per-label pending chains, reclaim their slots through a free

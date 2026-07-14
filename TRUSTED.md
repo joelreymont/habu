@@ -691,6 +691,10 @@ that source is explicitly certified; they are not stale-checked by the default
 | RAW>VERIFIED | `n -- verified` | Private R7 stage mint: the verified-kernel witness, minted only by `KIR:VERIFY` from a `PLAN:complete` + `KIR:drafted`. | `maki/typestate-test.f` | maki/typestate.f | 2026-07-13 |
 | RAW>EMITTED | `n -- emitted` | Private R7 stage mint: the emitted-candidate witness, minted only by `CAND:EMIT` from a `KIR:verified` + `CAD-KIND:target-id`. | `maki/typestate-test.f` | maki/typestate.f | 2026-07-13 |
 | RAW>BUILT | `n -- built` | Private R7 stage mint: the built-artifact witness, minted only by `ART:BUILD` from a `CAND:emitted` + `CAD-KIND:toolchain-id`. | `maki/typestate-test.f` | maki/typestate.f | 2026-07-13 |
+| MINT-CERTIFY-PROOF | `-- certify-proof` | Private R7 evidence mint: the class-private certify proof token, minted only by `EVID:CERTIFY`; its existence downstream of a real gate is the proof, so a raw n cannot forge `EVID:certified`. | `maki/evidence/schema-test.f` | maki/evidence/schema.f | 2026-07-14 |
+| MINT-GOLDEN-PROOF | `-- golden-proof` | Private R7 evidence mint: the class-private golden proof token, minted only by `EVID:GOLDEN`; leg/precision provenance rides the `EVID:golden` product fields. | `maki/evidence/schema-test.f` | maki/evidence/schema.f | 2026-07-14 |
+| MINT-GRADCHECK-PROOF | `-- gradcheck-proof` | Private R7 evidence mint: the class-private gradcheck proof token, minted only by `EVID:GRADCHECK`. | `maki/evidence/schema-test.f` | maki/evidence/schema.f | 2026-07-14 |
+| MINT-PROFILE-PROOF | `-- profile-proof` | Private R7 evidence mint: the class-private profile proof token, minted only by `EVID:PROFILE`. | `maki/evidence/schema-test.f` | maki/evidence/schema.f | 2026-07-14 |
 | RAW>RGN | `n -- CAD-KIND:region` | Private fusion-planner region refinement after `FP-CK` and the region-range validator prove the raw table position names a planned region (R3 owner-module rule; landed by the closed dot `habu-maki-apply-cad-27b7a7d7`, owned by `habu-epic-model-cad-70b629a9`). | `maki/fusion-plan-test.f` | maki/fusion-plan.f | 2026-07-12 |
 | RGN>RAW | `CAD-KIND:region -- n` | Private region projection used only by fusion-plan bounds revalidation, region-indexed owner tables, and the `REGION_<rid>` render boundaries; no public raw cast is exported (landed by the closed dot `habu-maki-apply-cad-27b7a7d7`, owned by `habu-epic-model-cad-70b629a9`). | `maki/fusion-plan-test.f` | maki/fusion-plan.f | 2026-07-12 |
 | RAW>TARGET-ID | `n -- CAD-KIND:target-id` | Private target-registry refinement after semantic descriptor validation, capacity validation, and append-only slot allocation. | `maki/target/target-test.f` | maki/target/target.f | 2026-07-12 |
@@ -1396,6 +1400,10 @@ maki/typestate.f:RAW>DRAFTED prim-axiom habu-epic-model-cad-70b629a9
 maki/typestate.f:RAW>VERIFIED prim-axiom habu-epic-model-cad-70b629a9
 maki/typestate.f:RAW>EMITTED prim-axiom habu-epic-model-cad-70b629a9
 maki/typestate.f:RAW>BUILT prim-axiom habu-epic-model-cad-70b629a9
+maki/evidence/schema.f:MINT-CERTIFY-PROOF prim-axiom habu-epic-model-cad-70b629a9
+maki/evidence/schema.f:MINT-GOLDEN-PROOF prim-axiom habu-epic-model-cad-70b629a9
+maki/evidence/schema.f:MINT-GRADCHECK-PROOF prim-axiom habu-epic-model-cad-70b629a9
+maki/evidence/schema.f:MINT-PROFILE-PROOF prim-axiom habu-epic-model-cad-70b629a9
 maki/target/target.f:RAW>TARGET-ID prim-axiom habu-epic-model-cad-70b629a9
 maki/target/target.f:TARGET-ID>RAW prim-axiom habu-epic-model-cad-70b629a9
 maki/tensor-value.f:RAW>TENSOR prim-axiom habu-epic-model-cad-70b629a9

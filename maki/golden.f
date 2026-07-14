@@ -102,6 +102,19 @@ public
 \ leg produced the verdict so PROMOTE's evidence row can read golden=device-pass:<prec>, and
 \ GOLDEN-PREC-V records the precision the device verdict was judged under (maki/precision.f);
 \ the host legs here clear both (host legs carry no precision suffix).
+\
+\ BOUNDARY (R7 sub-dot 2, dot habu-v2-typestate-evidence-f124dc85): the TYPED home
+\ of this provenance is now the `leg` (EVID:golden-leg) and `prec` (EVID:prec-class)
+\ FIELDS of the EVID:golden product (maki/evidence/schema.f) - provenance as a
+\ value, not ambient process state. These two globals are NOT yet retired: they
+\ remain the V1 bridge from the golden gate to the promotion writer PROMOTE-EVIDENCE
+\ (maki/cad.f:1046-1054) -> EVID-PUT-G (maki/store.f), which reads them via
+\ GOLDEN-DEV?/GOLDEN-PREC@ at maki/cad.f:1053. Threading an EVID:golden value into
+\ that writer instead is the store-seal sub-dot's work
+\ (habu-v2-typestate-promotion-2266b236), which owns the cad.f/store.f consumer;
+\ that sub-dot removes these globals. Producing an EVID:golden here now would be
+\ dead code (nothing in golden.f consumes provenance), so the value home lands in
+\ the schema and the consumer migration is deferred to its owner.
 variable GOLDEN-DEV-FLAG           \ -1 once the device golden leg produced the verdict, else 0
 variable GOLDEN-PREC-V             \ precision id of the device golden verdict (PREC-F32 default)
 public
