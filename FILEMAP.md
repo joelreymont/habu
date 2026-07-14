@@ -996,6 +996,13 @@ points stay listed.
   warning, that the eval-fixture idiom, the `CHECK!` probe, a mid-stream
   `TRUSTED:` shim, and a `0 set-check` window stay quiet, and that the row
   persists across `require`.
+- `test/xt-effect-test.f` — xt<effect> value regressions (dot
+  habu-typed-top-xt-096a8f1b): child candidate probes assert `['] W` retypes to
+  xt<effect(W)> so `['] A execute`/`['] SP catch`/`['] SP is ACT` fit-certify and
+  their misfits reject, an unsafe-definer tick (`['] deftype`) rejects, and a
+  non-xt-consumer sink (`['] A +`) keeps the plain xt cell; plus the tier-1
+  `' FOO2 execute` underflow warning stays and the pre-armed tier-2 `0 0 catch`
+  warning is pinned.
 - `test/seal.f` — friend-arena seal regressions: one negative forge per guarded
   PROT-GUARD sink (`!`/`c!`/`+!`/`atomic!`/`atomic-add`/`atomic-cas` plus the
   `read`/`ioctl`/`poll`/`readlink`/`stat64`/`lstat64`/`getdirentries64`/`mmap`

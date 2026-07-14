@@ -437,6 +437,10 @@ TEST:SUITE top-row-warn
    test/top-row-warn-test.f
 TEST:;SUITE
 
+TEST:SUITE xt-effect
+   test/xt-effect-test.f
+TEST:;SUITE
+
 TEST:SUITE owner-wid-internal
    test/owner-wid-internal.f
 TEST:;SUITE

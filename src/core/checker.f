@@ -7572,6 +7572,57 @@ variable IS-TU
    FEP-HIT? 0= IF IS-FAIL EXIT THEN
    FEP @ EFF-QUOT IS-APPLY ;
 
+\ `['] W` (compile-mode tick) retypes from a plain n (`PRIM: [']  PE-N PE-OUT`)
+\ to xt<effect(W)>: a T-QUOT of W's certified effect that execute/catch/is
+\ fit-check by the existing RSEXEC/RSCATCH/IS-APPLY quotation unification (docs
+\ typed-top-level.md §3). Two gates keep this precise-yet-safe:
+\  (1) W's identity is only in the checked text on the CANDIDATE/raw-source path
+\      (PIMM-STREAM 0, CHECK-CANDIDATE!/CHECK!/stage certify). The engine
+\      -reconstructed --load body drops the tick target (C-BTICK consumes it with
+\      no LBCAP), so there BTICK-TOK never fires and `[']` keeps its sound
+\      over-strict PE-N model (execute rejects, probe p8).
+\  (2) the xt<effect> is only materialised when the VERY NEXT token is an
+\      xt-effect consumer; otherwise `['] W` yields a plain n exactly as today, so
+\      the store-consumer sites (`['] B+ FPRIM-L`, `['] C-PACKAGE CF-ENTRY`, ...)
+\      that hand the raw xt cell to a ( .. n .. ) prim are byte-unchanged. A
+\      T-QUOT does not unify with a scalar n (sound: no arithmetic on code cells),
+\      so this look-ahead is what lets the effect ride only into the fit-check.
+\ A sig-less / prim / undefined W pushes a plain n so execute still rejects (over
+\ -strict but sound, never a pure-xt launder); an unsafe definer W rejects,
+\ closing DIRECT-tick laundering (the stored-xt `@ execute` residual stays dot
+\ habu-checker-exec-of-5923c543).
+: BTICK-CAND? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   a u s" [']" CORE-STR= 0= IF RES-FALSE EXIT THEN
+   PIMM-STREAM @ 0 = ;
+
+: BTICK-PUSH ( n -- )                    \ push one row term (xt<effect> quot or plain n)
+   DCUR @ MK-PUSH DCUR ! ;
+
+\ execute/catch/is unify the carried effect against the LIVE row (RSEXEC/RSCATCH/
+\ IS-APPLY), so a T-QUOT operand fit-checks directly. run-in-stack is deliberately
+\ excluded: its xt runs in an ISOLATED frame buffer, so the fit is "frame cells >=
+\ e's din arity", not current-row unification - a distinct check left as residual
+\ (dot habu-typed-top-xt-096a8f1b follow-up), and it keeps its raw-xt PE-N operand
+\ here so `['] W run-in-stack` stays sound rather than falsely rejecting.
+: BTICK-XT-CONSUMER? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   a u s" execute" CORE-STR=
+   a u s" catch" CORE-STR= or
+   a u s" is" CORE-STR= or ;
+
+: BTICK-NEXT-CONSUMES-XT? ( -- bool )    \ peek (no consume): is the post-target token an xt consumer?
+   TI @ >r
+   IS-NEXT-TOKEN {: a:ptr u:n ok:bool :}
+   r> TI !
+   ok 0= IF RES-FALSE EXIT THEN
+   a u BTICK-XT-CONSUMER? ;
+
+: BTICK-TOK ( -- )                       \ [ '] W : consume W, push xt<effect(W)> or a plain n
+   IS-TARGET-TOK? 0= IF IS-FAIL EXIT THEN
+   TKF TKFU @ UNSAFE-TOK? IF REJECT-UNSAFE EXIT THEN
+   BTICK-NEXT-CONSUMES-XT? 0= IF PE-N BTICK-PUSH EXIT THEN
+   TKF TKFU @ CHECKER-FIND-ACTIVE-SIG
+   FEP-HIT? IF FEP @ EFF-QUOT BTICK-PUSH ELSE PE-N BTICK-PUSH THEN ;
+
 \ --- item 12 layout stack-op typing (docs/type-families.md §17) --------------
 \ Whole-bundle transport tokens. For an EXPANDED (non-linear) layout the group
 \ moves by direct row surgery (XPORT-STEP? above); for a non-expanded
@@ -7670,6 +7721,7 @@ variable CONFAM    \ resolved family id while CONM = 2
    TKF TKFU @ s" {:" CORE-STR= IF LOC-BEGIN ELSE
    TKF TKFU @ UNSAFE-TOK? IF REJECT-UNSAFE ELSE
    TKF TKFU @ s" is" CORE-STR= IF IS-TOK ELSE
+   TKF TKFU @ BTICK-CAND? IF BTICK-TOK ELSE
    OK @ IF TKF TKFU @ s" exit" CORE-STR= IF a u DEAD-OWNER! THEN THEN
    OK @ IF TKF TKFU @ s" leave" CORE-STR= IF a u DEAD-OWNER! THEN THEN
    OK @ IF TKF TKFU @ s" again" CORE-STR= IF a u DEAD-OWNER! THEN THEN
@@ -7692,7 +7744,7 @@ variable CONFAM    \ resolved family id while CONM = 2
    PIMM-STREAM @ 0 = IF
       CURSYM @ PIMM-IX dup 0 < 0= IF PIMM-CNT@ PIMM-SKIP ELSE drop THEN
    THEN
-   THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN
+   THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN
    LIN-TAINT-SCAN
    OK @ 0=  FAILSET @ 0=  and IF -1 FAILSET ! THEN
    UNCK @  FAILSET @ 0=  and IF -1 FAILSET ! THEN
