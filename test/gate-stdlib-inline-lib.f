@@ -508,6 +508,7 @@ variable GSI-TL-FILE-A
    s" tools/ptx/profile-test.f" GSI-INCLUDE \ ( -- )
    s" tools/ptx/bench-test.f" GSI-INCLUDE \ ( -- )
    s" tools/ptx/saxpy-test.f" GSI-INCLUDE \ ( -- )
+   s" maki/gpu-emit-test.f" GSI-INCLUDE \ ( -- )
    s" tools/ptx/perf-registry-test.f" GSI-INCLUDE \ ( -- )
    s" tools/ptx/perf-compare-test.f" GSI-INCLUDE \ ( -- )
    s" tools/ptx/perf-regress.f" GSI-INCLUDE \ ( -- )

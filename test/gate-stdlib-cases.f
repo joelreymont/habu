@@ -307,6 +307,7 @@ TEST:SUITE ptx-toolchain
    tools/ptx/profile-test.f
    tools/ptx/bench-test.f
    tools/ptx/saxpy-test.f
+   maki/gpu-emit-test.f
    tools/ptx/perf-registry-test.f
    tools/ptx/perf-compare-test.f
    tools/ptx/perf-regress.f
