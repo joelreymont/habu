@@ -73,3 +73,21 @@ habu-ptx-promote-checked (promote typed bindings to lib/ptx). Branch is
 retire-recommended (kept on origin pending user nod to delete).
 
 Claim: agent=devproof workspace=.jj-ws/fable-devproof
+
+HOST SCOPE LANDED 2026-07-14 (devproof worker + integrator, commits
+"maki/gpu: self-emit SAXPY cubin, drop /tmp path" + gate rewire): maki/gpu.f
+GPU:SETUP now self-emits the checked SAXPY kernel to a PRIVATE per-run PTXTC
+cubin (EMIT-PTX/ASSEMBLE-PTX/BUILD-CUBIN, E-PTX-EMIT fail-closed, RELEASE runs
+PTXTC:CLEAN); host proof maki/gpu-emit-test.f wired into maki/test.f (NOT the
+stdlib suites - maki-dep-lint forbids maki/ refs from the stdlib gate layer;
+the worker's stdlib wiring was reverted at integration). Launchers sum-launch/
+softmax-launch/softmax-gradcheck were already migrated (stale remaining list).
+ON-DEVICE FINDINGS (zed run 2026-07-14): (1) tools/ptx/fusion-compare.f is the
+live fail-open instance - CUDA:OPEN? guard skips off-device, but on-device it
+loads missing /tmp/fused-relu-v4.cubin (producer tools/ptx/fused-relu-cg.f,
+never self-emitted) and dies uncaught E-CUDA -5002, exit 67, in the lint-libs
+ptx-toolchain suite; needs the gpu.f self-emit treatment + failure-class tests.
+(2) tools/zed-device-suite.f still ships local /tmp/zed-*.ptx + remote
+/tmp/*.cubin though its launchers self-emit - reconcile. REMAINING: fusion-
+compare self-emit, matmul-device-test.f orphan (in-process FFI launch), bench
+self-emit (PTXBENCH emit gap), cuda-launch.f, on-device failure-class runs.

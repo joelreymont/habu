@@ -4139,3 +4139,14 @@ unchanged (148855). Keys for milestone 2:
   into a scheduled GSI group (stdlib/tail-process forks isolate hook installs
   and child spawns) is what makes it real; the completeness lint that makes
   this class impossible is tracked by habu-derive-inprocess-spawned-a54e760d.
+- Off-device SKIP guards are a fail-open class: `CUDA:OPEN?`-style guards made
+  fusion-compare.f green for weeks off-device while it would die uncaught
+  (missing /tmp cubin, E-CUDA -5002) the moment a device was present. A device
+  suite is only proven by an on-device run; prefer self-emit + fail-closed
+  throws over prebuilt /tmp artifacts, and key device legs on the probed
+  device-FFI capability, not ambient always-off gates.
+- Gate slices see different lints: maki-dep-lint (dependency direction) lives
+  in the lint-tools slice, so a lane that validates only lint-libs + maki/test
+  can land a maki/ reference in the stdlib gate layer and stay green until the
+  resident run.f. Integrator must run the slice that owns each touched file
+  class, not just the suites the diff obviously participates in.
