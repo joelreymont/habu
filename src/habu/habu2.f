@@ -5043,11 +5043,16 @@ s" em-compile-float-ops" s" --" TRUST
 s" em-compile-ops" s" --" TRUST
 
 : EM-COMPILE-CALL ( -- )
-   LBL {: notimm :}
+   LBL LBL {: notimm:label depthok:label :}
    LVSPILL LABEL@ BL,
    9 DATA TKA-CELL LDR,  10 DATA TKL-CELL LDR,  LFIND LABEL@ BL,
    13 LUNDEF LABEL@ CBZ,
    14 13 2 ANDI,  14 notimm CBZ,
+      14 13 $FF00 ANDI,  14 depthok CBZ,                  \ DNAME-MIN-IN (x13 bits 8-15): the immediate's certified min input arity; 0 = unguarded boundary (compile path floor beneath the p5 checker/hook reject, reached under 0 set-check)
+         14 14 8 LSRI,                                    \ x14 = min-in cells
+         9 DATA S0-CELL LDR,  10 XDS 9 SUB,  10 10 3 ASRI, \ x10 = interpret depth in cells
+         10 14 CMP,  C-LT LMININ LABEL@ BCOND,            \ compile-time depth < declared inputs -> named reject BEFORE the immediate BLRs below the interpret base (dict region still RW here; LDIAGRET restores RX)
+      depthok LBL,
       SP SP 16 SUBI,  30 SP 0 STR,  11 SP 8 STR,
       2 5 MOVZ,  LPROT LABEL@ BL,
       11 SP 8 LDR,  11 BLR,
