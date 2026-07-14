@@ -11,10 +11,12 @@
 \ What each pinned wrong-but-green shape does on-device (see maki/eval-emit-device.f):
 \   sumnorm in/out swap / div-by-sum^2 : NUMERIC DIVERGENCE beyond tolerance (caught);
 \   gemm double-accumulate             : ptxas rejects duplicate labels (caught at assembly);
-\   attn Q/K swap / output-into-V      : emit BYTE-IDENTICAL PTX to the correct kernel
-\                                        (codegen no-op) -> output does NOT diverge. The
-\                                        role swap is inexpressible in the attention
-\                                        scaffold; the emitted kernel is correct.
+\   attn Q/K swap / output-into-V      : NUMERIC DIVERGENCE beyond tolerance (caught). The
+\                                        attention scaffold now threads each operand's
+\                                        pointer register through the phase pipeline (dot
+\                                        habu-attention-scaffold-erases-e03f933b), so a
+\                                        Q/K/V/O permutation emits genuinely swapped
+\                                        loads/stores -> a real wrong kernel.
 
 require lib/test.f
 require maki/eval-emit-device.f
@@ -34,9 +36,9 @@ require maki/eval-emit-device.f
    s" sumnorm in/out-swap diverges"       T-LABEL  EVND:SN-SWAP-CAUGHT?        TTRUE
    s" sumnorm div-by-sum^2 diverges"      T-LABEL  EVND:SN-SQSUM-CAUGHT?       TTRUE
    s" gemm double-accum ptxas-rejected"   T-LABEL  EVND:GEMM-DOUBLE-REJECTED?  TTRUE
-   \ finding: the attention role swaps emit identical PTX -> correct output, no divergence
-   s" attn Q/K-swap emits identical PTX"  T-LABEL  EVND:ATTN-QK-IDENTICAL?     TTRUE
-   s" attn out-into-V emits identical"    T-LABEL  EVND:ATTN-OV-IDENTICAL?     TTRUE
+   \ the attention role swaps now emit swapped loads/stores -> wrong kernel, diverges
+   s" attn Q/K-swap diverges"             T-LABEL  EVND:ATTN-QK-CAUGHT?        TTRUE
+   s" attn out-into-V diverges"           T-LABEL  EVND:ATTN-OV-CAUGHT?        TTRUE
    T-REPORT ;
 
 RUN-DEVICE-GOLDENS

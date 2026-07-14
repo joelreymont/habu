@@ -112,21 +112,23 @@ s" attn no-softmax" T-LABEL
 \   - sumnorm in/out swap  -> NUMERIC DIVERGENCE on the Orin (EVND:SN-SWAP-CAUGHT?)
 \   - sumnorm div-by-sum^2  -> NUMERIC DIVERGENCE on the Orin (EVND:SN-SQSUM-CAUGHT?)
 \   - gemm double-accumulate -> ptxas rejects duplicate labels (EVND:GEMM-DOUBLE-REJECTED?)
-\   - attn Q/K swap / out-into-V -> FINDING: emit BYTE-IDENTICAL PTX to the correct
-\     kernel (the attention scaffold binds operands positionally and DISCARDS the
-\     matrix tokens), so the role swap is a codegen no-op the device confirms
-\     correct (EVND:ATTN-QK-IDENTICAL? / EVND:ATTN-OV-IDENTICAL?). These two are NOT
-\     wrong kernels at codegen; the authoring-scaffold operand-role erasure is a
-\     separate expressiveness gap, not a device catch.
+\   - attn Q/K swap / out-into-V -> NUMERIC DIVERGENCE on the Orin, like the sumnorm
+\     swaps (EVND:ATTN-QK-CAUGHT? / EVND:ATTN-OV-CAUGHT?). The attention scaffold now
+\     THREADS each operand's pointer register through the phase pipeline (ATTN-PACK /
+\     ATTN-QREG..ATTN-OREG, dot habu-attention-scaffold-erases-e03f933b), so permuting
+\     Q/K/V/O emits genuinely swapped loads/stores instead of the old byte-identical,
+\     role-erased kernel; the emitted kernel now computes the wrong result and the
+\     device golden catches it. The register identity is invisible to the structural
+\     gate, so the HOST grade stays 2 - exactly the sumnorm-swap situation.
 s" wrong-but-green sumnorm in/out swap [device: numeric-caught]" T-LABEL
    EVND:SN-SWAP$ EVAL:GRADE-SUMNORM 2 T=
 s" wrong-but-green sumnorm div-by-sum-squared [device: numeric-caught]" T-LABEL
    EVND:SN-SQSUM$ EVAL:GRADE-SUMNORM 2 T=
 s" wrong-but-green gemm double-accumulate [device: ptxas-caught]" T-LABEL
    EVND:GEMM-DOUBLE$ EVAL:GRADE-GEMM 2 T=
-s" wrong-but-green attn Q/K swap [device: identical-PTX, codegen no-op]" T-LABEL
+s" wrong-but-green attn Q/K swap [device: numeric-caught]" T-LABEL
    EVND:ATTN-QK$ EVAL:GRADE-ATTN 2 T=
-s" wrong-but-green attn output-into-V [device: identical-PTX, codegen no-op]" T-LABEL
+s" wrong-but-green attn output-into-V [device: numeric-caught]" T-LABEL
    EVND:ATTN-OV$ EVAL:GRADE-ATTN 2 T=
 \ the checker's linear-use discipline DOES catch a dead normalized value (0, not 2):
 s" reject sumnorm dead-normalize" T-LABEL

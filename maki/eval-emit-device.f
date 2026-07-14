@@ -17,19 +17,21 @@
 \  - gemm double-accumulate: MM-K-LOOP twice emits the pipeline (and its $KLOOP/
 \    $KEND/$NOPF/$PFDONE labels) TWICE -> ptxas rejects the duplicate labels.
 \    CAUGHT at assembly (rc != 0); it never produces a runnable cubin.
-\  - attention Q/K swap    : FINDING - the attention scaffold binds operands
-\    POSITIONALLY (SETUP-EMIT hard-codes %rd1=Q..%rd4=O) and ATTN:STATE DISCARDS
-\    the four same-typed matrix tokens (2drop 2drop). Permuting them before
-\    ATTN:START is a codegen NO-OP: the emitted PTX is BYTE-IDENTICAL to the
-\    correct kernel, so device output does NOT diverge. The role swap is
-\    inexpressible in this scaffold; the emitted kernel is correct.
-\  - attention output-into-V: same finding (identical PTX, no divergence).
+\  - attention Q/K swap    : NUMERIC DIVERGENCE. The attention scaffold now THREADS
+\    each operand's pointer register through the phase pipeline (ATTN-PACK /
+\    ATTN-QREG..ATTN-OREG in lib/ptx/cg-attention.f, dot
+\    habu-attention-scaffold-erases-e03f933b), so permuting Q/K/V/O before ATTN:START
+\    emits genuinely swapped loads: STAGE-Q stages from K's pointer and SCORE reads
+\    Q's, the scores become Q-dependent, softmax is no longer uniform, and the device
+\    output diverges from the reference. CAUGHT.
+\  - attention output-into-V: the store lands in V's pointer and the O-role load reads
+\    the zero-initialized O buffer, so the O output buffer keeps its sentinel -> NUMERIC
+\    DIVERGENCE. CAUGHT.
 \
-\ So the device golden closes the class exactly where wrongness reaches codegen
-\ (the two sumnorm shapes, numerically; the gemm shape, at ptxas) and PROVES the
-\ two attention shapes are codegen no-ops. The attention scaffold's operand-role
-\ erasure is a separate authoring-expressiveness gap to be dotted, not a device
-\ catch.
+\ So the device golden closes the class wherever wrongness reaches codegen: all four
+\ numeric shapes (the two sumnorm, the two attention) diverge, and the gemm shape is
+\ rejected at ptxas. The former attention operand-role erasure is fixed at the
+\ scaffold, so the role swaps are now real wrong kernels, not codegen no-ops.
 \
 \ MECHANISM (per shape, like maki/eval-device.f): write a driver that defines the
 \ candidate kernel K + the task scaffold, spawn a bin/hb CHILD to emit its PTX
@@ -412,9 +414,9 @@ public
    GEMM-DOUBLE$ GEMM-ASM-RC {: rc:n :}  s" gemm double-accumulate" rc REPORT-RC  rc 0 <> ;
 : ATTN-GREEN-OK? ( -- bool )
    ATTN-GREEN$ ATTN-RUN {: e:r :}  s" attn correct" e REPORT-ERR  e TOL f< ;
-: ATTN-QK-IDENTICAL? ( -- bool )
-   ATTN-QK$ ATTN-RUN {: e:r :}  s" attn Q/K-swap [emits identical PTX]" e REPORT-ERR  e TOL f< ;
-: ATTN-OV-IDENTICAL? ( -- bool )
-   ATTN-OV$ ATTN-RUN {: e:r :}  s" attn output-into-V [emits identical PTX]" e REPORT-ERR  e TOL f< ;
+: ATTN-QK-CAUGHT? ( -- bool )
+   ATTN-QK$ ATTN-RUN {: e:r :}  s" attn Q/K-swap [emits swapped loads]" e REPORT-ERR  e TOL f> ;
+: ATTN-OV-CAUGHT? ( -- bool )
+   ATTN-OV$ ATTN-RUN {: e:r :}  s" attn output-into-V [stores into V ptr]" e REPORT-ERR  e TOL f> ;
 
 ;package

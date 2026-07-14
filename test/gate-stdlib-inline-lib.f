@@ -484,6 +484,7 @@ variable GSI-TL-FILE-A
    s" lib/ptx/tile-acc-test.f" GSI-INCLUDE
    s" lib/ptx/gemm-checked-test.f" GSI-INCLUDE
    s" lib/ptx/attention-checked-test.f" GSI-INCLUDE
+   s" lib/ptx/attention-roles-test.f" GSI-INCLUDE
    s" lib/ptx/tile-v4-test.f" GSI-INCLUDE
    s" lib/ptx/collective-test.f" GSI-INCLUDE
    s" lib/ptx/autograd-test.f" GSI-INCLUDE

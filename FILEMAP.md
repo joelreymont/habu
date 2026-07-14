@@ -465,6 +465,9 @@ points stay listed.
 - `lib/ptx/attention-checked-test.f` / `lib/ptx/attention-checked-neg-test.f` —
   checked fused-attention matrix/phase proof, byte-stable emitter regression,
   and phase/shape negative regressions.
+- `lib/ptx/attention-roles-test.f` — operand-role regression: two candidates
+  differing only in Q/K/V/O order must emit DIFFERENT PTX (the attnctx threads
+  each operand's pointer register), while correct authoring stays byte-stable.
 - `lib/ptx/cg.f` / `lib/ptx/cg-vec.f` / `lib/ptx/cg-collective.f` /
   `lib/ptx/cg-matmul.f` / `lib/ptx/cg-attention.f` — PTX codegen emit-mode
   lowering for tile ops: scalar, vectorized v4, row/collective, the
