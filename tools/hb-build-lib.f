@@ -559,6 +559,7 @@ HBB-INSTALL-CHILD-LINTS
    s" src/habu/owner-wid-emit-seal.f" HBB-KEY-FILE+
    s" src/core/layout-buffer-seal.f" HBB-KEY-FILE+
    s" src/core/lower-cert-seal.f" HBB-KEY-FILE+
+   s" src/core/top-row.f" HBB-KEY-FILE+
    s" src/habu/driver-io.f" HBB-KEY-FILE+
    s" src/habu/maker.f" HBB-KEY-FILE+ ;
 

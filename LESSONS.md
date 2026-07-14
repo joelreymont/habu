@@ -4,6 +4,20 @@
 
 Last updated: 2026-07-14
 
+- **A cold-prefix `.f` file sees a baked, name-stripped checker, not
+  `checker.f` from disk (top-row landing).** `bin/hb` reloads prefix *content*
+  from the checkout, but the visible dictionary at a prefix file's load is the
+  last build's baked engine: internal `:`/`constant` names (`E-PTR`, `EN-CON`,
+  `CHECKER-FIND-ACTIVE-SYM`, `PE-EFF@`) are treeshaken away, so a new prefix file
+  can only use engine prims, core words, the curated public checker API, and
+  hardcoded ABI constants. Editing prefix-file *content* needs no rebuild;
+  adding a file to the *list* (habu2.f `PFX-LOAD-*`/`PFX-PATH`/`PFX-PROVIDE` +
+  `LP*` var + `EMIT-LABEL-SOURCES` + hb-build-lib.f content key) does. Corollary:
+  `set-check`/`set-top-check` are guarded-deref trust-boundary prims — a *checked*
+  `:` word sees them as "undefined"; install from a `TRUSTED:` word (mirror
+  `LOWER-CERT-HOOK:INSTALL`). And install *after* internal-mark: its top-level
+  `0 set-check` suspends a token hook whose re-arm lives inside a word body
+  (invisible to the hook), so an earlier install stays suspended for user code.
 - **The R7 plan's type-schema spellings are pseudocode; probe the checker, don't
   transcribe them.** The addendum writes `STRUCTURE`/`FIELD`/`DERIVE eq`/
   `VARIANT got ... ;VARIANT`, but the real keywords are `TYPEFAMILY` (arity-0

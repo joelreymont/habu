@@ -416,6 +416,7 @@ that source is explicitly certified; they are not stale-checked by the default
 | c-package-prot-guard | `--` | Generated package reopen guard rejects any package whose public wordlist is registered as protected. | `test/seal-package.f`, `test/run.f` | src/habu/habu2.f | 2026-07-11 |
 | p2f-entry | `label ptr a n n --` | Pass-2 typed-fetch dispatch consumes source-offset width and descriptor rows, emits validation, and executes the frozen bundle-fetch lowering. | `test/run.f` | src/habu/habu2.f | 2026-07-11 |
 | INSTALL | `--` | Protected checker-hook installer owns the fixed `LOWER-CERT-HOOK:HOOK` execution token and restores the default fail-closed checker after package sealing. | `tools/build-fixpoint-test.f`, `test/gate-aot-negative.f`, `test/engine-suite.f`, `test/run.f` | src/core/check-hook.f | 2026-07-11 |
+| TR-INSTALL | `--` | Installs the tier-1 top-row tracker hook through the guarded-deref `set-top-check` trust-boundary prim (mirrors `LOWER-CERT-HOOK:INSTALL`'s `' HOOK set-check`); hook installation is not expressible in the checked language. | `test/top-row-warn-test.f`, `test/run.f` | src/core/top-row.f | 2026-07-14 |
 | CHECKER-CERT-CALL | `ptr u8 n n n --` | Single dynamic-call boundary for the installed lowering-certificate producer; installation is private and single-assignment. | `tools/build-fixpoint-test.f`, `test/lower-cert.f`, `test/run.f` | src/core/checker.f | 2026-07-11 |
 | SCRIPT-BUILD-Z? | `ptr u8 -- bool` | Recognizes the internal `--build` argv marker in a raw argv c-string. | `tools/hb-cli-contracts-test.f`, `tools/build-fixpoint-test.f` | src/os/script-argv.f | 2026-07-11 |
 | SCRIPT-SOURCE-Z? | `ptr u8 -- bool` | Recognizes either source-list argv marker in a raw argv c-string. | `tools/hb-cli-contracts-test.f`, `tools/build-fixpoint-test.f` | src/os/script-argv.f | 2026-07-11 |
@@ -1788,6 +1789,7 @@ tools/codegen-role.f:CGR-CHECK! test-metaprog habu-primitive-effect-axiom-1119f1
 tools/codegen-role.f:CGR-EVALUATE-UNCHECKED test-metaprog cap:checker-hook-identity
 src/core/check-hook.f:HOOK stdlib-boundary cap:checker-hook-identity
 src/core/check-hook.f:INSTALL stdlib-boundary cap:checker-hook-identity
+src/core/top-row.f:TR-INSTALL stdlib-boundary cap:checker-hook-identity
 src/habu/aot.f:USER-HOOK builder-emit cap:checker-hook-identity
 src/habu/snap-lib.f:SNAP-CHECK-HOOK builder-emit cap:checker-hook-identity 2
 tools/check-core.f:CHK-CHECK-HOOK stdlib-boundary cap:checker-hook-identity

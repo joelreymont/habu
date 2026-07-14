@@ -161,6 +161,7 @@ variable LPSCRIPTARGV   variable LPINTMARK
 variable LPROLES
 variable LPENUMS        variable LPEXECVECTOR   variable LPSHA256       variable LPTFAMSHA
 variable LPCOMBINATORS  variable LPXREF  variable LPLAYOUTSEAL  variable LPLOWERCERTSEAL
+variable LPTOPROW
 create BPH-KW 104 c, 97 c, 98 c, 117 c, 45 c, 98 c, 112 c, 58 c, 10 c,   \ habu-bp:\n
 create BPS-KW 104 c, 97 c, 98 c, 117 c, 45 c, 98 c, 112 c, 45 c, 115 c, 116 c, 97 c, 99 c, 107 c, 58 c, 10 c,
 create BPW-KW 104 c, 97 c, 98 c, 117 c, 45 c, 98 c, 112 c, 45 c, 119 c, 97 c, 116 c, 99 c, 104 c, 58 c, 10 c,
@@ -554,6 +555,22 @@ s" c-bp-watch-dump" s" label label --" TRUST
    PFX-LOAD-INTMARK
    done LBL, ;
 
+\ top-row.f installs the tier-1 top-level row tracker (dot
+\ habu-typed-top-checker-82cf8b84) as the LAST cold-prefix source: after
+\ internal-mark's own top-level `0 set-check` window (whose re-arm lives inside a
+\ word body and is invisible to a token hook), so the tracker starts armed and
+\ empty on the first user token. Snapshot boots skip it (SNAP-CELL guard), like
+\ internal-mark above; snapshot/AOT re-install is docs/typed-top-level.md §5.6.
+: PFX-LOAD-TOPROW ( -- )
+   PFX-COMMON LPTOPROW       s" src/core/top-row.f"     PFX-LOAD-ROW ;
+
+: PFX-LOAD-TOPROW-COLD ( -- )
+   LBL {: done:label :}
+   12 DATA SNAP-CELL LDR,
+   12 done CBNZ,
+   PFX-LOAD-TOPROW
+   done LBL, ;
+
 : PFX-LOAD-FILES ( -- )
    PFX-LOAD-BASE-FILES
    PFX-LOAD-SCRIPT-ARGV
@@ -587,6 +604,7 @@ s" c-bp-watch-dump" s" label label --" TRUST
    PFX-COMMON LPINCLUDE      s" src/core/include.f"     PFX-PATH-ROW
    PFX-COMMON LPSCRIPTARGV   s" src/os/script-argv.f"   PFX-PATH-ROW
    PFX-COMMON LPINTMARK      s" src/core/internal-mark.f" PFX-PATH-ROW
+   PFX-COMMON LPTOPROW       s" src/core/top-row.f"     PFX-PATH-ROW
    PFX-COMMON LPENUMS        s" src/core/enums.f"       PFX-PATH-ROW
    PFX-COMMON LPEXECVECTOR   s" src/core/exec-vector.f" PFX-PATH-ROW
    PFX-COMMON LPSHA256       s" src/core/sha256.f"      PFX-PATH-ROW
@@ -819,6 +837,7 @@ variable LCOLDPFX variable LCOLDPFXB variable LAPPPROV
    PFX-COMMON LPINCLUDE      s" src/core/include.f"     PFX-PROVIDE-ROW
    PFX-COMMON LPSCRIPTARGV   s" src/os/script-argv.f"   PFX-PROVIDE-ROW
    PFX-COMMON LPINTMARK      s" src/core/internal-mark.f" PFX-PROVIDE-ROW
+   PFX-COMMON LPTOPROW       s" src/core/top-row.f"     PFX-PROVIDE-ROW
    PFX-COMMON LPENUMS        s" src/core/enums.f"       PFX-PROVIDE-ROW
    PFX-COMMON LPEXECVECTOR   s" src/core/exec-vector.f" PFX-PROVIDE-ROW
    PFX-COMMON LPSHA256       s" src/core/sha256.f"      PFX-PROVIDE-ROW
@@ -998,6 +1017,7 @@ variable LCOLDPFX variable LCOLDPFXB variable LAPPPROV
       EMIT-COLD-PREFIX
       PFX-LOAD-SCRIPT-ARGV-COLD
       PFX-LOAD-INTMARK-COLD                        \ LAST prefix source: seal-time internal-word marking pass
+      PFX-LOAD-TOPROW-COLD                         \ tier-1 top-row tracker: armed on the first user token
       PFX-PROVIDE-FILES
       EMIT-SEAL-CAPTURE-TOKEN                      \ watermark token at the true engine-prefix end
       12 SP 8 LDR,  12 noseal CBNZ,
@@ -5639,7 +5659,8 @@ s" SRCA@" s" -- ptr u8" TRUST
    LBL LPSTRUCTEFF !  LBL LPHABULAYOUT !
    LBL LPENVBASE !  LBL LPINCLUDE !  LBL LPSCRIPTARGV !  LBL LPINTMARK !  LBL LPROLES !
    LBL LPENUMS !  LBL LPEXECVECTOR !  LBL LPSHA256 !  LBL LPTFAMSHA !
-   LBL LPCOMBINATORS !  LBL LPXREF !  LBL LPLAYOUTSEAL !  LBL LPLOWERCERTSEAL ! ;
+   LBL LPCOMBINATORS !  LBL LPXREF !  LBL LPLAYOUTSEAL !  LBL LPLOWERCERTSEAL !
+   LBL LPTOPROW ! ;
 
 : EMIT-LABEL-JIT ( -- )
    LBL LPROFH !  LBL LPROFDUMP !

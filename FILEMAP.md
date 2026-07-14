@@ -67,6 +67,10 @@ points stay listed.
 - `src/core/type-family-sha.f` — installs the constructor package-name SHA-256 fallback hook (TF-SHA16) after sha256.f loads.
 - `src/core/sha-check.f` — standalone SHA-256 self-test against FIPS-180 vectors.
 - `src/core/check-hook.f` — default native source checker hook installation.
+- `src/core/top-row.f` — tier-1 top-level row tracker: installs the per-token
+  top-row hook as the last cold-prefix source and warns (stderr, rc unchanged)
+  on the xt/value residuals a depth floor cannot reach (docs/typed-top-level.md
+  §5 sub-dot 3).
 - `src/core/internal-mark.f` — seal-time internal-word marking pass (last
   cold-prefix source): sets `DNAME-INT` on every engine-prefix COLON record
   with no checker-known effect so bare top-level execution and tick fail
@@ -986,6 +990,12 @@ points stay listed.
   named diagnostic on both cold-prefix paths and that a raw store into the
   sealed TOP-HOOK-CELL band traps `E-SEAL-VIOLATION` while both one-cell
   neighbors stay writable.
+- `test/top-row-warn-test.f` — tier-1 top-row tracker warning regressions (dot
+  habu-typed-top-checker-82cf8b84): child probes assert p1 `' FOO2 execute`,
+  p2 `0 0 catch`, and p3 `s" abc" + .` each emit exactly one `hb: top-row:`
+  warning, that the eval-fixture idiom, the `CHECK!` probe, a mid-stream
+  `TRUSTED:` shim, and a `0 set-check` window stay quiet, and that the row
+  persists across `require`.
 - `test/seal.f` — friend-arena seal regressions: one negative forge per guarded
   PROT-GUARD sink (`!`/`c!`/`+!`/`atomic!`/`atomic-add`/`atomic-cas` plus the
   `read`/`ioctl`/`poll`/`readlink`/`stat64`/`lstat64`/`getdirentries64`/`mmap`

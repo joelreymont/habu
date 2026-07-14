@@ -459,6 +459,7 @@ variable GSI-TL-FILE-A
    s" test/underdepth-gate.f" GSI-FORK-INCLUDE
    s" test/immediate-model-test.f" GSI-FORK-INCLUDE
    s" test/top-row-hook-test.f" GSI-FORK-INCLUDE
+   s" test/top-row-warn-test.f" GSI-FORK-INCLUDE
    GSI-FORK-DRAIN ;
 
 : GSI-LINT-LIBS-CORE ( -- )
