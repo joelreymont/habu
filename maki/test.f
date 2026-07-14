@@ -220,6 +220,8 @@ TEST:SUITE maki/evidence/policy-e2e-test.f
 TEST:;SUITE
 TEST:SUITE maki/evidence/promote-test.f
 TEST:;SUITE
+TEST:SUITE maki/competitive-report-test.f
+TEST:;SUITE
 TEST:SUITE maki/cuda-types-test.f
 TEST:;SUITE
 TEST:SUITE maki/cuda-driver-test.f

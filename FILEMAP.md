@@ -607,6 +607,26 @@ points stay listed.
   same-label different-facts target negative, the policy key-invalidation cases
   (same config + different requested policy => different key), and replay-table
   regressions.
+- `maki/competitive-report.f` — the checked BENCH competitive-comparison schema:
+  four distinct nominal id families (workload/shape/protocol/baseline), the closed
+  cache-state and absence sums, unit-typed present-or-absent throughput readings
+  (`gbps`/`gflops` sums), and the two per-unit comparison products
+  (`comparison-gbps`/`comparison-gflops`) so a GFLOP/s reading can never fill a
+  GB/s slot - unit confusion is a value-level type mismatch. `GBPS-COMPARABLE?` /
+  `GFLOPS-COMPARABLE?` are the pairing verdict over the two `NPOL:dom` numeric-policy
+  witnesses (an exact-policy FP32 side and a relative-policy TF32 side are not
+  comparable), and the canonical versioned `RENDER-GBPS`/`RENDER-GFLOPS` emit one
+  byte-stable row per unit (every field alters the key). A generic `comparison<a>`
+  is expressible but not used: a product type parameter binds only cell-tier types,
+  so it would need TRUSTED nominal-cell unit witnesses and a unit-agnostic reading;
+  the concrete per-unit families give stronger value-level unit typing with zero
+  TRUSTED surface. Owns -5257..-5258.
+- `maki/competitive-report-test.f` — the SAXPY FP32 and Habu-MMM/Triton TF32 byte
+  goldens, per-field key-alteration cases (each id/policy/unit/value + cold/warm),
+  the named-absence render, the numeric-policy pairing verdicts (the historical
+  Habu-FP32-vs-Triton-TF32 confusion rejects with a resolving positive), the
+  identity/raw-n/cache/unit/precision type-reject candidates with resolving
+  positives, and the E-BENCH capacity throws.
 - `maki/cuda-types.f` — thin re-export of `lib/ptx/cuda-driver.f` preserving the
   historical maki spellings (cuda-* roles, `CUDA-HANDLE0`/`CUDA-RC0`, `E-MK-GPU`).
 - `maki/cuda-types-test.f` — runtime regressions for CUDA handle and rc
