@@ -6,7 +6,6 @@ issue-type: task
 created-at: "2026-07-13T15:25:39.586847+02:00"
 blocks:
   - habu-protect-dynamic-immutable-eccd0489
-  - habu-nominal-storage-raw-a3430ef2
   - habu-nominal-storage-effect-a60ba885
   - habu-seal-owners-syntax-63051652
 ---

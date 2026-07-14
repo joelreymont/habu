@@ -7,7 +7,6 @@ created-at: "2026-07-13T14:14:22.891286+02:00"
 blocks:
   - habu-implement-cad-num-962bf5d9
   - habu-implement-cad-num-cb413b2a
-  - habu-nominal-storage-raw-a3430ef2
   - habu-seal-owners-syntax-63051652
 ---
 
