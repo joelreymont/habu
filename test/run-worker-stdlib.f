@@ -8,9 +8,6 @@ TRW-LOAD-DONE
 : TRWS-SETUP ( -- )
    TR-TIMINGS @ 0 <> if GSI-TIMINGS! then ;
 
-: TRWS-STDLIB ( -- )
-   s" test/gate-stdlib-cases.f" included ;
-
 : TRWS-TOOL ( -- )
    SUITE-SKIP-TOOL-SEMANTIC!
    GSI-TOOL-TRUST ;

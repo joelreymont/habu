@@ -447,6 +447,14 @@ variable GSI-TL-FILE-A
    s" test/gate-runner-entry-test.f" GSI-FORK-INCLUDE
    s" lib/process-test.f" GSI-FORK-INCLUDE
    s" lib/process-command-test.f" GSI-FORK-INCLUDE
+   \ engine-gate negative regressions: these lived only in gate-stdlib-cases.f
+   \ suites whose labels no slice selects, so the full runner never executed
+   \ them (gaps audit 2026-07-14). Forked includes isolate their hook installs
+   \ and child spawns.
+   s" test/internal-word-gate.f" GSI-FORK-INCLUDE
+   s" test/underdepth-gate.f" GSI-FORK-INCLUDE
+   s" test/immediate-model-test.f" GSI-FORK-INCLUDE
+   s" test/top-row-hook-test.f" GSI-FORK-INCLUDE
    GSI-FORK-DRAIN ;
 
 : GSI-LINT-LIBS-CORE ( -- )
@@ -504,11 +512,14 @@ variable GSI-TL-FILE-A
    s" tools/ptx/perf-regress.f" GSI-INCLUDE \ ( -- )
    s" tools/kernel-perf-lint-test.f" GSI-INCLUDE ; \ ( -- )
 \ NOTE: the device/bench tools (bandwidth-lib-test, fusion-compare, gemm-bench)
-\ run only in the SPAWNED ptx-toolchain slice (test/gate-stdlib-cases.f), where
-\ they compile-check + device-SKIP in a fresh image. Loaded into the resident
-\ full-runner image they SIGBUS, so the inprocess list carries the unit tests +
-\ the perf-regress scan (the substantive gate); the spawned list stays a
-\ superset. Retire the duplication per habu-derive-inprocess-spawned-a54e760d.
+\ run only in the ptx-toolchain suite of the MANUAL lint-libs slice
+\ (`bin/hb --load test/gate-stdlib.f -- lint-libs`, a documented merge gate -
+\ test/run.f does NOT schedule the spawned slices), where they compile-check +
+\ device-SKIP in a fresh image. Loaded into the resident full-runner image they
+\ SIGBUS, so the inprocess list carries the unit tests + the perf-regress scan
+\ (the substantive automatic gate); the spawned list stays a superset. Retire
+\ the duplication + give the bench compile-checks a scheduled runner per
+\ habu-derive-inprocess-spawned-a54e760d.
 
 : GSI-LINT-MANIFEST ( -- )
    s" stdlib/lint-manifest" GSI-GROUP-SEQ GSI-GROUP-HEADER

@@ -23,6 +23,15 @@
 \ Bodies are minimal skeletons: consume the input stage(s), mint the output.
 \ Identity/provenance threading (carrying the artifact id through the stages) is
 \ a refinement for the evidence sub-dots; here each mint takes a fresh 0.
+\
+\ SCOPE: 7 of the R7 addendum's 13 transition words live here - the STAGE
+\ transitions (MODEL:ELABORATE TIR:SOLVE RIR:LEGALIZE PLAN:FINISH KIR:VERIFY
+\ CAND:EMIT ART:BUILD). The remaining 6 are owned by the follow-on sub-dots
+\ whose families they mint: EVID:CERTIFY/GOLDEN/GRADCHECK/PROFILE by the
+\ evidence-schema sub-dot (habu-v2-typestate-evidence-f124dc85), POLICY:CHECK
+\ by the promotion-policy sub-dot (habu-v2-typestate-promotion-d539e648), and
+\ ART:PROMOTE by the transition/store-seal sub-dot
+\ (habu-v2-typestate-promotion-2266b236).
 
 require maki/cad-kinds.f
 

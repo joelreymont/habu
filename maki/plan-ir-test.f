@@ -37,9 +37,15 @@ create PIT-W 8 cells allot
    PIT-W 1 MIR-SLOT-ID EX-BIND ;
 
 : PIT-OUTS-CK ( -- )                    \ n0 = w rows; n1 = gelu(n0)
+   \ ALL four cells per output: cells 1/2 are exactly where a transposed
+   \ replay would differ from EX-RUN (same-type-swap blind spot).
    0 MIR-NODE-ID EX-OUT@ 0 PIT->I 1 T=
+   0 MIR-NODE-ID EX-OUT@ 1 PIT->I 2 T=
+   0 MIR-NODE-ID EX-OUT@ 2 PIT->I 3 T=
    0 MIR-NODE-ID EX-OUT@ 3 PIT->I 4 T=
    1 MIR-NODE-ID EX-OUT@ 0 PIT->M 841 T=
+   1 MIR-NODE-ID EX-OUT@ 1 PIT->M 2.0 GELU-F 1000.0 f* 0.5 f+ f>s T=
+   1 MIR-NODE-ID EX-OUT@ 2 PIT->M 3.0 GELU-F 1000.0 f* 0.5 f+ f>s T=
    1 MIR-NODE-ID EX-OUT@ 3 PIT->M 4.0 GELU-F 1000.0 f* 0.5 f+ f>s T= ;
 
 \ a hand DAG for the same IR: kernels on s0, event sync into s1 (host no-ops)

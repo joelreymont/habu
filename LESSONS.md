@@ -4106,3 +4106,12 @@ unchanged (148855). Keys for milestone 2:
   raw-text. And never exit a check hook bare: verdict-1 with no DIAGXT used to
   throw rc 70 with zero diagnostics - the exact opaque-exit class the
   debugging doc bans; check-hook.f now names the definition and failing token.
+- **"Wired into a TEST:SUITE" is not "runs": gate-stdlib-cases.f suites execute
+  only if a SUITE-*-LABEL? slice list selects the label AND someone invokes that
+  slice - and test/run.f schedules no spawned slice at all.** Four engine-gate
+  negative-regression files (internal-word-gate, underdepth-gate,
+  immediate-model, top-row-hook) sat in unselected suites, copied from each
+  other as templates, and never ran in any automatic gate. Mirroring a suite
+  into a scheduled GSI group (stdlib/tail-process forks isolate hook installs
+  and child spawns) is what makes it real; the completeness lint that makes
+  this class impossible is tracked by habu-derive-inprocess-spawned-a54e760d.
