@@ -36,11 +36,15 @@
 \ plus the code-signature growth accounts for the page-granular delta. The
 \ Linux row is untouched; its next lane run fails closed with the measured
 \ size to commit.
+\ 2026-07-14 Linux bump 102592 -> 147648: first Linux re-measure since 2026-07-04
+\ - the merged engine adds the TFAM slice-3a/3b lowering, the type-family checker
+\ + tok-imm? immediate model, and the certified-word underdepth gate; fixpoint x2
+\ byte-identical on the Orin.
 165367 constant GB-SIZE-BASELINE-MACOS
-102592 constant GB-SIZE-BASELINE-LINUX   \ fable re-measure 2026-07-04 (Orin, habu-re-measure-set);
-                                         \ STALE for the merged engine (adds the TFAM +1269-line
-                                         \ lowering) — the next Linux lane run fails closed with the
-                                         \ measured merged size to commit.
+147648 constant GB-SIZE-BASELINE-LINUX   \ fable re-measure 2026-07-14 (Orin, habu-re-measure-linux);
+                                         \ merged engine with the TFAM slice-3a/3b lowering, the type-
+                                         \ family checker + tok-imm? immediate model, and the certified-
+                                         \ word underdepth gate; fixpoint x2 byte-identical on the Orin.
 
 0 constant GB-SIZE-OK
 1 constant GB-SIZE-GROWN
