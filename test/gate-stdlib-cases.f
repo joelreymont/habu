@@ -329,6 +329,7 @@ TEST:SUITE ptx-toolchain
    tools/ptx/sum-launch.f
    tools/ptx/softmax-launch.f
    tools/ptx/softmax-gradcheck.f
+   tools/ptx/cuda-launch.f
 TEST:;SUITE
 
 TEST:SUITE-STDIN source-stdlib-stdin DATA

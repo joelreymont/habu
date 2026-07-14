@@ -208,7 +208,8 @@ variable SC-NUM-L
    s" tools/ptx/saxpy-v4-tail-device-test.f" q execute
    s" tools/ptx/sum-launch.f" q execute
    s" tools/ptx/softmax-launch.f" q execute
-   s" tools/ptx/softmax-gradcheck.f" q execute ;
+   s" tools/ptx/softmax-gradcheck.f" q execute
+   s" tools/ptx/cuda-launch.f" q execute ;
 
 \ closure-run lint cores: their suite member is the CLI tool file, exercised by a
 \ scheduled `[: XXX-LINT ;] GSI-RUN` in the lint-tools group (the file itself is
