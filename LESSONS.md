@@ -4205,3 +4205,18 @@ unchanged (148855). Keys for milestone 2:
   (fine to grow), but the byte arena was sized with no headroom; bumped
   $10000 -> $20000 to cover CMAX=1024 rows. Whoever grows a ratcheted manifest
   must budget the scratch arena, not just the count.
+- The resident `test/run.f` gate does NOT run the full `test/gate-stdlib.f`
+  TEST:SUITE inventory: it runs the in-process GSI groups
+  (test/gate-stdlib-inline-lib.f) plus a few spawned slices. ~40+ cases suites
+  (hashmap, float, prelude, object-*, task, ffi-cabi, device PTX, heavy builds,
+  namespace/error-code lints, ...) run ONLY in the standalone
+  `bin/hb --load test/gate-stdlib.f` full/slice merge gate. The spawned
+  TEST:SUITE lists and the resident GSI lists are hand-synced and drift silently:
+  a member mirrored into no scheduled GSI group runs in no automatic gate (four
+  checker-invariant suites escaped this way; kbench added 7 spawned-only ptx
+  files). `tools/suite-coverage-lint.f` now derives all three lists from the gate
+  files each run and forces every member into scheduled / manual-documented /
+  spawn-only-documented, and holds inprocess GSI-LINT-LIBS-PTX-TOOL ==
+  spawned ptx-toolchain minus the documented SIGBUS bench set. Wire a new lint
+  into BOTH the cases suite + the scheduled lint-tools GSI fork, or the lint that
+  kills orphans becomes an orphan itself.

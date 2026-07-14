@@ -191,6 +191,7 @@ variable SUITE-TIMINGS
    s" maki-dep-lint-fixtures" SUITE-LABEL= if SUITE-TRUE exit then
    s" refine-lint" SUITE-LABEL= if SUITE-TRUE exit then
    s" refine-lint-fixtures" SUITE-LABEL= if SUITE-TRUE exit then
+   s" suite-coverage-lint" SUITE-LABEL= if SUITE-TRUE exit then
    s" host-lint-fixtures" SUITE-LABEL= if SUITE-TRUE exit then
    s" trusted-inventory" SUITE-LABEL= if SUITE-TRUE exit then
    SUITE-FALSE ;

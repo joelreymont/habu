@@ -70,6 +70,11 @@ TEST:SUITE refine-lint-fixtures
    tools/refine-lint-test.f
 TEST:;SUITE
 
+TEST:SUITE suite-coverage-lint
+   tools/suite-coverage-lint.f
+   tools/suite-coverage-lint-test.f
+TEST:;SUITE
+
 TEST:SUITE namespace-lint
    tools/namespace-lint.f
 TEST:;SUITE

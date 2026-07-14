@@ -753,6 +753,9 @@ points stay listed.
 - `tools/refine-lint-core.f` — inventory-driven confinement lint for TRUSTED refinement mints (rows shaped `n -- <nominal family>`): references outside the owning file are findings unless cited by the row's Tests cell or an explicit allowlist; a seed list cross-checked against `TRUSTED.md` plus a mint-shape scan keeps the set from rotting. Interim until the TVK-RAW checker capability lands.
 - `tools/refine-lint.f` — CLI wrapper for the refinement-mint confinement lint.
 - `tools/refine-lint-test.f` — checked fixture coverage: shape/policy fixtures, a red scratch-file mint call outside the tree, and the green live tree run.
+- `tools/suite-coverage-lint-core.f` — derives the stdlib gate suite lists from test/gate-stdlib-cases.f, test/gate-stdlib-inline-lib.f, test/gate-stdlib-lint-tools.f and test/run-worker-stdlib.f each run; enforces that every TEST:SUITE member is scheduled/manual-documented/spawn-only-documented and that the inprocess GSI-LINT-LIBS-PTX-TOOL list equals the spawned ptx-toolchain list minus the documented spawn-only bench set.
+- `tools/suite-coverage-lint.f` — CLI wrapper for the stdlib gate suite-coverage lint.
+- `tools/suite-coverage-lint-test.f` — checked fixture coverage for the suite-coverage lint: BOL member parsing, orphan detection, ptx missing/extra/spawn-only divergence, exact-equality clean case, and manual/spawn-only table staleness.
 - `tools/host-lint-test.f` — focused coverage for host-script lint policy helpers.
 - `tools/stale-status-lint-core.f` — reusable stale status/count lint core.
 - `tools/stale-status-lint.f` — CLI wrapper for stale status/count lint.
