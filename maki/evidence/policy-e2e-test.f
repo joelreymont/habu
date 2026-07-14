@@ -30,7 +30,7 @@ require maki/evidence/promote.f      \ ART:PROMOTE (pulls policy.f -> schema.f -
 \ ---- one genuine evidence value per class, each measured on the built artifact -
 : CERT-FOR ( CAD-KIND:artifact-id -- EVID:certified )   BUILT-FOR EVID:CERTIFY ;
 : GOLD-FOR ( CAD-KIND:artifact-id -- EVID:golden )
-   BUILT-FOR EVID-GOLDEN--LEG:HOST EVID-PREC--CLASS:PREC-F32 EVID:GOLDEN ;
+   BUILT-FOR EVID-GOLDEN--LEG:HOST EVID-PREC--CLASS:PREC-F32 NPOL-DOM:EXACT EVID:GOLDEN ;
 : GRAD-FOR ( CAD-KIND:artifact-id -- EVID:gradchecked ) BUILT-FOR EVID:GRADCHECK ;
 : PROF-FOR ( CAD-KIND:artifact-id -- EVID:profiled )    BUILT-FOR 100 EVID:PROFILE ;
 
@@ -82,6 +82,18 @@ require maki/evidence/promote.f      \ ART:PROMOTE (pulls policy.f -> schema.f -
    s" e2e-pb" ARTIFACT:REGISTER {: b:CAD-KIND:artifact-id :}
    b BUILT-FOR  a BUNDLE-FULL a GRANT-FOR  ART:PROMOTE drop ;
 
+\ ---- numeric-policy refusal: a golden's ACHIEVED domain rides in the record -----
+\ A device golden judged under TF32 carries the relative-error proof domain
+\ (EVID:GOLD-DOM). Against an exact-policy requirement it REFUSES (E-NPOL-APPROX,
+\ maki/numpolicy.f NPOL:ENFORCE); against a relative requirement the SAME golden
+\ satisfies - the "approximate evidence cannot satisfy an exact policy" boundary,
+\ read off the real evidence record built through the pipeline.
+: GOLD-REL-FOR ( -- EVID:golden )
+   s" e2e-gnum" ARTIFACT:REGISTER BUILT-FOR
+   EVID-GOLDEN--LEG:DEVICE EVID-PREC--CLASS:PREC-TF32 NPOL-DOM:RELATIVE EVID:GOLDEN ;
+: E2E-GOLD-EXACT-REFUSE ( -- )  GOLD-REL-FOR EVID:GOLD-DOM  NPOL-DOM:EXACT     NPOL:ENFORCE ;
+: E2E-GOLD-REL-OK      ( -- )   GOLD-REL-FOR EVID:GOLD-DOM  NPOL-DOM:RELATIVE  NPOL:ENFORCE ;
+
 T-RESET
 
 \ ---- executed end-to-end -----------------------------------------------------
@@ -90,5 +102,7 @@ E2E-GRANT-ART?                 T-ASSERT   \ green: grants, and the grant binds t
 ' E2E-WRONG-ART   E-EVID-ARTIFACT TTHROWS \ red: wrong-artifact evidence
 ' E2E-PROMOTE-OK  0               TTHROWS \ promote a matching (built, grant): no refusal
 ' E2E-PROMOTE-BAD E-EVID-ARTIFACT TTHROWS \ promote a mismatched (built, grant): refused
+' E2E-GOLD-EXACT-REFUSE E-NPOL-APPROX TTHROWS \ relative golden vs exact policy: refused
+' E2E-GOLD-REL-OK       0             TTHROWS \ relative golden vs relative policy: satisfied
 
 T-REPORT

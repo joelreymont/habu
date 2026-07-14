@@ -588,11 +588,25 @@ points stay listed.
 - `maki/artifact-test.f` — registry interning/equality/key round-trip/count
   regressions, the private-mint unforgeability negative, and fail-closed empty-key /
   out-of-range-id boundaries.
-- `maki/sched-key.f` — section-7.4 schedule keys: the typed `skey` product, the
-  durable `SK-KEY$` render (region signature, shape class, dtype/layout/align,
-  facts-based target field, engine content key), and the replay-table seam.
+- `maki/numpolicy.f` — the typed numeric-policy proof-domain family (`NPOL:dom` =
+  exact/ulp/relative/empirical, CAD-PLAN §22.6): the strength lattice
+  (`RANK`/`SATISFIES?`/`COMPOSE` weakest-wins), the checked satisfaction gate
+  `ENFORCE` (E-NPOL-APPROX: approximate evidence cannot satisfy a stricter policy),
+  the key token `NAME`, the `NUM>DOM`/`OP-DOM` bridge from op-registry's raw numeric
+  class, and the ambient per-class requested-policy table (`POL!`/`POL@`, default
+  exact). Owns -5145..-5147.
+- `maki/numpolicy-test.f` — rank ordering, the pinned 4×4 composition table,
+  satisfaction, the TF32/GELU/recompute refusal fixtures with positive controls, the
+  op bridge, wire roundtrip, and fail-closed throws.
+- `maki/sched-key.f` — section-7.4 schedule keys: the typed `skey` product (now
+  carrying the region's requested `NPOL:dom` policy so a different policy is a
+  different key), the durable `SK-KEY$` render (region signature, shape class,
+  dtype/layout/align, numeric policy, facts-based target field, engine content key),
+  and the replay-table seam.
 - `maki/sched-key-test.f` — shape-class/dimclass identity, full-key pins, the
-  same-label different-facts target negative, and replay-table regressions.
+  same-label different-facts target negative, the policy key-invalidation cases
+  (same config + different requested policy => different key), and replay-table
+  regressions.
 - `maki/cuda-types.f` — thin re-export of `lib/ptx/cuda-driver.f` preserving the
   historical maki spellings (cuda-* roles, `CUDA-HANDLE0`/`CUDA-RC0`, `E-MK-GPU`).
 - `maki/cuda-types-test.f` — runtime regressions for CUDA handle and rc
@@ -639,9 +653,10 @@ points stay listed.
   unverified-KIR, reverse-stage), and a runnable MODEL→KIR pipeline.
 - `maki/evidence/schema.f` — R7 artifact-indexed evidence families: one PRODUCT
   per class (certified/golden/gradchecked/profiled) binding a CAD-KIND:artifact-id
-  and a class-private proof token, golden leg/precision as fields, per-class
-  presence slots + the promotion bundle, and the EVID:CERTIFY/GOLDEN/GRADCHECK/
-  PROFILE mint transitions.
+  and a class-private proof token, golden leg/precision/numeric-domain as fields
+  (`GOLD-DOM` projects the achieved `NPOL:dom` for the promotion refusal gate),
+  per-class presence slots + the promotion bundle, and the EVID:CERTIFY/GOLDEN/
+  GRADCHECK/PROFILE mint transitions.
 - `maki/evidence/schema-test.f` — evidence acceptance: born-typed construction
   positive controls, wrong-artifact-evidence negatives (raw token, foreign id,
   private-mint), wrong-class negatives, and bundle slot-order pins.

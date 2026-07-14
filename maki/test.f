@@ -210,6 +210,8 @@ TEST:SUITE maki/plan-ir-test.f
 TEST:;SUITE
 TEST:SUITE maki/typestate-test.f
 TEST:;SUITE
+TEST:SUITE maki/numpolicy-test.f
+TEST:;SUITE
 TEST:SUITE maki/evidence/schema-test.f
 TEST:;SUITE
 TEST:SUITE maki/evidence/policy-test.f

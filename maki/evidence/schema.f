@@ -14,7 +14,10 @@
 \ Device-golden provenance is a VALUE, not ambient process state: the golden
 \ product's `leg` (golden-leg) and `prec` (prec-class) FIELDS are the typed home of
 \ what maki/golden.f's GOLDEN-DEV-FLAG / GOLDEN-PREC-V globals used to track
-\ (host-vs-device leg, judged precision). Those ambient globals are now RETIRED by the
+\ (host-vs-device leg, judged precision). The `pol` (NPOL:dom) FIELD carries the
+\ ACHIEVED numeric proof domain (maki/numpolicy.f) - so a golden judged under a
+\ relative-error or empirical license refuses an exact-policy promotion (GOLD-DOM +
+\ NPOL:ENFORCE), the "approximate evidence cannot satisfy an exact policy" boundary. Those ambient globals are now RETIRED by the
 \ store-seal sub-dot (habu-v2-typestate-promotion-2266b236): the promote path (maki/cad.f)
 \ threads these typed EVID:golden-leg / EVID:prec-class values from the golden gate into the
 \ (now sealed) evidence writer, so provenance is a value in transit, not process state.
@@ -45,6 +48,7 @@
 \ operand - the evidence a transition mints is bound to the artifact that was built.
 
 require maki/typestate.f
+require maki/numpolicy.f            \ NPOL:dom - the golden verdict's achieved numeric proof domain
 
 package EVID
 public
@@ -81,6 +85,7 @@ PRODUCT golden 0
    FIELD art  CAD-KIND:artifact-id
    FIELD leg  golden-leg
    FIELD prec prec-class
+   FIELD pol  NPOL:dom
    FIELD tok  golden-proof
 ;PRODUCT
 
@@ -140,10 +145,18 @@ public
 : CERTIFY ( ART:built -- certified )
    ART-BUILT:UNMAKE drop                  \ built -> art (drop build-proof)
    MINT-CERTIFY-PROOF  EVID-CERTIFIED:MAKE ;
-: GOLDEN ( ART:built golden-leg prec-class -- golden )
-   {: leg:golden-leg prec:prec-class :}   \ pop leg + prec; the built witness remains
+: GOLDEN ( ART:built golden-leg prec-class NPOL:dom -- golden )
+   {: leg:golden-leg prec:prec-class pol:NPOL:dom :}   \ pop leg + prec + achieved domain
    ART-BUILT:UNMAKE drop                  \ built -> art
-   leg prec  MINT-GOLDEN-PROOF  EVID-GOLDEN:MAKE ;
+   leg prec pol  MINT-GOLDEN-PROOF  EVID-GOLDEN:MAKE ;
+
+\ GOLD-DOM projects a golden's achieved numeric proof domain (the retired ambient
+\ provenance's sibling): a promotion requiring an exact policy REQUIREs this domain
+\ satisfy it (maki/numpolicy.f NPOL:ENFORCE), so a relative/empirical golden refuses.
+: GOLD-DOM ( golden -- NPOL:dom )
+   EVID-GOLDEN:UNMAKE
+   {: art:CAD-KIND:artifact-id leg:golden-leg prec:prec-class pol:NPOL:dom tok:golden-proof :}
+   pol ;
 : GRADCHECK ( ART:built -- gradchecked )
    ART-BUILT:UNMAKE drop
    MINT-GRADCHECK-PROOF  EVID-GRADCHECKED:MAKE ;

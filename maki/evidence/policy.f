@@ -146,7 +146,7 @@ TRUSTED: RAW>SCHEMA-ID ( n -- CAD-KIND:schema-id ) ;
 
 \ ---- artifact projections of each evidence class (drop the class proof token) --
 : CERT-ART ( EVID:certified -- CAD-KIND:artifact-id )     EVID-CERTIFIED:UNMAKE drop ;
-: GOLD-ART ( EVID:golden -- CAD-KIND:artifact-id )        EVID-GOLDEN:UNMAKE drop drop drop ;
+: GOLD-ART ( EVID:golden -- CAD-KIND:artifact-id )        EVID-GOLDEN:UNMAKE drop drop drop drop ;
 : GRAD-ART ( EVID:gradchecked -- CAD-KIND:artifact-id )   EVID-GRADCHECKED:UNMAKE drop ;
 : PROF-ART ( EVID:profiled -- CAD-KIND:artifact-id )      EVID-PROFILED:UNMAKE drop drop ;
 

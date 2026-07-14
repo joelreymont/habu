@@ -34,8 +34,14 @@ T-RESET
 \ ---- positive controls: born-typed construction of each class -----------------
 s" EV-OK-CERT ( CAD-KIND:artifact-id EVID:certify-proof -- EVID:certified ) EVID-CERTIFIED:MAKE"
    CHECK-QUIET-CANDIDATE! -1 T=
-s" EV-OK-GOLD ( CAD-KIND:artifact-id EVID:golden-leg EVID:prec-class EVID:golden-proof -- EVID:golden ) EVID-GOLDEN:MAKE"
+s" EV-OK-GOLD ( CAD-KIND:artifact-id EVID:golden-leg EVID:prec-class NPOL:dom EVID:golden-proof -- EVID:golden ) EVID-GOLDEN:MAKE"
    CHECK-QUIET-CANDIDATE! -1 T=
+\ GOLD-DOM projects the golden's achieved numeric proof domain (the promotion gate reads it).
+s" EV-OK-GOLD-DOM ( EVID:golden -- NPOL:dom ) EVID:GOLD-DOM"
+   CHECK-QUIET-CANDIDATE! -1 T=
+\ a wrong-family value in the numeric-policy slot (prec-class where NPOL:dom is expected) rejects.
+s" EV-BAD-GOLD-POL ( CAD-KIND:artifact-id EVID:golden-leg EVID:prec-class EVID:prec-class EVID:golden-proof -- EVID:golden ) EVID-GOLDEN:MAKE"
+   CHECK-QUIET-CANDIDATE! 0 T=
 s" EV-OK-GRAD ( CAD-KIND:artifact-id EVID:gradcheck-proof -- EVID:gradchecked ) EVID-GRADCHECKED:MAKE"
    CHECK-QUIET-CANDIDATE! -1 T=
 s" EV-OK-PROF ( CAD-KIND:artifact-id n EVID:profile-proof -- EVID:profiled ) EVID-PROFILED:MAKE"
@@ -48,7 +54,7 @@ s" EV-OK-PROF ( CAD-KIND:artifact-id n EVID:profile-proof -- EVID:profiled ) EVI
 \ id is READ from ART:built now, so the transitions no longer take it as an operand.
 s" EV-OK-CERTIFY ( ART:built -- EVID:certified ) EVID:CERTIFY"
    CHECK-QUIET-CANDIDATE! -1 T=
-s" EV-OK-GOLDEN ( ART:built EVID:golden-leg EVID:prec-class -- EVID:golden ) EVID:GOLDEN"
+s" EV-OK-GOLDEN ( ART:built EVID:golden-leg EVID:prec-class NPOL:dom -- EVID:golden ) EVID:GOLDEN"
    CHECK-QUIET-CANDIDATE! -1 T=
 s" EV-OK-GRADCHECK ( ART:built -- EVID:gradchecked ) EVID:GRADCHECK"
    CHECK-QUIET-CANDIDATE! -1 T=

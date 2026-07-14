@@ -1,8 +1,9 @@
 \ maki/sched-key.f - schedule cache/replay keys + the cad-5 replay-table seam (cad-4).
 \
-\ CAD-PLAN section 7.4. The cache and replay key over a fusion region is
-\ (region signature, shape class, dtype key, layout key, alignment class, target,
-\ engine hash, ptxas version). This file renders that whole key as one string and
+\ CAD-PLAN section 7.4 + section 22.6 (precision in every key). The cache and
+\ replay key over a fusion region is (region signature, shape class, dtype key,
+\ layout key, alignment class, requested numeric policy, target, engine hash,
+\ ptxas version). This file renders that whole key as one string and
 \ owns the in-memory key->selection replay table. The families/defaults are
 \ maki/schedule.f; the TILE/TUNE wiring is maki/cad.f. One concern: keys + replay.
 \
@@ -55,6 +56,7 @@ require lib/engine-id.f
 require maki/model-ir.f
 require maki/fusion-plan.f
 require maki/schedule.f
+require maki/numpolicy.f
 require maki/target/target.f
 
 -5084 constant E-SK-REGION     \ region id out of range / empty
@@ -96,7 +98,10 @@ ENUM dimclass DERIVE eq
 \ (see the SK-GET/SK-PUT boundary note below). Fields (slot order, deepest first):
 \ rsig = FNV-1a region signature (n); rk/rm = representative rows class+magnitude;
 \ ck/cm = representative cols class+magnitude; dt/lay = representative dtype/layout;
-\ al = region alignment class. (Inline `\` notes inside a PRODUCT block reject.)
+\ al = region alignment class (slots deepest-first); pol = requested numeric policy
+\ (NPOL:dom, maki/numpolicy.f) - the plan's declared proof domain, so changing the
+\ request is a different key (no FP32/TF32 baseline pairing). (Inline `\` notes
+\ inside a PRODUCT block reject.)
 PRODUCT skey 0 DERIVE eq
   FIELD rsig n
   FIELD rk dimclass
@@ -106,6 +111,7 @@ PRODUCT skey 0 DERIVE eq
   FIELD dt dtype
   FIELD lay layout
   FIELD al align
+  FIELD pol NPOL:dom
 ;PRODUCT
 
 private
@@ -191,6 +197,20 @@ private
       node FP-RID@ r FP-RGN= if node NODE-ALIGN then
    loop ;
 
+\ ---- region requested numeric policy over the region's op classes ------------
+\ The plan's REQUESTED proof domain for the region = COMPOSE (weakest wins) over
+\ each op's class-requested policy (NPOL:POL@, default exact). It is the declared
+\ numeric contract that rides in the exact key; a different request is a different
+\ key, so a relative-policy TF32 row never pairs with an exact-policy FP32 baseline.
+: NODE-POL ( NPOL:dom CAD-KIND:node-id -- NPOL:dom ) {: acc:NPOL:dom node:CAD-KIND:node-id :}
+   acc  node MIR-OP@ OPR-CLASS NPOL:POL@  NPOL:COMPOSE ;
+: REGION-POL ( CAD-KIND:region -- NPOL:dom ) {: r:CAD-KIND:region :}
+   NPOL-DOM:EXACT
+   MIR-N@ 0 ?do
+      i MIR-NODE-ID {: node:CAD-KIND:node-id :}
+      node FP-RID@ r FP-RGN= if node NODE-POL then
+   loop ;
+
 : AL-KEY ( n -- ptr u8 n )
    case
       AL-UNKNOWN of s" al?"  endof
@@ -261,6 +281,7 @@ public
    $7C SB-APPEND-C  rep MIR-DTYPE-KEY  SB-APPEND
    $7C SB-APPEND-C  rep MIR-LAYOUT-KEY SB-APPEND
    $7C SB-APPEND-C  r REGION-ALIGN AL-KEY SB-APPEND
+   $7C SB-APPEND-C  r REGION-POL NPOL:NAME SB-APPEND
    $7C SB-APPEND-C  target SK-TARGET+
    $7C SB-APPEND-C  SK-ENGINE$ SB-APPEND
    $7C SB-APPEND-C  SK-PTXAS$  SB-APPEND ;
@@ -271,10 +292,11 @@ public
    SB-RESET r target SK-KEY+ SB$ ;
 
 \ ---- the typed section-7.4 key (the durable render's semantic twin) ----------
-\ SK-KEY builds the same eight facts SK-KEY+ renders, but as a typed `skey`
+\ SK-KEY builds the same nine facts SK-KEY+ renders, but as a typed `skey`
 \ record: the dims through the shared DIM>CLASS encoder, dtype/layout straight
 \ off the typed MIR accessors, alignment lifted from REGION-ALIGN's ordinal
-\ min-fold through >ALIGN. Assembly is positional and typed, so a dtype/layout
+\ min-fold through >ALIGN, and the requested numeric policy from REGION-POL.
+\ Assembly is positional and typed, so a dtype/layout
 \ (or any enum-field) role swap is a checker reject. The families ride the stack
 \ into MAKE (they cannot bind into locals); only the region ids are locals.
 \ MAKI-SKEY:EQ over two SK-KEY values is the typed identity the durable string
@@ -288,6 +310,7 @@ public
    rep MIR-DT@
    rep MIR-LAY@
    r REGION-ALIGN >ALIGN
+   r REGION-POL
    MAKI-SKEY:MAKE ;
 
 private

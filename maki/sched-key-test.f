@@ -98,7 +98,7 @@ SK-PTXAS$  s" unprobed"  T$=
 \ builder), then splice the binary-dependent engine key into the expected string.
 0 FP-REGION-ID TARGET:SM87 SK-KEY$ KT-COPY
 SB-RESET
-s" 431E24867468A764|2xp128+t|f32|row|al16|isa=1,arch=87,warp=32,threads=1024,shared=49152,caps=127|" SB-APPEND
+s" 431E24867468A764|2xp128+t|f32|row|al16|exact|isa=1,arch=87,warp=32,threads=1024,shared=49152,caps=127|" SB-APPEND
 ENGINE-KEY$ SB-APPEND  s" |unprobed" SB-APPEND
 KT-BUF$ SB$ STR= TTRUE
 0 FP-REGION-ID KT-ALT-TARGET SK-KEY$ KT-BUF$ STR= TFALSE   \ different facts (caps) -> different durable key
@@ -122,46 +122,73 @@ KT-DUP-LABEL TARGET:SM87 TARGET:EQUAL? TFALSE                     \ facts differ
 \ df32 / row / a16). Any wrong field would make MAKI-SKEY:EQ false.
 : SK-EXPECT ( -- skey )
    $431e24867468a764 MAKI-DIMCLASS:EXACT 2 MAKI-DIMCLASS:POW2-TAIL 128
-   MAKI-DTYPE:DF32 MAKI-LAYOUT:ROW MAKI-ALIGN:A16 MAKI-SKEY:MAKE ;
+   MAKI-DTYPE:DF32 MAKI-LAYOUT:ROW MAKI-ALIGN:A16 NPOL-DOM:EXACT MAKI-SKEY:MAKE ;
 : SK-MATCHES ( n -- bool )  FP-REGION-ID SK-KEY SK-EXPECT MAKI-SKEY:EQ ;
 0 SK-MATCHES TTRUE
 \ MAKI-SKEY:EQ discriminates every semantic field: one differing field -> unequal.
 : SK-BASE ( -- skey )
    7 MAKI-DIMCLASS:EXACT 2 MAKI-DIMCLASS:POW2-TAIL 128
-   MAKI-DTYPE:DF32 MAKI-LAYOUT:ROW MAKI-ALIGN:A16 MAKI-SKEY:MAKE ;
+   MAKI-DTYPE:DF32 MAKI-LAYOUT:ROW MAKI-ALIGN:A16 NPOL-DOM:EXACT MAKI-SKEY:MAKE ;
 : SK-DT-DIFF ( -- skey )      \ only dtype differs
    7 MAKI-DIMCLASS:EXACT 2 MAKI-DIMCLASS:POW2-TAIL 128
-   MAKI-DTYPE:DF16 MAKI-LAYOUT:ROW MAKI-ALIGN:A16 MAKI-SKEY:MAKE ;
+   MAKI-DTYPE:DF16 MAKI-LAYOUT:ROW MAKI-ALIGN:A16 NPOL-DOM:EXACT MAKI-SKEY:MAKE ;
 : SK-LAY-DIFF ( -- skey )     \ only layout differs
    7 MAKI-DIMCLASS:EXACT 2 MAKI-DIMCLASS:POW2-TAIL 128
-   MAKI-DTYPE:DF32 MAKI-LAYOUT:COL MAKI-ALIGN:A16 MAKI-SKEY:MAKE ;
+   MAKI-DTYPE:DF32 MAKI-LAYOUT:COL MAKI-ALIGN:A16 NPOL-DOM:EXACT MAKI-SKEY:MAKE ;
 : SK-AL-DIFF ( -- skey )      \ only align differs
    7 MAKI-DIMCLASS:EXACT 2 MAKI-DIMCLASS:POW2-TAIL 128
-   MAKI-DTYPE:DF32 MAKI-LAYOUT:ROW MAKI-ALIGN:A8 MAKI-SKEY:MAKE ;
+   MAKI-DTYPE:DF32 MAKI-LAYOUT:ROW MAKI-ALIGN:A8 NPOL-DOM:EXACT MAKI-SKEY:MAKE ;
 : SK-RK-DIFF ( -- skey )      \ only rows shape class differs (exact vs pow2)
    7 MAKI-DIMCLASS:POW2 2 MAKI-DIMCLASS:POW2-TAIL 128
-   MAKI-DTYPE:DF32 MAKI-LAYOUT:ROW MAKI-ALIGN:A16 MAKI-SKEY:MAKE ;
+   MAKI-DTYPE:DF32 MAKI-LAYOUT:ROW MAKI-ALIGN:A16 NPOL-DOM:EXACT MAKI-SKEY:MAKE ;
+: SK-POL-DIFF ( -- skey )     \ only the requested numeric policy differs (exact vs relative)
+   7 MAKI-DIMCLASS:EXACT 2 MAKI-DIMCLASS:POW2-TAIL 128
+   MAKI-DTYPE:DF32 MAKI-LAYOUT:ROW MAKI-ALIGN:A16 NPOL-DOM:RELATIVE MAKI-SKEY:MAKE ;
 \ the EQ comparisons ride inside : definitions (interpret mode cannot hold skey):
 : SK-EQ-SELF   ( -- bool )  SK-BASE SK-BASE     MAKI-SKEY:EQ ;
 : SK-EQ-DT     ( -- bool )  SK-BASE SK-DT-DIFF  MAKI-SKEY:EQ ;
 : SK-EQ-LAY    ( -- bool )  SK-BASE SK-LAY-DIFF MAKI-SKEY:EQ ;
 : SK-EQ-AL     ( -- bool )  SK-BASE SK-AL-DIFF  MAKI-SKEY:EQ ;
 : SK-EQ-RK     ( -- bool )  SK-BASE SK-RK-DIFF  MAKI-SKEY:EQ ;
+: SK-EQ-POL    ( -- bool )  SK-BASE SK-POL-DIFF MAKI-SKEY:EQ ;
 SK-EQ-SELF TTRUE
 SK-EQ-DT   TFALSE
 SK-EQ-LAY  TFALSE
 SK-EQ-AL   TFALSE
 SK-EQ-RK   TFALSE
+SK-EQ-POL  TFALSE   \ same config, different requested policy -> different key
+
+\ ---- render-level policy key invalidation (same region/target, POL! -> new key) ---
+\ REGION-POL folds the class-requested policy (NPOL:POL@) over the region's op
+\ classes; the live 2x100 region is all elementwise (gelu/relu). Requesting a weaker
+\ policy for CLASS-EW re-keys the SAME region, so a relative-policy row never pairs
+\ with the default exact-policy baseline. POL-RESET restores the shared singleton.
+NPOL:POL-RESET
+0 FP-REGION-ID TARGET:SM87 SK-KEY$ KT-COPY                     \ default exact-policy key
+NPOL-DOM:RELATIVE CLASS-EW NPOL:POL!                           \ request relative for elementwise
+0 FP-REGION-ID TARGET:SM87 SK-KEY$ KT-BUF$ STR= TFALSE        \ policy changed -> different key
+NPOL:POL-RESET
+0 FP-REGION-ID TARGET:SM87 SK-KEY$ KT-BUF$ STR= TTRUE         \ reset -> back to the baseline key
+\ store/replay NO BASELINE PAIRING: a selection stored under the exact-policy key is
+\ NOT replayed under a relative-policy key (the tuning-key invalidation the dot names).
+SK-TAB-RESET
+0 FP-REGION-ID TARGET:SM87 SK-KEY$ 5 SK-PUT                    \ store a selection under exact policy
+NPOL-DOM:RELATIVE CLASS-EW NPOL:POL!
+0 FP-REGION-ID TARGET:SM87 SK-KEY$ SK-GET nip TFALSE          \ relative-policy key: MISS (no pairing)
+NPOL:POL-RESET
+0 FP-REGION-ID TARGET:SM87 SK-KEY$ SK-GET drop 5 T=           \ exact-policy key still replays
+SK-TAB-RESET
 
 \ ---- swapped-family negatives: a role swap at MAKE is a CHECKER reject --------
-\ MAKI-SKEY:MAKE ( n dimclass n dimclass n dtype layout align -- skey ). A dtype
-\ in the layout slot (and vice-versa), or a bare n laundered into an enum column,
-\ rejects in BOTH directions; the positive control certifies.
-s" SKP  ( n dimclass n dimclass n dtype layout align -- skey ) MAKI-SKEY:MAKE" CHECK-QUIET-CANDIDATE! -1 T=
-s" SKN1 ( n dimclass n dimclass n layout dtype align -- skey ) MAKI-SKEY:MAKE" CHECK-QUIET-CANDIDATE! 0 T=
-s" SKN2 ( n dimclass n dimclass n n layout align -- skey ) MAKI-SKEY:MAKE"     CHECK-QUIET-CANDIDATE! 0 T=
-s" SKN3 ( n dimclass n dimclass n dtype layout n -- skey ) MAKI-SKEY:MAKE"     CHECK-QUIET-CANDIDATE! 0 T=
-s" SKN4 ( n n n dimclass n dtype layout align -- skey ) MAKI-SKEY:MAKE"        CHECK-QUIET-CANDIDATE! 0 T=
+\ MAKI-SKEY:MAKE ( n dimclass n dimclass n dtype layout align NPOL:dom -- skey ). A
+\ dtype in the layout slot (and vice-versa), a bare n laundered into an enum column,
+\ or a wrong-family value in the numeric-policy slot rejects; the positive certifies.
+s" SKP  ( n dimclass n dimclass n dtype layout align NPOL:dom -- skey ) MAKI-SKEY:MAKE" CHECK-QUIET-CANDIDATE! -1 T=
+s" SKN1 ( n dimclass n dimclass n layout dtype align NPOL:dom -- skey ) MAKI-SKEY:MAKE" CHECK-QUIET-CANDIDATE! 0 T=
+s" SKN2 ( n dimclass n dimclass n n layout align NPOL:dom -- skey ) MAKI-SKEY:MAKE"     CHECK-QUIET-CANDIDATE! 0 T=
+s" SKN3 ( n dimclass n dimclass n dtype layout n NPOL:dom -- skey ) MAKI-SKEY:MAKE"     CHECK-QUIET-CANDIDATE! 0 T=
+s" SKN4 ( n n n dimclass n dtype layout align NPOL:dom -- skey ) MAKI-SKEY:MAKE"        CHECK-QUIET-CANDIDATE! 0 T=
+s" SKN5 ( n dimclass n dimclass n dtype layout align align -- skey ) MAKI-SKEY:MAKE"    CHECK-QUIET-CANDIDATE! 0 T=
 
 \ ---- alignment class falls back to al? for an unrecorded input --------------
 2 100 BUILD  FP-BUILD
@@ -240,6 +267,7 @@ KT-STALE-SET
 \ production SK-PUT inherits the entries.
 SK-TAB-RESET
 SK-TAB-COUNT 0 T=
+NPOL:POL-RESET   \ the requested-policy singleton is shared too; leave it at the default
 
 T-REPORT
 
