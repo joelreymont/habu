@@ -524,6 +524,11 @@ points stay listed.
   `tools/ptx/fusion-compare.f` — reusable Orin kernel profile metrics, generic
   CUDA Driver launch plus CUDA-event device timing, scalar/v4 SAXPY bandwidth,
   and fused-vs-unfused kernel comparison for the Habu-PTX column.
+- `tools/ptx/fusion-emit.f` / `tools/ptx/fusion-emit-test.f` — self-emit the
+  checked v4 SAXPY/RELU/fused-RELU cubins to private per-run toolchain roots for
+  fusion-compare (fail-closed `E-PTX-EMIT` on a missing producer or nonzero
+  emit/ptxas rc, never a stale shared `/tmp` cubin), and the host proof of that
+  emit half (no device, no ptxas — safe in-process).
 - `tools/ptx/bandwidth-lib-test.f` — host-side coverage for the bandwidth
   runner configuration math (device leg is a recorded SKIP off-device).
 - `tools/ptx/perf-rows.tsv` — durable kernel profile-row registry: one row per

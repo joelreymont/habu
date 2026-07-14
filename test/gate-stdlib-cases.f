@@ -312,6 +312,7 @@ TEST:SUITE ptx-toolchain
    tools/ptx/perf-regress.f
    tools/kernel-perf-lint-test.f
    tools/ptx/bandwidth-lib-test.f
+   tools/ptx/fusion-emit-test.f
    tools/ptx/fusion-compare.f
    tools/ptx/gemm-bench.f
 TEST:;SUITE
