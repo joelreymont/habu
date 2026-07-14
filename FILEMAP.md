@@ -547,6 +547,14 @@ points stay listed.
 - `tools/ptx/gemm-bench.f` — CUDA-event GEMM benchmark: times the naive (MMN)
   and register-blocked (MM) SGEMM kernels on square shapes for the
   GEMM-vs-Triton baseline recorded in `docs/eval-triton.md`.
+- `tools/ptx/attention-bench.f` / `tools/ptx/attention-bench-test.f` — CUDA-event
+  benchmark of the fused ATTENTION kernel (producer `tools/ptx/attention-cg.f`):
+  self-emits + ptxas-assembles ATTN to a private per-run toolchain root via
+  `tools/ptx/fusion-emit.f` (fail-closed `E-PTX-EMIT`), stages a deterministic
+  non-uniform f32 pattern into Q/K/V, launches grid=N block=N over the N=64,128
+  D=64 ladder, and reports GFLOP/s (`4*N*N*D + 5*N*N` flops/launch); device-gated
+  on `CUDA:OPEN?` (recorded SKIP off-device). The test proves the emit half
+  host-side (ATTN entry + phase/softmax/writeback markers, no ERROR leak).
 - `tools/ptx/mma-probe.f` — single-warp TF32 `mma.sync.aligned.m16n8k8` fragment-
   layout isolation proof: verifies ONE MMA element-exact vs a host matmul before
   any tiling (the course's #1 "correct in NumPy, garbage on device" guard).

@@ -313,8 +313,10 @@ TEST:SUITE ptx-toolchain
    tools/kernel-perf-lint-test.f
    tools/ptx/bandwidth-lib-test.f
    tools/ptx/fusion-emit-test.f
+   tools/ptx/attention-bench-test.f
    tools/ptx/fusion-compare.f
    tools/ptx/gemm-bench.f
+   tools/ptx/attention-bench.f
 TEST:;SUITE
 
 TEST:SUITE-STDIN source-stdlib-stdin DATA

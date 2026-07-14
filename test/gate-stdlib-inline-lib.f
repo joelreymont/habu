@@ -512,8 +512,9 @@ variable GSI-TL-FILE-A
    s" tools/ptx/perf-compare-test.f" GSI-INCLUDE \ ( -- )
    s" tools/ptx/perf-regress.f" GSI-INCLUDE \ ( -- )
    s" tools/kernel-perf-lint-test.f" GSI-INCLUDE \ ( -- )
-   s" tools/ptx/fusion-emit-test.f" GSI-INCLUDE ; \ ( -- )
-\ NOTE: the device/bench tools (bandwidth-lib-test, fusion-compare, gemm-bench)
+   s" tools/ptx/fusion-emit-test.f" GSI-INCLUDE \ ( -- )
+   s" tools/ptx/attention-bench-test.f" GSI-INCLUDE ; \ ( -- )
+\ NOTE: the device/bench tools (bandwidth-lib-test, fusion-compare, gemm-bench, attention-bench)
 \ run only in the ptx-toolchain suite of the MANUAL lint-libs slice
 \ (`bin/hb --load test/gate-stdlib.f -- lint-libs`, a documented merge gate -
 \ test/run.f does NOT schedule the spawned slices), where they compile-check +
