@@ -2243,6 +2243,14 @@ variable UNDEFERR
 variable QUALBAD
 variable QDUPBAD             \ ?dup applied to a layout value (width-breaking; item 12)
 variable CAPREQ              \ a TRUSTED-only capability prim (patch32/code-gen sink) called from checked code
+\ --- declared-effect parametricity seal (habu-nominal-storage-effect). A rejected
+\ definition whose body specialized a declared quantifier to a sealed nominal/layout
+\ family, or unified two declared quantifiers together. Set by NP-CHECK post-body.
+variable NPBAD               \ non-parametric declared effect detected?
+variable NPBAD-KIND          \ 0 = quantifier specialized to a sealed family; 1 = aliasing
+variable NPBAD-Q1            \ offending quantifier's source letter (char code)
+variable NPBAD-Q2            \ aliasing partner's letter (char code); 0 when kind 0
+variable NPBAD-TERM          \ resolved sealed-family term (kind 0), for family naming
 
 : HEXD? {: c :} c DIGIT?  c 96 > c 103 < and or  c 64 > c 71 < and or ;
 
@@ -7881,6 +7889,120 @@ variable MEO-BL  variable MEO-BC  variable MEO-BB   \ buffer start's file line/c
 : MEO-APPLY ( -- )    \ set DIAG-ORIGIN! to the current def's file position
    MEO-BASE @  MEO-NAMEC @ @  MEO-BL @ MEO-BC @ MEO-BB @  DIAG-ORIGIN-SPAN! ;
 
+\ --- declared-effect parametricity seal (habu-nominal-storage-effect-a60ba885).
+\ After a definition's body checks against its declared ( in -- out ), every
+\ declared type-variable quantifier must still resolve to a DISTINCT variable.
+\ Two ways a body can launder a specialization behind a generic declared face:
+\   (1) SPECIALIZATION — the quantifier resolves to a sealed identity-bearing
+\       family (arity-0 nominal-scalar or a layout family: the validated CAD-KIND
+\       identities and layout bundles). A body that forges such a family behind a
+\       declared `a`/`ptr a` is rejected; plain-scalar widening (a := n/u8) stays
+\       legal, so the pervasive `( ptr a -- n )` fetch corpus is untouched.
+\   (2) ALIASING — two DISTINCT declared quantifiers unify into one variable,
+\       breaking injectivity of the quantifier map.
+\ It runs ONLY when the body otherwise certified (CHECK OK true), so the pointee
+\ NOMPTR-BLOCK mismatch path (which fails unification first, OK 0) is untouched.
+\ No new bindings are made — the check only resolves and compares — so the trail
+\ that already rolls back the body's speculative binds needs no new discipline;
+\ the next definition's NEW/TV-RESET clears every specialization record.
+32 constant NP-CAP                                   \ >= 26 single-letter quantifiers
+create NP-ORIG NP-CAP cells allot   variable NP-ORIG-N   \ distinct declared quantifier ids
+create NP-ROOT NP-CAP cells allot                    \ resolved root id of each seen quantifier
+create NP-ROOT-OID NP-CAP cells allot                \ origin quantifier id that first reached a root
+variable NP-SEEN-N
+
+: NP-ORIG+ ( n -- )   \ record a distinct declared quantifier original id
+   {: id:n :}
+   0 BEGIN dup NP-ORIG-N @ < WHILE
+      dup cells NP-ORIG + @ id = IF drop EXIT THEN   \ already collected
+      1 +
+   REPEAT drop
+   NP-ORIG-N @ NP-CAP < IF
+      id NP-ORIG-N @ cells NP-ORIG + !
+      NP-ORIG-N @ 1 + NP-ORIG-N !
+   THEN ;
+
+: NP-COLLECT-TERM ( n -- )   \ collect quantifier ids in one declared type term (self + ptr pointee)
+   dup ISVAR IF PAY NP-ORIG+ EXIT THEN
+   dup TAG T-PTR = IF PTR>INNER TWALK-DEEPER RECURSE TWALK-SHALLOWER EXIT THEN
+   drop ;
+
+: NP-COLLECT-ROW ( n -- )   \ collect quantifier ids across one declared stack row
+   R-RES
+   BEGIN dup TAG S-PUSH = WHILE
+      dup P>TYPE NP-COLLECT-TERM
+      P>REST R-RES
+   REPEAT drop ;
+
+: NP-COLLECT ( -- )   \ every declared quantifier in ( in -- out [| rin -- rout] )
+   0 NP-ORIG-N !  TWALK-RESET
+   SGIN @ NP-COLLECT-ROW
+   SGOUT @ NP-COLLECT-ROW
+   SGHASR @ IF SGRIN @ NP-COLLECT-ROW  SGROUT @ NP-COLLECT-ROW THEN ;
+
+: NP-LETTER ( n -- n )   \ source letter (char) of a declared quantifier id, else '?'
+   {: id:n :}
+   0 BEGIN dup 26 < WHILE
+      dup cells NMAP + @ id = IF 97 + EXIT THEN
+      1 +
+   REPEAT drop 63 ;
+
+: NP-FAM ( n -- n )   \ resolved family id of a T-PARAM term, else -1
+   T-RES dup TAG T-PARAM = IF PARAM>FAM ELSE drop -1 THEN ;
+
+: NP-SEALED? ( n -- bool )   \ resolved term is an identity-bearing sealed family?
+   dup NOM-SCALAR? IF drop RES-TRUE EXIT THEN
+   LAYOUT-PARAM? ;
+
+: NP-FAIL-SPEC ( n n -- )   \ quantifier id specialized to sealed family term (first-wins)
+   {: oid:n rt:n :}
+   NPBAD @ IF EXIT THEN
+   -1 NPBAD !  0 NPBAD-KIND !
+   oid NP-LETTER NPBAD-Q1 !  0 NPBAD-Q2 !  rt NPBAD-TERM ! ;
+
+: NP-FAIL-ALIAS ( n n -- )   \ two declared quantifiers unified (first-wins)
+   {: oid:n other:n :}
+   NPBAD @ IF EXIT THEN
+   -1 NPBAD !  1 NPBAD-KIND !
+   oid NP-LETTER NPBAD-Q1 !  other NP-LETTER NPBAD-Q2 !  0 NPBAD-TERM ! ;
+
+: NP-SEEN-FIND ( n -- n )   \ index of a recorded root, else -1
+   {: root:n :}
+   0 BEGIN dup NP-SEEN-N @ < WHILE
+      dup cells NP-ROOT + @ root = IF EXIT THEN
+      1 +
+   REPEAT drop -1 ;
+
+: NP-SEEN-ADD ( n n -- )   \ record ( root oid )
+   {: root:n oid:n :}
+   NP-SEEN-N @ NP-CAP < IF
+      root NP-SEEN-N @ cells NP-ROOT + !
+      oid  NP-SEEN-N @ cells NP-ROOT-OID + !
+      NP-SEEN-N @ 1 + NP-SEEN-N !
+   THEN ;
+
+: NP-CHECK-ONE ( n -- )   \ verify one declared quantifier stays a distinct, unspecialized var
+   {: oid:n :}
+   oid MK-VAR T-RES {: rt:n :}
+   rt ISVAR 0= IF
+      rt NP-SEALED? IF oid rt NP-FAIL-SPEC THEN
+      EXIT
+   THEN
+   rt PAY NP-SEEN-FIND dup 0 < IF
+      drop rt PAY oid NP-SEEN-ADD                     \ first sighting of this root
+   ELSE
+      oid swap cells NP-ROOT-OID + @ NP-FAIL-ALIAS    \ root already claimed by another quantifier
+   THEN ;
+
+: NP-CHECK ( -- )   \ post-body parametricity seal; sets NPBAD on the first violation
+   NP-COLLECT
+   0 NP-SEEN-N !
+   0 BEGIN dup NP-ORIG-N @ < WHILE
+      dup cells NP-ORIG + @ NP-CHECK-ONE
+      NPBAD @ IF drop EXIT THEN
+      1 +
+   REPEAT drop ;
+
 : CHECK-RESET {: a u :}
    u TOKBUF-ENSURE
    a TBASE !  u TBLEN !  NEW
@@ -7894,6 +8016,7 @@ variable MEO-BL  variable MEO-BC  variable MEO-BB   \ buffer start's file line/c
    0 FAILB !  0 FAILE !  0 XSET !  0 DEADP !  0 DEADERR !  0 DEADTA !  0 DEADTU !
    0 THDROW !  0 THRROW !  0 THSET !
    SGBAD-CLEAR  0 UNSAFE !  0 IMMERR !  0 LOCALBAD !  0 LINLOCBAD !  0 UNDEFERR !  0 QUALBAD !  0 QDUPBAD !  0 CAPREQ !
+   0 NPBAD !  0 NPBAD-KIND !  0 NPBAD-Q1 !  0 NPBAD-Q2 !  0 NPBAD-TERM !
    0 LOCSEQ !
    0 WF-N !  0 RECW !  0 RECMI !
    0 RECEFF !  0 RECEFF-ON !  0 RECEFF-UEND ! ;
@@ -7946,7 +8069,7 @@ variable MEO-BL  variable MEO-BC  variable MEO-BB   \ buffer start's file line/c
    CHECK-SIG? SGHASR? and ;
 
 : CHECK-VERDICT ( -- n )
-   SGBAD @ UNSAFE @ or  IMMERR @ or  LOCALBAD @ or  LINLOCBAD @ or  QDUPBAD @ or  CAPREQ @ or  MREJ @ or 0 <> IF 0 ELSE
+   SGBAD @ UNSAFE @ or  IMMERR @ or  LOCALBAD @ or  LINLOCBAD @ or  QDUPBAD @ or  CAPREQ @ or  MREJ @ or  NPBAD @ or 0 <> IF 0 ELSE
    UNCK @ 0 <> IF 1 ELSE OK @ THEN THEN ;
 
 \ CERT-REPOINT-ROWS ( -- ) : restore the REND-SIG contract after certifying.
@@ -8031,7 +8154,8 @@ variable CTOR-PEND-N   variable CTOR-PEND-I
       RCUR @ SGROUT @ UNIFY-COERCE OK @ and OK !
       OK @ IF SGRIN @ RBROW !  SGROUT @ RCUR ! THEN
    THEN
-   CHECK-VERDICT                                      \ malformed/unsafe rejects
+   CHECK-SIG? OK @ and IF NP-CHECK THEN               \ declared quantifiers must stay parametric
+   CHECK-VERDICT                                      \ malformed/unsafe/non-parametric rejects
    dup DVERD !
    dup 0 =  over 1 = JSON-DIAGS @ and  or
    dup MEO-ON @ and IF MEO-APPLY THEN     \ file-relative origin for this def's diagnostic

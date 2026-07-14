@@ -2,8 +2,32 @@
 
 # FIXME: Rewrite this to be concise without losing precision
 
-Last updated: 2026-07-14
+Last updated: 2026-07-15
 
+- **Sealing declared-effect parametricity must target sealed FAMILIES, not all
+  concrete specialization.** The nominal-storage effect seal (post-body
+  `NP-CHECK`) rejects a declared quantifier that resolves to an arity-0 nominal
+  or layout family, plus quantifier aliasing. The first instinct — reject *any*
+  concrete specialization of a declared quantifier — is a corpus bloodbath:
+  `( ptr a -- n ) @` (46+ sites), `( -- ptr a )` (190+), etc. legitimately let a
+  pointee `a` widen to a plain scalar. Grep the corpus for the risky signature
+  shapes BEFORE choosing the predicate; the forgery target is validated identity
+  (`CAD-KIND`/layout), and plain-scalar widening (`a := n`/`u8`) is the pervasive,
+  intended looseness. `NOM-SCALAR? or LAYOUT-PARAM?` is the exact fence.
+- **Row-walk the declared sig rows, not `NMAP`, to enumerate quantifiers.** Typed
+  local annotations (`{: x:a :}`) route through `VAR-OF` and pollute `NMAP` with
+  non-signature vars; walking `SGIN/SGOUT/SGRIN/SGROUT` (S-PUSH chain + `ptr`
+  pointee, not into quotation/param subterms) yields exactly the declared
+  quantifiers and dodges deferred parametric-cell governance. Reverse-map an id to
+  its source letter through `NMAP` only for the diagnostic.
+- **Test fixtures needing concrete-effect helper words should use checked words +
+  `LAYOUT-BUFFER`, not `TRUST`.** `s" NAME" s" eff" TRUST` is counted as a
+  `CL-TRUST` site by the trusted-inventory ratchet, so three scaffolding `TRUST`
+  calls in `engine-suite.f` tripped `RATCHET-BAD`. A checked identity word
+  (`: ID ( fam -- fam ) ;`), a checked collapse (`( g g -- g ) nip`), and the
+  generated `LAYOUT-BUFFER` accessor (`n LAYOUT-BUFFER AT fam` → `AT ( n -- ptr fam )`)
+  cover the value/alias/pointer producers with ZERO added trust surface and no
+  `TRUSTED.md` edit.
 - **A cold-prefix `.f` file sees a baked, name-stripped checker, not
   `checker.f` from disk (top-row landing).** `bin/hb` reloads prefix *content*
   from the checkout, but the visible dictionary at a prefix file's load is the

@@ -1716,6 +1716,73 @@ s" check@ set-check is a no-op" T-LABEL check@ data-base HOOK-CELL + @ T=
 : ES-CHK-RT ( i64 -- i64 ) dup + ;
 s" check@ round-trip: hook still fires" T-LABEL 5 ES-CHK-RT 10 T=
 
+\ --- declared-effect parametricity seal (dot habu-nominal-storage-effect-a60ba885).
+\ After body checking, every declared type-variable quantifier must still resolve
+\ to a DISTINCT variable. Specializing a quantifier to a sealed nominal/layout
+\ family, and unifying two declared quantifiers, both reject E-NONPARAMETRIC-EFFECT
+\ (fix_parametric_effect). Plain-scalar widening and genuine generics still certify.
+\ Verdict 0 = rejected, -1 = certified. `esnp` is an arity-0 nominal-scalar family;
+\ ESNP-AT is its generated LAYOUT-BUFFER pointee accessor (the only checked source
+\ of `ptr esnp`). All scaffolding is checked Habu — no trust surface is added.
+TYPEFAMILY esnp 0
+4 LAYOUT-BUFFER ESNP-AT esnp                  \ ESNP-AT ( n -- ptr esnp ) accessor
+: ESNP-ID ( esnp -- esnp ) ;                  \ concrete nominal identity wrapper
+: ESNP-MERGE ( g g -- g ) nip ;               \ collapses its two inputs to one type
+
+\ negatives — the three laundering shapes reject
+s" specialize declared quantifier to a nominal family rejects" T-LABEL
+s" ESNP-SPEC ( a -- a ) ESNP-ID" CHECK-QUIET-CANDIDATE! 0 T=
+s" specialize declared ptr pointee to a nominal family rejects" T-LABEL
+s" ESNP-PSPEC ( -- ptr a ) 0 ESNP-AT" CHECK-QUIET-CANDIDATE! 0 T=
+s" aliasing two declared quantifiers rejects" T-LABEL
+s" ESNP-ALIAS ( a b -- a ) ESNP-MERGE" CHECK-QUIET-CANDIDATE! 0 T=
+
+\ positives — genuine polymorphism and plain-scalar widening still certify
+s" generic ID wrapper certifies" T-LABEL
+s" ESNP-GEN-ID ( a -- a )" CHECK-QUIET-CANDIDATE! -1 T=
+s" generic LOAD wrapper certifies" T-LABEL
+s" ESNP-GEN-LOAD ( ptr a -- a ) @" CHECK-QUIET-CANDIDATE! -1 T=
+s" plain-scalar pointee fetch stays generic (no false positive)" T-LABEL
+s" ESNP-FETCH-N ( ptr a -- n ) @" CHECK-QUIET-CANDIDATE! -1 T=
+
+\ specialization diagnostic: E-NONPARAMETRIC-EFFECT, offending quantifier + family
+RSD-BUF RSD-CAP DIAG-BUFFER!
+s" ESNP-SPEC ( a -- a ) ESNP-ID" CHECK-CANDIDATE! 0 T=
+s" specialize diag: E-NONPARAMETRIC-EFFECT code" T-LABEL
+DIAG-BUFFER$ s" E-NONPARAMETRIC-EFFECT" T-HAS? -1 T=
+s" specialize diag: names the offending quantifier" T-LABEL
+DIAG-BUFFER$ s" variable 'a'" T-HAS? -1 T=
+s" specialize diag: names the forged family" T-LABEL
+DIAG-BUFFER$ s" family 'esnp'" T-HAS? -1 T=
+DIAG-BUFFER-OFF
+
+\ aliasing diagnostic: E-NONPARAMETRIC-EFFECT, both quantifier letters
+RSD-BUF RSD-CAP DIAG-BUFFER!
+s" ESNP-ALIAS ( a b -- a ) ESNP-MERGE" CHECK-CANDIDATE! 0 T=
+s" aliasing diag: E-NONPARAMETRIC-EFFECT code" T-LABEL
+DIAG-BUFFER$ s" E-NONPARAMETRIC-EFFECT" T-HAS? -1 T=
+s" aliasing diag: names both quantifiers" T-LABEL
+DIAG-BUFFER$ s" 'a' and 'b'" T-HAS? -1 T=
+DIAG-BUFFER-OFF
+
+\ pointer-pointee path stays stable: the ptr instance rejects via the existing
+\ NOMPTR mismatch diagnostic, which names the family (requirement #2).
+RSD-BUF RSD-CAP DIAG-BUFFER!
+s" ESNP-PSPEC ( -- ptr a ) 0 ESNP-AT" CHECK-CANDIDATE! 0 T=
+s" ptr-family diag names the forged family" T-LABEL
+DIAG-BUFFER$ s" esnp" T-HAS? -1 T=
+DIAG-BUFFER-OFF
+
+\ rollback/isolation: a rejected non-parametric definition leaves no residue —
+\ the immediately following generic definition still certifies (NPBAD cleared,
+\ specialization bindings unwound by the next check's NEW/TV-RESET).
+s" reject then re-reject is stable" T-LABEL
+s" ESNP-SPEC-2 ( a -- a ) ESNP-ID" CHECK-QUIET-CANDIDATE! 0 T=
+s" clean generic check after a reject certifies (state rolled back)" T-LABEL
+s" ESNP-GEN-ID-2 ( a -- a )" CHECK-QUIET-CANDIDATE! -1 T=
+s" plain-scalar fetch after a reject certifies" T-LABEL
+s" ESNP-FETCH-N-2 ( ptr a -- n ) @" CHECK-QUIET-CANDIDATE! -1 T=
+
 \ x18 Darwin-reserved regressions (dot habu-rca-engine-sigsegv-ba81a08c):
 \ XNU zeroes x18 on any trap return; pre-fix, interpret-mode escaped
 \ literals pushed base 0 once a copy crossed a fresh DATA page, and

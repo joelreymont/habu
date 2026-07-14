@@ -297,6 +297,31 @@ later callers; use `TRUST` only when the body itself cannot be checked.
   scratch migrated to typed cells first (tracked follow-on). The `here` seal is a
   baked primitive effect; `create`/`variable`/`constant` are sealed through the
   verify-source definer registration (`RAW-TRUST-NEXT`).
+- **Declared polymorphic effects stay parametric.** A quantifier in a declared
+  effect (`a`, `ptr a`, …) is a promise that the word works for *every* type at
+  that position. The body may not quietly break that promise. After a definition's
+  body checks against its `( in -- out )`, the checker (`NP-CHECK` in
+  `src/core/checker.f`) re-inspects every declared quantifier and rejects two
+  laundering shapes with `E-NONPARAMETRIC-EFFECT` (repair class
+  `fix_parametric_effect`):
+  1. **Specialization to a sealed family.** If a body forces a declared quantifier
+     to resolve to a sealed identity-bearing family — an arity-0 nominal scalar
+     (`CAD-KIND` target/toolchain/region/node) or a layout family — the checker
+     rejects and names the forged family, so `: F ( a -- a ) EFF-ID ;` (with
+     `EFF-ID ( region -- region )`) no longer launders `region` behind a generic
+     `a`. Plain-scalar widening (`a := n`/`u8`) stays legal, so the pervasive
+     `( ptr a -- n ) @` fetch corpus is untouched. The pointer instance
+     (`ptr family` erased to `ptr a`) is the same violation seen in pointee
+     position, already caught by the `NOMPTR-BLOCK` mismatch (which names the
+     family) before this pass runs.
+  2. **Quantifier aliasing.** If a body unifies two *distinct* declared
+     quantifiers into one variable, injectivity of the quantifier map is broken;
+     the checker rejects and names both letters, so `: F ( a b -- a ) MERGE ;`
+     (with `MERGE ( g g -- g )`) no longer certifies under a two-variable face.
+  The pass runs only when the body otherwise certified, makes no new bindings
+  (the body's speculative binds already roll back on the trail, and the next
+  definition's reset clears every specialization record), so a rejected signature
+  never persists and multi-error checking continues cleanly.
 - **Literal-argument `PICK`/`ROLL` are folded** to a concrete shuffle at check
   time: `0 PICK`≡`DUP`, `1 PICK`≡`OVER`, `2 PICK ( a b c -- a b c a )`;
   `1 ROLL`≡`SWAP`, `2 ROLL`≡`ROT`. A **dynamic** (runtime-computed) index can't be

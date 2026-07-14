@@ -504,6 +504,7 @@ variable MDV-I   variable MDV-F
    0 0= 0= MDIAG-MISSING-WALK ;
 
 : DCODE
+   NPBAD @ IF s" E-NONPARAMETRIC-EFFECT" ELSE
    CAPREQ @ IF s" E-CAP-TRUSTED" ELSE
    UNSAFE @ IF s" E-UNSAFE" ELSE
    LOCALBAD @ IF s" E-BAD-LOCAL-SHAPE" ELSE
@@ -514,7 +515,7 @@ variable MDV-I   variable MDV-F
    UNDEFERR @ IF s" E-UNDEFINED" ELSE
    DVERD @ 1 = IF s" E-UNCHECKABLE" ELSE
    SGBAD @ IF SGBAD-UNKNOWN? IF s" E-UNKNOWN-SIGNATURE-TYPE" ELSE SGBAD-BAREPTR? IF s" E-BARE-PTR-SIGNATURE" ELSE SGBAD-ARITY? IF s" E-WRONG-ARITY" ELSE s" E-BAD-SIGNATURE" THEN THEN THEN ELSE
-   DEXP @ 0 <> IF s" E-MISMATCH" ELSE s" E-REJECTED" THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN ;
+   DEXP @ 0 <> IF s" E-MISMATCH" ELSE s" E-REJECTED" THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN ;
 : DVERDICT ( -- ptr u8 n )
    UNDEFERR @ IF
       s" rejected"
@@ -528,6 +529,7 @@ variable MDV-I   variable MDV-F
       RCUR @ R-RES  RBROW @ R-RES  <>
    THEN ;
 : REPAIR-CLASS ( -- a u )
+   NPBAD @ IF s" fix_parametric_effect" EXIT THEN
    CAPREQ @ IF s" trusted_boundary_required" EXIT THEN
    UNSAFE @ IF s" trusted_boundary_required" EXIT THEN
    LOCALBAD @ IF s" factor_local_shape" EXIT THEN
@@ -553,6 +555,13 @@ variable MDV-I   variable MDV-F
 \ Short repair hint derived from the stable class. Raw stack rows stay in their
 \ own JSON fields; this text is only for LLM action selection.
 : SUGGEST-TEXT ( -- a u )
+   NPBAD @ IF
+      NPBAD-KIND @ 0= IF
+         s" Declare the concrete family in the signature, or keep the body polymorphic over the type variable."
+      ELSE
+         s" Keep each declared type variable distinct; do not unify two quantifiers in the body."
+      THEN EXIT
+   THEN
    CAPREQ @ IF s" Move this compiler or runtime boundary behind audited TRUST." EXIT THEN
    UNSAFE @ IF s" Move this compiler or runtime boundary behind audited TRUST." EXIT THEN
    LOCALBAD @ IF s" Move locals to a live top-level path or factor a helper." EXIT THEN
@@ -600,7 +609,23 @@ variable JPOS  variable JLINE  variable JCOL
    JLINE @ 1 = IF DIAGC0 @ JCOL @ + 1 - ELSE JCOL @ THEN ;
 : JABS-BSTART ( -- n )  DIAGB0 @ FAILB @ + ;
 : JABS-BEND ( -- n )  DIAGB0 @ FAILE @ + ;
+: NP-FAM-REND ( -- )   \ append the specialized family's qualified name to the diagnostic
+   NPBAD-TERM @ NP-FAM {: fam:n :}
+   fam 0 >= IF s" family '" DTXT  fam FAM-QNAME-REND  s" '" DTXT
+   ELSE s" a concrete type" DTXT THEN ;
 : DIAG-PROSE
+   NPBAD @ IF
+     s" E-NONPARAMETRIC-EFFECT habu: in " DTXT  NMA @ NMU @ DTXT
+     NPBAD-KIND @ 0= IF
+       s" : declared type variable '" DTXT  NPBAD-Q1 @ EMIT1
+       s" ' is specialized to " DTXT  NP-FAM-REND
+       s" ; a declared effect must stay parametric over its quantifier" DTXT
+     ELSE
+       s" : declared type variables '" DTXT  NPBAD-Q1 @ EMIT1
+       s" ' and '" DTXT  NPBAD-Q2 @ EMIT1
+       s" ' are unified; each declared quantifier must stay a distinct variable" DTXT
+     THEN EXIT
+   THEN
    CAPREQ @ IF
      s" E-CAP-TRUSTED habu: in " DTXT  NMA @ NMU @ DTXT
      s" : '" DTXT  FAILTK FAILTU @ DTXT
@@ -724,6 +749,16 @@ variable JPOS  variable JLINE  variable JCOL
      44 EMIT1 s" expected" JKEY DEXP @ JROW
      44 EMIT1 s" actual"   JKEY DACT @ JROW
      DIAG-FAMILY THEN
+   NPBAD @ IF                                             \ non-parametric declared effect
+     44 EMIT1 s" quantifier" JKEY 34 EMIT1 NPBAD-Q1 @ JCHAR 34 EMIT1
+     NPBAD-KIND @ IF
+       44 EMIT1 s" quantifier2" JKEY 34 EMIT1 NPBAD-Q2 @ JCHAR 34 EMIT1
+     ELSE
+       NPBAD-TERM @ NP-FAM dup 0 >= IF
+         44 EMIT1 s" family" JKEY 34 EMIT1 FAM-QNAME-REND 34 EMIT1
+       ELSE drop THEN
+     THEN
+   THEN
    SGBAD-ARITY? IF                                        \ item 13: E-WRONG-ARITY counts
      44 EMIT1 s" arity_expected" JKEY SGBAD-AR-DECL @ JNUM
      44 EMIT1 s" arity_actual" JKEY SGBAD-AR-GOT @ JNUM THEN
