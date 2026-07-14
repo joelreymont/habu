@@ -4189,6 +4189,15 @@ unchanged (148855). Keys for milestone 2:
   family a caller must construct (hyphens double: `req-class` -> `REQ--CLASS`);
   this is why R7's `req-class`/`promote-policy` became `req`/`gate-set`, and why
   EVID's slot sums cannot be built cross-package (blocks bundle construction).
+  RESOLVED 2026-07-14 (dot habu-raise-or-alias-5d2a6b70): audit proved the 16 was
+  NOT a structural bound — the runtime dictionary stores long names via DNAME-EXT
+  (habu2.f C-STORE-NAME) and AOT captures them on the EXT kept-source path
+  (aot-capture.f); the SHA fallback name is itself > 16 bytes and already works.
+  So TF-CTOR-NAME-LIMIT is a readability cap, raised 16 -> 32 (longest real
+  escaped name ~25). Names with escaped length <= 32 now keep the readable
+  `PKG-FAMILY:MAKE` spelling (SHA only past 32); `EVID-CERTIFY--SLOT:CERTIFY-GOT`
+  etc. are constructable by name. Do NOT rename to fit 16 anymore; keep escaped
+  `<= 32`. Fixpoint stays byte-identical (limit is single-sourced prefix code).
 - **Multi-cell layout values (products, tagged sums with payload) cannot be
   typed locals or `result`/`option` payload params - only single-cell types
   (TYPEFAMILY, payloadless ENUM) can.** `{: s:EVID:certified :}` and

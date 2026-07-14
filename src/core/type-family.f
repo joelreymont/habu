@@ -594,14 +594,26 @@ variable TF-CW-COL          \ first-colon split position
 \ segments never start/end with '-', so hyphen runs inside escaped segments stay
 \ even-length and interior, and each single '-' separator decodes uniquely.
 \ Package `a-b` family `c` derives `A--B-C`; `a`+`b-c` derives `A-B--C`; a
-\ top-level `a-b-c` derives `A--B--C` — all distinct. Past the pinned 16-byte
-\ name limit the spelling is `T` + the first 16 lowercase hex digits of SHA-256
+\ top-level `a-b-c` derives `A--B--C` — all distinct. The escaped form is
+\ injective at EVERY length, and both the runtime dictionary (DNAME-EXT external
+\ names, habu2.f C-STORE-NAME) and the AOT snapshot (EXT records ride the
+\ kept-source path, aot-capture.f) store names past the 16-byte inline cell, so
+\ TF-CTOR-NAME-LIMIT is a READABILITY cap on the generated spelling — NOT a
+\ dictionary/record structural bound (audit dot habu-raise-or-alias-5d2a6b70:
+\ the SHA form below is itself > 16 bytes and already stores/constructs fine).
+\ Past the cap the spelling is `T` + the first 16 lowercase hex digits of SHA-256
 \ over the length-prefixed unescaped segment list + '-' + the raw uppercase
-\ tail (unescaped: the fixed-width hash region already delimits it).
+\ tail (unescaped: the fixed-width hash region already delimits it); that opaque
+\ fallback only bounds pathologically long names, it never protects a fixed width.
 \ Top level (empty package) derives the bare escaped tail: `result` -> `RESULT`.
 \ SHA-256 loads after this file in the engine prefix, so the fallback hashes
 \ through the friend xt installed by type-family-sha.f.
-16 constant TF-CTOR-NAME-LIMIT   \ pinned inline dictionary name limit (= DNAME-INL)
+\ 32 (not 16): the longest legitimate escaped ctor package is ~25 bytes
+\ (CAD-KIND-ADDRESS--SPACE; EVID/POLICY presence-slot sums like
+\ EVID-CERTIFY--SLOT=18, POLICY-PROMOTE--POLICY=22), so 32 keeps every real
+\ family on the readable escaped spelling with headroom while retaining the SHA
+\ fallback for anything longer.
+32 constant TF-CTOR-NAME-LIMIT   \ readable-spelling cap (audit: NOT DNAME-INL)
 $400 constant TF-CTOR-CAP        \ derived-name / segment-list buffer bytes
 create TF-CTOR-BUF TF-CTOR-CAP allot
 variable TF-CTOR-U               \ derived-name length

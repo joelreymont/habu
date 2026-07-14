@@ -144,6 +144,34 @@ SUMTYPE zafter 0
 s" GEN-AFTER" type cr
 
 \ ---------------------------------------------------------------------------
+\ >16-byte escaped ctor package, constructable by readable name
+\ (dot habu-raise-or-alias-5d2a6b70). Before the TF-CTOR-NAME-LIMIT raise
+\ (16 -> 32) a presence-slot sum whose escaped package name exceeds 16 got an
+\ opaque SHA ctor package (Thex...-TAIL), unwritable in committed source; now it
+\ keeps the READABLE escaped name and its constructors are callable by it. This
+\ is the real EVID presence-slot casualty shape (EVID-CERTIFY--SLOT = 18 bytes).
+\ ---------------------------------------------------------------------------
+package evx
+public
+SUMTYPE certify-slot 0
+  VARIANT certify-got n ;VARIANT
+  VARIANT certify-none ;VARIANT
+;SUMTYPE
+private
+;package
+\ the derived ctor package is the readable escaped name (17 bytes > 16), NOT a SHA fold:
+s" evx" s" certify-slot" TWX-TFAM-FIND-IN TCOK ! TCF !   TCOK @ -1 T=
+TCF @ TFAM-VAR-START@ SUMV-CTOR-PKG$ s" EVX-CERTIFY--SLOT" T$=
+\ and the constructors are callable cross-package by that readable name:
+: EVX-MK-GOT  ( n -- evx:certify-slot ) EVX-CERTIFY--SLOT:CERTIFY-GOT ;
+: EVX-MK-NONE (   -- evx:certify-slot ) EVX-CERTIFY--SLOT:CERTIFY-NONE ;
+s" EVX-GET ( n -- evx:certify-slot ) EVX-CERTIFY--SLOT:CERTIFY-GOT"  CHECK-QUIET-CANDIDATE! -1 T=
+s" EVX-NON (   -- evx:certify-slot ) EVX-CERTIFY--SLOT:CERTIFY-NONE" CHECK-QUIET-CANDIDATE! -1 T=
+\ wrong payload still rejects at the readable call site (no soundness lost):
+s" EVX-BAD ( ptr u8 -- evx:certify-slot ) EVX-CERTIFY--SLOT:CERTIFY-GOT" CHECK-QUIET-CANDIDATE! 0 T=
+s" GEN-LONG-CTOR" type cr
+
+\ ---------------------------------------------------------------------------
 \ parametric families publish (item 11 slice 1): the constructor's result is
 \ one conservative logical cell while args are vars, expands to the hidden
 \ fields where instantiation proves the args non-linear (LOGHID coercion),
