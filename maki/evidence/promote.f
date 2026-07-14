@@ -28,17 +28,24 @@
 \
 \ DEVIATION (grant consumption): POLICY:granted is multi-cell (art+pol+tok) so it cannot be a
 \ typed local nor a result/option payload (LESSONS multi-cell wall). It is UNMAKEd off the
-\ stack and its fields dropped - the grant is the compile-time WITNESS that a real policy
-\ check occurred, not read for value here.
+\ stack - the grant is the compile-time WITNESS that a real policy check occurred, and its
+\ `art` field is read for the value-level binding below.
+\
+\ TIGHTENED (dot habu-public-producers-for-7084d81c): ART:built now carries its
+\ CAD-KIND:artifact-id (maki/typestate.f), so PROMOTE reads the artifact from BOTH the built
+\ witness and the grant and refuses (E-EVID-ARTIFACT) unless they are the same artifact -
+\ closing "promote built X with a grant issued for artifact Y". The grant's art already
+\ equals the built's art whenever the SAME built was POLICY:CHECKed (CHECK reads the artifact
+\ from built), but the checker cannot prove the built handed to PROMOTE is that same one, so
+\ the value-level equality is enforced here.
 \
 \ SCOPE: ART:promoted is a fieldless stage nominal like the other maki/typestate.f stages.
 \ Threading identity/typed evidence into a REAL store write (so ART:PROMOTE itself becomes the
-\ store writer over typed values) waits on public artifact-id / ART:built producers (dot
-\ habu-public-producers-for-7084d81c) and a constructible EVID:bundle (TF-CTOR-NAME-LIMIT);
-\ until then the RUNTIME store write stays the V1 report-based path in maki/cad.f
-\ (PROMOTE-EVIDENCE) over the now-sealed writers, and this file is the checked promotion seal.
+\ store writer over typed values) stays the store-rehydrate sub-dot's work; until then the
+\ RUNTIME store write stays the V1 report-based path in maki/cad.f (PROMOTE-EVIDENCE) over the
+\ now-sealed writers, and this file is the checked promotion seal.
 
-require maki/evidence/policy.f     \ POLICY:granted (pulls maki/evidence/schema.f + maki/typestate.f: ART:built)
+require maki/evidence/policy.f     \ POLICY:granted (pulls maki/evidence/schema.f + maki/typestate.f: ART:built; ARTIFACT:EQUAL?)
 
 package ART
 public
@@ -50,8 +57,10 @@ private
 TRUSTED: RAW>PROMOTED ( n -- promoted ) ;
 public
 : PROMOTE ( ART:built POLICY:granted -- promoted )
-   POLICY-GRANTED:UNMAKE  \ ART:built art pol tok
-   drop drop drop         \ consume the grant fields (grant is a proof-of-check witness)
-   drop                   \ consume the ART:built witness
+   POLICY-GRANTED:UNMAKE            \ ART:built gart pol tok
+   drop drop                        \ drop pol + grant-proof token, leaving  ART:built gart
+   {: gart:CAD-KIND:artifact-id :}  \ the artifact the grant was issued for
+   ART-BUILT:UNMAKE drop            \ built -> its artifact id (drop the build-proof)
+   gart ARTIFACT:EQUAL? 0= if E-EVID-ARTIFACT throw then
    0 RAW>PROMOTED ;
 ;package

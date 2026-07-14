@@ -106,12 +106,34 @@ public
 : EMIT ( KIR:verified CAD-KIND:target-id -- emitted )  drop drop  0 RAW>EMITTED ;
 ;package
 
-\ ---- ART: built (needs an emitted candidate + a toolchain) ------------------
+\ ---- ART: built (needs an emitted candidate + the artifact identity) ---------
+\ Identity threading (dot habu-public-producers-for-7084d81c, discharging the
+\ refinement the stage/evidence sub-dots deferred): ART:built is now a PRODUCT that
+\ CARRIES the CAD-KIND:artifact-id it was built from, so the evidence/policy/promote
+\ transitions read the artifact FROM the built witness (maki/evidence/schema.f,
+\ maki/evidence/policy.f) instead of taking it as a loose, separately-fabricated
+\ operand. A class-private `build-proof` token keeps `built` UNFORGEABLE exactly like
+\ the evidence proof tokens (maki/evidence/schema.f): MINT-BUILD-PROOF is PRIVATE, so a
+\ caller holding an artifact-id cannot MAKE the "was actually built" witness around
+\ ART:BUILD, and therefore cannot forge downstream evidence. The old fieldless-nominal
+\ RAW>BUILT mint is retired - a product needs no raw mint.
+\
+\ The build's artifact id comes from the public producer maki/artifact.f
+\ (ARTIFACT:REGISTER). The skeleton's decorative CAD-KIND:toolchain-id operand (it was
+\ consumed and dropped, no producer existed) is replaced by that meaningful id; typed
+\ toolchain provenance in ART:built is a follow-on if a consumer needs it.
 package ART
 public
-TYPEFAMILY built 0
+TYPEFAMILY build-proof 0
+PRODUCT built 0
+   FIELD art CAD-KIND:artifact-id
+   FIELD tok build-proof
+;PRODUCT
 private
-TRUSTED: RAW>BUILT ( n -- built ) ;
+TRUSTED: MINT-BUILD-PROOF ( -- build-proof )  0 ;
 public
-: BUILD ( CAND:emitted CAD-KIND:toolchain-id -- built )  drop drop  0 RAW>BUILT ;
+: BUILD ( CAND:emitted CAD-KIND:artifact-id -- built )
+   {: art:CAD-KIND:artifact-id :}   \ pop the artifact id; the emitted candidate remains
+   drop                              \ consume CAND:emitted (the build ran)
+   art MINT-BUILD-PROOF ART-BUILT:MAKE ;
 ;package

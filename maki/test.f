@@ -172,6 +172,8 @@ TEST:SUITE maki/cad-kinds-test.f
 TEST:;SUITE
 TEST:SUITE maki/target/target-test.f
 TEST:;SUITE
+TEST:SUITE maki/artifact-test.f
+TEST:;SUITE
 TEST:SUITE maki/cad-test.f
 TEST:;SUITE
 TEST:SUITE maki/cad-bind-test.f
@@ -211,6 +213,8 @@ TEST:;SUITE
 TEST:SUITE maki/evidence/schema-test.f
 TEST:;SUITE
 TEST:SUITE maki/evidence/policy-test.f
+TEST:;SUITE
+TEST:SUITE maki/evidence/policy-e2e-test.f
 TEST:;SUITE
 TEST:SUITE maki/evidence/promote-test.f
 TEST:;SUITE

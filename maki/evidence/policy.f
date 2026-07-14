@@ -29,14 +29,14 @@
 \ (maki/cad.f:1036). The refusal path is real and named; a result<granted,diag-set>
 \ must wait for a multi-cell result-payload capability (that dot).
 \
-\ DEVIATION 2 (explicit artifact operand): the addendum spells POLICY:CHECK
-\ ( ART:built EVID:bundle POLICY:promote-policy -- ... ), but ART:built is a
-\ fieldless stage nominal (maki/typestate.f) that carries no artifact id, so the
-\ artifact under promotion is passed as an explicit CAD-KIND:artifact-id operand -
-\ exactly as schema.f's EVID transitions take the artifact id explicitly because
-\ identity threading through the fieldless stages is not built yet. ART:built is
-\ kept as the type-level "was actually built" witness (so a permissive policy over
-\ an empty bundle cannot grant for a never-built artifact).
+\ (was DEVIATION 2, now DISCHARGED - dot habu-public-producers-for-7084d81c):
+\ POLICY:CHECK reads the artifact under promotion FROM the ART:built witness. That
+\ witness is now a PRODUCT carrying its CAD-KIND:artifact-id (maki/typestate.f), so the
+\ artifact is no longer a separately-fabricated operand: CHECK UNMAKEs built for the
+\ artifact and binds each present evidence's `art` to it. ART:built stays the
+\ unforgeable "was actually built" witness (its build-proof token is minted only by
+\ ART:BUILD), so a permissive policy over an empty bundle still cannot grant for a
+\ never-built artifact.
 \
 \ DEVIATION 3 (family names): the addendum names the families `req-class` and
 \ `promote-policy`. Their generated constructor-package names under package POLICY
@@ -46,13 +46,14 @@
 \ in readable committed source - and DEFAULT-POLICY / POLICY:CHECK must construct
 \ them. They are renamed to `req` (POLICY-REQ) and `gate-set` (POLICY-GATE--SET),
 \ which keep clean ctor packages and the meaning (a per-class requirement; the
-\ promotion gate set, matching the plan's "V1 gate set = default policy"). The
-\ same >16 overflow makes EVID's slot sums (EVID-CERTIFY--SLOT, ...) constructible
-\ only via SHA names, so a full EVID:bundle cannot be built in readable test source;
-\ see maki/evidence/policy-test.f for how the value-level binding is proven instead.
-\ Both want a checker dot to raise TF-CTOR-NAME-LIMIT / add short ctor aliases.
+\ promotion gate set, matching the plan's "V1 gate set = default policy"). EVID's slot
+\ sums (EVID-CERTIFY--SLOT, 18, ...) were also only SHA-constructible under the old
+\ 16-char cap; TF-CTOR-NAME-LIMIT is now 32 (commit e596b0f1), so a full EVID:bundle
+\ is constructible by readable name and POLICY:CHECK runs end to end over a real bundle
+\ (maki/evidence/policy-e2e-test.f).
 
 require lib/prelude.f
+require maki/artifact.f            \ ARTIFACT:EQUAL? - the value-level artifact identity
 require maki/evidence/schema.f
 
 \ maki owns -5000..-5099; evidence-policy uses -5098..-5099 (the E-RPT-GATE
@@ -103,15 +104,13 @@ private
 \ after the value-level binding held (the maki/target/target.f:54 mint pattern).
 TRUSTED: MINT-GRANT-PROOF ( -- grant-proof )  0 ;
 
-\ AID>RAW: the audited value-level projection of an artifact-id identity to a raw
-\ cell, used ONLY to compare two artifact-ids (the checker has no artifact-id
-\ equality). The maki/target/target.f:55 TARGET-ID>RAW precedent; family-in /
-\ raw-out, so it is a projection boundary, not a forging mint.
-TRUSTED: AID>RAW ( CAD-KIND:artifact-id -- n )  ;
+\ RAW>SCHEMA-ID: the ONLY producer of a schema-id cell, backing the POLICY:SCHEMA
+\ singleton (below). Private, so a raw n cannot forge a policy schema identity.
+TRUSTED: RAW>SCHEMA-ID ( n -- CAD-KIND:schema-id ) ;
 
-\ AID=: checked artifact-id identity equality built over the projection boundary.
-: AID= ( CAD-KIND:artifact-id CAD-KIND:artifact-id -- bool )
-   AID>RAW swap AID>RAW = ;
+\ Artifact-id equality is now ARTIFACT:EQUAL? (maki/artifact.f), which owns the
+\ artifact-id raw projection with the registry - retiring policy.f's former AID>RAW /
+\ AID= boundary.
 
 \ ---- per-class requirement decisions (MATCH on the policy's req value) --------
 : REQ-MUST-EXIST? ( req -- bool )         \ blocking/recorded require the slot present
@@ -159,25 +158,25 @@ TRUSTED: AID>RAW ( CAD-KIND:artifact-id -- n )  ;
 : CERT-VERDICT ( EVID:certify-slot CAD-KIND:artifact-id req -- n )
    {: a:CAD-KIND:artifact-id r:req :}
    MATCH certify-slot
-      certify-got  OF CERT-ART a AID= true swap ENDOF
+      certify-got  OF CERT-ART a ARTIFACT:EQUAL? true swap ENDOF
       certify-none OF false false ENDOF
    ;MATCH  r SLOT-ERR ;
 : GOLD-VERDICT ( EVID:golden-slot CAD-KIND:artifact-id req -- n )
    {: a:CAD-KIND:artifact-id r:req :}
    MATCH golden-slot
-      golden-got  OF GOLD-ART a AID= true swap ENDOF
+      golden-got  OF GOLD-ART a ARTIFACT:EQUAL? true swap ENDOF
       golden-none OF false false ENDOF
    ;MATCH  r SLOT-ERR ;
 : GRAD-VERDICT ( EVID:gradcheck-slot CAD-KIND:artifact-id req -- n )
    {: a:CAD-KIND:artifact-id r:req :}
    MATCH gradcheck-slot
-      gradcheck-got  OF GRAD-ART a AID= true swap ENDOF
+      gradcheck-got  OF GRAD-ART a ARTIFACT:EQUAL? true swap ENDOF
       gradcheck-none OF false false ENDOF
    ;MATCH  r SLOT-ERR ;
 : PROF-VERDICT ( EVID:profile-slot CAD-KIND:artifact-id req -- n )
    {: a:CAD-KIND:artifact-id r:req :}
    MATCH profile-slot
-      profile-got  OF PROF-ART a AID= true swap ENDOF
+      profile-got  OF PROF-ART a ARTIFACT:EQUAL? true swap ENDOF
       profile-none OF false false ENDOF
    ;MATCH  r SLOT-ERR ;
 
@@ -197,18 +196,28 @@ public
    pol
    POLICY-GATE--SET:MAKE ;
 
+\ SCHEMA: the canonical identity of the V1 promotion policy schema (the default gate
+\ set). V1 has exactly ONE policy schema, so this is a fixed singleton identity; a
+\ schema REGISTRY interning multiple named schema versions is a follow-on when policies
+\ beyond the default exist. It is the public producer of CAD-KIND:schema-id (retiring
+\ the test-only T>SID fabrication); the backing mint is PRIVATE, so it cannot be forged.
+0 constant DEFAULT-SCHEMA-RAW
+: SCHEMA ( -- CAD-KIND:schema-id )  DEFAULT-SCHEMA-RAW RAW>SCHEMA-ID ;
+
 \ CHECK: the single sealed site of value-level artifact binding. On a clean policy
 \ pass it mints and returns the grant; on refusal it THROWs the first refusal code
 \ (cert > gold > grad > prof priority), exactly as V1 PROMOTE-REPORT throws E-CAD-GATE
 \ (maki/cad.f:1036). The bundle is DEEPEST so it is UNMAKEd only after the single-cell
 \ operands become locals; the four verdict codes accumulate through the return stack
-\ because a tagged-sum slot cannot rest under a partial result. ART:built is the
-\ type-level "was actually built" witness (consumed, not read).
-: CHECK ( EVID:bundle ART:built CAD-KIND:artifact-id gate-set -- POLICY:granted )
+\ because a tagged-sum slot cannot rest under a partial result. The artifact under
+\ promotion is READ from the ART:built witness (its `art` field), which also proves the
+\ artifact was actually built - a permissive policy over an empty bundle cannot grant
+\ for a never-built artifact.
+: CHECK ( EVID:bundle ART:built gate-set -- POLICY:granted )
    POLICY-GATE--SET:UNMAKE
       {: cReq:req gReq:req grReq:req pReq:req sid:CAD-KIND:schema-id :}
-   {: a:CAD-KIND:artifact-id :}      \ pop artifact-id, leaving  bundle built
-   drop                             \ drop the ART:built witness, leaving  bundle
+   ART-BUILT:UNMAKE drop            \ built -> its artifact id (drop the build-proof)
+   {: a:CAD-KIND:artifact-id :}      \ pop the artifact under promotion, leaving  bundle
    EVID-BUNDLE:UNMAKE               \ stack: certify-slot golden-slot gradcheck-slot profile-slot
    a pReq  PROF-VERDICT >r
    a grReq GRAD-VERDICT >r

@@ -38,9 +38,11 @@
 \ EVID:CERTIFY/GOLDEN/GRADCHECK/PROFILE to this sub-dot). The slot sums + bundle
 \ are the presence schema consumed by POLICY:CHECK in the promotion-policy sub-dot
 \ (habu-v2-typestate-promotion-d539e648); they are declared here as the evidence
-\ owner's surface. Identity threading through the stages is not yet in
-\ maki/typestate.f's fieldless stage families, so each transition takes the
-\ artifact id as an explicit operand rather than reading it from ART:built.
+\ owner's surface. Identity threading is now LANDED (dot
+\ habu-public-producers-for-7084d81c): maki/typestate.f's ART:built is a PRODUCT
+\ carrying its CAD-KIND:artifact-id, so each transition READS the artifact from the
+\ built witness (ART-BUILT:UNMAKE) rather than taking it as a separately-fabricated
+\ operand - the evidence a transition mints is bound to the artifact that was built.
 
 require maki/typestate.f
 
@@ -130,17 +132,23 @@ TRUSTED: MINT-GRADCHECK-PROOF ( -- gradcheck-proof )  0 ;
 TRUSTED: MINT-PROFILE-PROOF ( -- profile-proof )  0 ;
 
 public
-\ ---- gate transition words: consume the built artifact + measured facts, mint --
-\ CERTIFY / GRADCHECK take just the artifact id; GOLDEN also carries the leg and
-\ precision (the retired ambient globals); PROFILE carries the measured us.
-: CERTIFY ( ART:built CAD-KIND:artifact-id -- certified )
-   nip  MINT-CERTIFY-PROOF  EVID-CERTIFIED:MAKE ;
-: GOLDEN ( ART:built CAD-KIND:artifact-id golden-leg prec-class -- golden )
-   {: b:ART:built art:CAD-KIND:artifact-id leg:golden-leg prec:prec-class :}
-   art leg prec  MINT-GOLDEN-PROOF  EVID-GOLDEN:MAKE ;
-: GRADCHECK ( ART:built CAD-KIND:artifact-id -- gradchecked )
-   nip  MINT-GRADCHECK-PROOF  EVID-GRADCHECKED:MAKE ;
-: PROFILE ( ART:built CAD-KIND:artifact-id n -- profiled )
-   {: b:ART:built art:CAD-KIND:artifact-id us:n :}
-   art us  MINT-PROFILE-PROOF  EVID-PROFILED:MAKE ;
+\ ---- gate transition words: read the artifact from the built witness, mint --------
+\ Each UNMAKEs ART:built to its (art, build-proof) and drops the build-proof (holding a
+\ built already proved the build ran); CERTIFY / GRADCHECK need only the artifact,
+\ GOLDEN also carries the leg + precision (the retired ambient globals), PROFILE the
+\ measured us. The minted evidence's `art` is the artifact that was actually built.
+: CERTIFY ( ART:built -- certified )
+   ART-BUILT:UNMAKE drop                  \ built -> art (drop build-proof)
+   MINT-CERTIFY-PROOF  EVID-CERTIFIED:MAKE ;
+: GOLDEN ( ART:built golden-leg prec-class -- golden )
+   {: leg:golden-leg prec:prec-class :}   \ pop leg + prec; the built witness remains
+   ART-BUILT:UNMAKE drop                  \ built -> art
+   leg prec  MINT-GOLDEN-PROOF  EVID-GOLDEN:MAKE ;
+: GRADCHECK ( ART:built -- gradchecked )
+   ART-BUILT:UNMAKE drop
+   MINT-GRADCHECK-PROOF  EVID-GRADCHECKED:MAKE ;
+: PROFILE ( ART:built n -- profiled )
+   {: us:n :}                             \ pop measured us; the built witness remains
+   ART-BUILT:UNMAKE drop
+   us  MINT-PROFILE-PROOF  EVID-PROFILED:MAKE ;
 ;package

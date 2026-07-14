@@ -42,16 +42,17 @@ s" EV-OK-PROF ( CAD-KIND:artifact-id n EVID:profile-proof -- EVID:profiled ) EVI
    CHECK-QUIET-CANDIDATE! -1 T=
 
 \ ---- positive controls: the gate transitions type-check in the right order ----
-\ (ART:built + CAD-KIND ids are minted only inside their owner packages, so, like
-\ CAND:EMIT/ART:BUILD in maki/typestate-test.f, the transitions are pinned by type
-\ candidates, not executed.)
-s" EV-OK-CERTIFY ( ART:built CAD-KIND:artifact-id -- EVID:certified ) EVID:CERTIFY"
+\ (ART:built is minted only inside package ART, so, like CAND:EMIT/ART:BUILD in
+\ maki/typestate-test.f, the transitions are pinned by type candidates, not executed;
+\ maki/evidence/policy-e2e-test.f runs them over a real built witness.) The artifact
+\ id is READ from ART:built now, so the transitions no longer take it as an operand.
+s" EV-OK-CERTIFY ( ART:built -- EVID:certified ) EVID:CERTIFY"
    CHECK-QUIET-CANDIDATE! -1 T=
-s" EV-OK-GOLDEN ( ART:built CAD-KIND:artifact-id EVID:golden-leg EVID:prec-class -- EVID:golden ) EVID:GOLDEN"
+s" EV-OK-GOLDEN ( ART:built EVID:golden-leg EVID:prec-class -- EVID:golden ) EVID:GOLDEN"
    CHECK-QUIET-CANDIDATE! -1 T=
-s" EV-OK-GRADCHECK ( ART:built CAD-KIND:artifact-id -- EVID:gradchecked ) EVID:GRADCHECK"
+s" EV-OK-GRADCHECK ( ART:built -- EVID:gradchecked ) EVID:GRADCHECK"
    CHECK-QUIET-CANDIDATE! -1 T=
-s" EV-OK-PROFILE ( ART:built CAD-KIND:artifact-id n -- EVID:profiled ) EVID:PROFILE"
+s" EV-OK-PROFILE ( ART:built n -- EVID:profiled ) EVID:PROFILE"
    CHECK-QUIET-CANDIDATE! -1 T=
 
 \ ---- wrong-artifact-evidence negatives (plan:1856-1865) -----------------------
@@ -73,7 +74,7 @@ s" EV-BAD-CLASS-TOK ( CAD-KIND:artifact-id EVID:golden-proof -- EVID:certified )
 s" EV-BAD-CLASS-VAL ( EVID:certified -- EVID:golden ) "
    CHECK-QUIET-CANDIDATE! 0 T=
 \ feeding a gradchecked artifact to EVID:CERTIFY (expects ART:built) rejects.
-s" EV-BAD-CERTIFY-IN ( EVID:gradchecked CAD-KIND:artifact-id -- EVID:certified ) EVID:CERTIFY"
+s" EV-BAD-CERTIFY-IN ( EVID:gradchecked -- EVID:certified ) EVID:CERTIFY"
    CHECK-QUIET-CANDIDATE! 0 T=
 
 \ ---- presence bundle: schema is well-formed; slot order is type-checked -------

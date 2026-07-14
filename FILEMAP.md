@@ -576,6 +576,14 @@ points stay listed.
   canonical facts/digests, and the validated `CAD-KIND:target-id` owner API.
 - `maki/target/target-test.f` — target identity, descriptor validation,
   round-trip, capability non-aliasing, role rejection, and privacy regressions.
+- `maki/artifact.f` — the built-artifact identity registry: `ARTIFACT:REGISTER`
+  interns a section-7.4 store key to a validated `CAD-KIND:artifact-id` (content
+  addressed: equal keys share one id), plus `KEY$`/`EQUAL?`/`VALIDATE`/`COUNT`. The
+  public producer the R7 evidence/policy layer was missing (retiring the test-only
+  `T>AID` fabrication); raw conversions stay private (the target.f pattern).
+- `maki/artifact-test.f` — registry interning/equality/key round-trip/count
+  regressions, the private-mint unforgeability negative, and fail-closed empty-key /
+  out-of-range-id boundaries.
 - `maki/sched-key.f` — section-7.4 schedule keys: the typed `skey` product, the
   durable `SK-KEY$` render (region signature, shape class, dtype/layout/align,
   facts-based target field, engine content key), and the replay-table seam.
@@ -619,7 +627,9 @@ points stay listed.
 - `maki/typestate.f` — R7 stage typestate skeleton: one package per IR level
   (MODEL/TIR/RIR/PLAN/KIR/CAND/ART) with sealed arity-0 stage nominals and the
   transition words that thread the one legal pipeline order, so a wrong-stage
-  input is a checker reject before runtime.
+  input is a checker reject before runtime. ART:built is a PRODUCT carrying its
+  `CAD-KIND:artifact-id` + a private build-proof token (identity threading), so
+  downstream evidence/policy transitions read the artifact from the built witness.
 - `maki/typestate-test.f` — stage-order acceptance: per-transition positive
   controls, wrong-stage negatives (unconstrained-model, draft-plan,
   unverified-KIR, reverse-stage), and a runnable MODEL→KIR pipeline.
@@ -633,20 +643,29 @@ points stay listed.
   private-mint), wrong-class negatives, and bundle slot-order pins.
 - `maki/evidence/policy.f` — R7 promotion-policy products: the `req` requirement
   ENUM (DERIVE eq), the `gate-set` promotion policy, the sealed `granted` grant
-  (private grant-proof token), DEFAULT-POLICY (exactly the V1 gate set), and
-  POLICY:CHECK — the one value-level artifact-binding site (E-EVID-ARTIFACT /
-  E-EVID-MISSING refusals over the EVID bundle/slot schema).
+  (private grant-proof token), DEFAULT-POLICY (exactly the V1 gate set), the
+  `POLICY:SCHEMA` schema-id producer (the V1 policy schema identity), and
+  POLICY:CHECK — the one value-level artifact-binding site, reading the artifact
+  under promotion from the ART:built witness (E-EVID-ARTIFACT / E-EVID-MISSING
+  refusals over the EVID bundle/slot schema; artifact equality via ARTIFACT:EQUAL?).
 - `maki/evidence/policy-test.f` — promotion acceptance: DEFAULT-POLICY /
   POLICY:CHECK / grant positive controls, missing-gate + forge negatives (raw
   token, foreign class, id-swap, private-mint, non-gate-set input), and executed
-  white-box value cores (AID= equality, the SLOT-ERR decision table incl. the
-  wrong-artifact E-EVID-ARTIFACT fact, the V1-gate-set default).
+  white-box value cores (the SLOT-ERR decision table incl. the wrong-artifact
+  E-EVID-ARTIFACT fact over real registered ids, the V1-gate-set default).
+- `maki/evidence/policy-e2e-test.f` — executed end-to-end promotion: POLICY:CHECK
+  run over a REAL EVID:bundle built from genuine values (ARTIFACT:REGISTER ids, a
+  MODEL→…→ART:BUILD built witness, the real EVID gate transitions) — a matching
+  bundle grants and binds the artifact, an absent required slot refuses
+  E-EVID-MISSING, wrong-artifact evidence refuses E-EVID-ARTIFACT, and ART:PROMOTE
+  refuses a grant issued for a different artifact (the tightening).
 - `maki/evidence/promote.f` — R7 promotion transition + store seal: the sealed
   `ART:PROMOTE ( ART:built POLICY:granted -- ART:promoted )` (promotion needs the
-  sealed grant, so a forged tag readout cannot reach `ART:promoted`), the private
-  `RAW>PROMOTED` stage mint. Companion to the maki/store.f store-row-writer seal and
-  the maki/cad.f golden-provenance threading that retires the maki/golden.f ambient
-  globals.
+  sealed grant, so a forged tag readout cannot reach `ART:promoted`) which now
+  verifies the built witness and the grant name the SAME artifact
+  (E-EVID-ARTIFACT on mismatch), the private `RAW>PROMOTED` stage mint. Companion
+  to the maki/store.f store-row-writer seal and the maki/cad.f golden-provenance
+  threading that retires the maki/golden.f ambient globals.
 - `maki/evidence/promote-test.f` — promotion + store-seal acceptance: the
   ART:PROMOTE positive control, the missing-grant / private-mint negatives (forged
   promotion rejects through the checked path), and the store-bypass regression that

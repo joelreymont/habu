@@ -37,7 +37,9 @@ s" TS-OK2 ( PLAN:complete KIR:drafted -- KIR:verified ) KIR:VERIFY"
    CHECK-QUIET-CANDIDATE! -1 T=
 s" TS-OK-EMIT ( KIR:verified CAD-KIND:target-id -- CAND:emitted ) CAND:EMIT"
    CHECK-QUIET-CANDIDATE! -1 T=
-s" TS-OK-BUILD ( CAND:emitted CAD-KIND:toolchain-id -- ART:built ) ART:BUILD"
+\ BUILD now threads the artifact identity: it takes the CAD-KIND:artifact-id it was
+\ built from and returns an ART:built PRODUCT carrying it (dot habu-public-producers).
+s" TS-OK-BUILD ( CAND:emitted CAD-KIND:artifact-id -- ART:built ) ART:BUILD"
    CHECK-QUIET-CANDIDATE! -1 T=
 
 \ ---- wrong-stage negatives: each must be a checker reject (verdict 0) ---------
@@ -56,6 +58,17 @@ s" TS-BAD-SOLVE ( TIR:solved -- TIR:solved ) TIR:SOLVE"
 \ 5. a built artifact cannot be re-legalized (stage runs one way).
 s" TS-BAD-REBUILD ( ART:built -- RIR:legal ) RIR:LEGALIZE"
    CHECK-QUIET-CANDIDATE! 0 T=
+
+\ ---- ART:built unforgeability (identity-threading seal) -----------------------
+\ ART:built is a PRODUCT (art + build-proof), but its build-proof token is minted only
+\ by the PRIVATE MINT-BUILD-PROOF inside ART:BUILD, so a caller holding an artifact-id
+\ cannot fabricate the "was actually built" witness around the build transition.
+\ A raw n in the build-proof slot type-rejects (verdict 0)...
+s" TS-BAD-BUILT-RAW ( CAD-KIND:artifact-id n -- ART:built ) ART-BUILT:MAKE"
+   CHECK-QUIET-CANDIDATE! 0 T=
+\ ...and the build-proof mint is unresolvable outside package ART (verdict 1).
+s" TS-BAD-BUILT-MINT ( CAD-KIND:artifact-id -- ART:built ) MINT-BUILD-PROOF ART-BUILT:MAKE"
+   CHECK-QUIET-CANDIDATE! 1 T=
 
 \ ---- executable positive: the pipeline composes and runs ---------------------
 TS-PIPE

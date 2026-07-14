@@ -690,20 +690,20 @@ that source is explicitly certified; they are not stale-checked by the default
 | RAW>DRAFTED | `n -- drafted` | Private R7 stage mint: seeds a drafted kernel IR (`KIR:DRAFT`); unverified, so it cannot enter target emission. | `maki/typestate-test.f` | maki/typestate.f | 2026-07-13 |
 | RAW>VERIFIED | `n -- verified` | Private R7 stage mint: the verified-kernel witness, minted only by `KIR:VERIFY` from a `PLAN:complete` + `KIR:drafted`. | `maki/typestate-test.f` | maki/typestate.f | 2026-07-13 |
 | RAW>EMITTED | `n -- emitted` | Private R7 stage mint: the emitted-candidate witness, minted only by `CAND:EMIT` from a `KIR:verified` + `CAD-KIND:target-id`. | `maki/typestate-test.f` | maki/typestate.f | 2026-07-13 |
-| RAW>BUILT | `n -- built` | Private R7 stage mint: the built-artifact witness, minted only by `ART:BUILD` from a `CAND:emitted` + `CAD-KIND:toolchain-id`. | `maki/typestate-test.f` | maki/typestate.f | 2026-07-13 |
+| MINT-BUILD-PROOF | `-- build-proof` | Private R7 stage mint: the class-private build-proof token that seals the `ART:built` product, minted only by `ART:BUILD` from a `CAND:emitted` + the `CAD-KIND:artifact-id` it is built from; so a caller holding an artifact id cannot forge the "was actually built" witness (identity threading, dot habu-public-producers-for-7084d81c; replaces the retired fieldless `RAW>BUILT`). | `maki/typestate-test.f` | maki/typestate.f | 2026-07-14 |
 | MINT-CERTIFY-PROOF | `-- certify-proof` | Private R7 evidence mint: the class-private certify proof token, minted only by `EVID:CERTIFY`; its existence downstream of a real gate is the proof, so a raw n cannot forge `EVID:certified`. | `maki/evidence/schema-test.f` | maki/evidence/schema.f | 2026-07-14 |
 | MINT-GOLDEN-PROOF | `-- golden-proof` | Private R7 evidence mint: the class-private golden proof token, minted only by `EVID:GOLDEN`; leg/precision provenance rides the `EVID:golden` product fields. | `maki/evidence/schema-test.f` | maki/evidence/schema.f | 2026-07-14 |
 | MINT-GRADCHECK-PROOF | `-- gradcheck-proof` | Private R7 evidence mint: the class-private gradcheck proof token, minted only by `EVID:GRADCHECK`. | `maki/evidence/schema-test.f` | maki/evidence/schema.f | 2026-07-14 |
 | MINT-PROFILE-PROOF | `-- profile-proof` | Private R7 evidence mint: the class-private profile proof token, minted only by `EVID:PROFILE`. | `maki/evidence/schema-test.f` | maki/evidence/schema.f | 2026-07-14 |
 | MINT-GRANT-PROOF | `-- grant-proof` | Private R7 promotion mint: the sealed grant token, minted only by `POLICY:CHECK` after the value-level artifact binding holds, so a raw n cannot forge `POLICY:granted`. | `maki/evidence/policy-test.f` | maki/evidence/policy.f | 2026-07-14 |
-| AID>RAW | `CAD-KIND:artifact-id -- n` | Private artifact-id identity projection used only by `POLICY:CHECK`'s value-level artifact equality (`AID=`); no public raw conversion is exported (the maki/target/target.f `TARGET-ID>RAW` pattern). | `maki/evidence/policy-test.f` | maki/evidence/policy.f | 2026-07-14 |
-| T>AID | `n -- CAD-KIND:artifact-id` | Test-only artifact-id fabrication: the promotion suite needs runtime artifact ids to exercise the value-level binding, but no public producer exists yet; confined to the policy suite. | `maki/evidence/policy-test.f` | maki/evidence/policy-test.f | 2026-07-14 |
-| T>SID | `n -- CAD-KIND:schema-id` | Test-only schema-id fabrication: the promotion suite needs a runtime policy identity to assert DEFAULT-POLICY equals the V1 gate set; no public producer exists yet; confined to the policy suite. | `maki/evidence/policy-test.f` | maki/evidence/policy-test.f | 2026-07-14 |
+| RAW>SCHEMA-ID | `n -- CAD-KIND:schema-id` | Private schema-id mint backing the `POLICY:SCHEMA` singleton (the V1 default-policy schema identity); private, so a raw n cannot forge a policy schema identity, and it is the public producer that retired the test-only `T>SID` fabrication. | `maki/evidence/policy-test.f` | maki/evidence/policy.f | 2026-07-14 |
 | RAW>PROMOTED | `n -- promoted` | Private R7 stage mint: the promoted-artifact witness, minted only by `ART:PROMOTE` from an `ART:built` + a sealed `POLICY:granted`, so a raw n cannot forge a promoted artifact and no caller can fabricate one around the sealed promotion transition. | `maki/evidence/promote-test.f` | maki/evidence/promote.f | 2026-07-14 |
 | RAW>RGN | `n -- CAD-KIND:region` | Private fusion-planner region refinement after `FP-CK` and the region-range validator prove the raw table position names a planned region (R3 owner-module rule; landed by the closed dot `habu-maki-apply-cad-27b7a7d7`, owned by `habu-epic-model-cad-70b629a9`). | `maki/fusion-plan-test.f` | maki/fusion-plan.f | 2026-07-12 |
 | RGN>RAW | `CAD-KIND:region -- n` | Private region projection used only by fusion-plan bounds revalidation, region-indexed owner tables, and the `REGION_<rid>` render boundaries; no public raw cast is exported (landed by the closed dot `habu-maki-apply-cad-27b7a7d7`, owned by `habu-epic-model-cad-70b629a9`). | `maki/fusion-plan-test.f` | maki/fusion-plan.f | 2026-07-12 |
 | RAW>TARGET-ID | `n -- CAD-KIND:target-id` | Private target-registry refinement after semantic descriptor validation, capacity validation, and append-only slot allocation. | `maki/target/target-test.f` | maki/target/target.f | 2026-07-12 |
 | TARGET-ID>RAW | `CAD-KIND:target-id -- n` | Private target identity projection used only by bounds validation and owner-table access; no public raw conversion is exported. | `maki/target/target-test.f` | maki/target/target.f | 2026-07-12 |
+| RAW>ARTIFACT-ID | `n -- CAD-KIND:artifact-id` | Private artifact-registry refinement after key validation and append-only slot allocation (interned by the section-7.4 store key); the only public producer is `ARTIFACT:REGISTER`, so a raw n cannot forge an artifact id (the maki/target/target.f `RAW>TARGET-ID` pattern; dot habu-public-producers-for-7084d81c). | `maki/artifact-test.f` | maki/artifact.f | 2026-07-14 |
+| ARTIFACT-ID>RAW | `CAD-KIND:artifact-id -- n` | Private artifact identity projection used only by bounds validation, key-table access, and `ARTIFACT:EQUAL?`; no public raw conversion is exported (retiring maki/evidence/policy.f's former `AID>RAW`). | `maki/artifact-test.f` | maki/artifact.f | 2026-07-14 |
 | DIM-REFINE | `n -- CAD-KIND:dim` | Private validated nominal representation boundary for tensor dimensions; tracked by `habu-v2-r3-type-9f89d1e9`. | `maki/tensor-test.f` | maki/tensor.f | 2026-07-12 |
 | DIM-RAW | `CAD-KIND:dim -- n` | Private dimension projection used only by checked shape algebra and numeric execution boundaries. | `maki/tensor-test.f` | maki/tensor.f | 2026-07-12 |
 | ROWS-REFINE | `n -- CAD-KIND:rows` | Private validated row-role refinement; public construction goes through `SHAPE`. | `maki/tensor-test.f` | maki/tensor.f | 2026-07-12 |
@@ -1404,18 +1404,18 @@ maki/typestate.f:RAW>COMPLETE prim-axiom habu-epic-model-cad-70b629a9
 maki/typestate.f:RAW>DRAFTED prim-axiom habu-epic-model-cad-70b629a9
 maki/typestate.f:RAW>VERIFIED prim-axiom habu-epic-model-cad-70b629a9
 maki/typestate.f:RAW>EMITTED prim-axiom habu-epic-model-cad-70b629a9
-maki/typestate.f:RAW>BUILT prim-axiom habu-epic-model-cad-70b629a9
+maki/typestate.f:MINT-BUILD-PROOF prim-axiom habu-epic-model-cad-70b629a9
 maki/evidence/schema.f:MINT-CERTIFY-PROOF prim-axiom habu-epic-model-cad-70b629a9
 maki/evidence/schema.f:MINT-GOLDEN-PROOF prim-axiom habu-epic-model-cad-70b629a9
 maki/evidence/schema.f:MINT-GRADCHECK-PROOF prim-axiom habu-epic-model-cad-70b629a9
 maki/evidence/schema.f:MINT-PROFILE-PROOF prim-axiom habu-epic-model-cad-70b629a9
 maki/evidence/policy.f:MINT-GRANT-PROOF prim-axiom habu-epic-model-cad-70b629a9
-maki/evidence/policy.f:AID>RAW prim-axiom habu-epic-model-cad-70b629a9
-maki/evidence/policy-test.f:T>AID prim-axiom habu-epic-model-cad-70b629a9
-maki/evidence/policy-test.f:T>SID prim-axiom habu-epic-model-cad-70b629a9
+maki/evidence/policy.f:RAW>SCHEMA-ID prim-axiom habu-epic-model-cad-70b629a9
 maki/evidence/promote.f:RAW>PROMOTED prim-axiom habu-epic-model-cad-70b629a9
 maki/target/target.f:RAW>TARGET-ID prim-axiom habu-epic-model-cad-70b629a9
 maki/target/target.f:TARGET-ID>RAW prim-axiom habu-epic-model-cad-70b629a9
+maki/artifact.f:RAW>ARTIFACT-ID prim-axiom habu-epic-model-cad-70b629a9
+maki/artifact.f:ARTIFACT-ID>RAW prim-axiom habu-epic-model-cad-70b629a9
 maki/tensor-value.f:RAW>TENSOR prim-axiom habu-epic-model-cad-70b629a9
 maki/tensor-value.f:TENSOR>RAW prim-axiom habu-epic-model-cad-70b629a9
 maki/tensor-value.f:TYPED-LINEAR stdlib-boundary habu-epic-model-cad-70b629a9

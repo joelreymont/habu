@@ -158,14 +158,14 @@ variable RFL-LE
       24 of s" RAW>DRAFTED" endof
       25 of s" RAW>VERIFIED" endof
       26 of s" RAW>EMITTED" endof
-      27 of s" RAW>BUILT" endof
+      27 of s" MINT-BUILD-PROOF" endof
       28 of s" MINT-CERTIFY-PROOF" endof
       29 of s" MINT-GOLDEN-PROOF" endof
       30 of s" MINT-GRADCHECK-PROOF" endof
       31 of s" MINT-PROFILE-PROOF" endof
       32 of s" MINT-GRANT-PROOF" endof
-      33 of s" T>AID" endof
-      34 of s" T>SID" endof
+      33 of s" RAW>ARTIFACT-ID" endof
+      34 of s" RAW>SCHEMA-ID" endof
       35 of s" RAW>PROMOTED" endof
       E-TBL-BOUNDS throw
    endcase ;
@@ -205,8 +205,8 @@ variable RFL-LE
       30 of s" maki/evidence/schema.f" endof
       31 of s" maki/evidence/schema.f" endof
       32 of s" maki/evidence/policy.f" endof
-      33 of s" maki/evidence/policy-test.f" endof
-      34 of s" maki/evidence/policy-test.f" endof
+      33 of s" maki/artifact.f" endof
+      34 of s" maki/evidence/policy.f" endof
       35 of s" maki/evidence/promote.f" endof
       E-TBL-BOUNDS throw
    endcase ;
