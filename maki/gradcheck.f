@@ -205,6 +205,6 @@ public
 
 \ ---- cad.f gate wiring ------------------------------------------------------
 : GRADCHECK-INTO ( report -- report )
-   GC-RUN {: v:n :}  GC-RE$ v G-GRADCHECK REPORT:GATE! ;
+   GC-RUN {: v:n :}  GC-RE$ v REPORT:>VERDICT MAKI-GATE:GRADCHECK REPORT:VERDICT! ;
 
 ;package

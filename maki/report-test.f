@@ -13,11 +13,21 @@ variable RVA  variable RVU
 : HAS ( ptr u8 n -- )  RVA @ RVU @ 2swap CONTAINS? TTRUE ;
 : HASNT ( ptr u8 n -- )  RVA @ RVU @ 2swap CONTAINS? TFALSE ;
 
+\ ---- byte-golden builder: append "<line>\n" fragments into a scratch buffer ---
+\ Its own buffer (not SB) so REPORT:RENDER's internal SB use cannot clobber it.
+$1000 constant GL-CAP
+create GL-BUF GL-CAP allot  variable GL-U
+: GL-RESET ( -- )  0 GL-U ! ;
+: GL+ ( ptr u8 n -- )  {: a:ptr u:n :}   \ append line then newline
+   a GL-BUF GL-U @ + u BYTE-COPY  GL-U @ u + GL-U !
+   $0A GL-BUF GL-U @ + c!  GL-U @ 1+ GL-U ! ;
+: GL$ ( -- ptr u8 n )  GL-BUF GL-U @ ;
+
 \ ---- fail-closed probes (top-level cannot push quotations) ------------------
 : BAD-ROOF     ( -- )  REPORT:NEW 99 REPORT:ROOFLINE! drop ;
 : BAD-COAL     ( -- )  REPORT:NEW s" x" 9 REPORT:HOT+ drop ;
-: BAD-GATE     ( -- )  REPORT:NEW s" r" V-PASS 9 REPORT:GATE! drop ;
-: BAD-VERDICT  ( -- )  REPORT:NEW s" r" 9 G-CERTIFY REPORT:GATE! drop ;
+: BAD-GATE     ( -- )  REPORT:NEW 9 REPORT:GATE-TAG@ drop ;   \ reader validates raw gid
+: BAD-VERDICT  ( -- )  9 REPORT:>VERDICT drop ;               \ verdict parse boundary fail-closes
 : BAD-SPLIT-IX ( -- )  REPORT:NEW s" a" REPORT:SPLIT+ 5 REPORT:SPLIT@ 2drop ;
 : BAD-SELECT   ( -- )  REPORT:NEW s" a" REPORT:CAND+ 4 REPORT:SELECT! drop ;
 : FULL-SPLIT   ( -- )  REPORT:NEW 20 0 ?do s" x" REPORT:SPLIT+ loop drop ;
@@ -118,8 +128,8 @@ drop
 
 \ ---- gate verdicts (+ fail closed) -----------------------------------------
 REPORT:NEW
-   s" "         V-PASS   G-CERTIFY   REPORT:GATE!
-   s" no-device" V-NOTRUN G-GOLDEN   REPORT:GATE!
+   s" "          MAKI-VERDICT:PASS    MAKI-GATE:CERTIFY  REPORT:VERDICT!
+   s" no-device" MAKI-VERDICT:NOT-RUN MAKI-GATE:GOLDEN   REPORT:VERDICT!
 dup G-CERTIFY REPORT:GATE-TAG@ V-PASS   T=
 dup G-GOLDEN  REPORT:GATE-TAG@ V-NOTRUN T=
 dup G-GOLDEN  REPORT:GATE-REASON@ s" no-device" T$=
@@ -138,8 +148,8 @@ REPORT:NEW
    RC-MEMORY REPORT:ROOFLINE!
    s" ffn|sm_87" REPORT:CACHE!
    s" phase0-estimates" REPORT:WARN+
-   s" " V-PASS G-CERTIFY REPORT:GATE!
-   s" no-device" V-NOTRUN G-GOLDEN REPORT:GATE!
+   s" " MAKI-VERDICT:PASS MAKI-GATE:CERTIFY REPORT:VERDICT!
+   s" no-device" MAKI-VERDICT:NOT-RUN MAKI-GATE:GOLDEN REPORT:VERDICT!
 dup REPORT:RENDER RSAVE
 s" report.model: FFN"            HAS
 s" report.shape: unset"          HAS
@@ -171,8 +181,8 @@ drop
 REPORT:NEW
    s" FFN" REPORT:MODEL!  s" sm_87" REPORT:TARGET!  6 3 REPORT:OPS!  3 REPORT:REGIONS!
    RC-MEMORY REPORT:ROOFLINE!
-   s" " V-PASS G-CERTIFY REPORT:GATE!
-   s" no-device" V-NOTRUN G-GOLDEN REPORT:GATE!
+   s" " MAKI-VERDICT:PASS MAKI-GATE:CERTIFY REPORT:VERDICT!
+   s" no-device" MAKI-VERDICT:NOT-RUN MAKI-GATE:GOLDEN REPORT:VERDICT!
    s" phase0-estimates" REPORT:WARN+
 dup REPORT:RENDER-HUMAN RSAVE
 s" Model CAD report" HAS
@@ -187,8 +197,8 @@ drop
 \ ---- failure packets: one line per non-pass gate, none for a pass -----------
 REPORT:NEW
    s" FFN" REPORT:MODEL!
-   s" " V-PASS G-CERTIFY REPORT:GATE!
-   s" no-device" V-NOTRUN G-GOLDEN REPORT:GATE!
+   s" " MAKI-VERDICT:PASS MAKI-GATE:CERTIFY REPORT:VERDICT!
+   s" no-device" MAKI-VERDICT:NOT-RUN MAKI-GATE:GOLDEN REPORT:VERDICT!
 dup REPORT:RENDER-PACKETS RSAVE
 s" packet.certify"                    HASNT
 s" packet.golden: class=not-run"      HAS
@@ -196,6 +206,52 @@ s" expected=pass actual=not-run"      HAS
 s" reason=no-device"                  HAS
 s" repair=run-device-golden"          HAS
 s" repro=model:FFN"                   HAS
+drop
+
+\ ---- BYTE-GOLDEN: canonical machine render is byte-identical on a green path --
+\ Demotion regression: routing the gate verdicts through the typed REPORT:VERDICT!
+\ (in place of the retired raw REPORT:GATE!) must leave the rendered bytes exactly
+\ as captured on the pre-change tree. The report exercises every render section
+\ plus a passing and a not-run gate with a reason.
+REPORT:NEW
+   s" FFN"   REPORT:MODEL!
+   s" sm_87" REPORT:TARGET!
+   6 3 REPORT:OPS!  3 REPORT:REGIONS!  3 REPORT:MATERIALIZED!
+   s" fuse-barrier" REPORT:SPLIT+
+   s" x" CO-COALESCED REPORT:HOT+
+   s" elementwise-v1" REPORT:CAND+  0 REPORT:SELECT!
+   RC-MEMORY REPORT:ROOFLINE!
+   s" ffn|sm_87" REPORT:CACHE!
+   s" phase0-estimates" REPORT:WARN+
+   s" " MAKI-VERDICT:PASS MAKI-GATE:CERTIFY REPORT:VERDICT!
+   s" no-device" MAKI-VERDICT:NOT-RUN MAKI-GATE:GOLDEN REPORT:VERDICT!
+dup REPORT:RENDER RSAVE
+GL-RESET
+s" report.model: FFN"              GL+
+s" report.shape: unset"            GL+
+s" report.dtype: unset"            GL+
+s" report.layout: unset"           GL+
+s" report.target: sm_87"           GL+
+s" fusion.ops-before: 6"           GL+
+s" fusion.ops-after: 3"            GL+
+s" fusion.regions: 3"              GL+
+s" fusion.split.0: fuse-barrier"   GL+
+s" memory.bytes-before: unknown"   GL+
+s" memory.bytes-after: unknown"    GL+
+s" memory.materialized: 3"         GL+
+s" coalesce.tensor.0: x"           GL+
+s" coalesce.status.0: coalesced"   GL+
+s" schedule.candidate.0: elementwise-v1" GL+
+s" schedule.selected: 0"           GL+
+s" gate.certify.verdict: pass"     GL+
+s" gate.golden.verdict: not-run"   GL+
+s" gate.golden.reason: no-device"  GL+
+s" gate.gradcheck.verdict: not-run" GL+
+s" gate.profile.verdict: not-run"  GL+
+s" roofline.class: memory-bound"   GL+
+s" cache.key: ffn|sm_87"           GL+
+s" warning.0: phase0-estimates"    GL+
+RVA @ RVU @  GL$  T$=
 drop
 
 ;package
@@ -262,6 +318,20 @@ s" RT-HOT-NIN ( n n -- ) HOT-ST-AT !"             CHECK-QUIET-CANDIDATE! 0 T=
 s" RT-HOT-NOUT ( n -- n ) HOT-ST-AT @"            CHECK-QUIET-CANDIDATE! 0 T=
 \ cross-column swap: a verdict can never land in a hot-status cell
 s" RT-HOT-VERD ( verdict n -- ) HOT-ST-AT !"      CHECK-QUIET-CANDIDATE! 0 T=
+
+\ ---- TS-OLD-GATE: the raw (verdict, gate-id) writer is retired (demotion pin) --
+\ Report demoted to a RENDER of typed evidence (MODEL-CAD-V2-PLAN.md:1827-1830,
+\ sub-dot 5 :1941-1948): the raw REPORT:GATE! ( report ptr u8 n n n -- report )
+\ left the public surface, folded into the typed REPORT:VERDICT! (verdict ENUM +
+\ gate family). A candidate using the old raw writer is UNRESOLVABLE (verdict 1),
+\ not merely a type reject -- the word is GONE, so census probe 1's slot swap has
+\ no writer to certify. The retire outcome is PINNED (not the retype alternative,
+\ which would keep a public gate-write word). Proven non-vacuous by the paired
+\ positive control on the typed replacement, which resolves and certifies (-1).
+s" TS-NEW-VERDICT ( report ptr u8 n verdict gate -- report ) REPORT:VERDICT!"
+   CHECK-QUIET-CANDIDATE! -1 T=
+s" TS-OLD-GATE ( report ptr u8 n n n -- report ) REPORT:GATE!"
+   CHECK-QUIET-CANDIDATE! 1 T=
 
 ;package
 

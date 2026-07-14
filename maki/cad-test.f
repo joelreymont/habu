@@ -58,10 +58,10 @@ variable CT-VA  variable CT-VU
 \ all-pass report for the promote success path
 : ALL-PASS ( -- report )
    REPORT:NEW
-   s" " V-PASS G-CERTIFY   REPORT:GATE!
-   s" " V-PASS G-GOLDEN     REPORT:GATE!
-   s" " V-PASS G-GRADCHECK  REPORT:GATE!
-   s" " V-PASS G-PROFILE    REPORT:GATE! ;
+   s" " MAKI-VERDICT:PASS MAKI-GATE:CERTIFY   REPORT:VERDICT!
+   s" " MAKI-VERDICT:PASS MAKI-GATE:GOLDEN     REPORT:VERDICT!
+   s" " MAKI-VERDICT:PASS MAKI-GATE:GRADCHECK  REPORT:VERDICT!
+   s" " MAKI-VERDICT:PASS MAKI-GATE:PROFILE    REPORT:VERDICT! ;
 
 \ ---- fresh-process replay child (durable loop: PROMOTE here, TILE there) -----
 \ The child is a fresh bin/hb that defines the SAME model (identical region facts

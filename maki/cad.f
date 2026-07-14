@@ -962,7 +962,7 @@ private
    s" tune: measurement needs device (cad-6)" REPORT:WARN+ ;
 
 : CERTIFY-INTO ( report -- report )            \ static, no GPU: model-level legality
-   s" " V-PASS G-CERTIFY REPORT:GATE!
+   s" " MAKI-VERDICT:PASS MAKI-GATE:CERTIFY REPORT:VERDICT!
    s" certify: model-level legality only; kernel legality in cad-5" REPORT:WARN+ ;
 
 \ GOLDEN is REAL (maki/golden.f + maki/lower-golden.f). Precedence: an external reference
@@ -980,7 +980,7 @@ private
 \ reason). GRADCHECK-INTO is provided by maki/gradcheck.f.
 
 : PROFILE-INTO ( report -- report )
-   s" no-device" V-NOTRUN G-PROFILE REPORT:GATE! ;
+   s" no-device" MAKI-VERDICT:NOT-RUN MAKI-GATE:PROFILE REPORT:VERDICT! ;
 
 \ ---- device golden leg (cad.f owns the device dependency; golden.f stays device-free) ---------
 \ GOLDEN precedence: external artifact > DEVICE model golden > host self-consistency. The device
@@ -1011,7 +1011,7 @@ private
 
 : GOLDEN-GATE-DEVICE ( report -- report EVID:golden-leg EVID:prec-class )
    LOWER-MODEL-GOLDEN {: v:n :}
-   LOWER-GOLDEN-REASON$ v G-GOLDEN REPORT:GATE!
+   LOWER-GOLDEN-REASON$ v REPORT:>VERDICT MAKI-GATE:GOLDEN REPORT:VERDICT!
    s" golden: device model golden (cross-region vs host, composed licensed-precision tolerance)" REPORT:WARN+
    EVID-GOLDEN--LEG:DEVICE  LG-PREC-USED@ ID>GPREC ;   \ leg=device + judged precision (was GOLDEN-DEV!/GOLDEN-PREC!)
 \ GOLDEN-GATE-G threads the golden provenance out of the gate; GOLDEN-GATE-INTO is the

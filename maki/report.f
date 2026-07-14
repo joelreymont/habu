@@ -16,9 +16,13 @@
 \ REPORT:NEW resets it. Multi-report values arrive with the ADT swap.
 \
 \ Namespace split: the stateful report builder/renderer is package REPORT
-\ (callers write REPORT:NEW, REPORT:GATE!, REPORT:RENDER). The verdict/roofline/
-\ coalescing/gate-id enums are cross-cutting value substrate shared by the whole
-\ CAD pipeline and the device tests, so they stay in the MAKI substrate package.
+\ (callers write REPORT:NEW, REPORT:VERDICT!, REPORT:RENDER). The report is a
+\ RENDER of typed evidence: gate verdicts enter through the typed REPORT:VERDICT!
+\ (verdict ENUM + gate family); the raw (verdict, gate-id) writer REPORT:GATE! is
+\ RETIRED (R7 sub-dot 5, MODEL-CAD-V2-PLAN.md:1827-1830/:1941-1948). The verdict/
+\ roofline/coalescing/gate enums are cross-cutting value substrate shared by the
+\ whole CAD pipeline and the device tests, so they stay in the MAKI substrate
+\ package.
 \
 \ Fail closed: an out-of-range verdict tag, gate id, roofline class, coalescing
 \ status, or list index is rejected with a named throw code -- never defaulted.
@@ -41,11 +45,11 @@ package MAKI
 public
 
 \ ---- gate verdict tags ----
-\ V-* stay the public numeric vocabulary of the representation-hiding accessors
-\ (REPORT:GATE! / REPORT:GATE-TAG@ keep their n signatures); internally the four
-\ cells of the typed G-TAG column store a real ENUM (dot habu-cad-adt-swap,
-\ capability S1) and convert at that accessor boundary only. Constructors:
-\ MAKI-VERDICT:PASS/FAIL/NOT-RUN.
+\ V-* stay the public numeric vocabulary of the reader accessor REPORT:GATE-TAG@
+\ (which keeps its n signature) and of the REPORT:>VERDICT parse boundary that
+\ maps a V-* code to the typed verdict for REPORT:VERDICT!; internally the four
+\ cells of the typed G-TAG column store a real ENUM and convert at that boundary
+\ only. Constructors: MAKI-VERDICT:PASS/FAIL/NOT-RUN.
 0 constant V-PASS
 1 constant V-FAIL
 2 constant V-NOTRUN
@@ -101,6 +105,20 @@ ENUM costatus
 2 constant G-GRADCHECK
 3 constant G-PROFILE
 4 constant G-N
+
+\ ---- typed gate family (render boundary) ----
+\ The report render boundary consumes a TYPED gate (REPORT:VERDICT!), so the
+\ retired raw (verdict, gate-id) pair (census probe 1, MODEL-CAD-V2-PLAN.md:1564-
+\ 1570) is unrepresentable: a verdict and a gate are DISTINCT families, so the
+\ swapped-slot call the old REPORT:GATE! certified can no longer type-check.
+\ Declaration order tracks G-* for the fixed-column index projection (GATE>IDX).
+\ Constructors: MAKI-GATE:CERTIFY/GOLDEN/GRADCHECK/PROFILE.
+ENUM gate
+  certify
+  golden
+  gradcheck
+  profile
+;ENUM
 
 ;package
 
@@ -446,6 +464,15 @@ create G-RL  MAKI:G-N cells allot
 \ ---- handle validity (single live report; nominal type is the guarantee) ----
 : RPT-DROP ( report -- )  drop ;
 
+\ ---- typed gate -> fixed 4-gate column index (render boundary) --------------
+: GATE>IDX ( gate -- n )
+   MATCH gate
+      certify   OF MAKI:G-CERTIFY   ENDOF
+      golden    OF MAKI:G-GOLDEN    ENDOF
+      gradcheck OF MAKI:G-GRADCHECK ENDOF
+      profile   OF MAKI:G-PROFILE   ENDOF
+   ;MATCH ;
+
 public
 
 \ NEW resets the single module-owned report store and returns its handle.
@@ -588,13 +615,19 @@ public
    idx 0 < idx N-PROF @ >= or if E-RPT-IDX throw then
    L-PROF 3 idx 2 SL-SLOT @ ;
 
-\ ---- gate verdicts ---------------------------------------------------------
-: GATE! ( report ptr u8 n n n -- report )  \ reason verdict-tag gate-id
-   {: tag:n gid:n :}
-   gid 0 < gid MAKI:G-N >= or if E-RPT-GATE throw then
-   tag V-CK drop                           \ reject a bad tag before interning
+\ ---- gate verdicts (typed evidence at the render boundary) -----------------
+\ The report is a RENDER of typed evidence: VERDICT! is fed a TYPED verdict + a
+\ TYPED gate, so the raw (verdict, gate-id) pair the old REPORT:GATE! exposed
+\ (census probe 1) is RETIRED -- there is no public raw gate-write word, and the
+\ verdict/gate slots are distinct families that cannot be swapped. >VERDICT is
+\ re-exported as the parse boundary from the public V-* numeric vocabulary (the
+\ gate-run words' return type) to the typed verdict; it fail-closes a bad code.
+EXPORT >VERDICT                            \ REPORT:>VERDICT ( n -- verdict )
+: VERDICT! ( report ptr u8 n verdict gate -- report )   \ reason verdict gate
+   {: v:verdict g:gate :}
+   g GATE>IDX {: gid:n :}
    ARENA-PUT {: off:n len:n :}
-   tag >VERDICT gid G-TAG-AT !
+   v gid G-TAG-AT !
    off gid cells G-RO + !
    len gid cells G-RL + ! ;
 : GATE-TAG@ ( report n -- n ) {: gid:n :}
