@@ -860,6 +860,8 @@ points stay listed.
 - `lib/adt/option.f` — the shared `option<T>` sum family (some value / none), the checked replacement for -1/sentinel returns (switchover wave A); require before consumers.
 - `lib/adt/result.f` — the shared `result<ok,err>` sum family (ok value / err value), the checked replacement for value+flag/rc-plus-value returns where the flag distinguishes DIFFERENT errors (switchover wave B); require before consumers.
 - `lib/adt/result-test.f` — focused proof that result<ok,err> constructs (RESULT:OK/ERR), MATCHes both arms, and rejects swapped ok/err payload types.
+- `lib/cad-num-types.f` — package CAD-NUM scalar nominal numeric roles (byte-len, item-count, cell-count, index, byte-off, cell-off, alignment, positive-divisor, alloc-byte-len, alloc-cell-count) plus the on-stack `numeric-result<a>` sum; public checked validators wrap private audited `TRUSTED:` mints (MODEL-CAD-V2-PLAN.md B5.1). UNSEALED: no production entry loads it; sealing/arithmetic are separate dots.
+- `lib/cad-num-types-test.f` — CAD-NUM B5.1 boundary matrix (every role x valid/zero/negative/overflow) and the static cross-role/raw-n rejection candidates; the sole consumer of lib/cad-num-types.f.
 - `lib/ffi-abi.f` — package-scoped AAPCS64 staging without generic checked call
   authority; trusted-only bounded trampolines carry distinct x0-x8 and stack
   writable-extent tables, plus float, kernelParams, and return support.

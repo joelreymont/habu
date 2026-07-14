@@ -719,6 +719,18 @@ that source is explicitly certified; they are not stale-checked by the default
 | TYPED-LINEAR | `ptr a ptr a ptr a ptr a CAD-KIND:rows CAD-KIND:cols CAD-KIND:cols --` | Private adapter from nominal tensor descriptors to the legacy native `LINEAR` ABI; the typed caller validates all roles before this boundary. | `maki/tensor-value-test.f`, `maki/plan-compose-test.f` | maki/tensor-value.f | 2026-07-12 |
 | RAW>TENSOR | `n -- tensor` | Private tensor-handle refinement after generation and slot packing; no raw constructor is public. | `maki/tensor-value-test.f` | maki/tensor-value.f | 2026-07-12 |
 | TENSOR>RAW | `tensor -- n` | Private tensor-handle projection used only for generation/slot validation and nominal equality. | `maki/tensor-value-test.f` | maki/tensor-value.f | 2026-07-12 |
+| MINT-BYTE-LEN | `n -- byte-len` | Private CAD-NUM B5.1 representation mint: no-op cast of a validated nonnegative cell to the nominal `byte-len` role; the only producer is `CAD-NUM:BYTE-LEN`. Confined to its owner by refine-lint; retire the unchecked boundary when TVK-RAW (`habu-nominal-storage-raw-a3430ef2`) closes raw-value laundering. | `lib/cad-num-types-test.f` | lib/cad-num-types.f | 2026-07-15 |
+| MINT-ITEM-COUNT | `n -- item-count` | Private CAD-NUM B5.1 representation mint: no-op cast of a validated nonnegative cell to the nominal `item-count` role; the only producer is `CAD-NUM:ITEM-COUNT`. Confined by refine-lint; retire when TVK-RAW (`habu-nominal-storage-raw-a3430ef2`) lands. | `lib/cad-num-types-test.f` | lib/cad-num-types.f | 2026-07-15 |
+| MINT-CELL-COUNT | `n -- cell-count` | Private CAD-NUM B5.1 representation mint: no-op cast of a validated nonnegative cell to the nominal `cell-count` role; the only producer is `CAD-NUM:CELL-COUNT`. Confined by refine-lint; retire when TVK-RAW (`habu-nominal-storage-raw-a3430ef2`) lands. | `lib/cad-num-types-test.f` | lib/cad-num-types.f | 2026-07-15 |
+| MINT-INDEX | `n -- index` | Private CAD-NUM B5.1 representation mint: no-op cast of a validated nonnegative cell to the nominal `index` role; the only producer is `CAD-NUM:INDEX`. Confined by refine-lint; retire when TVK-RAW (`habu-nominal-storage-raw-a3430ef2`) lands. | `lib/cad-num-types-test.f` | lib/cad-num-types.f | 2026-07-15 |
+| MINT-BYTE-OFF | `n -- byte-off` | Private CAD-NUM B5.1 representation mint: no-op cast of a validated nonnegative cell to the nominal `byte-off` role; the only producer is `CAD-NUM:BYTE-OFF`. Confined by refine-lint; retire when TVK-RAW (`habu-nominal-storage-raw-a3430ef2`) lands. | `lib/cad-num-types-test.f` | lib/cad-num-types.f | 2026-07-15 |
+| MINT-CELL-OFF | `n -- cell-off` | Private CAD-NUM B5.1 representation mint: no-op cast of a validated nonnegative cell to the nominal `cell-off` role; the only producer is `CAD-NUM:CELL-OFF`. Confined by refine-lint; retire when TVK-RAW (`habu-nominal-storage-raw-a3430ef2`) lands. | `lib/cad-num-types-test.f` | lib/cad-num-types.f | 2026-07-15 |
+| MINT-ALIGNMENT | `n -- alignment` | Private CAD-NUM B5.1 representation mint: no-op cast of a validated positive power-of-two cell to the nominal `alignment` role; the only producer is `CAD-NUM:ALIGNMENT`. Confined by refine-lint; retire when TVK-RAW (`habu-nominal-storage-raw-a3430ef2`) lands. | `lib/cad-num-types-test.f` | lib/cad-num-types.f | 2026-07-15 |
+| MINT-POSITIVE-DIVISOR | `n -- positive-divisor` | Private CAD-NUM B5.1 representation mint: no-op cast of a validated positive cell to the nominal `positive-divisor` role; the only producer is `CAD-NUM:POSITIVE-DIVISOR`. Confined by refine-lint; retire when TVK-RAW (`habu-nominal-storage-raw-a3430ef2`) lands. | `lib/cad-num-types-test.f` | lib/cad-num-types.f | 2026-07-15 |
+| MINT-ALLOC-BYTE-LEN | `n -- alloc-byte-len` | Private CAD-NUM B5.1 representation mint: no-op cast of a positive byte extent to the nominal `alloc-byte-len` role; the only producer is `CAD-NUM:AS-ALLOC-BYTE-LEN`. Confined by refine-lint; retire when TVK-RAW (`habu-nominal-storage-raw-a3430ef2`) lands. | `lib/cad-num-types-test.f` | lib/cad-num-types.f | 2026-07-15 |
+| MINT-ALLOC-CELL-COUNT | `n -- alloc-cell-count` | Private CAD-NUM B5.1 representation mint: no-op cast of a positive, non-overflowing cell count to the nominal `alloc-cell-count` role; the only producer is `CAD-NUM:AS-ALLOC-CELL-COUNT`. Confined by refine-lint; retire when TVK-RAW (`habu-nominal-storage-raw-a3430ef2`) lands. | `lib/cad-num-types-test.f` | lib/cad-num-types.f | 2026-07-15 |
+| BYTE-LEN>N | `byte-len -- n` | Private CAD-NUM proof-erasure projection: reads a `byte-len`'s raw cell for the `AS-ALLOC-BYTE-LEN` zero test, where no primitive consumes the role directly; no public inverse. Retire when TVK-RAW (`habu-nominal-storage-raw-a3430ef2`) lands. | `lib/cad-num-types-test.f` | lib/cad-num-types.f | 2026-07-15 |
+| CELL-COUNT>N | `cell-count -- n` | Private CAD-NUM proof-erasure projection: reads a `cell-count`'s raw cell for the `AS-ALLOC-CELL-COUNT` zero/overflow test, where no primitive consumes the role directly; no public inverse. Retire when TVK-RAW (`habu-nominal-storage-raw-a3430ef2`) lands. | `lib/cad-num-types-test.f` | lib/cad-num-types.f | 2026-07-15 |
 | CAP-COMPILE-RUN | `--` | Model-CAD capture boundary evaluates the generated checked model definition and invokes its dynamic-arity capture word after the active checker hook certifies the definition. | `maki/cad-test.f`, `maki/test.f` | maki/cad.f | 2026-07-12 |
 | CHECK-PASSES? | `ptr u8 n -- bool` | Evaluation harness temporarily suppresses diagnostics, invokes the checker on candidate source, and restores the diagnostic hook; raw checker state mutation is the metaprogramming boundary. | `maki/eval-test.f`, `maki/test.f` | maki/eval.f | 2026-07-12 |
 | JIT-EVALUATE | `ptr u8 n --` | JIT inspection CLI evaluates user-supplied source before resolving and disassembling the requested word; dynamic evaluation cannot be expressed by the checker. | `test/gate-debug.f` | tools/jitdump-core.f | 2026-07-12 |
@@ -1210,6 +1222,18 @@ src/core/combinators.f:EACH stdlib-boundary habu-multishot-quotations-typed-8832
 src/core/combinators.f:MAP stdlib-boundary habu-multishot-quotations-typed-8832cace
 src/core/combinators.f:FOLD stdlib-boundary habu-multishot-quotations-typed-8832cace
 lib/build.f:BUILD-CHECK-RAW stdlib-boundary habu-primitive-effect-axiom-1119f176
+lib/cad-num-types.f:MINT-BYTE-LEN prim-axiom habu-epic-model-cad-70b629a9
+lib/cad-num-types.f:MINT-ITEM-COUNT prim-axiom habu-epic-model-cad-70b629a9
+lib/cad-num-types.f:MINT-CELL-COUNT prim-axiom habu-epic-model-cad-70b629a9
+lib/cad-num-types.f:MINT-INDEX prim-axiom habu-epic-model-cad-70b629a9
+lib/cad-num-types.f:MINT-BYTE-OFF prim-axiom habu-epic-model-cad-70b629a9
+lib/cad-num-types.f:MINT-CELL-OFF prim-axiom habu-epic-model-cad-70b629a9
+lib/cad-num-types.f:MINT-ALIGNMENT prim-axiom habu-epic-model-cad-70b629a9
+lib/cad-num-types.f:MINT-POSITIVE-DIVISOR prim-axiom habu-epic-model-cad-70b629a9
+lib/cad-num-types.f:MINT-ALLOC-BYTE-LEN prim-axiom habu-epic-model-cad-70b629a9
+lib/cad-num-types.f:MINT-ALLOC-CELL-COUNT prim-axiom habu-epic-model-cad-70b629a9
+lib/cad-num-types.f:BYTE-LEN>N prim-axiom habu-epic-model-cad-70b629a9
+lib/cad-num-types.f:CELL-COUNT>N prim-axiom habu-epic-model-cad-70b629a9
 lib/engine-id.f:ENGINE-SELF-MACOS stdlib-boundary habu-raw-self-path-4514ffd3
 lib/engine-id.f:ENGINE-SELF-LINUX stdlib-boundary habu-raw-self-path-4514ffd3
 lib/ffi-abi.f:P>N stdlib-boundary habu-typed-defining-words-aa224eb5

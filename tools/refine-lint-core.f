@@ -33,7 +33,7 @@
 
 $40000 constant RFL-STR-CAP     \ trust-lint manifest string store
 $80000 constant RFL-FILE-CAP    \ largest scanned source watermark (checker.f class)
-36 constant RFL-SEED#
+46 constant RFL-SEED#
 8 constant RFL-ALLOW-MAX
 32 constant RFL-NUM-CAP
 
@@ -167,6 +167,19 @@ variable RFL-LE
       33 of s" RAW>ARTIFACT-ID" endof
       34 of s" RAW>SCHEMA-ID" endof
       35 of s" RAW>PROMOTED" endof
+      \ CAD-NUM B5.1 scalar role mints (dot habu-implement-cad-num-962bf5d9;
+      \ retire with TVK-RAW habu-nominal-storage-raw-a3430ef2). Bare-nominal
+      \ output (n -- byte-len), so seed-only, not caught by the shape scan.
+      36 of s" MINT-BYTE-LEN" endof
+      37 of s" MINT-ITEM-COUNT" endof
+      38 of s" MINT-CELL-COUNT" endof
+      39 of s" MINT-INDEX" endof
+      40 of s" MINT-BYTE-OFF" endof
+      41 of s" MINT-CELL-OFF" endof
+      42 of s" MINT-ALIGNMENT" endof
+      43 of s" MINT-POSITIVE-DIVISOR" endof
+      44 of s" MINT-ALLOC-BYTE-LEN" endof
+      45 of s" MINT-ALLOC-CELL-COUNT" endof
       E-TBL-BOUNDS throw
    endcase ;
 
@@ -208,6 +221,16 @@ variable RFL-LE
       33 of s" maki/artifact.f" endof
       34 of s" maki/evidence/policy.f" endof
       35 of s" maki/evidence/promote.f" endof
+      36 of s" lib/cad-num-types.f" endof
+      37 of s" lib/cad-num-types.f" endof
+      38 of s" lib/cad-num-types.f" endof
+      39 of s" lib/cad-num-types.f" endof
+      40 of s" lib/cad-num-types.f" endof
+      41 of s" lib/cad-num-types.f" endof
+      42 of s" lib/cad-num-types.f" endof
+      43 of s" lib/cad-num-types.f" endof
+      44 of s" lib/cad-num-types.f" endof
+      45 of s" lib/cad-num-types.f" endof
       E-TBL-BOUNDS throw
    endcase ;
 
