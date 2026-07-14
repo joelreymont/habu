@@ -196,10 +196,11 @@ package PERF-RT
    sx PERF:DEVICE$ s" orin-nx-15w" T$=
    s" MM-CPASYNC" PERF:M-GFLOPS FIND-ROW {: mm:n :}
    mm 0 < TFALSE
-   s" ATTENTION" PERF:M-WAIVER FIND-ROW {: at:n :}
+   s" ATTENTION" PERF:M-GFLOPS FIND-ROW {: at:n :}   \ waiver retired: measured row present
    at 0 < TFALSE
-   at PERF:WAIVER? TTRUE
-   at PERF:NOTE$ nip 0= TFALSE
+   at PERF:VALUE@ 20529 T=
+   at PERF:DEVICE$ s" orin-nx-25w" T$=
+   s" ATTENTION" PERF:M-WAIVER FIND-ROW 0 < TTRUE    \ and no ATTENTION WAIVER row remains
    PERF:LINE@ 0 > TTRUE                \ diagnostic accessors report the last parsed line
    PERF:LAST-LINE$ nip 0 > TTRUE ;
 

@@ -27,7 +27,6 @@ MMM-TF32	32	32	16	16	30	4194304	GFLOPS	398500	orin-nx-15w	2026-07-05	step 3, 204
 MMM-TF32-LDM	8	8	16	16	200	262144	GFLOPS	370000	orin-nx-15w	2026-07-05	step 3c ldmatrix.x4 A-fragment ablation - NEGATIVE, default stays scalar+cvt, 512^3
 MMM-TF32-LDM	16	16	16	16	80	1048576	GFLOPS	388900	orin-nx-15w	2026-07-05	step 3c ablation, 1024^3
 MMM-TF32-LDM	32	32	16	16	30	4194304	GFLOPS	394300	orin-nx-15w	2026-07-05	step 3c ablation, 2048^3
-ATTENTION	0	0	0	0	0	0	WAIVER	0	orin-nx-15w	2026-07-13	device-gated: Orin unavailable this session; profile row owed on the next device pass (parallel-softmax divergence fix is the dotted attention lever)
 SAXPY-V4	1024	1	256	1	200	1048576	GBS	93414	orin-nx-25w	2026-07-14	v4 tile, 4 elems/thread; 25W mode-3 (8 SMs) @ 918 MHz GPU clock (tools/ptx/fusion-compare.f)
 UNFUSED-SAXPY-V4+RELU-V4	1024	1	256	1	200	1048576	GBS	92817	orin-nx-25w	2026-07-14	two launches, 45.189 ms / 200 iters, 20 B/elem; 25W mode-3 @ 918 MHz (tools/ptx/fusion-compare.f)
 FUSED-RELU-V4	1024	1	256	1	200	1048576	GBS	93591	orin-nx-25w	2026-07-14	fused relu(a*x+y), 26.889 ms / 200 iters; fusion_elapsed_ratio_x1000=1680; 25W mode-3 @ 918 MHz
@@ -42,3 +41,5 @@ MM	32	32	16	16	30	4194304	PCT-ROOF	521	orin-nx-25w	2026-07-14	vs 1880 GFLOP/s FP
 MMM	8	8	16	16	200	262144	GFLOPS	830104	orin-nx-25w	2026-07-14	tensor-core TF32 mma.sync 64x64 scalar+cvt baseline (lib/ptx/cg-mma.f), 512^3; 25W mode-3 (8 SMs) @ 918 MHz
 MMM	16	16	16	16	80	1048576	GFLOPS	872934	orin-nx-25w	2026-07-14	tensor-core TF32 mma.sync baseline, 1024^3; 25W mode-3 @ 918 MHz
 MMM	32	32	16	16	30	4194304	GFLOPS	884889	orin-nx-25w	2026-07-14	tensor-core TF32 mma.sync baseline, 2048^3; 25W mode-3 @ 918 MHz
+ATTENTION	64	1	64	1	2000	4096	GFLOPS	20529	orin-nx-25w	2026-07-14	fused softmax(Q*K^T)*V one query/block, N=64 D=64; 25W mode-3 (8 SMs) @ 918 MHz (tools/ptx/attention-bench.f); FLOP model 4*N*N*D+5*N*N
+ATTENTION	128	1	128	1	2000	8192	GFLOPS	22109	orin-nx-25w	2026-07-14	fused softmax(Q*K^T)*V one query/block, N=128 D=64; 25W mode-3 (8 SMs) @ 918 MHz (tools/ptx/attention-bench.f); FLOP model 4*N*N*D+5*N*N
