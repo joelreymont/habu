@@ -126,6 +126,24 @@ compiles. Two entry points: `CHECK ( a u -- flag )` infers a body's effect
   `PARSE-YMD`, `FORMAT-YMD`, and `FORMAT-EPOCH-UTC`; lints use them instead of
   host date tools.
 
+## Device leg (Orin "zed") — verified 2026-07-14
+
+- **Provisioned and green.** Recovery gforth 0.7.9_20260610 built on-box
+  (`~/.local/lib/habu-gforth-0.7.9_20260610`, wrapper `~/.local/bin/gforth`);
+  `bin/hb` bootstrapped on Linux-aarch64, fixpoint x2 byte-identical
+  (147648 B, sha256 3d714be6dc1d...). On-device `maki/test.f` PASSes with the
+  device-FFI leg REAL (cuInit + cuDeviceGet), and full `test/run.f` is green
+  after the Linux size-ratchet re-measure (`test/gate-build-size.f`).
+- **25W is the canonical measurement environment** (user decision 2026-07-14):
+  nvpmodel mode 3, 4 TPCs/8 SMs. The registry's `orin-nx-15w` rows are
+  history; new rows are tagged `orin-nx-25w`. Do not reboot the box to switch
+  modes without user approval.
+- **Fail-closed device proofs**: `maki/gpu.f` and `tools/ptx/fusion-compare.f`
+  self-emit their kernels to private per-run PTXTC roots (no shared
+  `/tmp/*.cubin`); fusion-compare proven on-device (real compare, exit 0,
+  ~93 GB/s_x1000 family at 918 MHz). Remaining device debt is tracked in dots
+  habu-make-ptx-device-c0eb12a3 and habu-perf-registry-re-6be03867.
+
 ## Current state and gaps
 
 - **LLM benchmark harness retired** — the cross-language benchmark machinery is
