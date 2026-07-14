@@ -4291,3 +4291,11 @@ unchanged (148855). Keys for milestone 2:
   SEALING the writer (`SK-PUT-DURABLE` -> package-MAKI-private) plus the
   pre-existing fail-closed SCHED-LINE parse, not by key-shape validation (which
   would break the synthetic-key mirror the growth test relies on).
+- Third red-master push, third guard shape: the batch DISPLAYED the run.f log
+  (RED visible in output) but the push step had no conditional on it at all -
+  human eyes are not a gate. Every merge step must MECHANICALLY test the
+  verdict: `rg -q 'RUN_EXIT=0' "$LOG" && jj bookmark move ... && push`, never
+  "print the log, then push in the same batch". Also: a new lib/ module needs
+  a lib/std.manifest module row PLUS a word row per public word
+  (stdlib-manifest-test enforces; the lint-manifest slice is the owning gate a
+  new-lib lane must run - host/filemap/trust/coverage do NOT cover it).
