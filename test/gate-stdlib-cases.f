@@ -323,6 +323,12 @@ TEST:SUITE ptx-toolchain
    tools/ptx/fusion-compare.f
    tools/ptx/gemm-bench.f
    tools/ptx/attention-bench.f
+   tools/ptx/acc-device-test.f
+   tools/ptx/redadd-device-test.f
+   tools/ptx/saxpy-v4-tail-device-test.f
+   tools/ptx/sum-launch.f
+   tools/ptx/softmax-launch.f
+   tools/ptx/softmax-gradcheck.f
 TEST:;SUITE
 
 TEST:SUITE-STDIN source-stdlib-stdin DATA

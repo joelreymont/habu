@@ -5,6 +5,7 @@
 \ Releases the primary context before exit (or bin/hb hangs at teardown). Load after lib/test.f,
 \ lib/ffi.f, and the fs/process libs.
 
+require lib/test.f
 require lib/ptx/toolchain.f
 require lib/ptx/sentinel.f
 require lib/ptx/cuda-driver.f
@@ -52,6 +53,10 @@ create RA-O $4000 allot  create RA-E $1000 allot  create RA-QO $1000 allot creat
 
 : REDADD-MAIN ( -- )
    T-RESET
+   CUDA:OPEN? 0= if                     \ off-device: no libcuda -> recorded device SKIP, compile-check only
+      s" redadd-device-test: libcuda.so.1 unavailable -> device red.global.add.f32 SKIPPED (off-device)" type cr
+      T-REPORT exit
+   then
    s" habu-ptx-redadd" PTXTC:PREPARE
    RA-EMIT drop
    RA-PTXAS 0 T=

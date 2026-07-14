@@ -199,7 +199,16 @@ variable SC-NUM-L
    s" tools/ptx/bandwidth-lib-test.f" q execute
    s" tools/ptx/fusion-compare.f" q execute
    s" tools/ptx/gemm-bench.f" q execute
-   s" tools/ptx/attention-bench.f" q execute ;
+   s" tools/ptx/attention-bench.f" q execute
+   \ device-leg tools: emit+ptxas+launch gated on CUDA:OPEN? (recorded off-device
+   \ SKIP); they compile-check in the fresh spawned image only, device-run on the
+   \ Orin via tools/ptx/zed-device-suite.f - never in the resident run.f image.
+   s" tools/ptx/acc-device-test.f" q execute
+   s" tools/ptx/redadd-device-test.f" q execute
+   s" tools/ptx/saxpy-v4-tail-device-test.f" q execute
+   s" tools/ptx/sum-launch.f" q execute
+   s" tools/ptx/softmax-launch.f" q execute
+   s" tools/ptx/softmax-gradcheck.f" q execute ;
 
 \ closure-run lint cores: their suite member is the CLI tool file, exercised by a
 \ scheduled `[: XXX-LINT ;] GSI-RUN` in the lint-tools group (the file itself is

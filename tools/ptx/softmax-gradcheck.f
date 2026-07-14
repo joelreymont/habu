@@ -13,6 +13,16 @@
 \ lib/string.f lib/test.f lib/float.f lib/fmt.f src/arch/ptx/emit.f lib/ptx/cg.f
 \ lib/ptx/header.f lib/ptx/launch.f lib/ffi.f maki/array.f.
 
+require lib/errors.f
+require lib/string.f
+require lib/float.f
+require lib/fmt.f
+require lib/test.f
+require maki/array.f
+require src/arch/ptx/emit.f
+require lib/ptx/cg.f
+require lib/ptx/header.f
+require lib/ptx/launch.f
 require lib/ptx/toolchain.f
 require lib/ptx/sentinel.f
 require lib/ptx/cuda-driver.f
@@ -137,7 +147,10 @@ variable GC-FWD variable GC-BWD variable GC-dX variable GC-dDY variable GC-dO va
 \ Off-device (no libcuda) the gradcheck skips fail-closed with an empty report.
 : SOFTMAX-GRADCHECK-MAIN ( -- )
    T-RESET
-   GC-DEVICE? 0= if T-REPORT exit then
+   GC-DEVICE? 0= if                     \ off-device: no libcuda -> recorded device SKIP, compile-check only
+      s" softmax-gradcheck: libcuda.so.1 unavailable -> device SOFTMAX_BWD gradcheck SKIPPED (off-device)" type cr
+      T-REPORT exit
+   then
    s" habu-ptx-softmax-fb" PTXTC:PREPARE
    GC-EMIT drop
    GC-PTXAS PTXTC:ASM-REPORT 0 T=                  \ surface ptxas stderr before the assert

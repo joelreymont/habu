@@ -141,6 +141,10 @@ variable NVAR
 
 : MAIN ( -- )
    T-RESET
+   CUDA:OPEN? 0= if                     \ off-device: no libcuda -> recorded device SKIP, compile-check only
+      s" saxpy-v4-tail-device-test: libcuda.so.1 unavailable -> device SAXPY-V4 tail SKIPPED (off-device)" type cr
+      T-REPORT exit
+   then
    s" habu-ptx-v4-tail" PTXTC:PREPARE
    EMIT-V4-SAXPY {: outn:n erc:n :}
    erc 0 T=

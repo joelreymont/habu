@@ -14,6 +14,15 @@
 \   row0 = 1023627234 1035106489 1047695721 1059379089   (~1 ULP, ex2.approx)
 \   row1 = 1048576000 x4 = 0x3E800000 = 0.25 exactly.
 
+require lib/errors.f
+require lib/string.f
+require lib/float.f
+require lib/fmt.f
+require lib/test.f
+require src/arch/ptx/emit.f
+require lib/ptx/cg.f
+require lib/ptx/header.f
+require lib/ptx/launch.f
 require lib/ptx/toolchain.f
 require lib/ptx/sentinel.f
 require lib/ptx/cuda-driver.f
@@ -93,6 +102,10 @@ variable SL-DIN variable SL-DOUT variable SL-KV
 
 : SOFTMAX-MAIN ( -- )
    T-RESET
+   CUDA:OPEN? 0= if                     \ off-device: no libcuda -> recorded device SKIP, compile-check only
+      s" softmax-launch: libcuda.so.1 unavailable -> device SOFTMAX-ROWS SKIPPED (off-device)" type cr
+      T-REPORT exit
+   then
    s" habu-ptx-softmax" PTXTC:PREPARE
    SL-EMIT drop
    SL-PTXAS PTXTC:ASM-REPORT 0 T=                  \ surface ptxas stderr before the assert

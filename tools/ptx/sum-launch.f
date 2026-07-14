@@ -6,6 +6,15 @@
 \ /tmp/sum.cubin. Load after lib/test.f, lib/ptx/header.f, lib/ptx/launch.f,
 \ lib/ffi.f, and f32 marshalling helpers.
 
+require lib/errors.f
+require lib/string.f
+require lib/float.f
+require lib/fmt.f
+require lib/test.f
+require src/arch/ptx/emit.f
+require lib/ptx/cg.f
+require lib/ptx/header.f
+require lib/ptx/launch.f
 require lib/ptx/toolchain.f
 require lib/ptx/sentinel.f
 require lib/ptx/cuda-driver.f
@@ -86,6 +95,10 @@ variable RS-DIN variable RS-DOUT variable RS-KV
 
 : SUM-MAIN ( -- )
    T-RESET
+   CUDA:OPEN? 0= if                     \ off-device: no libcuda -> recorded device SKIP, compile-check only
+      s" sum-launch: libcuda.so.1 unavailable -> device SUM-ROWS SKIPPED (off-device)" type cr
+      T-REPORT exit
+   then
    s" habu-ptx-sum" PTXTC:PREPARE
    RS-EMIT drop
    RS-PTXAS PTXTC:ASM-REPORT 0 T=                  \ surface ptxas stderr before the assert

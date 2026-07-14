@@ -6,9 +6,12 @@
 \ but device-correct. Orin-only (FFI device launch). Load after lib/test.f, lib/ffi.f, and
 \ the fs/process libs.
 
+require lib/test.f
 require lib/ptx/toolchain.f
 require lib/ptx/sentinel.f
 require lib/ptx/cuda-driver.f
+
+package ACCDEV        \ AD-* names are package-local: avoid colliding with autograd AD-* (lib/ptx/ad-dag.f) in the shared spawned suite image
 
 create AD-PATH 64 allot  create AD-KN 32 allot
 variable AD-DEV variable AD-CTX variable AD-MOD variable AD-FUNC
@@ -64,6 +67,10 @@ create AD-QOUT $1000 allot create AD-QERR $1000 allot
 
 : ACC-DEV-MAIN ( -- )
    T-RESET
+   CUDA:OPEN? 0= if                     \ off-device: no libcuda -> recorded device SKIP, compile-check only
+      s" acc-device-test: libcuda.so.1 unavailable -> device AXPY-ACC SKIPPED (off-device)" type cr
+      T-REPORT exit
+   then
    s" habu-ptx-acc" PTXTC:PREPARE
    AD-EMIT drop
    AD-PTXAS 0 T=
@@ -73,3 +80,5 @@ create AD-QOUT $1000 allot create AD-QERR $1000 allot
    T-REPORT ;
 
 ACC-DEV-MAIN
+
+;package
