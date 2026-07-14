@@ -4323,3 +4323,31 @@ unchanged (148855). Keys for milestone 2:
   a lib/std.manifest module row PLUS a word row per public word
   (stdlib-manifest-test enforces; the lint-manifest slice is the owning gate a
   new-lib lane must run - host/filemap/trust/coverage do NOT cover it).
+- **A test suite that opens `package X` must close it with `;package`, or a LATER
+  suite in the cumulative `maki/test.f` run dies with an opaque `exit 75` and a
+  bare token (e.g. `package`) on stderr.** The `TEST:SUITE` files are `included`
+  into one process; a suite leaving its package open leaves that package the
+  active wordlist, and a later suite's `package` declaration hits the engine's
+  `does>`/quotation compile guard (`J-QUOT`/`J-DOES`/`J-SEMIQUOT`, habu2.f) which
+  exits 75 printing the current token. It is NOT a dict/code/family/protected-WID
+  capacity limit: the suite that crashes is 1-2 later than the culprit, the
+  culprit's own suite PASSES, and the crash reproduces only when the earlier
+  suite omits `;package`. Diagnosis wasted a long capacity-bisection detour
+  (every "N families / N instantiations overflows" reading was really this same
+  unclosed-package bug in the throwaway test harness). Put `;package` before
+  `T-REPORT` in every package-scoped suite; if a full-suite run dies at an
+  unrelated later suite right after adding yours, check for a missing `;package`
+  first.
+- **A product TYPE PARAMETER binds only cell-tier types (n or nominal
+  `TYPEFAMILY` cells); a sum/enum/product family cannot instantiate it.** So a
+  generic `comparison<a>` over a metric unit needs nominal-cell unit witnesses
+  minted through TRUSTED casts, and the value inside the parametric slot stays
+  unit-agnostic. Two concrete per-unit families (`comparison-gbps`/`-gflops` with
+  distinct `gbps`/`gflops` sum readings) are strictly stronger - the NUMBER is
+  unit-typed, a gflops value cannot enter a gbps slot - with zero TRUSTED surface.
+  Reach for concrete per-variant families over a parametric product when the
+  variants are few and the parameter would only be a cell-tier phantom.
+- **`error-code-lint` scans `maki/target/` etc. (subdirs); a bare `maki/*.f`
+  glob misses them.** `-5252..-5256` are owned by `maki/target/target.f`
+  (E-TARGET-*), invisible to a `rg maki/*.f` scan. Always scan `maki/` (recursive)
+  for a free `-5NNN` block and confirm with `bin/hb tools/error-code-lint.f`.
