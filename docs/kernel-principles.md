@@ -21,19 +21,44 @@ classifying the bound.
 | **Memory** | HBM/LPDDR bandwidth | softmax, norm, bias+act, GEMV, attention I/O | **fuse** to cut round-trips; recompute vs store |
 | **Communication** | NVLink/network | all-reduce, all-to-all (MoE) | overlap with compute; fewer bytes |
 
-## THIS device (Orin NX, sm_87, 15W) — measured roofs
+## THIS device (Orin NX, sm_87, 25W) — measured roofs
 
-- **4 SMs × 128 FP32 lanes @ 0.92 GHz → P_peak(FP32 CUDA cores) ≈ 940 GFLOP/s.**
+**Canonical measurement environment:** nvpmodel **mode 3 (25W, 4 TPCs / 8 SMs,
+TPC_PG_MASK=240)**, GPU DVFS **pinned at 918 MHz** — the mode-3 maximum of the
+box's supported GPU rates (`/sys/class/devfreq/17000000.gpu/available_frequencies`
+runs 306, 408, 510, 612, 714, 816, 918 MHz; 918 is the top rung). Re-measured on-device
+2026-07-14; the `orin-nx-25w` rows in `tools/ptx/perf-rows.tsv` are the baseline.
+
+- **8 SMs × 128 FP32 lanes @ 0.918 GHz → P_peak(FP32 CUDA cores) ≈ 1880 GFLOP/s.**
+  The register-blocked cp.async FP32 tile (`MM`, `lib/ptx/cg-matmul.f`) measured
+  **918.8 / 967.8 / 979.9 GFLOP/s** at 512³/1024³/2048³ — **~52% of the FP32-CUDA
+  roof** (tiling/pipeline headroom remains).
 - **Tensor cores (TF32) sit on a HIGHER roof** — Triton's matmul measured **1474
-  GFLOP/s > 940**, which is only possible via TF32 tensor cores (`tl.dot`, allow_tf32).
-  So FP32-CUDA-core kernels and tensor-core kernels are on **two different compute
-  roofs**; mind which one you're on.
-- **Memory B ≈ 63 GB/s achievable** (v4 SAXPY hit it; spec ~102). Ridge (FP32 roof,
-  measured B) **I\* ≈ 15 FLOP/byte**.
+  GFLOP/s** (15W baseline) via TF32 tensor cores (`tl.dot`, allow_tf32), so FP32-
+  CUDA-core kernels and tensor-core kernels are on **two different compute roofs**;
+  mind which one you're on. Our TF32 mma.sync tile (`MMM`, `lib/ptx/cg-mma.f`,
+  scalar+cvt baseline) measured **830.1 / 872.9 / 884.9 GFLOP/s** at 25W — device-
+  correct but still feeding, not saturating, the tensor-core roof (it does not yet
+  beat the FP32 `MM` tile at this rung).
+- **Memory B ≈ 93 GB/s achievable** (v4 SAXPY `SAXPY-V4` hit **93.4 GB/s**; spec
+  ~102). Ridge (FP32 roof, measured B) **I\* ≈ 20 FLOP/byte**.
+
+**Historical note — 15W (2 TPCs / 4 SMs, early-July `orin-nx-15w` rows):**
+4 SMs × 128 lanes @ 0.92 GHz → P_peak(FP32) ≈ **940 GFLOP/s**; memory **B ≈ 63
+GB/s** (v4 SAXPY 64.2 GB/s); ridge **I\* ≈ 15 FLOP/byte**. Moving to 25W (8 SMs at
+the same 918 MHz GPU clock) roughly **doubled the FP32 roof** (940 → 1880) and
+lifted achievable memory bandwidth **~1.5×** (63 → 93 GB/s). The `orin-nx-15w`
+registry rows are retained as history — a new device tag is a fresh baseline, so
+`PERF:SCAN` never compares 25W against 15W.
 
 ## Where each Habu kernel sits (apply, don't assume)
 
-| kernel | I (FLOP/byte) | bound | roof | measured | verdict |
+The `I` and `bound` columns are power-mode-independent; the absolute `roof`/`measured`
+figures below are the **15W baseline** (63 GB/s memory, 940 GFLOP/s FP32). At the
+canonical **25W** environment the roofs scale to **93 GB/s / 1880 GFLOP/s** (see
+above), and current absolute numbers live in the `orin-nx-25w` registry rows.
+
+| kernel | I (FLOP/byte) | bound | roof (15W) | measured (15W) | verdict |
 |---|---|---|---|---|---|
 | SAXPY `a·x+y` | 0.17 | memory | 63 GB/s | **63 GB/s** | **100% of memory roof — done, only lever is fusion** |
 | fused `relu(a·x+y)` | 0.25 | memory | 63 GB/s | 63 GB/s | 100% of memory roof; fusion IS the win |

@@ -24,6 +24,17 @@ package PERF-CT
    s" compare fixture" SB-APPEND
    SB$ PERF:ADD-LINE ;
 
+: CT-ROW-DEV+ ( ptr u8 n ptr u8 n n -- ) {: ka:ptr ku:n da:ptr du:n v:n :}   \ GFLOPS row kernel ka/ku on device da/du, value v
+   SB-RESET
+   ka ku SB-APPEND TAB+
+   s" 8" SB-APPEND TAB+ s" 8" SB-APPEND TAB+
+   s" 16" SB-APPEND TAB+ s" 16" SB-APPEND TAB+
+   s" 10" SB-APPEND TAB+ s" 4096" SB-APPEND TAB+
+   s" GFLOPS" SB-APPEND TAB+ v SB-INT TAB+
+   da du SB-APPEND TAB+ s" 2026-07-13" SB-APPEND TAB+
+   s" device isolation fixture" SB-APPEND
+   SB$ PERF:ADD-LINE ;
+
 : CT-WAIVER+ ( ptr u8 n -- ) {: ka:ptr ku:n :}
    SB-RESET
    ka ku SB-APPEND TAB+
@@ -95,6 +106,19 @@ package PERF-CT
    1 PERF:ROW-VERDICT PERF:V-OK T=           \ waivers never regress
    PERF:SCAN 0 T= ;
 
+: CT-DEVICE-ISO-TESTS ( -- )   \ a new device tag is a fresh baseline: never cross-tag compared
+   PERF:RESET
+   s" MMN" s" dev-15w" 1000 CT-ROW-DEV+       \ same kernel+config, old tag
+   s" MMN" s" dev-25w" 2000 CT-ROW-DEV+       \ same kernel+config, new tag
+   0 1 PERF:KEY= TFALSE                       \ differing device -> not the same key
+   1 PERF:BASELINE -1 T=                      \ new-tag row has no same-tag baseline
+   1 PERF:ROW-VERDICT PERF:V-MISSING T=       \ so it is a fresh baseline, not a regression
+   PERF:SCAN 0 T=                             \ the cross-tag pair fabricates no regression
+   s" MMN" s" dev-25w" 500 CT-ROW-DEV+        \ within-tag drop 2000 -> 500
+   2 PERF:BASELINE 1 T=                       \ baseline is the earlier same-tag row, not the 15w row
+   2 PERF:ROW-VERDICT PERF:V-REGRESS T=       \ within-tag regression is still caught
+   PERF:SCAN 1 T= ;                           \ exactly one within-tag regression, no cross-tag noise
+
 T-RESET
 CT-VERDICT-TESTS
 CT-MISSING-TESTS
@@ -103,6 +127,7 @@ CT-REGRESS-TESTS
 CT-EDGE-TESTS
 CT-KEY-TESTS
 CT-WAIVER-TESTS
+CT-DEVICE-ISO-TESTS
 T-REPORT
 
 ;package
