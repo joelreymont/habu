@@ -28,6 +28,15 @@ package PTXFE
    {: a:ptr u:n :}
    EMITTED$ a u CONTAINS? 0= TTRUE ;
 
+\ fail-closed regression: a MISSING producer makes the spawned bin/hb exit nonzero;
+\ EMIT-GUARD surfaces the child stderr ("hb: cannot open ...") and throws E-PTX-EMIT,
+\ so a missing/renamed producer can never yield a silent empty PTX. No device/ptxas
+\ needed - the child fails during load, before any assemble.
+: MISS-THROWS ( -- )
+   s" habu-ptx-fusion-emit-missing" PTXTC:PREPARE
+   [: s" tools/ptx/does-not-exist-cg.f" EMIT-KERNEL drop ;] E-PTX-EMIT TTHROWSQ
+   PTXTC:CLEAN ;
+
 T-RESET
 
 \ fused RELU(a*x+y): scale (mul) + bias (add) + clamp (max ,0) all present
@@ -49,6 +58,9 @@ s" max.f32" HAS-NOT
 s" tools/ptx/relu-v4-cg.f" GET-EMIT
 s" max.f32" HAS
 s" mul.rn.f32" HAS-NOT
+
+\ fail-closed: a missing producer throws E-PTX-EMIT (child stderr surfaced), never an empty PTX
+MISS-THROWS
 
 T-REPORT
 s" fusion-emit-test: ok" type cr

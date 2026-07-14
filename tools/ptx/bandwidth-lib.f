@@ -21,9 +21,12 @@ variable BW-FPE
 
 public
 
+\ DEFAULTS sets kernel/label/block/iters/work only; the CUBIN path is NOT
+\ defaulted to a shared /tmp artifact - callers self-emit and set CUBIN! to a
+\ private per-run PTXTC:CUBIN$, so a missing cubin fails closed in PTXBENCH:LOAD
+\ ("cubin path not set") instead of loading a stale/absent /tmp/saxpy.cubin.
 : DEFAULTS ( -- )
    PTXBENCH:RESET
-   s" /tmp/saxpy.cubin" PTXBENCH:CUBIN!
    s" SAXPY" PTXBENCH:KERNEL!
    s" SAXPY" PTXBENCH:LABEL!
    BW-BLOCK PTXBENCH:BLOCK!

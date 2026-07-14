@@ -394,12 +394,12 @@ points stay listed.
   codegen plus Orin device proof for BLOCK-SUM's reducer-local inactive-lane zero.
 - `tools/ptx/sum1024-cg.f` — checked direct row-sum text fixture proving `%BLOCK
   1024` changes shared-memory size and reduction fold bounds.
-- `tools/ptx/sum-device-cg.f` — single-kernel SUM_ROWS emit (one module header)
-  so ptxas assembles it for the Orin sum device golden; same body as sum-cg.f.
 - `tools/ptx/zed-device-suite.f` — Orin device proof of the collective fix:
-  emits SUM_ROWS / softmax forward / softmax backward PTX with the branch engine,
-  ships via the ssh harness, remote ptxas-assembles, and launches the committed
-  launchers on the Orin comparing the CPU reference. HABU_ZED-gated.
+  runs the SELF-EMITTING launchers (sum-launch / softmax-launch /
+  softmax-gradcheck) on the Orin over the ssh harness and asserts a zero exit;
+  each launcher emits+ptxas-assembles+launches+compares its own kernel fail-closed,
+  so the harness no longer ships local /tmp/zed-*.ptx or remote-builds shared
+  /tmp/*.cubin. HABU_ZED-gated.
 - `tools/ptx/launch-neg-test.f` — fail-closed regressions for the launch/emit
   contracts: malformed WHERE (E-PTX-SYNTAX), block mismatch and k > block
   (E-PTX-BLOCK); the same header.f/launch.f contracts the device goldens launch under.
@@ -491,8 +491,6 @@ points stay listed.
   `tools/ptx/matmul-cg.f` / `tools/ptx/attention-cg.f` — checked kernel emit
   drivers for v4 SAXPY, v4 RELU, fused RELU, max-select, tiled SGEMM, and
   fused attention.
-- `tools/ptx/matmul-device-test.f` — committed device-correctness regression
-  for the tiled SGEMM kernel.
 - `tools/ptx/profile-test.f` / `tools/ptx/bench-test.f` — focused coverage for
   PTX benchmark/profile math and configuration.
 - `lib/test.f` — public checked test framework interface: assertions plus
@@ -521,12 +519,16 @@ points stay listed.
   fail-closed CHECK-FIT, auto-sized LOAD roundtrip, and HAS?/COUNT assertions.
 - `tools/ptx/cuda-launch.f`, `tools/ptx/softmax-launch.f`, and
   `tools/ptx/softmax-gradcheck.f` — Orin CUDA Driver proofs for launch,
-  softmax, and finite-difference gradient checking.
+  softmax, and finite-difference gradient checking; each SELF-EMITS its checked
+  producer to a private per-run PTXTC cubin fail-closed (E-PTX-EMIT), never a
+  shared /tmp cubin. cuda-launch also proves f32 scalar marshalling host-side.
 - `tools/ptx/profile.f`, `tools/ptx/bench.f`, `tools/ptx/bandwidth-lib.f`,
   `tools/ptx/bandwidth.f`, `tools/ptx/bandwidth-v4.f`, and
   `tools/ptx/fusion-compare.f` — reusable Orin kernel profile metrics, generic
   CUDA Driver launch plus CUDA-event device timing, scalar/v4 SAXPY bandwidth,
-  and fused-vs-unfused kernel comparison for the Habu-PTX column.
+  and fused-vs-unfused kernel comparison for the Habu-PTX column. bandwidth /
+  bandwidth-v4 SELF-EMIT their SAXPY cubin (fusion-emit PTXFE:BUILD-KERNEL,
+  fail-closed) and SKIP off-device; no shared /tmp/saxpy.cubin default.
 - `tools/ptx/fusion-emit.f` / `tools/ptx/fusion-emit-test.f` — self-emit the
   checked v4 SAXPY/RELU/fused-RELU cubins to private per-run toolchain roots for
   fusion-compare (fail-closed `E-PTX-EMIT` on a missing producer or nonzero
