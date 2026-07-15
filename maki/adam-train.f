@@ -149,9 +149,12 @@ public
    AMT-FINAL@  AMT-INITIAL@ AMT-CONV-RATIO f*  f<
    AMT-FINAL@  SC-CONV-THRESH  f<  and ;
 
-private
+public
 
-\ ---- attention trainer: shapes, committed seed, parameter + target buffers ---
+\ ---- attention trainer: shapes, slots, parameter + target buffers ------------
+\ Public so an independent per-step gradient reference (maki/adam-attn-grad-test.f)
+\ can read the live trained parameters + target and perturb them for central finite
+\ differences - mirroring the from-scratch MLP's public SC-* parameter surface.
 3  constant ATN-D            \ head dim d (the MODEL: signature pins q:4x3 ...)
 12 constant ATN-EN           \ elements per 4x3 / 3x4 operand (and the output)
 1  constant ATN-SN           \ elements of the 1x1 scale factor
@@ -161,13 +164,16 @@ private
 2 constant ATN-S-SLOT
 3 constant ATN-V-SLOT
 
-$A77E17 constant ATN-INIT-SEED   \ committed LCG seed (params + target stream)
-
 create ATN-Q    ATN-EN cells allot
 create ATN-KT   ATN-EN cells allot
 create ATN-S    ATN-SN cells allot
 create ATN-V    ATN-EN cells allot
 create ATN-TGT  ATN-EN cells allot
+
+private
+
+$A77E17 constant ATN-INIT-SEED   \ committed LCG seed (params + target stream)
+
 create ATN-SEED ATN-EN cells allot
 
 create ATN-QM ATN-EN cells allot   create ATN-QV ATN-EN cells allot
