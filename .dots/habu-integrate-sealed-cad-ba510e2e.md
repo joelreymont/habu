@@ -10,7 +10,6 @@ blocks:
   - habu-migrate-tool-allocation-22c04eb4
   - habu-migrate-str-numeric-2febad4b
   - habu-migrate-vector-numeric-360069d6
-  - habu-migrate-model-ir-c171bdf5
   - habu-migrate-core-maki-9e46089b
   - habu-migrate-lowering-maki-56492851
   - habu-migrate-training-maki-2b170ed2

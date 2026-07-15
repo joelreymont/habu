@@ -1,11 +1,10 @@
 ---
 title: Migrate vector numeric roles
-status: open
+status: active
 priority: 2
 issue-type: task
-created-at: "\"2026-07-13T14:14:22.910415+02:00\""
+created-at: "\"\\\"2026-07-13T14:14:22.910415+02:00\\\"\""
 blocks:
-  - habu-migrate-model-ir-c171bdf5
   - habu-seal-cad-num-36dbeec6
 ---
 
@@ -25,3 +24,5 @@ migration must be ONE combined VEC+MIR-count commit keeping every rendered-key
 pin exact, and the typed MIR accessors (MIR:NODE-COUNT@/OPERAND-COUNT@) do not
 exist yet - c171bdf5 owns them. maki/sched-key.f deliberately untouched
 (byte-for-byte, pins green).
+
+Claim: agent=vecnum2 workspace=.jj-ws/fable-cadnum
