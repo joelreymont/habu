@@ -120,9 +120,9 @@ EXPORT NOM:EQUAL?                       \ CAD-EFFECT:EQUAL?  ( NOM:row NOM:row -
 EXPORT NOM:SIZE                         \ CAD-EFFECT:SIZE    ( NOM:row -- n )
 EXPORT NOM:KEY                          \ CAD-EFFECT:KEY     ( NOM:row ptr u8 -- )
 EXPORT NOM:ENCODE                       \ CAD-EFFECT:ENCODE  ( NOM:row ptr u8 n -- n )
-\ SNAPSHOT/RESTORE are store-wide wire ops (not row-handle ops); kept as bodies.
-: SNAPSHOT ( ptr u8 n -- n )            NOM:SNAPSHOT ;
-: RESTORE ( ptr u8 n -- n )             NOM:RESTORE ;
+\ SNAPSHOT/RESTORE are store-wide wire ops (not row-handle ops), also NOM aliases.
+EXPORT NOM:SNAPSHOT                     \ CAD-EFFECT:SNAPSHOT  ( ptr u8 n -- n )
+EXPORT NOM:RESTORE                      \ CAD-EFFECT:RESTORE   ( ptr u8 n -- n )
 : RESET ( -- )                          0 CE-INSERTS !  NOM:RESET ;
 
 private
