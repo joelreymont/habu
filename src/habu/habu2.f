@@ -156,7 +156,7 @@ variable LPENGINEERROR  variable LPENGINEERROREFFECTS
 variable LPBYTES        variable LPCHECKER      variable LPRENDER
 variable LPLOWERCERTBASE
 variable LPTYPESCHEMA   variable LPTYPEFAM      variable LPSUMTYPE      variable LPLAYOUTBUF  variable LPLAYOUTVALID
-variable LPHOOK         variable LPCELLEFF      variable LPPTRSTORAGEEFF  variable LPSTRUCTEFF
+variable LPHOOK         variable LPCELLEFF      variable LPPTRSTORAGEEFF
 variable LPHABULAYOUT   variable LPENVBASE      variable LPINCLUDE
 variable LPSCRIPTARGV   variable LPINTMARK
 variable LPROLES
@@ -529,11 +529,10 @@ s" c-bp-watch-dump" s" label label --" TRUST
    PFX-APPEND-ENGINE-SNAP-HOOK
    done LBL, ;
 
-: PFX-LOAD-BASE-FILES ( -- )
+: PFX-LOAD-CHECKER-FILES ( -- )
    PFX-COMMON LPUTIL         s" src/core/util.f"        PFX-LOAD-ROW
    PFX-COMMON LPCELL         s" src/core/cell.f"        PFX-LOAD-ROW
    PFX-COMMON LPPTRSTORAGE   s" src/core/pointer-storage.f" PFX-LOAD-ROW
-   PFX-COMMON LPSTRUCTURES   s" src/core/structures.f"  PFX-LOAD-ROW
    PFX-COMMON LPENGINEERROR  s" src/core/engine-error.f" PFX-LOAD-ROW
    PFX-COMMON LPCHECKER      s" src/core/checker.f"     PFX-LOAD-ROW
    PFX-COMMON LPENGINEERROREFFECTS s" src/core/engine-error-effects.f" PFX-LOAD-ROW
@@ -546,8 +545,14 @@ s" c-bp-watch-dump" s" label label --" TRUST
    PFX-COMMON LPLAYOUTVALID  s" src/core/layout-valid.f" PFX-LOAD-ROW
    PFX-COMMON LPHOOK         s" src/core/check-hook.f"  PFX-LOAD-ROW
    PFX-COMMON LPCELLEFF      s" src/core/cell-effects.f" PFX-LOAD-ROW
-   PFX-COMMON LPPTRSTORAGEEFF s" src/core/pointer-storage-effects.f" PFX-LOAD-ROW
-   PFX-COMMON LPSTRUCTEFF    s" src/core/structures-effects.f" PFX-LOAD-ROW
+   PFX-COMMON LPPTRSTORAGEEFF s" src/core/pointer-storage-effects.f" PFX-LOAD-ROW ;
+
+: PFX-LOAD-DECL-FILES ( -- )
+   \ Unified STRUCTURE and ENUM declarers load here after the checker hook.
+   ;
+
+: PFX-LOAD-CORE-FILES ( -- )
+   PFX-COMMON LPSTRUCTURES   s" src/core/structures.f"  PFX-LOAD-ROW
    PFX-COMMON LPROLES        s" src/core/roles.f"       PFX-LOAD-ROW
    PFX-COMMON LPBYTES        s" src/core/bytes.f"       PFX-LOAD-ROW
    PFX-LINUX  LPLINUXTARGET  s" src/os/linux/target.f"  PFX-LOAD-ROW
@@ -566,6 +571,11 @@ s" c-bp-watch-dump" s" label label --" TRUST
    PFX-COMMON LPLAYOUTSEAL   s" src/core/layout-buffer-seal.f" PFX-LOAD-ROW
    PFX-COMMON LPLOWERCERTSEAL s" src/core/lower-cert-seal.f" PFX-LOAD-ROW ;
 
+: PFX-LOAD-BASE-FILES ( -- )
+   PFX-LOAD-CHECKER-FILES
+   PFX-LOAD-DECL-FILES
+   PFX-LOAD-CORE-FILES ;
+
 : PFX-LOAD-SCRIPT-ARGV ( -- )
    PFX-COMMON LPSCRIPTARGV   s" src/os/script-argv.f"   PFX-LOAD-ROW ;
 
@@ -578,7 +588,8 @@ s" c-bp-watch-dump" s" label label --" TRUST
 
 \ internal-mark.f is the LAST prefix source (dot habu-hb-crash-bare-c5be6634):
 \ its marking pass must see every prefix definition and every recorded effect
-\ (cell/pointer-storage/structures effect rows, xref/script-argv signatures) before it
+\ (cell/pointer-storage effect rows, checked structure words, xref/script-argv
+\ signatures) before it
 \ classifies the remaining sig-less prefix words as DNAME-INT internal.
 : PFX-LOAD-INTMARK ( -- )
    PFX-COMMON LPINTMARK      s" src/core/internal-mark.f" PFX-LOAD-ROW ;
@@ -611,11 +622,10 @@ s" c-bp-watch-dump" s" label label --" TRUST
    PFX-LOAD-SCRIPT-ARGV
    PFX-LOAD-INTMARK ;
 
-: PFX-PATH-FILES ( -- )
+: PFX-PATH-CHECKER-FILES ( -- )
    PFX-COMMON LPUTIL         s" src/core/util.f"        PFX-PATH-ROW
    PFX-COMMON LPCELL         s" src/core/cell.f"        PFX-PATH-ROW
    PFX-COMMON LPPTRSTORAGE   s" src/core/pointer-storage.f" PFX-PATH-ROW
-   PFX-COMMON LPSTRUCTURES   s" src/core/structures.f"  PFX-PATH-ROW
    PFX-COMMON LPENGINEERROR  s" src/core/engine-error.f" PFX-PATH-ROW
    PFX-COMMON LPCHECKER      s" src/core/checker.f"     PFX-PATH-ROW
    PFX-COMMON LPENGINEERROREFFECTS s" src/core/engine-error-effects.f" PFX-PATH-ROW
@@ -628,8 +638,14 @@ s" c-bp-watch-dump" s" label label --" TRUST
    PFX-COMMON LPLAYOUTVALID  s" src/core/layout-valid.f" PFX-PATH-ROW
    PFX-COMMON LPHOOK         s" src/core/check-hook.f"  PFX-PATH-ROW
    PFX-COMMON LPCELLEFF      s" src/core/cell-effects.f" PFX-PATH-ROW
-   PFX-COMMON LPPTRSTORAGEEFF s" src/core/pointer-storage-effects.f" PFX-PATH-ROW
-   PFX-COMMON LPSTRUCTEFF    s" src/core/structures-effects.f" PFX-PATH-ROW
+   PFX-COMMON LPPTRSTORAGEEFF s" src/core/pointer-storage-effects.f" PFX-PATH-ROW ;
+
+: PFX-PATH-DECL-FILES ( -- )
+   \ Unified STRUCTURE and ENUM declarer paths emit here.
+   ;
+
+: PFX-PATH-CORE-FILES ( -- )
+   PFX-COMMON LPSTRUCTURES   s" src/core/structures.f"  PFX-PATH-ROW
    PFX-COMMON LPROLES        s" src/core/roles.f"       PFX-PATH-ROW
    PFX-COMMON LPBYTES        s" src/core/bytes.f"       PFX-PATH-ROW
    PFX-LINUX  LPLINUXTARGET  s" src/os/linux/target.f"  PFX-PATH-ROW
@@ -650,6 +666,11 @@ s" c-bp-watch-dump" s" label label --" TRUST
    PFX-COMMON LPXREF         s" src/habu/xref.f"        PFX-PATH-ROW
    PFX-COMMON LPLAYOUTSEAL   s" src/core/layout-buffer-seal.f" PFX-PATH-ROW
    PFX-COMMON LPLOWERCERTSEAL s" src/core/lower-cert-seal.f" PFX-PATH-ROW ;
+
+: PFX-PATH-FILES ( -- )
+   PFX-PATH-CHECKER-FILES
+   PFX-PATH-DECL-FILES
+   PFX-PATH-CORE-FILES ;
 
 \ The prefix reload below zeroes HOOK-CELL, so the boot-time load of the
 \ checker/core prefix is itself unchecked. The staged fixpoint pre-pass
@@ -869,11 +890,10 @@ public
       LAPPPROV LABEL@ BL,
    then ;
 
-: PFX-PROVIDE-FILES ( -- )
+: PFX-PROVIDE-CHECKER-FILES ( -- )
    PFX-COMMON LPUTIL         s" src/core/util.f"        PFX-PROVIDE-ROW
    PFX-COMMON LPCELL         s" src/core/cell.f"        PFX-PROVIDE-ROW
    PFX-COMMON LPPTRSTORAGE   s" src/core/pointer-storage.f" PFX-PROVIDE-ROW
-   PFX-COMMON LPSTRUCTURES   s" src/core/structures.f"  PFX-PROVIDE-ROW
    PFX-COMMON LPENGINEERROR  s" src/core/engine-error.f" PFX-PROVIDE-ROW
    PFX-COMMON LPCHECKER      s" src/core/checker.f"     PFX-PROVIDE-ROW
    PFX-COMMON LPENGINEERROREFFECTS s" src/core/engine-error-effects.f" PFX-PROVIDE-ROW
@@ -886,8 +906,14 @@ public
    PFX-COMMON LPLAYOUTVALID  s" src/core/layout-valid.f" PFX-PROVIDE-ROW
    PFX-COMMON LPHOOK         s" src/core/check-hook.f"  PFX-PROVIDE-ROW
    PFX-COMMON LPCELLEFF      s" src/core/cell-effects.f" PFX-PROVIDE-ROW
-   PFX-COMMON LPPTRSTORAGEEFF s" src/core/pointer-storage-effects.f" PFX-PROVIDE-ROW
-   PFX-COMMON LPSTRUCTEFF    s" src/core/structures-effects.f" PFX-PROVIDE-ROW
+   PFX-COMMON LPPTRSTORAGEEFF s" src/core/pointer-storage-effects.f" PFX-PROVIDE-ROW ;
+
+: PFX-PROVIDE-DECL-FILES ( -- )
+   \ Unified STRUCTURE and ENUM declarer provide rows emit here.
+   ;
+
+: PFX-PROVIDE-CORE-FILES ( -- )
+   PFX-COMMON LPSTRUCTURES   s" src/core/structures.f"  PFX-PROVIDE-ROW
    PFX-COMMON LPROLES        s" src/core/roles.f"       PFX-PROVIDE-ROW
    PFX-COMMON LPBYTES        s" src/core/bytes.f"       PFX-PROVIDE-ROW
    PFX-LINUX  LPLINUXTARGET  s" src/os/linux/target.f"  PFX-PROVIDE-ROW
@@ -908,6 +934,11 @@ public
    PFX-COMMON LPXREF         s" src/habu/xref.f"        PFX-PROVIDE-ROW
    PFX-COMMON LPLAYOUTSEAL   s" src/core/layout-buffer-seal.f" PFX-PROVIDE-ROW
    PFX-COMMON LPLOWERCERTSEAL s" src/core/lower-cert-seal.f" PFX-PROVIDE-ROW ;
+
+: PFX-PROVIDE-FILES ( -- )
+   PFX-PROVIDE-CHECKER-FILES
+   PFX-PROVIDE-DECL-FILES
+   PFX-PROVIDE-CORE-FILES ;
 
 : C-SOURCE-PIPE ( -- )
    SRC-STDINPROG LABEL@ LBL,
@@ -6156,7 +6187,7 @@ s" SRCA@" s" -- ptr u8" TRUST
    LBL LPLOWERCERTBASE !  LBL LPRENDER !  LBL LPHOOK !
    LBL LPCELLEFF !  LBL LPPTRSTORAGEEFF !
    LBL LPTYPESCHEMA !  LBL LPTYPEFAM !  LBL LPSUMTYPE !  LBL LPLAYOUTBUF !  LBL LPLAYOUTVALID !
-   LBL LPSTRUCTEFF !  LBL LPHABULAYOUT !
+   LBL LPHABULAYOUT !
    LBL LPENVBASE !  LBL LPINCLUDE !  LBL LPSCRIPTARGV !  LBL LPINTMARK !  LBL LPROLES !
    LBL LPENUMS !  LBL LPEXECVECTOR !  LBL LPSHA256 !  LBL LPTFAMSHA !
    LBL LPCOMBINATORS !  LBL LPXREF !  LBL LPLAYOUTSEAL !  LBL LPLOWERCERTSEAL !

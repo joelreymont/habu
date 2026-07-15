@@ -125,7 +125,6 @@ variable BP-SET
    s" src/core/util.f" q execute
    s" src/core/cell.f" q execute
    s" src/core/pointer-storage.f" q execute
-   s" src/core/structures.f" q execute
    s" src/core/engine-error.f" q execute
    s" src/core/checker.f" q execute
    s" src/core/engine-error-effects.f" q execute
@@ -139,7 +138,7 @@ variable BP-SET
    s" src/core/check-hook.f" q execute
    s" src/core/cell-effects.f" q execute
    s" src/core/pointer-storage-effects.f" q execute
-   s" src/core/structures-effects.f" q execute
+   s" src/core/structures.f" q execute
    s" src/core/roles.f" q execute
    s" src/core/bytes.f" q execute
    BP-OS-TARGET$ q execute

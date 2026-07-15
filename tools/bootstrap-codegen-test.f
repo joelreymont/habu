@@ -205,18 +205,25 @@ public
    s" LPLINUXTARGET @ LBL, s" BCG-MUST-LACK
    s" PFX-COMMON LPUTIL" s" PFX-COMMON LPCELL" BCG-MUST-BEFORE
    s" PFX-COMMON LPCELL" s" PFX-COMMON LPPTRSTORAGE" BCG-MUST-BEFORE
-   s" PFX-COMMON LPPTRSTORAGE" s" PFX-COMMON LPSTRUCTURES" BCG-MUST-BEFORE
-   s" PFX-COMMON LPSTRUCTURES" s" PFX-COMMON LPENGINEERROR" BCG-MUST-BEFORE
+   s" PFX-COMMON LPPTRSTORAGE" s" PFX-COMMON LPENGINEERROR" BCG-MUST-BEFORE
    s" PFX-COMMON LPENGINEERROR" s" PFX-COMMON LPCHECKER" BCG-MUST-BEFORE
    s" PFX-COMMON LPCHECKER" s" PFX-COMMON LPENGINEERROREFFECTS" BCG-MUST-BEFORE
+   s" PFX-COMMON LPENGINEERROREFFECTS" s" PFX-COMMON LPLOWERCERTBASE" BCG-MUST-BEFORE
+   s" PFX-COMMON LPLOWERCERTBASE" s" PFX-COMMON LPTYPESCHEMA" BCG-MUST-BEFORE
+   s" PFX-COMMON LPTYPESCHEMA" s" PFX-COMMON LPTYPEFAM" BCG-MUST-BEFORE
+   s" PFX-COMMON LPTYPEFAM" s" PFX-COMMON LPRENDER" BCG-MUST-BEFORE
+   s" PFX-COMMON LPRENDER" s" PFX-COMMON LPSUMTYPE" BCG-MUST-BEFORE
+   s" PFX-COMMON LPSUMTYPE" s" PFX-COMMON LPLAYOUTBUF" BCG-MUST-BEFORE
+   s" PFX-COMMON LPLAYOUTBUF" s" PFX-COMMON LPLAYOUTVALID" BCG-MUST-BEFORE
+   s" PFX-COMMON LPLAYOUTVALID" s" PFX-COMMON LPHOOK" BCG-MUST-BEFORE
    s" PFX-COMMON LPCHECKER" s" PFX-LINUX  LPLINUXTARGET" BCG-MUST-BEFORE
    s" PFX-COMMON LPCHECKER" s" PFX-MACOS  LPMACOSTARGET" BCG-MUST-BEFORE
    s" PFX-COMMON LPHOOK" s" PFX-LINUX  LPLINUXTARGET" BCG-MUST-BEFORE
    s" PFX-COMMON LPHOOK" s" PFX-MACOS  LPMACOSTARGET" BCG-MUST-BEFORE
    s" PFX-COMMON LPHOOK" s" PFX-COMMON LPCELLEFF" BCG-MUST-BEFORE
    s" PFX-COMMON LPCELLEFF" s" PFX-COMMON LPPTRSTORAGEEFF" BCG-MUST-BEFORE
-   s" PFX-COMMON LPPTRSTORAGEEFF" s" PFX-COMMON LPSTRUCTEFF" BCG-MUST-BEFORE
-   s" PFX-COMMON LPSTRUCTEFF" s" PFX-COMMON LPROLES" BCG-MUST-BEFORE
+   s" PFX-COMMON LPPTRSTORAGEEFF" s" PFX-COMMON LPSTRUCTURES" BCG-MUST-BEFORE
+   s" PFX-COMMON LPSTRUCTURES" s" PFX-COMMON LPROLES" BCG-MUST-BEFORE
    s" PFX-COMMON LPROLES" s" PFX-COMMON LPBYTES" BCG-MUST-BEFORE
    s" PFX-COMMON LPBYTES" s" PFX-LINUX  LPLINUXTARGET" BCG-MUST-BEFORE
    s" PFX-COMMON LPBYTES" s" PFX-MACOS  LPMACOSTARGET" BCG-MUST-BEFORE
@@ -228,6 +235,11 @@ public
 : BCG-TEST-PREFIX-LIST-BOOTSTRAP ( -- )
    s" bootstrap/cg/forth.fs" BCG-LOAD
    BCG-TEST-PREFIX-LIST-COMMON
+   s" PFX-LOAD-DECL-FILES" BCG-MUST-HAVE
+   s" PFX-PATH-DECL-FILES" BCG-MUST-HAVE
+   s" PFX-PROVIDE-DECL-FILES" BCG-MUST-HAVE
+   s" src/core/structures-effects.f" BCG-MUST-LACK
+   s" LPSTRUCTEFF" BCG-MUST-LACK
    s" PFX-COMMON LPROLES" s" PFX-COMMON LPINCLUDE" BCG-MUST-BEFORE
    s" PFX-COMMON LPSTRUCTURES" s" PFX-COMMON LPINCLUDE" BCG-MUST-BEFORE
    s" LSRCRD @ BL," BCG-MUST-HAVE
@@ -236,6 +248,11 @@ public
 : BCG-TEST-PREFIX-LIST-NATIVE ( -- )
    s" src/habu/habu2.f" BCG-LOAD
    BCG-TEST-PREFIX-LIST-COMMON
+   s" PFX-LOAD-DECL-FILES" BCG-MUST-HAVE
+   s" PFX-PATH-DECL-FILES" BCG-MUST-HAVE
+   s" PFX-PROVIDE-DECL-FILES" BCG-MUST-HAVE
+   s" src/core/structures-effects.f" BCG-MUST-LACK
+   s" LPSTRUCTEFF" BCG-MUST-LACK
    s" PFX-COMMON LPROLES" s" PFX-COMMON LPINCLUDE" BCG-MUST-BEFORE
    s" PFX-COMMON LPSTRUCTURES" s" PFX-COMMON LPINCLUDE" BCG-MUST-BEFORE
    s" LSRCRD LABEL@ BL," BCG-MUST-HAVE ;
@@ -302,25 +319,31 @@ public
    s" tools/bootstrap.sh" BCG-LOAD
    s" cat src/core/util.f" s" cat src/core/cell.f" BCG-MUST-BEFORE
    s" cat src/core/cell.f" s" cat src/core/pointer-storage.f" BCG-MUST-BEFORE
-   s" cat src/core/pointer-storage.f" s" cat src/core/structures.f" BCG-MUST-BEFORE
-   s" cat src/core/structures.f" s" cat src/core/engine-error.f" BCG-MUST-BEFORE
+   s" cat src/core/pointer-storage.f" s" cat src/core/engine-error.f" BCG-MUST-BEFORE
    s" cat src/core/engine-error.f" s" cat src/core/checker.f" BCG-MUST-BEFORE
    s" cat src/core/checker.f" s" cat src/core/engine-error-effects.f" BCG-MUST-BEFORE
+   s" cat src/core/type-family.f" s" cat src/core/render.f" BCG-MUST-BEFORE
+   s" cat src/core/render.f" s" cat src/core/sumtype.f" BCG-MUST-BEFORE
+   s" cat src/core/layout-valid.f" s" cat src/core/check-hook.f" BCG-MUST-BEFORE
    s" cat src/core/check-hook.f" s" cat src/core/cell-effects.f" BCG-MUST-BEFORE
    s" cat src/core/cell-effects.f" s" cat src/core/pointer-storage-effects.f" BCG-MUST-BEFORE
-   s" cat src/core/pointer-storage-effects.f" s" cat src/core/structures-effects.f" BCG-MUST-BEFORE ;
+   s" cat src/core/pointer-storage-effects.f" s" cat src/core/structures.f" BCG-MUST-BEFORE
+   s" cat src/core/structures-effects.f" BCG-MUST-LACK ;
 
 : BCG-TEST-CELL-FIXPOINT ( -- )
    s" tools/build-fixpoint.f" BCG-LOAD
    s" src/core/util.f" s" src/core/cell.f" BCG-MUST-BEFORE
    s" src/core/cell.f" s" src/core/pointer-storage.f" BCG-MUST-BEFORE
-   s" src/core/pointer-storage.f" s" src/core/structures.f" BCG-MUST-BEFORE
-   s" src/core/structures.f" s" src/core/engine-error.f" BCG-MUST-BEFORE
+   s" src/core/pointer-storage.f" s" src/core/engine-error.f" BCG-MUST-BEFORE
    s" src/core/engine-error.f" s" src/core/checker.f" BCG-MUST-BEFORE
    s" src/core/checker.f" s" src/core/engine-error-effects.f" BCG-MUST-BEFORE
+   s" src/core/type-family.f" s" src/core/render.f" BCG-MUST-BEFORE
+   s" src/core/render.f" s" src/core/sumtype.f" BCG-MUST-BEFORE
+   s" src/core/layout-valid.f" s" src/core/check-hook.f" BCG-MUST-BEFORE
    s" src/core/check-hook.f" s" src/core/cell-effects.f" BCG-MUST-BEFORE
    s" src/core/cell-effects.f" s" src/core/pointer-storage-effects.f" BCG-MUST-BEFORE
-   s" src/core/pointer-storage-effects.f" s" src/core/structures-effects.f" BCG-MUST-BEFORE ;
+   s" src/core/pointer-storage-effects.f" s" src/core/structures.f" BCG-MUST-BEFORE
+   s" src/core/structures-effects.f" BCG-MUST-LACK ;
 
 : BCG-TEST-CELL-PARITY ( -- )
    BCG-TEST-CELL-RUNTIME

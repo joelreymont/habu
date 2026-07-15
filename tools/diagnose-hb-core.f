@@ -69,7 +69,6 @@ variable CHECKED
    s" src/core/util.f" PREFIX-FILE
    s" src/core/cell.f" PREFIX-FILE
    s" src/core/pointer-storage.f" PREFIX-FILE
-   s" src/core/structures.f" PREFIX-FILE
    s" src/core/engine-error.f" PREFIX-FILE
    s" src/core/checker.f" PREFIX-FILE
    s" src/core/engine-error-effects.f" PREFIX-FILE
@@ -83,7 +82,7 @@ variable CHECKED
    s" src/core/check-hook.f" PREFIX-FILE
    s" src/core/cell-effects.f" PREFIX-FILE
    s" src/core/pointer-storage-effects.f" PREFIX-FILE
-   s" src/core/structures-effects.f" PREFIX-FILE
+   s" src/core/structures.f" PREFIX-FILE
    s" src/core/roles.f" PREFIX-FILE
    s" src/core/bytes.f" PREFIX-FILE
    s" src/habu/layout.f" PREFIX-FILE

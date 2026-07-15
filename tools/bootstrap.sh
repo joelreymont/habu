@@ -179,8 +179,6 @@ emit_src() {
   printf '\n' >> "$out"
   cat src/core/pointer-storage.f >> "$out"
   printf '\n' >> "$out"
-  cat src/core/structures.f >> "$out"
-  printf '\n' >> "$out"
   cat src/core/engine-error.f >> "$out"
   printf '\n' >> "$out"
   cat src/core/checker.f >> "$out"
@@ -206,7 +204,8 @@ emit_src() {
   printf '\n' >> "$out"
   cat src/core/pointer-storage-effects.f >> "$out"
   printf '\n' >> "$out"
-  cat src/core/structures-effects.f >> "$out"
+  # Unified STRUCTURE and ENUM declarers load here after the checker hook.
+  cat src/core/structures.f >> "$out"
   printf '\n' >> "$out"
   printf "LOWER-CERT-HOOK:INSTALL\n" >> "$out"
   local f

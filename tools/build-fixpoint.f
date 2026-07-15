@@ -721,7 +721,6 @@ public
    out outu s" src/core/util.f" BF-APPEND-SOURCE
    out outu s" src/core/cell.f" BF-APPEND-SOURCE
    out outu s" src/core/pointer-storage.f" BF-APPEND-SOURCE
-   out outu s" src/core/structures.f" BF-APPEND-SOURCE
    out outu s" src/core/engine-error.f" BF-APPEND-SOURCE
    out outu s" src/core/checker.f" BF-APPEND-SOURCE
    out outu s" src/core/engine-error-effects.f" BF-APPEND-SOURCE
@@ -735,7 +734,8 @@ public
    out outu s" src/core/check-hook.f" BF-APPEND-SOURCE
    out outu s" src/core/cell-effects.f" BF-APPEND-SOURCE
    out outu s" src/core/pointer-storage-effects.f" BF-APPEND-SOURCE
-   out outu s" src/core/structures-effects.f" BF-APPEND-SOURCE ;
+   \ Unified STRUCTURE and ENUM declarers append here after the checker hook.
+   out outu s" src/core/structures.f" BF-APPEND-SOURCE ;
 
 : BF-APPEND-CORE-BYTES ( ptr u8 n -- ) {: out:ptr outu:n :}
    out outu s" src/core/bytes.f" BF-APPEND-SOURCE ;

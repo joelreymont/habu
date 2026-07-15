@@ -36,11 +36,29 @@ Last updated: 2026-07-15
 - **Jj's default word-level diff can visually concatenate numeric replacements.**
   A deleted `$200000` beside an inserted `$400000` rendered as
   `$200000400000`; inspect the source or `jj diff --git` before diagnosing a
-  malformed token. Jj has no `diff --check`; generate `jj diff --git` and run
-  the repository's checked diff lint instead.
+  malformed token. Never probe `jj diff --check`; generate `jj diff --git` and
+  run the repository's checked diff lint instead.
+
 - **Track a new local bookmark before its first push.** `jj git push --bookmark`
   refuses to create an untracked remote bookmark; run `jj bookmark track
   <name> --remote=origin` first.
+
+- **The dot CLI search verb is `dot find`, not `dot search`.** Unknown verbs
+  fall through to quick-add and create malformed work; use only documented
+  subcommands and remove accidental dots immediately before other work relies
+  on them.
+
+- **A post-hook replacement seam must not drag its legacy parser across the
+  hook.** `sumtype.f` reads private type-family registries that the checker
+  correctly rejects outside their package (`E-UNDEFINED ... TFAM-N`). Keep the
+  legacy parser in its existing pre-hook phase until the unified checked
+  declarers replace it; put only the empty replacement seam and independently
+  checkable remaining core after the hook.
+
+- **A downstream snapshot crash needs an exact old-order control before it is
+  attributed to loader movement.** Rebuilding the same tree with the prior
+  structures/effects order reproduced the identical stale-DATA-pointer fault,
+  proving the snapshot regression was baseline rather than causal to the seam.
 
 - **Sealing declared-effect parametricity must target sealed FAMILIES, not all
   concrete specialization.** The nominal-storage effect seal (post-body

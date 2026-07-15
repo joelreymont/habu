@@ -61,8 +61,8 @@ points stay listed.
 - `src/core/lower-cert-seal.f` — post-xref capability erasure for lowering-certificate producer hooks and backing authority cells.
 - `src/core/roles.f` — audited nominal scalar role conversion words.
 - `src/core/include.f` — checked source composition words (`include`, `included`) with dynamic `evaluate` isolated to `INCLUDE-EVALUATE`, plus the ordered source-composition event log (`EVENT-RECORD`, `EVENT-ON`/`DISCOVERY-ON`) that records include multiplicity and require/provided registry state, and `REQUIRE-SNAPSHOT`/`REQUIRE-RESTORE` giving the discovery pass a fresh require registry without disturbing warm-snapshot state.
-- `src/core/structures.f` — early `BEGIN-STRUCTURE`, `+FIELD`, `CFIELD:`, and `END-STRUCTURE` layout DSL definitions.
-- `src/core/structures-effects.f` — checker effect rows for the early structure defining words.
+- `src/core/structures.f` — post-hook checked `BEGIN-STRUCTURE`, `+FIELD`, `CFIELD:`, and `END-STRUCTURE` layout DSL definitions pending hard deletion.
+- `src/core/structures-effects.f` — retired pre-hook effect rows retained only as hard-deletion input; no boot path loads them.
 - `src/core/enums.f` — checked `ENUM+` and `ENUM4+` legacy numeric counter definers for named integer families.
 - `src/core/exec-vector.f` — checked execution-vector support for `defer`/`is` runtime sentinels.
 - `src/core/sha256.f` — standalone SHA-256, streaming file digest, and hex helpers.

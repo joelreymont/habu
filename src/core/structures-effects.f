@@ -1,4 +1,5 @@
-\ structures-effects.f - checker effects for early structure defining words.
+\ structures-effects.f - retired pre-hook structure effect rows.
+\ No boot path loads this file; hard deletion owns its final removal.
 
 s" STRUCT-BYTE+" s" ptr a n -- ptr u8" TRUST
 s" BEGIN-STRUCTURE" s" -- ptr a n" TRUST
