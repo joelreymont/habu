@@ -180,7 +180,7 @@ variable SAB-READY
 
 : SAB-ALLOC ( -- )
    SAB-READY @ 0 <> if exit then
-   SAB-CAP MEM-ALLOC-BYTES drop SAB-BUF-A-FIELD !
+   SAB-CAP MEM:BYTES-ALLOC-LEN MEM:ALLOC-BYTES drop SAB-BUF-A-FIELD !
    -1 SAB-READY ! ;
 
 : SAB-BUF ( -- ptr u8 )

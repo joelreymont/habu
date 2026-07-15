@@ -971,7 +971,7 @@ variable GE-DFULL-I                 \ copy/definition loop index
    buf 32 GE-DFULL-C  buf 59 GE-DFULL-C  buf 10 GE-DFULL-C ;
 
 : GE-DFULL-SOURCE ( -- ptr u8 n )                     \ generated define-past-cap program
-   DICT-CAP 1+ 16 * 32 + MEM-ALLOC-BYTES drop {: buf:ptr :}
+   DICT-CAP 1+ 16 * 32 + MEM:BYTES-ALLOC-LEN MEM:ALLOC-BYTES drop {: buf:ptr :}
    0 GE-DFULL-P !
    buf s" 0 set-check" GE-DFULL-S  buf 10 GE-DFULL-C
    0 GE-DFULL-I !
