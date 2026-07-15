@@ -298,7 +298,7 @@ variable ACAP-P
    v  ix ACAP-PWID-SLOT  AOT-P32! ;
 : ACAP-PWID-GET ( n -- n ) ACAP-PWID-SLOT ACAP-W32@ ;          \ slot -> wid (u32, boot-read model)
 : ACAP-PWID-CAPTURE ( -- )                                     \ live registry -> AOT-PWID-BUF
-   AOT-LIVE-DATA PROT-WID-N-CELL + AOT-CELL@ {: n:n :}
+   AOT-LIVE-DATA PROT-WID-N-CELL + atomic@ {: n:n :}
    n AOT-PWID-MAX > if s" aot-capture: protected-WID registry overflow" 74 die then
    n AOT-PWID-N !
    n 0 ?do
@@ -333,7 +333,7 @@ variable OWNER-BAD-OTHER
    dup 0 > swap OWNER-WID-LIMIT <= and ;
 
 : PROT-N@ ( -- n )
-   AOT-LIVE-DATA PROT-WID-N-CELL + AOT-CELL@ ;
+   AOT-LIVE-DATA PROT-WID-N-CELL + atomic@ ;
 
 : PROT@ ( n -- n ) {: idx:n :}
    AOT-LIVE-DATA PROT-WID-OFF + AOT-A>U8 idx 4 * + ACAP-W32@ ;
@@ -354,7 +354,7 @@ variable OWNER-BAD-OTHER
    0 0= ;
 
 : OWNER-N@ ( -- n )
-   AOT-LIVE-DATA OWNER-WID-N-CELL + AOT-CELL@ ;
+   AOT-LIVE-DATA OWNER-WID-N-CELL + atomic@ ;
 
 : OWNER-ROW-A ( n -- ptr u8 ) {: idx:n :}
    AOT-LIVE-DATA OWNER-WID-OFF + AOT-A>U8 idx OWNER-WID-ROW * + ;
@@ -416,7 +416,7 @@ variable OWNER-BAD-OTHER
    cr ;
 
 variable OWNER-PACKAGE-N
-variable OWNER-PACKAGE-REC
+variable OWNER-PACKAGE-K
 
 : OWNER-FOLD-C ( n -- n ) {: c:n :}
    c $41 >= c $5A <= and if c $20 or exit then
@@ -443,13 +443,13 @@ variable OWNER-PACKAGE-REC
 
 : PACKAGE-RECORD ( n -- ptr a ) {: row:n :}
    0 OWNER-PACKAGE-N !
-   0 OWNER-PACKAGE-REC !
+   -1 OWNER-PACKAGE-K !
    row OWNER-PAIR@ {: pub:n pri:n :}
    ndict@ 0 ?do
       i AOT-REC {: rec:ptr :}
       rec pub pri PACKAGE-PAIR? if
          OWNER-PACKAGE-N @ 1+ OWNER-PACKAGE-N !
-         rec OWNER-PACKAGE-REC !
+         i OWNER-PACKAGE-K !
       then
    loop
    OWNER-PACKAGE-N @ 0= if
@@ -462,7 +462,7 @@ variable OWNER-PACKAGE-REC
       OWNER-BAD-DIAG
       s" aot-capture: owner package sentinel duplicate" 74 die
    then
-   OWNER-PACKAGE-REC @ dup AOT-RNPTR swap AOT-RNLEN {: name:ptr nameu:n :}
+   OWNER-PACKAGE-K @ AOT-REC dup AOT-RNPTR swap AOT-RNLEN {: name:ptr nameu:n :}
    name nameu OWNER-NAME-VALID? 0= if
       OWNER-BAD-PACKAGE-MISSING row -1 OWNER-BAD! drop
       OWNER-BAD-DIAG
@@ -482,7 +482,7 @@ variable OWNER-PACKAGE-REC
       OWNER-BAD-DIAG
       s" aot-capture: owner package identity ambiguous" 74 die
    then
-   OWNER-PACKAGE-REC @ ;
+   OWNER-PACKAGE-K @ AOT-REC ;
 
 : OWNER-NAME$ ( n -- ptr u8 n )
    PACKAGE-RECORD dup AOT-RNPTR swap AOT-RNLEN ;

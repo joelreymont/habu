@@ -4432,3 +4432,17 @@ unchanged (148855). Keys for milestone 2:
   `search-wl` absence check does not prove qualified compilation is rejected;
   run the AOT and snapshot images against a checked private-word call and require
   the undefined-token diagnostic.
+- **Snapshot presence belongs to the loader-authenticated executable extent.**
+  Trailer magic distinguishes formats only after the OS header proves appended
+  content exists; treating missing magic as a cold image lets corrupted snapshots
+  boot through the cold path.
+- **Pre-copy snapshot validation must translate canonical external pointers.**
+  Long dictionary names point into the persisted region coordinate space; map
+  them to the appended source bytes before comparison and never borrow pinned
+  DBASE, NDICT, or CP registers as validator scratch.
+- **Append-only registries publish rows before counts.** Writers use release
+  stores for the count and capture uses acquire loads; model LDAR/STLR as named
+  assembler operations instead of embedding instruction words at call sites.
+- **Persistent builder state must preserve pointer identity explicitly.** Use a
+  typed pointer variable when the pointer itself survives calls, or retain a
+  stable record index and derive the pointer only at the use site.

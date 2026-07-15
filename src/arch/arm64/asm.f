@@ -116,6 +116,10 @@ variable ARM-Z
 
 : ENC-STRW ( n n n -- n ) XRDI 4 / $B9000000 RRI ;
 
+: ENC-LDAR ( n n -- n ) 5 lshift or $C8DFFC00 or MSK ;
+
+: ENC-STLR ( n n -- n ) 5 lshift or $C89FFC00 or MSK ;
+
 \ branches: delta is in WORDS (instruction-relative), sign-handled by the caller's mask.
 : ENC-B ( n -- n ) $3FFFFFF and $14000000 or MSK ;
 

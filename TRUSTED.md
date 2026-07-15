@@ -483,6 +483,7 @@ that source is explicitly certified; they are not stale-checked by the default
 | MOVZHW | `n n n -- n` | ARM64 source test reuses the raw unchecked encoder effect after conditional source loading or CLI-runner bake. | `tools/asm-src-test.f`, `test/run.f` | tools/asm-src-test.f | 2026-06-30 |
 | ENC-ADD | `n n n -- n` | ARM64 source test republishes the raw add-instruction encoder effect for fixture assertions. | `tools/asm-src-test.f`, `test/run.f` | tools/asm-src-test.f | 2026-06-30 |
 | ENC-LDR | `n n n -- n` | ARM64 source test republishes the raw load-instruction encoder effect for fixture assertions. | `tools/asm-src-test.f`, `test/run.f` | tools/asm-src-test.f | 2026-06-30 |
+| ENC-LDAR | `n n -- n` | ARM64 source test republishes the raw acquire-load encoder effect for publication-order assertions. | `tools/asm-src-test.f`, `test/run.f` | tools/asm-src-test.f | 2026-07-15 |
 | ENC-BLR | `n -- n` | ARM64 source test republishes the raw branch-link-register encoder effect for fixture assertions. | `tools/asm-src-test.f`, `test/run.f` | tools/asm-src-test.f | 2026-06-30 |
 | >LIMM | `n -- n` | ARM64 source test republishes the immediate-layout helper effect used by encoder assertions. | `tools/asm-src-test.f`, `test/run.f` | tools/asm-src-test.f | 2026-06-30 |
 | ENC-ANDI | `n n n -- n` | ARM64 source test republishes the raw logical-immediate encoder effect for fixture assertions. | `tools/asm-src-test.f`, `test/run.f` | tools/asm-src-test.f | 2026-06-30 |
@@ -490,6 +491,7 @@ that source is explicitly certified; they are not stale-checked by the default
 | CODE-BYTE+ | `ptr u8 n -- ptr u8` | ARM64 source test republishes typed code-buffer byte-pointer arithmetic used by fixture reads. | `tools/asm-src-test.f`, `test/run.f` | tools/asm-src-test.f | 2026-06-30 |
 | ARESET | `--` | ARM64 source test republishes the assembler-buffer reset effect for fixture setup. | `tools/asm-src-test.f`, `test/run.f` | tools/asm-src-test.f | 2026-06-30 |
 | ADD, | `n n n --` | ARM64 source test republishes the raw instruction emitter effect for fixture setup. | `tools/asm-src-test.f`, `test/run.f` | tools/asm-src-test.f | 2026-06-30 |
+| LDAR, | `n n --` | ARM64 source test republishes the acquire-load mnemonic effect for emitted-word assertions. | `tools/asm-src-test.f`, `test/run.f` | tools/asm-src-test.f | 2026-07-15 |
 | ASM-LEN | `-- n` | ARM64 source test republishes the assembler buffer length accessor effect for fixture assertions. | `tools/asm-src-test.f`, `test/run.f` | tools/asm-src-test.f | 2026-06-30 |
 | LIT64, | `n n --` | ARM64 source test republishes the literal-emitter effect for fixture setup. | `tools/asm-src-test.f`, `test/run.f` | tools/asm-src-test.f | 2026-06-30 |
 | MEM-ALLOC-PTR | `n -- ptr u8` | Refines a raw anonymous `mmap` result into a typed byte pointer after size validation and `-1` failure checking; the checker cannot express this syscall-result refinement yet. | `lib/memory-test.f`, `test/run.f` | lib/memory.f | 2026-06-21 |
@@ -1830,6 +1832,7 @@ test/prop-test-core.f:AXEVAL prim-axiom habu-primitive-effect-axiom-1119f176
 tools/asm-src-test.f:MOVZHW test-metaprog habu-builder-trust-rows-c5d41af6
 tools/asm-src-test.f:ENC-ADD test-metaprog habu-builder-trust-rows-c5d41af6
 tools/asm-src-test.f:ENC-LDR test-metaprog habu-builder-trust-rows-c5d41af6
+tools/asm-src-test.f:ENC-LDAR test-metaprog habu-builder-trust-rows-c5d41af6
 tools/asm-src-test.f:ENC-BLR test-metaprog habu-builder-trust-rows-c5d41af6
 tools/asm-src-test.f:>LIMM test-metaprog habu-builder-trust-rows-c5d41af6
 tools/asm-src-test.f:ENC-ANDI test-metaprog habu-builder-trust-rows-c5d41af6
@@ -1837,6 +1840,7 @@ tools/asm-src-test.f:CW@ test-metaprog habu-builder-trust-rows-c5d41af6
 tools/asm-src-test.f:CODE-BYTE+ test-metaprog habu-builder-trust-rows-c5d41af6
 tools/asm-src-test.f:ARESET test-metaprog habu-builder-trust-rows-c5d41af6
 tools/asm-src-test.f:ADD, test-metaprog habu-builder-trust-rows-c5d41af6
+tools/asm-src-test.f:LDAR, test-metaprog habu-builder-trust-rows-c5d41af6
 tools/asm-src-test.f:ASM-LEN test-metaprog habu-builder-trust-rows-c5d41af6
 tools/asm-src-test.f:LIT64, test-metaprog habu-builder-trust-rows-c5d41af6
 tools/image-bytes-test.f:MBUF test-metaprog habu-builder-trust-rows-c5d41af6

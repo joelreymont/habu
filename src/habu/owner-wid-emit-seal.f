@@ -44,8 +44,6 @@ undefine COLD-XT
 undefine PROOF-XT
 undefine RESTORE-XT
 undefine EMIT-BYTES
-undefine W-COUNT-LDAR
-undefine W-COUNT-STLR
 undefine COUNT@,
 undefine COUNT!,
 undefine SCAN-INIT
@@ -118,8 +116,6 @@ s" COLD-XT" get-current OWNER-WID-SEAL-ABSENT
 s" PROOF-XT" get-current OWNER-WID-SEAL-ABSENT
 s" RESTORE-XT" get-current OWNER-WID-SEAL-ABSENT
 s" EMIT-BYTES" get-current OWNER-WID-SEAL-ABSENT
-s" W-COUNT-LDAR" get-current OWNER-WID-SEAL-ABSENT
-s" W-COUNT-STLR" get-current OWNER-WID-SEAL-ABSENT
 s" COUNT@," get-current OWNER-WID-SEAL-ABSENT
 s" COUNT!," get-current OWNER-WID-SEAL-ABSENT
 s" SCAN-INIT" get-current OWNER-WID-SEAL-ABSENT

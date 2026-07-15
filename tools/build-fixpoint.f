@@ -492,7 +492,7 @@ package BUILD-EXT
 
 variable PATH-A
 variable PATH-U
-variable KEEP-A
+PTR-VARIABLE KEEP-A
 variable KEEP-U
 
 : PATH-FIELD ( -- ptr ptr u8 )
@@ -501,11 +501,8 @@ variable KEEP-U
 : PATH@ ( -- ptr u8 )
    PATH-FIELD @ ;
 
-: KEEP-FIELD ( -- ptr ptr u8 )
-   KEEP-A 0 ptr-field ;
-
 : KEEP@ ( -- ptr u8 )
-   KEEP-FIELD @ ;
+   KEEP-A @ ;
 
 : CLEAR ( -- )
    0 PATH-U !
@@ -517,7 +514,7 @@ variable KEEP-U
 
 : KEEP-SET ( ptr u8 n -- )
    KEEP-U !
-   KEEP-FIELD ! ;
+   KEEP-A ! ;
 
 CLEAR
 
@@ -1508,7 +1505,6 @@ undefine PATH-A
 undefine PATH-U
 undefine KEEP-SET
 undefine KEEP@
-undefine KEEP-FIELD
 undefine KEEP-A
 undefine KEEP-U
 undefine OWNER-WID-ACT

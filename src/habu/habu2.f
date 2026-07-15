@@ -3212,8 +3212,8 @@ s" c-local-ref" s" label label --" TRUST
 
 \ Restore the baked protected-WID registry (TFAM 2b-v). Copies the LAOTPWID u32
 \ WIDs into the friend-arena registry table (direct STR into the sealed band, same
-\ as the WIDN advance below -- the AOT seed pass is trusted boot machinery), sets
-\ PROT-WID-N-CELL to the restored count, and advances WIDN past each restored WID so
+\ as the WIDN advance below -- the AOT seed pass is trusted boot machinery), release-
+\ publishes PROT-WID-N-CELL after the rows, and advances WIDN past each restored WID so
 \ a post-restore wordlist/package allocation cannot reuse a protected WID. Full u32
 \ per entry: a WID above 255 restores without truncation. N (bounded by PROT-WID-MAX
 \ at capture) needs no runtime cap check. Runs after EM-AOT-REGISTER-RECS.
@@ -3221,7 +3221,6 @@ s" c-local-ref" s" label label --" TRUST
    LBL LBL LBL {: ploop:label pdone:label pwok:label :}
    9 LAOTPWID LABEL@ ADR,                           \ x9 = baked u32 WID src
    11 LAOTNPWID LABEL@ ADR,  11 11 0 LDR,           \ x11 = restored count N
-   11 DATA PROT-WID-N-CELL STR,                     \ registry count := N
    10 PROT-WID-OFF MOVZ,  10 DATA 10 ADD,           \ x10 = &registry[0] (offset > imm12: materialize + add)
    12 0 MOVZ,                                       \ x12 = i
    ploop LBL,  12 11 CMP,  C-GE pdone BCOND,
@@ -3231,7 +3230,9 @@ s" c-local-ref" s" label label --" TRUST
          4 DATA WIDN-CELL STR,
       pwok LBL,
       9 9 4 ADDI,  10 10 4 ADDI,  12 12 1 ADDI,  ploop B,
-   pdone LBL, ;
+   pdone LBL,
+   5 PROT-WID-N-CELL MOVZ,  5 DATA 5 ADD,
+   11 5 STLR, ;                                      \ release-publish N after every row
 
 \ Validate both baked WID registries before either is restored. The owner frame
 \ starts immediately after the bounded protected-WID rows, carries its own shape,
@@ -3320,8 +3321,6 @@ s" c-local-ref" s" label label --" TRUST
       10 10 AOT-OWNER-ROW ADDI,  8 8 1 ADDI,  owner-next B,
    valid LBL, ;
 
-$C89FFCA6 constant AOT-OWNER-COUNT-STLR
-
 : EM-AOT-REGISTER-OWNER-WIDS ( -- )
    LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL
    {: loop:label done:label scan:label next:label inline:label bytes:label hit:label
@@ -3375,6 +3374,7 @@ $C89FFCA6 constant AOT-OWNER-COUNT-STLR
 
       2 DATA WIDN-CELL LDR,
       3 2 32 LSRI,  3 bad CBNZ,
+      2 FIRST-DYNAMIC-WID CMPI,  C-LT bad BCOND,
       3 14 1 ADDI,  3 2 CMP,  C-LS pub-widn BCOND,
          3 DATA WIDN-CELL STR,  2 3 0 ADDI,
       pub-widn LBL,
@@ -3416,7 +3416,7 @@ $C89FFCA6 constant AOT-OWNER-COUNT-STLR
    copy-done LBL,
    6 23 0 ADDI,
    5 OWNER-WID-N-CELL MOVZ,  5 DATA 5 ADD,
-   AOT-OWNER-COUNT-STLR EMITW
+   6 5 STLR,
    SP SP 2048 ADDI,
    ret B,
    bad LBL,
@@ -3748,11 +3748,14 @@ TRUSTED: EM-DATA-VA>N ( -- n ) DATA-VA ;
 
 : EM-SNAPSHOT-VALIDATE-WIDS ( label -- ) {: bad:label :}
    LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL
+   LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL
    {: prot-loop:label prot-max:label prot-inner:label prot-next:label
       owners:label owner-loop:label pub-max:label pri-max:label
       oscan:label onext:label odone:label
       owner-prot:label owner-prev-start:label owner-prev:label
-      owner-next:label widn:label :}
+      owner-next:label widn:label name-inline:label name-ready:label
+      name-loop:label name-ok:label pkg-scan:label pkg-inline:label
+      pkg-ready:label pkg-bytes:label pkg-hit:label pkg-next:label pkg-done:label :}
    5 PROT-WID-END MOVZ,  7 5 CMP,  C-CC bad BCOND,
    10 12 7 SUB,                                     \ x10 = snapshot DATA source
    25 10 6 SUB,                                     \ x25 = snapshot dictionary source
@@ -3789,16 +3792,74 @@ TRUSTED: EM-DATA-VA>N ( -- n ) DATA-VA ;
    pub-max LBL,
       15 17 CMP,  C-LS pri-max BCOND,  17 15 0 ADDI,
    pri-max LBL,
-      22 25 0 ADDI,  23 16 0 ADDI,  24 0 MOVZ,
+      22 25 0 ADDI,  23 16 0 ADDI,  24 0 MOVZ,  1 0 MOVZ,
    oscan LBL,  23 odone CBZ,
       2 22 40 LDR,  3 0 MOVN,  2 3 CMP,  C-NE onext BCOND,
       2 22 0 LDR,  14 2 CMP,  C-NE onext BCOND,
       2 22 8 LDR,  15 2 CMP,  C-NE onext BCOND,
       24 24 1 ADDI,  24 1 CMPI,  C-HI bad BCOND,
+      1 22 0 ADDI,
    onext LBL,
       22 22 DREC ADDI,  23 23 1 SUBI,  oscan B,
    odone LBL,
       24 1 CMPI,  C-NE bad BCOND,
+
+      \ A numeric role pair identifies the owned sentinel, but qualified lookup
+      \ is name-based and later-wins. Require exactly one case-folded package
+      \ identity across the whole restored dictionary before any byte is copied.
+      2 1 16 LDR,
+      0 2 12 LSLI,  0 0 12 LSRI,
+      0 bad CBZ,  0 $FF CMPI,  C-HI bad BCOND,
+      21 1 24 ADDI,
+      3 2 DNAME-EXT ANDI,  3 name-inline CBZ,
+         0 DNAME-INL CMPI,  C-LE bad BCOND,
+         21 1 24 LDR,
+         21 DBASE CMP,  C-LT bad BCOND,
+         21 21 DBASE SUB,  21 21 25 ADD,
+         21 25 CMP,  C-LT bad BCOND,  21 10 CMP,  C-HI bad BCOND,
+         2 10 21 SUB,  0 2 CMP,  C-HI bad BCOND,
+         name-ready B,
+      name-inline LBL,
+         0 DNAME-INL CMPI,  C-GT bad BCOND,
+      name-ready LBL,
+      4 0 MOVZ,
+      name-loop LBL,  4 0 CMP,  C-GE name-ok BCOND,
+         2 21 4 ADD,  2 2 0 LDRB,
+         2 $3A CMPI,  C-EQ bad BCOND,
+         4 4 1 ADDI,  name-loop B,
+      name-ok LBL,
+      24 0 MOVZ,  22 25 0 ADDI,  23 16 0 ADDI,
+      pkg-scan LBL,  23 pkg-done CBZ,
+         2 22 40 LDR,  3 0 MOVN,  2 3 CMP,  C-NE pkg-next BCOND,
+         3 22 16 LDR,
+         2 3 12 LSLI,  2 2 12 LSRI,  2 0 CMP,  C-NE pkg-next BCOND,
+         4 22 24 ADDI,
+         2 3 DNAME-EXT ANDI,  2 pkg-inline CBZ,
+            0 DNAME-INL CMPI,  C-LE bad BCOND,
+            4 22 24 LDR,
+            4 DBASE CMP,  C-LT bad BCOND,
+            4 4 DBASE SUB,  4 4 25 ADD,
+            4 25 CMP,  C-LT bad BCOND,  4 10 CMP,  C-HI bad BCOND,
+            2 10 4 SUB,  0 2 CMP,  C-HI bad BCOND,
+            pkg-ready B,
+         pkg-inline LBL,
+            0 DNAME-INL CMPI,  C-GT bad BCOND,
+         pkg-ready LBL,
+         7 0 MOVZ,
+         pkg-bytes LBL,  7 0 CMP,  C-GE pkg-hit BCOND,
+            2 4 7 ADD,  2 2 0 LDRB,
+            3 2 $41 SUBI,  3 $1A CMPI,  3 C-CC CSET,  3 3 5 LSLI,  2 2 3 ORR,
+            12 21 7 ADD,  12 12 0 LDRB,
+            13 12 $41 SUBI,  13 $1A CMPI,  13 C-CC CSET,  13 13 5 LSLI,  12 12 13 ORR,
+            2 12 CMP,  C-NE pkg-next BCOND,
+            7 7 1 ADDI,  pkg-bytes B,
+         pkg-hit LBL,
+            24 24 1 ADDI,  24 1 CMPI,  C-HI bad BCOND,
+      pkg-next LBL,
+         22 22 DREC ADDI,  23 23 1 SUBI,  pkg-scan B,
+      pkg-done LBL,
+         24 1 CMPI,  C-NE bad BCOND,
+
       4 0 MOVZ,  12 PROT-WID-OFF MOVZ,  12 10 12 ADD,
    owner-prot LBL,  4 11 CMP,  C-GE owner-prev-start BCOND,
       2 12 0 LDRW,
@@ -3817,37 +3878,54 @@ TRUSTED: EM-DATA-VA>N ( -- n ) DATA-VA ;
    widn LBL,
    6 10 WIDN-CELL LDR,
    14 6 32 LSRI,  14 bad CBNZ,
+   6 FIRST-DYNAMIC-WID CMPI,  C-LT bad BCOND,
    6 17 CMP,  C-LS bad BCOND, ;
 
 \ ---- AOT snapshot? (trailer at the end of our own __text). If present:
 \ restore both regions verbatim (fixed VAs keep region addresses valid),
 \ relocate engine-text call chains (the only ASLR-movers), boot WARM. ----
 : EM-SNAPSHOT-RESTORE ( -- )
-   LBL LBL LBL LBL LBL LBL {: snomag:label snbad:label snok:label snnew:label snhave:label snbadver:label :}
+   LBL LBL LBL LBL LBL LBL LBL
+   {: snomag:label snbad:label snok:label snnew:label snhave:label
+      snbadver:label snpresent:label :}
    24 0 MOVZ,                                       \ x24 = snapshot flag
    9 DATA RBASE-CELL LDR,  25 9 0 ADDI,             \ x25 = live text CONTENT base
    10 9 0 ADDI,  5 $1000 LIT64,  10 10 5 SUB,
    11 10 IMAGE-TEXT-SIZE-OFF LDR,                   \ S = our executable text size
    12 10 11 ADD,  5 IMAGE-TEXT-TRAILER-ADJ LIT64,  12 12 5 ADD,   \ x12 = trailer END (base+SNL+ADJ)
+   \ The executable header is consumed by the OS loader and therefore owns the
+   \ snapshot-presence contract. A cold image ends at LSRC plus the padded baked
+   \ source length (page-rounded on ELF); a larger authenticated text extent
+   \ means a snapshot exists, so missing trailer magic is corruption.
+   13 LSRC LABEL@ ADR,  14 13 25 SUB,
+   5 SRCN @ 3 + -4 and LIT64,  14 14 5 ADD,
+   HB-TARGET-LINUX? IF
+      5 $FFF MOVZ,  14 14 5 ADD,
+      5 -$1000 LIT64,  14 14 5 AND,
+   THEN
+   5 IMAGE-TEXT-CONTENT-ADJ LIT64,  11 11 5 SUB,
+   11 14 CMP,  C-LT snbad BCOND,  C-GT snpresent BCOND,
+   snomag B,
+   snpresent LBL,
    \ The owner-role registry is required for checked qualified lookup. A v0-v2
    \ image has no trustworthy owner semantics, so the legacy trailer and every
    \ version other than the current format fail closed as unsupported.
    5 SNAP-MAGIC LIT64,
    13 12 48 SUBI,  14 13 0 LDR,  14 5 CMP,  C-EQ snnew BCOND,      \ x13 = 48-byte trailer base?
-   13 12 40 SUBI,  14 13 0 LDR,  14 5 CMP,  C-NE snomag BCOND,     \ x13 = 40-byte trailer base? else cold boot
+   13 12 40 SUBI,  14 13 0 LDR,  14 5 CMP,  C-NE snbad BCOND,       \ authenticated snapshot payload without magic is corrupt
    snbadver B,                                                     \ legacy v0 cannot carry owner roles
    snnew LBL,
       14 13 40 LDR,                                                \ x14 = image format version
       5 SNAP-FORMAT-VERSION MOVZ,  14 5 CMP,  C-NE snbadver BCOND,
    snhave LBL,
       12 13 0 ADDI,                                                \ x12 = resolved trailer base
-   5 IMAGE-TEXT-CONTENT-ADJ LIT64,  11 11 5 SUB,
    21 12 8 LDR,                                     \ x21 = snapshot-time text base
    15 12 16 LDR,                                    \ x15 = ndict
    6 12 24 LDR,                                     \ x6 = region payload len
    7 12 32 LDR,                                     \ x7 = data payload len
    \ corrupt/truncated trailer must never smear the regions: exit 79
    5 REGION LIT64,  6 5 CMP,  C-GT snbad BCOND,
+   5 DICT-SIZE LIT64,  6 5 CMP,  C-LT snbad BCOND,
    5 DATA-SIZE LIT64,  7 5 CMP,  C-GT snbad BCOND,
    5 DICT-CAP MOVZ,  15 5 CMP,  C-GT snbad BCOND,
    SP SP 64 SUBI,

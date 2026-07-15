@@ -115,6 +115,11 @@ variable RUN-CODE
    OWNER-WID-DOCTOR:SNAP-OLD$ 80 s" hb: snapshot format version unsupported" ASSERT-BAD
    OWNER-WID-DOCTOR:SNAP-BAD$ 79 s" hb: snapshot trailer corrupt" ASSERT-BAD
    OWNER-WID-DOCTOR:SNAP-MAL$ 79 s" hb: snapshot trailer corrupt" ASSERT-BAD
+   OWNER-WID-DOCTOR:SNAP-MAG$ 79 s" hb: snapshot trailer corrupt" ASSERT-BAD
+   OWNER-WID-DOCTOR:SNAP-WID1$ 79 s" hb: snapshot trailer corrupt" ASSERT-BAD
+   OWNER-WID-DOCTOR:SNAP-WID2$ 79 s" hb: snapshot trailer corrupt" ASSERT-BAD
+   OWNER-WID-DOCTOR:SNAP-DUP$ 79 s" hb: snapshot trailer corrupt" ASSERT-BAD
+   OWNER-WID-DOCTOR:SNAP-PTR$ 79 s" hb: snapshot trailer corrupt" ASSERT-BAD
    OWNER-WID-IMAGE:AOT-HB$ s" test/owner-wid-build-forge.f" RUN-FILE 70 T=
    ERR$ s" SET" CONTAINS? TTRUE ;
 

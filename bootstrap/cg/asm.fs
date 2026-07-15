@@ -185,6 +185,10 @@ CHECKING-ON? off
 
 : ENC-STRW ( i -- )  >r $B9000000 r@ IC-A or r@ IC-B 5 lshift or r> IC-C ?SC4 10 lshift or EMITW ;
 
+: ENC-LDAR ( i -- )  >r $C8DFFC00 r@ IC-A or r> IC-B 5 lshift or EMITW ;
+
+: ENC-STLR ( i -- )  >r $C89FFC00 r@ IC-A or r> IC-B 5 lshift or EMITW ;
+
 : ENC-LDRPO ( i -- )  >r $F8400400 r@ IC-A or r@ IC-B 5 lshift or r> IC-C ?IMM9 12 lshift or EMITW ;
 
 : ENC-STRPR ( i -- )  >r $F8000C00 r@ IC-A or r@ IC-B 5 lshift or r> IC-C ?IMM9 12 lshift or EMITW ;
@@ -312,6 +316,7 @@ INIT-TABLES
 ' ENC-NONE IOP-LABEL ENC!  ' ENC-NONE IOP-DEAD ENC!
 ' ENC-BYTES IOP-BYTES ENC!  ' ENC-DCQ IOP-DCQ ENC!  ' ENC-DLBL IOP-DLBL ENC!
 ' ENC-LDRW IOP-LDRW ENC!    ' ENC-STRW IOP-STRW ENC!
+' ENC-LDAR IOP-LDAR ENC!    ' ENC-STLR IOP-STLR ENC!
 ' LENLIT IOP-LIT LEN!    ' LEN0 IOP-LABEL LEN!    ' LEN0 IOP-DEAD LEN!
 ' LEN-BYTES IOP-BYTES LEN!   ' LEN-DCQ IOP-DCQ LEN!   ' LEN-DLBL IOP-DLBL LEN!
 

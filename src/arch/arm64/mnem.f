@@ -68,6 +68,10 @@
 
 : STRW, ( n n n -- )  ENC-STRW EMITW ;
 
+: LDAR, ( n n -- )  ENC-LDAR EMITW ;
+
+: STLR, ( n n -- )  ENC-STLR EMITW ;
+
 : SVC, ( n -- )  ENC-SVC EMITW ;
 
 : RET, ( -- ) ENC-RET EMITW ;

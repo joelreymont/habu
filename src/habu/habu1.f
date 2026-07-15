@@ -2086,7 +2086,8 @@ public
    9 G-POP
    LPROTWIDQ LABEL@ BL,
    13 done CBNZ,
-   14 DATA PROT-WID-N-CELL LDR,
+   15 PROT-WID-N-CELL MOVZ,  15 DATA 15 ADD,
+   14 15 LDAR,
    14 PROT-WID-MAX CMPI,  C-LT room BCOND,
       0 2 MOVZ,  1 msg ADR,  2 28 MOVZ,  NR-WRITE SYS,    \ registry full: name the cap on fd 2 before exit 84
       0 ENGINE-ERROR:SEAL-PACKAGE MOVZ,  NR-EXIT-GROUP SYS,
@@ -2094,8 +2095,10 @@ public
    room LBL,
    15 PROT-WID-OFF MOVZ,  15 DATA 15 ADD,
    16 14 2 LSLI,  15 15 16 ADD,
-   9 15 0 STRW,
-   14 14 1 ADDI,  14 DATA PROT-WID-N-CELL STR,
+   9 15 0 STRW,                                      \ initialize row before release-publishing count
+   14 14 1 ADDI,
+   15 PROT-WID-N-CELL MOVZ,  15 DATA 15 ADD,
+   14 15 STLR,
    done LBL, ;
 
 : BSWL ( -- )
@@ -2887,16 +2890,13 @@ variable RESTORE-XT
 0 PROOF-XT !
 0 RESTORE-XT !
 
-$C8DFFCA6 constant W-COUNT-LDAR
-$C89FFCA6 constant W-COUNT-STLR
-
 : COUNT@, ( -- )
    5 OWNER-WID-N-CELL MOVZ,  5 DATA 5 ADD,
-   W-COUNT-LDAR EMITW ;
+   6 5 LDAR, ;
 
 : COUNT!, ( -- )
    5 OWNER-WID-N-CELL MOVZ,  5 DATA 5 ADD,
-   W-COUNT-STLR EMITW ;
+   6 5 STLR, ;
 
 : SCAN-INIT ( -- )
    13 0 MOVZ,
