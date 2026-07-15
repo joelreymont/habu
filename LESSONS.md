@@ -4555,3 +4555,19 @@ unchanged (148855). Keys for milestone 2:
   compiler scratch files. Reset the child pool, give each worker its own gate
   root, and keep cache-sharing fixtures in one worker; AOT coverage then fell
   from 44 seconds to about 30 seconds without duplicate cold maker builds.
+- Type-family names obey package public/private exactly like words. To let an
+  external package name a family as `PKG:name` in signatures/locals, declare the
+  `TYPEFAMILY` in the package's `public` section (precedent: lib/cad-num-types.f;
+  visibility is captured from `CHECKER-PACKAGE-MODE` at declaration, sumtype.f
+  `TDECL-VIS`). `EXPORT` does NOT apply to family names - they are checker
+  type-registry entries, not dictionary words with an xt, so there is nothing to
+  re-export. A `private`-section family resolves ONLY from inside its own package
+  (own private rows in `TFAM-QUAL-RESOLVE`), which is why an in-package test can
+  write `NOM:path` while an outside consumer cannot. Moving lib/nominal's
+  row/path/binding TYPEFAMILY lines from `private` to `public` let src/cad/effect.f
+  name `NOM:row` directly and deleted two no-op `TRUSTED:` brand casts
+  (ROW>EFF/EFF>ROW) plus their manifest rows - the family stays fail-closed
+  (raw `n` where `NOM:row` is expected still rejects), so publishing the NAME cost
+  no soundness. Ordering gotcha: the family must be declared before the private
+  mint/erase `TRUSTED:` words that reference it, so open the package with the
+  `public` TYPEFAMILY first, then switch to `private` for the arena/mints.

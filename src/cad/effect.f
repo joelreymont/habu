@@ -10,15 +10,14 @@
 \ lib/nominal/ (dot habu-add-immutable-nominal-9290a81f) and are CONSUMED through
 \ its public package NOM API, never reimplemented.
 \
-\ The public row type. NOM publishes its handle VALUES through its public API but
-\ declares the `path` / `binding` / `row` type NAMES in package NOM's private
-\ section, so no external signature can name a `row`. `effect-row` is CAD-EFFECT's
-\ public, nameable brand for a published NOM row; the two audited identity casts
-\ NOM:ROW>EFF / NOM:EFF>ROW are the ONLY words that name `row`, and they can only
-\ be written inside a package NOM reopen where that private type is in scope. They
-\ are no-op representation casts (a row and an effect-row are the same one-cell
-\ handle) the checker cannot infer across type families. Retire them when the
-\ substrate exports its handle type names publicly.
+\ The public row type is NOM's own `NOM:row`. lib/nominal declares its handle
+\ families (`NOM:path` / `NOM:binding` / `NOM:row`) in package NOM's PUBLIC
+\ section (dot habu-export-public-nom-20170121), so this file names `NOM:row`
+\ directly in every signature that carries a published row and consumes/produces
+\ it through NOM's public API with no branding cast. There is no separate
+\ effect-row brand and no row<->effect-row bridge: a CAD effect row IS a NOM row
+\ whose bindings encode the effect vocabulary below, and VALIDATE / CE-SCAN-ROW
+\ enforce that encoding whenever a row crosses back in from the wire.
 \
 \ Encoding. A binding's identity key is (atom, site-path, slot-kind, slot-index).
 \ It is projected into NOM's (path, slot) map so equal keys collapse and any
@@ -55,18 +54,6 @@
 require lib/memory.f
 require lib/nominal/snapshot.f
 require src/cad/effect-types.f
-
-\ ---- CAD-EFFECT's public, nameable brand for a published NOM row --------------
-TYPEFAMILY effect-row 0
-
-\ ---- the row<->effect-row bridge (the only site that can name NOM's `row`) -----
-\ Placed in a package NOM reopen solely because `row` is package-private there;
-\ owned by src/cad/effect.f. No-op identity casts audited in TRUSTED.md.
-package NOM
-public
-TRUSTED: ROW>EFF ( row -- effect-row ) ;    \ brand a published NOM row as a CAD effect row
-TRUSTED: EFF>ROW ( effect-row -- row ) ;    \ unbrand for a NOM row operation
-;package
 
 package CAD-EFFECT
 private
@@ -108,34 +95,31 @@ public
    NOM:ADD
    CE-INSERTS @ 1+ CE-INSERTS ! ;
 
-: FREEZE ( nom-builder -- effect-row )
-   NOM:FREEZE NOM:ROW>EFF {: r:effect-row :}
+: FREEZE ( nom-builder -- NOM:row )
+   NOM:FREEZE {: r:NOM:row :}
    CE-INSERTS @ {: n:n :}
    0 CE-INSERTS !
-   r NOM:EFF>ROW NOM:SIZE n < if E-CADEFF-DUPLICATE throw then   \ collapsed count == direct duplicate
+   r NOM:SIZE n < if E-CADEFF-DUPLICATE throw then   \ collapsed count == direct duplicate
    r ;
 
 : ROLLBACK ( nom-builder -- )
    0 CE-INSERTS !  NOM:ROLLBACK ;
 
 \ ---- the unique canonical empty row --------------------------------------------
-: PURE ( -- effect-row )   NEW FREEZE ;
+: PURE ( -- NOM:row )   NEW FREEZE ;
 
 \ ---- canonical composition -----------------------------------------------------
-: UNION ( effect-row effect-row -- effect-row )
-   NOM:EFF>ROW swap NOM:EFF>ROW swap NOM:UNION NOM:ROW>EFF ;
+: UNION ( NOM:row NOM:row -- NOM:row )   NOM:UNION ;
 
-: REMAP ( effect-row n -- effect-row ) {: s:n :}
+: REMAP ( NOM:row n -- NOM:row ) {: s:n :}
    s 0 < s CE-VAL-MASK > or if E-CADEFF-SITE throw then    \ out-of-range site ordinal
-   NOM:EFF>ROW  CE-SITE-TAG s CE-SEG  NOM:REMAP  NOM:ROW>EFF ;
+   CE-SITE-TAG s CE-SEG  NOM:REMAP ;
 
 \ ---- canonical identity / serialization (delegated; content-defined) -----------
-: EQUAL? ( effect-row effect-row -- bool )
-   NOM:EFF>ROW swap NOM:EFF>ROW swap NOM:EQUAL? ;
-: SIZE ( effect-row -- n )              NOM:EFF>ROW NOM:SIZE ;
-: KEY ( effect-row ptr u8 -- )          swap NOM:EFF>ROW swap NOM:KEY ;
-: ENCODE ( effect-row ptr u8 n -- n ) {: cap:n :}
-   swap NOM:EFF>ROW swap cap NOM:ENCODE ;
+: EQUAL? ( NOM:row NOM:row -- bool )    NOM:EQUAL? ;
+: SIZE ( NOM:row -- n )                 NOM:SIZE ;
+: KEY ( NOM:row ptr u8 -- )             NOM:KEY ;
+: ENCODE ( NOM:row ptr u8 n -- n )      NOM:ENCODE ;
 : SNAPSHOT ( ptr u8 n -- n )            NOM:SNAPSHOT ;
 : RESTORE ( ptr u8 n -- n )             NOM:RESTORE ;
 : RESET ( -- )                          0 CE-INSERTS !  NOM:RESET ;
@@ -192,9 +176,8 @@ variable CE-B-ATOM  variable CE-B-KIND  variable CE-B-INDEX
    acode CE-B-ATOM !  kcode CE-B-KIND !  idx CE-B-INDEX !
    1 acode lshift CE-MASK @ or CE-MASK ! ;
 
-: CE-SCAN-ROW ( effect-row -- n )        \ encode + parse; returns the atom-presence mask
+: CE-SCAN-ROW ( NOM:row -- n )        \ encode + parse; returns the atom-presence mask
    CE-WIRE-ENSURE
-   NOM:EFF>ROW
    CE-WIRE-P 0 ptr-field @ CE-WIRE-CAP @ NOM:ENCODE CE-WLEN !
    0 CE-WPOS !  0 CE-MASK !
    CE-WCELL@ {: cnt:n :}
@@ -224,18 +207,18 @@ variable CE-CMT-A  variable CE-CMT-B  variable CE-CMT-OK
 public
 
 \ ---- effect-row well-formedness + row-level truth tables ----------------------
-: VALIDATE ( effect-row -- effect-row )  \ reject unless every binding is a valid effect binding
+: VALIDATE ( NOM:row -- NOM:row )  \ reject unless every binding is a valid effect binding
    dup CE-SCAN-ROW drop ;
 
-: DECODE ( ptr u8 n -- effect-row )   NOM:DECODE NOM:ROW>EFF VALIDATE ;
+: DECODE ( ptr u8 n -- NOM:row )   NOM:DECODE VALIDATE ;
 
-: ROW-BARRIER? ( effect-row -- bool )   \ any effectful atom present
+: ROW-BARRIER? ( NOM:row -- bool )   \ any effectful atom present
    CE-SCAN-ROW CE-EFFECTFUL-MASK and 0= 0= ;
-: ROW-DUP-OK? ( effect-row -- bool )    \ only duplicable atoms (empty row => true)
+: ROW-DUP-OK? ( NOM:row -- bool )    \ only duplicable atoms (empty row => true)
    CE-SCAN-ROW CE-EFFECTFUL-MASK and 0= ;
-: ROW-CACHEABLE? ( effect-row -- bool ) \ only cacheable atoms (empty row => true)
+: ROW-CACHEABLE? ( NOM:row -- bool ) \ only cacheable atoms (empty row => true)
    CE-SCAN-ROW CE-EFFECTFUL-MASK and 0= ;
-: ROWS-COMMUTE? ( effect-row effect-row -- bool )
+: ROWS-COMMUTE? ( NOM:row NOM:row -- bool )
    CE-SCAN-ROW {: mb:n :}
    CE-SCAN-ROW {: ma:n :}
    ma mb CE-MASK-COMMUTE? ;

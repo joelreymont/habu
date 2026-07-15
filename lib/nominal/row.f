@@ -22,6 +22,13 @@ require lib/nominal/codec.f
 64 constant NOM-HT-SEED                      \ initial row-intern table slots (power of two)
 
 package NOM
+public
+
+\ The published opaque nominal row handle. External consumers (src/cad/effect.f)
+\ name NOM:row directly in signatures (dot habu-export-public-nom-20170121). The
+\ record index and the audited mint/erase boundary stay private below.
+TYPEFAMILY row 0
+
 private
 
 create NOM-ROW-AR 4 cells allot             \ row r -> cells [6r]=start [6r+1]=count [6r+2..5]=digest
@@ -29,7 +36,6 @@ PTR-VARIABLE NOM-HT-A                         \ row-intern hash table (digest ->
 variable NOM-HT-CAP  variable NOM-HT-USED
 variable HT-I
 
-TYPEFAMILY row 0
 TRUSTED: MINT-ROW ( n -- row ) ;             \ audited record-index -> handle boundary
 TRUSTED: ROW-IDX ( row -- n ) ;              \ proof-erasure: handle -> record index
 

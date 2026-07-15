@@ -24,24 +24,24 @@ package CAD-EFFECT
 private
 
 \ ---- fixture rows --------------------------------------------------------------
-: CET-WB ( -- effect-row )                     \ weight + bias, both parameter-read
+: CET-WB ( -- NOM:row )                     \ weight + bias, both parameter-read
    NEW PARAM-READ OPERAND 0 EMIT PARAM-READ OPERAND 1 EMIT FREEZE ;
-: CET-WB-REV ( -- effect-row )                 \ same content, reversed insertion order
+: CET-WB-REV ( -- NOM:row )                 \ same content, reversed insertion order
    NEW PARAM-READ OPERAND 1 EMIT PARAM-READ OPERAND 0 EMIT FREEZE ;
-: CET-SA ( -- effect-row )                     \ state-write + atomic sharing operand slot 0
+: CET-SA ( -- NOM:row )                     \ state-write + atomic sharing operand slot 0
    NEW STATE-WRITE OPERAND 0 EMIT ATOMIC OPERAND 0 EMIT FREEZE ;
-: CET-SW3 ( -- effect-row )                    \ single state-write at attribute slot 3
+: CET-SW3 ( -- NOM:row )                    \ single state-write at attribute slot 3
    NEW STATE-WRITE ATTRIBUTE 3 EMIT FREEZE ;
-: CET-SW4 ( -- effect-row )                    \ differs only in slot index
+: CET-SW4 ( -- NOM:row )                    \ differs only in slot index
    NEW STATE-WRITE ATTRIBUTE 4 EMIT FREEZE ;
-: CET-SC ( -- effect-row )                     \ single random at capability slot 0
+: CET-SC ( -- NOM:row )                     \ single random at capability slot 0
    NEW RANDOM CAPABILITY 0 EMIT FREEZE ;
 
 \ ---- boundary inputs the public API never constructs ---------------------------
-: CET-STALE ( -- effect-row )                  \ a live handle then RESET => a stale record index
+: CET-STALE ( -- NOM:row )                  \ a live handle then RESET => a stale record index
    CET-SW3 RESET ;
-: CET-FOREIGN ( -- effect-row )                \ a valid NOM row that is not a valid effect row
-   NOM:NEW NOM:ROOT 42 NOM:CONS 0 NOM:BIND NOM:ADD NOM:FREEZE NOM:ROW>EFF ;
+: CET-FOREIGN ( -- NOM:row )                \ a valid NOM row that is not a valid effect row
+   NOM:NEW NOM:ROOT 42 NOM:CONS 0 NOM:BIND NOM:ADD NOM:FREEZE ;
 
 \ ---- atom enumeration (test-side code -> effect-atom) --------------------------
 : CET-ATOM ( n -- effect-atom )
@@ -175,15 +175,15 @@ variable CET-CMT-A
 \ ============================================================================
 \ Rejection matrix: each rejects transactionally with a typed diagnostic.
 \ ----------------------------------------------------------------------------
-: CET-DUP-INSERT ( -- effect-row )                 \ same binding EMITted twice
+: CET-DUP-INSERT ( -- NOM:row )                 \ same binding EMITted twice
    NEW STATE-WRITE OPERAND 0 EMIT STATE-WRITE OPERAND 0 EMIT FREEZE ;
-: CET-EMIT-PURE ( -- effect-row )                  \ the pure atom is not a binding
+: CET-EMIT-PURE ( -- NOM:row )                  \ the pure atom is not a binding
    NEW PURE-ATOM OPERAND 0 EMIT FREEZE ;
-: CET-EMIT-NEGIDX ( -- effect-row )
+: CET-EMIT-NEGIDX ( -- NOM:row )
    NEW STATE-WRITE OPERAND -1 EMIT FREEZE ;
-: CET-EMIT-BIGIDX ( -- effect-row )            \ index above the 56-bit tagged-segment range
+: CET-EMIT-BIGIDX ( -- NOM:row )            \ index above the 56-bit tagged-segment range
    NEW STATE-WRITE OPERAND $0100000000000000 EMIT FREEZE ;
-: CET-BUDGET ( -- effect-row )
+: CET-BUDGET ( -- NOM:row )
    2 NOM:BUDGET!
    NEW STATE-WRITE OPERAND 0 EMIT STATE-WRITE OPERAND 1 EMIT STATE-WRITE OPERAND 2 EMIT FREEZE ;
 : CET-DBLOPEN ( -- n )   NEW [: NEW ROLLBACK ;] catch swap ROLLBACK ;
@@ -219,7 +219,7 @@ variable CET-CMT-A
 : CET-STATIC ( -- )
    s" CET-OK-DUP ( CAD-EFFECT:effect-atom -- bool ) CAD-EFFECT:DUP-OK?"
       CHECK-QUIET-CANDIDATE! -1 T=
-   s" CET-OK-ROW ( effect-row -- n ) CAD-EFFECT:SIZE"
+   s" CET-OK-ROW ( NOM:row -- n ) CAD-EFFECT:SIZE"
       CHECK-QUIET-CANDIDATE! -1 T=
    s" CET-BAD-RAW-ATOM ( n -- bool ) CAD-EFFECT:DUP-OK?"
       CHECK-QUIET-CANDIDATE! 0 T=

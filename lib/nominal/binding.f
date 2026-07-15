@@ -16,6 +16,13 @@
 require lib/nominal/path.f
 
 package NOM
+public
+
+\ The published opaque nominal binding handle. External consumers name
+\ NOM:binding directly in signatures (dot habu-export-public-nom-20170121). The
+\ pool index and the audited mint/erase boundary stay private below.
+TYPEFAMILY binding 0
+
 private
 
 create NOM-BIND-AR 4 cells allot           \ binding i -> cells [2i]=path-index [2i+1]=slot
@@ -25,7 +32,6 @@ variable MRG-SA  variable MRG-CA
 variable MRG-SB  variable MRG-CB
 variable MRG-I   variable MRG-J
 
-TYPEFAMILY binding 0
 TRUSTED: MINT-BINDING ( n -- binding ) ;    \ audited pool-index -> handle boundary
 TRUSTED: BIND-IDX ( binding -- n ) ;        \ proof-erasure: handle -> pool index
 

@@ -57,16 +57,16 @@ private
 : EP-ADD ( nom-builder n -- nom-builder ) {: k:n :}   \ EMIT binding k
    k EP-AC@ EP-ATOM  k EP-KC@ EP-KIND  k EP-IX@  EMIT ;
 
-: EP-FWD ( n -- effect-row ) {: m:n :}
+: EP-FWD ( n -- NOM:row ) {: m:n :}
    NEW m 0 do i EP-ADD loop FREEZE ;
-: EP-REV ( n -- effect-row ) {: m:n :}
+: EP-REV ( n -- NOM:row ) {: m:n :}
    NEW m 0 do m 1- i - EP-ADD loop FREEZE ;
-: EP-HALF ( n n -- effect-row ) {: lo:n hi:n :}
+: EP-HALF ( n n -- NOM:row ) {: lo:n hi:n :}
    NEW hi lo do i EP-ADD loop FREEZE ;
 
 create EP-BUF 65536 allot
 : EP-CODEC? ( n -- bool ) {: m:n :}
-   m EP-FWD {: r:effect-row :}
+   m EP-FWD {: r:NOM:row :}
    r EP-BUF 65536 ENCODE  EP-BUF swap DECODE  r EQUAL? ;
 
 : EP-ONE ( n -- ) {: m:n :}                    \ one iteration over an m-binding set

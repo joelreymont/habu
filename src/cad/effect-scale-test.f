@@ -21,9 +21,9 @@ variable ES-T1  variable ES-T4
 package CAD-EFFECT
 private
 
-: ES-BUILD ( n n -- effect-row ) {: m:n base:n :}   \ m distinct state-write bindings from base
+: ES-BUILD ( n n -- NOM:row ) {: m:n base:n :}   \ m distinct state-write bindings from base
    NEW m 0 do STATE-WRITE OPERAND base i + EMIT loop FREEZE ;
-: ES-READS ( n -- effect-row ) {: m:n :}            \ m distinct parameter-read bindings
+: ES-READS ( n -- NOM:row ) {: m:n :}            \ m distinct parameter-read bindings
    NEW m 0 do PARAM-READ OPERAND i EMIT loop FREEZE ;
 
 : ES-TIME ( n -- n ) {: m:n :}                      \ ns to build+freeze m distinct bindings
@@ -35,12 +35,12 @@ private
 \ ---- functional scale: compose / remap / union / classify / snapshot / replay --
 : ES-FUNC ( -- )
    RESET
-   ES-N 0 ES-BUILD {: ra:effect-row :}
+   ES-N 0 ES-BUILD {: ra:NOM:row :}
    ra SIZE ES-N T=                                  \ 4096 distinct bindings in one row
    ra 7 REMAP SIZE ES-N T=                          \ REMAP preserves count at scale
    ra ROW-BARRIER? TTRUE                            \ a state-write row is a barrier at scale
    ra ROW-DUP-OK? TFALSE
-   ES-N 4096 ES-BUILD {: rb:effect-row :}           \ a disjoint second 4096-row (index base 4096)
+   ES-N 4096 ES-BUILD {: rb:NOM:row :}           \ a disjoint second 4096-row (index base 4096)
    ra rb UNION SIZE ES-N 2 * T=                     \ union of two disjoint 4096-rows -> 8192
    ES-N ES-READS ROW-DUP-OK? TTRUE                  \ a 4096 parameter-read row stays duplicable
    RESET

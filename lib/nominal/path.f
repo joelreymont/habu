@@ -21,6 +21,13 @@
 require lib/nominal/arena.f
 
 package NOM
+public
+
+\ The published opaque nominal path handle. External consumers name NOM:path
+\ directly in signatures (dot habu-export-public-nom-20170121). The node index
+\ and the audited mint/erase boundary stay private below.
+TYPEFAMILY path 0
+
 private
 
 create NOM-PATH-AR 4 cells allot          \ node i -> cells [2i]=atom [2i+1]=parent-index
@@ -29,7 +36,6 @@ create NOM-CMPB 4 cells allot              \ scratch: path B materialised leaf-f
 create NOM-RMP 4 cells allot              \ scratch: remap path-materialise
 variable RMP-K
 
-TYPEFAMILY path 0
 TRUSTED: MINT-PATH ( n -- path ) ;         \ audited node-index -> handle boundary
 TRUSTED: PATH-IDX ( path -- n ) ;          \ proof-erasure: handle -> node index
 
