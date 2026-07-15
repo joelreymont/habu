@@ -12,7 +12,7 @@
 \ producing calls / value-only if-else) and keeps a single trailing exit guard.
 
 require lib/string.f                         \ STR-DIGITS? / STR-DIGIT-VALUE / STR-MINUS / STR-PLUS
-require lib/adt/option.f                      \ option<idx> for FL-FIND-E (switchover wave A)
+require lib/adt/option.f                      \ option<CAD-NUM:index> for STR:INDEX-OF (switchover wave A)
 
 46 constant FL-DOT
 101 constant FL-E-LOWER
@@ -22,6 +22,16 @@ require lib/adt/option.f                      \ option<idx> for FL-FIND-E (switc
 variable FL-IX                              \ digit-loop index (leaf, single-threaded)
 variable FL-EXPV                            \ parsed exponent value
 variable FL-VALID                           \ exponent validity flag
+
+\ ---- pinned-raw residual: STR:INDEX-OF returns a checked option<CAD-NUM:index>,
+\ but the found position immediately drives raw pointer/length arithmetic
+\ (a+dpos, u-dpos, epos as a substring bound), so it is projected to a bare n
+\ through the existing private CAD-NUM INDEX>N (no new TRUSTED). Retire with
+\ TVK-RAW (habu-nominal-storage-raw-a3430ef2).
+package CAD-NUM
+public
+: FL-IX>N ( CAD-NUM:index -- n ) INDEX>N ;
+;package
 
 \ ---- powers of ten --------------------------------------------------------
 : POW10+ ( n -- r ) {: k :}                 \ 10^k for k >= 0, iterative
@@ -56,9 +66,9 @@ variable FL-VALID                           \ exponent validity flag
    a c@ STR-MINUS = if a 1+ u 1- 0 0= exit then
    a c@ STR-PLUS  = if a 1+ u 1- 0 0= 0= exit then
    a u 0 0= 0= ;
-: FL-FIND-E ( ptr u8 n -- option<idx> ) {: a:ptr u:n :}   \ SOME index of e/E, else NONE
-   a u FL-E-LOWER INDEX-OF MATCH option
-     none OF a u FL-E-UPPER INDEX-OF ENDOF
+: FL-FIND-E ( ptr u8 n -- option<CAD-NUM:index> ) {: a:ptr u:n :}   \ SOME index of e/E, else NONE
+   a u STR:LENGTH FL-E-LOWER STR:INDEX-OF MATCH option
+     none OF a u STR:LENGTH FL-E-UPPER STR:INDEX-OF ENDOF
      some OF OPTION:SOME ENDOF
    ;MATCH ;
 
@@ -66,9 +76,9 @@ variable FL-VALID                           \ exponent validity flag
 \ Split the mantissa at the dot, parse both halves, combine. Requires at least
 \ one digit across the two halves, so "" and "." are rejected.
 : FL-SIG ( ptr u8 n -- option<r> ) {: a:ptr u:n :}   \ SOME significand, NONE if no digits / bad
-   a u FL-DOT INDEX-OF MATCH option                   \ split at the dot: ilen fa flen
+   a u STR:LENGTH FL-DOT STR:INDEX-OF MATCH option    \ split at the dot: ilen fa flen
      none OF u  a u +  0 ENDOF                        \ no dot: int = whole string, empty fraction
-     some OF IDX>N {: dpos:n :} dpos  a dpos 1+ +  u dpos 1+ - ENDOF
+     some OF CAD-NUM:FL-IX>N {: dpos:n :} dpos  a dpos 1+ +  u dpos 1+ - ENDOF
    ;MATCH {: ilen:n fa:ptr flen:n :}
    ilen flen + 0= if OPTION:NONE exit then       \ no digits at all: "" and "." rejected
    a ilen FL-DIGITS>F MATCH option
@@ -93,7 +103,7 @@ variable FL-VALID                           \ exponent validity flag
 : FL-PARSE-EXP ( ptr u8 n -- n ) {: a:ptr u:n :}
    a u FL-FIND-E MATCH option
      none OF 0 FL-EXPV ! u ENDOF                    \ no exponent: exp 0, mantissa = whole string
-     some OF IDX>N {: epos:n :} a u epos FL-EXP-AT ENDOF
+     some OF CAD-NUM:FL-IX>N {: epos:n :} a u epos FL-EXP-AT ENDOF
    ;MATCH ;
 
 \ ---- public entry ---------------------------------------------------------

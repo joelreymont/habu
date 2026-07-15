@@ -22,6 +22,17 @@ variable PROC-ENV-DEF-OFF
 variable PROC-ENV-DEF-TABLE-A
 variable PROC-ENV-DEF-BUF-A
 
+\ pinned-raw residuals: STR:SPLIT-NEXT returns a checked CAD-NUM:byte-len field
+\ length and CAD-NUM:byte-off cursor, but the PATH scan feeds them back through
+\ the raw >LEN/>OFF cells and PROC-TRY-PATH-SEG, so each is projected to a bare n
+\ through the existing private CAD-NUM BYTE-LEN>N / BYTE-OFF>N (no new TRUSTED).
+\ Retire with TVK-RAW (habu-nominal-storage-raw-a3430ef2).
+package CAD-NUM
+public
+: PROC-BL>N ( CAD-NUM:byte-len -- n ) BYTE-LEN>N ;
+: PROC-BO>N ( CAD-NUM:byte-off -- n ) BYTE-OFF>N ;
+;package
+
 : PROC-ENV-TABLE-A-FIELD ( -- ptr ptr a )
    PROC-ENV-TABLE-A 0 ptr-field ;
 
@@ -346,7 +357,7 @@ variable PROC-ENV-DEF-BUF-A
    PROC-CAPTURE-FINISH-OUTCOME ;
 
 : PROC-HAS-SLASH? ( ptr u8 len -- bool )
-   LEN>N PROC-PATH-SLASH INDEX-OF MATCH option
+   LEN>N STR:LENGTH PROC-PATH-SLASH STR:INDEX-OF MATCH option
      none OF PROC-ENV-FALSE ENDOF
      some OF drop PROC-ENV-TRUE ENDOF
    ;MATCH ;
@@ -383,9 +394,9 @@ variable PROC-ENV-DEF-BUF-A
       OPTION:NONE exit
    then
    0 >OFF PROC-PATH-I !
-   begin path pathu LEN>N PROC-PATH-SEP PROC-PATH-I @ OFF>N SPLIT-NEXT while
-      >OFF PROC-PATH-I !
-      >LEN cmd cmdu dst PROC-TRY-PATH-SEG MATCH option
+   begin path pathu LEN>N STR:LENGTH PROC-PATH-SEP PROC-PATH-I @ OFF>N STR:OFFSET STR:SPLIT-NEXT while
+      CAD-NUM:PROC-BO>N >OFF PROC-PATH-I !
+      CAD-NUM:PROC-BL>N >LEN cmd cmdu dst PROC-TRY-PATH-SEG MATCH option
         none OF ENDOF                              \ segment miss: try the next one
         some OF OPTION:SOME exit ENDOF              \ resolved: re-wrap and return
       ;MATCH

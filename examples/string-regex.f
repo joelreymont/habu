@@ -11,13 +11,22 @@ $7A constant SRE-Z
 
 create SRE-RX SRE-RX-CAP allot
 
+\ pinned-raw residual: STR:INDEX-OF returns a checked option<CAD-NUM:index>, but
+\ the dash position drives raw pointer/length arithmetic (a+ix+1, u-ix-1), so it
+\ is projected to a bare n through the existing private CAD-NUM INDEX>N (no new
+\ TRUSTED). Retire with TVK-RAW (habu-nominal-storage-raw-a3430ef2).
+package CAD-NUM
+public
+: SRE-IX>N ( CAD-NUM:index -- n ) INDEX>N ;
+;package
+
 : SRE-RX-PTR ( -- ptr u8 )
    SRE-RX ;
 
 : SRE-SUFFIX-NUMBER ( ptr u8 n -- option<n> ) {: a:ptr u:n :}
-   a u SRE-DASH INDEX-OF MATCH option
+   a u STR:LENGTH SRE-DASH STR:INDEX-OF MATCH option
      none OF OPTION:NONE exit ENDOF
-     some OF IDX>N ENDOF
+     some OF CAD-NUM:SRE-IX>N ENDOF
    ;MATCH {: ix:n :}
    a ix 1 + + u ix 1 + - STR>NUMBER? ;
 

@@ -38,12 +38,12 @@ require lib/float.f
    s" -"      T-FL-BAD
    s" 1.2e3x" T-FL-BAD ;
 
-\ --- switchover wave A: FL-FIND-E now returns option<idx> (SOME index of e/E,
-\ else NONE) and FL-PARSE-EXP MATCHes it. Test both words directly.
+\ --- switchover wave A: FL-FIND-E now returns option<CAD-NUM:index> (SOME index
+\ of e/E, else NONE) and FL-PARSE-EXP MATCHes it. Test both words directly.
 : T-FE ( ptr u8 n n -- ) {: want:n :}               \ FL-FIND-E: some idx -> want, none -> -1
    FL-FIND-E MATCH option
      none OF -1 ENDOF
-     some OF IDX>N ENDOF
+     some OF CAD-NUM:FL-IX>N ENDOF
    ;MATCH  want T= ;
 : FL-RUN-EXP ( -- )
    \ FL-FIND-E: found -> SOME(index of e/E); absent -> NONE.

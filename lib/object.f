@@ -10,6 +10,17 @@ require lib/memory.f
 require lib/fs.f
 require lib/content-key.f
 
+\ pinned-raw residuals: STR:SPLIT-NEXT returns a checked CAD-NUM:byte-len line
+\ length and CAD-NUM:byte-off cursor, but NEXT-LINE feeds the cursor back through
+\ the raw LOAD-OFF cell and returns the raw line length, so each is projected to
+\ a bare n through the existing private CAD-NUM BYTE-LEN>N / BYTE-OFF>N (no new
+\ TRUSTED). Retire with TVK-RAW (habu-nominal-storage-raw-a3430ef2).
+package CAD-NUM
+public
+: OBJ-BL>N ( CAD-NUM:byte-len -- n ) BYTE-LEN>N ;
+: OBJ-BO>N ( CAD-NUM:byte-off -- n ) BYTE-OFF>N ;
+;package
+
 package OBJ
 
 $40000 constant CAP
@@ -277,7 +288,8 @@ variable LOAD-OFF
    E-OBJ-SCHEMA throw ;
 
 : NEXT-LINE ( ptr u8 n -- ptr u8 n bool ) {: a:ptr u:n :}
-   a u LF LOAD-OFF @ SPLIT-NEXT >r LOAD-OFF ! r> ;
+   a u STR:LENGTH LF LOAD-OFF @ STR:OFFSET STR:SPLIT-NEXT >r
+   CAD-NUM:OBJ-BO>N LOAD-OFF ! CAD-NUM:OBJ-BL>N r> ;
 
 : MAGIC-LINE ( ptr u8 n -- ) {: a:ptr u:n :}
    a u s" HBOBJ	1" STR= 0= if E-OBJ-SCHEMA throw then ;

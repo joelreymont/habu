@@ -748,6 +748,8 @@ schema_version	module	file	kind	word	effect	test	doc	owner	status	notes
 1	process-env	lib/process-env.f	word	FIND-EXECUTABLE-IN-PATH	(ptr u8 len ptr u8 len ptr u8 -- option<len>)	lib/process-env-test.f	docs/stdlib.md	stdlib-process	published	resolve a command against an explicit PATH byte string: SOME resolved length in caller storage, else NONE
 1	process-env	lib/process-env.f	word	FIND-EXECUTABLE	(ptr u8 len ptr u8 -- option<len>)	lib/process-env-test.f	docs/stdlib.md	stdlib-process	published	resolve a command against the current process PATH: SOME resolved length, else NONE
 1	process-env	lib/process-env.f	word	RESOLVE-EXECUTABLE	(ptr u8 len ptr u8 -- len)	lib/process-env-test.f	docs/stdlib.md	stdlib-process	published	resolve a command or throw E-PROC-PATH when lookup fails
+1	process-env	lib/process-env.f	word	CAD-NUM:PROC-BL>N	(CAD-NUM:byte-len -- n)	lib/process-env-test.f	docs/stdlib.md	stdlib-process	active	pinned-raw residual bridge: project a STR:SPLIT-NEXT PATH field length to a bare n; retire with TVK-RAW
+1	process-env	lib/process-env.f	word	CAD-NUM:PROC-BO>N	(CAD-NUM:byte-off -- n)	lib/process-env-test.f	docs/stdlib.md	stdlib-process	active	pinned-raw residual bridge: project a STR:SPLIT-NEXT PATH cursor offset to a bare n; retire with TVK-RAW
 1	process-command	lib/process-command.f	module			lib/process-command-test.f	docs/stdlib.md	stdlib-process	active	checked command-owned argv env stdin capture and outcome runner
 1	process-command	lib/process-command.f	word	PROC-CMD-CAPTURE-RESET	(--)	lib/process-command-test.f	docs/stdlib.md	stdlib-process	active	clear stored command capture lengths outcome and rc
 1	process-command	lib/process-command.f	word	PROC-CMD-RESET	(--)	lib/process-command-test.f	docs/stdlib.md	stdlib-process	published	clear command-owned argv env stdin capture and lower-level process state
@@ -1149,6 +1151,8 @@ schema_version	module	file	kind	word	effect	test	doc	owner	status	notes
 1	object	lib/object.f	word	OBJ:ROW-FIELD$	(n n -- ptr u8 n)	lib/object-test.f	docs/stdlib.md	stdlib-object	published	return one validated object row field by row and field indexes
 1	object	lib/object.f	word	OBJ:LOAD	(ptr u8 n --)	lib/object-test.f	docs/stdlib.md	stdlib-object	published	validate and restore serialized canonical object bytes
 1	object	lib/object.f	word	OBJ:KEY-HEX	(ptr u8 --)	lib/object-test.f	docs/stdlib.md	stdlib-object	published	hash validated object bytes into a content-key hex digest
+1	object	lib/object.f	word	CAD-NUM:OBJ-BL>N	(CAD-NUM:byte-len -- n)	lib/object-test.f	docs/stdlib.md	stdlib-object	active	pinned-raw residual bridge: project a STR:SPLIT-NEXT line length to a bare n; retire with TVK-RAW
+1	object	lib/object.f	word	CAD-NUM:OBJ-BO>N	(CAD-NUM:byte-off -- n)	lib/object-test.f	docs/stdlib.md	stdlib-object	active	pinned-raw residual bridge: project a STR:SPLIT-NEXT cursor offset to a bare n; retire with TVK-RAW
 1	engine-id	lib/engine-id.f	module			lib/engine-id-test.f	docs/stdlib.md	stdlib-engine-id	active	engine self-identity kernel-resolved own executable path and lazy SHA-256 content key over bin/hb
 1	engine-id	lib/engine-id.f	word	EID-EXE-PREFIX$	(-- ptr u8 n)	lib/engine-id-test.f	docs/stdlib.md	stdlib-engine-id	active	the macOS apple[] executable_path field key prefix
 1	engine-id	lib/engine-id.f	word	ENGINE-SELF-PATH	(-- n)	lib/engine-id-test.f	docs/stdlib.md	stdlib-engine-id	active	resolve the running engine self executable path for the current target into the path buffer
@@ -1315,7 +1319,8 @@ schema_version	module	file	kind	word	effect	test	doc	owner	status	notes
 1	float	lib/float.f	word	POW10	(n -- r)	lib/float-test.f	docs/stdlib.md	stdlib-float	published	ten raised to a signed integer power
 1	float	lib/float.f	word	FL-DIGITS>F	(ptr u8 n -- option<r>)	lib/float-test.f	docs/stdlib.md	stdlib-float	published	parse an unsigned run of decimal digits: SOME value (empty -> SOME 0.0), else NONE
 1	float	lib/float.f	word	FL-STRIP-SIGN	(ptr u8 n -- ptr u8 n bool)	lib/float-test.f	docs/stdlib.md	stdlib-float	active	strip a leading sign, returning the rest and negativity
-1	float	lib/float.f	word	FL-FIND-E	(ptr u8 n -- option<idx>)	lib/float-test.f	docs/stdlib.md	stdlib-float	active	SOME index of the e/E exponent marker, else NONE
+1	float	lib/float.f	word	FL-FIND-E	(ptr u8 n -- option<CAD-NUM:index>)	lib/float-test.f	docs/stdlib.md	stdlib-float	active	SOME index of the e/E exponent marker, else NONE
+1	float	lib/float.f	word	CAD-NUM:FL-IX>N	(CAD-NUM:index -- n)	lib/float-test.f	docs/stdlib.md	stdlib-float	active	pinned-raw residual bridge: project a STR:INDEX-OF result index to a bare n for float pointer arithmetic; retire with TVK-RAW
 1	float	lib/float.f	word	FL-SIG	(ptr u8 n -- option<r>)	lib/float-test.f	docs/stdlib.md	stdlib-float	active	parse an unsigned significand with optional fraction: SOME value, else NONE
 1	float	lib/float.f	word	FL-EXP-AT	(ptr u8 n n -- n)	lib/float-test.f	docs/stdlib.md	stdlib-float	active	parse the exponent after a marker position, returning mantissa length
 1	float	lib/float.f	word	FL-PARSE-EXP	(ptr u8 n -- n)	lib/float-test.f	docs/stdlib.md	stdlib-float	active	parse any exponent suffix, returning mantissa length

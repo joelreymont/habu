@@ -64,6 +64,18 @@ create AD-TOK-LEN AD-MAX-TOK cells allot
 variable AD-TOK-N
 variable AD-START
 
+\ pinned-raw residuals: STR:SPLIT-NEXT returns a checked CAD-NUM:byte-len token
+\ length and CAD-NUM:byte-off cursor, but AD-TOKENIZE feeds the cursor back
+\ through the raw AD-START cell and does raw pointer/length arithmetic on the
+\ token span, so each is projected to a bare n through the existing private
+\ CAD-NUM BYTE-LEN>N / BYTE-OFF>N (no new TRUSTED). Retire with TVK-RAW
+\ (habu-nominal-storage-raw-a3430ef2).
+package CAD-NUM
+public
+: AD-BL>N ( CAD-NUM:byte-len -- n ) BYTE-LEN>N ;
+: AD-BO>N ( CAD-NUM:byte-off -- n ) BYTE-OFF>N ;
+;package
+
 : AD-PUSH-TOK ( n n -- ) {: off len :}
    AD-TOK-N @ AD-MAX-TOK < 0= if E-PTX-ADCAP throw then
    off AD-TOK-N @ cells AD-TOK-OFF + !
@@ -74,9 +86,10 @@ variable AD-START
 : AD-TOKENIZE ( ptr u8 n -- ) {: a u :}
    0 AD-TOK-N !  0 AD-START !
    begin
-      a u $20 AD-START @ SPLIT-NEXT      ( tokptr toklen nextstart found )
-   while                                ( tokptr toklen nextstart )
-      AD-START !                        ( tokptr toklen )
+      a u STR:LENGTH $20 AD-START @ STR:OFFSET STR:SPLIT-NEXT   ( tokptr byte-len byte-off found )
+   while                                ( tokptr byte-len byte-off )
+      CAD-NUM:AD-BO>N AD-START !         ( tokptr byte-len )
+      CAD-NUM:AD-BL>N                    ( tokptr toklen )
       dup 0 > if
          swap a - swap AD-PUSH-TOK      \ ( offset=tokptr-a, len ) recorded
       else
