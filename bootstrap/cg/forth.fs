@@ -1205,7 +1205,8 @@ variable FSTAT-BUF
 : EMIT-FS-PRIMS ( -- )
    s" open" ['] BOPEN FPRIM-L   s" open-rd" ['] BOPENRD FPRIM-L
    s" open-nofollow-rd" ['] BOPENNOFOLLOWRD FPRIM-L
-   s" write" ['] BWRITE FPRIM-L   s" read" ['] BREAD FPRIM-L   s" ioctl" ['] BIOCTL FPRIM-L
+   s" write" ['] BWRITE FPRIM-L   s" read" ['] BREAD FPRIM-L
+   s" read-fd" ['] BREAD FPRIM-L   s" ioctl" ['] BIOCTL FPRIM-L
    s" mmap" ['] BMMAP FPRIM-L   s" patch32" ['] BPATCH32 FPRIM
    s" fstat64" ['] BFSTAT64 FPRIM-L
    s" close" ['] BCLOSE FPRIM-L   s" close-rc" ['] BCLOSERC FPRIM-L

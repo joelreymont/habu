@@ -1257,6 +1257,7 @@ public
    s" : BCLOSERC" BCG-MUST-HAVE
    s" 7 $90 MOVZ,  1 7 GUARD-SPAN" BCG-MUST-HAVE
    S\" s\" open-nofollow-rd\" ['] BOPENNOFOLLOWRD FPRIM-L" BCG-MUST-HAVE
+   S\" s\" read-fd\" ['] BREAD FPRIM-L" BCG-MUST-HAVE
    S\" s\" fstat64\" ['] BFSTAT64 FPRIM-L" BCG-MUST-HAVE
    S\" s\" close\" ['] BCLOSE FPRIM-L   s\" close-rc\" ['] BCLOSERC FPRIM-L" BCG-MUST-HAVE
    s" bootstrap/cg/forth.fs" BCG-LOAD
@@ -1265,12 +1266,17 @@ public
    s" : BCLOSERC" BCG-MUST-HAVE
    s" 7 $90 MOVZ,  1 7 GUARD-SPAN" BCG-MUST-HAVE
    S\" s\" open-nofollow-rd\" ['] BOPENNOFOLLOWRD FPRIM-L" BCG-MUST-HAVE
+   S\" s\" read-fd\" ['] BREAD FPRIM-L" BCG-MUST-HAVE
    S\" s\" fstat64\" ['] BFSTAT64 FPRIM-L" BCG-MUST-HAVE
    S\" s\" close\" ['] BCLOSE FPRIM-L   s\" close-rc\" ['] BCLOSERC FPRIM-L" BCG-MUST-HAVE
    s" src/core/checker.f" BCG-LOAD
    s" PRIM: open-nofollow-rd PE-PTR-U8 PE-IN  PE-N PE-OUT PRIM;" BCG-MUST-HAVE
+   s" PRIM: read-fd  PE-FD PE-IN PE-PTR-U8 PE-IN PE-N PE-IN  PE-N PE-OUT PRIM;" BCG-MUST-HAVE
    s" PRIM: fstat64   PE-FD PE-IN PE-PTR-U8 PE-IN  PE-RC PE-OUT PRIM;" BCG-MUST-HAVE
-   s" PRIM: close-rc      PE-FD PE-IN  PE-RC PE-OUT PRIM;" BCG-MUST-HAVE ;
+   s" PRIM: close-rc      PE-FD PE-IN  PE-RC PE-OUT PRIM;" BCG-MUST-HAVE
+   s" lib/fs.f" BCG-LOAD
+   s" $90 constant STAT-BYTES" BCG-MUST-HAVE
+   s" fd FS-STAT-BUF statq execute" BCG-MUST-LACK ;
 
 \ Fixed-VA region mmap failures at boot must NOT be silent (dot
 \ habu-diagnose-fixed-va-ed649528). A forced fixed-VA collision is not reliably

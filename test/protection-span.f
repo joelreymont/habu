@@ -68,6 +68,7 @@ create ERR CAP allot
 
 : TEST-SYSCALL ( -- )
    s" 0 data-base TXN-STATE-OFF 1 cells - + 16 read drop" REJECTS
+   s" 0 >FD data-base TXN-STATE-OFF 1 cells - + 16 read-fd drop" REJECTS
    s" 0 data-base TXN-STATE-OFF 1 cells - + 16 readlink drop" REJECTS
    s" 0 data-base TXN-STATE-OFF 1- + stat64 drop" REJECTS
    s" 0 >FD data-base TXN-STATE-OFF 1- + fstat64 drop" REJECTS

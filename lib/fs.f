@@ -487,6 +487,8 @@ variable FS-IO-WR
 package FS
 public
 
+$90 constant STAT-BYTES
+
 ENUM stream-outcome 0
    VARIANT ok ;VARIANT
    VARIANT failed
@@ -503,20 +505,23 @@ ENUM stream-outcome 0
 
 private
 
-: OPEN-NOFOLLOW ( ptr u8 -- fd )
-   open-nofollow-rd dup 0 < if drop E-FS-OPEN throw then >FD ;
+: OPEN-RAW ( ptr u8 -- n )
+   open-nofollow-rd ;
 
 : FSTAT-FD ( fd ptr u8 -- rc )
    fstat64 ;
 
 : READ-FD ( fd ptr u8 n -- n )
-   rot FD>N -rot read ;
+   read-fd ;
 
 : CLOSE-FD ( fd -- rc )
    close-rc ;
 
-: CHECK-BUF ( n -- ) {: cap:n :}
+: CHECK-CAP ( n -- ) {: cap:n :}
    cap 0 <= if E-FS-CAPACITY throw then ;
+
+: CHECK-STAT-CAP ( n -- ) {: cap:n :}
+   cap STAT-BYTES < if E-FS-CAPACITY throw then ;
 
 : STREAM-OK ( -- stream-outcome )
    construct stream-outcome ok ;
@@ -531,13 +536,21 @@ private
    construct stream-outcome failed-close ;
 
 \ typed-local-lint: allow-bare-local - q keeps the open quotation effect.
-: OPEN-WITH ( ptr u8 n [ ptr u8 -- fd ] -- fd ) {: a:ptr u:n q :}
+: OPEN-WITH ( ptr u8 n [ ptr u8 -- n ] -- n ) {: a:ptr u:n q :}
    a u FS-PATHZ q execute ;
 
+: OPEN>FD ( n -- fd )
+   dup 0 < if drop E-FS-OPEN throw then
+   >FD ;
+
+: STAT-MODE@ ( ptr u8 -- n )
+   FS-STAT-MODE-OFF + FS-U16@ ;
+
 \ typed-local-lint: allow-bare-local - statq keeps its quotation effect.
-: CHECK-REGULAR ( fd [ fd ptr u8 -- rc ] -- ) {: fd:fd statq :}
-   fd FS-STAT-BUF statq execute RC>N 0 <> if E-FS-STAT throw then
-   FS-STAT-MODE@ S-IFMT and S-IFREG <> if E-FS-STAT throw then ;
+: CHECK-REGULAR ( fd ptr u8 [ fd ptr u8 -- rc ] -- )
+   {: fd:fd stat:ptr statq :}
+   fd stat statq execute RC>N 0 <> if E-FS-STAT throw then
+   stat STAT-MODE@ S-IFMT and S-IFREG <> if E-FS-STAT throw then ;
 
 \ typed-local-lint: allow-bare-local - readq keeps its quotation effect.
 : READ-CHUNK ( fd ptr u8 n [ fd ptr u8 n -- n ] -- n )
@@ -557,44 +570,44 @@ private
 
 \ Catch restores this full row when stat, read, or callback code throws.
 \ typed-local-lint: allow-bare-local - operation locals keep quotation effects.
-: STREAM-STEP ( ptr u8 n [ ptr u8 n -- ] [ fd ptr u8 -- rc ] [ fd ptr u8 n -- n ] fd [ fd -- rc ] -- ptr u8 n [ ptr u8 n -- ] [ fd ptr u8 -- rc ] [ fd ptr u8 n -- n ] fd [ fd -- rc ] )
-   {: buf:ptr cap:n chunkq statq readq fd:fd closeq :}
-   fd statq CHECK-REGULAR
+: STREAM-STEP ( ptr u8 n ptr u8 [ ptr u8 n -- ] [ fd ptr u8 -- rc ] [ fd ptr u8 n -- n ] fd [ fd -- rc ] -- ptr u8 n ptr u8 [ ptr u8 n -- ] [ fd ptr u8 -- rc ] [ fd ptr u8 n -- n ] fd [ fd -- rc ] )
+   {: buf:ptr cap:n stat:ptr chunkq statq readq fd:fd closeq :}
+   fd stat statq CHECK-REGULAR
    fd buf cap chunkq readq DRAIN
-   buf cap chunkq statq readq fd closeq ;
+   buf cap stat chunkq statq readq fd closeq ;
 
 \ typed-local-lint: allow-bare-local - operation locals keep quotation effects.
-: STREAM-FAIL ( ptr u8 n [ ptr u8 n -- ] [ fd ptr u8 -- rc ] [ fd ptr u8 n -- n ] fd [ fd -- rc ] n -- stream-outcome )
-   {: buf:ptr cap:n chunkq statq readq fd:fd closeq code:n :}
+: STREAM-FAIL ( ptr u8 n ptr u8 [ ptr u8 n -- ] [ fd ptr u8 -- rc ] [ fd ptr u8 n -- n ] fd [ fd -- rc ] n -- stream-outcome )
+   {: buf:ptr cap:n stat:ptr chunkq statq readq fd:fd closeq code:n :}
    fd closeq execute
    dup RC>N 0= if drop code STREAM-FAILED exit then
    code swap STREAM-FAILED-CLOSE ;
 
 \ typed-local-lint: allow-bare-local - operation locals keep quotation effects.
-: STREAM-DONE ( ptr u8 n [ ptr u8 n -- ] [ fd ptr u8 -- rc ] [ fd ptr u8 n -- n ] fd [ fd -- rc ] -- stream-outcome )
-   {: buf:ptr cap:n chunkq statq readq fd:fd closeq :}
+: STREAM-DONE ( ptr u8 n ptr u8 [ ptr u8 n -- ] [ fd ptr u8 -- rc ] [ fd ptr u8 n -- n ] fd [ fd -- rc ] -- stream-outcome )
+   {: buf:ptr cap:n stat:ptr chunkq statq readq fd:fd closeq :}
    fd closeq execute
    dup RC>N 0= if drop STREAM-OK exit then
    STREAM-CLOSE-FAILED ;
 
-: STREAM-OPENED ( ptr u8 n [ ptr u8 n -- ] [ fd ptr u8 -- rc ] [ fd ptr u8 n -- n ] fd [ fd -- rc ] -- stream-outcome )
+: STREAM-OPENED ( ptr u8 n ptr u8 [ ptr u8 n -- ] [ fd ptr u8 -- rc ] [ fd ptr u8 n -- n ] fd [ fd -- rc ] -- stream-outcome )
    [: STREAM-STEP ;] catch
    dup 0 <> if STREAM-FAIL exit then
    drop STREAM-DONE ;
 
 \ typed-local-lint: allow-bare-local - operation locals keep quotation effects.
-: STREAM-WITH ( ptr u8 n ptr u8 n [ ptr u8 n -- ] [ ptr u8 -- fd ] [ fd ptr u8 -- rc ] [ fd ptr u8 n -- n ] [ fd -- rc ] -- stream-outcome )
-   {: path:ptr pathu:n buf:ptr cap:n chunkq openq statq readq closeq :}
-   cap CHECK-BUF
-   buf cap chunkq statq readq
-   path pathu openq OPEN-WITH
-   dup FD>N 0 < if E-FS-OPEN throw then
+: STREAM-WITH ( ptr u8 n ptr u8 n ptr u8 n [ ptr u8 n -- ] [ ptr u8 -- n ] [ fd ptr u8 -- rc ] [ fd ptr u8 n -- n ] [ fd -- rc ] -- stream-outcome )
+   {: path:ptr pathu:n buf:ptr cap:n stat:ptr statcap:n chunkq openq statq readq closeq :}
+   cap CHECK-CAP
+   statcap CHECK-STAT-CAP
+   buf cap stat chunkq statq readq
+   path pathu openq OPEN-WITH OPEN>FD
    closeq STREAM-OPENED ;
 
 public
 
-: STREAM-REGULAR ( ptr u8 n ptr u8 n [ ptr u8 n -- ] -- stream-outcome )
-   [: OPEN-NOFOLLOW ;]
+: STREAM-REGULAR ( ptr u8 n ptr u8 n ptr u8 n [ ptr u8 n -- ] -- stream-outcome )
+   [: OPEN-RAW ;]
    [: FSTAT-FD ;]
    [: READ-FD ;]
    [: CLOSE-FD ;]

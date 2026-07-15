@@ -460,7 +460,12 @@ schema_version	module	file	kind	word	effect	test	doc	owner	status	notes
 1	fs	lib/fs.f	word	FS-PATH=	(ptr u8 n ptr u8 n -- bool)	lib/fs-test.f	docs/stdlib.md	stdlib-fs	published	compare counted paths
 1	fs	lib/fs.f	word	READ-LINK	(ptr u8 n ptr u8 n -- n)	lib/fs-mutate-test.f	docs/stdlib.md	stdlib-fs	published	read a symlink target into caller storage and return its byte count
 1	fs	lib/fs.f	word	READ-ALL	(ptr u8 n ptr u8 n -- n)	lib/fs-test.f	docs/stdlib.md	stdlib-fs	published	read a whole file into caller storage up to an explicit cap
-1	fs	lib/fs.f	word	FS:STREAM-REGULAR	(ptr u8 n ptr u8 n [ ptr u8 n -- ] -- FS:stream-outcome)	lib/fs-test.f	docs/stdlib.md	stdlib-fs	published	stream an opened regular file and return an owned outcome preserving primary and close failures
+1	fs	lib/fs.f	word	FS:STAT-BYTES	(-- n)	lib/fs-stream-test.f	docs/stdlib.md	stdlib-fs	published	return required caller-owned descriptor-stat storage
+1	fs	lib/fs.f	word	FS:STREAM-REGULAR	(ptr u8 n ptr u8 n ptr u8 n [ ptr u8 n -- ] -- FS:stream-outcome)	lib/fs-stream-test.f	docs/stdlib.md	stdlib-fs	published	stream an opened regular file with caller-owned stat storage and preserve primary and close failures
+1	fs	lib/fs.f	word	FS-STREAM--OUTCOME:OK	(-- FS:stream-outcome)	lib/fs-stream-test.f	docs/stdlib.md	stdlib-fs	published	construct successful stream completion
+1	fs	lib/fs.f	word	FS-STREAM--OUTCOME:FAILED	(n -- FS:stream-outcome)	lib/fs-stream-test.f	docs/stdlib.md	stdlib-fs	published	construct primary stream failure
+1	fs	lib/fs.f	word	FS-STREAM--OUTCOME:CLOSE-FAILED	(rc -- FS:stream-outcome)	lib/fs-stream-test.f	docs/stdlib.md	stdlib-fs	published	construct cleanup-only stream failure
+1	fs	lib/fs.f	word	FS-STREAM--OUTCOME:FAILED-CLOSE	(n rc -- FS:stream-outcome)	lib/fs-stream-test.f	docs/stdlib.md	stdlib-fs	published	construct combined primary and cleanup failure
 1	fs	lib/fs.f	word	FS-WRITE-BY-FLAGS	(ptr u8 n ptr u8 n n --)	lib/fs-test.f	docs/stdlib.md	stdlib-fs	published	write all bytes using caller-selected open flags
 1	fs	lib/fs.f	word	WRITE-ALL	(ptr u8 n ptr u8 n --)	lib/fs-test.f	docs/stdlib.md	stdlib-fs	published	create or truncate a file and write all bytes
 1	fs	lib/fs.f	word	APPEND-FILE	(ptr u8 n ptr u8 n --)	lib/fs-test.f	docs/stdlib.md	stdlib-fs	published	create or append to a file and write all bytes

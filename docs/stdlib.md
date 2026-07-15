@@ -768,7 +768,8 @@ BASENAME                ( ptr u8 n -- ptr u8 n )
 JOIN-PATH               ( ptr u8 n ptr u8 n ptr u8 -- n )
 READ-LINK               ( ptr u8 n ptr u8 n -- n )
 READ-ALL                ( ptr u8 n ptr u8 n -- n )
-FS:STREAM-REGULAR       ( ptr u8 n ptr u8 n [ ptr u8 n -- ] -- FS:stream-outcome )
+FS:STAT-BYTES           ( -- n )
+FS:STREAM-REGULAR       ( ptr u8 n ptr u8 n ptr u8 n [ ptr u8 n -- ] -- FS:stream-outcome )
 FS-WRITE-BY-FLAGS       ( ptr u8 n ptr u8 n n -- )
 WRITE-ALL               ( ptr u8 n ptr u8 n -- )
 APPEND-FILE             ( ptr u8 n ptr u8 n -- )
@@ -819,16 +820,28 @@ The caller supplies the explicit output cap. Files larger than the cap throw
 `E-FS-CAPACITY`; open and I/O failures throw `E-FS-OPEN` or `E-FS-IO`.
 `FS:STREAM-REGULAR` opens the final path component with `O_NOFOLLOW`, validates
 the exact opened descriptor with `fstat64`, and accepts only a regular file. It
-reuses the caller buffer for each callback chunk until EOF, so total file size
-is not limited by the buffer capacity. A non-positive capacity throws
-`E-FS-CAPACITY`; open failures (including final symlinks) throw `E-FS-OPEN`;
-post-open completion returns `FS:stream-outcome`: `ok`, `failed { code }`,
-`close-failed { code }`, or `failed-close { primary, close }`. Descriptor-stat
+reuses the caller chunk buffer for each callback until EOF, so total file size
+is not limited by that buffer's capacity. The second caller buffer is
+descriptor-stat storage and must have at least `FS:STAT-BYTES` bytes. Keeping
+that storage caller-owned makes concurrent and nested streams independent of
+the shared path-stat buffer. A non-positive chunk capacity or undersized stat
+capacity throws `E-FS-CAPACITY` before open; open failures (including final
+symlinks) throw `E-FS-OPEN`;
+post-open completion returns `FS:stream-outcome`: `ok`,
+`failed { primary-code }`, `close-failed { close-code }`, or
+`failed-close { primary-code, close-code }`. Descriptor-stat
 and non-regular failures use primary code `E-FS-STAT`; read failures use
 `E-FS-IO`; callback failures preserve their exact throw code. Close payloads
 preserve the exact `rc`. When primary work and close both fail, `failed-close`
 owns both codes on stack, so neither failure masks the other and no mutable
 side channel is involved.
+The public declaration generates the sealed constructor package
+`FS-STREAM--OUTCOME`: `OK ( -- FS:stream-outcome )`,
+`FAILED ( n -- FS:stream-outcome )`,
+`CLOSE-FAILED ( rc -- FS:stream-outcome )`, and
+`FAILED-CLOSE ( n rc -- FS:stream-outcome )`. External code constructs through
+those words and eliminates through `MATCH FS:stream-outcome`; owner-only
+`construct` syntax does not resolve outside package `FS`.
 Use `FS-O-WRONLY` or `FS-O-RDWR` when a caller must pass access-mode flags
 directly to the checked `open` primitive.
 `WRITE-ALL` creates/truncates a regular file, and `APPEND-FILE` creates/appends

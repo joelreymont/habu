@@ -554,7 +554,7 @@ create AXBUF AXBUF-CAP allot
 : AX-FLOAT-LIST ( -- ptr u8 n )
    s"  f+ f- f* f/ fnegate fabs fsqrt f< f> f= f0< f0= f>s " ;
 : AX-NOEXEC-A ( -- ptr u8 n )
-   s"  open read ioctl mmap path0 open-rd open-nofollow-rd access unlink rename chmod symlink readlink mkdir rmdir stat64 fstat64 lstat64 getdirentries64 pipe dup2 fcntl poll kill setpgid write close close-rc " ;
+   s"  open read read-fd ioctl mmap path0 open-rd open-nofollow-rd access unlink rename chmod symlink readlink mkdir rmdir stat64 fstat64 lstat64 getdirentries64 pipe dup2 fcntl poll kill setpgid write close close-rc " ;
 : AX-NOEXEC-B ( -- ptr u8 n )
    s"  fence run-in-stack .s allot , c, script-argv$ throw die fork wait-rc wait-status patch32 snap-rebase prof-on prof-report cp! ndict! set-current wordlist search-wl parse-name pathz check-candidate! ['] char [char] create variable constant f. atomic@ atomic! atomic-add atomic-cas ffi-call-bounded " ;
 

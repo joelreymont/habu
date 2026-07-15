@@ -5577,3 +5577,12 @@ unchanged (148855). Keys for milestone 2:
 - **Cleanup is an independent failure channel.** A close failure must not replace
   a stat, read, or callback failure; return an owned typed outcome that retains
   both codes when primary work and cleanup fail together.
+- **No-follow validation belongs to the opened descriptor.** Put the target flag
+  in the OS seam, validate the raw open result before minting `fd`, and `fstat`
+  that exact descriptor into capacity-checked caller storage; path-level stat
+  cannot close a replacement race, and shared stat storage breaks nested or
+  concurrent streams.
+- **A repeated concern stem means the package boundary is missing.** Test code
+  accumulated `FS-TEST-*` globals despite package support. Put the concern in a
+  package first, keep internal names short, and qualify only cross-package calls;
+  reject a repeated module stem during diff review before running gates.

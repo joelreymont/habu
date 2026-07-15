@@ -1407,6 +1407,8 @@ s" CBAD-THROW-DUMMY ( i64 -- i64 ) dup 0 < if 1 throw 0 then 1 +" T-CHECK-REJECT
 s" CBAD-DIE-DUMMY ( i64 -- i64 ) dup 0 < if here 0 1 die 0 then 1 +" T-CHECK-REJECTS
 s" CBAD-EXIT-DUMMY ( i64 -- i64 ) exit 0" T-CHECK-REJECTS
 s" T-FSTAT-ROLE-OK ( fd ptr u8 -- rc ) fstat64" T-CHECK-PASSES
+s" T-READ-FD-ROLE-OK ( fd ptr u8 n -- n ) read-fd" T-CHECK-PASSES
+s" CBAD-READ-FD-ROLE ( n ptr u8 n -- n ) read-fd" T-CHECK-REJECTS
 s" CBAD-FSTAT-FD ( n ptr u8 -- rc ) fstat64" T-CHECK-REJECTS
 s" CBAD-FSTAT-RC ( fd ptr u8 -- n ) fstat64" T-CHECK-REJECTS
 s" T-CLOSE-RC-OK ( fd -- rc ) close-rc" T-CHECK-PASSES
