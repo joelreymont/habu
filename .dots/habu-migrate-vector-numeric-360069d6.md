@@ -6,7 +6,6 @@ issue-type: task
 created-at: "2026-07-13T14:14:22.910415+02:00"
 blocks:
   - habu-seal-cad-num-36dbeec6
-  - habu-migrate-mem-numeric-8b11a9be
   - habu-migrate-model-ir-c171bdf5
 ---
 
