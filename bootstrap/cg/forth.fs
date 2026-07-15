@@ -1665,6 +1665,23 @@ create ZBYTE 0 c,
    PFX-COMMON LPXREF         s" src/habu/xref.f"        PFX-LOAD-ROW
    PFX-COMMON LPLAYOUTSEAL   s" src/core/layout-buffer-seal.f" PFX-LOAD-ROW ;
 
+\ Accepted stage-0 omission — src/core/top-row.f (dot habu-mirror-top-row-07072823).
+\ The native cold prefix (habu2.f PFX-LOAD-INTMARK/PFX-LOAD-TOPROW) continues past
+\ this list with internal-mark.f then top-row.f, the tier-1 top-level row tracker
+\ (dot habu-typed-top-checker-82cf8b84). This gforth stage-0 mirror intentionally
+\ does NOT list top-row.f: the tracker warns off per-token top-hook events, and
+\ that EMISSION engine (habu2.f EMIT-TOPHOOK + its interpret-loop call sites,
+\ TOP-HOOK-CELL, dot habu-typed-top-engine-2b2e88aa) is native-only — forth.fs
+\ never references TOP-HOOK-CELL, so a stage-0 built here fires no events. Listing
+\ top-row.f alone would load a DORMANT tracker (TR-HOOK installed via set-top-check
+\ from habu1.f, but never fed), armed-looking yet silent, so it is deliberately
+\ left out rather than mirrored. Not a soundness hole: stage-0 (hb-stage0) is a
+\ transient build host; tools/bootstrap.sh's native self-refresh rebuilds from
+\ habu2.f, whose fixpoint IS the armed tracker, byte-for-byte. Fully arming the
+\ stage-0 tracker needs the whole top-hook emission engine mirrored here — a
+\ separate codegen change beyond this dot; the residual stage-0/native prefix
+\ drift is the DDC gap dot habu-ddc-cross-check-16562dae.
+
 : PFX-LOAD-SCRIPT-ARGV ( -- )
    PFX-COMMON LPSCRIPTARGV   s" src/os/script-argv.f"   PFX-LOAD-ROW ;
 
