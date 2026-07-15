@@ -213,6 +213,118 @@ variable STR-TEST-BUF2-LEN
      some OF drop STR-FALSE ENDOF
    ;MATCH STR-ASSERT ;
 
+\ ---- B5.5 typed STR surface over CAD-NUM roles --------------------------------
+\ White-box role readers: reopen the unsealed CAD-NUM package to project a role's
+\ raw cell for scalar assertions, the pattern lib/vector-test.f and
+\ lib/memory-test.f use. (STR's own BYTE-LEN>N/BYTE-OFF>N stay STR-private.)
+package CAD-NUM
+public
+: STR-T-BL>RAW ( CAD-NUM:byte-len -- n ) BYTE-LEN>N ;
+: STR-T-BO>RAW ( CAD-NUM:byte-off -- n ) BYTE-OFF>N ;
+: STR-T-IC>RAW ( CAD-NUM:item-count -- n ) ITEM-COUNT>N ;
+: STR-T-IX>RAW ( CAD-NUM:index -- n ) INDEX>N ;
+;package
+
+variable STR-T-SPLIT-A
+variable STR-T-SPLIT-U
+variable STR-T-SPLIT-NEXT
+variable STR-T-SPLIT-OK
+
+: STR-T-FIND ( ptr u8 n ptr u8 n -- n ) {: a:ptr u:n b:ptr v:n :}   \ typed find; -1 when NONE
+   a u STR:LENGTH b v STR:LENGTH STR:FIND-SUB
+   MATCH option
+      none OF -1 ENDOF
+      some OF CAD-NUM:STR-T-IX>RAW ENDOF
+   ;MATCH ;
+: STR-T-INDEX ( ptr u8 n n -- n ) {: a:ptr u:n c:n :}              \ typed byte index; -1 when NONE
+   a u STR:LENGTH c STR:INDEX-OF
+   MATCH option
+      none OF -1 ENDOF
+      some OF CAD-NUM:STR-T-IX>RAW ENDOF
+   ;MATCH ;
+
+: STR-T-SPLIT-CHECK ( ptr u8 n n n ptr u8 n n bool -- )
+   {: a:ptr u:n sep:n start:n exp:ptr exp-u:n exp-next:n exp-ok:bool :}
+   a u STR:LENGTH sep start STR:OFFSET STR:SPLIT-NEXT   \ ( sub-ptr byte-len byte-off bool )
+   STR-T-SPLIT-OK !
+   CAD-NUM:STR-T-BO>RAW STR-T-SPLIT-NEXT !
+   CAD-NUM:STR-T-BL>RAW STR-T-SPLIT-U !
+   STR-T-SPLIT-A !
+   STR-T-SPLIT-A @ STR-T-SPLIT-U @ exp exp-u STR-ASSERT$
+   STR-T-SPLIT-NEXT @ exp-next STR-ASSERT=
+   exp-ok if
+      STR-T-SPLIT-OK @ 0= 0= STR-ASSERT
+   else
+      STR-T-SPLIT-OK @ 0= STR-ASSERT
+   then ;
+
+: STR-TEST-TYPED-SCALAR ( -- )                          \ zero + positive roles round-trip
+   0 STR:LENGTH CAD-NUM:STR-T-BL>RAW 0 STR-ASSERT=
+   5 STR:LENGTH CAD-NUM:STR-T-BL>RAW 5 STR-ASSERT=
+   0 STR:OFFSET CAD-NUM:STR-T-BO>RAW 0 STR-ASSERT=
+   7 STR:OFFSET CAD-NUM:STR-T-BO>RAW 7 STR-ASSERT=
+   0 STR:COUNT CAD-NUM:STR-T-IC>RAW 0 STR-ASSERT=
+   3 STR:COUNT CAD-NUM:STR-T-IC>RAW 3 STR-ASSERT= ;
+
+: STR-TEST-TYPED-FIND ( -- )                            \ first/last/not-found/empty-needle
+   s" abcdef" s" bcd" STR-T-FIND 1 STR-ASSERT=
+   s" abcabc" s" abc" STR-T-FIND 0 STR-ASSERT=
+   s" abcdef" s" def" STR-T-FIND 3 STR-ASSERT=
+   s" abcdef" s" z" STR-T-FIND -1 STR-ASSERT=
+   s" abcdef" s" " STR-T-FIND 0 STR-ASSERT=
+   s" " s" " STR-T-FIND 0 STR-ASSERT=
+   s" abcdef" 100 STR-T-INDEX 3 STR-ASSERT=
+   s" abcdef" 97 STR-T-INDEX 0 STR-ASSERT=
+   s" abcdef" 102 STR-T-INDEX 5 STR-ASSERT=
+   s" abcdef" 120 STR-T-INDEX -1 STR-ASSERT= ;
+
+: STR-TEST-TYPED-SPLIT ( -- )                           \ byte-identical to the raw SPLIT-NEXT
+   s" a,b,c" STR-TEST-COMMA 0 s" a" 2 STR-TRUE STR-T-SPLIT-CHECK
+   s" a,b,c" STR-TEST-COMMA 2 s" b" 4 STR-TRUE STR-T-SPLIT-CHECK
+   s" a,b,c" STR-TEST-COMMA 4 s" c" 6 STR-TRUE STR-T-SPLIT-CHECK
+   s" a,b,c" STR-TEST-COMMA 6 s" " 6 STR-FALSE STR-T-SPLIT-CHECK
+   s" " STR-TEST-COMMA 0 s" " 1 STR-TRUE STR-T-SPLIT-CHECK
+   s" " STR-TEST-COMMA 1 s" " 1 STR-FALSE STR-T-SPLIT-CHECK ;
+
+: STR-TEST-TYPED-BUFFER ( -- )                          \ append + read length as a byte-len role
+   STR-TEST-BUF2-LEN STR:BUF-RESET
+   s" hi" STR:LENGTH STR-TEST-BUF2 16 STR:LENGTH STR-TEST-BUF2-LEN STR:BUF-APPEND
+   STR-TEST-BUF2 STR-TEST-BUF2-LEN STR:BUF-LEN@ CAD-NUM:STR-T-BL>RAW s" hi" STR-ASSERT$ ;
+
+: STR-TEST-TYPED-BUF-OVERFLOW ( -- )
+   15 >LEN STR-TEST-BUF2-LEN !
+   s" xx" STR:LENGTH STR-TEST-BUF2 16 STR:LENGTH STR-TEST-BUF2-LEN STR:BUF-APPEND ;
+
+: STR-TEST-TYPED-SPLIT-OVERFLOW ( -- )                  \ one-past-end offset advance overflows
+   s" x" drop STR-MAX-I64 STR:LENGTH STR-TEST-COMMA 0 STR:OFFSET STR:SPLIT-NEXT 2drop 2drop ;
+
+: STR-TEST-TYPED-LEN-NEG ( -- )   -1 STR:LENGTH drop ;
+: STR-TEST-TYPED-OFF-NEG ( -- )   -1 STR:OFFSET drop ;
+: STR-TEST-TYPED-COUNT-NEG ( -- ) -1 STR:COUNT drop ;
+
+: STR-TEST-TYPED ( -- )
+   STR-TEST-TYPED-SCALAR
+   STR-TEST-TYPED-FIND
+   STR-TEST-TYPED-SPLIT
+   STR-TEST-TYPED-BUFFER
+   [: STR-TEST-TYPED-BUF-OVERFLOW ;] catch E-STR-CAPACITY STR-ASSERT=
+   [: STR-TEST-TYPED-SPLIT-OVERFLOW ;] catch E-STR-BOUNDS STR-ASSERT=
+   [: STR-TEST-TYPED-LEN-NEG ;] catch E-STR-BOUNDS STR-ASSERT=
+   [: STR-TEST-TYPED-OFF-NEG ;] catch E-STR-BOUNDS STR-ASSERT=
+   [: STR-TEST-TYPED-COUNT-NEG ;] catch E-STR-BOUNDS STR-ASSERT=
+   \ ---- static role-flow: resolving positives (-1) --------------------------------
+   s" SOK-LEN ( n -- CAD-NUM:byte-len ) STR:LENGTH" CHECK-QUIET-CANDIDATE! -1 STR-ASSERT=
+   s" SOK-FIND ( ptr u8 CAD-NUM:byte-len ptr u8 CAD-NUM:byte-len -- option<CAD-NUM:index> ) STR:FIND-SUB" CHECK-QUIET-CANDIDATE! -1 STR-ASSERT=
+   s" SOK-INDEX ( ptr u8 CAD-NUM:byte-len n -- option<CAD-NUM:index> ) STR:INDEX-OF" CHECK-QUIET-CANDIDATE! -1 STR-ASSERT=
+   s" SOK-SPLIT ( ptr u8 CAD-NUM:byte-len n CAD-NUM:byte-off -- ptr u8 CAD-NUM:byte-len CAD-NUM:byte-off bool ) STR:SPLIT-NEXT" CHECK-QUIET-CANDIDATE! -1 STR-ASSERT=
+   \ ---- static role-flow: length/index/offset swaps + raw-n reject (0) ------------
+   s" SBAD-OFF-FOR-LEN ( ptr u8 CAD-NUM:byte-off ptr u8 CAD-NUM:byte-len -- option<CAD-NUM:index> ) STR:FIND-SUB" STR-CHECK-REJECTS
+   s" SBAD-LEN-FOR-OFF ( ptr u8 CAD-NUM:byte-len n CAD-NUM:byte-len -- ptr u8 CAD-NUM:byte-len CAD-NUM:byte-off bool ) STR:SPLIT-NEXT" STR-CHECK-REJECTS
+   s" SBAD-RAW-LEN ( ptr u8 n ptr u8 CAD-NUM:byte-len -- option<CAD-NUM:index> ) STR:FIND-SUB" STR-CHECK-REJECTS
+   s" SBAD-RAW-OFF ( ptr u8 CAD-NUM:byte-len n n -- ptr u8 CAD-NUM:byte-len CAD-NUM:byte-off bool ) STR:SPLIT-NEXT" STR-CHECK-REJECTS
+   s" SBAD-OFF-FOR-INDEX ( ptr u8 CAD-NUM:byte-off n -- option<CAD-NUM:index> ) STR:INDEX-OF" STR-CHECK-REJECTS
+   s" SBAD-FIND-OUT ( ptr u8 CAD-NUM:byte-len ptr u8 CAD-NUM:byte-len -- option<CAD-NUM:byte-off> ) STR:FIND-SUB" STR-CHECK-REJECTS ;
+
 s" abc" s" abc" STR= STR-ASSERT
 s" " s" " STR= STR-ASSERT
 s" abc" s" abd" STR= 0= STR-ASSERT
@@ -265,6 +377,7 @@ STR-TEST-PARSE
 STR-TEST-PARSE-OPTION
 STR-TEST-INDEX-OF-OPTION
 STR-TEST-FIND-SUB-OPTION
+STR-TEST-TYPED
 
 : STR-TEST-REPORT ( -- )
    STR-TEST-FAIL @ 0= if s" string-test: ok" type cr exit then
