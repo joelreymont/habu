@@ -4408,3 +4408,11 @@ unchanged (148855). Keys for milestone 2:
   mirrored the prefix into bootstrap/cg/forth.fs, which is why that mirror is
   BLOCKING for any new cold-prefix file. Pull-and-refresh after every fetch
   that crosses an engine landing; budget minutes, not hours.
+- trusted-inventory STRICT resolves owners only at `.dots/<id>.md` or
+  `.dots/<id>/<id>.md` (self-named epic) - a child dot under ANOTHER parent's
+  directory is invisible as an owner, and closing a dot orphans every row it
+  owns (third occurrence of this class). Re-own rows in the SAME commit that
+  closes their owner: prim-axioms to habu-primitive-effect-axiom-1119f176,
+  program rows to the live epic's self-named file. Also: sweeping a dot's last
+  `blocks:` entry must remove the bare `blocks:` header too, or the frontmatter
+  goes unparseable to some tools.
