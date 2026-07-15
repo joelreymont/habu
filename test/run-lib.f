@@ -7,6 +7,8 @@ require lib/test/budget.f
 require test/run-support.f
 require test/run-files.f
 require test/run-result-cache.f
+require test/perf-verdict.f              \ pure performance-verdict policy
+require test/run-verdict.f              \ TR-VERDICT retry driver over the policy
 
 64 constant TR-USAGE-RC
 65 constant TR-BUDGET-RC
@@ -114,6 +116,7 @@ variable TR-NESTED-POOL
 variable TR-TIMINGS
 variable TR-COLD-CACHE
 variable TR-NO-RESULT-CACHE
+variable TR-GATE-ATTEMPT           \ 0 = driver mode; N>0 = single-attempt worker (no retry)
 variable TR-PROFILE-ID
 variable TR-NUM-U
 variable TR-RESIDENT-ID
@@ -317,6 +320,7 @@ variable TR-PRE-DIAG-FILE
    0 TR-COLD-CACHE !
    0 TR-NO-RESULT-CACHE !
    0 TR-RERUN !
+   0 TR-GATE-ATTEMPT !
    0 TR-UNDER-ARG-U !
    TR-DETECT-PROFILE TR-PROFILE-APPLY ;
 
@@ -364,6 +368,12 @@ variable TR-PRE-DIAG-FILE
    -1 TR-RERUN !
    1 TR-ADVANCE ;
 
+\ Internal: run a single fresh attempt for the verdict retry loop and report
+\ its machine line, without itself retrying (no recursion).
+: TR-GATE-ATTEMPT-OPT ( -- )
+   TR-ARG-VALUE$ TR-POS-NUM TR-GATE-ATTEMPT !
+   2 TR-ADVANCE ;
+
 : TR-PARSE-ARG ( -- )
    TR-ARG$ s" full" STR= if
       s" test/run.f full retired; the native gate is test/run.f" TR-USAGE-RC die
@@ -377,6 +387,7 @@ variable TR-PRE-DIAG-FILE
    TR-ARG$ s" --cold-cache" STR= if TR-COLD-CACHE-OPT exit then
    TR-ARG$ s" --no-result-cache" STR= if TR-NO-RESULT-CACHE-OPT exit then
    TR-ARG$ s" --rerun-failed" STR= if TR-RERUN-OPT exit then
+   TR-ARG$ s" --gate-attempt" STR= if TR-GATE-ATTEMPT-OPT exit then
    TR-ARG$ s" --timings" STR= if TR-TIMINGS-OPT exit then
    TR-USAGE ;
 
@@ -475,29 +486,6 @@ variable TR-PRE-DIAG-FILE
 : TR-PERSIST-ENSURE ( -- )
    TR-PERSIST$ MAKE-DIRS ;
 
-: TR-BUDGET-FAIL ( n n -- ) {: elapsed:n budget:n :}
-   s" FAIL: native test suite budget (" type
-   elapsed GT-U-TYPE
-   s" ms > " type
-   budget GT-U-TYPE
-   s" ms)" type cr
-   s" native test suite budget exceeded" TR-BUDGET-RC die ;
-
-: TR-WALL-BUDGET-FAIL ( n n -- ) {: elapsed:n budget:n :}
-   s" FAIL: native test suite wall budget (" type
-   elapsed GT-U-TYPE
-   s" ms > " type
-   budget GT-U-TYPE
-   s" ms)" type cr
-   s" native test suite wall budget exceeded" TR-BUDGET-RC die ;
-
-: TR-PASS ( n n -- ) {: elapsed:n budget:n :}
-   s" PASS: native test suite (fixpoint + engine suite + checked hb + repl + hb-build) (" type
-   elapsed GT-U-TYPE
-   s" ms <= " type
-   budget GT-U-TYPE
-   s" ms budget)" type cr ;
-
 : TR-PERF-LINE ( -- )
    s" perf-profile: " type TR-PROFILE$ type
    s"  cache-root=" type TR-CACHE-ROOT$ type
@@ -510,15 +498,10 @@ variable TR-PRE-DIAG-FILE
    then
    cr ;
 
-: TR-FINISH ( -- )
-   TR-GATE-ELAPSED-MS {: elapsed:n :}
-   TR-BUDGET-MS {: budget:n :}
-   TR-PERF-LINE
-   elapsed budget > if elapsed budget TR-BUDGET-FAIL then
-   TR-WALL-BUDGET? if
-      elapsed TR-WALL-BUDGET-MS > if elapsed TR-WALL-BUDGET-MS TR-WALL-BUDGET-FAIL then
-   then
-   elapsed budget TR-PASS ;
+\ The gate-finish verdict is the robust PERF-VERDICT retry rule (dot
+\ habu-integrate-robust-verdict-7f26769e). The implementation is installed at the
+\ end of this file, once its runner/subprocess dependencies are defined.
+defer TR-FINISH ( -- )
 
 : TR-BUILD-CACHE-PATHS ( -- )
    TR-PERSIST$ s" hb-build-cache" TR-BUILD-CACHE-BUF JOIN-PATH TR-BUILD-CACHE-U !
@@ -1766,6 +1749,191 @@ public
    GT-POOL-RED-REPORT
    TR-KEPT-ROOT-LINE
    s" native test suite phases failed" 1 die ;
+
+\ ===========================================================================
+\ Robust performance verdict integration (dot habu-integrate-robust-verdict-7f26769e).
+\
+\ ATTEMPT UNIT = the whole gate. TR-GATE-ELAPSED-MS measures the entire run from
+\ TR-GATE-START! (TR-PREPARE, right after pre-calibration) to here; the calibrated
+\ budget and the HB_TMP/XDG_CACHE_HOME/HABU_BUILD_CACHE roots are all gate-scoped,
+\ and the phases mutate global runner state that cannot be soundly reset in
+\ process. So a fresh-root attempt is a fresh SUBPROCESS of the whole gate
+\ (--gate-attempt), never an in-process re-run. Attempt 1 is this process (its
+\ roots were fresh at start, no prior attempt); attempts 2/3 (only on an initial
+\ marginal) are cold, distinct-fresh-root subprocess re-runs that fail closed if
+\ their root is not proven empty. A worker (--gate-attempt N) runs the gate once
+\ and reports one machine line; it never retries, so there is no recursion.
+
+variable TR-POST-CAL-MS
+variable TR-SHA-ACC
+variable TR-SHA-I
+
+create TR-VA-BASE-BUF FS-PATH-CAP allot    variable TR-VA-BASE-U
+create TR-VA-TMP-BUF FS-PATH-CAP allot      variable TR-VA-TMP-U
+create TR-VA-CACHE-BUF FS-PATH-CAP allot    variable TR-VA-CACHE-U
+create TR-VA-BUILD-BUF FS-PATH-CAP allot    variable TR-VA-BUILD-U
+create TR-VA-UNDER-BUF FS-PATH-CAP allot    variable TR-VA-UNDER-U
+create TR-VA-OUT-BUF FS-PATH-CAP allot      variable TR-VA-OUT-U
+$40000 constant TR-VA-READ-CAP
+create TR-VA-READ-BUF TR-VA-READ-CAP allot
+
+\ ---- pre/post calibration bracket + folded under-test SHA ------------------
+: TR-POST-CAL! ( -- )
+   mono-ns {: t0:n :}
+   TR-CAL-ITERS TR-CAL-SPIN TR-CAL-SINK !
+   mono-ns t0 - PROC-NS-PER-MS / TR-POST-CAL-MS ! ;
+
+: TR-A-PRE ( -- n )                          \ pre-calibration spin ms, clamped >=1
+   TR-CAL-MEASURED-MS @ dup 1 < if drop 1 then ;
+
+: TR-A-POST ( -- n )                         \ post-calibration spin ms, clamped >=1
+   TR-POST-CAL-MS @ dup 1 < if drop 1 then ;
+
+\ Fold the 64-hex under-test digest into one non-negative identity cell (the
+\ policy's sha token). No candidate -> 0 -> fails closed.
+: TR-UNDER-SHA-CELL ( -- n )
+   TR-UNDER-READY @ 0= if 0 exit then
+   0 TR-SHA-ACC !
+   0 TR-SHA-I !
+   begin TR-SHA-I @ 64 < while
+      TR-SHA-ACC @ 4 lshift
+      TR-UNDER-HEX TR-SHA-I @ + c@ CK-HEX-NIB or
+      TR-SHA-ACC !
+      TR-SHA-I @ 1+ TR-SHA-I !
+   repeat
+   TR-SHA-ACC @ $7FFFFFFFFFFFFFFF and ;
+
+: TR-VERDICT-CONTROL? ( -- bool )            \ host admission: a known timed profile ran
+   TR-PROFILE-ID @ case
+      TR-PROFILE-MACOS-ARM64-10X2 of TR-TRUE endof
+      TR-PROFILE-JETSON-ORIN-CLOCKS-4X2 of TR-TRUE endof
+      TR-PROFILE-LINUX-ARM64-4X2 of TR-TRUE endof
+      TR-FALSE swap
+   endcase ;
+
+\ The seven shared measurement fields. Correctness is TRUE by construction:
+\ TR-COMPLETE runs the red-phase gate (GT-POOL-RED#) and dies with the existing
+\ RUN_EXIT code BEFORE the verdict, so correctness gates admission and its exit
+\ codes are unchanged; performance is a SEPARATE field decided here.
+: TR-A-CORE ( -- n n n n n bool bool )       \ elapsed budget pre post sha correct control
+   TR-GATE-ELAPSED-MS TR-BUDGET-MS TR-A-PRE TR-A-POST TR-UNDER-SHA-CELL
+   TR-TRUE TR-VERDICT-CONTROL? ;
+
+: TR-VERDICT-FIELDS ( -- n n n n n bool bool bool )   \ + cache (worker machine line)
+   TR-A-CORE GS-ATTEMPT-CACHE-OK? ;
+
+\ Attempt 1 is in-process: fresh=true, empty=true (it is the first attempt, so no
+\ prior-attempt artifact can exist); cache is the within-attempt counter contract.
+: TR-ATTEMPT-1 ( -- PERF-VERDICT:att )
+   TR-A-CORE TR-TRUE TR-TRUE GS-ATTEMPT-CACHE-OK? PERF-VERDICT:ATTEMPT ;
+
+\ ---- distinct fresh roots per retry attempt --------------------------------
+: TR-VA-BASE$ ( -- ptr u8 n )    TR-VA-BASE-BUF TR-VA-BASE-U @ ;
+: TR-VA-TMP$ ( -- ptr u8 n )     TR-VA-TMP-BUF TR-VA-TMP-U @ ;
+: TR-VA-CACHE$ ( -- ptr u8 n )   TR-VA-CACHE-BUF TR-VA-CACHE-U @ ;
+: TR-VA-BUILD$ ( -- ptr u8 n )   TR-VA-BUILD-BUF TR-VA-BUILD-U @ ;
+: TR-VA-UNDER$ ( -- ptr u8 n )   TR-VA-UNDER-BUF TR-VA-UNDER-U @ ;
+: TR-VA-OUT$ ( -- ptr u8 n )     TR-VA-OUT-BUF TR-VA-OUT-U @ ;
+: TR-VA-READ ( -- ptr u8 )       TR-VA-READ-BUF ;
+
+\ Deterministic sibling root <GT-ROOT>-verdict-a<n> (no entropy, index-derived).
+: TR-VA-BASE! ( n -- ) {: n:n :}
+   GT-ROOT {: ga:ptr gu:n :}
+   s" -verdict-a" {: sa:ptr su:n :}
+   n TR-NUM$ {: na:ptr nu:n :}
+   gu su + nu + FS-PATH-CAP > if E-FS-PATH throw then
+   ga TR-VA-BASE-BUF gu BYTE-COPY
+   sa TR-VA-BASE-BUF gu + su BYTE-COPY
+   na TR-VA-BASE-BUF gu su + + nu BYTE-COPY
+   gu su + nu + TR-VA-BASE-U ! ;
+
+: TR-VA-PATHS! ( n -- ) {: n:n :}
+   n TR-VA-BASE!
+   TR-VA-BASE$ MAKE-DIRS
+   TR-VA-BASE$ s" tmp" TR-VA-TMP-BUF JOIN-PATH TR-VA-TMP-U !
+   TR-VA-BASE$ s" cache" TR-VA-CACHE-BUF JOIN-PATH TR-VA-CACHE-U !
+   TR-VA-BASE$ s" build-cache" TR-VA-BUILD-BUF JOIN-PATH TR-VA-BUILD-U !
+   TR-VA-BASE$ s" verdict-attempt.out" TR-VA-OUT-BUF JOIN-PATH TR-VA-OUT-U !
+   TR-VA-TMP$ MAKE-DIRS
+   TR-VA-CACHE$ MAKE-DIRS
+   TR-VA-BUILD$ MAKE-DIRS
+   TR-VA-TMP$ s" hb-under-test" TR-VA-UNDER-BUF JOIN-PATH TR-VA-UNDER-U ! ;
+
+\ Executable check (not assumption): a fresh root must hold no candidate binary.
+: TR-VA-EMPTY? ( -- bool )
+   TR-VA-UNDER$ EXECUTABLE? 0= ;
+
+: TR-VA-ENV ( -- )
+   PROC-ENV-RESET
+   s" HB_TMP" >LEN TR-VA-TMP$ >LEN PROC-ENV+
+   s" XDG_CACHE_HOME" >LEN TR-VA-CACHE$ >LEN PROC-ENV+
+   s" HABU_BUILD_CACHE" >LEN TR-VA-BUILD$ >LEN PROC-ENV+
+   PROC-ENV-INHERIT-MISSING ;
+
+: TR-VA-ARGV ( n -- ) {: n:n :}
+   PROC-ARGV-RESET
+   s" --load" TR-ARG+
+   s" test/run.f" TR-ARG+
+   s" --" TR-ARG+
+   s" --gate-attempt" TR-ARG+
+   n TR-NUM$ TR-ARG+
+   s" --cold-cache" TR-ARG+
+   s" --perf-profile" TR-ARG+
+   TR-PROFILE$ TR-ARG+ ;
+
+: TR-VA-OPEN-OUT ( -- n )                    \ raw write fd for the child's stdout file
+   TR-VA-OUT$ FS-PATHZ FS-O-WRONLY FS-O-CREAT or FS-O-TRUNC or FS-MODE-0644 open
+   dup 0 < if E-FS-OPEN throw then ;
+
+: TR-VA-CHILD-OK? ( n -- bool ) {: fd:n :}   \ spawn worker, stdout+stderr -> fd, wait
+   s" bin/hb" >LEN  -1 >FD  fd >FD  fd >FD  PROC-RUN-ARGV-ENV-IO-RC
+   MATCH result
+      ok OF drop TR-TRUE ENDOF
+      err OF drop TR-FALSE ENDOF
+   ;MATCH ;
+
+\ One fresh-root subprocess attempt. fresh=true (distinct root); empty is proven
+\ pre-spawn by the executable check; the other eight fields come from the worker
+\ machine line. A failed/silent child yields a fail-closed attempt.
+: TR-ATTEMPT-SUBPROC ( n -- PERF-VERDICT:att ) {: n:n :}
+   n TR-VA-PATHS!
+   TR-VA-EMPTY? {: em:bool :}
+   TR-VA-ENV
+   n TR-VA-ARGV
+   TR-VA-OPEN-OUT {: fd:n :}
+   fd TR-VA-CHILD-OK? {: ok:bool :}
+   fd close
+   ok 0= if TR-VA-READ 0 em TR-VERDICT:PA-PARSE exit then
+   TR-VA-OUT$ EXISTS? 0= if TR-VA-READ 0 em TR-VERDICT:PA-PARSE exit then
+   TR-VA-OUT$ TR-VA-READ TR-VA-READ-CAP READ-ALL {: got:n :}
+   TR-VA-READ got em TR-VERDICT:PA-PARSE ;
+
+: TR-VERDICT-MEASURE ( n -- PERF-VERDICT:att ) {: n:n :}
+   n 1 = if TR-ATTEMPT-1 exit then
+   n TR-ATTEMPT-SUBPROC ;
+
+\ ---- worker vs driver finish ----------------------------------------------
+: TR-VERDICT-WORKER ( -- )                   \ --gate-attempt: one attempt, one line, no retry
+   TR-POST-CAL!
+   TR-PERF-LINE
+   TR-VERDICT-FIELDS TR-VERDICT:PA-EMIT ;
+
+: TR-VERDICT-DRIVER ( -- )                   \ retry rule: pass returns, any fail dies TR-BUDGET-RC
+   TR-POST-CAL!
+   TR-PERF-LINE
+   TR-VERDICT:RUN 0= if
+      s" native test suite performance verdict failed" TR-BUDGET-RC die
+   then ;
+
+: TR-VERDICT-FINISH ( -- )
+   TR-GATE-ATTEMPT @ 0 > if TR-VERDICT-WORKER exit then
+   TR-VERDICT-DRIVER ;
+
+: TR-VERDICT-INSTALL ( -- )
+   [: TR-VERDICT-MEASURE ;] is TR-VERDICT:MEASURE
+   [: TR-VERDICT-FINISH ;] is TR-FINISH ;
+
+TR-VERDICT-INSTALL
 
 : TR-COMPLETE ( -- )
    GS-SUMMARY

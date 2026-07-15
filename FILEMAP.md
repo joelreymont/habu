@@ -294,6 +294,11 @@ points stay listed.
   2-of-3 retry aggregation, and a deterministic ATTEMPT-LINE over a typed attempt record.
 - `test/perf-verdict-test.f` — manual-standalone acceptance fixtures for the
   PERF-VERDICT policy (band thresholds, retry aggregation, fail-closed evidence, rows).
+- `test/run-verdict.f` — TR-VERDICT retry driver that runs the PERF-VERDICT frozen rule
+  over real gate attempts through an injectable measure seam, renders attempt/verdict rows,
+  and owns the deterministic worker machine-line channel (PA-LINE$/PA-PARSE).
+- `test/run-verdict-test.f` — manual-standalone fixtures for the TR-VERDICT retry driver
+  (exact attempt counts / no recursion, 2-of-3, SHA and empty-root fail-closed, machine-line round trip).
 - `tools/seed.f` — checked native seed installer, SHA verifier, smoke test, and fixpoint rebuild driver.
 - `tools/seed-main.f` — CLI entrypoint for checked native seed recovery.
 - `tools/seed-test.f` — focused coverage for seed SHA, install, signing, and smoke helpers.

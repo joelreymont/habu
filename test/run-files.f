@@ -63,7 +63,9 @@ TR-FILES: TR-AOT-RUNNER-SUPPORT-FILES
 TR-FILES: TR-GATE-HARNESS-FILES
    test/run.f test/run-support.f test/run-lib.f test/run-files.f
    test/run-result-cache.f test/run-resident.f test/run-worker.f
-   lib/errors.f lib/string.f lib/memory.f lib/cad-num-arithmetic.f lib/cad-num-types.f lib/vector.f lib/adt/option.f
+   test/perf-verdict.f test/run-verdict.f
+   lib/errors.f lib/string.f lib/prelude.f lib/fmt.f lib/float.f lib/memory.f
+   lib/cad-num-arithmetic.f lib/cad-num-types.f lib/vector.f lib/adt/option.f
    lib/adt/result.f lib/fs.f
    lib/fs-mutate.f lib/process.f lib/process-argv.f lib/process-env.f
    lib/process-fork.f lib/test/record.f lib/test/runner.f lib/test/budget.f

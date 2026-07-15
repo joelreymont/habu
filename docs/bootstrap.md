@@ -209,6 +209,30 @@ candidates and builder/maker artifacts. Snapshot coverage belongs to the native
 build/fixpoint path; generated images are local artifacts and must not be
 committed.
 
+### Performance verdict
+
+Correctness and performance are **separate** gate verdicts. A failing
+correctness phase still exits with its existing `RUN_EXIT` code before any timing
+is judged (correctness gates admission). Once every phase is green, the
+budget-only pass/fail (formerly `RUN_EXIT=65`) is decided by the robust
+performance verdict, whose policy owner is
+[`test/perf-verdict.f`](../test/perf-verdict.f) and whose runner integration is
+`test/run-verdict.f` + `test/run-lib.f`:
+
+- Each attempt is the whole gate, bracketed by pre/post calibration spins and
+  normalized against the calibrated budget. Elapsed at or below 100% of budget is
+  a pass, above 100% through 110% is marginal, above 110% is a hard fail; more
+  than 10% calibration drift makes the attempt invalid.
+- An **initial pass runs once**. An **initial marginal runs exactly two more**
+  fresh attempts (never more than three, no recursion) as cold subprocess
+  re-runs with distinct fresh `HB_TMP`/`XDG_CACHE_HOME`/`HABU_BUILD_CACHE` roots,
+  each proven empty of prior-attempt artifacts, all pinned to one exact-tree
+  under-test SHA; the run passes iff at least two of three are pass-band. Any
+  hard fail, invalid attempt, SHA mismatch, or missing evidence fails closed.
+- The gate prints one deterministic `attempt …` row per attempt plus a final
+  `perf-verdict: performance=… correctness=… attempts=…` row as the audit trail.
+  `--gate-attempt N` runs a single worker attempt (no retry) for the driver.
+
 `bin/hb` itself must stay the small source-loading engine.
 
 ## Future Port Checklist

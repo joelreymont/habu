@@ -670,6 +670,16 @@ GS-GEN-INIT
       1+
    repeat drop ;
 
+\ Within-attempt cache-counter contract for the perf verdict (dot
+\ habu-integrate-robust-verdict-7f26769e). After GS-SUMMARY has scanned one
+\ attempt's stats, the candidate must have become ready at least once and no
+\ cache-stamp corruption may have been observed. Expected within-attempt hits
+\ (candidate restored once, shared tool base) are legitimate and NOT cross-attempt
+\ reuse; a fresh-root retry attempt gets its own zeroed counters.
+: GS-ATTEMPT-CACHE-OK? ( -- bool )
+   GS-CANDIDATE-CORRUPT @ 0=
+   GS-CANDIDATE-READY @ 0 > and ;
+
 : GS-SUMMARY ( -- )
    GS-ON? 0= if exit then
    GS-READ
