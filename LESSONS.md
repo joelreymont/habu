@@ -4656,3 +4656,10 @@ unchanged (148855). Keys for milestone 2:
   named `FIELD` belongs to `PRODUCT`; `ENUM` is bare-names-only (an arity or
   `VARIANT` token rejects, 7101). A token's status is whatever `bin/hb` does with a
   one-line fixture, never what a cross-referenced doc claims.
+- A snapshot build can carry two checker copies: the engine cold prefix and the
+  generated build payload. Calling the newest `CHECKER-SNAPSHOT-PREPARE` only
+  resets the payload copy; engine AOT hooks can still dereference the first
+  copy's dead mmap owners after restore. Install a fixed first-copy
+  `CHECKER-SNAPSHOT-PREPARE` xt after the cold checker loads, invoke that exact
+  owner before the payload checker prepares, and clear the xt from persisted
+  DATA.

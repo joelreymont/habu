@@ -3371,7 +3371,7 @@ TRUSTED: HIDX-RC>PTR ( n -- ptr n ) ;
    HIDX-VALID @ 0= IF HIDX-BUILD THEN ;
 
 \ HIDX-RESET ( -- ) : snapshot prepare — the mapping is process-local.
-: HIDX-RESET
+: HIDX-RESET ( -- )
    HIDX-MEM-CLEAR
    0 HIDX-VALID !
    0 HIDX-EFF-HI !
@@ -5520,6 +5520,7 @@ variable REG-SCRATCH-SNAP-XT   0 REG-SCRATCH-SNAP-XT !
    VREC-SNAPSHOT-PERSIST
    SYM-SNAPSHOT-PERSIST
    USIGS-SNAPSHOT-PERSIST
+   HIDX-EFF-BASE-CLEAR
    NORET-SNAPSHOT-PERSIST
    REG-EXT-PERSIST-XT @ dup 0= if drop else execute then
    REG-SCRATCH-SNAP-XT @ dup 0= if drop else execute then ;

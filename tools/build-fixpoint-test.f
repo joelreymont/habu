@@ -651,6 +651,7 @@ public
    BFT-READ-BUF u s" : INCLUDE-READ-ALL ( ptr u8 n -- ptr u8 n )" CONTAINS? TTRUE
    BFT-READ-BUF u s" : included ( ptr u8 n -- )" CONTAINS? TTRUE
    BFT-READ-BUF u s" SNAP-MAGIC" CONTAINS? TTRUE
+   BFT-READ-BUF u s" CHECKER-SNAPSHOT-PREPARE data-base ENGINE-SNAP-XT-CELL + !" CONTAINS? TTRUE
    BF-TMP-RESET ;
 
 \ Doctored snapshot-trailer regression (TFAM 12 item 6, dot
@@ -774,6 +775,7 @@ variable BFT-DOC-CODE
    BFT-SNAP0-BUILD
    BFT-EMPTY-STDIN!
    s" hb-snap0" BFT-SNAP-RUN 0 T=
+   s" hb-snap0" BF-A$ s" lib/prelude.f" BF-RUN-LOAD-STAGE 0 T=
    BFT-BYTES-READ
    BFT-MAGIC-LAST!
    BFT-MAG-LAST @ {: mag:n :}

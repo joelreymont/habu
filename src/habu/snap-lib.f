@@ -163,6 +163,7 @@ TRUSTED: SND-ZERO-SPAN-CELL ( n -- ) SND-N @ + 0 swap ! ;
    HIDXP-CELL SND-ZERO-CELL
    TKA-CELL SND-ZERO-CELL     TKL-CELL SND-ZERO-CELL
    DEF-TKA-CELL SND-ZERO-CELL
+   ENGINE-SNAP-XT-CELL SND-ZERO-CELL
    \ Disarm the top-row token hook in the image: a captured-armed tracker fires
    \ on the warm boot's `provided` re-establishment rows and its sig-store scan
    \ derefs an un-rebased engine-text pointer (SIGSEGV; dot

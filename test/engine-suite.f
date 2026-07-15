@@ -768,7 +768,26 @@ variable TR-S-LC variable TR-S-STRLC
    s" tgpkg" SYM-GLOBAL s" SYMGROWPROBE" SYM-FIND -1 T= TR-SID0 @ T=
    TR-SC @ SYM-CAP-V !  TR-SSC @ SYM-STR-CAP-V !  TR-SN @ SYM-N !  TR-SSU @ SYM-STR-U !
    TR-SP @ SYMS-P !  TR-SSP @ SYM-STR-P !
-   0 HIDX-MEM !  0 HIDX-VALID ! ;        \ rebuild a fresh index from the restored SYMS
+   HIDX-RESET
+   s" hidx snapshot reset clears mmap owner" T-LABEL
+   HIDX-MEM-READY? 0= -1 T=
+   s" hidx snapshot reset invalidates cache" T-LABEL
+   HIDX-VALID @ 0= -1 T=
+   s" hidx snapshot reset binds the live effect owner" T-LABEL
+   HIDX-EFF-BASE@ USIGS = -1 T=
+   HIDX-ENSURE
+   HIDX-EFF-SYNC
+   s" hidx snapshot reset rebuilds mmap owner" T-LABEL
+   HIDX-MEM-READY? -1 T=
+   s" hidx snapshot reset retains the live effect owner" T-LABEL
+   HIDX-EFF-BASE@ USIGS = -1 T=
+   CHECKER-SNAPSHOT-PREPARE
+   s" checker snapshot prepare clears mmap owner" T-LABEL
+   HIDX-MEM-READY? 0= -1 T=
+   s" checker snapshot prepare invalidates cache" T-LABEL
+   HIDX-VALID @ 0= -1 T=
+   s" checker snapshot prepare rebinds persisted effect owner" T-LABEL
+   HIDX-EFF-BASE@ USIGS = -1 T= ;
 LOWER-CERT-HOOK:INSTALL
 TR-SYMS-WHITEBOX
 

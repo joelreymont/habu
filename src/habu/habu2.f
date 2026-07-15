@@ -163,6 +163,10 @@ variable LPROLES
 variable LPENUMS        variable LPEXECVECTOR   variable LPSHA256       variable LPTFAMSHA
 variable LPCOMBINATORS  variable LPXREF  variable LPLAYOUTSEAL  variable LPLOWERCERTSEAL
 variable LPTOPROW
+variable LCHKSNAPTOKEN
+variable SRC-SFAIL
+
+61 constant CHKSNAPTOKEN-LEN
 create BPH-KW 104 c, 97 c, 98 c, 117 c, 45 c, 98 c, 112 c, 58 c, 10 c,   \ habu-bp:\n
 create BPS-KW 104 c, 97 c, 98 c, 117 c, 45 c, 98 c, 112 c, 45 c, 115 c, 116 c, 97 c, 99 c, 107 c, 58 c, 10 c,
 create BPW-KW 104 c, 97 c, 98 c, 117 c, 45 c, 98 c, 112 c, 45 c, 119 c, 97 c, 116 c, 99 c, 104 c, 58 c, 10 c,
@@ -497,6 +501,27 @@ s" c-bp-watch-dump" s" label label --" TRUST
 : PFX-PATH-ROW ( n ptr n ptr u8 n -- ) {: kind var a u :}
    var LABEL@ LBL,  a u ZBYTES, ;
 
+: C-SOURCE-APPEND-X4-TO ( label -- ) {: fail:label :}
+   2 11 0 ADDI,
+   5 IBUFSZ LIT64,
+   2 2 5 ADD,
+   9 2 CMP,
+   C-GE fail BCOND,
+   4 9 0 STRB,
+   9 9 1 ADDI, ;
+
+: PFX-APPEND-ENGINE-SNAP-HOOK ( -- )
+   LBL LBL {: loop:label done:label :}
+   12 LCHKSNAPTOKEN LABEL@ ADR,
+   13 CHKSNAPTOKEN-LEN MOVZ,
+   loop LBL,
+   13 done CBZ,
+   4 12 0 LDRB,
+   SRC-SFAIL LABEL@ C-SOURCE-APPEND-X4-TO
+   12 12 1 ADDI,  13 13 1 SUBI,
+   loop B,
+   done LBL, ;
+
 : PFX-LOAD-BASE-FILES ( -- )
    PFX-COMMON LPUTIL         s" src/core/util.f"        PFX-LOAD-ROW
    PFX-COMMON LPCELL         s" src/core/cell.f"        PFX-LOAD-ROW
@@ -523,6 +548,7 @@ s" c-bp-watch-dump" s" label label --" TRUST
    PFX-LINUX  LPLINUXLAYOUT  s" src/os/linux/layout.f"  PFX-LOAD-ROW
    PFX-MACOS  LPMACOSLAYOUT  s" src/os/macos/layout.f"  PFX-LOAD-ROW
    PFX-COMMON LPHABULAYOUT   s" src/habu/layout.f"      PFX-LOAD-ROW
+   PFX-APPEND-ENGINE-SNAP-HOOK
    PFX-COMMON LPENVBASE      s" src/os/env-base.f"      PFX-LOAD-ROW
    PFX-COMMON LPINCLUDE      s" src/core/include.f"     PFX-LOAD-ROW
    PFX-COMMON LPENUMS        s" src/core/enums.f"       PFX-LOAD-ROW
@@ -664,7 +690,7 @@ s" c-bp-watch-dump" s" label label --" TRUST
    NR-IOCTL SYS, ;
 s" c-emit-tty-probe" s" --" TRUST
 
-variable SRC-TTY  variable SRC-FILE  variable SRC-SFAIL
+variable SRC-TTY  variable SRC-FILE
 variable SRC-RL   variable SRC-RD    variable SRC-PIPEOK
 variable SRC-REPL variable SRC-DONE  variable SRC-FSCAN
 variable SRC-FNEXT variable SRC-FREADY variable SRC-FPLAIN
@@ -713,15 +739,6 @@ variable LCOLDPFX variable LCOLDPFXB variable LAPPPROV
 : C-SOURCE-FILE-MAP ( -- )
    SRC-SFAIL @ C-SOURCE-MMAP
    11 0 0 ADDI, ;
-
-: C-SOURCE-APPEND-X4-TO ( label -- ) {: fail:label :}
-   2 11 0 ADDI,
-   5 IBUFSZ LIT64,
-   2 2 5 ADD,
-   9 2 CMP,
-   C-GE fail BCOND,
-   4 9 0 STRB,
-   9 9 1 ADDI, ;
 
 package OWNER-WID-EMIT
 
@@ -1241,6 +1258,9 @@ here RESTAB-BUF - constant RESTAB-LEN
    LTFLCONFAM LABEL@ LBL, s" tfl-con-fam?" BYTES,  LTFLCVAR LABEL@ LBL, s" tfl-cvar?" BYTES,
    LTFLMATCHFAM LABEL@ LBL, s" tfl-match-fam?" BYTES,  LTFLNAME LABEL@ LBL, s" tfam-name$" BYTES,
    LBADTAGPFX LABEL@ LBL, s" hb: bad " BYTES,  LBADTAGSFX LABEL@ LBL, BADTAG-SFX-KW 5 BYTES,
+   LCHKSNAPTOKEN LABEL@ LBL,
+   s" ' CHECKER-SNAPSHOT-PREPARE data-base ENGINE-SNAP-XT-CELL + !" BYTES,
+   NL-KW 1 BYTES,
    PFX-PATH-FILES ;
 
 \ ---- compile-time keyword handlers (append JIT-emitter code at BUILD time) ----
@@ -3973,6 +3993,7 @@ TRUSTED: EM-DATA-VA>N ( -- n ) DATA-VA ;
    9 0 MOVZ,  9 DATA PROT-WID-N-CELL STR,  \ constructor registry starts empty
    OWNER-WID-EMIT:COLD-LABEL@ BL,
    cwok LBL,  9 0 MOVZ,
+   9 DATA ENGINE-SNAP-XT-CELL STR,
    9 DATA REPLH-CELL STR,
    9 DATA AOT-SEED-DONE-CELL STR,
    9 DATA AOT-SEED-ARM-CELL STR,
@@ -6136,7 +6157,7 @@ s" SRCA@" s" -- ptr u8" TRUST
    LBL LPENVBASE !  LBL LPINCLUDE !  LBL LPSCRIPTARGV !  LBL LPINTMARK !  LBL LPROLES !
    LBL LPENUMS !  LBL LPEXECVECTOR !  LBL LPSHA256 !  LBL LPTFAMSHA !
    LBL LPCOMBINATORS !  LBL LPXREF !  LBL LPLAYOUTSEAL !  LBL LPLOWERCERTSEAL !
-   LBL LPTOPROW ! ;
+   LBL LPTOPROW !  LBL LCHKSNAPTOKEN ! ;
 
 : EMIT-LABEL-JIT ( -- )
    LBL LPROFH !  LBL LPROFDUMP !

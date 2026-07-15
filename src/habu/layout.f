@@ -348,6 +348,14 @@ $27A8 constant CMM-CELL
 \ ( ptr u8 n n n -- ): token addr, token len, class (TOP-EV-*), LFIND flags
 \ (word/tick classes; 0 for literal classes).
 $27F0 constant TOP-HOOK-CELL
+\ ENGINE-SNAP-XT-CELL retains the first cold-prefix checker's snapshot-prepare
+\ hook while a --build payload loads a second checker copy. Snapshot capture
+\ invokes that first-copy hook before serializing DATA; capture and startup
+\ clear it so no build-process code pointer reaches a restored image. $27F8 is
+\ the final reclaimed cell before RSTK-OFF and is protected with TOP-HOOK-CELL.
+$27F8 constant ENGINE-SNAP-XT-CELL
+TOP-HOOK-CELL constant ENGINE-HOOK-OFF
+2 cells constant ENGINE-HOOK-LEN
 \ Top-row event class codes: the protocol between the interpret dispatch and
 \ an installed top-row hook. Word/tick events pass the LFIND flag word
 \ (bit 0 found, bit 1 DNAME-IMM, bits 8-15 DNAME-MIN-IN); literals pass 0.

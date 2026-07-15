@@ -14,7 +14,7 @@
 \ and `top-check@` round-trips the installed xt. Negatives (child processes,
 \ both cold-prefix source paths): an invalid install dies rc 70 with the
 \ named diagnostic before any dispatch BLR, and a raw store into the sealed
-\ cell traps ENGINE-ERROR:SEAL-VIOLATION while both one-cell neighbors stay writable.
+\ hook cells trap ENGINE-ERROR:SEAL-VIOLATION while both band neighbors stay writable.
 \ Hook uninstalled = today's dispatch, proven by the rest of the native gate.
 \
 \ Run: bin/hb --load lib/errors.f lib/string.f lib/test.f lib/memory.f
@@ -294,6 +294,11 @@ create TRH-EMPTY 1 allot
    s" data-base TOP-HOOK-CELL + 99 swap !" TRH-LINE
    SB$ ;
 
+: TRH-SNAP-SEAL-FORGE$ ( -- ptr u8 n )
+   SB-RESET
+   s" data-base ENGINE-SNAP-XT-CELL + 99 swap !" TRH-LINE
+   SB$ ;
+
 : TRH-BELOW-FORGE$ ( -- ptr u8 n )  \ one cell below the band stays writable
    SB-RESET
    s" data-base TOP-HOOK-CELL 8 - + 99 swap !" TRH-LINE
@@ -301,12 +306,16 @@ create TRH-EMPTY 1 allot
 
 : TRH-ABOVE-FORGE$ ( -- ptr u8 n )  \ one cell past the band stays writable
    SB-RESET
-   s" data-base TOP-HOOK-CELL 8 + + 99 swap !" TRH-LINE
+   s" data-base ENGINE-SNAP-XT-CELL 8 + + 99 swap !" TRH-LINE
    SB$ ;
 
 : TRH-NEG-SEAL ( -- )
    s" raw ! into TOP-HOOK-CELL traps ENGINE-ERROR:SEAL-VIOLATION" T-LABEL
    TRH-SEAL-FORGE$ TRH-RUN-LOAD
+   TRH-EXITED @ TTRUE
+   TRH-RC @ ENGINE-ERROR:SEAL-VIOLATION T=
+   s" raw ! into ENGINE-SNAP-XT-CELL traps ENGINE-ERROR:SEAL-VIOLATION" T-LABEL
+   TRH-SNAP-SEAL-FORGE$ TRH-RUN-LOAD
    TRH-EXITED @ TTRUE
    TRH-RC @ ENGINE-ERROR:SEAL-VIOLATION T=
    s" one cell below the band stays writable" T-LABEL

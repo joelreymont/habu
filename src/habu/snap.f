@@ -28,6 +28,9 @@ require src/habu/snap-lib.f
 
 TRUSTED: SNAP-RETIRE-GO ( -- )
    s" SNAP-TAIL-MARK" FORGET-DEFS-FROM
+   data-base ENGINE-SNAP-XT-CELL + @ dup 0= if
+      s" snap: engine snapshot hook missing" 74 die
+   then execute
    CHECKER-SNAPSHOT-PREPARE
    INCLUDE-SNAPSHOT-PREPARE
    SNAPGO ;
