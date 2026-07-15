@@ -4547,3 +4547,11 @@ unchanged (148855). Keys for milestone 2:
 - **Duplicate loop indices before interposing the base address.** With
   `index byte base`, `over` duplicates the byte and corrupts the computed
   address. Keep `index byte over base + c!` so `over` still selects the index.
+- **Baseline a red performance gate before blaming the candidate.** Master and
+  the cache branch failed identically while an orphan canary consumed a core;
+  compare both trees and audit host workloads before changing code or budgets.
+- **Nested fixture forks need fresh pool and temp ownership.** Reusing inherited
+  pool state collided with the parent captures, and sharing one gate root raced
+  compiler scratch files. Reset the child pool, give each worker its own gate
+  root, and keep cache-sharing fixtures in one worker; AOT coverage then fell
+  from 44 seconds to about 30 seconds without duplicate cold maker builds.

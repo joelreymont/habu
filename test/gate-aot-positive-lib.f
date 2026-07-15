@@ -2,6 +2,8 @@
 \
 \ Load after test/gate-build-common.f and test/gate-build-hbb.f.
 
+require test/gate-pool.f
+
 46 constant GAP-DOT
 99 constant GAP-C-LOWER
 $10000 constant GAP-STRIPPED-TEXT-MAX
@@ -233,10 +235,28 @@ $10000 constant GAP-STRIPPED-TEXT-MAX
    s" hb-build AOT preseed normal-MAIN still exits 0" GB-RUN-OUT
    s" PASS: hb-build AOT preseeded bad-tag entry (rc 85 hb: bad gemt tag; three-key lockstep; object relink)" type cr ;
 
-: GAP-RUN ( -- )
-   s" hb-gate-aot-positive" GT-START
+: GAP-RUN-BUNDLE-DATA ( -- )
+   s" hb-gate-aot-bundle-data" GT-START
    GAP-BUNDLE
    GAP-DATA
+   GT-CLEANUP ;
+
+: GAP-RUN-PRESEED ( -- )
+   s" hb-gate-aot-preseed" GT-START
    GAP-PRESEED
+   GT-CLEANUP ;
+
+: GAP-START-BUNDLE-DATA ( -- )
+   s" fork hb-build AOT bundle/data" GE-TIMEOUT-MS [: GAP-RUN-BUNDLE-DATA ;] GT-POOL-START-FORK ;
+
+: GAP-START-PRESEED ( -- )
+   s" fork hb-build AOT preseed" GE-TIMEOUT-MS [: GAP-RUN-PRESEED ;] GT-POOL-START-FORK ;
+
+: GAP-RUN ( -- )
+   s" hb-gate-aot-positive" GT-START
+   GT-POOL-RESET
+   GAP-START-BUNDLE-DATA
+   GAP-START-PRESEED
+   GT-POOL-DRAIN
    GT-CLEANUP
    s" PASS: native hb-build AOT positive gate phase" type cr ;
