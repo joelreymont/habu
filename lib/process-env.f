@@ -46,9 +46,27 @@ variable PROC-ENV-DEF-BUF-A
 : PROC-ENV-BUF! ( ptr u8 -- )
    PROC-ENV-BUF-A-FIELD ! ;
 
+\ PROC-ENV-BUF-CAP is a positive library constant: the raw size is narrowed to
+\ CAD-NUM:byte-len then to the allocation role before MEM:ALLOC-BYTES; a
+\ validation refusal is an internal invariant violation (unreachable for the
+\ constant) and throws the memory-sizing code. Same narrowing guards the default
+\ env buffer below.
 : PROC-ENV-BUF ( -- ptr u8 )
    PROC-ENV-BUF@ 0= if
-      PROC-ENV-BUF-CAP MEM-ALLOC-BYTES drop PROC-ENV-BUF!
+      PROC-ENV-BUF-CAP CAD-NUM:BYTE-LEN
+      MATCH CAD-NUM:numeric-result
+         ok OF CAD-NUM:AS-ALLOC-BYTE-LEN
+            MATCH CAD-NUM:numeric-result
+               ok OF ENDOF
+               negative OF E-MEM-SIZE throw ENDOF        zero OF E-MEM-SIZE throw ENDOF
+               overflow OF E-MEM-SIZE throw ENDOF        underflow OF E-MEM-SIZE throw ENDOF
+               bad-alignment OF E-MEM-SIZE throw ENDOF   misaligned OF E-MEM-SIZE throw ENDOF
+            ;MATCH ENDOF
+         negative OF E-MEM-SIZE throw ENDOF        zero OF E-MEM-SIZE throw ENDOF
+         overflow OF E-MEM-SIZE throw ENDOF        underflow OF E-MEM-SIZE throw ENDOF
+         bad-alignment OF E-MEM-SIZE throw ENDOF   misaligned OF E-MEM-SIZE throw ENDOF
+      ;MATCH
+      MEM:ALLOC-BYTES drop PROC-ENV-BUF!
    then
    PROC-ENV-BUF@ ;
 
@@ -78,7 +96,20 @@ variable PROC-ENV-DEF-BUF-A
 
 : PROC-ENV-DEF-BUF ( -- ptr u8 )
    PROC-ENV-DEF-BUF@ 0= if
-      PROC-ENV-BUF-CAP MEM-ALLOC-BYTES drop PROC-ENV-DEF-BUF!
+      PROC-ENV-BUF-CAP CAD-NUM:BYTE-LEN
+      MATCH CAD-NUM:numeric-result
+         ok OF CAD-NUM:AS-ALLOC-BYTE-LEN
+            MATCH CAD-NUM:numeric-result
+               ok OF ENDOF
+               negative OF E-MEM-SIZE throw ENDOF        zero OF E-MEM-SIZE throw ENDOF
+               overflow OF E-MEM-SIZE throw ENDOF        underflow OF E-MEM-SIZE throw ENDOF
+               bad-alignment OF E-MEM-SIZE throw ENDOF   misaligned OF E-MEM-SIZE throw ENDOF
+            ;MATCH ENDOF
+         negative OF E-MEM-SIZE throw ENDOF        zero OF E-MEM-SIZE throw ENDOF
+         overflow OF E-MEM-SIZE throw ENDOF        underflow OF E-MEM-SIZE throw ENDOF
+         bad-alignment OF E-MEM-SIZE throw ENDOF   misaligned OF E-MEM-SIZE throw ENDOF
+      ;MATCH
+      MEM:ALLOC-BYTES drop PROC-ENV-DEF-BUF!
    then
    PROC-ENV-DEF-BUF@ ;
 

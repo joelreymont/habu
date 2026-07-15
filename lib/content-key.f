@@ -83,9 +83,26 @@ variable CK-CACHE-LOADED
 : CK-CACHE-BUF! ( ptr u8 -- )
    CK-CACHE-BUF-FIELD ! ;
 
+\ CK-CACHE-CAP is a positive library constant: the raw size is narrowed to
+\ CAD-NUM:byte-len then to the allocation role before MEM:ALLOC-BYTES; a
+\ validation refusal is an internal invariant violation (unreachable for the
+\ constant) and throws the memory-sizing code.
 : CK-CACHE-BUF ( -- ptr u8 )
    CK-CACHE-BUF@ 0= if
-      CK-CACHE-CAP MEM-ALLOC-BYTES drop CK-CACHE-BUF!
+      CK-CACHE-CAP CAD-NUM:BYTE-LEN
+      MATCH CAD-NUM:numeric-result
+         ok OF CAD-NUM:AS-ALLOC-BYTE-LEN
+            MATCH CAD-NUM:numeric-result
+               ok OF ENDOF
+               negative OF E-MEM-SIZE throw ENDOF        zero OF E-MEM-SIZE throw ENDOF
+               overflow OF E-MEM-SIZE throw ENDOF        underflow OF E-MEM-SIZE throw ENDOF
+               bad-alignment OF E-MEM-SIZE throw ENDOF   misaligned OF E-MEM-SIZE throw ENDOF
+            ;MATCH ENDOF
+         negative OF E-MEM-SIZE throw ENDOF        zero OF E-MEM-SIZE throw ENDOF
+         overflow OF E-MEM-SIZE throw ENDOF        underflow OF E-MEM-SIZE throw ENDOF
+         bad-alignment OF E-MEM-SIZE throw ENDOF   misaligned OF E-MEM-SIZE throw ENDOF
+      ;MATCH
+      MEM:ALLOC-BYTES drop CK-CACHE-BUF!
    then
    CK-CACHE-BUF@ ;
 

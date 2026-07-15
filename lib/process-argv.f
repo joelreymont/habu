@@ -23,9 +23,26 @@ variable PROC-ARGV-BUF-A
 : PROC-ARGV-BUF! ( ptr u8 -- )
    PROC-ARGV-BUF-A-FIELD ! ;
 
+\ PROC-ARGV-BUF-CAP is a positive library constant: the raw size is narrowed to
+\ CAD-NUM:byte-len then to the allocation role before MEM:ALLOC-BYTES; a
+\ validation refusal is an internal invariant violation (unreachable for the
+\ constant) and throws the memory-sizing code.
 : PROC-ARGV-BUF ( -- ptr u8 )
    PROC-ARGV-BUF@ 0= if
-      PROC-ARGV-BUF-CAP MEM-ALLOC-BYTES drop PROC-ARGV-BUF!
+      PROC-ARGV-BUF-CAP CAD-NUM:BYTE-LEN
+      MATCH CAD-NUM:numeric-result
+         ok OF CAD-NUM:AS-ALLOC-BYTE-LEN
+            MATCH CAD-NUM:numeric-result
+               ok OF ENDOF
+               negative OF E-MEM-SIZE throw ENDOF        zero OF E-MEM-SIZE throw ENDOF
+               overflow OF E-MEM-SIZE throw ENDOF        underflow OF E-MEM-SIZE throw ENDOF
+               bad-alignment OF E-MEM-SIZE throw ENDOF   misaligned OF E-MEM-SIZE throw ENDOF
+            ;MATCH ENDOF
+         negative OF E-MEM-SIZE throw ENDOF        zero OF E-MEM-SIZE throw ENDOF
+         overflow OF E-MEM-SIZE throw ENDOF        underflow OF E-MEM-SIZE throw ENDOF
+         bad-alignment OF E-MEM-SIZE throw ENDOF   misaligned OF E-MEM-SIZE throw ENDOF
+      ;MATCH
+      MEM:ALLOC-BYTES drop PROC-ARGV-BUF!
    then
    PROC-ARGV-BUF@ ;
 

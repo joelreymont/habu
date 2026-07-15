@@ -37,8 +37,25 @@ variable SOURCE-LS-LINE#
 : SOURCE-PTR-U8! ( ptr u8 ptr a -- )
    SOURCE-PTR-U8-FIELD ! ;
 
+\ Fixed-size buffer allocation. SOURCE-CAP is a positive library constant, so the
+\ raw size is narrowed to CAD-NUM:byte-len then to the allocation role before
+\ MEM:ALLOC-BYTES; a validation refusal is an internal invariant violation
+\ (unreachable for the constant) and throws the memory-sizing code.
 : SOURCE-ALLOC-BUF ( n -- ptr u8 )
-   MEM-ALLOC-BYTES drop ;
+   CAD-NUM:BYTE-LEN
+   MATCH CAD-NUM:numeric-result
+      ok OF CAD-NUM:AS-ALLOC-BYTE-LEN
+         MATCH CAD-NUM:numeric-result
+            ok OF ENDOF
+            negative OF E-MEM-SIZE throw ENDOF        zero OF E-MEM-SIZE throw ENDOF
+            overflow OF E-MEM-SIZE throw ENDOF        underflow OF E-MEM-SIZE throw ENDOF
+            bad-alignment OF E-MEM-SIZE throw ENDOF   misaligned OF E-MEM-SIZE throw ENDOF
+         ;MATCH ENDOF
+      negative OF E-MEM-SIZE throw ENDOF        zero OF E-MEM-SIZE throw ENDOF
+      overflow OF E-MEM-SIZE throw ENDOF        underflow OF E-MEM-SIZE throw ENDOF
+      bad-alignment OF E-MEM-SIZE throw ENDOF   misaligned OF E-MEM-SIZE throw ENDOF
+   ;MATCH
+   MEM:ALLOC-BYTES drop ;
 
 : SOURCE-BUF ( -- ptr u8 )
    SOURCE-BUF-A @ 0= if SOURCE-CAP SOURCE-ALLOC-BUF SOURCE-BUF-A SOURCE-PTR-U8! then
