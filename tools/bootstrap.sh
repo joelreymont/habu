@@ -164,6 +164,11 @@ s" IMK-NDICT0" s" SEQ" BOOT-HIDE-DICT-FROM-EARLIEST
 EOF
 }
 
+emit_decl_src() {
+  # Unified STRUCTURE and ENUM declarers load here after the checker hook.
+  :
+}
+
 emit_src() {
   local out="$1"
   local driver="$2"
@@ -204,7 +209,7 @@ emit_src() {
   printf '\n' >> "$out"
   cat src/core/pointer-storage-effects.f >> "$out"
   printf '\n' >> "$out"
-  # Unified STRUCTURE and ENUM declarers load here after the checker hook.
+  emit_decl_src "$out"
   cat src/core/structures.f >> "$out"
   printf '\n' >> "$out"
   printf "LOWER-CERT-HOOK:INSTALL\n" >> "$out"

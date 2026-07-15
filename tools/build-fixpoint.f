@@ -733,8 +733,13 @@ public
    out outu s" src/core/layout-valid.f" BF-APPEND-SOURCE
    out outu s" src/core/check-hook.f" BF-APPEND-SOURCE
    out outu s" src/core/cell-effects.f" BF-APPEND-SOURCE
-   out outu s" src/core/pointer-storage-effects.f" BF-APPEND-SOURCE
+   out outu s" src/core/pointer-storage-effects.f" BF-APPEND-SOURCE ;
+
+: BF-APPEND-DECL-FILES ( ptr u8 n -- )
    \ Unified STRUCTURE and ENUM declarers append here after the checker hook.
+   2drop ;
+
+: BF-APPEND-CORE-FILES ( ptr u8 n -- ) {: out:ptr outu:n :}
    out outu s" src/core/structures.f" BF-APPEND-SOURCE ;
 
 : BF-APPEND-CORE-BYTES ( ptr u8 n -- ) {: out:ptr outu:n :}
@@ -802,6 +807,8 @@ public
    out outu s" BFR-CHECK-OFF" BF-APPEND-LINE
    out outu BF-STAGE2-HIDE-DEFS
    out outu BF-APPEND-CHECKER-BOOT
+   out outu BF-APPEND-DECL-FILES
+   out outu BF-APPEND-CORE-FILES
    out outu s" LOWER-CERT-HOOK:INSTALL" BF-APPEND-LINE ;
 
 : BF-APPEND-STDIN-RUN-PRELUDE ( ptr u8 n -- ) {: out:ptr outu :}

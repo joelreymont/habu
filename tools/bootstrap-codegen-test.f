@@ -191,6 +191,32 @@ public
    s" push abs-addr" BCG-MUST-LACK
    s" absolute address is known" BCG-MUST-LACK ;
 
+: BCG-TEST-PREFIX-LOAD-CALLS ( -- )
+   s" : PFX-LOAD-BASE-FILES" BCG-POS-FOUND {: base:n :}
+   base s" PFX-LOAD-CHECKER-FILES" BCG-AFTER-FOUND {: check:n :}
+   check s" PFX-LOAD-DECL-FILES" BCG-AFTER-FOUND {: decl:n :}
+   decl s" PFX-LOAD-CORE-FILES" BCG-AFTER-FOUND {: core:n :}
+   base check < TTRUE  check decl < TTRUE  decl core < TTRUE ;
+
+: BCG-TEST-PREFIX-PATH-CALLS ( -- )
+   s" : PFX-PATH-FILES" BCG-POS-FOUND {: base:n :}
+   base s" PFX-PATH-CHECKER-FILES" BCG-AFTER-FOUND {: check:n :}
+   check s" PFX-PATH-DECL-FILES" BCG-AFTER-FOUND {: decl:n :}
+   decl s" PFX-PATH-CORE-FILES" BCG-AFTER-FOUND {: core:n :}
+   base check < TTRUE  check decl < TTRUE  decl core < TTRUE ;
+
+: BCG-TEST-PREFIX-PROVIDE-CALLS ( -- )
+   s" : PFX-PROVIDE-FILES" BCG-POS-FOUND {: base:n :}
+   base s" PFX-PROVIDE-CHECKER-FILES" BCG-AFTER-FOUND {: check:n :}
+   check s" PFX-PROVIDE-DECL-FILES" BCG-AFTER-FOUND {: decl:n :}
+   decl s" PFX-PROVIDE-CORE-FILES" BCG-AFTER-FOUND {: core:n :}
+   base check < TTRUE  check decl < TTRUE  decl core < TTRUE ;
+
+: BCG-TEST-PREFIX-PHASE-CALLS ( -- )
+   BCG-TEST-PREFIX-LOAD-CALLS
+   BCG-TEST-PREFIX-PATH-CALLS
+   BCG-TEST-PREFIX-PROVIDE-CALLS ;
+
 : BCG-TEST-PREFIX-LIST-COMMON ( -- )
    s" PFX-LOAD-FILES" BCG-MUST-HAVE
    s" PFX-PATH-FILES" BCG-MUST-HAVE
@@ -216,6 +242,7 @@ public
    s" PFX-COMMON LPSUMTYPE" s" PFX-COMMON LPLAYOUTBUF" BCG-MUST-BEFORE
    s" PFX-COMMON LPLAYOUTBUF" s" PFX-COMMON LPLAYOUTVALID" BCG-MUST-BEFORE
    s" PFX-COMMON LPLAYOUTVALID" s" PFX-COMMON LPHOOK" BCG-MUST-BEFORE
+   BCG-TEST-PREFIX-PHASE-CALLS
    s" PFX-COMMON LPCHECKER" s" PFX-LINUX  LPLINUXTARGET" BCG-MUST-BEFORE
    s" PFX-COMMON LPCHECKER" s" PFX-MACOS  LPMACOSTARGET" BCG-MUST-BEFORE
    s" PFX-COMMON LPHOOK" s" PFX-LINUX  LPLINUXTARGET" BCG-MUST-BEFORE
@@ -315,6 +342,15 @@ public
    s" 1 cells CELL <>" BCG-MUST-HAVE
    s" CORE-LAYOUT-RC die" BCG-MUST-HAVE ;
 
+: BCG-TEST-BOOTSTRAP-SEAM ( -- )
+   s" emit_src()" BCG-POS-FOUND {: base:n :}
+   base s" cat src/core/pointer-storage-effects.f" BCG-AFTER-FOUND {: check:n :}
+   check s" emit_decl_src" BCG-AFTER-FOUND {: decl:n :}
+   decl s" cat src/core/structures.f" BCG-AFTER-FOUND {: core:n :}
+   core s" LOWER-CERT-HOOK:INSTALL" BCG-AFTER-FOUND {: install:n :}
+   base check < TTRUE  check decl < TTRUE
+   decl core < TTRUE  core install < TTRUE ;
+
 : BCG-TEST-CELL-BOOTSTRAP ( -- )
    s" tools/bootstrap.sh" BCG-LOAD
    s" cat src/core/util.f" s" cat src/core/cell.f" BCG-MUST-BEFORE
@@ -328,7 +364,17 @@ public
    s" cat src/core/check-hook.f" s" cat src/core/cell-effects.f" BCG-MUST-BEFORE
    s" cat src/core/cell-effects.f" s" cat src/core/pointer-storage-effects.f" BCG-MUST-BEFORE
    s" cat src/core/pointer-storage-effects.f" s" cat src/core/structures.f" BCG-MUST-BEFORE
-   s" cat src/core/structures-effects.f" BCG-MUST-LACK ;
+   s" cat src/core/structures-effects.f" BCG-MUST-LACK
+   BCG-TEST-BOOTSTRAP-SEAM ;
+
+: BCG-TEST-FIXPOINT-SEAM ( -- )
+   s" : BF-APPEND-RUN-PRELUDE" BCG-POS-FOUND {: base:n :}
+   base s" BF-APPEND-CHECKER-BOOT" BCG-AFTER-FOUND {: check:n :}
+   check s" BF-APPEND-DECL-FILES" BCG-AFTER-FOUND {: decl:n :}
+   decl s" BF-APPEND-CORE-FILES" BCG-AFTER-FOUND {: core:n :}
+   core s" LOWER-CERT-HOOK:INSTALL" BCG-AFTER-FOUND {: install:n :}
+   base check < TTRUE  check decl < TTRUE
+   decl core < TTRUE  core install < TTRUE ;
 
 : BCG-TEST-CELL-FIXPOINT ( -- )
    s" tools/build-fixpoint.f" BCG-LOAD
@@ -343,7 +389,8 @@ public
    s" src/core/check-hook.f" s" src/core/cell-effects.f" BCG-MUST-BEFORE
    s" src/core/cell-effects.f" s" src/core/pointer-storage-effects.f" BCG-MUST-BEFORE
    s" src/core/pointer-storage-effects.f" s" src/core/structures.f" BCG-MUST-BEFORE
-   s" src/core/structures-effects.f" BCG-MUST-LACK ;
+   s" src/core/structures-effects.f" BCG-MUST-LACK
+   BCG-TEST-FIXPOINT-SEAM ;
 
 : BCG-TEST-CELL-PARITY ( -- )
    BCG-TEST-CELL-RUNTIME
