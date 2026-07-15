@@ -239,6 +239,16 @@ SK-TAB-COUNT 64 T=
 ' TRY-ALIGN  E-SK-ALIGN  TTHROWS
 ' TRY->ALIGN E-TV-ALIGN  TTHROWS
 
+\ ---- typed-VEC role bridges: a negative raw cell is fail-closed --------------
+\ SK>ITEM / SK>INDEX lift a table cell to a CAD-NUM role for the typed VEC surface.
+\ Production only feeds nonnegative cells (boot capacity, live entry index), so the
+\ refusal arms are unreachable there; drive them directly to prove they fail closed
+\ on their own capacity / bounds code rather than laundering a bad cell into a role.
+: TRY-ITEM-NEG  ( -- )  -1 SK>ITEM  drop ;
+: TRY-INDEX-NEG ( -- )  -1 SK>INDEX drop ;
+' TRY-ITEM-NEG  E-VEC-CAPACITY TTHROWS
+' TRY-INDEX-NEG E-VEC-BOUNDS   TTHROWS
+
 \ ---- a STALE region id (held across a rebuild) rejects at sched-key's guard --
 \ Hold region 1 of a 2-region plan (the standalone concat materializes as its
 \ own region), rebuild a 1-region plan, then replay the held id: SK-REGION-CK

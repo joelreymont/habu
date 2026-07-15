@@ -347,6 +347,33 @@ private
 32    constant SK-TAB-CAP0           \ boot entry capacity (vectors double on demand)
 $2000 constant SK-ARENA-CAP0         \ boot key-arena bytes (~32 facts-based keys)
 
+\ ---- raw table cell -> CAD-NUM role bridges for the typed VEC surface ---------
+\ The replay table stores raw cells: a boot capacity, and per-entry key offsets /
+\ lengths / selections. The typed VEC surface (package VEC) reads a validated
+\ CAD-NUM role - a length/capacity is a `CAD-NUM:item-count`, an entry position is
+\ a `CAD-NUM:index` - so a count/index swap at a VEC call is a checker reject.
+\ These lift a nonnegative table cell to its role through the PUBLIC CAD-NUM
+\ validators (no laundering back to n, no reopened package). The refusal arms are
+\ unreachable invariants (a boot capacity and a live entry index are nonnegative);
+\ an impossible negative surfaces the vector's own capacity / bounds code. This is
+\ the lib/vector.f VECT-N>ITEM / VECT-N>INDEX idiom, kept sched-key-local.
+: SK>ITEM ( n -- CAD-NUM:item-count )
+   CAD-NUM:ITEM-COUNT
+   MATCH CAD-NUM:numeric-result
+      ok OF ENDOF                             negative OF E-VEC-CAPACITY throw ENDOF
+      zero OF E-VEC-CAPACITY throw ENDOF        overflow OF E-VEC-CAPACITY throw ENDOF
+      underflow OF E-VEC-CAPACITY throw ENDOF   bad-alignment OF E-VEC-CAPACITY throw ENDOF
+      misaligned OF E-VEC-CAPACITY throw ENDOF
+   ;MATCH ;
+: SK>INDEX ( n -- CAD-NUM:index )
+   CAD-NUM:INDEX
+   MATCH CAD-NUM:numeric-result
+      ok OF ENDOF                             negative OF E-VEC-BOUNDS throw ENDOF
+      zero OF E-VEC-BOUNDS throw ENDOF          overflow OF E-VEC-BOUNDS throw ENDOF
+      underflow OF E-VEC-BOUNDS throw ENDOF     bad-alignment OF E-VEC-BOUNDS throw ENDOF
+      misaligned OF E-VEC-BOUNDS throw ENDOF
+   ;MATCH ;
+
 create SK-KO-VEC  VEC-HEADER-CELLS cells allot   \ per-entry key offset
 create SK-KL-VEC  VEC-HEADER-CELLS cells allot   \ per-entry key length
 create SK-SEL-VEC VEC-HEADER-CELLS cells allot   \ per-entry selection (candidate index)
@@ -360,9 +387,9 @@ variable SK-ARENA-U
 
 : SK-TAB-ENSURE ( -- )               \ lazy entry-vector allocation (first PUT)
    SK-VECS? @ 0<> if exit then
-   SK-KO-VEC  SK-TAB-CAP0 VEC-CAP-COUNT VEC-INIT
-   SK-KL-VEC  SK-TAB-CAP0 VEC-CAP-COUNT VEC-INIT
-   SK-SEL-VEC SK-TAB-CAP0 VEC-CAP-COUNT VEC-INIT
+   SK-KO-VEC  SK-TAB-CAP0 SK>ITEM VEC:INIT
+   SK-KL-VEC  SK-TAB-CAP0 SK>ITEM VEC:INIT
+   SK-SEL-VEC SK-TAB-CAP0 SK>ITEM VEC:INIT
    -1 SK-VECS? ! ;
 
 : SK-ARENA-COPY-OLD ( ptr u8 -- ) {: dst:ptr :}
@@ -386,12 +413,17 @@ variable SK-ARENA-U
    off u + SK-ARENA-U !
    off u ;
 
-: SK-N ( -- n )                       \ live entry count (0 before first PUT)
+\ live entry count (0 before first PUT). RAW residual: VEC:LEN@ yields a
+\ CAD-NUM:item-count and the checker (correctly) refuses to launder a count back
+\ to n, but SK-TAB-COUNT is pinned to a raw n and this count also drives SK-FIND's
+\ ?do bound, so the count is read through the raw VEC-LEN@ accessor for THIS word
+\ alone (no new projection). A typed item-count-bounded VEC iterator would retire it.
+: SK-N ( -- n )
    SK-VECS? @ 0= if 0 exit then
    SK-KO-VEC VEC-LEN@ LEN>N ;
 
 : SK-ENTRY$ ( n -- ptr u8 n ) {: i:n :}
-   SK-ARENA@ SK-KO-VEC i VEC-IDX VEC-N@ +  SK-KL-VEC i VEC-IDX VEC-N@ ;
+   SK-ARENA@ SK-KO-VEC i SK>INDEX VEC:@ +  SK-KL-VEC i SK>INDEX VEC:@ ;
 
 : SK-FIND ( ptr u8 n -- n ) {: a:ptr u:n :}      \ key -> entry index or -1
    SK-N 0 ?do  a u i SK-ENTRY$ STR= if i unloop exit then  loop  -1 ;
@@ -401,23 +433,23 @@ public
 : SK-TAB-RESET ( -- )                \ empty the table; grown capacity persists
    0 SK-ARENA-U !
    SK-VECS? @ 0<> if
-      SK-KO-VEC VEC-CLEAR  SK-KL-VEC VEC-CLEAR  SK-SEL-VEC VEC-CLEAR
+      SK-KO-VEC VEC:CLEAR  SK-KL-VEC VEC:CLEAR  SK-SEL-VEC VEC:CLEAR
    then ;
 : SK-TAB-COUNT ( -- n )  SK-N ;
 
 : SK-PUT ( ptr u8 n n -- ) {: a:ptr u:n sel:n :}  \ key selection -> store / update
    a u SK-FIND {: e:n :}
-   e 0 < 0= if sel SK-SEL-VEC e VEC-IDX VEC-N! exit then   \ update existing key
+   e 0 < 0= if sel SK-SEL-VEC e SK>INDEX VEC:! exit then   \ update existing key
    SK-TAB-ENSURE
    a u SK-INTERN {: off:n len:n :}
-   off SK-KO-VEC  VEC-PUSH-N drop
-   len SK-KL-VEC  VEC-PUSH-N drop
-   sel SK-SEL-VEC VEC-PUSH-N drop ;
+   off SK-KO-VEC  VEC:PUSH drop
+   len SK-KL-VEC  VEC:PUSH drop
+   sel SK-SEL-VEC VEC:PUSH drop ;
 
 \ cad-5 store seam: a miss returns (-1 false) so the caller uses the defaults.
 : SK-GET ( ptr u8 n -- n bool ) {: a:ptr u:n :}
    a u SK-FIND {: e:n :}
    e 0 < if -1 false exit then
-   SK-SEL-VEC e VEC-IDX VEC-N@  true ;
+   SK-SEL-VEC e SK>INDEX VEC:@  true ;
 
 ;package
