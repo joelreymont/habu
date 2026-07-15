@@ -1,15 +1,23 @@
-\ top-row-warn-test.f - tier-1 top-row tracker warning regressions
-\ (dot habu-typed-top-checker-82cf8b84, docs/typed-top-level.md §5 sub-dot 3).
+\ top-row-warn-test.f - top-row tracker tier-1 warning + tier-2 reject regressions
+\ (dots habu-typed-top-checker-82cf8b84 sub-dot 3, habu-typed-top-tier-589c550f
+\ sub-dot 7 - the tier-2 switch + tree burn-down).
 \
 \ The tracker (src/core/top-row.f) is installed by default in the cold prefix, so
-\ every child `bin/hb --load <program>` carries it. Each probe program runs as a
-\ child; the fixture counts `hb: top-row: ` lines on the child's stderr. Positives
-\ (docs §1): p1 `' FOO2 execute` (xt underflow), p2 `0 0 catch` (non-xt to catch),
-\ p3 `s" abc" + .` (byte pointer into a scalar consumer) each emit EXACTLY ONE
-\ named warning. Negatives (the no-false-positive guards): a literal ->
-\ certified-(ptr u8 n)-consumer line, the CHECK! probe idiom, a mid-stream
-\ TRUSTED: shim call, and a `0 set-check` window each emit ZERO. The row persists
-\ across `require` (the tracker still catches p1 after two requires).
+\ every child `bin/hb --load <program>` carries it. The child mode is staged by the
+\ HABU_TOP_TIER env var: unset -> tier-1 (warn, rc unchanged), 2 -> tier-2 (reject
+\ pre-execution, rc 70 named diagnostic, no crash). Each probe program runs as a
+\ child; the fixture counts `hb: top-row: ` lines on the child's stderr.
+\
+\ Tier-1 positives (docs §1): p1 `' FOO2 execute` (xt underflow) and p3
+\ `s" abc" + .` (byte pointer into a scalar consumer) each emit EXACTLY ONE named
+\ warning with rc 0. Tier-2 (docs §4 Tier 2): p1, p2 `0 0 catch` (non-xt to catch,
+\ which crashes rc 134 at tier-1), and p3 each REJECT pre-execution - one named
+\ diagnostic, clean exit rc 70, no crash. p2 proves the crash is eliminated.
+\ Negatives (the four zero-warning guards, quiet at BOTH tiers - the no-false-reject
+\ proof): a literal -> certified-(ptr u8 n)-consumer line, the CHECK! probe idiom,
+\ a mid-stream TRUSTED: shim call, and a `0 set-check` window each emit ZERO and
+\ rc 0. The row persists across `require` (tier-2 still rejects p1 after two
+\ requires).
 \
 \ Run: bin/hb --load lib/errors.f lib/string.f lib/test.f lib/memory.f lib/fs.f
 \   lib/fs-mutate.f lib/process.f lib/process-argv.f lib/process-env.f
@@ -29,6 +37,9 @@ package TOP-ROW-WARN-TEST
 
 4096 constant TW-CAP
 10000 constant TW-TIMEOUT-MS
+1 constant TW-TIER1                      \ child default: warn only
+2 constant TW-TIER2                      \ child HABU_TOP_TIER=2: reject pre-execution
+70 constant TW-REJECT-RC                 \ clean rc-70 reject (RC-REJECT)
 
 variable TW-ROOT-U
 variable TW-CHILD-U
@@ -66,15 +77,33 @@ create TW-EMPTY 1 allot
    ;MATCH
    LEN>N TW-ERR-U !  LEN>N TW-OUT-U ! ;
 
-\ Write the assembled program (SB$) to the child file and run it via --load.
-: TW-RUN ( ptr u8 n -- )
+\ Stage the child tier through its env: HABU_TOP_TIER=2 -> tier-2 reject, any other
+\ value -> tier-1 warn. The tier is pinned EXPLICITLY (not merely omitted) so a
+\ tier-2 gate leg that exports HABU_TOP_TIER=2 in the parent cannot leak into the
+\ tier-1 children. PROC-ENV-INHERIT-MISSING copies the rest of the parent env so
+\ the child keeps HB_TMP etc. (matching the inherited-environ non-env spawn).
+: TW-SET-TIER ( n -- ) {: tier:n :}
+   PROC-ENV-RESET
+   tier TW-TIER2 =
+      if s" HABU_TOP_TIER" >LEN s" 2" >LEN PROC-ENV+
+      else s" HABU_TOP_TIER" >LEN s" 1" >LEN PROC-ENV+ then
+   PROC-ENV-INHERIT-MISSING ;
+
+\ Write the assembled program (SB$) to the child file and run it via --load, with
+\ an explicit env table (RUN-ARGV-ENV-* consults PROC-ENV; the plain RUN-ARGV-*
+\ inherits the parent environ and ignores it).
+: TW-RUN-TIER ( ptr u8 n n -- ) {: tier:n :}
    TW-CHILD 2swap WRITE-ALL
    PROC-ARGV-RESET
+   tier TW-SET-TIER
    s" --load" >LEN PROC-ARGV+
    TW-CHILD >LEN PROC-ARGV+
    TW-HB$ >LEN  TW-EMPTY 0 >LEN  TW-OUT TW-CAP >LEN
-   TW-ERR TW-CAP >LEN  TW-TIMEOUT-MS >MS  RUN-ARGV-STDIN-CAPTURE-OUTCOME
+   TW-ERR TW-CAP >LEN  TW-TIMEOUT-MS >MS  RUN-ARGV-ENV-STDIN-CAPTURE-OUTCOME
    TW-STORE! ;
+
+: TW-RUN ( ptr u8 n -- )  TW-TIER1 TW-RUN-TIER ;   \ default: tier-1 warn
+: TW-RUN2 ( ptr u8 n -- ) TW-TIER2 TW-RUN-TIER ;   \ staged: tier-2 reject
 
 \ Non-overlapping count of a needle across the captured stderr buffer.
 variable TW-CNT
@@ -142,34 +171,60 @@ variable TW-CNT
    SB$ ;
 
 \ ---- assertions --------------------------------------------------------------
-: TW-ASSERT-WARNS ( ptr u8 n n -- ) {: n:n :}   \ run program, assert warning count == n
+: TW-ASSERT-WARNS ( ptr u8 n n -- ) {: n:n :}   \ tier-1: run program, assert warning count == n
    TW-RUN  TW-WARN-COUNT n T= ;
 
-: TW-POSITIVES ( -- )
-   s" p1 ' FOO2 execute emits exactly one xt-underflow warning" T-LABEL
+: TW-ASSERT-REJECTS ( ptr u8 n -- )     \ tier-2: clean exit rc 70, exactly one diagnostic, no crash
+   TW-RUN2
+   TW-EXITED @ TTRUE                     \ exited (not signaled): the tier-1 crash is gone
+   TW-RC @ TW-REJECT-RC T=               \ clean rc-70 reject
+   TW-WARN-COUNT 1 T= ;                  \ exactly one named diagnostic
+
+: TW-ASSERT-QUIET2 ( ptr u8 n -- )      \ tier-2: no reject (rc 0), zero diagnostics (no false positive)
+   TW-RUN2
+   TW-EXITED @ TTRUE  TW-RC @ 0 T=  TW-WARN-COUNT 0 T= ;
+
+: TW-POSITIVES ( -- )                    \ tier-1: warn, rc unchanged (observe, never block)
+   s" tier-1 p1 ' FOO2 execute emits exactly one xt-underflow warning" T-LABEL
    TW-P1$ 1 TW-ASSERT-WARNS
-   s" p1 leaves rc 0 (tier-1 observes, never blocks)" T-LABEL
+   s" tier-1 p1 leaves rc 0 (tier-1 observes, never blocks)" T-LABEL
    TW-EXITED @ TTRUE  TW-RC @ 0 T=
-   s" p2 0 0 catch emits exactly one non-xt warning" T-LABEL
-   TW-P2$ 1 TW-ASSERT-WARNS
-   s" p3 byte pointer into a scalar consumer emits exactly one warning" T-LABEL
+   s" tier-1 p3 byte pointer into a scalar consumer emits exactly one warning" T-LABEL
    TW-P3$ 1 TW-ASSERT-WARNS
-   s" p3 leaves rc 0 (execution unchanged)" T-LABEL
+   s" tier-1 p3 leaves rc 0 (execution unchanged)" T-LABEL
    TW-EXITED @ TTRUE  TW-RC @ 0 T= ;
 
-: TW-NEGATIVES ( -- )
-   s" eval-fixture idiom (literal -> certified consumer) is quiet" T-LABEL
+: TW-TIER2-REJECTS ( -- )                \ tier-2: reject pre-execution, rc 70, no crash
+   s" tier-2 p1 ' FOO2 execute rejects rc 70 pre-execution" T-LABEL
+   TW-P1$ TW-ASSERT-REJECTS
+   s" tier-2 p2 0 0 catch rejects rc 70 (no BLR-into-xt-0 crash)" T-LABEL
+   TW-P2$ TW-ASSERT-REJECTS
+   s" tier-2 p3 byte pointer into a scalar consumer rejects rc 70" T-LABEL
+   TW-P3$ TW-ASSERT-REJECTS ;
+
+: TW-NEGATIVES ( -- )                    \ tier-1: the four guards emit zero warnings
+   s" tier-1 eval-fixture idiom (literal -> certified consumer) is quiet" T-LABEL
    TW-EVAL$ 0 TW-ASSERT-WARNS
-   s" CHECK! probe idiom is quiet" T-LABEL
+   s" tier-1 CHECK! probe idiom is quiet" T-LABEL
    TW-CHECK$ 0 TW-ASSERT-WARNS
-   s" mid-stream TRUSTED: shim call is quiet (no reset)" T-LABEL
+   s" tier-1 mid-stream TRUSTED: shim call is quiet (no reset)" T-LABEL
    TW-SHIM$ 0 TW-ASSERT-WARNS
-   s" 0 set-check window suspends enforcement (quiet)" T-LABEL
+   s" tier-1 0 set-check window suspends enforcement (quiet)" T-LABEL
    TW-SETCHECK$ 0 TW-ASSERT-WARNS ;
 
+: TW-NEGATIVES2 ( -- )                   \ tier-2: the four guards stay quiet - no false reject
+   s" tier-2 eval-fixture idiom stays quiet (no false reject)" T-LABEL
+   TW-EVAL$ TW-ASSERT-QUIET2
+   s" tier-2 CHECK! probe idiom stays quiet (no false reject)" T-LABEL
+   TW-CHECK$ TW-ASSERT-QUIET2
+   s" tier-2 mid-stream TRUSTED: shim call stays quiet (certified path)" T-LABEL
+   TW-SHIM$ TW-ASSERT-QUIET2
+   s" tier-2 0 set-check window still suspends enforcement (escape hatch)" T-LABEL
+   TW-SETCHECK$ TW-ASSERT-QUIET2 ;
+
 : TW-PERSIST ( -- )
-   s" the row persists across require (p1 still caught after two requires)" T-LABEL
-   TW-REQUIRE$ 1 TW-ASSERT-WARNS ;
+   s" tier-2 row persists across require (p1 still rejected after two requires)" T-LABEL
+   TW-REQUIRE$ TW-ASSERT-REJECTS ;
 
 : TW-PREPARE ( -- )
    CLEANUP-RESET
@@ -186,7 +241,9 @@ variable TW-CNT
    T-RESET
    TW-PREPARE
    TW-POSITIVES
+   TW-TIER2-REJECTS
    TW-NEGATIVES
+   TW-NEGATIVES2
    TW-PERSIST
    TW-CLEANUP
    T-REPORT

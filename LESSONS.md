@@ -4506,3 +4506,21 @@ unchanged (148855). Keys for milestone 2:
   Corollary: keep the COMMITTED e2e proof the clean PASS, and demonstrate the
   corruption in a temp copy (a baked probe that fails-to-fail turns the
   committed proof red on device).
+- Typed-top tier-2 (sub-dot 7) landed STAGED, not default-on: a mode cell in
+  top-row.f defaults to tier-1 (warn), and HABU_TOP_TIER=2 stages tier-2, where
+  each tier-1 warning site instead `throw`s RC-REJECT (70) from the PRE-BLR WORD
+  hook - a clean rc-70 reject, catchable, REPL-recoverable via the SAME
+  EM-REPL-RECOVER path as the native DNAME-MIN-IN underdepth reject, and no crash
+  (p2 `0 0 catch` no longer BLRs into xt 0). Default-on was deferred because the
+  tracker is cold-boot only (snapshot disarms the hook, blocked on 4bd33351) and
+  the child-population blast radius across the suite is large; the parent-level
+  tree census is already clean (0 `hb: top-row:` across run.f + maki), so no
+  parent-level tree fixes were needed - only the default flip remains.
+- Child-env in test fixtures: RUN-ARGV-STDIN-CAPTURE-OUTCOME spawns via the
+  non-env `spawn-argv-io`, which INHERITS the parent environ and IGNORES the
+  PROC-ENV table entirely. To inject a child env var (e.g. HABU_TOP_TIER=2 to
+  force a tier), you MUST use the RUN-ARGV-ENV-* variant + PROC-ENV+; add
+  PROC-ENV-INHERIT-MISSING to keep HB_TMP and the rest, and pin the var
+  explicitly (set "1" for the off case, not just omit it) so a tier-2 gate leg
+  cannot leak into a control child. Cost me one debug cycle (children silently
+  ran tier-1 despite the env row).

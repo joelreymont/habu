@@ -263,6 +263,15 @@ variable UB-OUT-FD
 : UB-SET-CHECK-INSTALL? ( -- bool )
    s" set-check" UB-TOK=CI UB-TICK-PREV2? and ;
 
+\ The tier-2 top-level reject enforcer is installed through `set-top-check`
+\ (src/core/top-row.f TR-INSTALL, dot habu-typed-top-tier-589c550f). It is the
+\ audited escape window for the whole top-row tracker: only the tracker's own
+\ TR-HOOK may be installed; any other name would divert the pre-execution reject
+\ enforcement and is a finding. Same `' NAME set-top-check` / `['] NAME
+\ set-top-check` shape as the set-check installs above.
+: UB-SET-TOP-CHECK-INSTALL? ( -- bool )
+   s" set-top-check" UB-TOK=CI UB-TICK-PREV2? and ;
+
 \ Audited checker hooks: the names installed at the ratcheted HOOK-INSTALL sites
 \ (TRUSTED.md trusted-inventory baseline). Any other installed name neuters
 \ verification and is a finding.
@@ -274,6 +283,11 @@ variable UB-OUT-FD
    s" LINT-CHECK-HOOK" UB-PREV=CI or
    s" ES-VERDICT-HOOK" UB-PREV=CI or
    s" PROP-CHECK-HOOK" UB-PREV=CI or ;
+
+\ Audited top-row hook: the single enforcer TR-INSTALL installs. The escape-window
+\ audit row is deliberately a one-name allowlist - the tracker owns the only hook.
+: UB-TOP-HOOK-ALLOWED? ( -- bool )
+   s" TR-HOOK" UB-PREV=CI ;
 
 : UB-CHECKER-MUTATION? ( -- bool )
    s" set-check" UB-TOK=CI ;
@@ -336,6 +350,12 @@ variable UB-OUT-FD
    UB-JSON-ORIGIN
    s" audited checker hook" UB-PREV$ UB-JSON-FINISH ;
 
+: UB-JSON-ROGUE-TOP-HOOK ( -- )
+   s" E-UNAUDITED-TOP-HOOK" UB-JSON-BASE
+   s" word" LJW-KEY UB-PREV$ LJW-STRING LJW-COMMA
+   UB-JSON-ORIGIN
+   s" audited top-check hook" UB-PREV$ UB-JSON-FINISH ;
+
 : UB-REPORT-DEFINITION ( ptr u8 n -- )
    {: name:ptr nu:n :}
    UB-BAD @ 1+ UB-BAD !
@@ -367,10 +387,25 @@ variable UB-OUT-FD
    s" : `" UB-OUT UB-PREV$ UB-OUT
    s" ` is not an audited checker hook" UB-OUT UB-NL ;
 
+: UB-REPORT-ROGUE-TOP-HOOK ( -- )
+   UB-BAD @ 1+ UB-BAD !
+   UB-JSON @ if UB-JSON-ROGUE-TOP-HOOK exit then
+   s" UNAUDITED-TOP-HOOK " UB-OUT
+   UB-FILE-A@ UB-FILE-U @ UB-OUT
+   UB-COLON-C UB-C UB-TOK-LINE @ UB-U$ UB-OUT
+   UB-COLON-C UB-C UB-TOK-COL @ UB-U$ UB-OUT
+   s" : `" UB-OUT UB-PREV$ UB-OUT
+   s" ` is not an audited top-check hook" UB-OUT UB-NL ;
+
 : UB-HANDLE-INSTALL ( -- )
    UB-SET-CHECK-INSTALL? UB-NOT if exit then
    UB-HOOK-ALLOWED? if exit then
    UB-REPORT-ROGUE-HOOK ;
+
+: UB-HANDLE-TOP-INSTALL ( -- )
+   UB-SET-TOP-CHECK-INSTALL? UB-NOT if exit then
+   UB-TOP-HOOK-ALLOWED? if exit then
+   UB-REPORT-ROGUE-TOP-HOOK ;
 
 : UB-HANDLE-COLON ( -- )
    UB-CHECK-OFF @ UB-NOT if exit then
@@ -396,6 +431,7 @@ variable UB-OUT-FD
       UB-COLON? if UB-HANDLE-COLON then
       UB-SET-CHECK-ON? if UB-FALSE UB-CHECK-OFF! then
       UB-HANDLE-INSTALL
+      UB-HANDLE-TOP-INSTALL
       UB-SEMI? if UB-FALSE UB-TRUSTED ! then
       UB-SAVE-PREV
    repeat ;

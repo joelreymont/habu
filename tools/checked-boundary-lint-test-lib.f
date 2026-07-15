@@ -16,6 +16,8 @@ variable CBLT-CROSS-U
 variable CBLT-LARGE-U
 variable CBLT-TRUSTED-U
 variable CBLT-ROGUE-U
+variable CBLT-TOPROGUE-U
+variable CBLT-TOPGOOD-U
 
 create CBLT-ROOT-BUF FS-PATH-CAP allot
 create CBLT-GOOD-BUF FS-PATH-CAP allot
@@ -25,6 +27,8 @@ create CBLT-CROSS-BUF FS-PATH-CAP allot
 create CBLT-LARGE-BUF FS-PATH-CAP allot
 create CBLT-TRUSTED-BUF FS-PATH-CAP allot
 create CBLT-ROGUE-BUF FS-PATH-CAP allot
+create CBLT-TOPROGUE-BUF FS-PATH-CAP allot
+create CBLT-TOPGOOD-BUF FS-PATH-CAP allot
 create CBLT-OUT CBLT-BUF-CAP allot
 create CBLT-ERR CBLT-BUF-CAP allot
 create CBLT-LF-BYTE 10 c,
@@ -57,6 +61,12 @@ create CBLT-LF-BYTE 10 c,
 : CBLT-ROGUE ( -- ptr u8 n )
    CBLT-ROGUE-BUF CBLT-ROGUE-U @ ;
 
+: CBLT-TOPROGUE ( -- ptr u8 n )
+   CBLT-TOPROGUE-BUF CBLT-TOPROGUE-U @ ;
+
+: CBLT-TOPGOOD ( -- ptr u8 n )
+   CBLT-TOPGOOD-BUF CBLT-TOPGOOD-U @ ;
+
 : CBLT-LF ( -- )
    10 SB-APPEND-C ;
 
@@ -77,6 +87,19 @@ create CBLT-LF-BYTE 10 c,
    s" 0 set-check" SB-APPEND CBLT-LF
    s" ' EVIL-HOOK set-check" SB-APPEND CBLT-LF
    s" : ROGUE-OK ( n -- n ) dup ;" SB-APPEND CBLT-LF
+   SB$ ;
+
+\ Tier-2 escape-window audit rows (dot habu-typed-top-tier-589c550f): a
+\ set-top-check install of any name but TR-HOOK is UNAUDITED-TOP-HOOK; the TR-HOOK
+\ install (top-row.f TR-INSTALL) is the sole allowed enforcer and stays clean.
+: CBLT-TOPROGUE$ ( -- ptr u8 n )
+   SB-RESET
+   s" ['] EVIL-TOP-HOOK set-top-check" SB-APPEND CBLT-LF
+   SB$ ;
+
+: CBLT-TOPGOOD$ ( -- ptr u8 n )
+   SB-RESET
+   s" ['] TR-HOOK set-top-check" SB-APPEND CBLT-LF
    SB$ ;
 
 : CBLT-BAD$ ( -- ptr u8 n )
@@ -129,6 +152,8 @@ create CBLT-LF-BYTE 10 c,
    CBLT-ROOT s" large.f" CBLT-LARGE-BUF JOIN-PATH CBLT-LARGE-U !
    CBLT-ROOT s" trusted.f" CBLT-TRUSTED-BUF JOIN-PATH CBLT-TRUSTED-U !
    CBLT-ROOT s" rogue.f" CBLT-ROGUE-BUF JOIN-PATH CBLT-ROGUE-U !
+   CBLT-ROOT s" toprogue.f" CBLT-TOPROGUE-BUF JOIN-PATH CBLT-TOPROGUE-U !
+   CBLT-ROOT s" topgood.f" CBLT-TOPGOOD-BUF JOIN-PATH CBLT-TOPGOOD-U !
    CBLT-GOOD CLEANUP+
    CBLT-BAD CLEANUP+
    CBLT-OFF CLEANUP+
@@ -136,12 +161,16 @@ create CBLT-LF-BYTE 10 c,
    CBLT-LARGE CLEANUP+
    CBLT-TRUSTED CLEANUP+
    CBLT-ROGUE CLEANUP+
+   CBLT-TOPROGUE CLEANUP+
+   CBLT-TOPGOOD CLEANUP+
    CBLT-GOOD CBLT-GOOD$ WRITE-ALL
    CBLT-BAD CBLT-BAD$ WRITE-ALL
    CBLT-OFF CBLT-OFF$ WRITE-ALL
    CBLT-CROSS CBLT-CROSS$ WRITE-ALL
    CBLT-TRUSTED CBLT-TRUSTED$ WRITE-ALL
    CBLT-ROGUE CBLT-ROGUE$ WRITE-ALL
+   CBLT-TOPROGUE CBLT-TOPROGUE$ WRITE-ALL
+   CBLT-TOPGOOD CBLT-TOPGOOD$ WRITE-ALL
    CBLT-WRITE-LARGE ;
 
 : CBLT-CORE-SETUP ( bool -- ) {: strict:bool :}
@@ -196,6 +225,12 @@ create CBLT-LF-BYTE 10 c,
 : CBLT-RUN-CORE-ROGUE ( -- n n outcome )
    CBLT-ROGUE LINT-FALSE CBLT-RUN-CORE-FILE ;
 
+: CBLT-RUN-CORE-TOPROGUE ( -- n n outcome )
+   CBLT-TOPROGUE LINT-FALSE CBLT-RUN-CORE-FILE ;
+
+: CBLT-RUN-CORE-TOPGOOD ( -- n n outcome )
+   CBLT-TOPGOOD LINT-FALSE CBLT-RUN-CORE-FILE ;
+
 : CBLT-RUN-CORE-CROSS ( -- n n outcome )
    LINT-FALSE CBLT-CORE-SETUP
    CBLT-OFF CHECKED-BOUNDARY-LINT-FILE
@@ -244,6 +279,15 @@ create CBLT-LF-BYTE 10 c,
    CBLT-OUT outu s" UNAUDITED-HOOK" CONTAINS? TTRUE
    CBLT-OUT outu s" EVIL-HOOK" CONTAINS? TTRUE ;
 
+: CBLT-TEST-TOPROGUE ( -- )                 \ ['] EVIL-TOP-HOOK set-top-check -> finding
+   CBLT-RUN-CORE-TOPROGUE 1 CBLT-EXPECT-EXIT {: outu:n erru:n :}
+   erru 0 T=
+   CBLT-OUT outu s" UNAUDITED-TOP-HOOK" CONTAINS? TTRUE
+   CBLT-OUT outu s" EVIL-TOP-HOOK" CONTAINS? TTRUE ;
+
+: CBLT-TEST-TOPGOOD ( -- )                  \ ['] TR-HOOK set-top-check -> allowed, clean
+   CBLT-RUN-CORE-TOPGOOD CBLT-ASSERT-CLEAN ;
+
 : CBLT-MAIN ( -- )
    T-RESET
    CBLT-PREPARE
@@ -255,6 +299,8 @@ create CBLT-LF-BYTE 10 c,
    CBLT-TEST-STRICT
    CBLT-TEST-STRICT-TRUSTED
    CBLT-TEST-ROGUE
+   CBLT-TEST-TOPROGUE
+   CBLT-TEST-TOPGOOD
    CLEANUP-RUN
    CBLT-ROOT EXISTS? TFALSE
    T-REPORT

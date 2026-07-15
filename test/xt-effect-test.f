@@ -11,12 +11,12 @@
 \   fit    `['] A execute`  (A's ( n -- n n ) fits the row)         -> CERT (-1)
 \   misfit `['] A execute`  on ( -- n ) (A needs an input, none)    -> REJ  (0)
 \   catch/is fit + misfit, and an unsafe-definer tick (`['] deftype`) -> REJ.
-\ Tier-1 interop (the top-row tracker, src/core/top-row.f, unchanged here): the
-\ top-level `' FOO2 execute` xt-underflow warning stays (rc 0, exactly one line),
-\ and `0 0 catch` still emits its one non-xt warning - the pre-armed tier-2 reject
-\ fixture, whose CURRENT verdict is that warning followed by the BLR-into-xt-0
-\ crash (rc 134); tier-2 (sub-dot 7) will flip it to a clean pre-execution rc-70
-\ reject, at which point this fixture's assertion moves from "warns" to "rejects".
+\ Tier interop with the top-row tracker (src/core/top-row.f): the child tier is
+\ staged by HABU_TOP_TIER (XE-RUN = tier-1 warn, XE-RUN2 = tier-2 reject). XE-TIER1
+\ pins the tier-1 warn contract (`' FOO2 execute` warns once, rc 0). XE-TIER2 pins
+\ the sub-dot-7 flip: `' FOO2 execute` and `0 0 catch` REJECT pre-execution with a
+\ clean rc-70 diagnostic and no crash (`0 0 catch` no longer reaches the
+\ BLR-into-xt-0 rc-134 crash it hit at tier-1).
 \
 \ Run: bin/hb --load lib/errors.f lib/string.f lib/test.f lib/memory.f lib/fs.f
 \   lib/fs-mutate.f lib/process.f lib/process-argv.f lib/process-env.f
@@ -36,6 +36,8 @@ package XT-EFFECT-TEST
 
 4096 constant XE-CAP
 10000 constant XE-TIMEOUT-MS
+1 constant XE-WARN-TIER                  \ child default: tier-1 warn
+2 constant XE-REJECT-TIER                \ child HABU_TOP_TIER=2: tier-2 reject
 
 variable XE-ROOT-U
 variable XE-CHILD-U
@@ -74,15 +76,29 @@ create XE-EMPTY 1 allot
    ;MATCH
    LEN>N XE-ERR-U !  LEN>N XE-OUT-U ! ;
 
-\ Write the assembled program (SB$) to the child file and run it via --load.
-: XE-RUN ( ptr u8 n -- )
+\ Stage the child tier through HABU_TOP_TIER (pinned explicitly so a tier-2 gate
+\ leg cannot leak into a tier-1 child); inherit the rest of the parent env.
+: XE-SET-TIER ( n -- ) {: tier:n :}
+   PROC-ENV-RESET
+   tier XE-REJECT-TIER =
+      if s" HABU_TOP_TIER" >LEN s" 2" >LEN PROC-ENV+
+      else s" HABU_TOP_TIER" >LEN s" 1" >LEN PROC-ENV+ then
+   PROC-ENV-INHERIT-MISSING ;
+
+\ Write the assembled program (SB$) to the child file and run it via --load with an
+\ explicit env table (RUN-ARGV-ENV-* consults PROC-ENV).
+: XE-RUN-TIER ( ptr u8 n n -- ) {: tier:n :}
    XE-CHILD 2swap WRITE-ALL
    PROC-ARGV-RESET
+   tier XE-SET-TIER
    s" --load" >LEN PROC-ARGV+
    XE-CHILD >LEN PROC-ARGV+
    XE-HB$ >LEN  XE-EMPTY 0 >LEN  XE-OUT XE-CAP >LEN
-   XE-ERR XE-CAP >LEN  XE-TIMEOUT-MS >MS  RUN-ARGV-STDIN-CAPTURE-OUTCOME
+   XE-ERR XE-CAP >LEN  XE-TIMEOUT-MS >MS  RUN-ARGV-ENV-STDIN-CAPTURE-OUTCOME
    XE-STORE! ;
+
+: XE-RUN ( ptr u8 n -- )  XE-WARN-TIER XE-RUN-TIER ;     \ tier-1 (warn / compile-time)
+: XE-RUN2 ( ptr u8 n -- ) XE-REJECT-TIER XE-RUN-TIER ;   \ tier-2 (reject)
 
 \ Non-overlapping count of a needle across the captured stderr buffer.
 variable XE-CNT
@@ -181,13 +197,17 @@ variable XE-CNT
    s" 0 0 catch" XE-LINE
    SB$ ;
 
-: XE-TIER1 ( -- )
+: XE-TIER1 ( -- )                        \ tier-1: observe, never block
    s" tier-1: ' FOO2 execute still warns exactly once at underdepth" T-LABEL
    XE-EXEC$ XE-RUN  XE-WARN-COUNT 1 T=
    s" tier-1: ' FOO2 execute leaves rc 0 (tracker observes, never blocks)" T-LABEL
-   XE-EXITED @ TTRUE  XE-RC @ 0 T=
-   s" tier-2 pre-arm: 0 0 catch warns once now; tier-2 will reject rc 70" T-LABEL
-   XE-CATCH$ XE-RUN  XE-WARN-COUNT 1 T= ;
+   XE-EXITED @ TTRUE  XE-RC @ 0 T= ;
+
+: XE-TIER2 ( -- )                        \ tier-2 (sub-dot 7): the pre-armed pins now REJECT
+   s" tier-2: ' FOO2 execute rejects rc 70 pre-execution (xt underflow)" T-LABEL
+   XE-EXEC$ XE-RUN2  XE-EXITED @ TTRUE  XE-RC @ 70 T=  XE-WARN-COUNT 1 T=
+   s" tier-2: 0 0 catch rejects rc 70 pre-execution (no BLR-into-xt-0 crash)" T-LABEL
+   XE-CATCH$ XE-RUN2  XE-EXITED @ TTRUE  XE-RC @ 70 T=  XE-WARN-COUNT 1 T= ;
 
 : XE-PREPARE ( -- )
    CLEANUP-RESET
@@ -205,6 +225,7 @@ variable XE-CNT
    XE-PREPARE
    XE-VALUES
    XE-TIER1
+   XE-TIER2
    XE-CLEANUP
    T-REPORT
    s" xt-effect: ok" type cr ;
