@@ -619,21 +619,23 @@ points stay listed.
   exact/ulp/relative/empirical, CAD-PLAN §22.6): the strength lattice
   (`RANK`/`SATISFIES?`/`COMPOSE` weakest-wins), the checked satisfaction gate
   `ENFORCE` (E-NPOL-APPROX: approximate evidence cannot satisfy a stricter policy),
-  the key token `NAME`, the `NUM>DOM`/`OP-DOM` bridge from op-registry's raw numeric
-  class, and the ambient per-class requested-policy table (`POL!`/`POL@`, default
-  exact). Owns -5145..-5147.
+  the key token `NAME`, the `DOM>N`/`N>DOM` wire projection, and the
+  `NUM>DOM`/`OP-DOM` bridge from op-registry's raw numeric class - the PER-OP axis a
+  region's requested policy folds through (maki/sched-key.f REGION-POL), retiring the
+  old per-class requested-policy table. Owns -5145..-5146.
 - `maki/numpolicy-test.f` — rank ordering, the pinned 4×4 composition table,
   satisfaction, the TF32/GELU/recompute refusal fixtures with positive controls, the
   op bridge, wire roundtrip, and fail-closed throws.
 - `maki/sched-key.f` — section-7.4 schedule keys: the typed `skey` product (now
-  carrying the region's requested `NPOL:dom` policy so a different policy is a
-  different key), the durable `SK-KEY$` render (region signature, shape class,
+  carrying the region's requested `NPOL:dom` policy, REGION-POL's per-op OP-DOM fold,
+  so a different policy is a different key), the durable `SK-KEY$` render (region
+  signature, shape class,
   dtype/layout/align, numeric policy, facts-based target field, engine content key),
   and the replay-table seam.
 - `maki/sched-key-test.f` — shape-class/dimclass identity, full-key pins, the
-  same-label different-facts target negative, the policy key-invalidation cases
-  (same config + different requested policy => different key), and replay-table
-  regressions.
+  same-label different-facts target negative, the per-op requested-policy key cases
+  (a different op mix => a different honest policy => a different key), and
+  replay-table regressions.
 - `maki/competitive-report.f` — the checked BENCH competitive-comparison schema:
   four distinct nominal id families (workload/shape/protocol/baseline), the closed
   cache-state and absence sums, unit-typed present-or-absent throughput readings

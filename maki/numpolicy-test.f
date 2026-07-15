@@ -1,12 +1,14 @@
 \ maki/numpolicy-test.f - checked acceptance for the typed numeric-policy family
 \ (maki/numpolicy.f). Covers the plan §22.6 Exit line: an approximate candidate
 \ cannot satisfy an exact policy; composed error bounds are deterministic; and the
-\ op-registry bridge / wire roundtrip / requested-policy table are fail-closed.
-\ Every refusal is paired with a resolving positive control (per LESSONS), so no
-\ TTHROWS is vacuous. The KEY-invalidation half of the dot (same config, different
-\ policy => different plan/artifact key) is proven in maki/sched-key-test.f (skey's
-\ pol field + the SK-KEY$ render), and the golden RECORD carrying a relative result
-\ refusing an exact policy in maki/evidence/policy-e2e-test.f.
+\ op-registry bridge / wire roundtrip are fail-closed. Every refusal is paired with a
+\ resolving positive control (per LESSONS), so no TTHROWS is vacuous. The requested
+\ policy is now DERIVED PER-OP by maki/sched-key.f REGION-POL (folding OP-DOM over the
+\ region's ops), so the KEY-invalidation half of the dot (a different op mix => a
+\ different honest policy => a different plan/artifact key) is proven in
+\ maki/sched-key-test.f (skey's pol field + the per-op SK-KEY$ render), and the golden
+\ RECORD carrying a relative result refusing an exact policy in
+\ maki/evidence/policy-e2e-test.f.
 
 require lib/test.f
 require maki/numpolicy.f
@@ -21,9 +23,6 @@ require maki/numpolicy.f
 : TRY-NUM-N        ( -- )  MAKI:NUM-N NPOL:NUM>DOM drop ;     \ no op carries NUM-N
 : TRY-NDOM-HI      ( -- )  4 NPOL:N>DOM drop ;
 : TRY-NDOM-NEG     ( -- )  -1 NPOL:N>DOM drop ;
-: TRY-POL-BADCLASS ( -- )  NPOL-DOM:EXACT MAKI:CLASS-N NPOL:POL! ;
-: TRY-POL-NEGCLASS ( -- )  NPOL-DOM:EXACT -1 NPOL:POL! ;
-: TRY-POL@-BAD     ( -- )  MAKI:CLASS-N NPOL:POL@ NPOL:RANK drop ;
 
 \ ---- fixtures: the checked refusal gate (ENFORCE) over the acceptance cases ----
 \ TF32-vs-FP32 (the motivating confusion): FP32 FMA is the exact reference domain,
@@ -88,7 +87,10 @@ NPOL-DOM:EMPIRICAL NPOL-DOM:EXACT     SAT TFALSE
 NPOL-DOM:EMPIRICAL NPOL-DOM:RELATIVE  SAT TFALSE
 NPOL-DOM:EMPIRICAL NPOL-DOM:EMPIRICAL SAT TTRUE
 
-\ ---- op-registry bridge (the raw NUM-* class -> typed domain) ------------------
+\ ---- op-registry bridge: raw NUM-* class -> typed domain = the PER-OP request ---
+\ OP-DOM is both an op's ACHIEVED domain and (folded over a region by sched-key.f
+\ REGION-POL) its REQUESTED policy - the per-op axis that replaced the per-class
+\ table, so a pure-gelu region requests relative while a pure-relu region stays exact.
 MAKI-OPKIND:RELU    OPDOM 0 T=     \ NUM-EXACT
 MAKI-OPKIND:CAST    OPDOM 0 T=     \ NUM-EXACT
 MAKI-OPKIND:RESHAPE OPDOM 0 T=     \ movement: exact
@@ -103,23 +105,6 @@ NPOL-DOM:EXACT     DOMRT 0 T=
 NPOL-DOM:ULP       DOMRT 1 T=
 NPOL-DOM:RELATIVE  DOMRT 2 T=
 NPOL-DOM:EMPIRICAL DOMRT 3 T=
-
-\ ---- requested-policy table (ambient per-class request; honest per-class default) --
-\ CLASS-DEFAULT-POL: elementwise + movement default exact; the accumulating classes
-\ (row-reduce, matmul) and the decode/dequant chain default relative, so a
-\ legitimate accumulating golden is not refused by an exact-and-always-refusing
-\ default. POL! overrides one class; POL-RESET restores the honest defaults.
-NPOL:POL-RESET
-MAKI:CLASS-EW         NPOL:POL@ NPOL:RANK 0 T=     \ elementwise: exact
-MAKI:CLASS-MOVEMENT   NPOL:POL@ NPOL:RANK 0 T=     \ movement (no compute): exact
-MAKI:CLASS-ROW-REDUCE NPOL:POL@ NPOL:RANK 2 T=     \ accumulating reduction: relative
-MAKI:CLASS-MATMUL     NPOL:POL@ NPOL:RANK 2 T=     \ tensor-core matmul: relative
-MAKI:CLASS-DECODE     NPOL:POL@ NPOL:RANK 2 T=     \ dequant chain: relative
-NPOL-DOM:EXACT MAKI:CLASS-MATMUL NPOL:POL!
-MAKI:CLASS-MATMUL NPOL:POL@ NPOL:RANK 0 T=         \ POL! overrides matmul to exact
-MAKI:CLASS-EW     NPOL:POL@ NPOL:RANK 0 T=         \ other classes untouched
-NPOL:POL-RESET
-MAKI:CLASS-MATMUL NPOL:POL@ NPOL:RANK 2 T=         \ reset restores the honest relative default
 
 \ ---- acceptance fixtures: refusals + positive controls (non-vacuous) -----------
 ' TF32-VS-FP32-NEG    E-NPOL-APPROX TTHROWS    \ TF32 relative result vs FP32 exact policy: refused
@@ -136,8 +121,5 @@ PIPE-TF32-EXACT 2 T=                           \ TF32 matmul + exact elementwise
 ' TRY-NUM-N        E-NPOL-DOM   TTHROWS         \ NUM-N has no domain
 ' TRY-NDOM-HI      E-NPOL-DOM   TTHROWS         \ wire id out of range
 ' TRY-NDOM-NEG     E-NPOL-DOM   TTHROWS
-' TRY-POL-BADCLASS E-NPOL-CLASS TTHROWS         \ region class out of range
-' TRY-POL-NEGCLASS E-NPOL-CLASS TTHROWS
-' TRY-POL@-BAD     E-NPOL-CLASS TTHROWS
 
 T-REPORT

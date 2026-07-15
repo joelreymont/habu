@@ -48,6 +48,13 @@ create KT-BUF KT-CAP allot  variable KT-BU
    rows cols 0 MIR-SLOT-ID MIR-SLOT-DT@ MAKI-LAYOUT:ROW 0 1 MIR-OP+ drop
    MAKI-OPKIND:RELU MIR-OP-BEGIN 0 MIR-NODE-ID MIR-NODE-REF MIR-IN+
    rows cols 0 MIR-SLOT-ID MIR-SLOT-DT@ MAKI-LAYOUT:ROW 0 1 MIR-OP+ drop ;
+\ a PURE-RELU (exact per-op) single-op chain, same shape family as BUILD: its
+\ intrinsic op domain is exact, so REGION-POL folds it to EXACT (vs BUILD's relative)
+: BUILD-RELU ( n n -- ) {: rows:n cols:n :}
+   MIR-RESET
+   rows cols SHAPE MAKI-DTYPE:DF32 MAKI-LAYOUT:ROW MIR-INPUT+ drop
+   MAKI-OPKIND:RELU MIR-OP-BEGIN 0 MIR-SLOT-ID MIR-IN-REF MIR-IN+
+   rows cols SHAPE MAKI-DTYPE:DF32 MAKI-LAYOUT:ROW 0 1 MIR-OP+ drop ;
 
 T-RESET
 
@@ -98,7 +105,7 @@ SK-PTXAS$  s" unprobed"  T$=
 \ builder), then splice the binary-dependent engine key into the expected string.
 0 FP-REGION-ID TARGET:SM87 SK-KEY$ KT-COPY
 SB-RESET
-s" 431E24867468A764|2xp128+t|f32|row|al16|exact|isa=1,arch=87,warp=32,threads=1024,shared=49152,caps=127|" SB-APPEND
+s" 431E24867468A764|2xp128+t|f32|row|al16|rel|isa=1,arch=87,warp=32,threads=1024,shared=49152,caps=127|" SB-APPEND
 ENGINE-KEY$ SB-APPEND  s" |unprobed" SB-APPEND
 KT-BUF$ SB$ STR= TTRUE
 0 FP-REGION-ID KT-ALT-TARGET SK-KEY$ KT-BUF$ STR= TFALSE   \ different facts (caps) -> different durable key
@@ -119,10 +126,11 @@ KT-DUP-LABEL TARGET:SM87 TARGET:EQUAL? TFALSE                     \ facts differ
 0 SK-SELF-EQ TTRUE
 \ every field of SK-KEY matches the region facts: compare to an explicitly-built
 \ expected key (rsig from the golden above, dims 2x100 -> exact/2 x pow2-tail/128,
-\ df32 / row / a16). Any wrong field would make MAKI-SKEY:EQ false.
+\ df32 / row / a16, pol=rel since the gelu+relu region folds per-op to relative).
+\ Any wrong field would make MAKI-SKEY:EQ false.
 : SK-EXPECT ( -- skey )
    $431e24867468a764 MAKI-DIMCLASS:EXACT 2 MAKI-DIMCLASS:POW2-TAIL 128
-   MAKI-DTYPE:DF32 MAKI-LAYOUT:ROW MAKI-ALIGN:A16 NPOL-DOM:EXACT MAKI-SKEY:MAKE ;
+   MAKI-DTYPE:DF32 MAKI-LAYOUT:ROW MAKI-ALIGN:A16 NPOL-DOM:RELATIVE MAKI-SKEY:MAKE ;
 : SK-MATCHES ( n -- bool )  FP-REGION-ID SK-KEY SK-EXPECT MAKI-SKEY:EQ ;
 0 SK-MATCHES TTRUE
 \ MAKI-SKEY:EQ discriminates every semantic field: one differing field -> unequal.
@@ -158,25 +166,27 @@ SK-EQ-AL   TFALSE
 SK-EQ-RK   TFALSE
 SK-EQ-POL  TFALSE   \ same config, different requested policy -> different key
 
-\ ---- render-level policy key invalidation (same region/target, POL! -> new key) ---
-\ REGION-POL folds the class-requested policy (NPOL:POL@) over the region's op
-\ classes; the live 2x100 region is all elementwise (gelu/relu). Requesting a weaker
-\ policy for CLASS-EW re-keys the SAME region, so a relative-policy row never pairs
-\ with the default exact-policy baseline. POL-RESET restores the shared singleton.
-NPOL:POL-RESET
-0 FP-REGION-ID TARGET:SM87 SK-KEY$ KT-COPY                     \ default exact-policy key
-NPOL-DOM:RELATIVE CLASS-EW NPOL:POL!                           \ request relative for elementwise
-0 FP-REGION-ID TARGET:SM87 SK-KEY$ KT-BUF$ STR= TFALSE        \ policy changed -> different key
-NPOL:POL-RESET
-0 FP-REGION-ID TARGET:SM87 SK-KEY$ KT-BUF$ STR= TTRUE         \ reset -> back to the baseline key
-\ store/replay NO BASELINE PAIRING: a selection stored under the exact-policy key is
-\ NOT replayed under a relative-policy key (the tuning-key invalidation the dot names).
+\ ---- per-op requested policy: honest, region-derived, no independent knob -------
+\ REGION-POL now folds each op's INTRINSIC domain (NPOL:OP-DOM) over the region
+\ instead of a per-class table, so the requested policy is a faithful function of the
+\ ops and can never desync from the region: the live 2x100 gelu+relu region requests
+\ RELATIVE (gelu is transcendental), a same-shape relu-only region requests EXACT. A
+\ different honest policy is a different key, so a relative-policy row never pairs with
+\ an exact-policy baseline - and there is no separate policy knob to set or reset.
+2 100 BUILD FP-BUILD
+0 FP-REGION-ID REGION-POL NPOL:RANK 2 T=                       \ gelu+relu region: relative (per-op)
+0 FP-REGION-ID TARGET:SM87 SK-KEY$ KT-COPY                     \ its honest relative-policy key
+2 100 BUILD-RELU FP-BUILD
+0 FP-REGION-ID REGION-POL NPOL:RANK 0 T=                       \ relu-only region: exact (per-op)
+0 FP-REGION-ID TARGET:SM87 SK-KEY$ KT-BUF$ STR= TFALSE         \ different honest policy -> different key
+\ store/replay NO BASELINE PAIRING: a selection stored under the relu (exact) region's
+\ key is NOT replayed under the gelu (relative) region's key (the tuning-key invalidation).
 SK-TAB-RESET
-0 FP-REGION-ID TARGET:SM87 SK-KEY$ 5 SK-PUT                    \ store a selection under exact policy
-NPOL-DOM:RELATIVE CLASS-EW NPOL:POL!
+0 FP-REGION-ID TARGET:SM87 SK-KEY$ 5 SK-PUT                    \ store under the relu-only (exact) key
+2 100 BUILD FP-BUILD                                           \ back to the gelu+relu (relative) region
 0 FP-REGION-ID TARGET:SM87 SK-KEY$ SK-GET nip TFALSE          \ relative-policy key: MISS (no pairing)
-NPOL:POL-RESET
-0 FP-REGION-ID TARGET:SM87 SK-KEY$ SK-GET drop 5 T=           \ exact-policy key still replays
+2 100 BUILD-RELU FP-BUILD
+0 FP-REGION-ID TARGET:SM87 SK-KEY$ SK-GET drop 5 T=           \ the exact-policy key still replays
 SK-TAB-RESET
 
 \ ---- swapped-family negatives: a role swap at MAKE is a CHECKER reject --------
@@ -277,7 +287,6 @@ KT-STALE-SET
 \ production SK-PUT inherits the entries.
 SK-TAB-RESET
 SK-TAB-COUNT 0 T=
-NPOL:POL-RESET   \ the requested-policy singleton is shared too; leave it at the default
 
 T-REPORT
 

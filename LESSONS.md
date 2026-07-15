@@ -4591,3 +4591,23 @@ unchanged (148855). Keys for milestone 2:
   previous test - a non-hermetic reset made a path/argv error masquerade as a
   malformed-row error. Reset ALL state a public diagnostic can read, or the error
   text lies about the failure class and sends the next lane down the wrong trail.
+- **When a "requested" axis becomes a DERIVED function of the artifact, the
+  promote/refuse test must flip the OTHER axis - and inject it through the typed
+  seam, not a removed knob.** dot habu-per-op-requested: sched-key.f `REGION-POL`
+  now folds each op's intrinsic domain (`NPOL:OP-DOM`) over the region instead of a
+  per-class table, so a region's REQUESTED policy equals its op floor
+  (`= REGION-ACHIEVED`): a pure-gelu region requests relative, a pure-relu region
+  exact - the mixed elementwise class could not express that. Consequence that bit
+  the test rewrite: the old cad-test manufactured a numeric-gate REFUSE on host by
+  flipping the requested policy INDEPENDENTLY (`POL! exact` on a matmul region while
+  achieved stayed relative). Under per-op there is no independent knob, AND on host
+  `GOLDEN-GATE-G` always returns `prec-f32`/exact (the strongest), so
+  `GOLD-ACHIEVED = exact COMPOSE op-floor = op-floor = requested` -> the gate ALWAYS
+  satisfies; you cannot produce an executed refuse from the policy side. The honest
+  executed refuse drives `PROMOTE-NPOL` with an injected
+  `EVID-PREC--CLASS:PREC-TF32` (the device golden's relative leg the report-path
+  gate is parameterized on) against an EXACT-floor region (relu-only): relative
+  achieved cannot satisfy the exact request. Flip only the region's op (gelu vs
+  relu) under a fixed TF32 leg to prove the gate reacts to the per-op requested
+  policy. Removing the ambient table also retired its class error (`E-NPOL-CLASS`,
+  -5147) since `NODE-POL` was its only runtime reader.

@@ -322,19 +322,29 @@ s" packet.profile: class=not-run"  CT-IN
 s" repair=run-device-profile"      CT-IN
 s" repro=model:FFN"                CT-IN
 
-\ ---- numeric-policy refusal through the REAL PROMOTE command (non-vacuous flip) --
-\ FFN region 0 (linear+gelu) achieves a RELATIVE domain; under the honest default
-\ (matmul -> relative) the PROMOTE above succeeded. Requesting EXACT for the matmul
-\ class re-keys region 0 to exact, and the relative golden can no longer satisfy it:
-\ the REAL PROMOTE command refuses with the named E-NPOL-APPROX (PROMOTE-NPOL) before
-\ any row lands. POL-RESET restores the honest default -> PROMOTE succeeds again, so
-\ the verdict genuinely flips. STORE-RESET brackets keep the store leak-free.
-STORE-RESET
-NPOL-DOM:EXACT MAKI:CLASS-MATMUL NPOL:POL!
-' TRY-PROMOTE E-NPOL-APPROX TTHROWS                       \ exact request, relative golden: refused
-0 FP-REGION-ID TARGET:SM87 SK-KEY$ EVID-GET nip TFALSE    \ refusal before the store write -> no row
-NPOL:POL-RESET
-' TRY-PROMOTE 0 TTHROWS                                   \ honest default restored -> promotes again
+\ ---- numeric-policy gate reacts to the PER-OP requested policy (executed flip) --
+\ REGION-POL folds each op's intrinsic domain (NPOL:OP-DOM) over region 0, so the
+\ requested policy is HONEST per-op: a gelu-only region requests RELATIVE, a relu-only
+\ region requests EXACT - a distinction the retired per-class table could not make.
+\ Drive the report-path gate PROMOTE-NPOL with a RELATIVE (TF32) golden and flip only
+\ the region's op: the transcendental region PROMOTES (relative achieved SATISFIES
+\ relative requested); the exact region REFUSES with the named E-NPOL-APPROX (relative
+\ cannot satisfy exact). An exact (f32) golden promotes the exact region too, so the
+\ verdict flips on both the requested policy AND the achieved precision. (On host the
+\ real GOLDEN is always f32/exact; this injects the TF32 achieved leg the device golden
+\ would carry - the same EVID:prec-class seam the FFN real PROMOTE above threaded.)
+: NPOL-GATE ( EVID:prec-class -- )  REPORT:NEW swap PROMOTE-NPOL drop ;  \ report-path gate over live region 0
+: TF32-GATE ( -- )  EVID-PREC--CLASS:PREC-TF32 NPOL-GATE ;   \ relative (TF32) golden
+: F32-GATE  ( -- )  EVID-PREC--CLASS:PREC-F32  NPOL-GATE ;   \ exact (f32) golden
+MODEL: MGELU ( x:2x4 -- y ) GELU ;
+LOWER drop
+0 FP-REGION-ID REGION-POL NPOL:RANK 2 T=                  \ gelu-only region: requests relative (per-op)
+' TF32-GATE 0             TTHROWS                         \ relative golden satisfies relative request -> promote
+MODEL: MRELU ( x:2x4 -- y ) RELU ;
+LOWER drop
+0 FP-REGION-ID REGION-POL NPOL:RANK 0 T=                  \ relu-only region: still requests exact (per-op)
+' TF32-GATE E-NPOL-APPROX TTHROWS                         \ relative golden cannot satisfy exact request -> refuse
+' F32-GATE  0             TTHROWS                         \ exact golden satisfies exact request -> promote (flip)
 STORE-RESET  SK-TAB-RESET  REPLAY-RESET
 
 \ ---- refusal fixture: a CAST model whose GOLDEN is not-run -> PROMOTE refuses -

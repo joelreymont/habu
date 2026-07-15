@@ -197,13 +197,21 @@ private
       node FP-RID@ r FP-RGN= if node NODE-ALIGN then
    loop ;
 
-\ ---- region requested numeric policy over the region's op classes ------------
+\ ---- region requested numeric policy over the region's PER-OP domains --------
 \ The plan's REQUESTED proof domain for the region = COMPOSE (weakest wins) over
-\ each op's class-requested policy (NPOL:POL@, default exact). It is the declared
-\ numeric contract that rides in the exact key; a different request is a different
-\ key, so a relative-policy TF32 row never pairs with an exact-policy FP32 baseline.
+\ each op's INTRINSIC numeric domain (NPOL:OP-DOM: relu/cast exact, add/mul ulp,
+\ gelu/silu/matmul relative). This is the HONEST per-OP request: a pure-relu region
+\ requests exact, a pure-transcendental elementwise region (only gelu/silu) requests
+\ relative - a distinction the old per-class table could NOT make, since elementwise
+\ is a MIXED class (exact relu/cast, ulp add/mul, transcendental gelu/silu) with no
+\ single honest class default. It is the declared numeric contract that rides in the
+\ exact key; a different op mix (a different honest policy) is a different key, so a
+\ relative-policy TF32 row never pairs with an exact-policy FP32 baseline. This is the
+\ SAME fold cad.f REGION-ACHIEVED runs over the region's achieved op domains; requested
+\ and achieved stay distinct axes - PROMOTE-NPOL composes the golden's JUDGED precision
+\ into achieved, then ENFORCEs it SATISFIES this requested policy.
 : NODE-POL ( NPOL:dom CAD-KIND:node-id -- NPOL:dom ) {: acc:NPOL:dom node:CAD-KIND:node-id :}
-   acc  node MIR-OP@ OPR-CLASS NPOL:POL@  NPOL:COMPOSE ;
+   acc  node MIR-OP@ NPOL:OP-DOM  NPOL:COMPOSE ;
 : REGION-POL ( CAD-KIND:region -- NPOL:dom ) {: r:CAD-KIND:region :}
    NPOL-DOM:EXACT
    MIR-N@ 0 ?do
