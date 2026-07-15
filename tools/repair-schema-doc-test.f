@@ -55,7 +55,7 @@ create RSD-CHK-BUF RSD-EMIT-CAP allot
    RSD-PTR-U8-FIELD ! ;
 
 : RSD-ALLOC-BUF ( n -- ptr u8 )
-   MEM-ALLOC-BYTES drop ;
+   MEM:BYTES-ALLOC-LEN MEM:ALLOC-BYTES drop ;
 
 : RSD-BUF ( ptr a n -- ptr u8 ) {: slot:ptr cap :}
    slot @ 0= if cap RSD-ALLOC-BUF slot RSD-PTR-U8! then

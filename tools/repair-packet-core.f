@@ -30,7 +30,7 @@ variable RP-NODE
    RP-PTR-U8-FIELD ! ;
 
 : RP-IN ( -- ptr u8 )
-   RP-IN-A @ 0= if RP-IN-CAP MEM-ALLOC-BYTES drop RP-IN-A RP-PTR-U8! then
+   RP-IN-A @ 0= if RP-IN-CAP MEM:BYTES-ALLOC-LEN MEM:ALLOC-BYTES drop RP-IN-A RP-PTR-U8! then
    RP-IN-A RP-PTR-U8@ ;
 
 : RP-COPY ( ptr u8 ptr u8 n -- )

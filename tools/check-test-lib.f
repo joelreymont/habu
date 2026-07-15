@@ -117,7 +117,7 @@ variable CKT-PAR-U
    CKT-ERR-A-FIELD ! ;
 
 : CKT-ALLOC-BUF ( -- ptr u8 )
-   CKT-BUF-CAP MEM-ALLOC-BYTES drop ;
+   CKT-BUF-CAP MEM:BYTES-ALLOC-LEN MEM:ALLOC-BYTES drop ;
 
 : CKT-OUT ( -- ptr u8 )
    CKT-OUT-A @ 0= if CKT-ALLOC-BUF CKT-OUT-A! then
@@ -810,7 +810,7 @@ public
 \ NOINPUT), never an uncaught E-FS-CAPACITY. The length check fires before any
 \ content read, so the oversize buffer stays unfilled.
 : CKT-OVERCAP$ ( -- ptr u8 n )
-   CHK-SRC-CAP 1 + MEM-ALLOC-BYTES drop CHK-SRC-CAP 1 + ;
+   CHK-SRC-CAP 1 + MEM:BYTES-ALLOC-LEN MEM:ALLOC-BYTES drop CHK-SRC-CAP 1 + ;
 
 : CKT-TEST-OVERCAP-SOURCE ( -- )
    CKT-DIRECT-START

@@ -22,7 +22,7 @@ variable CRT-LEN
 
 : CRT-BUF ( -- ptr u8 )
    CRT-BUF-A @ 0= if
-      CRT-CAP MEM-ALLOC-BYTES drop
+      CRT-CAP MEM:BYTES-ALLOC-LEN MEM:ALLOC-BYTES drop
       CRT-BUF-A 0 ptr-field !
    then
    CRT-BUF-A 0 ptr-field @ ;

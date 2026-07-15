@@ -43,7 +43,7 @@ variable EXT-ERR-A
 
 : EXT-ALLOC-BUF ( n ptr a -- ptr u8 ) {: cap slot:ptr :}
    slot EXT-PTR-U8@ 0= if
-      cap MEM-ALLOC-BYTES drop slot EXT-PTR-U8!
+      cap MEM:BYTES-ALLOC-LEN MEM:ALLOC-BYTES drop slot EXT-PTR-U8!
    then
    slot EXT-PTR-U8@ ;
 

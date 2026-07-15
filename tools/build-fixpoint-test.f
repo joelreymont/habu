@@ -102,7 +102,7 @@ create BFT-ERR BFT-CAPTURE-CAP allot
 
 : BFT-ALLOC-READ ( n -- )
    dup BFT-READ-CAP @ <= if drop exit then
-   dup MEM-ALLOC-BYTES drop BFT-READ-BUF!
+   dup MEM:BYTES-ALLOC-LEN MEM:ALLOC-BYTES drop BFT-READ-BUF!
    BFT-READ-CAP ! ;
 
 : BFT-COPY! ( ptr u8 n ptr u8 ptr n -- ) {: a:ptr u dst:ptr lenp:ptr :}
@@ -180,8 +180,8 @@ create BFT-ERR BFT-CAPTURE-CAP allot
    BFT-BIG-ERR-FIELD @ ;
 
 : BFT-ALLOC-BIG ( -- )
-   BFT-BIG-CAP MEM-ALLOC-BYTES drop BFT-BIG-OUT-FIELD !
-   BFT-BIG-CAP MEM-ALLOC-BYTES drop BFT-BIG-ERR-FIELD ! ;
+   BFT-BIG-CAP MEM:BYTES-ALLOC-LEN MEM:ALLOC-BYTES drop BFT-BIG-OUT-FIELD !
+   BFT-BIG-CAP MEM:BYTES-ALLOC-LEN MEM:ALLOC-BYTES drop BFT-BIG-ERR-FIELD ! ;
 
 : BFT-EMPTY$ ( -- ptr u8 n )
    SB-RESET
@@ -691,7 +691,7 @@ create BFT-ERR BFT-CAPTURE-CAP allot
 
 : BFT-BYTES-READ ( -- )
    s" hb-snap0" BF-A$ FILE-SIZE {: sz:n :}
-   sz MEM-ALLOC-BYTES drop BFT-BYTES-FIELD !
+   sz MEM:BYTES-ALLOC-LEN MEM:ALLOC-BYTES drop BFT-BYTES-FIELD !
    s" hb-snap0" BF-A$ BFT-BYTES sz READ-ALL BFT-BYTES-N ! ;
 
 : BFT-MAGIC$ ( -- ptr u8 n )
@@ -804,7 +804,7 @@ variable BAD-N
 
 : SRC-ALLOC ( -- )
    SRC-A @ 0 <> if exit then
-   SOURCE-ARENA-CAP MEM-ALLOC-BYTES drop SRC-FIELD !
+   SOURCE-ARENA-CAP MEM:BYTES-ALLOC-LEN MEM:ALLOC-BYTES drop SRC-FIELD !
    SOURCE-ARENA-CAP 0 ?do 32 SRC-BUF i + c! loop ;
 
 : ERR$ ( -- ptr u8 n )

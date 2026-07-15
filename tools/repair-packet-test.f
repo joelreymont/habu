@@ -62,7 +62,7 @@ create RPT-PACKET-BUF FS-PATH-CAP allot
    RPT-LABEL-A RPT-PTR-U8! ;
 
 : RPT-ALLOC-BUF ( -- ptr u8 )
-   RPT-CAPTURE-CAP MEM-ALLOC-BYTES drop ;
+   RPT-CAPTURE-CAP MEM:BYTES-ALLOC-LEN MEM:ALLOC-BYTES drop ;
 
 : RPT-BUF ( ptr a -- ptr u8 ) {: slot:ptr :}
    slot @ 0= if RPT-ALLOC-BUF slot RPT-PTR-U8! then

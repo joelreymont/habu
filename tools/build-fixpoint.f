@@ -129,7 +129,7 @@ variable BF-AUD-N
    BF-PTR-U8-FIELD ! ;
 
 : BF-ALLOC-BUF ( n -- ptr u8 )
-   MEM-ALLOC-BYTES drop ;
+   MEM:BYTES-ALLOC-LEN MEM:ALLOC-BYTES drop ;
 
 : BF-BUF ( ptr a n -- ptr u8 ) {: slot:ptr cap :}
    slot @ 0= if cap BF-ALLOC-BUF slot BF-PTR-U8! then

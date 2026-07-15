@@ -147,7 +147,9 @@ variable BIG-LEX-U
 : TOK-FIX$  ( -- ptr u8 n )  TOK-FIX TOK-LEN BUF-LEN@ ;
 
 : INIT-BIG-LEX  ( -- )
-   BIG-LEX-TOKENS 2 * MEM-ALLOC-BYTES BIG-LEX-U ! BIG-LEX-A!
+   BIG-LEX-TOKENS 2 * {: cap:n :}
+   cap MEM:BYTES-ALLOC-LEN MEM:ALLOC-BYTES drop BIG-LEX-A!
+   cap BIG-LEX-U !
    0 begin dup BIG-LEX-TOKENS < while
       dup BIG-LEX-PUT
       1+

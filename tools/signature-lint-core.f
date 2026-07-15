@@ -88,7 +88,7 @@ variable SL-SUG-U
 
 : SL-ALLOC-FILE-BUF ( -- )
    SL-BUF-A @ 0= if
-      SL-FILE-CAP MEM-ALLOC-BYTES drop SL-BUF-A!
+      SL-FILE-CAP MEM:BYTES-ALLOC-LEN MEM:ALLOC-BYTES drop SL-BUF-A!
    then ;
 
 : SL-FILE-BUF ( -- ptr u8 )

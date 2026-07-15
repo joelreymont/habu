@@ -92,7 +92,7 @@ variable HBB-PRESEED-MODE
    HBB-PTR-U8-FIELD ! ;
 
 : HBB-ALLOC-BUF ( n -- ptr u8 )
-   MEM-ALLOC-BYTES drop ;
+   MEM:BYTES-ALLOC-LEN MEM:ALLOC-BYTES drop ;
 
 : HBB-BUF ( ptr a n -- ptr u8 ) {: slot:ptr cap :}
    slot @ 0= if cap HBB-ALLOC-BUF slot HBB-PTR-U8! then

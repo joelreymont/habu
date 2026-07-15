@@ -50,7 +50,7 @@ variable SMT-STR-BUF-A
    SMT-PTR-U8-FIELD ! ;
 
 : SMT-ALLOC-BUF ( n -- ptr u8 )
-   MEM-ALLOC-BYTES drop ;
+   MEM:BYTES-ALLOC-LEN MEM:ALLOC-BYTES drop ;
 
 : SMT-BUF ( ptr a n -- ptr u8 ) {: slot:ptr cap :}
    slot @ 0= if cap SMT-ALLOC-BUF slot SMT-PTR-U8! then

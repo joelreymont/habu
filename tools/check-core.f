@@ -145,7 +145,7 @@ variable CHK-ALL-RC
    CHK-CAP-ERR-A-FIELD ! ;
 
 : CHK-ALLOC-BUF ( n -- ptr u8 )
-   MEM-ALLOC-BYTES drop ;
+   MEM:BYTES-ALLOC-LEN MEM:ALLOC-BYTES drop ;
 
 : CHK-SRC-BUF ( -- ptr u8 )
    CHK-SRC-BUF-A @ 0= if CHK-SRC-CAP CHK-ALLOC-BUF CHK-SRC-BUF-A ! then

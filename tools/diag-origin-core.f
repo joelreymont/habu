@@ -64,7 +64,7 @@ variable DO-OUT-BUF?
 
 : DO-ALLOC-FILE-BUF ( -- )
    DO-FILE-A @ 0= if
-      DO-FILE-CAP MEM-ALLOC-BYTES drop DO-FILE-A!
+      DO-FILE-CAP MEM:BYTES-ALLOC-LEN MEM:ALLOC-BYTES drop DO-FILE-A!
    then ;
 
 : DO-FILE-BUF ( -- ptr u8 )

@@ -32,14 +32,14 @@ variable TL-ARGV-SOURCE-U
 
 : TL-ARGV-STR-BUF ( -- ptr u8 )
    TL-ARGV-STR-BUF-A @ 0= if
-      TL-ARGV-STR-CAP MEM-ALLOC-BYTES drop
+      TL-ARGV-STR-CAP MEM:BYTES-ALLOC-LEN MEM:ALLOC-BYTES drop
       TL-ARGV-STR-BUF-A 0 ptr-field !
    then
    TL-ARGV-STR-BUF-A 0 ptr-field @ ;
 
 : TL-ARGV-FILE-BUF ( -- ptr u8 )
    TL-ARGV-FILE-BUF-A @ 0= if
-      TL-ARGV-FILE-CAP MEM-ALLOC-BYTES drop
+      TL-ARGV-FILE-CAP MEM:BYTES-ALLOC-LEN MEM:ALLOC-BYTES drop
       TL-ARGV-FILE-BUF-A 0 ptr-field !
    then
    TL-ARGV-FILE-BUF-A 0 ptr-field @ ;

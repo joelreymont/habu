@@ -29,7 +29,7 @@ variable JOT-ERR-A
 
 : JOT-ALLOC-SIZED-BUF ( n ptr a -- ptr u8 ) {: cap:n slot:ptr :}
    slot JOT-PTR-U8@ 0= if
-      cap MEM-ALLOC-BYTES drop slot JOT-PTR-U8!
+      cap MEM:BYTES-ALLOC-LEN MEM:ALLOC-BYTES drop slot JOT-PTR-U8!
    then
    slot JOT-PTR-U8@ ;
 

@@ -165,7 +165,7 @@ variable CGR-SB-LEN
 
 : CGR-SB-BUF ( -- ptr u8 )
    CGR-SB-A @ 0= if
-      CGR-SB-CAP MEM-ALLOC-BYTES drop
+      CGR-SB-CAP MEM:BYTES-ALLOC-LEN MEM:ALLOC-BYTES drop
       CGR-SB-A 0 ptr-field !
    then
    CGR-SB-A 0 ptr-field @ ;
@@ -192,7 +192,7 @@ variable CGR-NI
 
 : CGR-NB-BUF ( -- ptr u8 )
    CGR-NB-A @ 0= if
-      CGR-NB-CAP MEM-ALLOC-BYTES drop
+      CGR-NB-CAP MEM:BYTES-ALLOC-LEN MEM:ALLOC-BYTES drop
       CGR-NB-A 0 ptr-field !
    then
    CGR-NB-A 0 ptr-field @ ;
