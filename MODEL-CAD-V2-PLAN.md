@@ -1469,6 +1469,150 @@ migrates `VEC` use in `tools/lint/intern.f` and `tools/lint/source-lex.f` after
 both packaged APIs land, while the sched-key caller dot migrates both its `VEC`
 and Model IR count use. No other caller dot may edit those three files.
 
+#### B5.5a Legacy Global String Caller Census (habu-census-legacy-str-b84390fe)
+
+B5.5 landed the typed `STR:` surface inside `lib/string.f` but deliberately left
+the global `ptr u8 n` raw string words as a named legacy boundary for separate
+caller dots. This is the frozen, exhaustive census of every live external caller
+of those raw words and the disjoint migration leaves that discharge them. It
+edits no consumer source; it is a census + dot-decomposition only.
+
+**Census targets (raw global words the typed `STR:` words wrap, read from
+`lib/string.f`), plus their length-bearing BUF helpers:** `STR-LEN`, `STR-OFF`,
+`STR-COUNT`, `FIND-SUB`, `INDEX-OF`, `SPLIT-NEXT`, `BUF-RESET`, `BUF-LEN@`,
+`BUF-APPEND`, `BUF-APPEND-LEN`, `BUF-APPEND-C`, `BUF-CHECK-LEN`.
+
+**Explicitly out of scope:** the global single-buffer string builder `SB-RESET`,
+`SB-APPEND`, `SB-APPEND-C`, `SB-APPEND-LEN`, `SB-CHECK-ROOM`, `SB-CHECK-LEN-ROOM`,
+`SB$` (100+ files, ~2600 sites). These are a separate global surface with **no**
+typed `STR:` target; the B5.5 row wrapped none of them, so they are not
+migratable in this wave and belong to a future STR string-builder owner dot, not
+a caller census. The Gforth-world `bootstrap/src/render.fs` defines its own
+unrelated `BUF-RESET ( -- )`; `.fs`/`bootstrap/` are excluded.
+
+**Search method (reproducible; a fresh census must equal these lists):** for each
+target word `W`, whitespace-delimited raw-call match
+`rg -n "(^|[[:space:]])W([[:space:]]|$)" -g '*.f'`, excluding `lib/string.f`,
+`lib/string-test.f`, `bootstrap/**`, `.dots/**`, `.jj/**`. The pattern isolates
+raw calls: a `:`-prefixed `STR:W` typed call and a `-`-prefixed `RAW-W` alias are
+not matched. A broader boundary sweep `(^|[^A-Za-z0-9-])W([^A-Za-z0-9-]|$)`
+surfaced no additional call site (only comment/`require`/alias lines in the owner
+file), confirming exhaustiveness. `require ... \ ... consumer` comment lines are
+not calls.
+
+**Per-word typed target and zero/not-found semantics** (positive behavior is
+byte-identical to the raw word):
+
+| Raw global word | Typed target | Zero / not-found semantics |
+|-----------------|--------------|----------------------------|
+| `STR-LEN` | `STR:LENGTH ( n -- CAD-NUM:byte-len )` | 0 → byte-len 0; negative → `E-STR-BOUNDS`. **No external callers.** |
+| `STR-OFF` | `STR:OFFSET ( n -- CAD-NUM:byte-off )` | 0 → byte-off 0; negative → `E-STR-BOUNDS`. **No external callers.** |
+| `STR-COUNT` | `STR:COUNT ( n -- CAD-NUM:item-count )` | 0 → item-count 0; negative → `E-STR-BOUNDS`. **No external callers.** |
+| `FIND-SUB` | `STR:FIND-SUB ( ptr u8 byte-len ptr u8 byte-len -- option<CAD-NUM:index> )` | empty needle → `SOME` index 0; needle longer than haystack or absent → `NONE`. |
+| `INDEX-OF` | `STR:INDEX-OF ( ptr u8 byte-len n -- option<CAD-NUM:index> )` | byte found → `SOME` index; empty/absent → `NONE`. |
+| `SPLIT-NEXT` | `STR:SPLIT-NEXT ( ptr u8 byte-len n byte-off -- ptr u8 byte-len byte-off bool )` | `start<0`/`start>len` → `(a, len 0, start, false)`; adds one-past-end offset-advance overflow → `E-STR-BOUNDS` (raw silently wrapped). |
+| `BUF-RESET` | `STR:BUF-RESET ( ptr len -- )` | sets length cell to 0. |
+| `BUF-LEN@` | `STR:BUF-LEN@ ( ptr len -- CAD-NUM:byte-len )` | empty → byte-len 0. |
+| `BUF-APPEND` | `STR:BUF-APPEND ( ptr u8 byte-len ptr u8 byte-len ptr len -- )` | `E-STR-CAPACITY` on overflow; negative → `E-STR-BOUNDS`. |
+| `BUF-APPEND-LEN` | `STR:BUF-APPEND` (drop the caller's `>LEN` pre-conversion; pass raw counts — `BUF-APPEND(n) ≡ BUF-APPEND-LEN(>LEN n)`) | as `BUF-APPEND`. |
+| `BUF-APPEND-C` | **none in the current B5.5 surface** → owner-extension leaf **D0** adds `STR:BUF-APPEND-C ( n ptr u8 byte-len ptr len -- )` | byte-range `c<0`/`c>255` → `E-STR-BOUNDS`; overflow → `E-STR-CAPACITY`. |
+| `BUF-CHECK-LEN` | owner-internal helper | **No external callers.** |
+
+**Census result: 170 live external calls across 41 files.** Per word:
+`FIND-SUB` 37 / `INDEX-OF` 23 / `SPLIT-NEXT` 13 / `BUF-RESET` 15 / `BUF-LEN@` 8 /
+`BUF-APPEND` 35 / `BUF-APPEND-LEN` 1 / `BUF-APPEND-C` 38.
+`STR-LEN`/`STR-OFF`/`STR-COUNT`/`BUF-CHECK-LEN` have zero external callers, so
+`STR:LENGTH`/`STR:OFFSET`/`STR:COUNT` need no caller migration.
+
+**Owner-surface gap (census finding).** The B5.5 String row enumerated nine typed
+words and omitted a typed equivalent for the raw single-byte appender
+`BUF-APPEND-C`, on which 5 files depend. Leaf **D0** adds `STR:BUF-APPEND-C` to
+the owner (`lib/string.f` + `lib/string-test.f`) before those callers migrate.
+`BUF-APPEND-LEN` (one caller, `lib/content-key.f`) needs no owner extension: it is
+`BUF-APPEND` with the length pre-converted, so it migrates to `STR:BUF-APPEND`.
+
+**Disjoint migration leaves** (each file owned by exactly one leaf; each live call
+owned exactly once). Ownership is per file — a leaf migrates every in-scope raw
+STR call in each file it owns. `(C)` marks a file that also uses `BUF-APPEND-C`
+and therefore blocks on D0.
+
+- **D0 — owner extension** `Add STR:BUF-APPEND-C typed byte append`. Owns
+  `lib/string.f`, `lib/string-test.f`. Blocks D3 and D4.
+- **D1 — library callers** `Migrate library string callers to STR:`
+  (7 files): `examples/string-regex.f` (INDEX-OF), `lib/json-read.f` (INDEX-OF),
+  `lib/float.f` (INDEX-OF), `lib/process-env.f` (INDEX-OF, SPLIT-NEXT),
+  `lib/object.f` (SPLIT-NEXT), `lib/ptx/ad.f` (SPLIT-NEXT),
+  `lib/content-key.f` (BUF-APPEND-LEN → STR:BUF-APPEND). No D0 dependency.
+- **D2 — Maki callers** `Migrate Maki string callers to STR:` (13 files):
+  `maki/store.f` (INDEX-OF), `maki/store-rehydrate.f` (INDEX-OF, SPLIT-NEXT),
+  `maki/competitive-store.f` (INDEX-OF), `maki/cad.f` (INDEX-OF),
+  `maki/eval-transcript.f` (INDEX-OF, SPLIT-NEXT),
+  `maki/golden-artifact.f` (INDEX-OF, SPLIT-NEXT),
+  `maki/eval-repair-loop.f` (SPLIT-NEXT), `maki/ablate-ptx.f` (FIND-SUB),
+  `maki/lower-red-test.f`, `maki/lower-mm-test.f`, `maki/lower-ew-test.f`,
+  `maki/lower-mv-test.f`, `maki/onnx/deploy-test.f` (all FIND-SUB). No BUF use; no
+  D0 dependency.
+- **D3 — test callers** `Migrate test string callers to STR:` (7 files):
+  `test/boot-pin-test.f` (FIND-SUB), `test/gate-engine-lib.f` (FIND-SUB),
+  `test/owner-wid-doctor.f` (FIND-SUB),
+  `test/gate-pool-test.f` (FIND-SUB, INDEX-OF),
+  `test/seal-absence.f` (FIND-SUB, SPLIT-NEXT),
+  `test/run-lib.f` (SPLIT-NEXT, BUF-RESET, BUF-APPEND, BUF-APPEND-C `(C)`),
+  `test/run-rerun-failed-test.f` (BUF-RESET). Blocks on D0.
+- **D4 — tool callers** `Migrate tool string callers to STR:` (14 files):
+  `tools/codegen-role.f` (FIND-SUB, INDEX-OF, BUF-APPEND, BUF-APPEND-C `(C)`),
+  `tools/codegen-role-test.f` (FIND-SUB, BUF-APPEND),
+  `tools/hb-build-lib.f` (INDEX-OF),
+  `tools/bootstrap-codegen-test.f` (FIND-SUB), `tools/build-fixpoint.f` (FIND-SUB),
+  `tools/build-fixpoint-test.f` (FIND-SUB), `tools/ptx/saxpy-test.f` (FIND-SUB),
+  `tools/ptx/perf-registry.f` (SPLIT-NEXT),
+  `tools/lint/text.f` (BUF-RESET, BUF-APPEND),
+  `tools/lint/text-foundation-test.f` (BUF-RESET, BUF-LEN@, BUF-APPEND, BUF-APPEND-C `(C)`),
+  `tools/public-signatures-core.f` (BUF-APPEND),
+  `tools/stale-status-lint-core.f` (BUF-APPEND),
+  `tools/suite-coverage-lint-test.f` (BUF-RESET, BUF-APPEND, BUF-APPEND-C `(C)`),
+  `tools/typed-local-diff-lint-test.f` (BUF-RESET, BUF-LEN@, BUF-APPEND, BUF-APPEND-C `(C)`).
+  Blocks on D0.
+
+All four caller leaves depend on the already-landed `STR:` owner surface. Leaf
+lanes are disjoint by path prefix (`lib/`+`examples/` / `maki/` / `test/` /
+`tools/`), so no file is owned twice and no leaf edits `lib/string.f` except D0.
+
+**Overlap with the already-landed numeric caller waves** (file-touch history
+only — those waves merged, so this is sequential, not a concurrent-edit hazard;
+dispatch STR leaves on a base with the MEM/VEC/Model-IR waves merged): the
+following census files were also touched by a landed numeric wave —
+`lib/content-key.f`, `lib/process-env.f` (MEM library); `maki/eval-transcript.f`
+(MEM Maki); `maki/cad.f`, `maki/golden-artifact.f` (Model IR count);
+`test/gate-engine-lib.f`, `test/seal-absence.f` (MEM test);
+`tools/build-fixpoint.f`, `tools/build-fixpoint-test.f`, `tools/codegen-role.f`,
+`tools/codegen-role-test.f`, `tools/hb-build-lib.f`,
+`tools/lint/text-foundation-test.f` (MEM/VEC tool). The `maki/lower-*-test.f`
+files are distinct from the non-test `maki/lower-*.f` files in the Model IR wave.
+
+**Ready-to-mint leaf dots** (orchestrator mints; census records verbatim):
+
+~~~
+dot add "Add STR:BUF-APPEND-C typed byte append" -d "Full context: MODEL-CAD-V2-PLAN.md B5.5a legacy-STR census. The typed STR: surface wraps BUF-RESET/BUF-LEN@/BUF-APPEND but omits a typed equivalent for the raw single-byte appender BUF-APPEND-C ( n ptr u8 n ptr len -- ), which 5 files depend on. Add packaged STR:BUF-APPEND-C ( n ptr u8 CAD-NUM:byte-len ptr len -- ) to lib/string.f mirroring STR:BUF-APPEND: bind RAW-BUF-APPEND-C to the global before the package word shadows it, take cap as CAD-NUM:byte-len via BYTE-LEN>N, keep the same c<0/c>255 E-STR-BOUNDS and E-STR-CAPACITY throws. Acceptance: STR:BUF-APPEND-C lands with a T{ }T test covering append, capacity overflow throw, and byte-range reject; lib/string-test.f green. Files: lib/string.f, lib/string-test.f. Verify: bin/hb --load lib/string-test.f. Depends: landed STR owner. Ownership: lib/string.f, lib/string-test.f. Claim: unassigned."
+
+dot add "Migrate library string callers to STR:" -d "Full context: MODEL-CAD-V2-PLAN.md B5.5a legacy-STR census, library lane. Migrate every raw STR call in these files to the typed STR: surface: examples/string-regex.f (INDEX-OF), lib/json-read.f (INDEX-OF), lib/float.f (INDEX-OF), lib/process-env.f (INDEX-OF, SPLIT-NEXT), lib/object.f (SPLIT-NEXT), lib/ptx/ad.f (SPLIT-NEXT), lib/content-key.f (BUF-APPEND-LEN -> STR:BUF-APPEND, dropping the >LEN pre-conversion). INDEX-OF/FIND-SUB return option<CAD-NUM:index>; SPLIT-NEXT gains the one-past-end offset-advance overflow guard; behavior otherwise byte-identical. Acceptance: no raw STR-LEN/STR-OFF/STR-COUNT/FIND-SUB/INDEX-OF/SPLIT-NEXT/BUF-* call remains in these files (fresh rg census empty); each file's focused test green. Files: examples/string-regex.f, lib/json-read.f, lib/float.f, lib/process-env.f, lib/object.f, lib/ptx/ad.f, lib/content-key.f, plus their focused tests. Verify: bin/hb --load each owned file's focused test; library gate slice. Depends: landed STR owner. Ownership: the 7 listed library files. Claim: unassigned."
+
+dot add "Migrate Maki string callers to STR:" -d "Full context: MODEL-CAD-V2-PLAN.md B5.5a legacy-STR census, Maki lane. Migrate every raw STR call to the typed STR: surface in: maki/store.f (INDEX-OF), maki/store-rehydrate.f (INDEX-OF, SPLIT-NEXT), maki/competitive-store.f (INDEX-OF), maki/cad.f (INDEX-OF), maki/eval-transcript.f (INDEX-OF, SPLIT-NEXT), maki/golden-artifact.f (INDEX-OF, SPLIT-NEXT), maki/eval-repair-loop.f (SPLIT-NEXT), maki/ablate-ptx.f (FIND-SUB), maki/lower-red-test.f, maki/lower-mm-test.f, maki/lower-ew-test.f, maki/lower-mv-test.f, maki/onnx/deploy-test.f (FIND-SUB). No BUF use, no D0 dependency. INDEX-OF/FIND-SUB return option<CAD-NUM:index>; SPLIT-NEXT gains offset-advance overflow guard; behavior byte-identical. Overlap note: maki/cad.f and maki/golden-artifact.f were touched by the landed Model IR count wave (sequential). Acceptance: fresh rg census empty in these files; maki/test.f and each focused test green. Files: the 13 listed Maki files plus their focused tests. Verify: bin/hb --load maki/test.f and the owned focused tests. Depends: landed STR owner. Ownership: the 13 listed Maki files. Claim: unassigned."
+
+dot add "Migrate test string callers to STR:" -d "Full context: MODEL-CAD-V2-PLAN.md B5.5a legacy-STR census, test lane. Migrate every raw STR call to the typed STR: surface in: test/boot-pin-test.f (FIND-SUB), test/gate-engine-lib.f (FIND-SUB), test/owner-wid-doctor.f (FIND-SUB), test/gate-pool-test.f (FIND-SUB, INDEX-OF), test/seal-absence.f (FIND-SUB, SPLIT-NEXT), test/run-lib.f (SPLIT-NEXT, BUF-RESET, BUF-APPEND, BUF-APPEND-C), test/run-rerun-failed-test.f (BUF-RESET). test/run-lib.f uses BUF-APPEND-C so this leaf blocks on the D0 STR:BUF-APPEND-C owner extension. Overlap note: test/gate-engine-lib.f and test/seal-absence.f were touched by the landed MEM test wave (sequential). Acceptance: fresh rg census empty in these files; each focused test/gate slice green. Files: the 7 listed test files plus their focused tests. Verify: bin/hb --load the owned focused tests / gate slices. Depends: landed STR owner; D0 (STR:BUF-APPEND-C). Ownership: the 7 listed test files. Claim: unassigned."
+
+dot add "Migrate tool string callers to STR:" -d "Full context: MODEL-CAD-V2-PLAN.md B5.5a legacy-STR census, tool lane. Migrate every raw STR call to the typed STR: surface in: tools/codegen-role.f (FIND-SUB, INDEX-OF, BUF-APPEND, BUF-APPEND-C), tools/codegen-role-test.f (FIND-SUB, BUF-APPEND), tools/hb-build-lib.f (INDEX-OF), tools/bootstrap-codegen-test.f (FIND-SUB), tools/build-fixpoint.f (FIND-SUB), tools/build-fixpoint-test.f (FIND-SUB), tools/ptx/saxpy-test.f (FIND-SUB), tools/ptx/perf-registry.f (SPLIT-NEXT), tools/lint/text.f (BUF-RESET, BUF-APPEND), tools/lint/text-foundation-test.f (BUF-RESET, BUF-LEN@, BUF-APPEND, BUF-APPEND-C), tools/public-signatures-core.f (BUF-APPEND), tools/stale-status-lint-core.f (BUF-APPEND), tools/suite-coverage-lint-test.f (BUF-RESET, BUF-APPEND, BUF-APPEND-C), tools/typed-local-diff-lint-test.f (BUF-RESET, BUF-LEN@, BUF-APPEND, BUF-APPEND-C). Four files use BUF-APPEND-C so this leaf blocks on the D0 STR:BUF-APPEND-C owner extension. Overlap note: build-fixpoint(.f/-test.f), codegen-role(.f/-test.f), hb-build-lib.f, lint/text-foundation-test.f were touched by the landed MEM/VEC tool wave (sequential). Acceptance: fresh rg census empty in these files; each focused test/lint slice green. Files: the 14 listed tool files plus their focused tests. Verify: bin/hb --load the owned focused tests / lint slices. Depends: landed STR owner; D0 (STR:BUF-APPEND-C). Ownership: the 14 listed tool files. Claim: unassigned."
+~~~
+
+**`habu-integrate-sealed-cad-ba510e2e` amendment.** Before it closes, its
+`blocks:` list must add all five minted leaf ids (the orchestrator substitutes
+the minted ids for these titles): D0 `Add STR:BUF-APPEND-C typed byte append`,
+D1 `Migrate library string callers to STR:`, D2 `Migrate Maki string callers to
+STR:`, D3 `Migrate test string callers to STR:`, D4 `Migrate tool string callers
+to STR:`. Additionally D3 and D4 must list D0 in their own `blocks:`. The census
+dot `habu-census-legacy-str-b84390fe` closes once these five leaves are minted and
+recorded on ba510e2e.
+
 The open `habu-v2-types-refined-519fd2d1` design dot now states this scalar-only
 algebra and allocation contract and awaits its named censuses, plan-state
 reconciliation, and TRUSTED retirement audit. The active
