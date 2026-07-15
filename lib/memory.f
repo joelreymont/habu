@@ -143,18 +143,11 @@ public
 : 64K-SPAN-BYTES ( CAD-NUM:byte-len -- CAD-NUM:numeric-result<CAD-NUM:byte-len> )
    64K-ALIGN CAD-NUM:ALIGN-UP-BYTES ;
 : 64K-COUNT-FOR ( CAD-NUM:byte-len -- CAD-NUM:numeric-result<CAD-NUM:item-count> )
-   \ ceil(bytes / 64K) as a logical buffer count. CAD-NUM has no typed
-   \ extent->count division, so the positive byte need is narrowed to the
-   \ allocation role and read once through ALLOC-BYTES>N, then the ceil quotient
-   \ is re-validated as an item-count; a zero need is 0 buffers.
-   CAD-NUM:AS-ALLOC-BYTE-LEN
-   MATCH CAD-NUM:numeric-result
-      ok OF ALLOC-BYTES>N 1- MEM-64K / 1+ CAD-NUM:ITEM-COUNT ENDOF
-      zero OF 0 CAD-NUM:ITEM-COUNT ENDOF
-      negative OF E-MEM-TOTALITY throw ENDOF   overflow OF E-MEM-TOTALITY throw ENDOF
-      underflow OF E-MEM-TOTALITY throw ENDOF   bad-alignment OF E-MEM-TOTALITY throw ENDOF
-      misaligned OF E-MEM-TOTALITY throw ENDOF
-   ;MATCH ;
+   \ ceil(bytes / 64K) as a logical buffer count, purely over the typed
+   \ extent-division op: the byte need is the extent, 64K the unit size. A zero
+   \ need is 0 buffers (0 / 64K); 64K is a positive extent, so DIV-BYTES-CEIL's
+   \ zero-size-unit refusal is unreachable. No raw cell is read here.
+   64K-LEN CAD-NUM:DIV-BYTES-CEIL ;
 
 \ ---- allocation sinks: only the alloc-* roles reach the mmap primitive ---------
 : ALLOC-BYTES ( CAD-NUM:alloc-byte-len -- ptr u8 CAD-NUM:alloc-byte-len )

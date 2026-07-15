@@ -13,12 +13,17 @@
 \ Result discipline: a role-changing operation that can fail numerically returns
 \ `numeric-result<role>` - `ok role` on success, or a payloadless `overflow`
 \ (extent/offset/product/round-up past the machine max), `underflow` (a
-\ subtraction/retreat/reversed-distance below zero), or `misaligned` (a byte
-\ extent/offset that is not a whole cell count). Failure is a VALUE, never a
-\ throw; consumers throw the matching `E-CADNUM-*` code at their own boundary.
-\ The total positive-divisor DIV/REM operations take the `positive-divisor` role,
-\ so a zero divisor is STATICALLY impossible: they are total and return their
-\ role directly with no error variant.
+\ subtraction/retreat/reversed-distance below zero), `misaligned` (a byte
+\ extent/offset that is not a whole cell count), or `zero` (an extent-by-extent
+\ division whose unit-size divisor is a zero-length extent). Failure is a VALUE,
+\ never a throw; consumers throw the matching `E-CADNUM-*` code at their own
+\ boundary. The total positive-divisor DIV/REM operations take the
+\ `positive-divisor` role, so a zero divisor is STATICALLY impossible: they are
+\ total and return their role directly with no error variant. The extent-by-extent
+\ DIV-BYTES-CEIL/-FLOOR unit counters instead take a `byte-len` unit size - an
+\ extent, which admits zero - so a zero-size unit cannot be excluded by the type
+\ and is returned as the `zero` value; the quotient is at most the dividend
+\ extent, so it never overflows.
 \
 \ Minting policy (dot audit): arithmetic mints NO role itself. Every success
 \ value is routed through slice 1's public validator (`BYTE-LEN`, `ITEM-COUNT`,
@@ -60,6 +65,7 @@ TRUSTED: POSITIVE-DIVISOR>N ( positive-divisor -- n ) ;
 : A-OVER     ( -- numeric-result<a> ) CAD--NUM-NUMERIC--RESULT:OVERFLOW ;
 : A-UNDER    ( -- numeric-result<a> ) CAD--NUM-NUMERIC--RESULT:UNDERFLOW ;
 : A-MISALIGN ( -- numeric-result<a> ) CAD--NUM-NUMERIC--RESULT:MISALIGNED ;
+: A-ZERO     ( -- numeric-result<a> ) CAD--NUM-NUMERIC--RESULT:ZERO ;
 
 \ ---- raw checked scalar kernels (nonnegative cells; role-free) -----------------
 \ Each returns the failure predicate as a real bool from a comparison; the caller
@@ -79,6 +85,8 @@ TRUSTED: POSITIVE-DIVISOR>N ( positive-divisor -- n ) ;
    v a 1- and 0= if v  0 0 >  exit then          \ already aligned: no round-up, no overflow
    a  v a 1- and  -  {: delta:n :}                \ distance to the next multiple (1..a-1)
    v delta +  v MAX-CELL-N delta - >  ;           \ rounded value, overflow when v+delta > max
+: CEIL-QUOT ( n n -- n )                \ ceil(v / u) for u>0, v>=0 (0 when v=0)
+   {: v:n u:n :} v 0= if 0 exit then v 1- u / 1+ ;
 
 \ ---- ok extractors for the total ops (the non-ok arms are proven unreachable) --
 : OK-BYTE-LEN ( numeric-result<byte-len> -- byte-len )
@@ -211,6 +219,24 @@ public
 : REM-CELLS ( cell-count positive-divisor -- cell-count )
    {: a:cell-count d:positive-divisor :}
    a CELL-COUNT>N d POSITIVE-DIVISOR>N mod CELL-COUNT OK-CELL-COUNT ;
+
+\ ---- extent / unit-extent -> unit count (zero-length unit refuses) -------------
+\ "How many units of size S fit in extent E": dimensionally bytes / bytes = a
+\ dimensionless item-count, so both operands are `byte-len` and the result is an
+\ `item-count`. The unit size S is itself an extent and `byte-len` admits zero, so
+\ a zero-size unit is representable and cannot be excluded by the type; it is
+\ returned as the `zero` value (division-by-zero as a value, per the table style),
+\ never a throw. The quotient is at most E, so it never overflows. These are
+\ distinct from the unit-PRESERVING DIV-BYTES ( byte-len positive-divisor --
+\ byte-len ), which keeps the byte unit and forbids a zero divisor statically.
+: DIV-BYTES-CEIL ( byte-len byte-len -- numeric-result<item-count> )
+   {: e:byte-len s:byte-len :}
+   e BYTE-LEN>N s BYTE-LEN>N {: x:n u:n :}
+   u 0= if A-ZERO else x u CEIL-QUOT ITEM-COUNT then ;
+: DIV-BYTES-FLOOR ( byte-len byte-len -- numeric-result<item-count> )
+   {: e:byte-len s:byte-len :}
+   e BYTE-LEN>N s BYTE-LEN>N {: x:n u:n :}
+   u 0= if A-ZERO else x u / ITEM-COUNT then ;
 
 \ ---- cell <-> byte conversions ------------------------------------------------
 : CELLS>BYTES ( cell-count -- numeric-result<byte-len> )

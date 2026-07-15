@@ -226,8 +226,36 @@ T-REPORT
    111 a !  222 a 1 cells + !
    a @ 111 T=  a 1 cells + @ 222 T= ;
 
+\ ---- purified MEM:64K-COUNT-FOR: byte-identical parity with the legacy raw word -
+\ MEM:64K-COUNT-FOR now composes CAD-NUM:DIV-BYTES-CEIL and reads no raw cell.
+\ Pin its EXACT item-count at the boundary inputs 1 / 64K / 64K+1 / MAX-N so the
+\ purification stays behavior-identical: the ceil counts match the legacy raw
+\ MEM-64K-COUNT-FOR at 1 / 64K / 64K+1, and at MAX-N the pure scalar word returns
+\ the true ceil (MEM-MAX-64K-BUFFERS+1), where the raw word instead throws its
+\ own bundled buffer ceiling (that allocation ceiling now lives at the alloc sink).
+package CAD-NUM
+public
+: IC>RAW ( CAD-NUM:item-count -- n ) ITEM-COUNT>N ;   \ test-only white-box reader
+;package
+
+: MEMT-64K-COUNT ( n -- n ) CAD-NUM:BYTE-LEN          \ raw bytes -> typed ceil count value
+   MATCH CAD-NUM:numeric-result ok OF MEM:64K-COUNT-FOR
+      MATCH CAD-NUM:numeric-result ok OF CAD-NUM:IC>RAW ENDOF
+         negative OF E-MEM-SIZE throw ENDOF zero OF E-MEM-SIZE throw ENDOF
+         overflow OF E-MEM-SIZE throw ENDOF underflow OF E-MEM-SIZE throw ENDOF
+         bad-alignment OF E-MEM-SIZE throw ENDOF misaligned OF E-MEM-SIZE throw ENDOF ;MATCH ENDOF
+      negative OF E-MEM-SIZE throw ENDOF zero OF E-MEM-SIZE throw ENDOF overflow OF E-MEM-SIZE throw ENDOF
+      underflow OF E-MEM-SIZE throw ENDOF bad-alignment OF E-MEM-SIZE throw ENDOF misaligned OF E-MEM-SIZE throw ENDOF ;MATCH ;
+
+: MEMT-COUNT-PARITY ( -- )                            \ exact-count regression at 1/64K/64K+1/MAX-N
+   1 MEMT-64K-COUNT 1 T=
+   MEM-64K MEMT-64K-COUNT 1 T=
+   MEM-64K 1 + MEMT-64K-COUNT 2 T=
+   MEM-MAX-N MEMT-64K-COUNT MEM-MAX-64K-BUFFERS 1 + T= ;
+
 : RT-MEM ( -- )
    T-RESET
+   MEMT-COUNT-PARITY
    \ scalar sizing admits zero and positive (zero is a valid scalar answer)
    0 MEMT-CELLS>BYTES# 0 T=      1 MEMT-CELLS>BYTES# 0 T=
    0 MEMT-64K-BYTES# 0 T=        3 MEMT-64K-BYTES# 0 T=

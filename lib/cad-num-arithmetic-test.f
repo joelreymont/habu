@@ -212,6 +212,26 @@ public
    40 OKCC 8 OKPD CAD-NUM:REM-CELLS CAD-NUM:CC>RAW 0 T=
    43 OKCC 8 OKPD CAD-NUM:REM-CELLS CAD-NUM:CC>RAW 3 T= ;
 
+\ ---- extent / unit-extent -> count: ceil/floor, max extent, zero-size unit ------
+: RT-DIV-EXTENT ( -- )
+   \ ceil: zero extent, unit one, exact multiple, remainder rounds up, max extent
+   0 OKBL 8 OKBL CAD-NUM:DIV-BYTES-CEIL IC-CODE 0 T=
+   40 OKBL 1 OKBL CAD-NUM:DIV-BYTES-CEIL IC-CODE 40 T=
+   40 OKBL 8 OKBL CAD-NUM:DIV-BYTES-CEIL IC-CODE 5 T=
+   43 OKBL 8 OKBL CAD-NUM:DIV-BYTES-CEIL IC-CODE 6 T=
+   T-MAX-N OKBL 1 OKBL CAD-NUM:DIV-BYTES-CEIL IC-CODE T-MAX-N T=
+   T-MAX-N OKBL 2 OKBL CAD-NUM:DIV-BYTES-CEIL IC-CODE T-LARGEST-POW2 T=
+   \ floor: zero extent, unit one, exact multiple, remainder truncates, max extent
+   0 OKBL 8 OKBL CAD-NUM:DIV-BYTES-FLOOR IC-CODE 0 T=
+   40 OKBL 1 OKBL CAD-NUM:DIV-BYTES-FLOOR IC-CODE 40 T=
+   40 OKBL 8 OKBL CAD-NUM:DIV-BYTES-FLOOR IC-CODE 5 T=
+   43 OKBL 8 OKBL CAD-NUM:DIV-BYTES-FLOOR IC-CODE 5 T=
+   T-MAX-N OKBL 1 OKBL CAD-NUM:DIV-BYTES-FLOOR IC-CODE T-MAX-N T=
+   T-MAX-N OKBL 2 OKBL CAD-NUM:DIV-BYTES-FLOOR IC-CODE T-LARGEST-POW2 1 - T=
+   \ zero-size unit -> zero value for both roundings (division by zero as a value)
+   5 OKBL 0 OKBL CAD-NUM:DIV-BYTES-CEIL IC-CODE E-CADNUM-ZERO T=
+   5 OKBL 0 OKBL CAD-NUM:DIV-BYTES-FLOOR IC-CODE E-CADNUM-ZERO T= ;
+
 \ ---- widen cell -> byte: zero, maximum-safe count, first overflow --------------
 : RT-WIDEN ( -- )
    0 OKCC CAD-NUM:CELLS>BYTES BL-CODE 0 T=
@@ -262,7 +282,7 @@ public
 : RT ( -- )
    T-RESET
    RT-ADD  RT-ADVANCE  RT-SUB  RT-RETREAT  RT-DISTANCE  RT-MUL
-   RT-DIV  RT-REM  RT-WIDEN  RT-NARROW  RT-ALIGN  RT-PRED
+   RT-DIV  RT-REM  RT-DIV-EXTENT  RT-WIDEN  RT-NARROW  RT-ALIGN  RT-PRED
    T-REPORT ;
 RT
 
@@ -279,6 +299,10 @@ RT
       CHECK-QUIET-CANDIDATE! -1 T=
    s" GOOD-DISTANCE ( CAD-NUM:byte-off CAD-NUM:byte-off -- CAD-NUM:numeric-result<CAD-NUM:byte-len> ) CAD-NUM:BYTE-DISTANCE"
       CHECK-QUIET-CANDIDATE! -1 T=
+   s" GOOD-DIV-CEIL ( CAD-NUM:byte-len CAD-NUM:byte-len -- CAD-NUM:numeric-result<CAD-NUM:item-count> ) CAD-NUM:DIV-BYTES-CEIL"
+      CHECK-QUIET-CANDIDATE! -1 T=
+   s" GOOD-DIV-FLOOR ( CAD-NUM:byte-len CAD-NUM:byte-len -- CAD-NUM:numeric-result<CAD-NUM:item-count> ) CAD-NUM:DIV-BYTES-FLOOR"
+      CHECK-QUIET-CANDIDATE! -1 T=
    \ negatives: cross-role divisor, cross-unit factor, index+index, reversed advance.
    s" BAD-DIV-ROLE ( CAD-NUM:item-count CAD-NUM:alignment -- CAD-NUM:item-count ) CAD-NUM:DIV-ITEMS"
       CHECK-QUIET-CANDIDATE! 0 T=
@@ -292,6 +316,14 @@ RT
    s" BAD-RAW-ADD ( n n -- CAD-NUM:numeric-result<CAD-NUM:byte-len> ) CAD-NUM:ADD-BYTES"
       CHECK-QUIET-CANDIDATE! 0 T=
    s" BAD-CROSS-ADD ( CAD-NUM:byte-len CAD-NUM:cell-count -- CAD-NUM:numeric-result<CAD-NUM:byte-len> ) CAD-NUM:ADD-BYTES"
+      CHECK-QUIET-CANDIDATE! 0 T=
+   \ negatives: extent division rejects a count dividend, a raw-n extent, and a
+   \ byte-len result role (the quotient is a count, not a byte extent).
+   s" BAD-DIV-CEIL-ROLE ( CAD-NUM:item-count CAD-NUM:byte-len -- CAD-NUM:numeric-result<CAD-NUM:item-count> ) CAD-NUM:DIV-BYTES-CEIL"
+      CHECK-QUIET-CANDIDATE! 0 T=
+   s" BAD-DIV-CEIL-RAW ( n CAD-NUM:byte-len -- CAD-NUM:numeric-result<CAD-NUM:item-count> ) CAD-NUM:DIV-BYTES-CEIL"
+      CHECK-QUIET-CANDIDATE! 0 T=
+   s" BAD-DIV-CEIL-RESULT ( CAD-NUM:byte-len CAD-NUM:byte-len -- CAD-NUM:numeric-result<CAD-NUM:byte-len> ) CAD-NUM:DIV-BYTES-CEIL"
       CHECK-QUIET-CANDIDATE! 0 T=
    T-REPORT ;
 STAT
