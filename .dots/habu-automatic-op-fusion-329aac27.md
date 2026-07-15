@@ -1,9 +1,9 @@
 ---
 title: Automatic op-fusion pass (register-resident, the bandwidth win)
-status: open
+status: active
 priority: 2
 issue-type: task
-created-at: "2026-06-27T15:43:15.234314+02:00"
+created-at: "\"2026-06-27T15:43:15.234314+02:00\""
 ---
 
 RECONCILED 2026-07-15 against the landed lowering campaign; the original build
@@ -34,3 +34,5 @@ device test (or extension of lower-model-device harness), tools/ptx perf
 registry rows, MODEL-CAD-V2-PLAN.md evidence note. Verify: on-device run
 green, off-device SKIP honest, maki/test.f, perf-registry lint. Ownership:
 maki lowering + ptx perf evidence.
+
+Claim: agent=fusionbench workspace=.jj-ws/fable-fusionbench
