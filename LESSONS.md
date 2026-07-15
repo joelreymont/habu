@@ -4682,3 +4682,25 @@ unchanged (148855). Keys for milestone 2:
   modes; appending a hook unconditionally during base-file loading exposes it to
   every user source. Reload the saved entry mode at the append seam and regress
   the ordinary `--load` cell as zero.
+- **A composed-Gemm DEVICE golden must pick a form whose matmul epilogue is empty
+  or a unary activation.** dot habu-device-golden-composed: import.f lowers a
+  non-default Gemm by COMPOSITION - transB inserts a TRANSPOSE movement node,
+  alpha<>1 an OP-SCALE, a separate bias an OP-BIAS. FP-BUILD makes the transB
+  transpose a STANDALONE MATERIALIZED movement region (region 0) that FEEDS the
+  matmul region - and that IS device-emittable (`LMDM-EMIT$` dispatches
+  `LLA-REGION-MOVE?` -> `LMV-EMIT`; lower-mv-device-test.f already goldens a
+  standalone transpose copy kernel), so `Gemm(x,w,transB=1) -> Relu -> Gemm`
+  goldens on the whole-model device path (the movement->matmul cross-region
+  buffer the pure-matmul ort-ref golden never covered). BUT OP-SCALE/OP-BIAS
+  fuse into the matmul region as EPILOGUE nodes, and lower-mm.f `LMM-EPI-OP?`
+  accepts ONLY relu/gelu/silu - so a composed Gemm with alpha<>1 or a separate
+  bias is NOT device-lowerable and rejects FAIL-CLOSED (`LMM-CHECK-OPS` throws
+  E-LMM-OP -5194). Confirmed off-device by calling the private MAKI `LMM-CHECK-OPS`
+  from a `package MAKI` test under `catch`. So keep the composed golden fixture
+  bias-free / alpha=1; the scale/bias matmul epilogue is a residual owned by the
+  FENCED lower-mm.f. Reference: no onnxruntime exists for a composed Gemm, so the
+  committed CRF-Y is the HOST executor oracle (validated ==ort at 1e-5 on the
+  ort-ref fixture) - device-vs-host discipline, ort leg a documented residual.
+  Corruption probe: an in-process PTX capture + `ABL-MUTATE` fma(a,b,acc)->
+  fma(a,a,acc) on the matmul (magnitude-independent, in-bounds) drove the
+  whole-model golden from PASS to a clean REJECT on the Orin.
