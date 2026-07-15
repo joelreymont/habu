@@ -39,6 +39,26 @@ Family and sum-variant tails share one collision policy within the global or
 active package scope: whichever is declared second rejects with
 `E-TDECL-NAME`. Package-local variant tails do not reserve unrelated packages.
 
+These reserved-name rejects split into two diagnostic codes by mechanism, and
+the split is deliberate — do not "fix" it by folding `ptr` into the reserved-name
+class. A **reserved concrete-cell or grammar token** — a single-letter signature
+var `a`..`z` (so the builtins `n`/`f`/`r`), `field`, atom prefixes, control
+words, and grammar keywords — is caught by the name gate (`TDECL-RESERVED?`,
+`src/core/sumtype.f`) *before* any family row is created, and rejects
+`E-TDECL-NAME` (7110, "reserved name"). A token that is itself a **live
+registered parametric family tail** — `ptr` (seeded arity 2), `span`, `matrix`,
+and the other cell families seeded in `src/core/type-family.f` — is not a
+reserved-name token at all: it passes the name gate and instead collides at
+registration (`TFAM-DECL`), rejecting `E-TFAM-DUP` (7102, "duplicate family").
+So `TYPEFAMILY n 0` reports reserved-name while `TYPEFAMILY ptr 0` reports
+duplicate-family, and both are correct: `ptr` genuinely *is* a registered family,
+so redeclaring it is a real same-scope duplicate, not a reserved-name shadow.
+(`test/type-decl-suite.f` pins both codes.) The one case where a live family tail
+still reports `E-TDECL-NAME` is a family declared *inside a package* whose tail
+shadows a *global* family — the in-package scope does not own the global row, so
+the diagnostic is "shadows a global family"; only a top-level redeclaration of a
+global tail is the same-scope duplicate.
+
 Use the generic term internally and the specific terms externally:
 
 | Public concept | Internal kind | Example |
