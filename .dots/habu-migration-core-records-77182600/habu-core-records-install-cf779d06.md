@@ -1,6 +1,6 @@
 ---
 title: "Core records: install post-hook loader"
-status: open
+status: active
 priority: 1
 issue-type: task
 created-at: "2026-07-13T17:55:26.678113+02:00"
@@ -24,3 +24,5 @@ post-hook insertion boundary but does not create, load, or implement them.
 Their implementation dots install them at that seam after the shared field
 schema lands. The owner-persistence blocker is a file-ownership serialization
 edge for `habu2.f` and the Gforth mirror, not a semantic dependency.
+
+Claim: agent=core-records workspace=.jj-ws/habu-core-records-install-cf779d06
