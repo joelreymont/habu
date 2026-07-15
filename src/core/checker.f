@@ -4876,7 +4876,8 @@ $20 constant CK-SEAL-LATCH-OFF          \ = layout.f FRIEND-LATCH-CELL
    a u s" match" CORE-STR=CI IF RES-TRUE EXIT THEN
    a u s" checker-cert" CORE-STR=CI IF RES-TRUE EXIT THEN
    a u s" lower-cert" CORE-STR=CI IF RES-TRUE EXIT THEN
-   a u s" lower-cert-hook" CORE-STR=CI ;
+   a u s" lower-cert-hook" CORE-STR=CI IF RES-TRUE EXIT THEN
+   a u s" engine-error" CORE-STR=CI ;
 
 : CHECKER-LBUF-NAME-GUARD ( ptr u8 n -- ) {: a:ptr u:n :}
    a u CHECKER-QUALIFIED? drop
@@ -4963,13 +4964,12 @@ $20 constant CK-SEAL-LATCH-OFF          \ = layout.f FRIEND-LATCH-CELL
 \ for an engine word so it could be redefined (spoof). Reject it fail-closed; the
 \ friend/engine load path (latch 0) and the guarded FORGET/HIDE wrappers (which
 \ call -RAW only after the ndict-watermark guard passes) reach -RAW unchanged.
-\ checker.f loads before layout.f, so the friend-arena latch offset and the seal
-\ exit code are mirrored here as named constants (both are foundational and stable).
-83 constant CK-E-SEAL-VIOLATION         \ = layout.f E-SEAL-VIOLATION
+\ checker.f loads before layout.f, so the friend-arena latch offset is mirrored
+\ here. The failure ABI comes from the earlier engine-error.f package.
 
 : CHECKER-USIGS-TRUNCATE-FROM ( ptr u8 n -- )
    data-base CK-SEAL-LATCH-OFF + @ 0= 0= IF
-      2drop s" seal: cannot truncate sealed checker signatures" CK-E-SEAL-VIOLATION die
+      2drop s" seal: cannot truncate sealed checker signatures" ENGINE-ERROR:SEAL-VIOLATION die
    THEN
    CHECKER-USIGS-TRUNCATE-FROM-RAW ;
 

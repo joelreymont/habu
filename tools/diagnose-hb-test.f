@@ -13,7 +13,7 @@ package DHT
 
 $4000 constant CAP
 10000 constant TIMEOUT-MS
-30 constant COMMON-N
+32 constant COMMON-N               \ +ENGINE-ERROR source and checked effects
 
 variable OUT-A
 variable ERR-A

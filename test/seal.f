@@ -1,6 +1,6 @@
 \ seal.f - friend-arena seal regressions (TFAM 2b-i).
 \
-\ Proves the post-seal raw-write guard (PROT-GUARD, exit E-SEAL-VIOLATION) traps
+\ Proves the post-seal raw-write guard (PROT-GUARD, exit ENGINE-ERROR:SEAL-VIOLATION) traps
 \ every store sink whose target lands in the sealed crown-jewel band
 \ [data-base+FRIEND-ARENA, +FRIEND-ARENA-LEN), that the latch itself is inside
 \ the band (one-way seal), that a read syscall whose buffer starts in the band is
@@ -28,7 +28,7 @@ require lib/process-env.f
 
 2048 constant SLV-CAP
 10000 constant SLV-TIMEOUT-MS
-83 constant SLV-SEAL-RC             \ E-SEAL-VIOLATION child exit status
+ENGINE-ERROR:SEAL-VIOLATION constant SLV-SEAL-RC
 
 variable SLV-ROOT-U
 variable SLV-CHILD-U
@@ -202,7 +202,7 @@ create SLV-EMPTY 1 allot            \ zero-length stdin
 \ rewinds CP) to it; a name resolving to an ENGINE record (index below the
 \ seal-time watermark SEAL-NDICT-CELL, captured by SEAL-CAPTURE at the end of the
 \ engine source) would retire engine definitions and rewind CP into engine code.
-\ Post-seal user source must be rejected fail-closed (E-SEAL-VIOLATION). `WORDS`
+\ Post-seal user source must be rejected fail-closed (ENGINE-ERROR:SEAL-VIOLATION). `WORDS`
 \ is an engine word defined in xref.f, well below the watermark.
 : SLV-FORGET-ENGINE-FORGE$ ( -- ptr u8 n )       \ FORGET an engine definition
    SB-RESET
@@ -303,7 +303,7 @@ create SLV-EMPTY 1 allot            \ zero-length stdin
    SB$ ;
 
 \ FFI seal guard (TFAM 2b-iii, cat 5 FFI-writer): a sealed-band pointer packed as a
-\ LIVE integer/pointer FFI arg must trap E-SEAL-VIOLATION at the trampoline BEFORE
+\ LIVE integer/pointer FFI arg must trap ENGINE-ERROR:SEAL-VIOLATION at the trampoline BEFORE
 \ the foreign call, else the callee writes through it and tampers a sealed cell.
 \ Routed via the checked FFI package with an explicit writable extent; fn=0 so
 \ the whole-span guard must fire first (an unguarded BLR to 0
@@ -388,7 +388,7 @@ create SLV-EMPTY 1 allot            \ zero-length stdin
 \ prot-wid-add); the table holds PROT-WID-MAX (256, raised from 16) entries. A batch
 \ child declaring K public families is generated with unique letter-pair names (each
 \ family scopes its own 'foo' variant, so the variant name may repeat). Red-first: at
-\ the old cap of 16 the 17th family exits E-SEAL-PACKAGE (84) with NO diagnostic, so
+\ the old cap of 16 the 17th family exits ENGINE-ERROR:SEAL-PACKAGE (84) with NO diagnostic, so
 \ both the "succeed past 16" (rc 0) and the "labeled overflow" (stderr names the
 \ table) assertions fail. Driven via SLV-RUN-LOAD (a file), not stdin: 257 families
 \ exceed the 2 KB SLV-IN buffer.
@@ -417,7 +417,7 @@ variable PWG-U
    0 begin dup k < while dup PWG-FAMILY 1+ repeat drop
    PWG$ ;
 
-84 constant SLV-PWID-RC                      \ E-SEAL-PACKAGE: protected-WID table full
+ENGINE-ERROR:SEAL-PACKAGE constant SLV-PWID-RC       \ protected-WID table full
 : SLV-ERR$ ( -- ptr u8 n )  SLV-ERR SLV-ERR-U @ ;
 : SLV-ASSERT-PWID-FULL ( -- )                \ child died with the LABELED protected-WID-full exit
    SLV-EXITED @ TTRUE
@@ -445,7 +445,7 @@ variable PWG-U
    s" : foo:BOGUS ( -- ) ;" SB-APPEND SLV-LF
    SB$ ;
 
-: SLV-ASSERT-PROT-PUBLISH ( -- )             \ child died E-SEAL-PACKAGE naming the publish guard
+: SLV-ASSERT-PROT-PUBLISH ( -- )             \ child died ENGINE-ERROR:SEAL-PACKAGE naming the publish guard
    SLV-EXITED @ TTRUE
    SLV-RC @ SLV-PWID-RC T=
    SLV-ERR$ s" hb: cannot publish into protected word" CONTAINS? TTRUE ;
@@ -698,7 +698,7 @@ public
 
 \ Sealed-dictionary truncation guard (TFAM 2b-iii): FORGET-DEFS-FROM /
 \ HIDE-DEFS-FROM of an engine definition (below the seal-time ndict watermark)
-\ must trap E-SEAL-VIOLATION on both cold-prefix entry paths.
+\ must trap ENGINE-ERROR:SEAL-VIOLATION on both cold-prefix entry paths.
 : SLV-NEGATIVES-TRUNCATE ( -- )
    s" FORGET-DEFS-FROM of an engine def traps via --load" T-LABEL
    SLV-FORGET-ENGINE-FORGE$ SLV-RUN-LOAD SLV-ASSERT-SEAL

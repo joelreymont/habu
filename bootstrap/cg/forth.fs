@@ -74,9 +74,12 @@ $20 constant FRIEND-ARENA               \ arena base offset within the DATA regi
 $90 constant FRIEND-ARENA-LEN           \ 18 cells: latch + 16 crown jewels + seal-ndict watermark
 FRIEND-ARENA constant FRIEND-LATCH-CELL \ 0 = friend on/open, FRIEND-ARENA-LEN = sealed
 $A8 constant SEAL-NDICT-CELL            \ seal-time ndict watermark (TFAM 2b-iii); inside the band so a post-seal store traps
-83 constant E-SEAL-VIOLATION            \ process exit status for a post-seal protected write
-84 constant E-SEAL-PACKAGE
-85 constant E-BAD-TAG                    \ MATCH invalid-tag runtime exit (TFAM 10 slice 3; mirrors layout.f)
+83 constant ENGINE-ERROR:SEAL-VIOLATION \ process exit status for a post-seal protected write
+84 constant ENGINE-ERROR:SEAL-PACKAGE
+85 constant ENGINE-ERROR:BAD-TAG         \ MATCH invalid-tag runtime exit (TFAM 10 slice 3; mirrors layout.f)
+86 constant ENGINE-ERROR:CALLABLE-ABI
+87 constant ENGINE-ERROR:CATCH-STACK
+88 constant ENGINE-ERROR:CODE-CERT
 $D2800010 constant C-CALL-MOVZ-X16
 $F2A00010 constant C-CALL-MOVK-X16-16
 $F2C00010 constant C-CALL-MOVK-X16-32
@@ -318,7 +321,7 @@ variable LKWDOES variable LKWQUOT variable LKWSEMIQ
 variable LKWTRUSTED variable LKWTRUST variable LKWCHKDOES variable LKWKERNEL
 variable LKWPACKAGE variable LKWPUBLIC variable LKWPRIVATE variable LKWSEMIPACKAGE
 variable LCHKPACKAGE variable LCHKPUB variable LCHKPRI variable LCHKENDPKG
-variable LRESCHECKCERT variable LRESLOWERCERT variable LRESLOWERHOOK
+variable LRESCHECKCERT variable LRESLOWERCERT variable LRESLOWERHOOK variable LRESENGINEERROR
 variable LKWAT2 variable LKWSTORE2 variable LP2FETCH variable LP2STORE
 variable LKWTUCK3 variable LKWROT3 variable LKWMROT3
 variable LKW2DUP3 variable LKW2DROP3 variable LKW2SWAP3 variable LKW2OVER3
@@ -407,7 +410,7 @@ previous definitions
    addr TXN-STATE-OFF TXN-STATE-LEN trap GUARD-BAND
    addr trap [ also GUARD ] BLOB-SPAN [ previous ]
    ok B,
-   trap LBL,  0 E-SEAL-VIOLATION MOVZ,  NR-EXIT-GROUP SYS,
+   trap LBL,  0 ENGINE-ERROR:SEAL-VIOLATION MOVZ,  NR-EXIT-GROUP SYS,
    ok LBL, ;
 
 : PROT-GUARD ( n -- )
@@ -421,7 +424,7 @@ previous definitions
    addr TXN-STATE-OFF TXN-STATE-LEN trap GUARD-ADDR-BAND
    addr trap [ also GUARD ] BLOB-ADDR [ previous ]
    ok B,
-   trap LBL,  0 E-SEAL-VIOLATION MOVZ,  NR-EXIT-GROUP SYS,
+   trap LBL,  0 ENGINE-ERROR:SEAL-VIOLATION MOVZ,  NR-EXIT-GROUP SYS,
    ok LBL, ;
 
 : GUARD-CODE-WORD ( n -- )
@@ -433,7 +436,7 @@ previous definitions
    addr DREG CMP,  C-HI trap BCOND,
    EREG addr 3 ANDI,  EREG trap CBNZ,
    ok B,
-   trap LBL,  0 E-SEAL-VIOLATION MOVZ,  NR-EXIT-GROUP SYS,
+   trap LBL,  0 ENGINE-ERROR:SEAL-VIOLATION MOVZ,  NR-EXIT-GROUP SYS,
    ok LBL, ;
 
 \ ---- primitive bodies (ICode operating on the x19 data stack) ----
@@ -879,7 +882,7 @@ previous definitions
    14 DATA PROT-WID-N-CELL LDR,
    14 PROT-WID-MAX CMPI,  C-LT room BCOND,
       0 2 MOVZ,  1 msg ADR,  2 28 MOVZ,  NR-WRITE SYS,
-      0 E-SEAL-PACKAGE MOVZ,  NR-EXIT-GROUP SYS,
+      0 ENGINE-ERROR:SEAL-PACKAGE MOVZ,  NR-EXIT-GROUP SYS,
       msg LBL,  s" hb: protected-WID table full" BYTES,
    room LBL,
    15 PROT-WID-OFF MOVZ,  15 DATA 15 ADD,
@@ -1426,6 +1429,7 @@ variable LSRCRD   variable LSHBANG
 variable LPLINUXTARGET  variable LPMACOSTARGET
 variable LPLINUXLAYOUT  variable LPMACOSLAYOUT
 variable LPUTIL         variable LPCELL         variable LPPTRSTORAGE  variable LPSTRUCTURES
+variable LPENGINEERROR  variable LPENGINEERROREFFECTS
 variable LPBYTES        variable LPCHECKER      variable LPRENDER
 variable LPLOWERCERTBASE
 variable LPTYPESCHEMA   variable LPTYPEFAM      variable LPSUMTYPE      variable LPLAYOUTBUF  variable LPLAYOUTVALID
@@ -1595,7 +1599,9 @@ create ZBYTE 0 c,
    PFX-COMMON LPCELL         s" src/core/cell.f"        PFX-LOAD-ROW
    PFX-COMMON LPPTRSTORAGE   s" src/core/pointer-storage.f" PFX-LOAD-ROW
    PFX-COMMON LPSTRUCTURES   s" src/core/structures.f"  PFX-LOAD-ROW
+   PFX-COMMON LPENGINEERROR  s" src/core/engine-error.f" PFX-LOAD-ROW
    PFX-COMMON LPCHECKER      s" src/core/checker.f"     PFX-LOAD-ROW
+   PFX-COMMON LPENGINEERROREFFECTS s" src/core/engine-error-effects.f" PFX-LOAD-ROW
    PFX-COMMON LPLOWERCERTBASE s" src/core/lower-cert-base.f" PFX-LOAD-ROW
    PFX-COMMON LPTYPESCHEMA   s" src/core/type-schema.f" PFX-LOAD-ROW
    PFX-COMMON LPTYPEFAM      s" src/core/type-family.f" PFX-LOAD-ROW
@@ -1643,7 +1649,9 @@ create ZBYTE 0 c,
    PFX-COMMON LPCELL         s" src/core/cell.f"        PFX-PATH-ROW
    PFX-COMMON LPPTRSTORAGE   s" src/core/pointer-storage.f" PFX-PATH-ROW
    PFX-COMMON LPSTRUCTURES   s" src/core/structures.f"  PFX-PATH-ROW
+   PFX-COMMON LPENGINEERROR  s" src/core/engine-error.f" PFX-PATH-ROW
    PFX-COMMON LPCHECKER      s" src/core/checker.f"     PFX-PATH-ROW
+   PFX-COMMON LPENGINEERROREFFECTS s" src/core/engine-error-effects.f" PFX-PATH-ROW
    PFX-COMMON LPLOWERCERTBASE s" src/core/lower-cert-base.f" PFX-PATH-ROW
    PFX-COMMON LPTYPESCHEMA   s" src/core/type-schema.f" PFX-PATH-ROW
    PFX-COMMON LPTYPEFAM      s" src/core/type-family.f" PFX-PATH-ROW
@@ -1868,7 +1876,9 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
    PFX-COMMON LPCELL         s" src/core/cell.f"        PFX-PROVIDE-ROW
    PFX-COMMON LPPTRSTORAGE   s" src/core/pointer-storage.f" PFX-PROVIDE-ROW
    PFX-COMMON LPSTRUCTURES   s" src/core/structures.f"  PFX-PROVIDE-ROW
+   PFX-COMMON LPENGINEERROR  s" src/core/engine-error.f" PFX-PROVIDE-ROW
    PFX-COMMON LPCHECKER      s" src/core/checker.f"     PFX-PROVIDE-ROW
+   PFX-COMMON LPENGINEERROREFFECTS s" src/core/engine-error-effects.f" PFX-PROVIDE-ROW
    PFX-COMMON LPLOWERCERTBASE s" src/core/lower-cert-base.f" PFX-PROVIDE-ROW
    PFX-COMMON LPTYPESCHEMA   s" src/core/type-schema.f" PFX-PROVIDE-ROW
    PFX-COMMON LPTYPEFAM      s" src/core/type-family.f" PFX-PROVIDE-ROW
@@ -2158,6 +2168,7 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
    LRESCHECKCERT @ LBL, s" checker-cert" BYTES,
    LRESLOWERCERT @ LBL, s" lower-cert" BYTES,
    LRESLOWERHOOK @ LBL, s" lower-cert-hook" BYTES,
+   LRESENGINEERROR @ LBL, s" engine-error" BYTES,
    LKWQUOT @ LBL,  QUOT-KW 2 BYTES,   LKWSEMIQ @ LBL,  SEMIQ-KW 2 BYTES,
    LKWCONSTRUCT @ LBL, s" construct" BYTES,  LKWMATCH @ LBL, s" match" BYTES,  LKWSEMIMATCH @ LBL, s" ;match" BYTES,
    LTFLCONFAM @ LBL, s" tfl-con-fam?" BYTES,  LTFLCVAR @ LBL, s" tfl-cvar?" BYTES,
@@ -2726,11 +2737,12 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
       0 LRESCHECKCERT @ ADR,  1 12 MOVZ,  LKWCMP @ BL,  0 qsealed CBNZ,
       0 LRESLOWERCERT @ ADR,  1 10 MOVZ,  LKWCMP @ BL,  0 qsealed CBNZ,
       0 LRESLOWERHOOK @ ADR,  1 15 MOVZ,  LKWCMP @ BL,  0 qsealed CBNZ,
+      0 LRESENGINEERROR @ ADR,  1 12 MOVZ,  LKWCMP @ BL,  0 qsealed CBNZ,
       qlookup B,
    qsealed LBL,
       0 2 MOVZ,  1 DATA DEF-TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,
       0 2 MOVZ,  1 LQNL @ ADR,  1 1 1 ADDI,  2 1 MOVZ,  NR-WRITE SYS,
-      0 E-SEAL-PACKAGE MOVZ,  NR-EXIT-GROUP SYS,
+      0 ENGINE-ERROR:SEAL-PACKAGE MOVZ,  NR-EXIT-GROUP SYS,
    qlookup LBL,
       5 DBASE 0 ADDI,  6 NDICT 0 ADDI,
    nloop LBL,
@@ -2911,21 +2923,34 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
    11 DATA LOCN-CELL LDR,  11 11 1 ADDI,  11 DATA LOCN-CELL STR, ;
 
 \ Stage0 has no package scope; pass-2 checker queries are global lookups.
+: C-P2-FIND-GLOBAL? ( n n -- ) {: lvar len :} \ typed-local-lint: allow-bare-local - stock Gforth rejects Habu type suffixes.
+   9 lvar @ ADR,  10 len MOVZ,  LFIND @ BL, ;
+
 : C-P2-FIND-GLOBAL ( n n -- ) {: lvar len :} \ typed-local-lint: allow-bare-local - stock Gforth rejects Habu type suffixes.
    LBL {: ok :} \ typed-local-lint: allow-bare-local - Gforth bootstrap labels cannot use Habu type suffixes.
-   9 lvar @ ADR,  10 len MOVZ,  LFIND @ BL,
+   lvar len C-P2-FIND-GLOBAL?
    13 ok CBNZ,
       0 2 MOVZ,  1 lvar @ ADR,  2 len MOVZ,  NR-WRITE SYS,
       0 70 MOVZ,  NR-EXIT-GROUP SYS,
    ok LBL, ;
+
+: C-P2-FIND-CHECKER ( n n n -- ) {: lvar len done :} \ typed-local-lint: allow-bare-local
+   LBL {: ready :} \ typed-local-lint: allow-bare-local
+   lvar len C-P2-FIND-GLOBAL?
+   13 ready CBNZ,
+   9 DATA FRIEND-LATCH-CELL LDR,  9 done CBZ,
+   lvar len C-P2-FIND-GLOBAL
+   ready LBL, ;
 
 \ Minimal stage0 package engine. Package records use wid=-1, addr=public WID,
 \ and clen=private WID, matching the native dictionary representation. This is
 \ sufficient for the early checker/certificate packages and keeps their words
 \ out of the global vocabulary during recovery.
 : C-PACKAGE-CHECK-CALL ( n n -- ) {: lvar len :} \ typed-local-lint: allow-bare-local
-   lvar len C-P2-FIND-GLOBAL
-   C-CALL-X11-SAVED ;
+   LBL {: done :} \ typed-local-lint: allow-bare-local
+   lvar len done C-P2-FIND-CHECKER
+   C-CALL-X11-SAVED
+   done LBL, ;
 
 : C-PACKAGE-RECORD-MATCH ( n n -- )
    \ typed-local-lint: allow-bare-local - stock Gforth rejects Habu type suffixes.
@@ -2969,12 +2994,13 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
    0 LRESCHECKCERT @ ADR,  1 12 MOVZ,  LKWCMP @ BL,  0 bad CBNZ,
    0 LRESLOWERCERT @ ADR,  1 10 MOVZ,  LKWCMP @ BL,  0 bad CBNZ,
    0 LRESLOWERHOOK @ ADR,  1 15 MOVZ,  LKWCMP @ BL,  0 bad CBNZ,
+   0 LRESENGINEERROR @ ADR,  1 12 MOVZ,  LKWCMP @ BL,  0 bad CBNZ,
    bad C-PACKAGE-PROT-GUARD
    ok B,
    bad LBL,
       0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,
       0 2 MOVZ,  1 LQNL @ ADR,  1 1 1 ADDI,  2 1 MOVZ,  NR-WRITE SYS,
-      0 E-SEAL-PACKAGE MOVZ,  NR-EXIT-GROUP SYS,
+      0 ENGINE-ERROR:SEAL-PACKAGE MOVZ,  NR-EXIT-GROUP SYS,
    ok LBL, ;
 
 : C-PACKAGE-NAME-GUARD ( -- )
@@ -3013,7 +3039,7 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
    done LBL, ;
 
 : C-PACKAGE ( -- )
-   LBL LBL {: inactive hastok :} \ typed-local-lint: allow-bare-local
+   LBL LBL LBL {: inactive hastok checkdone :} \ typed-local-lint: allow-bare-local
    9 DATA PKG-PUB-CELL LDR,  9 inactive CBZ,
       0 75 MOVZ,  NR-EXIT-GROUP SYS,
    inactive LBL,
@@ -3021,11 +3047,11 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
       0 74 MOVZ,  NR-EXIT-GROUP SYS,
    hastok LBL,
    C-PACKAGE-NAME-GUARD
+   LCHKPACKAGE 15 checkdone C-P2-FIND-CHECKER
    9 DATA TKA-CELL LDR,  9 G-PUSH
    9 DATA TKL-CELL LDR,  9 G-PUSH
-   \ CHECKER-PACKAGE consumes its arguments; invoke it after they are present.
-   LCHKPACKAGE 15 C-P2-FIND-GLOBAL
    C-CALL-X11-SAVED
+   checkdone LBL,
    C-PACKAGE-SEAL-GUARD
    2 3 MOVZ,  LPROT @ BL,
    C-PACKAGE-ENSURE
@@ -4062,7 +4088,7 @@ also LOWER-CERT
    invalid LBL,
       0 2 MOVZ,  1 LVPBADMSG @ ADR,  2 18 MOVZ,  NR-WRITE SYS,
       0 2 MOVZ,  1 LQNL @ ADR,  1 1 1 ADDI,  2 1 MOVZ,  NR-WRITE SYS,
-      0 E-BAD-TAG MOVZ,  NR-EXIT-GROUP SYS,
+      0 ENGINE-ERROR:BAD-TAG MOVZ,  NR-EXIT-GROUP SYS,
    done LBL,
    RET, ;
 
@@ -5088,7 +5114,7 @@ variable P2SK
 
 \ Emit the invalid-tag die INLINE into the user word (mirrors habu2.f): jump over
 \ the message, "hb: bad <family> tag\n" copied inline, then a self-contained
-\ write(2)+exit_group(E-BAD-TAG). x11=name addr, x12=name len. Region RW.
+\ write(2)+exit_group(ENGINE-ERROR:BAD-TAG). x11=name addr, x12=name len. Region RW.
 : C-DIE-BAD-TAG ( -- )
    \ typed-local-lint: allow-bare-local - stock Gforth rejects Habu type suffixes.
    LBL LBL LBL LBL LBL LBL {: p1 p2 s1 s2 t1 t2 :}
@@ -5116,7 +5142,7 @@ variable P2SK
    9 $D2800002 LIT64,  14 14 5 LSLI,  9 9 14 ORR,  LCEMIT @ BL,
    9 SYS-EMIT-WRITE LIT64,  LCEMIT @ BL,
    SYS-EMIT-SVC C-EMITW
-   9 $D2800000 E-BAD-TAG 32 * + LIT64,  LCEMIT @ BL,
+   9 $D2800000 ENGINE-ERROR:BAD-TAG 32 * + LIT64,  LCEMIT @ BL,
    9 SYS-EMIT-EXIT LIT64,  LCEMIT @ BL,
    SYS-EMIT-SVC C-EMITW
    SP SP $20 ADDI, ;
@@ -5369,7 +5395,7 @@ variable P2SK
    LBL LKWTRUSTED !  LBL LKWTRUST !  LBL LKWCHKDOES !  LBL LKWKERNEL !
    LBL LKWPACKAGE !  LBL LKWPUBLIC !  LBL LKWPRIVATE !  LBL LKWSEMIPACKAGE !
    LBL LCHKPACKAGE !  LBL LCHKPUB !  LBL LCHKPRI !  LBL LCHKENDPKG !
-   LBL LRESCHECKCERT !  LBL LRESLOWERCERT !  LBL LRESLOWERHOOK !
+   LBL LRESCHECKCERT !  LBL LRESLOWERCERT !  LBL LRESLOWERHOOK !  LBL LRESENGINEERROR !
    LBL LKWQUOT !  LBL LKWSEMIQ !
    LBL LKWCONSTRUCT !  LBL LKWMATCH !  LBL LKWSEMIMATCH !
    LBL LTFLCONFAM !  LBL LTFLCVAR !
@@ -5383,7 +5409,7 @@ variable P2SK
    LBL LPLINUXTARGET !  LBL LPMACOSTARGET !
    LBL LPLINUXLAYOUT !  LBL LPMACOSLAYOUT !
    LBL LPUTIL !  LBL LPCELL !  LBL LPPTRSTORAGE !
-   LBL LPSTRUCTURES !  LBL LPBYTES !  LBL LPCHECKER !
+   LBL LPSTRUCTURES !  LBL LPBYTES !  LBL LPENGINEERROR !  LBL LPCHECKER !  LBL LPENGINEERROREFFECTS !
    LBL LPLOWERCERTBASE !  LBL LPRENDER !  LBL LPHOOK !
    LBL LPCELLEFF !  LBL LPPTRSTORAGEEFF !
    LBL LPTYPESCHEMA !  LBL LPTYPEFAM !  LBL LPSUMTYPE !  LBL LPLAYOUTBUF !  LBL LPLAYOUTVALID !

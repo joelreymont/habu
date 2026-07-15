@@ -277,7 +277,7 @@ TRUSTED: XREF-PATCH32 ( n ptr a -- )
 \ Sealed-dictionary truncation guard (TFAM 2b-iii). Once the friend latch is
 \ sealed (SEAL-FRIEND, end of cold prefix), a dictionary FORGET/HIDE that lowers
 \ ndict below the seal-time watermark would retire engine definitions and (FORGET)
-\ rewind CP into engine code. Reject it fail-closed with E-SEAL-VIOLATION. The
+\ rewind CP into engine code. Reject it fail-closed with ENGINE-ERROR:SEAL-VIOLATION. The
 \ latch and watermark live in the sealed friend band; friend/cold-load (latch 0)
 \ and post-seal user marks (index >= watermark) pass unchanged.
 TRUSTED: SEAL-LATCH@ ( -- n ) data-base FRIEND-LATCH-CELL + @ ;
@@ -286,7 +286,7 @@ TRUSTED: SEAL-NDICT@ ( -- n ) data-base SEAL-NDICT-CELL + @ ;
 : SEAL-DICT-GUARD ( n -- n )
    SEAL-LATCH@ 0= if exit then
    dup SEAL-NDICT@ < if
-      s" seal: cannot FORGET/HIDE sealed engine definitions" E-SEAL-VIOLATION die
+      s" seal: cannot FORGET/HIDE sealed engine definitions" ENGINE-ERROR:SEAL-VIOLATION die
    then ;
 
 : HIDE-DEFS-FROM ( ptr u8 n -- )

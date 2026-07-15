@@ -521,7 +521,9 @@ HBB-INSTALL-CHILD-LINTS
    s" src/core/cell.f" HBB-KEY-FILE+
    s" src/core/pointer-storage.f" HBB-KEY-FILE+
    s" src/core/structures.f" HBB-KEY-FILE+
+   s" src/core/engine-error.f" HBB-KEY-FILE+
    s" src/core/checker.f" HBB-KEY-FILE+
+   s" src/core/engine-error-effects.f" HBB-KEY-FILE+
    s" src/core/lower-cert-base.f" HBB-KEY-FILE+
    s" src/core/type-schema.f" HBB-KEY-FILE+
    s" src/core/type-family.f" HBB-KEY-FILE+

@@ -1142,6 +1142,7 @@ public
    out outu s" src/core/cell.f" BF-APPEND-SOURCE
    out outu s" src/core/pointer-storage.f" BF-APPEND-SOURCE
    out outu s" src/core/structures.f" BF-APPEND-SOURCE
+   out outu s" src/core/engine-error.f" BF-APPEND-SOURCE
    out outu s" src/core/checker.f" BF-APPEND-SOURCE ;
 
 : BFT-TEST-CERTIFY-CHECKER-SELF ( -- )

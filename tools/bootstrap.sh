@@ -181,7 +181,11 @@ emit_src() {
   printf '\n' >> "$out"
   cat src/core/structures.f >> "$out"
   printf '\n' >> "$out"
+  cat src/core/engine-error.f >> "$out"
+  printf '\n' >> "$out"
   cat src/core/checker.f >> "$out"
+  printf '\n' >> "$out"
+  cat src/core/engine-error-effects.f >> "$out"
   printf '\n' >> "$out"
   cat src/core/lower-cert-base.f >> "$out"
   printf '\n' >> "$out"
@@ -288,6 +292,8 @@ env HB_TMP="$T" "$T/hb-stdin-mk"
 test -f "$T/hb-stdin-got"
 mv "$T/hb-stdin-got" "$T/hb-stdin"
 chmod +x "$T/hb-stdin"
+
+env HABU_UNDER_TEST="$T/hb-stdin" "$T/hb-stdin" --load test/engine-error-package.f
 
 if [[ "${HABU_BOOTSTRAP_CHECK_ONLY:-}" == "1" ]]; then
   printf 'bootstrap check OK: %s/hb-stdin\n' "$T"

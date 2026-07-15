@@ -343,12 +343,12 @@ lesson — keep the specific word/code/path, cut the prose.
   maps intentionally expose caller-owned cells through `MAP-SLOT-FIELD`, so they
   cannot promise representation integrity. Removing the dedicated state pointer
   still matters: `MAP-SLOT-STATE@` now converts only raw 0/1/2 to constructors
-  and throws `E-BAD-TAG` otherwise, while the public nominal getter/setter prevent
+  and throws `ENGINE-ERROR:BAD-TAG` otherwise, while the public nominal getter/setter prevent
   accidental tag laundering in checked code.
 - **Make exit-only seal tests mutation-sensitive:** target the sealed latch with
   a zero-valued ADT cell. If a wide-store loop omits a later guard or writes
   before loading the latch, that store opens the seal and the child exits 0
-  instead of `E-SEAL-VIOLATION`; emit an armed marker immediately before the
+  instead of `ENGINE-ERROR:SEAL-VIOLATION`; emit an armed marker immediately before the
   sink so an earlier compile/setup exit cannot satisfy the rc assertion. Pair
   this runtime probe with the lowering golden that pins STR after the full
   address-range guard.
@@ -3151,7 +3151,7 @@ unchanged (148855). Keys for milestone 2:
   base (0 = open, band-len = sealed); the guard reads it, so post-seal any write
   into the band — including the latch — traps: one-way self-sealing. Guard shape
   (two-band since 2b-v, native + stage0 mirror): `ldr latch;cbz open` gate, then
-  per band `sub;cmpi;b.cc trap` (exit E-SEAL-VIOLATION), mirroring
+  per band `sub;cmpi;b.cc trap` (exit ENGINE-ERROR:SEAL-VIOLATION), mirroring
   `B-TASK-LIVE-GUARD`/`DP-CHECK`; the branch makes the leaf body non-inlinable so
   it compiles to an out-of-line call (correct, ~size-neutral). Seal is emitted by
   the cold-prefix generator (after `PFX-PROVIDE-FILES` in `LCOLDPFX` and in
@@ -4351,3 +4351,26 @@ unchanged (148855). Keys for milestone 2:
   glob misses them.** `-5252..-5256` are owned by `maki/target/target.f`
   (E-TARGET-*), invisible to a `rg maki/*.f` scan. Always scan `maki/` (recursive)
   for a free `-5NNN` block and confirm with `bin/hb tools/error-code-lint.f`.
+- **`jj workspace add` does not change the shell directory.** Run every
+  following `jj` command with that workspace as the explicit working directory;
+  otherwise a claim merge silently advances the caller's unrelated workspace.
+- **A bulk symbol migration must exclude its replacement spelling and end with
+  an exact legacy/near-miss scan.** Rewriting `E-*` after introducing
+  `ENGINE-ERROR:*` can corrupt the new spelling when the match is not token
+  exact; scan for both old tokens and malformed replacement prefixes before
+  testing.
+- **In effects, `ptr n` is one pointer type, not two stack cells.** An emitter
+  taking a pointer plus a numeric length therefore declares `ptr n n`; keep the
+  pointee role and the following scalar visually distinct when editing effects.
+- **Prefix additions have two independent exact-count ratchets.** Update both
+  `test/boot-pin-test.f`'s raw `PFX-LOAD-ROW` count and
+  `tools/diagnose-hb-test.f`'s common-source count; one proves the generator
+  shape while the other proves every baked source is diagnosed.
+- **A reserved package has three independent authorities.** Keep the native
+  reserved-name table, recovery mirror, and `CHECKER-SEALED-PKG?` synchronized;
+  native seal tests alone do not exercise checker-only export/layout guards.
+- **Corrupt the unique embedded lookup token to prove a missing boot bridge.**
+  A normal candidate proves the post-seal bridge succeeds; changing only its
+  sole checker lookup spelling creates the otherwise-protected missing-hook
+  state and gives an exact fail-closed exit regression without a production
+  test hook.

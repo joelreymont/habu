@@ -692,7 +692,9 @@ public
    out outu s" src/core/cell.f" BF-APPEND-SOURCE
    out outu s" src/core/pointer-storage.f" BF-APPEND-SOURCE
    out outu s" src/core/structures.f" BF-APPEND-SOURCE
+   out outu s" src/core/engine-error.f" BF-APPEND-SOURCE
    out outu s" src/core/checker.f" BF-APPEND-SOURCE
+   out outu s" src/core/engine-error-effects.f" BF-APPEND-SOURCE
    out outu s" src/core/lower-cert-base.f" BF-APPEND-SOURCE
    out outu s" src/core/type-schema.f" BF-APPEND-SOURCE
    out outu s" src/core/type-family.f" BF-APPEND-SOURCE

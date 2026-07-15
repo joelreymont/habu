@@ -122,6 +122,9 @@ s" :XP-INC" ' CHECKER-EXPORT catch TC ! 2drop  TC @ E-EXPORT-UNDEFINED T=
 s" tfam:list" ' CHECKER-EXPORT catch TC ! 2drop  TC @ E-EXPORT-SEALED T=
 s" type:of" ' CHECKER-EXPORT catch TC ! 2drop  TC @ E-EXPORT-SEALED T=
 s" match:arm" ' CHECKER-EXPORT catch TC ! 2drop  TC @ E-EXPORT-SEALED T=
+s" engine-error:bad-tag" ' CHECKER-EXPORT catch TC ! 2drop  TC @ E-EXPORT-SEALED T=
+s" engine-error:bad-tag" ' CHECKER-LBUF-NAME-GUARD catch TC ! 2drop
+TC @ E-CHECKER-LAYOUT-BUFFER T=
 \ primitive source: prims may be overloaded; copying one row would narrow.
 s" dup" ' CHECKER-EXPORT catch TC ! 2drop  TC @ E-EXPORT-PRIM T=
 \ duplicate tail in the current section.

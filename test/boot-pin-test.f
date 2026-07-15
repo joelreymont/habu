@@ -25,7 +25,7 @@ require tools/boot-pin.f
 4096 constant BPT-CAP
 30000 constant BPT-TIMEOUT-MS
 70 constant BPT-DRIFT-RC
-36 constant BPT-PFX-ROW#            \ PFX-LOAD-ROW occurrences in habu2.f (1 def + 35 calls)
+39 constant BPT-PFX-ROW#            \ PFX-LOAD-ROW occurrences in habu2.f (1 def + 38 calls)
                                     \ 22->26: +src/core/type-family.f +type-schema.f +sumtype.f
                                     \ +type-family-sha.f (TFAM growth; user sign-off dot
                                     \ habu-boot-pin-sign-be74cfd3). 26->31: +src/core/
@@ -41,6 +41,8 @@ require tools/boot-pin.f
                                     \ 32->33: +src/core/cell.f (target cell-width invariant).
                                     \ 33->34: +src/core/cell-effects.f (checked effects).
                                     \ 34->36: +pointer-storage source and checked effect.
+                                    \ 36->37: +src/core/top-row.f (typed root-row API).
+                                    \ 37->39: +engine-error source and checked effects.
 
 create BPT-D1   80 allot            \ pristine digest hex
 create BPT-HEX  80 allot            \ scratch digest hex

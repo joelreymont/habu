@@ -10,7 +10,7 @@
 \   consumes the name as a no-op, keeping directive-carrying programs (for
 \   example lib/prelude.f) directly loadable.
 \ Rejects pinned by child exit status: undefined source (rc 70, token named),
-\ sealed-system source prefix (rc 84, E-SEAL-PACKAGE), missing name (rc 74),
+\ sealed-system source prefix (rc 84, ENGINE-ERROR:SEAL-PACKAGE), missing name (rc 74),
 \ duplicate tail / self-export (rc 78, labeled "duplicate definition:"),
 \ primitive source (uncaught E-EXPORT-PRIM 7115 -> rc 67, code named), and a
 \ private word behind a closed package (qualified lookup is public-only,
@@ -39,7 +39,7 @@ require lib/process-env.f
 70 constant XPK-UNDEF-RC              \ undefined-word child exit status
 74 constant XPK-NONAME-RC             \ missing EXPORT name ($4A)
 78 constant XPK-DUP-RC                \ duplicate definition ($4E)
-84 constant XPK-SEAL-RC               \ E-SEAL-PACKAGE
+ENGINE-ERROR:SEAL-PACKAGE constant XPK-SEAL-RC
 67 constant XPK-THROW-RC              \ engine uncaught-throw boundary exit
 
 variable XPK-ROOT-U

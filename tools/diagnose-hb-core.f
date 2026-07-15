@@ -70,7 +70,9 @@ variable CHECKED
    s" src/core/cell.f" PREFIX-FILE
    s" src/core/pointer-storage.f" PREFIX-FILE
    s" src/core/structures.f" PREFIX-FILE
+   s" src/core/engine-error.f" PREFIX-FILE
    s" src/core/checker.f" PREFIX-FILE
+   s" src/core/engine-error-effects.f" PREFIX-FILE
    s" src/core/lower-cert-base.f" PREFIX-FILE
    s" src/core/type-schema.f" PREFIX-FILE
    s" src/core/type-family.f" PREFIX-FILE

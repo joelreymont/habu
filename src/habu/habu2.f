@@ -152,6 +152,7 @@ variable LBADFLAG    variable LUSAGE1      variable LUSAGE2     variable LSPC
 variable LPLINUXTARGET  variable LPMACOSTARGET
 variable LPLINUXLAYOUT  variable LPMACOSLAYOUT
 variable LPUTIL         variable LPCELL         variable LPPTRSTORAGE  variable LPSTRUCTURES
+variable LPENGINEERROR  variable LPENGINEERROREFFECTS
 variable LPBYTES        variable LPCHECKER      variable LPRENDER
 variable LPLOWERCERTBASE
 variable LPTYPESCHEMA   variable LPTYPEFAM      variable LPSUMTYPE      variable LPLAYOUTBUF  variable LPLAYOUTVALID
@@ -501,7 +502,9 @@ s" c-bp-watch-dump" s" label label --" TRUST
    PFX-COMMON LPCELL         s" src/core/cell.f"        PFX-LOAD-ROW
    PFX-COMMON LPPTRSTORAGE   s" src/core/pointer-storage.f" PFX-LOAD-ROW
    PFX-COMMON LPSTRUCTURES   s" src/core/structures.f"  PFX-LOAD-ROW
+   PFX-COMMON LPENGINEERROR  s" src/core/engine-error.f" PFX-LOAD-ROW
    PFX-COMMON LPCHECKER      s" src/core/checker.f"     PFX-LOAD-ROW
+   PFX-COMMON LPENGINEERROREFFECTS s" src/core/engine-error-effects.f" PFX-LOAD-ROW
    PFX-COMMON LPLOWERCERTBASE s" src/core/lower-cert-base.f" PFX-LOAD-ROW
    PFX-COMMON LPTYPESCHEMA   s" src/core/type-schema.f" PFX-LOAD-ROW
    PFX-COMMON LPTYPEFAM      s" src/core/type-family.f" PFX-LOAD-ROW
@@ -581,7 +584,9 @@ s" c-bp-watch-dump" s" label label --" TRUST
    PFX-COMMON LPCELL         s" src/core/cell.f"        PFX-PATH-ROW
    PFX-COMMON LPPTRSTORAGE   s" src/core/pointer-storage.f" PFX-PATH-ROW
    PFX-COMMON LPSTRUCTURES   s" src/core/structures.f"  PFX-PATH-ROW
+   PFX-COMMON LPENGINEERROR  s" src/core/engine-error.f" PFX-PATH-ROW
    PFX-COMMON LPCHECKER      s" src/core/checker.f"     PFX-PATH-ROW
+   PFX-COMMON LPENGINEERROREFFECTS s" src/core/engine-error-effects.f" PFX-PATH-ROW
    PFX-COMMON LPLOWERCERTBASE s" src/core/lower-cert-base.f" PFX-PATH-ROW
    PFX-COMMON LPTYPESCHEMA   s" src/core/type-schema.f" PFX-PATH-ROW
    PFX-COMMON LPTYPEFAM      s" src/core/type-family.f" PFX-PATH-ROW
@@ -814,7 +819,9 @@ variable LCOLDPFX variable LCOLDPFXB variable LAPPPROV
    PFX-COMMON LPCELL         s" src/core/cell.f"        PFX-PROVIDE-ROW
    PFX-COMMON LPPTRSTORAGE   s" src/core/pointer-storage.f" PFX-PROVIDE-ROW
    PFX-COMMON LPSTRUCTURES   s" src/core/structures.f"  PFX-PROVIDE-ROW
+   PFX-COMMON LPENGINEERROR  s" src/core/engine-error.f" PFX-PROVIDE-ROW
    PFX-COMMON LPCHECKER      s" src/core/checker.f"     PFX-PROVIDE-ROW
+   PFX-COMMON LPENGINEERROREFFECTS s" src/core/engine-error-effects.f" PFX-PROVIDE-ROW
    PFX-COMMON LPLOWERCERTBASE s" src/core/lower-cert-base.f" PFX-PROVIDE-ROW
    PFX-COMMON LPTYPESCHEMA   s" src/core/type-schema.f" PFX-PROVIDE-ROW
    PFX-COMMON LPTYPEFAM      s" src/core/type-family.f" PFX-PROVIDE-ROW
@@ -1153,6 +1160,8 @@ create RESTAB-BUF
          $63 c, $65 c, $72 c, $74 c,
   15 c, $6C c, $6F c, $77 c, $65 c, $72 c, $2D c, \ "lower-cert-hook"
          $63 c, $65 c, $72 c, $74 c, $2D c, $68 c, $6F c, $6F c, $6B c,
+  12 c, $65 c, $6E c, $67 c, $69 c, $6E c, $65 c, \ "engine-error"
+         $2D c, $65 c, $72 c, $72 c, $6F c, $72 c,
    0 c,                                           \ terminator
 here RESTAB-BUF - constant RESTAB-LEN
 
@@ -1479,8 +1488,7 @@ s" c-task-live-guard" s" --" TRUST
    C-CALL-X11-SAVED
    nohook LBL, ;
 
-: C-FIND-GLOBAL ( ptr n n -- ) {: name:ptr len:n :}
-   LBL {: ok:label :}
+: C-FIND-GLOBAL? ( ptr n n -- ) {: name:ptr len:n :}
    SP SP 16 SUBI,
    14 DATA PKG-PUB-CELL LDR,  14 SP 0 STR,
    14 DATA PKG-PRI-CELL LDR,  14 SP 8 STR,
@@ -1488,12 +1496,26 @@ s" c-task-live-guard" s" --" TRUST
    9 name LABEL@ ADR,  10 len MOVZ,  LFIND LABEL@ BL,
    14 SP 0 LDR,  14 DATA PKG-PUB-CELL STR,
    14 SP 8 LDR,  14 DATA PKG-PRI-CELL STR,
-   SP SP 16 ADDI,
+   SP SP 16 ADDI, ;
+s" C-FIND-GLOBAL?" s" ptr n n --" TRUST
+
+: C-FIND-GLOBAL ( ptr n n -- ) {: name:ptr len:n :}
+   LBL {: ok:label :}
+   name len C-FIND-GLOBAL?
    13 ok CBNZ,
       0 2 MOVZ,  1 name LABEL@ ADR,  2 len MOVZ,  NR-WRITE SYS,
       0 70 MOVZ,  NR-EXIT-GROUP SYS,
    ok LBL, ;
-s" c-find-global" s" ptr n n --" TRUST
+s" C-FIND-GLOBAL" s" ptr n n --" TRUST
+
+: C-FIND-CHECKER ( ptr n n label -- ) {: name:ptr len:n done:label :}
+   LBL {: ready:label :}
+   name len C-FIND-GLOBAL?
+   13 ready CBNZ,
+   9 DATA FRIEND-LATCH-CELL LDR,  9 done CBZ,
+   name len C-FIND-GLOBAL
+   ready LBL, ;
+s" C-FIND-CHECKER" s" ptr n n label --" TRUST
 
 : C-CALL-CHECKER-DEFER ( -- )
    LCHKDEFER 13 C-FIND-GLOBAL
@@ -1868,18 +1890,18 @@ s" c-reject-dup-def" s" --" TRUST
 
 \ TFAM 2b-ii: sealed system-package guard. The offending token sits in
 \ TKA/TKL when either emitter runs, so the shared fail writes it and exits with
-\ the distinct named code E-SEAL-PACKAGE. Both guards read the REAL friend latch
+\ the distinct named code ENGINE-ERROR:SEAL-PACKAGE. Both guards read the REAL friend latch
 \ (FRIEND-LATCH-CELL) natively: latch 0 = engine cold load (friend) allows the
 \ reserved name; sealed = user source rejects fail-closed. The reserved-name set
 \ (RESTAB above) and the A-Z fold are native, NOT checker words: the guards must
 \ resolve during the sealed self-hosting stage build and checker-boot recompile,
 \ where a checker word is neither reachably kept nor safely callable.
-: C-SEAL-PACKAGE-FAIL ( -- )   \ write the offending package token, exit E-SEAL-PACKAGE
+: C-SEAL-PACKAGE-FAIL ( -- )   \ write the offending package token, exit ENGINE-ERROR:SEAL-PACKAGE
    0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,
-   0 E-SEAL-PACKAGE MOVZ,  NR-EXIT-GROUP SYS, ;
+   0 ENGINE-ERROR:SEAL-PACKAGE MOVZ,  NR-EXIT-GROUP SYS, ;
 s" c-seal-package-fail" s" --" TRUST
 
-: C-SEAL-MATCH ( -- )   \ if TKA[0,x24) folds to a reserved name (RESTAB), exit E-SEAL-PACKAGE
+: C-SEAL-MATCH ( -- )   \ if TKA[0,x24) folds to a reserved name (RESTAB), exit ENGINE-ERROR:SEAL-PACKAGE
    LBL LBL LBL LBL LBL {: tabloop:label cmploop:label matched:label tabnext:label done:label :}
    13 LRESTAB LABEL@ ADR,                               \ x13 = reserved-name table cursor
    tabloop LBL,
@@ -2011,7 +2033,7 @@ s" c-qualify-def" s" --" TRUST
       1 LPROTPUB LABEL@ ADR,  0 2 MOVZ,  2 PROTPUB-MSG-LEN MOVZ,  NR-WRITE SYS,       \ protected + sealed: name the guard on fd 2 before exit 84
       0 2 MOVZ,  1 DATA DEF-TKA-CELL LDR,  2 DATA DEF-TKL-CELL LDR,  NR-WRITE SYS,     \ + the offending def name
       1 LOPENNL LABEL@ ADR,  0 2 MOVZ,  2 1 MOVZ,  NR-WRITE SYS,                       \ + newline
-      0 E-SEAL-PACKAGE MOVZ,  NR-EXIT-GROUP SYS,
+      0 ENGINE-ERROR:SEAL-PACKAGE MOVZ,  NR-EXIT-GROUP SYS,
    pgok LBL,
    C-STORE-NAME
    14 DATA DEF-WL-CELL LDR,  14 9 40 STR,
@@ -3376,7 +3398,7 @@ TRUSTED: EM-DATA-VA>N ( -- n ) DATA-VA ;
 
 \ Sealed-WID reject for the AOT boot passes (TFAM 2b-v). x11 = resolved xt on entry;
 \ re-derive its record WID (scan dict for [0]==xt, read [40]) and, if that WID is in
-\ the protected-WID registry, fail-closed (exit E-SEAL-PACKAGE) -- so a captured
+\ the protected-WID registry, fail-closed (exit ENGINE-ERROR:SEAL-PACKAGE) -- so a captured
 \ relocation callee or boot-run entry name that resolves into a sealed system /
 \ generated constructor package is rejected before the call immediate is rewritten
 \ or the entry word is executed. Preserves x11; clobbers x5/x6/x9/x13/x14; saves x30
@@ -3394,7 +3416,7 @@ TRUSTED: EM-DATA-VA>N ( -- n ) DATA-VA ;
       LPROTWIDQ LABEL@ BL,                               \ x13 = protected?
       13 wdone CBZ,
          1 LPROTAOT LABEL@ ADR,  0 2 MOVZ,  2 PROTAOT-MSG-LEN MOVZ,  NR-WRITE SYS,    \ protected WID at AOT boot gate: name it on fd 2 before exit 84
-         0 E-SEAL-PACKAGE MOVZ,  NR-EXIT-GROUP SYS,
+         0 ENGINE-ERROR:SEAL-PACKAGE MOVZ,  NR-EXIT-GROUP SYS,
    wdone LBL,
       30 SP 0 LDR,  11 SP 8 LDR,  SP SP 16 ADDI,  RET, ;
 
@@ -3622,25 +3644,33 @@ TRUSTED: EM-DATA-VA>N ( -- n ) DATA-VA ;
 s" em-interpret-colon" s" label --" TRUST
 
 : C-CALL-CHECKER-PACKAGE ( -- )
-   LCHKPACKAGE 15 C-FIND-GLOBAL
+   LBL {: done:label :}
+   LCHKPACKAGE 15 done C-FIND-CHECKER
    9 DATA TKA-CELL LDR,  9 G-PUSH
    9 DATA TKL-CELL LDR,  9 G-PUSH
-   C-CALL-X11-SAVED ;
+   C-CALL-X11-SAVED
+   done LBL, ;
 s" c-call-checker-package" s" --" TRUST
 
 : C-CALL-CHECKER-PUBLIC ( -- )
-   LCHKPUB 14 C-FIND-GLOBAL
-   C-CALL-X11-SAVED ;
+   LBL {: done:label :}
+   LCHKPUB 14 done C-FIND-CHECKER
+   C-CALL-X11-SAVED
+   done LBL, ;
 s" c-call-checker-public" s" --" TRUST
 
 : C-CALL-CHECKER-PRIVATE ( -- )
-   LCHKPRI 15 C-FIND-GLOBAL
-   C-CALL-X11-SAVED ;
+   LBL {: done:label :}
+   LCHKPRI 15 done C-FIND-CHECKER
+   C-CALL-X11-SAVED
+   done LBL, ;
 s" c-call-checker-private" s" --" TRUST
 
 : C-CALL-CHECKER-END-PACKAGE ( -- )
-   LCHKENDPKG 19 C-FIND-GLOBAL
-   C-CALL-X11-SAVED ;
+   LBL {: done:label :}
+   LCHKENDPKG 19 done C-FIND-CHECKER
+   C-CALL-X11-SAVED
+   done LBL, ;
 s" c-call-checker-end-package" s" --" TRUST
 
 : C-PACKAGE-FAIL ( n -- ) {: rc:n :}
@@ -3847,7 +3877,7 @@ s" c-export-tail!" s" --" TRUST
 \ Checker sync mirrors C-PACKAGE (CHECKER-EXPORT sees the ORIGINAL spelling
 \ and throws on unsigned/prim sources). Native walls that hold without the
 \ hook: missing name ($4A), sealed source prefix (C-QUALIFY-SEAL-GUARD,
-\ E-SEAL-PACKAGE), undefined word (token + rc 70), duplicate tail
+\ ENGINE-ERROR:SEAL-PACKAGE), undefined word (token + rc 70), duplicate tail
 \ (C-REJECT-DUP-DEF $4E, checked BEFORE the checker call so the labeled
 \ native diagnosis wins), protected-WID target (C-STORE-DEF-NAME publish
 \ guard). The checker call runs OUTSIDE the RW code window (checked code must
@@ -4142,7 +4172,7 @@ s" em-compile-ret" s" --" TRUST
    0 2 MOVZ,
    1 LVPBADMSG LABEL@ ADR,  2 18 MOVZ,  NR-WRITE SYS,
    0 2 MOVZ,  1 LOPENNL LABEL@ ADR,  2 1 MOVZ,  NR-WRITE SYS,
-   0 E-BAD-TAG MOVZ,  NR-EXIT-GROUP SYS,
+   0 ENGINE-ERROR:BAD-TAG MOVZ,  NR-EXIT-GROUP SYS,
    done LBL,
    RET, ;
 
@@ -5383,7 +5413,7 @@ s" em-adt-con-var" s" --" TRUST
 \   continuation: a jump over the message, the message "hb: bad <family> tag\n"
 \   copied inline (the NAME BYTES travel with the word — never a live pointer into
 \   the mmap-relocatable TF-STR pool), then a self-contained write(2,msg,len) +
-\   exit_group(E-BAD-TAG). Modeled on C-DIE-TOKEN-NL's write/exit tail and C-SDQ's
+\   exit_group(ENGINE-ERROR:BAD-TAG). Modeled on C-DIE-TOKEN-NL's write/exit tail and C-SDQ's
 \   inline-byte copy, but every instruction is C-EMITW'd into the user code region
 \   (x28=CP), not the engine. Runs with the region RW. Clobbers x5-x16.
 : C-DIE-BAD-TAG ( -- )
@@ -5412,7 +5442,7 @@ s" em-adt-con-var" s" --" TRUST
    9 $D2800002 LIT64,  14 14 5 LSLI,  9 9 14 ORR,  LCEMIT LABEL@ BL,   \ movz x2, #len
    9 SYS-EMIT-WRITE LIT64,  LCEMIT LABEL@ BL,          \ movz x_sys, #NR-WRITE
    SYS-EMIT-SVC C-EMITW                                \ svc
-   9 $D2800000 E-BAD-TAG 32 * + LIT64,  LCEMIT LABEL@ BL,   \ movz x0, #E-BAD-TAG
+   9 $D2800000 ENGINE-ERROR:BAD-TAG 32 * + LIT64,  LCEMIT LABEL@ BL,   \ movz x0, #ENGINE-ERROR:BAD-TAG
    9 SYS-EMIT-EXIT LIT64,  LCEMIT LABEL@ BL,           \ movz x_sys, #NR-EXIT-GROUP
    SYS-EMIT-SVC C-EMITW                                \ svc
    SP SP $20 ADDI, ;
@@ -5657,7 +5687,7 @@ s" SRCA@" s" -- ptr u8" TRUST
    LBL LPLINUXTARGET !  LBL LPMACOSTARGET !
    LBL LPLINUXLAYOUT !  LBL LPMACOSLAYOUT !
    LBL LPUTIL !  LBL LPCELL !  LBL LPPTRSTORAGE !
-   LBL LPSTRUCTURES !  LBL LPBYTES !  LBL LPCHECKER !
+   LBL LPSTRUCTURES !  LBL LPBYTES !  LBL LPENGINEERROR !  LBL LPCHECKER !  LBL LPENGINEERROREFFECTS !
    LBL LPLOWERCERTBASE !  LBL LPRENDER !  LBL LPHOOK !
    LBL LPCELLEFF !  LBL LPPTRSTORAGEEFF !
    LBL LPTYPESCHEMA !  LBL LPTYPEFAM !  LBL LPSUMTYPE !  LBL LPLAYOUTBUF !  LBL LPLAYOUTVALID !

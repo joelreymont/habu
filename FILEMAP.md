@@ -47,6 +47,8 @@ points stay listed.
 - `src/core/bytes.f` — core byte-buffer helpers (`BYTE+`, `BYTE-COPY-LEN`,
   `BYTE-COPY`) loaded before stdlib/tool sources so low-level modules do not
   depend on `lib/string.f` order.
+- `src/core/engine-error.f` — authoritative package-scoped engine failure ABI.
+- `src/core/engine-error-effects.f` — checker rows installed after the early engine failure package.
 - `src/core/checker.f` — native stack-effect checker and verifier.
 - `src/core/lower-cert-base.f` — boot-safe, package-scoped lowering-certificate ABI and fail-closed producer dispatcher loaded immediately after the checker.
 - `src/core/type-schema.f` — persistent type-schema node arena (package TFAM) referenced by families/variants/fields as schema roots.
@@ -1058,7 +1060,7 @@ points stay listed.
   including certified min-in arity in the LFIND flags); `top-check@`
   round-trips; child forges prove `set-top-check` fails closed rc 70 with the
   named diagnostic on both cold-prefix paths and that a raw store into the
-  sealed TOP-HOOK-CELL band traps `E-SEAL-VIOLATION` while both one-cell
+  sealed TOP-HOOK-CELL band traps `ENGINE-ERROR:SEAL-VIOLATION` while both one-cell
   neighbors stay writable.
 - `test/top-row-warn-test.f` — tier-1 top-row tracker warning regressions (dot
   habu-typed-top-checker-82cf8b84): child probes assert p1 `' FOO2 execute`,
@@ -1077,7 +1079,7 @@ points stay listed.
   PROT-GUARD sink (`!`/`c!`/`+!`/`atomic!`/`atomic-add`/`atomic-cas` plus the
   `read`/`ioctl`/`poll`/`readlink`/`stat64`/`lstat64`/`getdirentries64`/`mmap`
   syscall buffers, each exercising its own guard register) traps with exit
-  `E-SEAL-VIOLATION`, the latch is one-way, free holes stay writable, and
+  `ENGINE-ERROR:SEAL-VIOLATION`, the latch is one-way, free holes stay writable, and
   post-seal language features still update protected cells via engine primitives.
   `patch32`/`snap-rebase` are compiler-internal and hand-review only (noted in
   the file).
@@ -1097,7 +1099,7 @@ points stay listed.
   misleading missing-build-context failures.
 - `test/wide-store-seal.f` — generated checked W=2 ADT store forges proving
   ordinary storage and first/later-cell protected-band intersections: zero-valued
-  payload/tag attempts against the seal latch must trap `E-SEAL-VIOLATION`
+  payload/tag attempts against the seal latch must trap `ENGINE-ERROR:SEAL-VIOLATION`
   before any protected mutation.
 - `test/protection-span.f` — package-scoped raw-write forges proving interval
   overlap at the compiler transaction lower/upper boundaries, unaligned scalar
@@ -1119,9 +1121,12 @@ points stay listed.
 - `test/seal-package.f` — sealed system-package regressions (TFAM 2b-ii): child
   forges prove post-seal user source cannot open/reopen `package TFAM`/`TYPE`/
   `MATCH` nor define a qualified word into one (`: TFAM:tail ...`),
-  case-insensitively, fail-closed with exit `E-SEAL-PACKAGE`; ordinary packages
+  case-insensitively, fail-closed with exit `ENGINE-ERROR:SEAL-PACKAGE`; ordinary packages
   and qualified defs still compile, and a trailing-colon ordinary name is never
   treated as qualified. Covers both `--load` and stdin cold-prefix entry paths.
+- `test/engine-error-package.f` — package-scoped engine-failure ABI regressions:
+  native/recovered child exits for codes 86–88 and post-seal checker-bridge
+  success/fail-closed lookup corruption.
 - `test/c3-widen-test.f` / `test/c4-shadow-test.f` — checker regressions for
   narrow-to-wide integer widening and local shadowing of ordinary words.
 - `test/gate-build-common.f` — checked helpers shared by native hb-build gate

@@ -664,13 +664,13 @@ committed \code{CHECK} candidate asserted to reject. The residual is a single
 runtime path: an out-of-range tag, reachable only through a \code{TRUSTED:}
 constructor that forges it. The engine battery (\code{GE-MATCH-EXEC}) compiles
 a \code{MATCH} natively, forges such a tag, and proves the lowered die
-fires---process exit status 85 (\code{E-BAD-TAG}) and the inline diagnostic
+fires---process exit status 85 (\code{ENGINE-ERROR:BAD-TAG}) and the inline diagnostic
 \code{hb: bad gemt tag} written to \code{fd~2}, with no normal continuation
 past the die, which a well-typed scrutinee never reaches. The
 Gforth-bootstrapped stage0 mirror rebuilds this lowering byte-identically, and
 a matched definition survives the AOT object cache: a preseeded forged-tag
 entry (\code{tools/hb-build.f --preseed-entry}), folded into the artifact key,
-restores and dies with the same \code{E-BAD-TAG}, so a stale normal object
+restores and dies with the same \code{ENGINE-ERROR:BAD-TAG}, so a stale normal object
 cannot silently satisfy it.
 
 \paragraph{Adoption inside Model CAD.} By design (\S17 of the

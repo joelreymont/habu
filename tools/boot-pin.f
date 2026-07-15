@@ -126,7 +126,9 @@ variable BP-SET
    s" src/core/cell.f" q execute
    s" src/core/pointer-storage.f" q execute
    s" src/core/structures.f" q execute
+   s" src/core/engine-error.f" q execute
    s" src/core/checker.f" q execute
+   s" src/core/engine-error-effects.f" q execute
    s" src/core/lower-cert-base.f" q execute
    s" src/core/type-schema.f" q execute
    s" src/core/type-family.f" q execute

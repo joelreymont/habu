@@ -453,6 +453,10 @@ TEST:SUITE sealed-system-package
    test/seal-package.f
 TEST:;SUITE
 
+TEST:SUITE engine-error-package
+   test/engine-error-package.f
+TEST:;SUITE
+
 TEST:SUITE export-keyword-package
    test/export-package.f
 TEST:;SUITE

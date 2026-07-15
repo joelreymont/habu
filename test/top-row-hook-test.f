@@ -14,7 +14,7 @@
 \ and `top-check@` round-trips the installed xt. Negatives (child processes,
 \ both cold-prefix source paths): an invalid install dies rc 70 with the
 \ named diagnostic before any dispatch BLR, and a raw store into the sealed
-\ cell traps E-SEAL-VIOLATION while both one-cell neighbors stay writable.
+\ cell traps ENGINE-ERROR:SEAL-VIOLATION while both one-cell neighbors stay writable.
 \ Hook uninstalled = today's dispatch, proven by the rest of the native gate.
 \
 \ Run: bin/hb --load lib/errors.f lib/string.f lib/test.f lib/memory.f
@@ -305,10 +305,10 @@ create TRH-EMPTY 1 allot
    SB$ ;
 
 : TRH-NEG-SEAL ( -- )
-   s" raw ! into TOP-HOOK-CELL traps E-SEAL-VIOLATION" T-LABEL
+   s" raw ! into TOP-HOOK-CELL traps ENGINE-ERROR:SEAL-VIOLATION" T-LABEL
    TRH-SEAL-FORGE$ TRH-RUN-LOAD
    TRH-EXITED @ TTRUE
-   TRH-RC @ E-SEAL-VIOLATION T=
+   TRH-RC @ ENGINE-ERROR:SEAL-VIOLATION T=
    s" one cell below the band stays writable" T-LABEL
    TRH-BELOW-FORGE$ TRH-RUN-LOAD
    TRH-ASSERT-OK

@@ -149,7 +149,15 @@ that source is explicitly certified; they are not stale-checked by the default
 | c-local-ref | `label label --` | Compile-mode local-reference emitter: branches to the caller's not-local continuation or emits local loads, and rejects quotation-local captures with raw exit code 75. | `test/engine-suite.f`, `test/run.f` | src/habu/habu2.f | 2026-06-27 |
 | EM-DATA-VA>N | `-- n` | Engine-builder raw emitter boundary: exposes the fixed DATA-VA pointer as the numeric immediate needed by `LIT64,` when emitting the startup mmap check. | `test/run.f`, `tools/build-fixpoint-test.f` | src/habu/habu2.f | 2026-06-26 |
 | em-interpret-colon | `label --` | Emits interpreter-mode colon handling and kernel-colon setup before falling through to word dispatch. | `tools/compiler-dispatch-test.f`, `test/run.f` | src/habu/habu2.f | 2026-06-27 |
-| c-find-global | `ptr n n --` | Package checker bridge resolves core checker words from the global wordlist while preserving active package cells, so package-local words cannot shadow the checker state API. | `test/gate-dictionary.f`, `test/run.f` | src/habu/habu2.f | 2026-06-27 |
+| C-FIND-GLOBAL | `ptr n n --` | Package checker bridge resolves core checker words from the global wordlist while preserving active package cells, so package-local words cannot shadow the checker state API. | `test/gate-dictionary.f`, `test/run.f` | src/habu/habu2.f | 2026-06-27 |
+| C-FIND-GLOBAL? | `ptr n n --` | Optional bootstrap lookup preserves active package cells and exposes the raw lookup result only through generated registers, before the checker bridge exists. | `tools/bootstrap-codegen-test.f`, `test/engine-suite.f` | src/habu/habu2.f | 2026-07-14 |
+| C-FIND-CHECKER | `ptr n n label --` | Bootstrap package keywords may omit a missing checker bridge only while the friend latch is open; the same path fails closed after sealing. | `tools/bootstrap-codegen-test.f`, `test/engine-suite.f`, `test/seal-package.f` | src/habu/habu2.f | 2026-07-14 |
+| SEAL-VIOLATION | `-- n` | Reopens the reserved early engine-error package after checker startup solely to register the immutable constant's exact output effect. | `tools/bootstrap-codegen-test.f`, `test/engine-suite.f`, `test/seal.f` | src/core/engine-error-effects.f | 2026-07-14 |
+| SEAL-PACKAGE | `-- n` | Reopens the reserved early engine-error package after checker startup solely to register the immutable constant's exact output effect. | `tools/bootstrap-codegen-test.f`, `test/engine-suite.f`, `test/seal-package.f` | src/core/engine-error-effects.f | 2026-07-14 |
+| BAD-TAG | `-- n` | Reopens the reserved early engine-error package after checker startup solely to register the immutable constant's exact output effect. | `tools/bootstrap-codegen-test.f`, `test/engine-suite.f`, `test/gate-engine.f` | src/core/engine-error-effects.f | 2026-07-14 |
+| CALLABLE-ABI | `-- n` | Reopens the reserved early engine-error package after checker startup solely to register the immutable constant's exact output effect. | `tools/bootstrap-codegen-test.f`, `test/engine-suite.f`, `test/gate-engine.f` | src/core/engine-error-effects.f | 2026-07-14 |
+| CATCH-STACK | `-- n` | Reopens the reserved early engine-error package after checker startup solely to register the immutable constant's exact output effect. | `tools/bootstrap-codegen-test.f`, `test/engine-suite.f`, `test/gate-engine.f` | src/core/engine-error-effects.f | 2026-07-14 |
+| CODE-CERT | `-- n` | Reopens the reserved early engine-error package after checker startup solely to register the immutable constant's exact output effect. | `tools/bootstrap-codegen-test.f`, `test/engine-suite.f`, `test/gate-engine.f` | src/core/engine-error-effects.f | 2026-07-14 |
 | c-call-checker-defer | `--` | Deferred-word keyword bridge records the published name in the checker-owned defer-target registry so `is` can reject non-defer targets statically. | `test/gate-dictionary.f`, `tools/hb-build-test.f`, `test/run.f` | src/habu/habu2.f | 2026-06-28 |
 | c-call-checker-package | `--` | Package keyword bridge pushes the package token to `CHECKER-PACKAGE`; raw dictionary lookup and generated call setup are outside Forth inference. | `test/gate-dictionary.f`, `test/run.f` | src/habu/habu2.f | 2026-06-27 |
 | c-call-checker-public | `--` | Public keyword bridge calls `CHECKER-PUBLIC` so checker signature scope follows runtime package scope. | `test/gate-dictionary.f`, `test/run.f` | src/habu/habu2.f | 2026-06-27 |
@@ -166,7 +174,7 @@ that source is explicitly certified; they are not stale-checked by the default
 | c-call-checker-export | `--` | Bridges the `EXPORT` keyword to `CHECKER-EXPORT`: finds the global checker word, pushes the original source-name token from the fixed token cells, and calls through the saved x11 record; raw register bridge is outside Forth stack inference. | `test/type-export-suite.f`, `test/run.f` | src/habu/habu2.f | 2026-07-10 |
 | c-export-tail! | `--` | `EXPORT` tail rewriter: scans the pending token for a non-edge first colon and rewrites the fixed token cells to the tail span (FIND parity for edge colons); raw register scan is outside Forth stack inference. | `test/type-export-suite.f`, `test/run.f` | src/habu/habu2.f | 2026-07-10 |
 | c-export | `--` | Interpreter `EXPORT` keyword: rejects use outside a package, applies the seal guard to the source spelling, resolves the source via FIND, syncs the checker alias, and publishes a dictionary record sharing the source code pointer/body span with immediate/wide name bits copied. | `test/type-export-suite.f`, `test/run.f` | src/habu/habu2.f | 2026-07-10 |
-| c-seal-package-fail | `--` | Sealed-system-package failure emitter prints the offending token from the fixed token cells and exits `E-SEAL-PACKAGE`; raw process exit is outside Forth stack inference. | `test/seal-package.f`, `test/run.f` | src/habu/habu2.f | 2026-07-04 |
+| c-seal-package-fail | `--` | Sealed-system-package failure emitter prints the offending token from the fixed token cells and exits `ENGINE-ERROR:SEAL-PACKAGE`; raw process exit is outside Forth stack inference. | `test/seal-package.f`, `test/run.f` | src/habu/habu2.f | 2026-07-04 |
 | c-seal-match | `--` | Sealed-system-package matcher scans the native reserved-name table (`RESTAB`) in generated registers, case-folds the candidate token `TKA[0,x24)`, and calls the seal failure emitter on a match. | `test/seal-package.f`, `test/run.f` | src/habu/habu2.f | 2026-07-04 |
 | c-qualify-seal-guard | `--` | Definition-time seal guard: when the friend latch is closed and the pending token is a non-edge `NAME:tail`, matches the prefix against the reserved-name table and fails closed; raw latch/register scan is outside Forth stack inference. | `test/seal-package.f`, `test/run.f` | src/habu/habu2.f | 2026-07-04 |
 | c-package-seal-guard | `--` | `package` keyword seal guard: when the friend latch is closed, matches the pending package name against the reserved-name table and fails closed before wordlist allocation. | `test/seal-package.f`, `test/run.f` | src/habu/habu2.f | 2026-07-04 |
@@ -218,7 +226,7 @@ that source is explicitly certified; they are not stale-checked by the default
 | em-adt-con-fam | `--` | Emits the construct family-operand step: TFL bridge call, fail-closed unknown-family die, CMFAM/CMM state stores. | `test/run.f` | src/habu/habu2.f | 2026-07-09 |
 | em-adt-con-pushes | `--` | Emits the construct pad/tag VS-constant pushes with frame-saved counters around LVPUSHC. | `test/run.f` | src/habu/habu2.f | 2026-07-09 |
 | em-adt-con-var | `--` | Emits the construct variant-operand step: TFL bridge call, fail-closed unknown-variant die, pad/tag emission, mode clear. | `test/run.f` | src/habu/habu2.f | 2026-07-09 |
-| c-die-bad-tag | `--` | Emits the MATCH invalid-tag die INLINE into the user word: a jump over the message, "hb: bad <family> tag\n" copied inline (the name bytes travel with the word), then a self-contained write(2) + exit_group(E-BAD-TAG). | `test/run.f` | src/habu/habu2.f | 2026-07-09 |
+| c-die-bad-tag | `--` | Emits the MATCH invalid-tag die INLINE into the user word: a jump over the message, "hb: bad <family> tag\n" copied inline (the name bytes travel with the word), then a self-contained write(2) + exit_group(ENGINE-ERROR:BAD-TAG). | `test/run.f` | src/habu/habu2.f | 2026-07-09 |
 | em-match-semi | `--` | Emits the MATCH `;match` tail: family-name bridge, inline invalid-tag die, ENDCASE-style join patch loop, match-frame pop, CMM clear. | `test/run.f` | src/habu/habu2.f | 2026-07-09 |
 | em-adt-match-fam | `--` | Emits the MATCH family-operand step: signature-scope TFL bridge call, fail-closed unknown-family die, fam stored on the match-frame stack, CMM state store. | `test/run.f` | src/habu/habu2.f | 2026-07-09 |
 | em-adt-match-var | `--` | Emits the MATCH variant-operand step (or routes `;match`): TFL bridge call, fail-closed unknown-variant die, pending tag/pads stash, CMM state store. | `test/run.f` | src/habu/habu2.f | 2026-07-09 |
@@ -1015,7 +1023,7 @@ src/habu/habu1.f:emit-fp-prims builder-emit habu-builder-trust-rows-c5d41af6
 src/habu/habu1.f:linux-setpgid-self builder-emit habu-builder-trust-rows-c5d41af6
 src/habu/habu1.f:spawn-darwin-zero-attr builder-emit habu-builder-trust-rows-c5d41af6
 src/habu/habu1.f:spawn-darwin-attr-defaults builder-emit habu-builder-trust-rows-c5d41af6
-src/habu/habu2.f builder-emit habu-builder-trust-rows-c5d41af6 125
+src/habu/habu2.f builder-emit habu-builder-trust-rows-c5d41af6 127
 src/habu/hide.f:BFR-N>REC builder-emit habu-builder-trust-rows-c5d41af6
 src/habu/hide.f:BFR-A>U8 builder-emit habu-builder-trust-rows-c5d41af6
 src/habu/hide.f:BFR-N>U8 builder-emit habu-builder-trust-rows-c5d41af6
@@ -1207,6 +1215,12 @@ src/core/roles.f:>SNAP prim-axiom habu-primitive-effect-axiom-1119f176
 src/core/roles.f:SNAP>N prim-axiom habu-primitive-effect-axiom-1119f176
 src/core/cell-effects.f:CELL prim-axiom habu-primitive-effect-axiom-1119f176
 src/core/cell-effects.f:CELL-WIDTH-CHECK prim-axiom habu-primitive-effect-axiom-1119f176
+src/core/engine-error-effects.f:SEAL-VIOLATION prim-axiom habu-unify-engine-err-2251fc43
+src/core/engine-error-effects.f:SEAL-PACKAGE prim-axiom habu-unify-engine-err-2251fc43
+src/core/engine-error-effects.f:BAD-TAG prim-axiom habu-unify-engine-err-2251fc43
+src/core/engine-error-effects.f:CALLABLE-ABI prim-axiom habu-unify-engine-err-2251fc43
+src/core/engine-error-effects.f:CATCH-STACK prim-axiom habu-unify-engine-err-2251fc43
+src/core/engine-error-effects.f:CODE-CERT prim-axiom habu-unify-engine-err-2251fc43
 src/core/structures-effects.f:STRUCT-BYTE+ prim-axiom habu-primitive-effect-axiom-1119f176
 src/core/structures-effects.f:BEGIN-STRUCTURE prim-axiom habu-primitive-effect-axiom-1119f176
 src/core/structures-effects.f:+FIELD prim-axiom habu-primitive-effect-axiom-1119f176

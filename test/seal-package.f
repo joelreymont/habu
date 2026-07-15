@@ -2,15 +2,15 @@
 \
 \ Proves that once the friend latch is sealed (every user-source entry), the
 \ compiler rejects opening or reopening a reserved system package
-\ (`package TFAM`/`TYPE`/`MATCH`/`LOWER-CERT`) and rejects a qualified definition into one
-\ (`: TFAM:tail ...`), case-insensitively, fail-closed with exit E-SEAL-PACKAGE.
+\ (`package TFAM`/`TYPE`/`MATCH`/`LOWER-CERT`/`ENGINE-ERROR`) and rejects a qualified definition into one
+\ (`: TFAM:tail ...`), case-insensitively, fail-closed with exit ENGINE-ERROR:SEAL-PACKAGE.
 \ Ordinary (non-reserved) packages and qualified definitions still compile, and a
 \ trailing-colon ordinary name (`PRIM:`-shaped) is never treated as qualified.
 \
 \ TFAM 2b-iii extends the same reserved-name seal (C-QUALIFY-SEAL-GUARD) to the
 \ token sinks that resolve a qualified name without defining it: `'` (tick),
 \ `[']` (bracket-tick), and `postpone`. A user `' TFAM:tail`, `['] TYPE:tail`, or
-\ `postpone MATCH:tail` rejects fail-closed (E-SEAL-PACKAGE) exactly like the
+\ `postpone MATCH:tail` rejects fail-closed (ENGINE-ERROR:SEAL-PACKAGE) exactly like the
 \ define path, case-insensitively, on both cold-prefix entry paths, while
 \ non-reserved, non-qualified, trailing-colon, and reserved-prefix-but-longer
 \ names resolve normally. `[']`/`postpone` are checker-rejected in checked code
@@ -38,7 +38,7 @@ require lib/process-env.f
 
 2048 constant SPK-CAP
 10000 constant SPK-TIMEOUT-MS
-84 constant SPK-SEAL-RC             \ E-SEAL-PACKAGE child exit status
+ENGINE-ERROR:SEAL-PACKAGE constant SPK-SEAL-RC
 
 variable SPK-ROOT-U
 variable SPK-CHILD-U
@@ -300,7 +300,8 @@ create SPK-EMPTY 1 allot             \ zero-length stdin
    s" package mAtCh (mixed alias) traps" T-LABEL s" mAtCh" SPK-PKG-NEG
    s" package CHECKER-CERT traps" T-LABEL        s" CHECKER-CERT" SPK-PKG-NEG
    s" package LOWER-CERT traps" T-LABEL          s" LOWER-CERT" SPK-PKG-NEG
-   s" package LOWER-CERT-HOOK traps" T-LABEL     s" LOWER-CERT-HOOK" SPK-PKG-NEG ;
+   s" package LOWER-CERT-HOOK traps" T-LABEL     s" LOWER-CERT-HOOK" SPK-PKG-NEG
+   s" package ENGINE-ERROR traps" T-LABEL        s" ENGINE-ERROR" SPK-PKG-NEG ;
 
 : SPK-NEGATIVES-QUAL ( -- )
    s" qualified def TFAM:tail traps" T-LABEL     s" TFAM"  SPK-QUAL-NEG
@@ -311,7 +312,9 @@ create SPK-EMPTY 1 allot             \ zero-length stdin
    s" qualified def LOWER-CERT:tail traps" T-LABEL
       s" LOWER-CERT" SPK-QUAL-NEG
    s" qualified def LOWER-CERT-HOOK:tail traps" T-LABEL
-      s" LOWER-CERT-HOOK" SPK-QUAL-NEG ;
+      s" LOWER-CERT-HOOK" SPK-QUAL-NEG
+   s" qualified def ENGINE-ERROR:tail traps" T-LABEL
+      s" ENGINE-ERROR" SPK-QUAL-NEG ;
 
 : SPK-NEGATIVE-CTOR-WID ( -- )
    s" generated constructor WID rejects new tail (--load)" T-LABEL
@@ -357,7 +360,8 @@ create SPK-EMPTY 1 allot             \ zero-length stdin
    s" ' MATCH:tail traps" T-LABEL                 s" MATCH" SPK-TICK-NEG
    s" ' CHECKER-CERT:private traps" T-LABEL       s" CHECKER-CERT" SPK-TICK-NEG
    s" ' LOWER-CERT:private traps" T-LABEL         s" LOWER-CERT" SPK-TICK-NEG
-   s" ' LOWER-CERT-HOOK:private traps" T-LABEL    s" LOWER-CERT-HOOK" SPK-TICK-NEG ;
+   s" ' LOWER-CERT-HOOK:private traps" T-LABEL    s" LOWER-CERT-HOOK" SPK-TICK-NEG
+   s" ' ENGINE-ERROR:private traps" T-LABEL       s" ENGINE-ERROR" SPK-TICK-NEG ;
 
 : SPK-NEGATIVES-BTICK-POST ( -- )
    s" ['] TFAM:tail traps (--load)" T-LABEL

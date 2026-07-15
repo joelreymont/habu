@@ -13,7 +13,9 @@ require tools/lint/token.f
 require tools/lint/lib.f
 require tools/lint/source-lex.f
 
-$40000 constant BCG-CAP
+\ habu2.f is 262,867 bytes on the ENGINE-ERROR cutover tree; 25% headroom is
+\ 328,584 bytes, so the next power-of-two arena is $80000.
+$80000 constant BCG-CAP
 
 create BCG-BUF BCG-CAP allot
 variable BCG-LEN
@@ -192,7 +194,9 @@ public
    s" PFX-COMMON LPUTIL" s" PFX-COMMON LPCELL" BCG-MUST-BEFORE
    s" PFX-COMMON LPCELL" s" PFX-COMMON LPPTRSTORAGE" BCG-MUST-BEFORE
    s" PFX-COMMON LPPTRSTORAGE" s" PFX-COMMON LPSTRUCTURES" BCG-MUST-BEFORE
-   s" PFX-COMMON LPSTRUCTURES" s" PFX-COMMON LPCHECKER" BCG-MUST-BEFORE
+   s" PFX-COMMON LPSTRUCTURES" s" PFX-COMMON LPENGINEERROR" BCG-MUST-BEFORE
+   s" PFX-COMMON LPENGINEERROR" s" PFX-COMMON LPCHECKER" BCG-MUST-BEFORE
+   s" PFX-COMMON LPCHECKER" s" PFX-COMMON LPENGINEERROREFFECTS" BCG-MUST-BEFORE
    s" PFX-COMMON LPCHECKER" s" PFX-LINUX  LPLINUXTARGET" BCG-MUST-BEFORE
    s" PFX-COMMON LPCHECKER" s" PFX-MACOS  LPMACOSTARGET" BCG-MUST-BEFORE
    s" PFX-COMMON LPHOOK" s" PFX-LINUX  LPLINUXTARGET" BCG-MUST-BEFORE
@@ -244,6 +248,37 @@ public
    CELL-WIDTH-CHECK
    CELL 1 cells T= ;
 
+: BCG-TEST-ENGINE-ERROR ( -- )
+   s" src/core/engine-error.f" BCG-LOAD
+   s" package ENGINE-ERROR" BCG-MUST-HAVE
+   s" 83 constant SEAL-VIOLATION" BCG-MUST-HAVE
+   s" 84 constant SEAL-PACKAGE" BCG-MUST-HAVE
+   s" 85 constant BAD-TAG" BCG-MUST-HAVE
+   s" 86 constant CALLABLE-ABI" BCG-MUST-HAVE
+   s" 87 constant CATCH-STACK" BCG-MUST-HAVE
+   s" 88 constant CODE-CERT" BCG-MUST-HAVE
+   s" constant E-SEAL-VIOLATION" BCG-MUST-LACK
+   s" bootstrap/cg/forth.fs" BCG-LOAD
+   s" 83 constant ENGINE-ERROR:SEAL-VIOLATION" BCG-MUST-HAVE
+   s" 84 constant ENGINE-ERROR:SEAL-PACKAGE" BCG-MUST-HAVE
+   s" 85 constant ENGINE-ERROR:BAD-TAG" BCG-MUST-HAVE
+   s" 86 constant ENGINE-ERROR:CALLABLE-ABI" BCG-MUST-HAVE
+   s" 87 constant ENGINE-ERROR:CATCH-STACK" BCG-MUST-HAVE
+   s" 88 constant ENGINE-ERROR:CODE-CERT" BCG-MUST-HAVE
+   s" : C-P2-FIND-GLOBAL?" BCG-MUST-HAVE
+   s" : C-P2-FIND-CHECKER" BCG-MUST-HAVE
+   s" FRIEND-LATCH-CELL LDR,  9 done CBZ," BCG-MUST-HAVE
+   s" src/habu/habu2.f" BCG-LOAD
+   s" : C-FIND-GLOBAL?" BCG-MUST-HAVE
+   s" : C-FIND-CHECKER" BCG-MUST-HAVE
+   s" FRIEND-LATCH-CELL LDR,  9 done CBZ," BCG-MUST-HAVE
+   s" src/core/engine-error-effects.f" BCG-LOAD
+   s" package ENGINE-ERROR" BCG-MUST-HAVE
+   S\" s\" SEAL-VIOLATION\" s\" -- n\" TRUST" BCG-MUST-HAVE
+   S\" s\" CODE-CERT\" s\" -- n\" TRUST" BCG-MUST-HAVE
+   s" tools/bootstrap.sh" BCG-LOAD
+   s" test/engine-error-package.f" BCG-MUST-HAVE ;
+
 : BCG-TEST-CELL-SOURCE ( -- )
    s" src/core/cell.f" BCG-LOAD
    s" $8 constant CELL" BCG-MUST-HAVE
@@ -256,6 +291,9 @@ public
    s" cat src/core/util.f" s" cat src/core/cell.f" BCG-MUST-BEFORE
    s" cat src/core/cell.f" s" cat src/core/pointer-storage.f" BCG-MUST-BEFORE
    s" cat src/core/pointer-storage.f" s" cat src/core/structures.f" BCG-MUST-BEFORE
+   s" cat src/core/structures.f" s" cat src/core/engine-error.f" BCG-MUST-BEFORE
+   s" cat src/core/engine-error.f" s" cat src/core/checker.f" BCG-MUST-BEFORE
+   s" cat src/core/checker.f" s" cat src/core/engine-error-effects.f" BCG-MUST-BEFORE
    s" cat src/core/check-hook.f" s" cat src/core/cell-effects.f" BCG-MUST-BEFORE
    s" cat src/core/cell-effects.f" s" cat src/core/pointer-storage-effects.f" BCG-MUST-BEFORE
    s" cat src/core/pointer-storage-effects.f" s" cat src/core/structures-effects.f" BCG-MUST-BEFORE ;
@@ -265,6 +303,9 @@ public
    s" src/core/util.f" s" src/core/cell.f" BCG-MUST-BEFORE
    s" src/core/cell.f" s" src/core/pointer-storage.f" BCG-MUST-BEFORE
    s" src/core/pointer-storage.f" s" src/core/structures.f" BCG-MUST-BEFORE
+   s" src/core/structures.f" s" src/core/engine-error.f" BCG-MUST-BEFORE
+   s" src/core/engine-error.f" s" src/core/checker.f" BCG-MUST-BEFORE
+   s" src/core/checker.f" s" src/core/engine-error-effects.f" BCG-MUST-BEFORE
    s" src/core/check-hook.f" s" src/core/cell-effects.f" BCG-MUST-BEFORE
    s" src/core/cell-effects.f" s" src/core/pointer-storage-effects.f" BCG-MUST-BEFORE
    s" src/core/pointer-storage-effects.f" s" src/core/structures-effects.f" BCG-MUST-BEFORE ;
@@ -481,6 +522,7 @@ public
    BCG-TEST-FORTH-SDQ-COMMENT
    BCG-TEST-PREFIX-LIST
    BCG-TEST-TOK-IMM-MIRROR
+   BCG-TEST-ENGINE-ERROR
    BCG-TEST-CELL-PARITY
    BCG-CAP:TEST
    BCG-TEST-BAKED-SOURCE-PREFIX

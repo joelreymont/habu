@@ -118,7 +118,7 @@ MAP-HASH-MASK MAP-HEADER-CELLS - MAP-SLOT-CELLS / constant MAP-MAX-CAP
       0 of SLOT--STATE:EMPTY endof
       1 of SLOT--STATE:DELETED endof
       2 of SLOT--STATE:OCCUPIED endof
-      E-BAD-TAG throw
+      ENGINE-ERROR:BAD-TAG throw
    endcase ;
 
 : MAP-SLOT-STATE! ( slot-state ptr a idx -- ) {: m:ptr ix:idx :}   \ enum stays on stack; the checker owns state validity

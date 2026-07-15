@@ -604,6 +604,10 @@ address arithmetic at the public boundary.
 
 ## Errors
 
+- Engine process failures use only the sealed `ENGINE-ERROR` package ABI:
+  `SEAL-VIOLATION` 83, `SEAL-PACKAGE` 84, `BAD-TAG` 85, `CALLABLE-ABI` 86,
+  `CATCH-STACK` 87, and `CODE-CERT` 88. Global `E-*` aliases are forbidden;
+  native and no-binary recovery consume the same qualified names and values.
 - **Fallible words `throw` a named code** (defined in `src/config.fs`,
   e.g. `E-MISMATCH`); they never fail silently or return an out-of-band flag in
   place of an error.

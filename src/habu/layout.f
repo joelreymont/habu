@@ -105,16 +105,14 @@ $20 constant FRIEND-ARENA               \ arena base offset within the DATA regi
 $90 constant FRIEND-ARENA-LEN           \ 18 cells: latch + 16 crown jewels + seal-ndict watermark
 FRIEND-ARENA constant FRIEND-LATCH-CELL \ 0 = friend on/open, FRIEND-ARENA-LEN = sealed
 $A8 constant SEAL-NDICT-CELL            \ seal-time ndict watermark (TFAM 2b-iii); 0 until SEAL-CAPTURE
-83 constant E-SEAL-VIOLATION            \ process exit status for a post-seal protected write
-84 constant E-SEAL-PACKAGE              \ exit status for a sealed system-package open/reopen from user source
-\ E-BAD-TAG: runtime exit status when a compiled MATCH reaches its invalid-tag
+
+\ ENGINE-ERROR:BAD-TAG is the runtime exit status when a compiled MATCH reaches its invalid-tag
 \ fallback (TFAM 10 slice 3, docs/type-families.md §16/§24). The compiler emits a
 \ self-contained die (write "hb: bad <family> tag\n" to fd 2 + NR-EXIT-GROUP) with
 \ NO normal continuation at the tail of every MATCH. A well-typed scrutinee never
 \ reaches it; a forged tag (TRUSTED constructor) exits deterministically with this
 \ code. 85 is free repo-wide (the fixed engine exits are 64/67/69/70/71/74/75/76/
 \ 77/78/83/84/127); it sits above the seal codes in the runtime-exit family.
-85 constant E-BAD-TAG
 67 constant UNCAUGHT-RC                 \ deterministic exit status for an uncaught top-level throw (BTHROW
                                         \ THROW-NOREC): the raw code was exit_group'd and kernel-masked to
                                         \ 8 bits, so a multiple of 256 exited 0 silently - fail-open. 67 is
@@ -323,7 +321,7 @@ $27A8 constant CMM-CELL
 \ fail-closed `set-top-check` prim (habu1.f BSETTOPCHECK), which mirrors
 \ `set-check`/BSETCHECK's live-code install window; the cell is its own
 \ PROT-GUARD band (habu1.f GUARD-SPAN/PROT-GUARD) so a post-seal raw store
-\ traps E-SEAL-VIOLATION exactly like the HOOK-CELL crown jewel. It sits in
+\ traps ENGINE-ERROR:SEAL-VIOLATION exactly like the HOOK-CELL crown jewel. It sits in
 \ the reclaimed band between TRUSTED-CELL ($27B8) and RSTK-OFF ($2800) and is
 \ snapshot-persistent (< DATA-START) like HOOK-CELL. When installed, the
 \ interpret dispatch points (habu2.f EM-INTERPRET-FIND / EM-INTERPRET-NUMBER

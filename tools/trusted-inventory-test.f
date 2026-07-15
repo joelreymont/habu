@@ -29,7 +29,9 @@ ARGV-USE-SCRIPT
 
 package TINV-TEST
 
-$40000 constant MD-CAP
+\ TRUSTED.md is 262,685 bytes on the ENGINE-ERROR cutover tree; 25% headroom is
+\ 328,357 bytes, so the next power-of-two arena is $80000.
+$80000 constant MD-CAP
 create MD-BUF MD-CAP allot
 
 variable LIVE-ROWS

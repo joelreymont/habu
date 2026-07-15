@@ -94,7 +94,8 @@ TR-FILES: TR-AOT-NEG-PHASE-FILES
 
 TR-FILES: TR-UNDER-SOURCE-FILES
    tools/build-fixpoint.f tools/stdin-closure-lib.f src/habu/hide.f src/core/util.f
-   src/core/cell.f src/core/pointer-storage.f src/core/structures.f src/core/checker.f
+   src/core/cell.f src/core/pointer-storage.f src/core/structures.f src/core/engine-error.f src/core/checker.f
+   src/core/engine-error-effects.f
    src/core/lower-cert-base.f
    src/core/type-schema.f src/core/type-family.f
    src/core/render.f src/core/sumtype.f

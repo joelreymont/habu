@@ -852,7 +852,7 @@ public
 \ zero-, one-, and multi-payload prologues are all exercised and the payload cells
 \ arrive in order; a nested MATCH proves the token machine and the fam stack
 \ restore across ;MATCH. A forged tag (TRUSTED constructor with an out-of-range
-\ tag) reaches the die IN A CHILD PROCESS (a die exits the engine): rc E-BAD-TAG
+\ tag) reaches the die IN A CHILD PROCESS (a die exits the engine): rc ENGINE-ERROR:BAD-TAG
 \ (85) + the inline "hb: bad gemt tag" diagnostic. Compile-time rejects
 \ (unknown variant / a token where OF was required) die fail-closed at their
 \ token, and interpret-mode MATCH stays E-UNDEFINED (compile-only keyword; the
@@ -897,7 +897,7 @@ public
    SB-RESET  s" 7" SB-APPEND GE-SB-LF  s" 7" SB-APPEND GE-SB-LF  s" 0" SB-APPEND GE-SB-LF
    SB$ s" nested match output" GE-EXPECT-OUT ;
 
-: GE-MATCH-BAD-TAG ( -- )               \ forged tag dies E-BAD-TAG in a child process
+: GE-MATCH-BAD-TAG ( -- )               \ forged tag dies ENGINE-ERROR:BAD-TAG in a child process
    GE-HB-RESET
    GE-SRC-RESET
    GE-MATCH-EXEC-SRC
@@ -905,7 +905,7 @@ public
    s" : RN ( gemt -- n ) MATCH gemt one OF ENDOF two OF + ENDOF nil OF 0 ENDOF ;MATCH ;" GE-SRC-LINE
    s" : GO ( -- ) GE-FORGE RN . ;  GO" GE-SRC-LINE
    GE-HB$ GE-SRC-BUF GE-SRC-U @ GE-TIMEOUT-MS GE-RUN-STDIN
-   85 s" forged tag dies with E-BAD-TAG" GE-EXPECT-RC
+   ENGINE-ERROR:BAD-TAG s" forged tag dies with ENGINE-ERROR:BAD-TAG" GE-EXPECT-RC
    s" hb: bad gemt tag" s" bad-tag diagnostic" GE-EXPECT-ERR-HAS ;
 
 : GE-MATCH-BAD-VARIANT ( -- )           \ unknown variant dies at ITS token
@@ -933,7 +933,7 @@ public
    GE-MATCH-BAD-VARIANT
    GE-MATCH-EXPECTED-OF
    s" match" 70 s" interpret match fails closed" GE-UNCAUGHT-RUN
-   s" PASS: match lowers natively; forged tag dies E-BAD-TAG; interpret stays fail-closed" type cr ;
+   s" PASS: match lowers natively; forged tag dies ENGINE-ERROR:BAD-TAG; interpret stays fail-closed" type cr ;
 
 \ Dictionary-capacity exit diagnostic (dot habu-gate-runner-entry-81c84af0):
 \ a tool closure needing more than DICT-CAP records died exit_group(77)

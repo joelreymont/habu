@@ -210,7 +210,7 @@ public
    addr TXN-STATE-OFF TXN-STATE-LEN trap GUARD-BAND
    addr trap GUARD:SPAN
    ok B,
-   trap LBL,  0 E-SEAL-VIOLATION MOVZ,  NR-EXIT-GROUP SYS,
+   trap LBL,  0 ENGINE-ERROR:SEAL-VIOLATION MOVZ,  NR-EXIT-GROUP SYS,
    ok LBL, ;
 
 : PROT-GUARD ( n -- )
@@ -225,7 +225,7 @@ public
    addr TXN-STATE-OFF TXN-STATE-LEN trap GUARD-ADDR-BAND
    addr trap GUARD:ADDR
    ok B,
-   trap LBL,  0 E-SEAL-VIOLATION MOVZ,  NR-EXIT-GROUP SYS,
+   trap LBL,  0 ENGINE-ERROR:SEAL-VIOLATION MOVZ,  NR-EXIT-GROUP SYS,
    ok LBL, ;
 
 \ A code emission target owns one aligned instruction inside the writable code
@@ -241,7 +241,7 @@ public
    addr DREG CMP,  C-HI trap BCOND,
    EREG addr 3 ANDI,  EREG trap CBNZ,
    ok B,
-   trap LBL,  0 E-SEAL-VIOLATION MOVZ,  NR-EXIT-GROUP SYS,
+   trap LBL,  0 ENGINE-ERROR:SEAL-VIOLATION MOVZ,  NR-EXIT-GROUP SYS,
    ok LBL, ;
 
 \ Guard the kernel-written extent encoded by the target ioctl ABI. Linux's
@@ -276,7 +276,7 @@ public
       2 7 GUARD-SPAN
    THEN
    done B,
-   trap LBL,  0 E-SEAL-VIOLATION MOVZ,  NR-EXIT-GROUP SYS,
+   trap LBL,  0 ENGINE-ERROR:SEAL-VIOLATION MOVZ,  NR-EXIT-GROUP SYS,
    done LBL, ;
 
 \ ---- primitive bodies (operate on the x19 data stack) ----
@@ -1154,7 +1154,7 @@ s" spawn-darwin-finish" s" label label --" TRUST
 \ cp!/ndict! are the FORGET code-emit sinks: cp! redirects JIT emission to the
 \ popped CP, ndict! points the next dict-record write at DBASE+n*DREC. Both guard
 \ the address or full span each sink redirects a write to, so a post-seal value
-\ landing in either sealed band fails closed at the sink (E-SEAL-VIOLATION), exactly
+\ landing in either sealed band fails closed at the sink (ENGINE-ERROR:SEAL-VIOLATION), exactly
 \ like the raw-store guards — not via the incidental word-creation bounds check.
 \ Legit FORGET marks live in the code/dict region (DBASE-relative), whose region
 \ offset is never inside a data-base band, so the latch-gated guard leaves them intact.
@@ -2039,7 +2039,7 @@ s" linux-stat-fix" s" n --" TRUST
    14 DATA PROT-WID-N-CELL LDR,
    14 PROT-WID-MAX CMPI,  C-LT room BCOND,
       0 2 MOVZ,  1 msg ADR,  2 28 MOVZ,  NR-WRITE SYS,    \ registry full: name the cap on fd 2 before exit 84
-      0 E-SEAL-PACKAGE MOVZ,  NR-EXIT-GROUP SYS,
+      0 ENGINE-ERROR:SEAL-PACKAGE MOVZ,  NR-EXIT-GROUP SYS,
       msg LBL,  s" hb: protected-WID table full" BYTES,   \ 28 bytes; data reached only via ADR
    room LBL,
    15 PROT-WID-OFF MOVZ,  15 DATA 15 ADD,

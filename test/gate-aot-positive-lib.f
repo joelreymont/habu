@@ -171,7 +171,7 @@ $10000 constant GAP-STRIPPED-TEXT-MAX
 \ matched family + helper is AOT-built with a SELECTED non-MAIN entry (the helper)
 \ and a forged value-stack seed (payload slots + an out-of-range tag), so the
 \ stripped image starts at the helper and reaches its inline invalid-tag die
-\ (rc E-BAD-TAG 85 + "hb: bad gemt tag"). The SAME source built normally (entry
+\ (rc ENGINE-ERROR:BAD-TAG 85 + "hb: bad gemt tag"). The SAME source built normally (entry
 \ MAIN) exits 0, and the entry/seed/mode axis is folded into every cache layer
 \ (artifact key + source-index key + object bytes) so the two are distinct
 \ artifacts with no cross-restore in either direction, and the die survives an
