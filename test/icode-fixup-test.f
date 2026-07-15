@@ -31,7 +31,6 @@ package ICODE-FIXUP-TEST
 $801 constant SEQ-N
 $28000 constant WANT-TAB-BYTES
 $1000 constant CAPTURE-CAP
-72 constant ICODE-EXIT-RC
 10000 constant TIMEOUT-MS
 
 create OUT CAPTURE-CAP allot
@@ -135,6 +134,60 @@ variable WP
    5 WORD@ $94000001 T=
    TEST-MIXED-FREE ;
 
+: TEST-BACKWARD ( -- )
+   ASM-INIT
+   LBL {: target:label :}
+   target LBL,
+   LBLP target LABEL>N SLOT@ 0 T=
+   0 EMITW
+   target B,
+   target BL,
+   C-EQ target BCOND,
+   3 target CBZ,
+   4 target CBNZ,
+   5 target ADR,
+   ASM-CP @ 7 T=
+   0 WORD@ 0 T=
+   1 WORD@ $17FFFFFF T=
+   2 WORD@ $97FFFFFE T=
+   3 WORD@ $54FFFFA0 T=
+   4 WORD@ $B4FFFF83 T=
+   5 WORD@ $B5FFFF64 T=
+   6 WORD@ $10FFFF45 T=
+   NFX @ 0 T=
+   FX-FREE @ -1 T= ;
+
+: TEST-REBIND-STATE ( label n -- )
+   {: target:label words:n :}
+   target LBL-BOUND? TTRUE
+   LBLP target LABEL>N SLOT@ 2 T=
+   LBLP target LABEL>N 1 + SLOT@ -1 T=
+   FXH target LABEL>N SLOT@ -1 T=
+   FXH target LABEL>N 1 + SLOT@ 1 T=
+   FX-FREE @ 0 T=
+   NFX @ 1 T=
+   FX-NEW @ 2 T=
+   FXN 0 SLOT@ -1 T=
+   FXN 1 SLOT@ -1 T=
+   FXS 0 SLOT@ 0 T=
+   FXK 0 SLOT@ 0 T=
+   FXS 1 SLOT@ 1 T=
+   FXK 1 SLOT@ 0 T=
+   ASM-CP @ words T=
+   0 WORD@ $14000002 T=
+   1 WORD@ $14000000 T=
+   words 3 = if 2 WORD@ 0 T= then ;
+
+: TEST-REBIND-AT ( bool -- )
+   ASM-INIT
+   LBL {: target:label :}
+   LBL {: pending:label :}
+   target B,
+   pending B,
+   target LBL,
+   if 0 EMITW 3 else 2 then
+   target swap TEST-REBIND-STATE ;
+
 : FULL-WANT ( n -- n )
    ICODE-TAB-CELLS swap - $14000000 or ;
 
@@ -180,6 +233,16 @@ variable WP
    0 FX-FREE !
    LBL B, ;
 
+: EMIT-REDEFINE ( bool -- )
+   ASM-INIT
+   LBL {: target:label :}
+   LBL {: pending:label :}
+   target B,
+   pending B,
+   target LBL,
+   if 0 EMITW then
+   target LBL, ;
+
 : CHILD-MODE? ( ptr u8 n -- bool )
    SCRIPT-ARGC 1 <> if 2drop 0 0= 0= exit then
    0 SCRIPT-ARGV$ 2swap STR= ;
@@ -214,10 +277,18 @@ variable WP
    s" corrupt-low" s" icode: fixup free list corrupt" TEST-DIAG
    s" corrupt-future" s" icode: fixup free list corrupt" TEST-DIAG ;
 
+: TEST-REDEFINE ( -- )
+   0 0= 0= TEST-REBIND-AT
+   0 0= TEST-REBIND-AT
+   s" redefine-same" s" icode: label redefined" TEST-DIAG
+   s" redefine-different" s" icode: label redefined" TEST-DIAG ;
+
 : MAIN ( -- )
    T-RESET
    TEST-SEQUENTIAL
    TEST-MIXED
+   TEST-BACKWARD
+   TEST-REDEFINE
    TEST-FULL
    TEST-OVERFLOW
    TEST-CORRUPT
@@ -228,6 +299,8 @@ variable WP
    s" overflow" CHILD-MODE? if EMIT-OVERFLOW exit then
    s" corrupt-low" CHILD-MODE? if EMIT-CORRUPT-LOW exit then
    s" corrupt-future" CHILD-MODE? if EMIT-CORRUPT-FUTURE exit then
+   s" redefine-same" CHILD-MODE? if 0 0= 0= EMIT-REDEFINE exit then
+   s" redefine-different" CHILD-MODE? if 0 0= EMIT-REDEFINE exit then
    MAIN ;
 
 RUN

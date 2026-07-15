@@ -8,6 +8,7 @@ $1002 constant ICODE-MAP-PRIVATE-ANON
 $1000 constant ICODE-TAB-CELLS
 $5 constant ICODE-TAB-COUNT
 ICODE-TAB-CELLS ICODE-TAB-COUNT * cells constant ICODE-TAB-BYTES
+72 constant ICODE-EXIT-RC
 variable CODE-A
 variable ICODE-TAB-A
 variable ASM-CP
@@ -22,7 +23,7 @@ variable I-W
 
 : CODE-ALLOC ( -- n )
    0 CODE-CAP-BYTES 3 ICODE-MAP-PRIVATE-ANON -1 0 mmap
-   dup 0 < IF s" icode: code mmap failed" 72 die THEN ;
+   dup 0 < if s" icode: code mmap failed" ICODE-EXIT-RC die then ;
 
 : CODE ( -- ptr u8 )
    CODE-A @ 0= IF CODE-ALLOC CODE-A ! THEN
@@ -31,7 +32,7 @@ s" CODE" s" -- ptr u8" TRUST
 
 : ICODE-TAB-ALLOC ( -- n )
    0 ICODE-TAB-BYTES 3 ICODE-MAP-PRIVATE-ANON -1 0 mmap
-   dup 0 < IF s" icode: table mmap failed" 72 die THEN ;
+   dup 0 < if s" icode: table mmap failed" ICODE-EXIT-RC die then ;
 
 : ICODE-TABS ( -- ptr n )
    ICODE-TAB-A @ 0= IF ICODE-TAB-ALLOC ICODE-TAB-A ! THEN
@@ -52,7 +53,7 @@ s" ICODE-TABS" s" -- ptr n" TRUST
    $4 * CODE swap CODE-BYTE+ ;
 
 : ASM-CP? ( n -- )
-   ASM-CP @ + CODE-CAP-WORDS > IF s" icode: code buffer overflow" 72 die THEN ;
+   ASM-CP @ + CODE-CAP-WORDS > if s" icode: code buffer overflow" ICODE-EXIT-RC die then ;
 \ Keep stage-source words local-free: the Gforth recovery compiler must check
 \ this file before the native checker is available.
 variable EP
@@ -103,7 +104,7 @@ variable FX-NEW
       1 + dup LBL-CAP 1 - >
    until drop ;
 
-: ?LBL ( -- )  NLBL @ LBL-CAP 1- > IF s" icode: out of labels" 72 die THEN ;
+: ?LBL ( -- )  NLBL @ LBL-CAP 1- > if s" icode: out of labels" ICODE-EXIT-RC die then ;
 
 : FX-FREE-BAD? ( -- bool )
    FX-NEW @ 0 <
@@ -117,17 +118,23 @@ variable FX-NEW
    then ;
 
 : FX? ( -- )
-   NFX @ 0 < if s" icode: fixup count corrupt" 72 die then
+   NFX @ 0 < if s" icode: fixup count corrupt" ICODE-EXIT-RC die then
    NFX @ ICODE-TAB-CELLS 1 - > if
-      s" icode: out of fixups" 72 die
+      s" icode: out of fixups" ICODE-EXIT-RC die
    then
-   FX-FREE-BAD? if s" icode: fixup free list corrupt" 72 die then ;
+   FX-FREE-BAD? if s" icode: fixup free list corrupt" ICODE-EXIT-RC die then ;
 
 : LBL ( -- label )  ?LBL  NLBL @ dup 1 + NLBL !  >LABEL ;
 
 : LABEL@ ( ptr n -- label ) @ >LABEL ;
 
 : LABEL! ( label ptr n -- ) swap LABEL>N swap ! ;
+
+: LBL-BOUND? ( label -- bool )
+   LABEL>N cells LBLP + @ 0 >= ;
+
+: ?LBL-UNBOUND ( label -- )
+   LBL-BOUND? if s" icode: label redefined" ICODE-EXIT-RC die then ;
 
 : FX-TAKE ( -- n )
    FX?
@@ -198,7 +205,7 @@ variable LBI
    LBI @ cells FXS + @ PATCH ;
 
 : LBL, ( label -- )
-   LABEL>N I-LBL !
+   dup ?LBL-UNBOUND LABEL>N I-LBL !
    I-LBL @ cells FXH + @ LBI !
    -1 I-LBL @ cells FXH + !
    ASM-CP @ I-LBL @ cells LBLP + !
@@ -214,7 +221,7 @@ variable LBI
    dup $FFFFFFFF and EMITW  $20 rshift EMITW ;   \ one 64-bit cell, LE
 
 : DLBL, ( label -- )                                  \ cell = label's byte offset
-   LABEL>N cells LBLP + @ dup 0 < IF s" icode: DLBL forward ref" 72 die THEN  $4 * DCQ, ;
+   LABEL>N cells LBLP + @ dup 0 < if s" icode: DLBL forward ref" ICODE-EXIT-RC die then  $4 * DCQ, ;
 variable BYP
 variable BYA
 variable BYU
