@@ -13,6 +13,15 @@ require lib/adt/option.f
 -7301 constant E-PERF-CAP    \ registry buffer/row capacity exceeded
 -7302 constant E-PERF-KEY    \ compared rows do not share kernel+config+device
 
+\ typed STR:SPLIT-NEXT boundary: the field cursor stores raw byte offsets, so
+\ project the byte-off / byte-len role results back to the raw cells the row
+\ scanner threads through PF-START and the field span.
+package CAD-NUM
+public
+: PF-BO>N ( CAD-NUM:byte-off -- n ) BYTE-OFF>N ;
+: PF-BL>N ( CAD-NUM:byte-len -- n ) BYTE-LEN>N ;
+;package
+
 package PERF
 
 $10000 constant BUF-CAP
@@ -79,11 +88,12 @@ variable LOK-U
    BUF PF-LOFF @ + PF-LU @ ;
 
 : FIELD-NEXT ( -- ptr u8 n )
-   LINE$ TAB-C PF-START @ SPLIT-NEXT 0= if E-PERF-ROW throw then
-   PF-START ! ;
+   LINE$ STR:LENGTH TAB-C PF-START @ STR:OFFSET STR:SPLIT-NEXT 0= if E-PERF-ROW throw then
+   CAD-NUM:PF-BO>N PF-START !
+   CAD-NUM:PF-BL>N ;
 
 : FIELDS-END-CHECK ( -- )
-   LINE$ TAB-C PF-START @ SPLIT-NEXT if drop 2drop E-PERF-ROW throw then
+   LINE$ STR:LENGTH TAB-C PF-START @ STR:OFFSET STR:SPLIT-NEXT if drop 2drop E-PERF-ROW throw then
    drop 2drop ;
 
 : FIELD-NUM ( -- n )

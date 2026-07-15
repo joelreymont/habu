@@ -62,7 +62,7 @@ variable LINT-OUT-ON
 
 : LINT-OUT-WRITE ( n ptr u8 n -- ) {: fd:n a:ptr u:n :}
    LINT-OUT-ON @ IF
-      a u LINT-OUT-A@ LINT-OUT-CAP @ LINT-OUT-U BUF-APPEND
+      a u STR:LENGTH LINT-OUT-A@ LINT-OUT-CAP @ STR:LENGTH LINT-OUT-U STR:BUF-APPEND
       exit
    THEN
    fd a u LINT-FD-WRITE ;
@@ -274,10 +274,10 @@ create SOFF SMAX cells allot   create SLEN SMAX cells allot   variable SN#
       THEN
    repeat ;
 : JOIN-SPLIT ( ptr u8 n ptr u8 n ptr len -- ) {: sep:ptr su dst:ptr cap lp:ptr :}
-   lp BUF-RESET
+   lp STR:BUF-RESET
    0 begin dup SN# @ < while
-      dup 0 > IF sep su dst cap lp BUF-APPEND THEN
-      dup S@ dst cap lp BUF-APPEND  1+
+      dup 0 > IF sep su STR:LENGTH dst cap STR:LENGTH lp STR:BUF-APPEND THEN
+      dup S@ STR:LENGTH dst cap STR:LENGTH lp STR:BUF-APPEND  1+
    repeat  drop ;
 : HAS-EXT? ( ptr u8 n ptr u8 n -- bool )  LINT-SUFFIX? ;
 : PATHISH? ( ptr u8 n -- bool ) {: a:ptr u :}

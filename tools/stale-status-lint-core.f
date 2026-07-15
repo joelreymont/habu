@@ -161,7 +161,7 @@ variable SS-ERR-U
 : SS-OUT ( ptr u8 n -- )
    dup 0= IF 2drop exit THEN
    SS-OUT-BUFFERED? IF
-      SS-OUT-A@ SS-OUT-CAP @ SS-OUT-U BUF-APPEND
+      STR:LENGTH SS-OUT-A@ SS-OUT-CAP @ STR:LENGTH SS-OUT-U STR:BUF-APPEND
       exit
    THEN
    1 -rot write drop ;
@@ -169,7 +169,7 @@ variable SS-ERR-U
 : SS-ERR ( ptr u8 n -- )
    dup 0= IF 2drop exit THEN
    SS-ERR-BUFFERED? IF
-      SS-ERR-A@ SS-ERR-CAP @ SS-ERR-U BUF-APPEND
+      STR:LENGTH SS-ERR-A@ SS-ERR-CAP @ STR:LENGTH SS-ERR-U STR:BUF-APPEND
       exit
    THEN
    2 -rot write drop ;

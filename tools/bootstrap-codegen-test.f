@@ -3,7 +3,7 @@
 
 require lib/errors.f
 require lib/string.f
-require lib/adt/option.f                 \ option<idx> FIND-SUB consumer (switchover wave A)
+require lib/adt/option.f                 \ option<CAD-NUM:index> STR:FIND-SUB consumer
 require lib/test.f
 require lib/memory.f
 require lib/vector.f
@@ -35,8 +35,20 @@ variable BCG-LEN
 : BCG-MUST-LACK ( ptr u8 n -- )
    BCG-HAS? 0= TTRUE ;
 
+\ typed STR:FIND-SUB boundary: route byte-lengths through the STR: role surface,
+\ project the option<CAD-NUM:index> result back to the switchover option<idx>.
+package CAD-NUM
+public
+: BCG-IX>N ( CAD-NUM:index -- n ) INDEX>N ;
+;package
+: BCG-FIND ( ptr u8 n ptr u8 n -- option<idx> ) {: a:ptr u:n b:ptr v:n :}
+   a u STR:LENGTH b v STR:LENGTH STR:FIND-SUB MATCH option
+     none OF OPTION:NONE ENDOF
+     some OF CAD-NUM:BCG-IX>N >IDX OPTION:SOME ENDOF
+   ;MATCH ;
+
 : BCG-POS ( ptr u8 n -- option<idx> )
-   BCG-SOURCE 2swap FIND-SUB ;
+   BCG-SOURCE 2swap BCG-FIND ;
 
 : BCG-POS-FOUND ( ptr u8 n -- n )
    BCG-POS MATCH option
@@ -140,7 +152,7 @@ public
    BCG-SOURCE {: src:ptr srcu :}
    start 0 < if OPTION:NONE exit then
    start srcu >= if OPTION:NONE exit then
-   src start + srcu start - needle nu FIND-SUB MATCH option
+   src start + srcu start - needle nu BCG-FIND MATCH option
      none OF OPTION:NONE ENDOF
      some OF IDX>N start + >IDX OPTION:SOME ENDOF
    ;MATCH ;

@@ -206,11 +206,11 @@ variable PS-DEF-SIG-U
 
 : PS-WRITE-BUFFERED ( n ptr u8 n -- bool ) {: fd:n a:ptr u:n :}
    fd 1 = PS-OUT-A@ 0= 0= and IF
-      a u PS-OUT-A@ PS-OUT-CAP @ PS-OUT-U BUF-APPEND
+      a u STR:LENGTH PS-OUT-A@ PS-OUT-CAP @ STR:LENGTH PS-OUT-U STR:BUF-APPEND
       PS-TRUE exit
    THEN
    fd 2 = PS-ERR-A@ 0= 0= and IF
-      a u PS-ERR-A@ PS-ERR-CAP @ PS-ERR-U BUF-APPEND
+      a u STR:LENGTH PS-ERR-A@ PS-ERR-CAP @ STR:LENGTH PS-ERR-U STR:BUF-APPEND
       PS-TRUE exit
    THEN
    PS-FALSE ;

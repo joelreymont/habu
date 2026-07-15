@@ -4,7 +4,7 @@
 \ lib/process.f, lib/process-argv.f, lib/process-env.f, and lib/codesign.f.
 \ The stamp key uses the baked SHA256 words; no lib/content-key.f dependency.
 
-require lib/adt/option.f                 \ option<idx> FIND-SUB consumer (switchover wave A)
+require lib/adt/option.f                 \ option<CAD-NUM:index> STR:FIND-SUB consumer
 require src/habu/verify-source.f
 require tools/stdin-closure-lib.f
 
@@ -542,8 +542,20 @@ public
 : BF-SOURCE-HAS? ( ptr u8 n -- bool )
    BF-SOURCE-BUF BF-SOURCE-LEN @ 2swap CONTAINS? ;
 
+\ typed STR:FIND-SUB boundary: route byte-lengths through the STR: role surface,
+\ project the option<CAD-NUM:index> result back to the switchover option<idx>.
+package CAD-NUM
+public
+: BF-IX>N ( CAD-NUM:index -- n ) INDEX>N ;
+;package
+: BF-FIND ( ptr u8 n ptr u8 n -- option<idx> ) {: a:ptr u:n b:ptr v:n :}
+   a u STR:LENGTH b v STR:LENGTH STR:FIND-SUB MATCH option
+     none OF OPTION:NONE ENDOF
+     some OF CAD-NUM:BF-IX>N >IDX OPTION:SOME ENDOF
+   ;MATCH ;
+
 : BF-SOURCE-FIND ( ptr u8 n -- option<idx> )
-   BF-SOURCE-BUF BF-SOURCE-LEN @ 2swap FIND-SUB ;
+   BF-SOURCE-BUF BF-SOURCE-LEN @ 2swap BF-FIND ;
 
 : BF-SOURCE-REQUIRE ( option<idx> -- n )
    MATCH option
@@ -984,7 +996,7 @@ public
    s\" \nLOWER-CERT-HOOK:INSTALL\n" ;
 
 : BF-SUB-STEP ( ptr u8 n ptr u8 n -- bool ) {: a:ptr u:n nd:ptr ndu:n :}
-   a BF-AUD-I @ BYTE+ u BF-AUD-I @ - nd ndu FIND-SUB MATCH option
+   a BF-AUD-I @ BYTE+ u BF-AUD-I @ - nd ndu BF-FIND MATCH option
      none OF BF-FALSE exit ENDOF
      some OF IDX>N ENDOF
    ;MATCH {: off:n :}
@@ -1001,7 +1013,7 @@ public
    BF-AUD-N @ ;
 
 : BF-FIRST-SUB ( ptr u8 n ptr u8 n -- n )
-   FIND-SUB MATCH option
+   BF-FIND MATCH option
      none OF -1 ENDOF
      some OF IDX>N ENDOF
    ;MATCH ;

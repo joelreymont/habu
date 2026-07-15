@@ -6,7 +6,7 @@
 
 require lib/errors.f
 require lib/string.f
-require lib/adt/option.f                 \ option<idx> FIND-SUB consumer (switchover wave A)
+require lib/adt/option.f                 \ option<CAD-NUM:index> STR:FIND-SUB consumer
 require lib/test.f
 require lib/memory.f
 require lib/fs.f
@@ -540,10 +540,22 @@ create BFT-ERR BFT-CAPTURE-CAP allot
    BFT-STALE-HB s" bin/hb" BF-FILE= TTRUE
    BFT-STALE-STAMP FILE? TFALSE ;
 
+\ typed STR:FIND-SUB boundary: route byte-lengths through the STR: role surface,
+\ project the option<CAD-NUM:index> result back to the switchover option<idx>.
+package CAD-NUM
+public
+: BFT-IX>N ( CAD-NUM:index -- n ) INDEX>N ;
+;package
+: BFT-FIND ( ptr u8 n ptr u8 n -- option<idx> ) {: a:ptr u:n b:ptr v:n :}
+   a u STR:LENGTH b v STR:LENGTH STR:FIND-SUB MATCH option
+     none OF OPTION:NONE ENDOF
+     some OF CAD-NUM:BFT-IX>N >IDX OPTION:SOME ENDOF
+   ;MATCH ;
+
 : BFT-FIND-AFTER ( ptr u8 n n ptr u8 n -- option<idx> ) {: a:ptr u:n start:n needle:ptr nu:n :}
    start 0 < if OPTION:NONE exit then
    start u >= if OPTION:NONE exit then
-   a start BYTE+ u start - needle nu FIND-SUB MATCH option
+   a start BYTE+ u start - needle nu BFT-FIND MATCH option
      none OF OPTION:NONE ENDOF
      some OF IDX>N start + >IDX OPTION:SOME ENDOF
    ;MATCH ;
@@ -579,7 +591,7 @@ create BFT-ERR BFT-CAPTURE-CAP allot
    BFT-READ-BUF u s" : ATOMA-FIELD" CONTAINS? TTRUE
    BFT-READ-BUF u s" 0 constant T-CON" CONTAINS? TTRUE
    BFT-READ-BUF u s" LOWER-CERT-HOOK:INSTALL" CONTAINS? TTRUE
-   BFT-READ-BUF u s" undefine FULL-XT" FIND-SUB BFT-FOUND {: seal-base:n :}
+   BFT-READ-BUF u s" undefine FULL-XT" BFT-FIND BFT-FOUND {: seal-base:n :}
    BFT-READ-BUF u seal-base s" SEAL-FRIEND" BFT-FIND-AFTER BFT-FOUND {: seal:n :}
    BFT-READ-BUF u seal s" \ driver-io.f" BFT-FIND-AFTER BFT-FOUND {: driver:n :}
    seal-base seal < TTRUE
@@ -593,7 +605,7 @@ create BFT-ERR BFT-CAPTURE-CAP allot
 
 : BFT-TEST-CHECKED-REGALLOC ( -- )
    BFT-STAGE2 BFT-READ {: u :}
-   BFT-READ-BUF u s" : BPROF-ON" FIND-SUB BFT-FOUND BFT-PROF-I !
+   BFT-READ-BUF u s" : BPROF-ON" BFT-FIND BFT-FOUND BFT-PROF-I !
    BFT-READ-BUF u BFT-PROF-I @ s" : EMIT-VRINIT" BFT-FIND-AFTER BFT-FOUND BFT-REG-I !
    BFT-READ-BUF u BFT-REG-I @ s" : FOLD-ENTRY" BFT-FIND-AFTER BFT-FOUND BFT-JIT-I !
    BFT-PROF-I @ BFT-REG-I @ < TTRUE
@@ -605,7 +617,7 @@ create BFT-ERR BFT-CAPTURE-CAP allot
 \ BUILD-IMAGE/BUILD-SNAP-HDR/SET-SIGID/CODESIG2 fails the stage compile.
 : BFT-TEST-CHECKED-TARGET-IMAGE ( -- )
    BFT-STAGE2 BFT-READ {: u :}
-   BFT-READ-BUF u s" : ASM-CODELEN!" FIND-SUB BFT-FOUND BFT-IMG-I !
+   BFT-READ-BUF u s" : ASM-CODELEN!" BFT-FIND BFT-FOUND BFT-IMG-I !
    BFT-READ-BUF u BFT-IMG-I @ s" : BUILD-IMAGE" BFT-FIND-AFTER BFT-FOUND BFT-IMG-BUILD-I !
    BFT-READ-BUF u BFT-IMG-BUILD-I @ s" : RPD@" BFT-FIND-AFTER BFT-FOUND BFT-HABU1-I !
    BFT-READ-BUF u BFT-IMG-I @ BF-BOUNDARY-RAW-OFF$ BFT-FIND-AFTER BFT-NOT-FOUND
@@ -625,7 +637,7 @@ create BFT-ERR BFT-CAPTURE-CAP allot
    BFT-ROOT BF-TMP!
    BF-SNAP-SOURCE
    BFT-SNAP BFT-READ {: u :}
-   BFT-READ-BUF u s" : SNAP-TAIL-MARK" FIND-SUB BFT-FOUND {: mark:n :}
+   BFT-READ-BUF u s" : SNAP-TAIL-MARK" BFT-FIND BFT-FOUND {: mark:n :}
    BFT-READ-BUF u mark s" SEAL-FRIEND" BFT-FIND-AFTER BFT-FOUND {: seal:n :}
    BFT-READ-BUF u seal s" : ASM-CODELEN!" BFT-FIND-AFTER BFT-FOUND {: build:n :}
    BFT-READ-BUF u build s" TRUSTED: SNAP-RETIRE-GO ( -- )" BFT-FIND-AFTER BFT-FOUND {: retire:n :}

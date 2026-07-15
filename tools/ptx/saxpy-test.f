@@ -5,7 +5,7 @@
 require lib/ptx/test-prelude.f
 require lib/ptx/process-test-prelude.f
 require tools/ptx/ad-entry-lib.f
-require lib/adt/option.f                 \ option<idx> FIND-SUB consumer (switchover wave A)
+require lib/adt/option.f                 \ option<CAD-NUM:index> STR:FIND-SUB consumer
 
 $8000 constant PTXT-CAP
 10000 constant PTXT-TIMEOUT-MS
@@ -70,10 +70,22 @@ variable PTXT-ERR-SAVE
 : PTXT-NOT-HAS ( ptr u8 n -- ) {: a:ptr u :}
    PTXT-OUT PTXT-OUT-U @ a u CONTAINS? 0= TTRUE ;
 
+\ typed STR:FIND-SUB boundary: route byte-lengths through the STR: role surface,
+\ project the option<CAD-NUM:index> result back to the switchover option<idx>.
+package CAD-NUM
+public
+: PTXT-IX>N ( CAD-NUM:index -- n ) INDEX>N ;
+;package
+: PTXT-FIND ( ptr u8 n ptr u8 n -- option<idx> ) {: a:ptr u:n b:ptr v:n :}
+   a u STR:LENGTH b v STR:LENGTH STR:FIND-SUB MATCH option
+     none OF OPTION:NONE ENDOF
+     some OF CAD-NUM:PTXT-IX>N >IDX OPTION:SOME ENDOF
+   ;MATCH ;
+
 \ non-overlapping occurrences of b/v in a/u (the text-count the .version-once
 \ regression needs; CONTAINS? only proves presence, not multiplicity).
 : PTXT-SUB-COUNT ( ptr u8 n ptr u8 n -- n ) {: a:ptr u:n b:ptr v:n :}
-   a u b v FIND-SUB MATCH option
+   a u b v PTXT-FIND MATCH option
      none OF 0 exit ENDOF
      some OF IDX>N ENDOF
    ;MATCH v + {: adv:n :}
