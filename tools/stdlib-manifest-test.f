@@ -19,7 +19,7 @@ $80000 constant SMT-PUB-CAP                 \ public-signatures JSON for the who
 $4000 constant SMT-ERR-CAP
 $80000 constant SMT-STR-CAP
 1536 constant SMT-WORD-MAX
-64 constant SMT-MOD-MAX
+128 constant SMT-MOD-MAX
 64 constant SMT-LIB-MAX
 11 constant SMT-FIELDS
 $7530 constant SMT-TIMEOUT-MS

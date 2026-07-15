@@ -2,11 +2,15 @@
 \ Load after lib/errors.f, lib/string.f, lib/fs.f, lib/fs-mutate.f,
 \ lib/process.f, lib/process-argv.f, lib/process-env.f, lib/build.f,
 \ lib/memory.f, lib/source.f, lib/codesign.f, lib/content-key.f,
-\ lib/object-resolve.f, tools/object-image.f, tools/build-fixpoint.f,
-\ and tools/cli-run.f.
+\ lib/object-resolve.f, lib/build-cache.f, lib/json-write.f,
+\ tools/hb-build-report.f, tools/object-image.f, tools/build-fixpoint.f, and
+\ tools/cli-run.f.
 
 require lib/adt/option.f                 \ option<CAD-NUM:index> STR:INDEX-OF consumer
 require lib/object-resolve.f
+require lib/build-cache.f
+require lib/json-write.f
+require tools/hb-build-report.f
 require tools/object-image.f
 require tools/event-closure-lib.f
 
@@ -29,7 +33,6 @@ create HBB-MAKER-KEY-HEX 80 allot
 create HBB-SRC-CLOSURE-HEX 80 allot
 create HBB-CHECKER-ABI-BUF HBB-ABI-CAP allot
 create HBB-COMPILER-ABI-BUF HBB-ABI-CAP allot
-create HBB-CACHE-ROOT-BUF FS-PATH-CAP allot
 create HBB-ARTIFACT-PATH FS-PATH-CAP allot
 create HBB-ARTIFACT-TMP-PATH FS-PATH-CAP allot
 create HBB-ARTIFACT-LOCK-PATH FS-PATH-CAP allot
@@ -57,7 +60,6 @@ variable HBB-CHECKER-ABI-U
 variable HBB-COMPILER-ABI-U
 variable HBB-MAKER-U
 variable HBB-MAKER-NAME-U
-variable HBB-CACHE-ROOT-U
 variable HBB-ARTIFACT-U
 variable HBB-ARTIFACT-TMP-U
 variable HBB-ARTIFACT-LOCK-U
@@ -68,6 +70,7 @@ variable HBB-I
 variable HBB-KEY-I
 variable HBB-REPL
 variable HBB-JSON
+variable HBB-REPORT-JSON
 variable HBB-STRICT
 variable HBB-MAKER-HIT
 variable HBB-MAKER-BUILD
@@ -81,6 +84,8 @@ variable HBB-PRESEED
 variable HBB-ENTRY-NAME-U
 variable HBB-SEED-HEX-U
 variable HBB-PRESEED-MODE
+variable HBB-START-NS
+variable HBB-ELAPSED-NS
 
 : HBB-PTR-U8-FIELD ( ptr a -- ptr ptr u8 )
    0 ptr-field ;
@@ -114,7 +119,7 @@ variable HBB-PRESEED-MODE
    s" " rot die ;
 
 : HBB-USAGE ( -- )
-   s" usage: tools/hb-build.f [--repl] [--json-errors] [--strict-signatures] [--preseed-entry NAME --preseed-seed HEX [--preseed-mode N]] source.f -o out" HBB-USAGE-RC die ;
+   s" usage: tools/hb-build.f [--repl] [--json-errors] [--report-json] [--strict-signatures] [--preseed-entry NAME --preseed-seed HEX [--preseed-mode N]] source.f -o out" HBB-USAGE-RC die ;
 
 : HBB-COPY-PATH! ( ptr u8 n ptr u8 ptr n -- ) {: a:ptr u dst:ptr up:ptr :}
    u FS-PATH-CAP > if E-BUILD-PATH throw then
@@ -132,28 +137,6 @@ variable HBB-PRESEED-MODE
 
 : HBB-OUT$ ( -- ptr u8 n )
    HBB-OUT-PATH HBB-OUT-U @ ;
-
-: HBB-CACHE-ROOT! ( ptr u8 n -- )
-   HBB-CACHE-ROOT-BUF HBB-CACHE-ROOT-U HBB-COPY-PATH! ;
-
-: HBB-CACHE-ROOT-SET? ( -- bool )
-   HBB-CACHE-ROOT-U @ 0 > ;
-
-: HBB-CACHE-ROOT-BUF$ ( -- ptr u8 n )
-   HBB-CACHE-ROOT-BUF HBB-CACHE-ROOT-U @ ;
-
-: HBB-CACHE-ROOT? ( -- bool )
-   HBB-CACHE-ROOT-SET? if HBB-TRUE exit then
-   s" HABU_BUILD_CACHE" GETENV dup 0= if
-      2drop HBB-FALSE exit
-   then
-   2drop HBB-TRUE ;
-
-: HBB-CACHE-ROOT$ ( -- ptr u8 n )
-   HBB-CACHE-ROOT-SET? if HBB-CACHE-ROOT-BUF$ exit then
-   s" HABU_BUILD_CACHE" GETENV dup 0= if
-      2drop s" hb-build: missing build cache" HBB-BUILD-RC die
-   then ;
 
 : HBB-WERR ( ptr u8 n -- ) {: a:ptr u :}
    u 0= if exit then
@@ -216,6 +199,7 @@ variable HBB-PRESEED-MODE
 : HBB-RESET-OPTIONS ( -- )
    0 HBB-REPL !
    0 HBB-JSON !
+   0 HBB-REPORT-JSON !
    0 HBB-STRICT !
    0 HBB-PRESEED !
    0 HBB-ENTRY-NAME-U !
@@ -284,6 +268,7 @@ variable HBB-PRESEED-MODE
    HBB-I @ SCRIPT-ARGC >= if HBB-FALSE exit then
    HBB-I @ s" --repl" HBB-ARG= if -1 HBB-REPL ! HBB-INC-I HBB-TRUE exit then
    HBB-I @ s" --json-errors" HBB-ARG= if -1 HBB-JSON ! HBB-INC-I HBB-TRUE exit then
+   HBB-I @ s" --report-json" HBB-ARG= if -1 HBB-REPORT-JSON ! HBB-INC-I HBB-TRUE exit then
    HBB-I @ s" --strict-signatures" HBB-ARG= if -1 HBB-STRICT ! HBB-INC-I HBB-TRUE exit then
    HBB-I @ s" --preseed-entry" HBB-ARG= if HBB-OPT-VALUE$ HBB-PRESEED-ENTRY! HBB-INC-I HBB-TRUE exit then
    HBB-I @ s" --preseed-seed" HBB-ARG= if HBB-OPT-VALUE$ HBB-PRESEED-SEED! HBB-INC-I HBB-TRUE exit then
@@ -328,14 +313,7 @@ variable HBB-PRESEED-MODE
    s" hb-build-native" TMPDIR-MKDIR 2dup BF-TMP! CLEANUP-TREE+ ;
 
 : HBB-PREPARE-MAKER-CACHE ( -- )
-   HBB-CACHE-ROOT? 0= if exit then
-   HBB-CACHE-ROOT$
-   2dup EXISTS? if
-      2dup DIR? 0= if s" hb-build: HABU_BUILD_CACHE is not a directory" HBB-USAGE-RC die then
-      2drop
-   else
-      MAKE-DIRS
-   then ;
+   BUILD-CACHE:RESOLVE drop 2drop ;
 
 : HBB-CLEANUP ( -- )
    CLEANUP-RUN
@@ -493,6 +471,7 @@ HBB-INSTALL-CHILD-LINTS
    s" lib/string.f" HBB-KEY-FILE+
    s" lib/memory.f" HBB-KEY-FILE+
    s" lib/fs.f" HBB-KEY-FILE+
+   s" lib/fs-root.f" HBB-KEY-FILE+
    s" lib/fs-mutate.f" HBB-KEY-FILE+
    s" lib/process.f" HBB-KEY-FILE+
    s" lib/process-argv.f" HBB-KEY-FILE+
@@ -501,6 +480,8 @@ HBB-INSTALL-CHILD-LINTS
    s" lib/build.f" HBB-KEY-FILE+
    s" lib/codesign.f" HBB-KEY-FILE+
    s" lib/content-key.f" HBB-KEY-FILE+
+   s" lib/build-cache.f" HBB-KEY-FILE+
+   s" lib/json-write.f" HBB-KEY-FILE+
    s" lib/object.f" HBB-KEY-FILE+
    s" lib/object-cache.f" HBB-KEY-FILE+
    s" lib/object-index.f" HBB-KEY-FILE+
@@ -513,6 +494,7 @@ HBB-INSTALL-CHILD-LINTS
    s" tools/dynamic-tail-manifest.f" HBB-KEY-FILE+
    s" tools/source-discovery.f" HBB-KEY-FILE+
    s" tools/event-closure-lib.f" HBB-KEY-FILE+
+   s" tools/hb-build-report.f" HBB-KEY-FILE+
    s" tools/hb-build-lib.f" HBB-KEY-FILE+ ;
 
 : HBB-KEY-COMMON-SOURCES ( -- )
@@ -616,20 +598,14 @@ HBB-INSTALL-CHILD-LINTS
    HBB-MAKER-KEY-HEX HBB-MAKER-NAME-BUF u 1 + + 64 BYTE-COPY
    u 65 + HBB-MAKER-NAME-U ! ;
 
-: HBB-MAKER-TMP$ ( -- ptr u8 n )
-   BF-TMP$ HBB-MK-NAME$ HBB-MAKER-PATH JOIN-PATH HBB-MAKER-U !
-   HBB-MAKER-PATH HBB-MAKER-U @ ;
-
 : HBB-MAKER-CACHE$ ( ptr u8 n -- ptr u8 n ) {: root:ptr rootu:n :}
-   root rootu MAKE-DIRS
    HBB-MAKER-KEY!
    HBB-MAKER-NAME!
    root rootu HBB-MAKER-NAME$ HBB-MAKER-PATH JOIN-PATH HBB-MAKER-U !
    HBB-MAKER-PATH HBB-MAKER-U @ ;
 
 : HBB-MAKER$ ( -- ptr u8 n )
-   HBB-CACHE-ROOT? 0= if HBB-MAKER-TMP$ exit then
-   HBB-CACHE-ROOT$ HBB-MAKER-CACHE$ ;
+   BUILD-CACHE:ROOT$ HBB-MAKER-CACHE$ ;
 
 : HBB-SUFFIX! ( ptr u8 n ptr u8 n ptr u8 ptr n -- )
    {: a:ptr u suf:ptr su dst:ptr up:ptr :}
@@ -883,12 +859,11 @@ HBB-INSTALL-CHILD-LINTS
 : HBB-ARTIFACT-PATHS ( -- )
    HBB-ARTIFACT-KEY!
    HBB-ARTIFACT-NAME!
-   HBB-CACHE-ROOT$ HBB-ARTIFACT-NAME$ HBB-ARTIFACT-PATH JOIN-PATH HBB-ARTIFACT-U !
+   BUILD-CACHE:ROOT$ HBB-ARTIFACT-NAME$ HBB-ARTIFACT-PATH JOIN-PATH HBB-ARTIFACT-U !
    HBB-ARTIFACT$ s" .tmp" HBB-ARTIFACT-TMP-PATH HBB-ARTIFACT-TMP-U HBB-SUFFIX!
    HBB-ARTIFACT$ s" .lock" HBB-ARTIFACT-LOCK-PATH HBB-ARTIFACT-LOCK-U HBB-SUFFIX! ;
 
 : HBB-PREPARE-ARTIFACT-CACHE ( -- )
-   HBB-CACHE-ROOT? 0= if exit then
    HBB-PREPARE-MAKER-CACHE
    HBB-ARTIFACT-PATHS
    -1 HBB-ARTIFACT-CACHE ! ;
@@ -903,7 +878,7 @@ HBB-INSTALL-CHILD-LINTS
    HBB-TRUE ;
 
 : HBB-OBJECT-LOAD? ( -- bool )
-   HBB-CACHE-ROOT$ OBJRES:ROOT!
+   BUILD-CACHE:ROOT$ OBJRES:ROOT!
    HBB-SRC-CLOSURE-HEX!
    HBB-SRC-CLOSURE-HEX 64 HBB-TARGET-ABI$ HBB-CHECKER-ABI$ HBB-COMPILER-ABI$ OBJRES:LOAD ;
 
@@ -933,8 +908,7 @@ HBB-INSTALL-CHILD-LINTS
 
 : HBB-STORE-OBJECT ( -- )
    HBB-REPL @ if exit then
-   HBB-CACHE-ROOT? 0= if exit then
-   HBB-CACHE-ROOT$ OBJRES:ROOT!
+   BUILD-CACHE:ROOT$ OBJRES:ROOT!
    HBB-SRC-CLOSURE-HEX!
    HBB-READ-OBJECT-TEXT HBB-BUILD-OBJECT-RECORD
    HBB-VALIDATE-OBJECT
@@ -950,7 +924,6 @@ HBB-INSTALL-CHILD-LINTS
 
 : HBB-OBJECT-HIT? ( -- bool )
    HBB-REPL @ if HBB-FALSE exit then
-   HBB-CACHE-ROOT? 0= if HBB-FALSE exit then
    HBB-OBJECT-LOAD? 0= if HBB-FALSE exit then
    HBB-WRITE-OBJECT
    HBB-TRUE ;
@@ -989,7 +962,20 @@ HBB-INSTALL-CHILD-LINTS
    HBB-OBJ-NAME$ BF-REMOVE-TMP
    HBB-RUN-MAKER-CMD HBB-FINISH-MAKER ;
 
+package HB-BUILD
+public
+
+: REPORT$ ( -- ptr u8 n )
+   BUILD-CACHE:ROOT$ BUILD-CACHE:SOURCE
+   HBB-ARTIFACT-HIT @ 0 <>
+   HBB-OBJECT-HIT @ 0 <>
+   HBB-MAKER-HIT @ 0 <>
+   HBB-ELAPSED-NS @ RENDER ;
+
+;package
+
 : HBB-SUCCESS ( -- )
+   HBB-REPORT-JSON @ if HB-BUILD:REPORT$ type cr exit then
    s" hb-build OK: " type
    HBB-OUT$ type
    HBB-REPL @ if
@@ -999,20 +985,25 @@ HBB-INSTALL-CHILD-LINTS
    then type
    cr ;
 
+: HBB-FINISH ( -- )
+   mono-ns HBB-START-NS @ - HBB-ELAPSED-NS !
+   HBB-SUCCESS ;
+
 : HBB-BUILD ( -- )
+   mono-ns HBB-START-NS !
    HBB-RESET-TRACE
    HBB-RUN-SIGNATURE-LINT
    HBB-RUN-AOT-LINT
    HBB-PREPARE-ARTIFACT-CACHE
-   HBB-RESTORE-ARTIFACT? if HBB-SUCCESS exit then
-   HBB-OBJECT-HIT? if HBB-INSTALL-ARTIFACT HBB-SUCCESS exit then
+   HBB-RESTORE-ARTIFACT? if HBB-FINISH exit then
+   HBB-OBJECT-HIT? if HBB-INSTALL-ARTIFACT HBB-FINISH exit then
    HBB-PREPARE-PROGRAM-SOURCE
    HBB-BUILD-MAKER
    HBB-RUN-MAKER
    HBB-STORE-OBJECT
    HBB-INSTALL-OUT
    HBB-INSTALL-ARTIFACT
-   HBB-SUCCESS ;
+   HBB-FINISH ;
 
 : HBB-MAIN ( -- )
    HBB-PARSE

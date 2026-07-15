@@ -217,7 +217,7 @@ $10000 constant GAP-STRIPPED-TEXT-MAX
 : GAP-PRESEED ( -- )
    \ This assertion owns a fresh cache: without one, HBB-OBJECT-HIT is
    \ structurally impossible; a shared warm artifact can also bypass production.
-   GT-ROOT HBB-CACHE-ROOT!
+   GT-ROOT BUILD-CACHE:ROOT!
    s" hb-aot-preseed.f" s" hb-aot-preseed" s" hb-aot-preseed-report.json" GAP-PATHS
    GAP-PRESEED-SRC
    s" hb-build AOT preseed normal-MAIN control" GB-HBB-BUILD

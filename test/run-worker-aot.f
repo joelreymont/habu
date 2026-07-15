@@ -24,7 +24,7 @@ require test/gate-aot-positive-lib.f
 TRW-LOAD-DONE
 
 : TRWA-SETUP ( -- )
-   TR-BUILD-CACHE$ HBB-CACHE-ROOT! ;
+   TR-BUILD-CACHE$ BUILD-CACHE:ROOT! ;
 
 : TRWA-RUN ( -- )
    TRWA-SETUP

@@ -177,6 +177,7 @@ variable SC-NUM-L
    \ (build-fixpoint-fixtures: multiple full engine builds - dot: manual/slow)
    s" tools/build-fixpoint-test.f" q execute
    s" tools/hb-build-test.f" q execute
+   s" lib/build-cache-test.f" q execute
    s" lib/codesign-test.f" q execute
    s" test/boot-pin-test.f" q execute
    s" tools/object-image-test.f" q execute

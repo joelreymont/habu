@@ -6,6 +6,7 @@ require lib/string.f
 require lib/test.f
 require lib/memory.f
 require lib/fs.f
+require lib/fs-root.f
 require lib/fs-mutate.f
 require lib/process.f
 require lib/process-argv.f
@@ -14,6 +15,10 @@ require lib/source.f
 require lib/build.f
 require lib/codesign.f
 require lib/content-key.f
+require lib/build-cache.f
+require lib/json-write.f
+require lib/float.f
+require lib/json-read.f
 require lib/object.f
 require lib/object-cache.f
 require lib/object-index.f
@@ -22,6 +27,7 @@ require lib/object-link.f
 require tools/build-fixpoint.f
 require tools/cli-run.f
 require tools/object-image.f
+require tools/hb-build-report.f
 require tools/hb-build-lib.f
 require tools/source-arena-policy.f
 
@@ -67,6 +73,7 @@ create HBT-AOT-HEX 80 allot
 create HBT-SRC-KEY 80 allot
 create HBT-KEY-A 64 allot
 create HBT-KEY-B 64 allot
+create HBT-REPORT-BUF FS-PATH-CAP allot
 variable HBT-EXP-SRC-U
 variable HBT-EXP-OUT-U
 create HBT-EXP-SRC-BUF FS-PATH-CAP allot
@@ -91,12 +98,6 @@ create HBT-EXP-HEX2 64 allot
 
 : HBT-NEW-TMP ( -- ptr u8 n )
    HBT-NEW-TMP-BUF HBT-NEW-TMP-U @ ;
-
-: HBT-CACHE-ENV$ ( -- ptr u8 n )
-   s" HABU_BUILD_CACHE" GETENV dup 0= if
-      2drop
-      HBT-TMP
-   then ;
 
 : HBT-BAD-SRC ( -- ptr u8 n )
    HBT-BAD-SRC-BUF HBT-BAD-SRC-U @ ;
@@ -131,12 +132,6 @@ create HBT-EXP-HEX2 64 allot
 : HBT-EMPTY$ ( -- ptr u8 n )
    SB-RESET
    SB$ ;
-
-: HBT-CACHE? ( -- bool )
-   s" HABU_BUILD_CACHE" GETENV dup 0= if
-      2drop 0 0= 0= exit
-   then
-   2drop 0 0= ;
 
 : HBT-BAD-SRC$ ( -- ptr u8 n )
    s" : MAIN ( -- ) 0 0 patch32 ;" ;
@@ -210,13 +205,15 @@ create HBT-EXP-HEX2 64 allot
    HBT-BAD-SRC HBT-BAD-SRC$ WRITE-ALL
    HBT-REPL-SRC HBT-REPL-SRC$ WRITE-ALL
    HBT-REPL-BAD-SRC HBT-REPL-BAD-SRC$ WRITE-ALL
-   HBT-AOT-SRC HBT-AOT-SRC$ WRITE-ALL ;
+   HBT-AOT-SRC HBT-AOT-SRC$ WRITE-ALL
+   BUILD-CACHE:RESET
+   HBT-TMP BUILD-CACHE:ROOT! ;
 
 : HBT-ARGV-BASE-TMP ( ptr u8 n -- )
    PROC-ARGV-RESET
    PROC-ENV-RESET
    s" HB_TMP" >LEN 2swap >LEN PROC-ENV+
-   s" HABU_BUILD_CACHE" >LEN HBT-CACHE-ENV$ >LEN PROC-ENV+
+   s" HABU_BUILD_CACHE" >LEN HBT-TMP >LEN PROC-ENV+
    PROC-ENV-INHERIT-MISSING
    s" --load"  >LEN PROC-ARGV+
    s" lib/errors.f"  >LEN PROC-ARGV+
@@ -328,6 +325,41 @@ public
    s" -o"  >LEN PROC-ARGV+
    HBT-BAD-OUT  >LEN PROC-ARGV+ ;
 
+: HBT-ADD-REPORT ( -- )
+   s" --repl" >LEN PROC-ARGV+
+   s" --report-json" >LEN PROC-ARGV+
+   HBT-REPL-SRC >LEN PROC-ARGV+
+   s" -o" >LEN PROC-ARGV+
+   HBT-REPL-OUT >LEN PROC-ARGV+ ;
+
+: HBT-REPORT-STRING= ( ptr u8 n -- ) {: want:ptr wantu:n :}
+   JR-TOKEN JT-STR T=
+   HBT-REPORT-BUF FS-PATH-CAP JR-STR {: gotu:n :}
+   HBT-REPORT-BUF gotu want wantu T$= ;
+
+: HBT-CHECK-REPORT ( ptr u8 n n n n -- )
+   {: a:ptr u:n artifact:n object:n maker:n :}
+   a u JR-INIT
+   JR-NEXT JT-OBJ T=
+   s" schema" JR-FIND-KEY TTRUE
+   s" hb-build-report" HBT-REPORT-STRING=
+   s" version" JR-FIND-KEY TTRUE
+   JR-TOKEN JT-INT T=
+   JR-INT 1 T=
+   s" cache_root" JR-FIND-KEY TTRUE
+   HBT-TMP HBT-REPORT-STRING=
+   s" cache_source" JR-FIND-KEY TTRUE
+   s" explicit" HBT-REPORT-STRING=
+   s" artifact_hit" JR-FIND-KEY TTRUE
+   JR-TOKEN artifact T=
+   s" object_hit" JR-FIND-KEY TTRUE
+   JR-TOKEN object T=
+   s" maker_hit" JR-FIND-KEY TTRUE
+   JR-TOKEN maker T=
+   s" elapsed_ns" JR-FIND-KEY TTRUE
+   JR-TOKEN JT-INT T=
+   JR-INT 0 >= TTRUE ;
+
 : HBT-REPL-EXPECTED$ ( -- ptr u8 n )
    SB-RESET
    s" 10" SB-APPEND
@@ -341,25 +373,33 @@ public
 : HBT-BUILD-REPL ( -- )
    HBT-REPL-SRC HBT-REPL-OUT HBT-HBB-PREPARE-REPL
    HBT-HBB-BUILD-OUT
-   HBT-REPL-OUT FILE? TTRUE ;
+   HBT-REPL-OUT FILE? TTRUE
+   HB-BUILD:REPORT$ JT-FALSE JT-FALSE JT-FALSE HBT-CHECK-REPORT ;
 
 : HBT-REBUILD-REPL-CACHE ( -- )
-   HBT-CACHE? 0= if exit then
    HBT-REPL-OUT FILE? if HBT-REPL-OUT REMOVE-FILE then
    HBT-REPL-SRC HBT-REPL-OUT HBT-HBB-PREPARE-REPL
    HBT-HBB-BUILD-OUT
    HBB-ARTIFACT-HIT @ 0 <> TTRUE
    HBB-MAKER-RUN @ 0= TTRUE
-   HBT-REPL-OUT FILE? TTRUE ;
+   HBT-REPL-OUT FILE? TTRUE
+   HB-BUILD:REPORT$ JT-TRUE JT-FALSE JT-FALSE HBT-CHECK-REPORT ;
 
 : HBT-CACHE-KEY-CHANGES ( -- )
-   HBT-CACHE? 0= if exit then
    HBT-REPL-SRC HBT-REPL-SRC$ WRITE-ALL
    HBT-REPL-SRC HBT-KEY-A HBT-HBB-KEY-REPL
    HBT-APPEND-CACHE-MUTATION
    HBT-REPL-SRC HBT-KEY-B HBT-HBB-KEY-REPL
    HBT-KEY-A 64 HBT-KEY-B 64 STR= TFALSE
    HBT-REPL-SRC HBT-REPL-SRC$ WRITE-ALL ;
+
+: HBT-CLI-REPORT ( -- )
+   HBT-ARGV-BASE
+   HBT-ADD-REPORT
+   HBT-RUN-HB-BUILD {: outu:n erru:n rc:n :}
+   rc 0 T=
+   erru 0 T=
+   HBT-OUT outu JT-TRUE JT-FALSE JT-FALSE HBT-CHECK-REPORT ;
 
 : HBT-RUN-REPL ( -- )
    HBT-REPL-OUT >LEN HBT-RUN-OUT HBT-CAPTURE-CAP >LEN HBT-RUN-ERR HBT-CAPTURE-CAP >LEN
@@ -499,7 +539,7 @@ public
    HBT-AOT-HEX HBT-KEY-U HBB-TARGET-ABI$ HBB-CHECKER-ABI$ HBB-COMPILER-ABI$ OBJRES:LOAD ;
 
 : HBT-BUILD-AOT-OBJECT-PRODUCER ( -- )
-   HBT-TMP HBB-CACHE-ROOT!
+   HBT-TMP BUILD-CACHE:ROOT!
    HBT-AOT-SRC HBT-AOT-SRC$ WRITE-ALL
    HBT-REMOVE-AOT-OUT
    HBT-AOT-SRC HBT-AOT-OUT HBT-HBB-PREPARE-AOT
@@ -507,6 +547,7 @@ public
    HBB-MAKER-RUN @ 0 <> TTRUE
    HBB-OBJECT-HIT @ 0= TTRUE
    HBB-OBJECT-STORE @ 0 <> TTRUE
+   HB-BUILD:REPORT$ JT-FALSE JT-FALSE JT-FALSE HBT-CHECK-REPORT
    HBT-OBJ-LOAD? TTRUE
    HBT-REMOVE-ARTIFACT
    HBT-REMOVE-AOT-OUT
@@ -516,13 +557,30 @@ public
    HBB-OBJECT-STORE @ 0= TTRUE
    HBB-MAKER-RUN @ 0= TTRUE
    HBB-MAKER-BUILD @ 0= TTRUE
+   HB-BUILD:REPORT$ JT-FALSE JT-TRUE JT-FALSE HBT-CHECK-REPORT
    HBT-RUN-AOT
    HBT-REMOVE-ARTIFACT
    HBT-REMOVE-AOT-OUT
    BF-TMP-RESET ;
 
+: HBT-BUILD-AOT-MAKER-HIT ( -- )
+   HBT-TMP BUILD-CACHE:ROOT!
+   HBT-AOT-SRC HBT-AOT-SRC2$ WRITE-ALL
+   HBT-REMOVE-AOT-OUT
+   HBT-AOT-SRC HBT-AOT-OUT HBT-HBB-PREPARE-AOT
+   HBB-BUILD
+   HBB-ARTIFACT-HIT @ 0= TTRUE
+   HBB-OBJECT-HIT @ 0= TTRUE
+   HBB-MAKER-HIT @ 0 <> TTRUE
+   HBB-MAKER-RUN @ 0 <> TTRUE
+   HB-BUILD:REPORT$ JT-FALSE JT-FALSE JT-TRUE HBT-CHECK-REPORT
+   HBT-REMOVE-ARTIFACT
+   HBT-REMOVE-AOT-OUT
+   HBT-AOT-SRC HBT-AOT-SRC$ WRITE-ALL
+   BF-TMP-RESET ;
+
 : HBT-BUILD-AOT-OBJECT-HIT ( -- )
-   HBT-TMP HBB-CACHE-ROOT!
+   HBT-TMP BUILD-CACHE:ROOT!
    HBT-STORE-AOT-OBJ
    HBT-AOT-SRC HBT-AOT-OUT HBT-HBB-PREPARE-AOT
    HBT-HBB-BUILD-OUT
@@ -587,7 +645,7 @@ public
    HBT-RUN-OUT outn s" 25" CONTAINS? TTRUE ;
 
 : HBT-BUILD-AOT-EXPORT-ONE-BODY ( -- )
-   HBT-TMP HBB-CACHE-ROOT!
+   HBT-TMP BUILD-CACHE:ROOT!
    HBT-ROOT s" exp.f" HBT-EXP-SRC-BUF HBT-EXP-SRC-U HBT-PATH!
    HBT-ROOT s" exp" HBT-EXP-OUT-BUF HBT-EXP-OUT-U HBT-PATH!
    HBT-EXP-REF-SRC$ HBT-EXP-BUILD
@@ -666,7 +724,7 @@ public
 
 : HBT-CLOSURE-KEY-CHANGES ( -- )
    HBB-RESET-OPTIONS
-   HBT-TMP HBB-CACHE-ROOT!
+   HBT-TMP BUILD-CACHE:ROOT!
    HBT-ROOT s" dep-closure.f" HBT-DEP-SRC-BUF HBT-DEP-SRC-U HBT-PATH!
    HBT-ROOT s" entry-closure.f" HBT-ENTRY-SRC-BUF HBT-ENTRY-SRC-U HBT-PATH!
    HBT-DEP-SRC s\" \\ dep v1\n" WRITE-ALL
@@ -710,6 +768,7 @@ public
    HBT-CAP:CHECK
    HBT-BUILD-REPL
    HBT-REBUILD-REPL-CACHE
+   HBT-CLI-REPORT
    HBT-CACHE-KEY-CHANGES
    HBT-CLOSURE-KEY-CHANGES
    HBT-RUN-REPL
@@ -718,6 +777,7 @@ public
    HBT-BUILD-REPL-BAD
    HBT-BUILD-MISSING-TMP
    HBT-BUILD-AOT-OBJECT-PRODUCER
+   HBT-BUILD-AOT-MAKER-HIT
    HBT-BUILD-AOT-OBJECT-HIT
    HBT-BUILD-AOT-EXPORT-ONE-BODY
    HBT-ENGINE-KEY-FLIP

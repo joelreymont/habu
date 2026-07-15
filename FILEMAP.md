@@ -329,7 +329,11 @@ points stay listed.
 - `tools/hb-cli-contracts-test.f` — checked coverage for `hb` startup and stdin-data contracts.
 - `tools/standalone-load-test.f` — proves lint/tool core entries load in isolation via hb --load child spawns (each entry requires its own deps).
 - `tools/hb-baseline-contracts-test.f` — checked public `bin/hb` baseline contract fixture.
+- `tools/build-cache-probe.f` — isolated child fixture for canonical cache-root
+  environment resolution.
 - `tools/hb-build-lib.f` — checked native AOT/REPL build CLI library.
+- `tools/hb-build-report.f` — checked structured report renderer for cache-root
+  selection, build hits, and elapsed time.
 - `tools/hb-build-direct-lints.f` — optional in-process lint hook adapter for
   hb-build gate callers that already loaded lint cores.
 - `tools/hb-build.f` — Habu entrypoint for native AOT/REPL builds.
@@ -1022,10 +1026,13 @@ points stay listed.
   coverage.
 - `lib/build.f` / `lib/build-test.f` — checked helpers for Habu build scripts
   and their coverage.
+- `lib/build-cache.f` / `lib/build-cache-test.f` — canonical persistent
+  build-cache resolution, typed source classification, and report fixtures.
 - `lib/codesign.f` / `lib/codesign-test.f` — checked executable promotion and
   ad-hoc signing helpers and their coverage.
 - `lib/fs.f` / `lib/fs-test.f` — checked filesystem helpers (walks, reads,
   stat) and their coverage.
+- `lib/fs-root.f` — checked writable-directory predicate for persistent roots.
 - `lib/fs-mutate.f` / `lib/fs-mutate-test.f` — checked filesystem mutation
   helpers (mkdir, remove, rename, cleanup) and their coverage.
 - `lib/map.f` / `lib/map-test.f` — fixed-capacity open-addressed string-key

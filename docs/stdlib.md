@@ -23,6 +23,8 @@ Planned module files:
 - `lib/ffi-abi.f`
 - `lib/ffi.f`
 - `lib/fs.f`
+- `lib/fs-root.f`
+- `lib/build-cache.f`
 - `lib/source.f`
 - `lib/object.f`
 - `lib/object-cache.f`
@@ -1725,6 +1727,39 @@ through `GT-FLUSH-LINES-FD` during polling and `GT-FLUSH-REMAINDER-FD` at proces
 exit. This keeps parent progress records serialized at line boundaries: a child
 line written in several chunks cannot be split by a parent heartbeat, while a
 final unterminated child fragment is still emitted before PASS/FAIL.
+
+`lib/fs-root.f` publishes `FS:WRITABLE-ROOT? ( ptr u8 n -- bool )`. It returns
+true only for an existing directory to which the process has write access.
+
+`lib/build-cache.f` owns the one canonical persistent build-cache root. Resolve
+it with this package surface:
+
+```forth
+BUILD-CACHE:RESET    ( -- )
+BUILD-CACHE:ROOT!    ( ptr u8 n -- )
+BUILD-CACHE:ROOT$    ( -- ptr u8 n )
+BUILD-CACHE:SOURCE   ( -- BUILD-CACHE:source )
+BUILD-CACHE:RESOLVE  ( -- ptr u8 n BUILD-CACHE:source )
+BUILD-CACHE:SOURCE$  ( BUILD-CACHE:source -- ptr u8 n )
+```
+
+Environment resolution uses exactly the first non-empty tier:
+`HABU_BUILD_CACHE`, `XDG_CACHE_HOME/habu-build`,
+`HOME/.cache/habu-build`, then `TMPDIR/habu-build`. An empty variable does not
+select its tier. When all four variables are empty, resolution throws
+`E-BUILD-PATH`. The selected directory is created recursively; an existing
+non-directory, an unwritable directory, or a creation failure also throws
+`E-BUILD-PATH` without consulting a lower tier. `BUILD-CACHE:ROOT!` is the
+explicit programmatic override used by build clients and isolated fixtures; its
+typed source is `explicit`.
+
+`tools/hb-build.f --report-json ...` emits one `hb-build-report` JSON object on
+success. Version 1 contains `cache_root`, `cache_source`, `artifact_hit`,
+`object_hit`, `maker_hit`, and `elapsed_ns`. The three hit fields report the
+actual completed build path, so clients consume this report instead of timing
+or inspecting child-private state. `HB-BUILD:REPORT$` returns the same report
+for checked in-process clients.
+
 `lib/build.f` owns build step modeling, checked source certification, artifact
 path construction, and fail-closed status reporting. `BUILD-CHECK` requires a
 counted source path that names a file, scans colon definitions in bounded module

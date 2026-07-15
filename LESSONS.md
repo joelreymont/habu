@@ -4524,3 +4524,7 @@ unchanged (148855). Keys for milestone 2:
   explicitly (set "1" for the off case, not just omit it) so a tier-2 gate leg
   cannot leak into a control child. Cost me one debug cycle (children silently
   ran tier-1 despite the env row).
+- **Enum-owned state must stay nominal in memory.** Mirroring variants as raw
+  integer constants and storing them in an untyped variable creates a second tag
+  authority. Use `LAYOUT-BUFFER`, generated constructors, typed fetch/store, and
+  exhaustive `MATCH` from declaration through persistence and rendering.

@@ -501,6 +501,7 @@ TEST:;SUITE
 
 TEST:SUITE hb-build-fixtures
    tools/hb-build-test.f
+   lib/build-cache-test.f
    lib/codesign-test.f
 TEST:;SUITE
 
