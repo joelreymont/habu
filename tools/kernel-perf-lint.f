@@ -1,5 +1,5 @@
 \ kernel-perf-lint.f - CLI wrapper for the kernel profile-row diff lint.
-\ Run: bin/hb tools/kernel-perf-lint.f diff.patch ...
+\ Run: bin/hb --load tools/kernel-perf-lint.f -- artifact.hbdiff ...
 \ Load after tools/kernel-perf-lint-core.f and tools/argv.f.
 
 require lib/errors.f
@@ -18,7 +18,7 @@ package KPL-CLI
 private
 
 : RUN ( -- )
-   s" tools/kernel-perf-lint.f diff.patch ..." ARGV-USAGE!
+   s" tools/kernel-perf-lint.f artifact.hbdiff ..." ARGV-USAGE!
    ARGV-PARSE
    1 -1 ARGV-EXPECT-POS
    KERNEL-PERF-LINT:RESET

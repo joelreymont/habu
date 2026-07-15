@@ -150,6 +150,8 @@ TEST:;SUITE
 
 TEST:SUITE tool-boundary-typed-local
    tools/lint/diff-test.f
+   tools/lint/diff-frame-test.f
+   tools/diff-capture-test.f
    tools/typed-local-diff-lint-test.f
 TEST:;SUITE
 

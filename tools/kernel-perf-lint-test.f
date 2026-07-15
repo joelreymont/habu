@@ -11,7 +11,7 @@ require lib/process.f
 require tools/lint/text.f
 require tools/lint/token.f
 require tools/lint/lib.f
-require tools/lint/diff.f
+require tools/lint/diff-frame-write.f
 require tools/ptx/perf-registry.f
 require tools/kernel-perf-lint-core.f
 
@@ -23,19 +23,43 @@ private
 
 create OUT CAP allot
 create FILE-BUF FS-PATH-CAP allot
+create FRAME CAP 4 * allot
 
 variable FILE-U
-variable SRC-A
+PTR-VARIABLE SRC-A
 variable SRC-U
 
-: SRC-A-FIELD ( -- ptr ptr u8 )
-   SRC-A 0 ptr-field ;
-
 : SRC-A@ ( -- ptr u8 )
-   SRC-A-FIELD @ ;
+   SRC-A @ ;
 
 : SRC-A! ( ptr u8 -- )
-   SRC-A-FIELD ! ;
+   SRC-A ! ;
+
+: FRAME-START ( -- )
+   FRAME CAP 4 * s" 0123456789" s" abcdef0123" DIFF-WRITE:START ;
+
+: FRAME-END ( -- ptr u8 n )
+   DIFF-WRITE:FINISH ;
+
+: MODIFIED+ ( ptr u8 n ptr u8 n -- )
+   {: path:ptr pathu:n raw:ptr rawu:n :}
+   DIFF-STATUS:MODIFIED DIFF-FORM:TEXT true
+   true path pathu true path pathu raw rawu DIFF-WRITE:SECTION ;
+
+: REMOVED+ ( ptr u8 n ptr u8 n -- )
+   {: path:ptr pathu:n raw:ptr rawu:n :}
+   DIFF-STATUS:REMOVED DIFF-FORM:TEXT true
+   true path pathu false s" " raw rawu DIFF-WRITE:SECTION ;
+
+: RENAMED-TEXT+ ( ptr u8 n ptr u8 n ptr u8 n -- )
+   {: old:ptr oldu:n new:ptr newu:n raw:ptr rawu:n :}
+   DIFF-STATUS:RENAMED DIFF-FORM:TEXT true
+   true old oldu true new newu raw rawu DIFF-WRITE:SECTION ;
+
+: PURE-RENAME+ ( ptr u8 n ptr u8 n ptr u8 n -- )
+   {: old:ptr oldu:n new:ptr newu:n raw:ptr rawu:n :}
+   DIFF-STATUS:RENAMED DIFF-FORM:PURE false
+   true old oldu true new newu raw rawu DIFF-WRITE:SECTION ;
 
 : TAB+ ( -- )
    TAB SB-APPEND-C ;
@@ -70,54 +94,75 @@ variable SRC-U
    s" device-gated: fixture waiver" SB-APPEND LF+ ;
 
 : WATCHED-NOROW$ ( -- ptr u8 n )
+   FRAME-START
    SB-RESET
    s" lib/ptx/cg-matmul.f" HEAD+
    s" +\ tweak the tile inner loop" SB-APPEND LF+
-   SB$ ;
+   s" lib/ptx/cg-matmul.f" SB$ MODIFIED+
+   FRAME-END ;
 
 : WATCHED+ROW$ ( -- ptr u8 n )
+   FRAME-START
    SB-RESET
    s" lib/ptx/cg-matmul.f" HEAD+
    s" +\ tweak the tile inner loop" SB-APPEND LF+
+   s" lib/ptx/cg-matmul.f" SB$ MODIFIED+
+   SB-RESET
    s" tools/ptx/perf-rows.tsv" HEAD+
    ROW+
-   SB$ ;
+   s" tools/ptx/perf-rows.tsv" SB$ MODIFIED+
+   FRAME-END ;
 
 : WATCHED+WAIVER$ ( -- ptr u8 n )
+   FRAME-START
    SB-RESET
    s" lib/ptx/cg-matmul.f" HEAD+
    s" +\ tweak the tile inner loop" SB-APPEND LF+
+   s" lib/ptx/cg-matmul.f" SB$ MODIFIED+
+   SB-RESET
    s" tools/ptx/perf-rows.tsv" HEAD+
    WAIVER+
-   SB$ ;
+   s" tools/ptx/perf-rows.tsv" SB$ MODIFIED+
+   FRAME-END ;
 
 : WATCHED+COMMENT$ ( -- ptr u8 n )   \ registry touched but only a comment added
+   FRAME-START
    SB-RESET
    s" lib/ptx/cg-matmul.f" HEAD+
    s" +\ tweak the tile inner loop" SB-APPEND LF+
+   s" lib/ptx/cg-matmul.f" SB$ MODIFIED+
+   SB-RESET
    s" tools/ptx/perf-rows.tsv" HEAD+
    s" +# just a comment" SB-APPEND LF+
-   SB$ ;
+   s" tools/ptx/perf-rows.tsv" SB$ MODIFIED+
+   FRAME-END ;
 
 : UNRELATED$ ( -- ptr u8 n )
+   FRAME-START
    SB-RESET
    s" lib/ptx/tile.f" HEAD+
    s" +\ tile DSL change, not codegen" SB-APPEND LF+
-   SB$ ;
+   s" lib/ptx/tile.f" SB$ MODIFIED+
+   FRAME-END ;
 
 : TOOLSCG$ ( -- ptr u8 n )
+   FRAME-START
    SB-RESET
    s" tools/ptx/saxpy-v4-cg.f" HEAD+
    s" +\ unroll one more chunk" SB-APPEND LF+
-   SB$ ;
+   s" tools/ptx/saxpy-v4-cg.f" SB$ MODIFIED+
+   FRAME-END ;
 
 : EMIT$ ( -- ptr u8 n )
+   FRAME-START
    SB-RESET
    s" src/arch/ptx/emit.f" HEAD+
    s" +\ encoder tweak" SB-APPEND LF+
-   SB$ ;
+   s" src/arch/ptx/emit.f" SB$ MODIFIED+
+   FRAME-END ;
 
 : DELETED$ ( -- ptr u8 n )   \ deleting a kernel emitter is a perf-relevant change
+   FRAME-START
    SB-RESET
    s" diff --git a/lib/ptx/cg-vec.f b/lib/ptx/cg-vec.f" SB-APPEND LF+
    s" deleted file mode 100644" SB-APPEND LF+
@@ -126,9 +171,11 @@ variable SRC-U
    s" +++ /dev/null" SB-APPEND LF+
    s" @@ -1 +0,0 @@" SB-APPEND LF+
    s" -\ gone" SB-APPEND LF+
-   SB$ ;
+   s" lib/ptx/cg-vec.f" SB$ REMOVED+
+   FRAME-END ;
 
 : RENAMED-AWAY$ ( -- ptr u8 n )
+   FRAME-START
    SB-RESET
    s" diff --git a/lib/ptx/cg-vec.f b/lib/ptx/tile.f" SB-APPEND LF+
    s" similarity index 50%" SB-APPEND LF+
@@ -140,31 +187,30 @@ variable SRC-U
    s" @@ -1 +1 @@" SB-APPEND LF+
    s" -\ old emitter" SB-APPEND LF+
    s" +\ unrelated destination" SB-APPEND LF+
-   SB$ ;
+   s" lib/ptx/cg-vec.f" s" lib/ptx/tile.f" SB$ RENAMED-TEXT+
+   FRAME-END ;
 
 : META-RENAMED$ ( -- ptr u8 n )
+   FRAME-START
    SB-RESET
    s" diff --git a/lib/ptx/cg-vec.f b/lib/ptx/tile.f" SB-APPEND LF+
    s" similarity index 100%" SB-APPEND LF+
    s" rename from lib/ptx/cg-vec.f" SB-APPEND LF+
    s" rename to lib/ptx/tile.f" SB-APPEND LF+
+   s" lib/ptx/cg-vec.f" s" lib/ptx/tile.f" SB$ PURE-RENAME+
+   SB-RESET
    s" lib/unrelated.f" HEAD+
    s" +\ unrelated source change" SB-APPEND LF+
-   SB$ ;
+   s" lib/unrelated.f" SB$ MODIFIED+
+   FRAME-END ;
 
 : BADROW$ ( -- ptr u8 n )
+   FRAME-START
    SB-RESET
    s" tools/ptx/perf-rows.tsv" HEAD+
    s" +KERNEL not-a-valid-row" SB-APPEND LF+
-   SB$ ;
-
-: SPOOF$ ( -- ptr u8 n )
-   SB-RESET
-   s" lib/ptx/cg-matmul.f" HEAD+
-   s" +\ tweak the tile inner loop" SB-APPEND LF+
-   s" +++ b/tools/ptx/perf-rows.tsv" SB-APPEND LF+
-   ROW+
-   SB$ ;
+   s" tools/ptx/perf-rows.tsv" SB$ MODIFIED+
+   FRAME-END ;
 
 : SRC! ( ptr u8 n -- ) {: a:ptr u:n :}
    a SRC-A! u SRC-U ! ;
@@ -189,10 +235,6 @@ variable SRC-U
    rc 1 T=
    OUT outu ma mu CONTAINS? TTRUE ;
 
-: SYNTAX ( n n -- ) {: outu:n rc:n :}
-   rc E-DIFF-SYNTAX T=
-   outu 0 T= ;
-
 : MISSING$ ( -- ptr u8 n )
    s" E-PERF-ROW-MISSING" ;
 
@@ -205,7 +247,6 @@ variable SRC-U
    META-RENAMED$ RUN MISSING$ EXPECT
    WATCHED+COMMENT$ RUN MISSING$ EXPECT
    BADROW$ RUN s" E-PERF-BAD-ROW" EXPECT
-   SPOOF$ RUN SYNTAX
    WATCHED+ROW$ RUN CLEAN
    WATCHED+WAIVER$ RUN CLEAN
    UNRELATED$ RUN CLEAN ;

@@ -1,10 +1,10 @@
 \ typed-local-diff-lint-core.f - reject newly added bare locals.
 \ Load after lib/errors.f, lib/string.f, lib/memory.f, lib/vector.f,
 \ lib/fs.f, tools/lint/text.f, tools/lint/token.f, tools/lint/lib.f,
-\ tools/lint/source-lex.f, and tools/lint/diff.f.
+\ tools/lint/source-lex.f, and tools/lint/diff-frame.f.
 
 require lib/adt/option.f
-require tools/lint/diff.f
+require tools/lint/diff-frame.f
 
 package TYPED-LOCAL-DIFF
 private
@@ -16,9 +16,9 @@ private
 create NUM NUM-CAP allot
 create ONE 1 allot
 
-variable DIFF-A
+PTR-VARIABLE DIFF-A
 variable DIFF-CAP
-variable FILE-A
+PTR-VARIABLE FILE-A
 variable FILE-U
 variable DIFF-U
 variable BAD#
@@ -26,25 +26,18 @@ variable NEW-LINE
 variable IN-LOCALS
 variable ALLOW-GROUP
 variable NUM-I
-variable SCAN-START
-
-: FILE-A-FIELD ( -- ptr ptr u8 )
-   FILE-A 0 ptr-field ;
-
-: DIFF-A-FIELD ( -- ptr ptr u8 )
-   DIFF-A 0 ptr-field ;
 
 : FILE-A@ ( -- ptr u8 )
-   FILE-A-FIELD @ ;
+   FILE-A @ ;
 
 : DIFF-A@ ( -- ptr u8 )
-   DIFF-A-FIELD @ ;
+   DIFF-A @ ;
 
 : FILE-A! ( ptr u8 -- )
-   FILE-A-FIELD ! ;
+   FILE-A ! ;
 
 : DIFF-A! ( ptr u8 -- )
-   DIFF-A-FIELD ! ;
+   DIFF-A ! ;
 
 : TRUE ( -- bool )
    0 0= ;
@@ -184,8 +177,11 @@ variable SCAN-START
       delete  OF DROP-EVENT ENDOF
    ;MATCH ;
 
-: PROCESS-LINE ( ptr u8 n -- )
-   DIFF:LINE PROCESS-EVENT ;
+: NEXT? ( -- bool )
+   DIFF:NEXT? {: a:ptr u:n value:n kind:DIFF:event present:bool :}
+   present 0= if FALSE exit then
+   a u value kind PROCESS-EVENT
+   TRUE ;
 
 : ALLOC-DIFF ( n -- ) {: need:n :}
    need 1 < if 1 else need then
@@ -199,21 +195,11 @@ public
    0 FILE-U !
    0 NEW-LINE !
    FALSE IN-LOCALS !
-   FALSE ALLOW-GROUP !
-   DIFF:RESET ;
+   FALSE ALLOW-GROUP ! ;
 
 : SOURCE ( ptr u8 n -- ) {: a:ptr u:n :}
-   0 SCAN-START !
-   0 begin dup u < while
-      dup a + c@ LF-C = if
-         a SCAN-START @ + over SCAN-START @ - PROCESS-LINE
-         dup 1+ SCAN-START !
-      then
-      1+
-   repeat drop
-   SCAN-START @ u < if
-      a SCAN-START @ + u SCAN-START @ - PROCESS-LINE
-   then ;
+   a u DIFF:OPEN
+   begin NEXT? while repeat ;
 
 : FILE ( ptr u8 n -- ) {: path:ptr pathu:n :}
    path pathu FILE-SIZE ALLOC-DIFF
@@ -221,7 +207,6 @@ public
    DIFF-A@ DIFF-U @ SOURCE ;
 
 : FINISH ( -- )
-   DIFF:FINISH
    BAD# @ 0 > if 1 throw then ;
 
 ;package

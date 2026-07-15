@@ -1,4 +1,4 @@
-\ diff.f - checked streaming parser for `jj diff --git` unified diffs.
+\ diff.f - checked byte-exact validator for jj Git-format sections.
 \ LINE emits borrowed file/content spans plus hunk new-line metadata.  The
 \ parser preserves raw path bytes, resolves ambiguous heads from ordered body
 \ metadata, and emits content only while exact old/new hunk counts remain.
@@ -12,6 +12,10 @@ require lib/string.f
 require lib/adt/option.f
 
 -7400 constant E-DIFF-SYNTAX
+-7401 constant E-DIFF-FRAME-CAP
+-7402 constant E-DIFF-CAPTURE
+-7403 constant E-DIFF-CAPTURE-STDERR
+-7404 constant E-DIFF-CAPTURE-ID
 
 package DIFF
 public
@@ -23,6 +27,23 @@ ENUM event
    add
    context
    delete
+;ENUM
+
+ENUM status
+   modified
+   added
+   removed
+   renamed
+   copied
+;ENUM
+
+ENUM form
+   text
+   binary
+   mode
+   empty
+   pure
+   gitlink
 ;ENUM
 
 private
@@ -61,11 +82,12 @@ $66 constant F-C
 
 1 LAYOUT-BUFFER ST-V state
 1 LAYOUT-BUFFER META-V meta
-variable HEAD-A
+1 LAYOUT-BUFFER STATUS-V status
+PTR-VARIABLE HEAD-A
 variable HEAD-U
-variable HEAD-OLD-A
+PTR-VARIABLE HEAD-OLD-A
 variable HEAD-OLD-U
-variable HEAD-NEW-A
+PTR-VARIABLE HEAD-NEW-A
 variable HEAD-NEW-U
 variable OLD-LEFT
 variable NEW-LEFT
@@ -81,6 +103,30 @@ variable SIMILAR
 variable SIM-PENDING
 variable SIM-REPLACE
 variable SIM-BODY
+variable FRAMED
+variable FRAME-OLD-PRESENT
+variable FRAME-NEW-PRESENT
+PTR-VARIABLE FRAME-OLD-A
+variable FRAME-OLD-U
+PTR-VARIABLE FRAME-NEW-A
+variable FRAME-NEW-U
+PTR-VARIABLE RAW-A
+variable RAW-U
+variable RAW-I
+variable SAW-NEW-FILE
+variable SAW-DELETE-FILE
+variable SAW-RENAME
+variable SAW-COPY
+variable SAW-BINARY
+variable SAW-HUNK
+variable SAW-EMPTY
+variable SAW-GITLINK
+variable ENTRY-GITLINK
+variable SCAN-NEXT
+PTR-VARIABLE SCAN-OLD-A
+variable SCAN-OLD-U
+PTR-VARIABLE SCAN-NEW-A
+variable SCAN-NEW-U
 
 : ST-AT ( -- ptr state )
    0 ST-V ;
@@ -100,32 +146,71 @@ variable SIM-BODY
 : META! ( meta -- )
    META-AT ! ;
 
-: HEAD-A-FIELD ( -- ptr ptr u8 )
-   HEAD-A 0 ptr-field ;
+: STATUS-AT ( -- ptr status )
+   0 STATUS-V ;
 
-: HEAD-OLD-A-FIELD ( -- ptr ptr u8 )
-   HEAD-OLD-A 0 ptr-field ;
+: STATUS@ ( -- status )
+   STATUS-AT @ ;
 
-: HEAD-NEW-A-FIELD ( -- ptr ptr u8 )
-   HEAD-NEW-A 0 ptr-field ;
+: STATUS! ( status -- )
+   STATUS-AT ! ;
+
+: FRAME-OLD-A@ ( -- ptr u8 )
+   FRAME-OLD-A @ ;
+
+: FRAME-NEW-A@ ( -- ptr u8 )
+   FRAME-NEW-A @ ;
+
+: RAW-A@ ( -- ptr u8 )
+   RAW-A @ ;
+
+: FRAME-OLD-A! ( ptr u8 -- )
+   FRAME-OLD-A ! ;
+
+: FRAME-NEW-A! ( ptr u8 -- )
+   FRAME-NEW-A ! ;
+
+: RAW-A! ( ptr u8 -- )
+   RAW-A ! ;
+
+: FRAME-OLD$ ( -- ptr u8 n )
+   FRAME-OLD-A@ FRAME-OLD-U @ ;
+
+: FRAME-NEW$ ( -- ptr u8 n )
+   FRAME-NEW-A@ FRAME-NEW-U @ ;
+
+: FRAME-HEAD-OLD$ ( -- ptr u8 n )
+   FRAME-OLD-PRESENT @ if FRAME-OLD$ else FRAME-NEW$ then ;
+
+: FRAME-HEAD-NEW$ ( -- ptr u8 n )
+   FRAME-NEW-PRESENT @ if FRAME-NEW$ else FRAME-OLD$ then ;
+
+: RAW$ ( -- ptr u8 n )
+   RAW-A@ RAW-U @ ;
+
+: FRAME-OLD? ( -- bool )
+   FRAME-OLD-PRESENT @ if true else false then ;
+
+: FRAME-NEW? ( -- bool )
+   FRAME-NEW-PRESENT @ if true else false then ;
 
 : HEAD-A@ ( -- ptr u8 )
-   HEAD-A-FIELD @ ;
+   HEAD-A @ ;
 
 : HEAD-OLD-A@ ( -- ptr u8 )
-   HEAD-OLD-A-FIELD @ ;
+   HEAD-OLD-A @ ;
 
 : HEAD-NEW-A@ ( -- ptr u8 )
-   HEAD-NEW-A-FIELD @ ;
+   HEAD-NEW-A @ ;
 
 : HEAD-OLD-A! ( ptr u8 -- )
-   HEAD-OLD-A-FIELD ! ;
+   HEAD-OLD-A ! ;
 
 : HEAD-NEW-A! ( ptr u8 -- )
-   HEAD-NEW-A-FIELD ! ;
+   HEAD-NEW-A ! ;
 
 : HEAD-A! ( ptr u8 -- )
-   HEAD-A-FIELD ! ;
+   HEAD-A ! ;
 
 : HEAD$ ( -- ptr u8 n )
    HEAD-A@ HEAD-U @ ;
@@ -281,6 +366,24 @@ variable SIM-BODY
    na nu PATH? 0= if E-DIFF-SYNTAX throw then
    oa ou na nu HEAD-PATHS! ;
 
+: FRAME-HEAD? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   FRAME-HEAD-OLD$ {: oa:ptr ou:n :}
+   FRAME-HEAD-NEW$ {: na:ptr nu:n :}
+   s" diff --git a/" {: prefix:ptr prefixu:n :}
+   s"  b/" {: sep:ptr sepu:n :}
+   prefixu ou + sepu + nu + u <> if false exit then
+   a prefixu prefix prefixu STR= 0= if false exit then
+   a prefixu + ou oa ou STR= 0= if false exit then
+   a prefixu ou + + sepu sep sepu STR= 0= if false exit then
+   a prefixu ou + sepu + + nu na nu STR= ;
+
+: FRAME-HEAD-PARSE ( ptr u8 n -- ) {: a:ptr u:n :}
+   a u FRAME-HEAD? 0= if E-DIFF-SYNTAX throw then
+   s" diff --git " nip {: prefixu:n :}
+   a prefixu + HEAD-A! u prefixu - HEAD-U !
+   FRAME-HEAD-OLD$ FRAME-HEAD-NEW$ HEAD-PATHS!
+   true HEAD-RESOLVED ! ;
+
 : HEX-C? ( n -- bool ) {: c:n :}
    c ZERO-C >= c NINE-C <= and if true exit then
    c A-C >= c F-C <= and ;
@@ -328,6 +431,17 @@ variable SIM-BODY
          body split + sepu + bodyu split sepu + - INDEX-RIGHT? and
       ENDOF
    ;MATCH ;
+
+: GITLINK-SUFFIX? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   s"  040000" {: suffix:ptr suffixu:n :}
+   u suffixu < if false exit then
+   a u suffixu - + suffixu suffix suffixu STR= ;
+
+: GITLINK-MODE? ( ptr u8 n ptr u8 n -- bool )
+   {: a:ptr u:n prefix:ptr prefixu:n :}
+   u prefixu - MODE-U <> if false exit then
+   a u prefix prefixu STARTS-WITH? 0= if false exit then
+   a prefixu + MODE-U s" 040000" STR= ;
 
 : PERCENT-BODY? ( ptr u8 n -- bool ) {: a:ptr u:n :}
    u 1 <= if false exit then
@@ -401,6 +515,7 @@ variable SIM-BODY
    new-count NEW-LEFT !
    false MARK-OK !
    false HUNK-CHANGE !
+   true SAW-HUNK !
    old-count 0= new-count 0= and if
       E-DIFF-SYNTAX throw
    then
@@ -537,6 +652,7 @@ variable SIM-BODY
    a u s" rename from " AFTER-PATH {: pa:ptr pu:n :}
    pa HEAD-OLD-A! pu HEAD-OLD-U !
    construct meta rename-from META!
+   true SAW-RENAME !
    INCOMPLETE!
    OLD-PATH-EVENT ;
 
@@ -558,6 +674,7 @@ variable SIM-BODY
    a u s" copy from " AFTER-PATH {: pa:ptr pu:n :}
    pa HEAD-OLD-A! pu HEAD-OLD-U !
    construct meta copy-from META!
+   true SAW-COPY !
    INCOMPLETE!
    OLD-PATH-EVENT ;
 
@@ -573,25 +690,58 @@ variable SIM-BODY
 
 : NEW-FILE-MODE-EVENT ( ptr u8 n -- ptr u8 n n event ) {: a:ptr u:n :}
    a u s" new file mode " MODE-VALUE drop
+   a u s" new file mode " GITLINK-MODE? ENTRY-GITLINK !
    NEED-PRE-INDEX
    NEED-NORMAL
    SIM-PENDING @ if E-DIFF-SYNTAX throw then
    REPLACED @ if E-DIFF-SYNTAX throw then
    MODED @ if E-DIFF-SYNTAX throw then
    construct meta new-file META!
+   true SAW-NEW-FILE !
    INCOMPLETE!
    NONE-EVENT ;
 
 : DELETE-FILE-MODE-EVENT ( ptr u8 n -- ptr u8 n n event ) {: a:ptr u:n :}
    a u s" deleted file mode " MODE-VALUE drop
+   a u s" deleted file mode " GITLINK-MODE? ENTRY-GITLINK !
    NEED-PRE-INDEX
    NEED-NORMAL
    SIM-PENDING @ if E-DIFF-SYNTAX throw then
    REPLACED @ if E-DIFF-SYNTAX throw then
    MODED @ if E-DIFF-SYNTAX throw then
    construct meta delete-file META!
+   true SAW-DELETE-FILE !
    INCOMPLETE!
    NONE-EVENT ;
+
+: GITLINK-EVENT ( -- ptr u8 n n event )
+   META@ MATCH meta
+      normal OF
+         HEAD-SAME-INFER 0= if E-DIFF-SYNTAX throw then
+      ENDOF
+      new-file OF
+         ENTRY-GITLINK @ 0= if E-DIFF-SYNTAX throw then
+         HEAD-SAME-INFER 0= if E-DIFF-SYNTAX throw then
+      ENDOF
+      delete-file OF
+         ENTRY-GITLINK @ 0= if E-DIFF-SYNTAX throw then
+         HEAD-SAME-INFER 0= if E-DIFF-SYNTAX throw then
+      ENDOF
+      mode-old    OF E-DIFF-SYNTAX throw ENDOF
+      rename-from OF E-DIFF-SYNTAX throw ENDOF
+      copy-from   OF E-DIFF-SYNTAX throw ENDOF
+   ;MATCH
+   META-NORMAL!
+   true SAW-GITLINK !
+   COMPLETE!
+   construct state terminal ST!
+   STATUS@ MATCH status
+      modified OF NEW-PATH-EVENT ENDOF
+      added    OF NEW-PATH-EVENT ENDOF
+      removed  OF OLD-PATH-EVENT ENDOF
+      renamed  OF E-DIFF-SYNTAX throw ENDOF
+      copied   OF E-DIFF-SYNTAX throw ENDOF
+   ;MATCH ;
 
 : INDEX-EVENT ( ptr u8 n -- ptr u8 n n event ) {: a:ptr u:n :}
    a u INDEX? 0= if E-DIFF-SYNTAX throw then
@@ -602,6 +752,7 @@ variable SIM-BODY
       false SIM-BODY !
    then
    true INDEXED !
+   a u GITLINK-SUFFIX? ENTRY-GITLINK @ or if GITLINK-EVENT exit then
    META@ MATCH meta
       normal OF
          INCOMPLETE!
@@ -610,6 +761,7 @@ variable SIM-BODY
       new-file OF
          a u s" index 0000000000..e69de29bb2" STR= if
             HEAD-SAME-INFER 0= if E-DIFF-SYNTAX throw then
+            true SAW-EMPTY !
             META-NORMAL! COMPLETE!
             construct state terminal ST!
             NEW-PATH-EVENT
@@ -621,6 +773,7 @@ variable SIM-BODY
          a u s" index e69de29bb2..0000000000" STR= {: empty:bool :}
          empty if
             HEAD-SAME-INFER 0= if E-DIFF-SYNTAX throw then
+            true SAW-EMPTY !
             META-NORMAL! COMPLETE!
             construct state terminal ST!
          then
@@ -713,6 +866,7 @@ variable SIM-BODY
       rename-from OF E-DIFF-SYNTAX throw ENDOF
       copy-from   OF E-DIFF-SYNTAX throw ENDOF
    ;MATCH
+   true SAW-BINARY !
    construct state terminal ST! ;
 
 : OLD-TEXT-EVENT ( ptr u8 n -- ptr u8 n n event ) {: a:ptr u:n :}
@@ -738,7 +892,7 @@ variable SIM-BODY
    ;MATCH ;
 
 : START-HEAD ( ptr u8 n -- ptr u8 n n event )
-   HEAD-PARSE
+   FRAMED @ if FRAME-HEAD-PARSE else HEAD-PARSE then
    construct state header ST!
    META-NORMAL!
    INCOMPLETE!
@@ -822,9 +976,9 @@ variable SIM-BODY
    a u DIFF-HEAD? 0= if E-DIFF-SYNTAX throw then
    a u START-HEAD ;
 
-public
+private
 
-: RESET ( -- )
+: RAW-RESET ( -- )
    construct state idle ST!
    META-NORMAL!
    0 HEAD-U !
@@ -843,9 +997,25 @@ public
    false SIMILAR !
    false SIM-PENDING !
    false SIM-REPLACE !
-   false SIM-BODY ! ;
+   false SIM-BODY !
+   false FRAMED !
+   false FRAME-OLD-PRESENT !
+   false FRAME-NEW-PRESENT !
+   0 FRAME-OLD-U !
+   0 FRAME-NEW-U !
+   0 RAW-U !
+   0 RAW-I !
+   false SAW-NEW-FILE !
+   false SAW-DELETE-FILE !
+   false SAW-RENAME !
+   false SAW-COPY !
+   false SAW-BINARY !
+   false SAW-HUNK !
+   false SAW-EMPTY !
+   false SAW-GITLINK !
+   false ENTRY-GITLINK ! ;
 
-: LINE ( ptr u8 n -- ptr u8 n n event ) {: a:ptr u:n :}
+: RAW-LINE ( ptr u8 n -- ptr u8 n n event ) {: a:ptr u:n :}
    ST@ MATCH state
       idle       OF a u IDLE-LINE  ENDOF
       header     OF a u HEAD-LINE  ENDOF
@@ -856,7 +1026,7 @@ public
       terminal   OF a u TERMINAL-LINE ENDOF
    ;MATCH ;
 
-: FINISH ( -- )
+: RAW-FINISH ( -- )
    \ HEADER is terminal only after a complete metadata-only form.
    ST@ MATCH state
       idle       OF ENDOF
@@ -867,5 +1037,278 @@ public
       after-hunk OF ENDOF
       terminal   OF ENDOF
    ;MATCH ;
+
+$0A constant LF-C
+
+: RAW-AT ( -- ptr u8 )
+   RAW-A@ RAW-I @ + ;
+
+: RAW-LEFT ( -- n )
+   RAW-U @ RAW-I @ - ;
+
+: RAW-PREFIX? ( ptr u8 n -- bool )
+   RAW-AT RAW-LEFT 2swap STARTS-WITH? ;
+
+: RAW-SEG? ( n ptr u8 n -- bool ) {: off:n a:ptr u:n :}
+   off 0 < if false exit then
+   off u + RAW-LEFT > if false exit then
+   RAW-AT off + u a u STR= ;
+
+: RAW-DELIM! ( n -- ) {: lineu:n :}
+   lineu RAW-LEFT >= if E-DIFF-SYNTAX throw then
+   RAW-AT lineu + c@ LF-C <> if E-DIFF-SYNTAX throw then
+   RAW-I @ lineu + 1+ RAW-I ! ;
+
+: RAW-TAKE3 ( ptr u8 n ptr u8 n ptr u8 n -- ptr u8 n )
+   {: prefix:ptr prefixu:n body:ptr bodyu:n suffix:ptr suffixu:n :}
+   prefixu bodyu + suffixu + {: lineu:n :}
+   0 prefix prefixu RAW-SEG? 0= if E-DIFF-SYNTAX throw then
+   prefixu body bodyu RAW-SEG? 0= if E-DIFF-SYNTAX throw then
+   prefixu bodyu + suffix suffixu RAW-SEG? 0= if E-DIFF-SYNTAX throw then
+   RAW-AT lineu dup RAW-DELIM! ;
+
+: RAW-TAKE5 ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n ptr u8 n -- ptr u8 n )
+   {: p:ptr pu:n a:ptr au:n mid:ptr midu:n b:ptr bu:n suffix:ptr suffixu:n :}
+   pu au + midu + bu + suffixu + {: lineu:n :}
+   0 p pu RAW-SEG? 0= if E-DIFF-SYNTAX throw then
+   pu a au RAW-SEG? 0= if E-DIFF-SYNTAX throw then
+   pu au + mid midu RAW-SEG? 0= if E-DIFF-SYNTAX throw then
+   pu au + midu + b bu RAW-SEG? 0= if E-DIFF-SYNTAX throw then
+   pu au + midu + bu + suffix suffixu RAW-SEG? 0= if E-DIFF-SYNTAX throw then
+   RAW-AT lineu dup RAW-DELIM! ;
+
+: RAW-ORDINARY ( -- ptr u8 n )
+   RAW-I @ {: start:n :}
+   begin RAW-I @ RAW-U @ < while
+      RAW-A@ RAW-I @ + c@ LF-C = if
+         RAW-A@ start + RAW-I @ start -
+         RAW-I @ 1+ RAW-I !
+         exit
+      then
+      RAW-I @ 1+ RAW-I !
+   repeat
+   E-DIFF-SYNTAX throw ;
+
+: RAW-HEAD ( -- ptr u8 n )
+   s" diff --git a/" FRAME-HEAD-OLD$
+   s"  b/" FRAME-HEAD-NEW$ EMPTY RAW-TAKE5 ;
+
+: RAW-RENAME-FROM ( -- ptr u8 n )
+   s" rename from " FRAME-OLD$ EMPTY RAW-TAKE3 ;
+
+: RAW-RENAME-TO ( -- ptr u8 n )
+   s" rename to " FRAME-NEW$ EMPTY RAW-TAKE3 ;
+
+: RAW-COPY-FROM ( -- ptr u8 n )
+   s" copy from " FRAME-OLD$ EMPTY RAW-TAKE3 ;
+
+: RAW-COPY-TO ( -- ptr u8 n )
+   s" copy to " FRAME-NEW$ EMPTY RAW-TAKE3 ;
+
+: RAW-OLD-TEXT ( -- ptr u8 n )
+   STATUS@ MATCH status
+      added    OF s" --- /dev/null" EMPTY EMPTY RAW-TAKE3 ENDOF
+      modified OF s" --- a/" FRAME-OLD$ EMPTY RAW-TAKE3 ENDOF
+      removed  OF s" --- a/" FRAME-OLD$ EMPTY RAW-TAKE3 ENDOF
+      renamed  OF s" --- a/" FRAME-OLD$ EMPTY RAW-TAKE3 ENDOF
+      copied   OF s" --- a/" FRAME-OLD$ EMPTY RAW-TAKE3 ENDOF
+   ;MATCH ;
+
+: RAW-NEW-TEXT ( -- ptr u8 n )
+   STATUS@ MATCH status
+      added    OF s" +++ b/" FRAME-NEW$ EMPTY RAW-TAKE3 ENDOF
+      modified OF s" +++ b/" FRAME-NEW$ EMPTY RAW-TAKE3 ENDOF
+      removed  OF s" +++ /dev/null" EMPTY EMPTY RAW-TAKE3 ENDOF
+      renamed  OF s" +++ b/" FRAME-NEW$ EMPTY RAW-TAKE3 ENDOF
+      copied   OF s" +++ b/" FRAME-NEW$ EMPTY RAW-TAKE3 ENDOF
+   ;MATCH ;
+
+: RAW-BINARY ( -- ptr u8 n )
+   STATUS@ MATCH status
+      added OF
+         s" Binary files /dev/null and b/" FRAME-NEW$ s"  differ" RAW-TAKE3
+      ENDOF
+      removed OF
+         s" Binary files a/" FRAME-OLD$ s"  and /dev/null differ" RAW-TAKE3
+      ENDOF
+      modified OF
+         s" Binary files a/" FRAME-OLD$ s"  and b/" FRAME-NEW$ s"  differ" RAW-TAKE5
+      ENDOF
+      renamed OF
+         s" Binary files a/" FRAME-OLD$ s"  and b/" FRAME-NEW$ s"  differ" RAW-TAKE5
+      ENDOF
+      copied OF
+         s" Binary files a/" FRAME-OLD$ s"  and b/" FRAME-NEW$ s"  differ" RAW-TAKE5
+      ENDOF
+   ;MATCH ;
+
+: RAW-HEADER ( -- ptr u8 n )
+   s" rename from " RAW-PREFIX? if RAW-RENAME-FROM exit then
+   s" rename to " RAW-PREFIX? if RAW-RENAME-TO exit then
+   s" copy from " RAW-PREFIX? if RAW-COPY-FROM exit then
+   s" copy to " RAW-PREFIX? if RAW-COPY-TO exit then
+   s" Binary files " RAW-PREFIX? if RAW-BINARY exit then
+   s" --- " RAW-PREFIX? if RAW-OLD-TEXT exit then
+   RAW-ORDINARY ;
+
+: RAW-NEXT-LINE ( -- ptr u8 n )
+   ST@ MATCH state
+      idle       OF RAW-HEAD ENDOF
+      header     OF RAW-HEADER ENDOF
+      new-header OF RAW-NEW-TEXT ENDOF
+      file-body  OF RAW-ORDINARY ENDOF
+      hunk-body  OF RAW-ORDINARY ENDOF
+      after-hunk OF RAW-ORDINARY ENDOF
+      terminal   OF RAW-ORDINARY ENDOF
+   ;MATCH ;
+
+: RAW-STEP ( -- ptr u8 n n event )
+   RAW-NEXT-LINE RAW-LINE ;
+
+: FRAME-PATHS-VALID? ( -- bool )
+   FRAME-OLD? if FRAME-OLD-U @ 0 > else FRAME-OLD-U @ 0= then
+   FRAME-NEW? if FRAME-NEW-U @ 0 > else FRAME-NEW-U @ 0= then and ;
+
+: NO-REPLACEMENT? ( -- bool )
+   SAW-RENAME @ 0=
+   SAW-COPY @ 0= and ;
+
+: NO-FILE-KIND? ( -- bool )
+   SAW-NEW-FILE @ 0=
+   SAW-DELETE-FILE @ 0= and ;
+
+: STATUS-VALID? ( -- bool )
+   STATUS@ MATCH status
+      modified OF
+         FRAME-OLD? FRAME-NEW? and
+         FRAME-OLD$ FRAME-NEW$ STR= and
+         NO-REPLACEMENT? and NO-FILE-KIND? and
+      ENDOF
+      added OF
+         FRAME-OLD? 0= FRAME-NEW? and
+         SAW-NEW-FILE @ 0 <> and SAW-DELETE-FILE @ 0= and
+         NO-REPLACEMENT? and
+      ENDOF
+      removed OF
+         FRAME-OLD? FRAME-NEW? 0= and
+         SAW-DELETE-FILE @ 0 <> and SAW-NEW-FILE @ 0= and
+         NO-REPLACEMENT? and
+      ENDOF
+      renamed OF
+         FRAME-OLD? FRAME-NEW? and
+         FRAME-OLD$ FRAME-NEW$ STR= 0= and
+         SAW-RENAME @ 0 <> and SAW-COPY @ 0= and NO-FILE-KIND? and
+      ENDOF
+      copied OF
+         FRAME-OLD? FRAME-NEW? and
+         FRAME-OLD$ FRAME-NEW$ STR= 0= and
+         SAW-COPY @ 0 <> and SAW-RENAME @ 0= and NO-FILE-KIND? and
+      ENDOF
+   ;MATCH ;
+
+: RAW-FORM ( -- form bool )
+   SAW-HUNK @ if DIFF-FORM:TEXT true exit then
+   SAW-BINARY @ if DIFF-FORM:BINARY true exit then
+   SAW-EMPTY @ if DIFF-FORM:EMPTY false exit then
+   SAW-GITLINK @ if DIFF-FORM:GITLINK false exit then
+   REPLACED @ 0 <> INDEXED @ 0= and if DIFF-FORM:PURE false exit then
+   MODED @ 0 <> INDEXED @ 0= and if DIFF-FORM:MODE false exit then
+   E-DIFF-SYNTAX throw ;
+
+: RAW-BEGIN ( status bool ptr u8 n bool ptr u8 n ptr u8 n -- )
+   {: change:status old?:bool oa:ptr ou:n new?:bool na:ptr nu:n raw:ptr rawu:n :}
+   RAW-RESET
+   change STATUS!
+   old? FRAME-OLD-PRESENT !
+   new? FRAME-NEW-PRESENT !
+   oa FRAME-OLD-A! ou FRAME-OLD-U !
+   na FRAME-NEW-A! nu FRAME-NEW-U !
+   raw RAW-A! rawu RAW-U !
+   FRAME-PATHS-VALID? 0= if E-DIFF-SYNTAX throw then
+   rawu 0 <= if E-DIFF-SYNTAX throw then
+   true FRAMED ! ;
+
+: RAW-END ( -- )
+   RAW-FINISH
+   STATUS-VALID? 0= if E-DIFF-SYNTAX throw then ;
+
+: SCAN-OLD$ ( -- ptr u8 n )
+   SCAN-OLD-A @ SCAN-OLD-U @ ;
+
+: SCAN-NEW$ ( -- ptr u8 n )
+   SCAN-NEW-A @ SCAN-NEW-U @ ;
+
+: SCAN-SEG? ( n ptr u8 n -- bool ) {: off:n a:ptr u:n :}
+   off 0 < if false exit then
+   off u + off < if false exit then
+   off u + RAW-U @ > if false exit then
+   RAW-A@ off + u a u STR= ;
+
+: SCAN-HEAD? ( -- bool )
+   SCAN-OLD$ {: oa:ptr ou:n :}
+   SCAN-NEW$ {: na:ptr nu:n :}
+   s" diff --git a/" {: prefix:ptr prefixu:n :}
+   s"  b/" {: mid:ptr midu:n :}
+   prefixu ou + midu + nu + {: lineu:n :}
+   RAW-I @ lineu + RAW-I @ < if false exit then
+   RAW-I @ lineu + RAW-U @ >= if false exit then
+   RAW-I @ prefix prefixu SCAN-SEG? 0= if false exit then
+   RAW-I @ prefixu + oa ou SCAN-SEG? 0= if false exit then
+   RAW-I @ prefixu + ou + mid midu SCAN-SEG? 0= if false exit then
+   RAW-I @ prefixu + ou + midu + na nu SCAN-SEG? 0= if false exit then
+   RAW-A@ RAW-I @ lineu + + c@ LF-C = ;
+
+: SCAN-END? ( -- bool )
+   ST@ MATCH state
+      idle       OF false ENDOF
+      header     OF COMPLETE? ENDOF
+      new-header OF false ENDOF
+      file-body  OF false ENDOF
+      hunk-body  OF false ENDOF
+      after-hunk OF true ENDOF
+      terminal   OF true ENDOF
+   ;MATCH ;
+
+: SCAN-BOUNDARY? ( -- bool )
+   SCAN-NEXT @ 0= if false exit then
+   RAW-I @ 0= if false exit then
+   SCAN-END? 0= if false exit then
+   SCAN-HEAD? ;
+
+: SCAN-NEXT! ( bool ptr u8 n bool ptr u8 n -- )
+   {: old?:bool oa:ptr ou:n new?:bool na:ptr nu:n :}
+   old? if oa else na then SCAN-OLD-A !
+   old? if ou else nu then SCAN-OLD-U !
+   new? if na else oa then SCAN-NEW-A !
+   new? if nu else ou then SCAN-NEW-U ! ;
+
+public
+
+: OBJECT-ID? ( ptr u8 n -- bool )
+   HEX$? ;
+
+: VALIDATE-SECTION ( status bool ptr u8 n bool ptr u8 n ptr u8 n -- form bool )
+   RAW-BEGIN
+   begin RAW-I @ RAW-U @ < while
+      RAW-STEP drop drop 2drop
+   repeat
+   RAW-END
+   RAW-FORM ;
+
+: SCAN-SECTION ( status bool ptr u8 n bool ptr u8 n bool bool ptr u8 n bool ptr u8 n ptr u8 n -- n form bool )
+   {: change:status old?:bool oa:ptr ou:n new?:bool na:ptr nu:n next?:bool next-old?:bool noa:ptr nou:n next-new?:bool nna:ptr nnu:n raw:ptr rawu:n :}
+   next? SCAN-NEXT !
+   next-old? noa nou next-new? nna nnu SCAN-NEXT!
+   change old? oa ou new? na nu raw rawu RAW-BEGIN
+   begin RAW-I @ RAW-U @ < while
+      SCAN-BOUNDARY? if
+         RAW-END
+         RAW-I @ RAW-FORM exit
+      then
+      RAW-STEP drop drop 2drop
+   repeat
+   next? if E-DIFF-SYNTAX throw then
+   RAW-END
+   RAW-I @ RAW-FORM ;
 
 ;package

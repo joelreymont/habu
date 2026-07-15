@@ -319,6 +319,8 @@ variable GSI-TL-FILE-A
 
 : GSI-TOOL-TYPED-BODY ( -- )
    s" tools/lint/diff-test.f" GSI-INCLUDE
+   s" tools/lint/diff-frame-test.f" GSI-INCLUDE
+   s" tools/diff-capture-test.f" GSI-INCLUDE
    s" tools/typed-local-diff-lint-test.f" GSI-INCLUDE ;
 
 : GSI-TOOL-REPAIR ( -- )

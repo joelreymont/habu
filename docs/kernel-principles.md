@@ -182,11 +182,12 @@ own row in **`tools/ptx/perf-rows.tsv`** — kernel id, launch config
 `PERF:LOAD`/`PERF:LINE-OK?`.
 
 - **Changing kernel codegen requires a row.** `tools/kernel-perf-lint.f` scans a
-  `jj diff --git` artifact and fails when the diff touches a kernel emitter
+  validated `.hbdiff` artifact and fails when the diff touches a kernel emitter
   (`lib/ptx/cg.f`, `lib/ptx/cg-*.f`, `tools/ptx/*-cg.f`, `src/arch/ptx/emit.f`)
   without adding a registry row. Run it alongside `tools/typed-local-diff-lint.f`
-  in the pre-commit Forth gate:
-  `bin/hb --load tools/kernel-perf-lint.f -- diff.patch`.
+  in the pre-commit Forth gate. Produce the shared input once with
+  `bin/hb --load tools/diff-capture.f -- /tmp/change.hbdiff @- @`, then run
+  `bin/hb --load tools/kernel-perf-lint.f -- /tmp/change.hbdiff`.
 - **Off-device sessions add a WAIVER row instead.** When the Orin is
   unavailable, add a `WAIVER` row (value 0) whose note documents the
   device-gated reason and the owed measurement; the lint accepts it and the row

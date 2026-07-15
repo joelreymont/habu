@@ -3023,12 +3023,10 @@ unchanged (148855). Keys for milestone 2:
   that NEEDED an illegal model). Regate the merged tree, CHECK the result, and
   only then move bookmarks - separate commands, or `&&` from the gate onward.
   Cross-lane semantic conflicts do not show up as rebase conflicts.
-- **`tools/typed-local-diff-lint.f` returns to the REPL - feed it `</dev/null`.**
-  It ends with a plain `throw`-on-findings, not `bye`; a bare
-  `bin/hb tools/typed-local-diff-lint.f diff.patch` then blocks reading stdin and
-  looks like a multi-minute hang/timeout (rc 124). Redirect `</dev/null` and it
-  exits fast (rc 0 clean, rc 1 on findings). Same shape for any tool that does
-  not exit at end-of-load.
+- **Load lint CLIs explicitly and pass authenticated artifacts.** Invoke
+  `bin/hb --load tools/typed-local-diff-lint.f -- change.hbdiff`; treating a tool
+  path as the interactive script or feeding it an unframed patch can return to
+  the REPL and look like a timeout instead of exercising the checked CLI path.
 - **`tools/check.f <file>` preverifies in isolation - not for require-dependent
   files.** It does not process the file's `require` chain or FFI/`deftype`
   metaprogramming, so it reports `E-UNDEFINED` on lib words (`>CSTR`,
@@ -4431,3 +4429,17 @@ unchanged (148855). Keys for milestone 2:
   exact 100% similarity may finish after a rename/copy pair. Lower similarity
   and every dissimilarity retain an index-plus-body obligation across identity
   metadata, so EOF and the next section head remain fail-closed.
+- **A diff artifact must pin one repository operation, not four command-time
+  views.** Snapshot the working-copy commit once, resolve the operation ID once,
+  and run revision, metadata, and raw-diff queries at that operation with full
+  resolved commit IDs. Otherwise concurrent jj operations can pair metadata
+  with unrelated raw bytes.
+- **Library cleanup registries are caller state.** A nested producer that calls
+  `CLEANUP-RESET` erases the caller's pending cleanup obligations. Own a private
+  temporary root and remove it in the producer's success/error join instead of
+  borrowing the process-global test registry.
+- **Tree-entry kinds are part of the diff grammar.** Jj emits git submodules as
+  `git-submodule` metadata and metadata-only `040000` Git sections. Carry a
+  distinct checked form through parser, frame, reader, and tests; treating the
+  kind as an ordinary file either rejects valid repositories or misstates body
+  presence.

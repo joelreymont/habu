@@ -6,7 +6,7 @@ require lib/string.f
 require lib/test.f
 require tools/lint/diff.f
 
-package DIFF-TEST
+package DIFF
 private
 
 128 constant CR-CAP
@@ -42,7 +42,7 @@ variable CR-PATH-U
 
 : EXPECT ( ptr u8 n n ptr u8 n n -- )
    {: line:ptr lineu:n kind:n want:ptr wantu:n meta:n :}
-   line lineu DIFF:LINE EVENT# {: got:ptr gotu:n gotmeta:n gotkind:n :}
+   line lineu RAW-LINE EVENT# {: got:ptr gotu:n gotmeta:n gotkind:n :}
    gotkind kind T=
    got gotu want wantu T$=
    gotmeta meta T= ;
@@ -51,7 +51,7 @@ variable CR-PATH-U
    0 s" " 0 EXPECT ;
 
 : DROP-LINE ( ptr u8 n -- )
-   DIFF:LINE drop drop 2drop ;
+   RAW-LINE drop drop 2drop ;
 
 : HEAD ( -- )
    s" diff --git a/a.f b/a.f" EXPECT-NONE
@@ -60,7 +60,7 @@ variable CR-PATH-U
    s" +++ b/a.f" 1 s" a.f" 0 EXPECT ;
 
 : TEST-EVENTS ( -- )
-   DIFF:RESET
+   RAW-RESET
    HEAD
    s" @@ -1,2 +4,2 @@ WORD" 2 s" @@ -1,2 +4,2 @@ WORD" 4 EXPECT
    s" -old" 5 s" old" 0 EXPECT
@@ -76,14 +76,14 @@ variable CR-PATH-U
    s" +++ b/b.f" 1 s" b.f" 0 EXPECT
    s" @@ -0,0 +1 @@" 2 s" @@ -0,0 +1 @@" 1 EXPECT
    s" +new" 3 s" new" 0 EXPECT
-   DIFF:FINISH ;
+   RAW-FINISH ;
 
 : TEST-EMPTY ( -- )
-   DIFF:RESET
-   DIFF:FINISH ;
+   RAW-RESET
+   RAW-FINISH ;
 
 : TEST-DELETE-FILE ( -- )
-   DIFF:RESET
+   RAW-RESET
    s" diff --git a/gone.f b/gone.f" EXPECT-NONE
    s" deleted file mode 100644" EXPECT-NONE
    s" index abcdef1234..0000000000" EXPECT-NONE
@@ -91,20 +91,20 @@ variable CR-PATH-U
    s" +++ /dev/null" EXPECT-NONE
    s" @@ -1 +0,0 @@" 2 s" @@ -1 +0,0 @@" 0 EXPECT
    s" -gone" 5 s" gone" 0 EXPECT
-   DIFF:FINISH ;
+   RAW-FINISH ;
 
 : TEST-MID-MARKERS ( -- )
-   DIFF:RESET
+   RAW-RESET
    HEAD
    s" @@ -1 +1 @@" 2 s" @@ -1 +1 @@" 1 EXPECT
    s" -old" 5 s" old" 0 EXPECT
    s" \ No newline at end of file" EXPECT-NONE
    s" +new" 3 s" new" 0 EXPECT
    s" \ No newline at end of file" EXPECT-NONE
-   DIFF:FINISH ;
+   RAW-FINISH ;
 
 : TEST-METADATA ( -- )
-   DIFF:RESET
+   RAW-RESET
    s" diff --git a/old.f b/new.f" EXPECT-NONE
    s" similarity index 100%" EXPECT-NONE
    s" rename from old.f" 1 s" old.f" 0 EXPECT
@@ -122,20 +122,20 @@ variable CR-PATH-U
    s" rename to new.sh" 1 s" new.sh" 0 EXPECT
    s" old mode 100644" 1 s" old.sh" 0 EXPECT
    s" new mode 100755" 1 s" new.sh" 0 EXPECT
-   DIFF:FINISH ;
+   RAW-FINISH ;
 
 : TEST-EMPTY-METADATA ( -- )
-   DIFF:RESET
+   RAW-RESET
    s" diff --git a/new.f b/new.f" EXPECT-NONE
    s" new file mode 100644" EXPECT-NONE
    s" index 0000000000..e69de29bb2" 1 s" new.f" 0 EXPECT
    s" diff --git a/old.f b/old.f" EXPECT-NONE
    s" deleted file mode 100644" EXPECT-NONE
    s" index e69de29bb2..0000000000" 1 s" old.f" 0 EXPECT
-   DIFF:FINISH ;
+   RAW-FINISH ;
 
 : TEST-BINARY ( -- )
-   DIFF:RESET
+   RAW-RESET
    s" diff --git a/a.bin b/a.bin" EXPECT-NONE
    s" index 1234567890..abcdef1234 100644" EXPECT-NONE
    s" Binary files a/a.bin and b/a.bin differ" 1 s" a.bin" 0 EXPECT
@@ -150,10 +150,10 @@ variable CR-PATH-U
    s" diff --git a/x and y.bin b/x and y.bin" EXPECT-NONE
    s" index 1234567890..abcdef1234 100644" EXPECT-NONE
    s" Binary files a/x and y.bin and b/x and y.bin differ" 1 s" x and y.bin" 0 EXPECT
-   DIFF:FINISH ;
+   RAW-FINISH ;
 
 : TEST-SPACES ( -- )
-   DIFF:RESET
+   RAW-RESET
    s" diff --git a/same file.f b/same file.f" EXPECT-NONE
    s" index 1234567890..abcdef1234 100644" EXPECT-NONE
    s" --- a/same file.f" 1 s" same file.f" 0 EXPECT
@@ -183,10 +183,10 @@ variable CR-PATH-U
    s" diff --git a/alpha b/beta.txt b/alpha b/beta.txt" EXPECT-NONE
    s" old mode 100644" 1 s" alpha b/beta.txt" 0 EXPECT
    s" new mode 100755" 1 s" alpha b/beta.txt" 0 EXPECT
-   DIFF:FINISH ;
+   RAW-FINISH ;
 
 : TEST-MODE-CONTENT ( -- )
-   DIFF:RESET
+   RAW-RESET
    s" diff --git a/mode file.f b/mode file.f" EXPECT-NONE
    s" old mode 100644" 1 s" mode file.f" 0 EXPECT
    s" new mode 100755" 1 s" mode file.f" 0 EXPECT
@@ -196,18 +196,18 @@ variable CR-PATH-U
    s" @@ -1 +1 @@" 2 s" @@ -1 +1 @@" 1 EXPECT
    s" -old" 5 s" old" 0 EXPECT
    s" +new" 3 s" new" 0 EXPECT
-   DIFF:FINISH ;
+   RAW-FINISH ;
 
 : TEST-CR-PATH ( -- )
    PREP-CR
-   DIFF:RESET
+   RAW-RESET
    CR-HEAD CR-HEAD-U @ EXPECT-NONE
    s" old mode 100644" 1 CR-PATH CR-PATH-U @ 0 EXPECT
    s" new mode 100755" 1 CR-PATH CR-PATH-U @ 0 EXPECT
-   DIFF:FINISH ;
+   RAW-FINISH ;
 
 : TEST-DISSIMILARITY ( -- )
-   DIFF:RESET
+   RAW-RESET
    s" diff --git a/a.f b/a.f" EXPECT-NONE
    s" dissimilarity index 80%" EXPECT-NONE
    s" index 1234567890..abcdef1234 100644" EXPECT-NONE
@@ -216,10 +216,10 @@ variable CR-PATH-U
    s" @@ -1 +1 @@" 2 s" @@ -1 +1 @@" 1 EXPECT
    s" -old" 5 s" old" 0 EXPECT
    s" +new" 3 s" new" 0 EXPECT
-   DIFF:FINISH ;
+   RAW-FINISH ;
 
 : TEST-MODIFIED-RENAME ( -- )
-   DIFF:RESET
+   RAW-RESET
    s" diff --git a/old.f b/new.f" EXPECT-NONE
    s" similarity index 50%" EXPECT-NONE
    s" rename from old.f" 1 s" old.f" 0 EXPECT
@@ -230,83 +230,83 @@ variable CR-PATH-U
    s" @@ -1 +1 @@" 2 s" @@ -1 +1 @@" 1 EXPECT
    s" -old" 5 s" old" 0 EXPECT
    s" +new" 3 s" new" 0 EXPECT
-   DIFF:FINISH ;
+   RAW-FINISH ;
 
 : TEST-MODIFIED-COPY ( -- )
-   DIFF:RESET
+   RAW-RESET
    s" diff --git a/src.bin b/dst.bin" EXPECT-NONE
    s" similarity index 50%" EXPECT-NONE
    s" copy from src.bin" 1 s" src.bin" 0 EXPECT
    s" copy to dst.bin" 1 s" dst.bin" 0 EXPECT
    s" index 1234567890..abcdef1234 100644" EXPECT-NONE
    s" Binary files a/src.bin and b/dst.bin differ" 1 s" dst.bin" 0 EXPECT
-   DIFF:FINISH ;
+   RAW-FINISH ;
 
 : BAD-HUNK-FIRST ( -- )
-   DIFF:RESET
+   RAW-RESET
    s" @@ -1 +1 @@" DROP-LINE ;
 
 : BAD-EMPTY-HEAD ( -- )
-   DIFF:RESET
+   RAW-RESET
    s" diff --git " DROP-LINE ;
 
 : BAD-ADD-FIRST ( -- )
-   DIFF:RESET
+   RAW-RESET
    s" diff --git a/a.f b/a.f" DROP-LINE
    s" +outside" DROP-LINE ;
 
 : BAD-RANGE ( -- )
-   DIFF:RESET
+   RAW-RESET
    HEAD
    s" @@ -1,x +1 @@" DROP-LINE ;
 
 : BAD-OLD-EOF ( -- )
-   DIFF:RESET
+   RAW-RESET
    s" diff --git a/a.f b/a.f" DROP-LINE
    s" --- a/a.f" DROP-LINE
-   DIFF:FINISH ;
+   RAW-FINISH ;
 
 : BAD-HEAD-EOF ( -- )
-   DIFF:RESET
+   RAW-RESET
    s" diff --git a/a.f b/a.f" DROP-LINE
-   DIFF:FINISH ;
+   RAW-FINISH ;
 
 : BAD-HUNK-EOF ( -- )
-   DIFF:RESET
+   RAW-RESET
    HEAD
    s" @@ -0,0 +1,2 @@" DROP-LINE
    s" +one" DROP-LINE
-   DIFF:FINISH ;
+   RAW-FINISH ;
 
 : BAD-NEXT-FILE ( -- )
-   DIFF:RESET
+   RAW-RESET
    HEAD
    s" @@ -0,0 +1,2 @@" DROP-LINE
    s" +one" DROP-LINE
    s" diff --git a/b.f b/b.f" DROP-LINE ;
 
 : BAD-EXTRA-ADD ( -- )
-   DIFF:RESET
+   RAW-RESET
    HEAD
    s" @@ -0,0 +1 @@" DROP-LINE
    s" +one" DROP-LINE
    s" +two" DROP-LINE ;
 
 : BAD-HEADER-SPOOF ( -- )
-   DIFF:RESET
+   RAW-RESET
    HEAD
    s" @@ -0,0 +1 @@" DROP-LINE
    s" +safe" DROP-LINE
    s" +++ b/tools/ptx/perf-rows.tsv" DROP-LINE ;
 
 : BAD-MARKER-FIRST ( -- )
-   DIFF:RESET
+   RAW-RESET
    HEAD
    s" @@ -1 +1 @@" DROP-LINE
    s" \ No newline at end of file" DROP-LINE ;
 
 : BAD-MARKER-TWICE ( -- )
-   DIFF:RESET
+   RAW-RESET
    HEAD
    s" @@ -0,0 +1 @@" DROP-LINE
    s" +line" DROP-LINE
@@ -314,235 +314,235 @@ variable CR-PATH-U
    s" \ No newline at end of file" DROP-LINE ;
 
 : BAD-OLD-SPOOF ( -- )
-   DIFF:RESET
+   RAW-RESET
    s" diff --git a/a.f b/a.f" DROP-LINE
    s" index 123..456 100644" DROP-LINE
    s" --- a/spoof.f" DROP-LINE
    s" +++ b/a.f" DROP-LINE ;
 
 : BAD-NEW-SPOOF ( -- )
-   DIFF:RESET
+   RAW-RESET
    s" diff --git a/a.f b/a.f" DROP-LINE
    s" index 123..456 100644" DROP-LINE
    s" --- a/a.f" DROP-LINE
    s" +++ b/spoof.f" DROP-LINE ;
 
 : BAD-RENAME-FROM ( -- )
-   DIFF:RESET
+   RAW-RESET
    s" diff --git a/a.f b/b.f" DROP-LINE
    s" similarity index 100%" DROP-LINE
    s" rename from spoof.f" DROP-LINE
    s" rename to b.f" DROP-LINE ;
 
 : BAD-RENAME-TO ( -- )
-   DIFF:RESET
+   RAW-RESET
    s" diff --git a/a.f b/b.f" DROP-LINE
    s" rename from a.f" DROP-LINE
    s" rename to spoof.f" DROP-LINE ;
 
 : BAD-COPY-EOF ( -- )
-   DIFF:RESET
+   RAW-RESET
    s" diff --git a/a.f b/b.f" DROP-LINE
    s" copy from a.f" DROP-LINE
-   DIFF:FINISH ;
+   RAW-FINISH ;
 
 : BAD-RENAME-EOF ( -- )
-   DIFF:RESET
+   RAW-RESET
    s" diff --git a/a.f b/b.f" DROP-LINE
    s" rename from a.f" DROP-LINE
-   DIFF:FINISH ;
+   RAW-FINISH ;
 
 : BAD-MODE-EOF ( -- )
-   DIFF:RESET
+   RAW-RESET
    s" diff --git a/a.f b/a.f" DROP-LINE
    s" old mode 100644" DROP-LINE
-   DIFF:FINISH ;
+   RAW-FINISH ;
 
 : BAD-NULL-OLD ( -- )
-   DIFF:RESET
+   RAW-RESET
    s" diff --git a/a.f b/a.f" DROP-LINE
    s" index 123..456 100644" DROP-LINE
    s" --- /dev/null" DROP-LINE ;
 
 : BAD-NULL-NEW ( -- )
-   DIFF:RESET
+   RAW-RESET
    s" diff --git a/a.f b/a.f" DROP-LINE
    s" index 123..456 100644" DROP-LINE
    s" --- a/a.f" DROP-LINE
    s" +++ /dev/null" DROP-LINE ;
 
 : BAD-NESTED-HEAD ( -- )
-   DIFF:RESET
+   RAW-RESET
    s" diff --git a/a.f b/b.f" DROP-LINE
    s" rename from a.f" DROP-LINE
    s" diff --git a/c.f b/c.f" DROP-LINE ;
 
 : BAD-REPLACEMENT-HEAD ( -- )
-   DIFF:RESET
+   RAW-RESET
    s" diff --git a/a.f b/b.f" DROP-LINE
    s" rename from a.f" DROP-LINE
    s" rename to b.f" DROP-LINE
    s" diff --git a/c.f b/" DROP-LINE ;
 
 : BAD-BINARY-SPOOF ( -- )
-   DIFF:RESET
+   RAW-RESET
    s" diff --git a/a.bin b/a.bin" DROP-LINE
    s" index 1234567890..abcdef1234 100644" DROP-LINE
    s" Binary files a/spoof.bin and b/a.bin differ" DROP-LINE ;
 
 : BAD-ZERO-HUNK ( -- )
-   DIFF:RESET
+   RAW-RESET
    HEAD
    s" @@ -0,0 +0,0 @@" DROP-LINE ;
 
 : BAD-INDEX ( -- )
-   DIFF:RESET
+   RAW-RESET
    s" diff --git a/a.f b/a.f" DROP-LINE
    s" index not-a-hash" DROP-LINE ;
 
 : BAD-INDEX-BAD-MODE ( -- )
-   DIFF:RESET
+   RAW-RESET
    s" diff --git a/a.f b/a.f" DROP-LINE
    s" index 1234567890..abcdef1234 100688" DROP-LINE ;
 
 : BAD-CHANGED-TEXT ( -- )
-   DIFF:RESET
+   RAW-RESET
    s" diff --git a/a.f b/b.f" DROP-LINE
    s" index 123..456 100644" DROP-LINE
    s" --- a/a.f" DROP-LINE
    s" +++ b/b.f" DROP-LINE ;
 
 : BAD-CHANGED-MODE ( -- )
-   DIFF:RESET
+   RAW-RESET
    s" diff --git a/a.f b/b.f" DROP-LINE
    s" old mode 100644" DROP-LINE
    s" new mode 100755" DROP-LINE
-   DIFF:FINISH ;
+   RAW-FINISH ;
 
 : BAD-CHANGED-BINARY ( -- )
-   DIFF:RESET
+   RAW-RESET
    s" diff --git a/a.bin b/b.bin" DROP-LINE
    s" index 1234567890..abcdef1234 100644" DROP-LINE
    s" Binary files a/a.bin and b/b.bin differ" DROP-LINE ;
 
 : BAD-SIMILARITY ( -- )
-   DIFF:RESET
+   RAW-RESET
    s" diff --git a/a.f b/b.f" DROP-LINE
    s" similarity index 101%" DROP-LINE ;
 
 : BAD-NEW-FILE-EOF ( -- )
-   DIFF:RESET
+   RAW-RESET
    s" diff --git a/a.f b/a.f" DROP-LINE
    s" new file mode 100644" DROP-LINE
-   DIFF:FINISH ;
+   RAW-FINISH ;
 
 : BAD-DELETE-FILE-EOF ( -- )
-   DIFF:RESET
+   RAW-RESET
    s" diff --git a/a.f b/a.f" DROP-LINE
    s" deleted file mode 100644" DROP-LINE
-   DIFF:FINISH ;
+   RAW-FINISH ;
 
 : BAD-SPACE-TEXT-SPOOF ( -- )
-   DIFF:RESET
+   RAW-RESET
    s" diff --git a/same file.f b/same file.f" DROP-LINE
    s" index 1234567890..abcdef1234 100644" DROP-LINE
    s" --- a/spoof file.f" DROP-LINE
    s" +++ b/same file.f" DROP-LINE ;
 
 : BAD-SPACE-RENAME-SPOOF ( -- )
-   DIFF:RESET
+   RAW-RESET
    s" diff --git a/old file.f b/new file.f" DROP-LINE
    s" rename from spoof file.f" DROP-LINE
    s" rename to new file.f" DROP-LINE ;
 
 : BAD-AMBIGUOUS-MODE ( -- )
-   DIFF:RESET
+   RAW-RESET
    s" diff --git a/alpha b/beta.txt b/gamma b/delta.txt" DROP-LINE
    s" old mode 100644" DROP-LINE ;
 
 : BAD-INDEX-MODE ( -- )
-   DIFF:RESET
+   RAW-RESET
    s" diff --git a/a.f b/a.f" DROP-LINE
    s" index 1234567890..abcdef1234 100644" DROP-LINE
    s" old mode 100644" DROP-LINE ;
 
 : BAD-INDEX-RENAME ( -- )
-   DIFF:RESET
+   RAW-RESET
    s" diff --git a/a.f b/b.f" DROP-LINE
    s" index 1234567890..abcdef1234 100644" DROP-LINE
    s" rename from a.f" DROP-LINE ;
 
 : BAD-DUP-INDEX ( -- )
-   DIFF:RESET
+   RAW-RESET
    s" diff --git a/a.f b/a.f" DROP-LINE
    s" index 1234567890..abcdef1234 100644" DROP-LINE
    s" index 1234567890..abcdef1234 100644" DROP-LINE ;
 
 : BAD-DUP-MODE ( -- )
-   DIFF:RESET
+   RAW-RESET
    s" diff --git a/a.f b/a.f" DROP-LINE
    s" old mode 100644" DROP-LINE
    s" new mode 100755" DROP-LINE
    s" old mode 100755" DROP-LINE ;
 
 : BAD-DUP-RENAME ( -- )
-   DIFF:RESET
+   RAW-RESET
    s" diff --git a/a.f b/b.f" DROP-LINE
    s" rename from a.f" DROP-LINE
    s" rename to b.f" DROP-LINE
    s" rename from a.f" DROP-LINE ;
 
 : BAD-DUP-SIMILARITY ( -- )
-   DIFF:RESET
+   RAW-RESET
    s" diff --git a/a.f b/b.f" DROP-LINE
    s" similarity index 100%" DROP-LINE
    s" similarity index 100%" DROP-LINE ;
 
 : BAD-BINARY-TEXT ( -- )
-   DIFF:RESET
+   RAW-RESET
    s" diff --git a/a.bin b/a.bin" DROP-LINE
    s" index 1234567890..abcdef1234 100644" DROP-LINE
    s" Binary files a/a.bin and b/a.bin differ" DROP-LINE
    s" --- a/a.bin" DROP-LINE ;
 
 : BAD-INDEX-EOF ( -- )
-   DIFF:RESET
+   RAW-RESET
    s" diff --git a/a.f b/a.f" DROP-LINE
    s" index 1234567890..abcdef1234 100644" DROP-LINE
-   DIFF:FINISH ;
+   RAW-FINISH ;
 
 : BAD-TEXT-NO-INDEX ( -- )
-   DIFF:RESET
+   RAW-RESET
    s" diff --git a/a.f b/a.f" DROP-LINE
    s" --- a/a.f" DROP-LINE ;
 
 : BAD-MODE-NONOCTAL ( -- )
-   DIFF:RESET
+   RAW-RESET
    s" diff --git a/a.f b/a.f" DROP-LINE
    s" old mode 100688" DROP-LINE ;
 
 : BAD-MODE-SAME ( -- )
-   DIFF:RESET
+   RAW-RESET
    s" diff --git a/a.f b/a.f" DROP-LINE
    s" old mode 100644" DROP-LINE
    s" new mode 100644" DROP-LINE ;
 
 : BAD-DUP-DISSIMILARITY ( -- )
-   DIFF:RESET
+   RAW-RESET
    s" diff --git a/a.f b/a.f" DROP-LINE
    s" dissimilarity index 80%" DROP-LINE
    s" dissimilarity index 80%" DROP-LINE ;
 
 : BAD-TEXT-EOF ( -- )
-   DIFF:RESET
+   RAW-RESET
    s" diff --git a/a.f b/a.f" DROP-LINE
    s" index 1234567890..abcdef1234 100644" DROP-LINE
    s" --- a/a.f" DROP-LINE
    s" +++ b/a.f" DROP-LINE
-   DIFF:FINISH ;
+   RAW-FINISH ;
 
 : BAD-TEXT-NEXT ( -- )
-   DIFF:RESET
+   RAW-RESET
    s" diff --git a/a.f b/a.f" DROP-LINE
    s" index 1234567890..abcdef1234 100644" DROP-LINE
    s" --- a/a.f" DROP-LINE
@@ -550,45 +550,45 @@ variable CR-PATH-U
    s" diff --git a/b.f b/b.f" DROP-LINE ;
 
 : BAD-CONTEXT-HUNK ( -- )
-   DIFF:RESET
+   RAW-RESET
    HEAD
    s" @@ -1 +1 @@" DROP-LINE
    s"  same" DROP-LINE ;
 
 : BAD-BINARY-AND-SPOOF ( -- )
-   DIFF:RESET
+   RAW-RESET
    s" diff --git a/x and y.bin b/x and y.bin" DROP-LINE
    s" index 1234567890..abcdef1234 100644" DROP-LINE
    s" Binary files a/x and spoof.bin and b/x and y.bin differ" DROP-LINE ;
 
 : BAD-LF-PATH ( -- )
-   DIFF:RESET
+   RAW-RESET
    s" diff --git a/line" DROP-LINE ;
 
 : BAD-SIMILARITY-INDEX ( -- )
-   DIFF:RESET
+   RAW-RESET
    s" diff --git a/a.f b/b.f" DROP-LINE
    s" similarity index 80%" DROP-LINE
    s" index 1234567890..abcdef1234 100644" DROP-LINE ;
 
 : BAD-PARTIAL-RENAME-EOF ( -- )
-   DIFF:RESET
+   RAW-RESET
    s" diff --git a/old.f b/new.f" DROP-LINE
    s" similarity index 50%" DROP-LINE
    s" rename from old.f" DROP-LINE
    s" rename to new.f" DROP-LINE
-   DIFF:FINISH ;
+   RAW-FINISH ;
 
 : BAD-PARTIAL-COPY-EOF ( -- )
-   DIFF:RESET
+   RAW-RESET
    s" diff --git a/src.f b/dst.f" DROP-LINE
    s" similarity index 50%" DROP-LINE
    s" copy from src.f" DROP-LINE
    s" copy to dst.f" DROP-LINE
-   DIFF:FINISH ;
+   RAW-FINISH ;
 
 : BAD-PARTIAL-RENAME-NEXT ( -- )
-   DIFF:RESET
+   RAW-RESET
    s" diff --git a/old.f b/new.f" DROP-LINE
    s" similarity index 50%" DROP-LINE
    s" rename from old.f" DROP-LINE
@@ -596,7 +596,7 @@ variable CR-PATH-U
    s" diff --git a/a.f b/a.f" DROP-LINE ;
 
 : BAD-PARTIAL-COPY-NEXT ( -- )
-   DIFF:RESET
+   RAW-RESET
    s" diff --git a/src.f b/dst.f" DROP-LINE
    s" similarity index 50%" DROP-LINE
    s" copy from src.f" DROP-LINE
@@ -604,17 +604,17 @@ variable CR-PATH-U
    s" diff --git a/a.f b/a.f" DROP-LINE ;
 
 : BAD-DISSIMILARITY-EOF ( -- )
-   DIFF:RESET
+   RAW-RESET
    s" diff --git a/a.f b/a.f" DROP-LINE
    s" dissimilarity index 80%" DROP-LINE
-   DIFF:FINISH ;
+   RAW-FINISH ;
 
 : BAD-DISSIMILARITY-INDEX-EOF ( -- )
-   DIFF:RESET
+   RAW-RESET
    s" diff --git a/a.f b/a.f" DROP-LINE
    s" dissimilarity index 80%" DROP-LINE
    s" index 1234567890..abcdef1234 100644" DROP-LINE
-   DIFF:FINISH ;
+   RAW-FINISH ;
 
 : REJECT ( [ -- ] ptr u8 n -- )
    T-LABEL

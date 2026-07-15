@@ -2,7 +2,7 @@
 \ Run: bin/hb --load lib/errors.f lib/string.f lib/test.f lib/memory.f
 \ lib/vector.f lib/fs.f lib/fs-mutate.f lib/process.f
 \ tools/lint/text.f tools/lint/token.f tools/lint/lib.f
-\ tools/lint/source-lex.f tools/lint/diff.f tools/typed-local-diff-lint-core.f
+\ tools/lint/source-lex.f tools/lint/diff-frame-write.f tools/typed-local-diff-lint-core.f
 \ tools/typed-local-diff-lint-test.f
 
 require lib/errors.f
@@ -17,7 +17,7 @@ require tools/lint/text.f
 require tools/lint/token.f
 require tools/lint/lib.f
 require tools/lint/source-lex.f
-require tools/lint/diff.f
+require tools/lint/diff-frame-write.f
 require tools/typed-local-diff-lint-core.f
 
 package TLD-TEST
@@ -45,6 +45,25 @@ create MD-BUF FS-PATH-CAP allot
 create LARGE-BUF FS-PATH-CAP allot
 create OUT BUF-CAP allot
 create LARGE-SRC LARGE-CAP allot
+create FRAME LARGE-CAP 2 * allot
+create LF-NAME 128 allot
+variable LF-NAME-U
+
+: FRAME-START ( -- )
+   FRAME LARGE-CAP 2 * s" 0123456789" s" abcdef0123" DIFF-WRITE:START ;
+
+: FRAME-END ( -- ptr u8 n )
+   DIFF-WRITE:FINISH ;
+
+: MODIFIED+ ( ptr u8 n ptr u8 n -- )
+   {: path:ptr pathu:n raw:ptr rawu:n :}
+   DIFF-STATUS:MODIFIED DIFF-FORM:TEXT true
+   true path pathu true path pathu raw rawu DIFF-WRITE:SECTION ;
+
+: PURE-RENAME+ ( ptr u8 n ptr u8 n ptr u8 n -- )
+   {: old:ptr oldu:n new:ptr newu:n raw:ptr rawu:n :}
+   DIFF-STATUS:RENAMED DIFF-FORM:PURE false
+   true old oldu true new newu raw rawu DIFF-WRITE:SECTION ;
 
 : COPY! ( ptr u8 n ptr u8 ptr n -- ) {: a:ptr u:n dst:ptr lenp:ptr :}
    a dst u BYTE-COPY
@@ -90,21 +109,26 @@ create LARGE-SRC LARGE-CAP allot
    s"  @@" SB-APPEND LF ;
 
 : GOOD$ ( -- ptr u8 n )
+   FRAME-START
    SB-RESET
    s" lib/good.f" 4 DIFF-HEAD
    s" +: OK ( n -- n ) {: x:n :} x ;" SB-APPEND LF
    s" +: TWO ( n n -- n ) {:" SB-APPEND LF
    s" +   a:n b:n" SB-APPEND LF
    s" +:} a b + ;" SB-APPEND LF
-   SB$ ;
+   s" lib/good.f" SB$ MODIFIED+
+   FRAME-END ;
 
 : BAD$ ( -- ptr u8 n )
+   FRAME-START
    SB-RESET
    s" lib/bad.f" 1 DIFF-HEAD
    s" +: BAD ( n -- n ) {: x :} x ;" SB-APPEND LF
-   SB$ ;
+   s" lib/bad.f" SB$ MODIFIED+
+   FRAME-END ;
 
 : IGNORED$ ( -- ptr u8 n )
+   FRAME-START
    SB-RESET
    s" lib/ignored.f" 3 DIFF-HEAD
    s" +\\ {: x :} in a line comment" SB-APPEND LF
@@ -112,19 +136,24 @@ create LARGE-SRC LARGE-CAP allot
    s" +: STR ( -- ) s" SB-APPEND DQ
    s" {: x :}" SB-APPEND DQ
    s"  drop ;" SB-APPEND LF
-   SB$ ;
+   s" lib/ignored.f" SB$ MODIFIED+
+   FRAME-END ;
 
 : ALLOW$ ( -- ptr u8 n )
+   FRAME-START
    SB-RESET
    s" lib/allow.f" 1 DIFF-HEAD
    s" +: KEEP-ROLE ( ptr u8 n -- ptr u8 ) {: a :} a \\ typed-local-lint: allow-bare-local" SB-APPEND LF
-   SB$ ;
+   s" lib/allow.f" SB$ MODIFIED+
+   FRAME-END ;
 
 : MD$ ( -- ptr u8 n )
+   FRAME-START
    SB-RESET
    s" docs/note.md" 1 DIFF-HEAD
    s" +example {: x :} text" SB-APPEND LF
-   SB$ ;
+   s" docs/note.md" SB$ MODIFIED+
+   FRAME-END ;
 
 : LARGE-APPEND ( ptr u8 n -- )
    LARGE-SRC LARGE-CAP LARGE-SRC-U BUF-APPEND ;
@@ -140,40 +169,46 @@ create LARGE-SRC LARGE-CAP allot
    s" +++ b/" LARGE-APPEND path pathu LARGE-APPEND LARGE-LF
    s" @@ -0,0 +1,1100 @@" LARGE-APPEND LARGE-LF ;
 
-: SPOOF$ ( -- ptr u8 n )
-   SB-RESET
-   s" docs/note.md" 1 DIFF-HEAD
-   s" +safe" SB-APPEND LF
-   s" +++ b/lib/spoof.f" SB-APPEND LF
-   s" @@ -0,0 +1,1 @@" SB-APPEND LF
-   s" +: BAD ( n -- n ) {: x :} x ;" SB-APPEND LF
-   SB$ ;
-
 : META$ ( -- ptr u8 n )
+   FRAME-START
    SB-RESET
    s" diff --git a/lib/old.f b/docs/old.md" SB-APPEND LF
    s" similarity index 100%" SB-APPEND LF
    s" rename from lib/old.f" SB-APPEND LF
    s" rename to docs/old.md" SB-APPEND LF
+   s" lib/old.f" s" docs/old.md" SB$ PURE-RENAME+
+   SB-RESET
    s" docs/note.md" 1 DIFF-HEAD
    s" +example {: x :} text" SB-APPEND LF
-   SB$ ;
+   s" docs/note.md" SB$ MODIFIED+
+   FRAME-END ;
+
+: LF-NAME$ ( -- ptr u8 n )
+   SB-RESET
+   s" line" SB-APPEND LF
+   s" file.f" SB-APPEND
+   SB$ LF-NAME LF-NAME-U COPY!
+   LF-NAME LF-NAME-U @ ;
 
 : LF-PATH$ ( -- ptr u8 n )
+   FRAME-START
+   LF-NAME$ {: path:ptr pathu:n :}
    SB-RESET
-   s" diff --git a/line" SB-APPEND LF
-   s" file.f b/line" SB-APPEND LF
-   s" file.f" SB-APPEND LF
-   SB$ ;
+   path pathu 1 DIFF-HEAD
+   s" +: BAD ( n -- n ) {: x :} x ;" SB-APPEND LF
+   path pathu SB$ MODIFIED+
+   FRAME-END ;
 
 : LARGE$ ( -- ptr u8 n )
+   FRAME-START
    LARGE-SRC-U BUF-RESET
    s" lib/large.f" LARGE-DIFF-HEAD
    0 begin dup LARGE-LINES < while
       s" +: OK ( n -- n ) {: x:n :} x ;" LARGE-APPEND LARGE-LF
       1+
    repeat drop
-   LARGE-SRC LARGE-SRC-U BUF-LEN@ ;
+   s" lib/large.f" LARGE-SRC LARGE-SRC-U BUF-LEN@ MODIFIED+
+   FRAME-END ;
 
 : EMPTY$ ( -- ptr u8 n )
    SB-RESET
@@ -251,18 +286,6 @@ create LARGE-SRC LARGE-CAP allot
 : TEST-BAD ( -- )
    BAD RUN-CORE 1 EXPECT-EXIT ASSERT-BAD ;
 
-: RUN-SPOOF ( -- )
-   CORE-SETUP
-   SPOOF$ TYPED-LOCAL-DIFF:SOURCE
-   TYPED-LOCAL-DIFF:FINISH ;
-
-: TEST-SPOOF ( -- )
-   [: RUN-SPOOF ;] catch {: rc:n :}
-   LINT-OUT$ nip {: outu:n :}
-   LINT-OUT-BUFFER-OFF
-   rc E-DIFF-SYNTAX T=
-   outu 0 T= ;
-
 : RUN-META ( -- )
    CORE-SETUP
    META$ TYPED-LOCAL-DIFF:SOURCE
@@ -284,8 +307,8 @@ create LARGE-SRC LARGE-CAP allot
    [: RUN-LF-PATH ;] catch {: rc:n :}
    LINT-OUT$ nip {: outu:n :}
    LINT-OUT-BUFFER-OFF
-   rc E-DIFF-SYNTAX T=
-   outu 0 T= ;
+   rc 1 T=
+   OUT outu s" E-UNTYPED-LOCAL" CONTAINS? TTRUE ;
 
 : MAIN ( -- )
    T-RESET
@@ -296,7 +319,6 @@ create LARGE-SRC LARGE-CAP allot
    TEST-ALLOW
    TEST-NON-FORTH
    TEST-BAD
-   TEST-SPOOF
    TEST-META
    TEST-LF-PATH
    CLEANUP-RUN

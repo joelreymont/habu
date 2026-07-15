@@ -1,13 +1,13 @@
 \ kernel-perf-lint-core.f - kernel codegen changes must carry a profile row.
-\ Scans a `jj diff --git` artifact: when the diff touches a kernel codegen
+\ Scans a validated framed jj diff artifact: when the diff touches kernel codegen
 \ source (lib/ptx/cg*.f, tools/ptx/*-cg.f, src/arch/ptx/emit.f) it must also
 \ add at least one valid profile row (or documented WAIVER row) to
 \ tools/ptx/perf-rows.tsv, and every added registry row must validate.
 \ Load after lib/errors.f, lib/string.f, lib/memory.f, lib/fs.f,
-\ tools/lint/text.f, tools/lint/lib.f, tools/lint/diff.f, and
+\ tools/lint/text.f, tools/lint/lib.f, tools/lint/diff-frame.f, and
 \ tools/ptx/perf-registry.f.
 
-require tools/lint/diff.f
+require tools/lint/diff-frame.f
 
 package KERNEL-PERF-LINT
 private
@@ -23,7 +23,6 @@ variable BAD#
 variable ROWS+
 variable CUR-REG
 variable WATCH#
-variable SCAN-START
 
 : REG-PATH$ ( -- ptr u8 n )
    s" tools/ptx/perf-rows.tsv" ;
@@ -117,8 +116,11 @@ variable SCAN-START
       delete  OF DROP-EVENT ENDOF
    ;MATCH ;
 
-: PROCESS-LINE ( ptr u8 n -- )
-   DIFF:LINE PROCESS-EVENT ;
+: NEXT? ( -- bool )
+   DIFF:NEXT? {: a:ptr u:n value:n kind:DIFF:event present:bool :}
+   present 0= if LINT-FALSE exit then
+   a u value kind PROCESS-EVENT
+   LINT-TRUE ;
 
 : MISSING-CHECK ( -- )
    ROWS+ @ 0 > if exit then
@@ -133,28 +135,17 @@ public
    0 BAD# !
    0 ROWS+ !
    0 WATCH# !
-   LINT-FALSE CUR-REG !
-   DIFF:RESET ;
+   LINT-FALSE CUR-REG ! ;
 
 : SOURCE ( ptr u8 n -- ) {: a:ptr u:n :}
-   0 SCAN-START !
-   0 begin dup u < while
-      dup a + c@ LF-C = if
-         a SCAN-START @ + over SCAN-START @ - PROCESS-LINE
-         dup 1+ SCAN-START !
-      then
-      1+
-   repeat drop
-   SCAN-START @ u < if
-      a SCAN-START @ + u SCAN-START @ - PROCESS-LINE
-   then ;
+   a u DIFF:OPEN
+   begin NEXT? while repeat ;
 
 : FILE ( ptr u8 n -- ) {: a:ptr u:n :}
    a u LINT-SOURCE:LOAD
    LINT-SOURCE:TEXT SOURCE ;
 
 : FINISH ( -- )
-   DIFF:FINISH
    MISSING-CHECK
    BAD# @ 0 > if 1 throw then ;
 

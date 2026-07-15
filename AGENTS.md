@@ -139,8 +139,10 @@ codes, never silent; named constants; and a `T{ … -> … }T` test for every wo
   not commit speculative, skipped, or "fix later" code.
 - Forth commit gate (BLOCKING): before `jj commit`, any change
   touching `.f` or `.fs` source must prove checked Habu was used wherever
-  possible. Generate a `jj diff --git` artifact and run the Habu-native
-  `tools/typed-local-diff-lint.f` on it; every new or changed locals group needs
+  possible. Generate a validated framed artifact with
+  `bin/hb --load tools/diff-capture.f -- /tmp/change.hbdiff @- @`, then run
+  `bin/hb --load tools/typed-local-diff-lint.f -- /tmp/change.hbdiff`; every new
+  or changed locals group needs
   typed locals unless it documents a role-preserving exception from
   `docs/forth.md`. Also scan the diff for new/changed `:`, `+:`, `CHECKED:`,
   `TRUSTED:`, `0 set-check`, and `TRUST` sites; every new or changed definition

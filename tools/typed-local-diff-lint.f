@@ -17,7 +17,7 @@ package TLD-CLI
 private
 
 : RUN ( -- )
-   s" tools/typed-local-diff-lint.f diff.patch ..." ARGV-USAGE!
+   s" tools/typed-local-diff-lint.f artifact.hbdiff ..." ARGV-USAGE!
    ARGV-PARSE
    1 -1 ARGV-EXPECT-POS
    TYPED-LOCAL-DIFF:RESET
