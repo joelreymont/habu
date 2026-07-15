@@ -4704,3 +4704,32 @@ unchanged (148855). Keys for milestone 2:
   Corruption probe: an in-process PTX capture + `ABL-MUTATE` fma(a,b,acc)->
   fma(a,a,acc) on the matmul (magnitude-independent, in-bounds) drove the
   whole-model golden from PASS to a clean REJECT on the Orin.
+- **A reduction-dominated fusion win is bounded well below the equal-cost-op
+  round-trip model.** dot habu-automatic-aggressive-fusion leg a (layernorm):
+  the maki op set has NO separate MODEL:-parseable mean/variance reduce -
+  `OP-LAYERNORM` is ONE row-reduce op doing mean+var+normalize internally (two
+  BLOCK-SUMs in `lower-red.f` LRED-EMIT-LN) - so layernorm's fusable seam is the
+  reduction's EW EPILOGUE (`LAYERNORM SCALE BIAS` = ROW-REDUCE->EW->EW), not a
+  ROW-REDUCE->ROW-REDUCE decomposition. `FP-BUILD` fuses it to ONE region
+  (ablated = 3); both device==host golden PASS. But the measured fused-vs-ablated
+  win was 1.41x, NOT the ~3x the equal-cost 3-op model predicts: the block-per-row
+  reduction dominates (1.07 ms/launch, ~7.8 GB/s - the LRED schedule is not
+  bandwidth-optimal), the scalar-scale + 1xC-bias epilogue folds in at ~zero
+  marginal cost (fused 214.3 vs ablated layernorm-alone 213.5 ms/200 iters), and
+  fusion's only removable work is the two standalone flat-EW passes (43.4+45.6 ms
+  of global round-trips). The round-trip savings are real; the RATIO is capped by
+  whatever fraction of the chain the reduction is not. Report the honest measured
+  ratio with the root cause, never the naive Nx.
+- **A sibling kernel's corruption-probe predicate name does NOT transfer - dump
+  the actual PTX.** RMSNORM's dropped-mask fault targets `@%p2`
+  (`ablate-golden-device-test.f` ABL-G3), but for LAYERNORM `@%p2` is the SCALE
+  broadcast-scalar load mask (harmless to drop: all lanes read element 0 and
+  inactive lanes are discarded at the masked store, so the golden still PASSes).
+  The predicate numbering shifts with region input count: LAYERNORM+affine has 3
+  inputs -> load masks `%p1/%p2/%p3`, and the first block-sum's inactive-lane seed
+  mask is `@%p4 mov.f32 %f5, %f1` (with `%f1` pre-seeded to `0fFF800000` = -inf).
+  Unmasking it leaks -inf into the sum -> mu=-inf -> clean REJECT. Inspect the
+  emitted kernel PTX to pick the reduction-seed mask; never copy a sibling's
+  `@%pN`. Also: `OP-MUL`/`OP-ADD` require SAME-shape operands (SHP-SAME-OK?), so a
+  per-feature 1xC affine gamma is not expressible via MUL - use `OP-SCALE`
+  (1x1/same) + `OP-BIAS` (1xC).

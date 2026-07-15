@@ -3057,6 +3057,35 @@ V-FAIL; the committed proof stays the clean PASS. Harness:
 `maki/fusion-bench-device-test.f` (plan-shape assertions run everywhere; the
 golden + bandwidth legs are Orin-only, CUDA-probe-gated SKIP off-device).
 
+**Landed evidence (2026-07-15, orin-nx-25w; dot
+habu-automatic-aggressive-fusion, leg a - LAYERNORM ONE-KERNEL PROOF).** The
+maki op set expresses layernorm's mean+variance+normalize as ONE row-reduce op
+(`OP-LAYERNORM`, `lower-red.f` LRED-EMIT-LN: two BLOCK-SUMs internally); there is
+no separate MODEL:-parseable mean/variance reduce, so the fusable seam is the
+reduction's EW EPILOGUE, not a ROW-REDUCE->ROW-REDUCE decomposition. LayerNorm-
+with-affine is `LAYERNORM SCALE BIAS` = ROW-REDUCE->EW->EW (scalar gamma via
+`OP-SCALE` 1x1, per-feature beta via `OP-BIAS` 1xC; `OP-MUL`/`OP-ADD` require
+same-shape operands, so they cannot carry a 1xC affine). `FP-BUILD` plans it as
+ONE region (fusion ON) vs THREE (ablated: layernorm | scale | bias), asserted
+on-device and off. Both modes are device-correct against the SAME host golden
+(`LOWER-MODEL-GOLDEN` V-PASS at 1 and 3 regions; 4x8 fixture). Bandwidth at
+1,048,576 elems (4096 rows x 256 cols): the affine scale+bias fold into the
+block-per-row layernorm reduction epilogue at ~zero marginal cost (fused
+214.3 ms vs ablated layernorm-alone 213.5 ms / 200 iters), eliminating the two
+standalone flat-EW passes (43.4 + 45.6 ms = the global round-trip tax), so the
+fused kernel finishes the chain 1.41x faster (214.3 ms vs 302.5 ms). The win is
+BELOW the naive 3x equal-cost-op model because the block-per-row reduction
+dominates (1.07 ms/launch, ~7.8 GB/s effective - the LRED schedule is not
+bandwidth-optimal; optimizing it is fenced lower-red.f territory) while the
+folded-away EW passes are the only removable work. Rows `LN-FUSE-ON` /
+`LN-FUSE-OFF` (`tools/ptx/perf-rows.tsv`, orin-nx-25w). Magnitude-independent
+corruption probe (temp copy): unmasking the fused REGION_0 reduction seed
+predicate (`@%p4 mov.f32 %f5, %f1` -> unconditional -> tid>=k lanes leak the
+-inf identity into the block sum) drives `LOWER-GOLDEN` from PASS to
+"mismatch beyond f32 tol at elem 0"; the committed proof stays the clean PASS.
+Harness: `maki/layernorm-fusion-bench-device-test.f` (plan-shape assertions run
+everywhere; golden + bandwidth Orin-only, CUDA-probe-gated SKIP off-device).
+
 ### 22.5 Dynamic-shape multiversioning
 
 Existential shape refinement supplies runtime type identity; the execution
