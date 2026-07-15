@@ -4462,3 +4462,9 @@ unchanged (148855). Keys for milestone 2:
   built while stdin is a TTY persisted `REPLH-CELL`, so a later `--load` printed
   success and entered the REPL. Canonicalize those cells to zero and recompute
   batch versus interactive state after restore on every boot.
+- trusted-inventory --strict needs BOTH a descriptive TRUSTED.md table row AND
+  a CMAP classification row for every new TRUSTED word - the table row alone
+  reads as unclassified. An overflow boundary over a wrapped raw scanner must
+  be proven with an up-front typed guard (ADVANCE-BYTE-OFF before the scan):
+  the raw scan cannot reach MAX-N cheaply, so without the guard the "overflow"
+  case is untestable and silently wraps. (strnum lane findings, 2026-07-15.)
