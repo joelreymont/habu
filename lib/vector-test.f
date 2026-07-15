@@ -137,6 +137,107 @@ variable VECT-IDX-SUM
    1 VECT-VEC VEC-PUSH-N drop
    2 VECT-VEC 1 VEC-IDX VEC-N! ;
 
+\ ---- B5.5 typed VEC surface over CAD-NUM roles --------------------------------
+\ White-box role readers: reopen the unsealed CAD-NUM package to project a role's
+\ raw cell for scalar assertions, the pattern lib/cad-num-arithmetic-test.f and
+\ lib/memory-test.f use. (VEC's own ITEM-COUNT>N/INDEX>N stay VEC-private.)
+package CAD-NUM
+public
+: VECT-IC>RAW ( CAD-NUM:item-count -- n ) ITEM-COUNT>N ;
+: VECT-IX>RAW ( CAD-NUM:index -- n ) INDEX>N ;
+;package
+
+\ role builders from a raw cell (the refusal arms are unreachable for the test
+\ inputs; an unexpected refusal throws the vector's own invariant code).
+: VECT-N>ITEM ( n -- CAD-NUM:item-count )
+   CAD-NUM:ITEM-COUNT
+   MATCH CAD-NUM:numeric-result
+      ok OF ENDOF                             negative OF E-VEC-BOUNDS throw ENDOF
+      zero OF E-VEC-BOUNDS throw ENDOF          overflow OF E-VEC-BOUNDS throw ENDOF
+      underflow OF E-VEC-BOUNDS throw ENDOF     bad-alignment OF E-VEC-BOUNDS throw ENDOF
+      misaligned OF E-VEC-BOUNDS throw ENDOF
+   ;MATCH ;
+: VECT-N>INDEX ( n -- CAD-NUM:index )
+   CAD-NUM:INDEX
+   MATCH CAD-NUM:numeric-result
+      ok OF ENDOF                             negative OF E-VEC-BOUNDS throw ENDOF
+      zero OF E-VEC-BOUNDS throw ENDOF          overflow OF E-VEC-BOUNDS throw ENDOF
+      underflow OF E-VEC-BOUNDS throw ENDOF     bad-alignment OF E-VEC-BOUNDS throw ENDOF
+      misaligned OF E-VEC-BOUNDS throw ENDOF
+   ;MATCH ;
+
+: VECT-TLEN ( ptr a -- n )  VEC:LEN@ CAD-NUM:VECT-IC>RAW ;   \ typed length as raw n
+: VECT-TCAP ( ptr a -- n )  VEC:CAP@ CAD-NUM:VECT-IC>RAW ;   \ typed capacity as raw n
+: VECT-TAT  ( ptr a n -- a ) VECT-N>INDEX VEC:@ ;              \ typed fetch at a raw index
+: VECT-TPUT ( a ptr a n -- ) VECT-N>INDEX VEC:! ;              \ typed store at a raw index
+
+: VECT-T-INIT ( -- )                                    \ zero length valid, capacity honoured
+   VECT-VEC 2 VECT-N>ITEM VEC:INIT
+   VECT-VEC VECT-TLEN 0 T=
+   VECT-VEC VECT-TCAP 2 T= ;
+
+: VECT-T-PUSH ( -- )                                    \ push returns the landing index; growth survives
+   VECT-VEC 2 VECT-N>ITEM VEC:INIT
+   11 VECT-VEC VEC:PUSH CAD-NUM:VECT-IX>RAW 0 T=
+   22 VECT-VEC VEC:PUSH CAD-NUM:VECT-IX>RAW 1 T=
+   33 VECT-VEC VEC:PUSH CAD-NUM:VECT-IX>RAW 2 T=                   \ third push grows through the typed adapter
+   VECT-VEC VECT-TLEN 3 T=
+   VECT-VEC 0 VECT-TAT 11 T=
+   VECT-VEC 1 VECT-TAT 22 T=
+   VECT-VEC 2 VECT-TAT 33 T= ;
+
+: VECT-T-SET ( -- )                                     \ store overwrites a live cell
+   VECT-VEC 2 VECT-N>ITEM VEC:INIT
+   77 VECT-VEC VEC:PUSH drop
+   123 VECT-VEC 0 VECT-TPUT
+   VECT-VEC 0 VECT-TAT 123 T= ;
+
+: VECT-T-CLEAR ( -- )                                   \ clear zeroes length, keeps capacity
+   VECT-VEC 2 VECT-N>ITEM VEC:INIT
+   7 VECT-VEC VEC:PUSH drop  8 VECT-VEC VEC:PUSH drop
+   VECT-VEC VEC:CLEAR
+   VECT-VEC VECT-TLEN 0 T=
+   VECT-VEC VECT-TCAP 2 T=
+   9 VECT-VEC VEC:PUSH CAD-NUM:VECT-IX>RAW 0 T= ;
+
+: VECT-T-RESIZE ( -- )                                  \ resize grows capacity, preserves cells
+   VECT-VEC 2 VECT-N>ITEM VEC:INIT
+   41 VECT-VEC VEC:PUSH drop  42 VECT-VEC VEC:PUSH drop
+   VECT-VEC 5 VECT-N>ITEM VEC:RESIZE
+   VECT-VEC VECT-TLEN 2 T=
+   VECT-VEC VECT-TCAP 5 T=
+   VECT-VEC 0 VECT-TAT 41 T=
+   VECT-VEC 1 VECT-TAT 42 T= ;
+
+: VECT-T-ENSURE ( -- )                                  \ ensure is a no-op below cap, grows above
+   VECT-VEC 4 VECT-N>ITEM VEC:INIT
+   VECT-VEC 3 VECT-N>ITEM VEC:ENSURE   VECT-VEC VECT-TCAP 4 T=  \ need <= cap: no reallocation
+   VECT-VEC 9 VECT-N>ITEM VEC:ENSURE   VECT-VEC VECT-TCAP 16 T= ;  \ need > cap: double 4 -> 8 -> 16
+
+variable VECT-TSUM   variable VECT-TIXSUM
+: VECT-T-EACH-ACC ( CAD-NUM:index a -- ) {: ix:CAD-NUM:index value:n :}
+   VECT-TSUM @ value + VECT-TSUM !
+   VECT-TIXSUM @ ix CAD-NUM:VECT-IX>RAW + VECT-TIXSUM ! ;
+: VECT-T-EACH ( -- )                                    \ EACH visits cells index-first
+   VECT-VEC 2 VECT-N>ITEM VEC:INIT
+   0 VECT-TSUM !  0 VECT-TIXSUM !
+   5 VECT-VEC VEC:PUSH drop  6 VECT-VEC VEC:PUSH drop  7 VECT-VEC VEC:PUSH drop
+   VECT-VEC [: VECT-T-EACH-ACC ;] VEC:EACH
+   VECT-TSUM @ 18 T=
+   VECT-TIXSUM @ 3 T= ;
+
+: VECT-T-CAP-ZERO ( -- )   VECT-VEC 0 VECT-N>ITEM VEC:INIT ;               \ zero capacity allocation
+: VECT-T-CAP-OVER ( -- )   VECT-VEC VEC-MAX-CELLS 1 + VECT-N>ITEM VEC:INIT ; \ overflowing capacity
+: VECT-T-RESIZE-ZERO ( -- )
+   VECT-VEC 2 VECT-N>ITEM VEC:INIT  VECT-VEC 0 VECT-N>ITEM VEC:RESIZE ;        \ resize to zero capacity
+: VECT-T-RESIZE-SHRINK ( -- )
+   VECT-VEC 2 VECT-N>ITEM VEC:INIT
+   41 VECT-VEC VEC:PUSH drop  42 VECT-VEC VEC:PUSH drop
+   VECT-VEC 1 VECT-N>ITEM VEC:RESIZE ;                                     \ cap below active length
+: VECT-T-GET-HIGH ( -- )
+   VECT-VEC 2 VECT-N>ITEM VEC:INIT  1 VECT-VEC VEC:PUSH drop
+   VECT-VEC 1 VECT-TAT drop ;                                             \ index at length rejects
+
 : VECT-RUN ( -- )
    T-RESET
    VECT-GROW
@@ -157,6 +258,27 @@ variable VECT-IDX-SUM
    [: VECT-SET-HIGH ;] E-VEC-BOUNDS TTHROWSQ
    s" BAD-VEC-FETCH ( ptr a len -- a ) VEC@" VECT-CHECK-REJECTS
    s" BAD-VEC-LEN! ( count ptr a -- ) VEC-LEN!" VECT-CHECK-REJECTS
+   \ ---- typed VEC surface: positive behavior ----------------------------------
+   VECT-T-INIT
+   VECT-T-PUSH
+   VECT-T-SET
+   VECT-T-CLEAR
+   VECT-T-RESIZE
+   VECT-T-ENSURE
+   VECT-T-EACH
+   \ ---- typed VEC surface: runtime allocation/bounds refusals -----------------
+   [: VECT-T-CAP-ZERO ;] E-VEC-CAPACITY TTHROWSQ       \ zero capacity allocation rejects
+   [: VECT-T-CAP-OVER ;] E-VEC-CAPACITY TTHROWSQ       \ growth overflow rejects
+   [: VECT-T-RESIZE-ZERO ;] E-VEC-CAPACITY TTHROWSQ
+   [: VECT-T-RESIZE-SHRINK ;] E-VEC-BOUNDS TTHROWSQ
+   [: VECT-T-GET-HIGH ;] E-VEC-BOUNDS TTHROWSQ
+   \ ---- typed VEC surface: static role-swap rejections (0) + resolving positives (-1)
+   s" VOK-INIT ( ptr a CAD-NUM:item-count -- ) VEC:INIT" CHECK-QUIET-CANDIDATE! -1 T=
+   s" VOK-AT ( ptr a CAD-NUM:index -- a ) VEC:@"        CHECK-QUIET-CANDIDATE! -1 T=
+   s" VSWAP-IDX-FOR-CNT ( ptr a CAD-NUM:index -- ) VEC:INIT"  VECT-CHECK-REJECTS
+   s" VSWAP-CNT-FOR-IDX ( ptr a CAD-NUM:item-count -- a ) VEC:@" VECT-CHECK-REJECTS
+   s" VSWAP-RAW-CAP ( ptr a n -- ) VEC:INIT"                  VECT-CHECK-REJECTS
+   s" VSWAP-RAW-IDX ( ptr a n -- a ) VEC:@"                   VECT-CHECK-REJECTS
    T-REPORT ;
 
 VECT-RUN

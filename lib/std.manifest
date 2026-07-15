@@ -90,6 +90,16 @@ schema_version	module	file	kind	word	effect	test	doc	owner	status	notes
 1	vector	lib/vector.f	word	VEC-PUSH-N	(n ptr a -- idx)	lib/vector-test.f	docs/stdlib.md	stdlib-vector	published	append a numeric cell and return its index
 1	vector	lib/vector.f	word	VEC-PUSH-A	(ptr u8 ptr a -- idx)	lib/vector-test.f	docs/stdlib.md	stdlib-vector	published	append a byte pointer and return its index
 1	vector	lib/vector.f	word	VEC-EACH	(R ptr a [ R idx a -- R ] -- R)	lib/vector-test.f	docs/stdlib.md	stdlib-vector	published	visit active vector cells in index order
+1	vector	lib/vector.f	word	VEC:INIT	(ptr a CAD-NUM:item-count --)	lib/vector-test.f	docs/stdlib.md	stdlib-vector	active	initialize a typed vector; the one-cell-per-item adapter rejects zero or overflowing capacity
+1	vector	lib/vector.f	word	VEC:CLEAR	(ptr a --)	lib/vector-test.f	docs/stdlib.md	stdlib-vector	active	reset a typed vector active length to zero, preserving capacity
+1	vector	lib/vector.f	word	VEC:LEN@	(ptr a -- CAD-NUM:item-count)	lib/vector-test.f	docs/stdlib.md	stdlib-vector	active	read a typed vector active length as an item-count
+1	vector	lib/vector.f	word	VEC:CAP@	(ptr a -- CAD-NUM:item-count)	lib/vector-test.f	docs/stdlib.md	stdlib-vector	active	read a typed vector capacity as an item-count
+1	vector	lib/vector.f	word	VEC:RESIZE	(ptr a CAD-NUM:item-count --)	lib/vector-test.f	docs/stdlib.md	stdlib-vector	active	reallocate a typed vector to a checked item-count capacity
+1	vector	lib/vector.f	word	VEC:ENSURE	(ptr a CAD-NUM:item-count --)	lib/vector-test.f	docs/stdlib.md	stdlib-vector	active	grow a typed vector to hold a requested item-count
+1	vector	lib/vector.f	word	VEC:@	(ptr a CAD-NUM:index -- a)	lib/vector-test.f	docs/stdlib.md	stdlib-vector	active	fetch a typed vector cell at a checked index
+1	vector	lib/vector.f	word	VEC:!	(a ptr a CAD-NUM:index --)	lib/vector-test.f	docs/stdlib.md	stdlib-vector	active	store a typed vector cell at a checked index
+1	vector	lib/vector.f	word	VEC:PUSH	(a ptr a -- CAD-NUM:index)	lib/vector-test.f	docs/stdlib.md	stdlib-vector	active	append a cell to a typed vector and return its landing index
+1	vector	lib/vector.f	word	VEC:EACH	(R ptr a [ R CAD-NUM:index a -- R ] -- R)	lib/vector-test.f	docs/stdlib.md	stdlib-vector	active	visit active typed vector cells index-first over the index role
 1	string	lib/string.f	module			lib/string-test.f	docs/stdlib.md	stdlib-string	active	checked byte-string predicates builders split and parse helpers
 1	string	lib/string.f	word	STR-LEN	(n -- len)	lib/string-test.f	docs/stdlib.md	stdlib-string	published	refine a nonnegative raw integer into a string length role
 1	string	lib/string.f	word	STR-OFF	(n -- off)	lib/string-test.f	docs/stdlib.md	stdlib-string	published	refine a nonnegative raw integer into a string offset role
