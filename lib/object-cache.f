@@ -76,28 +76,12 @@ variable READ-BUF-A
 : READ-BUF! ( ptr u8 -- )
    READ-BUF-FIELD ! ;
 
-\ OBJ:MAX-BYTES is a positive library constant: narrow the raw size to
-\ CAD-NUM:byte-len then to the allocation role before MEM:ALLOC-BYTES. A
-\ validation refusal is an internal invariant violation (unreachable for the
-\ constant) and throws the memory-sizing code.
-: READ-ALLOC-LEN ( n -- CAD-NUM:alloc-byte-len )
-   CAD-NUM:BYTE-LEN
-   MATCH CAD-NUM:numeric-result
-      ok OF CAD-NUM:AS-ALLOC-BYTE-LEN
-         MATCH CAD-NUM:numeric-result
-            ok OF ENDOF
-            negative OF E-MEM-SIZE throw ENDOF        zero OF E-MEM-SIZE throw ENDOF
-            overflow OF E-MEM-SIZE throw ENDOF        underflow OF E-MEM-SIZE throw ENDOF
-            bad-alignment OF E-MEM-SIZE throw ENDOF   misaligned OF E-MEM-SIZE throw ENDOF
-         ;MATCH ENDOF
-      negative OF E-MEM-SIZE throw ENDOF        zero OF E-MEM-SIZE throw ENDOF
-      overflow OF E-MEM-SIZE throw ENDOF        underflow OF E-MEM-SIZE throw ENDOF
-      bad-alignment OF E-MEM-SIZE throw ENDOF   misaligned OF E-MEM-SIZE throw ENDOF
-   ;MATCH ;
-
+\ OBJ:MAX-BYTES is a positive library constant: MEM:BYTES-ALLOC-LEN narrows the raw
+\ size to the validated alloc role before MEM:ALLOC-BYTES, throwing E-MEM-SIZE on
+\ any refusal (unreachable for the constant).
 : READ-BUF ( -- ptr u8 )
    READ-BUF@ 0= if
-      OBJ:MAX-BYTES READ-ALLOC-LEN MEM:ALLOC-BYTES drop READ-BUF!
+      OBJ:MAX-BYTES MEM:BYTES-ALLOC-LEN MEM:ALLOC-BYTES drop READ-BUF!
    then
    READ-BUF@ ;
 

@@ -118,6 +118,39 @@ private
       misaligned OF E-MEM-TOTALITY throw ENDOF
    ;MATCH ;
 
+\ ---- size-refusal extractors for caller-supplied n (arms REACHABLE) ------------
+\ Unlike the OK-* extractors above (compile-time constants; refusal arms are
+\ unreachable invariants -> E-MEM-TOTALITY), these narrow an arbitrary runtime
+\ `n`, so a refusal is the real memory-sizing outcome and throws E-MEM-SIZE.
+: SIZE-BYTE-LEN ( CAD-NUM:numeric-result<CAD-NUM:byte-len> -- CAD-NUM:byte-len )
+   MATCH CAD-NUM:numeric-result
+      ok OF ENDOF                              negative OF E-MEM-SIZE throw ENDOF
+      zero OF E-MEM-SIZE throw ENDOF            overflow OF E-MEM-SIZE throw ENDOF
+      underflow OF E-MEM-SIZE throw ENDOF       bad-alignment OF E-MEM-SIZE throw ENDOF
+      misaligned OF E-MEM-SIZE throw ENDOF
+   ;MATCH ;
+: SIZE-ALLOC-BYTE-LEN ( CAD-NUM:numeric-result<CAD-NUM:alloc-byte-len> -- CAD-NUM:alloc-byte-len )
+   MATCH CAD-NUM:numeric-result
+      ok OF ENDOF                              negative OF E-MEM-SIZE throw ENDOF
+      zero OF E-MEM-SIZE throw ENDOF            overflow OF E-MEM-SIZE throw ENDOF
+      underflow OF E-MEM-SIZE throw ENDOF       bad-alignment OF E-MEM-SIZE throw ENDOF
+      misaligned OF E-MEM-SIZE throw ENDOF
+   ;MATCH ;
+: SIZE-CELL-COUNT ( CAD-NUM:numeric-result<CAD-NUM:cell-count> -- CAD-NUM:cell-count )
+   MATCH CAD-NUM:numeric-result
+      ok OF ENDOF                              negative OF E-MEM-SIZE throw ENDOF
+      zero OF E-MEM-SIZE throw ENDOF            overflow OF E-MEM-SIZE throw ENDOF
+      underflow OF E-MEM-SIZE throw ENDOF       bad-alignment OF E-MEM-SIZE throw ENDOF
+      misaligned OF E-MEM-SIZE throw ENDOF
+   ;MATCH ;
+: SIZE-ALLOC-CELL-COUNT ( CAD-NUM:numeric-result<CAD-NUM:alloc-cell-count> -- CAD-NUM:alloc-cell-count )
+   MATCH CAD-NUM:numeric-result
+      ok OF ENDOF                              negative OF E-MEM-SIZE throw ENDOF
+      zero OF E-MEM-SIZE throw ENDOF            overflow OF E-MEM-SIZE throw ENDOF
+      underflow OF E-MEM-SIZE throw ENDOF       bad-alignment OF E-MEM-SIZE throw ENDOF
+      misaligned OF E-MEM-SIZE throw ENDOF
+   ;MATCH ;
+
 \ ---- the 64K granularity as validated CAD-NUM roles ---------------------------
 \ MEM-64K is a compile-time positive power of two, so BYTE-LEN / ALIGNMENT /
 \ AS-ALLOC-BYTE-LEN all succeed; the extractors' failure arms are unreachable.
@@ -155,4 +188,16 @@ public
    ALLOC-CELLS>N cells MEM-ALLOC-PTR ;
 : ALLOC-64K ( -- ptr u8 CAD-NUM:alloc-byte-len )
    64K-ALLOC-LEN ALLOC-BYTES ;
+
+\ ---- caller-facing size narrowing: raw n -> validated alloc role --------------
+\ The fixed-capacity buffer callers (source, codesign, content-key, object-cache,
+\ process-argv, process-env) narrow a raw size to the positive alloc role BEFORE
+\ the allocation sink; any refusal (zero/negative/overflow) throws E-MEM-SIZE.
+\ Composes the public CAD-NUM validators only, so no new unchecked boundary.
+: BYTES-ALLOC-LEN ( n -- CAD-NUM:alloc-byte-len )
+   CAD-NUM:BYTE-LEN SIZE-BYTE-LEN
+   CAD-NUM:AS-ALLOC-BYTE-LEN SIZE-ALLOC-BYTE-LEN ;
+: CELLS-ALLOC-COUNT ( n -- CAD-NUM:alloc-cell-count )
+   CAD-NUM:CELL-COUNT SIZE-CELL-COUNT
+   CAD-NUM:AS-ALLOC-CELL-COUNT SIZE-ALLOC-CELL-COUNT ;
 ;package

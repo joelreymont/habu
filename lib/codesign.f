@@ -19,26 +19,12 @@ variable CODESIGN-ERR-A
 : CODESIGN-PTR-U8! ( ptr u8 ptr a -- )
    CODESIGN-PTR-U8-FIELD ! ;
 
-\ CODESIGN-OUT-CAP / CODESIGN-ERR-CAP are positive library constants: the raw
-\ size is narrowed to CAD-NUM:byte-len then to the allocation role before
-\ MEM:ALLOC-BYTES; a validation refusal is an internal invariant violation
-\ (unreachable for the constant) and throws the memory-sizing code.
+\ CODESIGN-OUT-CAP / CODESIGN-ERR-CAP are positive library constants:
+\ MEM:BYTES-ALLOC-LEN narrows the raw size to the validated alloc role before
+\ MEM:ALLOC-BYTES, throwing E-MEM-SIZE on any refusal (unreachable for the constant).
 : CODESIGN-BUF ( ptr a n -- ptr u8 ) {: slot:ptr cap :}
    slot CODESIGN-PTR-U8@ 0= if
-      cap CAD-NUM:BYTE-LEN
-      MATCH CAD-NUM:numeric-result
-         ok OF CAD-NUM:AS-ALLOC-BYTE-LEN
-            MATCH CAD-NUM:numeric-result
-               ok OF ENDOF
-               negative OF E-MEM-SIZE throw ENDOF        zero OF E-MEM-SIZE throw ENDOF
-               overflow OF E-MEM-SIZE throw ENDOF        underflow OF E-MEM-SIZE throw ENDOF
-               bad-alignment OF E-MEM-SIZE throw ENDOF   misaligned OF E-MEM-SIZE throw ENDOF
-            ;MATCH ENDOF
-         negative OF E-MEM-SIZE throw ENDOF        zero OF E-MEM-SIZE throw ENDOF
-         overflow OF E-MEM-SIZE throw ENDOF        underflow OF E-MEM-SIZE throw ENDOF
-         bad-alignment OF E-MEM-SIZE throw ENDOF   misaligned OF E-MEM-SIZE throw ENDOF
-      ;MATCH
-      MEM:ALLOC-BYTES drop slot CODESIGN-PTR-U8!
+      cap MEM:BYTES-ALLOC-LEN MEM:ALLOC-BYTES drop slot CODESIGN-PTR-U8!
    then
    slot CODESIGN-PTR-U8@ ;
 

@@ -193,28 +193,15 @@ T-REPORT
       overflow OF E-CADNUM-OVERFLOW ENDOF underflow OF E-CADNUM-UNDERFLOW ENDOF
       bad-alignment OF E-CADNUM-BAD-ALIGNMENT ENDOF misaligned OF E-CADNUM-MISALIGNED ENDOF ;MATCH ;
 
-\ real typed allocation: build a KNOWN-positive alloc role, allocate, touch memory
-: MEMT-ALLOC-BYTE-LEN ( n -- CAD-NUM:alloc-byte-len ) CAD-NUM:BYTE-LEN
-   MATCH CAD-NUM:numeric-result ok OF CAD-NUM:AS-ALLOC-BYTE-LEN
-      MATCH CAD-NUM:numeric-result ok OF ENDOF negative OF E-MEM-SIZE throw ENDOF
-         zero OF E-MEM-SIZE throw ENDOF overflow OF E-MEM-SIZE throw ENDOF
-         underflow OF E-MEM-SIZE throw ENDOF bad-alignment OF E-MEM-SIZE throw ENDOF
-         misaligned OF E-MEM-SIZE throw ENDOF ;MATCH ENDOF
-      negative OF E-MEM-SIZE throw ENDOF zero OF E-MEM-SIZE throw ENDOF overflow OF E-MEM-SIZE throw ENDOF
-      underflow OF E-MEM-SIZE throw ENDOF bad-alignment OF E-MEM-SIZE throw ENDOF misaligned OF E-MEM-SIZE throw ENDOF ;MATCH ;
-: MEMT-ALLOC-CELL-COUNT ( n -- CAD-NUM:alloc-cell-count ) CAD-NUM:CELL-COUNT
-   MATCH CAD-NUM:numeric-result ok OF CAD-NUM:AS-ALLOC-CELL-COUNT
-      MATCH CAD-NUM:numeric-result ok OF ENDOF negative OF E-MEM-SIZE throw ENDOF
-         zero OF E-MEM-SIZE throw ENDOF overflow OF E-MEM-SIZE throw ENDOF
-         underflow OF E-MEM-SIZE throw ENDOF bad-alignment OF E-MEM-SIZE throw ENDOF
-         misaligned OF E-MEM-SIZE throw ENDOF ;MATCH ENDOF
-      negative OF E-MEM-SIZE throw ENDOF zero OF E-MEM-SIZE throw ENDOF overflow OF E-MEM-SIZE throw ENDOF
-      underflow OF E-MEM-SIZE throw ENDOF bad-alignment OF E-MEM-SIZE throw ENDOF misaligned OF E-MEM-SIZE throw ENDOF ;MATCH ;
+\ real typed allocation via the shared MEM narrowing helpers: MEM:BYTES-ALLOC-LEN
+\ / MEM:CELLS-ALLOC-COUNT take a raw n straight to the validated alloc role and
+\ throw E-MEM-SIZE on any refusal before an mmap (TTHROWSQ cases drive the
+\ zero/negative/overflow refusals in RT-MEM).
 
-\ The returned alloc-byte-len is a role (its raw projection is MEM-private), so
-\ the tests touch memory over the KNOWN raw extent and drop the role.
+\ The returned alloc role's raw projection is MEM-private, so the tests touch
+\ memory over the KNOWN raw extent and drop the role.
 : MEMT-TYPED-BYTES ( -- )                    \ typed byte alloc is writable end to end
-   MEM-64K MEMT-ALLOC-BYTE-LEN MEM:ALLOC-BYTES drop {: a:ptr :}
+   MEM-64K MEM:BYTES-ALLOC-LEN MEM:ALLOC-BYTES drop {: a:ptr :}
    MEMT-MARK-A a c!  MEMT-MARK-Z a MEM-64K 1 - + c!
    a c@ MEMT-MARK-A T=  a MEM-64K 1 - + c@ MEMT-MARK-Z T= ;
 : MEMT-TYPED-64K ( -- )                      \ typed single-64K alloc is writable end to end
@@ -222,7 +209,7 @@ T-REPORT
    MEMT-MARK-A a c!  MEMT-MARK-Z a MEM-64K 1 - + c!
    a c@ MEMT-MARK-A T=  a MEM-64K 1 - + c@ MEMT-MARK-Z T= ;
 : MEMT-TYPED-CELLS ( -- )                    \ typed cell alloc stores/fetches two cells
-   4 MEMT-ALLOC-CELL-COUNT MEM:ALLOC-CELLS {: a:ptr :}
+   4 MEM:CELLS-ALLOC-COUNT MEM:ALLOC-CELLS {: a:ptr :}
    111 a !  222 a 1 cells + !
    a @ 111 T=  a 1 cells + @ 222 T= ;
 
@@ -271,6 +258,13 @@ public
    MEMT-TYPED-BYTES
    MEMT-TYPED-64K
    MEMT-TYPED-CELLS
+   \ shared narrowing helpers refuse zero/negative/overflow with E-MEM-SIZE
+   \ before any mmap primitive is reachable
+   [: 0 MEM:BYTES-ALLOC-LEN drop ;] E-MEM-SIZE TTHROWSQ
+   [: -1 MEM:BYTES-ALLOC-LEN drop ;] E-MEM-SIZE TTHROWSQ
+   [: 0 MEM:CELLS-ALLOC-COUNT drop ;] E-MEM-SIZE TTHROWSQ
+   [: -1 MEM:CELLS-ALLOC-COUNT drop ;] E-MEM-SIZE TTHROWSQ
+   [: MEM-MAX-CELLS 1 + MEM:CELLS-ALLOC-COUNT drop ;] E-MEM-SIZE TTHROWSQ
    T-REPORT ;
 RT-MEM
 
@@ -292,6 +286,10 @@ RT-MEM
    s" G-ALLOC-CELLS ( CAD-NUM:alloc-cell-count -- ptr a ) MEM:ALLOC-CELLS"
       CHECK-QUIET-CANDIDATE! -1 T=
    s" G-ALLOC-64K ( -- ptr u8 CAD-NUM:alloc-byte-len ) MEM:ALLOC-64K"
+      CHECK-QUIET-CANDIDATE! -1 T=
+   s" G-BYTES-ALLOC-LEN ( n -- CAD-NUM:alloc-byte-len ) MEM:BYTES-ALLOC-LEN"
+      CHECK-QUIET-CANDIDATE! -1 T=
+   s" G-CELLS-ALLOC-COUNT ( n -- CAD-NUM:alloc-cell-count ) MEM:CELLS-ALLOC-COUNT"
       CHECK-QUIET-CANDIDATE! -1 T=
    \ negatives: a zero-admitting role at the sink, byte<->cell role swaps, raw n.
    s" B-ZEROABLE-ALLOC ( CAD-NUM:byte-len -- ptr u8 CAD-NUM:alloc-byte-len ) MEM:ALLOC-BYTES"
