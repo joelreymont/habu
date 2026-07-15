@@ -1411,6 +1411,34 @@ variable GE-DFULL-I                 \ copy/definition loop index
    GE-EVAL-UNDERFLOW-FAILCLOSED
    GE-UNDERFLOW-TOPLEVEL-UNCHANGED ;
 
+: GE-EVAL-DEF-REJECT-1 ( ptr u8 n ptr u8 n ptr u8 n -- )
+   {: src:ptr srcu:n diag:ptr diagu:n label:ptr labelu:n :}
+   \ One rejected definition evaluated under the TCE-CATCH wrapper: the abort
+   \ must deliver caught RC-REJECT (70) on stdout with the diagnostic on
+   \ stderr and the process exiting 0 — never a SIGBUS register dump (rc 134).
+   src srcu GE-EVAL-CATCH-RUN
+   label labelu GE-EXPECT-OK
+   s" 70" label labelu GE-EXPECT-OUT-HAS
+   diag diagu label labelu GE-EXPECT-ERR-HAS ;
+
+: GE-EVAL-DEF-REJECT-CATCH ( -- )
+   \ Dot habu-def-compile-failure-7182eeb2 lock-in: a definition whose engine
+   \ compile fails inside [: INCLUDE-EVALUATE ;] catch is a catchable throw
+   \ with the eval frame rolled back. Exact dot repro (undefined in a :-body,
+   \ formerly a habu-crash regs dump) plus the orderly reject battery — every
+   \ shape that fail-closes rc 70 on plain stdin must be caught 70 here.
+   s" : XG1 ( -- ) qwertyuiop ;" s" E-UNDEFINED"
+      s" hb eval def-undef catch" GE-EVAL-DEF-REJECT-1
+   s" : GDR1 ( -- ) drop ;" s" non-certified definition: gdr1"
+      s" hb eval def-underdepth catch" GE-EVAL-DEF-REJECT-1
+   s" : GDR2 ( n -- ) ;" s" non-certified definition: gdr2"
+      s" hb eval def-unconsumed-in catch" GE-EVAL-DEF-REJECT-1
+   s" : GDR3 ( -- n ) ;" s" non-certified definition: gdr3"
+      s" hb eval def-missing-out catch" GE-EVAL-DEF-REJECT-1
+   s" : GDR4 ( -- ) 1 2 ;" s" non-certified definition: gdr4"
+      s" hb eval def-surplus-out catch" GE-EVAL-DEF-REJECT-1
+   s" PASS: def-compile failures under catch+evaluate -> caught 70" type cr ;
+
 : GE-SET-CHECK-NEG ( -- )
    \ set-check is fail-closed at install (dot habu-stdlib-check-hook-fd883aea): a
    \ non-zero argument outside the live JIT code window [DBASE, CP) dies with a
@@ -1445,6 +1473,7 @@ variable GE-DFULL-I                 \ copy/definition loop index
    GE-NESTED-BAD-DEF
    GE-EVAL-UNDEF-RECOVER
    GE-EVAL-INTERP-ERR-RECOVER
+   GE-EVAL-DEF-REJECT-CATCH
    GE-SET-CHECK-NEG
    GE-TYPED-SMOKE
    GE-TIMEOUT-ATTRIBUTION ;
