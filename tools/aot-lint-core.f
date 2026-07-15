@@ -156,11 +156,15 @@ variable AL-CURRENT-U
    LINT-FALSE AL-JSON!
    1 >FD AL-OUT-FD! ;
 
-: AOT-LINT-FILE-AS ( ptr u8 n ptr u8 n -- ) {: path:ptr pathu:n label:ptr labelu:n :}
+: AOT-LINT-SOURCE-AS ( ptr u8 n ptr u8 n -- ) {: src:ptr srcu:n label:ptr labelu:n :}
    label AL-FILE-A!
    labelu AL-FILE-U !
-   path pathu AL-FILE-BUF AL-FILE-CAP READ-FILE LEX-SOURCE
+   src srcu LEX-SOURCE
    AL-SCAN-TOKENS ;
+
+: AOT-LINT-FILE-AS ( ptr u8 n ptr u8 n -- ) {: path:ptr pathu:n label:ptr labelu:n :}
+   path pathu AL-FILE-BUF AL-FILE-CAP READ-FILE {: src:ptr srcu:n :}
+   src srcu label labelu AOT-LINT-SOURCE-AS ;
 
 : AOT-LINT-FILE ( ptr u8 n -- )
    2dup AOT-LINT-FILE-AS ;

@@ -255,10 +255,14 @@ variable SL-SUG-U
    LINT-FALSE SL-JSON !
    1 >FD SL-OUT-FD! ;
 
-: SIGNATURE-LINT-FILE-AS ( ptr u8 n ptr u8 n -- ) {: path:ptr pathu label:ptr labelu :}
+: SIGNATURE-LINT-SOURCE-AS ( ptr u8 n ptr u8 n -- ) {: src:ptr srcu:n label:ptr labelu:n :}
    label SL-FILE-A! labelu SL-FILE-U !
-   path pathu SL-FILE-BUF SL-FILE-CAP READ-FILE LEX-SOURCE
+   src srcu LEX-SOURCE
    SL-SCAN-TOKENS ;
+
+: SIGNATURE-LINT-FILE-AS ( ptr u8 n ptr u8 n -- ) {: path:ptr pathu:n label:ptr labelu:n :}
+   path pathu SL-FILE-BUF SL-FILE-CAP READ-FILE {: src:ptr srcu:n :}
+   src srcu label labelu SIGNATURE-LINT-SOURCE-AS ;
 
 : SIGNATURE-LINT-FILE ( ptr u8 n -- )
    2dup SIGNATURE-LINT-FILE-AS ;

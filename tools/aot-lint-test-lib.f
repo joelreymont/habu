@@ -116,6 +116,11 @@ create ALT-OUT ALT-BUF-CAP allot
    a u s" <stdin>" AOT-LINT-FILE-AS
    ALT-CORE-FINISH ;
 
+: ALT-RUN-SOURCE ( ptr u8 n -- n n outcome ) {: a:ptr u:n :}
+   LINT-FALSE ALT-CORE-SETUP
+   a u s" <stdin>" AOT-LINT-SOURCE-AS
+   ALT-CORE-FINISH ;
+
 : ALT-EXPECT-EXIT ( n n outcome n -- n n ) {: expect:n :}
    expect T-OUTCOME-EXITED= ;
 
@@ -126,6 +131,11 @@ create ALT-OUT ALT-BUF-CAP allot
 
 : ALT-TEST-BAD ( -- )
    ALT-BAD ALT-RUN-CORE 1 ALT-EXPECT-EXIT {: outu:n erru:n :}
+   erru 0 T=
+   ALT-OUT outu ALT-CODE$ CONTAINS? TTRUE ;
+
+: ALT-TEST-BAD-SOURCE ( -- )
+   ALT-BAD$ ALT-RUN-SOURCE 1 ALT-EXPECT-EXIT {: outu:n erru:n :}
    erru 0 T=
    ALT-OUT outu ALT-CODE$ CONTAINS? TTRUE ;
 
@@ -143,6 +153,7 @@ create ALT-OUT ALT-BUF-CAP allot
    ALT-PREPARE
    ALT-TEST-GOOD
    ALT-TEST-BAD
+   ALT-TEST-BAD-SOURCE
    ALT-TEST-BAD-JSON
    CLEANUP-RUN
    ALT-ROOT EXISTS? TFALSE

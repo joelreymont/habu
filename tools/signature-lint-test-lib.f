@@ -146,6 +146,11 @@ create SLT-OUT SLT-BUF-CAP allot
    a u s" <stdin>" SIGNATURE-LINT-FILE-AS
    SLT-CORE-FINISH ;
 
+: SLT-RUN-SOURCE ( ptr u8 n -- n n n ) {: a:ptr u:n :}
+   LINT-FALSE SLT-CORE-SETUP
+   a u s" <stdin>" SIGNATURE-LINT-SOURCE-AS
+   SLT-CORE-FINISH ;
+
 : SLT-EXPECT-EXIT ( n n n n -- n n ) {: outu:n erru:n code:n expect:n :}
    code expect T=
    outu erru ;
@@ -157,6 +162,11 @@ create SLT-OUT SLT-BUF-CAP allot
 
 : SLT-TEST-MISSING ( -- )
    SLT-MISSING SLT-RUN-CORE 1 SLT-EXPECT-EXIT {: outu:n erru:n :}
+   erru 0 T=
+   SLT-OUT outu SLT-MISSING-CODE$ CONTAINS? TTRUE ;
+
+: SLT-TEST-MISSING-SOURCE ( -- )
+   SLT-MISSING$ SLT-RUN-SOURCE 1 SLT-EXPECT-EXIT {: outu:n erru:n :}
    erru 0 T=
    SLT-OUT outu SLT-MISSING-CODE$ CONTAINS? TTRUE ;
 
@@ -186,6 +196,7 @@ create SLT-OUT SLT-BUF-CAP allot
    SLT-PREPARE
    SLT-TEST-GOOD
    SLT-TEST-MISSING
+   SLT-TEST-MISSING-SOURCE
    SLT-TEST-MISSING-JSON
    SLT-TEST-GOOD-JSON-LABEL
    SLT-TEST-OPTOUT-JSON
