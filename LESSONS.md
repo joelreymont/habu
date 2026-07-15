@@ -4,6 +4,21 @@
 
 Last updated: 2026-07-15
 
+- **A surgical GPU devfreq min=max pin reproduces the shipped 918 MHz clock within
+  0.15% — use it to make cross-session perf rows comparable.** dot
+  habu-re-measure-mma-9fe40cd1. The larger-BK MMA sweep landed at the UNBOOSTED
+  408 MHz DVFS pin, ~half the shipped orin-nx-25w absolutes; re-measuring with the
+  GPU devfreq pinned `min_freq=max_freq=918000000` (25W mode-3 untouched, restored
+  to the as-found 408 MHz after) reproduced the shipped 2026-07-14 MM 979866 /
+  MMM 884889 as 981225 / 885794 (<=0.15%), proving the pin == the historical
+  measurement clock — no `jetson_clocks` apply (GPU-only blast radius, exact
+  verifiable restore) was needed. The swizzle win is clock-independent as expected:
+  MMM-SWZ +53.4% / MMM-SWZ-BK64 +54.6% over the BK=32 baseline at BOTH clocks. At
+  918 MHz the swizzled kernel is 1358.9-1369.6 GFLOP/s = 72% of Triton's 1890.5
+  (vs the scalar baseline's 47%), so the competitive lever is flipping the emitted
+  default to pad=8 ldmatrix (separate dot), NOT the clock — the shipped
+  HABU-MMM-TF32 row tracks the scalar default and stays 884889 until the default
+  flips (tools/ptx/perf-rows.tsv orin-nx-25w-918mhz rows; tools/eval-triton.f).
 - **Automatic-fusion device win is LATENCY (fewer global round-trips), not peak
   GB/s.** Benching the AUTOMATICALLY-emitted region kernels of an Add->Mul->Relu
   chain at scale (1M elems, 200 iters, CUDA events) on the Orin 25W: fused
