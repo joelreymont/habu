@@ -4,7 +4,6 @@ status: open
 priority: 2
 issue-type: task
 created-at: "\"2026-07-15T00:37:09.808603+02:00\""
----
 blocks:
   - habu-migrate-maki-raw-636b07f2
 ---
