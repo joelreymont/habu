@@ -336,10 +336,10 @@ ENUM color red green blue ;ENUM     \ payloadless tag-only sum
   record; `END-VALUE-RECORD` is its terminator.
 - `BEGIN-STRUCTURE NAME … END-STRUCTURE` is the low-level Forth-2012
   offset-threading form: `size +FIELD f`, `PTR-FIELD: p`, and `CFIELD: c` thread
-  byte offsets and `NAME` becomes a byte-size constant. Its field words carry
-  `TRUST`ed address effects (`src/core/structures-effects.f`) and may appear in
-  checked code; prefer the typed families above and reserve this for raw layout
-  (e.g. `lib/vector.f`).
+  byte offsets and `NAME` becomes a byte-size constant. `structures.f` loads
+  after the checker hook, so these definitions publish their checked effects
+  directly; no boot path loads the retained pre-hook effect mirror. Prefer the
+  typed families above and reserve this form for raw layout (e.g. `lib/vector.f`).
 - `ENUM+` / `ENUM4+` are the legacy numeric counter definers: `n ENUM+ NAME`
   defines `NAME = n` and leaves `n+1` (`ENUM4+` leaves `n+4`).
 - Type, field, and variant names are lowercase; generated and project-defined

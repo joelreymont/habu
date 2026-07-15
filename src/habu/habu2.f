@@ -655,9 +655,6 @@ s" c-bp-watch-dump" s" label label --" TRUST
    PFX-COMMON LPHABULAYOUT   s" src/habu/layout.f"      PFX-PATH-ROW
    PFX-COMMON LPENVBASE      s" src/os/env-base.f"      PFX-PATH-ROW
    PFX-COMMON LPINCLUDE      s" src/core/include.f"     PFX-PATH-ROW
-   PFX-COMMON LPSCRIPTARGV   s" src/os/script-argv.f"   PFX-PATH-ROW
-   PFX-COMMON LPINTMARK      s" src/core/internal-mark.f" PFX-PATH-ROW
-   PFX-COMMON LPTOPROW       s" src/core/top-row.f"     PFX-PATH-ROW
    PFX-COMMON LPENUMS        s" src/core/enums.f"       PFX-PATH-ROW
    PFX-COMMON LPEXECVECTOR   s" src/core/exec-vector.f" PFX-PATH-ROW
    PFX-COMMON LPSHA256       s" src/core/sha256.f"      PFX-PATH-ROW
@@ -665,7 +662,10 @@ s" c-bp-watch-dump" s" label label --" TRUST
    PFX-COMMON LPCOMBINATORS  s" src/core/combinators.f" PFX-PATH-ROW
    PFX-COMMON LPXREF         s" src/habu/xref.f"        PFX-PATH-ROW
    PFX-COMMON LPLAYOUTSEAL   s" src/core/layout-buffer-seal.f" PFX-PATH-ROW
-   PFX-COMMON LPLOWERCERTSEAL s" src/core/lower-cert-seal.f" PFX-PATH-ROW ;
+   PFX-COMMON LPLOWERCERTSEAL s" src/core/lower-cert-seal.f" PFX-PATH-ROW
+   PFX-COMMON LPSCRIPTARGV   s" src/os/script-argv.f"   PFX-PATH-ROW
+   PFX-COMMON LPINTMARK      s" src/core/internal-mark.f" PFX-PATH-ROW
+   PFX-COMMON LPTOPROW       s" src/core/top-row.f"     PFX-PATH-ROW ;
 
 : PFX-PATH-FILES ( -- )
    PFX-PATH-CHECKER-FILES
@@ -923,9 +923,6 @@ public
    PFX-COMMON LPHABULAYOUT   s" src/habu/layout.f"      PFX-PROVIDE-ROW
    PFX-COMMON LPENVBASE      s" src/os/env-base.f"      PFX-PROVIDE-ROW
    PFX-COMMON LPINCLUDE      s" src/core/include.f"     PFX-PROVIDE-ROW
-   PFX-COMMON LPSCRIPTARGV   s" src/os/script-argv.f"   PFX-PROVIDE-ROW
-   PFX-COMMON LPINTMARK      s" src/core/internal-mark.f" PFX-PROVIDE-ROW
-   PFX-COMMON LPTOPROW       s" src/core/top-row.f"     PFX-PROVIDE-ROW
    PFX-COMMON LPENUMS        s" src/core/enums.f"       PFX-PROVIDE-ROW
    PFX-COMMON LPEXECVECTOR   s" src/core/exec-vector.f" PFX-PROVIDE-ROW
    PFX-COMMON LPSHA256       s" src/core/sha256.f"      PFX-PROVIDE-ROW
@@ -933,7 +930,10 @@ public
    PFX-COMMON LPCOMBINATORS  s" src/core/combinators.f" PFX-PROVIDE-ROW
    PFX-COMMON LPXREF         s" src/habu/xref.f"        PFX-PROVIDE-ROW
    PFX-COMMON LPLAYOUTSEAL   s" src/core/layout-buffer-seal.f" PFX-PROVIDE-ROW
-   PFX-COMMON LPLOWERCERTSEAL s" src/core/lower-cert-seal.f" PFX-PROVIDE-ROW ;
+   PFX-COMMON LPLOWERCERTSEAL s" src/core/lower-cert-seal.f" PFX-PROVIDE-ROW
+   PFX-COMMON LPSCRIPTARGV   s" src/os/script-argv.f"   PFX-PROVIDE-ROW
+   PFX-COMMON LPINTMARK      s" src/core/internal-mark.f" PFX-PROVIDE-ROW
+   PFX-COMMON LPTOPROW       s" src/core/top-row.f"     PFX-PROVIDE-ROW ;
 
 : PFX-PROVIDE-FILES ( -- )
    PFX-PROVIDE-CHECKER-FILES

@@ -177,6 +177,649 @@ public
      some OF STR-TRUE TTRUE IDX>N end < TTRUE ENDOF
    ;MATCH ;
 
+package BCG-MANIFEST
+
+$4000 constant CAP
+0 constant MODE-FORTH
+1 constant MODE-SOURCE
+2 constant MODE-CAT
+3 constant MODE-ARRAY
+4 constant MODE-COMMON
+36 constant DOLLAR
+
+create LOAD-BUF CAP allot
+create PATH-BUF CAP allot
+create PROVIDE-BUF CAP allot
+create EXPECT-BUF CAP allot
+create RECOVERY-BUF CAP allot
+create FIXPOINT-BUF CAP allot
+variable LOAD-U
+variable PATH-U
+variable PROVIDE-U
+variable EXPECT-U
+variable RECOVERY-U
+variable FIXPOINT-U
+variable SCAN-OFF
+variable SCAN-N
+variable UNIQUE-I
+variable UNIQUE-J
+create SEP 124 c,
+create LF 10 c,
+
+: LOAD+ ( ptr u8 n -- )
+   LOAD-BUF CAP LOAD-U BUF-APPEND ;
+
+: PATH+ ( ptr u8 n -- )
+   PATH-BUF CAP PATH-U BUF-APPEND ;
+
+: PROVIDE+ ( ptr u8 n -- )
+   PROVIDE-BUF CAP PROVIDE-U BUF-APPEND ;
+
+: EXPECT+ ( ptr u8 n -- )
+   EXPECT-BUF CAP EXPECT-U BUF-APPEND ;
+
+: RECOVERY+ ( ptr u8 n -- )
+   RECOVERY-BUF CAP RECOVERY-U BUF-APPEND ;
+
+: FIXPOINT+ ( ptr u8 n -- )
+   FIXPOINT-BUF CAP FIXPOINT-U BUF-APPEND ;
+
+: LOAD$ ( -- ptr u8 n )
+   LOAD-BUF LOAD-U @ ;
+
+: PATH$ ( -- ptr u8 n )
+   PATH-BUF PATH-U @ ;
+
+: PROVIDE$ ( -- ptr u8 n )
+   PROVIDE-BUF PROVIDE-U @ ;
+
+: EXPECT$ ( -- ptr u8 n )
+   EXPECT-BUF EXPECT-U @ ;
+
+: RECOVERY$ ( -- ptr u8 n )
+   RECOVERY-BUF RECOVERY-U @ ;
+
+: FIXPOINT$ ( -- ptr u8 n )
+   FIXPOINT-BUF FIXPOINT-U @ ;
+
+\ typed-local-lint: allow-bare-local - needle preserves its ptr u8 role.
+: UNIQUE-POS ( ptr u8 n -- n ) {: needle nu:n :}
+   needle nu BCG-POS-FOUND {: pos:n :}
+   pos 1+ needle nu BCG-FIND-AFTER MATCH option
+     none OF ENDOF
+     some OF drop STR-FALSE TTRUE ENDOF
+   ;MATCH
+   pos ;
+
+\ typed-local-lint: allow-bare-local - markers and source preserve ptr u8 roles.
+: RANGE$ ( ptr u8 n ptr u8 n -- ptr u8 n ) {: first fu:n after au:n :}
+   first fu UNIQUE-POS {: start:n :}
+   after au UNIQUE-POS {: end:n :}
+   start end < TTRUE
+   BCG-SOURCE {: src:ptr srcu:n :}
+   end srcu <= TTRUE
+   src start + end start - ;
+
+\ typed-local-lint: allow-bare-local - quoted source token preserves ptr u8.
+: QPATH$ ( ptr u8 n -- ptr u8 n ) {: a u:n :}
+   u 0 > TTRUE
+   a u 1- + c@ DQUOTE = TTRUE
+   a u 1- ;
+
+: UNQUOTE$ ( ptr u8 n -- ptr u8 n ) {: a:ptr u:n :}
+   u 1 > if
+      a c@ DQUOTE = a u 1- + c@ DQUOTE = and if a 1+ u 2 - exit then
+   then
+   a u ;
+
+: ROW-TOKENS? ( -- bool )
+   SN# @ 5 = if STR-TRUE exit then
+   SN# @ 6 = if 5 S@ s" ;" STR= exit then
+   STR-FALSE ;
+
+\ typed-local-lint: allow-bare-local - q preserves its byte-span callback effect.
+: EMIT-FORTH-ROW ( [ ptr u8 n -- ] -- ) {: q :}
+   0 S@ q execute  SEP 1 q execute
+   1 S@ q execute  SEP 1 q execute
+   3 S@ QPATH$ q execute  LF 1 q execute ;
+
+\ typed-local-lint: allow-bare-local - op and q preserve token/callback roles.
+: FORTH-LINE ( ptr u8 n ptr u8 n [ ptr u8 n -- ] -- bool )
+   {: line lu:n op opu:n q :}
+   line lu SPLIT-WHITESPACE
+   ROW-TOKENS? 0= if STR-FALSE exit then
+   4 S@ op opu STR= 0= if STR-FALSE exit then
+   2 S@ S\" s\"" T$=
+   3 S@ QPATH$ 2drop
+   q EMIT-FORTH-ROW
+   STR-TRUE ;
+
+\ typed-local-lint: allow-bare-local - q preserves its byte-span callback effect.
+: EMIT-FILE ( ptr u8 n [ ptr u8 n -- ] -- ) {: path pu:n q :}
+   path pu q execute
+   LF 1 q execute ;
+
+\ typed-local-lint: allow-bare-local - line/op/q preserve byte-span roles.
+: SOURCE-LINE ( ptr u8 n ptr u8 n [ ptr u8 n -- ] -- bool )
+   {: line lu:n op opu:n q :}
+   line lu SPLIT-WHITESPACE
+   ROW-TOKENS? 0= if STR-FALSE exit then
+   4 S@ op opu STR= 0= if STR-FALSE exit then
+   0 S@ s" out" T$=
+   1 S@ s" outu" T$=
+   2 S@ S\" s\"" T$=
+   3 S@ QPATH$ q EMIT-FILE
+   STR-TRUE ;
+
+\ typed-local-lint: allow-bare-local - line/q preserve byte-span roles.
+: CAT-LINE ( ptr u8 n [ ptr u8 n -- ] -- bool ) {: line lu:n q :}
+   line lu SPLIT-WHITESPACE
+   SN# @ 4 <> if STR-FALSE exit then
+   0 S@ s" cat" STR= 0= if STR-FALSE exit then
+   2 S@ s" >>" T$=
+   3 S@ S\" \"$out\"" T$=
+   1 S@ q EMIT-FILE
+   STR-TRUE ;
+
+\ typed-local-lint: allow-bare-local - line/q preserve byte-span roles.
+: ARRAY-LINE ( ptr u8 n [ ptr u8 n -- ] -- bool ) {: line lu:n q :}
+   line lu SPLIT-WHITESPACE
+   SN# @ 1 <> if STR-FALSE exit then
+   0 S@ UNQUOTE$ {: path:ptr pu:n :}
+   path pu s" src/" STARTS-WITH? 0= if
+      pu 0= if STR-FALSE exit then
+      path c@ DOLLAR <> if STR-FALSE exit then
+   then
+   path pu q EMIT-FILE
+   STR-TRUE ;
+
+\ typed-local-lint: allow-bare-local - line/q preserve byte-span roles.
+: COMMON-LINE ( ptr u8 n [ ptr u8 n -- ] -- bool ) {: line lu:n q :}
+   line lu SPLIT-WHITESPACE
+   SN# @ 3 < if STR-FALSE exit then
+   0 S@ s" out" STR= 0= if STR-FALSE exit then
+   1 S@ s" outu" STR= 0= if STR-FALSE exit then
+   2 S@ S\" s\"" STR= if
+      ROW-TOKENS? 0= if STR-FALSE exit then
+      4 S@ s" BF-APPEND-SOURCE" STR= 0= if STR-FALSE exit then
+      3 S@ QPATH$ q EMIT-FILE
+      STR-TRUE exit
+   then
+   SN# @ 3 = SN# @ 4 = or 0= if STR-FALSE exit then
+   SN# @ 4 = if 3 S@ s" ;" T$= then
+   2 S@ q EMIT-FILE
+   STR-TRUE ;
+
+\ typed-local-lint: allow-bare-local - line/op/q preserve byte-span roles.
+: CAPTURE-LINE ( ptr u8 n n ptr u8 n [ ptr u8 n -- ] -- bool )
+   {: line lu:n mode:n op opu:n q :}
+   mode case
+      MODE-FORTH of line lu op opu q FORTH-LINE endof
+      MODE-SOURCE of line lu op opu q SOURCE-LINE endof
+      MODE-CAT of line lu q CAT-LINE endof
+      MODE-ARRAY of line lu q ARRAY-LINE endof
+      MODE-COMMON of line lu q COMMON-LINE endof
+      STR-FALSE swap
+   endcase ;
+
+\ typed-local-lint: allow-bare-local - source/op/q and split line keep roles.
+: CAPTURE-SPAN ( ptr u8 n n ptr u8 n [ ptr u8 n -- ] -- n )
+   {: src srcu:n mode:n op opu:n q :}
+   0 SCAN-OFF !  0 SCAN-N !
+   begin SCAN-OFF @ srcu <= while
+      src srcu STR-LF SCAN-OFF @ SPLIT-NEXT 0= if 2drop drop SCAN-N @ exit then
+      {: line:ptr lu:n next:n :}
+      next SCAN-OFF !
+      line lu mode op opu q CAPTURE-LINE if 1 SCAN-N +! then
+   repeat
+   SCAN-N @ ;
+
+\ typed-local-lint: allow-bare-local - markers/op/q preserve byte-span roles.
+: CAPTURE ( ptr u8 n ptr u8 n n ptr u8 n [ ptr u8 n -- ] -- n )
+   {: first fu:n after au:n mode:n op opu:n q :}
+   first fu after au RANGE$
+   mode op opu q CAPTURE-SPAN ;
+
+\ typed-local-lint: allow-bare-local - expected row spans remain byte strings.
+: EXPECT-ROW ( ptr u8 n ptr u8 n ptr u8 n -- )
+   {: kind ku:n var vu:n path pu:n :}
+   kind ku EXPECT+  SEP 1 EXPECT+
+   var vu EXPECT+   SEP 1 EXPECT+
+   path pu EXPECT+  LF 1 EXPECT+ ;
+
+: EXPECT-CHECKER ( -- )
+   s" PFX-COMMON" s" LPUTIL" s" src/core/util.f" EXPECT-ROW
+   s" PFX-COMMON" s" LPCELL" s" src/core/cell.f" EXPECT-ROW
+   s" PFX-COMMON" s" LPPTRSTORAGE" s" src/core/pointer-storage.f" EXPECT-ROW
+   s" PFX-COMMON" s" LPENGINEERROR" s" src/core/engine-error.f" EXPECT-ROW
+   s" PFX-COMMON" s" LPCHECKER" s" src/core/checker.f" EXPECT-ROW
+   s" PFX-COMMON" s" LPENGINEERROREFFECTS" s" src/core/engine-error-effects.f" EXPECT-ROW
+   s" PFX-COMMON" s" LPLOWERCERTBASE" s" src/core/lower-cert-base.f" EXPECT-ROW
+   s" PFX-COMMON" s" LPTYPESCHEMA" s" src/core/type-schema.f" EXPECT-ROW
+   s" PFX-COMMON" s" LPTYPEFAM" s" src/core/type-family.f" EXPECT-ROW
+   s" PFX-COMMON" s" LPRENDER" s" src/core/render.f" EXPECT-ROW
+   s" PFX-COMMON" s" LPSUMTYPE" s" src/core/sumtype.f" EXPECT-ROW
+   s" PFX-COMMON" s" LPLAYOUTBUF" s" src/core/layout-buffer.f" EXPECT-ROW
+   s" PFX-COMMON" s" LPLAYOUTVALID" s" src/core/layout-valid.f" EXPECT-ROW
+   s" PFX-COMMON" s" LPHOOK" s" src/core/check-hook.f" EXPECT-ROW
+   s" PFX-COMMON" s" LPCELLEFF" s" src/core/cell-effects.f" EXPECT-ROW
+   s" PFX-COMMON" s" LPPTRSTORAGEEFF" s" src/core/pointer-storage-effects.f" EXPECT-ROW ;
+
+: EXPECT-CORE ( -- )
+   s" PFX-COMMON" s" LPSTRUCTURES" s" src/core/structures.f" EXPECT-ROW
+   s" PFX-COMMON" s" LPROLES" s" src/core/roles.f" EXPECT-ROW
+   s" PFX-COMMON" s" LPBYTES" s" src/core/bytes.f" EXPECT-ROW
+   s" PFX-LINUX" s" LPLINUXTARGET" s" src/os/linux/target.f" EXPECT-ROW
+   s" PFX-MACOS" s" LPMACOSTARGET" s" src/os/macos/target.f" EXPECT-ROW
+   s" PFX-LINUX" s" LPLINUXLAYOUT" s" src/os/linux/layout.f" EXPECT-ROW
+   s" PFX-MACOS" s" LPMACOSLAYOUT" s" src/os/macos/layout.f" EXPECT-ROW
+   s" PFX-COMMON" s" LPHABULAYOUT" s" src/habu/layout.f" EXPECT-ROW
+   s" PFX-COMMON" s" LPENVBASE" s" src/os/env-base.f" EXPECT-ROW
+   s" PFX-COMMON" s" LPINCLUDE" s" src/core/include.f" EXPECT-ROW
+   s" PFX-COMMON" s" LPENUMS" s" src/core/enums.f" EXPECT-ROW
+   s" PFX-COMMON" s" LPEXECVECTOR" s" src/core/exec-vector.f" EXPECT-ROW
+   s" PFX-COMMON" s" LPSHA256" s" src/core/sha256.f" EXPECT-ROW
+   s" PFX-COMMON" s" LPTFAMSHA" s" src/core/type-family-sha.f" EXPECT-ROW
+   s" PFX-COMMON" s" LPCOMBINATORS" s" src/core/combinators.f" EXPECT-ROW
+   s" PFX-COMMON" s" LPXREF" s" src/habu/xref.f" EXPECT-ROW
+   s" PFX-COMMON" s" LPLAYOUTSEAL" s" src/core/layout-buffer-seal.f" EXPECT-ROW ;
+
+: EXPECT-NATIVE ( -- )
+   0 EXPECT-U !
+   EXPECT-CHECKER
+   EXPECT-CORE
+   s" PFX-COMMON" s" LPLOWERCERTSEAL" s" src/core/lower-cert-seal.f" EXPECT-ROW
+   s" PFX-COMMON" s" LPSCRIPTARGV" s" src/os/script-argv.f" EXPECT-ROW
+   s" PFX-COMMON" s" LPINTMARK" s" src/core/internal-mark.f" EXPECT-ROW
+   s" PFX-COMMON" s" LPTOPROW" s" src/core/top-row.f" EXPECT-ROW ;
+
+: EXPECT-GFORTH ( -- )
+   0 EXPECT-U !
+   EXPECT-CHECKER
+   EXPECT-CORE
+   s" PFX-COMMON" s" LPSCRIPTARGV" s" src/os/script-argv.f" EXPECT-ROW ;
+
+: ASSERT-UNIQUE ( ptr u8 n n -- ) {: manifest:ptr mu:n want:n :}
+   manifest mu SPLIT-LINES
+   SN# @ want T=
+   0 UNIQUE-I !
+   begin UNIQUE-I @ SN# @ < while
+      UNIQUE-I @ 1+ UNIQUE-J !
+      begin UNIQUE-J @ SN# @ < while
+         UNIQUE-I @ S@ UNIQUE-J @ S@ STR= 0= TTRUE
+         UNIQUE-J @ 1+ UNIQUE-J !
+      repeat
+      UNIQUE-I @ 1+ UNIQUE-I !
+   repeat ;
+
+: ASSERT-ABSENT ( ptr u8 n -- )
+   LOAD$ 2swap CONTAINS? 0= TTRUE ;
+
+: ASSERT-EQUAL ( n -- ) {: want:n :}
+   LOAD$ PATH$ T$=
+   LOAD$ PROVIDE$ T$=
+   LOAD$ EXPECT$ T$=
+   LOAD$ want ASSERT-UNIQUE
+   s" structures-effects.f" ASSERT-ABSENT ;
+
+: CAPTURE-LOAD ( -- n )
+   s" : PFX-LOAD-CHECKER-FILES" s" : PFX-PATH-CHECKER-FILES"
+   MODE-FORTH s" PFX-LOAD-ROW" [: LOAD+ ;] CAPTURE ;
+
+: CAPTURE-PATH ( -- n )
+   s" : PFX-PATH-CHECKER-FILES" s" : PFX-PROVIDE-CHECKER-FILES"
+   MODE-FORTH s" PFX-PATH-ROW" [: PATH+ ;] CAPTURE ;
+
+: CAPTURE-PROVIDE ( -- n )
+   s" : PFX-PROVIDE-CHECKER-FILES" s" : C-SOURCE-PIPE"
+   MODE-FORTH s" PFX-PROVIDE-ROW" [: PROVIDE+ ;] CAPTURE ;
+
+: CAPTURE-PREFIX ( -- )
+   0 LOAD-U !  0 PATH-U !  0 PROVIDE-U !
+   CAPTURE-LOAD SCAN-N !
+   CAPTURE-PATH SCAN-N @ T=
+   CAPTURE-PROVIDE SCAN-N @ T= ;
+
+: NATIVE-ROWS ( -- )
+   CAPTURE-PREFIX
+   EXPECT-NATIVE
+   37 ASSERT-EQUAL
+   s" src/core/structures-effects.f" BCG-MUST-LACK
+   s" LPSTRUCTEFF" BCG-MUST-LACK ;
+
+: GFORTH-ROWS ( -- )
+   CAPTURE-PREFIX
+   EXPECT-GFORTH
+   34 ASSERT-EQUAL
+   s" src/core/structures-effects.f" BCG-MUST-LACK
+   s" LPSTRUCTEFF" BCG-MUST-LACK ;
+
+: EXPECT-FILE ( ptr u8 n -- )
+   EXPECT+  LF 1 EXPECT+ ;
+
+: EXPECT-RECOVERY ( -- )
+   0 EXPECT-U !
+   s" src/core/util.f" EXPECT-FILE
+   s" src/core/cell.f" EXPECT-FILE
+   s" src/core/pointer-storage.f" EXPECT-FILE
+   s" src/core/engine-error.f" EXPECT-FILE
+   s" src/core/checker.f" EXPECT-FILE
+   s" src/core/engine-error-effects.f" EXPECT-FILE
+   s" src/core/lower-cert-base.f" EXPECT-FILE
+   s" src/core/type-schema.f" EXPECT-FILE
+   s" src/core/type-family.f" EXPECT-FILE
+   s" src/core/render.f" EXPECT-FILE
+   s" src/core/sumtype.f" EXPECT-FILE
+   s" src/core/layout-buffer.f" EXPECT-FILE
+   s" src/core/layout-valid.f" EXPECT-FILE
+   s" src/core/check-hook.f" EXPECT-FILE
+   s" src/core/cell-effects.f" EXPECT-FILE
+   s" src/core/pointer-storage-effects.f" EXPECT-FILE
+   s" src/core/structures.f" EXPECT-FILE ;
+
+: EXPECT-RECOVERY-COMMON ( -- )
+   0 EXPECT-U !
+   s" src/core/roles.f" EXPECT-FILE
+   s" $OS_TARGET" EXPECT-FILE
+   s" src/arch/arm64/asm.f" EXPECT-FILE
+   s" src/arch/arm64/icode.f" EXPECT-FILE
+   s" src/arch/arm64/mnem.f" EXPECT-FILE
+   s" $OS_LAYOUT" EXPECT-FILE
+   s" $OS_SYS" EXPECT-FILE
+   s" src/habu/layout.f" EXPECT-FILE
+   s" src/os/env-base.f" EXPECT-FILE
+   s" src/os/script-argv.f" EXPECT-FILE
+   s" src/core/enums.f" EXPECT-FILE
+   s" src/core/exec-vector.f" EXPECT-FILE
+   s" src/core/sha256.f" EXPECT-FILE
+   s" src/core/type-family-sha.f" EXPECT-FILE
+   s" src/core/combinators.f" EXPECT-FILE
+   s" src/habu/treeshake.f" EXPECT-FILE
+   s" src/habu/rt.f" EXPECT-FILE
+   s" src/habu/crash.f" EXPECT-FILE
+   s" src/os/image-bytes.f" EXPECT-FILE
+   s" $OS_IMAGE" EXPECT-FILE
+   s" $OS_SIGN" EXPECT-FILE
+   s" src/habu/habu1.f" EXPECT-FILE
+   s" src/habu/prof.f" EXPECT-FILE
+   s" src/habu/regalloc.f" EXPECT-FILE
+   s" src/habu/jit.f" EXPECT-FILE
+   s" src/habu/habu2.f" EXPECT-FILE
+   s" src/habu/xref.f" EXPECT-FILE
+   s" src/habu/owner-wid-emit-seal.f" EXPECT-FILE
+   s" src/core/layout-buffer-seal.f" EXPECT-FILE
+   s" src/core/lower-cert-seal.f" EXPECT-FILE ;
+
+: EXPECT-FIXPOINT-COMMON ( -- )
+   0 EXPECT-U !
+   s" BF-APPEND-ROLES" EXPECT-FILE
+   s" BF-APPEND-CORE-BYTES" EXPECT-FILE
+   s" BF-APPEND-TARGET-FLAG" EXPECT-FILE
+   s" src/arch/arm64/asm.f" EXPECT-FILE
+   s" src/arch/arm64/icode.f" EXPECT-FILE
+   s" src/arch/arm64/mnem.f" EXPECT-FILE
+   s" BF-APPEND-TARGET-LAYOUT" EXPECT-FILE
+   s" BF-APPEND-TARGET-SYS" EXPECT-FILE
+   s" BF-APPEND-HABU-LAYOUT" EXPECT-FILE
+   s" BF-APPEND-ENV-BASE" EXPECT-FILE
+   s" BF-APPEND-SCRIPT-ARGV" EXPECT-FILE
+   s" BF-APPEND-ENUMS" EXPECT-FILE
+   s" BF-APPEND-EXEC-VECTOR" EXPECT-FILE
+   s" src/core/sha256.f" EXPECT-FILE
+   s" src/core/type-family-sha.f" EXPECT-FILE
+   s" BF-APPEND-COMBINATORS" EXPECT-FILE
+   s" src/habu/treeshake.f" EXPECT-FILE
+   s" src/habu/rt.f" EXPECT-FILE
+   s" src/habu/crash.f" EXPECT-FILE
+   s" BF-APPEND-IMAGE-BYTES" EXPECT-FILE
+   s" BF-APPEND-TARGET-IMAGE" EXPECT-FILE
+   s" src/habu/habu1.f" EXPECT-FILE
+   s" BUILD-EXT:APPEND" EXPECT-FILE
+   s" src/habu/prof.f" EXPECT-FILE
+   s" src/habu/regalloc.f" EXPECT-FILE
+   s" src/habu/jit.f" EXPECT-FILE
+   s" src/habu/habu2.f" EXPECT-FILE
+   s" src/habu/xref.f" EXPECT-FILE
+   s" src/habu/owner-wid-emit-seal.f" EXPECT-FILE
+   s" src/core/layout-buffer-seal.f" EXPECT-FILE
+   s" src/core/lower-cert-seal.f" EXPECT-FILE ;
+
+variable COUNT-I
+variable COUNT-N
+
+\ typed-local-lint: allow-bare-local - source/needle remain byte spans.
+: COUNT-SUB ( ptr u8 n ptr u8 n -- n ) {: src su:n needle nu:n :}
+   0 COUNT-I !  0 COUNT-N !
+   nu 0= if 0 exit then
+   begin COUNT-I @ su nu - <= while
+      src COUNT-I @ + nu needle nu STR= if
+         COUNT-I @ nu + COUNT-I !
+         1 COUNT-N +!
+      else
+         1 COUNT-I +!
+      then
+   repeat
+   COUNT-N @ ;
+
+\ typed-local-lint: allow-bare-local - scope/needle remain source byte spans.
+: SCOPE-N ( ptr u8 n ptr u8 n ptr u8 n -- n )
+   {: first fu:n after au:n needle nu:n :}
+   first fu after au RANGE$ needle nu COUNT-SUB ;
+
+\ typed-local-lint: allow-bare-local - source/needles remain byte spans.
+: BEFORE ( ptr u8 n ptr u8 n ptr u8 n -- )
+   {: src su:n left lu:n right ru:n :}
+   src su left lu BCG-FIND MATCH option
+      none OF STR-FALSE TTRUE -1 ENDOF
+      some OF IDX>N ENDOF
+   ;MATCH
+   src su right ru BCG-FIND MATCH option
+      none OF STR-FALSE TTRUE -1 ENDOF
+      some OF IDX>N ENDOF
+   ;MATCH < TTRUE ;
+
+\ typed-local-lint: allow-bare-local - scope/needles remain byte spans.
+: SCOPE-BEFORE ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n -- )
+   {: first fu:n after au:n left lu:n right ru:n :}
+   first fu after au RANGE$ left lu right ru BEFORE ;
+
+: SCOPE-ONE ( ptr u8 n ptr u8 n ptr u8 n -- )
+   SCOPE-N 1 T= ;
+
+\ typed-local-lint: allow-bare-local - scope/markers remain byte spans.
+: SCOPE-BETWEEN ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n ptr u8 n -- )
+   {: first:ptr fu:n after:ptr au:n left:ptr lu:n item:ptr iu:n right:ptr ru:n :}
+   first fu after au left lu item iu SCOPE-BEFORE
+   first fu after au item iu right ru SCOPE-BEFORE ;
+
+\ typed-local-lint: allow-bare-local - scope/calls remain byte spans.
+: CALL-CHAIN ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n ptr u8 n -- )
+   {: first:ptr fu:n after:ptr au:n a:ptr au2:n b:ptr bu:n c:ptr cu:n :}
+   first fu after au a au2 SCOPE-ONE
+   first fu after au b bu SCOPE-ONE
+   first fu after au c cu SCOPE-ONE
+   first fu after au a au2 b bu SCOPE-BEFORE
+   first fu after au b bu c cu SCOPE-BEFORE ;
+
+: PREFIX-CALLS ( -- )
+   s" : PFX-LOAD-BASE-FILES" s" : PFX-LOAD-SCRIPT-ARGV ( -- )"
+      s" PFX-LOAD-CHECKER-FILES" s" PFX-LOAD-DECL-FILES"
+      s" PFX-LOAD-CORE-FILES" CALL-CHAIN
+   s" : PFX-PATH-FILES" s" : EMIT-HOST-LOAD-PREFIX"
+      s" PFX-PATH-CHECKER-FILES" s" PFX-PATH-DECL-FILES"
+      s" PFX-PATH-CORE-FILES" CALL-CHAIN
+   s" : PFX-PROVIDE-FILES" s" : C-SOURCE-PIPE"
+      s" PFX-PROVIDE-CHECKER-FILES" s" PFX-PROVIDE-DECL-FILES"
+      s" PFX-PROVIDE-CORE-FILES" CALL-CHAIN ;
+
+: RECOVERY-TARGETS ( -- )
+   S\" case \"$HABU_TARGET\" in" s" PROBE=" s" OS_" SCOPE-N 10 T=
+   S\" case \"$HABU_TARGET\" in" s" PROBE="
+      s" OS_TARGET=src/os/macos/target.f" SCOPE-ONE
+   S\" case \"$HABU_TARGET\" in" s" PROBE="
+      s" OS_LAYOUT=src/os/macos/layout.f" SCOPE-ONE
+   S\" case \"$HABU_TARGET\" in" s" PROBE="
+      s" OS_SYS=src/os/macos/sys.f" SCOPE-ONE
+   S\" case \"$HABU_TARGET\" in" s" PROBE="
+      s" OS_IMAGE=src/os/macos/macho.f" SCOPE-ONE
+   S\" case \"$HABU_TARGET\" in" s" PROBE="
+      s" OS_SIGN=src/os/macos/sign2.f" SCOPE-ONE
+   S\" case \"$HABU_TARGET\" in" s" PROBE="
+      s" OS_TARGET=src/os/linux/target.f" SCOPE-ONE
+   S\" case \"$HABU_TARGET\" in" s" PROBE="
+      s" OS_LAYOUT=src/os/linux/layout.f" SCOPE-ONE
+   S\" case \"$HABU_TARGET\" in" s" PROBE="
+      s" OS_SYS=src/os/linux/sys.f" SCOPE-ONE
+   S\" case \"$HABU_TARGET\" in" s" PROBE="
+      s" OS_IMAGE=src/os/linux/elf.f" SCOPE-ONE
+   S\" case \"$HABU_TARGET\" in" s" PROBE="
+      s" OS_SIGN=src/os/linux/sign.f" SCOPE-ONE
+   S\" case \"$HABU_TARGET\" in" s" PROBE=" s" macos-aarch64)"
+      s" OS_TARGET=src/os/macos/target.f" s" linux-aarch64)" SCOPE-BETWEEN
+   S\" case \"$HABU_TARGET\" in" s" PROBE=" s" macos-aarch64)"
+      s" OS_LAYOUT=src/os/macos/layout.f" s" linux-aarch64)" SCOPE-BETWEEN
+   S\" case \"$HABU_TARGET\" in" s" PROBE=" s" macos-aarch64)"
+      s" OS_SYS=src/os/macos/sys.f" s" linux-aarch64)" SCOPE-BETWEEN
+   S\" case \"$HABU_TARGET\" in" s" PROBE=" s" macos-aarch64)"
+      s" OS_IMAGE=src/os/macos/macho.f" s" linux-aarch64)" SCOPE-BETWEEN
+   S\" case \"$HABU_TARGET\" in" s" PROBE=" s" macos-aarch64)"
+      s" OS_SIGN=src/os/macos/sign2.f" s" linux-aarch64)" SCOPE-BETWEEN
+   S\" case \"$HABU_TARGET\" in" s" PROBE=" s" linux-aarch64)"
+      s" OS_TARGET=src/os/linux/target.f" s" *)" SCOPE-BETWEEN
+   S\" case \"$HABU_TARGET\" in" s" PROBE=" s" linux-aarch64)"
+      s" OS_LAYOUT=src/os/linux/layout.f" s" *)" SCOPE-BETWEEN
+   S\" case \"$HABU_TARGET\" in" s" PROBE=" s" linux-aarch64)"
+      s" OS_SYS=src/os/linux/sys.f" s" *)" SCOPE-BETWEEN
+   S\" case \"$HABU_TARGET\" in" s" PROBE=" s" linux-aarch64)"
+      s" OS_IMAGE=src/os/linux/elf.f" s" *)" SCOPE-BETWEEN
+   S\" case \"$HABU_TARGET\" in" s" PROBE=" s" linux-aarch64)"
+      s" OS_SIGN=src/os/linux/sign.f" s" *)" SCOPE-BETWEEN ;
+
+: FIXPOINT-TARGETS ( -- )
+   s" : BF-APPEND-TARGET-LAYOUT" s" : BF-APPEND-TARGET-SYS"
+      s" src/os/" SCOPE-N 2 T=
+   s" : BF-APPEND-TARGET-LAYOUT" s" : BF-APPEND-TARGET-SYS"
+      s" src/os/linux/layout.f" SCOPE-ONE
+   s" : BF-APPEND-TARGET-LAYOUT" s" : BF-APPEND-TARGET-SYS"
+      s" src/os/macos/layout.f" SCOPE-ONE
+   s" : BF-APPEND-TARGET-LAYOUT" s" : BF-APPEND-TARGET-SYS"
+      s" HB-TARGET-LINUX?" s" src/os/linux/layout.f" SCOPE-BEFORE
+   s" : BF-APPEND-TARGET-LAYOUT" s" : BF-APPEND-TARGET-SYS"
+      s" src/os/linux/layout.f" s" HB-TARGET-MACOS?" SCOPE-BEFORE
+   s" : BF-APPEND-TARGET-LAYOUT" s" : BF-APPEND-TARGET-SYS"
+      s" HB-TARGET-MACOS?" s" src/os/macos/layout.f" SCOPE-BEFORE
+   s" : BF-APPEND-TARGET-SYS" s" : BF-APPEND-TARGET-FLAG"
+      s" src/os/" SCOPE-N 2 T=
+   s" : BF-APPEND-TARGET-SYS" s" : BF-APPEND-TARGET-FLAG"
+      s" src/os/linux/sys.f" SCOPE-ONE
+   s" : BF-APPEND-TARGET-SYS" s" : BF-APPEND-TARGET-FLAG"
+      s" src/os/macos/sys.f" SCOPE-ONE
+   s" : BF-APPEND-TARGET-SYS" s" : BF-APPEND-TARGET-FLAG"
+      s" HB-TARGET-LINUX?" s" src/os/linux/sys.f" SCOPE-BEFORE
+   s" : BF-APPEND-TARGET-SYS" s" : BF-APPEND-TARGET-FLAG"
+      s" src/os/linux/sys.f" s" HB-TARGET-MACOS?" SCOPE-BEFORE
+   s" : BF-APPEND-TARGET-SYS" s" : BF-APPEND-TARGET-FLAG"
+      s" HB-TARGET-MACOS?" s" src/os/macos/sys.f" SCOPE-BEFORE
+   s" : BF-APPEND-TARGET-FLAG" s" : BF-APPEND-IMAGE-BYTES"
+      s" src/os/" SCOPE-N 2 T=
+   s" : BF-APPEND-TARGET-FLAG" s" : BF-APPEND-IMAGE-BYTES"
+      s" src/os/linux/target.f" SCOPE-ONE
+   s" : BF-APPEND-TARGET-FLAG" s" : BF-APPEND-IMAGE-BYTES"
+      s" src/os/macos/target.f" SCOPE-ONE
+   s" : BF-APPEND-TARGET-FLAG" s" : BF-APPEND-IMAGE-BYTES"
+      s" HB-TARGET-LINUX?" s" src/os/linux/target.f" SCOPE-BEFORE
+   s" : BF-APPEND-TARGET-FLAG" s" : BF-APPEND-IMAGE-BYTES"
+      s" src/os/linux/target.f" s" HB-TARGET-MACOS?" SCOPE-BEFORE
+   s" : BF-APPEND-TARGET-FLAG" s" : BF-APPEND-IMAGE-BYTES"
+      s" HB-TARGET-MACOS?" s" src/os/macos/target.f" SCOPE-BEFORE
+   s" : BF-APPEND-TARGET-IMAGE" s" : BF-APPEND-ROLES"
+      s" src/os/" SCOPE-N 4 T=
+   s" : BF-APPEND-TARGET-IMAGE" s" : BF-APPEND-ROLES"
+      s" src/os/linux/elf.f" SCOPE-ONE
+   s" : BF-APPEND-TARGET-IMAGE" s" : BF-APPEND-ROLES"
+      s" src/os/linux/sign.f" SCOPE-ONE
+   s" : BF-APPEND-TARGET-IMAGE" s" : BF-APPEND-ROLES"
+      s" src/os/macos/macho.f" SCOPE-ONE
+   s" : BF-APPEND-TARGET-IMAGE" s" : BF-APPEND-ROLES"
+      s" src/os/macos/sign2.f" SCOPE-ONE
+   s" : BF-APPEND-TARGET-IMAGE" s" : BF-APPEND-ROLES"
+      s" HB-TARGET-LINUX?" s" src/os/linux/elf.f" SCOPE-BEFORE
+   s" : BF-APPEND-TARGET-IMAGE" s" : BF-APPEND-ROLES"
+      s" src/os/linux/elf.f" s" src/os/linux/sign.f" SCOPE-BEFORE
+   s" : BF-APPEND-TARGET-IMAGE" s" : BF-APPEND-ROLES"
+      s" src/os/linux/sign.f" s" HB-TARGET-MACOS?" SCOPE-BEFORE
+   s" : BF-APPEND-TARGET-IMAGE" s" : BF-APPEND-ROLES"
+      s" HB-TARGET-MACOS?" s" src/os/macos/macho.f" SCOPE-BEFORE
+   s" : BF-APPEND-TARGET-IMAGE" s" : BF-APPEND-ROLES"
+      s" src/os/macos/macho.f" s" src/os/macos/sign2.f" SCOPE-BEFORE ;
+
+public
+
+: NATIVE ( -- )
+   NATIVE-ROWS
+   PREFIX-CALLS ;
+
+: GFORTH ( -- )
+   GFORTH-ROWS
+   PREFIX-CALLS ;
+
+: RECOVERY ( -- )
+   0 RECOVERY-U !
+   s" emit_src() {" s"   local f" MODE-CAT s" cat"
+   [: RECOVERY+ ;] CAPTURE 17 T=
+   EXPECT-RECOVERY
+   RECOVERY$ EXPECT$ T$=
+   RECOVERY$ 17 ASSERT-UNIQUE
+   s" emit_decl_src() {" s" emit_src() {" s" cat src/" SCOPE-N 0 T=
+   s" emit_src() {" s"   local f" S\" emit_decl_src \"$out\"" SCOPE-N 1 T=
+   s" emit_src() {" s"   local f" s" LOWER-CERT-HOOK:INSTALL" SCOPE-N 1 T=
+   s" emit_src() {" s"   local f"
+      s" src/core/pointer-storage-effects.f" S\" emit_decl_src \"$out\"" SCOPE-BEFORE
+   s" emit_src() {" s"   local f"
+      S\" emit_decl_src \"$out\"" s" src/core/structures.f" SCOPE-BEFORE
+   s" emit_src() {" s"   local f"
+      s" src/core/structures.f" s" LOWER-CERT-HOOK:INSTALL" SCOPE-BEFORE
+   0 RECOVERY-U !
+   s" SRC_COMMON=(" s" emit_boot_hide() {" MODE-ARRAY s" "
+      [: RECOVERY+ ;] CAPTURE 30 T=
+   EXPECT-RECOVERY-COMMON
+   RECOVERY$ EXPECT$ T$=
+   RECOVERY$ 30 ASSERT-UNIQUE
+   RECOVERY-TARGETS ;
+
+: FIXPOINT ( -- )
+   0 FIXPOINT-U !
+   s" : BF-APPEND-CHECKER-BOOT" s" : BF-APPEND-CORE-BYTES"
+   MODE-SOURCE s" BF-APPEND-SOURCE" [: FIXPOINT+ ;] CAPTURE 17 T=
+   EXPECT-RECOVERY
+   FIXPOINT$ EXPECT$ T$=
+   FIXPOINT$ 17 ASSERT-UNIQUE
+   s" : BF-APPEND-DECL-FILES" s" : BF-APPEND-CORE-FILES"
+   s" BF-APPEND-SOURCE" SCOPE-N 0 T=
+   s" : BF-APPEND-RUN-PRELUDE" s" : BF-APPEND-STDIN-RUN-PRELUDE"
+   s" BF-APPEND-CHECKER-BOOT" SCOPE-N 1 T=
+   s" : BF-APPEND-RUN-PRELUDE" s" : BF-APPEND-STDIN-RUN-PRELUDE"
+   s" BF-APPEND-DECL-FILES" SCOPE-N 1 T=
+   s" : BF-APPEND-RUN-PRELUDE" s" : BF-APPEND-STDIN-RUN-PRELUDE"
+   s" BF-APPEND-CORE-FILES" SCOPE-N 1 T=
+   s" : BF-APPEND-RUN-PRELUDE" s" : BF-APPEND-STDIN-RUN-PRELUDE"
+   s" LOWER-CERT-HOOK:INSTALL" SCOPE-N 1 T=
+   s" : BF-APPEND-RUN-PRELUDE" s" : BF-APPEND-STDIN-RUN-PRELUDE"
+      s" BF-APPEND-CHECKER-BOOT" s" BF-APPEND-DECL-FILES" SCOPE-BEFORE
+   s" : BF-APPEND-RUN-PRELUDE" s" : BF-APPEND-STDIN-RUN-PRELUDE"
+      s" BF-APPEND-DECL-FILES" s" BF-APPEND-CORE-FILES" SCOPE-BEFORE
+   s" : BF-APPEND-RUN-PRELUDE" s" : BF-APPEND-STDIN-RUN-PRELUDE"
+      s" BF-APPEND-CORE-FILES" s" LOWER-CERT-HOOK:INSTALL" SCOPE-BEFORE
+   0 FIXPOINT-U !
+   s" : BF-APPEND-COMMON" s" : BF-APPEND-DRIVER-IO" MODE-COMMON s" "
+      [: FIXPOINT+ ;] CAPTURE 31 T=
+   EXPECT-FIXPOINT-COMMON
+   FIXPOINT$ EXPECT$ T$=
+   FIXPOINT$ 31 ASSERT-UNIQUE
+   FIXPOINT-TARGETS ;
+
+;package
+
 : BCG-TEST-INSTALL-FAIL-CLOSED ( -- )
    s" bootstrap/cg/install.fs" BCG-LOAD
    s" : BODY-ARITY ( -- n )  ['] TRY-ARITY CG-CATCH ;" BCG-MUST-HAVE
@@ -191,32 +834,6 @@ public
    s" push abs-addr" BCG-MUST-LACK
    s" absolute address is known" BCG-MUST-LACK ;
 
-: BCG-TEST-PREFIX-LOAD-CALLS ( -- )
-   s" : PFX-LOAD-BASE-FILES" BCG-POS-FOUND {: base:n :}
-   base s" PFX-LOAD-CHECKER-FILES" BCG-AFTER-FOUND {: check:n :}
-   check s" PFX-LOAD-DECL-FILES" BCG-AFTER-FOUND {: decl:n :}
-   decl s" PFX-LOAD-CORE-FILES" BCG-AFTER-FOUND {: core:n :}
-   base check < TTRUE  check decl < TTRUE  decl core < TTRUE ;
-
-: BCG-TEST-PREFIX-PATH-CALLS ( -- )
-   s" : PFX-PATH-FILES" BCG-POS-FOUND {: base:n :}
-   base s" PFX-PATH-CHECKER-FILES" BCG-AFTER-FOUND {: check:n :}
-   check s" PFX-PATH-DECL-FILES" BCG-AFTER-FOUND {: decl:n :}
-   decl s" PFX-PATH-CORE-FILES" BCG-AFTER-FOUND {: core:n :}
-   base check < TTRUE  check decl < TTRUE  decl core < TTRUE ;
-
-: BCG-TEST-PREFIX-PROVIDE-CALLS ( -- )
-   s" : PFX-PROVIDE-FILES" BCG-POS-FOUND {: base:n :}
-   base s" PFX-PROVIDE-CHECKER-FILES" BCG-AFTER-FOUND {: check:n :}
-   check s" PFX-PROVIDE-DECL-FILES" BCG-AFTER-FOUND {: decl:n :}
-   decl s" PFX-PROVIDE-CORE-FILES" BCG-AFTER-FOUND {: core:n :}
-   base check < TTRUE  check decl < TTRUE  decl core < TTRUE ;
-
-: BCG-TEST-PREFIX-PHASE-CALLS ( -- )
-   BCG-TEST-PREFIX-LOAD-CALLS
-   BCG-TEST-PREFIX-PATH-CALLS
-   BCG-TEST-PREFIX-PROVIDE-CALLS ;
-
 : BCG-TEST-PREFIX-LIST-COMMON ( -- )
    s" PFX-LOAD-FILES" BCG-MUST-HAVE
    s" PFX-PATH-FILES" BCG-MUST-HAVE
@@ -228,60 +845,19 @@ public
    s" LPUTIL @ ADR" BCG-MUST-LACK
    s" LSRCRD @ BL then" BCG-MUST-LACK
    s" a u ZBYTES ;" BCG-MUST-LACK
-   s" LPLINUXTARGET @ LBL, s" BCG-MUST-LACK
-   s" PFX-COMMON LPUTIL" s" PFX-COMMON LPCELL" BCG-MUST-BEFORE
-   s" PFX-COMMON LPCELL" s" PFX-COMMON LPPTRSTORAGE" BCG-MUST-BEFORE
-   s" PFX-COMMON LPPTRSTORAGE" s" PFX-COMMON LPENGINEERROR" BCG-MUST-BEFORE
-   s" PFX-COMMON LPENGINEERROR" s" PFX-COMMON LPCHECKER" BCG-MUST-BEFORE
-   s" PFX-COMMON LPCHECKER" s" PFX-COMMON LPENGINEERROREFFECTS" BCG-MUST-BEFORE
-   s" PFX-COMMON LPENGINEERROREFFECTS" s" PFX-COMMON LPLOWERCERTBASE" BCG-MUST-BEFORE
-   s" PFX-COMMON LPLOWERCERTBASE" s" PFX-COMMON LPTYPESCHEMA" BCG-MUST-BEFORE
-   s" PFX-COMMON LPTYPESCHEMA" s" PFX-COMMON LPTYPEFAM" BCG-MUST-BEFORE
-   s" PFX-COMMON LPTYPEFAM" s" PFX-COMMON LPRENDER" BCG-MUST-BEFORE
-   s" PFX-COMMON LPRENDER" s" PFX-COMMON LPSUMTYPE" BCG-MUST-BEFORE
-   s" PFX-COMMON LPSUMTYPE" s" PFX-COMMON LPLAYOUTBUF" BCG-MUST-BEFORE
-   s" PFX-COMMON LPLAYOUTBUF" s" PFX-COMMON LPLAYOUTVALID" BCG-MUST-BEFORE
-   s" PFX-COMMON LPLAYOUTVALID" s" PFX-COMMON LPHOOK" BCG-MUST-BEFORE
-   BCG-TEST-PREFIX-PHASE-CALLS
-   s" PFX-COMMON LPCHECKER" s" PFX-LINUX  LPLINUXTARGET" BCG-MUST-BEFORE
-   s" PFX-COMMON LPCHECKER" s" PFX-MACOS  LPMACOSTARGET" BCG-MUST-BEFORE
-   s" PFX-COMMON LPHOOK" s" PFX-LINUX  LPLINUXTARGET" BCG-MUST-BEFORE
-   s" PFX-COMMON LPHOOK" s" PFX-MACOS  LPMACOSTARGET" BCG-MUST-BEFORE
-   s" PFX-COMMON LPHOOK" s" PFX-COMMON LPCELLEFF" BCG-MUST-BEFORE
-   s" PFX-COMMON LPCELLEFF" s" PFX-COMMON LPPTRSTORAGEEFF" BCG-MUST-BEFORE
-   s" PFX-COMMON LPPTRSTORAGEEFF" s" PFX-COMMON LPSTRUCTURES" BCG-MUST-BEFORE
-   s" PFX-COMMON LPSTRUCTURES" s" PFX-COMMON LPROLES" BCG-MUST-BEFORE
-   s" PFX-COMMON LPROLES" s" PFX-COMMON LPBYTES" BCG-MUST-BEFORE
-   s" PFX-COMMON LPBYTES" s" PFX-LINUX  LPLINUXTARGET" BCG-MUST-BEFORE
-   s" PFX-COMMON LPBYTES" s" PFX-MACOS  LPMACOSTARGET" BCG-MUST-BEFORE
-   s" PFX-COMMON LPSTRUCTURES" s" PFX-COMMON LPENUMS" BCG-MUST-BEFORE
-   s" PFX-COMMON LPENUMS" s" PFX-COMMON LPEXECVECTOR" BCG-MUST-BEFORE
-   s" PFX-COMMON LPEXECVECTOR" s" PFX-COMMON LPSHA256" BCG-MUST-BEFORE
-   s" PFX-COMMON LPSHA256" s" PFX-COMMON LPCOMBINATORS" BCG-MUST-BEFORE ;
+   s" LPLINUXTARGET @ LBL, s" BCG-MUST-LACK ;
 
 : BCG-TEST-PREFIX-LIST-BOOTSTRAP ( -- )
    s" bootstrap/cg/forth.fs" BCG-LOAD
    BCG-TEST-PREFIX-LIST-COMMON
-   s" PFX-LOAD-DECL-FILES" BCG-MUST-HAVE
-   s" PFX-PATH-DECL-FILES" BCG-MUST-HAVE
-   s" PFX-PROVIDE-DECL-FILES" BCG-MUST-HAVE
-   s" src/core/structures-effects.f" BCG-MUST-LACK
-   s" LPSTRUCTEFF" BCG-MUST-LACK
-   s" PFX-COMMON LPROLES" s" PFX-COMMON LPINCLUDE" BCG-MUST-BEFORE
-   s" PFX-COMMON LPSTRUCTURES" s" PFX-COMMON LPINCLUDE" BCG-MUST-BEFORE
+   BCG-MANIFEST:GFORTH
    s" LSRCRD @ BL," BCG-MUST-HAVE
    s" LSRCRD LABEL@ BL," BCG-MUST-LACK ;
 
 : BCG-TEST-PREFIX-LIST-NATIVE ( -- )
    s" src/habu/habu2.f" BCG-LOAD
    BCG-TEST-PREFIX-LIST-COMMON
-   s" PFX-LOAD-DECL-FILES" BCG-MUST-HAVE
-   s" PFX-PATH-DECL-FILES" BCG-MUST-HAVE
-   s" PFX-PROVIDE-DECL-FILES" BCG-MUST-HAVE
-   s" src/core/structures-effects.f" BCG-MUST-LACK
-   s" LPSTRUCTEFF" BCG-MUST-LACK
-   s" PFX-COMMON LPROLES" s" PFX-COMMON LPINCLUDE" BCG-MUST-BEFORE
-   s" PFX-COMMON LPSTRUCTURES" s" PFX-COMMON LPINCLUDE" BCG-MUST-BEFORE
+   BCG-MANIFEST:NATIVE
    s" LSRCRD LABEL@ BL," BCG-MUST-HAVE ;
 
 : BCG-TEST-PREFIX-LIST ( -- )
@@ -342,55 +918,15 @@ public
    s" 1 cells CELL <>" BCG-MUST-HAVE
    s" CORE-LAYOUT-RC die" BCG-MUST-HAVE ;
 
-: BCG-TEST-BOOTSTRAP-SEAM ( -- )
-   s" emit_src()" BCG-POS-FOUND {: base:n :}
-   base s" cat src/core/pointer-storage-effects.f" BCG-AFTER-FOUND {: check:n :}
-   check s" emit_decl_src" BCG-AFTER-FOUND {: decl:n :}
-   decl s" cat src/core/structures.f" BCG-AFTER-FOUND {: core:n :}
-   core s" LOWER-CERT-HOOK:INSTALL" BCG-AFTER-FOUND {: install:n :}
-   base check < TTRUE  check decl < TTRUE
-   decl core < TTRUE  core install < TTRUE ;
-
 : BCG-TEST-CELL-BOOTSTRAP ( -- )
    s" tools/bootstrap.sh" BCG-LOAD
-   s" cat src/core/util.f" s" cat src/core/cell.f" BCG-MUST-BEFORE
-   s" cat src/core/cell.f" s" cat src/core/pointer-storage.f" BCG-MUST-BEFORE
-   s" cat src/core/pointer-storage.f" s" cat src/core/engine-error.f" BCG-MUST-BEFORE
-   s" cat src/core/engine-error.f" s" cat src/core/checker.f" BCG-MUST-BEFORE
-   s" cat src/core/checker.f" s" cat src/core/engine-error-effects.f" BCG-MUST-BEFORE
-   s" cat src/core/type-family.f" s" cat src/core/render.f" BCG-MUST-BEFORE
-   s" cat src/core/render.f" s" cat src/core/sumtype.f" BCG-MUST-BEFORE
-   s" cat src/core/layout-valid.f" s" cat src/core/check-hook.f" BCG-MUST-BEFORE
-   s" cat src/core/check-hook.f" s" cat src/core/cell-effects.f" BCG-MUST-BEFORE
-   s" cat src/core/cell-effects.f" s" cat src/core/pointer-storage-effects.f" BCG-MUST-BEFORE
-   s" cat src/core/pointer-storage-effects.f" s" cat src/core/structures.f" BCG-MUST-BEFORE
-   s" cat src/core/structures-effects.f" BCG-MUST-LACK
-   BCG-TEST-BOOTSTRAP-SEAM ;
-
-: BCG-TEST-FIXPOINT-SEAM ( -- )
-   s" : BF-APPEND-RUN-PRELUDE" BCG-POS-FOUND {: base:n :}
-   base s" BF-APPEND-CHECKER-BOOT" BCG-AFTER-FOUND {: check:n :}
-   check s" BF-APPEND-DECL-FILES" BCG-AFTER-FOUND {: decl:n :}
-   decl s" BF-APPEND-CORE-FILES" BCG-AFTER-FOUND {: core:n :}
-   core s" LOWER-CERT-HOOK:INSTALL" BCG-AFTER-FOUND {: install:n :}
-   base check < TTRUE  check decl < TTRUE
-   decl core < TTRUE  core install < TTRUE ;
+   BCG-MANIFEST:RECOVERY
+   s" cat src/core/structures-effects.f" BCG-MUST-LACK ;
 
 : BCG-TEST-CELL-FIXPOINT ( -- )
    s" tools/build-fixpoint.f" BCG-LOAD
-   s" src/core/util.f" s" src/core/cell.f" BCG-MUST-BEFORE
-   s" src/core/cell.f" s" src/core/pointer-storage.f" BCG-MUST-BEFORE
-   s" src/core/pointer-storage.f" s" src/core/engine-error.f" BCG-MUST-BEFORE
-   s" src/core/engine-error.f" s" src/core/checker.f" BCG-MUST-BEFORE
-   s" src/core/checker.f" s" src/core/engine-error-effects.f" BCG-MUST-BEFORE
-   s" src/core/type-family.f" s" src/core/render.f" BCG-MUST-BEFORE
-   s" src/core/render.f" s" src/core/sumtype.f" BCG-MUST-BEFORE
-   s" src/core/layout-valid.f" s" src/core/check-hook.f" BCG-MUST-BEFORE
-   s" src/core/check-hook.f" s" src/core/cell-effects.f" BCG-MUST-BEFORE
-   s" src/core/cell-effects.f" s" src/core/pointer-storage-effects.f" BCG-MUST-BEFORE
-   s" src/core/pointer-storage-effects.f" s" src/core/structures.f" BCG-MUST-BEFORE
-   s" src/core/structures-effects.f" BCG-MUST-LACK
-   BCG-TEST-FIXPOINT-SEAM ;
+   BCG-MANIFEST:FIXPOINT
+   s" src/core/structures-effects.f" BCG-MUST-LACK ;
 
 : BCG-TEST-CELL-PARITY ( -- )
    BCG-TEST-CELL-RUNTIME

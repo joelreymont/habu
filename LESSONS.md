@@ -788,11 +788,10 @@ lesson — keep the specific word/code/path, cut the prose.
   arithmetic into APIs. Habu should model node layout with structures, runtime
   collections with arrays/maps, and dispatch with checked `case` or execution
   vectors.
-- **Early defining words need post-checker effects:** moving structures before
-  `checker.f` let checker records use the structure DSL, but `CREATE ... DOES>`
-  cannot publish effects until `trust` exists. Load definitions early, publish
-  their checker rows from `src/core/structures-effects.f`, and make `DOES>`
-  effect publication skip only when no checker hook is installed.
+- **Pre-checker records need explicit layouts, not an unchecked defining DSL:**
+  keep core offsets, strides, alignment, and pointer roles as asserted explicit
+  layouts; load the generic structure DSL only after the checker hook so its
+  definitions are checked and no separate pre-hook effect rows are needed.
 - **Checker-to-render features need hooks, not load-order shortcuts:** `checker.f`
   loads before `render.f`, so `{: x:? :}` records show-inferred locals in checker
   state and calls `LOCSHOWXT`; `render.f` installs the printer after its type
@@ -4207,6 +4206,10 @@ unchanged (148855). Keys for milestone 2:
   native, recovery, fixpoint, pin, diagnostic, and cache manifests. Register
   its post-hook effects in a matching one-concern file, never a legacy DSL's
   effect owner.
+- **Bootstrap manifest parity needs scoped, complete sequence comparison.** Parse
+  bounded loader definitions, include semicolon-terminated final rows, compare
+  the full ordered sequences and counts, and reject duplicates. Global substring
+  presence and checker-prefix-only tests miss reordered or omitted tail files.
 - **Fixed source arenas need composite byte budgets.** The stage2 source and
   cold-prefix sources share `IBUFSZ`; measure both, preserve useful assertions,
   and derive near-cap and cap-plus-one tests from the owner constant before

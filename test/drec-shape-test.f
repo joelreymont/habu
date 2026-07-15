@@ -23,8 +23,8 @@ require test/checker-assert.f
 \ pointer slot read ( = XREF-PTR@ + TRUSTED: XREF-N>U8 today)
 : DRS-PTR@ ( ptr a n -- ptr u8 ) ptr-field @ ;
 
-\ inline-name byte view ( = TRUSTED: XREF-A>U8 today; STRUCT-BYTE+ is the
-\ existing audited byte-view axiom in src/core/structures-effects.f)
+\ inline-name byte view ( = TRUSTED: XREF-A>U8 today; STRUCT-BYTE+ is checked
+\ with the post-hook structure DSL in src/core/structures.f)
 : DRS-NAME-BYTES ( ptr a -- ptr u8 ) $18 STRUCT-BYTE+ ;
 
 \ sealed friend-band reads ( = TRUSTED: SEAL-LATCH@/SEAL-NDICT@ today;

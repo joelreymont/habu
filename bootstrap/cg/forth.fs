@@ -1739,14 +1739,14 @@ create ZBYTE 0 c,
    PFX-COMMON LPHABULAYOUT   s" src/habu/layout.f"      PFX-PATH-ROW
    PFX-COMMON LPENVBASE      s" src/os/env-base.f"      PFX-PATH-ROW
    PFX-COMMON LPINCLUDE      s" src/core/include.f"     PFX-PATH-ROW
-   PFX-COMMON LPSCRIPTARGV   s" src/os/script-argv.f"   PFX-PATH-ROW
    PFX-COMMON LPENUMS        s" src/core/enums.f"       PFX-PATH-ROW
    PFX-COMMON LPEXECVECTOR   s" src/core/exec-vector.f" PFX-PATH-ROW
    PFX-COMMON LPSHA256       s" src/core/sha256.f"      PFX-PATH-ROW
    PFX-COMMON LPTFAMSHA      s" src/core/type-family-sha.f" PFX-PATH-ROW
    PFX-COMMON LPCOMBINATORS  s" src/core/combinators.f" PFX-PATH-ROW
    PFX-COMMON LPXREF         s" src/habu/xref.f"        PFX-PATH-ROW
-   PFX-COMMON LPLAYOUTSEAL   s" src/core/layout-buffer-seal.f" PFX-PATH-ROW ;
+   PFX-COMMON LPLAYOUTSEAL   s" src/core/layout-buffer-seal.f" PFX-PATH-ROW
+   PFX-COMMON LPSCRIPTARGV   s" src/os/script-argv.f"   PFX-PATH-ROW ;
 
 : PFX-PATH-FILES ( -- )
    PFX-PATH-CHECKER-FILES
@@ -1976,7 +1976,6 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
    PFX-COMMON LPHABULAYOUT   s" src/habu/layout.f"      PFX-PROVIDE-ROW
    PFX-COMMON LPENVBASE      s" src/os/env-base.f"      PFX-PROVIDE-ROW
    PFX-COMMON LPINCLUDE      s" src/core/include.f"     PFX-PROVIDE-ROW
-   PFX-COMMON LPSCRIPTARGV   s" src/os/script-argv.f"   PFX-PROVIDE-ROW
    PFX-COMMON LPENUMS        s" src/core/enums.f"       PFX-PROVIDE-ROW
    PFX-COMMON LPEXECVECTOR   s" src/core/exec-vector.f" PFX-PROVIDE-ROW
    PFX-COMMON LPSHA256       s" src/core/sha256.f"      PFX-PROVIDE-ROW
@@ -1984,6 +1983,7 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
    PFX-COMMON LPCOMBINATORS  s" src/core/combinators.f" PFX-PROVIDE-ROW
    PFX-COMMON LPXREF         s" src/habu/xref.f"        PFX-PROVIDE-ROW
    PFX-COMMON LPLAYOUTSEAL   s" src/core/layout-buffer-seal.f" PFX-PROVIDE-ROW
+   PFX-COMMON LPSCRIPTARGV   s" src/os/script-argv.f"   PFX-PROVIDE-ROW
    EMIT-SEAL-CAPTURE-TOKEN               \ watermark token at the true engine-prefix end
    SRC-SFAIL @ EMIT-SEAL-FRIEND-TOKEN ;  \ seal before user source (all stdin/file/repl paths)
 

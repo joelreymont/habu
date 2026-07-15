@@ -1251,9 +1251,9 @@ public
 
 \ Self-certification guard: checker.f must certify as the tail of its exact
 \ pre-hook prefix. Its layout assertions consume cell.f's CORE-LAYOUT-RC and
-\ PTR-VARIABLE now has its own pre-checker owner, so checking checker.f alone
-\ tests a fictitious load path. The source verifier remains independently
-\ checked through the same VERIFY:SOURCE-BUF path.
+\ PTR-VARIABLE has its own pre-checker owner. The generic structure DSL is
+\ deliberately post-hook and must not enter this prefix. The source verifier
+\ remains independently checked through the same VERIFY:SOURCE-BUF path.
 : BFT-CERT-CHECKER$ ( -- ptr u8 n )
    s" cert-checker" BF-A$ ;
 
@@ -1262,7 +1262,6 @@ public
    out outu s" src/core/util.f" BF-APPEND-SOURCE
    out outu s" src/core/cell.f" BF-APPEND-SOURCE
    out outu s" src/core/pointer-storage.f" BF-APPEND-SOURCE
-   out outu s" src/core/structures.f" BF-APPEND-SOURCE
    out outu s" src/core/engine-error.f" BF-APPEND-SOURCE
    out outu s" src/core/checker.f" BF-APPEND-SOURCE ;
 
@@ -1276,17 +1275,18 @@ public
 \ Per-file TFAM-prefix certification: type-schema.f, type-family.f, render.f,
 \ and sumtype.f certify clean via the same VERIFY:SOURCE-BUF path, each
 \ verified as the tail of its exact BF-APPEND-CHECKER-BOOT prefix context
-\ (util, cell, pointer storage, structures, checker, then the earlier TFAM files),
-\ so de-typing any
-\ one file fails its own assert. render.f sits between type-family.f and
-\ sumtype.f in the real prefix and certifies since its typed cleanup
+\ (util, cell, pointer storage, engine error, checker, then the earlier TFAM
+\ files), so de-typing any one file fails its own assert. render.f sits between
+\ type-family.f and sumtype.f in the real prefix and certifies since its cleanup
 \ (habu-make-fixpoint-certify-a11dbad5).
 : BFT-CERT-TFAM$ ( -- ptr u8 n )
    s" cert-tfam" BF-A$ ;
 
 : BFT-CERT-TFAM-BASE ( -- )
-   s" cert-tfam" 2dup BFT-CERT-CHECKER-BASE
-   s" src/core/lower-cert-base.f" BF-APPEND-SOURCE ;
+   s" cert-tfam" {: out:ptr outu:n :}
+   out outu BFT-CERT-CHECKER-BASE
+   out outu s" src/core/engine-error-effects.f" BF-APPEND-SOURCE
+   out outu s" src/core/lower-cert-base.f" BF-APPEND-SOURCE ;
 
 : BFT-TEST-CERTIFY-TFAM-PREFIX ( -- )
    BFT-ROOT BF-TMP!
