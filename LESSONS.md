@@ -4798,3 +4798,24 @@ unchanged (148855). Keys for milestone 2:
   done. Also: re-verify a dot's exact repro on the current base before red-first
   work — both dots of this pair were already fixed by intervening engine work, and
   the genuine remaining defect was this sibling leg.
+- **The swizzle, not the scalar path, was the tensor-core GEMM bottleneck — pad As
+  and ldmatrix wins +54.8%.** dot habu-mma-larger-bk (lib/ptx/cg-mma.f). The prior
+  design note concluded the MMA kernel was "NOT fragment-feed-bound" because dropping
+  cvt (mode 1) and ldmatrix (mode 2) were flat/1% slower at BK=32. That measured the
+  UNPADDED ldmatrix, whose 16 fragment-row addresses (As row stride 128 B = 32 words)
+  all alias bank 0 — a 16-way shared conflict that serialized the load and hid the
+  tensor-core win. Padding the As row to a bank-spread stride (MMA-PAD=8 floats, kept a
+  multiple of 4 so cp.async's 16 B chunks stay aligned) made mode-2 ldmatrix jump from
+  394 to 612 GFLOP/s at 2048^3 (408 MHz), +54.8% over the scalar baseline (398.5) and
+  past the FP32 CUDA-core kernel (441.8). Larger BK (64, needs dynamic .shared for
+  stages=2 double-buffering past the 48 KiB static cap) added only +0.8% on top — the
+  swizzle is the lever, BK the garnish. Lesson: measure an optimization at the layout
+  it needs (ldmatrix wants a bank-free tile), not on top of a conflicting one, before
+  concluding a path "doesn't help." Element-exactness (tools/ptx/mma-gemm-check.f) was
+  the safety net that let the padded-address rewrite be trusted.
+- **A shared emitter word feeds two callers — parameterize with a byte-identical
+  default, prove it, don't fork.** cg-mma.f's MMA-SETUP/MMA-KTILE are reused verbatim by
+  the FENCED maki/lower-mm.f LMM-MMA-BODY, so the BK/pad/stages knobs had to default to
+  values that re-emit the old PTX byte-for-byte (verified by dumping all three fragment
+  modes before/after and diffing). shl-vs-mul on the As stride was the trap: emit shl
+  when the stride is a power of two (byte-identical at 128) and mul.lo otherwise.

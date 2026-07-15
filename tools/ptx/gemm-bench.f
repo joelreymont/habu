@@ -37,6 +37,7 @@ create GB-QO $1000 allot  create GB-QE $1000 allot
 variable GB-DA  variable GB-DB  variable GB-DC
 variable GB-NV                         \ M=N=K (square) as the u32 kernel param
 variable GB-OT                         \ output-tile edge: 64 (MM blocked) / 16 (MMN naive)
+variable GB-SMEM-DYN                    \ dynamic .shared bytes for the launch (0 = static)
 
 : GB-INT. ( n -- )  SB-RESET SB-INT SB$ type ;
 
@@ -59,6 +60,7 @@ variable GB-OT                         \ output-tile edge: 64 (MM blocked) / 16 
    GB-BLK PTXBENCH:BLOCK!        GB-BLK PTXBENCH:BLOCKY!
    s GB-OT @ / PTXBENCH:GRID!    s GB-OT @ / PTXBENCH:GRIDY!
    36 PTXBENCH:PARAM-BYTES!
+   GB-SMEM-DYN @ PTXBENCH:SHARED!         \ dynamic .shared tile (0 = static)
    PTXBENCH:PREPARE-LAUNCH
    0  GB-DA PTXBENCH:PARAM-PTR!
    8  GB-DB PTXBENCH:PARAM-PTR!
@@ -135,13 +137,44 @@ variable GB-OT                         \ output-tile edge: 64 (MM blocked) / 16 
    0 GB-MMM-MODE  1 GB-MMM-MODE  2 GB-MMM-MODE
    0 MMA-LMODE ! ;
 
+\ one larger-BK / swizzled tile config (dot habu-mma-larger-bk). Sets the cg-mma.f tile knobs and,
+\ for a dynamic-smem tile, the launch .shared size; emits, assembles, benches all shapes; restores.
+: GB-MMM-CFG ( n n n n n -- ) {: bk:n pad:n stages:n dyn:n mode:n :}
+   bk MMA-BK !  pad MMA-PAD !  stages MMA-STAGES !  dyn MMA-DYNSMEM !  mode MMA-LMODE !
+   MMA-DYNSMEM @ if MMA-SMEM else 0 then GB-SMEM-DYN !
+   s" == MMM BK=" type bk GB-INT. s"  pad=" type pad GB-INT. s"  stages=" type stages GB-INT.
+   s"  dyn=" type dyn GB-INT. s"  frag=" type mode GB-INT. s"  ==" type cr
+   s" habu-gemm-bench" PTXTC:PREPARE
+   PTX-CAPTURE-ON  EMIT-MATMUL-MMA  PTX-CAPTURE-OFF
+   GB-ASSEMBLE
+   64 GB-OT !
+   s" MMM" GB-KERNEL
+   PTXTC:CLEAN
+   32 MMA-BK !  0 MMA-PAD !  2 MMA-STAGES !  0 MMA-DYNSMEM !  0 MMA-LMODE !  0 GB-SMEM-DYN ! ;
+
+\ the raised-BK / bank-swizzled configuration space (all element-exact per tools/ptx/mma-gemm-check.f)
+: GB-MMM-SWEEP ( -- )
+   32 0 2 0 0 GB-MMM-CFG               \ committed default baseline (BK=32, stages=2, scalar+cvt) - A/B reference
+   64 0 1 0 0 GB-MMM-CFG               \ BK=64 single-buffer static, scalar+cvt
+   64 0 2 1 0 GB-MMM-CFG               \ BK=64 double-buffer dynamic .shared, scalar+cvt
+   64 0 2 1 2 GB-MMM-CFG               \ BK=64 double-buffer dynamic, ldmatrix
+   32 8 2 0 2 GB-MMM-CFG               \ BK=32 padded (bank-swizzled As), ldmatrix
+   64 8 2 1 2 GB-MMM-CFG ;             \ BK=64 padded double-buffer dynamic, ldmatrix
+
 public
+
+: GB-MMM-BENCH ( -- )                  \ FP32 roof reference + the larger-BK/swizzle sweep (focused)
+   CUDA:OPEN? 0= if s" gemm-bench: libcuda unavailable -> SKIPPED (off-device)" type cr exit then
+   GB-MM
+   GB-MMM-SWEEP ;
+
 
 : GB-ALL ( -- )
    CUDA:OPEN? 0= if s" gemm-bench: libcuda unavailable -> SKIPPED (off-device)" type cr exit then
    GB-MMN
    GB-MM
-   GB-MMM ;
+   GB-MMM
+   GB-MMM-SWEEP ;
 
 ;package
 

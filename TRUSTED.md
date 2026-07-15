@@ -412,6 +412,8 @@ that source is explicitly certified; they are not stale-checked by the default
 | CU-FUNC-SET-BLOCK-SHAPE | `cuda-fn n n n -- rc` | Exact CUDA block-shape binding preserves the function role and stages dimensions as scalars. | `lib/ptx/cuda-driver-test.f`, `tools/ptx/cuda-launch.f` | lib/ptx/cuda-driver.f | 2026-07-11 |
 | CU-PARAM-SET-SIZE | `cuda-fn len -- rc` | Exact CUDA parameter-size binding preserves the function and byte-length roles. | `lib/ptx/cuda-driver-test.f`, `tools/ptx/cuda-launch.f` | lib/ptx/cuda-driver.f | 2026-07-11 |
 | CU-PARAM-SET-V | `cuda-fn idx ptr u8 len -- rc` | Exact CUDA parameter-copy binding preserves function/index/length roles and marks the source read-only. | `lib/ptx/cuda-driver-test.f`, `tools/ptx/cuda-launch.f` | lib/ptx/cuda-driver.f | 2026-07-11 |
+| CU-FUNC-SET-SHARED-SIZE | `cuda-fn n -- rc` | Exact CUDA dynamic-shared-size binding preserves the nominal function role; byte count is a plain n for the cuLaunchGrid path. | `tools/ptx/mma-gemm-check.f` | lib/ptx/cuda-driver.f | 2026-07-15 |
+| CU-FUNC-SET-ATTRIBUTE | `cuda-fn n n -- rc` | Exact CUDA function-attribute binding preserves the nominal function role; attribute id and value are plain n (used for MAX_DYNAMIC_SHARED_SIZE_BYTES opt-in). | `tools/ptx/mma-gemm-check.f` | lib/ptx/cuda-driver.f | 2026-07-15 |
 | CU-LAUNCH-GRID | `cuda-fn n n -- rc` | Exact CUDA grid-launch binding preserves the function role and stages grid dimensions as scalars. | `lib/ptx/cuda-driver-test.f`, `tools/ptx/cuda-launch.f` | lib/ptx/cuda-driver.f | 2026-07-11 |
 | CU-CTX-SYNCHRONIZE | `-- rc` | Exact zero-argument CUDA context synchronization binding. | `lib/ptx/cuda-driver-test.f`, `tools/ptx/cuda-launch.f` | lib/ptx/cuda-driver.f | 2026-07-11 |
 | CU-MODULE-UNLOAD | `cuda-mod -- rc` | Exact CUDA module unload binding preserves the nominal module role. | `lib/ptx/cuda-driver-test.f`, `tools/ptx/cuda-launch.f` | lib/ptx/cuda-driver.f | 2026-07-11 |
@@ -1354,6 +1356,8 @@ lib/ptx/cuda-driver.f:CU-MEMCPY-DTOH stdlib-boundary habu-ptx-m1-c-1df1d6e7
 lib/ptx/cuda-driver.f:CU-FUNC-SET-BLOCK-SHAPE stdlib-boundary habu-ptx-m1-c-1df1d6e7
 lib/ptx/cuda-driver.f:CU-PARAM-SET-SIZE stdlib-boundary habu-ptx-m1-c-1df1d6e7
 lib/ptx/cuda-driver.f:CU-PARAM-SET-V stdlib-boundary habu-ptx-m1-c-1df1d6e7
+lib/ptx/cuda-driver.f:CU-FUNC-SET-SHARED-SIZE stdlib-boundary habu-ptx-m1-c-1df1d6e7
+lib/ptx/cuda-driver.f:CU-FUNC-SET-ATTRIBUTE stdlib-boundary habu-ptx-m1-c-1df1d6e7
 lib/ptx/cuda-driver.f:CU-LAUNCH-GRID stdlib-boundary habu-ptx-m1-c-1df1d6e7
 lib/ptx/cuda-driver.f:CU-CTX-SYNCHRONIZE stdlib-boundary habu-ptx-m1-c-1df1d6e7
 lib/ptx/cuda-driver.f:CU-MODULE-UNLOAD stdlib-boundary habu-ptx-m1-c-1df1d6e7

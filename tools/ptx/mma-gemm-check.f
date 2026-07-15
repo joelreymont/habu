@@ -84,6 +84,7 @@ create MGC-MAXERR 1 cells allot
    16 PTXBENCH:BLOCK!  16 PTXBENCH:BLOCKY!
    n 64 / PTXBENCH:GRID!  n 64 / PTXBENCH:GRIDY!
    36 PTXBENCH:PARAM-BYTES!
+   MMA-DYNSMEM @ if MMA-SMEM PTXBENCH:SHARED! else 0 PTXBENCH:SHARED! then   \ dynamic .shared tile
    PTXBENCH:PREPARE-LAUNCH
    0  MGC-DA PTXBENCH:PARAM-PTR!
    8  MGC-DB PTXBENCH:PARAM-PTR!
@@ -116,6 +117,17 @@ create MGC-MAXERR 1 cells allot
       s"  maxerr=" type MGC-MAXERR @ f>s . cr
    then ;
 
+\ negative regression (dot habu-mma-larger-bk): an over-budget STATIC .shared tile must fail closed
+\ in the emitter with the named E-MMA-SMEM, not silently emit an illegal kernel. BK=64 stages=2
+\ static = 65536 B > the 48 KiB sm_87 cap; the dynamic (.extern .shared) path is exempt.
+: MGC-TRY-EMIT ( -- n )  [: PTX-CAPTURE-ON EMIT-MATMUL-MMA PTX-CAPTURE-OFF ;] catch ;
+: MGC-SMEM-NEG ( -- )
+   64 MMA-BK !  0 MMA-PAD !  2 MMA-STAGES !  0 MMA-DYNSMEM !
+   MGC-TRY-EMIT {: rc:n :}
+   32 MMA-BK !  0 MMA-PAD !  2 MMA-STAGES !  0 MMA-DYNSMEM !
+   s" -- emitter SMEM legality: BK=64 stages=2 static -> " type
+   rc E-MMA-SMEM = if s" fail-closed E-MMA-SMEM (PASS)" type else s" NOT fail-closed rc=" type rc . s"  (FAIL)" type then cr ;
+
 \ one fragment-load mode: set MMA-LMODE, re-emit + re-assemble + re-load MMM, check 64^3 + 128^3.
 : MGC-MODE ( n -- ) {: mode:n :}
    mode MMA-LMODE !
@@ -136,11 +148,29 @@ create MGC-MAXERR 1 cells allot
    PTXBENCH:UNLOAD  PTXBENCH:CLOSE
    PTXTC:CLEAN ;
 
+\ one larger-BK / swizzled tile config (dot habu-mma-larger-bk): set the tile knobs, run one
+\ fragment-load mode through MGC-MODE (re-emit + assemble + check 64^3 + 128^3), restore defaults.
+: MGC-CFG ( n n n n n -- ) {: bk:n pad:n stages:n dyn:n mode:n :}
+   bk MMA-BK !  pad MMA-PAD !  stages MMA-STAGES !  dyn MMA-DYNSMEM !
+   s" -- config BK=" type bk .  s"  pad=" type pad .  s"  stages=" type stages .
+   s"  dyn=" type dyn . s" :" type cr
+   mode MGC-MODE
+   32 MMA-BK !  0 MMA-PAD !  2 MMA-STAGES !  0 MMA-DYNSMEM ! ;   \ restore the committed defaults
+
 public
 : MGC-ALL ( -- )
+   MGC-SMEM-NEG                                        \ emitter fail-closed check (device-independent)
    CUDA:OPEN? 0= if s" mma-gemm-check: libcuda unavailable -> SKIPPED (off-device)" type cr exit then
    s" == TF32 mma.sync GEMM device-correctness (element-exact vs host) ==" type cr
    0 MGC-MODE  1 MGC-MODE  2 MGC-MODE
+   s" == larger-BK / swizzled shared configs (dot habu-mma-larger-bk) ==" type cr
+   64 0 1 0 0 MGC-CFG                                  \ BK=64 single-buffer static, scalar+cvt
+   64 0 1 0 2 MGC-CFG                                  \ BK=64 single-buffer static, ldmatrix
+   64 0 2 1 0 MGC-CFG                                  \ BK=64 double-buffer DYNAMIC smem, scalar+cvt
+   64 0 2 1 2 MGC-CFG                                  \ BK=64 double-buffer DYNAMIC smem, ldmatrix
+   32 8 2 0 0 MGC-CFG                                  \ BK=32 padded (bank-swizzled As), scalar+cvt
+   32 8 2 0 2 MGC-CFG                                  \ BK=32 padded, ldmatrix (bank-free fragment rows)
+   64 8 2 1 2 MGC-CFG                                  \ BK=64 padded double-buffer DYNAMIC, ldmatrix
    0 MMA-LMODE ! ;                                     \ restore the committed default (baseline scalar+cvt)
 
 ;package

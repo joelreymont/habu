@@ -32,6 +32,9 @@ variable BLOCKY-N
 variable ITERS-N
 variable WORK-N
 variable PARAM-BYTES-N
+variable SHARED-N                       \ dynamic .shared bytes for extern-.shared kernels (0 = static)
+
+8 constant CUDA-ATTR-MAX-DYNSMEM        \ CU_FUNC_ATTRIBUTE_MAX_DYNAMIC_SHARED_SIZE_BYTES
 
 : COPY! ( ptr u8 n ptr u8 ptr a -- )
    {: a u:n dst lenp:ptr :} \ typed-local-lint: allow-bare-local - ptr roles.
@@ -94,7 +97,7 @@ public
    0 LABEL-U !
    0 DEV ! 0 CTX ! 0 MOD ! 0 FUNC !
    0 START-EVT ! 0 STOP-EVT ! 0 EVENT-MS !
-   1 GRID-N ! 1 GRIDY-N ! 256 BLOCK-N ! 1 BLOCKY-N ! 1 ITERS-N ! 0 WORK-N ! 0 PARAM-BYTES-N ! ;
+   1 GRID-N ! 1 GRIDY-N ! 256 BLOCK-N ! 1 BLOCKY-N ! 1 ITERS-N ! 0 WORK-N ! 0 PARAM-BYTES-N ! 0 SHARED-N ! ;
 
 : CUBIN! ( ptr u8 n -- )
    PATH-BUF PATH-U COPY! ;
@@ -125,6 +128,9 @@ public
 
 : PARAM-BYTES! ( n -- )
    PARAM-BYTES-N ! ;
+
+: SHARED! ( n -- )                      \ dynamic .shared bytes for the next launch (0 = static)
+   SHARED-N ! ;
 
 : GRID@ ( -- n )
    GRID-N @ ;
@@ -199,7 +205,11 @@ public
 
 : PREPARE-LAUNCH ( -- )
    FUNC @ >CUDA-FN BLOCK-N @ BLOCKY-N @ 1 CUDA:CU-FUNC-SET-BLOCK-SHAPE CUDA:RC0
-   FUNC @ >CUDA-FN PARAM-BYTES-N @ >LEN CUDA:CU-PARAM-SET-SIZE CUDA:RC0 ;
+   FUNC @ >CUDA-FN PARAM-BYTES-N @ >LEN CUDA:CU-PARAM-SET-SIZE CUDA:RC0
+   SHARED-N @ 0 > if                    \ dynamic .shared: opt in past 48 KiB, then set the launch size
+      FUNC @ >CUDA-FN CUDA-ATTR-MAX-DYNSMEM SHARED-N @ CUDA:CU-FUNC-SET-ATTRIBUTE CUDA:RC0
+      FUNC @ >CUDA-FN SHARED-N @ CUDA:CU-FUNC-SET-SHARED-SIZE CUDA:RC0
+   then ;
 
 : LAUNCH ( -- )
    FUNC @ >CUDA-FN GRID-N @ GRIDY-N @ CUDA:CU-LAUNCH-GRID CUDA:RC0 ;

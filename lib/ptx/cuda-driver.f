@@ -150,6 +150,19 @@ TRUSTED: CU-PARAM-SET-SIZE ( cuda-fn len -- rc ) {: fn:cuda-fn len:len :}
    FFI:RESET  fn 0 FFI:VALUE!  len 1 FFI:VALUE!
    FFI:ARGS FFI:REG-LENS 2 call ffi-call-bounded ;
 
+\ dynamic shared-memory size for the deprecated cuLaunchGrid path (extern .shared kernels).
+TRUSTED: CU-FUNC-SET-SHARED-SIZE ( cuda-fn n -- rc ) {: fn:cuda-fn bytes:n :}
+   s" cuFuncSetSharedSize" SYMBOL {: call:n :}
+   FFI:RESET  fn 0 FFI:VALUE!  bytes 1 FFI:VALUE!
+   FFI:ARGS FFI:REG-LENS 2 call ffi-call-bounded ;
+
+\ set a function attribute; used to opt in to > 48 KiB dynamic .shared
+\ (attrib CU_FUNC_ATTRIBUTE_MAX_DYNAMIC_SHARED_SIZE_BYTES = 8).
+TRUSTED: CU-FUNC-SET-ATTRIBUTE ( cuda-fn n n -- rc ) {: fn:cuda-fn attr:n val:n :}
+   s" cuFuncSetAttribute" SYMBOL {: call:n :}
+   FFI:RESET  fn 0 FFI:VALUE!  attr 1 FFI:VALUE!  val 2 FFI:VALUE!
+   FFI:ARGS FFI:REG-LENS 3 call ffi-call-bounded ;
+
 TRUSTED: CU-PARAM-SET-V ( cuda-fn idx ptr u8 len -- rc )
    {: fn:cuda-fn off:idx src:ptr len:len :}
    s" cuParamSetv" SYMBOL {: call:n :}
