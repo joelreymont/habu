@@ -494,6 +494,11 @@ points stay listed.
   positive and negative regressions.
 - `lib/ptx/tile-v4.f` / `lib/ptx/tile-v4-test.f` — vectorized (v4) tile-DSL
   operations and the checked v4 SAXPY proof.
+- `lib/ptx/tile-v4a.f` / `lib/ptx/tile-v4a-test.f` /
+  `lib/ptx/tile-v4a-neg-test.f` — M10 alignment-proven typed vec4 vocabulary
+  (`vspan`/`vtile`, `V4-ALIGN`/`LOAD.V4`/`STORE.V4`) whose 16B-alignment and
+  lane-arity legality the checker proves, plus positive/emit and negative
+  regressions.
 - `lib/ptx/collective.f` / `lib/ptx/collective-test.f` — tile-DSL row and
   collective vocabulary (M6) plus the checked stable-softmax proof.
 - `lib/ptx/gemm-checked-test.f` / `lib/ptx/gemm-checked-neg-test.f` — checked

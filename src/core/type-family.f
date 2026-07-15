@@ -1080,6 +1080,7 @@ variable TF-RBF-DEPTH   0 TF-RBF-DEPTH !
 \ checker.f SIG-TYPE. Registered arity 2 matches every `ptr<...>` in the tree.
 s" ptr"        2 TFAM-REG-CELL
 s" span"       3 TFAM-REG-CELL
+s" vspan"      3 TFAM-REG-CELL   \ M10: global span with a PROVEN 16B base alignment (tile-v4a.f)
 s" matrix"     4 TFAM-REG-CELL
 s" gridctx"    3 TFAM-REG-CELL
 s" fanctx"     3 TFAM-REG-CELL
@@ -1088,6 +1089,7 @@ s" uniqidxctx" 4 TFAM-REG-CELL
 s" coopctx"    3 TFAM-REG-CELL
 s" rowctx"     3 TFAM-REG-CELL
 s" tile"       3 TFAM-REG-CELL
+s" vtile"      3 TFAM-REG-CELL   \ M10: vec4 lane tile, DISTINCT from scalar tile<> (tile-v4a.f)
 s" acc"        3 TFAM-REG-CELL
 s" mmctx"      3 TFAM-REG-CELL
 s" mmacc"      3 TFAM-REG-CELL

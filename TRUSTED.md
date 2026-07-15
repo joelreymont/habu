@@ -621,6 +621,16 @@ that source is explicitly certified; they are not stale-checked by the default
 | MUL-V4 | `tile<t,b,m> tile<t,b,m> -- tile<t,b,m>` | PTX v4 tile DSL: lane-wise multiply for the four-register tile representation; codegen detail only, checked effect matches scalar `*.`. | `lib/ptx/tile-v4-test.f` | lib/ptx/tile-v4.f | 2026-06-29 |
 | DIV-V4 | `tile<t,b,m> tile<t,b,m> -- tile<t,b,m>` | PTX v4 tile DSL: lane-wise divide for the four-register tile representation; codegen detail only, checked effect matches scalar `/.`. | `lib/ptx/tile-v4-test.f`, `tools/ptx/saxpy-test.f` | lib/ptx/tile-v4.f | 2026-06-29 |
 | RELU-V4 | `tile<t,b,m> -- tile<t,b,m>` | PTX v4 tile DSL: lane-wise ReLU for the four-register tile representation; codegen detail only, checked effect matches scalar `RELU`. | `lib/ptx/tile-v4-test.f` | lib/ptx/tile-v4.f | 2026-06-29 |
+| V4-ALIGN | `span<space-global,t,e> -- vspan<space-global,t,e>` | PTX M10 vec4 alignment obligation: the trusted boundary that asserts a global span's base is 16-byte aligned (like MK-SPAN asserts extent) and re-tags it as a `vspan`. Identity in emit (the base is unchanged); the only route to a vspan, so a vectorized access on an unaligned base is a fail-closed type error. | `lib/ptx/tile-v4a-test.f`, `lib/ptx/tile-v4a-neg-test.f` | lib/ptx/tile-v4a.f | 2026-07-15 |
+| GRID-CTX.V4 | `span<space-global,t,e> -- gridctx<b,e,fresh-mask-live>` | PTX M10 vec4 tile DSL: derives a flat grid context where each thread owns four consecutive elements and mints a fresh rigid mask; touches no memory so it needs no alignment proof (a plain span). | `lib/ptx/tile-v4a-test.f`, `lib/ptx/tile-v4a-neg-test.f` | lib/ptx/tile-v4a.f | 2026-07-15 |
+| LOAD.V4 | `vspan<space-global,t,e> gridctx<b,e,m> -- vtile<t,b,m>` | PTX M10 typed vec4 load: consumes a 16B-proven `vspan` (alignment obligation) and yields a `vtile` (the vec4 lane type, distinct from scalar tile<>). Lowers to `ld.global.v4.f32` plus the @%p-guarded scalar residual tail; emit shared with tile-v4.f. | `lib/ptx/tile-v4a-test.f`, `lib/ptx/tile-v4a-neg-test.f` | lib/ptx/tile-v4a.f | 2026-07-15 |
+| STORE.V4 | `vtile<t,b,m> vspan<space-global,t,e> gridctx<b,e,m> --` | PTX M10 typed vec4 store: consumes a `vtile` and a 16B-proven `vspan`. Lowers to `st.global.v4.f32` plus the @%p-guarded scalar residual tail (the n-mod-4 residual is the mask m); a scalar tile or an unaligned span is a fail-closed type error. | `lib/ptx/tile-v4a-test.f`, `lib/ptx/tile-v4a-neg-test.f` | lib/ptx/tile-v4a.f | 2026-07-15 |
+| SCALE.V4 | `vtile<t,b,m> uniform<t> -- vtile<t,b,m>` | PTX M10 typed vec4 DSL: lane-wise multiply by a broadcast scalar over the four-register vtile; emit shared with tile-v4.f `SCALE-V4`. | `lib/ptx/tile-v4a-test.f` | lib/ptx/tile-v4a.f | 2026-07-15 |
+| ADD.V4 | `vtile<t,b,m> vtile<t,b,m> -- vtile<t,b,m>` | PTX M10 typed vec4 DSL: lane-wise add over the four-register vtile; emit shared with tile-v4.f `ADD-V4`. | `lib/ptx/tile-v4a-test.f` | lib/ptx/tile-v4a.f | 2026-07-15 |
+| SUB.V4 | `vtile<t,b,m> vtile<t,b,m> -- vtile<t,b,m>` | PTX M10 typed vec4 DSL: lane-wise subtract over the four-register vtile; emit shared with tile-v4.f `SUB-V4`. | `lib/ptx/tile-v4a-test.f` | lib/ptx/tile-v4a.f | 2026-07-15 |
+| MUL.V4 | `vtile<t,b,m> vtile<t,b,m> -- vtile<t,b,m>` | PTX M10 typed vec4 DSL: lane-wise multiply over the four-register vtile; emit shared with tile-v4.f `MUL-V4`. | `lib/ptx/tile-v4a-test.f` | lib/ptx/tile-v4a.f | 2026-07-15 |
+| DIV.V4 | `vtile<t,b,m> vtile<t,b,m> -- vtile<t,b,m>` | PTX M10 typed vec4 DSL: lane-wise divide over the four-register vtile; emit shared with tile-v4.f `DIV-V4`. | `lib/ptx/tile-v4a-test.f` | lib/ptx/tile-v4a.f | 2026-07-15 |
+| RELU.V4 | `vtile<t,b,m> -- vtile<t,b,m>` | PTX M10 typed vec4 DSL: lane-wise ReLU over the four-register vtile; emit shared with tile-v4.f `RELU-V4`. | `lib/ptx/tile-v4a-test.f` | lib/ptx/tile-v4a.f | 2026-07-15 |
 | ROW | `-- rowidx<e>` | PTX tile-DSL M6: blockIdx.x as a row index proven < R under the launch ABI; a primitive the checker cannot infer. | `lib/ptx/collective-test.f` | lib/ptx/collective.f | 2026-06-29 |
 | ROW-SPAN | `matrix<space-global,t,e,k> rowidx<e> -- span<space-global,t,k>` | PTX tile-DSL M6: row r of a dense matrix as a span over its columns (base r*C, checked); a primitive the checker cannot infer. | `lib/ptx/collective-test.f` | lib/ptx/collective.f | 2026-06-29 |
 | ROW-SPAN-ONCE | `matrix<space-global-once,t,e,k> rowidx<e> -- span<space-global-once,t,k>` | PTX tile-DSL read-once row projection: derives a row span only from a `space-global-once` matrix. | `lib/ptx/collective-test.f` | lib/ptx/collective.f | 2026-06-30 |
@@ -1432,6 +1442,16 @@ lib/ptx/tile-v4.f:SUB-V4 stdlib-boundary habu-ptx-phantom-preserving-3df9db92
 lib/ptx/tile-v4.f:MUL-V4 stdlib-boundary habu-ptx-phantom-preserving-3df9db92
 lib/ptx/tile-v4.f:DIV-V4 stdlib-boundary habu-ptx-phantom-preserving-3df9db92
 lib/ptx/tile-v4.f:RELU-V4 stdlib-boundary habu-ptx-phantom-preserving-3df9db92
+lib/ptx/tile-v4a.f:V4-ALIGN stdlib-boundary habu-ptx-phantom-preserving-3df9db92
+lib/ptx/tile-v4a.f:GRID-CTX.V4 stdlib-boundary habu-ptx-phantom-preserving-3df9db92
+lib/ptx/tile-v4a.f:LOAD.V4 stdlib-boundary habu-ptx-phantom-preserving-3df9db92
+lib/ptx/tile-v4a.f:STORE.V4 stdlib-boundary habu-ptx-phantom-preserving-3df9db92
+lib/ptx/tile-v4a.f:SCALE.V4 stdlib-boundary habu-ptx-phantom-preserving-3df9db92
+lib/ptx/tile-v4a.f:ADD.V4 stdlib-boundary habu-ptx-phantom-preserving-3df9db92
+lib/ptx/tile-v4a.f:SUB.V4 stdlib-boundary habu-ptx-phantom-preserving-3df9db92
+lib/ptx/tile-v4a.f:MUL.V4 stdlib-boundary habu-ptx-phantom-preserving-3df9db92
+lib/ptx/tile-v4a.f:DIV.V4 stdlib-boundary habu-ptx-phantom-preserving-3df9db92
+lib/ptx/tile-v4a.f:RELU.V4 stdlib-boundary habu-ptx-phantom-preserving-3df9db92
 lib/ptx/tile.f:MK-SPAN stdlib-boundary habu-ptx-phantom-preserving-3df9db92
 lib/ptx/tile.f:MK-SPAN-ONCE stdlib-boundary habu-ptx-phantom-preserving-3df9db92
 lib/ptx/tile.f:MK-SPAN= stdlib-boundary habu-ptx-phantom-preserving-3df9db92

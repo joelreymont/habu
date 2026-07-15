@@ -490,6 +490,7 @@ variable GSI-TL-FILE-A
    s" lib/ptx/attention-checked-test.f" GSI-INCLUDE
    s" lib/ptx/attention-roles-test.f" GSI-INCLUDE
    s" lib/ptx/tile-v4-test.f" GSI-INCLUDE
+   s" lib/ptx/tile-v4a-test.f" GSI-INCLUDE
    s" lib/ptx/collective-test.f" GSI-INCLUDE
    s" lib/ptx/cg-collective-test.f" GSI-INCLUDE
    s" lib/ptx/autograd-test.f" GSI-INCLUDE
@@ -507,6 +508,7 @@ variable GSI-TL-FILE-A
    s" lib/ptx/tile-loop-neg-test.f" GSI-INCLUDE
    s" lib/ptx/tile-smem-neg-test.f" GSI-INCLUDE
    s" lib/ptx/tile-acc-neg-test.f" GSI-INCLUDE
+   s" lib/ptx/tile-v4a-neg-test.f" GSI-INCLUDE
    s" lib/ptx/gemm-checked-neg-test.f" GSI-INCLUDE
    s" lib/ptx/attention-checked-neg-test.f" GSI-INCLUDE ;
 

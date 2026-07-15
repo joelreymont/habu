@@ -4849,3 +4849,36 @@ unchanged (148855). Keys for milestone 2:
   values that re-emit the old PTX byte-for-byte (verified by dumping all three fragment
   modes before/after and diffing). shl-vs-mul on the As stride was the trap: emit shl
   when the stride is a power of two (byte-identical at 128) and mul.lo otherwise.
+- **A "pure codegen representation" can be upgraded to a checker-PROVEN capability
+  additively, by wrapping the SAME emit words in new nominal type families — no
+  codegen edit, no legacy-caller churn.** dot habu-ptx-m10-vectorization (lib/ptx/
+  tile-v4a.f). tile-v4.f's `-V4` words kept the scalar `tile<t,b,m>` surface ("v4-ness
+  is a pure codegen detail, typed alignment proofs remain dotted"), and are consumed
+  across maki's fusion codegen + many tools. M10's typed layer (a nominal `vspan`/
+  `vtile`, the 16B-alignment obligation, the n-mod-4 masked tail) was delivered as a
+  SECOND vocabulary (`V4-ALIGN`/`LOAD.V4`/`STORE.V4`, dot-spelled to distinguish from
+  the hyphenated `-V4`) whose TRUSTED bodies REUSE the existing cg-vec.f emit words
+  verbatim — so the typed kernel lowers to BYTE-IDENTICAL PTX (proven in-process with
+  PTX-CAPTURE + T-STR=). That byte-identity is the device-correctness bridge: the typed
+  path inherits the already-passing saxpy-v4-tail device golden (n=4,5,7,1000003, body +
+  @%p tail) for free, and the emit/legacy callers (maki fusion, tools) stay untouched.
+  Retiring the legacy `-V4` path is a separate migration dot, not this one.
+- **Two nominal type families (`vspan`/`vtile`) beat a 4th span parameter for an
+  alignment refinement — and the obligation belongs on the memory op, not the ctx.**
+  A `span<...,align-16>` 4-arity span would break every existing arity-3 `span` site;
+  instead register arity-3 `vspan` (16B-proven global span) + `vtile` (vec4 lane tile)
+  as purely-additive TFAM rows (like `acc`; needs one `install --force` fixpoint rebuild
+  to bake into bin/hb — a library-only change does not). `V4-ALIGN ( span -- vspan )` is
+  the sole route to a vspan (trusted 16B assertion, identity emit, like MK-SPAN asserts
+  extent); `vtile` distinct from `tile` makes "store a vec4 tile through scalar STORE" a
+  fail-closed type error. Put the vspan requirement on LOAD.V4/STORE.V4 (where the
+  ld/st.global.v4 actually touches memory), NOT on the ctx derivation — GRID-CTX.V4
+  takes a plain span, so the misaligned-base negative rejects exactly AT `LOAD.V4`
+  naming `vspan`, the cleanest diagnostic.
+- **New TRUSTED: words need rows in BOTH TRUSTED.md sections, owned by a LIVE dot —
+  never the implementing dot (it closes).** trust-lint checks the markdown effect table
+  AND the site-registry (`file:name class owner`); a missing row fails the gate. Reuse
+  the sibling's `stdlib-boundary` placeholder owner (habu-ptx-phantom-preserving) that
+  every ptx stdlib boundary already uses, because "owner must exist in .dots/" and the
+  m10 dot is removed at closure. Audit date = today, effect string = the source
+  signature verbatim, or trust-lint drift rejects.

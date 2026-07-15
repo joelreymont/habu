@@ -269,6 +269,7 @@ TEST:SUITE ptx-stdlib
    lib/ptx/attention-checked-test.f
    lib/ptx/attention-roles-test.f
    lib/ptx/tile-v4-test.f
+   lib/ptx/tile-v4a-test.f
    lib/ptx/collective-test.f
    lib/ptx/cg-collective-test.f
    lib/ptx/autograd-test.f
@@ -295,6 +296,10 @@ TEST:;SUITE
 
 TEST:SUITE ptx-tile-acc-neg
    lib/ptx/tile-acc-neg-test.f
+TEST:;SUITE
+
+TEST:SUITE ptx-tile-v4a-neg
+   lib/ptx/tile-v4a-neg-test.f
 TEST:;SUITE
 
 TEST:SUITE ptx-gemm-checked-neg
