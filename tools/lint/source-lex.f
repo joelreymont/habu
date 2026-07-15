@@ -23,6 +23,33 @@ create LEX-COL-V VEC-HEADER-CELLS cells allot
 create LEX-CADDR-V VEC-HEADER-CELLS cells allot
 create LEX-CLEN-V VEC-HEADER-CELLS cells allot
 
+\ ---- raw table cell -> CAD-NUM role bridges for the typed VEC surface ---------
+\ The lexer's parallel record columns store raw cells (token / content addresses,
+\ lengths, kinds, byte/line/col positions). The typed VEC surface (package VEC)
+\ reads a validated CAD-NUM role - a capacity is a `CAD-NUM:item-count`, a record
+\ position is a `CAD-NUM:index` - so a count/index role swap at a VEC call is a
+\ checker reject. These lift a nonnegative cell to its role through the PUBLIC
+\ CAD-NUM validators (no laundering back to n, no reopened package); the refusal
+\ arms are unreachable invariants (LEX-MIN-CAP and a live record index are
+\ nonnegative), an impossible negative surfaces the vector's own capacity / bounds
+\ code. This is the maki/sched-key.f SK>ITEM / SK>INDEX idiom, kept lexer-local.
+: LEX>ITEM ( n -- CAD-NUM:item-count )
+   CAD-NUM:ITEM-COUNT
+   MATCH CAD-NUM:numeric-result
+      ok OF ENDOF                             negative OF E-VEC-CAPACITY throw ENDOF
+      zero OF E-VEC-CAPACITY throw ENDOF        overflow OF E-VEC-CAPACITY throw ENDOF
+      underflow OF E-VEC-CAPACITY throw ENDOF   bad-alignment OF E-VEC-CAPACITY throw ENDOF
+      misaligned OF E-VEC-CAPACITY throw ENDOF
+   ;MATCH ;
+: LEX>INDEX ( n -- CAD-NUM:index )
+   CAD-NUM:INDEX
+   MATCH CAD-NUM:numeric-result
+      ok OF ENDOF                             negative OF E-VEC-BOUNDS throw ENDOF
+      zero OF E-VEC-BOUNDS throw ENDOF          overflow OF E-VEC-BOUNDS throw ENDOF
+      underflow OF E-VEC-BOUNDS throw ENDOF     bad-alignment OF E-VEC-BOUNDS throw ENDOF
+      misaligned OF E-VEC-BOUNDS throw ENDOF
+   ;MATCH ;
+
 : LEX-A-FIELD ( -- ptr ptr u8 )
    LEX-A 0 ptr-field ;
 
@@ -33,10 +60,10 @@ create LEX-CLEN-V VEC-HEADER-CELLS cells allot
    LEX-A-FIELD ! ;
 
 : LEX-INIT-ONE ( ptr a -- )
-   LEX-MIN-CAP >COUNT VEC-INIT ;
+   LEX-MIN-CAP LEX>ITEM VEC:INIT ;
 
 : LEX-CLEAR-ONE ( ptr a -- )
-   VEC-CLEAR ;
+   VEC:CLEAR ;
 
 : LEX-INIT-VECTORS ( -- )
    LEX-KIND-V LEX-INIT-ONE
@@ -63,39 +90,43 @@ create LEX-CLEN-V VEC-HEADER-CELLS cells allot
    LEX-CAP @ 0= if LEX-INIT-VECTORS else LEX-CLEAR-VECTORS then
    0 L# ! ;
 
+\ RAW residual (maki/sched-key.f SK-N precedent): VEC:LEN@ yields a
+\ CAD-NUM:item-count and the checker correctly refuses to launder it back to n, but
+\ L# is a raw n cache that drives the lexer's raw token arithmetic (L# @ 1- ...),
+\ so the count is read through the raw VEC-LEN@ accessor for this word alone.
 : LEX-SYNC-COUNT ( -- )
    LEX-KIND-V VEC-LEN@ LEN>N L# ! ;
 
 : LEX-ADD ( n ptr u8 n n n n ptr u8 n -- ) {: kind a:ptr u byte line col ca:ptr cu :}
-   kind LEX-KIND-V VEC-PUSH-N drop
-   a LEX-ADDR-V VEC-PUSH-A drop
-   u LEX-LEN-V VEC-PUSH-N drop
-   byte LEX-BYTE-V VEC-PUSH-N drop
-   line LEX-LINE-V VEC-PUSH-N drop
-   col LEX-COL-V VEC-PUSH-N drop
-   ca LEX-CADDR-V VEC-PUSH-A drop
-   cu LEX-CLEN-V VEC-PUSH-N drop
+   kind LEX-KIND-V VEC:PUSH drop
+   a LEX-ADDR-V VEC:PUSH drop
+   u LEX-LEN-V VEC:PUSH drop
+   byte LEX-BYTE-V VEC:PUSH drop
+   line LEX-LINE-V VEC:PUSH drop
+   col LEX-COL-V VEC:PUSH drop
+   ca LEX-CADDR-V VEC:PUSH drop
+   cu LEX-CLEN-V VEC:PUSH drop
    LEX-SYNC-COUNT ;
 
 : LEX-TOK ( n -- ptr u8 n ) {: k :}
-   LEX-ADDR-V k >IDX VEC-A@
-   LEX-LEN-V k >IDX VEC-N@ ;
+   LEX-ADDR-V k LEX>INDEX VEC:@
+   LEX-LEN-V k LEX>INDEX VEC:@ ;
 
 : LCONTENT ( n -- ptr u8 n ) {: k :}
-   LEX-CADDR-V k >IDX VEC-A@
-   LEX-CLEN-V k >IDX VEC-N@ ;
+   LEX-CADDR-V k LEX>INDEX VEC:@
+   LEX-CLEN-V k LEX>INDEX VEC:@ ;
 
 : LK@ ( n -- n ) {: k :}
-   LEX-KIND-V k >IDX VEC-N@ ;
+   LEX-KIND-V k LEX>INDEX VEC:@ ;
 
 : LB@ ( n -- n ) {: k :}
-   LEX-BYTE-V k >IDX VEC-N@ ;
+   LEX-BYTE-V k LEX>INDEX VEC:@ ;
 
 : LL@ ( n -- n ) {: k :}
-   LEX-LINE-V k >IDX VEC-N@ ;
+   LEX-LINE-V k LEX>INDEX VEC:@ ;
 
 : LC@ ( n -- n ) {: k :}
-   LEX-COL-V k >IDX VEC-N@ ;
+   LEX-COL-V k LEX>INDEX VEC:@ ;
 
 : LEX-END? ( -- bool )
    LX @ LEX-U @ >= ;
