@@ -1,6 +1,6 @@
 ---
 title: "Checker: execute-of-stored-xt launders unsafe definers from checked bodies"
-status: active
+status: open
 priority: 2
 issue-type: task
 created-at: "\"2026-07-13T17:24:38.523281+02:00\""
@@ -17,4 +17,28 @@ execute ; - no symbol identity at the execute site; needs xt-provenance-through-
 memory (taint/bound-effect on xt-carrying cells) or conservative rejection of
 non-literal executed xts in checked bodies, per the acceptance already written.
 
-Claim: agent=xtprov workspace=.jj-ws/fable-xtprov
+
+RCA COMPLETE, RE-SCOPED 2026-07-15 (xtprov lane, no commit - honest BLOCKED):
+the surgical RSEXEC rejection is UNSHIPPABLE alone. Erasure point proven:
+variable/create cells are TVK-RAW with per-occurrence-freshened address schema
+vars (E-INST, checker.f ~4400), so the xt<effect> bound at the `!` occurrence
+never reaches the `@` occurrence; RSEXEC's T-VAR branch then models the unknown
+xt as a pure row-preserving quotation (checker.f ~1655-1663). Typed cells
+cannot carry xt<E> today: CHECKER-STORAGE-INFO (checker.f ~2706) explicitly
+rejects quotation cell types. Red-first proven for all three definer variants
+(deftype mints a live type from a certified ( -- ) word; value-record identical;
+layout-buffer throws 7121 at runtime). BLAST RADIUS measured by instrumented
+build: ~36 legitimate checked words use the identical raw-var @ execute shape -
+the checker's entire plugin-dispatch architecture (tfam-resolve*/match-*-tok/
+checker-* hooks, lbuf/tdecl eval hooks, habu1 fprim*/source-hook/etc.) - and
+the blocking BF-CERTIFY scan rejects checker.f's own hooks, so a bare rejection
+cannot build. No discriminator exists between VF and the hooks. SEQUENCING (this
+dot flips RSEXEC LAST): (1) capability dot habu-typed-xt-cells: xt<effect> as an
+admissible cell type (extend CHECKER-STORAGE-INFO + TYPED-VARIABLE/TYPED-BUFFER;
+persistent monomorphic cell type, @ recovers xt<E>, execute fit-checks); (2)
+migrate the ~36 hooks to defer/is or typed xt<E> cells, fprim* classified as
+TRUSTED machine-code boundaries; (3) THEN flip RSEXEC's T-VAR branch to a named
+E-EXEC-OPAQUE-XT reject with the three negative fixtures, keeping xt-effect
+v1-v9 green; STATUS.md count updates honestly. COORDINATE: steps 1-2 touch the
+checker.f/type-family/layout-buffer regions tfam's active lane is editing - do
+not dispatch until that releases or with explicit region coordination.
