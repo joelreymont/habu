@@ -8,7 +8,6 @@ blocks:
   - habu-core-records-remove-31f84baf
   - habu-core-records-remove-0d8ff4e2
   - habu-core-bootstrap-isolate-45800fec
-  - habu-owner-seal-persist-1f23e205
 ---
 
 Own src/habu/habu2.f, bootstrap/cg/forth.fs, and tools/bootstrap.sh load order.
