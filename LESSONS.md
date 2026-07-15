@@ -7,7 +7,8 @@ Last updated: 2026-07-15
 - **Jj's default word-level diff can visually concatenate numeric replacements.**
   A deleted `$200000` beside an inserted `$400000` rendered as
   `$200000400000`; inspect the source or `jj diff --git` before diagnosing a
-  malformed token.
+  malformed token. Jj has no `diff --check`; generate `jj diff --git` and run
+  the repository's checked diff lint instead.
 
 - **Sealing declared-effect parametricity must target sealed FAMILIES, not all
   concrete specialization.** The nominal-storage effect seal (post-body

@@ -1,9 +1,11 @@
 ---
 title: "Owner seal: persist pair registry"
-status: active
+status: closed
 priority: 1
 issue-type: task
 created-at: "2026-07-12T16:18:25.951959+02:00"
+closed-at: "2026-07-15T11:51:02.989844+02:00"
+close-reason: Landed on master at 595119ac; snapshot, AOT, bootstrap, fixpoint, full test/run, and Maki gates green after destruction review.
 blocks:
   - habu-owner-seal-reserve-dee3c76c
 ---
