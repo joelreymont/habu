@@ -1,10 +1,9 @@
 ---
 title: Automatic AGGRESSIVE fusion (the beat-Triton lever)
-status: open
+status: active
 priority: 2
 issue-type: task
-created-at: "2026-06-27T16:38:43.909898+02:00"
-blocks:
+created-at: "\"2026-06-27T16:38:43.909898+02:00\""
 ---
 
 RECONCILED 2026-07-15 against the landed lowering campaign (the parent
@@ -47,3 +46,5 @@ evidence note. Verify: plan-shape assertions everywhere, on-device golden +
 ablation rows, corruption probe, maki/test.f. Ownership: maki lowering
 evidence; legs b/c ride their owning lanes; leg d awaits user-provided Triton
 baselines.
+
+Claim: agent=layernorm workspace=.jj-ws/fable-layernorm
