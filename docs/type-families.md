@@ -1,8 +1,23 @@
 # Habu Type Families and Algebraic Data Types
 
 **Proposed repository path:** `docs/type-families.md`  
-**Status:** normative hard-cutover design  
+**Status:** PLANNED design — not yet implemented (owning epic `habu-epic-one-structure-04f9804f`)  
 **Primary goal:** implement generic, efficient, checked algebraic data types in Habu without turning `Result` into a one-off special case.
+
+> **This document is a design specification for a surface that does not yet
+> exist in the shipped engine.** It describes the planned MODEL-CAD-V2 unified
+> `STRUCTURE … ;STRUCTURE` / `ENUM … ;ENUM` grammar and its
+> `E-REMOVED-TYPE-SYNTAX` tombstones. Neither ships today: loading a `STRUCTURE`
+> declaration fails `E-UNDEFINED: STRUCTURE` (exit 70), and
+> `E-REMOVED-TYPE-SYNTAX` appears nowhere in `src/`. The live composite-type
+> surface is still `TYPEFAMILY`, `SUMTYPE`, `PRODUCT`, `ENUM`, `VALUE-RECORD`,
+> and `BEGIN-STRUCTURE`; none of them is removed. The single source of truth for
+> what actually ships — including the real error codes and the positional
+> `SUMTYPE` / bare-names `ENUM` split — is [`docs/forth.md`](forth.md)
+> § Structures And Enums. The cutover is owned by epic
+> `habu-epic-one-structure-04f9804f` (implementation chain in
+> `MODEL-CAD-V2-PLAN.md` § 3.1). Everything below specifies that target design in
+> normative voice; read it as "will", not "does".
 
 ---
 
@@ -44,8 +59,9 @@ ENUM result 2 ... ;ENUM
 `STRUCTURE` covers ordinary cell families, pointer-layout records, and by-value
 products through one typed field schema. `ENUM` covers payloadless enums and
 payload-bearing sums; the compiler selects the payloadless representation when
-every variant has no fields. All prior declaration words are removed, not
-aliased.
+every variant has no fields. All prior declaration words are to be removed by
+the cutover, not aliased (they are still live definers today — see the banner
+above and `docs/forth.md` § Structures And Enums).
 
 Recommended internal registry prefix:
 
@@ -280,7 +296,13 @@ source spelling, or raw public layout definer.
 
 ### 2.7 Removed syntax
 
-These words have no executable compatibility definition after cutover:
+> **Planned — not shipped.** In the current engine every token below is a live,
+> heavily-used definer (`src/core/sumtype.f`, `roles.f`, `structures.f`,
+> `enums.f`), and `E-REMOVED-TYPE-SYNTAX` exists nowhere in `src/`. The removals
+> and tombstones described here take effect only when the cutover
+> (`habu-epic-one-structure-04f9804f`) lands.
+
+After cutover these words are to have no executable compatibility definition:
 
 ```text
 BEGIN-STRUCTURE END-STRUCTURE +FIELD PTR-FIELD: CFIELD:
@@ -288,7 +310,7 @@ VALUE-RECORD END-VALUE-RECORD
 TYPEFAMILY PRODUCT ;PRODUCT SUMTYPE ;SUMTYPE ENUM+ ENUM4+
 ```
 
-The compiler keeps only error tombstones so each removed token reports
+The compiler is to keep only error tombstones so each removed token reports
 `E-REMOVED-TYPE-SYNTAX` with its `STRUCTURE` or `ENUM` replacement. A tombstone
 cannot define, replay, lower, or mutate metadata. Explicitly allowlisted
 negative fixtures may contain removed spellings only as non-executable test

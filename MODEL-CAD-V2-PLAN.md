@@ -79,7 +79,18 @@ explicit typed artifacts and pass contracts.
 
 ### 3.1 Unified Type Declaration Hard Cutover
 
-Model CAD V2 has exactly two public composite/type-family declaration blocks:
+> **Planned — not yet implemented.** The unified `STRUCTURE … ;STRUCTURE` /
+> `ENUM … ;ENUM` grammar and the `E-REMOVED-TYPE-SYNTAX` tombstones specified in
+> this section do not exist in the shipped engine: loading a `STRUCTURE`
+> declaration fails `E-UNDEFINED: STRUCTURE` (exit 70), and
+> `E-REMOVED-TYPE-SYNTAX` appears nowhere in `src/`. The live composite-type
+> surface — `TYPEFAMILY`, `SUMTYPE`, `PRODUCT`, `ENUM`, `VALUE-RECORD`,
+> `BEGIN-STRUCTURE` — is documented in [`docs/forth.md`](docs/forth.md)
+> § Structures And Enums, the source of truth for what ships. This cutover is
+> owned by epic `habu-epic-one-structure-04f9804f`; its implementation chain is
+> listed at the end of this section.
+
+Model CAD V2 will expose exactly two public composite/type-family declaration blocks:
 
 ```forth
 STRUCTURE name arity [ POLICY policy ] [ DERIVE feature ... ]
@@ -136,14 +147,15 @@ sources carry exactly the same layouts and parity tests. The sole executable
 `STRUCTURE`/`ENUM` parser loads only after the checker, type registries, render
 support, and checker hook.
 
-This is a hard cutover. The implementation removes `TYPEFAMILY`, `PRODUCT`,
+This is a hard cutover. The implementation will remove `TYPEFAMILY`, `PRODUCT`,
 `;PRODUCT`, `VALUE-RECORD`, `END-VALUE-RECORD`, `BEGIN-STRUCTURE`,
 `END-STRUCTURE`, `+FIELD`, `PTR-FIELD:`, `CFIELD:`, `SUMTYPE`, `;SUMTYPE`,
-`ENUM+`, and `ENUM4+`. They have no aliases, shims, desugaring path, or second
-registry. Error-only compiler tombstones report `E-REMOVED-TYPE-SYNTAX`; they
-cannot execute or mutate metadata. Mixed compact/block enums, anonymous variant
-payloads, legacy field words/closers inside new blocks, and a missing arity on
-`STRUCTURE` or block `ENUM` reject at the exact token.
+`ENUM+`, and `ENUM4+`. They will have no aliases, shims, desugaring path, or
+second registry. Error-only compiler tombstones will report
+`E-REMOVED-TYPE-SYNTAX`; they cannot execute or mutate metadata. Mixed
+compact/block enums, anonymous variant payloads, legacy field words/closers
+inside new blocks, and a missing arity on `STRUCTURE` or block `ENUM` reject at
+the exact token.
 
 The implementation dependency chain is:
 
