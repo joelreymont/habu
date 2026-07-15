@@ -61,6 +61,15 @@ require lib/fs-mutate.f
 require maki/report.f
 require maki/precision.f
 
+\ ---- audited find-index projection (STR:INDEX-OF result -> raw slice offset) ----
+\ STR:INDEX-OF/FIND-SUB report a hit as option<CAD-NUM:index>; the store slices the
+\ row on that byte position, which is a raw offset into the fixed buffers. Reopen the
+\ unsealed CAD-NUM package for one checked bridge over its private INDEX>N projection
+\ (no new TRUSTED; reuses the audited mint). dot habu-migrate-maki-str-6e5cabd4.
+package CAD-NUM public
+: STORE-IX>N ( CAD-NUM:index -- n )  INDEX>N ;
+;package
+
 -5090 constant E-STORE-KEY      \ empty key or key contains a newline
 -5091 constant E-STORE-FIELD    \ a field / row contains a framing newline
 -5092 constant E-STORE-FULL     \ row or store file exceeds its buffer capacity
@@ -192,7 +201,7 @@ variable STORE-Q-FOUND                                                   \ -1 on
 \ ---- key validation (non-empty, newline-free framing) ----------------------
 : STORE-CK-KEY ( ptr u8 n -- ) {: a:ptr u:n :}
    u 0 <= if E-STORE-KEY throw then
-   a u STORE-NL INDEX-OF MATCH option
+   a u STR:LENGTH STORE-NL STR:INDEX-OF MATCH option
      none OF ENDOF
      some OF drop E-STORE-KEY throw ENDOF
    ;MATCH ;
@@ -201,7 +210,7 @@ variable STORE-Q-FOUND                                                   \ -1 on
 : STORE-ROW-VALIDATE ( -- )                       \ content + exactly one trailing NL
    STORE-ROW-U @ 2 < if E-STORE-FIELD throw then
    STORE-ROW STORE-ROW-U @ 1- + c@ STORE-NL <> if E-STORE-FIELD throw then
-   STORE-ROW STORE-ROW-U @ 1- STORE-NL INDEX-OF MATCH option
+   STORE-ROW STORE-ROW-U @ 1- STR:LENGTH STORE-NL STR:INDEX-OF MATCH option
      none OF ENDOF
      some OF drop E-STORE-FIELD throw ENDOF
    ;MATCH ;
@@ -262,9 +271,9 @@ variable STORE-Q-FOUND                                                   \ -1 on
 
 \ ---- suffix helpers (split on the first / last pipe) ------------------------
 : STORE-SPLIT-PIPE ( ptr u8 n -- ptr u8 n ptr u8 n ) {: a:ptr u:n :}
-   a u STORE-PIPE INDEX-OF MATCH option
+   a u STR:LENGTH STORE-PIPE STR:INDEX-OF MATCH option
      none OF E-STORE-ROW throw ENDOF
-     some OF IDX>N ENDOF
+     some OF CAD-NUM:STORE-IX>N ENDOF
    ;MATCH {: i:n :}
    a i  a i 1+ +  u i 1+ - ;
 

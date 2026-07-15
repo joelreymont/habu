@@ -21,6 +21,12 @@ require maki/lower-red.f
 require maki/lower-mm.f
 require maki/lower-move.f
 
+\ typed substring search: reopen the unsealed CAD-NUM package for a checked index
+\ projection (no new TRUSTED). dot habu-migrate-maki-str-6e5cabd4.
+package CAD-NUM public
+: LMVT-IX>N ( CAD-NUM:index -- n )  INDEX>N ;
+;package
+
 package MAKI
 
 \ ---- captured-text assertions (LMVT- prefix: shares the dictionary with siblings) --
@@ -28,19 +34,21 @@ variable LMVT-VA  variable LMVT-VU
 : LMVT-SAVE ( ptr u8 n -- )  LMVT-VU ! LMVT-VA ! ;
 : LMVT$ ( -- ptr u8 n )  LMVT-VA @ LMVT-VU @ ;
 : LMVT-IN     ( ptr u8 n -- )  LMVT$ 2swap CONTAINS? TTRUE ;         \ needle present
+: LMVT-FINDO ( ptr u8 n ptr u8 n -- option<CAD-NUM:index> ) {: ha:ptr hu:n na:ptr nu:n :}
+   ha hu STR:LENGTH na nu STR:LENGTH STR:FIND-SUB ;      \ raw byte lengths -> STR byte-len roles
 : LMVT-ABSENT ( ptr u8 n -- )   \ needle absent
-   LMVT$ 2swap FIND-SUB MATCH option
+   LMVT$ 2swap LMVT-FINDO MATCH option
      none OF true ENDOF
      some OF drop false ENDOF
    ;MATCH TTRUE ;
 
 \ exactly-one: the needle occurs once (find it, then prove no second occurrence)
 : LMVT-ONCE? ( ptr u8 n ptr u8 n -- bool ) {: ha:ptr hu:n na:ptr nu:n :}
-   ha hu na nu FIND-SUB MATCH option
+   ha hu na nu LMVT-FINDO MATCH option
      none OF false exit ENDOF
-     some OF IDX>N ENDOF
+     some OF CAD-NUM:LMVT-IX>N ENDOF
    ;MATCH {: i1:n :}
-   ha i1 + nu +  hu i1 - nu -  na nu FIND-SUB MATCH option
+   ha i1 + nu +  hu i1 - nu -  na nu LMVT-FINDO MATCH option
      none OF true ENDOF
      some OF drop false ENDOF
    ;MATCH ;

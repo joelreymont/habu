@@ -17,19 +17,30 @@
 \ any branch in here. Keeping it in one owned file avoids duplicating the metric.
 
 require lib/ptx/test-prelude.f
+require lib/string.f                 \ STR:SPLIT-NEXT typed token scan + CAD-NUM roles
 require maki/eval.f
 require maki/eval-tokest.f
+
+\ ---- audited split-result projections (STR:SPLIT-NEXT slices -> raw offsets) -----
+\ COUNT-TOKS scans whitespace tokens on the byte-len/byte-off STR:SPLIT-NEXT reports
+\ as CAD-NUM roles; the count test and cursor variable want raw offsets. Reopen the
+\ unsealed CAD-NUM package for checked bridges over its private projections (no new
+\ TRUSTED). dot habu-migrate-maki-str-6e5cabd4.
+package CAD-NUM public
+: ERL-BL>N ( CAD-NUM:byte-len -- n )  BYTE-LEN>N ;
+: ERL-BO>N ( CAD-NUM:byte-off -- n )  BYTE-OFF>N ;
+;package
 
 package EVAL
 
 variable ER-NTOK  variable ER-ST
 \ count whitespace-separated tokens in a kernel source string
-\ typed-local-lint: allow-bare-local  (a keeps the `ptr u8` role SPLIT-NEXT needs)
+\ typed-local-lint: allow-bare-local  (a keeps the `ptr u8` role the typed split needs)
 : COUNT-TOKS ( ptr u8 n -- n ) {: a u :}
    0 ER-NTOK !  0 ER-ST !
-   begin  a u $20 ER-ST @ SPLIT-NEXT  while      ( tokptr toklen nextstart )
-      ER-ST !                                    ( tokptr toklen )
-      dup 0 > if  ER-NTOK @ 1+ ER-NTOK !  then  2drop
+   begin  a u STR:LENGTH $20 ER-ST @ STR:OFFSET STR:SPLIT-NEXT  while   ( tokptr byte-len byte-off )
+      CAD-NUM:ERL-BO>N ER-ST !                             ( tokptr byte-len )
+      CAD-NUM:ERL-BL>N dup 0 > if  ER-NTOK @ 1+ ER-NTOK !  then  2drop
    repeat
    2drop drop  ER-NTOK @ ;
 

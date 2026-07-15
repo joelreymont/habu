@@ -38,6 +38,16 @@ require lib/memory.f
 require lib/fs.f
 require maki/eval-repair-loop.f
 
+\ ---- audited split-result projections (STR:SPLIT-NEXT slices -> raw offsets) -----
+\ TS-FEED walks LF-delimited lines on the byte-len/byte-off STR:SPLIT-NEXT reports as
+\ CAD-NUM roles; the line feed and cursor variable want raw offsets. Reopen the
+\ unsealed CAD-NUM package for checked bridges over its private projections (no new
+\ TRUSTED). dot habu-migrate-maki-str-6e5cabd4.
+package CAD-NUM public
+: TS-BL>N ( CAD-NUM:byte-len -- n )  BYTE-LEN>N ;
+: TS-BO>N ( CAD-NUM:byte-off -- n )  BYTE-OFF>N ;
+;package
+
 \ eval-transcript owns error codes -5262..-5267 and -5272.
 -5262 constant E-TS-HEADER   \ missing or duplicate transcript header
 -5263 constant E-TS-LINE     \ unknown directive or bad directive argument
@@ -165,7 +175,7 @@ variable TS-ADJ       \ open sample: model tokens minus proxy over counted candi
 \ a name may not contain '|': it is interpolated raw between the rendered
 \ matrix column separators, so a pipe would silently misalign the table
 : TS-NAME-CK ( ptr u8 n -- ) {: a:ptr u:n :}
-   a u $7C INDEX-OF MATCH option
+   a u STR:LENGTH $7C STR:INDEX-OF MATCH option
      none OF ENDOF
      some OF drop E-TS-LINE throw ENDOF
    ;MATCH ;
@@ -268,9 +278,9 @@ public
 : TS-FEED ( ptr u8 n -- ) {: a:ptr u:n :}
    TS-RESET
    0 TS-POS !
-   begin a u STR-LF TS-POS @ SPLIT-NEXT while
-      TS-POS !
-      TS-LINE
+   begin a u STR:LENGTH STR-LF TS-POS @ STR:OFFSET STR:SPLIT-NEXT while   ( lineptr byte-len byte-off )
+      CAD-NUM:TS-BO>N TS-POS !
+      CAD-NUM:TS-BL>N TS-LINE
    repeat 2drop drop
    TS-END ;
 

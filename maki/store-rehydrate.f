@@ -37,6 +37,17 @@ require lib/string.f
 require maki/store.f              \ EVID-GET + the sealed EVID-PUT-G wire owner; V-* + verdict enum
 require maki/evidence/schema.f    \ EVID:golden-leg / EVID:prec-class (the typed provenance home)
 
+\ ---- audited scan-result projections (STR: field slicing -> raw offsets) --------
+\ Row fields are cut on the byte positions STR:INDEX-OF/SPLIT-NEXT report as
+\ CAD-NUM roles; the slice math wants raw offsets. Reopen the unsealed CAD-NUM
+\ package for checked bridges over its private projections (no new TRUSTED).
+\ dot habu-migrate-maki-str-6e5cabd4.
+package CAD-NUM public
+: EVID-IX>N ( CAD-NUM:index -- n )     INDEX>N ;
+: EVID-BL>N ( CAD-NUM:byte-len -- n )  BYTE-LEN>N ;
+: EVID-BO>N ( CAD-NUM:byte-off -- n )  BYTE-OFF>N ;
+;package
+
 -5086 constant E-EVID-ROW-FIELDS   \ persisted evidence row: not exactly four pipe-delimited fields
 -5087 constant E-EVID-ROW-LABEL    \ a field's label is not a known evidence class (unknown kind)
 -5088 constant E-EVID-ROW-VERDICT  \ a verdict token is outside the pass/fail/not-run domain
@@ -49,17 +60,19 @@ private
 
 \ ---- field splitting (the suffix EVID-GET returns is exactly four '|' fields) ----
 : EVID-SPLIT1 ( ptr u8 n n -- ptr u8 n n ) {: a:ptr u:n start:n :}   \ one '|' field from start -> field + next start
-   a u $7C start SPLIT-NEXT             \ fa fu next found?
-   0= if E-EVID-ROW-FIELDS throw then ; \ fa fu next
+   a u STR:LENGTH $7C start STR:OFFSET STR:SPLIT-NEXT       \ fa byte-len byte-off found?
+   {: fa:ptr fl:CAD-NUM:byte-len fo:CAD-NUM:byte-off more?:bool :}
+   more? 0= if E-EVID-ROW-FIELDS throw then
+   fa  fl CAD-NUM:EVID-BL>N  fo CAD-NUM:EVID-BO>N ;         \ fa fu next
 
 : EVID-ROW-SPLIT4 ( ptr u8 n -- ptr u8 n ptr u8 n ptr u8 n ptr u8 n ) {: a:ptr u:n :}
    a u 0  EVID-SPLIT1  {: s1:n :}       \ certify field slice on stack
    a u s1 EVID-SPLIT1  {: s2:n :}       \ + golden field slice
    a u s2 EVID-SPLIT1  {: s3:n :}       \ + gradcheck field slice
    a u s3 EVID-SPLIT1  {: s4:n :}       \ + profile field slice
-   a u $7C s4 SPLIT-NEXT                \ a fifth field would over-fill the row
+   a u STR:LENGTH $7C s4 STR:OFFSET STR:SPLIT-NEXT   \ a fifth field would over-fill the row
    if E-EVID-ROW-FIELDS throw then
-   drop drop drop ;                     \ no fifth field: drop the empty split result
+   drop drop drop ;                     \ no fifth field: drop the empty split result (ptr byte-len byte-off)
 
 \ ---- one field's value after its expected "label=" prefix -----------------------
 : EVID-FIELD-VALUE ( ptr u8 n ptr u8 n -- ptr u8 n ) {: fa:ptr fu:n la:ptr lu:n :}
@@ -80,9 +93,9 @@ private
 
 \ ---- golden field: optional "device-" leg + verdict + optional ":<prec>" --------
 : EVID-SPLIT-COLON ( ptr u8 n -- ptr u8 n ptr u8 n ) {: a:ptr u:n :}   \ "v:prec" -> (v) (prec); a device leg MUST carry precision
-   a u $3A INDEX-OF MATCH option
+   a u STR:LENGTH $3A STR:INDEX-OF MATCH option
      none OF E-EVID-ROW-PREC throw ENDOF
-     some OF IDX>N ENDOF
+     some OF CAD-NUM:EVID-IX>N ENDOF
    ;MATCH {: i:n :}
    a i  a i 1+ +  u i 1+ - ;
 

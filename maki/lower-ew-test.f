@@ -15,6 +15,12 @@ require lib/string.f
 require maki/cad.f
 require maki/lower-ew.f
 
+\ typed substring search: reopen the unsealed CAD-NUM package for a checked index
+\ projection (no new TRUSTED). dot habu-migrate-maki-str-6e5cabd4.
+package CAD-NUM public
+: LEWT-IX>N ( CAD-NUM:index -- n )  INDEX>N ;
+;package
+
 package MAKI
 
 \ ---- captured-text assertions (LEWT- prefix: shares the dictionary with siblings) --
@@ -22,19 +28,21 @@ variable LEWT-VA  variable LEWT-VU
 : LEWT-SAVE ( ptr u8 n -- )  LEWT-VU ! LEWT-VA ! ;
 : LEWT$ ( -- ptr u8 n )  LEWT-VA @ LEWT-VU @ ;
 : LEWT-IN     ( ptr u8 n -- )  LEWT$ 2swap CONTAINS? TTRUE ;      \ LEWT$ contains the needle
+: LEWT-FINDO ( ptr u8 n ptr u8 n -- option<CAD-NUM:index> ) {: ha:ptr hu:n na:ptr nu:n :}
+   ha hu STR:LENGTH na nu STR:LENGTH STR:FIND-SUB ;      \ raw byte lengths -> STR byte-len roles
 : LEWT-ABSENT ( ptr u8 n -- )   \ needle absent
-   LEWT$ 2swap FIND-SUB MATCH option
+   LEWT$ 2swap LEWT-FINDO MATCH option
      none OF true ENDOF
      some OF drop false ENDOF
    ;MATCH TTRUE ;
 
 \ exactly-one: the needle occurs once (find it, then prove no second occurrence)
 : LEWT-ONCE? ( ptr u8 n ptr u8 n -- bool ) {: ha:ptr hu:n na:ptr nu:n :}
-   ha hu na nu FIND-SUB MATCH option
+   ha hu na nu LEWT-FINDO MATCH option
      none OF false exit ENDOF
-     some OF IDX>N ENDOF
+     some OF CAD-NUM:LEWT-IX>N ENDOF
    ;MATCH {: i1:n :}
-   ha i1 + nu +  hu i1 - nu -  na nu FIND-SUB MATCH option
+   ha i1 + nu +  hu i1 - nu -  na nu LEWT-FINDO MATCH option
      none OF true ENDOF
      some OF drop false ENDOF
    ;MATCH ;

@@ -49,6 +49,17 @@ require maki/executor.f
 require maki/store.f
 require maki/report.f
 
+\ ---- audited scan-result projections (STR: token/shape slicing -> raw offsets) ---
+\ Float-token and RxC-shape parsing cut spans on the byte-len/byte-off/index STR:
+\ words report as CAD-NUM roles; the slice math and token cursor want raw offsets.
+\ Reopen the unsealed CAD-NUM package for checked bridges over its private
+\ projections (no new TRUSTED). dot habu-migrate-maki-str-6e5cabd4.
+package CAD-NUM public
+: GA-IX>N ( CAD-NUM:index -- n )     INDEX>N ;
+: GA-BL>N ( CAD-NUM:byte-len -- n )  BYTE-LEN>N ;
+: GA-BO>N ( CAD-NUM:byte-off -- n )  BYTE-OFF>N ;
+;package
+
 -5165 constant E-GA-CAP     \ input / expected / text buffer capacity exceeded
 -5166 constant E-GA-PARSE   \ malformed artifact: missing key / non-numeric / wrong count
 -5167 constant E-GA-UNSUP   \ GA-SAVE on an empty or non-host-executable model
@@ -304,18 +315,19 @@ private
    ta tu STR>FLOAT 0= if E-GA-PARSE throw then
    GA-PF-STORE ;
 : GA-PF-STEP ( ptr u8 n n -- n bool ) {: va:ptr vu:n start:n :}   \ value start -- nextstart continue?
-   va vu $20 start SPLIT-NEXT {: ta:ptr tu:n nx:n ok:bool :}
-   ok if ta tu GA-PF-TOKEN then
-   nx ok ;
+   va vu STR:LENGTH $20 start STR:OFFSET STR:SPLIT-NEXT
+   {: ta:ptr tu:CAD-NUM:byte-len nx:CAD-NUM:byte-off ok:bool :}
+   ok if ta tu CAD-NUM:GA-BL>N GA-PF-TOKEN then
+   nx CAD-NUM:GA-BO>N ok ;
 : GA-PARSE-FLOATS ( ptr u8 n ptr a n -- ) {: va:ptr vu:n dst:ptr cnt:n :}
    dst GA-PF-DST !  cnt GA-PF-CNT !  0 GA-PF-IDX !
    0 begin va vu rot GA-PF-STEP while repeat drop
    GA-PF-IDX @ cnt <> if E-GA-PARSE throw then ;
 
 : GA-PARSE-SHAPE ( ptr u8 n -- n n ) {: va:ptr vu:n :}   \ "RxC" -> rows cols
-   va vu $78 INDEX-OF MATCH option
+   va vu STR:LENGTH $78 STR:INDEX-OF MATCH option
      none OF E-GA-PARSE throw ENDOF
-     some OF IDX>N ENDOF
+     some OF CAD-NUM:GA-IX>N ENDOF
    ;MATCH {: xi:n :}
    va xi GA-PARSE-INT-VAL
    va xi 1+ +  vu xi 1+ -  GA-PARSE-INT-VAL ;

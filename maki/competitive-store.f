@@ -74,6 +74,15 @@ require maki/store.f                \ STORE-ROOT+ / STORE-RESET root discipline 
 require maki/numpolicy.f            \ NPOL:dom, NPOL:NAME - the recorded/derived numeric policy
 require maki/competitive-report.f   \ the typed comparisons + their SINGLE canonical render owner
 
+\ ---- audited find-index projection (STR:INDEX-OF result -> raw field offset) -----
+\ Bench-row parsing locates the '=' inside a field on the byte position STR:INDEX-OF
+\ reports as option<CAD-NUM:index>. Reopen the unsealed CAD-NUM package for one
+\ checked bridge over its private INDEX>N projection (no new TRUSTED).
+\ dot habu-migrate-maki-str-6e5cabd4.
+package CAD-NUM public
+: BST-IX>N ( CAD-NUM:index -- n )  INDEX>N ;
+;package
+
 -5310 constant E-BENCH-STORE-FULL   \ built row or read buffer exceeds its capacity
 -5311 constant E-BENCH-ROW-FIELDS   \ persisted row: field count / missing marker / non-numeric value
 -5312 constant E-BENCH-ROW-LABEL    \ a field is not its expected label at its slot
@@ -289,9 +298,9 @@ private
    fa lu +  fu lu - ;
 
 : BST-EQ-IDX ( ptr u8 n -- n )                      \ index of '=' in a field, or -1
-   BST-EQ INDEX-OF MATCH option
+   STR:LENGTH BST-EQ STR:INDEX-OF MATCH option
       none OF -1 ENDOF
-      some OF IDX>N ENDOF
+      some OF CAD-NUM:BST-IX>N ENDOF
    ;MATCH ;
 : BST-FIELD-LABEL ( ptr u8 n -- ptr u8 n ) {: fa:ptr fu:n :}   \ label = bytes before '=' (or whole)
    fa fu BST-EQ-IDX {: i:n :}

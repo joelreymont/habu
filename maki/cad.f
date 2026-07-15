@@ -94,6 +94,14 @@ require maki/lower-golden.f
 require maki/gradcheck.f
 require maki/evidence/schema.f      \ EVID:golden-leg / EVID:prec-class: the typed home of the promote path's golden provenance (retires the maki/golden.f ambient globals)
 
+\ ---- audited find-index projection (STR:INDEX-OF result -> raw scan offset) -----
+\ MODEL: parsing slices name/shape/op spans on the byte position STR:INDEX-OF reports
+\ as option<CAD-NUM:index>. Reopen the unsealed CAD-NUM package for one checked bridge
+\ over its private INDEX>N projection (no new TRUSTED). dot habu-migrate-maki-str-6e5cabd4.
+package CAD-NUM public
+: CAD-IX>N ( CAD-NUM:index -- n )  INDEX>N ;
+;package
+
 -5020 constant E-CAD-NOMODEL   \ command issued with no model defined
 -5021 constant E-CAD-OP        \ unknown op token in a MODEL: body
 -5022 constant E-CAD-EMPTY     \ MODEL: with no name or no ops
@@ -217,9 +225,9 @@ private
 \ ---- name set (input names slots 0..N-1, then ">V" names; slot index is the ref handle) --
 $5E constant TR-C                                  \ '^' - the reserved transpose-marker byte
 : TR-MARKED? ( ptr u8 n -- bool )                  \ span contains the marker byte?
-   TR-C INDEX-OF MATCH option
+   STR:LENGTH TR-C STR:INDEX-OF MATCH option
      none OF false ENDOF
-     some OF IDX>N drop true ENDOF
+     some OF drop true ENDOF
    ;MATCH ;
 : NT-RESET ( -- )  0 NT-N ! ;
 : NT-SLOT ( n -- ptr u8 )  NT-NAME-CAP *  NT-NAMES + ;
@@ -447,13 +455,13 @@ $5E constant TR-C                                  \ '^' - the reserved transpos
    MATCH option none OF E-CAD-SYNTAX throw ENDOF some OF ENDOF ;MATCH ;
 
 : PARSE-SHAPE ( ptr u8 n -- n n ) {: a:ptr u:n :}   \ "name:RxC" or "RxC" -> rows cols
-   a u $3A INDEX-OF MATCH option                 \ shape span starts past any "name:"
+   a u STR:LENGTH $3A STR:INDEX-OF MATCH option   \ shape span starts past any "name:"
      none OF 0 ENDOF
-     some OF IDX>N 1+ ENDOF
+     some OF CAD-NUM:CAD-IX>N 1+ ENDOF
    ;MATCH {: off:n :}
-   a off +  u off -  $78 INDEX-OF MATCH option   \ 'x' index within the shape span
+   a off +  u off - STR:LENGTH  $78 STR:INDEX-OF MATCH option   \ 'x' index within the shape span
      none OF E-CAD-SYNTAX throw ENDOF
-     some OF IDX>N ENDOF
+     some OF CAD-NUM:CAD-IX>N ENDOF
    ;MATCH {: xi:n :}
    a off +          xi           PARSE-INT       \ rows
    a off + xi 1+ +  u off - xi 1+ -  PARSE-INT ; \ cols
@@ -466,9 +474,9 @@ $5E constant TR-C                                  \ '^' - the reserved transpos
 
 \ the name span of a "name:RxC" spec (empty when the spec is a bare "RxC")
 : SPEC-NAME ( ptr u8 n -- ptr u8 n ) {: a:ptr u:n :}
-   a u $3A INDEX-OF MATCH option
+   a u STR:LENGTH $3A STR:INDEX-OF MATCH option
      none OF a 0 ENDOF
-     some OF IDX>N {: ci:n :} a ci ENDOF
+     some OF CAD-NUM:CAD-IX>N {: ci:n :} a ci ENDOF
    ;MATCH ;
 
 \ one "[name:]RxC" spec: build the input descriptor + IR slot, and intern its local name
@@ -496,9 +504,9 @@ $5E constant TR-C                                  \ '^' - the reserved transpos
    again ;
 
 : PARSE-RANGE ( ptr u8 n -- n n ) {: a:ptr u:n :}   \ "R0..R1" -> r0 r1
-   a u $2E INDEX-OF MATCH option                     \ first '.'
+   a u STR:LENGTH $2E STR:INDEX-OF MATCH option      \ first '.'
      none OF E-CAD-SYNTAX throw ENDOF
-     some OF IDX>N ENDOF
+     some OF CAD-NUM:CAD-IX>N ENDOF
    ;MATCH {: di:n :}
    di 1+ u >= if E-CAD-SYNTAX throw then
    a di 1+ + c@ $2E <> if E-CAD-SYNTAX throw then     \ require the second '.'
@@ -521,14 +529,14 @@ $5E constant TR-C                                  \ '^' - the reserved transpos
 
 \ one body op token (not a ">V" and not a bare reference): translate to explicit stack form.
 : EMIT-OP-TOKEN ( ptr u8 n -- ) {: a:ptr u:n :}
-   a u $3A INDEX-OF MATCH option
+   a u STR:LENGTH $3A STR:INDEX-OF MATCH option
      none OF
       a u OP-KIND                                                  \ ( op )  family stays on the stack
       dup MAKI-OPKIND:RESHAPE MAKI-OPKIND:EQ over MAKI-OPKIND:SLICE MAKI-OPKIND:EQ or if E-CAD-SYNTAX throw then \ reshape/slice need ":params"
       OPR-ARITY 1- CAP-EMIT-PARAMS                                 \ tensor params = arity-1
       a u CAP-EMIT-OP  exit
      ENDOF
-     some OF IDX>N ENDOF
+     some OF CAD-NUM:CAD-IX>N ENDOF
    ;MATCH {: ci:n :}
    a ci  a ci 1+ +  u ci 1+ -  EMIT-MOVE-PARAM ;                   \ "OP:params"
 
@@ -544,9 +552,9 @@ $5E constant TR-C                                  \ '^' - the reserved transpos
 \ marker is a transposed reference; else an op token to translate
 : CAP-TOKEN ( ptr u8 n -- ) {: a:ptr u:n :}
    a u NT-FIND if  0 CAP-PEND-PUSH  exit  then  drop
-   a u TR-C INDEX-OF MATCH option
+   a u STR:LENGTH TR-C STR:INDEX-OF MATCH option
      none OF  a u EMIT-OP-TOKEN  exit  ENDOF
-     some OF IDX>N ENDOF
+     some OF CAD-NUM:CAD-IX>N ENDOF
    ;MATCH {: ci:n :}
    a ci  a ci 1+ +  u ci 1+ -  CAP-TR-REF ;
 
