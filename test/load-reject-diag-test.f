@@ -25,6 +25,8 @@ require lib/process-env.f
 $1000 constant LRD-CAP
 60000 constant LRD-TIMEOUT-MS
 70 constant LRD-REJECT-RC            \ the checked-reject exit class
+3 constant LRD-TEST-OUT-U
+5 constant LRD-TEST-ERR-U
 
 create LRD-OUT LRD-CAP allot
 create LRD-ERR LRD-CAP allot
@@ -108,6 +110,22 @@ variable LRD-RC
    LRD-ERR-U @ 0 > TTRUE
    LRD-ERR$ name nameu CONTAINS? TTRUE ;
 
+: LRD-TEST-STORE-SIGNALED ( -- )
+   s" signaled outcome remains distinguishable from exit" T-LABEL
+   LRD-TEST-OUT-U >LEN LRD-TEST-ERR-U >LEN SIGKILL OUTCOME:SIGNALED LRD-STORE!
+   LRD-EXITED @ TFALSE
+   LRD-RC @ SIGKILL T=
+   LRD-OUT-U @ LRD-TEST-OUT-U T=
+   LRD-ERR-U @ LRD-TEST-ERR-U T= ;
+
+: LRD-TEST-STORE-TIMEOUT ( -- )
+   s" timeout outcome remains distinguishable from exit" T-LABEL
+   LRD-TEST-OUT-U >LEN LRD-TEST-ERR-U >LEN OUTCOME:TIMEOUT LRD-STORE!
+   LRD-EXITED @ TFALSE
+   LRD-RC @ 0 T=
+   LRD-OUT-U @ LRD-TEST-OUT-U T=
+   LRD-ERR-U @ LRD-TEST-ERR-U T= ;
+
 : LRD-TEST-UNDEF ( -- )
    s" direct --load reject names the undefined word" T-LABEL
    LRD-UNDEF$ LRD-RUN
@@ -129,6 +147,8 @@ variable LRD-RC
 : LRD-MAIN ( -- )
    T-RESET
    LRD-SETUP
+   LRD-TEST-STORE-SIGNALED
+   LRD-TEST-STORE-TIMEOUT
    LRD-TEST-UNDEF
    LRD-TEST-BODY
    LRD-TEST-REQUIRE-CHAIN
