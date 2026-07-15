@@ -374,6 +374,33 @@ Triton GEMM 2048x2048x2048 iters=30  time_ms=272.6 GFLOP/s=1890.5 max_abs_err=1.
   reused kernel's 16), vectorized `ld.shared.v4`, then the `mma.sync` TF32 family
   itself — with the precision *licensed* by the golden gate rather than assumed.
 
+### Typed competitive rows: comparable result vs incomparable-by-policy source data
+
+The shipped SAXPY and GEMM competitive rows are now carried as **typed BENCH
+comparisons** and persisted through the sealed store (`tools/eval-triton.f`; schema
+`bench/v1` in `maki/competitive-report.f` / `maki/competitive-store.f`), each side tagged
+with its numeric policy (exact vs relative). That types one distinction the raw tables
+above leave implicit:
+
+- **Habu FP32 blocked tile vs Triton TF32 is incomparable-by-policy — not a competitive
+  result.** Ours is full-f32 `fma.rn` (exact policy, golden-gated at rtol 1e-4); theirs is
+  a TF32 `tl.dot` (relative policy). The two sides do not share a numeric policy, so the
+  pairing is **incomparable**: the checked importer refuses to load it as a competitive
+  result (`E-BENCH-INCOMPARABLE`). The 4.6–5.0× (step 1) and 3.9–4.3× (step 2) "gaps"
+  above are the honest arithmetic/roofline story of a full-f32 tile against a TF32 kernel;
+  they are kept as **separately-labelled source data**, not reported as a like-for-like
+  competitive number.
+- **The like-for-like GEMM competitive result is TF32-vs-TF32.** Habu's own tensor-core
+  `mma.sync` TF32 tile (step 3) against Triton's TF32 `tl.dot` — both relative policy, so
+  **comparable** — is the GEMM row the typed store carries as a competitive result.
+- **SAXPY is comparable as-is:** both SAXPY-V4 and Triton are full-f32 (exact policy), so
+  the memory-ceiling parity is a genuine competitive result, carried as the typed SAXPY
+  FP32 row.
+
+The regressions in `tools/eval-triton-test.f` pin all three: the two comparable rows
+persist, report, and replay byte-stably, and the FP32-vs-TF32 pair can never load as a
+competitive result.
+
 ### Reproduction script (`/tmp/triton_matmul.py`, verbatim)
 
 ```python

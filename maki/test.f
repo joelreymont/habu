@@ -224,6 +224,8 @@ TEST:SUITE maki/competitive-report-test.f
 TEST:;SUITE
 TEST:SUITE maki/competitive-store-test.f
 TEST:;SUITE
+TEST:SUITE tools/eval-triton-test.f
+TEST:;SUITE
 TEST:SUITE maki/cuda-types-test.f
 TEST:;SUITE
 TEST:SUITE maki/cuda-driver-test.f

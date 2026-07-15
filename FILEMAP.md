@@ -643,6 +643,21 @@ points stay listed.
   persist -> rehydrate -> re-persist round-trips, one named-throw fixture per forgery class
   (each resolving against the clean base golden), and the store-seal bypass regression
   (`BENCH:BENCH-ROW-APPEND` unresolvable/verdict 1, paired read + typed-write controls).
+- `tools/eval-triton.f` — migrates the SHIPPED SAXPY and GEMM competitive evidence
+  (docs/eval-triton.md, tools/ptx/perf-rows.tsv) into the typed BENCH store/report path
+  as an EXTERNAL consumer of the store seal (package EVAL-TRITON, public API only, no raw
+  appender): the comparable results SAXPY-FP32 (exact/exact) and HABU-MMM-TF32 (rel/rel)
+  persist through the sealed store, and the checked importers `IMPORT-GBPS-RESULT` /
+  `IMPORT-GFLOPS-RESULT` refuse a non-comparable pair as a competitive result. The
+  historical Habu-FP32-vs-Triton-TF32
+  pair stays as separately-labelled source evidence that renders but never loads as a result.
+  Owns -5321 (`E-BENCH-INCOMPARABLE`).
+- `tools/eval-triton-test.f` — migration acceptance: byte-stable report goldens for the two
+  results and the labelled historical pair; layer-level comparability verdicts; persist ->
+  find-by-exact-key -> replay (get/decode/re-encode) byte-for-byte to the committed canonical
+  rows; the lookup-invalidation case (cache warm->cold changes the key => GET misses); and the
+  incomparable-import negative regression (`E-BENCH-INCOMPARABLE`) with a comparable-import
+  resolving positive.
 - `maki/cuda-types.f` — thin re-export of `lib/ptx/cuda-driver.f` preserving the
   historical maki spellings (cuda-* roles, `CUDA-HANDLE0`/`CUDA-RC0`, `E-MK-GPU`).
 - `maki/cuda-types-test.f` — runtime regressions for CUDA handle and rc
