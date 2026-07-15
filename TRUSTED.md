@@ -1888,7 +1888,7 @@ tools/codegen-role.f:CGR-EVALUATE-UNCHECKED test-metaprog cap:checker-hook-ident
 src/core/check-hook.f:HOOK stdlib-boundary cap:checker-hook-identity
 src/core/check-hook.f:INSTALL stdlib-boundary cap:checker-hook-identity
 src/core/top-row.f:TR-INSTALL stdlib-boundary cap:checker-hook-identity
-src/core/top-row.f:TR-CERT-DOUT-EMPTY? stdlib-boundary habu-typed-top-tier-589c550f
+src/core/top-row.f:TR-CERT-DOUT-EMPTY? stdlib-boundary habu-checker-self-typing-9ff8ba86
 src/habu/aot.f:USER-HOOK builder-emit cap:checker-hook-identity
 src/habu/snap-lib.f:SNAP-CHECK-HOOK builder-emit cap:checker-hook-identity 2
 tools/check-core.f:CHK-CHECK-HOOK stdlib-boundary cap:checker-hook-identity
