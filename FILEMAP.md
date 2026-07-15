@@ -627,6 +627,22 @@ points stay listed.
   Habu-FP32-vs-Triton-TF32 confusion rejects with a resolving positive), the
   identity/raw-n/cache/unit/precision type-reject candidates with resolving
   positives, and the E-BENCH capacity throws.
+- `maki/competitive-store.f` — the checked canonical codec + sealed store records for
+  BENCH comparison values. The ONLY public writers (`BENCH-PUT-GBPS`/`-GFLOPS`) accept a
+  typed comparison and DERIVE its exact key (the single `RENDER-GBPS`/`-GFLOPS` canonical
+  render), the bench/v1 schema version, FNV-1a content digest, and promotion-evidence
+  field (the `COMPARABLE?` verdict); the raw file appender `BENCH-ROW-APPEND` is
+  package-BENCH-private (the store seal, mirroring the R7 EVID-PUT-G/SK-PUT-DURABLE seal),
+  so nothing outside the package can plant a raw row. Rehydration (`BENCH-DECODE-GBPS`/
+  `-GFLOPS`) treats persisted bytes as untrusted and fails closed per axis with a named
+  throw: duplicate-field, malformed, bad label/token, wrong-schema, cross-kind,
+  cross-policy, digest-mismatch, noncanonical (re-render mismatch), and stale-promotion.
+  Reuses maki/store.f only through its PUBLIC root discipline (`STORE-ROOT+`/`STORE-RESET`,
+  `competitive.rows`); the CAD store's own row schemas stay untouched. Owns -5310..-5320.
+- `maki/competitive-store-test.f` — the gbps/gflops/absent byte goldens, the byte-for-byte
+  persist -> rehydrate -> re-persist round-trips, one named-throw fixture per forgery class
+  (each resolving against the clean base golden), and the store-seal bypass regression
+  (`BENCH:BENCH-ROW-APPEND` unresolvable/verdict 1, paired read + typed-write controls).
 - `maki/cuda-types.f` — thin re-export of `lib/ptx/cuda-driver.f` preserving the
   historical maki spellings (cuda-* roles, `CUDA-HANDLE0`/`CUDA-RC0`, `E-MK-GPU`).
 - `maki/cuda-types-test.f` — runtime regressions for CUDA handle and rc
