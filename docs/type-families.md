@@ -1687,6 +1687,46 @@ wide store/fetch emitters build the current native source. The recovered
 `hb-stdin` passes both suites plus compiler dispatch, bootstrap codegen,
 signature-scan emitter, and seal-absence tests.
 
+**Convenience storage definers (dot habu-nominal-storage-typed).** `TYPED-VARIABLE`
+and `TYPED-BUFFER` add a sound uppercase surface for typed scalar/pointer storage
+outside a fixed layout owner, built on the SAME generative boundary as
+`LAYOUT-BUFFER` (`src/core/layout-buffer.f`; the armed generated-accessor window,
+allocation, zero image, and transactional rollback are shared):
+
+```forth
+TYPED-VARIABLE NAME <type>          \ one typed cell,     accessor ( -- ptr <type> )
+count TYPED-BUFFER NAME <type>      \ typed capacity,     accessor ( n -- ptr <type> )
+```
+
+The admissibility gate is `CHECKER-STORAGE-INFO`, a superset of the
+`CHECKER-LAYOUT-INFO` gate that `LAYOUT-BUFFER` keeps unchanged. The two
+capabilities stay distinct:
+
+| Stored `<type>` | `LAYOUT-BUFFER` | `TYPED-BUFFER` / `TYPED-VARIABLE` |
+|---|:---:|:---:|
+| closed non-linear layout family (`res<n,n>`) | admit | admit |
+| arity-0 nominal scalar (`CAD-KIND:node-id`) | admit | admit |
+| closed typed pointer (`ptr fam`, `ptr res<n,n>`, `ptr ptr fam`) | reject | **admit** |
+| open type var / bare `ptr a` / `ptr n` | reject | reject |
+| quotation / linear value / hidden field | reject | reject |
+| non-positive `count`, unresolved args, duplicate name | reject | reject |
+
+A "closed typed pointer" is a `ptr` whose pointee chain bottoms out at a nominal
+scalar or a closed non-linear layout family — the family identity a plain `ptr a`
+could otherwise never re-acquire (the pointee-bind seal). The stored type may be
+a `ptr* base` multi-token span (`TYPED-VARIABLE SLOT ptr target-kind`). Width is
+one cell for scalars and pointers, and the registry width for a layout. Typed
+constants still require a checked producer: a raw `n` cannot initialize a typed
+`constant`, because `constant`/`variable`/`create` publish RAW effects
+(`TVK-RAW`) that reject a nominal family in value position — the definers are the
+sound alternative to that laundering, not a bypass. Same-family `!`/`@` through a
+definer accessor certifies and executes; cross-family, `E-LAYOUT-BOUNDS` (index),
+`E-LAYOUT-BUFFER` (admissibility/overflow), and `E-DUP-DEFINITION` (duplicate)
+reject, and a rejected declaration rolls the allocation back and defines nothing.
+The gate path is the verify-source scanner (`RECORD-TYPED-BUFFER` /
+`RECORD-TYPED-VARIABLE` → `CHECKER-DEFTYPED-BUFFER` / `CHECKER-DEFTYPED-VARIABLE`),
+mirroring `RECORD-LAYOUT-BUFFER`; `test/typed-storage-test.f` pins the surface.
+
 ---
 
 ### 17.1 Typed locals for family types (slice 1)

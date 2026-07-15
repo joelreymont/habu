@@ -1490,6 +1490,10 @@ test/bootstrap-wide-memory-src.f:BWM-W32 test-metaprog cap:wide-memory-lowering
 test/layout-buffer.f:LB-UN test-metaprog cap:sealed-family-pointers
 test/layout-buffer.f:N>LBTK test-metaprog habu-epic-type-system-b88c9ecc
 test/layout-buffer.f:LBTK>N test-metaprog habu-epic-type-system-b88c9ecc
+test/typed-storage-test.f:N>TSK test-metaprog habu-nominal-storage-typed-c5f44d66
+test/typed-storage-test.f:TSK>N test-metaprog habu-nominal-storage-typed-c5f44d66
+test/typed-storage-test.f:TSRES-UN test-metaprog habu-nominal-storage-typed-c5f44d66
+test/typed-storage-test.f:RES-K-UN test-metaprog habu-nominal-storage-typed-c5f44d66
 test/layout-valid-growth.f:NAME$ test-metaprog cap:fetched-adt-validation
 test/layout-valid-growth.f:BUILD test-metaprog cap:fetched-adt-validation
 test/layout-valid-guard-base.f:RAW test-metaprog cap:fetched-adt-validation

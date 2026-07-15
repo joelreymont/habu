@@ -1,9 +1,17 @@
-\ layout-buffer.f — generative typed storage for closed ADT layouts.
+\ layout-buffer.f — generative typed fixed-capacity storage.
 \
 \ LAYOUT-BUFFER is the only public introduction form for `ptr layout`. It owns
 \ allocation, zero-image initialization, stride, and bounds; the checker arms a
 \ single generated-accessor authorization instead of allowing ptr variables to
 \ acquire layout identity through ordinary unification.
+\
+\ TYPED-VARIABLE and TYPED-BUFFER (dot habu-nominal-storage-typed) are the
+\ convenience definers built on the SAME generative boundary: a single typed
+\ cell, and a typed fixed-capacity buffer. They reuse LAYOUT-BUFFER's armed
+\ generated-accessor window (LBUF-EVAL / LBUF-PEND) and admit a broader
+\ CHECKER-STORAGE-INFO type surface — nominal scalars, closed non-linear layout
+\ families, AND closed typed pointers — without weakening LAYOUT-BUFFER, whose
+\ own narrower CHECKER-LAYOUT-INFO gate is unchanged.
 
 $1000 constant LBUF-GEN-CAP
 $7FFFFFFFFFFFFFFF constant LBUF-N-MAX
@@ -131,3 +139,85 @@ variable LBUF-EVAL-U
 \ checked bodies (it evaluates generated accessor source via LBUF-EVAL), so
 \ the axiom adds no checked-code capability.
 PRIM: LAYOUT-BUFFER PE-N PE-IN PRIM;
+
+\ ---- TYPED-VARIABLE / TYPED-BUFFER convenience definers ----------------------
+\ Same generative machinery as LAYOUT-BUFFER (name guard, allocation, zero image,
+\ generated-accessor evaluation under the armed window, transactional rollback),
+\ gated by the broader CHECKER-STORAGE-INFO admissibility. TYPED-BUFFER reuses
+\ LBUF-SOURCE (the indexed `( n -- ptr type )` accessor); TYPED-VARIABLE emits a
+\ single-cell `( -- ptr type )` accessor. Both parse a `ptr* base` stored type so
+\ closed typed pointers (`ptr TARGET`, `ptr res<n,n>`) are expressible.
+
+variable STGT-A
+variable STGT-U
+variable STGT-START
+
+: STORAGE-PTR-TOK? ( ptr u8 n -- bool )   \ token is the pointer constructor `ptr`
+   s" ptr" CORE-STR= ;
+
+: STORAGE-PARSE-TYPE ( -- ptr u8 n )   \ capture a `ptr* base` stored-type source span
+   parse-name STGT-U !  STGT-A !
+   STGT-U @ 0= if E-LAYOUT-BUFFER throw then
+   STGT-A @ STGT-START !
+   begin STGT-A @ STGT-U @ STORAGE-PTR-TOK? while
+      parse-name STGT-U !  STGT-A !
+      STGT-U @ 0= if E-LAYOUT-BUFFER throw then
+   repeat
+   STGT-START @  STGT-A @ STGT-U @ + STGT-START @ - ;
+
+: STORAGE-VALIDATE ( n ptr u8 n -- ) {: count:n type:ptr typeu:n :}
+   type typeu CHECKER-STORAGE-INFO 0= if drop E-LAYOUT-BUFFER throw then
+   LBUF-W !
+   count LBUF-N !
+   count LBUF-W @ LBUF-EXTENT? 0= if drop E-LAYOUT-BUFFER throw then
+   LBUF-BYTES ! ;
+
+: TYPED-VAR-SOURCE ( ptr u8 n ptr u8 n n -- ptr u8 n ptr u8 n )
+   {: name:ptr nameu:n type:ptr typeu:n off:n :}
+   LBUF-CLEAR
+   s" : " LBUF-APP
+   name nameu LBUF-NAME, {: pna:ptr pnu:n :}
+   s"  ( -- ptr " LBUF-APP  type typeu LBUF-APP
+   s"  ) data-base " LBUF-APP
+   off LBUF-DEC,
+   s"  + ;" LBUF-APP
+   LBUF-GEN LBUF-GEN-U @ pna pnu ;
+
+: TYPED-BUFFER ( n -- ) {: count:n :}
+   parse-name {: name:ptr nameu:n :}
+   STORAGE-PARSE-TYPE {: type:ptr typeu:n :}
+   nameu 0= if E-LAYOUT-BUFFER throw then
+   TDECL-EVAL-XT @ 0= if E-LAYOUT-BUFFER throw then
+   name nameu LBUF-NAME-GUARD
+   count type typeu STORAGE-VALIDATE
+   here {: base:ptr :}
+   base data-base - {: off:n :}
+   name nameu type typeu off LBUF-SOURCE {: src:ptr srcu:n pna:ptr pnu:n :}
+   LBUF-BYTES @ allot
+   base LBUF-BYTES @ LBUF-ZERO
+   src srcu pna pnu LBUF-EVAL
+   dup 0 <> if LBUF-ROLLBACK then
+   drop ;
+
+: TYPED-VARIABLE ( -- )
+   parse-name {: name:ptr nameu:n :}
+   STORAGE-PARSE-TYPE {: type:ptr typeu:n :}
+   nameu 0= if E-LAYOUT-BUFFER throw then
+   TDECL-EVAL-XT @ 0= if E-LAYOUT-BUFFER throw then
+   name nameu LBUF-NAME-GUARD
+   1 type typeu STORAGE-VALIDATE
+   here {: base:ptr :}
+   base data-base - {: off:n :}
+   name nameu type typeu off TYPED-VAR-SOURCE {: src:ptr srcu:n pna:ptr pnu:n :}
+   LBUF-BYTES @ allot
+   base LBUF-BYTES @ LBUF-ZERO
+   src srcu pna pnu LBUF-EVAL
+   dup 0 <> if LBUF-ROLLBACK then
+   drop ;
+
+\ Axioms keep the two definers checker-known so the seal-time internal-word pass
+\ leaves them executable at top level (like LAYOUT-BUFFER); UNSAFE-TOK? rejects
+\ `typed-buffer`/`typed-variable` inside checked bodies (they evaluate generated
+\ accessor source), so the axioms add no checked-code capability.
+PRIM: TYPED-BUFFER PE-N PE-IN PRIM;
+PRIM: TYPED-VARIABLE PRIM;

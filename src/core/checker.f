@@ -2698,6 +2698,42 @@ variable LBI-BAD
    LBI-T @ LAYOUT-MEM-OK? 0= IF 0 0 RES-FALSE EXIT THEN
    LBI-T @ PARAM>FAM  LBI-T @ T-WIDTH  RES-TRUE ;
 
+\ Admissibility gate for the TYPED-VARIABLE / TYPED-BUFFER convenience definers
+\ (dot habu-nominal-storage-typed). Superset of CHECKER-LAYOUT-INFO: it admits
+\ everything LAYOUT-BUFFER does — an arity-0 nominal scalar family, or a closed
+\ non-linear addressable layout family — AND a CLOSED TYPED POINTER: a `ptr`
+\ whose pointee chain bottoms out at a nominal scalar or a closed non-linear
+\ layout family. A bare `ptr a`/`ptr n`, an open var/arg, a quotation, a linear
+\ value, a hidden field, and any trailing token all reject. LAYOUT-BUFFER keeps
+\ its own narrower CHECKER-LAYOUT-INFO gate unchanged, so the two capabilities
+\ stay distinct. Width is CELL-uniform (1) for nominal scalars and typed
+\ pointers, and the registry width for a layout family.
+: STORAGE-PTR-POINTEE-OK? ( n -- bool )   \ resolved pointee admissible for a stored typed pointer
+   dup NOM-SCALAR? IF drop RES-TRUE EXIT THEN
+   dup LAYOUT-PARAM? IF
+      dup LAYOUT-MAYBE-LINEAR? IF drop RES-FALSE EXIT THEN
+      LAYOUT-ARGS-OPEN? 0= EXIT THEN
+   dup TAG T-PTR = IF PTR>INNER T-RES RECURSE EXIT THEN
+   drop RES-FALSE ;
+: STORAGE-TYPED-PTR? ( n -- bool )   \ resolved term is a closed typed pointer
+   dup TAG T-PTR <> IF drop RES-FALSE EXIT THEN
+   PTR>INNER T-RES STORAGE-PTR-POINTEE-OK? ;
+: CHECKER-STORAGE-INFO ( ptr u8 n -- n bool ) {: a:ptr u:n :}
+   NEW
+   SGBAD-CLEAR
+   PKRESET NMAP-RESET ROWMAP-RESET FAM-RESET
+   a SB!  u SL !  0 SI !
+   NEXT-SIG-TOK dup 0= IF 2drop 0 RES-FALSE EXIT THEN
+   SIG-TYPE T-RES LBI-T !
+   NEXT-SIG-TOK dup 0 <> LBI-BAD ! 2drop
+   SGBAD @ 0 <> LBI-BAD @ 0 <> or IF 0 RES-FALSE EXIT THEN
+   LBI-T @ HIDDEN-PARAM? IF 0 RES-FALSE EXIT THEN
+   LBI-T @ NOM-SCALAR? IF LBI-T @ T-WIDTH RES-TRUE EXIT THEN
+   LBI-T @ STORAGE-TYPED-PTR? IF LBI-T @ T-WIDTH RES-TRUE EXIT THEN
+   LBI-T @ LAYOUT-PARAM? 0= IF 0 RES-FALSE EXIT THEN
+   LBI-T @ LAYOUT-MEM-OK? 0= IF 0 RES-FALSE EXIT THEN
+   LBI-T @ T-WIDTH RES-TRUE ;
+
 : VREC-ROOM ( -- )
    VREC-ENSURE ;
 
@@ -4571,9 +4607,15 @@ PRIM: CHECKER-DEFSUM-NOEND PE-PTR-U8 PE-IN PE-N PE-IN PE-PTR-U8 PE-IN PE-N PE-IN
 PRIM: CHECKER-DEFENUM PE-PTR-U8 PE-IN PE-N PE-IN PE-PTR-U8 PE-IN PE-N PE-IN PRIM;
 PRIM: CHECKER-DEFPRODUCT PE-PTR-U8 PE-IN PE-N PE-IN PE-PTR-U8 PE-IN PE-N PE-IN PRIM;
 PRIM: CHECKER-LAYOUT-INFO PE-PTR-U8 PE-IN PE-N PE-IN  PE-N PE-OUT PE-N PE-OUT PE-F PE-OUT PRIM;
+PRIM: CHECKER-STORAGE-INFO PE-PTR-U8 PE-IN PE-N PE-IN  PE-N PE-OUT PE-F PE-OUT PRIM;
 PRIM: CHECKER-DEFLAYOUT-BUFFER
    PE-PTR-U8 PE-IN PE-N PE-IN  PE-PTR-U8 PE-IN PE-N PE-IN
    PE-PTR-U8 PE-IN PE-N PE-IN PRIM;
+PRIM: CHECKER-DEFTYPED-BUFFER
+   PE-PTR-U8 PE-IN PE-N PE-IN  PE-PTR-U8 PE-IN PE-N PE-IN
+   PE-PTR-U8 PE-IN PE-N PE-IN PRIM;
+PRIM: CHECKER-DEFTYPED-VARIABLE
+   PE-PTR-U8 PE-IN PE-N PE-IN  PE-PTR-U8 PE-IN PE-N PE-IN PRIM;
 PRIM: CHECKER-LBUF-NAME-GUARD PE-PTR-U8 PE-IN PE-N PE-IN PRIM;
 PRIM: CHECKER-DEFINED? PE-PTR-U8 PE-IN PE-N PE-IN  PE-F PE-OUT PRIM;
 \ TRUST is the public top-level effect-declaration word ( name$ effect$ -- ).
@@ -5169,6 +5211,35 @@ variable LBUF-INFO-W
    LBUF-COUNT-N @ LBUF-INFO-W @ CHECKER-LBUF-EXTENT? 0= IF E-CHECKER-LAYOUT-BUFFER throw THEN
    type typeu CHECKER-LBUF-SIG$ name nameu CHECKER-USIG-CERT-ADD ;
 
+\ Checker-side registration for the TYPED-BUFFER / TYPED-VARIABLE gate path
+\ (verify-source RECORD-TYPED-*). Mirrors CHECKER-DEFLAYOUT-BUFFER but gates on
+\ the broader CHECKER-STORAGE-INFO admissibility (typed pointers included) and
+\ publishes the convenience accessor's usig. A TYPED-BUFFER accessor is
+\ `( n -- ptr <type> )`; a TYPED-VARIABLE accessor is `( -- ptr <type> )`.
+: CHECKER-STORAGE-VAR-SIG$ ( ptr u8 n -- ptr u8 n ) {: type:ptr typeu:n :}
+   0 LBUF-SIG-U !
+   s" -- ptr " LBUF-SIG-APP
+   type typeu LBUF-SIG-APP
+   LBUF-SIG-BUF LBUF-SIG-U @ ;
+
+: CHECKER-DEFTYPED-BUFFER
+   ( ptr u8 n ptr u8 n ptr u8 n -- )
+   {: type:ptr typeu:n count:ptr countu:n name:ptr nameu:n :}
+   name nameu CHECKER-LBUF-NAME-GUARD
+   type typeu CHECKER-STORAGE-INFO 0= IF drop E-CHECKER-LAYOUT-BUFFER throw THEN
+   LBUF-INFO-W !
+   count countu CHECKER-LBUF-COUNT? 0= IF E-CHECKER-LAYOUT-BUFFER throw THEN
+   LBUF-COUNT-N @ LBUF-INFO-W @ CHECKER-LBUF-EXTENT? 0= IF E-CHECKER-LAYOUT-BUFFER throw THEN
+   type typeu CHECKER-LBUF-SIG$ name nameu CHECKER-USIG-CERT-ADD ;
+
+: CHECKER-DEFTYPED-VARIABLE
+   ( ptr u8 n ptr u8 n -- )
+   {: type:ptr typeu:n name:ptr nameu:n :}
+   name nameu CHECKER-LBUF-NAME-GUARD
+   type typeu CHECKER-STORAGE-INFO 0= IF drop E-CHECKER-LAYOUT-BUFFER throw THEN
+   drop                                    \ single cell: extent is one slot, width unused here
+   type typeu CHECKER-STORAGE-VAR-SIG$ name nameu CHECKER-USIG-CERT-ADD ;
+
 : CHECKER-USIG-CERT-CURRENT ( ptr u8 n -- ) {: na:ptr nu:n :}
    na nu CHECKER-REC-NAME!
    CHECKER-CERT-DUP? IF CHECKER-DUP-DEFINITION THEN
@@ -5492,6 +5563,8 @@ variable CURSYM
    a u s" evaluate" CORE-STR=CI IF RES-TRUE EXIT THEN
    a u s" trust" CORE-STR=CI IF RES-TRUE EXIT THEN
    a u s" layout-buffer" CORE-STR=CI IF RES-TRUE EXIT THEN
+   a u s" typed-buffer" CORE-STR=CI IF RES-TRUE EXIT THEN
+   a u s" typed-variable" CORE-STR=CI IF RES-TRUE EXIT THEN
    a u s" typefamily" CORE-STR=CI IF RES-TRUE EXIT THEN
    a u s" sumtype" CORE-STR=CI IF RES-TRUE EXIT THEN
    a u s" enum" CORE-STR=CI IF RES-TRUE EXIT THEN
@@ -5560,7 +5633,9 @@ variable UNSAFE-SYM-N
    s" enum"          UNSAFE-NAME-ADD
    s" product"       UNSAFE-NAME-ADD
    s" typefamily"    UNSAFE-NAME-ADD
-   s" layout-buffer" UNSAFE-NAME-ADD ;
+   s" layout-buffer" UNSAFE-NAME-ADD
+   s" typed-buffer"  UNSAFE-NAME-ADD
+   s" typed-variable" UNSAFE-NAME-ADD ;
 
 \ --- EXPORT: alias an existing word's checked effect under its own tail -----
 \ (dot habu-compiler-pkg-re-688212c1). `EXPORT NAME` in an open package section

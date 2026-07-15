@@ -425,6 +425,10 @@ TEST:SUITE pointer-storage
    test/pointer-storage-test.f
 TEST:;SUITE
 
+TEST:SUITE typed-storage
+   test/typed-storage-test.f
+TEST:;SUITE
+
 TEST:SUITE underdepth-gate
    test/underdepth-gate.f
 TEST:;SUITE

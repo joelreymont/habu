@@ -514,6 +514,37 @@ TRUSTED: SIG-RAW-MODE! ( n -- ) SIG-RAW-DEFINER! ;
    NEXT-SCAN {: type:ptr typeu:n :}
    type typeu count countu name nameu CHECKER-DEFLAYOUT-BUFFER ;
 
+\ TYPED-BUFFER / TYPED-VARIABLE gate registration (dot habu-nominal-storage-typed).
+\ A stored type may be `ptr* base`, so the type is a contiguous multi-token span
+\ from the scanner buffer, not one token.
+variable STG-A
+variable STG-U
+variable STG-START
+
+: STG-PTR-TOK? ( ptr u8 n -- bool )
+   s" ptr" CORE-STR= ;
+
+: SCAN-STORAGE-TYPE ( -- ptr u8 n )
+   NEXT-SCAN STG-U !  STG-A !
+   STG-U @ 0= IF s" verify-source: missing storage type" 74 die THEN
+   STG-A @ STG-START !
+   BEGIN STG-A @ STG-U @ STG-PTR-TOK? WHILE
+      NEXT-SCAN STG-U !  STG-A !
+      STG-U @ 0= IF s" verify-source: missing storage pointee" 74 die THEN
+   REPEAT
+   STG-START @  STG-A @ STG-U @ + STG-START @ - ;
+
+: RECORD-TYPED-BUFFER ( -- )
+   TOP-PREV-A @ TOP-PREV-U @ {: count:ptr countu:n :}
+   NEXT-SCAN {: name:ptr nameu:n :}
+   SCAN-STORAGE-TYPE {: type:ptr typeu:n :}
+   type typeu count countu name nameu CHECKER-DEFTYPED-BUFFER ;
+
+: RECORD-TYPED-VARIABLE ( -- )
+   NEXT-SCAN {: name:ptr nameu:n :}
+   SCAN-STORAGE-TYPE {: type:ptr typeu:n :}
+   type typeu name nameu CHECKER-DEFTYPED-VARIABLE ;
+
 : RECORD-VALUE-RECORD ( -- )
    NEXT-SCAN {: name:ptr nameu:n :}
    nameu 0= IF s" verify-source: missing value-record name" 74 die THEN
@@ -613,6 +644,8 @@ TRUSTED: SIG-RAW-MODE! ( n -- ) SIG-RAW-DEFINER! ;
    a u s" enum" STR=CI IF RECORD-ENUM 0 0= EXIT THEN
    a u s" product" STR=CI IF RECORD-PRODUCT 0 0= EXIT THEN
    a u s" LAYOUT-BUFFER" STR=CI IF RECORD-LAYOUT-BUFFER 0 0= EXIT THEN
+   a u s" TYPED-BUFFER" STR=CI IF RECORD-TYPED-BUFFER 0 0= EXIT THEN
+   a u s" TYPED-VARIABLE" STR=CI IF RECORD-TYPED-VARIABLE 0 0= EXIT THEN
    \ `constant` bakes one physical cell, so its trust is the one-cell `-- a`
    \ model — identical to native C-CONSTANT, all-errors (which funnels here),
    \ and public-signatures. This is the PERMANENT contract (TFAM 12 verdict
