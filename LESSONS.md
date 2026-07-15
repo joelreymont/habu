@@ -4492,3 +4492,17 @@ unchanged (148855). Keys for milestone 2:
   The merge protocol is now: positive ancestry check (`[ -n "$(jj log -r
   'origin-tip & ::candidate' ...)" ]`) BEFORE moving bookmarks, and treat the
   word "sideways" in push output as an automatic stop-the-line.
+- A whole-model device corruption probe must be MAGNITUDE-INDEPENDENT. A first
+  cut used an activation SWAP (gelu-epilogue cubins vs a relu-epilogue model,
+  same 4x8 MLP) and it VACUOUSLY PASSED on the Orin: the LINEAR layer amplifies
+  the synthetic inputs to large-positive pre-activations where gelu ~= relu to
+  well inside the composed f32 tol, so the "wrong pipeline" matched the golden.
+  Any smooth-vs-relu swap converges to identity for large-positive activations;
+  don't probe a post-LINEAR region with an activation swap (ablate-golden's
+  gelu-vs-relu works because it hits the RAW 4x8 input, not an amplified one).
+  Use a magnitude-independent op (ablate-ptx.f PTX mutation: operand-base
+  redirect %rd1->%rd2 / drop the per-lane index add) on a matmul region - it
+  diverges regardless of sign/scale and drove the whole-model golden to V-FAIL.
+  Corollary: keep the COMMITTED e2e proof the clean PASS, and demonstrate the
+  corruption in a temp copy (a baked probe that fails-to-fail turns the
+  committed proof red on device).
