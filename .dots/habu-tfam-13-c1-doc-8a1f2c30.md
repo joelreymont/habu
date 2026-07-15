@@ -1,9 +1,9 @@
 ---
 title: "TFAM 13 C1: document ptr-dup vs n-reserved declaration divergence"
-status: open
+status: active
 priority: 4
 issue-type: task
-created-at: "2026-07-10T12:00:00.000000+02:00"
+created-at: "\"2026-07-10T12:00:00.000000+02:00\""
 ---
 
 Destruction-review finding C1 from dot habu-tfaam-13-adt-5d3288f0 (S2 audit,
@@ -16,3 +16,5 @@ wrong. Document the divergence in docs/type-families.md §24 (or §1 name-gate
 prose): a reserved TYPE token that is also a live family name reports the dup,
 and a reserved concrete-cell token reports reserved-name. Low priority; purely
 a doc clarification, no code change.
+
+Claim: agent=tdecldoc workspace=.jj-ws/fable-tdecldoc
