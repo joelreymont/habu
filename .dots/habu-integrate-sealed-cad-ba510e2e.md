@@ -5,12 +5,16 @@ priority: 2
 issue-type: task
 created-at: "2026-07-13T14:14:22.925742+02:00"
 blocks:
+  - habu-add-str-buf-10dea848
+  - habu-migrate-lib-str-f521c0dc
+  - habu-migrate-maki-str-6e5cabd4
+  - habu-migrate-test-str-135a4c74
+  - habu-migrate-tool-str-e6ab0983
   - habu-seal-cad-num-36dbeec6
   - habu-migrate-core-maki-9e46089b
   - habu-migrate-lowering-maki-56492851
   - habu-migrate-training-maki-2b170ed2
   - habu-census-lower-shape-836287e4
-  - habu-census-legacy-str-b84390fe
 ---
 
 Full context: after all CAD-NUM owners and caller waves land, integrate the authority once without mixing consumer edits. Fix only src/habu/habu2.f, FILEMAP.md, TRUSTED.md, MODEL-CAD-V2-PLAN.md, STATUS.md, and tools/public-signatures-test.f: load sealed lib/cad-num.f, register owner/test files, audit mints/projections and public packages, remove obsolete legacy numeric/allocation entry exposure only after fresh censuses are empty. Acceptance: production V2 has no legacy global numeric cast or raw allocation boundary; the legacy-string census has added every resulting migration leaf to this dot before it closes; exact public signatures/trust/filemap/status, bootstrap/fixpoint, Maki/PTX, and full native gates green. Depends on core roles/arithmetic/seal, memory/string/vector/MIR owners, every caller wave, and both shape and legacy-string censuses.
