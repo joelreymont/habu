@@ -4393,6 +4393,8 @@ variable PE-EFF-ID
 : PE-F ( -- n ) CC-BOOL MK-CON ;
 : PE-R ( -- n ) CC-R MK-CON ;
 : PE-U8 ( -- n ) CC-U8 MK-CON ;
+: PE-FD ( -- n ) CC-FD MK-CON ;
+: PE-RC ( -- n ) CC-RC MK-CON ;
 : PE-PTR ( n -- n ) MK-PTR ;
 : PE-PTR-A ( -- n ) PE-A PE-PTR ;
 : PE-PTR-B ( -- n ) PE-B PE-PTR ;
@@ -4527,7 +4529,7 @@ PRIM: mkdir    PE-PTR-U8 PE-IN PE-N PE-IN  PE-N PE-OUT PRIM;
 PRIM: rmdir    PE-PTR-U8 PE-IN  PE-N PE-OUT PRIM;
 PRIM: stat64   PE-PTR-U8 PE-IN PE-PTR-U8 PE-IN  PE-N PE-OUT PRIM;
 PRIM: lstat64  PE-PTR-U8 PE-IN PE-PTR-U8 PE-IN  PE-N PE-OUT PRIM;
-PRIM: fstat64   PE-N PE-IN PE-PTR-U8 PE-IN  PE-N PE-OUT PRIM;
+PRIM: fstat64   PE-FD PE-IN PE-PTR-U8 PE-IN  PE-RC PE-OUT PRIM;
 PRIM: getdirentries64
    PE-N PE-IN PE-PTR-U8 PE-IN PE-N PE-IN PE-PTR-N PE-IN  PE-N PE-OUT PRIM;
 PRIM: pipe     PE-N PE-OUT PE-N PE-OUT PE-N PE-OUT PRIM;
@@ -4554,7 +4556,7 @@ PRIM-TRUSTED-ONLY!                       \ code injection: only a TRUSTED: bound
 PRIM: snap-rebase PE-N PE-IN PE-N PE-IN PE-N PE-IN PE-N PE-IN PE-N PE-IN PE-N PE-IN PRIM;
 PRIM: write         PE-N PE-IN PE-PTR-U8 PE-IN PE-N PE-IN  PE-N PE-OUT PRIM;
 PRIM: close         PE-N PE-IN PRIM;
-PRIM: close-rc      PE-N PE-IN  PE-N PE-OUT PRIM;
+PRIM: close-rc      PE-FD PE-IN  PE-RC PE-OUT PRIM;
 PRIM: epoch-seconds PE-N PE-OUT PRIM;
 PRIM: mono-ns       PE-N PE-OUT PRIM;
 PRIM: prof-on       PE-N PE-IN PRIM;

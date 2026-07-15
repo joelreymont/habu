@@ -1269,8 +1269,8 @@ public
    S\" s\" close\" ['] BCLOSE FPRIM-L   s\" close-rc\" ['] BCLOSERC FPRIM-L" BCG-MUST-HAVE
    s" src/core/checker.f" BCG-LOAD
    s" PRIM: open-nofollow-rd PE-PTR-U8 PE-IN  PE-N PE-OUT PRIM;" BCG-MUST-HAVE
-   s" PRIM: fstat64   PE-N PE-IN PE-PTR-U8 PE-IN  PE-N PE-OUT PRIM;" BCG-MUST-HAVE
-   s" PRIM: close-rc      PE-N PE-IN  PE-N PE-OUT PRIM;" BCG-MUST-HAVE ;
+   s" PRIM: fstat64   PE-FD PE-IN PE-PTR-U8 PE-IN  PE-RC PE-OUT PRIM;" BCG-MUST-HAVE
+   s" PRIM: close-rc      PE-FD PE-IN  PE-RC PE-OUT PRIM;" BCG-MUST-HAVE ;
 
 \ Fixed-VA region mmap failures at boot must NOT be silent (dot
 \ habu-diagnose-fixed-va-ed649528). A forced fixed-VA collision is not reliably

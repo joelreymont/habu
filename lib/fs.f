@@ -507,13 +507,13 @@ private
    open-nofollow-rd dup 0 < if drop E-FS-OPEN throw then >FD ;
 
 : FSTAT-FD ( fd ptr u8 -- rc )
-   swap FD>N swap fstat64 >RC ;
+   fstat64 ;
 
 : READ-FD ( fd ptr u8 n -- n )
    rot FD>N -rot read ;
 
 : CLOSE-FD ( fd -- rc )
-   FD>N close-rc >RC ;
+   close-rc ;
 
 : CHECK-BUF ( n -- ) {: cap:n :}
    cap 0 <= if E-FS-CAPACITY throw then ;
