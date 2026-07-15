@@ -14,8 +14,7 @@ require lib/adt/option.f
 -7400 constant E-DIFF-SYNTAX
 -7401 constant E-DIFF-FRAME-CAP
 -7402 constant E-DIFF-CAPTURE
--7403 constant E-DIFF-CAPTURE-STDERR
--7404 constant E-DIFF-CAPTURE-ID
+-7403 constant E-DIFF-CAPTURE-ID
 
 package DIFF
 public
@@ -79,6 +78,8 @@ $40 constant AT-C
 $61 constant A-C
 $66 constant F-C
 6 constant MODE-U
+40 constant COMMIT-ID-U
+$7FFFFFFFFFFFFFFF constant MAX-N
 
 1 LAYOUT-BUFFER ST-V state
 1 LAYOUT-BUFFER META-V meta
@@ -463,10 +464,16 @@ variable SCAN-NEW-U
    then
    false ;
 
+: OFFSET+ ( n n -- n ) {: a:n b:n :}
+   a 0 < b 0 < or if E-DIFF-SYNTAX throw then
+   a MAX-N b - > if E-DIFF-SYNTAX throw then
+   a b + ;
+
 : DIGIT-END ( ptr u8 n n -- n ) {: a:ptr u:n start:n :}
+   start 0 < start u > or if E-DIFF-SYNTAX throw then
    start begin dup u < while
       dup a + c@ STR-DIGIT? 0= if exit then
-      1+
+      1 OFFSET+
    repeat ;
 
 : PARSE-U ( ptr u8 n n n -- n ) {: a:ptr u:n start:n end:n :}
@@ -479,12 +486,12 @@ variable SCAN-NEW-U
 : RANGE ( ptr u8 n n n -- n n n ) {: a:ptr u:n at:n sign:n :}
    at u >= if E-DIFF-SYNTAX throw then
    a at + c@ sign <> if E-DIFF-SYNTAX throw then
-   at 1+ {: first:n :}
+   at 1 OFFSET+ {: first:n :}
    a u first DIGIT-END {: last:n :}
    a u first last PARSE-U {: start:n :}
    last u < if
       a last + c@ COMMA-C = if
-         last 1+ {: cf:n :}
+         last 1 OFFSET+ {: cf:n :}
          a u cf DIGIT-END {: cl:n :}
          a u cf cl PARSE-U {: count:n :}
          start count cl exit
@@ -494,7 +501,8 @@ variable SCAN-NEW-U
 
 : RANGE-VALID? ( n n -- bool ) {: start:n count:n :}
    count 0= if start 0 >= exit then
-   start 0 > ;
+   start 0 <= if false exit then
+   count 1- MAX-N start - <= ;
 
 : HUNK-PARSE ( ptr u8 n -- n ) {: a:ptr u:n :}
    a u s" @@ -" STARTS-WITH? 0= if E-DIFF-SYNTAX throw then
@@ -502,14 +510,14 @@ variable SCAN-NEW-U
    old-start old-count RANGE-VALID? 0= if E-DIFF-SYNTAX throw then
    at u >= if E-DIFF-SYNTAX throw then
    a at + c@ SPACE-C <> if E-DIFF-SYNTAX throw then
-   a u at 1+ PLUS-C RANGE {: new-start:n new-count:n tail:n :}
+   a u at 1 OFFSET+ PLUS-C RANGE {: new-start:n new-count:n tail:n :}
    new-start new-count RANGE-VALID? 0= if E-DIFF-SYNTAX throw then
-   tail 3 + u > if E-DIFF-SYNTAX throw then
+   tail 3 OFFSET+ u > if E-DIFF-SYNTAX throw then
    a tail + c@ SPACE-C <> if E-DIFF-SYNTAX throw then
-   a tail 1+ + c@ AT-C <> if E-DIFF-SYNTAX throw then
-   a tail 2 + + c@ AT-C <> if E-DIFF-SYNTAX throw then
-   tail 3 + u < if
-      a tail 3 + + c@ SPACE-C <> if E-DIFF-SYNTAX throw then
+   a tail 1 OFFSET+ + c@ AT-C <> if E-DIFF-SYNTAX throw then
+   a tail 2 OFFSET+ + c@ AT-C <> if E-DIFF-SYNTAX throw then
+   tail 3 OFFSET+ u < if
+      a tail 3 OFFSET+ + c@ SPACE-C <> if E-DIFF-SYNTAX throw then
    then
    old-count OLD-LEFT !
    new-count NEW-LEFT !
@@ -1206,13 +1214,16 @@ $0A constant LF-C
       ENDOF
    ;MATCH ;
 
-: RAW-FORM ( -- form bool )
-   SAW-HUNK @ if DIFF-FORM:TEXT true exit then
-   SAW-BINARY @ if DIFF-FORM:BINARY true exit then
-   SAW-EMPTY @ if DIFF-FORM:EMPTY false exit then
-   SAW-GITLINK @ if DIFF-FORM:GITLINK false exit then
-   REPLACED @ 0 <> INDEXED @ 0= and if DIFF-FORM:PURE false exit then
-   MODED @ 0 <> INDEXED @ 0= and if DIFF-FORM:MODE false exit then
+: RAW-MODE? ( -- bool )
+   MODED @ if true else false then ;
+
+: RAW-FORM ( -- form bool bool )
+   SAW-HUNK @ if DIFF-FORM:TEXT true RAW-MODE? exit then
+   SAW-BINARY @ if DIFF-FORM:BINARY true RAW-MODE? exit then
+   SAW-EMPTY @ if DIFF-FORM:EMPTY false RAW-MODE? exit then
+   SAW-GITLINK @ if DIFF-FORM:GITLINK false RAW-MODE? exit then
+   MODED @ 0 <> INDEXED @ 0= and if DIFF-FORM:MODE false true exit then
+   REPLACED @ 0 <> INDEXED @ 0= and if DIFF-FORM:PURE false false exit then
    E-DIFF-SYNTAX throw ;
 
 : RAW-BEGIN ( status bool ptr u8 n bool ptr u8 n ptr u8 n -- )
@@ -1287,7 +1298,10 @@ public
 : OBJECT-ID? ( ptr u8 n -- bool )
    HEX$? ;
 
-: VALIDATE-SECTION ( status bool ptr u8 n bool ptr u8 n ptr u8 n -- form bool )
+: COMMIT-ID? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   u COMMIT-ID-U = a u HEX$? and ;
+
+: VALIDATE-SECTION ( status bool ptr u8 n bool ptr u8 n ptr u8 n -- form bool bool )
    RAW-BEGIN
    begin RAW-I @ RAW-U @ < while
       RAW-STEP drop drop 2drop
@@ -1295,7 +1309,7 @@ public
    RAW-END
    RAW-FORM ;
 
-: SCAN-SECTION ( status bool ptr u8 n bool ptr u8 n bool bool ptr u8 n bool ptr u8 n ptr u8 n -- n form bool )
+: SCAN-SECTION ( status bool ptr u8 n bool ptr u8 n bool bool ptr u8 n bool ptr u8 n ptr u8 n -- n form bool bool )
    {: change:status old?:bool oa:ptr ou:n new?:bool na:ptr nu:n next?:bool next-old?:bool noa:ptr nou:n next-new?:bool nna:ptr nnu:n raw:ptr rawu:n :}
    next? SCAN-NEXT !
    next-old? noa nou next-new? nna nnu SCAN-NEXT!

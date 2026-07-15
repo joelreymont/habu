@@ -50,19 +50,21 @@ create LF-NAME 128 allot
 variable LF-NAME-U
 
 : FRAME-START ( -- )
-   FRAME LARGE-CAP 2 * s" 0123456789" s" abcdef0123" DIFF-WRITE:START ;
+   FRAME LARGE-CAP 2 *
+   s" 0123456789012345678901234567890123456789"
+   s" abcdef0123abcdef0123abcdef0123abcdef0123" DIFF-WRITE:START ;
 
 : FRAME-END ( -- ptr u8 n )
    DIFF-WRITE:FINISH ;
 
 : MODIFIED+ ( ptr u8 n ptr u8 n -- )
    {: path:ptr pathu:n raw:ptr rawu:n :}
-   DIFF-STATUS:MODIFIED DIFF-FORM:TEXT true
+   DIFF-STATUS:MODIFIED DIFF-FORM:TEXT true false
    true path pathu true path pathu raw rawu DIFF-WRITE:SECTION ;
 
 : PURE-RENAME+ ( ptr u8 n ptr u8 n ptr u8 n -- )
    {: old:ptr oldu:n new:ptr newu:n raw:ptr rawu:n :}
-   DIFF-STATUS:RENAMED DIFF-FORM:PURE false
+   DIFF-STATUS:RENAMED DIFF-FORM:PURE false false
    true old oldu true new newu raw rawu DIFF-WRITE:SECTION ;
 
 : COPY! ( ptr u8 n ptr u8 ptr n -- ) {: a:ptr u:n dst:ptr lenp:ptr :}

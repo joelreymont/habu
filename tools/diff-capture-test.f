@@ -13,6 +13,99 @@ require lib/process-cwd.f
 require tools/diff-capture-core.f
 require tools/lint/diff-frame.f
 
+package DIFF-CAPTURE
+private
+
+variable TEST-OPEN-I
+variable TEST-OPEN-FAIL-I
+variable TEST-WARN-N
+variable TEST-BARRIER-N
+
+: TEST-OPEN-FAULT ( ptr u8 n -- fd )
+   TEST-OPEN-I @ 1+ TEST-OPEN-I !
+   TEST-OPEN-I @ TEST-OPEN-FAIL-I @ = if E-FS-OPEN throw then
+   COMMAND-OPEN-DEFAULT ;
+
+: TEST-SPAWN-FAULT ( -- )
+   E-PROC-SPAWN throw ;
+
+: TEST-SPAWN-WARN ( -- )
+   SPAWN
+   ERR-FD @ s" hook-stderr" write 11 <> if E-FS-IO throw then
+   TEST-WARN-N @ 1+ TEST-WARN-N ! ;
+
+: TEST-CLEAN-FAULT ( -- )
+   E-FS-DIR throw ;
+
+: TEST-PUBLISH-FAULT ( -- )
+   E-FS-IO throw ;
+
+: TEST-BARRIER ( -- )
+   TEST-BARRIER-N @ 1+ TEST-BARRIER-N !
+   ARGS-RESET
+   REPO-ARG
+   s" new" ARG s" -m" ARG s" concurrent operation" ARG
+   construct command-phase snapshot OUT-PATH$ RUN-JJ-COMMAND ;
+
+public
+
+: TEST-OPEN-ON ( n -- )
+   TEST-OPEN-FAIL-I !
+   0 TEST-OPEN-I !
+   [: TEST-OPEN-FAULT ;] is COMMAND-OPEN ;
+
+: TEST-SPAWN-FAULT-ON ( -- )
+   [: TEST-SPAWN-FAULT ;] is COMMAND-SPAWN ;
+
+: TEST-SPAWN-WARN-ON ( -- )
+   0 TEST-WARN-N !
+   [: TEST-SPAWN-WARN ;] is COMMAND-SPAWN ;
+
+: TEST-CLEAN-FAULT-ON ( -- )
+   [: TEST-CLEAN-FAULT ;] is CAPTURE-CLEAN ;
+
+: TEST-PUBLISH-FAULT-ON ( -- )
+   [: TEST-PUBLISH-FAULT ;] is CAPTURE-PUBLISH ;
+
+: TEST-BARRIER-ON ( -- )
+   0 TEST-BARRIER-N !
+   [: TEST-BARRIER ;] is SNAPSHOT-BARRIER ;
+
+: TEST-SEAMS-OFF ( -- )
+   RESET-COMMAND-OPEN
+   RESET-COMMAND-SPAWN
+   RESET-CAPTURE-CLEAN
+   RESET-CAPTURE-PUBLISH
+   RESET-SNAPSHOT-BARRIER ;
+
+: TEST-FDS-CLOSED? ( -- bool )
+   OUT-FD @ -1 = ERR-FD @ -1 = and ;
+
+: TEST-WARN-COUNT ( -- n )
+   TEST-WARN-N @ ;
+
+: TEST-BARRIER-COUNT ( -- n )
+   TEST-BARRIER-N @ ;
+
+: TEST-ROOT-EXISTS? ( -- bool )
+   ROOT$ EXISTS? ;
+
+: TEST-FORCE-CLEAN ( -- )
+   CAPTURE-CLEAN-DEFAULT ;
+
+: TEST-PARSE-ROW ( ptr u8 n -- )
+   0 PARSE-ROW ;
+
+: TEST-CAPTURE-OUTCOME# ( -- n )
+   LAST-CAPTURE-AT @ MATCH capture-outcome
+      ok              OF 0 ENDOF
+      primary-failed  OF 1 ENDOF
+      cleanup-failed  OF 2 ENDOF
+      combined-failed OF 3 ENDOF
+   ;MATCH ;
+
+;package
+
 package DIFF-CAPTURE-TEST
 private
 
@@ -42,6 +135,7 @@ variable NESTED-U
 create OUT CAP allot
 create ERR CAP allot
 create ART CAP allot
+variable ART-U
 create JJ-BUF FS-PATH-CAP allot
 PTR-VARIABLE JJ-A
 variable JJ-U
@@ -50,8 +144,14 @@ PTR-VARIABLE GIT-A
 variable GIT-U
 variable LAST-SECTION
 variable SAW-PURE
-variable SAW-CHANGED-ADD
-variable SAW-CHANGED-REMOVE
+variable SAW-CHANGED-RENAME
+variable SAW-PURE-COPY
+variable SAW-CHANGED-COPY
+variable SAW-RENAME-MODE
+variable SAW-COPY-MODE
+variable SAW-RENAME-BODY-MODE
+variable SAW-COPY-BODY-MODE
+variable SAW-COPY-SOURCE
 variable SAW-WEIRD
 variable SAW-BINARY
 variable SAW-MODE
@@ -242,9 +342,62 @@ create NEW-BIN $41 c, 0 c, $43 c,
    ROOT$ WEIRD-DIR WEIRD-DIR-U @ PATH-A JOIN-PATH PATH-A-U !
    PATH-A$ MAKE-DIRS ;
 
+: BASE-RENAME$ ( -- ptr u8 n )
+   SB-RESET
+   s" rename anchor 01 alpha" SB-APPEND LF-C SB-APPEND-C
+   s" rename anchor 02 beta" SB-APPEND LF-C SB-APPEND-C
+   s" rename anchor 03 gamma" SB-APPEND LF-C SB-APPEND-C
+   s" rename anchor 04 delta" SB-APPEND LF-C SB-APPEND-C
+   s" rename anchor 05 epsilon" SB-APPEND LF-C SB-APPEND-C
+   s" rename anchor 06 zeta" SB-APPEND LF-C SB-APPEND-C
+   SB$ ;
+
+: CHANGED-RENAME$ ( -- ptr u8 n )
+   SB-RESET
+   s" rename anchor 01 alpha" SB-APPEND LF-C SB-APPEND-C
+   s" rename anchor 02 beta" SB-APPEND LF-C SB-APPEND-C
+   s" rename anchor 03 changed" SB-APPEND LF-C SB-APPEND-C
+   s" rename anchor 04 delta" SB-APPEND LF-C SB-APPEND-C
+   s" rename anchor 05 epsilon" SB-APPEND LF-C SB-APPEND-C
+   s" rename anchor 06 zeta" SB-APPEND LF-C SB-APPEND-C
+   SB$ ;
+
+: BASE-COPY$ ( -- ptr u8 n )
+   SB-RESET
+   s" copy anchor 01 alpha" SB-APPEND LF-C SB-APPEND-C
+   s" copy anchor 02 beta" SB-APPEND LF-C SB-APPEND-C
+   s" copy anchor 03 gamma" SB-APPEND LF-C SB-APPEND-C
+   s" copy anchor 04 delta" SB-APPEND LF-C SB-APPEND-C
+   s" copy anchor 05 epsilon" SB-APPEND LF-C SB-APPEND-C
+   s" copy anchor 06 zeta" SB-APPEND LF-C SB-APPEND-C
+   SB$ ;
+
+: CHANGED-COPY$ ( -- ptr u8 n )
+   SB-RESET
+   s" copy anchor 01 alpha" SB-APPEND LF-C SB-APPEND-C
+   s" copy anchor 02 beta" SB-APPEND LF-C SB-APPEND-C
+   s" copy anchor 03 target" SB-APPEND LF-C SB-APPEND-C
+   s" copy anchor 04 delta" SB-APPEND LF-C SB-APPEND-C
+   s" copy anchor 05 epsilon" SB-APPEND LF-C SB-APPEND-C
+   s" copy anchor 06 zeta" SB-APPEND LF-C SB-APPEND-C
+   SB$ ;
+
+: CHANGED-SOURCE$ ( -- ptr u8 n )
+   SB-RESET
+   s" copy anchor 01 source" SB-APPEND LF-C SB-APPEND-C
+   s" copy anchor 02 beta" SB-APPEND LF-C SB-APPEND-C
+   s" copy anchor 03 gamma" SB-APPEND LF-C SB-APPEND-C
+   s" copy anchor 04 delta" SB-APPEND LF-C SB-APPEND-C
+   s" copy anchor 05 epsilon" SB-APPEND LF-C SB-APPEND-C
+   s" copy anchor 06 zeta" SB-APPEND LF-C SB-APPEND-C
+   SB$ ;
+
 : BASE-FILES ( -- )
    s" pure-old.f" s" unchanged" WRITE-REL
-   s" changed-old.f" s" many repeated words preserve rename identity alpha" WRITE-REL
+   s" changed-old.f" BASE-RENAME$ WRITE-REL
+   s" copy-source.f" BASE-COPY$ WRITE-REL
+   s" exec-old.f" s" rename and mode" WRITE-REL
+   s" mix-old.f" BASE-RENAME$ WRITE-REL
    s" binary.f" OLD-BIN 3 WRITE-REL
    s" mode.f" s" executable later" WRITE-REL
    s" removed.f" s" removed" WRITE-REL
@@ -253,7 +406,19 @@ create NEW-BIN $41 c, 0 c, $43 c,
 : CHANGE-FILES ( -- )
    s" pure-old.f" s" pure-new.f" RENAME-REL
    s" changed-old.f" s" changed-new.f" RENAME-REL
-   s" changed-new.f" s" many repeated words preserve rename identity omega" WRITE-REL
+   s" changed-new.f" CHANGED-RENAME$ WRITE-REL
+   s" copy-pure.f" BASE-COPY$ WRITE-REL
+   s" copy-changed.f" CHANGED-COPY$ WRITE-REL
+   s" copy-mode.f" BASE-COPY$ WRITE-REL
+   s" copy-mode.f" JJ-CHMOD-X
+   s" copy-body-mode.f" CHANGED-COPY$ WRITE-REL
+   s" copy-body-mode.f" JJ-CHMOD-X
+   s" copy-source.f" CHANGED-SOURCE$ WRITE-REL
+   s" exec-old.f" s" exec-new.f" RENAME-REL
+   s" exec-new.f" JJ-CHMOD-X
+   s" mix-old.f" s" mix-new.f" RENAME-REL
+   s" mix-new.f" CHANGED-RENAME$ WRITE-REL
+   s" mix-new.f" JJ-CHMOD-X
    s" binary.f" NEW-BIN 3 WRITE-REL
    s" mode.f" JJ-CHMOD-X
    s" empty-added.f" s" " WRITE-REL
@@ -293,18 +458,64 @@ create NEW-BIN $41 c, 0 c, $43 c,
    s" pure-new.f" NEW= TTRUE
    true SAW-PURE ! ;
 
-: CHECK-CHANGED-ADD ( -- )
-   DIFF:SECTION-STATUS STATUS# 1 T=
+: CHECK-CHANGED-RENAME ( -- )
+   DIFF:SECTION-STATUS STATUS# 3 T=
    DIFF:SECTION-FORM FORM# 0 T=
    DIFF:SECTION-BODY? TTRUE
-   DIFF:SECTION-OLD? TFALSE
-   true SAW-CHANGED-ADD ! ;
+   s" changed-old.f" OLD= TTRUE
+   true SAW-CHANGED-RENAME ! ;
 
-: CHECK-CHANGED-REMOVE ( -- )
-   DIFF:SECTION-STATUS STATUS# 2 T=
+: CHECK-PURE-COPY ( -- )
+   DIFF:SECTION-STATUS STATUS# 4 T=
+   DIFF:SECTION-FORM FORM# 4 T=
+   DIFF:SECTION-BODY? TFALSE
+   s" copy-source.f" OLD= TTRUE
+   true SAW-PURE-COPY ! ;
+
+: CHECK-CHANGED-COPY ( -- )
+   DIFF:SECTION-STATUS STATUS# 4 T=
    DIFF:SECTION-FORM FORM# 0 T=
-   DIFF:SECTION-NEW? TFALSE
-   true SAW-CHANGED-REMOVE ! ;
+   DIFF:SECTION-BODY? TTRUE
+   s" copy-source.f" OLD= TTRUE
+   true SAW-CHANGED-COPY ! ;
+
+: CHECK-RENAME-MODE ( -- )
+   DIFF:SECTION-STATUS STATUS# 3 T=
+   DIFF:SECTION-FORM FORM# 2 T=
+   DIFF:SECTION-BODY? TFALSE
+   DIFF:SECTION-MODE? TTRUE
+   s" exec-old.f" OLD= TTRUE
+   true SAW-RENAME-MODE ! ;
+
+: CHECK-COPY-MODE ( -- )
+   DIFF:SECTION-STATUS STATUS# 4 T=
+   DIFF:SECTION-FORM FORM# 2 T=
+   DIFF:SECTION-BODY? TFALSE
+   DIFF:SECTION-MODE? TTRUE
+   s" copy-source.f" OLD= TTRUE
+   true SAW-COPY-MODE ! ;
+
+: CHECK-RENAME-BODY-MODE ( -- )
+   DIFF:SECTION-STATUS STATUS# 3 T=
+   DIFF:SECTION-FORM FORM# 0 T=
+   DIFF:SECTION-BODY? TTRUE
+   DIFF:SECTION-MODE? TTRUE
+   s" mix-old.f" OLD= TTRUE
+   true SAW-RENAME-BODY-MODE ! ;
+
+: CHECK-COPY-BODY-MODE ( -- )
+   DIFF:SECTION-STATUS STATUS# 4 T=
+   DIFF:SECTION-FORM FORM# 0 T=
+   DIFF:SECTION-BODY? TTRUE
+   DIFF:SECTION-MODE? TTRUE
+   s" copy-source.f" OLD= TTRUE
+   true SAW-COPY-BODY-MODE ! ;
+
+: CHECK-COPY-SOURCE ( -- )
+   DIFF:SECTION-STATUS STATUS# 0 T=
+   DIFF:SECTION-FORM FORM# 0 T=
+   DIFF:SECTION-BODY? TTRUE
+   true SAW-COPY-SOURCE ! ;
 
 : CHECK-WEIRD ( -- )
    DIFF:SECTION-STATUS STATUS# 0 T=
@@ -320,6 +531,7 @@ create NEW-BIN $41 c, 0 c, $43 c,
 : CHECK-MODE ( -- )
    DIFF:SECTION-FORM FORM# 2 T=
    DIFF:SECTION-BODY? TFALSE
+   DIFF:SECTION-MODE? TTRUE
    true SAW-MODE ! ;
 
 : CHECK-EMPTY ( -- )
@@ -347,8 +559,14 @@ create NEW-BIN $41 c, 0 c, $43 c,
 
 : CHECK-SECTION ( -- )
    s" pure-new.f" NEW= if CHECK-PURE exit then
-   s" changed-new.f" NEW= if CHECK-CHANGED-ADD exit then
-   s" changed-old.f" OLD= if CHECK-CHANGED-REMOVE exit then
+   s" changed-new.f" NEW= if CHECK-CHANGED-RENAME exit then
+   s" copy-pure.f" NEW= if CHECK-PURE-COPY exit then
+   s" copy-changed.f" NEW= if CHECK-CHANGED-COPY exit then
+   s" exec-new.f" NEW= if CHECK-RENAME-MODE exit then
+   s" copy-mode.f" NEW= if CHECK-COPY-MODE exit then
+   s" mix-new.f" NEW= if CHECK-RENAME-BODY-MODE exit then
+   s" copy-body-mode.f" NEW= if CHECK-COPY-BODY-MODE exit then
+   s" copy-source.f" NEW= if CHECK-COPY-SOURCE exit then
    WEIRD$ NEW= if CHECK-WEIRD exit then
    s" binary.f" NEW= if CHECK-BINARY exit then
    s" mode.f" NEW= if CHECK-MODE exit then
@@ -371,16 +589,23 @@ create NEW-BIN $41 c, 0 c, $43 c,
 : READ-ARTIFACT ( -- )
    ART-PATH$ FILE-SIZE {: u:n :}
    u CAP <= TTRUE
+   u ART-U !
    ART-PATH$ ART u READ-ALL u T=
    ART u DIFF:OPEN
    DIFF:FROM$ nip 40 T=
    DIFF:TO$ nip 40 T=
-   DIFF:SECTION-COUNT 10 T=
+   DIFF:SECTION-COUNT 16 T=
    -1 LAST-SECTION !
    begin STEP? while repeat
    SAW-PURE @ TTRUE
-   SAW-CHANGED-ADD @ TTRUE
-   SAW-CHANGED-REMOVE @ TTRUE
+   SAW-CHANGED-RENAME @ TTRUE
+   SAW-PURE-COPY @ TTRUE
+   SAW-CHANGED-COPY @ TTRUE
+   SAW-RENAME-MODE @ TTRUE
+   SAW-COPY-MODE @ TTRUE
+   SAW-RENAME-BODY-MODE @ TTRUE
+   SAW-COPY-BODY-MODE @ TTRUE
+   SAW-COPY-SOURCE @ TTRUE
    SAW-WEIRD @ TTRUE
    SAW-BINARY @ TTRUE
    SAW-MODE @ TTRUE
@@ -389,12 +614,174 @@ create NEW-BIN $41 c, 0 c, $43 c,
    SAW-GITLINK @ TTRUE
    SAW-MODULES @ TTRUE ;
 
+: SEED-VALID-BAD ( -- )
+   BAD-PATH$ ART ART-U @ WRITE-ALL ;
+
+: BAD-UNCHANGED ( -- )
+   BAD-PATH$ FILE-SIZE ART-U @ T=
+   BAD-PATH$ OUT CAP READ-ALL {: u:n :}
+   OUT u ART ART-U @ T$= ;
+
 : INVALID-CAPTURE ( -- )
    ROOT$ BAD-PATH$ s" no-such-revision" s" @-" DIFF-CAPTURE:RUN-IN ;
 
+: VALID-CAPTURE ( -- )
+   ROOT$ ART-PATH$ s" @--" s" @-" DIFF-CAPTURE:RUN-IN ;
+
+: VALID-BAD-CAPTURE ( -- )
+   ROOT$ BAD-PATH$ s" @--" s" @-" DIFF-CAPTURE:RUN-IN ;
+
+: CAPTURE-CHECK ( -- )
+   [: VALID-CAPTURE ;] catch {: code:n :}
+   code 0= if exit then
+   DIFF-CAPTURE:REPORT$ type cr
+   code throw ;
+
+: RESTORE-SEAMS ( n -- ) {: code:n :}
+   DIFF-CAPTURE:TEST-SEAMS-OFF
+   code 0<> if code throw then ;
+
+: HOOKED-CAPTURE ( -- )
+   DIFF-CAPTURE:TEST-SPAWN-WARN-ON
+   DIFF-CAPTURE:TEST-BARRIER-ON
+   [: CAPTURE-CHECK ;] catch RESTORE-SEAMS ;
+
+: OPEN-FIRST-FAULT ( -- )
+   1 DIFF-CAPTURE:TEST-OPEN-ON
+   [: VALID-BAD-CAPTURE ;] catch RESTORE-SEAMS ;
+
+: OPEN-SECOND-FAULT ( -- )
+   2 DIFF-CAPTURE:TEST-OPEN-ON
+   [: VALID-BAD-CAPTURE ;] catch RESTORE-SEAMS ;
+
+: SPAWN-FAULT ( -- )
+   DIFF-CAPTURE:TEST-SPAWN-FAULT-ON
+   [: VALID-BAD-CAPTURE ;] catch RESTORE-SEAMS ;
+
+: CLEAN-FAULT ( -- )
+   DIFF-CAPTURE:TEST-CLEAN-FAULT-ON
+   [: VALID-BAD-CAPTURE ;] catch RESTORE-SEAMS ;
+
+: PRIMARY-CLEAN-FAULT ( -- )
+   1 DIFF-CAPTURE:TEST-OPEN-ON
+   DIFF-CAPTURE:TEST-CLEAN-FAULT-ON
+   [: VALID-BAD-CAPTURE ;] catch RESTORE-SEAMS ;
+
+: PUBLISH-FAULT ( -- )
+   DIFF-CAPTURE:TEST-PUBLISH-FAULT-ON
+   [: VALID-BAD-CAPTURE ;] catch RESTORE-SEAMS ;
+
+: CHECK-FAULT-REPORT ( n ptr u8 n -- ) {: code:n text:ptr textu:n :}
+   DIFF-CAPTURE:LAST-CODE code T=
+   DIFF-CAPTURE:LAST-RC 0 T=
+   DIFF-CAPTURE:REPORT$ JSON-PARSE {: root:n :}
+   root JSON-KIND J-OBJ T=
+   root s" phase" JSON-GET JSON-STRING$ s" snapshot" T$=
+   root s" outcome" JSON-GET JSON-STRING$ s" fault" T$=
+   root s" code" JSON-GET JSON-NUMBER$ text textu T$=
+   root s" argv" JSON-GET dup JSON-KIND J-ARR T=
+   JSON-COUNT 1 > TTRUE ;
+
+: CHECK-CAPTURE-RESULT ( n n n -- )
+   {: primary:n cleanup:n outcome:n :}
+   DIFF-CAPTURE:TEST-CAPTURE-OUTCOME# outcome T=
+   DIFF-CAPTURE:LAST-PRIMARY primary T=
+   DIFF-CAPTURE:LAST-CLEANUP cleanup T= ;
+
+: CHECK-COMBINED-REPORT ( -- )
+   DIFF-CAPTURE:REPORT$ JSON-PARSE {: root:n :}
+   root s" capture_outcome" JSON-GET JSON-STRING$ s" combined-failed" T$=
+   root s" primary_code" JSON-GET JSON-NUMBER$ s" -2102" T$=
+   root s" cleanup_code" JSON-GET JSON-NUMBER$ s" -2103" T$= ;
+
+: CHECK-FAULT-CLEAN ( n -- ) {: primary:n :}
+   BAD-UNCHANGED
+   primary 0 1 CHECK-CAPTURE-RESULT
+   DIFF-CAPTURE:TEST-FDS-CLOSED? TTRUE ;
+
+: TEST-COMMAND-FAULTS ( -- )
+   SEED-VALID-BAD
+   [: OPEN-FIRST-FAULT ;] E-FS-OPEN TTHROWSQ
+   E-FS-OPEN s" -2102" CHECK-FAULT-REPORT
+   E-FS-OPEN CHECK-FAULT-CLEAN
+   SEED-VALID-BAD
+   [: OPEN-SECOND-FAULT ;] E-FS-OPEN TTHROWSQ
+   E-FS-OPEN s" -2102" CHECK-FAULT-REPORT
+   E-FS-OPEN CHECK-FAULT-CLEAN
+   SEED-VALID-BAD
+   [: SPAWN-FAULT ;] E-PROC-SPAWN TTHROWSQ
+   E-PROC-SPAWN s" -2500" CHECK-FAULT-REPORT
+   E-PROC-SPAWN CHECK-FAULT-CLEAN ;
+
+: TEST-TRANSACTION-FAULTS ( -- )
+   SEED-VALID-BAD
+   [: PRIMARY-CLEAN-FAULT ;] E-FS-OPEN TTHROWSQ
+   BAD-UNCHANGED
+   E-FS-OPEN E-FS-DIR 3 CHECK-CAPTURE-RESULT
+   CHECK-COMBINED-REPORT
+   DIFF-CAPTURE:TEST-FDS-CLOSED? TTRUE
+   DIFF-CAPTURE:TEST-ROOT-EXISTS? TTRUE
+   DIFF-CAPTURE:TEST-FORCE-CLEAN
+   SEED-VALID-BAD
+   [: CLEAN-FAULT ;] E-FS-DIR TTHROWSQ
+   BAD-UNCHANGED
+   0 E-FS-DIR 2 CHECK-CAPTURE-RESULT
+   DIFF-CAPTURE:TEST-ROOT-EXISTS? TTRUE
+   DIFF-CAPTURE:TEST-FORCE-CLEAN
+   DIFF-CAPTURE:TEST-ROOT-EXISTS? TFALSE
+   SEED-VALID-BAD
+   [: PUBLISH-FAULT ;] E-FS-IO TTHROWSQ
+   BAD-UNCHANGED
+   E-FS-IO 0 1 CHECK-CAPTURE-RESULT
+   DIFF-CAPTURE:TEST-ROOT-EXISTS? TFALSE ;
+
+: CHECK-EXIT-REPORT ( -- )
+   DIFF-CAPTURE:LAST-CODE 0 T=
+   DIFF-CAPTURE:LAST-RC 0<> TTRUE
+   DIFF-CAPTURE:REPORT$ JSON-PARSE {: root:n :}
+   root s" phase" JSON-GET JSON-STRING$ s" resolve-from" T$=
+   root s" outcome" JSON-GET JSON-STRING$ s" exited" T$=
+   root s" rc" JSON-GET JSON-NUMBER$ s" 0" STR= TFALSE ;
+
 : TEST-INVALID-REVISION ( -- )
+   SEED-VALID-BAD
    [: INVALID-CAPTURE ;] E-DIFF-CAPTURE TTHROWSQ
-   BAD-PATH$ EXISTS? TFALSE ;
+   CHECK-EXIT-REPORT
+   BAD-UNCHANGED
+   E-DIFF-CAPTURE 0 1 CHECK-CAPTURE-RESULT
+   DIFF-CAPTURE:TEST-ROOT-EXISTS? TFALSE ;
+
+: PARSE-ADDED ( -- )
+   S\" [\qadded\q,\q\q,\q\q,false,false,\qnew.f\q,\qfile\q,false,false]"
+   DIFF-CAPTURE:TEST-PARSE-ROW ;
+
+: PARSE-ABSENT-PATH ( -- )
+   S\" [\qadded\q,\qold.f\q,\q\q,false,false,\qnew.f\q,\qfile\q,false,false]"
+   DIFF-CAPTURE:TEST-PARSE-ROW ;
+
+: PARSE-PRESENT-EMPTY ( -- )
+   S\" [\qadded\q,\q\q,\qfile\q,false,false,\qnew.f\q,\qfile\q,false,false]"
+   DIFF-CAPTURE:TEST-PARSE-ROW ;
+
+: PARSE-MODIFIED-PATHS ( -- )
+   S\" [\qmodified\q,\qold.f\q,\qfile\q,false,false,\qnew.f\q,\qfile\q,false,false]"
+   DIFF-CAPTURE:TEST-PARSE-ROW ;
+
+: PARSE-RENAMED-SAME ( -- )
+   S\" [\qrenamed\q,\qsame.f\q,\qfile\q,false,false,\qsame.f\q,\qfile\q,false,false]"
+   DIFF-CAPTURE:TEST-PARSE-ROW ;
+
+: PARSE-ABSENT-EXEC ( -- )
+   S\" [\qadded\q,\q\q,\q\q,true,false,\qnew.f\q,\qfile\q,false,false]"
+   DIFF-CAPTURE:TEST-PARSE-ROW ;
+
+: TEST-METADATA ( -- )
+   [: PARSE-ADDED ;] 0 TTHROWSQ
+   [: PARSE-ABSENT-PATH ;] E-DIFF-SYNTAX TTHROWSQ
+   [: PARSE-PRESENT-EMPTY ;] E-DIFF-SYNTAX TTHROWSQ
+   [: PARSE-MODIFIED-PATHS ;] E-DIFF-SYNTAX TTHROWSQ
+   [: PARSE-RENAMED-SAME ;] E-DIFF-SYNTAX TTHROWSQ
+   [: PARSE-ABSENT-EXEC ;] E-DIFF-SYNTAX TTHROWSQ ;
 
 : MAIN ( -- )
    T-RESET
@@ -410,9 +797,16 @@ create NEW-BIN $41 c, 0 c, $43 c,
    ADD-SUBMODULE
    GIT-COMMIT-CHANGES
    JJ-IMPORT
-   ROOT$ ART-PATH$ s" @--" s" @-" DIFF-CAPTURE:RUN-IN
+   ART-PATH$ s" prior" WRITE-ALL
+   HOOKED-CAPTURE
+   DIFF-CAPTURE:TEST-WARN-COUNT 0 > TTRUE
+   DIFF-CAPTURE:TEST-BARRIER-COUNT 1 T=
+   DIFF-CAPTURE:LAST-ERR$ nip 0 > TTRUE
    READ-ARTIFACT
+   TEST-METADATA
    TEST-INVALID-REVISION
+   TEST-COMMAND-FAULTS
+   TEST-TRANSACTION-FAULTS
    CLEANUP-RUN
    ROOT$ EXISTS? TFALSE
    T-REPORT

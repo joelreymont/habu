@@ -5,6 +5,7 @@
 
 require lib/adt/option.f
 require tools/lint/diff-frame.f
+require tools/lint/diff-file.f
 
 package TYPED-LOCAL-DIFF
 private
@@ -16,11 +17,8 @@ private
 create NUM NUM-CAP allot
 create ONE 1 allot
 
-PTR-VARIABLE DIFF-A
-variable DIFF-CAP
 PTR-VARIABLE FILE-A
 variable FILE-U
-variable DIFF-U
 variable BAD#
 variable NEW-LINE
 variable IN-LOCALS
@@ -30,14 +28,8 @@ variable NUM-I
 : FILE-A@ ( -- ptr u8 )
    FILE-A @ ;
 
-: DIFF-A@ ( -- ptr u8 )
-   DIFF-A @ ;
-
 : FILE-A! ( ptr u8 -- )
    FILE-A ! ;
-
-: DIFF-A! ( ptr u8 -- )
-   DIFF-A ! ;
 
 : TRUE ( -- bool )
    0 0= ;
@@ -183,15 +175,10 @@ variable NUM-I
    a u value kind PROCESS-EVENT
    TRUE ;
 
-: ALLOC-DIFF ( n -- ) {: need:n :}
-   need 1 < if 1 else need then
-   MEM-ALLOC-64K-SPAN DIFF-CAP ! DIFF-A! ;
-
 public
 
 : RESET ( -- )
    0 BAD# !
-   0 DIFF-U !
    0 FILE-U !
    0 NEW-LINE !
    FALSE IN-LOCALS !
@@ -202,9 +189,7 @@ public
    begin NEXT? while repeat ;
 
 : FILE ( ptr u8 n -- ) {: path:ptr pathu:n :}
-   path pathu FILE-SIZE ALLOC-DIFF
-   path pathu DIFF-A@ DIFF-CAP @ READ-ALL DIFF-U !
-   DIFF-A@ DIFF-U @ SOURCE ;
+   path pathu DIFF-FILE:LOAD SOURCE ;
 
 : FINISH ( -- )
    BAD# @ 0 > if 1 throw then ;

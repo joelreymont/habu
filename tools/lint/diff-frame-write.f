@@ -41,10 +41,6 @@ create DIGEST DIGEST-U allot
    value OUT-A@ OUT-U @ + c!
    OUT-U @ 1+ OUT-U ! ;
 
-: U16 ( n -- ) {: value:n :}
-   value $FF and U8
-   value 8 rshift $FF and U8 ;
-
 : U64 ( n -- ) {: value:n :}
    value 0 < if E-DIFF-SYNTAX throw then
    0 begin dup 8 < while
@@ -95,8 +91,8 @@ create DIGEST DIGEST-U allot
 
 : HEADER ( ptr u8 n ptr u8 n -- ) {: from:ptr fromu:n to:ptr tou:n :}
    fromu 0 <= tou 0 <= or if E-DIFF-SYNTAX throw then
-   from fromu DIFF:OBJECT-ID? 0= if E-DIFF-SYNTAX throw then
-   to tou DIFF:OBJECT-ID? 0= if E-DIFF-SYNTAX throw then
+   from fromu DIFF:COMMIT-ID? 0= if E-DIFF-SYNTAX throw then
+   to tou DIFF:COMMIT-ID? 0= if E-DIFF-SYNTAX throw then
    s" HABUDIF2" BYTES
    FRAME-VERSION U8
    0 begin dup RESERVED-U < while
@@ -106,12 +102,13 @@ create DIGEST DIGEST-U allot
    fromu U64 from fromu BYTES
    tou U64 to tou BYTES ;
 
-: CHECK-SECTION ( DIFF:status DIFF:form bool bool ptr u8 n bool ptr u8 n ptr u8 n -- )
-   {: change:DIFF:status expected:DIFF:form body:bool old?:bool oa:ptr ou:n new?:bool na:ptr nu:n raw:ptr rawu:n :}
+: CHECK-SECTION ( DIFF:status DIFF:form bool bool bool ptr u8 n bool ptr u8 n ptr u8 n -- )
+   {: change:DIFF:status expected:DIFF:form body:bool mode:bool old?:bool oa:ptr ou:n new?:bool na:ptr nu:n raw:ptr rawu:n :}
    change old? oa ou new? na nu raw rawu DIFF:VALIDATE-SECTION
-   {: got:DIFF:form gotbody:bool :}
+   {: got:DIFF:form gotbody:bool gotmode:bool :}
    got FORM-BYTE expected FORM-BYTE <> if E-DIFF-SYNTAX throw then
-   gotbody BOOL-BYTE body BOOL-BYTE <> if E-DIFF-SYNTAX throw then ;
+   gotbody BOOL-BYTE body BOOL-BYTE <> if E-DIFF-SYNTAX throw then
+   gotmode BOOL-BYTE mode BOOL-BYTE <> if E-DIFF-SYNTAX throw then ;
 
 public
 
@@ -131,16 +128,17 @@ public
    0 SECTION-N !
    from fromu to tou HEADER ;
 
-: SECTION ( DIFF:status DIFF:form bool bool ptr u8 n bool ptr u8 n ptr u8 n -- )
-   {: change:DIFF:status shape:DIFF:form body:bool old?:bool oa:ptr ou:n new?:bool na:ptr nu:n raw:ptr rawu:n :}
-   change shape body old? oa ou new? na nu raw rawu CHECK-SECTION
+: SECTION ( DIFF:status DIFF:form bool bool bool ptr u8 n bool ptr u8 n ptr u8 n -- )
+   {: change:DIFF:status shape:DIFF:form body:bool mode:bool old?:bool oa:ptr ou:n new?:bool na:ptr nu:n raw:ptr rawu:n :}
+   change shape body mode old? oa ou new? na nu raw rawu CHECK-SECTION
    SECTION-C U8
    change STATUS-BYTE U8
    shape FORM-BYTE U8
    body BOOL-BYTE U8
+   mode BOOL-BYTE U8
    old? BOOL-BYTE U8
    new? BOOL-BYTE U8
-   0 U16
+   0 U8
    old? oa ou PATH
    new? na nu PATH
    rawu U64 raw rawu BYTES

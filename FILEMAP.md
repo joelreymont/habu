@@ -780,6 +780,7 @@ points stay listed.
   artifacts.
 - `tools/lint/diff-frame.f` / `tools/lint/diff-frame-test.f` — authenticated framed
   artifact reader, section/event API, corruption tests, and byte-exact path matrix.
+- `tools/lint/diff-file.f` — shared exact-size OS-backed framed-artifact file loader.
 - `tools/diff-capture-core.f` / `tools/diff-capture.f` — operation-pinned jj
   metadata/raw-diff capture and checked `.hbdiff` CLI.
 - `tools/diff-capture-test.f` — real-jj capture coverage for text, binary, mode,

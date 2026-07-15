@@ -3,6 +3,7 @@
 require src/core/sha256.f
 require lib/prelude.f
 require lib/string.f
+require lib/memory.f
 require tools/lint/diff.f
 
 package DIFF
@@ -26,6 +27,11 @@ $54 constant TRAILER-C
 
 PTR-VARIABLE ART-A
 variable ART-U
+variable ART-CAP
+PTR-VARIABLE VIEW-A
+variable VIEW-CAP
+PTR-VARIABLE FILE-VIEW-A
+variable FILE-VIEW-CAP
 variable CUR
 variable LIMIT
 variable DATA-START
@@ -44,6 +50,7 @@ variable TO-ID-U
 1 LAYOUT-BUFFER SEC-STATUS status
 1 LAYOUT-BUFFER SEC-FORM form
 variable SEC-BODY
+variable SEC-MODE
 variable SEC-OLD-PRESENT
 variable SEC-NEW-PRESENT
 PTR-VARIABLE SEC-OLD-A
@@ -69,6 +76,9 @@ create GOT-DIGEST DIGEST-U allot
 
 : ART-A! ( ptr u8 -- )
    ART-A ! ;
+
+: VIEW-A! ( ptr u8 -- )
+   VIEW-A ! ;
 
 : SEC-OLD-A! ( ptr u8 -- )
    SEC-OLD-A ! ;
@@ -112,6 +122,9 @@ create GOT-DIGEST DIGEST-U allot
 : SEC-BODY? ( -- bool )
    SEC-BODY @ if true else false then ;
 
+: SEC-MODE? ( -- bool )
+   SEC-MODE @ if true else false then ;
+
 : ROOM? ( n -- bool ) {: need:n :}
    need 0 >= CUR @ need + CUR @ >= and
    CUR @ need + LIMIT @ <= and ;
@@ -123,9 +136,6 @@ create GOT-DIGEST DIGEST-U allot
    1 NEED
    ART-A@ CUR @ + c@
    CUR @ 1+ CUR ! ;
-
-: U16 ( -- n )
-   U8 U8 8 lshift or ;
 
 : ART-C@ ( n -- n ) {: off:n :}
    ART-A@ off + c@ ;
@@ -205,23 +215,59 @@ create GOT-DIGEST DIGEST-U allot
 : SEC-RAW$ ( -- ptr u8 n )
    SEC-RAW-A@ SEC-RAW-U @ ;
 
+: NEXT-CAP ( n n -- n ) {: need:n current:n :}
+   current 1 < if 1 else current then
+   begin dup need < while
+      dup $3FFFFFFFFFFFFFFF > if drop need exit then
+      2 *
+   repeat ;
+
+: OWN-ARTIFACT ( ptr u8 n -- ) {: a:ptr u:n :}
+   u ART-CAP @ > if
+      u ART-CAP @ NEXT-CAP {: cap:n :}
+      cap MEM-ALLOC-BYTES drop ART-A!
+      cap ART-CAP !
+   then
+   a ART-A@ u BYTE-COPY
+   u ART-U ! ;
+
+: DETACH ( ptr u8 n -- ptr u8 n ) {: a:ptr u:n :}
+   u VIEW-CAP @ > if
+      u VIEW-CAP @ NEXT-CAP {: cap:n :}
+      cap MEM-ALLOC-BYTES drop VIEW-A!
+      cap VIEW-CAP !
+   then
+   u 0 > if a VIEW-A @ u BYTE-COPY then
+   VIEW-A @ u ;
+
+: DETACH-FILE ( ptr u8 n -- ptr u8 n ) {: a:ptr u:n :}
+   u FILE-VIEW-CAP @ > if
+      u FILE-VIEW-CAP @ NEXT-CAP {: cap:n :}
+      cap MEM-ALLOC-BYTES drop FILE-VIEW-A !
+      cap FILE-VIEW-CAP !
+   then
+   u 0 > if a FILE-VIEW-A @ u BYTE-COPY then
+   FILE-VIEW-A @ u ;
+
 : READ-SECTION ( -- )
    U8 SECTION-C <> if E-DIFF-SYNTAX throw then
    U8 BYTE>STATUS SEC-STATUS!
    U8 BYTE>FORM SEC-FORM!
    BOOL-TAG SEC-BODY !
+   BOOL-TAG SEC-MODE !
    BOOL-TAG SEC-OLD-PRESENT !
    BOOL-TAG SEC-NEW-PRESENT !
-   U16 0<> if E-DIFF-SYNTAX throw then
+   U8 0<> if E-DIFF-SYNTAX throw then
    U64 SPAN SEC-OLD-U ! SEC-OLD-A!
    U64 SPAN SEC-NEW-U ! SEC-NEW-A!
    U64 SPAN SEC-RAW-U ! SEC-RAW-A! ;
 
 : CHECK-SECTION ( -- )
    SEC-STATUS@ SEC-OLD? SEC-OLD$ SEC-NEW? SEC-NEW$ SEC-RAW$
-   VALIDATE-SECTION {: got:form body:bool :}
+   VALIDATE-SECTION {: got:form body:bool mode:bool :}
    got FORM>BYTE SEC-FORM@ FORM>BYTE <> if E-DIFF-SYNTAX throw then
-   body BOOL>N SEC-BODY? BOOL>N <> if E-DIFF-SYNTAX throw then ;
+   body BOOL>N SEC-BODY? BOOL>N <> if E-DIFF-SYNTAX throw then
+   mode BOOL>N SEC-MODE? BOOL>N <> if E-DIFF-SYNTAX throw then ;
 
 : MAGIC? ( -- bool )
    8 NEED
@@ -243,10 +289,10 @@ create GOT-DIGEST DIGEST-U allot
       1+
    repeat drop
    U64 dup 0= if E-DIFF-SYNTAX throw then SPAN
-   2dup OBJECT-ID? 0= if 2drop E-DIFF-SYNTAX throw then
+   2dup COMMIT-ID? 0= if 2drop E-DIFF-SYNTAX throw then
    FROM-ID-U ! FROM-ID-A !
    U64 dup 0= if E-DIFF-SYNTAX throw then SPAN
-   2dup OBJECT-ID? 0= if 2drop E-DIFF-SYNTAX throw then
+   2dup COMMIT-ID? 0= if 2drop E-DIFF-SYNTAX throw then
    TO-ID-U ! TO-ID-A !
    CUR @ DATA-START ! ;
 
@@ -283,18 +329,19 @@ create GOT-DIGEST DIGEST-U allot
    RAW-STEP {: a:ptr u:n meta:n kind:event :}
    kind MATCH event
       none    OF a u meta DIFF-EVENT:NONE false ENDOF
-      file    OF a u meta DIFF-EVENT:FILE true ENDOF
-      hunk    OF a u meta DIFF-EVENT:HUNK true ENDOF
-      add     OF a u meta DIFF-EVENT:ADD true ENDOF
-      context OF a u meta DIFF-EVENT:CONTEXT true ENDOF
-      delete  OF a u meta DIFF-EVENT:DELETE true ENDOF
+      file    OF a u DETACH-FILE meta DIFF-EVENT:FILE true ENDOF
+      hunk    OF a u DETACH meta DIFF-EVENT:HUNK true ENDOF
+      add     OF a u DETACH meta DIFF-EVENT:ADD true ENDOF
+      context OF a u DETACH meta DIFF-EVENT:CONTEXT true ENDOF
+      delete  OF a u DETACH meta DIFF-EVENT:DELETE true ENDOF
    ;MATCH ;
 
 : END-SECTION ( -- )
    RAW-END
-   RAW-FORM {: got:form body:bool :}
+   RAW-FORM {: got:form body:bool mode:bool :}
    got FORM>BYTE SEC-FORM@ FORM>BYTE <> if E-DIFF-SYNTAX throw then
    body BOOL>N SEC-BODY? BOOL>N <> if E-DIFF-SYNTAX throw then
+   mode BOOL>N SEC-MODE? BOOL>N <> if E-DIFF-SYNTAX throw then
    false ITER-IN ! ;
 
 : NEED-OPEN ( -- )
@@ -308,11 +355,11 @@ public
 
 : FROM$ ( -- ptr u8 n )
    NEED-OPEN
-   FROM-ID$ ;
+   FROM-ID$ DETACH ;
 
 : TO$ ( -- ptr u8 n )
    NEED-OPEN
-   TO-ID$ ;
+   TO-ID$ DETACH ;
 
 : SECTION-STATUS ( -- status )
    NEED-SECTION
@@ -326,13 +373,17 @@ public
    NEED-SECTION
    SEC-BODY? ;
 
+: SECTION-MODE? ( -- bool )
+   NEED-SECTION
+   SEC-MODE? ;
+
 : SECTION-OLD? ( -- bool )
    NEED-SECTION
    SEC-OLD? ;
 
 : SECTION-OLD$ ( -- ptr u8 n )
    NEED-SECTION
-   SEC-OLD$ ;
+   SEC-OLD$ DETACH ;
 
 : SECTION-NEW? ( -- bool )
    NEED-SECTION
@@ -340,11 +391,7 @@ public
 
 : SECTION-NEW$ ( -- ptr u8 n )
    NEED-SECTION
-   SEC-NEW$ ;
-
-: SECTION-RAW$ ( -- ptr u8 n )
-   NEED-SECTION
-   SEC-RAW$ ;
+   SEC-NEW$ DETACH ;
 
 : SECTION-COUNT ( -- n )
    NEED-OPEN
@@ -356,7 +403,7 @@ public
 
 : OPEN ( ptr u8 n -- ) {: a:ptr u:n :}
    u MIN-ART-U < if E-DIFF-SYNTAX throw then
-   a ART-A! u ART-U !
+   a u OWN-ARTIFACT
    u DIGEST-U - LIMIT !
    0 CUR !
    false OPENED !

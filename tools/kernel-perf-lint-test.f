@@ -20,6 +20,7 @@ private
 
 4096 constant CAP
 9 constant TAB
+16777217 constant BIG-ID-U
 
 create OUT CAP allot
 create FILE-BUF FS-PATH-CAP allot
@@ -28,6 +29,10 @@ create FRAME CAP 4 * allot
 variable FILE-U
 PTR-VARIABLE SRC-A
 variable SRC-U
+PTR-VARIABLE BIG-FRAME-A
+variable BIG-FILL-U
+variable LE-I
+variable DIGEST-I
 
 : SRC-A@ ( -- ptr u8 )
    SRC-A @ ;
@@ -36,29 +41,31 @@ variable SRC-U
    SRC-A ! ;
 
 : FRAME-START ( -- )
-   FRAME CAP 4 * s" 0123456789" s" abcdef0123" DIFF-WRITE:START ;
+   FRAME CAP 4 *
+   s" 0123456789012345678901234567890123456789"
+   s" abcdef0123abcdef0123abcdef0123abcdef0123" DIFF-WRITE:START ;
 
 : FRAME-END ( -- ptr u8 n )
    DIFF-WRITE:FINISH ;
 
 : MODIFIED+ ( ptr u8 n ptr u8 n -- )
    {: path:ptr pathu:n raw:ptr rawu:n :}
-   DIFF-STATUS:MODIFIED DIFF-FORM:TEXT true
+   DIFF-STATUS:MODIFIED DIFF-FORM:TEXT true false
    true path pathu true path pathu raw rawu DIFF-WRITE:SECTION ;
 
 : REMOVED+ ( ptr u8 n ptr u8 n -- )
    {: path:ptr pathu:n raw:ptr rawu:n :}
-   DIFF-STATUS:REMOVED DIFF-FORM:TEXT true
+   DIFF-STATUS:REMOVED DIFF-FORM:TEXT true false
    true path pathu false s" " raw rawu DIFF-WRITE:SECTION ;
 
 : RENAMED-TEXT+ ( ptr u8 n ptr u8 n ptr u8 n -- )
    {: old:ptr oldu:n new:ptr newu:n raw:ptr rawu:n :}
-   DIFF-STATUS:RENAMED DIFF-FORM:TEXT true
+   DIFF-STATUS:RENAMED DIFF-FORM:TEXT true false
    true old oldu true new newu raw rawu DIFF-WRITE:SECTION ;
 
 : PURE-RENAME+ ( ptr u8 n ptr u8 n ptr u8 n -- )
    {: old:ptr oldu:n new:ptr newu:n raw:ptr rawu:n :}
-   DIFF-STATUS:RENAMED DIFF-FORM:PURE false
+   DIFF-STATUS:RENAMED DIFF-FORM:PURE false false
    true old oldu true new newu raw rawu DIFF-WRITE:SECTION ;
 
 : TAB+ ( -- )
@@ -254,6 +261,68 @@ variable SRC-U
 : FILE$ ( -- ptr u8 n )
    FILE-BUF FILE-U @ ;
 
+: FILL-A ( ptr u8 n -- ) {: a:ptr u:n :}
+   $61 a c!
+   1 BIG-FILL-U !
+   begin BIG-FILL-U @ u < while
+      u BIG-FILL-U @ - BIG-FILL-U @ < if
+         u BIG-FILL-U @ -
+      else
+         BIG-FILL-U @
+      then {: chunk:n :}
+      a a BIG-FILL-U @ + chunk BYTE-COPY
+      chunk BIG-FILL-U +!
+   repeat ;
+
+: LE64! ( n ptr u8 -- ) {: value:n dst:ptr :}
+   0 LE-I !
+   begin LE-I @ 8 < while
+      value LE-I @ 8 * rshift $FF and dst LE-I @ + c!
+      LE-I @ 1+ LE-I !
+   repeat ;
+
+: HEX-NIBBLE ( n -- n ) {: c:n :}
+   c $30 >= c $39 <= and if c $30 - exit then
+   c $61 >= c $66 <= and if c $61 - 10 + exit then
+   E-DIFF-SYNTAX throw ;
+
+: DIGEST! ( ptr u8 -- ) {: dst:ptr :}
+   s" 83565123bd1ca7d1c944e3ab713d599b85455c21a0321df82f0bf5a84ba4a75f"
+   {: hex:ptr hexu:n :}
+   hexu 64 <> if E-DIFF-SYNTAX throw then
+   0 DIGEST-I !
+   begin DIGEST-I @ 32 < while
+      hex DIGEST-I @ 2 * + c@ HEX-NIBBLE 4 lshift
+      hex DIGEST-I @ 2 * 1+ + c@ HEX-NIBBLE or
+      dst DIGEST-I @ + c!
+      DIGEST-I @ 1+ DIGEST-I !
+   repeat ;
+
+: BIG-ARTIFACT ( -- ptr u8 n )
+   BIG-ID-U 10 DIFF-WRITE:HEADER-SIZE DIFF-WRITE:FINISH-SIZE {: cap:n :}
+   cap MEM-ALLOC-BYTES drop BIG-FRAME-A !
+   s" HABUDIF2" drop BIG-FRAME-A @ 8 BYTE-COPY
+   1 BIG-FRAME-A @ 8 + c!
+   9 begin dup 16 < while BIG-FRAME-A @ over + 0 swap c! 1+ repeat drop
+   BIG-ID-U BIG-FRAME-A @ 16 + LE64!
+   BIG-FRAME-A @ 24 + BIG-ID-U FILL-A
+   10 BIG-FRAME-A @ BIG-ID-U 24 + + LE64!
+   s" abcdef0123" drop BIG-FRAME-A @ BIG-ID-U 32 + + 10 BYTE-COPY
+   $54 BIG-FRAME-A @ BIG-ID-U 42 + + c!
+   0 BIG-FRAME-A @ BIG-ID-U 43 + + LE64!
+   BIG-FRAME-A @ BIG-ID-U 51 + + DIGEST!
+   cap 16777216 > TTRUE
+   BIG-FRAME-A @ 8 s" HABUDIF2" T$=
+   BIG-FRAME-A @ cap ;
+
+: BIG-FILE-TEST ( ptr u8 n -- ) {: root:ptr rootu:n :}
+   root rootu s" big.hbdiff" FILE-BUF JOIN-PATH FILE-U !
+   FILE$ CLEANUP+
+   FILE$ BIG-ARTIFACT WRITE-ALL
+   FILE$ DIFF-FILE:LOAD {: a:ptr u:n :}
+   u 16777216 > TTRUE
+   a 8 s" HABUDIF2" T$= ;
+
 : FILE-TESTS ( -- )   \ the file entrypoint reports the same finding
    CLEANUP-RESET
    s" habu-kernel-perf-lint" TMPDIR-MKDIR {: ra:ptr ru:n :}
@@ -267,6 +336,7 @@ variable SRC-U
    [: KERNEL-PERF-LINT:FINISH ;] catch {: rc:n :}
    LINT-OUT$ nip LINT-OUT-BUFFER-OFF
    rc MISSING$ EXPECT
+   ra ru BIG-FILE-TEST
    CLEANUP-RUN ;
 
 T-RESET

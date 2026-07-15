@@ -8,6 +8,7 @@
 \ tools/ptx/perf-registry.f.
 
 require tools/lint/diff-frame.f
+require tools/lint/diff-file.f
 
 package KERNEL-PERF-LINT
 private
@@ -142,8 +143,7 @@ public
    begin NEXT? while repeat ;
 
 : FILE ( ptr u8 n -- ) {: a:ptr u:n :}
-   a u LINT-SOURCE:LOAD
-   LINT-SOURCE:TEXT SOURCE ;
+   a u DIFF-FILE:LOAD SOURCE ;
 
 : FINISH ( -- )
    MISSING-CHECK

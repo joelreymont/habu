@@ -4430,8 +4430,8 @@ unchanged (148855). Keys for milestone 2:
   and every dissimilarity retain an index-plus-body obligation across identity
   metadata, so EOF and the next section head remain fail-closed.
 - **A diff artifact must pin one repository operation, not four command-time
-  views.** Snapshot the working-copy commit once, resolve the operation ID once,
-  and run revision, metadata, and raw-diff queries at that operation with full
+  views.** Obtain the operation ID with one atomic `jj op log` command, then run
+  revision, metadata, raw-diff, and content queries at that operation with full
   resolved commit IDs. Otherwise concurrent jj operations can pair metadata
   with unrelated raw bytes.
 - **Library cleanup registries are caller state.** A nested producer that calls
@@ -4443,3 +4443,30 @@ unchanged (148855). Keys for milestone 2:
   distinct checked form through parser, frame, reader, and tests; treating the
   kind as an ordinary file either rejects valid repositories or misstates body
   presence.
+- **Diff body and mode are orthogonal authenticated facts.** A rename or copy
+  can change content and executable mode together. Derive content identity and
+  mode independently, carry both flags through the frame, and cross-check both
+  against the complete raw section; one form tag cannot encode the conjunction.
+- **Authenticated readers must own source bytes and detach public views.** A
+  borrowed input can change after validation, and an internal span lets callers
+  corrupt subsequent parsing. Reuse geometric owned buffers, copy on open, and
+  return transient copies from every byte-bearing accessor and event.
+- **Process success and diagnostic output are independent.** Exit zero with
+  stderr is still success. Preserve phase, argv, outcome, exit status, throw
+  codes, stdout, and stderr as structured state, while closing every opened FD
+  across first-open, second-open, spawn, and capture failures.
+- **Workspace diagnostics must fail visibly.** Do not append shell success
+  fallbacks to jj inspection commands; a missing workspace or failed query is
+  evidence that must stop dispatch or integration rather than disappear.
+- **Audit shared primitives before reporting a duplicated bug.** Read the exact
+  implementation and its return contract first; `READ-ALL` already probes EOF,
+  so a size-equality check closes both growth and shrink races.
+- **A closure cache key does not make an AOT input modular.** `hb-build` can hash
+  an ordered `require` closure while still sending only the top-level file to
+  the maker. A modular-build regression must compile and run the closure, not
+  merely prove that a dependency edit changes the key.
+- **Transactional producers publish only after cleanup.** Never unlink a valid
+  destination before work; preserve it across primary, cleanup, and publish
+  failures, and retain both primary and cleanup codes when both fail.
+- **Presence is schema state, not string length.** Normalize absent metadata to
+  an empty path, then reject every kind/path/status mismatch before framing.
