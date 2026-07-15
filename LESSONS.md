@@ -4468,3 +4468,6 @@ unchanged (148855). Keys for milestone 2:
   be proven with an up-front typed guard (ADVANCE-BYTE-OFF before the scan):
   the raw scan cannot reach MAX-N cheaply, so without the guard the "overflow"
   case is untestable and silently wraps. (strnum lane findings, 2026-07-15.)
+- **Unknown `dot` forms are mutating until proven otherwise.** Read `dot help`
+  before discovery: a bare positional form can create a dot instead of querying
+  dependencies.
