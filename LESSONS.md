@@ -38,6 +38,9 @@ Last updated: 2026-07-15
   `$200000400000`; inspect the source or `jj diff --git` before diagnosing a
   malformed token. Jj has no `diff --check`; generate `jj diff --git` and run
   the repository's checked diff lint instead.
+- **Track a new local bookmark before its first push.** `jj git push --bookmark`
+  refuses to create an untracked remote bookmark; run `jj bookmark track
+  <name> --remote=origin` first.
 
 - **Sealing declared-effect parametricity must target sealed FAMILIES, not all
   concrete specialization.** The nominal-storage effect seal (post-body
