@@ -289,6 +289,11 @@ points stay listed.
 - `test/gate-stats.f` — checked append-only counter log and summary helpers for
   native gate duplicate-work RCA.
 - `test/gate-stats-test.f` — focused fixture for gate stats event counting.
+- `test/perf-verdict.f` — pure PERF-VERDICT policy package for the frozen full-gate
+  timing rule: pass/marginal/hard bands, calibration-drift stability, admissibility,
+  2-of-3 retry aggregation, and a deterministic ATTEMPT-LINE over a typed attempt record.
+- `test/perf-verdict-test.f` — manual-standalone acceptance fixtures for the
+  PERF-VERDICT policy (band thresholds, retry aggregation, fail-closed evidence, rows).
 - `tools/seed.f` — checked native seed installer, SHA verifier, smoke test, and fixpoint rebuild driver.
 - `tools/seed-main.f` — CLI entrypoint for checked native seed recovery.
 - `tools/seed-test.f` — focused coverage for seed SHA, install, signing, and smoke helpers.
