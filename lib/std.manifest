@@ -1441,3 +1441,30 @@ schema_version	module	file	kind	word	effect	test	doc	owner	status	notes
 1	cad-num-arithmetic	lib/cad-num-arithmetic.f	word	CAD-NUM:ALIGN-UP-BYTE-OFF	(byte-off alignment -- numeric-result<byte-off>)	lib/cad-num-arithmetic-test.f	docs/stdlib.md	stdlib-cad-num-arithmetic	active	round a byte offset up to a power-of-two alignment; overflow returns overflow
 1	cad-num-arithmetic	lib/cad-num-arithmetic.f	word	CAD-NUM:BYTES-ALIGNED?	(byte-len alignment -- bool)	lib/cad-num-arithmetic-test.f	docs/stdlib.md	stdlib-cad-num-arithmetic	active	is a byte extent a whole multiple of a power-of-two alignment?
 1	cad-num-arithmetic	lib/cad-num-arithmetic.f	word	CAD-NUM:BYTE-OFF-ALIGNED?	(byte-off alignment -- bool)	lib/cad-num-arithmetic-test.f	docs/stdlib.md	stdlib-cad-num-arithmetic	active	is a byte offset a whole multiple of a power-of-two alignment?
+1	nominal-arena	lib/nominal/arena.f	module			lib/nominal/nominal-test.f	docs/stdlib.md	stdlib-nominal	active	growable index-addressed cell arena with copy-on-grow stable indices and a seal high-water protecting committed spans
+1	nominal-path	lib/nominal/path.f	module			lib/nominal/nominal-test.f	docs/stdlib.md	stdlib-nominal	active	persistent consed lexical paths of opaque atoms with root-first canonical order; opaque nominal path handle
+1	nominal-path	lib/nominal/path.f	word	NOM:ROOT	(-- path)	lib/nominal/nominal-test.f	docs/stdlib.md	stdlib-nominal	active	the empty root path handle
+1	nominal-path	lib/nominal/path.f	word	NOM:CONS	(path a -- path)	lib/nominal/nominal-test.f	docs/stdlib.md	stdlib-nominal	active	extend a path by one opaque outer atom cell
+1	nominal-path	lib/nominal/path.f	word	NOM:SEGS	(path -- n)	lib/nominal/nominal-test.f	docs/stdlib.md	stdlib-nominal	active	segment count of a path (diagnostic; content not identity)
+1	nominal-binding	lib/nominal/binding.f	module			lib/nominal/nominal-test.f	docs/stdlib.md	stdlib-nominal	active	binding records and sorted chunks; opaque nominal binding handle and the sorted-chunk merge behind UNION
+1	nominal-binding	lib/nominal/binding.f	word	NOM:BIND	(path a -- binding)	lib/nominal/nominal-test.f	docs/stdlib.md	stdlib-nominal	active	intern a (path, slot) content binding record
+1	nominal-codec	lib/nominal/codec.f	module			lib/nominal/nominal-test.f	docs/stdlib.md	stdlib-nominal	active	canonical content codec: streaming digest, wire encode, validating decode; identity is the canonical digest
+1	nominal-row	lib/nominal/row.f	module			lib/nominal/nominal-test.f	docs/stdlib.md	stdlib-nominal	active	immutable row arena of digest-interned sorted-unique binding sets with content equality and union/remap
+1	nominal-row	lib/nominal/row.f	word	NOM:SIZE	(row -- n)	lib/nominal/nominal-test.f	docs/stdlib.md	stdlib-nominal	active	binding count of a row (diagnostic)
+1	nominal-row	lib/nominal/row.f	word	NOM:EQUAL?	(row row -- bool)	lib/nominal/nominal-test.f	docs/stdlib.md	stdlib-nominal	active	content identity of two rows via canonical digest
+1	nominal-row	lib/nominal/row.f	word	NOM:KEY	(row ptr u8 --)	lib/nominal/nominal-test.f	docs/stdlib.md	stdlib-nominal	active	write the 32-byte canonical content cache key of a row
+1	nominal-row	lib/nominal/row.f	word	NOM:UNION	(row row -- row)	lib/nominal/nominal-test.f	docs/stdlib.md	stdlib-nominal	active	merge two sorted-unique rows; conflicting slots fail closed
+1	nominal-row	lib/nominal/row.f	word	NOM:REMAP	(row a -- row)	lib/nominal/nominal-test.f	docs/stdlib.md	stdlib-nominal	active	scope every path under one stable outer atom, preserving slots
+1	nominal-builder	lib/nominal/builder.f	module			lib/nominal/nominal-test.f	docs/stdlib.md	stdlib-nominal	active	linear transactional builder (checker-enforced noncopyable token) with sort-once freeze and resource budget
+1	nominal-builder	lib/nominal/builder.f	word	NOM:BUDGET!	(n --)	lib/nominal/nominal-test.f	docs/stdlib.md	stdlib-nominal	active	set the per-transaction binding budget (resource, not semantic capacity)
+1	nominal-builder	lib/nominal/builder.f	word	NOM:BUDGET@	(-- n)	lib/nominal/nominal-test.f	docs/stdlib.md	stdlib-nominal	active	read the per-transaction binding budget
+1	nominal-builder	lib/nominal/builder.f	word	NOM:NEW	(-- nom-builder)	lib/nominal/nominal-test.f	docs/stdlib.md	stdlib-nominal	active	open the single transaction; returns the linear builder token
+1	nominal-builder	lib/nominal/builder.f	word	NOM:ADD	(nom-builder binding -- nom-builder)	lib/nominal/nominal-test.f	docs/stdlib.md	stdlib-nominal	active	thread a binding into the open transaction
+1	nominal-builder	lib/nominal/builder.f	word	NOM:FREEZE	(nom-builder -- row)	lib/nominal/nominal-test.f	docs/stdlib.md	stdlib-nominal	active	sort/dedup/validate and publish the transaction as an interned row
+1	nominal-builder	lib/nominal/builder.f	word	NOM:ROLLBACK	(nom-builder --)	lib/nominal/nominal-test.f	docs/stdlib.md	stdlib-nominal	active	abort the transaction, restoring high-water state
+1	nominal-builder	lib/nominal/builder.f	word	NOM:RESET	(--)	lib/nominal/nominal-test.f	docs/stdlib.md	stdlib-nominal	active	re-initialise every arena; resets process-local pointers for snapshot restore
+1	nominal-snapshot	lib/nominal/snapshot.f	module			lib/nominal/nominal-test.f	docs/stdlib.md	stdlib-nominal	active	snapshot/AOT adapter: single-row wire codec and allocation-order-independent whole-arena snapshot/restore
+1	nominal-snapshot	lib/nominal/snapshot.f	word	NOM:ENCODE	(row ptr u8 n -- n)	lib/nominal/nominal-test.f	docs/stdlib.md	stdlib-nominal	active	encode one row to canonical wire bytes; returns length
+1	nominal-snapshot	lib/nominal/snapshot.f	word	NOM:DECODE	(ptr u8 n -- row)	lib/nominal/nominal-test.f	docs/stdlib.md	stdlib-nominal	active	decode + validate + publish one row from canonical wire bytes
+1	nominal-snapshot	lib/nominal/snapshot.f	word	NOM:SNAPSHOT	(ptr u8 n -- n)	lib/nominal/nominal-test.f	docs/stdlib.md	stdlib-nominal	active	snapshot all published rows in canonical digest order; returns length
+1	nominal-snapshot	lib/nominal/snapshot.f	word	NOM:RESTORE	(ptr u8 n -- n)	lib/nominal/nominal-test.f	docs/stdlib.md	stdlib-nominal	active	validate and rebuild all rows from a snapshot; returns row count

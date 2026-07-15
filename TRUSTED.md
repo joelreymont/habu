@@ -747,6 +747,14 @@ that source is explicitly certified; they are not stale-checked by the default
 | CELL-OFF>N | `cell-off -- n` | Private CAD-NUM B5.2 proof-erasure projection: reads a `cell-off`'s raw cell for the checked advance/retreat/distance/widen kernels; no primitive consumes the role directly and there is no public inverse. Retire when TVK-RAW (`habu-nominal-storage-raw-a3430ef2`) lands. | `lib/cad-num-arithmetic-test.f` | lib/cad-num-arithmetic.f | 2026-07-15 |
 | ALIGNMENT>N | `alignment -- n` | Private CAD-NUM B5.2 proof-erasure projection: reads an `alignment`'s raw power-of-two cell for the align-up/aligned? kernels; no primitive consumes the role directly and there is no public inverse. Retire when TVK-RAW (`habu-nominal-storage-raw-a3430ef2`) lands. | `lib/cad-num-arithmetic-test.f` | lib/cad-num-arithmetic.f | 2026-07-15 |
 | POSITIVE-DIVISOR>N | `positive-divisor -- n` | Private CAD-NUM B5.2 proof-erasure projection: reads a `positive-divisor`'s raw cell for the total DIV/REM kernels, where the positive role makes division-by-zero statically impossible; no primitive consumes the role directly and there is no public inverse. Retire when TVK-RAW (`habu-nominal-storage-raw-a3430ef2`) lands. | `lib/cad-num-arithmetic-test.f` | lib/cad-num-arithmetic.f | 2026-07-15 |
+| MINT-PATH | `n -- path` | Private NOM representation mint: no-op cast of a validated path-node index to the opaque nominal `path` handle; producers are `NOM:ROOT`/`NOM:CONS`. Confined to path.f by refine-lint; retire when TVK-RAW (`habu-nominal-storage-raw-a3430ef2`) closes raw-value laundering. | `lib/nominal/nominal-test.f` | lib/nominal/path.f | 2026-07-15 |
+| PATH-IDX | `path -- n` | Private NOM proof-erasure projection: reads a `path` handle's node index for bounds checks and canonical walks; no public inverse. Retire when TVK-RAW (`habu-nominal-storage-raw-a3430ef2`) lands. | `lib/nominal/nominal-test.f` | lib/nominal/path.f | 2026-07-15 |
+| MINT-BINDING | `n -- binding` | Private NOM representation mint: no-op cast of a validated binding-pool index to the opaque nominal `binding` handle; the only producer is `NOM:BIND`. Confined to binding.f by refine-lint; retire when TVK-RAW (`habu-nominal-storage-raw-a3430ef2`) lands. | `lib/nominal/nominal-prop-test.f` | lib/nominal/binding.f | 2026-07-15 |
+| BIND-IDX | `binding -- n` | Private NOM proof-erasure projection: reads a `binding` handle's pool index for bounds checks and chunk assembly; no public inverse. Retire when TVK-RAW (`habu-nominal-storage-raw-a3430ef2`) lands. | `lib/nominal/nominal-prop-test.f` | lib/nominal/binding.f | 2026-07-15 |
+| MINT-ROW | `n -- row` | Private NOM representation mint: no-op cast of a published record index to the opaque nominal `row` handle; producers are `NOM:FREEZE`/`NOM:UNION`/`NOM:REMAP`/`NOM:DECODE` via row.f's PUBLISH-CHUNK/ROW-BY-IDX. Confined to row.f by refine-lint; retire when TVK-RAW (`habu-nominal-storage-raw-a3430ef2`) lands. | `lib/nominal/nominal-test.f` | lib/nominal/row.f | 2026-07-15 |
+| ROW-IDX | `row -- n` | Private NOM proof-erasure projection: reads a `row` handle's record index for bounds checks, interning, and canonical access; no public inverse. Retire when TVK-RAW (`habu-nominal-storage-raw-a3430ef2`) lands. | `lib/nominal/nominal-test.f` | lib/nominal/row.f | 2026-07-15 |
+| MK-BUILDER | `-- nom-builder` | Private NOM linear-token mint: forges the noncopyable transactional builder token; the only producer is `NOM:NEW`/`NOM:ADD` inside builder.f. Retire when TVK-RAW (`habu-nominal-storage-raw-a3430ef2`) lands. | `lib/nominal/nominal-test.f` | lib/nominal/builder.f | 2026-07-15 |
+| BUILDER-DROP | `nom-builder --` | Private NOM linear-token consume: the audited boundary that retires a `nom-builder` on the ADD/FREEZE/ROLLBACK paths where the checker cannot express the linear discard. Retire when TVK-RAW (`habu-nominal-storage-raw-a3430ef2`) lands. | `lib/nominal/nominal-test.f` | lib/nominal/builder.f | 2026-07-15 |
 | CAP-COMPILE-RUN | `--` | Model-CAD capture boundary evaluates the generated checked model definition and invokes its dynamic-arity capture word after the active checker hook certifies the definition. | `maki/cad-test.f`, `maki/test.f` | maki/cad.f | 2026-07-12 |
 | CHECK-PASSES? | `ptr u8 n -- bool` | Evaluation harness temporarily suppresses diagnostics, invokes the checker on candidate source, and restores the diagnostic hook; raw checker state mutation is the metaprogramming boundary. | `maki/eval-test.f`, `maki/test.f` | maki/eval.f | 2026-07-12 |
 | JIT-EVALUATE | `ptr u8 n --` | JIT inspection CLI evaluates user-supplied source before resolving and disassembling the requested word; dynamic evaluation cannot be expressed by the checker. | `test/gate-debug.f` | tools/jitdump-core.f | 2026-07-12 |
@@ -1262,6 +1270,14 @@ lib/cad-num-arithmetic.f:BYTE-OFF>N prim-axiom habu-epic-model-cad-70b629a9
 lib/cad-num-arithmetic.f:CELL-OFF>N prim-axiom habu-epic-model-cad-70b629a9
 lib/cad-num-arithmetic.f:ALIGNMENT>N prim-axiom habu-epic-model-cad-70b629a9
 lib/cad-num-arithmetic.f:POSITIVE-DIVISOR>N prim-axiom habu-epic-model-cad-70b629a9
+lib/nominal/path.f:MINT-PATH prim-axiom habu-epic-type-system-b88c9ecc
+lib/nominal/path.f:PATH-IDX prim-axiom habu-epic-type-system-b88c9ecc
+lib/nominal/binding.f:MINT-BINDING prim-axiom habu-epic-type-system-b88c9ecc
+lib/nominal/binding.f:BIND-IDX prim-axiom habu-epic-type-system-b88c9ecc
+lib/nominal/row.f:MINT-ROW prim-axiom habu-epic-type-system-b88c9ecc
+lib/nominal/row.f:ROW-IDX prim-axiom habu-epic-type-system-b88c9ecc
+lib/nominal/builder.f:MK-BUILDER prim-axiom habu-epic-type-system-b88c9ecc
+lib/nominal/builder.f:BUILDER-DROP prim-axiom habu-epic-type-system-b88c9ecc
 lib/engine-id.f:ENGINE-SELF-MACOS stdlib-boundary habu-raw-self-path-4514ffd3
 lib/engine-id.f:ENGINE-SELF-LINUX stdlib-boundary habu-raw-self-path-4514ffd3
 lib/ffi-abi.f:P>N stdlib-boundary habu-typed-defining-words-aa224eb5

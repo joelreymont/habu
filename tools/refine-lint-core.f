@@ -33,7 +33,7 @@
 
 $40000 constant RFL-STR-CAP     \ trust-lint manifest string store
 $80000 constant RFL-FILE-CAP    \ largest scanned source watermark (checker.f class)
-46 constant RFL-SEED#
+49 constant RFL-SEED#
 8 constant RFL-ALLOW-MAX
 32 constant RFL-NUM-CAP
 
@@ -180,6 +180,9 @@ variable RFL-LE
       43 of s" MINT-POSITIVE-DIVISOR" endof
       44 of s" MINT-ALLOC-BYTE-LEN" endof
       45 of s" MINT-ALLOC-CELL-COUNT" endof
+      46 of s" MINT-PATH" endof
+      47 of s" MINT-BINDING" endof
+      48 of s" MINT-ROW" endof
       E-TBL-BOUNDS throw
    endcase ;
 
@@ -231,6 +234,9 @@ variable RFL-LE
       43 of s" lib/cad-num-types.f" endof
       44 of s" lib/cad-num-types.f" endof
       45 of s" lib/cad-num-types.f" endof
+      46 of s" lib/nominal/path.f" endof
+      47 of s" lib/nominal/binding.f" endof
+      48 of s" lib/nominal/row.f" endof
       E-TBL-BOUNDS throw
    endcase ;
 
