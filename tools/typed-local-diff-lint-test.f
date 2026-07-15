@@ -19,6 +19,13 @@ require tools/lint/lib.f
 require tools/lint/source-lex.f
 require tools/typed-local-diff-lint-core.f
 
+\ typed STR:BUF-LEN@ boundary: read the large-source buffer length as a byte-len
+\ role, then project it back to the raw n the ( -- ptr u8 n ) accessor returns.
+package CAD-NUM
+public
+: TLDT-BL>RAW ( CAD-NUM:byte-len -- n ) BYTE-LEN>N ;
+;package
+
 4096 constant TLDT-BUF-CAP
 $10000 constant TLDT-LARGE-CAP
 1100 constant TLDT-LARGE-LINES
@@ -117,10 +124,10 @@ create TLDT-LARGE-SRC TLDT-LARGE-CAP allot
    SB$ ;
 
 : TLDT-LARGE-APPEND ( ptr u8 n -- )
-   TLDT-LARGE-SRC TLDT-LARGE-CAP TLDT-LARGE-SRC-U BUF-APPEND ;
+   STR:LENGTH TLDT-LARGE-SRC TLDT-LARGE-CAP STR:LENGTH TLDT-LARGE-SRC-U STR:BUF-APPEND ;
 
 : TLDT-LARGE-LF ( -- )
-   10 TLDT-LARGE-SRC TLDT-LARGE-CAP TLDT-LARGE-SRC-U BUF-APPEND-C ;
+   10 TLDT-LARGE-SRC TLDT-LARGE-CAP STR:LENGTH TLDT-LARGE-SRC-U STR:BUF-APPEND-C ;
 
 : TLDT-LARGE-DIFF-HEAD ( ptr u8 n -- ) {: path:ptr pathu:n :}
    s" diff --git a/" TLDT-LARGE-APPEND path pathu TLDT-LARGE-APPEND
@@ -129,13 +136,13 @@ create TLDT-LARGE-SRC TLDT-LARGE-CAP allot
    s" @@ -1,0 +1,1100 @@" TLDT-LARGE-APPEND TLDT-LARGE-LF ;
 
 : TLDT-LARGE$ ( -- ptr u8 n )
-   TLDT-LARGE-SRC-U BUF-RESET
+   TLDT-LARGE-SRC-U STR:BUF-RESET
    s" lib/large.f" TLDT-LARGE-DIFF-HEAD
    0 begin dup TLDT-LARGE-LINES < while
       s" +: OK ( n -- n ) {: x:n :} x ;" TLDT-LARGE-APPEND TLDT-LARGE-LF
       1+
    repeat drop
-   TLDT-LARGE-SRC TLDT-LARGE-SRC-U BUF-LEN@ ;
+   TLDT-LARGE-SRC TLDT-LARGE-SRC-U STR:BUF-LEN@ CAD-NUM:TLDT-BL>RAW ;
 
 : TLDT-EMPTY$ ( -- ptr u8 n )
    SB-RESET

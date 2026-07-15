@@ -29,7 +29,7 @@
 
 require lib/errors.f
 require lib/string.f
-require lib/adt/option.f                 \ option<idx> INDEX-OF consumer (switchover wave A)
+require lib/adt/option.f                 \ option<CAD-NUM:index> STR:FIND-SUB consumer
 require lib/memory.f
 require lib/fs.f
 
@@ -85,13 +85,31 @@ variable CGR-WP
 : CGR-MOVZ-0? ( w -- bool )
    CGR-MOVZ-0-MASK and CGR-MOVZ-0-BASE = ;
 
+\ typed STR:FIND-SUB / STR:INDEX-OF boundary: route byte-lengths through the STR:
+\ role surface, project the option<CAD-NUM:index> result back to the switchover
+\ option<idx> so the fail-closed extraction consumers below stay unchanged.
+package CAD-NUM
+public
+: CGR-IX>N ( CAD-NUM:index -- n ) INDEX>N ;
+;package
+: CGR-FIND ( ptr u8 n ptr u8 n -- option<idx> ) {: a:ptr u:n b:ptr v:n :}
+   a u STR:LENGTH b v STR:LENGTH STR:FIND-SUB MATCH option
+     none OF OPTION:NONE ENDOF
+     some OF CAD-NUM:CGR-IX>N >IDX OPTION:SOME ENDOF
+   ;MATCH ;
+: CGR-INDEX-OF ( ptr u8 n n -- option<idx> ) {: a:ptr u:n c:n :}
+   a u STR:LENGTH c STR:INDEX-OF MATCH option
+     none OF OPTION:NONE ENDOF
+     some OF CAD-NUM:CGR-IX>N >IDX OPTION:SOME ENDOF
+   ;MATCH ;
+
 \ ---- source extraction (fail-closed) ----
 : CGR-DEF$ ( ptr u8 n ptr u8 n -- ptr u8 n ) {: a:ptr u:n head:ptr headu:n :}
-   a u head headu FIND-SUB MATCH option
+   a u head headu CGR-FIND MATCH option
      none OF s" codegen-role: definition not found" type cr E-CGR-SRC throw ENDOF
      some OF IDX>N ENDOF
    ;MATCH {: s:n :}
-   a s + u s - s" ;" FIND-SUB MATCH option
+   a s + u s - s" ;" CGR-FIND MATCH option
      none OF s" codegen-role: definition end not found" type cr E-CGR-SRC throw ENDOF
      some OF IDX>N ENDOF
    ;MATCH {: e:n :}
@@ -104,13 +122,13 @@ variable CGR-WP
    repeat ;
 
 : CGR-LINE$ ( ptr u8 n ptr u8 n -- ptr u8 n ) {: a:ptr u:n key:ptr keyu:n :}
-   a u key keyu FIND-SUB MATCH option
+   a u key keyu CGR-FIND MATCH option
      none OF s" codegen-role: source line not found" type cr E-CGR-SRC throw ENDOF
      some OF IDX>N ENDOF
    ;MATCH {: s:n :}
    a u s CGR-LINE-START {: ls:n :}
    a ls +
-   a ls + u ls - STR-LF INDEX-OF MATCH option
+   a ls + u ls - STR-LF CGR-INDEX-OF MATCH option
      none OF u ls - ENDOF
      some OF IDX>N ENDOF
    ;MATCH ;
@@ -174,10 +192,10 @@ variable CGR-SB-LEN
    0 >LEN CGR-SB-LEN ! ;
 
 : CGR-SB+ ( ptr u8 n -- )
-   CGR-SB-BUF CGR-SB-CAP CGR-SB-LEN BUF-APPEND ;
+   STR:LENGTH CGR-SB-BUF CGR-SB-CAP STR:LENGTH CGR-SB-LEN STR:BUF-APPEND ;
 
 : CGR-SB-C+ ( c -- )
-   CGR-SB-BUF CGR-SB-CAP CGR-SB-LEN BUF-APPEND-C ;
+   CGR-SB-BUF CGR-SB-CAP STR:LENGTH CGR-SB-LEN STR:BUF-APPEND-C ;
 
 : CGR-SB$ ( -- ptr u8 n )
    CGR-SB-BUF CGR-SB-LEN @ LEN>N ;
@@ -198,7 +216,7 @@ variable CGR-NI
    CGR-NB-A 0 ptr-field @ ;
 
 : CGR-NB-C+ ( c -- )
-   CGR-NB-BUF CGR-NB-CAP CGR-NB-LEN BUF-APPEND-C ;
+   CGR-NB-BUF CGR-NB-CAP STR:LENGTH CGR-NB-LEN STR:BUF-APPEND-C ;
 
 : CGR-NB$ ( -- ptr u8 n )
    CGR-NB-BUF CGR-NB-LEN @ LEN>N ;
@@ -461,7 +479,7 @@ variable CGR-USES
 : CGR-NEXT-USE ( n -- n ) {: from:n :}
    CGR-BODY$ {: a:ptr u:n :}
    from u < 0= if -1 exit then
-   a from + u from - s" CLOC-MAIN" FIND-SUB MATCH option
+   a from + u from - s" CLOC-MAIN" CGR-FIND MATCH option
      none OF -1 ENDOF
      some OF IDX>N from + ENDOF
    ;MATCH ;
