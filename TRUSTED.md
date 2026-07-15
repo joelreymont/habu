@@ -216,14 +216,13 @@ that source is explicitly certified; they are not stale-checked by the default
 | em-compile-ops | `--` | Chains factored compile-mode arithmetic, shuffle, comparison, unary, and float operator dispatch emitters. | `test/run.f` | src/habu/habu2.f | 2026-06-25 |
 | em-compile-call | `--` | Emits compile-mode lookup, immediate execution, and call generation. | `test/run.f` | src/habu/habu2.f | 2026-06-25 |
 | em-reset-compile-state | `--` | Emits reset of compile/repl/evaluate state cells after rollback or recovery. | `test/run.f` | src/habu/habu2.f | 2026-06-25 |
-| em-eval-undef-rollback | `--` | Emits evaluate-frame rollback for undefined-word failures. | `test/run.f` | src/habu/habu2.f | 2026-06-25 |
 | em-eval-throw-recover | `--` | Emits the evaluate throw-escape recovery entry: transactional frame rollback that delivers the escaping throw code via EVALERR-CELL instead of exiting the process. | `test/run.f` | src/habu/habu2.f | 2026-07-03 |
 | em-repl-recover | `--` | Emits REPL recovery after errors, restoring line-start compile state and stacks. | `test/run.f` | src/habu/habu2.f | 2026-06-25 |
 | em-compile-undef | `--` | Emits undefined-word diagnostics and evaluate/REPL recovery routing. | `test/run.f` | src/habu/habu2.f | 2026-06-25 |
 | em-eval-clean-exit | `--` | Emits clean evaluate end-of-buffer return path. | `test/run.f` | src/habu/habu2.f | 2026-06-25 |
 | em-repl-read | `--` | Emits REPL line-state save, read callback call, EOF handling, and input reset. | `test/run.f` | src/habu/habu2.f | 2026-06-25 |
 | em-compile-exit | `--` | Emits interpreter end-of-input handling for evaluate, REPL ok/read, and process exit. | `test/run.f` | src/habu/habu2.f | 2026-06-25 |
-| em-interpret-underflow | `--` | Emits the top-level data-stack underflow diagnostic (named E-UNDERFLOW + offending word) and evaluate/REPL/batch recovery routing for the LMAIN depth-floor guard. | `test/run.f` | src/habu/habu2.f | 2026-07-04 |
+| em-interpret-underflow | `--` | Emits the data-stack underflow diagnostic (named E-UNDERFLOW + offending word) for the LMAIN depth-floor guard; inside evaluate it delivers a catchable RC-REJECT via the eval throw-recovery (RX restored first), else REPL recovery / batch exit 70. | `test/run.f` | src/habu/habu2.f | 2026-07-15 |
 | em-adt-con-fam | `--` | Emits the construct family-operand step: TFL bridge call, fail-closed unknown-family die, CMFAM/CMM state stores. | `test/run.f` | src/habu/habu2.f | 2026-07-09 |
 | em-adt-con-pushes | `--` | Emits the construct pad/tag VS-constant pushes with frame-saved counters around LVPUSHC. | `test/run.f` | src/habu/habu2.f | 2026-07-09 |
 | em-adt-con-var | `--` | Emits the construct variant-operand step: TFL bridge call, fail-closed unknown-variant die, pad/tag emission, mode clear. | `test/run.f` | src/habu/habu2.f | 2026-07-09 |
@@ -1043,7 +1042,7 @@ src/habu/habu1.f:emit-fp-prims builder-emit habu-builder-trust-rows-c5d41af6
 src/habu/habu1.f:linux-setpgid-self builder-emit habu-builder-trust-rows-c5d41af6
 src/habu/habu1.f:spawn-darwin-zero-attr builder-emit habu-builder-trust-rows-c5d41af6
 src/habu/habu1.f:spawn-darwin-attr-defaults builder-emit habu-builder-trust-rows-c5d41af6
-src/habu/habu2.f builder-emit habu-builder-trust-rows-c5d41af6 127
+src/habu/habu2.f builder-emit habu-builder-trust-rows-c5d41af6 126
 src/habu/hide.f:BFR-N>REC builder-emit habu-builder-trust-rows-c5d41af6
 src/habu/hide.f:BFR-A>U8 builder-emit habu-builder-trust-rows-c5d41af6
 src/habu/hide.f:BFR-N>U8 builder-emit habu-builder-trust-rows-c5d41af6

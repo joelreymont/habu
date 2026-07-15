@@ -4733,3 +4733,16 @@ unchanged (148855). Keys for milestone 2:
   `@%pN`. Also: `OP-MUL`/`OP-ADD` require SAME-shape operands (SHP-SAME-OK?), so a
   per-feature 1xC affine gamma is not expressible via MUL - use `OP-SCALE`
   (1x1/same) + `OP-BIAS` (1xC).
+- **When an error-recovery mechanism is upgraded, migrate every branch to the old
+  entry in the same change — the sibling left behind becomes the residual bug.**
+  dot habu-interpret-err-under-8876b500: the compile-abort legs (LUNDEF/LWIDE/
+  LMININ) had moved to the catchable RC-REJECT throw via LEVALREC, but the LMAIN
+  underflow guard's EVALD>0 leg still used the old rollback-and-return
+  (EM-EVAL-UNDEF-ROLLBACK: pop the frame, set EVALERR, return). Rollback-and-return
+  is fail-open both ways: `[: INCLUDE-EVALUATE ;] catch` read 0 for E-UNDERFLOW
+  while E-UNDEFINED was correctly caught 70, and a handlerless caller kept
+  interpreting past the failed evaluate with rc 0. One throw contract per boundary;
+  grep for every jump into the retired recovery entry before calling the upgrade
+  done. Also: re-verify a dot's exact repro on the current base before red-first
+  work — both dots of this pair were already fixed by intervening engine work, and
+  the genuine remaining defect was this sibling leg.

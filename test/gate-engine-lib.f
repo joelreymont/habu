@@ -1339,6 +1339,78 @@ variable GE-DFULL-I                 \ copy/definition loop index
    GE-EVAL-UNDEF-FAILCLOSED
    GE-COMPILE-UNDEF-TOPLEVEL ;
 
+: GE-EVAL-CATCH-SRC ( -- )
+   \ The dot-pair reproducer wrapper (test/type-ctor-suite.f TCE-CATCH shape):
+   \ a quotation catch over the audited INCLUDE-EVALUATE boundary. The caller
+   \ appends one failing source string; the caught code prints to stdout.
+   GE-SRC-RESET
+   s" variable GECA   variable GECU" GE-SRC-LINE
+   s" : GEC-GO ( -- ) GECA @ GECU @ INCLUDE-EVALUATE ;" GE-SRC-LINE
+   s" : GEC-CATCH ( ptr u8 n -- n ) GECU ! GECA ! [: GEC-GO ;] catch ;" GE-SRC-LINE ;
+
+: GE-EVAL-CATCH-RUN ( ptr u8 n -- ) {: src:ptr srcu:n :}
+   GE-HB-RESET
+   GE-EVAL-CATCH-SRC
+   src srcu GE-SRC-S"
+   s"  GEC-CATCH . cr" GE-SRC-LINE
+   s" bin/hb" GE-SRC-BUF GE-SRC-U @ GE-TIMEOUT-MS GE-RUN-STDIN ;
+
+: GE-EVAL-INTERP-UNDEF-CATCH ( -- )
+   \ Dot habu-interpret-err-under-8876b500: an undefined INTERPRET-mode token
+   \ inside [: INCLUDE-EVALUATE ;] catch delivers the catchable RC-REJECT (70)
+   \ of the rc-70 load-path contract — never a swallowed 0.
+   s" qwertyuiop" GE-EVAL-CATCH-RUN
+   s" hb eval interp-undef catch rc" GE-EXPECT-OK
+   s" 70" s" hb eval interp-undef catch code" GE-EXPECT-OUT-HAS
+   s" E-UNDEFINED" s" hb eval interp-undef catch diag" GE-EXPECT-ERR-HAS
+   s" qwertyuiop" s" hb eval interp-undef catch token" GE-EXPECT-ERR-HAS
+   s" PASS: interpret undefined under catch+evaluate -> caught 70" type cr ;
+
+: GE-EVAL-UNDERFLOW-CATCH ( -- )
+   \ Dot 8876b500 residual: interpret-level UNDERFLOW inside the same wrapper
+   \ was the one interpret failure still rolling the eval frame back with only
+   \ EVALERR set — catch read 0 (fail-open). It must be caught 70 exactly like
+   \ E-UNDEFINED, with the sentinel stack under the wrapper intact.
+   s" drop drop drop" GE-EVAL-CATCH-RUN
+   s" hb eval underflow catch rc" GE-EXPECT-OK
+   s" 70" s" hb eval underflow catch code" GE-EXPECT-OUT-HAS
+   s" E-UNDERFLOW" s" hb eval underflow catch diag" GE-EXPECT-ERR-HAS
+   s" drop" s" hb eval underflow catch token" GE-EXPECT-ERR-HAS
+   s" PASS: interpret underflow under catch+evaluate -> caught 70" type cr ;
+
+: GE-EVAL-UNDERFLOW-FAILCLOSED ( -- )
+   \ No handler: the underflow throw escapes the eval frame and fails closed rc
+   \ 70 (uncaught-throw exit), never continuing past the failed evaluate. The
+   \ rollback-and-return path printed the marker and exited 0 (fail-open).
+   GE-HB-RESET
+   GE-SRC-RESET
+   s" drop drop drop" GE-SRC-S"
+   s"  INCLUDE-EVALUATE" GE-SRC-LINE
+   s" s" GE-SRC+ GE-DQ GE-SRC-C s"  ALIVE-AFTER" GE-SRC+ GE-DQ GE-SRC-C
+   s"  type cr" GE-SRC-LINE
+   s" bin/hb" GE-SRC-BUF GE-SRC-U @ GE-TIMEOUT-MS GE-RUN-STDIN
+   70 s" hb eval underflow no-catch rc" GE-EXPECT-RC
+   s" E-UNDERFLOW" s" hb eval underflow no-catch diag" GE-EXPECT-ERR-HAS
+   s" " s" hb eval underflow no-catch dead marker" GE-EXPECT-OUT
+   s" PASS: interpret underflow in evaluate w/o catch -> fail-closed rc70" type cr ;
+
+: GE-UNDERFLOW-TOPLEVEL-UNCHANGED ( -- )
+   \ Plain-stdin contract pin for the fix: top-level underflow (EVALD==0) keeps
+   \ the E-UNDERFLOW diagnostic + rc 70 exactly (GE-UNDERFLOW-DIAG shape).
+   GE-HB-RESET
+   GE-SRC-RESET
+   s" drop drop drop" GE-SRC-LINE
+   s" bin/hb" GE-SRC-BUF GE-SRC-U @ GE-TIMEOUT-MS GE-RUN-STDIN
+   70 s" hb top-level underflow rc unchanged" GE-EXPECT-RC
+   s" E-UNDERFLOW" s" hb top-level underflow diag unchanged" GE-EXPECT-ERR-HAS
+   s" PASS: top-level underflow fail-closed rc70 (unchanged)" type cr ;
+
+: GE-EVAL-INTERP-ERR-RECOVER ( -- )
+   GE-EVAL-INTERP-UNDEF-CATCH
+   GE-EVAL-UNDERFLOW-CATCH
+   GE-EVAL-UNDERFLOW-FAILCLOSED
+   GE-UNDERFLOW-TOPLEVEL-UNCHANGED ;
+
 : GE-SET-CHECK-NEG ( -- )
    \ set-check is fail-closed at install (dot habu-stdlib-check-hook-fd883aea): a
    \ non-zero argument outside the live JIT code window [DBASE, CP) dies with a
@@ -1372,6 +1444,7 @@ variable GE-DFULL-I                 \ copy/definition loop index
    GE-NESTED-CHECKED-DEF
    GE-NESTED-BAD-DEF
    GE-EVAL-UNDEF-RECOVER
+   GE-EVAL-INTERP-ERR-RECOVER
    GE-SET-CHECK-NEG
    GE-TYPED-SMOKE
    GE-TIMEOUT-ATTRIBUTION ;

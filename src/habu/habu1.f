@@ -1203,8 +1203,11 @@ s" spawn-darwin-finish" s" label label --" TRUST
 \ ( a u -- ) re-entrant interpret of the string a/u in this process: save the
 \ outer input cursor + compile state, point INP/INE at a/u, bump EVALD, and jump
 \ to the interpret loop top (its runtime addr in LMAINP-CELL — prims can't name
-\ labels). End-of-buffer (LEXIT) and an error (LUNDEF), when EVALD>0, restore the
-\ depth-indexed frame and return here. Sets EVALERR-CELL: 0 = clean, 1 = recovered from an error.
+\ labels). End-of-buffer (LEXIT), when EVALD>0, restores the depth-indexed frame
+\ and returns here with EVALERR-CELL 0 (clean). Interpret failures (LUNDEF,
+\ LUNDERFLOW, and every throw) never return here: they unwind through the eval
+\ throw-recovery (LEVALREC), which rolls each escaped frame back, records the
+\ code in EVALERR-CELL, and delivers to the nearest handler / REPL / process exit.
 : C-EVAL-FRAME-ARGS ( n n n -- )
    EVAL-SCRATCH !
    EVAL-DST !

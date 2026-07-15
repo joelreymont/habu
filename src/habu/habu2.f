@@ -5575,19 +5575,6 @@ s" em-compile-call" s" --" TRUST
    9 VRALL MOVZ,  9 DATA VRFREE-CELL STR, ;
 s" em-reset-compile-state" s" --" TRUST
 
-: EM-EVAL-UNDEF-ROLLBACK ( -- )
-   9 DATA EVALD-CELL LDR,  9 9 1 SUBI,  9 DATA EVALD-CELL STR,
-   9 14 15 C-EVAL-FRAME-ADDR
-   CP 14 40 LDR,  NDICT 14 48 LDR,  XDS 14 32 LDR,
-   9 14 56 LDR,  9 DATA DP-CELL STR,
-   EM-RESET-COMPILE-STATE
-   9 14 0 LDR,  9 DATA INP-CELL STR,
-   9 14 8 LDR,  9 DATA INE-CELL STR,
-   9 1 MOVZ,  9 DATA EVALERR-CELL STR,
-   9 14 24 LDR,  SP 9 0 ADDI,
-   9 14 16 LDR,  9 BR, ;
-s" em-eval-undef-rollback" s" --" TRUST
-
 \ A throw whose nearest handler lies beyond one or more active evaluate boundaries
 \ lands here (BTHROW branch via EVALREC-CELL), x15 = throw code. Each escaped eval
 \ frame is rolled back — input cursor, dictionary top (CP/NDICT), data-stack base
@@ -5776,14 +5763,23 @@ s" em-compile-exit" s" --" TRUST
 \ guard when the just-interpreted word left XDS below S0 (proven underflow). Print
 \ `E-UNDERFLOW: <word>` naming the offending token (TKA/TKL still hold it, LTOK has
 \ not overwritten them this iteration), then recover exactly like the undefined-word
-\ path: roll back one evaluate frame if inside EVALUATE, else recover + re-read in
-\ the REPL, else fail closed with exit 70 in a batch/--load load. Never a signal.
+\ path: inside EVALUATE the failure unwinds as a catchable RC-REJECT throw via the
+\ eval throw-recovery (LEVALREC, restoring RX first), else recover + re-read in the
+\ REPL, else fail closed with exit 70 in a batch/--load load. Never a signal. The
+\ old rollback-and-return leg (EVALERR only) was fail-open: catch read 0 and a
+\ handlerless caller kept interpreting past the failed evaluate.
 : EM-INTERPRET-UNDERFLOW ( -- )
    LBL LBL {: uf0:label ufdie:label :}
    LUNDERFLOW LABEL@ LBL,
    SP SP 16 SUBI,  9 $465245444E552D45 LIT64,  9 SP 0 STR,  9 $000000203A574F4C LIT64,  9 SP 8 STR,  0 2 MOVZ,  1 SP 0 ADDI,  2 13 MOVZ,  NR-WRITE SYS,  SP SP 16 ADDI,  0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,  0 2 MOVZ,  1 LQNL LABEL@ ADR,  1 1 1 ADDI,  2 1 MOVZ,  NR-WRITE SYS,
    9 DATA EVALD-CELL LDR,  9 uf0 CBZ,
-      EM-EVAL-UNDEF-ROLLBACK
+      \ Inside evaluate: mirror LDIAGRET — an immediate word can underflow
+      \ mid-compile with the dict region RW, so restore RX before the unwind
+      \ re-enters executable (handler) code; mprotect is idempotent when the
+      \ guard fired at interpret level with the region already RX.
+      2 5 MOVZ,  LPROT LABEL@ BL,                       \ region -> RX
+      15 RC-REJECT MOVZ,                                \ x15 = throw code
+      10 DATA EVALREC-CELL LDR,  10 BR,                 \ -> LEVALREC (frame unwind + deliver)
    uf0 LBL,
    9 DATA REPLH-CELL LDR,  9 ufdie CBZ,
    LRREC LABEL@ B,
