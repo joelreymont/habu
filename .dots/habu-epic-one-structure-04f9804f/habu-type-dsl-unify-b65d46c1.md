@@ -7,6 +7,7 @@ created-at: "2026-07-13T16:45:25.258711+02:00"
 blocks:
   - habu-migration-core-records-77182600
   - habu-fields-prove-transactional-7a74c018
+  - habu-type-declarations-shared-14ab0e48
 ---
 
 Replace value-record, product-field, and positional variant-payload metadata with
