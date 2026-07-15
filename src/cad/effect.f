@@ -108,18 +108,19 @@ public
 \ ---- the unique canonical empty row --------------------------------------------
 : PURE ( -- NOM:row )   NEW FREEZE ;
 
-\ ---- canonical composition -----------------------------------------------------
-: UNION ( NOM:row NOM:row -- NOM:row )   NOM:UNION ;
+\ ---- canonical composition (NOM alias; one body, published as UNION) -----------
+EXPORT NOM:UNION                        \ CAD-EFFECT:UNION  ( NOM:row NOM:row -- NOM:row )
 
 : REMAP ( NOM:row n -- NOM:row ) {: s:n :}
    s 0 < s CE-VAL-MASK > or if E-CADEFF-SITE throw then    \ out-of-range site ordinal
    CE-SITE-TAG s CE-SEG  NOM:REMAP ;
 
-\ ---- canonical identity / serialization (delegated; content-defined) -----------
-: EQUAL? ( NOM:row NOM:row -- bool )    NOM:EQUAL? ;
-: SIZE ( NOM:row -- n )                 NOM:SIZE ;
-: KEY ( NOM:row ptr u8 -- )             NOM:KEY ;
-: ENCODE ( NOM:row ptr u8 n -- n )      NOM:ENCODE ;
+\ ---- canonical identity / row serialization (NOM aliases; one body, two names) -
+EXPORT NOM:EQUAL?                       \ CAD-EFFECT:EQUAL?  ( NOM:row NOM:row -- bool )
+EXPORT NOM:SIZE                         \ CAD-EFFECT:SIZE    ( NOM:row -- n )
+EXPORT NOM:KEY                          \ CAD-EFFECT:KEY     ( NOM:row ptr u8 -- )
+EXPORT NOM:ENCODE                       \ CAD-EFFECT:ENCODE  ( NOM:row ptr u8 n -- n )
+\ SNAPSHOT/RESTORE are store-wide wire ops (not row-handle ops); kept as bodies.
 : SNAPSHOT ( ptr u8 n -- n )            NOM:SNAPSHOT ;
 : RESTORE ( ptr u8 n -- n )             NOM:RESTORE ;
 : RESET ( -- )                          0 CE-INSERTS !  NOM:RESET ;
