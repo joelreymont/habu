@@ -2146,8 +2146,15 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
       13 DATA LOCF-CELL LDR,  13 12 CF-LOCF STR,
       11 11 1 ADDI,  11 10 0 STR,  RET,
    LCFPOP @ LBL,
+      LBL {: cfok :}   \ typed-local-lint: allow-bare-local (gforth-hosted control-flow label id, like pisb/kno in this word)
+      5 CFSTK-OFF LIT64,  10 DBASE 5 ADD,  11 10 0 LDR,   \ x11 = control-flow depth (peek before pop)
+      11 cfok CBNZ,                                       \ empty stack: orphan closer -> fail closed (never underflow); recovery-seed mirror of the native LORPHAN reject
+         0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,      \ write the offending closer token
+         0 2 MOVZ,  1 LQNL @ ADR,  1 1 1 ADDI,  2 1 MOVZ,  NR-WRITE SYS,
+         0 70 MOVZ,  NR-EXIT-GROUP SYS,
+      cfok LBL,
       SP SP 16 SUBI,  30 SP 0 STR,
-      5 CFSTK-OFF LIT64,  10 DBASE 5 ADD,  11 10 0 LDR,  11 11 1 SUBI,  11 10 0 STR,
+      11 11 1 SUBI,  11 10 0 STR,
       12 CF-REC MOVZ,  12 11 12 MUL,  12 12 10 ADD,  12 12 8 ADDI,
       16 12 0 ADDI,
       15 DATA LOCF-CELL LDR,  14 16 CF-LOCF LDR,  12 15 14 SUB,

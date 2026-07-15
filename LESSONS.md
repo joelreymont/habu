@@ -783,6 +783,21 @@ lesson — keep the specific word/code/path, cut the prose.
 - **Malformed control is not uncheckable:** orphan closers and unterminated
   `if`/loop/quotation/`case` frames must set `OK=0`; `UNCK` is for missing
   checker model coverage, not syntax imbalance.
+- **The checker modeling an invariant does not make the engine fail-closed:** the
+  checker's `CF-THEN`/`CF-UNTIL`/... already `CF-FAIL`ed on an empty control-flow
+  stack, but the native `:`-body compile emits token-by-token FIRST and the
+  post-`;` `HOOK` (`CHECK!`→throw 70) runs only after. `: XI ( -- ) THEN ;`
+  SIGBUS'd (rc 134): `LCFPOP` decremented the empty engine CFSTK to -1, read a
+  bogus branch origin below the base, and `LPAT` dereferenced it (dot
+  habu-orphan-control-word-0370b49d). Root fix is at the shared pop, not per
+  closer: guard `LCFPOP` at depth 0 → branch to a named `LORPHAN` reject that
+  joins the `LDIAGRET` tail (catchable RC-REJECT 70 under evaluate, rc-70 at top
+  level), exactly like `E-UNDEFINED`. One guard covers THEN/ELSE/REPEAT/ENDOF and
+  LOOP/+LOOP (both call `LCFPOP` before their loop-frame work) and hardens
+  UNTIL/AGAIN/ENDCASE (they only avoided the crash by never dereferencing the
+  bogus origin / a zeroed slack cell). Valid flow keeps depth ≥ 1 at every pop, so
+  emitted code is byte-identical. Mirror the guard in `bootstrap/cg/forth.fs`
+  (gforth recovery seed) as a fail-closed hard rc-70.
 - **Do not port relative linked-list words by habit:** SwiftForth's
   `@REL`/`!REL`/`,REL`/link traversal words bake dictionary-relative pointer
   arithmetic into APIs. Habu should model node layout with structures, runtime

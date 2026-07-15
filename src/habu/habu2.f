@@ -130,6 +130,8 @@ variable LINTERNAL   variable LINTMSG   \ interpret-mode internal-word reject (D
 26 constant INTMSG-LEN    \ byte length of "hb: internal engine word: " (LINTMSG)
 variable LMININ   variable LMINMSG   \ interpret-mode certified-word underdepth reject (DNAME-MIN-IN) + its message
 32 constant MINMSG-LEN    \ byte length of "hb: interpret stack underdepth: " (LMINMSG)
+variable LORPHAN   variable LORPHANMSG   \ orphan control-flow closer reject (empty CFSTK pop) + its message
+40 constant ORPHANMSG-LEN  \ byte length of "hb: control-flow closer without opener: " (LORPHANMSG)
 31 constant CONFMSG-LEN   \ byte length of "hb: construct: unknown family: " (EM-COMPILE-ADT-MODE)
 32 constant CONVMSG-LEN   \ byte length of "hb: construct: unknown variant: " (EM-COMPILE-ADT-MODE)
 27 constant MFAMMSG-LEN   \ byte length of "hb: match: unknown family: " (EM-ADT-MATCH-FAM)
@@ -339,6 +341,7 @@ s" c-bp-watch-dump" s" label label --" TRUST
    LWIDEMSG LABEL@ LBL, s" hb: interpret-mode layout value: " BYTES,     \ WIDEMSG-LEN bytes; LWIDE appends the token + newline
    LINTMSG LABEL@ LBL, s" hb: internal engine word: " BYTES,             \ INTMSG-LEN bytes; LINTERNAL appends the token + newline
    LMINMSG LABEL@ LBL, s" hb: interpret stack underdepth: " BYTES,       \ MINMSG-LEN bytes; LMININ appends the token + newline
+   LORPHANMSG LABEL@ LBL, s" hb: control-flow closer without opener: " BYTES,   \ ORPHANMSG-LEN bytes; LORPHAN appends the closer token + newline
    LDICTFULL LABEL@ LBL, s" hb: dictionary full at: " BYTES,             \ CAPMSG-LEN bytes; capacity arms append the token + newline
    LCODEFULL LABEL@ LBL, s" hb: code space full at: " BYTES,             \ CAPMSG-LEN bytes
    LSNAPBAD LABEL@ LBL, s" hb: snapshot trailer corrupt" BYTES,  NL-KW 1 BYTES,               \ SNAPBAD-MSG-LEN bytes incl. newline
@@ -1147,8 +1150,10 @@ s" c-emit-drop-x12" s" --" TRUST
       13 DATA LOCF-CELL LDR,  13 12 CF-LOCF STR,
       11 11 1 ADDI,  11 10 0 STR,  RET,
    LCFPOP LABEL@ LBL,
+      5 CFSTK-OFF LIT64,  10 DBASE 5 ADD,  11 10 0 LDR,      \ x11 = control-flow depth (peek before pop)
+      11 LORPHAN LABEL@ CBZ,                                 \ empty stack: orphan closer, fail-closed reject (never underflow into a bogus branch origin)
       SP SP 16 SUBI,  30 SP 0 STR,
-      5 CFSTK-OFF LIT64,  10 DBASE 5 ADD,  11 10 0 LDR,  11 11 1 SUBI,  11 10 0 STR,
+      11 11 1 SUBI,  11 10 0 STR,
       12 CF-REC MOVZ,  12 11 12 MUL,  12 12 10 ADD,  12 12 8 ADDI,
       16 12 0 ADDI,
       15 DATA LOCF-CELL LDR,  14 16 CF-LOCF LDR,  12 15 14 SUB,
@@ -5743,6 +5748,11 @@ s" em-repl-recover" s" --" TRUST
    0 2 MOVZ,  1 LMINMSG LABEL@ ADR,  2 MINMSG-LEN MOVZ,  NR-WRITE SYS,
    0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,
    0 2 MOVZ,  1 LQNL LABEL@ ADR,  1 1 1 ADDI,  2 1 MOVZ,  NR-WRITE SYS,
+   LDIAGRET LABEL@ B,
+   LORPHAN LABEL@ LBL,                                 \ branch target from LCFPOP: closer with an empty control-flow stack (TKA/TKL hold the closer token)
+   0 2 MOVZ,  1 LORPHANMSG LABEL@ ADR,  2 ORPHANMSG-LEN MOVZ,  NR-WRITE SYS,
+   0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,
+   0 2 MOVZ,  1 LQNL LABEL@ ADR,  1 1 1 ADDI,  2 1 MOVZ,  NR-WRITE SYS,
    LDIAGRET LABEL@ B, ;
 s" em-compile-undef" s" --" TRUST
 
@@ -6172,6 +6182,7 @@ s" SRCA@" s" -- ptr u8" TRUST
    LBL LWIDE !  LBL LWIDEMSG !  LBL LDIAGRET !
    LBL LINTERNAL !  LBL LINTMSG !
    LBL LMININ !  LBL LMINMSG !
+   LBL LORPHAN !  LBL LORPHANMSG !
    LBL LDICTFULL !  LBL LCODEFULL !
    LBL LSNAPBAD !  LBL LSNAPVER !
    LBL LSRCFULL !  LBL LSRCREAD !  LBL LBADSTR !

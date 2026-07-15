@@ -1439,6 +1439,48 @@ variable GE-DFULL-I                 \ copy/definition loop index
       s" hb eval def-surplus-out catch" GE-EVAL-DEF-REJECT-1
    s" PASS: def-compile failures under catch+evaluate -> caught 70" type cr ;
 
+: GE-ORPHAN-CLOSER-1 ( ptr u8 n ptr u8 n -- ) {: tok:ptr toku:n label:ptr labelu:n :}
+   \ Plain stdin: a definition that opens no control-flow frame but names a closer
+   \ must fail closed rc 70 with the named engine diagnostic + the offending token,
+   \ NEVER a SIGBUS register dump (rc 134). Root cause (dot habu-orphan-control-
+   \ word-0370b49d): every closer's compile-time patch pops the control-flow stack
+   \ through LCFPOP; with an empty stack it underflowed to a bogus branch origin that
+   \ LPAT then dereferenced. LCFPOP now guards depth 0 and rejects like E-UNDEFINED.
+   GE-HB-RESET
+   GE-SRC-RESET
+   s" : XI ( -- ) " GE-SRC+
+   tok toku GE-SRC+
+   s"  ;" GE-SRC-LINE
+   s" bin/hb" GE-SRC-BUF GE-SRC-U @ GE-TIMEOUT-MS GE-RUN-STDIN
+   70 label labelu GE-EXPECT-RC
+   s" control-flow closer without opener" label labelu GE-EXPECT-ERR-HAS
+   tok toku label labelu GE-EXPECT-ERR-HAS
+   s" habu-crash" label labelu GE-EXPECT-ERR-LACKS ;
+
+: GE-ORPHAN-CLOSER ( -- )
+   \ Every control-flow closer, orphaned at top level, and the catchable-under-eval
+   \ subset. THEN/ELSE/REPEAT/LOOP/+LOOP/ENDOF crashed rc 134 before the fix;
+   \ UNTIL/AGAIN/ENDCASE were orderly by luck (no LPAT deref / zeroed slack cell)
+   \ but now share the one guarded LCFPOP reject path.
+   s" THEN"    s" hb orphan then"    GE-ORPHAN-CLOSER-1
+   s" ELSE"    s" hb orphan else"    GE-ORPHAN-CLOSER-1
+   s" REPEAT"  s" hb orphan repeat"  GE-ORPHAN-CLOSER-1
+   s" UNTIL"   s" hb orphan until"   GE-ORPHAN-CLOSER-1
+   s" AGAIN"   s" hb orphan again"   GE-ORPHAN-CLOSER-1
+   s" LOOP"    s" hb orphan loop"    GE-ORPHAN-CLOSER-1
+   s" +LOOP"   s" hb orphan +loop"   GE-ORPHAN-CLOSER-1
+   s" ENDOF"   s" hb orphan endof"   GE-ORPHAN-CLOSER-1
+   s" ENDCASE" s" hb orphan endcase" GE-ORPHAN-CLOSER-1
+   \ Under [: INCLUDE-EVALUATE ;] catch: the former SIGBUS closers deliver a
+   \ catchable RC-REJECT (70), the eval frame rolled back, process exits 0.
+   s" : XO1 ( -- ) THEN ;" s" control-flow closer without opener"
+      s" hb eval orphan-then catch" GE-EVAL-DEF-REJECT-1
+   s" : XO2 ( -- ) LOOP ;" s" control-flow closer without opener"
+      s" hb eval orphan-loop catch" GE-EVAL-DEF-REJECT-1
+   s" : XO3 ( -- ) REPEAT ;" s" control-flow closer without opener"
+      s" hb eval orphan-repeat catch" GE-EVAL-DEF-REJECT-1
+   s" PASS: orphan control-flow closers fail closed rc70 (no SIGBUS)" type cr ;
+
 : GE-SET-CHECK-NEG ( -- )
    \ set-check is fail-closed at install (dot habu-stdlib-check-hook-fd883aea): a
    \ non-zero argument outside the live JIT code window [DBASE, CP) dies with a
@@ -1474,6 +1516,7 @@ variable GE-DFULL-I                 \ copy/definition loop index
    GE-EVAL-UNDEF-RECOVER
    GE-EVAL-INTERP-ERR-RECOVER
    GE-EVAL-DEF-REJECT-CATCH
+   GE-ORPHAN-CLOSER
    GE-SET-CHECK-NEG
    GE-TYPED-SMOKE
    GE-TIMEOUT-ATTRIBUTION ;
