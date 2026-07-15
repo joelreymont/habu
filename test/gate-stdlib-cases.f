@@ -270,6 +270,7 @@ TEST:SUITE ptx-stdlib
    lib/ptx/attention-roles-test.f
    lib/ptx/tile-v4-test.f
    lib/ptx/collective-test.f
+   lib/ptx/cg-collective-test.f
    lib/ptx/autograd-test.f
    lib/ptx/ir-test.f
    lib/ptx/opt-ir-test.f

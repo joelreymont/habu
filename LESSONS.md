@@ -4733,6 +4733,37 @@ unchanged (148855). Keys for milestone 2:
   `@%pN`. Also: `OP-MUL`/`OP-ADD` require SAME-shape operands (SHP-SAME-OK?), so a
   per-feature 1xC affine gamma is not expressible via MUL - use `OP-SCALE`
   (1x1/same) + `OP-BIAS` (1xC).
+- **The block reduction is warp-shfl now; `shfl.sync.down.b32` takes `%f` regs
+  directly.** dot habu-ptx-m6-perf-6b979497: `EMIT-REDUCE` in
+  `lib/ptx/cg-collective.f` replaced the O(B) thread-0 shared-memory fold with the
+  standard two-level warp reduction - a full-warp `shfl.sync.down.b32 %fD, %fS,
+  off, 31, -1` tree (offsets 16..1) per 32-lane warp, per-warp partials staged to
+  `SMEM[warp]`, then a final single-warp reduce of the `CG-WARP-COUNT` (= B/32)
+  partials into `SMEM[0]`. `ptxas` accepts the shuffle DIRECTLY on `.f32`
+  registers (c-operand `31` = warp width - 1, membermask `-1` = full 32 lanes),
+  exactly as nvcc emits - no `mov.b32 %f<->%r` round-trip. Blocks are always a
+  warp multiple (`PTX-BLOCK-LEGAL?` requires `n mod 32 = 0`), so all 32 lanes of
+  every warp execute the shuffle and the `-1` membermask is always well-formed;
+  the "tail warp" the plan worried about is (a) k not a warp multiple, handled by
+  the SAME inactive-lane identity seed (`@%p mov v, tile`, else -inf/0/+inf) that
+  threads through BOTH shuffle levels, and (b) the final reduce's up-to-32
+  partials, past-the-count lanes seeded identity via `setp.lt tid, CG-WARP-COUNT`.
+  The final-reduce guard `@%p bra` is warp-uniform (all lanes of warp 0 fall
+  through), so warp 0's shuffle keeps a full membermask - no intra-warp
+  divergence. Measured on the Orin (25W, block-per-row LRED layernorm, the
+  softmax/rmsnorm/layernorm codegen): LN-FUSE-ON 7.83 -> 11.37 GB/s (1.45x),
+  LN-FUSE-OFF 16.64 -> 21.22 GB/s; softmax-launch / sum-launch / gradcheck /
+  lower-red-device / lower-model-device all stay device-golden green.
+- **A predicate-numbering shift does NOT always move a corruption probe - but
+  verify by dumping the PTX.** The warp-shfl rewrite changed the reduction's
+  predicate count, yet `maki/ablate-golden-device-test.f` ABL-G3 still strips the
+  correct `@%p2` (the RMSNORM inactive-lane identity seed): RMSNORM has one
+  ROW-LOAD mask (`@%p1`) then the reduce seed (`@%p2`), and that prefix is
+  unchanged, so the FIRST `@%p2` is still the seed. Confirmed by capturing the
+  emitted RMSNORM PTX (`PTX-CAPTURE-ON 0 FP-REGION-ID LRED-EMIT`) off-device
+  BEFORE trusting the probe - do not assume the shift moved it, and do not assume
+  it didn't; the shuffle reduction still fails-closed to V-FAIL when the seed mask
+  is dropped (inactive lanes leak +inf into the sum).
 - **When an error-recovery mechanism is upgraded, migrate every branch to the old
   entry in the same change — the sibling left behind becomes the residual bug.**
   dot habu-interpret-err-under-8876b500: the compile-abort legs (LUNDEF/LWIDE/

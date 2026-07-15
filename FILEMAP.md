@@ -500,9 +500,12 @@ points stay listed.
   differing only in Q/K/V/O order must emit DIFFERENT PTX (the attnctx threads
   each operand's pointer register), while correct authoring stays byte-stable.
 - `lib/ptx/cg.f` / `lib/ptx/cg-vec.f` / `lib/ptx/cg-collective.f` /
-  `lib/ptx/cg-matmul.f` / `lib/ptx/cg-attention.f` — PTX codegen emit-mode
-  lowering for tile ops: scalar, vectorized v4, row/collective, the
-  register-blocked SGEMM, and the fused attention kernel.
+  `lib/ptx/cg-collective-test.f` / `lib/ptx/cg-matmul.f` /
+  `lib/ptx/cg-attention.f` — PTX codegen emit-mode lowering for tile ops:
+  scalar, vectorized v4, row/collective, the register-blocked SGEMM, and the
+  fused attention kernel. The cg-collective test pins the block-reduction emit
+  shape: the two-level warp shfl.sync.down reduction with the inactive-lane
+  identity seed threaded through both shuffle levels.
 - `lib/ptx/cg-matmul-naive.f` — the naive one-element-per-thread SGEMM baseline
   kernel (MMN) that the GEMM benchmark measures the register-blocked tile against.
 - `lib/ptx/cg-mma.f` — TF32 tensor-core (mma.sync.aligned.m16n8k8) tiled GEMM

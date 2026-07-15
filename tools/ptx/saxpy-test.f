@@ -213,20 +213,24 @@ public
 : PTXT-SOFTMAX-CG-OUTPUT ( -- )
    PTXT-RUN-SOFTMAX-CG 0 T= 0 T= dup PTXT-OUT-U ! 0 > TTRUE
    s" .shared .align 4 .b8 SMEM[1024];" PTXT-HAS
-   s" mov.f32 %f2, 0fFF800000;" PTXT-HAS
-   s" @%p2 mov.f32 %f2, %f1;" PTXT-HAS
-   s" mov.f32 %f8, 0f00000000;" PTXT-HAS
-   s" @%p5 mov.f32 %f8, %f7;" PTXT-HAS
+   s" mov.f32 %f2, 0fFF800000;" PTXT-HAS             \ block-max identity seed (-inf)
+   s" @%p2 mov.f32 %f2, %f1;" PTXT-HAS               \ ...applied only to active lanes (tid<k)
+   s" mov.f32 %f9, 0f00000000;" PTXT-HAS             \ block-sum identity seed (0)
+   s" @%p7 mov.f32 %f9, %f8;" PTXT-HAS               \ ...applied only to active lanes (tid<k)
+   s" shfl.sync.down.b32" PTXT-HAS                   \ warp-shfl reduction tree, not the O(B) fold
+   s" max.f32 %f2, %f2, %f3;" PTXT-HAS               \ block-max shuffle combine
+   s" add.f32 %f9, %f9, %f10;" PTXT-HAS              \ block-sum shuffle combine
    s" ERROR" PTXT-NOT-HAS ;
 
 : PTXT-SUM-CG-OUTPUT ( -- )
    PTXT-RUN-SUM-CG 0 T= 0 T= dup PTXT-OUT-U ! 0 > TTRUE
    s" .visible .entry SUM_ROWS" PTXT-HAS
    s" .shared .align 4 .b8 SMEM[1024];" PTXT-HAS
-   s" mov.f32 %f2, 0f00000000;" PTXT-HAS
-   s" @%p2 mov.f32 %f2, %f1;" PTXT-HAS
-   s" setp.ge.u32 %p4, %r10, 256;" PTXT-HAS
-   s" add.f32 %f3, %f3, %f4;" PTXT-HAS
+   s" mov.f32 %f2, 0f00000000;" PTXT-HAS             \ block-sum identity seed (0)
+   s" @%p2 mov.f32 %f2, %f1;" PTXT-HAS               \ ...applied only to active lanes (tid<k)
+   s" shfl.sync.down.b32 %f3, %f2, 16, 31, -1;" PTXT-HAS   \ full-warp shuffle tree first step
+   s" add.f32 %f2, %f2, %f3;" PTXT-HAS               \ block-sum shuffle combine
+   s" setp.lt.u32 %p5, %r6, 8;" PTXT-HAS             \ final reduce masks 8 = 256/32 warp partials
    s" .visible .entry SCATTER_ROWS" PTXT-HAS
    s" red.global.add.f32" PTXT-HAS
    s" .version" PTXT-COUNT 1 T=             \ EXACTLY one module header (the doubled-header regression)
@@ -237,10 +241,11 @@ public
    PTXT-RUN-SUM1024-CG 0 T= 0 T= dup PTXT-OUT-U ! 0 > TTRUE
    s" .visible .entry SUM_ROWS_1024" PTXT-HAS
    s" .shared .align 4 .b8 SMEM[4096];" PTXT-HAS
-   s" mov.f32 %f2, 0f00000000;" PTXT-HAS
-   s" @%p2 mov.f32 %f2, %f1;" PTXT-HAS
-   s" setp.ge.u32 %p4, %r10, 1024;" PTXT-HAS
-   s" add.f32 %f3, %f3, %f4;" PTXT-HAS
+   s" mov.f32 %f2, 0f00000000;" PTXT-HAS             \ block-sum identity seed (0)
+   s" @%p2 mov.f32 %f2, %f1;" PTXT-HAS               \ ...applied only to active lanes (tid<k)
+   s" shfl.sync.down.b32 %f3, %f2, 16, 31, -1;" PTXT-HAS   \ full-warp shuffle tree first step
+   s" add.f32 %f2, %f2, %f3;" PTXT-HAS               \ block-sum shuffle combine
+   s" setp.lt.u32 %p5, %r6, 32;" PTXT-HAS            \ final reduce masks 32 = 1024/32 warp partials
    s" ERROR" PTXT-NOT-HAS ;
 
 : PTXT-MATMUL-CG-OUTPUT ( -- )
@@ -321,8 +326,8 @@ public
 : PTXT-ADE-XMSUB-OUTPUT ( -- )
    [: ADE-XMSUB-FWD ;] PTXT-CAPTURE PTXT-ADE-COMMON
    s" .visible .entry AD_FWD" PTXT-HAS
-   s" mov.f32 %f2, 0fFF800000;" PTXT-HAS
-   s" sub.f32 %f6, %f1, %f5;" PTXT-HAS
+   s" mov.f32 %f2, 0fFF800000;" PTXT-HAS             \ block-max identity seed (-inf)
+   s" sub.f32 %f7, %f1, %f6;" PTXT-HAS               \ x - broadcast(block-max)
    s" ERROR" PTXT-NOT-HAS
    [: ADE-XMSUB-BWD ;] PTXT-CAPTURE PTXT-ADE-COMMON
    s" .visible .entry AD_BWD" PTXT-HAS
@@ -457,10 +462,10 @@ public
 : PTXT-SOFTMAX-ROWS-BWD-OUTPUT ( -- )
    PTXT-RUN-SOFTMAX-ROWS-BWD-CG 0 T= 0 T= dup PTXT-OUT-U ! 0 > TTRUE
    s" .visible .entry SOFTMAX_BWD_ROWS" PTXT-HAS
-   s" mul.rn.f32 %f3, %f2, %f1;" PTXT-HAS
+   s" mul.rn.f32 %f3, %f2, %f1;" PTXT-HAS            \ dy*y feeding the block-sum
    s" bar.sync 0;" PTXT-HAS
-   s" sub.f32 %f8, %f2, %f7;" PTXT-HAS
-   s" mul.rn.f32 %f9, %f8, %f1;" PTXT-HAS
+   s" sub.f32 %f9, %f2, %f8;" PTXT-HAS               \ dy - broadcast(block-sum)
+   s" mul.rn.f32 %f10, %f9, %f1;" PTXT-HAS           \ ...* y
    s" red.global.add.f32" PTXT-NOT-HAS
    s" ERROR" PTXT-NOT-HAS ;
 
