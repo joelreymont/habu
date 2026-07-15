@@ -4393,3 +4393,7 @@ unchanged (148855). Keys for milestone 2:
   label-binding guard typed as raw `n` weakens the checker at the exact authority
   boundary. Accept `label`, use a named exit code, and place the guard before
   every state write; then snapshot fixup, free-list, label, and code state.
+- **Plan dependency claims and dot edges land together.** A plan that says a
+  production authority waits for native fencing is false if the owning dot can
+  still dispatch without it. Update the prose and `blocks:` edge on one reviewed
+  tree, and distinguish baked primitive effects from verifier-added effects.
