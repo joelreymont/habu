@@ -191,12 +191,19 @@ variable SC-NUM-L
    s" test/load-reject-diag-test.f" q execute
    s" test/owner-wid-internal.f" q execute ;
 
-\ SPAWN-ONLY: the ptx-toolchain device/bench tools that SIGBUS when loaded into
-\ the resident full-runner image; they compile-check + device-SKIP only in a
-\ fresh spawned image (the manual lint-libs slice). Acceptance (b) subtracts
-\ exactly this set from the spawned ptx-toolchain list.
+\ SPAWN-ONLY: ptx-toolchain cases members that must run only in a fresh spawned
+\ image, never in the resident full-runner image. Two reasons appear here: tools
+\ that SIGBUS when loaded into the resident image (device/bench compile-checks,
+\ device-SKIP off-device), and the perf-regress CLI, whose registry path is
+\ resolved from ambient SCRIPT-ARGV - clean only in a fresh spawn, misread as a
+\ path in the resident image (its argv-free scan runs inprocess via
+\ perf-regress-test.f). Acceptance (b) subtracts exactly this set from the
+\ spawned ptx-toolchain list.
 \ typed-local-lint: allow-bare-local - q carries the quotation effect.
 : SC-SPAWN-ONLY-TABLE ( [ ptr u8 n -- ] -- ) {: q :}
+   \ perf-regress CLI: reads SCRIPT-ARGV for its registry path, so resident-image
+   \ loading would mis-read the harness argv; the inprocess scan is perf-regress-test.f
+   s" tools/ptx/perf-regress.f" q execute
    s" tools/ptx/bandwidth-lib-test.f" q execute
    s" tools/ptx/fusion-compare.f" q execute
    s" tools/ptx/gemm-bench.f" q execute

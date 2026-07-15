@@ -4571,3 +4571,23 @@ unchanged (148855). Keys for milestone 2:
   no soundness. Ordering gotcha: the family must be declared before the private
   mint/erase `TRUSTED:` words that reference it, so open the package with the
   `public` TYPEFAMILY first, then switch to `private` for the arena/mints.
+- **A "fork/COW state-leak race" can be deterministic argv contamination in
+  disguise.** The perf-regress inprocess flake ("malformed registry row: ...
+  device isolation fixture" under `test/run.f -- --under bin/hb`; two lanes filed
+  it as a fork worker inheriting the parent PERF ROWS arena) had NOTHING to do
+  with fork/COW. Real cause: `tools/ptx/perf-regress.f` is a CLI whose registry
+  path is `SCRIPT-ARGC 0 > if 0 SCRIPT-ARGV$`, and it was `included` into the
+  resident gate image. In-process, ambient `SCRIPT-ARGV` is the HARNESS'S argv
+  (`--under bin/hb`), so it `PERF:LOAD "--under"` -> `FILE-SIZE` throws E-FS-STAT
+  (-2101) before any parse. A CLI tool that reads ambient argv must NOT be
+  `included` into a shared image carrying foreign argv - run it spawned (clean
+  argv) and carry its gate assertion in an argv-free `-test.f` fixture. Two
+  reproduce-the-mechanism lessons: (1) `bin/hb --load a.f b.f cli.f -- <args>`
+  faithfully reproduces the inprocess-include argv leak - no fork needed; the
+  "intermittence" was just which invocations carried `-- <args>`. (2) The reason
+  it was misread as a data/arena bug is the SECOND defect: `PERF:RESET` cleared
+  the row arena but not the diagnostic cursor (`PF-LOFF`/`PF-LU` that
+  `LAST-LINE$` reads), so a throw-before-parse printed a STALE line from the
+  previous test - a non-hermetic reset made a path/argv error masquerade as a
+  malformed-row error. Reset ALL state a public diagnostic can read, or the error
+  text lies about the failure class and sends the next lane down the wrong trail.

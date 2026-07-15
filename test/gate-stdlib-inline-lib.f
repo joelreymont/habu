@@ -519,7 +519,7 @@ variable GSI-TL-FILE-A
    s" tools/ptx/saxpy-test.f" GSI-INCLUDE \ ( -- )
    s" tools/ptx/perf-registry-test.f" GSI-INCLUDE \ ( -- )
    s" tools/ptx/perf-compare-test.f" GSI-INCLUDE \ ( -- )
-   s" tools/ptx/perf-regress.f" GSI-INCLUDE \ ( -- )
+   s" tools/ptx/perf-regress-test.f" GSI-INCLUDE \ ( -- )
    s" tools/kernel-perf-lint-test.f" GSI-INCLUDE \ ( -- )
    s" tools/ptx/fusion-emit-test.f" GSI-INCLUDE \ ( -- )
    s" tools/ptx/device-gold-test.f" GSI-INCLUDE \ ( -- )
@@ -529,9 +529,13 @@ variable GSI-TL-FILE-A
 \ (`bin/hb --load test/gate-stdlib.f -- lint-libs`, a documented merge gate -
 \ test/run.f does NOT schedule the spawned slices), where they compile-check +
 \ device-SKIP in a fresh image. Loaded into the resident full-runner image they
-\ SIGBUS, so the inprocess list carries the unit tests + the perf-regress scan
-\ (the substantive automatic gate); the spawned list stays a superset. Retire
-\ the duplication + give the bench compile-checks a scheduled runner per
+\ SIGBUS, so the inprocess list carries the unit tests + the substantive perf
+\ regression scan. That scan runs via perf-regress-test.f (an argv-free checked
+\ fixture: committed-registry PERF:LOAD + PERF:SCAN); the CLI tools/ptx/perf-regress.f
+\ resolves its registry path from ambient SCRIPT-ARGV, so in the resident image it
+\ would mis-read the harness argv as a path - it is spawn-only, run in a fresh
+\ image with clean argv. The spawned list stays a superset. Retire the duplication
+\ + give the bench compile-checks a scheduled runner per
 \ habu-derive-inprocess-spawned-a54e760d.
 
 : GSI-LINT-MANIFEST ( -- )

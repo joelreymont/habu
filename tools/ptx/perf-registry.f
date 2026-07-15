@@ -209,10 +209,17 @@ public
       1+
    repeat drop PERF-FALSE ;
 
-: RESET ( -- )
+: RESET ( -- )   \ clear the row arena AND the parse/diagnostic cursor, so no
+                 \ line left by an earlier parse leaks into a later load's
+                 \ LINE@ / LAST-LINE$ (LINE$ reads BUF via PF-LOFF/PF-LU)
    0 BUF-U !
    0 ROW-N !
-   0 LINE-NO ! ;
+   0 LINE-NO !
+   0 PF-START !
+   0 PF-LOFF !
+   0 PF-LU !
+   0 LN-START !
+   0 LN-I ! ;
 
 : ADD-LINE ( ptr u8 n -- ) {: a:ptr u:n :}   \ append one registry line and parse it
    BUF-U @ u + BUF-CAP > if E-PERF-CAP throw then

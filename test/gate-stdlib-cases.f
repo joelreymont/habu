@@ -315,6 +315,7 @@ TEST:SUITE ptx-toolchain
    tools/ptx/saxpy-test.f
    tools/ptx/perf-registry-test.f
    tools/ptx/perf-compare-test.f
+   tools/ptx/perf-regress-test.f
    tools/ptx/perf-regress.f
    tools/kernel-perf-lint-test.f
    tools/ptx/bandwidth-lib-test.f

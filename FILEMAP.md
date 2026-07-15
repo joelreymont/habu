@@ -574,7 +574,12 @@ points stay listed.
 - `tools/ptx/perf-compare-test.f` — improve/regress/tolerance-edge/missing-row
   compare fixtures.
 - `tools/ptx/perf-regress.f` — CLI perf-regression gate over the committed
-  registry; exits nonzero on any regression.
+  registry; exits nonzero on any regression. Resolves its registry path from
+  ambient `SCRIPT-ARGV`, so it is spawn-only (clean argv in a fresh image).
+- `tools/ptx/perf-regress-test.f` — argv-free checked fixture carrying the
+  substantive in-process regression scan (committed-registry `PERF:LOAD` +
+  `PERF:SCAN`) plus the hermetic-`PERF:RESET` regression: a failed `PERF:LOAD`
+  after prior fixtures must not leak a stale line via `PERF:LAST-LINE$`.
 - `tools/ptx/gemm-bench.f` — CUDA-event GEMM benchmark: times the naive (MMN)
   and register-blocked (MM) SGEMM kernels on square shapes for the
   GEMM-vs-Triton baseline recorded in `docs/eval-triton.md`.
