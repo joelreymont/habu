@@ -215,7 +215,7 @@ $10000 constant GAP-STRIPPED-TEXT-MAX
    s" hb: bad gemt tag" label labelu GE-EXPECT-ERR-HAS ;
 
 : GAP-PRESEED ( -- )
-   \ This assertion owns a fresh cache: without one, HBB-OBJECT-HIT is
+   \ This assertion owns a fresh cache: without one, HB-BUILD:OBJECT-HIT? is
    \ structurally impossible; a shared warm artifact can also bypass production.
    GT-ROOT BUILD-CACHE:ROOT!
    s" hb-aot-preseed.f" s" hb-aot-preseed" s" hb-aot-preseed-report.json" GAP-PATHS
@@ -227,7 +227,7 @@ $10000 constant GAP-STRIPPED-TEXT-MAX
    GAP-PRESEED-BUILD
    s" hb-build AOT preseed restore" GAP-PRESEED-RUN-BAD
    GAP-PRESEED-BUILD-JSON
-   HBB-OBJECT-HIT @ 0= if s" hb-build AOT preseed object-cache hit" GE-FAIL then
+   HB-BUILD:OBJECT-HIT? 0= if s" hb-build AOT preseed object-cache hit" GE-FAIL then
    s" hb-build AOT preseed object-cache relink run" GAP-PRESEED-RUN-BAD
    s" hb-build AOT preseed normal-MAIN control (bis)" GB-HBB-BUILD
    s" hb-build AOT preseed normal-MAIN still exits 0" GB-RUN-OUT

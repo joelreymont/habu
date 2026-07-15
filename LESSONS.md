@@ -4528,3 +4528,22 @@ unchanged (148855). Keys for milestone 2:
   integer constants and storing them in an untyped variable creates a second tag
   authority. Use `LAYOUT-BUFFER`, generated constructors, typed fetch/store, and
   exhaustive `MATCH` from declaration through persistence and rendering.
+- **Writable roots need search access too.** `access(W_OK)` accepts mode `0222`,
+  but cache clients cannot traverse it. Root readiness must require `W_OK|X_OK`,
+  with both the predicate and resolver pinned by mode-specific tests.
+- **Capture reports at the completion boundary.** Rendering from mutable worker
+  trace cells leaks implementation state into callers. Capture one typed report
+  when the build finishes, then expose accessors and wire renderers over it.
+- **Failure evidence needs separate owned storage.** Clearing a bounded working
+  path before rejecting it also erases the attempted root, while rendering a
+  maximum-length path through `SB` can mask the owner error. Retain the complete
+  attempt independently and size diagnostic output from its actual length.
+- **Invalidate reports before work starts.** A completed report remains stale
+  truth after the next build fails unless build entry clears its lifecycle
+  state. Invalid report access must fail closed with a named status error.
+- **Quote paths in line diagnostics.** A path is arbitrary bytes, not prose;
+  appending it raw lets tabs and newlines forge fields or records. JSON-quote it
+  even in text mode so each failure remains one exact line.
+- **Duplicate loop indices before interposing the base address.** With
+  `index byte base`, `over` duplicates the byte and corrupts the computed
+  address. Keep `index byte over base + c!` so `over` still selects the index.

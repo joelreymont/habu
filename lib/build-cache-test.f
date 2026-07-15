@@ -20,6 +20,9 @@ require tools/hb-build-report.f
 package BUILD-CACHE-TEST
 
 $4000 constant CAP
+$400 constant MAX-ROOT-U
+$401 constant OVER-ROOT-U
+$92 constant MODE-0222
 $16D constant MODE-0555
 $1C0 constant MODE-0700
 120000 constant TIMEOUT-MS
@@ -31,12 +34,16 @@ create PATH-C FS-PATH-CAP allot
 create PATH-D FS-PATH-CAP allot
 create PATH-E FS-PATH-CAP allot
 create PATH-F FS-PATH-CAP allot
+create PATH-G FS-PATH-CAP allot
+create PATH-H FS-PATH-CAP allot
 create EXPECT-BUF FS-PATH-CAP allot
 create OUT CAP allot
 create ERR CAP allot
 create REPORT-BYTES
    65 c, 32 c, 9 c, 34 c, 92 c, 10 c, 66 c,
 create REPORT-OUT FS-PATH-CAP allot
+create MAX-ROOT MAX-ROOT-U allot
+create OVER-ROOT OVER-ROOT-U allot
 
 variable ROOT-U
 variable A-U
@@ -45,7 +52,11 @@ variable C-U
 variable D-U
 variable E-U
 variable F-U
+variable G-U
+variable H-U
 variable EXPECT-U
+
+$7E constant ROOT-C
 
 : ROOT$ ( -- ptr u8 n )
    ROOT-BUF ROOT-U @ ;
@@ -68,12 +79,31 @@ variable EXPECT-U
 : F$ ( -- ptr u8 n )
    PATH-F F-U @ ;
 
+: G$ ( -- ptr u8 n )
+   PATH-G G-U @ ;
+
+: H$ ( -- ptr u8 n )
+   PATH-H H-U @ ;
+
 : EXPECT$ ( -- ptr u8 n )
    EXPECT-BUF EXPECT-U @ ;
 
-: PATH-ERROR$ ( -- ptr u8 n )
+: ROOT-FILL ( ptr u8 n -- ) {: a:ptr u:n :}
+   0 begin dup u < while
+      ROOT-C over a + c!
+      1+
+   repeat drop ;
+
+: PATH-ERROR$ ( ptr u8 n ptr u8 n ptr u8 n -- ptr u8 n )
+   {: source:ptr sourceu:n root:ptr rootu:n cause:ptr causeu:n :}
    SB-RESET
    s" E-BUILD-PATH" SB-APPEND
+   9 SB-APPEND-C
+   source sourceu SB-APPEND
+   9 SB-APPEND-C
+   root rootu SB-APPEND
+   9 SB-APPEND-C
+   cause causeu SB-APPEND
    10 SB-APPEND-C
    SB$ ;
 
@@ -91,7 +121,11 @@ variable EXPECT-U
    ROOT$ s" home cache" PATH-C C-U PATH!
    ROOT$ s" tmp cache" PATH-D D-U PATH!
    ROOT$ s" forbidden fallback" PATH-E E-U PATH!
-   ROOT$ REPORT-BYTES 7 PATH-F F-U PATH! ;
+   ROOT$ REPORT-BYTES 7 PATH-F F-U PATH!
+   ROOT$ s" blocked parent" PATH-G G-U PATH!
+   G$ s" child" PATH-H H-U PATH!
+   MAX-ROOT MAX-ROOT-U ROOT-FILL
+   OVER-ROOT OVER-ROOT-U ROOT-FILL ;
 
 : ARGV ( -- )
    PROC-ARGV-RESET
@@ -152,6 +186,13 @@ variable EXPECT-U
    s" HOME" ENV-EMPTY
    s" TMPDIR" ENV-EMPTY ;
 
+: ENV-CREATE-FAIL ( -- )
+   PROC-ENV-RESET
+   s" HABU_BUILD_CACHE" >LEN H$ >LEN PROC-ENV+
+   s" XDG_CACHE_HOME" ENV-EMPTY
+   s" HOME" ENV-EMPTY
+   s" TMPDIR" ENV-EMPTY ;
+
 : ENV-ADVERSARIAL ( -- )
    PROC-ENV-RESET
    s" HABU_BUILD_CACHE" >LEN F$ >LEN PROC-ENV+
@@ -164,11 +205,12 @@ variable EXPECT-U
    {: outu:len erru:len rc:rc :}
    outu LEN>N erru LEN>N rc RC>N ;
 
-: CHECK-PATH-ERROR ( -- )
+: CHECK-PATH-ERROR ( ptr u8 n ptr u8 n ptr u8 n -- )
+   {: source:ptr sourceu:n root:ptr rootu:n cause:ptr causeu:n :}
    RUN {: outu:n erru:n rc:n :}
    rc 0 T=
    erru 0 T=
-   OUT outu PATH-ERROR$ T$= ;
+   OUT outu source sourceu root rootu cause causeu PATH-ERROR$ T$= ;
 
 : EXPECTED! ( ptr u8 n ptr u8 n -- ) {: source:ptr sourceu:n root:ptr rootu:n :}
    sourceu 1 + rootu + 1 + FS-PATH-CAP > if E-FS-CAPACITY throw then
@@ -224,18 +266,21 @@ variable EXPECT-U
    A$ EXISTS? if A$ REMOVE-TREE then
    WRITE-BAD-ROOT
    ERROR-ARGV ENV-BAD
-   CHECK-PATH-ERROR
+   s" explicit" A$ s" E-FS-DIR" CHECK-PATH-ERROR
    E$ EXISTS? TFALSE
    A$ REMOVE-FILE ;
 
 : CHECK-NO-TIER ( -- )
    ERROR-ARGV ENV-NONE
-   CHECK-PATH-ERROR ;
+   s" none" s" " s" E-FS-PATH" CHECK-PATH-ERROR ;
 
 : CHECK-FS-WRITABLE ( -- )
    A$ MAKE-DIRS
    A$ FS:WRITABLE-ROOT? TTRUE
    E$ FS:WRITABLE-ROOT? TFALSE
+   A$ MODE-0222 CHMOD-MODE
+   A$ FS:WRITABLE-ROOT? TFALSE
+   A$ MODE-0700 CHMOD-MODE
    A$ MODE-0555 CHMOD-MODE
    A$ FS:WRITABLE-ROOT? TFALSE
    A$ MODE-0700 CHMOD-MODE ;
@@ -243,8 +288,20 @@ variable EXPECT-U
 : CHECK-UNWRITABLE-REJECT ( -- )
    A$ MODE-0555 CHMOD-MODE
    ERROR-ARGV ENV-EXPLICIT
-   CHECK-PATH-ERROR
+   s" explicit" A$ s" E-FS-IO" CHECK-PATH-ERROR
    A$ MODE-0700 CHMOD-MODE ;
+
+: CHECK-NO-SEARCH-REJECT ( -- )
+   A$ MODE-0222 CHMOD-MODE
+   ERROR-ARGV ENV-EXPLICIT
+   s" explicit" A$ s" E-FS-IO" CHECK-PATH-ERROR
+   A$ MODE-0700 CHMOD-MODE ;
+
+: CHECK-CREATE-FAIL ( -- )
+   G$ s" parent file" WRITE-ALL
+   ERROR-ARGV ENV-CREATE-FAIL
+   s" explicit" H$ s" E-FS-IO" CHECK-PATH-ERROR
+   G$ REMOVE-FILE ;
 
 : PREPARE-CONCURRENT ( -- )
    A$ EXISTS? if A$ REMOVE-TREE then
@@ -278,20 +335,104 @@ variable EXPECT-U
    BUILD-CACHE:RESET
    F$ BUILD-CACHE:ROOT!
    BUILD-CACHE:ROOT$ BUILD-CACHE:SOURCE
-   0 0= 0 0= 0= 0 0= 42 HB-BUILD:RENDER {: a:ptr u:n :}
+   0 0= 0 0= 0= 0 0= 0 0= 0 0= 0= 42 HB-BUILD:CAPTURE
+   HB-BUILD:REPORT$ {: a:ptr u:n :}
    a u s\" \qschema\q:\qhb-build-report\q" CONTAINS? TTRUE
    a u s\" \qcache_root\q" CONTAINS? TTRUE
    a u s\" \qcache_source\q:\qexplicit\q" CONTAINS? TTRUE
    a u s\" \qartifact_hit\q:true" CONTAINS? TTRUE
    a u s\" \qobject_hit\q:false" CONTAINS? TTRUE
    a u s\" \qmaker_hit\q:true" CONTAINS? TTRUE
+   a u s\" \qmaker_built\q:true" CONTAINS? TTRUE
+   a u s\" \qmaker_ran\q:false" CONTAINS? TTRUE
    a u s\" \qelapsed_ns\q:42" CONTAINS? TTRUE
+   HB-BUILD:CACHE-ROOT$ F$ T$=
+   HB-BUILD:CACHE-SOURCE BUILD-CACHE:SOURCE$ s" explicit" T$=
+   HB-BUILD:ARTIFACT-HIT? TTRUE
+   HB-BUILD:OBJECT-HIT? TFALSE
+   HB-BUILD:MAKER-HIT? TTRUE
+   HB-BUILD:MAKER-BUILT? TTRUE
+   HB-BUILD:MAKER-RAN? TFALSE
+   HB-BUILD:ELAPSED-NS 42 T=
    a u JR-INIT
    JR-NEXT JT-OBJ T=
    s" cache_root" JR-FIND-KEY TTRUE
    JR-TOKEN JT-STR T=
    REPORT-OUT FS-PATH-CAP JR-STR {: rootu:n :}
    REPORT-OUT rootu F$ T$= ;
+
+: CHECK-ERROR-REPORT ( -- )
+   BUILD-CACHE:RESET
+   A$ BUILD-CACHE:ROOT!
+   A$ MODE-0222 CHMOD-MODE
+   [: BUILD-CACHE:RESOLVE drop 2drop ;] catch E-BUILD-PATH T=
+   BUILD-CACHE:SELECTED? TTRUE
+   BUILD-CACHE:SELECTED-ROOT$ A$ T$=
+   BUILD-CACHE:SELECTED-SOURCE BUILD-CACHE:SOURCE$ s" explicit" T$=
+   BUILD-CACHE:CAUSE E-FS-IO T=
+   HB-BUILD:PATH-ERROR$ {: json:ptr jsonu:n :}
+   json jsonu s\" \qcode\q:\qE-BUILD-PATH\q" CONTAINS? TTRUE
+   json jsonu s\" \qcache_source\q:\qexplicit\q" CONTAINS? TTRUE
+   json jsonu s\" \qcause\q:\qE-FS-IO\q" CONTAINS? TTRUE
+   HB-BUILD:PATH-ERROR-TEXT$ s" hb-build: schema=hb-build-error version=1 code=E-BUILD-PATH cache_selected=true" CONTAINS? TTRUE
+   A$ MODE-0700 CHMOD-MODE ;
+
+: CHECK-RETRY-CLEARS-CAUSE ( -- )
+   BUILD-CACHE:RESET
+   A$ BUILD-CACHE:ROOT!
+   A$ MODE-0222 CHMOD-MODE
+   [: BUILD-CACHE:RESOLVE drop 2drop ;] catch E-BUILD-PATH T=
+   BUILD-CACHE:CAUSE E-FS-IO T=
+   A$ MODE-0700 CHMOD-MODE
+   BUILD-CACHE:RESOLVE {: root:ptr rootu:n source:BUILD-CACHE:source :}
+   root rootu A$ T$=
+   source BUILD-CACHE:SOURCE$ s" explicit" T$=
+   BUILD-CACHE:CAUSE 0 T=
+   BUILD-CACHE:CAUSE$ s" none" T$= ;
+
+: CHECK-ADVERSARIAL-TEXT ( -- )
+   BUILD-CACHE:RESET
+   F$ BUILD-CACHE:ROOT!
+   F$ MODE-0222 CHMOD-MODE
+   [: BUILD-CACHE:RESOLVE drop 2drop ;] catch E-BUILD-PATH T=
+   HB-BUILD:PATH-ERROR-TEXT$ {: text:ptr textu:n :}
+   text textu STR-LF COUNT-CHAR 0 T=
+   text textu STR-TAB COUNT-CHAR 0 T=
+   text textu s" cache_selected=true" CONTAINS? TTRUE
+   JW-RESET F$ JW-STRING
+   text textu JW$ CONTAINS? TTRUE
+   F$ MODE-0700 CHMOD-MODE ;
+
+: CHECK-OVER-ROOT-EVIDENCE ( -- )
+   BUILD-CACHE:RESET
+   [: OVER-ROOT OVER-ROOT-U BUILD-CACHE:ROOT! ;] catch E-BUILD-PATH T=
+   BUILD-CACHE:SELECTED? TTRUE
+   BUILD-CACHE:SELECTED-ROOT$ OVER-ROOT OVER-ROOT-U T$=
+   BUILD-CACHE:SELECTED-SOURCE BUILD-CACHE:SOURCE$ s" explicit" T$=
+   BUILD-CACHE:CAUSE E-FS-CAPACITY T= ;
+
+: CHECK-LONG-ERROR-TEXT ( -- )
+   BUILD-CACHE:RESET
+   MAX-ROOT MAX-ROOT-U BUILD-CACHE:ROOT!
+   [: BUILD-CACHE:RESOLVE drop 2drop ;] catch E-BUILD-PATH T=
+   BUILD-CACHE:SELECTED-ROOT$ MAX-ROOT MAX-ROOT-U T$=
+   HB-BUILD:PATH-ERROR-TEXT$ {: text:ptr textu:n :}
+   textu MAX-ROOT-U > TTRUE
+   text textu ROOT-C COUNT-CHAR MAX-ROOT-U T=
+   text textu s" cause=E-FS-IO" CONTAINS? TTRUE ;
+
+: CHECK-REPORT-LIFECYCLE ( -- )
+   HB-BUILD:RESET
+   HB-BUILD:VALID? TFALSE
+   [: HB-BUILD:CACHE-ROOT$ 2drop ;] catch E-BUILD-STATUS T=
+   BUILD-CACHE:RESET
+   F$ BUILD-CACHE:ROOT!
+   F$ BUILD-CACHE:SOURCE
+   0 0= 0 0= 0= 0 0= 0 0= 0 0= 0= 42 HB-BUILD:CAPTURE
+   HB-BUILD:VALID? TTRUE
+   HB-BUILD:RESET
+   HB-BUILD:VALID? TFALSE
+   [: HB-BUILD:REPORT$ 2drop ;] catch E-BUILD-STATUS T= ;
 
 : MAIN ( -- )
    T-RESET
@@ -305,9 +446,17 @@ variable EXPECT-U
    CHECK-NO-TIER
    CHECK-FS-WRITABLE
    CHECK-UNWRITABLE-REJECT
+   CHECK-NO-SEARCH-REJECT
+   CHECK-CREATE-FAIL
    CHECK-CONCURRENT-CREATE
    CHECK-OVERRIDE
    CHECK-REPORT
+   CHECK-ERROR-REPORT
+   CHECK-RETRY-CLEARS-CAUSE
+   CHECK-ADVERSARIAL-TEXT
+   CHECK-OVER-ROOT-EVIDENCE
+   CHECK-LONG-ERROR-TEXT
+   CHECK-REPORT-LIFECYCLE
    CLEANUP-RUN
    ROOT$ EXISTS? TFALSE
    T-REPORT

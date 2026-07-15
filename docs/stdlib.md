@@ -1729,7 +1729,8 @@ line written in several chunks cannot be split by a parent heartbeat, while a
 final unterminated child fragment is still emitted before PASS/FAIL.
 
 `lib/fs-root.f` publishes `FS:WRITABLE-ROOT? ( ptr u8 n -- bool )`. It returns
-true only for an existing directory to which the process has write access.
+true only for an existing directory to which the process has both write and
+search access. Write-only directories are unusable as cache roots.
 
 `lib/build-cache.f` owns the one canonical persistent build-cache root. Resolve
 it with this package surface:
@@ -1741,6 +1742,11 @@ BUILD-CACHE:ROOT$    ( -- ptr u8 n )
 BUILD-CACHE:SOURCE   ( -- BUILD-CACHE:source )
 BUILD-CACHE:RESOLVE  ( -- ptr u8 n BUILD-CACHE:source )
 BUILD-CACHE:SOURCE$  ( BUILD-CACHE:source -- ptr u8 n )
+BUILD-CACHE:SELECTED?       ( -- bool )
+BUILD-CACHE:SELECTED-ROOT$  ( -- ptr u8 n )
+BUILD-CACHE:SELECTED-SOURCE ( -- BUILD-CACHE:source )
+BUILD-CACHE:CAUSE           ( -- n )
+BUILD-CACHE:CAUSE$          ( -- ptr u8 n )
 ```
 
 Environment resolution uses exactly the first non-empty tier:
@@ -1751,14 +1757,32 @@ select its tier. When all four variables are empty, resolution throws
 non-directory, an unwritable directory, or a creation failure also throws
 `E-BUILD-PATH` without consulting a lower tier. `BUILD-CACHE:ROOT!` is the
 explicit programmatic override used by build clients and isolated fixtures; its
-typed source is `explicit`.
+typed source is `explicit`. A failed selection retains its selected source,
+complete attempted root, and underlying filesystem cause even when the root is
+too long for a filesystem operation. The `SELECTED-*` and `CAUSE*` accessors
+read that separately owned evidence without attempting resolution again;
+`source` also has the diagnostic-only `none` variant for the no-tier case.
 
 `tools/hb-build.f --report-json ...` emits one `hb-build-report` JSON object on
 success. Version 1 contains `cache_root`, `cache_source`, `artifact_hit`,
-`object_hit`, `maker_hit`, and `elapsed_ns`. The three hit fields report the
-actual completed build path, so clients consume this report instead of timing
-or inspecting child-private state. `HB-BUILD:REPORT$` returns the same report
-for checked in-process clients.
+`object_hit`, `maker_hit`, `maker_built`, `maker_ran`, and `elapsed_ns`.
+`HB-BUILD:CACHE-ROOT$`, `CACHE-SOURCE`, `ARTIFACT-HIT?`, `OBJECT-HIT?`,
+`MAKER-HIT?`, `MAKER-BUILT?`, `MAKER-RAN?`, and `ELAPSED-NS` expose the same
+captured typed state to checked in-process clients; `HB-BUILD:REPORT$` renders
+that state. Build clients consume this surface instead of timing or inspecting
+child-private trace cells. `HB-BUILD:RESET` invalidates the report at build
+start, `HB-BUILD:VALID?` reports whether a build completed, and every report
+accessor throws `E-BUILD-STATUS` while invalid so a failed build cannot expose a
+prior success.
+
+A cache-root preparation failure exits with the build failure status and emits
+one structured explanation naming `E-BUILD-PATH`, the selected source and root,
+and the retained underlying cause. `--json-errors` emits the versioned
+`hb-build-error` JSON form; text mode emits the same labelled fields.
+Both renderers grow to fit the retained root, so diagnostic formatting cannot
+replace the owning `E-BUILD-PATH` failure with a string-capacity error.
+Text mode JSON-quotes the root, escaping control characters so one failure is
+always exactly one labelled output line.
 
 `lib/build.f` owns build step modeling, checked source certification, artifact
 path construction, and fail-closed status reporting. `BUILD-CHECK` requires a

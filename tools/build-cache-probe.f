@@ -19,7 +19,10 @@ package BUILD-CACHE-PROBE
    dup 0= if drop E-BUILD-PATH throw then
    dup E-BUILD-PATH <> if throw then
    drop
-   s" E-BUILD-PATH" type cr ;
+   s" E-BUILD-PATH" type 9 emit
+   BUILD-CACHE:SELECTED-SOURCE BUILD-CACHE:SOURCE$ type 9 emit
+   BUILD-CACHE:SELECTED-ROOT$ type 9 emit
+   BUILD-CACHE:CAUSE$ type cr ;
 
 : MAIN ( -- )
    EXPECT-PATH-ERROR? if EXPECT-PATH-ERROR exit then
