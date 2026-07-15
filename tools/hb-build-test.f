@@ -34,6 +34,7 @@ require tools/source-arena-policy.f
 64 constant HBT-KEY-U
 65536 constant HBT-CAPTURE-CAP
 120000 constant HBT-TIMEOUT-MS
+$5C constant HBT-BSLASH
 
 variable HBT-ROOT-U
 variable HBT-TMP-U
@@ -48,7 +49,10 @@ variable HBT-AOT-SRC-U
 variable HBT-AOT-OUT-U
 variable HBT-DEP-SRC-U
 variable HBT-ENTRY-SRC-U
+variable HBT-MOD-B-U
+variable HBT-SPECIAL-U
 variable HBT-ENG-U
+PTR-VARIABLE HBT-BIG-A
 
 create HBT-ROOT-BUF FS-PATH-CAP allot
 create HBT-TMP-BUF FS-PATH-CAP allot
@@ -63,6 +67,8 @@ create HBT-AOT-SRC-BUF FS-PATH-CAP allot
 create HBT-AOT-OUT-BUF FS-PATH-CAP allot
 create HBT-DEP-SRC-BUF FS-PATH-CAP allot
 create HBT-ENTRY-SRC-BUF FS-PATH-CAP allot
+create HBT-MOD-B-BUF FS-PATH-CAP allot
+create HBT-SPECIAL-BUF FS-PATH-CAP allot
 create HBT-ENG-BUF FS-PATH-CAP allot
 create HBT-ABI-ALT 96 allot
 create HBT-OUT HBT-CAPTURE-CAP allot
@@ -128,6 +134,12 @@ create HBT-EXP-HEX2 64 allot
 
 : HBT-ENTRY-SRC ( -- ptr u8 n )
    HBT-ENTRY-SRC-BUF HBT-ENTRY-SRC-U @ ;
+
+: HBT-MOD-B ( -- ptr u8 n )
+   HBT-MOD-B-BUF HBT-MOD-B-U @ ;
+
+: HBT-SPECIAL ( -- ptr u8 n )
+   HBT-SPECIAL-BUF HBT-SPECIAL-U @ ;
 
 : HBT-EMPTY$ ( -- ptr u8 n )
    SB-RESET
@@ -793,6 +805,232 @@ public
    HBB-MAKER-RUN @ 0= TTRUE
    HBT-AOT-OUT EXISTS? TFALSE ;
 
+: HBT-MOD-A$ ( -- ptr u8 n )
+   SB-RESET
+   s" require " SB-APPEND HBT-MOD-B SB-APPEND HBB-LF SB-APPEND-C
+   S\" package HBT-MOD\nprivate\n: HIDDEN ( -- n ) 70 ;\npublic\n: VALUE ( -- n ) HIDDEN 3 + ;\n;package\n" SB-APPEND
+   SB$ ;
+
+: HBT-SPECIAL$ ( -- ptr u8 n )
+   S\" package HBT-SPECIAL\npublic\n: VALUE ( -- n ) 4 ;\n;package" ;
+
+: HBT-SPECIAL-CHANGED$ ( -- ptr u8 n )
+   S\" package HBT-SPECIAL\npublic\n: VALUE ( -- n ) 100 ;\n;package" ;
+
+: HBT-ESC-PATH+ ( ptr u8 n -- ) {: a:ptr u:n :}
+   0 begin dup u < while
+      a over + c@ {: c:n :}
+      c HBB-DQ = if HBT-BSLASH SB-APPEND-C $71 SB-APPEND-C else
+         c HBT-BSLASH = if HBT-BSLASH SB-APPEND-C HBT-BSLASH SB-APPEND-C else c SB-APPEND-C then
+      then
+      1+
+   repeat drop ;
+
+: HBT-REQUIRED+ ( ptr u8 n -- ) {: a:ptr u:n :}
+   $53 SB-APPEND-C HBT-BSLASH SB-APPEND-C HBB-DQ SB-APPEND-C $20 SB-APPEND-C
+   a u HBT-ESC-PATH+
+   HBB-DQ SB-APPEND-C s"  required" SB-APPEND HBB-LF SB-APPEND-C ;
+
+: HBT-INCLUDED+ ( ptr u8 n -- ) {: a:ptr u:n :}
+   $53 SB-APPEND-C HBT-BSLASH SB-APPEND-C HBB-DQ SB-APPEND-C $20 SB-APPEND-C
+   a u HBT-ESC-PATH+
+   HBB-DQ SB-APPEND-C s"  included" SB-APPEND HBB-LF SB-APPEND-C ;
+
+: HBT-MOD-ENTRY$ ( -- ptr u8 n )
+   SB-RESET
+   S\" s\" hbt-never-load.f\" provided\nrequire hbt-never-load.f\n" SB-APPEND
+   HBT-SPECIAL HBT-REQUIRED+
+   s" include " SB-APPEND HBT-BAD-SRC SB-APPEND HBB-LF SB-APPEND-C
+   HBT-BAD-SRC HBT-INCLUDED+
+   s" require " SB-APPEND HBT-DEP-SRC SB-APPEND HBB-LF SB-APPEND-C
+   s" require " SB-APPEND HBT-DEP-SRC SB-APPEND HBB-LF SB-APPEND-C
+   S\" : MAIN ( -- ) HBT-MOD:VALUE HBT-SPECIAL:VALUE + . ;\n" SB-APPEND
+   SB$ ;
+
+: HBT-RUN-MODULAR ( -- )
+   HBT-AOT-OUT >LEN HBT-RUN-OUT HBT-CAPTURE-CAP >LEN HBT-RUN-ERR HBT-CAPTURE-CAP >LEN
+   HBT-TIMEOUT-MS >MS RUN-CAPTURE HBT-CAPTURE>N {: outn:n errn:n rcn:n :}
+   rcn 0 T=
+   HBT-RUN-OUT outn S\" 77\n" T$=
+   errn 0 T= ;
+
+: HBT-REQUIRE$ ( ptr u8 n -- ptr u8 n )
+   SB-RESET
+   s" require " SB-APPEND SB-APPEND HBB-LF SB-APPEND-C
+   SB$ ;
+
+: HBT-INCLUDE$ ( ptr u8 n -- ptr u8 n )
+   SB-RESET
+   s" include " SB-APPEND SB-APPEND HBB-LF SB-APPEND-C
+   SB$ ;
+
+: HBT-DIRECT-MODULAR-SRC$ ( -- ptr u8 n )
+   SB-RESET
+   s" require " SB-APPEND HBT-ENTRY-SRC SB-APPEND HBB-LF SB-APPEND-C
+   s" MAIN" SB-APPEND HBB-LF SB-APPEND-C
+   SB$ ;
+
+: HBT-DIRECT-MODULAR ( -- )
+   HBT-REPL-BAD-SRC HBT-DIRECT-MODULAR-SRC$ WRITE-ALL
+   PROC-ARGV-ENV-RESET
+   s" --load" HBT-ARG+
+   HBT-REPL-BAD-SRC HBT-ARG+
+   s" --" HBT-ARG+
+   PROC-ENV-INHERIT-MISSING
+   s" bin/hb" >LEN HBT-RUN-OUT HBT-CAPTURE-CAP >LEN HBT-RUN-ERR HBT-CAPTURE-CAP >LEN
+   HBT-TIMEOUT-MS >MS RUN-ARGV-ENV-CAPTURE HBT-CAPTURE>N {: outn:n errn:n rcn:n :}
+   rcn 0 T=
+   HBT-RUN-OUT outn S\" 77\n" T$=
+   errn 0 T= ;
+
+: HBT-MODULAR-CACHE-HIT ( -- )
+   HBT-REMOVE-AOT-OUT
+   HBT-ENTRY-SRC HBT-AOT-OUT HBT-HBB-PREPARE-AOT
+   HBT-HBB-BUILD-OUT
+   HBB-ARTIFACT-HIT @ 0 <> TTRUE
+   HBB-MATERIALIZED @ 0= TTRUE
+   HBB-MAKER-RUN @ 0= TTRUE
+   HBT-RUN-MODULAR ;
+
+: HBT-MODULAR-CACHE-MISS ( -- )
+   S\" \\ dependency key mutation\n" HBT-MOD-B 2swap APPEND-FILE
+   HBT-REMOVE-AOT-OUT
+   HBT-ENTRY-SRC HBT-AOT-OUT HBT-HBB-PREPARE-AOT
+   HBT-HBB-BUILD-OUT
+   HBB-ARTIFACT-HIT @ 0= TTRUE
+   HBB-OBJECT-HIT @ 0= TTRUE
+   HBB-MAKER-RUN @ 0 <> TTRUE
+   HBT-RUN-MODULAR ;
+
+: HBT-BUILD-MODULAR-AOT ( -- )
+   HBT-ROOT s" mod-b.f" HBT-MOD-B-BUF HBT-MOD-B-U HBT-PATH!
+   HBT-ROOT s" mod-a.f" HBT-DEP-SRC-BUF HBT-DEP-SRC-U HBT-PATH!
+   HBT-ROOT s" mod-entry.f" HBT-ENTRY-SRC-BUF HBT-ENTRY-SRC-U HBT-PATH!
+   HBT-ROOT S\" mod space\qquote.f" HBT-SPECIAL-BUF HBT-SPECIAL-U HBT-PATH!
+   HBT-BAD-SRC HBT-EMPTY$ WRITE-ALL
+   S\" ( require ignored.f )\r\nS\" require ignored.f\" 2drop\r\n" HBT-MOD-B 2swap WRITE-ALL
+   HBT-MOD-A$ HBT-DEP-SRC 2swap WRITE-ALL
+   HBT-SPECIAL HBT-SPECIAL$ WRITE-ALL
+   HBT-MOD-ENTRY$ HBT-ENTRY-SRC 2swap WRITE-ALL
+   HBT-AOT-OUT FILE? if HBT-AOT-OUT REMOVE-FILE then
+   HBT-ENTRY-SRC HBT-AOT-OUT HBT-HBB-PREPARE-AOT
+   HBB-ENSURE-COMPOSED
+   HBT-SPECIAL HBT-SPECIAL-CHANGED$ WRITE-ALL
+   HBT-HBB-BUILD-OUT
+   HBT-RUN-MODULAR
+   HBT-SPECIAL HBT-SPECIAL$ WRITE-ALL
+   HBT-DIRECT-MODULAR
+   HBT-MODULAR-CACHE-HIT
+   HBT-MODULAR-CACHE-MISS ;
+
+: HBT-ADD-COMPOSE-FAIL ( bool -- ) {: json:bool :}
+   json if s" --json-errors" HBT-ARG+ then
+   HBT-ENTRY-SRC HBT-ARG+
+   s" -o" HBT-ARG+
+   HBT-BAD-OUT HBT-ARG+ ;
+
+: HBT-BIG ( -- ptr u8 )
+   HBT-BIG-A @ 0= if
+      SOURCE-ARENA-CAP MEM:BYTES-ALLOC-LEN MEM:ALLOC-BYTES drop HBT-BIG-A !
+   then
+   HBT-BIG-A @ ;
+
+: HBT-BIG-FILL ( -- )
+   0 begin dup SOURCE-ARENA-CAP < while
+      dup HBT-BIG + $20 swap c!
+      1+
+   repeat drop ;
+
+: HBT-CAPACITY-DIAGNOSTIC ( -- )
+   HBT-BIG-FILL
+   HBT-ENTRY-SRC HBT-BIG SOURCE-ARENA-CAP WRITE-ALL
+   HBT-ARGV-BASE
+   HBB-FALSE HBT-ADD-COMPOSE-FAIL
+   HBT-RUN-HB-BUILD {: outu:n erru:n rc:n :}
+   rc HBB-BUILD-RC T=
+   outu 0 T=
+   HBT-ERR erru s" E-DISC-CAPACITY" CONTAINS? TTRUE
+   HBT-BAD-OUT EXISTS? TFALSE ;
+
+: HBT-RUNTIME-LOADER-DIAGNOSTIC ( -- )
+   SB-RESET
+   s" : MAIN ( -- ) include " SB-APPEND HBT-MOD-B SB-APPEND S\"  ;\n" SB-APPEND
+   SB$ HBT-ENTRY-SRC 2swap WRITE-ALL
+   HBT-ARGV-BASE
+   HBB-TRUE HBT-ADD-COMPOSE-FAIL
+   HBT-RUN-HB-BUILD {: outu:n erru:n rc:n :}
+   rc HBB-BUILD-RC T=
+   outu 0 T=
+   HBT-ERR erru S\" \qcode\q:\qE-DISC-DYNAMIC\q" CONTAINS? TTRUE
+   HBT-BAD-OUT EXISTS? TFALSE ;
+
+: HBT-COMPOSE-REJECT ( ptr u8 n ptr u8 n -- )
+   {: src:ptr srcu:n code:ptr codeu:n :}
+   HBT-BAD-OUT HBT-REMOVE-FILE?
+   HBT-ENTRY-SRC src srcu WRITE-ALL
+   HBT-ARGV-BASE
+   HBB-FALSE HBT-ADD-COMPOSE-FAIL
+   HBT-RUN-HB-BUILD {: outu:n erru:n rc:n :}
+   rc HBB-BUILD-RC T=
+   outu 0 T=
+   HBT-ERR erru code codeu CONTAINS? TTRUE
+   HBT-ERR erru HBT-ENTRY-SRC CONTAINS? TTRUE
+   HBT-BAD-OUT EXISTS? TFALSE ;
+
+: HBT-COMPOSE-REJECTIONS ( -- )
+   S\" S\\\" bad\\zpath\" required\n" s" E-DISC-NUL-PATH" HBT-COMPOSE-REJECT
+   S\" S\\\" bad\\xG0\" required\n" s" E-DISC-MALFORMED" HBT-COMPOSE-REJECT
+   S\" : require ( -- ) ;\n" s" E-DISC-SHADOW" HBT-COMPOSE-REJECT ;
+
+: HBT-MISSING-DIAGNOSTIC ( -- )
+   HBT-MOD-B HBT-REMOVE-FILE?
+   HBT-MOD-B HBT-REQUIRE$ HBT-ENTRY-SRC 2swap WRITE-ALL
+   HBT-ARGV-BASE
+   HBB-FALSE HBT-ADD-COMPOSE-FAIL
+   HBT-RUN-HB-BUILD {: outu:n erru:n rc:n :}
+   rc HBB-BUILD-RC T=
+   outu 0 T=
+   HBT-ERR erru s" E-DISC-MISSING" CONTAINS? TTRUE
+   HBT-ERR erru HBT-ENTRY-SRC CONTAINS? TTRUE
+   HBT-ERR erru HBT-MOD-B CONTAINS? TTRUE
+   HBT-ERR erru s" include chain:" CONTAINS? TTRUE ;
+
+: HBT-CYCLE-DIAGNOSTIC ( -- )
+   HBT-DEP-SRC HBT-INCLUDE$ HBT-MOD-B 2swap WRITE-ALL
+   HBT-MOD-B HBT-INCLUDE$ HBT-DEP-SRC 2swap WRITE-ALL
+   HBT-DEP-SRC HBT-INCLUDE$ HBT-ENTRY-SRC 2swap WRITE-ALL
+   HBT-ARGV-BASE
+   HBB-TRUE HBT-ADD-COMPOSE-FAIL
+   HBT-RUN-HB-BUILD {: outu:n erru:n rc:n :}
+   rc HBB-BUILD-RC T=
+   outu 0 T=
+   HBT-ERR erru S\" \qcode\q:\qE-DISC-CYCLE\q" CONTAINS? TTRUE
+   HBT-ERR erru S\" \qinclude_chain\q" CONTAINS? TTRUE
+   HBT-ERR erru HBT-ENTRY-SRC CONTAINS? TTRUE
+   HBT-ERR erru HBT-MOD-B CONTAINS? TTRUE
+   HBT-ERR erru HBT-DEP-SRC CONTAINS? TTRUE ;
+
+: HBT-ADD-MODULAR-BAD ( -- )
+   s" --json-errors" HBT-ARG+
+   HBT-ENTRY-SRC HBT-ARG+
+   s" -o" HBT-ARG+
+   HBT-BAD-OUT HBT-ARG+ ;
+
+: HBT-MODULAR-BAD-DIAGNOSTIC ( -- )
+   S\" \n\n   : DEP-BAD ( i64 -- i64 ) 0= ;\n" HBT-MOD-B 2swap WRITE-ALL
+   SB-RESET
+   s" require " SB-APPEND HBT-MOD-B SB-APPEND HBB-LF SB-APPEND-C
+   S\" : MAIN ( -- ) ;\n" SB-APPEND
+   SB$ HBT-ENTRY-SRC 2swap WRITE-ALL
+   HBT-ARGV-BASE
+   HBT-ADD-MODULAR-BAD
+   HBT-RUN-HB-BUILD {: outu:n erru:n rc:n :}
+   rc 0 T<>
+   outu 0 T=
+   HBT-ERR erru HBT-MOD-B CONTAINS? TTRUE
+   HBT-ERR erru S\" \qline\q:3" CONTAINS? TTRUE
+   HBT-BAD-OUT EXISTS? TFALSE ;
+
 \ The AOT/REPL/object cache keys fold the whole require/include closure, so a
 \ content edit to a required file (not just the top-level source) must change the
 \ key. This is the property a single-file digest could not provide.
@@ -818,10 +1056,16 @@ public
    HBT-KEY-A HBT-ARTIFACT-KEY
    HBT-DEP-SRC s\" \\ dep v2 changed\n" APPEND-FILE
    HBT-KEY-B HBT-ARTIFACT-KEY
+   HBT-KEY-A 64 HBT-KEY-B 64 STR= TTRUE
+   HBT-ENTRY-SRC HBB-SRC!
+   HBT-KEY-B HBT-ARTIFACT-KEY
    HBT-KEY-A 64 HBT-KEY-B 64 STR= TFALSE
    HBT-ENTRY-SRC HBB-SRC!
    HBB-SRC-CLOSURE-HEX! HBB-SRC-CLOSURE-HEX HBT-KEY-A 64 BYTE-COPY
    HBT-DEP-SRC s\" \\ dep v3 changed\n" APPEND-FILE
+   HBB-SRC-CLOSURE-HEX! HBB-SRC-CLOSURE-HEX HBT-KEY-B 64 BYTE-COPY
+   HBT-KEY-A 64 HBT-KEY-B 64 STR= TTRUE
+   HBT-ENTRY-SRC HBB-SRC!
    HBB-SRC-CLOSURE-HEX! HBB-SRC-CLOSURE-HEX HBT-KEY-B 64 BYTE-COPY
    HBT-KEY-A 64 HBT-KEY-B 64 STR= TFALSE ;
 
@@ -831,24 +1075,18 @@ public
    7 HBB-MAKER-DIE$ s" hb-build: native maker build failed, rc 7" T$=
    75 HBB-MAKER-DIE$ s" rc 75" CONTAINS? TTRUE ;
 
-\ tools/dynamic-tail-manifest.f is a behaviour-bearing dependency of the
-\ discovery producer (tools/source-discovery.f requires it, and its rows steer
-\ closure computation), so its content must fold into the maker cache key. The
-\ key preimage records each tool source through CK-FILE+, which appends the path
-\ fragment and then the file's content digest with no earlier return, so the
-\ presence of the manifest path in CK-BUF proves its content participates in the
-\ key. If the manifest is missing from HBB-KEY-LOAD-FILES a manifest edit
-\ silently reuses a stale hb-build maker artifact.
-: HBT-MAKER-KEY-FOLDS-MANIFEST ( -- )
+\ The composer and canonical lexer define the authenticated program presented
+\ to every hb-build stage, so their bytes must participate in the maker key.
+: HBT-MAKER-KEY-FOLDS-COMPOSER ( -- )
    CK-CACHE-CLEAR!
    CK-RESET
    HBB-KEY-LOAD-FILES
-   CK-BUF CK-U @ s" tools/dynamic-tail-manifest.f" CONTAINS? TTRUE ;
+   CK-BUF CK-U @ s" tools/source-compose.f" CONTAINS? TTRUE ;
 
 : HBT-MAIN ( -- )
    T-RESET
    HBT-MAKER-DIE-MSG
-   HBT-MAKER-KEY-FOLDS-MANIFEST
+   HBT-MAKER-KEY-FOLDS-COMPOSER
    HBT-PREPARE
    HBT-CAP:CHECK
    HBT-BUILD-REPL
@@ -870,6 +1108,13 @@ public
    HBT-ENGINE-KEY-FLIP
    HBT-PRODUCER-KEY-MISS
    HBT-BUILD-AOT-WRONG-OBJECT-FAILS
+   HBT-BUILD-MODULAR-AOT
+   HBT-CAPACITY-DIAGNOSTIC
+   HBT-RUNTIME-LOADER-DIAGNOSTIC
+   HBT-COMPOSE-REJECTIONS
+   HBT-MODULAR-BAD-DIAGNOSTIC
+   HBT-MISSING-DIAGNOSTIC
+   HBT-CYCLE-DIAGNOSTIC
    CLEANUP-RUN
    HBT-ROOT EXISTS? TFALSE
    T-REPORT

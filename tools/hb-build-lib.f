@@ -12,7 +12,7 @@ require lib/build-cache.f
 require lib/json-write.f
 require tools/hb-build-report.f
 require tools/object-image.f
-require tools/event-closure-lib.f
+require tools/source-compose.f
 
 64 constant HBB-USAGE-RC
 66 constant HBB-NOINPUT-RC
@@ -39,6 +39,8 @@ create HBB-ARTIFACT-LOCK-PATH FS-PATH-CAP allot
 create HBB-ARTIFACT-NAME-BUF 128 allot
 create HBB-ARTIFACT-KEY-HEX 80 allot
 create HBB-LF-BUF 1 allot
+create HBB-COMPOSED-PATH FS-PATH-CAP allot
+create HBB-SOURCE-MAP-PATH FS-PATH-CAP allot
 HBB-LF HBB-LF-BUF c!
 
 \ Preseeded test entry (--preseed-entry / --preseed-seed): a selected non-MAIN
@@ -67,7 +69,6 @@ variable HBB-ARTIFACT-NAME-U
 variable HBB-ARTIFACT-RC
 variable HBB-ARTIFACT-CACHE
 variable HBB-I
-variable HBB-KEY-I
 variable HBB-REPL
 variable HBB-JSON
 variable HBB-REPORT-JSON
@@ -86,6 +87,10 @@ variable HBB-SEED-HEX-U
 variable HBB-PRESEED-MODE
 variable HBB-START-NS
 variable HBB-ELAPSED-NS
+variable HBB-COMPOSED
+variable HBB-MATERIALIZED
+variable HBB-COMPOSED-U
+variable HBB-SOURCE-MAP-U
 
 : HBB-PTR-U8-FIELD ( ptr a -- ptr ptr u8 )
    0 ptr-field ;
@@ -127,7 +132,11 @@ variable HBB-ELAPSED-NS
    u up ! ;
 
 : HBB-SRC! ( ptr u8 n -- )
-   HBB-SRC-PATH HBB-SRC-U HBB-COPY-PATH! ;
+   HBB-SRC-PATH HBB-SRC-U HBB-COPY-PATH!
+   0 HBB-COMPOSED !
+   0 HBB-MATERIALIZED !
+   0 HBB-COMPOSED-U !
+   0 HBB-SOURCE-MAP-U ! ;
 
 : HBB-OUT! ( ptr u8 n -- )
    HBB-OUT-PATH HBB-OUT-U HBB-COPY-PATH! ;
@@ -248,7 +257,8 @@ variable HBB-ELAPSED-NS
 : HBB-PATHS! ( ptr u8 n ptr u8 n -- )
    {: src:ptr srcu out:ptr outu :}
    src srcu HBB-SRC!
-   out outu HBB-OUT! ;
+   out outu HBB-OUT!
+   0 HBB-COMPOSED ! ;
 
 : HBB-INC-I ( -- )
    HBB-I @ 1+ HBB-I ! ;
@@ -324,6 +334,58 @@ variable HBB-ELAPSED-NS
    BF-PREPARE-ENV
    PROC-ENV-INHERIT-MISSING ;
 
+: HBB-COMPOSED-NAME$ ( -- ptr u8 n )
+   s" hb-composed-src" ;
+
+: HBB-SOURCE-MAP-NAME$ ( -- ptr u8 n )
+   s" hb-composed-map" ;
+
+: HBB-COMPOSED-SRC$ ( -- ptr u8 n )
+   HBB-COMPOSED-PATH HBB-COMPOSED-U @ ;
+
+: HBB-SOURCE-MAP$ ( -- ptr u8 n )
+   HBB-SOURCE-MAP-PATH HBB-SOURCE-MAP-U @ ;
+
+: HBB-COMPOSE-PATHS ( -- )
+   HBB-COMPOSED-NAME$ BF-A$
+   HBB-COMPOSED-PATH HBB-COMPOSED-U HBB-COPY-PATH!
+   HBB-SOURCE-MAP-NAME$ BF-A$
+   HBB-SOURCE-MAP-PATH HBB-SOURCE-MAP-U HBB-COPY-PATH! ;
+
+: HBB-DISC? ( n -- bool ) {: code:n :}
+   code E-DISC-FIRST <= code E-DISC-LAST >= and ;
+
+: HBB-COMPOSE-DIAG ( -- )
+   HBB-JSON @ if
+      SOURCE-COMPOSE:JSON$ HBB-WERR
+      HBB-WERR-LF
+      exit
+   then
+   SOURCE-COMPOSE:TEXT$ HBB-WERR ;
+
+: HBB-COMPOSE-FAIL ( n -- ) {: code:n :}
+   code HBB-DISC? 0= if code throw then
+   HBB-COMPOSE-DIAG
+   HBB-BUILD-RC HBB-EXIT ;
+
+: HBB-COMPOSE-SOURCE ( -- )
+   [: HBB-SRC$ SOURCE-COMPOSE:BUILD ;] catch {: code:n :}
+   code 0 <> if code HBB-COMPOSE-FAIL then
+   -1 HBB-COMPOSED ! ;
+
+: HBB-ENSURE-COMPOSED ( -- )
+   HBB-COMPOSED @ 0= if HBB-COMPOSE-SOURCE then ;
+
+: HBB-MATERIALIZE-COMPOSED ( -- )
+   HBB-ENSURE-COMPOSED
+   HBB-COMPOSE-PATHS
+   HBB-COMPOSED-SRC$ SOURCE-COMPOSE:WRITE-SOURCE
+   HBB-SOURCE-MAP$ SOURCE-COMPOSE:WRITE-MAP
+   -1 HBB-MATERIALIZED ! ;
+
+: HBB-ENSURE-MATERIALIZED ( -- )
+   HBB-MATERIALIZED @ 0= if HBB-MATERIALIZE-COMPOSED then ;
+
 : HBB-LOAD-END ( -- )
    s" --"  >LEN PROC-ARGV+ ;
 
@@ -352,35 +414,19 @@ variable HBB-ELAPSED-NS
    s" tools/signature-lint.f"  >LEN PROC-ARGV+
    HBB-LOAD-END ;
 
-: HBB-ADD-DIAG-ORIGIN-ENTRY ( -- )
-   s" tools/diag-origin.f" CLI-TOOLS-LOAD if exit then
-   s" --load"  >LEN PROC-ARGV+
-   s" lib/errors.f"  >LEN PROC-ARGV+
-   s" lib/string.f"  >LEN PROC-ARGV+
-   s" lib/memory.f"  >LEN PROC-ARGV+
-   s" tools/lint/text.f"  >LEN PROC-ARGV+
-   s" tools/lint/token.f" >LEN PROC-ARGV+
-   s" tools/lint/lib.f" >LEN PROC-ARGV+
-   s" tools/diag-origin-core.f"  >LEN PROC-ARGV+
-   s" tools/diag-origin.f"  >LEN PROC-ARGV+
-   HBB-LOAD-END ;
-
 : HBB-ADD-AOT-LINT-CMD ( -- )
+   HBB-ENSURE-MATERIALIZED
    HBB-CMD-RESET
    HBB-ADD-AOT-LINT-ENTRY
    HBB-JSON @ if s" --json"  >LEN PROC-ARGV+ then
-   HBB-SRC$  >LEN PROC-ARGV+ ;
+   HBB-COMPOSED-SRC$  >LEN PROC-ARGV+ ;
 
 : HBB-ADD-SIGNATURE-LINT-CMD ( -- )
+   HBB-ENSURE-MATERIALIZED
    HBB-CMD-RESET
    HBB-ADD-SIGNATURE-LINT-ENTRY
    HBB-JSON @ if s" --json"  >LEN PROC-ARGV+ then
-   HBB-SRC$  >LEN PROC-ARGV+ ;
-
-: HBB-ADD-DIAG-ORIGIN-CMD ( -- )
-   HBB-CMD-RESET
-   HBB-ADD-DIAG-ORIGIN-ENTRY
-   HBB-SRC$  >LEN PROC-ARGV+ ;
+   HBB-COMPOSED-SRC$  >LEN PROC-ARGV+ ;
 
 : HBB-CAPTURE>N ( len len rc -- n n n ) {: outu erru rc :}
    outu LEN>N erru LEN>N rc RC>N ;
@@ -390,25 +436,11 @@ variable HBB-ELAPSED-NS
    HBB-TIMEOUT-MS >MS RUN-ARGV-ENV-CAPTURE
    HBB-CAPTURE>N ;
 
-: HBB-RUN-DIAG-CAPTURE ( -- n n n )
-   CLI-TOOLS$ >LEN BF-SOURCE-BUF BF-SOURCE-CAP >LEN HBB-ERR-BUF HBB-CAPTURE-CAP >LEN
-   HBB-TIMEOUT-MS >MS RUN-ARGV-ENV-CAPTURE
-   HBB-CAPTURE>N ;
-
 : HBB-FINISH-TOOL ( n n n -- ) {: outu erru rc :}
    rc 0= if exit then
    outu HBB-WOUT-ERR
    erru HBB-WERR-ERR
    rc HBB-EXIT ;
-
-: HBB-FINISH-DIAG-ORIGIN ( n n n -- n ) {: outu erru rc :}
-   rc 0= if
-      erru HBB-WERR-ERR
-      outu exit
-   then
-   BF-SOURCE-BUF outu HBB-WERR
-   erru HBB-WERR-ERR
-   0 rc HBB-EXIT ;
 
 : HBB-RUN-AOT-LINT-CHILD ( -- )
    HBB-ADD-AOT-LINT-CMD
@@ -435,9 +467,9 @@ HBB-INSTALL-CHILD-LINTS
    HBB-STRICT @ 0= if exit then
    HBB-SIGNATURE-LINT-HOOK ;
 
-: HBB-DIAG-ORIGIN-SOURCE ( -- )
-   HBB-ADD-DIAG-ORIGIN-CMD
-   HBB-RUN-DIAG-CAPTURE HBB-FINISH-DIAG-ORIGIN BF-SOURCE-LEN ! ;
+: HBB-RUN-LINTS ( -- )
+   HBB-RUN-SIGNATURE-LINT
+   HBB-RUN-AOT-LINT ;
 
 : HBB-DRIVER$ ( -- ptr u8 n )
    HBB-REPL @ if s" src/habu/build.f" else s" src/habu/aot.f" then ;
@@ -495,6 +527,12 @@ HBB-INSTALL-CHILD-LINTS
    s" tools/source-discovery.f" HBB-KEY-FILE+
    s" tools/event-closure-lib.f" HBB-KEY-FILE+
    s" tools/hb-build-report.f" HBB-KEY-FILE+
+   s" lib/vector.f" HBB-KEY-FILE+
+   s" tools/lint/text.f" HBB-KEY-FILE+
+   s" tools/lint/token.f" HBB-KEY-FILE+
+   s" tools/lint/lib.f" HBB-KEY-FILE+
+   s" tools/lint/source-lex.f" HBB-KEY-FILE+
+   s" tools/source-compose.f" HBB-KEY-FILE+
    s" tools/hb-build-lib.f" HBB-KEY-FILE+ ;
 
 : HBB-KEY-COMMON-SOURCES ( -- )
@@ -675,12 +713,12 @@ HBB-INSTALL-CHILD-LINTS
    HBB-BUILD-MAKER-FRESH ;
 
 : HBB-READ-COMMENTED-SOURCE ( -- )
-   HBB-SRC$ BF-SOURCE-BUF BF-SOURCE-CAP READ-ALL BF-SOURCE-LEN !
+   HBB-ENSURE-MATERIALIZED
+   HBB-COMPOSED-SRC$ BF-SOURCE-BUF BF-SOURCE-CAP READ-ALL BF-SOURCE-LEN !
    BF-SOURCE-BUF BF-SOURCE-LEN @ >LEN SOURCE-BUF SOURCE-CAP >LEN COMMENT-EXPORTS SOURCE-LEN ! ;
 
 : HBB-READ-ORIGIN-COMMENTED-SOURCE ( -- )
-   HBB-DIAG-ORIGIN-SOURCE
-   BF-SOURCE-BUF BF-SOURCE-LEN @ >LEN SOURCE-BUF SOURCE-CAP >LEN COMMENT-EXPORTS SOURCE-LEN ! ;
+   HBB-READ-COMMENTED-SOURCE ;
 
 : HBB-WRITE-COMMENTED-SOURCE ( ptr u8 n -- ) {: name:ptr nameu :}
    name nameu BF-OUT$ SOURCE-BUF SOURCE-LEN @ LEN>N WRITE-ALL ;
@@ -774,18 +812,6 @@ HBB-INSTALL-CHILD-LINTS
 : HBB-OPTION-TEXT+ ( ptr u8 n bool -- )
    if CK-TEXT+ else 2drop then ;
 
-\ The user program's behaviour depends on every file its require/include closure
-\ actually loads, so the cache keys fold the whole ordered closure content, not
-\ only the top-level source. Discovery rejects fail-closed, so a closure that
-\ cannot be reproduced cannot be keyed.
-: HBB-CLOSURE-CK+ ( ptr u8 n -- ) {: a:ptr u:n :}
-   a u EC:BUILD
-   0 HBB-KEY-I !
-   begin HBB-KEY-I @ EC:COUNT < while
-      HBB-KEY-I @ EC:PATH$ CK-FILE+
-      HBB-KEY-I @ 1+ HBB-KEY-I !
-   repeat ;
-
 \ Fold the selected-entry / seed / test-mode axis into a content key. A no-op for
 \ a normal MAIN build (so non-preseed keys and object bytes stay byte-identical),
 \ but for a preseeded run it diverges every cache layer in lockstep: the artifact
@@ -800,18 +826,15 @@ HBB-INSTALL-CHILD-LINTS
    SB-RESET s" mode:" SB-APPEND HBB-PRESEED-MODE @ FS-MUT-SB-U SB$ CK-TEXT+ ;
 
 : HBB-SRC-CLOSURE+ ( -- )
-   s" user-source-closure-v1" CK-TEXT+
-   HBB-SRC$ HBB-CLOSURE-CK+ ;
-
-: HBB-CLOSURE-HEX! ( ptr u8 n ptr u8 -- ) {: a:ptr u:n dst:ptr :}
-   CK-RESET
-   s" user-source-closure-v1" CK-TEXT+
-   a u HBB-CLOSURE-CK+
-   HBB-PRESEED-CK+
-   dst CK-FINAL-HEX ;
+   HBB-ENSURE-COMPOSED
+   s" user-source-composition-v2" CK-TEXT+
+   SOURCE-COMPOSE:KEY+ ;
 
 : HBB-SRC-CLOSURE-HEX! ( -- )
-   HBB-SRC$ HBB-SRC-CLOSURE-HEX HBB-CLOSURE-HEX! ;
+   CK-RESET
+   HBB-SRC-CLOSURE+
+   HBB-PRESEED-CK+
+   HBB-SRC-CLOSURE-HEX CK-FINAL-HEX ;
 
 : HBB-ABI! ( ptr u8 n ptr u8 ptr n -- ) {: sem:ptr semu:n dst:ptr up:ptr :}
    semu HBB-HEX-U + 1 + HBB-ABI-CAP > if E-STR-CAPACITY throw then
@@ -841,8 +864,6 @@ HBB-INSTALL-CHILD-LINTS
    HBB-MAKER-KEY-HEX 64 CK-TEXT+
    s" strict" HBB-STRICT @ 0 <> HBB-OPTION-TEXT+
    s" json" HBB-JSON @ 0 <> HBB-OPTION-TEXT+
-   s" tools/diag-origin-core.f" HBB-KEY-FILE+
-   s" tools/diag-origin.f" HBB-KEY-FILE+
    HBB-SRC-CLOSURE+
    HBB-PRESEED-CK+
    HBB-ARTIFACT-KEY-HEX CK-FINAL-HEX ;
@@ -996,11 +1017,11 @@ HBB-INSTALL-CHILD-LINTS
    mono-ns HBB-START-NS !
    HB-BUILD:RESET
    HBB-RESET-TRACE
-   HBB-RUN-SIGNATURE-LINT
-   HBB-RUN-AOT-LINT ;
+   HBB-ENSURE-COMPOSED ;
 
 : HBB-BUILD-REST ( -- )
    HBB-RESTORE-ARTIFACT? if HBB-FINISH exit then
+   HBB-RUN-LINTS
    HBB-OBJECT-HIT? if HBB-INSTALL-ARTIFACT HBB-FINISH exit then
    HBB-PREPARE-PROGRAM-SOURCE
    HBB-BUILD-MAKER

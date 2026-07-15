@@ -193,6 +193,10 @@
 -4103 constant E-DISC-UNTERM
 -4104 constant E-DISC-CAPACITY
 -4105 constant E-DISC-RETIRE
+-4106 constant E-DISC-CYCLE
+-4107 constant E-DISC-MALFORMED
+-4108 constant E-DISC-NUL-PATH
+-4109 constant E-DISC-MISSING
 
 \ Test-suite DSL: -4200..-4299 (merge renumber from -3900; E-JR owns -3900)
 -4200 constant E-SUITE-FIRST

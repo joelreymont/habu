@@ -19,6 +19,8 @@ points stay listed.
 - `skills/habu-build/SKILL.md` — current AOT and REPL build commands.
 - `docs/bootstrap.md` — no-binary recovery, native refresh, and porting.
 - `docs/forth.md` — blocking Forth style rules.
+- `docs/modular-builds.md` — exact in-place source composition, frozen build
+  transactions, authenticated cache keys, source maps, and modular diagnostics.
 - `docs/type-families.md` — generic lowercase type-family/ADT design plan.
 - `docs/census-switchover.md` — site-level inventory for the post-TFAM switchover: sentinel-return conventions to migrate to option/result, legacy enum clusters, value-record/PTX-IR products, ADT-dischargeable trust rows, and the wave-ordered migration plan.
 - `docs/gate.md` — native gate architecture, proof subjects, metrics, and
@@ -341,13 +343,15 @@ points stay listed.
 - `tools/hb-baseline-contracts-test.f` — checked public `bin/hb` baseline contract fixture.
 - `tools/build-cache-probe.f` — isolated child fixture for canonical cache-root
   environment resolution.
-- `tools/hb-build-lib.f` — checked native AOT/REPL build CLI library.
+- `tools/hb-build-lib.f` — checked native AOT/REPL build CLI library; consumes
+  the frozen exact-composition plan for lints, cache keys, and maker input.
 - `tools/hb-build-report.f` — checked lifecycle-safe typed report state plus
   dynamically sized success and cache-root failure wire renderers.
 - `tools/hb-build-direct-lints.f` — optional in-process lint hook adapter for
   hb-build gate callers that already loaded lint cores.
 - `tools/hb-build.f` — Habu entrypoint for native AOT/REPL builds.
-- `tools/hb-build-test.f` — checked fixture coverage for native REPL builds and
+- `tools/hb-build-test.f` — checked fixture coverage for native REPL and AOT
+  builds, exact modular composition, cache truth, original diagnostics, and
   hb-build boundary rejections.
 - `tools/cli-run.f` — checked helpers for explicitly installed CLI fixture
   subprocesses.
@@ -359,6 +363,8 @@ points stay listed.
 - `tools/include-events-test.f` — checked fixtures for the source-composition event log and loader instrumentation.
 - `tools/source-discovery.f` — whole-file source-composition discovery pass that lexes the entire token stream (colon bodies included), replays every literal loader form against a fresh require registry, and emits the ordered event artifact; dynamic paths, loader shadow/undefine/retirement, and unsupported openers reject fail-closed unless the entry is a declared dynamic-tail boundary.
 - `tools/source-discovery-test.f` — checked fixtures for the whole-file discovery pass (ordering, multiplicity, dedup, fresh registry, colon-body capture, byte-exact spans, shared emitter, fail-closed rejection, dynamic-tail manifest boundary).
+- `tools/source-compose.f` — exact frozen modular-source composer: expands literal loaders in place with include multiplicity and exact require/provided registry semantics, injects original diagnostic origins, records authenticated source-map and plan digests, renders composition failures with include chains, and rejects residual or dynamic loader behavior fail-closed.
+- `tools/source-compose-test.f` — checked composer fixtures for top-level and transitive loading, require dedup, include replay, provided suppression, runtime/shadow/missing/cycle/opener/malformed/NUL/capacity rejection, hostile paths and lexing, line endings, maps, and frozen bytes.
 - `tools/source-arena-policy.f` — checked shared headroom and power-of-two policy for native, stage2, and maker source arenas.
 - `tools/dynamic-tail-manifest.f` — declared dynamic-tail boundary table (path + reason) consumed by the discovery pass; a listed file's dynamic/retired loader forms are tolerated instead of rejected.
 - `tools/event-closure-lib.f` — ordered transitive source-composition closure list built by replaying the discovery pass breadth-first over the event log.
