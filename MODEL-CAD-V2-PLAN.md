@@ -3028,6 +3028,23 @@ CAD rows where representable. Acceptance requires equal licensed accuracy,
 strictly fewer bytes or launches than the unfused graph, and a measured
 end-to-end win for at least one flagship shape distribution.
 
+**Landed evidence (2026-07-15, orin-nx-25w; dot habu-automatic-op-fusion).** The
+first end-to-end win through the AUTOMATIC pipeline: a same-shape Add->Mul->Relu
+elementwise chain lowered by the real path (`FP-BUILD` -> per-region cubins ->
+`LOWER-MODEL-RUN`) and run on device twice. Fusion ON plans ONE elementwise
+region / ONE kernel (intermediates register-resident); ablated (`FP-FUSE-OFF!`)
+plans THREE per-op regions / THREE kernels with a global round-trip between each.
+Both are device-correct against the SAME host golden (`LOWER-MODEL-GOLDEN`
+V-PASS at 1 and 3 regions), and the fused kernel finishes the chain 2.07x faster
+(77.7 ms vs 160.8 ms / 200 iters at 1,048,576 elems), moving 16 B/elem vs
+32 B/elem at the same ~42 GB/s 1-elem/thread memory roof - the win is 2x fewer
+global round-trips, not a higher peak GB/s. Rows `FUSE-CHAIN-ON` /
+`FUSE-CHAIN-OFF` (`tools/ptx/perf-rows.tsv`, orin-nx-25w). Magnitude-independent
+corruption probe: perturbing the fused kernel (ADD->MUL) drives the golden to
+V-FAIL; the committed proof stays the clean PASS. Harness:
+`maki/fusion-bench-device-test.f` (plan-shape assertions run everywhere; the
+golden + bandwidth legs are Orin-only, CUDA-probe-gated SKIP off-device).
+
 ### 22.5 Dynamic-shape multiversioning
 
 Existential shape refinement supplies runtime type identity; the execution

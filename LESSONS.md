@@ -4,6 +4,35 @@
 
 Last updated: 2026-07-15
 
+- **Automatic-fusion device win is LATENCY (fewer global round-trips), not peak
+  GB/s.** Benching the AUTOMATICALLY-emitted region kernels of an Add->Mul->Relu
+  chain at scale (1M elems, 200 iters, CUDA events) on the Orin 25W: fused
+  (1 kernel, 16 B/elem) and ablated (3 kernels, 32 B/elem) BOTH saturate the same
+  ~42 GB/s 1-elem/thread memory roof, so the per-row GBS is ~equal - the fusion
+  win shows up as the fused kernel finishing 2.07x faster because it moves 2x
+  fewer bytes. Report the sum-of-kernel-ns ratio (like tools/ptx/fusion-compare.f),
+  not a bandwidth delta; a "both rows ~roof, ratio in the note" pair is the honest
+  shape (maki/fusion-bench-device-test.f, dot habu-automatic-op-fusion).
+- **The device emit child re-plans in a fresh process, so the fusion mode must
+  ride in the model SOURCE STRING, not just the parent toggle.** `LOWER-DRIVER!`
+  writes a child driver that appends a bare `FP-BUILD` (default fusion ON). To
+  build ablated cubins, pass the model source with a trailing `; FP-FUSE-OFF!`
+  suffix (child order: `MODEL:` -> toggle -> `FP-BUILD`) so child region ids/
+  kernels match the parent's ablated plan. `FP-FUSE-OFF!` is persistent across
+  `FP-BUILD` and `MODEL:`/`CAP-BEGIN` does not reset it.
+- **A new maki device test needs no lint registration.** `filemap-lint` only
+  walks src/tools/test/lib/bootstrap (not maki/), and `suite-coverage-lint` only
+  scans test/gate-stdlib-*.f - so a `maki/*-device-test.f` (Orin-only, CUDA-probe
+  SKIP off-device) keeps both lints green with zero registration; the ONLY rule is
+  keep it out of `maki/test.f` (it needs CUDA + a device). This is why
+  maki/onnx/deploy-device-test.f appears in neither lint table.
+- **zed's ~/Work/habu is stale vs current master (missing files, not just a stale
+  bin/hb).** Running a current-master device leg means transferring the FULL
+  workspace tree to an isolated /tmp dir on zed and `HABU_ALLOW_BOOTSTRAP=1
+  tools/bootstrap.sh` a fresh Linux engine THERE (gforth, ~30s) - never touching
+  ~/Work/habu. Working fully in /tmp keeps the box sha-identical as-found with no
+  bin/hb backup/restore dance at all. ptxas is at /usr/local/cuda/bin (add to PATH).
+
 - **Jj's default word-level diff can visually concatenate numeric replacements.**
   A deleted `$200000` beside an inserted `$400000` rendered as
   `$200000400000`; inspect the source or `jj diff --git` before diagnosing a
