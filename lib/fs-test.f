@@ -6,8 +6,12 @@ require lib/string.f
 require lib/test.f
 require lib/fs.f
 require lib/fs-mutate.f
+require test/checker-assert.f
 
 1 constant FS-TEST-EX-FAIL
+-61 constant FS-TEST-STAT-RC
+-62 constant FS-TEST-READ-RC
+-63 constant FS-TEST-CLOSE-RC
 $34 constant FS-TEST-U16-LO
 $12 constant FS-TEST-U16-HI
 $0807060504030201 constant FS-TEST-U64-VALUE
@@ -40,6 +44,13 @@ variable FS-TEST-DEEP-CUR-U
 variable FS-TEST-IO-U
 variable FS-TEST-BIG-U
 variable FS-TEST-EMPTY-U
+variable FS-TEST-LINK-U
+variable FS-TEST-BROKEN-U
+variable FS-TEST-MISSING-U
+variable FS-TEST-RACE-U
+variable FS-TEST-STREAM-U
+variable FS-TEST-STREAM-N
+variable FS-TEST-CLOSE-N
 
 create FS-TEST-OUT FS-PATH-CAP allot
 create FS-TEST-BASE-BUF FS-PATH-CAP allot
@@ -56,6 +67,11 @@ create FS-TEST-DEEP-CUR-BUF FS-PATH-CAP allot
 create FS-TEST-IO-BUF FS-PATH-CAP allot
 create FS-TEST-BIG-BUF FS-PATH-CAP allot
 create FS-TEST-EMPTY-BUF FS-PATH-CAP allot
+create FS-TEST-LINK-BUF FS-PATH-CAP allot
+create FS-TEST-BROKEN-BUF FS-PATH-CAP allot
+create FS-TEST-MISSING-BUF FS-PATH-CAP allot
+create FS-TEST-RACE-BUF FS-PATH-CAP allot
+create FS-TEST-STREAM-BUF FS-TEST-READ-CAP allot
 create FS-TEST-LONG FS-PATH-CAP 1 + allot
 create FS-TEST-READ-BUF FS-TEST-READ-CAP allot
 create FS-TEST-U16
@@ -141,6 +157,18 @@ create FS-TEST-U64
 : FS-TEST-EMPTY-PATH ( -- ptr u8 n )
    FS-TEST-EMPTY-BUF FS-TEST-EMPTY-U @ ;
 
+: FS-TEST-LINK-PATH ( -- ptr u8 n )
+   FS-TEST-LINK-BUF FS-TEST-LINK-U @ ;
+
+: FS-TEST-BROKEN-PATH ( -- ptr u8 n )
+   FS-TEST-BROKEN-BUF FS-TEST-BROKEN-U @ ;
+
+: FS-TEST-MISSING-PATH ( -- ptr u8 n )
+   FS-TEST-MISSING-BUF FS-TEST-MISSING-U @ ;
+
+: FS-TEST-RACE-PATH ( -- ptr u8 n )
+   FS-TEST-RACE-BUF FS-TEST-RACE-U @ ;
+
 : FS-TEST-BASE! ( -- )
    s" habu-fs" TMPDIR-MKDIR {: a:ptr u :}
    a u FS-TEST-BASE-BUF FS-TEST-BASE-U FS-TEST-COPY! ;
@@ -157,7 +185,11 @@ create FS-TEST-U64
    FS-TEST-BASE s" deep" FS-TEST-DEEP-BUF FS-TEST-DEEP-U FS-TEST-PATH!
    FS-TEST-BASE s" io.txt" FS-TEST-IO-BUF FS-TEST-IO-U FS-TEST-PATH!
    FS-TEST-BASE s" big.txt" FS-TEST-BIG-BUF FS-TEST-BIG-U FS-TEST-PATH!
-   FS-TEST-BASE s" empty.txt" FS-TEST-EMPTY-BUF FS-TEST-EMPTY-U FS-TEST-PATH! ;
+   FS-TEST-BASE s" empty.txt" FS-TEST-EMPTY-BUF FS-TEST-EMPTY-U FS-TEST-PATH!
+   FS-TEST-BASE s" file-link" FS-TEST-LINK-BUF FS-TEST-LINK-U FS-TEST-PATH!
+   FS-TEST-BASE s" broken-link" FS-TEST-BROKEN-BUF FS-TEST-BROKEN-U FS-TEST-PATH!
+   FS-TEST-BASE s" missing-target" FS-TEST-MISSING-BUF FS-TEST-MISSING-U FS-TEST-PATH!
+   FS-TEST-BASE s" race.txt" FS-TEST-RACE-BUF FS-TEST-RACE-U FS-TEST-PATH! ;
 
 : FS-TEST-MAKE-REGISTERED-DIR ( ptr u8 n -- )
    2dup MAKE-DIR CLEANUP-DIR+ ;
@@ -212,13 +244,16 @@ create FS-TEST-U64
    CLEANUP-RESET
    FS-TEST-BASE!
    FS-TEST-PATHS!
-   FS-TEST-BASE CLEANUP-DIR+
+   FS-TEST-BASE CLEANUP-TREE+
    FS-TEST-MAKE-WALK-DIRS
    FS-TEST-WRITE-WALK-FILES
    FS-TEST-BIG-PATH s" abcd" WRITE-ALL
    FS-TEST-BIG-PATH CLEANUP+
    FS-TEST-EMPTY-PATH s" " WRITE-ALL
    FS-TEST-EMPTY-PATH CLEANUP+
+   FS-TEST-BIG-PATH FS-TEST-LINK-PATH MAKE-SYMLINK
+   FS-TEST-MISSING-PATH FS-TEST-BROKEN-PATH MAKE-SYMLINK
+   FS-TEST-RACE-PATH s" old" WRITE-ALL
    FS-TEST-IO-PATH CLEANUP+
    FS-TEST-MAKE-DEEP ;
 
@@ -272,6 +307,229 @@ create FS-TEST-U64
 : FS-TEST-WRITE-READONLY ( -- )
    FS-TEST-IO-PATH FS-TEST-MODE-READONLY CHMOD-MODE
    FS-TEST-IO-PATH s" x" WRITE-ALL ;
+
+\ Test-only package reopen: exercise the private injected operation row without
+\ publishing it from lib/fs.f.
+package FS
+private
+
+: TEST-READ-FAIL ( fd ptr u8 n -- n )
+   2drop drop FS-TEST-READ-RC ;
+
+: TEST-STAT-FAIL ( fd ptr u8 -- rc )
+   2drop FS-TEST-STAT-RC >RC ;
+
+: TEST-CLOSE-FAIL ( fd -- rc )
+   CLOSE-FD drop FS-TEST-CLOSE-RC >RC ;
+
+: TEST-CLOSE-COUNT ( fd -- rc )
+   FS-TEST-CLOSE-N @ 1 + FS-TEST-CLOSE-N !
+   CLOSE-FD ;
+
+: TEST-CLOSE-FAIL-COUNT ( fd -- rc )
+   FS-TEST-CLOSE-N @ 1 + FS-TEST-CLOSE-N !
+   TEST-CLOSE-FAIL ;
+
+: TEST-RACE-OPEN ( ptr u8 -- fd )
+   drop
+   FS-TEST-RACE-PATH REMOVE-FILE
+   FS-TEST-BIG-PATH FS-TEST-RACE-PATH MAKE-SYMLINK
+   FS-TEST-RACE-PATH FS-PATHZ OPEN-NOFOLLOW ;
+
+public
+
+: TEST-INJECT-STAT ( -- stream-outcome )
+   FS-TEST-BIG-PATH FS-TEST-READ-BUF 2
+   [: 2drop ;]
+   [: OPEN-NOFOLLOW ;]
+   [: TEST-STAT-FAIL ;]
+   [: READ-FD ;]
+   [: CLOSE-FD ;]
+   STREAM-WITH ;
+
+: TEST-INJECT-STAT-CLOSE ( -- stream-outcome )
+   FS-TEST-BIG-PATH FS-TEST-READ-BUF 2
+   [: 2drop ;]
+   [: OPEN-NOFOLLOW ;]
+   [: TEST-STAT-FAIL ;]
+   [: READ-FD ;]
+   [: TEST-CLOSE-FAIL ;]
+   STREAM-WITH ;
+
+: TEST-INJECT-READ ( -- stream-outcome )
+   FS-TEST-BIG-PATH FS-TEST-READ-BUF 2
+   [: 2drop ;]
+   [: OPEN-NOFOLLOW ;]
+   [: FSTAT-FD ;]
+   [: TEST-READ-FAIL ;]
+   [: CLOSE-FD ;]
+   STREAM-WITH ;
+
+: TEST-INJECT-READ-CLOSE ( -- stream-outcome )
+   FS-TEST-BIG-PATH FS-TEST-READ-BUF 2
+   [: 2drop ;]
+   [: OPEN-NOFOLLOW ;]
+   [: FSTAT-FD ;]
+   [: TEST-READ-FAIL ;]
+   [: TEST-CLOSE-FAIL ;]
+   STREAM-WITH ;
+
+: TEST-INJECT-CLOSE ( -- stream-outcome )
+   FS-TEST-BIG-PATH FS-TEST-READ-BUF 2
+   [: 2drop ;]
+   [: OPEN-NOFOLLOW ;]
+   [: FSTAT-FD ;]
+   [: READ-FD ;]
+   [: TEST-CLOSE-FAIL ;]
+   STREAM-WITH ;
+
+: TEST-INJECT-CALLBACK ( -- stream-outcome )
+   0 FS-TEST-CLOSE-N !
+   FS-TEST-BIG-PATH FS-TEST-READ-BUF 2
+   [: 2drop FS-TEST-EX-FAIL throw ;]
+   [: OPEN-NOFOLLOW ;]
+   [: FSTAT-FD ;]
+   [: READ-FD ;]
+   [: TEST-CLOSE-COUNT ;]
+   STREAM-WITH ;
+
+: TEST-INJECT-CALLBACK-CLOSE ( -- stream-outcome )
+   0 FS-TEST-CLOSE-N !
+   FS-TEST-BIG-PATH FS-TEST-READ-BUF 2
+   [: 2drop FS-TEST-EX-FAIL throw ;]
+   [: OPEN-NOFOLLOW ;]
+   [: FSTAT-FD ;]
+   [: READ-FD ;]
+   [: TEST-CLOSE-FAIL-COUNT ;]
+   STREAM-WITH ;
+
+: TEST-OPEN-RACE ( -- stream-outcome )
+   FS-TEST-RACE-PATH FS-TEST-READ-BUF 2
+   [: 2drop ;]
+   [: TEST-RACE-OPEN ;]
+   [: FSTAT-FD ;]
+   [: READ-FD ;]
+   [: CLOSE-FD ;]
+   STREAM-WITH ;
+
+;package
+
+: FS-TEST-EXPECT-OK ( FS:stream-outcome -- )
+   MATCH FS:stream-outcome
+      ok OF FS-TRUE ENDOF
+      failed OF drop FS-FALSE ENDOF
+      close-failed OF drop FS-FALSE ENDOF
+      failed-close OF 2drop FS-FALSE ENDOF
+   ;MATCH FS-TEST-TRUE ;
+
+: FS-TEST-CONSUME ( FS:stream-outcome -- )
+   MATCH FS:stream-outcome
+      ok OF ENDOF
+      failed OF drop ENDOF
+      close-failed OF drop ENDOF
+      failed-close OF 2drop ENDOF
+   ;MATCH ;
+
+: FS-TEST-EXPECT-FAILED ( FS:stream-outcome n -- ) {: want:n :}
+   MATCH FS:stream-outcome
+      ok OF FS-FALSE ENDOF
+      failed OF want = ENDOF
+      close-failed OF drop FS-FALSE ENDOF
+      failed-close OF 2drop FS-FALSE ENDOF
+   ;MATCH FS-TEST-TRUE ;
+
+: FS-TEST-EXPECT-CLOSE ( FS:stream-outcome n -- ) {: want:n :}
+   MATCH FS:stream-outcome
+      ok OF FS-FALSE ENDOF
+      failed OF drop FS-FALSE ENDOF
+      close-failed OF RC>N want = ENDOF
+      failed-close OF 2drop FS-FALSE ENDOF
+   ;MATCH FS-TEST-TRUE ;
+
+: FS-TEST-EXPECT-BOTH ( FS:stream-outcome n n -- )
+   {: primary:n close:n :}
+   MATCH FS:stream-outcome
+      ok OF FS-FALSE ENDOF
+      failed OF drop FS-FALSE ENDOF
+      close-failed OF drop FS-FALSE ENDOF
+      failed-close OF
+         {: got:n crc:rc :}
+         got primary = crc RC>N close = and
+      ENDOF
+   ;MATCH FS-TEST-TRUE ;
+
+: FS-TEST-STREAM-RESET ( -- )
+   0 FS-TEST-STREAM-U !
+   0 FS-TEST-STREAM-N ! ;
+
+\ typed-local-lint: allow-bare-local - src keeps the callback's ptr u8 role.
+: FS-TEST-STREAM-CHUNK ( ptr u8 n -- ) {: src u:n :}
+   FS-TEST-STREAM-U @ u + FS-TEST-READ-CAP > if E-FS-CAPACITY throw then
+   src FS-TEST-STREAM-BUF FS-TEST-STREAM-U @ + u BYTE-COPY
+   FS-TEST-STREAM-U @ u + FS-TEST-STREAM-U !
+   FS-TEST-STREAM-N @ 1 + FS-TEST-STREAM-N ! ;
+
+: FS-TEST-STREAM-MISSING ( -- )
+   FS-TEST-MISSING-PATH FS-TEST-READ-BUF 2
+   [: 2drop ;] FS:STREAM-REGULAR FS-TEST-CONSUME ;
+
+: FS-TEST-STREAM-LINK ( -- )
+   FS-TEST-LINK-PATH FS-TEST-READ-BUF 2
+   [: 2drop ;] FS:STREAM-REGULAR FS-TEST-CONSUME ;
+
+: FS-TEST-STREAM-BROKEN ( -- )
+   FS-TEST-BROKEN-PATH FS-TEST-READ-BUF 2
+   [: 2drop ;] FS:STREAM-REGULAR FS-TEST-CONSUME ;
+
+: FS-TEST-STREAM-DIR ( -- FS:stream-outcome )
+   FS-TEST-ROOT FS-TEST-READ-BUF 2 [: 2drop ;] FS:STREAM-REGULAR ;
+
+: FS-TEST-STREAM-ZERO-BUF ( -- )
+   FS-TEST-BIG-PATH FS-TEST-READ-BUF 0
+   [: 2drop ;] FS:STREAM-REGULAR FS-TEST-CONSUME ;
+
+: FS-TEST-OPEN-RACE ( -- )
+   FS:TEST-OPEN-RACE FS-TEST-CONSUME ;
+
+: FS-TEST-STREAMING ( -- )
+   FS-TEST-STREAM-RESET
+   FS-TEST-BIG-PATH FS-TEST-READ-BUF 2
+   [: FS-TEST-STREAM-CHUNK ;] FS:STREAM-REGULAR FS-TEST-EXPECT-OK
+   FS-TEST-STREAM-U @ FS-TEST-EXACT-CAP FS-TEST=
+   FS-TEST-STREAM-N @ 1 > FS-TEST-TRUE
+   FS-TEST-STREAM-BUF FS-TEST-STREAM-U @ s" abcd" FS-TEST$=
+   FS-TEST-STREAM-RESET
+   FS-TEST-EMPTY-PATH FS-TEST-READ-BUF 2
+   [: FS-TEST-STREAM-CHUNK ;] FS:STREAM-REGULAR FS-TEST-EXPECT-OK
+   FS-TEST-STREAM-U @ 0 FS-TEST=
+   FS-TEST-STREAM-N @ 0 FS-TEST= ;
+
+: FS-TEST-NOFOLLOW-ERRORS ( -- )
+   T-RESET
+   [: FS-TEST-STREAM-LINK ;] E-FS-OPEN TTHROWSQ
+   [: FS-TEST-STREAM-BROKEN ;] E-FS-OPEN TTHROWSQ
+   FS-TEST-STREAM-DIR E-FS-STAT FS-TEST-EXPECT-FAILED
+   [: FS-TEST-STREAM-MISSING ;] E-FS-OPEN TTHROWSQ
+   [: FS-TEST-STREAM-ZERO-BUF ;] E-FS-CAPACITY TTHROWSQ
+   FS:TEST-INJECT-STAT E-FS-STAT FS-TEST-EXPECT-FAILED
+   FS:TEST-INJECT-READ E-FS-IO FS-TEST-EXPECT-FAILED
+   FS:TEST-INJECT-CALLBACK FS-TEST-EX-FAIL FS-TEST-EXPECT-FAILED
+   FS-TEST-CLOSE-N @ 1 FS-TEST=
+   FS:TEST-INJECT-CLOSE FS-TEST-CLOSE-RC FS-TEST-EXPECT-CLOSE
+   FS:TEST-INJECT-STAT-CLOSE E-FS-STAT FS-TEST-CLOSE-RC FS-TEST-EXPECT-BOTH
+   FS:TEST-INJECT-READ-CLOSE E-FS-IO FS-TEST-CLOSE-RC FS-TEST-EXPECT-BOTH
+   FS:TEST-INJECT-CALLBACK-CLOSE
+      FS-TEST-EX-FAIL FS-TEST-CLOSE-RC FS-TEST-EXPECT-BOTH
+   FS-TEST-CLOSE-N @ 1 FS-TEST=
+   [: FS-TEST-OPEN-RACE ;] E-FS-OPEN TTHROWSQ
+   FS-TEST-RACE-PATH SYMLINK? FS-TEST-TRUE
+   T-FAILURES 0 FS-TEST= ;
+
+: FS-TEST-NOFOLLOW-TYPES ( -- )
+   s" FSP ( ptr u8 n ptr u8 n [ ptr u8 n -- ] -- FS:stream-outcome ) FS:STREAM-REGULAR"
+      CHECK-QUIET-CANDIDATE! -1 FS-TEST=
+   s" FSN ( ptr u8 n ptr u8 n [ ptr u8 -- ] -- FS:stream-outcome ) FS:STREAM-REGULAR"
+      CHECK-QUIET-CANDIDATE! 0 FS-TEST= ;
 
 : FS-TEST-SETUP ( -- )
    FS-TEST-LONG FS-PATH-CAP 1 + FS-TEST-FILL-C FS-TEST-FILL
@@ -444,6 +702,9 @@ create FS-TEST-U64
    FS-TEST-JOIN
    FS-TEST-WALK
    FS-TEST-IO
+   FS-TEST-STREAMING
+   FS-TEST-NOFOLLOW-ERRORS
+   FS-TEST-NOFOLLOW-TYPES
    FS-TEST-THROWS
    FS-TEST-CLEANUP
    FS-TEST-REPORT ;

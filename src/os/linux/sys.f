@@ -35,6 +35,7 @@ $32 constant MAP-ANON-PRIVATE-FIXED
 35  constant NR-RMDIR
 79  constant NR-STAT64
 79  constant NR-LSTAT64
+80  constant NR-FSTAT64
 61  constant NR-GETDIRENTRIES64
 78  constant NR-READLINKAT
 36  constant NR-SYMLINKAT
@@ -45,6 +46,7 @@ $32 constant MAP-ANON-PRIVATE-FIXED
 
 -100 constant AT-FDCWD
 $100 constant AT-SYMLINK-NOFOLLOW
+$20000 constant O-NOFOLLOW
 
 : SYS, ( n -- )
    8 swap MOVZ,  0 SVC,
@@ -64,6 +66,11 @@ $D4000001 constant SYS-EMIT-SVC                          \ svc #0
 : OS-OPEN-RD ( n -- )
    {: pathreg :}
    1 pathreg 0 ADDI,  0 99 MOVN,  2 0 MOVZ,  3 0 MOVZ,  NR-OPEN SYS, ;
+
+: OS-OPEN-NOFOLLOW-RD ( n -- )
+   {: pathreg:n :}
+   1 pathreg 0 ADDI,  0 99 MOVN,  2 O-NOFOLLOW LIT64,  3 0 MOVZ,
+   NR-OPEN SYS, ;
 
 : OS-OPEN-FLAGS ( -- )
    LBL LBL LBL {: noappend nocreat notrunc :}

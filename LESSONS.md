@@ -5570,3 +5570,10 @@ unchanged (148855). Keys for milestone 2:
   and deliberately NOT built - a subtly-wrong external-name seed would be
   masked at the DDC fixpoint because the native refresh re-emits the dict,
   so proving it needs bespoke pre-refresh verification no gate performs today.
+- **Primitive effects own semantic roles at the syscall boundary.** Once an
+  argument is a validated descriptor, model it as `fd`, and return syscall
+  status as `rc`; raw `n` effects silently permit role forgery. Validate a raw
+  open result before minting `fd`, never after the role conversion.
+- **Cleanup is an independent failure channel.** A close failure must not replace
+  a stat, read, or callback failure; return an owned typed outcome that retains
+  both codes when primary work and cleanup fail together.

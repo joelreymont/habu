@@ -407,7 +407,7 @@ schema_version	module	file	kind	word	effect	test	doc	owner	status	notes
 1	build-cache	lib/build-cache.f	word	BUILD-CACHE:SELECTED-SOURCE	(-- source)	lib/build-cache-test.f	docs/stdlib.md	stdlib-build-cache	published	return the retained selected source without rerunning resolution
 1	build-cache	lib/build-cache.f	word	BUILD-CACHE:CAUSE	(-- n)	lib/build-cache-test.f	docs/stdlib.md	stdlib-build-cache	published	return the exact retained cache-root preparation cause
 1	build-cache	lib/build-cache.f	word	BUILD-CACHE:CAUSE$	(-- ptr u8 n)	lib/build-cache-test.f	docs/stdlib.md	stdlib-build-cache	published	render the retained cache-root preparation cause
-1	fs	lib/fs.f	module			lib/fs-test.f	docs/stdlib.md	stdlib-fs	active	checked path stat size join read write append helpers and WALK-FILES contract
+1	fs	lib/fs.f	module			lib/fs-test.f	docs/stdlib.md	stdlib-fs	active	checked path stat size join read write append no-follow streaming and WALK-FILES contracts
 1	fs	lib/fs.f	word	FS-FALSE	(-- bool)	lib/fs-test.f	docs/stdlib.md	stdlib-fs	published	return a false flag for filesystem helpers
 1	fs	lib/fs.f	word	FS-TRUE	(-- bool)	lib/fs-test.f	docs/stdlib.md	stdlib-fs	published	return a true flag for filesystem helpers
 1	fs	lib/fs.f	word	FS-TARGET-UNKNOWN	(--)	lib/fs-test.f	docs/stdlib.md	stdlib-fs	active	throw when filesystem target selection finds no supported host target
@@ -460,6 +460,7 @@ schema_version	module	file	kind	word	effect	test	doc	owner	status	notes
 1	fs	lib/fs.f	word	FS-PATH=	(ptr u8 n ptr u8 n -- bool)	lib/fs-test.f	docs/stdlib.md	stdlib-fs	published	compare counted paths
 1	fs	lib/fs.f	word	READ-LINK	(ptr u8 n ptr u8 n -- n)	lib/fs-mutate-test.f	docs/stdlib.md	stdlib-fs	published	read a symlink target into caller storage and return its byte count
 1	fs	lib/fs.f	word	READ-ALL	(ptr u8 n ptr u8 n -- n)	lib/fs-test.f	docs/stdlib.md	stdlib-fs	published	read a whole file into caller storage up to an explicit cap
+1	fs	lib/fs.f	word	FS:STREAM-REGULAR	(ptr u8 n ptr u8 n [ ptr u8 n -- ] -- FS:stream-outcome)	lib/fs-test.f	docs/stdlib.md	stdlib-fs	published	stream an opened regular file and return an owned outcome preserving primary and close failures
 1	fs	lib/fs.f	word	FS-WRITE-BY-FLAGS	(ptr u8 n ptr u8 n n --)	lib/fs-test.f	docs/stdlib.md	stdlib-fs	published	write all bytes using caller-selected open flags
 1	fs	lib/fs.f	word	WRITE-ALL	(ptr u8 n ptr u8 n --)	lib/fs-test.f	docs/stdlib.md	stdlib-fs	published	create or truncate a file and write all bytes
 1	fs	lib/fs.f	word	APPEND-FILE	(ptr u8 n ptr u8 n --)	lib/fs-test.f	docs/stdlib.md	stdlib-fs	published	create or append to a file and write all bytes

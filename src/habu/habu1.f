@@ -1712,6 +1712,9 @@ variable SZA-I
 : BOPENRD ( -- )
    A G-POP  A OS-OPEN-RD  SYS-PUSH ;
 
+: BOPENNOFOLLOWRD ( -- )
+   A G-POP  A OS-OPEN-NOFOLLOW-RD  SYS-PUSH ;
+
 : BACCESS ( -- )
    1 G-POP  0 G-POP
    HB-TARGET-LINUX? IF
@@ -1811,6 +1814,23 @@ variable SZA-I
    THEN
    NR-LSTAT64 SYS,  SYS-PUSH ;
 
+: BFSTAT64 ( -- )
+   1 G-POP  0 G-POP
+   7 $90 MOVZ,  1 7 GUARD-SPAN
+   LBL STAT-OK !
+   LBL STAT-DONE !
+   NR-FSTAT64 SYS,
+   HB-TARGET-LINUX? IF
+      9 C-CS CSET,  9 STAT-OK LABEL@ CBZ,
+         0 0 MOVN,  STAT-DONE LABEL@ B,
+      STAT-OK LABEL@ LBL,
+      1 LINUX-STAT-FIX
+      STAT-DONE LABEL@ LBL,
+      0 G-PUSH
+      exit
+   THEN
+   SYS-PUSH ;
+
 : BGETDIRENTRIES64 ( -- )
    3 G-POP  2 G-POP  1 G-POP  0 G-POP
    1 2 GUARD-SPAN  7 8 MOVZ,  3 7 GUARD-SPAN
@@ -1832,6 +1852,9 @@ variable SZA-I
 
 : BCLOSE ( -- )
    0 G-POP  NR-CLOSE SYS, ;
+
+: BCLOSERC ( -- )
+   0 G-POP  NR-CLOSE SYS,  SYS-PUSH ;
 
 : BRBASE ( -- )
    9 DATA RBASE-CELL LDR,  9 G-PUSH ;
@@ -2285,14 +2308,16 @@ SOURCE-INIT
    s" ffi-call-abi" ['] BFFI-CALL-ABI 5 GDEREF-F
    s" ffi-call-abi-r" ['] BFFI-CALL-ABI-R 5 GDEREF-F
    s" open-rd" ['] BOPENRD FPRIM-L
+   s" open-nofollow-rd" ['] BOPENNOFOLLOWRD FPRIM-L
    s" access" ['] BACCESS FPRIM-L
    s" unlink" ['] BUNLINK FPRIM-L   s" rename" ['] BRENAME FPRIM-L   s" chmod" ['] BCHMOD FPRIM-L
    s" symlink" ['] BSYMLINK FPRIM-L   s" readlink" ['] BREADLINK FPRIM-L
    s" mkdir" ['] BMKDIR FPRIM-L     s" rmdir" ['] BRMDIR FPRIM-L
    s" stat64" ['] BSTAT64 FPRIM-L   s" lstat64" ['] BLSTAT64 FPRIM-L
+   s" fstat64" ['] BFSTAT64 FPRIM-L
    s" getdirentries64" ['] BGETDIRENTRIES64 FPRIM-L
    s" patch32" ['] BPATCH32 2 GDEREF-F
-   s" close" ['] BCLOSE FPRIM-L
+   s" close" ['] BCLOSE FPRIM-L   s" close-rc" ['] BCLOSERC FPRIM-L
    s" rbase" ['] BRBASE FPRIM-L ;
 
 : EMIT-CHECKER-PRIMS ( -- )

@@ -70,6 +70,7 @@ create ERR CAP allot
    s" 0 data-base TXN-STATE-OFF 1 cells - + 16 read drop" REJECTS
    s" 0 data-base TXN-STATE-OFF 1 cells - + 16 readlink drop" REJECTS
    s" 0 data-base TXN-STATE-OFF 1- + stat64 drop" REJECTS
+   s" 0 data-base TXN-STATE-OFF 1- + fstat64 drop" REJECTS
    s" 0 data-base TXN-STATE-OFF 1- + lstat64 drop" REJECTS
    s" 0 data-base TXN-STATE-OFF 1 cells - + 16 data-base TXN-STATE-OFF $100 - + getdirentries64 drop" REJECTS
    s" 0 data-base TXN-STATE-OFF $100 - + 8 data-base TXN-STATE-OFF 1- + getdirentries64 drop" REJECTS

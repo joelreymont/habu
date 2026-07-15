@@ -1232,6 +1232,46 @@ public
    s" PTR-VARIABLE KEEP-A" BCG-MUST-HAVE
    s" variable KEEP-A" BCG-MUST-LACK ;
 
+: BCG-TEST-FS-NOFOLLOW-MIRROR ( -- )
+   s" src/os/linux/sys.f" BCG-LOAD
+   s" 80  constant NR-FSTAT64" BCG-MUST-HAVE
+   s" $20000 constant O-NOFOLLOW" BCG-MUST-HAVE
+   s" : OS-OPEN-NOFOLLOW-RD" BCG-MUST-HAVE
+   s" 2 O-NOFOLLOW LIT64," BCG-MUST-HAVE
+   s" src/os/macos/sys.f" BCG-LOAD
+   s" $153 constant NR-FSTAT64" BCG-MUST-HAVE
+   s" $100 constant O-NOFOLLOW" BCG-MUST-HAVE
+   s" : OS-OPEN-NOFOLLOW-RD" BCG-MUST-HAVE
+   s" 1 O-NOFOLLOW MOVZ," BCG-MUST-HAVE
+   s" bootstrap/cg/sys.fs" BCG-LOAD
+   s" 80  constant NR-FSTAT64" BCG-MUST-HAVE
+   s" $20000 constant O-NOFOLLOW" BCG-MUST-HAVE
+   s" $153 constant NR-FSTAT64" BCG-MUST-HAVE
+   s" $100 constant O-NOFOLLOW" BCG-MUST-HAVE
+   s" : OS-OPEN-NOFOLLOW-RD" BCG-MUST-HAVE
+   s" 2 O-NOFOLLOW LIT64," BCG-MUST-HAVE
+   s" 1 O-NOFOLLOW MOVZ," BCG-MUST-HAVE
+   s" src/habu/habu1.f" BCG-LOAD
+   s" : BOPENNOFOLLOWRD" BCG-MUST-HAVE
+   s" : BFSTAT64" BCG-MUST-HAVE
+   s" : BCLOSERC" BCG-MUST-HAVE
+   s" 7 $90 MOVZ,  1 7 GUARD-SPAN" BCG-MUST-HAVE
+   S\" s\" open-nofollow-rd\" ['] BOPENNOFOLLOWRD FPRIM-L" BCG-MUST-HAVE
+   S\" s\" fstat64\" ['] BFSTAT64 FPRIM-L" BCG-MUST-HAVE
+   S\" s\" close\" ['] BCLOSE FPRIM-L   s\" close-rc\" ['] BCLOSERC FPRIM-L" BCG-MUST-HAVE
+   s" bootstrap/cg/forth.fs" BCG-LOAD
+   s" : BOPENNOFOLLOWRD" BCG-MUST-HAVE
+   s" : BFSTAT64" BCG-MUST-HAVE
+   s" : BCLOSERC" BCG-MUST-HAVE
+   s" 7 $90 MOVZ,  1 7 GUARD-SPAN" BCG-MUST-HAVE
+   S\" s\" open-nofollow-rd\" ['] BOPENNOFOLLOWRD FPRIM-L" BCG-MUST-HAVE
+   S\" s\" fstat64\" ['] BFSTAT64 FPRIM-L" BCG-MUST-HAVE
+   S\" s\" close\" ['] BCLOSE FPRIM-L   s\" close-rc\" ['] BCLOSERC FPRIM-L" BCG-MUST-HAVE
+   s" src/core/checker.f" BCG-LOAD
+   s" PRIM: open-nofollow-rd PE-PTR-U8 PE-IN  PE-N PE-OUT PRIM;" BCG-MUST-HAVE
+   s" PRIM: fstat64   PE-N PE-IN PE-PTR-U8 PE-IN  PE-N PE-OUT PRIM;" BCG-MUST-HAVE
+   s" PRIM: close-rc      PE-N PE-IN  PE-N PE-OUT PRIM;" BCG-MUST-HAVE ;
+
 \ Fixed-VA region mmap failures at boot must NOT be silent (dot
 \ habu-diagnose-fixed-va-ed649528). A forced fixed-VA collision is not reliably
 \ forcible from checked Habu on either host (no setrlimit spawn primitive, and
@@ -1303,6 +1343,7 @@ public
 : BCG-MAIN ( -- )
    T-RESET
    BCG-TEST-MMAP-DIAG
+   BCG-TEST-FS-NOFOLLOW-MIRROR
    BCG-PREFLIGHT:TEST
    BCG-TEST-INSTALL-FAIL-CLOSED
    BCG-TEST-FORTH-SDQ-COMMENT

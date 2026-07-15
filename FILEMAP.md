@@ -1123,8 +1123,8 @@ points stay listed.
   classification, and report fixtures.
 - `lib/codesign.f` / `lib/codesign-test.f` — checked executable promotion and
   ad-hoc signing helpers and their coverage.
-- `lib/fs.f` / `lib/fs-test.f` — checked filesystem helpers (walks, reads,
-  stat) and their coverage.
+- `lib/fs.f` / `lib/fs-test.f` — checked filesystem helpers (walks, bounded
+  reads, opened-fd no-follow regular-file streaming, stat) and their coverage.
 - `lib/fs-root.f` — checked write-and-search directory predicate for persistent
   roots.
 - `lib/fs-mutate.f` / `lib/fs-mutate-test.f` — checked filesystem mutation

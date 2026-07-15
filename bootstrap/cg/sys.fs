@@ -34,6 +34,8 @@ $32 constant MAP-ANON-PRIVATE-FIXED
 222 constant NR-MMAP
 220 constant NR-SPAWN
 260 constant NR-WAIT4
+80  constant NR-FSTAT64
+$20000 constant O-NOFOLLOW
 
 : SYS, ( n -- )
    8 swap MOVZ,  0 SVC,
@@ -50,6 +52,12 @@ $D4000001 constant SYS-EMIT-SVC                          \ svc #0
 : OS-OPEN-RD ( n -- )
    {: pathreg :}
    1 pathreg 0 ADDI,  0 99 MOVN,  2 0 MOVZ,  3 0 MOVZ,  NR-OPEN SYS, ;
+
+: OS-OPEN-NOFOLLOW-RD ( n -- )
+   \ typed-local-lint: allow-bare-local - stock Gforth rejects Habu type suffixes.
+   {: pathreg :}
+   1 pathreg 0 ADDI,  0 99 MOVN,  2 O-NOFOLLOW LIT64,  3 0 MOVZ,
+   NR-OPEN SYS, ;
 
 : OS-OPEN-FLAGS ( -- )
    7 3 MOVZ,  6 1 7 AND,
@@ -98,6 +106,8 @@ $49 constant NR-MUNMAP
 197 constant NR-MMAP
 244 constant NR-SPAWN     \ posix_spawn(&pid, path, 0, 0, argv, envp)
 7   constant NR-WAIT4     \ wait4(pid, &status, 0, 0)
+$153 constant NR-FSTAT64
+$100 constant O-NOFOLLOW
 
 : SYS, ( n -- )  16 swap MOVZ,  $80 SVC, ;
 
@@ -111,6 +121,11 @@ $D4001001 constant SYS-EMIT-SVC                          \ svc #0x80
 : OS-OPEN-RD ( n -- )
    {: pathreg :}
    0 pathreg 0 ADDI,  1 0 MOVZ,  2 0 MOVZ,  NR-OPEN SYS, ;
+
+: OS-OPEN-NOFOLLOW-RD ( n -- )
+   \ typed-local-lint: allow-bare-local - stock Gforth rejects Habu type suffixes.
+   {: pathreg :}
+   0 pathreg 0 ADDI,  1 O-NOFOLLOW MOVZ,  2 0 MOVZ,  NR-OPEN SYS, ;
 
 : OS-OPEN-FLAGS ( -- ) ;
 

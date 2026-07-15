@@ -34,6 +34,7 @@ $88  constant NR-MKDIR
 $89  constant NR-RMDIR
 $152 constant NR-STAT64
 $154 constant NR-LSTAT64
+$153 constant NR-FSTAT64
 $158 constant NR-GETDIRENTRIES64
 $1D9 constant NR-READLINKAT
 $1DA constant NR-SYMLINKAT
@@ -44,6 +45,7 @@ $1   constant NR-EXIT-GROUP
 
 -2 constant AT-FDCWD
 0 constant AT-SYMLINK-NOFOLLOW
+$100 constant O-NOFOLLOW
 
 : SYS, ( n -- )  16 swap MOVZ,  $80 SVC, ;
 
@@ -60,6 +62,9 @@ $D4001001 constant SYS-EMIT-SVC                          \ svc #0x80
 
 : OS-OPEN-RD ( n -- )
    0 swap 0 ADDI,  1 0 MOVZ,  2 0 MOVZ,  NR-OPEN SYS, ;
+
+: OS-OPEN-NOFOLLOW-RD ( n -- )
+   0 swap 0 ADDI,  1 O-NOFOLLOW MOVZ,  2 0 MOVZ,  NR-OPEN SYS, ;
 
 : OS-OPEN-FLAGS ( -- ) ;
 

@@ -148,6 +148,12 @@ create SLV-EMPTY 1 allot            \ zero-length stdin
    s" 0 data-base SLF-CUR + stat64 drop" SB-APPEND SLV-LF
    SB$ ;
 
+: SLV-FSTAT-FORGE$ ( -- ptr u8 n )          \ fstat64 statbuf (x1) into the band
+   SB-RESET
+   s" $28 constant SLF-CUR" SB-APPEND SLV-LF
+   s" 0 data-base SLF-CUR + fstat64 drop" SB-APPEND SLV-LF
+   SB$ ;
+
 : SLV-LSTAT-FORGE$ ( -- ptr u8 n )          \ lstat64 statbuf (x1) into the band
    SB-RESET
    s" $28 constant SLF-CUR" SB-APPEND SLV-LF
@@ -681,6 +687,8 @@ public
    SLV-READLINK-FORGE$ SLV-RUN-LOAD SLV-ASSERT-SEAL
    s" stat64 statbuf (x1) into the band traps" T-LABEL
    SLV-STAT-FORGE$ SLV-RUN-LOAD SLV-ASSERT-SEAL
+   s" fstat64 statbuf (x1) into the band traps" T-LABEL
+   SLV-FSTAT-FORGE$ SLV-RUN-LOAD SLV-ASSERT-SEAL
    s" lstat64 statbuf (x1) into the band traps" T-LABEL
    SLV-LSTAT-FORGE$ SLV-RUN-LOAD SLV-ASSERT-SEAL
    s" getdirentries64 dirent buffer (x1) into the band traps" T-LABEL

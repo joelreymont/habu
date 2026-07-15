@@ -4,8 +4,9 @@
 \ SINK (! c! +! atomic* patch32 snap-rebase, syscall write buffers). The native
 \ engine (src/habu/habu1.f) carries the full sink set; the Gforth stage0 mirror
 \ (bootstrap/cg/forth.fs) is a strict SUBSET — it has no atomics, no snap-rebase,
-\ no readlink/stat64/lstat64/getdirentries64/poll/ffi-call syscalls and no
-\ CHECKER-* registry mutators except the reviewed checker-defer registration
+\ no readlink/stat64/lstat64/getdirentries64/poll/ffi-call syscalls. Its
+\ fstat64 mirror is present and guarded like the other stage0 write sinks. It has
+\ no CHECKER-* registry mutators except the reviewed checker-defer registration
 \ bridge, whose exact sites are presence-pinned below (SAB-REAL-CHKDEFER).
 \ 2b-i already mirrored GUARD-SPAN onto the sinks stage0 DOES
 \ have (BSTORE/BPLUSSTORE/BCSTORE, read/ioctl/mmap buffers, patch32) plus
@@ -72,7 +73,7 @@ public
 $40000 constant SAB-CAP                 \ mirror scan buffer (forth.fs ~137 KB + headroom)
 $800 constant SAB-NAMES-CAP             \ packed absent-name table capacity (bytes)
 92 constant SAB-BSLASH                  \ ASCII '\' — the line-comment introducer
-10 constant SAB-GUARD-PINS              \ GUARD-SPAN definition + bounded/runtime sink lines
+11 constant SAB-GUARD-PINS              \ GUARD-SPAN definition + bounded/runtime sink lines
 3 constant SAB-SEAL-PINS                \ EMIT-SEAL-FRIEND code sites: 1 def + 2 entry seals
 2 constant SAB-CHKDEFER-PINS            \ CHECKER-DEFER code sites: C-CALL-CHECKER-DEFER def + C-DEFER call
 
@@ -110,7 +111,7 @@ variable SAB-NAMES-LEN
    s" snap-rebase" SAB-NAME,  s" BSNAPREBASE" SAB-NAME, ;
 
 : SAB-ADD-SYSCALLS ( -- )
-   s" readlink" SAB-NAME,  s" stat64" SAB-NAME,  s" lstat64" SAB-NAME,
+   s" readlink" SAB-NAME,  s" BSTAT64" SAB-NAME,  s" lstat64" SAB-NAME,
    s" getdirentries64" SAB-NAME,  s" poll" SAB-NAME,  s" ffi-call" SAB-NAME, ;
 
 : SAB-ADD-CHECKER ( -- )

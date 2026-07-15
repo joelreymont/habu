@@ -877,6 +877,11 @@ previous definitions
    A OS-OPEN-RD
    SYS-PUSH ;
 
+: BOPENNOFOLLOWRD ( -- )
+   A G-POP
+   A OS-OPEN-NOFOLLOW-RD
+   SYS-PUSH ;
+
 : BWRITE ( -- )  2 G-POP  1 G-POP  0 G-POP  NR-WRITE SYS,  0 G-PUSH ;   \ ( fd buf len -- n )
 
 : BREAD ( -- )   2 G-POP  1 G-POP  0 G-POP  1 2 GUARD-SPAN  NR-READ SYS,  0 G-PUSH ;  \ ( fd buf len -- n )
@@ -907,6 +912,34 @@ previous definitions
    SP SP 32 ADDI, ;
 
 : BCLOSE ( -- )  0 G-POP  NR-CLOSE SYS, ;                               \ ( fd -- )
+
+: BCLOSERC ( -- )  0 G-POP  NR-CLOSE SYS,  SYS-PUSH ;                   \ ( fd -- rc )
+
+variable FSTAT-BUF
+
+: LINUX-FSTAT-FIX ( n -- )
+   FSTAT-BUF !
+   5 FSTAT-BUF @ 16 LDRW,  5 FSTAT-BUF @ 4 STRW,
+   5 FSTAT-BUF @ 48 LDR,   6 FSTAT-BUF @ 88 LDR,   7 FSTAT-BUF @ 96 LDR,
+   8 FSTAT-BUF @ 104 LDR,  9 FSTAT-BUF @ 112 LDR,
+   5 FSTAT-BUF @ 96 STR,   6 FSTAT-BUF @ 48 STR,   7 FSTAT-BUF @ 56 STR,
+   8 FSTAT-BUF @ 64 STR,   9 FSTAT-BUF @ 72 STR, ;
+
+: BFSTAT64 ( -- )
+   1 G-POP  0 G-POP
+   7 $90 MOVZ,  1 7 GUARD-SPAN
+   LBL LBL {: ok done :} \ typed-local-lint: allow-bare-local - stock Gforth rejects Habu type suffixes.
+   NR-FSTAT64 SYS,
+   HB-TARGET-LINUX? IF
+      9 C-CS CSET,  9 ok CBZ,
+         0 0 MOVN,  done B,
+      ok LBL,
+      1 LINUX-FSTAT-FIX
+      done LBL,
+      0 G-PUSH
+      exit
+   THEN
+   SYS-PUSH ;
 
 : BRBASE ( -- )  9 DATA RBASE-CELL LDR,  9 G-PUSH ;                            \ ( -- rbase ) __TEXT load base
 
@@ -1171,9 +1204,11 @@ previous definitions
 
 : EMIT-FS-PRIMS ( -- )
    s" open" ['] BOPEN FPRIM-L   s" open-rd" ['] BOPENRD FPRIM-L
+   s" open-nofollow-rd" ['] BOPENNOFOLLOWRD FPRIM-L
    s" write" ['] BWRITE FPRIM-L   s" read" ['] BREAD FPRIM-L   s" ioctl" ['] BIOCTL FPRIM-L
    s" mmap" ['] BMMAP FPRIM-L   s" patch32" ['] BPATCH32 FPRIM
-   s" close" ['] BCLOSE FPRIM-L
+   s" fstat64" ['] BFSTAT64 FPRIM-L
+   s" close" ['] BCLOSE FPRIM-L   s" close-rc" ['] BCLOSERC FPRIM-L
    s" rbase" ['] BRBASE FPRIM-L ;
 
 : EMIT-CHECKER-PRIMS ( -- )
