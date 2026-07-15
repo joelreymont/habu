@@ -15,6 +15,12 @@
 \ SUMTYPE / ENUM / PRODUCT / TYPEFAMILY themselves) and not an escaped
 \ reference (' / ['] / postpone / char / [char]).
 \
+\ Native-engine-only src subtrees that the gforth stage-0 never compiles (they are
+\ loaded by the recovered native engine only, like lib/) are OUTSIDE this corpus
+\ and skipped: src/cad (the Model-CAD layer over lib/nominal) carries the finite
+\ effect-atom / slot-kind sums and the effect-row family, none of which reach the
+\ Gforth emitter (they are absent from bootstrap.sh SRC_COMMON and srclist.f).
+\
 \ Load after lib/errors.f, lib/string.f, lib/memory.f, lib/fs.f,
 \ tools/lint/text.f, tools/lint/token.f, tools/lint/lib.f, and
 \ tools/lint/source-lex.f.
@@ -157,9 +163,13 @@ variable BML-NUM-I
 : BML-TEST-FILE? ( ptr u8 n -- bool )          \ src/ carries no test sources today; skip any that appear
    s" test" LINT-CONTAINS? ;
 
+: BML-NATIVE-ONLY? ( ptr u8 n -- bool )        \ native-engine-only src subtrees outside the gforth SRC_COMMON corpus
+   s" src/cad/" LINT-CONTAINS? ;               \ CAD model layer: consumes lib/nominal, loaded only by the native engine
+
 : BML-WALK-FILE ( ptr u8 n -- ) {: a:ptr u:n :}
    a u BML-FORTH-FILE? 0= if exit then
    a u BML-TEST-FILE? if exit then
+   a u BML-NATIVE-ONLY? if exit then
    a u BOOTSTRAP-MIRROR-LINT-FILE ;
 
 : BOOTSTRAP-MIRROR-LINT-RESET ( -- )
