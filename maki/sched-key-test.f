@@ -253,7 +253,7 @@ SK-TAB-COUNT 64 T=
 \ Hold region 1 of a 2-region plan (the standalone concat materializes as its
 \ own region), rebuild a 1-region plan, then replay the held id: SK-REGION-CK
 \ revalidates against the CURRENT plan and throws E-SK-REGION.
-variable KT-STALE-R
+TYPED-VARIABLE KT-STALE-R CAD-KIND:region  \ held region id to replay against a rebuilt plan
 : KT-STALE-SET ( -- )  1 FP-REGION-ID KT-STALE-R ! ;
 : KT-TRY-STALE ( -- )  KT-STALE-R @ TARGET:SM87 SK-KEY$ 2drop ;
 : KT-BUILD-2R ( -- )    \ gelu (region 0) + matmul (region 1: EW->MM is backend-refused)

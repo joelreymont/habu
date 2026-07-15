@@ -84,12 +84,13 @@ private
 
 \ ---- after-fusion: per-region external reads (deduped) + materialized writes -
 MIR-INCAP constant TRF-SCAP
-create TRF-SRC TRF-SCAP cells allot   variable TRF-SRC-N
+TRF-SCAP TYPED-BUFFER TRF-SRC-AT MIR:operand-ref   \ interned external-source refs ( n -- ptr MIR:operand-ref )
+variable TRF-SRC-N
 
 : TRF-SRC-RESET ( -- )  0 TRF-SRC-N ! ;
 
-: TRF-SRC@ ( n -- MIR:operand-ref )  cells TRF-SRC + @ ;
-: TRF-SRC! ( MIR:operand-ref n -- )  cells TRF-SRC + ! ;
+: TRF-SRC@ ( n -- MIR:operand-ref )  TRF-SRC-AT @ ;
+: TRF-SRC! ( MIR:operand-ref n -- )  TRF-SRC-AT ! ;
 
 : TRF-SRC-HAS? ( MIR:operand-ref -- bool ) {: ref:MIR:operand-ref :}
    TRF-SRC-N @ 0 ?do

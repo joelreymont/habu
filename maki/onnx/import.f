@@ -68,39 +68,39 @@ require maki/executor.f
 package ONNX
 
 \ ---- name binding table (name slot -> MIR operand ref) ----------------------
-create IMP-REF OGN-CAP cells allot             \ MIR ref (input slot ref or node index)
+OGN-CAP TYPED-BUFFER IMP-REF-AT MIR:operand-ref \ MIR ref ( n -- ptr MIR:operand-ref )
 create IMP-SET OGN-CAP cells allot             \ 1 = bound
 variable IMP-IN-N                              \ runtime (non-initializer) input count
-create IMP-INSLOT OGIN-CAP cells allot         \ runtime input ordinal -> MIR slot
+OGIN-CAP TYPED-BUFFER IMP-INSLOT-AT MIR:input-slot \ runtime input ordinal -> MIR slot ( n -- ptr MIR:input-slot )
 create IMP-INGI   OGIN-CAP cells allot         \ runtime input ordinal -> graph-input index
 
 \ ---- initializer materialization arena (float cells, the executor's dtype) --
 $4000 constant IMP-ARENA-CELLS
 create IMP-ARENA IMP-ARENA-CELLS cells allot
-create IMP-SLOT OGI-CAP cells allot            \ initializer -> MIR input slot
+OGI-CAP TYPED-BUFFER IMP-SLOT-AT MIR:input-slot \ initializer -> MIR input slot ( n -- ptr MIR:input-slot )
 create IMP-AOFF OGI-CAP cells allot            \ initializer -> arena offset (cells)
 variable IMP-BUMP
 
 \ ---- synthetic scalar constants (Gemm alpha/beta): 1x1 f32 slots into the arena ----
 32 constant SYN-CAP
-create SYN-SLOT SYN-CAP cells allot            \ synthetic constant -> MIR input slot
+SYN-CAP TYPED-BUFFER SYN-SLOT-AT MIR:input-slot \ synthetic constant -> MIR input slot ( n -- ptr MIR:input-slot )
 create SYN-OFF  SYN-CAP cells allot            \ synthetic constant -> arena offset (cells)
 variable SYN-N
 
 OGN-CAP constant IMP-NODE-CAP
-create IMP-NODES IMP-NODE-CAP cells allot      \ import-order MIR node identities
+IMP-NODE-CAP TYPED-BUFFER IMP-NODES-AT CAD-KIND:node-id \ import-order MIR node identities ( n -- ptr CAD-KIND:node-id )
 variable IMP-NODE-N
 
-: IMP-REF! ( MIR:operand-ref n -- )  cells IMP-REF + ! ;
-: IMP-REF@ ( n -- MIR:operand-ref )  cells IMP-REF + @ ;
-: IMP-IN-SLOT! ( MIR:input-slot n -- )  cells IMP-INSLOT + ! ;
-: IMP-IN-SLOT@ ( n -- MIR:input-slot )  cells IMP-INSLOT + @ ;
-: IMP-INIT-SLOT! ( MIR:input-slot n -- )  cells IMP-SLOT + ! ;
-: IMP-INIT-SLOT@ ( n -- MIR:input-slot )  cells IMP-SLOT + @ ;
-: SYN-SLOT! ( MIR:input-slot n -- )  cells SYN-SLOT + ! ;
-: SYN-SLOT@ ( n -- MIR:input-slot )  cells SYN-SLOT + @ ;
-: IMP-NODE! ( CAD-KIND:node-id n -- )  cells IMP-NODES + ! ;
-: IMP-NODE@ ( n -- CAD-KIND:node-id )  cells IMP-NODES + @ ;
+: IMP-REF! ( MIR:operand-ref n -- )  IMP-REF-AT ! ;
+: IMP-REF@ ( n -- MIR:operand-ref )  IMP-REF-AT @ ;
+: IMP-IN-SLOT! ( MIR:input-slot n -- )  IMP-INSLOT-AT ! ;
+: IMP-IN-SLOT@ ( n -- MIR:input-slot )  IMP-INSLOT-AT @ ;
+: IMP-INIT-SLOT! ( MIR:input-slot n -- )  IMP-SLOT-AT ! ;
+: IMP-INIT-SLOT@ ( n -- MIR:input-slot )  IMP-SLOT-AT @ ;
+: SYN-SLOT! ( MIR:input-slot n -- )  SYN-SLOT-AT ! ;
+: SYN-SLOT@ ( n -- MIR:input-slot )  SYN-SLOT-AT @ ;
+: IMP-NODE! ( CAD-KIND:node-id n -- )  IMP-NODES-AT ! ;
+: IMP-NODE@ ( n -- CAD-KIND:node-id )  IMP-NODES-AT @ ;
 
 : IMP-NODE+ ( CAD-KIND:node-id -- CAD-KIND:node-id )
    {: node:CAD-KIND:node-id :}

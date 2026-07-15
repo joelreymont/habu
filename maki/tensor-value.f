@@ -304,12 +304,12 @@ private
 \ foreign family can never enter or leave. An opkind cannot bind into a local,
 \ so it rides the stack.
 PLAN-CAP LAYOUT-BUFFER P-KIND-AT opkind \ op-kind column ( n -- ptr opkind )
-create P-OUT   PLAN-CAP cells allot     \ output tensor
+PLAN-CAP  TYPED-BUFFER P-OUT-AT tensor  \ output tensor column ( n -- ptr tensor )
 create P-INOFF PLAN-CAP cells allot     \ input window start in P-INS
 create P-INCNT PLAN-CAP cells allot     \ input window length
 create P-ATTR  PLAN-CAP cells allot     \ movement attrs (packed; 0 for compute ops)
 variable P-N                            \ committed op count
-create P-INS   PLAN-INCAP cells allot   \ flat input-tensor pool
+PLAN-INCAP TYPED-BUFFER P-INS-AT tensor \ flat input-tensor pool ( n -- ptr tensor )
 variable P-INS-U
 1 LAYOUT-BUFFER PEND-KIND opkind        \ pending record staging (typed slot)
 variable PEND-OFF
@@ -343,7 +343,7 @@ public
    PEND-ON @ 0= if E-TV-PLAN-STATE throw then
    t TV-IX drop                                \ stale/forged handles reject here
    P-INS-U @ PLAN-INCAP >= if E-TV-PLAN-FULL throw then
-   t P-INS P-INS-U @ cells + !
+   t P-INS-U @ P-INS-AT !
    P-INS-U @ 1+ P-INS-U !
    PEND-CNT @ 1+ PEND-CNT ! ;
 
@@ -357,7 +357,7 @@ public
    P-N @ PLAN-CAP >= if E-TV-PLAN-FULL throw then
    P-N @ {: idx:n :}
    PEND-KIND-AT @  idx P-KIND-AT !          \ op-kind family (staged by PLAN-OP-BEGIN)
-   out          P-OUT   idx cells + !
+   out          idx P-OUT-AT !
    PEND-OFF @   P-INOFF idx cells + !
    PEND-CNT @   P-INCNT idx cells + !
    PEND-ATTR @  P-ATTR  idx cells + !
@@ -366,14 +366,14 @@ public
 
 : PLAN-OP@ ( n -- opkind )   PLAN-IX P-KIND-AT @ ;
 : PLAN-OUT@ ( n -- tensor )
-   PLAN-IX cells P-OUT + @ dup TV-IX drop ;    \ stored handles re-validate on read
+   PLAN-IX P-OUT-AT @ dup TV-IX drop ;         \ stored handles re-validate on read
 : PLAN-ATTR@ ( n -- n )      PLAN-IX cells P-ATTR  + @ ;
 : PLAN-IN-COUNT@ ( n -- n )  PLAN-IX cells P-INCNT + @ ;
 
 : PLAN-IN@ ( n n -- tensor ) {: idx:n k:n :}   \ k-th input tensor of op idx
    idx PLAN-IX drop
    k 0 < k P-INCNT idx cells + @ >= or if E-TV-PLAN-IDX throw then
-   P-INS  P-INOFF idx cells + @  k +  cells + @ dup TV-IX drop ;
+   P-INOFF idx cells + @  k +  P-INS-AT @ dup TV-IX drop ;
 
 \ ---- descriptor-mode model ops (append IR, do not compute) -----------------
 \ Output shape/dtype are inferred and recorded; both ops return a descriptor.

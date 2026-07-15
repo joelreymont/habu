@@ -107,10 +107,10 @@ private
 \ bounds, and family provenance and publishes its own checked accessor, so a raw
 \ n or a foreign family can never enter or leave a descriptor cell.
 MIR-CAP LAYOUT-BUFFER MI-OP-AT opkind   \ op-kind column ( n -- ptr opkind )
-create MI-INOFF MIR-CAP cells allot     \ operand window start in MI-INS (MIR:ref-pos)
+MIR-CAP  TYPED-BUFFER MI-INOFF-AT MIR:ref-pos \ operand window start in MI-INS ( n -- ptr MIR:ref-pos )
 create MI-INCNT MIR-CAP cells allot     \ operand window length
-create MI-ROWS  MIR-CAP cells allot     \ output descriptor facts (CAD-KIND:rows/cols)
-create MI-COLS  MIR-CAP cells allot
+MIR-CAP LAYOUT-BUFFER MI-ROWS-AT CAD-KIND:rows \ output rows column ( n -- ptr CAD-KIND:rows )
+MIR-CAP LAYOUT-BUFFER MI-COLS-AT CAD-KIND:cols \ output cols column ( n -- ptr CAD-KIND:cols )
 MIR-CAP LAYOUT-BUFFER MI-DT-AT dtype    \ dtype column ( n -- ptr dtype )
 MIR-CAP LAYOUT-BUFFER MI-LAY-AT layout  \ layout column ( n -- ptr layout )
 create MI-ATTR  MIR-CAP cells allot     \ attrs cell (variant/axis/eps, op-typed)
@@ -118,12 +118,12 @@ create MI-MAT   MIR-CAP cells allot     \ materialization flag
 create MI-AD    MIR-CAP cells allot     \ autograd metadata (reserved)
 variable MIR-N
 
-create MI-INS   MIR-INCAP cells allot   \ flat operand-ref pool (MIR:operand-ref)
+MIR-INCAP TYPED-BUFFER MI-INS-AT MIR:operand-ref \ flat operand-ref pool ( n -- ptr MIR:operand-ref )
 variable MIR-INS-U
 
 \ model-input slots (their own descriptor facts)
-create MI-IS-ROWS MIR-IN-CAP cells allot
-create MI-IS-COLS MIR-IN-CAP cells allot
+MIR-IN-CAP LAYOUT-BUFFER MI-IS-ROWS-AT CAD-KIND:rows \ input rows column ( n -- ptr CAD-KIND:rows )
+MIR-IN-CAP LAYOUT-BUFFER MI-IS-COLS-AT CAD-KIND:cols \ input cols column ( n -- ptr CAD-KIND:cols )
 MIR-IN-CAP LAYOUT-BUFFER MI-IS-DT-AT  dtype    \ dtype column ( n -- ptr dtype )
 MIR-IN-CAP LAYOUT-BUFFER MI-IS-LAY-AT layout   \ layout column ( n -- ptr layout )
 MIR-IN-CAP LAYOUT-BUFFER MI-IS-AL-AT  align    \ align column (zero image = unknown)
@@ -141,7 +141,7 @@ create MI-NAME MIR-NAME-CAP allot   variable MI-NAME-U
 
 \ pending-node staging (any-arity records with the fixed-arity ref pool)
 1 LAYOUT-BUFFER MIR-PEND-KIND opkind
-variable MIR-PEND-OFF
+TYPED-VARIABLE MIR-PEND-OFF MIR:ref-pos  \ pending operand window start ( -- ptr MIR:ref-pos )
 variable MIR-PEND-CNT
 variable MIR-PEND-ON
 
@@ -200,10 +200,10 @@ TRUSTED: REF-POS>RAW ( MIR:ref-pos -- n ) ;
 : INOFF! ( MIR:ref-pos CAD-KIND:node-id -- ) {: off:MIR:ref-pos node:CAD-KIND:node-id :}
    node NODE>RAW {: raw:n :}
    raw 0 < raw MIR-CAP >= or if E-MIR-IDX throw then
-   off raw cells MI-INOFF + ! ;
+   off raw MI-INOFF-AT ! ;
 
 : INOFF@ ( CAD-KIND:node-id -- MIR:ref-pos )
-   MIR-CK cells MI-INOFF + @ ;
+   MIR-CK MI-INOFF-AT @ ;
 
 : PEND-OFF! ( MIR:ref-pos -- )
    MIR-PEND-OFF ! ;
@@ -213,11 +213,11 @@ TRUSTED: REF-POS>RAW ( MIR:ref-pos -- n ) ;
 
 : REF! ( MIR:operand-ref MIR:ref-pos -- ) {: ref:MIR:operand-ref pos:MIR:ref-pos :}
    pos REF-POS>RAW REF-POS-RAW-CK drop
-   ref MI-INS pos REF-POS>RAW cells + ! ;
+   ref pos REF-POS>RAW MI-INS-AT ! ;
 
 : REF@ ( MIR:ref-pos -- MIR:operand-ref ) {: pos:MIR:ref-pos :}
    pos REF-POS>RAW REF-POS-RAW-CK drop
-   MI-INS pos REF-POS>RAW cells + @ ;
+   pos REF-POS>RAW MI-INS-AT @ ;
 
 public
 
@@ -316,13 +316,13 @@ public
    raw MI-IS-DT-AT !                             \ dtype
    MAKI-ALIGN:UNKNOWN raw MI-IS-AL-AT !          \ no recorded pointer yet -> conservative
    {: rows:CAD-KIND:rows cols:CAD-KIND:cols :}
-   rows raw cells MI-IS-ROWS + !
-   cols raw cells MI-IS-COLS + !
+   rows raw MI-IS-ROWS-AT !
+   cols raw MI-IS-COLS-AT !
    raw 1+ MIR-IS-N !
    s ;
 
-: MIR-SLOT-ROWS@ ( MIR:input-slot -- CAD-KIND:rows )  MIR-IS-CK cells MI-IS-ROWS + @ ;
-: MIR-SLOT-COLS@ ( MIR:input-slot -- CAD-KIND:cols )  MIR-IS-CK cells MI-IS-COLS + @ ;
+: MIR-SLOT-ROWS@ ( MIR:input-slot -- CAD-KIND:rows )  MIR-IS-CK MI-IS-ROWS-AT @ ;
+: MIR-SLOT-COLS@ ( MIR:input-slot -- CAD-KIND:cols )  MIR-IS-CK MI-IS-COLS-AT @ ;
 : MIR-SLOT-DT@   ( MIR:input-slot -- dtype )   MIR-IS-CK MI-IS-DT-AT  @ ;
 : MIR-SLOT-LAY@  ( MIR:input-slot -- layout )  MIR-IS-CK MI-IS-LAY-AT @ ;
 : MIR-SLOT-AL@   ( MIR:input-slot -- align )   MIR-IS-CK MI-IS-AL-AT  @ ;
@@ -338,8 +338,8 @@ public
 : MIR-SLOT-SHAPE! ( CAD-KIND:rows CAD-KIND:cols MIR:input-slot -- )
    {: rows:CAD-KIND:rows cols:CAD-KIND:cols s:MIR:input-slot :}
    s MIR-IS-CK {: raw:n :}
-   rows raw cells MI-IS-ROWS + !
-   cols raw cells MI-IS-COLS + ! ;
+   rows raw MI-IS-ROWS-AT !
+   cols raw MI-IS-COLS-AT ! ;
 
 \ ---- node builder (BEGIN op ; IN+ ref ... ; OP+ facts -> node) --------------
 \ the op-kind arrives as a family value (a bad tag is a checker reject; the old
@@ -370,8 +370,8 @@ public
    MIR-PEND-KIND-AT @ raw MI-OP-AT !     \ op-kind family (staged by MIR-OP-BEGIN)
    PEND-OFF@ k INOFF!
    MIR-PEND-CNT @ raw cells MI-INCNT + !
-   rows raw cells MI-ROWS + !
-   cols raw cells MI-COLS + !
+   rows raw MI-ROWS-AT !
+   cols raw MI-COLS-AT !
    attr raw cells MI-ATTR + !
    mat  raw cells MI-MAT  + !
    0    raw cells MI-AD   + !
@@ -381,8 +381,8 @@ public
 
 \ ---- node accessors (each validates the node index) ------------------------
 : MIR-OP@   ( CAD-KIND:node-id -- opkind )   MIR-CK MI-OP-AT @ ;
-: MIR-ROWS@ ( CAD-KIND:node-id -- CAD-KIND:rows )  MIR-CK cells MI-ROWS + @ ;
-: MIR-COLS@ ( CAD-KIND:node-id -- CAD-KIND:cols )  MIR-CK cells MI-COLS + @ ;
+: MIR-ROWS@ ( CAD-KIND:node-id -- CAD-KIND:rows )  MIR-CK MI-ROWS-AT @ ;
+: MIR-COLS@ ( CAD-KIND:node-id -- CAD-KIND:cols )  MIR-CK MI-COLS-AT @ ;
 : MIR-DT@   ( CAD-KIND:node-id -- dtype )   MIR-CK MI-DT-AT  @ ;
 : MIR-LAY@  ( CAD-KIND:node-id -- layout )  MIR-CK MI-LAY-AT @ ;
 : MIR-ATTR@ ( CAD-KIND:node-id -- n )     MIR-CK cells MI-ATTR  + @ ;
@@ -395,8 +395,8 @@ public
 : MIR-SHAPE! ( CAD-KIND:rows CAD-KIND:cols CAD-KIND:node-id -- )
    {: rows:CAD-KIND:rows cols:CAD-KIND:cols node:CAD-KIND:node-id :}
    node MIR-CK {: raw:n :}
-   rows raw cells MI-ROWS + !
-   cols raw cells MI-COLS + ! ;
+   rows raw MI-ROWS-AT !
+   cols raw MI-COLS-AT ! ;
 
 : MIR-ATTR! ( n CAD-KIND:node-id -- )
    {: attr:n node:CAD-KIND:node-id :}

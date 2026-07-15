@@ -49,7 +49,7 @@ create TGT-LO TGT-CAP cells allot
 create TGT-LL TGT-CAP cells allot
 variable TGT-LABEL-U
 variable TGT-N
-variable TGT-SM87
+TYPED-VARIABLE TGT-SM87 CAD-KIND:target-id  \ interned sm87 target id ( -- ptr CAD-KIND:target-id )
 
 TRUSTED: RAW>TARGET-ID ( n -- CAD-KIND:target-id ) ;
 TRUSTED: TARGET-ID>RAW ( CAD-KIND:target-id -- n ) ;

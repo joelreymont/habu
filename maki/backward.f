@@ -60,12 +60,12 @@ private
 128 constant BW-NCAP        \ cotangent slots per node (mirrors model-ir MIR-CAP)
 64  constant BW-SCAP        \ cotangent slots per input (mirrors model-ir MIR-IN-CAP)
 
-create BW-CT  BW-NCAP cells allot    \ per forward-node output cotangent ref
-create BW-ISG BW-SCAP cells allot     \ per input-slot accumulated gradient ref
+BW-NCAP TYPED-BUFFER BW-CT-AT  MIR:operand-ref \ per forward-node output cotangent ref ( n -- ptr MIR:operand-ref )
+BW-SCAP TYPED-BUFFER BW-ISG-AT MIR:operand-ref \ per input-slot accumulated gradient ref ( n -- ptr MIR:operand-ref )
 create BW-CT-SET  BW-NCAP cells allot \ per-node cotangent presence
 create BW-ISG-SET BW-SCAP cells allot \ per-slot gradient presence
 variable BW-FWD-N                      \ forward node count snapshot (backward appends past it)
-variable BW-SEED                       \ seed cotangent input slot
+TYPED-VARIABLE BW-SEED MIR:input-slot  \ seed cotangent input slot ( -- ptr MIR:input-slot )
 variable BW-BUILT?
 
 : BW-CK ( -- )  BW-BUILT? @ 0= if E-BW-STATE throw then ;
@@ -86,17 +86,17 @@ variable BW-BUILT?
 \ ---- cotangent table access (node ref -> BW-CT, input ref -> BW-ISG) ----------
 : BW-GET ( MIR:operand-ref -- MIR:operand-ref ) {: ref:MIR:operand-ref :}
    ref MIR-REF-INPUT?
-   if ref MIR-REF-SLOT SLOT>RAW cells BW-ISG + @
-   else ref MIR-REF-NODE NODE>RAW cells BW-CT + @ then ;
+   if ref MIR-REF-SLOT SLOT>RAW BW-ISG-AT @
+   else ref MIR-REF-NODE NODE>RAW BW-CT-AT @ then ;
 : BW-SET ( MIR:operand-ref MIR:operand-ref -- )
    {: ct:MIR:operand-ref ref:MIR:operand-ref :}
    ref MIR-REF-INPUT?
    if
       ref MIR-REF-SLOT SLOT>RAW {: raw:n :}
-      ct raw cells BW-ISG + !  1 raw cells BW-ISG-SET + !
+      ct raw BW-ISG-AT !  1 raw cells BW-ISG-SET + !
    else
       ref MIR-REF-NODE NODE>RAW {: raw:n :}
-      ct raw cells BW-CT + !  1 raw cells BW-CT-SET + !
+      ct raw BW-CT-AT !  1 raw cells BW-CT-SET + !
    then ;
 : BW-HAS? ( MIR:operand-ref -- bool ) {: ref:MIR:operand-ref :}
    ref MIR-REF-INPUT?
