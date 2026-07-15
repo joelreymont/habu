@@ -3,6 +3,7 @@
 \ Load after lib/errors.f.
 
 s" lib/errors.f" required
+require lib/cad-num-arithmetic.f
 
 $10000 constant MEM-64K
 $7FFFFFFFFFFFFFFF constant MEM-MAX-N
@@ -68,3 +69,98 @@ TRUSTED: MEM-ALLOC-PTR ( n -- ptr u8 )
 
 : MEM-ALLOC-64K ( -- ptr u8 n )
    1 MEM-ALLOC-64K-BUFFERS ;
+
+\ ---- B5 package-first typed allocation surface (MODEL-CAD-V2-PLAN.md B5.5) -----
+\
+\ The raw MEM-ALLOC-* words above enforce positivity at RUNTIME on interchangeable
+\ `n`. Package MEM re-states the same sizing as CHECKED words over CAD-NUM roles:
+\ the scalar words (CELLS>BYTES, 64K-BYTES, 64K-COUNT-FOR, 64K-SPAN-BYTES) are
+\ typed compositions of the closed B5.2 algebra that return `numeric-result<a>`
+\ (zero is a valid scalar answer), while the allocation sinks (ALLOC-BYTES,
+\ ALLOC-CELLS, ALLOC-64K) accept only the `alloc-*` roles, which reject zero and
+\ over-allocation at VALIDATION - so a byte/cell role swap or a zero/overflow
+\ allocation cannot reach `mmap`. MEM owns exactly two audited representation
+\ projections (ALLOC-BYTES>N, ALLOC-CELLS>N): the checked algebra never reads a
+\ role's raw cell, so these are the ONLY unchecked words in the package. They read
+\ an `alloc-*` cell where the raw allocation primitive still consumes a bare `n`;
+\ retire them when `mmap`/`cells` accept the nominal allocation role directly.
+\
+\ The legacy MEM-ALLOC-BYTES surface stays untouched for its four caller waves;
+\ MEM-ALLOC-CELLS and the multi-64K conveniences are out of this B5 wave.
+
+package MEM
+private
+
+\ Internal invariant code (never reachable): a validator/narrowing arm proven
+\ impossible by the input still needs an exhaustive MATCH arm. Mirrors the
+\ CAD-NUM E-CADNUM-TOTALITY discipline; lives in-file, not lib/errors.f.
+-3202 constant E-MEM-TOTALITY
+
+\ ---- ok extractors for compile-time-valid role constants (arms unreachable) ----
+: OK-BYTE-LEN ( CAD-NUM:numeric-result<CAD-NUM:byte-len> -- CAD-NUM:byte-len )
+   MATCH CAD-NUM:numeric-result
+      ok OF ENDOF                              negative OF E-MEM-TOTALITY throw ENDOF
+      zero OF E-MEM-TOTALITY throw ENDOF        overflow OF E-MEM-TOTALITY throw ENDOF
+      underflow OF E-MEM-TOTALITY throw ENDOF   bad-alignment OF E-MEM-TOTALITY throw ENDOF
+      misaligned OF E-MEM-TOTALITY throw ENDOF
+   ;MATCH ;
+: OK-ALIGNMENT ( CAD-NUM:numeric-result<CAD-NUM:alignment> -- CAD-NUM:alignment )
+   MATCH CAD-NUM:numeric-result
+      ok OF ENDOF                              negative OF E-MEM-TOTALITY throw ENDOF
+      zero OF E-MEM-TOTALITY throw ENDOF        overflow OF E-MEM-TOTALITY throw ENDOF
+      underflow OF E-MEM-TOTALITY throw ENDOF   bad-alignment OF E-MEM-TOTALITY throw ENDOF
+      misaligned OF E-MEM-TOTALITY throw ENDOF
+   ;MATCH ;
+: OK-ALLOC-BYTE-LEN ( CAD-NUM:numeric-result<CAD-NUM:alloc-byte-len> -- CAD-NUM:alloc-byte-len )
+   MATCH CAD-NUM:numeric-result
+      ok OF ENDOF                              negative OF E-MEM-TOTALITY throw ENDOF
+      zero OF E-MEM-TOTALITY throw ENDOF        overflow OF E-MEM-TOTALITY throw ENDOF
+      underflow OF E-MEM-TOTALITY throw ENDOF   bad-alignment OF E-MEM-TOTALITY throw ENDOF
+      misaligned OF E-MEM-TOTALITY throw ENDOF
+   ;MATCH ;
+
+\ ---- the 64K granularity as validated CAD-NUM roles ---------------------------
+\ MEM-64K is a compile-time positive power of two, so BYTE-LEN / ALIGNMENT /
+\ AS-ALLOC-BYTE-LEN all succeed; the extractors' failure arms are unreachable.
+: 64K-LEN ( -- CAD-NUM:byte-len )
+   MEM-64K CAD-NUM:BYTE-LEN OK-BYTE-LEN ;
+: 64K-ALIGN ( -- CAD-NUM:alignment )
+   MEM-64K CAD-NUM:ALIGNMENT OK-ALIGNMENT ;
+: 64K-ALLOC-LEN ( -- CAD-NUM:alloc-byte-len )
+   64K-LEN CAD-NUM:AS-ALLOC-BYTE-LEN OK-ALLOC-BYTE-LEN ;
+
+\ ---- audited representation projections (the ONLY unchecked words in MEM) ------
+TRUSTED: ALLOC-BYTES>N ( CAD-NUM:alloc-byte-len -- n ) ;
+TRUSTED: ALLOC-CELLS>N ( CAD-NUM:alloc-cell-count -- n ) ;
+
+public
+
+\ ---- scalar sizing: typed compositions of the closed B5.2 algebra --------------
+: CELLS>BYTES ( CAD-NUM:cell-count -- CAD-NUM:numeric-result<CAD-NUM:byte-len> )
+   CAD-NUM:CELLS>BYTES ;
+: 64K-BYTES ( CAD-NUM:item-count -- CAD-NUM:numeric-result<CAD-NUM:byte-len> )
+   64K-LEN swap CAD-NUM:SCALE-BYTES ;
+: 64K-SPAN-BYTES ( CAD-NUM:byte-len -- CAD-NUM:numeric-result<CAD-NUM:byte-len> )
+   64K-ALIGN CAD-NUM:ALIGN-UP-BYTES ;
+: 64K-COUNT-FOR ( CAD-NUM:byte-len -- CAD-NUM:numeric-result<CAD-NUM:item-count> )
+   \ ceil(bytes / 64K) as a logical buffer count. CAD-NUM has no typed
+   \ extent->count division, so the positive byte need is narrowed to the
+   \ allocation role and read once through ALLOC-BYTES>N, then the ceil quotient
+   \ is re-validated as an item-count; a zero need is 0 buffers.
+   CAD-NUM:AS-ALLOC-BYTE-LEN
+   MATCH CAD-NUM:numeric-result
+      ok OF ALLOC-BYTES>N 1- MEM-64K / 1+ CAD-NUM:ITEM-COUNT ENDOF
+      zero OF 0 CAD-NUM:ITEM-COUNT ENDOF
+      negative OF E-MEM-TOTALITY throw ENDOF   overflow OF E-MEM-TOTALITY throw ENDOF
+      underflow OF E-MEM-TOTALITY throw ENDOF   bad-alignment OF E-MEM-TOTALITY throw ENDOF
+      misaligned OF E-MEM-TOTALITY throw ENDOF
+   ;MATCH ;
+
+\ ---- allocation sinks: only the alloc-* roles reach the mmap primitive ---------
+: ALLOC-BYTES ( CAD-NUM:alloc-byte-len -- ptr u8 CAD-NUM:alloc-byte-len )
+   dup ALLOC-BYTES>N MEM-ALLOC-PTR swap ;
+: ALLOC-CELLS ( CAD-NUM:alloc-cell-count -- ptr a )
+   ALLOC-CELLS>N cells MEM-ALLOC-PTR ;
+: ALLOC-64K ( -- ptr u8 CAD-NUM:alloc-byte-len )
+   64K-ALLOC-LEN ALLOC-BYTES ;
+;package

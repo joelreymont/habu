@@ -492,6 +492,8 @@ that source is explicitly certified; they are not stale-checked by the default
 | ASM-LEN | `-- n` | ARM64 source test republishes the assembler buffer length accessor effect for fixture assertions. | `tools/asm-src-test.f`, `test/run.f` | tools/asm-src-test.f | 2026-06-30 |
 | LIT64, | `n n --` | ARM64 source test republishes the literal-emitter effect for fixture setup. | `tools/asm-src-test.f`, `test/run.f` | tools/asm-src-test.f | 2026-06-30 |
 | MEM-ALLOC-PTR | `n -- ptr u8` | Refines a raw anonymous `mmap` result into a typed byte pointer after size validation and `-1` failure checking; the checker cannot express this syscall-result refinement yet. | `lib/memory-test.f`, `test/run.f` | lib/memory.f | 2026-06-21 |
+| ALLOC-BYTES>N | `CAD-NUM:alloc-byte-len -- n` | Private MEM (B5.5) proof-erasure projection: reads a validated `alloc-byte-len`'s raw cell for the `mmap` size operand (and the `MEM:64K-COUNT-FOR` buffer-count division), where the raw allocation primitive still consumes a bare `n`. MEM-private, no public export; byte/cell allocation roles cannot swap. Retire when the `mmap` size primitive accepts the nominal allocation role directly. | `lib/memory-test.f` | lib/memory.f | 2026-07-15 |
+| ALLOC-CELLS>N | `CAD-NUM:alloc-cell-count -- n` | Private MEM (B5.5) proof-erasure projection: reads a validated `alloc-cell-count`'s raw cell before the `cells` primitive in the cell-allocation sink, where that primitive still consumes a bare `n`. MEM-private, no public export; byte/cell allocation roles cannot swap. Retire when the `cells`/`mmap` allocation primitive accepts the nominal allocation role directly. | `lib/memory-test.f` | lib/memory.f | 2026-07-15 |
 | IMG-MMAP-PTR | `n -- ptr u8` | Refines a raw file-backed `mmap` result into a typed byte pointer after checking the `-1` failure result; the checker cannot express syscall-result refinement yet. | `tools/imgdump-test.f`, `test/run.f` | tools/imgdump.f | 2026-06-25 |
 | CODE | `-- ptr u8` | Lazily maps the assembler output buffer outside DATA and refines the raw mmap result to the byte pointer used by `EMITW`, `BYTES,`, and image writers. | `test/run.f`, `tools/build-fixpoint-test.f` | src/arch/arm64/icode.f | 2026-06-26 |
 | ICODE-TABS | `-- ptr n` | Lazily maps the assembler label/fixup table block outside DATA and refines the raw mmap result to the numeric-cell pointer used by `LBLP`/`FXS`/`FXN`/`FXK`/`FXH`. | `test/run.f`, `tools/build-fixpoint-test.f`, `test/icode-fixup-test.f` | src/arch/arm64/icode.f | 2026-07-14 |
@@ -1291,6 +1293,8 @@ lib/ffi-test.f:FFI-T-FADD-FSTACK-CALL stdlib-boundary habu-ptx-m1-c-1df1d6e7
 lib/ffi-test.f:FFI-T-X8-ABI-CALL stdlib-boundary habu-ptx-m1-c-1df1d6e7
 lib/ffi-test.f:FFI-T-SQRT-CALL stdlib-boundary habu-ptx-m1-c-1df1d6e7
 lib/memory.f:MEM-ALLOC-PTR stdlib-boundary habu-typed-defining-words-aa224eb5
+lib/memory.f:ALLOC-BYTES>N prim-axiom habu-migrate-mem-numeric-8b11a9be
+lib/memory.f:ALLOC-CELLS>N prim-axiom habu-migrate-mem-numeric-8b11a9be
 lib/task.f:TASK-PATCH stdlib-boundary habu-checker-capability-gate-14022ba9
 lib/task.f:TASK-N>PTR stdlib-boundary habu-typed-defining-words-aa224eb5
 lib/task.f:TASK-CELL>PTR-SLOT stdlib-boundary habu-typed-defining-words-aa224eb5

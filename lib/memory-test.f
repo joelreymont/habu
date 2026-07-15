@@ -3,6 +3,7 @@
 require lib/errors.f
 require lib/string.f
 require lib/test.f
+require test/checker-assert.f
 require lib/memory.f
 
 64 constant MEMT-BUFS
@@ -122,4 +123,159 @@ MEMT-MANY-LIVE-SPANS
 ' MEMT-ZERO-CELLS E-MEM-SIZE TTHROWS
 ' MEMT-TOO-MANY-CELLS E-MEM-SIZE TTHROWS
 T-REPORT
+
+\ ---- B5 package MEM: typed allocation roles (MODEL-CAD-V2-PLAN.md B5.5) --------
+\ numeric-result<a> is a layout value with no polymorphic eliminator yet, so each
+\ classifier MATCHes the concrete role it holds and maps ok -> 0 / refusal ->
+\ E-CADNUM-* (the cad-num-types-test.f idiom). The scalar words admit zero; only
+\ the alloc-* sinks reject zero/overflow, and that refusal precedes any mmap.
+
+: MEMT-BL-CODE ( CAD-NUM:numeric-result<CAD-NUM:byte-len> -- n )
+   MATCH CAD-NUM:numeric-result
+      ok OF drop 0 ENDOF                    negative OF E-CADNUM-NEGATIVE ENDOF
+      zero OF E-CADNUM-ZERO ENDOF           overflow OF E-CADNUM-OVERFLOW ENDOF
+      underflow OF E-CADNUM-UNDERFLOW ENDOF bad-alignment OF E-CADNUM-BAD-ALIGNMENT ENDOF
+      misaligned OF E-CADNUM-MISALIGNED ENDOF
+   ;MATCH ;
+: MEMT-IC-CODE ( CAD-NUM:numeric-result<CAD-NUM:item-count> -- n )
+   MATCH CAD-NUM:numeric-result
+      ok OF drop 0 ENDOF                    negative OF E-CADNUM-NEGATIVE ENDOF
+      zero OF E-CADNUM-ZERO ENDOF           overflow OF E-CADNUM-OVERFLOW ENDOF
+      underflow OF E-CADNUM-UNDERFLOW ENDOF bad-alignment OF E-CADNUM-BAD-ALIGNMENT ENDOF
+      misaligned OF E-CADNUM-MISALIGNED ENDOF
+   ;MATCH ;
+: MEMT-AB-CODE ( CAD-NUM:numeric-result<CAD-NUM:alloc-byte-len> -- n )
+   MATCH CAD-NUM:numeric-result
+      ok OF drop 0 ENDOF                    negative OF E-CADNUM-NEGATIVE ENDOF
+      zero OF E-CADNUM-ZERO ENDOF           overflow OF E-CADNUM-OVERFLOW ENDOF
+      underflow OF E-CADNUM-UNDERFLOW ENDOF bad-alignment OF E-CADNUM-BAD-ALIGNMENT ENDOF
+      misaligned OF E-CADNUM-MISALIGNED ENDOF
+   ;MATCH ;
+: MEMT-AC-CODE ( CAD-NUM:numeric-result<CAD-NUM:alloc-cell-count> -- n )
+   MATCH CAD-NUM:numeric-result
+      ok OF drop 0 ENDOF                    negative OF E-CADNUM-NEGATIVE ENDOF
+      zero OF E-CADNUM-ZERO ENDOF           overflow OF E-CADNUM-OVERFLOW ENDOF
+      underflow OF E-CADNUM-UNDERFLOW ENDOF bad-alignment OF E-CADNUM-BAD-ALIGNMENT ENDOF
+      misaligned OF E-CADNUM-MISALIGNED ENDOF
+   ;MATCH ;
+
+\ scalar sizing: raw n -> zero-admitting role -> MEM word -> class
+: MEMT-CELLS>BYTES# ( n -- n ) CAD-NUM:CELL-COUNT
+   MATCH CAD-NUM:numeric-result ok OF MEM:CELLS>BYTES MEMT-BL-CODE ENDOF
+      negative OF E-CADNUM-NEGATIVE ENDOF zero OF E-CADNUM-ZERO ENDOF
+      overflow OF E-CADNUM-OVERFLOW ENDOF underflow OF E-CADNUM-UNDERFLOW ENDOF
+      bad-alignment OF E-CADNUM-BAD-ALIGNMENT ENDOF misaligned OF E-CADNUM-MISALIGNED ENDOF ;MATCH ;
+: MEMT-64K-BYTES# ( n -- n ) CAD-NUM:ITEM-COUNT
+   MATCH CAD-NUM:numeric-result ok OF MEM:64K-BYTES MEMT-BL-CODE ENDOF
+      negative OF E-CADNUM-NEGATIVE ENDOF zero OF E-CADNUM-ZERO ENDOF
+      overflow OF E-CADNUM-OVERFLOW ENDOF underflow OF E-CADNUM-UNDERFLOW ENDOF
+      bad-alignment OF E-CADNUM-BAD-ALIGNMENT ENDOF misaligned OF E-CADNUM-MISALIGNED ENDOF ;MATCH ;
+: MEMT-64K-COUNT-FOR# ( n -- n ) CAD-NUM:BYTE-LEN
+   MATCH CAD-NUM:numeric-result ok OF MEM:64K-COUNT-FOR MEMT-IC-CODE ENDOF
+      negative OF E-CADNUM-NEGATIVE ENDOF zero OF E-CADNUM-ZERO ENDOF
+      overflow OF E-CADNUM-OVERFLOW ENDOF underflow OF E-CADNUM-UNDERFLOW ENDOF
+      bad-alignment OF E-CADNUM-BAD-ALIGNMENT ENDOF misaligned OF E-CADNUM-MISALIGNED ENDOF ;MATCH ;
+: MEMT-64K-SPAN# ( n -- n ) CAD-NUM:BYTE-LEN
+   MATCH CAD-NUM:numeric-result ok OF MEM:64K-SPAN-BYTES MEMT-BL-CODE ENDOF
+      negative OF E-CADNUM-NEGATIVE ENDOF zero OF E-CADNUM-ZERO ENDOF
+      overflow OF E-CADNUM-OVERFLOW ENDOF underflow OF E-CADNUM-UNDERFLOW ENDOF
+      bad-alignment OF E-CADNUM-BAD-ALIGNMENT ENDOF misaligned OF E-CADNUM-MISALIGNED ENDOF ;MATCH ;
+
+\ allocation narrowing: raw n -> role -> AS-ALLOC-* -> class (never allocates on refuse)
+: MEMT-BYTES-ALLOC# ( n -- n ) CAD-NUM:BYTE-LEN
+   MATCH CAD-NUM:numeric-result ok OF CAD-NUM:AS-ALLOC-BYTE-LEN MEMT-AB-CODE ENDOF
+      negative OF E-CADNUM-NEGATIVE ENDOF zero OF E-CADNUM-ZERO ENDOF
+      overflow OF E-CADNUM-OVERFLOW ENDOF underflow OF E-CADNUM-UNDERFLOW ENDOF
+      bad-alignment OF E-CADNUM-BAD-ALIGNMENT ENDOF misaligned OF E-CADNUM-MISALIGNED ENDOF ;MATCH ;
+: MEMT-CELLS-ALLOC# ( n -- n ) CAD-NUM:CELL-COUNT
+   MATCH CAD-NUM:numeric-result ok OF CAD-NUM:AS-ALLOC-CELL-COUNT MEMT-AC-CODE ENDOF
+      negative OF E-CADNUM-NEGATIVE ENDOF zero OF E-CADNUM-ZERO ENDOF
+      overflow OF E-CADNUM-OVERFLOW ENDOF underflow OF E-CADNUM-UNDERFLOW ENDOF
+      bad-alignment OF E-CADNUM-BAD-ALIGNMENT ENDOF misaligned OF E-CADNUM-MISALIGNED ENDOF ;MATCH ;
+
+\ real typed allocation: build a KNOWN-positive alloc role, allocate, touch memory
+: MEMT-ALLOC-BYTE-LEN ( n -- CAD-NUM:alloc-byte-len ) CAD-NUM:BYTE-LEN
+   MATCH CAD-NUM:numeric-result ok OF CAD-NUM:AS-ALLOC-BYTE-LEN
+      MATCH CAD-NUM:numeric-result ok OF ENDOF negative OF E-MEM-SIZE throw ENDOF
+         zero OF E-MEM-SIZE throw ENDOF overflow OF E-MEM-SIZE throw ENDOF
+         underflow OF E-MEM-SIZE throw ENDOF bad-alignment OF E-MEM-SIZE throw ENDOF
+         misaligned OF E-MEM-SIZE throw ENDOF ;MATCH ENDOF
+      negative OF E-MEM-SIZE throw ENDOF zero OF E-MEM-SIZE throw ENDOF overflow OF E-MEM-SIZE throw ENDOF
+      underflow OF E-MEM-SIZE throw ENDOF bad-alignment OF E-MEM-SIZE throw ENDOF misaligned OF E-MEM-SIZE throw ENDOF ;MATCH ;
+: MEMT-ALLOC-CELL-COUNT ( n -- CAD-NUM:alloc-cell-count ) CAD-NUM:CELL-COUNT
+   MATCH CAD-NUM:numeric-result ok OF CAD-NUM:AS-ALLOC-CELL-COUNT
+      MATCH CAD-NUM:numeric-result ok OF ENDOF negative OF E-MEM-SIZE throw ENDOF
+         zero OF E-MEM-SIZE throw ENDOF overflow OF E-MEM-SIZE throw ENDOF
+         underflow OF E-MEM-SIZE throw ENDOF bad-alignment OF E-MEM-SIZE throw ENDOF
+         misaligned OF E-MEM-SIZE throw ENDOF ;MATCH ENDOF
+      negative OF E-MEM-SIZE throw ENDOF zero OF E-MEM-SIZE throw ENDOF overflow OF E-MEM-SIZE throw ENDOF
+      underflow OF E-MEM-SIZE throw ENDOF bad-alignment OF E-MEM-SIZE throw ENDOF misaligned OF E-MEM-SIZE throw ENDOF ;MATCH ;
+
+\ The returned alloc-byte-len is a role (its raw projection is MEM-private), so
+\ the tests touch memory over the KNOWN raw extent and drop the role.
+: MEMT-TYPED-BYTES ( -- )                    \ typed byte alloc is writable end to end
+   MEM-64K MEMT-ALLOC-BYTE-LEN MEM:ALLOC-BYTES drop {: a:ptr :}
+   MEMT-MARK-A a c!  MEMT-MARK-Z a MEM-64K 1 - + c!
+   a c@ MEMT-MARK-A T=  a MEM-64K 1 - + c@ MEMT-MARK-Z T= ;
+: MEMT-TYPED-64K ( -- )                      \ typed single-64K alloc is writable end to end
+   MEM:ALLOC-64K drop {: a:ptr :}
+   MEMT-MARK-A a c!  MEMT-MARK-Z a MEM-64K 1 - + c!
+   a c@ MEMT-MARK-A T=  a MEM-64K 1 - + c@ MEMT-MARK-Z T= ;
+: MEMT-TYPED-CELLS ( -- )                    \ typed cell alloc stores/fetches two cells
+   4 MEMT-ALLOC-CELL-COUNT MEM:ALLOC-CELLS {: a:ptr :}
+   111 a !  222 a 1 cells + !
+   a @ 111 T=  a 1 cells + @ 222 T= ;
+
+: RT-MEM ( -- )
+   T-RESET
+   \ scalar sizing admits zero and positive (zero is a valid scalar answer)
+   0 MEMT-CELLS>BYTES# 0 T=      1 MEMT-CELLS>BYTES# 0 T=
+   0 MEMT-64K-BYTES# 0 T=        3 MEMT-64K-BYTES# 0 T=
+   0 MEMT-64K-COUNT-FOR# 0 T=    1 MEMT-64K-COUNT-FOR# 0 T=   MEM-64K 1 + MEMT-64K-COUNT-FOR# 0 T=
+   0 MEMT-64K-SPAN# 0 T=         MEM-64K 1 + MEMT-64K-SPAN# 0 T=
+   \ allocation sinks reject zero (never allocate) and reject negative
+   0 MEMT-BYTES-ALLOC# E-CADNUM-ZERO T=      -1 MEMT-BYTES-ALLOC# E-CADNUM-NEGATIVE T=
+   0 MEMT-CELLS-ALLOC# E-CADNUM-ZERO T=      -1 MEMT-CELLS-ALLOC# E-CADNUM-NEGATIVE T=
+   1 MEMT-BYTES-ALLOC# 0 T=                  1 MEMT-CELLS-ALLOC# 0 T=
+   \ over-allocation fails at validation, BEFORE any mmap primitive is reachable
+   MEM-MAX-CELLS 1 + MEMT-CELLS-ALLOC# E-CADNUM-OVERFLOW T=
+   \ real typed allocations touch OS-backed memory
+   MEMT-TYPED-BYTES
+   MEMT-TYPED-64K
+   MEMT-TYPED-CELLS
+   T-REPORT ;
+RT-MEM
+
+\ ---- static rejection matrix: frozen signatures accept; role swaps reject ------
+\ CHECK-QUIET-CANDIDATE!: -1 accepted, 0 rejected (type error), 1 uncheckable.
+: STAT-MEM ( -- )
+   T-RESET
+   \ positive signature controls: the exact B5.5-frozen effects resolve.
+   s" G-CELLS>BYTES ( CAD-NUM:cell-count -- CAD-NUM:numeric-result<CAD-NUM:byte-len> ) MEM:CELLS>BYTES"
+      CHECK-QUIET-CANDIDATE! -1 T=
+   s" G-64K-BYTES ( CAD-NUM:item-count -- CAD-NUM:numeric-result<CAD-NUM:byte-len> ) MEM:64K-BYTES"
+      CHECK-QUIET-CANDIDATE! -1 T=
+   s" G-64K-COUNT-FOR ( CAD-NUM:byte-len -- CAD-NUM:numeric-result<CAD-NUM:item-count> ) MEM:64K-COUNT-FOR"
+      CHECK-QUIET-CANDIDATE! -1 T=
+   s" G-64K-SPAN ( CAD-NUM:byte-len -- CAD-NUM:numeric-result<CAD-NUM:byte-len> ) MEM:64K-SPAN-BYTES"
+      CHECK-QUIET-CANDIDATE! -1 T=
+   s" G-ALLOC ( CAD-NUM:alloc-byte-len -- ptr u8 CAD-NUM:alloc-byte-len ) MEM:ALLOC-BYTES"
+      CHECK-QUIET-CANDIDATE! -1 T=
+   s" G-ALLOC-CELLS ( CAD-NUM:alloc-cell-count -- ptr a ) MEM:ALLOC-CELLS"
+      CHECK-QUIET-CANDIDATE! -1 T=
+   s" G-ALLOC-64K ( -- ptr u8 CAD-NUM:alloc-byte-len ) MEM:ALLOC-64K"
+      CHECK-QUIET-CANDIDATE! -1 T=
+   \ negatives: a zero-admitting role at the sink, byte<->cell role swaps, raw n.
+   s" B-ZEROABLE-ALLOC ( CAD-NUM:byte-len -- ptr u8 CAD-NUM:alloc-byte-len ) MEM:ALLOC-BYTES"
+      CHECK-QUIET-CANDIDATE! 0 T=
+   s" B-CELL-ROLE-BYTES ( CAD-NUM:alloc-cell-count -- ptr u8 CAD-NUM:alloc-byte-len ) MEM:ALLOC-BYTES"
+      CHECK-QUIET-CANDIDATE! 0 T=
+   s" B-BYTE-ROLE-CELLS ( CAD-NUM:alloc-byte-len -- ptr a ) MEM:ALLOC-CELLS"
+      CHECK-QUIET-CANDIDATE! 0 T=
+   s" B-RAW-CELLS>BYTES ( n -- CAD-NUM:numeric-result<CAD-NUM:byte-len> ) MEM:CELLS>BYTES"
+      CHECK-QUIET-CANDIDATE! 0 T=
+   s" B-BYTE-ROLE-64K-BYTES ( CAD-NUM:byte-len -- CAD-NUM:numeric-result<CAD-NUM:byte-len> ) MEM:64K-BYTES"
+      CHECK-QUIET-CANDIDATE! 0 T=
+   T-REPORT ;
+STAT-MEM
 s" memory-test: ok" type cr
