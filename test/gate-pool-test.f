@@ -3,7 +3,7 @@
 
 require lib/errors.f
 require lib/string.f
-require lib/adt/option.f                 \ option<idx> INDEX-OF consumer (switchover wave A)
+require lib/adt/option.f                 \ option<CAD-NUM:index> STR:INDEX-OF consumer (switchover wave A)
 require lib/test.f
 require lib/memory.f
 require lib/fs.f
@@ -15,6 +15,16 @@ require lib/process-fork.f
 require lib/test/runner.f
 require test/gate-pool.f
 require test/run-lib.f
+
+\ White-box CAD-NUM role reader (precedent: lib/string-test.f STR-T-IX>RAW):
+\ reopen the unsealed CAD-NUM package to project the typed STR:FIND-SUB /
+\ STR:INDEX-OF index back to its raw cell, keeping GPT-KR-PARSE-ROOT
+\ byte-identical. A plain checked word over the audited private INDEX>N
+\ projection - not a new boundary.
+package CAD-NUM
+public
+: GPT-IX>RAW ( CAD-NUM:index -- n ) INDEX>N ;
+;package
 
 $20000 constant GPT-CAP
 $2710 constant GPT-TIMEOUT-MS
@@ -456,14 +466,14 @@ variable GPT-GEN-SAVE-U
    s" capture root kept: " ;
 
 : GPT-KR-PARSE-ROOT ( n -- ) {: outu:n :}
-   GPT-OUT outu GPT-KR-MARK$ FIND-SUB MATCH option
+   GPT-OUT outu STR:LENGTH GPT-KR-MARK$ STR:LENGTH STR:FIND-SUB MATCH option
      none OF E-STR-BOUNDS throw ENDOF
-     some OF IDX>N ENDOF
+     some OF CAD-NUM:GPT-IX>RAW ENDOF
    ;MATCH {: pos:n :}
    pos GPT-KR-MARK$ nip + {: start:n :}
-   GPT-OUT start BYTE+ outu start - $A INDEX-OF MATCH option
+   GPT-OUT start BYTE+ outu start - STR:LENGTH $A STR:INDEX-OF MATCH option
      none OF E-STR-BOUNDS throw ENDOF
-     some OF IDX>N ENDOF
+     some OF CAD-NUM:GPT-IX>RAW ENDOF
    ;MATCH {: rel:n :}
    rel FS-PATH-CAP > if E-FS-PATH throw then
    GPT-OUT start BYTE+ GPT-KR-ROOT rel BYTE-COPY

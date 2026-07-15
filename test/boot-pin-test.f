@@ -12,7 +12,7 @@
 
 require lib/errors.f
 require lib/string.f
-require lib/adt/option.f                 \ option<idx> FIND-SUB consumer (switchover wave A)
+require lib/adt/option.f                 \ option<CAD-NUM:index> STR:FIND-SUB consumer (switchover wave A)
 require lib/test.f
 require lib/memory.f
 require lib/fs.f
@@ -20,6 +20,15 @@ require lib/fs-mutate.f
 require lib/process.f
 require lib/process-argv.f
 require tools/boot-pin.f
+
+\ White-box CAD-NUM role reader (precedent: lib/string-test.f STR-T-IX>RAW):
+\ reopen the unsealed CAD-NUM package to project the typed STR:FIND-SUB index
+\ back to its raw cell, keeping BPT-COUNT-SUB byte-identical. A plain checked
+\ word over the audited private INDEX>N projection - not a new boundary.
+package CAD-NUM
+public
+: BPT-IX>RAW ( CAD-NUM:index -- n ) INDEX>N ;
+;package
 
 64 constant BPT-HEX-U
 4096 constant BPT-CAP
@@ -161,10 +170,10 @@ variable BPT-OFF
 : BPT-COUNT-SUB ( ptr u8 n -- n ) {: na:ptr nu:n :}       \ occurrences of needle in habu2.f
    0 BPT-CNT !  0 BPT-OFF !
    begin
-      BPT-HABU2-A @ BPT-OFF @ BYTE+  BPT-HABU2-U @ BPT-OFF @ -  na nu FIND-SUB
+      BPT-HABU2-A @ BPT-OFF @ BYTE+  BPT-HABU2-U @ BPT-OFF @ - STR:LENGTH  na nu STR:LENGTH  STR:FIND-SUB
       MATCH option
         none OF BPT-TRUE 0= ENDOF
-        some OF IDX>N BPT-OFF @ + nu + BPT-OFF !  BPT-CNT @ 1 + BPT-CNT !  BPT-TRUE ENDOF
+        some OF CAD-NUM:BPT-IX>RAW BPT-OFF @ + nu + BPT-OFF !  BPT-CNT @ 1 + BPT-CNT !  BPT-TRUE ENDOF
       ;MATCH
    while repeat
    BPT-CNT @ ;

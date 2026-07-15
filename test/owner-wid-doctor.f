@@ -9,6 +9,15 @@ require lib/fs-mutate.f
 require lib/codesign.f
 require test/owner-wid-image.f
 
+\ White-box CAD-NUM role reader (precedent: lib/string-test.f STR-T-IX>RAW):
+\ reopen the unsealed CAD-NUM package to project the typed STR:FIND-SUB index
+\ back to its raw cell, keeping FIND-AFTER byte-identical. A plain checked word
+\ over the audited private INDEX>N projection - not a new boundary.
+package CAD-NUM
+public
+: OWD-IX>RAW ( CAD-NUM:index -- n ) INDEX>N ;
+;package
+
 package OWNER-WID-DOCTOR
 
 create AOT-BAD-BUF FS-PATH-CAP allot
@@ -45,9 +54,9 @@ variable SCAN-LAST
    {: a:ptr u:n start:n needle:ptr nu:n :}
    start 0 < if OPTION:NONE exit then
    start u >= if OPTION:NONE exit then
-   a start BYTE+ u start - needle nu FIND-SUB MATCH option
+   a start BYTE+ u start - STR:LENGTH needle nu STR:LENGTH STR:FIND-SUB MATCH option
      none OF OPTION:NONE ENDOF
-     some OF IDX>N start + >IDX OPTION:SOME ENDOF
+     some OF CAD-NUM:OWD-IX>RAW start + >IDX OPTION:SOME ENDOF
    ;MATCH ;
 
 : MAGIC-STEP ( ptr u8 n -- bool ) {: magic:ptr magicu:n :}

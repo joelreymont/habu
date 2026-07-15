@@ -41,10 +41,31 @@
 
 require lib/errors.f
 require lib/string.f
-require lib/adt/option.f                 \ option<idx> FIND-SUB consumer (switchover wave A)
+require lib/adt/option.f                 \ option<CAD-NUM:index> STR:FIND-SUB consumer (switchover wave A)
 require lib/test.f
 require lib/memory.f
 require lib/fs.f
+
+\ White-box CAD-NUM role readers (precedent: lib/string-test.f STR-T-*>RAW):
+\ reopen the unsealed CAD-NUM package to project the typed STR: index/byte-len/
+\ byte-off results back to raw cells, keeping SAB-OCCURS and the line scanners
+\ byte-identical. Plain checked words over the audited private *>N projections -
+\ not a new boundary.
+package CAD-NUM
+public
+: SAB-IX>RAW ( CAD-NUM:index -- n ) INDEX>N ;
+: SAB-BL>RAW ( CAD-NUM:byte-len -- n ) BYTE-LEN>N ;
+: SAB-BO>RAW ( CAD-NUM:byte-off -- n ) BYTE-OFF>N ;
+;package
+
+\ Typed STR:SPLIT-NEXT with the raw-shaped result the line scanners consume:
+\ convert the length/offset args to roles, then project the sub-length and
+\ next-offset back to raw cells. Byte-identical to the raw split for in-buffer
+\ offsets.
+: SAB-SPLIT-NEXT ( ptr u8 n n n -- ptr u8 n n bool ) {: a:ptr u:n sep:n start:n :}
+   a u STR:LENGTH sep start STR:OFFSET STR:SPLIT-NEXT
+   {: bl:CAD-NUM:byte-len bo:CAD-NUM:byte-off more?:bool :}
+   bl CAD-NUM:SAB-BL>RAW  bo CAD-NUM:SAB-BO>RAW  more? ;
 
 $40000 constant SAB-CAP                 \ mirror scan buffer (forth.fs ~137 KB + headroom)
 $800 constant SAB-NAMES-CAP             \ packed absent-name table capacity (bytes)
@@ -136,7 +157,7 @@ variable SAB-NAMES-LEN
 : SAB-SCAN-BUF ( ptr u8 n -- ) {: a:ptr u:n :}
    1 SAB-LINE# !  0 SAB-LSTART !
    begin
-      a u STR-LF SAB-LSTART @ SPLIT-NEXT
+      a u STR-LF SAB-LSTART @ SAB-SPLIT-NEXT
    while
       SAB-LSTART !
       SAB-LINE# @ SAB-SCAN-LINE
@@ -149,9 +170,9 @@ variable SAB-NAMES-LEN
    v 0 = if 0 exit then
    0 SAB-CNT !  0 SAB-CSTART !
    begin SAB-CSTART @ v + u <= while
-      a SAB-CSTART @ +  u SAB-CSTART @ -  b v FIND-SUB MATCH option
+      a SAB-CSTART @ +  u SAB-CSTART @ - STR:LENGTH  b v STR:LENGTH  STR:FIND-SUB MATCH option
         none OF SAB-CNT @ exit ENDOF
-        some OF IDX>N ENDOF
+        some OF CAD-NUM:SAB-IX>RAW ENDOF
       ;MATCH
       SAB-CNT @ 1 + SAB-CNT !
       SAB-CSTART @ + v + SAB-CSTART !
@@ -160,7 +181,7 @@ variable SAB-NAMES-LEN
 : SAB-COUNT-CODE ( ptr u8 n ptr u8 n -- n ) {: a:ptr u:n b:ptr v:n :}
    0 SAB-TOT !  0 SAB-LSTART !
    begin
-      a u STR-LF SAB-LSTART @ SPLIT-NEXT
+      a u STR-LF SAB-LSTART @ SAB-SPLIT-NEXT
    while
       SAB-LSTART !
       2dup SAB-CODE-LEN nip

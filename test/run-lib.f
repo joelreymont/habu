@@ -1593,6 +1593,26 @@ TR-INSTALL-POOL-HOOKS
 : TR-PRE-CANDIDATE-START ( -- )
    ;
 
+\ White-box CAD-NUM role readers (precedent: lib/string-test.f STR-T-*>RAW):
+\ reopen the unsealed CAD-NUM package to project the typed STR:SPLIT-NEXT
+\ sub-length and next-offset back to raw cells, keeping the rerun line scanner
+\ byte-identical. Plain checked words over the audited private *>N projections -
+\ not a new boundary.
+package CAD-NUM
+public
+: TR-BL>RAW ( CAD-NUM:byte-len -- n ) BYTE-LEN>N ;
+: TR-BO>RAW ( CAD-NUM:byte-off -- n ) BYTE-OFF>N ;
+;package
+
+\ Typed STR:SPLIT-NEXT with the raw-shaped result TR-RERUN-LINES consumes:
+\ convert the length/offset args to roles, then project the sub-length and
+\ next-offset back to raw cells. Byte-identical to the raw split for in-buffer
+\ offsets.
+: TR-SPLIT-NEXT ( ptr u8 n n n -- ptr u8 n n bool ) {: a:ptr u:n sep:n start:n :}
+   a u STR:LENGTH sep start STR:OFFSET STR:SPLIT-NEXT
+   {: bl:CAD-NUM:byte-len bo:CAD-NUM:byte-off more?:bool :}
+   bl CAD-NUM:TR-BL>RAW  bo CAD-NUM:TR-BO>RAW  more? ;
+
 \ --rerun-failed: a failing gate run persists its red top-level phases (phase
 \ index plus the exact standalone repro command) under TR-PERSIST$; a later
 \ --rerun-failed run reads that list and schedules only those phases.
@@ -1601,11 +1621,11 @@ TR-INSTALL-POOL-HOOKS
    TR-PERSIST$ s" gate-red-phases.txt" TR-RED-LIST-PATH-BUF JOIN-PATH TR-RED-LIST-PATH-U !
    TR-RED-LIST-PATH-BUF TR-RED-LIST-PATH-U @ ;
 
-: TR-RED-FILE+ ( ptr u8 n -- )
-   TR-RED-FILE-BUF TR-RED-FILE-CAP TR-RED-FILE-U BUF-APPEND ;
+: TR-RED-FILE+ ( ptr u8 n -- ) {: src:ptr srclen:n :}
+   src srclen STR:LENGTH  TR-RED-FILE-BUF  TR-RED-FILE-CAP STR:LENGTH  TR-RED-FILE-U  STR:BUF-APPEND ;
 
 : TR-RED-FILE-C+ ( n -- )
-   TR-RED-FILE-BUF TR-RED-FILE-CAP TR-RED-FILE-U BUF-APPEND-C ;
+   TR-RED-FILE-BUF  TR-RED-FILE-CAP STR:LENGTH  TR-RED-FILE-U  STR:BUF-APPEND-C ;
 
 \ Rebuild a phase's argv into PROC-ARGV so the persisted repro line matches
 \ what TR-PHASE-START would spawn; env-only temp paths stay out of the argv.
@@ -1646,7 +1666,7 @@ TR-INSTALL-POOL-HOOKS
 
 : TR-RED-PERSIST ( -- )
    TR-PERSIST? 0= if exit then
-   TR-RED-FILE-U BUF-RESET
+   TR-RED-FILE-U STR:BUF-RESET
    0 begin dup GT-POOL-RED-DETAILED < while
       dup TR-RED-PERSIST-ENTRY
       1+
@@ -1698,7 +1718,7 @@ TR-INSTALL-POOL-HOOKS
 : TR-RERUN-LINES ( ptr u8 n -- ) {: a:ptr u:n :}
    0 TR-RERUN-POS !
    begin TR-RERUN-POS @ u <= while
-      a u $A TR-RERUN-POS @ SPLIT-NEXT drop {: fa:ptr fu:n next:n :}
+      a u $A TR-RERUN-POS @ TR-SPLIT-NEXT drop {: fa:ptr fu:n next:n :}
       fa fu TR-RERUN-LINE
       next TR-RERUN-POS !
    repeat ;
