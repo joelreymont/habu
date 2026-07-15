@@ -99,6 +99,7 @@
 -3299 constant E-MEM-LAST
 -3200 constant E-MEM-SIZE
 -3201 constant E-MEM-MAP
+-3202 constant E-MEM-TOTALITY
 
 \ Vectors: -3300..-3399
 -3300 constant E-VEC-FIRST

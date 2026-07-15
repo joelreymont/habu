@@ -5,7 +5,7 @@
 
 $400 constant INCLUDE-PATH-CAP
 $80000 constant INCLUDE-BUF-CAP
-$8 constant INCLUDE-MAX-DEPTH
+$10 constant INCLUDE-MAX-DEPTH  \ typed-lib require chains outgrew 8 (2026-07-15)
 $100 constant REQUIRE-MAX
 $1002 constant INCLUDE-MAP-PRIVATE-ANON
 $1 constant INCLUDE-PROBE-CAP

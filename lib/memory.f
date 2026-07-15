@@ -94,7 +94,6 @@ private
 \ Internal invariant code (never reachable): a validator/narrowing arm proven
 \ impossible by the input still needs an exhaustive MATCH arm. Mirrors the
 \ CAD-NUM E-CADNUM-TOTALITY discipline; lives in-file, not lib/errors.f.
--3202 constant E-MEM-TOTALITY
 
 \ ---- ok extractors for compile-time-valid role constants (arms unreachable) ----
 : OK-BYTE-LEN ( CAD-NUM:numeric-result<CAD-NUM:byte-len> -- CAD-NUM:byte-len )
