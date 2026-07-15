@@ -4374,3 +4374,8 @@ unchanged (148855). Keys for milestone 2:
   sole checker lookup spelling creates the otherwise-protected missing-hook
   state and gives an exact fail-closed exit regression without a production
   test hook.
+- **Result-union cutovers must migrate every direct consumer effect.** The
+  process API correctly returned `outcome`, but one gate fixture still declared
+  four scalar results and made green source fail at checker load. Audit direct
+  call sites and replace scalar kind tests with exhaustive `MATCH outcome`
+  storage before declaring the cutover complete.

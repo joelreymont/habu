@@ -40,7 +40,7 @@ variable LRD-BODY-U
 variable LRD-OUTER-U
 variable LRD-OUT-U
 variable LRD-ERR-U
-variable LRD-KIND
+variable LRD-EXITED
 variable LRD-RC
 
 : LRD-BASE$ ( -- ptr u8 n )
@@ -79,9 +79,13 @@ variable LRD-RC
    LRD-UNDEF$ SB-APPEND
    LRD-OUTER$ SB$ WRITE-ALL ;
 
-: LRD-STORE! ( len len n n -- ) {: outu:len erru:len kind:n code:n :}
-   kind LRD-KIND !  code LRD-RC !
-   erru LEN>N LRD-ERR-U !  outu LEN>N LRD-OUT-U ! ;
+: LRD-STORE! ( len len outcome -- )
+   MATCH outcome
+     exited OF LRD-RC ! 0 0= LRD-EXITED ! ENDOF
+     signaled OF LRD-RC ! 0 0= 0= LRD-EXITED ! ENDOF
+     timeout OF 0 LRD-RC ! 0 0= 0= LRD-EXITED ! ENDOF
+   ;MATCH
+   LEN>N LRD-ERR-U !  LEN>N LRD-OUT-U ! ;
 
 \ Spawn `<hb> --load <fixture>` with empty stdin, capture the exit outcome.
 : LRD-RUN ( ptr u8 n -- ) {: path:ptr pathu:n :}
@@ -98,7 +102,7 @@ variable LRD-RC
 \ Every rejecting load: exit-kind EXIT, rc 70, EMPTY stdout, NON-EMPTY stderr
 \ that names the failing token — the silent-exit-70 red/green discriminator.
 : LRD-ASSERT-NAMED ( ptr u8 n -- ) {: name:ptr nameu:n :}
-   LRD-KIND @ PROC-OUTCOME-EXIT T=
+   LRD-EXITED @ TTRUE
    LRD-RC @ LRD-REJECT-RC T=
    LRD-OUT-U @ 0 T=
    LRD-ERR-U @ 0 > TTRUE
