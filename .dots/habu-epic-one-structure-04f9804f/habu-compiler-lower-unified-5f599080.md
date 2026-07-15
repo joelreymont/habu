@@ -1,6 +1,6 @@
 ---
 title: "Compiler: lower unified type DSL"
-status: open
+status: active
 priority: 1
 issue-type: task
 created-at: "2026-07-13T16:45:58.513536+02:00"
@@ -16,3 +16,4 @@ definers or emit a cold descriptor format. Preserve package sealing,
 constructor WIDs, owner metadata, wide-layout operations, relocation, and
 deterministic image identity. Add bootstrap-codegen, AOT, snapshot,
 protected-WID, and fixpoint parity regressions.
+Claim: agent=core_records_impl workspace=.jj-ws/habu-enum-parse-full-39c0dc1b
