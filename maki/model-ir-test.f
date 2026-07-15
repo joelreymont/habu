@@ -7,6 +7,16 @@ require lib/string.f
 require test/checker-assert.f
 require maki/model-ir.f
 
+\ ---- white-box CAD-NUM role reader (mirrors lib/vector-test.f's VECT-IC>RAW) --
+\ Reopen the CAD-NUM package to project a validated item-count's raw cell for the
+\ scalar count assertions below. A plain checked word over the already-audited
+\ CAD-NUM:ITEM-COUNT>N projection - not a new boundary (refine-lint does not
+\ confine the *>N projections, only the MINT-*/RAW>* refinements).
+package CAD-NUM
+public
+: MT-IC>RAW ( CAD-NUM:item-count -- n ) ITEM-COUNT>N ;
+;package
+
 package MAKI
 
 \ ---- render containment helper ----------------------------------------------
@@ -63,6 +73,13 @@ T-RESET
 \ ---- table shape ------------------------------------------------------------
 MIR-N@         2 T=
 MIR-IN-SLOTS@  3 T=
+
+\ typed count accessors (CAD-NUM:item-count) reflect the built graph: 2 nodes,
+\ 3 input slots, 3 operand refs (linear x,w + gelu n0), both nodes materialized.
+NODE-COUNT@        CAD-NUM:MT-IC>RAW 2 T=
+SLOT-COUNT@        CAD-NUM:MT-IC>RAW 3 T=
+OPERAND-COUNT@     CAD-NUM:MT-IC>RAW 3 T=
+MATERIALIZED-COUNT CAD-NUM:MT-IC>RAW 2 T=
 
 \ ---- node facts -------------------------------------------------------------
 MT-N0@ MIR-OP@ OPKIND>N OP-LINEAR T=
@@ -224,6 +241,34 @@ MT-ROLLBACK MIR-OP@ OPKIND>N OP-GELU T=
 MIR-N@ 1 T=
 MIR-IN-SLOTS@ 1 T=
 
+\ ---- typed count accessors: rollback / zero / max ---------------------------
+\ rollback: reuse the post-MIR-RELEASE state above (1 node, 1 slot, 1 operand
+\ ref) - the typed counts fall back to the marked high-water like the raw ones.
+NODE-COUNT@        CAD-NUM:MT-IC>RAW 1 T=
+SLOT-COUNT@        CAD-NUM:MT-IC>RAW 1 T=
+OPERAND-COUNT@     CAD-NUM:MT-IC>RAW 1 T=
+
+\ zero: an empty IR reports every count as item-count 0.
+MIR-RESET
+NODE-COUNT@        CAD-NUM:MT-IC>RAW 0 T=
+SLOT-COUNT@        CAD-NUM:MT-IC>RAW 0 T=
+OPERAND-COUNT@     CAD-NUM:MT-IC>RAW 0 T=
+MATERIALIZED-COUNT CAD-NUM:MT-IC>RAW 0 T=
+
+\ max: NODE-COUNT@ tracks the node column up to the table capacity; each node
+\ opens with zero operands and mat=0, so the other counts stay zero at the max.
+: MT-FILL-MAX ( -- )
+   MIR-RESET
+   MIR-CAP 0 ?do
+      MAKI-OPKIND:CAST MIR-OP-BEGIN
+      1 1 SHAPE MAKI-DTYPE:DF32 MAKI-LAYOUT:ROW 0 0 MIR-OP+ drop
+   loop ;
+MT-FILL-MAX
+NODE-COUNT@        CAD-NUM:MT-IC>RAW MIR-CAP T=
+OPERAND-COUNT@     CAD-NUM:MT-IC>RAW 0 T=
+MATERIALIZED-COUNT CAD-NUM:MT-IC>RAW 0 T=
+MIR-RESET
+
 \ ---- swapped-family negatives (dot habu-cad-adt-swap + Model-CAD V2 R3) ------
 \ THE headline hole: a dtype/layout swap at the MIR-INPUT+/MIR-OP+ API boundary
 \ is a CHECKER reject (dtype and layout are no longer indistinguishable bytes),
@@ -268,6 +313,22 @@ s" MTX-PRV-N    ( n -- ) MIR-PROV!"                       CHECK-QUIET-CANDIDATE!
 s" MTX-PRV-NOUT ( -- n ) MIR-PROV@"                       CHECK-QUIET-CANDIDATE! 0 T=
 s" MTX-PRV-ASOP ( -- opkind ) MIR-PROV@"                  CHECK-QUIET-CANDIDATE! 0 T=
 s" MTX-PRV-EQN  ( n prov -- bool ) MAKI-PROV:EQ"          CHECK-QUIET-CANDIDATE! 0 T=
+
+\ typed count negatives (Model-CAD V2 B5.5): each accessor returns a
+\ CAD-NUM:item-count. Positive controls pin the correct signature; the negatives
+\ pin that a count cannot leak as a raw n and cannot pass as a CAD-NUM:index -
+\ the last pair drives a real consumer (ADVANCE-INDEX ( index item-count -- ... )):
+\ the count is accepted in the item-count operand but rejected in the index operand.
+s" MTX-NC-OK    ( -- CAD-NUM:item-count ) NODE-COUNT@"        CHECK-QUIET-CANDIDATE! -1 T=
+s" MTX-SC-OK    ( -- CAD-NUM:item-count ) SLOT-COUNT@"        CHECK-QUIET-CANDIDATE! -1 T=
+s" MTX-OC-OK    ( -- CAD-NUM:item-count ) OPERAND-COUNT@"     CHECK-QUIET-CANDIDATE! -1 T=
+s" MTX-MC-OK    ( -- CAD-NUM:item-count ) MATERIALIZED-COUNT" CHECK-QUIET-CANDIDATE! -1 T=
+s" MTX-NC-NOUT  ( -- n ) NODE-COUNT@"                         CHECK-QUIET-CANDIDATE! 0 T=
+s" MTX-OC-NOUT  ( -- n ) OPERAND-COUNT@"                      CHECK-QUIET-CANDIDATE! 0 T=
+s" MTX-NC-ASIDX ( -- CAD-NUM:index ) NODE-COUNT@"             CHECK-QUIET-CANDIDATE! 0 T=
+s" MTX-MC-ASIDX ( -- CAD-NUM:index ) MATERIALIZED-COUNT"     CHECK-QUIET-CANDIDATE! 0 T=
+s" MTX-ADV-OK   ( CAD-NUM:index -- CAD-NUM:numeric-result<CAD-NUM:index> ) NODE-COUNT@ CAD-NUM:ADVANCE-INDEX"      CHECK-QUIET-CANDIDATE! -1 T=
+s" MTX-ADV-SWAP ( CAD-NUM:item-count -- CAD-NUM:numeric-result<CAD-NUM:index> ) NODE-COUNT@ CAD-NUM:ADVANCE-INDEX" CHECK-QUIET-CANDIDATE! 0 T=
 
 T-REPORT
 

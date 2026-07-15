@@ -46,6 +46,7 @@ require maki/tensor-value.f
 require lib/string.f
 require lib/float.f
 require lib/fmt.f
+require lib/cad-num-arithmetic.f   \ CAD-NUM:item-count role for the typed count accessors
 
 -5055 constant E-MIR-CAP      \ node table capacity exceeded
 -5056 constant E-MIR-IDX      \ node index out of range
@@ -412,6 +413,32 @@ public
 
 : MIR-MAT-COUNT ( -- n )                \ materialized node count (LOWER uses this)
    0 MIR-N @ 0 ?do  i MIR-NODE-ID MIR-MAT@ if 1+ then  loop ;
+
+\ ---- typed count accessors (raw table counts lifted to CAD-NUM:item-count) ---
+\ Model-CAD V2 B5.5: a node/slot/operand/materialized count is a nonnegative
+\ logical element count, so it rides a CAD-NUM:item-count rather than a bare n -
+\ the checker then rejects swapping a count for an index and laundering a count
+\ back to n. These WRAP the same cells the raw MIR-N@/MIR-IN-SLOTS@/MIR-INS-U/
+\ MIR-MAT-COUNT read, which stay byte-identical for their not-yet-migrated
+\ callers (later waves own that migration). No new representation boundary: the
+\ counts only flow OUT through the public CAD-NUM:ITEM-COUNT validator.
+private
+\ The refusal arms are unreachable invariants (a live table count is never
+\ negative, and item-count admits zero); an impossible negative surfaces the
+\ IR-state code, mirroring VEC's E-VEC-BOUNDS totality discipline.
+: MIR-COUNT ( n -- CAD-NUM:item-count )
+   CAD-NUM:ITEM-COUNT
+   MATCH CAD-NUM:numeric-result
+      ok OF ENDOF                              negative OF E-MIR-STATE throw ENDOF
+      zero OF E-MIR-STATE throw ENDOF           overflow OF E-MIR-STATE throw ENDOF
+      underflow OF E-MIR-STATE throw ENDOF      bad-alignment OF E-MIR-STATE throw ENDOF
+      misaligned OF E-MIR-STATE throw ENDOF
+   ;MATCH ;
+public
+: NODE-COUNT@ ( -- CAD-NUM:item-count )         MIR-N @      MIR-COUNT ;
+: SLOT-COUNT@ ( -- CAD-NUM:item-count )         MIR-IS-N @   MIR-COUNT ;
+: OPERAND-COUNT@ ( -- CAD-NUM:item-count )      MIR-INS-U @  MIR-COUNT ;
+: MATERIALIZED-COUNT ( -- CAD-NUM:item-count )  MIR-MAT-COUNT MIR-COUNT ;
 
 \ ---- movement facts (attrs interpreted per maki/move-facts.f) ---------------
 : MIR-MOVE? ( CAD-KIND:node-id -- bool )  MIR-OP@ OPR-CLASS CLASS-MOVEMENT = ;
