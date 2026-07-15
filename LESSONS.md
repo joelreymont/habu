@@ -4389,3 +4389,7 @@ unchanged (148855). Keys for milestone 2:
   schema still requires unlanded STRUCTURE/payload ENUM and compiler lowering.
   Probe the exact grammar and generated words before `dot on`; if absent, wire
   the transitive implementation milestone and leave the downstream dot open.
+- **One-shot assembler guards retain nominal inputs until validation ends.** A
+  label-binding guard typed as raw `n` weakens the checker at the exact authority
+  boundary. Accept `label`, use a named exit code, and place the guard before
+  every state write; then snapshot fixup, free-list, label, and code state.
