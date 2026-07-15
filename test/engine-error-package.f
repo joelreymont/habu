@@ -89,7 +89,7 @@ create PATCHED-BUF FS-PATH-CAP allot
 : LOAD-IMAGE ( -- )
    HB$ FILE-SIZE {: u:n :}
    u IMAGE-U !
-   u MEM-ALLOC-BYTES drop IMAGE-A-FIELD !
+   u MEM:BYTES-ALLOC-LEN MEM:ALLOC-BYTES drop IMAGE-A-FIELD !
    HB$ IMAGE u READ-ALL u <> if
       s" engine-error-test: short engine read" 1 die
    then ;

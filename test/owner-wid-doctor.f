@@ -69,7 +69,7 @@ variable SCAN-LAST
 
 : LOAD-IMAGE ( ptr u8 n -- ) {: path:ptr pathu:n :}
    path pathu FILE-SIZE {: size:n :}
-   size MEM-ALLOC-BYTES drop IMG-A !
+   size MEM:BYTES-ALLOC-LEN MEM:ALLOC-BYTES drop IMG-A !
    path pathu IMG size READ-ALL IMG-U !
    IMG-U @ size <> if s" owner-WID image short read" 74 die then ;
 
