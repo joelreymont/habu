@@ -1286,8 +1286,8 @@ lib/nominal/row.f:MINT-ROW prim-axiom habu-epic-type-system-b88c9ecc
 lib/nominal/row.f:ROW-IDX prim-axiom habu-epic-type-system-b88c9ecc
 lib/nominal/builder.f:MK-BUILDER prim-axiom habu-epic-type-system-b88c9ecc
 lib/nominal/builder.f:BUILDER-DROP prim-axiom habu-epic-type-system-b88c9ecc
-src/cad/effect.f:ROW>EFF prim-axiom habu-v2-types-finite-18bb1b35
-src/cad/effect.f:EFF>ROW prim-axiom habu-v2-types-finite-18bb1b35
+src/cad/effect.f:ROW>EFF prim-axiom habu-export-public-nom-20170121
+src/cad/effect.f:EFF>ROW prim-axiom habu-export-public-nom-20170121
 lib/engine-id.f:ENGINE-SELF-MACOS stdlib-boundary habu-raw-self-path-4514ffd3
 lib/engine-id.f:ENGINE-SELF-LINUX stdlib-boundary habu-raw-self-path-4514ffd3
 lib/ffi-abi.f:P>N stdlib-boundary habu-typed-defining-words-aa224eb5
