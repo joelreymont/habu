@@ -4397,3 +4397,14 @@ unchanged (148855). Keys for milestone 2:
   production authority waits for native fencing is false if the owning dot can
   still dispatch without it. Update the prose and `blocks:` edge on one reviewed
   tree, and distinguish baked primitive effects from verifier-added effects.
+- Cross-agent engine landings brick sibling binaries: sol's engine-error
+  namespace added new COLD-PREFIX files (engine-error.f), and every other
+  agent's bin/hb (baked prefix list) then fails AT BOOT with E-UNDEFINED on the
+  updated consumers (checker.f, lib/map.f, src/habu/layout.f, xref.f - find the
+  baked list with `strings - bin/hb | rg '^(src|lib)/'`). A hybrid
+  revert-and-refresh does NOT compose (mixed-generation sources fail the child
+  build). The reliable recovery is the documented gforth bootstrap
+  (HABU_ALLOW_BOOTSTRAP=1 tools/bootstrap.sh) - it works iff the landing
+  mirrored the prefix into bootstrap/cg/forth.fs, which is why that mirror is
+  BLOCKING for any new cold-prefix file. Pull-and-refresh after every fetch
+  that crosses an engine landing; budget minutes, not hours.
