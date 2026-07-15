@@ -149,6 +149,7 @@ TEST:SUITE tool-boundary-lints
 TEST:;SUITE
 
 TEST:SUITE tool-boundary-typed-local
+   tools/lint/diff-test.f
    tools/typed-local-diff-lint-test.f
 TEST:;SUITE
 

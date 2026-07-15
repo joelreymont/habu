@@ -4413,3 +4413,21 @@ unchanged (148855). Keys for milestone 2:
   mirrored the prefix into bootstrap/cg/forth.fs, which is why that mirror is
   BLOCKING for any new cold-prefix file. Pull-and-refresh after every fetch
   that crosses an engine landing; budget minutes, not hours.
+- **Unified-diff fixtures must balance both hunk axes exactly.** Count every
+  add/context row against the new range and every delete/context row against the
+  old range; emit both non-null old/new file paths so rename-away checks hold,
+  and allow one no-newline marker after any consumed content row without
+  spending either count. Loose fixture counts hide truncated-hunk bugs.
+- **`jj diff --git` paths are byte-for-byte, not quoted.** A path containing
+  ` b/` makes the section head intrinsically ambiguous. Preserve the full head,
+  derive identities from ordered text/rename/copy/binary metadata, and validate
+  their exact reconstruction; only same-path forms can be inferred at the
+  forced center. Reject unresolved metadata-only replacements fail-closed.
+- **An `index` line creates a body obligation.** Later rename/copy/mode metadata
+  cannot complete that section: reject post-index metadata and duplicate
+  cardinality, then require exactly one ordered text or binary body. Make binary
+  and empty-file completions terminal so mixed body forms cannot be smuggled in.
+- **Similarity scores determine whether replacement metadata is terminal.** Only
+  exact 100% similarity may finish after a rename/copy pair. Lower similarity
+  and every dissimilarity retain an index-plus-body obligation across identity
+  metadata, so EOF and the next section head remain fail-closed.

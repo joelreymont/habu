@@ -318,6 +318,7 @@ variable GSI-TL-FILE-A
    s" tools/typed-local-diff-lint-core.f" GSI-TOOL-SETUP-FILE ;
 
 : GSI-TOOL-TYPED-BODY ( -- )
+   s" tools/lint/diff-test.f" GSI-INCLUDE
    s" tools/typed-local-diff-lint-test.f" GSI-INCLUDE ;
 
 : GSI-TOOL-REPAIR ( -- )

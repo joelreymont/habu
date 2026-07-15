@@ -771,6 +771,8 @@ points stay listed.
 - `tools/boot-pin-main.f` — CLI entrypoint for the boot-prefix pin tool.
 - `tools/lint/json-writer.f` — compact JSON writer for native lint diagnostics.
 - `tools/lint/source-lex.f` — checked vector-backed source lexer for native lints.
+- `tools/lint/diff.f` / `tools/lint/diff-test.f` — checked streaming unified-diff
+  event parser with exact hunk-count validation and focused malformed-input coverage.
 - `tools/lint/text.f` / `tools/lint/token.f` / `tools/lint/intern.f` /
   `tools/lint/lib.f` — shared native lint foundation: checked text/file
   helpers, the whitespace token table, the growable string interner, and the
@@ -795,10 +797,10 @@ points stay listed.
 - `tools/duplicate-definition-lint.f` — CLI wrapper for duplicate published-definition lint.
 - `tools/duplicate-definition-lint-test-lib.f` — load-only duplicate-definition lint fixture library for resident runner tests.
 - `tools/duplicate-definition-lint-test.f` — checked fixture coverage for duplicate definition detection and source-list preflight behavior.
-- `tools/typed-local-diff-lint-core.f` — reusable diff scanner that rejects newly added bare locals.
+- `tools/typed-local-diff-lint-core.f` — packaged diff-event consumer that rejects newly added bare locals.
 - `tools/typed-local-diff-lint.f` — CLI wrapper for typed-local diff lint.
 - `tools/typed-local-diff-lint-test.f` — checked fixture coverage for typed-local diff lint.
-- `tools/kernel-perf-lint-core.f` — reusable diff scanner requiring kernel codegen changes to carry a profile/waiver row in `tools/ptx/perf-rows.tsv`.
+- `tools/kernel-perf-lint-core.f` — packaged diff-event consumer requiring kernel codegen changes to carry a profile/waiver row in `tools/ptx/perf-rows.tsv`.
 - `tools/kernel-perf-lint.f` — CLI wrapper for the kernel profile-row diff lint.
 - `tools/kernel-perf-lint-test.f` — checked fixture coverage for the kernel profile-row diff lint.
 - `tools/aot-lint-core.f` — reusable stripped-AOT unsupported-word scanner.
