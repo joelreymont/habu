@@ -445,6 +445,10 @@ TEST:SUITE xt-effect
    test/xt-effect-test.f
 TEST:;SUITE
 
+TEST:SUITE effect-read-api
+   test/effect-read-api-test.f
+TEST:;SUITE
+
 TEST:SUITE owner-wid-internal
    test/owner-wid-internal.f
 TEST:;SUITE

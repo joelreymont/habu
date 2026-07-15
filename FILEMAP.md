@@ -1090,6 +1090,12 @@ points stay listed.
   non-xt-consumer sink (`['] A +`) keeps the plain xt cell; plus the tier-1
   `' FOO2 execute` underflow warning stays and the pre-armed tier-2 `0 0 catch`
   warning is pinned.
+- `test/effect-read-api-test.f` — checker effect-read export API + negative
+  regression (dot habu-expose-checker-effect-95e853eb): a cold-prefix file
+  resolves `EFFECT-QUERY` / `EFFECT-DIN-N` / `EFFECT-DOUT-N` / `EFFECT-DIN-FAM` /
+  `EFFECT-DOUT-FAM` and asserts a certified word's din/dout arity + per-position
+  family class (scalar/pointer/gray), unknown-word and out-of-range edges;
+  renaming or removing any entry breaks the load loudly (rc 70).
 - `test/seal.f` — friend-arena seal regressions: one negative forge per guarded
   PROT-GUARD sink (`!`/`c!`/`+!`/`atomic!`/`atomic-add`/`atomic-cas` plus the
   `read`/`ioctl`/`poll`/`readlink`/`stat64`/`lstat64`/`getdirentries64`/`mmap`

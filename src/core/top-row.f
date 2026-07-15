@@ -13,12 +13,14 @@
 \
 \ Tier-1 scope: value knowledge is a coarse family (scalar / byte-pointer / xt /
 \ gray) carried from literals, ticks and the pointer-arithmetic family only; every
-\ other word grays its outputs. The full effect-record row unification (per-word
-\ din/dout families read from the checker's EFF-REC store) is tier-2 and needs the
-\ checker to expose its effect-read API to this prefix file - tracked by dot
-\ habu-typed-top-row-effect-api. This file loads from the checkout at boot, so it
-\ uses only engine primitives, core words and hardcoded ABI constants (the
-\ effect-store internals are name-stripped and not visible here).
+\ other word grays its outputs. Tier-1.5 (this file) reads a certified word's
+\ din/dout arity + families through the checker's minimal effect-read export API
+\ (src/core/checker.f EFFECT-QUERY / EFFECT-DIN-N / EFFECT-DOUT-N / EFFECT-DIN-FAM /
+\ EFFECT-DOUT-FAM, dot habu-expose-checker-effect-95e853eb) - used here only for the
+\ zero-risk pure-consumer precise pop below. Full effect-record row unification with
+\ precise OUTPUT family propagation (real per-word din/dout apply) is tier-2, dot
+\ habu-typed-top-tier-589c550f. This file loads from the checkout at boot; the raw
+\ effect-store internals stay hidden behind the export API's coarse family projection.
 
 package TOP-ROW
 
@@ -171,6 +173,23 @@ variable TR-LASTZERO                    \ previous event was the literal 0 (0 se
    1 = if t0 t1 TR-ADD-FAM else t0 t1 TR-SUB-FAM then {: r:n :}
    TR-POP TR-POP r TR-PUSH ;
 
+\ ---- tier-1.5: certified pure-consumer precise pop (checker effect-read API) --
+\ A certified word whose dout row has NO fixed terms (dout empty) consumes exactly
+\ its declared physical din and leaves the tail untouched. Reading that from the
+\ checker's effect-read export API (src/core/checker.f EFFECT-QUERY / EFFECT-DOUT-N,
+\ dot habu-expose-checker-effect-95e853eb) lets the tracker pop the din precisely and
+\ KEEP the tail's precise families, instead of graying the whole row at the next
+\ event. Same warning gates; better shadow fidelity across pure consumers. The query
+\ reads raw effect-store state the checker cannot type, so it sits behind a TRUSTED:
+\ boundary - the same idiom TR-INSTALL uses. Precise OUTPUT family propagation and row
+\ unification are tier-2, dot habu-typed-top-tier-589c550f.
+TRUSTED: TR-CERT-DOUT-EMPTY? ( ptr u8 n -- bool )   \ certified word producing no fixed outputs?
+   EFFECT-QUERY if EFFECT-DOUT-N 0= else 0 0= 0= then ;
+
+: TR-CERT-STEP ( n -- ) {: din:n :}     \ pop din cells; row stays precise (no dirty resync)
+   0 begin dup din < while TR-POP 1 + repeat drop
+   0 TR-DIRTY ! ;
+
 : TR-WORD ( ptr u8 n n n n -- ) {: a:ptr u:n flg:n live:n lz:n :}
    TR-TOP TR-GRAY =  lz 0=  and if 1 TR-DIRTY ! exit then  \ fast path: nothing definite to check
    a u s" set-check" CORE-STR= if
@@ -179,6 +198,7 @@ variable TR-LASTZERO                    \ previous event was the literal 0 (0 se
    a u TR-XT-CONSUMER? if a u live TR-XT-STEP exit then
    a u TR-SCALAR-CONSUMER? if a u TR-SCALAR-STEP exit then
    a u TR-ARITH? dup 0 <> if TR-ARITH-STEP exit then drop
+   a u TR-CERT-DOUT-EMPTY? if flg TR-FLAGS>XIN TR-CERT-STEP exit then
    1 TR-DIRTY ! ;                       \ unmodeled word: gray-resync at the next event
 
 \ ---- the installed hook ------------------------------------------------------

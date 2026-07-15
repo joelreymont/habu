@@ -5033,6 +5033,79 @@ $20 constant CK-SEAL-LATCH-OFF          \ = layout.f FRIEND-LATCH-CELL
    FIND-SIG 0= IF -1 EXIT THEN
    FEP @ ER.MINI @ ;
 
+\ ---- effect-read export API (dot habu-expose-checker-effect-95e853eb) ---------
+\ A cold-prefix consumer (src/core/top-row.f, and the tier-2 typed top-row, dot
+\ habu-typed-top-tier-589c550f) cannot reach the effect store directly: FIND-SIG,
+\ ER.DIN/ER.DOUT, E-PTR and the EN-* node accessors are sig-less colon words, so
+\ internal-mark.f marks them DNAME-INT and they fail closed at interpret time. This
+\ is the ONE stable, minimal query surface the prefix sees. Each PUBLIC entry carries
+\ a declared TRUSTED: signature, so SIG-MIN-IN finds it and internal-mark leaves it
+\ top-level callable; the readers project the private EN-node graph onto a coarse,
+\ stable family enum, so the graph representation stays free to evolve behind them.
+\ Read-only: no store word is exposed and the query never mutates a persisted record.
+\ EFFECT-QUERY resolves a NAME's active effect (user row or prim axiom) into query
+\ state; the EFFECT-* readers report on the last successful query.
+\
+\ Family enum (stable ABI; numerically equal to top-row.f TR-* by design):
+0 constant EFAM-GRAY        \ EN-VAR / EN-ROW / EN-ATOM / EN-PARAM: no coarse family
+1 constant EFAM-SCALAR      \ EN-CON: a value cell
+2 constant EFAM-POINTER     \ EN-PTR: a byte / region pointer
+3 constant EFAM-XT          \ EN-QUOT: a quotation / xt
+
+variable EFFQ-OK            \ bool: last EFFECT-QUERY resolved an active effect
+variable EFFQ-DIN           \ din row offset (E-OFF) of the queried effect, 0 = none
+variable EFFQ-DOUT          \ dout row offset
+
+\ The EN-node graph lives in the byte-addressed USIGS arena; USIGS-CELL-AT turns an
+\ E-OFF into a cell pointer the checked readers can fetch (E-PTR yields a ptr u8 that
+\ cell-fetch rejects). The stored offsets are node-aligned, so this is the same
+\ address E-PTR computes, typed for a checked cell read.
+: EFF-TAG@ ( n -- n )   USIGS-CELL-AT EN.TAG @ ;    \ node tag at offset n
+: EFF-A@   ( n -- n )   USIGS-CELL-AT EN.A @ ;      \ EN.A field (head term offset)
+: EFF-B@   ( n -- n )   USIGS-CELL-AT EN.B @ ;      \ EN.B field (rest-of-row offset)
+
+: EFF-TERM-FAM ( n -- n )       \ n = term-node offset (E-OFF); 0 -> gray
+   dup 0= if drop EFAM-GRAY exit then
+   EFF-TAG@
+   dup EN-PTR  = if drop EFAM-POINTER exit then
+   dup EN-QUOT = if drop EFAM-XT exit then
+   EN-CON = if EFAM-SCALAR exit then
+   EFAM-GRAY ;
+
+: EFF-IS-PUSH? ( n -- bool )    \ n = row-node offset; a live fixed EN-PUSH term?
+   dup 0= if drop 0 0= 0= exit then
+   EFF-TAG@ EN-PUSH = ;
+
+: EFF-ROW-N ( n -- n )          \ count fixed EN-PUSH terms in a stored row (head = top)
+   0 swap
+   begin dup EFF-IS-PUSH? while
+      EFF-B@ swap 1 + swap
+   repeat drop ;
+
+: EFF-ROW-FAM ( n n -- n ) {: i:n off:n :}   \ family of the i-th term from the top (0-based)
+   off i
+   begin dup 0 > while                        \ ( cur i ) advance i EN-PUSH terms
+      over EFF-IS-PUSH? 0= if 2drop EFAM-GRAY exit then
+      swap EFF-B@ swap 1 -
+   repeat drop                                \ ( cur )
+   dup EFF-IS-PUSH? if EFF-A@ EFF-TERM-FAM else drop EFAM-GRAY then ;
+
+\ Only EFFECT-QUERY is trusted: it reads FEP / ER.DIN / ER.DOUT (raw checker state
+\ the checker cannot type, like its sibling USIGS readers). The four readers below
+\ are ordinary checked words over EFF-ROW-N / EFF-ROW-FAM, so the trusted base grows
+\ by exactly one site; internal-mark strips their names past the seal, but the query
+\ boundary (and the prefix consumers) reach them as compiled calls.
+TRUSTED: EFFECT-QUERY ( ptr u8 n -- bool )    \ resolve NAME's active effect into query state
+   FIND-SIG dup EFFQ-OK !
+   if FEP @ ER.DIN @ EFFQ-DIN !  FEP @ ER.DOUT @ EFFQ-DOUT !
+   else 0 EFFQ-DIN !  0 EFFQ-DOUT ! then
+   EFFQ-OK @ ;
+
+: EFFECT-DIN-N ( -- n )        EFFQ-DIN @ EFF-ROW-N ;      \ fixed din term count
+: EFFECT-DOUT-N ( -- n )       EFFQ-DOUT @ EFF-ROW-N ;     \ fixed dout term count
+: EFFECT-DIN-FAM ( i -- n )    EFFQ-DIN @ EFF-ROW-FAM ;    \ EFAM-* of din term i (top = 0)
+: EFFECT-DOUT-FAM ( i -- n )   EFFQ-DOUT @ EFF-ROW-FAM ;   \ EFAM-* of dout term i (top = 0)
+
 \ HIDX-DFR-SYNC ( -- ) : flush the cache when DFERS rewound below a cached defer
 \ answer. Rollback frames restore DFER-END, so a cached flag whose scan reached a
 \ now-retired tail must be dropped before the stale answer masks the rewind.

@@ -309,6 +309,7 @@ that source is explicitly certified; they are not stale-checked by the default
 | USIGS-CELL-AT | `n -- ptr a` | Refines a cell-aligned offset inside the byte-addressed transient signature store so checker metadata can write cell headers (e.g. the USIGS-CLEAR head cell) while byte-copy paths keep `ptr u8`. | `tools/check-test.f`, `tools/build-fixpoint-test.f`, `test/run.f` | src/core/checker.f | 2026-07-04 |
 | HIDX-MEM-NULL | `-- ptr a` | The unallocated symbol-index cache sentinel is a null pointer; the checker cannot type a literal `0` as `ptr a`, so this one-line refinement supplies the typed null that `HIDX-MEM-CLEAR` stores and `HIDX-MEM-READY?` tests. | `tools/check-test.f`, `tools/build-fixpoint-test.f`, `test/run.f` | src/core/checker.f | 2026-07-04 |
 | HIDX-RC>PTR | `n -- ptr n` | Thin identity refinement from a checked, nonnegative anonymous `mmap` result into the checker's symbol-index cell table; syscall-result pointer typing is outside checker inference. | `tools/check-test.f`, `tools/build-fixpoint-test.f`, `test/run.f` | src/core/checker.f | 2026-07-03 |
+| EFFECT-QUERY | `ptr u8 n -- bool` | Effect-read export API entry: resolves a NAME's active effect (user row or prim axiom) via FIND-SIG and reads FEP/ER.DIN/ER.DOUT — raw checker effect-store state outside checker inference — into query state for the checked EFFECT-DIN-N/EFFECT-DOUT-N/EFFECT-DIN-FAM/EFFECT-DOUT-FAM readers that a cold-prefix consumer (src/core/top-row.f, tier-2 dot habu-typed-top-tier-589c550f) calls from an unchecked boundary. | `test/effect-read-api-test.f`, `test/run.f` | src/core/checker.f | 2026-07-15 |
 | CELL | `-- n` | The target cell-width source loads before the checker so pre-checker records can use it; this row publishes the already-defined constant to checked users. | `tools/bootstrap-codegen-test.f`, `test/run.f` | src/core/cell-effects.f | 2026-07-13 |
 | CELL-WIDTH-CHECK | `--` | The target-width assertion must execute during the pre-checker prefix; its post-hook row lets the focused checked bootstrap regression execute the identical body again. | `tools/bootstrap-codegen-test.f`, `test/run.f` | src/core/cell-effects.f | 2026-07-13 |
 | STRUCT-BYTE+ | `ptr a n -- ptr u8` | `CFIELD:` needs to refine a structure base plus byte offset into a byte pointer; generic `+` can produce only `ptr a`, and `BYTE+` requires an existing byte pointer. | `test/gate-dictionary.f`, `test/run.f` | src/core/structures-effects.f | 2026-06-30 |
@@ -426,6 +427,7 @@ that source is explicitly certified; they are not stale-checked by the default
 | p2f-entry | `label ptr a n n --` | Pass-2 typed-fetch dispatch consumes source-offset width and descriptor rows, emits validation, and executes the frozen bundle-fetch lowering. | `test/run.f` | src/habu/habu2.f | 2026-07-11 |
 | INSTALL | `--` | Protected checker-hook installer owns the fixed `LOWER-CERT-HOOK:HOOK` execution token and restores the default fail-closed checker after package sealing. | `tools/build-fixpoint-test.f`, `test/gate-aot-negative.f`, `test/engine-suite.f`, `test/run.f` | src/core/check-hook.f | 2026-07-11 |
 | TR-INSTALL | `--` | Installs the tier-1 top-row tracker hook through the guarded-deref `set-top-check` trust-boundary prim (mirrors `LOWER-CERT-HOOK:INSTALL`'s `' HOOK set-check`); hook installation is not expressible in the checked language. | `test/top-row-warn-test.f`, `test/run.f` | src/core/top-row.f | 2026-07-14 |
+| TR-CERT-DOUT-EMPTY? | `ptr u8 n -- bool` | Unchecked boundary that calls the checker effect-read API (EFFECT-QUERY/EFFECT-DOUT-N) from the checked tier-1 tracker to detect a certified word producing no fixed outputs, so the row pops its declared din precisely instead of graying the tail; reading raw effect-store state is not expressible in the checked language. | `test/top-row-warn-test.f`, `test/run.f` | src/core/top-row.f | 2026-07-15 |
 | CHECKER-CERT-CALL | `ptr u8 n n n --` | Single dynamic-call boundary for the installed lowering-certificate producer; installation is private and single-assignment. | `tools/build-fixpoint-test.f`, `test/lower-cert.f`, `test/run.f` | src/core/checker.f | 2026-07-11 |
 | SCRIPT-BUILD-Z? | `ptr u8 -- bool` | Recognizes the internal `--build` argv marker in a raw argv c-string. | `tools/hb-cli-contracts-test.f`, `tools/build-fixpoint-test.f` | src/os/script-argv.f | 2026-07-11 |
 | SCRIPT-SOURCE-Z? | `ptr u8 -- bool` | Recognizes either source-list argv marker in a raw argv c-string. | `tools/hb-cli-contracts-test.f`, `tools/build-fixpoint-test.f` | src/os/script-argv.f | 2026-07-11 |
@@ -1193,6 +1195,7 @@ src/core/checker.f:USIGS-RC>PTR discharge-candidate habu-checker-self-typing-9ff
 src/core/checker.f:USIGS-CELL-AT discharge-candidate habu-checker-self-typing-9ff8ba86
 src/core/checker.f:HIDX-MEM-NULL discharge-candidate habu-checker-self-typing-9ff8ba86
 src/core/checker.f:HIDX-RC>PTR discharge-candidate habu-checker-self-typing-9ff8ba86
+src/core/checker.f:EFFECT-QUERY discharge-candidate habu-checker-self-typing-9ff8ba86
 src/core/checker.f:CHECKER-CERT-CALL prim-axiom habu-primitive-effect-axiom-1119f176
 src/core/checker.f:tok-imm? prim-axiom habu-primitive-effect-axiom-1119f176
 src/core/checker.f:parse-imm prim-axiom habu-primitive-effect-axiom-1119f176
@@ -1817,6 +1820,7 @@ test/gate-common-lib.f:JSON-DIAGS test-metaprog habu-primitive-effect-axiom-1119
 test/gate-common-lib.f:GE-EVAL-SOURCE-ACT test-metaprog habu-primitive-effect-axiom-1119f176
 test/gate-common-lib.f:GE-EVAL-SOURCE test-metaprog habu-primitive-effect-axiom-1119f176
 test/prop-test-core.f test-metaprog habu-seal-set-check-b3676b33 2
+test/effect-read-api-test.f test-metaprog habu-checker-self-typing-9ff8ba86 1
 test/prop-test-core.f:PROP-INSTALL-HOOK test-metaprog cap:checker-hook-identity
 test/prop-test-core.f:CLEAR-MEAS test-metaprog habu-typed-depth-introspection-18f0efda
 test/prop-test-core.f:ERR@ test-metaprog habu-typed-depth-introspection-18f0efda
@@ -1880,6 +1884,7 @@ tools/codegen-role.f:CGR-EVALUATE-UNCHECKED test-metaprog cap:checker-hook-ident
 src/core/check-hook.f:HOOK stdlib-boundary cap:checker-hook-identity
 src/core/check-hook.f:INSTALL stdlib-boundary cap:checker-hook-identity
 src/core/top-row.f:TR-INSTALL stdlib-boundary cap:checker-hook-identity
+src/core/top-row.f:TR-CERT-DOUT-EMPTY? stdlib-boundary habu-typed-top-tier-589c550f
 src/habu/aot.f:USER-HOOK builder-emit cap:checker-hook-identity
 src/habu/snap-lib.f:SNAP-CHECK-HOOK builder-emit cap:checker-hook-identity 2
 tools/check-core.f:CHK-CHECK-HOOK stdlib-boundary cap:checker-hook-identity
