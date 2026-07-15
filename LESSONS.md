@@ -10,6 +10,14 @@ Last updated: 2026-07-15
   malformed token. Jj has no `diff --check`; generate `jj diff --git` and run
   the repository's checked diff lint instead.
 
+- **Shell command arguments still execute backticks.** Never place Markdown
+  code spans in an `exec` command string; remove them or use shell-safe quoting
+  before passing dot descriptions or other prose.
+
+- **A fresh jj workspace may not contain the ignored native binary.** Provision
+  its `bin/hb` link before gates, and use fail-fast command batches so a missing
+  binary cannot be followed by a commit/describe step.
+
 - **Sealing declared-effect parametricity must target sealed FAMILIES, not all
   concrete specialization.** The nominal-storage effect seal (post-body
   `NP-CHECK`) rejects a declared quantifier that resolves to an arity-0 nominal
