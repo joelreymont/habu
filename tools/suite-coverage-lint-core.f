@@ -34,7 +34,7 @@ require tools/lint/token.f
 require tools/lint/lib.f
 
 $8000 constant SC-CASES-CAP        \ test/gate-stdlib-cases.f source (resident)
-$10000 constant SC-SCAN-CAP        \ reused GSI-file scan buffer
+$20000 constant SC-SCAN-CAP        \ reused GSI-file scan buffer; grown 64K->128K as test/gate-engine-lib.f (the authoritatively scanned engine gate) passed the old cap
 $800 constant SC-PTX-BUF-CAP       \ copied inprocess ptx-toolchain file names
 320 constant SC-CASE-MAX           \ (label,file) member rows; 167 live + headroom
 48 constant SC-PTX-MAX             \ inprocess ptx-toolchain files

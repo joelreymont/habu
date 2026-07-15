@@ -50,6 +50,11 @@ $C0000  constant CFSTK-OFF     \ control-flow stack: cell[0]=CFSP, then CF-REC f
 24      constant CF-REC
 8       constant CF-LOCN
 16      constant CF-LOCF
+\ Control-flow depth cap mirror (src/habu/layout.f). LCFPUSH rejects at
+\ depth == CFSTK-DEPTH-MAX before the write, so a push cannot overflow the
+\ region into the code area at DBASE+DICT-SIZE (dot habu-cap-native-control-a5669829,
+\ hard rc-70 seed sibling of the LCFPOP orphan-underflow guard).
+DICT-SIZE CFSTK-OFF - 1 cells - CF-REC / 256 min constant CFSTK-DEPTH-MAX   \ 170
 $2000000 constant DATA-SIZE    \ data-space mmap (always RW, separate from the RX code region)
 25 constant SOURCE-HEADROOM-PCT
 $400000 constant SOURCE-ARENA-CAP
@@ -2139,7 +2144,13 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
 
 : EMIT-CF-HELPERS ( -- )
    LCFPUSH @ LBL,
-      5 CFSTK-OFF LIT64,  10 DBASE 5 ADD,  11 10 0 LDR,
+      LBL {: cfcapok :}   \ typed-local-lint: allow-bare-local (gforth-hosted control-flow label id, like cfok in LCFPOP)
+      5 CFSTK-OFF LIT64,  10 DBASE 5 ADD,  11 10 0 LDR,   \ x11 = control-flow depth
+      12 CFSTK-DEPTH-MAX MOVZ,  11 12 CMP,  C-LT cfcapok BCOND,   \ depth < cap -> ok (x12 = internal scratch, reloaded below; callers like J-ELSE preserve x14 across this call); else fail closed (never overflow the region into the code area)
+         0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,      \ write the offending opener token
+         0 2 MOVZ,  1 LQNL @ ADR,  1 1 1 ADDI,  2 1 MOVZ,  NR-WRITE SYS,
+         0 70 MOVZ,  NR-EXIT-GROUP SYS,
+      cfcapok LBL,
       12 CF-REC MOVZ,  12 11 12 MUL,  12 12 10 ADD,  12 12 8 ADDI,
       9 12 0 STR,
       13 DATA LOCN-CELL LDR,  13 12 CF-LOCN STR,

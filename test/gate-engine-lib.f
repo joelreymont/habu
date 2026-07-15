@@ -1499,6 +1499,72 @@ variable GE-DFULL-I                 \ copy/definition loop index
    s" set-check: invalid checker xt" s" hb set-check dbase-garbage diag" GE-EXPECT-ERR-HAS
    s" PASS: set-check fail-closed on garbage xt (rc 70, named diagnostic)" type cr ;
 
+create GE-CF-BODY GE-SRC-CAP allot
+variable GE-CF-BODY-U
+
+: GE-CF-BODY-RESET ( -- )
+   0 GE-CF-BODY-U ! ;
+
+: GE-CF-BODY+ ( ptr u8 n -- ) {: a:ptr u:n :}
+   u 0 < if E-STR-BOUNDS throw then
+   GE-CF-BODY-U @ u + GE-SRC-CAP > if E-STR-CAPACITY throw then
+   a GE-CF-BODY GE-CF-BODY-U @ + u BYTE-COPY
+   GE-CF-BODY-U @ u + GE-CF-BODY-U ! ;
+
+: GE-CF-BODY$ ( -- ptr u8 n )
+   GE-CF-BODY GE-CF-BODY-U @ ;
+
+\ Build ": DEEP ( -- ) " + n * "0 0= if " + n * "then " + " ;" — n balanced,
+\ nested IF/THEN openers, each fed a real bool so a checkable depth certifies.
+: GE-CF-NEST ( n -- ) {: n:n :}
+   GE-CF-BODY-RESET
+   s" : DEEP ( -- ) " GE-CF-BODY+
+   n 0 ?do s" 0 0= if " GE-CF-BODY+ loop
+   n 0 ?do s" then " GE-CF-BODY+ loop
+   s"  ;" GE-CF-BODY+ ;
+
+: GE-CF-OVERCAP-1 ( n ptr u8 n -- ) {: n:n label:ptr labelu:n :}
+   \ Plain stdin: a definition nesting control flow past CFSTK-DEPTH-MAX must fail
+   \ closed rc 70 with the named engine diagnostic + the offending opener token,
+   \ NEVER a SIGABRT/SIGSEGV register dump. Root cause (dot habu-cap-native-
+   \ control-a5669829): LCFPUSH had no overflow cap, so the depth-(cap) record
+   \ spilled past [CFSTK-OFF, DICT-SIZE) into the JIT code area above it — the
+   \ opposite-direction sibling of the LCFPOP orphan-underflow crash. LCFPUSH now
+   \ guards depth == CFSTK-DEPTH-MAX and rejects like the orphan closer.
+   GE-HB-RESET
+   n GE-CF-NEST
+   s" bin/hb" GE-CF-BODY$ GE-TIMEOUT-MS GE-RUN-STDIN
+   70 label labelu GE-EXPECT-RC
+   s" control-flow nesting too deep" label labelu GE-EXPECT-ERR-HAS
+   s" if" label labelu GE-EXPECT-ERR-HAS
+   s" habu-crash" label labelu GE-EXPECT-ERR-LACKS ;
+
+: GE-CF-DEPTH-CAP ( -- )
+   \ The over-cap battery. cap+1 is the exact overflow edge; a former hard-crash
+   \ depth well past it both fail closed rc 70 with the diagnostic and no register
+   \ dump. The region-full depth (exactly CFSTK-DEPTH-MAX records fit) is the
+   \ checker's non-certified reject, NOT a cap reject — proving the native cap is
+   \ the region edge. The checker's max checkable depth still compiles rc 0. The
+   \ over-cap reject is catchable under evaluate (RC-REJECT 70 via LEVALREC).
+   CFSTK-DEPTH-MAX 1 +  s" hb cf-cap plus1"      GE-CF-OVERCAP-1
+   CFSTK-DEPTH-MAX 50 + s" hb cf-cap was-crash"  GE-CF-OVERCAP-1
+   GE-HB-RESET
+   CFSTK-DEPTH-MAX GE-CF-NEST
+   s" bin/hb" GE-CF-BODY$ GE-TIMEOUT-MS GE-RUN-STDIN
+   70 s" hb cf-cap region-full rc" GE-EXPECT-RC
+   s" control-flow nesting too deep" s" hb cf-cap region-full not-cap" GE-EXPECT-ERR-LACKS
+   s" habu-crash" s" hb cf-cap region-full no-crash" GE-EXPECT-ERR-LACKS
+   GE-HB-RESET
+   31 GE-CF-NEST
+   s" bin/hb" GE-CF-BODY$ GE-TIMEOUT-MS GE-RUN-STDIN
+   s" hb cf-cap legal-31" GE-EXPECT-OK
+   CFSTK-DEPTH-MAX 1 + GE-CF-NEST
+   GE-CF-BODY$ GE-EVAL-CATCH-RUN
+   s" hb cf-cap eval-catch rc" GE-EXPECT-OK
+   s" 70" s" hb cf-cap eval-catch code" GE-EXPECT-OUT-HAS
+   s" control-flow nesting too deep" s" hb cf-cap eval-catch diag" GE-EXPECT-ERR-HAS
+   s" PASS: control-flow depth cap fail-closed rc70 (no overflow, catchable)" type cr ;
+
 : GE-RUNTIME-CHECKS ( -- )
    GE-UNCAUGHT-THROW
    GE-INTERP-LAYOUT
@@ -1517,6 +1583,7 @@ variable GE-DFULL-I                 \ copy/definition loop index
    GE-EVAL-INTERP-ERR-RECOVER
    GE-EVAL-DEF-REJECT-CATCH
    GE-ORPHAN-CLOSER
+   GE-CF-DEPTH-CAP
    GE-SET-CHECK-NEG
    GE-TYPED-SMOKE
    GE-TIMEOUT-ATTRIBUTION ;

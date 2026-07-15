@@ -132,6 +132,8 @@ variable LMININ   variable LMINMSG   \ interpret-mode certified-word underdepth 
 32 constant MINMSG-LEN    \ byte length of "hb: interpret stack underdepth: " (LMINMSG)
 variable LORPHAN   variable LORPHANMSG   \ orphan control-flow closer reject (empty CFSTK pop) + its message
 40 constant ORPHANMSG-LEN  \ byte length of "hb: control-flow closer without opener: " (LORPHANMSG)
+variable LCFCAP   variable LCFCAPMSG   \ control-flow stack overflow reject (LCFPUSH at CFSTK-DEPTH-MAX) + its message
+35 constant CFCAPMSG-LEN   \ byte length of "hb: control-flow nesting too deep: " (LCFCAPMSG)
 31 constant CONFMSG-LEN   \ byte length of "hb: construct: unknown family: " (EM-COMPILE-ADT-MODE)
 32 constant CONVMSG-LEN   \ byte length of "hb: construct: unknown variant: " (EM-COMPILE-ADT-MODE)
 27 constant MFAMMSG-LEN   \ byte length of "hb: match: unknown family: " (EM-ADT-MATCH-FAM)
@@ -342,6 +344,7 @@ s" c-bp-watch-dump" s" label label --" TRUST
    LINTMSG LABEL@ LBL, s" hb: internal engine word: " BYTES,             \ INTMSG-LEN bytes; LINTERNAL appends the token + newline
    LMINMSG LABEL@ LBL, s" hb: interpret stack underdepth: " BYTES,       \ MINMSG-LEN bytes; LMININ appends the token + newline
    LORPHANMSG LABEL@ LBL, s" hb: control-flow closer without opener: " BYTES,   \ ORPHANMSG-LEN bytes; LORPHAN appends the closer token + newline
+   LCFCAPMSG LABEL@ LBL, s" hb: control-flow nesting too deep: " BYTES,          \ CFCAPMSG-LEN bytes; LCFCAP appends the opener token + newline
    LDICTFULL LABEL@ LBL, s" hb: dictionary full at: " BYTES,             \ CAPMSG-LEN bytes; capacity arms append the token + newline
    LCODEFULL LABEL@ LBL, s" hb: code space full at: " BYTES,             \ CAPMSG-LEN bytes
    LSNAPBAD LABEL@ LBL, s" hb: snapshot trailer corrupt" BYTES,  NL-KW 1 BYTES,               \ SNAPBAD-MSG-LEN bytes incl. newline
@@ -1143,7 +1146,9 @@ s" c-emit-drop-x12" s" --" TRUST
 : EMIT-CF-HELPERS ( -- )
    LBL LBL LBL LBL LBL LBL {: pisb pdone kno kyes kchk knf :}
    LCFPUSH LABEL@ LBL,
-      5 CFSTK-OFF LIT64,  10 DBASE 5 ADD,  11 10 0 LDR,
+      5 CFSTK-OFF LIT64,  10 DBASE 5 ADD,  11 10 0 LDR,    \ x11 = control-flow depth
+      12 CFSTK-DEPTH-MAX MOVZ,  11 12 CMP,                 \ depth vs region cap (x12 = internal scratch, reloaded below; callers like J-ELSE preserve x14 across this call)
+      C-GE LCFCAP LABEL@ BCOND,                            \ at the cap: fail-closed reject BEFORE the write (never overflow into the code area above CFSTK)
       12 CF-REC MOVZ,  12 11 12 MUL,  12 12 10 ADD,  12 12 8 ADDI,
       9 12 0 STR,
       13 DATA LOCN-CELL LDR,  13 12 CF-LOCN STR,
@@ -5753,6 +5758,11 @@ s" em-repl-recover" s" --" TRUST
    0 2 MOVZ,  1 LORPHANMSG LABEL@ ADR,  2 ORPHANMSG-LEN MOVZ,  NR-WRITE SYS,
    0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,
    0 2 MOVZ,  1 LQNL LABEL@ ADR,  1 1 1 ADDI,  2 1 MOVZ,  NR-WRITE SYS,
+   LDIAGRET LABEL@ B,
+   LCFCAP LABEL@ LBL,                                 \ branch target from LCFPUSH: opener at the control-flow stack depth cap (TKA/TKL hold the opener token)
+   0 2 MOVZ,  1 LCFCAPMSG LABEL@ ADR,  2 CFCAPMSG-LEN MOVZ,  NR-WRITE SYS,
+   0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,
+   0 2 MOVZ,  1 LQNL LABEL@ ADR,  1 1 1 ADDI,  2 1 MOVZ,  NR-WRITE SYS,
    LDIAGRET LABEL@ B, ;
 s" em-compile-undef" s" --" TRUST
 
@@ -6183,6 +6193,7 @@ s" SRCA@" s" -- ptr u8" TRUST
    LBL LINTERNAL !  LBL LINTMSG !
    LBL LMININ !  LBL LMINMSG !
    LBL LORPHAN !  LBL LORPHANMSG !
+   LBL LCFCAP !  LBL LCFCAPMSG !
    LBL LDICTFULL !  LBL LCODEFULL !
    LBL LSNAPBAD !  LBL LSNAPVER !
    LBL LSRCFULL !  LBL LSRCREAD !  LBL LBADSTR !

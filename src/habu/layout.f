@@ -62,6 +62,17 @@ $C0000 constant CFSTK-OFF
 24 constant CF-REC
 8 constant CF-LOCN
 16 constant CF-LOCF
+\ Control-flow stack region [CFSTK-OFF, DICT-SIZE): cell 0 is the depth counter,
+\ then CF-REC-byte records. CFSTK-REGION-CAP is how many records fit above the
+\ counter without spilling into the JIT code area at DBASE+DICT-SIZE. LCFPUSH
+\ rejects (named rc-70) at depth == CFSTK-DEPTH-MAX, BEFORE the write, so a push
+\ can never overflow the region (dot habu-cap-native-control-a5669829; the
+\ opposite-direction sibling of the LCFPOP orphan-underflow guard). The cap is
+\ min(region capacity, a sane ceiling) and always exceeds the checker's CFS cap
+\ 31 (CF-PUSH marks UNCK past 31), so no checker-certified nesting is rejected.
+DICT-SIZE CFSTK-OFF - 1 cells - CF-REC / constant CFSTK-REGION-CAP   \ 170 records fit
+256 constant CFSTK-SANE-MAX                                          \ forward sanity ceiling
+CFSTK-REGION-CAP CFSTK-SANE-MAX min constant CFSTK-DEPTH-MAX         \ 170 = min(region, sane)
 
 25 constant SOURCE-HEADROOM-PCT
 $400000 constant SOURCE-ARENA-CAP

@@ -4933,3 +4933,23 @@ unchanged (148855). Keys for milestone 2:
   tools/bootstrap.sh (emit_src + SRC_COMMON), tools/build-fixpoint.f
   (CHECKER-BOOT / COMMON / SNAP-KEEP), tools/boot-pin.f, tools/diagnose-hb-core.f,
   plus pinned row counts in tools/bootstrap-codegen-test.f.
+- **Adding a scratch register to a shared native helper must use a register that
+  helper ALREADY clobbers — a sibling caller may hold live state in an
+  "untouched" register across the call.** dot habu-cap-native-control-a5669829
+  (LCFPUSH control-flow-depth cap, the opposite-direction sibling of the LCFPOP
+  orphan-underflow guard). The overflow itself was real and reproduced exactly at
+  the region edge: CFSTK is [CFSTK-OFF, DICT-SIZE) = 4096 B = one depth cell +
+  floor((4096-8)/24)=170 24-byte records; a watch on `dbase@ DICT-SIZE + @` showed
+  N=170 leaves the first code word intact and N=171 (depth-170 push) overwrites it
+  0..→0, spilling into the JIT code area (checker-ON it SIGABRTs at ~N>=210 once
+  the corrupted code runs; checker-OFF it is silent because DEEP is never
+  executed). First guard attempt loaded the cap into x14 — LCFPUSH never touched
+  x14, but J-ELSE does `14 9 0 ADDI … C-PUSHCP … 9 14 0 ADDI` to carry the IF
+  branch origin across the push, so `mov x14,#cap` clobbered it and LPAT
+  dereferenced the cap value (lldb: faulting `ldr w11,[x9]`, x9=0xaa=170). Fix:
+  use x12, which LCFPUSH already overwrites for record math (reloaded on the next
+  line) — provably dead, no caller can rely on it. Lesson: before picking a
+  scratch reg in a BL-called emitter, grep every caller for save/restore of
+  "unused" registers across the call, or reuse one the callee already clobbers.
+  Also: `data-base` (x20/DATA) != `dbase@` (x26/DBASE) — watch CF-stack memory
+  through DBASE, not DATA, or the probe reads the wrong region.
