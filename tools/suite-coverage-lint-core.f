@@ -206,6 +206,7 @@ variable SC-NUM-L
    s" tools/ptx/acc-device-test.f" q execute
    s" tools/ptx/redadd-device-test.f" q execute
    s" tools/ptx/saxpy-v4-tail-device-test.f" q execute
+   s" tools/ptx/device-gold.f" q execute
    s" tools/ptx/sum-launch.f" q execute
    s" tools/ptx/softmax-launch.f" q execute
    s" tools/ptx/softmax-gradcheck.f" q execute

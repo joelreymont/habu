@@ -357,6 +357,22 @@ points stay listed.
   vocabulary.
 - `tools/ptx/saxpy-v4-tail-device-test.f` — Orin device proof that checked v4
   SAXPY residual scalar lanes are correct for `n=4,5,7,1000003`.
+- `tools/ptx/device-gold.f` — committed device-correctness goldens for the four
+  flagship kernels (GAP #4, habu-committed-device-correctness): spawns bin/hb to
+  emit each COMMITTED entry file (`tools/ptx/matmul-cg.f` MM,
+  `tools/ptx/attention-cg.f` ATTN, `tools/ptx/fused-relu-cg.f` relu(a*x+y),
+  `tools/ptx/saxpy-cg.f` bandwidth), ptxas-assembles, launches on the Orin, and
+  compares a committed CPU golden on exact-binary-fraction inputs (SGEMM A*B with the
+  lower-golden atol+rtol matmul tolerance; attention colmean(V); fused/bandwidth with
+  the eval-device scalar TOL). Off-device a recorded SKIP that still check-loads;
+  SPAWN-ONLY ptx-toolchain member; device-runs on zed by loading this file. A wrong
+  kernel FAILS its golden.
+- `tools/ptx/device-gold-test.f` — HOST proof of device-gold's emit halves (no
+  device, no ptxas): spawns each committed entry file and asserts the emitted PTX is
+  the right kernel body (MM has FMA + cp.async; ATTN has ex2.approx + bar.sync; fused
+  has the relu max.f32 clamp; bandwidth SAXPY has scale+bias but no clamp), plus a
+  fail-closed missing-producer throw. Inprocess ptx-toolchain member; mirrors
+  `tools/ptx/fusion-emit-test.f`.
 - `tools/ptx/smem-cg.f` — checked shared-memory tile body run through the PTX
   codegen, proving `COOP-CTX`/`STAGE`/`SLOAD`/`SSTORE` emit barriers and shared
   loads/stores.

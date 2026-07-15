@@ -319,6 +319,7 @@ TEST:SUITE ptx-toolchain
    tools/kernel-perf-lint-test.f
    tools/ptx/bandwidth-lib-test.f
    tools/ptx/fusion-emit-test.f
+   tools/ptx/device-gold-test.f
    tools/ptx/attention-bench-test.f
    tools/ptx/fusion-compare.f
    tools/ptx/gemm-bench.f
@@ -326,6 +327,7 @@ TEST:SUITE ptx-toolchain
    tools/ptx/acc-device-test.f
    tools/ptx/redadd-device-test.f
    tools/ptx/saxpy-v4-tail-device-test.f
+   tools/ptx/device-gold.f
    tools/ptx/sum-launch.f
    tools/ptx/softmax-launch.f
    tools/ptx/softmax-gradcheck.f

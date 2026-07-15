@@ -522,6 +522,7 @@ variable GSI-TL-FILE-A
    s" tools/ptx/perf-regress.f" GSI-INCLUDE \ ( -- )
    s" tools/kernel-perf-lint-test.f" GSI-INCLUDE \ ( -- )
    s" tools/ptx/fusion-emit-test.f" GSI-INCLUDE \ ( -- )
+   s" tools/ptx/device-gold-test.f" GSI-INCLUDE \ ( -- )
    s" tools/ptx/attention-bench-test.f" GSI-INCLUDE ; \ ( -- )
 \ NOTE: the device/bench tools (bandwidth-lib-test, fusion-compare, gemm-bench, attention-bench)
 \ run only in the ptx-toolchain suite of the MANUAL lint-libs slice
