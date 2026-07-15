@@ -71,6 +71,13 @@ variable SCT-GX-U
    \ foo-test.f scheduled -> ok; orphan-xyz-test.f -> one SUITE-ORPHAN
    SC-FIND @ 1 T= ;
 
+: SCT-CANDIDATE-SCHEDULE ( -- )
+   SCT-QUIET SC-RESET
+   SCT-GX-RESET
+   s" candidate-test.f GE-SRC-FILE+" SCT-GX-LINE
+   SCT-GX$ SC-SCHED-SCAN$
+   s" candidate-test.f" SC-SCHEDULED? TTRUE ;
+
 \ ---- (b) ptx: spawned unit absent from the inprocess list -> PTX-TOOL-MISSING -
 : SCT-PTX-MISSING ( -- )
    SCT-QUIET SC-RESET
@@ -160,6 +167,7 @@ variable SCT-GX-U
    SCT-LIVE-GREEN
    SCT-PARSE-MEMBERS
    SCT-ORPHAN
+   SCT-CANDIDATE-SCHEDULE
    SCT-PTX-MISSING
    SCT-PTX-EXTRA
    SCT-PTX-SPAWN-ONLY-INPROC

@@ -4666,3 +4666,11 @@ unchanged (148855). Keys for milestone 2:
   cell for zero to cover capture scrubbing, then re-sign a forged-nonzero image
   and read the cell from user code to cover startup reset. A normal boot alone
   lets either boundary hide the other's omission.
+- **Engine-layout regressions belong to the candidate gate, not a stale host
+  tail.** A host `bin/hb` predating a new sealed DATA cell cannot enforce its
+  guard band, so running the fixture there reports a false implementation
+  failure. Launch the fixture from candidate validation, pass the same candidate
+  through `HABU_UNDER_TEST` to its child probes, and keep host tails for contracts
+  shared by both layouts. Suite coverage must derive `GE-SRC-FILE+` candidate
+  members too, or moving a real fixture makes the inventory report a false
+  orphan.

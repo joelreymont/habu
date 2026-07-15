@@ -610,6 +610,14 @@ GE-FILES: GE-REPAIR-HINTS-RUN-FILES
 
 package GENG
 
+: TOP-ROW-HOOK-SUITE-ON ( ptr u8 n ptr u8 n -- )
+   {: exe:ptr exeu:n label:ptr labelu:n :}
+   GE-HB-RESET
+   GE-SRC-RESET
+   s" test/top-row-hook-test.f" GE-SRC-FILE+
+   s" HABU_UNDER_TEST" >LEN exe exeu >LEN PROC-ENV+
+   exe exeu label labelu GE-SUITE-RUN ;
+
 : LOWER-TXN-PROTECTION-SUITE-ON ( ptr u8 n ptr u8 n -- )
    {: exe:ptr exeu:n label:ptr labelu:n :}
    GE-HB-RESET
@@ -626,6 +634,10 @@ package GENG
    exe exeu label labelu GE-SUITE-RUN ;
 
 public
+
+: TOP-ROW-HOOK-SUITE ( -- )
+   GE-CANDIDATE$ s" top-row hook suite on Habu-under-test"
+      TOP-ROW-HOOK-SUITE-ON ;
 
 : LOWER-TXN-PROTECTION-SUITE ( -- )
    GE-CANDIDATE$ s" active lowering transaction protection on Habu-under-test"
@@ -1385,6 +1397,7 @@ variable GE-DFULL-I                 \ copy/definition loop index
    GE-LAYOUT-BUFFER-SUITE
    GE-WIDE-STORE-SEAL-SUITE
    GE-PROTECTION-SPAN-SUITE
+   GENG:TOP-ROW-HOOK-SUITE
    GENG:LOWER-TXN-PROTECTION-SUITE
    GENG:TXN-LARGE-SUITE
    GE-TYPE-EXPORT-SUITE

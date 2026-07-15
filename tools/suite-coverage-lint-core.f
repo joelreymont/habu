@@ -4,13 +4,13 @@
 \ TEST:SUITE inventory (test/gate-stdlib-cases.f) and the resident in-process GSI
 \ groups (test/gate-stdlib-inline-lib.f / test/gate-stdlib-lint-tools.f) are
 \ hand-synced copies that have silently drifted - a cases suite whose members are
-\ mirrored into no scheduled GSI group runs in no automatic gate, and the
+\ mirrored into no scheduled GSI or candidate group runs in no automatic gate, and the
 \ inprocess ptx-toolchain list can diverge from its spawned superset.
 \
 \ Policy is DERIVED, not transcribed: the lint parses the three gate files each
 \ run and enforces -
 \   (a) every TEST:SUITE member file is either scheduled (mirrored into a run.f
-\       in-process GSI include/require group), documented spawn-only, or
+\       in-process GSI include/require group or candidate validation), documented spawn-only, or
 \       documented manual-gate - otherwise SUITE-ORPHAN.
 \   (b) the in-process GSI-LINT-LIBS-PTX-TOOL list == the spawned ptx-toolchain
 \       member list MINUS the documented spawn-only set - any other divergence is
@@ -302,14 +302,15 @@ variable SC-NUM-L
       1+
    repeat drop ;
 
-\ ---- GSI files: files run in-process via GSI-INCLUDE/FORK-INCLUDE/REQUIRE -----
-: SC-GSI-VERB? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+\ ---- gate files: files run through a resident or candidate gate --------------
+: SC-SCHED-VERB? ( ptr u8 n -- bool ) {: a:ptr u:n :}
    a u s" GSI-INCLUDE" LINT-STR= if LINT-TRUE exit then
    a u s" GSI-FORK-INCLUDE" LINT-STR= if LINT-TRUE exit then
-   a u s" GSI-REQUIRE" LINT-STR= ;
+   a u s" GSI-REQUIRE" LINT-STR= if LINT-TRUE exit then
+   a u s" GE-SRC-FILE+" LINT-STR= ;
 
 : SC-SCHED-TOK ( n -- ) {: k:n :}
-   k TOK SC-GSI-VERB? 0= if exit then
+   k TOK SC-SCHED-VERB? 0= if exit then
    k 1- TOK SC-STRIP-Q 2dup s" .f" HAS-EXT? if SC-SCHED+ else 2drop then ;
 
 : SC-SCHED-SCAN$ ( ptr u8 n -- )
@@ -447,6 +448,7 @@ variable SC-NUM-L
    s" test/gate-stdlib-inline-lib.f" SC-LOAD-SCHED-FILE
    s" test/gate-stdlib-lint-tools.f" SC-LOAD-SCHED-FILE
    s" test/run-worker-stdlib.f" SC-LOAD-SCHED-FILE
+   s" test/gate-engine-lib.f" SC-LOAD-SCHED-FILE
    SC-SCHED-CLOSURE-CORES ;
 
 : SC-LOAD-PTX ( -- )
