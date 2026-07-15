@@ -163,6 +163,12 @@ TRUSTED: SND-ZERO-SPAN-CELL ( n -- ) SND-N @ + 0 swap ! ;
    HIDXP-CELL SND-ZERO-CELL
    TKA-CELL SND-ZERO-CELL     TKL-CELL SND-ZERO-CELL
    DEF-TKA-CELL SND-ZERO-CELL
+   \ Disarm the top-row token hook in the image: a captured-armed tracker fires
+   \ on the warm boot's `provided` re-establishment rows and its sig-store scan
+   \ derefs an un-rebased engine-text pointer (SIGSEGV; dot
+   \ habu-typed-top-snapshot-daa8989a owns tracker-on re-arm; the pointer defect
+   \ is habu-snapshot-rebase-persisted-4bd33351).
+   TOP-HOOK-CELL SND-ZERO-CELL
    AOT-SEED-DONE-CELL SND-ZERO-CELL
    AOT-SEED-ARM-CELL SND-ZERO-CELL
    SND-ZERO-EVAL-FRAMES

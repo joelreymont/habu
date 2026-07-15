@@ -4471,3 +4471,14 @@ unchanged (148855). Keys for milestone 2:
 - **Unknown `dot` forms are mutating until proven otherwise.** Read `dot help`
   before discovery: a bare positional form can create a dot instead of querying
   dependencies.
+- A landed "documented skip" claim must be EXECUTED-verified, not
+  header-asserted: sub-dot 3's report said "snapshot/AOT boots skip the
+  tracker (SNAP-CELL-guarded)" but no such guard existed - every snapshot
+  boot SIGSEGVed on the captured-armed hook, and the red (owner-wid-child)
+  hid because that leg runs under HABU_OWNER_WID_HARNESS=1 in a forge phase,
+  not as a plain scheduled test. Two generalizations: (a) any hook/state a
+  cold-prefix file arms must be explicitly disarmed in SND-ZERO-LIVE unless
+  its warm-boot behavior is executed-tested; (b) warm boots replay the
+  unguarded `provided` re-establishment rows that cold boots never expose to
+  late-armed hooks - arm-order equivalence between cold and warm is a claim
+  that needs a snapshot-boot test the moment a new boot-time hook lands.
