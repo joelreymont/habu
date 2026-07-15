@@ -287,6 +287,7 @@ TRUSTED: BYTE-OFF>N ( CAD-NUM:byte-off -- n ) ;
 : RAW-BUF-RESET ( ptr len -- )                         BUF-RESET ;
 : RAW-BUF-LEN@ ( ptr len -- n )                        BUF-LEN@ ;
 : RAW-BUF-APPEND ( ptr u8 n ptr u8 n ptr len -- )      BUF-APPEND ;
+: RAW-BUF-APPEND-C ( n ptr u8 n ptr len -- )           BUF-APPEND-C ;
 
 \ ---- ok extractors: a validated/derived raw cell that fails a role predicate is -
 \ a string bounds violation. The reachable arm is the caller-facing negative for
@@ -371,5 +372,8 @@ public
 : BUF-APPEND ( ptr u8 CAD-NUM:byte-len ptr u8 CAD-NUM:byte-len ptr len -- )
    {: src:ptr srclen:CAD-NUM:byte-len dst:ptr cap:CAD-NUM:byte-len lenp:ptr :}
    src srclen BYTE-LEN>N dst cap BYTE-LEN>N lenp RAW-BUF-APPEND ;
+: BUF-APPEND-C ( n ptr u8 CAD-NUM:byte-len ptr len -- )
+   {: c:n dst:ptr cap:CAD-NUM:byte-len lenp:ptr :}
+   c dst cap BYTE-LEN>N lenp RAW-BUF-APPEND-C ;
 
 ;package

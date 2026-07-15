@@ -286,14 +286,25 @@ variable STR-T-SPLIT-OK
    s" " STR-TEST-COMMA 0 s" " 1 STR-TRUE STR-T-SPLIT-CHECK
    s" " STR-TEST-COMMA 1 s" " 1 STR-FALSE STR-T-SPLIT-CHECK ;
 
-: STR-TEST-TYPED-BUFFER ( -- )                          \ append + read length as a byte-len role
+: STR-TEST-TYPED-BUFFER ( -- )                          \ append span + byte, read length as a byte-len role
    STR-TEST-BUF2-LEN STR:BUF-RESET
    s" hi" STR:LENGTH STR-TEST-BUF2 16 STR:LENGTH STR-TEST-BUF2-LEN STR:BUF-APPEND
-   STR-TEST-BUF2 STR-TEST-BUF2-LEN STR:BUF-LEN@ CAD-NUM:STR-T-BL>RAW s" hi" STR-ASSERT$ ;
+   33 STR-TEST-BUF2 16 STR:LENGTH STR-TEST-BUF2-LEN STR:BUF-APPEND-C
+   STR-TEST-BUF2 STR-TEST-BUF2-LEN STR:BUF-LEN@ CAD-NUM:STR-T-BL>RAW s" hi!" STR-ASSERT$ ;
 
 : STR-TEST-TYPED-BUF-OVERFLOW ( -- )
    15 >LEN STR-TEST-BUF2-LEN !
    s" xx" STR:LENGTH STR-TEST-BUF2 16 STR:LENGTH STR-TEST-BUF2-LEN STR:BUF-APPEND ;
+
+: STR-TEST-TYPED-BUF-C-OVERFLOW ( -- )                  \ full buffer + one byte -> E-STR-CAPACITY
+   16 >LEN STR-TEST-BUF2-LEN !
+   65 STR-TEST-BUF2 16 STR:LENGTH STR-TEST-BUF2-LEN STR:BUF-APPEND-C ;
+
+: STR-TEST-TYPED-BUF-BAD-C-HI ( -- )                    \ c>255 -> E-STR-BOUNDS
+   300 STR-TEST-BUF2 16 STR:LENGTH STR-TEST-BUF2-LEN STR:BUF-APPEND-C ;
+
+: STR-TEST-TYPED-BUF-BAD-C-LO ( -- )                    \ c<0 -> E-STR-BOUNDS
+   -1 STR-TEST-BUF2 16 STR:LENGTH STR-TEST-BUF2-LEN STR:BUF-APPEND-C ;
 
 : STR-TEST-TYPED-SPLIT-OVERFLOW ( -- )                  \ one-past-end offset advance overflows
    s" x" drop STR-MAX-I64 STR:LENGTH STR-TEST-COMMA 0 STR:OFFSET STR:SPLIT-NEXT 2drop 2drop ;
@@ -308,6 +319,9 @@ variable STR-T-SPLIT-OK
    STR-TEST-TYPED-SPLIT
    STR-TEST-TYPED-BUFFER
    [: STR-TEST-TYPED-BUF-OVERFLOW ;] catch E-STR-CAPACITY STR-ASSERT=
+   [: STR-TEST-TYPED-BUF-C-OVERFLOW ;] catch E-STR-CAPACITY STR-ASSERT=
+   [: STR-TEST-TYPED-BUF-BAD-C-HI ;] catch E-STR-BOUNDS STR-ASSERT=
+   [: STR-TEST-TYPED-BUF-BAD-C-LO ;] catch E-STR-BOUNDS STR-ASSERT=
    [: STR-TEST-TYPED-SPLIT-OVERFLOW ;] catch E-STR-BOUNDS STR-ASSERT=
    [: STR-TEST-TYPED-LEN-NEG ;] catch E-STR-BOUNDS STR-ASSERT=
    [: STR-TEST-TYPED-OFF-NEG ;] catch E-STR-BOUNDS STR-ASSERT=
@@ -317,13 +331,15 @@ variable STR-T-SPLIT-OK
    s" SOK-FIND ( ptr u8 CAD-NUM:byte-len ptr u8 CAD-NUM:byte-len -- option<CAD-NUM:index> ) STR:FIND-SUB" CHECK-QUIET-CANDIDATE! -1 STR-ASSERT=
    s" SOK-INDEX ( ptr u8 CAD-NUM:byte-len n -- option<CAD-NUM:index> ) STR:INDEX-OF" CHECK-QUIET-CANDIDATE! -1 STR-ASSERT=
    s" SOK-SPLIT ( ptr u8 CAD-NUM:byte-len n CAD-NUM:byte-off -- ptr u8 CAD-NUM:byte-len CAD-NUM:byte-off bool ) STR:SPLIT-NEXT" CHECK-QUIET-CANDIDATE! -1 STR-ASSERT=
+   s" SOK-BUF-C ( n ptr u8 CAD-NUM:byte-len ptr len -- ) STR:BUF-APPEND-C" CHECK-QUIET-CANDIDATE! -1 STR-ASSERT=
    \ ---- static role-flow: length/index/offset swaps + raw-n reject (0) ------------
    s" SBAD-OFF-FOR-LEN ( ptr u8 CAD-NUM:byte-off ptr u8 CAD-NUM:byte-len -- option<CAD-NUM:index> ) STR:FIND-SUB" STR-CHECK-REJECTS
    s" SBAD-LEN-FOR-OFF ( ptr u8 CAD-NUM:byte-len n CAD-NUM:byte-len -- ptr u8 CAD-NUM:byte-len CAD-NUM:byte-off bool ) STR:SPLIT-NEXT" STR-CHECK-REJECTS
    s" SBAD-RAW-LEN ( ptr u8 n ptr u8 CAD-NUM:byte-len -- option<CAD-NUM:index> ) STR:FIND-SUB" STR-CHECK-REJECTS
    s" SBAD-RAW-OFF ( ptr u8 CAD-NUM:byte-len n n -- ptr u8 CAD-NUM:byte-len CAD-NUM:byte-off bool ) STR:SPLIT-NEXT" STR-CHECK-REJECTS
    s" SBAD-OFF-FOR-INDEX ( ptr u8 CAD-NUM:byte-off n -- option<CAD-NUM:index> ) STR:INDEX-OF" STR-CHECK-REJECTS
-   s" SBAD-FIND-OUT ( ptr u8 CAD-NUM:byte-len ptr u8 CAD-NUM:byte-len -- option<CAD-NUM:byte-off> ) STR:FIND-SUB" STR-CHECK-REJECTS ;
+   s" SBAD-FIND-OUT ( ptr u8 CAD-NUM:byte-len ptr u8 CAD-NUM:byte-len -- option<CAD-NUM:byte-off> ) STR:FIND-SUB" STR-CHECK-REJECTS
+   s" SBAD-BUF-C-RAW-CAP ( n ptr u8 n ptr len -- ) STR:BUF-APPEND-C" STR-CHECK-REJECTS ;
 
 s" abc" s" abc" STR= STR-ASSERT
 s" " s" " STR= STR-ASSERT

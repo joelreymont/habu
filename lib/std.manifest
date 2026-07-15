@@ -157,6 +157,7 @@ schema_version	module	file	kind	word	effect	test	doc	owner	status	notes
 1	string	lib/string.f	word	STR:BUF-RESET	(ptr len --)	lib/string-test.f	docs/stdlib.md	stdlib-string	active	clear a caller-owned bounded byte buffer length cell via the typed surface
 1	string	lib/string.f	word	STR:BUF-LEN@	(ptr len -- CAD-NUM:byte-len)	lib/string-test.f	docs/stdlib.md	stdlib-string	active	read a caller-owned bounded byte buffer length as a byte-len
 1	string	lib/string.f	word	STR:BUF-APPEND	(ptr u8 CAD-NUM:byte-len ptr u8 CAD-NUM:byte-len ptr len --)	lib/string-test.f	docs/stdlib.md	stdlib-string	active	append typed-length bytes into a caller-owned bounded byte buffer
+1	string	lib/string.f	word	STR:BUF-APPEND-C	(n ptr u8 CAD-NUM:byte-len ptr len --)	lib/string-test.f	docs/stdlib.md	stdlib-string	active	append one typed byte into a caller-owned bounded byte buffer
 1	json-write	lib/json-write.f	module			lib/json-write-test.f	docs/stdlib.md	stdlib-json-write	active	checked growable emit-only JSON writer for fixtures and native tools
 1	json-write	lib/json-write.f	word	JW-BUF-FIELD	(-- ptr ptr u8)	lib/json-write-test.f	docs/stdlib.md	stdlib-json-write	active	return the typed pointer field for JSON writer output storage
 1	json-write	lib/json-write.f	word	JW-BUF@	(-- ptr u8)	lib/json-write-test.f	docs/stdlib.md	stdlib-json-write	active	read the JSON writer output storage pointer
