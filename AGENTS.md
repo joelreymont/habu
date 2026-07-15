@@ -57,6 +57,19 @@ codes, never silent; named constants; and a `T{ … -> … }T` test for every wo
   renderer vs DB vs data table). Split at responsibility seams; it aids review
   and lets files be built in parallel. See `docs/forth.md` § Files.
 
+## Package-first naming (BLOCKING)
+
+- Every new library, tool, test-support, and subsystem module MUST open or
+  reopen a real `package NAME`; only an explicitly documented core/prelude
+  language surface may define new global words. Use short package-local tails
+  for the private helpers and public API that the module actually needs; call
+  them bare inside that package and use `NAME:WORD` only across package
+  boundaries. Raw global stems such as `LRD-*`, `TASK-*`, or `FOO-*` MUST NOT
+  substitute for package scope. Any new or changed module definition without a
+  package owner fails the commit gate. Inspect the exact diff until the checked
+  package-diff gate tracked by `habu-enforce-pkg-first-c28d1dec` lands. See
+  `docs/forth.md` § Packages.
+
 ## Habu Only (BLOCKING)
 
 - New repo automation, tests, benchmarks, report reducers, parsers, code

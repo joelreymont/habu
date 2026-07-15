@@ -4,6 +4,14 @@
 
 Last updated: 2026-07-15
 
+- **High-frequency architectural defaults need an entry rule and a machine
+  gate, not a buried reference.** `docs/forth.md` already made packages the
+  default, but the session-level instructions summarized casing without package
+  ownership, so generated tests repeatedly fell back to raw stems such as
+  `LRD-*`. Repeat the package-first invariant concisely in `AGENTS.md`; reject
+  violations by exact-diff inspection until the checked package-diff gate lands.
+  Documentation discoverability alone does not constrain generation.
+
 - **A surgical GPU devfreq min=max pin reproduces the shipped 918 MHz clock within
   0.15% — use it to make cross-session perf rows comparable.** dot
   habu-re-measure-mma-9fe40cd1. The larger-BK MMA sweep landed at the UNBOOSTED
