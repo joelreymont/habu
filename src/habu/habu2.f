@@ -522,6 +522,13 @@ s" c-bp-watch-dump" s" label label --" TRUST
    loop B,
    done LBL, ;
 
+: PFX-APPEND-ENGINE-SNAP-HOOK-BUILD ( -- )
+   LBL {: done:label :}
+   12 SP 8 LDR,
+   12 done CBZ,
+   PFX-APPEND-ENGINE-SNAP-HOOK
+   done LBL, ;
+
 : PFX-LOAD-BASE-FILES ( -- )
    PFX-COMMON LPUTIL         s" src/core/util.f"        PFX-LOAD-ROW
    PFX-COMMON LPCELL         s" src/core/cell.f"        PFX-LOAD-ROW
@@ -548,7 +555,6 @@ s" c-bp-watch-dump" s" label label --" TRUST
    PFX-LINUX  LPLINUXLAYOUT  s" src/os/linux/layout.f"  PFX-LOAD-ROW
    PFX-MACOS  LPMACOSLAYOUT  s" src/os/macos/layout.f"  PFX-LOAD-ROW
    PFX-COMMON LPHABULAYOUT   s" src/habu/layout.f"      PFX-LOAD-ROW
-   PFX-APPEND-ENGINE-SNAP-HOOK
    PFX-COMMON LPENVBASE      s" src/os/env-base.f"      PFX-LOAD-ROW
    PFX-COMMON LPINCLUDE      s" src/core/include.f"     PFX-LOAD-ROW
    PFX-COMMON LPENUMS        s" src/core/enums.f"       PFX-LOAD-ROW
@@ -1071,6 +1077,7 @@ public
       12 1 MOVZ,  12 SP 8 STR,
    body LBL,
       EMIT-COLD-PREFIX
+      PFX-APPEND-ENGINE-SNAP-HOOK-BUILD
       PFX-LOAD-SCRIPT-ARGV-COLD
       PFX-PROVIDE-FILES
       12 DATA SNAP-CELL LDR,

@@ -77,6 +77,10 @@ variable TRH-OK-A
    s" event-row saturation throws the reserved test capacity code" T-LABEL
    [: TRH-ROW-FULL ;] E-TEST-CAPACITY TTHROWSQ ;
 
+: TRH-SNAP-HOOK-CLEAR ( -- )
+   s" ordinary load leaves engine snapshot hook clear" T-LABEL
+   data-base ENGINE-SNAP-XT-CELL + @ 0 T= ;
+
 \ The installed top-row hook: record ( class, token bytes, flags ) per event.
 \ typed-local-lint: allow-bare-local - a keeps the ptr u8 byte-span role for BYTE-COPY
 : TRH-LOG ( ptr u8 n n n -- ) {: a u:n cls:n flg:n :}
@@ -147,6 +151,7 @@ variable TRH-OK-A
 \ itself is the last logged event).
 T-RESET
 TRH-CAPACITY-TESTS
+TRH-SNAP-HOOK-CLEAR
 TRH-RESET
 ' TRH-LOG set-top-check
 top-check@ ' TRH-LOG = TRH-OK-A !

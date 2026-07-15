@@ -4674,3 +4674,8 @@ unchanged (148855). Keys for milestone 2:
   shared by both layouts. Suite coverage must derive `GE-SRC-FILE+` candidate
   members too, or moving a real fixture makes the inventory report a false
   orphan.
+- **Build-only hooks must branch at the build entry, not inside the shared cold
+  prefix.** `LCOLDPFX` and `LCOLDPFXB` assemble one body for ordinary and build
+  modes; appending a hook unconditionally during base-file loading exposes it to
+  every user source. Reload the saved entry mode at the append seam and regress
+  the ordinary `--load` cell as zero.
