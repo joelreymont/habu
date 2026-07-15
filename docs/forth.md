@@ -12,14 +12,17 @@ file.
 - **Our words UPPER-CASE; built-in Forth words as-is.** Words we define
   (`RESOLVE`, `MK-CON`, `APPLY-EFFECT`) are UPPER-CASE; core Forth words stay
   lower-case (`and`, `cells`, `allot`, `: ;`, `?do`). Never upper-case a built-in.
-- **Block constructs are `FOO … ;FOO`.** Every project-defined block/definer
-  pair opens with `FOO` and closes with `;FOO`: `STRUCTURE … ;STRUCTURE`,
-  `VARIANT … ;VARIANT`, `ENUM … ;ENUM`, `MATCH … ;MATCH`, and
-  `package … ;package` (keyword case follows the opener). Never
-  `BEGIN-FOO`/`END-FOO`, `FOO-END`, or `ENDFOO` pairs. ANS core control
-  words (`begin … until`, `case … endcase`, `do … loop`,
-  `of … endof`) stay as-is. Removed type delimiters have no compatibility
-  spelling; see **Structures And Enums**.
+- **Block/definer pairs prefer `FOO … ;FOO`.** New project-defined block or
+  definer pairs open with `FOO` and close with `;FOO` — the shipped type-family
+  DSL follows it: `SUMTYPE … ;SUMTYPE`, `PRODUCT … ;PRODUCT`, `ENUM … ;ENUM`,
+  `VARIANT … ;VARIANT`, `MATCH … ;MATCH`, and `package … ;package` (keyword case
+  follows the opener). Two shipped definers use the `END-NAME` / `BEGIN-NAME`
+  spelling instead and are the sanctioned exceptions, not bugs: the
+  project-defined `VALUE-RECORD … END-VALUE-RECORD` and the inherited Forth-2012
+  `BEGIN-STRUCTURE … END-STRUCTURE` low-level definer. Do not coin *new*
+  `END-FOO`, `FOO-END`, or `ENDFOO` pairs; prefer `;FOO`. ANS core control words
+  (`begin … until`, `case … endcase`, `do … loop`, `of … endof`) stay as-is.
+  See **Structures And Enums**.
 - **Hyphens, never underscores — in word names *and* file names.** `T-CON`,
   `TV-RESET`, `MAX-TV` — not `T_CON`. Source files too: `camera-tracker.f`,
   `latency-xcorr.f`, `timestamp-metrics.f` — not `camera_tracker.f`. Underscores
@@ -28,12 +31,14 @@ file.
 - **Conventional suffixes/prefixes**: predicates end `?` (`TYVAR?`); conversions
   `>X` (`TERM>TAG`, `S>NUMBER?`); fetch/store `X@` / `X!` (`TV@` / `TV!`);
   allocate/reset `X-ALLOC` / `X-RESET`.
-- **Scope pairs are `FOO` … `;FOO`** (decision 2026-07-04). Every word pair that
-  opens and closes a scope/region uses the opener's name with a `;` prefix as
-  the closer: `STRUCTURE … ;STRUCTURE`, `package … ;package`. New scope words
-  follow this from birth (type families, kernels, suites). The bare `;`
-  (definition closer) and non-scope `;`-words are unaffected; only paired
-  scope delimiters follow the rule.
+- **New scope pairs are `FOO` … `;FOO`** (decision 2026-07-04). Every new word
+  pair that opens and closes a scope/region uses the opener's name with a `;`
+  prefix as the closer: `SUMTYPE … ;SUMTYPE`, `package … ;package`. New scope
+  words follow this from birth (type families, kernels, suites); the shipped
+  `END-VALUE-RECORD` and `END-STRUCTURE` terminators are the sanctioned
+  exceptions above, not templates for new pairs. The bare `;` (definition
+  closer) and non-scope `;`-words are unaffected; only paired scope delimiters
+  follow the rule.
 - Short names per the global naming rules: abbreviate common terms (`buf`, `ctx`,
   `idx`, `nv`, `ki`, `ko`); single letters are fine in tight scope only when
   they remain readable. Locals are lexical and local-first: a declared local
