@@ -12,16 +12,16 @@
 \ persisted effect-node arena, a pre-3b engine restoring such an image would
 \ misread hidden fields as logical params. The trailer grows 40->48 bytes with
 \ a format-version cell at offset 40; the loader (habu2.f EM-SNAPSHOT-RESTORE)
-\ rejects any image whose version exceeds what the engine supports with a
-\ distinct exit status (80, mirroring the snbad rc-79 corrupt-trailer path).
-\ Version 0 (an old 40-byte trailer) still restores. Bump on any layout change
-\ that a prior engine would misread.
+\ rejects any image whose version is not the current format with a distinct
+\ exit status (80, mirroring the snbad rc-79 corrupt-trailer path). Bump on any
+\ layout change that a prior engine would misread.
 \ Version 2: dict record [16] bits 52-59 became the DNAME-MIN-IN certified
 \ input-arity band (dot habu-habu-certified-words-84e84eaf); a pre-change
 \ engine restoring a post-change snapshot would fold the band into name
 \ lengths (its length reads clear only the top 4 bits), so it must fail
 \ closed rc 80 instead of misreading the dictionary.
-2 constant SNAP-FORMAT-VERSION
+\ Version 3: snapshot DATA includes the owner public/private WID registry.
+\ Older formats cannot prove qualified-call visibility and fail closed.
 create TRL 48 allot
 variable STB  variable STSZ  variable SDB  variable SCL  variable SDL
 variable SNL  variable SFTS  variable SPAD  variable SFD
@@ -140,7 +140,7 @@ TRUSTED: SND-ZERO-SPAN-CELL ( n -- ) SND-N @ + 0 swap ! ;
 \ survived here). Dead after restore - zero the whole window.
 : SND-ZERO-RSTK ( -- )
    RSTK-OFF
-   begin dup DATA-START < while
+   begin dup RSTK-END < while
       dup SND-ZERO-SPAN-CELL
       8 +
    repeat drop ;

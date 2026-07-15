@@ -723,6 +723,31 @@ variable LCOLDPFX variable LCOLDPFXB variable LAPPPROV
    4 9 0 STRB,
    9 9 1 ADDI, ;
 
+package OWNER-WID-EMIT
+
+: EMIT-BYTES ( ptr u8 n -- ) {: a:ptr u:n :}
+   u 0= if exit then
+   LBL LBL LBL {: loop:label bytes:label done:label :}
+   12 bytes ADR,  13 u MOVZ,  13 12 13 ADD,
+   loop LBL,
+      12 13 CMP,  C-GE done BCOND,
+      4 12 0 LDRB,
+      SRC-SFAIL LABEL@ C-SOURCE-APPEND-X4-TO
+      12 12 1 ADDI,
+      loop B,
+   bytes LBL,  a u BYTES,
+   done LBL, ;
+
+public
+
+: EMIT-SOURCE ( -- )
+   SOURCE-HOOK EMIT-BYTES ;
+
+: EMIT-FINALIZE ( -- )
+   s\" s\" OWNER-WID:FINALIZE\" s\" --\" TRUST\nOWNER-WID:FINALIZE\n" EMIT-BYTES ;
+
+;package
+
 : C-SOURCE-APPEND-X4 ( -- )
    SRC-SFAIL LABEL@ C-SOURCE-APPEND-X4-TO ;
 
@@ -806,6 +831,13 @@ variable LCOLDPFX variable LCOLDPFXB variable LAPPPROV
    $52 C-SOURCE-APPEND-CHAR
    $45 C-SOURCE-APPEND-CHAR
    $0A C-SOURCE-APPEND-CHAR
+   done LBL, ;
+
+: EMIT-OWNER-FINALIZE-TOKEN ( -- )
+   LBL {: done:label :}
+   12 DATA SNAP-CELL LDR,
+   12 done CBNZ,
+   OWNER-WID-EMIT:EMIT-FINALIZE
    done LBL, ;
 
 : PFX-PROVIDE-ROW ( n ptr n ptr u8 n -- ) {: kind:n var:ptr a:ptr u:n :}
@@ -1010,7 +1042,7 @@ variable LCOLDPFX variable LCOLDPFXB variable LAPPPROV
 \ compiler payload that contains its own SEAL-FRIEND boundary before its
 \ driver. x30 and the entry mode survive the internal LSRCRD/LAPPPROV calls.
 : EMIT-COLD-PREFIX-SHARED ( -- )
-   LBL LBL LBL {: skip:label body:label noseal:label :}
+   LBL LBL LBL LBL {: skip:label body:label noowner:label noseal:label :}
    skip B,
    LAPPPROV LABEL@ LBL,
       C-SOURCE-APPEND-PROVIDED  RET,
@@ -1023,9 +1055,14 @@ variable LCOLDPFX variable LCOLDPFXB variable LAPPPROV
    body LBL,
       EMIT-COLD-PREFIX
       PFX-LOAD-SCRIPT-ARGV-COLD
-      PFX-LOAD-INTMARK-COLD                        \ LAST prefix source: seal-time internal-word marking pass
-      PFX-LOAD-TOPROW-COLD                         \ tier-1 top-row tracker: armed on the first user token
       PFX-PROVIDE-FILES
+      12 DATA SNAP-CELL LDR,
+      12 noowner CBNZ,
+      OWNER-WID-EMIT:EMIT-SOURCE                  \ test-only authentic owner package, empty in production
+      EMIT-OWNER-FINALIZE-TOKEN                   \ identity rebind before any user source
+      noowner LBL,
+      PFX-LOAD-INTMARK-COLD                        \ LAST prefix definition/marking pass
+      PFX-LOAD-TOPROW-COLD                         \ tier-1 top-row tracker: armed on the first user token
       EMIT-SEAL-CAPTURE-TOKEN                      \ watermark token at the true engine-prefix end
       12 SP 8 LDR,  12 noseal CBNZ,
       SRC-SFAIL LABEL@ EMIT-SEAL-FRIEND-TOKEN      \ seal before any appended user source
@@ -1151,6 +1188,8 @@ variable LRESTAB    \ sealed system-package name table (TFAM 2b-ii)
 \ sealed self-hosting stage build and checker-boot recompile, where a checker
 \ word is neither reachably kept nor safely callable from mid C-QUALIFY-DEF.
 create RESTAB-BUF
+   9 c, $6F c, $77 c, $6E c, $65 c, $72 c, $2D c,
+         $77 c, $69 c, $64 c,                     \ "owner-wid"
    4 c, $74 c, $66 c, $61 c, $6D c,               \ "tfam"
    4 c, $74 c, $79 c, $70 c, $65 c,               \ "type"
    5 c, $6D c, $61 c, $74 c, $63 c, $68 c,        \ "match"
@@ -3116,9 +3155,10 @@ s" c-local-ref" s" label label --" TRUST
 \ Register the LAOTNREC baked records at &dict[NDICT], rebasing each [0] xt from a
 \ blob offset to CP+offset, and hash-indexing it (LHIDXADD). All records first, so
 \ EM-AOT-PATCH-SITES can resolve sibling calls by name.
-\ Each source record is a compact 12 bytes (word0 = blob-off u16 | end u16<<16;
-\ word1 = name-off u16 | flags u8<<16 | min-in u8<<24; word2 = wid u32); expand it to
-\ the full 48B dict record, rebasing [0] xt to CP+blob-off and reconstructing [16]
+\ Each source record is a compact 16 bytes (word0 = blob-off-or-package-public u32;
+\ word1 = code-len-or-package-private u32; word2 = name-off u16 | flags u8<<16 |
+\ min-in u8<<24; word3 = wid u32). Expand it to the full 48B dict record, rebasing
+\ ordinary [0] to CP+blob-off while package [0]/[8] remain raw u32 WID roles, and reconstructing [16]
 \ flags|len, the [24..40) inline name (from the deduped LAOTNAMES pool, zero-padded),
 \ and [40] wid (full u32 so wordlist IDs above 255 survive) -- the EXACT inverse of
 \ the build-time ACAP-COMPACT-RECS, proven byte-identical to the source-compiled
@@ -3127,15 +3167,22 @@ s" c-local-ref" s" label label --" TRUST
 \ x2..x7 are LHIDXADD's saved set; x9/x11/x12 survive it. Records are 4B-aligned so
 \ each 32-bit word loads with LDRW.
 : EM-AOT-REGISTER-RECS ( -- )
-   LBL LBL LBL LBL LBL {: rloop:label rdone:label nloop:label ndone:label widok:label :}
-   9 LAOTDICT LABEL@ ADR,  12 0 MOVZ,               \ x9 = compact record src (12B stride), x12 = k
+   LBL LBL LBL LBL LBL LBL LBL LBL LBL
+   {: rloop:label rdone:label pkg:label fields:label nloop:label ndone:label
+      pkg-wid:label widok:label next:label :}
+   9 LAOTDICT LABEL@ ADR,  12 0 MOVZ,               \ x9 = compact record src (16B stride), x12 = k
    11 LAOTNREC LABEL@ ADR,  11 11 0 LDR,            \ x11 = N (survives LHIDXADD)
    rloop LBL,  12 11 CMP,  C-GE rdone BCOND,
       10 DREC MOVZ,  10 NDICT 10 MUL,  10 DBASE 10 ADD,   \ x10 = &dict[NDICT]
-      3 9 0 LDRW,                                   \ x3 = word0 = blob-off | end<<16
-      5 $FFFF LIT64,  4 3 5 AND,  4 CP 4 ADD,  4 10 0 STR,  \ [0] xt = CP + blob-off (u16)
-      3 3 16 LSRI,  3 10 8 STR,                     \ [8] end = word0>>16 (u16, hi=0)
-      6 9 4 LDRW,                                   \ x6 = word1 = name-off | flags<<16 | pad<<24
+      6 9 12 LDRW,  5 $FFFFFFFF LIT64,  6 5 CMP,  C-EQ pkg BCOND,
+      3 9 0 LDRW,  3 CP 3 ADD,  3 10 0 STR,         \ ordinary [0] = CP + blob-off u32
+      3 9 4 LDRW,  3 10 8 STR,                      \ ordinary [8] = code length u32
+      fields B,
+      pkg LBL,
+      3 9 0 LDRW,  3 10 0 STR,                     \ package [0] = public WID u32
+      3 9 4 LDRW,  3 10 8 STR,                     \ package [8] = private WID u32
+      fields LBL,
+      6 9 8 LDRW,                                   \ x6 = word2 = name-off | flags<<16 | min-in<<24
       5 $FFFF LIT64,  4 6 5 AND,                     \ x4 = name-off
       7 LAOTNAMES LABEL@ ADR,  4 7 4 ADD,           \ x4 = pool entry ptr (len byte)
       5 4 0 LDRB,                                   \ x5 = name length = pool[entry]
@@ -3151,12 +3198,16 @@ s" c-local-ref" s" label label --" TRUST
          7 10 24 ADDI,  7 7 3 ADD,  2 7 0 STRB,     \ dict[24+i] = name[i]
          3 3 1 ADDI,  nloop B,
       ndone LBL,
-      6 9 8 LDRW,  6 10 40 STR,                     \ [40] wid = word2 (full u32, hi=0)
+      6 9 12 LDRW,  5 $FFFFFFFF LIT64,  6 5 CMP,  C-EQ pkg-wid BCOND,
+      6 10 40 STR,                                  \ ordinary [40] wid = word3 (full u32, hi=0)
       4 6 1 ADDI,  5 DATA WIDN-CELL LDR,  4 5 CMP,  C-LE widok BCOND,   \ WIDN = max(WIDN, wid+1)
          4 DATA WIDN-CELL STR,                       \ advance so post-seed allocs clear restored wids
-      widok LBL,
+      widok LBL,  next B,
+      pkg-wid LBL,
+      6 0 MOVN,  6 10 40 STR,                       \ package marker is signed -1; never advances WIDN
+      next LBL,
       NDICT NDICT 1 ADDI,  LHIDXADD LABEL@ BL,      \ publish + index (x9/x11/x12 preserved)
-      9 9 12 ADDI,  12 12 1 ADDI,  rloop B,
+      9 9 AOT-CREC-ROW ADDI,  12 12 1 ADDI,  rloop B,
    rdone LBL, ;
 
 \ Restore the baked protected-WID registry (TFAM 2b-v). Copies the LAOTPWID u32
@@ -3181,6 +3232,228 @@ s" c-local-ref" s" label label --" TRUST
       pwok LBL,
       9 9 4 ADDI,  10 10 4 ADDI,  12 12 1 ADDI,  ploop B,
    pdone LBL, ;
+
+\ Validate both baked WID registries before either is restored. The owner frame
+\ starts immediately after the bounded protected-WID rows, carries its own shape,
+\ and ends with an independent marker so count corruption cannot widen the copy.
+: EM-AOT-VALIDATE-WIDS ( label -- ) {: bad:label :}
+   LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL
+   {: pool-loop:label pool-done:label prot-loop:label prot-inner:label
+      prot-next:label owner-loop:label owner-prot:label owner-prev:label
+      owner-next:label name-loop:label name-hit:label name-valid:label
+      valid:label owner-prot-done:label owner-prev-done:label :}
+   11 LAOTNPWID LABEL@ ADR,  11 11 0 LDR,
+   11 PROT-WID-MAX CMPI,  C-HI bad BCOND,
+   12 LAOTPWID LABEL@ ADR,
+   4 11 2 LSLI,  9 12 4 ADD,                       \ x9 = owner frame
+   2 9 0 LDR,  5 AOT-OWNER-MAGIC LIT64,  2 5 CMP,  C-NE bad BCOND,
+   2 9 8 LDR,  2 AOT-OWNER-VERSION CMPI,  C-NE bad BCOND,
+   6 9 16 LDR,  6 OWNER-WID-MAX CMPI,  C-HI bad BCOND,
+   2 9 24 LDR,  3 6 4 LSLI,  2 3 CMP,  C-NE bad BCOND,
+   9 9 AOT-OWNER-HEADER ADDI,
+   5 9 3 ADD,  2 5 0 LDR,  4 AOT-OWNER-END-MAGIC LIT64,
+   2 4 CMP,  C-NE bad BCOND,
+
+   21 LAOTNAMESLEN LABEL@ ADR,  21 21 0 LDR,
+   5 AOT-NAMES-CAP LIT64,  21 5 CMP,  C-HI bad BCOND,
+   22 LAOTNAMES LABEL@ ADR,
+   4 0 MOVZ,
+   pool-loop LBL,
+      4 21 CMP,  C-GE pool-done BCOND,
+      5 22 4 ADD,  2 5 0 LDRB,
+      4 4 1 ADDI,  4 4 2 ADD,
+      4 21 CMP,  C-HI bad BCOND,
+      pool-loop B,
+   pool-done LBL,
+      4 21 CMP,  C-NE bad BCOND,
+
+   8 0 MOVZ,  10 12 0 ADDI,
+   prot-loop LBL,  8 11 CMP,  C-GE owner-loop BCOND,
+      14 10 0 LDRW,  14 bad CBZ,
+      5 OWNER-WID-LIMIT LIT64,  14 5 CMP,  C-HI bad BCOND,
+      4 0 MOVZ,  5 12 0 ADDI,
+      prot-inner LBL,  4 8 CMP,  C-GE prot-next BCOND,
+         2 5 0 LDRW,  14 2 CMP,  C-EQ bad BCOND,
+         5 5 4 ADDI,  4 4 1 ADDI,  prot-inner B,
+   prot-next LBL,
+      10 10 4 ADDI,  8 8 1 ADDI,  prot-loop B,
+
+   owner-loop LBL,
+   8 0 MOVZ,  10 9 0 ADDI,
+   owner-next LBL,  8 6 CMP,  C-GE valid BCOND,
+      2 10 AOT-OWNER-NAME-OFF LDRW,
+      3 10 AOT-OWNER-NAME-LEN LDRW,
+      3 bad CBZ,  3 $FF CMPI,  C-HI bad BCOND,
+      4 0 MOVZ,
+      name-loop LBL,
+         4 21 CMP,  C-GE bad BCOND,
+         4 2 CMP,  C-EQ name-hit BCOND,
+         4 2 CMP,  C-HI bad BCOND,
+         5 22 4 ADD,  7 5 0 LDRB,
+         4 4 1 ADDI,  4 4 7 ADD,
+         4 21 CMP,  C-HI bad BCOND,
+         name-loop B,
+      name-hit LBL,
+         5 22 4 ADD,  7 5 0 LDRB,  7 3 CMP,  C-NE bad BCOND,
+         5 4 1 ADDI,  5 5 7 ADD,  5 21 CMP,  C-HI bad BCOND,
+      name-valid LBL,
+      14 10 AOT-OWNER-SOURCE-PUB LDRW,  15 10 AOT-OWNER-SOURCE-PRI LDRW,
+      14 bad CBZ,  15 bad CBZ,
+      5 OWNER-WID-LIMIT LIT64,
+      14 5 CMP,  C-HI bad BCOND,  15 5 CMP,  C-HI bad BCOND,
+      14 15 CMP,  C-EQ bad BCOND,
+
+      4 0 MOVZ,  5 12 0 ADDI,
+      owner-prot LBL,  4 11 CMP,  C-GE owner-prot-done BCOND,
+         2 5 0 LDRW,
+         14 2 CMP,  C-EQ bad BCOND,  15 2 CMP,  C-EQ bad BCOND,
+         5 5 4 ADDI,  4 4 1 ADDI,  owner-prot B,
+      owner-prot-done LBL,
+
+      4 0 MOVZ,  5 9 0 ADDI,
+      owner-prev LBL,  4 8 CMP,  C-GE owner-prev-done BCOND,
+         2 5 AOT-OWNER-SOURCE-PUB LDRW,  3 5 AOT-OWNER-SOURCE-PRI LDRW,
+         14 2 CMP,  C-EQ bad BCOND,  14 3 CMP,  C-EQ bad BCOND,
+         15 2 CMP,  C-EQ bad BCOND,  15 3 CMP,  C-EQ bad BCOND,
+         5 5 AOT-OWNER-ROW ADDI,  4 4 1 ADDI,  owner-prev B,
+      owner-prev-done LBL,
+      10 10 AOT-OWNER-ROW ADDI,  8 8 1 ADDI,  owner-next B,
+   valid LBL, ;
+
+$C89FFCA6 constant AOT-OWNER-COUNT-STLR
+
+: EM-AOT-REGISTER-OWNER-WIDS ( -- )
+   LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL
+   {: loop:label done:label scan:label next:label inline:label bytes:label hit:label
+      found:label prot:label prot-done:label prev:label prev-done:label
+      copy-loop:label copy-done:label pub-widn:label pri-widn:label
+      bad:label msg:label ret:label :}
+   11 LAOTNPWID LABEL@ ADR,  11 11 0 LDR,
+   21 LAOTPWID LABEL@ ADR,  4 11 2 LSLI,  21 21 4 ADD,
+   23 21 16 LDR,  21 21 AOT-OWNER-HEADER ADDI,      \ x21=identity rows, x23=count
+   25 LAOTNAMES LABEL@ ADR,
+   SP SP 2048 SUBI,
+   22 SP 0 ADDI,                                      \ x22=validated rebound scratch
+   24 0 MOVZ,                                         \ x24=row index
+   loop LBL,  24 23 CMP,  C-GE done BCOND,
+      2 21 AOT-OWNER-NAME-OFF LDRW,
+      3 21 AOT-OWNER-NAME-LEN LDRW,
+      7 25 2 ADD,  7 7 1 ADDI,                       \ x7=persisted package name
+      5 DBASE 0 ADDI,  6 NDICT 0 ADDI,
+      17 0 MOVZ,  16 0 MOVZ,
+      scan LBL,
+         6 found CBZ,
+         2 5 40 LDR,  4 0 MOVN,  2 4 CMP,  C-NE next BCOND,
+         2 5 16 LDR,  4 2 12 LSLI,  4 4 12 LSRI,  4 3 CMP,  C-NE next BCOND,
+         4 5 24 ADDI,
+         2 2 DNAME-EXT ANDI,  2 inline CBZ,
+            4 5 24 LDR,
+         inline LBL,
+         8 0 MOVZ,
+         bytes LBL,
+            8 3 CMP,  C-GE hit BCOND,
+            2 4 8 ADD,  2 2 0 LDRB,
+            9 2 $41 SUBI,  9 $1A CMPI,  9 C-CC CSET,  9 9 5 LSLI,  2 2 9 ORR,
+            9 7 8 ADD,  9 9 0 LDRB,
+            10 9 $41 SUBI,  10 $1A CMPI,  10 C-CC CSET,  10 10 5 LSLI,  9 9 10 ORR,
+            2 9 CMP,  C-NE next BCOND,
+            8 8 1 ADDI,  bytes B,
+         hit LBL,
+            17 17 1 ADDI,  17 1 CMPI,  C-HI bad BCOND,
+            16 5 0 ADDI,
+         next LBL,
+            5 5 DREC ADDI,  6 6 1 SUBI,  scan B,
+      found LBL,
+      17 1 CMPI,  C-NE bad BCOND,
+      14 16 0 LDR,  15 16 8 LDR,                    \ target-generation roles
+      2 14 32 LSRI,  2 bad CBNZ,
+      2 15 32 LSRI,  2 bad CBNZ,
+      14 bad CBZ,  15 bad CBZ,
+      2 OWNER-WID-LIMIT LIT64,
+      14 2 CMP,  C-HI bad BCOND,  15 2 CMP,  C-HI bad BCOND,
+      14 15 CMP,  C-EQ bad BCOND,
+
+      2 DATA WIDN-CELL LDR,
+      3 2 32 LSRI,  3 bad CBNZ,
+      3 14 1 ADDI,  3 2 CMP,  C-LS pub-widn BCOND,
+         3 DATA WIDN-CELL STR,  2 3 0 ADDI,
+      pub-widn LBL,
+      3 15 1 ADDI,  3 2 CMP,  C-LS pri-widn BCOND,
+         3 DATA WIDN-CELL STR,
+      pri-widn LBL,
+
+      2 DATA PROT-WID-N-CELL LDR,
+      3 PROT-WID-OFF MOVZ,  3 DATA 3 ADD,
+      4 0 MOVZ,
+      prot LBL,  4 2 CMP,  C-GE prot-done BCOND,
+         5 3 0 LDRW,
+         14 5 CMP,  C-EQ bad BCOND,  15 5 CMP,  C-EQ bad BCOND,
+         3 3 4 ADDI,  4 4 1 ADDI,  prot B,
+      prot-done LBL,
+
+      4 0 MOVZ,  5 SP 0 ADDI,
+      prev LBL,  4 24 CMP,  C-GE prev-done BCOND,
+         2 5 OWNER-WID-PUB LDRW,  3 5 OWNER-WID-PRI LDRW,
+         14 2 CMP,  C-EQ bad BCOND,  14 3 CMP,  C-EQ bad BCOND,
+         15 2 CMP,  C-EQ bad BCOND,  15 3 CMP,  C-EQ bad BCOND,
+         5 5 OWNER-WID-ROW ADDI,  4 4 1 ADDI,  prev B,
+      prev-done LBL,
+
+      2 15 32 LSLI,  2 2 14 ORR,  2 22 0 STR,
+      21 21 AOT-OWNER-ROW ADDI,  22 22 OWNER-WID-ROW ADDI,
+      24 24 1 ADDI,  loop B,
+   done LBL,
+   \ The baked canonical-name frame, rebound against this generation's package
+   \ records above, is the sole count/role authority. Replace stale prior-
+   \ generation rows instead of accepting or comparing their numeric WIDs.
+   21 SP 0 ADDI,
+   22 OWNER-WID-OFF MOVZ,  22 DATA 22 ADD,
+   24 0 MOVZ,
+   copy-loop LBL,  24 23 CMP,  C-GE copy-done BCOND,
+      2 21 0 LDR,  2 22 0 STR,
+      21 21 OWNER-WID-ROW ADDI,  22 22 OWNER-WID-ROW ADDI,
+      24 24 1 ADDI,  copy-loop B,
+   copy-done LBL,
+   6 23 0 ADDI,
+   5 OWNER-WID-N-CELL MOVZ,  5 DATA 5 ADD,
+   AOT-OWNER-COUNT-STLR EMITW
+   SP SP 2048 ADDI,
+   ret B,
+   bad LBL,
+      1 msg ADR,  0 2 MOVZ,  2 31 MOVZ,  NR-WRITE SYS,
+      0 AOT-OWNER-RC MOVZ,  NR-EXIT-GROUP SYS,
+   msg LBL,  s" hb: AOT owner identity corrupt" BYTES,  NL-KW 1 BYTES,
+   ret LBL, ;
+
+: EM-AOT-OWNER-ROUTINE ( -- )
+   LBL LBL {: bad:label msg:label :}
+   OWNER-WID-EMIT:OWNER-LABEL@ LBL,
+   SP SP 48 SUBI,
+   21 SP 0 STR,  22 SP 8 STR,  23 SP 16 STR,
+   24 SP 24 STR,  25 SP 32 STR,
+   bad EM-AOT-VALIDATE-WIDS
+   EM-AOT-REGISTER-OWNER-WIDS
+   21 SP 0 LDR,  22 SP 8 LDR,  23 SP 16 LDR,
+   24 SP 24 LDR,  25 SP 32 LDR,
+   SP SP 48 ADDI,
+   RET,
+   bad LBL,
+      1 msg ADR,  0 2 MOVZ,  2 28 MOVZ,  NR-WRITE SYS,
+      0 AOT-OWNER-RC MOVZ,  NR-EXIT-GROUP SYS,
+   msg LBL,  s" hb: AOT owner frame corrupt" BYTES,  NL-KW 1 BYTES, ;
+
+: EM-AOT-RESTORE-WIDS ( -- )
+   LBL LBL LBL {: bad:label done:label msg:label :}
+   bad EM-AOT-VALIDATE-WIDS
+   EM-AOT-REGISTER-PROT-WIDS
+   done B,
+   bad LBL,
+      1 msg ADR,  0 2 MOVZ,  2 28 MOVZ,  NR-WRITE SYS,
+      0 AOT-OWNER-RC MOVZ,  NR-EXIT-GROUP SYS,
+   msg LBL,  s" hb: AOT owner frame corrupt" BYTES,  NL-KW 1 BYTES,
+   done LBL, ;
+
+' EM-AOT-RESTORE-WIDS OWNER-WID-EMIT:RESTORE-HOOK!
 
 \ For each baked call site (packed 4B row = blob-off u16 | name-off u16<<16 into the
 \ deduped [len][bytes] name pool at LAOTNAMES) resolve the callee by NAME in THIS
@@ -3306,7 +3579,6 @@ s" c-local-ref" s" label label --" TRUST
    11 LAOTCODELEN LABEL@ ADR,  11 11 0 LDR,         \ x11 = blob length (for the copy)
    EM-AOT-COPY-BLOB
    EM-AOT-REGISTER-RECS
-   EM-AOT-REGISTER-PROT-WIDS
    EM-AOT-PATCH-SITES
    EM-AOT-RELOC-DATA
    EM-AOT-RELOC-CODE
@@ -3319,7 +3591,7 @@ s" c-local-ref" s" label label --" TRUST
    askip LBL, ;
 
 : EM-SEED-DICT ( -- )
-   LBL LBL {: scopy scdone :}
+   LBL LBL LBL LBL {: scopy:label scdone:label pkg:label fields:label :}
    DBASE 0 0 ADDI,
    CP DBASE 0 ADDI,  5 DICT-SIZE LIT64,  CP CP 5 ADD,
    11 LNCOUNT LABEL@ ADR,  11 11 0 LDR,  NDICT 11 0 ADDI,
@@ -3327,8 +3599,13 @@ s" c-local-ref" s" label label --" TRUST
    scopy LBL,
       12 scdone CBZ,
       5 9 0 LDR,  6 9 8 LDR,
+      7 9 40 LDR,  8 0 MOVN,  7 8 CMP,  C-EQ pkg BCOND,
       7 XREG-RBASE 5 ADD,  7 10 0 STR,
       6 6 5 SUB,  6 6 4 SUBI,  6 10 8 STR,
+      fields B,
+      pkg LBL,
+      5 10 0 STR,  6 10 8 STR,
+      fields LBL,
       5 9 16 LDR,  5 10 16 STR,
       6 9 24 LDR,
       LBL {: inl-name :}
@@ -3383,6 +3660,7 @@ TRUSTED: EM-DATA-VA>N ( -- n ) DATA-VA ;
    LSNAPRBD LABEL@ LBL,
    9 8 0 ADDI,  10 0 MOVZ,
    sdl2 LBL,  10 15 CMP,  C-GE sdn2 BCOND,
+      13 9 40 LDR,  14 0 MOVN,  13 14 CMP,  C-EQ sds2 BCOND, \ package [0]/[8] are raw WID roles, never text pointers
       13 9 0 LDR,
       13 21 CMP,  C-LT sds2 BCOND,
       14 21 22 ADD,  13 14 CMP,  C-GE sds2 BCOND,
@@ -3455,6 +3733,10 @@ TRUSTED: EM-DATA-VA>N ( -- n ) DATA-VA ;
 \ protected-band intersection, including a region that straddles a whole band.
 \ The legitimate snapshot builder uses a high scratch mmap copy outside DATA.
 : BSNAPREBASE ( -- )
+   \ Snapshot capture crosses a generation boundary after build refresh has
+   \ retired the cold dictionary. Rebind the baked canonical owner identities
+   \ to the retained package records before the DATA copy becomes authoritative.
+   OWNER-WID-EMIT:OWNER-LABEL@ BL,
    25 G-POP  22 G-POP  21 G-POP  15 G-POP  16 G-POP  8 G-POP
    11 16 8 SUB,  8 11 GUARD-SPAN
    LSNAPRBD LABEL@ BL,
@@ -3463,6 +3745,79 @@ TRUSTED: EM-DATA-VA>N ( -- n ) DATA-VA ;
 : EM-SNAPSHOT-RX-FLUSH ( -- )
    2 5 MOVZ,  LPROT LABEL@ BL,
    9 DBASE 0 ADDI,  5 DICT-SIZE LIT64,  9 9 5 ADD,  LFLUSH LABEL@ BL, ;
+
+: EM-SNAPSHOT-VALIDATE-WIDS ( label -- ) {: bad:label :}
+   LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL
+   {: prot-loop:label prot-max:label prot-inner:label prot-next:label
+      owners:label owner-loop:label pub-max:label pri-max:label
+      oscan:label onext:label odone:label
+      owner-prot:label owner-prev-start:label owner-prev:label
+      owner-next:label widn:label :}
+   5 PROT-WID-END MOVZ,  7 5 CMP,  C-CC bad BCOND,
+   10 12 7 SUB,                                     \ x10 = snapshot DATA source
+   25 10 6 SUB,                                     \ x25 = snapshot dictionary source
+   16 15 0 ADDI,                                    \ x16 = snapshot dictionary record count
+   11 10 PROT-WID-N-CELL LDR,
+   11 PROT-WID-MAX CMPI,  C-HI bad BCOND,
+   12 PROT-WID-OFF MOVZ,  12 10 12 ADD,
+   17 0 MOVZ,  8 0 MOVZ,  9 12 0 ADDI,
+   prot-loop LBL,  8 11 CMP,  C-GE owners BCOND,
+      14 9 0 LDRW,  14 bad CBZ,
+      5 OWNER-WID-LIMIT LIT64,  14 5 CMP,  C-HI bad BCOND,
+      14 17 CMP,  C-LS prot-max BCOND,  17 14 0 ADDI,
+   prot-max LBL,
+      4 0 MOVZ,  5 12 0 ADDI,
+   prot-inner LBL,  4 8 CMP,  C-GE prot-next BCOND,
+      2 5 0 LDRW,  14 2 CMP,  C-EQ bad BCOND,
+      5 5 4 ADDI,  4 4 1 ADDI,  prot-inner B,
+   prot-next LBL,
+      9 9 4 ADDI,  8 8 1 ADDI,  prot-loop B,
+
+   owners LBL,
+   5 OWNER-WID-END MOVZ,  7 5 CMP,  C-CC bad BCOND,
+   6 10 OWNER-WID-N-CELL LDR,
+   6 OWNER-WID-MAX CMPI,  C-HI bad BCOND,
+   9 OWNER-WID-OFF MOVZ,  9 10 9 ADD,
+   8 0 MOVZ,  5 9 0 ADDI,
+   owner-loop LBL,  8 6 CMP,  C-GE widn BCOND,
+      14 5 OWNER-WID-PUB LDRW,  15 5 OWNER-WID-PRI LDRW,
+      14 bad CBZ,  15 bad CBZ,
+      4 OWNER-WID-LIMIT LIT64,
+      14 4 CMP,  C-HI bad BCOND,  15 4 CMP,  C-HI bad BCOND,
+      14 15 CMP,  C-EQ bad BCOND,
+      14 17 CMP,  C-LS pub-max BCOND,  17 14 0 ADDI,
+   pub-max LBL,
+      15 17 CMP,  C-LS pri-max BCOND,  17 15 0 ADDI,
+   pri-max LBL,
+      22 25 0 ADDI,  23 16 0 ADDI,  24 0 MOVZ,
+   oscan LBL,  23 odone CBZ,
+      2 22 40 LDR,  3 0 MOVN,  2 3 CMP,  C-NE onext BCOND,
+      2 22 0 LDR,  14 2 CMP,  C-NE onext BCOND,
+      2 22 8 LDR,  15 2 CMP,  C-NE onext BCOND,
+      24 24 1 ADDI,  24 1 CMPI,  C-HI bad BCOND,
+   onext LBL,
+      22 22 DREC ADDI,  23 23 1 SUBI,  oscan B,
+   odone LBL,
+      24 1 CMPI,  C-NE bad BCOND,
+      4 0 MOVZ,  12 PROT-WID-OFF MOVZ,  12 10 12 ADD,
+   owner-prot LBL,  4 11 CMP,  C-GE owner-prev-start BCOND,
+      2 12 0 LDRW,
+      14 2 CMP,  C-EQ bad BCOND,  15 2 CMP,  C-EQ bad BCOND,
+      12 12 4 ADDI,  4 4 1 ADDI,  owner-prot B,
+   owner-prev-start LBL,
+      4 0 MOVZ,  12 9 0 ADDI,
+   owner-prev LBL,  4 8 CMP,  C-GE owner-next BCOND,
+      2 12 OWNER-WID-PUB LDRW,  3 12 OWNER-WID-PRI LDRW,
+      14 2 CMP,  C-EQ bad BCOND,  14 3 CMP,  C-EQ bad BCOND,
+      15 2 CMP,  C-EQ bad BCOND,  15 3 CMP,  C-EQ bad BCOND,
+      12 12 OWNER-WID-ROW ADDI,  4 4 1 ADDI,  owner-prev B,
+   owner-next LBL,
+      5 5 OWNER-WID-ROW ADDI,  8 8 1 ADDI,  owner-loop B,
+
+   widn LBL,
+   6 10 WIDN-CELL LDR,
+   14 6 32 LSRI,  14 bad CBNZ,
+   6 17 CMP,  C-LS bad BCOND, ;
 
 \ ---- AOT snapshot? (trailer at the end of our own __text). If present:
 \ restore both regions verbatim (fixed VAs keep region addresses valid),
@@ -3474,21 +3829,16 @@ TRUSTED: EM-DATA-VA>N ( -- n ) DATA-VA ;
    10 9 0 ADDI,  5 $1000 LIT64,  10 10 5 SUB,
    11 10 IMAGE-TEXT-SIZE-OFF LDR,                   \ S = our executable text size
    12 10 11 ADD,  5 IMAGE-TEXT-TRAILER-ADJ LIT64,  12 12 5 ADD,   \ x12 = trailer END (base+SNL+ADJ)
-   \ Two-probe trailer detection (dot habu-snapshot-format-ver, item 12 3b): a
-   \ 48-byte format-versioned trailer sits at END-48 with the version cell at
-   \ +40; a legacy 40-byte trailer at END-40 (version implicitly 0). SNL grows
-   \ with the trailer, so END-size lands on the same magic cell in both formats.
-   \ A pre-3b engine (fixed END-40 probe) reading a 48-byte image lands on the
-   \ text-base=0 field, misses the magic, and cold-boots: fail-closed, never a
-   \ hidden-field misread. An image version newer than we support exits 80
-   \ (E-SNAP-VERSION), mirroring the snbad rc-79 corrupt-trailer path.
+   \ The owner-role registry is required for checked qualified lookup. A v0-v2
+   \ image has no trustworthy owner semantics, so the legacy trailer and every
+   \ version other than the current format fail closed as unsupported.
    5 SNAP-MAGIC LIT64,
    13 12 48 SUBI,  14 13 0 LDR,  14 5 CMP,  C-EQ snnew BCOND,      \ x13 = 48-byte trailer base?
    13 12 40 SUBI,  14 13 0 LDR,  14 5 CMP,  C-NE snomag BCOND,     \ x13 = 40-byte trailer base? else cold boot
-   snhave B,                                                       \ legacy v0 trailer: no version check
+   snbadver B,                                                     \ legacy v0 cannot carry owner roles
    snnew LBL,
       14 13 40 LDR,                                                \ x14 = image format version
-      5 2 MOVZ,  14 5 CMP,  C-GT snbadver BCOND,                   \ x5 = max supported version (SNAP-FORMAT-VERSION; v2 = DNAME-MIN-IN record band)
+      5 SNAP-FORMAT-VERSION MOVZ,  14 5 CMP,  C-NE snbadver BCOND,
    snhave LBL,
       12 13 0 ADDI,                                                \ x12 = resolved trailer base
    5 IMAGE-TEXT-CONTENT-ADJ LIT64,  11 11 5 SUB,
@@ -3500,6 +3850,13 @@ TRUSTED: EM-DATA-VA>N ( -- n ) DATA-VA ;
    5 REGION LIT64,  6 5 CMP,  C-GT snbad BCOND,
    5 DATA-SIZE LIT64,  7 5 CMP,  C-GT snbad BCOND,
    5 DICT-CAP MOVZ,  15 5 CMP,  C-GT snbad BCOND,
+   SP SP 64 SUBI,
+   6 SP 0 STR,  7 SP 8 STR,  11 SP 16 STR,  12 SP 24 STR,
+   15 SP 32 STR,  21 SP 40 STR,  25 SP 48 STR,
+   snbad EM-SNAPSHOT-VALIDATE-WIDS
+   6 SP 0 LDR,  7 SP 8 LDR,  11 SP 16 LDR,  12 SP 24 LDR,
+   15 SP 32 LDR,  21 SP 40 LDR,  25 SP 48 LDR,
+   SP SP 64 ADDI,
    snok B,
    snbad LBL,                                                              \ corrupt/truncated trailer: label the fd-2 diagnostic before exit 79
       1 LSNAPBAD LABEL@ ADR,  0 2 MOVZ,  2 SNAPBAD-MSG-LEN MOVZ,  NR-WRITE SYS,
@@ -3509,7 +3866,7 @@ TRUSTED: EM-DATA-VA>N ( -- n ) DATA-VA ;
       0 80 MOVZ,  NR-EXIT-GROUP SYS,
    snok LBL,
    9 DATA ARGC-CELL LDR,  10 DATA ARGV-CELL LDR,  0 DATA ENVP-CELL LDR,
-   22 11 6 SUB,  22 22 7 SUB,  22 22 40 SUBI,       \ x22 = engine text len then
+   22 11 6 SUB,  22 22 7 SUB,  22 22 48 SUBI,       \ x22 = engine text len then
    8 12 7 SUB,  8 8 6 SUB,                          \ region payload src
    EM-SNAPSHOT-COPY-CODE
    EM-SNAPSHOT-COPY-DATA
@@ -3533,10 +3890,10 @@ TRUSTED: EM-DATA-VA>N ( -- n ) DATA-VA ;
    9 cwok CBNZ,
 
    9 0 MOVZ,  9 DATA CUR-CELL STR,
-   9 1 MOVZ,  9 DATA WIDN-CELL STR,
+   9 FIRST-DYNAMIC-WID MOVZ,  9 DATA WIDN-CELL STR,
    9 0 MOVZ,  9 DATA HOOK-CELL STR,  9 DATA TOP-HOOK-CELL STR,
    9 0 MOVZ,  9 DATA PROT-WID-N-CELL STR,  \ constructor registry starts empty
-   OWNER-WID-EMIT:COLD-RESET
+   OWNER-WID-EMIT:COLD-LABEL@ BL,
    cwok LBL,  9 0 MOVZ,
    9 DATA PKG-PUB-CELL STR,  9 DATA PKG-PRI-CELL STR,  9 DATA PKG-PARENT-CELL STR,  9 DATA PKG-REC-CELL STR,  9 DATA LOOPSP-CELL STR,
    9 DATA P2-CELL STR,  9 DATA P2BODY0-CELL STR,
@@ -5286,7 +5643,7 @@ s" em-eval-clean-exit" s" --" TRUST
 s" em-repl-read" s" --" TRUST
 
 : EM-COMPILE-EXIT ( -- )
-   LBL {: aoskip:label :}
+   LBL LBL {: aoskip:label hookskip:label :}
    LEXIT LABEL@ LBL,
    9 DATA EVALD-CELL LDR,  9 LEX0 LABEL@ CBZ,
       EM-EVAL-CLEAN-EXIT
@@ -5294,6 +5651,9 @@ s" em-repl-read" s" --" TRUST
    9 DATA AOT-SEED-DONE-CELL LDR,  9 aoskip CBNZ,            \ already seeded -> skip
    9 DATA AOT-SEED-ARM-CELL LDR,  9 aoskip CBZ,              \ armed only on the interactive repl entry
       EM-SEED-AOT                                            \ seed the AOT REPL once, post-cold-prefix
+      9 DATA SNAP-CELL LDR,  9 hookskip CBNZ,                \ snapshots already restored the proven registry
+         OWNER-WID-EMIT:COLD-HOOK                            \ test hook sees its registered baked package record
+      hookskip LBL,
       9 1 MOVZ,  9 DATA AOT-SEED-DONE-CELL STR,
    aoskip LBL,
    9 DATA REPLH-CELL LDR,  9 LRBYE LABEL@ CBZ,
@@ -5629,7 +5989,7 @@ s" SRCA@" s" -- ptr u8" TRUST
    LBL LANCHOR !  LBL LFIND !  LBL LNUM !  LBL LDICT !  LBL LSRC !
    LBL LCEMIT !  LBL LTOK !  LBL LPROT !  LBL LFLUSH !  LBL LNCOUNT !
    LBL LAOTCODE !  LBL LAOTDICT !  LBL LAOTCODELEN !
-   LBL LAOTNREC !  LBL LAOTNSITE !  LBL LAOTSITES !  LBL LAOTNAMES !
+   LBL LAOTNREC !  LBL LAOTNSITE !  LBL LAOTSITES !  LBL LAOTNAMES !  LBL LAOTNAMESLEN !
    LBL LAOTNDSITE !  LBL LAOTDSITES !  LBL LAOTDATAD0 !  LBL LAOTDATASIZE !
    LBL LAOTNCSITE !  LBL LAOTCSITES !  LBL LAOTCODEB0 !
    LBL LAOTBOOTRUN !
@@ -5748,13 +6108,12 @@ $10000 constant AOT-BLOB-CAP
 create AOT-BLOB-BUF AOT-BLOB-CAP allot    variable AOT-BLOB-LEN
 256 constant AOT-REC-MAX
 \ AOT-REC-BUF holds three regions (all viewed via AOT-REC-BUF@, no extra TRUST):
-\   [0 .. MAX*48)          verbatim 48B dict records (capture source of truth)
-\   [MAX*48 .. +MAX*12)    compact 12B records (baked; blob-off u16 + end u16 + name-off u16 + flags u8 + min-in u8 + wid u32)
-\   [+MAX*12 .. +48)       48B scratch for the build-time expand==verbatim proof
-create AOT-REC-BUF AOT-REC-MAX 48 * AOT-REC-MAX 12 * + 48 + allot    variable AOT-REC-N
+\   [0 .. MAX*48)              verbatim 48B dict records (capture source of truth)
+\   [MAX*48 .. +MAX*CREC-ROW)  compact 16B records (two u32 role/code fields + metadata + wid)
+\   [+MAX*CREC-ROW .. +48)     48B scratch for the build-time expand==verbatim proof
+create AOT-REC-BUF AOT-REC-MAX 48 * AOT-REC-MAX AOT-CREC-ROW * + 48 + allot    variable AOT-REC-N
 2048 constant AOT-SITE-MAX
 create AOT-SITE-BUF AOT-SITE-MAX 4 * allot    variable AOT-SITE-N   \ packed 4B rows: blob-off u16 + name-off u16
-$4000 constant AOT-NAMES-CAP
 create AOT-NAMES-BUF AOT-NAMES-CAP allot    variable AOT-NAMES-LEN
 \ DATA-literal relocation table (third relocation class): blob offsets of the
 \ movz/movk x9 DATA-address literals (create/variable buffer refs). AOT-DATA-D0 =
@@ -5789,6 +6148,55 @@ create AOT-BOOTRUN-BUF AOT-BOOTRUN-CAP allot    variable AOT-BOOTRUN-LEN
 PROT-WID-MAX constant AOT-PWID-MAX
 create AOT-PWID-BUF AOT-PWID-MAX 4 * allot    variable AOT-PWID-N
 
+package AOT-OWNER
+
+create ROWS OWNER-WID-MAX AOT-OWNER-ROW * allot
+variable NROWS
+variable FROZEN
+
+: ROW@ ( n -- ptr u8 ) {: idx:n :}
+   idx 0 < idx OWNER-WID-MAX >= or if
+      s" aot-owner: row index out of range" 74 die
+   then
+   ROWS idx AOT-OWNER-ROW * + ;
+
+: COUNT@ ( -- n )
+   NROWS @ ;
+
+: CAPTURE-BEGIN ( -- )
+   0 FROZEN !
+   0 NROWS ! ;
+
+: CAPTURE-COMMIT ( n -- ) {: count:n :}
+   count 0 < count OWNER-WID-MAX > or if
+      s" aot-owner: capture count out of range" 74 die
+   then
+   count NROWS !
+   0 0= FROZEN ! ;
+
+: REQUIRE-FROZEN ( -- n )
+   FROZEN @ 0= if s" aot-owner: capture not frozen" 74 die then
+   COUNT@
+   dup 0 < over OWNER-WID-MAX > or if
+      drop s" aot-owner: frozen count corrupt" 74 die
+   then ;
+
+0 NROWS !
+0 0= FROZEN !
+
+public
+
+: BAKE ( -- )
+   REQUIRE-FROZEN {: count:n :}
+   AOT-OWNER-MAGIC DCQ,
+   AOT-OWNER-VERSION DCQ,
+   count DCQ,
+   count AOT-OWNER-ROW * DCQ,
+   count 0 > if ROWS count AOT-OWNER-ROW * BYTES, then
+   AOT-OWNER-END-MAGIC DCQ, ;
+
+;package
+
 \ Raw emitter-boundary views (same pattern as SRCA@): expose the build-scratch
 \ buffers as `ptr` for the checked copy/BYTES, sites below.
 : AOT-BLOB-BUF@ ( -- ptr u8 ) AOT-BLOB-BUF ;
@@ -5821,10 +6229,11 @@ s" AOT-PWID-BUF@" s" -- ptr u8" TRUST
    LAOTCODE LABEL@ LBL,
    AOT-BLOB-LEN @ 0 > IF AOT-BLOB-BUF@ AOT-BLOB-LEN @ BYTES, THEN
    LAOTNREC LABEL@ LBL,  AOT-REC-N @ DCQ,
-   LAOTDICT LABEL@ LBL,                          \ compact 12B records (EM-AOT-REGISTER-RECS expands to 48B)
-   AOT-REC-N @ 0 > IF AOT-REC-BUF@ AOT-REC-MAX 48 * + AOT-REC-N @ 12 * BYTES, THEN
+   LAOTDICT LABEL@ LBL,                          \ compact 16B records (EM-AOT-REGISTER-RECS expands to 48B)
+   AOT-REC-N @ 0 > IF AOT-REC-BUF@ AOT-REC-MAX 48 * + AOT-REC-N @ AOT-CREC-ROW * BYTES, THEN
    LAOTNSITE LABEL@ LBL,  AOT-SITE-N @ DCQ,
    LAOTSITES LABEL@ LBL,  EMIT-AOT-SITES
+   LAOTNAMESLEN LABEL@ LBL,  AOT-NAMES-LEN @ DCQ,
    LAOTNAMES LABEL@ LBL,
    AOT-NAMES-LEN @ 0 > IF AOT-NAMES-BUF@ AOT-NAMES-LEN @ BYTES, THEN
    LAOTDATASIZE LABEL@ LBL,  AOT-DATA-SIZE @ DCQ,
@@ -5837,7 +6246,8 @@ s" AOT-PWID-BUF@" s" -- ptr u8" TRUST
    LAOTBOOTRUN LABEL@ LBL,  AOT-BOOTRUN-BUF@ AOT-BOOTRUN-LEN @ 1 + BYTES,   \ +1 = live 0 terminator
    LAOTNPWID LABEL@ LBL,  AOT-PWID-N @ DCQ,                                  \ protected-WID registry: count
    LAOTPWID LABEL@ LBL,                                                      \ then N u32 WIDs (TFAM 2b-v)
-   AOT-PWID-N @ 0 > IF AOT-PWID-BUF@ AOT-PWID-N @ 4 * BYTES, THEN ;
+   AOT-PWID-N @ 0 > if AOT-PWID-BUF@ AOT-PWID-N @ 4 * BYTES, then
+   AOT-OWNER:BAKE ;
 
 \ tok-imm? ( ptr u8 n -- n ): live-dictionary immediate probe for the checker
 \ (dot habu-checker-fitting-arity-70dc94e4). Pops a token name, runs the same
@@ -5863,6 +6273,7 @@ s" AOT-PWID-BUF@" s" -- ptr u8" TRUST
    EMIT-TOK
    EMIT-PROT
    EMIT-PROTWID  OWNER-WID-EMIT:ROUTINES
+   EM-AOT-OWNER-ROUTINE
    EMIT-FLUSH
    EMIT-FIND
    EMIT-HIDX

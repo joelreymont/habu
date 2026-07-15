@@ -55,7 +55,7 @@ TRUSTED: IMG-MMAP-PTR ( n -- ptr u8 )
    dup 0 < IF IFD @ close s" imgdump: mmap failed" 74 die THEN ;
 
 : IMG-USAGE ( -- )
-   s" usage: bin/hb --load tools/imgdump.f -- image [image2] | --pc image pc" 64 die ;
+   s" usage: bin/hb --load tools/imgdump.f -- image [image2] | --pc image pc | --wid image name | --data image off" 64 die ;
 
 : IMG-PATH$ ( -- ptr u8 n )
    SCRIPT-ARGC 1 < if IMG-USAGE then
@@ -119,6 +119,7 @@ variable HV  variable HP
    o 16 + I@ ;
 : E-L {: o :} ( n -- n )
    o E-F DNAME-LEN-MASK and ;
+: E-WID ( n -- n ) 40 + I@ ;
 variable OKV
 : PRN? {: a:ptr u :} ( ptr u8 n -- bool )     \ a..a+u all printable ascii?
    1 OKV !
@@ -432,9 +433,31 @@ variable OKV
    1 SCRIPT-ARGV$ READ-IMG-PATH PREP-IMG
    PC-ARG PC>DICT ;
 
+: WID-IMG ( -- )
+   1 SCRIPT-ARGV$ READ-IMG-PATH PREP-IMG
+   DICT-START
+   begin dup DICT-END < while
+      dup ENT? 0= if drop s" imgdump: corrupt dict entry" 74 die then
+      dup E-NAME 2 SCRIPT-ARGV$ CORE-STR= if
+         dup E-NAME type s"  wid " type E-WID . cr exit
+      then
+      DREC +
+   repeat drop
+   s" imgdump: word not found" 74 die ;
+
+: DATA-IMG ( -- )
+   1 SCRIPT-ARGV$ READ-IMG-PATH LOAD-SNAPSHOT
+   HAS-SNAP @ 0= if s" imgdump: no snapshot" 74 die then
+   2 SCRIPT-ARGV$ IMG>NUMBER? MATCH option
+     none OF IMG-USAGE ENDOF
+     some OF ENDOF
+   ;MATCH {: off:n :}
+   off 0 < off 8 + TDATA @ > or if s" imgdump: data offset out of range" 74 die then
+   TOFF @ TDATA @ - off + I@ . ;
+
 \ SNAP-INFO: print the snapshot trailer's format version and region/data sizes.
-\ Gives the format-version bump (item 12 3b) a checkable surface: a freshly
-\ installed image reports `snap version 1`; a legacy 40-byte image reports 0.
+\ Gives the format-version bump a checkable surface: a freshly installed image
+\ reports the current SNAP-FORMAT-VERSION; a legacy 40-byte image reports 0.
 : SNAP-INFO ( -- )
    1 SCRIPT-ARGV$ READ-IMG-PATH LOAD-SNAPSHOT
    HAS-SNAP @ 0= if s" no-snapshot" type cr exit then
@@ -445,6 +468,8 @@ variable OKV
 
 : MAIN ( -- )
    SCRIPT-ARGC 3 = if 0 SCRIPT-ARGV$ s" --pc" CORE-STR= if PC-IMG exit then then
+   SCRIPT-ARGC 3 = if 0 SCRIPT-ARGV$ s" --wid" CORE-STR= if WID-IMG exit then then
+   SCRIPT-ARGC 3 = if 0 SCRIPT-ARGV$ s" --data" CORE-STR= if DATA-IMG exit then then
    SCRIPT-ARGC 2 = if 0 SCRIPT-ARGV$ s" --snap" CORE-STR= if SNAP-INFO exit then then
    SCRIPT-ARGC 2 = if COMPARE-IMG exit then
    READ-IMG  PREP-IMG  DUMP-DICT ;

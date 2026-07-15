@@ -18,10 +18,12 @@
 \ boundary is confined to the TRUSTED:/TRUST casts below (no `0 set-check` span, so
 \ the checked build stays fail-closed through the image writer).
 
-\ --- raw dict/code boundary casts (host build-time only) ---
+\ --- raw dict/code boundary casts (host build-time only). AOT-DBASE names only
+\ the dictionary record region; live engine registries are under AOT-LIVE-DATA. ---
 TRUSTED: AOT-DBASE ( -- ptr a ) dbase@ ;
 TRUSTED: AOT-A>U8 ( ptr a -- ptr u8 ) ;
 TRUSTED: AOT-N>U8 ( n -- ptr u8 ) ;
+: AOT-LIVE-DATA ( -- ptr a ) data-base ;
 : AOT-CELL@ ( ptr a -- n ) @ ;
 s" AOT-CELL@" s" ptr a -- n" TRUST
 : AOT-N-C! ( n ptr u8 -- ) {: v:n p:ptr :}         \ store a full cell as 8 LE bytes
@@ -35,11 +37,13 @@ s" AOT-CELL@" s" ptr a -- n" TRUST
 \ --- host dictionary record k (48 bytes): field readers (ptr-first byte offsets) ---
 : AOT-REC ( n -- ptr a ) 48 * AOT-DBASE swap + ;
 : AOT-RXT ( ptr a -- n ) AOT-CELL@ ;                          \ [0] code entry (xt)
+: AOT-REND ( ptr a -- n ) 8 + AOT-CELL@ ;                     \ [8] code end or package private WID
 : AOT-RFLAGS ( ptr a -- n ) 16 + AOT-CELL@ ;                  \ [16] flags | name len
 : AOT-RNLEN ( ptr a -- n ) AOT-RFLAGS $000FFFFFFFFFFFFF and ;   \ = DNAME-LEN-MASK (top 12 bits are flags + DNAME-MIN-IN)
 : AOT-REXT? ( ptr a -- bool ) AOT-RFLAGS $2000000000000000 and 0= 0= ;
 : AOT-RNPTR ( ptr a -- ptr u8 )
    dup AOT-REXT? if 24 + AOT-CELL@ AOT-N>U8 else AOT-A>U8 24 + then ;
+: AOT-RWID ( ptr a -- n ) 40 + AOT-CELL@ ;                    \ [40] wordlist or -1 package sentinel
 
 \ --- 32-bit little-endian code word; movz/movk/movk x16 ; blr x16 recognise+decode
 : ACAP-W32@ ( ptr u8 -- n ) {: p:ptr :}
@@ -118,7 +122,7 @@ variable ACAP-PP                                             \ pool scan cursor
    boff r AOT-P16!  noff r 2 + AOT-P16!
    AOT-SITE-N @ 1+ AOT-SITE-N ! ;
 
-\ --- records: copy host record (48 bytes), rebase [0] xt to blob offset ---
+\ --- records: copy host record (48 bytes), rebase ordinary [0] xt to blob offset ---
 : ACAP-REC-DST ( n -- ptr u8 ) 48 * AOT-REC-BUF@ swap + ;
 variable AOT-EXT-N   variable AOT-UNRES-N     \ kept-source counters: EXT names / unresolved call sites
 : ACAP-ADD-REC ( n n -- ) {: k:n bstart:n :}
@@ -127,12 +131,15 @@ variable AOT-EXT-N   variable AOT-UNRES-N     \ kept-source counters: EXT names 
    k AOT-REC AOT-A>U8 {: src:ptr :}
    AOT-REC-N @ ACAP-REC-DST {: d:ptr :}
    48 0 ?do src i + c@  d i + c!  loop                        \ verbatim 48-byte copy
-   k AOT-REC AOT-RXT bstart -  d AOT-N-C!                     \ [0] = xt - blob-start
+   src AOT-RWID -1 <> if
+      k AOT-REC AOT-RXT bstart -  d AOT-N-C!                  \ ordinary [0] = xt - blob-start
+   then                                                        \ package [0]/[8] are raw u32 WID roles
    AOT-REC-N @ 1+ AOT-REC-N ! ;
 
-\ --- compact 12B records: blob-off u16 + end u16 + name-off u16 + flags u8 +
-\ min-in u8 + wid u32. Built from the verbatim 48B records; each record's inline
-\ name is added to the deduped pool. EM-AOT-REGISTER-RECS expands each 12B record
+\ --- compact 16B records: blob-off-or-package-public u32 + code-len-or-package-
+\ private u32 + name-off u16 + flags u8 + min-in u8 + wid u32. Built from the
+\ verbatim 48B records; each record's inline name is added to the deduped pool.
+\ EM-AOT-REGISTER-RECS expands each 16B record
 \ back to the full 48B dict record at boot. All the constant/derivable fields
 \ (flags nibble, DNAME-MIN-IN byte, wid, name length, and the [24..40)
 \ inline-name zero padding) are asserted or reconstructed; the ACAP-PROVE-RECS
@@ -141,45 +148,48 @@ variable AOT-EXT-N   variable AOT-UNRES-N     \ kept-source counters: EXT names 
 \ 255 round-trip through the seed -- the field was a truncating u8. The min-in
 \ byte (record [16] bits 52-59, dot habu-habu-certified-words-84e84eaf) rides
 \ the former pad byte so certified arity survives the seed round-trip. ---
-: ACAP-CREC-DST ( n -- ptr u8 ) 12 * AOT-REC-MAX 48 * +  AOT-REC-BUF@ swap + ;
-: ACAP-REC48@ ( -- ptr u8 ) AOT-REC-MAX 48 * AOT-REC-MAX 12 * +  AOT-REC-BUF@ swap + ;
+: ACAP-CREC-DST ( n -- ptr u8 ) AOT-CREC-ROW * AOT-REC-MAX 48 * +  AOT-REC-BUF@ swap + ;
+: ACAP-REC48@ ( -- ptr u8 ) AOT-REC-MAX 48 * AOT-REC-MAX AOT-CREC-ROW * +  AOT-REC-BUF@ swap + ;
 : ACAP-COMPACT-RECS ( -- )
    AOT-REC-N @ 0 ?do
       i ACAP-REC-DST {: v:ptr :}                              \ verbatim 48B record
+      v AOT-RWID -1 = {: pkg:bool :}
       v 4 + ACAP-W32@ 0= 0= if s" aot-capture: rec blob-off exceeds u32" 74 die then
       v 12 + ACAP-W32@ 0= 0= if s" aot-capture: rec end exceeds u32" 74 die then
-      v 44 + ACAP-W32@ 0= 0= if s" aot-capture: rec wid exceeds u32" 74 die then
+      pkg 0= if
+         v 44 + ACAP-W32@ 0= 0= if s" aot-capture: rec wid exceeds u32" 74 die then
+      then
       v 20 + ACAP-W32@ 28 rshift $F and {: flags:n :}         \ flag nibble ([16] bits 60-63)
       v 20 + ACAP-W32@ 20 rshift $FF and {: minin:n :}        \ DNAME-MIN-IN byte ([16] bits 52-59)
       v 20 + ACAP-W32@ $000FFFFF and 0= 0= if s" aot-capture: rec [16] stray high bits" 74 die then
       flags 2 and 0= 0= if s" aot-capture: rec has EXT name (uncompactable)" 74 die then
       v 16 + ACAP-W32@ {: len:n :}                            \ name length ([16] low word)
       len 16 > if s" aot-capture: rec name too long for inline" 74 die then
-      v 40 + ACAP-W32@ {: wid:n :}                            \ full u32 (v+44 u32-bound asserted above)
-      v ACAP-W32@ {: boff:n :}  v 8 + ACAP-W32@ {: rend:n :}
-      boff $FFFF > if s" aot-capture: rec blob-off exceeds u16" 74 die then
-      rend $FFFF > if s" aot-capture: rec end (codelen-4) exceeds u16" 74 die then
+      pkg if $FFFFFFFF else v 40 + ACAP-W32@ then {: wid:n :} \ package marker or full ordinary u32 WID
+      v ACAP-W32@ {: start:n :}  v 8 + ACAP-W32@ {: clen:n :}
       v 24 + len ACAP-POOL-ADD {: noff:n :}                   \ inline name -> deduped pool entry
       noff $FFFF > if s" aot-capture: rec name-off exceeds u16" 74 die then
-      i ACAP-CREC-DST {: c:ptr :}                             \ 12B: blob-off u16 + end u16 + name-off u16 + flags u8 + min-in u8 + wid u32
-      boff c AOT-P16!  rend c 2 + AOT-P16!  noff c 4 + AOT-P16!  flags c 6 + c!  minin c 7 + c!  wid c 8 + AOT-P32!
+      i ACAP-CREC-DST {: c:ptr :}                             \ 16B: start u32 + len u32 + name-off u16 + flags u8 + min-in u8 + wid u32
+      start c AOT-P32!  clen c 4 + AOT-P32!
+      noff c 8 + AOT-P16!  flags c 10 + c!  minin c 11 + c!  wid c 12 + AOT-P32!
    loop ;
 
-\ Expand a compact 12B record to a 48B dict record image -- the EXACT algorithm
-\ EM-AOT-REGISTER-RECS runs at boot (minus the CP rebase of [0], added here as 0 so
-\ the record-body comparison holds field-for-field with the pre-rebase verbatim).
+\ Expand a compact 16B record to a 48B dict record image -- the EXACT field
+\ reconstruction EM-AOT-REGISTER-RECS runs at boot. Ordinary [0] remains a blob
+\ offset for the build-time inverse proof; boot adds CP. Package [0]/[8] stay raw.
 : ACAP-U16@ ( ptr u8 -- n ) {: p:ptr :}  p c@  p 1+ c@ 8 lshift or ;
-: ACAP-EXPAND-REC ( ptr u8 ptr u8 -- ) {: c:ptr s:ptr :}      \ c=compact 12B, s=48B out
-   c ACAP-U16@ s AOT-N-C!                                     \ [0..8) = blob-off (u16 -> u64, hi=0)
-   c 2 + ACAP-U16@ s 8 + AOT-N-C!                             \ [8..16) = end (u16 -> u64, hi=0)
-   c 4 + ACAP-U16@ {: noff:n :}                               \ name-off u16
+: ACAP-EXPAND-REC ( ptr u8 ptr u8 -- ) {: c:ptr s:ptr :}      \ c=compact 16B, s=48B out
+   c ACAP-W32@ s AOT-N-C!                                     \ [0..8) = blob-off or package public WID
+   c 4 + ACAP-W32@ s 8 + AOT-N-C!                             \ [8..16) = code len or package private WID
+   c 8 + ACAP-U16@ {: noff:n :}                               \ name-off u16
    AOT-NAMES-BUF@ noff + c@ {: len:n :}                       \ len = pool[entry]
-   c 6 + c@ {: flags:n :}
-   c 7 + c@ {: minin:n :}
+   c 10 + c@ {: flags:n :}
+   c 11 + c@ {: minin:n :}
    flags 60 lshift  minin 52 lshift or  len or  s 16 + AOT-N-C!   \ [16] = flags<<60 | min-in<<52 | len
    0 s 24 + AOT-N-C!  0 s 32 + AOT-N-C!                       \ zero [24..40)
    len 0 ?do  AOT-NAMES-BUF@ noff 1+ + i + c@  s 24 + i + c!  loop
-   c 8 + ACAP-W32@ s 40 + AOT-N-C! ;                          \ [40..48) = wid (u32 -> u64, hi=0)
+   c 12 + ACAP-W32@ dup $FFFFFFFF = if drop -1 then
+   s 40 + AOT-N-C! ;                                          \ package marker sign-extends; ordinary wid stays u32
 variable ACAP-RECMM                                           \ record-proof mismatch count
 : ACAP-PROVE-RECS ( -- )                                      \ fail-closed: expand==verbatim, field-for-field
    0 ACAP-RECMM !
@@ -288,11 +298,11 @@ variable ACAP-P
    v  ix ACAP-PWID-SLOT  AOT-P32! ;
 : ACAP-PWID-GET ( n -- n ) ACAP-PWID-SLOT ACAP-W32@ ;          \ slot -> wid (u32, boot-read model)
 : ACAP-PWID-CAPTURE ( -- )                                     \ live registry -> AOT-PWID-BUF
-   AOT-DBASE PROT-WID-N-CELL + AOT-CELL@ {: n:n :}
+   AOT-LIVE-DATA PROT-WID-N-CELL + AOT-CELL@ {: n:n :}
    n AOT-PWID-MAX > if s" aot-capture: protected-WID registry overflow" 74 die then
    n AOT-PWID-N !
    n 0 ?do
-      AOT-DBASE PROT-WID-OFF + i 4 * + AOT-A>U8 ACAP-W32@       \ live table[i] (u32)
+      AOT-LIVE-DATA PROT-WID-OFF + i 4 * + AOT-A>U8 ACAP-W32@   \ live table[i] (u32)
       i ACAP-PWID-PUT
    loop ;
 variable ACAP-PWID-MX                                          \ max-WID accumulator
@@ -302,6 +312,237 @@ variable ACAP-PWID-MX                                          \ max-WID accumul
       i ACAP-PWID-GET dup ACAP-PWID-MX @ > if ACAP-PWID-MX ! else drop then
    loop
    ACAP-PWID-MX @ ;
+
+package AOT-OWNER
+
+0 constant OWNER-OK
+1 constant OWNER-BAD-COUNT
+2 constant OWNER-BAD-PUB
+3 constant OWNER-BAD-PRI
+4 constant OWNER-BAD-SAME
+5 constant OWNER-BAD-PUB-PROT
+6 constant OWNER-BAD-PRI-PROT
+7 constant OWNER-BAD-COLLISION
+8 constant OWNER-BAD-PACKAGE-MISSING
+9 constant OWNER-BAD-PACKAGE-DUP
+variable OWNER-BAD-KIND
+variable OWNER-BAD-ROW
+variable OWNER-BAD-OTHER
+
+: WID-VALID? ( n -- bool )
+   dup 0 > swap OWNER-WID-LIMIT <= and ;
+
+: PROT-N@ ( -- n )
+   AOT-LIVE-DATA PROT-WID-N-CELL + AOT-CELL@ ;
+
+: PROT@ ( n -- n ) {: idx:n :}
+   AOT-LIVE-DATA PROT-WID-OFF + AOT-A>U8 idx 4 * + ACAP-W32@ ;
+
+: PROT-DUP? ( n n -- bool )
+   PROT@ swap PROT@ = ;
+
+: PROT-VALID? ( -- bool )
+   PROT-N@ {: count:n :}
+   count 0 < if 0 0= 0= exit then
+   count PROT-WID-MAX > if 0 0= 0= exit then
+   count 0 ?do
+      i PROT@ WID-VALID? 0= if 0 0= 0= unloop exit then
+      i 0 ?do
+         j i PROT-DUP? if 0 0= 0= unloop unloop exit then
+      loop
+   loop
+   0 0= ;
+
+: OWNER-N@ ( -- n )
+   AOT-LIVE-DATA OWNER-WID-N-CELL + AOT-CELL@ ;
+
+: OWNER-ROW-A ( n -- ptr u8 ) {: idx:n :}
+   AOT-LIVE-DATA OWNER-WID-OFF + AOT-A>U8 idx OWNER-WID-ROW * + ;
+
+: OWNER@ ( n n -- n ) {: idx:n role:n :}
+   idx OWNER-ROW-A role + ACAP-W32@ ;
+
+: OWNER-PAIR@ ( n -- n n )
+   dup OWNER-WID-PUB OWNER@
+   swap OWNER-WID-PRI OWNER@ ;
+
+: PROTECTED? ( n -- bool ) {: wid:n :}
+   PROT-N@ 0 ?do
+      i PROT@ wid = if 0 0= unloop exit then
+   loop
+   0 0= 0= ;
+
+: PAIRS-COLLIDE? ( n n -- bool ) {: left:n right:n :}
+   left OWNER-PAIR@ {: lpub:n lpri:n :}
+   right OWNER-PAIR@ {: rpub:n rpri:n :}
+   lpub rpub = lpub rpri = or
+   lpri rpub = or lpri rpri = or ;
+
+: OWNER-BAD! ( n n n -- bool ) {: kind:n row:n other:n :}
+   kind OWNER-BAD-KIND !
+   row OWNER-BAD-ROW !
+   other OWNER-BAD-OTHER !
+   0 0= 0= ;
+
+: OWNERS-VALID? ( n -- bool ) {: count:n :}
+   OWNER-OK OWNER-BAD-KIND !
+   -1 OWNER-BAD-ROW !
+   -1 OWNER-BAD-OTHER !
+   count 0 < if OWNER-BAD-COUNT -1 -1 OWNER-BAD! exit then
+   count OWNER-WID-MAX > if OWNER-BAD-COUNT -1 -1 OWNER-BAD! exit then
+   count 0 ?do
+      i OWNER-PAIR@ {: pub:n pri:n :}
+      pub WID-VALID? 0= if OWNER-BAD-PUB i -1 OWNER-BAD! unloop exit then
+      pri WID-VALID? 0= if OWNER-BAD-PRI i -1 OWNER-BAD! unloop exit then
+      pub pri = if OWNER-BAD-SAME i -1 OWNER-BAD! unloop exit then
+      pub PROTECTED? if OWNER-BAD-PUB-PROT i -1 OWNER-BAD! unloop exit then
+      pri PROTECTED? if OWNER-BAD-PRI-PROT i -1 OWNER-BAD! unloop exit then
+      i 0 ?do
+         j i PAIRS-COLLIDE? if OWNER-BAD-COLLISION j i OWNER-BAD! unloop unloop exit then
+      loop
+   loop
+   0 0= ;
+
+: OWNER-BAD-DIAG ( -- )
+   s" aot-capture: owner-WID registry corrupt: kind " type OWNER-BAD-KIND @ .
+   s" row " type OWNER-BAD-ROW @ .
+   s" other " type OWNER-BAD-OTHER @ .
+   s" count " type OWNER-N@ .
+   s" protected " type PROT-N@ .
+   OWNER-BAD-ROW @ dup 0 >= swap OWNER-N@ < and if
+      OWNER-BAD-ROW @ OWNER-PAIR@
+      s" pub " type swap . s" pri " type .
+   then
+   cr ;
+
+variable OWNER-PACKAGE-N
+variable OWNER-PACKAGE-REC
+
+: OWNER-FOLD-C ( n -- n ) {: c:n :}
+   c $41 >= c $5A <= and if c $20 or exit then
+   c ;
+
+: PACKAGE-NAME= ( ptr a ptr u8 n -- bool ) {: rec:ptr a:ptr u:n :}
+   rec AOT-RNLEN u <> if 0 0= 0= exit then
+   rec AOT-RNPTR {: b:ptr :}
+   u 0 ?do
+      a i + c@ OWNER-FOLD-C
+      b i + c@ OWNER-FOLD-C <> if 0 0= 0= unloop exit then
+   loop
+   0 0= ;
+
+: OWNER-NAME-VALID? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   u 0= u 255 > or if 0 0= 0= exit then
+   u 0 ?do a i + c@ $3A = if 0 0= 0= unloop exit then loop
+   0 0= ;
+
+: PACKAGE-PAIR? ( ptr a n n -- bool ) {: rec:ptr pub:n pri:n :}
+   rec AOT-RWID -1 =
+   rec AOT-RXT pub = and
+   rec AOT-REND pri = and ;
+
+: PACKAGE-RECORD ( n -- ptr a ) {: row:n :}
+   0 OWNER-PACKAGE-N !
+   0 OWNER-PACKAGE-REC !
+   row OWNER-PAIR@ {: pub:n pri:n :}
+   ndict@ 0 ?do
+      i AOT-REC {: rec:ptr :}
+      rec pub pri PACKAGE-PAIR? if
+         OWNER-PACKAGE-N @ 1+ OWNER-PACKAGE-N !
+         rec OWNER-PACKAGE-REC !
+      then
+   loop
+   OWNER-PACKAGE-N @ 0= if
+      OWNER-BAD-PACKAGE-MISSING row -1 OWNER-BAD! drop
+      OWNER-BAD-DIAG
+      s" aot-capture: owner package sentinel missing" 74 die
+   then
+   OWNER-PACKAGE-N @ 1 <> if
+      OWNER-BAD-PACKAGE-DUP row OWNER-PACKAGE-N @ OWNER-BAD! drop
+      OWNER-BAD-DIAG
+      s" aot-capture: owner package sentinel duplicate" 74 die
+   then
+   OWNER-PACKAGE-REC @ dup AOT-RNPTR swap AOT-RNLEN {: name:ptr nameu:n :}
+   name nameu OWNER-NAME-VALID? 0= if
+      OWNER-BAD-PACKAGE-MISSING row -1 OWNER-BAD! drop
+      OWNER-BAD-DIAG
+      s" aot-capture: owner package identity invalid" 74 die
+   then
+   0 OWNER-PACKAGE-N !
+   ndict@ 0 ?do
+      i AOT-REC {: rec:ptr :}
+      rec AOT-RWID -1 = if
+         rec name nameu PACKAGE-NAME= if
+            OWNER-PACKAGE-N @ 1+ OWNER-PACKAGE-N !
+         then
+      then
+   loop
+   OWNER-PACKAGE-N @ 1 <> if
+      OWNER-BAD-PACKAGE-DUP row OWNER-PACKAGE-N @ OWNER-BAD! drop
+      OWNER-BAD-DIAG
+      s" aot-capture: owner package identity ambiguous" 74 die
+   then
+   OWNER-PACKAGE-REC @ ;
+
+: OWNER-NAME$ ( n -- ptr u8 n )
+   PACKAGE-RECORD dup AOT-RNPTR swap AOT-RNLEN ;
+
+: FREEZE-ROW ( n -- ) {: row:n :}
+   row ROW@ {: dst:ptr :}
+   row OWNER-PAIR@ {: pub:n pri:n :}
+   pub dst AOT-P32!
+   pri dst AOT-OWNER-SOURCE-PRI + AOT-P32!
+   row OWNER-NAME$ {: name:ptr nameu:n :}
+   name nameu ACAP-POOL-ADD {: off:n :}
+   off dst AOT-OWNER-NAME-OFF + AOT-P32!
+   nameu dst AOT-OWNER-NAME-LEN + AOT-P32! ;
+
+: FROZEN-ROW=LIVE? ( n -- bool ) {: row:n :}
+   row ROW@ {: frozen:ptr :}
+   row OWNER-PAIR@ {: pub:n pri:n :}
+   frozen ACAP-W32@ pub <> if 0 0= 0= exit then
+   frozen AOT-OWNER-SOURCE-PRI + ACAP-W32@ pri <> if 0 0= 0= exit then
+   row OWNER-NAME$ {: name:ptr nameu:n :}
+   name nameu ACAP-POOL-FIND {: off:n :}
+   off 0 < if 0 0= 0= exit then
+   frozen AOT-OWNER-NAME-OFF + ACAP-W32@ off =
+   frozen AOT-OWNER-NAME-LEN + ACAP-W32@ nameu = and ;
+
+: FROZEN=LIVE? ( n -- bool ) {: count:n :}
+   count 0 ?do
+      i FROZEN-ROW=LIVE? 0= if 0 0= 0= unloop exit then
+   loop
+   0 0= ;
+
+public
+
+: CAPTURE ( -- )
+   CAPTURE-BEGIN
+   AOT-LIVE-DATA AOT-DBASE = if
+      s" aot-capture: live DATA aliases dictionary base" 74 die
+   then
+   PROT-VALID? 0= if
+      s" aot-capture: protected-WID registry corrupt" 74 die
+   then
+   OWNER-N@ {: count:n :}
+   count OWNERS-VALID? 0= if
+      OWNER-BAD-DIAG
+      s" aot-capture: owner-WID registry corrupt" 74 die
+   then
+   ACAP-PWID-CAPTURE
+   count 0 ?do i FREEZE-ROW loop
+   OWNER-N@ count <> if
+      s" aot-capture: owner-WID count changed during freeze" 74 die
+   then
+   count FROZEN=LIVE? 0= if
+      s" aot-capture: frozen owner-WID registry mismatch" 74 die
+   then
+   count CAPTURE-COMMIT
+   REQUIRE-FROZEN count <> if
+      s" aot-capture: frozen owner-WID count mismatch" 74 die
+   then ;
+
+;package
 
 \ Capture the words in dict[rec-start, rec-end) compiled contiguously into the host
 \ region [blob-start, blob-end); [d0,d1) is the REPL DATA span (create/variable).
@@ -317,9 +558,9 @@ variable ACAP-PWID-MX                                          \ max-WID accumul
    ACAP-SCAN-CALLS
    d0 d1 ACAP-SCAN-DATA
    bstart bend ACAP-SCAN-CODE
-   ACAP-COMPACT-RECS                            \ build 12B compact records + add record names to pool
-   ACAP-PROVE-RECS                              \ fail-closed: expand(compact)==verbatim 48B, field-for-field
-   ACAP-PWID-CAPTURE ;                          \ serialize the protected-WID registry (TFAM 2b-v)
+   ACAP-COMPACT-RECS                            \ build 16B compact records + add record names to pool
+   ACAP-PROVE-RECS                              \ fail-closed inverse proof
+   AOT-OWNER:CAPTURE ;                          \ validate both WID registries before copying either
 
 \ --- host validation dump (bring-up only) ---
 : ACAP-. ( -- )
@@ -352,9 +593,9 @@ variable ACAP-PWID-MX                                          \ max-WID accumul
    0 d 32 + AOT-N-C!                                 \ [32..40) inline-name zero pad
    1000 d 40 + AOT-N-C!                              \ [40..48) wid = 1000  ( > 255 )
    1 AOT-REC-N !
-   ACAP-COMPACT-RECS                                 \ pack -> 12B compact (died here pre-fix on wid>255)
+   ACAP-COMPACT-RECS                                 \ pack -> 16B compact
    ACAP-PROVE-RECS                                   \ expand==verbatim, field-for-field (incl [40] wid)
-   0 ACAP-CREC-DST 8 + ACAP-W32@ 1000 <> if
+   0 ACAP-CREC-DST 12 + ACAP-W32@ 1000 <> if
       s" aot-capture: wid>255 self-test: compact wid corrupted" 74 die then
    0 AOT-REC-N !  0 AOT-NAMES-LEN ! ;               \ leave buffers clean for the real capture
 ACAP-WID-SELFTEST

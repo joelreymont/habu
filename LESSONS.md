@@ -4416,3 +4416,19 @@ unchanged (148855). Keys for milestone 2:
   program rows to the live epic's self-named file. Also: sweeping a dot's last
   `blocks:` entry must remove the bare `blocks:` header too, or the frontmatter
   goes unparseable to some tools.
+- **Canonical-base snapshot rebasing must classify package records before
+  pointer ranges.** At canonical text base zero, a package's raw public/private
+  WIDs look like low text offsets; skip record `[0]/[8]` when `[40] = -1`, while
+  still rebasing an external name pointer.
+- **Snapshot scrubbing must use the exact return-stack extent.** Zeroing from
+  `RSTK-OFF` through `DATA-START` erased persistent protected and owner
+  registries that share the engine-reserved band; derive `RSTK-END` from the
+  256-cell capacity and scrub only that half-open interval.
+- **Owner WID numbers are generation-local; canonical package identity is the
+  persistence authority.** A refresh can retire and rebuild the package with new
+  WIDs, so snapshot capture must rebind the baked AOT name frame and replace
+  stale rows before copying DATA.
+- **Persisted package visibility needs an executable negative proof.** A
+  `search-wl` absence check does not prove qualified compilation is rejected;
+  run the AOT and snapshot images against a checked private-word call and require
+  the undefined-token diagnostic.

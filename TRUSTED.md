@@ -36,6 +36,7 @@ that source is explicitly certified; they are not stale-checked by the default
 | STDIN? | `-- ptr bool` | Engine-builder mode cell that checked drivers set before emitting stdin or file-backed startup behavior. | `test/run.f`, `tools/build-fixpoint-test.f` | src/habu/habu1.f | 2026-06-26 |
 | fprim | `ptr u8 n n --` | Raw-asm prim emitter: lays a REG-PRIM frame + `xt execute`s a code-emitting handler; no Forth effect to infer. | `test/run.f` | src/habu/habu1.f | 2026-06-24 |
 | fprim-l | `ptr u8 n n --` | Leaf variant of FPRIM (no x30 frame); same `xt execute` of a code emitter. | `test/run.f` | src/habu/habu1.f | 2026-06-24 |
+| fprim-wid | `ptr u8 n n n --` | Wordlist-targeted FPRIM variant assigns the emitted primitive record to a reserved package WID; raw label emission and dynamic code-emitter execution remain outside checker inference. | `test/owner-wid-internal.f`, `test/run.f` | src/habu/habu1.f | 2026-07-15 |
 | tok-imm? | `ptr u8 n -- n` | Engine primitive axiom: LFIND the token in the live dictionary and push flags&2 (the DNAME-IMM bit), so DO-TOK1 can reject a signature-carrying live immediate as a checked body step (p5 wrong-certificate class, dot habu-checker-fitting-arity-70dc94e4). | `test/immediate-model-test.f` (stdlib/tail-process fork, test/run.f) | src/core/checker.f | 2026-07-13 |
 | parse-imm | `ptr u8 n n --` | Declares a parsing immediate's compile-time payload token count to the checker (GRID: 1, WHERE 3), exempting it from the p5 immediate reject and skipping its payload in the body scan. A wrong count skips live code, so each declaration site is an audited soundness boundary; UNSAFE-TOK? bars it from checked bodies (top-level only). | `lib/ptx/header-test.f` (lint-libs slice + resident ptx group), `test/lower-txn-protection.f`, `test/run.f` | src/core/checker.f | 2026-07-13 |
 | linux-spawn-fail | `reg --` | Linux child-side spawn failure reporter: consumes the target register holding the exec-error pipe, emits raw `write`, and exits the child without returning to Forth. | `lib/process-test.f`, `test/run.f` | src/habu/habu1.f | 2026-06-26 |
@@ -996,6 +997,7 @@ src/habu/debug.f:BP-XT>PTR builder-emit habu-builder-trust-rows-c5d41af6
 src/habu/habu1.f:STDIN? builder-emit habu-builder-trust-rows-c5d41af6
 src/habu/habu1.f:fprim builder-emit habu-builder-trust-rows-c5d41af6
 src/habu/habu1.f:fprim-l builder-emit habu-builder-trust-rows-c5d41af6
+src/habu/habu1.f:fprim-wid builder-emit habu-builder-trust-rows-c5d41af6
 src/habu/habu1.f:linux-spawn-fail-n builder-emit habu-builder-trust-rows-c5d41af6
 src/habu/habu1.f:linux-spawn-fail builder-emit habu-builder-trust-rows-c5d41af6
 src/habu/habu1.f:linux-dup2-fd builder-emit habu-builder-trust-rows-c5d41af6

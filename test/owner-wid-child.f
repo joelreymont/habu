@@ -4,6 +4,7 @@ require test/owner-wid-guard.f
 OWNER-WID-GUARD:REQUIRE-HARNESS
 
 require test/owner-wid-image.f
+require test/owner-wid-doctor.f
 require lib/test.f
 
 package OWNER-WID-CHILD
@@ -37,9 +38,10 @@ variable RUN-CODE
    RUN-KIND @ KIND-TIMEOUT = if s" timeout" exit then
    s" signal" ;
 
-: DIAG-CMD ( ptr u8 n -- ) {: file:ptr fileu:n :}
+: DIAG-CMD ( ptr u8 n ptr u8 n -- )
+   {: engine:ptr engineu:n file:ptr fileu:n :}
    s" owner-wid-child: abnormal run-file: " type
-   OWNER-WID-IMAGE:HB$ type
+   engine engineu type
    s"  --load " type file fileu type cr
    s" owner-wid-child: outcome " type KIND$ type
    s"  code " type RUN-CODE @ .
@@ -51,38 +53,69 @@ variable RUN-CODE
    s" cap " type CAP . cr
    a u type cr ;
 
-: RUN-DIAG ( ptr u8 n -- ) {: file:ptr fileu:n :}
-   file fileu DIAG-CMD
+: RUN-DIAG ( ptr u8 n ptr u8 n -- )
+   {: engine:ptr engineu:n file:ptr fileu:n :}
+   engine engineu file fileu DIAG-CMD
    s" stdout" OUT$ DIAG-STREAM
    s" stderr" ERR$ DIAG-STREAM ;
 
 \ Timeboxed child run: the capture poll is bounded by TIMEOUT-MS; a timeout or
 \ signal death reports a named diagnostic and returns -1 so the caller's exact
 \ rc assertion fails instead of an unattributed E-PROC-TIMEOUT throw.
-: RUN-FILE ( ptr u8 n -- n ) {: file:ptr fileu:n :}
+: RUN-FILE ( ptr u8 n ptr u8 n -- n )
+   {: engine:ptr engineu:n file:ptr fileu:n :}
    PROC-ARGV-RESET
    PROC-ENV-RESET
+   s" HABU_OWNER_WID_HARNESS" >LEN s" 1" >LEN PROC-ENV+
    PROC-ENV-INHERIT-MISSING
    s" --load" >LEN PROC-ARGV+
    file fileu >LEN PROC-ARGV+
-   OWNER-WID-IMAGE:HB$ >LEN
+   engine engineu >LEN
    OUT CAP >LEN ERR CAP >LEN TIMEOUT-MS >MS
    RUN-ARGV-ENV-CAPTURE-OUTCOME
    RUN-KIND!
    LEN>N ERR-U !
    LEN>N OUT-U !
    RUN-KIND @ KIND-EXITED = if RUN-CODE @ exit then
-   file fileu RUN-DIAG
+   engine engineu file fileu RUN-DIAG
    -1 ;
+
+: ASSERT-STATE ( ptr u8 n -- ) {: engine:ptr engineu:n :}
+   engine engineu s" test/owner-wid-state.f" RUN-FILE {: code:n :}
+   code 0 <> if engine engineu s" test/owner-wid-state.f" RUN-DIAG then
+   code 0 T=
+   OUT$ s" owner-wid-state-test: ok" CONTAINS? TTRUE
+   ERR-U @ 0 T= ;
+
+: ASSERT-HIDDEN ( ptr u8 n -- ) {: engine:ptr engineu:n :}
+   engine engineu s" test/owner-wid-call.f" RUN-FILE 70 T=
+   ERR$ s" owner-wid-add" CONTAINS? TTRUE ;
+
+: ASSERT-PRIVATE-HIDDEN ( ptr u8 n -- ) {: engine:ptr engineu:n :}
+   engine engineu s" test/owner-wid-private-call.f" RUN-FILE 70 T=
+   ERR$ s" OWNER-WID-COLD-TEST:PRIVATE-PROOF" CONTAINS? TTRUE ;
+
+: ASSERT-BAD ( ptr u8 n n ptr u8 n -- )
+   {: engine:ptr engineu:n code:n msg:ptr msgu:n :}
+   engine engineu s" test/owner-wid-state.f" RUN-FILE code T=
+   ERR$ msg msgu CONTAINS? TTRUE ;
 
 : BODY ( -- )
    OWNER-WID-IMAGE:BUILD
    BUILD-EXT:ASSERT-EMPTY
-   s" test/owner-wid-state.f" RUN-FILE 0 T=
-   OUT$ s" owner-wid-state-test: ok" CONTAINS? TTRUE
-   s" test/owner-wid-call.f" RUN-FILE 70 T=
-   ERR$ s" owner-wid-add" CONTAINS? TTRUE
-   s" test/owner-wid-build-forge.f" RUN-FILE 70 T=
+   OWNER-WID-DOCTOR:BUILD
+   OWNER-WID-IMAGE:AOT-HB$ ASSERT-STATE
+   OWNER-WID-IMAGE:SNAP-HB$ ASSERT-STATE
+   OWNER-WID-IMAGE:AOT-HB$ ASSERT-HIDDEN
+   OWNER-WID-IMAGE:SNAP-HB$ ASSERT-HIDDEN
+   OWNER-WID-IMAGE:AOT-HB$ ASSERT-PRIVATE-HIDDEN
+   OWNER-WID-IMAGE:SNAP-HB$ ASSERT-PRIVATE-HIDDEN
+   OWNER-WID-DOCTOR:AOT-BAD$ 82 s" hb: AOT owner frame corrupt" ASSERT-BAD
+   OWNER-WID-DOCTOR:AOT-MAL$ 82 s" hb: AOT owner frame corrupt" ASSERT-BAD
+   OWNER-WID-DOCTOR:SNAP-OLD$ 80 s" hb: snapshot format version unsupported" ASSERT-BAD
+   OWNER-WID-DOCTOR:SNAP-BAD$ 79 s" hb: snapshot trailer corrupt" ASSERT-BAD
+   OWNER-WID-DOCTOR:SNAP-MAL$ 79 s" hb: snapshot trailer corrupt" ASSERT-BAD
+   OWNER-WID-IMAGE:AOT-HB$ s" test/owner-wid-build-forge.f" RUN-FILE 70 T=
    ERR$ s" SET" CONTAINS? TTRUE ;
 
 public

@@ -8,6 +8,7 @@
 $400000 constant REGION
 $300000000 constant RBASE-VA
 $48425350414E5321 constant SNAP-MAGIC
+3 constant SNAP-FORMAT-VERSION
 
 \ DICT-SIZE = CFSTK-OFF (= DICT-CAP * DREC record slots) + $1000 control-flow
 \ stack; the code area follows at DBASE+DICT-SIZE inside the $400000 REGION.
@@ -17,6 +18,9 @@ $48425350414E5321 constant SNAP-MAGIC
 $C1000 constant DICT-SIZE
 48 constant DREC
 16 constant DNAME-INL
+1 constant OWNER-API-PUB-WID
+2 constant OWNER-API-PRI-WID
+3 constant FIRST-DYNAMIC-WID
 $000FFFFFFFFFFFFF constant DNAME-LEN-MASK
 \ DNAME-MIN-IN (bits 52-59): certified minimum input arity in cells, poked at
 \ certification time (checker RECMI latch -> publish tails / seal-time
@@ -225,7 +229,7 @@ $3CB0 constant AOT-SEED-ARM-CELL
 \ exit 84), and a realistic switchover (a public stdlib plus user Option/Result/...
 \ families) declares dozens-to-hundreds. The count cell ($3CB8) and table base ($3CC0)
 \ are DELIBERATELY UNCHANGED: aot-capture.f ACAP-PWID-CAPTURE reads the LIVE metabuild
-\ host registry at these offsets (via dbase@) during the self-hosting build, so moving
+\ host registry at these offsets (via data-base) during the self-hosting build, so moving
 \ them would make the transitional build read the old-layout host at a new offset (a
 \ garbage count -> "protected-WID registry overflow"). Instead the 256-slot table
 \ ($3CC0..$40C0) grows UPWARD and UNCGH-CELL/TASK-USER-BASE/DATA-START are bumped above
@@ -240,8 +244,9 @@ $3CB0 constant AOT-SEED-ARM-CELL
 $3CB8 constant PROT-WID-N-CELL          \ protected-WID count (u32); UNCHANGED offset (aot-capture reads it live at build time)
 $3CC0 constant PROT-WID-OFF             \ protected-WID table base (PROT-WID-MAX u32); UNCHANGED offset (aot-capture reads it live)
 256 constant PROT-WID-MAX               \ table capacity (256 u32 = $400, spans $3CC0..$40C0); raised from 16 (dot habu-seal-protwid-cap-6f1c9d2b)
+PROT-WID-OFF PROT-WID-MAX 4 * + constant PROT-WID-END
 PROT-WID-N-CELL constant PROT-REG-OFF   \ second PROT-GUARD band base (= count cell)
-PROT-WID-OFF PROT-WID-MAX 4 * +  1 cells +  PROT-REG-OFF -  constant PROT-REG-LEN  \ $410: registry + UNCGH-CELL = $3CB8..$40C8
+PROT-WID-END 1 cells + PROT-REG-OFF - constant PROT-REG-LEN  \ $410: registry + UNCGH-CELL = $3CB8..$40C8
 \ UNCGH-CELL: runtime address of the uncaught-top-level-throw reporter (LUNCAUGHT,
 \ habu2.f), stored at boot (EM-STARTUP-RUNTIME-STATE) beside RRECP/EVALREC so the leaf
 \ BTHROW primitive (which cannot name a habu2.f label) can branch to it when a throw
@@ -266,10 +271,23 @@ $47C8 constant OWNER-WID-OFF
 8 constant OWNER-WID-ROW
 0 constant OWNER-WID-PUB
 4 constant OWNER-WID-PRI
+$FFFFFFFE constant OWNER-WID-LIMIT
 256 constant OWNER-WID-MAX
 OWNER-WID-OFF OWNER-WID-MAX OWNER-WID-ROW * + constant OWNER-WID-END
 OWNER-WID-N-CELL constant OWNER-REG-OFF
 OWNER-WID-END OWNER-REG-OFF - constant OWNER-REG-LEN
+$4F57494450414952 constant AOT-OWNER-MAGIC
+2 constant AOT-OWNER-VERSION
+16 constant AOT-CREC-ROW
+$4000 constant AOT-NAMES-CAP
+32 constant AOT-OWNER-HEADER
+16 constant AOT-OWNER-ROW
+0 constant AOT-OWNER-SOURCE-PUB
+4 constant AOT-OWNER-SOURCE-PRI
+8 constant AOT-OWNER-NAME-OFF
+12 constant AOT-OWNER-NAME-LEN
+$524941504449574F constant AOT-OWNER-END-MAGIC
+82 constant AOT-OWNER-RC
 \ Dict-name hash index: slots stay a power of 2 (LFIND probes with the
 \ HIDX-SLOTS 1 - mask) and 2x DICT-CAP so the load factor stays <= 50%;
 \ bytes = slots * 4 (u32 entries). Grown with DICT-CAP 16384.
@@ -340,6 +358,8 @@ $27F0 constant TOP-HOOK-CELL
 5 constant TOP-EV-TICK      \ ' pushed a found word's xt
 6 constant TOP-EV-WORD      \ found word about to execute (pre-BLR)
 $2800 constant RSTK-OFF
+256 constant RSTK-CELLS
+RSTK-OFF RSTK-CELLS cells + constant RSTK-END
 
 \ Compiler lowering transaction. All mutable pass-2 authority lives in one
 \ engine band. The frozen source+certificate lives in a separately mmap'd,

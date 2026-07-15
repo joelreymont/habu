@@ -22,11 +22,15 @@ $400000 constant REGION       \ mmap region size (4 MB)
 $300000000 constant RBASE-VA \ FIXED region VA: baked addresses survive re-runs (AOT)
 $340000000 constant DATA-VA  \ FIXED data VA
 $48425350414E5321 constant SNAP-MAGIC \ AOT snapshot trailer marker
+3 constant SNAP-FORMAT-VERSION
 $C1000  constant DICT-SIZE     \ dict + control-flow stack; code area follows
                                \ (= CFSTK-OFF + $1000; grown with DICT-CAP 16384,
                                \ mirrors src/habu/layout.f)
 48      constant DREC          \ dict record: addr(8) clen(8) name-len|flags(8) name|ptr(16) wid(8)
 16      constant DNAME-INL
+1 constant OWNER-API-PUB-WID
+2 constant OWNER-API-PRI-WID
+3 constant FIRST-DYNAMIC-WID
 $000FFFFFFFFFFFFF constant DNAME-LEN-MASK
 \ DNAME-MIN-IN (bits 52-59): certified minimum input arity band, poked by the
 \ native checker/seal pass (src/habu/layout.f, dot
@@ -93,8 +97,19 @@ $D63F0200 constant C-CALL-BLR-X16
 $3CB8 constant PROT-WID-N-CELL
 $3CC0 constant PROT-WID-OFF
 256 constant PROT-WID-MAX
+PROT-WID-OFF PROT-WID-MAX 4 * + constant PROT-WID-END
 PROT-WID-N-CELL constant PROT-REG-OFF
 $410 constant PROT-REG-LEN
+$47C0 constant OWNER-WID-N-CELL
+$47C8 constant OWNER-WID-OFF
+8 constant OWNER-WID-ROW
+0 constant OWNER-WID-PUB
+4 constant OWNER-WID-PRI
+$FFFFFFFE constant OWNER-WID-LIMIT
+256 constant OWNER-WID-MAX
+OWNER-WID-OFF OWNER-WID-MAX OWNER-WID-ROW * + constant OWNER-WID-END
+OWNER-WID-N-CELL constant OWNER-REG-OFF
+OWNER-WID-END OWNER-REG-OFF - constant OWNER-REG-LEN
 $28 constant CUR-CELL    \ get/set-current wordlist id (new defs go here)
 $30 constant WIDN-CELL   \ next fresh wordlist id (WORDLIST hands these out)
 $38 constant HOOK-CELL   \ check hook: a word addr run on each : body (0 = none)
@@ -229,6 +244,8 @@ $248 constant QXH-CELL    \ saved EXIT chain head across the quotation
 $250 constant DEF-TKA-CELL \ original qualified definition spelling
 $258 constant DEF-TKL-CELL
 $2800 constant RSTK-OFF   \ user return stack — 256 cells, below DATA-START
+256 constant RSTK-CELLS
+RSTK-OFF RSTK-CELLS cells + constant RSTK-END
 TXN-STATE-OFF TXN-STATE-LEN + constant DATA-START \ user DP begins after protected lowering state; frozen artifacts live in mmap storage
 create SQ-KW  115 c, 34 c,      \ build-time bytes for the keyword  s"  (s=115, "=34)
 create CQ-KW  99 c, 34 c,
@@ -264,6 +281,7 @@ $F2E00009 constant W-MOVK3     \ movk x9,#0,lsl#48
 2048 constant PRIM-NAME-CAP
 create PLBL PRIM-CAP cells allot   create PEL PRIM-CAP cells allot
 create PLEN PRIM-CAP cells allot   create PNAM PRIM-CAP cells allot
+create PWID PRIM-CAP cells allot
 create PNPOOL PRIM-NAME-CAP chars allot   variable PNP   variable #PL
 
 : REG-ROOM? ( u -- )
@@ -275,6 +293,7 @@ create PNPOOL PRIM-NAME-CAP chars allot   variable PNP   variable #PL
    lbl  #PL @ cells PLBL + !
    elbl #PL @ cells PEL  + !
    nu   #PL @ cells PLEN + !
+   0    #PL @ cells PWID + !
    PNPOOL PNP @ +  {: dst :}   dst #PL @ cells PNAM + !
    na dst nu move   nu PNP +!   1 #PL +! ;
 
@@ -288,6 +307,10 @@ create PNPOOL PRIM-NAME-CAP chars allot   variable PNP   variable #PL
    LBL LBL {: lbl elbl :}          \ x30 frame — 2x cheaper calls, fully inlineable
    na nu lbl elbl REG-PRIM
    lbl LBL,  xt execute  RET,  elbl LBL, ;
+
+: FPRIM-WID ( ptr u8 xt n -- ) {: na nu xt wid -- :} \ typed-local-lint: allow-bare-local - stock Gforth rejects Habu type suffixes.
+   na nu xt FPRIM
+   wid #PL @ 1- cells PWID + ! ;
 
 \ shared label ids (forward refs)
 variable LANCHOR  variable LFIND  variable LNUM  variable LDICT  variable LSRC  variable SRCN  variable SRCA
@@ -981,7 +1004,10 @@ previous definitions
    s" parse-name" ['] BPARSE-NAME FPRIM
    s" evaluate" ['] B-EVAL FPRIM-L ;
 
+: BOWNERFINALIZE ( -- ) ;
+
 : EMIT-ENGINE-PRIMS ( -- )
+   s" FINALIZE" ['] BOWNERFINALIZE OWNER-API-PUB-WID FPRIM-WID
    s" run-rc" ['] BRUNRC FPRIM-L
    s" cp@" ['] BCPFETCH FPRIM-L   s" dbase@" ['] BDBASEFETCH FPRIM-L
    s" data-base" ['] BDATAFETCH FPRIM-L
@@ -1345,7 +1371,7 @@ previous definitions
 
 \ ---- seed dictionary: NPRIMS records of [startoff(8) endoff(8) namelen(8) name(16)] ----
 : EMIT-DICT ( -- )
-   LNCOUNT @ LBL,  #PL @ DCQ,                              \ live count, read at startup
+   LNCOUNT @ LBL,  #PL @ 1+ DCQ,                           \ live count, read at startup
    LDICT @ LBL,
    #PL @ 0 ?do
       i cells PLBL + @ DLBL,                                \ +0  start byte-offset
@@ -1353,8 +1379,14 @@ previous definitions
       i cells PLEN + @ DCQ,                                 \ +16 name length
       i cells PNAM + @  i cells PLEN + @  BYTES,            \ +24 name (padded to 4)
       16  i cells PLEN + @  3 + -4 and  -  ?dup if  PNPOOL  swap BYTES, then
-      0 DCQ,                                               \ +40 wid (seed prims = 0 = FORTH)
-   loop ;
+      i cells PWID + @ DCQ,                                \ +40 wid
+   loop
+   OWNER-API-PUB-WID DCQ,
+   OWNER-API-PRI-WID DCQ,
+   9 DCQ,
+   s" OWNER-WID" BYTES,
+   PNPOOL 4 BYTES,
+   -1 DCQ, ;
 
 \ ---- compile-mode literal: emit movz/movk x9=val then the push stencil ----
 : C-LIT ( -- )   \ val in x11 at runtime; T0 register in JIT code is x9
@@ -3722,14 +3754,19 @@ variable CFSK2
    CP DBASE 0 ADDI,  5 DICT-SIZE LIT64,  CP CP 5 ADD, ;
 
 : EMIT-SEED-DICT ( -- )
-   LBL LBL {: scopy scdone :}
+   LBL LBL LBL LBL {: scopy scdone pkg fields :} \ typed-local-lint: allow-bare-local - stock Gforth rejects Habu type suffixes.
    11 LNCOUNT @ ADR,  11 11 0 LDR,  NDICT 11 0 ADDI,
    9 LDICT @ ADR,  10 DBASE 0 ADDI,  12 11 0 ADDI,
    scopy LBL,
       12 scdone CBZ,
       5 9 0 LDR,  6 9 8 LDR,
+      7 9 40 LDR,  8 0 MOVN,  7 8 CMP,  C-EQ pkg BCOND,
       7 RBASE 5 ADD,  7 10 0 STR,
       6 6 5 SUB,  6 6 4 SUBI,  6 10 8 STR,
+      fields B,
+      pkg LBL,
+      5 10 0 STR,  6 10 8 STR,
+      fields LBL,
       5 9 16 LDR,  5 10 16 STR,
       5 9 24 LDR,  5 10 24 STR,  5 9 32 LDR,  5 10 32 STR,
       5 9 40 LDR,  5 10 40 STR,
@@ -3774,6 +3811,7 @@ variable CFSK2
    LBL LBL LBL LBL {: sdl2 sdn2 sds2 srn :}
    9 DBASE 0 ADDI,  10 0 MOVZ,
    sdl2 LBL,  10 NDICT CMP,  C-GE sdn2 BCOND,
+      13 9 40 LDR,  14 0 MOVN,  13 14 CMP,  C-EQ sds2 BCOND, \ package [0]/[8] are raw WID roles, never text pointers
       13 9 0 LDR,
       13 21 CMP,  C-LT sds2 BCOND,
       14 21 22 ADD,  13 14 CMP,  C-GE sds2 BCOND,
@@ -3818,14 +3856,92 @@ variable CFSK2
    2 5 MOVZ,  LPROT @ BL,
    9 DBASE 0 ADDI,  5 DICT-SIZE LIT64,  9 9 5 ADD,  LFLUSH @ BL, ;
 
+: EMIT-SNAPSHOT-VALIDATE-WIDS ( n -- ) {: bad :} \ typed-local-lint: allow-bare-local - stock Gforth rejects Habu type suffixes.
+   LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL
+   {: prot-loop prot-max prot-inner prot-next owners owner-loop pub-max pri-max \ typed-local-lint: allow-bare-local - stock Gforth rejects Habu type suffixes.
+      oscan onext odone owner-prot owner-prev-start owner-prev owner-next widn :} \ typed-local-lint: allow-bare-local - stock Gforth rejects Habu type suffixes.
+   5 PROT-WID-END MOVZ,  7 5 CMP,  C-CC bad BCOND,
+   10 12 7 SUB,
+   25 10 6 SUB,
+   16 15 0 ADDI,
+   11 10 PROT-WID-N-CELL LDR,
+   11 PROT-WID-MAX CMPI,  C-HI bad BCOND,
+   12 PROT-WID-OFF MOVZ,  12 10 12 ADD,
+   17 0 MOVZ,  8 0 MOVZ,  9 12 0 ADDI,
+   prot-loop LBL,  8 11 CMP,  C-GE owners BCOND,
+      14 9 0 LDRW,  14 bad CBZ,
+      5 OWNER-WID-LIMIT LIT64,  14 5 CMP,  C-HI bad BCOND,
+      14 17 CMP,  C-LS prot-max BCOND,  17 14 0 ADDI,
+   prot-max LBL,
+      4 0 MOVZ,  5 12 0 ADDI,
+   prot-inner LBL,  4 8 CMP,  C-GE prot-next BCOND,
+      2 5 0 LDRW,  14 2 CMP,  C-EQ bad BCOND,
+      5 5 4 ADDI,  4 4 1 ADDI,  prot-inner B,
+   prot-next LBL,
+      9 9 4 ADDI,  8 8 1 ADDI,  prot-loop B,
+
+   owners LBL,
+   5 OWNER-WID-END MOVZ,  7 5 CMP,  C-CC bad BCOND,
+   6 10 OWNER-WID-N-CELL LDR,
+   6 OWNER-WID-MAX CMPI,  C-HI bad BCOND,
+   9 OWNER-WID-OFF MOVZ,  9 10 9 ADD,
+   8 0 MOVZ,  5 9 0 ADDI,
+   owner-loop LBL,  8 6 CMP,  C-GE widn BCOND,
+      14 5 OWNER-WID-PUB LDRW,  15 5 OWNER-WID-PRI LDRW,
+      14 bad CBZ,  15 bad CBZ,
+      4 OWNER-WID-LIMIT LIT64,
+      14 4 CMP,  C-HI bad BCOND,  15 4 CMP,  C-HI bad BCOND,
+      14 15 CMP,  C-EQ bad BCOND,
+      14 17 CMP,  C-LS pub-max BCOND,  17 14 0 ADDI,
+   pub-max LBL,
+      15 17 CMP,  C-LS pri-max BCOND,  17 15 0 ADDI,
+   pri-max LBL,
+      22 25 0 ADDI,  23 16 0 ADDI,  24 0 MOVZ,
+   oscan LBL,  23 odone CBZ,
+      2 22 40 LDR,  3 0 MOVN,  2 3 CMP,  C-NE onext BCOND,
+      2 22 0 LDR,  14 2 CMP,  C-NE onext BCOND,
+      2 22 8 LDR,  15 2 CMP,  C-NE onext BCOND,
+      24 24 1 ADDI,  24 1 CMPI,  C-HI bad BCOND,
+   onext LBL,
+      22 22 DREC ADDI,  23 23 1 SUBI,  oscan B,
+   odone LBL,
+      24 1 CMPI,  C-NE bad BCOND,
+      4 0 MOVZ,  12 PROT-WID-OFF MOVZ,  12 10 12 ADD,
+   owner-prot LBL,  4 11 CMP,  C-GE owner-prev-start BCOND,
+      2 12 0 LDRW,
+      14 2 CMP,  C-EQ bad BCOND,  15 2 CMP,  C-EQ bad BCOND,
+      12 12 4 ADDI,  4 4 1 ADDI,  owner-prot B,
+   owner-prev-start LBL,
+      4 0 MOVZ,  12 9 0 ADDI,
+   owner-prev LBL,  4 8 CMP,  C-GE owner-next BCOND,
+      2 12 OWNER-WID-PUB LDRW,  3 12 OWNER-WID-PRI LDRW,
+      14 2 CMP,  C-EQ bad BCOND,  14 3 CMP,  C-EQ bad BCOND,
+      15 2 CMP,  C-EQ bad BCOND,  15 3 CMP,  C-EQ bad BCOND,
+      12 12 OWNER-WID-ROW ADDI,  4 4 1 ADDI,  owner-prev B,
+   owner-next LBL,
+      5 5 OWNER-WID-ROW ADDI,  8 8 1 ADDI,  owner-loop B,
+
+   widn LBL,
+   6 10 WIDN-CELL LDR,
+   14 6 32 LSRI,  14 bad CBNZ,
+   6 17 CMP,  C-LS bad BCOND, ;
+
 : EMIT-SNAPSHOT-RESTORE ( -- )
-   LBL LBL LBL {: snomag snbad snok :}
+   LBL LBL LBL LBL LBL LBL {: snomag snbad snok snnew snhave snbadver :} \ typed-local-lint: allow-bare-local - stock Gforth rejects Habu type suffixes.
    24 0 MOVZ,
    9 DATA RBASE-CELL LDR,  25 9 0 ADDI,
    10 9 0 ADDI,  5 $1000 LIT64,  10 10 5 SUB,
    11 10 IMAGE-TEXT-SIZE-OFF LDR,
-   12 10 11 ADD,  5 IMAGE-TEXT-TRAILER-ADJ LIT64,  12 12 5 ADD,  12 12 40 SUBI,
-   13 12 0 LDR,  5 SNAP-MAGIC LIT64,  13 5 CMP,  C-NE snomag BCOND,
+   12 10 11 ADD,  5 IMAGE-TEXT-TRAILER-ADJ LIT64,  12 12 5 ADD,
+   5 SNAP-MAGIC LIT64,
+   13 12 48 SUBI,  14 13 0 LDR,  14 5 CMP,  C-EQ snnew BCOND,
+   13 12 40 SUBI,  14 13 0 LDR,  14 5 CMP,  C-NE snomag BCOND,
+   snbadver B,
+   snnew LBL,
+      14 13 40 LDR,
+      5 SNAP-FORMAT-VERSION MOVZ,  14 5 CMP,  C-NE snbadver BCOND,
+   snhave LBL,
+   12 13 0 ADDI,
    5 IMAGE-TEXT-CONTENT-ADJ LIT64,  11 11 5 SUB,
    21 12 8 LDR,
    15 12 16 LDR,
@@ -3834,11 +3950,19 @@ variable CFSK2
    5 REGION LIT64,  6 5 CMP,  C-GT snbad BCOND,
    5 DATA-SIZE LIT64,  7 5 CMP,  C-GT snbad BCOND,
    5 DICT-CAP MOVZ,  15 5 CMP,  C-GT snbad BCOND,
+   SP SP 64 SUBI,
+   6 SP 0 STR,  7 SP 8 STR,  11 SP 16 STR,  12 SP 24 STR,
+   15 SP 32 STR,  21 SP 40 STR,  25 SP 48 STR,
+   snbad EMIT-SNAPSHOT-VALIDATE-WIDS
+   6 SP 0 LDR,  7 SP 8 LDR,  11 SP 16 LDR,  12 SP 24 LDR,
+   15 SP 32 LDR,  21 SP 40 LDR,  25 SP 48 LDR,
+   SP SP 64 ADDI,
    snok B,
-   snbad LBL,  s" hb: snapshot trailer corrupt" 79 C-EXIT-DIAG   \ label the fd-2 diagnostic before exit 79 (no rc-80 version path in the gforth tripwire)
+   snbad LBL,  s" hb: snapshot trailer corrupt" 79 C-EXIT-DIAG
+   snbadver LBL,  s" hb: snapshot format version unsupported" 80 C-EXIT-DIAG
    snok LBL,
    9 DATA ARGC-CELL LDR,  10 DATA ARGV-CELL LDR,  0 DATA ENVP-CELL LDR,
-   22 11 6 SUB,  22 22 7 SUB,  22 22 40 SUBI,
+   22 11 6 SUB,  22 22 7 SUB,  22 22 48 SUBI,
    8 12 7 SUB,  8 8 6 SUB,
    EMIT-SNAPSHOT-COPY-CODE
    EMIT-SNAPSHOT-COPY-DATA
@@ -3860,9 +3984,10 @@ variable CFSK2
    9 DATA SNAP-CELL LDR,
    9 cwok CBNZ,
    9 0 MOVZ,  9 DATA CUR-CELL STR,
-   9 1 MOVZ,  9 DATA WIDN-CELL STR,
+   9 FIRST-DYNAMIC-WID MOVZ,  9 DATA WIDN-CELL STR,
    9 0 MOVZ,  9 DATA HOOK-CELL STR,
    9 DATA PROT-WID-N-CELL STR,
+   9 DATA OWNER-WID-N-CELL STR,
    cwok LBL,
    9 0 MOVZ,  9 DATA LOOPSP-CELL STR,
    9 DATA PKG-PUB-CELL STR,  9 DATA PKG-PRI-CELL STR,

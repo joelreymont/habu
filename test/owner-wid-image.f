@@ -21,8 +21,10 @@ package OWNER-WID-IMAGE
 
 create ROOT-BUF FS-PATH-CAP allot
 create HB-BUF FS-PATH-CAP allot
+create SNAP-BUF FS-PATH-CAP allot
 variable ROOT-U
 variable HB-U
+variable SNAP-U
 
 : ROOT! ( ptr u8 n -- ) {: a:ptr u:n :}
    u FS-PATH-CAP > if E-FS-CAPACITY throw then
@@ -35,7 +37,7 @@ variable HB-U
 : BUILD-IMAGE ( -- )
    BF-PIN-RESET BF-PIN-ON!
    BF-RECORD-RESET
-   BUILD-EXT:OWNER-WID-STDIN ;
+   BUILD-EXT:OWNER-WID-BUILD ;
 
 : BUILD-RESET ( -- )
    BF-RECORD-RESET
@@ -54,9 +56,16 @@ public
 : ROOT ( -- ptr u8 n )
    ROOT-BUF ROOT-U @ ;
 
-: HB$ ( -- ptr u8 n )
+: AOT-HB$ ( -- ptr u8 n )
    ROOT s" hb-stdin" HB-BUF JOIN-PATH HB-U !
    HB-BUF HB-U @ ;
+
+: SNAP-HB$ ( -- ptr u8 n )
+   ROOT s" hb-new" SNAP-BUF JOIN-PATH SNAP-U !
+   SNAP-BUF SNAP-U @ ;
+
+: HB$ ( -- ptr u8 n )
+   AOT-HB$ ;
 
 : BUILD ( -- )
    s" habu-owner-wid-image" TMPDIR-MKDIR ROOT!

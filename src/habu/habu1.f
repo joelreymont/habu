@@ -29,6 +29,7 @@ $F2E00009 constant W-MOVK3
 create PLBL PRIM-CAP cells allot   create PEL PRIM-CAP cells allot
 create PLEN PRIM-CAP cells allot   create PNAM PRIM-CAP cells allot
 create PNLBL PRIM-CAP cells allot
+create PWID PRIM-CAP cells allot
 create PNPOOL PRIM-NAME-CAP allot   variable PNP   variable #PL
 variable RPD
 variable PR-A  variable PR-U  variable PR-L  variable PR-E
@@ -53,6 +54,7 @@ variable FP-A  variable FP-U  variable FP-XT
    PR-L @ #PL @ cells PLBL + !
    PR-E @ #PL @ cells PEL  + !
    PR-U @ #PL @ cells PLEN + !
+   0 #PL @ cells PWID + !
    PNPOOL PNP @ + RPD !  RPD@ #PL @ cells PNAM + !
    PR-COPY-NAME
    PNP @ PR-U @ + PNP !  #PL @ 1 + #PL ! ;
@@ -83,6 +85,19 @@ s" fprim" s" ptr u8 n n --" TRUST
    FP-REG
    FPL LABEL@ LBL,  FP-XT @ execute  RET,  FPE LABEL@ LBL, ;
 s" fprim-l" s" ptr u8 n n --" TRUST
+
+variable FP-WID
+
+: FPRIM-WID ( ptr u8 n n n -- )
+   FP-WID !
+   FP-ARGS
+   FP-KEEP? 0= IF EXIT THEN
+   LBL FPL !  LBL FPE !
+   FP-REG
+   FP-WID @ #PL @ 1- cells PWID + !
+   FPL LABEL@ LBL,  SP SP 16 SUBI,  30 SP 0 STR,
+   FP-XT @ execute  30 SP 0 LDR,  SP SP 16 ADDI,  RET,  FPE LABEL@ LBL, ;
+s" fprim-wid" s" ptr u8 n n n --" TRUST
 
 \ --- deref/execute arity-guard table (for the interpret-boundary guard) ---
 \ A deref/execute/dispatch prim (@ ! +! c@ c! atomic@ atomic! atomic-add
@@ -119,7 +134,7 @@ variable GD-MIN
 variable LANCHOR  variable LFIND  variable LNUM  variable LDICT  variable LSRC  variable SRCN
 variable LCEMIT   variable LTOK   variable LPROT  variable LPROTSPAN  variable LFLUSH variable LNCOUNT
 variable LAOTCODE  variable LAOTDICT  variable LAOTCODELEN
-variable LAOTNREC  variable LAOTNSITE  variable LAOTSITES  variable LAOTNAMES
+variable LAOTNREC  variable LAOTNSITE  variable LAOTSITES  variable LAOTNAMES  variable LAOTNAMESLEN
 variable LAOTNDSITE  variable LAOTDSITES  variable LAOTDATAD0  variable LAOTDATASIZE
 variable LAOTNCSITE  variable LAOTCSITES  variable LAOTCODEB0
 variable LAOTBOOTRUN
@@ -1969,6 +1984,40 @@ s" linux-stat-fix" s" n --" TRUST
    msg LBL,  s" set-top-check: invalid top-row hook xt" BYTES,
    done LBL, ;
 
+package OWNER-WID-EMIT
+
+variable PREFIX-XT
+variable SOURCE-XT
+0 PREFIX-XT !
+
+: SOURCE-DEFAULT ( -- ptr u8 n )
+   PNPOOL 0 ;
+
+public
+
+: SOURCE-HOOK! ( n -- )
+   SOURCE-XT ! ;
+
+: SOURCE-HOOK ( -- ptr u8 n )
+   SOURCE-XT @ execute ;
+
+private
+
+: SOURCE-INIT ( -- )
+   ['] SOURCE-DEFAULT SOURCE-XT ! ;
+
+SOURCE-INIT
+
+public
+
+: PREFIX-HOOK! ( [ -- ] -- )
+   PREFIX-XT ! ;
+
+: PREFIX-HOOK ( -- )
+   PREFIX-XT @ dup 0= if drop exit then execute ;
+
+;package
+
 \ TFAM 2b-iii: capture the seal-time dictionary-truncation watermark. Called from
 \ SEAL-CAPTURE source tokens - the xref.f baseline plus the cold-prefix
 \ assembler's token at the true engine-prefix end (habu2.f
@@ -1980,7 +2029,8 @@ s" linux-stat-fix" s" n --" TRUST
 \ engine is loaded (its records cannot be forgotten past this mark), so re-running
 \ the capture is monotonic and never lowers the watermark.
 : BSEALCAP ( -- )
-   NDICT DATA SEAL-NDICT-CELL STR, ;
+   NDICT DATA SEAL-NDICT-CELL STR,
+   OWNER-WID-EMIT:PREFIX-HOOK ;
 
 : BSEALFRIEND ( -- )
    9 FRIEND-ARENA-LEN MOVZ,  9 DATA FRIEND-LATCH-CELL STR, ;
@@ -2797,7 +2847,7 @@ variable FIND-HMATCH
          -1 over cells PNLBL + !
       THEN
       1 + REPEAT drop
-   LNCOUNT LABEL@ LBL,  #PL @ DCQ,
+   LNCOUNT LABEL@ LBL,  #PL @ 1+ DCQ,
    LDICT LABEL@ LBL,
    0 BEGIN dup #PL @ < WHILE
       dup cells PLBL + LABEL@ DLBL,
@@ -2811,21 +2861,31 @@ variable FIND-HMATCH
          dup cells PNAM + @  over cells PLEN + @  BYTES,
          16  over cells PLEN + @  3 + -4 and  -  dup 0 > IF PNPOOL swap BYTES, ELSE drop THEN
       THEN
-      0 DCQ,
-      1 + REPEAT drop ;
+      dup cells PWID + @ DCQ,
+      1 + REPEAT drop
+   OWNER-API-PUB-WID DCQ,
+   OWNER-API-PRI-WID DCQ,
+   9 DCQ,
+   s" OWNER-WID" BYTES,
+   PNPOOL 4 BYTES,
+   -1 DCQ, ;
 
 package OWNER-WID-EMIT
 
 variable LPUBQ
 variable LPRIQ
 variable LANYQ
+variable LPAIRQ
 variable LPREF
 variable LADD
 variable LCOLD
+variable LOWNER
 variable COLD-XT
 variable PROOF-XT
+variable RESTORE-XT
 0 COLD-XT !
 0 PROOF-XT !
+0 RESTORE-XT !
 
 $C8DFFCA6 constant W-COUNT-LDAR
 $C89FFCA6 constant W-COUNT-STLR
@@ -2887,6 +2947,18 @@ $C89FFCA6 constant W-COUNT-STLR
    next done ANY-ROW
    next LBL,  loop SCAN-NEXT
    done LBL,  ANY-DONE ;
+
+: PAIR ( -- )
+   LBL LBL LBL {: loop:label next:label done:label :}
+   LPAIRQ LABEL@ LBL,
+   SCAN-INIT
+   loop LBL,
+   7 6 CMP,  C-GE done BCOND,
+   14 5 OWNER-WID-PUB LDRW,  14 9 CMP,  C-NE next BCOND,
+   14 5 OWNER-WID-PRI LDRW,  14 10 CMP,  C-NE next BCOND,
+   13 1 MOVZ,  done B,
+   next LBL,  loop SCAN-NEXT
+   done LBL,  RET, ;
 
 : PREFLIGHT-ARGS ( label -- ) {: done:label :}
    13 0 MOVZ,
@@ -2964,7 +3036,8 @@ $C89FFCA6 constant W-COUNT-STLR
 public
 
 : LABELS ( -- )
-   LBL LPUBQ !  LBL LPRIQ !  LBL LANYQ !  LBL LPREF !  LBL LADD !  LBL LCOLD ! ;
+   LBL LPUBQ !  LBL LPRIQ !  LBL LANYQ !  LBL LPAIRQ !
+   LBL LPREF !  LBL LADD !  LBL LCOLD !  LBL LOWNER ! ;
 
 : ADD-LABEL@ ( -- label )
    LADD LABEL@ ;
@@ -2981,11 +3054,20 @@ public
 : ANY-LABEL@ ( -- label )
    LANYQ LABEL@ ;
 
+: PAIR-LABEL@ ( -- label )
+   LPAIRQ LABEL@ ;
+
 : COLD-HOOK! ( [ -- ] -- )
    COLD-XT ! ;
 
 : COLD-HOOK ( -- )
    COLD-XT @ dup 0= if drop exit then execute ;
+
+: RESTORE-HOOK! ( [ -- ] -- )
+   RESTORE-XT ! ;
+
+: RESTORE-HOOK ( -- )
+   RESTORE-XT @ dup 0= if drop exit then execute ;
 
 : PROOF-HOOK! ( [ -- ] -- )
    PROOF-XT ! ;
@@ -2996,6 +3078,7 @@ public
 : COLD-RESET ( -- )
    LBL {: loop:label :}
    LCOLD LABEL@ LBL,
+   SP SP 16 SUBI,  30 SP 0 STR,
    6 0 MOVZ,  COUNT!,
    9 0 MOVZ,
    5 OWNER-WID-OFF MOVZ,  5 DATA 5 ADD,
@@ -3005,12 +3088,26 @@ public
    5 5 OWNER-WID-ROW ADDI,
    7 7 1 SUBI,
    7 loop CBNZ,
-   COLD-HOOK ;
+   RESTORE-HOOK
+   30 SP 0 LDR,  SP SP 16 ADDI,
+   RET, ;
 
 : COLD-LABEL@ ( -- label )
    LCOLD LABEL@ ;
 
+: OWNER-LABEL@ ( -- label )
+   LOWNER LABEL@ ;
+
+private
+
+: BFINALIZE ( -- )
+   OWNER-LABEL@ BL,
+   COLD-HOOK ;
+
+public
+
 : PRIMS ( -- )
+   s" FINALIZE" ['] BFINALIZE OWNER-API-PUB-WID FPRIM-WID
    s" owner-wid-preflight?" ['] BPRE? 3 GDEREF-F
    s" owner-wid-public?" ['] BPUB? 1 GDEREF-F
    s" owner-wid-private?" ['] BPRI? 1 GDEREF-F
@@ -3020,7 +3117,9 @@ public
    LPUBQ LABEL@ OWNER-WID-PUB ROLE
    LPRIQ LABEL@ OWNER-WID-PRI ROLE
    ANY
+   PAIR
    PREFLIGHT
+   COLD-RESET
    ADD-ROUTINE
    PROOF-HOOK ;
 

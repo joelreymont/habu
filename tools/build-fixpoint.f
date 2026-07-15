@@ -492,6 +492,8 @@ package BUILD-EXT
 
 variable PATH-A
 variable PATH-U
+variable KEEP-A
+variable KEEP-U
 
 : PATH-FIELD ( -- ptr ptr u8 )
    PATH-A 0 ptr-field ;
@@ -499,22 +501,41 @@ variable PATH-U
 : PATH@ ( -- ptr u8 )
    PATH-FIELD @ ;
 
+: KEEP-FIELD ( -- ptr ptr u8 )
+   KEEP-A 0 ptr-field ;
+
+: KEEP@ ( -- ptr u8 )
+   KEEP-FIELD @ ;
+
 : CLEAR ( -- )
-   0 PATH-U ! ;
+   0 PATH-U !
+   0 KEEP-U ! ;
 
 : SET ( ptr u8 n -- )
    PATH-U !
    PATH-FIELD ! ;
+
+: KEEP-SET ( ptr u8 n -- )
+   KEEP-U !
+   KEEP-FIELD ! ;
 
 CLEAR
 
 public
 
 : ASSERT-EMPTY ( -- )
-   PATH-U @ 0 <> if s" build-fixpoint: production extension enabled" BF-BUILD-RC die then ;
+   PATH-U @ 0 <> KEEP-U @ 0 <> or if
+      s" build-fixpoint: production extension enabled" BF-BUILD-RC die
+   then ;
 
 : APPEND ( ptr u8 n -- ) {: out:ptr outu:n :}
+   KEEP-U @ 0 > if out outu KEEP@ KEEP-U @ BF-APPEND-SOURCE then
    PATH-U @ 0 > if out outu PATH@ PATH-U @ BF-APPEND-SOURCE then ;
+
+: APPEND-KEEP ( ptr u8 n -- ) {: out:ptr outu:n :}
+   KEEP-U @ 0 > if
+      out outu KEEP@ KEEP-U @ BF-APPEND-SOURCE
+   then ;
 
 ;package
 
@@ -824,7 +845,8 @@ public
    out outu s" src/habu/xref.f" BF-APPEND-SOURCE
    out outu s" src/core/layout-buffer-seal.f" BF-APPEND-SOURCE
    out outu s" src/core/lower-cert-seal.f" BF-APPEND-SOURCE
-   out outu BF-APPEND-SCRIPT-ARGV ;
+   out outu BF-APPEND-SCRIPT-ARGV
+   out outu BUILD-EXT:APPEND-KEEP ;
 
 : BF-APPEND-TARGET-REPL-TERM ( ptr u8 n -- ) {: out:ptr outu:n :}
    HB-TARGET-LINUX? if
@@ -1148,23 +1170,6 @@ public
    BF-STAGE-FIXPOINT
    BF-BUILD-STDIN-FROM-STAGE ;
 
-package BUILD-EXT
-
-private
-
-: OWNER-WID-ACT ( -- )
-   BF-BUILD-STDIN-FRESH ;
-
-public
-
-: OWNER-WID-STDIN ( -- )
-   s" test/owner-wid-emitter.f" SET
-   [: OWNER-WID-ACT ;] catch {: code:n :}
-   CLEAR
-   code 0 <> if code throw then ;
-
-;package
-
 : BF-BUILD-SNAP-FROM-STDIN ( -- )
    BF-SNAP-SOURCE
    BF-CERTIFY-SNAP
@@ -1177,6 +1182,25 @@ public
    s" hb-new" BF-CHMOD-X-TMP
    s" hb-new" BF-EXPECT
    s" snapshot image OK: candidate validated" type cr ;
+
+package BUILD-EXT
+
+private
+
+: OWNER-WID-ACT ( -- )
+   BF-BUILD-STDIN-FRESH
+   BF-BUILD-SNAP-FROM-STDIN ;
+
+public
+
+: OWNER-WID-BUILD ( -- )
+   s" test/owner-wid-emitter.f" SET
+   s" test/owner-wid-source.f" KEEP-SET
+   [: OWNER-WID-ACT ;] catch {: code:n :}
+   CLEAR
+   code 0 <> if code throw then ;
+
+;package
 
 : BF-BUILD-ALL ( -- )
    BUILD-EXT:ASSERT-EMPTY
@@ -1482,5 +1506,10 @@ undefine PATH@
 undefine PATH-FIELD
 undefine PATH-A
 undefine PATH-U
+undefine KEEP-SET
+undefine KEEP@
+undefine KEEP-FIELD
+undefine KEEP-A
+undefine KEEP-U
 undefine OWNER-WID-ACT
 ;package
