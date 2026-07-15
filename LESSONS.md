@@ -4379,3 +4379,8 @@ unchanged (148855). Keys for milestone 2:
   four scalar results and made green source fail at checker load. Audit direct
   call sites and replace scalar kind tests with exhaustive `MATCH outcome`
   storage before declaring the cutover complete.
+- **Diagnostic origins belong in the source scanner's single pass.** Recomputing
+  line and column by rescanning from byte zero for every definition made
+  fixpoint certification quadratic: a 1.0 MB, 3,250-definition source spent
+  98% of sampled time in that rescan. Advance byte, line, and line-start state
+  together at the scanner cursor, then snapshot the token origin in O(1).

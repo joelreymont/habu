@@ -17,8 +17,11 @@ variable TOKEN-U
 variable STRING-DONE
 variable BODY-U
 variable LINE-N
-variable COL-N
-variable POS
+variable LINE-START
+variable TOKEN-LINE
+variable TOKEN-COL
+variable TOKEN-BYTE
+variable STR-POS
 variable BASE-LINE
 variable BASE-COL
 variable BASE-BYTE
@@ -54,24 +57,51 @@ create BODY-BUF BODYBUF-CAP allot
    col BASE-COL !
    byte BASE-BYTE ! ;
 
+: SCAN-RESET ( -- )
+   0 SCAN-I !
+   1 LINE-N !
+   0 LINE-START ! ;
+
+: SCAN-C@ ( -- n )
+   SOURCE@ SCAN-I @ + c@ ;
+
+: SCAN-C+ ( -- n )
+   SCAN-C@ {: c:n :}
+   SCAN-I @ 1 + SCAN-I !
+   c 10 = if
+      LINE-N @ 1 + LINE-N !
+      SCAN-I @ LINE-START !
+   then
+   c ;
+
+: TOKEN-START! ( -- )
+   SCAN-I @ TOKEN-START !
+   BASE-LINE @ LINE-N @ + 1 - TOKEN-LINE !
+   SCAN-I @ LINE-START @ - 1 + {: col:n :}
+   LINE-N @ 1 = if BASE-COL @ col + 1 - else col then TOKEN-COL !
+   BASE-BYTE @ SCAN-I @ + TOKEN-BYTE ! ;
+
+: TOKEN-ORIGIN! ( -- )
+   TOKEN-LINE @ TOKEN-COL @ TOKEN-BYTE @ DIAG-ORIGIN! ;
+
 : SKIP-WS ( -- )
-   BEGIN SCAN-I @ SOURCE-U @ < IF SOURCE@ SCAN-I @ + c@ 33 < ELSE 0 0= 0= THEN WHILE
-      SCAN-I @ 1 + SCAN-I !
-   REPEAT ;
+   begin SCAN-I @ SOURCE-U @ < if SCAN-C@ 33 < else 0 0= 0= then while
+      SCAN-C+ drop
+   repeat ;
 
 : SKIP-PAST ( n -- ) {: ch:n :}
    0 FOUND !
-   BEGIN SCAN-I @ SOURCE-U @ < WHILE
-      SOURCE@ SCAN-I @ + c@  SCAN-I @ 1 + SCAN-I !  ch = IF -1 FOUND ! EXIT THEN
-   REPEAT ;
+   begin SCAN-I @ SOURCE-U @ < while
+      SCAN-C+ ch = if -1 FOUND ! exit then
+   repeat ;
 
 : NEXT-RAW ( -- ptr u8 n )
    SKIP-WS
-   SCAN-I @ SOURCE-U @ >= IF SOURCE@ 0 EXIT THEN
-   SCAN-I @ TOKEN-START !
-   BEGIN SCAN-I @ SOURCE-U @ < IF SOURCE@ SCAN-I @ + c@ 32 > ELSE 0 0= 0= THEN WHILE
-      SCAN-I @ 1 + SCAN-I !
-   REPEAT
+   SCAN-I @ SOURCE-U @ >= if SOURCE@ 0 exit then
+   TOKEN-START!
+   begin SCAN-I @ SOURCE-U @ < if SCAN-C@ 32 > else 0 0= 0= then while
+      SCAN-C+ drop
+   repeat
    SOURCE@ TOKEN-START @ +  SCAN-I @ TOKEN-START @ - ;
 
 : SC-LEAD? ( n -- bool )
@@ -97,15 +127,15 @@ create BODY-BUF BODYBUF-CAP allot
 
 : SKIP-ESCAPED-QUOTE ( -- )
    0 FOUND !
-   BEGIN SCAN-I @ SOURCE-U @ < WHILE
-      SOURCE@ SCAN-I @ + c@  SCAN-I @ 1 + SCAN-I !
-      dup 92 = IF
+   begin SCAN-I @ SOURCE-U @ < while
+      SCAN-C+
+      dup 92 = if
          drop
-         SCAN-I @ SOURCE-U @ < IF SCAN-I @ 1 + SCAN-I ! THEN
-      ELSE
-         34 = IF -1 FOUND ! EXIT THEN
-      THEN
-   REPEAT ;
+         SCAN-I @ SOURCE-U @ < if SCAN-C+ drop then
+      else
+         34 = if -1 FOUND ! exit then
+      then
+   repeat ;
 
 \ Skipped top-level string literals feed a two-slot ring so a bare top-level
 \ `s" NAME" s" SIG" TRUST` (strings the scanner would otherwise discard) can be
@@ -165,30 +195,6 @@ create BODY-BUF BODYBUF-CAP allot
    REPEAT drop
    32 BODY-BUF BODY-U @ + c!  BODY-U @ 1 + BODY-U ! ;
 
-: LINE-COL ( n -- n n ) {: idx:n :}
-   1 LINE-N !
-   1 COL-N !
-   0 POS !
-   BEGIN POS @ idx <  POS @ SOURCE-U @ < and WHILE
-      SOURCE@ POS @ + c@ 10 = IF
-         LINE-N @ 1 + LINE-N !
-         1 COL-N !
-      ELSE
-         COL-N @ 1 + COL-N !
-      THEN
-      POS @ 1 + POS !
-   REPEAT
-   LINE-N @ COL-N @ ;
-
-: ABS-ORIGIN ( n -- n n n ) {: idx:n :}
-   idx LINE-COL {: line:n col:n :}
-   BASE-LINE @ line + 1 -
-   line 1 = IF BASE-COL @ col + 1 - ELSE col THEN
-   BASE-BYTE @ idx + ;
-
-: ORIGIN! ( n -- )
-   ABS-ORIGIN DIAG-ORIGIN! ;
-
 : MAYBE-SIGNATURE ( -- )
    SKIP-WS
    SCAN-I @ SOURCE-U @ < IF
@@ -216,11 +222,11 @@ create BODY-BUF BODYBUF-CAP allot
    u 0= IF 0 0= 0= EXIT THEN
    a u + 1 - c@ 34 <> IF 0 0= 0= EXIT THEN
    0 BACKSLASHES !
-   u 1 - POS !
-   BEGIN POS @ 0 > WHILE
-      a POS @ 1 - + c@ 92 = IF
+   u 1 - STR-POS !
+   BEGIN STR-POS @ 0 > WHILE
+      a STR-POS @ 1 - + c@ 92 = IF
          BACKSLASHES @ 1 + BACKSLASHES !
-         POS @ 1 - POS !
+         STR-POS @ 1 - STR-POS !
       ELSE
          BACKSLASHES @ 1 and 0= EXIT
       THEN
@@ -321,7 +327,7 @@ TRUSTED: CHECK-DOES-BODY ( ptr u8 n ptr u8 n -- n )
    BEGIN
       BODY!
       TOKEN-U @ 0= IF s" verify-source: unterminated does body" 74 die THEN
-      BODY-U @ 0= IF TOKEN-START @ ORIGIN! THEN
+      BODY-U @ 0= if TOKEN-ORIGIN! then
       TOKEN-A @ TOKEN-U @ s" ;" CORE-STR= IF sig sigu VERIFY-DOES-BODY EXIT THEN
       APPEND-BODY-TOKEN
    AGAIN ;
@@ -631,8 +637,8 @@ TRUSTED: SIG-RAW-MODE! ( n -- ) SIG-RAW-DEFINER! ;
 : VERIFY-DEFINITION ( -- )
    0 BODY-U !
    BODY!
-   TOKEN-U @ 0= IF s" verify-source: missing word name" 74 die THEN
-   TOKEN-START @ ORIGIN!
+   TOKEN-U @ 0= if s" verify-source: missing word name" 74 die then
+   TOKEN-ORIGIN!
    TOKEN-A @ TOKEN-U @ BODY-APPEND
    MAYBE-SIGNATURE
    BEGIN
@@ -644,7 +650,7 @@ TRUSTED: SIG-RAW-MODE! ( n -- ) SIG-RAW-DEFINER! ;
    AGAIN ;
 
 : VERIFY-SOURCE ( -- )
-   0 SCAN-I !
+   SCAN-RESET
    0 TOP-PREV-A !  0 TOP-PREV-U !
    BEGIN
       NEXT-SCAN dup 0 > WHILE

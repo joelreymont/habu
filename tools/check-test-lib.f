@@ -600,6 +600,76 @@ private
    CKT-ERR erru s" E-UNDEFINED" CONTAINS? TTRUE
    CKT-ERR erru s" CKT-MISSING" CONTAINS? TTRUE ;
 
+package CKT-ORIGIN
+
+private
+
+: SCAN$ ( -- ptr u8 n )
+   SB-RESET
+   $20 SB-APPEND-C  $09 SB-APPEND-C  $5c SB-APPEND-C
+   s"  : POISON-LINE ( n -- n ) dup ;" SB-APPEND
+   $0d SB-APPEND-C  $0a SB-APPEND-C
+   s" ( : POISON-PAREN ( n -- n ) dup ;" SB-APPEND
+   $0d SB-APPEND-C  $0a SB-APPEND-C
+   s" body )" SB-APPEND  $0d SB-APPEND-C  $0a SB-APPEND-C
+   s" s" SB-APPEND  $22 SB-APPEND-C
+   s"  : POISON-NORMAL ( n -- n ) dup ;" SB-APPEND
+   $0d SB-APPEND-C  $0a SB-APPEND-C
+   s" normal tail" SB-APPEND  $22 SB-APPEND-C
+   $0d SB-APPEND-C  $0a SB-APPEND-C
+   s" s" SB-APPEND  $5c SB-APPEND-C  $22 SB-APPEND-C
+   s"  prefix " SB-APPEND  $5c SB-APPEND-C  $22 SB-APPEND-C
+   s"  : POISON-ESC ( n -- n ) dup ;" SB-APPEND
+   $0d SB-APPEND-C  $0a SB-APPEND-C
+   s" escaped tail" SB-APPEND  $22 SB-APPEND-C
+   $0d SB-APPEND-C  $0a SB-APPEND-C
+   s" : CKT-ORIGIN-SCAN ( n -- n ) dup ;" SB-APPEND
+   $0d SB-APPEND-C  $0a SB-APPEND-C
+   SB$ ;
+
+: BASE$ ( -- ptr u8 n )
+   s" : CKT-ORIGIN-BASE ( n -- n ) dup ;" ;
+
+: NEXT$ ( -- ptr u8 n )
+   SB-RESET
+   $5c SB-APPEND-C  s"  base" SB-APPEND  $0a SB-APPEND-C
+   s" : CKT-ORIGIN-NEXT ( n -- n ) dup ;" SB-APPEND
+   SB$ ;
+
+: VERIFY-BASE ( -- n )
+   CHECKER-CANDIDATE-SCOPE-START
+   [: BASE$ 7 9 100 VERIFY:SOURCE-BUF-AT-IN-SCOPE ;] catch {: rc:n :}
+   CHECKER-CANDIDATE-SCOPE-DONE
+   rc ;
+
+: VERIFY-NEXT ( -- n )
+   CHECKER-CANDIDATE-SCOPE-START
+   [: NEXT$ 7 9 100 VERIFY:SOURCE-BUF-AT-IN-SCOPE ;] catch {: rc:n :}
+   CHECKER-CANDIDATE-SCOPE-DONE
+   rc ;
+
+public
+
+: SCAN ( -- )
+   SCAN$ CKT-DIRECT-JSON-STDIN 70 T=
+   {: outu:n erru:n :}
+   outu 0 T=
+   CKT-ERR erru s\" \"word\":\"ckt-origin-scan\"" CONTAINS? TTRUE
+   CKT-ERR erru s\" \"line\":8,\"column\":30,\"byte_start\":219,\"byte_end\":222" CONTAINS? TTRUE ;
+
+: BASE ( -- )
+   CKT-ERR CKT-BUF-CAP DIAG-BUFFER!
+   0 0= DIAG-JSON!
+   VERIFY-BASE 70 T=
+   DIAG-BUFFER$ s\" \"line\":7,\"column\":38,\"byte_start\":129,\"byte_end\":132" CONTAINS? TTRUE
+   CKT-ERR CKT-BUF-CAP DIAG-BUFFER!
+   VERIFY-NEXT 70 T=
+   DIAG-BUFFER$ s\" \"line\":8,\"column\":30,\"byte_start\":136,\"byte_end\":139" CONTAINS? TTRUE
+   DIAG-BUFFER-OFF
+   0 0= 0= DIAG-JSON! ;
+
+;package
+
 : CKT-TEST-FWDREF-RAW-LOAD ( -- )
    CKT-HB-LOAD-FWDREF 70 T=
    {: outu:n erru:n :}
@@ -1137,6 +1207,8 @@ variable CKTP-DOC-U
    s" check/die" [: CKT-TEST-DIE ;] CKT-RUN
    s" check/forward-ref-direct" [: CKT-TEST-FWDREF-DIRECT ;] CKT-RUN
    s" check/forward-ref-json" [: CKT-TEST-FWDREF-JSON ;] CKT-RUN
+   s" check/origin-scan" [: CKT-ORIGIN:SCAN ;] CKT-RUN
+   s" check/origin-base" [: CKT-ORIGIN:BASE ;] CKT-RUN
    s" check/forward-ref-raw-load" [: CKT-TEST-FWDREF-RAW-LOAD ;] CKT-RUN
    s" check/unterminated-string" [: CKT-TEST-UNTERM-STRING ;] CKT-RUN
    s" check/duplicate-all-errors" [: CKT-TEST-DUP-ALL ;] CKT-RUN
