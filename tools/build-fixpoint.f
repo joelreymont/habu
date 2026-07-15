@@ -896,15 +896,21 @@ public
    out outu s" src/habu/owner-wid-emit-seal.f" BF-APPEND-SOURCE
    out outu BF-APPEND-DRIVER-IO ;
 
-: BF-EMIT-SNAP-RUN-SOURCE ( ptr u8 n ptr u8 n -- ) {: out:ptr outu:n driver:ptr driveru:n :}
-   out outu BF-RESET-OUT
+: BF-APPEND-SNAP-PRESEAL ( ptr u8 n -- ) {: out:ptr outu:n :}
    out outu BF-APPEND-STDIN-RUN-PRELUDE
    out outu BF-APPEND-SNAP-KEEP
    out outu BF-APPEND-SNAP-REPL
-   out outu BF-APPEND-SNAP-MARK
+   out outu BF-APPEND-SNAP-MARK ;
+
+: BF-APPEND-SNAP-SEALED ( ptr u8 n ptr u8 n -- ) {: out:ptr outu:n driver:ptr driveru:n :}
    out outu COMPILER-BUILD:SEAL
    out outu BF-APPEND-SNAP-BUILD
    out outu driver driveru BF-APPEND-SOURCE ;
+
+: BF-EMIT-SNAP-RUN-SOURCE ( ptr u8 n ptr u8 n -- ) {: out:ptr outu:n driver:ptr driveru:n :}
+   out outu BF-RESET-OUT
+   out outu BF-APPEND-SNAP-PRESEAL
+   out outu driver driveru BF-APPEND-SNAP-SEALED ;
 
 : BF-CLOSE-CMP ( -- )
    BF-FDA @ dup 0 >= if close else drop then

@@ -4662,4 +4662,7 @@ unchanged (148855). Keys for milestone 2:
   copy's dead mmap owners after restore. Install a fixed first-copy
   `CHECKER-SNAPSHOT-PREPARE` xt after the cold checker loads, invoke that exact
   owner before the payload checker prepares, and clear the xt from persisted
-  DATA.
+  DATA. Prove the two clearing boundaries independently: inspect the raw image
+  cell for zero to cover capture scrubbing, then re-sign a forged-nonzero image
+  and read the cell from user code to cover startup reset. A normal boot alone
+  lets either boundary hide the other's omission.

@@ -32,6 +32,13 @@ $40000 constant BFT-BIG-CAP
 24 constant BFT-TRL-REGLEN
 40 constant BFT-TRL-VERSION
 
+package BFT-SNAP-HOOK
+private
+32 constant TRL-DATALEN
+$A5 constant FORGE
+$4A constant MISSING-RC
+;package
+
 variable BFT-ROOT-U
 variable BFT-HB-NEW-U
 variable BFT-HB-U
@@ -731,6 +738,23 @@ public
 : BFT-BYTE! ( n n -- ) {: val:n off:n :}
    val BFT-BYTES off BYTE+ c! ;
 
+package BFT-SNAP-HOOK
+private
+
+: U64@ ( n -- n ) {: off:n :}
+   0
+   8 0 ?do
+      off i + BFT-BYTE@ i 8 * lshift or
+   loop ;
+
+: DATA-OFF ( -- n )
+   BFT-MAG-LAST @ dup TRL-DATALEN + U64@ - ;
+
+: HOOK-OFF ( -- n )
+   DATA-OFF ENGINE-SNAP-XT-CELL + ;
+
+;package
+
 : BFT-DOCTOR-WRITE ( -- )
    s" hb-doctored" BF-REMOVE-TMP
    s" hb-doctored" BF-A$ BFT-BYTES BFT-BYTES-N @ WRITE-ALL
@@ -738,11 +762,15 @@ public
    s" hb-doctored" BF-CHMOD-X-TMP ;
 
 variable BFT-DOC-ERR-U
+variable BFT-DOC-OUT-U
 variable BFT-DOC-EXITED
 variable BFT-DOC-CODE
 
 : BFT-DOC-ERR$ ( -- ptr u8 n )
    BFT-ERR BFT-DOC-ERR-U @ ;
+
+: BFT-DOC-OUT$ ( -- ptr u8 n )
+   BFT-OUT BFT-DOC-OUT-U @ ;
 
 \ Doctor one trailer byte, run the patched snapshot engine with empty stdin and
 \ its stderr CAPTURED (the labeled diagnostic goes to fd 2), record the exit
@@ -760,6 +788,7 @@ variable BFT-DOC-CODE
      signaled OF BFT-DOC-CODE ! 0 0= 0= BFT-DOC-EXITED ! ENDOF
      timeout OF 0 BFT-DOC-CODE ! 0 0= 0= BFT-DOC-EXITED ! ENDOF
    ;MATCH {: ou:len eu:len :}
+   ou LEN>N BFT-DOC-OUT-U !
    eu LEN>N BFT-DOC-ERR-U !
    orig off BFT-BYTE! ;
 
@@ -770,6 +799,79 @@ variable BFT-DOC-CODE
    BFT-DOC-CODE @ code T=
    BFT-DOC-ERR$ msg msgu CONTAINS? TTRUE ;
 
+package BFT-SNAP-HOOK
+private
+
+: PROBE! ( -- )
+   s" snap-hook-probe.f" BF-A$
+   s\" package SNAP-HOOK-PROBE public\n: ASSERT-CLEAR ( -- )\n   data-base ENGINE-SNAP-XT-CELL + @ 0 <> if 1 throw then ;\n;package\nSNAP-HOOK-PROBE:ASSERT-CLEAR\n"
+   WRITE-ALL ;
+
+: RAW ( -- )
+   HOOK-OFF {: off:n :}
+   off 0 >= TTRUE
+   off 8 + BFT-MAG-LAST @ <= TTRUE
+   off U64@ 0 T= ;
+
+: STARTUP ( -- )
+   HOOK-OFF {: off:n :}
+   off BFT-BYTE@ {: orig:n :}
+   FORGE off BFT-BYTE!
+   off U64@ 0= TFALSE
+   BFT-DOCTOR-WRITE
+   s" hb-doctored" BF-CODESIGN-VERIFY-TMP
+   PROBE!
+   s" hb-doctored" BF-A$ s" snap-hook-probe.f" BF-B$ BF-RUN-LOAD-STAGE {: rc:n :}
+   orig off BFT-BYTE!
+   rc 0 T= ;
+
+: NOHOOK-SOURCE ( -- )
+   s" hb-snap-nohook-src" BF-RESET-OUT
+   s" hb-snap-nohook-src" BF-APPEND-SNAP-PRESEAL
+   s" hb-snap-nohook-src" s" 0 data-base ENGINE-SNAP-XT-CELL + !" BF-APPEND-LINE
+   s" hb-snap-nohook-src" s" src/habu/snap.f" BF-APPEND-SNAP-SEALED ;
+
+: NOHOOK-ARGV ( -- )
+   PROC-ARGV-RESET
+   s" --build" BFT-ARG+
+   s" hb-snap-nohook-src" BF-A$ BFT-ARG+
+   s" --" BFT-ARG+
+   BFT-ROOT BFT-ARG+ ;
+
+: NOHOOK-CAPTURE ( -- )
+   NOHOOK-ARGV
+   PROC-ENV-RESET
+   s" HB_TMP" >LEN BFT-ROOT >LEN PROC-ENV+
+   BFT-HB >LEN BFT-OUT BFT-CAPTURE-CAP >LEN
+   BFT-ERR BFT-CAPTURE-CAP >LEN BFT-TIMEOUT-MS >MS
+   RUN-ARGV-ENV-CAPTURE-OUTCOME
+   MATCH outcome
+     exited OF BFT-DOC-CODE ! 0 0= BFT-DOC-EXITED ! ENDOF
+     signaled OF BFT-DOC-CODE ! 0 0= 0= BFT-DOC-EXITED ! ENDOF
+     timeout OF 0 BFT-DOC-CODE ! 0 0= 0= BFT-DOC-EXITED ! ENDOF
+   ;MATCH {: ou:len eu:len :}
+   ou LEN>N BFT-DOC-OUT-U !
+   eu LEN>N BFT-DOC-ERR-U ! ;
+
+public
+
+: VERIFY-IMAGE ( -- )
+   RAW
+   STARTUP ;
+
+: MISSING ( -- )
+   BFT-ROOT BF-TMP!
+   NOHOOK-SOURCE
+   s" snap-hook-missing" s" hb-snap-nohook-src" BF-A$ BF-CERTIFY-GENERATED
+   NOHOOK-CAPTURE
+   BFT-DOC-EXITED @ TTRUE
+   BFT-DOC-CODE @ MISSING-RC T=
+   BFT-DOC-OUT$ BFT-EMPTY$ T$=
+   BFT-DOC-ERR$ s" snap: engine snapshot hook missing" T$=
+   BF-TMP-RESET ;
+
+;package
+
 : BFT-TEST-SNAP-TRAILER ( -- )
    BFT-ROOT BF-TMP!
    BFT-SNAP0-BUILD
@@ -778,6 +880,7 @@ variable BFT-DOC-CODE
    s" hb-snap0" BF-A$ s" lib/prelude.f" BF-RUN-LOAD-STAGE 0 T=
    BFT-BYTES-READ
    BFT-MAGIC-LAST!
+   BFT-SNAP-HOOK:VERIFY-IMAGE
    BFT-MAG-LAST @ {: mag:n :}
    mag BFT-TRL-VERSION + BFT-BYTE@ SNAP-FORMAT-VERSION T=
    mag BFT-TRL-VERSION + 2 BFT-DOCTORED-CAPTURE
@@ -1276,6 +1379,7 @@ public
    s" checked target image" [: BFT-TEST-CHECKED-TARGET-IMAGE ;] BFT-STEP
    s" checked regalloc" [: BFT-TEST-CHECKED-REGALLOC ;] BFT-STEP
    s" snap source" [: BFT-TEST-SNAP-SOURCE ;] BFT-STEP
+   s" snap missing hook" [: BFT-SNAP-HOOK:MISSING ;] BFT-STEP
    s" snap trailer" [: BFT-TEST-SNAP-TRAILER ;] BFT-STEP
    s" source boundary" [: BFT-CAP:SOURCE-BOUNDARY ;] BFT-STEP
    s" stage2 source cap" [: BFT-CAP:STAGE2 ;] BFT-STEP
