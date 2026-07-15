@@ -4384,3 +4384,8 @@ unchanged (148855). Keys for milestone 2:
   fixpoint certification quadratic: a 1.0 MB, 3,250-definition source spent
   98% of sampled time in that rescan. Advance byte, line, and line-start state
   together at the scanner cursor, then snapshot the token origin in O(1).
+- **Worker preflight must prove required public syntax exists on the claimed
+  tree.** An open downstream dot can look dependency-ready while its requested
+  schema still requires unlanded STRUCTURE/payload ENUM and compiler lowering.
+  Probe the exact grammar and generated words before `dot on`; if absent, wire
+  the transitive implementation milestone and leave the downstream dot open.
