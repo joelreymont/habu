@@ -1,9 +1,11 @@
 ---
 title: Add immutable nominal layout arena
-status: active
+status: closed
 priority: 1
 issue-type: task
-created-at: "\"2026-07-13T15:25:39.586847+02:00\""
+created-at: "\"\\\"2026-07-13T15:25:39.586847+02:00\\\"\""
+closed-at: "2026-07-15T10:45:24.115882+02:00"
+close-reason: "Merged a27325b8 on master: lib/nominal/ package NOM - sealed immutable nominal collection substrate, one concern per file (arena/path/binding/codec/row/builder/snapshot + focused/property/scale suites). One-cell opaque handles with private audited TRUSTED: mints confined per owner file; checker rejects raw casts; forged/stale handles E-NOM-HANDLE. Builder linearity CHECKER-enforced (DEFLINEAR nom-builder, NT-DUP-BLDR pin); ADD/FREEZE auto-rollback. Identity = sha256 of canonical contents (insertion-order + cross-process byte identity proven). All typed failure classes pinned; budget separate from capacity (300-binding row). Scale: 4096 bindings, 4.29x growth for 4x input (~n log n). Snapshot/AOT self-contained (layout-buffer discipline); engine warm-snapshot seam = public API for the owner-persist lane. Integration also repaired master's two pre-existing reds (E-MEM-TOTALITY to lib/errors.f; result-cache closure edges) and raised INCLUDE-MAX-DEPTH 8->16. Full run.f RUN_EXIT=0 + strict inventory on the exact merged tree. Unblocks finite-CAD effects 0bdf52ad."
 blocks:
   - habu-protect-dynamic-immutable-eccd0489
   - habu-seal-owners-syntax-63051652
