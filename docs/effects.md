@@ -423,3 +423,112 @@ runtime-only to shape-checked (tracked as habu-shared-t-t-470833e6).
   tested `TRUSTED:` boundary. A genuine type error also refuses the definition.
 - `EFFECT-OF ( a u -- ea eu | 0 )` returns the canonical effect string for a
   charted name, or a single `0` if absent (note the asymmetric stack effect).
+
+## CAD semantic effect vocabulary (package `CAD-EFFECT`)
+
+Everything above is the **stack** effect: the shape of the data/return stacks a
+word transforms. A correct stack effect proves nothing about a word's **semantic**
+effect — a balanced `( -- )` word can read a parameter, mutate device state, draw a
+random number, launch a kernel, or publish an artifact. Rewrite, fusion,
+recomputation, caching, and pass scheduling are unsound if a stateful, random, IO,
+device, atomic, collective, allocation, or publication operation is treated as
+pure. `CAD-EFFECT` (MODEL-CAD-V2-PLAN.md R8; dot
+`habu-define-finite-cad-0bdf52ad`) names the finite semantic effects so the checker,
+op registry, and optimizer can reason over them instead of trusting the author. It
+is `src/cad/effect-types.f` (the vocabulary + truth tables) and `src/cad/effect.f`
+(the canonical row algebra over the `lib/nominal` immutable substrate). A general
+effect calculus is *not* required; the finite CAD vocabulary is.
+
+### Atoms and slot kinds
+
+`effect-atom` is a closed ten-value sum. `pure` is special — it is the absence of
+any effect and never appears in a row; the unique canonical empty row (`PURE`)
+carries no binding. The nine effectful atoms bind row entries:
+
+| atom | meaning |
+| --- | --- |
+| `pure` | no semantic effect (the empty row; never a binding) |
+| `param-read` | reads an immutable, digest-bound parameter |
+| `state-write` | mutates addressable state |
+| `random` | consumes an RNG / nondeterministic source |
+| `host-io` | host-side input/output |
+| `device-launch` | launches a device kernel |
+| `atomic` | atomic / reduction update |
+| `collective` | collective / barrier participation |
+| `allocation` | allocation / free |
+| `publication` | persistent artifact publication |
+
+`slot-kind` is a closed four-value sum naming which part of an op a binding refers
+to: `operand`, `attribute`, `capability`, `capture`.
+
+### Conservative truth tables
+
+Four finite tables answer distinct legality questions over the atoms; `?`
+predicates take a typed `effect-atom` (`COMMUTE?` a symmetric pair). Conservative
+means a safe over-approximation: when unsure, forbid, because over-restricting only
+loses optimization while under-restricting is unsound.
+
+- `DUP-OK? ( effect-atom -- bool )` — may an op with this atom be duplicated /
+  recomputed? True only for `pure` and `param-read`.
+- `CACHEABLE? ( effect-atom -- bool )` — may its result be memoised on resolved
+  inputs? True only for `pure` and `param-read`.
+- `BARRIER? ( effect-atom -- bool )` — is it a conservative reorder / fusion
+  barrier? True for every effectful atom (`state-write` … `publication`).
+- `COMMUTE? ( effect-atom effect-atom -- bool )` — may two atoms reorder past each
+  other? True only when one is `pure`, or both are `param-read`.
+
+For this closed conservative vocabulary `DUP-OK?`, `CACHEABLE?`, and the negation
+of `BARRIER?` coincide on the `{pure, param-read}` safe set; they stay independent
+tables because they answer distinct questions and a later resolved-binding
+refinement (e.g. a digest-bound deterministic device launch, dots
+`habu-persist-cad-semantic-028c0881` / `habu-enforce-effect-aware-cf9181b8`) may
+diverge them.
+
+### The effect row and its algebra
+
+A **row** is a canonical, sorted-unique set of bindings held as an opaque one-cell
+`effect-row` handle over the `lib/nominal` immutable substrate — there is no wide
+by-value product and no small composition bound (a row scales past 4096 bindings;
+only a configured resource budget stops it). A binding's identity key is
+`(atom, site-path, slot-kind, slot-index)`; nothing else — no runtime digest,
+address, generation, sequence, authority instance, handle number, or
+allocation-order artifact — enters identity, so canonical equality, serialization,
+and cache keys ignore the handle and the build order.
+
+- `NEW`/`EMIT ( nom-builder effect-atom slot-kind n -- nom-builder )`/`FREEZE`
+  build a row transactionally; a local `EMIT` starts with an empty site path.
+- `PURE` is the unique empty row.
+- `UNION` is the canonical merge — associative, commutative, idempotent, and
+  content-interned, so repeated identical entries collapse.
+- `REMAP ( effect-row n -- effect-row )` prefixes one caller/call-site ordinal onto
+  every path capture-free, preserving each binding's exact atom/slot-kind/slot-index.
+  Two callees that both bind local slot zero stay **distinct** once remapped into
+  different sites, while replaying the same remap is idempotent.
+- Different atoms may share a site/slot (`state-write` + `atomic` on operand 0), and
+  one atom may bind many slots (`weight` + `bias` parameter reads on operands 0/1).
+- `EQUAL?`, `SIZE`, `KEY` (32-byte content key), `ENCODE`/`DECODE`,
+  `SNAPSHOT`/`RESTORE` are the canonical identity/serialization surface;
+  `VALIDATE` rejects a row whose bindings are not well-formed effect bindings.
+- Row-level classifiers fold the atom tables over exactly the atoms a row contains:
+  `ROW-DUP-OK?`, `ROW-CACHEABLE?`, `ROW-BARRIER?`, `ROWS-COMMUTE?`.
+
+Rejections are transactional and carry a typed diagnostic: a forged/stale handle
+(`E-NOM-HANDLE`), a malformed/noncanonical wire row (`E-NOM-WIRE` /
+`E-CADEFF-MALFORMED`), a protocol-count overflow (`E-NOM-WIRE`), an
+allocator/resource failure (`E-NOM-BUDGET`), a direct duplicate insertion
+(`E-CADEFF-DUPLICATE`), the non-bindable pure atom (`E-CADEFF-ATOM`), a negative
+slot index (`E-CADEFF-INDEX`), or a negative call-site ordinal (`E-CADEFF-SITE`).
+
+Because NOM declares its `row`/`path`/`binding` handle types in package NOM's
+private section, no external signature can name a `row`; `effect-row` is
+CAD-EFFECT's public, nameable brand, and the two audited identity casts
+`NOM:ROW>EFF` / `NOM:EFF>ROW` (the only words that name `row`, written in a package
+NOM reopen) bridge them. They retire when the substrate exports its handle type
+names publicly.
+
+This dot owns the static vocabulary and row algebra only. Checker persistence
+(`habu-persist-cad-semantic-028c0881`), the mandatory Maki op-schema row
+(`habu-require-maki-op-b14ccc89`), explicit capability tokens
+(`habu-add-explicit-cad-58a05453`), runtime binding resolution, effect-aware
+fusion/recompute legality (`habu-enforce-effect-aware-cf9181b8`), and cache-key
+integration are later dots that consume this vocabulary.

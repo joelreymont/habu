@@ -760,6 +760,8 @@ that source is explicitly certified; they are not stale-checked by the default
 | ROW-IDX | `row -- n` | Private NOM proof-erasure projection: reads a `row` handle's record index for bounds checks, interning, and canonical access; no public inverse. Retire when TVK-RAW (`habu-nominal-storage-raw-a3430ef2`) lands. | `lib/nominal/nominal-test.f` | lib/nominal/row.f | 2026-07-15 |
 | MK-BUILDER | `-- nom-builder` | Private NOM linear-token mint: forges the noncopyable transactional builder token; the only producer is `NOM:NEW`/`NOM:ADD` inside builder.f. Retire when TVK-RAW (`habu-nominal-storage-raw-a3430ef2`) lands. | `lib/nominal/nominal-test.f` | lib/nominal/builder.f | 2026-07-15 |
 | BUILDER-DROP | `nom-builder --` | Private NOM linear-token consume: the audited boundary that retires a `nom-builder` on the ADD/FREEZE/ROLLBACK paths where the checker cannot express the linear discard. Retire when TVK-RAW (`habu-nominal-storage-raw-a3430ef2`) lands. | `lib/nominal/nominal-test.f` | lib/nominal/builder.f | 2026-07-15 |
+| ROW>EFF | `row -- effect-row` | No-op identity brand of a published NOM `row` into CAD-EFFECT's public, nameable `effect-row` handle; owned by src/cad/effect.f but placed in a package NOM reopen because NOM's `row` type is package-private and nameable only there. Same one-cell handle; the checker cannot infer the cross-family identity. Retire when the nominal substrate exports its handle type names publicly. | `src/cad/effect-test.f` | src/cad/effect.f | 2026-07-15 |
+| EFF>ROW | `effect-row -- row` | No-op identity un-brand of a CAD-EFFECT `effect-row` back to a NOM `row` for a substrate row operation; the inverse of ROW>EFF, same one-cell handle, placed in the package NOM reopen for the same reason. Retire when the nominal substrate exports its handle type names publicly. | `src/cad/effect-test.f` | src/cad/effect.f | 2026-07-15 |
 | CAP-COMPILE-RUN | `--` | Model-CAD capture boundary evaluates the generated checked model definition and invokes its dynamic-arity capture word after the active checker hook certifies the definition. | `maki/cad-test.f`, `maki/test.f` | maki/cad.f | 2026-07-12 |
 | CHECK-PASSES? | `ptr u8 n -- bool` | Evaluation harness temporarily suppresses diagnostics, invokes the checker on candidate source, and restores the diagnostic hook; raw checker state mutation is the metaprogramming boundary. | `maki/eval-test.f`, `maki/test.f` | maki/eval.f | 2026-07-12 |
 | JIT-EVALUATE | `ptr u8 n --` | JIT inspection CLI evaluates user-supplied source before resolving and disassembling the requested word; dynamic evaluation cannot be expressed by the checker. | `test/gate-debug.f` | tools/jitdump-core.f | 2026-07-12 |
@@ -1284,6 +1286,8 @@ lib/nominal/row.f:MINT-ROW prim-axiom habu-epic-type-system-b88c9ecc
 lib/nominal/row.f:ROW-IDX prim-axiom habu-epic-type-system-b88c9ecc
 lib/nominal/builder.f:MK-BUILDER prim-axiom habu-epic-type-system-b88c9ecc
 lib/nominal/builder.f:BUILDER-DROP prim-axiom habu-epic-type-system-b88c9ecc
+src/cad/effect.f:ROW>EFF prim-axiom habu-v2-types-finite-18bb1b35
+src/cad/effect.f:EFF>ROW prim-axiom habu-v2-types-finite-18bb1b35
 lib/engine-id.f:ENGINE-SELF-MACOS stdlib-boundary habu-raw-self-path-4514ffd3
 lib/engine-id.f:ENGINE-SELF-LINUX stdlib-boundary habu-raw-self-path-4514ffd3
 lib/ffi-abi.f:P>N stdlib-boundary habu-typed-defining-words-aa224eb5
