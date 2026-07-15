@@ -5,7 +5,6 @@ priority: 2
 issue-type: task
 created-at: "2026-07-13T14:14:22.925742+02:00"
 blocks:
-  - habu-implement-cad-num-cb413b2a
   - habu-seal-cad-num-36dbeec6
   - habu-migrate-mem-numeric-8b11a9be
   - habu-migrate-lib-allocation-f8c6821f

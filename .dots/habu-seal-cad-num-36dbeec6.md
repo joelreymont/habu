@@ -5,7 +5,6 @@ priority: 2
 issue-type: task
 created-at: "2026-07-13T14:14:22.891286+02:00"
 blocks:
-  - habu-implement-cad-num-cb413b2a
   - habu-seal-owners-syntax-63051652
 ---
 
