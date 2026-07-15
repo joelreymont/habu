@@ -5,7 +5,6 @@ priority: 2
 issue-type: task
 created-at: "2026-07-13T14:14:22.925742+02:00"
 blocks:
-  - habu-migrate-tool-str-e6ab0983
   - habu-seal-cad-num-36dbeec6
   - habu-migrate-core-maki-9e46089b
   - habu-migrate-lowering-maki-56492851
