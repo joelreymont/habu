@@ -4482,3 +4482,13 @@ unchanged (148855). Keys for milestone 2:
   unguarded `provided` re-establishment rows that cold boots never expose to
   late-armed hooks - arm-order equivalence between cold and warm is a claim
   that needs a snapshot-boot test the moment a new boot-time hook lands.
+- Two push-verification bugs in one day, same root: (a) `jj log -r 'X & ::Y'`
+  prints NOTHING when false - an empty result must be tested with `[ -n ]`,
+  never eyeballed (a dot was closed on a landing that never pushed, blocking
+  two dependent lanes; found by the dependent worker's E-UNDEFINED probe).
+  (b) `jj git push` reporting "Move SIDEWAYS bookmark master" means NOT a
+  fast-forward - a sideways master push orphans other agents' commits (sol's
+  claim commit was dropped for ~1 minute before a corrective rebase+push).
+  The merge protocol is now: positive ancestry check (`[ -n "$(jj log -r
+  'origin-tip & ::candidate' ...)" ]`) BEFORE moving bookmarks, and treat the
+  word "sideways" in push output as an automatic stop-the-line.
