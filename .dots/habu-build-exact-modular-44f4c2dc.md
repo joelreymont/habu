@@ -1,0 +1,9 @@
+---
+title: "Build: exact modular AOT source"
+status: active
+priority: 1
+issue-type: task
+created-at: "2026-07-15T14:23:10.016110+02:00"
+---
+
+Full context: hb-build hashes the full require/include dependency closure but passes only the entry file to the native AOT maker, so any modular entry reaches maker with an undefined require/include word and exits 70. Implement one checked source-composition owner that materializes the exact program seen by normal Habu loading before AOT: recursively expand literal include/included at the original loader position with full multiplicity; expand require/required once according to the exact-string registry; honor provided without loading; preserve loader order, package-private scope, compiler state, and definitions around colon/immediate forms. Do not concatenate a deduplicated dependency list ahead of the entry because that changes package and compiler scope. Reject dynamic, shadowed, missing, cyclic, malformed, or capacity-exceeding composition fail-closed with source path, line, and loader attribution. Preserve per-origin diagnostic mapping in the composed source. Make the composed bytes, ordered loader events, target/compiler/checker identities, and every loaded file content determine all artifact/object/maker cache keys. Compile modular top-level, transitive, duplicate-require, repeated-include, provided-before-require, shared-package-private, loader-inside-colon/immediate, path-with-spaces/quotes, dependency-edit, bad-dependency, and cycle fixtures through real hb-build; prove direct loading and built executable behavior match, prove cache hits and misses are truthful, and add bootstrap/native parity plus docs/manifests/FILEMAP. This blocks habu-tools-bulk-diff-f36d0508 and habu-tools-frame-diff-e98f8a6a. No scanner or diff-parser edits. Claim: agent=modular-aot workspace=.jj-ws/habu-build-exact-modular-44f4c2dc.
