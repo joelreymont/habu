@@ -6,7 +6,6 @@ issue-type: task
 created-at: "2026-07-13T14:14:22.925742+02:00"
 blocks:
   - habu-seal-cad-num-36dbeec6
-  - habu-migrate-lib-allocation-f8c6821f
   - habu-migrate-maki-allocation-3335b802
   - habu-migrate-test-allocation-0e295089
   - habu-migrate-tool-allocation-22c04eb4
