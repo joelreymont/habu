@@ -4640,3 +4640,19 @@ unchanged (148855). Keys for milestone 2:
   relu) under a fixed TF32 leg to prove the gate reacts to the per-op requested
   policy. Removing the ambient table also retired its class error (`E-NPOL-CLASS`,
   -5147) since `NODE-POL` was its only runtime reader.
+- **A standards doc can silently adopt a plan's aspirational grammar as if
+  shipped — verify every token against the live engine, not a sibling doc.** dot
+  habu-reconcile-forth-md-289ac1be: `docs/forth.md` § Structures And Enums (and
+  `docs/type-families.md`/`MODEL-CAD-V2-PLAN.md`) documented the planned
+  MODEL-CAD-V2 unified `STRUCTURE … ;STRUCTURE` grammar as the current surface and
+  listed `TYPEFAMILY`/`SUMTYPE`/`PRODUCT`/`ENUM`/`VALUE-RECORD`/`BEGIN-STRUCTURE`/
+  `ENUM+` as "removed syntax" with `E-REMOVED-TYPE-SYNTAX` tombstones. Proven by
+  `rg` + one-line `bin/hb` load probes: every "removed" word is a live,
+  heavily-used definer (`src/core/sumtype.f`, `roles.f`, `structures.f`,
+  `enums.f`); `STRUCTURE` does not exist (`E-UNDEFINED: STRUCTURE`, exit 70, not a
+  tombstone); `E-REMOVED-TYPE-SYNTAX` appears nowhere in the engine. The doc even
+  inverted the payload rule — `SUMTYPE` variant payloads are POSITIONAL type
+  tokens (a named `FIELD` inside a variant rejects, `E-TDECL-SYNTAX` 7107) and
+  named `FIELD` belongs to `PRODUCT`; `ENUM` is bare-names-only (an arity or
+  `VARIANT` token rejects, 7101). A token's status is whatever `bin/hb` does with a
+  one-line fixture, never what a cross-referenced doc claims.

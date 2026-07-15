@@ -284,53 +284,69 @@ public
 
 ### Structures And Enums
 
-Habu has exactly two public composite-type declaration blocks:
-`STRUCTURE … ;STRUCTURE` and `ENUM … ;ENUM`. Both use the transactional typed
-schema in [type-families.md](type-families.md); no raw offset-threading, product,
-sumtype, value-record, or counter-enum declaration surface exists.
+Habu's live composite-type declaration surface is the typed-family DSL in
+`src/core/sumtype.f` (`TYPEFAMILY`, `SUMTYPE`, `PRODUCT`, `ENUM`) plus the
+value-record (`src/core/roles.f`), low-level structure (`src/core/structures.f`),
+and counter-enum (`src/core/enums.f`) definers. Each block opener parses its own
+body up to a `;NAME`/`END-NAME` closer and registers the family whole; the
+`sumtype.f` openers and `VALUE-RECORD` mutate the type registry, so they are
+top-level-interpret-only and reject inside checked bodies.
 
 ```forth
-STRUCTURE point 0
+TYPEFAMILY index 0                  \ opaque nominal cell family, no closer
+
+PRODUCT point 0                     \ single-shape record, no tag
    FIELD x n
    FIELD y n
-;STRUCTURE
+;PRODUCT
 
-ENUM message 0
+SUMTYPE message 0                   \ tagged union; positional variant payloads
    VARIANT quit ;VARIANT
-   VARIANT move
-      FIELD x n
-      FIELD y n
-   ;VARIANT
-;ENUM
+   VARIANT move n n ;VARIANT
+;SUMTYPE
 
-ENUM color red green blue ;ENUM
+ENUM color red green blue ;ENUM     \ payloadless tag-only sum
 ```
 
-- `STRUCTURE name arity [ POLICY p ] [ DERIVE ... ] FIELD name type ...
-  ;STRUCTURE` is the sole record form. Arity is mandatory. Zero fields declare
-  an opaque nominal cell family; one or more fields declare a nominal product.
-  Field order is declaration order.
-- A public field-bearing structure generates sealed `FAMILY:MAKE`,
-  `FAMILY:UNMAKE`, and typed `FAMILY:FIELD` address operations. Accessors have
-  effect `( ptr family<a,...> -- ptr field-type )`; use the field type's checked
-  load/store operations.
-- Full `ENUM name arity [ POLICY p ] [ DERIVE ... ] VARIANT ... ;VARIANT
-  ... ;ENUM` is the sole payload-bearing variant form. Every payload member is
-  a named `FIELD`; positional payload tokens reject.
-- Compact `ENUM name variant ... ;ENUM` omits arity and header clauses, is
-  implicitly arity zero, and is legal only for payloadless variants. A decimal
-  token after the name selects full mode; a bare variant selects compact mode.
-  The modes cannot mix.
-- `ENUM` derives a tag-only representation only when every variant is
-  payloadless; otherwise it derives a tagged union. Generated constructors and
-  `MATCH` payload bindings use field declaration order.
-- Type, field, and variant names are lowercase. Project-defined syntax and
-  generated words are uppercase.
-- `TYPEFAMILY`, `PRODUCT`, `;PRODUCT`, `SUMTYPE`, `;SUMTYPE`,
-  `VALUE-RECORD`, `END-VALUE-RECORD`, `BEGIN-STRUCTURE`,
-  `END-STRUCTURE`, `+FIELD`, `PTR-FIELD:`, `CFIELD:`, `ENUM+`, and
-  `ENUM4+` are removed syntax. They have no executable aliases or desugaring
-  path; compiler tombstones report `E-REMOVED-TYPE-SYNTAX`.
+- `TYPEFAMILY name arity` registers a nominal cell family (`TK-CELL`) with no
+  closer: arity `0` is an opaque scalar newtype (see `lib/cad-num-types.f`),
+  arity `N` binds positional params.
+- `SUMTYPE name arity [ DERIVE … ] VARIANT v payload… ;VARIANT … ;SUMTYPE`
+  registers a tagged union (`TK-SUM`, tag = declaration order). **Variant
+  payloads are positional type tokens** — letter params, concrete cell types,
+  `ptr T`, or closed arity-0 families; a named `FIELD` inside a variant rejects
+  (`E-TDECL-SYNTAX`, 7107). Generates constructors and drives exhaustive
+  `MATCH … ;MATCH`.
+- `PRODUCT name arity [ DERIVE … ] FIELD f type … ;PRODUCT` registers a
+  single-shape record (`TK-PRODUCT`, no tag) whose members are **named**
+  `FIELD f type`. A public product generates sealed `FAMILY:MAKE`/`FAMILY:UNMAKE`
+  plus typed field accessors.
+- `ENUM name [ DERIVE … ] v0 v1 … ;ENUM` registers a payloadless tag-only sum
+  (`TK-ENUM`) from **bare variant names only** — it takes no arity token and no
+  `VARIANT` keyword (either rejects, throw 7101). Use `SUMTYPE` for payloads.
+- `DERIVE eq` / `DERIVE hash` / `DERIVE ord` on a public arity-0 family generates
+  the corresponding operations; the clause follows the family name on `ENUM` and
+  the arity on `SUMTYPE`/`PRODUCT`.
+- `VALUE-RECORD name field type … END-VALUE-RECORD` declares a checked value
+  record; `END-VALUE-RECORD` is its terminator.
+- `BEGIN-STRUCTURE NAME … END-STRUCTURE` is the low-level Forth-2012
+  offset-threading form: `size +FIELD f`, `PTR-FIELD: p`, and `CFIELD: c` thread
+  byte offsets and `NAME` becomes a byte-size constant. Its field words carry
+  `TRUST`ed address effects (`src/core/structures-effects.f`) and may appear in
+  checked code; prefer the typed families above and reserve this for raw layout
+  (e.g. `lib/vector.f`).
+- `ENUM+` / `ENUM4+` are the legacy numeric counter definers: `n ENUM+ NAME`
+  defines `NAME = n` and leaves `n+1` (`ENUM4+` leaves `n+4`).
+- Type, field, and variant names are lowercase; generated and project-defined
+  words are uppercase.
+
+No unified `STRUCTURE … ;STRUCTURE` opener exists in the shipped engine. It is
+the planned MODEL-CAD-V2 replacement described in
+[type-families.md](type-families.md) and `MODEL-CAD-V2-PLAN.md`, and is **not yet
+implemented**: loading a `STRUCTURE` declaration fails with
+`E-UNDEFINED: STRUCTURE` (exit 70), not a tombstone. The `E-REMOVED-TYPE-SYNTAX`
+code named by those plan docs exists nowhere in the engine, and none of the
+words above are removed.
 
 - `PTR-VARIABLE` creates a pointer-valued cell with runtime effect
   `( -- ptr ptr a )`; use it instead of `variable` plus `0 ptr-field` wrappers
