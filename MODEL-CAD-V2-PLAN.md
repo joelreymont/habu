@@ -1021,12 +1021,12 @@ uppercase and package-qualified, for example `CAD-NUM:BYTE-LEN` and
 checker tokens.
 
 The existing shared `result<a,b>` accepts cell-kinded parameters today. A
-closed `CAD-NUM:error` sum is a layout value, so
+closed `CAD-NUM:error` layout would be a layout value, so
 `result<CAD-NUM:byte-len,CAD-NUM:error>` is not currently expressible; that
 nesting would depend on `habu-checker-capability-layout-9b8540bd`. B5 does not
-need to wait for that capability. `CAD-NUM` instead owns the on-stack sum family
-`CAD-NUM:numeric-result<a>`, whose success variant carries one cell-kinded `a`
-and whose error variants are payloadless:
+need to wait for that capability. `CAD-NUM` instead owns the target
+payload-bearing `ENUM` `CAD-NUM:numeric-result<a>`, whose success variant carries
+one cell-kinded `a` and whose error variants are payloadless:
 
 - ok `a`;
 - negative;
@@ -1036,13 +1036,15 @@ and whose error variants are payloadless:
 - bad-alignment;
 - misaligned.
 
-This specialized family is expressible with the current sum machinery for a
-one-cell nominal scalar. On-stack use needs no new capability; a closed
-instantiation can already be stored through the landed `LAYOUT-BUFFER` when
-needed. Expected validation failures return `CAD-NUM:numeric-result<a>`; they do
-not throw and they do not collapse different failures into a flag. I/O,
-allocation, or corrupted owner-state failures remain ordinary propagated errors
-at their owning boundary.
+The hard-cutover representation is zero-field `STRUCTURE` roles plus the full
+payload-bearing `ENUM`. Unified declaration lowering has not landed;
+`habu-migrate-cad-num-cf178e59` owns the current source migration after
+`habu-compiler-lower-unified-5f599080` lands. The design needs no nested-layout
+capability; a closed instantiation can already be stored through the landed
+`LAYOUT-BUFFER` when needed. Expected validation failures return
+`CAD-NUM:numeric-result<a>`; they do not throw and they do not collapse
+different failures into a flag. I/O, allocation, or corrupted owner-state
+failures remain ordinary propagated errors at their owning boundary.
 
 The checker cannot prove that an `n` satisfying a runtime predicate has become
 an arity-zero nominal family. Every raw-to-role mint is therefore a private,
@@ -1089,12 +1091,12 @@ public signature.
 
 Ordinary reopenable packages cannot protect these private mints. `CAD-NUM` is
 not unforgeable while its constituent files are being assembled. Permanent
-sealing belongs to the dedicated CAD-NUM final assembly/seal implementation dot
-that must be created before dispatch, after the package-seal capability lands;
-only the fully assembled and sealed load path may claim authority. Any
-scalar/result storage uses the landed typed `LAYOUT-BUFFER`; an untyped
-`create ... cells allot` table plus trusted casts is not an acceptable
-substitute.
+sealing belongs to the open `habu-seal-cad-num-36dbeec6` implementation dot. It
+may dispatch only after package sealing, unified declaration migration, and the
+native/REPL definer-registration residual have landed; only the fully assembled
+and sealed load path may claim authority. Any scalar/result storage uses the
+landed typed `LAYOUT-BUFFER`; an untyped `create ... cells allot` table plus
+trusted casts is not an acceptable substitute.
 
 #### B5.2 Checked Arithmetic
 
@@ -1248,23 +1250,31 @@ outcomes in this bounded design.
 
 Dependency order:
 
-1. package-scoped nominal families and the on-stack SUMTYPE machinery are the
-   existing base; `CAD-NUM:numeric-result<a>` is expressible for cell-kinded
-   payloads without nested-layout support;
+1. package-scoped zero-field `STRUCTURE` roles and a full `ENUM` result are the
+   hard-cutover target; `CAD-NUM:numeric-result<a>` remains limited to
+   cell-kinded payloads without nested-layout support. The current CAD-NUM
+   sources still use historical pre-cutover declarations, and
+   `habu-migrate-cad-num-cf178e59` owns their migration after the unified DSL
+   lands;
 2. the landed `LAYOUT-BUFFER` supports closed non-linear layouts and arity-zero
    nominal scalars with checked fixed-capacity indexing, typed store/fetch,
    extent overflow checks, rollback, and zero initialization. This is sufficient
    for any private fixed-capacity scalar/result storage B5 actually needs;
-3. `habu-nominal-storage-raw-a3430ef2` remains required because generic
-   `variable`/`create`/`constant` value flow can still mint or erase nominal
-   scalar roles. B5 cannot claim unforgeability until its TVK-RAW fix lands;
+3. `habu-nominal-storage-raw-a3430ef2` landed at `085cf242`: TVK-RAW now fences
+   the baked `here` effect and verifier-registered
+   `variable`/`create`/`constant` effects against nominal-family value laundering
+   while retaining scalar storage. The closed dot explicitly leaves plain
+   `--load`/REPL definer registration to the open
+   `habu-register-native-repl-f12807aa`; production B5 authority cannot claim
+   that path sealed until the follow-up lands;
 4. scalar declarations, audited private `TRUSTED:` mints, public validators,
    and checked arithmetic are assembled across focused `CAD-NUM` constituent
    files, but remain an unsealed non-authority during assembly;
-5. a new dedicated CAD-NUM assembly/seal implementation dot loads every
+5. the open `habu-seal-cad-num-36dbeec6` dot owns final assembly of every
    constituent and permanently seals `CAD-NUM`; no later file adds owner
-   behavior. It depends on the package-seal syntax/capability and the raw-storage
-   fix and does not overlap existing owner migrations;
+   behavior. It depends on the package-seal syntax/capability, unified
+   declaration migration, the landed gate-path TVK-RAW seal, and the native/REPL
+   registration follow-up; it does not overlap existing owner migrations;
 6. consumers migrate at their existing ownership seams only from the complete,
    sealed entry point.
 
@@ -1274,8 +1284,9 @@ Existing owners remain authoritative:
 - `habu-seal-owners-migrate-2dda16df` owns migration of its already named
   TARGET, TOOLCHAIN, fusion-region, artifact, evidence, and store owners. It
   does not own CAD-NUM and must not be silently expanded;
-- `habu-nominal-storage-raw-a3430ef2` owns the still-open raw value-laundering
-  fix;
+- `habu-nominal-storage-raw-a3430ef2` closed at `085cf242` and owns the landed
+  checker/verify-source TVK-RAW seal; `habu-register-native-repl-f12807aa` owns
+  the still-open plain-load/REPL definer-registration residual;
 - `habu-checker-shape-kind-4c6a3f4c` and
   `habu-v2-types-existential-cce4a41a` own value-indexed shape and existential
   evidence;
@@ -1292,24 +1303,31 @@ checker-owned dot rather than expanding a library migration.
 
 The current storage facts are pinned by `docs/type-families.md` and
 `test/layout-buffer.f`: `LAYOUT-BUFFER` already admits arity-zero nominal
-families and closed sums/products. A live checker probe still accepts
-`variable V : X ( n -- CAD-KIND:region ) V ! V @ ;`, proving the distinct
-TVK-RAW gap remains. No `TYPED-VARIABLE` or `TYPED-BUFFER` definer exists in
-the current source. B5 does not require those generic convenience definers;
-`habu-nominal-storage-typed-c5f44d66` must be amended to describe only genuine
-residual work before assignment and is not a B5 prerequisite.
+families and closed composite layouts. Before `085cf242`, the historical checker
+probe `variable V : X ( n -- CAD-KIND:region ) V ! V @ ;` certified. The landed
+verifier/gate-path TVK-RAW regressions now reject that laundering shape; only the
+separately tracked plain `--load`/REPL registration path remains open. No
+`TYPED-VARIABLE` or `TYPED-BUFFER` definer exists in the current source. B5 does
+not require those generic convenience definers;
+`habu-nominal-storage-typed-c5f44d66` already describes only the residual
+convenience-definer work and is not a B5 prerequisite.
 
 The implementation is split into these disjoint core owners:
 
 1. `lib/cad-num-types.f` and `lib/cad-num-types-test.f` own only scalar family
    declarations, `numeric-result<a>`, constructors, `AS-ALLOC-*`, and audited
-   mints. They depend on SUMTYPE/package support and TVK-RAW, and do not seal the
+   mints. Their hard-cutover target is zero-field `STRUCTURE` roles plus a full
+   payload-aware `ENUM`; the unified declaration DSL has not landed, so the
+   current pre-cutover implementation remains migration-owned. They depend on
+   package support and the landed gate-path TVK-RAW seal and do not seal the
    package.
 2. `lib/cad-num-arithmetic.f` and `lib/cad-num-arithmetic-test.f` own exactly the
    B5.2 table. They depend on slice 1 and add no roles or overloads.
-3. A separately dotted `lib/cad-num.f` plus `lib/cad-num-seal-test.f` owns only
-   final assembly, permanent sealing, trusted-inventory integration, and hostile
-   reopen/qualified-publication probes. It depends on slices 1-2, TVK-RAW, and
+3. The open `habu-seal-cad-num-36dbeec6` dot owns `lib/cad-num.f` and
+   `lib/cad-num-seal-test.f`: final assembly, permanent sealing,
+   trusted-inventory integration, and hostile reopen/qualified-publication
+   probes only. It depends on slices 1-2, the unified declaration migration, the
+   landed gate-path TVK-RAW seal, the native/REPL registration follow-up, and
    package sealing; it is the first production authority.
 
 Consumer work uses the following bounded contracts. A consumer dot copies its
@@ -1451,14 +1469,13 @@ migrates `VEC` use in `tools/lint/intern.f` and `tools/lint/source-lex.f` after
 both packaged APIs land, while the sched-key caller dot migrates both its `VEC`
 and Model IR count use. No other caller dot may edit those three files.
 
-The active `habu-v2-types-refined-519fd2d1` design dot still claims bounded
-indexes, alignment evidence, obsolete divisor scope, and overlapping consumer
-files. The orchestrator must amend it to this scalar-only algebra and allocation
-contract before implementation dispatch. The
-`habu-nominal-storage-typed-c5f44d66` dot also still claims that
-`LAYOUT-BUFFER` rejects arity-zero families; the orchestrator must remove that
-landed premise and retain only genuinely residual generic-definer work. This
-plan change does not mutate either tracker entry.
+The open `habu-v2-types-refined-519fd2d1` design dot now states this scalar-only
+algebra and allocation contract and awaits its named censuses, plan-state
+reconciliation, and TRUSTED retirement audit. The active
+`habu-nominal-storage-typed-c5f44d66` dot already records the landed
+`LAYOUT-BUFFER` capability and owns residual generic convenience definers only;
+CAD-NUM does not depend on it. This plan reconciliation changes no tracker
+entry.
 
 Each implementation slice owns disjoint source and focused tests, runs the
 exact native load path for those files, and commits one verified change. Shared
@@ -1591,14 +1608,17 @@ value.
 Everything below describes the landed pre-cutover machinery the unified DSL
 must preserve; the cited spellings are migration sites, not V2 syntax:
 
-- arity-zero `TYPEFAMILY` package kinds: `CHECKER-DEFPRODUCT`/`TDECL-FAMILY`
-  grammar in src/core/sumtype.f; landed pattern maki/cad-kinds.f:7-33
-  (`CAD-KIND`), R3 above.
-- `SUMTYPE`/`ENUM`/`PRODUCT`/`MATCH`: src/core/sumtype.f:1-8;
-  docs/type-families.md §9, §13-14; landed examples maki/model-ir.f:70-74
-  (`PRODUCT mark 0` inside `package MIR`, ctor `MIR-MARK:MAKE` used at
-  maki/model-ir.f:295), maki/report.f:53-96 (`verdict`/`roofline`/`costatus`
-  ENUMs), lib/adt/result.f:35 (`SUMTYPE result 2`), lib/adt/option.f:26.
+- planned zero-field `STRUCTURE` package kinds: historical pre-cutover evidence
+  uses the `TYPEFAMILY` spelling and `CHECKER-DEFPRODUCT`/`TDECL-FAMILY`
+  internals in src/core/sumtype.f; the migration site is
+  maki/cad-kinds.f:7-33 (`CAD-KIND`), R3 above.
+- planned `STRUCTURE`/`ENUM`/`MATCH` declarations: historical pre-cutover
+  evidence uses `SUMTYPE`/`PRODUCT`/`ENUM` in src/core/sumtype.f:1-8 and
+  docs/type-families.md §9, §13-14; migration sites include
+  maki/model-ir.f:70-74 (`PRODUCT mark 0` inside `package MIR`, ctor
+  `MIR-MARK:MAKE` used at maki/model-ir.f:295), maki/report.f:53-96
+  (`verdict`/`roofline`/`costatus` enums), lib/adt/result.f:35
+  (`SUMTYPE result 2`), and lib/adt/option.f:26.
 - Cell-family product fields: `TDECL-PAY-FAM?` (src/core/sumtype.f) admits
   TK-CELL and layout families at arity 0. Probe-verified: `FIELD art
   CAD-KIND:artifact-id` compiles; `MAKE` is born-typed; a same-width foreign
