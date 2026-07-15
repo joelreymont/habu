@@ -4,6 +4,11 @@
 
 Last updated: 2026-07-15
 
+- **Jj's default word-level diff can visually concatenate numeric replacements.**
+  A deleted `$200000` beside an inserted `$400000` rendered as
+  `$200000400000`; inspect the source or `jj diff --git` before diagnosing a
+  malformed token.
+
 - **Sealing declared-effect parametricity must target sealed FAMILIES, not all
   concrete specialization.** The nominal-storage effect seal (post-body
   `NP-CHECK`) rejects a declared quantifier that resolves to an arity-0 nominal
@@ -4156,7 +4161,11 @@ unchanged (148855). Keys for milestone 2:
   and derive near-cap and cap-plus-one tests from the owner constant before
   increasing it with explicit headroom. Every landing that grows the compiler
   corpus must run `SOURCE-BOUNDARY` on the exact merge tree; claim-only commits
-  do not excuse moving master past an exhausted arena.
+  do not excuse moving master past an exhausted arena. Land a capacity increase
+  on the source-growth chain that requires it: a smaller bare tree can correctly
+  select the previous power of two while the combined tree selects the next.
+  The largest live composite selects the minimal shared power of two; smaller
+  consumers prove headroom and power-of-two shape, not individual minimality.
 - **Unsupported dot subcommands create dots.** `dot dep --help` is parsed as a
   quick-add for title `dep`; inspect `dot --help`, use `dot add -a` for blockers,
   and remove accidental tracker entries before committing.

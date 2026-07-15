@@ -787,6 +787,7 @@ package BFT-CAP
 
 $10000 constant PROBE-START
 1 constant EOF-BYTES
+SOURCE-ARENA-CAP 2 / constant PREV-CAP
 
 variable EXITED
 variable EXIT-CODE
@@ -902,6 +903,7 @@ public
    EXP
    BINARY
    BAD-N @ OK-N @ 1 + T=
+   OK-N @ PREV-CAP > TTRUE
    OK-N @ PROBE TTRUE
    BAD-N @ PROBE TFALSE
    POLICY

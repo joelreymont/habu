@@ -64,10 +64,10 @@ $C0000 constant CFSTK-OFF
 16 constant CF-LOCF
 
 25 constant SOURCE-HEADROOM-PCT
-$200000 constant SOURCE-ARENA-CAP
+$400000 constant SOURCE-ARENA-CAP
 SOURCE-ARENA-CAP constant IBUFSZ
-\ The 2026-07-13 baseline composite was 1,580,308 bytes; 25% headroom required
-\ 1,975,385, so the smallest power of two meeting it selected SOURCE-ARENA-CAP.
+\ The 2026-07-15 owner-persistence composite was 1,687,332 bytes; 25% headroom
+\ required 2,109,165, so the smallest power of two selected SOURCE-ARENA-CAP.
 \ The fixpoint regression enforces the policy from live stage2 and cold-prefix
 \ measurements.
 \ IBUFSZ overflow is labeled rc 74. Keep the bootstrap mirror token-identical.
