@@ -26,6 +26,9 @@ public
 : TLDT-BL>RAW ( CAD-NUM:byte-len -- n ) BYTE-LEN>N ;
 ;package
 
+package TYPED-LOCAL-DIFF-TEST
+private
+
 4096 constant TLDT-BUF-CAP
 $10000 constant TLDT-LARGE-CAP
 1100 constant TLDT-LARGE-LINES
@@ -83,12 +86,15 @@ create TLDT-LARGE-SRC TLDT-LARGE-CAP allot
 : TLDT-DIFF-HEAD ( ptr u8 n -- ) {: path:ptr pathu:n :}
    s" diff --git a/" SB-APPEND path pathu SB-APPEND
    s"  b/" SB-APPEND path pathu SB-APPEND TLDT-LF
+   s" index 1234567..abcdef0 100644" SB-APPEND TLDT-LF
+   s" --- a/" SB-APPEND path pathu SB-APPEND TLDT-LF
    s" +++ b/" SB-APPEND path pathu SB-APPEND TLDT-LF
-   s" @@ -1,0 +1,3 @@" SB-APPEND TLDT-LF ;
+;
 
 : TLDT-GOOD$ ( -- ptr u8 n )
    SB-RESET
    s" lib/good.f" TLDT-DIFF-HEAD
+   s" @@ -0,0 +1,4 @@" SB-APPEND TLDT-LF
    s" +: OK ( n -- n ) {: x:n :} x ;" SB-APPEND TLDT-LF
    s" +: TWO ( n n -- n ) {:" SB-APPEND TLDT-LF
    s" +   a:n b:n" SB-APPEND TLDT-LF
@@ -98,12 +104,14 @@ create TLDT-LARGE-SRC TLDT-LARGE-CAP allot
 : TLDT-BAD$ ( -- ptr u8 n )
    SB-RESET
    s" lib/bad.f" TLDT-DIFF-HEAD
+   s" @@ -0,0 +1 @@" SB-APPEND TLDT-LF
    s" +: BAD ( n -- n ) {: x :} x ;" SB-APPEND TLDT-LF
    SB$ ;
 
 : TLDT-IGNORED$ ( -- ptr u8 n )
    SB-RESET
    s" lib/ignored.f" TLDT-DIFF-HEAD
+   s" @@ -0,0 +1,3 @@" SB-APPEND TLDT-LF
    s" +\\ {: x :} in a line comment" SB-APPEND TLDT-LF
    s" +( {: x :} in a paren comment )" SB-APPEND TLDT-LF
    s" +: STR ( -- ) s" SB-APPEND TLDT-DQ
@@ -114,12 +122,14 @@ create TLDT-LARGE-SRC TLDT-LARGE-CAP allot
 : TLDT-ALLOW$ ( -- ptr u8 n )
    SB-RESET
    s" lib/allow.f" TLDT-DIFF-HEAD
+   s" @@ -0,0 +1 @@" SB-APPEND TLDT-LF
    s" +: KEEP-ROLE ( ptr u8 n -- ptr u8 ) {: a :} a \\ typed-local-lint: allow-bare-local" SB-APPEND TLDT-LF
    SB$ ;
 
 : TLDT-MD$ ( -- ptr u8 n )
    SB-RESET
    s" docs/note.md" TLDT-DIFF-HEAD
+   s" @@ -0,0 +1 @@" SB-APPEND TLDT-LF
    s" +example {: x :} text" SB-APPEND TLDT-LF
    SB$ ;
 
@@ -132,8 +142,10 @@ create TLDT-LARGE-SRC TLDT-LARGE-CAP allot
 : TLDT-LARGE-DIFF-HEAD ( ptr u8 n -- ) {: path:ptr pathu:n :}
    s" diff --git a/" TLDT-LARGE-APPEND path pathu TLDT-LARGE-APPEND
    s"  b/" TLDT-LARGE-APPEND path pathu TLDT-LARGE-APPEND TLDT-LARGE-LF
+   s" index 1234567..abcdef0 100644" TLDT-LARGE-APPEND TLDT-LARGE-LF
+   s" --- a/" TLDT-LARGE-APPEND path pathu TLDT-LARGE-APPEND TLDT-LARGE-LF
    s" +++ b/" TLDT-LARGE-APPEND path pathu TLDT-LARGE-APPEND TLDT-LARGE-LF
-   s" @@ -1,0 +1,1100 @@" TLDT-LARGE-APPEND TLDT-LARGE-LF ;
+   s" @@ -0,0 +1,1100 @@" TLDT-LARGE-APPEND TLDT-LARGE-LF ;
 
 : TLDT-LARGE$ ( -- ptr u8 n )
    TLDT-LARGE-SRC-U STR:BUF-RESET
@@ -147,6 +159,54 @@ create TLDT-LARGE-SRC TLDT-LARGE-CAP allot
 : TLDT-EMPTY$ ( -- ptr u8 n )
    SB-RESET
    SB$ ;
+
+: TLDT-BAD-OUT$ ( -- ptr u8 n )
+   SB-RESET
+   s" E-UNTYPED-LOCAL lib/bad.f:1:21: `x` needs :type inside {: :}" SB-APPEND
+   TLDT-LF
+   SB$ ;
+
+: TLDT-CRLF$ ( -- ptr u8 n )
+   SB-RESET
+   s" diff --git a/a.f b/a.f" SB-APPEND
+   13 SB-APPEND-C TLDT-LF
+   SB$ ;
+
+: TLDT-TRUNC$ ( -- ptr u8 n )
+   SB-RESET
+   s" diff --git a/a.f b/a.f" SB-APPEND TLDT-LF
+   s" old mode 100644" SB-APPEND TLDT-LF
+   s" new mode 100755" SB-APPEND
+   SB$ ;
+
+: TLDT-SPOOF$ ( -- ptr u8 n )
+   SB-RESET
+   s" diff --git a/a.f b/a.f" SB-APPEND TLDT-LF
+   s" +++ b/spoof.f" SB-APPEND TLDT-LF
+   SB$ ;
+
+: TLDT-CONTROL$ ( -- ptr u8 n )
+   SB-RESET
+   s" diff --git a/tab" SB-APPEND 9 SB-APPEND-C
+   s" x.f b/tab" SB-APPEND 9 SB-APPEND-C
+   s" x.f" SB-APPEND TLDT-LF
+   SB$ ;
+
+: TLDT-CRLF ( -- )
+   TYPED-LOCAL-DIFF:RESET
+   TLDT-CRLF$ TYPED-LOCAL-DIFF:SOURCE ;
+
+: TLDT-TRUNC ( -- )
+   TYPED-LOCAL-DIFF:RESET
+   TLDT-TRUNC$ TYPED-LOCAL-DIFF:SOURCE ;
+
+: TLDT-SPOOF ( -- )
+   TYPED-LOCAL-DIFF:RESET
+   TLDT-SPOOF$ TYPED-LOCAL-DIFF:SOURCE ;
+
+: TLDT-CONTROL ( -- )
+   TYPED-LOCAL-DIFF:RESET
+   TLDT-CONTROL$ TYPED-LOCAL-DIFF:SOURCE ;
 
 : TLDT-ROOT! ( ptr u8 n -- ) {: root:ptr rootu:n :}
    root rootu TLDT-ROOT-BUF TLDT-ROOT-U TLDT-COPY! ;
@@ -175,17 +235,17 @@ create TLDT-LARGE-SRC TLDT-LARGE-CAP allot
    TLDT-LARGE TLDT-LARGE$ WRITE-ALL ;
 
 : TLDT-CORE-SETUP ( -- )
-   TYPED-LOCAL-DIFF-LINT-RESET
+   TYPED-LOCAL-DIFF:RESET
    TLDT-OUT TLDT-BUF-CAP LINT-OUT-BUFFER! ;
 
 : TLDT-CORE-FINISH ( -- n n n )
-   [: TYPED-LOCAL-DIFF-LINT-FINISH ;] catch {: rc:n :}
+   [: TYPED-LOCAL-DIFF:FINISH ;] catch {: rc:n :}
    LINT-OUT$ nip LINT-OUT-BUFFER-OFF
    0 rc ;
 
 : TLDT-RUN-CORE ( ptr u8 n -- n n n )
    TLDT-CORE-SETUP
-   TYPED-LOCAL-DIFF-LINT-FILE
+   TYPED-LOCAL-DIFF:FILE
    TLDT-CORE-FINISH ;
 
 : TLDT-ASSERT-CLEAN ( n n n -- ) {: outu:n erru:n code:n :}
@@ -214,11 +274,18 @@ create TLDT-LARGE-SRC TLDT-LARGE-CAP allot
 
 : TLDT-ASSERT-BAD ( n n -- ) {: outu:n erru:n :}
    erru 0 T=
-   TLDT-OUT outu s" E-UNTYPED-LOCAL" CONTAINS? TTRUE
-   TLDT-OUT outu s" x" CONTAINS? TTRUE ;
+   TLDT-OUT outu TLDT-BAD-OUT$ T$= ;
 
 : TLDT-TEST-BAD ( -- )
    TLDT-BAD TLDT-RUN-CORE 1 TLDT-EXPECT-EXIT TLDT-ASSERT-BAD ;
+
+: TLDT-TEST-CRLF ( -- )
+   [: TLDT-CRLF ;] DIFF:E-SYNTAX TTHROWSQ ;
+
+: TLDT-TEST-MALFORMED ( -- )
+   [: TLDT-TRUNC ;] DIFF:E-SYNTAX TTHROWSQ
+   [: TLDT-SPOOF ;] DIFF:E-SYNTAX TTHROWSQ
+   [: TLDT-CONTROL ;] DIFF:E-SYNTAX TTHROWSQ ;
 
 : TLDT-MAIN ( -- )
    T-RESET
@@ -229,9 +296,13 @@ create TLDT-LARGE-SRC TLDT-LARGE-CAP allot
    TLDT-TEST-ALLOW
    TLDT-TEST-NON-FORTH
    TLDT-TEST-BAD
+   TLDT-TEST-CRLF
+   TLDT-TEST-MALFORMED
    CLEANUP-RUN
    TLDT-ROOT EXISTS? TFALSE
    T-REPORT
    s" typed-local-diff-lint-test: ok" type cr ;
 
 TLDT-MAIN
+
+;package

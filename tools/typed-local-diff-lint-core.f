@@ -1,254 +1,176 @@
 \ typed-local-diff-lint-core.f - reject newly added bare locals.
-\ Load after lib/errors.f, lib/string.f, lib/memory.f, lib/vector.f,
-\ lib/fs.f, tools/lint/text.f, tools/lint/token.f, tools/lint/lib.f,
-\ and tools/lint/source-lex.f.
+\ Load after the lint, lexer, memory, and filesystem libraries.
 
-require lib/adt/option.f                 \ option<n> STR>NUMBER? consumer (switchover wave A)
+require lib/adt/option.f
+require tools/lint/text.f
+require tools/lint/diff.f
 
-32 constant TLD-NUM-CAP
-43 constant TLD-PLUS-C
-44 constant TLD-COMMA-C
-45 constant TLD-MINUS-C
-10 constant TLD-LF-C
-13 constant TLD-CR-C
-58 constant TLD-COLON-C
+package TYPED-LOCAL-DIFF
+private
 
-create TLD-NUM TLD-NUM-CAP allot
-create TLD-ONE 1 allot
+32 constant NUM-CAP
+10 constant LF-C
+58 constant COLON-C
 
-variable TLD-DIFF-A
-variable TLD-DIFF-CAP
-variable TLD-FILE-A
-variable TLD-FILE-U
-variable TLD-DIFF-U
-variable TLD-BAD
-variable TLD-NEW-LINE
-variable TLD-IN-HUNK
-variable TLD-IN-LOCALS
-variable TLD-ALLOW-GROUP
-variable TLD-NUM-I
-variable TLD-HUNK-START
-variable TLD-HUNK-END
-variable TLD-SCAN-START
+create NUM NUM-CAP allot
+create ONE 1 allot
 
-: TLD-FILE-A-FIELD ( -- ptr ptr u8 )
-   TLD-FILE-A 0 ptr-field ;
+variable FILE-A
+variable FILE-U
+variable BAD
+variable NEW-LINE
+variable IN-LOCALS
+variable ALLOW-GROUP
+variable NUM-I
+variable SCAN-START
 
-: TLD-DIFF-A-FIELD ( -- ptr ptr u8 )
-   TLD-DIFF-A 0 ptr-field ;
+: PTR-SLOT ( ptr a -- ptr ptr u8 )
+   0 ptr-field ;
 
-: TLD-FILE-A@ ( -- ptr u8 )
-   TLD-FILE-A-FIELD @ ;
+: FILE-PTR ( -- ptr ptr u8 )
+   FILE-A PTR-SLOT ;
 
-: TLD-DIFF-A@ ( -- ptr u8 )
-   TLD-DIFF-A-FIELD @ ;
+: FILE$ ( -- ptr u8 n )
+   FILE-PTR @ FILE-U @ ;
 
-: TLD-FILE-A! ( ptr u8 -- )
-   TLD-FILE-A-FIELD ! ;
-
-: TLD-DIFF-A! ( ptr u8 -- )
-   TLD-DIFF-A-FIELD ! ;
-
-: TLD-TRUE ( -- bool )
-   0 0= ;
-
-: TLD-FALSE ( -- bool )
-   TLD-TRUE 0= ;
-
-: TLD-NOT ( bool -- bool )
-   IF TLD-FALSE ELSE TLD-TRUE THEN ;
-
-: TLD-FILE$ ( -- ptr u8 n )
-   TLD-FILE-A@ TLD-FILE-U @ ;
-
-: TLD-U$ ( n -- ptr u8 n ) {: u:n :}
-   TLD-NUM-CAP TLD-NUM-I !
-   u 0= IF
-      TLD-NUM-I @ 1- TLD-NUM-I !
-      48 TLD-NUM TLD-NUM-I @ + c!
-      TLD-NUM TLD-NUM-I @ + 1
-      exit
-   THEN
+: U$ ( n -- ptr u8 n ) {: u:n :}
+   NUM-CAP NUM-I !
+   u 0= if
+      NUM-I @ 1- NUM-I !
+      48 NUM NUM-I @ + c!
+      NUM NUM-I @ + 1 exit
+   then
    u begin dup 0 > while
       dup 10 mod 48 +
-      TLD-NUM-I @ 1- TLD-NUM-I !
-      TLD-NUM TLD-NUM-I @ + c!
+      NUM-I @ 1- NUM-I !
+      NUM NUM-I @ + c!
       10 /
    repeat drop
-   TLD-NUM TLD-NUM-I @ + TLD-NUM-CAP TLD-NUM-I @ - ;
+   NUM NUM-I @ + NUM-CAP NUM-I @ - ;
 
-: TLD-WRITE ( n ptr u8 n -- ) {: fd:n a:ptr u:n :}
-   fd a u LINT-OUT-WRITE ;
+: OUT ( ptr u8 n -- )
+   1 -rot LINT-OUT-WRITE ;
 
-: TLD-OUT ( ptr u8 n -- )
-   1 -rot TLD-WRITE ;
+: EMIT-C ( n -- ) {: c:n :}
+   c ONE c!
+   ONE 1 OUT ;
 
-: TLD-C ( n -- ) {: c:n :}
-   c TLD-ONE c!
-   TLD-ONE 1 TLD-OUT ;
+: BAD+ ( -- )
+   BAD @ 1+ BAD ! ;
 
-: TLD-BAD+ ( -- )
-   TLD-BAD @ 1+ TLD-BAD ! ;
-
-: TLD-LINE-FIRST? ( ptr u8 n n -- bool ) {: a:ptr u:n c:n :}
-   u 0= IF TLD-FALSE exit THEN
-   a c@ c = ;
-
-: TLD-STARTS? ( ptr u8 n ptr u8 n -- bool )
-   LINT-STARTS-WITH? ;
-
-: TLD-TOKEN= ( n ptr u8 n -- bool ) {: k:n a:ptr u:n :}
+: TOKEN= ( n ptr u8 n -- bool ) {: k:n a:ptr u:n :}
    k LEX-TOK a u LINT-STR= ;
 
-: TLD-TYPED-LOCAL? ( ptr u8 n -- bool ) {: a:ptr u:n :}
-   a u TLD-COLON-C LINT-INDEX-OF MATCH option
-     none OF TLD-FALSE ENDOF
-     some OF drop TLD-TRUE ENDOF
+: TYPED? ( ptr u8 n -- bool )
+   COLON-C LINT-INDEX-OF MATCH option
+      none OF false ENDOF
+      some OF drop true ENDOF
    ;MATCH ;
 
-: TLD-FORTH-FILE? ( -- bool )
-   TLD-FILE$ s" .f" LINT-ENDS-WITH? IF TLD-TRUE exit THEN
-   TLD-FILE$ s" .fs" LINT-ENDS-WITH? ;
+: FORTH? ( -- bool )
+   FILE$ s" .f" LINT-ENDS-WITH? if true exit then
+   FILE$ s" .fs" LINT-ENDS-WITH? ;
 
-: TLD-ALLOW-LINE? ( ptr u8 n -- bool )
+: ALLOW? ( ptr u8 n -- bool )
    s" typed-local-lint: allow-bare-local" LINT-CONTAINS? ;
 
-: TLD-SOURCE-LINE ( n -- n ) {: k:n :}
-   TLD-NEW-LINE @ k LL@ + 1- ;
+: SOURCE-LINE ( n -- n )
+   LL@ NEW-LINE @ + 1- ;
 
-: TLD-REPORT-LOCAL ( n -- ) {: k:n :}
-   TLD-BAD+
-   s" E-UNTYPED-LOCAL " TLD-OUT
-   TLD-FILE$ dup 0= IF 2drop s" <unknown>" THEN TLD-OUT
-   TLD-COLON-C TLD-C
-   k TLD-SOURCE-LINE TLD-U$ TLD-OUT
-   TLD-COLON-C TLD-C
-   k LC@ TLD-U$ TLD-OUT
-   s" : `" TLD-OUT
-   k LEX-TOK TLD-OUT
-   s" ` needs :type inside {: :}" TLD-OUT
-   10 TLD-C ;
+: REPORT ( n -- ) {: k:n :}
+   BAD+
+   s" E-UNTYPED-LOCAL " OUT
+   FILE$ dup 0= if 2drop s" <unknown>" then OUT
+   COLON-C EMIT-C k SOURCE-LINE U$ OUT
+   COLON-C EMIT-C k LC@ U$ OUT
+   s" : `" OUT k LEX-TOK OUT
+   s" ` needs :type inside {: :}" OUT
+   LF-C EMIT-C ;
 
-: TLD-SCAN-LOCAL-TOKEN ( n -- ) {: k:n :}
-   k s" {:" TLD-TOKEN= IF TLD-TRUE TLD-IN-LOCALS ! exit THEN
-   k s" :}" TLD-TOKEN= IF
-      TLD-FALSE TLD-IN-LOCALS !
-      TLD-FALSE TLD-ALLOW-GROUP !
-      exit
-   THEN
-   TLD-IN-LOCALS @ TLD-NOT IF exit THEN
-   TLD-ALLOW-GROUP @ IF exit THEN
-   k LEX-TOK TLD-TYPED-LOCAL? TLD-NOT IF k TLD-REPORT-LOCAL THEN ;
+: LOCAL ( n -- ) {: k:n :}
+   k s" {:" TOKEN= if true IN-LOCALS ! exit then
+   k s" :}" TOKEN= if
+      false IN-LOCALS ! false ALLOW-GROUP ! exit
+   then
+   IN-LOCALS @ 0= if exit then
+   ALLOW-GROUP @ if exit then
+   k LEX-TOK TYPED? 0= if k REPORT then ;
 
-: TLD-SCAN-ADDED-SOURCE ( ptr u8 n -- ) {: a:ptr u:n :}
-   TLD-FORTH-FILE? TLD-NOT IF exit THEN
-   a u TLD-ALLOW-LINE? IF TLD-TRUE TLD-ALLOW-GROUP ! THEN
+: SCAN ( ptr u8 n -- ) {: a:ptr u:n :}
+   FORTH? 0= if exit then
+   a u ALLOW? if true ALLOW-GROUP ! then
    a u LEX-SOURCE
    0 begin dup L# @ < while
-      dup TLD-SCAN-LOCAL-TOKEN
+      dup LOCAL 1+
+   repeat drop ;
+
+: LINE+ ( -- )
+   NEW-LINE @ 1+ NEW-LINE ! ;
+
+: ADD-LINE ( ptr u8 n -- )
+   SCAN LINE+ ;
+
+: FILE-RESET ( -- )
+   false IN-LOCALS !
+   false ALLOW-GROUP ! ;
+
+: SECTION ( ptr u8 n ptr u8 n DIFF:form bool -- )
+   {: oa:ptr ou:n na:ptr nu:n kind:DIFF:form body:bool :}
+   oa ou 2drop kind drop body drop
+   na FILE-PTR ! nu FILE-U !
+   FILE-RESET ;
+
+: HUNK ( n -- )
+   NEW-LINE ! FILE-RESET ;
+
+: EVENT ( DIFF:event -- )
+   MATCH DIFF:event
+      none OF ENDOF
+      section OF
+         DIFF:SECTION-OLD$ DIFF:SECTION-NEW$
+         DIFF:SECTION-FORM DIFF:SECTION-BODY? SECTION
+      ENDOF
+      hunk OF DIFF:HUNK-NEW-START HUNK ENDOF
+      add OF DIFF:CONTENT$ ADD-LINE ENDOF
+      context OF LINE+ ENDOF
+      delete OF ENDOF
+   ;MATCH ;
+
+: LINE ( ptr u8 n -- )
+   DIFF:LINE EVENT ;
+
+: SOURCE-LINES ( ptr u8 n -- ) {: a:ptr u:n :}
+   a u DIFF:SOURCE-VALIDATE
+   0 SCAN-START !
+   0 begin dup u < while
+      dup a + c@ LF-C = if
+         a SCAN-START @ + over SCAN-START @ - LINE
+         dup 1+ SCAN-START !
+      then
       1+
    repeat drop ;
 
-: TLD-INC-LINE ( -- )
-   TLD-NEW-LINE @ 1+ TLD-NEW-LINE ! ;
+: END-ARTIFACT ( -- )
+   DIFF:FINISH EVENT
+   DIFF:RESET ;
 
-: TLD-SCAN-ADDED-LINE ( ptr u8 n -- ) {: a:ptr u:n :}
-   u 0= IF TLD-INC-LINE exit THEN
-   a 1+ u 1- TLD-SCAN-ADDED-SOURCE
-   TLD-INC-LINE ;
+public
 
-: TLD-RESET-FILE ( -- )
-   TLD-FALSE TLD-IN-HUNK !
-   TLD-FALSE TLD-IN-LOCALS !
-   TLD-FALSE TLD-ALLOW-GROUP ! ;
+: RESET ( -- )
+   DIFF:RESET
+   0 BAD ! 0 FILE-U ! 0 NEW-LINE !
+   FILE-RESET ;
 
-: TLD-SET-FILE$ ( ptr u8 n -- ) {: a:ptr u:n :}
-   a TLD-FILE-A! u TLD-FILE-U !
-   TLD-RESET-FILE ;
+: SOURCE ( ptr u8 n -- )
+   SOURCE-LINES ;
 
-: TLD-SET-DIFF-FILE ( ptr u8 n -- ) {: a:ptr u:n :}
-   a u s" +++ b/" TLD-STARTS? IF a 6 + u 6 - TLD-SET-FILE$ exit THEN
-   a u s" +++ " TLD-STARTS? IF a 4 + u 4 - TLD-SET-FILE$ exit THEN ;
+: FILE ( ptr u8 n -- )
+   LINT-SOURCE:LOAD
+   LINT-SOURCE:TEXT SOURCE
+   END-ARTIFACT ;
 
-: TLD-NUM-END ( ptr u8 n n -- n ) {: a:ptr u:n start:n :}
-   start begin dup u < while
-      dup a + c@ dup TLD-COMMA-C = over 32 = or swap 9 = or IF exit THEN
-      1+
-   repeat ;
+: FINISH ( -- )
+   DIFF:FINISH EVENT
+   BAD @ 0 > if 1 throw then ;
 
-: TLD-PARSE-HUNK ( ptr u8 n -- ) {: a:ptr u:n :}
-   a u TLD-PLUS-C LINT-INDEX-OF MATCH option
-     none OF 0 ENDOF
-     some OF 1+ ENDOF
-   ;MATCH TLD-HUNK-START !
-   TLD-HUNK-START @ 0 <= IF exit THEN
-   a u TLD-HUNK-START @ TLD-NUM-END TLD-HUNK-END !
-   TLD-HUNK-END @ TLD-HUNK-START @ <= IF exit THEN
-   a TLD-HUNK-START @ + TLD-HUNK-END @ TLD-HUNK-START @ - STR>NUMBER? MATCH option
-     none OF ENDOF
-     some OF
-      TLD-NEW-LINE !
-      TLD-TRUE TLD-IN-HUNK !
-      TLD-FALSE TLD-IN-LOCALS !
-      TLD-FALSE TLD-ALLOW-GROUP !
-     ENDOF
-   ;MATCH ;
-
-: TLD-DIFF-FILE-LINE? ( ptr u8 n -- bool )
-   s" +++ " TLD-STARTS? ;
-
-: TLD-HUNK-LINE? ( ptr u8 n -- bool )
-   s" @@" TLD-STARTS? ;
-
-: TLD-PROCESS-HUNK-LINE ( ptr u8 n -- ) {: a:ptr u:n :}
-   a u TLD-PLUS-C TLD-LINE-FIRST? IF a u TLD-SCAN-ADDED-LINE exit THEN
-   a u TLD-MINUS-C TLD-LINE-FIRST? IF exit THEN
-   a u 32 TLD-LINE-FIRST? IF TLD-INC-LINE THEN ;
-
-: TLD-PROCESS-LINE ( ptr u8 n -- ) {: a:ptr u:n :}
-   a u TLD-DIFF-FILE-LINE? IF a u TLD-SET-DIFF-FILE exit THEN
-   a u TLD-HUNK-LINE? IF a u TLD-PARSE-HUNK exit THEN
-   TLD-IN-HUNK @ IF a u TLD-PROCESS-HUNK-LINE THEN ;
-
-: TYPED-LOCAL-DIFF-LINT-RESET ( -- )
-   0 TLD-BAD !
-   0 TLD-DIFF-U !
-   0 TLD-FILE-U !
-   0 TLD-NEW-LINE !
-   TLD-FALSE TLD-IN-HUNK !
-   TLD-FALSE TLD-IN-LOCALS !
-   TLD-FALSE TLD-ALLOW-GROUP ! ;
-
-: TLD-LINE-TRIM-CR ( ptr u8 n -- ptr u8 n ) {: a:ptr u:n :}
-   u 0 > IF
-      a u 1- + c@ TLD-CR-C = IF a u 1- exit THEN
-   THEN
-   a u ;
-
-: TLD-PROCESS-LINE-SPAN ( ptr u8 n -- )
-   TLD-LINE-TRIM-CR TLD-PROCESS-LINE ;
-
-: TYPED-LOCAL-DIFF-LINT-SOURCE ( ptr u8 n -- ) {: a:ptr u:n :}
-   0 TLD-SCAN-START !
-   0 begin dup u < while
-      dup a + c@ TLD-LF-C = IF
-         a TLD-SCAN-START @ + over TLD-SCAN-START @ - TLD-PROCESS-LINE-SPAN
-         dup 1+ TLD-SCAN-START !
-      THEN
-      1+
-   repeat drop
-   TLD-SCAN-START @ u < IF
-      a TLD-SCAN-START @ + u TLD-SCAN-START @ - TLD-PROCESS-LINE-SPAN
-   THEN ;
-
-: TLD-ALLOC-DIFF ( n -- ) {: need:n :}
-   need 1 < IF 1 ELSE need THEN
-   MEM-ALLOC-64K-SPAN TLD-DIFF-CAP ! TLD-DIFF-A! ;
-
-: TYPED-LOCAL-DIFF-LINT-FILE ( ptr u8 n -- ) {: path:ptr pathu:n :}
-   path pathu FILE-SIZE TLD-ALLOC-DIFF
-   path pathu TLD-DIFF-A@ TLD-DIFF-CAP @ READ-ALL TLD-DIFF-U !
-   TLD-DIFF-A@ TLD-DIFF-U @ TYPED-LOCAL-DIFF-LINT-SOURCE ;
-
-: TYPED-LOCAL-DIFF-LINT-FINISH ( -- )
-   TLD-BAD @ 0 > IF 1 throw THEN ;
+;package
