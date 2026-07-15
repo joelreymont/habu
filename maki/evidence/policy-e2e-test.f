@@ -9,7 +9,10 @@
 \   - a matching, complete bundle GRANTS, and the grant is bound to that artifact;
 \   - an absent required (blocking) slot refuses with E-EVID-MISSING;
 \   - a present slot naming a DIFFERENT artifact refuses with E-EVID-ARTIFACT;
-\   - ART:PROMOTE with a grant issued for a different artifact refuses (the tightening).
+\   - ART:PROMOTE with a grant issued for a different artifact refuses (the tightening);
+\   - a complete bundle whose golden carries a RELATIVE achieved domain grants under a
+\     relative-requested gate-set but refuses (E-NPOL-APPROX) under an exact request,
+\     enforced INSIDE POLICY:CHECK before the grant is minted (numeric-policy seam).
 \ Every refusal is paired with a resolving positive control (per LESSONS), so no
 \ TTHROWS is vacuous.
 
@@ -49,8 +52,13 @@ require maki/evidence/promote.f      \ ART:PROMOTE (pulls policy.f -> schema.f -
    EVID-BUNDLE:MAKE ;
 
 \ ---- run POLICY:CHECK against the default (V1) policy --------------------------
+\ GRANT-FOR requests EXACT (the exact host golden in BUNDLE-FULL satisfies it); the
+\ numeric-through-CHECK fixtures below vary the request over a relative golden.
 : GRANT-FOR ( EVID:bundle CAD-KIND:artifact-id -- POLICY:granted ) {: art:CAD-KIND:artifact-id :}
-   art BUILT-FOR  POLICY:SCHEMA POLICY:DEFAULT-POLICY  POLICY:CHECK ;
+   art BUILT-FOR  POLICY:SCHEMA NPOL-DOM:EXACT POLICY:DEFAULT-POLICY  POLICY:CHECK ;
+: GRANT-REQ ( EVID:bundle CAD-KIND:artifact-id NPOL:dom -- POLICY:granted )
+   {: art:CAD-KIND:artifact-id need:NPOL:dom :}
+   art BUILT-FOR  POLICY:SCHEMA need POLICY:DEFAULT-POLICY  POLICY:CHECK ;
 
 \ green path: a complete matching bundle grants, and the grant names THAT artifact.
 : E2E-GRANT-ART? ( -- bool )
@@ -94,6 +102,29 @@ require maki/evidence/promote.f      \ ART:PROMOTE (pulls policy.f -> schema.f -
 : E2E-GOLD-EXACT-REFUSE ( -- )  GOLD-REL-FOR EVID:GOLD-DOM  NPOL-DOM:EXACT     NPOL:ENFORCE ;
 : E2E-GOLD-REL-OK      ( -- )   GOLD-REL-FOR EVID:GOLD-DOM  NPOL-DOM:RELATIVE  NPOL:ENFORCE ;
 
+\ ---- numeric policy enforced THROUGH THE REAL PROMOTE GATE (POLICY:CHECK) --------
+\ Not the family-level NPOL:ENFORCE above: a COMPLETE bundle whose golden carries a
+\ relative (TF32/device) achieved domain is driven through POLICY:CHECK. Under a
+\ relative-requested gate-set it GRANTS (the grant binds the artifact); under an
+\ exact-requested gate-set the SAME bundle is refused with E-NPOL-APPROX before any
+\ grant is minted - the sealed-grant discipline (no grant unless numeric policy held).
+: GOLD-REL-FOR-ART ( CAD-KIND:artifact-id -- EVID:golden )
+   BUILT-FOR EVID-GOLDEN--LEG:DEVICE EVID-PREC--CLASS:PREC-TF32 NPOL-DOM:RELATIVE EVID:GOLDEN ;
+: BUNDLE-REL-GOLD ( CAD-KIND:artifact-id -- EVID:bundle ) {: art:CAD-KIND:artifact-id :}
+   art CERT-FOR         EVID-CERTIFY--SLOT:CERTIFY-GOT
+   art GOLD-REL-FOR-ART EVID-GOLDEN--SLOT:GOLDEN-GOT
+   art GRAD-FOR         EVID-GRADCHECK--SLOT:GRADCHECK-GOT
+   art PROF-FOR         EVID-PROFILE--SLOT:PROFILE-GOT
+   EVID-BUNDLE:MAKE ;
+: E2E-NPOL-REL-GRANT? ( -- bool )
+   s" e2e-nrel-ok" ARTIFACT:REGISTER {: art:CAD-KIND:artifact-id :}
+   art BUNDLE-REL-GOLD art NPOL-DOM:RELATIVE GRANT-REQ
+   POLICY-GRANTED:UNMAKE drop drop  art ARTIFACT:EQUAL? ;
+: E2E-NPOL-EXACT-REFUSE ( -- )
+   s" e2e-nrel-bad" ARTIFACT:REGISTER {: art:CAD-KIND:artifact-id :}
+   art BUNDLE-REL-GOLD art NPOL-DOM:EXACT GRANT-REQ
+   POLICY-GRANTED:UNMAKE drop drop drop ;   \ unreached on refusal; balances the no-refusal case
+
 T-RESET
 
 \ ---- executed end-to-end -----------------------------------------------------
@@ -102,7 +133,10 @@ E2E-GRANT-ART?                 T-ASSERT   \ green: grants, and the grant binds t
 ' E2E-WRONG-ART   E-EVID-ARTIFACT TTHROWS \ red: wrong-artifact evidence
 ' E2E-PROMOTE-OK  0               TTHROWS \ promote a matching (built, grant): no refusal
 ' E2E-PROMOTE-BAD E-EVID-ARTIFACT TTHROWS \ promote a mismatched (built, grant): refused
-' E2E-GOLD-EXACT-REFUSE E-NPOL-APPROX TTHROWS \ relative golden vs exact policy: refused
-' E2E-GOLD-REL-OK       0             TTHROWS \ relative golden vs relative policy: satisfied
+' E2E-GOLD-EXACT-REFUSE E-NPOL-APPROX TTHROWS \ relative golden vs exact policy: refused (family-level ENFORCE)
+' E2E-GOLD-REL-OK       0             TTHROWS \ relative golden vs relative policy: satisfied (family-level ENFORCE)
+\ the SAME refusal/grant driven through the REAL promote gate (POLICY:CHECK), not a bare ENFORCE:
+E2E-NPOL-REL-GRANT?          T-ASSERT   \ relative golden + relative request through POLICY:CHECK: grants
+' E2E-NPOL-EXACT-REFUSE E-NPOL-APPROX TTHROWS \ relative golden + exact request through POLICY:CHECK: refused
 
 T-REPORT

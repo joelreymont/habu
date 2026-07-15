@@ -61,20 +61,22 @@ public
    true  s" art-a" ARTIFACT:REGISTER s" art-a" ARTIFACT:REGISTER ARTIFACT:EQUAL?
    POLICY-REQ:REQUIRED-BLOCKING SLOT-ERR ;
 
-\ DEFAULT-POLICY is EXACTLY the V1 inference gate set (maki/cad.f:1019-1030).
+\ DEFAULT-POLICY is EXACTLY the V1 inference gate set (maki/cad.f:1019-1030), plus
+\ the requested numeric policy carried in the `npol` field (round-trips here).
 : PROBE-DEFAULT-V1 ( -- bool )
-   SCHEMA DEFAULT-POLICY POLICY-GATE--SET:UNMAKE drop   \ drop the schema id
-   {: cert:req gold:req grad:req prof:req :}
+   SCHEMA NPOL-DOM:RELATIVE DEFAULT-POLICY POLICY-GATE--SET:UNMAKE
+   {: cert:req gold:req grad:req prof:req sid:CAD-KIND:schema-id need:NPOL:dom :}
    cert POLICY-REQ:REQUIRED-BLOCKING       POLICY-REQ:EQ
    gold POLICY-REQ:REQUIRED-BLOCKING       POLICY-REQ:EQ and
    grad POLICY-REQ:REQUIRED-WHEN-SUPPORTED POLICY-REQ:EQ and
-   prof POLICY-REQ:REQUIRED-RECORDED       POLICY-REQ:EQ and ;
+   prof POLICY-REQ:REQUIRED-RECORDED       POLICY-REQ:EQ and
+   need NPOL-DOM:RELATIVE NPOL-DOM:EQ       and ;   \ requested numeric policy round-trips
 ;package
 
 T-RESET
 
 \ ---- positive controls: the public surface certifies -------------------------
-s" PG-OK-DEFAULT ( CAD-KIND:schema-id -- POLICY:gate-set ) POLICY:DEFAULT-POLICY"
+s" PG-OK-DEFAULT ( CAD-KIND:schema-id NPOL:dom -- POLICY:gate-set ) POLICY:DEFAULT-POLICY"
    CHECK-QUIET-CANDIDATE! -1 T=
 s" PG-OK-CHECK ( EVID:bundle ART:built POLICY:gate-set -- POLICY:granted ) POLICY:CHECK"
    CHECK-QUIET-CANDIDATE! -1 T=

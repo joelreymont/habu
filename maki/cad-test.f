@@ -208,7 +208,7 @@ dup 0 REPORT:CAND@ s" gemm-tf32-v1 bm=64 bn=64 bk=32 warps=4 stages=1" T$=
 \ full section-7.4 cache key, exact: the report arena copy is stable, so build the
 \ expected key in SB with the binary-dependent engine field spliced in, then compare.
 dup REPORT:CACHE$
-SB-RESET s" CDFF1E0D197DD30A|2x4|f32|row|al?|exact|isa=1,arch=87,warp=32,threads=1024,shared=49152,caps=127|" SB-APPEND
+SB-RESET s" CDFF1E0D197DD30A|2x4|f32|row|al?|rel|isa=1,arch=87,warp=32,threads=1024,shared=49152,caps=127|" SB-APPEND
 ENGINE-KEY$ SB-APPEND  s" |unprobed" SB-APPEND  SB$
 STR= TTRUE
 dup REPORT:RENDER CT-SAVE
@@ -321,6 +321,21 @@ s" packet.golden"                  CT-NOTIN
 s" packet.profile: class=not-run"  CT-IN
 s" repair=run-device-profile"      CT-IN
 s" repro=model:FFN"                CT-IN
+
+\ ---- numeric-policy refusal through the REAL PROMOTE command (non-vacuous flip) --
+\ FFN region 0 (linear+gelu) achieves a RELATIVE domain; under the honest default
+\ (matmul -> relative) the PROMOTE above succeeded. Requesting EXACT for the matmul
+\ class re-keys region 0 to exact, and the relative golden can no longer satisfy it:
+\ the REAL PROMOTE command refuses with the named E-NPOL-APPROX (PROMOTE-NPOL) before
+\ any row lands. POL-RESET restores the honest default -> PROMOTE succeeds again, so
+\ the verdict genuinely flips. STORE-RESET brackets keep the store leak-free.
+STORE-RESET
+NPOL-DOM:EXACT MAKI:CLASS-MATMUL NPOL:POL!
+' TRY-PROMOTE E-NPOL-APPROX TTHROWS                       \ exact request, relative golden: refused
+0 FP-REGION-ID TARGET:SM87 SK-KEY$ EVID-GET nip TFALSE    \ refusal before the store write -> no row
+NPOL:POL-RESET
+' TRY-PROMOTE 0 TTHROWS                                   \ honest default restored -> promotes again
+STORE-RESET  SK-TAB-RESET  REPLAY-RESET
 
 \ ---- refusal fixture: a CAST model whose GOLDEN is not-run -> PROMOTE refuses -
 \ CAST has no host oracle (incomplete op), so GOLDEN is not-run: it never reaches

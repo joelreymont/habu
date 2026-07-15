@@ -104,15 +104,22 @@ NPOL-DOM:ULP       DOMRT 1 T=
 NPOL-DOM:RELATIVE  DOMRT 2 T=
 NPOL-DOM:EMPIRICAL DOMRT 3 T=
 
-\ ---- requested-policy table (ambient per-class request; default exact) ---------
+\ ---- requested-policy table (ambient per-class request; honest per-class default) --
+\ CLASS-DEFAULT-POL: elementwise + movement default exact; the accumulating classes
+\ (row-reduce, matmul) and the decode/dequant chain default relative, so a
+\ legitimate accumulating golden is not refused by an exact-and-always-refusing
+\ default. POL! overrides one class; POL-RESET restores the honest defaults.
 NPOL:POL-RESET
-MAKI:CLASS-EW     NPOL:POL@ NPOL:RANK 0 T=
-MAKI:CLASS-MATMUL NPOL:POL@ NPOL:RANK 0 T=
-NPOL-DOM:RELATIVE MAKI:CLASS-MATMUL NPOL:POL!
-MAKI:CLASS-MATMUL NPOL:POL@ NPOL:RANK 2 T=     \ matmul now relative
-MAKI:CLASS-EW     NPOL:POL@ NPOL:RANK 0 T=     \ other classes untouched
+MAKI:CLASS-EW         NPOL:POL@ NPOL:RANK 0 T=     \ elementwise: exact
+MAKI:CLASS-MOVEMENT   NPOL:POL@ NPOL:RANK 0 T=     \ movement (no compute): exact
+MAKI:CLASS-ROW-REDUCE NPOL:POL@ NPOL:RANK 2 T=     \ accumulating reduction: relative
+MAKI:CLASS-MATMUL     NPOL:POL@ NPOL:RANK 2 T=     \ tensor-core matmul: relative
+MAKI:CLASS-DECODE     NPOL:POL@ NPOL:RANK 2 T=     \ dequant chain: relative
+NPOL-DOM:EXACT MAKI:CLASS-MATMUL NPOL:POL!
+MAKI:CLASS-MATMUL NPOL:POL@ NPOL:RANK 0 T=         \ POL! overrides matmul to exact
+MAKI:CLASS-EW     NPOL:POL@ NPOL:RANK 0 T=         \ other classes untouched
 NPOL:POL-RESET
-MAKI:CLASS-MATMUL NPOL:POL@ NPOL:RANK 0 T=     \ reset restores exact
+MAKI:CLASS-MATMUL NPOL:POL@ NPOL:RANK 2 T=         \ reset restores the honest relative default
 
 \ ---- acceptance fixtures: refusals + positive controls (non-vacuous) -----------
 ' TF32-VS-FP32-NEG    E-NPOL-APPROX TTHROWS    \ TF32 relative result vs FP32 exact policy: refused

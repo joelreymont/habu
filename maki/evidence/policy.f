@@ -80,14 +80,19 @@ ENUM req DERIVE eq
    informational
 ;ENUM
 
-\ gate-set: a promotion policy - one req per evidence class + the policy's schema
-\ identity (`pol` participates in the release key, plan §16).
+\ gate-set: a promotion policy - one req per evidence class, the policy's schema
+\ identity (`pol` participates in the release key, plan §16), and the REQUESTED
+\ numeric proof domain (`npol`, maki/numpolicy.f) the golden's ACHIEVED domain must
+\ satisfy at promotion. `npol` is the region's requested policy (the skey pol field /
+\ maki/sched-key.f REGION-POL) threaded in by the promotion caller; CHECK enforces
+\ EVID:GOLD-DOM SATISFIES? npol before minting the grant (see CHECK).
 PRODUCT gate-set 0
    FIELD cert req
    FIELD gold req
    FIELD grad req
    FIELD prof req
    FIELD pol  CAD-KIND:schema-id
+   FIELD npol NPOL:dom
 ;PRODUCT
 
 \ granted: the sealed grant - bound to its artifact, its policy identity, and a
@@ -144,6 +149,20 @@ TRUSTED: RAW>SCHEMA-ID ( n -- CAD-KIND:schema-id ) ;
 : FIRST-ERR ( n n -- n )                  \ keep the first nonzero refusal code
    over 0= if nip else drop then ;
 
+\ GOLD-SLOT-ERR: SLOT-ERR extended with the numeric-policy check for the golden slot.
+\ A present, binding golden must BOTH name the artifact under promotion (art-ok) AND
+\ have an achieved numeric domain that satisfies the requested policy (num-ok); the
+\ artifact refusal has priority over the numeric refusal. Absence is exactly SLOT-ERR.
+: GOLD-SLOT-ERR ( bool bool bool req -- n )   \ present? art-binds? num-satisfies? req
+   {: p:bool aok:bool nok:bool r:req :}
+   p if
+      r REQ-BINDS-IF-PRESENT? if
+         aok if  nok if 0 else E-NPOL-APPROX then  else E-EVID-ARTIFACT then
+      else 0 then
+   else
+      r REQ-MUST-EXIST? if E-EVID-MISSING else 0 then
+   then ;
+
 \ ---- artifact projections of each evidence class (drop the class proof token) --
 : CERT-ART ( EVID:certified -- CAD-KIND:artifact-id )     EVID-CERTIFIED:UNMAKE drop ;
 : GOLD-ART ( EVID:golden -- CAD-KIND:artifact-id )        EVID-GOLDEN:UNMAKE drop drop drop drop ;
@@ -161,12 +180,19 @@ TRUSTED: RAW>SCHEMA-ID ( n -- CAD-KIND:schema-id ) ;
       certify-got  OF CERT-ART a ARTIFACT:EQUAL? true swap ENDOF
       certify-none OF false false ENDOF
    ;MATCH  r SLOT-ERR ;
-: GOLD-VERDICT ( EVID:golden-slot CAD-KIND:artifact-id req -- n )
-   {: a:CAD-KIND:artifact-id r:req :}
+\ GOLD-VERDICT also enforces the numeric policy: a present golden's achieved domain
+\ (EVID:GOLD-DOM) must SATISFY the requested `need` policy, else E-NPOL-APPROX. The
+\ got arm computes (present art-ok num-ok) for GOLD-SLOT-ERR; the none arm is absent.
+: GOLD-VERDICT ( EVID:golden-slot CAD-KIND:artifact-id req NPOL:dom -- n )
+   {: a:CAD-KIND:artifact-id r:req need:NPOL:dom :}
    MATCH golden-slot
-      golden-got  OF GOLD-ART a ARTIFACT:EQUAL? true swap ENDOF
-      golden-none OF false false ENDOF
-   ;MATCH  r SLOT-ERR ;
+      golden-got  OF
+         dup  EVID:GOLD-DOM need NPOL:SATISFIES?   \ ( golden num-ok )
+         swap GOLD-ART a ARTIFACT:EQUAL?           \ ( num-ok art-ok )
+         swap true -rot                            \ ( present=true art-ok num-ok )
+      ENDOF
+      golden-none OF false false false ENDOF       \ ( present=false art-ok num-ok )
+   ;MATCH  r GOLD-SLOT-ERR ;
 : GRAD-VERDICT ( EVID:gradcheck-slot CAD-KIND:artifact-id req -- n )
    {: a:CAD-KIND:artifact-id r:req :}
    MATCH gradcheck-slot
@@ -186,14 +212,16 @@ public
 \ certify + golden block on pass, gradcheck blocks only a real fail
 \ (required-when-supported: absent/unsupported clears like V1 not-run), profile is
 \ mandatory-to-run but non-blocking (required-recorded). `pol` is the caller's
-\ policy schema identity.
-: DEFAULT-POLICY ( CAD-KIND:schema-id -- gate-set )
-   {: pol:CAD-KIND:schema-id :}
+\ policy schema identity; `need` is the region's REQUESTED numeric proof domain
+\ (maki/sched-key.f REGION-POL) the golden's achieved domain must satisfy.
+: DEFAULT-POLICY ( CAD-KIND:schema-id NPOL:dom -- gate-set )
+   {: pol:CAD-KIND:schema-id need:NPOL:dom :}
    POLICY-REQ:REQUIRED-BLOCKING
    POLICY-REQ:REQUIRED-BLOCKING
    POLICY-REQ:REQUIRED-WHEN-SUPPORTED
    POLICY-REQ:REQUIRED-RECORDED
    pol
+   need
    POLICY-GATE--SET:MAKE ;
 
 \ SCHEMA: the canonical identity of the V1 promotion policy schema (the default gate
@@ -204,24 +232,31 @@ public
 0 constant DEFAULT-SCHEMA-RAW
 : SCHEMA ( -- CAD-KIND:schema-id )  DEFAULT-SCHEMA-RAW RAW>SCHEMA-ID ;
 
-\ CHECK: the single sealed site of value-level artifact binding. On a clean policy
-\ pass it mints and returns the grant; on refusal it THROWs the first refusal code
-\ (cert > gold > grad > prof priority), exactly as V1 PROMOTE-REPORT throws E-CAD-GATE
-\ (maki/cad.f:1036). The bundle is DEEPEST so it is UNMAKEd only after the single-cell
-\ operands become locals; the four verdict codes accumulate through the return stack
-\ because a tagged-sum slot cannot rest under a partial result. The artifact under
-\ promotion is READ from the ART:built witness (its `art` field), which also proves the
-\ artifact was actually built - a permissive policy over an empty bundle cannot grant
-\ for a never-built artifact.
+\ CHECK: the single sealed site of value-level artifact binding AND numeric-policy
+\ enforcement. On a clean policy pass it mints and returns the grant; on refusal it
+\ THROWs the first refusal code (cert > gold > grad > prof priority), exactly as V1
+\ PROMOTE-REPORT throws E-CAD-GATE (maki/cad.f:1036). The bundle is DEEPEST so it is
+\ UNMAKEd only after the single-cell operands become locals; the four verdict codes
+\ accumulate through the return stack because a tagged-sum slot cannot rest under a
+\ partial result. The artifact under promotion is READ from the ART:built witness
+\ (its `art` field), which also proves the artifact was actually built - a permissive
+\ policy over an empty bundle cannot grant for a never-built artifact.
+\ NUMERIC POLICY (seam rationale): the golden verdict additionally enforces the
+\ golden's ACHIEVED domain (EVID:GOLD-DOM) SATISFIES? the gate-set's requested `npol`
+\ (E-NPOL-APPROX). This lives INSIDE CHECK, before the grant is minted, precisely to
+\ keep the sealed-grant discipline: POLICY:granted exists ONLY when the numeric
+\ policy also held, so a downstream ART:PROMOTE consuming the grant never promotes an
+\ approximate golden under a stricter request. Enforcing at the promote seam instead
+\ would mint the grant first (numeric unchecked) and break that invariant.
 : CHECK ( EVID:bundle ART:built gate-set -- POLICY:granted )
    POLICY-GATE--SET:UNMAKE
-      {: cReq:req gReq:req grReq:req pReq:req sid:CAD-KIND:schema-id :}
+      {: cReq:req gReq:req grReq:req pReq:req sid:CAD-KIND:schema-id need:NPOL:dom :}
    ART-BUILT:UNMAKE drop            \ built -> its artifact id (drop the build-proof)
    {: a:CAD-KIND:artifact-id :}      \ pop the artifact under promotion, leaving  bundle
    EVID-BUNDLE:UNMAKE               \ stack: certify-slot golden-slot gradcheck-slot profile-slot
    a pReq  PROF-VERDICT >r
    a grReq GRAD-VERDICT >r
-   a gReq  GOLD-VERDICT >r
+   a gReq  need GOLD-VERDICT >r     \ golden also enforces GOLD-DOM SATISFIES? need (E-NPOL-APPROX)
    a cReq  CERT-VERDICT
    r> FIRST-ERR r> FIRST-ERR r> FIRST-ERR
    dup 0= if

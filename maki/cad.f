@@ -1057,6 +1057,35 @@ private
    G-GRADCHECK GATE-NOT-FAIL?  r> and >r
    G-PROFILE   GATE-RECORDED?  r> and ;
 
+\ ---- numeric-policy promote gate (maki/numpolicy.f NPOL:ENFORCE) --------------
+\ At promotion the golden's ACHIEVED numeric domain must SATISFY the region's
+\ REQUESTED policy (maki/sched-key.f REGION-POL, the skey pol field). The achieved
+\ domain is the golden's judged precision (GPREC>DOM: f32 FMA = exact, TF32 = relative)
+\ COMPOSEd with region 0's per-op achieved domains (REGION-ACHIEVED, the OP-DOM
+\ sibling of sched-key.f's per-class REGION-POL fold). The authoritative sealed-grant
+\ enforcement is POLICY:CHECK (maki/evidence/policy.f); this is the V1 report-path
+\ mirror so the user-facing PROMOTE command refuses with the same named code, and
+\ carries the honest REGION-POL into the section-7.4 key PROMOTE-EVIDENCE writes.
+: GPREC>DOM ( EVID:prec-class -- NPOL:dom )
+   MATCH prec-class
+      prec-f32  OF NPOL-DOM:EXACT    ENDOF
+      prec-tf32 OF NPOL-DOM:RELATIVE ENDOF
+   ;MATCH ;
+: NODE-ACHIEVED ( NPOL:dom CAD-KIND:node-id -- NPOL:dom ) {: acc:NPOL:dom node:CAD-KIND:node-id :}
+   acc  node MIR-OP@ NPOL:OP-DOM  NPOL:COMPOSE ;
+: REGION-ACHIEVED ( CAD-KIND:region -- NPOL:dom ) {: r:CAD-KIND:region :}   \ weakest op-achieved domain over the region
+   NPOL-DOM:EXACT
+   MIR-N@ 0 ?do
+      i MIR-NODE-ID {: node:CAD-KIND:node-id :}
+      node FP-RID@ r FP-RGN= if node NODE-ACHIEVED then
+   loop ;
+: GOLD-ACHIEVED ( EVID:prec-class -- NPOL:dom )   \ judged precision COMPOSEd with region 0's op-achieved domains
+   GPREC>DOM  0 FP-REGION-ID REGION-ACHIEVED  NPOL:COMPOSE ;
+: PROMOTE-NPOL ( report EVID:prec-class -- report )   \ throw E-NPOL-APPROX unless achieved satisfies region 0's requested policy
+   GOLD-ACHIEVED  0 FP-REGION-ID REGION-POL  NPOL:ENFORCE ;
+: PROMOTE-NPOL-OK? ( report EVID:prec-class -- report bool )   \ non-throwing form for OPTIMIZE's advisory decision
+   GOLD-ACHIEVED  0 FP-REGION-ID REGION-POL  NPOL:SATISFIES? ;
+
 : CACHE-KEY-INTO ( report -- report )          \ artifact key (model-scoped in phase 1)
    MODEL-NAME$ REPORT:CACHE! ;
 
@@ -1085,11 +1114,14 @@ private
    r0 TARGET:SM87 SK-KEY$ c g gc p  leg GLEG>DEV?  prec GPREC>ID  EVID-PUT-G  \ golden=device-<v>:<prec> when the device leg ran
    r0 TARGET:SM87 SK-KEY$ sel SK-PUT-DURABLE ;
 
-: OPTIMIZE-PROMOTE ( report -- report )        \ record the decision, never throw
-   PROMOTE-OK? if
+: OPTIMIZE-PROMOTE ( report EVID:prec-class -- report )   \ record the decision, never throw
+   {: prec:EVID:prec-class :}
+   PROMOTE-OK? {: gates-ok:bool :}
+   prec PROMOTE-NPOL-OK? {: npol-ok:bool :}
+   gates-ok npol-ok and if
       CACHE-KEY-INTO  s" promote: gates pass; artifact cached" REPORT:WARN+
    else
-      s" promote: refused; certify/golden/gradcheck gate not satisfied" REPORT:WARN+
+      s" promote: refused; certify/golden/gradcheck/numeric gate not satisfied" REPORT:WARN+
    then ;
 
 public
@@ -1105,17 +1137,21 @@ public
 : PROFILE ( -- report )    REPORT:NEW LOWER-INTO PROFILE-INTO ;
 : TUNE ( -- report )       REPORT:NEW LOWER-INTO TUNE-INTO ;
 
-\ PROMOTE refuses (named throw) unless every gate passes; on success caches the key
-\ and writes the artifact + evidence rows to the CAD store. The golden provenance
-\ (EVID:golden-leg / EVID:prec-class) is threaded from FULL-REPORT-G around the gate check
-\ into the sealed evidence writer.
+\ PROMOTE refuses (named throw) unless every gate passes AND the golden's achieved
+\ numeric domain satisfies the region's requested policy (E-NPOL-APPROX via
+\ PROMOTE-NPOL); on success caches the key and writes the artifact + evidence rows to
+\ the CAD store. The golden provenance (EVID:golden-leg / EVID:prec-class) is threaded
+\ from FULL-REPORT-G around the gate check into the sealed evidence writer.
 : PROMOTE ( -- report )
    FULL-REPORT-G {: leg:EVID:golden-leg prec:EVID:prec-class :}
    PROMOTE-REPORT
+   prec PROMOTE-NPOL                               \ numeric policy: achieved SATISFIES requested, else E-NPOL-APPROX
    leg prec PROMOTE-EVIDENCE ;
 
 \ OPTIMIZE composes lower -> fuse -> memory -> tile -> gates -> promote decision.
-: OPTIMIZE ( -- report )  FULL-REPORT OPTIMIZE-PROMOTE ;
+: OPTIMIZE ( -- report )
+   FULL-REPORT-G {: leg:EVID:golden-leg prec:EVID:prec-class :}
+   prec OPTIMIZE-PROMOTE ;
 
 \ EXPLAIN emits repair-packet-discipline failure lines for every non-pass gate.
 : EXPLAIN ( -- ptr u8 n )  FULL-REPORT REPORT:RENDER-PACKETS ;

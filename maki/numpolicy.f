@@ -23,8 +23,20 @@
 \
 \ The requested policy is an ambient per-region-class REQUEST, exactly like the
 \ requested precision in maki/precision.f (PREC!/PREC@): an INPUT knob the plan
-\ sets, not process-state provenance. Default is exact for every class; POL-RESET
-\ restores it. The bridge NUM>DOM / OP-DOM projects an op's raw registry numeric
+\ sets, not process-state provenance. The default is set HONESTLY per class by
+\ CLASS-DEFAULT-POL (POL-RESET restores it): the accumulating classes (row-reduce,
+\ matmul) and the decode/dequant chain request `relative` because their ops
+\ genuinely accumulate / approximate in f32 / TF32, so an exact default would
+\ refuse every legitimate golden (the "exact-and-always-refusing" trap); movement
+\ (a layout rewrite, no compute) and elementwise request `exact`. Elementwise is a
+\ MIXED class (exact relu/cast, ulp add/mul, transcendental gelu/silu); its class
+\ default stays `exact` so a pure-elementwise key is unchanged, and any region that
+\ fuses a transcendental/accumulating op ALSO carries a matmul/row-reduce/decode op
+\ whose relative request drags REGION-POL to relative via COMPOSE. A per-OP honest
+\ default (a pure-elementwise region of only gelu/silu requesting relative) needs a
+\ per-op requested-policy axis that this per-class table cannot express; it is a
+\ documented follow-on (a dedicated dot), not a regression - no such region is
+\ promoted today. The bridge NUM>DOM / OP-DOM projects an op's raw registry numeric
 \ class into the domain lattice (empirical has no per-op source - it is a
 \ golden/recompute-level license, so NUM>DOM never yields it and fails closed on a
 \ NUM-N tag).
@@ -122,17 +134,32 @@ ENUM dom DERIVE eq
 private
 
 \ ---- ambient requested numeric policy per region class (mirror of PREC-REQ) ----
-\ The plan's requested proof domain for each op class; default exact, POL-RESET
-\ restores. Stored as wire ids; POL@ lifts them back through N>DOM (fail closed).
+\ The plan's requested proof domain for each op class; the honest per-class default
+\ is CLASS-DEFAULT-POL (POL-RESET restores). Stored as wire ids; POL@ lifts them
+\ back through N>DOM (fail closed).
 create NPOL-REQ MAKI:CLASS-N cells allot
 
 : POL-CK-CLASS ( n -- ) {: c:n :}
    c 0 <  c MAKI:CLASS-N >=  or if E-NPOL-CLASS throw then ;
 
+\ CLASS-DEFAULT-POL: the honest per-class requested proof domain the plan defaults
+\ to. Accumulating (row-reduce / matmul) + decode -> relative (they accumulate or
+\ approximate); movement + elementwise -> exact (see the header note on the mixed
+\ elementwise class and the per-op follow-on dot). Fail closed on an unknown class.
+: CLASS-DEFAULT-POL ( n -- dom )
+   case
+      MAKI:CLASS-EW         of NPOL-DOM:EXACT    endof
+      MAKI:CLASS-ROW-REDUCE of NPOL-DOM:RELATIVE endof
+      MAKI:CLASS-MATMUL     of NPOL-DOM:RELATIVE endof
+      MAKI:CLASS-MOVEMENT   of NPOL-DOM:EXACT    endof
+      MAKI:CLASS-DECODE     of NPOL-DOM:RELATIVE endof
+      E-NPOL-CLASS throw
+   endcase ;
+
 public
 
 : POL-RESET ( -- )
-   MAKI:CLASS-N 0 ?do  NPOL-DOM:EXACT DOM>N  i cells NPOL-REQ + !  loop ;
+   MAKI:CLASS-N 0 ?do  i CLASS-DEFAULT-POL DOM>N  i cells NPOL-REQ + !  loop ;
 
 \ POL!: request a numeric policy for a region class (the plan's declared contract;
 \ it lands in the exact key via maki/sched-key.f REGION-POL, so a different request
