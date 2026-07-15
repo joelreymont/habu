@@ -1105,7 +1105,7 @@ points stay listed.
   owning parent runner for the persisted owner-registry proof.
 - `test/owner-wid-build-forge.f` — negative package-reopen fixture proving the
   exact owner proof builder cannot be redirected to arbitrary source.
-- `test/owner-wid-state.f` / `test/owner-wid-call.f` /
+- `test/owner-wid-state.f` / `test/owner-wid-eval.f` / `test/owner-wid-call.f` /
   `test/owner-wid-private-call.f` — read-only role/capacity assertions plus
   hostile hidden-mutation and persisted-private-word fixtures.
 - `test/owner-wid-guard.f` — load-head guard the owner-wid suites require so a

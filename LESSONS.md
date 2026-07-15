@@ -4446,3 +4446,7 @@ unchanged (148855). Keys for milestone 2:
 - **Persistent builder state must preserve pointer identity explicitly.** Use a
   typed pointer variable when the pointer itself survives calls, or retain a
   stable record index and derive the pointer only at the use site.
+- **Snapshot DATA must exclude invocation-mode hooks and latches.** A snapshot
+  built while stdin is a TTY persisted `REPLH-CELL`, so a later `--load` printed
+  success and entered the REPL. Canonicalize those cells to zero and recompute
+  batch versus interactive state after restore on every boot.

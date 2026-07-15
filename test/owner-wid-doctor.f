@@ -21,6 +21,7 @@ create SNAP-WID1-BUF FS-PATH-CAP allot
 create SNAP-WID2-BUF FS-PATH-CAP allot
 create SNAP-DUP-BUF FS-PATH-CAP allot
 create SNAP-PTR-BUF FS-PATH-CAP allot
+create SNAP-LIVE-BUF FS-PATH-CAP allot
 variable AOT-BAD-U
 variable AOT-MAL-U
 variable SNAP-OLD-U
@@ -31,16 +32,14 @@ variable SNAP-WID1-U
 variable SNAP-WID2-U
 variable SNAP-DUP-U
 variable SNAP-PTR-U
-variable IMG-A
+variable SNAP-LIVE-U
+PTR-VARIABLE IMG-A
 variable IMG-U
 variable SCAN-I
 variable SCAN-LAST
 
-: IMG-A-FIELD ( -- ptr ptr u8 )
-   IMG-A 0 ptr-field ;
-
 : IMG ( -- ptr u8 )
-   IMG-A-FIELD @ ;
+   IMG-A @ ;
 
 : FIND-AFTER ( ptr u8 n n ptr u8 n -- option<idx> )
    {: a:ptr u:n start:n needle:ptr nu:n :}
@@ -70,7 +69,7 @@ variable SCAN-LAST
 
 : LOAD-IMAGE ( ptr u8 n -- ) {: path:ptr pathu:n :}
    path pathu FILE-SIZE {: size:n :}
-   size MEM-ALLOC-BYTES drop IMG-A-FIELD !
+   size MEM-ALLOC-BYTES drop IMG-A !
    path pathu IMG size READ-ALL IMG-U !
    IMG-U @ size <> if s" owner-WID image short read" 74 die then ;
 
@@ -85,6 +84,10 @@ variable SCAN-LAST
    val 8 rshift IMG off 1+ BYTE+ c!
    val 16 rshift IMG off 2 + BYTE+ c!
    val 24 rshift IMG off 3 + BYTE+ c! ;
+
+: U64! ( n n -- ) {: val:n off:n :}
+   val off U32!
+   val 32 rshift off 4 + U32! ;
 
 : WRITE-IMAGE ( ptr u8 n -- ) {: path:ptr pathu:n :}
    path pathu IMG IMG-U @ WRITE-ALL
@@ -183,6 +186,17 @@ variable SCAN-LAST
    0 rec 28 + U32!
    SNAP-PTR-BUF SNAP-PTR-U @ WRITE-IMAGE ;
 
+\ Persisted process-mode state must never select the next invocation's exit
+\ path. Forge all three live cells nonzero so the batch mode matrix proves
+\ startup owns their values after snapshot restore.
+: BUILD-SNAP-LIVE ( -- )
+   OWNER-WID-IMAGE:SNAP-HB$ LOAD-IMAGE
+   SNAP-TRAILER-OFF SNAP-DATA-OFF {: data:n :}
+   1 data REPLH-CELL + U64!
+   1 data AOT-SEED-DONE-CELL + U64!
+   1 data AOT-SEED-ARM-CELL + U64!
+   SNAP-LIVE-BUF SNAP-LIVE-U @ WRITE-IMAGE ;
+
 public
 
 : AOT-BAD$ ( -- ptr u8 n )
@@ -225,6 +239,10 @@ public
    OWNER-WID-IMAGE:ROOT s" hb-snap-owner-ptr" SNAP-PTR-BUF JOIN-PATH SNAP-PTR-U !
    SNAP-PTR-BUF SNAP-PTR-U @ ;
 
+: SNAP-LIVE$ ( -- ptr u8 n )
+   OWNER-WID-IMAGE:ROOT s" hb-snap-owner-live" SNAP-LIVE-BUF JOIN-PATH SNAP-LIVE-U !
+   SNAP-LIVE-BUF SNAP-LIVE-U @ ;
+
 : BUILD ( -- )
    AOT-BAD$ 2drop
    AOT-MAL$ 2drop
@@ -236,6 +254,7 @@ public
    SNAP-WID2$ 2drop
    SNAP-DUP$ 2drop
    SNAP-PTR$ 2drop
+   SNAP-LIVE$ 2drop
    BUILD-AOT-BAD
    BUILD-AOT-MAL
    BUILD-SNAP-OLD
@@ -245,6 +264,7 @@ public
    1 SNAP-WID1$ BUILD-SNAP-WID
    2 SNAP-WID2$ BUILD-SNAP-WID
    BUILD-SNAP-DUP
-   BUILD-SNAP-PTR ;
+   BUILD-SNAP-PTR
+   BUILD-SNAP-LIVE ;
 
 ;package

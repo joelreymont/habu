@@ -11,6 +11,7 @@ package OWNER-WID-CHILD
 
 $4000 constant CAP
 120000 constant TIMEOUT-MS
+10000 constant MODE-TIMEOUT-MS
 0 constant KIND-EXITED
 1 constant KIND-SIGNALED
 2 constant KIND-TIMEOUT
@@ -59,26 +60,85 @@ variable RUN-CODE
    s" stdout" OUT$ DIAG-STREAM
    s" stderr" ERR$ DIAG-STREAM ;
 
-\ Timeboxed child run: the capture poll is bounded by TIMEOUT-MS; a timeout or
-\ signal death reports a named diagnostic and returns -1 so the caller's exact
-\ rc assertion fails instead of an unattributed E-PROC-TIMEOUT throw.
-: RUN-FILE ( ptr u8 n ptr u8 n -- n )
-   {: engine:ptr engineu:n file:ptr fileu:n :}
+: RUN-PREP ( -- )
    PROC-ARGV-RESET
    PROC-ENV-RESET
    s" HABU_OWNER_WID_HARNESS" >LEN s" 1" >LEN PROC-ENV+
-   PROC-ENV-INHERIT-MISSING
-   s" --load" >LEN PROC-ARGV+
-   file fileu >LEN PROC-ARGV+
-   engine engineu >LEN
-   OUT CAP >LEN ERR CAP >LEN TIMEOUT-MS >MS
-   RUN-ARGV-ENV-CAPTURE-OUTCOME
+   PROC-ENV-INHERIT-MISSING ;
+
+: RUN-RESULT ( len len outcome -- n )
    RUN-KIND!
    LEN>N ERR-U !
    LEN>N OUT-U !
    RUN-KIND @ KIND-EXITED = if RUN-CODE @ exit then
-   engine engineu file fileu RUN-DIAG
    -1 ;
+
+: RUN-CAPTURE ( ptr u8 n n -- n )
+   {: engine:ptr engineu:n timeout:n :}
+   engine engineu >LEN
+   OUT CAP >LEN ERR CAP >LEN timeout >MS
+   RUN-ARGV-ENV-CAPTURE-OUTCOME
+   RUN-RESULT ;
+
+: RUN-STDIN-CAPTURE ( ptr u8 n ptr u8 n n -- n )
+   {: engine:ptr engineu:n in:ptr inu:n timeout:n :}
+   engine engineu >LEN in inu >LEN
+   OUT CAP >LEN ERR CAP >LEN timeout >MS
+   RUN-ARGV-ENV-STDIN-CAPTURE-OUTCOME
+   RUN-RESULT ;
+
+\ Timeboxed child run: the capture poll is bounded by TIMEOUT-MS; a timeout or
+\ signal death reports a named diagnostic and returns -1 so the caller's exact
+\ rc assertion fails instead of an unattributed E-PROC-TIMEOUT throw.
+: RUN-FILE-MS ( ptr u8 n ptr u8 n n -- n )
+   {: engine:ptr engineu:n file:ptr fileu:n timeout:n :}
+   RUN-PREP
+   s" --load" >LEN PROC-ARGV+
+   file fileu >LEN PROC-ARGV+
+   engine engineu timeout RUN-CAPTURE {: code:n :}
+   code 0 < if
+      engine engineu file fileu RUN-DIAG
+   then
+   code ;
+
+: RUN-FILE ( ptr u8 n ptr u8 n -- n )
+   TIMEOUT-MS RUN-FILE-MS ;
+
+: RUN-SOURCE ( ptr u8 n ptr u8 n -- n )
+   {: engine:ptr engineu:n file:ptr fileu:n :}
+   RUN-PREP
+   file fileu >LEN PROC-ARGV+
+   engine engineu MODE-TIMEOUT-MS RUN-CAPTURE {: code:n :}
+   code 0 < if
+      engine engineu file fileu RUN-DIAG
+   then
+   code ;
+
+: RUN-STDIN ( ptr u8 n ptr u8 n -- n )
+   {: engine:ptr engineu:n in:ptr inu:n :}
+   RUN-PREP
+   engine engineu in inu MODE-TIMEOUT-MS RUN-STDIN-CAPTURE {: code:n :}
+   code 0 < if
+      s" owner-wid-child: abnormal warm stdin mode" type cr
+   then
+   code ;
+
+: ASSERT-OK-OUT ( n ptr u8 n -- )
+   {: code:n msg:ptr msgu:n :}
+   code 0 T=
+   OUT$ msg msgu CONTAINS? TTRUE
+   ERR-U @ 0 T= ;
+
+: ASSERT-MODES ( ptr u8 n -- )
+   {: engine:ptr engineu:n :}
+   engine engineu s" test/owner-wid-state.f" MODE-TIMEOUT-MS RUN-FILE-MS
+   s" owner-wid-state-test: ok" ASSERT-OK-OUT
+   engine engineu s" test/owner-wid-state.f" RUN-SOURCE
+   s" owner-wid-state-test: ok" ASSERT-OK-OUT
+   engine engineu s" test/owner-wid-eval.f" MODE-TIMEOUT-MS RUN-FILE-MS
+   s" owner-wid-eval-test: ok" ASSERT-OK-OUT
+   engine engineu s" 271828 . cr" RUN-STDIN
+   s" 271828" ASSERT-OK-OUT ;
 
 : ASSERT-STATE ( ptr u8 n -- ) {: engine:ptr engineu:n :}
    engine engineu s" test/owner-wid-state.f" RUN-FILE {: code:n :}
@@ -120,6 +180,7 @@ variable RUN-CODE
    OWNER-WID-DOCTOR:SNAP-WID2$ 79 s" hb: snapshot trailer corrupt" ASSERT-BAD
    OWNER-WID-DOCTOR:SNAP-DUP$ 79 s" hb: snapshot trailer corrupt" ASSERT-BAD
    OWNER-WID-DOCTOR:SNAP-PTR$ 79 s" hb: snapshot trailer corrupt" ASSERT-BAD
+   OWNER-WID-DOCTOR:SNAP-LIVE$ ASSERT-MODES
    OWNER-WID-IMAGE:AOT-HB$ s" test/owner-wid-build-forge.f" RUN-FILE 70 T=
    ERR$ s" SET" CONTAINS? TTRUE ;
 
