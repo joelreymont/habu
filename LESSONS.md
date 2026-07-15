@@ -3893,6 +3893,10 @@ unchanged (148855). Keys for milestone 2:
   erase a stack effect from `dot add -d`. Create prose without shell-significant
   bytes, patch the generated record with `apply_patch`, then inspect the exact
   stored description.
+- **Raw diff EOF cannot prove a replacement is complete.** A pure rename/copy
+  ends at the same byte prefix where a modified replacement can be truncated.
+  Sound lint artifacts need declared section lengths/forms and a final count or
+  digest; parser state alone cannot recover information absent from the stream.
 - **Keep worker prompts inside the claimed leaf.** A native-registry leaf may
   expose lowercase engine primitives; package-scoped checked wrappers belong to
   the dependent syntax/API leaf. Do not widen file ownership to impose the final
