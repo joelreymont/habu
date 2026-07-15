@@ -1,9 +1,9 @@
 ---
 title: Integrate robust verdict into full native gate
-status: open
+status: active
 priority: 2
 issue-type: task
-created-at: "2026-07-13T16:45:56.635130+02:00"
+created-at: "\"2026-07-13T16:45:56.635130+02:00\""
 blocks:
   - habu-define-robust-gate-2f4b3e7b
 ---
@@ -24,3 +24,5 @@ of existing cold/warm correctness semantics. Files: test/run.f, test/run-lib.f,
 test/gate-stats.f, test/gate-stats-test.f, test/run-files.f, docs/bootstrap.md.
 Verify: runner/stats fixtures, repeated isolated full native gate evidence,
 typed-local diff lint, host/filemap/status/dot lints, Maki and PTX slices.
+
+Claim: agent=verdictwire workspace=.jj-ws/fable-verdictwire
