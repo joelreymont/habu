@@ -64,8 +64,11 @@ create MECH-TOK-BUF MECH-TOK-CAP allot
 : MECH-PTR-U8! ( ptr u8 ptr a -- )
    MECH-PTR-U8-FIELD ! ;
 
+\ cap is a positive fixed buffer constant (MECH-SRC/DIAG/PKT-CAP); MEM:BYTES-ALLOC-LEN
+\ narrows the raw size to the validated alloc role before MEM:ALLOC-BYTES, throwing
+\ E-MEM-SIZE on any refusal (unreachable for the constant).
 : MECH-BUF@ ( ptr a n -- ptr u8 ) {: slot:ptr cap:n :}
-   slot @ 0= if cap MEM-ALLOC-BYTES drop slot MECH-PTR-U8! then
+   slot @ 0= if cap MEM:BYTES-ALLOC-LEN MEM:ALLOC-BYTES drop slot MECH-PTR-U8! then
    slot MECH-PTR-U8@ ;
 
 : MECH-SRC ( -- ptr u8 )

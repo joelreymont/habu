@@ -559,10 +559,14 @@ public
    MAKI-PROV:IMPORTED MAKI:MIR-PROV! ;
 
 \ import a .onnx file (the model buffer is an OS mapping, process-lifetime)
+\ sz is the FILE-SIZE-derived byte count (a computed, caller-controlled size): a
+\ zero/empty file is corrupt input, so MEM:BYTES-ALLOC-LEN's E-MEM-SIZE refusal is
+\ the real fail-closed outcome before MEM:ALLOC-BYTES ever reaches mmap. READ-ALL's
+\ capacity is the same validated sz (byte-identical to the legacy alloc's returned n).
 : IMPORT-FILE ( ptr u8 n -- ) {: a:ptr u:n :}
    a u FILE-SIZE {: sz:n :}
-   sz MEM-ALLOC-BYTES {: buf:ptr cap:n :}
-   a u buf cap READ-ALL {: got:n :}
+   sz MEM:BYTES-ALLOC-LEN MEM:ALLOC-BYTES drop {: buf:ptr :}
+   a u buf sz READ-ALL {: got:n :}
    buf got IMPORT ;
 
 \ ---- runtime inputs (the slots a caller binds before EX-RUN) ------------------

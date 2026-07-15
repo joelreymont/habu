@@ -276,9 +276,12 @@ public
 
 private
 
+\ TS-FILE-CAP is a positive fixed buffer constant; MEM:BYTES-ALLOC-LEN narrows the
+\ raw size to the validated alloc role before MEM:ALLOC-BYTES, throwing E-MEM-SIZE on
+\ any refusal (unreachable for the constant).
 : TS-BUF ( -- ptr u8 )
    TS-BUF-A 0 ptr-field {: slot:ptr :}
-   slot @ 0= if TS-FILE-CAP MEM-ALLOC-BYTES drop slot ! then
+   slot @ 0= if TS-FILE-CAP MEM:BYTES-ALLOC-LEN MEM:ALLOC-BYTES drop slot ! then
    slot @ ;
 
 public
