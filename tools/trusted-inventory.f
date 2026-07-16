@@ -111,7 +111,16 @@ variable PC-E
 variable PC-L
 variable UC-I
 variable UC-N
-variable DOTP-U
+variable DOT#
+variable DOT-END
+variable DOT-READY
+variable DOT-SCANS
+variable DOT-I
+variable DOT-MATCH#
+variable DOT-LINE
+variable DOT-STATUS#
+variable DOT-LIVE
+variable DOT-FRONT-END
 variable DB-I
 variable DV-I
 variable DV-N
@@ -184,8 +193,14 @@ create NUM-BUF NUM-CAP allot
 create PAIR-BUF PAIR-CAP allot
 variable PAIR-U
 
-1024 constant DOTP-CAP
-create DOTP-BUF DOTP-CAP allot
+$400 constant DOT-MAX
+$40000 constant DOT-ARENA-CAP
+create DOT-ARENA DOT-ARENA-CAP allot
+create DOT-O DOT-MAX cells allot
+create DOT-U DOT-MAX cells allot
+create DOT-PO DOT-MAX cells allot
+create DOT-PU DOT-MAX cells allot
+create DOT-S DOT-MAX cells allot
 
 create OWNER-BUF OWNER-CAP allot
 create OWNER-ID-O OWNER-MAX cells allot
@@ -1123,43 +1138,180 @@ public
 
 private
 
-: DOTP-APPEND ( ptr u8 n -- ) {: a:ptr u:n :}
-   DOTP-U @ u + DOTP-CAP > if s" trusted-inventory: dot path overflow" 1 die then
-   a DOTP-BUF DOTP-U @ + u LINT-BMOVE
-   DOTP-U @ u + DOTP-U ! ;
+: DOT-CELL@ ( ptr a n -- n )
+   cells + @ ;
 
-: DOTP$ ( -- ptr u8 n )
-   DOTP-BUF DOTP-U @ ;
+: DOT-CELL! ( n ptr a n -- )
+   cells + ! ;
 
 : DOTS-ROOT$ ( -- ptr u8 n )
    DOTS-ROOT-BUF DOTS-ROOT-U @ ;
+
+: DOT-ID$ ( n -- ptr u8 n ) {: k:n :}
+   DOT-O k DOT-CELL@ DOT-ARENA +
+   DOT-U k DOT-CELL@ ;
+
+: DOT-PATH$ ( n -- ptr u8 n ) {: k:n :}
+   DOT-PO k DOT-CELL@ DOT-ARENA +
+   DOT-PU k DOT-CELL@ ;
+
+: DOT-STORE$ ( ptr u8 n -- n n ) {: a:ptr u:n :}
+   DOT-END @ u + DOT-ARENA-CAP > if
+      s" trusted-inventory: dot owner arena overflow" E-TINV-OWNERS die
+   then
+   a DOT-ARENA DOT-END @ + u LINT-BMOVE
+   DOT-END @ u
+   DOT-END @ u + DOT-END ! ;
+
+: DOT+ ( ptr u8 n ptr u8 n -- ) {: ia:ptr iu:n pa:ptr pu:n :}
+   DOT# @ DOT-MAX >= if
+      s" trusted-inventory: dot owner index overflow" E-TINV-OWNERS die
+   then
+   ia iu DOT-STORE$ DOT-U DOT# @ DOT-CELL! DOT-O DOT# @ DOT-CELL!
+   pa pu DOT-STORE$ DOT-PU DOT# @ DOT-CELL! DOT-PO DOT# @ DOT-CELL!
+   -1 DOT-S DOT# @ DOT-CELL!
+   DOT# @ 1+ DOT# ! ;
 
 public
 
 \ Point the owning-dot lookup at a different dots root (must end in '/'); tests
 \ set a scratch fixture tree here and DOTS-ROOT-RESET back to the default.
 : DOTS-ROOT! ( ptr u8 n -- ) {: a:ptr u:n :}
-   u DOTS-ROOT-CAP > if s" trusted-inventory: dots root overflow" 1 die then
+   u 0= if s" trusted-inventory: empty dots root" E-TINV-OWNERS die then
+   u DOTS-ROOT-CAP > if s" trusted-inventory: dots root overflow" E-TINV-OWNERS die then
+   a u 1- + c@ FS-SLASH <> if
+      s" trusted-inventory: dots root must end in /" E-TINV-OWNERS die
+   then
    a DOTS-ROOT-BUF u LINT-BMOVE
-   u DOTS-ROOT-U ! ;
+   u DOTS-ROOT-U !
+   LINT-FALSE DOT-READY ! ;
 
 : DOTS-ROOT-RESET ( -- )
    s" .dots/" DOTS-ROOT! ;
 
 DOTS-ROOT-RESET
 
-\ An owning dot exists as <root><id>.md or, for a parent dot with children,
-\ <root><id>/<id>.md, where <root> defaults to .dots/ (DOTS-ROOT!/-RESET). Closed
-\ dots move to the ignored .dots/archive/, so a mapping row referencing a closed
-\ or never-minted dot fails here.
+private
+
+: DOT-ARCHIVED? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   DOTS-ROOT$ {: ra:ptr ru:n :}
+   a u ra ru LINT-STARTS-WITH? 0= if LINT-TRUE exit then
+   a ru + u ru - {: pa:ptr pu:n :}
+   pa pu s" archive" LINT-STR= if LINT-TRUE exit then
+   pa pu s" archive/" LINT-STARTS-WITH? ;
+
+: DOT-LIVE-LINE? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   a u s" status: open" LINT-STR= if LINT-TRUE exit then
+   a u s" status: active" LINT-STR= ;
+
+: DOT-FRONT-LIVE? ( ptr u8 n -- bool )
+   FILE-BUF FILE-CAP READ-FILE SPLIT-LINES
+   SN# @ 2 < if LINT-FALSE exit then
+   0 S@ s" ---" LINT-STR= 0= if LINT-FALSE exit then
+   0 DOT-STATUS# !
+   LINT-FALSE DOT-LIVE !
+   LINT-FALSE DOT-FRONT-END !
+   1 DOT-LINE !
+   begin DOT-LINE @ SN# @ < DOT-FRONT-END @ 0= and while
+      DOT-LINE @ S@ 2dup s" ---" LINT-STR= if
+         2drop LINT-TRUE DOT-FRONT-END !
+      else
+         2dup s" status:" LINT-STARTS-WITH? if
+            DOT-STATUS# @ 1+ DOT-STATUS# !
+            2dup DOT-LIVE-LINE? if LINT-TRUE DOT-LIVE ! then
+         then
+         2drop
+      then
+      DOT-LINE @ 1+ DOT-LINE !
+   repeat
+   DOT-FRONT-END @ DOT-STATUS# @ 1 = and DOT-LIVE @ and ;
+
+: DOT-ENTRY-LIVE? ( n -- bool ) {: k:n :}
+   DOT-S k DOT-CELL@ dup 0 >= if 1 = exit then
+   drop
+   k DOT-PATH$ DOT-FRONT-LIVE? dup
+   if 1 else 0 then DOT-S k DOT-CELL! ;
+
+: DOT-LIVE-MATCH# ( ptr u8 n -- n ) {: a:ptr u:n :}
+   0 DOT-MATCH# !
+   0 DOT-I !
+   begin DOT-I @ DOT# @ < while
+      DOT-I @ DOT-ID$ a u LINT-STR= if
+         DOT-I @ DOT-ENTRY-LIVE? if DOT-MATCH# @ 1+ DOT-MATCH# ! then
+      then
+      DOT-I @ 1+ DOT-I !
+   repeat
+   DOT-MATCH# @ ;
+
+: DOT-FILE+ ( ptr u8 n -- ) {: a:ptr u:n :}
+   a u BASENAME {: ba:ptr bu:n :}
+   bu 3 <= if exit then
+   ba bu s" .md" LINT-ENDS-WITH? 0= if exit then
+   ba bu 3 - LOWER-KEBAB? 0= if exit then
+   ba bu 3 - a u DOT+ ;
+
+: DOT-WALK-PATH ( ptr u8 n -- ) {: a:ptr u:n :}
+   a u DOT-ARCHIVED? if exit then
+   a u SYMLINK? if exit then
+   a u FILE? if a u DOT-FILE+ exit then
+   a u DIR? 0= if E-FS-STAT FS-THROW-WALK then
+   a u FS-OPEN-WALK-DIR
+   begin FS-READ-DIR while
+      FS-DIR-BLOCK-BEGIN
+      begin FS-DIR-MORE? while
+         FS-LOAD-ENTRY
+         FS-ENT @ FS-DIRENT-NAME 2dup FS-SKIP-ENTRY? if
+            2drop
+         else
+            a u 2swap FS-DESCEND-PATH recurse
+            FS-ASCEND-PATH
+         then
+         FS-ADVANCE-ENTRY
+      repeat
+   repeat
+   FS-CLOSE-CUR-DIR ;
+
+: DOT-ROOT-SYMLINK? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   u 1 > if a u 1- SYMLINK? exit then
+   a u SYMLINK? ;
+
+: DOT-WALK ( -- )
+   DOTS-ROOT$ {: a:ptr u:n :}
+   FS-FDS-RESET
+   0 FS-DEPTH !
+   a u FS-WALK-ROOT!
+   FS-CUR-PATH u DOT-WALK-PATH ;
+
+: DOT-INDEX-BUILD ( -- )
+   0 DOT# !
+   0 DOT-END !
+   DOTS-ROOT$ 2dup DOT-ROOT-SYMLINK? if
+      2drop LINT-TRUE DOT-READY ! exit
+   then
+   2dup DIR? 0= if
+      2drop LINT-TRUE DOT-READY ! exit
+   then
+   2drop
+   DOT-SCANS @ 1+ DOT-SCANS !
+   DOT-WALK
+   LINT-TRUE DOT-READY ! ;
+
+: DOT-INDEX-ENSURE ( -- )
+   DOT-READY @ 0= if DOT-INDEX-BUILD then ;
+
+public
+
+\ An owning dot is exactly one live file named <id>.md below the dots root. The
+\ no-follow scan indexes candidate paths once, excludes archive/symlink entries,
+\ and memoizes open/active status while counting live duplicate basenames.
+\ DOTS-ROOT! invalidates both path and status state.
 : DOT-EXISTS? ( ptr u8 n -- bool ) {: a:ptr u:n :}
-   0 DOTP-U !
-   DOTS-ROOT$ DOTP-APPEND a u DOTP-APPEND s" .md" DOTP-APPEND
-   DOTP$ FILE? if LINT-TRUE exit then
-   0 DOTP-U !
-   DOTS-ROOT$ DOTP-APPEND a u DOTP-APPEND s" /" DOTP-APPEND
-   a u DOTP-APPEND s" .md" DOTP-APPEND
-   DOTP$ FILE? ;
+   a u LOWER-KEBAB? 0= if LINT-FALSE exit then
+   DOT-INDEX-ENSURE
+   a u DOT-LIVE-MATCH# 1 = ;
+
+: DOTS-SCAN# ( -- n )
+   DOT-SCANS @ ;
 
 private
 

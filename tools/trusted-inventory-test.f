@@ -374,24 +374,36 @@ variable SORT-I
    TINV:OWNERS-RESET ;
 
 \ ---- scratch owning-dot fixture tree (no dependence on live .dots/) ----------
-\ FIX-DOTS builds a private temp tree with one plain-layout dot (<id>.md) and one
-\ parent-layout dot (<id>/<id>.md), points TINV's dots root at it, asserts the
-\ two exist and a never-created id is missing, then resets the root and removes
-\ the tree. Obviously-fake ids keep these fixtures from being mistaken for real
-\ dots, and nothing here reads the live .dots/ tree.
+\ FIX-DOTS builds a private temp tree covering plain, parent, nested child,
+\ archived, closed, duplicate-basename, and external symlink layouts. Fake ids
+\ keep the fixtures distinct from live dots; nothing reads the live .dots/ tree.
 $400 constant DF-CAP
 create DF-BASE DF-CAP allot
 create DF-ROOT DF-CAP allot
 create DF-DIR  DF-CAP allot
 create DF-FILE DF-CAP allot
+create DF-EXT  DF-CAP allot
 variable DF-BASE-U
 variable DF-ROOT-U
 variable DF-DIR-U
 variable DF-FILE-U
+variable DF-EXT-U
+variable DF-SCANS
 
 : DF-PLAIN-ID ( -- ptr u8 n )   s" tinv-fix-plain-00000001" ;
 : DF-PARENT-ID ( -- ptr u8 n )  s" tinv-fix-parent-00000002" ;
 : DF-MISSING-ID ( -- ptr u8 n ) s" tinv-fix-missing-00000003" ;
+: DF-CHILD-ID ( -- ptr u8 n )   s" tinv-fix-child-00000004" ;
+: DF-ARCHIVE-ID ( -- ptr u8 n ) s" tinv-fix-archive-00000005" ;
+: DF-DUP-ID ( -- ptr u8 n )     s" tinv-fix-duplicate-00000006" ;
+: DF-CLOSED-ID ( -- ptr u8 n )  s" tinv-fix-closed-00000007" ;
+: DF-LINK-ID ( -- ptr u8 n )    s" tinv-fix-symlink-00000008" ;
+
+: DF-OPEN$ ( -- ptr u8 n )
+   S\" ---\ntitle: Fixture dot\nstatus: open\n---\n" ;
+
+: DF-CLOSED$ ( -- ptr u8 n )
+   S\" ---\ntitle: Fixture dot\nstatus: closed\n---\n" ;
 
 : DF-COPY! ( ptr u8 n ptr u8 ptr n -- ) {: a:ptr u:n dst:ptr lenp:ptr :}
    a dst u BYTE-COPY
@@ -401,6 +413,7 @@ variable DF-FILE-U
 : DF-ROOT$ ( -- ptr u8 n ) DF-ROOT DF-ROOT-U @ ;
 : DF-DIR$  ( -- ptr u8 n ) DF-DIR  DF-DIR-U  @ ;
 : DF-FILE$ ( -- ptr u8 n ) DF-FILE DF-FILE-U @ ;
+: DF-EXT$  ( -- ptr u8 n ) DF-EXT  DF-EXT-U  @ ;
 
 \ Build "<dir>/<id>.md" into DF-FILE for the given dir and dot id.
 : DF-FILE-PATH! ( ptr u8 n ptr u8 n -- ) {: da:ptr du:n ia:ptr iu:n :}
@@ -412,6 +425,11 @@ variable DF-FILE-U
 : DF-MK-BASE ( -- )
    s" tinv-fix-dots" TMPDIR-MKDIR DF-BASE DF-BASE-U DF-COPY! ;
 
+: DF-MK-EXT ( -- )
+   s" tinv-fix-external" TMPDIR-MKDIR DF-EXT DF-EXT-U DF-COPY!
+   DF-EXT$ DF-LINK-ID DF-FILE-PATH!
+   DF-FILE$ DF-OPEN$ WRITE-ALL ;
+
 \ The root passed to TINV:DOTS-ROOT! ends in '/' like the default .dots/.
 : DF-MK-ROOT ( -- )
    SB-RESET
@@ -420,38 +438,78 @@ variable DF-FILE-U
 
 : DF-MK-PLAIN ( -- )
    DF-BASE$ DF-PLAIN-ID DF-FILE-PATH!
-   DF-FILE$ s" plain fixture dot" WRITE-ALL ;
+   DF-FILE$ DF-OPEN$ WRITE-ALL ;
+
+: DF-DIR-PATH! ( ptr u8 n -- ) {: a:ptr u:n :}
+   SB-RESET
+   DF-BASE$ SB-APPEND FS-MUT-SLASH SB-APPEND-C a u SB-APPEND
+   SB$ DF-DIR DF-DIR-U DF-COPY! ;
 
 : DF-MK-PARENT ( -- )
-   SB-RESET
-   DF-BASE$ SB-APPEND FS-MUT-SLASH SB-APPEND-C DF-PARENT-ID SB-APPEND
-   SB$ DF-DIR DF-DIR-U DF-COPY!
+   DF-PARENT-ID DF-DIR-PATH!
    DF-DIR$ MAKE-DIR
    DF-DIR$ DF-PARENT-ID DF-FILE-PATH!
-   DF-FILE$ s" parent fixture dot" WRITE-ALL ;
+   DF-FILE$ DF-OPEN$ WRITE-ALL ;
+
+: DF-MK-NESTED ( -- )
+   DF-PARENT-ID DF-DIR-PATH!
+   DF-DIR$ DF-CHILD-ID DF-FILE-PATH!
+   DF-FILE$ DF-OPEN$ WRITE-ALL
+   DF-DIR$ DF-CLOSED-ID DF-FILE-PATH!
+   DF-FILE$ DF-CLOSED$ WRITE-ALL ;
+
+: DF-MK-ARCHIVE ( -- )
+   s" archive" DF-DIR-PATH!
+   DF-DIR$ MAKE-DIR
+   DF-DIR$ DF-ARCHIVE-ID DF-FILE-PATH!
+   DF-FILE$ DF-OPEN$ WRITE-ALL ;
+
+: DF-MK-DUP ( -- )
+   DF-BASE$ DF-DUP-ID DF-FILE-PATH!
+   DF-FILE$ DF-OPEN$ WRITE-ALL
+   DF-PARENT-ID DF-DIR-PATH!
+   DF-DIR$ DF-DUP-ID DF-FILE-PATH!
+   DF-FILE$ DF-OPEN$ WRITE-ALL ;
+
+: DF-MK-LINK ( -- )
+   s" external" DF-DIR-PATH!
+   DF-EXT$ DF-DIR$ MAKE-SYMLINK ;
 
 : DF-SETUP ( -- )
    DF-MK-BASE
+   DF-MK-EXT
    DF-MK-ROOT
    DF-MK-PLAIN
    DF-MK-PARENT
+   DF-MK-NESTED
+   DF-MK-ARCHIVE
+   DF-MK-DUP
+   DF-MK-LINK
    DF-ROOT$ TINV:DOTS-ROOT! ;
 
 : DF-TEARDOWN ( -- )
    TINV:DOTS-ROOT-RESET
-   DF-BASE$ REMOVE-TREE ;
+   DF-BASE$ REMOVE-TREE
+   DF-EXT$ REMOVE-TREE ;
 
-\ Strict validates that every owning dot referenced by the mapping exists under
-\ the dots root (plain <id>.md or parent-dot <id>/<id>.md); each distinct missing
-\ dot is reported once. The root points at the scratch tree for this fixture.
+\ Strict accepts one live basename anywhere below the dots root and rejects
+\ archive, closed, missing, duplicate, symlinked, and traversal-shaped owners.
 : FIX-DOTS ( -- )
    DF-SETUP
+   TINV:DOTS-SCAN# DF-SCANS !
    DF-PLAIN-ID TINV:DOT-EXISTS? TTRUE
+   TINV:DOTS-SCAN# DF-SCANS @ 1+ T=
    DF-PARENT-ID TINV:DOT-EXISTS? TTRUE
+   DF-CHILD-ID TINV:DOT-EXISTS? TTRUE
+   DF-ARCHIVE-ID TINV:DOT-EXISTS? TFALSE
+   DF-CLOSED-ID TINV:DOT-EXISTS? TFALSE
+   DF-DUP-ID TINV:DOT-EXISTS? TFALSE
+   DF-LINK-ID TINV:DOT-EXISTS? TFALSE
    DF-MISSING-ID TINV:DOT-EXISTS? TFALSE
-   \ Plain id resolves in the scratch tree; the missing id (referenced twice) is
-   \ reported once, so OWNERS-MISSING# dedupes to 1.
-   S\" <!-- trusted-inventory-classes\nfixture.f test-metaprog tinv-fix-plain-00000001\nother.f test-metaprog tinv-fix-missing-00000003\nthird.f test-metaprog tinv-fix-missing-00000003\n-->" TINV:PARSE-CLASSES$ TTRUE
+   s" ../tinv-fix-plain-00000001" TINV:DOT-EXISTS? TFALSE
+   TINV:DOTS-SCAN# DF-SCANS @ 1+ T=
+   \ Nested child resolves; the missing id (referenced twice) is reported once.
+   S\" <!-- trusted-inventory-classes\nfixture.f test-metaprog tinv-fix-child-00000004\nother.f test-metaprog tinv-fix-missing-00000003\nthird.f test-metaprog tinv-fix-missing-00000003\n-->" TINV:PARSE-CLASSES$ TTRUE
    TIT-BUF TIT-CAP LINT-OUT-BUFFER!
    TINV:OWNERS-MISSING# 1 T=
    LINT-OUT-BUFFER-OFF
@@ -465,8 +523,23 @@ variable DF-FILE-U
 : FIX-STRICT-OWNERS ( -- )
    DF-SETUP
    S\" <!-- trusted-inventory-owners\ncap:fixture TRUSTED.md#permanent-capability-owners\n-->" TINV:PARSE-OWNERS$ TTRUE
-   S\" <!-- trusted-inventory-classes\nfixture.f test-metaprog cap:fixture\nother.f test-metaprog tinv-fix-plain-00000001\n-->" TINV:PARSE-CLASSES$ TTRUE
+   S\" <!-- trusted-inventory-classes\nfixture.f test-metaprog cap:fixture\nother.f test-metaprog tinv-fix-child-00000004\n-->" TINV:PARSE-CLASSES$ TTRUE
    [: TINV:STRICT-OWNERS ;] catch 0 T=
+   S\" <!-- trusted-inventory-classes\nfixture.f test-metaprog tinv-fix-archive-00000005\n-->" TINV:PARSE-CLASSES$ TTRUE
+   TIT-BUF TIT-CAP LINT-OUT-BUFFER!
+   [: TINV:STRICT-OWNERS ;] catch 0 <> TTRUE
+   LINT-OUT-BUFFER-OFF
+   LINT-OUT$ s" missing owning dot tinv-fix-archive-00000005" CONTAINS? TTRUE
+   S\" <!-- trusted-inventory-classes\nfixture.f test-metaprog tinv-fix-missing-00000003\n-->" TINV:PARSE-CLASSES$ TTRUE
+   TIT-BUF TIT-CAP LINT-OUT-BUFFER!
+   [: TINV:STRICT-OWNERS ;] catch 0 <> TTRUE
+   LINT-OUT-BUFFER-OFF
+   LINT-OUT$ s" missing owning dot tinv-fix-missing-00000003" CONTAINS? TTRUE
+   S\" <!-- trusted-inventory-classes\nfixture.f test-metaprog tinv-fix-duplicate-00000006\n-->" TINV:PARSE-CLASSES$ TTRUE
+   TIT-BUF TIT-CAP LINT-OUT-BUFFER!
+   [: TINV:STRICT-OWNERS ;] catch 0 <> TTRUE
+   LINT-OUT-BUFFER-OFF
+   LINT-OUT$ s" missing owning dot tinv-fix-duplicate-00000006" CONTAINS? TTRUE
    S\" <!-- trusted-inventory-classes\nfixture.f test-metaprog cap:missing\nother.f test-metaprog cap:missing\n-->" TINV:PARSE-CLASSES$ TTRUE
    TIT-BUF TIT-CAP LINT-OUT-BUFFER!
    [: TINV:STRICT-OWNERS ;] catch 0 <> TTRUE

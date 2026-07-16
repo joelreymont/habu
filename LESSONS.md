@@ -8,6 +8,11 @@ Last updated: 2026-07-16
   Allow only the exact per-mint files cited by `TRUSTED.md`; a test cited for a
   different boundary remains untrusted.
 
+- **Resolve dot owners by live identity, not assumed layout.** Dot CLI nests a
+  child under its parent directory. Build one reusable no-follow basename/path
+  index below `.dots/`, memoize live status per match, and require exactly one
+  open/active result; archive, closed, traversal, symlink, and duplicates reject.
+
 - **A linear result is not unique when its mint accepts copyable identity.** A
   copyable slot index let checked code call the mint twice and produce two valid
   linear handles. Make reservation itself linear, consume it into one handle,
