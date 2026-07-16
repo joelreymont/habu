@@ -363,8 +363,12 @@ points stay listed.
 - `tools/include-events-test.f` — checked fixtures for the source-composition event log and loader instrumentation.
 - `tools/source-discovery.f` — whole-file source-composition discovery pass that lexes the entire token stream (colon bodies included), replays every literal loader form against a fresh require registry, and emits the ordered event artifact; dynamic paths, loader shadow/undefine/retirement, and unsupported openers reject fail-closed unless the entry is a declared dynamic-tail boundary.
 - `tools/source-discovery-test.f` — checked fixtures for the whole-file discovery pass (ordering, multiplicity, dedup, fresh registry, colon-body capture, byte-exact spans, shared emitter, fail-closed rejection, dynamic-tail manifest boundary).
-- `tools/source-compose.f` — exact frozen modular-source composer: expands literal loaders in place with include multiplicity and exact require/provided registry semantics, injects original diagnostic origins, records authenticated source-map and plan digests, renders composition failures with include chains, and rejects residual or dynamic loader behavior fail-closed.
+- `tools/source-compose.f` — frozen modular-source composition boundary: expands supported literal loader forms in place, records authenticated map/plan digests, and rejects unsupported loader behavior; general source composition remains blocked on compiler-owned syntax events rather than extending its restricted state recognizer.
 - `tools/source-compose-test.f` — checked composer fixtures for top-level and transitive loading, require dedup, include replay, provided suppression, runtime/shadow/missing/cycle/opener/malformed/NUL/capacity rejection, hostile paths and lexing, line endings, maps, and frozen bytes.
+- `tools/source-map.f` — authenticated in-memory source-map decoder with canonical schema, chain-shape, coordinate-continuity, span, and digest validation.
+- `tools/source-map-test.f` — checked source-map fixtures for authentication, canonical rows, chain shape, coordinate continuity, byte spans, and fail-closed origins.
+- `tools/diag-remap.f` — immutable-buffer text/JSON diagnostic remapper with exact line/byte crosschecks, authenticated include chains, and escaped original paths.
+- `tools/diag-remap-test.f` — checked immutable diagnostic-remap fixtures for text/JSON origins, span crosschecks, chain validation, escaping, and synthetic-label rejection.
 - `tools/source-arena-policy.f` — checked shared headroom and power-of-two policy for native, stage2, and maker source arenas.
 - `tools/dynamic-tail-manifest.f` — declared dynamic-tail boundary table (path + reason) consumed by the discovery pass; a listed file's dynamic/retired loader forms are tolerated instead of rejected.
 - `tools/event-closure-lib.f` — ordered transitive source-composition closure list built by replaying the discovery pass breadth-first over the event log.
@@ -829,8 +833,8 @@ points stay listed.
   register-clobber analysis for BL-able emitter routines and its regressions;
   its negative syscall-scratch fixture file is a committed filemap-lint
   exclusion.
-- `tools/signature-lint-core.f` — reusable strict typed-signature lint core.
-- `tools/signature-lint.f` — CLI wrapper for strict typed-signature lint.
+- `tools/signature-lint-core.f` — reusable strict typed-signature lint core for immutable source buffers and files.
+- `tools/signature-lint.f` — CLI wrapper for strict typed-signature lint, accepting source on stdin when no file is named.
 - `tools/signature-lint-test-lib.f` — load-only strict typed-signature lint fixture library for resident runner tests.
 - `tools/signature-lint-test.f` — checked fixture coverage for strict typed-signature lint.
 - `tools/reserved-name-lint-core.f` — reusable source scanner rejecting definitions named like parser/control reserved words (`I`, `J`, `LOOP`, `TRUST`, etc.).
@@ -847,8 +851,8 @@ points stay listed.
 - `tools/kernel-perf-lint-core.f` — reusable diff scanner requiring kernel codegen changes to carry a profile/waiver row in `tools/ptx/perf-rows.tsv`.
 - `tools/kernel-perf-lint.f` — CLI wrapper for the kernel profile-row diff lint.
 - `tools/kernel-perf-lint-test.f` — checked fixture coverage for the kernel profile-row diff lint.
-- `tools/aot-lint-core.f` — reusable stripped-AOT unsupported-word scanner.
-- `tools/aot-lint.f` — CLI wrapper for stripped-AOT unsupported-word lint.
+- `tools/aot-lint-core.f` — reusable stripped-AOT unsupported-word scanner for immutable source buffers and files.
+- `tools/aot-lint.f` — CLI wrapper for stripped-AOT unsupported-word lint, accepting source on stdin when no file is named.
 - `tools/aot-lint-test-lib.f` — load-only stripped-AOT lint fixture library for resident runner tests.
 - `tools/aot-lint-test.f` — checked fixture coverage for stripped-AOT source lint.
 - `tools/diag-origin-core.f` — reusable source-origin marker injection core.

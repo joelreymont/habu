@@ -176,6 +176,9 @@ variable SC-NUM-L
    \ heavy build/image suites too costly for the run.f fast-tier budget
    \ (build-fixpoint-fixtures: multiple full engine builds - dot: manual/slow)
    s" tools/build-fixpoint-test.f" q execute
+   s" tools/source-compose-test.f" q execute
+   s" tools/source-map-test.f" q execute
+   s" tools/diag-remap-test.f" q execute
    s" tools/hb-build-test.f" q execute
    s" lib/build-cache-test.f" q execute
    s" lib/codesign-test.f" q execute

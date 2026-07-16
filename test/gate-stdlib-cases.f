@@ -148,6 +148,12 @@ TEST:SUITE tool-boundary-lints
    tools/json-only-test.f
 TEST:;SUITE
 
+TEST:SUITE modular-build-artifacts
+   tools/source-compose-test.f
+   tools/source-map-test.f
+   tools/diag-remap-test.f
+TEST:;SUITE
+
 TEST:SUITE tool-boundary-typed-local
    tools/typed-local-diff-lint-test.f
 TEST:;SUITE
