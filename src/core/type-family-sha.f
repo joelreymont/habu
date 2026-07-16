@@ -2,7 +2,7 @@
 \ /type-families.md §12, PLAN Package Shape). type-family.f loads before
 \ sha256.f in every engine prefix (native boot prefix, stage-build source,
 \ Gforth bootstrap), so its Package Shape hash fallback reaches SHA-256 through
-\ the TF-SHA16-XT friend cell, installed here once both the registry and the
+\ the TF-SHA16-XT friend hook, installed here once both the registry and the
 \ hash exist. TF-SHA16 writes the first 16 lowercase hex digits of SHA-256 over
 \ (ptr,n) — the exact prefix SHA256>HEX renders — into the 16-byte output.
 
@@ -10,4 +10,7 @@
    >r  SHA-DIGEST SHA256
    r> SHA-DST!  SHA-DIGEST SHA-SRC!
    8 0 do  SHA-SRC@ i ZBYTE@  SHA-DST@ i 2 * ZPTR+  BYTE>HEX  loop ;
-' TF-SHA16 TF-SHA16-XT !
+
+: TF-SHA16-INSTALL ( -- )
+   [: TF-SHA16 ;] is TF-SHA16-XT ;
+TF-SHA16-INSTALL

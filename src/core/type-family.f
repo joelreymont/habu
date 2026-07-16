@@ -621,7 +621,17 @@ create TF-CTOR-SEG TF-CTOR-CAP allot   \ length-prefixed segment list (SHA input
 variable TF-CTOR-SEG-U
 create TF-CTOR-HEX 16 allot       \ 16 lowercase hex digits from the SHA fallback
 
-variable TF-SHA16-XT   0 TF-SHA16-XT !   \ friend xt ( ptr u8 n ptr u8 -- ): 16 hex of SHA-256
+: TF-SHA16-UNSET ( ptr u8 n ptr u8 -- )   \ default until type-family-sha.f installs
+   {: a:ptr u:n dst:ptr :}
+   s" tfam: constructor sha hook not installed" 76 die ;
+
+\ friend hook: 16 hex of SHA-256 over (ptr,n) into the 16-byte output;
+\ type-family-sha.f installs TF-SHA16 once the registry and hash both exist.
+defer TF-SHA16-XT ( ptr u8 n ptr u8 -- )
+
+: TF-SHA16-DEFAULT ( -- )
+   [: TF-SHA16-UNSET ;] is TF-SHA16-XT ;
+TF-SHA16-DEFAULT
 
 : TF-UPPER-C ( n -- n ) {: c:n :} c TF-LOWER? IF c 32 - EXIT THEN c ;   \ a-z -> A-Z
 : TF-CTOR-C, ( n -- )            \ append one byte to the derived-name buffer
@@ -670,9 +680,8 @@ variable TF-SHA16-XT   0 TF-SHA16-XT !   \ friend xt ( ptr u8 n ptr u8 -- ): 16 
    REPEAT ;
 : TF-CTOR-BUILD-HASH ( ptr u8 n ptr u8 n -- )   \ (pkg tail)
    {: pa:ptr pu:n ta:ptr tu:n :}
-   TF-SHA16-XT @ 0= IF s" tfam: constructor sha hook not installed" 76 die THEN
    pa pu TF-CTOR-SEG-BUILD
-   TF-CTOR-SEG TF-CTOR-SEG-U @ TF-CTOR-HEX TF-SHA16-XT @ execute
+   TF-CTOR-SEG TF-CTOR-SEG-U @ TF-CTOR-HEX TF-SHA16-XT
    0 TF-CTOR-U !
    [char] T TF-CTOR-C,
    TF-CTOR-HEX,
@@ -777,12 +786,12 @@ variable PF-N   0 PF-N !
 \ boundaries. An application recursively checks both its concrete arguments
 \ and the referenced family's schemas, so nested field families cannot launder
 \ a linear value. The declaration graph is acyclic outside pointer boundaries.
-variable TFCL-NODE-XT
+defer TFCL-NODE-XT ( n -- bool )
 
 : TFAM-CONCRETE-LINEAR? ( n -- bool ) {: fam:n :}
    fam TFAM-PRODUCT? IF
       0 BEGIN dup fam TFAM-FLD-COUNT@ < WHILE
-         fam TFAM-FLD-START@ over + PF-SCH@ SCHEMA-ROOT@ TFCL-NODE-XT @ execute IF drop RES-TRUE EXIT THEN
+         fam TFAM-FLD-START@ over + PF-SCH@ SCHEMA-ROOT@ TFCL-NODE-XT IF drop RES-TRUE EXIT THEN
          1 +
       REPEAT drop
       RES-FALSE EXIT
@@ -791,7 +800,7 @@ variable TFCL-NODE-XT
       0 BEGIN dup fam TFAM-VAR-COUNT@ < WHILE
          fam TFAM-VAR-START@ over + {: vid:n :}
          0 BEGIN dup vid SUMV-SCH-COUNT@ < WHILE
-            vid SUMV-SCH-START@ over + SCHEMA-ROOT@ TFCL-NODE-XT @ execute IF 2drop RES-TRUE EXIT THEN
+            vid SUMV-SCH-START@ over + SCHEMA-ROOT@ TFCL-NODE-XT IF 2drop RES-TRUE EXIT THEN
             1 +
          REPEAT drop
          1 +
@@ -810,7 +819,9 @@ variable TFCL-NODE-XT
    THEN
    RES-FALSE ;
 
-' TFCL-NODE? TFCL-NODE-XT !
+: TFCL-NODE-INSTALL ( -- )
+   [: TFCL-NODE? ;] is TFCL-NODE-XT ;
+TFCL-NODE-INSTALL
 ' TFAM-CONCRETE-LINEAR? TFAM-CON-LIN-XT !
 
 \ ---------------------------------------------------------------------------
@@ -1035,8 +1046,10 @@ variable TF-RBF-DEPTH   0 TF-RBF-DEPTH !
 : REG-EXT-ROLLBACK-RESTORE ( -- )
    SCHEMA-ROLLBACK-RESTORE
    TFAM-ROLLBACK-RESTORE ;
-' REG-EXT-ROLLBACK-SAVE    REG-EXT-RB-SAVE-XT !
-' REG-EXT-ROLLBACK-RESTORE REG-EXT-RB-RESTORE-XT !
+: REG-EXT-RB-INSTALL ( -- )
+   [: REG-EXT-ROLLBACK-SAVE ;] is REG-EXT-RB-SAVE-XT
+   [: REG-EXT-ROLLBACK-RESTORE ;] is REG-EXT-RB-RESTORE-XT ;
+REG-EXT-RB-INSTALL
 
 \ ---------------------------------------------------------------------------
 \ snapshot persist: bake grown TFAM/SUMV/field/layout/param-kind/string stores

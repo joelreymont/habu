@@ -8348,8 +8348,16 @@ variable CTOR-PEND-N   variable CTOR-PEND-I
 \ registries hang parallel marks off the REG-EXT-RB-* hooks that type-schema.f /
 \ type-family.f install, kept in lockstep because every push pairs with one pop.
 \ ---------------------------------------------------------------------------
-variable REG-EXT-RB-SAVE-XT      0 REG-EXT-RB-SAVE-XT !
-variable REG-EXT-RB-RESTORE-XT   0 REG-EXT-RB-RESTORE-XT !
+: REG-EXT-RB-NOOP ( -- )   \ default: no extension registries installed yet
+;
+
+defer REG-EXT-RB-SAVE-XT ( -- )
+defer REG-EXT-RB-RESTORE-XT ( -- )
+
+: REG-EXT-RB-DEFAULTS ( -- )
+   [: REG-EXT-RB-NOOP ;] is REG-EXT-RB-SAVE-XT
+   [: REG-EXT-RB-NOOP ;] is REG-EXT-RB-RESTORE-XT ;
+REG-EXT-RB-DEFAULTS
 
 $0 constant RBF.UEND-OFF
 $8 constant RBF.NEND-OFF
@@ -8488,10 +8496,10 @@ variable RBF-DEPTH   0 RBF-DEPTH !
    DFER-END @ r RBF.DFEREND !
    CHECKER-PACKAGE-NAME RBF-NAME-CUR CHECKER-PACKAGE-U @ USIGS-COPY
    RBF-DEPTH @ 1 + RBF-DEPTH !
-   REG-EXT-RB-SAVE-XT @ dup 0= IF drop ELSE execute THEN ;
+   REG-EXT-RB-SAVE-XT ;
 
 : RBF-POP ( -- )           \ restore every mark from the top frame, retiring index rows
-   REG-EXT-RB-RESTORE-XT @ dup 0= IF drop ELSE execute THEN
+   REG-EXT-RB-RESTORE-XT
    RBF-DEPTH @ 1 - RBF-DEPTH !
    RBF-CUR {: r:ptr :}
    r RBF.UEND @ USIGS-RESTORE-END
