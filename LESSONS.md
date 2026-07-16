@@ -5064,3 +5064,7 @@ unchanged (148855). Keys for milestone 2:
   `variable` load-order-dependent and lets atomic access trap with `SIGBUS`.
   Align the data pointer inside the defining-word compiler before capturing the
   body address, and regress both `create` and `variable` after a one-byte allot.
+- **Manifest coverage is not gate execution.** A test path in `std.manifest`
+  proves API ownership but does not schedule the test. Add every owning test to
+  both its executable gate group and the declarative suite inventory so the
+  suite-coverage lint makes future schedule removal fail closed.

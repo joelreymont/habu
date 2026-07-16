@@ -454,6 +454,7 @@ variable GSI-TL-FILE-A
    s" test/gate-runner-entry-test.f" GSI-FORK-INCLUDE
    s" lib/process-test.f" GSI-FORK-INCLUDE
    s" lib/process-pty-handle-test.f" GSI-FORK-INCLUDE
+   s" lib/process-pty-io-test.f" GSI-FORK-INCLUDE
    s" lib/process-command-test.f" GSI-FORK-INCLUDE
    \ engine-gate negative regressions: these lived only in gate-stdlib-cases.f
    \ suites whose labels no slice selects, so the full runner never executed

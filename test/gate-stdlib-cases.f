@@ -416,6 +416,7 @@ TEST:SUITE stdlib-process-fixtures
    tools/standalone-load-test.f
    lib/process-test.f
    lib/process-pty-handle-test.f
+   lib/process-pty-io-test.f
    lib/process-command-test.f
 TEST:;SUITE
 
