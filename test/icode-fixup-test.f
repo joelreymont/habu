@@ -32,6 +32,7 @@ $801 constant SEQ-N
 $28000 constant WANT-TAB-BYTES
 $1000 constant CAPTURE-CAP
 10000 constant TIMEOUT-MS
+FX-ADR 1 + constant KIND-BAD     \ first kind past FX-ADR: the historic silent-ADR value
 
 create OUT CAPTURE-CAP allot
 create ERR CAPTURE-CAP allot
@@ -83,12 +84,12 @@ variable WP
    FXN 5 SLOT@ 3 T=
    FXN 3 SLOT@ 1 T=
    FXN 1 SLOT@ -1 T=
-   FXS 0 SLOT@ 0 T=  FXK 0 SLOT@ 0 T=
-   FXS 1 SLOT@ 1 T=  FXK 1 SLOT@ 1 T=
-   FXS 2 SLOT@ 2 T=  FXK 2 SLOT@ 1 T=
-   FXS 3 SLOT@ 3 T=  FXK 3 SLOT@ 1 T=
-   FXS 4 SLOT@ 4 T=  FXK 4 SLOT@ 2 T=
-   FXS 5 SLOT@ 5 T=  FXK 5 SLOT@ 0 T= ;
+   FXS 0 SLOT@ 0 T=  FXK 0 SLOT@ FX-B26 T=
+   FXS 1 SLOT@ 1 T=  FXK 1 SLOT@ FX-B19 T=
+   FXS 2 SLOT@ 2 T=  FXK 2 SLOT@ FX-B19 T=
+   FXS 3 SLOT@ 3 T=  FXK 3 SLOT@ FX-B19 T=
+   FXS 4 SLOT@ 4 T=  FXK 4 SLOT@ FX-ADR T=
+   FXS 5 SLOT@ 5 T=  FXK 5 SLOT@ FX-B26 T= ;
 
 : TEST-A-RESOLVED ( label label -- )
    {: a:label b:label :}
@@ -157,6 +158,22 @@ variable WP
    NFX @ 0 T=
    FX-FREE @ -1 T= ;
 
+: TEST-KIND-VALIDATE ( -- )
+   FX-B26 FX-KIND-OK? TTRUE
+   FX-B19 FX-KIND-OK? TTRUE
+   FX-ADR FX-KIND-OK? TTRUE
+   KIND-BAD FX-KIND-OK? TFALSE
+   -1 FX-KIND-OK? TFALSE
+   $7F FX-KIND-OK? TFALSE ;
+
+: TEST-KIND-GUARD-PURE ( -- )
+   ASM-INIT
+   LBL {: t:label :}
+   t B,  t B,
+   NFX @ 2 T=  FX-NEW @ 2 T=  FX-FREE @ -1 T=  ASM-CP @ 2 T=
+   KIND-BAD FX-KIND-OK? TFALSE                  \ pure check rejects, mutates nothing
+   NFX @ 2 T=  FX-NEW @ 2 T=  FX-FREE @ -1 T=  ASM-CP @ 2 T= ;
+
 : TEST-REBIND-STATE ( label n -- )
    {: target:label words:n :}
    target LBL-BOUND? TTRUE
@@ -170,9 +187,9 @@ variable WP
    FXN 0 SLOT@ -1 T=
    FXN 1 SLOT@ -1 T=
    FXS 0 SLOT@ 0 T=
-   FXK 0 SLOT@ 0 T=
+   FXK 0 SLOT@ FX-B26 T=
    FXS 1 SLOT@ 1 T=
-   FXK 1 SLOT@ 0 T=
+   FXK 1 SLOT@ FX-B26 T=
    ASM-CP @ words T=
    0 WORD@ $14000002 T=
    1 WORD@ $14000000 T=
@@ -243,6 +260,20 @@ variable WP
    if 0 EMITW then
    target LBL, ;
 
+\ producer path: FX+ must reject an invalid kind before touching any state
+: EMIT-BADKIND ( -- )
+   ASM-INIT
+   LBL {: target:label :}
+   0 target KIND-BAD FX+ ;
+
+\ consumer path: a corrupt FXK kind must fail closed at patch time, not patch ADR
+: EMIT-BADKIND-PATCH ( -- )
+   ASM-INIT
+   LBL {: target:label :}
+   target B,
+   KIND-BAD 0 cells FXK + !
+   target LBL, ;
+
 : CHILD-MODE? ( ptr u8 n -- bool )
    SCRIPT-ARGC 1 <> if 2drop 0 0= 0= exit then
    0 SCRIPT-ARGV$ 2swap STR= ;
@@ -283,15 +314,22 @@ variable WP
    s" redefine-same" s" icode: label redefined" TEST-DIAG
    s" redefine-different" s" icode: label redefined" TEST-DIAG ;
 
+: TEST-BADKIND ( -- )
+   s" badkind" s" icode: invalid fixup kind" TEST-DIAG
+   s" badkind-patch" s" icode: invalid fixup kind" TEST-DIAG ;
+
 : MAIN ( -- )
    T-RESET
    TEST-SEQUENTIAL
    TEST-MIXED
    TEST-BACKWARD
+   TEST-KIND-VALIDATE
+   TEST-KIND-GUARD-PURE
    TEST-REDEFINE
    TEST-FULL
    TEST-OVERFLOW
    TEST-CORRUPT
+   TEST-BADKIND
    T-REPORT
    s" icode-fixup-test: ok" type cr ;
 
@@ -301,6 +339,8 @@ variable WP
    s" corrupt-future" CHILD-MODE? if EMIT-CORRUPT-FUTURE exit then
    s" redefine-same" CHILD-MODE? if 0 0= 0= EMIT-REDEFINE exit then
    s" redefine-different" CHILD-MODE? if 0 0= EMIT-REDEFINE exit then
+   s" badkind" CHILD-MODE? if EMIT-BADKIND exit then
+   s" badkind-patch" CHILD-MODE? if EMIT-BADKIND-PATCH exit then
    MAIN ;
 
 RUN

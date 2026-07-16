@@ -79,8 +79,14 @@ ICODE-TAB-CELLS constant LBL-CAP
 \ Keep the historical table names as accessors so emitter code stays readable.
 : LBLP ( -- ptr n ) 0 ICODE-TAB ;
 variable NLBL
-\ fixups: site word-pos, next slot, kind (0=B26, 1=cond/CBZ 19-bit, 2=ADR),
+\ fixups: site word-pos, next slot, kind (FX-B26 / FX-B19 / FX-ADR),
 \ and one pending-chain head per label. Target identity is the owning FXH chain.
+\ The kind selects how a resolved delta is encoded into the branch/ADR word.
+\ It is validated before any fixup-chain, free-list, NFX, or code mutation so a
+\ corrupt or internal invalid kind fails closed instead of silently patching ADR.
+0 constant FX-B26                              \ B/BL: 26-bit word delta
+1 constant FX-B19                              \ cond/CBZ/CBNZ: 19-bit word delta
+2 constant FX-ADR                              \ ADR: 21-bit byte delta
 : FXS ( -- ptr n ) 1 ICODE-TAB ;
 : FXN ( -- ptr n ) 2 ICODE-TAB ;
 : FXK ( -- ptr n ) 3 ICODE-TAB ;
@@ -155,8 +161,18 @@ variable FX-NEW
    I-LBL @ cells FXH + @ I-W @ cells FXN + !
    I-W @ I-LBL @ cells FXH + ! ;
 
+: FX-KIND-OK? ( n -- bool )
+   dup FX-B26 =
+   over FX-B19 = or
+   swap FX-ADR = or ;
+
+: ?FX-KIND ( -- )
+   I-KIND @ FX-KIND-OK? if exit then
+   s" icode: invalid fixup kind" ICODE-EXIT-RC die ;
+
 : FX+ ( n label n -- )
    I-KIND ! LABEL>N I-LBL ! I-SITE !
+   ?FX-KIND                                     \ reject invalid kind before any mutation
    FX-TAKE I-W !
    I-SITE @ I-W @ cells FXS + !
    I-KIND @ I-W @ cells FXK + !
@@ -173,35 +189,39 @@ variable BBASE  variable BKIND
    LABEL>N I-LBL !                    \ BBASE/BKIND set; emits + records if fwd
    I-LBL @ cells LBLP + @  dup 0 < IF              \ pos on stack (0< isn't a standalone prim)
      drop  ASM-CP @ I-LBL @ >LABEL BKIND @ FX+  BBASE @ EMITW
-   ELSE  ASM-CP @ -  BKIND @ 0= IF D26 ELSE D19 THEN  BBASE @ or EMITW  THEN ;
+   ELSE  ASM-CP @ -  BKIND @ FX-B26 = IF D26 ELSE D19 THEN  BBASE @ or EMITW  THEN ;
 
-: B, ( label -- )  $14000000  BBASE !  0 BKIND !  BR-EMIT ;
+: B, ( label -- )  $14000000  BBASE !  FX-B26 BKIND !  BR-EMIT ;
 
-: BL, ( label -- )  $94000000 BBASE !  0 BKIND !  BR-EMIT ;
+: BL, ( label -- )  $94000000 BBASE !  FX-B26 BKIND !  BR-EMIT ;
 
 : BCOND, ( n label -- )
-   LABEL>N I-LBL ! I-COND !  $54000000 I-COND @ or BBASE !  1 BKIND !  I-LBL @ >LABEL BR-EMIT ;
+   LABEL>N I-LBL ! I-COND !  $54000000 I-COND @ or BBASE !  FX-B19 BKIND !  I-LBL @ >LABEL BR-EMIT ;
 
 : CBZ, ( n label -- )
-   LABEL>N I-LBL ! I-RD !  $B4000000 I-RD @ or BBASE !  1 BKIND !  I-LBL @ >LABEL BR-EMIT ;
+   LABEL>N I-LBL ! I-RD !  $B4000000 I-RD @ or BBASE !  FX-B19 BKIND !  I-LBL @ >LABEL BR-EMIT ;
 
 : CBNZ, ( n label -- )
-   LABEL>N I-LBL ! I-RD !  $B5000000 I-RD @ or BBASE !  1 BKIND !  I-LBL @ >LABEL BR-EMIT ;
+   LABEL>N I-LBL ! I-RD !  $B5000000 I-RD @ or BBASE !  FX-B19 BKIND !  I-LBL @ >LABEL BR-EMIT ;
 
-\ adr rd, label: PC-relative address (kind-2 fixup when forward)
+\ adr rd, label: PC-relative address (FX-ADR fixup when forward)
 : ADR, ( n label -- )
    LABEL>N I-LBL ! I-RD !
    I-LBL @ cells LBLP + @ dup 0 < IF
-     drop  ASM-CP @ I-LBL @ >LABEL 2 FX+  I-RD @ 0 ENC-ADR EMITW
+     drop  ASM-CP @ I-LBL @ >LABEL FX-ADR FX+  I-RD @ 0 ENC-ADR EMITW
    ELSE  ASM-CP @ - $4 *  I-RD @ swap ENC-ADR EMITW  THEN ;
 \ define a label here; backpatch and reclaim only that label's pending chain
 variable LBI
 
+: FX-ENC ( n n -- n )                            \ ( delta kind -- patchbits )
+   dup FX-B26 = if drop D26 exit then
+   dup FX-B19 = if drop D19 exit then
+   dup FX-ADR = if drop $4 * ENC-ADRD exit then
+   drop s" icode: invalid fixup kind" ICODE-EXIT-RC die ;
+
 : FX-PATCH ( -- )
    ASM-CP @ LBI @ cells FXS + @ -                \ delta = here - site (words)
-   LBI @ cells FXK + @ 0 = if D26 else
-      LBI @ cells FXK + @ 1 = if D19 else $4 * ENC-ADRD then
-   then
+   LBI @ cells FXK + @ FX-ENC                    \ delta -> patch bits by validated kind
    LBI @ cells FXS + @ PATCH ;
 
 : LBL, ( label -- )

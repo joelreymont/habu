@@ -500,7 +500,7 @@ variable CGR-USES
       s" codegen-role: CLOC-MAIN use emitted extra words" type cr
       E-CGR-CLOC throw
    then
-   0 cells FXK + @ 0 <> if
+   0 cells FXK + @ FX-B26 <> if
       s" codegen-role: CLOC-MAIN fixup is not B26 kind" type cr
       E-CGR-CLOC throw
    then
