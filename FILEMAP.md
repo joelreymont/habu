@@ -18,6 +18,8 @@ points stay listed.
   profiles.
 - `skills/habu-build/SKILL.md` — current AOT and REPL build commands.
 - `docs/bootstrap.md` — no-binary recovery, native refresh, and porting.
+- `docs/diff-side-content.md` — authenticated HABUSIDE v1 codec, reader, and
+  binary contract.
 - `docs/forth.md` — blocking Forth style rules.
 - `docs/type-families.md` — generic lowercase type-family/ADT design plan.
 - `docs/census-switchover.md` — site-level inventory for the post-TFAM switchover: sentinel-return conventions to migrate to option/result, legacy enum clusters, value-record/PTX-IR products, ADT-dischargeable trust rows, and the wave-ordered migration plan.
@@ -896,6 +898,12 @@ points stay listed.
 - `tools/typed-local-diff-lint-core.f` — reusable diff scanner that rejects newly added bare locals.
 - `tools/typed-local-diff-lint.f` — CLI wrapper for typed-local diff lint.
 - `tools/typed-local-diff-lint-test.f` — checked fixture coverage for typed-local diff lint.
+- `tools/diff-side-content.f` — deterministic HABUSIDE v1 side-identity and
+  content-fact encoder.
+- `tools/diff-side-content-read.f` — authenticated owned HABUSIDE reader with
+  metadata binding and linear row traversal.
+- `tools/diff-side-content-test.f` — codec roundtrip, corruption, path, state,
+  ownership, and traversal regressions.
 - `tools/kernel-perf-lint-core.f` — reusable diff scanner requiring kernel codegen changes to carry a profile/waiver row in `tools/ptx/perf-rows.tsv`.
 - `tools/kernel-perf-lint.f` — CLI wrapper for the kernel profile-row diff lint.
 - `tools/kernel-perf-lint-test.f` — checked fixture coverage for the kernel profile-row diff lint.

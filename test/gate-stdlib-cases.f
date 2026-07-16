@@ -160,6 +160,10 @@ TEST:SUITE streaming-sha256
    tools/sha256-file-test.f
 TEST:;SUITE
 
+TEST:SUITE diff-side-content
+   tools/diff-side-content-test.f
+TEST:;SUITE
+
 TEST:SUITE content-key-cache
    lib/content-key-test.f
 TEST:;SUITE
