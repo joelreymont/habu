@@ -5092,3 +5092,7 @@ unchanged (148855). Keys for milestone 2:
   provider cannot certify and moving the declaration behind its consumer creates
   a bootstrap cycle. Library files may require the prefix owner but must not
   redeclare a second family.
+- **Never place backticks in a shell command argument assembled as source.** The
+  shell evaluates them as command substitution before the called tool sees the
+  text; use plain prose or pass the data through a non-shell interface, then
+  inspect the created artifact before committing it.
