@@ -352,6 +352,8 @@ points stay listed.
 - `tools/cli-run.f` — checked helpers for explicitly installed CLI fixture
   subprocesses.
 - `tools/bootstrap-codegen-test.f` — native source regression for bootstrap codegen fail-closed contracts.
+- `tools/fs-primitive-parity-test.f` — target/recovery filesystem syscall,
+  flag, and primitive-registration parity fixture.
 - `tools/imgdump.f` — native image dictionary dump and compare tool.
 - `tools/imgdump-test.f` — checked fixture coverage for image dump compare mode.
 - `tools/imagedisasm.f` — native raw image slice disassembler.

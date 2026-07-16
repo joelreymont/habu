@@ -15,7 +15,9 @@ $32 constant MAP-ANON-PRIVATE-FIXED
 29  constant NR-IOCTL
 139 constant NR-SIGRETURN
 56  constant NR-OPEN
+56  constant NR-OPENAT
 57  constant NR-CLOSE
+82  constant NR-FSYNC
 129 constant NR-KILL
 154 constant NR-SETPGID
 59  constant NR-PIPE
@@ -31,20 +33,27 @@ $32 constant MAP-ANON-PRIVATE-FIXED
 220 constant NR-SPAWN
 220 constant NR-FORK      \ clone(SIGCHLD, 0, 0, 0, 0)
 38  constant NR-RENAME
+38  constant NR-RENAMEAT
+35  constant NR-UNLINKAT
+37  constant NR-LINKAT
+52  constant NR-FCHMOD
 34  constant NR-MKDIR
 35  constant NR-RMDIR
 79  constant NR-STAT64
 79  constant NR-LSTAT64
+80  constant NR-FSTAT64
+79  constant NR-FSTATAT64
+278 constant NR-GETRANDOM
+NR-GETRANDOM constant NR-ENTROPY
 61  constant NR-GETDIRENTRIES64
 78  constant NR-READLINKAT
 36  constant NR-SYMLINKAT
+-100 constant AT-FDCWD
+$100 constant AT-SYMLINK-NOFOLLOW
 260 constant NR-WAIT4
 221 constant NR-EXECVE
 49  constant NR-CHDIR
 94  constant NR-EXIT-GROUP
-
--100 constant AT-FDCWD
-$100 constant AT-SYMLINK-NOFOLLOW
 
 : SYS, ( n -- )
    8 swap MOVZ,  0 SVC,
@@ -66,7 +75,8 @@ $D4000001 constant SYS-EMIT-SVC                          \ svc #0
    1 pathreg 0 ADDI,  0 99 MOVN,  2 0 MOVZ,  3 0 MOVZ,  NR-OPEN SYS, ;
 
 : OS-OPEN-FLAGS ( -- )
-   LBL LBL LBL {: noappend nocreat notrunc :}
+   LBL LBL LBL LBL LBL LBL
+   {: noappend:label nocreat:label notrunc:label nofollow:label noexcl:label nodirectory:label :}
    7 3 MOVZ,  6 1 7 AND,
    7 8 MOVZ,  7 1 7 AND,  7 noappend CBZ,
       7 $400 MOVZ,  6 6 7 ORR,
@@ -77,6 +87,16 @@ $D4000001 constant SYS-EMIT-SVC                          \ svc #0
    7 $400 MOVZ,  7 1 7 AND,  7 notrunc CBZ,
       7 $200 MOVZ,  6 6 7 ORR,
    notrunc LBL,
+   7 $100 MOVZ,  7 1 7 AND,  7 nofollow CBZ,
+      7 $8000 MOVZ,  6 6 7 ORR,
+   nofollow LBL,
+   7 $800 MOVZ,  7 1 7 AND,  7 noexcl CBZ,
+      7 $80 MOVZ,  6 6 7 ORR,
+   noexcl LBL,
+   7 $10 MOVZ,  7 7 16 LSLI,  7 1 7 AND,
+   7 nodirectory CBZ,
+      7 $4000 MOVZ,  6 6 7 ORR,
+   nodirectory LBL,
    2 6 0 ADDI, ;
 
 : OS-MMAP-FLAGS ( -- )

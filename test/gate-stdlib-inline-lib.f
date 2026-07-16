@@ -418,6 +418,7 @@ variable GSI-TL-FILE-A
    s" test/pointer-storage-test.f" GSI-FORK-INCLUDE
    s" test/typed-storage-test.f" GSI-FORK-INCLUDE
    s" lib/fs-test.f" GSI-FORK-INCLUDE
+   s" tools/fs-primitive-parity-test.f" GSI-FORK-INCLUDE
    s" tools/bootstrap-codegen-test.f" GSI-FORK-INCLUDE
    s" tools/asm-src-test.f" GSI-FORK-INCLUDE
    s" tools/asm-checked-test.f" GSI-FORK-INCLUDE

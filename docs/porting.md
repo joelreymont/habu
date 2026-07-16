@@ -50,6 +50,21 @@ the syscall-number register and trap instruction are target-owned:
 - macOS/arm64 uses Darwin numbers and `svc #0x80`.
 - Linux/aarch64 uses Linux numbers and `svc #0`.
 
+Directory-bound filesystem operations additionally require `openat`,
+`fstat`, no-follow `fstatat`, `renameat`, `unlinkat`, `linkat`, `fchmod`,
+`fsync`, and a
+kernel entropy fill. The
+checked primitive surface normalizes the entropy operation to bytes written:
+Linux/aarch64 uses `getrandom` 278, while macOS/arm64 uses `getentropy` 500.
+`open-errno`, `openat`, `read-fd`, `write-fd`, and the descriptor mutation/stat
+operations normalize failures to exact negative errno values; legacy
+`open`/`read`/`write` retain their existing `-1` failure contract.
+Current target and recovery facts pinned by
+`tools/fs-primitive-parity-test.f` include Linux
+`fstat=80`, `fstatat=79`, `O_DIRECTORY=0x4000`, and
+`O_NOFOLLOW=0x8000`; and macOS `fstat=339`, `fstatat=470`,
+`O_DIRECTORY=0x100000`, and `O_NOFOLLOW=0x100`.
+
 Signal handlers are target ABI boundaries. Crash and profiler handlers must use
 the target's `sigaction` frame, ucontext pointer, PC offset, `sigreturn`
 convention, and installed signal list. On Linux/aarch64, `rt_sigaction` also

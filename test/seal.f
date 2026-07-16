@@ -109,6 +109,18 @@ create SLV-EMPTY 1 allot            \ zero-length stdin
    s" 0 data-base SLF-CUR + 8 read drop" SB-APPEND SLV-LF
    SB$ ;
 
+: SLV-READ-FD-FORGE$ ( -- ptr u8 n )        \ read-fd buffer starts in the band ($28)
+   SB-RESET
+   s" $28 constant SLF-CUR" SB-APPEND SLV-LF
+   s" 0 >FD data-base SLF-CUR + 8 read-fd drop" SB-APPEND SLV-LF
+   SB$ ;
+
+: SLV-ENTROPY-FORGE$ ( -- ptr u8 n )        \ entropy buffer starts in the band ($28)
+   SB-RESET
+   s" $28 constant SLF-CUR" SB-APPEND SLV-LF
+   s" data-base SLF-CUR + 8 entropy drop" SB-APPEND SLV-LF
+   SB$ ;
+
 \ Each remaining sink hand-wires a DIFFERENT register into PROT-GUARD, so one
 \ forge per sink proves that sink's own wiring. Register noted per forge.
 
@@ -146,6 +158,18 @@ create SLV-EMPTY 1 allot            \ zero-length stdin
    SB-RESET
    s" $28 constant SLF-CUR" SB-APPEND SLV-LF
    s" 0 data-base SLF-CUR + stat64 drop" SB-APPEND SLV-LF
+   SB$ ;
+
+: SLV-FSTAT-FORGE$ ( -- ptr u8 n )          \ fstat64 statbuf (x1) into the band
+   SB-RESET
+   s" $28 constant SLF-CUR" SB-APPEND SLV-LF
+   s" 0 >FD data-base SLF-CUR + fstat64 RC>N drop" SB-APPEND SLV-LF
+   SB$ ;
+
+: SLV-FSTATAT-FORGE$ ( -- ptr u8 n )        \ fstatat statbuf (x2) into the band
+   SB-RESET
+   s" $28 constant SLF-CUR" SB-APPEND SLV-LF
+   s" 0 >FD 0 data-base SLF-CUR + fstatat-nofollow RC>N drop" SB-APPEND SLV-LF
    SB$ ;
 
 : SLV-LSTAT-FORGE$ ( -- ptr u8 n )          \ lstat64 statbuf (x1) into the band
@@ -647,6 +671,10 @@ public
    SLV-ATOMIC-FORGE$ SLV-RUN-LOAD SLV-ASSERT-SEAL
    s" read buffer starting in the band traps" T-LABEL
    SLV-READ-FORGE$ SLV-RUN-LOAD SLV-ASSERT-SEAL
+   s" read-fd buffer starting in the band traps" T-LABEL
+   SLV-READ-FD-FORGE$ SLV-RUN-LOAD SLV-ASSERT-SEAL
+   s" entropy buffer starting in the band traps" T-LABEL
+   SLV-ENTROPY-FORGE$ SLV-RUN-LOAD SLV-ASSERT-SEAL
    s" ! into the protected-WID registry count traps (band 2)" T-LABEL
    SLV-PWIDN-FORGE$ SLV-RUN-LOAD SLV-ASSERT-SEAL
    s" c! into the protected-WID registry table traps (band 2)" T-LABEL
@@ -681,6 +709,10 @@ public
    SLV-READLINK-FORGE$ SLV-RUN-LOAD SLV-ASSERT-SEAL
    s" stat64 statbuf (x1) into the band traps" T-LABEL
    SLV-STAT-FORGE$ SLV-RUN-LOAD SLV-ASSERT-SEAL
+   s" fstat64 statbuf (x1) into the band traps" T-LABEL
+   SLV-FSTAT-FORGE$ SLV-RUN-LOAD SLV-ASSERT-SEAL
+   s" fstatat-nofollow statbuf (x2) into the band traps" T-LABEL
+   SLV-FSTATAT-FORGE$ SLV-RUN-LOAD SLV-ASSERT-SEAL
    s" lstat64 statbuf (x1) into the band traps" T-LABEL
    SLV-LSTAT-FORGE$ SLV-RUN-LOAD SLV-ASSERT-SEAL
    s" getdirentries64 dirent buffer (x1) into the band traps" T-LABEL

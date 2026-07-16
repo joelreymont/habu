@@ -798,11 +798,20 @@ previous definitions
    lfixed LBL,  0 UNCAUGHT-RC MOVZ,  NR-EXIT-GROUP SYS, ;
 
 : SYS-PUSH ( -- )                         \ push x0, or -1 when the syscall carry is set
-   LBL LBL {: ok done :}
+   LBL LBL {: ok done :} \ typed-local-lint: allow-bare-local - stock Gforth rejects Habu type suffixes.
    9 C-CS CSET,  9 ok CBZ,
       0 0 MOVN,  done B,
    ok LBL,
    done LBL,
+   0 G-PUSH ;
+
+: SYS-PUSH-ERRNO ( -- )                   \ push x0, normalizing Darwin errno to -errno
+   HB-TARGET-MACOS? if
+      LBL {: ok :} \ typed-local-lint: allow-bare-local - stock Gforth rejects Habu type suffixes.
+      9 C-CS CSET,  9 ok CBZ,
+         0 SP 0 SUB,
+      ok LBL,
+   then
    0 G-PUSH ;
 
 \ file I/O (path must be NUL-terminated by the caller)
@@ -816,14 +825,73 @@ previous definitions
    THEN
    NR-OPEN SYS,  SYS-PUSH ;   \ ( pathz flags mode -- fd )
 
+: BOPEN-ERRNO ( -- )
+   2 G-POP  1 G-POP  0 G-POP
+   HB-TARGET-LINUX? IF
+      3 1 0 ADDI,
+      1 0 0 ADDI,
+      OS-OPEN-FLAGS
+      1 3 0 ADDI,
+   THEN
+   NR-OPEN SYS,  SYS-PUSH-ERRNO ;
+
+: BOPENAT ( -- )
+   3 G-POP  2 G-POP  1 G-POP  0 G-POP
+   HB-TARGET-LINUX? IF
+      4 1 0 ADDI,
+      1 2 0 ADDI,
+      OS-OPEN-FLAGS
+      1 4 0 ADDI,
+   THEN
+   NR-OPENAT SYS,  SYS-PUSH-ERRNO ;
+
+: BENTROPY ( -- )
+   1 G-POP  0 G-POP  0 1 GUARD-SPAN
+   HB-TARGET-LINUX? IF
+      2 0 MOVZ,  NR-ENTROPY SYS,  SYS-PUSH-ERRNO
+      exit
+   THEN
+   10 1 0 ADDI,
+   LBL LBL {: entropy-ok entropy-done :} \ typed-local-lint: allow-bare-local - stock Gforth rejects Habu type suffixes.
+   NR-ENTROPY SYS,
+   9 C-CS CSET,  9 entropy-ok CBZ,
+      0 0 MOVN,  entropy-done B,
+   entropy-ok LBL,
+      0 10 0 ADDI,
+   entropy-done LBL,
+   0 G-PUSH ;
+
 : BOPENRD ( -- )
    A G-POP
    A OS-OPEN-RD
    SYS-PUSH ;
 
-: BWRITE ( -- )  2 G-POP  1 G-POP  0 G-POP  NR-WRITE SYS,  0 G-PUSH ;   \ ( fd buf len -- n )
+: BWRITE ( -- )  2 G-POP  1 G-POP  0 G-POP  NR-WRITE SYS,  SYS-PUSH ;   \ ( fd buf len -- n )
 
-: BREAD ( -- )   2 G-POP  1 G-POP  0 G-POP  1 2 GUARD-SPAN  NR-READ SYS,  0 G-PUSH ;  \ ( fd buf len -- n )
+: BWRITE-FD ( -- )  2 G-POP  1 G-POP  0 G-POP  NR-WRITE SYS,  SYS-PUSH-ERRNO ;
+
+: BREAD ( -- )   2 G-POP  1 G-POP  0 G-POP  1 2 GUARD-SPAN  NR-READ SYS,  SYS-PUSH ;  \ ( fd buf len -- n )
+
+: BREAD-FD ( -- )   2 G-POP  1 G-POP  0 G-POP  1 2 GUARD-SPAN  NR-READ SYS,  SYS-PUSH-ERRNO ;
+
+: BUNLINKAT ( -- )
+   2 G-POP  1 G-POP  0 G-POP
+   NR-UNLINKAT SYS,  SYS-PUSH-ERRNO ;
+
+: BRENAMEAT ( -- )
+   3 G-POP  2 G-POP  1 G-POP  0 G-POP
+   NR-RENAMEAT SYS,  SYS-PUSH-ERRNO ;
+
+: BLINK ( -- )
+   1 G-POP  0 G-POP
+   3 1 0 ADDI,  1 0 0 ADDI,
+   0 AT-FDCWD LIT64,  2 AT-FDCWD LIT64,
+   4 0 MOVZ,
+   NR-LINKAT SYS,  SYS-PUSH-ERRNO ;
+
+: BFCHMOD ( -- )
+   1 G-POP  0 G-POP
+   NR-FCHMOD SYS,  SYS-PUSH-ERRNO ;
 
 : BIOCTL ( -- )  2 G-POP  1 G-POP  0 G-POP  2 PROT-GUARD  NR-IOCTL SYS,  0 G-PUSH ;
 
@@ -851,6 +919,56 @@ previous definitions
    SP SP 32 ADDI, ;
 
 : BCLOSE ( -- )  0 G-POP  NR-CLOSE SYS, ;                               \ ( fd -- )
+
+: BCLOSE-RC ( -- )  0 G-POP  NR-CLOSE SYS,  SYS-PUSH-ERRNO ;            \ ( fd -- rc )
+
+: BFSYNC ( -- )  0 G-POP  NR-FSYNC SYS,  SYS-PUSH-ERRNO ;               \ ( fd -- rc )
+
+variable FSTAT-BUF
+
+: LINUX-FSTAT-FIX ( n -- )
+   FSTAT-BUF !
+   10 FSTAT-BUF @ 24 LDRW,
+   5 FSTAT-BUF @ 16 LDRW,  5 FSTAT-BUF @ 4 STRW,
+   10 FSTAT-BUF @ 16 STRW,
+   5 FSTAT-BUF @ 48 LDR,   6 FSTAT-BUF @ 88 LDR,   7 FSTAT-BUF @ 96 LDR,
+   8 FSTAT-BUF @ 104 LDR,  9 FSTAT-BUF @ 112 LDR,
+   5 FSTAT-BUF @ 96 STR,   6 FSTAT-BUF @ 48 STR,   7 FSTAT-BUF @ 56 STR,
+   8 FSTAT-BUF @ 64 STR,   9 FSTAT-BUF @ 72 STR, ;
+
+: BFSTAT64 ( -- )
+   1 G-POP  0 G-POP
+   7 $90 MOVZ,  1 7 GUARD-SPAN
+   LBL LBL {: ok done :} \ typed-local-lint: allow-bare-local - stock Gforth rejects Habu type suffixes.
+   NR-FSTAT64 SYS,
+   HB-TARGET-LINUX? IF
+      9 C-CS CSET,  9 ok CBZ,
+         done B,
+      ok LBL,
+      1 LINUX-FSTAT-FIX
+      done LBL,
+      0 G-PUSH
+      exit
+   THEN
+   SYS-PUSH-ERRNO ;
+
+: BFSTATAT-NOFOLLOW ( -- )
+   2 G-POP  1 G-POP  0 G-POP
+   7 $90 MOVZ,  2 7 GUARD-SPAN
+   LBL LBL {: ok done :} \ typed-local-lint: allow-bare-local - stock Gforth rejects Habu type suffixes.
+   HB-TARGET-LINUX? IF
+      3 $100 MOVZ,
+      NR-FSTATAT64 SYS,
+      9 C-CS CSET,  9 ok CBZ,
+         done B,
+      ok LBL,
+      2 LINUX-FSTAT-FIX
+      done LBL,
+      0 G-PUSH
+      exit
+   THEN
+   3 $20 MOVZ,
+   NR-FSTATAT64 SYS,  SYS-PUSH-ERRNO ;
 
 : BRBASE ( -- )  9 DATA RBASE-CELL LDR,  9 G-PUSH ;                            \ ( -- rbase ) __TEXT load base
 
@@ -1064,10 +1182,20 @@ previous definitions
    s" die"  ['] BDIE   FPRIM-L ;
 
 : EMIT-FS-PRIMS ( -- )
-   s" open" ['] BOPEN FPRIM-L   s" open-rd" ['] BOPENRD FPRIM-L
-   s" write" ['] BWRITE FPRIM-L   s" read" ['] BREAD FPRIM-L   s" ioctl" ['] BIOCTL FPRIM-L
+   s" open" ['] BOPEN FPRIM-L   s" open-errno" ['] BOPEN-ERRNO FPRIM-L
+   s" openat" ['] BOPENAT FPRIM-L
+   s" entropy" ['] BENTROPY FPRIM-L
+   s" open-rd" ['] BOPENRD FPRIM-L
+   s" write" ['] BWRITE FPRIM-L   s" write-fd" ['] BWRITE-FD FPRIM-L
+   s" read" ['] BREAD FPRIM-L   s" read-fd" ['] BREAD-FD FPRIM-L
+   s" ioctl" ['] BIOCTL FPRIM-L
    s" mmap" ['] BMMAP FPRIM-L   s" patch32" ['] BPATCH32 FPRIM
+   s" unlinkat" ['] BUNLINKAT FPRIM-L   s" renameat" ['] BRENAMEAT FPRIM-L
+   s" link" ['] BLINK FPRIM-L   s" fchmod" ['] BFCHMOD FPRIM-L
+   s" fstat64" ['] BFSTAT64 FPRIM-L
+   s" fstatat-nofollow" ['] BFSTATAT-NOFOLLOW FPRIM-L
    s" close" ['] BCLOSE FPRIM-L
+   s" close-rc" ['] BCLOSE-RC FPRIM-L   s" fsync" ['] BFSYNC FPRIM-L
    s" rbase" ['] BRBASE FPRIM-L ;
 
 : EMIT-CHECKER-PRIMS ( -- )

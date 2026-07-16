@@ -8,7 +8,7 @@
 \ CHECKER-* registry mutators except the reviewed checker-defer registration
 \ bridge, whose exact sites are presence-pinned below (SAB-REAL-CHKDEFER).
 \ 2b-i already mirrored GUARD-SPAN onto the sinks stage0 DOES
-\ have (BSTORE/BPLUSSTORE/BCSTORE, read/ioctl/mmap buffers, patch32) plus
+\ have (BSTORE/BPLUSSTORE/BCSTORE, read/entropy/ioctl/mmap buffers, patch32) plus
 \ EMIT-SEAL-FRIEND-TOKEN on both cold-prefix entry paths, and test/seal.f runtime-proves
 \ those traps against the sealed candidate.
 \
@@ -72,7 +72,7 @@ public
 $40000 constant SAB-CAP                 \ mirror scan buffer (forth.fs ~137 KB + headroom)
 $800 constant SAB-NAMES-CAP             \ packed absent-name table capacity (bytes)
 92 constant SAB-BSLASH                  \ ASCII '\' — the line-comment introducer
-10 constant SAB-GUARD-PINS              \ GUARD-SPAN definition + bounded/runtime sink lines
+14 constant SAB-GUARD-PINS              \ GUARD-SPAN definition + bounded/runtime sink lines
 3 constant SAB-SEAL-PINS                \ EMIT-SEAL-FRIEND code sites: 1 def + 2 entry seals
 2 constant SAB-CHKDEFER-PINS            \ CHECKER-DEFER code sites: C-CALL-CHECKER-DEFER def + C-DEFER call
 
@@ -110,7 +110,7 @@ variable SAB-NAMES-LEN
    s" snap-rebase" SAB-NAME,  s" BSNAPREBASE" SAB-NAME, ;
 
 : SAB-ADD-SYSCALLS ( -- )
-   s" readlink" SAB-NAME,  s" stat64" SAB-NAME,  s" lstat64" SAB-NAME,
+   s" readlink" SAB-NAME,  S\" s\" stat64\"" SAB-NAME,  s" lstat64" SAB-NAME,
    s" getdirentries64" SAB-NAME,  s" poll" SAB-NAME,  s" ffi-call" SAB-NAME, ;
 
 : SAB-ADD-CHECKER ( -- )

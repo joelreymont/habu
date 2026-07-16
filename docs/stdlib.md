@@ -742,12 +742,16 @@ walking:
 FS-FALSE           ( -- bool )
 FS-TRUE            ( -- bool )
 FS-U16@            ( ptr u8 -- n )
+FS:U32@            ( ptr u8 -- n )
 FS-U64@            ( ptr u8 -- n )
 FS-CHECK-JOIN-CAP       ( n -- )
+FS:CHECK-PATH-BYTES     ( ptr u8 n -- )
 FS-PATHZ-INTO           ( ptr u8 n ptr u8 -- ptr u8 )
 FS-PATHZ                ( ptr u8 n -- ptr u8 )
 EXISTS?                 ( ptr u8 n -- bool )
 FS-STAT-MODE@           ( -- n )
+FS:STAT-INO@            ( -- n )
+FS:STAT-NLINK@          ( -- n )
 FS-STAT-SIZE@           ( -- n )
 FS-STAT-MTIME-SEC@      ( -- n )
 FS-STAT-MTIME-NS@       ( -- n )
@@ -755,6 +759,7 @@ FS-STAT-CTIME-SEC@      ( -- n )
 FS-STAT-CTIME-NS@       ( -- n )
 FS-TRY-STAT             ( ptr u8 n -- bool )
 FS-TRY-LSTAT            ( ptr u8 n -- bool )
+FS:TRY-FSTAT            ( fd -- bool )
 FS-TRY-STAT-MODE        ( ptr u8 n -- n )
 FS-TRY-LSTAT-MODE       ( ptr u8 n -- n )
 STAT-MODE               ( ptr u8 n -- n )
@@ -816,8 +821,10 @@ throwing explicit filesystem errors.
 `READ-ALL` reads a regular file into caller storage and returns the byte count.
 The caller supplies the explicit output cap. Files larger than the cap throw
 `E-FS-CAPACITY`; open and I/O failures throw `E-FS-OPEN` or `E-FS-IO`.
-Use `FS-O-WRONLY` or `FS-O-RDWR` when a caller must pass access-mode flags
-directly to the checked `open` primitive.
+Counted syscall paths reject embedded NUL bytes instead of silently addressing a
+shorter path. Use `FS-O-WRONLY` or `FS-O-RDWR` for access mode and combine
+`FS:O-EXCL` and `FS:O-NOFOLLOW` when a newly created final component must not
+reuse or follow an existing directory entry.
 `WRITE-ALL` creates/truncates a regular file, and `APPEND-FILE` creates/appends
 to a regular file. Both write the full counted input or throw a named filesystem
 error. `OPEN-APPEND-FD` opens the same append-only regular-file target and

@@ -5200,3 +5200,8 @@ unchanged (148855). Keys for milestone 2:
   shell evaluates them as command substitution before the called tool sees the
   text; use plain prose or pass the data through a non-shell interface, then
   inspect the created artifact before committing it.
+- **Filesystem primitive parity must pin every target and recovery syscall
+  number, flag translation, emitted word, and checker effect.** A source-shape
+  test that sampled only a few constants missed Linux recovery `fstat` using
+  `newfstatat`'s number and a target-only `link`; exact full-surface parity is
+  the regression boundary before an atomic publisher can be trusted.

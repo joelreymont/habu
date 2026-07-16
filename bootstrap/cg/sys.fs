@@ -26,7 +26,19 @@ $32 constant MAP-ANON-PRIVATE-FIXED
 29  constant NR-IOCTL
 139 constant NR-SIGRETURN
 56  constant NR-OPEN
+56  constant NR-OPENAT
 57  constant NR-CLOSE
+82  constant NR-FSYNC
+35  constant NR-UNLINKAT
+38  constant NR-RENAMEAT
+37  constant NR-LINKAT
+52  constant NR-FCHMOD
+80  constant NR-FSTAT64
+79  constant NR-FSTATAT64
+278 constant NR-GETRANDOM
+NR-GETRANDOM constant NR-ENTROPY
+-100 constant AT-FDCWD
+$100 constant AT-SYMLINK-NOFOLLOW
 134 constant NR-SIGACTION
 226 constant NR-MPROTECT
 215 constant NR-MUNMAP
@@ -65,6 +77,19 @@ $D4000001 constant SYS-EMIT-SVC                          \ svc #0
    7 $400 MOVZ,  7 1 7 AND,  7 notrunc CBZ,
       7 $200 MOVZ,  6 6 7 ORR,
    notrunc LBL,
+   LBL {: nofollow :} \ typed-local-lint: allow-bare-local - stock Gforth rejects Habu type suffixes.
+   7 $100 MOVZ,  7 1 7 AND,  7 nofollow CBZ,
+      7 $8000 MOVZ,  6 6 7 ORR,
+   nofollow LBL,
+   LBL {: noexcl :} \ typed-local-lint: allow-bare-local - stock Gforth rejects Habu type suffixes.
+   7 $800 MOVZ,  7 1 7 AND,  7 noexcl CBZ,
+      7 $80 MOVZ,  6 6 7 ORR,
+   noexcl LBL,
+   7 $10 MOVZ,  7 7 16 LSLI,  7 1 7 AND,
+   LBL {: nodirectory :} \ typed-local-lint: allow-bare-local - stock Gforth rejects Habu type suffixes.
+   7 nodirectory CBZ,
+      7 $4000 MOVZ,  6 6 7 ORR,
+   nodirectory LBL,
    2 6 0 ADDI, ;
 
 : OS-MMAP-FLAGS ( -- )
@@ -89,7 +114,19 @@ $1012 constant MAP-ANON-PRIVATE-FIXED
 54  constant NR-IOCTL
 184 constant NR-SIGRETURN
 5   constant NR-OPEN
+463 constant NR-OPENAT
 6   constant NR-CLOSE
+95  constant NR-FSYNC
+465 constant NR-RENAMEAT
+470 constant NR-FSTATAT64
+471 constant NR-LINKAT
+124 constant NR-FCHMOD
+472 constant NR-UNLINKAT
+339 constant NR-FSTAT64
+500 constant NR-GETENTROPY
+NR-GETENTROPY constant NR-ENTROPY
+-2 constant AT-FDCWD
+$20 constant AT-SYMLINK-NOFOLLOW
 46  constant NR-SIGACTION
 74  constant NR-MPROTECT
 $49 constant NR-MUNMAP
