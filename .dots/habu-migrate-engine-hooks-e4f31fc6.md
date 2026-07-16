@@ -4,6 +4,8 @@ status: active
 priority: 2
 issue-type: task
 created-at: "\"\\\"2026-07-16T08:27:22.049121+02:00\\\"\""
+blocks:
+  - habu-mirror-checker-defer-6a8a366e
 ---
 
 Stage 2 of the stored-xt soundness program (RCA + sequencing in habu-checker-exec-of-5923c543; stage 1 landed: typed xt<effect> cells, f369f37c). Migrate the ~36 engine hook cells that use the raw-var @ execute shape - the RCA's measured inventory: checker.f/type-family.f/sumtype.f/layout-buffer.f plugin dispatch (tfam-resolve*/arity*/layout?*/cell?*/width@*/concrete-linear?, match-fam-tok/match-variant-tok/match-of-tok/construct-tok, checker-usig-cert-add/checker-package/checker-undefine-guard/checker-lbuf-name-guard/checker-snapshot-prepare, rbf-push/rbf-pop/report-uncheckable/usig-add-bad/sig-type/loc-show-one/check, lbuf-eval-run/layout-maybe-linear?/layout-linear-count, tdecl-gen-eval/tdecl-ctor-prot-wid/tf-ctor-build-hash) and habu1.f hooks (source-hook/prefix-hook/cold-hook/restore-hook/proof-hook) - to typed xt<E> cells (TYPED-VARIABLE with the hook's true effect) or defer/is where install semantics fit; fprim/fprim-l/fprim-wid stay TRUSTED machine-code boundaries (classify explicitly). Each migrated hook: declared effect matches the real callers (derive from the current install sites), store sites become first-class quotation stores or typed installs, fetch+execute fit-checks. Acceptance: zero raw-var @ execute sites remain in the inventory (rg proof), all suites + self-check certify (Certified count may move - STATUS.md updated honestly), fixpoint x2, full run.f, maki 0 FAIL; the stage-3 pin (xt-cell-test L1) still shows plain user variable laundering (the flip is stage 3, not this dot). COORDINATE: broad checker.f surface - tfam's sealed-packages lane is active; keep hunks per-hook surgical; integrator rebases by hash. Files: src/core/checker.f, type-family.f, sumtype.f, layout-buffer.f, render.f, src/habu/habu1.f, STATUS.md, tests. Ownership: checker/engine hook typing.
@@ -40,3 +42,21 @@ Claim released (agent=hookmig done; enabler integrated by orchestrator).
 Blocked-by: none (habu-mirror-defer-is-4461fe23 landed and closed 2026-07-16);
 blocker 2 (install-ordering) remains a design constraint documented above.
 Claim: agent=stage2a workspace=.jj-ws/fable-stage2a (scope: stage-2a, the habu1.f hook class only - source/prefix/cold/restore/proof hooks via defer/is; checker.f-internal hooks are stage-2b pending the ordering design)
+
+
+STAGE-2A STATUS 2026-07-16 (stage2a lane, implementation COMPLETE and
+native-green, held uncommitted in .jj-ws/fable-stage2a pending the bridge):
+PREMISE CORRECTION - the habu1.f hooks are NOT unchecked-region code: in the
+assembled stage2-src, LOWER-CERT-HOOK:INSTALL (checking ON) precedes
+SOURCE-HOOK! with no 0 set-check between, so the owner-wid hooks compile
+CHECKED. Native certifies checked defer+is fine (fixpoint x2 5a7638a6);
+the gforth-mirror stage0 rejects it - exit 70 'hook: non-certified definition:
+source-hook! at is' - because mirror C-DEFER (forth.fs:4344) omits
+C-CALL-CHECKER-DEFER. Option A (unchecked-region placement) would require
+adding a forbidden 0 set-check boundary; therefore ALL of stage 2 gates on
+habu-mirror-checker-defer-6a8a366e (blocks: edge added). Minimal blocker
+fixture: any 'defer FOO (E)' + ': FOO! ([E] --) is FOO ;' after
+LOWER-CERT-HOOK:INSTALL on the mirror-built stage. Per-hook conversion table,
+rg proof (zero raw *-XT sites), stage-3 pin intact, and full gate tails are in
+the stage2a lane report. When the bridge lands: rerun recovery in the
+workspace, commit 'engine: habu1 hooks to defer/is (stage 2a)', integrate.
