@@ -6,6 +6,7 @@ issue-type: task
 created-at: "\"2026-07-13T17:12:36.155644+02:00\""
 blocks:
   - habu-migration-core-records-77182600
+  - habu-core-promote-shared-ba859cbb
 ---
 
 Own src/core/type-field.f, test/type-field-suite.f, the exact post-hook native and recovery load rows, and FILEMAP row. Add one transactional field record keyed by family, optional variant, and field name with schema root, cell/byte layout, alignment, and flags. Add typed reflection queries plus duplicate/reserved-name negatives. Validate focused load, filemap, host, and typed diff lints.
