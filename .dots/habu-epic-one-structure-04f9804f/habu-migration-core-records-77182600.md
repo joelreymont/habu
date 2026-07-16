@@ -1,9 +1,11 @@
 ---
 title: "Core records: remove boot DSL"
-status: active
+status: closed
 priority: 1
 issue-type: task
 created-at: "2026-07-13T16:46:05.263733+02:00"
+closed-at: "2026-07-16T22:28:18.941794+02:00"
+close-reason: All eight implementation children landed; fresh destruction review clean; engine, family/rollback, pointer-storage, bootstrap/fixpoint, trust, host, filemap, dot, Maki, PTX, and full native gates green.
 blocks:
   - habu-core-records-install-cf779d06
 ---
