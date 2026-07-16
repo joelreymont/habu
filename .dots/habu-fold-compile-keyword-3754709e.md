@@ -1,9 +1,9 @@
 ---
 title: Fold compile keyword dispatch into lookup
-status: open
+status: active
 priority: 2
 issue-type: task
-created-at: "2026-07-01T22:31:41.049002+02:00"
+created-at: "\"2026-07-01T22:31:41.049002+02:00\""
 ---
 
 EM-COMPILE (src/habu/habu2.f:2803-2813) resolves each token via a linear chain: EM-COMPILE-SEMI -> ~22 keywords (habu2.f:2577-2622) -> ~30 ops (habu2.f:2650-2698), each an inline char-by-char case-folded LKWCMP (habu2.f:733-745), before LFIND. ~50 string compares per compiled token. Fix: register keywords/ops as dictionary entries with a kind tag (or perfect-hash table) so one hash lookup dispatches; depends on hash-indexed dictionary dot. Interpret path EM-INTERPRET has the same shape (habu2.f:2255,2475-2495).
@@ -45,3 +45,5 @@ the smaller define/string keyword set the same way. Verify byte-for-byte fixpoin
 Stopped here: high-blast-radius rewrite of the hottest compiler path for a modest,
 build-dominated-by-codegen win; not started to avoid a rushed subtle codegen
 regression. No code changed for this dot.
+
+Claim: agent=kwfold workspace=.jj-ws/fable-kwfold
