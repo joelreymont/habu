@@ -1226,8 +1226,45 @@ public
    s" PTR-VARIABLE KEEP-A" BCG-MUST-HAVE
    s" variable KEEP-A" BCG-MUST-LACK ;
 
+\ Fixed-VA region mmap failures at boot must NOT be silent (dot
+\ habu-diagnose-fixed-va-ed649528). A forced fixed-VA collision is not reliably
+\ forcible from checked Habu on either host (no setrlimit spawn primitive, and
+\ MAP_FIXED replaces existing mappings so pre-mapping cannot force ENOMEM), so
+\ the regression pins the diagnostic BYTES in BOTH emitters: the message text is
+\ present, the native length constants are exact, and each failure path names the
+\ fault on fd 2 before its exit 78. The bytes live in the loaded __text image, so
+\ the write is valid even though the region being mapped does not exist yet.
+: BCG-TEST-MMAP-DIAG ( -- )
+   s" src/habu/habu2.f" BCG-LOAD
+   s" hb: cannot map fixed code region" BCG-MUST-HAVE
+   s" hb: cannot map fixed data region" BCG-MUST-HAVE
+   s" 33 constant MMAPCODE-MSG-LEN" BCG-MUST-HAVE
+   s" 33 constant MMAPDATA-MSG-LEN" BCG-MUST-HAVE
+   s" : EM-MMAP-CODE-REGION" BCG-POS-FOUND {: ncstart:n :}
+   ncstart s" rvok LBL, ;" BCG-AFTER-FOUND {: ncend:n :}
+   ncstart ncend s" LMMAPCODE LABEL@ ADR" BCG-MUST-FIND-BEFORE
+   ncstart ncend s" MMAPCODE-MSG-LEN MOVZ" BCG-MUST-FIND-BEFORE
+   ncstart ncend s" 78 MOVZ" BCG-MUST-FIND-BEFORE
+   s" : EM-MMAP-DATA-REGION" BCG-POS-FOUND {: ndstart:n :}
+   ndstart s" dvok LBL, ;" BCG-AFTER-FOUND {: ndend:n :}
+   ndstart ndend s" LMMAPDATA LABEL@ ADR" BCG-MUST-FIND-BEFORE
+   ndstart ndend s" MMAPDATA-MSG-LEN MOVZ" BCG-MUST-FIND-BEFORE
+   ndstart ndend s" 78 MOVZ" BCG-MUST-FIND-BEFORE
+   s" bootstrap/cg/forth.fs" BCG-LOAD
+   s" hb: cannot map fixed code region" BCG-MUST-HAVE
+   s" hb: cannot map fixed data region" BCG-MUST-HAVE
+   s" : EMIT-MMAP-CODE-REGION" BCG-POS-FOUND {: mcstart:n :}
+   mcstart s" rvok LBL," BCG-AFTER-FOUND {: mcend:n :}
+   mcstart mcend s" hb: cannot map fixed code region" BCG-MUST-FIND-BEFORE
+   mcstart mcend s" C-EXIT-DIAG" BCG-MUST-FIND-BEFORE
+   s" : EMIT-MMAP-DATA-REGION" BCG-POS-FOUND {: mdstart:n :}
+   mdstart s" dvok LBL, ;" BCG-AFTER-FOUND {: mdend:n :}
+   mdstart mdend s" hb: cannot map fixed data region" BCG-MUST-FIND-BEFORE
+   mdstart mdend s" C-EXIT-DIAG" BCG-MUST-FIND-BEFORE ;
+
 : BCG-MAIN ( -- )
    T-RESET
+   BCG-TEST-MMAP-DIAG
    BCG-TEST-INSTALL-FAIL-CLOSED
    BCG-TEST-FORTH-SDQ-COMMENT
    BCG-TEST-PREFIX-LIST

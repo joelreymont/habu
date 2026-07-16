@@ -3855,7 +3855,7 @@ variable CFSK2
    NR-MMAP SYS,
    5 RBASE-VA LIT64,  0 5 CMP,
    C-EQ rvok BCOND,
-      0 78 MOVZ,  NR-EXIT-GROUP SYS,
+      s" hb: cannot map fixed code region" 78 C-EXIT-DIAG   \ name the fault on fd 2 (C-EXIT-DIAG inlines the bytes in __text, ADRs them locally) before exit
    rvok LBL,
    DBASE 0 0 ADDI,
    CP DBASE 0 ADDI,  5 DICT-SIZE LIT64,  CP CP 5 ADD, ;
@@ -3888,7 +3888,7 @@ variable CFSK2
    NR-MMAP SYS,
    5 EMIT-DATA-VA>N LIT64,  0 5 CMP,
    C-EQ dvok BCOND,
-      0 78 MOVZ,  NR-EXIT-GROUP SYS,
+      s" hb: cannot map fixed data region" 78 C-EXIT-DIAG   \ name the fault on fd 2 (C-EXIT-DIAG inlines the bytes in __text, ADRs them locally) before exit
    dvok LBL, ;
 
 : EMIT-DATA-INIT ( -- )

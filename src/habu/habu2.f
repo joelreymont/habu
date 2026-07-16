@@ -151,6 +151,9 @@ variable LSRCFULL   variable LSRCREAD   variable LBADSTR   \ boot source labeled
 variable LPROTPUB   variable LPROTAOT   \ protected-WID seal labeled rc-84 exits (publish-into-protected / AOT boot-pass gate reject)
 40 constant PROTPUB-MSG-LEN   \ byte length of "hb: cannot publish into protected word: " (LPROTPUB; C-STORE-DEF-NAME appends the def name + newline)
 34 constant PROTAOT-MSG-LEN   \ byte length of "hb: AOT protected-WID gate reject\n" (LPROTAOT; EM-AOTWIDGATE boot-pass reject)
+variable LMMAPCODE   variable LMMAPDATA   \ fixed-VA region mmap-fail labeled rc-78 exits (code region / data region); message bytes live in the loaded __text image, so the write is valid even though the region being mapped does not exist yet
+33 constant MMAPCODE-MSG-LEN   \ byte length of "hb: cannot map fixed code region\n" (LMMAPCODE)
+33 constant MMAPDATA-MSG-LEN   \ byte length of "hb: cannot map fixed data region\n" (LMMAPDATA)
 variable LFLAGMATCH  variable LSRCBADFLAG  variable LFLAGTAB
 variable LBADFLAG    variable LUSAGE1      variable LUSAGE2     variable LSPC
 variable LPLINUXTARGET  variable LPMACOSTARGET
@@ -353,7 +356,9 @@ s" c-bp-watch-dump" s" label label --" TRUST
    LSRCREAD LABEL@ LBL, s" hb: cannot read source" BYTES,  NL-KW 1 BYTES,                       \ SRCREAD-MSG-LEN bytes incl. newline
    LBADSTR  LABEL@ LBL, s" hb: bad string literal" BYTES,  NL-KW 1 BYTES,                       \ BADSTR-MSG-LEN bytes incl. newline
    LPROTPUB LABEL@ LBL, s" hb: cannot publish into protected word: " BYTES,                     \ PROTPUB-MSG-LEN bytes; C-STORE-DEF-NAME appends the def name + newline
-   LPROTAOT LABEL@ LBL, s" hb: AOT protected-WID gate reject" BYTES,  NL-KW 1 BYTES, ;          \ PROTAOT-MSG-LEN bytes incl. newline
+   LPROTAOT LABEL@ LBL, s" hb: AOT protected-WID gate reject" BYTES,  NL-KW 1 BYTES,            \ PROTAOT-MSG-LEN bytes incl. newline
+   LMMAPCODE LABEL@ LBL, s" hb: cannot map fixed code region" BYTES,  NL-KW 1 BYTES,            \ MMAPCODE-MSG-LEN bytes incl. newline
+   LMMAPDATA LABEL@ LBL, s" hb: cannot map fixed data region" BYTES,  NL-KW 1 BYTES, ;          \ MMAPDATA-MSG-LEN bytes incl. newline
 
 \ override SIGTRAP(5) to the resuming handler (G-INSTALL-CRASH pointed all four
 \ at the dumper; this repoints just TRAP once LTRAPH is bound).
@@ -3199,6 +3204,7 @@ s" c-local-ref" s" label label --" TRUST
    NR-MMAP SYS,
    5 RBASE-VA LIT64,  0 5 CMP,
    C-EQ rvok BCOND,
+      1 LMMAPCODE LABEL@ ADR,  0 2 MOVZ,  2 MMAPCODE-MSG-LEN MOVZ,  NR-WRITE SYS,   \ name the fault on fd 2 (bytes in loaded __text) before exit; scratch x0/x1/x2 only, argc/argv/envp in x13/x14/x15 untouched
       0 78 MOVZ,  NR-EXIT-GROUP SYS,
    rvok LBL, ;
 
@@ -3696,6 +3702,7 @@ TRUSTED: EM-DATA-VA>N ( -- n ) DATA-VA ;
    NR-MMAP SYS,
    5 EM-DATA-VA>N LIT64,  0 5 CMP,
    C-EQ dvok BCOND,
+      1 LMMAPDATA LABEL@ ADR,  0 2 MOVZ,  2 MMAPDATA-MSG-LEN MOVZ,  NR-WRITE SYS,   \ name the fault on fd 2 (bytes in loaded __text) before exit; code region is already mapped, argc/argv/envp in x13/x14/x15 untouched
       0 78 MOVZ,  NR-EXIT-GROUP SYS,
    dvok LBL, ;
 
@@ -6215,6 +6222,7 @@ s" SRCA@" s" -- ptr u8" TRUST
    LBL LSNAPBAD !  LBL LSNAPVER !
    LBL LSRCFULL !  LBL LSRCREAD !  LBL LBADSTR !
    LBL LPROTPUB !  LBL LPROTAOT !
+   LBL LMMAPCODE !  LBL LMMAPDATA !
    LBL LFLAGMATCH !  LBL LSRCBADFLAG !  LBL LFLAGTAB !
    LBL LBADFLAG !  LBL LUSAGE1 !  LBL LUSAGE2 !  LBL LSPC ! ;
 
