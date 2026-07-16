@@ -1,9 +1,11 @@
 ---
 title: "Core records: remove boot DSL"
-status: open
+status: closed
 priority: 1
 issue-type: task
-created-at: "2026-07-13T16:46:05.263733+02:00"
+created-at: "\"2026-07-13T16:46:05.263733+02:00\""
+closed-at: "2026-07-16T19:10:01.212889+02:00"
+close-reason: All eight implementation leaves landed; exact master tree passed engine-suite, prop-test-core, bootstrap-codegen-test, build-fixpoint-test, fresh native fixpoint bootstrap, host-lint, filemap-lint, and trust-lint.
 blocks:
   - habu-core-records-install-cf779d06
 ---
