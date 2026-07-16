@@ -59,14 +59,33 @@ TRUSTED: TWX-SYMS ( -- ptr a ) SYMS ;
 TRUSTED: TWX-TFAM-FIND-IN ( ptr u8 n ptr u8 n -- n bool ) TFAM-FIND-IN ;
 TRUSTED: TWX-TFAM-VIS@ ( n -- n ) TFAM-VIS@ ;
 
+package PROT-WID-RETURN-TEST
+
+variable BEFORE
+
+public
+
+: START ( -- )
+   data-base PROT-WID-N-CELL + @ BEFORE ! ;
+
+: FINISH ( -- )
+   data-base PROT-WID-N-CELL + @ BEFORE @ 1+ T=
+   data-base PROT-WID-N-CELL + @ {: before:n :}
+   s" ZRES:OK" PROT-WID-CTOR-ADD
+   data-base PROT-WID-N-CELL + @ before T= ;
+
+;package
+
 
 \ ---------------------------------------------------------------------------
 \ top-level public arity-0 sum: constructors exist, certify, enforce payloads.
 \ ---------------------------------------------------------------------------
+PROT-WID-RETURN-TEST:START
 SUMTYPE zres 0
   VARIANT ok  n ;VARIANT
   VARIANT err n ;VARIANT
 ;SUMTYPE
+PROT-WID-RETURN-TEST:FINISH
 \ variants spelled like stack words: ZWV:DUP/ZWV:SWAP are qualified constructor
 \ defs. Declared EARLY (dot habu-qualified-defs-leak-aadeb5c9 fixed): a qualified
 \ def no longer leaks a bare-global `dup`/`swap` effect row, so every later

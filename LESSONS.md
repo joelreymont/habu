@@ -5136,3 +5136,6 @@ unchanged (148855). Keys for milestone 2:
   sees such bodies — certify is the authority and stays fail-closed. Bind with
   typed locals ({: a:ptr u:n dst:ptr :}) before the die, per the LBUF-EVAL
   precedent.
+- **Recovery `BPROTWIDADD` was registered with the leaf wrapper despite emitting
+  `BL`.** The nested protected-WID query replaced `x30`, so the raw bootstrap
+  primitive could not return; `FPRIM` now matches native and preserves the caller.

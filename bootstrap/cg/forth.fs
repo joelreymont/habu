@@ -1060,7 +1060,7 @@ previous definitions
    s" SEAL-CAPTURE" ['] BSEALCAP FPRIM-L
    s" SEAL-FRIEND" ['] BSEALFRIEND FPRIM-L
    s" wide-mark" ['] BWIDEMARK FPRIM
-   s" prot-wid-add" ['] BPROTWIDADD FPRIM-L
+   s" prot-wid-add" ['] BPROTWIDADD FPRIM
    s" die"  ['] BDIE   FPRIM-L ;
 
 : EMIT-FS-PRIMS ( -- )

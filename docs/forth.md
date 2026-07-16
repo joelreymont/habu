@@ -937,6 +937,9 @@ T-REPORT
 - **"is it a defined word?"** → `find-name ( c-addr u -- nt|0 )`, not `find`.
 - **`catch` preserves the pre-call args** under the throw code: `nv ' WORD catch`
   on a throw leaves `( nv code )` — `nip`/adjust in tests accordingly.
+- **Emitted primitive leafness follows emitted control flow.** Use `FPRIM-L`
+  only when the complete primitive body emits no `BL` or `BLR`; otherwise use
+  `FPRIM` so its frame preserves the caller return address in `x30`.
 - Run tests through the owning gate script so assertion failures control the
   process exit code.
 - **Fallible value-returning scanners should validate first.** Put range/schema
