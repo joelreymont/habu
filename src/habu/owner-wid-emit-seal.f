@@ -38,11 +38,8 @@ undefine LCOLD
 undefine LOWNER
 undefine SOURCE-DEFAULT
 undefine SOURCE-INIT
-undefine PREFIX-XT
-undefine SOURCE-XT
-undefine COLD-XT
-undefine PROOF-XT
-undefine RESTORE-XT
+undefine HOOK-NOOP
+undefine OWNER-HOOK-INIT
 undefine EMIT-BYTES
 undefine COUNT@,
 undefine COUNT!,
@@ -110,11 +107,8 @@ s" LCOLD" get-current OWNER-WID-SEAL-ABSENT
 s" LOWNER" get-current OWNER-WID-SEAL-ABSENT
 s" SOURCE-DEFAULT" get-current OWNER-WID-SEAL-ABSENT
 s" SOURCE-INIT" get-current OWNER-WID-SEAL-ABSENT
-s" PREFIX-XT" get-current OWNER-WID-SEAL-ABSENT
-s" SOURCE-XT" get-current OWNER-WID-SEAL-ABSENT
-s" COLD-XT" get-current OWNER-WID-SEAL-ABSENT
-s" PROOF-XT" get-current OWNER-WID-SEAL-ABSENT
-s" RESTORE-XT" get-current OWNER-WID-SEAL-ABSENT
+s" HOOK-NOOP" get-current OWNER-WID-SEAL-ABSENT
+s" OWNER-HOOK-INIT" get-current OWNER-WID-SEAL-ABSENT
 s" EMIT-BYTES" get-current OWNER-WID-SEAL-ABSENT
 s" COUNT@," get-current OWNER-WID-SEAL-ABSENT
 s" COUNT!," get-current OWNER-WID-SEAL-ABSENT

@@ -3522,7 +3522,9 @@ s" c-local-ref" s" label label --" TRUST
    msg LBL,  s" hb: AOT owner frame corrupt" BYTES,  NL-KW 1 BYTES,
    done LBL, ;
 
-' EM-AOT-RESTORE-WIDS OWNER-WID-EMIT:RESTORE-HOOK!
+: EM-AOT-RESTORE-HOOK-INIT ( -- )
+   [: EM-AOT-RESTORE-WIDS ;] OWNER-WID-EMIT:RESTORE-HOOK! ;
+EM-AOT-RESTORE-HOOK-INIT
 
 \ For each baked call site (packed 4B row = blob-off u16 | name-off u16<<16 into the
 \ deduped [len][bytes] name pool at LAOTNAMES) resolve the callee by NAME in THIS

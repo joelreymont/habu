@@ -1975,35 +1975,37 @@ variable SZA-I
 
 package OWNER-WID-EMIT
 
-variable PREFIX-XT
-variable SOURCE-XT
-0 PREFIX-XT !
+: HOOK-NOOP ( -- )
+;
 
 : SOURCE-DEFAULT ( -- ptr u8 n )
    PNPOOL 0 ;
 
 public
 
-: SOURCE-HOOK! ( n -- )
-   SOURCE-XT ! ;
+\ SOURCE-HOOK ( -- ptr u8 n ): image-source emitter for the sealed OWNER-WID
+\ package. Default SOURCE-DEFAULT emits the empty-pool source; install a custom
+\ emitter with SOURCE-HOOK!. Called by habu2 EMIT-SOURCE.
+defer SOURCE-HOOK ( -- ptr u8 n )
 
-: SOURCE-HOOK ( -- ptr u8 n )
-   SOURCE-XT @ execute ;
+: SOURCE-HOOK! ( [ -- ptr u8 n ] -- )
+   is SOURCE-HOOK ;
+
+\ PREFIX-HOOK ( -- ): seal-time prefix side effect. Default HOOK-NOOP preserves
+\ the prior unset-was-a-no-op contract; install one with PREFIX-HOOK!. Called by
+\ habu1 BSEALCAP.
+defer PREFIX-HOOK ( -- )
+
+: PREFIX-HOOK! ( [ -- ] -- )
+   is PREFIX-HOOK ;
 
 private
 
 : SOURCE-INIT ( -- )
-   ['] SOURCE-DEFAULT SOURCE-XT ! ;
+   [: SOURCE-DEFAULT ;] SOURCE-HOOK!
+   [: HOOK-NOOP ;] PREFIX-HOOK! ;
 
 SOURCE-INIT
-
-public
-
-: PREFIX-HOOK! ( [ -- ] -- )
-   PREFIX-XT ! ;
-
-: PREFIX-HOOK ( -- )
-   PREFIX-XT @ dup 0= if drop exit then execute ;
 
 ;package
 
@@ -2870,12 +2872,6 @@ variable LPREF
 variable LADD
 variable LCOLD
 variable LOWNER
-variable COLD-XT
-variable PROOF-XT
-variable RESTORE-XT
-0 COLD-XT !
-0 PROOF-XT !
-0 RESTORE-XT !
 
 : COUNT@, ( -- )
    5 OWNER-WID-N-CELL MOVZ,  5 DATA 5 ADD,
@@ -3044,23 +3040,27 @@ public
 : PAIR-LABEL@ ( -- label )
    LPAIRQ LABEL@ ;
 
-: COLD-HOOK! ( [ -- ] -- )
-   COLD-XT ! ;
+\ COLD-HOOK ( -- ): post-cold-prefix side effect. Default HOOK-NOOP preserves the
+\ prior unset-was-a-no-op contract; install one with COLD-HOOK!. Called by habu1
+\ BFINALIZE and the habu2 REPL AOT seed.
+defer COLD-HOOK ( -- )
 
-: COLD-HOOK ( -- )
-   COLD-XT @ dup 0= if drop exit then execute ;
+: COLD-HOOK! ( [ -- ] -- )
+   is COLD-HOOK ;
+
+\ RESTORE-HOOK ( -- ): owner-WID registry restore on cold reset. Default HOOK-NOOP;
+\ habu2 installs EM-AOT-RESTORE-WIDS. Called by COLD-RESET.
+defer RESTORE-HOOK ( -- )
 
 : RESTORE-HOOK! ( [ -- ] -- )
-   RESTORE-XT ! ;
+   is RESTORE-HOOK ;
 
-: RESTORE-HOOK ( -- )
-   RESTORE-XT @ dup 0= if drop exit then execute ;
+\ PROOF-HOOK ( -- ): owner-WID proof-registration side effect. Default HOOK-NOOP;
+\ install one with PROOF-HOOK!. Called by ROUTINES.
+defer PROOF-HOOK ( -- )
 
 : PROOF-HOOK! ( [ -- ] -- )
-   PROOF-XT ! ;
-
-: PROOF-HOOK ( -- )
-   PROOF-XT @ dup 0= if drop exit then execute ;
+   is PROOF-HOOK ;
 
 : COLD-RESET ( -- )
    LBL {: loop:label :}
@@ -3090,6 +3090,13 @@ private
 : BFINALIZE ( -- )
    OWNER-LABEL@ BL,
    COLD-HOOK ;
+
+: OWNER-HOOK-INIT ( -- )
+   [: HOOK-NOOP ;] COLD-HOOK!
+   [: HOOK-NOOP ;] RESTORE-HOOK!
+   [: HOOK-NOOP ;] PROOF-HOOK! ;
+
+OWNER-HOOK-INIT
 
 public
 
