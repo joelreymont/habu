@@ -7,6 +7,7 @@ require lib/string.f
 require lib/memory.f
 require lib/fs.f
 require lib/fs-mutate.f
+require lib/fs-atomic.f
 require lib/content-key.f
 require lib/object.f
 
@@ -24,6 +25,7 @@ create ROOT-BUF FS-PATH-CAP allot
 create NAME-BUF 80 allot
 create PATH-BUF FS-PATH-CAP allot
 create KEY-BUF 80 allot
+create ATOMIC-CTX FS-ATOMIC:CONTEXT-CELLS cells allot
 
 variable ROOT-U
 variable PATH-U
@@ -85,6 +87,19 @@ variable READ-BUF-A
    then
    READ-BUF@ ;
 
+: REQUIRE-ATOMIC ( FS-ATOMIC:result -- )
+   MATCH FS-ATOMIC:result
+      committed OF ENDOF
+      committed-unsynced OF 2drop drop E-FS-IO throw ENDOF
+      committed-close-failed OF 2drop E-FS-IO throw ENDOF
+      aborted OF 2drop 2drop throw ENDOF
+   ;MATCH ;
+
+\ typed-local-lint: allow-bare-local - path and src preserve ptr u8 through the transaction.
+: ATOMIC-WRITE ( ptr u8 n ptr u8 n -- ) {: path pathu:n src srcu:n :}
+   ATOMIC-CTX FS-ATOMIC:CONTEXT-INIT
+   ATOMIC-CTX path pathu src srcu FS-ATOMIC:TRY-WRITE-FILE REQUIRE-ATOMIC ;
+
 public
 
 : ROOT! ( ptr u8 n -- ) {: a:ptr u:n :}
@@ -109,7 +124,7 @@ public
    KEY-BUF OBJ:KEY-HEX
    ROOT$ MAKE-DIRS
    KEY-BUF KEY-U PATH!
-   PATH-BUF PATH-U @ obj obju ATOMIC-WRITE-FILE
+   PATH-BUF PATH-U @ obj obju ATOMIC-WRITE
    KEY-BUF KEY-U ;
 
 : LOAD ( ptr u8 n -- ) {: key:ptr keyu:n :}

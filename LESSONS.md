@@ -5096,3 +5096,20 @@ unchanged (148855). Keys for milestone 2:
   shell evaluates them as command substitution before the called tool sees the
   text; use plain prose or pass the data through a non-shell interface, then
   inspect the created artifact before committing it.
+- **Atomic publication must report commit state, not pretend a failed post-rename
+  durability step can safely roll back.** Before rename, an aborted result can
+  guarantee the prior destination is unchanged and preserve cleanup evidence.
+  After rename, directory-sync or close failure means the new file is already
+  visible, so return committed-unsynced or committed-close-failed explicitly;
+  exchange-and-rollback machinery adds races and cannot restore the guarantee
+  when rollback itself fails.
+- **A path identity check followed by `unlinkat` is not conditional unlink.**
+  Another authority can replace the name between the two syscalls. Bind atomic
+  temporary files to a held, verified mode-0700 staging-directory descriptor and
+  perform create, publish, and abort cleanup relative to that descriptor; the
+  directory owner/mode is the authority invariant, and the staging directory
+  persists.
+- **A prerequisite must prove the exact language feature its dependent needs.**
+  Compiler-owned `OPTION` wiring does not substitute for unified payload
+  `ENUM`; do not merge or claim the prerequisite until the public payload enum
+  syntax and exhaustive matching path both pass.

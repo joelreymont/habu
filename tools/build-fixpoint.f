@@ -5,6 +5,7 @@
 \ The stamp key uses the baked SHA256 words; no lib/content-key.f dependency.
 
 require lib/adt/option.f                 \ option<CAD-NUM:index> STR:FIND-SUB consumer
+require lib/fs-atomic.f
 require src/habu/verify-source.f
 require tools/stdin-closure-lib.f
 
@@ -42,6 +43,7 @@ create BF-STAMP-DIR-BUF FS-PATH-CAP allot
 create BF-STAMP-DEF-BUF FS-PATH-CAP allot
 create BF-ENGINE-BUF FS-PATH-CAP allot
 create BF-INSTALL-TMP-BUF FS-PATH-CAP allot
+create BF-ATOMIC-CTX FS-ATOMIC:CONTEXT-CELLS cells allot
 BF-LF BF-LF-BUF c!
 
 variable BF-ART-PATH-A
@@ -1396,11 +1398,21 @@ public
    BF-STAMP-KEY!
    BF-STAMP-OLD BF-STAMP-HEX-U BF-STAMP-KEY BF-STAMP-HEX-U STR= ;
 
+: BF-REQUIRE-ATOMIC ( FS-ATOMIC:result -- )
+   MATCH FS-ATOMIC:result
+      committed OF ENDOF
+      committed-unsynced OF 2drop drop E-FS-IO throw ENDOF
+      committed-close-failed OF 2drop E-FS-IO throw ENDOF
+      aborted OF 2drop 2drop throw ENDOF
+   ;MATCH ;
+
 : BF-STAMP-WRITE ( -- )
    BF-STAMP-ENSURE-DIR
    BF-STAMP-RECORDED-KEY!
    BF-LF BF-STAMP-KEY BF-STAMP-HEX-U + c!
-   BF-STAMP-PATH$ BF-STAMP-KEY BF-STAMP-HEX-U 1 + ATOMIC-WRITE-FILE ;
+   BF-ATOMIC-CTX FS-ATOMIC:CONTEXT-INIT
+   BF-ATOMIC-CTX BF-STAMP-PATH$ BF-STAMP-KEY BF-STAMP-HEX-U 1 +
+   FS-ATOMIC:TRY-WRITE-FILE BF-REQUIRE-ATOMIC ;
 
 : BF-STAMP-CACHED ( -- )
    s" fixpoint: cached " type

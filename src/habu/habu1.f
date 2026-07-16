@@ -1490,6 +1490,39 @@ variable SZA-I
    THEN
    NR-OPEN SYS,  SYS-PUSH ;
 
+: BOPENAT ( -- )
+   3 G-POP  2 G-POP  1 G-POP  0 G-POP
+   HB-TARGET-LINUX? IF
+      4 1 0 ADDI,
+      1 2 0 ADDI,
+      OS-OPEN-FLAGS
+      1 4 0 ADDI,
+   THEN
+   NR-OPENAT SYS,  SYS-PUSH ;
+
+: BMKDIRAT ( -- )
+   2 G-POP  1 G-POP  0 G-POP
+   NR-MKDIRAT SYS,  SYS-PUSH ;
+
+: BGETEUID ( -- )
+   NR-GETEUID SYS,  SYS-PUSH ;
+
+: BENTROPY ( -- )
+   1 G-POP  0 G-POP  0 1 GUARD-SPAN
+   HB-TARGET-LINUX? IF
+      2 0 MOVZ,  NR-ENTROPY SYS,  SYS-PUSH
+      exit
+   THEN
+   10 1 0 ADDI,
+   LBL LBL {: entropy-ok:label entropy-done:label :}
+   NR-ENTROPY SYS,
+   9 C-CS CSET,  9 entropy-ok CBZ,
+      0 0 MOVN,  entropy-done B,
+   entropy-ok LBL,
+      0 10 0 ADDI,
+   entropy-done LBL,
+   0 G-PUSH ;
+
 : BWRITE ( -- )
    2 G-POP  1 G-POP  0 G-POP  NR-WRITE SYS,  SYS-PUSH ;
 
@@ -1716,12 +1749,27 @@ variable SZA-I
    THEN
    NR-UNLINK SYS,  SYS-PUSH ;
 
+: BUNLINKAT ( -- )
+   2 G-POP  1 G-POP  0 G-POP
+   NR-UNLINKAT SYS,  SYS-PUSH ;
+
 : BRENAME ( -- )
    1 G-POP  0 G-POP
    HB-TARGET-LINUX? IF
       3 1 0 ADDI,  1 0 0 ADDI,  0 99 MOVN,  2 99 MOVN,
    THEN
    NR-RENAME SYS,  SYS-PUSH ;
+
+: BRENAMEAT ( -- )
+   3 G-POP  2 G-POP  1 G-POP  0 G-POP
+   NR-RENAMEAT SYS,  SYS-PUSH ;
+
+: BLINK ( -- )
+   1 G-POP  0 G-POP
+   3 1 0 ADDI,  1 0 0 ADDI,
+   0 AT-FDCWD LIT64,  2 AT-FDCWD LIT64,
+   4 0 MOVZ,
+   NR-LINKAT SYS,  SYS-PUSH ;
 
 : BCHMOD ( -- )
    1 G-POP  0 G-POP
@@ -1759,7 +1807,9 @@ variable SZA-I
 
 : LINUX-STAT-FIX ( n -- )
    STAT-BUF !
+   10 STAT-BUF @ 24 LDRW,
    5 STAT-BUF @ 16 LDRW,  5 STAT-BUF @ 4 STRW,
+   10 STAT-BUF @ 16 STRW,
    5 STAT-BUF @ 48 LDR,   6 STAT-BUF @ 88 LDR,   7 STAT-BUF @ 96 LDR,
    8 STAT-BUF @ 104 LDR,  9 STAT-BUF @ 112 LDR,
    5 STAT-BUF @ 96 STR,   6 STAT-BUF @ 48 STR,   7 STAT-BUF @ 56 STR,
@@ -1801,6 +1851,40 @@ variable SZA-I
    THEN
    NR-LSTAT64 SYS,  SYS-PUSH ;
 
+: BFSTAT64 ( -- )
+   1 G-POP  0 G-POP
+   7 $90 MOVZ,  1 7 GUARD-SPAN
+   LBL STAT-OK !
+   LBL STAT-DONE !
+   HB-TARGET-LINUX? IF
+      NR-FSTAT64 SYS,
+      9 C-CS CSET,  9 STAT-OK LABEL@ CBZ,
+      0 0 MOVN,  STAT-DONE LABEL@ B,
+      STAT-OK LABEL@ LBL,
+      1 LINUX-STAT-FIX
+      STAT-DONE LABEL@ LBL,
+      0 G-PUSH
+      exit
+   THEN
+   NR-FSTAT64 SYS,  SYS-PUSH ;
+
+: BFSTATAT64 ( -- )
+   3 G-POP  2 G-POP  1 G-POP  0 G-POP
+   7 $90 MOVZ,  2 7 GUARD-SPAN
+   LBL STAT-OK !
+   LBL STAT-DONE !
+   HB-TARGET-LINUX? IF
+      NR-FSTATAT64 SYS,
+      9 C-CS CSET,  9 STAT-OK LABEL@ CBZ,
+         0 0 MOVN,  STAT-DONE LABEL@ B,
+      STAT-OK LABEL@ LBL,
+      2 LINUX-STAT-FIX
+      STAT-DONE LABEL@ LBL,
+      0 G-PUSH
+      exit
+   THEN
+   NR-FSTATAT64 SYS,  SYS-PUSH ;
+
 : BGETDIRENTRIES64 ( -- )
    3 G-POP  2 G-POP  1 G-POP  0 G-POP
    1 2 GUARD-SPAN  7 8 MOVZ,  3 7 GUARD-SPAN
@@ -1822,6 +1906,12 @@ variable SZA-I
 
 : BCLOSE ( -- )
    0 G-POP  NR-CLOSE SYS, ;
+
+: BCLOSE-RC ( -- )
+   0 G-POP  NR-CLOSE SYS,  SYS-PUSH ;
+
+: BFSYNC ( -- )
+   0 G-POP  NR-FSYNC SYS,  SYS-PUSH ;
 
 : BRBASE ( -- )
    9 DATA RBASE-CELL LDR,  9 G-PUSH ;
@@ -2212,7 +2302,12 @@ public
    s" die"  ['] BDIE   FPRIM-L ;
 
 : EMIT-FS-PRIMS ( -- )
-   s" open" ['] BOPEN FPRIM-L   s" write" ['] BWRITE FPRIM-L   s" read" ['] BREAD FPRIM-L   s" ioctl" ['] BIOCTL FPRIM-L
+   s" open" ['] BOPEN FPRIM-L   s" openat" ['] BOPENAT FPRIM-L
+   s" mkdirat" ['] BMKDIRAT FPRIM-L
+   s" geteuid" ['] BGETEUID FPRIM-L   s" entropy" ['] BENTROPY FPRIM-L
+   s" write" ['] BWRITE FPRIM-L   s" write-fd" ['] BWRITE FPRIM-L
+   s" read" ['] BREAD FPRIM-L   s" read-fd" ['] BREAD FPRIM-L
+   s" ioctl" ['] BIOCTL FPRIM-L
    s" mmap" ['] BMMAP FPRIM-L
    s" ffi-call" ['] BFFI-CALL 2 GDEREF-F
    s" ffi-call-n" ['] BFFI-CALL-N 3 GDEREF-F
@@ -2223,13 +2318,18 @@ public
    s" ffi-call-abi-r" ['] BFFI-CALL-ABI-R 5 GDEREF-F
    s" open-rd" ['] BOPENRD FPRIM-L
    s" access" ['] BACCESS FPRIM-L
-   s" unlink" ['] BUNLINK FPRIM-L   s" rename" ['] BRENAME FPRIM-L   s" chmod" ['] BCHMOD FPRIM-L
+   s" unlink" ['] BUNLINK FPRIM-L   s" unlinkat" ['] BUNLINKAT FPRIM-L
+   s" rename" ['] BRENAME FPRIM-L   s" renameat" ['] BRENAMEAT FPRIM-L
+   s" link" ['] BLINK FPRIM-L
+   s" chmod" ['] BCHMOD FPRIM-L
    s" symlink" ['] BSYMLINK FPRIM-L   s" readlink" ['] BREADLINK FPRIM-L
    s" mkdir" ['] BMKDIR FPRIM-L     s" rmdir" ['] BRMDIR FPRIM-L
    s" stat64" ['] BSTAT64 FPRIM-L   s" lstat64" ['] BLSTAT64 FPRIM-L
+   s" fstat64" ['] BFSTAT64 FPRIM-L   s" fstatat64" ['] BFSTATAT64 FPRIM-L
    s" getdirentries64" ['] BGETDIRENTRIES64 FPRIM-L
    s" patch32" ['] BPATCH32 2 GDEREF-F
    s" close" ['] BCLOSE FPRIM-L
+   s" close-rc" ['] BCLOSE-RC FPRIM-L   s" fsync" ['] BFSYNC FPRIM-L
    s" rbase" ['] BRBASE FPRIM-L ;
 
 : EMIT-CHECKER-PRIMS ( -- )

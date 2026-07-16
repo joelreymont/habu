@@ -26,12 +26,17 @@ FS-PATH-CAP 1 + constant FS-PATHZ-CAP
 18 constant FS-DIRENT-NAMELEN-OFF
 21 constant FS-DIRENT-NAME-OFF
 19 constant FS-LINUX-DIRENT-NAME-OFF
+8 constant FS-STAT-INO-OFF
 1 constant FS-O-WRONLY
 2 constant FS-O-RDWR
 $8 constant FS-O-APPEND
 $200 constant FS-O-CREAT
 $400 constant FS-O-TRUNC
+$800 constant FS-O-EXCL
+$100000 constant FS-O-DIRECTORY
+$100 constant FS-O-NOFOLLOW
 420 constant FS-MODE-0644
+448 constant FS-MODE-0700
 1 constant FS-X-OK
 1 constant FS-READ-PROBE-CAP
 
@@ -76,6 +81,12 @@ variable FS-IO-WR
 
 : FS-U16@ ( ptr u8 -- n ) {: a:ptr :}
    a 0 FS-BYTE@ a 1 FS-BYTE@ FS-BYTE-BITS lshift or ;
+
+: FS-U32@ ( ptr u8 -- n ) {: a:ptr :}
+   a 0 FS-BYTE@
+   a 1 FS-BYTE@ FS-BYTE-BITS lshift or
+   a 2 FS-BYTE@ FS-BYTE-BITS-2 lshift or
+   a 3 FS-BYTE@ FS-BYTE-BITS-3 lshift or ;
 
 : FS-U64@ ( ptr u8 -- n ) {: a:ptr :}
    a 0 FS-BYTE@
@@ -165,9 +176,16 @@ variable FS-IO-WR
 : FS-CHECK-JOIN-CAP ( n -- )
    dup FS-PATH-CAP > if E-FS-CAPACITY throw then drop ;
 
-: FS-PATHZ-INTO ( ptr u8 n ptr u8 -- ptr u8 ) {: a:ptr u dst:ptr :}
+: FS-CHECK-PATH-BYTES ( ptr u8 n -- ) {: a:ptr u :}
    u 0 < if E-FS-PATH throw then
    u FS-PATH-CAP > if E-FS-PATH throw then
+   0 begin dup u < while
+      a over + c@ 0= if drop E-FS-PATH-UNSAFE throw then
+      1+
+   repeat drop ;
+
+: FS-PATHZ-INTO ( ptr u8 n ptr u8 -- ptr u8 ) {: a:ptr u dst:ptr :}
+   a u FS-CHECK-PATH-BYTES
    a dst u BYTE-COPY
    0 dst u + c!
    dst ;
@@ -180,6 +198,16 @@ variable FS-IO-WR
 
 : FS-STAT-MODE@ ( -- n )
    FS-STAT-BUF FS-STAT-MODE-OFF + FS-U16@ ;
+
+: FS-STAT-INO@ ( -- n )
+   FS-STAT-BUF FS-STAT-INO-OFF + FS-U64@ ;
+
+: FS-STAT-NLINK@ ( -- n )
+   HB-TARGET-LINUX? if
+      FS-STAT-BUF 20 + FS-U32@
+   else
+      FS-STAT-BUF 6 + FS-U16@
+   then ;
 
 : FS-STAT-SIZE@ ( -- n )
    FS-STAT-BUF FS-STAT-SIZE-OFF + FS-U64@ ;
@@ -202,6 +230,10 @@ variable FS-IO-WR
 
 : FS-TRY-LSTAT ( ptr u8 n -- bool )
    FS-PATHZ FS-STAT-BUF lstat64 0 < if FS-FALSE exit then
+   FS-TRUE ;
+
+: FS-TRY-FSTAT ( fd -- bool )
+   FS-STAT-BUF fstat64 RC>N 0 < if FS-FALSE exit then
    FS-TRUE ;
 
 : FS-TRY-STAT-MODE ( ptr u8 n -- option<n> )   \ SOME stat mode, NONE if missing/unstatable

@@ -8,6 +8,7 @@ require lib/test.f
 require lib/memory.f
 require lib/fs.f
 require lib/fs-mutate.f
+require lib/fs-atomic.f
 require lib/process.f
 require lib/process-argv.f
 require lib/process-env.f
@@ -42,6 +43,7 @@ create GPT-GS-SAVE FS-PATH-CAP allot
 create GPT-ROOT-SAVE FS-PATH-CAP allot
 create GPT-KR-ROOT FS-PATH-CAP allot
 create GPT-KR-LOG FS-PATH-CAP allot
+create GPT-ATOMIC-CTX FS-ATOMIC:CONTEXT-CELLS cells allot
 
 variable GPT-COW
 variable GPT-BIG-A
@@ -380,9 +382,19 @@ variable GPT-GEN-SAVE-U
 : GPT-SG-PATH$ ( -- ptr u8 n )
    GPT-SG-PATH GPT-SG-PATH-U @ ;
 
+: GPT-REQUIRE-ATOMIC ( FS-ATOMIC:result -- )
+   MATCH FS-ATOMIC:result
+      committed OF ENDOF
+      committed-unsynced OF 2drop drop E-FS-IO throw ENDOF
+      committed-close-failed OF 2drop E-FS-IO throw ENDOF
+      aborted OF 2drop 2drop throw ENDOF
+   ;MATCH ;
+
 : GPT-SG-FIXTURE! ( -- )
    GT-ROOT s" spawn-gen.f" GPT-SG-PATH JOIN-PATH GPT-SG-PATH-U !
-   GPT-SG-PATH$ S\" s\" spawn gen label\" 3 GS-SPAN" ATOMIC-WRITE-FILE ;
+   GPT-ATOMIC-CTX FS-ATOMIC:CONTEXT-INIT
+   GPT-ATOMIC-CTX GPT-SG-PATH$ S\" s\" spawn gen label\" 3 GS-SPAN"
+   FS-ATOMIC:TRY-WRITE-FILE GPT-REQUIRE-ATOMIC ;
 
 : GPT-SG-ARGV ( -- )
    PROC-ARGV-RESET

@@ -24,6 +24,8 @@ Planned module files:
 - `lib/ffi.f`
 - `lib/fs.f`
 - `lib/fs-root.f`
+- `lib/fs-mutate.f`
+- `lib/fs-atomic.f`
 - `lib/build-cache.f`
 - `lib/source.f`
 - `lib/object.f`
@@ -742,12 +744,16 @@ walking:
 FS-FALSE           ( -- bool )
 FS-TRUE            ( -- bool )
 FS-U16@            ( ptr u8 -- n )
+FS-U32@            ( ptr u8 -- n )
 FS-U64@            ( ptr u8 -- n )
 FS-CHECK-JOIN-CAP       ( n -- )
+FS-CHECK-PATH-BYTES     ( ptr u8 n -- )
 FS-PATHZ-INTO           ( ptr u8 n ptr u8 -- ptr u8 )
 FS-PATHZ                ( ptr u8 n -- ptr u8 )
 EXISTS?                 ( ptr u8 n -- bool )
 FS-STAT-MODE@           ( -- n )
+FS-STAT-INO@            ( -- n )
+FS-STAT-NLINK@          ( -- n )
 FS-STAT-SIZE@           ( -- n )
 FS-STAT-MTIME-SEC@      ( -- n )
 FS-STAT-MTIME-NS@       ( -- n )
@@ -755,6 +761,7 @@ FS-STAT-CTIME-SEC@      ( -- n )
 FS-STAT-CTIME-NS@       ( -- n )
 FS-TRY-STAT             ( ptr u8 n -- bool )
 FS-TRY-LSTAT            ( ptr u8 n -- bool )
+FS-TRY-FSTAT            ( fd -- bool )
 FS-TRY-STAT-MODE        ( ptr u8 n -- n )
 FS-TRY-LSTAT-MODE       ( ptr u8 n -- n )
 STAT-MODE               ( ptr u8 n -- n )
@@ -785,7 +792,9 @@ REMOVE-TREE             ( ptr u8 n -- )
 MAKE-DIRS               ( ptr u8 n -- )
 COPY-FILE               ( ptr u8 n ptr u8 n n -- )
 COPY-FILE-STREAM        ( ptr u8 n ptr u8 n -- )
-ATOMIC-WRITE-FILE       ( ptr u8 n ptr u8 n -- )
+FS-ATOMIC:CONTEXT-CELLS  ( -- n )
+FS-ATOMIC:CONTEXT-INIT   ( ptr a -- )
+FS-ATOMIC:TRY-WRITE-FILE ( ptr a ptr u8 n ptr u8 n -- FS-ATOMIC:result )
 MAKE-TEMP-DIR           ( ptr u8 n ptr u8 n -- ptr u8 n )
 TMPDIR-MKDIR            ( ptr u8 n -- ptr u8 n )
 CLEANUP-RESET           ( -- )
@@ -816,8 +825,10 @@ throwing explicit filesystem errors.
 `READ-ALL` reads a regular file into caller storage and returns the byte count.
 The caller supplies the explicit output cap. Files larger than the cap throw
 `E-FS-CAPACITY`; open and I/O failures throw `E-FS-OPEN` or `E-FS-IO`.
-Use `FS-O-WRONLY` or `FS-O-RDWR` when a caller must pass access-mode flags
-directly to the checked `open` primitive.
+Counted syscall paths reject embedded NUL bytes instead of silently addressing a
+shorter path. Use `FS-O-WRONLY` or `FS-O-RDWR` for access mode and combine
+`FS-O-EXCL` and `FS-O-NOFOLLOW` when a newly created final component must not
+reuse or follow an existing directory entry.
 `WRITE-ALL` creates/truncates a regular file, and `APPEND-FILE` creates/appends
 to a regular file. Both write the full counted input or throw a named filesystem
 error. `OPEN-APPEND-FD` opens the same append-only regular-file target and
@@ -840,8 +851,20 @@ primitive names because the dictionary is case-insensitive: use `MAKE-DIR`,
 the destination path cannot overwrite the source path. `COPY-FILE` reads through
 an explicit caller capacity and throws `E-FS-CAPACITY` instead of truncating.
 `COPY-FILE-STREAM` copies through the module chunk buffer, so callers can copy
-large files without sizing a whole-file scratch buffer. `ATOMIC-WRITE-FILE`
-writes a sibling `.tmp` file and renames it over the destination.
+large files without sizing a whole-file scratch buffer. `lib/fs-atomic.f` opens
+the parent once and holds that directory descriptor for the transaction. A
+persistent `.habu-atomic` staging directory must be a real mode-0700 directory
+owned by the effective user; its held descriptor is the authority boundary for
+temporary creation and abort cleanup. Each unpredictable entropy-derived name
+is created there with `O_CREAT|O_EXCL|O_NOFOLLOW`, verified as the same
+single-link regular inode, completely written and synced, then published with
+`renameat(stagefd,temp,parentfd,target)`. The staging directory is never removed.
+The destination is never opened, so replacing a symlink or hardlink entry cannot
+mutate its referent. Before rename, `aborted` preserves the prior destination and
+reports cause, temp-close, cleanup, stage-close, and parent-close evidence. After
+rename, `committed-unsynced` and `committed-close-failed` report durability and
+close evidence without pretending rollback occurred. Callers own and initialize
+one context per simultaneous transaction and exhaustively match the result.
 `REMOVE-TREE` recursively removes one counted path, using the same per-depth walk
 buffers, directory-entry helpers, child-path enter/leave helpers, and close
 handling as `WALK-FILES`, while keeping mutation policy in `lib/fs-mutate.f`.

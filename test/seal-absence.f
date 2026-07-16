@@ -6,7 +6,7 @@
 \ (bootstrap/cg/forth.fs) is a strict SUBSET — it has no atomics, no snap-rebase,
 \ no readlink/stat64/lstat64/getdirentries64/poll/ffi-call syscalls and no
 \ CHECKER-* registry mutators. 2b-i already mirrored GUARD-SPAN onto the sinks stage0 DOES
-\ have (BSTORE/BPLUSSTORE/BCSTORE, read/ioctl/mmap buffers, patch32) plus
+\ have (BSTORE/BPLUSSTORE/BCSTORE, read/entropy/ioctl/mmap buffers, patch32) plus
 \ EMIT-SEAL-FRIEND-TOKEN on both cold-prefix entry paths, and test/seal.f runtime-proves
 \ those traps against the sealed candidate.
 \
@@ -70,7 +70,7 @@ public
 $40000 constant SAB-CAP                 \ mirror scan buffer (forth.fs ~137 KB + headroom)
 $800 constant SAB-NAMES-CAP             \ packed absent-name table capacity (bytes)
 92 constant SAB-BSLASH                  \ ASCII '\' — the line-comment introducer
-10 constant SAB-GUARD-PINS              \ GUARD-SPAN definition + bounded/runtime sink lines
+11 constant SAB-GUARD-PINS              \ GUARD-SPAN definition + bounded/runtime sink lines
 3 constant SAB-SEAL-PINS                \ EMIT-SEAL-FRIEND code sites: 1 def + 2 entry seals
 
 variable SAB-VIOL#                      \ unguarded surfaces found in the current scan

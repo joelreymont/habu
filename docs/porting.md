@@ -50,6 +50,16 @@ the syscall-number register and trap instruction are target-owned:
 - macOS/arm64 uses Darwin numbers and `svc #0x80`.
 - Linux/aarch64 uses Linux numbers and `svc #0`.
 
+The directory-bound atomic publisher additionally requires `openat`, `mkdirat`,
+`fstatat`, `renameat`, `unlinkat`, `geteuid`, and a kernel entropy fill. The
+checked primitive surface normalizes the entropy operation to bytes written:
+Linux/aarch64 uses `getrandom` 278, while macOS/arm64 uses `getentropy` 500.
+Current target facts pinned by `tools/fs-atomic-parity-test.f` are Linux
+`mkdirat=34`, `geteuid=175`, `O_DIRECTORY=0x4000`,
+`O_NOFOLLOW=0x8000`, `AT_SYMLINK_NOFOLLOW=0x100`; and macOS
+`mkdirat=475`, `geteuid=25`, `O_DIRECTORY=0x100000`,
+`O_NOFOLLOW=0x100`, `AT_SYMLINK_NOFOLLOW=0x20`.
+
 Signal handlers are target ABI boundaries. Crash and profiler handlers must use
 the target's `sigaction` frame, ucontext pointer, PC offset, `sigreturn`
 convention, and installed signal list. On Linux/aarch64, `rt_sigaction` also

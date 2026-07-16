@@ -13,12 +13,10 @@ $FFF constant FS-MUT-MODE-PERM
 1 constant FS-MUT-CLEANUP-DIR
 2 constant FS-MUT-CLEANUP-TREE
 $2D constant FS-MUT-DASH
-$2E constant FS-MUT-DOT
 $2F constant FS-MUT-SLASH
 
 create FS-MUT-PATHZ2-BUF FS-PATHZ-CAP allot
 create FS-MUT-COPY-BUF FS-MUT-COPY-CAP allot
-create FS-MUT-ATOMIC-PATH FS-PATH-CAP allot
 create FS-MUT-TMP-PATH FS-PATH-CAP allot
 create FS-MUT-CLEANUP-PATHS FS-MUT-CLEANUP-MAX FS-PATH-CAP * allot
 create FS-MUT-CLEANUP-US FS-MUT-CLEANUP-MAX cells allot
@@ -30,9 +28,6 @@ variable FS-MUT-COPY-RD
 variable FS-MUT-COPY-WR
 variable FS-MUT-COPY-OFF
 variable FS-MUT-CLEANUP-N
-
-create FS-MUT-ATOMIC-SUFFIX
-   FS-MUT-DOT c, 116 c, 109 c, 112 c,
 
 : FS-MUT-PATHZ2 ( ptr u8 n -- ptr u8 )
    FS-MUT-PATHZ2-BUF FS-PATHZ-INTO ;
@@ -196,11 +191,6 @@ create FS-MUT-ATOMIC-SUFFIX
    repeat
    FS-MUT-COPY-IN FS-MUT-CLOSE-COPY-FD
    FS-MUT-COPY-OUT FS-MUT-CLOSE-COPY-FD ;
-
-: ATOMIC-WRITE-FILE ( ptr u8 n ptr u8 n -- ) {: path:ptr pathu src:ptr srcu :}
-   path pathu FS-MUT-ATOMIC-SUFFIX 4 FS-MUT-ATOMIC-PATH FS-MUT-SUFFIX-PATH {: tempu :}
-   FS-MUT-ATOMIC-PATH tempu src srcu WRITE-ALL
-   FS-MUT-ATOMIC-PATH tempu path pathu RENAME-FILE ;
 
 : FS-MUT-SB-U ( n -- ) {: n :}
    n 0 < if E-FS-PATH throw then

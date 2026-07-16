@@ -15,7 +15,10 @@ $F   constant NR-CHMOD
 $36  constant NR-IOCTL
 $B8  constant NR-SIGRETURN
 $5   constant NR-OPEN
+$1CF constant NR-OPENAT
+$1DB constant NR-MKDIRAT
 $6   constant NR-CLOSE
+$5F  constant NR-FSYNC
 $25  constant NR-KILL
 $52  constant NR-SETPGID
 $2A  constant NR-PIPE
@@ -30,20 +33,28 @@ $C5  constant NR-MMAP
 $E6  constant NR-POLL
 $F4  constant NR-SPAWN     \ posix_spawn(&pid, path, 0, 0, argv, envp)
 $80  constant NR-RENAME
+$1D1 constant NR-RENAMEAT
+$1D8 constant NR-UNLINKAT
+$1D7 constant NR-LINKAT
 $88  constant NR-MKDIR
 $89  constant NR-RMDIR
 $152 constant NR-STAT64
 $154 constant NR-LSTAT64
+$153 constant NR-FSTAT64
+$1D6 constant NR-FSTATAT64
+$19  constant NR-GETEUID
+$1F4 constant NR-GETENTROPY
+NR-GETENTROPY constant NR-ENTROPY
 $158 constant NR-GETDIRENTRIES64
 $1D9 constant NR-READLINKAT
 $1DA constant NR-SYMLINKAT
+-2 constant AT-FDCWD
 $7   constant NR-WAIT4     \ wait4(pid, &status, 0, 0)
 0    constant NR-EXECVE
 0    constant NR-CHDIR
 $1   constant NR-EXIT-GROUP
 
--2 constant AT-FDCWD
-0 constant AT-SYMLINK-NOFOLLOW
+$20 constant AT-SYMLINK-NOFOLLOW
 
 : SYS, ( n -- )  16 swap MOVZ,  $80 SVC, ;
 

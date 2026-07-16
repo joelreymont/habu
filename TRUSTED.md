@@ -33,6 +33,20 @@ that source is explicitly certified; they are not stale-checked by the default
 
 | Word | Effect | Reason | Tests | Site | Last audited |
 |------|--------|--------|-------|------|--------------|
+| N-FIELD | `ptr a n -- ptr n` | Refines a fixed caller-owned atomic-context scalar cell from its checked layout offset; generic pointer arithmetic cannot preserve the numeric field role. | `lib/fs-atomic-test.f` | lib/fs-atomic.f | 2026-07-16 |
+| SPAN | `ptr a n -- ptr u8` | Refines one caller-owned atomic-context byte region from its fixed cell offset; context layout bounds are checked by the defining constants. | `lib/fs-atomic-test.f` | lib/fs-atomic.f | 2026-07-16 |
+| CALL-WRITE | `ptr a fd ptr u8 n n -- n` | Executes the write operation stored in one atomic context; indirect xt effects are outside checker inference. | `lib/fs-atomic-test.f` | lib/fs-atomic.f | 2026-07-16 |
+| CALL-SYNC | `ptr a fd n -- rc` | Executes the sync operation stored in one atomic context; indirect xt effects are outside checker inference. | `lib/fs-atomic-test.f` | lib/fs-atomic.f | 2026-07-16 |
+| CALL-CLOSE | `ptr a fd n -- rc` | Executes the close operation stored in one atomic context; indirect xt effects are outside checker inference. | `lib/fs-atomic-test.f` | lib/fs-atomic.f | 2026-07-16 |
+| CALL-FSTAT | `ptr a fd ptr u8 n -- rc` | Executes the fstat operation stored in one atomic context; indirect xt effects are outside checker inference. | `lib/fs-atomic-test.f` | lib/fs-atomic.f | 2026-07-16 |
+| CALL-OPEN | `ptr a ptr u8 n n n -- n` | Executes the open operation stored in one atomic context; indirect xt effects are outside checker inference. | `lib/fs-atomic-test.f` | lib/fs-atomic.f | 2026-07-16 |
+| CALL-OPENAT | `ptr a fd ptr u8 n n n -- n` | Executes the openat operation stored in one atomic context; indirect xt effects are outside checker inference. | `lib/fs-atomic-test.f` | lib/fs-atomic.f | 2026-07-16 |
+| CALL-FSTATAT | `ptr a fd ptr u8 ptr u8 n n -- rc` | Executes the fstatat operation stored in one atomic context; indirect xt effects are outside checker inference. | `lib/fs-atomic-test.f` | lib/fs-atomic.f | 2026-07-16 |
+| CALL-RENAMEAT | `ptr a fd ptr u8 fd ptr u8 n -- rc` | Executes the renameat operation stored in one atomic context; indirect xt effects are outside checker inference. | `lib/fs-atomic-test.f` | lib/fs-atomic.f | 2026-07-16 |
+| CALL-UNLINKAT | `ptr a fd ptr u8 n n -- rc` | Executes the unlinkat operation stored in one atomic context; indirect xt effects are outside checker inference. | `lib/fs-atomic-test.f` | lib/fs-atomic.f | 2026-07-16 |
+| CALL-MKDIRAT | `ptr a fd ptr u8 n n -- rc` | Executes the mkdirat operation stored in one atomic context; indirect xt effects are outside checker inference. | `lib/fs-atomic-test.f` | lib/fs-atomic.f | 2026-07-16 |
+| CALL-GETEUID | `ptr a n -- n` | Executes the effective-user query stored in one atomic context; indirect xt effects are outside checker inference. | `lib/fs-atomic-test.f` | lib/fs-atomic.f | 2026-07-16 |
+| CALL-ENTROPY | `ptr a ptr u8 n n -- n` | Executes the entropy-fill operation stored in one atomic context; indirect xt effects are outside checker inference. | `lib/fs-atomic-test.f` | lib/fs-atomic.f | 2026-07-16 |
 | STDIN? | `-- ptr bool` | Engine-builder mode cell that checked drivers set before emitting stdin or file-backed startup behavior. | `test/run.f`, `tools/build-fixpoint-test.f` | src/habu/habu1.f | 2026-06-26 |
 | tok-imm? | `ptr u8 n -- n` | Engine primitive axiom: LFIND the token in the live dictionary and push flags&2 (the DNAME-IMM bit), so DO-TOK1 can reject a signature-carrying live immediate as a checked body step (p5 wrong-certificate class, dot habu-checker-fitting-arity-70dc94e4). | `test/immediate-model-test.f` (stdlib/tail-process fork, test/run.f) | src/core/checker.f | 2026-07-13 |
 | parse-imm | `ptr u8 n n --` | Declares a parsing immediate's compile-time payload token count to the checker (GRID: 1, WHERE 3), exempting it from the p5 immediate reject and skipping its payload in the body scan. A wrong count skips live code, so each declaration site is an audited soundness boundary; UNSAFE-TOK? bars it from checked bodies (top-level only). | `lib/ptx/header-test.f` (lint-libs slice + resident ptx group), `test/lower-txn-protection.f`, `test/run.f` | src/core/checker.f | 2026-07-13 |
@@ -1194,6 +1208,20 @@ src/core/combinators.f:EACH stdlib-boundary habu-multishot-quotations-typed-8832
 src/core/combinators.f:MAP stdlib-boundary habu-multishot-quotations-typed-8832cace
 src/core/combinators.f:FOLD stdlib-boundary habu-multishot-quotations-typed-8832cace
 lib/build.f:BUILD-CHECK-RAW stdlib-boundary habu-primitive-effect-axiom-1119f176
+lib/fs-atomic.f:N-FIELD stdlib-boundary habu-fs-make-atomic-61537711
+lib/fs-atomic.f:SPAN stdlib-boundary habu-fs-make-atomic-61537711
+lib/fs-atomic.f:CALL-WRITE stdlib-boundary habu-fs-make-atomic-61537711
+lib/fs-atomic.f:CALL-SYNC stdlib-boundary habu-fs-make-atomic-61537711
+lib/fs-atomic.f:CALL-CLOSE stdlib-boundary habu-fs-make-atomic-61537711
+lib/fs-atomic.f:CALL-FSTAT stdlib-boundary habu-fs-make-atomic-61537711
+lib/fs-atomic.f:CALL-OPEN stdlib-boundary habu-fs-make-atomic-61537711
+lib/fs-atomic.f:CALL-OPENAT stdlib-boundary habu-fs-make-atomic-61537711
+lib/fs-atomic.f:CALL-FSTATAT stdlib-boundary habu-fs-make-atomic-61537711
+lib/fs-atomic.f:CALL-RENAMEAT stdlib-boundary habu-fs-make-atomic-61537711
+lib/fs-atomic.f:CALL-UNLINKAT stdlib-boundary habu-fs-make-atomic-61537711
+lib/fs-atomic.f:CALL-MKDIRAT stdlib-boundary habu-fs-make-atomic-61537711
+lib/fs-atomic.f:CALL-GETEUID stdlib-boundary habu-fs-make-atomic-61537711
+lib/fs-atomic.f:CALL-ENTROPY stdlib-boundary habu-fs-make-atomic-61537711
 lib/cad-num-types.f:MINT-BYTE-LEN prim-axiom habu-epic-model-cad-70b629a9
 lib/cad-num-types.f:MINT-ITEM-COUNT prim-axiom habu-epic-model-cad-70b629a9
 lib/cad-num-types.f:MINT-CELL-COUNT prim-axiom habu-epic-model-cad-70b629a9

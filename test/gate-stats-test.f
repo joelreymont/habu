@@ -8,6 +8,7 @@ require lib/test.f
 require lib/memory.f
 require lib/fs.f
 require lib/fs-mutate.f
+require lib/fs-atomic.f
 require lib/process.f
 require lib/process-argv.f
 require lib/process-env.f
@@ -18,6 +19,7 @@ create GST-ROW-BUF GS-LINE-CAP allot
 create GST-SAVE-BUF FS-PATH-CAP allot
 create GST-CHILD-SAVE GS-LINE-CAP allot
 create GST-GEN-SAVE GS-GEN-CAP allot
+create GST-ATOMIC-CTX FS-ATOMIC:CONTEXT-CELLS cells allot
 variable GST-ROOT-U
 variable GST-ROW-U
 variable GST-SAVE-U
@@ -319,9 +321,19 @@ create GST-GUARD-ERR GST-GUARD-CAP allot
 : GST-GUARD-PATH$ ( -- ptr u8 n )
    GST-GUARD-PATH-BUF GST-GUARD-PATH-U @ ;
 
+: GST-REQUIRE-ATOMIC ( FS-ATOMIC:result -- )
+   MATCH FS-ATOMIC:result
+      committed OF ENDOF
+      committed-unsynced OF 2drop drop E-FS-IO throw ENDOF
+      committed-close-failed OF 2drop E-FS-IO throw ENDOF
+      aborted OF 2drop 2drop throw ENDOF
+   ;MATCH ;
+
 : GST-GUARD-FIXTURE! ( ptr u8 n -- )
    GST-ROOT$ s" dup-guard.f" GST-GUARD-PATH-BUF JOIN-PATH GST-GUARD-PATH-U !
-   GST-GUARD-PATH$ 2swap ATOMIC-WRITE-FILE ;
+   GST-ATOMIC-CTX FS-ATOMIC:CONTEXT-INIT
+   GST-ATOMIC-CTX GST-GUARD-PATH$ 2swap
+   FS-ATOMIC:TRY-WRITE-FILE GST-REQUIRE-ATOMIC ;
 
 : GST-LOAD-ARGV ( -- )
    PROC-ARGV-RESET

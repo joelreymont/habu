@@ -922,6 +922,8 @@ points stay listed.
 - `tools/public-signatures.f` — CLI entrypoint for typed public-word manifests.
 - `tools/public-signatures-test.f` — checked fixture coverage for public-signature manifests.
 - `tools/stdlib-manifest-test.f` — validates `lib/std.manifest`, stdlib docs, and source-backed signatures.
+- `tools/fs-atomic-parity-test.f` — pins Linux/macOS/recovery syscall
+  constants, primitive registration, and the staged atomic library contract.
 - `tools/spawn-emitter-test.f` — source-shape coverage for factored Darwin
   spawn primitive emitters in `src/habu/habu1.f`.
 - `tools/c-call-emitter-test.f` — source-shape coverage for factored native
@@ -1097,6 +1099,8 @@ points stay listed.
   stat) and their coverage.
 - `lib/fs-root.f` — checked write-and-search directory predicate for persistent
   roots.
+- `lib/fs-atomic.f` / `lib/fs-atomic-test.f` — checked directory-bound staged
+  replacement, explicit commit-state results, concurrency, and failure coverage.
 - `lib/fs-mutate.f` / `lib/fs-mutate-test.f` — checked filesystem mutation
   helpers (mkdir, remove, rename, cleanup) and their coverage.
 - `lib/map.f` / `lib/map-test.f` — fixed-capacity open-addressed string-key
