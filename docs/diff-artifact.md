@@ -9,6 +9,10 @@ bin/hb --load tools/typed-local-diff-lint.f -- /tmp/change.hbdiff
 bin/hb --load tools/kernel-perf-lint.f -- /tmp/change.hbdiff
 ```
 
+`tools/diff-capture.f` remains deliberately fail-closed until the reviewed bulk
+adapter installs the production provider. The command above is the activation
+contract; there is no legacy content fallback.
+
 `tools/diff-capture.f` obtains one operation ID with one atomic `jj op log`
 command, then runs every revision resolution, metadata query, raw diff, and
 content query at that operation. The resolved full commit IDs are stored in the
@@ -16,11 +20,20 @@ header; later operation or working-copy changes cannot alter the artifact.
 Content identity, body presence, binary form, and mode change are derived
 independently of the raw diff, then checked against it before framing.
 
-Command diagnostics retain the phase, argv, outcome, exit status, Habu throw
-code, diagnostic-capture throw code, stdout, and stderr. A zero exit status with
-stderr is successful; callers can inspect the diagnostic. Spawn/open failures
+Command diagnostics retain the phase, argv, outcome, exit status, command throw
+code, independent stdout/stderr capture codes, stdout, and stderr. Process
+outcome is recorded before either diagnostic file is loaded; both loads run even
+when one fails. A zero exit status with stderr is successful. Spawn/open failures
 propagate their exact errors, and nonzero jj completion becomes
-`E-DIFF-CAPTURE`. `DIFF-CAPTURE:REPORT$` returns the structured JSON diagnostic.
+`E-DIFF-CAPTURE`. Argv, stdout, and stderr are hexadecimal JSON strings with
+explicit encoding fields, so arbitrary command and output bytes cannot
+invalidate the report. Hex bytes stream directly into the growable JSON writer;
+diagnostic size is not bounded by shared string scratch and rendering cannot
+replace the recorded capture outcome. `DIFF-CAPTURE:REPORT$` returns the
+structured JSON diagnostic.
+Capture-level outcome is ready before temporary-root creation or jj discovery;
+command fields are omitted and `command_present` is false until a command starts.
+`DIFF-CAPTURE:COMMAND?` guards command accessors, which fail closed while absent.
 Invalid resolved IDs, metadata/schema violations, raw-section violations,
 cleanup failures, or output-write failures abort without publishing the
 destination. The existing destination is never removed before capture and
@@ -29,15 +42,42 @@ tree is cleaned before the one atomic publish. A primary failure combined with
 a cleanup failure rethrows the primary code while preserving both codes in the
 typed capture outcome, accessors, and JSON diagnostic.
 
+The CLI delivers the complete JSON object plus its trailing LF through a checked
+full-write loop. Partial writes advance until all bytes are delivered; zero,
+negative, oversized, or throwing writes fail. `DIFF-REPORT` keeps the original
+capture code, report-delivery code, and typed unattempted/delivered/render-failed/
+write-failed outcome in separate fields. A render or write failure therefore
+never replaces the capture failure; the CLI still rethrows the original code.
+The inherited diagnostic descriptor is borrowed and remains open.
+
 Metadata declares side presence through its tree-entry kind. Capture normalizes
 an absent side to an empty path; parsing rejects an absent side with a path or
 executable bit, a present side without a path, and status/path combinations that
-do not agree.
+do not agree. Producer, frame writer, and authenticated reader all call the same
+nonempty, NUL-free repository-path validator. Authentication never substitutes
+for this schema check.
 
-The private checked `CONTENT-PROVIDER` seam is the integration point for the
-single bulk side-content artifact. Its current provider issues per-row content
-queries; `habu-tools-bulk-diff-f36d0508` must replace that provider and retire
-the per-row path before this producer is the final architecture.
+Content capture has no default or per-row fallback. Production must install one
+checked provider with `DIFF-CAPTURE:CONTENT-PROVIDER! ([ -- ] --)` before
+`RUN`/`RUN-IN`; an unbound provider fails with `E-DIFF-CAPTURE` after metadata
+validation and before framing. The provider runs once per capture. During that
+call, `CONTENT-METADATA$` exposes the exact metadata bytes,
+`CONTENT-METADATA-PATH$` exposes their existing capture-owned file, and
+`CONTENT-ROW-COUNT` exposes the required row count. After authenticating a
+single bulk side-content artifact against those metadata bytes, the provider
+calls `CONTENT-ROW!` exactly once for every zero-based row:
+
+```text
+CONTENT-ROW! ( row old-size old-binary old-digest old-digest-u
+               new-size new-binary new-digest new-digest-u -- )
+```
+
+Each digest length must be 32 bytes; sizes must be nonnegative; absent and
+gitlink sides must have zero size and cannot be binary; only files may be
+binary. Duplicate, missing, out-of-range, or noncanonical rows fail closed.
+Provider metadata/count access and row mutation also fail outside the active
+provider call. The reviewed bulk adapter is therefore an explicit production
+dependency rather than a caller opt-in or legacy fallback.
 
 ## Binary contract
 
@@ -102,7 +142,3 @@ capacity when possible.
 
 Consumers load artifact files through `DIFF-FILE:LOAD`, which allocates from the
 exact file size and requires an exact read. It has no fixed 16 MiB ceiling.
-
-The raw Git-format parser is private implementation machinery. Public
-line-at-a-time reset/line/finish entry points do not exist: they cannot prove
-section length, form, identity, count, or artifact integrity.

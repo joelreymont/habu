@@ -778,13 +778,32 @@ points stay listed.
   malformed-input coverage.
 - `tools/lint/diff-frame-write.f` — exact-size encoder for authenticated `.hbdiff`
   artifacts.
+- `tools/lint/diff-error.f` — shared framed-diff error-code block.
 - `tools/lint/diff-frame.f` / `tools/lint/diff-frame-test.f` — authenticated framed
   artifact reader, section/event API, corruption tests, and byte-exact path matrix.
 - `tools/lint/diff-file.f` — shared exact-size OS-backed framed-artifact file loader.
-- `tools/diff-capture-core.f` / `tools/diff-capture.f` — operation-pinned jj
-  metadata/raw-diff capture and checked `.hbdiff` CLI.
-- `tools/diff-capture-test.f` — real-jj capture coverage for text, binary, mode,
-  empty, rename, gitlink, adversarial paths, revision failure, and cleanup.
+- `tools/lint/diff-path.f` — checked nonempty, NUL-free repository-path validator
+  shared by diff producers, writers, and readers.
+- `tools/diff-report.f` / `tools/diff-report-test.f` — checked full-write JSON
+  diagnostic delivery with separate capture/report outcomes, partial-write
+  coverage, and original-failure preservation.
+- `tools/diff-capture-types.f` / `tools/diff-capture-command.f` — public capture
+  outcome schemas and operation-pinned jj command/process capture.
+- `tools/diff-capture-metadata.f` / `tools/diff-capture-content.f` — parsed
+  change-row model and fail-closed bulk-content provider contract.
+- `tools/diff-capture-frame.f` / `tools/diff-capture-transaction.f` — validated
+  raw-diff frame assembly and cleanup/publication transaction.
+- `tools/diff-capture-diagnostic.f` / `tools/diff-capture-core.f` /
+  `tools/diff-capture.f` — structured failure rendering, public capture facade,
+  and checked `.hbdiff` CLI.
+- `tools/diff-capture-test-support.f` /
+  `tools/diff-capture-command-test-support.f` — real-jj test content provider
+  and isolated command seams.
+- `tools/diff-capture-test.f` / `tools/diff-capture-command-test.f` /
+  `tools/diff-capture-metadata-test.f` / `tools/diff-capture-content-test.f` /
+  `tools/diff-capture-transaction-test.f` /
+  `tools/diff-capture-diagnostic-test.f` — real-jj frame coverage plus focused
+  command, metadata, content-contract, transaction, and diagnostic contracts.
 - `tools/lint/text.f` / `tools/lint/token.f` / `tools/lint/intern.f` /
   `tools/lint/lib.f` — shared native lint foundation: checked text/file
   helpers, the whitespace token table, the growable string interner, and the

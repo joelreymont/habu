@@ -320,7 +320,13 @@ variable GSI-TL-FILE-A
 : GSI-TOOL-TYPED-BODY ( -- )
    s" tools/lint/diff-test.f" GSI-INCLUDE
    s" tools/lint/diff-frame-test.f" GSI-INCLUDE
+   s" tools/diff-report-test.f" GSI-INCLUDE
    s" tools/diff-capture-test.f" GSI-INCLUDE
+   s" tools/diff-capture-command-test.f" GSI-INCLUDE
+   s" tools/diff-capture-metadata-test.f" GSI-INCLUDE
+   s" tools/diff-capture-content-test.f" GSI-INCLUDE
+   s" tools/diff-capture-transaction-test.f" GSI-INCLUDE
+   s" tools/diff-capture-diagnostic-test.f" GSI-INCLUDE
    s" tools/typed-local-diff-lint-test.f" GSI-INCLUDE ;
 
 : GSI-TOOL-REPAIR ( -- )

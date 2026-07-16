@@ -4,7 +4,7 @@ require src/core/sha256.f
 require lib/prelude.f
 require lib/string.f
 require lib/memory.f
-require tools/lint/diff.f
+require tools/lint/diff-path.f
 
 package DIFF
 private
@@ -263,6 +263,8 @@ create GOT-DIGEST DIGEST-U allot
    U64 SPAN SEC-RAW-U ! SEC-RAW-A! ;
 
 : CHECK-SECTION ( -- )
+   SEC-OLD? SEC-OLD$ DIFF-PATH:VALIDATE-SIDE
+   SEC-NEW? SEC-NEW$ DIFF-PATH:VALIDATE-SIDE
    SEC-STATUS@ SEC-OLD? SEC-OLD$ SEC-NEW? SEC-NEW$ SEC-RAW$
    VALIDATE-SECTION {: got:form body:bool mode:bool :}
    got FORM>BYTE SEC-FORM@ FORM>BYTE <> if E-DIFF-SYNTAX throw then

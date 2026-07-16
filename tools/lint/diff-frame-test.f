@@ -39,6 +39,7 @@ $72 constant FORM-OFF
 $73 constant BODY-OFF
 $74 constant MODE-OFF
 $78 constant OLD-LEN-OFF
+$80 constant OLD-PATH-OFF
 
 create ART ART-CAP allot
 create COPY ART-CAP allot
@@ -195,6 +196,10 @@ variable GROW-U
    s" has b/ split" s" path-b" PATH-CASE
    s" has and split" s" path-and" PATH-CASE ;
 
+: NUL-PATH! ( -- )
+   s" a-b" PATH!
+   0 PATH-BUF 1+ c! ;
+
 : EVENT# ( DIFF:event -- n )
    MATCH DIFF:event
       none    OF 0 ENDOF
@@ -317,6 +322,16 @@ variable GROW-U
 
 : COPY-OPEN ( -- )
    COPY ART-U @ DIFF:OPEN ;
+
+: TEST-NUL-PATH ( -- )
+   NUL-PATH!
+   [: ONE-TEXT ;] E-DIFF-SYNTAX TTHROWSQ
+   s" a.f" PATH!
+   ONE-TEXT
+   COPY-ART
+   0 COPY OLD-PATH-OFF + c!
+   RESEAL
+   [: COPY-OPEN ;] E-DIFF-SYNTAX TTHROWSQ ;
 
 : LE64! ( n ptr u8 -- ) {: value:n dst:ptr :}
    0 begin dup 8 < while
@@ -459,6 +474,7 @@ variable GROW-U
    [: ONE-TEXT ;] catch s" write-text" T-LABEL 0 T=
    [: START-SHORT-ID ;] E-DIFF-SYNTAX TTHROWSQ
    TEST-PATH-MATRIX
+   TEST-NUL-PATH
    [: TEST-PATH ;] catch s" TEST-PATH" T-LABEL 0 T=
    [: TEST-FORMS ;] catch s" TEST-FORMS" T-LABEL 0 T=
    [: TEST-REPLACEMENTS ;] catch s" TEST-REPLACEMENTS" T-LABEL 0 T=

@@ -1,5 +1,5 @@
 \ diff.f - checked byte-exact validator for jj Git-format sections.
-\ LINE emits borrowed file/content spans plus hunk new-line metadata.  The
+\ RAW-STEP emits borrowed file/content spans plus hunk new-line metadata.  The
 \ parser preserves raw path bytes, resolves ambiguous heads from ordered body
 \ metadata, and emits content only while exact old/new hunk counts remain.
 \ Metadata-only sections finish only after their complete form; indexed text
@@ -10,11 +10,7 @@ require lib/errors.f
 require lib/prelude.f
 require lib/string.f
 require lib/adt/option.f
-
--7400 constant E-DIFF-SYNTAX
--7401 constant E-DIFF-FRAME-CAP
--7402 constant E-DIFF-CAPTURE
--7403 constant E-DIFF-CAPTURE-ID
+require tools/lint/diff-error.f
 
 package DIFF
 public

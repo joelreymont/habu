@@ -151,7 +151,13 @@ TEST:;SUITE
 TEST:SUITE tool-boundary-typed-local
    tools/lint/diff-test.f
    tools/lint/diff-frame-test.f
+   tools/diff-report-test.f
    tools/diff-capture-test.f
+   tools/diff-capture-command-test.f
+   tools/diff-capture-metadata-test.f
+   tools/diff-capture-content-test.f
+   tools/diff-capture-transaction-test.f
+   tools/diff-capture-diagnostic-test.f
    tools/typed-local-diff-lint-test.f
 TEST:;SUITE
 

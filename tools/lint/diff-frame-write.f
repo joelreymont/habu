@@ -3,7 +3,7 @@
 require src/core/sha256.f
 require lib/prelude.f
 require lib/string.f
-require tools/lint/diff.f
+require tools/lint/diff-path.f
 
 package DIFF-WRITE
 private
@@ -80,12 +80,7 @@ create DIGEST DIGEST-U allot
 : BOOL-BYTE ( bool -- n )
    if 1 else 0 then ;
 
-: PATH ( bool ptr u8 n -- ) {: present:bool a:ptr u:n :}
-   present if
-      u 0 <= if E-DIFF-SYNTAX throw then
-   else
-      u 0<> if E-DIFF-SYNTAX throw then
-   then
+: PATH ( ptr u8 n -- ) {: a:ptr u:n :}
    u U64
    a u BYTES ;
 
@@ -104,6 +99,8 @@ create DIGEST DIGEST-U allot
 
 : CHECK-SECTION ( DIFF:status DIFF:form bool bool bool ptr u8 n bool ptr u8 n ptr u8 n -- )
    {: change:DIFF:status expected:DIFF:form body:bool mode:bool old?:bool oa:ptr ou:n new?:bool na:ptr nu:n raw:ptr rawu:n :}
+   old? oa ou DIFF-PATH:VALIDATE-SIDE
+   new? na nu DIFF-PATH:VALIDATE-SIDE
    change old? oa ou new? na nu raw rawu DIFF:VALIDATE-SECTION
    {: got:DIFF:form gotbody:bool gotmode:bool :}
    got FORM-BYTE expected FORM-BYTE <> if E-DIFF-SYNTAX throw then
@@ -139,8 +136,8 @@ public
    old? BOOL-BYTE U8
    new? BOOL-BYTE U8
    0 U8
-   old? oa ou PATH
-   new? na nu PATH
+   oa ou PATH
+   na nu PATH
    rawu U64 raw rawu BYTES
    SECTION-N @ $7FFFFFFFFFFFFFFF = if E-DIFF-FRAME-CAP throw then
    SECTION-N @ 1+ SECTION-N ! ;

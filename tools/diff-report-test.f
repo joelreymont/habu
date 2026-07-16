@@ -1,0 +1,182 @@
+\ diff-report-test.f - complete and failed diagnostic delivery regressions.
+
+require lib/errors.f
+require lib/string.f
+require lib/test.f
+require tools/diff-report.f
+
+package DIFF-REPORT
+private
+
+$100 constant TEST-CAP
+3 constant TEST-CHUNK
+create TEST-BUF TEST-CAP allot
+variable TEST-U
+variable TEST-CALLS
+
+: TEST-RESET ( -- )
+   0 TEST-U !
+   0 TEST-CALLS ! ;
+
+: TEST-APPEND ( ptr u8 n -- ) {: a:ptr u:n :}
+   TEST-U @ u + TEST-U @ < if E-FS-CAPACITY throw then
+   TEST-U @ u + TEST-CAP > if E-FS-CAPACITY throw then
+   a TEST-BUF TEST-U @ + u BYTE-COPY
+   TEST-U @ u + TEST-U ! ;
+
+: TEST-PARTIAL ( n ptr u8 n -- n )
+   {: fd:n a:ptr u:n :}
+   fd drop
+   TEST-CALLS @ 1+ TEST-CALLS !
+   u TEST-CHUNK > if TEST-CHUNK else u then {: wrote:n :}
+   a wrote TEST-APPEND
+   wrote ;
+
+: TEST-FAIL ( n ptr u8 n -- n )
+   {: fd:n a:ptr u:n :}
+   fd drop
+   TEST-CALLS @ 1+ TEST-CALLS !
+   TEST-CALLS @ 1 > if -1 exit then
+   u 2 > if 2 else u then {: wrote:n :}
+   a wrote TEST-APPEND
+   wrote ;
+
+: TEST-ZERO ( n ptr u8 n -- n )
+   {: fd:n a:ptr u:n :}
+   fd drop a drop u drop
+   TEST-CALLS @ 1+ TEST-CALLS !
+   0 ;
+
+: TEST-OVERSIZED ( n ptr u8 n -- n )
+   {: fd:n a:ptr u:n :}
+   fd drop a drop
+   TEST-CALLS @ 1+ TEST-CALLS !
+   u 1+ ;
+
+: TEST-THROW ( n ptr u8 n -- n )
+   {: fd:n a:ptr u:n :}
+   fd drop a drop u drop
+   TEST-CALLS @ 1+ TEST-CALLS !
+   TEST-CALLS @ 0 > if E-FS-STAT throw then
+   0 ;
+
+public
+
+: TEST-PARTIAL-ON ( -- )
+   TEST-RESET
+   [: TEST-PARTIAL ;] is SINK ;
+
+: TEST-FAIL-ON ( -- )
+   TEST-RESET
+   [: TEST-FAIL ;] is SINK ;
+
+: TEST-ZERO-ON ( -- )
+   TEST-RESET
+   [: TEST-ZERO ;] is SINK ;
+
+: TEST-OVERSIZED-ON ( -- )
+   TEST-RESET
+   [: TEST-OVERSIZED ;] is SINK ;
+
+: TEST-THROW-ON ( -- )
+   TEST-RESET
+   [: TEST-THROW ;] is SINK ;
+
+: TEST-SEAM-OFF ( -- )
+   RESET-SINK ;
+
+: TEST-BYTES$ ( -- ptr u8 n )
+   TEST-BUF TEST-U @ ;
+
+: TEST-CALL-COUNT ( -- n )
+   TEST-CALLS @ ;
+
+;package
+
+package DIFF-REPORT-TEST
+private
+
+: OUTCOME# ( delivery -- n )
+   MATCH delivery
+      unattempted OF 0 ENDOF
+      delivered   OF 1 ENDOF
+      render-failed OF 2 ENDOF
+      write-failed  OF 3 ENDOF
+   ;MATCH ;
+
+: TEST-PARTIAL-WRITE ( -- )
+   E-PROC-SPAWN DIFF-REPORT:START
+   DIFF-REPORT:TEST-PARTIAL-ON
+   s" abcdef" DIFF-REPORT:DELIVER E-PROC-SPAWN T=
+   DIFF-REPORT:CAPTURE-CODE E-PROC-SPAWN T=
+   DIFF-REPORT:REPORT-CODE 0 T=
+   DIFF-REPORT:LAST-OUTCOME OUTCOME# 1 T=
+   DIFF-REPORT:TEST-CALL-COUNT 2 > TTRUE
+   DIFF-REPORT:TEST-BYTES$ S\" abcdef\n" T$=
+   DIFF-REPORT:TEST-SEAM-OFF ;
+
+: TEST-WRITE-FAILURE ( -- )
+   E-PROC-SPAWN DIFF-REPORT:START
+   DIFF-REPORT:TEST-FAIL-ON
+   s" abcdef" DIFF-REPORT:DELIVER E-PROC-SPAWN T=
+   DIFF-REPORT:CAPTURE-CODE E-PROC-SPAWN T=
+   DIFF-REPORT:REPORT-CODE E-FS-IO T=
+   DIFF-REPORT:LAST-OUTCOME OUTCOME# 3 T=
+   DIFF-REPORT:TEST-CALL-COUNT 2 T=
+   DIFF-REPORT:TEST-BYTES$ s" ab" T$=
+   DIFF-REPORT:TEST-SEAM-OFF ;
+
+: TEST-ZERO-WRITE ( -- )
+   E-PROC-SPAWN DIFF-REPORT:START
+   DIFF-REPORT:TEST-ZERO-ON
+   s" abcdef" DIFF-REPORT:DELIVER E-PROC-SPAWN T=
+   DIFF-REPORT:REPORT-CODE E-FS-IO T=
+   DIFF-REPORT:LAST-OUTCOME OUTCOME# 3 T=
+   DIFF-REPORT:TEST-CALL-COUNT 1 T=
+   DIFF-REPORT:TEST-SEAM-OFF ;
+
+: TEST-OVERSIZED-WRITE ( -- )
+   E-PROC-SPAWN DIFF-REPORT:START
+   DIFF-REPORT:TEST-OVERSIZED-ON
+   s" abcdef" DIFF-REPORT:DELIVER E-PROC-SPAWN T=
+   DIFF-REPORT:REPORT-CODE E-FS-IO T=
+   DIFF-REPORT:LAST-OUTCOME OUTCOME# 3 T=
+   DIFF-REPORT:TEST-CALL-COUNT 1 T=
+   DIFF-REPORT:TEST-SEAM-OFF ;
+
+: TEST-THROWING-WRITE ( -- )
+   E-PROC-SPAWN DIFF-REPORT:START
+   DIFF-REPORT:TEST-THROW-ON
+   s" abcdef" DIFF-REPORT:DELIVER E-PROC-SPAWN T=
+   DIFF-REPORT:REPORT-CODE E-FS-STAT T=
+   DIFF-REPORT:LAST-OUTCOME OUTCOME# 3 T=
+   DIFF-REPORT:TEST-CALL-COUNT 1 T=
+   DIFF-REPORT:TEST-SEAM-OFF ;
+
+: TEST-NEGATIVE-LENGTH ( -- )
+   E-PROC-SPAWN DIFF-REPORT:START
+   s" x" drop -1 DIFF-REPORT:DELIVER E-PROC-SPAWN T=
+   DIFF-REPORT:REPORT-CODE E-FS-CAPACITY T=
+   DIFF-REPORT:LAST-OUTCOME OUTCOME# 3 T= ;
+
+: TEST-RENDER-FAILURE ( -- )
+   E-PROC-SPAWN DIFF-REPORT:START
+   E-FS-CAPACITY DIFF-REPORT:RECORD-FAILURE E-PROC-SPAWN T=
+   DIFF-REPORT:CAPTURE-CODE E-PROC-SPAWN T=
+   DIFF-REPORT:REPORT-CODE E-FS-CAPACITY T=
+   DIFF-REPORT:LAST-OUTCOME OUTCOME# 2 T= ;
+
+: RUN ( -- )
+   T-RESET
+   TEST-PARTIAL-WRITE
+   TEST-WRITE-FAILURE
+   TEST-ZERO-WRITE
+   TEST-OVERSIZED-WRITE
+   TEST-THROWING-WRITE
+   TEST-NEGATIVE-LENGTH
+   TEST-RENDER-FAILURE
+   T-REPORT ;
+
+RUN
+
+;package

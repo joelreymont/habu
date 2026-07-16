@@ -2,7 +2,7 @@
 
 # FIXME: Rewrite this to be concise without losing precision
 
-Last updated: 2026-07-15
+Last updated: 2026-07-16
 
 - **Sealing declared-effect parametricity must target sealed FAMILIES, not all
   concrete specialization.** The nominal-storage effect seal (post-body
@@ -2474,6 +2474,11 @@ lesson — keep the specific word/code/path, cut the prose.
   for every case. Put reusable logic and buffered output in `*-core.f`, leave
   `tool.f` as a thin `MAIN` entry, and keep only one CLI smoke for argv/wrapper
   behavior.
+- **A module split also needs test ownership cuts:** splitting a large checked
+  tool into package files adds boundary words even when the behavior is unchanged;
+  one monolithic fixture then hit the native code-capacity exit. Keep the public
+  facade as zero-code `EXPORT`s where tails match, give each package a focused
+  test process, and leave the real integration fixture to cross-package behavior.
 - **Evaluate frames must live outside compiler scratch:** `EVAL-FRAME=$280`
   overlapped `VVAL-OFF=$250` and `SNAPSTK-OFF=$360`; compiling a seven-argument
   call inside `evaluate` overwrote the saved outer `INP` and crashed on the next
@@ -4470,3 +4475,33 @@ unchanged (148855). Keys for milestone 2:
   failures, and retain both primary and cleanup codes when both fail.
 - **Presence is schema state, not string length.** Normalize absent metadata to
   an empty path, then reject every kind/path/status mismatch before framing.
+- **Authentication does not confer schema validity.** Producer, encoder, and
+  authenticated reader must share the same path validator; a re-signed NUL path
+  is still invalid.
+- **Diagnostic capture has independent failure axes.** Record process outcome
+  first, attempt stdout and stderr loads independently, and retain the command
+  failure plus both capture failures in the structured report.
+- **Arbitrary command and diagnostic bytes need an explicit JSON representation.**
+  Hex encoding preserves invalid UTF-8 without emitting invalid JSON.
+- **Diagnostic encoding must not reuse fixed-capacity formatting scratch.** Stream
+  arbitrary byte fields into the growable report writer so a large diagnostic
+  cannot hide the already-recorded primary failure behind a rendering error.
+- **Required providers must be fail-closed at the owning boundary.** Leave the
+  provider unbound by default, require exact once-per-row completion, and make
+  production install the checked bulk implementation explicitly; caller opt-in
+  plus a legacy fallback silently preserves the architecture being retired.
+- **Failure reporting has two outcomes.** Write the entire diagnostic with a
+  checked partial-write loop, retain capture and delivery codes separately,
+  distinguish render from write failure structurally, and always rethrow the
+  original capture failure when reporting also fails. Borrowed process streams
+  remain open; only the owner closes a descriptor.
+- **Shared error codes need a dependency-sized owner.** A small delivery module
+  must not load the full diff parser merely to name `E-DIFF-CAPTURE`; keep the
+  subsystem's error block in a narrow required file.
+- **Package scope does not make a family tail globally unique.** A public
+  `ENUM outcome` still collided with the process `outcome` family; choose the
+  shortest domain name that is globally distinct (`delivery`) and keep API
+  words namespaced by the package.
+- **Caught quotations cannot close over typed locals.** Store the pending
+  arguments in typed module state and catch a `--` helper; otherwise `catch`
+  restores the pre-call values and the checker reports the expanded stack.

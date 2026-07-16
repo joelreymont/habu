@@ -13,103 +13,15 @@ require lib/process-cwd.f
 require tools/diff-capture-core.f
 require tools/lint/diff-frame.f
 
-package DIFF-CAPTURE
-private
-
-variable TEST-OPEN-I
-variable TEST-OPEN-FAIL-I
-variable TEST-WARN-N
-variable TEST-BARRIER-N
-
-: TEST-OPEN-FAULT ( ptr u8 n -- fd )
-   TEST-OPEN-I @ 1+ TEST-OPEN-I !
-   TEST-OPEN-I @ TEST-OPEN-FAIL-I @ = if E-FS-OPEN throw then
-   COMMAND-OPEN-DEFAULT ;
-
-: TEST-SPAWN-FAULT ( -- )
-   E-PROC-SPAWN throw ;
-
-: TEST-SPAWN-WARN ( -- )
-   SPAWN
-   ERR-FD @ s" hook-stderr" write 11 <> if E-FS-IO throw then
-   TEST-WARN-N @ 1+ TEST-WARN-N ! ;
-
-: TEST-CLEAN-FAULT ( -- )
-   E-FS-DIR throw ;
-
-: TEST-PUBLISH-FAULT ( -- )
-   E-FS-IO throw ;
-
-: TEST-BARRIER ( -- )
-   TEST-BARRIER-N @ 1+ TEST-BARRIER-N !
-   ARGS-RESET
-   REPO-ARG
-   s" new" ARG s" -m" ARG s" concurrent operation" ARG
-   construct command-phase snapshot OUT-PATH$ RUN-JJ-COMMAND ;
-
-public
-
-: TEST-OPEN-ON ( n -- )
-   TEST-OPEN-FAIL-I !
-   0 TEST-OPEN-I !
-   [: TEST-OPEN-FAULT ;] is COMMAND-OPEN ;
-
-: TEST-SPAWN-FAULT-ON ( -- )
-   [: TEST-SPAWN-FAULT ;] is COMMAND-SPAWN ;
-
-: TEST-SPAWN-WARN-ON ( -- )
-   0 TEST-WARN-N !
-   [: TEST-SPAWN-WARN ;] is COMMAND-SPAWN ;
-
-: TEST-CLEAN-FAULT-ON ( -- )
-   [: TEST-CLEAN-FAULT ;] is CAPTURE-CLEAN ;
-
-: TEST-PUBLISH-FAULT-ON ( -- )
-   [: TEST-PUBLISH-FAULT ;] is CAPTURE-PUBLISH ;
-
-: TEST-BARRIER-ON ( -- )
-   0 TEST-BARRIER-N !
-   [: TEST-BARRIER ;] is SNAPSHOT-BARRIER ;
-
-: TEST-SEAMS-OFF ( -- )
-   RESET-COMMAND-OPEN
-   RESET-COMMAND-SPAWN
-   RESET-CAPTURE-CLEAN
-   RESET-CAPTURE-PUBLISH
-   RESET-SNAPSHOT-BARRIER ;
-
-: TEST-FDS-CLOSED? ( -- bool )
-   OUT-FD @ -1 = ERR-FD @ -1 = and ;
-
-: TEST-WARN-COUNT ( -- n )
-   TEST-WARN-N @ ;
-
-: TEST-BARRIER-COUNT ( -- n )
-   TEST-BARRIER-N @ ;
-
-: TEST-ROOT-EXISTS? ( -- bool )
-   ROOT$ EXISTS? ;
-
-: TEST-FORCE-CLEAN ( -- )
-   CAPTURE-CLEAN-DEFAULT ;
-
-: TEST-PARSE-ROW ( ptr u8 n -- )
-   0 PARSE-ROW ;
-
-: TEST-CAPTURE-OUTCOME# ( -- n )
-   LAST-CAPTURE-AT @ MATCH capture-outcome
-      ok              OF 0 ENDOF
-      primary-failed  OF 1 ENDOF
-      cleanup-failed  OF 2 ENDOF
-      combined-failed OF 3 ENDOF
-   ;MATCH ;
-
-;package
+require tools/diff-capture-test-support.f
+require tools/diff-capture-command-test-support.f
 
 package DIFF-CAPTURE-TEST
 private
 
 $10000 constant CAP
+5 constant WARN-U
+$1000 constant LARGE-U
 $0A constant LF-C
 $0D constant CR-C
 $09 constant TAB-C
@@ -614,22 +526,9 @@ create NEW-BIN $41 c, 0 c, $43 c,
    SAW-GITLINK @ TTRUE
    SAW-MODULES @ TTRUE ;
 
-: SEED-VALID-BAD ( -- )
-   BAD-PATH$ ART ART-U @ WRITE-ALL ;
-
-: BAD-UNCHANGED ( -- )
-   BAD-PATH$ FILE-SIZE ART-U @ T=
-   BAD-PATH$ OUT CAP READ-ALL {: u:n :}
-   OUT u ART ART-U @ T$= ;
-
-: INVALID-CAPTURE ( -- )
-   ROOT$ BAD-PATH$ s" no-such-revision" s" @-" DIFF-CAPTURE:RUN-IN ;
-
 : VALID-CAPTURE ( -- )
+   DIFF-CMD:TEST-CONTENT-ON
    ROOT$ ART-PATH$ s" @--" s" @-" DIFF-CAPTURE:RUN-IN ;
-
-: VALID-BAD-CAPTURE ( -- )
-   ROOT$ BAD-PATH$ s" @--" s" @-" DIFF-CAPTURE:RUN-IN ;
 
 : CAPTURE-CHECK ( -- )
    [: VALID-CAPTURE ;] catch {: code:n :}
@@ -638,150 +537,25 @@ create NEW-BIN $41 c, 0 c, $43 c,
    code throw ;
 
 : RESTORE-SEAMS ( n -- ) {: code:n :}
-   DIFF-CAPTURE:TEST-SEAMS-OFF
+   DIFF-CMD:TEST-SEAMS-OFF
+   DIFF-CONTENT:RESET
    code 0<> if code throw then ;
 
 : HOOKED-CAPTURE ( -- )
-   DIFF-CAPTURE:TEST-SPAWN-WARN-ON
-   DIFF-CAPTURE:TEST-BARRIER-ON
+   DIFF-CMD:TEST-SPAWN-WARN-ON
+   DIFF-CMD:TEST-BARRIER-ON
    [: CAPTURE-CHECK ;] catch RESTORE-SEAMS ;
 
-: OPEN-FIRST-FAULT ( -- )
-   1 DIFF-CAPTURE:TEST-OPEN-ON
-   [: VALID-BAD-CAPTURE ;] catch RESTORE-SEAMS ;
-
-: OPEN-SECOND-FAULT ( -- )
-   2 DIFF-CAPTURE:TEST-OPEN-ON
-   [: VALID-BAD-CAPTURE ;] catch RESTORE-SEAMS ;
-
-: SPAWN-FAULT ( -- )
-   DIFF-CAPTURE:TEST-SPAWN-FAULT-ON
-   [: VALID-BAD-CAPTURE ;] catch RESTORE-SEAMS ;
-
-: CLEAN-FAULT ( -- )
-   DIFF-CAPTURE:TEST-CLEAN-FAULT-ON
-   [: VALID-BAD-CAPTURE ;] catch RESTORE-SEAMS ;
-
-: PRIMARY-CLEAN-FAULT ( -- )
-   1 DIFF-CAPTURE:TEST-OPEN-ON
-   DIFF-CAPTURE:TEST-CLEAN-FAULT-ON
-   [: VALID-BAD-CAPTURE ;] catch RESTORE-SEAMS ;
-
-: PUBLISH-FAULT ( -- )
-   DIFF-CAPTURE:TEST-PUBLISH-FAULT-ON
-   [: VALID-BAD-CAPTURE ;] catch RESTORE-SEAMS ;
-
-: CHECK-FAULT-REPORT ( n ptr u8 n -- ) {: code:n text:ptr textu:n :}
-   DIFF-CAPTURE:LAST-CODE code T=
-   DIFF-CAPTURE:LAST-RC 0 T=
+: CHECK-BYTE-REPORT ( -- )
+   DIFF-CAPTURE:LAST-ERR$ {: a:ptr u:n :}
+   u WARN-U T=
+   a c@ $FF T=
+   a 1+ c@ $80 T=
    DIFF-CAPTURE:REPORT$ JSON-PARSE {: root:n :}
-   root JSON-KIND J-OBJ T=
-   root s" phase" JSON-GET JSON-STRING$ s" snapshot" T$=
-   root s" outcome" JSON-GET JSON-STRING$ s" fault" T$=
-   root s" code" JSON-GET JSON-NUMBER$ text textu T$=
-   root s" argv" JSON-GET dup JSON-KIND J-ARR T=
-   JSON-COUNT 1 > TTRUE ;
+   root s" command_present" JSON-GET JSON-BOOL@ TTRUE
+   root s" stderr_encoding" JSON-GET JSON-STRING$ s" hex" T$=
+   root s" stderr" JSON-GET JSON-STRING$ s" ff80225c0a" T$= ;
 
-: CHECK-CAPTURE-RESULT ( n n n -- )
-   {: primary:n cleanup:n outcome:n :}
-   DIFF-CAPTURE:TEST-CAPTURE-OUTCOME# outcome T=
-   DIFF-CAPTURE:LAST-PRIMARY primary T=
-   DIFF-CAPTURE:LAST-CLEANUP cleanup T= ;
-
-: CHECK-COMBINED-REPORT ( -- )
-   DIFF-CAPTURE:REPORT$ JSON-PARSE {: root:n :}
-   root s" capture_outcome" JSON-GET JSON-STRING$ s" combined-failed" T$=
-   root s" primary_code" JSON-GET JSON-NUMBER$ s" -2102" T$=
-   root s" cleanup_code" JSON-GET JSON-NUMBER$ s" -2103" T$= ;
-
-: CHECK-FAULT-CLEAN ( n -- ) {: primary:n :}
-   BAD-UNCHANGED
-   primary 0 1 CHECK-CAPTURE-RESULT
-   DIFF-CAPTURE:TEST-FDS-CLOSED? TTRUE ;
-
-: TEST-COMMAND-FAULTS ( -- )
-   SEED-VALID-BAD
-   [: OPEN-FIRST-FAULT ;] E-FS-OPEN TTHROWSQ
-   E-FS-OPEN s" -2102" CHECK-FAULT-REPORT
-   E-FS-OPEN CHECK-FAULT-CLEAN
-   SEED-VALID-BAD
-   [: OPEN-SECOND-FAULT ;] E-FS-OPEN TTHROWSQ
-   E-FS-OPEN s" -2102" CHECK-FAULT-REPORT
-   E-FS-OPEN CHECK-FAULT-CLEAN
-   SEED-VALID-BAD
-   [: SPAWN-FAULT ;] E-PROC-SPAWN TTHROWSQ
-   E-PROC-SPAWN s" -2500" CHECK-FAULT-REPORT
-   E-PROC-SPAWN CHECK-FAULT-CLEAN ;
-
-: TEST-TRANSACTION-FAULTS ( -- )
-   SEED-VALID-BAD
-   [: PRIMARY-CLEAN-FAULT ;] E-FS-OPEN TTHROWSQ
-   BAD-UNCHANGED
-   E-FS-OPEN E-FS-DIR 3 CHECK-CAPTURE-RESULT
-   CHECK-COMBINED-REPORT
-   DIFF-CAPTURE:TEST-FDS-CLOSED? TTRUE
-   DIFF-CAPTURE:TEST-ROOT-EXISTS? TTRUE
-   DIFF-CAPTURE:TEST-FORCE-CLEAN
-   SEED-VALID-BAD
-   [: CLEAN-FAULT ;] E-FS-DIR TTHROWSQ
-   BAD-UNCHANGED
-   0 E-FS-DIR 2 CHECK-CAPTURE-RESULT
-   DIFF-CAPTURE:TEST-ROOT-EXISTS? TTRUE
-   DIFF-CAPTURE:TEST-FORCE-CLEAN
-   DIFF-CAPTURE:TEST-ROOT-EXISTS? TFALSE
-   SEED-VALID-BAD
-   [: PUBLISH-FAULT ;] E-FS-IO TTHROWSQ
-   BAD-UNCHANGED
-   E-FS-IO 0 1 CHECK-CAPTURE-RESULT
-   DIFF-CAPTURE:TEST-ROOT-EXISTS? TFALSE ;
-
-: CHECK-EXIT-REPORT ( -- )
-   DIFF-CAPTURE:LAST-CODE 0 T=
-   DIFF-CAPTURE:LAST-RC 0<> TTRUE
-   DIFF-CAPTURE:REPORT$ JSON-PARSE {: root:n :}
-   root s" phase" JSON-GET JSON-STRING$ s" resolve-from" T$=
-   root s" outcome" JSON-GET JSON-STRING$ s" exited" T$=
-   root s" rc" JSON-GET JSON-NUMBER$ s" 0" STR= TFALSE ;
-
-: TEST-INVALID-REVISION ( -- )
-   SEED-VALID-BAD
-   [: INVALID-CAPTURE ;] E-DIFF-CAPTURE TTHROWSQ
-   CHECK-EXIT-REPORT
-   BAD-UNCHANGED
-   E-DIFF-CAPTURE 0 1 CHECK-CAPTURE-RESULT
-   DIFF-CAPTURE:TEST-ROOT-EXISTS? TFALSE ;
-
-: PARSE-ADDED ( -- )
-   S\" [\qadded\q,\q\q,\q\q,false,false,\qnew.f\q,\qfile\q,false,false]"
-   DIFF-CAPTURE:TEST-PARSE-ROW ;
-
-: PARSE-ABSENT-PATH ( -- )
-   S\" [\qadded\q,\qold.f\q,\q\q,false,false,\qnew.f\q,\qfile\q,false,false]"
-   DIFF-CAPTURE:TEST-PARSE-ROW ;
-
-: PARSE-PRESENT-EMPTY ( -- )
-   S\" [\qadded\q,\q\q,\qfile\q,false,false,\qnew.f\q,\qfile\q,false,false]"
-   DIFF-CAPTURE:TEST-PARSE-ROW ;
-
-: PARSE-MODIFIED-PATHS ( -- )
-   S\" [\qmodified\q,\qold.f\q,\qfile\q,false,false,\qnew.f\q,\qfile\q,false,false]"
-   DIFF-CAPTURE:TEST-PARSE-ROW ;
-
-: PARSE-RENAMED-SAME ( -- )
-   S\" [\qrenamed\q,\qsame.f\q,\qfile\q,false,false,\qsame.f\q,\qfile\q,false,false]"
-   DIFF-CAPTURE:TEST-PARSE-ROW ;
-
-: PARSE-ABSENT-EXEC ( -- )
-   S\" [\qadded\q,\q\q,\q\q,true,false,\qnew.f\q,\qfile\q,false,false]"
-   DIFF-CAPTURE:TEST-PARSE-ROW ;
-
-: TEST-METADATA ( -- )
-   [: PARSE-ADDED ;] 0 TTHROWSQ
-   [: PARSE-ABSENT-PATH ;] E-DIFF-SYNTAX TTHROWSQ
-   [: PARSE-PRESENT-EMPTY ;] E-DIFF-SYNTAX TTHROWSQ
-   [: PARSE-MODIFIED-PATHS ;] E-DIFF-SYNTAX TTHROWSQ
-   [: PARSE-RENAMED-SAME ;] E-DIFF-SYNTAX TTHROWSQ
-   [: PARSE-ABSENT-EXEC ;] E-DIFF-SYNTAX TTHROWSQ ;
 
 : MAIN ( -- )
    T-RESET
@@ -799,14 +573,11 @@ create NEW-BIN $41 c, 0 c, $43 c,
    JJ-IMPORT
    ART-PATH$ s" prior" WRITE-ALL
    HOOKED-CAPTURE
-   DIFF-CAPTURE:TEST-WARN-COUNT 0 > TTRUE
-   DIFF-CAPTURE:TEST-BARRIER-COUNT 1 T=
+   DIFF-CMD:TEST-WARN-COUNT 0 > TTRUE
+   DIFF-CMD:TEST-BARRIER-COUNT 1 T=
    DIFF-CAPTURE:LAST-ERR$ nip 0 > TTRUE
+   CHECK-BYTE-REPORT
    READ-ARTIFACT
-   TEST-METADATA
-   TEST-INVALID-REVISION
-   TEST-COMMAND-FAULTS
-   TEST-TRANSACTION-FAULTS
    CLEANUP-RUN
    ROOT$ EXISTS? TFALSE
    T-REPORT
