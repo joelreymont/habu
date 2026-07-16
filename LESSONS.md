@@ -4,6 +4,13 @@
 
 Last updated: 2026-07-16
 
+- **Fork defenses need separate static and runtime proofs.** Keep the linear PTY
+  handle off the live stack at `fork`, then remint the inherited packed identity
+  only inside the child fixture; the registry's creating-pid check must reject
+  it while the parent still consumes its own handle exactly once. Package-local
+  names still cannot reuse core immediate control words such as `exit`; lookup
+  executes the immediate while compiling callers.
+
 - **Certify resolved bodies to expose signature lies.** Raw byte-arena arithmetic
   returns `ptr u8`; a declared `ptr a` result is sound only after an alignment
   check and a named, audited refinement boundary. Do not preserve a lying row by

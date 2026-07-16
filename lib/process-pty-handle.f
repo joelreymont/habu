@@ -131,6 +131,8 @@ TRUSTED: HANDLE>N ( process-pty-handle -- n ) ;
 : MINT ( idx -- process-pty-handle )
    PACK N>HANDLE ;
 
+public
+
 : HANDLE-PID ( process-pty-handle -- process-pty-handle pid )
    OPEN {: raw:n :}
    raw N>HANDLE raw UNPACK-IDX TARGET@ ;

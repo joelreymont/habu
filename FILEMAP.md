@@ -1081,6 +1081,10 @@ points stay listed.
   map layout and its coverage.
 - `lib/process.f` / `lib/process-test.f` — checked process helpers and their
   coverage.
+- `lib/process-pty-handle.f` / `lib/process-pty-handle-test.f` — private
+  generation-indexed linear PTY handle registry plus the public
+  `PROCESS-PTY:HANDLE-PID` ownership check; the focused fork regression proves
+  a child cannot consume its parent's inherited handle while the parent can.
 - `lib/process-argv.f` / `lib/process-argv-test.f` — checked argv process
   helpers and their coverage.
 - `lib/process-command.f` / `lib/process-command-test.f` — checked
