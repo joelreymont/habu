@@ -5066,3 +5066,18 @@ unchanged (148855). Keys for milestone 2:
   reminder: read the dot BODY (landed-leg/residual annotations), not just the
   Desc head — this dot's host leg had landed 8 days before dispatch and the
   annotation said so.
+- **`cp` over a LIVE bin/hb poisons the macOS AMFI cache for that vnode — the
+  symptom is exit 137 (SIGKILL) for that path only, with the identical bytes
+  running fine from any fresh path.** (relreach integration incident.) A worker
+  cp'd a seed binary over the shared checkout's bin/hb while gates were exec'ing
+  it; execs racing the truncate+rewrite saw a torn binary, AMFI cached the vnode
+  invalid, and every later exec of even VALID bytes at that path was killed —
+  including the fixpoint installer's own refresh child (E-BUILD-STATUS -2802),
+  and plausibly several phases of an in-flight run.f on a different tree.
+  Discriminator: copy the binary to a fresh path and exec (docs/debugging.md
+  already documents the AMFI gotcha). Cure: replace the file via a NEW inode
+  (rm + cp, or write-temp + rename — which is why the installer itself never
+  triggers this). Rules reinforced: workers NEVER write the shared checkout
+  (bin/hb included) — seed copies flow orchestrator->workspace only; and a
+  multi-phase red on a shared box is suspect if any agent touched bin/hb
+  mid-run — re-verify on an isolated workspace before RCA'ing the tree.
