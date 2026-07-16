@@ -5072,3 +5072,7 @@ unchanged (148855). Keys for milestone 2:
   reject stale, foreign, or forged handles. Perform that fallible validation
   before acquiring the non-reentrant lifecycle lock so rejection cannot leave
   every later operation spinning forever.
+- **One transaction boundary owns every START failure.** Resource setup and
+  registry commit are both fallible. Catch the complete sequence under one lock,
+  abort every acquired resource, preserve the primary error, and retain a named
+  cleanup-failure mask so secondary syscall failures remain inspectable.

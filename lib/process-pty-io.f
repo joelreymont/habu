@@ -19,6 +19,14 @@ $20 constant POLLNVAL
 9 constant SIGKILL
 $1388 constant KILL-WAIT-MS
 
+1 constant CLEAN-LIFE-W
+2 constant CLEAN-SUP
+4 constant CLEAN-MASTER
+8 constant CLEAN-SLAVE
+$10 constant CLEAN-LIFE-R
+$20 constant CLEAN-DONE-R
+$40 constant CLEAN-DONE-W
+
 $20007454 constant DARWIN-TIOCPTYGRANT
 $40807453 constant DARWIN-TIOCPTYGNAME
 $20007452 constant DARWIN-TIOCPTYUNLK
@@ -68,6 +76,8 @@ variable OP-DONE
 variable OP-ERR
 variable OP-STATUS
 variable FRAME-OFF
+variable CLEAN-MASK
+variable START-RAW
 
 : PTR-U8-FIELD ( ptr a -- ptr ptr u8 )
    0 ptr-field ;
@@ -285,18 +295,27 @@ variable FRAME-OFF
    sup PID>N 0 <= if false exit then
    sup PID>N wait-status 0 < ;
 
-: TX-ABORT ( -- bool )
-   false
-   TX-LIFE-W TX-CLOSE or
-   TX-WAIT-SUP? or
-   TX-MASTER TX-CLOSE or
-   TX-SLAVE TX-CLOSE or
-   TX-LIFE-R TX-CLOSE or
-   TX-DONE-R TX-CLOSE or
-   TX-DONE-W TX-CLOSE or ;
+: CLEAN+ ( n -- ) {: bit:n :}
+   CLEAN-MASK @ bit or CLEAN-MASK ! ;
 
-: START-FAIL ( n -- ) {: code:n :}
-   TX-ABORT if UNLOCK E-PROC-OUTPUT throw then
+: ABORT-CLOSE ( ptr a n -- ) {: slot:ptr bit:n :}
+   slot TX-CLOSE if bit CLEAN+ then ;
+
+: ABORT-WAIT ( -- )
+   TX-WAIT-SUP? if CLEAN-SUP CLEAN+ then ;
+
+: TX-ABORT ( -- )
+   0 CLEAN-MASK !
+   TX-LIFE-W CLEAN-LIFE-W ABORT-CLOSE
+   ABORT-WAIT
+   TX-MASTER CLEAN-MASTER ABORT-CLOSE
+   TX-SLAVE CLEAN-SLAVE ABORT-CLOSE
+   TX-LIFE-R CLEAN-LIFE-R ABORT-CLOSE
+   TX-DONE-R CLEAN-DONE-R ABORT-CLOSE
+   TX-DONE-W CLEAN-DONE-W ABORT-CLOSE ;
+
+: START-THROW ( n -- ) {: code:n :}
+   TX-ABORT
    UNLOCK
    code throw ;
 
@@ -305,11 +324,11 @@ variable FRAME-OFF
 
 : START-CLOEXEC ( ptr a -- )
    CELL-FD@ {: fd:fd :}
-   fd FD>N F-SETFD FD-CLOEXEC-FLAG fcntl 0 <> if E-PROC-OUTPUT START-FAIL then ;
+   fd FD>N F-SETFD FD-CLOEXEC-FLAG fcntl 0 <> if E-PROC-OUTPUT throw then ;
 
 : START-PIPE ( ptr a ptr a -- ) {: rd:ptr wr:ptr :}
    pipe {: r:n w:n rc:n :}
-   rc 0 <> if E-PROC-OUTPUT START-FAIL then
+   rc 0 <> if E-PROC-OUTPUT throw then
    r >FD rd CELL-FD!
    w >FD wr CELL-FD!
    rd START-CLOEXEC
@@ -320,34 +339,34 @@ variable FRAME-OFF
    TX-DONE-R TX-DONE-W START-PIPE ;
 
 : START-OPEN-MASTER ( -- )
-   MASTER-Z O-RDWR O-NOCTTY or 0 open dup 0 < if drop E-PROC-OUTPUT START-FAIL then
+   MASTER-Z O-RDWR O-NOCTTY or 0 open dup 0 < if drop E-PROC-OUTPUT throw then
    >FD TX-MASTER CELL-FD!
    TX-MASTER START-CLOEXEC ;
 
 : START-OPEN-SLAVE ( -- )
-   SLAVE-Z O-RDWR O-NOCTTY or 0 open dup 0 < if drop E-PROC-OUTPUT START-FAIL then
+   SLAVE-Z O-RDWR O-NOCTTY or 0 open dup 0 < if drop E-PROC-OUTPUT throw then
    >FD TX-SLAVE CELL-FD!
    TX-SLAVE START-CLOEXEC ;
 
 : START-OPEN-DARWIN ( -- )
    START-OPEN-MASTER
-   TX-MASTER CELL-FD@ FD>N DARWIN-TIOCPTYGRANT NULL$ drop ioctl 0 <> if E-PROC-OUTPUT START-FAIL then
-   TX-MASTER CELL-FD@ FD>N DARWIN-TIOCPTYUNLK NULL$ drop ioctl 0 <> if E-PROC-OUTPUT START-FAIL then
-   TX-MASTER CELL-FD@ FD>N DARWIN-TIOCPTYGNAME SLAVE-Z ioctl 0 <> if E-PROC-OUTPUT START-FAIL then
+   TX-MASTER CELL-FD@ FD>N DARWIN-TIOCPTYGRANT NULL$ drop ioctl 0 <> if E-PROC-OUTPUT throw then
+   TX-MASTER CELL-FD@ FD>N DARWIN-TIOCPTYUNLK NULL$ drop ioctl 0 <> if E-PROC-OUTPUT throw then
+   TX-MASTER CELL-FD@ FD>N DARWIN-TIOCPTYGNAME SLAVE-Z ioctl 0 <> if E-PROC-OUTPUT throw then
    START-OPEN-SLAVE ;
 
 : START-OPEN-LINUX ( -- )
    START-OPEN-MASTER
    0 PTY-N !
-   TX-MASTER CELL-FD@ FD>N LINUX-TIOCSPTLCK PTY-N ioctl 0 <> if E-PROC-OUTPUT START-FAIL then
-   TX-MASTER CELL-FD@ FD>N LINUX-TIOCGPTN PTY-N ioctl 0 <> if E-PROC-OUTPUT START-FAIL then
+   TX-MASTER CELL-FD@ FD>N LINUX-TIOCSPTLCK PTY-N ioctl 0 <> if E-PROC-OUTPUT throw then
+   TX-MASTER CELL-FD@ FD>N LINUX-TIOCGPTN PTY-N ioctl 0 <> if E-PROC-OUTPUT throw then
    LINUX-SLAVE-Z
    START-OPEN-SLAVE ;
 
 : START-OPEN-PTY ( -- )
    HB-TARGET-LINUX? if START-OPEN-LINUX exit then
    HB-TARGET-MACOS? if START-OPEN-DARWIN exit then
-   E-PROC-PTY-HANDLE START-FAIL ;
+   E-PROC-PTY-HANDLE throw ;
 
 : SUP-RESET ( -- )
    -1 >FD SUP-GATE-R CELL-FD!
@@ -500,7 +519,7 @@ variable FRAME-OFF
    SUP-FAIL ;
 
 : START-FORK ( -- )
-   fork dup 0 < if drop E-PROC-SPAWN START-FAIL then >PID {: pid:pid :}
+   fork dup 0 < if drop E-PROC-SPAWN throw then >PID {: pid:pid :}
    pid PID>N 0= if SUP-MAIN then
    pid TX-SUP CELL-PID! ;
 
@@ -510,23 +529,47 @@ variable FRAME-OFF
    -1 >FD TX-DONE-R CELL-FD!
    -1 >PID TX-SUP CELL-PID! ;
 
+defer BEFORE-COMMIT ( -- )
+
+: COMMIT-READY ( -- ) ;
+
+: COMMIT-DEFAULT ( -- )
+   [: COMMIT-READY ;] is BEFORE-COMMIT ;
+
+COMMIT-DEFAULT
+
 : START-COMMIT ( pid -- process-pty-handle ) {: target:pid :}
-   RESERVE TX-SUP CELL-PID@ target TX-MASTER CELL-FD@ TX-LIFE-W CELL-FD@ TX-DONE-R CELL-FD@ COMMIT
-   TX-MOVED ;
+   BEFORE-COMMIT
+   RESERVE TX-SUP CELL-PID@ target TX-MASTER CELL-FD@ TX-LIFE-W CELL-FD@ TX-DONE-R CELL-FD@ COMMIT ;
+
+: START-TARGET ( n -- pid )
+   dup 0= if drop E-PROC-OUTPUT throw then
+   dup 0 < if throw then
+   >PID ;
 
 : START-TXN ( -- process-pty-handle )
    TX-RESET
    INPUTS!
-   ROOM? 0= if E-PROC-PTY-CAPACITY START-FAIL then
+   ROOM? 0= if E-PROC-PTY-CAPACITY throw then
    START-OPEN-PTY
    START-PIPES
    START-FORK
-   TX-SLAVE TX-CLOSE if E-PROC-OUTPUT START-FAIL then
-   TX-LIFE-R TX-CLOSE if E-PROC-OUTPUT START-FAIL then
-   TX-DONE-W TX-CLOSE if E-PROC-OUTPUT START-FAIL then
-   TX-DONE-R CELL-FD@ FRAME-READ? 0= if drop E-PROC-OUTPUT START-FAIL then
-   dup 0 <= if START-FAIL then >PID
+   TX-SLAVE TX-CLOSE if E-PROC-OUTPUT throw then
+   TX-LIFE-R TX-CLOSE if E-PROC-OUTPUT throw then
+   TX-DONE-W TX-CLOSE if E-PROC-OUTPUT throw then
+   TX-DONE-R CELL-FD@ FRAME-READ? 0= if drop E-PROC-OUTPUT throw then
+   START-TARGET
    START-COMMIT ;
+
+: START-SAVE ( -- )
+   START-TXN HANDLE>N START-RAW !
+   TX-MOVED ;
+
+: START-GUARD ( -- process-pty-handle )
+   [: START-SAVE ;] catch
+   dup 0 <> if START-THROW then
+   drop
+   START-RAW @ N>HANDLE ;
 
 : MASTER-FD ( process-pty-handle -- process-pty-handle fd )
    VIEW >r >r >r 2drop r> r> drop r> drop ;
@@ -605,7 +648,7 @@ public
    LOCK
    a PATH-A!
    u LEN>N PATH-U !
-   START-TXN
+   START-GUARD
    UNLOCK ;
 
 : WRITE ( process-pty-handle ptr u8 n -- process-pty-handle )
