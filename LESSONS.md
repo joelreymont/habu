@@ -4953,3 +4953,15 @@ unchanged (148855). Keys for milestone 2:
   "unused" registers across the call, or reuse one the callee already clobbers.
   Also: `data-base` (x20/DATA) != `dbase@` (x26/DBASE) — watch CF-stack memory
   through DBASE, not DATA, or the probe reads the wrong region.
+- **Dot frontmatter `blocks:` means BLOCKED-BY (this dot's dependencies), not
+  "blocks these" — and `dot ready` honors only recorded edges, so prose
+  references never gate dispatch.** Proven by exclusion: cross-check-remapped
+  lists validate-canonical-src under `blocks:` and is absent from `dot ready`
+  while the listed dot appears. Two premature dispatches followed: the
+  quote-diagnostic-paths and validate-canonical-src dots both target files
+  (tools/source-compose.f, tools/diag-remap.f, tools/source-map.f) that no
+  landed lane has created; `dot ready` offered them because nobody recorded the
+  edges. Dispatch protocol now: before claiming a ready dot, verify its Files:
+  exist on master (rg/jj file list — one command), and when a lane reports
+  premise-missing, record the blocked-by edges on the tracker immediately so
+  the ready list stays truthful.
