@@ -5129,3 +5129,10 @@ unchanged (148855). Keys for milestone 2:
   lane.) Also the boot-diagnostic safety pattern: message bytes in the
   loader-mapped __text section are writable to fd 2 before ANY runtime region
   exists; ADRD32 fail-closes ADR reach so the pattern survives text growth.
+- **A die-class default-is body must locals-consume its declared inputs or
+  the fixpoint certify pass rejects it (E-BUILD-CERTIFY at 'die'), even though
+  the engine boots green.** (stage2b clean-4 lane, TF-SHA16-UNSET.) Fresh boot
+  loads prefix files before the check hook installs, so only the stage certify
+  sees such bodies — certify is the authority and stays fail-closed. Bind with
+  typed locals ({: a:ptr u:n dst:ptr :}) before the die, per the LBUF-EVAL
+  precedent.

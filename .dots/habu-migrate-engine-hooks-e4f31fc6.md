@@ -1,6 +1,6 @@
 ---
 title: Migrate engine hooks to typed xt cells
-status: active
+status: open
 priority: 2
 issue-type: task
 created-at: "\"\\\"2026-07-16T08:27:22.049121+02:00\\\"\""
@@ -156,7 +156,17 @@ type-family-sha.f. Lane markers: recent tfam commits e596b0f1 (ctor-package
 limit), c217293a + the option-family/field-schema cluster; live hunks
 type-family.f @-1093, checker.f @-2337.
 
-Claim: agent=stage2b workspace=.jj-ws/fable-stage2b (scope: batches B1-B4, the LOW-risk classes from the STAGE-2B DESIGN; B5 tfam-epicenter and B6 boundary decision stay unclaimed pending the coordination window)
+CLEAN-4 PARTIAL LANDED 2026-07-16 (stage2b lane; claim released; B1-B4 scope
+exhausted - everything else in stage 2b now gates on the pre-trust defer
+capability or a recorded design decision): REG-EXT-RB-SAVE/RESTORE-XT (no-op
+default-is via REG-EXT-RB-DEFAULTS), TF-SHA16-XT (die default-is, verbatim
+message/code from the deleted guard), TFCL-NODE-XT (plain defer, :813 install
+only) - rg proof zero raw sites for all four repo-wide; stage-3 pin intact;
+proven native (fixpoint x2) AND through the full recovery chain. Certify
+constraint discovered (recorded in 77410827 + LESSONS): die-class default-is
+bodies must locals-consume their declared inputs or the fixpoint certify pass
+rejects (E-BUILD-CERTIFY at the die site) - certify is the authority, boot
+alone does not exercise it.
 
 STAGE-2B DESIGN CORRECTIONS (2026-07-16, stage2b lane BLOCKED report - the
 scout's central premise was empirically REFUTED; the scout overlooked the
