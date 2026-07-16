@@ -4,6 +4,10 @@
 
 Last updated: 2026-07-16
 
+- **Confinement scans include `test/`, because tests can reopen private packages.**
+  Allow only the exact per-mint files cited by `TRUSTED.md`; a test cited for a
+  different boundary remains untrusted.
+
 - **A linear result is not unique when its mint accepts copyable identity.** A
   copyable slot index let checked code call the mint twice and produce two valid
   linear handles. Make reservation itself linear, consume it into one handle,

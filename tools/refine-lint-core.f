@@ -24,7 +24,7 @@
 \ Scan discipline: whole-token matching over the shared PAT-* scanner, so `\`
 \ and `( )` comments and string-literal bodies are excluded; matching is
 \ case-insensitive (the dictionary is case-insensitive) and also catches
-\ qualified `PKG:NAME` references. Scanned roots: maki/ lib/ src/ tools/.
+\ qualified `PKG:NAME` references. Scanned roots: maki/ lib/ src/ test/ tools/.
 \ Manifest rows are read through tools/trust-lint-core.f (TL-M-*).
 \
 \ Load after tools/date.f, lib/errors.f, lib/string.f, lib/memory.f, lib/fs.f,
@@ -126,8 +126,8 @@ variable RFL-LE
 : RFL-REPORT-OFF ( -- ) LINT-FALSE RFL-REPORT? ! ;
 
 \ ---- mint seed table: (name, owning file) -----------------------------------
-\ The confinement set. Owners outside the scanned roots (test/) are seed-only
-\ boundaries whose confinement still applies inside the scanned roots.
+\ The confinement set. Test owners are scanned too because a test can reopen
+\ the same private package as production code.
 
 : RFL-SEED-NAME$ ( n -- ptr u8 n )
    case
@@ -510,5 +510,6 @@ variable RFL-LE
    s" maki" RFL-SCAN-ROOT
    s" lib" RFL-SCAN-ROOT
    s" src" RFL-SCAN-ROOT
+   s" test" RFL-SCAN-ROOT
    s" tools" RFL-SCAN-ROOT
    RFL-REPORT ;

@@ -92,7 +92,7 @@ create RFLT-OUT-BUF RFLT-OUT-CAP allot
 : RFLT-CONFINE-POLICY ( -- )
    \ owner file is allowed
    s" maki/tensor.f" s" 1 ROWS-REFINE drop" RFL-COUNT-STR-AT 0 T=
-   \ a file cited by the mint's TRUSTED.md Tests cell is allowed
+   \ only the exact files cited by each mint's TRUSTED.md Tests cell are allowed
    s" maki/model-ir-test.f" s" 0 RAW>SLOT drop" RFL-COUNT-STR-AT 0 T=
    s" maki/async-dag.f" s" 0 RAW>ANODE drop" RFL-COUNT-STR-AT 0 T=
    s" maki/async-dag-test.f" s" 0 RAW>ASTREAM drop" RFL-COUNT-STR-AT 0 T=
@@ -103,6 +103,9 @@ create RFLT-OUT-BUF RFLT-OUT-CAP allot
    s" lib/process-pty-handle-test.f" s" 0 N>RESERVATION drop" RFL-COUNT-STR-AT 0 T=
    s" lib/process-pty-handle.f" s" 0 N>TEARDOWN drop" RFL-COUNT-STR-AT 0 T=
    s" lib/process-pty-handle-test.f" s" 0 N>TEARDOWN drop" RFL-COUNT-STR-AT 0 T=
+   s" lib/process-pty-io-test.f" s" 0 N>RESERVATION drop" RFL-COUNT-STR-AT 1 T=
+   s" lib/process-pty-io-test.f" s" 0 N>TEARDOWN drop" RFL-COUNT-STR-AT 1 T=
+   s" test/proc-pty.f" s" 0 N>HANDLE drop" RFL-COUNT-STR-AT 1 T=
    \ another mint's owner is not this mint's boundary
    s" maki/tensor.f" s" 0 RAW>SLOT drop" RFL-COUNT-STR-AT 1 T=
    s" maki/eval.f" s" 0 RAW>AEVENT drop" RFL-COUNT-STR-AT 1 T=
@@ -200,7 +203,7 @@ create RFLT-OUT-BUF RFLT-OUT-CAP allot
    CLEANUP-RUN ;
 
 : RFLT-LIVE ( -- )
-   \ the real tree (maki/ lib/ src/ tools/) must be confined -> returns clean
+   \ the real tree (maki/ lib/ src/ test/ tools/) must be confined -> returns clean
    REFINE-LINT ;
 
 : RFLT-MAIN ( -- )
