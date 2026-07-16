@@ -1282,8 +1282,10 @@ live handle, while `CANCEL` consumes it without publishing a handle. `TAKE`
 consumes the live handle into teardown authority; only `TEARDOWN-DONE` retires
 the slot after every resource outcome has been observed. No reservation, raw
 slot identity, pid, fd, or teardown authority is public. Reservation records
-the creating process id. Every internal operation validates the slot,
-generation, lifecycle state, and current `getpid`, so a fork child's
+the creating process id; commit requires positive pairwise-distinct owner,
+supervisor, and target pids plus open pairwise-distinct fds. Every internal
+operation validates the slot, generation, lifecycle state, and current
+`getpid`, so a fork child's
 copy-on-write registry cannot authorize a parent-owned handle.
 
 `lib/process-pty-io.f` is the public linear session surface:

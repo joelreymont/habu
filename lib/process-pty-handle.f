@@ -12,6 +12,7 @@ package PROCESS-PTY
 $10 constant SLOT-CAP
 $FF constant SLOT-MASK
 $7FFFFFFFFFFFFF constant GEN-MAX
+1 constant F-GETFD
 
 create SLOT-GEN SLOT-CAP cells allot
 create SLOT-ACTIVE SLOT-CAP cells allot
@@ -192,11 +193,12 @@ TRUSTED: TEARDOWN>N ( process-pty-teardown -- n ) ;
 : CANCEL ( process-pty-reservation -- )
    OPEN-RESERVATION UNPACK-IDX RELEASE ;
 
-: PID-VALID? ( pid -- bool )
+: PID-POSITIVE? ( pid -- bool )
    PID>N 0 > ;
 
 : FD-VALID? ( fd -- bool )
-   FD>N 0 >= ;
+   FD>N dup 0 < if drop false exit then
+   F-GETFD 0 fcntl 0 >= ;
 
 : DISTINCT-PIDS? ( pid pid pid -- bool )
    {: owner:pid sup:pid target:pid :}
@@ -212,7 +214,7 @@ TRUSTED: TEARDOWN>N ( process-pty-teardown -- n ) ;
 
 : COMMIT-PIDS-VALID? ( n pid pid -- bool )
    {: raw:n sup:pid target:pid :}
-   sup PID-VALID? target PID-VALID? and
+   sup PID-POSITIVE? target PID-POSITIVE? and
    raw UNPACK-IDX OWNER@ sup target DISTINCT-PIDS? and ;
 
 : COMMIT-FDS-VALID? ( fd fd fd -- bool )

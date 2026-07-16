@@ -14,6 +14,11 @@ Last updated: 2026-07-16
   only handle-preserving I/O, and prove owner death with a kernel lifetime pipe
   watched by a distinct supervisor that kills and reaps the target group.
 
+- **A nonnegative descriptor is not an open descriptor.** Before committing
+  resources into linear authority, validate each fd with `F_GETFD` and reject
+  closed-positive or duplicate descriptors; range checks alone publish stale
+  kernel identities.
+
 - **A syscall primitive must expose failure before libraries can preserve it.**
   The legacy `close ( fd -- )` effect erased the kernel return code, so checked
   cleanup could not distinguish success from failure; use
