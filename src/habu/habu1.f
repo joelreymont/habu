@@ -785,6 +785,7 @@ s" linux-ignore-sigpipe" s" --" TRUST
 
 : BKILL ( -- )                     \ ( pid sig -- rc ) rc=0 or -1
    1 G-POP  0 G-POP
+   HB-TARGET-MACOS? IF 2 1 MOVZ, THEN
    LBL LNX-OK !
    LBL LNX-DONE !
    NR-KILL SYS,
@@ -793,6 +794,20 @@ s" linux-ignore-sigpipe" s" --" TRUST
    LNX-OK LABEL@ LBL,
    LNX-DONE LABEL@ LBL,
    0 G-PUSH ;
+
+: BKILLERR ( -- )                  \ ( pid sig -- rc ) rc=0 or -errno
+   1 G-POP  0 G-POP
+   HB-TARGET-MACOS? IF 2 1 MOVZ, THEN
+   NR-KILL SYS,
+   HB-TARGET-LINUX? IF
+      0 G-PUSH
+   ELSE
+      LBL LNX-OK !
+      9 C-CS CSET,  9 LNX-OK LABEL@ CBZ,
+         10 0 MOVZ,  0 10 0 SUB,
+      LNX-OK LABEL@ LBL,
+      0 G-PUSH
+   THEN ;
 
 : BSETPGID ( -- )                  \ ( pid pgid -- rc ) rc=0 or -1
    1 G-POP  0 G-POP
@@ -2252,7 +2267,7 @@ public
    s" run-rc" ['] BRUNRC FPRIM-L
    s" pipe" ['] BPIPE FPRIM-L   s" dup2" ['] BDUP2 FPRIM-L
    s" fcntl" ['] BFCNTL FPRIM-L   s" poll" ['] BPOLL FPRIM-L
-   s" kill" ['] BKILL FPRIM-L
+   s" kill" ['] BKILL FPRIM-L   s" kill-errno" ['] BKILLERR FPRIM-L
    s" setpgid" ['] BSETPGID FPRIM-L
    s" spawn-io" ['] BSPAWNIO FPRIM-L
    s" spawn-argv-io" ['] BSPAWNARGVIO FPRIM-L

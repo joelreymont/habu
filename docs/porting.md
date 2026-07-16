@@ -50,6 +50,20 @@ the syscall-number register and trap instruction are target-owned:
 - macOS/arm64 uses Darwin numbers and `svc #0x80`.
 - Linux/aarch64 uses Linux numbers and `svc #0`.
 
+The `kill-errno ( pid sig -- rc )` primitive normalizes both ABIs to `0` or a
+negative errno. Keep the legacy `kill` result at `0`/`-1`; lifecycle code that
+must distinguish an absent process group from a permission failure uses the
+errno-preserving primitive.
+
+`proc-watch-open` returns a pollable, process-identity-bound fd: pidfd on Linux
+and an EVFILT_PROC-backed kqueue on macOS. `POLLIN` must remain level-observable
+after exit so every byte-fragment protocol wait can prefer available pipe data
+and otherwise fail closed on supervisor death. Arm the watch before releasing
+the watched child from its launch barrier; opening it after the child can run
+has an unclosable pid-reuse race. Darwin session-leader teardown can remain in
+the exiting state while another process holds the PTY master, so close the
+master after signaling the foreground group and before `wait-status`.
+
 Signal handlers are target ABI boundaries. Crash and profiler handlers must use
 the target's `sigaction` frame, ucontext pointer, PC offset, `sigreturn`
 convention, and installed signal list. On Linux/aarch64, `rt_sigaction` also

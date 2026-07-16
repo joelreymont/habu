@@ -1607,6 +1607,7 @@ create ES-LINKZ
    105 c, 116 c, 101 c, 45 c, 108 c, 105 c, 110 c, 107 c, 0 c,
 create DIRBASE 8 allot
 variable DFD
+3 constant ESRCH#
 : U16@ ( ptr u8 -- n ) {: a:ptr :} a c@ a 1 + c@ 8 lshift or ;
 : MODE@ ( -- n ) ES-STB 4 + U16@ ;
 s" AGENTS.md" ES-PATHZ 0 access 0 T=
@@ -1621,6 +1622,8 @@ DFD @ 0 >= -1 T=
 DFD @ DBUF 4096 DIRBASE getdirentries64 0 > -1 T=
 DFD @ close-rc 0 T=
 -1 close-rc -1 T=
+getpid 0 kill-errno 0 T=
+$7FFFFFFF 0 kill-errno ESRCH# negate T=
 s" /tmp/habu-engine-suite-mkdir" ES-PATHZ rmdir drop
 s" /tmp/habu-engine-suite-mkdir" ES-PATHZ 493 mkdir 0 T=
 s" /tmp/habu-engine-suite-mkdir" ES-PATHZ ES-STB stat64 0 T=

@@ -5110,3 +5110,37 @@ unchanged (148855). Keys for milestone 2:
   its exact named checker-hook row. Derive the winning row for every live site
   before changing a file-level count; a raw `set-check` census can name the
   wrong growth site even when the new count is numerically correct.
+- **A process-group supervisor cannot retire with only the leader reaped.** The
+  leader may exit while same-group descendants still hold resources. Kill the
+  immutable group while the unreaped leader still anchors it, then reap and
+  report the leader's original status; a CLOEXEC sentinel proves no descendant
+  survives `WAIT`.
+- **Sending `SIGKILL` is not process-group retirement.** The signal only queues
+  termination. Require `kill(-pgrp, 0)` to reach `ESRCH` before publishing, and
+  prove descendant EOF is already observable when `WAIT` returns.
+- **A terminal outcome must follow fallible cleanup.** Publishing success before
+  descriptor teardown lets a later cleanup error become an unread trailing
+  frame and collapse into a generic wait failure. Emit one fixed result after
+  cleanup, with the primary outcome or error and its cleanup mask together.
+- **Darwin can report `EPERM` for a zombie-only process group.** Preserve errno
+  from `kill`, accept `EPERM` only while the stable group anchor still prevents
+  pid reuse, reap every known child, and require a non-destructive
+  `kill(-pgrp, 0)` probe to reach `ESRCH`. Never retry a destructive numeric
+  group signal after the anchor has been reaped.
+- **Darwin `kill` has a third kernel argument.** The raw syscall ABI requires
+  `x2 = 1` for POSIX signaling semantics; leaving it as prior syscall residue
+  changes `EPERM`/`ESRCH` classification and invalidates lifecycle proofs.
+- **Arm death watches before releasing children.** A child that can exit before
+  its identity-bound watch opens creates a pid-reuse gap. Hold it behind a pipe
+  barrier, arm and CLOEXEC the watch, make the release writer non-SIGPIPE, then
+  release; producer reads must poll that watch after every partial fragment.
+- **Close a PTY master before waiting an exiting Darwin session leader.** Signal
+  the still-anchored foreground group first, then close the master; waiting
+  first can deadlock with the session leader and its zombie foreground group.
+- **Exact framed protocols include EOF.** Two valid cells followed by extra
+  bytes are not a valid two-cell result. After reaping the sole writer, require
+  immediate EOF and treat short or byte-partial frames as protocol failure.
+- **Every new primitive needs an axiom-census class in the same change.** A
+  checker effect and behavioral regression do not satisfy the full gate while
+  the property harness still reports the primitive as unclassified; classify
+  unsafe syscall primitives as no-exec before the first cold run.
