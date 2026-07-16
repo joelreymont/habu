@@ -39,11 +39,22 @@ variable PTX-BLOCK-N
    op opu s" <=" STR= 0= if E-PTX-SYNTAX throw then
    rhs rhsu PTX-BLOCK-NAME>N PTX-BLOCK@ <> if E-PTX-BLOCK throw then ;
 
-: PTX-SKIP-ONE ( -- )
-   PTX-PARSE-REQ 2drop ;
+$40 constant PTX-GRID-CAP
+
+create PTX-GRID-BUF PTX-GRID-CAP allot
+variable PTX-GRID-U
+
+: PTX-GRID! ( ptr u8 n -- ) {: a:ptr u:n :}
+   u PTX-GRID-CAP > if E-PTX-SYNTAX throw then
+   a PTX-GRID-BUF u BYTE-COPY
+   u PTX-GRID-U ! ;
+
+\ grid-derivation token of the LAST parsed kernel header (empty before any)
+: PTX-GRID$ ( -- ptr u8 n )
+   PTX-GRID-BUF PTX-GRID-U @ ;
 
 : GRID: ( -- )
-   PTX-SKIP-ONE ; immediate
+   PTX-PARSE-REQ PTX-GRID! ; immediate
 
 : WHERE ( -- )
    PTX-PARSE-REQ {: lhs:ptr lhsu:n :}
@@ -57,6 +68,7 @@ variable PTX-BLOCK-N
 \ payload counts to the checker so KERNEL: bodies skip the header tokens and
 \ the immediate wrong-certificate reject (p5, habu-checker-fitting-arity-
 \ 70dc94e4) exempts them. AUDITED COUNTS: a wrong count would skip live body
-\ code or eat real tokens - keep in lockstep with PTX-SKIP-ONE/PTX-WHERE-CHECK.
+\ code or eat real tokens - keep in lockstep with GRID:'s single PTX-GRID!
+\ token and PTX-WHERE-CHECK's three.
 s" GRID:" 1 parse-imm
 s" WHERE" 3 parse-imm

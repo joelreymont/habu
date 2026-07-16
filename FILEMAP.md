@@ -481,6 +481,14 @@ points stay listed.
   span are checker REJECTS (len(dx)=len(y) proven by token, never re-asserted).
 - `lib/ptx/header.f` / `lib/ptx/header-test.f` — checked PTX kernel-header
   vocabulary and its coverage.
+- `lib/ptx/kernel-abi.f` / `lib/ptx/kernel-abi-test.f` — structured kernel-ABI
+  record (`package KABI`), the single source of truth for a kernel's entry
+  name, block, grid-derivation token, ordered logical params (span/matrix/
+  uniform), and the derived flat `.param` layout (offset/size/type/role/source,
+  equal-extent-token dedup); `CG-ENTRY`/`CG-PARAMS`/`CG-RESET` render and seed
+  from it and `tools/ptx/cuda-launch.f` packs launch offsets from it. Tests pin
+  the SAXPY layout to the historical hand literals plus matrix/index-span
+  derivations and named-error negatives.
 - `lib/ptx/tile.f` / `lib/ptx/tile-test.f` — PTX tile-DSL v0 operation
   vocabulary (M4) and the checked SAXPY proof.
 - `lib/ptx/tile-loop.f` / `lib/ptx/tile-loop-test.f` /

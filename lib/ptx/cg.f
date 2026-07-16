@@ -8,6 +8,21 @@
 \ (span/ctx -> rd, tile/uniform -> f). Load after lib/errors.f, lib/string.f,
 \ lib/fmt.f, and src/arch/ptx/emit.f (reuses PTX-L). Checked Habu.
 
+require lib/ptx/kernel-abi.f
+
+\ Default kernel-ABI record: the SAXPY shape this scaffolding historically
+\ hardcoded. The relu/exp/acc/... producers reuse the same entry name and
+\ param layout on purpose (shared launcher; see tools/ptx/relu-cg.f), so the
+\ default record IS their ABI. A driver with a different ABI declares its own
+\ record (KABI:RESET KABI:NAME! KABI:SPAN+ ...) before CG-RESET/CG-ENTRY.
+KABI:RESET
+s" SAXPY" KABI:NAME!
+s" ceil-n-256" KABI:GRID!
+256 KABI:BLOCK!
+s" x" s" n" KABI:SPAN+
+s" y" s" n" KABI:SPAN+
+s" a" KABI:UNIFORM+
+
 variable CG-NF  variable CG-NRD  variable CG-NR  variable CG-NP  variable CG-NL
 variable CG-GRID-IDX   \ flat grid index register last emitted by EMIT-GRID-CTX (for index-remap folds)
 
@@ -16,7 +31,13 @@ variable CG-GRID-IDX   \ flat grid index register last emitted by EMIT-GRID-CTX 
 2 constant CG-OP-MUL
 3 constant CG-OP-DIV
 
-: CG-RESET ( -- )  2 CG-NF !  3 CG-NRD !  2 CG-NR !  1 CG-NP !  0 CG-NL ! ;  \ after param loads
+\ register seeds continue after the record's param loads (default record:
+\ %rd1-2 + %f1 + %r1 -> seeds 3/2/2, the historical constants)
+: CG-RESET ( -- )
+   KABI:U64-N 1+ CG-NRD !
+   KABI:F32-N 1+ CG-NF !
+   KABI:U32-N 1+ CG-NR !
+   1 CG-NP !  0 CG-NL ! ;
 : CG-NEXT-F  ( -- n )  CG-NF  @ dup 1+ CG-NF  ! ;
 : CG-NEXT-RD ( -- n )  CG-NRD @ dup 1+ CG-NRD ! ;
 : CG-NEXT-R  ( -- n )  CG-NR  @ dup 1+ CG-NR  ! ;
@@ -54,19 +75,21 @@ variable CG-GRID-IDX   \ flat grid index register last emitted by EMIT-GRID-CTX 
 : PTX-MODULE{ ( -- )  CG-HEADER ;
 : }PTX-MODULE ( -- ) ;                 \ documented module terminator (PTX has no footer)
 
+\ entry + param loads render FROM the kernel-ABI record: one declaration
+\ drives the .visible .entry line, the ld.param loads, the CG-RESET register
+\ seeds, and the launch packing offsets (tools/ptx/cuda-launch.f).
 : CG-ENTRY ( -- )
-   s" .visible .entry SAXPY(.param .u64 p_x, .param .u64 p_y, .param .f32 p_a, .param .u32 p_n)" PTX-L ;
+   KABI:ENTRY$ PTX-L ;
 : CG-OPEN ( -- )
    s" {" PTX-L
    s" .reg .pred %p<32>;" PTX-L
    s" .reg .f32 %f<32>;" PTX-L
    s" .reg .b32 %r<32>;" PTX-L
    s" .reg .b64 %rd<32>;" PTX-L ;
-: CG-PARAMS ( -- )                      \ x=%rd1 y=%rd2 a=%f1 n=%r1
-   s" ld.param.u64 %rd1, [p_x];" PTX-L
-   s" ld.param.u64 %rd2, [p_y];" PTX-L
-   s" ld.param.f32 %f1, [p_a];" PTX-L
-   s" ld.param.u32 %r1, [p_n];" PTX-L ;
+: CG-PARAMS ( -- )                      \ default record: x=%rd1 y=%rd2 a=%f1 n=%r1
+   KABI:N-FIELDS 0 ?do
+      i KABI:FIELD-PARAM? if i KABI:LD-LINE$ PTX-L then
+   loop ;
 : CG-RET ( -- )   s" DONE:" PTX-L  s" ret;" PTX-L ;
 : CG-CLOSE ( -- ) s" }" PTX-L ;
 

@@ -260,6 +260,7 @@ TEST:;SUITE
 
 TEST:SUITE ptx-stdlib
    lib/ptx/header-test.f
+   lib/ptx/kernel-abi-test.f
    lib/ptx/launch-test.f
    lib/ptx/tile-test.f
    lib/ptx/tile-loop-test.f

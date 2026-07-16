@@ -25,6 +25,18 @@ KERNEL: PTX-TEST-K2 ( n -- n ) GRID: once WHERE extent-n <= block-256
    1+ ;
 6 PTX-TEST-K2 7 T=
 
+\ GRID: records its derivation token (queryable via PTX-GRID$, last header wins)
+PTX-GRID$ s" once" T$=
+GRID: ceil-n-256
+PTX-GRID$ s" ceil-n-256" T$=
+GRID: extent-r
+PTX-GRID$ s" extent-r" T$=
+
+: PTX-GRID-LONG ( -- )
+   s" a-token-longer-than-the-sixty-four-byte-grid-capacity-limit-xxxxxxxxxx" PTX-GRID! ;
+' PTX-GRID-LONG E-PTX-SYNTAX TTHROWS
+PTX-GRID$ s" extent-r" T$=              \ rejected store leaves the recorded token intact
+
 : PTX-BAD-WHERE-LHS ( -- )
    s" n" s" <=" s" block-256" PTX-WHERE-CHECK ;
 : PTX-BAD-WHERE-OP ( -- )

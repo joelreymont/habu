@@ -126,6 +126,10 @@
 -3413 constant E-PTX-CAP       \ in-process PTX capture buffer overflowed
 -3414 constant E-PTX-OPT-OVERFLOW  \ PTX optimizer line/symbol/output arena overflowed
 -3415 constant E-PTX-OPT-SYNTAX    \ PTX optimizer parse invariant violated (should be fail-closed opaque)
+-3416 constant E-KABI-CAP          \ kernel-ABI record capacity (params/fields/name pool) exceeded
+-3417 constant E-KABI-FIELD        \ kernel-ABI field: unknown name/index, or no .param offset
+-3418 constant E-KABI-DUP          \ kernel-ABI duplicate field name / conflicting extent-token source
+-3419 constant E-KABI-TOKEN        \ kernel-ABI empty or oversized name/extent token
 
 \ FFI: -3500..-3599
 -3500 constant E-FFI-FIRST

@@ -31,10 +31,21 @@ variable PTX-CAPTURE?                       \ 0 = stdout ; nonzero = append into
 : PTX-NL ( -- )
    PTX-CAPTURE? @ if s" " PTX-CAP+ else cr then ;
 
+\ module-target facts as queryable accessors (manifest/export consumers read
+\ these instead of scraping the header text)
+: PTX-VERSION$ ( -- ptr u8 n )
+   s" 8.3" ;
+
+: PTX-SM-TARGET$ ( -- ptr u8 n )
+   s" sm_87" ;
+
+: PTX-ADDRESS-SIZE$ ( -- ptr u8 n )
+   s" 64" ;
+
 : PTX-HEADER-SM87 ( -- )
-   s" .version 8.3" PTX-L
-   s" .target sm_87" PTX-L
-   s" .address_size 64" PTX-L ;
+   SB-RESET s" .version " SB-APPEND PTX-VERSION$ SB-APPEND SB$ PTX-L
+   SB-RESET s" .target " SB-APPEND PTX-SM-TARGET$ SB-APPEND SB$ PTX-L
+   SB-RESET s" .address_size " SB-APPEND PTX-ADDRESS-SIZE$ SB-APPEND SB$ PTX-L ;
 
 : PTX-SAXPY-ENTRY ( -- )
    s" .visible .entry SAXPY(.param .u64 p_x, .param .u64 p_y, .param .f32 p_a, .param .u32 p_n)" PTX-L ;

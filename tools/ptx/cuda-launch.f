@@ -11,14 +11,19 @@
 \ fails CLOSED with the named E-PTX-EMIT throw (child stderr surfaced), never a
 \ stale/absent /tmp/saxpy.cubin. A dropped copy-back fails closed via PTXSENT.
 \ Data: x=2.0, y=0, n=4, ARBITRARY a marshalled through F64>F32 (lib/ptx/cg.f)
-\ => y' = a*x+y = 2a. The host-side marshalling assertions run unconditionally;
-\ the device leg (emit+ptxas+launch) is SKIPPED off-Orin (libcuda absent).
+\ => y' = a*x+y = 2a. The kernel name, block shape, cuParamSetSize total, and
+\ every cuParamSetV offset/size are GENERATED from the kernel-ABI record
+\ (lib/ptx/kernel-abi.f) - the same record that renders the kernel's entry and
+\ param loads - and LL-ABI-CHECK pins them to the old hand literals. The
+\ host-side marshalling + ABI assertions run unconditionally; the device leg
+\ (emit+ptxas+launch) is SKIPPED off-Orin (libcuda absent).
 
 require lib/errors.f
 require lib/string.f
 require lib/float.f
 require lib/fmt.f
 require src/arch/ptx/emit.f
+require lib/ptx/kernel-abi.f
 require lib/ptx/cg.f
 require lib/ffi.f
 require lib/ptx/toolchain.f
@@ -58,8 +63,14 @@ variable LL-DX variable LL-DY variable LL-ABITS variable LL-NV variable LL-RBUF
    LL-CTX @ >CUDA-CTX CUDA:CU-CTX-SET-CURRENT CUDA:RC0
    PTXTC:CUBIN$ LL-PATH >CSTR
    LL-MOD LL-PATH CUDA:CU-MODULE-LOAD CUDA:RC0
-   s" SAXPY" LL-KN >CSTR
+   KABI:NAME$ LL-KN >CSTR                         \ kernel entry name from the ABI record
    LL-FUNC LL-MOD @ >CUDA-MOD LL-KN CUDA:CU-MODULE-GET-FUNCTION CUDA:RC0 ;
+
+\ record-driven .param packing: offset and size of one named field
+: LL-POFF ( ptr u8 n -- idx )
+   KABI:OFFSET-OF >IDX ;
+: LL-PLEN ( ptr u8 n -- len )
+   KABI:SIZE-OF >LEN ;
 
 : LL-LAUNCH ( r -- )  {: a:r :}                   \ marshal a, alloc, launch, copy back, free
    LL-RBUF 4 PTXSENT:FILL                                                  \ poison readback: dropped copy-back fails closed
@@ -68,12 +79,12 @@ variable LL-DX variable LL-DY variable LL-ABITS variable LL-NV variable LL-RBUF
    LL-DX @ >CUDA-DEVPTR 2.0 F64>F32 4 >COUNT CUDA:CU-MEMSET-D32 CUDA:RC0   \ x = 2.0
    LL-DY @ >CUDA-DEVPTR 0 4 >COUNT CUDA:CU-MEMSET-D32 CUDA:RC0             \ y = 0
    a F64>F32 LL-ABITS !  4 LL-NV !                                        \ arbitrary a, n = 4
-   LL-FUNC @ >CUDA-FN 256 1 1 CUDA:CU-FUNC-SET-BLOCK-SHAPE CUDA:RC0
-   LL-FUNC @ >CUDA-FN 24 >LEN CUDA:CU-PARAM-SET-SIZE CUDA:RC0
-   LL-FUNC @ >CUDA-FN 0 >IDX  LL-DX 8 >LEN CUDA:CU-PARAM-SET-V CUDA:RC0    \ p_x
-   LL-FUNC @ >CUDA-FN 8 >IDX  LL-DY 8 >LEN CUDA:CU-PARAM-SET-V CUDA:RC0    \ p_y
-   LL-FUNC @ >CUDA-FN 16 >IDX LL-ABITS 4 >LEN CUDA:CU-PARAM-SET-V CUDA:RC0 \ p_a
-   LL-FUNC @ >CUDA-FN 20 >IDX LL-NV 4 >LEN CUDA:CU-PARAM-SET-V CUDA:RC0    \ p_n
+   LL-FUNC @ >CUDA-FN KABI:BLOCK@ 1 1 CUDA:CU-FUNC-SET-BLOCK-SHAPE CUDA:RC0
+   LL-FUNC @ >CUDA-FN KABI:TOTAL >LEN CUDA:CU-PARAM-SET-SIZE CUDA:RC0
+   LL-FUNC @ >CUDA-FN s" x" LL-POFF LL-DX s" x" LL-PLEN CUDA:CU-PARAM-SET-V CUDA:RC0
+   LL-FUNC @ >CUDA-FN s" y" LL-POFF LL-DY s" y" LL-PLEN CUDA:CU-PARAM-SET-V CUDA:RC0
+   LL-FUNC @ >CUDA-FN s" a" LL-POFF LL-ABITS s" a" LL-PLEN CUDA:CU-PARAM-SET-V CUDA:RC0
+   LL-FUNC @ >CUDA-FN s" n" LL-POFF LL-NV s" n" LL-PLEN CUDA:CU-PARAM-SET-V CUDA:RC0
    LL-FUNC @ >CUDA-FN 1 1 CUDA:CU-LAUNCH-GRID CUDA:RC0
    CUDA:CU-CTX-SYNCHRONIZE CUDA:RC0
    LL-RBUF LL-DY @ >CUDA-DEVPTR 4 >LEN CUDA:DTOH
@@ -96,6 +107,17 @@ variable LL-DX variable LL-DY variable LL-ABITS variable LL-NV variable LL-RBUF
    3.0 2.0 f* F64>F32 $40C00000 T=     \ a=3.0 CPU golden 6.0
    1.7 2.0 f* F64>F32 $4059999A T= ;   \ a=1.7 CPU golden 3.4
 
+\ pinned: the record-generated launch packing equals the old hand literals
+\ (name SAXPY, block 256,1,1, cuParamSetSize 24, offsets 0/8/16/20, sizes 8/8/4/4)
+: LL-ABI-CHECK ( -- )
+   KABI:NAME$ s" SAXPY" T$=
+   KABI:BLOCK@ 256 T=
+   KABI:TOTAL 24 T=
+   s" x" KABI:OFFSET-OF 0 T=    s" x" KABI:SIZE-OF 8 T=
+   s" y" KABI:OFFSET-OF 8 T=    s" y" KABI:SIZE-OF 8 T=
+   s" a" KABI:OFFSET-OF 16 T=   s" a" KABI:SIZE-OF 4 T=
+   s" n" KABI:OFFSET-OF 20 T=   s" n" KABI:SIZE-OF 4 T= ;
+
 : SAXPY-CHECK ( r -- )  {: a:r :}       \ device result == CPU golden f32(a*x+y), x=2 y=0
    SAXPY-GPU-BITS  a 2.0 f* F64>F32  T=
    s" SAXPY a*2 on GPU -> f32 bits " type SAXPY-GPU-BITS . cr ;
@@ -103,6 +125,7 @@ variable LL-DX variable LL-DY variable LL-ABITS variable LL-NV variable LL-RBUF
 : RUN ( -- )
    T-RESET
    HOST-CHECK
+   LL-ABI-CHECK
    CUDA:OPEN? 0= if
       s" cuda-launch: libcuda unavailable -> device leg SKIPPED (host marshalling proven)" type cr
       T-REPORT exit

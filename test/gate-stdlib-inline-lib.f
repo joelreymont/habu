@@ -482,6 +482,7 @@ variable GSI-TL-FILE-A
    s" stdlib/lint-libs/ptx" GSI-GROUP-SEQ GSI-GROUP-HEADER
    GSI-TEST-SETUP
    s" lib/ptx/header-test.f" GSI-INCLUDE
+   s" lib/ptx/kernel-abi-test.f" GSI-INCLUDE
    s" lib/ptx/launch-test.f" GSI-INCLUDE
    s" lib/ptx/tile-test.f" GSI-INCLUDE
    s" lib/ptx/tile-loop-test.f" GSI-INCLUDE

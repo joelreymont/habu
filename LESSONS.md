@@ -4993,3 +4993,17 @@ unchanged (148855). Keys for milestone 2:
   was measuring first and closing the dot; compile-latency work belongs in
   single-pass checking (habu-single-pass-checking-aabfb874, evidence copied
   there).
+- **Replacing hardcoded codegen text with a data-driven record: seed the
+  default record with the exact historical shape, then prove byte-identity by
+  sweeping every emitter's stdout.** The ptx scaffolding ABI existed FOUR times
+  (CG-ENTRY's entry string, CG-PARAMS' ld.param lines, CG-RESET's register
+  seeds 2/3/2, cuda-launch's offsets 0/8/16/20/total 24/block 256) and a dozen
+  producers (relu/exp/acc/ops/...) intentionally reuse the SAXPY entry+layout
+  so one launcher serves them all — so the KABI record's default HAD to be the
+  SAXPY shape or every legacy producer's PTX would shift. Proof method that
+  made the refactor safe: before editing, capture stdout goldens for ALL
+  tools/ptx/*-cg.f plus a probe hitting bench-only paths (EMIT-MATMUL-MMA in
+  each lmode and every GB-MMM-CFG row, EMIT-GELU, EMIT-MATMUL/naive), then
+  re-run and cmp after — 27 outputs, zero diffs, no reliance on eyeballs.
+  Also: `bin/hb file.f` without `--load` drops into the REPL on open stdin and
+  hangs a harness; always `bin/hb --load ... < /dev/null` in capture loops.

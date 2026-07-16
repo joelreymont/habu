@@ -364,6 +364,10 @@ tracked by `.dots/habu-eval-matrix-live-f2b70f81.md`.
 3. **Kernel ABI:** the concrete `span`→`(base,len[,align])`, `matrix`→
    `(base,rows,cols[,stride])`, `uniform`→scalar lowering to `.param` + the
    `void**` `kernelParams` packing/lifetimes + equal-token runtime dedup.
+   The structured record for this lowering is `lib/ptx/kernel-abi.f`
+   (`package KABI`): `CG-ENTRY`/`CG-PARAMS` render the entry and param loads
+   from it and `tools/ptx/cuda-launch.f` packs its launch offsets from the
+   same record.
 4. **No overload resolution yet:** v0 should use **distinct** grid/row words
    (e.g. `LOAD`/`ROW-LOAD`) rather than overloading `LOAD` on ctx kind.
 5. **Staged self-host bootstrap (M2):** the term/unify machinery is encoded in
