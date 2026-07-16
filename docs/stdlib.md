@@ -1738,6 +1738,8 @@ it with this package surface:
 ```forth
 BUILD-CACHE:RESET    ( -- )
 BUILD-CACHE:ROOT!    ( ptr u8 n -- )
+BUILD-CACHE:CHILD-SUFFIX-INTO ( ptr u8 n ptr u8 n ptr u8 -- n )
+BUILD-CACHE:CHILD-INTO ( ptr u8 n ptr u8 -- n )
 BUILD-CACHE:ROOT$    ( -- ptr u8 n )
 BUILD-CACHE:SOURCE   ( -- BUILD-CACHE:source )
 BUILD-CACHE:RESOLVE  ( -- ptr u8 n BUILD-CACHE:source )
@@ -1757,10 +1759,14 @@ select its tier. When all four variables are empty, resolution throws
 non-directory, an unwritable directory, or a creation failure also throws
 `E-BUILD-PATH` without consulting a lower tier. `BUILD-CACHE:ROOT!` is the
 explicit programmatic override used by build clients and isolated fixtures; its
-typed source is `explicit`. A failed selection retains its selected source,
-complete attempted root, and underlying filesystem cause even when the root is
-too long for a filesystem operation. The `SELECTED-*` and `CAUSE*` accessors
-read that separately owned evidence without attempting resolution again;
+typed source is `explicit`. Counted roots containing NUL reject before any
+filesystem call. `BUILD-CACHE:CHILD-INTO` and `CHILD-SUFFIX-INTO` join one
+NUL- and slash-free child component, with an optional suffix, into caller-owned
+`FS-PATH-CAP` storage and map path-capacity failure to the same structured
+`E-BUILD-PATH` evidence. A failed selection retains its
+selected source, complete attempted root, and underlying filesystem cause even
+when the root is too long for a filesystem operation. The `SELECTED-*` and
+`CAUSE*` accessors read that separately owned evidence without attempting resolution again;
 `source` also has the diagnostic-only `none` variant for the no-tier case.
 
 `tools/hb-build.f --report-json ...` emits one `hb-build-report` JSON object on
@@ -1770,10 +1776,11 @@ success. Version 1 contains `cache_root`, `cache_source`, `artifact_hit`,
 `MAKER-HIT?`, `MAKER-BUILT?`, `MAKER-RAN?`, and `ELAPSED-NS` expose the same
 captured typed state to checked in-process clients; `HB-BUILD:REPORT$` renders
 that state. Build clients consume this surface instead of timing or inspecting
-child-private trace cells. `HB-BUILD:RESET` invalidates the report at build
-start, `HB-BUILD:VALID?` reports whether a build completed, and every report
-accessor throws `E-BUILD-STATUS` while invalid so a failed build cannot expose a
-prior success.
+child-private trace cells. `HB-BUILD:BUILD` and `HB-BUILD:MAIN` invalidate and
+commit the report internally; raw reset, commit, and field capture remain
+package-private. `HB-BUILD:VALID?` reports whether a build completed,
+and every report accessor throws `E-BUILD-STATUS` while invalid so a failed
+build cannot expose a prior success.
 
 A cache-root preparation failure exits with the build failure status and emits
 one structured explanation naming `E-BUILD-PATH`, the selected source and root,

@@ -5190,3 +5190,9 @@ unchanged (148855). Keys for milestone 2:
 - **Run proof gates as standalone commands before VCS mutation.** A failed gate
   followed by commit/push commands in one shell invocation can leave a successful
   final exit status; inspect the gate result first, then commit in a later command.
+- **Validate cache identities at the syscall boundary and after derivation.** A
+  counted root can contain NUL or fit alone while overflowing after a child name;
+  reject both before I/O and retain the selected root/source/cause in one packet.
+- **Set cache-report flags only at the decision that actually won.** A second
+  readiness check can turn a planned build into a hit, so pre-setting `built`
+  produces race-false evidence.

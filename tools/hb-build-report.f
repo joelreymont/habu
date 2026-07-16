@@ -106,8 +106,6 @@ variable ELAPSED-VALUE
 : TEXT$ ( -- ptr u8 n )
    TEXT-A@ TEXT-U @ ;
 
-public
-
 : RESET ( -- )
    construct state empty STATE!
    0 CACHE-ROOT-U !
@@ -118,8 +116,12 @@ public
    0 MAKER-RAN-FLAG !
    0 ELAPSED-VALUE ! ;
 
+public
+
 : VALID? ( -- bool )
    COMPLETE? ;
+
+private
 
 : CAPTURE ( ptr u8 n BUILD-CACHE:source bool bool bool bool bool n -- )
    {: root:ptr rootu:n source:BUILD-CACHE:source artifact:bool object:bool maker:bool built:bool ran:bool elapsed:n :}
@@ -133,6 +135,8 @@ public
    ran MAKER-RAN-FLAG !
    elapsed ELAPSED-VALUE !
    construct state complete STATE! ;
+
+public
 
 : CACHE-ROOT$ ( -- ptr u8 n )
    REQUIRE-COMPLETE
