@@ -126,6 +126,7 @@ variable BP-SET
    s" src/core/cell.f" q execute
    s" src/core/pointer-storage.f" q execute
    s" src/core/engine-error.f" q execute
+   s" src/core/exec-vector.f" q execute
    s" src/core/checker.f" q execute
    s" src/core/engine-error-effects.f" q execute
    s" src/core/lower-cert-base.f" q execute
@@ -147,7 +148,6 @@ variable BP-SET
    s" src/os/env-base.f" q execute
    s" src/core/include.f" q execute
    s" src/core/enums.f" q execute
-   s" src/core/exec-vector.f" q execute
    s" src/core/sha256.f" q execute
    s" src/core/type-family-sha.f" q execute
    s" src/core/combinators.f" q execute

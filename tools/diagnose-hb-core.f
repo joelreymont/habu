@@ -70,6 +70,7 @@ variable CHECKED
    s" src/core/cell.f" PREFIX-FILE
    s" src/core/pointer-storage.f" PREFIX-FILE
    s" src/core/engine-error.f" PREFIX-FILE
+   s" src/core/exec-vector.f" PREFIX-FILE
    s" src/core/checker.f" PREFIX-FILE
    s" src/core/engine-error-effects.f" PREFIX-FILE
    s" src/core/lower-cert-base.f" PREFIX-FILE
@@ -89,7 +90,6 @@ variable CHECKED
    s" src/os/env-base.f" PREFIX-FILE
    s" src/core/include.f" PREFIX-FILE
    s" src/core/enums.f" PREFIX-FILE
-   s" src/core/exec-vector.f" PREFIX-FILE
    s" src/core/sha256.f" PREFIX-FILE
    s" src/core/type-family-sha.f" PREFIX-FILE
    s" src/core/combinators.f" PREFIX-FILE

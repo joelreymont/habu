@@ -1634,6 +1634,7 @@ create ZBYTE 0 c,
    PFX-COMMON LPCELL         s" src/core/cell.f"        PFX-LOAD-ROW
    PFX-COMMON LPPTRSTORAGE   s" src/core/pointer-storage.f" PFX-LOAD-ROW
    PFX-COMMON LPENGINEERROR  s" src/core/engine-error.f" PFX-LOAD-ROW
+   PFX-COMMON LPEXECVECTOR   s" src/core/exec-vector.f" PFX-LOAD-ROW
    PFX-COMMON LPCHECKER      s" src/core/checker.f"     PFX-LOAD-ROW
    PFX-COMMON LPENGINEERROREFFECTS s" src/core/engine-error-effects.f" PFX-LOAD-ROW
    PFX-COMMON LPLOWERCERTBASE s" src/core/lower-cert-base.f" PFX-LOAD-ROW
@@ -1663,7 +1664,6 @@ create ZBYTE 0 c,
    PFX-COMMON LPENVBASE      s" src/os/env-base.f"      PFX-LOAD-ROW
    PFX-COMMON LPINCLUDE      s" src/core/include.f"     PFX-LOAD-ROW
    PFX-COMMON LPENUMS        s" src/core/enums.f"       PFX-LOAD-ROW
-   PFX-COMMON LPEXECVECTOR   s" src/core/exec-vector.f" PFX-LOAD-ROW
    PFX-COMMON LPSHA256       s" src/core/sha256.f"      PFX-LOAD-ROW
    PFX-COMMON LPTFAMSHA      s" src/core/type-family-sha.f" PFX-LOAD-ROW
    PFX-COMMON LPCOMBINATORS  s" src/core/combinators.f" PFX-LOAD-ROW
@@ -1711,6 +1711,7 @@ create ZBYTE 0 c,
    PFX-COMMON LPCELL         s" src/core/cell.f"        PFX-PATH-ROW
    PFX-COMMON LPPTRSTORAGE   s" src/core/pointer-storage.f" PFX-PATH-ROW
    PFX-COMMON LPENGINEERROR  s" src/core/engine-error.f" PFX-PATH-ROW
+   PFX-COMMON LPEXECVECTOR   s" src/core/exec-vector.f" PFX-PATH-ROW
    PFX-COMMON LPCHECKER      s" src/core/checker.f"     PFX-PATH-ROW
    PFX-COMMON LPENGINEERROREFFECTS s" src/core/engine-error-effects.f" PFX-PATH-ROW
    PFX-COMMON LPLOWERCERTBASE s" src/core/lower-cert-base.f" PFX-PATH-ROW
@@ -1740,7 +1741,6 @@ create ZBYTE 0 c,
    PFX-COMMON LPENVBASE      s" src/os/env-base.f"      PFX-PATH-ROW
    PFX-COMMON LPINCLUDE      s" src/core/include.f"     PFX-PATH-ROW
    PFX-COMMON LPENUMS        s" src/core/enums.f"       PFX-PATH-ROW
-   PFX-COMMON LPEXECVECTOR   s" src/core/exec-vector.f" PFX-PATH-ROW
    PFX-COMMON LPSHA256       s" src/core/sha256.f"      PFX-PATH-ROW
    PFX-COMMON LPTFAMSHA      s" src/core/type-family-sha.f" PFX-PATH-ROW
    PFX-COMMON LPCOMBINATORS  s" src/core/combinators.f" PFX-PATH-ROW
@@ -1948,6 +1948,7 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
    PFX-COMMON LPCELL         s" src/core/cell.f"        PFX-PROVIDE-ROW
    PFX-COMMON LPPTRSTORAGE   s" src/core/pointer-storage.f" PFX-PROVIDE-ROW
    PFX-COMMON LPENGINEERROR  s" src/core/engine-error.f" PFX-PROVIDE-ROW
+   PFX-COMMON LPEXECVECTOR   s" src/core/exec-vector.f" PFX-PROVIDE-ROW
    PFX-COMMON LPCHECKER      s" src/core/checker.f"     PFX-PROVIDE-ROW
    PFX-COMMON LPENGINEERROREFFECTS s" src/core/engine-error-effects.f" PFX-PROVIDE-ROW
    PFX-COMMON LPLOWERCERTBASE s" src/core/lower-cert-base.f" PFX-PROVIDE-ROW
@@ -1977,7 +1978,6 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
    PFX-COMMON LPENVBASE      s" src/os/env-base.f"      PFX-PROVIDE-ROW
    PFX-COMMON LPINCLUDE      s" src/core/include.f"     PFX-PROVIDE-ROW
    PFX-COMMON LPENUMS        s" src/core/enums.f"       PFX-PROVIDE-ROW
-   PFX-COMMON LPEXECVECTOR   s" src/core/exec-vector.f" PFX-PROVIDE-ROW
    PFX-COMMON LPSHA256       s" src/core/sha256.f"      PFX-PROVIDE-ROW
    PFX-COMMON LPTFAMSHA      s" src/core/type-family-sha.f" PFX-PROVIDE-ROW
    PFX-COMMON LPCOMBINATORS  s" src/core/combinators.f" PFX-PROVIDE-ROW

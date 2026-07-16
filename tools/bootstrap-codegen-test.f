@@ -392,6 +392,7 @@ create LF $0A c,
    s" PFX-COMMON" s" LPCELL" s" src/core/cell.f" EXPECT-ROW
    s" PFX-COMMON" s" LPPTRSTORAGE" s" src/core/pointer-storage.f" EXPECT-ROW
    s" PFX-COMMON" s" LPENGINEERROR" s" src/core/engine-error.f" EXPECT-ROW
+   s" PFX-COMMON" s" LPEXECVECTOR" s" src/core/exec-vector.f" EXPECT-ROW
    s" PFX-COMMON" s" LPCHECKER" s" src/core/checker.f" EXPECT-ROW
    s" PFX-COMMON" s" LPENGINEERROREFFECTS" s" src/core/engine-error-effects.f" EXPECT-ROW
    s" PFX-COMMON" s" LPLOWERCERTBASE" s" src/core/lower-cert-base.f" EXPECT-ROW
@@ -417,7 +418,6 @@ create LF $0A c,
    s" PFX-COMMON" s" LPENVBASE" s" src/os/env-base.f" EXPECT-ROW
    s" PFX-COMMON" s" LPINCLUDE" s" src/core/include.f" EXPECT-ROW
    s" PFX-COMMON" s" LPENUMS" s" src/core/enums.f" EXPECT-ROW
-   s" PFX-COMMON" s" LPEXECVECTOR" s" src/core/exec-vector.f" EXPECT-ROW
    s" PFX-COMMON" s" LPSHA256" s" src/core/sha256.f" EXPECT-ROW
    s" PFX-COMMON" s" LPTFAMSHA" s" src/core/type-family-sha.f" EXPECT-ROW
    s" PFX-COMMON" s" LPCOMBINATORS" s" src/core/combinators.f" EXPECT-ROW
@@ -503,6 +503,7 @@ create LF $0A c,
    s" src/core/cell.f" EXPECT-FILE
    s" src/core/pointer-storage.f" EXPECT-FILE
    s" src/core/engine-error.f" EXPECT-FILE
+   s" src/core/exec-vector.f" EXPECT-FILE
    s" src/core/checker.f" EXPECT-FILE
    s" src/core/engine-error-effects.f" EXPECT-FILE
    s" src/core/lower-cert-base.f" EXPECT-FILE
@@ -530,7 +531,6 @@ create LF $0A c,
    s" src/os/env-base.f" EXPECT-FILE
    s" src/os/script-argv.f" EXPECT-FILE
    s" src/core/enums.f" EXPECT-FILE
-   s" src/core/exec-vector.f" EXPECT-FILE
    s" src/core/sha256.f" EXPECT-FILE
    s" src/core/type-family-sha.f" EXPECT-FILE
    s" src/core/combinators.f" EXPECT-FILE
@@ -564,7 +564,6 @@ create LF $0A c,
    s" BF-APPEND-ENV-BASE" EXPECT-FILE
    s" BF-APPEND-SCRIPT-ARGV" EXPECT-FILE
    s" BF-APPEND-ENUMS" EXPECT-FILE
-   s" BF-APPEND-EXEC-VECTOR" EXPECT-FILE
    s" src/core/sha256.f" EXPECT-FILE
    s" src/core/type-family-sha.f" EXPECT-FILE
    s" BF-APPEND-COMBINATORS" EXPECT-FILE
@@ -820,10 +819,10 @@ public
 : RECOVERY ( -- )
    0 RECOVERY-U !
    s" emit_src() {" s"   local f" MODE-CAT s" cat"
-   [: RECOVERY+ ;] CAPTURE 17 T=
+   [: RECOVERY+ ;] CAPTURE 18 T=
    EXPECT-RECOVERY
    RECOVERY$ EXPECT$ T$=
-   RECOVERY$ 17 ASSERT-UNIQUE
+   RECOVERY$ 18 ASSERT-UNIQUE
    s" emit_decl_src() {" s" emit_src() {" s" cat src/" SCOPE-N 0 T=
    s" emit_src() {" s"   local f" S\" emit_decl_src \"$out\"" SCOPE-N 1 T=
    s" emit_src() {" s"   local f" s" LOWER-CERT-HOOK:INSTALL" SCOPE-N 1 T=
@@ -835,19 +834,19 @@ public
       s" src/core/structures.f" s" LOWER-CERT-HOOK:INSTALL" SCOPE-BEFORE
    0 RECOVERY-U !
    s" SRC_COMMON=(" s" emit_boot_hide() {" MODE-ARRAY s" "
-      [: RECOVERY+ ;] CAPTURE 30 T=
+      [: RECOVERY+ ;] CAPTURE 29 T=
    EXPECT-RECOVERY-COMMON
    RECOVERY$ EXPECT$ T$=
-   RECOVERY$ 30 ASSERT-UNIQUE
+   RECOVERY$ 29 ASSERT-UNIQUE
    RECOVERY-TARGETS ;
 
 : FIXPOINT ( -- )
    0 FIXPOINT-U !
    s" : BF-APPEND-CHECKER-BOOT" s" : BF-APPEND-CORE-BYTES"
-   MODE-SOURCE s" BF-APPEND-SOURCE" [: FIXPOINT+ ;] CAPTURE 17 T=
+   MODE-SOURCE s" BF-APPEND-SOURCE" [: FIXPOINT+ ;] CAPTURE 18 T=
    EXPECT-RECOVERY
    FIXPOINT$ EXPECT$ T$=
-   FIXPOINT$ 17 ASSERT-UNIQUE
+   FIXPOINT$ 18 ASSERT-UNIQUE
    s" : BF-APPEND-DECL-FILES" s" : BF-APPEND-CORE-FILES"
    s" BF-APPEND-SOURCE" SCOPE-N 0 T=
    s" : BF-APPEND-RUN-PRELUDE" s" : BF-APPEND-STDIN-RUN-PRELUDE"
@@ -866,10 +865,10 @@ public
       s" BF-APPEND-CORE-FILES" s" LOWER-CERT-HOOK:INSTALL" SCOPE-BEFORE
    0 FIXPOINT-U !
    s" : BF-APPEND-COMMON" s" : BF-APPEND-DRIVER-IO" MODE-COMMON s" "
-      [: FIXPOINT+ ;] CAPTURE 31 T=
+      [: FIXPOINT+ ;] CAPTURE 30 T=
    EXPECT-FIXPOINT-COMMON
    FIXPOINT$ EXPECT$ T$=
-   FIXPOINT$ 31 ASSERT-UNIQUE
+   FIXPOINT$ 30 ASSERT-UNIQUE
    FIXPOINT-TARGETS ;
 
 ;package

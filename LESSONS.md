@@ -4906,3 +4906,30 @@ unchanged (148855). Keys for milestone 2:
   The one-launch profiling harness (tools/ptx/mma-profile.f, config-driven
   `-- BK PAD STAGES DYN MODE SHAPE`) is host-gate-clean and device-proven; the
   actual profile evidence is still missing.
+- **Engine-hook migration off raw `@ execute` cells is doubly gated — natively by
+  in-file ordering, and hard-blocked by the stage0 bootstrap mirror.** (dot
+  habu-migrate-engine-hooks stage 2.) Native: `defer` needs `DEFER-UNSET`
+  (exec-vector.f — now loaded before checker.f) AND the checker's `trust`
+  (checker.f ~7706) + `checker-defer` record words already in the dictionary
+  (C-DEFER LFINDs them and dies rc 0x46 printing the token), so inside checker.f
+  only post-TRUST hooks can become defers; a prefix `variable` gets NO checker
+  usig row (the engine registers colon/defer rows, not variables), so a checked
+  installer word cannot read a flag variable — set flags at top level like the
+  old `' X CELL !` installs. Bootstrap: bootstrap/cg/forth.fs has NO deferred
+  words ("deferred-word state is still absent") and the stage0-generated engine
+  re-reads the boot prefix at startup, so ANY `defer` in a prefix file breaks
+  no-binary recovery (proven: full defer migration was native-green through
+  fixpoint x2 + run.f, but test/bootstrap-wide-memory.fs failed; fixture green
+  on native bin/hb). TYPED-VARIABLE xt<E> cells are stage0-compatible (`[:` is
+  mirrored) but the definer lives in layout-buffer.f (prefix 547), after the
+  hook-cell files (540-546). Prereq for stage 2: mirror defer/is into
+  bootstrap/cg/forth.fs (or make the typed-cell definer available pre-checker).
+- **bin/hb is a THIN binary: it re-reads the src prefix at every startup.**
+  Source edits take effect on the next run without `-- install`; an opaque
+  startup death printing one token is usually a prefix-order failure (the token
+  is the current parse point). A broken `-- install` bakes a broken engine —
+  restore bin/hb from jj, not just the source. The prefix load order lives in
+  SEVEN synchronized places: habu2.f x3 PFX tables, bootstrap/cg/forth.fs x3,
+  tools/bootstrap.sh (emit_src + SRC_COMMON), tools/build-fixpoint.f
+  (CHECKER-BOOT / COMMON / SNAP-KEEP), tools/boot-pin.f, tools/diagnose-hb-core.f,
+  plus pinned row counts in tools/bootstrap-codegen-test.f.

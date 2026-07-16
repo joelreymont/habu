@@ -74,7 +74,6 @@ SRC_COMMON=(
   src/os/env-base.f
   src/os/script-argv.f
   src/core/enums.f
-  src/core/exec-vector.f
   src/core/sha256.f
   src/core/type-family-sha.f
   src/core/combinators.f
@@ -185,6 +184,8 @@ emit_src() {
   cat src/core/pointer-storage.f >> "$out"
   printf '\n' >> "$out"
   cat src/core/engine-error.f >> "$out"
+  printf '\n' >> "$out"
+  cat src/core/exec-vector.f >> "$out"
   printf '\n' >> "$out"
   cat src/core/checker.f >> "$out"
   printf '\n' >> "$out"

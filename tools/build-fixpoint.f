@@ -722,6 +722,7 @@ public
    out outu s" src/core/cell.f" BF-APPEND-SOURCE
    out outu s" src/core/pointer-storage.f" BF-APPEND-SOURCE
    out outu s" src/core/engine-error.f" BF-APPEND-SOURCE
+   out outu s" src/core/exec-vector.f" BF-APPEND-SOURCE
    out outu s" src/core/checker.f" BF-APPEND-SOURCE
    out outu s" src/core/engine-error-effects.f" BF-APPEND-SOURCE
    out outu s" src/core/lower-cert-base.f" BF-APPEND-SOURCE
@@ -757,9 +758,6 @@ public
 : BF-APPEND-COMBINATORS ( ptr u8 n -- ) {: out:ptr outu :}
    out outu s" src/core/combinators.f" BF-APPEND-SOURCE ;
 
-: BF-APPEND-EXEC-VECTOR ( ptr u8 n -- ) {: out:ptr outu :}
-   out outu s" src/core/exec-vector.f" BF-APPEND-SOURCE ;
-
 : BF-APPEND-INCLUDE ( ptr u8 n -- ) {: out:ptr outu :}
    out outu SDC-INCLUDE$ BF-APPEND-SOURCE ;
 
@@ -779,7 +777,6 @@ public
    out outu BF-APPEND-ENV-BASE
    out outu BF-APPEND-SCRIPT-ARGV
    out outu BF-APPEND-ENUMS
-   out outu BF-APPEND-EXEC-VECTOR
    out outu s" src/core/sha256.f" BF-APPEND-SOURCE
    out outu s" src/core/type-family-sha.f" BF-APPEND-SOURCE
    out outu BF-APPEND-COMBINATORS
@@ -854,7 +851,6 @@ public
    out outu BF-APPEND-ENV-BASE
    out outu BF-APPEND-INCLUDE
    out outu BF-APPEND-ENUMS
-   out outu BF-APPEND-EXEC-VECTOR
    out outu s" src/core/sha256.f" BF-APPEND-SOURCE
    out outu s" src/core/type-family-sha.f" BF-APPEND-SOURCE
    out outu BF-APPEND-COMBINATORS
