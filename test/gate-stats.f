@@ -296,6 +296,26 @@ GS-GEN-INIT
 : GS-SPAN-LOAD ( ptr u8 n n -- ) {: label:ptr labelu:n ms:n :}
    s" span-load" label labelu ms GS-SPAN-EMIT ;
 
+\ Pool-timeout RCA row: a distinct kind so a slot the pool timed out under
+\ saturation is attributable in gate-stats.tsv, not folded into a span/test row.
+\ Fields: kind, elapsed ms, qualified label, live-at-kill, pool limit, WAIT count.
+: GS-POOL-TIMEOUT ( ptr u8 n n n n n -- ) {: label:ptr labelu:n ms:n live:n limit:n waits:n :}
+   GS-ON? 0= if exit then
+   GS-LINE-RESET
+   s" pool-timeout" GS-LINE+
+   GS-TAB GS-LINE-C+
+   ms GS-LINE-U+
+   GS-TAB GS-LINE-C+
+   label labelu GS-QUAL$ GS-LINE+
+   GS-TAB GS-LINE-C+
+   live GS-LINE-U+
+   GS-TAB GS-LINE-C+
+   limit GS-LINE-U+
+   GS-TAB GS-LINE-C+
+   waits GS-LINE-U+
+   GS-LF GS-LINE-C+
+   GS-PATH$ GS-LINE-BUF GS-LINE-U @ APPEND-FILE ;
+
 : GS-TAB+ ( -- )
    GS-TAB GS-LINE-C+ ;
 

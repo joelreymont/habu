@@ -50,6 +50,8 @@ create GT-POOL-ERR-FDS GT-POOL-MAX cells allot
 create GT-POOL-OUT-TOTALS GT-POOL-MAX cells allot
 create GT-POOL-ERR-TOTALS GT-POOL-MAX cells allot
 create GT-POOL-SEQS GT-POOL-MAX cells allot
+create GT-POOL-WAITS GT-POOL-MAX cells allot
+create GT-POOL-SAT-LIVES GT-POOL-MAX cells allot
 create GT-POOL-RED-LABELS GT-POOL-RED-MAX GT-FAIL-NAME-CAP * allot
 create GT-POOL-RED-LABEL-US GT-POOL-RED-MAX cells allot
 create GT-POOL-RED-EXITEDS GT-POOL-RED-MAX cells allot
@@ -59,6 +61,10 @@ create GT-POOL-RED-OUT-PATHS GT-POOL-RED-MAX FS-PATH-CAP * allot
 create GT-POOL-RED-OUT-US GT-POOL-RED-MAX cells allot
 create GT-POOL-RED-ERR-PATHS GT-POOL-RED-MAX FS-PATH-CAP * allot
 create GT-POOL-RED-ERR-US GT-POOL-RED-MAX cells allot
+create GT-POOL-RED-WAITS GT-POOL-RED-MAX cells allot
+create GT-POOL-RED-SAT-LIVES GT-POOL-RED-MAX cells allot
+create GT-POOL-RED-SAT-LIMITS GT-POOL-RED-MAX cells allot
+create GT-POOL-RED-SAT-MSS GT-POOL-RED-MAX cells allot
 
 variable GT-POOL-OUT-BUFS-A
 variable GT-POOL-ERR-BUFS-A
@@ -95,6 +101,19 @@ defer GT-POOL-PASS-HOOK ( ptr u8 n n -- )
    [: GT-POOL-NO-PASS-HOOK ;] is GT-POOL-PASS-HOOK ;
 
 GT-POOL-PASS-HOOK-DEFAULT!
+
+: GT-POOL-NO-TIMEOUT-HOOK ( ptr u8 n n n n n -- )
+   2drop 2drop 2drop ;
+
+\ Receives ( label labelu ms live limit waits ) for every slot the pool times
+\ out. Default no-op; run-lib installs a gate-stats emitter so a pool timeout is
+\ attributable in gate-stats.tsv, not only on the RED: line.
+defer GT-POOL-TIMEOUT-HOOK ( ptr u8 n n n n n -- )
+
+: GT-POOL-TIMEOUT-HOOK-DEFAULT! ( -- )
+   [: GT-POOL-NO-TIMEOUT-HOOK ;] is GT-POOL-TIMEOUT-HOOK ;
+
+GT-POOL-TIMEOUT-HOOK-DEFAULT!
 
 : GT-POOL-OUT-BUFS-FIELD ( -- ptr ptr u8 )
    GT-POOL-OUT-BUFS-A 0 ptr-field ;
@@ -219,8 +238,16 @@ GT-POOL-ABORT-BARE!
      timeout OF 0 idx GT-POOL-CODE-PTR ! 0 0= 0= idx GT-POOL-EXITED-PTR ! 0 0= idx GT-POOL-TIMED-OUT-PTR ! ENDOF
    ;MATCH ;
 
+\ Distinct verdict token for a slot the pool's OWN timeout/reaper killed:
+\ GT-POOL-TIMEOUT set the timed-out flag (via GT-POOL-OUTCOME! timeout variant)
+\ before sending SIGKILL, so this is attributable pool saturation, not a real
+\ exit/signal death. Still a red/failing phase, but not to be misread as a
+\ genuine failure on a contended host.
+: GT-POOL-TIMEOUT-KIND$ ( -- ptr u8 n )
+   s" TIMEOUT-UNDER-LOAD" ;
+
 : GT-POOL-KIND-NAME. ( bool bool -- )   \ exited timed-out -> printed kind name
-   if drop s" timeout" type exit then
+   if drop GT-POOL-TIMEOUT-KIND$ type exit then
    if s" exit" type exit then
    s" signal" type ;
 
@@ -253,6 +280,14 @@ GT-POOL-ABORT-BARE!
 
 : GT-POOL-SEQ-PTR ( idx -- ptr n )
    IDX>N cells GT-POOL-SEQS + ;
+
+\ Per-slot WAIT-heartbeat count and the pool-live saturation depth snapshotted
+\ at timeout, so a timed-out RED line can report the load context.
+: GT-POOL-WAITS-PTR ( idx -- ptr n )
+   IDX>N cells GT-POOL-WAITS + ;
+
+: GT-POOL-SAT-LIVE-PTR ( idx -- ptr n )
+   IDX>N cells GT-POOL-SAT-LIVES + ;
 
 : GT-POOL-OUT-PATH-BUF ( idx -- ptr u8 )
    IDX>N FS-PATH-CAP * GT-POOL-OUT-PATHS + ;
@@ -413,6 +448,8 @@ GT-POOL-ABORT-KILL!
    0 idx GT-POOL-OUT-PATH-U-PTR !
    0 idx GT-POOL-ERR-PATH-U-PTR !
    0 idx GT-POOL-SEQ-PTR !
+   0 idx GT-POOL-WAITS-PTR !
+   0 idx GT-POOL-SAT-LIVE-PTR !
    0 0= idx GT-POOL-EXITED-PTR !
    0 0= 0= idx GT-POOL-TIMED-OUT-PTR !
    0 idx GT-POOL-CODE-PTR !
@@ -473,6 +510,7 @@ GT-POOL-ABORT-KILL!
 : GT-POOL-WAIT-LINE ( idx -- ) {: idx :}
    idx GT-POOL-WAIT-DUE? if
       mono-ns idx GT-POOL-LAST-PTR !
+      idx GT-POOL-WAITS-PTR @ 1+ idx GT-POOL-WAITS-PTR !
       s" WAIT: " type
       idx GT-POOL-LABEL$ type
       s"  (" type
@@ -738,6 +776,18 @@ GT-POOL-ABORT-KILL!
 : GT-POOL-RED-ERR-U-PTR ( n -- ptr n )
    GT-POOL-RED-CHECK cells GT-POOL-RED-ERR-US + ;
 
+: GT-POOL-RED-WAITS-PTR ( n -- ptr n )
+   GT-POOL-RED-CHECK cells GT-POOL-RED-WAITS + ;
+
+: GT-POOL-RED-SAT-LIVE-PTR ( n -- ptr n )
+   GT-POOL-RED-CHECK cells GT-POOL-RED-SAT-LIVES + ;
+
+: GT-POOL-RED-SAT-LIMIT-PTR ( n -- ptr n )
+   GT-POOL-RED-CHECK cells GT-POOL-RED-SAT-LIMITS + ;
+
+: GT-POOL-RED-SAT-MS-PTR ( n -- ptr n )
+   GT-POOL-RED-CHECK cells GT-POOL-RED-SAT-MSS + ;
+
 : GT-POOL-RED-LABEL$ ( n -- ptr u8 n ) {: i:n :}
    i GT-POOL-RED-LABEL-BUF i GT-POOL-RED-LABEL-U-PTR @ ;
 
@@ -758,6 +808,10 @@ GT-POOL-ABORT-KILL!
    idx GT-POOL-EXITED-PTR @ i GT-POOL-RED-EXITED-PTR !
    idx GT-POOL-TIMED-OUT-PTR @ i GT-POOL-RED-TIMED-OUT-PTR !
    idx GT-POOL-CODE-PTR @ i GT-POOL-RED-CODE-PTR !
+   idx GT-POOL-WAITS-PTR @ i GT-POOL-RED-WAITS-PTR !
+   idx GT-POOL-SAT-LIVE-PTR @ i GT-POOL-RED-SAT-LIVE-PTR !
+   GT-POOL-LIMIT @ i GT-POOL-RED-SAT-LIMIT-PTR !
+   idx GT-POOL-ELAPSED-MS i GT-POOL-RED-SAT-MS-PTR !
    idx 0 GT-POOL-STREAM-FILE$ i GT-POOL-RED-OUT-BUF i GT-POOL-RED-OUT-U-PTR FS-PATH-CAP GT-POOL-RED-COPY$
    idx 1 GT-POOL-STREAM-FILE$ i GT-POOL-RED-ERR-BUF i GT-POOL-RED-ERR-U-PTR FS-PATH-CAP GT-POOL-RED-COPY$ ;
 
@@ -770,12 +824,24 @@ GT-POOL-ABORT-KILL!
 : GT-POOL-RED-DETAILED ( -- n )
    GT-POOL-RED# dup GT-POOL-RED-MAX > if drop GT-POOL-RED-MAX then ;
 
+\ Saturation suffix, appended only for a pool-timeout (TIMEOUT-UNDER-LOAD) red:
+\ the live/limit depth and WAIT-heartbeat count that witness the contention, plus
+\ how long the killed slot ran. Non-timeout reds are byte-identical to before.
+: GT-POOL-RED-SAT-LINE ( n -- ) {: i:n :}
+   i GT-POOL-RED-TIMED-OUT-PTR @ 0= if exit then
+   s"  sat=" type i GT-POOL-RED-SAT-LIVE-PTR @ GT-POOL-N-TYPE
+   $2F emit i GT-POOL-RED-SAT-LIMIT-PTR @ GT-POOL-N-TYPE
+   s"  waits=" type i GT-POOL-RED-WAITS-PTR @ GT-POOL-N-TYPE
+   s"  ran=" type i GT-POOL-RED-SAT-MS-PTR @ GT-POOL-N-TYPE
+   s" ms" type ;
+
 : GT-POOL-RED-LINE ( n -- ) {: i:n :}
    s" RED: " type i GT-POOL-RED-LABEL$ type
    s"  kind=" type i GT-POOL-RED-EXITED-PTR @ i GT-POOL-RED-TIMED-OUT-PTR @ GT-POOL-KIND-NAME.
    s"  code=" type i GT-POOL-RED-CODE-PTR @ GT-POOL-N-TYPE
    s"  out=" type i GT-POOL-RED-OUT$ type
-   s"  err=" type i GT-POOL-RED-ERR$ type cr ;
+   s"  err=" type i GT-POOL-RED-ERR$ type
+   i GT-POOL-RED-SAT-LINE cr ;
 
 : GT-POOL-RED-OVERFLOW-LINE ( -- )
    GT-POOL-RED# GT-POOL-RED-MAX > if
@@ -986,6 +1052,11 @@ GT-POOL-ABORT-KILL!
 
 : GT-POOL-TIMEOUT ( idx -- ) {: idx :}
    OUTCOME:TIMEOUT idx GT-POOL-OUTCOME!
+   \ Snapshot the saturation depth (live slots, incl. this one) before the reap
+   \ decrements it, then hand the full timeout context to the gate-stats hook.
+   GT-POOL-LIVE @ idx GT-POOL-SAT-LIVE-PTR !
+   idx GT-POOL-LABEL$ idx GT-POOL-ELAPSED-MS
+   idx GT-POOL-SAT-LIVE-PTR @ GT-POOL-LIMIT @ idx GT-POOL-WAITS-PTR @ GT-POOL-TIMEOUT-HOOK
    \ Final bounded poll+drain so the last bytes the worker wrote (often the
    \ hang clue) reach the tail and capture file before the fds are closed.
    GT-POOL-POLL-BUILD  GT-POOL-POLL drop  idx GT-POOL-DRAIN-SLOT

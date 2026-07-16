@@ -146,6 +146,17 @@ runner prints the same red list at completion, keeps the suite temp root
 (`capture root kept: <GT-ROOT>`) so the capture files survive for triage, and
 exits nonzero.
 
+`kind` is `exit` (child exited nonzero), `signal` (child died on a signal the
+pool did not send — an external SIGKILL such as OOM/AMFI, reaped as `signaled`),
+or `TIMEOUT-UNDER-LOAD` (the pool's OWN per-slot timeout/reaper SIGKILLed the
+slot; `GT-POOL-TIMEOUT` set the `timed-out` flag before the kill). A timeout is
+still a red/failing phase — it never weakens the gate — but is attributably
+distinct so a contended-host kill is not misread as a genuine failure. A
+`TIMEOUT-UNDER-LOAD` line carries a saturation suffix
+`sat=<live>/<limit> waits=<n> ran=<ms>ms` (live slots at the kill over the pool
+limit, WAIT-heartbeat count, and how long the slot ran), and the pool also
+writes a distinct `pool-timeout` row to `gate-stats.tsv` for machine RCA.
+
 Infrastructure failures are distinct from test failures: pool spawn, poll, or
 capture-open errors are a fast abort that kills all live children and throws
 instead of recording a red phase.

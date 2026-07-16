@@ -578,8 +578,12 @@ create TR-CAL-PCT-BUF 4 allot
 : TR-POOL-PASS-SPAN ( ptr u8 n n -- ) {: label:ptr labelu:n ms:n :}
    label labelu ms GS-SPAN-AUTH ;
 
+: TR-POOL-TIMEOUT-STAT ( ptr u8 n n n n n -- ) {: label:ptr labelu:n ms:n live:n limit:n waits:n :}
+   label labelu ms live limit waits GS-POOL-TIMEOUT ;
+
 : TR-INSTALL-POOL-HOOKS ( -- )
-   [: TR-POOL-PASS-SPAN ;] is GT-POOL-PASS-HOOK ;
+   [: TR-POOL-PASS-SPAN ;] is GT-POOL-PASS-HOOK
+   [: TR-POOL-TIMEOUT-STAT ;] is GT-POOL-TIMEOUT-HOOK ;
 
 TR-INSTALL-POOL-HOOKS
 

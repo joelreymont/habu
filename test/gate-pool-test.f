@@ -208,8 +208,11 @@ variable GPT-KR-LOG-U
 : GPT-EXPECT-TIMEOUT-OUT ( n -- ) {: outu:n :}
    GPT-OUT outu s" gate-pool hang worker" CONTAINS? TTRUE
    GPT-OUT outu GPT-HANG-SENTINEL$ CONTAINS? TTRUE
-   GPT-OUT outu s" outcome: timeout code: 0" CONTAINS? TTRUE
-   GPT-OUT outu s" RED: hang worker kind=timeout code=0" CONTAINS? TTRUE
+   GPT-OUT outu s" outcome: TIMEOUT-UNDER-LOAD code: 0" CONTAINS? TTRUE
+   GPT-OUT outu s" RED: hang worker kind=TIMEOUT-UNDER-LOAD code=0" CONTAINS? TTRUE
+   GPT-OUT outu s" sat=" CONTAINS? TTRUE
+   GPT-OUT outu s" waits=" CONTAINS? TTRUE
+   GPT-OUT outu s" ran=" CONTAINS? TTRUE
    GPT-OUT outu s" PASS: quick worker" CONTAINS? TTRUE ;
 
 : GPT-EXPECT-OVERFLOW-OUT ( n -- ) {: outu:n :}
@@ -579,6 +582,56 @@ variable GPT-GK-SENTINEL-U
    GT-POOL-DRAIN
    GT-CLEANUP ;
 
+\ A child that dies by a SIGKILL the pool did NOT send: it signals its own
+\ process group (an OOM/AMFI kill is the real-world analog). It reaps as
+\ signaled(9) - rc 137 when flattened - but the pool's timed-out flag stays
+\ false, so it is a plain FAIL (kind=signal), never TIMEOUT-UNDER-LOAD. waitpid's
+\ WIFSIGNALED vs WIFEXITED (PROC-STATUS>OUTCOME) also keeps a self-exit(137)
+\ distinct: that would read exited(137)/kind=exit, likewise not a timeout.
+: GPT-EXTERNAL-KILL-WORKER ( -- )
+   s" gate-pool external-kill worker" type cr
+   0 >PID SIGKILL PROC-KILL-RAW drop ;
+
+: GPT-EXTERNAL-KILL-CASE ( -- )
+   s" gate-pool-external-kill" GT-START
+   1 GT-POOL-SLOTS!
+   GT-POOL-RESET
+   GT-POOL-RED-RESET
+   s" external-kill worker" GPT-TIMEOUT-MS [: GPT-EXTERNAL-KILL-WORKER ;] GT-POOL-START-FORK
+   GT-POOL-DRAIN-SOFT
+   s" external-kill: pool-unsent SIGKILL stays plain FAIL, not a timeout" T-LABEL
+   GT-POOL-RED# 1 T=
+   0 GT-POOL-RED-TIMED-OUT-PTR @ TFALSE
+   0 GT-POOL-RED-EXITED-PTR @ TFALSE
+   0 GT-POOL-RED-CODE-PTR @ SIGKILL T=
+   GT-CLEANUP ;
+
+\ gate-stats attribution: with a timeout hook installed (as run-lib does), a
+\ pool-timed-out slot writes a distinct `pool-timeout` gate-stats.tsv row so the
+\ contended-host kill is attributable in machine RCA, not only on the RED: line.
+: GPT-TIMEOUT-STAT-HOOK ( ptr u8 n n n n n -- ) {: label:ptr labelu:n ms:n live:n limit:n waits:n :}
+   label labelu ms live limit waits GS-POOL-TIMEOUT ;
+
+: GPT-TIMEOUT-STAT-CASE-BODY ( -- )
+   GT-ROOT GS-ROOT!
+   [: GPT-TIMEOUT-STAT-HOOK ;] is GT-POOL-TIMEOUT-HOOK
+   1 GT-POOL-SLOTS!
+   GT-POOL-RESET
+   GT-POOL-RED-RESET
+   s" stat hang worker" GPT-HANG-TIMEOUT-MS [: GPT-HANG-WORKER ;] GT-POOL-START-FORK
+   GT-POOL-DRAIN-SOFT
+   GS-PATH$ GPT-OUT GPT-CAP READ-ALL {: n:n :}
+   GPT-OUT n s" pool-timeout" GPT-COUNT$ 1 T=
+   GPT-OUT n s" stat hang worker" GPT-COUNT$ 1 T= ;
+
+: GPT-TIMEOUT-STAT-CASE ( -- )
+   GPT-GS-SAVE!
+   [: GPT-TIMEOUT-STAT-CASE-BODY ;] catch GPT-SPAN-RC !
+   GPT-GS-RESTORE
+   GT-POOL-TIMEOUT-HOOK-DEFAULT!
+   GT-POOL-PASS-HOOK-DEFAULT!
+   GPT-SPAN-RC @ 0 <> if GPT-SPAN-RC @ throw then ;
+
 : GATE-POOL-TEST-MAIN ( -- )
    s" fail-battery-case" GPT-MODE? if GPT-BATTERY-CASE exit then
    s" kept-root-case" GPT-MODE? if GPT-KEPT-ROOT-CHILD exit then
@@ -595,10 +648,12 @@ variable GPT-GK-SENTINEL-U
    GPT-SPAN-MULTI-CASE
    GPT-NEST-CASE
    GPT-SG-CASE
+   GPT-TIMEOUT-STAT-CASE
    GPT-INFRA-CASE
    GT-CLEANUP
    GPT-GROUP-KILL-CASE
    GPT-WAIT-NEG-CASE
+   GPT-EXTERNAL-KILL-CASE
    GPT-KEPT-ROOT-CASE
    GPT-BATTERY-REPORT
    T-REPORT
