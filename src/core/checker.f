@@ -4566,6 +4566,7 @@ PRIM: ndict@         PE-N PE-OUT PRIM;
 PRIM: ndict!         PE-N PE-IN PRIM;
 PRIM: SEAL-CAPTURE   PRIM;
 PRIM: SEAL-FRIEND    PRIM;
+PRIM: DRAIN-PRETRUST PRIM;   \ dot habu-engine-pre-trust-77410827: drains the pending pre-trust defer table
 PRIM: data-base      PE-PTR-A PE-OUT PRIM;
 PRIM: prot-wid-add   PE-N PE-IN PRIM;
 PRIM: owner-wid-preflight? PE-N PE-IN PE-N PE-IN PE-N PE-IN  PE-F PE-OUT PRIM;
@@ -7685,6 +7686,33 @@ s" <input>" DIAG-FILE!
 : TRUST {: na nu sa su :}
    na nu TOKFOLD drop
    sa su  TKF TKFU @  CHECKER-USIG-ADD ;
+
+\ Pre-trust defer capability (dot habu-engine-pre-trust-77410827): `trust` (above)
+\ and `checker-defer` (5208) are both defined now — the earliest safe point — so
+\ drain the pending table, replaying trust+checker-defer for every defer declared
+\ before this line. The engine backstop (BSEALCAP) dies fail-closed (exit 73,
+\ named) if the table is non-empty and the drain never ran; the DRAIN-PRETRUST
+\ prim is baked into the engine (native habu2.f + stage0 mirror forth.fs).
+\ TRANSITION SHIM (bounded, documented; owner: habu-checker-exec-of-5923c543):
+\ this file is the BOOT PREFIX re-read by every existing bin/hb, and the
+\ DRAIN-PRETRUST prim exists only in engines built from this tree — a bare
+\ DRAIN-PRETRUST token kills the previous master fixpoint at startup
+\ (E-UNDEFINED, exit 70). Resolve the prim by RUNTIME name lookup instead: old
+\ engines miss (drop; nothing to drain — this tree declares no pre-trust
+\ defers), new engines find + execute it. TRUSTED: because `search-wl` yields a
+\ plain n and the checker soundly rejects execute-of-plain-n (RSEXEC) — exactly
+\ the stored-xt gap the owning dot tracks. REMOVAL CONDITION: revert to the bare
+\ token once the ecosystem fixpoint >= this commit — concretely: the first
+\ stage-2b pre-7687 conversion landing does the revert (that landing inherently
+\ requires the new engine anyway).
+\ The shim sits between the two unique PTD-REGRESSION-BLANK sentinels so the
+\ negative regression (test/pre-trust-defer.f) can blank exactly this region and
+\ prove the exit-73 undrained backstop; keep the sentinels contiguous with it.
+\ PTD-REGRESSION-BLANK-BEGIN
+TRUSTED: DRAIN-PRETRUST-COMPAT ( -- )
+   s" DRAIN-PRETRUST" 0 search-wl dup 0 <> if execute else drop then ;
+DRAIN-PRETRUST-COMPAT
+\ PTD-REGRESSION-BLANK-END
 
 \ UNSAFE-TOK? lives above the EXPORT block (it also gates alias minting there).
 : REJECT-UNSAFE ( -- )

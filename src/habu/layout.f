@@ -426,9 +426,41 @@ TXN-STATE-OFF $98 + constant TXN-BLOB-CAP-CELL
 TXN-STATE-OFF $100 + constant TXN-LIVE-W-OFF
 64 constant TXN-LIVE-W-CAP
 
+\ --- Pre-trust defer pending table (dot habu-engine-pre-trust-77410827) ---
+\ `defer NAME ( E )` declared in src/core/checker.f BEFORE `: TRUST`
+\ (checker.f:7685) cannot run C-CALL-TRUST-PEND / C-CALL-CHECKER-DEFER, which
+\ LFIND `trust`/`checker-defer` (undefined until 5208/7687) and die exit 70. When
+\ they are absent C-DEFER instead COPIES the defer's qualified name + effect
+\ signature into a slot of this fixed table; DRAIN-PRETRUST (called once in
+\ checker.f right after `: TRUST`) replays both registrations for every slot.
+\ Populated and drained entirely inside the checker.f prefix load, so the table is
+\ empty by snapshot time; it sits at the TOP of the reserved region and bumps
+\ DATA-START (protected-WID growth precedent) so no existing engine offset moves.
+\ Overflow (and an over-long name/sig) dies at declaration; a non-empty table at
+\ SEAL-CAPTURE dies (undrained backstop) — both fail-closed, named. Slot access
+\ uses a computed band base (PD-TABLE-OFF > the DATA-relative scaled-imm range),
+\ then small in-slot field offsets. Slot: [0]=name-len [8]=sig-len
+\ [PD-NAME-OFF..)=name bytes [PD-SIG-OFF..)=sig bytes.
+\ Protection class: UNGUARDED engine scratch (BODYBUF class, not a PROT-GUARD
+\ band). A raw user store into it grants nothing beyond the public
+\ `trust`/`checker-defer` words — the drain replays only name+sig slot copies —
+\ and the table is empty whenever user source runs. test/protection-span.f pins
+\ this class at the DATA-START edge.
+48 constant PD-CAP                          \ pending slots: stage-2b pre-7687 needs ~20 (B5 + render/snapshot class); headroom
+48 constant PD-NAME-CAP                      \ max qualified defer-name bytes per slot
+64 constant PD-SIG-CAP                       \ max effect-signature bytes per slot
+0  constant PD-NLEN-OFF                       \ in-slot: name length (u64)
+8  constant PD-SLEN-OFF                       \ in-slot: sig length (u64)
+16 constant PD-NAME-OFF                       \ in-slot: name bytes
+PD-NAME-OFF PD-NAME-CAP + constant PD-SIG-OFF \ in-slot: sig bytes
+PD-SIG-OFF PD-SIG-CAP + constant PD-SLOT      \ per-slot stride
+8 constant PD-SLOTS-REL                       \ slots begin after the u64 band count cell
+TXN-STATE-OFF TXN-STATE-LEN + constant PD-TABLE-OFF   \ band base (= old DATA-START); [0]=count
+PD-TABLE-OFF PD-SLOTS-REL + PD-CAP PD-SLOT * + constant PD-TABLE-END
+
 \ DATA-START: first offset of the user DP heap (allot/,/c,); everything below is
 \ engine-reserved state (snapshot saves [0,DATA-START); DP-CHECK bounds the heap
 \ >= DATA-START; task-user cells stop at EVAL-FRAME and sixteen evaluator
-\ frames occupy $43C0..$47C0. The lowering state ends exactly at $8000; its
-\ immutable variable-sized blob is outside DATA and cannot alias the user heap.
-TXN-STATE-OFF TXN-STATE-LEN + constant DATA-START
+\ frames occupy $43C0..$47C0. The lowering state ends at $8000; the pre-trust defer
+\ pending band follows, then the immutable lowering blob lives outside DATA.
+PD-TABLE-END constant DATA-START

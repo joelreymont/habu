@@ -2320,6 +2320,62 @@ s" c-defer-meta-write" s" --" TRUST
    ndok LBL, ;
 s" c-defer-room" s" --" TRUST
 
+\ --- Pre-trust defer pending registration (dot habu-engine-pre-trust-77410827) ---
+\ A `defer NAME ( E )` declared before checker.f defines `trust`/`checker-defer`
+\ cannot run C-CALL-TRUST-PEND / C-CALL-CHECKER-DEFER (they LFIND those words and
+\ die exit 70). C-DEFER instead copies the defer's qualified name + effect
+\ signature into the pending table (src/habu/layout.f PD-*); DRAIN-PRETRUST
+\ replays both registrations after `: TRUST`.
+
+: C-PD-COPY ( -- )                                   \ copy x5 bytes [x9..)->[x16..); advances x9/x16, x5->0
+   LBL LBL {: top done :}   \ typed-local-lint: allow-bare-local
+   top LBL,  5 done CBZ,
+      6 9 0 LDRB,  6 16 0 STRB,
+      9 9 1 ADDI,  16 16 1 ADDI,  5 5 1 SUBI,  top B,
+   done LBL, ;
+s" c-pd-copy" s" --" TRUST
+
+: C-PD-DIE-FULL ( -- )                               \ table full or name/sig over cap: name the offending defer token, exit 72
+   SP SP 32 SUBI,  9 $2D657270203A6268 LIT64,  9 SP 0 STR,  9 $6564207473757274 LIT64,  9 SP 8 STR,  9 $6C62617420726566 LIT64,  9 SP 16 STR,  9 $203A6C6C75662065 LIT64,  9 SP 24 STR,
+   0 2 MOVZ,  1 SP 0 ADDI,  2 32 MOVZ,  NR-WRITE SYS,  SP SP 32 ADDI,
+   0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,
+   0 2 MOVZ,  1 LQNL LABEL@ ADR,  1 1 1 ADDI,  2 1 MOVZ,  NR-WRITE SYS,
+   0 72 MOVZ,  NR-EXIT-GROUP SYS, ;
+s" c-pd-die-full" s" --" TRUST
+
+: C-PD-CAPTURE ( -- )                                \ record this defer's (name,sig) into the next pending slot
+   LBL LBL LBL {: capok nameok sigok :}   \ typed-local-lint: allow-bare-local
+   12 PD-TABLE-OFF LIT64,  12 DATA 12 ADD,           \ x12 = &band
+   13 12 0 LDR,  14 PD-CAP MOVZ,  13 14 CMP,  C-LT capok BCOND,
+      C-PD-DIE-FULL
+   capok LBL,
+   15 PD-SLOT MOVZ,  15 13 15 MUL,                   \ x15 = count*PD-SLOT
+   14 12 PD-SLOTS-REL ADDI,  14 14 15 ADD,           \ x14 = slot base (survives C-PUSH-DREC-NAME/copies)
+   C-PUSH-DREC-NAME                                  \ G: name-addr, name-len (clobbers x9,x10,x12,x13)
+   10 G-POP  9 G-POP                                 \ x10=name-len  x9=name-addr
+   16 PD-NAME-CAP MOVZ,  10 16 CMP,  C-LS nameok BCOND,
+      C-PD-DIE-FULL
+   nameok LBL,
+   10 14 PD-NLEN-OFF STR,
+   16 14 PD-NAME-OFF ADDI,  5 10 0 ADDI,  C-PD-COPY
+   9 DATA TSIG-A-CELL LDR,  10 DATA TSIG-U-CELL LDR, \ x9=sig-addr x10=sig-len
+   16 PD-SIG-CAP MOVZ,  10 16 CMP,  C-LS sigok BCOND,
+      C-PD-DIE-FULL
+   sigok LBL,
+   10 14 PD-SLEN-OFF STR,
+   16 14 PD-SIG-OFF ADDI,  5 10 0 ADDI,  C-PD-COPY
+   12 PD-TABLE-OFF LIT64,  12 DATA 12 ADD,           \ reload &band (C-PUSH-DREC-NAME clobbered x12)
+   13 12 0 LDR,  13 13 1 ADDI,  13 12 0 STR, ;       \ count++
+s" c-pd-capture" s" --" TRUST
+
+: C-PRETRUST-READY? ( -- )                           \ x13 <- both `trust` and `checker-defer` are defined (non-dying)
+   LBL {: done :}   \ typed-local-lint: allow-bare-local
+   9 LKWTRUST LABEL@ ADR,  10 5 MOVZ,  LFIND LABEL@ BL,
+   13 done CBZ,                                      \ trust absent -> x13=0
+   LCHKDEFER 13 C-FIND-GLOBAL?                       \ x13 = checker-defer found? (global scope)
+   done LBL, ;
+s" c-pretrust-ready?" s" --" TRUST
+
 : C-DEFER ( -- )
    C-TASK-LIVE-GUARD
    LBL {: named :}
@@ -2344,8 +2400,13 @@ s" c-defer-room" s" --" TRUST
    NDICT NDICT 1 ADDI,  LHIDXADD LABEL@ BL,
    9 DATA PEND-CELL LDR,  9 9 0 LDR,
    2 5 MOVZ,  LPROT LABEL@ BL,  LFLUSH LABEL@ BL,
-   C-CALL-TRUST-PEND
-   C-CALL-CHECKER-DEFER
+   LBL LBL {: ready pdone :}                          \ typed-local-lint: allow-bare-local — pre-trust defer capability (dot habu-engine-pre-trust-77410827)
+   C-PRETRUST-READY?  13 ready CBNZ,
+      C-PD-CAPTURE  pdone B,                          \ trust/checker-defer absent: record into the pending table
+   ready LBL,
+      C-CALL-TRUST-PEND
+      C-CALL-CHECKER-DEFER
+   pdone LBL,
    EM-REC-WIDE-PUBLISH
    C-CLEAR-TRUSTED-STATE
    9 0 MOVZ,  9 DATA PEND-CELL STR, ;
@@ -2379,6 +2440,33 @@ s" c-defer-target-meta" s" --" TRUST
    C-X9-LIT
    16 9 0 W-STRX C-EMITW ;
 s" j-is" s" --" TRUST
+
+\ DRAIN-PRETRUST ( -- ): replay C-CALL-TRUST-PEND + C-CALL-CHECKER-DEFER
+\ for every pending pre-trust defer, then empty the table. Called once from
+\ src/core/checker.f right after `: TRUST` (the earliest point both `trust`:7685
+\ and `checker-defer`:5208 exist). Drains from the top down using the band count
+\ itself as the loop state so it survives across the checker BLR calls; each slot
+\ supplies the copied name+sig, so no body-buffer/record read is needed at drain
+\ time. Registered as a framed prim (BLRs into the checker) via FPRIM below.
+: BDRAINPRETRUST ( -- )
+   LBL LBL {: loop done :}   \ typed-local-lint: allow-bare-local
+   loop LBL,
+      12 PD-TABLE-OFF LIT64,  12 DATA 12 ADD,  13 12 0 LDR,  13 done CBZ,   \ remaining==0 -> done
+      C-FIND-TRUST                                    \ x11 = trust XT (clobbers x12-x16)
+      12 PD-TABLE-OFF LIT64,  12 DATA 12 ADD,  13 12 0 LDR,  13 13 1 SUBI,  \ index = remaining-1
+      15 PD-SLOT MOVZ,  15 13 15 MUL,  14 12 PD-SLOTS-REL ADDI,  14 14 15 ADD,   \ x14 = slot base (x11 preserved)
+      9 14 PD-NAME-OFF ADDI,  9 G-PUSH   9 14 PD-NLEN-OFF LDR,  9 G-PUSH        \ push name addr,len
+      9 14 PD-SIG-OFF ADDI,   9 G-PUSH   9 14 PD-SLEN-OFF LDR,  9 G-PUSH        \ push sig addr,len
+      C-CALL-X11-SAVED                                \ trust( na nu sa su )
+      LCHKDEFER 13 C-FIND-GLOBAL                      \ x11 = checker-defer XT (clobbers x12-x16)
+      12 PD-TABLE-OFF LIT64,  12 DATA 12 ADD,  13 12 0 LDR,  13 13 1 SUBI,
+      15 PD-SLOT MOVZ,  15 13 15 MUL,  14 12 PD-SLOTS-REL ADDI,  14 14 15 ADD,
+      9 14 PD-NAME-OFF ADDI,  9 G-PUSH   9 14 PD-NLEN-OFF LDR,  9 G-PUSH        \ push name addr,len
+      C-CALL-X11-SAVED                                \ checker-defer( ptr-u8 n )
+      12 PD-TABLE-OFF LIT64,  12 DATA 12 ADD,  13 12 0 LDR,  13 13 1 SUBI,  13 12 0 STR,   \ remaining--
+      loop B,
+   done LBL, ;
+s" bdrainpretrust" s" --" TRUST
 
 : C-IMMEDIATE ( -- )
    2 3 MOVZ,  LPROT LABEL@ BL,
@@ -6477,6 +6565,7 @@ s" AOT-PWID-BUF@" s" -- ptr u8" TRUST
    EMIT-PRIMS  OWNER-WID-EMIT:PRIMS
    EMIT-ARITY-GUARD             \ bake LARITY after prims so guarded entry labels resolve
    s" snap-rebase" ['] BSNAPREBASE FPRIM
+   s" DRAIN-PRETRUST" ['] BDRAINPRETRUST FPRIM   \ dot habu-engine-pre-trust-77410827
    s" tok-imm?" ['] BTOKIMM 2 GDEREF-F
    EMIT-PROF-PRIMS
    EMIT-FP-PRIMS

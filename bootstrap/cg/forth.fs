@@ -269,7 +269,25 @@ RSTK-OFF RSTK-CELLS cells + constant RSTK-END
 64 constant HNDF-SIZE                     \ frame bytes (was 48; +RSP +LOOPSP +MAGIC)
 BODYBUF-OFF LOOP-STK-OFF - 16 / constant LOOP-STK-FRAMES  \ 32 nested DO/LOOP frames
 $CA7CF4A3E00D constant CATCH-FRAME-MAGIC  \ frame sentinel: forged/mutated frames hard-exit
-TXN-STATE-OFF TXN-STATE-LEN + constant DATA-START \ user DP begins after protected lowering state; frozen artifacts live in mmap storage
+\ --- Pre-trust defer pending table (dot habu-engine-pre-trust-77410827) ---
+\ MIRROR of src/habu/layout.f. `defer NAME ( E )` declared before checker.f's
+\ `trust`/`checker-defer` copies its qualified name + effect signature here;
+\ DRAIN-PRETRUST replays both registrations after `: TRUST`. Empty by
+\ snapshot time; sits at the top of the reserved region and bumps DATA-START so no
+\ existing offset moves. Slot: [0]=name-len [8]=sig-len [PD-NAME-OFF..)=name
+\ [PD-SIG-OFF..)=sig. Keep byte-for-byte with native.
+48 constant PD-CAP                          \ pending slots (stage-2b pre-7687 ~20; headroom)
+48 constant PD-NAME-CAP                       \ max qualified defer-name bytes/slot
+64 constant PD-SIG-CAP                        \ max effect-signature bytes/slot
+0  constant PD-NLEN-OFF
+8  constant PD-SLEN-OFF
+16 constant PD-NAME-OFF
+PD-NAME-OFF PD-NAME-CAP + constant PD-SIG-OFF
+PD-SIG-OFF PD-SIG-CAP + constant PD-SLOT
+8 constant PD-SLOTS-REL
+TXN-STATE-OFF TXN-STATE-LEN + constant PD-TABLE-OFF   \ band base (= old DATA-START)
+PD-TABLE-OFF PD-SLOTS-REL + PD-CAP PD-SLOT * + constant PD-TABLE-END
+PD-TABLE-END constant DATA-START \ user DP begins above the pending band; frozen artifacts live in mmap storage
 create SQ-KW  115 c, 34 c,      \ build-time bytes for the keyword  s"  (s=115, "=34)
 create CQ-KW  99 c, 34 c,
 create DOTQ-KW 46 c, 34 c,
@@ -928,7 +946,26 @@ previous definitions
 \ engine-prefix end). The friend latch is already sealed by then, so a raw !
 \ would trap; this direct STR from NDICT is the sanctioned bypass, mirroring
 \ native src/habu/habu1.f BSEALCAP.
-: BSEALCAP ( -- )   NDICT DATA SEAL-NDICT-CELL STR, ;                                      \ ( -- )
+\ Undrained pre-trust defer backstop (dot habu-engine-pre-trust-77410827): the
+\ pending table (layout.f PD-*) must be empty by SEAL-CAPTURE (checker.f drains it
+\ after `: TRUST`, always before this runs); a non-empty table means the drain
+\ never ran — name each undrained defer on fd 2 and exit 73. MIRROR of native
+\ BSEALCAP; leaf-safe (syscalls only), loop state stays off write-clobbered regs.
+: BSEALCAP ( -- )
+   LBL LBL LBL {: pdok pdloop pdexit :}   \ typed-local-lint: allow-bare-local
+   9 PD-TABLE-OFF LIT64,  9 DATA 9 ADD,  10 9 0 LDR,  10 pdok CBZ,
+      13 0 MOVZ,
+      pdloop LBL,  13 10 CMP,  C-GE pdexit BCOND,
+         9 PD-TABLE-OFF LIT64,  9 DATA 9 ADD,
+         15 PD-SLOT MOVZ,  15 13 15 MUL,  14 9 PD-SLOTS-REL ADDI,  14 14 15 ADD,
+         SP SP 32 SUBI,  9 $72646E75203A6268 LIT64,  9 SP 0 STR,  9 $72702064656E6961 LIT64,  9 SP 8 STR,  9 $2074737572742D65 LIT64,  9 SP 16 STR,  9 $00203A7265666564 LIT64,  9 SP 24 STR,
+         0 2 MOVZ,  1 SP 0 ADDI,  2 31 MOVZ,  NR-WRITE SYS,  SP SP 32 ADDI,
+         0 2 MOVZ,  1 14 PD-NAME-OFF ADDI,  2 14 PD-NLEN-OFF LDR,  NR-WRITE SYS,
+         SP SP 16 SUBI,  9 $0A LIT64,  9 SP 0 STR,  0 2 MOVZ,  1 SP 0 ADDI,  2 1 MOVZ,  NR-WRITE SYS,  SP SP 16 ADDI,   \ newline (native BSEALCAP mirror: keep byte-identical)
+         13 13 1 ADDI,  pdloop B,
+      pdexit LBL,  0 73 MOVZ,  NR-EXIT-GROUP SYS,
+   pdok LBL,
+   NDICT DATA SEAL-NDICT-CELL STR, ;                                      \ ( -- )
 : BSEALFRIEND ( -- ) 9 FRIEND-ARENA-LEN MOVZ,  9 DATA FRIEND-LATCH-CELL STR, ;              \ ( -- )
 \ wide-mark ( -- ): set DNAME-WIDE on the newest dict record (interpret-mode
 \ wide-effect gate; mirrors src/habu/habu1.f BWIDEMARK incl. the LPROT bracket).
@@ -4352,6 +4389,58 @@ variable CFSK2
    C-PUSH-DREC-NAME
    C-CALL-X11-SAVED ;
 
+\ --- Pre-trust defer pending registration (dot habu-engine-pre-trust-77410827) ---
+\ MIRROR of src/habu/habu2.f. A `defer NAME ( E )` declared before checker.f
+\ defines `trust`/`checker-defer` records its qualified name + effect signature
+\ into the pending table (layout.f PD-*) instead of dying; DRAIN-PRETRUST
+\ replays both registrations after `: TRUST`. Keep byte-for-byte with native.
+
+: C-PD-COPY ( -- )                                   \ copy x5 bytes [x9..)->[x16..); advances x9/x16, x5->0
+   LBL LBL {: top done :}   \ typed-local-lint: allow-bare-local
+   top LBL,  5 done CBZ,
+      6 9 0 LDRB,  6 16 0 STRB,
+      9 9 1 ADDI,  16 16 1 ADDI,  5 5 1 SUBI,  top B,
+   done LBL, ;
+
+: C-PD-DIE-FULL ( -- )                               \ table full or name/sig over cap: name the offending defer token, exit 72
+   SP SP 32 SUBI,  9 $2D657270203A6268 LIT64,  9 SP 0 STR,  9 $6564207473757274 LIT64,  9 SP 8 STR,  9 $6C62617420726566 LIT64,  9 SP 16 STR,  9 $203A6C6C75662065 LIT64,  9 SP 24 STR,
+   0 2 MOVZ,  1 SP 0 ADDI,  2 32 MOVZ,  NR-WRITE SYS,  SP SP 32 ADDI,
+   0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,
+   0 2 MOVZ,  1 LQNL @ ADR,  1 1 1 ADDI,  2 1 MOVZ,  NR-WRITE SYS,
+   0 72 MOVZ,  NR-EXIT-GROUP SYS, ;
+
+: C-PD-CAPTURE ( -- )                                \ record this defer's (name,sig) into the next pending slot
+   LBL LBL LBL {: capok nameok sigok :}   \ typed-local-lint: allow-bare-local
+   12 PD-TABLE-OFF LIT64,  12 DATA 12 ADD,
+   13 12 0 LDR,  14 PD-CAP MOVZ,  13 14 CMP,  C-LT capok BCOND,
+      C-PD-DIE-FULL
+   capok LBL,
+   15 PD-SLOT MOVZ,  15 13 15 MUL,
+   14 12 PD-SLOTS-REL ADDI,  14 14 15 ADD,           \ x14 = slot base (survives C-PUSH-DREC-NAME/copies)
+   12 DATA PEND-CELL LDR,                            \ x12 = record ptr (mirror C-PUSH-DREC-NAME reads it)
+   C-PUSH-DREC-NAME
+   10 G-POP  9 G-POP                                 \ x10=name-len x9=name-addr
+   16 PD-NAME-CAP MOVZ,  10 16 CMP,  C-LS nameok BCOND,
+      C-PD-DIE-FULL
+   nameok LBL,
+   10 14 PD-NLEN-OFF STR,
+   16 14 PD-NAME-OFF ADDI,  5 10 0 ADDI,  C-PD-COPY
+   9 DATA TSIG-A-CELL LDR,  10 DATA TSIG-U-CELL LDR,
+   16 PD-SIG-CAP MOVZ,  10 16 CMP,  C-LS sigok BCOND,
+      C-PD-DIE-FULL
+   sigok LBL,
+   10 14 PD-SLEN-OFF STR,
+   16 14 PD-SIG-OFF ADDI,  5 10 0 ADDI,  C-PD-COPY
+   12 PD-TABLE-OFF LIT64,  12 DATA 12 ADD,           \ reload &band (C-PUSH-DREC-NAME clobbered x12)
+   13 12 0 LDR,  13 13 1 ADDI,  13 12 0 STR, ;       \ count++
+
+: C-PRETRUST-READY? ( -- )                           \ x13 <- both `trust` and `checker-defer` are defined (non-dying)
+   LBL {: done :}   \ typed-local-lint: allow-bare-local
+   9 LKWTRUST @ ADR,  10 5 MOVZ,  LFIND @ BL,
+   13 done CBZ,                                      \ trust absent -> x13=0
+   LCHKDEFER 13 C-P2-FIND-GLOBAL?                    \ x13 = checker-defer found? (global scope)
+   done LBL, ;
+
 \ defer NAME ( sig ) : create NAME. The signature is required (parsed + consumed,
 \ unchecked in stage0). clen spans the whole body incl RET, so addr+clen lands
 \ exactly on the trailer.
@@ -4377,8 +4466,13 @@ variable CFSK2
    NDICT NDICT 1 ADDI,
    9 DATA PEND-CELL LDR,  9 9 0 LDR,               \ x9 = body start for the flush
    2 5 MOVZ,  LPROT @ BL,  LFLUSH @ BL,             \ region -> RX + flush
-   C-CALL-TRUST-PEND                                \ register the defer's declared effect (checker usig row)
-   C-CALL-CHECKER-DEFER                             \ mark it a defer so a checked `is NAME` fit-checks
+   LBL LBL {: ready pdone :}                          \ typed-local-lint: allow-bare-local — pre-trust defer capability (dot habu-engine-pre-trust-77410827)
+   C-PRETRUST-READY?  13 ready CBNZ,
+      C-PD-CAPTURE  pdone B,                          \ trust/checker-defer absent: record into the pending table
+   ready LBL,
+      C-CALL-TRUST-PEND                             \ register the defer's declared effect (checker usig row)
+      C-CALL-CHECKER-DEFER                          \ mark it a defer so a checked `is NAME` fit-checks
+   pdone LBL,
    EM-REC-WIDE-PUBLISH                              \ publish wide/min-in record marks (hook-guarded, no-op unset)
    9 0 MOVZ,  9 DATA PEND-CELL STR, ;               \ clear PEND
 
@@ -4412,6 +4506,29 @@ variable CFSK2
    11 DATA DEFER-META-CELL LDR,
    C-X9-LIT                                          \ movz/movk x9 = dispatch-cell addr
    16 9 0 W-STRX C-EMITW ;                           \ str x16,[x9]
+
+\ DRAIN-PRETRUST ( -- ): MIRROR of src/habu/habu2.f BDRAINPRETRUST. Replay
+\ C-CALL-TRUST-PEND + C-CALL-CHECKER-DEFER for every pending pre-trust defer, then
+\ empty the table. Called once from checker.f right after `: TRUST`. Drains top-down
+\ using the band count as loop state; each slot supplies the copied name+sig.
+: BDRAINPRETRUST ( -- )
+   LBL LBL {: loop done :}   \ typed-local-lint: allow-bare-local
+   loop LBL,
+      12 PD-TABLE-OFF LIT64,  12 DATA 12 ADD,  13 12 0 LDR,  13 done CBZ,   \ remaining==0 -> done
+      C-FIND-TRUST                                    \ x11 = trust XT (clobbers x12-x16)
+      12 PD-TABLE-OFF LIT64,  12 DATA 12 ADD,  13 12 0 LDR,  13 13 1 SUBI,  \ index = remaining-1
+      15 PD-SLOT MOVZ,  15 13 15 MUL,  14 12 PD-SLOTS-REL ADDI,  14 14 15 ADD,   \ x14 = slot base (x11 preserved)
+      9 14 PD-NAME-OFF ADDI,  9 G-PUSH   9 14 PD-NLEN-OFF LDR,  9 G-PUSH        \ push name addr,len
+      9 14 PD-SIG-OFF ADDI,   9 G-PUSH   9 14 PD-SLEN-OFF LDR,  9 G-PUSH        \ push sig addr,len
+      C-CALL-X11-SAVED                                \ trust( na nu sa su )
+      LCHKDEFER 13 C-P2-FIND-GLOBAL                   \ x11 = checker-defer XT (clobbers x12-x16)
+      12 PD-TABLE-OFF LIT64,  12 DATA 12 ADD,  13 12 0 LDR,  13 13 1 SUBI,
+      15 PD-SLOT MOVZ,  15 13 15 MUL,  14 12 PD-SLOTS-REL ADDI,  14 14 15 ADD,
+      9 14 PD-NAME-OFF ADDI,  9 G-PUSH   9 14 PD-NLEN-OFF LDR,  9 G-PUSH        \ push name addr,len
+      C-CALL-X11-SAVED                                \ checker-defer( ptr-u8 n )
+      12 PD-TABLE-OFF LIT64,  12 DATA 12 ADD,  13 12 0 LDR,  13 13 1 SUBI,  13 12 0 STR,   \ remaining--
+      loop B,
+   done LBL, ;
 
 : EMIT-P2-COPY ( -- )
    LP2COPY @ LBL,
@@ -5898,6 +6015,7 @@ variable P2SK
 
 : EMIT-PRIMITIVE-SECTIONS ( -- )
    EMIT-PRIMS
+   s" DRAIN-PRETRUST" ['] BDRAINPRETRUST FPRIM   \ dot habu-engine-pre-trust-77410827
    EMIT-PROF-PRIMS
    EMIT-FP-PRIMS
    EMIT-CEMIT

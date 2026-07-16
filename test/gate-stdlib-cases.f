@@ -486,6 +486,10 @@ TEST:SUITE engine-error-package
    test/engine-error-package.f
 TEST:;SUITE
 
+TEST:SUITE pre-trust-defer
+   test/pre-trust-defer.f
+TEST:;SUITE
+
 TEST:SUITE catch-frame
    test/catch-frame.f
 TEST:;SUITE

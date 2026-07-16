@@ -1261,6 +1261,13 @@ points stay listed.
 - `test/engine-error-package.f` — package-scoped engine-failure ABI regressions:
   native/recovered child exits for codes 86–88 and post-seal checker-bridge
   success/fail-closed lookup corruption.
+- `test/pre-trust-defer.f` — capability + fail-closed regressions for the
+  pre-trust defer pending table (dot habu-engine-pre-trust-77410827): copies the
+  src tree, patches the copy, and boots the engine-under-test with CWD there.
+  Positive case proves capture -> drain -> checked `is` -> 42 round-trip; compat
+  case pins the DRAIN-PRETRUST-COMPAT shim's search-wl-miss branch (old-engine
+  boot tolerance); overflow at declaration exits 72; an undrained table at
+  SEAL-CAPTURE exits 73.
 - `test/catch-frame.f` — a caught throw restores the complete caller execution
   frame (dot habu-restore-complete-exec-abb8baca): in-process asserts that a
   checked `r>`/`?do` index and the return/loop-stack depths survive a throwing

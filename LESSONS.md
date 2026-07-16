@@ -5190,3 +5190,82 @@ unchanged (148855). Keys for milestone 2:
 - **Run proof gates as standalone commands before VCS mutation.** A failed gate
   followed by commit/push commands in one shell invocation can leave a successful
   final exit status; inspect the gate result first, then commit in a later command.
+- **Pre-trust defers land via a pending table drained after `: TRUST`, not by
+  reordering the checker.** (dot habu-engine-pre-trust-77410827.) Native C-DEFER
+  unconditionally ran C-CALL-TRUST-PEND/C-CALL-CHECKER-DEFER, which LFIND
+  `trust`(checker.f:7687)/`checker-defer`(5208) and exit 70 — so any `defer` before
+  line 7687 (the B5 decls, the render/snapshot hook cells) killed boot. Fix
+  (option a): C-DEFER branches on C-PRETRUST-READY? (non-dying finds of both); if
+  absent it COPIES the defer's qualified name (via C-PUSH-DREC-NAME) + effect sig
+  (TSIG-A/U-CELL, which point into the transient source input) into a fixed
+  engine-DATA table, and DRAIN-PRETRUST (an FPRIM baked in habu2.f + the
+  forth.fs mirror, `PRIM:`-axiomed like SEAL-CAPTURE) replays both registrations
+  from the slot copies at a single checker.f token right after `: TRUST`. Both
+  name and sig MUST be copied — the dictionary record holds only the BARE tail
+  (native C-PUSH-DREC-NAME deliberately reads the QUALIFIED body-buffer spelling to
+  avoid the qualified-defs-leak bug), and the sig is never in the record. Fail
+  closed: overflow at declaration (C-PD-DIE-FULL, exit 72) and a non-empty table at
+  SEAL-CAPTURE (BSEALCAP backstop, exit 73), both named. The pending band sits at
+  the TOP of the reserved region and bumps DATA-START (protected-WID growth
+  precedent) so no existing offset moves; because PD-TABLE-OFF ($8000) exceeds the
+  DATA-relative scaled-immediate range ($7FF8), slot access computes an explicit
+  band base (`reg PD-TABLE-OFF LIT64, reg DATA reg ADD`) then small in-slot offsets.
+- **`LQNL` (the newline label) lives in habu2.f, so habu1.f code (BSEALCAP) cannot
+  ADR it — emit the newline as an inline `9 $0A LIT64` byte instead.** The build
+  fails at certify (`E-UNDEFINED ... in bsealcap: undefined word 'LQNL'`), not at
+  assembly. Any habu1.f die that wants a fixed message must build it self-contained
+  (LIT64-packed bytes on SP, like habu2.f's E-UNDEFINED die), not reference a
+  habu2.f message-table label.
+- **Adding a native `TRUST` asm site needs THREE ratchet updates, not one:** a
+  TRUSTED.md manifest table row (trust-lint), and — because `src/habu/habu2.f` is a
+  coarse `builder-emit` file-level fold — bumping that fold's count in the
+  `trusted-inventory-classes` block (trusted-inventory-test RATCHET-BAD#, mapped to
+  assertion 12 `TINV:RATCHET-BAD# 0 T=`). trust-lint and trusted-inventory-test
+  have DIFFERENT corpora; a diff that passes one can fail the other.
+- **The earliest prefix point a `defer` is legal is AFTER exec-vector.f (prefix
+  pos 5), which defines DEFER-UNSET — not util.f (pos 1).** A defer in an earlier
+  file dies 70 at C-DEFER-FIND-UNSET. Relevant when injecting fixtures: the
+  pre-trust-defer overflow regression appends its defers to exec-vector.f.
+- **A negative regression for a prefix-load die spawns a child engine with CWD set
+  to a copied+patched src tree** (prefix paths are CWD-relative `src/...`; the
+  child engine path must be ABSOLUTE since its CWD is the temp root — resolve via
+  `s" PWD" GETENV`). Blank exactly the intended prefix region by wrapping it in
+  unique sentinel comments; scanning for a bare token name blanks the wrong span
+  because the name also appears in a `PRIM:` axiom / comment elsewhere in the
+  file. Injected fixtures: the earliest legal `defer` host is exec-vector.f, and
+  source appended AFTER check-hook.f compiles CHECKED (the hook installs at its
+  load) — use that to prove checked `is`/certify behavior in a child tree.
+- **A new engine prim CALLED from the boot prefix breaks every existing binary in
+  the ecosystem — the prefix is re-read by old engines, and a bare new-prim token
+  is E-UNDEFINED exit 70 for them.** (pretrust integration.) Gates that only boot
+  the freshly-built engine cannot see this; probe with the PREVIOUS master
+  fixpoint binary against the changed tree. Two facts from the probes: a
+  `PRIM: NAME PRIM;` axiom line is tolerated by old engines (it only parses a
+  name), and the "prims are baked so tolerance is impossible" intuition is wrong —
+  a `TRUSTED:` shim that resolves the prim by RUNTIME `s" NAME" 0 search-wl`
+  lookup (both words baked in old engines) boots old engines (miss -> drop) and
+  new engines (find -> execute), verified end-to-end. It must be TRUSTED: because
+  `search-wl` yields plain `PE-N` and RSEXEC soundly rejects execute-of-plain-n —
+  own such a shim with the live stored-xt dot and state the removal condition at
+  the site (pretrust: revert to the bare token at the first stage-2b pre-7687
+  conversion landing, which inherently requires the new engine anyway). Pin the
+  tolerance in-gate by patching the looked-up name to a miss (a gate cannot
+  depend on a historical fixpoint binary).
+- **A new engine PRIM registered in the stage0 mirror MUST have a dictionary name
+  <= DNAME-INL (16 bytes) — the recovery mirror only emits INLINE prim names.** The
+  first draft named the drain prim `DRAIN-PRE-TRUST-DEFERS` (22). The NATIVE build
+  handled it (native prims like `spawn-argv-env-cwd-io`=21 exist), but the
+  gforth-mirror `FORTH-EXE` build wedged: `EMIT-FORTH` (emission) finished fine, but
+  `EMIT-EXE`→`BUILD-MACHO` spun forever in a gforth `EXC_BAD_ACCESS address=-16`
+  signal/longjmp loop (0% forward progress, no nf-bin, ~40 min). All mirror prims
+  were <=12 chars; a >16 name is the first to need external (DNAME-EXT) storage,
+  which the mirror's seed-dict/image path does not emit, so the record's name
+  pointer is garbage and the fixup walk chases it. Renaming to `DRAIN-PRETRUST` (14)
+  fixed it instantly. RCA method that pinned it: `sample <pid>` showed the loop was
+  `_sigtramp`/`longjmp`/`segv_handler` (fault loop, not slow build); lldb
+  `process handle SIGSEGV --stop` gave address -16; a clean-`master` wide-gate build
+  (<45s vs 40 min) proved it was my change; step-probing `EMIT-FORTH` (depth=0, done)
+  vs `EMIT-EXE` (hang) localized it to the image writer; bisecting the mirror change
+  found the FPRIM reg, then the name length. The recovery mirror's external-prim-name
+  gap is a real capability gap (dot it if a long prim name is ever unavoidable);
+  until then, keep engine prim names <=16.

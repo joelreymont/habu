@@ -2019,7 +2019,26 @@ SOURCE-INIT
 \ BSETCUR/BSETCHECK update sealed crown-jewel cells. ndict only grows once the
 \ engine is loaded (its records cannot be forgotten past this mark), so re-running
 \ the capture is monotonic and never lowers the watermark.
+\ Undrained pre-trust defer backstop (dot habu-engine-pre-trust-77410827): the
+\ pending table (layout.f PD-*) must be empty by the engine-prefix seal — checker.f
+\ drains it after `: TRUST`, and SEAL-CAPTURE only ever runs after checker.f. A
+\ non-empty table means DRAIN-PRETRUST never ran; name each undrained defer
+\ on fd 2 and exit 73. Leaf-safe (syscalls only, no BL); loop state stays off the
+\ write-clobbered x0-x2/x9 and re-derives the band base each iteration.
 : BSEALCAP ( -- )
+   LBL LBL LBL {: pdok pdloop pdexit :}   \ typed-local-lint: allow-bare-local
+   9 PD-TABLE-OFF LIT64,  9 DATA 9 ADD,  10 9 0 LDR,  10 pdok CBZ,   \ x10 = pending count; 0 -> drained
+      13 0 MOVZ,                                                     \ x13 = index
+      pdloop LBL,  13 10 CMP,  C-GE pdexit BCOND,
+         9 PD-TABLE-OFF LIT64,  9 DATA 9 ADD,                        \ re-derive &band (writes clobber x9)
+         15 PD-SLOT MOVZ,  15 13 15 MUL,  14 9 PD-SLOTS-REL ADDI,  14 14 15 ADD,   \ x14 = slot base
+         SP SP 32 SUBI,  9 $72646E75203A6268 LIT64,  9 SP 0 STR,  9 $72702064656E6961 LIT64,  9 SP 8 STR,  9 $2074737572742D65 LIT64,  9 SP 16 STR,  9 $00203A7265666564 LIT64,  9 SP 24 STR,
+         0 2 MOVZ,  1 SP 0 ADDI,  2 31 MOVZ,  NR-WRITE SYS,  SP SP 32 ADDI,       \ "hb: undrained pre-trust defer: "
+         0 2 MOVZ,  1 14 PD-NAME-OFF ADDI,  2 14 PD-NLEN-OFF LDR,  NR-WRITE SYS,   \ the defer name
+         SP SP 16 SUBI,  9 $0A LIT64,  9 SP 0 STR,  0 2 MOVZ,  1 SP 0 ADDI,  2 1 MOVZ,  NR-WRITE SYS,  SP SP 16 ADDI,   \ newline (LQNL is habu2.f-only)
+         13 13 1 ADDI,  pdloop B,
+      pdexit LBL,  0 73 MOVZ,  NR-EXIT-GROUP SYS,
+   pdok LBL,
    NDICT DATA SEAL-NDICT-CELL STR,
    OWNER-WID-EMIT:PREFIX-HOOK ;
 

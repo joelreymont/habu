@@ -180,6 +180,14 @@ variable SC-NUM-L
    s" lib/build-cache-test.f" q execute
    s" lib/codesign-test.f" q execute
    s" test/boot-pin-test.f" q execute
+   \ pre-trust defer regressions (dot habu-engine-pre-trust-77410827): four
+   \ spawned child-engine boots against a patched src-tree copy — engine-boot
+   \ weight (~1s, boot-pin-test class), and the pinned properties only move
+   \ when the engine defer machinery / reserved layout changes. Runs in the
+   \ spawned stdlib-cases suite (label-selected) and standalone
+   \ (bin/hb --load test/pre-trust-defer.f); measured too costly for the
+   \ fast-tier fork groups.
+   s" test/pre-trust-defer.f" q execute
    s" tools/object-image-test.f" q execute
    s" tools/imgdump-test.f" q execute
    s" tools/imagedisasm-test.f" q execute

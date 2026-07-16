@@ -106,6 +106,11 @@ that source is explicitly certified; they are not stale-checked by the default
 | c-defer | `--` | Interpreter `defer` definer consumes the name/signature, creates the wrapper and metadata, and publishes the declared checked effect. | `test/gate-dictionary.f`, `tools/hb-build-test.f`, `test/run.f` | src/habu/habu2.f | 2026-06-28 |
 | c-defer-target-meta | `--` | Compile-mode `is` validation resolves the deferred target and rejects non-deferred words before code emission. | `test/gate-dictionary.f`, `tools/hb-build-test.f`, `test/run.f` | src/habu/habu2.f | 2026-06-28 |
 | j-is | `--` | Compile-mode `is` emitter spills the typed quotation xt and stores it into the deferred word's vector cell. | `test/gate-dictionary.f`, `tools/hb-build-test.f`, `test/run.f` | src/habu/habu2.f | 2026-06-28 |
+| c-pd-copy | `--` | Pre-trust defer capture byte-copy helper: copies x5 bytes of name/sig into a pending-table slot in raw target data space. | `test/gate-dictionary.f`, `tools/hb-build-test.f`, `test/run.f` | src/habu/habu2.f | 2026-07-16 |
+| c-pd-die-full | `--` | Pre-trust defer table overflow / over-cap emitter writes the offending defer token and exits 72. | `test/gate-dictionary.f`, `tools/hb-build-test.f`, `test/run.f` | src/habu/habu2.f | 2026-07-16 |
+| c-pd-capture | `--` | Records a defer declared before `trust`/`checker-defer` exist: copies its qualified name and effect signature into the pending table for later replay. | `test/gate-dictionary.f`, `tools/hb-build-test.f`, `test/run.f` | src/habu/habu2.f | 2026-07-16 |
+| c-pretrust-ready? | `--` | Non-dying probe of `trust`/`checker-defer` findability; selects the pending-capture vs inline-registration branch in `defer`. | `test/gate-dictionary.f`, `tools/hb-build-test.f`, `test/run.f` | src/habu/habu2.f | 2026-07-16 |
+| bdrainpretrust | `--` | `DRAIN-PRE-TRUST-DEFERS` prim body: replays the trust and checker-defer registrations for every pending pre-trust defer, then empties the table. | `test/gate-dictionary.f`, `tools/hb-build-test.f`, `test/run.f` | src/habu/habu2.f | 2026-07-16 |
 | c-lbrace-die | `--` | Locals-placement guard writes the fixed diagnostic and exits when a `{:` local is declared inside a quotation. | `test/gate-diagnostics.f`, `test/run.f` | src/habu/habu2.f | 2026-06-28 |
 | EM-HXT-EXECUTE | `n --` | Narrow higher-order emitter boundary: checked dispatcher words pass one build-time emitter xt through this raw `execute` shim. | `test/run.f`, `tools/build-fixpoint-test.f` | src/habu/habu2.f | 2026-06-26 |
 | c-local-ref | `label label --` | Compile-mode local-reference emitter: branches to the caller's not-local continuation or emits local loads, and rejects quotation-local captures with raw exit code 75. | `test/engine-suite.f`, `test/run.f` | src/habu/habu2.f | 2026-06-27 |
@@ -263,6 +268,7 @@ that source is explicitly certified; they are not stale-checked by the default
 | FOLD | `R ptr a i64 b [ R b a -- R b ] -- R b` | Array fold keeps the quotation across accumulator calls; direct checked code would require a recursive quotation type. | `test/engine-suite.f`, `test/run.f` | src/core/combinators.f | 2026-06-16 |
 | INCLUDE-MMAP-PTR | `n -- ptr u8` | Refines the checked anonymous `mmap` result into the byte pointer backing include buffers after size selection and `-1` failure checking; syscall-result pointer refinement is outside checker inference. | `test/gate-dictionary.f`, `tools/build-fixpoint-test.f`, `test/run.f` | src/core/include.f | 2026-06-28 |
 | INCLUDE-EVALUATE | `ptr u8 n --` | Source composition reads and bounds file bytes in checked code, then crosses the dynamic `evaluate` boundary that the checker intentionally rejects in ordinary checked definitions. | `test/gate-dictionary.f`, `test/run.f` | src/core/include.f | 2026-06-28 |
+| DRAIN-PRETRUST-COMPAT | `--` | Bounded ecosystem-transition shim (dot habu-engine-pre-trust-77410827): resolves the DRAIN-PRETRUST prim by runtime `search-wl` name lookup so the boot prefix stays loadable by previous-fixpoint engines that lack the prim (miss branch drops; nothing to drain — the tree declares no pre-trust defers). TRUSTED because the checker soundly rejects execute-of-plain-n (RSEXEC), the stored-xt gap the owning dot tracks. Removal: revert to the bare token at the first stage-2b pre-7687 conversion landing. | `test/pre-trust-defer.f`, `test/run.f` | src/core/checker.f | 2026-07-17 |
 | ARENA-RC>PTR | `n -- ptr a` | Thin identity refinement from a checked, nonnegative anonymous `mmap` result into the checker's cell arena pointer; syscall-result pointer typing is outside checker inference. | `tools/check-test.f`, `tools/build-fixpoint-test.f`, `test/run.f` | src/core/checker.f | 2026-07-03 |
 | TOKBUF-RC>PTR | `n -- ptr u8` | Thin identity refinement from a checked, nonnegative anonymous `mmap` result into the checker's token byte-buffer pointer; syscall-result pointer typing is outside checker inference. | `tools/check-test.f`, `tools/build-fixpoint-test.f`, `test/run.f` | src/core/checker.f | 2026-07-03 |
 | USIGS-RC>PTR | `n -- ptr u8` | Thin identity refinement from a checked, nonnegative anonymous `mmap` result into the checker's transient signature byte store; syscall-result pointer typing is outside checker inference. | `tools/check-test.f`, `tools/build-fixpoint-test.f`, `test/run.f` | src/core/checker.f | 2026-07-03 |
@@ -990,7 +996,7 @@ src/habu/debug.f:BP-PRINT-ADDR builder-emit habu-builder-trust-rows-c5d41af6
 src/habu/debug.f:BP-PATCH32 builder-emit habu-builder-trust-rows-c5d41af6
 src/habu/debug.f:BP-XT>PTR builder-emit habu-builder-trust-rows-c5d41af6
 src/habu/habu1.f:STDIN? builder-emit habu-builder-trust-rows-c5d41af6
-src/habu/habu2.f builder-emit habu-builder-trust-rows-c5d41af6 126
+src/habu/habu2.f builder-emit habu-builder-trust-rows-c5d41af6 131
 src/habu/hide.f:BFR-N>REC builder-emit habu-builder-trust-rows-c5d41af6
 src/habu/hide.f:BFR-A>U8 builder-emit habu-builder-trust-rows-c5d41af6
 src/habu/hide.f:BFR-N>U8 builder-emit habu-builder-trust-rows-c5d41af6
@@ -1143,6 +1149,7 @@ src/core/checker.f:USIGS-CELL-AT discharge-candidate habu-checker-self-typing-9f
 src/core/checker.f:HIDX-MEM-NULL discharge-candidate habu-checker-self-typing-9ff8ba86
 src/core/checker.f:HIDX-RC>PTR discharge-candidate habu-checker-self-typing-9ff8ba86
 src/core/checker.f:EFFECT-QUERY discharge-candidate habu-checker-self-typing-9ff8ba86
+src/core/checker.f:DRAIN-PRETRUST-COMPAT discharge-candidate habu-checker-exec-of-5923c543
 src/core/checker.f:CHECKER-CERT-CALL prim-axiom habu-primitive-effect-axiom-1119f176
 src/core/checker.f:tok-imm? prim-axiom habu-primitive-effect-axiom-1119f176
 src/core/checker.f:parse-imm prim-axiom habu-primitive-effect-axiom-1119f176

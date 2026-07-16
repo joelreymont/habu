@@ -450,6 +450,9 @@ variable GSI-TL-FILE-A
    s" test/seal-package.f" GSI-FORK-INCLUDE
    s" test/engine-error-package.f" GSI-FORK-INCLUDE
    s" test/catch-frame.f" GSI-FORK-INCLUDE
+   \ test/pre-trust-defer.f is deliberately NOT fork-included: four child-engine
+   \ boots (~1s) measured over the fast-tier budget; it is a documented
+   \ manual-gate member (tools/suite-coverage-lint-core.f SC-MANUAL-TABLE).
    s" test/export-package.f" GSI-FORK-INCLUDE
    s" test/gate-runner-entry-test.f" GSI-FORK-INCLUDE
    s" lib/process-test.f" GSI-FORK-INCLUDE

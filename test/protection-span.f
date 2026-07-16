@@ -90,13 +90,23 @@ create ERR CAP allot
    s" require lib/task.f TASK:#USER TXN-STATE-OFF over - 1+ TASK:+USER PST-OVER drop" UNCAUGHT-RC EXPECT
    s" require lib/task.f TASK:#USER -1 TASK:+USER PST-WRAP drop" UNCAUGHT-RC EXPECT ;
 
+\ The pending pre-trust defer band [PD-TABLE-OFF, DATA-START) (dot
+\ habu-engine-pre-trust-77410827) is UNGUARDED engine scratch of the BODYBUF
+\ class: a raw user store into it grants nothing beyond the public
+\ `trust`/`checker-defer` words (the drain replays only name+sig slot copies,
+\ and the table is empty whenever user source runs — populated and drained
+\ entirely inside the checker.f prefix load). The guarded upper edge below
+\ DATA-START is therefore the TXN band end, pinned layout-independently; the
+\ DATA-START edge pins document the unguarded band explicitly.
 : TEST-BOUNDARY ( -- )
    s" 0 data-base $800 + c!" REJECTS
    s" 0 data-base $7FF + !" REJECTS
    s" 0 data-base $7F8 + !" ACCEPTS
    s" 0 data-base $2742 + c!" ACCEPTS
    s" 0 data-base TXN-STATE-OFF 1 cells - + !" ACCEPTS
-   s" 0 data-base DATA-START 1- + !" REJECTS
+   s" 0 data-base TXN-STATE-OFF TXN-STATE-LEN + 1- + !" REJECTS
+   s" 0 data-base PD-TABLE-OFF + c!" ACCEPTS
+   s" 0 data-base DATA-START 1- + !" ACCEPTS
    s" 0 data-base DATA-START + c!" ACCEPTS ;
 
 : TEST-SNAP-REBASE ( -- )

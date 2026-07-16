@@ -583,6 +583,11 @@ create AXBUF AXBUF-CAP allot
 \ prot-wid-add mutates the sealed friend-band protected-WID registry (a
 \ seal-capture-class live seal mutation) and its overflow path exits the
 \ process (NR-EXIT-GROUP rc 84), so it can never take a dummy operand.
+\ drain-pretrust (dot habu-engine-pre-trust-77410827) replays the pending
+\ pre-trust defer registrations into the LIVE checker registry (a trust usig
+\ row + a checker-defer row per pending slot) — a checker-substrate mutation
+\ of the trust/seal-capture class; a census execution would re-drain an
+\ already-empty table at best and inject duplicate registry rows at worst.
 \ The read-only owner-wid predicates are total over numeric dummy operands and
 \ stay difftested in AX-GEN-LIST against the valid cold-empty registry.
 \ tfam-ctor-word? is a pure registry-read predicate and stays difftested in
@@ -599,7 +604,7 @@ create AXBUF AXBUF-CAP allot
 \ Their axioms keep them checker-known so the seal-time internal-word marking
 \ pass leaves them top-level executable (dot habu-hb-crash-bare-c5be6634).
 : AX-NOEXEC-C ( -- ptr u8 n )
-   s"  seal-capture seal-friend prot-wid-add wf-tokix@ wf-off@ wf-pos@ wf-fam@ wf-width@ wf-term@ wf-flags@ tfam-width@ locw-hw@ p2-carve-w p2-live-w@ p2-live-cum@ p2-locseq-reset wide-mark rec-wide-publish rec-min-in@ layout-valid-desc-cell tfam-name$ tfam-arity@ tfam-kind@ tfam-public? tfam-derive-eq? tfam-derive-hash? tfam-var-start@ tfam-var-count@ sumv-name$ sumv-ctor-pkg$ lower-cert:cell@ lower-cert:bytes trust check check! typefamily sumtype enum product layout-buffer typed-buffer typed-variable " ;
+   s"  seal-capture seal-friend prot-wid-add drain-pretrust wf-tokix@ wf-off@ wf-pos@ wf-fam@ wf-width@ wf-term@ wf-flags@ tfam-width@ locw-hw@ p2-carve-w p2-live-w@ p2-live-cum@ p2-locseq-reset wide-mark rec-wide-publish rec-min-in@ layout-valid-desc-cell tfam-name$ tfam-arity@ tfam-kind@ tfam-public? tfam-derive-eq? tfam-derive-hash? tfam-var-start@ tfam-var-count@ sumv-name$ sumv-ctor-pkg$ lower-cert:cell@ lower-cert:bytes trust check check! typefamily sumtype enum product layout-buffer typed-buffer typed-variable " ;
 
 : AX-CAT ( ptr u8 n -- n )
    2dup AX-HAS-QUOTE? if 2drop AX-NOEXEC exit then
