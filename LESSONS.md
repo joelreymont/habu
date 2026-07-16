@@ -5086,3 +5086,9 @@ unchanged (148855). Keys for milestone 2:
   command in the controller checkout targets the controller revision. Change
   directories first, then verify the bookmark and worker `@` name the same
   commit before dispatch.
+- **A checked prefix provider cannot expose a library-only ADT in its public
+  effect.** If a core registry returns `option<T>`, the compiler prefix must own
+  and load that single shared algebra family before the provider; otherwise the
+  provider cannot certify and moving the declaration behind its consumer creates
+  a bootstrap cycle. Library files may require the prefix owner but must not
+  redeclare a second family.
