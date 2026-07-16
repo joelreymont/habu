@@ -87,3 +87,71 @@ the held implementation in .jj-ws/fable-stage2a (rerun recovery, commit,
 integrate). Stage-2b's defer approach is likewise unblocked on the stage0 side;
 its remaining constraint is the checker.f-internal install-ordering design +
 tfam coordination.
+
+STAGE-2B DESIGN (read-only scout, 2026-07-16, master 16bb3cc8; full table with
+every file:line in the scout report - essentials preserved here):
+
+LOAD-ORDER SPINE: engine prefix loads checker.f(6) -> lower-cert-base.f(8,
+installs PRODUCER-XT) -> type-family.f(10) -> render.f(11) -> sumtype.f(12) ->
+layout-buffer.f(13, TYPED-VARIABLE definer :217) -> check-hook.f(15, set-check
+re-point) -> ... include.f(~25, TDECL-EVAL-XT install :343) ->
+type-family-sha.f(~28, TF-SHA16-XT install :13). Two AOT-driver installers
+outside the prefix: xref.f:235 (TDECL-PROT-WID-XT), aot.f:13 (TDECL-EVAL-XT
+alt). Checking is ON throughout (parent checker live; check-hook only
+re-points), so all 2b conversions compile CHECKED and post-bridge defer/is
+works everywhere.
+
+KEY DESIGN VERDICTS:
+- defer/is is the UNIVERSAL shape. TYPED-VARIABLE (pos 13) loads after every
+  hook-cell file (6/10/11/12) - stage-1 typed cells unavailable without
+  relocating the definer (not required). NO typed pre-prefix install primitive
+  needed - blocker 2 dissolves post-bridge.
+- Install-twice semantics preserved everywhere (plain ! and is both silently
+  overwrite); the one die-on-double cell (PRODUCER-XT, checker.f:4855) is a
+  deliberately sealed boundary (installed lower-cert-base.f:129, INSTALL word
+  undefined + axiom sealed) - OUT of scope, classify like fprim.
+- Default/unset semantics MUST be preserved via explicit default-is
+  (stage-2a SOURCE-DEFAULT/HOOK-NOOP precedent) in four classes:
+  (1) fail-open VALUE defaults, live during the pos6->pos10 window:
+      TFAM-RESOLVE(0,false)/ARITY(0)/LAYOUT?(f)/CELL?(f)/WIDTH(1);
+  (2) fail-open NO-OP: DIAGXT RECXT BADSIG-XT LOCSHOWXT REG-EXT-PERSIST
+      REG-SCRATCH-SNAP REG-EXT-RB-SAVE/RESTORE CTOR-PKG?/WORD?/EXTEND?;
+  (3) fail-closed REJECT gates: MATCH-FAM-XT (MATCH-BEGIN->0 OK!),
+      CONSTRUCT-FAM-XT - default-is returns the reject value;
+  (4) fail-closed DIE/THROW: TDECL-EVAL-XT (E-LAYOUT-BUFFER throws + die),
+      TDECL-PROT-WID-XT, TF-SHA16-XT - keep guards or default-is that dies
+      with the SAME message.
+  Gate-protected unguarded cells (MATCH-VTAG/VCOUNT/PAY, CONSTRUCT-STEP,
+  TFAM-CON-LIN, SIG-QUOT, TFCL-NODE) need no default-is (unreachable unset).
+- BOUNDARY FLAG: TDECL-PROT-WID-XT's ONLY installer is xref.f:235 (AOT driver,
+  outside the checked engine prefix) - classify as boundary or verify the AOT
+  driver hosts a checked is before converting. The one inventory cell without
+  a checked-prefix installer.
+
+BATCH PLAN (LOW-risk first; each its own commit):
+  B1 render-diagnostic (LOW): DIAGXT/RECXT/BADSIG-XT/LOCSHOWXT/
+     REG-SCRATCH-SNAP-XT; cells checker.f 3990/6502/7486-7487/5520, installs
+     render.f 91/328/773/808/879.
+  B2 snapshot/rollback (LOW-MED): REG-EXT-PERSIST/RB-SAVE/RB-RESTORE;
+     checker.f 5519/8351-8352 + type-family.f 1038-1039/1063 (3-line hunk,
+     near tfam's live 1093 hunk - keep surgical).
+  B3 eval-crossing (LOW-MED): TDECL-EVAL-XT + TF-SHA16-XT; sumtype.f 732/
+     823-825, layout-buffer.f 104-221 consumers, include.f 343,
+     type-family.f 624/671-675, type-family-sha.f 13.
+  B4 internal trampolines (LOW): SIG-QUOT-XT (checker.f 2497/2518/2525/2644),
+     TFCL-NODE-XT (type-family.f 780/785/794/813) - plain defer, same-file.
+  B5 TFAM/MATCH/CONSTRUCT core (HIGH - tfam epicenter): Groups A+B+C, decls
+     checker.f:418-430 + guards 4824-4942/5233-5240, installs the contiguous
+     type-family.f:1358-1372 block. ONE tightly-scoped commit in a coordinated
+     window; integrator rebases by hash.
+  B6 TDECL-PROT-WID-XT: separate boundary decision.
+
+TFAM COLLISION MAP: HIGH = type-family.f 1358-1372 / 518-560 / 1030-1093 /
+780-814 / 620-680, checker.f 418-431 / 4824-4942 / 5233-5240 / 7315-7445 /
+7955-7973. LOW = render.f everywhere, checker.f 3990/6502/7486-7487/
+5519-5534/8351-8494/2497-2644, sumtype.f + layout-buffer.f + include.f +
+type-family-sha.f. Lane markers: recent tfam commits e596b0f1 (ctor-package
+limit), c217293a + the option-family/field-schema cluster; live hunks
+type-family.f @-1093, checker.f @-2337.
+
+Claim: agent=stage2b workspace=.jj-ws/fable-stage2b (scope: batches B1-B4, the LOW-risk classes from the STAGE-2B DESIGN; B5 tfam-epicenter and B6 boundary decision stay unclaimed pending the coordination window)
