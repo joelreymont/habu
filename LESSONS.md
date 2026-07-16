@@ -4,6 +4,11 @@
 
 Last updated: 2026-07-16
 
+- **A syscall primitive must expose failure before libraries can preserve it.**
+  The legacy `close ( fd -- )` effect erased the kernel return code, so checked
+  cleanup could not distinguish success from failure; use
+  `close-rc ( fd -- n )` wherever cleanup correctness is observable.
+
 - **Fork defenses need separate static and runtime proofs.** Keep the linear PTY
   handle off the live stack at `fork`, then remint the inherited packed identity
   only inside the child fixture; the registry's creating-pid check must reject

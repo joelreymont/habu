@@ -1608,7 +1608,8 @@ s" src/os/macos" ES-PATHZ open-rd DFD !
 DFD @ 0 >= -1 T=
 0 DIRBASE !
 DFD @ DBUF 4096 DIRBASE getdirentries64 0 > -1 T=
-DFD @ close
+DFD @ close-rc 0 T=
+-1 close-rc -1 T=
 s" /tmp/habu-engine-suite-mkdir" ES-PATHZ rmdir drop
 s" /tmp/habu-engine-suite-mkdir" ES-PATHZ 493 mkdir 0 T=
 s" /tmp/habu-engine-suite-mkdir" ES-PATHZ ES-STB stat64 0 T=

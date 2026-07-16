@@ -1877,6 +1877,9 @@ s" linux-stat-fix" s" n --" TRUST
 : BCLOSE ( -- )
    0 G-POP  NR-CLOSE SYS, ;
 
+: BCLOSERC ( -- )
+   0 G-POP  NR-CLOSE SYS,  SYS-PUSH ;
+
 : BRBASE ( -- )
    9 DATA RBASE-CELL LDR,  9 G-PUSH ;
 
@@ -2296,7 +2299,7 @@ public
    s" stat64" ['] BSTAT64 FPRIM-L   s" lstat64" ['] BLSTAT64 FPRIM-L
    s" getdirentries64" ['] BGETDIRENTRIES64 FPRIM-L
    s" patch32" ['] BPATCH32 2 GDEREF-F
-   s" close" ['] BCLOSE FPRIM-L
+   s" close" ['] BCLOSE FPRIM-L   s" close-rc" ['] BCLOSERC FPRIM-L
    s" rbase" ['] BRBASE FPRIM-L ;
 
 : EMIT-CHECKER-PRIMS ( -- )

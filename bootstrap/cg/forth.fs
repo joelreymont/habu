@@ -923,6 +923,7 @@ previous definitions
    SP SP 32 ADDI, ;
 
 : BCLOSE ( -- )  0 G-POP  NR-CLOSE SYS, ;                               \ ( fd -- )
+: BCLOSERC ( -- )  0 G-POP  NR-CLOSE SYS,  SYS-PUSH ;                   \ ( fd -- rc )
 
 : BRBASE ( -- )  9 DATA RBASE-CELL LDR,  9 G-PUSH ;                            \ ( -- rbase ) __TEXT load base
 
@@ -1193,7 +1194,7 @@ variable LTOKFIND
    s" open" ['] BOPEN FPRIM-L   s" open-rd" ['] BOPENRD FPRIM-L
    s" write" ['] BWRITE FPRIM-L   s" read" ['] BREAD FPRIM-L   s" ioctl" ['] BIOCTL FPRIM-L
    s" mmap" ['] BMMAP FPRIM-L   s" patch32" ['] BPATCH32 FPRIM
-   s" close" ['] BCLOSE FPRIM-L
+   s" close" ['] BCLOSE FPRIM-L   s" close-rc" ['] BCLOSERC FPRIM-L
    s" rbase" ['] BRBASE FPRIM-L ;
 
 : EMIT-CHECKER-PRIMS ( -- )
