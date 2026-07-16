@@ -182,6 +182,31 @@ variable FX-NEW
 : D26 ( n -- n )  $3FFFFFF and ;                               \ B/BL: bits 0..25 (26-bit field)
 
 : D19 ( n -- n )  $7FFFF and 5 lshift ;                         \ cond/CBZ: bits 5..23
+\ signed-reach bounds: a relocation delta d is in range iff LO <= d < HI (LO
+\ inclusive, HI exclusive — a two's-complement signed field). These mirror the
+\ Gforth seed generator's within-based rejection in bootstrap/cg/asm.fs exactly
+\ (?REL26/?REL19 on word deltas, ENC-ADR on the byte delta), so the native
+\ single-pass assembler fails closed at the identical boundary the trusted seed
+\ already rejects. The 2 MB code window (CODE-CAP-BYTES) overshoots REL19/ADR
+\ reach, so a forward or backward BCOND/CBZ/CBNZ/ADR — and a large enough B/BL —
+\ must be range-checked before its delta is masked, or the mask silently wraps
+\ to the wrong target. Every emit and patch site validates before code mutation.
+      -33554432 constant REL26-LO   \ -2^25 words, inclusive  (B/BL 26-bit field)
+       33554432 constant REL26-HI   \  2^25 words, exclusive
+        -262144 constant REL19-LO   \ -2^18 words, inclusive  (cond/CBZ/CBNZ 19-bit field)
+         262144 constant REL19-HI   \  2^18 words, exclusive
+       -1048576 constant ADR-LO     \ -2^20 bytes, inclusive  (ADR 21-bit field)
+        1048576 constant ADR-HI     \  2^20 bytes, exclusive
+
+: REL26-OK? ( n -- bool )  dup REL26-LO >=  swap REL26-HI <  and ;   \ B/BL word delta in reach?
+: REL19-OK? ( n -- bool )  dup REL19-LO >=  swap REL19-HI <  and ;   \ cond/CBZ/CBNZ word delta in reach?
+: ADR-OK?   ( n -- bool )  dup ADR-LO   >=  swap ADR-HI   <  and ;   \ ADR byte delta in reach?
+
+: ?REL26 ( n -- n )  dup REL26-OK? if exit then  s" icode: branch out of reach" ICODE-EXIT-RC die ;
+
+: ?REL19 ( n -- n )  dup REL19-OK? if exit then  s" icode: cond branch out of reach" ICODE-EXIT-RC die ;
+
+: ?ADR ( n -- n )  dup ADR-OK? if exit then  s" icode: adr out of reach" ICODE-EXIT-RC die ;
 \ emit a branch (base already encoded with delta=0) to a label; resolve or defer
 variable BBASE  variable BKIND
 
@@ -189,7 +214,7 @@ variable BBASE  variable BKIND
    LABEL>N I-LBL !                    \ BBASE/BKIND set; emits + records if fwd
    I-LBL @ cells LBLP + @  dup 0 < IF              \ pos on stack (0< isn't a standalone prim)
      drop  ASM-CP @ I-LBL @ >LABEL BKIND @ FX+  BBASE @ EMITW
-   ELSE  ASM-CP @ -  BKIND @ FX-B26 = IF D26 ELSE D19 THEN  BBASE @ or EMITW  THEN ;
+   ELSE  ASM-CP @ -  BKIND @ FX-B26 = IF ?REL26 D26 ELSE ?REL19 D19 THEN  BBASE @ or EMITW  THEN ;
 
 : B, ( label -- )  $14000000  BBASE !  FX-B26 BKIND !  BR-EMIT ;
 
@@ -209,19 +234,27 @@ variable BBASE  variable BKIND
    LABEL>N I-LBL ! I-RD !
    I-LBL @ cells LBLP + @ dup 0 < IF
      drop  ASM-CP @ I-LBL @ >LABEL FX-ADR FX+  I-RD @ 0 ENC-ADR EMITW
-   ELSE  ASM-CP @ - $4 *  I-RD @ swap ENC-ADR EMITW  THEN ;
+   ELSE  ASM-CP @ - $4 *  ?ADR  I-RD @ swap ENC-ADR EMITW  THEN ;
 \ define a label here; backpatch and reclaim only that label's pending chain
 variable LBI
 
 : FX-ENC ( n n -- n )                            \ ( delta kind -- patchbits )
-   dup FX-B26 = if drop D26 exit then
-   dup FX-B19 = if drop D19 exit then
-   dup FX-ADR = if drop $4 * ENC-ADRD exit then
+   dup FX-B26 = if drop ?REL26 D26 exit then
+   dup FX-B19 = if drop ?REL19 D19 exit then
+   dup FX-ADR = if drop $4 * ?ADR ENC-ADRD exit then
    drop s" icode: invalid fixup kind" ICODE-EXIT-RC die ;
 
+\ Deferred-patch reach is validated in FX-ENC before it returns any patch bits,
+\ so a failed patch dies before PATCH writes the site word: the failing fixup's
+\ code word and its FXS/FXK slot stay untouched (fully atomic for one fixup).
+\ A label with a multi-fixup pending chain is not atomic across the whole chain:
+\ LBL, binds the label and clears its FXH head, then walks the chain patching
+\ from the head, so fixups patched before an out-of-reach one keep their new
+\ deltas and are freed. The invariant is per-fixup: the die always precedes the
+\ current fixup's PATCH write, never mid-write.
 : FX-PATCH ( -- )
    ASM-CP @ LBI @ cells FXS + @ -                \ delta = here - site (words)
-   LBI @ cells FXK + @ FX-ENC                    \ delta -> patch bits by validated kind
+   LBI @ cells FXK + @ FX-ENC                    \ delta -> patch bits by validated kind (or die)
    LBI @ cells FXS + @ PATCH ;
 
 : LBL, ( label -- )

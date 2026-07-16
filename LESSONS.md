@@ -2,7 +2,38 @@
 
 # FIXME: Rewrite this to be concise without losing precision
 
-Last updated: 2026-07-15
+Last updated: 2026-07-16
+
+- **The native single-pass ARM64 assembler silently wrapped out-of-reach
+  relocations while the trusted Gforth seed generator already rejected them —
+  derive the native boundary from the seed, don't reinvent it.**
+  dot habu-check-arm64-relocation-8eee7fad. `src/arch/arm64/icode.f` masked
+  branch/ADR deltas (D19/D26/ENC-ADRD) with no signed-range check, so any
+  forward/backward BCOND/CBZ/CBNZ/ADR past reach in the 2 MB code window wrapped
+  to a wrong target; `bootstrap/cg/asm.fs` already threw via `?REL26`/`?REL19`/
+  `ENC-ADR`'s `within` bounds. Fix: shared `?REL26`/`?REL19`/`?ADR` (each a pure
+  `*-OK?` predicate + a die wrapper, mirroring `FX-KIND-OK?`/`?FX-KIND`) called at
+  BOTH the immediate encode sites (BR-EMIT/ADR, ELSE) and the deferred chokepoint
+  (FX-ENC), before any mutation, with bounds `LO <= d < HI` matching `within`
+  exactly (LO inclusive, HI exclusive). Parity was exact — no asm.fs change.
+- **Boundary tests for a reach that the buffer can't physically span: craft the
+  label position, don't emit MB of code.** REL19/ADR reach (±2^18 words) fits the
+  2 MB window so far-branch dies are real; REL26 reach (±2^25 words ≈ ±128 MB)
+  overflows the code-buffer guard long before the reach check, so REL26 boundary
+  fixtures set the bind position via `ASM-CP !` directly. Deferred PATCH always
+  targets the real site word (FXS = word 0), so even a crafted *negative* ASM-CP
+  is memory-safe — it only feeds the delta arithmetic, never the write address.
+  Backward (immediate) cases naturally exercise max-negative deltas; forward
+  (deferred) cases exercise max-positive; each PASS pins the exact instruction
+  word, each one-beyond dies exit 72 via a child-process fixture.
+- **Deferred backpatch is per-fixup atomic, not per-chain.** FX-ENC validates
+  reach before returning patch bits, so a failed patch dies before its PATCH
+  write — the failing fixup's code word and FXS/FXK slot stay untouched. But
+  LBL, binds the label and clears its FXH head before walking the pending chain,
+  so a mid-chain out-of-reach failure leaves earlier in-reach fixups already
+  patched and freed. Document the per-fixup invariant honestly rather than
+  claiming whole-chain atomicity; `die` exits, so post-die state is only
+  observable as the child's exit code + diagnostic.
 
 - **High-frequency architectural defaults need an entry rule and a machine
   gate, not a buried reference.** `docs/forth.md` already made packages the

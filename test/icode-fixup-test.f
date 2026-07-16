@@ -174,6 +174,65 @@ variable WP
    KIND-BAD FX-KIND-OK? TFALSE                  \ pure check rejects, mutates nothing
    NFX @ 2 T=  FX-NEW @ 2 T=  FX-FREE @ -1 T=  ASM-CP @ 2 T= ;
 
+\ signed-reach predicates: max delta on the valid side is in reach; one beyond
+\ each boundary (LO-1 and HI) is rejected. LO is inclusive, HI exclusive.
+: TEST-REACH-VALIDATE ( -- )
+   REL26-HI 1 - REL26-OK? TTRUE   REL26-LO REL26-OK? TTRUE      \ max +/- word delta
+   REL26-HI REL26-OK? TFALSE      REL26-LO 1 - REL26-OK? TFALSE \ one beyond each
+   REL19-HI 1 - REL19-OK? TTRUE   REL19-LO REL19-OK? TTRUE
+   REL19-HI REL19-OK? TFALSE      REL19-LO 1 - REL19-OK? TFALSE
+   ADR-HI 1 - ADR-OK? TTRUE       ADR-LO ADR-OK? TTRUE          \ byte delta
+   ADR-HI ADR-OK? TFALSE          ADR-LO 1 - ADR-OK? TFALSE ;
+
+\ a pure out-of-reach check mutates no fixup/code state (mirrors the kind guard)
+: TEST-REACH-PURE ( -- )
+   ASM-INIT
+   LBL {: t:label :}
+   t B,  t B,
+   NFX @ 2 T=  FX-NEW @ 2 T=  FX-FREE @ -1 T=  ASM-CP @ 2 T=
+   REL19-HI REL19-OK? TFALSE
+   NFX @ 2 T=  FX-NEW @ 2 T=  FX-FREE @ -1 T=  ASM-CP @ 2 T= ;
+
+\ exact-boundary encodings through the real emitters (pin the instruction word).
+\ Backward (immediate BR-EMIT/ADR,) exercises the max-negative delta; forward
+\ (deferred FX-ENC via LBL,) exercises the max-positive delta. Label positions
+\ are crafted via ASM-CP so a boundary delta needs no MB-scale code emission;
+\ deferred PATCH still writes the real site word (FXS = word 0).
+: ENC-REL19-MAXNEG ( -- )                        \ immediate backward, delta = -2^18
+   ASM-INIT  LBL {: t:label :}
+   t LBL,  REL19-HI ASM-CP !  C-EQ t BCOND,
+   REL19-HI WORD@ $54800000 T= ;
+
+: ENC-REL19-MAXPOS ( -- )                        \ deferred forward, delta = 2^18 - 1
+   ASM-INIT  LBL {: t:label :}
+   C-EQ t BCOND,  REL19-HI 1 - ASM-CP !  t LBL,
+   0 WORD@ $547FFFE0 T= ;
+
+: ENC-REL26-MAXPOS ( -- )                        \ deferred forward, delta = 2^25 - 1
+   ASM-INIT  LBL {: t:label :}
+   t B,  REL26-HI 1 - ASM-CP !  t LBL,
+   0 WORD@ $15FFFFFF T= ;
+
+: ENC-REL26-MAXNEG ( -- )                        \ deferred, crafted negative bind, delta = -2^25
+   ASM-INIT  LBL {: t:label :}
+   t B,  REL26-LO ASM-CP !  t LBL,
+   0 WORD@ $16000000 T= ;
+
+: ENC-ADR-MAXPOS ( -- )                          \ deferred forward, byte delta = (2^18-1)*4
+   ASM-INIT  LBL {: t:label :}
+   5 t ADR,  ADR-HI 4 / 1 - ASM-CP !  t LBL,
+   0 WORD@ $107FFFE5 T= ;
+
+: ENC-ADR-MAXNEG ( -- )                          \ immediate backward, byte delta = -2^20
+   ASM-INIT  LBL {: t:label :}
+   t LBL,  ADR-HI 4 / ASM-CP !  5 t ADR,
+   ADR-HI 4 / WORD@ $10800005 T= ;
+
+: TEST-REACH-ENCODE ( -- )
+   ENC-REL19-MAXNEG  ENC-REL19-MAXPOS
+   ENC-REL26-MAXPOS  ENC-REL26-MAXNEG
+   ENC-ADR-MAXPOS    ENC-ADR-MAXNEG ;
+
 : TEST-REBIND-STATE ( label n -- )
    {: target:label words:n :}
    target LBL-BOUND? TTRUE
@@ -274,6 +333,40 @@ variable WP
    KIND-BAD 0 cells FXK + !
    target LBL, ;
 
+\ out-of-reach fixtures: one-beyond each signed-reach boundary must die (exit 72),
+\ never wrap. Forward cases fail at the deferred chokepoint (FX-ENC via LBL,),
+\ backward cases at the immediate site (BR-EMIT/ADR,) before EMITW. REL26 reach
+\ (2^25 words) exceeds the code window, so its bind position is crafted directly.
+: EMIT-REL19-FAR-FWD ( -- )                      \ forward delta = 2^18 -> deferred die
+   ASM-INIT
+   LBL {: t:label :}
+   C-EQ t BCOND,  REL19-HI ASM-CP !  t LBL, ;
+
+: EMIT-REL19-FAR-BACK ( -- )                     \ backward delta = -(2^18+1) -> immediate die
+   ASM-INIT
+   LBL {: t:label :}
+   t LBL,  REL19-HI 1 + ASM-CP !  C-EQ t BCOND, ;
+
+: EMIT-REL26-FAR-FWD ( -- )                      \ forward delta = 2^25 -> deferred die
+   ASM-INIT
+   LBL {: t:label :}
+   t B,  REL26-HI ASM-CP !  t LBL, ;
+
+: EMIT-REL26-FAR-BACK ( -- )                     \ crafted delta = -(2^25+1) -> deferred die
+   ASM-INIT
+   LBL {: t:label :}
+   t B,  REL26-LO 1 - ASM-CP !  t LBL, ;
+
+: EMIT-ADR-FAR-FWD ( -- )                        \ forward byte delta = 2^20 -> deferred die
+   ASM-INIT
+   LBL {: t:label :}
+   5 t ADR,  ADR-HI 4 / ASM-CP !  t LBL, ;
+
+: EMIT-ADR-FAR-BACK ( -- )                       \ backward byte delta = -(2^20+4) -> immediate die
+   ASM-INIT
+   LBL {: t:label :}
+   t LBL,  ADR-HI 4 / 1 + ASM-CP !  5 t ADR, ;
+
 : CHILD-MODE? ( ptr u8 n -- bool )
    SCRIPT-ARGC 1 <> if 2drop 0 0= 0= exit then
    0 SCRIPT-ARGV$ 2swap STR= ;
@@ -318,6 +411,14 @@ variable WP
    s" badkind" s" icode: invalid fixup kind" TEST-DIAG
    s" badkind-patch" s" icode: invalid fixup kind" TEST-DIAG ;
 
+: TEST-REACH-DIAG ( -- )
+   s" rel19-far-fwd"  s" icode: cond branch out of reach" TEST-DIAG
+   s" rel19-far-back" s" icode: cond branch out of reach" TEST-DIAG
+   s" rel26-far-fwd"  s" icode: branch out of reach" TEST-DIAG
+   s" rel26-far-back" s" icode: branch out of reach" TEST-DIAG
+   s" adr-far-fwd"    s" icode: adr out of reach" TEST-DIAG
+   s" adr-far-back"   s" icode: adr out of reach" TEST-DIAG ;
+
 : MAIN ( -- )
    T-RESET
    TEST-SEQUENTIAL
@@ -325,11 +426,15 @@ variable WP
    TEST-BACKWARD
    TEST-KIND-VALIDATE
    TEST-KIND-GUARD-PURE
+   TEST-REACH-VALIDATE
+   TEST-REACH-PURE
+   TEST-REACH-ENCODE
    TEST-REDEFINE
    TEST-FULL
    TEST-OVERFLOW
    TEST-CORRUPT
    TEST-BADKIND
+   TEST-REACH-DIAG
    T-REPORT
    s" icode-fixup-test: ok" type cr ;
 
@@ -341,6 +446,12 @@ variable WP
    s" redefine-different" CHILD-MODE? if 0 0= EMIT-REDEFINE exit then
    s" badkind" CHILD-MODE? if EMIT-BADKIND exit then
    s" badkind-patch" CHILD-MODE? if EMIT-BADKIND-PATCH exit then
+   s" rel19-far-fwd" CHILD-MODE? if EMIT-REL19-FAR-FWD exit then
+   s" rel19-far-back" CHILD-MODE? if EMIT-REL19-FAR-BACK exit then
+   s" rel26-far-fwd" CHILD-MODE? if EMIT-REL26-FAR-FWD exit then
+   s" rel26-far-back" CHILD-MODE? if EMIT-REL26-FAR-BACK exit then
+   s" adr-far-fwd" CHILD-MODE? if EMIT-ADR-FAR-FWD exit then
+   s" adr-far-back" CHILD-MODE? if EMIT-ADR-FAR-BACK exit then
    MAIN ;
 
 RUN
