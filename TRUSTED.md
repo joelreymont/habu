@@ -1661,7 +1661,7 @@ test/engine-suite.f:TPN2 test-metaprog habu-primitive-effect-axiom-1119f176
 test/immediate-model-test.f:PASSES test-metaprog habu-primitive-effect-axiom-1119f176
 test/engine-suite.f:ES-PATCH32 test-metaprog habu-checker-capability-gate-14022ba9
 test/engine-suite.f:set-check test-metaprog cap:checker-hook-identity
-test/engine-suite.f test-metaprog habu-seal-set-check-b3676b33 6
+test/engine-suite.f test-metaprog habu-seal-set-check-b3676b33 7
 test/engine-suite.f:ES-REND-SIG$ test-metaprog habu-seal-set-check-b3676b33
 test/engine-suite.f:ES-JSON-DIAGS! test-metaprog habu-seal-set-check-b3676b33
 test/engine-suite.f:TG-RESET test-metaprog habu-seal-set-check-b3676b33

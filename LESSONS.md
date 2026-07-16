@@ -5099,3 +5099,9 @@ unchanged (148855). Keys for milestone 2:
   intended process exited even after another process reaps it. Keep retry-loop
   control checks out of `T=`/`TTRUE`, because each retry is otherwise counted as
   a test case.
+- **A file-level trust ratchet counts classification fallbacks, not one token
+  kind.** The seventh `test/engine-suite.f` match was the unlisted
+  `TR-FORK-TRIAL-ROLLBACK` `TRUSTED:` definition, while `check@ set-check` used
+  its exact named checker-hook row. Derive the winning row for every live site
+  before changing a file-level count; a raw `set-check` census can name the
+  wrong growth site even when the new count is numerically correct.
