@@ -111,15 +111,41 @@ through `hb-stdin` and exits before replacing `bin/hb`.
 ## DDC Audit (Diverse Double-Compiling)
 
 `tools/ddc-verify.f` is the explicit (never per-commit) trust audit: it builds
-`bin/hb` two ways — the native self-hosted fixpoint and the independent Gforth
-recovery chain (the CHECK_ONLY path above) — and requires byte-identical output.
-A seed backdoor would have to be mirrored in both the Gforth host and the native
-seed to survive the sha256 compare, reducing seed trust to "no coordinated
-cross-host backdoor". It is gated on `HABU_ALLOW_BOOTSTRAP=1`, like the launcher
-it drives.
+`bin/hb` two independent ways and requires byte-identical output. A seed backdoor
+would have to be mirrored in both the Gforth host and the native seed to survive
+the sha256 compare, reducing seed trust to "no coordinated cross-host backdoor".
+It is gated on `HABU_ALLOW_BOOTSTRAP=1`, like the launcher it drives.
+
+The two chains and their comparison point:
+
+- **Native chain** — the current `bin/hb`, which reproduces itself at the native
+  fixpoint (`install --force` is byte-identical). This is the reference.
+- **Gforth chain** — `tools/bootstrap.sh HABU_BOOTSTRAP_CHECK_ONLY=1` emits a raw
+  seed engine `hb-stdin` via Gforth; the audit then runs the native fixpoint
+  refresh on that seed (the exact `install --force` step the full recovery runs
+  after `mv hb-stdin bin/hb`), re-targeted to a scratch engine path via
+  `HABU_FIXPOINT_ENGINE` so the checkout's `bin/hb` is never replaced.
+
+DDC compares **at the fixpoint**: the Gforth chain's refreshed engine must be
+byte-identical to the native `bin/hb`. It does **not** diff the raw `hb-stdin`
+seed directly. The raw seed is captured by a Gforth-lineage stage whose live REPL
+sits at different absolute addresses than the native host, so its baked AOT-REPL
+blob carries that host's `movz/movk` address immediates (currently ~542 `__text`
+bytes plus the downstream code signature). `EM-SEED-AOT` re-relocates those bytes
+at boot — they are dead yet host-dependent, so a raw seed-vs-fixpoint diff
+diverges by design. The native fixpoint refresh re-captures the AOT blob from the
+canonical small engine (identical layout regardless of Gforth-vs-native lineage),
+which erases the dead host addresses; the two chains then converge byte-for-byte.
+
+Ensure `bin/hb` is a fresh native fixpoint before the audit, then run it (the
+Gforth chain needs `gforth` on `PATH` or `GFORTH` set, per Requirements above):
 
 ```sh
-HABU_ALLOW_BOOTSTRAP=1 bin/hb --load \
+bin/hb --load lib/errors.f lib/string.f lib/memory.f lib/fs.f lib/fs-mutate.f \
+  lib/process.f lib/process-argv.f lib/process-env.f \
+  tools/build-fixpoint.f tools/build-fixpoint-main.f -- install --force
+
+HABU_ALLOW_BOOTSTRAP=1 GFORTH="${GFORTH:-$HOME/.local/bin/gforth}" bin/hb --load \
   lib/errors.f lib/string.f lib/memory.f lib/fs.f lib/fs-mutate.f \
   lib/process.f lib/process-argv.f lib/process-env.f \
   tools/ddc-verify.f tools/ddc-drive.f
@@ -127,18 +153,14 @@ HABU_ALLOW_BOOTSTRAP=1 bin/hb --load \
 
 where `tools/ddc-drive.f` is a one-line `DDC-MAIN`. The tool prints
 `ddc: byte-identical <sha>` and exits 0 on match, or `ddc: DIVERGENT` with both
-digests and the first differing byte offset and exits 1. It compares the current
-native `bin/hb` against a freshly Gforth-built `hb-stdin`, so ensure `bin/hb` is
-a fresh native fixpoint (`install --force`) before the audit.
+digests, both lengths, and the first differing byte offset, and exits 1. It runs
+for a few minutes (the Gforth chain dominates).
 
-KNOWN GAP (2026-07-07): the two chains are NOT yet byte-identical — they diverge
-in ~678 `__text` bytes (plus the downstream code signature) that decode as
-`movz/movk` 64-bit address-immediate chains in the AOT-REPL blob. Both binaries
-are functionally identical (verified) and each chain is internally deterministic;
-the divergence is baked capture-host addresses that `EM-SEED-AOT` re-relocates at
-boot, so the byte values are dead. Canonicalizing those immediates at AOT capture
-(they are boot-relocated anyway) is required for full DDC byte-identity; tracked
-on dot `habu-ddc-cross-check-16562dae`.
+VERIFIED (2026-07-16): the two chains are byte-identical at the fixpoint. A
+`DIVERGENT` verdict is a real finding — a genuine cross-host toolchain divergence
+(a candidate coordinated seed backdoor, a non-deterministic emit, or a stale
+`bin/hb` that was not refreshed to the fixpoint first). Investigate the first
+differing offset before trusting either binary; do not paper over it in the tool.
 
 ## Refresh `bin/hb`
 

@@ -4,8 +4,9 @@
 \ tools/ddc-verify.f tools/ddc-verify-test.f
 \
 \ Covers DDC-LOAD/DDC-SAME?/DDC-FIRST-DIFF/DDC-REPORT on synthetic artifact
-\ files. The full DDC-VERIFY orchestration (runs the gforth chain) is an
-\ explicit manual audit, not exercised here.
+\ files and the DDC-STDIN$/DDC-FXP$ scratch-path plumbing. The full DDC-VERIFY
+\ orchestration (runs the gforth+refresh chain) is an explicit manual audit, not
+\ exercised here.
 
 require lib/errors.f
 require lib/string.f
@@ -73,12 +74,33 @@ variable B-U
    s" length first offset" T-LABEL
    DDC-FIRST-DIFF 5 T= ;         \ shorter length is the first mismatch offset
 
+\ The gforth seed and the native-refresh fixpoint hang off their scratch roots at
+\ fixed leaf names; these joins are what the audit env/argv are built from.
+: TEST-PATHS ( -- )
+   s" /tmp/ddc-gf-root" DDC-GF-ROOT!
+   s" seed path" T-LABEL
+   DDC-STDIN$ s" /tmp/ddc-gf-root/hb-stdin" STR= TTRUE
+   s" /tmp/ddc-rf-root" DDC-RF-ROOT!
+   s" fixpoint path" T-LABEL
+   DDC-FXP$ s" /tmp/ddc-rf-root/hb-ddc-fixpoint" STR= TTRUE ;
+
+\ HABU_ALLOW_BOOTSTRAP=1 is the audit gate; without it DDC-REQUIRE-BOOTSTRAP must
+\ fail closed with DDC-E-USAGE. Assert the outcome against the actual env so the
+\ test is correct whether or not the audit gate is set in the caller.
+: BOOTSTRAP-SET? ( -- bool ) s" HABU_ALLOW_BOOTSTRAP" GETENV s" 1" STR= ;
+: TEST-REQUIRE-BOOTSTRAP ( -- )
+   s" require-bootstrap matches env" T-LABEL
+   [: DDC-REQUIRE-BOOTSTRAP ;] catch
+   BOOTSTRAP-SET? if 0 T= else DDC-E-USAGE T= then ;
+
 : MAIN ( -- )
    T-RESET
    PREPARE
    TEST-IDENTICAL
    TEST-ONE-BYTE-DIFF
    TEST-LENGTH-DIFF
+   TEST-PATHS
+   TEST-REQUIRE-BOOTSTRAP
    ROOT$ REMOVE-TREE
    T-REPORT
    s" ddc-verify-test: ok" type cr ;
