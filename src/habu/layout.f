@@ -380,6 +380,21 @@ $2800 constant RSTK-OFF
 256 constant RSTK-CELLS
 RSTK-OFF RSTK-CELLS cells + constant RSTK-END
 
+\ ---- catch/throw handler frame (habu1.f BCATCH/BTHROW, habu2.f
+\ EM-EVAL-THROW-RECOVER; bootstrap/cg/forth.fs mirror) ----
+\ A HNDF-SIZE machine-stack frame chained through HND-CELL ([DATA+8]). Grown from
+\ 48 to also save the user return-stack depth (RSP-CELL) and loop-stack depth
+\ (LOOPSP-CELL) so a caught throw restores the COMPLETE caller execution frame
+\ (dot habu-restore-complete-exec-abb8baca). Field offsets are byte offsets from
+\ the frame base; every delivery site (BTHROW, LEVLD, seed BTHROW) reads them and
+\ validates the sentinel + saved depths BEFORE any restore store. Keep this block
+\ byte-for-byte in step with the bootstrap/cg/forth.fs mirror.
+64 constant HNDF-SIZE                   \ frame bytes (was 48; +RSP +LOOPSP +MAGIC, 16-B aligned)
+\ frame layout: 0 prev-HND | 8 data-sp(x19) | 16 machine-sp | 24 resume-pc
+\               32 link | 40 saved-RSP | 48 saved-LOOPSP | 56 sentinel
+BODYBUF-OFF LOOP-STK-OFF - 16 / constant LOOP-STK-FRAMES  \ 32 nested DO/LOOP frames (16 B each)
+$CA7CF4A3E00D constant CATCH-FRAME-MAGIC \ frame sentinel: forged/adjacent-mutated frames fail closed
+
 \ Compiler lowering transaction. All mutable pass-2 authority lives in one
 \ engine band. The frozen source+certificate lives in a separately mmap'd,
 \ maximum-target-page-rounded allocation whose base and capacity are held in

@@ -3087,6 +3087,7 @@ variable LARITY               \ pre-exec arity guard for deref/execute prims (in
 variable LEX0  variable LUN0   \ re-entrant evaluate: original-path continuations of LEXIT / LUNDEF
 variable LEVALREC             \ re-entrant evaluate: throw-escape recovery entry (BTHROW branches here)
 variable LEVLL  variable LEVLP  variable LEVLD  variable LEVLN  variable LEVLR   \ LEVALREC internal labels
+variable LEVCORRUPT  variable LEVCORRUPTMSG   \ eval-cross forged/corrupt handler-frame fail-closed path + its message
 variable CLOC-MAIN  variable CLOC-NOT
 variable CLOC-MEM   variable CLOC-QOK   variable CLOC-P1
 variable CFSK2
@@ -5627,6 +5628,7 @@ s" em-reset-compile-state" s" --" TRUST
 : EM-EVAL-THROW-RECOVER ( -- )
    LEVALREC LABEL@ LBL,
    LBL LEVLL !  LBL LEVLP !  LBL LEVLD !  LBL LEVLN !  LBL LEVLR !
+   LBL LEVCORRUPT !  LBL LEVCORRUPTMSG !
    11 DATA 8 LDR,                                     \ x11 = nearest handler (read once)
    LEVLL LABEL@ LBL,
       12 DATA EVALD-CELL LDR,  12 LEVLD LABEL@ CBZ,   \ no eval frame left → unwind to handler
@@ -5646,7 +5648,16 @@ s" em-reset-compile-state" s" --" TRUST
    LEVLD LABEL@ LBL,
    9 15 0 ADDI,                                       \ x9 = code
    11 LEVLN LABEL@ CBZ,
-   19 11 8 LDR,  10 11 0 LDR,  10 DATA 8 STR,
+   \ handler-frame integrity (same contract as habu1.f BTHROW): validate before any restore store
+   14 CATCH-FRAME-MAGIC LIT64,  10 11 56 LDR,  10 14 CMP,  C-NE LEVCORRUPT LABEL@ BCOND,   \ forged/adjacent-mutated frame
+   10 11 40 LDR,  10 0 CMPI,  C-LT LEVCORRUPT LABEL@ BCOND,            \ saved RSP underflow
+   14 RSTK-CELLS MOVZ,  10 14 CMP,  C-GT LEVCORRUPT LABEL@ BCOND,      \ saved RSP past region
+   10 11 48 LDR,  10 0 CMPI,  C-LT LEVCORRUPT LABEL@ BCOND,            \ saved LOOPSP underflow
+   14 LOOP-STK-FRAMES MOVZ,  10 14 CMP,  C-GT LEVCORRUPT LABEL@ BCOND, \ saved LOOPSP past region
+   19 11 8 LDR,
+   10 11 40 LDR,  10 DATA RSP-CELL STR,               \ restore user return-stack depth
+   10 11 48 LDR,  10 DATA LOOPSP-CELL STR,            \ restore loop-stack depth
+   10 11 0 LDR,  10 DATA 8 STR,                       \ HND = prev
    30 11 32 LDR,  12 11 24 LDR,  13 11 16 LDR,
    SP 13 0 ADDI,  12 BR,
    LEVLN LABEL@ LBL,
@@ -5690,7 +5701,11 @@ s" em-reset-compile-state" s" --" TRUST
    LUNCDONE LABEL@ LBL,
    0 2 MOVZ,  1 12 0 ADDI,  2 SP $20 ADDI,  2 2 12 SUB,
    NR-WRITE SYS,                                       \ write(2, digits, len)
-   0 UNCAUGHT-RC MOVZ,  NR-EXIT-GROUP SYS, ;
+   0 UNCAUGHT-RC MOVZ,  NR-EXIT-GROUP SYS,
+   LEVCORRUPT LABEL@ LBL,                              \ eval-cross forged/corrupt handler frame: fail closed before any restore
+   0 2 MOVZ,  1 LEVCORRUPTMSG LABEL@ ADR,  2 23 MOVZ,  NR-WRITE SYS,
+   0 ENGINE-ERROR:CATCH-STACK MOVZ,  NR-EXIT-GROUP SYS,
+   LEVCORRUPTMSG LABEL@ LBL,  s" hb: catch frame corrupt" BYTES, ;
 s" em-eval-throw-recover" s" --" TRUST
 
 : EM-REPL-RECOVER ( -- )

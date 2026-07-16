@@ -1247,6 +1247,13 @@ points stay listed.
 - `test/engine-error-package.f` — package-scoped engine-failure ABI regressions:
   native/recovered child exits for codes 86–88 and post-seal checker-bridge
   success/fail-closed lookup corruption.
+- `test/catch-frame.f` — a caught throw restores the complete caller execution
+  frame (dot habu-restore-complete-exec-abb8baca): in-process asserts that a
+  checked `r>`/`?do` index and the return/loop-stack depths survive a throwing
+  quotation and nested/repeated throws, plus child forges that a corrupt sentinel,
+  adjacent-sentinel mutation, or out-of-range saved depth fails closed with
+  ENGINE-ERROR:CATCH-STACK (87) before any restore. Native runs it against
+  HABU_UNDER_TEST; tools/bootstrap.sh runs it against the recovered candidate.
 - `test/c3-widen-test.f` / `test/c4-shadow-test.f` — checker regressions for
   narrow-to-wide integer widening and local shadowing of ordinary words.
 - `test/gate-build-common.f` — checked helpers shared by native hb-build gate

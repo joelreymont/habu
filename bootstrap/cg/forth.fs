@@ -260,6 +260,15 @@ $258 constant DEF-TKL-CELL
 $2800 constant RSTK-OFF   \ user return stack — 256 cells, below DATA-START
 256 constant RSTK-CELLS
 RSTK-OFF RSTK-CELLS cells + constant RSTK-END
+\ ---- catch/throw handler frame (BCATCH/BTHROW). MIRROR of src/habu/layout.f;
+\ a HNDF-SIZE machine-stack frame chained through HND-CELL that also saves the
+\ user return-stack depth (RSP-CELL) and loop-stack depth (LOOPSP-CELL) so a caught
+\ throw restores the COMPLETE caller frame (dot habu-restore-complete-exec-abb8baca).
+\ Frame: 0 prev-HND | 8 data-sp | 16 machine-sp | 24 resume-pc | 32 link |
+\ 40 saved-RSP | 48 saved-LOOPSP | 56 sentinel. Keep byte-for-byte with native. ----
+64 constant HNDF-SIZE                     \ frame bytes (was 48; +RSP +LOOPSP +MAGIC)
+BODYBUF-OFF LOOP-STK-OFF - 16 / constant LOOP-STK-FRAMES  \ 32 nested DO/LOOP frames
+$CA7CF4A3E00D constant CATCH-FRAME-MAGIC  \ frame sentinel: forged/mutated frames hard-exit
 TXN-STATE-OFF TXN-STATE-LEN + constant DATA-START \ user DP begins after protected lowering state; frozen artifacts live in mmap storage
 create SQ-KW  115 c, 34 c,      \ build-time bytes for the keyword  s"  (s=115, "=34)
 create CQ-KW  99 c, 34 c,
@@ -848,22 +857,28 @@ previous definitions
 : BEXEC ( -- )   A G-POP  SP SP 16 SUBI,  30 SP 0 STR,  A BLR,  30 SP 0 LDR,  SP SP 16 ADDI, ;  \ ( xt -- )
 
 \ catch ( xt -- exc ) / throw ( exc -- ). Handler frames chain through [x20+8]
-\ (=HND). A frame (48 B on the machine stack) saves: prev-HND, data-sp(x19),
-\ machine-sp, resume-pc (an ADR within this stencil — PC-relative, survives the
-\ memcpy that inlines the stencil), and the link register.
+\ (=HND). A HNDF-SIZE frame on the machine stack saves the COMPLETE caller frame:
+\ 0 prev-HND, 8 data-sp(x19), 16 machine-sp, 24 resume-pc (an ADR within this
+\ stencil — PC-relative, survives the memcpy that inlines the stencil), 32 link,
+\ 40 saved user return-stack depth, 48 saved loop-stack depth, 56 sentinel — so a
+\ caught throw restores return/loop state too (dot
+\ habu-restore-complete-exec-abb8baca). MIRROR of src/habu/habu1.f BCATCH.
 : BCATCH ( -- )
    A G-POP                               \ xt -> x9
-   SP SP 48 SUBI,
+   SP SP HNDF-SIZE SUBI,
    30 SP 32 STR,                         \ save link
    11 DATA 8 LDR,  11 SP 0 STR,          \ prev HND
    19 SP 8 STR,                          \ data sp
-   13 SP 48 ADDI,  13 SP 16 STR,         \ machine sp to restore (= frame+48)
+   13 SP HNDF-SIZE ADDI,  13 SP 16 STR,  \ machine sp to restore
    LBL {: lres :}  LBL {: lpush :}
    12 lres ADR,  12 SP 24 STR,           \ resume pc
+   11 DATA RSP-CELL LDR,     11 SP 40 STR,    \ save user return-stack depth
+   11 DATA LOOPSP-CELL LDR,  11 SP 48 STR,    \ save loop-stack depth
+   11 CATCH-FRAME-MAGIC LIT64,  11 SP 56 STR, \ frame sentinel
    14 SP 0 ADDI,  14 DATA 8 STR,         \ HND = this frame
    9 BLR,                                \ run xt (may throw)
    11 SP 0 LDR,  11 DATA 8 STR,          \ normal: HND = prev
-   30 SP 32 LDR,  SP SP 48 ADDI,         \ restore link, pop frame
+   30 SP 32 LDR,  SP SP HNDF-SIZE ADDI,  \ restore link, pop frame
    9 0 MOVZ,  lpush B,                   \ exc = 0
    lres LBL,                             \ throw lands here (x9=exc, sp/HND/lr restored)
    lpush LBL,  9 G-PUSH ;                \ push exc (0 normal / exc on throw)
@@ -872,7 +887,16 @@ previous definitions
    A G-POP                               \ exc -> x9
    11 DATA 8 LDR,                        \ HND
    LBL {: lnoh :}  11 lnoh CBZ,
+   LBL {: lcorrupt :} \ typed-local-lint: allow-bare-local - gforth-hosted label id, like lnoh/lfixed in this word
+   \ handler-frame integrity: check sentinel + saved depths BEFORE any restore store
+   14 CATCH-FRAME-MAGIC LIT64,  10 11 56 LDR,  10 14 CMP,  C-NE lcorrupt BCOND,   \ forged/adjacent-mutated frame
+   10 11 40 LDR,  10 0 CMPI,  C-LT lcorrupt BCOND,           \ saved RSP underflow
+   14 RSTK-CELLS MOVZ,  10 14 CMP,  C-GT lcorrupt BCOND,     \ saved RSP past region
+   10 11 48 LDR,  10 0 CMPI,  C-LT lcorrupt BCOND,           \ saved LOOPSP underflow
+   14 LOOP-STK-FRAMES MOVZ,  10 14 CMP,  C-GT lcorrupt BCOND, \ saved LOOPSP past region
    19 11 8 LDR,                          \ restore data sp
+   10 11 40 LDR,  10 DATA RSP-CELL STR,     \ restore user return-stack depth
+   10 11 48 LDR,  10 DATA LOOPSP-CELL STR,  \ restore loop-stack depth
    10 11 0 LDR,  10 DATA 8 STR,          \ HND = prev
    30 11 32 LDR,  12 11 24 LDR,  13 11 16 LDR,   \ link, resume pc, machine sp
    SP 13 0 ADDI,  12 BR,                 \ restore sp; jump to catch's resume
@@ -886,7 +910,9 @@ previous definitions
    9 1 CMPI,    C-LT lfixed BCOND,
    9 255 CMPI,  C-GT lfixed BCOND,
    NR-EXIT-GROUP SYS,
-   lfixed LBL,  0 UNCAUGHT-RC MOVZ,  NR-EXIT-GROUP SYS, ;
+   lfixed LBL,  0 UNCAUGHT-RC MOVZ,  NR-EXIT-GROUP SYS,
+   \ forged/corrupt handler frame: seed hard-exits (mirrors native BTHROW THROW-CORRUPT)
+   lcorrupt LBL,  s" hb: catch frame corrupt" ENGINE-ERROR:CATCH-STACK C-EXIT-DIAG ;
 
 \ wordlists: each dict record carries a wid (offset 40). New defs take CURRENT.
 : BWORDLIST ( -- )  9 DATA WIDN-CELL LDR,  9 G-PUSH  9 9 1 ADDI,  9 DATA WIDN-CELL STR, ;  \ ( -- wid )

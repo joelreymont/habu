@@ -380,6 +380,8 @@ variable THROW-NOREC
 variable THROW-NOREC-FB
 variable THROW-NOREC-FB2
 variable THROW-EVAL
+variable THROW-CORRUPT
+variable THROW-CORRUPT-MSG
 variable SWL-LOOP
 variable SWL-END
 variable SWL-NEXT
@@ -1837,20 +1839,29 @@ variable SZA-I
    9 BLR,                                         \ run the xt on the fresh stack
    19 SP 8 LDR,  30 SP 0 LDR,  SP SP 16 ADDI, ;   \ restore XDS + lr
 
+\ catch ( xt -- exc ): a HNDF-SIZE handler frame chained through HND-CELL saves the
+\ COMPLETE caller execution frame so a caught throw resumes it (dot
+\ habu-restore-complete-exec-abb8baca). Frame: 0 prev-HND | 8 data-sp(x19) |
+\ 16 machine-sp | 24 resume-pc | 32 link | 40 saved-RSP | 48 saved-LOOPSP |
+\ 56 sentinel. BTHROW / EM-EVAL-THROW-RECOVER restore all of it; keep in step with
+\ the bootstrap/cg/forth.fs mirror.
 : BCATCH ( -- )
    LBL CATCH-RES !
    LBL CATCH-PUSH !
    A G-POP
-   SP SP 48 SUBI,
+   SP SP HNDF-SIZE SUBI,
    30 SP 32 STR,
    11 DATA 8 LDR,  11 SP 0 STR,
    19 SP 8 STR,
-   13 SP 48 ADDI,  13 SP 16 STR,
+   13 SP HNDF-SIZE ADDI,  13 SP 16 STR,
    12 CATCH-RES LABEL@ ADR,  12 SP 24 STR,
+   11 DATA RSP-CELL LDR,     11 SP 40 STR,   \ save user return-stack depth
+   11 DATA LOOPSP-CELL LDR,  11 SP 48 STR,   \ save loop-stack depth
+   11 CATCH-FRAME-MAGIC LIT64,  11 SP 56 STR, \ frame sentinel
    14 SP 0 ADDI,  14 DATA 8 STR,
    9 BLR,
    11 SP 0 LDR,  11 DATA 8 STR,
-   30 SP 32 LDR,  SP SP 48 ADDI,
+   30 SP 32 LDR,  SP SP HNDF-SIZE ADDI,
    9 0 MOVZ,  CATCH-PUSH LABEL@ B,
    CATCH-RES LABEL@ LBL,
    CATCH-PUSH LABEL@ LBL,  9 G-PUSH ;
@@ -1865,14 +1876,23 @@ variable SZA-I
 \ handles its own throws, and a throw with no eval frame active behaves exactly as
 \ before.
 : BTHROW ( -- )
-   LBL THROW-NOH !  LBL THROW-EVAL !
+   LBL THROW-NOH !  LBL THROW-EVAL !  LBL THROW-CORRUPT !  LBL THROW-CORRUPT-MSG !
    A G-POP  15 9 0 ADDI,                               \ x15 = code
    12 DATA EVALD-CELL LDR,  12 THROW-EVAL LABEL@ CBNZ, \ inside evaluate → LEVALREC cleans frames first
    11 DATA 8 LDR,                                      \ x11 = nearest handler (HND-CELL)
    9 15 0 ADDI,                                        \ x9 = code
    11 THROW-NOH LABEL@ CBZ,
+   \ handler-frame integrity: check sentinel + saved depths BEFORE any restore store
+   14 CATCH-FRAME-MAGIC LIT64,  10 11 56 LDR,  10 14 CMP,  C-NE THROW-CORRUPT LABEL@ BCOND,   \ forged/adjacent-mutated frame
+   10 11 40 LDR,  10 0 CMPI,  C-LT THROW-CORRUPT LABEL@ BCOND,            \ saved RSP underflow
+   14 RSTK-CELLS MOVZ,  10 14 CMP,  C-GT THROW-CORRUPT LABEL@ BCOND,      \ saved RSP past region
+   10 11 48 LDR,  10 0 CMPI,  C-LT THROW-CORRUPT LABEL@ BCOND,            \ saved LOOPSP underflow
+   14 LOOP-STK-FRAMES MOVZ,  10 14 CMP,  C-GT THROW-CORRUPT LABEL@ BCOND, \ saved LOOPSP past region
+   \ restore the complete caller execution frame
    19 11 8 LDR,
-   10 11 0 LDR,  10 DATA 8 STR,
+   10 11 40 LDR,  10 DATA RSP-CELL STR,               \ restore user return-stack depth
+   10 11 48 LDR,  10 DATA LOOPSP-CELL STR,            \ restore loop-stack depth
+   10 11 0 LDR,  10 DATA 8 STR,                       \ HND = prev
    30 11 32 LDR,  12 11 24 LDR,  13 11 16 LDR,
    SP 13 0 ADDI,  12 BR,
    THROW-EVAL LABEL@ LBL,
@@ -1889,7 +1909,11 @@ variable SZA-I
    9 1 CMPI,    C-LT THROW-NOREC-FB2 LABEL@ BCOND,
    9 255 CMPI,  C-GT THROW-NOREC-FB2 LABEL@ BCOND,
    NR-EXIT-GROUP SYS,
-   THROW-NOREC-FB2 LABEL@ LBL,  0 UNCAUGHT-RC MOVZ,  NR-EXIT-GROUP SYS, ; \ else deterministic uncaught-throw rc
+   THROW-NOREC-FB2 LABEL@ LBL,  0 UNCAUGHT-RC MOVZ,  NR-EXIT-GROUP SYS, \ else deterministic uncaught-throw rc
+   THROW-CORRUPT LABEL@ LBL,                             \ forged/corrupt handler frame: fail closed before any restore
+   0 2 MOVZ,  1 THROW-CORRUPT-MSG LABEL@ ADR,  2 23 MOVZ,  NR-WRITE SYS,
+   0 ENGINE-ERROR:CATCH-STACK MOVZ,  NR-EXIT-GROUP SYS,
+   THROW-CORRUPT-MSG LABEL@ LBL,  s" hb: catch frame corrupt" BYTES, ;
 
 : BWORDLIST ( -- )
    9 DATA WIDN-CELL LDR,  9 G-PUSH  9 9 1 ADDI,  9 DATA WIDN-CELL STR, ;

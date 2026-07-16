@@ -481,6 +481,10 @@ TEST:SUITE engine-error-package
    test/engine-error-package.f
 TEST:;SUITE
 
+TEST:SUITE catch-frame
+   test/catch-frame.f
+TEST:;SUITE
+
 TEST:SUITE export-keyword-package
    test/export-package.f
 TEST:;SUITE

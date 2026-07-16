@@ -222,6 +222,26 @@ TRUSTED: BWM-CALL-DEF ( -- n ) BWM-DEF ;
    BWM-DEF-A  BWM-CALL-DEF 42 BWM=            \ is installs a target -> dispatch returns 42
    BWM-DEF-B  BWM-CALL-DEF 99 BWM= ;          \ a second is re-points -> 99
 
+variable BWM-CF-ACC
+
+\ Direct stage0 (Gforth-hosted seed) proof of the extended handler frame
+\ (dot habu-restore-complete-exec-abb8baca): a caught throw restores the caller's
+\ user return-stack depth and loop-stack depth, so this exercises the seed's
+\ bootstrap/cg/forth.fs BCATCH/BTHROW mirror at runtime, matching the native
+\ test/catch-frame.f. These are checked (the seed models catch's typed-stack
+\ restoration, so a throwing quotation's >r/?do state does not escape).
+: BWM-CF-RSP ( -- n )    \ r> after a throwing >r quotation = caller's value
+   42 >r [: 99 >r 7 throw ;] catch drop r> ;
+
+: BWM-CF-LOOP ( -- n )   \ caller ?do index survives a throwing inner ?do
+   0 BWM-CF-ACC !
+   3 0 ?do [: 5 0 ?do 9 throw loop ;] catch drop  BWM-CF-ACC @ i + BWM-CF-ACC ! loop
+   BWM-CF-ACC @ ;
+
+: BWM-TEST-CATCH-FRAME ( -- )
+   BWM-CF-RSP 42 BWM=
+   BWM-CF-LOOP 3 BWM= ;
+
 : BWM-REPORT ( -- )
    BWM-FAILS @ 0= if s" ok" type cr exit then
    BWM-FAILS @ . s" bootstrap-wide-memory failures" 1 die ;
@@ -229,4 +249,5 @@ TRUSTED: BWM-CALL-DEF ( -- n ) BWM-DEF ;
 BWM-TEST-GOLDENS
 BWM-TEST-RUNTIME
 BWM-TEST-DEFER
+BWM-TEST-CATCH-FRAME
 BWM-REPORT
