@@ -5049,3 +5049,8 @@ unchanged (148855). Keys for milestone 2:
   safe; the phase can still run against a fallback or incomplete artifact. Keep
   every candidate consumer out of early work and start it only after the build
   completion event is green.
+- **Every CREATE body starts cell-aligned.** `allot` may leave the data pointer
+  at any byte boundary; aligning only the initial image makes the next
+  `variable` load-order-dependent and lets atomic access trap with `SIGBUS`.
+  Align the data pointer inside the defining-word compiler before capturing the
+  body address, and regress both `create` and `variable` after a one-byte allot.

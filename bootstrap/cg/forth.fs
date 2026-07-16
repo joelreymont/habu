@@ -3105,7 +3105,17 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
    nokind LBL,
    30 SP 0 LDR,  SP SP 16 ADDI,  RET, ;
 
-: C-CREATE ( -- )  15 1 MOVZ,  LCREATE @ BL, ;
+: C-ALIGN-DP ( -- )
+   11 DATA 0 LDR,
+   11 11 7 ADDI,
+   12 -8 LIT64,
+   11 11 12 AND,
+   11 DP-CHECK
+   11 DATA 0 STR, ;
+
+: C-CREATE ( -- )
+   C-ALIGN-DP
+   15 1 MOVZ,  LCREATE @ BL, ;
 
 : C-VARIABLE ( -- )  C-CREATE
    7 DATA 0 LDR,  7 7 8 ADDI,  7 DP-CHECK  7 DATA 0 STR, ;          \ reserve 1 cell

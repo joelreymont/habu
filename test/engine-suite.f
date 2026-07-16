@@ -10,6 +10,10 @@ variable #CASE
 create T-LABEL-BUF T-LABEL-CAP allot
 variable T-LABEL-U
 
+create TR-MISALIGN 1 allot
+variable TR-ALIGNED-VAR
+create TR-ALIGNED-CREATE 1 allot
+
 : T-LABEL-CLEAR ( -- )
    0 T-LABEL-U ! ;
 
@@ -43,6 +47,13 @@ variable T-LABEL-U
       s" got " type got .
    then
    T-LABEL-CLEAR ;
+
+s" CREATE and VARIABLE align cell bodies" T-LABEL
+TR-ALIGNED-VAR 7 and 0 T=
+TR-ALIGNED-CREATE 7 and 0 T=
+0 TR-ALIGNED-VAR !
+0 1 TR-ALIGNED-VAR atomic-cas 0 T=
+TR-ALIGNED-VAR @ 1 T=
 
 : T$= ( ptr u8 n ptr u8 n -- ) {: ga:ptr gu:n wa:ptr wu:n :}
    #CASE @ 1 + #CASE !
