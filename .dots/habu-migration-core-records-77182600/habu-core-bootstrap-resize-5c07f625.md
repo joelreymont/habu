@@ -29,7 +29,10 @@ effective successful and first-failing runtime source sizes with bounded
 exponential plus binary probes; do not encode IBUFSZ+1 because the EOF probe
 makes the effective boundary lower. Add sole-token owner/mirror parity and
 document the three distinct arenas in docs/debugging.md. Gforth recovery and
-native fixpoint parity are required; do not claim cross-host DDC parity while
-habu-ddc-cross-check-16562dae remains open.
+native fixpoint parity are required. Cross-host DDC parity is now VERIFIED and
+tool-pinned (habu-ddc-cross-check-16562dae closed 2026-07-16: tools/ddc-verify.f
+proves gforth-seed->fixpoint-refresh == native fixpoint byte-for-byte; compare
+at the fixpoint, never the raw seed) - claims here may cite the ddc-verify
+verdict line on the exact tree instead.
 
 Claim: agent=capacity_impl workspace=.jj-ws/type-dsl-capacity
