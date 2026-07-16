@@ -77,10 +77,21 @@ variable CAUSE-CODE
    dup ROOT-CAUSE? 0= if throw then
    FAIL ;
 
-: ROOT-COPY! ( ptr u8 n -- ) {: a:ptr u:n :}
-   0 ROOT-U !
+: NUL? ( ptr u8 n -- bool )
+   0 COUNT-CHAR 0 > ;
+
+: ROOT-PATH-CHECK ( ptr u8 n -- ) {: a:ptr u:n :}
    u 0 <= if E-FS-PATH FAIL then
    u FS-PATH-CAP > if E-FS-CAPACITY FAIL then
+   a u NUL? if E-FS-PATH FAIL then ;
+
+: DOT-COMPONENT? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   a u s" ." STR= if TRUE exit then
+   a u s" .." STR= ;
+
+: ROOT-COPY! ( ptr u8 n -- ) {: a:ptr u:n :}
+   0 ROOT-U !
+   a u ROOT-PATH-CHECK
    a ROOT-BUF u BYTE-COPY
    u ROOT-U ! ;
 
@@ -212,6 +223,35 @@ public
    SELECTED>ROOT
    TRUE OVERRIDE? !
    FALSE READY? ! ;
+
+: CHILD-SUFFIX-INTO ( ptr u8 n ptr u8 n ptr u8 -- n )
+   {: child:ptr childu:n suffix:ptr suffixu:n dst:ptr :}
+   childu 0 <= if E-FS-PATH FAIL then
+   suffixu 0 < if E-FS-PATH FAIL then
+   child childu NUL? if E-FS-PATH FAIL then
+   suffix suffixu NUL? if E-FS-PATH FAIL then
+   child childu SLASH COUNT-CHAR 0 > if E-FS-PATH FAIL then
+   suffix suffixu SLASH COUNT-CHAR 0 > if E-FS-PATH FAIL then
+   child childu DOT-COMPONENT? if E-FS-PATH FAIL then
+   suffixu MEM-MAX-N childu - > if E-FS-CAPACITY FAIL then
+   childu suffixu + {: nameu:n :}
+   ENSURE
+   ROOT-BYTES {: root:ptr rootu:n :}
+   root rootu nameu SELECT-JOIN-NEED {: need:n :}
+   need FS-PATH-CAP > if E-FS-CAPACITY FAIL then
+   root dst rootu BYTE-COPY
+   root rootu 1 - + c@ SLASH = if
+      child dst rootu + childu BYTE-COPY
+      suffix dst rootu childu + + suffixu BYTE-COPY
+   else
+      SLASH dst rootu + c!
+      child dst rootu 1 + + childu BYTE-COPY
+      suffix dst rootu 1 + childu + + suffixu BYTE-COPY
+   then
+   need ;
+
+: CHILD-INTO ( ptr u8 n ptr u8 -- n ) {: child:ptr childu:n dst:ptr :}
+   child childu s" " dst CHILD-SUFFIX-INTO ;
 
 : ROOT$ ( -- ptr u8 n )
    ENSURE

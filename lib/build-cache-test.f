@@ -17,15 +17,29 @@ require lib/float.f
 require lib/json-read.f
 require tools/hb-build-report.f
 
+package HB-BUILD
+public
+
+: TEST-CAPTURE ( ptr u8 n BUILD-CACHE:source bool bool bool bool bool n -- )
+   CAPTURE ;
+
+: TEST-RESET ( -- )
+   RESET ;
+
+;package
+
 package BUILD-CACHE-TEST
 
 $4000 constant CAP
 $400 constant MAX-ROOT-U
 $401 constant OVER-ROOT-U
+947 constant DEEP-ROOT-LEN
+77 constant CHILD-NAME-LEN
 $92 constant MODE-0222
 $16D constant MODE-0555
 $1C0 constant MODE-0700
 120000 constant TIMEOUT-MS
+$2F constant SLASH
 
 create ROOT-BUF FS-PATH-CAP allot
 create PATH-A FS-PATH-CAP allot
@@ -44,6 +58,12 @@ create REPORT-BYTES
 create REPORT-OUT FS-PATH-CAP allot
 create MAX-ROOT MAX-ROOT-U allot
 create OVER-ROOT OVER-ROOT-U allot
+create DEEP-ROOT DEEP-ROOT-LEN allot
+create CHILD-NAME CHILD-NAME-LEN allot
+create CHILD-PATH FS-PATH-CAP allot
+create NUL-PREFIX FS-PATH-CAP allot
+create NUL-ROOT FS-PATH-CAP allot
+create NUL-CHILD 97 c, 0 c, 98 c,
 
 variable ROOT-U
 variable A-U
@@ -55,6 +75,8 @@ variable F-U
 variable G-U
 variable H-U
 variable EXPECT-U
+variable NUL-PREFIX-U
+variable NUL-ROOT-U
 
 $7E constant ROOT-C
 
@@ -88,6 +110,15 @@ $7E constant ROOT-C
 : EXPECT$ ( -- ptr u8 n )
    EXPECT-BUF EXPECT-U @ ;
 
+: NUL-PREFIX$ ( -- ptr u8 n )
+   NUL-PREFIX NUL-PREFIX-U @ ;
+
+: NUL-ROOT$ ( -- ptr u8 n )
+   NUL-ROOT NUL-ROOT-U @ ;
+
+: DEEP-ROOT$ ( -- ptr u8 n )
+   DEEP-ROOT DEEP-ROOT-LEN ;
+
 : ROOT-FILL ( ptr u8 n -- ) {: a:ptr u:n :}
    0 begin dup u < while
       ROOT-C over a + c!
@@ -110,6 +141,26 @@ $7E constant ROOT-C
 : PATH! ( ptr u8 n ptr u8 n ptr u8 ptr n -- ) {: base:ptr baseu:n name:ptr nameu:n dst:ptr up:ptr :}
    base baseu name nameu dst JOIN-PATH up ! ;
 
+: PREPARE-NUL-ROOT ( -- )
+   ROOT$ s" nul-prefix" NUL-PREFIX NUL-PREFIX-U PATH!
+   NUL-PREFIX$ {: a:ptr u:n :}
+   a NUL-ROOT u BYTE-COPY
+   0 NUL-ROOT u + c!
+   s" tail" {: tail:ptr tailu:n :}
+   tail NUL-ROOT u 1 + + tailu BYTE-COPY
+   u 1 + tailu + NUL-ROOT-U ! ;
+
+: PREPARE-DEEP-ROOT ( -- )
+   ROOT$ {: a:ptr u:n :}
+   u DEEP-ROOT-LEN >= if E-FS-CAPACITY throw then
+   a DEEP-ROOT u BYTE-COPY
+   u begin dup DEEP-ROOT-LEN < while
+      dup u - 101 mod 0= if SLASH else ROOT-C then
+      over DEEP-ROOT + c!
+      1+
+   repeat drop
+   CHILD-NAME CHILD-NAME-LEN ROOT-FILL ;
+
 : PREPARE ( -- )
    CLEANUP-RESET
    s" habu-build-cache" TMPDIR-MKDIR {: a:ptr u:n :}
@@ -125,7 +176,9 @@ $7E constant ROOT-C
    ROOT$ s" blocked parent" PATH-G G-U PATH!
    G$ s" child" PATH-H H-U PATH!
    MAX-ROOT MAX-ROOT-U ROOT-FILL
-   OVER-ROOT OVER-ROOT-U ROOT-FILL ;
+   OVER-ROOT OVER-ROOT-U ROOT-FILL
+   PREPARE-NUL-ROOT
+   PREPARE-DEEP-ROOT ;
 
 : ARGV ( -- )
    PROC-ARGV-RESET
@@ -335,7 +388,7 @@ $7E constant ROOT-C
    BUILD-CACHE:RESET
    F$ BUILD-CACHE:ROOT!
    BUILD-CACHE:ROOT$ BUILD-CACHE:SOURCE
-   0 0= 0 0= 0= 0 0= 0 0= 0 0= 0= 42 HB-BUILD:CAPTURE
+   0 0= 0 0= 0= 0 0= 0 0= 0 0= 0= 42 HB-BUILD:TEST-CAPTURE
    HB-BUILD:REPORT$ {: a:ptr u:n :}
    a u s\" \qschema\q:\qhb-build-report\q" CONTAINS? TTRUE
    a u s\" \qcache_root\q" CONTAINS? TTRUE
@@ -411,6 +464,77 @@ $7E constant ROOT-C
    BUILD-CACHE:SELECTED-SOURCE BUILD-CACHE:SOURCE$ s" explicit" T$=
    BUILD-CACHE:CAUSE E-FS-CAPACITY T= ;
 
+: CHECK-NUL-ROOT-REJECT ( -- )
+   BUILD-CACHE:RESET
+   [: NUL-ROOT$ BUILD-CACHE:ROOT! ;] catch E-BUILD-PATH T=
+   BUILD-CACHE:SELECTED? TTRUE
+   BUILD-CACHE:SELECTED-ROOT$ NUL-ROOT$ T$=
+   BUILD-CACHE:SELECTED-SOURCE BUILD-CACHE:SOURCE$ s" explicit" T$=
+   BUILD-CACHE:CAUSE E-FS-PATH T=
+   NUL-PREFIX$ EXISTS? TFALSE ;
+
+: CHECK-CHILD-PATH ( -- )
+   BUILD-CACHE:RESET
+   A$ BUILD-CACHE:ROOT!
+   s" child" CHILD-PATH BUILD-CACHE:CHILD-INTO {: childu:n :}
+   A$ s" child" EXPECT-BUF JOIN-PATH EXPECT-U !
+   CHILD-PATH childu EXPECT$ T$= ;
+
+: CHECK-CHILD-SUFFIX-PATH ( -- )
+   BUILD-CACHE:RESET
+   A$ BUILD-CACHE:ROOT!
+   s" child" s" .tmp" CHILD-PATH BUILD-CACHE:CHILD-SUFFIX-INTO {: childu:n :}
+   A$ s" child.tmp" EXPECT-BUF JOIN-PATH EXPECT-U !
+   CHILD-PATH childu EXPECT$ T$= ;
+
+: CHECK-NUL-CHILD-REJECT ( -- )
+   BUILD-CACHE:RESET
+   NUL-PREFIX$ BUILD-CACHE:ROOT!
+   [: NUL-CHILD 3 CHILD-PATH BUILD-CACHE:CHILD-INTO drop ;] catch E-BUILD-PATH T=
+   BUILD-CACHE:SELECTED-ROOT$ NUL-PREFIX$ T$=
+   BUILD-CACHE:CAUSE E-FS-PATH T=
+   NUL-PREFIX$ EXISTS? TFALSE ;
+
+: CHECK-SLASH-CHILD-REJECT ( -- )
+   BUILD-CACHE:RESET
+   NUL-PREFIX$ BUILD-CACHE:ROOT!
+   [: s" bad/child" CHILD-PATH BUILD-CACHE:CHILD-INTO drop ;] catch E-BUILD-PATH T=
+   BUILD-CACHE:SELECTED-ROOT$ NUL-PREFIX$ T$=
+   BUILD-CACHE:CAUSE E-FS-PATH T=
+   NUL-PREFIX$ EXISTS? TFALSE ;
+
+: CHECK-BAD-SUFFIX-REJECT ( -- )
+   BUILD-CACHE:RESET
+   NUL-PREFIX$ BUILD-CACHE:ROOT!
+   [: s" child" NUL-CHILD 3 CHILD-PATH BUILD-CACHE:CHILD-SUFFIX-INTO drop ;] catch E-BUILD-PATH T=
+   NUL-PREFIX$ EXISTS? TFALSE
+   BUILD-CACHE:RESET
+   NUL-PREFIX$ BUILD-CACHE:ROOT!
+   [: s" child" s" /bad" CHILD-PATH BUILD-CACHE:CHILD-SUFFIX-INTO drop ;] catch E-BUILD-PATH T=
+   NUL-PREFIX$ EXISTS? TFALSE ;
+
+: CHECK-DOT-CHILD-REJECT ( -- )
+   BUILD-CACHE:RESET
+   NUL-PREFIX$ BUILD-CACHE:ROOT!
+   [: s" ." CHILD-PATH BUILD-CACHE:CHILD-INTO drop ;] catch E-BUILD-PATH T=
+   NUL-PREFIX$ EXISTS? TFALSE
+   BUILD-CACHE:RESET
+   NUL-PREFIX$ BUILD-CACHE:ROOT!
+   [: s" .." CHILD-PATH BUILD-CACHE:CHILD-INTO drop ;] catch E-BUILD-PATH T=
+   BUILD-CACHE:SELECTED-ROOT$ NUL-PREFIX$ T$=
+   BUILD-CACHE:CAUSE E-FS-PATH T=
+   NUL-PREFIX$ EXISTS? TFALSE ;
+
+: CHECK-DEEP-CHILD-REJECT ( -- )
+   DEEP-ROOT$ MAKE-DIRS
+   BUILD-CACHE:RESET
+   DEEP-ROOT$ BUILD-CACHE:ROOT!
+   [: CHILD-NAME CHILD-NAME-LEN CHILD-PATH BUILD-CACHE:CHILD-INTO drop ;] catch E-BUILD-PATH T=
+   BUILD-CACHE:SELECTED? TTRUE
+   BUILD-CACHE:SELECTED-ROOT$ DEEP-ROOT$ T$=
+   BUILD-CACHE:SELECTED-SOURCE BUILD-CACHE:SOURCE$ s" explicit" T$=
+   BUILD-CACHE:CAUSE E-FS-CAPACITY T= ;
+
 : CHECK-LONG-ERROR-TEXT ( -- )
    BUILD-CACHE:RESET
    MAX-ROOT MAX-ROOT-U BUILD-CACHE:ROOT!
@@ -422,15 +546,15 @@ $7E constant ROOT-C
    text textu s" cause=E-FS-IO" CONTAINS? TTRUE ;
 
 : CHECK-REPORT-LIFECYCLE ( -- )
-   HB-BUILD:RESET
+   HB-BUILD:TEST-RESET
    HB-BUILD:VALID? TFALSE
    [: HB-BUILD:CACHE-ROOT$ 2drop ;] catch E-BUILD-STATUS T=
    BUILD-CACHE:RESET
    F$ BUILD-CACHE:ROOT!
    F$ BUILD-CACHE:SOURCE
-   0 0= 0 0= 0= 0 0= 0 0= 0 0= 0= 42 HB-BUILD:CAPTURE
+   0 0= 0 0= 0= 0 0= 0 0= 0 0= 0= 42 HB-BUILD:TEST-CAPTURE
    HB-BUILD:VALID? TTRUE
-   HB-BUILD:RESET
+   HB-BUILD:TEST-RESET
    HB-BUILD:VALID? TFALSE
    [: HB-BUILD:REPORT$ 2drop ;] catch E-BUILD-STATUS T= ;
 
@@ -455,6 +579,14 @@ $7E constant ROOT-C
    CHECK-RETRY-CLEARS-CAUSE
    CHECK-ADVERSARIAL-TEXT
    CHECK-OVER-ROOT-EVIDENCE
+   CHECK-NUL-ROOT-REJECT
+   CHECK-CHILD-PATH
+   CHECK-CHILD-SUFFIX-PATH
+   CHECK-NUL-CHILD-REJECT
+   CHECK-SLASH-CHILD-REJECT
+   CHECK-BAD-SUFFIX-REJECT
+   CHECK-DOT-CHILD-REJECT
+   CHECK-DEEP-CHILD-REJECT
    CHECK-LONG-ERROR-TEXT
    CHECK-REPORT-LIFECYCLE
    CLEANUP-RUN

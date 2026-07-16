@@ -14,7 +14,7 @@
    GT-ROOT BF-TMP! ;
 
 : GB-HBB-BUILD-OUT ( ptr u8 n -- ) {: label:ptr labelu :}
-   HBB-BUILD
+   HB-BUILD:BUILD
    HB-BUILD:ARTIFACT-HIT? if s" artifact-cache-hit" GS-EVENT else s" artifact-cache-miss" GS-EVENT then
    HB-BUILD:OBJECT-HIT? if s" object-cache-hit" GS-EVENT then
    HB-BUILD:MAKER-HIT? if s" maker-cache-hit" GS-EVENT then

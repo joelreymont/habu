@@ -398,6 +398,8 @@ schema_version	module	file	kind	word	effect	test	doc	owner	status	notes
 1	build-cache	lib/build-cache.f	module			lib/build-cache-test.f	docs/stdlib.md	stdlib-build-cache	active	canonical persistent build-cache root resolver and typed source classification
 1	build-cache	lib/build-cache.f	word	BUILD-CACHE:RESET	(--)	lib/build-cache-test.f	docs/stdlib.md	stdlib-build-cache	published	clear cached resolution and explicit override state
 1	build-cache	lib/build-cache.f	word	BUILD-CACHE:ROOT!	(ptr u8 n --)	lib/build-cache-test.f	docs/stdlib.md	stdlib-build-cache	published	set the explicit programmatic cache-root override
+1	build-cache	lib/build-cache.f	word	BUILD-CACHE:CHILD-SUFFIX-INTO	(ptr u8 n ptr u8 n ptr u8 -- n)	lib/build-cache-test.f	docs/stdlib.md	stdlib-build-cache	published	join one checked child component plus suffix into caller-owned cache-path storage
+1	build-cache	lib/build-cache.f	word	BUILD-CACHE:CHILD-INTO	(ptr u8 n ptr u8 -- n)	lib/build-cache-test.f	docs/stdlib.md	stdlib-build-cache	published	join one checked child component into caller-owned cache-path storage
 1	build-cache	lib/build-cache.f	word	BUILD-CACHE:ROOT$	(-- ptr u8 n)	lib/build-cache-test.f	docs/stdlib.md	stdlib-build-cache	published	resolve and return the canonical cache root
 1	build-cache	lib/build-cache.f	word	BUILD-CACHE:SOURCE	(-- source)	lib/build-cache-test.f	docs/stdlib.md	stdlib-build-cache	published	return the typed selected cache source
 1	build-cache	lib/build-cache.f	word	BUILD-CACHE:RESOLVE	(-- ptr u8 n source)	lib/build-cache-test.f	docs/stdlib.md	stdlib-build-cache	published	resolve and return the canonical root and typed source
