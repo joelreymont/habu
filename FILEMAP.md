@@ -615,6 +615,14 @@ points stay listed.
 - `tools/ptx/mma-gemm-check.f` — device-correctness of the full K-looping TF32
   mma.sync GEMM kernel (MMM) element-exact vs a host matmul at 64^3 and 128^3
   (staging + accumulation + the warp/D-fragment store mapping).
+- `tools/ptx/mma-profile.f` — profile-first harness for `lib/ptx/cg-mma.f`: emits
+  ONE tile config (BK / pad / stages / dyn-smem / fragment mode, config-driven via
+  `-- BK PAD STAGES DYN MODE SHAPE`, defaulting to the swizzled ldmatrix best) and
+  launches MMM EXACTLY once (no timing loop, no warmup) so an external profiler
+  (`ncu -k MMM --launch-count 1`) captures a single clean tensor-core launch;
+  device-gated on `CUDA:OPEN?` (recorded SKIP off-device). Correctness is owned by
+  `tools/ptx/mma-gemm-check.f`, timing by `tools/ptx/gemm-bench.f`; this only shapes
+  the launch.
 - `maki/README.md` / `maki/STATUS.md` — Maki framework overview and current
   verification status outside the Habu trust root.
 - `maki/cad-kinds.f` — package-scoped nominal identities for Model CAD handles,

@@ -4890,3 +4890,19 @@ unchanged (148855). Keys for milestone 2:
   every ptx stdlib boundary already uses, because "owner must exist in .dots/" and the
   m10 dot is removed at closure. Audit date = today, effect string = the source
   signature verbatim, or trust-lint drift rejects.
+- **ncu on the Orin NX likely hard-hung the box on first attach — treat Nsight
+  Compute as a device-risk operation.** dot habu-close-mma-gemm (profile-first lane).
+  Timeline: fresh bootstrap OK (07:49), one clean MMM single-launch via the new
+  tools/ptx/mma-profile.f harness OK (07:52), then the FIRST `sudo ncu -k MMM
+  --launch-count 1 --clock-control none <sections>` run printed only "==PROF==
+  Connected to process" and never produced a section; within minutes zed dropped
+  off the tailnet (tailscale `tx N rx 0`, ssh/ping timeouts, 18+ min, no watchdog
+  reboot) — a physical power cycle is required. HYPOTHESIS (strong circumstantial,
+  unconfirmed): ncu's perfmon interception wedged the GPU/driver on this
+  L4T 5.15.148 + ncu 2024.3.1 combo. Next lane: after power-cycling, prefer (a)
+  `nsys` GPU-metrics sampling (less invasive) or (b) the harness's variant-kernel
+  timing decomposition over ncu; if trying ncu again, use a minimal single section
+  (`--section SpeedOfLight`), a tiny shape (256), and expect to lose the box.
+  The one-launch profiling harness (tools/ptx/mma-profile.f, config-driven
+  `-- BK PAD STAGES DYN MODE SHAPE`) is host-gate-clean and device-proven; the
+  actual profile evidence is still missing.
