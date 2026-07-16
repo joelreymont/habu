@@ -34,47 +34,8 @@ that source is explicitly certified; they are not stale-checked by the default
 | Word | Effect | Reason | Tests | Site | Last audited |
 |------|--------|--------|-------|------|--------------|
 | STDIN? | `-- ptr bool` | Engine-builder mode cell that checked drivers set before emitting stdin or file-backed startup behavior. | `test/run.f`, `tools/build-fixpoint-test.f` | src/habu/habu1.f | 2026-06-26 |
-| fprim | `ptr u8 n n --` | Raw-asm prim emitter: lays a REG-PRIM frame + `xt execute`s a code-emitting handler; no Forth effect to infer. | `test/run.f` | src/habu/habu1.f | 2026-06-24 |
-| fprim-l | `ptr u8 n n --` | Leaf variant of FPRIM (no x30 frame); same `xt execute` of a code emitter. | `test/run.f` | src/habu/habu1.f | 2026-06-24 |
-| fprim-wid | `ptr u8 n n n --` | Wordlist-targeted FPRIM variant assigns the emitted primitive record to a reserved package WID; raw label emission and dynamic code-emitter execution remain outside checker inference. | `test/owner-wid-internal.f`, `test/run.f` | src/habu/habu1.f | 2026-07-15 |
 | tok-imm? | `ptr u8 n -- n` | Engine primitive axiom: LFIND the token in the live dictionary and push flags&2 (the DNAME-IMM bit), so DO-TOK1 can reject a signature-carrying live immediate as a checked body step (p5 wrong-certificate class, dot habu-checker-fitting-arity-70dc94e4). | `test/immediate-model-test.f` (stdlib/tail-process fork, test/run.f) | src/core/checker.f | 2026-07-13 |
 | parse-imm | `ptr u8 n n --` | Declares a parsing immediate's compile-time payload token count to the checker (GRID: 1, WHERE 3), exempting it from the p5 immediate reject and skipping its payload in the body scan. A wrong count skips live code, so each declaration site is an audited soundness boundary; UNSAFE-TOK? bars it from checked bodies (top-level only). | `lib/ptx/header-test.f` (lint-libs slice + resident ptx group), `test/lower-txn-protection.f`, `test/run.f` | src/core/checker.f | 2026-07-13 |
-| linux-spawn-fail | `reg --` | Linux child-side spawn failure reporter: consumes the target register holding the exec-error pipe, emits raw `write`, and exits the child without returning to Forth. | `lib/process-test.f`, `test/run.f` | src/habu/habu1.f | 2026-06-26 |
-| linux-dup2-fd | `reg fd reg --` | Linux child-side raw syscall emitter for conditional `dup2`: source fd register, destination fd immediate, and exec-error-pipe register are role-typed; raw label/syscall code remains the boundary. | `lib/process-test.f`, `test/run.f`, `test/engine-suite.f` | src/habu/habu1.f | 2026-06-26 |
-| linux-chdir-fd | `reg reg --` | Linux child-side raw syscall emitter for optional `chdir`: cwd pointer register and exec-error-pipe register are role-typed; raw label/syscall code remains the boundary. | `lib/process-cwd-test.f`, `test/run.f` | src/habu/habu1.f | 2026-06-26 |
-| linux-setpgid-self | `reg --` | Linux child-side raw syscall emitter for fail-closed `setpgid(0,0)` before cwd/stdio/exec setup; the exec-error-pipe register is passed through the failure reporter boundary. | `lib/process-test.f`, `lib/process-env-test.f`, `test/gate-pool-test.f`, `test/run.f` | src/habu/habu1.f | 2026-07-03 |
-| linux-spawn-close-r | `--` | Linux spawn emitter helper that closes the parent/child error-pipe read fd from the raw stack frame. | `lib/process-test.f`, `test/run.f` | src/habu/habu1.f | 2026-06-24 |
-| linux-spawn-close-w | `--` | Linux spawn emitter helper that closes the parent/child error-pipe write fd from the raw stack frame. | `lib/process-test.f`, `test/run.f` | src/habu/habu1.f | 2026-06-24 |
-| linux-spawn-close-pipe | `--` | Linux spawn emitter helper that closes both error-pipe fds on parent-side setup failure. | `lib/process-test.f`, `test/run.f` | src/habu/habu1.f | 2026-06-24 |
-| linux-spawn-prep-w | `--` | Linux spawn emitter helper that keeps the child failure-report fd close-on-exec and duplicates it above stdio when needed. | `lib/process-test.f`, `test/run.f` | src/habu/habu1.f | 2026-06-24 |
-| linux-spawn-wait-stored | `--` | Linux spawn emitter helper that reaps the stored child pid after setup or exec failure so failed spawns leave no waitable child behind. | `lib/process-test.f`, `test/run.f` | src/habu/habu1.f | 2026-06-24 |
-| linux-spawn-parent | `--` | Linux parent-side spawn handshake: reads the exec-error pipe and returns pid or `-1` through x9; raw fd/syscall/register effects are outside Forth inference. | `lib/process-test.f`, `test/run.f` | src/habu/habu1.f | 2026-06-24 |
-| linux-spawn-child | `--` | Linux child-side spawn setup: applies cwd/stdio setup, performs raw `execve`, and reports setup/exec failure through the error pipe. | `lib/process-test.f`, `lib/process-cwd-test.f`, `test/run.f` | src/habu/habu1.f | 2026-06-24 |
-| linux-spawn | `reg reg reg reg reg reg reg --` | Linux spawn emitter consumes target registers for path, argv, envp, cwd, stdin, stdout, and stderr; syscall/control-flow effects remain the boundary. | `lib/process-test.f`, `lib/process-cwd-test.f`, `test/run.f`, `test/engine-suite.f` | src/habu/habu1.f | 2026-06-26 |
-| linux-ignore-sigpipe | `--` | Linux raw `rt_sigaction` emitter for SIGPIPE ignore used to implement the no-SIGPIPE process fd abstraction. | `lib/process-test.f`, `test/run.f` | src/habu/habu1.f | 2026-06-24 |
-| spawn-dup2-action | `reg fd --` | Build-side helper that emits one raw XNU `PSFA_DUP2` action from a target fd register to a destination fd immediate; raw record layout remains the boundary. | `tools/spawn-emitter-test.f`, `test/proc-pty.f`, `test/engine-suite.f` | src/habu/habu1.f | 2026-06-26 |
-| spawn-chdir-action | `reg label --` | Build-side helper that emits one raw XNU `PSFA_CHDIR` action from a cwd pointer register and branches to a caller failure label; raw record layout remains the boundary. | `tools/spawn-emitter-test.f`, `lib/process-cwd-test.f`, `test/run.f`, `test/engine-suite.f` | src/habu/habu1.f | 2026-06-26 |
-| spawn-darwin-frame3-enter | `--` | Build-side helper that emits the shared three-action Darwin spawn runtime stack-frame allocation. | `tools/spawn-emitter-test.f`, `lib/process-test.f`, `test/run.f` | src/habu/habu1.f | 2026-06-25 |
-| spawn-darwin-frame3-leave | `--` | Build-side helper that emits the shared three-action Darwin spawn runtime stack-frame release. | `tools/spawn-emitter-test.f`, `lib/process-test.f`, `test/run.f` | src/habu/habu1.f | 2026-06-25 |
-| spawn-darwin-frame4-enter | `--` | Build-side helper that emits the extended Darwin spawn runtime stack-frame allocation used by cwd actions. | `tools/spawn-emitter-test.f`, `lib/process-cwd-test.f`, `test/run.f` | src/habu/habu1.f | 2026-06-25 |
-| spawn-darwin-frame4-leave | `--` | Build-side helper that emits the extended Darwin spawn runtime stack-frame release used by cwd actions. | `tools/spawn-emitter-test.f`, `lib/process-cwd-test.f`, `test/run.f` | src/habu/habu1.f | 2026-06-25 |
-| spawn-darwin-actions-reset | `count --` | Build-side helper that initializes the XNU file-action blob header at x13 for the requested action count and zero used-count. | `tools/spawn-emitter-test.f`, `lib/process-test.f`, `lib/process-cwd-test.f`, `test/run.f` | src/habu/habu1.f | 2026-06-26 |
-| spawn-darwin-stdio-actions | `--` | Build-side helper that appends the three conditional stdio `PSFA_DUP2` actions through the audited dup2 action emitter. | `tools/spawn-emitter-test.f`, `lib/process-test.f`, `test/run.f` | src/habu/habu1.f | 2026-06-25 |
-| spawn-darwin-zero-adesc | `--` | Build-side helper that emits zeroing stores for the Darwin spawn descriptor area; raw descriptor layout is outside Forth inference. | `tools/spawn-emitter-test.f`, `lib/process-test.f`, `test/run.f` | src/habu/habu1.f | 2026-06-25 |
-| spawn-darwin-zero-attr | `--` | Build-side helper that emits zeroing stores for the Darwin `posix_spawn` attribute area; the XNU-private layout is outside Forth inference. | `tools/spawn-emitter-test.f`, `lib/process-env-test.f`, `test/run.f` | src/habu/habu1.f | 2026-07-03 |
-| spawn-darwin-attr-defaults | `--` | Build-side helper that emits `POSIX_SPAWN_SETPGROUP` plus XNU default attribute fields so each spawned child becomes its own process-group leader before exec. | `tools/spawn-emitter-test.f`, `lib/process-env-test.f`, `test/gate-pool-test.f`, `test/run.f` | src/habu/habu1.f | 2026-07-03 |
-| spawn-darwin-fill-adesc | `--` | Build-side helper that emits the XNU spawn descriptor attribute pointer/size and, when present, file-action pointer/size from the runtime action count. | `tools/spawn-emitter-test.f`, `lib/process-test.f`, `lib/process-env-test.f`, `test/run.f` | src/habu/habu1.f | 2026-07-03 |
-| spawn-darwin-use-adesc | `--` | Build-side helper that emits the non-null descriptor pointer for every Darwin spawn so process-group attributes are applied even when no file actions are needed. | `tools/spawn-emitter-test.f`, `lib/process-cwd-test.f`, `lib/process-env-test.f`, `test/run.f` | src/habu/habu1.f | 2026-07-03 |
-| spawn-darwin-pid-path | `reg --` | Build-side helper that emits common `posix_spawn` pid-out and path register setup. | `tools/spawn-emitter-test.f`, `lib/process-test.f`, `test/run.f`, `test/engine-suite.f` | src/habu/habu1.f | 2026-06-26 |
-| spawn-darwin-argv-envp | `reg reg --` | Build-side helper that emits common argv/envp register setup when both vectors are runtime input registers. | `tools/spawn-emitter-test.f`, `lib/process-env-test.f`, `test/run.f`, `test/engine-suite.f` | src/habu/habu1.f | 2026-06-26 |
-| spawn-darwin-default-argv-envp | `reg --` | Build-side helper that emits the default argv/envp runtime stack vectors for path-only spawn. | `tools/spawn-emitter-test.f`, `lib/process-test.f`, `test/run.f` | src/habu/habu1.f | 2026-06-26 |
-| spawn-darwin-default-envp | `--` | Build-side helper that emits the default empty envp runtime stack vector for argv spawn. | `tools/spawn-emitter-test.f`, `lib/process-argv-test.f`, `test/run.f` | src/habu/habu1.f | 2026-06-25 |
-| spawn-darwin-use-default-argv-envp | `--` | Build-side helper that emits `posix_spawn` argv/envp argument registers for the path-only default vectors. | `tools/spawn-emitter-test.f`, `lib/process-test.f`, `test/run.f` | src/habu/habu1.f | 2026-06-25 |
-| spawn-darwin-argv-default-envp | `reg --` | Build-side helper that emits `posix_spawn` argv input plus default empty envp argument registers. | `tools/spawn-emitter-test.f`, `lib/process-argv-test.f`, `test/run.f` | src/habu/habu1.f | 2026-06-26 |
-| spawn-darwin-finish | `label label --` | Build-side helper that emits shared Darwin `posix_spawn` syscall, preserves failure errno as a negative pid code, loads the child pid on success, joins failure/success labels, and pushes the raw result. | `tools/spawn-emitter-test.f`, `lib/process-test.f`, `lib/process-cwd-test.f`, `test/run.f`, `test/engine-suite.f` | src/habu/habu1.f | 2026-06-29 |
-| linux-stat-fix | `n --` | Linux stat syscall layout shim copies the kernel `mode` and `size` fields into the engine's portable `stat64` offsets; raw field writes are outside checker inference. | `lib/fs-test.f`, `test/run.f` | src/habu/habu1.f | 2026-06-27 |
-| emit-prims | `--` | Emits the engine's whole primitive table as raw ARM64. | `test/run.f` | src/habu/habu1.f | 2026-06-27 |
-| emit-fp-prims | `--` | Emits the floating-point prim table as raw asm via FPRIM-L. | `test/run.f` | src/habu/habu1.f | 2026-06-27 |
 | BPW-TAB | `-- ptr ptr n` | Watch-table storage is dictionary data whose cells hold watched DATA pointers; the checker cannot infer this created table's pointee role. | `test/proc-pty.f`, `test/gate-debug.f`, `test/run.f` | src/habu/debug-watch.f | 2026-06-25 |
 | BPW-PRINT-ADDR | `ptr n --` | Debug watch printer intentionally displays a raw cell address; formatting a pointer through `.` is a REPL/debug boundary. | `test/proc-pty.f`, `test/gate-debug.f`, `test/run.f` | src/habu/debug-watch.f | 2026-06-25 |
 | BPW-DATA-CELL | `n -- ptr n` | Converts a fixed DATA cell offset to a typed numeric-cell address for watch registration. | `test/proc-pty.f`, `test/gate-debug.f`, `test/run.f` | src/habu/debug-watch.f | 2026-06-25 |
@@ -680,7 +641,6 @@ that source is explicitly certified; they are not stale-checked by the default
 | SOFTMAX | `attnctx<q,d,attn-stage-softmax> attnacc<f32,b,m> -- attnctx<q,d,attn-stage-output> attnacc<f32,b,m>` | Target primitive for stable in-place shared-memory softmax; it can only consume a completed score phase. | `lib/ptx/attention-checked-test.f`, `lib/ptx/attention-checked-neg-test.f` | lib/ptx/cg-attention.f | 2026-07-12 |
 | OUTPUT | `attnctx<q,d,attn-stage-output> attnacc<f32,b,m> -- attnctx<q,d,attn-stage-done> attnacc<f32,b,m>` | Target primitive for the PV reduction and global output store; FINISH accepts only its done-phase result. | `lib/ptx/attention-checked-test.f`, `lib/ptx/attention-checked-neg-test.f` | lib/ptx/cg-attention.f | 2026-07-12 |
 | CRH | `-- ptr u8` | Crash-handler header buffer is raw dictionary storage copied into signal-safe write output. | `test/gate-debug.f`, `test/run.f` | src/habu/crash.f | 2026-06-30 |
-| linux-spawn-fail-n | `n --` | Linux child-side spawn failure reporter emits raw `write`/`exit_group` for the supplied failure-pipe fd register number. | `lib/process-test.f`, `test/run.f` | src/habu/habu1.f | 2026-06-29 |
 | BFR-BYTE@ | `ptr u8 n -- u8` | Refresh prelude byte reader over dictionary name bytes; raw record pointers are refined before this checked scanner can read them. | `tools/build-fixpoint-test.f`, `test/run.f` | src/habu/hide.f | 2026-06-29 |
 | SHK-N | `-- ptr n` | Treeshaker token length cell is a raw variable used by checked token comparison loops. | `test/run.f` | src/habu/treeshake.f | 2026-06-30 |
 | SHK-C | `-- ptr n` | Treeshaker byte/delimiter scratch cell is a raw variable used by checked scanner helpers. | `test/run.f` | src/habu/treeshake.f | 2026-06-30 |
@@ -1014,46 +974,6 @@ src/habu/debug.f:BP-PRINT-ADDR builder-emit habu-builder-trust-rows-c5d41af6
 src/habu/debug.f:BP-PATCH32 builder-emit habu-builder-trust-rows-c5d41af6
 src/habu/debug.f:BP-XT>PTR builder-emit habu-builder-trust-rows-c5d41af6
 src/habu/habu1.f:STDIN? builder-emit habu-builder-trust-rows-c5d41af6
-src/habu/habu1.f:fprim builder-emit habu-builder-trust-rows-c5d41af6
-src/habu/habu1.f:fprim-l builder-emit habu-builder-trust-rows-c5d41af6
-src/habu/habu1.f:fprim-wid builder-emit habu-builder-trust-rows-c5d41af6
-src/habu/habu1.f:linux-spawn-fail-n builder-emit habu-builder-trust-rows-c5d41af6
-src/habu/habu1.f:linux-spawn-fail builder-emit habu-builder-trust-rows-c5d41af6
-src/habu/habu1.f:linux-dup2-fd builder-emit habu-builder-trust-rows-c5d41af6
-src/habu/habu1.f:linux-chdir-fd builder-emit habu-builder-trust-rows-c5d41af6
-src/habu/habu1.f:linux-spawn-close-r builder-emit habu-builder-trust-rows-c5d41af6
-src/habu/habu1.f:linux-spawn-close-w builder-emit habu-builder-trust-rows-c5d41af6
-src/habu/habu1.f:linux-spawn-close-pipe builder-emit habu-builder-trust-rows-c5d41af6
-src/habu/habu1.f:linux-spawn-prep-w builder-emit habu-builder-trust-rows-c5d41af6
-src/habu/habu1.f:linux-spawn-wait-stored builder-emit habu-builder-trust-rows-c5d41af6
-src/habu/habu1.f:linux-spawn-parent builder-emit habu-builder-trust-rows-c5d41af6
-src/habu/habu1.f:linux-spawn-child builder-emit habu-builder-trust-rows-c5d41af6
-src/habu/habu1.f:linux-spawn builder-emit habu-builder-trust-rows-c5d41af6
-src/habu/habu1.f:linux-ignore-sigpipe builder-emit habu-builder-trust-rows-c5d41af6
-src/habu/habu1.f:spawn-dup2-action builder-emit habu-builder-trust-rows-c5d41af6
-src/habu/habu1.f:spawn-chdir-action builder-emit habu-builder-trust-rows-c5d41af6
-src/habu/habu1.f:spawn-darwin-frame3-enter builder-emit habu-builder-trust-rows-c5d41af6
-src/habu/habu1.f:spawn-darwin-frame3-leave builder-emit habu-builder-trust-rows-c5d41af6
-src/habu/habu1.f:spawn-darwin-frame4-enter builder-emit habu-builder-trust-rows-c5d41af6
-src/habu/habu1.f:spawn-darwin-frame4-leave builder-emit habu-builder-trust-rows-c5d41af6
-src/habu/habu1.f:spawn-darwin-actions-reset builder-emit habu-builder-trust-rows-c5d41af6
-src/habu/habu1.f:spawn-darwin-stdio-actions builder-emit habu-builder-trust-rows-c5d41af6
-src/habu/habu1.f:spawn-darwin-zero-adesc builder-emit habu-builder-trust-rows-c5d41af6
-src/habu/habu1.f:spawn-darwin-fill-adesc builder-emit habu-builder-trust-rows-c5d41af6
-src/habu/habu1.f:spawn-darwin-use-adesc builder-emit habu-builder-trust-rows-c5d41af6
-src/habu/habu1.f:spawn-darwin-pid-path builder-emit habu-builder-trust-rows-c5d41af6
-src/habu/habu1.f:spawn-darwin-argv-envp builder-emit habu-builder-trust-rows-c5d41af6
-src/habu/habu1.f:spawn-darwin-default-argv-envp builder-emit habu-builder-trust-rows-c5d41af6
-src/habu/habu1.f:spawn-darwin-default-envp builder-emit habu-builder-trust-rows-c5d41af6
-src/habu/habu1.f:spawn-darwin-use-default-argv-envp builder-emit habu-builder-trust-rows-c5d41af6
-src/habu/habu1.f:spawn-darwin-argv-default-envp builder-emit habu-builder-trust-rows-c5d41af6
-src/habu/habu1.f:spawn-darwin-finish builder-emit habu-builder-trust-rows-c5d41af6
-src/habu/habu1.f:linux-stat-fix builder-emit habu-builder-trust-rows-c5d41af6
-src/habu/habu1.f:emit-prims builder-emit habu-builder-trust-rows-c5d41af6
-src/habu/habu1.f:emit-fp-prims builder-emit habu-builder-trust-rows-c5d41af6
-src/habu/habu1.f:linux-setpgid-self builder-emit habu-builder-trust-rows-c5d41af6
-src/habu/habu1.f:spawn-darwin-zero-attr builder-emit habu-builder-trust-rows-c5d41af6
-src/habu/habu1.f:spawn-darwin-attr-defaults builder-emit habu-builder-trust-rows-c5d41af6
 src/habu/habu2.f builder-emit habu-builder-trust-rows-c5d41af6 126
 src/habu/hide.f:BFR-N>REC builder-emit habu-builder-trust-rows-c5d41af6
 src/habu/hide.f:BFR-A>U8 builder-emit habu-builder-trust-rows-c5d41af6

@@ -76,7 +76,6 @@ variable FPL  variable FPE
    FP-REG
    FPL LABEL@ LBL,  SP SP 16 SUBI,  30 SP 0 STR,
    FP-XT @ execute  30 SP 0 LDR,  SP SP 16 ADDI,  RET,  FPE LABEL@ LBL, ;
-s" fprim" s" ptr u8 n n --" TRUST
 
 : FPRIM-L ( ptr u8 n n -- )           \ LEAF prim: no BL/BLR in body -> no x30 frame
    FP-ARGS
@@ -84,7 +83,6 @@ s" fprim" s" ptr u8 n n --" TRUST
    LBL FPL !  LBL FPE !
    FP-REG
    FPL LABEL@ LBL,  FP-XT @ execute  RET,  FPE LABEL@ LBL, ;
-s" fprim-l" s" ptr u8 n n --" TRUST
 
 variable FP-WID
 
@@ -97,7 +95,6 @@ variable FP-WID
    FP-WID @ #PL @ 1- cells PWID + !
    FPL LABEL@ LBL,  SP SP 16 SUBI,  30 SP 0 STR,
    FP-XT @ execute  30 SP 0 LDR,  SP SP 16 ADDI,  RET,  FPE LABEL@ LBL, ;
-s" fprim-wid" s" ptr u8 n n n --" TRUST
 
 \ --- deref/execute arity-guard table (for the interpret-boundary guard) ---
 \ A deref/execute/dispatch prim (@ ! +! c@ c! atomic@ atomic! atomic-add
@@ -450,11 +447,9 @@ variable NUM-FPOS
    15 1 MOVZ,  15 SP LINUX-SPAWN-ERR-OFF STRB,
    1 SP LINUX-SPAWN-ERR-OFF ADDI,  2 1 MOVZ,  NR-WRITE SYS,
    0 127 MOVZ,  NR-EXIT-GROUP SYS, ;
-s" linux-spawn-fail-n" s" n --" TRUST
 
 : LINUX-SPAWN-FAIL ( reg -- )
    REG>N LINUX-SPAWN-FAIL-N ;
-s" linux-spawn-fail" s" reg --" TRUST
 
 : LINUX-DUP2-ARGS ( reg fd reg -- )
    REG>N LNX-ERR !
@@ -472,7 +467,6 @@ s" linux-spawn-fail" s" reg --" TRUST
       LNX-ERR @ LINUX-SPAWN-FAIL-N
    ok LBL,
    skip LBL, ;
-s" linux-dup2-fd" s" reg fd reg --" TRUST
 
 : LINUX-CHDIR-ARGS ( reg reg -- )
    REG>N LNX-ERR !
@@ -488,7 +482,6 @@ s" linux-dup2-fd" s" reg fd reg --" TRUST
       LNX-ERR @ LINUX-SPAWN-FAIL-N
    ok LBL,
    skip LBL, ;
-s" linux-chdir-fd" s" reg reg --" TRUST
 
 : LINUX-SETPGID-SELF ( reg -- )
    REG>N LNX-ERR !
@@ -497,20 +490,16 @@ s" linux-chdir-fd" s" reg reg --" TRUST
    9 C-CS CSET,  9 ok CBZ,
       LNX-ERR @ LINUX-SPAWN-FAIL-N
    ok LBL, ;
-s" linux-setpgid-self" s" reg --" TRUST
 
 : LINUX-SPAWN-CLOSE-R ( -- )
    0 SP LINUX-SPAWN-PIPE-R-OFF LDRW,  NR-CLOSE SYS, ;
-s" linux-spawn-close-r" s" --" TRUST
 
 : LINUX-SPAWN-CLOSE-W ( -- )
    0 SP LINUX-SPAWN-PIPE-W-OFF LDRW,  NR-CLOSE SYS, ;
-s" linux-spawn-close-w" s" --" TRUST
 
 : LINUX-SPAWN-CLOSE-PIPE ( -- )
    LINUX-SPAWN-CLOSE-R
    LINUX-SPAWN-CLOSE-W ;
-s" linux-spawn-close-pipe" s" --" TRUST
 
 : LINUX-SPAWN-PREP-W ( -- )
    LBL {: fail:label :}
@@ -528,13 +517,11 @@ s" linux-spawn-close-pipe" s" --" TRUST
    fail LBL,
       9 1 MOVZ,
    done LBL, ;
-s" linux-spawn-prep-w" s" --" TRUST
 
 : LINUX-SPAWN-WAIT-STORED ( -- )
    0 SP LINUX-SPAWN-PID-OFF LDR,
    1 SP LINUX-SPAWN-STATUS-OFF ADDI,  2 0 MOVZ,  3 0 MOVZ,
    NR-WAIT4 SYS, ;
-s" linux-spawn-wait-stored" s" --" TRUST
 
 : LINUX-SPAWN-PARENT ( -- )
    LBL {: ok:label :}
@@ -554,7 +541,6 @@ s" linux-spawn-wait-stored" s" --" TRUST
       LINUX-SPAWN-CLOSE-R
       9 SP LINUX-SPAWN-PID-OFF LDR,
    done LBL, ;
-s" linux-spawn-parent" s" --" TRUST
 
 : LINUX-SPAWN-CHILD ( -- )
    LINUX-SPAWN-CLOSE-R
@@ -572,7 +558,6 @@ s" linux-spawn-parent" s" --" TRUST
    NR-EXECVE SYS,
    14 SP LINUX-SPAWN-PIPE-W-OFF LDRW,
    14 >REG LINUX-SPAWN-FAIL ;
-s" linux-spawn-child" s" --" TRUST
 
 : LINUX-SPAWN ( reg reg reg reg reg reg reg -- )
    REG>N LNX-ERR !
@@ -608,7 +593,6 @@ s" linux-spawn-child" s" --" TRUST
    done LBL,
    SP SP LINUX-SPAWN-FRAME ADDI,
    9 G-PUSH ;
-s" linux-spawn" s" reg reg reg reg reg reg reg --" TRUST
 
 : BRUNRC ( -- )                    \ ( pathz -- rc ) spawn+wait; -1 = spawn failed
    A G-POP
@@ -716,7 +700,6 @@ s" linux-spawn" s" reg reg reg reg reg reg reg --" TRUST
       0 0 MOVZ,
    done LBL,
    SP SP 64 ADDI, ;
-s" linux-ignore-sigpipe" s" --" TRUST
 
 : BFCNTL ( -- )                    \ ( fd cmd arg -- rc ) rc=sysret or -1
    2 G-POP  1 G-POP  0 G-POP
@@ -888,7 +871,6 @@ variable SZA-I
    15 SDA-NEW @ MOVZ,  15 14 8 STRW,
    14 13 SPAWN-FA-COUNT-OFF LDRW,  14 14 1 ADDI,  14 13 SPAWN-FA-COUNT-OFF STRW,
    SDA-SKIP LABEL@ LBL, ;
-s" spawn-dup2-action" s" reg fd --" TRUST
 
 \ Emit one PSFA_CHDIR record into the runtime file-actions blob at x13.
 : SPAWN-CHDIR-ARGS ( reg label -- )
@@ -919,40 +901,33 @@ s" spawn-dup2-action" s" reg fd --" TRUST
    SCA-OVER LABEL@ LBL,
    9 0 MOVN,  SCA-FAIL LABEL@ B,
    SCA-DONE LABEL@ LBL, ;
-s" spawn-chdir-action" s" reg label --" TRUST
 
 : SPAWN-DARWIN-FRAME3-ENTER ( -- )
    SP SP SPAWN-FRAME3 SUBI, ;
-s" spawn-darwin-frame3-enter" s" --" TRUST
 
 : SPAWN-DARWIN-FRAME3-LEAVE ( -- )
    SP SP SPAWN-FRAME3 ADDI, ;
-s" spawn-darwin-frame3-leave" s" --" TRUST
 
 : SPAWN-DARWIN-FRAME4-ENTER ( -- )
    SP SP SPAWN-FRAME4-A SUBI,
    SP SP SPAWN-FRAME4-B SUBI,
    SP SP SPAWN-FRAME4-C SUBI, ;
-s" spawn-darwin-frame4-enter" s" --" TRUST
 
 : SPAWN-DARWIN-FRAME4-LEAVE ( -- )
    SP SP SPAWN-FRAME4-C ADDI,
    SP SP SPAWN-FRAME4-B ADDI,
    SP SP SPAWN-FRAME4-A ADDI, ;
-s" spawn-darwin-frame4-leave" s" --" TRUST
 
 : SPAWN-DARWIN-ACTIONS-RESET ( count -- )
    SACT-CAP !
    13 SP SPAWN-ACTIONS-OFF ADDI,
    14 SACT-CAP @ MOVZ,  14 13 SPAWN-FA-CAP-OFF STRW,
    14 0 MOVZ,  14 13 SPAWN-FA-COUNT-OFF STRW, ;
-s" spawn-darwin-actions-reset" s" count --" TRUST
 
 : SPAWN-DARWIN-STDIO-ACTIONS ( -- )
    10 >REG 0 >FD SPAWN-DUP2-ACTION
    11 >REG 1 >FD SPAWN-DUP2-ACTION
    12 >REG 2 >FD SPAWN-DUP2-ACTION ;
-s" spawn-darwin-stdio-actions" s" --" TRUST
 
 : SPAWN-DARWIN-ZERO-ADESC ( -- )
    14 0 MOVZ,
@@ -961,7 +936,6 @@ s" spawn-darwin-stdio-actions" s" --" TRUST
       14 SP SPAWN-ADESC-OFF SZA-I @ + STR,
       SZA-I @ 8 + SZA-I !
    REPEAT ;
-s" spawn-darwin-zero-adesc" s" --" TRUST
 
 : SPAWN-DARWIN-ZERO-ATTR ( -- )
    14 0 MOVZ,
@@ -970,7 +944,6 @@ s" spawn-darwin-zero-adesc" s" --" TRUST
       14 SP SPAWN-ATTR-OFF SZA-I @ + STR,
       SZA-I @ 8 + SZA-I !
    REPEAT ;
-s" spawn-darwin-zero-attr" s" --" TRUST
 
 : SPAWN-DARWIN-ATTR-DEFAULTS ( -- )
    14 POSIX-SPAWN-SETPGROUP MOVZ,
@@ -985,7 +958,6 @@ s" spawn-darwin-zero-attr" s" --" TRUST
    14 SP SPAWN-ATTR-OFF SPAWN-ATTR-SUBCPU-OFF 4 + + STRW,
    14 SP SPAWN-ATTR-OFF SPAWN-ATTR-SUBCPU-OFF 8 + + STRW,
    14 SP SPAWN-ATTR-OFF SPAWN-ATTR-SUBCPU-OFF 12 + + STRW, ;
-s" spawn-darwin-attr-defaults" s" --" TRUST
 
 : SPAWN-DARWIN-FILL-ADESC ( -- )
    LBL {: done:label :}
@@ -1002,23 +974,19 @@ s" spawn-darwin-attr-defaults" s" --" TRUST
    14 SP SPAWN-ADESC-FA-SIZE-OFF STR,
    13 SP SPAWN-ADESC-FA-PTR-OFF STR,
    done LBL, ;
-s" spawn-darwin-fill-adesc" s" --" TRUST
 
 : SPAWN-DARWIN-USE-ADESC ( -- )
    2 SP SPAWN-ADESC-OFF ADDI, ;
-s" spawn-darwin-use-adesc" s" --" TRUST
 
 : SPAWN-DARWIN-PID-PATH ( reg -- )
    SPD-PATH !
    0 SP SPAWN-PID-OFF ADDI,
    1 SPD-PATH @ 0 ADDI, ;
-s" spawn-darwin-pid-path" s" reg --" TRUST
 
 : SPAWN-DARWIN-ARGV-ENVP ( reg reg -- )
    SAE-ENVP !  SAE-ARGV !
    3 SAE-ARGV @ 0 ADDI,
    4 SAE-ENVP @ 0 ADDI, ;
-s" spawn-darwin-argv-envp" s" reg reg --" TRUST
 
 : SPAWN-DARWIN-DEFAULT-ARGV-ENVP ( reg -- )
    SDEF-PATH !
@@ -1026,23 +994,19 @@ s" spawn-darwin-argv-envp" s" reg reg --" TRUST
    14 0 MOVZ,
    14 SP SPAWN-ARGV-END-OFF STR,
    14 SP SPAWN-ENVP-OFF STR, ;
-s" spawn-darwin-default-argv-envp" s" reg --" TRUST
 
 : SPAWN-DARWIN-DEFAULT-ENVP ( -- )
    14 0 MOVZ,
    14 SP SPAWN-ARGV-OFF STR, ;
-s" spawn-darwin-default-envp" s" --" TRUST
 
 : SPAWN-DARWIN-USE-DEFAULT-ARGV-ENVP ( -- )
    3 SP SPAWN-ARGV-OFF ADDI,
    4 SP SPAWN-ENVP-OFF ADDI, ;
-s" spawn-darwin-use-default-argv-envp" s" --" TRUST
 
 : SPAWN-DARWIN-ARGV-DEFAULT-ENVP ( reg -- )
    SADV-ARGV !
    3 SADV-ARGV @ 0 ADDI,
    4 SP SPAWN-ARGV-OFF ADDI, ;
-s" spawn-darwin-argv-default-envp" s" reg --" TRUST
 
 : SPAWN-DARWIN-FINISH ( label label -- )
    SFIN-FAIL !  SFIN-OK !
@@ -1053,7 +1017,6 @@ s" spawn-darwin-argv-default-envp" s" reg --" TRUST
    9 SP SPAWN-PID-OFF LDRW,
    SFIN-FAIL LABEL@ LBL,
    9 G-PUSH ;
-s" spawn-darwin-finish" s" label label --" TRUST
 
 : BSP-LABELS3 ( -- )
    LBL BSP-OK !  LBL BSP-DN !  LBL BSP-SAD ! ;
@@ -1799,7 +1762,6 @@ s" spawn-darwin-finish" s" label label --" TRUST
    8 STAT-BUF @ 104 LDR,  9 STAT-BUF @ 112 LDR,
    5 STAT-BUF @ 96 STR,   6 STAT-BUF @ 48 STR,   7 STAT-BUF @ 56 STR,
    8 STAT-BUF @ 64 STR,   9 STAT-BUF @ 72 STR, ;
-s" linux-stat-fix" s" n --" TRUST
 
 : BSTAT64 ( -- )
    1 G-POP  0 G-POP
@@ -2258,7 +2220,6 @@ public
    EMIT-MEMORY-PRIMS  EMIT-OUTPUT-PRIMS  EMIT-DICT-PRIMS
    EMIT-PROCESS-PRIMS  EMIT-ENGINE-PRIMS  EMIT-FS-PRIMS
    EMIT-CHECKER-PRIMS ;
-s" emit-prims" s" --" TRUST
 
 \ FP: doubles as raw IEEE754 bit-cells on the data stack; FMOV through D0/D1.
 \ Compare conds per FP flag semantics: < MI, > GT, = EQ (NaN compares false).
@@ -2350,7 +2311,6 @@ s" emit-prims" s" --" TRUST
    s" f0<" ['] BF0< FPRIM-L  s" f0=" ['] BF0= FPRIM-L
    s" s>f" ['] BS>F FPRIM-L  s" f>s" ['] BF>S FPRIM-L
    s" f." ['] BFDOT FPRIM-L ;
-s" emit-fp-prims" s" --" TRUST
 
 : EMIT-CEMIT ( -- )
    LCEMIT LABEL@ LBL,
