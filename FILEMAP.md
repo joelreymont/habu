@@ -528,6 +528,13 @@ points stay listed.
   (`vspan`/`vtile`, `V4-ALIGN`/`LOAD.V4`/`STORE.V4`) whose 16B-alignment and
   lane-arity legality the checker proves, plus positive/emit and negative
   regressions.
+- `lib/ptx/tile-pipe.f` / `lib/ptx/tile-pipe-test.f` /
+  `lib/ptx/tile-pipe-neg-test.f` — typed pipelined register-blocked GEMM tile
+  vocabulary (`mmstage`/`mmaslice`/`mmbslice`/`mmafrag`/`mmbfrag`/`mmracc`,
+  `PIPE-LOOP`/`STAGE-SLICES`/`A-FRAG`/`B-FRAG.V4`/`RB-FMA`/`K-UNROLL`) over the
+  cg-matmul.f MM-* emitters, byte-identical to EMIT-MATMUL by test, with parity/
+  alignment/layout/naive-path negative regressions; trusted staging bodies are
+  owned by the cp.async typestate capability dot.
 - `lib/ptx/collective.f` / `lib/ptx/collective-test.f` — tile-DSL row and
   collective vocabulary (M6) plus the checked stable-softmax proof.
 - `lib/ptx/gemm-checked-test.f` / `lib/ptx/gemm-checked-neg-test.f` — checked

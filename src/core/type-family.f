@@ -1093,6 +1093,15 @@ s" vtile"      3 TFAM-REG-CELL   \ M10: vec4 lane tile, DISTINCT from scalar til
 s" acc"        3 TFAM-REG-CELL
 s" mmctx"      3 TFAM-REG-CELL
 s" mmacc"      3 TFAM-REG-CELL
+\ Pipelined register-blocked GEMM tile vocabulary (lib/ptx/tile-pipe.f):
+\ <t elem, b block, l layout-atom, w mask, p parity var> on the staged families;
+\ <t, b, g micro-geometry atom, w> on the micro-tile accumulator.
+s" mmstage"    5 TFAM-REG-CELL   \ READY current-parity staged As+Bs tile-pair
+s" mmaslice"   5 TFAM-REG-CELL   \ strided A slice of a stage (scalar loads only)
+s" mmbslice"   5 TFAM-REG-CELL   \ contiguous 16B-proven B slice (v4 loads legal)
+s" mmafrag"    5 TFAM-REG-CELL   \ A operand fragment (4 regs, one k column)
+s" mmbfrag"    5 TFAM-REG-CELL   \ B operand fragment (4 regs, one vec4 row)
+s" mmracc"     4 TFAM-REG-CELL   \ register-blocked micro-tile accumulator
 s" attnctx"    3 TFAM-REG-CELL
 s" attnacc"    3 TFAM-REG-CELL
 s" attn-stage-q"       0 TFAM-REG-CELL

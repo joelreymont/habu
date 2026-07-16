@@ -4,6 +4,19 @@
 
 Last updated: 2026-07-16
 
+- **A new checker atom prefix (ATOM-TOK?) reserves the ENTIRE lowercase
+  `prefix-*` token namespace across every declaration site — sweep the tree for
+  collisions before choosing the spelling.** (tilepipe lane, dot
+  habu-typed-pipelined-register-4d20acb5.) Signature atoms are prefix-gated
+  (`space-`/`extent-`/`mask-`/`block-`/`align-`; now `geom-`/`parity-`), and
+  TYPE-RESERVED? consults ATOM-TOK? for enum/sum variant and nominal-type
+  declarations too: a first-choice `layout-` prefix made maki's existing enum
+  variant `layout-conflict` a reserved name and failed maki loads with throw
+  7110 far from the cause. `rg '\bprefix-'` across `*.f`/`*.fs` before baking;
+  the collision surfaces only when the colliding module next loads, not in the
+  fixpoint build itself. Atoms are kind-free interned tokens (prefix = lexical
+  gate only), so an honest new prefix is a 1-line additive checker row baked by
+  the normal fixpoint x2.
 - **The native single-pass ARM64 assembler silently wrapped out-of-reach
   relocations while the trusted Gforth seed generator already rejected them —
   derive the native boundary from the seed, don't reinvent it.**

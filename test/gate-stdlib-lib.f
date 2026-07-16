@@ -219,6 +219,8 @@ variable SUITE-TIMINGS
    s" ptx-tile-loop-neg" SUITE-LABEL= if SUITE-TRUE exit then
    s" ptx-tile-smem-neg" SUITE-LABEL= if SUITE-TRUE exit then
    s" ptx-tile-acc-neg" SUITE-LABEL= if SUITE-TRUE exit then
+   s" ptx-tile-v4a-neg" SUITE-LABEL= if SUITE-TRUE exit then
+   s" ptx-tile-pipe-neg" SUITE-LABEL= if SUITE-TRUE exit then
    s" ptx-gemm-checked-neg" SUITE-LABEL= if SUITE-TRUE exit then
    s" ptx-attention-checked-neg" SUITE-LABEL= if SUITE-TRUE exit then
    s" ptx-toolchain" SUITE-LABEL= if SUITE-TRUE exit then

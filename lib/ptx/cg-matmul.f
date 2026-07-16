@@ -136,16 +136,25 @@ TRUSTED: MM-STATE ( matrix<space-global,f32,m,k> matrix<space-global,f32,k,q> ma
 \ ld.shared. B (Bs[k][tx*4+i], row-major Bs[BK][BN]) is 4 CONTIGUOUS cols -> one ld.shared.v4.f32
 \ (16B-aligned: SH .align 16 + MM-ASB + tx*16 + k*256). A cannot v4 without transposing As, which
 \ would break the contiguous cp.async global->shared staging in the multi-stage step.
-: MM-KSTEP ( k -- ) {: k :}
+\ Factored per emission unit so the typed vocabulary (lib/ptx/tile-pipe.f) reuses each
+\ verbatim; MM-KSTEP's own emission is byte-identical to the pre-split form.
+: MM-KSTEP-A ( n -- ) {: k:n :}            \ 4 strided scalar A loads (%f26..29) for column k
    MM-TM 0 do
       SB-RESET s" ld.shared.f32 %f" SB-APPEND 26 i + SB-U s" ,[%r12+" SB-APPEND  i 128 * k 4 * +  SB-U s" ];" SB-APPEND SB$ PTX-L
-   loop
-   SB-RESET s" ld.shared.v4.f32 {%f30,%f31,%f32,%f33},[%r13+" SB-APPEND  k 256 *  SB-U s" ];" SB-APPEND SB$ PTX-L
+   loop ;
+
+: MM-KSTEP-B ( n -- ) {: k:n :}            \ one contiguous ld.shared.v4 B load (%f30..33)
+   SB-RESET s" ld.shared.v4.f32 {%f30,%f31,%f32,%f33},[%r13+" SB-APPEND  k 256 *  SB-U s" ];" SB-APPEND SB$ PTX-L ;
+
+: MM-KSTEP-FMA ( -- )                      \ the 4x4 = 16 register-blocked FMAs
    MM-TM 0 do  MM-TM 0 do                     \ j=outer(tile-row), i=inner(tile-col)
       SB-RESET s" fma.rn.f32 %f" SB-APPEND  10 j 4 * + i +  SB-U
                s" ,%f" SB-APPEND 26 j + SB-U  s" ,%f" SB-APPEND 30 i + SB-U
                s" ,%f" SB-APPEND 10 j 4 * + i + SB-U  s" ;" SB-APPEND SB$ PTX-L
    loop loop ;
+
+: MM-KSTEP ( n -- )
+   dup MM-KSTEP-A  MM-KSTEP-B  MM-KSTEP-FMA ;
 
 \ write the 4x4 micro-tile of C
 : MM-WRITE ( -- )

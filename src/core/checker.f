@@ -2337,6 +2337,8 @@ variable SIG-RAW-MODE   0 SIG-RAW-MODE !
    a u s" extent-" SIG-PREFIX? IF RES-TRUE EXIT THEN
    a u s" mask-" SIG-PREFIX? IF RES-TRUE EXIT THEN
    a u s" block-" SIG-PREFIX? IF RES-TRUE EXIT THEN
+   a u s" geom-" SIG-PREFIX? IF RES-TRUE EXIT THEN    \ blocked 2-D shared / micro-tile geometry (tile-pipe.f)
+   a u s" parity-" SIG-PREFIX? IF RES-TRUE EXIT THEN   \ pipeline double-buffer parity (tile-pipe.f)
    a u s" align-" SIG-PREFIX? ;
 : FRESH-ATOM-TOK? ( ptr u8 n -- bool ) {: a:ptr u:n :}
    a u s" fresh-extent-" SIG-PREFIX? IF RES-TRUE EXIT THEN
