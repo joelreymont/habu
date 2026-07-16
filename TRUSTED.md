@@ -1545,6 +1545,9 @@ test/bootstrap-wide-memory-src.f:BWM-UN2 test-metaprog cap:wide-memory-lowering
 test/bootstrap-wide-memory-src.f:BWM-UN4 test-metaprog cap:wide-memory-lowering
 test/bootstrap-wide-memory-src.f:BWM-XT test-metaprog cap:wide-memory-lowering
 test/bootstrap-wide-memory-src.f:BWM-W32 test-metaprog cap:wide-memory-lowering
+test/bootstrap-wide-memory-src.f:BWM-DEF-A test-metaprog cap:wide-memory-lowering
+test/bootstrap-wide-memory-src.f:BWM-DEF-B test-metaprog cap:wide-memory-lowering
+test/bootstrap-wide-memory-src.f:BWM-CALL-DEF test-metaprog cap:wide-memory-lowering
 test/layout-buffer.f:LB-UN test-metaprog cap:sealed-family-pointers
 test/layout-buffer.f:N>LBTK test-metaprog habu-epic-type-system-b88c9ecc
 test/layout-buffer.f:LBTK>N test-metaprog habu-epic-type-system-b88c9ecc

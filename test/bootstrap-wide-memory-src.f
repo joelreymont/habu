@@ -199,10 +199,34 @@ variable BWM-GXT
    1 BWM-BROUTER 0 BWM= 93 BWM= 92 BWM= 91 BWM=
    0 BWM-BROUTER 0 BWM= 93 BWM= 92 BWM= 91 BWM= ;
 
+\ defer / is round-trip through the stage0 engine (dot
+\ habu-mirror-defer-is-4461fe23). A fresh defer's dispatch cell holds DEFER-UNSET
+\ (fail closed, not garbage); `is` installs a target the word then dispatches to,
+\ and a second `is` re-points it. The defer-touching words are TRUSTED: so the
+\ check hook is skipped, exactly as an unchecked boot-prefix file is processed
+\ (the seed's engine keyword path is what stage0 recovery re-reads at startup).
+defer BWM-DEF ( -- n )
+
+TRUSTED: BWM-DEF-A ( -- ) [: 42 ;] is BWM-DEF ;
+TRUSTED: BWM-DEF-B ( -- ) [: 99 ;] is BWM-DEF ;
+TRUSTED: BWM-CALL-DEF ( -- n ) BWM-DEF ;
+
+: BWM-RD64 ( addr -- x )  dup 0 BWM-W32  swap 4 BWM-W32  32 lshift  or ;
+
+: BWM-TEST-DEFER ( -- )
+   s" BWM-DEF" BWM-XT {: xt:n :}
+   xt 44 BWM-W32  $46455201 BWM=              \ DEFER-MAGIC low word: meta trailer sits at addr+clen
+   xt 48 BWM-W32  $48424445 BWM=              \ DEFER-MAGIC high word
+   xt 52 + BWM-RD64 BWM-RD64                  \ the fresh dispatch cell's value
+   s" DEFER-UNSET" BWM-XT BWM=                \ = DEFER-UNSET code addr (fail closed, before any is)
+   BWM-DEF-A  BWM-CALL-DEF 42 BWM=            \ is installs a target -> dispatch returns 42
+   BWM-DEF-B  BWM-CALL-DEF 99 BWM= ;          \ a second is re-points -> 99
+
 : BWM-REPORT ( -- )
    BWM-FAILS @ 0= if s" ok" type cr exit then
    BWM-FAILS @ . s" bootstrap-wide-memory failures" 1 die ;
 
 BWM-TEST-GOLDENS
 BWM-TEST-RUNTIME
+BWM-TEST-DEFER
 BWM-REPORT

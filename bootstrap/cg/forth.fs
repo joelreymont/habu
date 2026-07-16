@@ -77,8 +77,11 @@ $3000 constant LOCNAMES   \ 64 records x 24 B ($3000-$3600); was 16 at DATA+32
 24  constant LOC-REC      \ bytes per local name record (len + 16 name)
 \ Friend arena (TFAM 2b-i): contiguous write-protected band mirroring
 \ src/habu/layout.f. Latch cell == arena base (0 open / FRIEND-ARENA-LEN sealed).
-\ Package cells and protected-WID state mirror native; deferred-word state is
-\ still absent. CUR/WIDN/HOOK/TSIG/TCSIG/CRSIG retain native offsets.
+\ Package cells and protected-WID state mirror native, as do the two
+\ deferred-word scratch cells ($98/$A0, filled in below). CUR/WIDN/HOOK/TSIG/
+\ TCSIG/CRSIG retain native offsets. The defer cells sit inside the guarded band
+\ like native; only the compiler's own direct STR touches them (never a runtime
+\ store prim), so the seal's software range guard is not tripped.
 $20 constant FRIEND-ARENA               \ arena base offset within the DATA region
 $90 constant FRIEND-ARENA-LEN           \ 18 cells: latch + 16 crown jewels + seal-ndict watermark
 FRIEND-ARENA constant FRIEND-LATCH-CELL \ 0 = friend on/open, FRIEND-ARENA-LEN = sealed
@@ -123,6 +126,12 @@ $78 constant PKG-PUB-CELL
 $80 constant PKG-PRI-CELL
 $88 constant PKG-PARENT-CELL
 $90 constant PKG-REC-CELL
+$98 constant DEFER-META-CELL  \ is: resolved defer dispatch-cell addr (compile scratch; mirrors src/habu/layout.f)
+$A0 constant DEFER-XT-CELL    \ defer: dispatch-cell addr under construction (mirrors src/habu/layout.f)
+\ DEFER-MAGIC tags a defer body's meta trailer in the code region (the two cells
+\ written right after the RET); `is` reads it back via FIND addr+clen to recover
+\ the dispatch-cell address. Mirrors src/habu/habu2.f.
+$4842444546455201 constant DEFER-MAGIC
 $1B8 constant BODYLEN-CELL \ length of the captured body of the def in progress
 $1C0 constant RBASE-CELL  \ saved __TEXT load base (RBASE) for the self-rebuild
 $1C8 constant LOOPSP-CELL \ DO/LOOP frame stack depth
@@ -346,6 +355,7 @@ variable LKWQDO variable LKWPLOOP variable LKWJ variable LKWLEAVE variable LKWUN
 variable LKWCHAR variable LKWBCHAR
 variable LKWIMM variable LKWPOST variable LKWCOMPC
 variable LKWDOES variable LKWQUOT variable LKWSEMIQ
+variable LKWDEFER variable LKWIS variable LKWDEFERUNSET   \ deferred-word keywords (mirrors src/habu/habu2.f)
 variable LKWTRUSTED variable LKWTRUST variable LKWCHKDOES variable LKWKERNEL
 variable LKWPACKAGE variable LKWPUBLIC variable LKWPRIVATE variable LKWSEMIPACKAGE
 variable LCHKPACKAGE variable LCHKPUB variable LCHKPRI variable LCHKENDPKG
@@ -2258,6 +2268,8 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
    LKWIMM @ LBL,  s" immediate" BYTES,   LKWPOST @ LBL,  s" postpone" BYTES,
    LKWCOMPC @ LBL,  s" compile," BYTES,
    LKWDOES @ LBL,  s" does>" BYTES,
+   LKWDEFER @ LBL,  s" defer" BYTES,   LKWIS @ LBL,  s" is" BYTES,
+   LKWDEFERUNSET @ LBL,  s" defer-unset" BYTES,
    LKWTRUSTED @ LBL, s" trusted:" BYTES,
    LKWKERNEL @ LBL, s" kernel:" BYTES,
    LKWTRUST @ LBL, s" trust" BYTES,      LKWCHKDOES @ LBL, s" check-does!" BYTES,
@@ -4247,6 +4259,117 @@ variable CFSK2
    9 DATA DOESB-CELL STR,
    9 DATA TRUSTED-CELL STR, ;
 
+\ ---- defer / is: deferred execution vectors ------------------------------
+\ Mirror of src/habu/habu2.f C-DEFER / J-IS. A defer word's body loads an 8-byte
+\ dispatch cell from the always-RW data heap and BLRs through it; `is` bakes that
+\ cell's address as a literal and stores the popped xt into it. A fresh defer's
+\ cell holds DEFER-UNSET (src/core/exec-vector.f, already a loaded prefix), so an
+\ unset defer runs DEFER-UNSET's hard exit rather than jumping to garbage. Native
+\ raises a catchable throw; the seed hard-exits (seed convention). The compiler's
+\ own STR writes the cell + meta trailer directly, so the friend-arena software
+\ guard (which only checks runtime store prims) is never involved.
+
+\ Labeled fd-2 diagnostic then exit(rc): write the offending token, then exit rc.
+: C-DEFER-DIE-TOKEN ( n -- )  {: rc :}   \ typed-local-lint: allow-bare-local
+   0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,
+   0 rc MOVZ,  NR-EXIT-GROUP SYS, ;
+
+\ x11 <- code addr of the DEFER-UNSET word (case-insensitive FIND of its lower-
+\ case keyword bytes); die $46 if the exec-vector prefix is somehow absent.
+: C-DEFER-FIND-UNSET ( -- )
+   LBL {: found :}   \ typed-local-lint: allow-bare-local
+   9 LKWDEFERUNSET @ ADR,  10 11 MOVZ,  LFIND @ BL,
+   13 found CBNZ,
+      $46 C-DEFER-DIE-TOKEN
+   found LBL, ;
+
+\ Allocate one 8-byte dispatch cell from the data heap, init it to DEFER-UNSET,
+\ and stash its address in DEFER-XT-CELL for the body emitter + meta trailer.
+: C-DEFER-CELL ( -- )
+   C-DEFER-FIND-UNSET
+   7 DATA DP-CELL LDR,
+   7 7 7 ADDI,  7 7 3 LSRI,  7 7 3 LSLI,           \ align the cell up to 8
+   11 7 0 STR,                                     \ [cell] = DEFER-UNSET addr
+   7 DATA DEFER-XT-CELL STR,
+   7 7 8 ADDI,  7 DP-CHECK  7 DATA DP-CELL STR, ;   \ bump DP past the cell
+
+\ Emit the defer body: prologue, materialize the dispatch-cell addr into x9,
+\ ldr x16,[x9], blr x16, epilogue, ret. The BLR keeps it out of the inliner.
+: C-DEFER-EMIT-CODE ( -- )
+   $D10043FF C-EMITW                               \ sub sp,sp,#16
+   $F90003FE C-EMITW                               \ str x30,[sp]
+   11 DATA DEFER-XT-CELL LDR,
+   C-X9-LIT                                        \ movz/movk x9 = dispatch-cell addr
+   16 9 0 W-LDRX C-EMITW                           \ ldr x16,[x9]
+   C-CALL-BLR-X16 C-EMITW                          \ blr x16
+   $F94003FE C-EMITW                               \ ldr x30,[sp]
+   $910043FF C-EMITW                               \ add sp,sp,#16
+   W-RET C-EMITW ;
+
+\ Two-cell meta trailer written at CP (right after the RET): DEFER-MAGIC then the
+\ dispatch-cell addr. `is` recovers the cell addr from FIND addr+clen.
+: C-DEFER-META-WRITE ( -- )
+   11 DEFER-MAGIC LIT64,  11 28 0 STR,  28 28 8 ADDI,
+   11 DATA DEFER-XT-CELL LDR,  11 28 0 STR,  28 28 8 ADDI, ;
+
+\ defer NAME ( sig ) : create NAME. The signature is required (parsed + consumed,
+\ unchecked in stage0). clen spans the whole body incl RET, so addr+clen lands
+\ exactly on the trailer.
+: C-DEFER ( -- )
+   LBL {: named :}   \ typed-local-lint: allow-bare-local
+   2 3 MOVZ,  LPROT @ BL,                           \ region -> RW
+   C-COLON-CODE-ROOM
+   C-COLON-DICT-ROOM
+   LTOK @ BL,  0 named CBNZ,                        \ read NAME
+      $4A C-DEFER-DIE-TOKEN
+   named LBL,
+   12 0 MOVZ,  12 DATA BODYLEN-CELL STR,  LBCAP @ BL,   \ seed "NAME " for the hook
+   C-PARSE-REQUIRED-SIG                             \ consume ( sig )
+   C-DEFER-CELL
+   C-QUALIFY-DEF
+   9 NDICT 0 ADDI,  10 DREC MOVZ,  9 9 10 MUL,  9 DBASE 9 ADD,
+   9 DATA PEND-CELL STR,
+   C-STORE-DEF-NAME
+   CP 9 0 STR,                                      \ slot[0] = body start
+   C-DEFER-EMIT-CODE
+   9 DATA PEND-CELL LDR,  10 9 0 LDR,  10 CP 10 SUB,  10 9 8 STR,   \ clen = CP-bodystart
+   C-DEFER-META-WRITE
+   NDICT NDICT 1 ADDI,
+   9 DATA PEND-CELL LDR,  9 9 0 LDR,               \ x9 = body start for the flush
+   2 5 MOVZ,  LPROT @ BL,  LFLUSH @ BL,             \ region -> RX + flush
+   9 0 MOVZ,  9 DATA PEND-CELL STR, ;               \ clear PEND
+
+\ is NAME : resolve NAME's dispatch cell via its meta trailer (FIND addr+clen ->
+\ DEFER-MAGIC then the cell addr); die if NAME is missing or is not a defer.
+: C-DEFER-TARGET-META ( -- )
+   LBL LBL LBL {: named found ok :}   \ typed-local-lint: allow-bare-local
+   LTOK @ BL,  0 named CBNZ,
+      $4A C-DEFER-DIE-TOKEN
+   named LBL,
+   LBCAP @ BL,
+   9 DATA TKA-CELL LDR,  10 DATA TKL-CELL LDR,  LFIND @ BL,
+   13 found CBNZ,
+      $46 C-DEFER-DIE-TOKEN
+   found LBL,
+   14 11 12 ADD,                                    \ x14 = addr + clen = meta trailer
+   15 14 0 LDR,
+   5 DEFER-MAGIC LIT64,
+   15 5 CMP,  C-EQ ok BCOND,
+      $4C C-DEFER-DIE-TOKEN                          \ named word is not a defer
+   ok LBL,
+   14 14 8 ADDI,  14 14 0 LDR,                       \ x14 = dispatch-cell addr
+   14 DATA DEFER-META-CELL STR, ;
+
+\ is NAME (compile): pop the top-of-stack xt and store it into NAME's dispatch
+\ cell, so subsequent NAME calls dispatch to it.
+: J-IS ( -- )
+   C-DEFER-TARGET-META
+   LVSPILL @ BL,
+   C-POP-X16
+   11 DATA DEFER-META-CELL LDR,
+   C-X9-LIT                                          \ movz/movk x9 = dispatch-cell addr
+   16 9 0 W-STRX C-EMITW ;                           \ str x16,[x9]
+
 : EMIT-P2-COPY ( -- )
    LP2COPY @ LBL,
    SP SP 16 SUBI,  30 SP 0 STR,
@@ -5035,6 +5158,7 @@ variable P2SK
    lmain LKWCREATE 6 ['] C-CREATE   CF-ENTRY
    lmain LKWVAR    8 ['] C-VARIABLE CF-ENTRY
    lmain LKWCONST  8 ['] C-CONSTANT CF-ENTRY
+   lmain LKWDEFER  5 ['] C-DEFER    CF-ENTRY
    lmain LKWTICK   1 ['] C-TICK     CF-ENTRY
    lmain LKWCHAR   4 ['] C-CHAR     CF-ENTRY
    lmain LKWIMM    9 ['] C-IMMEDIATE CF-ENTRY
@@ -5165,6 +5289,7 @@ variable P2SK
    lmain LKWPOST   8 ['] C-POSTPONE CF-ENTRY
    lmain LKWDOES   5 ['] J-DOES     CF-ENTRY
    lmain LKWQUOT   2 ['] J-QUOT     CF-ENTRY
+   lmain LKWIS     2 ['] J-IS       CF-ENTRY
    lmain LKWSEMIQ  2 ['] J-SEMIQUOT CF-ENTRY ;
 
 : EMIT-COMPILE-LOOP-KEYWORDS ( n -- ) {: lmain :}
@@ -5659,6 +5784,7 @@ variable P2SK
    LBL LCHKPACKAGE !  LBL LCHKPUB !  LBL LCHKPRI !  LBL LCHKENDPKG !
    LBL LRESCHECKCERT !  LBL LRESLOWERCERT !  LBL LRESLOWERHOOK !  LBL LRESENGINEERROR !
    LBL LKWQUOT !  LBL LKWSEMIQ !
+   LBL LKWDEFER !  LBL LKWIS !  LBL LKWDEFERUNSET !
    LBL LKWCONSTRUCT !  LBL LKWMATCH !  LBL LKWSEMIMATCH !
    LBL LTFLCONFAM !  LBL LTFLCVAR !
    LBL LTFLMATCHFAM !  LBL LTFLNAME !  LBL LBADTAGPFX !  LBL LBADTAGSFX ! ;
