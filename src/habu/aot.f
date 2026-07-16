@@ -8,8 +8,9 @@
 \ Without it, any `SUMTYPE ...` declaration in an AOT source dies rc 76
 \ ("sumtype: constructor eval hook not installed") before it can lower a matched
 \ definition. `evaluate` compiles the generated constructor bodies into the
-\ maker dictionary exactly as the engine does at interpret level.
-: AOT-CTOR-EVAL ( ptr u8 n -- ) evaluate ;
+\ maker dictionary exactly as the engine does at interpret level. Named boundary:
+\ source-string metaprogramming (`evaluate`) is outside checked inference.
+TRUSTED: AOT-CTOR-EVAL ( ptr u8 n -- ) evaluate ;
 ' AOT-CTOR-EVAL TDECL-EVAL-XT !
 
 \ --- preseeded test entry argv (tools/hb-build.f --preseed-entry / --preseed-seed):
@@ -22,7 +23,7 @@ variable AOT-HEXACC
    c 97 >= c 103 < and IF c 87 - EXIT THEN
    c 65 >= c 71 < and IF c 55 - EXIT THEN
    s" aot: bad preseed hex digit" 74 die ;
-: AOT-HEX16 ( ptr -- n ) {: a:ptr :}         \ 16 hex chars big-endian -> u64
+: AOT-HEX16 ( ptr u8 -- n ) {: a:ptr :}      \ 16 hex chars big-endian -> u64
    0 AOT-HEXACC !
    0 BEGIN dup 16 < WHILE
       AOT-HEXACC @ 4 lshift  over a + c@ AOT-HEXNIB or  AOT-HEXACC !
@@ -40,12 +41,16 @@ variable AOT-HEXACC
    ARGC 3 > IF 3 ARGV$ ENTRY-NAME! THEN
    ARGC 4 > IF 4 ARGV$ AOT-SEED-HEX THEN ;
 
+\ Named boundary: installs the user-source checker hook; `set-check` is a
+\ compiler-control op the checker rejects inside a checked body (top-level only).
+TRUSTED: INSTALL-USER-HOOK ( -- ) ['] USER-HOOK set-check ;
+
 : GO ( -- )
    AOT-RUNTIME-ARGS
    AOT-PRESEED-ARGS
    READ-PROG
    SENTSET
-   ['] USER-HOOK set-check
+   INSTALL-USER-HOOK
    AOT-PB@ DATA-VA INP-CELL + !
    AOT-PB@ PN @ + DATA-VA INE-CELL + ! ;
 

@@ -2800,6 +2800,26 @@ lesson — keep the specific word/code/path, cut the prose.
   Keep `aot-closure.f` resident-testable and load `aot-lib.f` only in the maker
   path; otherwise a small negative diagnostic test inherits seconds of builder
   setup and looks like a cache problem.
+- **A file-top `0 set-check` window covers every file appended AFTER it in the
+  concatenated build source, not just its own file.** (habu-checked-image-writers
+  aot-lib half.) `src/habu/aot-lib.f`'s window (retired here) spanned into
+  `src/habu/aot.f`, which has no window of its own — removing aot-lib.f's line
+  newly exposed aot.f's `AOT-CTOR-EVAL` (`evaluate`) and `GO`'s
+  `['] USER-HOOK set-check` to the hook. Closing a cross-file window means making
+  the whole span checkable; otherwise the setcheck count only MOVES (net-zero),
+  never ratchets down. Probe with the exact maker prefix (`asm`/`icode`/`mnem`
+  reloaded on the baked engine + closure + lib + aot.f under the live hook),
+  stubbing only the maker-only words (`EM-DATA-VA>N`, `SYS,`, `DRV-*`, mmap/syscall
+  constants) with faithful effects — the load aborts at the FIRST reject, so
+  iterate. The genuine gap was far smaller than the dot's inventory feared: the
+  ADR/ADRP/B/BCOND/CBZ/TBZ patchers, `PATCH-BL`, and `REL*`/`BTGT*`/`ADRTGT`/
+  `AOT-W32!` all check as-is over `n`/`ptr u8`; only `MAP-IN-BLOB` (dict-record
+  cell read + pointer round-trips through scratch vars) needs a `TRUSTED:` boundary
+  (owner `habu-typed-dictionary-record-c67adddb`), `CLO-OFF`'s address-as-number
+  local was mistyped `:ptr` (→`:n`, mirroring aot-closure `FINDADDR`), and the two
+  aot.f boundaries isolate `evaluate`/`set-check` (forth.md: trust the op not the
+  dispatcher — `GO` stays checked). aot-lib.f/aot.f are maker-only, so the fixpoint
+  engine sha stayed byte-identical (they never bake into `bin/hb`).
 - **Entry/core splits must not widen worker preload:** moving a CLI tool to a
   reusable core is only a win if the core is loaded by the worker that needs it.
   Pulling SARIF into the shared diagnostics library made every diagnostic worker

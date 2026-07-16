@@ -513,10 +513,13 @@ that source is explicitly certified; they are not stale-checked by the default
 | CA-MULTI-BEGIN | `--` | The all-errors driver arms the checker-internal multi-error load mode around its single whole-buffer verify pass; mode control words are not registry-published to checked tool loads. | `tools/check-all-errors-test.f` | tools/check-all-errors-core.f | 2026-07-07 |
 | CA-MULTI-END | `-- n` | Reads the multi-error reject count and clears the mode for the fail-closed exit decision; same unpublished-mode-word boundary as `CA-MULTI-BEGIN`. | `tools/check-all-errors-test.f` | tools/check-all-errors-core.f | 2026-07-07 |
 | AOT-PB@ | `-- ptr u8` | Reads the AOT build source buffer pointer stored in a raw variable. | `test/run.f`, `tools/hb-build.f` | src/habu/aot-lib.f | 2026-06-24 |
+| MAP-IN-BLOB | `ptr a ptr u8 -- n` | AOT relocation maps an old call-target byte address to its new CODE offset by walking a dictionary record's compacted blob span; the record-cell read plus the pointer round-trips through the scratch cells are outside checked pointer inference until the typed dictionary-record schema lands. | `test/run.f`, `tools/hb-build.f` | src/habu/aot-lib.f | 2026-07-16 |
 | AOT-DBASE@ | `-- ptr a` | Reads the runtime dictionary base pointer for AOT dictionary-record scans; record fields are mixed, so callers specialize the pointee type at each access. | `test/run.f`, `tools/hb-build.f` | src/habu/aot-closure.f | 2026-06-24 |
 | AOT-PTR@ | `ptr a -- ptr a` | Reads a dictionary long-name pointer field whose pointee is another address; the checker cannot express this pointer-to-pointer load yet. | `test/run.f`, `tools/hb-build.f` | src/habu/aot-closure.f | 2026-06-24 |
 | JSON-DIAGS | `-- ptr a` | AOT diagnostics read the checker's JSON-mode flag; the checker registry does not publish its own words to later checked loads, so the variable is typed as an axiom for the checked AOT tail. | `test/run.f`, `tools/hb-build.f` | src/habu/aot-closure.f | 2026-07-07 |
 | CHECK! | `ptr u8 n -- n` | The AOT driver hook wraps the engine checker entrypoint for user source; the entrypoint's effect is modeled as a primitive axiom so the checked AOT tail compiles under the toolchain hook. | `test/run.f`, `tools/hb-build.f` | src/habu/aot-closure.f | 2026-07-07 |
+| AOT-CTOR-EVAL | `ptr u8 n --` | The AOT maker compiles generated sumtype-constructor bodies with `evaluate` at its own interpret level; dynamic source evaluation cannot be expressed by the checker. | `test/run.f`, `tools/hb-build.f` | src/habu/aot.f | 2026-07-16 |
+| INSTALL-USER-HOOK | `--` | The AOT maker installs the fail-closed user-source checker hook with `set-check`; hook installation is a compiler-control op the checker rejects inside a checked body. | `test/run.f`, `tools/hb-build.f` | src/habu/aot.f | 2026-07-16 |
 | MK-SBUF@ | `-- ptr u8` | Reads the hb-build maker source buffer pointer stored in a raw variable while compiling the separate maker image. | `tools/hb-build-test.f`, `test/run.f` | src/habu/maker.f | 2026-06-24 |
 | STB@ | `-- ptr u8` | Reads the snapshot source text base pointer stored in a raw variable. | `test/run.f`, `tools/build-fixpoint.f snap` | src/habu/snap-lib.f | 2026-06-26 |
 | STB-CELL@ | `-- ptr n` | Reads the snapshot source text base pointer as a cell-address for executable-header size lookup. | `test/run.f`, `tools/build-fixpoint-test.f` | src/habu/snap-lib.f | 2026-06-26 |
@@ -905,10 +908,12 @@ covered sites all carry nameable word names — is split into `file:name` rows
 per-increment). Two folds remain by design and are allowed by the
 `fold-baseline 2` directive at the head of the block: `src/habu/habu2.f` and
 `test/type-layout-lower-pending.f`, both contested under the wide-ADT stack
-(splitting them now would go stale on that merge). The seven `0 set-check`
-boundary sites (no nameable key: `src/habu/aot-lib.f`, `build.f`, `hide.f`,
+(splitting them now would go stale on that merge). The six `0 set-check`
+boundary sites (no nameable key: `src/habu/build.f`, `hide.f`,
 `maker.f`, `snap.f`, `test/engine-suite.f`, `tools/codegen-role.f`) keep
-count-1 residual file rows, like `test/prop-test-core.f`. `strict` counts the
+count-1 residual file rows, like `test/prop-test-core.f`. (`src/habu/aot-lib.f`
+retired its window: its relocation core now compiles checked with the named
+`MAP-IN-BLOB` boundary, dot habu-checked-image-writers-229ae789.) `strict` counts the
 separable folds, prints `separable fold(s) N (baseline M)`, and fails when N
 exceeds the committed baseline — so a new coarse row cannot creep in, and
 splitting a remaining fold prompts lowering the baseline in the same change
@@ -953,7 +958,9 @@ src/habu/aot-closure.f:AOT-PTR@ builder-emit habu-builder-trust-rows-c5d41af6
 src/habu/aot-closure.f:JSON-DIAGS prim-axiom habu-primitive-effect-axiom-1119f176
 src/habu/aot-closure.f:CHECK! prim-axiom habu-primitive-effect-axiom-1119f176
 src/habu/aot-lib.f:AOT-PB@ builder-emit habu-builder-trust-rows-c5d41af6
-src/habu/aot-lib.f builder-emit habu-builder-trust-rows-c5d41af6 1
+src/habu/aot-lib.f:MAP-IN-BLOB builder-emit habu-typed-dictionary-record-c67adddb
+src/habu/aot.f:AOT-CTOR-EVAL builder-emit habu-builder-trust-rows-c5d41af6
+src/habu/aot.f:INSTALL-USER-HOOK builder-emit cap:checker-hook-identity
 src/habu/build.f:BLD-PB@ builder-emit habu-builder-trust-rows-c5d41af6
 src/habu/build.f builder-emit habu-builder-trust-rows-c5d41af6 1
 src/habu/bundle-argv.f:SCRIPT-ARG-START builder-emit habu-raw-self-path-4514ffd3

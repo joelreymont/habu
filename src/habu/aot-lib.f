@@ -10,12 +10,13 @@
 \ inter-word calls relocated. The program MUST define `: MAIN ;`.
 \ tools/hb-build.f owns the I/O paths. A DRIVER (appended last, like build.f).
 
-\ Audited driver boundary: the toolchain hook is on when this file is appended
-\ (aot-closure.f before it now compiles checked); the relocation core below
-\ still has typed gaps (REC record roles, blob mapping, immediate patchers) -
-\ gap inventory on dot habu-checked-image-writers-229ae789. The driver
-\ installs USER-HOOK below for user source only.
-0 set-check
+\ The toolchain hook is on when this file is appended and stays on: the AOT
+\ relocation core below compiles checked. MAP-IN-BLOB is the one remaining
+\ named TRUSTED: boundary - a dictionary-record blob-span walk whose record
+\ reads and pointer round-trips through scratch cells are outside checked
+\ pointer inference until the typed dictionary-record schema lands (dot
+\ habu-typed-dictionary-record-c67adddb). The driver installs USER-HOOK below
+\ for user source only.
 
 variable PB  variable PN  variable PFD  variable PRD
 variable AOT-SI
@@ -226,7 +227,7 @@ variable CP2  variable CEND  variable CLEN  variable NEXT-OFF
 \ (arm64 macOS requires it), so absolute call targets would be wrong under the
 \ ASLR slide — instead we rewrite each abs call to a PC-RELATIVE bl, whose offset
 \ within __text is slide-independent. No runtime relocation needed.
-: CLO-OFF {: t:ptr :}  0 CLO-CX !
+: CLO-OFF ( n -- n ) {: t:n :}  0 CLO-CX !
    BEGIN CLO-CX @ NCLO @ < WHILE
       OLDA CLO-CX @ cells + @ t = IF  NEWOFF CLO-CX @ cells + @  exit THEN
       CLO-CX @ 1+ CLO-CX ! REPEAT  -1 ;
@@ -272,7 +273,7 @@ variable MAPOUT  variable MAPP  variable MAPE
    BEGIN CLO-CX @ NCLO @ < WHILE
       CLO-CX @ cells CLO + @ r = IF NEWOFF CLO-CX @ cells + @ EXIT THEN
       CLO-CX @ 1+ CLO-CX ! REPEAT  -1 ;
-: MAP-IN-BLOB {: r:ptr t:ptr :} ( ptr a ptr u8 -- n )
+TRUSTED: MAP-IN-BLOB ( ptr a ptr u8 -- n ) {: r:ptr t:ptr :}
    t r @ < IF -1 EXIT THEN
    t r REC-END > IF -1 EXIT THEN
    0 MAPOUT !  r @ MAPP !  r REC-END MAPE !
