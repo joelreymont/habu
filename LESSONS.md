@@ -4965,3 +4965,21 @@ unchanged (148855). Keys for milestone 2:
   exist on master (rg/jj file list — one command), and when a lane reports
   premise-missing, record the blocked-by edges on the tracker immediately so
   the ready list stays truthful.
+- **Adding a stage0 keyword to bootstrap/cg/forth.fs needs THREE coordinated
+  edits — `variable LKWxxx`, the keyword bytes in EMIT-KWDATA, AND the fresh
+  `LBL LKWxxx !` in the label-init block — and missing the third is nearly
+  undiagnosable from the symptom.** (deferis lane, dot habu-mirror-defer-is.)
+  An unassigned label variable stays 0; binding label 0 corrupts the label
+  table, and the failure surfaces only as `hb: snapshot trailer corrupt`
+  (exit 79) at generated-engine startup — nowhere near the real cause. When a
+  stage0-generated engine dies with a trailer/snapshot diagnostic right after
+  a forth.fs keyword addition, audit the label-init block first.
+- **A diff that adds TRUSTED:/TRUST sites must gate on tools/
+  trusted-inventory-test.f, not just trust-lint — their corpora differ.**
+  (deferis integration.) The wide-memory defer fixture added three TRUSTED:
+  test words; trust-lint stayed at 0 findings (it checks the TRUSTED.md
+  manifest/effect tables) while trusted-inventory-test failed under run.f
+  (expected 0 unclassified, got 3): every TRUSTED site repo-wide, tests
+  included, needs a site-registry row (class + live-dot-or-cap owner). The
+  quick-gate set for TRUSTED-touching diffs is trust-lint AND
+  trusted-inventory-test.
