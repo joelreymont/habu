@@ -71,6 +71,7 @@ variable CAUSE-CODE
    over E-FS-STAT = or
    over E-FS-DIR = or
    over E-FS-IO = or
+   over E-FS-PATH-UNSAFE = or
    swap E-FS-CAPACITY = or ;
 
 : FAIL-ROOT ( n -- )
@@ -153,6 +154,7 @@ variable CAUSE-CODE
    drop ;
 
 : PREPARE-ROOT ( -- )
+   ROOT-BYTES SYMLINK? if E-FS-PATH-UNSAFE FAIL then
    ROOT-BYTES 2dup EXISTS? if
       2dup DIR? 0= if 2drop E-FS-DIR FAIL then
       2drop
@@ -293,6 +295,7 @@ public
    dup E-FS-STAT = if drop s" E-FS-STAT" exit then
    dup E-FS-DIR = if drop s" E-FS-DIR" exit then
    dup E-FS-IO = if drop s" E-FS-IO" exit then
+   dup E-FS-PATH-UNSAFE = if drop s" E-FS-PATH-UNSAFE" exit then
    dup E-FS-CAPACITY = if drop s" E-FS-CAPACITY" exit then
    throw ;
 
