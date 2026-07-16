@@ -39,7 +39,29 @@ the acceptance text specifies.
 Claim released (agent=hookmig done; enabler integrated by orchestrator).
 Blocked-by: none (habu-mirror-defer-is-4461fe23 landed and closed 2026-07-16);
 blocker 2 (install-ordering) remains a design constraint documented above.
-Claim: agent=stage2a workspace=.jj-ws/fable-stage2a (scope: stage-2a, the habu1.f hook class only - source/prefix/cold/restore/proof hooks via defer/is; checker.f-internal hooks are stage-2b pending the ordering design)
+STAGE-2A LANDED 2026-07-16 (stage2a lane; claim released): all five habu1.f
+hooks (source/prefix/cold/restore/proof) converted from raw-var @ execute to
+defer/is with declared effects and preserved default semantics (explicit
+default-is: SOURCE-DEFAULT for source-hook, HOOK-NOOP for the 0-guard class;
+habu2's restore install is a colon-wrapped typed quotation since [: is
+compile-only). rg proof: zero *-XT sites remain in habu1.f (FP-XT/fprim
+excluded by scope - already checked since the btrust batch). Stage-3 pin
+intact (xt-cell-test L1 still launders). Proven on BOTH paths after the
+checker-defer bridge: native fixpoint x2 0a71f23d; full recovery chain
+'bootstrap check OK' with the mirror-built seed certifying the checked
+defer/is hooks. Zero new TRUSTED sites; owner-wid-emit-seal absence rows
+follow the new words.
+
+REMAINING = STAGE-2B (checker.f/type-family/sumtype/layout-buffer/render
+hooks, the ~31-cell balance of the opening inventory): the bridge removed the
+mirror-side rejection; the open constraints are (1) the install-ordering
+design - those hooks install BEFORE the checker prefix is live, so either
+stage0-compatible defer placement or a typed pre-prefix install primitive,
+decide at dispatch; (2) tfam sealed-packages coordination on checker.f hunks
+(surgical per-hook hunks, integrator rebases by hash). Corrected premise for
+2b (proven by stage-2a): the engine prefix files are in the CHECKED region of
+the generated stage sources - 2b conversions will be checker-certified code,
+not unchecked-region code.
 
 
 STAGE-2A STATUS 2026-07-16 (stage2a lane, implementation COMPLETE and
