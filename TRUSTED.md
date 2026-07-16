@@ -636,10 +636,7 @@ that source is explicitly certified; they are not stale-checked by the default
 | MATRIX-ONCE-REG | `n -- matrix<space-global-once,f32,extent-r,extent-c>` | PTX codegen: from-register identity cast asserting a kernel arg register holds a read-once row-major matrix for checked once-space row emit tests. | `lib/ptx/collective-test.f` | lib/ptx/cg.f | 2026-06-30 |
 | R>BITS | `r -- n` | PTX codegen f64->f32 marshalling: reinterpret a Habu 64-bit float as its bit pattern (the one thin cast; F64>F32 then repacks to 32-bit in checked code). | `lib/ptx/header-test.f` | lib/ptx/cg.f | 2026-06-29 |
 | BITS>R | `n -- r` | PTX codegen f32->f64 readback: reinterpret a device-returned f32 bit pattern (widened by F32>F64) back into a Habu float - lets a GPU training loop read weights back and recompute gradients. | `lib/ptx/header-test.f` | lib/ptx/cg.f | 2026-06-29 |
-| MM-A-REG | `n -- matrix<space-global,f32,extent-m,extent-k>` | GEMM codegen from-register cast for the A operand; separate from MATRIX-REG so the checked call site proves A[M,K], B[K,N], C[M,N]. | `lib/ptx/gemm-checked-test.f`, `tools/ptx/saxpy-test.f` | lib/ptx/cg-matmul.f | 2026-06-30 |
-| MM-B-REG | `n -- matrix<space-global,f32,extent-k,extent-n>` | GEMM codegen from-register cast for the B operand; shares K with A and N with C at the checked MM-CHECKED call site. | `lib/ptx/gemm-checked-test.f`, `tools/ptx/saxpy-test.f` | lib/ptx/cg-matmul.f | 2026-06-30 |
-| MM-C-REG | `n -- matrix<space-global,f32,extent-m,extent-n>` | GEMM codegen from-register cast for the C operand; ties output rows to A and output columns to B at the checked MM-CHECKED call site. | `lib/ptx/gemm-checked-test.f`, `tools/ptx/saxpy-test.f` | lib/ptx/cg-matmul.f | 2026-06-30 |
-| MM-STATE | `matrix<space-global,f32,m,k> matrix<space-global,f32,k,q> matrix<space-global,f32,m,q> -- mmctx<m,k,q> mmacc<f32,block-256,mask-live>` | GEMM codegen token shim: consumes the typed A/B/C matrix operands after checked setup emission and creates the phase/accumulator tokens used by checked `MM-K-LOOP` and `MM-STORE`. | `lib/ptx/gemm-checked-test.f`, `tools/ptx/saxpy-test.f` | lib/ptx/cg-matmul.f | 2026-06-30 |
+| MM-ABI | `-- matrix<space-global,f32,extent-m,extent-k> matrix<space-global,f32,extent-k,extent-n> matrix<space-global,f32,extent-m,extent-n>` | GEMM launch-ABI mint: asserts the MM kernel entry's three cvta'd params (%rd1..%rd3, dims %r1..%r3 from MM-PARAMS) carry the related A[M,K], B[K,N], C[M,N] operands - the MK-SPAN analogue for the fixed GEMM ABI, and the only trusted word left in cg-matmul.f after stage 3 replaced the MM-STATE/MM-A/B/C-REG phase shim with the certified tile-pipe kernel body. | `lib/ptx/gemm-checked-test.f`, `lib/ptx/gemm-checked-neg-test.f`, `lib/ptx/tile-pipe-test.f` | lib/ptx/cg-matmul.f | 2026-07-16 |
 | Q-REG | `n -- matrix<space-global,f32,extent-q,extent-d>` | Attention codegen from-register cast for Q; the checked entry unifies its shape with K, V, and O. | `lib/ptx/attention-checked-test.f`, `lib/ptx/attention-checked-neg-test.f` | lib/ptx/cg-attention.f | 2026-07-12 |
 | K-REG | `n -- matrix<space-global,f32,extent-q,extent-d>` | Attention codegen from-register cast for K; distinct entry word keeps the ABI role explicit while sharing the checked `[Q,D]` relation. | `lib/ptx/attention-checked-test.f`, `lib/ptx/attention-checked-neg-test.f` | lib/ptx/cg-attention.f | 2026-07-12 |
 | V-REG | `n -- matrix<space-global,f32,extent-q,extent-d>` | Attention codegen from-register cast for V; the checked entry rejects a mismatched sequence or head dimension. | `lib/ptx/attention-checked-test.f`, `lib/ptx/attention-checked-neg-test.f` | lib/ptx/cg-attention.f | 2026-07-12 |
@@ -875,9 +872,12 @@ dynamic-loader calls),
 `habu-typed-defining-words-aa224eb5`, which enumerates exactly those mints and
 the typed-defining-word family; `lib/build.f` (`BUILD-CHECK-RAW` wrapping the
 `CHECK!` engine entrypoint) goes to `habu-primitive-effect-axiom-1119f176`; and
-`lib/ptx/cg-matmul.f` (`MM-A/B/C-REG` + `MM-STATE` kernel wrappers) goes to
-`habu-re-express-tiled-9cc4a73a`, which re-expresses `EMIT-MATMUL` as a checked
-KERNEL and deletes that boundary. `lib/task.f` is mixed-class: its `TASK-PATCH`
+`lib/ptx/cg-matmul.f`'s old `MM-A/B/C-REG` + `MM-STATE` kernel wrappers were
+DELETED by `habu-re-express-tiled-9cc4a73a` (stage 3): `EMIT-MATMUL` now ships
+the certified typed KERNEL body over the tile-pipe vocabulary, and the file's
+one remaining trusted word is the launch-ABI mint `MM-ABI` (permanent
+`from_raw_parts` class, owned by `habu-ptx-phantom-preserving-3df9db92` like
+the other fixed-ABI minters). `lib/task.f` is mixed-class: its `TASK-PATCH`
 code-emission wrapper carries a `file:name` row owned by
 `habu-checker-capability-gate-14022ba9` (patch32 gated PRIM-TRUSTED-ONLY so
 checked code cannot forge the seal; that dot is owner-of-record for the patch32
@@ -1312,10 +1312,7 @@ lib/ptx/ad-saved.f:SAVED-Y stdlib-boundary habu-adg-lowering-multi-24043a69
 lib/ptx/ad-saved.f:SAVED-Z stdlib-boundary habu-adg-lowering-multi-24043a69
 lib/ptx/ad-saved.f:SAVED-MX stdlib-boundary habu-adg-lowering-multi-24043a69
 lib/ptx/ad-saved.f:SAVED-S stdlib-boundary habu-adg-lowering-multi-24043a69
-lib/ptx/cg-matmul.f:MM-A-REG stdlib-boundary habu-re-express-tiled-9cc4a73a
-lib/ptx/cg-matmul.f:MM-B-REG stdlib-boundary habu-re-express-tiled-9cc4a73a
-lib/ptx/cg-matmul.f:MM-C-REG stdlib-boundary habu-re-express-tiled-9cc4a73a
-lib/ptx/cg-matmul.f:MM-STATE stdlib-boundary habu-re-express-tiled-9cc4a73a
+lib/ptx/cg-matmul.f:MM-ABI stdlib-boundary habu-ptx-phantom-preserving-3df9db92
 lib/ptx/cg-attention.f:Q-REG stdlib-boundary habu-ptx-phantom-preserving-3df9db92
 lib/ptx/cg-attention.f:K-REG stdlib-boundary habu-ptx-phantom-preserving-3df9db92
 lib/ptx/cg-attention.f:V-REG stdlib-boundary habu-ptx-phantom-preserving-3df9db92

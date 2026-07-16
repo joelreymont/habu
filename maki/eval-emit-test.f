@@ -81,7 +81,7 @@ s" sumnorm no-store" T-LABEL
 \ ---- gemm: C = A*B through the checked phase words ---------------------------
 s" gemm green" T-LABEL
    EVND:GEMM-GREEN$ EVAL:GRADE-GEMM 2 T=
-\ skipping MM-K-LOOP certifies (mmctx/mmacc are phase-neutral through it) but
+\ skipping MM-K-LOOP certifies (mmctx/mmracc are phase-neutral through it) but
 \ emits no fma/cp.async -> the structural gate catches the zero-compute GEMM
 s" gemm no-k-loop" T-LABEL
    s" K ( matrix<space-global,f32,extent-m,extent-k> matrix<space-global,f32,extent-k,extent-n> matrix<space-global,f32,extent-m,extent-n> -- ) MM-BEGIN MM-STORE"

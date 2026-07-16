@@ -532,13 +532,15 @@ points stay listed.
   `lib/ptx/tile-pipe-neg-test.f` — typed pipelined register-blocked GEMM tile
   vocabulary (`mmstage`/`mmaslice`/`mmbslice`/`mmafrag`/`mmbfrag`/`mmracc`,
   `PIPE-LOOP`/`STAGE-SLICES`/`A-FRAG`/`B-FRAG.V4`/`RB-FMA`/`K-UNROLL`) over the
-  cg-matmul.f MM-* emitters, byte-identical to EMIT-MATMUL by test, with parity/
-  alignment/layout/naive-path negative regressions; trusted staging bodies are
-  owned by the cp.async typestate capability dot.
+  cg-matmul-emit.f MM-* emitters, byte-identical to EMIT-MATMUL by test, with
+  parity/alignment/layout/naive-path negative regressions; trusted staging
+  bodies are owned by the cp.async typestate capability dot.
 - `lib/ptx/collective.f` / `lib/ptx/collective-test.f` — tile-DSL row and
   collective vocabulary (M6) plus the checked stable-softmax proof.
-- `lib/ptx/gemm-checked-test.f` / `lib/ptx/gemm-checked-neg-test.f` — checked
-  tiled GEMM data-flow positive and negative regressions.
+- `lib/ptx/gemm-checked-test.f` / `lib/ptx/gemm-checked-neg-test.f` — the
+  PRODUCTION tiled GEMM certification proof (cg-matmul.f MM-CHECKED is the
+  shipped typed kernel) plus negative regressions: inline non-neutral K-loop,
+  missing MM-STORE, swapped A/B operands.
 - `lib/ptx/attention-checked-test.f` / `lib/ptx/attention-checked-neg-test.f` —
   checked fused-attention matrix/phase proof, byte-stable emitter regression,
   and phase/shape negative regressions.
@@ -546,12 +548,17 @@ points stay listed.
   differing only in Q/K/V/O order must emit DIFFERENT PTX (the attnctx threads
   each operand's pointer register), while correct authoring stays byte-stable.
 - `lib/ptx/cg.f` / `lib/ptx/cg-vec.f` / `lib/ptx/cg-collective.f` /
-  `lib/ptx/cg-collective-test.f` / `lib/ptx/cg-matmul.f` /
+  `lib/ptx/cg-collective-test.f` / `lib/ptx/cg-matmul-emit.f` /
   `lib/ptx/cg-attention.f` — PTX codegen emit-mode lowering for tile ops:
-  scalar, vectorized v4, row/collective, the register-blocked SGEMM, and the
-  fused attention kernel. The cg-collective test pins the block-reduction emit
-  shape: the two-level warp shfl.sync.down reduction with the inactive-lane
+  scalar, vectorized v4, row/collective, the register-blocked SGEMM emitters
+  (the byte-sensitive MM-* surface shared verbatim by lower-mm.f and cg-mma.f),
+  and the fused attention kernel. The cg-collective test pins the block-reduction
+  emit shape: the two-level warp shfl.sync.down reduction with the inactive-lane
   identity seed threaded through both shuffle levels.
+- `lib/ptx/cg-matmul.f` — the PRODUCTION checked tiled GEMM: EMIT-MATMUL ships
+  the certified KERNEL: MM-CHECKED composed from the tile-pipe vocabulary
+  (MM-BEGIN / MM-K-LOOP / MM-STORE, the eval lane's GEMM authoring words); the
+  only trusted word is the launch-ABI mint MM-ABI.
 - `lib/ptx/cg-matmul-naive.f` — the naive one-element-per-thread SGEMM baseline
   kernel (MMN) that the GEMM benchmark measures the register-blocked tile against.
 - `lib/ptx/cg-mma.f` — TF32 tensor-core (mma.sync.aligned.m16n8k8) tiled GEMM

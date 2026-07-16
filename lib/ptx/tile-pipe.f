@@ -45,9 +45,11 @@
 \ parity ALTERNATION - is beyond the current type system, so the bodies below are
 \ named trusted boundaries over the device-proven emitters. When the cp.async
 \ typestate capability lands, these bodies re-certify as checked code and the
-\ TRUSTED.md rows are removed. Load after lib/ptx/cg-matmul.f.
+\ TRUSTED.md rows are removed. Load after lib/ptx/cg-matmul-emit.f (the raw
+\ emitters; the checked production kernel in lib/ptx/cg-matmul.f sits ABOVE
+\ this vocabulary).
 
-require lib/ptx/cg-matmul.f
+require lib/ptx/cg-matmul-emit.f
 
 variable PIPE-XT   \ pipeline compute-slot body xt (set by PIPE-LOOP, run by PIPE-RUN)
 

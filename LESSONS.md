@@ -4,6 +4,19 @@
 
 Last updated: 2026-07-16
 
+- **Before deleting a "wrapper" vocabulary, rg its WORDS as strings — checked
+  words can be a graded LLM-authoring surface, not just call sites.** (mmstage3
+  lane, dot habu-re-express-tiled-9cc4a73a.) The plan said "delete
+  MM-BEGIN/MM-K-LOOP/MM-STORE with the MM-STATE boundary", but maki's eval lane
+  grades LLM candidates as SOURCE STRINGS composing exactly those three words
+  (eval-emit fixtures, eval-matrix VOCAB-NEED rows, live-author), including
+  reject-shape fixtures pinned to their effects. The fix that kept every
+  consumer green: preserve the three names and stack surfaces, re-express their
+  bodies over the typed tile-pipe words (mmacc -> mmracc underneath), and prove
+  the candidate emissions byte-identical (a double-MM-K-LOOP capture leg).
+  Also: a require cycle from layering a checked kernel above a vocabulary that
+  requires the kernel's emitters is broken by splitting emitters into their own
+  file (cg-matmul-emit.f) - reversing or mid-file requires is order-fragile.
 - **A new checker atom prefix (ATOM-TOK?) reserves the ENTIRE lowercase
   `prefix-*` token namespace across every declaration site — sweep the tree for
   collisions before choosing the spelling.** (tilepipe lane, dot
