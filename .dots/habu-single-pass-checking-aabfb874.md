@@ -33,3 +33,11 @@ Keep fail-closed: capture overflow stays fatal (habu1.f ~1836 `16 5 CMP,`), and
 the new entry must reject `E-UNCHECKED` on any token whose xt has no charted
 effect exactly as `DO-TOK1` does. No measurement recorded — the interface does
 not exist yet. Owner of the emit change: the habu2.f/build worker.
+
+EVIDENCE 2026-07-16 (kwfold lane measurement, master 4ecd6681): the checker
+hook is ~97% of per-token compile cost - checker-ON 5.14us/token vs
+checker-OFF 0.16us/token on a 500k-token worst-case stream (medians,
+/usr/bin/time, native bin/hb). All of parse+dispatch+LFIND+emit is ~3%. Any
+compile-latency work should land HERE (kill the body re-parse / single-pass
+checking), not in dispatch folding - habu-fold-compile-keyword-3754709e was
+closed on this evidence (its full methodology is in that archived closure).

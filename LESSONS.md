@@ -4983,3 +4983,13 @@ unchanged (148855). Keys for milestone 2:
   included, needs a site-registry row (class + live-dot-or-cap owner). The
   quick-gate set for TRUSTED-touching diffs is trust-lint AND
   trusted-inventory-test.
+- **In this engine the checker hook is the compile-time cost center at ~30:1 —
+  measure against it before minting any dispatch/lookup perf dot.** (kwfold
+  lane, closed habu-fold-compile-keyword.) Checker-ON compile is 5.14us/token
+  vs 0.16us/token checker-OFF on a 500k-token worst-case stream; the entire
+  parse + ~69-compare keyword/op chain + LFIND + emit path is ~3% of
+  checker-on cost, so folding the chain into one hash lookup had a <2%
+  ceiling against multi-day seven-mirror fixpoint surgery. The honest move
+  was measuring first and closing the dot; compile-latency work belongs in
+  single-pass checking (habu-single-pass-checking-aabfb874, evidence copied
+  there).
