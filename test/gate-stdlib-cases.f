@@ -261,6 +261,7 @@ TEST:;SUITE
 TEST:SUITE ptx-stdlib
    lib/ptx/header-test.f
    lib/ptx/kernel-abi-test.f
+   lib/ptx/kernel-manifest-test.f
    lib/ptx/launch-test.f
    lib/ptx/tile-test.f
    lib/ptx/tile-loop-test.f
@@ -320,6 +321,7 @@ TEST:SUITE ptx-toolchain
    tools/ptx/profile-test.f
    tools/ptx/bench-test.f
    tools/ptx/saxpy-test.f
+   tools/ptx/kernel-export-test.f
    tools/ptx/perf-registry-test.f
    tools/ptx/perf-compare-test.f
    tools/ptx/perf-regress-test.f

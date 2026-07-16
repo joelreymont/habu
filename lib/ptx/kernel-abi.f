@@ -396,6 +396,9 @@ public
       then
    loop ;
 
+: FIELD-INDEX ( ptr u8 n -- n )                   \ field index by name
+   ENSURE FD-IDX-OF ;
+
 : OFFSET-OF ( ptr u8 n -- n )                     \ .param byte offset by field name
    ENSURE FD-IDX-OF {: k:n :}
    FD-OFF k KB@ dup -1 = if E-KABI-FIELD throw then ;

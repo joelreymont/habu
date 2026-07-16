@@ -130,6 +130,9 @@
 -3417 constant E-KABI-FIELD        \ kernel-ABI field: unknown name/index, or no .param offset
 -3418 constant E-KABI-DUP          \ kernel-ABI duplicate field name / conflicting extent-token source
 -3419 constant E-KABI-TOKEN        \ kernel-ABI empty or oversized name/extent token
+-3420 constant E-KEXPORT-KERNEL    \ kernel-export: unknown kernel name / record-name mismatch
+-3421 constant E-KEXPORT-OUTDIR    \ kernel-export: out-dir missing or not a directory
+-3422 constant E-KEXPORT-EMPTY     \ kernel-export: producer emitted no PTX
 
 \ FFI: -3500..-3599
 -3500 constant E-FFI-FIRST

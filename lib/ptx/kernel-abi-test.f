@@ -120,6 +120,8 @@ s" x" KABI:OFFSET-OF 0 T=
 s" n" KABI:OFFSET-OF 20 T=
 s" y" KABI:SIZE-OF 8 T=
 s" n" KABI:SIZE-OF 4 T=
+s" x" KABI:FIELD-INDEX 0 T=
+s" n" KABI:FIELD-INDEX 3 T=
 
 \ renders are byte-equal to the historical hardcoded lines
 KABI:ENTRY$ s" .visible .entry SAXPY(.param .u64 p_x, .param .u64 p_y, .param .f32 p_a, .param .u32 p_n)" T$=

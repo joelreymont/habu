@@ -367,9 +367,73 @@ tracked by `.dots/habu-eval-matrix-live-f2b70f81.md`.
    The structured record for this lowering is `lib/ptx/kernel-abi.f`
    (`package KABI`): `CG-ENTRY`/`CG-PARAMS` render the entry and param loads
    from it and `tools/ptx/cuda-launch.f` packs its launch offsets from the
-   same record.
+   same record. The exported, versioned form of this contract is the
+   **Kernel ABI contract (habu-kernel-manifest v1)** section below.
 4. **No overload resolution yet:** v0 should use **distinct** grid/row words
    (e.g. `LOAD`/`ROW-LOAD`) rather than overloading `LOAD` on ctx kind.
+
+## Kernel ABI contract (habu-kernel-manifest v1)
+
+`bin/hb --load tools/ptx/kernel-export.f -- KERNEL-NAME OUT-DIR` writes the
+versioned artifact pair an external build embeds: `<NAME>.ptx` (the exact PTX
+text the checked emitter produced) and `<NAME>.manifest.json`. Both derive
+from the same `package KABI` record that renders the kernel's entry and param
+loads, so the manifest can never drift from the PTX by construction. The
+export is deterministic — the same source tree writes byte-identical
+artifacts — and host-only, so it runs as a build step with no CUDA present.
+Renderer: `lib/ptx/kernel-manifest.f`; consumer wiring example:
+`examples/kernel-consumer/`.
+
+**Versioning.** `schema` is always `"habu-kernel-manifest"`; `version` is an
+integer, currently `1`. Any change to field meaning, lowering, or hashing
+bumps `version`; consumers must reject an unknown schema or a version they do
+not support.
+
+**Manifest fields (fixed emission order):**
+
+| Field | Meaning / driver-API mapping |
+| ----- | ---------------------------- |
+| `schema`, `version` | contract identity: `"habu-kernel-manifest"`, `1` |
+| `name` | kernel entry name → `cuModuleGetFunction(&fn, mod, name)` after `cuModuleLoadData(&mod, ptx)` |
+| `target` | PTX `.target` (e.g. `"sm_87"`); must be launchable on the device's architecture |
+| `ptx_version` | PTX ISA `.version` (e.g. `"8.3"`); driver must support it |
+| `address_size` | PTX `.address_size` (64) |
+| `block` | `{x,y,z}` → `cuLaunchKernel` blockDim; v1 records `x`, `y`/`z` fixed 1 |
+| `grid_derivation` | how gridDim.x is derived at launch: `ceil-n-<B>` ⇒ `ceil(N/B)` over the runtime extent `N`; `extent-<t>` ⇒ gridDim.x equals the runtime value of extent `t` (one block per row); `once` ⇒ 1 |
+| `param_bytes` | total `.param` byte size (legacy `cuParamSetSize`; not needed for `kernelParams`) |
+| `params` | ordered LOGICAL params with per-kind lowering (below) |
+| `param_slots` | the flat, offset-ordered `.param` layout: build `void* kernelParams[]` with one pointer per slot, IN THIS ORDER, each pointing at a value of `size` bytes (`.u64` slots take a `CUdeviceptr`, `.f32`/`.u32` a 4-byte scalar) |
+| `ptx_sha256` | SHA-256 hex of the `.ptx` artifact bytes; verify before load |
+| `manifest_content_hash` | SHA-256 hex of the manifest bytes STRICTLY BEFORE the `,"manifest_content_hash"` suffix; verifiable by string slicing |
+
+**Per-kind lowering (in `params[].lowering`):**
+
+- `span` → `base` slot (`.u64`, the device pointer) + `len` slot (`.u32`, the
+  runtime extent). `len` carries `dedup_key`: spans sharing one extent token
+  lower to ONE shared `.u32` slot (SAXPY's two `extent-n` spans share `p_n`) —
+  the equal-token runtime dedup, enforced because the checker proved the
+  extents equal. `align` on the logical param is an alignment refinement
+  (0 = none).
+- `matrix` → `base` slot (`.u64`) + `cols` slot (`.u32`, dedup'd like `len`).
+  `rows` is `source:"launch-derived"` — NOT a `.param`: the launch ABI proves
+  `gridDim.x == rows` for row kernels (`grid_derivation` `extent-<t>`).
+  `stride` is `source:"dense-derived"` — v1 matrices are dense row-major, so
+  the row stride `equals` the cols extent; no slot.
+- `uniform` → one `scalar` slot (`.f32`), uniform across the block by the
+  scalar-param rule above.
+
+**Source tags.** Every ABI field is tagged with where its value comes from:
+`param` (a real `.param` slot with an offset), `launch-derived` (implied by
+the launch geometry), `dense-derived` (implied by the dense layout), and
+`static` (reserved: compile-time immediates baked into the PTX). Only
+`param`-tagged fields appear in `param_slots`.
+
+**Launch recipe** (matches `examples/kernel-consumer/`): verify both hashes →
+`cuModuleLoadData(ptx)` → `cuModuleGetFunction(name)` → allocate/copy device
+buffers → pack `kernelParams` from `param_slots` in order → gridDim.x from
+`grid_derivation` + the runtime extent, blockDim from `block` →
+`cuLaunchKernel`. The host must also uphold the launch ABI above (`blockDim
+== block`, row kernels launch `gridDim.x == rows`, `where` bounds).
 5. **Staged self-host bootstrap (M2):** the term/unify machinery is encoded in
    old syntax first, then the refreshed checker accepts parametric syntax. The
    real token syntax is prefixed atoms (`space-*`, `extent-*`, `mask-*`,
