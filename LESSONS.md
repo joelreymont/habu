@@ -5122,3 +5122,10 @@ unchanged (148855). Keys for milestone 2:
   FORTH-EXE to a scratch file, same src + 'ok' assert); run the verbatim gate
   only when /tmp/nf-bin is free (lsof first). Parameterizing nf.fs's paths is
   queued work if the collision recurs.
+- **The native message-table diagnostic needs the same three-edit rule as the
+  stage0 mirror: variable + EMIT-TRAPH message bytes + EMIT-LABELS label-init
+  — and the native build fails CLOSED on the omission ('icode: label
+  redefined'), unlike the mirror's exit-79 trailer corruption.** (mmapdiag
+  lane.) Also the boot-diagnostic safety pattern: message bytes in the
+  loader-mapped __text section are writable to fd 2 before ANY runtime region
+  exists; ADRD32 fail-closes ADR reach so the pattern survives text growth.
