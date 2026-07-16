@@ -121,6 +121,20 @@ EX-RESET  XB 0 MIR-SLOT-ID EX-BIND  BB 1 MIR-SLOT-ID EX-BIND  EX-RUN
 0 MIR-NODE-ID EX-OUT@ 2 >I 13 T=
 0 MIR-NODE-ID EX-OUT@ 3 >I 24 T=
 
+\ ---- COL broadcast (Rx1): x 2x2=[1,2,3,4], col 2x1=[10,30] -> [[11,12],[33,34]] --
+\ EX-BC@ reads element r for every lane in row r (idx = rr*bc + cc = r*1 + 0); the distinct
+\ 10/30 prove per-row selection (not element 0), the host contract lower-red's Rx1 fold mirrors.
+MIR-RESET
+2 2 SHAPE MAKI-DTYPE:DF32 MAKI-LAYOUT:ROW MIR-INPUT+ drop
+2 1 SHAPE MAKI-DTYPE:DF32 MAKI-LAYOUT:ROW MIR-INPUT+ drop
+MAKI-OPKIND:BIAS MIR-OP-BEGIN 0 MIR-SLOT-ID MIR-IN-REF MIR-IN+ 1 MIR-SLOT-ID MIR-IN-REF MIR-IN+ 2 2 SHAPE MAKI-DTYPE:DF32 MAKI-LAYOUT:ROW 0 1 MIR-OP+ drop
+1.0 XB 4 SEQ  10.0 BB 0 T-SET 30.0 BB 1 T-SET
+EX-RESET  XB 0 MIR-SLOT-ID EX-BIND  BB 1 MIR-SLOT-ID EX-BIND  EX-RUN
+0 MIR-NODE-ID EX-OUT@ 0 >I 11 T=
+0 MIR-NODE-ID EX-OUT@ 1 >I 12 T=
+0 MIR-NODE-ID EX-OUT@ 2 >I 33 T=
+0 MIR-NODE-ID EX-OUT@ 3 >I 34 T=
+
 \ ---- MUL: a=[1,2,3,4], b=[2,3,4,5] -> [2,6,12,20] --------------------------
 MIR-RESET
 2 2 SHAPE MAKI-DTYPE:DF32 MAKI-LAYOUT:ROW MIR-INPUT+ drop
