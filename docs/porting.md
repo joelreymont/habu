@@ -61,8 +61,8 @@ operations normalize failures to exact negative errno values; legacy
 `open`/`read`/`write` retain their existing `-1` failure contract.
 Current target and recovery facts pinned by
 `tools/fs-primitive-parity-test.f` include Linux
-`fstat=80`, `fstatat=79`, `O_DIRECTORY=0x4000`, and
-`O_NOFOLLOW=0x8000`; and macOS `fstat=339`, `fstatat=470`,
+`fstat=80`, `fstatat=79`, `O_DIRECTORY=0x10000`, and
+`O_NOFOLLOW=0x20000`; and macOS `fstat=339`, `fstatat=470`,
 `O_DIRECTORY=0x100000`, and `O_NOFOLLOW=0x100`.
 
 Signal handlers are target ABI boundaries. Crash and profiler handlers must use

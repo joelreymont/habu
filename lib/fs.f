@@ -26,22 +26,18 @@ FS-PATH-CAP 1 + constant FS-PATHZ-CAP
 18 constant FS-DIRENT-NAMELEN-OFF
 21 constant FS-DIRENT-NAME-OFF
 19 constant FS-LINUX-DIRENT-NAME-OFF
-1 constant FS-O-WRONLY
-2 constant FS-O-RDWR
-$8 constant FS-O-APPEND
-$200 constant FS-O-CREAT
-$400 constant FS-O-TRUNC
 420 constant FS-MODE-0644
 1 constant FS-X-OK
 1 constant FS-READ-PROBE-CAP
 
 package FS
-private
-
-8 constant STAT-INO-OFF
-
 public
 
+1 constant O-WRONLY
+2 constant O-RDWR
+$8 constant O-APPEND
+$200 constant O-CREAT
+$400 constant O-TRUNC
 $800 constant O-EXCL
 $100000 constant O-DIRECTORY
 $100 constant O-NOFOLLOW
@@ -86,6 +82,9 @@ variable FS-IO-WR
 : FS-TRUE ( -- bool )
    0 0= ;
 
+: FS-TARGET-UNKNOWN ( -- )
+   E-FS-DIR throw ;
+
 : FS-BYTE@ ( ptr u8 n -- n )
    BYTE+ c@ ;
 
@@ -112,6 +111,39 @@ public
    a 5 FS-BYTE@ FS-BYTE-BITS-5 lshift or
    a 6 FS-BYTE@ FS-BYTE-BITS-6 lshift or
    a 7 FS-BYTE@ FS-BYTE-BITS-7 lshift or ;
+
+package FS-STAT
+private
+
+8 constant INO-OFF
+20 constant LINUX-NLINK-OFF
+6 constant MACOS-NLINK-OFF
+
+public
+
+: MODE@ ( ptr u8 -- n )
+   FS-STAT-MODE-OFF + FS-U16@ ;
+
+: DEV@ ( ptr u8 -- n )
+   HB-TARGET-LINUX? if FS-U64@ exit then
+   HB-TARGET-MACOS? if FS:U32@ exit then
+   FS-TARGET-UNKNOWN ;
+
+: INO@ ( ptr u8 -- n )
+   INO-OFF + FS-U64@ ;
+
+: NLINK@ ( ptr u8 -- n )
+   HB-TARGET-LINUX? if LINUX-NLINK-OFF + FS:U32@ exit then
+   HB-TARGET-MACOS? if MACOS-NLINK-OFF + FS-U16@ exit then
+   FS-TARGET-UNKNOWN ;
+
+: REGULAR? ( ptr u8 -- bool )
+   MODE@ S-IFMT and S-IFREG = ;
+
+: DIRECTORY? ( ptr u8 -- bool )
+   MODE@ S-IFMT and S-IFDIR = ;
+
+;package
 
 : FS-CHECK-DEPTH ( n -- ) {: d :}
    d 0 < if E-FS-DEPTH throw then
@@ -217,22 +249,7 @@ public
    FS-PATHZ 0 access 0= ;
 
 : FS-STAT-MODE@ ( -- n )
-   FS-STAT-BUF FS-STAT-MODE-OFF + FS-U16@ ;
-
-package FS
-public
-
-: STAT-INO@ ( -- n )
-   FS-STAT-BUF STAT-INO-OFF + FS-U64@ ;
-
-: STAT-NLINK@ ( -- n )
-   HB-TARGET-LINUX? if
-      FS-STAT-BUF 20 + U32@
-   else
-      FS-STAT-BUF 6 + FS-U16@
-   then ;
-
-;package
+   FS-STAT-BUF FS-STAT:MODE@ ;
 
 : FS-STAT-SIZE@ ( -- n )
    FS-STAT-BUF FS-STAT-SIZE-OFF + FS-U64@ ;
@@ -260,8 +277,8 @@ public
 package FS
 public
 
-: TRY-FSTAT ( fd -- bool )
-   FS-STAT-BUF fstat64 RC>N 0 < if FS-FALSE exit then
+: TRY-FSTAT ( fd ptr u8 -- bool )
+   fstat64 RC>N 0 < if FS-FALSE exit then
    FS-TRUE ;
 
 ;package
@@ -382,22 +399,62 @@ public
    FS-IO-FD @ close ;
 
 : WRITE-ALL ( ptr u8 n ptr u8 n -- )
-   FS-O-WRONLY FS-O-CREAT or FS-O-TRUNC or FS-WRITE-BY-FLAGS ;
+   FS:O-WRONLY FS:O-CREAT or FS:O-TRUNC or FS-WRITE-BY-FLAGS ;
 
 : APPEND-FILE ( ptr u8 n ptr u8 n -- )
-   FS-O-WRONLY FS-O-CREAT or FS-O-APPEND or FS-WRITE-BY-FLAGS ;
+   FS:O-WRONLY FS:O-CREAT or FS:O-APPEND or FS-WRITE-BY-FLAGS ;
 
 : OPEN-APPEND-FD ( ptr u8 n -- n ) {: pa:ptr pu :}
    pa pu EXISTS? if pa pu FILE? 0= if E-FS-OPEN throw then then
-   pa pu FS-PATHZ FS-O-WRONLY FS-O-CREAT or FS-O-APPEND or FS-MODE-0644 open {: fd :}
-   fd 0 < if E-FS-OPEN throw then
-   fd ;
+   pa pu FS-PATHZ FS:O-WRONLY FS:O-CREAT or FS:O-APPEND or FS-MODE-0644 open {: raw:n :}
+   raw 0 < if E-FS-OPEN throw then
+   raw ;
 
 : FS-DOT-ENTRY? ( ptr u8 n -- bool ) {: a:ptr u :}
    u 1 = if a c@ FS-DOT = else FS-FALSE then ;
 
 : FS-DOTDOT-ENTRY? ( ptr u8 n -- bool ) {: a:ptr u :}
    u 2 = if a c@ FS-DOT = a 1 + c@ FS-DOT = and else FS-FALSE then ;
+
+package FS
+public
+
+: PATH-START ( ptr u8 n -- n ) {: a:ptr u:n :}
+   u 0 <= if E-FS-PATH throw then
+   a c@ FS-SLASH = if 1 else 0 then ;
+
+: COMPONENT-END ( ptr u8 n n -- n ) {: a:ptr u:n start:n :}
+   start 0 < start u > or if E-FS-PATH throw then
+   start begin dup u < while
+      a over + c@ FS-SLASH = if exit then
+      1+
+   repeat ;
+
+private
+
+: UNSAFE-COMPONENT? ( ptr u8 n -- bool )
+   2dup FS-DOT-ENTRY? if 2drop FS-TRUE exit then
+   FS-DOTDOT-ENTRY? ;
+
+: CHECK-COMPONENTS ( ptr u8 n n -- ) {: a:ptr u:n start:n :}
+   start u >= if exit then
+   a u start COMPONENT-END {: end:n :}
+   end start - {: len:n :}
+   len 0 <= if E-FS-PATH-UNSAFE throw then
+   a start + len UNSAFE-COMPONENT? if E-FS-PATH-UNSAFE throw then
+   end u < if
+      end 1+ u >= if E-FS-PATH-UNSAFE throw then
+      a u end 1+ recurse
+   then ;
+
+public
+
+: CHECK-SAFE-PATH ( ptr u8 n -- ) {: a:ptr u:n :}
+   a u CHECK-PATH-BYTES
+   a u PATH-START {: start:n :}
+   start u < if a u start CHECK-COMPONENTS then ;
+
+;package
 
 : FS-SKIP-DIR? ( ptr u8 n -- bool )
    BASENAME
@@ -418,9 +475,6 @@ public
 
 : FS-DIRENT-RECLEN ( ptr u8 -- n )
    FS-DIRENT-RECLEN-OFF BYTE+ FS-U16@ ;
-
-: FS-TARGET-UNKNOWN ( -- )
-   E-FS-DIR throw ;
 
 : FS-DIRENT-NAME-OFFSET ( -- n )
    HB-TARGET-LINUX? if

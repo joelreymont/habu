@@ -5,6 +5,7 @@ require lib/errors.f
 require lib/string.f
 require lib/test.f
 require lib/fs.f
+require lib/fs-atomic.f
 require lib/fs-mutate.f
 
 variable FMT-ROOT-U
@@ -332,6 +333,19 @@ create FMT-STREAM-DST-DATA FMT-STREAM-LEN allot
    s" " REMOVE-TREE ;
 
 create FMT-READ-BUF 64 allot
+
+package FMT-ATOMIC
+private
+
+create CTX FS-ATOMIC:CONTEXT-SIZE allot
+
+public
+
+: WRITE ( ptr u8 n ptr u8 n -- ) {: path:ptr pathu:n a:ptr u:n :}
+   CTX FS-ATOMIC:CONTEXT-SIZE path pathu a u
+   FS-ATOMIC:WRITE FS-ATOMIC:MUST-COMMIT ;
+
+;package
 create FMT-LINK-READ-BUF FS-PATH-CAP allot
 
 : FMT-MAKE-SYMLINK-EXISTS ( -- )
@@ -366,7 +380,7 @@ create FMT-LINK-READ-BUF FS-PATH-CAP allot
 
 : FMT-TEST-ATOMIC-WRITE ( -- )
    FMT-ATOMIC-PATH s" old" WRITE-ALL
-   FMT-ATOMIC-PATH s" new-data" ATOMIC-WRITE-FILE
+   FMT-ATOMIC-PATH s" new-data" FMT-ATOMIC:WRITE
    FMT-ATOMIC-PATH FMT-READ-BUF 64 READ-ALL 8 T=
    FMT-READ-BUF 8 s" new-data" T$= ;
 

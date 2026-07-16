@@ -744,14 +744,29 @@ FS-TRUE            ( -- bool )
 FS-U16@            ( ptr u8 -- n )
 FS:U32@            ( ptr u8 -- n )
 FS-U64@            ( ptr u8 -- n )
+FS-STAT:MODE@       ( ptr u8 -- n )
+FS-STAT:DEV@        ( ptr u8 -- n )
+FS-STAT:INO@        ( ptr u8 -- n )
+FS-STAT:NLINK@      ( ptr u8 -- n )
+FS-STAT:REGULAR?    ( ptr u8 -- bool )
+FS-STAT:DIRECTORY?  ( ptr u8 -- bool )
 FS-CHECK-JOIN-CAP       ( n -- )
 FS:CHECK-PATH-BYTES     ( ptr u8 n -- )
+FS:PATH-START           ( ptr u8 n -- n )
+FS:COMPONENT-END        ( ptr u8 n n -- n )
+FS:CHECK-SAFE-PATH      ( ptr u8 n -- )
+FS:O-WRONLY             ( -- n )
+FS:O-RDWR               ( -- n )
+FS:O-APPEND             ( -- n )
+FS:O-CREAT              ( -- n )
+FS:O-TRUNC              ( -- n )
+FS:O-EXCL               ( -- n )
+FS:O-DIRECTORY          ( -- n )
+FS:O-NOFOLLOW           ( -- n )
 FS-PATHZ-INTO           ( ptr u8 n ptr u8 -- ptr u8 )
 FS-PATHZ                ( ptr u8 n -- ptr u8 )
 EXISTS?                 ( ptr u8 n -- bool )
 FS-STAT-MODE@           ( -- n )
-FS:STAT-INO@            ( -- n )
-FS:STAT-NLINK@          ( -- n )
 FS-STAT-SIZE@           ( -- n )
 FS-STAT-MTIME-SEC@      ( -- n )
 FS-STAT-MTIME-NS@       ( -- n )
@@ -759,7 +774,7 @@ FS-STAT-CTIME-SEC@      ( -- n )
 FS-STAT-CTIME-NS@       ( -- n )
 FS-TRY-STAT             ( ptr u8 n -- bool )
 FS-TRY-LSTAT            ( ptr u8 n -- bool )
-FS:TRY-FSTAT            ( fd -- bool )
+FS:TRY-FSTAT            ( fd ptr u8 -- bool )
 FS-TRY-STAT-MODE        ( ptr u8 n -- n )
 FS-TRY-LSTAT-MODE       ( ptr u8 n -- n )
 STAT-MODE               ( ptr u8 n -- n )
@@ -790,7 +805,6 @@ REMOVE-TREE             ( ptr u8 n -- )
 MAKE-DIRS               ( ptr u8 n -- )
 COPY-FILE               ( ptr u8 n ptr u8 n n -- )
 COPY-FILE-STREAM        ( ptr u8 n ptr u8 n -- )
-ATOMIC-WRITE-FILE       ( ptr u8 n ptr u8 n -- )
 MAKE-TEMP-DIR           ( ptr u8 n ptr u8 n -- ptr u8 n )
 TMPDIR-MKDIR            ( ptr u8 n -- ptr u8 n )
 CLEANUP-RESET           ( -- )
@@ -822,9 +836,59 @@ throwing explicit filesystem errors.
 The caller supplies the explicit output cap. Files larger than the cap throw
 `E-FS-CAPACITY`; open and I/O failures throw `E-FS-OPEN` or `E-FS-IO`.
 Counted syscall paths reject embedded NUL bytes instead of silently addressing a
-shorter path. Use `FS-O-WRONLY` or `FS-O-RDWR` for access mode and combine
+shorter path. The `FS:O-*` constants are the canonical Habu open-flag ABI; the
+Linux OS seam translates them to Linux syscall bits and macOS consumes them
+directly. `FS-STAT:*` owns target-normalized stat decoding from caller-provided
+bytes, so security-sensitive users do not duplicate kernel layout offsets. Use
+`FS:O-WRONLY` or `FS:O-RDWR` for access mode and combine
 `FS:O-EXCL` and `FS:O-NOFOLLOW` when a newly created final component must not
 reuse or follow an existing directory entry.
+
+`lib/fs-stream.f` owns the checked no-follow streaming boundary:
+
+```forth
+FS:STREAM-REGULAR
+  ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n ptr n
+    [ ptr n ptr u8 n -- ] -- FS:stream-result )
+```
+
+The caller provides the path, component scratch, read buffer, stat buffer, user
+pointer, and chunk callback. Every path component is opened relative to an
+already-open directory with `FS:O-NOFOLLOW`; the final descriptor must be a
+regular file. The result is `ok(mode)`, `failed(at, code)`,
+`close-failed(close)`, or `failed-close(at, code, close)`, so cleanup never
+masks the primary failure. `MATCH FS:stream-result` is public; variant
+construction remains owned by package `FS`. Streaming has no whole-file size
+ceiling.
+
+`lib/fs-atomic.f` owns same-directory atomic publication:
+
+```forth
+FS-ATOMIC:CONTEXT-SIZE ( -- n )
+FS-ATOMIC:MUST-COMMIT  ( FS-ATOMIC:result -- )
+FS-ATOMIC:WRITE
+  ( ptr n n ptr u8 n ptr u8 n -- FS-ATOMIC:result )
+FS-ATOMIC:COPY
+  ( ptr n n ptr u8 n ptr u8 n -- FS-ATOMIC:result )
+```
+
+Each call requires an exclusively owned context of at least `CONTEXT-SIZE`
+bytes. `WRITE` publishes memory bytes; `COPY` streams a no-follow regular source
+and preserves its permission bits. Both create a random exclusive sibling inode
+under the verified destination parent, sync and verify it, rename it through
+directory descriptors, and sync the parent. They
+never follow destination-parent symlinks or delete an entry whose captured
+identity changed. The public result is `committed`,
+`committed-degraded(at, code, cleanup, parent-close)`, or
+`aborted(at, code, source-close, temp-close, cleanup, parent-close)`. A degraded
+result means rename already committed the new target
+but a later durability or cleanup step failed. Variant construction remains
+owned by `FS-ATOMIC`; consumers inspect results with `MATCH FS-ATOMIC:result`.
+`MUST-COMMIT` is the explicit exception boundary for callers that cannot carry
+the structured result; it throws the retained primary failure code. Keeping the
+projection separate makes every loss of secondary evidence visible at its call
+site.
+
 `WRITE-ALL` creates/truncates a regular file, and `APPEND-FILE` creates/appends
 to a regular file. Both write the full counted input or throw a named filesystem
 error. `OPEN-APPEND-FD` opens the same append-only regular-file target and
@@ -847,8 +911,8 @@ primitive names because the dictionary is case-insensitive: use `MAKE-DIR`,
 the destination path cannot overwrite the source path. `COPY-FILE` reads through
 an explicit caller capacity and throws `E-FS-CAPACITY` instead of truncating.
 `COPY-FILE-STREAM` copies through the module chunk buffer, so callers can copy
-large files without sizing a whole-file scratch buffer. `ATOMIC-WRITE-FILE`
-writes a sibling `.tmp` file and renames it over the destination.
+large files without sizing a whole-file scratch buffer. Atomic publication is
+owned exclusively by `FS-ATOMIC`; the former fixed `.tmp` writer was removed.
 `REMOVE-TREE` recursively removes one counted path, using the same per-depth walk
 buffers, directory-entry helpers, child-path enter/leave helpers, and close
 handling as `WALK-FILES`, while keeping mutation policy in `lib/fs-mutate.f`.

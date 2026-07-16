@@ -1886,7 +1886,7 @@ create TR-VA-READ-BUF TR-VA-READ-CAP allot
    TR-PROFILE$ TR-ARG+ ;
 
 : TR-VA-OPEN-OUT ( -- n )                    \ raw write fd for the child's stdout file
-   TR-VA-OUT$ FS-PATHZ FS-O-WRONLY FS-O-CREAT or FS-O-TRUNC or FS-MODE-0644 open
+   TR-VA-OUT$ FS-PATHZ FS:O-WRONLY FS:O-CREAT or FS:O-TRUNC or FS-MODE-0644 open
    dup 0 < if E-FS-OPEN throw then ;
 
 : TR-VA-CHILD-OK? ( n -- bool ) {: fd:n :}   \ spawn worker, stdout+stderr -> fd, wait

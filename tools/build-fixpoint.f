@@ -5,6 +5,7 @@
 \ The stamp key uses the baked SHA256 words; no lib/content-key.f dependency.
 
 require lib/adt/option.f                 \ option<CAD-NUM:index> STR:FIND-SUB consumer
+require lib/fs-atomic.f
 require src/habu/verify-source.f
 require tools/stdin-closure-lib.f
 
@@ -23,6 +24,19 @@ $2F constant BF-SLASH
 32 constant BF-STAMP-DG-U
 256 constant BF-STAMP-CAP
 128 constant BF-PIN-CAP
+
+package BF-STAMP
+private
+
+create CTX FS-ATOMIC:CONTEXT-SIZE allot
+
+public
+
+: WRITE ( ptr u8 n ptr u8 n -- ) {: path:ptr pathu:n a:ptr u:n :}
+   CTX FS-ATOMIC:CONTEXT-SIZE path pathu a u
+   FS-ATOMIC:WRITE FS-ATOMIC:MUST-COMMIT ;
+
+;package
 
 create BF-LF-BUF 1 allot
 create BF-PIN-KEYS BF-PIN-CAP BF-STAMP-DG-U * allot
@@ -1400,7 +1414,7 @@ public
    BF-STAMP-ENSURE-DIR
    BF-STAMP-RECORDED-KEY!
    BF-LF BF-STAMP-KEY BF-STAMP-HEX-U + c!
-   BF-STAMP-PATH$ BF-STAMP-KEY BF-STAMP-HEX-U 1 + ATOMIC-WRITE-FILE ;
+   BF-STAMP-PATH$ BF-STAMP-KEY BF-STAMP-HEX-U 1 + BF-STAMP:WRITE ;
 
 : BF-STAMP-CACHED ( -- )
    s" fixpoint: cached " type

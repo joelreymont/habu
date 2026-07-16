@@ -7,6 +7,7 @@ require lib/string.f
 require lib/test.f
 require lib/memory.f
 require lib/fs.f
+require lib/fs-atomic.f
 require lib/fs-mutate.f
 require lib/process.f
 require lib/process-argv.f
@@ -316,12 +317,25 @@ create GST-GUARD-OUT GST-GUARD-CAP allot
 create GST-GUARD-ERR GST-GUARD-CAP allot
 5000 constant GST-GUARD-NOMINAL-MS
 
+package GST-ATOMIC
+private
+
+create CTX FS-ATOMIC:CONTEXT-SIZE allot
+
+public
+
+: WRITE ( ptr u8 n ptr u8 n -- ) {: path:ptr pathu:n a:ptr u:n :}
+   CTX FS-ATOMIC:CONTEXT-SIZE path pathu a u
+   FS-ATOMIC:WRITE FS-ATOMIC:MUST-COMMIT ;
+
+;package
+
 : GST-GUARD-PATH$ ( -- ptr u8 n )
    GST-GUARD-PATH-BUF GST-GUARD-PATH-U @ ;
 
 : GST-GUARD-FIXTURE! ( ptr u8 n -- )
    GST-ROOT$ s" dup-guard.f" GST-GUARD-PATH-BUF JOIN-PATH GST-GUARD-PATH-U !
-   GST-GUARD-PATH$ 2swap ATOMIC-WRITE-FILE ;
+   GST-GUARD-PATH$ 2swap GST-ATOMIC:WRITE ;
 
 : GST-LOAD-ARGV ( -- )
    PROC-ARGV-RESET

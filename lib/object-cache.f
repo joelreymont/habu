@@ -6,6 +6,7 @@ require lib/errors.f
 require lib/string.f
 require lib/memory.f
 require lib/fs.f
+require lib/fs-atomic.f
 require lib/fs-mutate.f
 require lib/content-key.f
 require lib/object.f
@@ -24,6 +25,7 @@ create ROOT-BUF FS-PATH-CAP allot
 create NAME-BUF 80 allot
 create PATH-BUF FS-PATH-CAP allot
 create KEY-BUF 80 allot
+create WRITE-CTX FS-ATOMIC:CONTEXT-SIZE allot
 
 variable ROOT-U
 variable PATH-U
@@ -109,7 +111,9 @@ public
    KEY-BUF OBJ:KEY-HEX
    ROOT$ MAKE-DIRS
    KEY-BUF KEY-U PATH!
-   PATH-BUF PATH-U @ obj obju ATOMIC-WRITE-FILE
+   WRITE-CTX FS-ATOMIC:CONTEXT-SIZE
+   PATH-BUF PATH-U @ obj obju FS-ATOMIC:WRITE
+   FS-ATOMIC:MUST-COMMIT
    KEY-BUF KEY-U ;
 
 : LOAD ( ptr u8 n -- ) {: key:ptr keyu:n :}

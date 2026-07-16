@@ -80,7 +80,7 @@ $D4000001 constant SYS-EMIT-SVC                          \ svc #0
    notrunc LBL,
    LBL {: nofollow :} \ typed-local-lint: allow-bare-local - stock Gforth rejects Habu type suffixes.
    7 $100 MOVZ,  7 1 7 AND,  7 nofollow CBZ,
-      7 $8000 MOVZ,  6 6 7 ORR,
+      7 2 MOVZ,  7 7 16 LSLI,  6 6 7 ORR,
    nofollow LBL,
    LBL {: noexcl :} \ typed-local-lint: allow-bare-local - stock Gforth rejects Habu type suffixes.
    7 $800 MOVZ,  7 1 7 AND,  7 noexcl CBZ,
@@ -89,7 +89,7 @@ $D4000001 constant SYS-EMIT-SVC                          \ svc #0
    7 $10 MOVZ,  7 7 16 LSLI,  7 1 7 AND,
    LBL {: nodirectory :} \ typed-local-lint: allow-bare-local - stock Gforth rejects Habu type suffixes.
    7 nodirectory CBZ,
-      7 $4000 MOVZ,  6 6 7 ORR,
+      7 1 MOVZ,  7 7 16 LSLI,  6 6 7 ORR,
    nodirectory LBL,
    2 6 0 ADDI, ;
 

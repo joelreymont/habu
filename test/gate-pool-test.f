@@ -7,6 +7,7 @@ require lib/adt/option.f                 \ option<CAD-NUM:index> STR:INDEX-OF co
 require lib/test.f
 require lib/memory.f
 require lib/fs.f
+require lib/fs-atomic.f
 require lib/fs-mutate.f
 require lib/process.f
 require lib/process-argv.f
@@ -372,6 +373,19 @@ create GPT-GEN-SAVE GS-GEN-CAP allot
 variable GPT-SG-PATH-U
 variable GPT-GEN-SAVE-U
 
+package GPT-ATOMIC
+private
+
+create CTX FS-ATOMIC:CONTEXT-SIZE allot
+
+public
+
+: WRITE ( ptr u8 n ptr u8 n -- ) {: path:ptr pathu:n a:ptr u:n :}
+   CTX FS-ATOMIC:CONTEXT-SIZE path pathu a u
+   FS-ATOMIC:WRITE FS-ATOMIC:MUST-COMMIT ;
+
+;package
+
 : GPT-GEN-SAVE! ( -- )
    GS-GEN$ {: a:ptr u:n :}
    a GPT-GEN-SAVE u BYTE-COPY
@@ -385,7 +399,7 @@ variable GPT-GEN-SAVE-U
 
 : GPT-SG-FIXTURE! ( -- )
    GT-ROOT s" spawn-gen.f" GPT-SG-PATH JOIN-PATH GPT-SG-PATH-U !
-   GPT-SG-PATH$ S\" s\" spawn gen label\" 3 GS-SPAN" ATOMIC-WRITE-FILE ;
+   GPT-SG-PATH$ S\" s\" spawn gen label\" 3 GS-SPAN" GPT-ATOMIC:WRITE ;
 
 : GPT-SG-ARGV ( -- )
    PROC-ARGV-RESET

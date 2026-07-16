@@ -18,7 +18,6 @@ $2F constant FS-MUT-SLASH
 
 create FS-MUT-PATHZ2-BUF FS-PATHZ-CAP allot
 create FS-MUT-COPY-BUF FS-MUT-COPY-CAP allot
-create FS-MUT-ATOMIC-PATH FS-PATH-CAP allot
 create FS-MUT-TMP-PATH FS-PATH-CAP allot
 create FS-MUT-CLEANUP-PATHS FS-MUT-CLEANUP-MAX FS-PATH-CAP * allot
 create FS-MUT-CLEANUP-US FS-MUT-CLEANUP-MAX cells allot
@@ -31,18 +30,16 @@ variable FS-MUT-COPY-WR
 variable FS-MUT-COPY-OFF
 variable FS-MUT-CLEANUP-N
 
-create FS-MUT-ATOMIC-SUFFIX
-   FS-MUT-DOT c, 116 c, 109 c, 112 c,
-
 : FS-MUT-PATHZ2 ( ptr u8 n -- ptr u8 )
    FS-MUT-PATHZ2-BUF FS-PATHZ-INTO ;
 
-: FS-MUT-CHECK-SUFFIX-CAP ( n n -- ) {: u su :}
+: FS-MUT-CHECK-SUFFIX-CAP ( n n -- ) {: u:n su:n :}
    u 0 < if E-FS-PATH throw then
    su 0 < if E-FS-PATH throw then
    u su + FS-PATH-CAP > if E-FS-CAPACITY throw then ;
 
-: FS-MUT-SUFFIX-PATH ( ptr u8 n ptr u8 n ptr u8 -- n ) {: a:ptr u s:ptr su dst:ptr :}
+: FS-MUT-SUFFIX-PATH ( ptr u8 n ptr u8 n ptr u8 -- n )
+   {: a:ptr u:n s:ptr su:n dst:ptr :}
    u su FS-MUT-CHECK-SUFFIX-CAP
    a dst u BYTE-COPY
    s dst u + su BYTE-COPY
@@ -170,7 +167,7 @@ create FS-MUT-ATOMIC-SUFFIX
 : FS-MUT-COPY-OPEN-DST ( ptr u8 n -- ) {: dst:ptr dstu :}
    dst dstu FS-MUT-COPY-CHECK-DST
    dst dstu FS-MUT-PATHZ2
-   FS-O-WRONLY FS-O-CREAT or FS-O-TRUNC or FS-MODE-0644 open FS-MUT-COPY-OUT !
+   FS:O-WRONLY FS:O-CREAT or FS:O-TRUNC or FS-MODE-0644 open FS-MUT-COPY-OUT !
    FS-MUT-COPY-OUT @ 0 < if E-FS-OPEN FS-MUT-COPY-THROW then ;
 
 : FS-MUT-COPY-WRITE-CHUNK ( n -- ) {: u :}
@@ -196,11 +193,6 @@ create FS-MUT-ATOMIC-SUFFIX
    repeat
    FS-MUT-COPY-IN FS-MUT-CLOSE-COPY-FD
    FS-MUT-COPY-OUT FS-MUT-CLOSE-COPY-FD ;
-
-: ATOMIC-WRITE-FILE ( ptr u8 n ptr u8 n -- ) {: path:ptr pathu src:ptr srcu :}
-   path pathu FS-MUT-ATOMIC-SUFFIX 4 FS-MUT-ATOMIC-PATH FS-MUT-SUFFIX-PATH {: tempu :}
-   FS-MUT-ATOMIC-PATH tempu src srcu WRITE-ALL
-   FS-MUT-ATOMIC-PATH tempu path pathu RENAME-FILE ;
 
 : FS-MUT-SB-U ( n -- ) {: n :}
    n 0 < if E-FS-PATH throw then

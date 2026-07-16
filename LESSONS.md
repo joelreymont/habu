@@ -5205,3 +5205,40 @@ unchanged (148855). Keys for milestone 2:
   test that sampled only a few constants missed Linux recovery `fstat` using
   `newfstatat`'s number and a target-only `link`; exact full-surface parity is
   the regression boundary before an atomic publisher can be trusted.
+- **Injected syscall hooks must preserve the production word's error contract.**
+  A no-follow swap fixture called legacy `open`, collapsing exact `ELOOP` into
+  `-1`; use `open-errno` when the checked result promises the raw failure code.
+- **Code blocked on an unavailable type definer has no typed proof yet.** A
+  pointer/index mixup survived because payload `ENUM` failed before the checker
+  reached the body; manually review stack arithmetic and keep the module
+  unlanded until its exact checked load succeeds.
+- **Do not apply word-case rules to declaration data.** Type, field, and variant
+  identifiers are lowercase DSL tokens; only callable project words and package
+  names are uppercase. Run the focused declaration parse before bulk case edits.
+- Habu syscall flags are a canonical internal ABI; OS seams translate them in
+  `OS-OPEN-FLAGS`. Verify translations against each kernel ABI instead of
+  selecting target values in library code.
+- **Decode kernel records through one target-normalizing package.** Inode,
+  device, link-count, and mode offsets are ABI policy; callers should consume
+  `FS-STAT:*` accessors rather than copy Linux/macOS offsets into each security
+  state machine.
+- **A security mechanism must close a distinct threat path.** Under an already
+  verified non-writable or sticky parent, a private temp directory protects no
+  attacker that a random exclusive sibling inode does not; it only multiplies
+  resource states and failure paths. Keep the inode identity check and remove
+  the redundant directory.
+- **Final review needs an immutable revision.** A read-only agent inspecting a
+  changing dirty workspace can guide implementation, but it cannot certify the
+  merge candidate; commit and push the exact revision before the destruction
+  pass that gates integration.
+- **Inode-swap tests must keep the old inode live.** Unlinking and immediately
+  recreating one path can reuse the same inode number and make an identity test
+  pass spuriously; hold an open descriptor until the replacement exists.
+- **A structured result must remain structured until an explicit system
+  boundary.** Convenience `!` wrappers that project a multi-field failure to one
+  throw code hide cleanup and durability evidence; keep one result-producing API
+  and make command/test boundaries consume every variant.
+- **A deduplication is only a simplification when it deletes more state than it
+  adds.** Do not introduce retired type syntax or a second scratch abstraction
+  merely to share two short walkers; first prove one owner can replace both
+  lifecycle state machines with fewer total states and failure paths.

@@ -10,8 +10,12 @@ private
 
 $78563412 constant U32-VALUE
 448 constant MODE-0700
-$200 constant LINUX-REMOVE-DIR
-$80 constant MACOS-REMOVE-DIR
+$8 constant CANON-O-APPEND
+$200 constant CANON-O-CREAT
+$400 constant CANON-O-TRUNC
+$800 constant CANON-O-EXCL
+$100000 constant CANON-O-DIRECTORY
+$100 constant CANON-O-NOFOLLOW
 
 create U32-BYTES
    $12 c, $34 c, $56 c, $78 c,
@@ -103,11 +107,6 @@ variable IO-OFF
 : CLOSE-MUST ( fd -- )
    close-rc MUST-RC ;
 
-: REMOVE-DIR-FLAG ( -- n )
-   HB-TARGET-LINUX? if LINUX-REMOVE-DIR exit then
-   HB-TARGET-MACOS? if MACOS-REMOVE-DIR exit then
-   FS-TARGET-UNKNOWN ;
-
 : HAS ( ptr u8 n ptr u8 n -- ) {: path:ptr pathu:n text:ptr textu:n :}
    path pathu LINT-SOURCE:LOAD
    LINT-SOURCE:TEXT text textu LINT-CONTAINS? TTRUE ;
@@ -169,17 +168,26 @@ variable IO-OFF
    s" bootstrap/cg/sys.fs" s" -2 constant AT-FDCWD" HAS ;
 
 : FLAGS ( -- )
+   s" lib/fs.f" s" $8 constant O-APPEND" HAS
+   s" lib/fs.f" s" $200 constant O-CREAT" HAS
+   s" lib/fs.f" s" $400 constant O-TRUNC" HAS
    s" lib/fs.f" s" $800 constant O-EXCL" HAS
    s" lib/fs.f" s" $100000 constant O-DIRECTORY" HAS
    s" lib/fs.f" s" $100 constant O-NOFOLLOW" HAS
    s" lib/fs.f" s" 420 constant MODE-0644" HAS
    s" lib/fs.f" s" 493 constant MODE-0755" HAS
-   s" src/os/linux/sys.f" s" 7 $8000 MOVZ" HAS
+   CANON-O-APPEND FS:O-APPEND T=
+   CANON-O-CREAT FS:O-CREAT T=
+   CANON-O-TRUNC FS:O-TRUNC T=
+   CANON-O-EXCL FS:O-EXCL T=
+   CANON-O-DIRECTORY FS:O-DIRECTORY T=
+   CANON-O-NOFOLLOW FS:O-NOFOLLOW T=
+   s" src/os/linux/sys.f" s" 7 2 MOVZ,  7 7 16 LSLI,  6 6 7 ORR," HAS
+   s" src/os/linux/sys.f" s" 7 1 MOVZ,  7 7 16 LSLI,  6 6 7 ORR," HAS
+   s" bootstrap/cg/sys.fs" s" 7 2 MOVZ,  7 7 16 LSLI,  6 6 7 ORR," HAS
+   s" bootstrap/cg/sys.fs" s" 7 1 MOVZ,  7 7 16 LSLI,  6 6 7 ORR," HAS
    s" src/os/linux/sys.f" s" 7 $80 MOVZ" HAS
-   s" src/os/linux/sys.f" s" 7 $4000 MOVZ" HAS
-   s" bootstrap/cg/sys.fs" s" 7 $8000 MOVZ" HAS
-   s" bootstrap/cg/sys.fs" s" 7 $80 MOVZ" HAS
-   s" bootstrap/cg/sys.fs" s" 7 $4000 MOVZ" HAS ;
+   s" bootstrap/cg/sys.fs" s" 7 $80 MOVZ" HAS ;
 
 : PRIMITIVES ( -- )
    s" src/habu/habu1.f" S\" s\" openat\" ['] BOPENAT FPRIM-L" HAS
@@ -213,18 +221,24 @@ variable IO-OFF
    [: BAD-PATH ;] E-FS-PATH-UNSAFE TTHROWSQ
    s" lib/fs.f" FS-PATHZ open-rd dup 0 < if drop E-FS-OPEN throw then >FD
    {: fd:fd :}
-   fd FS:TRY-FSTAT TTRUE
-   FS:STAT-INO@ 0 > TTRUE
-   FS:STAT-NLINK@ 0 > TTRUE
-   fd close-rc RC>N 0 T= ;
+   fd STAT-BUF FS:TRY-FSTAT TTRUE
+   STAT-BUF FS-STAT:MODE@ S-IFMT and S-IFREG T=
+   STAT-BUF FS-STAT:DEV@ 0 >= TTRUE
+   STAT-BUF FS-STAT:INO@ 0 > TTRUE
+   STAT-BUF FS-STAT:NLINK@ 0 > TTRUE
+   STAT-BUF FS-STAT:REGULAR? TTRUE
+   fd close-rc RC>N 0 T=
+   s" ." FS-PATHZ FS:O-DIRECTORY FS:O-NOFOLLOW or 0 open N>FD {: root:fd :}
+   root STAT-BUF FS:TRY-FSTAT TTRUE
+   STAT-BUF FS-STAT:DIRECTORY? TTRUE
+   root close-rc RC>N 0 T= ;
 
 : RUNTIME ( -- )
    PATHS!
    ROOT-Z FS:O-DIRECTORY FS:O-NOFOLLOW or 0 open N>FD {: dir:fd :}
-   dir REL-A FS-O-RDWR FS-O-CREAT or FS:O-EXCL or FS:O-NOFOLLOW or
+   dir REL-A FS:O-RDWR FS:O-CREAT or FS:O-EXCL or FS:O-NOFOLLOW or
    $180 openat N>FD {: file:fd :}
    dir REL-DIR MODE-0700 mkdirat MUST-RC
-   dir REL-DIR REMOVE-DIR-FLAG unlinkat MUST-RC
    file s" abc" WRITE-SPAN
    file fsync MUST-RC
    file FS:MODE-0755 fchmod MUST-RC

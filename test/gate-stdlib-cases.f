@@ -409,6 +409,8 @@ TEST:SUITE tail-pure-fixtures
    lib/vector-test.f
    lib/layout/box-test.f
    lib/fs-test.f
+   lib/fs-stream-test.f
+   lib/fs-atomic-test.f
    tools/fs-primitive-parity-test.f
    tools/bootstrap-codegen-test.f
    tools/asm-src-test.f

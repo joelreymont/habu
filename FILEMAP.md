@@ -1127,6 +1127,10 @@ points stay listed.
   ad-hoc signing helpers and their coverage.
 - `lib/fs.f` / `lib/fs-test.f` — checked filesystem helpers (walks, reads,
   stat) and their coverage.
+- `lib/fs-stream.f` / `lib/fs-stream-test.f` — checked componentwise no-follow
+  regular-file streaming and structured primary-plus-close failure coverage.
+- `lib/fs-atomic.f` / `lib/fs-atomic-test.f` — descriptor-relative
+  same-directory atomic publication and adversarial durability/cleanup coverage.
 - `lib/fs-root.f` — checked write-and-search directory predicate for persistent
   roots.
 - `lib/fs-mutate.f` / `lib/fs-mutate-test.f` — checked filesystem mutation

@@ -727,7 +727,7 @@ GT-POOL-ABORT-KILL!
    idx stream GT-POOL-STREAM-PATH-U-PTR ! ;
 
 : GT-POOL-CAPTURE-OPEN-FD ( ptr u8 n -- fd ) {: pa:ptr pu:n :}
-   pa pu FS-PATHZ FS-O-WRONLY FS-O-CREAT or FS-O-TRUNC or FS-MODE-0644 open {: raw:n :}
+   pa pu FS-PATHZ FS:O-WRONLY FS:O-CREAT or FS:O-TRUNC or FS-MODE-0644 open {: raw:n :}
    raw 0 < if E-FS-OPEN GT-POOL-THROW then
    raw >FD ;
 
