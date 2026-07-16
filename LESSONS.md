@@ -5068,3 +5068,7 @@ unchanged (148855). Keys for milestone 2:
   proves API ownership but does not schedule the test. Add every owning test to
   both its executable gate group and the declarative suite inventory so the
   suite-coverage lint makes future schedule removal fail closed.
+- **Validate linear authority before taking a shared lock.** Registry lookup can
+  reject stale, foreign, or forged handles. Perform that fallible validation
+  before acquiring the non-reentrant lifecycle lock so rejection cannot leave
+  every later operation spinning forever.

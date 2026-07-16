@@ -531,6 +531,9 @@ variable FRAME-OFF
 : MASTER-FD ( process-pty-handle -- process-pty-handle fd )
    VIEW >r >r >r 2drop r> r> drop r> drop ;
 
+: VALID-HANDLE ( process-pty-handle -- process-pty-handle )
+   VIEW >r >r >r 2drop r> drop r> drop r> drop ;
+
 : OP-RESET ( -- )
    0 OP-ERR !
    0 OP-STATUS ! ;
@@ -631,6 +634,7 @@ public
    rc >COUNT ;
 
 : WAIT ( process-pty-handle -- outcome )
+   VALID-HANDLE
    LOCK
    TAKE TEARDOWN-VIEW OP-SAVE
    OP-RESET
@@ -639,6 +643,7 @@ public
    OP-FINISH ;
 
 : KILL ( process-pty-handle -- outcome )
+   VALID-HANDLE
    LOCK
    TAKE TEARDOWN-VIEW OP-SAVE
    OP-RESET
