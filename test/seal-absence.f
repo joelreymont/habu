@@ -5,7 +5,9 @@
 \ engine (src/habu/habu1.f) carries the full sink set; the Gforth stage0 mirror
 \ (bootstrap/cg/forth.fs) is a strict SUBSET — it has no atomics, no snap-rebase,
 \ no readlink/stat64/lstat64/getdirentries64/poll/ffi-call syscalls and no
-\ CHECKER-* registry mutators. 2b-i already mirrored GUARD-SPAN onto the sinks stage0 DOES
+\ CHECKER-* registry mutators except the reviewed checker-defer registration
+\ bridge, whose exact sites are presence-pinned below (SAB-REAL-CHKDEFER).
+\ 2b-i already mirrored GUARD-SPAN onto the sinks stage0 DOES
 \ have (BSTORE/BPLUSSTORE/BCSTORE, read/ioctl/mmap buffers, patch32) plus
 \ EMIT-SEAL-FRIEND-TOKEN on both cold-prefix entry paths, and test/seal.f runtime-proves
 \ those traps against the sealed candidate.
@@ -72,6 +74,7 @@ $800 constant SAB-NAMES-CAP             \ packed absent-name table capacity (byt
 92 constant SAB-BSLASH                  \ ASCII '\' — the line-comment introducer
 10 constant SAB-GUARD-PINS              \ GUARD-SPAN definition + bounded/runtime sink lines
 3 constant SAB-SEAL-PINS                \ EMIT-SEAL-FRIEND code sites: 1 def + 2 entry seals
+2 constant SAB-CHKDEFER-PINS            \ CHECKER-DEFER code sites: C-CALL-CHECKER-DEFER def + C-DEFER call
 
 variable SAB-VIOL#                      \ unguarded surfaces found in the current scan
 variable SAB-REPORT?                    \ -1 while scanning real forth.fs (print offenders)
@@ -113,7 +116,7 @@ variable SAB-NAMES-LEN
 : SAB-ADD-CHECKER ( -- )
    s" CHECKER-PACKAGE" SAB-NAME,  s" CHECKER-PUBLIC" SAB-NAME,
    s" CHECKER-PRIVATE" SAB-NAME,  s" CHECKER-END-PACKAGE" SAB-NAME,
-   s" CHECKER-DEFER" SAB-NAME,  s" CHECKER-USIG-ADD" SAB-NAME,
+   s" CHECKER-USIG-ADD" SAB-NAME,
    s" CHECKER-UNDEFINE" SAB-NAME,  s" CHECKER-DEFTYPE" SAB-NAME,
    s" CHECKER-DEFLINEAR" SAB-NAME,  s" CHECKER-DEFRECORD" SAB-NAME,
    s" CHECKER-USIGS-TRUNCATE-FROM" SAB-NAME, ;
@@ -279,11 +282,25 @@ variable SAB-READY
    s" LPROTWIDQ" SAB-PRESENT
    s" C-PACKAGE-PROT-GUARD" SAB-PRESENT ;
 
+\ Deliberate stage0 checker-record surface (dot habu-mirror-checker-defer-6a8a366e):
+\ mirror C-DEFER calls the checker's `checker-defer` word through
+\ C-CALL-CHECKER-DEFER, exactly as native habu2.f C-DEFER does, so a defer's
+\ declared effect is registered and a CHECKED `is NAME` fit-checks on the
+\ stage0 path. This ADDS certification capability and bypasses no guard: it is
+\ an engine->checker dictionary find + call (the audited C-CALL-TRUST-PEND
+\ shape), never a computed raw store into the friend arena. The EXACT
+\ code-line occurrence count is pinned so any FUTURE use of this surface
+\ re-trips the fence and forces this review again.
+: SAB-REAL-CHKDEFER ( -- )
+   s" stage0 checker-defer bridge is pinned at its reviewed sites" T-LABEL
+   SAB-FORTH$ s" CHECKER-DEFER" SAB-COUNT-CODE SAB-CHKDEFER-PINS T= ;
+
 : SAB-REAL-TESTS ( -- )
    SAB-LOAD-FORTH
    SAB-REAL-ABSENCE
    SAB-REAL-GUARDS
-   SAB-REAL-PROTWID ;
+   SAB-REAL-PROTWID
+   SAB-REAL-CHKDEFER ;
 
 : SAB-MAIN ( -- )
    T-RESET

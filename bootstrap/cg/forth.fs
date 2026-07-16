@@ -367,7 +367,7 @@ variable LKWDOES variable LKWQUOT variable LKWSEMIQ
 variable LKWDEFER variable LKWIS variable LKWDEFERUNSET   \ deferred-word keywords (mirrors src/habu/habu2.f)
 variable LKWTRUSTED variable LKWTRUST variable LKWCHKDOES variable LKWKERNEL
 variable LKWPACKAGE variable LKWPUBLIC variable LKWPRIVATE variable LKWSEMIPACKAGE
-variable LCHKPACKAGE variable LCHKPUB variable LCHKPRI variable LCHKENDPKG
+variable LCHKPACKAGE variable LCHKPUB variable LCHKPRI variable LCHKENDPKG variable LCHKDEFER
 variable LRESCHECKCERT variable LRESLOWERCERT variable LRESLOWERHOOK variable LRESENGINEERROR
 variable LKWAT2 variable LKWSTORE2 variable LP2FETCH variable LP2STORE
 variable LKWTUCK3 variable LKWROT3 variable LKWMROT3
@@ -2303,6 +2303,7 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
    LKWPRIVATE @ LBL, s" private" BYTES,  LKWSEMIPACKAGE @ LBL, s" ;package" BYTES,
    LCHKPACKAGE @ LBL, s" checker-package" BYTES,  LCHKPUB @ LBL, s" checker-public" BYTES,
    LCHKPRI @ LBL, s" checker-private" BYTES,  LCHKENDPKG @ LBL, s" checker-end-package" BYTES,
+   LCHKDEFER @ LBL, s" checker-defer" BYTES,
    LRESCHECKCERT @ LBL, s" checker-cert" BYTES,
    LRESLOWERCERT @ LBL, s" lower-cert" BYTES,
    LRESLOWERHOOK @ LBL, s" lower-cert-hook" BYTES,
@@ -4338,6 +4339,19 @@ variable CFSK2
    11 DEFER-MAGIC LIT64,  11 28 0 STR,  28 28 8 ADDI,
    11 DATA DEFER-XT-CELL LDR,  11 28 0 STR,  28 28 8 ADDI, ;
 
+\ Engine->checker registration bridge (mirrors src/habu/habu2.f C-CALL-CHECKER-DEFER).
+\ At `defer NAME` compile time the engine calls the checker's `checker-defer` word
+\ (13 bytes) with NAME so the seed's checker learns the defer: a later CHECKED
+\ `is NAME` fit-checks (CHECKER-FIND-ACTIVE-DEFER) instead of failing closed. x11
+\ holds the found XT; x12 must be the defer's record (PEND-CELL) for C-PUSH-DREC-NAME.
+\ die 70 if `checker-defer` is absent (checker.f is a boot-prefix file, so it is
+\ always resolvable by the time any user defer compiles), matching the native seed.
+: C-CALL-CHECKER-DEFER ( -- )
+   LCHKDEFER 13 C-P2-FIND-GLOBAL
+   12 DATA PEND-CELL LDR,
+   C-PUSH-DREC-NAME
+   C-CALL-X11-SAVED ;
+
 \ defer NAME ( sig ) : create NAME. The signature is required (parsed + consumed,
 \ unchecked in stage0). clen spans the whole body incl RET, so addr+clen lands
 \ exactly on the trailer.
@@ -4363,6 +4377,9 @@ variable CFSK2
    NDICT NDICT 1 ADDI,
    9 DATA PEND-CELL LDR,  9 9 0 LDR,               \ x9 = body start for the flush
    2 5 MOVZ,  LPROT @ BL,  LFLUSH @ BL,             \ region -> RX + flush
+   C-CALL-TRUST-PEND                                \ register the defer's declared effect (checker usig row)
+   C-CALL-CHECKER-DEFER                             \ mark it a defer so a checked `is NAME` fit-checks
+   EM-REC-WIDE-PUBLISH                              \ publish wide/min-in record marks (hook-guarded, no-op unset)
    9 0 MOVZ,  9 DATA PEND-CELL STR, ;               \ clear PEND
 
 \ is NAME : resolve NAME's dispatch cell via its meta trailer (FIND addr+clen ->
@@ -5807,7 +5824,7 @@ variable P2SK
    LBL LKWIMM !  LBL LKWPOST !  LBL LKWCOMPC !  LBL LKWDOES !
    LBL LKWTRUSTED !  LBL LKWTRUST !  LBL LKWCHKDOES !  LBL LKWKERNEL !
    LBL LKWPACKAGE !  LBL LKWPUBLIC !  LBL LKWPRIVATE !  LBL LKWSEMIPACKAGE !
-   LBL LCHKPACKAGE !  LBL LCHKPUB !  LBL LCHKPRI !  LBL LCHKENDPKG !
+   LBL LCHKPACKAGE !  LBL LCHKPUB !  LBL LCHKPRI !  LBL LCHKENDPKG !  LBL LCHKDEFER !
    LBL LRESCHECKCERT !  LBL LRESLOWERCERT !  LBL LRESLOWERHOOK !  LBL LRESENGINEERROR !
    LBL LKWQUOT !  LBL LKWSEMIQ !
    LBL LKWDEFER !  LBL LKWIS !  LBL LKWDEFERUNSET !

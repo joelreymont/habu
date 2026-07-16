@@ -222,6 +222,33 @@ TRUSTED: BWM-CALL-DEF ( -- n ) BWM-DEF ;
    BWM-DEF-A  BWM-CALL-DEF 42 BWM=            \ is installs a target -> dispatch returns 42
    BWM-DEF-B  BWM-CALL-DEF 99 BWM= ;          \ a second is re-points -> 99
 
+\ CHECKED-path defer / is round-trip (dot habu-mirror-checker-defer-6a8a366e).
+\ The stage2 engine-hook migration puts `is` inside CHECKED (non-TRUSTED)
+\ definitions that compile after the check hook is live, so the mirror C-DEFER
+\ must register the defer's declared effect with the checker (the trust usig row
+\ plus the checker-defer row), exactly as native habu2.f C-DEFER does. Without
+\ that bridge the seed's check hook rejects the installer body with exit 70
+\ 'hook: non-certified definition: bwm-cdef! at is'. Unlike the TRUSTED sibling
+\ above, BWM-CDEF! is a plain `:` word carrying an xt-effect parameter (the
+\ stage2a hook shape `: FOO! ( [E] -- ) is FOO ;`): its `is BWM-CDEF` and the
+\ later checked BWM-CDEF calls certify only once the seed's checker learns the
+\ defer.
+defer BWM-CDEF ( -- n )
+
+: BWM-CDEF! ( [ -- n ] -- )  is BWM-CDEF ;          \ checked installer (xt-effect param)
+: BWM-CDEF-A ( -- )  [: 42 ;] BWM-CDEF! ;           \ install a 42-returning target
+: BWM-CDEF-B ( -- )  [: 99 ;] BWM-CDEF! ;           \ re-install a 99-returning target
+: BWM-CALL-CDEF ( -- n )  BWM-CDEF ;                \ checked call through the defer
+
+: BWM-TEST-CDEFER ( -- )
+   s" BWM-CDEF" BWM-XT {: xt:n :}
+   xt 44 BWM-W32  $46455201 BWM=              \ DEFER-MAGIC low word: meta trailer sits at addr+clen
+   xt 48 BWM-W32  $48424445 BWM=              \ DEFER-MAGIC high word
+   xt 52 + BWM-RD64 BWM-RD64                  \ the fresh dispatch cell's value
+   s" DEFER-UNSET" BWM-XT BWM=                \ = DEFER-UNSET code addr (fail closed, before any is)
+   BWM-CDEF-A  BWM-CALL-CDEF 42 BWM=          \ checked is installs a target -> dispatch returns 42
+   BWM-CDEF-B  BWM-CALL-CDEF 99 BWM= ;        \ a second checked is re-points -> 99
+
 variable BWM-CF-ACC
 
 \ Direct stage0 (Gforth-hosted seed) proof of the extended handler frame
@@ -249,5 +276,6 @@ variable BWM-CF-ACC
 BWM-TEST-GOLDENS
 BWM-TEST-RUNTIME
 BWM-TEST-DEFER
+BWM-TEST-CDEFER
 BWM-TEST-CATCH-FRAME
 BWM-REPORT
