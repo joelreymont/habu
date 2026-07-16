@@ -1,9 +1,9 @@
 ---
 title: Checked image writers
-status: open
+status: active
 priority: 2
 issue-type: task
-created-at: "2026-07-01T23:07:20.896981+02:00"
+created-at: "\"2026-07-01T23:07:20.896981+02:00\""
 ---
 
 Rewrite src/os/{linux/elf.f,linux/sign.f,macos/macho.f,macos/sign2.f} under records + ptr-arith capability so BF-APPEND-CHECK-OFF (build-fixpoint.f:536) and BF-APPEND-IMAGE-TRUSTS (:555-560, 5 generated TRUST rows) are deleted - the image writers become ordinary checked source in stage2. Also converts aot-lib.f's open 0-set-check region (~237 ln ARM64 relocation core) into named TRUSTED: words at minimum (raw region -> named+tested boundaries). Effort M (~4d). Depends: ptr-arith + dict-record capabilities.
@@ -65,3 +65,5 @@ aot-lib gap inventory (next blocker verbatim, then suspects in file order):
   expect a small named TRUSTED: set (per this dot's original "named
   boundaries at minimum") for the patch32-class stores.
 Estimated remainder: the ~180 lines from RAW-LEN to AOT-LINK.
+
+Claim: agent=aotlib workspace=.jj-ws/fable-aotlib (scope: the remaining aot-lib.f half per the gap inventory)
