@@ -5026,3 +5026,12 @@ unchanged (148855). Keys for milestone 2:
   The earlier fix spec (AOT-capture canonicalization) compared the wrong
   artifact — no engine change was needed; tools/ddc-verify.f encodes the
   correct chain.
+- **Device goldens for hand-built (non-capturable) IR: feed the child driver
+  via a shared checked source-text builder that the parent also EVALUATEs.**
+  (rx1fold lane.) One source of truth for both legs; the off-device load
+  already validates the child text (the EVALUATE build must succeed), so the
+  only thing pending device time is the compare itself — stronger than the
+  MODEL-text duplication in older device tests. Also a dispatch-protocol
+  reminder: read the dot BODY (landed-leg/residual annotations), not just the
+  Desc head — this dot's host leg had landed 8 days before dispatch and the
+  annotation said so.
