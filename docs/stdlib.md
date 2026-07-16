@@ -35,6 +35,8 @@ Planned module files:
 - `lib/process-fork.f`
 - `lib/process-pty-handle.f`
 - `lib/process-pty-handle-test.f`
+- `lib/process-pty-io.f`
+- `lib/process-pty-io-test.f`
 - `lib/process-argv.f`
 - `lib/process-env.f`
 - `lib/process-command.f`
@@ -1273,22 +1275,36 @@ or `PROC-WAIT-OUTCOME`. A failed raw fork returns a negative target code;
 `PROC-FORK` converts that to `E-PROC-SPAWN`.
 
 `lib/process-pty-handle.f` owns the private generation-indexed PTY registry and
-the linear `process-pty-reservation` and `process-pty-handle` authorities.
+the linear `process-pty-reservation`, `process-pty-handle`, and
+`process-pty-teardown` authorities.
 `RESERVE` produces one linear reservation; `COMMIT` consumes it into exactly one
-live handle, while `CANCEL` consumes it without publishing a handle. Consuming
-operations retire the registry slot before returning resources, so cleanup
-cannot downgrade authority to a copyable slot index. Reservation records the
-creating process id. Every handle operation validates the slot, generation,
-live state, and current `getpid` before exposing registry state, so a fork
-child's copy-on-write registry cannot authorize a parent-owned handle. The
-current public query is:
+live handle, while `CANCEL` consumes it without publishing a handle. `TAKE`
+consumes the live handle into teardown authority; only `TEARDOWN-DONE` retires
+the slot after every resource outcome has been observed. No reservation, raw
+slot identity, pid, fd, or teardown authority is public. Reservation records
+the creating process id. Every internal operation validates the slot,
+generation, lifecycle state, and current `getpid`, so a fork child's
+copy-on-write registry cannot authorize a parent-owned handle.
+
+`lib/process-pty-io.f` is the public linear session surface:
 
 ```forth
-PROCESS-PTY:HANDLE-PID ( process-pty-handle -- process-pty-handle pid )
+PROCESS-PTY:START   ( ptr u8 len -- process-pty-handle )
+PROCESS-PTY:WRITE   ( process-pty-handle ptr u8 n -- process-pty-handle )
+PROCESS-PTY:READ    ( process-pty-handle ptr u8 n -- process-pty-handle n )
+PROCESS-PTY:POLL-IN ( process-pty-handle ms -- process-pty-handle count )
+PROCESS-PTY:WAIT    ( process-pty-handle -- outcome )
+PROCESS-PTY:KILL    ( process-pty-handle -- outcome )
 ```
 
-It preserves the linear handle and returns the supervised target pid, or throws
-`E-PROC-PTY-HANDLE` for stale, forged, inactive, or foreign-process authority.
+`START` creates a session leader, a distinct target process group, a controlling
+PTY, an exec-status handshake, and an owner-lifetime watch before publishing the
+handle. `WAIT` and `KILL` consume it, validate positive pids before wait or
+group-kill, observe syscall results, close every fd, wait the supervisor, and
+retire teardown authority exactly once. If the owner process exits, the
+supervisor kills and reaps the target group. Invalid, stale, inactive, or
+foreign-process authority throws `E-PROC-PTY-HANDLE`; I/O and wait failures are
+reported as `E-PROC-OUTPUT` and `E-PROC-WAIT` after teardown.
 
 Capture spawns can carry a death reaper. `PROC-REAP-ARM ( pid -- pid )` is a
 typed execution vector consulted by every `PROC-RUN-*` capture spawn (via

@@ -1033,6 +1033,8 @@ points stay listed.
   supervisor handles.
 - `lib/process-pty-io.f` — framed PTY supervisor protocol, stable exec inputs,
   and lifetime-watch helpers.
+- `lib/process-pty-io-test.f` — real PTY I/O, owner-death cleanup, syscall-error,
+  and exact-once teardown coverage.
 - `lib/process-cwd.f` — checked child cwd process helpers layered on prepared argv/envp.
 - `lib/process-cwd-test.f` — focused coverage for child cwd spawn, capture, cleanup, and validation.
 - `lib/source.f` — checked source materialization and source-list transforms.
@@ -1083,8 +1085,11 @@ points stay listed.
   coverage.
 - `lib/process-pty-handle.f` / `lib/process-pty-handle-test.f` — private
   generation-indexed linear reservation-to-handle PTY authority registry plus
-  the public `PROCESS-PTY:HANDLE-PID` ownership check; lifecycle coverage proves
-  single-mint, cancel, consume, stale/reuse/capacity, and fork ownership rules.
+  lifecycle coverage for single-mint, cancel, consuming teardown,
+  stale/reuse/capacity, and fork ownership rules.
+- `lib/process-pty-io.f` / `lib/process-pty-io-test.f` — public linear PTY
+  session operations plus real foreground-group I/O, owner-death cleanup,
+  syscall-error propagation, and recovery coverage.
 - `lib/process-argv.f` / `lib/process-argv-test.f` — checked argv process
   helpers and their coverage.
 - `lib/process-command.f` / `lib/process-command-test.f` — checked

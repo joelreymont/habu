@@ -98,13 +98,17 @@ create RFLT-OUT-BUF RFLT-OUT-CAP allot
    s" maki/async-dag-test.f" s" 0 RAW>ASTREAM drop" RFL-COUNT-STR-AT 0 T=
    s" lib/process-pty-handle.f" s" 0 N>HANDLE drop" RFL-COUNT-STR-AT 0 T=
    s" lib/process-pty-handle-test.f" s" 0 N>HANDLE drop" RFL-COUNT-STR-AT 0 T=
+   s" lib/process-pty-io-test.f" s" 0 N>HANDLE drop" RFL-COUNT-STR-AT 0 T=
    s" lib/process-pty-handle.f" s" 0 N>RESERVATION drop" RFL-COUNT-STR-AT 0 T=
    s" lib/process-pty-handle-test.f" s" 0 N>RESERVATION drop" RFL-COUNT-STR-AT 0 T=
+   s" lib/process-pty-handle.f" s" 0 N>TEARDOWN drop" RFL-COUNT-STR-AT 0 T=
+   s" lib/process-pty-handle-test.f" s" 0 N>TEARDOWN drop" RFL-COUNT-STR-AT 0 T=
    \ another mint's owner is not this mint's boundary
    s" maki/tensor.f" s" 0 RAW>SLOT drop" RFL-COUNT-STR-AT 1 T=
    s" maki/eval.f" s" 0 RAW>AEVENT drop" RFL-COUNT-STR-AT 1 T=
    s" lib/process.f" s" 0 N>HANDLE drop" RFL-COUNT-STR-AT 1 T=
    s" lib/process.f" s" 0 N>RESERVATION drop" RFL-COUNT-STR-AT 1 T=
+   s" lib/process.f" s" 0 N>TEARDOWN drop" RFL-COUNT-STR-AT 1 T=
    \ any other tree file is a finding
    s" maki/eval.f" s" 0 RAW>SLOT drop" RFL-COUNT-STR-AT 1 T= ;
 

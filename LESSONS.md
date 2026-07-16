@@ -9,6 +9,11 @@ Last updated: 2026-07-16
   linear handles. Make reservation itself linear, consume it into one handle,
   and keep teardown authority linear until the registry slot is retired.
 
+- **Do not project ambient process authority from a linear handle.** Public pids
+  or fds let callers bypass consuming `WAIT`/`KILL`; keep them private, publish
+  only handle-preserving I/O, and prove owner death with a kernel lifetime pipe
+  watched by a distinct supervisor that kills and reaps the target group.
+
 - **A syscall primitive must expose failure before libraries can preserve it.**
   The legacy `close ( fd -- )` effect erased the kernel return code, so checked
   cleanup could not distinguish success from failure; use
