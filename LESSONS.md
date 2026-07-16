@@ -5081,3 +5081,8 @@ unchanged (148855). Keys for milestone 2:
   (bin/hb included) — seed copies flow orchestrator->workspace only; and a
   multi-phase red on a shared box is suspect if any agent touched bin/hb
   mid-run — re-verify on an isolated workspace before RCA'ing the tree.
+- **Create and move a worker bookmark from the worker workspace.** `jj workspace
+  add` does not change the caller's current workspace; a following bookmark
+  command in the controller checkout targets the controller revision. Change
+  directories first, then verify the bookmark and worker `@` name the same
+  commit before dispatch.
