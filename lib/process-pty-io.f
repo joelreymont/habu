@@ -26,6 +26,22 @@ $1388 constant KILL-WAIT-MS
 $10 constant CLEAN-LIFE-R
 $20 constant CLEAN-DONE-R
 $40 constant CLEAN-DONE-W
+$80 constant CLEAN-CANCEL
+
+1 constant SUP-CLEAN-KILL
+2 constant SUP-CLEAN-WAIT
+4 constant SUP-CLEAN-GATE-R
+8 constant SUP-CLEAN-GATE-W
+$10 constant SUP-CLEAN-EXEC-R
+$20 constant SUP-CLEAN-EXEC-W
+$40 constant SUP-CLEAN-PROC
+$80 constant SUP-CLEAN-OWNER
+$100 constant SUP-CLEAN-MASTER
+$200 constant SUP-CLEAN-SLAVE
+$400 constant SUP-CLEAN-LIFE-R
+$800 constant SUP-CLEAN-LIFE-W
+$1000 constant SUP-CLEAN-DONE-R
+$2000 constant SUP-CLEAN-PROTOCOL
 
 $20007454 constant DARWIN-TIOCPTYGRANT
 $40807453 constant DARWIN-TIOCPTYGNAME
@@ -44,7 +60,9 @@ create ARGV 2 cells allot
 create ENVP 1 cells allot
 create FRAME 1 cells allot
 create SIGNAL-BYTE 1 allot
-create POLL-FDS 2 cells allot
+create POLL-FDS 3 cells allot
+
+ENUM watch-event target-exit owner-exit cancel ;ENUM
 
 variable BUSY
 variable PATH-A
@@ -59,13 +77,16 @@ variable TX-LIFE-W
 variable TX-DONE-R
 variable TX-DONE-W
 variable TX-SUP
+variable TX-OWNER
 
 variable SUP-GATE-R
 variable SUP-GATE-W
 variable SUP-EXEC-R
 variable SUP-EXEC-W
 variable SUP-PROC
+variable SUP-OWNER-PROC
 variable SUP-TARGET
+variable SUP-PGRP
 variable SUP-GROUP
 
 variable OP-SUP
@@ -77,6 +98,8 @@ variable OP-ERR
 variable OP-STATUS
 variable FRAME-OFF
 variable CLEAN-MASK
+variable SUP-CLEAN-MASK
+variable SUP-FAILED
 variable START-RAW
 
 : PTR-U8-FIELD ( ptr a -- ptr ptr u8 )
@@ -218,15 +241,17 @@ variable START-RAW
    fd POLLIN 0 >IDX PFD!
    POLL-FDS 1 ms MS>N poll ;
 
-: WATCH-TARGET? ( fd fd -- bool ) {: procfd:fd lifefd:fd :}
+: WATCH-NEXT ( fd fd fd -- watch-event ) {: procfd:fd ownerfd:fd lifefd:fd :}
    begin
       procfd POLLIN 0 >IDX PFD!
-      lifefd POLLIN 1 >IDX PFD!
-      POLL-FDS 2 -1 poll {: rc:n :}
+      ownerfd POLLIN 1 >IDX PFD!
+      lifefd POLLIN 2 >IDX PFD!
+      POLL-FDS 3 -1 poll {: rc:n :}
       rc 0 < if E-PROC-OUTPUT throw then
       rc 0 > if
-         1 >IDX PFD-EVENT? if false exit then
-         0 >IDX PFD-EVENT? if true exit then
+         1 >IDX PFD-EVENT? if construct watch-event owner-exit exit then
+         2 >IDX PFD-EVENT? if construct watch-event cancel exit then
+         0 >IDX PFD-EVENT? if construct watch-event target-exit exit then
       then
    again ;
 
@@ -276,13 +301,16 @@ variable START-RAW
    0 PTY-C ;
 
 : TX-RESET ( -- )
+   0 SUP-CLEAN-MASK !
+   false SUP-FAILED !
    -1 >FD TX-MASTER CELL-FD!
    -1 >FD TX-SLAVE CELL-FD!
    -1 >FD TX-LIFE-R CELL-FD!
    -1 >FD TX-LIFE-W CELL-FD!
    -1 >FD TX-DONE-R CELL-FD!
    -1 >FD TX-DONE-W CELL-FD!
-   -1 >PID TX-SUP CELL-PID! ;
+   -1 >PID TX-SUP CELL-PID!
+   -1 >PID TX-OWNER CELL-PID! ;
 
 : TX-CLOSE ( ptr a -- bool ) {: slot:ptr :}
    slot CELL-FD@ {: fd:fd :}
@@ -295,6 +323,11 @@ variable START-RAW
    sup PID>N 0 <= if false exit then
    sup PID>N wait-status 0 < ;
 
+: CANCEL-BAD? ( fd -- bool ) {: fd:fd :}
+   fd FD>N 0 < if false exit then
+   1 SIGNAL-BYTE c!
+   fd SIGNAL-BYTE 1 WRITE-EXACT? 0= ;
+
 : CLEAN+ ( n -- ) {: bit:n :}
    CLEAN-MASK @ bit or CLEAN-MASK ! ;
 
@@ -306,6 +339,9 @@ variable START-RAW
 
 : TX-ABORT ( -- )
    0 CLEAN-MASK !
+   SUP-FAILED @ 0= if
+      TX-LIFE-W CELL-FD@ CANCEL-BAD? if CLEAN-CANCEL CLEAN+ then
+   then
    TX-LIFE-W CLEAN-LIFE-W ABORT-CLOSE
    ABORT-WAIT
    TX-MASTER CLEAN-MASTER ABORT-CLOSE
@@ -336,7 +372,8 @@ variable START-RAW
 
 : START-PIPES ( -- )
    TX-LIFE-R TX-LIFE-W START-PIPE
-   TX-DONE-R TX-DONE-W START-PIPE ;
+   TX-DONE-R TX-DONE-W START-PIPE
+   TX-LIFE-W CELL-FD@ FD-NOSIGPIPE! ;
 
 : START-OPEN-MASTER ( -- )
    MASTER-Z O-RDWR O-NOCTTY or 0 open dup 0 < if drop E-PROC-OUTPUT throw then
@@ -374,7 +411,9 @@ variable START-RAW
    -1 >FD SUP-EXEC-R CELL-FD!
    -1 >FD SUP-EXEC-W CELL-FD!
    -1 >FD SUP-PROC CELL-FD!
+   -1 >FD SUP-OWNER-PROC CELL-FD!
    -1 >PID SUP-TARGET CELL-PID!
+   -1 >PID SUP-PGRP CELL-PID!
    false SUP-GROUP ! ;
 
 : SUP-CLOSE ( ptr a -- bool )
@@ -392,6 +431,7 @@ variable START-RAW
    SUP-EXEC-R SUP-CLOSE-OWN or
    SUP-EXEC-W SUP-CLOSE-OWN or
    SUP-PROC SUP-CLOSE-OWN or
+   SUP-OWNER-PROC SUP-CLOSE-OWN or
    TX-MASTER SUP-CLOSE or
    TX-SLAVE SUP-CLOSE or
    TX-LIFE-R SUP-CLOSE or
@@ -446,6 +486,7 @@ variable START-RAW
    PROC-FORK {: pid:pid :}
    pid PID>N 0= if TARGET-MAIN then
    pid SUP-TARGET CELL-PID!
+   pid SUP-PGRP CELL-PID!
    SUP-GATE-R SUP-CLOSE-OWN if E-PROC-OUTPUT throw then
    SUP-EXEC-W SUP-CLOSE-OWN if E-PROC-OUTPUT throw then
    pid PID>N pid PID>N setpgid 0 <> if E-PROC-OUTPUT throw then
@@ -462,11 +503,26 @@ variable START-RAW
    ok if exit then
    SUP-TARGET CELL-PID@ PID-WAIT-STATUS drop
    -1 >PID SUP-TARGET CELL-PID!
+   -1 >PID SUP-PGRP CELL-PID!
+   false SUP-GROUP !
    code throw ;
 
-: SUP-OPEN-WATCH ( -- )
+: SUP-OPEN-TARGET-WATCH ( -- )
    SUP-TARGET CELL-PID@ POSITIVE-PID PID>N proc-watch-open dup 0 < if drop E-PROC-OUTPUT throw then
    >FD SUP-PROC CELL-FD! ;
+
+: SUP-OPEN-OWNER-WATCH ( -- )
+   TX-OWNER CELL-PID@ POSITIVE-PID PID>N proc-watch-open dup 0 < if drop E-PROC-OUTPUT throw then
+   >FD SUP-OWNER-PROC CELL-FD! ;
+
+: SUP-OPEN-WATCHES ( -- )
+   SUP-OPEN-TARGET-WATCH
+   SUP-OPEN-OWNER-WATCH ;
+
+: SUP-SETUP-LIVE? ( -- bool )
+   TX-LIFE-R CELL-FD@ 0 >MS POLL-ONE {: rc:n :}
+   rc 0 < if E-PROC-OUTPUT throw then
+   rc 0= ;
 
 : SUP-PUBLISH ( -- )
    SUP-TARGET CELL-PID@ PID>N TX-DONE-W CELL-FD@ swap FRAME-WRITE ;
@@ -476,12 +532,20 @@ variable START-RAW
    -1 >PID SUP-TARGET CELL-PID! ;
 
 : SUP-OWNER-DIED ( -- )
-   SUP-TARGET CELL-PID@ PID-KILL-GROUP
-   SUP-WAIT-TARGET drop ;
+   SUP-PGRP CELL-PID@ PID-KILL-GROUP
+   SUP-TARGET CELL-PID@ PID>N 0 > if SUP-WAIT-TARGET drop then ;
 
 : SUP-TARGET-DIED ( -- )
    SUP-WAIT-TARGET {: status:n :}
    status TX-DONE-W CELL-FD@ swap FRAME-WRITE ;
+
+: SUP-WATCH ( -- )
+   SUP-PROC CELL-FD@ SUP-OWNER-PROC CELL-FD@ TX-LIFE-R CELL-FD@ WATCH-NEXT
+   MATCH watch-event
+     target-exit OF SUP-TARGET-DIED ENDOF
+     owner-exit OF SUP-OWNER-DIED ENDOF
+     cancel OF SUP-OWNER-DIED ENDOF
+   ;MATCH ;
 
 : SUP-RUN ( -- )
    SUP-RESET
@@ -493,15 +557,16 @@ variable START-RAW
    SUP-NOSIGPIPE
    SUP-SPAWN-TARGET
    SUP-CHECK-EXEC
-   SUP-OPEN-WATCH
+   SUP-OPEN-WATCHES
+   SUP-SETUP-LIVE? 0= if E-PROC-OUTPUT throw then
    TX-SLAVE TX-CLOSE!
    SUP-PUBLISH
-   SUP-PROC CELL-FD@ TX-LIFE-R CELL-FD@ WATCH-TARGET?
-   if SUP-TARGET-DIED else SUP-OWNER-DIED then
+   SUP-WATCH
    SUP-CLOSE-EXTRAS? if E-PROC-OUTPUT throw then ;
 
 : SUP-KILL-TARGET? ( -- bool )
-   SUP-TARGET CELL-PID@ dup PID>N 0 <= if drop false exit then
+   SUP-GROUP @ if SUP-PGRP else SUP-TARGET then CELL-PID@
+   dup PID>N 0 <= if drop false exit then
    PID>N
    SUP-GROUP @ if negate then
    SIGKILL kill 0 <> ;
@@ -510,12 +575,33 @@ variable START-RAW
    SUP-TARGET CELL-PID@ dup PID>N 0 <= if drop false exit then
    PID>N wait-status 0 < ;
 
+: SUP-CLEAN+ ( n -- ) {: bit:n :}
+   SUP-CLEAN-MASK @ bit or SUP-CLEAN-MASK ! ;
+
+: SUP-FAIL-CLOSE ( ptr a n -- ) {: slot:ptr bit:n :}
+   slot SUP-CLOSE-OWN if bit SUP-CLEAN+ then ;
+
+: SUP-FAIL-CLOSE-ALL ( -- )
+   SUP-GATE-R SUP-CLEAN-GATE-R SUP-FAIL-CLOSE
+   SUP-GATE-W SUP-CLEAN-GATE-W SUP-FAIL-CLOSE
+   SUP-EXEC-R SUP-CLEAN-EXEC-R SUP-FAIL-CLOSE
+   SUP-EXEC-W SUP-CLEAN-EXEC-W SUP-FAIL-CLOSE
+   SUP-PROC SUP-CLEAN-PROC SUP-FAIL-CLOSE
+   SUP-OWNER-PROC SUP-CLEAN-OWNER SUP-FAIL-CLOSE
+   TX-MASTER SUP-CLEAN-MASTER SUP-FAIL-CLOSE
+   TX-SLAVE SUP-CLEAN-SLAVE SUP-FAIL-CLOSE
+   TX-LIFE-R SUP-CLEAN-LIFE-R SUP-FAIL-CLOSE
+   TX-LIFE-W SUP-CLEAN-LIFE-W SUP-FAIL-CLOSE
+   TX-DONE-R SUP-CLEAN-DONE-R SUP-FAIL-CLOSE ;
+
 : SUP-FAIL ( n -- ) {: code:n :}
-   SUP-KILL-TARGET?
-   SUP-WAIT-TARGET? or
-   SUP-CLOSE-EXTRAS? or {: bad:bool :}
-   bad if E-PROC-OUTPUT else code then
-   TX-DONE-W CELL-FD@ swap FRAME-WRITE-BAD?
+   0 SUP-CLEAN-MASK !
+   SUP-KILL-TARGET? if SUP-CLEAN-KILL SUP-CLEAN+ then
+   SUP-WAIT-TARGET? if SUP-CLEAN-WAIT SUP-CLEAN+ then
+   SUP-FAIL-CLOSE-ALL
+   TX-DONE-W CELL-FD@ code FRAME-WRITE-BAD?
+   if s" " 1 die then
+   TX-DONE-W CELL-FD@ SUP-CLEAN-MASK @ FRAME-WRITE-BAD?
    if s" " 1 die then
    s" " 1 die ;
 
@@ -533,7 +619,8 @@ variable START-RAW
    -1 >FD TX-MASTER CELL-FD!
    -1 >FD TX-LIFE-W CELL-FD!
    -1 >FD TX-DONE-R CELL-FD!
-   -1 >PID TX-SUP CELL-PID! ;
+   -1 >PID TX-SUP CELL-PID!
+   -1 >PID TX-OWNER CELL-PID! ;
 
 defer BEFORE-COMMIT ( -- )
 
@@ -550,7 +637,13 @@ COMMIT-DEFAULT
 
 : START-TARGET ( n -- pid )
    dup 0= if drop E-PROC-OUTPUT throw then
-   dup 0 < if throw then
+   dup 0 < if
+      >r
+      TX-DONE-R CELL-FD@ FRAME-READ?
+      if SUP-CLEAN-MASK ! else drop SUP-CLEAN-PROTOCOL SUP-CLEAN-MASK ! then
+      true SUP-FAILED !
+      r> throw
+   then
    >PID ;
 
 defer BEFORE-READY ( -- )
@@ -564,6 +657,7 @@ READY-DEFAULT
 
 : START-TXN ( -- process-pty-handle )
    TX-RESET
+   getpid dup 0 <= if drop E-PROC-SPAWN throw then >PID TX-OWNER CELL-PID!
    INPUTS!
    ROOM? 0= if E-PROC-PTY-CAPACITY throw then
    START-OPEN-PTY
@@ -595,7 +689,8 @@ READY-DEFAULT
 
 : OP-RESET ( -- )
    0 OP-ERR !
-   0 OP-STATUS ! ;
+   0 OP-STATUS !
+   0 SUP-CLEAN-MASK ! ;
 
 : OP-SAVE ( process-pty-teardown pid pid fd fd fd -- process-pty-teardown )
    OP-DONE CELL-FD!
@@ -615,7 +710,12 @@ READY-DEFAULT
 : OP-READ-STATUS ( -- )
    OP-DONE CELL-FD@ FRAME-READ? {: value:n ok:bool :}
    ok 0= if E-PROC-OUTPUT OP-ERROR exit then
-   value 0 < if value OP-ERROR exit then
+   value 0 < if
+      value OP-ERROR
+      OP-DONE CELL-FD@ FRAME-READ?
+      if SUP-CLEAN-MASK ! else drop SUP-CLEAN-PROTOCOL SUP-CLEAN-MASK ! then
+      exit
+   then
    value OP-STATUS ! ;
 
 : OP-WAIT-SUP ( -- )
@@ -630,11 +730,15 @@ READY-DEFAULT
    OP-MASTER OP-CLOSE
    OP-DONE OP-CLOSE ;
 
+: OP-CANCEL ( -- )
+   OP-LIFE CELL-FD@ CANCEL-BAD? if E-PROC-OUTPUT OP-ERROR then ;
+
 : IO-FAIL ( process-pty-handle n -- )
    >r
    TAKE TEARDOWN-VIEW OP-SAVE
    OP-RESET
    r> OP-ERROR
+   OP-CANCEL
    OP-CLEAN
    TEARDOWN-DONE
    UNLOCK

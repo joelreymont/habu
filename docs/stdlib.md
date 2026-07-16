@@ -1300,13 +1300,22 @@ PROCESS-PTY:KILL    ( process-pty-handle -- outcome )
 ```
 
 `START` creates a session leader, a distinct target process group, a controlling
-PTY, an exec-status handshake, and an owner-lifetime watch before publishing the
-handle. `WAIT` and `KILL` consume it, validate positive pids before wait or
+PTY, an exec-status handshake, and a kernel watch bound to the original owner
+pid before publishing the handle. The setup pipe detects owner loss during watch
+registration and carries explicit cancellation afterward; its write end is not
+owner-lifetime authority, so a later owner fork cannot delay cleanup by
+inheriting it. Every supervisor protocol writer disables `SIGPIPE` before its
+first write. `WAIT` and `KILL` consume the handle, validate positive pids before wait or
 group-kill, observe syscall results, close every fd, wait the supervisor, and
 retire teardown authority exactly once. If the owner process exits, the
-supervisor kills and reaps the target group. Invalid, stale, inactive, or
+supervisor kills and reaps the target group. The immutable group id remains
+available if the target leader exits concurrently with owner loss; this is a
+target-process-group guarantee, not containment of descendants that deliberately
+leave that group. Invalid, stale, inactive, or
 foreign-process authority throws `E-PROC-PTY-HANDLE`; I/O and wait failures are
-reported as `E-PROC-OUTPUT` and `E-PROC-WAIT` after teardown.
+reported as `E-PROC-OUTPUT` and `E-PROC-WAIT` after teardown. `START` catches
+the complete setup-and-commit transaction, preserves its primary error, records
+secondary cleanup failures per resource, and never publishes a partial handle.
 
 Capture spawns can carry a death reaper. `PROC-REAP-ARM ( pid -- pid )` is a
 typed execution vector consulted by every `PROC-RUN-*` capture spawn (via

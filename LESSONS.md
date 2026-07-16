@@ -5080,3 +5080,18 @@ unchanged (148855). Keys for milestone 2:
   parent reader must turn publish into an ordinary write error so the supervisor
   can kill and reap its target group. Configure gate, exec, and completion
   writers before the target fork; this is required on both supported kernels.
+- **A pipe EOF is not owner identity after fork.** Descendants inherit open
+  writers and can keep EOF false after the original owner dies. Capture the
+  owner pid before forking, arm a kernel process watch in the supervisor before
+  publish, and keep the pipe only for setup-race detection and explicit cancel.
+- **Process-group authority outlives leader reap state.** Owner loss and leader
+  exit can become ready together. Prioritize owner/cancel events and retain the
+  immutable group id after reaping the leader so later cleanup still kills every
+  same-group descendant.
+- **Process visibility is not completion evidence.** `kill(pid, 0)` still sees
+  an exited zombie, and a non-parent process watch is an edge rather than a
+  durable completion record. For exact fork-lifecycle tests, pre-arm a CLOEXEC
+  sentinel and close every non-owner writer explicitly; EOF then proves the
+  intended process exited even after another process reaps it. Keep retry-loop
+  control checks out of `T=`/`TTRUE`, because each retry is otherwise counted as
+  a test case.

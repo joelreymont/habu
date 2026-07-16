@@ -10,14 +10,13 @@ package PROCESS-PTY
 
 $100 constant BUF-CAP
 $3E8 constant IO-WAIT-MS
-$C8 constant OWNER-WAIT-POLLS
-$A constant OWNER-WAIT-MS
 $1388 constant OWNER-EXIT-MS
 
 create BUF BUF-CAP allot
-create OWNER-PIDS 2 cells allot
+create OWNER-READY 1 allot
 create ROOT-BUF FS-PATH-CAP allot
 create SCRIPT-BUF FS-PATH-CAP allot
+create RACE-BUF FS-PATH-CAP allot
 
 variable SUP
 variable TARGET
@@ -25,11 +24,26 @@ variable OWNER-R
 variable OWNER-W
 variable OWNER-GATE-R
 variable OWNER-GATE-W
+variable KEEP-R
+variable KEEP-W
+variable KEEP-SENT-R
+variable KEEP-SENT-W
+variable SUP-SENT-R
+variable SUP-SENT-W
 variable RAW
 variable ROOT-U
 variable SCRIPT-U
+variable RACE-U
 variable SENT-R
 variable SENT-W
+variable OWNER-RACE
+variable MASTER-R
+variable MASTER-W
+variable LIFE-R
+variable LIFE-W
+variable DONE-R
+variable DONE-W
+variable FRAME-DETAIL
 
 : SAVE-PIDS ( process-pty-handle pid pid -- process-pty-handle )
    PID>N TARGET !
@@ -92,74 +106,117 @@ variable SENT-W
 : SCRIPT$ ( -- ptr u8 n )
    SCRIPT-BUF SCRIPT-U @ ;
 
+: RACE$ ( -- ptr u8 n )
+   RACE-BUF RACE-U @ ;
+
 : FIXTURE-SETUP ( -- )
    CLEANUP-RESET
    s" habu-pty-io" TMPDIR-MKDIR {: a:ptr u:n :}
    a u ROOT-BUF ROOT-U PATH!
    ROOT$ CLEANUP-TREE+
    ROOT$ s" hold.sh" SCRIPT-BUF JOIN-PATH SCRIPT-U !
-   SCRIPT$ s" #!/bin/sh\ntrap '' HUP\nsleep 30 &\nwait\n" WRITE-ALL
-   SCRIPT$ CHMOD-X ;
-
-: OWNER-PIDS! ( process-pty-handle pid pid -- process-pty-handle )
-   PID>N OWNER-PIDS cell+ !
-   PID>N OWNER-PIDS ! ;
+   ROOT$ s" race.sh" RACE-BUF JOIN-PATH RACE-U !
+   SCRIPT$ S\" #!/bin/sh\ntrap '' HUP\n( sleep 30 ) &\nwait\n" WRITE-ALL
+   SCRIPT$ CHMOD-X
+   RACE$ S\" #!/bin/sh\ntrap '' HUP\nread line\n( sleep 30 ) &\nkill -9 $$\n" WRITE-ALL
+   RACE$ CHMOD-X ;
 
 : REQUIRE-EOF ( fd -- )
    READ-EOF? 0= if E-PROC-OUTPUT throw then ;
 
+: REQUIRE-NOT-READY ( fd -- )
+   0 >MS POLL-ONE 0 T= ;
+
+: SENTINEL-OPEN ( -- )
+   PIPE-PAIR SENT-W ! SENT-R ! ;
+
+: SUP-SENTINEL-OPEN ( -- )
+   PIPE-PAIR SUP-SENT-W ! SUP-SENT-R !
+   SUP-SENT-W @ >FD FD-CLOEXEC! ;
+
+: KEEP-SENTINEL-OPEN ( -- )
+   PIPE-PAIR KEEP-SENT-W ! KEEP-SENT-R !
+   KEEP-SENT-W @ >FD FD-CLOEXEC! ;
+
+: KEEPER-CHILD ( -- )
+   SENT-W @ CLOSE-FD
+   SUP-SENT-W @ CLOSE-FD
+   OWNER-W @ CLOSE-FD
+   OWNER-GATE-R @ CLOSE-FD
+   KEEP-R @ >FD REQUIRE-EOF
+   KEEP-R @ CLOSE-FD
+   s" " 0 die ;
+
+: OWNER-KEEPER ( -- pid )
+   PROC-FORK dup PID>N 0= if drop KEEPER-CHILD then ;
+
 : OWNER-CHILD ( -- )
    OWNER-R @ CLOSE-FD
    OWNER-GATE-W @ CLOSE-FD
-   s" /bin/cat" >LEN PROCESS-PTY:START
-   TEST-PIDS OWNER-PIDS!
-   OWNER-W @ >FD OWNER-PIDS 2 cells WRITE-EXACT
+   SENT-R @ CLOSE-FD
+   KEEP-SENT-R @ CLOSE-FD
+   SUP-SENT-R @ CLOSE-FD
+   KEEP-W @ CLOSE-FD
+   OWNER-RACE @ if RACE$ else SCRIPT$ then >LEN PROCESS-PTY:START
+   HANDLE>N RAW !
+   OWNER-KEEPER drop
+   RAW @ N>HANDLE
+   SENT-W @ CLOSE-FD
+   KEEP-SENT-W @ CLOSE-FD
+   SUP-SENT-W @ CLOSE-FD
+   KEEP-R @ CLOSE-FD
+   1 OWNER-READY c!
+   OWNER-W @ >FD OWNER-READY 1 WRITE-EXACT
    OWNER-W @ CLOSE-FD
    OWNER-GATE-R @ >FD REQUIRE-EOF
    OWNER-GATE-R @ CLOSE-FD
+   OWNER-RACE @ if S\" go\n" PROCESS-PTY:WRITE then
    HANDLE>N drop   \ test-only authority loss models abrupt owner exit
    s" " 0 die ;
 
 : OWNER-SPAWN ( -- pid )
    PIPE-PAIR OWNER-W ! OWNER-R !
    PIPE-PAIR OWNER-GATE-W ! OWNER-GATE-R !
+   PIPE-PAIR KEEP-W ! KEEP-R !
    OWNER-R @ >FD FD-CLOEXEC!
    OWNER-W @ >FD FD-CLOEXEC!
    OWNER-GATE-R @ >FD FD-CLOEXEC!
    OWNER-GATE-W @ >FD FD-CLOEXEC!
+   KEEP-R @ >FD FD-CLOEXEC!
+   KEEP-W @ >FD FD-CLOEXEC!
    PROC-FORK dup PID>N 0= if drop OWNER-CHILD then ;
 
-: PID-GONE? ( pid -- bool )
-   PID-ALIVE? 0= ;
-
-: WAIT-GONE? {: pid:pid :} ( pid -- bool )
-   0 begin dup OWNER-WAIT-POLLS < while
-      pid PID-GONE? if drop true exit then
-      NULL$ drop 0 OWNER-WAIT-MS poll 0 T=
-      1+
-   repeat drop
-   false ;
-
-: WATCH-PID ( pid -- fd )
-   PID>N proc-watch-open dup 0 < if drop E-PROC-OUTPUT throw then >FD ;
-
-: WATCH-EXIT ( fd -- ) {: watch:fd :}
-   watch OWNER-EXIT-MS >MS POLL-ONE 0 > TTRUE
-   watch FD-CLOSE ;
-
-: CHECK-OWNER-DEATH ( -- )
+: CHECK-OWNER-MODE ( bool -- )
+   OWNER-RACE !
+   SENTINEL-OPEN
+   KEEP-SENTINEL-OPEN
+   SUP-SENTINEL-OPEN
    OWNER-SPAWN {: owner:pid :}
    OWNER-W @ CLOSE-FD
    OWNER-GATE-R @ CLOSE-FD
-   OWNER-R @ >FD OWNER-PIDS 2 cells READ-EXACT
+   KEEP-R @ CLOSE-FD
+   SENT-W @ CLOSE-FD
+   KEEP-SENT-W @ CLOSE-FD
+   SUP-SENT-W @ CLOSE-FD
+   OWNER-R @ >FD OWNER-READY 1 READ-EXACT
    OWNER-R @ CLOSE-FD
-   OWNER-PIDS @ >PID WATCH-PID {: sup-watch:fd :}
-   OWNER-PIDS cell+ @ >PID WATCH-PID {: target-watch:fd :}
    OWNER-GATE-W @ CLOSE-FD
    owner PROC-WAIT-STATUS 0 T=
-   sup-watch WATCH-EXIT
-   target-watch WATCH-EXIT
-   OWNER-PIDS cell+ @ >PID WAIT-GONE? TTRUE ;
+   SUP-SENT-R @ >FD OWNER-EXIT-MS >MS POLL-ONE 0 > TTRUE
+   SUP-SENT-R @ >FD REQUIRE-EOF
+   SUP-SENT-R @ CLOSE-FD
+   SENT-R @ >FD OWNER-EXIT-MS >MS POLL-ONE 0 > TTRUE
+   SENT-R @ >FD REQUIRE-EOF
+   SENT-R @ CLOSE-FD
+   KEEP-SENT-R @ >FD REQUIRE-NOT-READY
+   KEEP-W @ CLOSE-FD
+   KEEP-SENT-R @ >FD OWNER-EXIT-MS >MS POLL-ONE 0 > TTRUE
+   KEEP-SENT-R @ >FD REQUIRE-EOF
+   KEEP-SENT-R @ CLOSE-FD ;
+
+: CHECK-OWNER-DEATH ( -- )
+   false CHECK-OWNER-MODE
+   true CHECK-OWNER-MODE ;
 
 : SAVE-RAW ( process-pty-handle -- process-pty-handle )
    HANDLE>N dup RAW ! N>HANDLE ;
@@ -269,9 +326,6 @@ variable SENT-W
    SCRIPT$ >LEN PROCESS-PTY:START
    PROCESS-PTY:KILL drop ;
 
-: SENTINEL-OPEN ( -- )
-   PIPE-PAIR SENT-W ! SENT-R ! ;
-
 : CHECK-DEAD-READER ( -- )
    SENTINEL-OPEN
    [: BAD-READY ;] E-PROC-OUTPUT TTHROWSQ
@@ -284,6 +338,76 @@ variable SENT-W
    SUP @ wait-status 0 < TTRUE
    CHECK-RECOVERY ;
 
+: BAD-EXEC ( -- )
+   s" /no/such/habu-pty-executable" >LEN PROCESS-PTY:START
+   PROCESS-PTY:KILL drop ;
+
+: CHECK-EXEC-ERROR ( -- )
+   [: BAD-EXEC ;] E-PROC-SPAWN TTHROWSQ
+   SUP-CLEAN-MASK @ 0 T=
+   CLEAN-MASK @ 0 T=
+   CHECK-RECOVERY ;
+
+: FRAME-PIPES ( -- )
+   PIPE-PAIR MASTER-W ! MASTER-R !
+   PIPE-PAIR LIFE-W ! LIFE-R !
+   PIPE-PAIR DONE-W ! DONE-R ! ;
+
+: FRAME-TARGET ( -- pid )
+   PROC-FORK dup PID>N 0= if drop s" " 0 die then ;
+
+: FRAME-SUP-CHILD ( -- )
+   DONE-R @ CLOSE-FD
+   DONE-W @ >FD E-PROC-SPAWN FRAME-WRITE
+   FRAME-DETAIL @ if DONE-W @ >FD SUP-CLEAN-WAIT FRAME-WRITE then
+   DONE-W @ CLOSE-FD
+   s" " 0 die ;
+
+: FRAME-SUP ( -- pid )
+   PROC-FORK dup PID>N 0= if drop FRAME-SUP-CHILD then ;
+
+: FRAME-START ( bool -- process-pty-handle )
+   FRAME-DETAIL !
+   FRAME-PIPES
+   FRAME-TARGET dup PID>N TARGET ! {: target:pid :}
+   FRAME-SUP dup PID>N SUP ! {: sup:pid :}
+   MASTER-W @ CLOSE-FD
+   LIFE-R @ CLOSE-FD
+   DONE-W @ CLOSE-FD
+   RESERVE sup target MASTER-R @ >FD LIFE-W @ >FD DONE-R @ >FD COMMIT ;
+
+: BAD-FRAME ( -- )
+   true FRAME-START PROCESS-PTY:WAIT drop ;
+
+: BAD-SHORT-FRAME ( -- )
+   false FRAME-START PROCESS-PTY:WAIT drop ;
+
+: CHECK-FRAME-CHILDREN ( -- )
+   TARGET @ >PID PROC-WAIT-STATUS 0 T=
+   SUP @ wait-status 0 < TTRUE ;
+
+: CHECK-FRAME-CLEAN ( n -- )
+   SUP-CLEAN-MASK @ swap T=
+   CHECK-FRAME-CHILDREN
+   CHECK-RECOVERY ;
+
+: CHECK-FRAME-ERROR ( -- )
+   [: BAD-FRAME ;] E-PROC-SPAWN TTHROWSQ
+   SUP-CLEAN-WAIT CHECK-FRAME-CLEAN
+   [: BAD-SHORT-FRAME ;] E-PROC-SPAWN TTHROWSQ
+   SUP-CLEAN-PROTOCOL CHECK-FRAME-CLEAN ;
+
+: BAD-FRAME-LIVE ( -- )
+   s" /bin/cat" >LEN PROCESS-PTY:START HANDLE>N RAW !
+   true FRAME-START PROCESS-PTY:WAIT drop ;
+
+: CHECK-FRAME-RESET ( -- )
+   [: BAD-FRAME-LIVE ;] E-PROC-SPAWN TTHROWSQ
+   SUP-CLEAN-MASK @ SUP-CLEAN-WAIT T=
+   CHECK-FRAME-CHILDREN
+   RAW @ N>HANDLE PROCESS-PTY:KILL CHECK-KILLED
+   SUP-CLEAN-MASK @ 0 T= ;
+
 : PRIVATE? ( ptr u8 n -- )
    XREF-FIND XREF-FOUND? TFALSE ;
 
@@ -293,7 +417,8 @@ variable SENT-W
    s" PROCESS-PTY:START-GUARD" PRIVATE?
    s" PROCESS-PTY:BEFORE-COMMIT" PRIVATE?
    s" PROCESS-PTY:BEFORE-READY" PRIVATE?
-   s" PROCESS-PTY:CLEAN-MASK" PRIVATE? ;
+   s" PROCESS-PTY:CLEAN-MASK" PRIVATE?
+   s" PROCESS-PTY:SUP-CLEAN-MASK" PRIVATE? ;
 
 : CHECK-SYSCALL-ERRORS ( -- )
    [: BAD-WAIT ;] E-PROC-WAIT TTHROWSQ
@@ -324,6 +449,9 @@ variable SENT-W
    CHECK-OWNER-DEATH
    CHECK-COMMIT-RECOVERY
    CHECK-DEAD-READER
+   CHECK-EXEC-ERROR
+   CHECK-FRAME-ERROR
+   CHECK-FRAME-RESET
    CHECK-SYSCALL-ERRORS
    CHECK-PRIVATE
    CLEANUP-RUN
