@@ -1,9 +1,11 @@
 ---
 title: Close MMA GEMM gap to Triton parity
-status: open
+status: active
 priority: 2
 issue-type: task
-created-at: "2026-07-15T22:54:12.720615+02:00"
+created-at: "\"2026-07-15T22:54:12.720615+02:00\""
 ---
 
 User goal 2026-07-15: the swizzled TF32 mma.sync GEMM measures 1369.6 GFLOP/s at 918 MHz = 72.4 percent of the committed Triton baseline (1890.5, same clock class); hardware therefore permits >=1890 - close the remaining ~28 percent. METHOD, profile-first: (1) PROFILE the 1369 kernel on zed before touching anything - occupancy, achieved SM/mma issue rate, smem + DRAM throughput, stall reasons (build a small reusable profiling harness per the build-the-tool rule if none exists; nsys/ncu availability on the box to be checked, else PTX-level counters/timing decomposition) - and let the profile rank the levers. (2) The lever list, each already parameterized or dotted: deeper cp.async pipeline (MMA-STAGES 3-4; the knob exists, nothing >2 measured), wider warp/register tiles (more FMA per smem read), XOR swizzle (habu-xor-swizzle-mma-cd2d2009 - frees the 4KiB pad so tiles/stages can grow), instruction interleave of mma.sync with cp.async waits, vectorized store epilogue. (3) Sweep honestly on-device (element-exact mma-gemm-check green for EVERY kept config, rows per measurement discipline at the 918MHz tag), commit the best config + the measured curve. ACCEPTANCE: either >=1890 GFLOP/s (parity) with correctness green, or a profile-backed statement of the reached ceiling and exactly which resource saturates (that becomes the next capability dot). Feed the winning axes to the autotuner dot (habu-feed-mma-config-d783e33b) and the default flip (habu-ship-swizzled-mma-7b78c01b). Files: lib/ptx/cg-mma.f, profiling harness under tools/ptx/, perf rows, mma-gemm-check configs. Ownership: ptx MMA performance. Depends: none hard (cg-mma is unfenced); coordinate rows with the 918mhz tag discipline.
+
+Claim: agent=mmaparity workspace=.jj-ws/fable-mmaparity
