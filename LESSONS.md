@@ -5107,3 +5107,18 @@ unchanged (148855). Keys for milestone 2:
   (bin/hb included) — seed copies flow orchestrator->workspace only; and a
   multi-phase red on a shared box is suspect if any agent touched bin/hb
   mid-run — re-verify on an isolated workspace before RCA'ing the tree.
+- **The checker-defer bridge needs BOTH engine→checker calls — C-CALL-TRUST-PEND
+  (the usig row) AND C-CALL-CHECKER-DEFER (the defer flag): checker.f IS-TOK
+  requires both before a checked `is NAME` certifies.** (chkdefer lane, stage0
+  mirror.) Mirroring one without the other still rejects with the same
+  'non-certified definition ... at is' diagnostic. Mirror-side gotchas: define
+  C-CALL-CHECKER-DEFER after C-P2-FIND-GLOBAL (gforth forward reference), and
+  load x12 = PEND-CELL before C-PUSH-DREC-NAME (the mirror variant reads the
+  name from the dictionary record, unlike native's body-buffer read).
+- **test/nf.fs hardcodes /tmp/nf-bin — a cross-worker AMFI + debug-session
+  hazard on a shared box.** (chkdefer lane.) Overwriting it mid-lldb got the
+  binary AMFI-killed and risked another lane's session. Reproduce the
+  wide-memory gate at a private path (require forth.fs by absolute path,
+  FORTH-EXE to a scratch file, same src + 'ok' assert); run the verbatim gate
+  only when /tmp/nf-bin is free (lsof first). Parameterizing nf.fs's paths is
+  queued work if the collision recurs.
