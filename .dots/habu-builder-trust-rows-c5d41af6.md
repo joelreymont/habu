@@ -1,6 +1,6 @@
 ---
 title: Builder TRUST rows to CHECKED
-status: active
+status: open
 priority: 2
 issue-type: task
 created-at: "\"2026-07-01T22:54:40.827175+02:00\""
@@ -35,4 +35,25 @@ habu-audit-trusted-inventory-3a950436. First conversion batch landed with the
 same increment: CODE-BYTE+/CRH-BYTE+/XREF-REC+ discharged to checked
 (pointer+offset arithmetic now certifies), trust surface 496 -> 493.
 
-Claim: agent=btrust workspace=.jj-ws/fable-btrust (scope: habu1.f batch only)
+BATCH 1 LANDED 2026-07-16 (btrust lane, habu1.f): 40 of 41 habu1.f TRUST rows
+removed as PROVABLY REDUNDANT - the build certify pass (verify-source.f
+VERIFY-SOURCE ~305) runs CHECK! on every : body and throws on reject AND
+uncheckable, so a passing build means every body was already certified against
+its declared effect; the trust rows were redundant registrations (per
+docs/forth.md: do not keep a TRUST row to pin a CHECK!-passing word's scheme).
+Includes the 3 adopted OS-boundary rows and the 5 higher-order rows
+(fprim/fprim-l/fprim-wid/emit-prims/emit-fp-prims - the modeled execute and
+['] handling certify them). Counts: habu1.f 41->1, repo TRUST 398->358,
+unclassified 0, ratchet ok. Binary drift 460 bytes = baked AOT-REPL data
+address immediates only (142 MOVZ imm + 3 table offsets, zero opcode changes),
+x2 self-reproducing fixpoint 76d67763. Claim released.
+
+RESIDUAL habu1.f row (1): STDIN? ( -- ptr bool ) - a variable, not a : word;
+the variable definer yields generic -- ptr a and the checker cannot infer the
+bool cell refinement. Conversion path: define via the existing TYPED-VARIABLE
+declarator (a definition-form refactor with codegen-drift risk, not a checker
+gap) - fold into the habu2.f batch or a focused follow-up.
+
+REMAINING BATCHES: habu2.f (~101 rows), jit.f (~5 rows). Hypothesis worth
+testing first in each batch: the same verify-source redundancy argument may
+apply to most : -word rows - try mass-removal + build before hand-converting.

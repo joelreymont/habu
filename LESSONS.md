@@ -5007,3 +5007,22 @@ unchanged (148855). Keys for milestone 2:
   re-run and cmp after — 27 outputs, zero diffs, no reliance on eyeballs.
   Also: `bin/hb file.f` without `--load` drops into the REPL on open stdin and
   hangs a harness; always `bin/hb --load ... < /dev/null` in capture loops.
+- **A TRUST row on a `:` word that CHECK!-certifies is redundant by
+  construction — the build's certify pass (verify-source VERIFY-SOURCE) already
+  runs CHECK! on every `:` body and throws on reject AND uncheckable.** (btrust
+  lane, habu1 batch: 40 of 41 rows deleted with zero code changes, repo TRUST
+  398→358.) Before hand-converting any TRUST batch, try mass-removal + rebuild
+  first; only rows on non-`:` forms (variables needing cell refinements, real
+  machine-code boundaries) can be load-bearing. Expect benign binary drift:
+  certification-layout shifts move the baked AOT-REPL data-address immediates
+  (MOVZ/MOVK chains EM-SEED-AOT re-relocates at boot); the fixpoint gate is
+  x2 self-reproduction, not a frozen sha vs the pre-change baseline.
+- **DDC byte-identity must be measured at the FIXPOINT, not the raw bootstrap
+  seed.** (ddc lane.) The gforth CHECK_ONLY seed carries dead host-dependent
+  movz/movk AOT-REPL address immediates (542 __text + 191 signature bytes)
+  that EM-SEED-AOT re-relocates at boot; the native fixpoint refresh
+  re-captures the AOT blob from the canonical small engine and erases them, so
+  gforth-seed→refresh == native fixpoint byte-for-byte (verified d0db5fe3).
+  The earlier fix spec (AOT-capture canonicalization) compared the wrong
+  artifact — no engine change was needed; tools/ddc-verify.f encodes the
+  correct chain.

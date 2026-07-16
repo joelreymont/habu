@@ -1,0 +1,9 @@
+---
+title: RCA event-closure fork-worker E-STR-CAPACITY pool flake
+status: open
+priority: 2
+issue-type: task
+created-at: "2026-07-16T17:17:24.551928+02:00"
+---
+
+Nondeterministic red caught 2026-07-16 during the btrust landing gate: full run.f on tree e9130a79 (habu1 TRUST deletions, binary 76d67763) failed GROUP stdlib/tail-pure [inprocess] with tools/event-closure-test.f FAIL, 'fork worker throw rc -2201' (E-STR-CAPACITY). WHY-THREW dump shows the instrumented buffers NOT at cap (SB fill=110/1024, CK fill=290/262144, CK-ROW fill=212/1184) - the throwing buffer is not among the dumped ones. Same tree passed the identical gate earlier (run b11e0jq9x: correctness=t) and the exact standalone load path (bin/hb --load lib/errors.f lib/string.f lib/test.f lib/memory.f lib/fs.f lib/fs-mutate.f lib/source.f lib/content-key.f tools/source-discovery.f tools/event-closure-lib.f tools/event-closure-test.f) passed 5/5 on the same binary - the failure needs the pool context (shared gate image and/or fork-worker + sibling-test buffer accumulation; icode-fixup-test shared the group). Evidence preserved: capture root scratchpad/hbtmp-btrust-run3 (pool-0-11-28-out/err logs), red-phase list ~/.cache/habu-gate/gate-red-phases.txt. RCA path per CLAUDE.md build-the-tool: extend WHY-THREW to name the THROWING buffer (site + which string buffer) instead of a fixed dump list, then reproduce under the pool harness (run the tail-pure group's exact GSI file order in one image, repeatedly, with the pool's HB_TMP layout) and bisect the group composition. Fix the capacity sizing or the leak, add a regression that runs the group composition. Ownership: test-harness/string buffers. NOT attributed to the habu1 TRUST deletions (zero opcode changes, spawn machine code identical, non-reproducible on the same binary).
