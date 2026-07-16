@@ -3,6 +3,7 @@
 require lib/process-pty-io.f
 require lib/test.f
 require lib/engine-candidate.f
+require lib/fs-mutate.f
 require test/checker-assert.f
 
 package PROCESS-PTY
@@ -15,6 +16,8 @@ $1388 constant OWNER-EXIT-MS
 
 create BUF BUF-CAP allot
 create OWNER-PIDS 2 cells allot
+create ROOT-BUF FS-PATH-CAP allot
+create SCRIPT-BUF FS-PATH-CAP allot
 
 variable SUP
 variable TARGET
@@ -23,6 +26,10 @@ variable OWNER-W
 variable OWNER-GATE-R
 variable OWNER-GATE-W
 variable RAW
+variable ROOT-U
+variable SCRIPT-U
+variable SENT-R
+variable SENT-W
 
 : SAVE-PIDS ( process-pty-handle pid pid -- process-pty-handle )
    PID>N TARGET !
@@ -73,6 +80,26 @@ variable RAW
 
 : CLOSE-FD ( n -- )
    >FD FD-CLOSE ;
+
+: PATH! ( ptr u8 n ptr u8 ptr a -- ) {: src:ptr u:n dst:ptr lenp:ptr :}
+   u FS-PATH-CAP > if E-FS-CAPACITY throw then
+   src dst u BYTE-COPY
+   u lenp ! ;
+
+: ROOT$ ( -- ptr u8 n )
+   ROOT-BUF ROOT-U @ ;
+
+: SCRIPT$ ( -- ptr u8 n )
+   SCRIPT-BUF SCRIPT-U @ ;
+
+: FIXTURE-SETUP ( -- )
+   CLEANUP-RESET
+   s" habu-pty-io" TMPDIR-MKDIR {: a:ptr u:n :}
+   a u ROOT-BUF ROOT-U PATH!
+   ROOT$ CLEANUP-TREE+
+   ROOT$ s" hold.sh" SCRIPT-BUF JOIN-PATH SCRIPT-U !
+   SCRIPT$ s" #!/bin/sh\ntrap '' HUP\nsleep 30 &\nwait\n" WRITE-ALL
+   SCRIPT$ CHMOD-X ;
 
 : OWNER-PIDS! ( process-pty-handle pid pid -- process-pty-handle )
    PID>N OWNER-PIDS cell+ !
@@ -230,6 +257,33 @@ variable RAW
    SUP @ wait-status 0 < TTRUE
    CHECK-RECOVERY ;
 
+: BREAK-READY ( -- )
+   TX-SUP CELL-PID@ PID>N SUP !
+   TX-DONE-R CELL-FD@ FD>N close-rc 0 <> if E-PROC-OUTPUT throw then ;
+
+: INJECT-READY ( -- )
+   [: BREAK-READY ;] is BEFORE-READY ;
+
+: BAD-READY ( -- )
+   INJECT-READY
+   SCRIPT$ >LEN PROCESS-PTY:START
+   PROCESS-PTY:KILL drop ;
+
+: SENTINEL-OPEN ( -- )
+   PIPE-PAIR SENT-W ! SENT-R ! ;
+
+: CHECK-DEAD-READER ( -- )
+   SENTINEL-OPEN
+   [: BAD-READY ;] E-PROC-OUTPUT TTHROWSQ
+   READY-DEFAULT
+   SENT-W @ CLOSE-FD
+   SENT-R @ >FD OWNER-EXIT-MS >MS POLL-ONE 0 > TTRUE
+   SENT-R @ >FD REQUIRE-EOF
+   SENT-R @ CLOSE-FD
+   CLEAN-MASK @ CLEAN-DONE-R and CLEAN-DONE-R T=
+   SUP @ wait-status 0 < TTRUE
+   CHECK-RECOVERY ;
+
 : PRIVATE? ( ptr u8 n -- )
    XREF-FIND XREF-FOUND? TFALSE ;
 
@@ -238,6 +292,7 @@ variable RAW
    s" PROCESS-PTY:START-SAVE" PRIVATE?
    s" PROCESS-PTY:START-GUARD" PRIVATE?
    s" PROCESS-PTY:BEFORE-COMMIT" PRIVATE?
+   s" PROCESS-PTY:BEFORE-READY" PRIVATE?
    s" PROCESS-PTY:CLEAN-MASK" PRIVATE? ;
 
 : CHECK-SYSCALL-ERRORS ( -- )
@@ -259,6 +314,7 @@ variable RAW
 
 : RUN ( -- )
    T-RESET
+   FIXTURE-SETUP
    s" /bin/cat" >LEN PROCESS-PTY:START
    CHECK-PIDS
    CHECK-IO
@@ -267,8 +323,10 @@ variable RAW
    CHECK-RAW-SPAWN
    CHECK-OWNER-DEATH
    CHECK-COMMIT-RECOVERY
+   CHECK-DEAD-READER
    CHECK-SYSCALL-ERRORS
    CHECK-PRIVATE
+   CLEANUP-RUN
    T-REPORT
    s" process-pty-io-test: ok" type cr ;
 

@@ -5076,3 +5076,7 @@ unchanged (148855). Keys for milestone 2:
   registry commit are both fallible. Catch the complete sequence under one lock,
   abort every acquired resource, preserve the primary error, and retain a named
   cleanup-failure mask so secondary syscall failures remain inspectable.
+- **Every supervisor protocol writer disables SIGPIPE before use.** A dead
+  parent reader must turn publish into an ordinary write error so the supervisor
+  can kill and reap its target group. Configure gate, exec, and completion
+  writers before the target fork; this is required on both supported kernels.
