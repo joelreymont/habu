@@ -29,8 +29,9 @@ then honestly REVERTED on two proven blockers:
   only. The checker-internal class needs either stage0 defer/is (blocker 1) or
   a typed pre-prefix install primitive - decide when blocker 1 lands.
 
-Per-hook inventory + effect table preserved in the hookmig lane notes at
-.jj-ws/fable-hookmig (workspace retired; table copied into
-habu-checker-exec-of-5923c543 sequencing section if the workspace is removed).
+Per-hook inventory is the measured list in this dot's opening paragraph; the
+per-hook effects were derived once by the hookmig lane (workspace retired,
+revert not preserved) and are re-derivable from the current install sites as
+the acceptance text specifies.
 Claim released (agent=hookmig done; enabler integrated by orchestrator).
 Blocked-by: habu-mirror-defer-is-4461fe23.
