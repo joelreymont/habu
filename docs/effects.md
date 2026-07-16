@@ -297,6 +297,20 @@ later callers; use `TRUST` only when the body itself cannot be checked.
   scratch migrated to typed cells first (tracked follow-on). The `here` seal is a
   baked primitive effect; `create`/`variable`/`constant` are sealed through the
   verify-source definer registration (`RAW-TRUST-NEXT`).
+- **`xt<effect>` storage cells are the typed alternative to raw xt scratch.**
+  `TYPED-VARIABLE HK [ in -- out ]` (and `n TYPED-BUFFER HK [ in -- out ]`)
+  declares a persistent monomorphic *code cell*: the generated accessor's declared
+  `( -- ptr [ in -- out ] )` bakes the effect `E` as a concrete `T-QUOT` into its
+  usig scheme, so every occurrence of `HK @` recovers `xt<E>` (freshened
+  alpha-equivalently, never the erased raw address var of a `variable`). A typed
+  store `[: W ;] HK !` fit-checks `W`'s certified effect against `E` through the
+  ordinary `ptr` unification and **rejects** on mismatch; `HK @ execute`
+  fit-checks the row against `E` exactly like executing a literal `xt<E>` (reuses
+  `RSEXEC`). Admissibility is gated by `CHECKER-STORAGE-INFO` (a closed quotation
+  cell, width 1; a malformed quotation body rejects). This is the sound migration
+  target for the raw xt scratch above: `variable V  ' W V !  : F V @ execute ;`
+  still launders `execute` as a pure `( -- )` (the `RSEXEC` `T-VAR` branch, dot
+  `habu-checker-exec-of-5923c543`), whereas the typed cell carries `E` end to end.
 - **Declared polymorphic effects stay parametric.** A quantifier in a declared
   effect (`a`, `ptr a`, …) is a promise that the word works for *every* type at
   that position. The body may not quietly break that promise. After a definition's

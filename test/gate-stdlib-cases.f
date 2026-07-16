@@ -454,6 +454,10 @@ TEST:SUITE xt-effect
    test/xt-effect-test.f
 TEST:;SUITE
 
+TEST:SUITE xt-cell
+   test/xt-cell-test.f
+TEST:;SUITE
+
 TEST:SUITE effect-read-api
    test/effect-read-api-test.f
 TEST:;SUITE

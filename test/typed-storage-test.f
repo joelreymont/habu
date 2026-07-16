@@ -146,7 +146,9 @@ TYPED-VARIABLE TSL tsres<n,n>
 : TS-SECTION-ADMISSIBILITY ( -- )
    s" TYPED-VARIABLE BAD-OPEN ptr a" TS-EVAL E-STORAGE T=
    s" TYPED-VARIABLE BAD-VAR a" TS-EVAL E-STORAGE T=
-   s" TYPED-VARIABLE BAD-QUOT [ n -- n ]" TS-EVAL E-STORAGE T=
+   \ a WELL-FORMED xt<effect> quotation cell is now admissible (see
+   \ test/xt-cell-test.f); a MALFORMED quotation (missing --) still rejects
+   s" TYPED-VARIABLE BAD-QUOT [ n n ]" TS-EVAL E-STORAGE T=
    s" TYPED-VARIABLE BAD-LIN tsowned" TS-EVAL E-STORAGE T=
    s" TYPED-VARIABLE BAD-PTR-N ptr n" TS-EVAL E-STORAGE T=
    s" TYPED-VARIABLE BAD-N n" TS-EVAL E-STORAGE T=

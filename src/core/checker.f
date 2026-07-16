@@ -2513,6 +2513,7 @@ variable SIG-QUOT-XT   0 SIG-QUOT-XT !
 \ family branch only builds a real `family<...>`; every no-`<` path (and the
 \ not-a-family path) falls through to the shared `ptr`/TOK-TYPE tail.
 : SIG-TYPE ( ptr u8 n -- n ) {: a:ptr u:n :}
+   a u s" [" CORE-STR= IF SIG-QUOT-XT @ execute EXIT THEN   \ `[ in -- out ]` xt<effect> quot (opener consumed)
    a u SIG-FAM? IF {: fam:n :}                        \ ( id ) resolved family; build application
       NEXT-SIG-TOK 2dup s" <" CORE-STR= IF
          2drop PARAM-SCR-N @ {: base:n :}
@@ -2703,8 +2704,12 @@ variable LBI-BAD
 \ everything LAYOUT-BUFFER does — an arity-0 nominal scalar family, or a closed
 \ non-linear addressable layout family — AND a CLOSED TYPED POINTER: a `ptr`
 \ whose pointee chain bottoms out at a nominal scalar or a closed non-linear
-\ layout family. A bare `ptr a`/`ptr n`, an open var/arg, a quotation, a linear
-\ value, a hidden field, and any trailing token all reject. LAYOUT-BUFFER keeps
+\ layout family — AND a CLOSED xt<effect> QUOTATION CELL `[ in -- out ]` (dot
+\ habu-typed-xt-storage-ddad4af8): a persistent monomorphic code cell whose @
+\ recovers the declared T-QUOT so `HK @ execute` fit-checks the row against E and
+\ a typed store fit-checks a word's certified effect against E. A bare `ptr a`/
+\ `ptr n`, an open var/arg, a linear value, a hidden field, and any trailing token
+\ all reject; a malformed quotation body rejects through SGBAD. LAYOUT-BUFFER keeps
 \ its own narrower CHECKER-LAYOUT-INFO gate unchanged, so the two capabilities
 \ stay distinct. Width is CELL-uniform (1) for nominal scalars and typed
 \ pointers, and the registry width for a layout family.
@@ -2728,6 +2733,7 @@ variable LBI-BAD
    NEXT-SIG-TOK dup 0 <> LBI-BAD ! 2drop
    SGBAD @ 0 <> LBI-BAD @ 0 <> or IF 0 RES-FALSE EXIT THEN
    LBI-T @ HIDDEN-PARAM? IF 0 RES-FALSE EXIT THEN
+   LBI-T @ TAG T-QUOT = IF 1 RES-TRUE EXIT THEN       \ closed xt<effect> cell: one code cell (dot habu-typed-xt-storage-ddad4af8)
    LBI-T @ NOM-SCALAR? IF LBI-T @ T-WIDTH RES-TRUE EXIT THEN
    LBI-T @ STORAGE-TYPED-PTR? IF LBI-T @ T-WIDTH RES-TRUE EXIT THEN
    LBI-T @ LAYOUT-PARAM? 0= IF 0 RES-FALSE EXIT THEN

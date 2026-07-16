@@ -1148,6 +1148,14 @@ points stay listed.
   non-xt-consumer sink (`['] A +`) keeps the plain xt cell; plus the tier-1
   `' FOO2 execute` underflow warning stays and the pre-armed tier-2 `0 0 catch`
   warning is pinned.
+- `test/xt-cell-test.f` — xt<effect> storage cells (dot
+  habu-typed-xt-storage-ddad4af8): `TYPED-VARIABLE HK [ n -- n ]` declares a
+  persistent monomorphic code cell; a typed store `[: W ;] HK !` fit-checks W's
+  certified effect against E (wrong-effect rejects), `HK @ execute` fit-checks the
+  row (wrong-row rejects, row-poly surplus certifies), live store/fetch/execute
+  and re-store round-trip, malformed quotation types reject, and a stage-3 pin
+  asserts a raw `variable @ execute` still launders (flip owned by
+  habu-checker-exec-of-5923c543).
 - `test/effect-read-api-test.f` — checker effect-read export API + negative
   regression (dot habu-expose-checker-effect-95e853eb): a cold-prefix file
   resolves `EFFECT-QUERY` / `EFFECT-DIN-N` / `EFFECT-DOUT-N` / `EFFECT-DIN-FAM` /

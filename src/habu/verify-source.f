@@ -515,14 +515,27 @@ TRUSTED: SIG-RAW-MODE! ( n -- ) SIG-RAW-DEFINER! ;
    type typeu count countu name nameu CHECKER-DEFLAYOUT-BUFFER ;
 
 \ TYPED-BUFFER / TYPED-VARIABLE gate registration (dot habu-nominal-storage-typed).
-\ A stored type may be `ptr* base`, so the type is a contiguous multi-token span
-\ from the scanner buffer, not one token.
+\ A stored type may be `ptr* base` or a spaced `[ in -- out ]` xt<effect> quotation
+\ (dot habu-typed-xt-storage-ddad4af8), so the type is a contiguous multi-token
+\ span from the scanner buffer, not one token.
 variable STG-A
 variable STG-U
 variable STG-START
 
 : STG-PTR-TOK? ( ptr u8 n -- bool )
    s" ptr" CORE-STR= ;
+
+: STG-QUOT-OPEN? ( ptr u8 n -- bool )
+   s" [" CORE-STR= ;
+
+: STG-QUOT-CLOSE? ( ptr u8 n -- bool )
+   s" ]" CORE-STR= ;
+
+: SCAN-STORAGE-QUOT ( -- )   \ consume `[ in -- out ]` through the closer
+   BEGIN STG-A @ STG-U @ STG-QUOT-CLOSE? 0= WHILE
+      NEXT-SCAN STG-U !  STG-A !
+      STG-U @ 0= IF s" verify-source: missing storage ]" 74 die THEN
+   REPEAT ;
 
 : SCAN-STORAGE-TYPE ( -- ptr u8 n )
    NEXT-SCAN STG-U !  STG-A !
@@ -532,6 +545,7 @@ variable STG-START
       NEXT-SCAN STG-U !  STG-A !
       STG-U @ 0= IF s" verify-source: missing storage pointee" 74 die THEN
    REPEAT
+   STG-A @ STG-U @ STG-QUOT-OPEN? IF SCAN-STORAGE-QUOT THEN
    STG-START @  STG-A @ STG-U @ + STG-START @ - ;
 
 : RECORD-TYPED-BUFFER ( -- )

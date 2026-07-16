@@ -155,7 +155,21 @@ variable STGT-START
 : STORAGE-PTR-TOK? ( ptr u8 n -- bool )   \ token is the pointer constructor `ptr`
    s" ptr" CORE-STR= ;
 
-: STORAGE-PARSE-TYPE ( -- ptr u8 n )   \ capture a `ptr* base` stored-type source span
+: STORAGE-QUOT-OPEN? ( ptr u8 n -- bool )   \ token is the quotation opener `[`
+   s" [" CORE-STR= ;
+
+: STORAGE-QUOT-CLOSE? ( ptr u8 n -- bool )   \ token is the quotation closer `]`
+   s" ]" CORE-STR= ;
+
+\ Consume a spaced `[ in -- out ]` xt<effect> quotation type token by token, up
+\ to and including the closer, so the returned span is the whole quotation.
+: STORAGE-PARSE-QUOT ( -- )
+   begin STGT-A @ STGT-U @ STORAGE-QUOT-CLOSE? 0= while
+      parse-name STGT-U !  STGT-A !
+      STGT-U @ 0= if E-LAYOUT-BUFFER throw then
+   repeat ;
+
+: STORAGE-PARSE-TYPE ( -- ptr u8 n )   \ capture a `ptr* base` or `[ in -- out ]` stored-type source span
    parse-name STGT-U !  STGT-A !
    STGT-U @ 0= if E-LAYOUT-BUFFER throw then
    STGT-A @ STGT-START !
@@ -163,6 +177,7 @@ variable STGT-START
       parse-name STGT-U !  STGT-A !
       STGT-U @ 0= if E-LAYOUT-BUFFER throw then
    repeat
+   STGT-A @ STGT-U @ STORAGE-QUOT-OPEN? if STORAGE-PARSE-QUOT then
    STGT-START @  STGT-A @ STGT-U @ + STGT-START @ - ;
 
 : STORAGE-VALIDATE ( n ptr u8 n -- ) {: count:n type:ptr typeu:n :}
