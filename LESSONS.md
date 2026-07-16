@@ -5196,3 +5196,7 @@ unchanged (148855). Keys for milestone 2:
 - **Set cache-report flags only at the decision that actually won.** A second
   readiness check can turn a planned build into a hit, so pre-setting `built`
   produces race-false evidence.
+- **Never place backticks in a shell command argument assembled as source.** The
+  shell evaluates them as command substitution before the called tool sees the
+  text; use plain prose or pass the data through a non-shell interface, then
+  inspect the created artifact before committing it.
