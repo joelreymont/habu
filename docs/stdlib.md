@@ -1273,10 +1273,15 @@ or `PROC-WAIT-OUTCOME`. A failed raw fork returns a negative target code;
 `PROC-FORK` converts that to `E-PROC-SPAWN`.
 
 `lib/process-pty-handle.f` owns the private generation-indexed PTY registry and
-the linear `process-pty-handle` authority. Reservation records the creating
-process id. Every public handle operation validates the slot, generation, and
-current `getpid` before exposing registry state, so a fork child's copy-on-write
-registry cannot authorize a parent-owned handle. The current public query is:
+the linear `process-pty-reservation` and `process-pty-handle` authorities.
+`RESERVE` produces one linear reservation; `COMMIT` consumes it into exactly one
+live handle, while `CANCEL` consumes it without publishing a handle. Consuming
+operations retire the registry slot before returning resources, so cleanup
+cannot downgrade authority to a copyable slot index. Reservation records the
+creating process id. Every handle operation validates the slot, generation,
+live state, and current `getpid` before exposing registry state, so a fork
+child's copy-on-write registry cannot authorize a parent-owned handle. The
+current public query is:
 
 ```forth
 PROCESS-PTY:HANDLE-PID ( process-pty-handle -- process-pty-handle pid )

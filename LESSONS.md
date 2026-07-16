@@ -4,6 +4,11 @@
 
 Last updated: 2026-07-16
 
+- **A linear result is not unique when its mint accepts copyable identity.** A
+  copyable slot index let checked code call the mint twice and produce two valid
+  linear handles. Make reservation itself linear, consume it into one handle,
+  and keep teardown authority linear until the registry slot is retired.
+
 - **A syscall primitive must expose failure before libraries can preserve it.**
   The legacy `close ( fd -- )` effect erased the kernel return code, so checked
   cleanup could not distinguish success from failure; use

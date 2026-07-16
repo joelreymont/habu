@@ -33,7 +33,7 @@
 
 $40000 constant RFL-STR-CAP     \ trust-lint manifest string store
 $80000 constant RFL-FILE-CAP    \ largest scanned source watermark (checker.f class)
-50 constant RFL-SEED#
+51 constant RFL-SEED#
 8 constant RFL-ALLOW-MAX
 32 constant RFL-NUM-CAP
 
@@ -184,6 +184,7 @@ variable RFL-LE
       47 of s" MINT-BINDING" endof
       48 of s" MINT-ROW" endof
       49 of s" N>HANDLE" endof
+      50 of s" N>RESERVATION" endof
       E-TBL-BOUNDS throw
    endcase ;
 
@@ -239,6 +240,7 @@ variable RFL-LE
       47 of s" lib/nominal/binding.f" endof
       48 of s" lib/nominal/row.f" endof
       49 of s" lib/process-pty-handle.f" endof
+      50 of s" lib/process-pty-handle.f" endof
       E-TBL-BOUNDS throw
    endcase ;
 

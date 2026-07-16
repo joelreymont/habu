@@ -1082,9 +1082,9 @@ points stay listed.
 - `lib/process.f` / `lib/process-test.f` — checked process helpers and their
   coverage.
 - `lib/process-pty-handle.f` / `lib/process-pty-handle-test.f` — private
-  generation-indexed linear PTY handle registry plus the public
-  `PROCESS-PTY:HANDLE-PID` ownership check; the focused fork regression proves
-  a child cannot consume its parent's inherited handle while the parent can.
+  generation-indexed linear reservation-to-handle PTY authority registry plus
+  the public `PROCESS-PTY:HANDLE-PID` ownership check; lifecycle coverage proves
+  single-mint, cancel, consume, stale/reuse/capacity, and fork ownership rules.
 - `lib/process-argv.f` / `lib/process-argv-test.f` — checked argv process
   helpers and their coverage.
 - `lib/process-command.f` / `lib/process-command-test.f` — checked

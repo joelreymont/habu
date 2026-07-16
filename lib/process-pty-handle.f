@@ -3,6 +3,7 @@
 require lib/errors.f
 require lib/prelude.f
 
+DEFLINEAR process-pty-reservation
 DEFLINEAR process-pty-handle
 
 package PROCESS-PTY
@@ -13,10 +14,16 @@ $7FFFFFFFFFFFFF constant GEN-MAX
 
 create SLOT-GEN SLOT-CAP cells allot
 create SLOT-ACTIVE SLOT-CAP cells allot
+create SLOT-LIVE SLOT-CAP cells allot
 create SLOT-SUP SLOT-CAP cells allot
 create SLOT-TARGET SLOT-CAP cells allot
 create SLOT-DONE SLOT-CAP cells allot
 create SLOT-OWNER SLOT-CAP cells allot
+
+TRUSTED: N>HANDLE ( n -- process-pty-handle ) ;
+TRUSTED: HANDLE>N ( process-pty-handle -- n ) ;
+TRUSTED: N>RESERVATION ( n -- process-pty-reservation ) ;
+TRUSTED: RESERVATION>N ( process-pty-reservation -- n ) ;
 
 : CELL-AT ( ptr a idx -- ptr a ) {: base:ptr idx:idx :}
    base idx IDX>N cells + ;
@@ -32,6 +39,12 @@ create SLOT-OWNER SLOT-CAP cells allot
 
 : ACTIVE! ( bool idx -- )
    SLOT-ACTIVE swap CELL-AT ! ;
+
+: LIVE@ ( idx -- bool )
+   SLOT-LIVE swap CELL-AT @ 0 <> ;
+
+: LIVE! ( bool idx -- )
+   SLOT-LIVE swap CELL-AT ! ;
 
 : SUP@ ( idx -- pid )
    SLOT-SUP swap CELL-AT @ >PID ;
@@ -59,6 +72,7 @@ create SLOT-OWNER SLOT-CAP cells allot
 
 : SLOT-CLEAR ( idx -- ) {: idx:idx :}
    false idx ACTIVE!
+   false idx LIVE!
    -1 >PID idx SUP!
    -1 >PID idx TARGET!
    -1 >FD idx DONE!
@@ -88,11 +102,6 @@ create SLOT-OWNER SLOT-CAP cells allot
    idx GEN@ dup GEN-MAX >= if drop E-PROC-PTY-CAPACITY throw then
    1+ ;
 
-: RESERVE ( -- idx )
-   FIND-FREE dup NEXT-GEN over GEN!
-   getpid dup 0 < if drop E-PROC-SPAWN throw then >PID over OWNER!
-   true over ACTIVE! ;
-
 : RELEASE ( idx -- )
    SLOT-CLEAR ;
 
@@ -117,19 +126,41 @@ create SLOT-OWNER SLOT-CAP cells allot
    idx ACTIVE@ 0= if false exit then
    raw UNPACK-GEN idx GEN@ = ;
 
-TRUSTED: N>HANDLE ( n -- process-pty-handle ) ;
-TRUSTED: HANDLE>N ( process-pty-handle -- n ) ;
+: RESERVE ( -- process-pty-reservation )
+   FIND-FREE dup NEXT-GEN over GEN!
+   getpid dup 0 <= if drop E-PROC-SPAWN throw then >PID over OWNER!
+   true over ACTIVE!
+   PACK N>RESERVATION ;
 
-: OPEN ( process-pty-handle -- n )
-   HANDLE>N dup VALID? 0= if E-PROC-PTY-HANDLE throw then
+: OPEN-RAW ( n -- n )
+   dup VALID? 0= if E-PROC-PTY-HANDLE throw then
    dup UNPACK-IDX OWNER@ PID>N getpid <> if E-PROC-PTY-HANDLE throw then ;
 
-: TAKE ( process-pty-handle -- idx pid pid fd )
-   OPEN UNPACK-IDX {: idx:idx :}
-   idx idx SUP@ idx TARGET@ idx DONE@ ;
+: OPEN-RESERVATION ( process-pty-reservation -- n )
+   RESERVATION>N OPEN-RAW
+   dup UNPACK-IDX LIVE@ if E-PROC-PTY-HANDLE throw then ;
 
-: MINT ( idx -- process-pty-handle )
-   PACK N>HANDLE ;
+: OPEN ( process-pty-handle -- n )
+   HANDLE>N OPEN-RAW
+   dup UNPACK-IDX LIVE@ 0= if E-PROC-PTY-HANDLE throw then ;
+
+: CANCEL ( process-pty-reservation -- )
+   OPEN-RESERVATION UNPACK-IDX RELEASE ;
+
+: COMMIT-RAW ( n pid pid fd -- process-pty-handle )
+   {: raw:n sup:pid target:pid done:fd :}
+   raw UNPACK-IDX {: idx:idx :}
+   sup target done idx STORE
+   true idx LIVE!
+   raw N>HANDLE ;
+
+: COMMIT ( process-pty-reservation pid pid fd -- process-pty-handle )
+   >r >r >r OPEN-RESERVATION r> r> r> COMMIT-RAW ;
+
+: TAKE ( process-pty-handle -- pid pid fd )
+   OPEN UNPACK-IDX {: idx:idx :}
+   idx SUP@ idx TARGET@ idx DONE@
+   idx RELEASE ;
 
 public
 
