@@ -5139,3 +5139,6 @@ unchanged (148855). Keys for milestone 2:
 - **Recovery `BPROTWIDADD` was registered with the leaf wrapper despite emitting
   `BL`.** The nested protected-WID query replaced `x30`, so the raw bootstrap
   primitive could not return; `FPRIM` now matches native and preserves the caller.
+- **Run proof gates as standalone commands before VCS mutation.** A failed gate
+  followed by commit/push commands in one shell invocation can leave a successful
+  final exit status; inspect the gate result first, then commit in a later command.
