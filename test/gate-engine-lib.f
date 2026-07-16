@@ -1565,6 +1565,63 @@ variable GE-CF-BODY-U
    s" control-flow nesting too deep" s" hb cf-cap eval-catch diag" GE-EXPECT-ERR-HAS
    s" PASS: control-flow depth cap fail-closed rc70 (no overflow, catchable)" type cr ;
 
+: GE-RXE-CATCH-USABLE ( ptr u8 n ptr u8 n ptr u8 n -- )
+   {: src:ptr srcu:n code:ptr codeu:n diag:ptr diagu:n :}
+   \ dot habu-raw-exit-compile: one recoverable compile-error misuse evaluated
+   \ under the TCE-CATCH wrapper. The die site (C-DUP-DEF-FAIL / C-PACKAGE-FAIL /
+   \ C-LBRACE-DIE / C-LOCAL-REF / C-DIE-DOES) used to NR-EXIT-GROUP; it now writes
+   \ its diagnostic to fd 2 and routes through LCOMPILEDIE, so inside evaluate the
+   \ aborted compile is a catchable throw of its sysexits code. The caught code
+   \ prints to stdout, then a FRESH definition (GEC-RXOK -> 12321) compiles and
+   \ runs, proving the eval-frame rollback (input cursor + CP/NDICT truncation,
+   \ HIDX skipping the stale rolled-back records) left a usable session. Exit 0,
+   \ never a SIGBUS/register dump.
+   GE-HB-RESET
+   GE-EVAL-CATCH-SRC
+   src srcu GE-SRC-S"
+   s"  GEC-CATCH . cr" GE-SRC-LINE
+   s" : GEC-RXOK ( -- n ) 12321 ; GEC-RXOK . cr" GE-SRC-LINE
+   s" bin/hb" GE-SRC-BUF GE-SRC-U @ GE-TIMEOUT-MS GE-RUN-STDIN
+   s" hb rawexit eval-catch usable" GE-EXPECT-OK
+   code codeu s" hb rawexit eval-catch code" GE-EXPECT-OUT-HAS
+   s" 12321" s" hb rawexit eval-catch session-usable" GE-EXPECT-OUT-HAS
+   diag diagu s" hb rawexit eval-catch diag" GE-EXPECT-ERR-HAS
+   s" habu-crash" s" hb rawexit eval-catch no-crash" GE-EXPECT-ERR-LACKS ;
+
+: GE-RXE-TOP ( ptr u8 n n ptr u8 n -- )
+   {: src:ptr srcu:n rc:n diag:ptr diagu:n :}
+   \ Same misuse at top level (EVALD==0, no eval frame): the recovery route only
+   \ ADDS the inside-evaluate catch, so the fail-closed sysexits exit + diagnostic
+   \ stay byte-identical to before the conversion.
+   GE-HB-RESET
+   GE-SRC-RESET
+   src srcu GE-SRC-LINE
+   s" bin/hb" GE-SRC-BUF GE-SRC-U @ GE-TIMEOUT-MS GE-RUN-STDIN
+   rc s" hb rawexit top-level rc" GE-EXPECT-RC
+   diag diagu s" hb rawexit top-level diag" GE-EXPECT-ERR-HAS
+   s" habu-crash" s" hb rawexit top-level no-crash" GE-EXPECT-ERR-LACKS ;
+
+: GE-RAWEXIT-RECOVER ( -- )
+   \ dot habu-raw-exit-compile: runtime-compiler die sites that used to
+   \ NR-EXIT-GROUP now route through the shared LCOMPILEDIE tail — recoverable as
+   \ a catchable throw of their sysexits code inside evaluate (eval frame rolled
+   \ back, session usable), byte-identical fail-closed exit + diagnostic at top
+   \ level. One representative misuse per converted family. Dict/code overflow
+   \ (76/77) share the SAME LCOMPILEDIE tail; their top-level 77 contract is gated
+   \ by GE-DICT-FULL, and the dup-def case here exercises the identical
+   \ rollback-past-a-published-record + HIDX stale-tolerance path at unit cost.
+   s" : RXF ( -- n ) 1 ; : RXF ( -- n ) 2 ;" s" 78" s" duplicate definition:" GE-RXE-CATCH-USABLE
+   s" : RXF ( -- n ) 1 ; : RXF ( -- n ) 2 ;" 78 s" duplicate definition:" GE-RXE-TOP
+   s" public" s" 75" s" public" GE-RXE-CATCH-USABLE
+   s" public" 75 s" public" GE-RXE-TOP
+   s" : RXQLB ( -- ) [: {: a :} a ;] drop ;" s" 75" s" local cannot be inside quotation" GE-RXE-CATCH-USABLE
+   s" : RXQLB ( -- ) [: {: a :} a ;] drop ;" 75 s" local cannot be inside quotation" GE-RXE-TOP
+   s" : RXQLR ( n -- ) {: myloc :} [: myloc drop ;] drop ;" s" 75" s" myloc" GE-RXE-CATCH-USABLE
+   s" : RXQLR ( n -- ) {: myloc :} [: myloc drop ;] drop ;" 75 s" myloc" GE-RXE-TOP
+   s" : RXMK ( -- ) create does> ( -- n ) ;" s" 70" s" does>" GE-RXE-CATCH-USABLE
+   s" : RXMK ( -- ) create does> ( -- n ) ;" 70 s" does>" GE-RXE-TOP
+   s" PASS: recoverable compile errors catchable inside evaluate (session usable) + fail-closed at top level" type cr ;
+
 : GE-RUNTIME-CHECKS ( -- )
    GE-UNCAUGHT-THROW
    GE-INTERP-LAYOUT
@@ -1584,6 +1641,7 @@ variable GE-CF-BODY-U
    GE-EVAL-DEF-REJECT-CATCH
    GE-ORPHAN-CLOSER
    GE-CF-DEPTH-CAP
+   GE-RAWEXIT-RECOVER
    GE-SET-CHECK-NEG
    GE-TYPED-SMOKE
    GE-TIMEOUT-ATTRIBUTION ;

@@ -878,6 +878,34 @@ lesson — keep the specific word/code/path, cut the prose.
   bogus origin / a zeroed slack cell). Valid flow keeps depth ≥ 1 at every pop, so
   emitted code is byte-identical. Mirror the guard in `bootstrap/cg/forth.fs`
   (gforth recovery seed) as a fail-closed hard rc-70.
+- **Recoverable compile-error die sites route through one parametric tail
+  (LCOMPILEDIE), not new error codes.** Runtime-compiler rejects that
+  `NR-EXIT-GROUP`'d — duplicate definition ($4E), colon/dict overflow ($4C/$4D),
+  package-keyword misuse ($4A/$4B), locals-in-a-quotation ($4B, C-LBRACE-DIE +
+  C-LOCAL-REF), does>-body checker reject (70, C-DIE-DOES) — are now catchable
+  inside `evaluate` (dot habu-raw-exit-compile). Each site still writes its
+  diagnostic to fd 2, then `LCOMPILEDIE LABEL@ B,` with x0 = its code.
+  LCOMPILEDIE is the parametric sibling of LDIAGRET: EVALD>0 restores RX
+  (idempotent), moves x0→x15, branches LEVALREC so the SAME code is delivered as
+  a catchable throw after the eval-frame rollback (input cursor + CP/NDICT
+  truncation + compile state); EVALD==0 keeps the exact `exit_group(code)`, so
+  top-level diagnostic + exit are byte-identical. Two findings overrode the dot's
+  framing: (1) these are positive *sysexits-style* codes, which
+  `tools/error-code-lint-core.f` EXCLUDES by design (only negative `E-*` are the
+  uniqueness namespace) and which are overloaded across unrelated meanings
+  (78=dup-def AND mmap-fail; 76=code-full AND counted-string) — so NO `E-*`
+  fits and NO new code/inventory row is needed; keep the number as both exit and
+  throw, like RC-REJECT=70. (2) The overflow rollback is consistent because HIDX
+  skips any record index ≥ NDICT (`C-HIDX-INS`/`C-HIDX-DUP?`/FIND all guard it),
+  so LEVALREC's NDICT truncation makes rolled-back records stale/invisible — a
+  dup-def that fails AFTER publishing the first record still leaves a usable
+  dictionary (proven: catch, then a fresh define+run works). The pure
+  emit-op tail checks as `( -- )` with NO `s" ... TRUST` row — do NOT copy the
+  sibling em-* TRUST lines by habit; a needless new TRUST site trips the
+  trusted-inventory ratchet (F12). Seed keeps hard exits (LCFPOP/LCFCAP
+  precedent); mirror-lint is unaffected (no ADT keyword added). Testing gotcha:
+  `bin/hb file.f` enters the tty REPL and blocks after the file — feed source via
+  stdin (`bin/hb < file`) as the GE- gate DSL does.
 - **Do not port relative linked-list words by habit:** SwiftForth's
   `@REL`/`!REL`/`,REL`/link traversal words bake dictionary-relative pointer
   arithmetic into APIs. Habu should model node layout with structures, runtime

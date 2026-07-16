@@ -134,6 +134,7 @@ variable LORPHAN   variable LORPHANMSG   \ orphan control-flow closer reject (em
 40 constant ORPHANMSG-LEN  \ byte length of "hb: control-flow closer without opener: " (LORPHANMSG)
 variable LCFCAP   variable LCFCAPMSG   \ control-flow stack overflow reject (LCFPUSH at CFSTK-DEPTH-MAX) + its message
 35 constant CFCAPMSG-LEN   \ byte length of "hb: control-flow nesting too deep: " (LCFCAPMSG)
+variable LCOMPILEDIE   \ shared recoverable compile-error tail (dot habu-raw-exit-compile): a die site that already wrote its diagnostic branches here with x0 = its sysexits exit code. Inside evaluate (EVALD>0) the aborted compile unwinds as a catchable throw of that SAME code via LEVALREC (RSP/CP/NDICT/XDS/DP + compile-state rollback, HIDX tolerates the stale records); at top level (EVALD==0) it exit_group(x0) byte-identically to the old raw exit.
 31 constant CONFMSG-LEN   \ byte length of "hb: construct: unknown family: " (EM-COMPILE-ADT-MODE)
 32 constant CONVMSG-LEN   \ byte length of "hb: construct: unknown variant: " (EM-COMPILE-ADT-MODE)
 27 constant MFAMMSG-LEN   \ byte length of "hb: match: unknown family: " (EM-ADT-MATCH-FAM)
@@ -1666,9 +1667,9 @@ s" c-call-checker-defer" s" --" TRUST
    nomark LBL,
    nohook LBL, ;
 
-: C-DIE-DOES ( -- )
+: C-DIE-DOES ( -- )                                   \ does>-body checker reject: recoverable inside evaluate (rc 70), fail-closed exit 70 at top level
    0 2 MOVZ,  1 LKWDOES LABEL@ ADR,  2 5 MOVZ,  NR-WRITE SYS,
-   0 70 MOVZ,  NR-EXIT-GROUP SYS, ;
+   0 70 MOVZ,  LCOMPILEDIE LABEL@ B, ;
 
 : C-CALL-CHECK-DOES ( -- )
    LBL LBL {: found good :}
@@ -1925,15 +1926,15 @@ s" c-call-checker-defer" s" --" TRUST
          10 10 1 ADDI,  11 11 1 ADDI,  14 14 1 SUBI,  scopy B,
       scd LBL,
       done B,
-   fail LBL,
+   fail LBL,                                          \ long name would overflow the code region: recoverable inside evaluate (rc 76), fail-closed exit 76 at top level
       0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,
-      0 76 MOVZ,  NR-EXIT-GROUP SYS,
+      0 76 MOVZ,  LCOMPILEDIE LABEL@ B,
    done LBL, ;
 
-: C-QUALIFY-FAIL ( n -- ) {: rc:n :}
+: C-QUALIFY-FAIL ( n -- ) {: rc:n :}                  \ qualified-name misuse ($4B) / dict-full ($4D) during C-QUALIFY-DEF: recoverable inside evaluate, fail-closed exit rc at top level
    0 2 MOVZ,  1 DATA DEF-TKA-CELL LDR,  2 DATA DEF-TKL-CELL LDR,  NR-WRITE SYS,
    0 2 MOVZ,  1 LQNL LABEL@ ADR,  1 1 1 ADDI,  2 1 MOVZ,  NR-WRITE SYS,
-   0 rc MOVZ,  NR-EXIT-GROUP SYS, ;
+   0 rc MOVZ,  LCOMPILEDIE LABEL@ B, ;
 
 \ Capacity exits (dot habu-gate-runner-entry-81c84af0): a definer hitting the
 \ dict-record or code-region capacity used to write only the CURRENT TOKEN to
@@ -1946,10 +1947,10 @@ s" c-call-checker-defer" s" --" TRUST
    LABEL@ 1 swap ADR,
    2 CAPMSG-LEN MOVZ,  NR-WRITE SYS, ;
 
-: C-DIE-TOKEN-NL ( n -- ) {: rc:n :}
+: C-DIE-TOKEN-NL ( n -- ) {: rc:n :}                  \ definer capacity die (dict full $4D / code full $4C): recoverable inside evaluate (rollback frees the aborted definition), fail-closed exit rc at top level
    0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,
    0 2 MOVZ,  1 LQNL LABEL@ ADR,  1 1 1 ADDI,  2 1 MOVZ,  NR-WRITE SYS,
-   0 rc MOVZ,  NR-EXIT-GROUP SYS, ;
+   0 rc MOVZ,  LCOMPILEDIE LABEL@ B, ;
 
 : C-DIE-DICT-FULL ( -- )
    LDICTFULL C-CAP-LABEL
@@ -1966,10 +1967,10 @@ s" c-call-checker-defer" s" --" TRUST
       $4D C-QUALIFY-FAIL
    room LBL, ;
 
-: C-DUP-DEF-FAIL ( -- )
+: C-DUP-DEF-FAIL ( -- )                               \ duplicate definition: recoverable inside evaluate (rc $4E), fail-closed exit $4E at top level
    0 2 MOVZ,  1 LKWDUPDEF LABEL@ ADR,  2 22 MOVZ,  NR-WRITE SYS,
    0 2 MOVZ,  1 DATA DEF-TKA-CELL LDR,  2 DATA DEF-TKL-CELL LDR,  NR-WRITE SYS,
-   0 $4E MOVZ,  NR-EXIT-GROUP SYS, ;
+   0 $4E MOVZ,  LCOMPILEDIE LABEL@ B, ;
 s" c-dup-def-fail" s" --" TRUST
 
 : C-REJECT-DUP-DEF ( -- )
@@ -2879,9 +2880,9 @@ variable VDESC  variable DRIFT-FAIL
    rd LBL,
    SP SP 32 ADDI, ;
 
-: C-LBRACE-DIE ( -- )   \ B2: emit the locals-placement diagnostic, then exit 75
+: C-LBRACE-DIE ( -- )   \ B2: locals opener inside a quotation: recoverable inside evaluate (rc $4B), fail-closed exit $4B at top level
    1 LBADLOC LABEL@ ADR,  0 2 MOVZ,  2 $27 MOVZ,  NR-WRITE SYS,
-   0 $4B MOVZ,  NR-EXIT-GROUP SYS, ;
+   0 $4B MOVZ,  LCOMPILEDIE LABEL@ B, ;
 s" c-lbrace-die" s" --" TRUST
 
 : C-LBRACE-GUARDS ( -- )
@@ -3158,9 +3159,9 @@ variable CFSK2
    C-LOCAL-REF-LABELS
    LLOC-FIND LABEL@ BL,  0 0 CMPI,  C-LT CLOC-NOT LABEL@ BCOND,
    LBCAP LABEL@ BL,
-   11 DATA QPATCH-CELL LDR,  11 CLOC-QOK LABEL@ CBZ,
+   11 DATA QPATCH-CELL LDR,  11 CLOC-QOK LABEL@ CBZ,        \ local referenced inside a quotation: recoverable inside evaluate (rc 75), fail-closed exit 75 at top level
       0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,
-      0 75 MOVZ,  NR-EXIT-GROUP SYS,
+      0 75 MOVZ,  LCOMPILEDIE LABEL@ B,
    CLOC-QOK LABEL@ LBL,
    LBL CLOC-P1 !
    9 DATA P2-CELL LDR,  9 CLOC-P1 LABEL@ CBZ,         \ pass 2: width-aware reference
@@ -4190,9 +4191,9 @@ s" c-call-checker-private" s" --" TRUST
    done LBL, ;
 s" c-call-checker-end-package" s" --" TRUST
 
-: C-PACKAGE-FAIL ( n -- ) {: rc:n :}
+: C-PACKAGE-FAIL ( n -- ) {: rc:n :}                  \ package keyword misuse ($4A no name / $4B wrong context): recoverable inside evaluate, fail-closed exit rc at top level
    0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,
-   0 rc MOVZ,  NR-EXIT-GROUP SYS, ;
+   0 rc MOVZ,  LCOMPILEDIE LABEL@ B, ;
 s" c-package-fail" s" n --" TRUST
 
 : C-PACKAGE-NAME-GUARD ( -- )
@@ -5790,6 +5791,32 @@ s" em-repl-recover" s" --" TRUST
    LDIAGRET LABEL@ B, ;
 s" em-compile-undef" s" --" TRUST
 
+\ Shared recoverable compile-error tail (dot habu-raw-exit-compile). The
+\ parametric sibling of LDIAGRET: LDIAGRET delivers a fixed RC-REJECT (70), this
+\ carries the code in x0 so duplicate-definition / dict+code overflow / package
+\ misuse / locals-in-quotation / does>-check rejects each keep their own
+\ sysexits-style exit code (positive, shared across sites by design per
+\ tools/error-code-lint-core.f). Each die site writes its diagnostic to fd 2, sets
+\ x0 = its code, then `LCOMPILEDIE LABEL@ B,` here. Inside evaluate (EVALD>0) the
+\ aborted nested compile unwinds as a catchable throw of that code via the eval
+\ throw-recovery (the same LEVALREC path BTHROW/LDIAGRET use) — rolling back every
+\ escaped eval frame (input cursor, CP/NDICT truncation drops the partial record,
+\ XDS/DP, compile state; HIDX transparently skips any rolled-back record index) —
+\ and delivers to the enclosing catch, else fails closed with exit_group(x0). At
+\ top level (EVALD==0) it exit_group(x0), byte-identical to the old raw exit. We may
+\ abort mid-compile with the code region RW, so restore RX (idempotent when already
+\ RX) before re-entering executable EV/handler code. x15 carries the code across the
+\ LPROT syscall (kernel preserves x2-x15, as the LUNCAUGHT reporter already relies on).
+: EM-COMPILE-DIE ( -- )
+   LBL {: ldie:label :}
+   LCOMPILEDIE LABEL@ LBL,                                  \ entry: x0 = sysexits exit/throw code (die site just wrote its diagnostic)
+   15 0 0 ADDI,                                             \ x15 = code (survives LPROT; LEVALREC delivers it as the throw code)
+   9 DATA EVALD-CELL LDR,  9 ldie CBZ,                      \ EVALD==0 -> top-level: fail closed (LREPL/--load exit unchanged)
+      2 5 MOVZ,  LPROT LABEL@ BL,                           \ region -> RX
+      10 DATA EVALREC-CELL LDR,  10 BR,                     \ -> LEVALREC (escaped-frame unwind + deliver x15)
+   ldie LBL,
+   NR-EXIT-GROUP SYS, ;                                     \ x0 still = code
+
 : EM-EVAL-CLEAN-EXIT ( -- )
    9 DATA EVALD-CELL LDR,  9 9 1 SUBI,  9 DATA EVALD-CELL STR,
    9 14 15 C-EVAL-FRAME-ADDR
@@ -6116,6 +6143,7 @@ s" em-compile-adt-mode" s" --" TRUST
    EM-COMPILE-OPS
    EM-COMPILE-CALL
    EM-COMPILE-UNDEF
+   EM-COMPILE-DIE             \ branch-target only (die sites B, here with x0 = code); ends by branching/exiting
    EM-COMPILE-EXIT
    EM-EVAL-THROW-RECOVER ;    \ branch-target only (reached via EVALREC-CELL); ends by branching
 s" em-compile" s" --" TRUST
@@ -6218,6 +6246,7 @@ s" SRCA@" s" -- ptr u8" TRUST
    LBL LMININ !  LBL LMINMSG !
    LBL LORPHAN !  LBL LORPHANMSG !
    LBL LCFCAP !  LBL LCFCAPMSG !
+   LBL LCOMPILEDIE !
    LBL LDICTFULL !  LBL LCODEFULL !
    LBL LSNAPBAD !  LBL LSNAPVER !
    LBL LSRCFULL !  LBL LSRCREAD !  LBL LBADSTR !
