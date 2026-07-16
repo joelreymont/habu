@@ -506,16 +506,18 @@ variable MDV-I   variable MDV-F
 : DCODE
    NPBAD @ IF s" E-NONPARAMETRIC-EFFECT" ELSE
    CAPREQ @ IF s" E-CAP-TRUSTED" ELSE
+   IMMERR @ IF s" E-UNMODELED-IMMEDIATE" ELSE
    UNSAFE @ IF s" E-UNSAFE" ELSE
    LOCALBAD @ IF s" E-BAD-LOCAL-SHAPE" ELSE
    LINLOCBAD @ IF s" E-LINEAR-LOCAL" ELSE
+   FORKLINBAD @ IF s" E-LINEAR-FORK" ELSE
    MDIAG @ 0 <> IF MDIAG-CODE$ ELSE
    DEADERR @ IF s" E-DEAD-CODE" ELSE
    QUALBAD @ IF s" E-BAD-QUALIFIED" ELSE
    UNDEFERR @ IF s" E-UNDEFINED" ELSE
    DVERD @ 1 = IF s" E-UNCHECKABLE" ELSE
    SGBAD @ IF SGBAD-UNKNOWN? IF s" E-UNKNOWN-SIGNATURE-TYPE" ELSE SGBAD-BAREPTR? IF s" E-BARE-PTR-SIGNATURE" ELSE SGBAD-ARITY? IF s" E-WRONG-ARITY" ELSE s" E-BAD-SIGNATURE" THEN THEN THEN ELSE
-   DEXP @ 0 <> IF s" E-MISMATCH" ELSE s" E-REJECTED" THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN ;
+   DEXP @ 0 <> IF s" E-MISMATCH" ELSE s" E-REJECTED" THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN ;
 : DVERDICT ( -- ptr u8 n )
    UNDEFERR @ IF
       s" rejected"
@@ -531,9 +533,11 @@ variable MDV-I   variable MDV-F
 : REPAIR-CLASS ( -- a u )
    NPBAD @ IF s" fix_parametric_effect" EXIT THEN
    CAPREQ @ IF s" trusted_boundary_required" EXIT THEN
+   IMMERR @ IF s" declare_immediate_expansion" EXIT THEN
    UNSAFE @ IF s" trusted_boundary_required" EXIT THEN
    LOCALBAD @ IF s" factor_local_shape" EXIT THEN
    LINLOCBAD @ IF s" factor_linear_local" EXIT THEN
+   FORKLINBAD @ IF s" move_linear_before_fork" EXIT THEN
    MDIAG @ 0 <> IF MDIAG-CLASS$ EXIT THEN
    DEADERR @ IF s" remove_dead_code" EXIT THEN
    QUALBAD @ IF s" fix_qualified_name" EXIT THEN
@@ -563,6 +567,7 @@ variable MDV-I   variable MDV-F
       THEN EXIT
    THEN
    CAPREQ @ IF s" Move this compiler or runtime boundary behind audited TRUST." EXIT THEN
+   IMMERR @ IF s" Declare the parsing expansion with PARSE-IMM, move it outside the checked body, or make the body an audited TRUSTED: boundary." EXIT THEN
    UNSAFE @ IF s" Move this compiler or runtime boundary behind audited TRUST." EXIT THEN
    LOCALBAD @ IF s" Move locals to a live top-level path or factor a helper." EXIT THEN
    LINLOCBAD @ IF s" Keep the linear value on the stack; do not bind it to a local." EXIT THEN
@@ -631,6 +636,11 @@ variable JPOS  variable JLINE  variable JCOL
      s" : '" DTXT  FAILTK FAILTU @ DTXT
      s" ' is a trust-boundary primitive; call it only from a TRUSTED: definition" DTXT EXIT
    THEN
+   IMMERR @ IF
+     s" E-UNMODELED-IMMEDIATE habu: in " DTXT  NMA @ NMU @ DTXT
+     s" : immediate '" DTXT  FAILTK FAILTU @ DTXT
+     s" ' has no declared compile-time expansion" DTXT EXIT
+   THEN
    SGBAD-UNKNOWN? IF
      s" habu: in " DTXT  NMA @ NMU @ DTXT  s" : unknown type '" DTXT
      FAILTK FAILTU @ DTXT  s" ' in signature" DTXT EXIT
@@ -655,6 +665,10 @@ variable JPOS  variable JLINE  variable JCOL
    LINLOCBAD @ IF
      s" E-LINEAR-LOCAL habu: in " DTXT  NMA @ NMU @ DTXT
      s" : linear value cannot be bound to a local; keep it on the stack" DTXT EXIT
+   THEN
+   FORKLINBAD @ IF
+     s" E-LINEAR-FORK habu: in " DTXT  NMA @ NMU @ DTXT
+     s" : fork cannot clone live linear state; consume it before fork" DTXT EXIT
    THEN
    s" habu: in " DTXT  NMA @ NMU @ DTXT  s" : at '" DTXT  FAILTK FAILTU @ DTXT
    s" '" DTXT

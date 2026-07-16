@@ -18,6 +18,7 @@ require lib/string.f
 require lib/float.f
 require lib/fmt.f
 require lib/test.f
+require lib/engine-candidate.f
 require maki/array.f
 require src/arch/ptx/emit.f
 require lib/ptx/cg.f
@@ -57,7 +58,7 @@ variable GC-FWD variable GC-BWD variable GC-dX variable GC-dDY variable GC-dO va
    PROC-ARGV-RESET
    s" --load"                    >LEN PROC-ARGV+
    s" tools/ptx/softmax-fb-cg.f" >LEN PROC-ARGV+
-   s" bin/hb" >LEN  GC-EOUT $8000 >LEN  GC-EERR $1000 >LEN  20000 >MS  RUN-ARGV-CAPTURE
+   ENGINE-CANDIDATE:PATH$ >LEN  GC-EOUT $8000 >LEN  GC-EERR $1000 >LEN  20000 >MS  RUN-ARGV-CAPTURE
    {: outu:len erru:len rc:rc :}
    GC-EERR erru LEN>N  rc RC>N  PTXTC:EMIT-GUARD           \ nonzero emit rc -> surface stderr, throw
    PTXTC:PTX$ GC-EOUT outu LEN>N WRITE-ALL  outu LEN>N ;

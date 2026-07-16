@@ -125,6 +125,7 @@ variable LUNCAUGHT   variable LUNCMSG   \ uncaught-top-level-throw reporter + it
 variable LUNCRPT   variable LUNCPOS   variable LUNCLOOP   variable LUNCDONE   \ reporter branch + itoa labels
 24 constant UNCMSG-LEN   \ byte length of "hb: uncaught throw code " (LUNCMSG)
 variable LWIDE   variable LWIDEMSG   variable LDIAGRET   \ interpret-mode wide-effect reject + its message + shared recovery tail
+variable LIMMPREFMSG                                      \ missing/invalid checked-immediate preflight
 33 constant WIDEMSG-LEN   \ byte length of "hb: interpret-mode layout value: " (LWIDEMSG)
 variable LINTERNAL   variable LINTMSG   \ interpret-mode internal-word reject (DNAME-INT) + its message
 26 constant INTMSG-LEN    \ byte length of "hb: internal engine word: " (LINTMSG)
@@ -132,13 +133,16 @@ variable LMININ   variable LMINMSG   \ interpret-mode certified-word underdepth 
 32 constant MINMSG-LEN    \ byte length of "hb: interpret stack underdepth: " (LMINMSG)
 variable LORPHAN   variable LORPHANMSG   \ orphan control-flow closer reject (empty CFSTK pop) + its message
 40 constant ORPHANMSG-LEN  \ byte length of "hb: control-flow closer without opener: " (LORPHANMSG)
+37 constant IMMPREFMSG-LEN \ byte length of "hb: immediate preflight unavailable: " (LIMMPREFMSG)
 31 constant CONFMSG-LEN   \ byte length of "hb: construct: unknown family: " (EM-COMPILE-ADT-MODE)
 32 constant CONVMSG-LEN   \ byte length of "hb: construct: unknown variant: " (EM-COMPILE-ADT-MODE)
 27 constant MFAMMSG-LEN   \ byte length of "hb: match: unknown family: " (EM-ADT-MATCH-FAM)
 28 constant MVARMSG-LEN   \ byte length of "hb: match: unknown variant: " (EM-ADT-MATCH-VAR)
 24 constant MOFMSG-LEN    \ byte length of "hb: match: expected of: " (EM-ADT-MATCH-OF)
 variable LDICTFULL   variable LCODEFULL   \ definer capacity-exit labels (dict-record / code-region full)
+variable LDGENFULL                         \ monotonic dictionary-generation exhaustion
 24 constant CAPMSG-LEN    \ byte length of "hb: dictionary full at: " and "hb: code space full at: "
+36 constant DGENMSG-LEN   \ byte length of "hb: definition generation exhausted\n"
 variable LSNAPBAD   variable LSNAPVER   \ snapshot-loader labeled-exit messages (corrupt trailer 79 / unsupported version 80)
 29 constant SNAPBAD-MSG-LEN   \ byte length of "hb: snapshot trailer corrupt\n" (LSNAPBAD)
 40 constant SNAPVER-MSG-LEN   \ byte length of "hb: snapshot format version unsupported\n" (LSNAPVER)
@@ -342,8 +346,10 @@ s" c-bp-watch-dump" s" label label --" TRUST
    LINTMSG LABEL@ LBL, s" hb: internal engine word: " BYTES,             \ INTMSG-LEN bytes; LINTERNAL appends the token + newline
    LMINMSG LABEL@ LBL, s" hb: interpret stack underdepth: " BYTES,       \ MINMSG-LEN bytes; LMININ appends the token + newline
    LORPHANMSG LABEL@ LBL, s" hb: control-flow closer without opener: " BYTES,   \ ORPHANMSG-LEN bytes; LORPHAN appends the closer token + newline
+   LIMMPREFMSG LABEL@ LBL, s" hb: immediate preflight unavailable: " BYTES,  0 c, 0 c, 0 c,
    LDICTFULL LABEL@ LBL, s" hb: dictionary full at: " BYTES,             \ CAPMSG-LEN bytes; capacity arms append the token + newline
    LCODEFULL LABEL@ LBL, s" hb: code space full at: " BYTES,             \ CAPMSG-LEN bytes
+   LDGENFULL LABEL@ LBL, s" hb: definition generation exhausted" BYTES,  NL-KW 1 BYTES,
    LSNAPBAD LABEL@ LBL, s" hb: snapshot trailer corrupt" BYTES,  NL-KW 1 BYTES,               \ SNAPBAD-MSG-LEN bytes incl. newline
    LSNAPVER LABEL@ LBL, s" hb: snapshot format version unsupported" BYTES,  NL-KW 1 BYTES,     \ SNAPVER-MSG-LEN bytes incl. newline
    LSRCFULL LABEL@ LBL, s" hb: source prefix buffer full" BYTES,  NL-KW 1 BYTES,               \ SRCFULL-MSG-LEN bytes incl. newline
@@ -1859,7 +1865,8 @@ s" c-call-checker-defer" s" --" TRUST
    2 3 MOVZ,  LPROT LABEL@ BL,                                \ region -> RW
    10 SP 8 LDR,
    11 DATA LASTC-CELL LDR,                               \ created slot
-   12 11 0 LDR,  13 11 8 LDR,  12 12 13 ADD,             \ x12 = RET addr
+   12 11 0 LDR,  13 11 8 LDR,  13 13 DCLEN-MASK ANDI,
+   12 12 13 ADD,                                           \ x12 = RET addr
    14 10 12 SUB,  14 14 2 ASRI,                          \ delta words (negative)
    5 $3FFFFFF LIT64,  14 14 5 AND,
    5 $14000000 LIT64,  14 14 5 ORR,                      \ b D
@@ -1948,6 +1955,23 @@ s" c-call-checker-defer" s" --" TRUST
 : C-DIE-CODE-FULL ( -- )
    LCODEFULL C-CAP-LABEL
    $4C C-DIE-TOKEN-NL ;
+
+: C-DREC-STAMP ( n n n n -- )
+   {: rec:n gen:n word:n mask:n :}
+   LBL {: ok:label :}
+   gen DATA DGEN-CELL LDR,
+   gen gen 1 ADDI,
+   mask DCLEN-MASK LIT64,
+   gen mask CMP,  C-LS ok BCOND,
+      0 2 MOVZ,  1 LDGENFULL LABEL@ ADR,  2 DGENMSG-LEN MOVZ,  NR-WRITE SYS,
+      0 76 MOVZ,  NR-EXIT-GROUP SYS,
+   ok LBL,
+   gen DATA DGEN-CELL STR,
+   word rec 8 LDR,
+   word word mask AND,
+   mask gen DGEN-SHIFT LSLI,
+   word word mask ORR,
+   word rec 8 STR, ;
 
 : C-QUALIFY-CAP ( -- )
    LBL {: room :}
@@ -2160,6 +2184,7 @@ s" c-store-def-name" s" --" TRUST
    9 NDICT 0 ADDI,  10 DREC MOVZ,  9 9 10 MUL,  9 DBASE 9 ADD,
    10 9 0 LDR,  10 CP 10 SUB,  10 10 4 SUBI,  10 9 8 STR,
    9 DATA LASTC-CELL STR,
+   9 10 11 12 C-DREC-STAMP
    NDICT NDICT 1 ADDI,  LHIDXADD LABEL@ BL,  9 9 0 LDR,   \ publish record NDICT-1; x9 = body start for the flush
    2 5 MOVZ,  LPROT LABEL@ BL,  LFLUSH LABEL@ BL,
    15 SP 8 LDR,  15 nokind CBZ,
@@ -2195,6 +2220,7 @@ s" c-store-def-name" s" --" TRUST
    9 NDICT 0 ADDI,  10 DREC MOVZ,  9 9 10 MUL,  9 DBASE 9 ADD,
    10 9 0 LDR,  10 CP 10 SUB,  10 10 4 SUBI,  10 9 8 STR,
    9 DATA LASTC-CELL STR,
+   9 10 11 12 C-DREC-STAMP
    NDICT NDICT 1 ADDI,  LHIDXADD LABEL@ BL,  9 9 0 LDR,   \ publish record NDICT-1; x9 = body start for the flush
    2 5 MOVZ,  LPROT LABEL@ BL,  LFLUSH LABEL@ BL,
    LKWCONST 8 C-DEFHOOK
@@ -2330,6 +2356,7 @@ s" c-defer-room" s" --" TRUST
    9 DATA PEND-CELL LDR,
    10 9 0 LDR,  10 CP 10 SUB,  10 9 8 STR,
    C-DEFER-META-WRITE
+   9 DATA PEND-CELL LDR,  9 10 11 12 C-DREC-STAMP
    NDICT NDICT 1 ADDI,  LHIDXADD LABEL@ BL,
    9 DATA PEND-CELL LDR,  9 9 0 LDR,
    2 5 MOVZ,  LPROT LABEL@ BL,  LFLUSH LABEL@ BL,
@@ -2556,7 +2583,7 @@ variable LAOTWIDGATE   \ AOT boot sealed-WID reject routine (TFAM 2b-v)
 \ ---- top-row hook events (dot habu-typed-top-engine-2b2e88aa) --------------
 \ With a hook installed through `set-top-check` (layout.f TOP-HOOK-CELL), each
 \ interpret-dispatch class emits one event through the shared LTOPHOOK routine
-\ (EMIT-TOPHOOK): x15 = TOP-EV-* class, x16 = LFIND flags (0 for literals);
+\ (EMIT-TOPHOOK): x15 = TOP-EV-* class, x16 = public LFIND flags (0 for literals);
 \ LTOPHOOK adds the TKA/TKL token bytes and runs the hook. The site guard is
 \ one load + CBZ, so the uninstalled path is today's dispatch unchanged.
 variable LTOPHOOK
@@ -2568,10 +2595,10 @@ variable LTOPHOOK
    LTOPHOOK LABEL@ BL,
    nohk LBL, ;
 
-: C-TOPHOOK-FLAGS ( n -- ) {: class:n :}   \ word/tick event: flags from x13 (LFIND)
+: C-TOPHOOK-FLAGS ( n -- ) {: class:n :}   \ word/tick event: public flags from x13
    LBL {: nohk:label :}
    9 DATA TOP-HOOK-CELL LDR,  9 nohk CBZ,
-   15 class MOVZ,  16 13 0 ADDI,
+   15 class MOVZ,  16 13 LFIND-PUBLIC-MASK ANDI,
    LTOPHOOK LABEL@ BL,
    nohk LBL, ;
 
@@ -2579,7 +2606,7 @@ variable LTOPHOOK
    LBL {: nohk:label :}
    9 DATA TOP-HOOK-CELL LDR,  9 nohk CBZ,
    SP SP 16 SUBI,  11 SP 0 STR,
-   15 TOP-EV-WORD MOVZ,  16 13 0 ADDI,
+   15 TOP-EV-WORD MOVZ,  16 13 LFIND-PUBLIC-MASK ANDI,
    LTOPHOOK LABEL@ BL,
    11 SP 0 LDR,  SP SP 16 ADDI,
    nohk LBL, ;
@@ -3265,7 +3292,9 @@ s" c-local-ref" s" label label --" TRUST
       6 10 40 STR,                                  \ ordinary [40] wid = word3 (full u32, hi=0)
       4 6 1 ADDI,  5 DATA WIDN-CELL LDR,  4 5 CMP,  C-LE widok BCOND,   \ WIDN = max(WIDN, wid+1)
          4 DATA WIDN-CELL STR,                       \ advance so post-seed allocs clear restored wids
-      widok LBL,  next B,
+      widok LBL,
+      10 2 3 4 C-DREC-STAMP
+      next B,
       pkg-wid LBL,
       6 0 MOVN,  6 10 40 STR,                       \ package marker is signed -1; never advances WIDN
       next LBL,
@@ -3664,7 +3693,9 @@ s" c-local-ref" s" label label --" TRUST
       5 9 0 LDR,  6 9 8 LDR,
       7 9 40 LDR,  8 0 MOVN,  7 8 CMP,  C-EQ pkg BCOND,
       7 XREG-RBASE 5 ADD,  7 10 0 STR,
-      6 6 5 SUB,  6 6 4 SUBI,  6 10 8 STR,
+      6 6 5 SUB,  6 6 4 SUBI,
+      2 11 12 SUB,  2 2 1 ADDI,  2 2 DGEN-SHIFT LSLI,
+      6 6 2 ORR,  6 10 8 STR,
       fields B,
       pkg LBL,
       5 10 0 STR,  6 10 8 STR,
@@ -3696,6 +3727,7 @@ TRUSTED: EM-DATA-VA>N ( -- n ) DATA-VA ;
    DATA 0 0 ADDI,
    XDS DATA S0-CELL STR,
    13 DATA ARGC-CELL STR,  14 DATA ARGV-CELL STR,  15 DATA ENVP-CELL STR,
+   NDICT DATA DGEN-CELL STR,
    5 DATA-START LIT64,  7 DATA 5 ADD,  7 DATA DP-CELL STR, ;
 
 : EM-SNAPSHOT-COPY-CODE ( -- )
@@ -3812,17 +3844,34 @@ TRUSTED: EM-DATA-VA>N ( -- n ) DATA-VA ;
 : EM-SNAPSHOT-VALIDATE-WIDS ( label -- ) {: bad:label :}
    LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL
    LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL
+   LBL LBL LBL
    {: prot-loop:label prot-max:label prot-inner:label prot-next:label
       owners:label owner-loop:label pub-max:label pri-max:label
       oscan:label onext:label odone:label
       owner-prot:label owner-prev-start:label owner-prev:label
       owner-next:label widn:label name-inline:label name-ready:label
       name-loop:label name-ok:label pkg-scan:label pkg-inline:label
-      pkg-ready:label pkg-bytes:label pkg-hit:label pkg-next:label pkg-done:label :}
-   5 PROT-WID-END MOVZ,  7 5 CMP,  C-CC bad BCOND,
+      pkg-ready:label pkg-bytes:label pkg-hit:label pkg-next:label pkg-done:label
+      gen-loop:label gen-next:label gen-done:label :}
+   5 DGEN-END MOVZ,  7 5 CMP,  C-CC bad BCOND,
    10 12 7 SUB,                                     \ x10 = snapshot DATA source
    25 10 6 SUB,                                     \ x25 = snapshot dictionary source
    16 15 0 ADDI,                                    \ x16 = snapshot dictionary record count
+   \ Definition generations are monotonic authority. The persisted counter
+   \ must be a nonzero u32 at least as new as every live non-package record;
+   \ otherwise rollback could reuse an old identity after restore.
+   2 10 DGEN-CELL LDR,
+   2 bad CBZ,
+   3 2 DGEN-SHIFT LSRI,  3 bad CBNZ,
+   8 25 0 ADDI,  9 16 0 ADDI,
+   gen-loop LBL,  9 gen-done CBZ,
+      3 8 40 LDR,  4 0 MOVN,  3 4 CMP,  C-EQ gen-next BCOND,
+      3 8 8 LDR,  3 3 DGEN-SHIFT LSRI,
+      3 bad CBZ,
+      3 2 CMP,  C-HI bad BCOND,
+   gen-next LBL,
+      8 8 DREC ADDI,  9 9 1 SUBI,  gen-loop B,
+   gen-done LBL,
    11 10 PROT-WID-N-CELL LDR,
    11 PROT-WID-MAX CMPI,  C-HI bad BCOND,
    12 PROT-WID-OFF MOVZ,  12 10 12 ADD,
@@ -3944,13 +3993,40 @@ TRUSTED: EM-DATA-VA>N ( -- n ) DATA-VA ;
    6 FIRST-DYNAMIC-WID CMPI,  C-LT bad BCOND,
    6 17 CMP,  C-LS bad BCOND, ;
 
+\ Snapshot checker cells are trusted only when they resolve to the exact public
+\ package pair. Range checks alone admit any unrelated live code address.
+: EM-SNAPSHOT-HOOKS-EXACT ( label -- ) {: bad:label :}
+   LBL LBL LBL LBL LBL {: pref:label hook:label code:label wrong:label finish:label :}
+   code B,
+   pref LBL, s" LOWER-CERT-HOOK:PREFLIGHT" BYTES,
+   hook LBL, s" LOWER-CERT-HOOK:HOOK" BYTES,
+   ZBYTE 3 BYTES,
+   code LBL,
+   SP SP 64 SUBI,
+   30 SP 0 STR,  8 SP 8 STR,  15 SP 16 STR,  16 SP 24 STR,
+   21 SP 32 STR,  22 SP 40 STR,  25 SP 48 STR,
+   9 pref ADR,  10 25 MOVZ,  LFIND LABEL@ BL,
+   13 wrong CBZ,
+   14 DATA IMM-HOOK-CELL LDR,  11 14 CMP,  C-NE wrong BCOND,
+   9 hook ADR,  10 20 MOVZ,  LFIND LABEL@ BL,
+   13 wrong CBZ,
+   14 DATA HOOK-CELL LDR,  11 14 CMP,  C-NE wrong BCOND,
+   14 0 MOVZ,  finish B,
+   wrong LBL,  14 1 MOVZ,
+   finish LBL,
+   25 SP 48 LDR,  22 SP 40 LDR,  21 SP 32 LDR,
+   16 SP 24 LDR,  15 SP 16 LDR,  8 SP 8 LDR,  30 SP 0 LDR,
+   SP SP 64 ADDI,
+   14 bad CBNZ, ;
+s" em-snapshot-hooks-exact" s" label --" TRUST
+
 \ ---- AOT snapshot? (trailer at the end of our own __text). If present:
 \ restore both regions verbatim (fixed VAs keep region addresses valid),
 \ relocate engine-text call chains (the only ASLR-movers), boot WARM. ----
 : EM-SNAPSHOT-RESTORE ( -- )
-   LBL LBL LBL LBL LBL LBL LBL
+   LBL LBL LBL LBL LBL LBL LBL LBL LBL
    {: snomag:label snbad:label snok:label snnew:label snhave:label
-      snbadver:label snpresent:label :}
+      snbadver:label snpresent:label snimmok:label snhookok:label :}
    24 0 MOVZ,                                       \ x24 = snapshot flag
    9 DATA RBASE-CELL LDR,  25 9 0 ADDI,             \ x25 = live text CONTENT base
    10 9 0 ADDI,  5 $1000 LIT64,  10 10 5 SUB,
@@ -4016,6 +4092,13 @@ TRUSTED: EM-DATA-VA>N ( -- n ) DATA-VA ;
    9 DATA ARGC-CELL STR,  10 DATA ARGV-CELL STR,  0 DATA ENVP-CELL STR,
    NDICT 15 0 ADDI,
    CP DBASE 6 ADD,
+   9 DATA IMM-HOOK-CELL LDR,  9 snbad CBZ,
+   snbad snimmok C-HOOK-XT-GUARD
+   snimmok LBL,
+   9 DATA HOOK-CELL LDR,  9 snbad CBZ,
+   snbad snhookok C-HOOK-XT-GUARD
+   snhookok LBL,
+   snbad EM-SNAPSHOT-HOOKS-EXACT
    8 DBASE 0 ADDI,  16 CP 0 ADDI,
    LSNAPRBD LABEL@ BL,
    LSNAPRBC LABEL@ BL,
@@ -4032,7 +4115,7 @@ TRUSTED: EM-DATA-VA>N ( -- n ) DATA-VA ;
 
    9 0 MOVZ,  9 DATA CUR-CELL STR,
    9 FIRST-DYNAMIC-WID MOVZ,  9 DATA WIDN-CELL STR,
-   9 0 MOVZ,  9 DATA HOOK-CELL STR,  9 DATA TOP-HOOK-CELL STR,
+   9 0 MOVZ,  9 DATA HOOK-CELL STR,  9 DATA TOP-HOOK-CELL STR,  9 DATA IMM-HOOK-CELL STR,
    9 0 MOVZ,  9 DATA PROT-WID-N-CELL STR,  \ constructor registry starts empty
    OWNER-WID-EMIT:COLD-LABEL@ BL,
    cwok LBL,  9 0 MOVZ,
@@ -4425,6 +4508,7 @@ s" c-export-tail!" s" --" TRUST
    16 14 8 ANDI,  16 16 59 LSLI,  15 15 16 ORR,         \ flag bit3 -> DNAME-WIDE
    16 14 $FF00 ANDI,  16 16 44 LSLI,  15 15 16 ORR,     \ flag bits 8-15 -> DNAME-MIN-IN (same body, same certified arity)
    15 9 16 STR,
+   9 10 11 12 C-DREC-STAMP
    NDICT NDICT 1 ADDI,  LHIDXADD LABEL@ BL,
    2 5 MOVZ,  LPROT LABEL@ BL,
    SP SP 32 ADDI,
@@ -5371,6 +5455,7 @@ s" em-p2-finish" s" --" TRUST
 : EM-COMPILE-FLUSH-PEND ( -- )
    11 DATA PEND-CELL LDR,
    9 11 0 LDR,  10 CP 9 SUB,  10 10 4 SUBI,  10 11 8 STR,
+   11 10 12 13 C-DREC-STAMP
    2 5 MOVZ,  LPROT LABEL@ BL,  LFLUSH LABEL@ BL, ;
 s" em-compile-flush-pend" s" --" TRUST
 
@@ -5411,7 +5496,8 @@ s" em-compile-publish-trusted" s" --" TRUST
       \ publish path (item 12 slice 3b).
       LOWER-TXN:FREEZE
       EM-P2-TRIGGER
-   nohook LBL,  NDICT NDICT 1 ADDI,  LHIDXADD LABEL@ BL,
+   nohook LBL,
+   NDICT NDICT 1 ADDI,  LHIDXADD LABEL@ BL,
    EM-REC-WIDE-PUBLISH
    done B,
    rejected LBL,  11 DATA PEND-CELL LDR,  12 11 16 LDR,  12 12 DNAME-EXT ANDI,  12 inl CBZ,
@@ -5574,12 +5660,46 @@ s" em-compile-float-ops" s" --" TRUST
    EM-COMPILE-FLOAT-OPS ;
 s" em-compile-ops" s" --" TRUST
 
+: EM-COMPILE-IMM-PREFLIGHT ( -- )
+   LBL LBL LBL {: unchecked:label missing:label done:label :}
+   9 DATA HOOK-CELL LDR,  9 unchecked CBZ,          \ unchecked boundary: preserve native immediate semantics
+   9 DATA TRUSTED-CELL LDR,  9 unchecked CBNZ,      \ audited TRUSTED: body owns its compile-time effects
+   SP SP 32 SUBI,
+   30 SP 0 STR,  11 SP 8 STR,  13 SP 16 STR,        \ preserve loop return, exact immediate xt, and dict flags
+   9 DATA IMM-HOOK-CELL LDR,  9 missing CBZ,        \ armed checker without its paired preflight fails closed
+   2 5 MOVZ,  LPROT LABEL@ BL,                      \ region -> RX for checker-hook execution
+   9 DATA BODYBUF-OFF ADDI,  9 G-PUSH
+   9 DATA BODYLEN-CELL LDR,  9 G-PUSH
+   9 SP 8 LDR,  9 G-PUSH                            \ exact LFIND xt
+   9 SP 16 LDR,  9 9 LFIND-GEN-SHIFT LSRI,  9 G-PUSH \ exact definition generation
+   9 DATA P2-CELL LDR,  9 G-PUSH                    \ pass-2 replay marker
+   9 DATA IMM-HOOK-CELL LDR,  9 BLR,
+   10 G-POP  10 SP 24 STR,                          \ closed preflight action
+   2 3 MOVZ,  LPROT LABEL@ BL,                      \ region -> RW before every caller branch
+   10 SP 24 LDR,
+   13 SP 16 LDR,  11 SP 8 LDR,  30 SP 0 LDR,  SP SP 32 ADDI,
+   done B,
+   missing LBL,
+      10 IMM-ACT-BAD MOVZ,
+      13 SP 16 LDR,  11 SP 8 LDR,  30 SP 0 LDR,  SP SP 32 ADDI,
+      done B,
+   unchecked LBL,  10 IMM-ACT-EXECUTE MOVZ,
+   done LBL, ;
+s" em-compile-imm-preflight" s" --" TRUST
+
 : EM-COMPILE-CALL ( -- )
-   LBL LBL {: notimm:label depthok:label :}
+   LBL LBL LBL LBL {: notimm:label depthok:label execute:label bad:label :}
    LVSPILL LABEL@ BL,
    9 DATA TKA-CELL LDR,  10 DATA TKL-CELL LDR,  LFIND LABEL@ BL,
    13 LUNDEF LABEL@ CBZ,
    14 13 2 ANDI,  14 notimm CBZ,
+      10 IMM-ACT-BAD MOVZ,                            \ fail closed unless preflight selects an action
+      EM-COMPILE-IMM-PREFLIGHT                         \ authorize exact word before any diagnostic or execution
+      10 IMM-ACT-REJECT CMPI,  C-EQ LDIAGRET LABEL@ BCOND,
+      10 IMM-ACT-SKIP CMPI,  C-EQ LMAIN LABEL@ BCOND,
+      10 IMM-ACT-EXECUTE CMPI,  C-EQ execute BCOND,
+      bad B,
+   execute LBL,
       14 13 $FF00 ANDI,  14 depthok CBZ,                  \ DNAME-MIN-IN (x13 bits 8-15): the immediate's certified min input arity; 0 = unguarded boundary (compile path floor beneath the p5 checker/hook reject, reached under 0 set-check)
          14 14 8 LSRI,                                    \ x14 = min-in cells
          9 DATA S0-CELL LDR,  10 XDS 9 SUB,  10 10 3 ASRI, \ x10 = interpret depth in cells
@@ -5591,6 +5711,11 @@ s" em-compile-ops" s" --" TRUST
       2 3 MOVZ,  LPROT LABEL@ BL,
       30 SP 0 LDR,  SP SP 16 ADDI,
       LMAIN LABEL@ B,
+   bad LBL,
+      0 2 MOVZ,  1 LIMMPREFMSG LABEL@ ADR,  2 IMMPREFMSG-LEN MOVZ,  NR-WRITE SYS,
+      0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,
+      0 2 MOVZ,  1 LQNL LABEL@ ADR,  1 1 1 ADDI,  2 1 MOVZ,  NR-WRITE SYS,
+      LDIAGRET LABEL@ B,
    notimm LBL,
    C-CALL  LMAIN LABEL@ B, ;
 s" em-compile-call" s" --" TRUST
@@ -6133,6 +6258,7 @@ s" SRCA@" s" -- ptr u8" TRUST
 
 : EMIT-LABEL-CORE ( -- )
    LBL LANCHOR !  LBL LFIND !  LBL LNUM !  LBL LDICT !  LBL LSRC !
+   LBL LTOKFIND !
    LBL LCEMIT !  LBL LTOK !  LBL LPROT !  LBL LFLUSH !  LBL LNCOUNT !
    LBL LAOTCODE !  LBL LAOTDICT !  LBL LAOTCODELEN !
    LBL LAOTNREC !  LBL LAOTNSITE !  LBL LAOTSITES !  LBL LAOTNAMES !  LBL LAOTNAMESLEN !
@@ -6179,11 +6305,11 @@ s" SRCA@" s" -- ptr u8" TRUST
    LBL LCRASHH !  LBL LHEX !  LBL LHDR !  LBL LTRAPH !  LBL LBPH !  LBL LBPSH !  LBL LBPWH !  LBL LBADLOC !
    LBL LSRCRD !  LBL LSHBANG !  LBL LOPENERR !  LBL LOPENNL !
    LBL LUNCAUGHT !  LBL LUNCMSG !
-   LBL LWIDE !  LBL LWIDEMSG !  LBL LDIAGRET !
+   LBL LWIDE !  LBL LWIDEMSG !  LBL LDIAGRET !  LBL LIMMPREFMSG !
    LBL LINTERNAL !  LBL LINTMSG !
    LBL LMININ !  LBL LMINMSG !
    LBL LORPHAN !  LBL LORPHANMSG !
-   LBL LDICTFULL !  LBL LCODEFULL !
+   LBL LDICTFULL !  LBL LCODEFULL !  LBL LDGENFULL !
    LBL LSNAPBAD !  LBL LSNAPVER !
    LBL LSRCFULL !  LBL LSRCREAD !  LBL LBADSTR !
    LBL LPROTPUB !  LBL LPROTAOT !
@@ -6396,23 +6522,52 @@ s" AOT-PWID-BUF@" s" -- ptr u8" TRUST
    AOT-PWID-N @ 0 > if AOT-PWID-BUF@ AOT-PWID-N @ 4 * BYTES, then
    AOT-OWNER:BAKE ;
 
-\ tok-imm? ( ptr u8 n -- n ): live-dictionary immediate probe for the checker
-\ (dot habu-checker-fitting-arity-70dc94e4). Pops a token name, runs the same
-\ LFIND the interpret dispatch uses, and pushes flags&2 - the DNAME-IMM bit
-\ (habu1.f FIND-HMATCH folds it to bit 1) - so DO-TOK1 can reject a live
-\ immediate as a checked body step. LFIND clobbers x3-x16 and preserves XDS
-\ (x19)/DATA (x20); the FPRIM frame (GDEREF-F) holds our x30 across the BL.
-: BTOKIMM ( -- )
+\ Resolve one token through the exact live-dictionary lookup used by compile
+\ dispatch. LFIND is an engine-internal scratch-register routine, while this is
+\ entered from compiled Forth: preserve every non-result register either the
+\ native or recovery LFIND may clobber so every lookup path has one primitive
+\ ABI. Returns x11=xt and x13=flags to the wrappers.
+: EM-TOK-FIND ( -- )
+   LTOKFIND LABEL@ LBL,
+   SP SP 160 SUBI,
+   30 SP 0 STR,
+   0 SP 8 STR,  1 SP 16 STR,  2 SP 24 STR,  3 SP 32 STR,
+   4 SP 40 STR,  5 SP 48 STR,  6 SP 56 STR,  7 SP 64 STR,
+   8 SP 72 STR,  9 SP 80 STR,  10 SP 88 STR,  12 SP 96 STR,
+   14 SP 104 STR,  15 SP 112 STR,  16 SP 120 STR,  17 SP 128 STR,
    10 G-POP  9 G-POP                   \ x10 = len (TOS), x9 = addr: LFIND's token registers
-   LFIND LABEL@ BL,                    \ x13 = found | imm<<1 | min-in byte | int flags
+   11 0 MOVZ,                          \ miss contract: xt = 0, flags = 0
+   LFIND LABEL@ BL,
+   11 SP 136 STR,  13 SP 144 STR,
+   0 SP 8 LDR,  1 SP 16 LDR,  2 SP 24 LDR,  3 SP 32 LDR,
+   4 SP 40 LDR,  5 SP 48 LDR,  6 SP 56 LDR,  7 SP 64 LDR,
+   8 SP 72 LDR,  9 SP 80 LDR,  10 SP 88 LDR,  12 SP 96 LDR,
+   14 SP 104 LDR,  15 SP 112 LDR,  16 SP 120 LDR,  17 SP 128 LDR,
+   11 SP 136 LDR,  13 SP 144 LDR,  30 SP 0 LDR,
+   SP SP 160 ADDI,
+   RET, ;
+
+\ tok-imm? ( ptr u8 n -- n ): compatibility probe returning flags&2.
+: BTOKIMM ( -- )
+   LTOKFIND LABEL@ BL,                 \ x11 = exact xt, x13 = lookup flags
    9 13 2 ANDI,
    A G-PUSH ;
 
+\ tok-info ( ptr u8 n -- n n ): exact resolved xt followed by lookup flags.
+\ PARSE-IMM binds the xt, and immediate preflight compares the compiler's x11
+\ against that exact identity so a same-name shadow cannot inherit the model.
+: BTOKINFO ( -- )
+   LTOKFIND LABEL@ BL,
+   9 11 0 ADDI,  A G-PUSH
+   9 13 0 ADDI,  A G-PUSH ;
+
 : EMIT-PRIMITIVE-SECTIONS ( -- )
    EMIT-PRIMS  OWNER-WID-EMIT:PRIMS
+   EM-TOK-FIND
    EMIT-ARITY-GUARD             \ bake LARITY after prims so guarded entry labels resolve
    s" snap-rebase" ['] BSNAPREBASE FPRIM
    s" tok-imm?" ['] BTOKIMM 2 GDEREF-F
+   s" tok-info" ['] BTOKINFO 2 GDEREF-F
    EMIT-PROF-PRIMS
    EMIT-FP-PRIMS
    EMIT-CEMIT

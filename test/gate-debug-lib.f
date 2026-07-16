@@ -8,7 +8,7 @@ require tools/jitdump-core.f
    GE-HB-RESET
    GE-SRC-RESET
    s" test/prop-test.f" GE-SRC-FILE+
-   s" bin/hb" GE-SRC-BUF GE-SRC-U @ GE-TIMEOUT-MS GE-RUN-STDIN
+   GE-HB$ GE-SRC-BUF GE-SRC-U @ GE-TIMEOUT-MS GE-RUN-STDIN
    s" prop-test" GE-EXPECT-OK
    s" self-test OK" s" prop-test self-test/run did not complete" GE-EXPECT-OUT-HAS
    s" census OK" s" prop-test axiom census did not run in the gate path" GE-EXPECT-OUT-HAS

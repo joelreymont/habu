@@ -454,7 +454,7 @@ schema_version	module	file	kind	word	effect	test	doc	owner	status	notes
 1	fs	lib/fs.f	word	FILE?	(ptr u8 n -- bool)	lib/fs-test.f	docs/stdlib.md	stdlib-fs	published	test whether a path is a regular file
 1	fs	lib/fs.f	word	DIR?	(ptr u8 n -- bool)	lib/fs-test.f	docs/stdlib.md	stdlib-fs	published	test whether a path is a directory
 1	fs	lib/fs.f	word	SYMLINK?	(ptr u8 n -- bool)	lib/fs-mutate-test.f	docs/stdlib.md	stdlib-fs	published	test whether a path is a symbolic link without following it
-1	fs	lib/fs.f	word	EXECUTABLE?	(ptr u8 n -- bool)	lib/fs-test.f	docs/stdlib.md	stdlib-fs	published	test whether a path has execute access
+1	fs	lib/fs.f	word	EXECUTABLE?	(ptr u8 n -- bool)	lib/fs-test.f	docs/stdlib.md	stdlib-fs	published	test whether a path resolves to an executable regular file
 1	fs	lib/fs.f	word	BASENAME	(ptr u8 n -- ptr u8 n)	lib/fs-test.f	docs/stdlib.md	stdlib-fs	published	return the final path component
 1	fs	lib/fs.f	word	JOIN-PATH	(ptr u8 n ptr u8 n ptr u8 -- n)	lib/fs-test.f	docs/stdlib.md	stdlib-fs	published	join two path segments into caller storage
 1	fs	lib/fs.f	word	FS-PATH=	(ptr u8 n ptr u8 n -- bool)	lib/fs-test.f	docs/stdlib.md	stdlib-fs	published	compare counted paths
@@ -660,6 +660,8 @@ schema_version	module	file	kind	word	effect	test	doc	owner	status	notes
 1	process	lib/process.f	word	RUN-CAPTURE	(ptr u8 len ptr u8 len ptr u8 len ms -- len len rc)	lib/process-test.f	docs/stdlib.md	stdlib-process	published	run a counted executable and capture bounded stdout stderr rc
 1	process	lib/process.f	word	RUN-CAPTURE-OUTCOME	(ptr u8 len ptr u8 len ptr u8 len ms -- len len outcome)	lib/process-test.f	docs/stdlib.md	stdlib-process	published	run a counted executable and capture bounded stdout stderr plus the outcome sum
 1	process-fork	lib/process-fork.f	module			lib/process-test.f	docs/stdlib.md	stdlib-process	active	checked fork wrappers layered after native primitive rebuild
+1	process-pty-handle	lib/process-pty-handle.f	module			test/proc-pty.f	docs/stdlib.md	stdlib-process	active	linear generation-checked PTY supervisor handle registry with process ownership
+1	process-pty-io	lib/process-pty-io.f	module			test/proc-pty.f	docs/stdlib.md	stdlib-process	active	framed PTY supervisor protocol stable exec inputs and lifetime-watch helpers
 1	process-fork	lib/process-fork.f	word	PROC-FORK-RAW	(-- pid)	lib/process-test.f	docs/stdlib.md	stdlib-process	published	raw fork alias captured after native primitive rebuild
 1	process-fork	lib/process-fork.f	word	PROC-FORK	(-- pid)	lib/process-test.f	docs/stdlib.md	stdlib-process	published	fork the current process and throw on primitive failure
 1	process-fork	lib/process-fork.f	word	PROC-SETPGID	(pid pid -- rc)	lib/process-test.f	docs/stdlib.md	stdlib-process	published	place a process into a process group; 0 0 makes the caller its own group leader
@@ -764,6 +766,10 @@ schema_version	module	file	kind	word	effect	test	doc	owner	status	notes
 1	process-env	lib/process-env.f	word	RESOLVE-EXECUTABLE	(ptr u8 len ptr u8 -- len)	lib/process-env-test.f	docs/stdlib.md	stdlib-process	published	resolve a command or throw E-PROC-PATH when lookup fails
 1	process-env	lib/process-env.f	word	CAD-NUM:PROC-BL>N	(CAD-NUM:byte-len -- n)	lib/process-env-test.f	docs/stdlib.md	stdlib-process	active	pinned-raw residual bridge: project a STR:SPLIT-NEXT PATH field length to a bare n; retire with TVK-RAW
 1	process-env	lib/process-env.f	word	CAD-NUM:PROC-BO>N	(CAD-NUM:byte-off -- n)	lib/process-env-test.f	docs/stdlib.md	stdlib-process	active	pinned-raw residual bridge: project a STR:SPLIT-NEXT PATH cursor offset to a bare n; retire with TVK-RAW
+1	engine-candidate	lib/engine-candidate.f	module			lib/engine-candidate-test.f	docs/stdlib.md	stdlib-process	active	validated exact engine resolver for nested candidate-sensitive work
+1	engine-candidate	lib/engine-candidate.f	word	ENGINE-CANDIDATE:VALIDATE$	(ptr u8 n -- ptr u8 n)	lib/engine-candidate-test.f	docs/stdlib.md	stdlib-process	published	require an executable regular-file engine path or throw E-FS-OPEN
+1	engine-candidate	lib/engine-candidate.f	word	ENGINE-CANDIDATE:OVERRIDE$?	(-- ptr u8 n bool)	lib/engine-candidate-test.f	docs/stdlib.md	stdlib-process	published	return the validated gate default or environment override when present
+1	engine-candidate	lib/engine-candidate.f	word	ENGINE-CANDIDATE:PATH$	(-- ptr u8 n)	lib/engine-candidate-test.f	docs/stdlib.md	stdlib-process	published	return the gate candidate or bin/hb fallback after executable validation
 1	process-command	lib/process-command.f	module			lib/process-command-test.f	docs/stdlib.md	stdlib-process	active	checked command-owned argv env stdin capture and outcome runner
 1	process-command	lib/process-command.f	word	PROC-CMD-CAPTURE-RESET	(--)	lib/process-command-test.f	docs/stdlib.md	stdlib-process	active	clear stored command capture lengths outcome and rc
 1	process-command	lib/process-command.f	word	PROC-CMD-RESET	(--)	lib/process-command-test.f	docs/stdlib.md	stdlib-process	published	clear command-owned argv env stdin capture and lower-level process state

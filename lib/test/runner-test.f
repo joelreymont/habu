@@ -12,6 +12,7 @@ require lib/fs-mutate.f
 require lib/process.f
 require lib/process-argv.f
 require lib/test/runner.f
+require lib/engine-candidate.f
 
 create GTT-OK-PATH FS-PATH-CAP allot
 create GTT-FAIL-PATH FS-PATH-CAP allot
@@ -162,7 +163,7 @@ variable GTT-OFI
 : GTT-RUN-HB ( ptr u8 n n -- ) {: script:ptr scriptu timeout :}
    PROC-ARGV-RESET
    script scriptu  >LEN PROC-ARGV+
-   s" bin/hb" timeout GT-RUN ;
+   ENGINE-CANDIDATE:PATH$ timeout GT-RUN ;
 
 : GTT-RUN-OK ( -- )
    GTT-OK$ GTT-HB-TIMEOUT-MS GTT-RUN-HB ;

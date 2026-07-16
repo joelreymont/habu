@@ -319,6 +319,8 @@ variable GJA-DIRECT
    GJA-SUGGEST-ROW IF exit THEN
    s" trusted_boundary_required" s" Move this compiler or runtime boundary behind audited TRUST."
    GJA-SUGGEST-ROW IF exit THEN
+   s" declare_immediate_expansion" s" Declare the parsing expansion with PARSE-IMM, move it outside the checked body, or make the body an audited TRUSTED: boundary."
+   GJA-SUGGEST-ROW IF exit THEN
    s" factor_local_shape" s" Move locals to a live top-level path or factor a helper."
    GJA-SUGGEST-ROW IF exit THEN
    s" factor_linear_local" s" Keep the linear value on the stack; do not bind it to a local."

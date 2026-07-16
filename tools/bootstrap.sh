@@ -258,6 +258,88 @@ bootstrap_wide_gate() {
 
 bootstrap_wide_gate
 
+bootstrap_loader_gate() {
+  local bin="$T/hb-stdin"
+  local out="$T/bootstrap-loader.out"
+  local err="$T/bootstrap-loader.err"
+  local rc text marker
+
+  mkdir -p "$T/loader-run"
+  rm -f "$T/loader-include-mark" "$T/loader-require-mark"
+  printf 'TOUCH\n' > "$T/loader-include-frag.f"
+  printf 'TOUCH\n' > "$T/loader-require-frag.f"
+  printf 's" LOADER-SIDE-EFFECT" type cr\n' > "$T/loader-ok-frag.f"
+  printf 's" INCLUDED-OK" type cr\n' > "$T/loader-runtime-include.f"
+  printf 's" REQUIRED-OK" type cr\n' > "$T/loader-runtime-require.f"
+  printf 'require lib/errors.f\nrequire lib/string.f\nrequire lib/fs.f\npackage LOADER-NEG private\nTRUSTED: TOUCH ( -- ) s" %s/loader-include-mark" s" touched" WRITE-ALL ; immediate\n: BAD ( -- ) include %s/loader-include-frag.f ;\n;package\n' "$T" "$T" > "$T/loader-include-neg.f"
+  printf 'require lib/errors.f\nrequire lib/string.f\nrequire lib/fs.f\npackage LOADER-NEG private\nTRUSTED: TOUCH ( -- ) s" %s/loader-require-mark" s" touched" WRITE-ALL ; immediate\n: BAD ( -- ) require %s/loader-require-frag.f ;\n;package\n' "$T" "$T" > "$T/loader-require-neg.f"
+  printf 'include %s/loader-ok-frag.f\n' "$T" > "$T/loader-include-ok.f"
+  printf 'require %s/loader-ok-frag.f\nrequire %s/loader-ok-frag.f\n' "$T" "$T" > "$T/loader-require-ok.f"
+  printf 'package LOADER-MODEL private\n92 constant PARSE-RC\n93 constant REPLAY-RC\nvariable PARSE-N\nvariable REPLAY-N\n: PARSER ( -- ) parse-name 2drop 1 PARSE-N +! ; immediate\n: REPLAYER ( -- ) 1 REPLAY-N +! ; immediate\ns" PARSER" 1 PARSE-IMM\ns" REPLAYER" 0 REPLAY-IMM\n: RUN ( -- n n ) PARSER PAYLOAD REPLAYER PARSE-N @ REPLAY-N @ ;\npublic\n: ASSERT ( -- ) RUN 1 <> if REPLAY-RC throw then 1 <> if PARSE-RC throw then ;\n;package\nLOADER-MODEL:ASSERT\ns" MODEL-OK" type cr\n' > "$T/loader-model-ok.f"
+  printf 'package LOADER-MODEL-INPUT private\n: IM ( n -- n n ) dup ; immediate\ns" IM" 0 PARSE-IMM\n: BAD ( -- ) IM ;\n;package\n' > "$T/loader-model-input.f"
+  printf 'require lib/errors.f\nrequire lib/string.f\nrequire lib/fs.f\npackage LOADER-RUNTIME public\n: DO-INCLUDED ( ptr u8 n -- ) included ;\n: DO-REQUIRED ( ptr u8 n -- ) required ;\n: DO-PROVIDED ( ptr u8 n -- ) provided ;\n;package\ns" %s/loader-runtime-include.f" LOADER-RUNTIME:DO-INCLUDED\ns" %s/loader-runtime-require.f" LOADER-RUNTIME:DO-REQUIRED\ns" %s/loader-runtime-require.f" LOADER-RUNTIME:DO-REQUIRED\ns" %s/loader-provided-missing.f" LOADER-RUNTIME:DO-PROVIDED\ns" %s/loader-provided-missing.f" LOADER-RUNTIME:DO-REQUIRED\ns" PROVIDED-OK" type cr\n' "$T" "$T" "$T" "$T" "$T" > "$T/loader-runtime-ok.f"
+
+  for text in loader-include-neg.f loader-require-neg.f; do
+    case "$text" in
+      loader-include-neg.f) marker="$T/loader-include-mark" ;;
+      loader-require-neg.f) marker="$T/loader-require-mark" ;;
+    esac
+    set +e
+    env HB_TMP="$T/loader-run" "$bin" --load "$T/$text" >"$out" 2>"$err"
+    rc=$?
+    set -e
+    if [[ "$rc" -ne 70 || -e "$marker" || "$(<"$out")" == *LOADER-SIDE-EFFECT* || "$(<"$err")" != *E-UNMODELED-IMMEDIATE* ]]; then
+      printf '%s: expected pre-execution loader rejection rc=70\n' "$text" >&2
+      exit 75
+    fi
+  done
+
+  set +e
+  env HB_TMP="$T/loader-run" "$bin" --load "$T/loader-include-ok.f" >"$out" 2>"$err"
+  rc=$?
+  set -e
+  if [[ "$rc" -ne 0 || "$(<"$out")" != "LOADER-SIDE-EFFECT" || -s "$err" ]]; then
+    printf 'loader-include-ok.f: expected one loader side effect\n' >&2
+    exit 75
+  fi
+
+  set +e
+  env HB_TMP="$T/loader-run" "$bin" --load "$T/loader-require-ok.f" >"$out" 2>"$err"
+  rc=$?
+  set -e
+  if [[ "$rc" -ne 0 || "$(<"$out")" != "LOADER-SIDE-EFFECT" || -s "$err" ]]; then
+    printf 'loader-require-ok.f: expected one idempotent loader side effect\n' >&2
+    exit 75
+  fi
+
+  set +e
+  env HB_TMP="$T/loader-run" "$bin" --load "$T/loader-model-ok.f" >"$out" 2>"$err"
+  rc=$?
+  set -e
+  if [[ "$rc" -ne 0 || "$(<"$out")" != "MODEL-OK" || -s "$err" ]]; then
+    printf 'loader-model-ok.f: expected PARSE-IMM and REPLAY-IMM once\n' >&2
+    exit 75
+  fi
+
+  set +e
+  env HB_TMP="$T/loader-run" "$bin" --load "$T/loader-model-input.f" >"$out" 2>"$err"
+  rc=$?
+  set -e
+  if [[ "$rc" -ne 70 || "$(<"$err")" != *"interpret stack underdepth"* || "$(<"$err")" == *E-UNMODELED-IMMEDIATE* ]]; then
+    printf 'loader-model-input.f: expected modeled immediate underdepth rc=70\n' >&2
+    exit 75
+  fi
+
+  set +e
+  env HB_TMP="$T/loader-run" "$bin" --load "$T/loader-runtime-ok.f" >"$out" 2>"$err"
+  rc=$?
+  set -e
+  if [[ "$rc" -ne 0 || "$(<"$out")" != $'INCLUDED-OK\nREQUIRED-OK\nPROVIDED-OK' || -s "$err" ]]; then
+    printf 'loader-runtime-ok.f: expected checked included/required/provided effects\n' >&2
+    exit 75
+  fi
+}
+
 emit_src "$T/stage2-src" src/habu/stage2.f
 "$GF" -e "require $ROOT/test/nf.fs s\" $T/stage2-src\" slurp-file s\" $T/hb-stage0\" FORTH-BUILD-EXE bye"
 
@@ -296,6 +378,8 @@ env HB_TMP="$T" "$T/hb-stdin-mk"
 test -f "$T/hb-stdin-got"
 mv "$T/hb-stdin-got" "$T/hb-stdin"
 chmod +x "$T/hb-stdin"
+
+bootstrap_loader_gate
 
 env HABU_UNDER_TEST="$T/hb-stdin" "$T/hb-stdin" --load test/engine-error-package.f
 

@@ -472,6 +472,8 @@ DIAG-BUFFER-OFF
 \ recurse checks against the cached declared sig (fresh instance per site)
 s" recurse against declared sig certifies" T-LABEL
 s" CREC-OK ( n -- n ) dup 2 < if drop 1 exit then 1 - recurse 1 +" CHECK-QUIET-CANDIDATE! -1 T=
+s" distinct recurse instantiations stay independent" T-LABEL
+s" CREC-POLY ( a -- n ) drop 1 recurse drop 1 1 = recurse drop fork" CHECK-QUIET-CANDIDATE! -1 T=
 s" wrong-effect recursion rejects" T-LABEL
 s" CREC-BAD ( n -- n ) dup recurse" CHECK-QUIET-CANDIDATE! 0 T=
 s" sig-less recursion stays uncheckable" T-LABEL
@@ -874,7 +876,7 @@ TRUSTED: TR-NORET-ADD ( -- )
 : TR-EFF-NODE-LAYOUT ( -- )
    TR-EFF-NODE-LAYOUT-RAW {: stride:n align:n mask:n ok:bool :}
    s" effect-node-layout" T-LABEL
-   stride 9 cells T=  align $8 T=  mask 0 T=
+   stride 11 cells T=  align $8 T=  mask 0 T=
    ok TR-BOOL= ;
 
 : TR-PE-LAYOUT ( -- )
@@ -974,6 +976,34 @@ s" COK-TRAIL ( n n n n -- n ) + + + " T-CHECK-PASSES
 s" trail-arena-grow" T-LABEL
 TRAIL-CAP @ 2 > -1 T=
 TR-TRAIL-CAP @ TRAIL-CAP !  TRAIL-BOOT TRAIL-P !  TR-TRAIL-RESET
+\ A failed overload trial must restore every speculative quotation fact: its
+\ may-fork kind, execute-use marker, obligation list, and obligation arena head.
+variable TR-FORK-Q
+variable TR-FORK-T
+variable TR-FORK-CAP
+variable TR-FORK-CAPN
+TRUSTED: TR-FORK-TRIAL-ROLLBACK ( -- )
+   NEW
+   FRESH MK-ROW dup FRESH MK-ROW dup MK-QUOT TR-FORK-Q !
+   FRESH MK-VAR TR-FORK-T !
+   TR-FORK-Q @ Q-CAP-ID TR-FORK-CAP !
+   CAPN @ TR-FORK-CAPN !
+   1 TRIAL-DEPTH !
+   TRIAL-SAVE
+   TR-FORK-Q @ Q-FORK!
+   TR-FORK-Q @ Q-EXEC-USE!
+   CAP-GUARD-TYPE TR-FORK-T @ TR-FORK-CAP @ CAP-ADD
+   TR-FORK-Q @ Q>FORK? -1 T=
+   TR-FORK-Q @ Q>EXEC-USE? -1 T=
+   TR-FORK-CAP @ CAP-HEAD@ 0 <> -1 T=
+   TRIAL-REST
+   0 TRIAL-DEPTH !
+   TR-FORK-Q @ Q>FORK? 0 T=
+   TR-FORK-Q @ Q>EXEC-USE? 0 T=
+   TR-FORK-CAP @ CAP-HEAD@ 0 T=
+   CAPN @ TR-FORK-CAPN @ T= ;
+TR-FORK-TRIAL-ROLLBACK
+LOWER-CERT-HOOK:INSTALL
 \ --- path compression in T-RES: at trial depth 0 a resolved var chain is
 \ compressed so intermediate vars point directly at the root; inside a trial
 \ (depth>0) compression is disabled, so a rolled-back trial can never leave a
@@ -1234,6 +1264,109 @@ s" CBAD-OWN-DROP ( own -- ) drop" T-CHECK-REJECTS
 s" CBAD-OWN-OVER ( own n -- own n own ) over" T-CHECK-REJECTS
 s" CBAD-OWN-FETCH ( ptr own -- own ) @" T-CHECK-REJECTS
 s" CBAD-OWN-STORE ( own ptr own -- ) !" T-CHECK-REJECTS
+\ Fork duplicates the process image, so every live data/return/local value and
+\ every open row tail must be proven non-linear at the direct or transitive call.
+: TFORK-DIRECT-TESTS ( -- )
+s" COK-FORK-CLEAN ( -- n ) fork" T-CHECK-PASSES
+s" COK-FORK-DATA-N ( n -- n n ) fork" T-CHECK-PASSES
+s" CBAD-FORK-DATA ( own -- own n ) fork" T-CHECK-REJECTS
+s" CBAD-FORK-DATA-DEEP ( own n -- own n n ) fork" T-CHECK-REJECTS
+s" CBAD-FORK-RETURN ( own -- n own ) >r fork r>" T-CHECK-REJECTS
+s" COK-FORK-RETURN-N ( n -- n n ) >r fork r>" T-CHECK-PASSES
+
+\ Direct generic fork effects retain non-linear constraints on their open data
+\ and return rows. Specializing either row to OWN must reject.
+s" T-FORK-OPEN ( R -- R n ) fork" T-CHECK-PASSES
+s" CBAD-FORK-OPEN-OWN ( own -- own n ) T-FORK-OPEN" T-CHECK-REJECTS
+s" COK-FORK-OPEN-N ( n -- n n ) T-FORK-OPEN" T-CHECK-PASSES
+s" T-FORK-OPEN-R ( | R -- n | R ) fork" T-CHECK-PASSES
+s" CBAD-FORK-OPEN-R ( own -- n own ) >r T-FORK-OPEN-R r>" T-CHECK-REJECTS
+s" COK-FORK-OPEN-R-N ( n -- n n ) >r T-FORK-OPEN-R r>" T-CHECK-PASSES
+\ A generic local live at fork carries the same non-linear constraint through
+\ the recorded effect; concrete non-linear locals remain valid.
+s" T-FORK-LOCAL ( a -- n a ) {: x :} fork x" T-CHECK-PASSES
+s" CBAD-FORK-LOCAL-OWN ( own -- n own ) T-FORK-LOCAL" T-CHECK-REJECTS
+s" COK-FORK-LOCAL-N ( n -- n n ) T-FORK-LOCAL" T-CHECK-PASSES
+s" CBAD-FORK-LOCAL-DIRECT ( own -- n own ) {: x:own :} fork x" T-CHECK-REJECTS ;
+
+\ May-fork metadata is transitive through wrappers, two wrapper levels, and an
+\ EXPORT alias. The callee's empty explicit DIN must not hide a linear caller
+\ tail.
+: TFORK-WRAPPER-TESTS ( -- )
+s" T-FORK-WRAP ( -- n ) fork" T-CHECK-PASSES
+s" T-FORK-WRAP-2 ( -- n ) T-FORK-WRAP" T-CHECK-PASSES
+s" CBAD-FORK-WRAP ( own -- own n ) T-FORK-WRAP" T-CHECK-REJECTS
+s" CBAD-FORK-WRAP-2 ( own -- own n ) T-FORK-WRAP-2" T-CHECK-REJECTS
+s" CBAD-FORK-WRAP-RETURN ( own -- n own ) >r T-FORK-WRAP r>" T-CHECK-REJECTS
+s" COK-FORK-WRAP-RETURN-N ( n -- n n ) >r T-FORK-WRAP r>" T-CHECK-PASSES
+s" TFORK-ALIAS" CHECKER-PACKAGE
+CHECKER-PUBLIC
+s" T-FORK-WRAP" CHECKER-EXPORT
+CHECKER-END-PACKAGE
+s" CBAD-FORK-EXPORT ( own -- own n ) TFORK-ALIAS:T-FORK-WRAP" T-CHECK-REJECTS
+
+\ Recurse sites are revalidated after the final effect reveals a later fork.
+\ The direct fork itself is clean here: the recursive result is consumed first.
+s" CBAD-FORK-RECURSE ( own -- own ) recurse T-FREE-OWN fork drop T-MAKE-OWN" T-CHECK-REJECTS
+s" COK-NOFORK-RECURSE ( own -- own ) recurse" T-CHECK-PASSES
+
+\ Consuming the owner before direct/transitive fork is sound and must stay
+\ accepted; non-linear return/local state is likewise unaffected.
+s" COK-FORK-CONSUME ( own -- n ) T-FREE-OWN fork" T-CHECK-PASSES
+s" COK-FORK-CONSUME-WRAP ( own -- n ) T-FREE-OWN T-FORK-WRAP" T-CHECK-PASSES
+s" COK-FORK-RETURN-CONSUME ( own -- n ) >r r> T-FREE-OWN fork" T-CHECK-PASSES ;
+
+\ Fork metadata survives nested and returned quotations, direct execute/catch,
+\ and a generic execute combinator whose caller row arrives through DIN or RIN.
+: TFORK-QUOTE-TESTS ( -- )
+s" T-FORK-QUOTE ( -- [ -- n ] ) [: fork ;]" T-CHECK-PASSES
+s" CBAD-FORK-NESTED ( own -- own n ) [: [: fork ;] execute ;] execute" T-CHECK-REJECTS
+s" CBAD-FORK-RETURNED ( own -- own n ) T-FORK-QUOTE execute" T-CHECK-REJECTS
+s" CBAD-FORK-CATCH ( own -- own n ) [: fork drop ;] catch" T-CHECK-REJECTS
+s" T-FORK-EXEC-D ( R [ R -- R n ] -- R n ) execute" T-CHECK-PASSES
+s" CBAD-FORK-EXEC-D ( own -- own n ) [: fork ;] T-FORK-EXEC-D" T-CHECK-REJECTS
+s" COK-FORK-EXEC-D ( own -- own n ) [: 1 ;] T-FORK-EXEC-D" T-CHECK-PASSES
+s" T-FORK-EXEC-R ( [ -- n | R -- R ] -- n ) execute" T-CHECK-PASSES
+s" CBAD-FORK-EXEC-R ( own -- n own ) >r [: fork ;] T-FORK-EXEC-R r>" T-CHECK-REJECTS
+s" COK-FORK-EXEC-R ( own -- n ) >r [: r> T-FREE-OWN fork ;] execute" T-CHECK-PASSES ;
+
+\ A quotation's may-fork obligation remains attached through duplication,
+\ return, and polymorphic combinators. It applies only when that quotation is
+\ eventually used, and only to values still live at the use's internal fork.
+: TFORK-QUOTE-GUARD-TESTS ( -- )
+s" T-FORK-Q-ID ( [ -- n ] -- [ -- n ] )" T-CHECK-PASSES
+s" COK-FORK-Q-STICKY ( -- own [ -- n ] ) [: fork ;] dup execute drop T-MAKE-OWN swap T-FORK-Q-ID" T-CHECK-PASSES
+s" CBAD-FORK-Q-RETURN ( own -- own n ) [: fork ;] T-FORK-Q-ID execute" T-CHECK-REJECTS
+s" T-FORK-EXEC-FREE ( own [ -- ] -- ) execute T-FREE-OWN" T-CHECK-PASSES
+s" CBAD-FORK-EXEC-FREE ( own -- ) [: fork drop ;] T-FORK-EXEC-FREE" T-CHECK-REJECTS
+s" COK-FORK-EXEC-FREE ( own -- ) [: ;] T-FORK-EXEC-FREE" T-CHECK-PASSES ;
+
+\ Recursive higher-order effects stay conditional: defining the combinator is
+\ valid, a no-fork argument remains valid, and a fork argument rejects once the
+\ recursive effect has converged.
+: TFORK-QUOTE-RECURSE-TESTS ( -- )
+s" T-FORK-REC-Q ( n [ -- n ] -- [ -- n ] ) swap dup 0= if drop dup execute drop exit then 1- swap T-MAKE-OWN -rot recurse swap T-FREE-OWN" T-CHECK-PASSES
+s" CBAD-FORK-REC-Q ( n -- [ -- n ] ) [: fork ;] T-FORK-REC-Q" T-CHECK-REJECTS
+s" COK-FORK-REC-Q ( n -- [ -- n ] ) [: 1 ;] T-FORK-REC-Q" T-CHECK-PASSES ;
+
+: TFORK-DIAG-TESTS ( -- )
+RSD-BUF RSD-CAP DIAG-BUFFER!  0 0= DIAG-JSON!
+s" direct fork reject carries E-LINEAR-FORK" T-LABEL
+s" CBAD-FORK-DIAG ( own -- own n ) fork" CHECK-CANDIDATE! 0 T=
+s" direct fork diagnostic names E-LINEAR-FORK" T-LABEL
+DIAG-BUFFER$ s\" \"code\":\"E-LINEAR-FORK\"" T-HAS? -1 T=
+s" direct fork diagnostic pins the fork token" T-LABEL
+DIAG-BUFFER$ s\" \"token\":\"fork\"" T-HAS? -1 T=
+s" direct fork diagnostic carries repair class" T-LABEL
+DIAG-BUFFER$ s\" \"repair_class\":\"move_linear_before_fork\"" T-HAS? -1 T=
+0 0= 0= DIAG-JSON!  DIAG-BUFFER-OFF ;
+
+TFORK-DIRECT-TESTS
+TFORK-WRAPPER-TESTS
+TFORK-QUOTE-TESTS
+TFORK-QUOTE-GUARD-TESTS
+TFORK-QUOTE-RECURSE-TESTS
+TFORK-DIAG-TESTS
 \ execute (quotation application) enforces the same linear conservation as a
 \ direct step: a polymorphic quotation applied to a linear that copies or drops
 \ it is rejected; an explicit linear consumer/producer and a passthrough certify.
@@ -1727,6 +1860,112 @@ ES-HIDX-ROLLBACK-CHURN
 LOWER-CERT-HOOK:INSTALL
 s" hidx rollback churn terminates" T-LABEL
 7 7 T=
+s" hidx rollback churn keeps index live" T-LABEL
+data-base HIDXP-CELL + @ 0 <> -1 T=
+package HIDX-CHURN
+public
+: AFTER ( -- n )
+   20001 ;
+;package
+s" hidx insertion after rollback churn" T-LABEL
+HIDX-CHURN:AFTER 20001 T=
+
+require test/hidx-tombstone-test.f
+s" hidx collision starts at final slot" T-LABEL
+HIDX-TOMB:FIRST-SLOT@ HIDX-SLOTS 1- T=
+s" hidx collision wraps to slot zero" T-LABEL
+HIDX-TOMB:SECOND-SLOT@ 0 T=
+s" hidx insertion reuses first tombstone" T-LABEL
+HIDX-TOMB:THIRD-SLOT@ HIDX-TOMB:FIRST-SLOT@ T=
+s" hidx wrapped live entry survives tombstone reuse" T-LABEL
+HIDX-TOMB:WRAP-18438 18438 T=
+HIDX-TOMB:STALE-THIRD
+s" hidx lookup skips stale entry before wrapped live entry" T-LABEL
+HIDX-TOMB:WRAP-18438 18438 T=
+
+\ tok-info is a compiled-Forth primitive boundary over LFIND. Hash and linear
+\ lookup must expose identical results and leave the VM cursor/stack state
+\ untouched for global/qualified hits and misses.
+package TOK-LOOKUP-TEST
+
+public
+
+: TARGET ( -- n )
+   41 ;
+
+private
+
+variable SAVED-INDEX
+variable HASH-XT
+variable HASH-FLAGS
+
+: ASSERT-TRUE ( bool -- )
+   if -1 else 0 then
+   -1 T= ;
+
+: INDEX@ ( -- n )
+   data-base HIDXP-CELL + @ ;
+
+: INDEX! ( n -- )
+   data-base HIDXP-CELL + ! ;
+
+: SAMPLE ( ptr u8 n -- n n ) {: a:ptr u:n :}
+   depth {: d:n :}
+   data-base INP-CELL + @ {: inp:n :}
+   data-base INE-CELL + @ {: ine:n :}
+   a u tok-info {: xt:n flags:n :}
+   depth d T=
+   data-base INP-CELL + @ inp T=
+   data-base INE-CELL + @ ine T=
+   xt flags ;
+
+: HASH! ( ptr u8 n -- )
+   SAMPLE HASH-FLAGS ! HASH-XT ! ;
+
+: SAME ( ptr u8 n -- ) {: a:ptr u:n :}
+   a u HASH!
+   INDEX@ dup SAVED-INDEX !
+   0 <> ASSERT-TRUE
+   0 INDEX!
+   a u SAMPLE
+   SAVED-INDEX @ INDEX!
+   HASH-FLAGS @ T=
+   HASH-XT @ T= ;
+
+: NEXT ( ptr u8 n ptr u8 n bool -- )
+   {: a:ptr u:n expected:ptr expectedu:n linear:bool :}
+   INDEX@ SAVED-INDEX !
+   linear if 0 INDEX! then
+   a u SAMPLE 2drop
+   SAVED-INDEX @ INDEX!
+   parse-name expected expectedu T$= ;
+
+: IDENTITY ( -- )
+   s" TOK-LOOKUP-TEST:TARGET" SAMPLE {: xt:n flags:n :}
+   xt 0 <> ASSERT-TRUE
+   flags LFIND-PUBLIC-MASK and 1 T=
+   flags LFIND-GEN-SHIFT rshift 0 > ASSERT-TRUE ;
+
+public
+
+: RUN ( -- )
+   IDENTITY
+   s" dup" SAME
+   s" TOK-LOOKUP-MISSING" SAME
+   s" TOK-LOOKUP-TEST:TARGET" SAME
+   s" TOK-LOOKUP-TEST:MISSING" SAME ;
+
+: NEXT-HASH ( -- )
+   s" TOK-LOOKUP-TEST:TARGET" s" HASH-NEXT" 0 0= 0= NEXT ;
+
+: NEXT-LINEAR ( -- )
+   s" TOK-LOOKUP-TEST:TARGET" s" LINEAR-NEXT" 0 0= NEXT ;
+
+;package
+
+TOK-LOOKUP-TEST:RUN
+TOK-LOOKUP-TEST:NEXT-HASH HASH-NEXT
+TOK-LOOKUP-TEST:NEXT-LINEAR LINEAR-NEXT
 
 \ Candidate dictionary/hook smoke, folded from the former standalone GE-CAND-SMOKE
 \ candidate launch into this engine-suite run so the batch shares one HABU_UNDER_TEST

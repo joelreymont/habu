@@ -7,6 +7,7 @@ require lib/test.f
 require lib/fs.f
 require lib/fs-mutate.f
 require lib/process.f
+require lib/engine-candidate.f
 require lib/build.f
 
 create BUILD-TEST-PATH FS-PATH-CAP allot
@@ -86,8 +87,23 @@ create BT-TOP-DIE-SRC-BUF FS-PATH-CAP allot
 : BT-NOART ( -- ptr u8 n )
    BT-ROOT s" noart.bin" BUILD-ARTIFACT ;
 
+package BUILD-CANDIDATE
+
+public
+: SHEBANG ( -- )
+   ENGINE-CANDIDATE:PATH$ 2dup s" bin/hb" STR= if
+      2drop
+      s" #!/usr/bin/env bin/hb" SB-APPEND
+   else
+      s" #!" SB-APPEND
+      SB-APPEND
+   then
+   ;
+
+;package
+
 : BT-SHEBANG ( -- )
-   s" #!/usr/bin/env bin/hb" SB-APPEND
+   BUILD-CANDIDATE:SHEBANG
    10 SB-APPEND-C ;
 
 : BT-SB-C, ( n -- )

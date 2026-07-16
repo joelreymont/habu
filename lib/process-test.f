@@ -11,6 +11,7 @@ require lib/process.f
 require lib/process-fork.f
 require lib/process-argv.f
 require lib/test/outcome.f
+require lib/engine-candidate.f
 require test/checker-assert.f
 
 variable PT-R
@@ -121,14 +122,14 @@ create PT-CAPTURE-HB-BUF FS-PATH-CAP allot
    {: script:ptr scriptu out:ptr outcap err:ptr errcap timeout :}
    PROC-ARGV-RESET
    script scriptu  >LEN PROC-ARGV+
-   s" bin/hb" >LEN out outcap >LEN err errcap >LEN timeout >MS RUN-ARGV-CAPTURE
+   ENGINE-CANDIDATE:PATH$ >LEN out outcap >LEN err errcap >LEN timeout >MS RUN-ARGV-CAPTURE
    PT-CAPTURE>N ;
 
 : PT-RUN-HB-SCRIPT-OUTCOME ( ptr u8 n ptr u8 n ptr u8 n n -- len len outcome )
    {: script:ptr scriptu out:ptr outcap err:ptr errcap timeout :}
    PROC-ARGV-RESET
    script scriptu  >LEN PROC-ARGV+
-   s" bin/hb" >LEN out outcap >LEN err errcap >LEN timeout >MS RUN-ARGV-CAPTURE-OUTCOME ;
+   ENGINE-CANDIDATE:PATH$ >LEN out outcap >LEN err errcap >LEN timeout >MS RUN-ARGV-CAPTURE-OUTCOME ;
 
 : PT-RUN-CAPTURE ( ptr u8 n ptr u8 n ptr u8 n n -- n n n )
    {: path:ptr pathu out:ptr outcap err:ptr errcap timeout :}
@@ -349,7 +350,7 @@ create PT-CAPTURE-HB-BUF FS-PATH-CAP allot
 : PT-STARVED-CAPTURE ( -- )
    PROC-ARGV-RESET
    PT-CAPTURE-OK >LEN PROC-ARGV+
-   s" bin/hb" >LEN PT-OUT 32 >LEN PT-ERR 32 >LEN 10 >MS RUN-ARGV-CAPTURE
+   ENGINE-CANDIDATE:PATH$ >LEN PT-OUT 32 >LEN PT-ERR 32 >LEN 10 >MS RUN-ARGV-CAPTURE
    PT-CAPTURE>N drop drop drop ;
 
 : TEST-BUDGET-STARVED ( -- )

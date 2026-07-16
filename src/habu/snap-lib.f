@@ -22,6 +22,11 @@
 \ closed rc 80 instead of misreading the dictionary.
 \ Version 3: snapshot DATA includes the owner public/private WID registry.
 \ Older formats cannot prove qualified-call visibility and fail closed.
+\ Version 4: DATA includes the sealed immediate-preflight hook. Older layouts
+\ cannot prove that the restored cell names the checker hook and fail closed.
+\ Version 5: dictionary records and DATA include monotonic definition
+\ generations; restore rebuilds generation-bearing HIDX entries. Older layouts
+\ cannot keep compile-time models bound across rollback and address reuse.
 create TRL 48 allot
 variable STB  variable STSZ  variable SDB  variable SCL  variable SDL
 variable SNL  variable SFTS  variable SPAD  variable SFD

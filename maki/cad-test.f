@@ -7,6 +7,7 @@ require lib/string.f
 require lib/fs.f
 require lib/process.f
 require lib/process-argv.f          \ RUN-ARGV-CAPTURE: the fresh-process replay child
+require lib/engine-candidate.f
 require lib/fs-mutate.f             \ WRITE-ALL: the replay child driver file
 require maki/device-artifacts.f     \ MAKI-GRADE: private tmp driver path (PREPARE/DRIVER$/CLEAN)
 require maki/report.f
@@ -85,7 +86,7 @@ create RPL-OUT $4000 allot   create RPL-ERR $1000 allot
    PROC-ARGV-RESET
    s" --load"           >LEN PROC-ARGV+
    MAKI-GRADE:DRIVER$   >LEN PROC-ARGV+
-   s" bin/hb" >LEN  RPL-OUT $4000 >LEN  RPL-ERR $1000 >LEN  30000 >MS  RUN-ARGV-CAPTURE
+   ENGINE-CANDIDATE:PATH$ >LEN  RPL-OUT $4000 >LEN  RPL-ERR $1000 >LEN  30000 >MS  RUN-ARGV-CAPTURE
    {: outu:len erru:len rc:rc :}
    rc RC>N 0 <> if RPL-ERR erru LEN>N type cr then   \ surface child stderr on failure
    rc RC>N 0 T=

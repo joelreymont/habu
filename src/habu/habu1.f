@@ -132,6 +132,7 @@ variable GD-MIN
    GD-MIN !  FPRIM  GD-RECORD ;
 \ shared label ids (forward refs)
 variable LANCHOR  variable LFIND  variable LNUM  variable LDICT  variable LSRC  variable SRCN
+variable LTOKFIND
 variable LCEMIT   variable LTOK   variable LPROT  variable LPROTSPAN  variable LFLUSH variable LNCOUNT
 variable LAOTCODE  variable LAOTDICT  variable LAOTCODELEN
 variable LAOTNREC  variable LAOTNSITE  variable LAOTSITES  variable LAOTNAMES  variable LAOTNAMESLEN
@@ -140,6 +141,7 @@ variable LAOTNCSITE  variable LAOTCSITES  variable LAOTCODEB0
 variable LAOTBOOTRUN
 variable LAOTNPWID   variable LAOTPWID   \ protected-WID registry: count + u32 table (TFAM 2b-v)
 variable LPROTWIDQ
+variable LHIDXADD    variable LHIDXBUILD
 variable LCFPUSH  variable LCFPOP  variable LPAT   variable LKWCMP  variable LBCAP  variable LBCS
 variable LBCHAIN  variable LCREATE  variable LDOESPATCH
 variable LKWIF    variable LKWTHEN variable LKWELSE variable LKWBEGIN
@@ -264,8 +266,11 @@ public
 \ explicitly; unknown unencoded requests fail closed instead of recovering an
 \ unknowable pointer extent. Runtime registers: x1=request, x2=argument.
 : GUARD-IOCTL ( -- )
-   LBL LBL LBL LBL {: legacy:label write:label done:label trap:label :}
+   LBL LBL LBL LBL LBL {: legacy:label pgrp:label write:label done:label trap:label :}
    HB-TARGET-LINUX? IF
+      7 TIOCSCTTY LIT64,  1 7 CMP,  C-EQ done BCOND,
+      7 TIOCSPGRP LIT64,  1 7 CMP,  C-EQ done BCOND,
+      7 TIOCGPGRP LIT64,  1 7 CMP,  C-EQ pgrp BCOND,
       7 $5401 LIT64,  1 7 CMP,  C-EQ legacy BCOND,
       7 $5402 LIT64,  1 7 CMP,  C-EQ done BCOND,
       8 1 30 LSRI,  7 8 3 ANDI,             \ _IOC_DIR
@@ -274,6 +279,9 @@ public
       trap B,
       legacy LBL,
       7 36 MOVZ,  2 7 GUARD-SPAN
+      done B,
+      pgrp LBL,
+      7 4 MOVZ,  2 7 GUARD-SPAN
       done B,
       write LBL,
       7 1 16 LSRI,  8 $3FFF LIT64,  7 7 8 AND,
@@ -1560,6 +1568,16 @@ s" spawn-darwin-finish" s" label label --" TRUST
    done LBL,
    0 G-PUSH ;
 
+: BSETSID ( -- )                   \ ( -- pid|-1 ) become a session leader
+   NR-SETSID SYS,  SYS-PUSH ;
+
+: BEXECVE ( -- )                   \ ( pathz argvp envp -- rc ) returns only on failure
+   2 G-POP  1 G-POP  0 G-POP
+   NR-EXECVE SYS,  SYS-PUSH ;
+
+: BGETPID ( -- )                   \ ( -- pid|-1 )
+   NR-GETPID SYS,  SYS-PUSH ;
+
 \ ---- FFI: AAPCS64 trampolines ----
 \ `ffi-call` keeps the old fast path: load 8 cells from argbuf into x0-x7,
 \ BLR fn, push x0. `ffi-call-abi`/`ffi-call-abi-r` add x8, d0-d7, caller-packed
@@ -1949,12 +1967,15 @@ s" linux-stat-fix" s" n --" TRUST
 \ Limit: the window cannot tell a true word entry from any other in-range address
 \ (mid-instruction, a dict record), so it catches wild installs — the crash class
 \ — not a well-formed pointer that already lands inside live code.
+: C-HOOK-XT-GUARD ( label label -- ) {: bad:label ok:label :}
+   9 ok CBZ,                             \ 0 -> checking off, install as-is
+      9 DBASE CMP,  C-CC bad BCOND,      \ xt < DBASE (unsigned) -> reject
+      9 CP CMP,     C-CS bad BCOND, ;    \ xt >= CP (unsigned) -> reject
+
 : BSETCHECK ( -- )
    LBL LBL LBL LBL {: bad:label ok:label done:label msg:label :}
    A G-POP                               \ x9 = candidate xt
-   9 ok CBZ,                             \ 0 -> checking off, install as-is
-      9 DBASE CMP,  C-CC bad BCOND,      \ xt < DBASE (unsigned) -> reject
-      9 CP CMP,     C-CS bad BCOND,      \ xt >= CP (unsigned) -> reject
+   bad ok C-HOOK-XT-GUARD
    ok LBL,
       A DATA HOOK-CELL STR,
       done B,
@@ -1975,9 +1996,7 @@ s" linux-stat-fix" s" n --" TRUST
 : BSETTOPCHECK ( -- )
    LBL LBL LBL LBL {: bad:label ok:label done:label msg:label :}
    A G-POP                               \ x9 = candidate xt
-   9 ok CBZ,                             \ 0 -> hook off, install as-is
-      9 DBASE CMP,  C-CC bad BCOND,      \ xt < DBASE (unsigned) -> reject
-      9 CP CMP,     C-CS bad BCOND,      \ xt >= CP (unsigned) -> reject
+   bad ok C-HOOK-XT-GUARD
    ok LBL,
       A DATA TOP-HOOK-CELL STR,
       done B,
@@ -1986,6 +2005,36 @@ s" linux-stat-fix" s" n --" TRUST
       0 70 MOVZ,  NR-EXIT-GROUP SYS,
    msg LBL,  s" set-top-check: invalid top-row hook xt" BYTES,
    done LBL, ;
+
+\ set-checks ( immediate-xt definition-xt -- ): atomically install the two
+\ checker hooks after validating both live code entries. The immediate hook is
+\ written first, so an armed definition hook is never observable without its
+\ preflight owner. Both zero disables the pair; a mixed pair fails closed.
+: BSETCHECKS ( -- )
+   LBL LBL LBL LBL LBL LBL {: bad:label immok:label hookok:label store:label done:label msg:label :}
+   SP SP 16 SUBI,
+   A G-POP  A SP 0 STR,                 \ definition hook
+   A G-POP  A SP 8 STR,                 \ immediate hook
+   A SP 8 LDR,
+   bad immok C-HOOK-XT-GUARD
+   immok LBL,
+   A SP 0 LDR,
+   bad hookok C-HOOK-XT-GUARD
+   hookok LBL,
+      10 SP 8 LDR,  11 SP 0 LDR,
+      12 10 11 ORR,  12 store CBZ,      \ both zero
+      10 bad CBZ,  11 bad CBZ,          \ mixed zero/nonzero
+   store LBL,
+      10 DATA IMM-HOOK-CELL STR,
+      11 DATA HOOK-CELL STR,
+      done B,
+   bad LBL,
+      SP SP 16 ADDI,
+      0 2 MOVZ,  1 msg ADR,  2 29 MOVZ,  NR-WRITE SYS,
+      0 70 MOVZ,  NR-EXIT-GROUP SYS,
+   msg LBL,  s" set-checks: invalid hook pair" BYTES,
+   done LBL,
+   SP SP 16 ADDI, ;
 
 package OWNER-WID-EMIT
 
@@ -2207,6 +2256,10 @@ public
    s" spawn-argv-env-io" ['] BSPAWNARGVENVIO FPRIM-L
    s" spawn-argv-env-cwd-io" ['] BSPAWNARGVENVCWDIO FPRIM-L
    s" fork" ['] BFORK FPRIM-L
+   s" setsid" ['] BSETSID FPRIM-L
+   s" execve" ['] BEXECVE FPRIM-L
+   s" getpid" ['] BGETPID FPRIM-L
+   s" proc-watch-open" ['] BPROCWATCHOPEN FPRIM-L
    s" wait-rc" ['] BWAITRC FPRIM-L
    s" wait-status" ['] BWAITSTATUS FPRIM-L ;
 
@@ -2251,7 +2304,8 @@ public
    s" wordlist" ['] BWORDLIST FPRIM-L   s" get-current" ['] BGETCUR FPRIM-L
    s" set-current" ['] BSETCUR FPRIM-L  s" search-wl" ['] BSWL 3 GDEREF-L
    s" set-check" ['] BSETCHECK 1 GDEREF-L   s" check@" ['] BCHECKFETCH FPRIM-L
-   s" set-top-check" ['] BSETTOPCHECK 1 GDEREF-L   s" top-check@" ['] BTOPCHECKFETCH FPRIM-L ;
+   s" set-top-check" ['] BSETTOPCHECK 1 GDEREF-L   s" top-check@" ['] BTOPCHECKFETCH FPRIM-L
+   s" set-checks" ['] BSETCHECKS 2 GDEREF-L ;
 
 : EMIT-PRIMS ( -- )
    EMIT-ARITH-PRIMS  EMIT-COMPARE-PRIMS  EMIT-STACK-PRIMS
@@ -2455,9 +2509,6 @@ s" emit-fp-prims" s" --" TRUST
    FL-IL LABEL@ LBL,  10 CP CMP,  C-GE FL-ID LABEL@ BCOND,  10 ICIVAU,  10 10 64 ADDI,  FL-IL LABEL@ B,
    FL-ID LABEL@ LBL,  DSB-ISH,  ISB,  RET, ;
 
-variable LHIDXADD
-variable LHIDXBUILD
-
 \ Emit the FNV-1a fold+hash of the name at reg `nr` (ptr), length `lr`,
 \ into reg `hr`; clobbers c3 c4 (byte/fold scratch) and c7 (cursor). The
 \ fold is the same A-Z|0x20 idiom the FIND compare uses.
@@ -2476,12 +2527,15 @@ variable LHIDXBUILD
 
 \ Emit: insert record index x3 into table x14. The dictionary rejects
 \ duplicate definitions, so the table is insert-once: probe to the first
-\ empty slot or stale rolled-back slot and store index+1 (no dedupe pass). If
-\ every slot has been consumed by live/stale entries, disable HIDX; linear FIND
-\ and duplicate checks remain authoritative. Clobbers x2 x4 x5 x6 x7 x8 x15
-\ x16 x17.
+\ empty slot, remembering the first stale rolled-back slot as a tombstone. The
+\ full probe must complete before a tombstone is reused: a live copy of the key
+\ may sit later in the cluster. If every slot is live, disable HIDX; linear FIND
+\ and duplicate checks remain authoritative. Clobbers x0 x2 x4 x5 x6 x7 x8
+\ x15 x16 x17.
 : C-HIDX-INS ( -- )
-   LBL LBL LBL LBL LBL LBL {: iloop:label inext:label ifull:label idone:label iret:label rinl:label :}
+   LBL LBL LBL LBL LBL LBL LBL LBL LBL
+   {: iloop:label inext:label istale:label iempty:label ifull:label
+      idisable:label ipublish:label iret:label rinl:label :}
    5 DREC MOVZ,  5 3 5 MUL,  5 DBASE 5 ADD,
    2 5 40 LDR,
    16 5 24 ADDI,
@@ -2490,19 +2544,38 @@ variable LHIDXBUILD
       16 5 24 LDR,
    rinl LBL,
    16 15 6 4 5 7 C-HIDX-HASH
+   15 6 0 ADDI,
    6 6 2 EOR,  5 HIDX-SLOTS 1 - LIT64,  6 6 5 AND,
    8 HIDX-SLOTS MOVZ,
+   0 0 MOVZ,                                       \ first reclaimable entry, or 0
    iloop LBL,
-      17 6 2 LSLI,  17 14 17 ADD,  4 17 0 LDRW,
-      4 idone CBZ,
-      4 4 1 SUBI,  4 NDICT CMP,  C-GE idone BCOND,
+      17 6 HIDX-ENTRY-SHIFT LSLI,  17 14 17 ADD,  4 17 8 LDR,
+      4 iempty CBZ,
+      7 4 DGEN-SHIFT LSRI,
+      5 DCLEN-MASK LIT64,  4 4 5 AND,  4 4 1 SUBI,
+      4 NDICT CMP,  C-GE istale BCOND,
+      5 DREC MOVZ,  5 4 5 MUL,  5 DBASE 5 ADD,
+      16 5 8 LDR,  16 16 DGEN-SHIFT LSRI,
+      7 16 CMP,  C-NE istale BCOND,
    inext LBL,
       8 8 1 SUBI,  8 ifull CBZ,
       6 6 1 ADDI,  5 HIDX-SLOTS 1 - LIT64,  6 6 5 AND,  iloop B,
+   istale LBL,
+      0 inext CBNZ,
+      0 17 0 ADDI,  inext B,
+   iempty LBL,
+      0 ipublish CBZ,
+      17 0 0 ADDI,  ipublish B,
    ifull LBL,
+      0 idisable CBZ,
+      17 0 0 ADDI,  ipublish B,
+   idisable LBL,
       4 0 MOVZ,  4 DATA HIDXP-CELL STR,  iret B,
-   idone LBL,
-      4 3 1 ADDI,  4 17 0 STRW,
+   ipublish LBL,
+      15 17 0 STR,
+      5 DREC MOVZ,  5 3 5 MUL,  5 DBASE 5 ADD,
+      7 5 8 LDR,  7 7 DGEN-SHIFT LSRI,  7 7 DGEN-SHIFT LSLI,
+      4 3 1 ADDI,  4 4 7 ORR,  4 17 8 STR,
    iret LBL, ;
 
 \ C-HIDX-DUP?: x14 = live table ptr (caller ensures != 0). Sets x13 = 1 when a
@@ -2515,14 +2588,20 @@ variable LHIDXBUILD
    LBL LBL LBL LBL LBL LBL {: dloop:label dnext:label dinl:label dcmp:label dfound:label dret:label :}
    16 DATA TKA-CELL LDR,  15 DATA TKL-CELL LDR,
    16 15 3 4 5 7 C-HIDX-HASH
+   12 3 0 ADDI,
    4 DATA DEF-WL-CELL LDR,  6 3 4 EOR,  5 HIDX-SLOTS 1 - LIT64,  6 6 5 AND,
    13 0 MOVZ,
    8 HIDX-SLOTS MOVZ,
    dloop LBL,
-      4 6 2 LSLI,  4 14 4 ADD,  3 4 0 LDRW,                  \ x3 = slot value
+      4 6 HIDX-ENTRY-SHIFT LSLI,  4 14 4 ADD,  3 4 8 LDR,    \ x3 = generation,index+1
       3 dret CBZ,                                            \ empty slot -> no dup
-      4 3 1 SUBI,  4 NDICT CMP,  C-GE dnext BCOND,           \ stale index
+      5 4 0 LDR,  5 12 CMP,  C-NE dnext BCOND,               \ different folded hash
+      16 3 DGEN-SHIFT LSRI,
+      5 DCLEN-MASK LIT64,  4 3 5 AND,  4 4 1 SUBI,
+      4 NDICT CMP,  C-GE dnext BCOND,                         \ stale index
       5 DREC MOVZ,  5 4 5 MUL,  5 DBASE 5 ADD,               \ x5 = record ptr
+      3 5 8 LDR,  3 3 DGEN-SHIFT LSRI,
+      3 16 CMP,  C-NE dnext BCOND,                            \ recycled record index
       4 5 40 LDR,  15 DATA DEF-WL-CELL LDR,  4 15 CMP,  C-NE dnext BCOND,          \ wid mismatch
       4 5 16 LDR,  4 4 12 LSLI,  4 4 12 LSRI,  15 DATA TKL-CELL LDR,  4 15 CMP,  C-NE dnext BCOND,  \ len mismatch
       16 5 24 ADDI,
@@ -2544,25 +2623,24 @@ variable LHIDXBUILD
    dfound LBL,  13 1 MOVZ,
    dret LBL, ;
 
-\ LHIDXADD: insert the just-published record (index NDICT-1). Called
-\ mid-publish, so it saves its whole clobber set. LHIDXBUILD: fresh
-\ zeroed mmap (anonymous pages are zero), then add every record
-\ [0,NDICT); a failed mmap is a startup failure, not a degraded mode.
+\ LHIDXADD inserts the just-published record (index NDICT-1). LHIDXBUILD maps
+\ and fills the startup table. Entries carry the full folded hash and the exact
+\ record generation, so rolled-back record indices are safely reclaimable.
 : EMIT-HIDX ( -- )
    LBL LBL LBL LBL LBL {: aret:label bloop:label bdone:label bfail:label msg:label :}
    LHIDXADD LABEL@ LBL,
-      SP SP 96 SUBI,
+      SP SP 112 SUBI,
       30 SP 0 STR,  2 SP 8 STR,  3 SP 16 STR,  4 SP 24 STR,  5 SP 32 STR,
       6 SP 40 STR,  7 SP 48 STR,  14 SP 56 STR,  15 SP 64 STR,  16 SP 72 STR,  17 SP 80 STR,
-      8 SP 88 STR,
+      8 SP 88 STR,  0 SP 96 STR,
       14 DATA HIDXP-CELL LDR,  14 aret CBZ,
       3 NDICT 0 ADDI,  3 3 1 SUBI,
       C-HIDX-INS
       aret LBL,
       30 SP 0 LDR,  2 SP 8 LDR,  3 SP 16 LDR,  4 SP 24 LDR,  5 SP 32 LDR,
       6 SP 40 LDR,  7 SP 48 LDR,  14 SP 56 LDR,  15 SP 64 LDR,  16 SP 72 LDR,  17 SP 80 LDR,
-      8 SP 88 LDR,
-      SP SP 96 ADDI,  RET,
+      8 SP 88 LDR,  0 SP 96 LDR,
+      SP SP 112 ADDI,  RET,
    LHIDXBUILD LABEL@ LBL,
       \ startup runs this by BL between source setup and the interpret
       \ loop, so it must be register-transparent: save everything it or
@@ -2677,13 +2755,20 @@ variable FIND-HMATCH
       \ (wid), x9/x10 (name), x13 (result) are preserved for that fallback.
       14 DATA HIDXP-CELL LDR,  14 FIND-LINEAR LABEL@ CBZ,      \ no table yet -> linear
       9 10 15 4 16 7 C-HIDX-HASH
+      12 15 0 ADDI,
       6 15 2 EOR,  5 HIDX-SLOTS 1 - LIT64,  6 6 5 AND,                 \ slot = (hash XOR wid) & (HIDX-SLOTS-1)
       8 HIDX-SLOTS MOVZ,
    FIND-HLOOP LABEL@ LBL,
-      17 6 2 LSLI,  17 14 17 ADD,  3 17 0 LDRW,               \ x3 = slot value (index+1)
+      17 6 HIDX-ENTRY-SHIFT LSLI,  17 14 17 ADD,
+      3 17 8 LDR,                                             \ x3 = generation,index+1
       3 FIND-LINEAR LABEL@ CBZ,                               \ empty slot -> probe miss
-      4 3 1 SUBI,  4 NDICT CMP,  C-GE FIND-HNEXT LABEL@ BCOND, \ stale (truncated) index
+      4 17 0 LDR,  4 12 CMP,  C-NE FIND-HNEXT LABEL@ BCOND,   \ different folded hash
+      16 3 DGEN-SHIFT LSRI,
+      4 DCLEN-MASK LIT64,  4 3 4 AND,  4 4 1 SUBI,
+      4 NDICT CMP,  C-GE FIND-HNEXT LABEL@ BCOND,              \ stale (truncated) index
       5 DREC MOVZ,  5 4 5 MUL,  5 DBASE 5 ADD,                \ x5 = record ptr
+      3 5 8 LDR,  3 3 DGEN-SHIFT LSRI,
+      3 16 CMP,  C-NE FIND-HNEXT LABEL@ BCOND,                 \ recycled record index
       16 5 40 LDR,  16 2 CMP,  C-NE FIND-HNEXT LABEL@ BCOND,  \ wid mismatch (retired=-2 / other wl)
       16 5 16 LDR,  16 16 12 LSLI,  16 16 12 LSRI,  16 10 CMP,  C-NE FIND-HNEXT LABEL@ BCOND,  \ name-len mismatch
       16 5 24 ADDI,
@@ -2701,6 +2786,9 @@ variable FIND-HMATCH
          7 7 1 ADDI,  FIND-HCMP LABEL@ B,
       FIND-HMATCH LABEL@ LBL,
          11 5 0 LDR,  12 5 8 LDR,
+         8 12 DGEN-SHIFT LSRI,
+         8 8 LFIND-GEN-SHIFT LSLI,
+         12 12 DCLEN-MASK ANDI,
          14 5 16 LDR,
          15 14 DNAME-WIDE ANDI,  15 15 59 LSRI,               \ wide-effect bit -> 8
          16 14 DNAME-INT ANDI,  16 16 59 LSRI,                \ internal bit -> 16
@@ -2709,7 +2797,7 @@ variable FIND-HMATCH
          15 15 16 ORR,
          14 14 DNAME-IMM ANDI,  14 14 59 LSRI,                \ immediate bit -> 2
          14 14 15 ORR,
-         13 1 MOVZ,  13 13 14 ORR,  RET,
+         13 1 MOVZ,  13 13 14 ORR,  13 13 8 ORR,  RET,
       FIND-HNEXT LABEL@ LBL,
          8 8 1 SUBI,  8 FIND-LINEAR LABEL@ CBZ,
          6 6 1 ADDI,  5 HIDX-SLOTS 1 - LIT64,  6 6 5 AND,  FIND-HLOOP LABEL@ B,
@@ -2734,6 +2822,9 @@ variable FIND-HMATCH
          7 7 1 ADDI,  FIND-CMP LABEL@ B,
       FIND-MATCH LABEL@ LBL,
          11 5 0 LDR,  12 5 8 LDR,
+         8 12 DGEN-SHIFT LSRI,
+         8 8 LFIND-GEN-SHIFT LSLI,
+         12 12 DCLEN-MASK ANDI,
          14 5 16 LDR,
          15 14 DNAME-WIDE ANDI,  15 15 59 LSRI,               \ wide-effect bit -> 8
          16 14 DNAME-INT ANDI,  16 16 59 LSRI,                \ internal bit -> 16
@@ -2742,7 +2833,7 @@ variable FIND-HMATCH
          15 15 16 ORR,
          14 14 DNAME-IMM ANDI,  14 14 59 LSRI,                \ immediate bit -> 2
          14 14 15 ORR,
-         13 1 MOVZ,  13 13 14 ORR,  FIND-NEXT LABEL@ B,
+         13 1 MOVZ,  13 13 14 ORR,  13 13 8 ORR,  FIND-NEXT LABEL@ B,
       FIND-NEXT LABEL@ LBL,  5 5 DREC ADDI,  6 6 1 SUBI,  FIND-LOOP LABEL@ B,
    FIND-DONE LABEL@ LBL,
       13 FIND-FOUND LABEL@ CBNZ,

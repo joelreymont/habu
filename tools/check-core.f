@@ -12,6 +12,7 @@
 
 require tools/dynamic-tail-manifest.f
 require tools/source-discovery.f
+require lib/engine-candidate.f
 
 \ This tool installs its checker hook before validating generated source
 \ snippets with CHECK!. CHECK! (engine checker entrypoint) is modeled as a
@@ -546,7 +547,7 @@ variable CHK-ALL-RC
 \ clean NOINPUT diagnostic instead of an uncaught E-FS-CAPACITY from the read
 \ layer (dot habu-tfam-13-c2-checkcore-cap).
 : CHK-MATERIALIZE ( -- )
-   s" bin/hb" FILE? 0= if s" check.f: bin/hb missing" CHK-E-UNAVAILABLE CHK-FAIL then
+   ENGINE-CANDIDATE:PATH$ 2drop
    CHK-MAKE-TEMP
    [: CHK-MATERIALIZE-DISPATCH ;] catch {: rc:n :}
    rc 0= if exit then
@@ -555,7 +556,7 @@ variable CHK-ALL-RC
 
 : CHK-MATERIALIZE-BUF-AS ( ptr u8 n ptr u8 n -- )
    {: src:ptr srcu:n label:ptr labelu:n :}
-   s" bin/hb" FILE? 0= if s" check.f: bin/hb missing" CHK-E-UNAVAILABLE CHK-FAIL then
+   ENGINE-CANDIDATE:PATH$ 2drop
    srcu CHK-SRC-CAP > if CHK-SOURCE-TOO-BIG then
    src CHK-SRC-BUF srcu BYTE-COPY
    srcu CHK-SRC-U !
@@ -566,7 +567,7 @@ variable CHK-ALL-RC
    CHK-SRC-PATH CHK-SRC-U ! CHK-SRC-A CHK-PTR-U8! ;
 
 : CHK-MATERIALIZE-LIST-PATH ( ptr u8 n -- ) {: path:ptr pathu:n :}
-   s" bin/hb" FILE? 0= if s" check.f: bin/hb missing" CHK-E-UNAVAILABLE CHK-FAIL then
+   ENGINE-CANDIDATE:PATH$ 2drop
    -1 CHK-SOURCE-LIST !
    path pathu CHK-ADD-POS
    CHK-MAKE-TEMP
@@ -984,7 +985,7 @@ variable CHK-TFAM-NAME-I
    s" --load" CHK-ARG+ ;
 
 : CHK-RUN-CAPTURE ( -- )
-   s" bin/hb" >LEN CHK-OUT-BUF CHK-OUT-CAP >LEN
+   ENGINE-CANDIDATE:PATH$ >LEN CHK-OUT-BUF CHK-OUT-CAP >LEN
    CHK-ERR-BUF CHK-ERR-CAP >LEN CHK-TIMEOUT-MS >MS
    RUN-ARGV-CAPTURE {: outu:len erru:len rc:rc :}
    rc RC>N CHK-RC !

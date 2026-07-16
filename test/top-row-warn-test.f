@@ -32,6 +32,7 @@ require lib/fs-mutate.f
 require lib/process.f
 require lib/process-argv.f
 require lib/process-env.f
+require lib/engine-candidate.f
 
 package TOP-ROW-WARN-TEST
 
@@ -63,12 +64,6 @@ create TW-EMPTY 1 allot
 : TW-CHILD ( -- ptr u8 n ) TW-CHILD-BUF TW-CHILD-U @ ;
 : TW-ERR$ ( -- ptr u8 n ) TW-ERR TW-ERR-U @ ;
 
-\ Resolve the child engine: gate default env HABU_UNDER_TEST, else bin/hb.
-: TW-HB$ ( -- ptr u8 n )
-   s" HABU_UNDER_TEST" >LEN PROC-ENV-DEFAULT$? if LEN>N exit then
-   2drop
-   s" HABU_UNDER_TEST" GETENV dup 0= if 2drop s" bin/hb" exit then ;
-
 : TW-STORE! ( len len outcome -- )
    MATCH outcome
      exited OF TW-RC ! 0 0= TW-EXITED ! ENDOF
@@ -98,7 +93,7 @@ create TW-EMPTY 1 allot
    tier TW-SET-TIER
    s" --load" >LEN PROC-ARGV+
    TW-CHILD >LEN PROC-ARGV+
-   TW-HB$ >LEN  TW-EMPTY 0 >LEN  TW-OUT TW-CAP >LEN
+   ENGINE-CANDIDATE:PATH$ >LEN  TW-EMPTY 0 >LEN  TW-OUT TW-CAP >LEN
    TW-ERR TW-CAP >LEN  TW-TIMEOUT-MS >MS  RUN-ARGV-ENV-STDIN-CAPTURE-OUTCOME
    TW-STORE! ;
 

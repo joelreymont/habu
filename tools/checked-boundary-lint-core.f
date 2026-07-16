@@ -34,6 +34,10 @@ variable UB-PREV-A
 variable UB-PREV-U
 variable UB-PREV2-A
 variable UB-PREV2-U
+variable UB-PREV3-A
+variable UB-PREV3-U
+variable UB-PREV4-A
+variable UB-PREV4-U
 variable UB-BAD
 variable UB-CHECK-OFF
 variable UB-NUM-I
@@ -58,6 +62,12 @@ variable UB-OUT-FD
 : UB-PREV2-A-FIELD ( -- ptr ptr u8 )
    UB-PREV2-A 0 ptr-field ;
 
+: UB-PREV3-A-FIELD ( -- ptr ptr u8 )
+   UB-PREV3-A 0 ptr-field ;
+
+: UB-PREV4-A-FIELD ( -- ptr ptr u8 )
+   UB-PREV4-A 0 ptr-field ;
+
 : UB-FILE-A@ ( -- ptr u8 )
    UB-FILE-A-FIELD @ ;
 
@@ -73,6 +83,12 @@ variable UB-OUT-FD
 : UB-PREV2-A@ ( -- ptr u8 )
    UB-PREV2-A-FIELD @ ;
 
+: UB-PREV3-A@ ( -- ptr u8 )
+   UB-PREV3-A-FIELD @ ;
+
+: UB-PREV4-A@ ( -- ptr u8 )
+   UB-PREV4-A-FIELD @ ;
+
 : UB-FILE-A! ( ptr u8 -- )
    UB-FILE-A-FIELD ! ;
 
@@ -87,6 +103,12 @@ variable UB-OUT-FD
 
 : UB-PREV2-A! ( ptr u8 -- )
    UB-PREV2-A-FIELD ! ;
+
+: UB-PREV3-A! ( ptr u8 -- )
+   UB-PREV3-A-FIELD ! ;
+
+: UB-PREV4-A! ( ptr u8 -- )
+   UB-PREV4-A-FIELD ! ;
 
 : UB-TRUE ( -- bool )
    0 0= ;
@@ -205,6 +227,12 @@ variable UB-OUT-FD
 : UB-PREV2$ ( -- ptr u8 n )
    UB-PREV2-A@ UB-PREV2-U @ ;
 
+: UB-PREV3$ ( -- ptr u8 n )
+   UB-PREV3-A@ UB-PREV3-U @ ;
+
+: UB-PREV4$ ( -- ptr u8 n )
+   UB-PREV4-A@ UB-PREV4-U @ ;
+
 : UB-TOK= ( ptr u8 n -- bool )
    {: a:ptr u:n :}
    UB-TOK$ a u LINT-STR= ;
@@ -225,7 +253,19 @@ variable UB-OUT-FD
    {: a:ptr u:n :}
    UB-PREV2$ a u LINT-STR= ;
 
+: UB-PREV3=CI ( ptr u8 n -- bool )
+   {: a:ptr u:n :}
+   UB-PREV3$ a u LINT-STR=CI ;
+
+: UB-PREV4= ( ptr u8 n -- bool )
+   {: a:ptr u:n :}
+   UB-PREV4$ a u LINT-STR= ;
+
 : UB-SAVE-PREV ( -- )
+   UB-PREV3-A@ UB-PREV4-A!
+   UB-PREV3-U @ UB-PREV4-U !
+   UB-PREV2-A@ UB-PREV3-A!
+   UB-PREV2-U @ UB-PREV3-U !
    UB-PREV-A@ UB-PREV2-A!
    UB-PREV-U @ UB-PREV2-U !
    UB-TOK-A@ UB-PREV-A!
@@ -263,6 +303,22 @@ variable UB-OUT-FD
 : UB-SET-CHECK-INSTALL? ( -- bool )
    s" set-check" UB-TOK=CI UB-TICK-PREV2? and ;
 
+: UB-TICK-PREV4? ( -- bool )
+   s" '" UB-PREV4= s" [']" UB-PREV4= or ;
+
+: UB-SET-CHECKS-INSTALL? ( -- bool )
+   s" set-checks" UB-TOK=CI
+   UB-TICK-PREV2? and
+   UB-TICK-PREV4? and ;
+
+: UB-CHECKS-PAIR-ALLOWED? ( -- bool )
+   s" LOWER-CERT-HOOK:PREFLIGHT" UB-PREV3=CI
+   s" LOWER-CERT-HOOK:HOOK" UB-PREV=CI and ;
+
+: UB-ROGUE-PAIR$ ( -- ptr u8 n )
+   s" LOWER-CERT-HOOK:PREFLIGHT" UB-PREV3=CI UB-NOT if UB-PREV3$ exit then
+   UB-PREV$ ;
+
 \ The tier-2 top-level reject enforcer is installed through `set-top-check`
 \ (src/core/top-row.f TR-INSTALL, dot habu-typed-top-tier-589c550f). It is the
 \ audited escape window for the whole top-row tracker: only the tracker's own
@@ -290,7 +346,8 @@ variable UB-OUT-FD
    s" TR-HOOK" UB-PREV=CI ;
 
 : UB-CHECKER-MUTATION? ( -- bool )
-   s" set-check" UB-TOK=CI ;
+   s" set-check" UB-TOK=CI
+   s" set-checks" UB-TOK=CI or ;
 
 : UB-COLON? ( -- bool )
    s" :" UB-TOK= ;
@@ -350,6 +407,12 @@ variable UB-OUT-FD
    UB-JSON-ORIGIN
    s" audited checker hook" UB-PREV$ UB-JSON-FINISH ;
 
+: UB-JSON-ROGUE-PAIR ( -- )
+   s" E-UNAUDITED-HOOK-PAIR" UB-JSON-BASE
+   s" word" LJW-KEY UB-ROGUE-PAIR$ LJW-STRING LJW-COMMA
+   UB-JSON-ORIGIN
+   s" LOWER-CERT-HOOK:PREFLIGHT + LOWER-CERT-HOOK:HOOK" UB-ROGUE-PAIR$ UB-JSON-FINISH ;
+
 : UB-JSON-ROGUE-TOP-HOOK ( -- )
    s" E-UNAUDITED-TOP-HOOK" UB-JSON-BASE
    s" word" LJW-KEY UB-PREV$ LJW-STRING LJW-COMMA
@@ -387,6 +450,17 @@ variable UB-OUT-FD
    s" : `" UB-OUT UB-PREV$ UB-OUT
    s" ` is not an audited checker hook" UB-OUT UB-NL ;
 
+: UB-REPORT-ROGUE-PAIR ( -- )
+   UB-BAD @ 1+ UB-BAD !
+   UB-JSON @ if UB-JSON-ROGUE-PAIR exit then
+   s" UNAUDITED-HOOK-PAIR " UB-OUT
+   UB-FILE-A@ UB-FILE-U @ UB-OUT
+   UB-COLON-C UB-C UB-TOK-LINE @ UB-U$ UB-OUT
+   UB-COLON-C UB-C UB-TOK-COL @ UB-U$ UB-OUT
+   s" : `" UB-OUT UB-PREV3$ UB-OUT
+   s" ` + `" UB-OUT UB-PREV$ UB-OUT
+   s" ` is not the audited checker hook pair" UB-OUT UB-NL ;
+
 : UB-REPORT-ROGUE-TOP-HOOK ( -- )
    UB-BAD @ 1+ UB-BAD !
    UB-JSON @ if UB-JSON-ROGUE-TOP-HOOK exit then
@@ -398,6 +472,10 @@ variable UB-OUT-FD
    s" ` is not an audited top-check hook" UB-OUT UB-NL ;
 
 : UB-HANDLE-INSTALL ( -- )
+   UB-SET-CHECKS-INSTALL? if
+      UB-CHECKS-PAIR-ALLOWED? if exit then
+      UB-REPORT-ROGUE-PAIR exit
+   then
    UB-SET-CHECK-INSTALL? UB-NOT if exit then
    UB-HOOK-ALLOWED? if exit then
    UB-REPORT-ROGUE-HOOK ;
@@ -416,6 +494,8 @@ variable UB-OUT-FD
 : UB-RESET-FILE-SCAN ( -- )
    UB-NUM UB-PREV-A! 0 UB-PREV-U !
    UB-NUM UB-PREV2-A! 0 UB-PREV2-U !
+   UB-NUM UB-PREV3-A! 0 UB-PREV3-U !
+   UB-NUM UB-PREV4-A! 0 UB-PREV4-U !
    0 UB-I ! 1 UB-LINE ! 1 UB-COL !
    UB-CARRY-OFF @ UB-CHECK-OFF !
    UB-FALSE UB-TRUSTED ! ;

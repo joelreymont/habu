@@ -14,6 +14,7 @@ require lib/process-env.f
 require src/core/sha256.f
 require lib/codesign.f
 require tools/seed.f
+require lib/engine-candidate.f
 
 create SET-ROOT FS-PATH-CAP allot
 create SET-BIN FS-PATH-CAP allot
@@ -85,6 +86,8 @@ variable SET-FAIL-SCRIPT-U
    STAT-MODE FS-MUT-MODE-EXEC and FS-MUT-MODE-EXEC = ;
 
 : SET-COPY-BIN-HB ( ptr u8 n -- ) {: dst:ptr dstu :}
+   \ Ownership boundary: seed installation fixtures deliberately copy the
+   \ installed public binary as artifact input; they do not execute it here.
    s" bin/hb" dst dstu COPY-FILE-STREAM ;
 
 : SET-TEST-HEX-SHAPE ( -- )
@@ -153,7 +156,7 @@ variable SET-FAIL-SCRIPT-U
 : SET-TEST-BUILD-FAIL-REPLAYS-ERR ( -- )
    SET-FAIL-SCRIPT$ SET-FAIL-SOURCE$ WRITE-ALL
    SET-FAIL-ARGV
-   s" bin/hb" >LEN SET-OUT SET-CAP >LEN SET-ERR SET-CAP >LEN
+   ENGINE-CANDIDATE:PATH$ >LEN SET-OUT SET-CAP >LEN SET-ERR SET-CAP >LEN
    10000 >MS RUN-ARGV-CAPTURE
    {: outu erru rc :}
    rc RC>N 0 T<>

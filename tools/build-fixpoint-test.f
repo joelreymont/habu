@@ -15,6 +15,7 @@ require lib/process.f
 require lib/process-argv.f
 require lib/process-env.f
 require lib/process-cwd.f
+require lib/engine-candidate.f
 require lib/build.f
 require lib/codesign.f
 require tools/build-fixpoint.f
@@ -33,7 +34,7 @@ $40000 constant BFT-BIG-CAP
 40 constant BFT-TRL-VERSION
 
 package BFT-SNAP-HOOK
-private
+public
 32 constant TRL-DATALEN
 $A5 constant FORGE
 $4A constant MISSING-RC
@@ -234,12 +235,25 @@ create BFT-ERR BFT-CAPTURE-CAP allot
    s" tools/build-fixpoint.f" BFT-ARG+
    s" tools/build-fixpoint-main.f" BFT-ARG+ ;
 
+package CANDIDATE
+
+public
+
+: COPY-TO ( ptr u8 n -- ) {: dst:ptr dstu:n :}
+   dst dstu BF-PARENT-U {: pu:n :}
+   pu 0 > if dst pu MAKE-DIRS then
+   ENGINE-CANDIDATE:PATH$ dst dstu COPY-FILE-STREAM ;
+
+;package
+
 : BFT-ARGV-FIXPOINT ( ptr u8 n ptr u8 n -- n ) {: tmp:ptr tmpu:n stamp:ptr stampu:n :}
    PROC-ARGV-RESET
    PROC-ENV-RESET
    s" HB_TMP" >LEN tmp tmpu >LEN PROC-ENV+
    s" HABU_FIXPOINT_STAMP" >LEN stamp stampu >LEN PROC-ENV+
    s" HABU_FIXPOINT_ENGINE" >LEN BFT-HB >LEN PROC-ENV+
+   s" HABU_FIXPOINT_SEED" >LEN ENGINE-CANDIDATE:PATH$ >LEN PROC-ENV+
+   s" HABU_UNDER_TEST" >LEN ENGINE-CANDIDATE:PATH$ >LEN PROC-ENV+
    BFT-ARGV-LOAD-FILES
    PROC-ARGV-N @ COUNT>N ;
 
@@ -262,9 +276,9 @@ create BFT-ERR BFT-CAPTURE-CAP allot
    s" all" BFT-ARG+ ;
 
 : BFT-SPAWN-FIXPOINT ( -- n n n )
-   s" bin/hb" >LEN PROC-ARGV-CHECK-PATH
+   ENGINE-CANDIDATE:PATH$ >LEN PROC-ARGV-CHECK-PATH
    BFT-CAPTURE-CAP >LEN BFT-CAPTURE-CAP >LEN PROC-CAPTURE-CHECK-CAPS
-   s" bin/hb" >LEN PROC-ARGV-PREPARE {: pathz:ptr argv:ptr :}
+   ENGINE-CANDIDATE:PATH$ >LEN PROC-ARGV-PREPARE {: pathz:ptr argv:ptr :}
    PROC-ENV-PREPARE {: envp:ptr :}
    BFT-TIMEOUT-MS >MS PROC-CAPTURE-BEGIN
    pathz argv envp PROC-SPAWN-ARGV-ENV-CAPTURE
@@ -391,7 +405,11 @@ create BFT-ERR BFT-CAPTURE-CAP allot
 
 : BFT-WRITE-ENGINES ( -- )
    BFT-ENG-A s" engine-a-bytes" WRITE-ALL
-   BFT-ENG-B s" engine-b-bytes" WRITE-ALL ;
+   BFT-ENG-A CHMOD-X
+   BFT-ENG-A EXECUTABLE? TTRUE
+   BFT-ENG-B s" engine-b-bytes" WRITE-ALL
+   BFT-ENG-B CHMOD-X
+   BFT-ENG-B EXECUTABLE? TTRUE ;
 
 : BFT-TEST-STAMP-ENGINE ( -- )
    BFT-STAMP-SCOPE
@@ -486,7 +504,7 @@ create BFT-ERR BFT-CAPTURE-CAP allot
    s" tools/build-fixpoint.f" BFT-STALE-COPY-FILE
    s" tools/build-fixpoint-main.f" BFT-STALE-COPY-FILE
    s" tools/stdin-closure-lib.f" BFT-STALE-COPY-FILE
-   s" bin/hb" BFT-STALE-COPY-FILE
+   BFT-STALE-HB CANDIDATE:COPY-TO
    BFT-STALE-HB CHMOD-X
    BFT-STALE-SABOTAGE ;
 
@@ -495,6 +513,7 @@ create BFT-ERR BFT-CAPTURE-CAP allot
    PROC-ENV-RESET
    s" HB_TMP" >LEN BFT-STALE-TMP >LEN PROC-ENV+
    s" HABU_FIXPOINT_STAMP" >LEN BFT-STALE-STAMP >LEN PROC-ENV+
+   s" HABU_UNDER_TEST" >LEN ENGINE-CANDIDATE:PATH$ >LEN PROC-ENV+
    BFT-ARGV-LOAD-FILES
    s" --" BFT-ARG+
    s" install" BFT-ARG+
@@ -516,7 +535,7 @@ create BFT-ERR BFT-CAPTURE-CAP allot
    BFT-BIG-ERR erru s" build-fixpoint: failed" CONTAINS? TTRUE
    BFT-BIG-ERR erru s" E-BUILD-STATUS" CONTAINS? TTRUE
    BFT-BIG-ERR erru s" habu-crash regs" CONTAINS? TTRUE
-   BFT-STALE-HB s" bin/hb" BF-FILE= TTRUE
+   BFT-STALE-HB ENGINE-CANDIDATE:PATH$ BF-FILE= TTRUE
    BFT-STALE-STAMP FILE? TFALSE ;
 
 \ Staged-fixpoint refusal regression (dot habu-staged-fixpoint-src-0b5fc6e6):
@@ -544,7 +563,7 @@ create BFT-ERR BFT-CAPTURE-CAP allot
    BFT-BIG-OUT outu s" bft-cert-inj" CONTAINS? TTRUE
    BFT-BIG-ERR erru s" build-fixpoint: failed" CONTAINS? TTRUE
    BFT-BIG-ERR erru s" E-BUILD-CERTIFY" CONTAINS? TTRUE
-   BFT-STALE-HB s" bin/hb" BF-FILE= TTRUE
+   BFT-STALE-HB ENGINE-CANDIDATE:PATH$ BF-FILE= TTRUE
    BFT-STALE-STAMP FILE? TFALSE ;
 
 \ typed STR:FIND-SUB boundary: route byte-lengths through the STR: role surface,
@@ -747,11 +766,24 @@ private
       off i + BFT-BYTE@ i 8 * lshift or
    loop ;
 
+: U64! ( n n -- ) {: off:n val:n :}
+   8 0 ?do
+      val i 8 * rshift $FF and off i + BFT-BYTE!
+   loop ;
+
+private
+
 : DATA-OFF ( -- n )
    BFT-MAG-LAST @ dup TRL-DATALEN + U64@ - ;
 
-: HOOK-OFF ( -- n )
+: ENGINE-HOOK-OFF ( -- n )
    DATA-OFF ENGINE-SNAP-XT-CELL + ;
+
+: DEF-HOOK-OFF ( -- n )
+   DATA-OFF HOOK-CELL + ;
+
+: IMM-HOOK-OFF ( -- n )
+   DATA-OFF IMM-HOOK-CELL + ;
 
 ;package
 
@@ -772,12 +804,7 @@ variable BFT-DOC-CODE
 : BFT-DOC-OUT$ ( -- ptr u8 n )
    BFT-OUT BFT-DOC-OUT-U @ ;
 
-\ Doctor one trailer byte, run the patched snapshot engine with empty stdin and
-\ its stderr CAPTURED (the labeled diagnostic goes to fd 2), record the exit
-\ kind/code and stderr length, then restore the byte for the next case.
-: BFT-DOCTORED-CAPTURE ( n n -- ) {: off:n val:n :}
-   off BFT-BYTE@ {: orig:n :}
-   val off BFT-BYTE!
+: BFT-DOCTORED-RUN ( -- )
    BFT-DOCTOR-WRITE
    PROC-ARGV-RESET
    s" hb-doctored" BF-A$ >LEN  BFT-EMPTY$ >LEN
@@ -789,7 +816,14 @@ variable BFT-DOC-CODE
      timeout OF 0 BFT-DOC-CODE ! 0 0= 0= BFT-DOC-EXITED ! ENDOF
    ;MATCH {: ou:len eu:len :}
    ou LEN>N BFT-DOC-OUT-U !
-   eu LEN>N BFT-DOC-ERR-U !
+   eu LEN>N BFT-DOC-ERR-U ! ;
+
+\ Doctor one trailer byte, run the patched snapshot engine, capture the named
+\ failure, then restore the byte for the next case.
+: BFT-DOCTORED-CAPTURE ( n n -- ) {: off:n val:n :}
+   off BFT-BYTE@ {: orig:n :}
+   val off BFT-BYTE!
+   BFT-DOCTORED-RUN
    orig off BFT-BYTE! ;
 
 \ A labeled fatal exit: process EXITed with the contract code and its stderr
@@ -802,19 +836,25 @@ variable BFT-DOC-CODE
 package BFT-SNAP-HOOK
 private
 
+: DOCTORED-U64-CAPTURE ( n n -- ) {: off:n val:n :}
+   off U64@ {: orig:n :}
+   off val U64!
+   BFT-DOCTORED-RUN
+   off orig U64! ;
+
 : PROBE! ( -- )
    s" snap-hook-probe.f" BF-A$
    s\" package SNAP-HOOK-PROBE public\n: ASSERT-CLEAR ( -- )\n   data-base ENGINE-SNAP-XT-CELL + @ 0 <> if 1 throw then ;\n;package\nSNAP-HOOK-PROBE:ASSERT-CLEAR\n"
    WRITE-ALL ;
 
 : RAW ( -- )
-   HOOK-OFF {: off:n :}
+   ENGINE-HOOK-OFF {: off:n :}
    off 0 >= TTRUE
    off 8 + BFT-MAG-LAST @ <= TTRUE
    off U64@ 0 T= ;
 
 : STARTUP ( -- )
-   HOOK-OFF {: off:n :}
+   ENGINE-HOOK-OFF {: off:n :}
    off BFT-BYTE@ {: orig:n :}
    FORGE off BFT-BYTE!
    off U64@ 0= TFALSE
@@ -824,6 +864,66 @@ private
    s" hb-doctored" BF-A$ s" snap-hook-probe.f" BF-B$ BF-RUN-LOAD-STAGE {: rc:n :}
    orig off BFT-BYTE!
    rc 0 T= ;
+
+: CHECKER-RAW ( -- )
+   DEF-HOOK-OFF U64@ 0= TFALSE
+   IMM-HOOK-OFF U64@ 0= TFALSE ;
+
+: LOAD-CAPTURE ( ptr u8 n ptr u8 n -- ) {: exe:ptr exeu:n src:ptr srcu:n :}
+   PROC-ARGV-RESET
+   s" --load" BFT-ARG+
+   src srcu BFT-ARG+
+   s" --" BFT-ARG+
+   BFT-ROOT BFT-ARG+
+   PROC-ENV-RESET
+   s" HB_TMP" >LEN BFT-ROOT >LEN PROC-ENV+
+   exe exeu >LEN BFT-OUT BFT-CAPTURE-CAP >LEN
+   BFT-ERR BFT-CAPTURE-CAP >LEN BFT-TIMEOUT-MS >MS
+   RUN-ARGV-ENV-CAPTURE-OUTCOME
+   MATCH outcome
+     exited OF BFT-DOC-CODE ! 0 0= BFT-DOC-EXITED ! ENDOF
+     signaled OF BFT-DOC-CODE ! 0 0= 0= BFT-DOC-EXITED ! ENDOF
+     timeout OF 0 BFT-DOC-CODE ! 0 0= 0= BFT-DOC-EXITED ! ENDOF
+   ;MATCH {: ou:len eu:len :}
+   ou LEN>N BFT-DOC-OUT-U !
+   eu LEN>N BFT-DOC-ERR-U ! ;
+
+: REJECT-SOURCE! ( ptr u8 n ptr u8 n -- ) {: word:ptr wordu:n path:ptr pathu:n :}
+   SB-RESET
+   s" package SNAP-REJECT private : BAD ( -- ) 73 " SB-APPEND
+   word wordu SB-APPEND  s"  " SB-APPEND
+   s" snap-frag.f" BF-B$ SB-APPEND
+   s"  . ; ;package" SB-APPEND
+   path pathu SB$ WRITE-ALL ;
+
+: LOADER-SOURCES! ( -- )
+   s" snap-frag.f" BF-A$ s\" s\" LOADER-SIDE-EFFECT\" type cr\n" WRITE-ALL
+   s" include" s" snap-include-reject.f" BF-A$ REJECT-SOURCE!
+   s" require" s" snap-require-reject.f" BF-A$ REJECT-SOURCE!
+   SB-RESET
+   s" include " SB-APPEND  s" snap-frag.f" BF-A$ SB-APPEND
+   s" snap-include-ok.f" BF-A$ SB$ WRITE-ALL
+   SB-RESET
+   s" require " SB-APPEND  s" snap-frag.f" BF-A$ SB-APPEND  10 SB-APPEND-C
+   s" require " SB-APPEND  s" snap-frag.f" BF-A$ SB-APPEND
+   s" snap-require-ok.f" BF-A$ SB$ WRITE-ALL ;
+
+: REUSE-SOURCE! ( -- )
+   s" snap-reuse.f" BF-A$
+   S\" package SNAP-REUSE private
+70 constant UNDEFINED-RC
+91 constant REUSE-RC
+variable OLD-XT
+: ASSERT-RC ( n n -- ) 2dup = if 2drop exit then drop throw ;
+TRUSTED: MODEL-TEMP ( -- ) s\" TEMP\" 0 PARSE-IMM ;
+TRUSTED: ROLLBACK ( -- ) s\" : TEMP ( -- ) ; immediate ' TEMP OLD-XT ! MODEL-TEMP NO-SUCH-ROLLBACK\" evaluate ;
+' ROLLBACK catch UNDEFINED-RC ASSERT-RC
+: REUSED ( -- ) ; immediate
+TRUSTED: ASSERT-REUSE ( -- ) ['] REUSED OLD-XT @ <> if REUSE-RC throw then ;
+ASSERT-REUSE
+: BAD ( -- ) REUSED ;
+;package
+" WRITE-ALL ;
 
 : NOHOOK-SOURCE ( -- )
    s" hb-snap-nohook-src" BF-RESET-OUT
@@ -857,7 +957,47 @@ public
 
 : VERIFY-IMAGE ( -- )
    RAW
-   STARTUP ;
+   STARTUP
+   CHECKER-RAW ;
+
+: ASSERT-LOADER-REJECT ( ptr u8 n ptr u8 n ptr u8 n -- ) {: exe:ptr exeu:n src:ptr srcu:n word:ptr wordu:n :}
+   exe exeu src srcu LOAD-CAPTURE
+   BFT-DOC-EXITED @ TTRUE
+   BFT-DOC-CODE @ 70 T=
+   BFT-DOC-OUT$ BFT-EMPTY$ T$=
+   BFT-DOC-ERR$ s" E-UNMODELED-IMMEDIATE" CONTAINS? TTRUE
+   BFT-DOC-ERR$ word wordu CONTAINS? TTRUE ;
+
+: ASSERT-LOADER-OK ( ptr u8 n ptr u8 n -- ) {: exe:ptr exeu:n src:ptr srcu:n :}
+   exe exeu src srcu LOAD-CAPTURE
+   BFT-DOC-EXITED @ TTRUE
+   BFT-DOC-CODE @ 0 T=
+   BFT-DOC-OUT$ S\" LOADER-SIDE-EFFECT\n" T$=
+   BFT-DOC-ERR$ BFT-EMPTY$ T$= ;
+
+: REJECTS-LOADER ( -- )
+   LOADER-SOURCES!
+   REUSE-SOURCE!
+   BFT-HB s" snap-include-reject.f" BF-B$ s" include" ASSERT-LOADER-REJECT
+   BFT-HB s" snap-require-reject.f" BF-B$ s" require" ASSERT-LOADER-REJECT
+   s" hb-snap0" BF-A$ s" snap-include-reject.f" BF-B$ s" include" ASSERT-LOADER-REJECT
+   s" hb-snap0" BF-A$ s" snap-require-reject.f" BF-B$ s" require" ASSERT-LOADER-REJECT
+   BFT-HB s" snap-reuse.f" BF-B$ s" REUSED" ASSERT-LOADER-REJECT
+   s" hb-snap0" BF-A$ s" snap-reuse.f" BF-B$ s" REUSED" ASSERT-LOADER-REJECT
+   BFT-HB s" snap-include-ok.f" BF-B$ ASSERT-LOADER-OK
+   BFT-HB s" snap-require-ok.f" BF-B$ ASSERT-LOADER-OK
+   s" hb-snap0" BF-A$ s" snap-include-ok.f" BF-B$ ASSERT-LOADER-OK
+   s" hb-snap0" BF-A$ s" snap-require-ok.f" BF-B$ ASSERT-LOADER-OK ;
+
+: CORRUPT-CHECKER ( -- )
+   IMM-HOOK-OFF 7 + $FF BFT-DOCTORED-CAPTURE
+   79 s" hb: snapshot trailer corrupt" BFT-ASSERT-SNAP-EXIT
+   DEF-HOOK-OFF 7 + $FF BFT-DOCTORED-CAPTURE
+   79 s" hb: snapshot trailer corrupt" BFT-ASSERT-SNAP-EXIT
+   IMM-HOOK-OFF DEF-HOOK-OFF U64@ DOCTORED-U64-CAPTURE
+   79 s" hb: snapshot trailer corrupt" BFT-ASSERT-SNAP-EXIT
+   DEF-HOOK-OFF IMM-HOOK-OFF U64@ DOCTORED-U64-CAPTURE
+   79 s" hb: snapshot trailer corrupt" BFT-ASSERT-SNAP-EXIT ;
 
 : MISSING ( -- )
    BFT-ROOT BF-TMP!
@@ -881,9 +1021,11 @@ public
    BFT-BYTES-READ
    BFT-MAGIC-LAST!
    BFT-SNAP-HOOK:VERIFY-IMAGE
+   BFT-SNAP-HOOK:REJECTS-LOADER
+   BFT-SNAP-HOOK:CORRUPT-CHECKER
    BFT-MAG-LAST @ {: mag:n :}
    mag BFT-TRL-VERSION + BFT-BYTE@ SNAP-FORMAT-VERSION T=
-   mag BFT-TRL-VERSION + 2 BFT-DOCTORED-CAPTURE
+   mag BFT-TRL-VERSION + SNAP-FORMAT-VERSION 1 - BFT-DOCTORED-CAPTURE
    80 s" hb: snapshot format version unsupported" BFT-ASSERT-SNAP-EXIT
    mag BFT-TRL-VERSION + $FF BFT-DOCTORED-CAPTURE
    80 s" hb: snapshot format version unsupported" BFT-ASSERT-SNAP-EXIT

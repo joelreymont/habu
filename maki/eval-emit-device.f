@@ -51,8 +51,10 @@ require lib/float.f
 require lib/fmt.f
 require lib/fs.f
 require lib/fs-mutate.f
+require lib/engine-id.f
 require lib/process.f
 require lib/process-argv.f
+require lib/engine-candidate.f
 require lib/ffi.f
 require src/arch/ptx/emit.f
 require lib/ptx/cg.f
@@ -156,7 +158,7 @@ create PA-OUT PA-OUT-CAP allot  create PA-ERR PA-ERR-CAP allot
 
 \ spawn bin/hb over the built argv; capture the emitted PTX to MAKI-GRADE:PTX$
 : EMIT-CHILD ( -- )
-   s" bin/hb" >LEN  CH-OUT CH-OUT-CAP >LEN  CH-ERR CH-ERR-CAP >LEN  EMIT-TIMEOUT-MS >MS  RUN-ARGV-CAPTURE
+   ENGINE-CANDIDATE:PATH$ >LEN  CH-OUT CH-OUT-CAP >LEN  CH-ERR CH-ERR-CAP >LEN  EMIT-TIMEOUT-MS >MS  RUN-ARGV-CAPTURE
    {: outu:len erru:len rc:rc :}
    rc RC>N 0 <> outu LEN>N 0= or if E-EVAL-EMIT throw then
    MAKI-GRADE:PTX$ CH-OUT outu LEN>N WRITE-ALL ;

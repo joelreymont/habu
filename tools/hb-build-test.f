@@ -11,6 +11,7 @@ require lib/fs-mutate.f
 require lib/process.f
 require lib/process-argv.f
 require lib/process-env.f
+require lib/engine-candidate.f
 require lib/source.f
 require lib/build.f
 require lib/codesign.f
@@ -247,7 +248,7 @@ create HBT-EXP-HEX2 64 allot
    outu LEN>N erru LEN>N rc RC>N ;
 
 : HBT-RUN-HB-BUILD ( -- n n n )
-   s" bin/hb" >LEN HBT-OUT HBT-CAPTURE-CAP >LEN HBT-ERR HBT-CAPTURE-CAP >LEN
+   ENGINE-CANDIDATE:PATH$ >LEN HBT-OUT HBT-CAPTURE-CAP >LEN HBT-ERR HBT-CAPTURE-CAP >LEN
    HBT-TIMEOUT-MS >MS RUN-ARGV-ENV-CAPTURE
    HBT-CAPTURE>N ;
 
@@ -543,7 +544,7 @@ public
 : HBT-IMGDUMP-REPL ( -- )
    HBT-IMGDUMP-ARGV
    PROC-ENV-INHERIT-MISSING
-   s" bin/hb" >LEN HBT-RUN-OUT HBT-CAPTURE-CAP >LEN HBT-RUN-ERR HBT-CAPTURE-CAP >LEN
+   ENGINE-CANDIDATE:PATH$ >LEN HBT-RUN-OUT HBT-CAPTURE-CAP >LEN HBT-RUN-ERR HBT-CAPTURE-CAP >LEN
    HBT-TIMEOUT-MS >MS RUN-ARGV-ENV-CAPTURE HBT-CAPTURE>N {: outn:n errn:n rcn:n :}
    rcn 0 T=
    HBT-RUN-ERR errn HBT-EMPTY$ T$=
@@ -747,7 +748,9 @@ public
 
 : HBT-WRITE-ENG ( -- )
    HBT-ROOT s" engine-alt" HBT-ENG-BUF HBT-ENG-U HBT-PATH!
-   HBT-ENG s" not-the-real-engine" WRITE-ALL ;
+   HBT-ENG s" not-the-real-engine" WRITE-ALL
+   HBT-ENG CHMOD-X
+   HBT-ENG EXECUTABLE? TTRUE ;
 
 : HBT-ABI-MAKER-SUFFIX ( -- )
    HBB-CHECKER-ABI$ {: a:ptr u:n :}

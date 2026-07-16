@@ -22,8 +22,8 @@ require test/run-verdict.f              \ TR-VERDICT retry driver over the polic
 $100 constant TR-HOST-CAP
 $82 constant TR-UNDER-STAMP-U
 $2 constant TR-CANDIDATE-HOST-PHASES
-$1B constant TR-EARLY-HOST-PHASES
-$3 constant TR-LATE-PHASES
+$1A constant TR-EARLY-HOST-PHASES
+$4 constant TR-LATE-PHASES
 9 constant TR-UNDER-PREFIX-U
 0 constant TR-GROUP-SEQ
 1 constant TR-GROUP-PAR
@@ -54,11 +54,11 @@ create TR-CANDIDATE-HOST-ORDER
 $9 , $E ,
 
 create TR-LATE-ORDER
-$3 , $15 , $10 ,
+$3 , $15 , $10 , $24 ,
 
 create TR-EARLY-HOST-ORDER
 $8 , $7 , $25 , $26 , $27 , $28 , $17 , $16 ,
-$1B , $C , $11 , $24 , $1F , $23 , $B , $A ,
+$1B , $C , $11 , $1F , $23 , $B , $A ,
 $20 , $22 ,
 $5 , $2 , $1C , $1D , $1A , $21 , $D , $19 ,
 $12 ,
@@ -578,11 +578,6 @@ create TR-CAL-PCT-BUF 4 allot
 : TR-POOL-PASS-SPAN ( ptr u8 n n -- ) {: label:ptr labelu:n ms:n :}
    label labelu ms GS-SPAN-AUTH ;
 
-: TR-INSTALL-POOL-HOOKS ( -- )
-   [: TR-POOL-PASS-SPAN ;] is GT-POOL-PASS-HOOK ;
-
-TR-INSTALL-POOL-HOOKS
-
 : TR-START ( -- )
    GT-RESET
    CLEANUP-RESET
@@ -628,10 +623,7 @@ TR-INSTALL-POOL-HOOKS
    TR-UNDER-HEX 64 type cr ;
 
 : TR-EXPECT-UNDER ( -- )
-   TR-UNDER$ EXECUTABLE? 0= if
-      s" missing Habu-under-test: " type TR-UNDER$ type cr
-      s" Habu-under-test not produced executable" TR-FAIL
-   then
+   TR-UNDER$ ENGINE-CANDIDATE:VALIDATE$ 2drop
    -1 TR-UNDER-READY !
    s" candidate-ready" GS-EVENT
    TR-UNDER-LINE ;
@@ -641,7 +633,7 @@ TR-INSTALL-POOL-HOOKS
 
 : TR-UNDER-IMPORT ( -- )
    TR-UNDER-ARG? 0= if exit then
-   TR-UNDER-ARG$ EXECUTABLE? 0= if s" --under executable missing" TR-FAIL then
+   TR-UNDER-ARG$ ENGINE-CANDIDATE:VALIDATE$ 2drop
    TR-UNDER-ARG$ TR-UNDER$ COPY-FILE-STREAM
    TR-UNDER$ CHMOD-X
    s" candidate-import" GS-EVENT
@@ -667,6 +659,8 @@ TR-INSTALL-POOL-HOOKS
    s" lib/test/runner.f"  >LEN PROC-ARGV+ ;
 
 : TR-SPAWN-CAPTURE ( -- )
+   \ Ownership boundary: the outer runner uses installed bin/hb to build and
+   \ import the candidate; candidate-sensitive phases start only afterward.
    s" top-capture-spawn" GS-EVENT
    s" bin/hb" >LEN PROC-ARGV-CHECK-PATH
    PROC-CAPTURE-RESET
@@ -956,7 +950,9 @@ TR-INSTALL-POOL-HOOKS
    slice sliceu  >LEN PROC-ARGV+ ;
 
 : TR-ENGINE-BUILD-ARGS ( -- )
-   s" build" TR-ENGINE-SLICE-ARGS ;
+   s" build" TR-ENGINE-SLICE-ARGS
+   s" --candidate-out" TR-ARG+
+   TR-UNDER$ TR-ARG+ ;
 
 : TR-ENGINE-FIXTURES-ARGS ( -- )
    s" fixtures" TR-ENGINE-SLICE-ARGS ;
@@ -1302,14 +1298,11 @@ TR-INSTALL-POOL-HOOKS
       14 of TR-TRUE endof
       16 of TR-TRUE endof
       21 of TR-TRUE endof
+      36 of TR-TRUE endof
       TR-FALSE swap
    endcase ;
 
-: TR-PHASE-UNDER-BUILD? ( idx -- bool ) {: idx:idx :}
-   idx IDX>N 15 = ;
-
 : TR-PHASE-UNDER-ENV? ( idx -- bool ) {: idx:idx :}
-   idx TR-PHASE-UNDER-BUILD? if TR-TRUE exit then
    TR-UNDER-READY @ 0= if TR-FALSE exit then
    idx TR-PHASE-UNDER? ;
 
@@ -1431,6 +1424,57 @@ TR-INSTALL-POOL-HOOKS
    idx TR-PHASE-TEST
    idx TR-PHASE-EXE idx TR-PHASE-LABEL TR-TIMEOUT-MS slot GT-POOL-START-SLOT ;
 
+package CAND-BUILD
+
+private
+
+variable OWNER
+variable FINISHED
+variable SUCCEEDED
+
+: ACTIVE? ( -- bool )
+   OWNER @ 0 >= ;
+
+: FAIL ( -- )
+   GT-POOL-DRAIN-SOFT
+   s" Habu-under-test build phase failed" TR-FAIL ;
+
+public
+
+: RESET ( -- )
+   -1 OWNER !
+   0 FINISHED !
+   0 SUCCEEDED ! ;
+
+: START ( -- )
+   GT-POOL-WAIT-FREE
+   GT-POOL-FIND-FREE {: own:idx :}
+   own IDX>N OWNER !
+   15 >IDX own TR-PHASE-START-SLOT ;
+
+: RECORD ( idx bool -- ) {: slot:idx ok:bool :}
+   ACTIVE? 0= if exit then
+   slot IDX>N OWNER @ <> if exit then
+   ok SUCCEEDED !
+   -1 FINISHED ! ;
+
+: WAIT ( -- )
+   ACTIVE? 0= if exit then
+   begin FINISHED @ 0= while
+      GT-POOL-LIVE @ 0= if FAIL then
+      GT-POOL-STEP
+   repeat
+   SUCCEEDED @ 0= if FAIL then
+   -1 OWNER ! ;
+
+;package
+
+: TR-INSTALL-POOL-HOOKS ( -- )
+   [: TR-POOL-PASS-SPAN ;] is GT-POOL-PASS-HOOK
+   [: CAND-BUILD:RECORD ;] is POOL-EVENT:DONE ;
+
+TR-INSTALL-POOL-HOOKS
+
 : TR-GROUP-MODE ( idx -- n )
    drop TR-GROUP-PAR ;
 
@@ -1445,10 +1489,8 @@ TR-INSTALL-POOL-HOOKS
    s" Habu-under-test build artifact missing" TR-FAIL ;
 
 : TR-DRAIN-UNTIL-UNDER ( -- )
-   begin TR-UNDER-DONE? 0= while
-      GT-POOL-LIVE @ 0= if TR-UNDER-MISSING-FAIL then
-      GT-POOL-STEP
-   repeat
+   CAND-BUILD:WAIT
+   TR-UNDER-DONE? 0= if TR-UNDER-MISSING-FAIL then
    TR-EXPECT-UNDER
    TR-UNDER-CACHE-INSTALL ;
 
@@ -1723,10 +1765,11 @@ public
 
 : TR-EARLY-EXTERNAL-START ( -- )
    GT-POOL-RESET
+   CAND-BUILD:RESET
    TR-PRE-TOOLS-START
    TR-PRE-CANDIDATE-START
    TR-UNDER-READY @ 0= if
-      15 >IDX TR-PHASE-START
+      CAND-BUILD:START
    else
       s" candidate-build-skip" GS-EVENT
    then ;
@@ -1868,6 +1911,7 @@ create TR-VA-READ-BUF TR-VA-READ-CAP allot
    s" HB_TMP" >LEN TR-VA-TMP$ >LEN PROC-ENV+
    s" XDG_CACHE_HOME" >LEN TR-VA-CACHE$ >LEN PROC-ENV+
    s" HABU_BUILD_CACHE" >LEN TR-VA-BUILD$ >LEN PROC-ENV+
+   s" HABU_UNDER_TEST" >LEN ENGINE-CANDIDATE:PATH$ >LEN PROC-ENV+
    PROC-ENV-INHERIT-MISSING ;
 
 : TR-VA-ARGV ( n -- ) {: n:n :}
@@ -1877,6 +1921,8 @@ create TR-VA-READ-BUF TR-VA-READ-CAP allot
    s" --" TR-ARG+
    s" --gate-attempt" TR-ARG+
    n TR-NUM$ TR-ARG+
+   s" --under" TR-ARG+
+   ENGINE-CANDIDATE:PATH$ TR-ARG+
    s" --cold-cache" TR-ARG+
    s" --perf-profile" TR-ARG+
    TR-PROFILE$ TR-ARG+ ;
@@ -1886,7 +1932,7 @@ create TR-VA-READ-BUF TR-VA-READ-CAP allot
    dup 0 < if E-FS-OPEN throw then ;
 
 : TR-VA-CHILD-OK? ( n -- bool ) {: fd:n :}   \ spawn worker, stdout+stderr -> fd, wait
-   s" bin/hb" >LEN  -1 >FD  fd >FD  fd >FD  PROC-RUN-ARGV-ENV-IO-RC
+   ENGINE-CANDIDATE:PATH$ >LEN  -1 >FD  fd >FD  fd >FD  PROC-RUN-ARGV-ENV-IO-RC
    MATCH result
       ok OF drop TR-TRUE ENDOF
       err OF drop TR-FALSE ENDOF

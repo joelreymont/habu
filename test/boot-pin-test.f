@@ -19,6 +19,7 @@ require lib/fs.f
 require lib/fs-mutate.f
 require lib/process.f
 require lib/process-argv.f
+require lib/engine-candidate.f
 require tools/boot-pin.f
 
 \ White-box CAD-NUM role reader (precedent: lib/string-test.f STR-T-IX>RAW):
@@ -142,7 +143,7 @@ variable BPT-OFF
 
 : BPT-RUN ( -- n n n )                                    \ -> outu erru rc
    BPT-ARGV
-   s" bin/hb" >LEN BPT-OUT BPT-CAP >LEN BPT-ERR BPT-CAP >LEN BPT-TIMEOUT-MS >MS RUN-ARGV-CAPTURE
+   ENGINE-CANDIDATE:PATH$ >LEN BPT-OUT BPT-CAP >LEN BPT-ERR BPT-CAP >LEN BPT-TIMEOUT-MS >MS RUN-ARGV-CAPTURE
    {: outu:len erru:len rc:rc :}
    outu LEN>N erru LEN>N rc RC>N ;
 

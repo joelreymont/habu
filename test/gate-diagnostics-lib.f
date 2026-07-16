@@ -470,6 +470,13 @@ variable GDX-TRUST-MAN-U
    s" diag-repair-class" s" habu-unsafe.err" s" trusted_boundary_required" s" unsafe repair class" GDX-GJA2S
    GE-HB-RESET
    GE-SRC-RESET
+   s" : LDR ( -- ) include no-such-loader.f ;" GE-SRC-LINE
+   s" tools/check.f executed unmodeled include before rejection" GDX-CHECK-JSON
+   s" code" s" E-UNMODELED-IMMEDIATE" s" immediate preflight diagnostic code" GDX-EXPECT-ERR-JSTR
+   s" token" s" include" s" immediate preflight token" GDX-EXPECT-ERR-JSTR
+   s" repair_class" s" declare_immediate_expansion" s" immediate preflight repair class" GDX-EXPECT-ERR-JSTR
+   GE-HB-RESET
+   GE-SRC-RESET
    s" : EV ( -- n ) evaluate ;" GE-SRC-LINE
    s" EV ." GE-SRC-LINE
    s" hb published unsafe evaluate definition" GE-HB-RUN-STDIN-NZ ;
@@ -501,7 +508,7 @@ variable GDX-TRUST-MAN-U
    GE-HB-RESET
    GE-SRC-RESET
    s" 0 set-check : BAD ( -- n ) [: 1 {: x:n :} x ;] execute ;" GE-SRC-LINE
-   s" bin/hb" GE-SRC-BUF GE-SRC-U @ GE-TIMEOUT-MS GE-RUN-STDIN
+   GE-HB$ GE-SRC-BUF GE-SRC-U @ GE-TIMEOUT-MS GE-RUN-STDIN
    $4B s" B2 local-in-quote exits 75" GE-EXPECT-RC
    s" inside quotation" s" B2 local-in-quote diagnostic" GE-EXPECT-ERR-HAS
    GE-HB-RESET  GE-SRC-RESET
@@ -528,7 +535,7 @@ variable GDX-TRUST-MAN-U
    s" load-bad.f" GDX-WRITE-SRC
    s" --load" GDX-ARG+
    s" load-bad.f" GDX-PATH-ARGV+
-   s" bin/hb" GE-TIMEOUT-MS GE-RUN-ENV
+   GE-HB$ GE-TIMEOUT-MS GE-RUN-ENV
    s" checked load accepted bad declared effect" GE-EXPECT-NONZERO ;
 
 \ A reject diagnostic whose expected/actual row is wider than RBUF-CAP (64) values
@@ -549,7 +556,7 @@ variable GDX-TRUST-MAN-U
    s" render-cap.f" GDX-WRITE-SRC
    s" --load" GDX-ARG+
    s" render-cap.f" GDX-PATH-ARGV+
-   s" bin/hb" GE-TIMEOUT-MS GE-RUN-ENV
+   GE-HB$ GE-TIMEOUT-MS GE-RUN-ENV
    70 s" wide diagnostic row must fail closed with rc 70, not crash" GE-EXPECT-RC
    s" actual: " s" wide diagnostic row must still render the mismatch" GE-EXPECT-ERR-HAS ;
 

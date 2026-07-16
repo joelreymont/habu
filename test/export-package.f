@@ -33,6 +33,7 @@ require lib/fs-mutate.f
 require lib/process.f
 require lib/process-argv.f
 require lib/process-env.f
+require lib/engine-candidate.f
 
 2048 constant XPK-CAP
 10000 constant XPK-TIMEOUT-MS
@@ -65,13 +66,6 @@ create XPK-EMPTY 1 allot
 : XPK-ROOT ( -- ptr u8 n )   XPK-ROOT-BUF XPK-ROOT-U @ ;
 : XPK-CHILD ( -- ptr u8 n )  XPK-CHILD-BUF XPK-CHILD-U @ ;
 : XPK-IN$ ( -- ptr u8 n )    XPK-IN XPK-IN-U @ ;
-
-: XPK-HB$ ( -- ptr u8 n )
-   s" HABU_UNDER_TEST" >LEN PROC-ENV-DEFAULT$? if LEN>N exit then
-   2drop
-   s" HABU_UNDER_TEST" GETENV dup 0= if
-      2drop s" bin/hb" exit
-   then ;
 
 : XPK-LF ( -- )   10 SB-APPEND-C ;
 
@@ -229,14 +223,14 @@ create XPK-EMPTY 1 allot
    PROC-ARGV-RESET
    s" --load" >LEN PROC-ARGV+
    XPK-CHILD >LEN PROC-ARGV+
-   XPK-HB$ >LEN  XPK-EMPTY 0 >LEN  XPK-OUT XPK-CAP >LEN
+   ENGINE-CANDIDATE:PATH$ >LEN  XPK-EMPTY 0 >LEN  XPK-OUT XPK-CAP >LEN
    XPK-ERR XPK-CAP >LEN  XPK-TIMEOUT-MS >MS  RUN-ARGV-STDIN-CAPTURE-OUTCOME
    XPK-STORE! ;
 
 : XPK-RUN-STDIN ( ptr u8 n -- )
    XPK-IN!
    PROC-ARGV-RESET
-   XPK-HB$ >LEN  XPK-IN$ >LEN  XPK-OUT XPK-CAP >LEN
+   ENGINE-CANDIDATE:PATH$ >LEN  XPK-IN$ >LEN  XPK-OUT XPK-CAP >LEN
    XPK-ERR XPK-CAP >LEN  XPK-TIMEOUT-MS >MS  RUN-ARGV-STDIN-CAPTURE-OUTCOME
    XPK-STORE! ;
 

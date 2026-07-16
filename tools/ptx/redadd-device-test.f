@@ -6,6 +6,7 @@
 \ lib/ffi.f, and the fs/process libs.
 
 require lib/test.f
+require lib/engine-candidate.f
 require lib/ptx/toolchain.f
 require lib/ptx/sentinel.f
 require lib/ptx/cuda-driver.f
@@ -20,7 +21,7 @@ create RA-O $4000 allot  create RA-E $1000 allot  create RA-QO $1000 allot creat
    s" --load"  >LEN PROC-ARGV+
    s" lib/errors.f" >LEN PROC-ARGV+  s" lib/string.f" >LEN PROC-ARGV+
    s" src/arch/ptx/emit.f" >LEN PROC-ARGV+  s" tools/ptx/redadd-cg.f" >LEN PROC-ARGV+
-   s" bin/hb" >LEN  RA-O $4000 >LEN  RA-E $1000 >LEN  20000 >MS  RUN-ARGV-CAPTURE
+   ENGINE-CANDIDATE:PATH$ >LEN  RA-O $4000 >LEN  RA-E $1000 >LEN  20000 >MS  RUN-ARGV-CAPTURE
    {: ou:len eu:len rc:rc :}  PTXTC:PTX$ RA-O ou LEN>N WRITE-ALL  ou LEN>N ;
 
 : RA-PTXAS ( -- n )

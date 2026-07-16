@@ -14,6 +14,7 @@
 \ lib/ptx/cg.f (F32>F64/F64>F32), and the fs/process libs.
 
 require lib/ptx/toolchain.f
+require lib/engine-candidate.f
 require lib/ptx/sentinel.f
 require lib/ptx/cuda-driver.f
 
@@ -33,7 +34,7 @@ create GC-QOUT $1000 allot create GC-QERR $1000 allot
    s" lib/ptx/tile.f"       >LEN PROC-ARGV+
    s" lib/ptx/collective.f" >LEN PROC-ARGV+ ;
 : GC-RUN-EMIT ( -- n )
-   s" bin/hb" >LEN  GC-OUT $4000 >LEN  GC-ERR $1000 >LEN  20000 >MS  RUN-ARGV-CAPTURE
+   ENGINE-CANDIDATE:PATH$ >LEN  GC-OUT $4000 >LEN  GC-ERR $1000 >LEN  20000 >MS  RUN-ARGV-CAPTURE
    {: outu erru rc :}
    PTXTC:PTX$ GC-OUT outu LEN>N WRITE-ALL  outu LEN>N ;
 : GC-EMIT-SAXPY ( -- n )  GC-PRELUDE  s" tools/ptx/saxpy-cg.f" >LEN PROC-ARGV+  GC-RUN-EMIT ;

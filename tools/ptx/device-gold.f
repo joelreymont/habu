@@ -35,6 +35,7 @@ require lib/fs.f
 require lib/fs-mutate.f
 require lib/process.f
 require lib/process-argv.f
+require lib/engine-candidate.f
 require lib/ffi.f
 require lib/test.f
 require src/arch/ptx/emit.f
@@ -128,7 +129,7 @@ create SP-X SP-BYTES allot    create SP-Y SP-BYTES allot
    s" lib/ptx/cg-collective.f" >LEN PROC-ARGV+  s" lib/ptx/cg-vec.f" >LEN PROC-ARGV+
    s" lib/ptx/tile.f" >LEN PROC-ARGV+  s" lib/ptx/tile-v4.f" >LEN PROC-ARGV+ ;
 : SPAWN-EMIT ( -- )                              \ argv built (entry last) -> capture PTX to PTXTC:PTX$
-   s" bin/hb" >LEN  CAP-OUT CAP-OUT-CAP >LEN  CAP-ERR CAP-ERR-CAP >LEN  EMIT-TIMEOUT-MS >MS  RUN-ARGV-CAPTURE
+   ENGINE-CANDIDATE:PATH$ >LEN  CAP-OUT CAP-OUT-CAP >LEN  CAP-ERR CAP-ERR-CAP >LEN  EMIT-TIMEOUT-MS >MS  RUN-ARGV-CAPTURE
    {: outu:len erru:len rc:rc :}
    CAP-ERR erru LEN>N  rc RC>N  PTXTC:EMIT-GUARD          \ missing producer / nonzero rc -> stderr + throw
    outu LEN>N dup 0= if E-PTX-EMIT throw then EMIT-BYTES !  \ empty PTX -> fail closed

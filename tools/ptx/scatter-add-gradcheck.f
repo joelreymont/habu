@@ -6,6 +6,7 @@
 require lib/test.f
 require lib/fs.f
 require lib/process-argv.f
+require lib/engine-candidate.f
 require lib/string.f
 require lib/float.f
 require lib/fmt.f
@@ -58,7 +59,7 @@ variable NVAR
    s" lib/ptx/tile.f" >LEN PROC-ARGV+ ;
 
 : RUN-EMIT ( -- len len rc )
-   s" bin/hb" >LEN
+   ENGINE-CANDIDATE:PATH$ >LEN
    EMIT-OUT OUT-CAP >LEN
    EMIT-ERR ERR-CAP >LEN
    30000 >MS RUN-ARGV-CAPTURE ;

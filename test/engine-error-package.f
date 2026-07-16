@@ -14,6 +14,7 @@ require lib/process.f
 require lib/process-argv.f
 require lib/process-env.f
 require lib/codesign.f
+require lib/engine-candidate.f
 
 package ENGINE-ERROR-TEST
 private
@@ -46,11 +47,6 @@ create PATCHED-BUF FS-PATH-CAP allot
 : PATCHED$ ( -- ptr u8 n )
    PATCHED-BUF PATCHED-U @ ;
 
-: HB$ ( -- ptr u8 n )
-   s" HABU_UNDER_TEST" >LEN PROC-ENV-DEFAULT$? if LEN>N exit then
-   2drop
-   s" HABU_UNDER_TEST" GETENV dup 0= if 2drop s" bin/hb" exit then ;
-
 : SOURCE$ ( ptr u8 n -- ptr u8 n ) {: name:ptr u:n :}
    SB-RESET
    S\" s\" engine-error-test\" " SB-APPEND
@@ -65,14 +61,14 @@ create PATCHED-BUF FS-PATH-CAP allot
 
 : CHILD-RC ( ptr u8 n -- n )
    SOURCE$ {: src:ptr u:n :}
-   HB$ src u RUN-SOURCE ;
+   ENGINE-CANDIDATE:PATH$ src u RUN-SOURCE ;
 
 : PACKAGE-SOURCE$ ( -- ptr u8 n )
    s" package BRIDGE public : W ( -- n ) 1 ; ;package BRIDGE:W drop" ;
 
 : PACKAGE-RC ( -- n )
    PACKAGE-SOURCE$ {: src:ptr u:n :}
-   HB$ src u RUN-SOURCE ;
+   ENGINE-CANDIDATE:PATH$ src u RUN-SOURCE ;
 
 : COPY-PATH ( ptr u8 n ptr u8 ptr n -- ) {: src:ptr u:n dst:ptr lenp:ptr :}
    u FS-PATH-CAP > if E-FS-CAPACITY throw then
@@ -87,10 +83,10 @@ create PATCHED-BUF FS-PATH-CAP allot
    ROOT$ s" missing-checker" PATCHED-BUF JOIN-PATH PATCHED-U ! ;
 
 : LOAD-IMAGE ( -- )
-   HB$ FILE-SIZE {: u:n :}
+   ENGINE-CANDIDATE:PATH$ FILE-SIZE {: u:n :}
    u IMAGE-U !
    u MEM:BYTES-ALLOC-LEN MEM:ALLOC-BYTES drop IMAGE-A-FIELD !
-   HB$ IMAGE u READ-ALL u <> if
+   ENGINE-CANDIDATE:PATH$ IMAGE u READ-ALL u <> if
       s" engine-error-test: short engine read" 1 die
    then ;
 

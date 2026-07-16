@@ -31,6 +31,7 @@ require lib/fs-mutate.f
 require lib/process.f
 require lib/process-argv.f
 require lib/process-env.f
+require lib/engine-candidate.f
 
 package XT-EFFECT-TEST
 
@@ -62,12 +63,6 @@ create XE-EMPTY 1 allot
 : XE-OUT$ ( -- ptr u8 n ) XE-OUT XE-OUT-U @ ;
 : XE-ERR$ ( -- ptr u8 n ) XE-ERR XE-ERR-U @ ;
 
-\ Resolve the child engine: gate default env HABU_UNDER_TEST, else bin/hb.
-: XE-HB$ ( -- ptr u8 n )
-   s" HABU_UNDER_TEST" >LEN PROC-ENV-DEFAULT$? if LEN>N exit then
-   2drop
-   s" HABU_UNDER_TEST" GETENV dup 0= if 2drop s" bin/hb" exit then ;
-
 : XE-STORE! ( len len outcome -- )
    MATCH outcome
      exited OF XE-RC ! 0 0= XE-EXITED ! ENDOF
@@ -93,7 +88,7 @@ create XE-EMPTY 1 allot
    tier XE-SET-TIER
    s" --load" >LEN PROC-ARGV+
    XE-CHILD >LEN PROC-ARGV+
-   XE-HB$ >LEN  XE-EMPTY 0 >LEN  XE-OUT XE-CAP >LEN
+   ENGINE-CANDIDATE:PATH$ >LEN  XE-EMPTY 0 >LEN  XE-OUT XE-CAP >LEN
    XE-ERR XE-CAP >LEN  XE-TIMEOUT-MS >MS  RUN-ARGV-ENV-STDIN-CAPTURE-OUTCOME
    XE-STORE! ;
 

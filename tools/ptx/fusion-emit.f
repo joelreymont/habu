@@ -16,6 +16,7 @@ require lib/string.f
 require lib/fs.f
 require lib/process-argv.f
 require lib/ptx/toolchain.f
+require lib/ptx/process-test-prelude.f
 
 package PTXFE
 
@@ -48,7 +49,7 @@ public
    {: prod:ptr produ:n :}
    EMIT-PRELUDE
    prod produ >LEN PROC-ARGV+
-   s" bin/hb" >LEN  PTX-OUT PTX-CAP >LEN  EMIT-ERR MSG-CAP >LEN  EMIT-TIMEOUT-MS >MS  RUN-ARGV-CAPTURE
+   ENGINE-CANDIDATE:PATH$ >LEN  PTX-OUT PTX-CAP >LEN  EMIT-ERR MSG-CAP >LEN  EMIT-TIMEOUT-MS >MS  RUN-ARGV-CAPTURE
    {: outu:len erru:len rc:rc :}
    EMIT-ERR erru LEN>N  rc RC>N  PTXTC:EMIT-GUARD         \ missing producer / nonzero emit rc -> stderr + throw
    outu LEN>N PTX-U !

@@ -3,6 +3,8 @@
 \ lib/fs-mutate.f lib/process.f lib/process-argv.f tools/cli-run.f
 \ tools/bundle-lib-core.f tools/bundle-lib-test.f
 
+require lib/engine-candidate.f
+
 8192 constant BLTT-BUF-CAP
 $20000 constant BLTT-BUNDLE-CAP
 10000 constant BLTT-TIMEOUT-MS
@@ -117,7 +119,7 @@ create BLTT-BUNDLE-READ BLTT-BUNDLE-CAP allot
    s" errors"  >LEN PROC-ARGV+ ;
 
 : BLTT-HB-CAPTURE ( -- len len outcome )
-   s" bin/hb"  >LEN BLTT-OUT BLTT-BUF-CAP >LEN
+   ENGINE-CANDIDATE:PATH$ >LEN BLTT-OUT BLTT-BUF-CAP >LEN
    BLTT-ERR BLTT-BUF-CAP >LEN BLTT-TIMEOUT-MS >MS
    RUN-ARGV-CAPTURE-OUTCOME ;
 

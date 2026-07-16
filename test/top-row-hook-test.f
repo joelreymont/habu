@@ -30,6 +30,7 @@ require lib/fs-mutate.f
 require lib/process.f
 require lib/process-argv.f
 require lib/process-env.f
+require lib/engine-candidate.f
 
 package TOP-ROW-HOOK-TEST
 
@@ -215,15 +216,6 @@ create TRH-EMPTY 1 allot
 : TRH-ERR$ ( -- ptr u8 n )
    TRH-ERR TRH-ERR-U @ ;
 
-\ Resolve the child engine: gate default env HABU_UNDER_TEST -> the candidate;
-\ standalone runs fall back to bin/hb.
-: TRH-HB$ ( -- ptr u8 n )
-   s" HABU_UNDER_TEST" >LEN PROC-ENV-DEFAULT$? if LEN>N exit then
-   2drop
-   s" HABU_UNDER_TEST" GETENV dup 0= if
-      2drop s" bin/hb" exit
-   then ;
-
 : TRH-STORE! ( len len outcome -- )
    MATCH outcome
      exited OF TRH-RC ! 0 0= TRH-EXITED ! ENDOF
@@ -243,7 +235,7 @@ create TRH-EMPTY 1 allot
    PROC-ARGV-RESET
    s" --load" >LEN PROC-ARGV+
    TRH-CHILD >LEN PROC-ARGV+
-   TRH-HB$ >LEN  TRH-EMPTY 0 >LEN  TRH-OUT TRH-IO-CAP >LEN
+   ENGINE-CANDIDATE:PATH$ >LEN  TRH-EMPTY 0 >LEN  TRH-OUT TRH-IO-CAP >LEN
    TRH-ERR TRH-IO-CAP >LEN  TRH-TIMEOUT-MS >MS  RUN-ARGV-STDIN-CAPTURE-OUTCOME
    TRH-STORE! ;
 
@@ -251,7 +243,7 @@ create TRH-EMPTY 1 allot
 : TRH-RUN-STDIN ( ptr u8 n -- )
    TRH-IN!
    PROC-ARGV-RESET
-   TRH-HB$ >LEN  TRH-IN$ >LEN  TRH-OUT TRH-IO-CAP >LEN
+   ENGINE-CANDIDATE:PATH$ >LEN  TRH-IN$ >LEN  TRH-OUT TRH-IO-CAP >LEN
    TRH-ERR TRH-IO-CAP >LEN  TRH-TIMEOUT-MS >MS  RUN-ARGV-STDIN-CAPTURE-OUTCOME
    TRH-STORE! ;
 

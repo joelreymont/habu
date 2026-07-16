@@ -11,6 +11,7 @@ require lib/process-argv.f
 require lib/process-env.f
 require lib/process-command.f
 require lib/test/outcome.f
+require lib/engine-candidate.f
 
 create PCMDT-ENV-OUT 97 c, 108 c, 112 c, 104 c, 97 c, 10 c, 10 c, 10 c,
 create PCMDT-ENTRY-OUT 101 c, 110 c, 116 c, 114 c, 121 c, 10 c, 10 c, 10 c,
@@ -73,7 +74,7 @@ create PCMDT-ENTRY-OUT 101 c, 110 c, 116 c, 114 c, 121 c, 10 c, 10 c, 10 c,
    PROC-CMD-ENV-HERMETIC
    s" test/process-env-child.f" >LEN PROC-CMD-ARG+
    s" HABU_PROC_ENV_TEST" s" alpha" PCMDT-ENV+
-   s" bin/hb" PCMDT-HB-TIMEOUT-MS PCMDT-PROC-RUN-RC 0 T=
+   ENGINE-CANDIDATE:PATH$ PCMDT-HB-TIMEOUT-MS PCMDT-PROC-RUN-RC 0 T=
    PROC-CMD-OUT$ PCMDT-ENV-OUT 8 T$=
    PCMDT-ERR-LEN 0 T= ;
 
@@ -82,7 +83,7 @@ create PCMDT-ENTRY-OUT 101 c, 110 c, 116 c, 114 c, 121 c, 10 c, 10 c, 10 c,
    PROC-CMD-ENV-HERMETIC
    s" test/process-env-child.f" >LEN PROC-CMD-ARG+
    s" HABU_PROC_ENV_TEST=entry" PCMDT-ENV-ENTRY+
-   s" bin/hb" PCMDT-HB-TIMEOUT-MS PCMDT-PROC-RUN-RC 0 T=
+   ENGINE-CANDIDATE:PATH$ PCMDT-HB-TIMEOUT-MS PCMDT-PROC-RUN-RC 0 T=
    PROC-CMD-OUT$ PCMDT-ENTRY-OUT 8 T$=
    PCMDT-ERR-LEN 0 T= ;
 
@@ -90,7 +91,7 @@ create PCMDT-ENTRY-OUT 101 c, 110 c, 116 c, 114 c, 121 c, 10 c, 10 c, 10 c,
    PROC-CMD-RESET
    s" test/process-env-child.f" >LEN PROC-CMD-ARG+
    s" HABU_PROC_ENV_TEST" s" alpha" PCMDT-ENV+
-   s" bin/hb" PCMDT-HB-TIMEOUT-MS PCMDT-PROC-RUN-RC 0 T=
+   ENGINE-CANDIDATE:PATH$ PCMDT-HB-TIMEOUT-MS PCMDT-PROC-RUN-RC 0 T=
    PROC-CMD-OUT$ PCMDT-INHERIT-EXPECTED$ T$= ;
 
 : PCMDT-RUN-TIMEOUT-OUTCOME ( -- )

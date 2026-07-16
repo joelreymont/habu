@@ -8,6 +8,7 @@ require lib/fs.f
 require lib/process.f
 require lib/process-argv.f
 require lib/test/budget.f
+require lib/engine-candidate.f
 require tools/aot-call-report-lib.f
 
 $D503201F constant ACRT-NOP-INSTR
@@ -118,7 +119,7 @@ variable ACRT-ERR-A
 
 : ACRT-CLI-RUN ( ptr u8 n -- n n n ) {: path:ptr pathu:n :}
    path pathu ACRT-CLI-ARGV
-   s" bin/hb" >LEN ACRT-JSON ACRT-JSON-CAP >LEN ACRT-ERR ACRT-ERR-CAP >LEN
+   ENGINE-CANDIDATE:PATH$ >LEN ACRT-JSON ACRT-JSON-CAP >LEN ACRT-ERR ACRT-ERR-CAP >LEN
    ACRT-TIMEOUT-MS >MS RUN-ARGV-CAPTURE ACRT-CAPTURE>N ;
 
 : ACRT-TEST-SMALL ( -- )

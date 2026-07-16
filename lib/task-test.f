@@ -5,6 +5,7 @@ require lib/string.f
 require lib/test.f
 require lib/process.f
 require lib/process-argv.f
+require lib/engine-candidate.f
 require lib/task.f
 require lib/test/outcome.f
 
@@ -261,7 +262,7 @@ TRUSTED: TASK-CSTRLEN ( ptr u8 -- n ) {: cstr:ptr :}
 
 : TASK-RUN-STDIN ( ptr u8 n -- len len outcome ) {: src:ptr srcu:n :}
    PROC-ARGV-RESET
-   s" bin/hb" >LEN src srcu >LEN
+   ENGINE-CANDIDATE:PATH$ >LEN src srcu >LEN
    TASK-OUT TASK-CAP >LEN TASK-ERR TASK-CAP >LEN
    TASK-CAPTURE-MS >MS RUN-ARGV-STDIN-CAPTURE-OUTCOME ;
 

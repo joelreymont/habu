@@ -13,6 +13,7 @@ require lib/process.f
 require lib/test/outcome.f
 require lib/process-argv.f
 require lib/process-env.f
+require lib/engine-candidate.f
 
 65536 constant EXT-COPY-CAP
 8192 constant EXT-CAPTURE-CAP
@@ -202,7 +203,7 @@ variable EXT-ERR-A
    b u ;
 
 : EXT-RUN-HB ( -- len len outcome )
-   s" HABU_UNDER_TEST" GETENV dup 0= if 2drop s" bin/hb" then >LEN
+   ENGINE-CANDIDATE:PATH$ >LEN
    EXT-OUT EXT-CAPTURE-CAP >LEN
    EXT-ERR EXT-CAPTURE-CAP >LEN EXT-TIMEOUT-MS >MS
    RUN-ARGV-CAPTURE-OUTCOME ;

@@ -36,8 +36,10 @@
 \ CUDA toolkit + a device. Fully checked Habu; maki -> habu only.
 
 require lib/test.f
+require lib/engine-id.f
 require lib/process.f
 require lib/process-argv.f
+require lib/engine-candidate.f
 require lib/fs.f
 require lib/fs-mutate.f
 require lib/float.f
@@ -73,7 +75,7 @@ create LMDM-RP   FS-PATH-CAP allot  variable LMDM-RP-U
    PROC-ARGV-RESET
    s" --load"           >LEN PROC-ARGV+
    MAKI-GRADE:DRIVER$   >LEN PROC-ARGV+
-   s" bin/hb" >LEN  LMDM-OUT $4000 >LEN  LMDM-ERR $1000 >LEN  30000 >MS  RUN-ARGV-CAPTURE
+   ENGINE-CANDIDATE:PATH$ >LEN  LMDM-OUT $4000 >LEN  LMDM-ERR $1000 >LEN  30000 >MS  RUN-ARGV-CAPTURE
    {: outu:len erru:len rc:rc :}
    LMDM-ERR erru LEN>N  rc RC>N  PTXTC:EMIT-GUARD          \ surface child stderr + throw on nonzero
    PTXTC:PTX$ LMDM-OUT outu LEN>N WRITE-ALL ;

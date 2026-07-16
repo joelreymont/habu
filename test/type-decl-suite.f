@@ -549,6 +549,14 @@ s" TDLIN-N-DUP ( tdlin<n> -- tdlin<n> tdlin<n> ) dup" CHECK-QUIET-CANDIDATE! -1 
 s" TDLIN-N-DROP ( tdlin<n> -- ) drop" CHECK-QUIET-CANDIDATE! -1 T=
 \ an unresolved arg may later bind linear: fail closed.
 s" TDLIN-VAR-DUP ( tdlin<a> -- tdlin<a> tdlin<a> ) dup" CHECK-QUIET-CANDIDATE! 0 T=
+\ Fork's non-linear obligation descends through family arguments and concrete
+\ schema fields, and persists when an open argument is specialized by a caller.
+s" TDLIN-FORK ( tdlin<tdown> -- tdlin<tdown> n ) fork" CHECK-QUIET-CANDIDATE! 0 T=
+s" TDLINC-P-FORK ( tdlinp -- tdlinp n ) fork" CHECK-QUIET-CANDIDATE! 0 T=
+s" TDLIN-N-FORK ( tdlin<n> -- tdlin<n> n ) fork" CHECK-QUIET-CANDIDATE! -1 T=
+s" TDLIN-FORK-OPEN ( tdlin<a> -- tdlin<a> n ) fork" CHECK! -1 T=
+s" TDLIN-FORK-OWN ( tdlin<tdown> -- tdlin<tdown> n ) TDLIN-FORK-OPEN" CHECK-QUIET-CANDIDATE! 0 T=
+s" TDLIN-FORK-N ( tdlin<n> -- tdlin<n> n ) TDLIN-FORK-OPEN" CHECK-QUIET-CANDIDATE! -1 T=
 \ the bare linear itself still rejects a raw drop (baseline discipline).
 s" TDLIN-BARE ( tdown -- ) drop" CHECK-QUIET-CANDIDATE! 0 T=
 \ Concrete schema nodes carry the same ownership obligation as family

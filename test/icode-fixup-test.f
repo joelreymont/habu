@@ -8,6 +8,7 @@ require lib/test/outcome.f
 require lib/memory.f
 require lib/process.f
 require lib/process-argv.f
+require lib/engine-candidate.f
 
 package ICODE-FIXUP-LOAD
 
@@ -250,10 +251,6 @@ variable WP
 : ARG+ ( ptr u8 n -- )
    >LEN PROC-ARGV+ ;
 
-: HB$ ( -- ptr u8 n )
-   s" HABU_UNDER_TEST" GETENV
-   dup 0= if 2drop s" bin/hb" then ;
-
 : TEST-DIAG ( ptr u8 n ptr u8 n -- )
    \ typed-local-lint: allow-bare-local - counted strings retain ptr-u8 roles
    {: mode modeu want wantu :}
@@ -262,7 +259,7 @@ variable WP
    s" test/icode-fixup-test.f" ARG+
    s" --" ARG+
    mode modeu ARG+
-   HB$ >LEN OUT CAPTURE-CAP >LEN ERR CAPTURE-CAP >LEN TIMEOUT-MS >MS
+   ENGINE-CANDIDATE:PATH$ >LEN OUT CAPTURE-CAP >LEN ERR CAPTURE-CAP >LEN TIMEOUT-MS >MS
    RUN-ARGV-CAPTURE-OUTCOME
    ICODE-EXIT-RC T-OUTCOME-EXITED=
    LEN>N {: erru:n :}

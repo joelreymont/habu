@@ -31,6 +31,12 @@ create SNAP-WID2-BUF FS-PATH-CAP allot
 create SNAP-DUP-BUF FS-PATH-CAP allot
 create SNAP-PTR-BUF FS-PATH-CAP allot
 create SNAP-LIVE-BUF FS-PATH-CAP allot
+create SNAP-DGEN0-BUF FS-PATH-CAP allot
+create SNAP-DGEN-LOW-BUF FS-PATH-CAP allot
+create SNAP-GEN0-BUF FS-PATH-CAP allot
+create SNAP-LEN-M1-BUF FS-PATH-CAP allot
+create SNAP-LEN-AT-BUF FS-PATH-CAP allot
+create SNAP-LEN-P7-BUF FS-PATH-CAP allot
 variable AOT-BAD-U
 variable AOT-MAL-U
 variable SNAP-OLD-U
@@ -42,6 +48,12 @@ variable SNAP-WID2-U
 variable SNAP-DUP-U
 variable SNAP-PTR-U
 variable SNAP-LIVE-U
+variable SNAP-DGEN0-U
+variable SNAP-DGEN-LOW-U
+variable SNAP-GEN0-U
+variable SNAP-LEN-M1-U
+variable SNAP-LEN-AT-U
+variable SNAP-LEN-P7-U
 PTR-VARIABLE IMG-A
 variable IMG-U
 variable SCAN-I
@@ -206,6 +218,31 @@ variable SCAN-LAST
    1 data AOT-SEED-ARM-CELL + U64!
    SNAP-LIVE-BUF SNAP-LIVE-U @ WRITE-IMAGE ;
 
+: BUILD-SNAP-DGEN ( n ptr u8 n -- ) {: gen:n out:ptr outu:n :}
+   OWNER-WID-IMAGE:SNAP-HB$ LOAD-IMAGE
+   SNAP-TRAILER-OFF SNAP-DATA-OFF DGEN-CELL + {: off:n :}
+   gen off U64!
+   out outu WRITE-IMAGE ;
+
+: BUILD-SNAP-GEN0 ( -- )
+   OWNER-WID-IMAGE:SNAP-HB$ LOAD-IMAGE
+   SNAP-TRAILER-OFF {: trailer:n :}
+   trailer SNAP-REGION-OFF {: region:n :}
+   trailer 16 + U32@ 0 ?do
+      region i DREC * + {: rec:n :}
+      rec 40 + U32@ $FFFFFFFF <> if
+         0 rec 12 + U32!
+         SNAP-GEN0-BUF SNAP-GEN0-U @ WRITE-IMAGE
+         unloop exit
+      then
+   loop
+   s" owner-WID live record missing" 74 die ;
+
+: BUILD-SNAP-LEN ( n ptr u8 n -- ) {: len:n out:ptr outu:n :}
+   OWNER-WID-IMAGE:SNAP-HB$ LOAD-IMAGE
+   len SNAP-TRAILER-OFF 32 + U32!
+   out outu WRITE-IMAGE ;
+
 public
 
 : AOT-BAD$ ( -- ptr u8 n )
@@ -252,6 +289,30 @@ public
    OWNER-WID-IMAGE:ROOT s" hb-snap-owner-live" SNAP-LIVE-BUF JOIN-PATH SNAP-LIVE-U !
    SNAP-LIVE-BUF SNAP-LIVE-U @ ;
 
+: SNAP-DGEN0$ ( -- ptr u8 n )
+   OWNER-WID-IMAGE:ROOT s" hb-snap-dgen-zero" SNAP-DGEN0-BUF JOIN-PATH SNAP-DGEN0-U !
+   SNAP-DGEN0-BUF SNAP-DGEN0-U @ ;
+
+: SNAP-DGEN-LOW$ ( -- ptr u8 n )
+   OWNER-WID-IMAGE:ROOT s" hb-snap-dgen-low" SNAP-DGEN-LOW-BUF JOIN-PATH SNAP-DGEN-LOW-U !
+   SNAP-DGEN-LOW-BUF SNAP-DGEN-LOW-U @ ;
+
+: SNAP-GEN0$ ( -- ptr u8 n )
+   OWNER-WID-IMAGE:ROOT s" hb-snap-generation-zero" SNAP-GEN0-BUF JOIN-PATH SNAP-GEN0-U !
+   SNAP-GEN0-BUF SNAP-GEN0-U @ ;
+
+: SNAP-LEN-M1$ ( -- ptr u8 n )
+   OWNER-WID-IMAGE:ROOT s" hb-snap-length-dgen-minus-one" SNAP-LEN-M1-BUF JOIN-PATH SNAP-LEN-M1-U !
+   SNAP-LEN-M1-BUF SNAP-LEN-M1-U @ ;
+
+: SNAP-LEN-AT$ ( -- ptr u8 n )
+   OWNER-WID-IMAGE:ROOT s" hb-snap-length-dgen" SNAP-LEN-AT-BUF JOIN-PATH SNAP-LEN-AT-U !
+   SNAP-LEN-AT-BUF SNAP-LEN-AT-U @ ;
+
+: SNAP-LEN-P7$ ( -- ptr u8 n )
+   OWNER-WID-IMAGE:ROOT s" hb-snap-length-dgen-plus-seven" SNAP-LEN-P7-BUF JOIN-PATH SNAP-LEN-P7-U !
+   SNAP-LEN-P7-BUF SNAP-LEN-P7-U @ ;
+
 : BUILD ( -- )
    AOT-BAD$ 2drop
    AOT-MAL$ 2drop
@@ -264,6 +325,10 @@ public
    SNAP-DUP$ 2drop
    SNAP-PTR$ 2drop
    SNAP-LIVE$ 2drop
+   SNAP-GEN0$ 2drop
+   SNAP-LEN-M1$ 2drop
+   SNAP-LEN-AT$ 2drop
+   SNAP-LEN-P7$ 2drop
    BUILD-AOT-BAD
    BUILD-AOT-MAL
    BUILD-SNAP-OLD
@@ -274,6 +339,12 @@ public
    2 SNAP-WID2$ BUILD-SNAP-WID
    BUILD-SNAP-DUP
    BUILD-SNAP-PTR
-   BUILD-SNAP-LIVE ;
+   BUILD-SNAP-LIVE
+   0 SNAP-DGEN0$ BUILD-SNAP-DGEN
+   1 SNAP-DGEN-LOW$ BUILD-SNAP-DGEN
+   BUILD-SNAP-GEN0
+   DGEN-CELL 1- SNAP-LEN-M1$ BUILD-SNAP-LEN
+   DGEN-CELL SNAP-LEN-AT$ BUILD-SNAP-LEN
+   DGEN-CELL 7 + SNAP-LEN-P7$ BUILD-SNAP-LEN ;
 
 ;package

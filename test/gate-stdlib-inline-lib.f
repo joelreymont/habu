@@ -433,6 +433,7 @@ variable GSI-TL-FILE-A
 : GSI-TAIL-RUNNER ( -- )
    s" stdlib/tail-runner" GSI-GROUP-SEQ GSI-GROUP-HEADER
    GSI-TEST-SETUP
+   s" lib/engine-candidate-test.f" GSI-INCLUDE
    s" lib/test/runner-test.f" GSI-INCLUDE ;
 
 : GSI-TAIL-BUILD ( -- )

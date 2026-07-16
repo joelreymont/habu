@@ -5,6 +5,7 @@
 
 require test/gate-build-size.f
 require lib/adt/option.f                 \ option<CAD-NUM:index> STR:FIND-SUB consumer (switchover wave A)
+require lib/engine-candidate.f
 
 \ White-box CAD-NUM role reader (precedent: lib/string-test.f STR-T-IX>RAW):
 \ reopen the unsealed CAD-NUM package to project the typed STR:FIND-SUB index
@@ -41,6 +42,7 @@ variable GE-IMG-BUILD-I
 variable GE-HABU1-I
 variable GENG-ARG-I
 variable GENG-SLICE-SEEN
+variable GENG-OUT-SEEN
 variable GE-BAD-TYPED-VERDICT
 
 create GE-CHECK-OFF-LINE
@@ -48,7 +50,13 @@ create GE-CHECK-OFF-LINE
 99 c, 104 c, 101 c, 99 c, 107 c, 10 c,
 
 : GENG-USAGE ( -- )
-   s" usage: test/gate-engine.f [build|fixtures|repair|runtime|validate] [--pool-slots N]" GENG-USAGE-RC die ;
+   s" usage: test/gate-engine.f [build|fixtures|repair|runtime|validate] [--pool-slots N] [--candidate-out PATH]" GENG-USAGE-RC die ;
+
+: GE-CANDIDATE-PATH! ( ptr u8 n -- ) {: a:ptr u:n :}
+   u 0 <= if E-FS-PATH throw then
+   u FS-PATH-CAP > if E-FS-PATH throw then
+   a GE-CAND-PATH u BYTE-COPY
+   u GE-CAND-U ! ;
 
 : GENG-ARG$ ( -- ptr u8 n )
    GENG-ARG-I @ SCRIPT-ARGV$ ;
@@ -74,6 +82,12 @@ create GE-CHECK-OFF-LINE
    GENG-ARG-VALUE$ GENG-POS-NUM GT-POOL-SLOTS!
    2 GENG-ADVANCE ;
 
+: GENG-OUT-OPT ( -- )
+   GENG-OUT-SEEN @ if GENG-USAGE then
+   GENG-ARG-VALUE$ GE-CANDIDATE-PATH!
+   -1 GENG-OUT-SEEN !
+   2 GENG-ADVANCE ;
+
 : GENG-SLICE-ARG? ( -- bool )
    GENG-ARG$ s" build" STR= if GENG-BUILD-ID GENG-SLICE! 0 0= exit then
    GENG-ARG$ s" fixtures" STR= if GENG-FIXTURES-ID GENG-SLICE! 0 0= exit then
@@ -90,15 +104,22 @@ create GE-CHECK-OFF-LINE
 
 : GENG-PARSE-ARG ( -- )
    GENG-ARG$ s" --pool-slots" STR= if GENG-POOL-OPT exit then
+   GENG-ARG$ s" --candidate-out" STR= if GENG-OUT-OPT exit then
    GENG-SLICE-OPT ;
+
+: GENG-CHECK-OUT ( -- )
+   GENG-OUT-SEEN @ 0= if exit then
+   GENG-SLICE @ GENG-BUILD-ID <> if GENG-USAGE then ;
 
 : GENG-PARSE-SLICE ( -- )
    GENG-ALL-ID GENG-SLICE!
    0 GENG-SLICE-SEEN !
+   0 GENG-OUT-SEEN !
    0 GENG-ARG-I !
    begin GENG-ARG-I @ SCRIPT-ARGC < while
       GENG-PARSE-ARG
-   repeat ;
+   repeat
+   GENG-CHECK-OUT ;
 
 GE-FILES: GE-ENGINE-STDLIB-CHECK-FILES
    lib/errors.f lib/string.f lib/memory.f lib/fs.f lib/fs-mutate.f
@@ -137,11 +158,6 @@ GE-FILES: GE-REPAIR-HINTS-RUN-FILES
    label labelu GS-BOUNDARY-EVENT
    GE-HB$ GE-TIMEOUT-MS label labelu GE-RUN-ENV-ASYNC ;
 
-: GE-BIN-HB-RUN-ASYNC ( ptr u8 n -- ) {: label:ptr labelu:n :}
-   label labelu GS-INNER-HB-EVENT
-   label labelu GS-BOUNDARY-EVENT
-   s" bin/hb" GE-TIMEOUT-MS label labelu GE-RUN-ENV-ASYNC ;
-
 : GE-FIXTURE-INCLUDE ( ptr u8 n -- )
    s" inprocess-eval" GS-EVENT
    included ;
@@ -176,12 +192,6 @@ GE-FILES: GE-REPAIR-HINTS-RUN-FILES
 : GE-HB-BASELINE-FIXTURE-ASYNC ( -- )
    s" hb baseline contracts" GE-TIMEOUT-MS [: GE-HB-BASELINE-FIXTURE ;] GT-POOL-START-FORK ;
 
-: GE-CANDIDATE-PATH! ( ptr u8 n -- ) {: a:ptr u:n :}
-   u 0 < if E-FS-PATH throw then
-   u FS-PATH-CAP > if E-FS-PATH throw then
-   a GE-CAND-PATH u BYTE-COPY
-   u GE-CAND-U ! ;
-
 : GE-SRC-CANDIDATE-PATH! ( ptr u8 n -- ) {: a:ptr u:n :}
    u 0 < if E-FS-PATH throw then
    u FS-PATH-CAP > if E-FS-PATH throw then
@@ -192,9 +202,7 @@ GE-FILES: GE-REPAIR-HINTS-RUN-FILES
    GT-ROOT s" hb-stdin" GE-CAND-PATH JOIN-PATH GE-CAND-U ! ;
 
 : GE-ENV-CANDIDATE? ( -- bool )
-   s" HABU_UNDER_TEST" GETENV dup 0= if
-      2drop 0 0= 0= exit
-   then
+   ENGINE-CANDIDATE:OVERRIDE$? 0= if 2drop 0 0= 0= exit then
    GE-CANDIDATE-PATH!
    0 0= ;
 
@@ -213,9 +221,7 @@ GE-FILES: GE-REPAIR-HINTS-RUN-FILES
    GE-SRC-CAND-PATH GE-SRC-CAND-U @ ;
 
 : GE-EXPECT-CANDIDATE ( -- )
-   GE-CANDIDATE$ EXECUTABLE? 0= if
-      s" Habu-under-test candidate executable" GE-FAIL
-   then ;
+   GE-CANDIDATE$ ENGINE-CANDIDATE:VALIDATE$ 2drop ;
 
 : GE-SRC-CANDIDATE! ( -- )
    s" hb-stdin" BF-A$ GE-SRC-CANDIDATE-PATH! ;
@@ -373,12 +379,10 @@ GE-FILES: GE-REPAIR-HINTS-RUN-FILES
    exe exeu label labelu GE-SUITE-RUN ;
 
 : GE-ENGINE-SUITE ( -- )
-   GE-CANDIDATE$ s" engine suite on Habu-under-test" GE-ENGINE-SUITE-ON
-   s" bin/hb" s" engine suite on bin/hb" GE-ENGINE-SUITE-ON ;
+   GE-CANDIDATE$ s" engine suite on Habu-under-test" GE-ENGINE-SUITE-ON ;
 
 : GE-TYPE-FAMILY-SUITE ( -- )
-   GE-CANDIDATE$ s" type-family suite on Habu-under-test" GE-TYPE-FAMILY-SUITE-ON
-   s" bin/hb" s" type-family suite on bin/hb" GE-TYPE-FAMILY-SUITE-ON ;
+   GE-CANDIDATE$ s" type-family suite on Habu-under-test" GE-TYPE-FAMILY-SUITE-ON ;
 
 : GE-TYPE-FAMILY-ROLLBACK-SUITE-ON ( ptr u8 n ptr u8 n -- )
    {: exe:ptr exeu:n label:ptr labelu:n :}
@@ -391,8 +395,6 @@ GE-FILES: GE-REPAIR-HINTS-RUN-FILES
 \ regression proving depth-safe registry restore across reject/throw paths.
 : GE-TYPE-FAMILY-ROLLBACK-SUITE ( -- )
    GE-CANDIDATE$ s" type-family-rollback suite on Habu-under-test"
-      GE-TYPE-FAMILY-ROLLBACK-SUITE-ON
-   s" bin/hb" s" type-family-rollback suite on bin/hb"
       GE-TYPE-FAMILY-ROLLBACK-SUITE-ON ;
 
 : GE-TYPE-DECL-SUITE-ON ( ptr u8 n ptr u8 n -- ) {: exe:ptr exeu:n label:ptr labelu:n :}
@@ -402,8 +404,7 @@ GE-FILES: GE-REPAIR-HINTS-RUN-FILES
    exe exeu label labelu GE-SUITE-RUN ;
 
 : GE-TYPE-DECL-SUITE ( -- )
-   GE-CANDIDATE$ s" type-decl suite on Habu-under-test" GE-TYPE-DECL-SUITE-ON
-   s" bin/hb" s" type-decl suite on bin/hb" GE-TYPE-DECL-SUITE-ON ;
+   GE-CANDIDATE$ s" type-decl suite on Habu-under-test" GE-TYPE-DECL-SUITE-ON ;
 
 : GE-TYPE-CTOR-SUITE-ON ( ptr u8 n ptr u8 n -- ) {: exe:ptr exeu:n label:ptr labelu:n :}
    GE-HB-RESET
@@ -412,8 +413,7 @@ GE-FILES: GE-REPAIR-HINTS-RUN-FILES
    exe exeu label labelu GE-SUITE-RUN ;
 
 : GE-TYPE-CTOR-SUITE ( -- )
-   GE-CANDIDATE$ s" type-ctor suite on Habu-under-test" GE-TYPE-CTOR-SUITE-ON
-   s" bin/hb" s" type-ctor suite on bin/hb" GE-TYPE-CTOR-SUITE-ON ;
+   GE-CANDIDATE$ s" type-ctor suite on Habu-under-test" GE-TYPE-CTOR-SUITE-ON ;
 
 : GE-TYPE-LINEAR-SUITE-ON ( ptr u8 n ptr u8 n -- ) {: exe:ptr exeu:n label:ptr labelu:n :}
    GE-HB-RESET
@@ -422,8 +422,7 @@ GE-FILES: GE-REPAIR-HINTS-RUN-FILES
    exe exeu label labelu GE-SUITE-RUN ;
 
 : GE-TYPE-LINEAR-SUITE ( -- )
-   GE-CANDIDATE$ s" type-linear suite on Habu-under-test" GE-TYPE-LINEAR-SUITE-ON
-   s" bin/hb" s" type-linear suite on bin/hb" GE-TYPE-LINEAR-SUITE-ON ;
+   GE-CANDIDATE$ s" type-linear suite on Habu-under-test" GE-TYPE-LINEAR-SUITE-ON ;
 
 : GE-TYPE-MATCH-SUITE-ON ( ptr u8 n ptr u8 n -- ) {: exe:ptr exeu:n label:ptr labelu:n :}
    GE-HB-RESET
@@ -434,8 +433,7 @@ GE-FILES: GE-REPAIR-HINTS-RUN-FILES
 \ TFAM 9 slice 3 (Gate 17j): checked MATCH eliminator — exhaustiveness,
 \ payload refinement, joins, linear consumption, depth fail-closure.
 : GE-TYPE-MATCH-SUITE ( -- )
-   GE-CANDIDATE$ s" type-match suite on Habu-under-test" GE-TYPE-MATCH-SUITE-ON
-   s" bin/hb" s" type-match suite on bin/hb" GE-TYPE-MATCH-SUITE-ON ;
+   GE-CANDIDATE$ s" type-match suite on Habu-under-test" GE-TYPE-MATCH-SUITE-ON ;
 
 : GE-TYPE-LAYOUT-SUITE-ON ( ptr u8 n ptr u8 n -- ) {: exe:ptr exeu:n label:ptr labelu:n :}
    GE-HB-RESET
@@ -446,8 +444,7 @@ GE-FILES: GE-REPAIR-HINTS-RUN-FILES
 \ TFAM 12 slice 3b: width-fact contracts, pass-2 lowering goldens, and
 \ whole-bundle transport execution rows (see the suite file's header).
 : GE-TYPE-LAYOUT-SUITE ( -- )
-   GE-CANDIDATE$ s" type-layout suite on Habu-under-test" GE-TYPE-LAYOUT-SUITE-ON
-   s" bin/hb" s" type-layout suite on bin/hb" GE-TYPE-LAYOUT-SUITE-ON ;
+   GE-CANDIDATE$ s" type-layout suite on Habu-under-test" GE-TYPE-LAYOUT-SUITE-ON ;
 
 : GE-LAYOUT-BUFFER-SUITE-ON ( ptr u8 n ptr u8 n -- )
    {: exe:ptr exeu:n label:ptr labelu:n :}
@@ -562,22 +559,6 @@ GE-FILES: GE-REPAIR-HINTS-RUN-FILES
    GE-CANDIDATE$ s" typed fetch guard rejects on Habu-under-test"
       GE-LAYOUT-VALID-GUARD-BAD
    GE-CANDIDATE$ s" typed fetch validator sealed on Habu-under-test"
-      GE-LAYOUT-VALID-FORGE
-   s" bin/hb" s" layout-buffer suite on bin/hb"
-      GE-LAYOUT-BUFFER-SUITE-ON
-   s" bin/hb" s" layout-buffer capability sealed on bin/hb"
-      GE-LAYOUT-BUFFER-FORGE-ON
-   s" bin/hb" s" layout-buffer evaluator depth on bin/hb"
-      GE-LAYOUT-BUFFER-DEPTH-ON
-   s" bin/hb" s" typed fetch validation on bin/hb"
-      GE-LAYOUT-VALID-BAD
-   s" bin/hb" s" typed fetch guard semantics on bin/hb"
-      GE-LAYOUT-VALID-GUARDS-ON
-   s" bin/hb" s" typed fetch validator growth on bin/hb"
-      GE-LAYOUT-VALID-GROWTH-ON
-   s" bin/hb" s" typed fetch guard rejects on bin/hb"
-      GE-LAYOUT-VALID-GUARD-BAD
-   s" bin/hb" s" typed fetch validator sealed on bin/hb"
       GE-LAYOUT-VALID-FORGE ;
 
 : GE-WIDE-STORE-SEAL-SUITE-ON ( ptr u8 n ptr u8 n -- )
@@ -590,8 +571,6 @@ GE-FILES: GE-REPAIR-HINTS-RUN-FILES
 
 : GE-WIDE-STORE-SEAL-SUITE ( -- )
    GE-CANDIDATE$ s" wide-store seal on Habu-under-test"
-      GE-WIDE-STORE-SEAL-SUITE-ON
-   s" bin/hb" s" wide-store seal on bin/hb"
       GE-WIDE-STORE-SEAL-SUITE-ON ;
 
 : GE-PROTECTION-SPAN-SUITE-ON ( ptr u8 n ptr u8 n -- )
@@ -604,8 +583,6 @@ GE-FILES: GE-REPAIR-HINTS-RUN-FILES
 
 : GE-PROTECTION-SPAN-SUITE ( -- )
    GE-CANDIDATE$ s" protected write spans on Habu-under-test"
-      GE-PROTECTION-SPAN-SUITE-ON
-   s" bin/hb" s" protected write spans on bin/hb"
       GE-PROTECTION-SPAN-SUITE-ON ;
 
 package GENG
@@ -641,14 +618,10 @@ public
 
 : LOWER-TXN-PROTECTION-SUITE ( -- )
    GE-CANDIDATE$ s" active lowering transaction protection on Habu-under-test"
-      LOWER-TXN-PROTECTION-SUITE-ON
-   s" bin/hb" s" active lowering transaction protection on bin/hb"
       LOWER-TXN-PROTECTION-SUITE-ON ;
 
 : TXN-LARGE-SUITE ( -- )
    GE-CANDIDATE$ s" large lowering transaction on Habu-under-test"
-      TXN-LARGE-SUITE-ON
-   s" bin/hb" s" large lowering transaction on bin/hb"
       TXN-LARGE-SUITE-ON ;
 
 ;package
@@ -662,8 +635,7 @@ public
 \ EXPORT re-export (dot habu-compiler-pkg-re-688212c1): checker-level alias
 \ fidelity, meta-flag copy, every reject class, and rollback of alias rows.
 : GE-TYPE-EXPORT-SUITE ( -- )
-   GE-CANDIDATE$ s" type-export suite on Habu-under-test" GE-TYPE-EXPORT-SUITE-ON
-   s" bin/hb" s" type-export suite on bin/hb" GE-TYPE-EXPORT-SUITE-ON ;
+   GE-CANDIDATE$ s" type-export suite on Habu-under-test" GE-TYPE-EXPORT-SUITE-ON ;
 
 : GE-WIDE-MEMORY-SUITE-ON ( ptr u8 n ptr u8 n -- )
    {: exe:ptr exeu:n label:ptr labelu:n :}
@@ -676,8 +648,7 @@ public
 \ pin the shared codegen lineage, so native drift from the Gforth recovery
 \ path (tools/bootstrap.sh bootstrap_wide_gate) fails here first.
 : GE-WIDE-MEMORY-SUITE ( -- )
-   GE-CANDIDATE$ s" wide-memory suite on Habu-under-test" GE-WIDE-MEMORY-SUITE-ON
-   s" bin/hb" s" wide-memory suite on bin/hb" GE-WIDE-MEMORY-SUITE-ON ;
+   GE-CANDIDATE$ s" wide-memory suite on Habu-under-test" GE-WIDE-MEMORY-SUITE-ON ;
 
 \ The former GE-CAND-SMOKE (hook-installed / checked-compile-run / baked-word-
 \ resolves) is now three T= probes inside test/engine-suite.f, so it rides the
@@ -1061,7 +1032,7 @@ variable GE-DFULL-I                 \ copy/definition loop index
    GE-SCRIPT-PATH GE-SCRIPT-U @ GE-ARG+
    s" alpha" GE-ARG+
    s" beta" GE-ARG+
-   s" bin/hb" GE-TIMEOUT-MS GE-RUN-ENV
+   GE-HB$ GE-TIMEOUT-MS GE-RUN-ENV
    s" hb script argv mode" GE-EXPECT-OK
    SB-RESET s" 2" SB-APPEND GE-SB-LF s" alpha" SB-APPEND GE-SB-LF s" beta" SB-APPEND GE-SB-LF
    SB$ s" hb script argv mode output" GE-EXPECT-OUT
@@ -1072,14 +1043,14 @@ variable GE-DFULL-I                 \ copy/definition loop index
    s" ARGC ." GE-SRC-LINE
    s" 1 ARGV$ type cr" GE-SRC-LINE
    s" 2 ARGV$ type cr" GE-SRC-LINE
-   s" bin/hb" GE-SRC-BUF GE-SRC-U @ GE-TIMEOUT-MS GE-RUN-STDIN
+   GE-HB$ GE-SRC-BUF GE-SRC-U @ GE-TIMEOUT-MS GE-RUN-STDIN
    s" hb pipeline argv mode" GE-EXPECT-OK
    SB-RESET s" 3" SB-APPEND GE-SB-LF s" alpha" SB-APPEND GE-SB-LF s" beta" SB-APPEND GE-SB-LF
    SB$ s" hb pipeline argv mode output" GE-EXPECT-OUT
    GE-HB-RESET
    GT-ROOT s" no-such-hb-script.f" GE-SCRIPT-PATH JOIN-PATH GE-SCRIPT-U !
    GE-SCRIPT-PATH GE-SCRIPT-U @ GE-ARG+
-   s" bin/hb" GE-TIMEOUT-MS GE-RUN-ENV
+   GE-HB$ GE-TIMEOUT-MS GE-RUN-ENV
    74 s" hb missing script rc" GE-EXPECT-RC ;
 
 : GE-GOOD-TYPED ( -- )
@@ -1219,7 +1190,7 @@ variable GE-DFULL-I                 \ copy/definition loop index
    GE-HB-RESET
    GE-SRC-RESET
    s" drop @ ." GE-SRC-LINE
-   s" bin/hb" GE-SRC-BUF GE-SRC-U @ GE-TIMEOUT-MS GE-RUN-STDIN
+   GE-HB$ GE-SRC-BUF GE-SRC-U @ GE-TIMEOUT-MS GE-RUN-STDIN
    70 s" hb top-level underflow rc" GE-EXPECT-RC
    s" E-UNDERFLOW" s" hb top-level underflow diagnostic" GE-EXPECT-ERR-HAS
    s" drop" s" hb top-level underflow token" GE-EXPECT-ERR-HAS ;
@@ -1231,7 +1202,7 @@ variable GE-DFULL-I                 \ copy/definition loop index
    GE-HB-RESET
    GE-SRC-RESET
    tok toku GE-SRC-LINE
-   s" bin/hb" GE-SRC-BUF GE-SRC-U @ GE-TIMEOUT-MS GE-RUN-STDIN
+   GE-HB$ GE-SRC-BUF GE-SRC-U @ GE-TIMEOUT-MS GE-RUN-STDIN
    70 s" hb deref-first arity rc" GE-EXPECT-RC
    s" E-UNDERFLOW" s" hb deref-first arity diagnostic" GE-EXPECT-ERR-HAS
    tok toku s" hb deref-first arity token" GE-EXPECT-ERR-HAS ;
@@ -1244,7 +1215,7 @@ variable GE-DFULL-I                 \ copy/definition loop index
    GE-HB-RESET
    GE-SRC-RESET
    s" variable GAV 5 GAV !" GE-SRC-LINE
-   s" bin/hb" GE-SRC-BUF GE-SRC-U @ GE-TIMEOUT-MS GE-RUN-STDIN
+   GE-HB$ GE-SRC-BUF GE-SRC-U @ GE-TIMEOUT-MS GE-RUN-STDIN
    s" hb valid deref store succeeds" GE-EXPECT-OK ;
 
 : GE-NESTED-DEF-SRC ( ptr u8 n -- ) {: body:ptr bodyu:n :}
@@ -1265,7 +1236,7 @@ variable GE-DFULL-I                 \ copy/definition loop index
    GE-HB-RESET
    s" : ZZ ( -- n ) 5 ;" GE-NESTED-DEF-SRC
    s" ZZ ." GE-SRC-LINE
-   s" bin/hb" GE-SRC-BUF GE-SRC-U @ GE-TIMEOUT-MS GE-RUN-STDIN
+   GE-HB$ GE-SRC-BUF GE-SRC-U @ GE-TIMEOUT-MS GE-RUN-STDIN
    s" hb nested checked def rc" GE-EXPECT-OK
    SB-RESET s" 5" SB-APPEND GE-SB-LF
    SB$ s" hb nested checked def output" GE-EXPECT-OUT
@@ -1277,7 +1248,7 @@ variable GE-DFULL-I                 \ copy/definition loop index
    \ REJECTED (rc 70). Proven: BAD ( -- n ) drop is rejected at 'drop'.
    GE-HB-RESET
    s" : BAD ( -- n ) drop ;" GE-NESTED-DEF-SRC
-   s" bin/hb" GE-SRC-BUF GE-SRC-U @ GE-TIMEOUT-MS GE-RUN-STDIN
+   GE-HB$ GE-SRC-BUF GE-SRC-U @ GE-TIMEOUT-MS GE-RUN-STDIN
    70 s" hb nested bad def rc" GE-EXPECT-RC
    s" bad" s" hb nested bad def word" GE-EXPECT-ERR-HAS
    s" drop" s" hb nested bad def token" GE-EXPECT-ERR-HAS
@@ -1302,7 +1273,7 @@ variable GE-DFULL-I                 \ copy/definition loop index
    GE-EVAL-UNDEF-SRC
    s" : T1 ( -- ) [: GO ;] catch . cr ;" GE-SRC-LINE
    s" T1" GE-SRC-LINE
-   s" bin/hb" GE-SRC-BUF GE-SRC-U @ GE-TIMEOUT-MS GE-RUN-STDIN
+   GE-HB$ GE-SRC-BUF GE-SRC-U @ GE-TIMEOUT-MS GE-RUN-STDIN
    s" hb eval-undef catch rc" GE-EXPECT-OK
    s" 70" s" hb eval-undef catch code" GE-EXPECT-OUT-HAS
    s" E-UNDEFINED" s" hb eval-undef catch diag" GE-EXPECT-ERR-HAS
@@ -1316,7 +1287,7 @@ variable GE-DFULL-I                 \ copy/definition loop index
    GE-HB-RESET
    GE-EVAL-UNDEF-SRC
    s" GO" GE-SRC-LINE
-   s" bin/hb" GE-SRC-BUF GE-SRC-U @ GE-TIMEOUT-MS GE-RUN-STDIN
+   GE-HB$ GE-SRC-BUF GE-SRC-U @ GE-TIMEOUT-MS GE-RUN-STDIN
    70 s" hb eval-undef no-catch rc" GE-EXPECT-RC
    s" E-UNDEFINED" s" hb eval-undef no-catch diag" GE-EXPECT-ERR-HAS
    s" UNDEFINED-WORD-XYZ" s" hb eval-undef no-catch token" GE-EXPECT-ERR-HAS
@@ -1328,7 +1299,7 @@ variable GE-DFULL-I                 \ copy/definition loop index
    GE-HB-RESET
    GE-SRC-RESET
    s" : FOO ( -- ) UNDEFINED-WORD-XYZ ;" GE-SRC-LINE
-   s" bin/hb" GE-SRC-BUF GE-SRC-U @ GE-TIMEOUT-MS GE-RUN-STDIN
+   GE-HB$ GE-SRC-BUF GE-SRC-U @ GE-TIMEOUT-MS GE-RUN-STDIN
    70 s" hb top-level undef-compile rc" GE-EXPECT-RC
    s" E-UNDEFINED" s" hb top-level undef-compile diag" GE-EXPECT-ERR-HAS
    s" UNDEFINED-WORD-XYZ" s" hb top-level undef-compile token" GE-EXPECT-ERR-HAS
@@ -1353,7 +1324,7 @@ variable GE-DFULL-I                 \ copy/definition loop index
    GE-EVAL-CATCH-SRC
    src srcu GE-SRC-S"
    s"  GEC-CATCH . cr" GE-SRC-LINE
-   s" bin/hb" GE-SRC-BUF GE-SRC-U @ GE-TIMEOUT-MS GE-RUN-STDIN ;
+   GE-HB$ GE-SRC-BUF GE-SRC-U @ GE-TIMEOUT-MS GE-RUN-STDIN ;
 
 : GE-EVAL-INTERP-UNDEF-CATCH ( -- )
    \ Dot habu-interpret-err-under-8876b500: an undefined INTERPRET-mode token
@@ -1388,7 +1359,7 @@ variable GE-DFULL-I                 \ copy/definition loop index
    s"  INCLUDE-EVALUATE" GE-SRC-LINE
    s" s" GE-SRC+ GE-DQ GE-SRC-C s"  ALIVE-AFTER" GE-SRC+ GE-DQ GE-SRC-C
    s"  type cr" GE-SRC-LINE
-   s" bin/hb" GE-SRC-BUF GE-SRC-U @ GE-TIMEOUT-MS GE-RUN-STDIN
+   GE-HB$ GE-SRC-BUF GE-SRC-U @ GE-TIMEOUT-MS GE-RUN-STDIN
    70 s" hb eval underflow no-catch rc" GE-EXPECT-RC
    s" E-UNDERFLOW" s" hb eval underflow no-catch diag" GE-EXPECT-ERR-HAS
    s" " s" hb eval underflow no-catch dead marker" GE-EXPECT-OUT
@@ -1400,7 +1371,7 @@ variable GE-DFULL-I                 \ copy/definition loop index
    GE-HB-RESET
    GE-SRC-RESET
    s" drop drop drop" GE-SRC-LINE
-   s" bin/hb" GE-SRC-BUF GE-SRC-U @ GE-TIMEOUT-MS GE-RUN-STDIN
+   GE-HB$ GE-SRC-BUF GE-SRC-U @ GE-TIMEOUT-MS GE-RUN-STDIN
    70 s" hb top-level underflow rc unchanged" GE-EXPECT-RC
    s" E-UNDERFLOW" s" hb top-level underflow diag unchanged" GE-EXPECT-ERR-HAS
    s" PASS: top-level underflow fail-closed rc70 (unchanged)" type cr ;
@@ -1451,7 +1422,7 @@ variable GE-DFULL-I                 \ copy/definition loop index
    s" : XI ( -- ) " GE-SRC+
    tok toku GE-SRC+
    s"  ;" GE-SRC-LINE
-   s" bin/hb" GE-SRC-BUF GE-SRC-U @ GE-TIMEOUT-MS GE-RUN-STDIN
+   GE-HB$ GE-SRC-BUF GE-SRC-U @ GE-TIMEOUT-MS GE-RUN-STDIN
    70 label labelu GE-EXPECT-RC
    s" control-flow closer without opener" label labelu GE-EXPECT-ERR-HAS
    tok toku label labelu GE-EXPECT-ERR-HAS
@@ -1489,15 +1460,25 @@ variable GE-DFULL-I                 \ copy/definition loop index
    \ wrong CODE base) are the two RCA shapes; both must exit 70, never signal.
    GE-HB-RESET
    GE-SRC-RESET s" 1 set-check" GE-SRC-LINE
-   s" bin/hb" GE-SRC-BUF GE-SRC-U @ GE-TIMEOUT-MS GE-RUN-STDIN
+   GE-HB$ GE-SRC-BUF GE-SRC-U @ GE-TIMEOUT-MS GE-RUN-STDIN
    70 s" hb set-check tiny-xt rc" GE-EXPECT-RC
    s" set-check: invalid checker xt" s" hb set-check tiny-xt diag" GE-EXPECT-ERR-HAS
    GE-HB-RESET
    GE-SRC-RESET s" dbase@ $1B0 + @ set-check" GE-SRC-LINE
-   s" bin/hb" GE-SRC-BUF GE-SRC-U @ GE-TIMEOUT-MS GE-RUN-STDIN
+   GE-HB$ GE-SRC-BUF GE-SRC-U @ GE-TIMEOUT-MS GE-RUN-STDIN
    70 s" hb set-check dbase-garbage rc" GE-EXPECT-RC
    s" set-check: invalid checker xt" s" hb set-check dbase-garbage diag" GE-EXPECT-ERR-HAS
-   s" PASS: set-check fail-closed on garbage xt (rc 70, named diagnostic)" type cr ;
+   GE-HB-RESET
+   GE-SRC-RESET s" 0 1 set-checks" GE-SRC-LINE
+   GE-HB$ GE-SRC-BUF GE-SRC-U @ GE-TIMEOUT-MS GE-RUN-STDIN
+   70 s" hb set-checks mixed-pair rc" GE-EXPECT-RC
+   s" set-checks: invalid hook pair" s" hb set-checks mixed-pair diag" GE-EXPECT-ERR-HAS
+   GE-HB-RESET
+   GE-SRC-RESET s" 1 1 set-checks" GE-SRC-LINE
+   GE-HB$ GE-SRC-BUF GE-SRC-U @ GE-TIMEOUT-MS GE-RUN-STDIN
+   70 s" hb set-checks garbage-pair rc" GE-EXPECT-RC
+   s" set-checks: invalid hook pair" s" hb set-checks garbage-pair diag" GE-EXPECT-ERR-HAS
+   s" PASS: checker hook installs fail closed on garbage xt (rc 70, named diagnostic)" type cr ;
 
 : GE-RUNTIME-CHECKS ( -- )
    GE-UNCAUGHT-THROW

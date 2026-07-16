@@ -491,6 +491,7 @@ TEST:SUITE dictionary-record-shapes
 TEST:;SUITE
 
 TEST:SUITE stdlib-runner-fixtures
+   lib/engine-candidate-test.f
    lib/test/runner-test.f
 TEST:;SUITE
 

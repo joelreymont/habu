@@ -9,6 +9,7 @@ require lib/memory.f
 require lib/fs.f
 require lib/process.f
 require lib/process-argv.f
+require lib/engine-candidate.f
 require tools/lint/text.f
 require tools/lint/token.f
 require tools/lint/lib.f
@@ -724,7 +725,7 @@ variable SMT-J
 
 : SMT-RUN-PUBLIC ( -- )
    SMT-ARGV-LOAD-PUBLIC
-   s" bin/hb" >LEN SMT-PUB-BUF SMT-PUB-CAP >LEN SMT-ERR-BUF SMT-ERR-CAP >LEN SMT-TIMEOUT-MS >MS RUN-ARGV-CAPTURE
+   ENGINE-CANDIDATE:PATH$ >LEN SMT-PUB-BUF SMT-PUB-CAP >LEN SMT-ERR-BUF SMT-ERR-CAP >LEN SMT-TIMEOUT-MS >MS RUN-ARGV-CAPTURE
    {: outu erru rc :}
    outu LEN>N SMT-PUB-U !
    rc RC>N 0 <> IF s" public-signatures run failed" SMT-FINDING THEN
@@ -864,7 +865,7 @@ create SMT-JSON-SIG-KEY SMT-DQ c, 115 c, 105 c, 103 c, 110 c, 97 c, 116 c, 117 c
    SMT-RESET
    s" lib/std.manifest" FILE? 0= IF s" missing lib/std.manifest" SMT-FINDING THEN
    s" docs/stdlib.md" FILE? 0= IF s" missing docs/stdlib.md" SMT-FINDING THEN
-   s" bin/hb" FILE? 0= IF s" missing executable bin/hb" SMT-FINDING THEN
+   ENGINE-CANDIDATE:PATH$ 2drop
    SMT-CHECK-DOCS
    SMT-PARSE-MANIFEST
    SMT-CHECK-LIB-COVERAGE

@@ -11,6 +11,8 @@
 require maki/cuda-driver.f
 require lib/float.f
 require lib/fmt.f
+require lib/engine-id.f
+require lib/engine-candidate.f
 require src/arch/ptx/emit.f
 require lib/ptx/cg.f
 require lib/ptx/sentinel.f
@@ -60,7 +62,7 @@ create GQ-ERR $1000 allot
    s" lib/ptx/header.f"     >LEN PROC-ARGV+  s" lib/ptx/cg-collective.f" >LEN PROC-ARGV+
    s" lib/ptx/tile.f"       >LEN PROC-ARGV+  s" lib/ptx/collective.f" >LEN PROC-ARGV+
    s" tools/ptx/saxpy-cg.f" >LEN PROC-ARGV+
-   s" bin/hb" >LEN  GEMIT-OUT $4000 >LEN  GEMIT-ERR $1000 >LEN  20000 >MS  RUN-ARGV-CAPTURE
+   ENGINE-CANDIDATE:PATH$ >LEN  GEMIT-OUT $4000 >LEN  GEMIT-ERR $1000 >LEN  20000 >MS  RUN-ARGV-CAPTURE
    {: outu:len erru:len rc:rc :}
    GEMIT-ERR erru LEN>N  rc RC>N  PTXTC:EMIT-GUARD          \ nonzero emit rc -> surface stderr, throw
    PTXTC:PTX$ GEMIT-OUT outu LEN>N WRITE-ALL  outu LEN>N ;

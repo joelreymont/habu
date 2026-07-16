@@ -29,6 +29,7 @@ require lib/fs-mutate.f
 require lib/process.f
 require lib/process-argv.f
 require lib/process-env.f
+require lib/engine-candidate.f
 
 $1000 constant GRE-CAP
 60000 constant GRE-TIMEOUT-MS
@@ -42,15 +43,6 @@ variable GRE-OUT-U
 variable GRE-ERR-U
 variable GRE-EXITED                 \ bool: child completed by exit
 variable GRE-RC
-
-\ Resolve the child engine: gate default env HABU_UNDER_TEST -> the freshly
-\ built candidate; standalone runs fall back to bin/hb.
-: GRE-HB$ ( -- ptr u8 n )
-   s" HABU_UNDER_TEST" >LEN PROC-ENV-DEFAULT$? if LEN>N exit then
-   2drop
-   s" HABU_UNDER_TEST" GETENV dup 0= if
-      2drop s" bin/hb" exit
-   then ;
 
 : GRE-STORE! ( len len outcome -- )
    MATCH outcome
@@ -69,7 +61,7 @@ variable GRE-RC
    s" test/gate-runner-entry.f" >LEN PROC-ARGV+
    s" --" >LEN PROC-ARGV+
    phase phaseu >LEN PROC-ARGV+
-   GRE-HB$ >LEN  GRE-EMPTY 0 >LEN  GRE-OUT GRE-CAP >LEN
+   ENGINE-CANDIDATE:PATH$ >LEN  GRE-EMPTY 0 >LEN  GRE-OUT GRE-CAP >LEN
    GRE-ERR GRE-CAP >LEN  GRE-TIMEOUT-MS >MS  RUN-ARGV-STDIN-CAPTURE-OUTCOME
    GRE-STORE! ;
 

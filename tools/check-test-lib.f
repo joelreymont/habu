@@ -37,6 +37,7 @@ require tools/trust-lint-core.f
 require tools/check-all-errors-core.f
 require tools/argv.f
 require tools/check-core.f
+require lib/engine-candidate.f
 
 7121 constant CKT-LBUF-RC
 
@@ -221,11 +222,7 @@ variable CKT-PAR-U
 
 : CKT-HB$ ( -- ptr u8 n )
    CKT-HB-SET? if CKT-HB-BUF CKT-HB-U @ exit then
-   s" HABU_UNDER_TEST" >LEN PROC-ENV-DEFAULT$? if LEN>N exit then
-   2drop
-   s" HABU_UNDER_TEST" GETENV dup 0= if
-      2drop s" bin/hb" exit
-   then ;
+   ENGINE-CANDIDATE:PATH$ ;
 
 : CKT-HB-LOAD-FWDREF ( -- n n n )
    CKT-BAD$ CKT-FWDREF$ WRITE-ALL

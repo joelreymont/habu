@@ -8,7 +8,7 @@ require lib/memory.f
 require lib/fs.f
 require lib/process.f
 require lib/process-argv.f
-require lib/process-env.f
+require lib/engine-candidate.f
 
 package LOWER-TXN-PROTECTION-TEST
 
@@ -23,17 +23,11 @@ variable OUT-U
    SB-APPEND
    $A SB-APPEND-C ;
 
-: HB$ ( -- ptr u8 n )
-   s" HABU_UNDER_TEST" >LEN PROC-ENV-DEFAULT$? if LEN>N exit then
-   2drop
-   s" HABU_UNDER_TEST" GETENV dup 0= if
-      2drop s" bin/hb" exit
-   then ;
-
 : PRELUDE ( -- )
    s" require lib/ffi-abi.f" LINE
    s" package DTP" LINE
    s" variable SEEN" LINE
+   s" variable ONCE-N" LINE
    s" SUMTYPE res 2" LINE
    s"   VARIANT ok a ;VARIANT" LINE
    s"   VARIANT err b ;VARIANT" LINE
@@ -56,21 +50,22 @@ variable OUT-U
 
 : PROBE-TAIL ( -- )
    s"   -1 SEEN ! ; immediate" LINE
+   s" : ONCE ( -- )" LINE
+   s"   parse-name 2drop" LINE
+   s"   ONCE-N @ 1+ ONCE-N ! ; immediate" LINE
    s" : CLEAN? ( -- bool )" LINE
    s"   STATE {: a:n cap:n :}" LINE
    s"   a 0= cap 0= and ;" LINE
    s" public" LINE
-   \ PROBE is a signature-carrying immediate, so a checked RUN would reject rc
-   \ 70 (p5 wrong-certificate reject) BEFORE the engine-level protection this
-   \ fixture proves. Declaring it an effect-neutral immediate (parse-imm 0,
-   \ payload-free GRID: class) keeps RUN checked and the compile-time attack +
-   \ seal trap (rc 83) exercised: PROBE's ( -- ) certificate is true of its
-   \ empty runtime step; the compile-time attack is exactly what the
-   \ transaction seal exists to catch.
-   S\" s\" PROBE\" 0 parse-imm" LINE
-   s" : RUN ( -- ) PROBE 37 construct res ok 0 MEM ! ;" LINE
+   \ PROBE is the explicit replay boundary that attacks the sealed transaction.
+   \ ONCE is an ordinary parsing immediate: pass 1 consumes PAYLOAD, pass 2
+   \ skips re-execution and must retain PROBE as the next reconstructed token.
+   S\" s\" PROBE\" 0 REPLAY-IMM" LINE
+   S\" s\" ONCE\" 1 PARSE-IMM" LINE
+   s" : RUN ( -- ) ONCE PAYLOAD PROBE 37 construct res ok 0 MEM ! ;" LINE
    s" : CHECK ( -- )" LINE
    s"   SEEN @ 0= if 1 throw then" LINE
+   s"   ONCE-N @ 1 <> if 1 throw then" LINE
    s"   CLEAN? 0= if 1 throw then ;" LINE
    s" private" LINE
    s" ;package" LINE
@@ -87,7 +82,7 @@ variable OUT-U
 
 : CAPTURE ( ptr u8 n -- len len outcome ) {: src:ptr srcu:n :}
    PROC-ARGV-RESET
-   HB$ >LEN
+   ENGINE-CANDIDATE:PATH$ >LEN
    src srcu >LEN
    OUT CAP >LEN
    ERR CAP >LEN

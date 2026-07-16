@@ -25,6 +25,7 @@ require lib/fs-mutate.f
 require lib/process.f
 require lib/process-argv.f
 require lib/process-env.f
+require lib/engine-candidate.f
 
 2048 constant SLV-CAP
 10000 constant SLV-TIMEOUT-MS
@@ -58,15 +59,6 @@ create SLV-EMPTY 1 allot            \ zero-length stdin
 
 : SLV-IN$ ( -- ptr u8 n )
    SLV-IN SLV-IN-U @ ;
-
-\ Resolve the child engine: gate default env HABU_UNDER_TEST -> the sealed
-\ candidate; standalone runs fall back to bin/hb.
-: SLV-HB$ ( -- ptr u8 n )
-   s" HABU_UNDER_TEST" >LEN PROC-ENV-DEFAULT$? if LEN>N exit then
-   2drop
-   s" HABU_UNDER_TEST" GETENV dup 0= if
-      2drop s" bin/hb" exit
-   then ;
 
 : SLV-LF ( -- )
    10 SB-APPEND-C ;
@@ -255,8 +247,8 @@ create SLV-EMPTY 1 allot            \ zero-length stdin
    SB$ ;
 
 \ Second guarded band (TFAM 2b-v): protected metadata [$3CB8, $40C8) contains the
-\ protected-WID registry and UNCGH-CELL. A raw store to the registry or reporter hook
-\ must trap, so user source cannot unprotect sealed WIDs or redirect uncaught throws.
+\ protected-WID registry and UNCGH-CELL. A raw store to the registry or reporter
+\ hook must trap, so user source cannot unprotect sealed WIDs or redirect throws.
 : SLV-PWIDN-FORGE$ ( -- ptr u8 n )          \ ! into the registry count cell ($3CB8)
    SB-RESET
    s" $3CB8 constant SLF-PWIDN" SB-APPEND SLV-LF
@@ -279,6 +271,12 @@ create SLV-EMPTY 1 allot            \ zero-length stdin
    SB-RESET
    s" $40C0 constant SLF-UNCGH" SB-APPEND SLV-LF
    s" data-base SLF-UNCGH + 0 swap !" SB-APPEND SLV-LF
+   SB$ ;
+
+: SLV-IMM-HOOK-FORGE$ ( -- ptr u8 n )       \ ! into the immediate preflight hook ($B0)
+   SB-RESET
+   s" $B0 constant SLF-IMM-HOOK" SB-APPEND SLV-LF
+   s" data-base SLF-IMM-HOOK + 0 swap !" SB-APPEND SLV-LF
    SB$ ;
 
 \ Code-emit capability: cp! may select only an aligned instruction in the full
@@ -363,7 +361,7 @@ create SLV-EMPTY 1 allot            \ zero-length stdin
    PROC-ARGV-RESET
    s" --load" >LEN PROC-ARGV+
    SLV-CHILD >LEN PROC-ARGV+
-   SLV-HB$ >LEN  SLV-EMPTY 0 >LEN  SLV-OUT SLV-CAP >LEN
+   ENGINE-CANDIDATE:PATH$ >LEN  SLV-EMPTY 0 >LEN  SLV-OUT SLV-CAP >LEN
    SLV-ERR SLV-CAP >LEN  SLV-TIMEOUT-MS >MS  RUN-ARGV-STDIN-CAPTURE-OUTCOME
    SLV-STORE! ;
 
@@ -371,17 +369,17 @@ create SLV-EMPTY 1 allot            \ zero-length stdin
 : SLV-RUN-STDIN ( ptr u8 n -- )
    SLV-IN!
    PROC-ARGV-RESET
-   SLV-HB$ >LEN  SLV-IN$ >LEN  SLV-OUT SLV-CAP >LEN
+   ENGINE-CANDIDATE:PATH$ >LEN  SLV-IN$ >LEN  SLV-OUT SLV-CAP >LEN
    SLV-ERR SLV-CAP >LEN  SLV-TIMEOUT-MS >MS  RUN-ARGV-STDIN-CAPTURE-OUTCOME
    SLV-STORE! ;
 
 : SLV-ASSERT-SEAL ( -- )                    \ child died with the seal-violation exit
-   SLV-EXITED @ TTRUE
-   SLV-RC @ SLV-SEAL-RC T= ;
+   SLV-EXITED @ if SLV-RC @ SLV-SEAL-RC T= exit then
+   0 0= 0= TTRUE ;
 
 : SLV-ASSERT-OK ( -- )                      \ child exited cleanly
-   SLV-EXITED @ TTRUE
-   SLV-RC @ 0 T= ;
+   SLV-EXITED @ if SLV-RC @ 0 T= exit then
+   0 0= 0= TTRUE ;
 
 \ --- protected-WID table capacity (dot habu-seal-protwid-cap-6f1c9d2b) --------------
 \ Each PUBLIC ADT family registers one protected WID (xref.f PROT-WID-CTOR-ADD ->
@@ -598,6 +596,10 @@ public
    SB$ ;
 
 : LAYOUT ( -- )
+   FRIEND-ARENA FRIEND-ARENA-LEN + $B8 T=
+   IMM-HOOK-CELL $B0 T=
+   CMBK-CELL $1A8 T=
+   PROT-REG-OFF PROT-REG-LEN + $40C8 T=
    OWNER-WID-N-CELL $47C0 T=
    OWNER-WID-OFF OWNER-WID-N-CELL cell + T=
    OWNER-WID-ROW 8 T=
@@ -655,6 +657,8 @@ public
    SLV-BAND2-END-FORGE$ SLV-RUN-LOAD SLV-ASSERT-SEAL
    s" ! into the uncaught-throw reporter hook traps" T-LABEL
    SLV-UNCGH-FORGE$ SLV-RUN-LOAD SLV-ASSERT-SEAL
+   s" ! into the friend-arena immediate preflight hook traps" T-LABEL
+   SLV-IMM-HOOK-FORGE$ SLV-RUN-LOAD SLV-ASSERT-SEAL
    s" ! into the owner-WID count traps (band 3)" T-LABEL
    OWNER-WID-TEST:COUNT-FORGE$ SLV-RUN-LOAD SLV-ASSERT-SEAL
    s" c! into the owner-WID table traps (band 3)" T-LABEL

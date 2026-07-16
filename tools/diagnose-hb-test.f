@@ -8,6 +8,7 @@ require lib/test.f
 require lib/fs-mutate.f
 require lib/process.f
 require lib/process-argv.f
+require lib/engine-candidate.f
 
 package DHT
 
@@ -85,7 +86,7 @@ variable ROOT-U
 \ The CLI entry exits nonzero and prints the unresolved file to stdout.
 : CLI-REPORTS ( -- )
    BUILD-ARGV
-   s" bin/hb" >LEN OUT@ CAP >LEN ERR@ CAP >LEN TIMEOUT-MS >MS
+   ENGINE-CANDIDATE:PATH$ >LEN OUT@ CAP >LEN ERR@ CAP >LEN TIMEOUT-MS >MS
    RUN-ARGV-CAPTURE-OUTCOME
    MATCH outcome
      exited OF ENDOF

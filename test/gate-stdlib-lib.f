@@ -6,6 +6,7 @@
 
 require lib/adt/option.f                 \ option<n> STR>NUMBER? consumer (switchover wave A)
 require lib/test.f
+require lib/engine-candidate.f
 
 120000 constant SUITE-TIMEOUT-MS
 64 constant SUITE-USAGE-RC
@@ -285,25 +286,17 @@ variable SUITE-TIMINGS
    PROC-ARGV-RESET
    s" --load" SUITE-ARG+ ;
 
-: SUITE-HB$ ( -- ptr u8 n )
-   s" HABU_UNDER_TEST" >LEN PROC-ENV-DEFAULT$? if LEN>N exit then
-   2drop
-   s" HABU_UNDER_TEST" GETENV dup 0= if
-      2drop s" bin/hb" exit
-   then
-   2dup EXECUTABLE? 0= if E-FS-OPEN throw then ;
-
 : SUITE-HB-RUN ( ptr u8 n -- ) {: label:ptr labelu:n :}
    label labelu GS-INNER-HB-EVENT
    label labelu GS-BOUNDARY-EVENT
-   SUITE-HB$ SUITE-TIMEOUT-MS label labelu SUITE-RUN-ENV-ASYNC ;
+   ENGINE-CANDIDATE:PATH$ SUITE-TIMEOUT-MS label labelu SUITE-RUN-ENV-ASYNC ;
 
 : SUITE-HB-RUN-STDIN ( ptr u8 n ptr u8 n -- ) {: in:ptr inu:n label:ptr labelu:n :}
    GT-POOL-DRAIN
    label labelu GT-PROGRESS-RUN
    label labelu GS-INNER-HB-STDIN-EVENT
    label labelu GS-BOUNDARY-EVENT
-   SUITE-HB$ in inu SUITE-TIMEOUT-MS label labelu SUITE-RUN-STDIN
+   ENGINE-CANDIDATE:PATH$ in inu SUITE-TIMEOUT-MS label labelu SUITE-RUN-STDIN
    label labelu SUITE-EXPECT-OK
    label labelu GT-PROGRESS-PASS ;
 

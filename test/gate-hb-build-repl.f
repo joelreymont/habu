@@ -70,7 +70,7 @@ variable GHR-SIZE
    s" tools/imgdump.f" GB-ARGV+
    s" --" GB-ARGV+
    GB-OUT$ GB-ARGV+
-   s" bin/hb" GE-TIMEOUT-MS GE-RUN-ENV
+   GE-HB$ GE-TIMEOUT-MS GE-RUN-ENV
    s" imgdump generated engine" GE-EXPECT-OK
    s" + " s" imgdump missing seed dict" GE-EXPECT-OUT-HAS ;
 

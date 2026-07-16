@@ -17,6 +17,7 @@
 require lib/test.f
 require lib/fs.f
 require lib/fs-mutate.f
+require lib/engine-candidate.f
 require tools/zed-run-lib.f
 
 package ZED
@@ -64,7 +65,7 @@ variable AGS-PTX-U
    s" --load" >LEN PROC-CMD-ARG+
    s" tools/ptx/ad-entry-lib.f" >LEN PROC-CMD-ARG+
    AGS-DRV$ >LEN PROC-CMD-ARG+
-   s" bin/hb" >LEN AGS-TIMEOUT-MS >MS PROC-CMD-RUN-RC
+   ENGINE-CANDIDATE:PATH$ >LEN AGS-TIMEOUT-MS >MS PROC-CMD-RUN-RC
    RC>N 0 <> if E-ZED-EMIT throw then
    AGS-PTX$ PROC-CMD-OUT$ WRITE-ALL ;
 
@@ -86,7 +87,7 @@ variable AGS-PTX-U
    PROC-CMD-RESET
    s" --load" >LEN PROC-CMD-ARG+
    file fileu >LEN PROC-CMD-ARG+
-   s" bin/hb" >LEN AGS-TIMEOUT-MS >MS PROC-CMD-RUN-RC
+   ENGINE-CANDIDATE:PATH$ >LEN AGS-TIMEOUT-MS >MS PROC-CMD-RUN-RC
    RC>N 0 <> if E-ZED-EMIT throw then
    AGS-PTX$ PROC-CMD-OUT$ WRITE-ALL ;
 

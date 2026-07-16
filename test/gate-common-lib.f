@@ -5,6 +5,7 @@
 \ lib/test/runner.f, and lib/content-key.f.
 
 require lib/process-fork.f
+require lib/engine-candidate.f
 
 $40000 constant GE-SRC-CAP
 64 constant GE-SRC-MAX
@@ -84,6 +85,62 @@ variable GE-EVAL-STACK-A
 : GE-ARGV$ ( -- ptr u8 n )
    GE-ARGV-BUF GE-ARGV-U @ ;
 
+package SPAWN-TRACE
+
+private
+
+64 constant SHA-LEN
+
+create PATH-BUF FS-PATH-CAP allot
+create SHA-BUF SHA-LEN allot
+
+variable PATH-U
+variable SHA-RC
+variable ARGC
+variable ENVC
+
+: PATH! ( ptr u8 n -- ) {: a:ptr u:n :}
+   u FS-PATH-CAP > if E-FS-PATH throw then
+   a PATH-BUF u BYTE-COPY
+   u PATH-U ! ;
+
+: HASH! ( ptr u8 n -- )
+   SHA-BUF SHA256-FILE-HEX SHA-RC ! ;
+
+: ARG. ( n -- )
+   >IDX PROC-ARGV-SLOT @ dup ZLEN type cr ;
+
+: ENV-ROW? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   a u s" HABU_" STARTS-WITH? if 0 0= exit then
+   a u s" HB_" STARTS-WITH? if 0 0= exit then
+   a u s" PWD=" STARTS-WITH? if 0 0= exit then
+   a u s" PATH=" STARTS-WITH? if 0 0= exit then
+   a u s" TMPDIR=" STARTS-WITH? if 0 0= exit then
+   a u s" XDG_" STARTS-WITH? ;
+
+: ENV. ( n -- )
+   >IDX PROC-ENV-SLOT @ dup ZLEN {: a:ptr u:n :}
+   a u ENV-ROW? if a u type cr then ;
+
+public
+
+: CAPTURE ( ptr u8 n -- ) {: path:ptr pathu:n :}
+   path pathu PATH!
+   path pathu HASH!
+   PROC-ARGV-N @ COUNT>N ARGC !
+   PROC-ENV-N @ COUNT>N ENVC ! ;
+
+: PRINT ( -- )
+   s" spawn executable: " type PATH-BUF PATH-U @ type cr
+   s" spawn executable sha256: " type
+   SHA-RC @ 0= if SHA-BUF SHA-LEN type else s" unavailable rc=" type SHA-RC @ . then cr
+   s" spawn argv:" type cr
+   0 begin dup ARGC @ < while dup ARG. 1+ repeat drop
+   s" spawn environment:" type cr
+   0 begin dup ENVC @ < while dup ENV. 1+ repeat drop ;
+
+;package
+
 : GE-SPAWN-FAIL. ( pid -- ) {: pid:pid :}
    s" spawn raw code: " type pid PID>N . cr
    HB-TARGET-MACOS? if
@@ -114,6 +171,7 @@ variable GE-EVAL-STACK-A
    PROC-ENV-INHERIT-MISSING
    path pathu >LEN PROC-ARGV-PREPARE {: pathz:ptr argv:ptr :}
    PROC-ENV-PREPARE {: envp:ptr :}
+   path pathu SPAWN-TRACE:CAPTURE
    timeout >MS PROC-CAPTURE-BEGIN
    pathz argv envp GE-SPAWN-CAPTURE
    GT-OUT-BUF GT-OUT-CAP >LEN GT-ERR-BUF GT-ERR-CAP >LEN
@@ -125,6 +183,7 @@ variable GE-EVAL-STACK-A
    PROC-ENV-INHERIT-MISSING
    path pathu >LEN PROC-ARGV-PREPARE {: pathz:ptr argv:ptr :}
    PROC-ENV-PREPARE {: envp:ptr :}
+   path pathu SPAWN-TRACE:CAPTURE
    timeout >MS PROC-STDIN-CAPTURE-BEGIN
    pathz argv envp GE-SPAWN-STDIN-CAPTURE
    in inu >LEN GT-OUT-BUF GT-OUT-CAP >LEN GT-ERR-BUF GT-ERR-CAP >LEN
@@ -149,6 +208,7 @@ variable GE-EVAL-STACK-A
    GT-OUT-CAP >LEN GT-ERR-CAP >LEN PROC-CAPTURE-CHECK-CAPS
    path pathu >LEN PROC-ARGV-PREPARE {: pathz:ptr argv:ptr :}
    PROC-ENV-PREPARE {: envp:ptr :}
+   path pathu SPAWN-TRACE:CAPTURE
    timeout >MS PROC-CAPTURE-BEGIN
    pathz argv envp GE-SPAWN-FILE-CAPTURE
    GT-OUT-BUF GT-OUT-CAP >LEN GT-ERR-BUF GT-ERR-CAP >LEN PROC-RUN-CAPTURE-OUTCOME-LOOP
@@ -217,6 +277,7 @@ variable GE-EVAL-STACK-A
    s" FAIL: " type label labelu type cr
    GE-PRINT-OUTCOME
    GE-PRINT-CAPTURE-STATS
+   SPAWN-TRACE:PRINT
    GE-ARGV$ nip 0 > if
       s" argv:" type cr
       GE-ARGV$ type
@@ -376,11 +437,10 @@ variable GE-EVAL-STACK-A
    GE-ARGV-RESET ;
 
 : GE-HB$ ( -- ptr u8 n )
-   GE-HB-U @ 0 > if GE-HB-BUF GE-HB-U @ exit then
-   s" HABU_UNDER_TEST" GETENV dup 0= if
-      2drop s" bin/hb" exit
+   GE-HB-U @ 0 > if
+      GE-HB-BUF GE-HB-U @ ENGINE-CANDIDATE:VALIDATE$ exit
    then
-   2dup EXECUTABLE? 0= if E-FS-OPEN throw then ;
+   ENGINE-CANDIDATE:PATH$ ;
 
 : GE-CHECK-EXE ( -- ptr u8 n )
    GE-HB$ ;
@@ -411,14 +471,6 @@ variable GE-EVAL-STACK-A
    s" tools/check-all-errors-core.f" GE-ARG+
    s" tools/argv.f" GE-ARG+
    s" tools/check-core.f" GE-ARG+ ;
-
-: GE-BIN-HB-RUN ( ptr u8 n -- ) {: label:ptr labelu:n :}
-   label labelu GT-PROGRESS-RUN
-   label labelu GS-INNER-HB-EVENT
-   label labelu GS-BOUNDARY-EVENT
-   s" bin/hb" GE-TIMEOUT-MS GE-RUN-ENV
-   label labelu GE-EXPECT-OK
-   label labelu GT-PROGRESS-PASS ;
 
 : GE-HB-RUN ( ptr u8 n -- ) {: label:ptr labelu:n :}
    label labelu GT-PROGRESS-RUN

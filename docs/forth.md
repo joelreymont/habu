@@ -222,7 +222,24 @@ public
   native engine marks its baked prefix files as `provided` before user/test
   source runs, so `require src/core/sha256.f` skips the prefix-owned copy instead
   of reloading it. Snapshot images preserve the `require` registry because it
-  describes which modules are already compiled into the live dictionary. Do not
+  describes which modules are already compiled into the live dictionary.
+  The parsing `include` and `require` forms are source-composition operations at
+  interpret level; do not place them inside a checked definition. A
+  source-defined immediate runs before the post-body checker hook, so the native
+  compiler invokes the checker-owned immediate preflight before execution and
+  rejects an expansion that was not declared with `PARSE-IMM`. Use the runtime
+  `included`/`required` forms in a checked helper that is deliberately called at
+  interpret level. Declare a fixed expansion as `s" WORD" payload-count
+  PARSE-IMM`: it binds the exact immediate identity `(xt, definition-generation)`,
+  so a caught-evaluate rollback cannot lend the declaration to a later word at
+  the recycled code address. It executes the immediate once in pass 1,
+  and skips it during width-aware replay because its payload is absent from the
+  reconstructed body. Use `REPLAY-IMM` only for an audited compiler directive
+  whose effect must run again in pass 2; it executes inside the sealed lowering
+  transaction and therefore remains subject to every protected-span guard.
+  `TRUSTED:` is the explicit audited boundary for an immediate whose expansion
+  cannot use either fixed model.
+  Do not
   include a file merely so two files can see the same private helpers; reopening
   the package provides that shared package scope after both files have been
   loaded. Test suites load self-contained test/tool entry files plus any script
@@ -891,6 +908,10 @@ T-REPORT
   should assert exact emitted tokens. Emitter stack comments describe the
   host/build-time stack (`( -- )`, `( n -- )`); document emitted runtime effects
   in nearby prose or in the generated word's own contract.
+- **Every emitted `BL` helper has an explicit register ABI.** Preserve the union
+  of registers clobbered by every native and recovery leg, initialize miss-path
+  outputs before the call, and reload only the named results. Do not allocate
+  live state in x18; the ARM64 encoder rejects that Darwin-reserved register.
 
 ## Native Forth Gotchas That Shape How We Write Code
 

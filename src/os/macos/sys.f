@@ -4,6 +4,15 @@
 
 $1002 constant MAP-ANON-PRIVATE
 $1012 constant MAP-ANON-PRIVATE-FIXED
+$20000 constant O-NOCTTY-IN
+$20000 constant O-NOCTTY-OUT
+
+$20007461 constant TIOCSCTTY
+$40047477 constant TIOCGPGRP
+$80047476 constant TIOCSPGRP
+$FFFB constant EVFILT-PROC-U16
+$15 constant EV-PROC-FLAGS
+$80000000 constant NOTE-EXIT
 
 $1   constant NR-EXIT
 $2   constant NR-FORK
@@ -18,6 +27,8 @@ $5   constant NR-OPEN
 $6   constant NR-CLOSE
 $25  constant NR-KILL
 $52  constant NR-SETPGID
+$93  constant NR-SETSID
+$14  constant NR-GETPID
 $2A  constant NR-PIPE
 $2E  constant NR-SIGACTION
 $4A  constant NR-MPROTECT
@@ -38,7 +49,9 @@ $158 constant NR-GETDIRENTRIES64
 $1D9 constant NR-READLINKAT
 $1DA constant NR-SYMLINKAT
 $7   constant NR-WAIT4     \ wait4(pid, &status, 0, 0)
-0    constant NR-EXECVE
+$3B  constant NR-EXECVE
+$16A constant NR-KQUEUE
+$171 constant NR-KEVENT64
 0    constant NR-CHDIR
 $1   constant NR-EXIT-GROUP
 

@@ -4,6 +4,8 @@
 \ bin/hb --load lib/errors.f lib/string.f lib/fs.f lib/fs-mutate.f lib/process.f
 \ lib/process-argv.f lib/process-env.f src/arch/ptx/emit.f tools/ptx/ptxas-smoke.f
 
+require lib/engine-candidate.f
+
 65536 constant PTXAS-CAP
 20000 constant PTXAS-TIMEOUT-MS
 
@@ -57,7 +59,7 @@ variable PTXAS-OUT-U
    s" src/arch/ptx/emit.f" >LEN PROC-ARGV+
    s" tools/ptx/saxpy.f" >LEN PROC-ARGV+
    PROC-ENV-INHERIT-MISSING
-   s" bin/hb" >LEN PTXAS-OUT PTXAS-CAP >LEN PTXAS-ERR PTXAS-CAP >LEN
+   ENGINE-CANDIDATE:PATH$ >LEN PTXAS-OUT PTXAS-CAP >LEN PTXAS-ERR PTXAS-CAP >LEN
    PTXAS-TIMEOUT-MS >MS RUN-ARGV-ENV-CAPTURE
    PTXAS-CAPTURE>N ;
 

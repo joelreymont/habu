@@ -17,6 +17,7 @@ require lib/fs.f
 require lib/process.f
 require lib/process-argv.f
 require lib/process-env.f
+require lib/engine-candidate.f
 
 $800 constant WSS-CAP
 10000 constant WSS-TIMEOUT-MS
@@ -29,13 +30,6 @@ variable WSS-OUT-U
 : WSS-LINE ( ptr u8 n -- )
    SB-APPEND
    $A SB-APPEND-C ;
-
-: WSS-HB$ ( -- ptr u8 n )
-   s" HABU_UNDER_TEST" >LEN PROC-ENV-DEFAULT$? if LEN>N exit then
-   2drop
-   s" HABU_UNDER_TEST" GETENV dup 0= if
-      2drop s" bin/hb" exit
-   then ;
 
 : WSS-FAMILY ( -- )
    s" SUMTYPE wss-res 2" WSS-LINE
@@ -131,7 +125,7 @@ variable WSS-OUT-U
    SB$ ;
 
 : WSS-CAPTURE ( ptr u8 n -- len len outcome ) {: src:ptr srcu:n :}
-   WSS-HB$ >LEN
+   ENGINE-CANDIDATE:PATH$ >LEN
    src srcu >LEN
    WSS-OUT WSS-CAP >LEN
    WSS-ERR WSS-CAP >LEN

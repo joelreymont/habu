@@ -209,6 +209,17 @@ candidates and builder/maker artifacts. Snapshot coverage belongs to the native
 build/fixpoint path; generated images are local artifacts and must not be
 committed.
 
+The build phase passes its not-yet-created candidate destination as the explicit
+`--candidate-out PATH` gate argument. `HABU_UNDER_TEST` remains an input-only
+contract and is exported only after that path contains a validated executable;
+using it as an output path would make the fixpoint seed validate its own missing
+destination before the build could start.
+
+Candidate readiness is the owning build slot's successful completion event, not
+the first moment its output becomes executable. Candidate consumers, including
+the process-tail group, stay out of the early schedule and start only after that
+event and executable validation both succeed.
+
 ### Performance verdict
 
 Correctness and performance are **separate** gate verdicts. A failing

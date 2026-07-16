@@ -11,6 +11,7 @@ require lib/string.f
 require lib/float.f
 require lib/fmt.f
 require lib/test.f
+require lib/engine-candidate.f
 require src/arch/ptx/emit.f
 require lib/ptx/cg.f
 require lib/ptx/header.f
@@ -45,7 +46,7 @@ variable RS-DIN variable RS-DOUT variable RS-KV
    s" src/arch/ptx/emit.f"  >LEN PROC-ARGV+  s" lib/ptx/cg.f"        >LEN PROC-ARGV+
    s" lib/ptx/header.f"     >LEN PROC-ARGV+  s" lib/ptx/cg-collective.f" >LEN PROC-ARGV+
    s" lib/ptx/collective.f" >LEN PROC-ARGV+  s" tools/ptx/sum-cg.f" >LEN PROC-ARGV+
-   s" bin/hb" >LEN  RS-OUT $4000 >LEN  RS-ERR $1000 >LEN  20000 >MS  RUN-ARGV-CAPTURE
+   ENGINE-CANDIDATE:PATH$ >LEN  RS-OUT $4000 >LEN  RS-ERR $1000 >LEN  20000 >MS  RUN-ARGV-CAPTURE
    {: outu:len erru:len rc:rc :}
    RS-ERR erru LEN>N  rc RC>N  PTXTC:EMIT-GUARD           \ nonzero emit rc -> surface stderr, throw
    PTXTC:PTX$ RS-OUT outu LEN>N WRITE-ALL  outu LEN>N ;

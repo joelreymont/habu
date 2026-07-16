@@ -175,10 +175,13 @@ variable SORT-I
    TINV:ROWS 1 T=
    TINV:CL-BARE s" set-check" 1 ROW0-IS
    s" ' set-check" FIX-SCAN
-   TINV:ROWS 0 T= ;
+   TINV:ROWS 0 T=
+   s" set-checks" FIX-SCAN
+   TINV:ROWS 1 T=
+   TINV:CL-BARE s" set-checks" 1 ROW0-IS ;
 
-\ Every hook install is counted as HOOK-INSTALL, named by the installed hook,
-\ so a rogue install is visible in the TSV and trips the ratchet.
+\ Atomic hook installs bind both identities into one HOOK-INSTALL row, so a
+\ preflight substitution cannot hide behind an unchanged definition hook.
 : FIX-HOOK ( -- )
    s" ' TIF-HOOK set-check" FIX-SCAN
    TINV:ROWS 1 T=
@@ -189,6 +192,15 @@ variable SORT-I
    s" ' EVIL-HOOK set-check" FIX-SCAN
    TINV:ROWS 1 T=
    TINV:CL-HOOK s" EVIL-HOOK" 1 ROW0-IS
+   S" ['] LOWER-CERT-HOOK:PREFLIGHT ['] LOWER-CERT-HOOK:HOOK set-checks" FIX-SCAN
+   TINV:ROWS 1 T=
+   TINV:CL-HOOK s" LOWER-CERT-HOOK:PREFLIGHT+LOWER-CERT-HOOK:HOOK" 1 ROW0-IS
+   S" ['] EVIL-PREFLIGHT ['] LOWER-CERT-HOOK:HOOK set-checks" FIX-SCAN
+   TINV:ROWS 1 T=
+   TINV:CL-HOOK s" EVIL-PREFLIGHT+LOWER-CERT-HOOK:HOOK" 1 ROW0-IS
+   S" ['] LOWER-CERT-HOOK:PREFLIGHT ['] EVIL-HOOK set-checks" FIX-SCAN
+   TINV:ROWS 1 T=
+   TINV:CL-HOOK s" LOWER-CERT-HOOK:PREFLIGHT+EVIL-HOOK" 1 ROW0-IS
    S\" 0 set-check\n' TIF-HOOK set-check" FIX-SCAN
    TINV:ROWS 2 T=
    TINV:HOOK# 1 T=

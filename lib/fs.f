@@ -247,6 +247,7 @@ variable FS-IO-WR
    ;MATCH ;
 
 : EXECUTABLE? ( ptr u8 n -- bool )
+   2dup FILE? 0= if 2drop FS-FALSE exit then
    FS-PATHZ FS-X-OK access 0= ;
 
 : BASENAME ( ptr u8 n -- ptr u8 n ) {: a:ptr u :}

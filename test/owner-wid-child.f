@@ -180,6 +180,12 @@ variable RUN-CODE
    OWNER-WID-DOCTOR:SNAP-WID2$ 79 s" hb: snapshot trailer corrupt" ASSERT-BAD
    OWNER-WID-DOCTOR:SNAP-DUP$ 79 s" hb: snapshot trailer corrupt" ASSERT-BAD
    OWNER-WID-DOCTOR:SNAP-PTR$ 79 s" hb: snapshot trailer corrupt" ASSERT-BAD
+   OWNER-WID-DOCTOR:SNAP-DGEN0$ 79 s" hb: snapshot trailer corrupt" ASSERT-BAD
+   OWNER-WID-DOCTOR:SNAP-DGEN-LOW$ 79 s" hb: snapshot trailer corrupt" ASSERT-BAD
+   OWNER-WID-DOCTOR:SNAP-GEN0$ 79 s" hb: snapshot trailer corrupt" ASSERT-BAD
+   OWNER-WID-DOCTOR:SNAP-LEN-M1$ 79 s" hb: snapshot trailer corrupt" ASSERT-BAD
+   OWNER-WID-DOCTOR:SNAP-LEN-AT$ 79 s" hb: snapshot trailer corrupt" ASSERT-BAD
+   OWNER-WID-DOCTOR:SNAP-LEN-P7$ 79 s" hb: snapshot trailer corrupt" ASSERT-BAD
    OWNER-WID-DOCTOR:SNAP-LIVE$ ASSERT-MODES
    OWNER-WID-IMAGE:AOT-HB$ s" test/owner-wid-build-forge.f" RUN-FILE 70 T=
    ERR$ s" SET" CONTAINS? TTRUE ;

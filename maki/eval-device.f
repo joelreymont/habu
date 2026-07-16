@@ -14,8 +14,10 @@ require lib/errors.f
 require lib/string.f
 require lib/fs.f
 require lib/fs-mutate.f
+require lib/engine-id.f
 require lib/process.f
 require lib/process-argv.f
+require lib/engine-candidate.f
 require lib/ffi.f
 require lib/float.f
 require lib/fmt.f
@@ -115,7 +117,7 @@ create GP-OUT $4000 allot  create GP-ERR $1000 allot
    s" src/arch/ptx/emit.f"  >LEN PROC-ARGV+  s" lib/ptx/cg.f" >LEN PROC-ARGV+
    s" lib/ptx/header.f"     >LEN PROC-ARGV+  s" lib/ptx/tile.f" >LEN PROC-ARGV+
    MAKI-GRADE:DRIVER$       >LEN PROC-ARGV+
-   s" bin/hb" >LEN  GP-OUT $4000 >LEN  GP-ERR $1000 >LEN  20000 >MS  RUN-ARGV-CAPTURE
+   ENGINE-CANDIDATE:PATH$ >LEN  GP-OUT $4000 >LEN  GP-ERR $1000 >LEN  20000 >MS  RUN-ARGV-CAPTURE
    {: outu erru rc :}
    \ the emit process exits with the FFI-file convention code, not 0; the real
    \ signal is the captured PTX on stdout. Write it regardless; ptxas validates it.

@@ -555,7 +555,7 @@ create AXBUF AXBUF-CAP allot
 : AX-NOEXEC-A ( -- ptr u8 n )
    s"  open read ioctl mmap path0 open-rd access unlink rename chmod symlink readlink mkdir rmdir stat64 lstat64 getdirentries64 pipe dup2 fcntl poll kill setpgid write close " ;
 : AX-NOEXEC-B ( -- ptr u8 n )
-   s"  fence run-in-stack .s allot , c, script-argv$ throw die fork wait-rc wait-status patch32 snap-rebase prof-on prof-report cp! ndict! set-current wordlist search-wl parse-name pathz check-candidate! ['] char [char] create variable constant f. atomic@ atomic! atomic-add atomic-cas ffi-call-bounded " ;
+   s"  fence run-in-stack .s allot , c, script-argv$ throw die fork setsid execve getpid proc-watch-open wait-rc wait-status patch32 snap-rebase prof-on prof-report cp! ndict! set-current wordlist search-wl parse-name pathz check-candidate! ['] char [char] create variable constant f. atomic@ atomic! atomic-add atomic-cas ffi-call-bounded " ;
 
 \ Checker-substrate introspection that cannot take dummy operands, plus the seal
 \ watermark capture. The indexed accessors fail closed with `76 die` on an

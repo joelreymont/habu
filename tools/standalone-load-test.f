@@ -18,6 +18,7 @@ require lib/fs.f
 require lib/fs-mutate.f
 require lib/process.f
 require lib/process-argv.f
+require lib/engine-candidate.f
 
 2048 constant SL-CAP
 20000 constant SL-TIMEOUT-MS
@@ -41,7 +42,7 @@ variable SL-EXITED
    PROC-ARGV-RESET
    s" --load" >LEN PROC-ARGV+
    p u >LEN PROC-ARGV+
-   s" bin/hb" >LEN  SL-EMPTY 0 >LEN  SL-OUT SL-CAP >LEN
+   ENGINE-CANDIDATE:PATH$ >LEN  SL-EMPTY 0 >LEN  SL-OUT SL-CAP >LEN
    SL-ERR SL-CAP >LEN  SL-TIMEOUT-MS >MS RUN-ARGV-STDIN-CAPTURE-OUTCOME SL-STORE!
    SL-EXITED @ TTRUE  SL-RC @ 0 T= ;
 

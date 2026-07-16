@@ -25,6 +25,7 @@ require lib/ptx/toolchain.f
 require lib/ptx/sentinel.f
 require lib/ptx/cuda-driver.f
 require lib/test.f
+require lib/engine-candidate.f
 
 create LL-PATH 64 allot
 create LL-KN   32 allot          \ kernel name
@@ -42,7 +43,7 @@ variable LL-DX variable LL-DY variable LL-ABITS variable LL-NV variable LL-RBUF
    s" src/arch/ptx/emit.f"  >LEN PROC-ARGV+  s" lib/ptx/cg.f"  >LEN PROC-ARGV+
    s" lib/ptx/header.f"     >LEN PROC-ARGV+  s" lib/ptx/tile.f" >LEN PROC-ARGV+
    s" tools/ptx/saxpy-cg.f" >LEN PROC-ARGV+
-   s" bin/hb" >LEN  LL-OUT $8000 >LEN  LL-ERR $1000 >LEN  20000 >MS  RUN-ARGV-CAPTURE
+   ENGINE-CANDIDATE:PATH$ >LEN  LL-OUT $8000 >LEN  LL-ERR $1000 >LEN  20000 >MS  RUN-ARGV-CAPTURE
    {: outu:len erru:len rc:rc :}
    LL-ERR erru LEN>N  rc RC>N  PTXTC:EMIT-GUARD           \ missing producer / nonzero emit rc -> stderr + throw
    PTXTC:PTX$ LL-OUT outu LEN>N WRITE-ALL  outu LEN>N ;

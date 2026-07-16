@@ -130,6 +130,10 @@ Current checker classes:
   that requires audited `TRUST` or a modeled rewrite. This includes adversarial
   attempts to call `evaluate`, declare effects with `TRUST`, or disable/replace
   the checker hook with `set-check` from inside a checked definition.
+- `declare_immediate_expansion`: a source-defined immediate would execute before
+  the checked body is certified. Declare its fixed parsing expansion with
+  `PARSE-IMM`, move it outside the body, or make the whole body an audited
+  `TRUSTED:` boundary.
 - `factor_local_shape`: locals were introduced inside active control flow, inside
   a quotation, or after a dead `exit` path; factor a helper or move locals before
   control opens.
@@ -167,6 +171,7 @@ The checker `suggestion` field is stable short text derived only from
 | `fix_type` | `Change the body so produced types match the signature.` |
 | `fix_return_stack` | `Balance return-stack transfers before the definition exits.` |
 | `trusted_boundary_required` | `Move this compiler or runtime boundary behind audited TRUST.` |
+| `declare_immediate_expansion` | `Declare the parsing expansion with PARSE-IMM, move it outside the checked body, or make the body an audited TRUSTED: boundary.` |
 | `factor_local_shape` | `Move locals to a live top-level path or factor a helper.` |
 | `factor_linear_local` | `Keep the linear value on the stack; do not bind it to a local.` |
 | `remove_dead_code` | `Remove tokens after the terminating control word, or move the work before it.` |

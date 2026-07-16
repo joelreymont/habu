@@ -174,7 +174,7 @@ MAX-CLO CLO-LIMIT!
    r NCLO @ cells CLO + !  NCLO @ 1+ NCLO ! ;
 variable SP2  variable SEND
 : SCAN-REC {: r:ptr :} ( ptr a -- )
-   r @ SP2 !  r @ r 8 + @ + SEND !
+   r @ SP2 !  r @ r 8 + @ DCLEN-MASK and + SEND !
    BEGIN SP2 @ SEND @ < WHILE
       SP2 @ CALL? IF
          SP2 @ TGT FINDADDR dup XREF-FOUND? IF

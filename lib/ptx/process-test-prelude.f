@@ -8,3 +8,4 @@ require lib/fs.f
 require lib/process.f
 require lib/process-argv.f
 require lib/process-env.f
+require lib/engine-candidate.f

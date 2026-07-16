@@ -11,6 +11,7 @@ require lib/fs-mutate.f
 require lib/process.f
 require lib/process-argv.f
 require lib/process-env.f
+require lib/engine-candidate.f
 require test/gate-stats.f
 
 create GST-ROOT-BUF FS-PATH-CAP allot
@@ -342,7 +343,7 @@ create GST-GUARD-ERR GST-GUARD-CAP allot
 
 : GST-GUARD-RUN ( -- n )
    GST-GUARD-ARGV
-   s" bin/hb" >LEN GST-GUARD-OUT GST-GUARD-CAP >LEN GST-GUARD-ERR GST-GUARD-CAP >LEN
+   ENGINE-CANDIDATE:PATH$ >LEN GST-GUARD-OUT GST-GUARD-CAP >LEN GST-GUARD-ERR GST-GUARD-CAP >LEN
    GST-GUARD-NOMINAL-MS T-BUDGET-MS >MS RUN-ARGV-CAPTURE {: ou:len eu:len rc:rc :}
    rc RC>N ;
 
@@ -363,7 +364,7 @@ create GST-GUARD-ERR GST-GUARD-CAP allot
    PROC-ENV-RESET
    s" HABU_GATE_GEN" >LEN val valu >LEN PROC-ENV+
    PROC-ENV-INHERIT-MISSING
-   s" bin/hb" >LEN GST-GUARD-OUT GST-GUARD-CAP >LEN GST-GUARD-ERR GST-GUARD-CAP >LEN
+   ENGINE-CANDIDATE:PATH$ >LEN GST-GUARD-OUT GST-GUARD-CAP >LEN GST-GUARD-ERR GST-GUARD-CAP >LEN
    GST-GUARD-NOMINAL-MS T-BUDGET-MS >MS RUN-ARGV-ENV-CAPTURE {: ou:len eu:len rc:rc :}
    eu LEN>N rc RC>N ;
 

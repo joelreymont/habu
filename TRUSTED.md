@@ -38,7 +38,9 @@ that source is explicitly certified; they are not stale-checked by the default
 | fprim-l | `ptr u8 n n --` | Leaf variant of FPRIM (no x30 frame); same `xt execute` of a code emitter. | `test/run.f` | src/habu/habu1.f | 2026-06-24 |
 | fprim-wid | `ptr u8 n n n --` | Wordlist-targeted FPRIM variant assigns the emitted primitive record to a reserved package WID; raw label emission and dynamic code-emitter execution remain outside checker inference. | `test/owner-wid-internal.f`, `test/run.f` | src/habu/habu1.f | 2026-07-15 |
 | tok-imm? | `ptr u8 n -- n` | Engine primitive axiom: LFIND the token in the live dictionary and push flags&2 (the DNAME-IMM bit), so DO-TOK1 can reject a signature-carrying live immediate as a checked body step (p5 wrong-certificate class, dot habu-checker-fitting-arity-70dc94e4). | `test/immediate-model-test.f` (stdlib/tail-process fork, test/run.f) | src/core/checker.f | 2026-07-13 |
-| parse-imm | `ptr u8 n n --` | Declares a parsing immediate's compile-time payload token count to the checker (GRID: 1, WHERE 3), exempting it from the p5 immediate reject and skipping its payload in the body scan. A wrong count skips live code, so each declaration site is an audited soundness boundary; UNSAFE-TOK? bars it from checked bodies (top-level only). | `lib/ptx/header-test.f` (lint-libs slice + resident ptx group), `test/lower-txn-protection.f`, `test/run.f` | src/core/checker.f | 2026-07-13 |
+| tok-info | `ptr u8 n -- n n` | Engine primitive axiom: resolves the live dictionary record and returns its execution token plus flags carrying the monotonic definition generation, so immediate authorization survives neither shadowing nor rollback-driven address reuse. | `test/immediate-model-test.f`, `test/load-reject-diag-test.f`, `test/run.f` | src/core/checker.f | 2026-07-15 |
+| PARSE-IMM | `ptr u8 n n --` | Binds an exact immediate xt and its compile-time payload-token count. The immediate executes once in pass 1 and is skipped during width-aware replay, whose reconstructed source omits the payload. A wrong count skips live code, so each declaration is an audited top-level boundary barred from checked bodies by UNSAFE-TOK?. | `lib/ptx/header-test.f`, `test/immediate-model-test.f`, `test/lower-txn-protection.f`, `test/run.f` | src/core/checker.f | 2026-07-15 |
+| REPLAY-IMM | `ptr u8 n n --` | Binds an exact immediate xt whose compiler effect must execute again during width-aware replay. Replay runs inside the sealed lowering transaction; the declaration is an audited top-level boundary and UNSAFE-TOK? bars it from checked bodies. | `test/lower-txn-protection.f`, `test/run.f` | src/core/checker.f | 2026-07-15 |
 | linux-spawn-fail | `reg --` | Linux child-side spawn failure reporter: consumes the target register holding the exec-error pipe, emits raw `write`, and exits the child without returning to Forth. | `lib/process-test.f`, `test/run.f` | src/habu/habu1.f | 2026-06-26 |
 | linux-dup2-fd | `reg fd reg --` | Linux child-side raw syscall emitter for conditional `dup2`: source fd register, destination fd immediate, and exec-error-pipe register are role-typed; raw label/syscall code remains the boundary. | `lib/process-test.f`, `test/run.f`, `test/engine-suite.f` | src/habu/habu1.f | 2026-06-26 |
 | linux-chdir-fd | `reg reg --` | Linux child-side raw syscall emitter for optional `chdir`: cwd pointer register and exec-error-pipe register are role-typed; raw label/syscall code remains the boundary. | `lib/process-cwd-test.f`, `test/run.f` | src/habu/habu1.f | 2026-06-26 |
@@ -214,7 +216,9 @@ that source is explicitly certified; they are not stale-checked by the default
 | em-compile-unary-ops | `--` | Emits optimized unary numeric operator dispatch cases. | `tools/compiler-dispatch-test.f`, `test/run.f` | src/habu/habu2.f | 2026-06-25 |
 | em-compile-float-ops | `--` | Emits optimized floating-point operator dispatch cases. | `tools/compiler-dispatch-test.f`, `test/run.f` | src/habu/habu2.f | 2026-06-25 |
 | em-compile-ops | `--` | Chains factored compile-mode arithmetic, shuffle, comparison, unary, and float operator dispatch emitters. | `test/run.f` | src/habu/habu2.f | 2026-06-25 |
+| em-compile-imm-preflight | `--` | Emits the checked-definition immediate preflight before any immediate call: preserves live compiler registers, invokes the paired exact-identity hook under RX protection, restores RW protection, and returns a closed execute, skip, or reject action. | `test/load-reject-diag-test.f`, `test/lower-txn-protection.f`, `tools/build-fixpoint-test.f`, `test/run.f` | src/habu/habu2.f | 2026-07-15 |
 | em-compile-call | `--` | Emits compile-mode lookup, immediate execution, and call generation. | `test/run.f` | src/habu/habu2.f | 2026-06-25 |
+| em-snapshot-hooks-exact | `label --` | Emits snapshot-restore verification that both sealed checker hook cells resolve to the canonical `LOWER-CERT-HOOK:PREFLIGHT` and `LOWER-CERT-HOOK:HOOK` dictionary identities before relocation. | `tools/bootstrap-codegen-test.f`, `tools/build-fixpoint-test.f`, `test/engine-suite.f` | src/habu/habu2.f | 2026-07-15 |
 | em-reset-compile-state | `--` | Emits reset of compile/repl/evaluate state cells after rollback or recovery. | `test/run.f` | src/habu/habu2.f | 2026-06-25 |
 | em-eval-throw-recover | `--` | Emits the evaluate throw-escape recovery entry: transactional frame rollback that delivers the escaping throw code via EVALERR-CELL instead of exiting the process. | `test/run.f` | src/habu/habu2.f | 2026-07-03 |
 | em-repl-recover | `--` | Emits REPL recovery after errors, restoring line-start compile state and stacks. | `test/run.f` | src/habu/habu2.f | 2026-06-25 |
@@ -306,6 +310,7 @@ that source is explicitly certified; they are not stale-checked by the default
 | TOKBUF-RC>PTR | `n -- ptr u8` | Thin identity refinement from a checked, nonnegative anonymous `mmap` result into the checker's token byte-buffer pointer; syscall-result pointer typing is outside checker inference. | `tools/check-test.f`, `tools/build-fixpoint-test.f`, `test/run.f` | src/core/checker.f | 2026-07-03 |
 | USIGS-RC>PTR | `n -- ptr u8` | Thin identity refinement from a checked, nonnegative anonymous `mmap` result into the checker's transient signature byte store; syscall-result pointer typing is outside checker inference. | `tools/check-test.f`, `tools/build-fixpoint-test.f`, `test/run.f` | src/core/checker.f | 2026-07-03 |
 | USIGS-CELL-AT | `n -- ptr a` | Refines a cell-aligned offset inside the byte-addressed transient signature store so checker metadata can write cell headers (e.g. the USIGS-CLEAR head cell) while byte-copy paths keep `ptr u8`. | `tools/check-test.f`, `tools/build-fixpoint-test.f`, `test/run.f` | src/core/checker.f | 2026-07-04 |
+| NORET-ALIGNED-CELL | `ptr u8 -- ptr a` | Identity refinement after `NORET-CELL-OFFSET?` proves the byte-store address is cell-aligned; checked byte-to-cell views remain tracked by dot `habu-add-checked-mem-ebd95492`. | `test/engine-suite.f`, `test/run.f` | src/core/checker.f | 2026-07-16 |
 | HIDX-MEM-NULL | `-- ptr a` | The unallocated symbol-index cache sentinel is a null pointer; the checker cannot type a literal `0` as `ptr a`, so this one-line refinement supplies the typed null that `HIDX-MEM-CLEAR` stores and `HIDX-MEM-READY?` tests. | `tools/check-test.f`, `tools/build-fixpoint-test.f`, `test/run.f` | src/core/checker.f | 2026-07-04 |
 | HIDX-RC>PTR | `n -- ptr n` | Thin identity refinement from a checked, nonnegative anonymous `mmap` result into the checker's symbol-index cell table; syscall-result pointer typing is outside checker inference. | `tools/check-test.f`, `tools/build-fixpoint-test.f`, `test/run.f` | src/core/checker.f | 2026-07-03 |
 | EFFECT-QUERY | `ptr u8 n -- bool` | Effect-read export API entry: resolves a NAME's active effect (user row or prim axiom) via FIND-SIG and reads FEP/ER.DIN/ER.DOUT — raw checker effect-store state outside checker inference — into query state for the checked EFFECT-DIN-N/EFFECT-DOUT-N/EFFECT-DIN-FAM/EFFECT-DOUT-FAM readers that a cold-prefix consumer (src/core/top-row.f, tier-2 dot habu-typed-top-tier-589c550f) calls from an unchecked boundary. | `test/effect-read-api-test.f`, `test/run.f` | src/core/checker.f | 2026-07-15 |
@@ -426,7 +431,7 @@ that source is explicitly certified; they are not stale-checked by the default
 | c-package-record-match | `label label --` | Generated package-dictionary matcher compares the current token with one record and branches to the supplied match or next labels. | `test/seal-package.f`, `test/run.f` | src/habu/habu2.f | 2026-07-11 |
 | c-package-prot-guard | `--` | Generated package reopen guard rejects any package whose public wordlist is registered as protected. | `test/seal-package.f`, `test/run.f` | src/habu/habu2.f | 2026-07-11 |
 | p2f-entry | `label ptr a n n --` | Pass-2 typed-fetch dispatch consumes source-offset width and descriptor rows, emits validation, and executes the frozen bundle-fetch lowering. | `test/run.f` | src/habu/habu2.f | 2026-07-11 |
-| INSTALL | `--` | Protected checker-hook installer owns the fixed `LOWER-CERT-HOOK:HOOK` execution token and restores the default fail-closed checker after package sealing. | `tools/build-fixpoint-test.f`, `test/gate-aot-negative.f`, `test/engine-suite.f`, `test/run.f` | src/core/check-hook.f | 2026-07-11 |
+| INSTALL | `--` | Atomically installs the exact `LOWER-CERT-HOOK:PREFLIGHT` and `LOWER-CERT-HOOK:HOOK` pair; snapshot restore independently verifies both canonical dictionary identities. | `tools/checked-boundary-lint-test.f`, `tools/trusted-inventory-test.f`, `tools/build-fixpoint-test.f`, `test/engine-suite.f`, `test/run.f` | src/core/check-hook.f | 2026-07-15 |
 | TR-INSTALL | `--` | Installs the tier-1 top-row tracker hook through the guarded-deref `set-top-check` trust-boundary prim (mirrors `LOWER-CERT-HOOK:INSTALL`'s `' HOOK set-check`); hook installation is not expressible in the checked language. | `test/top-row-warn-test.f`, `test/run.f` | src/core/top-row.f | 2026-07-14 |
 | TR-CERT-DOUT-EMPTY? | `ptr u8 n -- bool` | Unchecked boundary that calls the checker effect-read API (EFFECT-QUERY/EFFECT-DOUT-N) from the checked tier-1 tracker to detect a certified word producing no fixed outputs, so the row pops its declared din precisely instead of graying the tail; reading raw effect-store state is not expressible in the checked language. | `test/top-row-warn-test.f`, `test/run.f` | src/core/top-row.f | 2026-07-15 |
 | CHECKER-CERT-CALL | `ptr u8 n n n --` | Single dynamic-call boundary for the installed lowering-certificate producer; installation is private and single-assignment. | `tools/build-fixpoint-test.f`, `test/lower-cert.f`, `test/run.f` | src/core/checker.f | 2026-07-11 |
@@ -791,14 +796,18 @@ that source is explicitly certified; they are not stale-checked by the default
 | CHECKER-DEFRECORD | `ptr u8 n ptr u8 n --` | Check driver models the checker primitive that publishes one parsed record definition and its source descriptor. | `tools/check-test.f`, `test/run.f` | tools/check-core.f | 2026-07-12 |
 | CHECKER-SCOPE-START | `--` | Check driver opens the checker transaction that isolates generated dependency effects from the parent session. | `tools/check-test.f`, `test/run.f` | tools/check-core.f | 2026-07-12 |
 | CHECKER-SCOPE-DONE | `--` | Check driver closes the checker transaction and rolls back generated dependency effects after the checked child verdict. | `tools/check-test.f`, `test/run.f` | tools/check-core.f | 2026-07-12 |
+| MODEL-TEMP | `--` | Test-only generated rollback boundary declares the exact temporary immediate identity inside the transaction whose dictionary and model-table state must be restored together. | `tools/build-fixpoint-test.f`, `test/load-reject-diag-test.f` | tools/build-fixpoint-test.f | 2026-07-16 |
+| ROLLBACK | `--` | Test-only generated rollback boundary evaluates the fixed fixture that defines and models a temporary immediate, records its xt, and deliberately throws through an undefined token so transactional rollback can be verified. | `tools/build-fixpoint-test.f`, `test/load-reject-diag-test.f` | tools/build-fixpoint-test.f | 2026-07-16 |
+| ASSERT-REUSE | `--` | Test-only generated identity boundary compares the recycled code address with the saved temporary xt; the checker intentionally keeps executable identities opaque while the fixture must prove exact address reuse. | `tools/build-fixpoint-test.f`, `test/load-reject-diag-test.f` | tools/build-fixpoint-test.f | 2026-07-16 |
 
 ## Ratchet baseline
 
 `tools/trusted-inventory.f` inventories every trust site in checked-in `.f`/`.fs`
 sources (skipping `.jj-ws/` and `.dots/`): `TRUSTED:` definitions, `s" name"
 s" effect" TRUST rows, `0 set-check` boundaries, `HOOK-INSTALL` — every
-`' NAME set-check` / `['] NAME set-check` hook install, named by the installed
-hook so a rogue install is visible in the TSV and ratcheted like any other
+`' NAME set-check` / `['] NAME set-check` hook install and every atomic
+`['] LOWER-CERT-HOOK:PREFLIGHT ['] LOWER-CERT-HOOK:HOOK set-checks` pair, named by both exact qualified identities so a rogue
+install is visible in the TSV and ratcheted like any other
 kind — and `TRUST-BARE`, the fail-closed catch-all for any other `TRUST` or
 `set-check` use: a bare `TRUST` call with computed strings (the one known site
 is `TRUST-SIGNATURE` in `src/habu/verify-source.f`, which grants trust from
@@ -806,11 +815,13 @@ scanned signature text) or a `set-check` whose argument is neither literal `0`
 nor a ticked name. The only excluded `set-check` shape is a name reference
 (`' set-check` / `['] set-check`), which takes the xt without executing it.
 Hook identity is statically policed: `tools/checked-boundary-lint.f`
-(`UB-HANDLE-INSTALL`) validates every `' NAME set-check` / `['] NAME set-check`
-install against the audited hook list (`HOOK`, `USER-HOOK`, `SNAP-CHECK-HOOK`,
+(`UB-HANDLE-INSTALL`) validates every single-hook install against the audited
+hook list (`HOOK`, `USER-HOOK`, `SNAP-CHECK-HOOK`,
 `CHK-CHECK-HOOK`, `LINT-CHECK-HOOK`, `ES-VERDICT-HOOK`, `PROP-CHECK-HOOK`) and
 rejects any other installed name with an `E-UNAUDITED-HOOK` finding, so
-`' EVIL-HOOK set-check` now fails that lint. Each `HOOK-INSTALL` site is covered
+`' EVIL-HOOK set-check` fails that lint. Atomic installs must be exactly
+`LOWER-CERT-HOOK:PREFLIGHT + LOWER-CERT-HOOK:HOOK`; unqualified tails or either substituted identity are `E-UNAUDITED-HOOK-PAIR`. Each
+`HOOK-INSTALL` site is covered
 by a `file:name` classification row (below), so the derived ratchet counts every
 install site individually; identity policing is the lint-level guard against
 rogue names at those sites.
@@ -955,7 +966,7 @@ rendering, so the checker can validate them without a Markdown implementation.
 
 | Owner | Completed semantic boundary | Owning evidence |
 |---|---|---|
-| <a id="cap-checker-hook-identity"></a>`cap:checker-hook-identity` | Audited hook-identity gate only: checked-boundary lint rejects installed names outside the landed canonical allowlist across engine, AOT, snapshot, lint, and tests. It does not claim post-seal compiler/friend-latch authorization; that residual remains owned by live dot `habu-seal-set-check-b3676b33`. | `test/engine-suite.f`, `test/prop-test-core.f`, `tools/codegen-role.f` |
+| <a id="cap-checker-hook-identity"></a>`cap:checker-hook-identity` | Audited hook-identity gate: checked-boundary lint rejects noncanonical single or atomic hook installs, while snapshot restore resolves and compares the exact `LOWER-CERT-HOOK:PREFLIGHT`/`HOOK` dictionary pair before rebasing. | `tools/checked-boundary-lint-test.f`, `tools/trusted-inventory-test.f`, `tools/build-fixpoint-test.f` |
 | <a id="cap-checker-registry-whitebox"></a>`cap:checker-registry-whitebox` | Test-only leaves expose pre-hook checker registry layout metadata, marks, and individual unmodeled mutations so checked orchestration proves growth and exact rollback. | `test/engine-suite.f` |
 | <a id="cap-fetched-adt-validation"></a>`cap:fetched-adt-validation` | Test-only hostile whitebox access constructs malformed fetched ADT layouts and proves growth, guard, product, and width-one rejection. | `test/layout-valid-growth.f`, `test/layout-valid-guard-base.f`, `test/layout-valid-product-bad.f`, `test/layout-valid-w1-bad.f` |
 | <a id="cap-qualified-family-payloads"></a>`cap:qualified-family-payloads` | Test-only nominal payload casts construct and inspect qualified family values after schema resolution. | `test/type-decl-suite.f` |
@@ -1054,7 +1065,7 @@ src/habu/habu1.f:emit-fp-prims builder-emit habu-builder-trust-rows-c5d41af6
 src/habu/habu1.f:linux-setpgid-self builder-emit habu-builder-trust-rows-c5d41af6
 src/habu/habu1.f:spawn-darwin-zero-attr builder-emit habu-builder-trust-rows-c5d41af6
 src/habu/habu1.f:spawn-darwin-attr-defaults builder-emit habu-builder-trust-rows-c5d41af6
-src/habu/habu2.f builder-emit habu-builder-trust-rows-c5d41af6 126
+src/habu/habu2.f builder-emit habu-builder-trust-rows-c5d41af6 128
 src/habu/hide.f:BFR-N>REC builder-emit habu-builder-trust-rows-c5d41af6
 src/habu/hide.f:BFR-A>U8 builder-emit habu-builder-trust-rows-c5d41af6
 src/habu/hide.f:BFR-N>U8 builder-emit habu-builder-trust-rows-c5d41af6
@@ -1204,12 +1215,15 @@ src/core/checker.f:ARENA-RC>PTR discharge-candidate habu-checker-self-typing-9ff
 src/core/checker.f:TOKBUF-RC>PTR discharge-candidate habu-checker-self-typing-9ff8ba86
 src/core/checker.f:USIGS-RC>PTR discharge-candidate habu-checker-self-typing-9ff8ba86
 src/core/checker.f:USIGS-CELL-AT discharge-candidate habu-checker-self-typing-9ff8ba86
+src/core/checker.f:NORET-ALIGNED-CELL discharge-candidate habu-add-checked-mem-ebd95492
 src/core/checker.f:HIDX-MEM-NULL discharge-candidate habu-checker-self-typing-9ff8ba86
 src/core/checker.f:HIDX-RC>PTR discharge-candidate habu-checker-self-typing-9ff8ba86
 src/core/checker.f:EFFECT-QUERY discharge-candidate habu-checker-self-typing-9ff8ba86
 src/core/checker.f:CHECKER-CERT-CALL prim-axiom habu-primitive-effect-axiom-1119f176
 src/core/checker.f:tok-imm? prim-axiom habu-primitive-effect-axiom-1119f176
-src/core/checker.f:parse-imm prim-axiom habu-primitive-effect-axiom-1119f176
+src/core/checker.f:tok-info prim-axiom habu-primitive-effect-axiom-1119f176
+src/core/checker.f:PARSE-IMM prim-axiom habu-primitive-effect-axiom-1119f176
+src/core/checker.f:REPLAY-IMM prim-axiom habu-primitive-effect-axiom-1119f176
 src/core/roles.f:DTC-EVAL prim-axiom habu-typed-defining-words-aa224eb5
 src/core/roles.f:>IDX prim-axiom habu-primitive-effect-axiom-1119f176
 src/core/roles.f:IDX>N prim-axiom habu-primitive-effect-axiom-1119f176
@@ -1632,7 +1646,7 @@ test/engine-suite.f:P5 test-metaprog habu-primitive-effect-axiom-1119f176
 test/engine-suite.f:ES-TI test-metaprog habu-primitive-effect-axiom-1119f176
 test/engine-suite.f:TP test-metaprog habu-primitive-effect-axiom-1119f176
 test/engine-suite.f:TPN2 test-metaprog habu-primitive-effect-axiom-1119f176
-test/immediate-model-test.f:IMT-PASSES test-metaprog habu-primitive-effect-axiom-1119f176
+test/immediate-model-test.f:PASSES test-metaprog habu-primitive-effect-axiom-1119f176
 test/engine-suite.f:ES-PATCH32 test-metaprog habu-checker-capability-gate-14022ba9
 test/engine-suite.f:set-check test-metaprog cap:checker-hook-identity
 test/engine-suite.f test-metaprog habu-seal-set-check-b3676b33 6
@@ -1904,8 +1918,8 @@ tools/codegen-role.f test-metaprog habu-seal-set-check-b3676b33 1
 tools/codegen-role.f:CGR-EVALUATE test-metaprog habu-primitive-effect-axiom-1119f176
 tools/codegen-role.f:CGR-CHECK! test-metaprog habu-primitive-effect-axiom-1119f176
 tools/codegen-role.f:CGR-EVALUATE-UNCHECKED test-metaprog cap:checker-hook-identity
-src/core/check-hook.f:HOOK stdlib-boundary cap:checker-hook-identity
 src/core/check-hook.f:INSTALL stdlib-boundary cap:checker-hook-identity
+src/core/check-hook.f:LOWER-CERT-HOOK:PREFLIGHT+LOWER-CERT-HOOK:HOOK stdlib-boundary cap:checker-hook-identity
 src/core/top-row.f:TR-INSTALL stdlib-boundary cap:checker-hook-identity
 src/core/top-row.f:TR-CERT-DOUT-EMPTY? stdlib-boundary habu-checker-self-typing-9ff8ba86
 src/habu/aot.f:USER-HOOK builder-emit cap:checker-hook-identity

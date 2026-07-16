@@ -156,7 +156,7 @@ variable GB-LC-OFF
 
 : GB-HB-BUILD-CAPTURE ( -- )
    s" maker-run" GS-EVENT
-   s" bin/hb" GE-TIMEOUT-MS GE-RUN-ENV
+   GE-HB$ GE-TIMEOUT-MS GE-RUN-ENV
    ;
 
 : GB-HB-BUILD ( ptr u8 n -- ) {: label:ptr labelu :}

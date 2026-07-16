@@ -570,6 +570,7 @@ create LF $0A c,
    s" BF-APPEND-COMBINATORS" EXPECT-FILE
    s" src/habu/treeshake.f" EXPECT-FILE
    s" src/habu/rt.f" EXPECT-FILE
+   s" BF-APPEND-TARGET-PROC-WATCH" EXPECT-FILE
    s" src/habu/crash.f" EXPECT-FILE
    s" BF-APPEND-IMAGE-BYTES" EXPECT-FILE
    s" BF-APPEND-TARGET-IMAGE" EXPECT-FILE
@@ -760,18 +761,30 @@ variable COUNT-N
       s" src/os/linux/layout.f" s" HB-TARGET-MACOS?" SCOPE-BEFORE
    s" : BF-APPEND-TARGET-LAYOUT" s" : BF-APPEND-TARGET-SYS"
       s" HB-TARGET-MACOS?" s" src/os/macos/layout.f" SCOPE-BEFORE
-   s" : BF-APPEND-TARGET-SYS" s" : BF-APPEND-TARGET-FLAG"
+   s" : BF-APPEND-TARGET-SYS" s" : BF-APPEND-TARGET-PROC-WATCH"
       s" src/os/" SCOPE-N 2 T=
-   s" : BF-APPEND-TARGET-SYS" s" : BF-APPEND-TARGET-FLAG"
+   s" : BF-APPEND-TARGET-SYS" s" : BF-APPEND-TARGET-PROC-WATCH"
       s" src/os/linux/sys.f" SCOPE-ONE
-   s" : BF-APPEND-TARGET-SYS" s" : BF-APPEND-TARGET-FLAG"
+   s" : BF-APPEND-TARGET-SYS" s" : BF-APPEND-TARGET-PROC-WATCH"
       s" src/os/macos/sys.f" SCOPE-ONE
-   s" : BF-APPEND-TARGET-SYS" s" : BF-APPEND-TARGET-FLAG"
+   s" : BF-APPEND-TARGET-SYS" s" : BF-APPEND-TARGET-PROC-WATCH"
       s" HB-TARGET-LINUX?" s" src/os/linux/sys.f" SCOPE-BEFORE
-   s" : BF-APPEND-TARGET-SYS" s" : BF-APPEND-TARGET-FLAG"
+   s" : BF-APPEND-TARGET-SYS" s" : BF-APPEND-TARGET-PROC-WATCH"
       s" src/os/linux/sys.f" s" HB-TARGET-MACOS?" SCOPE-BEFORE
-   s" : BF-APPEND-TARGET-SYS" s" : BF-APPEND-TARGET-FLAG"
+   s" : BF-APPEND-TARGET-SYS" s" : BF-APPEND-TARGET-PROC-WATCH"
       s" HB-TARGET-MACOS?" s" src/os/macos/sys.f" SCOPE-BEFORE
+   s" : BF-APPEND-TARGET-PROC-WATCH" s" : BF-APPEND-TARGET-FLAG"
+      s" src/os/" SCOPE-N 2 T=
+   s" : BF-APPEND-TARGET-PROC-WATCH" s" : BF-APPEND-TARGET-FLAG"
+      s" src/os/linux/proc-watch.f" SCOPE-ONE
+   s" : BF-APPEND-TARGET-PROC-WATCH" s" : BF-APPEND-TARGET-FLAG"
+      s" src/os/macos/proc-watch.f" SCOPE-ONE
+   s" : BF-APPEND-TARGET-PROC-WATCH" s" : BF-APPEND-TARGET-FLAG"
+      s" HB-TARGET-LINUX?" s" src/os/linux/proc-watch.f" SCOPE-BEFORE
+   s" : BF-APPEND-TARGET-PROC-WATCH" s" : BF-APPEND-TARGET-FLAG"
+      s" src/os/linux/proc-watch.f" s" HB-TARGET-MACOS?" SCOPE-BEFORE
+   s" : BF-APPEND-TARGET-PROC-WATCH" s" : BF-APPEND-TARGET-FLAG"
+      s" HB-TARGET-MACOS?" s" src/os/macos/proc-watch.f" SCOPE-BEFORE
    s" : BF-APPEND-TARGET-FLAG" s" : BF-APPEND-IMAGE-BYTES"
       s" src/os/" SCOPE-N 2 T=
    s" : BF-APPEND-TARGET-FLAG" s" : BF-APPEND-IMAGE-BYTES"
@@ -866,10 +879,10 @@ public
       s" BF-APPEND-CORE-FILES" s" LOWER-CERT-HOOK:INSTALL" SCOPE-BEFORE
    0 FIXPOINT-U !
    s" : BF-APPEND-COMMON" s" : BF-APPEND-DRIVER-IO" MODE-COMMON s" "
-      [: FIXPOINT+ ;] CAPTURE 31 T=
+      [: FIXPOINT+ ;] CAPTURE 32 T=
    EXPECT-FIXPOINT-COMMON
    FIXPOINT$ EXPECT$ T$=
-   FIXPOINT$ 31 ASSERT-UNIQUE
+   FIXPOINT$ 32 ASSERT-UNIQUE
    FIXPOINT-TARGETS ;
 
 ;package
@@ -920,15 +933,406 @@ public
 
 : BCG-TEST-TOK-IMM-MIRROR ( -- )
    s" bootstrap/cg/forth.fs" BCG-LOAD
+   s" : EM-TOK-FIND ( -- )" BCG-POS-FOUND {: bstart:n :}
+   bstart s" : BTOKIMM ( -- )" BCG-AFTER-FOUND {: bend:n :}
+   bstart bend s" SP SP 160 SUBI," BCG-MUST-FIND-BEFORE
+   bstart bend s" 0 SP 8 STR,  1 SP 16 STR," BCG-MUST-FIND-BEFORE
+   bstart bend s" 16 SP 120 STR,  17 SP 128 STR," BCG-MUST-FIND-BEFORE
+   bstart bend s" 11 0 MOVZ," BCG-MUST-FIND-BEFORE
+   bstart bend s" 0 SP 8 LDR,  1 SP 16 LDR," BCG-MUST-FIND-BEFORE
+   bstart bend s" 16 SP 120 LDR,  17 SP 128 LDR," BCG-MUST-FIND-BEFORE
+   bstart bend s" 11 SP 136 LDR,  13 SP 144 LDR," BCG-MUST-FIND-BEFORE
+   bstart bend s" SP SP 160 ADDI," BCG-MUST-FIND-BEFORE
    s" : BTOKIMM ( -- )" BCG-MUST-HAVE
    s" LFIND @ BL," BCG-MUST-HAVE
    s" 9 13 2 ANDI," BCG-MUST-HAVE
    s" ['] BTOKIMM FPRIM" BCG-MUST-HAVE
+   s" : BTOKINFO ( -- )" BCG-POS-FOUND {: bistart:n :}
+   bistart s" : EMIT-ARITH-PRIMS ( -- )" BCG-AFTER-FOUND {: biend:n :}
+   bistart biend s" 9 13 0 ADDI,  A G-PUSH" BCG-MUST-FIND-BEFORE
    s" src/habu/habu2.f" BCG-LOAD
+   s" : EM-TOK-FIND ( -- )" BCG-POS-FOUND {: nstart:n :}
+   nstart s" : BTOKIMM ( -- )" BCG-AFTER-FOUND {: nend:n :}
+   nstart nend s" SP SP 160 SUBI," BCG-MUST-FIND-BEFORE
+   nstart nend s" 0 SP 8 STR,  1 SP 16 STR," BCG-MUST-FIND-BEFORE
+   nstart nend s" 16 SP 120 STR,  17 SP 128 STR," BCG-MUST-FIND-BEFORE
+   nstart nend s" 11 0 MOVZ," BCG-MUST-FIND-BEFORE
+   nstart nend s" 0 SP 8 LDR,  1 SP 16 LDR," BCG-MUST-FIND-BEFORE
+   nstart nend s" 16 SP 120 LDR,  17 SP 128 LDR," BCG-MUST-FIND-BEFORE
+   nstart nend s" 11 SP 136 LDR,  13 SP 144 LDR," BCG-MUST-FIND-BEFORE
+   nstart nend s" SP SP 160 ADDI," BCG-MUST-FIND-BEFORE
    s" : BTOKIMM ( -- )" BCG-MUST-HAVE
    s" LFIND LABEL@ BL," BCG-MUST-HAVE
    s" 9 13 2 ANDI," BCG-MUST-HAVE
-   s" ['] BTOKIMM 2 GDEREF-F" BCG-MUST-HAVE ;
+   s" ['] BTOKIMM 2 GDEREF-F" BCG-MUST-HAVE
+   s" : BTOKINFO ( -- )" BCG-POS-FOUND {: nistart:n :}
+   nistart s" : EMIT-PRIMITIVE-SECTIONS ( -- )" BCG-AFTER-FOUND {: niend:n :}
+   nistart niend s" 9 13 0 ADDI,  A G-PUSH" BCG-MUST-FIND-BEFORE ;
+
+: BCG-TEST-HIDX-TOMBSTONE ( -- )
+   s" src/habu/habu1.f" BCG-LOAD
+   s" : C-HIDX-INS ( -- )" BCG-POS-FOUND {: start:n :}
+   start s" : C-HIDX-DUP? ( -- )" BCG-AFTER-FOUND {: end:n :}
+   start end s" 0 0 MOVZ," BCG-MUST-FIND-BEFORE
+   start end s" istale LBL," BCG-MUST-FIND-BEFORE
+   start end s" 0 17 0 ADDI,  inext B," BCG-MUST-FIND-BEFORE
+   start end s" iempty LBL," BCG-MUST-FIND-BEFORE
+   start end s" 17 0 0 ADDI,  ipublish B," BCG-MUST-FIND-BEFORE
+   start end s" ifull LBL," BCG-MUST-FIND-BEFORE
+   start end s" ipublish LBL," BCG-MUST-FIND-BEFORE
+   start end s" 15 17 0 STR," BCG-MUST-FIND-BEFORE ;
+
+package TOP-HOOK-ABI
+
+: HELPER ( ptr u8 n ptr u8 n -- ) {: opener:ptr openeru:n closer:ptr closeru:n :}
+   opener openeru BCG-POS-FOUND {: start:n :}
+   start closer closeru BCG-AFTER-FOUND {: end:n :}
+   start end s" 16 13 LFIND-PUBLIC-MASK ANDI," BCG-MUST-FIND-BEFORE
+   start end s" 16 13 0 ADDI," BCG-MUST-NOT-FIND-BEFORE ;
+
+public
+
+: TEST ( -- )
+   s" src/habu/layout.f" BCG-LOAD
+   s" $FFFF constant LFIND-PUBLIC-MASK" BCG-MUST-HAVE
+   s" 16 constant LFIND-GEN-SHIFT" BCG-MUST-HAVE
+   s" bootstrap/cg/forth.fs" BCG-LOAD
+   s" $FFFF constant LFIND-PUBLIC-MASK" BCG-MUST-HAVE
+   s" 16 constant LFIND-GEN-SHIFT" BCG-MUST-HAVE
+   s" src/habu/habu2.f" BCG-LOAD
+   s" : C-TOPHOOK-FLAGS ( n -- )" s" : C-TOPHOOK-CALL ( -- )" HELPER
+   s" : C-TOPHOOK-CALL ( -- )" s" : EMIT-TOPHOOK ( -- )" HELPER ;
+
+;package
+
+package LFIND-ABI
+
+: NATIVE-PACK ( ptr u8 n ptr u8 n -- )
+   {: opener:ptr openeru:n closer:ptr closeru:n :}
+   opener openeru BCG-POS-FOUND {: start:n :}
+   start closer closeru BCG-AFTER-FOUND {: end:n :}
+   start end s" 8 12 DGEN-SHIFT LSRI," BCG-MUST-FIND-BEFORE
+   start end s" 8 8 LFIND-GEN-SHIFT LSLI," BCG-MUST-FIND-BEFORE
+   start end s" 13 1 MOVZ,  13 13 14 ORR,  13 13 8 ORR" BCG-MUST-FIND-BEFORE ;
+
+public
+
+: TEST ( -- )
+   s" src/habu/habu1.f" BCG-LOAD
+   s" FIND-HMATCH LABEL@ LBL," s" FIND-HNEXT LABEL@ LBL," NATIVE-PACK
+   s" FIND-MATCH LABEL@ LBL," s" FIND-NEXT LABEL@ LBL," NATIVE-PACK
+   s" bootstrap/cg/forth.fs" BCG-LOAD
+   s" have LBL," BCG-POS-FOUND {: start:n :}
+   start s" \ ---- NUMBER?" BCG-AFTER-FOUND {: end:n :}
+   start end s" 8 12 DGEN-SHIFT LSRI," BCG-MUST-FIND-BEFORE
+   start end s" 8 8 LFIND-GEN-SHIFT LSLI," BCG-MUST-FIND-BEFORE
+   start end s" 13 1 MOVZ,  13 13 15 ORR,  13 13 8 ORR" BCG-MUST-FIND-BEFORE ;
+
+;package
+
+package CANDIDATE-PROVENANCE-CONTRACT
+
+: CONTRACT ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n -- )
+   {: opener:ptr openeru:n closer:ptr closeru:n use:ptr useu:n bypass:ptr bypassu:n :}
+   opener openeru T-LABEL
+   opener openeru BCG-POS-FOUND {: start:n :}
+   closer closeru T-LABEL
+   start closer closeru BCG-AFTER-FOUND {: end:n :}
+   use useu T-LABEL
+   start end use useu BCG-MUST-FIND-BEFORE
+   bypass bypassu T-LABEL
+   start end bypass bypassu BCG-MUST-NOT-FIND-BEFORE ;
+
+: NO-BYPASS ( ptr u8 n -- )
+   2dup T-LABEL
+   BCG-LOAD
+   S\" s\" bin/hb\"" BCG-MUST-LACK ;
+
+: SHARED ( ptr u8 n -- )
+   2dup NO-BYPASS
+   BCG-LOAD
+   s" ENGINE-CANDIDATE:PATH$" BCG-MUST-HAVE
+   s" ENGINE-PATH$ >LEN" BCG-MUST-LACK ;
+
+: BUILD-EXPLICIT ( -- )
+   s" tools/build-fixpoint.f" BCG-LOAD
+   s" package FIXPOINT-SEED"
+   s" ;package"
+   s" ENGINE-CANDIDATE:VALIDATE$"
+   s" EXECUTABLE?" CONTRACT
+   s" : BF-ENGINE$ ( -- ptr u8 n )"
+   s" package FIXPOINT-SEED"
+   s" ENGINE-CANDIDATE:VALIDATE$"
+   s" EXECUTABLE?" CONTRACT ;
+
+: GATE-EXPLICIT ( -- )
+   s" test/gate-engine-lib.f" BCG-LOAD
+   s" : GE-EXPECT-CANDIDATE ( -- )"
+   s" : GE-SRC-CANDIDATE! ( -- )"
+   s" ENGINE-CANDIDATE:VALIDATE$"
+   s" EXECUTABLE?" CONTRACT
+   s" test/gate-common-lib.f" BCG-LOAD
+   s" : GE-HB$ ( -- ptr u8 n )"
+   s" : GE-CHECK-EXE ( -- ptr u8 n )"
+   s" ENGINE-CANDIDATE:VALIDATE$"
+   s" EXECUTABLE?" CONTRACT ;
+
+: RUNNER-EXPLICIT ( -- )
+   s" test/run-lib.f" BCG-LOAD
+   s" : TR-ENGINE-BUILD-ARGS ( -- )"
+   s" : TR-ENGINE-FIXTURES-ARGS ( -- )"
+   S\" s\" --candidate-out\" TR-ARG+"
+   S\" s\" HABU_UNDER_TEST\"" CONTRACT
+   s" : TR-PHASE-UNDER-ENV? ( idx -- bool )"
+   s" : TR-PHASE-UNDER-EXE? ( idx -- bool )"
+   s" TR-UNDER-READY @ 0= if TR-FALSE exit then"
+   s" TR-PHASE-UNDER-BUILD?" CONTRACT
+   s" : TR-DRAIN-UNTIL-UNDER ( -- )"
+   s" : TR-CANDIDATE-HOST-ORDER@ ( idx -- idx )"
+   s" CAND-BUILD:WAIT"
+   s" begin TR-UNDER-DONE?" CONTRACT
+   s" test/run-resident.f" BCG-LOAD
+   s" : TR-R-READY-CANDIDATE-START-SHARED ( -- )"
+   s" : TR-R-EARLY-HOST-START-DIRECT ( -- )"
+   s" 36 >IDX TR-R-PHASE-START-ONCE"
+   s" TR-FALSE" CONTRACT
+   s" test/run-lib.f" BCG-LOAD
+   s" : TR-EXPECT-UNDER ( -- )"
+   s" : TR-UNDER-ARG? ( -- bool )"
+   s" ENGINE-CANDIDATE:VALIDATE$"
+   s" EXECUTABLE?" CONTRACT
+   s" : TR-UNDER-IMPORT ( -- )"
+   s" : TR-BASE ( -- )"
+   s" ENGINE-CANDIDATE:VALIDATE$"
+   s" EXECUTABLE?" CONTRACT
+   s" test/proc-pty.f" BCG-LOAD
+   s" : HB-EXE$ ( -- ptr u8 n )"
+   s" : RBUF-DUMP ( -- )"
+   s" ENGINE-CANDIDATE:VALIDATE$"
+   s" EXECUTABLE?" CONTRACT ;
+
+: FS-EXACT ( -- )
+   s" lib/fs.f" BCG-LOAD
+   s" : EXECUTABLE? ( ptr u8 n -- bool )"
+   s" : BASENAME ( ptr u8 n -- ptr u8 n )"
+   s" 2dup FILE? 0= if 2drop FS-FALSE exit then"
+   s" DIR?" CONTRACT
+   s" : EXECUTABLE? ( ptr u8 n -- bool )"
+   s" : BASENAME ( ptr u8 n -- ptr u8 n )"
+   s" FS-PATHZ FS-X-OK access 0= ;"
+   s" DIR?" CONTRACT ;
+
+: ENGINE-EXACT ( -- )
+   s" lib/engine-candidate.f" BCG-LOAD
+   s" : VALIDATE$ ( ptr u8 n -- ptr u8 n )"
+   s" : OVERRIDE$? ( -- ptr u8 n bool )"
+   s" 2dup EXECUTABLE? 0= if E-FS-OPEN throw then"
+   s" DIR?" CONTRACT
+   s" : PATH$ ( -- ptr u8 n )"
+   s" ;package"
+   s" RAW$ VALIDATE$"
+   S\" s\" bin/hb\"" CONTRACT ;
+
+: EXPLICIT ( -- )
+   BUILD-EXPLICIT
+   GATE-EXPLICIT
+   RUNNER-EXPLICIT
+   FS-EXACT
+   ENGINE-EXACT ;
+
+public
+
+: TEST ( -- )
+   s" tools/build-fixpoint-test.f" BCG-LOAD
+   s" : COPY-TO ( ptr u8 n -- )"
+   s" ;package"
+   s" ENGINE-CANDIDATE:PATH$"
+   S\" s\" HABU_UNDER_TEST\" GETENV" CONTRACT
+   s" : BFT-SPAWN-FIXPOINT ( -- n n n )"
+   s" : BFT-RUN-BUILD ( -- n n n )"
+   s" ENGINE-CANDIDATE:PATH$ >LEN PROC-ARGV-PREPARE"
+   S\" s\" bin/hb\" >LEN PROC-ARGV-PREPARE" CONTRACT
+   s" : BFT-ARGV-FIXPOINT ( ptr u8 n ptr u8 n -- n )"
+   s" : BFT-ARGV-BUILD ( -- n )"
+   S\" s\" HABU_UNDER_TEST\" >LEN ENGINE-CANDIDATE:PATH$ >LEN PROC-ENV+"
+   S\" s\" HABU_UNDER_TEST\" GETENV" CONTRACT
+   s" : BFT-STALE-ARGV ( -- )"
+   s" : BFT-STALE-SPAWN ( -- n n n )"
+   S\" s\" HABU_UNDER_TEST\" >LEN ENGINE-CANDIDATE:PATH$ >LEN PROC-ENV+"
+   S\" s\" HABU_UNDER_TEST\" GETENV" CONTRACT
+   s" tools/build-fixpoint.f" BCG-LOAD
+   s" : BF-PREPARE-ENV ( -- )"
+   s" : BF-FINISH-PID ( pid -- n )"
+   S\" s\" HABU_UNDER_TEST\" >LEN ENGINE-CANDIDATE:PATH$ >LEN PROC-ENV+"
+   S\" s\" HABU_UNDER_TEST\" GETENV" CONTRACT
+   s" package FIXPOINT-SEED"
+   s" ;package"
+   s" ENGINE-CANDIDATE:PATH$"
+   S\" s\" bin/hb\"" CONTRACT
+   s" : BF-BOOTSTRAP-STAGE ( -- )"
+   s" : BF-RUN-STAGE ( -- )"
+   S\" FIXPOINT-SEED:PATH$ s\" stage2-src\""
+   S\" s\" bin/hb\" s\" stage2-src\"" CONTRACT
+   s" test/gate-diagnostics-lib.f" NO-BYPASS
+   s" test/gate-dictionary-lib.f" NO-BYPASS
+   s" test/gate-engine-lib.f" NO-BYPASS
+   s" test/gate-engine-lib.f" BCG-LOAD
+   s" ENGINE-CANDIDATE:OVERRIDE$?" BCG-MUST-HAVE
+   s" test/gate-build-common.f" NO-BYPASS
+   s" test/gate-debug-lib.f" NO-BYPASS
+   s" test/gate-hb-build-repl.f" NO-BYPASS
+   s" test/gate-common-lib.f" BCG-LOAD
+   s" test/gate-pool-test.f" BCG-LOAD
+   s" ENGINE-CANDIDATE:PATH$" BCG-MUST-HAVE
+   s" : GPT-HB$ ( -- ptr u8 n )" BCG-MUST-LACK
+   S\" s\" bin/hb\"" BCG-MUST-LACK
+   s" test/gate-stats-test.f" BCG-LOAD
+   s" ENGINE-CANDIDATE:PATH$" BCG-MUST-HAVE
+   s" package STATS-CANDIDATE" BCG-MUST-LACK
+   S\" s\" bin/hb\"" BCG-MUST-LACK
+   s" lib/build-test.f" BCG-LOAD
+   s" : SHEBANG ( -- )"
+   s" ;package"
+   s" ENGINE-CANDIDATE:PATH$"
+   S\" s\" HABU_UNDER_TEST\" GETENV" CONTRACT
+   s" maki/cad-test.f" BCG-LOAD
+   s" : RPL-CHILD-TILE$ ( -- ptr u8 n )"
+   s" T-RESET"
+   s" ENGINE-CANDIDATE:PATH$ >LEN"
+   S\" s\" bin/hb\" >LEN" CONTRACT
+   s" maki/cad-test.f" SHARED
+   s" maki/eval-emit.f" SHARED
+   s" maki/eval-device.f" SHARED
+   s" maki/eval-device-sm.f" SHARED
+   s" maki/eval-emit-device.f" SHARED
+   s" maki/gpu.f" SHARED
+   s" maki/lower-device-test.f" SHARED
+   s" maki/lower-mm-device-test.f" SHARED
+   s" maki/lower-model-device.f" SHARED
+   s" maki/lower-mv-device-test.f" SHARED
+   s" maki/lower-red-device-test.f" SHARED
+   s" maki/onnx/deploy-device.f" SHARED
+   s" maki/onnx/deploy-composed-device.f" SHARED
+   EXPLICIT
+   s" tools/ptx/saxpy-test.f" NO-BYPASS
+   s" tools/ptx/device-gold-test.f" NO-BYPASS
+   s" tools/ptx/fusion-emit.f" NO-BYPASS
+   s" tools/cli-run.f" NO-BYPASS
+   s" tools/check-core.f" NO-BYPASS
+   s" tools/diagnose-hb-test.f" NO-BYPASS
+   s" tools/aot-call-report-test.f" NO-BYPASS
+   s" tools/bundle-lib-test-lib.f" NO-BYPASS
+   s" lib/test/runner-test.f" NO-BYPASS
+   s" tools/stdlib-manifest-test.f" NO-BYPASS
+   s" tools/hb-cli-contracts-test.f" NO-BYPASS
+   s" lib/process-test.f" NO-BYPASS
+   s" lib/process-command-test.f" NO-BYPASS
+   s" lib/process-env-test.f" BCG-LOAD
+   s" : TEST-BUDGET-ENV ( -- )"
+   s" : PET-RUN-ENV-STDIN-OUTCOME-FALSE-LARGE ( -- )"
+   s" ENGINE-CANDIDATE:PATH$"
+   S\" s\" bin/hb\"" CONTRACT
+   s" tools/hb-baseline-contracts-test.f" BCG-LOAD
+   s" : HBT-RUN-STDIN ( ptr u8 n -- n n n )"
+   s" : HBT-RUN-CAPTURE ( -- n n n )"
+   s" ENGINE-CANDIDATE:PATH$ >LEN"
+   S\" s\" bin/hb\" >LEN" CONTRACT
+   s" : HBT-RUN-CAPTURE ( -- n n n )"
+   s" : HBT-TEST-PUBLIC-BIN ( -- )"
+   s" ENGINE-CANDIDATE:PATH$ >LEN"
+   S\" s\" bin/hb\" >LEN" CONTRACT
+   s" test/boot-pin-test.f" NO-BYPASS
+   s" tools/hb-build-test.f" NO-BYPASS
+   s" lib/build-cache-test.f" NO-BYPASS
+   s" test/load-reject-diag-test.f" BCG-LOAD
+   s" : RUN ( ptr u8 n -- )"
+   s" : ERR$ ( -- ptr u8 n )"
+   s" ENGINE-CANDIDATE:PATH$ >LEN"
+   S\" s\" bin/hb\" >LEN" CONTRACT
+   s" test/load-reject-diag-test.f" NO-BYPASS
+   s" test/lower-txn-protection.f" BCG-LOAD
+   s" : CAPTURE ( ptr u8 n -- len len outcome )"
+   s" : EXPECT ( ptr u8 n n -- )"
+   s" ENGINE-CANDIDATE:PATH$ >LEN"
+   S\" s\" bin/hb\" >LEN" CONTRACT
+   s" test/lower-txn-protection.f" NO-BYPASS
+   s" test/seal.f" SHARED
+   s" tools/imgdump-test.f" SHARED
+   s" tools/imagedisasm-test.f" SHARED
+   s" lib/task-test.f" SHARED
+   s" tools/standalone-load-test.f" SHARED
+   s" tools/ptx/acc-device-test.f" SHARED
+   s" tools/ptx/redadd-device-test.f" SHARED
+   s" tools/ptx/saxpy-v4-tail-device-test.f" SHARED
+   s" tools/ptx/device-gold.f" SHARED
+   s" tools/ptx/sum-launch.f" SHARED
+   s" tools/ptx/softmax-launch.f" SHARED
+   s" tools/ptx/softmax-gradcheck.f" SHARED
+   s" tools/ptx/cuda-launch.f" SHARED
+   s" tools/ptx/gradcheck.f" SHARED
+   s" tools/ptx/scatter-add-gradcheck.f" SHARED
+   s" tools/ptx/indexed-scatter-gradcheck.f" SHARED
+   s" tools/ptx/zed-gradcheck-suite.f" BCG-LOAD
+   s" ENGINE-CANDIDATE:PATH$" BCG-MUST-HAVE
+   S\" s\" cd ~/Work/habu && ./bin/hb --load\" CMD-TOK" BCG-MUST-HAVE
+   s" tools/ptx/zed-device-suite.f" BCG-LOAD
+   S\" s\" cd ~/Work/habu && ./bin/hb --load\" CMD-TOK" BCG-MUST-HAVE
+   s" tools/ptx/ptxas-smoke.f" SHARED
+   s" tools/examples-test.f" SHARED
+   s" test/seal-package.f" SHARED
+   s" test/engine-error-package.f" SHARED
+   s" test/export-package.f" SHARED
+   s" test/gate-runner-entry-test.f" SHARED
+   s" test/internal-word-gate.f" SHARED
+   s" test/underdepth-gate.f" SHARED
+   s" test/top-row-warn-test.f" SHARED
+   s" test/xt-effect-test.f" SHARED
+   s" test/icode-fixup-test.f" SHARED
+   s" test/owner-wid-internal.f" SHARED
+   s" test/proc-pty.f" SHARED
+   s" test/protection-span.f" SHARED
+   s" test/top-row-hook-test.f" SHARED
+   s" test/wide-store-seal.f" SHARED
+   s" test/gate-stdlib-lib.f" SHARED
+   s" tools/check-test-lib.f" BCG-LOAD
+   s" : CKT-HB$ ( -- ptr u8 n )"
+   s" : CKT-HB-LOAD-FWDREF ( -- n n n )"
+   s" ENGINE-CANDIDATE:PATH$"
+   S\" s\" HABU_UNDER_TEST\" GETENV" CONTRACT
+   s" test/run-lib.f" BCG-LOAD
+   s" : TR-PHASE-UNDER? ( idx -- bool )"
+   s" : TR-PHASE-UNDER-ENV? ( idx -- bool )"
+   s" 36 of TR-TRUE endof"
+   s" 15 of TR-TRUE endof" CONTRACT
+   s" : TR-VA-ENV ( -- )"
+   s" : TR-VA-ARGV ( n -- )"
+   S\" s\" HABU_UNDER_TEST\" >LEN ENGINE-CANDIDATE:PATH$ >LEN PROC-ENV+"
+   S\" s\" bin/hb\"" CONTRACT
+   s" : TR-VA-ARGV ( n -- )"
+   s" : TR-VA-OPEN-OUT ( -- n )"
+   s" ENGINE-CANDIDATE:PATH$ TR-ARG+"
+   S\" s\" bin/hb\"" CONTRACT
+   s" : TR-VA-CHILD-OK? ( n -- bool )"
+   s" : TR-ATTEMPT-SUBPROC ( n -- PERF-VERDICT:att )"
+   s" ENGINE-CANDIDATE:PATH$ >LEN"
+   S\" s\" bin/hb\" >LEN" CONTRACT
+   s" tools/bench.f" BCG-LOAD
+   s" : BENCH-SPAWN-HB ( -- )"
+   s" : RUN-HB ( ptr u8 n -- n )"
+   S\" s\" bin/hb\" >LEN"
+   s" ENGINE-CANDIDATE:PATH$" CONTRACT
+   s" tools/seed-test.f" BCG-LOAD
+   s" : SET-COPY-BIN-HB ( ptr u8 n -- )"
+   s" : SET-TEST-HEX-SHAPE ( -- )"
+   S\" s\" bin/hb\" dst dstu COPY-FILE-STREAM"
+   s" ENGINE-CANDIDATE:PATH$" CONTRACT
+   s" test/run-lib.f" BCG-LOAD
+   s" : TR-SPAWN-CAPTURE ( -- )"
+   s" : TR-PHASE-OK? ( -- bool )"
+   S\" s\" bin/hb\" >LEN PROC-ARGV-CHECK-PATH"
+   s" ENGINE-CANDIDATE:PATH$" CONTRACT ;
+
+;package
 
 : BCG-TEST-CELL-RUNTIME ( -- )
    CELL-WIDTH-CHECK
@@ -1050,6 +1454,14 @@ public
    s" 16 lshift swap 5 lshift or swap or" BCG-MUST-LACK
    s" 10 lshift swap 5 lshift or swap or" BCG-MUST-LACK ;
 
+: BCG-TEST-X18-GUARD ( -- )
+   s" src/arch/arm64/asm.f" BCG-LOAD
+   s" : XREG? ( n -- n )" BCG-MUST-HAVE
+   s" dup 18 = IF s" BCG-MUST-HAVE
+   s" asm: x18 is Darwin-reserved" BCG-MUST-HAVE
+   s" : XR2 ( n n -- n n )  XREG? swap XREG? swap ;" BCG-MUST-HAVE
+   s" : XR3 ( n n n -- n n n )  XREG? rot XREG? rot XREG? rot ;" BCG-MUST-HAVE ;
+
 : BCG-TEST-GFORTH-LOCALS ( -- )
    s" bootstrap/cg/forth.fs" BCG-LOAD
    s" done:label" BCG-MUST-LACK
@@ -1063,6 +1475,64 @@ public
    start end s" LBCAP @ BL" BCG-MUST-FIND-BEFORE
    start end s" QPATCH-CELL" BCG-MUST-FIND-BEFORE
    start end s" LVRALLOC" BCG-MUST-FIND-BEFORE ;
+
+: BCG-TEST-IMMEDIATE-PREFLIGHT ( -- )
+   s" bootstrap/cg/forth.fs" BCG-LOAD
+   s" $B0 constant IMM-HOOK-CELL" BCG-MUST-HAVE
+   s" $1A8 constant CMBK-CELL" BCG-MUST-HAVE
+   s" : BSETCHECKS ( -- )" BCG-MUST-HAVE
+   s" 10 DATA IMM-HOOK-CELL STR," BCG-MUST-HAVE
+   s" set-imm-check" BCG-MUST-LACK
+   s" LBL LTOKFIND !" BCG-MUST-HAVE
+   s" SP SP 16 SUBI,  30 SP 0 STR," BCG-MUST-HAVE
+   s" : EMIT-COMPILE-IMM-PREFLIGHT ( -- )" BCG-MUST-HAVE
+   s" 9 DATA HOOK-CELL LDR,  9 unchecked CBZ," BCG-MUST-HAVE
+   s" 9 DATA TRUSTED-CELL LDR,  9 unchecked CBNZ," BCG-MUST-HAVE
+   s" 9 DATA IMM-HOOK-CELL LDR,  9 missing CBZ," BCG-MUST-HAVE
+   s" 9 SP 16 LDR,  9 9 LFIND-GEN-SHIFT LSRI,  9 G-PUSH" BCG-MUST-HAVE
+   s" 9 DATA P2-CELL LDR,  9 G-PUSH" BCG-MUST-HAVE
+   s" 9 DATA IMM-HOOK-CELL LDR,  9 BLR," BCG-MUST-HAVE
+   s" 10 G-POP  10 SP 24 STR," BCG-MUST-HAVE
+   s" : EMIT-SNAPSHOT-HOOKS-EXACT" BCG-POS-FOUND {: sexact-start:n :}
+   s" : EMIT-SNAPSHOT-RESTORE" BCG-POS-FOUND {: sexact-end:n :}
+   sexact-start sexact-end s" 21 SP 32 STR,  22 SP 40 STR,  25 SP 48 STR," BCG-MUST-FIND-BEFORE
+   sexact-start sexact-end s" 25 SP 48 LDR,  22 SP 40 LDR,  21 SP 32 LDR," BCG-MUST-FIND-BEFORE
+   s" : EMIT-SNAPSHOT-RESTORE" BCG-POS-FOUND {: snap:n :}
+   snap s" 9 DATA IMM-HOOK-CELL LDR,  9 snbad CBZ," BCG-AFTER-FOUND {: simm:n :}
+   snap s" 9 DATA HOOK-CELL LDR,  9 snbad CBZ," BCG-AFTER-FOUND {: shook:n :}
+   snap s" snbad EMIT-SNAPSHOT-HOOKS-EXACT" BCG-AFTER-FOUND {: sexact:n :}
+   snap s" EMIT-SNAPSHOT-REBASE-DICT" BCG-AFTER-FOUND {: srebase:n :}
+   simm shook < TTRUE
+   shook sexact < TTRUE
+   sexact srebase < TTRUE
+   s" : EMIT-COMPILE-CALL" BCG-POS-FOUND {: start:n :}
+   start s" 10 IMM-ACT-BAD MOVZ," BCG-AFTER-FOUND {: default:n :}
+   start s" EMIT-COMPILE-IMM-PREFLIGHT" BCG-AFTER-FOUND {: pre:n :}
+   start s" 11 SP 8 LDR,  11 BLR," BCG-AFTER-FOUND {: execute:n :}
+   default pre < TTRUE
+   pre execute < TTRUE
+   s" src/habu/habu2.f" BCG-LOAD
+   s" 9 SP 16 LDR,  9 9 LFIND-GEN-SHIFT LSRI,  9 G-PUSH" BCG-MUST-HAVE
+   s" : EM-SNAPSHOT-HOOKS-EXACT" BCG-POS-FOUND {: nsexact-start:n :}
+   s" : EM-SNAPSHOT-RESTORE" BCG-POS-FOUND {: nsexact-end:n :}
+   nsexact-start nsexact-end s" 21 SP 32 STR,  22 SP 40 STR,  25 SP 48 STR," BCG-MUST-FIND-BEFORE
+   nsexact-start nsexact-end s" 25 SP 48 LDR,  22 SP 40 LDR,  21 SP 32 LDR," BCG-MUST-FIND-BEFORE
+   s" : EM-SNAPSHOT-RESTORE" BCG-POS-FOUND {: nsnap:n :}
+   nsnap s" 9 DATA IMM-HOOK-CELL LDR,  9 snbad CBZ," BCG-AFTER-FOUND {: nsimm:n :}
+   nsnap s" 9 DATA HOOK-CELL LDR,  9 snbad CBZ," BCG-AFTER-FOUND {: nshook:n :}
+   nsnap s" snbad EM-SNAPSHOT-HOOKS-EXACT" BCG-AFTER-FOUND {: nsexact:n :}
+   nsnap s" 8 DBASE 0 ADDI,  16 CP 0 ADDI," BCG-AFTER-FOUND {: nsrebase:n :}
+   nsimm nshook < TTRUE
+   nshook nsexact < TTRUE
+   nsexact nsrebase < TTRUE
+   s" : EM-COMPILE-CALL" BCG-POS-FOUND {: nstart:n :}
+   nstart s" 10 IMM-ACT-BAD MOVZ," BCG-AFTER-FOUND {: ndefault:n :}
+   nstart s" EM-COMPILE-IMM-PREFLIGHT" BCG-AFTER-FOUND {: npre:n :}
+   nstart s" 14 13 $FF00 ANDI" BCG-AFTER-FOUND {: depth:n :}
+   nstart s" 11 SP 8 LDR,  11 BLR," BCG-AFTER-FOUND {: nexecute:n :}
+   ndefault npre < TTRUE
+   npre depth < TTRUE
+   depth nexecute < TTRUE ;
 
 : BCG-TEST-LINUX-SPAWN-SCOPED-LABELS ( -- )
    s" src/habu/habu1.f" BCG-LOAD
@@ -1181,27 +1651,66 @@ public
 
 : BCG-TEST-BOOTSTRAP-SMALL-BIN ( -- )
    s" tools/bootstrap.sh" BCG-LOAD
+   s" printf 'package LOADER-MODEL private" BCG-POS-FOUND {: start:n :}
+   start S\" > \"$T/loader-model-ok.f\"" BCG-AFTER-FOUND {: end:n :}
+   start end s" SUMTYPE" BCG-MUST-NOT-FIND-BEFORE
+   start end s" PRODUCT" BCG-MUST-NOT-FIND-BEFORE
+   start end s" 92 throw" BCG-MUST-NOT-FIND-BEFORE
+   start end s" REPLAY-RC throw" BCG-MUST-FIND-BEFORE
+   start end s" PARSE-RC throw" BCG-MUST-FIND-BEFORE
+   s" loader-model-input.f: expected modeled immediate underdepth rc=70" BCG-MUST-HAVE
+   s" interpret stack underdepth" BCG-MUST-HAVE
    s" hb-new" BCG-MUST-LACK
    s" hb-snap-src" BCG-MUST-LACK
    s" hb-snap0" BCG-MUST-LACK
    s" bootstrap check OK: %s/hb-stdin" BCG-MUST-HAVE
+   s" bootstrap_loader_gate" BCG-MUST-HAVE
+   s" loader-include-mark" BCG-MUST-HAVE
+   s" loader-require-mark" BCG-MUST-HAVE
+   s" loader-model-ok.f: expected PARSE-IMM and REPLAY-IMM once" BCG-MUST-HAVE
+   s" loader-runtime-ok.f: expected checked included/required/provided effects" BCG-MUST-HAVE
    s" mv " BCG-MUST-HAVE
    s" bin/hb" BCG-MUST-HAVE ;
 
 : BCG-TEST-OWNER-PERSIST ( -- )
+   s" src/habu/layout.f" BCG-LOAD
+   s" ( body-a body-u immediate-xt definition-generation replay? -- action )" BCG-MUST-HAVE
+   s" DGEN-CELL 8 + constant DGEN-END" BCG-MUST-HAVE
+   s" src/habu/habu2.f" BCG-LOAD
+   s" 5 DGEN-END MOVZ,  7 5 CMP,  C-CC bad BCOND,"
+   BCG-POS-FOUND
+   s" 2 10 DGEN-CELL LDR," BCG-POS-FOUND < TTRUE
+   s" 5 PROT-WID-END MOVZ,  7 5 CMP,  C-CC bad BCOND," BCG-MUST-LACK
+   s" 2 10 DGEN-CELL LDR," BCG-MUST-HAVE
+   s" 3 2 DGEN-SHIFT LSRI,  3 bad CBNZ," BCG-MUST-HAVE
+   s" 3 8 8 LDR,  3 3 DGEN-SHIFT LSRI," BCG-MUST-HAVE
+   s" 3 2 CMP,  C-HI bad BCOND," BCG-MUST-HAVE
+   s" 10 14 CMP,  C-LT LMININ LABEL@ BCOND," BCG-MUST-HAVE
    s" bootstrap/cg/forth.fs" BCG-LOAD
-   s" 3 constant SNAP-FORMAT-VERSION" BCG-MUST-HAVE
+   s" 5 constant SNAP-FORMAT-VERSION" BCG-MUST-HAVE
    s" 1 constant OWNER-API-PUB-WID" BCG-MUST-HAVE
    s" 2 constant OWNER-API-PRI-WID" BCG-MUST-HAVE
    s" 3 constant FIRST-DYNAMIC-WID" BCG-MUST-HAVE
    s" 256 constant RSTK-CELLS" BCG-MUST-HAVE
    s" $47C0 constant OWNER-WID-N-CELL" BCG-MUST-HAVE
+   s" DGEN-CELL 8 + constant DGEN-END" BCG-MUST-HAVE
    s" create PWID PRIM-CAP cells allot" BCG-MUST-HAVE
    S\" s\" FINALIZE\" ['] BOWNERFINALIZE OWNER-API-PUB-WID FPRIM-WID" BCG-MUST-HAVE
    s" LNCOUNT @ LBL,  #PL @ 1+ DCQ," BCG-MUST-HAVE
    s" OWNER-API-PUB-WID DCQ," BCG-MUST-HAVE
    s" OWNER-API-PRI-WID DCQ," BCG-MUST-HAVE
    s" : EMIT-SNAPSHOT-VALIDATE-WIDS" BCG-MUST-HAVE
+   s" 5 DGEN-END MOVZ,  7 5 CMP,  C-CC bad BCOND,"
+   BCG-POS-FOUND
+   s" 2 10 DGEN-CELL LDR," BCG-POS-FOUND < TTRUE
+   s" 5 PROT-WID-END MOVZ,  7 5 CMP,  C-CC bad BCOND," BCG-MUST-LACK
+   s" ( body-a body-u immediate-xt definition-generation replay? -- action )" BCG-MUST-HAVE
+   s" 2 10 DGEN-CELL LDR," BCG-MUST-HAVE
+   s" 3 2 DGEN-SHIFT LSRI,  3 bad CBNZ," BCG-MUST-HAVE
+   s" 3 8 8 LDR,  3 3 DGEN-SHIFT LSRI," BCG-MUST-HAVE
+   s" 3 2 CMP,  C-HI bad BCOND," BCG-MUST-HAVE
+   s" 10 14 CMP,  C-LT depthbad BCOND," BCG-MUST-HAVE
+   s" 1 LMINMSG @ ADR,  2 MINMSG-LEN MOVZ," BCG-MUST-HAVE
    s" 13 9 40 LDR,  14 0 MOVN,  13 14 CMP,  C-EQ sds2 BCOND," BCG-MUST-HAVE
    s" 22 22 48 SUBI," BCG-MUST-HAVE
    s" 14 5 CMP,  C-NE snbadver BCOND," BCG-MUST-HAVE
@@ -1227,12 +1736,99 @@ public
    s" PTR-VARIABLE KEEP-A" BCG-MUST-HAVE
    s" variable KEEP-A" BCG-MUST-LACK ;
 
+package BCG-PROCESS
+
+: NATIVE-PRIMS ( -- )
+   s" src/habu/habu1.f" BCG-LOAD
+   s" : BSETSID ( -- )" BCG-MUST-HAVE
+   s" NR-SETSID SYS,  SYS-PUSH" BCG-MUST-HAVE
+   s" : BEXECVE ( -- )" BCG-MUST-HAVE
+   s" : BGETPID ( -- )" BCG-MUST-HAVE
+   s" : BPROCWATCHOPEN ( -- )" BCG-MUST-LACK
+   S\" s\" setsid\" ['] BSETSID FPRIM-L" BCG-MUST-HAVE
+   S\" s\" execve\" ['] BEXECVE FPRIM-L" BCG-MUST-HAVE
+   S\" s\" getpid\" ['] BGETPID FPRIM-L" BCG-MUST-HAVE
+   S\" s\" proc-watch-open\" ['] BPROCWATCHOPEN FPRIM-L" BCG-MUST-HAVE
+   s" src/os/linux/proc-watch.f" BCG-LOAD
+   s" : BPROCWATCHOPEN ( -- )" BCG-MUST-HAVE
+   s" NR-PIDFD-OPEN SYS,  SYS-PUSH" BCG-MUST-HAVE
+   s" src/os/macos/proc-watch.f" BCG-LOAD
+   s" : BPROCWATCHOPEN ( -- )" BCG-MUST-HAVE
+   s" NR-KEVENT64 SYS," BCG-MUST-HAVE ;
+
+: NATIVE-GUARD ( -- )
+   s" src/habu/habu1.f" BCG-LOAD
+   s" 7 TIOCSCTTY LIT64,  1 7 CMP,  C-EQ done BCOND," BCG-MUST-HAVE
+   s" 7 TIOCSPGRP LIT64,  1 7 CMP,  C-EQ done BCOND," BCG-MUST-HAVE
+   s" 7 TIOCGPGRP LIT64,  1 7 CMP,  C-EQ pgrp BCOND," BCG-MUST-HAVE ;
+
+: NATIVE-LINUX ( -- )
+   s" src/os/linux/sys.f" BCG-LOAD
+   s" $540E constant TIOCSCTTY" BCG-MUST-HAVE
+   s" $540F constant TIOCGPGRP" BCG-MUST-HAVE
+   s" $5410 constant TIOCSPGRP" BCG-MUST-HAVE
+   s" 7 O-NOCTTY-IN LIT64," BCG-MUST-HAVE
+   s" 7 O-NOCTTY-OUT MOVZ," BCG-MUST-HAVE ;
+
+: NATIVE-MACOS ( -- )
+   s" src/os/macos/sys.f" BCG-LOAD
+   s" $20007461 constant TIOCSCTTY" BCG-MUST-HAVE
+   s" $40047477 constant TIOCGPGRP" BCG-MUST-HAVE
+   s" $80047476 constant TIOCSPGRP" BCG-MUST-HAVE
+   s" : OS-OPEN-FLAGS ( -- ) ;" BCG-MUST-HAVE ;
+
+: RECOVERY-PRIMS ( -- )
+   s" bootstrap/cg/forth.fs" BCG-LOAD
+   s" : GUARD-IOCTL ( -- )" BCG-MUST-HAVE
+   s" : BSETSID ( -- )" BCG-MUST-HAVE
+   s" : BEXECVE ( -- )" BCG-MUST-HAVE
+   s" : BGETPID ( -- )" BCG-MUST-HAVE
+   s" : BPROCWATCHOPEN ( -- )" BCG-MUST-HAVE
+   S\" s\" setsid\" ['] BSETSID FPRIM-L" BCG-MUST-HAVE
+   S\" s\" execve\" ['] BEXECVE FPRIM-L" BCG-MUST-HAVE
+   S\" s\" getpid\" ['] BGETPID FPRIM-L" BCG-MUST-HAVE
+   S\" s\" proc-watch-open\" ['] BPROCWATCHOPEN FPRIM-L" BCG-MUST-HAVE
+   s" GUARD-IOCTL  NR-IOCTL SYS," BCG-MUST-HAVE ;
+
+: RECOVERY-TARGETS ( -- )
+   s" bootstrap/cg/sys.fs" BCG-LOAD
+   s" $540E constant TIOCSCTTY" BCG-MUST-HAVE
+   s" $20007461 constant TIOCSCTTY" BCG-MUST-HAVE
+   s" $20000 constant O-NOCTTY-IN" BCG-MUST-HAVE
+   s" $100 constant O-NOCTTY-OUT" BCG-MUST-HAVE
+   s" $20000 constant O-NOCTTY-OUT" BCG-MUST-HAVE
+   s" 157 constant NR-SETSID" BCG-MUST-HAVE
+   s" 221 constant NR-EXECVE" BCG-MUST-HAVE
+   s" 172 constant NR-GETPID" BCG-MUST-HAVE
+   s" 434 constant NR-PIDFD-OPEN" BCG-MUST-HAVE
+   s" 147 constant NR-SETSID" BCG-MUST-HAVE
+   s" 59  constant NR-EXECVE" BCG-MUST-HAVE
+   s" 20  constant NR-GETPID" BCG-MUST-HAVE
+   s" 362 constant NR-KQUEUE" BCG-MUST-HAVE
+   s" 369 constant NR-KEVENT64" BCG-MUST-HAVE ;
+
+public
+
+: TEST ( -- )
+   NATIVE-PRIMS
+   NATIVE-GUARD
+   NATIVE-LINUX
+   NATIVE-MACOS
+   RECOVERY-PRIMS
+   RECOVERY-TARGETS ;
+
+;package
+
 : BCG-MAIN ( -- )
    T-RESET
    BCG-TEST-INSTALL-FAIL-CLOSED
    BCG-TEST-FORTH-SDQ-COMMENT
    BCG-TEST-PREFIX-LIST
    BCG-TEST-TOK-IMM-MIRROR
+   BCG-TEST-HIDX-TOMBSTONE
+   TOP-HOOK-ABI:TEST
+   LFIND-ABI:TEST
+   CANDIDATE-PROVENANCE-CONTRACT:TEST
    BCG-TEST-ENGINE-ERROR
    BCG-TEST-CELL-PARITY
    BCG-CAP:TEST
@@ -1240,8 +1836,10 @@ public
    BCG-TEST-TRUST-CALLS
    BCG-TEST-IMAGE-BUFFER
    BCG-TEST-ASM-CHECKED
+   BCG-TEST-X18-GUARD
    BCG-TEST-GFORTH-LOCALS
    BCG-TEST-GFORTH-LOCAL-CAPTURE
+   BCG-TEST-IMMEDIATE-PREFLIGHT
    BCG-TEST-LINUX-SPAWN-SCOPED-LABELS
    BCG-TEST-BOOTSTRAP-DATA-SIZE
    BCG-TEST-PROF-CNT-HIGH
@@ -1253,6 +1851,7 @@ public
    BCG-TEST-HIDE-MISSING-FALLBACK
    BCG-TEST-OWNER-PERSIST
    BCG-TEST-OWNER-PUBLISH
+   BCG-PROCESS:TEST
    BCG-TEST-BOOTSTRAP-SMALL-BIN
    T-REPORT
    s" bootstrap-codegen-test: ok" type cr ;

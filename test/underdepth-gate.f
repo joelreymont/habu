@@ -31,6 +31,7 @@ require lib/process.f
 require lib/process-argv.f
 require lib/process-env.f
 require lib/test/src-shape.f
+require lib/engine-candidate.f
 
 2048 constant UDG-CAP
 10000 constant UDG-TIMEOUT-MS
@@ -71,15 +72,6 @@ create UDG-EMPTY 1 allot            \ zero-length stdin
 : UDG-ERR$ ( -- ptr u8 n )
    UDG-ERR UDG-ERR-U @ ;
 
-\ Resolve the child engine: gate default env HABU_UNDER_TEST -> the candidate;
-\ standalone runs fall back to bin/hb.
-: UDG-HB$ ( -- ptr u8 n )
-   s" HABU_UNDER_TEST" >LEN PROC-ENV-DEFAULT$? if LEN>N exit then
-   2drop
-   s" HABU_UNDER_TEST" GETENV dup 0= if
-      2drop s" bin/hb" exit
-   then ;
-
 : UDG-STORE! ( len len outcome -- )
    MATCH outcome
      exited OF UDG-RC ! 0 0= UDG-EXITED ! ENDOF
@@ -99,7 +91,7 @@ create UDG-EMPTY 1 allot            \ zero-length stdin
    PROC-ARGV-RESET
    s" --load" >LEN PROC-ARGV+
    UDG-CHILD >LEN PROC-ARGV+
-   UDG-HB$ >LEN  UDG-EMPTY 0 >LEN  UDG-OUT UDG-CAP >LEN
+   ENGINE-CANDIDATE:PATH$ >LEN  UDG-EMPTY 0 >LEN  UDG-OUT UDG-CAP >LEN
    UDG-ERR UDG-CAP >LEN  UDG-TIMEOUT-MS >MS  RUN-ARGV-STDIN-CAPTURE-OUTCOME
    UDG-STORE! ;
 
@@ -107,7 +99,7 @@ create UDG-EMPTY 1 allot            \ zero-length stdin
 : UDG-RUN-STDIN ( ptr u8 n -- )
    UDG-IN!
    PROC-ARGV-RESET
-   UDG-HB$ >LEN  UDG-IN$ >LEN  UDG-OUT UDG-CAP >LEN
+   ENGINE-CANDIDATE:PATH$ >LEN  UDG-IN$ >LEN  UDG-OUT UDG-CAP >LEN
    UDG-ERR UDG-CAP >LEN  UDG-TIMEOUT-MS >MS  RUN-ARGV-STDIN-CAPTURE-OUTCOME
    UDG-STORE! ;
 

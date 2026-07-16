@@ -12,6 +12,7 @@ require lib/process.f
 require lib/process-argv.f
 require lib/process-env.f
 require lib/process-fork.f
+require lib/engine-candidate.f
 require lib/test/runner.f
 require test/gate-pool.f
 require test/run-lib.f
@@ -48,17 +49,13 @@ variable GPT-BIG-A
 variable GPT-GS-SAVE-U
 variable GPT-COUNT-N
 variable GPT-SPAN-RC
+variable GPT-DONE-RC
 variable GPT-ROOT-SAVE-U
 variable GPT-KR-ROOT-U
 variable GPT-KR-LOG-U
 
 : GPT-BIG-A-FIELD ( -- ptr ptr u8 )
    GPT-BIG-A 0 ptr-field ;
-
-: GPT-HB$ ( -- ptr u8 n )
-   s" HABU_UNDER_TEST" GETENV dup 0= if
-      2drop s" bin/hb" exit
-   then ;
 
 : GPT-WORKER ( -- )
    7 GPT-COW !
@@ -159,7 +156,7 @@ variable GPT-KR-LOG-U
    s" test/gate-pool-test.f" >LEN PROC-ARGV+
    s" --" >LEN PROC-ARGV+
    mode modeu >LEN PROC-ARGV+
-   GPT-HB$ >LEN GPT-OUT GPT-CAP >LEN GPT-ERR GPT-CAP >LEN
+   ENGINE-CANDIDATE:PATH$ >LEN GPT-OUT GPT-CAP >LEN GPT-ERR GPT-CAP >LEN
    GPT-TIMEOUT-MS >MS RUN-ARGV-CAPTURE
    GPT-CAPTURE>N ;
 
@@ -254,6 +251,59 @@ variable GPT-KR-LOG-U
    s" fork big output" GPT-TIMEOUT-MS [: GPT-BIG-WORKER ;] GT-POOL-START-FORK
    GT-POOL-DRAIN
    GPT-BIG-EXPECT ;
+
+package POOL-EVENT-TEST
+
+private
+
+variable COUNT
+variable LAST-SLOT
+variable LAST-OK
+
+public
+
+: RESET ( -- )
+   0 COUNT !
+   -1 LAST-SLOT !
+   0 LAST-OK ! ;
+
+: RECORD ( idx bool -- ) {: slot:idx ok:bool :}
+   COUNT @ 1+ COUNT !
+   slot IDX>N LAST-SLOT !
+   ok LAST-OK ! ;
+
+: COUNT@ ( -- n )
+   COUNT @ ;
+
+: SLOT@ ( -- n )
+   LAST-SLOT @ ;
+
+: OK? ( -- bool )
+   LAST-OK @ 0 <> ;
+
+;package
+
+: GPT-DONE-EVENT-BODY ( -- )
+   POOL-EVENT-TEST:RESET
+   [: POOL-EVENT-TEST:RECORD ;] is POOL-EVENT:DONE
+   1 GT-POOL-SLOTS!
+   GT-POOL-RESET
+   s" done pass" GPT-TIMEOUT-MS [: GPT-WORKER ;] GT-POOL-START-FORK
+   GT-POOL-DRAIN-SOFT
+   POOL-EVENT-TEST:COUNT@ 1 T=
+   POOL-EVENT-TEST:SLOT@ 0 T=
+   POOL-EVENT-TEST:OK? TTRUE
+   s" done fail" GPT-TIMEOUT-MS [: GPT-SOFT-ONE ;] GT-POOL-START-FORK
+   GT-POOL-DRAIN-SOFT
+   POOL-EVENT-TEST:COUNT@ 2 T=
+   POOL-EVENT-TEST:SLOT@ 0 T=
+   POOL-EVENT-TEST:OK? TFALSE
+   GT-POOL-RED-RESET ;
+
+: GPT-DONE-EVENT-CASE ( -- )
+   [: GPT-DONE-EVENT-BODY ;] catch GPT-DONE-RC !
+   TR-INSTALL-POOL-HOOKS
+   GPT-DONE-RC @ 0 <> if GPT-DONE-RC @ throw then ;
 
 : GPT-GS-SAVE! ( -- )
    GS-ENSURE
@@ -409,7 +459,7 @@ variable GPT-GEN-SAVE-U
    PROC-ENV-INHERIT-MISSING
    1 GT-POOL-SLOTS!
    GT-POOL-RESET
-   s" bin/hb" s" spawn gen case" GPT-TIMEOUT-MS GT-POOL-START
+   ENGINE-CANDIDATE:PATH$ s" spawn gen case" GPT-TIMEOUT-MS GT-POOL-START
    GT-POOL-DRAIN
    GS-PATH$ GPT-OUT GPT-CAP READ-ALL {: n:n :}
    GPT-OUT n s" spawn gen label" GPT-COUNT$ 1 T=
@@ -591,6 +641,7 @@ variable GPT-GK-SENTINEL-U
    GT-POOL-DRAIN
    GPT-COW @ 0 T=
    GPT-BIG-CASE
+   GPT-DONE-EVENT-CASE
    GPT-SPAN-CASE
    GPT-SPAN-MULTI-CASE
    GPT-NEST-CASE

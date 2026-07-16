@@ -96,6 +96,22 @@ defer GT-POOL-PASS-HOOK ( ptr u8 n n -- )
 
 GT-POOL-PASS-HOOK-DEFAULT!
 
+package POOL-EVENT
+
+public
+
+defer DONE ( idx bool -- )
+
+: NO-DONE ( idx bool -- )
+   2drop ;
+
+;package
+
+: GT-POOL-DONE-HOOK-DEFAULT! ( -- )
+   [: POOL-EVENT:NO-DONE ;] is POOL-EVENT:DONE ;
+
+GT-POOL-DONE-HOOK-DEFAULT!
+
 : GT-POOL-OUT-BUFS-FIELD ( -- ptr ptr u8 )
    GT-POOL-OUT-BUFS-A 0 ptr-field ;
 
@@ -965,6 +981,7 @@ GT-POOL-ABORT-KILL!
    idx GT-POOL-CLOSE-CAPTURE
    1 idx GT-POOL-DONE-PTR !
    GT-POOL-LIVE @ 1- GT-POOL-LIVE !
+   idx idx GT-POOL-OK? POOL-EVENT:DONE
    idx GT-POOL-OK? if idx GT-POOL-PASS-LINE exit then
    idx GT-POOL-FAIL ;
 
@@ -992,6 +1009,7 @@ GT-POOL-ABORT-KILL!
    idx GT-POOL-KILL-SLOT
    1 idx GT-POOL-DONE-PTR !
    GT-POOL-LIVE @ 1- GT-POOL-LIVE !
+   idx 0 0= 0= POOL-EVENT:DONE
    idx GT-POOL-FAIL ;
 
 : GT-POOL-CHECK-TIMEOUTS ( -- )

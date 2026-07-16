@@ -5,6 +5,12 @@
 
 $22 constant MAP-ANON-PRIVATE
 $32 constant MAP-ANON-PRIVATE-FIXED
+$20000 constant O-NOCTTY-IN
+$100 constant O-NOCTTY-OUT
+
+$540E constant TIOCSCTTY
+$540F constant TIOCGPGRP
+$5410 constant TIOCSPGRP
 
 93  constant NR-EXIT
 63  constant NR-READ
@@ -18,6 +24,8 @@ $32 constant MAP-ANON-PRIVATE-FIXED
 57  constant NR-CLOSE
 129 constant NR-KILL
 154 constant NR-SETPGID
+157 constant NR-SETSID
+172 constant NR-GETPID
 59  constant NR-PIPE
 134 constant NR-SIGACTION
 226 constant NR-MPROTECT
@@ -40,6 +48,7 @@ $32 constant MAP-ANON-PRIVATE-FIXED
 36  constant NR-SYMLINKAT
 260 constant NR-WAIT4
 221 constant NR-EXECVE
+434 constant NR-PIDFD-OPEN
 49  constant NR-CHDIR
 94  constant NR-EXIT-GROUP
 
@@ -62,11 +71,11 @@ $D2800008 NR-EXIT-GROUP 32 * + constant SYS-EMIT-EXIT   \ movz x8, #NR-EXIT-GROU
 $D4000001 constant SYS-EMIT-SVC                          \ svc #0
 
 : OS-OPEN-RD ( n -- )
-   {: pathreg :}
+   {: pathreg:n :}
    1 pathreg 0 ADDI,  0 99 MOVN,  2 0 MOVZ,  3 0 MOVZ,  NR-OPEN SYS, ;
 
 : OS-OPEN-FLAGS ( -- )
-   LBL LBL LBL {: noappend nocreat notrunc :}
+   LBL LBL LBL LBL {: noappend:n nocreat:n notrunc:n noctty:n :}
    7 3 MOVZ,  6 1 7 AND,
    7 8 MOVZ,  7 1 7 AND,  7 noappend CBZ,
       7 $400 MOVZ,  6 6 7 ORR,
@@ -77,6 +86,9 @@ $D4000001 constant SYS-EMIT-SVC                          \ svc #0
    7 $400 MOVZ,  7 1 7 AND,  7 notrunc CBZ,
       7 $200 MOVZ,  6 6 7 ORR,
    notrunc LBL,
+   7 O-NOCTTY-IN LIT64,  7 1 7 AND,  7 noctty CBZ,
+      7 O-NOCTTY-OUT MOVZ,  6 6 7 ORR,
+   noctty LBL,
    2 6 0 ADDI, ;
 
 : OS-MMAP-FLAGS ( -- )

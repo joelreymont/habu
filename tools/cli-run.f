@@ -2,6 +2,8 @@
 \
 \ Load after lib/errors.f, lib/fs.f, and lib/process-argv.f.
 
+require lib/engine-candidate.f
+
 : CLI-TRUE ( -- bool )
    0 0= ;
 
@@ -46,7 +48,7 @@ create CLI-CHECK-TRUST-BUF FS-PATH-CAP allot
 
 : CLI-TOOLS$ ( -- ptr u8 n )
    CLI-TOOLS-OVERRIDE? if CLI-TOOLS-BUF CLI-TOOLS-U @ exit then
-   s" bin/hb" ;
+   ENGINE-CANDIDATE:PATH$ ;
 
 : CLI-TOOLS-TRUST$ ( -- ptr u8 n )
    CLI-TOOLS-OVERRIDE? if CLI-TOOLS-TRUST-BUF CLI-TOOLS-TRUST-U @ exit then
@@ -79,7 +81,7 @@ create CLI-CHECK-TRUST-BUF FS-PATH-CAP allot
 
 : CLI-CHECK$ ( -- ptr u8 n )
    CLI-CHECK-OVERRIDE? if CLI-CHECK-BUF CLI-CHECK-U @ exit then
-   s" bin/hb" ;
+   ENGINE-CANDIDATE:PATH$ ;
 
 : CLI-CHECK-TRUST$ ( -- ptr u8 n )
    CLI-CHECK-OVERRIDE? if CLI-CHECK-TRUST-BUF CLI-CHECK-TRUST-U @ exit then

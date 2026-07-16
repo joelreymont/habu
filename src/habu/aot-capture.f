@@ -130,9 +130,10 @@ variable AOT-EXT-N   variable AOT-UNRES-N     \ kept-source counters: EXT names 
    k AOT-REC AOT-REXT? if 1 AOT-EXT-N +! then         \ EXT (long) name -> kept-source (counted)
    k AOT-REC AOT-A>U8 {: src:ptr :}
    AOT-REC-N @ ACAP-REC-DST {: d:ptr :}
-   48 0 ?do src i + c@  d i + c!  loop                        \ verbatim 48-byte copy
+   48 0 ?do src i + c@  d i + c!  loop                        \ normalized 48-byte copy
    src AOT-RWID -1 <> if
       k AOT-REC AOT-RXT bstart -  d AOT-N-C!                  \ ordinary [0] = xt - blob-start
+      src AOT-REND DCLEN-MASK and d 8 + AOT-N-C!              \ runtime assigns a fresh generation
    then                                                        \ package [0]/[8] are raw u32 WID roles
    AOT-REC-N @ 1+ AOT-REC-N ! ;
 

@@ -98,9 +98,8 @@ underflows. A resource can neither be silently dropped nor duplicated.
 
 Conservation alone only sees linear *cons* on the stack, so it is blind to
 *polymorphic laundering* — a value duplicated or dropped while its type is still
-a polymorphic variable that only later unifies with a linear con. The required
-**linear kind discipline** is not implemented yet; it is tracked by
-`habu-infer-linear-kinds-1f77b4c4` and must close the gap on two fronts:
+a polymorphic variable that only later unifies with a linear con. The checker
+closes that gap on two fronts:
 
 - **Polarity-aware multiplicity at effect application.** When applying a word or
   primitive, any type variable in its effect that binds to a linear con must
@@ -117,11 +116,18 @@ a polymorphic variable that only later unifies with a linear con. The required
   and `[: over FREE ;] execute`, where the copy happens before `FREE` binds the
   variable to the linear.
 
-The implementation must make both checks additive to concrete-count
-conservation and inert unless a `DEFLINEAR` type is in scope, so non-linear
-polymorphic code (`[: dup ;] execute` on a plain value, `KEEP`/`DIP` over
-non-linear data) remains unaffected. Until that dot lands, `KEEP`/`BI`/`TRI`
-and self-duplicating quotations are not sound linear capability boundaries.
+Both checks are additive to concrete-count conservation and inert unless a
+`DEFLINEAR` type is in scope, so non-linear polymorphic code (`[: dup ;] execute`
+on a plain value, `KEEP`/`DIP` over non-linear data) remains unaffected.
+
+`fork` is a process-image duplication boundary, not an ordinary zero-input
+primitive. At every direct or transitive may-fork site, each live data-stack,
+return-stack, and local type must be structurally non-linear. Open type variables,
+row tails, and family arguments acquire non-linear obligations that persist in
+certified effects. Quotations carry the same may-fork capability and conditional
+obligations through `execute`, `catch`, duplication, return, aliases, and
+recursion. Consuming an owner before the reachable fork remains valid; retaining
+one at the boundary rejects with `E-LINEAR-FORK`.
 
 `VALUE-RECORD name field type ... END-VALUE-RECORD` declares a legacy by-value
 record token for signatures. The token expands to TOUCHABLE `field<rec,name,t>`

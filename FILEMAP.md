@@ -117,6 +117,8 @@ points stay listed.
 - `src/os/script-argv.f` — `bin/hb` source-list script argument convention.
 - `src/os/linux/sys.f` / `src/os/macos/sys.f` — per-target OS seams: syscall
   numbers plus the SVC emitter.
+- `src/os/linux/proc-watch.f` / `src/os/macos/proc-watch.f` — per-target child
+  process lifetime watchers used by the PTY supervisor.
 - `src/os/linux/target.f` / `src/os/macos/target.f` — runtime/build-script
   target flag words.
 
@@ -210,8 +212,14 @@ points stay listed.
   review-corrected OVER fan-out-sum and DROP typed-zero direction facts.
 - `lib/ptx/test-prelude.f` — require-only shared setup for PTX positive entry
   tests; suites list the entry tests, not this dependency bundle.
-- `lib/ptx/process-test-prelude.f` — require-only process-boundary setup for
-  PTX tests that must exercise a child process boundary.
+- `lib/ptx/process-test-prelude.f` — process-boundary setup for PTX tests,
+  including the shared validated candidate resolver used by nested PTX emitters.
+- `lib/engine-candidate.f` / `lib/engine-candidate-test.f` — shared
+  `ENGINE-CANDIDATE:PATH$` resolver for candidate-sensitive nested work plus
+  `ENGINE-CANDIDATE:OVERRIDE$?` for callers with their own fallback and
+  `ENGINE-CANDIDATE:VALIDATE$` for explicit candidates; all honor the executable
+  regular-file boundary, while the resolvers prefer prepared defaults over the
+  host environment and fallback.
 - `lib/ptx/toolchain.f` — checked PTX private artifact root plus `PTXAS`
   resolution and assembler runner for device tests.
 - `lib/ptx/toolchain-test.f` — checked fixture coverage for PTX artifact
@@ -364,7 +372,8 @@ points stay listed.
 - `tools/event-closure-lib.f` — ordered transitive source-composition closure list built by replaying the discovery pass breadth-first over the event log.
 - `tools/event-closure-test.f` — checked fixtures for the closure list (order, dedup, transitive descent, provided/missing exclusion, colon-wrapped deps) and closure key sensitivity.
 - `tools/ptx/saxpy.f` — CLI entrypoint that emits the M3 SAXPY PTX kernel.
-- `tools/ptx/saxpy-test.f` — checked fixture for the PTX SAXPY encoder output.
+- `tools/ptx/saxpy-test.f` — checked fixture for the PTX SAXPY encoder output;
+  nested combined-module emission uses the exact validated gate candidate.
 - `tools/ptx/ptxas-smoke.f` — Orin-only checked smoke that emits SAXPY PTX,
   runs `ptxas`, and removes generated `.ptx`/`.cubin` artifacts.
 - `tools/ptx/saxpy-cg.f` — checked SAXPY kernel body run through the PTX codegen
@@ -384,7 +393,8 @@ points stay listed.
 - `tools/ptx/device-gold-test.f` — HOST proof of device-gold's emit halves (no
   device, no ptxas): spawns each committed entry file and asserts the emitted PTX is
   the right kernel body (MM has FMA + cp.async; ATTN has ex2.approx + bar.sync; fused
-  has the relu max.f32 clamp; bandwidth SAXPY has scale+bias but no clamp), plus a
+  has the relu max.f32 clamp; bandwidth SAXPY has scale+bias but no clamp) through
+  the exact validated gate candidate, plus a
   fail-closed missing-producer throw. Inprocess ptx-toolchain member; mirrors
   `tools/ptx/fusion-emit-test.f`.
 - `tools/ptx/smem-cg.f` — checked shared-memory tile body run through the PTX
@@ -576,7 +586,8 @@ points stay listed.
 - `tools/ptx/fusion-emit.f` / `tools/ptx/fusion-emit-test.f` — self-emit the
   checked v4 SAXPY/RELU/fused-RELU cubins to private per-run toolchain roots for
   fusion-compare (fail-closed `E-PTX-EMIT` on a missing producer or nonzero
-  emit/ptxas rc, never a stale shared `/tmp` cubin), and the host proof of that
+  emit/ptxas rc, never a stale shared `/tmp` cubin), using the exact validated
+  gate candidate, and the host proof of that
   emit half (no device, no ptxas — safe in-process).
 - `tools/ptx/bandwidth-lib-test.f` — host-side coverage for the bandwidth
   runner configuration math (device leg is a recorded SKIP off-device).
@@ -1018,6 +1029,10 @@ points stay listed.
 - `lib/process-env.f` — checked child envp builder and PATH lookup helpers.
 - `lib/process-env-test.f` — focused coverage for child envp and executable lookup.
 - `lib/process-fork.f` — checked fork wrappers for resident copy-on-write workers.
+- `lib/process-pty-handle.f` — linear, generation-checked, owner-bound PTY
+  supervisor handles.
+- `lib/process-pty-io.f` — framed PTY supervisor protocol, stable exec inputs,
+  and lifetime-watch helpers.
 - `lib/process-cwd.f` — checked child cwd process helpers layered on prepared argv/envp.
 - `lib/process-cwd-test.f` — focused coverage for child cwd spawn, capture, cleanup, and validation.
 - `lib/source.f` — checked source materialization and source-list transforms.
@@ -1109,8 +1124,9 @@ points stay listed.
   habu-checker-fitting-arity-70dc94e4): a signature-carrying live immediate in
   a checked body rejects (fitting-arity and no-op shapes), pinning that the
   checker never certifies a declared effect the empty runtime body cannot
-  deliver; declared parsing immediates (`parse-imm`) stay green on both the
-  raw-text and engine-hook scan paths.
+  deliver; declared parsing immediates (`PARSE-IMM`) stay green on both the
+  raw-text and engine-hook scan paths, while checked runtime
+  `included`/`required`/`provided` helpers remain admissible.
 - `test/underdepth-gate.f` — certified-word interpret underdepth gate
   regressions (dot habu-habu-certified-words-84e84eaf): a certified/TRUSTED:/
   defer/axiom'd word executed at bare top level with fewer cells than its
@@ -1261,13 +1277,20 @@ points stay listed.
 - `test/gate-runner-support.f` — side-effect-free support bundle for focused runner-entry invocations.
 - `test/gate-runner-entry.f` — tiny CLI entry for focused native runner dispatch.
 - `test/gate-runner-entry-test.f` — standalone-load regression: spawns the documented `gate-runner-support`+`gate-runner-entry` closure and asserts it reaches GR-USAGE (rc 64), proving the whole require chain loads under the raised dictionary cap.
-- `test/load-reject-diag-test.f` — spawn regression: a rejecting `--load` (direct, require-chain, checked-body) must exit 70 WITH a named stderr diagnostic, never silently.
+- `test/load-reject-diag-test.f` — spawn regression: rejecting `--load` paths
+  exit 70 with named diagnostics; parsing `include`/`require` reject before
+  externally observable effects; identity/rollback cases stay fail-closed; and
+  checked runtime `included`/`required`/`provided` execute successfully.
 - `test/gate-stdlib-inline-lib.f` — in-process stdlib gate slice dispatcher for resident runner forks.
 - `test/gate-stdlib-tool-base-ready.f` — resident-runner sentinel that marks the common stdlib tool base as already loaded.
 - `test/gate-stdlib-lint-tools.f` — in-process lint-tools group body loaded after shared setup.
 - `test/prop-test-core.f` — reusable property-based checker-soundness runner.
 - `test/prop-test.f` — CLI entry for property-based checker-soundness test.
 - `test/engine-suite.f` — native engine behavior suite.
+- `test/hidx-tombstone-test.f` — package-qualified wrapped HIDX collision
+  fixture, loaded by `test/engine-suite.f` for stale-slot reuse/lookup positives
+  and by `test/gate-dictionary-lib.f` for duplicate rejection behind a
+  tombstone.
 - `test/type-decl-suite.f` — behavior suite for the TYPEFAMILY/SUMTYPE declaration grammar (positives, negatives, rollback, multi-error, diagnostics).
 - `test/type-ctor-suite.f` — behavior suite for generated sum constructors (arity-0 publication, payload rejects, parametric/linear gating, package restore).
 - `test/type-linear-suite.f` — whole-bundle linear accounting suite (linear construction/minting/flow accepts; copy/drop/transport/local/unconsumed rejects).

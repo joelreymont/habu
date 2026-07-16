@@ -44,6 +44,7 @@
 require lib/test.f
 require lib/float.f
 require lib/fmt.f
+require lib/engine-candidate.f
 require maki/onnx/import.f
 require maki/onnx/composed-ref-data.f
 require maki/lower-model-device.f
@@ -102,7 +103,7 @@ package MAKI
    PROC-ARGV-RESET
    s" --load"           >LEN PROC-ARGV+
    MAKI-GRADE:DRIVER$   >LEN PROC-ARGV+
-   s" bin/hb" >LEN  LMDM-OUT $4000 >LEN  LMDM-ERR $1000 >LEN  30000 >MS  RUN-ARGV-CAPTURE
+   ENGINE-CANDIDATE:PATH$ >LEN  LMDM-OUT $4000 >LEN  LMDM-ERR $1000 >LEN  30000 >MS  RUN-ARGV-CAPTURE
    {: outu:len erru:len rc:rc :}
    LMDM-ERR erru LEN>N  rc RC>N  PTXTC:EMIT-GUARD   \ surface child stderr + throw on nonzero exit
    PTXTC:PTX$ LMDM-OUT outu LEN>N WRITE-ALL ;

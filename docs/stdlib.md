@@ -827,6 +827,8 @@ a file.
 target. `READ-LINK` reads the target bytes into caller storage and returns the
 byte count without appending a NUL; missing, non-link, I/O, and capacity failures
 throw named filesystem errors.
+`EXECUTABLE?` is true only when `stat64` resolves the path to a regular file and
+`access(X_OK)` succeeds. Directories are false; symlinks follow their targets.
 
 `lib/fs-mutate.f` is layered after the native engine contains mutation
 primitives such as `unlink`, `rename`, `chmod`, `mkdir`, and `rmdir`. It owns
@@ -1360,6 +1362,9 @@ RUN-ARGV-ENV-STDIN-CAPTURE-OUTCOME ( ptr u8 len ptr u8 len ptr u8 len ptr u8 len
 FIND-EXECUTABLE-IN-PATH   ( ptr u8 len ptr u8 len ptr u8 -- option<len> )
 FIND-EXECUTABLE           ( ptr u8 len ptr u8 -- option<len> )
 RESOLVE-EXECUTABLE        ( ptr u8 len ptr u8 -- len )
+ENGINE-CANDIDATE:OVERRIDE$? ( -- ptr u8 n bool )
+ENGINE-CANDIDATE:VALIDATE$  ( ptr u8 n -- ptr u8 n )
+ENGINE-CANDIDATE:PATH$    ( -- ptr u8 n )
 ```
 
 Call `PROC-ENV-RESET`, append exact `NAME=VALUE` entries with
@@ -1378,7 +1383,14 @@ defaults with `PROC-ENV-DEFAULT+`; `PROC-ENV-INHERIT-MISSING` copies those
 defaults before host envp entries, while explicit `PROC-ENV+` entries still win.
 Use `PROC-ENV-DEFAULT$?` when an in-process fixture needs to read the same
 prepared default that would be passed to a child process. Use
-`PROC-ENV-DEFAULT-RESET` at harness setup boundaries.
+`PROC-ENV-DEFAULT-RESET` at harness setup boundaries. Use
+`ENGINE-CANDIDATE:VALIDATE$` to enforce the executable-regular-file invariant
+for an explicit candidate; it returns the counted path unchanged or throws
+`E-FS-OPEN`. Use
+`ENGINE-CANDIDATE:OVERRIDE$?` when a harness owns a separate fallback path and
+needs only a validated `HABU_UNDER_TEST` override. Use
+`ENGINE-CANDIDATE:PATH$` for nested candidate-sensitive execution; it applies
+the same precedence and validates the `bin/hb` fallback too.
 
 `lib/process-command.f` adds a checked command-owned runner above argv/env. It
 keeps separate command arg, env, stdin, stdout, stderr, and outcome storage, then

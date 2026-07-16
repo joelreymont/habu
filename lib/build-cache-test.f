@@ -11,6 +11,7 @@ require lib/fs-mutate.f
 require lib/process.f
 require lib/process-argv.f
 require lib/process-env.f
+require lib/engine-candidate.f
 require lib/build-cache.f
 require lib/json-write.f
 require lib/float.f
@@ -201,7 +202,7 @@ $7E constant ROOT-C
    s" TMPDIR" ENV-EMPTY ;
 
 : RUN ( -- n n n )
-   s" bin/hb" >LEN OUT CAP >LEN ERR CAP >LEN TIMEOUT-MS >MS RUN-ARGV-ENV-CAPTURE
+   ENGINE-CANDIDATE:PATH$ >LEN OUT CAP >LEN ERR CAP >LEN TIMEOUT-MS >MS RUN-ARGV-ENV-CAPTURE
    {: outu:len erru:len rc:rc :}
    outu LEN>N erru LEN>N rc RC>N ;
 
@@ -315,9 +316,9 @@ $7E constant ROOT-C
 
 : CHECK-CONCURRENT-CREATE ( -- )
    PREPARE-CONCURRENT
-   s" bin/hb" >LEN -1 >FD -1 >FD -1 >FD PROC-SPAWN-ARGV-ENV-IO {: a:pid :}
+   ENGINE-CANDIDATE:PATH$ >LEN -1 >FD -1 >FD -1 >FD PROC-SPAWN-ARGV-ENV-IO {: a:pid :}
    PREPARE-CONCURRENT
-   s" bin/hb" >LEN -1 >FD -1 >FD -1 >FD PROC-SPAWN-ARGV-ENV-IO {: b:pid :}
+   ENGINE-CANDIDATE:PATH$ >LEN -1 >FD -1 >FD -1 >FD PROC-SPAWN-ARGV-ENV-IO {: b:pid :}
    a WAIT-OK
    b WAIT-OK
    A$ DIR? TTRUE ;

@@ -11,6 +11,7 @@ require lib/fs-mutate.f
 require lib/process.f
 require lib/test/outcome.f
 require lib/process-argv.f
+require lib/engine-candidate.f
 require src/arch/arm64/disasm.f
 require tools/imagedisasm.f
 
@@ -93,12 +94,12 @@ variable IMDT-LDRB-U
    path pathu IMDT-ARG+
    off offu IMDT-ARG+
    count countu IMDT-ARG+
-   s" bin/hb" >LEN IMDT-OUT IMDT-CAP >LEN IMDT-ERR IMDT-CAP >LEN
+   ENGINE-CANDIDATE:PATH$ >LEN IMDT-OUT IMDT-CAP >LEN IMDT-ERR IMDT-CAP >LEN
    IMDT-TIMEOUT-MS >MS RUN-ARGV-CAPTURE-OUTCOME ;
 
 : IMDT-RUN-TRUST ( -- len len outcome )
    IMDT-TRUST-ARGV
-   s" bin/hb" >LEN IMDT-OUT IMDT-CAP >LEN IMDT-ERR IMDT-CAP >LEN
+   ENGINE-CANDIDATE:PATH$ >LEN IMDT-OUT IMDT-CAP >LEN IMDT-ERR IMDT-CAP >LEN
    IMDT-TRUST-TIMEOUT-MS >MS RUN-ARGV-CAPTURE-OUTCOME ;
 
 : IMDT-EXPECT-EXIT ( len len outcome n -- n n ) {: expect:n :}

@@ -8,6 +8,7 @@ require lib/fs.f
 require lib/process.f
 require lib/process-argv.f
 require lib/process-env.f
+require lib/engine-candidate.f
 
 package OWNER-WID-INTERNAL
 
@@ -18,13 +19,6 @@ create ERR CAP allot
 variable OUT-U
 variable ERR-U
 
-: HB$ ( -- ptr u8 n )
-   s" HABU_UNDER_TEST" >LEN PROC-ENV-DEFAULT$? if LEN>N exit then
-   2drop
-   s" HABU_UNDER_TEST" GETENV dup 0= if
-      2drop s" bin/hb" exit
-   then ;
-
 : RUN-CHILD ( -- n )
    PROC-ARGV-RESET
    PROC-ENV-RESET
@@ -32,7 +26,7 @@ variable ERR-U
    PROC-ENV-INHERIT-MISSING
    s" --load" >LEN PROC-ARGV+
    s" test/owner-wid-child.f" >LEN PROC-ARGV+
-   HB$ >LEN
+   ENGINE-CANDIDATE:PATH$ >LEN
    OUT CAP >LEN ERR CAP >LEN TIMEOUT-MS >MS
    RUN-ARGV-ENV-CAPTURE {: outu:len erru:len code:rc :}
    outu LEN>N OUT-U !

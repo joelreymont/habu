@@ -15,6 +15,7 @@ require lib/fs.f
 require lib/fs-mutate.f
 require lib/process-argv.f
 require lib/ptx/toolchain.f
+require lib/ptx/process-test-prelude.f
 
 package DEVGOLDT
 
@@ -37,7 +38,7 @@ variable EMIT-U                                 \ bytes of the last emitted PTX
    s" lib/ptx/tile.f" >LEN PROC-ARGV+  s" lib/ptx/tile-v4.f" >LEN PROC-ARGV+ ;
 
 : SPAWN-EMIT ( -- )                             \ argv built (entry last) -> capture PTX to CAP-OUT
-   s" bin/hb" >LEN  CAP-OUT CAP-OUT-CAP >LEN  CAP-ERR CAP-ERR-CAP >LEN  EMIT-TIMEOUT-MS >MS  RUN-ARGV-CAPTURE
+   ENGINE-CANDIDATE:PATH$ >LEN  CAP-OUT CAP-OUT-CAP >LEN  CAP-ERR CAP-ERR-CAP >LEN  EMIT-TIMEOUT-MS >MS  RUN-ARGV-CAPTURE
    {: outu:len erru:len rc:rc :}
    CAP-ERR erru LEN>N  rc RC>N  PTXTC:EMIT-GUARD         \ missing producer / nonzero rc -> stderr + throw
    outu LEN>N EMIT-U ! ;

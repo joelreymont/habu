@@ -10,6 +10,7 @@ require lib/process.f
 require lib/process-argv.f
 require lib/test/outcome.f
 require lib/process-env.f
+require lib/engine-candidate.f
 
 $8000 constant PET-CAP
 $20000 constant PET-EARLY-IN-CAP
@@ -220,12 +221,12 @@ variable PET-START-NS
 \ Budget env carrier (habu-concurrent-multi-workspace-5341c7f4): a spawned hb
 \ child inherits HB_LOAD_PCT through the env rows and scales its budgets by it
 \ end-to-end - proving the gate's exported cal-factor actually reaches
-\ worker-spawned suites. Inherit-missing keeps HOME/PATH so bin/hb boots.
+\ worker-spawned suites. Inherit-missing keeps HOME/PATH so the candidate boots.
 : TEST-BUDGET-ENV ( -- )
    PET-RESET
    s" HB_LOAD_PCT" s" 250" PET-ENV+
    PROC-ENV-INHERIT-MISSING
-   s" bin/hb" s" require lib/test/budget.f 100 T-BUDGET-MS . "
+   ENGINE-CANDIDATE:PATH$ s" require lib/test/budget.f 100 T-BUDGET-MS . "
    PET-OUT PET-CAP PET-ERR PET-CAP PET-HB-TIMEOUT-MS PET-STDIN-CAPTURE
    0 T= 0 T= {: outu:n :}
    PET-OUT outu s" 250" CONTAINS? TTRUE ;

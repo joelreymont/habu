@@ -35,6 +35,7 @@ require lib/fs-mutate.f
 require lib/process.f
 require lib/process-argv.f
 require lib/process-env.f
+require lib/engine-candidate.f
 
 2048 constant SPK-CAP
 10000 constant SPK-TIMEOUT-MS
@@ -63,15 +64,6 @@ create SPK-EMPTY 1 allot             \ zero-length stdin
 : SPK-ROOT ( -- ptr u8 n )   SPK-ROOT-BUF SPK-ROOT-U @ ;
 : SPK-CHILD ( -- ptr u8 n )  SPK-CHILD-BUF SPK-CHILD-U @ ;
 : SPK-IN$ ( -- ptr u8 n )    SPK-IN SPK-IN-U @ ;
-
-\ Resolve the child engine: gate default env HABU_UNDER_TEST -> the sealed
-\ candidate; standalone runs fall back to bin/hb.
-: SPK-HB$ ( -- ptr u8 n )
-   s" HABU_UNDER_TEST" >LEN PROC-ENV-DEFAULT$? if LEN>N exit then
-   2drop
-   s" HABU_UNDER_TEST" GETENV dup 0= if
-      2drop s" bin/hb" exit
-   then ;
 
 : SPK-LF ( -- )   10 SB-APPEND-C ;
 
@@ -248,7 +240,7 @@ create SPK-EMPTY 1 allot             \ zero-length stdin
    PROC-ARGV-RESET
    s" --load" >LEN PROC-ARGV+
    SPK-CHILD >LEN PROC-ARGV+
-   SPK-HB$ >LEN  SPK-EMPTY 0 >LEN  SPK-OUT SPK-CAP >LEN
+   ENGINE-CANDIDATE:PATH$ >LEN  SPK-EMPTY 0 >LEN  SPK-OUT SPK-CAP >LEN
    SPK-ERR SPK-CAP >LEN  SPK-TIMEOUT-MS >MS  RUN-ARGV-STDIN-CAPTURE-OUTCOME
    SPK-STORE! ;
 
@@ -256,7 +248,7 @@ create SPK-EMPTY 1 allot             \ zero-length stdin
 : SPK-RUN-STDIN ( ptr u8 n -- )
    SPK-IN!
    PROC-ARGV-RESET
-   SPK-HB$ >LEN  SPK-IN$ >LEN  SPK-OUT SPK-CAP >LEN
+   ENGINE-CANDIDATE:PATH$ >LEN  SPK-IN$ >LEN  SPK-OUT SPK-CAP >LEN
    SPK-ERR SPK-CAP >LEN  SPK-TIMEOUT-MS >MS  RUN-ARGV-STDIN-CAPTURE-OUTCOME
    SPK-STORE! ;
 

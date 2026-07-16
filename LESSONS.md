@@ -2,7 +2,23 @@
 
 # FIXME: Rewrite this to be concise without losing precision
 
-Last updated: 2026-07-15
+Last updated: 2026-07-16
+
+- **Certify resolved bodies to expose signature lies.** Raw byte-arena arithmetic
+  returns `ptr u8`; a declared `ptr a` result is sound only after an alignment
+  check and a named, audited refinement boundary. Do not preserve a lying row by
+  reparsing or copying its declaration.
+
+- **Validate recurse sites against independent final-effect instances.** Reusing
+  the live declared input row across saved recurse sites aliases their type
+  variables and rejects legal calls at distinct generic instantiations. Rebuild
+  the cached effect after body constraints, instantiate it afresh per site, and
+  keep the cache record until deferred recurse validation finishes.
+
+- **Factor source-contract suites before adding rows.** Enlarging one already
+  dense checked `TEST` body overflowed the compiler capture buffer (rc 71 at the
+  next token). Put each contract family in a small typed helper and keep the
+  public test as orchestration; do not raise the capture limit.
 
 - **High-frequency architectural defaults need an entry rule and a machine
   gate, not a buried reference.** `docs/forth.md` already made packages the
@@ -27,6 +43,39 @@ Last updated: 2026-07-15
   default to pad=8 ldmatrix (separate dot), NOT the clock — the shipped
   HABU-MMM-TF32 row tracks the scalar default and stays 884889 until the default
   flips (tools/ptx/perf-rows.tsv orin-nx-25w-918mhz rows; tools/eval-triton.f).
+- **Never put backticks in shell command text.** The shell performs command
+  substitution before the intended command receives the argument; a dot
+  description silently lost the word `munmap` this way. Use plain text or safe
+  quoting, then inspect the resulting mutation. The damaged description was
+  repaired immediately with `apply_patch`.
+- **`dot` treats an unknown subcommand as quick-add.** `dot dep --help`
+  created an accidental dot instead of showing dependency help. Use only
+  documented commands and flags, inspect help through `dot --help`, and verify
+  repository state after any exploratory CLI invocation. The accidental dot
+  was removed immediately.
+- **Private lookup identity must be masked at public hook boundaries.** LFIND
+  packs definition generation above bit 15 so immediate preflight can bind an
+  exact word across rollback, but top-row hooks promise only low-band dispatch
+  flags. Copying all of x13 made every public flag depend on definition order;
+  mask with `LFIND-PUBLIC-MASK` at each hook call site while leaving `tok-info`
+  and compiler preflight identity intact.
+- **Candidate-sensitive tests must propagate the exact engine to every child.**
+  Running a fresh candidate while a nested replay still invokes repository
+  `bin/hb` mixes compiler generations and produces false feature failures. Read
+  `HABU_UNDER_TEST`, reject a non-executable value, and source-test every spawn
+  boundary so the full gate proves one binary transitively.
+- **Emitter helpers need visible fail-closed result initialization.** Source
+  clobber analysis cannot infer register writes hidden inside an emitter helper;
+  initialize the action register to rejection at the call site, then let the
+  helper select a narrower action. This both exposes liveness and makes any
+  future incomplete helper branch reject instead of reusing a lookup scratch.
+- **Destruction review requires an immutable working-commit hash.** Freeze the
+  reviewed workspace before dispatch, never edit it concurrently, and restart
+  the review whenever its jj commit hash changes.
+- **A branch-only dot claim does not coordinate workers.** Publish the exact
+  Claim plus `dot on` transition through green `master@origin`, verify it there,
+  and only then rebase and dispatch the worker; local/feature-only ownership is
+  invisible to competing lanes.
 - **Automatic-fusion device win is LATENCY (fewer global round-trips), not peak
   GB/s.** Benching the AUTOMATICALLY-emitted region kernels of an Add->Mul->Relu
   chain at scale (1M elems, 200 iters, CUDA events) on the Orin 25W: fused
@@ -3072,12 +3121,12 @@ unchanged (148855). Keys for milestone 2:
 - **New emitter label locals need `:label` typing** (`{: x:label :}`) or
   typed-local-diff-lint flags the new group even though older emitter groups
   are untyped (lint only sees the diff).
-- **Open-address dictionary indexes must reclaim stale rollback slots on
-  insert, not only skip them on lookup.** `ndict!`/`cp!` rollback can leave
-  probe-chain entries whose record index is no longer live. Duplicate lookup
-  must keep probing past them, but insertion must reuse the first stale or
-  empty slot; otherwise repeated checked/evaluated candidates eventually fill
-  the fixed table with dead entries and spin.
+- **A dictionary index is recyclable, so hash entries need definition
+  generations too.** `ndict!`/`cp!` rollback can leave a probe entry whose
+  index becomes live again for a different word. Store the folded hash,
+  index, and monotonic definition generation together; lookup validates all
+  three, and insertion reclaims a generation mismatch. Index-only liveness
+  eventually loses words and fills the fixed table with dead aliases.
 - **Process-pool orphan protection is fail-closed.** A spawned child whose
   process group or parent-death reaper cannot be armed must fail the test
   immediately through the pool cleanup path. Running the test anyway silently
@@ -3229,11 +3278,12 @@ unchanged (148855). Keys for milestone 2:
   round-trip test to a file with a `file class dot N` count row means bumping N
   (engine-suite 47→48), not adding a named row — that ratchet is separate from
   `checked-boundary-lint` (which passed it as a test boundary).
-- **jj worker workspaces have no `bin/hb`.** `bin/` is gitignored, so a fresh
-  `jj workspace add` tree cannot run gates or spawn-based fixtures (task tests
-  die with `E-PROC-SPAWN`). Provision each worker workspace with a *copy* of
-  `bin/hb` (never a symlink into the main tree — a workspace rebuild through a
-  symlinked `bin/` would overwrite the binary other workers are using).
+- **A worker's ignored binary is not part of its revision.** Fresh jj workspaces
+  can lack `bin/hb`; claim and commit gates must use a proven seed path and fail
+  before `jj commit` when that executable or any gate is missing.
+- **A worker final is not an ownership transfer.** A queued resumed turn may run
+  after it; verify collaboration status and explicitly interrupt or transfer the
+  lane before the orchestrator edits that workspace.
 - **Friend-arena write seal (TFAM 2b-i).** The sound way to make checker/wordlist
   state unforgeable from user source is a runtime range guard at every raw write
   *sink*, not name-hiding or type-provenance: only the sink sees the real target
@@ -4890,3 +4940,95 @@ unchanged (148855). Keys for milestone 2:
   every ptx stdlib boundary already uses, because "owner must exist in .dots/" and the
   m10 dot is removed at closure. Audit date = today, effect string = the source
   signature verbatim, or trust-lint drift rejects.
+- **Reject unmodeled immediates before execution, not at the definition hook:**
+  the checker correctly rejects raw `include`/`require` candidates and accepts
+  the runtime `included`/`required`/`provided` words, but the native compiler ran
+  the parsing immediate before the post-body hook. Nested `evaluate` then emitted
+  through `LCEMIT` while the outer immediate-call window held the dictionary RX,
+  producing rc 134 instead of the checker diagnostic. The general boundary is a
+  compiler preflight for every source-defined immediate in a checked body; keep
+  modeled `PARSE-IMM` expansions and audited `TRUSTED:` bodies explicit, and do
+  not ban runtime loaders to hide a phase-order bug.
+- **Choose the package before naming the first word.** A repeated concern prefix
+  in new library, tool, or test code means the module boundary was skipped, not
+  that the names are safely unique. Open one package, use short private names,
+  and reserve `PACKAGE:WORD` for external calls; reject the diff before testing
+  if its definitions still repeat the package name.
+- **Two live paths need two scratch buffers.** `BF-A$` returns one shared path
+  arena, so calling it twice before a spawn makes both saved pointers name the
+  second path and reports `E-PROC-SPAWN` against the source file. Materialize
+  simultaneous executable/source arguments through distinct `BF-A$`/`BF-B$`
+  buffers; a typed pointer does not imply stable ownership.
+- **Primitive replacement includes every negative gate.** Removing a public
+  primitive while leaving a diagnostic test that invokes its old spelling only
+  proves undefined-word handling. Migrate the negative fixture to the replacement
+  ABI and assert its exact failure contract in the same change.
+- **A recyclable code address is not a dictionary identity.** Caught `evaluate`
+  rollback restores `cp`/`ndict`, so the next definition can reuse the exact xt;
+  compiler-model registries must key `(xt, monotonic-definition-generation)` and
+  keep the generation counter outside rollback.
+- **A live-code range proves executability, not ownership.** Snapshot hook cells
+  must resolve to the exact canonical package words before rebasing; an in-range
+  substitution is still hostile state.
+- **A loader helper must preserve every live relocation register.** Calling
+  `LFIND` during snapshot validation clobbered the canonical-base tuple needed by
+  the following dictionary rebase, leaving external names as raw offsets. Treat
+  emitted `BL` helpers as explicit register ABIs: preserve the union of native
+  and recovery-path clobbers, initialize miss outputs, and spill the whole live
+  tuple.
+- **An exact paired trust site supersedes its component hook row.** Once the
+  inventory recognizes `PREFLIGHT+HOOK` as one atomic `set-checks` boundary, the
+  old standalone `HOOK` classification is stale; remove it in the same change
+  and prove the committed baseline, not only strict classification.
+- **Consume borrowed parser spans before reloading their input buffer.** Event
+  payloads that point into shared source storage expire at the next file read;
+  finalize each event first and regress an equal-length overwrite so stale bytes
+  cannot accidentally preserve the expected text.
+- **Until payload ENUM lands, keep parser events nullary plus guarded borrowed
+  accessors.** Put the event vocabulary in its package, expose checked accessors
+  that reject the wrong event kind, and never revive legacy `SUMTYPE` merely to
+  carry parser payloads.
+- **An alternate engine identity must still satisfy the engine boundary.** A
+  cache-key fixture may use distinct bytes without spawning them, but an engine
+  override is an executable path by contract; mark the fixture executable and
+  assert that invariant before testing the identity change.
+- **Candidate provenance is transitive through every fixture spawn.** Running a
+  gate from the candidate is insufficient when an included test starts
+  `bin/hb`; resolve the executable through `ENGINE-CANDIDATE:PATH$`, and add the
+  resolver to every result-cache file set that contains its callers.
+- **One candidate policy means one resolver, not copied fallback words.** Every
+  candidate-sensitive child process must require `lib/engine-candidate.f` and
+  call `ENGINE-CANDIDATE:PATH$` directly; local `HB$`/`HB-RAW$` clones drift
+  outside the package contract and evade central source-contract coverage.
+- **Candidate identity must cross every explicit environment reset.** Resolving
+  the right executable for one child is insufficient when that child launches
+  descendants after `PROC-ENV-RESET`; add the resolved path as
+  `HABU_UNDER_TEST` beside `HB_TMP` and fixpoint variables at every spawn seam.
+- **A modeled immediate has no runtime body step.** `PARSE-IMM` and
+  `REPLAY-IMM` authorize a compile-time action and payload count; the word's
+  declared signature guards compiler execution but must not certify runtime
+  stack effects that the compiled body cannot produce.
+- **Persisted monotonic counters are authority, not cache.** Before copying a
+  snapshot, require a nonzero u32 definition counter at least as large as every
+  live non-package record generation, and reject zero record generations; a
+  lower restored counter can transfer identity after rollback and address reuse.
+- **Higher-order fork safety needs obligations, not row aliases.** Unifying an
+  executed quotation's scheme rows with its use rows creates self-cycles for
+  `dup execute`, while guarding the whole caller row rejects values consumed
+  before an internal fork. Attach non-linear obligations to the quotation's
+  instantiated input tails and live locals, preserve them with its capability,
+  and discharge them only when that quotation becomes may-fork.
+- **Keep candidate input and build output distinct.** `HABU_UNDER_TEST` promises an
+  existing validated executable; passing a not-yet-created destination through
+  it made the cold gate fail with opaque `E-FS-OPEN` while standalone build
+  slices passed. Carry build destinations explicitly (`--candidate-out`) and
+  publish `HABU_UNDER_TEST` only after promotion.
+- **Artifact existence is not phase completion.** A build may publish an
+  executable before its final writes and checks finish. Dependents must wait for
+  the owning pool completion event and successful outcome before validation or
+  execution.
+- **Dependency gates belong in scheduling, not environment setup.** Suppressing
+  `HABU_UNDER_TEST` while a candidate is unready does not make a candidate test
+  safe; the phase can still run against a fallback or incomplete artifact. Keep
+  every candidate consumer out of early work and start it only after the build
+  completion event is green.

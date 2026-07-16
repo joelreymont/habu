@@ -68,6 +68,7 @@ TR-FILES: TR-GATE-HARNESS-FILES
    lib/cad-num-arithmetic.f lib/cad-num-types.f lib/vector.f lib/adt/option.f
    lib/adt/result.f lib/fs.f
    lib/fs-mutate.f lib/process.f lib/process-argv.f lib/process-env.f
+   lib/engine-candidate.f
    lib/process-fork.f lib/test/record.f lib/test/runner.f lib/test/budget.f
    lib/content-key.f tools/cli-run.f
    test/gate-pool.f test/gate-stats.f tools/why-threw.f

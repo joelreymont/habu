@@ -18,12 +18,20 @@ $1000 constant IMAGE-TEXT-CONTENT-ADJ
 0 constant IMAGE-TEXT-TRAILER-ADJ
 $22 constant MAP-ANON-PRIVATE
 $32 constant MAP-ANON-PRIVATE-FIXED
+$20000 constant O-NOCTTY-IN
+$100 constant O-NOCTTY-OUT
+
+$540E constant TIOCSCTTY
+$540F constant TIOCGPGRP
+$5410 constant TIOCSPGRP
 
 93  constant NR-EXIT
 94  constant NR-EXIT-GROUP
 63  constant NR-READ
 64  constant NR-WRITE
 29  constant NR-IOCTL
+157 constant NR-SETSID
+172 constant NR-GETPID
 139 constant NR-SIGRETURN
 56  constant NR-OPEN
 57  constant NR-CLOSE
@@ -33,6 +41,8 @@ $32 constant MAP-ANON-PRIVATE-FIXED
 103 constant NR-SETITIMER
 222 constant NR-MMAP
 220 constant NR-SPAWN
+221 constant NR-EXECVE
+434 constant NR-PIDFD-OPEN
 260 constant NR-WAIT4
 
 : SYS, ( n -- )
@@ -53,23 +63,28 @@ $D4000001 constant SYS-EMIT-SVC                          \ svc #0
 
 : OS-OPEN-FLAGS ( -- )
    7 3 MOVZ,  6 1 7 AND,
-   LBL {: noappend :}
+   LBL {: noappend:n :}
    7 8 MOVZ,  7 1 7 AND,  7 noappend CBZ,
       7 $400 MOVZ,  6 6 7 ORR,
    noappend LBL,
-   LBL {: nocreat :}
+   LBL {: nocreat:n :}
    7 $200 MOVZ,  7 1 7 AND,  7 nocreat CBZ,
       7 $40 MOVZ,  6 6 7 ORR,
    nocreat LBL,
-   LBL {: notrunc :}
+   LBL {: notrunc:n :}
    7 $400 MOVZ,  7 1 7 AND,  7 notrunc CBZ,
       7 $200 MOVZ,  6 6 7 ORR,
    notrunc LBL,
+   7 O-NOCTTY-IN LIT64,  7 1 7 AND,
+   LBL {: noctty:n :}
+   7 noctty CBZ,
+      7 O-NOCTTY-OUT MOVZ,  6 6 7 ORR,
+   noctty LBL,
    2 6 0 ADDI, ;
 
 : OS-MMAP-FLAGS ( -- )
    7 $12 MOVZ,  6 3 7 AND,
-   LBL {: noanon :}
+   LBL {: noanon:n :}
    7 $1000 MOVZ,  7 3 7 AND,  7 noanon CBZ,
       7 $20 MOVZ,  6 6 7 ORR,
    noanon LBL,
@@ -81,12 +96,23 @@ $D4000001 constant SYS-EMIT-SVC                          \ svc #0
 $1000 constant IMAGE-TEXT-TRAILER-ADJ
 $1002 constant MAP-ANON-PRIVATE
 $1012 constant MAP-ANON-PRIVATE-FIXED
+$20000 constant O-NOCTTY-IN
+$20000 constant O-NOCTTY-OUT
+
+$20007461 constant TIOCSCTTY
+$40047477 constant TIOCGPGRP
+$80047476 constant TIOCSPGRP
+$FFFB constant EVFILT-PROC-U16
+$15 constant EV-PROC-FLAGS
+$80000000 constant NOTE-EXIT
 
 1   constant NR-EXIT
 1   constant NR-EXIT-GROUP
 3   constant NR-READ
 4   constant NR-WRITE
 54  constant NR-IOCTL
+147 constant NR-SETSID
+20  constant NR-GETPID
 184 constant NR-SIGRETURN
 5   constant NR-OPEN
 6   constant NR-CLOSE
@@ -97,6 +123,9 @@ $49 constant NR-MUNMAP
 184 constant NR-SIGRETURN
 197 constant NR-MMAP
 244 constant NR-SPAWN     \ posix_spawn(&pid, path, 0, 0, argv, envp)
+59  constant NR-EXECVE
+362 constant NR-KQUEUE
+369 constant NR-KEVENT64
 7   constant NR-WAIT4     \ wait4(pid, &status, 0, 0)
 
 : SYS, ( n -- )  16 swap MOVZ,  $80 SVC, ;

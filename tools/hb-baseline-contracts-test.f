@@ -10,6 +10,7 @@ require lib/fs.f
 require lib/fs-mutate.f
 require lib/process.f
 require lib/process-argv.f
+require lib/engine-candidate.f
 
 $8000 constant HBT-CAP
 10000 constant HBT-TIMEOUT-MS
@@ -99,12 +100,12 @@ variable HBT-PUBLIC-BAD
    outu LEN>N erru LEN>N rc RC>N ;
 
 : HBT-RUN-STDIN ( ptr u8 n -- n n n ) {: input:ptr inputu :}
-   s" bin/hb" >LEN input inputu >LEN HBT-OUT HBT-CAP >LEN
+   ENGINE-CANDIDATE:PATH$ >LEN input inputu >LEN HBT-OUT HBT-CAP >LEN
    HBT-ERR HBT-CAP >LEN HBT-TIMEOUT-MS >MS RUN-ARGV-STDIN-CAPTURE
    HBT-CAPTURE>N ;
 
 : HBT-RUN-CAPTURE ( -- n n n )
-   s" bin/hb" >LEN HBT-OUT HBT-CAP >LEN HBT-ERR HBT-CAP >LEN
+   ENGINE-CANDIDATE:PATH$ >LEN HBT-OUT HBT-CAP >LEN HBT-ERR HBT-CAP >LEN
    HBT-TIMEOUT-MS >MS RUN-ARGV-CAPTURE HBT-CAPTURE>N ;
 
 : HBT-TEST-PUBLIC-BIN ( -- )

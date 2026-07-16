@@ -722,6 +722,16 @@ variable GD-START-NS
    s" : dup ( n -- n n ) dup ;" GE-SRC-LINE
    $4E s" dup" s" primitive shadow attempt rejects without undefine" GD-RUN-BAD-SOURCE ;
 
+: GD-HIDX-TOMBSTONE-DUPLICATE ( -- )
+   GE-HB-RESET
+   GE-SRC-RESET
+   s" test/hidx-tombstone-test.f" GE-SRC-FILE+
+   s" HIDX-TOMB:STALE-THIRD" GE-SRC-LINE
+   s" 0 set-check" GE-SRC-LINE
+   s" package HIDX-TOMB public : WRAP-18438 ( -- n ) 2 ; ;package" GE-SRC-LINE
+   $4E s" WRAP-18438"
+   s" hash duplicate probe skips stale wrapped entry" GD-RUN-BAD-SOURCE ;
+
 : GD-EXPLICIT-REDEFINITION ( -- )
    GE-HB-RESET
    GE-SRC-RESET
@@ -813,19 +823,22 @@ variable GD-START-NS
    path pathu GE-ARG+
    s" --" GE-ARG+
    label labelu GT-PROGRESS-RUN
-   s" bin/hb" GE-TIMEOUT-MS GE-RUN-ENV
+   GE-HB$ GE-TIMEOUT-MS GE-RUN-ENV
    label labelu GE-EXPECT-OK
    label labelu GT-PROGRESS-PASS ;
 
-: GD-RUN-LOAD-THREE ( ptr u8 n -- ) {: label:ptr labelu:n :}
+: GD-LOAD-THREE ( -- )
    GE-HB-RESET
    s" --load" GE-ARG+
    GD-INC-CORE$ GE-ARG+
    GD-INC-API$ GE-ARG+
    GD-INC-MAIN$ GE-ARG+
    s" --" GE-ARG+
+   GE-HB$ GE-TIMEOUT-MS GE-RUN-ENV ;
+
+: GD-RUN-LOAD-THREE ( ptr u8 n -- ) {: label:ptr labelu:n :}
    label labelu GT-PROGRESS-RUN
-   s" bin/hb" GE-TIMEOUT-MS GE-RUN-ENV
+   GD-LOAD-THREE
    label labelu GE-EXPECT-OK
    label labelu GT-PROGRESS-PASS ;
 
@@ -835,7 +848,7 @@ variable GD-START-NS
    s" --load" GE-ARG+
    GD-INC-MAIN$ GE-ARG+
    s" --" GE-ARG+
-   s" bin/hb" GE-TIMEOUT-MS GE-RUN-ENV
+   GE-HB$ GE-TIMEOUT-MS GE-RUN-ENV
    rc label labelu GE-EXPECT-RC
    needle needleu label labelu GE-EXPECT-ERR-HAS ;
 
@@ -843,6 +856,24 @@ variable GD-START-NS
    SB-RESET
    s" 9" GE-OUT-LINE
    SB$ label labelu GE-EXPECT-OUT ;
+
+package CANDIDATE-PROVENANCE
+
+public
+
+: RUN ( -- )
+   GD-INC-PATHS
+   GD-WRITE-CORE
+   GD-WRITE-API-NOINC
+   GD-WRITE-MAIN-RUN
+   s" /usr/bin/true" GE-HB!
+   [: GD-LOAD-THREE ;] catch {: rc:n :}
+   0 GE-HB-U !
+   rc 0 <> if rc throw then
+   GT-RC@ 0 <> if s" selected candidate executable rc" GE-FAIL then
+   GT-OUT$ nip 0 <> if s" selected candidate executable bypassed" GE-FAIL then ;
+
+;package
 
 : GD-PACKAGE-MULTIFILE-LOAD ( -- )
    GD-INC-PATHS
@@ -1226,10 +1257,12 @@ variable GD-START-NS
    s" dictionary/package-check" [: GD-PACKAGE-CHECK ;] GD-RUN
    s" dictionary/package-noret" [: GD-PACKAGE-NORET ;] GD-RUN
    s" dictionary/duplicate" [: GD-DUPLICATE-DEFINITION-REJECTS ;] GD-RUN
+   s" dictionary/hidx-tombstone" [: GD-HIDX-TOMBSTONE-DUPLICATE ;] GD-RUN
    s" dictionary/redefine" [: GD-EXPLICIT-REDEFINITION ;] GD-RUN
    s" dictionary/package-shadow" [: GD-PACKAGE-SHADOW-POSITIVES ;] GD-RUN
    s" dictionary/package-duplicate-check" [: GD-PACKAGE-DUPLICATE-CHECK ;] GD-RUN
    s" dictionary/package-multifile" [: GD-PACKAGE-MULTIFILE-LOAD ;] GD-RUN
+   s" dictionary/candidate-provenance" [: CANDIDATE-PROVENANCE:RUN ;] GD-RUN
    s" dictionary/package-include" [: GD-PACKAGE-INCLUDE ;] GD-RUN
    s" dictionary/package-misuse" [: GD-PACKAGE-MISUSE ;] GD-RUN
    s" dictionary/structures" [: GD-STRUCTURES ;] GD-RUN

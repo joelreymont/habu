@@ -58,5 +58,5 @@ variable PTX-BLOCK-N
 \ the immediate wrong-certificate reject (p5, habu-checker-fitting-arity-
 \ 70dc94e4) exempts them. AUDITED COUNTS: a wrong count would skip live body
 \ code or eat real tokens - keep in lockstep with PTX-SKIP-ONE/PTX-WHERE-CHECK.
-s" GRID:" 1 parse-imm
-s" WHERE" 3 parse-imm
+s" GRID:" 1 PARSE-IMM
+s" WHERE" 3 PARSE-IMM

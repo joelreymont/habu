@@ -8,7 +8,11 @@
 $400000 constant REGION
 $300000000 constant RBASE-VA
 $48425350414E5321 constant SNAP-MAGIC
-3 constant SNAP-FORMAT-VERSION
+\ Version 4 sealed and validates the exact checker definition and immediate
+\ hooks. Version 5 persists monotonic definition generations and rebuilds the
+\ generation-bearing HIDX, so rollback cannot transfer a compile-time model to
+\ a new definition that reuses the old dictionary slot and code address.
+5 constant SNAP-FORMAT-VERSION
 
 \ DICT-SIZE = CFSTK-OFF (= DICT-CAP * DREC record slots) + $1000 control-flow
 \ stack; the code area follows at DBASE+DICT-SIZE inside the $400000 REGION.
@@ -57,6 +61,17 @@ $4000000000000000 constant DNAME-WIDE
 \ unchecked user code, TRUSTED: bodies, hide.f refresh shims) are unaffected:
 \ those are declared trusted boundaries.
 $8000000000000000 constant DNAME-INT
+
+\ Dictionary [8] carries the executable byte length in its low 32 bits and a
+\ monotonic definition generation in its high 32 bits.  Evaluate rollback may
+\ reuse both a dictionary slot and its code address; the generation does not
+\ roll back, so checker-owned compile-time models cannot attach to the new word.
+$FFFFFFFF constant DCLEN-MASK
+32 constant DGEN-SHIFT
+\ LFIND's result packs private definition identity in bits 16-47 and public
+\ dispatch flags in bits 0-15. Only the low band may cross the top-row hook ABI.
+$FFFF constant LFIND-PUBLIC-MASK
+16 constant LFIND-GEN-SHIFT
 16384 constant DICT-CAP
 $C0000 constant CFSTK-OFF
 24 constant CF-REC
@@ -106,7 +121,7 @@ $3000 constant LOCNAMES
 \ a post-seal FORGET below it. It lives inside the sealed band so user source
 \ cannot lower the watermark to bypass the guard. ---
 $20 constant FRIEND-ARENA               \ arena base offset within the DATA region (x20)
-$90 constant FRIEND-ARENA-LEN           \ 18 cells: latch + 16 crown jewels + seal-ndict watermark
+$98 constant FRIEND-ARENA-LEN           \ 19 cells: latch + 17 crown jewels + seal-ndict watermark
 FRIEND-ARENA constant FRIEND-LATCH-CELL \ 0 = friend on/open, FRIEND-ARENA-LEN = sealed
 $A8 constant SEAL-NDICT-CELL            \ seal-time ndict watermark (TFAM 2b-iii); 0 until SEAL-CAPTURE
 
@@ -138,6 +153,21 @@ $88 constant PKG-PARENT-CELL
 $90 constant PKG-REC-CELL
 $98 constant DEFER-META-CELL
 $A0 constant DEFER-XT-CELL
+\ IMM-HOOK-CELL is the checker-owned pre-execution hook for source-defined
+\ immediates in checked bodies. EM-COMPILE-CALL consults it only while HOOK-CELL
+\ is armed and TRUSTED-CELL is clear, before the immediate BLR. The hook receives
+\ ( body-a body-u immediate-xt definition-generation replay? -- action ); the
+\ exact xt plus monotonic generation prevents same-spelling shadows and rolled-
+\ back address reuse from inheriting another word's model, and replay? lets the
+\ hook suppress a modeled parsing immediate during lowering pass 2. It returns
+\ one of the closed action constants below after rendering any reject diagnostic.
+\ The hook cell sits inside the primary friend arena, so raw stores cannot replace
+\ the compiler soundness hook after sealing.
+$B0 constant IMM-HOOK-CELL
+0 constant IMM-ACT-BAD
+1 constant IMM-ACT-REJECT
+2 constant IMM-ACT-EXECUTE
+3 constant IMM-ACT-SKIP
 \ CMFAM-CELL: resolved construct family id, live only between the family and
 \ variant operand tokens of one `construct` form (CMM-CELL state 1 -> 2; TFAM
 \ 10 slice 2). Eager family resolution at the family token means no operand
@@ -146,7 +176,7 @@ $A0 constant DEFER-XT-CELL
 \ deliberate poke hole is $1A0 — left alone).
 $1B0 constant CMFAM-CELL
 \ MATCH-lowering compile state (TFAM 10 slice 3, docs §16). All DATA-relative
-\ (x20), in the reclaimed $B0..$1B0 free band above the friend arena ($20..$B0)
+\ (x20), in the reclaimed $B8..$1B0 band above the friend arena ($20..$B8)
 \ and below CMFAM-CELL ($1B0) — rg-verified unused (the seal-suite poke hole $1A0
 \ is left alone; the fam stack tops out at $D0+CMFR-MAX*8 = $1A0). CMBK-CELL is a
 \ 64-bit branch-kind bitstack (J-OF pushes 0, EM-ADT-MATCH-OF pushes 1, J-ENDOF
@@ -158,7 +188,7 @@ $1B0 constant CMFAM-CELL
 \ CMFRD (match depth); a level's fam feeds later variant resolution and the
 \ ;MATCH bad-tag family-name die. Definition-scoped: CMFRD/CMBK cleared at
 \ colon/TRUSTED: entry and by EM-RESET-COMPILE-STATE alongside CMM-CELL.
-$B0 constant CMBK-CELL                  \ ENDOF branch-kind bitstack (0=case arm, 1=match branch)
+$1A8 constant CMBK-CELL                 \ ENDOF branch-kind bitstack (0=case arm, 1=match branch)
 $B8 constant CMTAG-CELL                 \ pending MATCH variant tag (VAR -> OF)
 $C0 constant CMPADS-CELL                \ pending MATCH variant zero pads M-p (VAR -> OF)
 $C8 constant CMFRD-CELL                 \ MATCH nesting depth (0 = not in a match)
@@ -290,9 +320,11 @@ $524941504449574F constant AOT-OWNER-END-MAGIC
 82 constant AOT-OWNER-RC
 \ Dict-name hash index: slots stay a power of 2 (LFIND probes with the
 \ HIDX-SLOTS 1 - mask) and 2x DICT-CAP so the load factor stays <= 50%;
-\ bytes = slots * 4 (u32 entries). Grown with DICT-CAP 16384.
+\ each 16-byte entry is hash:u64 plus generation:u32,index+1:u32. The generation
+\ makes recycled dictionary indices distinct after transactional rollback.
 $8000 constant HIDX-SLOTS
-$20000 constant HIDX-BYTES
+4 constant HIDX-ENTRY-SHIFT
+$80000 constant HIDX-BYTES
 $36B8 constant FRCLM-CELL
 $37F8 constant SNAP-CELL
 $1D8 constant SSCR-CELL
@@ -345,8 +377,9 @@ $27A8 constant CMM-CELL
 \ interpret dispatch points (habu2.f EM-INTERPRET-FIND / EM-INTERPRET-NUMBER
 \ / the pushing string keywords / C-TICK / C-CHAR) emit one pre-continue
 \ event per token through LTOPHOOK; the hook's effect is
-\ ( ptr u8 n n n -- ): token addr, token len, class (TOP-EV-*), LFIND flags
-\ (word/tick classes; 0 for literal classes).
+\ ( ptr u8 n n n -- ): token addr, token len, class (TOP-EV-*), public LFIND
+\ flags (bits 0-15 for word/tick classes; 0 for literal classes). Definition
+\ identity in LFIND bits 16-47 is compiler-private and never crosses this ABI.
 $27F0 constant TOP-HOOK-CELL
 \ ENGINE-SNAP-XT-CELL retains the first cold-prefix checker's snapshot-prepare
 \ hook while a --build payload loads a second checker copy. Snapshot capture
@@ -399,6 +432,8 @@ TXN-STATE-OFF $90 + constant TXN-BLOB-A-CELL
 TXN-STATE-OFF $98 + constant TXN-BLOB-CAP-CELL
 TXN-STATE-OFF $100 + constant TXN-LIVE-W-OFF
 64 constant TXN-LIVE-W-CAP
+TXN-STATE-OFF $300 + constant DGEN-CELL
+DGEN-CELL 8 + constant DGEN-END
 
 \ DATA-START: first offset of the user DP heap (allot/,/c,); everything below is
 \ engine-reserved state (snapshot saves [0,DATA-START); DP-CHECK bounds the heap

@@ -16,8 +16,10 @@
 \ Orin: scp to zed:Work/habu then `bin/hb --load maki/lower-mm-device-test.f`.
 
 require lib/test.f
+require lib/engine-id.f
 require lib/process.f
 require lib/process-argv.f
+require lib/engine-candidate.f
 require lib/fs.f
 require lib/fs-mutate.f
 require lib/float.f
@@ -38,7 +40,7 @@ create LMD-QO  $1000 allot  create LMD-QE  $2000 allot
    PROC-ARGV-RESET
    s" --load"           >LEN PROC-ARGV+
    MAKI-GRADE:DRIVER$   >LEN PROC-ARGV+
-   s" bin/hb" >LEN  LMD-OUT $10000 >LEN  LMD-ERR $1000 >LEN  30000 >MS  RUN-ARGV-CAPTURE
+   ENGINE-CANDIDATE:PATH$ >LEN  LMD-OUT $10000 >LEN  LMD-ERR $1000 >LEN  30000 >MS  RUN-ARGV-CAPTURE
    {: outu:len erru:len rc:rc :}
    LMD-ERR erru LEN>N  rc RC>N  PTXTC:EMIT-GUARD           \ surface stderr + throw on a nonzero child
    PTXTC:PTX$ LMD-OUT outu LEN>N WRITE-ALL ;

@@ -96,6 +96,8 @@ variable SMOKE?
    s"  ns/iter" type ;
 
 : BENCH-SPAWN-HB ( -- )
+   \ Ownership boundary: this public benchmark measures the installed bin/hb,
+   \ never a gate candidate selected through HABU_UNDER_TEST.
    s" bin/hb" >LEN PROC-PATHZ IN-R @ -1 -1 spawn-io PID !
    PID @ 0 < if s" bench: spawn failed" BENCH-IO then ;
 

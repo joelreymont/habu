@@ -79,6 +79,7 @@ create CBLT-LF-BYTE 10 c,
    s" variable RAW-CELL" SB-APPEND CBLT-LF
    s" : LINT-CHECK-HOOK ( -- ) CHECK! ;" SB-APPEND CBLT-LF
    s" ' LINT-CHECK-HOOK set-check" SB-APPEND CBLT-LF
+   s" ['] LOWER-CERT-HOOK:PREFLIGHT ['] LOWER-CERT-HOOK:HOOK set-checks" SB-APPEND CBLT-LF
    s" : GOOD ( n -- n ) dup ;" SB-APPEND CBLT-LF
    SB$ ;
 
@@ -86,6 +87,9 @@ create CBLT-LF-BYTE 10 c,
    SB-RESET
    s" 0 set-check" SB-APPEND CBLT-LF
    s" ' EVIL-HOOK set-check" SB-APPEND CBLT-LF
+   s" ['] PREFLIGHT ['] HOOK set-checks" SB-APPEND CBLT-LF
+   s" ['] EVIL-PREFLIGHT ['] LOWER-CERT-HOOK:HOOK set-checks" SB-APPEND CBLT-LF
+   s" ['] LOWER-CERT-HOOK:PREFLIGHT ['] EVIL-HOOK set-checks" SB-APPEND CBLT-LF
    s" : ROGUE-OK ( n -- n ) dup ;" SB-APPEND CBLT-LF
    SB$ ;
 
@@ -118,7 +122,9 @@ create CBLT-LF-BYTE 10 c,
    SB-RESET
    s" TRUSTED: USER-HOOK ( ptr u8 n -- n ) CHECK! dup -1 <> if 70 throw then ;" SB-APPEND CBLT-LF
    s" TRUSTED: INSTALL-HOOK ( -- ) ['] USER-HOOK set-check ;" SB-APPEND CBLT-LF
+   s" TRUSTED: INSTALL-CHECKS ( -- ) ['] LOWER-CERT-HOOK:PREFLIGHT ['] LOWER-CERT-HOOK:HOOK set-checks ;" SB-APPEND CBLT-LF
    s" INSTALL-HOOK" SB-APPEND CBLT-LF
+   s" INSTALL-CHECKS" SB-APPEND CBLT-LF
    s" : GOOD ( n -- n ) dup ;" SB-APPEND CBLT-LF
    SB$ ;
 
@@ -277,7 +283,10 @@ create CBLT-LF-BYTE 10 c,
    CBLT-RUN-CORE-ROGUE 1 CBLT-EXPECT-EXIT {: outu:n erru:n :}
    erru 0 T=
    CBLT-OUT outu s" UNAUDITED-HOOK" CONTAINS? TTRUE
-   CBLT-OUT outu s" EVIL-HOOK" CONTAINS? TTRUE ;
+   CBLT-OUT outu s" EVIL-HOOK" CONTAINS? TTRUE
+   CBLT-OUT outu s" UNAUDITED-HOOK-PAIR" CONTAINS? TTRUE
+   CBLT-OUT outu s" PREFLIGHT" CONTAINS? TTRUE
+   CBLT-OUT outu s" EVIL-PREFLIGHT" CONTAINS? TTRUE ;
 
 : CBLT-TEST-TOPROGUE ( -- )                 \ ['] EVIL-TOP-HOOK set-top-check -> finding
    CBLT-RUN-CORE-TOPROGUE 1 CBLT-EXPECT-EXIT {: outu:n erru:n :}

@@ -78,7 +78,8 @@ $0042 constant MACOS-SA-PROF-FLAGS
    pl LBL,
       7 NDICT 0 ADDI,  6 7 CMP,  C-GE pdone BCOND,
       12 5 0 LDR,  12 9 12 SUB,                     \ x12 = pc - addr
-      13 5 8 LDR,  12 13 CMP,  C-CS pnext BCOND,    \ not (pc-addr u< clen) -> next
+      13 5 8 LDR,  13 13 DCLEN-MASK ANDI,
+      12 13 CMP,  C-CS pnext BCOND,                  \ not (pc-addr u< clen) -> next
       7 PROF-CNT LIT64,  7 DATA 7 ADD,  8 6 3 LSLI,  7 7 8 ADD,
       12 7 0 LDR,  12 12 1 ADDI,  12 7 0 STR,       \ counter[i]++
       psig B,

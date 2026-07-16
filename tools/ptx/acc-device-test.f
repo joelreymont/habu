@@ -7,6 +7,7 @@
 \ the fs/process libs.
 
 require lib/test.f
+require lib/engine-candidate.f
 require lib/ptx/toolchain.f
 require lib/ptx/sentinel.f
 require lib/ptx/cuda-driver.f
@@ -28,7 +29,7 @@ create AD-QOUT $1000 allot create AD-QERR $1000 allot
    s" src/arch/ptx/emit.f"  >LEN PROC-ARGV+  s" lib/ptx/cg.f"  >LEN PROC-ARGV+
    s" lib/ptx/header.f"     >LEN PROC-ARGV+  s" lib/ptx/tile.f" >LEN PROC-ARGV+
    s" lib/ptx/tile-acc.f"   >LEN PROC-ARGV+  s" tools/ptx/acc-cg.f" >LEN PROC-ARGV+
-   s" bin/hb" >LEN  AD-OUT $4000 >LEN  AD-ERR $1000 >LEN  20000 >MS  RUN-ARGV-CAPTURE
+   ENGINE-CANDIDATE:PATH$ >LEN  AD-OUT $4000 >LEN  AD-ERR $1000 >LEN  20000 >MS  RUN-ARGV-CAPTURE
    {: outu erru rc :}
    PTXTC:PTX$ AD-OUT outu LEN>N WRITE-ALL  outu LEN>N ;
 

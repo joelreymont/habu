@@ -7,14 +7,29 @@ package LOWER-CERT-HOOK
 : REPORT-UNCHECKABLE ( n -- n )
    dup 1 = JSON-DIAGS @ 0= and DIAGXT @ 0 <> and if DIAGXT @ execute then ;
 
+1 constant REJECT-ACTION
+2 constant EXECUTE-ACTION
+3 constant SKIP-ACTION
+
+public
+
+: PREFLIGHT ( ptr u8 n n n bool -- n ) {: body:ptr bodyu:n xt:n gen:n replay:bool :}
+   xt gen UNMODELED-IMM-XT? if
+      body bodyu CHECK 0= if REJECT-ACTION exit then
+      s" immediate hook: classifier/checker mismatch" 76 die
+   then
+   replay if
+      xt gen REPLAY-IMM-XT? if EXECUTE-ACTION else SKIP-ACTION then
+      exit
+   then
+   EXECUTE-ACTION ;
+
 \ In multi-error mode CHECK already emitted the diagnostic, counted the reject,
 \ and trusted the declared signature. Return -1 so the native publishes the
 \ definition (a non-zero hook return commits it; zero rejects and unpublishes
 \ it) — the name must resolve for later definitions to keep checking. The body
 \ is compiled but never run on a check-only load; the driver exits nonzero via
 \ MULTI-ERR-END.
-public
-
 : HOOK ( ptr u8 n -- n )
    CHECK! REPORT-UNCHECKABLE
    MULTI-ERR? if drop -1 exit then
@@ -30,7 +45,7 @@ public
       CHECK-RC throw then ;
 
 TRUSTED: INSTALL ( -- )
-   ['] HOOK set-check ;
+   ['] LOWER-CERT-HOOK:PREFLIGHT ['] LOWER-CERT-HOOK:HOOK set-checks ;
 
 INSTALL
 

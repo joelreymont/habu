@@ -9,6 +9,7 @@ require lib/fs.f
 require lib/process.f
 require lib/process-argv.f
 require lib/process-env.f
+require lib/engine-candidate.f
 
 package PROTECTION-TEST
 
@@ -21,16 +22,9 @@ ENGINE-ERROR:SEAL-VIOLATION constant VIOLATION-RC
 create OUT CAP allot
 create ERR CAP allot
 
-: HB$ ( -- ptr u8 n )
-   s" HABU_UNDER_TEST" >LEN PROC-ENV-DEFAULT$? if LEN>N exit then
-   2drop
-   s" HABU_UNDER_TEST" GETENV dup 0= if
-      2drop s" bin/hb" exit
-   then ;
-
 : CAPTURE ( ptr u8 n -- len len outcome ) {: src:ptr u:n :}
    PROC-ARGV-RESET
-   HB$ >LEN
+   ENGINE-CANDIDATE:PATH$ >LEN
    src u >LEN
    OUT CAP >LEN
    ERR CAP >LEN
@@ -77,7 +71,13 @@ create ERR CAP allot
    s" data-base TXN-STATE-OFF 1 cells - + 16 3 $1012 -1 0 mmap drop" REJECTS
    s" : PST-OUT ( -- n ) HB-TARGET-MACOS? if $40487413 else $5401 then ; 0 PST-OUT data-base TXN-STATE-OFF 1 cells - + ioctl drop" REJECTS
    s" : PST-OUT ( -- n ) HB-TARGET-MACOS? if $40487413 else $5401 then ; 0 PST-OUT -4 ioctl drop" REJECTS
-   s" : PST-IN ( -- n ) HB-TARGET-MACOS? if $80487414 else $5402 then ; 0 PST-IN -1 ioctl drop" ACCEPTS ;
+   s" : PST-IN ( -- n ) HB-TARGET-MACOS? if $80487414 else $5402 then ; 0 PST-IN -1 ioctl drop" ACCEPTS
+   HB-TARGET-LINUX? if
+      s" 0 $540F data-base TXN-STATE-OFF 1 cells - + ioctl drop" REJECTS
+      s" variable PST-PG 0 $540F PST-PG ioctl drop" ACCEPTS
+      s" 0 $5410 data-base TXN-STATE-OFF + ioctl drop" ACCEPTS
+      s" 0 $540E data-base TXN-STATE-OFF + ioctl drop" ACCEPTS
+   then ;
 
 : TEST-FFI ( -- )
    s" require lib/ffi.f TRUSTED: PST-RET ( -- n ) cp@ {: fn:n :} $D65F03C0 fn patch32 fn ; TRUSTED: PST-WRITE ( ptr a -- n ) {: p:ptr :} FFI:RESET p 16 0 FFI:WRITABLE! 16 1 FFI:VALUE! FFI:ARGS FFI:REG-LENS 2 PST-RET ffi-call-bounded ; data-base TXN-STATE-OFF 1 cells - + PST-WRITE drop" REJECTS

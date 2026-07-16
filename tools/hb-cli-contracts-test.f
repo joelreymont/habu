@@ -9,6 +9,7 @@ require lib/fs.f
 require lib/fs-mutate.f
 require lib/process.f
 require lib/process-argv.f
+require lib/engine-candidate.f
 
 2048 constant HCT-CAP
 10000 constant HCT-TIMEOUT-MS
@@ -96,7 +97,7 @@ create HCT-EMPTY 1 allot   \ zero-length stdin
    s" lib/source.f"  >LEN PROC-ARGV+
    HCT-CHILD  >LEN PROC-ARGV+
    s" --"  >LEN PROC-ARGV+
-   s" bin/hb" >LEN s" DATA" >LEN HCT-OUT HCT-CAP >LEN
+   ENGINE-CANDIDATE:PATH$ >LEN s" DATA" >LEN HCT-OUT HCT-CAP >LEN
    HCT-ERR HCT-CAP >LEN HCT-TIMEOUT-MS >MS RUN-ARGV-STDIN-CAPTURE-OUTCOME HCT-STORE!
    HCT-EXITED @ TTRUE HCT-RC @ 0 T=
    HCT-ERR-U @ 0 T= HCT-OUT-U @ 7 T=
@@ -106,7 +107,7 @@ create HCT-EMPTY 1 allot   \ zero-length stdin
 : HCT-EXPECT-UNKNOWN-FLAG ( -- )
    PROC-ARGV-RESET
    s" --loadx"  >LEN PROC-ARGV+
-   s" bin/hb" >LEN  HCT-EMPTY 0 >LEN  HCT-OUT HCT-CAP >LEN
+   ENGINE-CANDIDATE:PATH$ >LEN  HCT-EMPTY 0 >LEN  HCT-OUT HCT-CAP >LEN
    HCT-ERR HCT-CAP >LEN HCT-TIMEOUT-MS >MS RUN-ARGV-STDIN-CAPTURE-OUTCOME HCT-STORE!
    s" unknown flag exits 64" T-LABEL
    HCT-EXITED @ TTRUE  HCT-RC @ 64 T=
@@ -122,7 +123,7 @@ create HCT-EMPTY 1 allot   \ zero-length stdin
 : HCT-EXPECT-FLAG-BEFORE-STDIN ( -- )
    PROC-ARGV-RESET
    s" --nonsense"  >LEN PROC-ARGV+
-   s" bin/hb" >LEN  s" 1 2 + . cr" >LEN  HCT-OUT HCT-CAP >LEN
+   ENGINE-CANDIDATE:PATH$ >LEN  s" 1 2 + . cr" >LEN  HCT-OUT HCT-CAP >LEN
    HCT-ERR HCT-CAP >LEN HCT-TIMEOUT-MS >MS RUN-ARGV-STDIN-CAPTURE-OUTCOME HCT-STORE!
    s" unknown flag rejected even with a piped program" T-LABEL
    HCT-EXITED @ TTRUE  HCT-RC @ 64 T=
@@ -134,7 +135,7 @@ create HCT-EMPTY 1 allot   \ zero-length stdin
    PROC-ARGV-RESET
    s" --load"  >LEN PROC-ARGV+
    s" /dev/null"  >LEN PROC-ARGV+
-   s" bin/hb" >LEN  HCT-EMPTY 0 >LEN  HCT-OUT HCT-CAP >LEN
+   ENGINE-CANDIDATE:PATH$ >LEN  HCT-EMPTY 0 >LEN  HCT-OUT HCT-CAP >LEN
    HCT-ERR HCT-CAP >LEN HCT-TIMEOUT-MS >MS RUN-ARGV-STDIN-CAPTURE-OUTCOME HCT-STORE!
    s" --load of an empty file exits 0" T-LABEL
    HCT-EXITED @ TTRUE  HCT-RC @ 0 T= ;
@@ -147,7 +148,7 @@ create HCT-EMPTY 1 allot   \ zero-length stdin
    s" --" >LEN PROC-ARGV+
    s" alpha" >LEN PROC-ARGV+
    s" beta" >LEN PROC-ARGV+
-   s" bin/hb" >LEN HCT-EMPTY 0 >LEN HCT-OUT HCT-CAP >LEN
+   ENGINE-CANDIDATE:PATH$ >LEN HCT-EMPTY 0 >LEN HCT-OUT HCT-CAP >LEN
    HCT-ERR HCT-CAP >LEN HCT-TIMEOUT-MS >MS RUN-ARGV-STDIN-CAPTURE-OUTCOME HCT-STORE!
    s" build source exits after explicit seal" T-LABEL
    HCT-EXITED @ TTRUE HCT-RC @ 0 T=

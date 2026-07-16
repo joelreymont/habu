@@ -2,8 +2,9 @@
 \ Streams over repo .f/.fs sources with the shared lexeme rules (line and paren
 \ comments, string bodies after openers are skipped; repo-scale lints stream,
 \ not vectorize) collecting TRUSTED: definitions, s" name" s" effect" TRUST
-\ rows, 0 set-check boundaries, ' NAME set-check / ['] NAME set-check hook
-\ installs (HOOK-INSTALL, named by the installed hook), and the fail-closed
+\ rows, 0 set-check boundaries, ' NAME set-check / ['] NAME set-check and
+\ ['] LOWER-CERT-HOOK:PREFLIGHT ['] LOWER-CERT-HOOK:HOOK set-checks installs
+\ (HOOK-INSTALL, named by both exact identities), and the fail-closed
 \ TRUST-BARE catch-all, then
 \ prints a deterministic TSV report (kind TAB file TAB line TAB name TAB effect
 \ TAB class TAB owner, sorted by file then line) plus a summary footer. Class,
@@ -153,6 +154,16 @@ variable W2-U
 variable W2-BO
 variable W2-BU
 variable W2-SQ
+variable W3-O
+variable W3-U
+variable W3-BO
+variable W3-BU
+variable W3-SQ
+variable W4-O
+variable W4-U
+variable W4-BO
+variable W4-BU
+variable W4-SQ
 variable WC-O
 variable WC-U
 variable WC-BO
@@ -167,6 +178,11 @@ variable PEND-NU
 
 create OUT-CH 1 allot
 create NUM-BUF NUM-CAP allot
+
+1024 constant PAIR-CAP
+43 constant PAIR-SEP
+create PAIR-BUF PAIR-CAP allot
+variable PAIR-U
 
 1024 constant DOTP-CAP
 create DOTP-BUF DOTP-CAP allot
@@ -440,6 +456,12 @@ variable DOTS-ROOT-U
 : P2$ ( -- ptr u8 n )
    W2-O @ W2-U @ SRC$ ;
 
+: P3$ ( -- ptr u8 n )
+   W3-O @ W3-U @ SRC$ ;
+
+: P4$ ( -- ptr u8 n )
+   W4-O @ W4-U @ SRC$ ;
+
 : P1-BODY$ ( -- ptr u8 n )
    W1-BO @ W1-BU @ SRC$ ;
 
@@ -447,6 +469,16 @@ variable DOTS-ROOT-U
    W2-BO @ W2-BU @ SRC$ ;
 
 : RING-ROTATE ( -- )
+   W3-O @ W4-O !
+   W3-U @ W4-U !
+   W3-BO @ W4-BO !
+   W3-BU @ W4-BU !
+   W3-SQ @ W4-SQ !
+   W2-O @ W3-O !
+   W2-U @ W3-U !
+   W2-BO @ W3-BO !
+   W2-BU @ W3-BU !
+   W2-SQ @ W3-SQ !
    W1-O @ W2-O !
    W1-U @ W2-U !
    W1-BO @ W2-BO !
@@ -525,6 +557,24 @@ variable DOTS-ROOT-U
    s" -" ROW-EFFECT!
    CL-HOOK WC-LINE @ ROW+ ;
 
+: PAIR+ ( ptr u8 n -- ) {: a:ptr u:n :}
+   PAIR-U @ u + PAIR-CAP > if s" trusted-inventory: hook pair name overflow" 1 die then
+   a PAIR-BUF PAIR-U @ + u LINT-BMOVE
+   PAIR-U @ u + PAIR-U ! ;
+
+: PAIR! ( -- )
+   0 PAIR-U !
+   P3$ PAIR+
+   PAIR-SEP PAIR-BUF PAIR-U @ + c!
+   PAIR-U @ 1+ PAIR-U !
+   P1$ PAIR+ ;
+
+: ADD-HOOK-PAIR ( -- )
+   PAIR!
+   PAIR-BUF PAIR-U @ ROW-NAME!
+   s" -" ROW-EFFECT!
+   CL-HOOK WC-LINE @ ROW+ ;
+
 : CUR-SETCHECK ( -- )
    DEFINER-REF? if exit then
    W1-U @ 0 > if
@@ -540,10 +590,21 @@ variable DOTS-ROOT-U
    then
    s" set-check" ADD-BARE ;
 
+: CUR-SETCHECKS ( -- )
+   DEFINER-REF? if exit then
+   W4-U @ 0 > W3-U @ 0 > and W2-U @ 0 > and W1-U @ 0 > and if
+      P4$ s" '" LINT-STR= P4$ s" [']" LINT-STR= or
+      P2$ s" '" LINT-STR= P2$ s" [']" LINT-STR= or and if
+         ADD-HOOK-PAIR exit
+      then
+   then
+   s" set-checks" ADD-BARE ;
+
 : CLASSIFY-CUR ( -- )
    WC$ s" TRUSTED:" LINT-STR=CI if CUR-TRUSTED exit then
    WC$ s" TRUST" LINT-STR=CI if CUR-TRUST exit then
-   WC$ s" set-check" LINT-STR=CI if CUR-SETCHECK then ;
+   WC$ s" set-check" LINT-STR=CI if CUR-SETCHECK exit then
+   WC$ s" set-checks" LINT-STR=CI if CUR-SETCHECKS then ;
 
 : SCAN-TOKEN ( -- )
    READ-WORD
@@ -570,8 +631,12 @@ variable DOTS-ROOT-U
    1 SLINE !
    0 W1-U !
    0 W2-U !
+   0 W3-U !
+   0 W4-U !
    LINT-FALSE W1-SQ !
    LINT-FALSE W2-SQ !
+   LINT-FALSE W3-SQ !
+   LINT-FALSE W4-SQ !
    LINT-FALSE PEND-NAME !
    LINT-FALSE PEND-EFF ! ;
 

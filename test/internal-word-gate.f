@@ -28,6 +28,7 @@ require lib/fs-mutate.f
 require lib/process.f
 require lib/process-argv.f
 require lib/process-env.f
+require lib/engine-candidate.f
 
 2048 constant IWG-CAP
 10000 constant IWG-TIMEOUT-MS
@@ -66,15 +67,6 @@ create IWG-EMPTY 1 allot            \ zero-length stdin
 : IWG-ERR$ ( -- ptr u8 n )
    IWG-ERR IWG-ERR-U @ ;
 
-\ Resolve the child engine: gate default env HABU_UNDER_TEST -> the candidate;
-\ standalone runs fall back to bin/hb.
-: IWG-HB$ ( -- ptr u8 n )
-   s" HABU_UNDER_TEST" >LEN PROC-ENV-DEFAULT$? if LEN>N exit then
-   2drop
-   s" HABU_UNDER_TEST" GETENV dup 0= if
-      2drop s" bin/hb" exit
-   then ;
-
 : IWG-STORE! ( len len outcome -- )
    MATCH outcome
      exited OF IWG-RC ! 0 0= IWG-EXITED ! ENDOF
@@ -94,7 +86,7 @@ create IWG-EMPTY 1 allot            \ zero-length stdin
    PROC-ARGV-RESET
    s" --load" >LEN PROC-ARGV+
    IWG-CHILD >LEN PROC-ARGV+
-   IWG-HB$ >LEN  IWG-EMPTY 0 >LEN  IWG-OUT IWG-CAP >LEN
+   ENGINE-CANDIDATE:PATH$ >LEN  IWG-EMPTY 0 >LEN  IWG-OUT IWG-CAP >LEN
    IWG-ERR IWG-CAP >LEN  IWG-TIMEOUT-MS >MS  RUN-ARGV-STDIN-CAPTURE-OUTCOME
    IWG-STORE! ;
 
@@ -102,7 +94,7 @@ create IWG-EMPTY 1 allot            \ zero-length stdin
 : IWG-RUN-STDIN ( ptr u8 n -- )
    IWG-IN!
    PROC-ARGV-RESET
-   IWG-HB$ >LEN  IWG-IN$ >LEN  IWG-OUT IWG-CAP >LEN
+   ENGINE-CANDIDATE:PATH$ >LEN  IWG-IN$ >LEN  IWG-OUT IWG-CAP >LEN
    IWG-ERR IWG-CAP >LEN  IWG-TIMEOUT-MS >MS  RUN-ARGV-STDIN-CAPTURE-OUTCOME
    IWG-STORE! ;
 

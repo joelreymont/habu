@@ -1,6 +1,8 @@
 \ proc-pty.f — focused native process/PTY harness. Run with:
 \   bin/hb < test/proc-pty.f
 
+require lib/engine-candidate.f
+
 package PROC-PTY
 
 $20007454 constant TIOCPTYGRANT
@@ -40,10 +42,8 @@ variable PTYNUM
    SCRIPT-ARGC 0 > ;
 
 : HB-EXE$ ( -- ptr u8 n )
-   HB-ARG? if 0 SCRIPT-ARGV$ exit then
-   s" HABU_UNDER_TEST" GETENV dup 0= if
-      2drop s" bin/hb" exit
-   then ;
+   HB-ARG? if 0 SCRIPT-ARGV$ ENGINE-CANDIDATE:VALIDATE$ exit then
+   ENGINE-CANDIDATE:PATH$ ;
 
 : RBUF-DUMP ( -- )
    s" rbuf bytes: " type RN @ . cr

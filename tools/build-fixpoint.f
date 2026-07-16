@@ -5,6 +5,7 @@
 \ The stamp key uses the baked SHA256 words; no lib/content-key.f dependency.
 
 require lib/adt/option.f                 \ option<CAD-NUM:index> STR:FIND-SUB consumer
+require lib/engine-candidate.f
 require src/habu/verify-source.f
 require tools/stdin-closure-lib.f
 
@@ -224,7 +225,8 @@ variable BF-AUD-N
 
 : BF-PREPARE-ENV ( -- )
    PROC-ENV-RESET
-   s" HB_TMP" >LEN BF-TMP$ >LEN PROC-ENV+ ;
+   s" HB_TMP" >LEN BF-TMP$ >LEN PROC-ENV+
+   s" HABU_UNDER_TEST" >LEN ENGINE-CANDIDATE:PATH$ >LEN PROC-ENV+ ;
 
 : BF-FINISH-PID ( pid -- n ) {: pid :}
    PROC-ARGV-ENV-RESET
@@ -687,6 +689,17 @@ public
    then
    BF-TARGET-UNKNOWN ;
 
+: BF-APPEND-TARGET-PROC-WATCH ( ptr u8 n -- ) {: out:ptr outu:n :}
+   HB-TARGET-LINUX? if
+      out outu s" src/os/linux/proc-watch.f" BF-APPEND-SOURCE
+      exit
+   then
+   HB-TARGET-MACOS? if
+      out outu s" src/os/macos/proc-watch.f" BF-APPEND-SOURCE
+      exit
+   then
+   BF-TARGET-UNKNOWN ;
+
 : BF-APPEND-TARGET-FLAG ( ptr u8 n -- ) {: out:ptr outu :}
    HB-TARGET-LINUX? if
       out outu s" src/os/linux/target.f" BF-APPEND-SOURCE
@@ -785,6 +798,7 @@ public
    out outu BF-APPEND-COMBINATORS
    out outu s" src/habu/treeshake.f" BF-APPEND-SOURCE
    out outu s" src/habu/rt.f" BF-APPEND-SOURCE
+   out outu BF-APPEND-TARGET-PROC-WATCH
    out outu s" src/habu/crash.f" BF-APPEND-SOURCE
    out outu BF-APPEND-IMAGE-BYTES
    out outu BF-APPEND-TARGET-IMAGE
@@ -892,6 +906,7 @@ public
    out outu BF-APPEND-TARGET-SYS
    out outu s" src/habu/treeshake.f" BF-APPEND-SOURCE
    out outu s" src/habu/rt.f" BF-APPEND-SOURCE
+   out outu BF-APPEND-TARGET-PROC-WATCH
    out outu s" src/habu/crash.f" BF-APPEND-SOURCE
    out outu BF-APPEND-IMAGE-BYTES
    out outu BF-APPEND-TARGET-IMAGE
@@ -1122,10 +1137,40 @@ public
    BF-REC-STDIN-DG BF-STAGE2-DIGEST
    -1 BF-REC-STDIN? ! ;
 
+: BF-ENGINE! ( ptr u8 n -- ) {: a:ptr u:n :}
+   u 0 <= if E-BUILD-PATH throw then
+   u FS-PATH-CAP > if E-BUILD-PATH throw then
+   a BF-ENGINE-BUF u BYTE-COPY
+   u BF-ENGINE-U ! ;
+
+: BF-ENGINE-RESET ( -- )
+   0 BF-ENGINE-U ! ;
+
+: BF-ENGINE$ ( -- ptr u8 n )
+   BF-ENGINE-U @ 0 > if
+      BF-ENGINE-BUF BF-ENGINE-U @ ENGINE-CANDIDATE:VALIDATE$ exit
+   then
+   s" HABU_FIXPOINT_ENGINE" GETENV dup 0 > if
+      ENGINE-CANDIDATE:VALIDATE$ exit
+   then
+   2drop ENGINE-CANDIDATE:PATH$ ;
+
+package FIXPOINT-SEED
+
+public
+
+: PATH$ ( -- ptr u8 n )
+   s" HABU_FIXPOINT_SEED" GETENV dup 0= if
+      2drop ENGINE-CANDIDATE:PATH$ exit
+   then
+   ENGINE-CANDIDATE:VALIDATE$ ;
+
+;package
+
 : BF-BOOTSTRAP-STAGE ( -- )
    s" stage2-got" BF-REMOVE-TMP
    s" hb-stage" BF-REMOVE-TMP
-   s" bin/hb" s" stage2-src" BF-A$ COMPILER-BUILD:RUN BF-RC0
+   FIXPOINT-SEED:PATH$ s" stage2-src" BF-A$ COMPILER-BUILD:RUN BF-RC0
    s" stage2-got" BF-EXPECT
    s" stage2-got" s" hb-stage" BF-RENAME-TMP
    s" hb-stage" BF-CHMOD-X-TMP ;
@@ -1232,20 +1277,6 @@ public
    BUILD-EXT:ASSERT-EMPTY
    BF-BUILD-ALL
    BF-BUILD-SNAP-FROM-STDIN ;
-
-: BF-ENGINE! ( ptr u8 n -- ) {: a:ptr u:n :}
-   u 0 <= if E-BUILD-PATH throw then
-   u FS-PATH-CAP > if E-BUILD-PATH throw then
-   a BF-ENGINE-BUF u BYTE-COPY
-   u BF-ENGINE-U ! ;
-
-: BF-ENGINE-RESET ( -- )
-   0 BF-ENGINE-U ! ;
-
-: BF-ENGINE$ ( -- ptr u8 n )
-   BF-ENGINE-U @ 0 > if BF-ENGINE-BUF BF-ENGINE-U @ exit then
-   s" HABU_FIXPOINT_ENGINE" GETENV dup 0 > if exit then drop drop
-   s" bin/hb" ;
 
 : BF-INSTALL-TMP$ ( -- ptr u8 n )
    BF-ENGINE$ s" .tmp" BF-INSTALL-TMP-BUF FS-MUT-SUFFIX-PATH BF-INSTALL-TMP-U !

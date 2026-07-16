@@ -22,7 +22,7 @@ $400000 constant REGION       \ mmap region size (4 MB)
 $300000000 constant RBASE-VA \ FIXED region VA: baked addresses survive re-runs (AOT)
 $340000000 constant DATA-VA  \ FIXED data VA
 $48425350414E5321 constant SNAP-MAGIC \ AOT snapshot trailer marker
-3 constant SNAP-FORMAT-VERSION
+5 constant SNAP-FORMAT-VERSION
 $C1000  constant DICT-SIZE     \ dict + control-flow stack; code area follows
                                \ (= CFSTK-OFF + $1000; grown with DICT-CAP 16384,
                                \ mirrors src/habu/layout.f)
@@ -45,6 +45,10 @@ $2000000000000000 constant DNAME-EXT
 \ interpret dispatch/tick fail closed on it (src/habu/layout.f). Stage0 never
 \ sets the bit (no checker), so the mirrored gate is inert parity.
 $4000000000000000 constant DNAME-WIDE
+$FFFFFFFF constant DCLEN-MASK
+32 constant DGEN-SHIFT
+$FFFF constant LFIND-PUBLIC-MASK
+16 constant LFIND-GEN-SHIFT
 16384   constant DICT-CAP      \ CFSTK-OFF / DREC; slots 0..16383 end exactly at CFSTK.
 $C0000  constant CFSTK-OFF     \ control-flow stack: cell[0]=CFSP, then CF-REC frames
 24      constant CF-REC
@@ -75,9 +79,17 @@ $3000 constant LOCNAMES   \ 64 records x 24 B ($3000-$3600); was 16 at DATA+32
 \ Package cells and protected-WID state mirror native; deferred-word state is
 \ still absent. CUR/WIDN/HOOK/TSIG/TCSIG/CRSIG retain native offsets.
 $20 constant FRIEND-ARENA               \ arena base offset within the DATA region
-$90 constant FRIEND-ARENA-LEN           \ 18 cells: latch + 16 crown jewels + seal-ndict watermark
+$98 constant FRIEND-ARENA-LEN           \ 19 cells: latch + 17 crown jewels + seal-ndict watermark
 FRIEND-ARENA constant FRIEND-LATCH-CELL \ 0 = friend on/open, FRIEND-ARENA-LEN = sealed
 $A8 constant SEAL-NDICT-CELL            \ seal-time ndict watermark (TFAM 2b-iii); inside the band so a post-seal store traps
+\ ABI: ( body-a body-u immediate-xt definition-generation replay? -- action ).
+\ Exact xt plus generation prevents shadows and rolled-back address reuse from
+\ inheriting compile-time authority.
+$B0 constant IMM-HOOK-CELL              \ checked-body immediate preflight hook; sealed crown jewel
+0 constant IMM-ACT-BAD
+1 constant IMM-ACT-REJECT
+2 constant IMM-ACT-EXECUTE
+3 constant IMM-ACT-SKIP
 83 constant ENGINE-ERROR:SEAL-VIOLATION \ process exit status for a post-seal protected write
 84 constant ENGINE-ERROR:SEAL-PACKAGE
 85 constant ENGINE-ERROR:BAD-TAG         \ MATCH invalid-tag runtime exit (TFAM 10 slice 3; mirrors layout.f)
@@ -181,6 +193,8 @@ TXN-STATE-OFF $88 + constant TXN-FETCH-I-CELL
 TXN-STATE-OFF $90 + constant TXN-BLOB-A-CELL
 TXN-STATE-OFF $98 + constant TXN-BLOB-CAP-CELL
 TXN-STATE-OFF $100 + constant TXN-LIVE-W-OFF
+TXN-STATE-OFF $300 + constant DGEN-CELL
+DGEN-CELL 8 + constant DGEN-END
 64 constant TXN-LIVE-W-CAP
 
 \ Private build-time mirror of the package LOWER-CERT ABI. The generated
@@ -215,7 +229,7 @@ previous definitions
 vocabulary LOWER-TXN
 vocabulary LOWER-TXN-LOOKUP
 $1B0 constant CMFAM-CELL    \ resolved construct family id between the operand tokens (mirrors layout.f)
-$B0 constant CMBK-CELL      \ MATCH ENDOF branch-kind bitstack (TFAM 10 slice 3; mirrors layout.f)
+$1A8 constant CMBK-CELL     \ MATCH ENDOF branch-kind bitstack (TFAM 10 slice 3; mirrors layout.f)
 $B8 constant CMTAG-CELL     \ pending MATCH variant tag (VAR -> OF)
 $C0 constant CMPADS-CELL    \ pending MATCH variant zero pads M-p (VAR -> OF)
 $C8 constant CMFRD-CELL     \ MATCH nesting depth (0 = not in a match)
@@ -264,6 +278,8 @@ create TICK-KW   39 c,          \ '  (0x27)
 create BTICK-KW  91 c, 39 c, 93 c,   \ ['] = [ ' ]  (0x5b 0x27 0x5d)
 create LBRACE-KW 123 c, 58 c,   \ {:  (0x7b 0x3a)
 create ENDLOC-KW 58 c, 125 c,   \ :}  (0x3a 0x7d)
+32 constant MINMSG-LEN
+37 constant IMMPREFMSG-LEN
 variable STDIN?   STDIN? off   \ source mode: baked LSRC (off) vs read from stdin (on)
 variable BUILD-SOURCE?   BUILD-SOURCE? off
 
@@ -332,6 +348,7 @@ variable LKWESQ variable LKWECQ variable LKWEDOTQ
 variable LKWTICK variable LKWBTICK
 variable LKWTYPE
 variable LREAD  variable LRBYE  variable LRDIE  variable LRREC  variable LQNL  variable LOKS
+variable LIMMPREFMSG  variable LMINMSG
 variable LEX0  variable LUN0   \ re-entrant evaluate: original-path continuations of LEXIT / LUNDEF
 variable LKWLBRACE variable LKWENDLOC variable LLOC-FIND variable LKWCONST
 variable LKWDO variable LKWLOOP variable LKWI
@@ -449,6 +466,45 @@ previous definitions
    ok B,
    trap LBL,  0 ENGINE-ERROR:SEAL-VIOLATION MOVZ,  NR-EXIT-GROUP SYS,
    ok LBL, ;
+
+\ Mirror the native ioctl extent guard. Linux's legacy requests do not encode
+\ direction/size; unknown unencoded requests fail closed.
+: GUARD-IOCTL ( -- )
+   LBL LBL LBL LBL LBL {: legacy pgrp write done trap :} \ typed-local-lint: allow-bare-local
+   HB-TARGET-LINUX? IF
+      7 TIOCSCTTY LIT64,  1 7 CMP,  C-EQ done BCOND,
+      7 TIOCSPGRP LIT64,  1 7 CMP,  C-EQ done BCOND,
+      7 TIOCGPGRP LIT64,  1 7 CMP,  C-EQ pgrp BCOND,
+      7 $5401 LIT64,  1 7 CMP,  C-EQ legacy BCOND,
+      7 $5402 LIT64,  1 7 CMP,  C-EQ done BCOND,
+      8 1 30 LSRI,  7 8 3 ANDI,
+      8 7 2 ANDI,  8 write CBNZ,
+      7 done CBNZ,
+      trap B,
+      legacy LBL,
+      7 36 MOVZ,  2 7 GUARD-SPAN
+      done B,
+      pgrp LBL,
+      7 4 MOVZ,  2 7 GUARD-SPAN
+      done B,
+      write LBL,
+      7 1 16 LSRI,  8 $3FFF LIT64,  7 7 8 AND,
+      7 done CBZ,
+      2 7 GUARD-SPAN
+   ELSE
+      8 $40000000 LIT64,  7 1 8 AND,
+      7 write CBNZ,
+      8 $A0000000 LIT64,  7 1 8 AND,
+      7 done CBNZ,
+      trap B,
+      write LBL,
+      7 1 16 LSRI,  8 $1FFF LIT64,  7 7 8 AND,
+      7 done CBZ,
+      2 7 GUARD-SPAN
+   THEN
+   done B,
+   trap LBL,  0 ENGINE-ERROR:SEAL-VIOLATION MOVZ,  NR-EXIT-GROUP SYS,
+   done LBL, ;
 
 : GUARD-CODE-WORD ( n -- )
    {: addr :} \ typed-local-lint: allow-bare-local
@@ -801,7 +857,47 @@ previous definitions
 
 : BREAD ( -- )   2 G-POP  1 G-POP  0 G-POP  1 2 GUARD-SPAN  NR-READ SYS,  0 G-PUSH ;  \ ( fd buf len -- n )
 
-: BIOCTL ( -- )  2 G-POP  1 G-POP  0 G-POP  2 PROT-GUARD  NR-IOCTL SYS,  0 G-PUSH ;
+: BIOCTL ( -- )  2 G-POP  1 G-POP  0 G-POP  GUARD-IOCTL  NR-IOCTL SYS,  0 G-PUSH ;
+
+: BSETSID ( -- )  NR-SETSID SYS,  SYS-PUSH ;
+
+: BEXECVE ( -- )
+   2 G-POP  1 G-POP  0 G-POP
+   NR-EXECVE SYS,  SYS-PUSH ;
+
+: BGETPID ( -- )  NR-GETPID SYS,  SYS-PUSH ;
+
+: BPROCWATCHOPEN ( -- )
+   HB-TARGET-LINUX? IF
+      0 G-POP  1 0 MOVZ,
+      NR-PIDFD-OPEN SYS,  SYS-PUSH
+      exit
+   THEN
+   LBL LBL LBL {: openbad regbad done :} \ typed-local-lint: allow-bare-local
+   9 G-POP
+   SP SP 64 SUBI,
+   9 SP 0 STR,
+   NR-KQUEUE SYS,
+   9 C-CS CSET,  9 openbad CBNZ,
+   0 SP 56 STR,
+   10 EVFILT-PROC-U16 MOVZ,  11 EV-PROC-FLAGS MOVZ,
+   11 11 16 LSLI,  10 10 11 ORR,  10 SP 8 STRW,
+   10 NOTE-EXIT LIT64,  10 SP 12 STRW,
+   10 0 MOVZ,
+   10 SP 16 STR,  10 SP 24 STR,  10 SP 32 STR,  10 SP 40 STR,
+   0 SP 56 LDR,  1 SP 0 ADDI,  2 1 MOVZ,
+   3 0 MOVZ,  4 0 MOVZ,  5 0 MOVZ,  6 0 MOVZ,
+   NR-KEVENT64 SYS,
+   9 C-CS CSET,  9 regbad CBNZ,
+   0 SP 56 LDR,  done B,
+   regbad LBL,
+   0 SP 56 LDR,  NR-CLOSE SYS,
+   0 0 MOVN,  done B,
+   openbad LBL,
+   0 0 MOVN,
+   done LBL,
+   SP SP 64 ADDI,
+   0 G-PUSH ;
 
 : BMMAP ( -- )
    5 G-POP  4 G-POP  3 G-POP  2 G-POP  1 G-POP  0 G-POP
@@ -880,7 +976,49 @@ previous definitions
 
 : BSETCUR ( -- )    A G-POP  A DATA CUR-CELL STR, ;                                        \ ( wid -- )
 
-: BSETCHECK ( -- )  A G-POP  A DATA HOOK-CELL STR, ;                                       \ ( xt -- ): install check hook
+: C-HOOK-XT-GUARD ( label label -- ) {: bad ok :} \ typed-local-lint: allow-bare-local
+   9 ok CBZ,
+   9 DBASE CMP,  C-CC bad BCOND,
+   9 CP CMP,  C-CS bad BCOND, ;
+
+: BSETCHECK ( -- )
+   LBL LBL LBL LBL {: bad ok done msg :} \ typed-local-lint: allow-bare-local
+   A G-POP
+   bad ok C-HOOK-XT-GUARD
+   ok LBL,
+      A DATA HOOK-CELL STR,
+      done B,
+   bad LBL,
+      0 2 MOVZ,  1 msg ADR,  2 29 MOVZ,  NR-WRITE SYS,
+      0 70 MOVZ,  NR-EXIT-GROUP SYS,
+   msg LBL,  s" set-check: invalid checker xt" BYTES,
+   done LBL, ;
+
+: BSETCHECKS ( -- )
+   LBL LBL LBL LBL LBL LBL {: bad immok hookok store done msg :} \ typed-local-lint: allow-bare-local
+   SP SP 16 SUBI,
+   A G-POP  A SP 0 STR,
+   A G-POP  A SP 8 STR,
+   A SP 8 LDR,
+   bad immok C-HOOK-XT-GUARD
+   immok LBL,
+   A SP 0 LDR,
+   bad hookok C-HOOK-XT-GUARD
+   hookok LBL,
+      10 SP 8 LDR,  11 SP 0 LDR,
+      12 10 11 ORR,  12 store CBZ,
+      10 bad CBZ,  11 bad CBZ,
+   store LBL,
+      10 DATA IMM-HOOK-CELL STR,
+      11 DATA HOOK-CELL STR,
+      done B,
+   bad LBL,
+      SP SP 16 ADDI,
+      0 2 MOVZ,  1 msg ADR,  2 29 MOVZ,  NR-WRITE SYS,
+      0 70 MOVZ,  NR-EXIT-GROUP SYS,
+   msg LBL,  s" set-checks: invalid hook pair" BYTES,
+   done LBL,
+   SP SP 16 ADDI, ;
 
 \ SEAL-CAPTURE (TFAM 2b-iii): freeze the seal-time ndict truncation watermark
 \ (xref.f baseline token + the cold-prefix assembler's token at the true
@@ -955,14 +1093,39 @@ previous definitions
       9 0 MOVZ,  9 G-PUSH
    done LBL, ;
 
-\ tok-imm? ( ptr u8 n -- n ): Gforth recovery mirror of habu2.f's live
-\ dictionary immediate probe. LFIND returns the immediate bit in flag bit 1;
-\ FPRIM preserves x30 across the nested call.
-: BTOKIMM ( -- )
+variable LTOKFIND
+
+: EM-TOK-FIND ( -- )
+   LTOKFIND @ LBL,
+   SP SP 160 SUBI,
+   30 SP 0 STR,
+   0 SP 8 STR,  1 SP 16 STR,  2 SP 24 STR,  3 SP 32 STR,
+   4 SP 40 STR,  5 SP 48 STR,  6 SP 56 STR,  7 SP 64 STR,
+   8 SP 72 STR,  9 SP 80 STR,  10 SP 88 STR,  12 SP 96 STR,
+   14 SP 104 STR,  15 SP 112 STR,  16 SP 120 STR,  17 SP 128 STR,
    10 G-POP  9 G-POP
+   11 0 MOVZ,
    LFIND @ BL,
+   11 SP 136 STR,  13 SP 144 STR,
+   0 SP 8 LDR,  1 SP 16 LDR,  2 SP 24 LDR,  3 SP 32 LDR,
+   4 SP 40 LDR,  5 SP 48 LDR,  6 SP 56 LDR,  7 SP 64 LDR,
+   8 SP 72 LDR,  9 SP 80 LDR,  10 SP 88 LDR,  12 SP 96 LDR,
+   14 SP 104 LDR,  15 SP 112 LDR,  16 SP 120 LDR,  17 SP 128 LDR,
+   11 SP 136 LDR,  13 SP 144 LDR,  30 SP 0 LDR,
+   SP SP 160 ADDI,
+   RET, ;
+
+\ tok-imm? ( ptr u8 n -- n ): recovery mirror returning flags&2.
+: BTOKIMM ( -- )
+   LTOKFIND @ BL,
    9 13 2 ANDI,
    A G-PUSH ;
+
+\ tok-info ( ptr u8 n -- n n ): exact resolved xt followed by lookup flags.
+: BTOKINFO ( -- )
+   LTOKFIND @ BL,
+   9 11 0 ADDI,  A G-PUSH
+   9 13 0 ADDI,  A G-PUSH ;
 
 : EMIT-ARITH-PRIMS ( -- )
    s" +"    ['] B+    FPRIM-L   s" -"    ['] B-    FPRIM-L   s" *"    ['] B*    FPRIM-L
@@ -1012,6 +1175,10 @@ previous definitions
 : EMIT-ENGINE-PRIMS ( -- )
    s" FINALIZE" ['] BOWNERFINALIZE OWNER-API-PUB-WID FPRIM-WID
    s" run-rc" ['] BRUNRC FPRIM-L
+   s" setsid" ['] BSETSID FPRIM-L
+   s" execve" ['] BEXECVE FPRIM-L
+   s" getpid" ['] BGETPID FPRIM-L
+   s" proc-watch-open" ['] BPROCWATCHOPEN FPRIM-L
    s" cp@" ['] BCPFETCH FPRIM-L   s" dbase@" ['] BDBASEFETCH FPRIM-L
    s" data-base" ['] BDATAFETCH FPRIM-L
    s" ndict@" ['] BNDICTFETCH FPRIM-L
@@ -1034,7 +1201,9 @@ previous definitions
    s" wordlist" ['] BWORDLIST FPRIM-L   s" get-current" ['] BGETCUR FPRIM-L
    s" set-current" ['] BSETCUR FPRIM-L  s" search-wl" ['] BSWL FPRIM-L
    s" set-check" ['] BSETCHECK FPRIM-L
-   s" tok-imm?" ['] BTOKIMM FPRIM ;
+   s" set-checks" ['] BSETCHECKS FPRIM-L
+   s" tok-imm?" ['] BTOKIMM FPRIM
+   s" tok-info" ['] BTOKINFO FPRIM ;
 
 : EMIT-PRIMS ( -- )
    EMIT-ARITH-PRIMS  EMIT-COMPARE-PRIMS  EMIT-STACK-PRIMS
@@ -1285,11 +1454,14 @@ previous definitions
       13 have CBNZ,  RET,
    have LBL,
       5 11 0 ADDI,  12 5 8 LDR,
+      8 12 DGEN-SHIFT LSRI,
+      8 8 LFIND-GEN-SHIFT LSLI,
+      12 12 DCLEN-MASK ANDI,
       15 5 16 LDR,
       8 15 DNAME-WIDE ANDI,  8 8 59 LSRI,
       15 15 DNAME-IMM ANDI,  15 15 59 LSRI,
       15 15 8 ORR,
-      13 1 MOVZ,  13 13 15 ORR,
+      13 1 MOVZ,  13 13 15 ORR,  13 13 8 ORR,
       11 5 0 LDR,  RET, ;
 
 \ ---- NUMBER? ( x9=tka x10=tkl -- x11=val x12=ok ) ----
@@ -2238,6 +2410,8 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
    LKWLBRACE @ LBL, LBRACE-KW 2 BYTES,  LKWENDLOC @ LBL, ENDLOC-KW 2 BYTES,
    LKWCONST @ LBL,  s" constant" BYTES,
    LQNL @ LBL,  QNL-KW 2 BYTES,   LOKS @ LBL,  OKS-KW 4 BYTES,
+   LIMMPREFMSG @ LBL, s" hb: immediate preflight unavailable: " BYTES,  0 c, 0 c, 0 c,
+   LMINMSG @ LBL, s" hb: interpret stack underdepth: " BYTES,
    LKWDO @ LBL,  s" do" BYTES,    LKWLOOP @ LBL,  s" loop" BYTES,    LKWI @ LBL,  s" i" BYTES,
    LKWTOR @ LBL,  s" >r" BYTES,   LKWRFROM @ LBL,  s" r>" BYTES,   LKWRFET @ LBL,  s" r@" BYTES,
    LKWEXIT @ LBL,  s" exit" BYTES,   LKWREC @ LBL,  s" recurse" BYTES,
@@ -2733,7 +2907,8 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
    2 3 MOVZ,  LPROT @ BL,                                \ region -> RW
    10 SP 8 LDR,
    11 DATA LASTC-CELL LDR,                               \ created slot
-   12 11 0 LDR,  13 11 8 LDR,  12 12 13 ADD,             \ x12 = RET addr
+   12 11 0 LDR,  13 11 8 LDR,  13 13 DCLEN-MASK ANDI,
+   12 12 13 ADD,                                           \ x12 = RET addr
    14 10 12 SUB,  14 14 2 ASRI,                          \ delta words (negative)
    5 $3FFFFFF LIT64,  14 14 5 AND,
    5 $14000000 LIT64,  14 14 5 ORR,                      \ b D
@@ -2883,6 +3058,22 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
    11 DATA DEF-TKA-CELL LDR,  11 DATA TKA-CELL STR,
    12 DATA DEF-TKL-CELL LDR,  12 DATA TKL-CELL STR, ;
 
+: C-DREC-STAMP ( n n n n -- )
+   {: rec gen word mask :}  \ typed-local-lint: allow-bare-local - stock Gforth rejects Habu type suffixes.
+   LBL {: ok :}  \ typed-local-lint: allow-bare-local - stock Gforth rejects Habu type suffixes.
+   gen DATA DGEN-CELL LDR,
+   gen gen 1 ADDI,
+   mask DCLEN-MASK LIT64,
+   gen mask CMP,  C-LS ok BCOND,
+      s" hb: definition generation exhausted" C-EXIT76
+   ok LBL,
+   gen DATA DGEN-CELL STR,
+   word rec 8 LDR,
+   word word mask AND,
+   mask gen DGEN-SHIFT LSLI,
+   word word mask ORR,
+   word rec 8 STR, ;
+
 \ CREATE as a BL-able routine: the interpret keyword AND the runtime `create`
 \ prim share it, so defining words (`: CONST create , does> @ ;`) work.
 \ LCREATE ( x15=top-level? ): the hook KIND record (`NAME create` -> sig -- n)
@@ -2905,6 +3096,7 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
    9 NDICT 0 ADDI,  10 DREC MOVZ,  9 9 10 MUL,  9 DBASE 9 ADD,   \ slot again
    10 9 0 LDR,  10 CP 10 SUB,  10 10 4 SUBI,  10 9 8 STR,        \ clen = CP-addr-4
    9 DATA LASTC-CELL STR,                               \ DOES> patches this slot
+   9 10 11 12 C-DREC-STAMP
    NDICT NDICT 1 ADDI,  9 9 0 LDR,                      \ x9 = body start for the flush
    2 5 MOVZ,  LPROT @ BL,  LFLUSH @ BL,                 \ region -> RX + flush
    15 SP 8 LDR,  15 nokind CBZ,
@@ -2931,6 +3123,7 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
    9 W-RET LIT64,  LCEMIT @ BL,
    9 NDICT 0 ADDI,  10 DREC MOVZ,  9 9 10 MUL,  9 DBASE 9 ADD,
    10 9 0 LDR,  10 CP 10 SUB,  10 10 4 SUBI,  10 9 8 STR,
+   9 10 11 12 C-DREC-STAMP
    NDICT NDICT 1 ADDI,  9 9 0 LDR,                      \ x9 = body start for the flush
    2 5 MOVZ,  LPROT @ BL,  LFLUSH @ BL,
    LKWCONST 8 C-DEFHOOK ;
@@ -3819,7 +4012,9 @@ variable CFSK2
       5 9 0 LDR,  6 9 8 LDR,
       7 9 40 LDR,  8 0 MOVN,  7 8 CMP,  C-EQ pkg BCOND,
       7 RBASE 5 ADD,  7 10 0 STR,
-      6 6 5 SUB,  6 6 4 SUBI,  6 10 8 STR,
+      6 6 5 SUB,  6 6 4 SUBI,
+      2 11 12 SUB,  2 2 1 ADDI,  2 2 DGEN-SHIFT LSLI,
+      6 6 2 ORR,  6 10 8 STR,
       fields B,
       pkg LBL,
       5 10 0 STR,  6 10 8 STR,
@@ -3846,6 +4041,7 @@ variable CFSK2
    DATA 0 0 ADDI,
    XDS DATA S0-CELL STR,
    13 DATA ARGC-CELL STR,  14 DATA ARGV-CELL STR,  15 DATA ENVP-CELL STR,
+   NDICT DATA DGEN-CELL STR,
    5 DATA-START LIT64,  7 DATA 5 ADD,  7 DATA DP-CELL STR, ;
 
 : EMIT-SNAPSHOT-COPY-CODE ( -- )
@@ -3916,14 +4112,27 @@ variable CFSK2
 : EMIT-SNAPSHOT-VALIDATE-WIDS ( n -- ) {: bad :} \ typed-local-lint: allow-bare-local - stock Gforth rejects Habu type suffixes.
    LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL
    LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL
+   LBL LBL LBL
    {: prot-loop prot-max prot-inner prot-next owners owner-loop pub-max pri-max \ typed-local-lint: allow-bare-local - stock Gforth rejects Habu type suffixes.
       oscan onext odone owner-prot owner-prev-start owner-prev owner-next widn \ typed-local-lint: allow-bare-local - stock Gforth rejects Habu type suffixes.
       name-inline name-ready name-loop name-ok pkg-scan pkg-inline \ typed-local-lint: allow-bare-local - stock Gforth rejects Habu type suffixes.
-      pkg-ready pkg-bytes pkg-hit pkg-next pkg-done :} \ typed-local-lint: allow-bare-local - stock Gforth rejects Habu type suffixes.
-   5 PROT-WID-END MOVZ,  7 5 CMP,  C-CC bad BCOND,
+      pkg-ready pkg-bytes pkg-hit pkg-next pkg-done gen-loop gen-next gen-done :} \ typed-local-lint: allow-bare-local - stock Gforth rejects Habu type suffixes.
+   5 DGEN-END MOVZ,  7 5 CMP,  C-CC bad BCOND,
    10 12 7 SUB,
    25 10 6 SUB,
    16 15 0 ADDI,
+   2 10 DGEN-CELL LDR,
+   2 bad CBZ,
+   3 2 DGEN-SHIFT LSRI,  3 bad CBNZ,
+   8 25 0 ADDI,  9 16 0 ADDI,
+   gen-loop LBL,  9 gen-done CBZ,
+      3 8 40 LDR,  4 0 MOVN,  3 4 CMP,  C-EQ gen-next BCOND,
+      3 8 8 LDR,  3 3 DGEN-SHIFT LSRI,
+      3 bad CBZ,
+      3 2 CMP,  C-HI bad BCOND,
+   gen-next LBL,
+      8 8 DREC ADDI,  9 9 1 SUBI,  gen-loop B,
+   gen-done LBL,
    11 10 PROT-WID-N-CELL LDR,
    11 PROT-WID-MAX CMPI,  C-HI bad BCOND,
    12 PROT-WID-OFF MOVZ,  12 10 12 ADD,
@@ -4040,9 +4249,33 @@ variable CFSK2
    6 FIRST-DYNAMIC-WID CMPI,  C-LT bad BCOND,
    6 17 CMP,  C-LS bad BCOND, ;
 
+: EMIT-SNAPSHOT-HOOKS-EXACT ( n -- ) {: bad :}  \ typed-local-lint: allow-bare-local - stock Gforth rejects Habu type suffixes.
+   LBL LBL LBL LBL LBL {: pref hook code wrong finish :} \ typed-local-lint: allow-bare-local
+   code B,
+   pref LBL, s" LOWER-CERT-HOOK:PREFLIGHT" BYTES,
+   hook LBL, s" LOWER-CERT-HOOK:HOOK" BYTES,
+   ZBYTE 3 BYTES,
+   code LBL,
+   SP SP 64 SUBI,
+   30 SP 0 STR,  8 SP 8 STR,  15 SP 16 STR,  16 SP 24 STR,
+   21 SP 32 STR,  22 SP 40 STR,  25 SP 48 STR,
+   9 pref ADR,  10 25 MOVZ,  LFIND @ BL,
+   13 wrong CBZ,
+   14 DATA IMM-HOOK-CELL LDR,  11 14 CMP,  C-NE wrong BCOND,
+   9 hook ADR,  10 20 MOVZ,  LFIND @ BL,
+   13 wrong CBZ,
+   14 DATA HOOK-CELL LDR,  11 14 CMP,  C-NE wrong BCOND,
+   14 0 MOVZ,  finish B,
+   wrong LBL,  14 1 MOVZ,
+   finish LBL,
+   25 SP 48 LDR,  22 SP 40 LDR,  21 SP 32 LDR,
+   16 SP 24 LDR,  15 SP 16 LDR,  8 SP 8 LDR,  30 SP 0 LDR,
+   SP SP 64 ADDI,
+   14 bad CBNZ, ;
+
 : EMIT-SNAPSHOT-RESTORE ( -- )
-   LBL LBL LBL LBL LBL LBL LBL
-   {: snomag snbad snok snnew snhave snbadver snpresent :} \ typed-local-lint: allow-bare-local - stock Gforth rejects Habu type suffixes.
+   LBL LBL LBL LBL LBL LBL LBL LBL LBL
+   {: snomag snbad snok snnew snhave snbadver snpresent snimmok snhookok :} \ typed-local-lint: allow-bare-local - stock Gforth rejects Habu type suffixes.
    24 0 MOVZ,
    9 DATA RBASE-CELL LDR,  25 9 0 ADDI,
    10 9 0 ADDI,  5 $1000 LIT64,  10 10 5 SUB,
@@ -4096,6 +4329,13 @@ variable CFSK2
    9 DATA ARGC-CELL STR,  10 DATA ARGV-CELL STR,  0 DATA ENVP-CELL STR,
    NDICT 15 0 ADDI,
    CP DBASE 6 ADD,
+   9 DATA IMM-HOOK-CELL LDR,  9 snbad CBZ,
+   snbad snimmok C-HOOK-XT-GUARD
+   snimmok LBL,
+   9 DATA HOOK-CELL LDR,  9 snbad CBZ,
+   snbad snhookok C-HOOK-XT-GUARD
+   snhookok LBL,
+   snbad EMIT-SNAPSHOT-HOOKS-EXACT
    EMIT-SNAPSHOT-REBASE-DICT
    EMIT-SNAPSHOT-REBASE-CALLS
    EMIT-SNAPSHOT-RX-FLUSH
@@ -4110,7 +4350,7 @@ variable CFSK2
    9 cwok CBNZ,
    9 0 MOVZ,  9 DATA CUR-CELL STR,
    9 FIRST-DYNAMIC-WID MOVZ,  9 DATA WIDN-CELL STR,
-   9 0 MOVZ,  9 DATA HOOK-CELL STR,
+   9 0 MOVZ,  9 DATA HOOK-CELL STR,  9 DATA IMM-HOOK-CELL STR,
    9 DATA PROT-WID-N-CELL STR,
    9 DATA OWNER-WID-N-CELL STR,
    cwok LBL,
@@ -5062,6 +5302,7 @@ variable P2SK
 : EMIT-COMPILE-FLUSH-PEND ( -- )
    11 DATA PEND-CELL LDR,
    9 11 0 LDR,  10 CP 9 SUB,  10 10 4 SUBI,  10 11 8 STR,
+   11 10 12 13 C-DREC-STAMP
    2 5 MOVZ,  LPROT @ BL,  LFLUSH @ BL, ;
 
 : EMIT-COMPILE-PUBLISH-TRUSTED ( n -- ) {: lmain :} \ typed-local-lint: allow-bare-local
@@ -5259,18 +5500,66 @@ variable P2SK
    lmain EMIT-COMPILE-UNARY-OPS
    lmain EMIT-COMPILE-FLOAT-OPS ;
 
-: EMIT-COMPILE-CALL ( n n -- ) {: lmain lundef :}
-   LBL {: notimm :}
+: EMIT-COMPILE-IMM-PREFLIGHT ( -- )
+   LBL LBL LBL {: unchecked missing done :} \ typed-local-lint: allow-bare-local - stock Gforth rejects Habu label suffixes.
+   9 DATA HOOK-CELL LDR,  9 unchecked CBZ,
+   9 DATA TRUSTED-CELL LDR,  9 unchecked CBNZ,
+   SP SP 32 SUBI,
+   30 SP 0 STR,  11 SP 8 STR,  13 SP 16 STR,
+   9 DATA IMM-HOOK-CELL LDR,  9 missing CBZ,
+   2 5 MOVZ,  LPROT @ BL,
+   9 DATA BODYBUF-OFF ADDI,  9 G-PUSH
+   9 DATA BODYLEN-CELL LDR,  9 G-PUSH
+   9 SP 8 LDR,  9 G-PUSH
+   9 SP 16 LDR,  9 9 LFIND-GEN-SHIFT LSRI,  9 G-PUSH
+   9 DATA P2-CELL LDR,  9 G-PUSH
+   9 DATA IMM-HOOK-CELL LDR,  9 BLR,
+   10 G-POP  10 SP 24 STR,
+   2 3 MOVZ,  LPROT @ BL,
+   10 SP 24 LDR,
+   13 SP 16 LDR,  11 SP 8 LDR,  30 SP 0 LDR,  SP SP 32 ADDI,
+   done B,
+   missing LBL,
+      10 IMM-ACT-BAD MOVZ,
+      13 SP 16 LDR,  11 SP 8 LDR,  30 SP 0 LDR,  SP SP 32 ADDI,
+      done B,
+   unchecked LBL,  10 IMM-ACT-EXECUTE MOVZ,
+   done LBL, ;
+
+: EMIT-COMPILE-CALL ( n n n -- ) {: lmain lundef lreject :} \ typed-local-lint: allow-bare-local - stock Gforth rejects Habu label suffixes.
+   LBL LBL LBL LBL LBL {: notimm depthok depthbad execute bad :} \ typed-local-lint: allow-bare-local - stock Gforth rejects Habu label suffixes.
    LVSPILL @ BL,
    9 DATA TKA-CELL LDR,  10 DATA TKL-CELL LDR,  LFIND @ BL,
    13 lundef CBZ,
    14 13 2 ANDI,  14 notimm CBZ,
+      10 IMM-ACT-BAD MOVZ,                            \ fail closed unless preflight selects an action
+      EMIT-COMPILE-IMM-PREFLIGHT
+      10 IMM-ACT-REJECT CMPI,  C-EQ lreject BCOND,
+      10 IMM-ACT-SKIP CMPI,  C-EQ lmain BCOND,
+      10 IMM-ACT-EXECUTE CMPI,  C-EQ execute BCOND,
+      bad B,
+   execute LBL,
+      14 13 $FF00 ANDI,  14 depthok CBZ,
+         14 14 8 LSRI,
+         9 DATA S0-CELL LDR,  10 XDS 9 SUB,  10 10 3 ASRI,
+         10 14 CMP,  C-LT depthbad BCOND,
+      depthok LBL,
       SP SP 16 SUBI,  30 SP 0 STR,  11 SP 8 STR,
       2 5 MOVZ,  LPROT @ BL,
       11 SP 8 LDR,  11 BLR,
       2 3 MOVZ,  LPROT @ BL,
       30 SP 0 LDR,  SP SP 16 ADDI,
       lmain B,
+   depthbad LBL,
+      0 2 MOVZ,  1 LMINMSG @ ADR,  2 MINMSG-LEN MOVZ,  NR-WRITE SYS,
+      0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,
+      0 2 MOVZ,  1 LQNL @ ADR,  1 1 1 ADDI,  2 1 MOVZ,  NR-WRITE SYS,
+      lreject B,
+   bad LBL,
+      0 2 MOVZ,  1 LIMMPREFMSG @ ADR,  2 IMMPREFMSG-LEN MOVZ,  NR-WRITE SYS,
+      0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,
+      0 2 MOVZ,  1 LQNL @ ADR,  1 1 1 ADDI,  2 1 MOVZ,  NR-WRITE SYS,
+      lreject B,
    notimm LBL,
    C-CALL  lmain B, ;
 
@@ -5515,7 +5804,7 @@ variable P2SK
    s5 LBL,  lmain EM-ADT-MATCH-OF
    off LBL, ;
 
-: EMIT-COMPILE ( n n -- ) {: lmain lundef :}
+: EMIT-COMPILE ( n n n -- ) {: lmain lundef lreject :} \ typed-local-lint: allow-bare-local - stock Gforth rejects Habu label suffixes.
    LBL {: lnotsemi :}
    lmain EMIT-COMPILE-ADT-MODE
    lmain lnotsemi EMIT-COMPILE-SEMI
@@ -5524,7 +5813,7 @@ variable P2SK
    lmain EMIT-COMPILE-KEYWORDS
    lmain EMIT-COMPILE-LITERAL
    lmain EMIT-COMPILE-OPS
-   lmain lundef EMIT-COMPILE-CALL ;
+   lmain lundef lreject EMIT-COMPILE-CALL ;
 
 : EMIT-RESET-COMPILE-STATE ( -- )
    9 0 MOVZ,
@@ -5558,9 +5847,10 @@ variable P2SK
    9 DATA RSAVSP-CELL LDR,  SP 9 0 ADDI,
    LREAD @ B, ;
 
-: EMIT-UNDEF ( n -- ) {: lundef :}
+: EMIT-UNDEF ( n n -- ) {: lundef lreject :} \ typed-local-lint: allow-bare-local - stock Gforth rejects Habu label suffixes.
    lundef LBL,
    0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,
+   lreject LBL,
    9 DATA EVALD-CELL LDR,  9 LUN0 @ CBZ,
       EMIT-EVAL-UNDEF-ROLLBACK
    LUN0 @ LBL,
@@ -5603,15 +5893,19 @@ variable P2SK
 \ ---- MAIN: startup (data stack + mmap + seed dict) then the outer interpreter ----
 : EMIT-MAIN ( -- )
    EMIT-STARTUP
-   LBL {: LMAIN :}  LBL {: LEXIT :}  LBL {: LCOMPILE :}  LBL {: LUNDEF :}   \ allocate up-front (byte-free) so the LMAIN store below is in scope
+   LBL {: LMAIN :} \ typed-local-lint: allow-bare-local - stock Gforth rejects Habu label suffixes.
+   LBL {: LEXIT :} \ typed-local-lint: allow-bare-local - stock Gforth rejects Habu label suffixes.
+   LBL {: LCOMPILE :} \ typed-local-lint: allow-bare-local - stock Gforth rejects Habu label suffixes.
+   LBL {: LUNDEF :} \ typed-local-lint: allow-bare-local - stock Gforth rejects Habu label suffixes.
+   LBL {: LREJECT :} \ typed-local-lint: allow-bare-local - stock Gforth rejects Habu label suffixes; shares recovery without duplicate diagnostics.
    LMAIN EMIT-MAIN-RUNTIME-LABELS
    LMAIN LBL,
       LMAIN LEXIT LCOMPILE EMIT-TOKEN-DISPATCH
       LMAIN LUNDEF EMIT-INTERPRET
 	      \ ---------------- COMPILE ----------------
 	   LCOMPILE LBL,
-	      LMAIN LUNDEF EMIT-COMPILE
-	   LUNDEF EMIT-UNDEF
+	      LMAIN LUNDEF LREJECT EMIT-COMPILE
+	   LUNDEF LREJECT EMIT-UNDEF
 	   LEXIT LMAIN EMIT-EXIT ;
 
 : EMIT-RESET-BUILDER ( -- )
@@ -5619,13 +5913,14 @@ variable P2SK
 
 : EMIT-LABEL-CORE ( -- )
    LBL LANCHOR !  LBL LFIND !  LBL LNUM !  LBL LDICT !  LBL LSRC !
+   LBL LTOKFIND !
    LBL LCEMIT !  LBL LTOK !  LBL LPROT !  LBL LPROTWIDQ !  LBL LFLUSH !  LBL LNCOUNT !
    LBL LBCAP !  LBL LBCS !  LBL LESCDEC !  LBL LESCHEX !  LBL LESCSCAN !  LBL LESCCOPY !
    LBL LCFPUSH !  LBL LCFPOP !  LBL LPAT !  LBL LKWCMP ! ;
 
 : EMIT-LABEL-RUNTIME ( -- )
    LBL LBCHAIN !  LBL LCREATE !  LBL LDOESPATCH !
-   LBL LREAD !  LBL LRBYE !  LBL LRDIE !  LBL LRREC !  LBL LQNL !  LBL LOKS !
+   LBL LREAD !  LBL LRBYE !  LBL LRDIE !  LBL LRREC !  LBL LQNL !  LBL LOKS !  LBL LIMMPREFMSG !  LBL LMINMSG !
    LBL LEX0 !  LBL LUN0 ! ;
 
 : EMIT-LABEL-CONTROL ( -- )
@@ -5717,6 +6012,7 @@ variable P2SK
    EMIT-LABEL-P2 ;
 
 : EMIT-PRIMITIVE-SECTIONS ( -- )
+   EM-TOK-FIND
    EMIT-PRIMS
    EMIT-PROF-PRIMS
    EMIT-FP-PRIMS

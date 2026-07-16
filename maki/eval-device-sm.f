@@ -14,8 +14,10 @@ require lib/string.f
 require lib/float.f
 require lib/fs.f
 require lib/fs-mutate.f
+require lib/engine-id.f
 require lib/process.f
 require lib/process-argv.f
+require lib/engine-candidate.f
 require lib/ffi.f
 require maki/eval.f
 require lib/fmt.f
@@ -107,7 +109,7 @@ create GSP-OUT $8000 allot  create GSP-ERR $1000 allot
    s" src/arch/ptx/emit.f"  >LEN PROC-ARGV+  s" lib/ptx/cg.f"        >LEN PROC-ARGV+
    s" lib/ptx/header.f" >LEN PROC-ARGV+  s" lib/ptx/cg-collective.f" >LEN PROC-ARGV+
    s" lib/ptx/collective.f" >LEN PROC-ARGV+  MAKI-GRADE:DRIVER$ >LEN PROC-ARGV+
-   s" bin/hb" >LEN  GSP-OUT $8000 >LEN  GSP-ERR $1000 >LEN  20000 >MS  RUN-ARGV-CAPTURE
+   ENGINE-CANDIDATE:PATH$ >LEN  GSP-OUT $8000 >LEN  GSP-ERR $1000 >LEN  20000 >MS  RUN-ARGV-CAPTURE
    {: outu erru rc :}
    MAKI-GRADE:PTX$ GSP-OUT outu LEN>N WRITE-ALL  outu LEN>N ;
 

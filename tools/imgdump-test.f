@@ -11,6 +11,7 @@ require lib/fs.f
 require lib/fs-mutate.f
 require lib/process.f
 require lib/process-argv.f
+require lib/engine-candidate.f
 require tools/imgdump.f
 
 $4000 constant IDT-CAP
@@ -91,14 +92,14 @@ variable IDT-DIFF-U
 : IDT-RUN-1 ( ptr u8 n -- n n n ) {: a:ptr u :}
    IDT-ARGV-BASE
    a u IDT-ARG+
-   s" bin/hb"  >LEN IDT-OUT IDT-CAP >LEN IDT-ERR IDT-CAP >LEN
+   ENGINE-CANDIDATE:PATH$ >LEN IDT-OUT IDT-CAP >LEN IDT-ERR IDT-CAP >LEN
    IDT-TIMEOUT-MS >MS RUN-ARGV-CAPTURE IDT-CAPTURE>N ;
 
 : IDT-RUN-2 ( ptr u8 n ptr u8 n -- n n n ) {: a:ptr au b:ptr bu :}
    IDT-ARGV-BASE
    a au IDT-ARG+
    b bu IDT-ARG+
-   s" bin/hb"  >LEN IDT-OUT IDT-CAP >LEN IDT-ERR IDT-CAP >LEN
+   ENGINE-CANDIDATE:PATH$ >LEN IDT-OUT IDT-CAP >LEN IDT-ERR IDT-CAP >LEN
    IDT-TIMEOUT-MS >MS RUN-ARGV-CAPTURE IDT-CAPTURE>N ;
 
 : IDT-TEST-DUMP ( -- )
