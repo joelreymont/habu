@@ -39,8 +39,6 @@ create HBB-ARTIFACT-LOCK-PATH FS-PATH-CAP allot
 create HBB-ARTIFACT-NAME-BUF 128 allot
 create HBB-ARTIFACT-KEY-HEX 80 allot
 create HBB-LF-BUF 1 allot
-create HBB-COMPOSED-PATH FS-PATH-CAP allot
-create HBB-SOURCE-MAP-PATH FS-PATH-CAP allot
 HBB-LF HBB-LF-BUF c!
 
 \ Preseeded test entry (--preseed-entry / --preseed-seed): a selected non-MAIN
@@ -88,9 +86,6 @@ variable HBB-PRESEED-MODE
 variable HBB-START-NS
 variable HBB-ELAPSED-NS
 variable HBB-COMPOSED
-variable HBB-MATERIALIZED
-variable HBB-COMPOSED-U
-variable HBB-SOURCE-MAP-U
 
 : HBB-PTR-U8-FIELD ( ptr a -- ptr ptr u8 )
    0 ptr-field ;
@@ -133,10 +128,7 @@ variable HBB-SOURCE-MAP-U
 
 : HBB-SRC! ( ptr u8 n -- )
    HBB-SRC-PATH HBB-SRC-U HBB-COPY-PATH!
-   0 HBB-COMPOSED !
-   0 HBB-MATERIALIZED !
-   0 HBB-COMPOSED-U !
-   0 HBB-SOURCE-MAP-U ! ;
+   0 HBB-COMPOSED ! ;
 
 : HBB-OUT! ( ptr u8 n -- )
    HBB-OUT-PATH HBB-OUT-U HBB-COPY-PATH! ;
@@ -334,23 +326,14 @@ variable HBB-SOURCE-MAP-U
    BF-PREPARE-ENV
    PROC-ENV-INHERIT-MISSING ;
 
-: HBB-COMPOSED-NAME$ ( -- ptr u8 n )
-   s" hb-composed-src" ;
+package HBB
 
-: HBB-SOURCE-MAP-NAME$ ( -- ptr u8 n )
-   s" hb-composed-map" ;
+public
 
-: HBB-COMPOSED-SRC$ ( -- ptr u8 n )
-   HBB-COMPOSED-PATH HBB-COMPOSED-U @ ;
+: COMPOSED-LABEL$ ( -- ptr u8 n )
+   s" <habu-composed>" ;
 
-: HBB-SOURCE-MAP$ ( -- ptr u8 n )
-   HBB-SOURCE-MAP-PATH HBB-SOURCE-MAP-U @ ;
-
-: HBB-COMPOSE-PATHS ( -- )
-   HBB-COMPOSED-NAME$ BF-A$
-   HBB-COMPOSED-PATH HBB-COMPOSED-U HBB-COPY-PATH!
-   HBB-SOURCE-MAP-NAME$ BF-A$
-   HBB-SOURCE-MAP-PATH HBB-SOURCE-MAP-U HBB-COPY-PATH! ;
+;package
 
 : HBB-DISC? ( n -- bool ) {: code:n :}
    code E-DISC-FIRST <= code E-DISC-LAST >= and ;
@@ -376,16 +359,6 @@ variable HBB-SOURCE-MAP-U
 : HBB-ENSURE-COMPOSED ( -- )
    HBB-COMPOSED @ 0= if HBB-COMPOSE-SOURCE then ;
 
-: HBB-MATERIALIZE-COMPOSED ( -- )
-   HBB-ENSURE-COMPOSED
-   HBB-COMPOSE-PATHS
-   HBB-COMPOSED-SRC$ SOURCE-COMPOSE:WRITE-SOURCE
-   HBB-SOURCE-MAP$ SOURCE-COMPOSE:WRITE-MAP
-   -1 HBB-MATERIALIZED ! ;
-
-: HBB-ENSURE-MATERIALIZED ( -- )
-   HBB-MATERIALIZED @ 0= if HBB-MATERIALIZE-COMPOSED then ;
-
 : HBB-LOAD-END ( -- )
    s" --"  >LEN PROC-ARGV+ ;
 
@@ -394,6 +367,8 @@ variable HBB-SOURCE-MAP-U
    s" lib/errors.f"  >LEN PROC-ARGV+
    s" lib/string.f"  >LEN PROC-ARGV+
    s" lib/memory.f"  >LEN PROC-ARGV+
+   s" lib/fs.f"  >LEN PROC-ARGV+
+   s" lib/source.f"  >LEN PROC-ARGV+
    s" lib/vector.f"  >LEN PROC-ARGV+
    s" tools/lint/text.f"  >LEN PROC-ARGV+ s" tools/lint/token.f" >LEN PROC-ARGV+ s" tools/lint/lib.f" >LEN PROC-ARGV+
    s" tools/lint/json-writer.f"  >LEN PROC-ARGV+
@@ -415,25 +390,29 @@ variable HBB-SOURCE-MAP-U
    HBB-LOAD-END ;
 
 : HBB-ADD-AOT-LINT-CMD ( -- )
-   HBB-ENSURE-MATERIALIZED
+   HBB-ENSURE-COMPOSED
    HBB-CMD-RESET
    HBB-ADD-AOT-LINT-ENTRY
    HBB-JSON @ if s" --json"  >LEN PROC-ARGV+ then
-   HBB-COMPOSED-SRC$  >LEN PROC-ARGV+ ;
+   s" --label" >LEN PROC-ARGV+
+   HBB:COMPOSED-LABEL$ >LEN PROC-ARGV+ ;
 
 : HBB-ADD-SIGNATURE-LINT-CMD ( -- )
-   HBB-ENSURE-MATERIALIZED
+   HBB-ENSURE-COMPOSED
    HBB-CMD-RESET
    HBB-ADD-SIGNATURE-LINT-ENTRY
    HBB-JSON @ if s" --json"  >LEN PROC-ARGV+ then
-   HBB-COMPOSED-SRC$  >LEN PROC-ARGV+ ;
+   s" --label" >LEN PROC-ARGV+
+   HBB:COMPOSED-LABEL$ >LEN PROC-ARGV+ ;
 
 : HBB-CAPTURE>N ( len len rc -- n n n ) {: outu erru rc :}
    outu LEN>N erru LEN>N rc RC>N ;
 
 : HBB-RUN-HB-CAPTURE ( -- n n n )
-   CLI-TOOLS$ >LEN HBB-OUT-BUF HBB-CAPTURE-CAP >LEN HBB-ERR-BUF HBB-CAPTURE-CAP >LEN
-   HBB-TIMEOUT-MS >MS RUN-ARGV-ENV-CAPTURE
+   SOURCE-COMPOSE:SOURCE$ {: src:ptr srcu:n :}
+   CLI-TOOLS$ >LEN src srcu >LEN
+   HBB-OUT-BUF HBB-CAPTURE-CAP >LEN HBB-ERR-BUF HBB-CAPTURE-CAP >LEN
+   HBB-TIMEOUT-MS >MS RUN-ARGV-ENV-STDIN-CAPTURE
    HBB-CAPTURE>N ;
 
 : HBB-FINISH-TOOL ( n n n -- ) {: outu erru rc :}
@@ -713,9 +692,8 @@ HBB-INSTALL-CHILD-LINTS
    HBB-BUILD-MAKER-FRESH ;
 
 : HBB-READ-COMMENTED-SOURCE ( -- )
-   HBB-ENSURE-MATERIALIZED
-   HBB-COMPOSED-SRC$ BF-SOURCE-BUF BF-SOURCE-CAP READ-ALL BF-SOURCE-LEN !
-   BF-SOURCE-BUF BF-SOURCE-LEN @ >LEN SOURCE-BUF SOURCE-CAP >LEN COMMENT-EXPORTS SOURCE-LEN ! ;
+   HBB-ENSURE-COMPOSED
+   SOURCE-COMPOSE:SOURCE$ >LEN SOURCE-BUF SOURCE-CAP >LEN COMMENT-EXPORTS SOURCE-LEN ! ;
 
 : HBB-READ-ORIGIN-COMMENTED-SOURCE ( -- )
    HBB-READ-COMMENTED-SOURCE ;

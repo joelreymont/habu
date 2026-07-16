@@ -888,7 +888,12 @@ public
    HBT-ENTRY-SRC HBT-AOT-OUT HBT-HBB-PREPARE-AOT
    HBT-HBB-BUILD-OUT
    HBB-ARTIFACT-HIT @ 0 <> TTRUE
-   HBB-MATERIALIZED @ 0= TTRUE
+   HBT-TMP BF-TMP!
+   s" cache-hit source artifact" T-LABEL
+   s" hb-composed-src" BF-A$ EXISTS? TFALSE
+   s" cache-hit map artifact" T-LABEL
+   s" hb-composed-map" BF-A$ EXISTS? TFALSE
+   BF-TMP-RESET
    HBB-MAKER-RUN @ 0= TTRUE
    HBT-RUN-MODULAR ;
 
@@ -900,6 +905,12 @@ public
    HBB-ARTIFACT-HIT @ 0= TTRUE
    HBB-OBJECT-HIT @ 0= TTRUE
    HBB-MAKER-RUN @ 0 <> TTRUE
+   HBT-TMP BF-TMP!
+   s" cache-miss source artifact" T-LABEL
+   s" hb-composed-src" BF-A$ EXISTS? TFALSE
+   s" cache-miss map artifact" T-LABEL
+   s" hb-composed-map" BF-A$ EXISTS? TFALSE
+   BF-TMP-RESET
    HBT-RUN-MODULAR ;
 
 : HBT-BUILD-MODULAR-AOT ( -- )
