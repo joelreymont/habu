@@ -7,9 +7,12 @@
 
 require lib/errors.f
 require lib/string.f
+require lib/memory.f
+require lib/vector.f
 require tools/lint/text.f
 require tools/lint/token.f
 require tools/lint/lib.f
+require tools/lint/source-lex.f
 
 package SHADOW-LINT-TOOL
 
@@ -47,29 +50,35 @@ variable SI
 
 \ ---- lint one toolchain file: any defining word whose name is a prim is a SHADOW ----
 variable BAD  variable LI
-: DEF-NAME-OFFSET ( n -- n )
-   dup TOK s" :" LINT-STR= IF drop 1 exit THEN
-   dup TOK s" constant" LINT-STR=CI IF drop 1 exit THEN
-   dup TOK s" variable" LINT-STR=CI IF drop 1 exit THEN
-   dup TOK s" create" LINT-STR=CI IF drop 1 exit THEN
-   dup TOK s" LAYOUT-BUFFER" LINT-STR=CI IF drop 1 exit THEN
-   drop 0 ;
+: DEF-NAME-OFFSET$ ( ptr u8 n -- n )
+   2dup s" :" LINT-STR= IF 2drop 1 exit THEN
+   2dup s" constant" LINT-STR=CI IF 2drop 1 exit THEN
+   2dup s" variable" LINT-STR=CI IF 2drop 1 exit THEN
+   2dup s" create" LINT-STR=CI IF 2drop 1 exit THEN
+   s" LAYOUT-BUFFER" LINT-STR=CI IF 1 exit THEN
+   0 ;
 
-: LINT-DEFINITION ( ptr u8 n n -- ) {: pa:ptr pu k :}
-   k DEF-NAME-OFFSET dup 0= IF drop exit THEN
-   k + dup TN# @ >= IF drop exit THEN
-   TOK 2dup PRIM? IF
+: DEF-NAME-OFFSET ( n -- n )
+   TOK DEF-NAME-OFFSET$ ;
+
+: LINT-DEFINITION ( ptr u8 n n -- ) {: pa:ptr pu:n k:n :}
+   k LEX-TOK DEF-NAME-OFFSET$ dup 0= IF drop exit THEN
+   k + dup L# @ >= IF drop exit THEN
+   LEX-TOK 2dup PRIM? IF
       s" SHADOW " type pa pu type s" : `" type type s" ` hides a prim" type cr
       BAD @ 1+ BAD !
    ELSE 2drop THEN ;
 
-: LINT-FILE  ( ptr u8 n -- ) {: pa:ptr pu :}
-   pa pu FB SL-FB-CAP READ-FILE  TOKENIZE
+: LINT-SOURCE ( ptr u8 n ptr u8 n -- ) {: a:ptr u:n pa:ptr pu:n :}
+   a u LEX-SOURCE
    0 LI !
-   begin LI @ TN# @ < while
+   begin LI @ L# @ < while
       pa pu LI @ LINT-DEFINITION
       LI @ 1+ LI !
    repeat ;
+
+: LINT-FILE  ( ptr u8 n -- ) {: pa:ptr pu:n :}
+   pa pu FB SL-FB-CAP READ-FILE pa pu LINT-SOURCE ;
 
 \ prims live in habu1.f; lint every snap-toolchain file against them.
 : SHADOW-LINT
