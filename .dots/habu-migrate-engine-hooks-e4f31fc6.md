@@ -4,6 +4,8 @@ status: active
 priority: 2
 issue-type: task
 created-at: "\"\\\"2026-07-16T08:27:22.049121+02:00\\\"\""
+blocks:
+  - habu-engine-pre-trust-77410827
 ---
 
 Stage 2 of the stored-xt soundness program (RCA + sequencing in habu-checker-exec-of-5923c543; stage 1 landed: typed xt<effect> cells, f369f37c). Migrate the ~36 engine hook cells that use the raw-var @ execute shape - the RCA's measured inventory: checker.f/type-family.f/sumtype.f/layout-buffer.f plugin dispatch (tfam-resolve*/arity*/layout?*/cell?*/width@*/concrete-linear?, match-fam-tok/match-variant-tok/match-of-tok/construct-tok, checker-usig-cert-add/checker-package/checker-undefine-guard/checker-lbuf-name-guard/checker-snapshot-prepare, rbf-push/rbf-pop/report-uncheckable/usig-add-bad/sig-type/loc-show-one/check, lbuf-eval-run/layout-maybe-linear?/layout-linear-count, tdecl-gen-eval/tdecl-ctor-prot-wid/tf-ctor-build-hash) and habu1.f hooks (source-hook/prefix-hook/cold-hook/restore-hook/proof-hook) - to typed xt<E> cells (TYPED-VARIABLE with the hook's true effect) or defer/is where install semantics fit; fprim/fprim-l/fprim-wid stay TRUSTED machine-code boundaries (classify explicitly). Each migrated hook: declared effect matches the real callers (derive from the current install sites), store sites become first-class quotation stores or typed installs, fetch+execute fit-checks. Acceptance: zero raw-var @ execute sites remain in the inventory (rg proof), all suites + self-check certify (Certified count may move - STATUS.md updated honestly), fixpoint x2, full run.f, maki 0 FAIL; the stage-3 pin (xt-cell-test L1) still shows plain user variable laundering (the flip is stage 3, not this dot). COORDINATE: broad checker.f surface - tfam's sealed-packages lane is active; keep hunks per-hook surgical; integrator rebases by hash. Files: src/core/checker.f, type-family.f, sumtype.f, layout-buffer.f, render.f, src/habu/habu1.f, STATUS.md, tests. Ownership: checker/engine hook typing.
@@ -155,3 +157,30 @@ limit), c217293a + the option-family/field-schema cluster; live hunks
 type-family.f @-1093, checker.f @-2337.
 
 Claim: agent=stage2b workspace=.jj-ws/fable-stage2b (scope: batches B1-B4, the LOW-risk classes from the STAGE-2B DESIGN; B5 tfam-epicenter and B6 boundary decision stay unclaimed pending the coordination window)
+
+STAGE-2B DESIGN CORRECTIONS (2026-07-16, stage2b lane BLOCKED report - the
+scout's central premise was empirically REFUTED; the scout overlooked the
+pre-existing LESSONS entry documenting the constraint):
+- Native C-DEFER LFINDs 'trust' (checker.f:7685-7687) unconditionally; ANY
+  defer declared before that line kills boot (exit 70 printing 'trust').
+  Blocker 2 did NOT dissolve - the bridge fixed only the mirror side. The
+  pre-7687 class (BADSIG-XT, REG-SCRATCH-SNAP-XT, LOCSHOWXT,
+  REG-EXT-PERSIST-XT, SIG-QUOT-XT, and ALL of B5 at checker.f:418-431) now
+  gates on habu-engine-pre-trust-77410827 (blocks: edge below).
+- Second blocker, independent: the test harness's raw-cell save/disable/
+  restore idiom (checker-assert.f:4-7 'DIAGXT @ >r 0 DIAGXT ! ... r> !',
+  engine-suite.f:301-305/1197-1203/1679/1695) is defer-incompatible - DIAGXT
+  and LOCSHOWXT need a defer-compatible enable/disable or save/restore
+  mechanism designed WITH the harness before conversion. The scout's B1 table
+  omitted these 6 test sites plus DIAGXT executes in check-hook.f:8 and
+  verify-source.f:294.
+- Third: TDECL-EVAL-XT has a DUAL failure shape (layout-buffer.f consumers
+  throw recoverable E-LAYOUT-BUFFER inside a catch; sumtype.f:824 dies 76
+  fatal) - one default-is cannot preserve both; either unify the consumer
+  contract first or keep the guarded raw cell. Design decision, not a swap.
+- CLEAN-4 partial authorized and in flight (regrouped commit 'engine:
+  post-trust hook cells to defer/is (2b partial)'): REG-EXT-RB-SAVE/RESTORE
+  (no-op default-is), TF-SHA16-XT (die default-is, exact current message),
+  TFCL-NODE-XT (plain defer, install :813 only).
+- Process note for future scouts: rg LESSONS.md for the target surface before
+  designing - this constraint was already recorded there.
