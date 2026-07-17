@@ -1,4 +1,4 @@
-\ namespace-lint-test.f - checked fixtures for the maki namespace ledger lint.
+\ namespace-lint-test.f - checked fixtures for governed namespace ownership.
 \ Run: bin/hb --load tools/namespace-lint-test.f
 \ Requiring the core also lets MNLT-LIVE enforce the real repo ledger (must be clean).
 \ Load after lib/test.f and tools/namespace-lint-core.f.
@@ -20,7 +20,10 @@ require tools/namespace-lint-core.f
    s" maki/eval-test.f"     NL-SKIP-FILE? TTRUE  \ test scaffolding is exempt
    s" maki/array.f"         NL-SKIP-FILE? TTRUE  \ documented ARRAY substrate
    s" maki/device-smoke.f"  NL-SKIP-FILE? TTRUE  \ gate device-FFI canary (smoke suite)
-   s" maki/eval.f"          NL-SKIP-FILE? TFALSE ;
+   s" maki/eval.f"          NL-SKIP-FILE? TFALSE
+   s" tools/diff-side-content.f" NL-OWNED-TOOL? TTRUE
+   s" tools/diff-side-content-read.f" NL-OWNED-TOOL? TTRUE
+   s" tools/sha256-file-test.f" NL-OWNED-TOOL? TFALSE ;
 
 : MNLT-DETECT ( -- )
    \ a definition at global scope is a finding
@@ -59,6 +62,11 @@ require tools/namespace-lint-core.f
    s" : BEGIN-BLOCK dup ;"  NL-LEGACY-COUNT 1 T=
    s" : END-BLOCK dup ;"    NL-LEGACY-COUNT 1 T= ;
 
+: MNLT-OWNED-ERROR ( -- )
+   s" -5 constant E-FOO" NL-STRICT-COUNT 1 T=
+   s" package TOOL public -5 constant E-FOO ;package"
+   NL-STRICT-COUNT 0 T= ;
+
 : MNLT-NO-FALSE-POSITIVE ( -- )
    \ `\` line comments and `( )` stack comments are stripped by TOKENIZE
    s" \ : NOTADEF in prose"        NL-COUNT 0 T=
@@ -67,7 +75,7 @@ require tools/namespace-lint-core.f
    s\" : F .\" x : y\" ;"           NL-COUNT 1 T= ;
 
 : MNLT-LIVE ( -- )
-   \ the real maki tree is clean: every def lives in a package (enforcing check)
+   \ the governed tree is clean: every definition lives in a package
    NAMESPACE-LINT-STRICT ;
 
 : MNLT-MAIN ( -- )
@@ -77,6 +85,7 @@ require tools/namespace-lint-core.f
    MNLT-CASE
    MNLT-SCOPE
    MNLT-WHITELIST
+   MNLT-OWNED-ERROR
    MNLT-NO-FALSE-POSITIVE
    T-REPORT
    MNLT-LIVE ;

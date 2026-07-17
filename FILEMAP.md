@@ -18,6 +18,8 @@ points stay listed.
   profiles.
 - `skills/habu-build/SKILL.md` — current AOT and REPL build commands.
 - `docs/bootstrap.md` — no-binary recovery, native refresh, and porting.
+- `docs/diff-side-content.md` — authenticated HABUSIDE v1 codec, reader, and
+  binary contract.
 - `docs/forth.md` — blocking Forth style rules.
 - `docs/type-families.md` — generic lowercase type-family/ADT design plan.
 - `docs/census-switchover.md` — site-level inventory for the post-TFAM switchover: sentinel-return conventions to migrate to option/result, legacy enum clusters, value-record/PTX-IR products, ADT-dischargeable trust rows, and the wave-ordered migration plan.
@@ -65,7 +67,8 @@ points stay listed.
 - `src/core/structures-effects.f` — retired pre-hook effect rows retained only as hard-deletion input; no boot path loads them.
 - `src/core/enums.f` — checked `ENUM+` and `ENUM4+` legacy numeric counter definers for named integer families.
 - `src/core/exec-vector.f` — checked execution-vector support for `defer`/`is` runtime sentinels.
-- `src/core/sha256.f` — standalone SHA-256, streaming file digest, and hex helpers.
+- `src/core/sha256.f` — standalone SHA-256, caller-owned streaming contexts,
+  streaming file digest, and hex helpers.
 - `src/core/type-family-sha.f` — installs the constructor package-name SHA-256 fallback hook (TF-SHA16) after sha256.f loads.
 - `src/core/sha-check.f` — standalone SHA-256 self-test against FIPS-180 vectors.
 - `src/core/check-hook.f` — default native source checker hook installation.
@@ -309,7 +312,8 @@ points stay listed.
 - `tools/check-main.f` — no-include checked engine entry for checker CLI reuse.
 - `tools/check-test-lib.f` — reusable checked fixture library for check runner semantics.
 - `tools/check-test.f` — checked fixture coverage for the native check runner.
-- `tools/sha256-file-test.f` — checked fixture coverage for streaming SHA-256 helpers.
+- `tools/sha256-file-test.f` — checked fixture coverage for streaming SHA-256
+  helpers, owned-context interleaving, and ambient-state preservation.
 - `lib/content-key.f` — checked manifest-hash builder for content-addressed gate caches.
 - `lib/content-key-test.f` — checked fixture coverage for content-key stability and invalidation.
 - `lib/engine-id.f` — checked engine self-identity: kernel-resolved own executable path + lazy SHA-256 content key over bin/hb.
@@ -896,6 +900,13 @@ points stay listed.
 - `tools/typed-local-diff-lint-core.f` — reusable diff scanner that rejects newly added bare locals.
 - `tools/typed-local-diff-lint.f` — CLI wrapper for typed-local diff lint.
 - `tools/typed-local-diff-lint-test.f` — checked fixture coverage for typed-local diff lint.
+- `tools/diff-side-content.f` — deterministic HABUSIDE v1 side-identity and
+  content-fact encoder with package-owned errors and owned body-hash state.
+- `tools/diff-side-content-read.f` — authenticated owned HABUSIDE reader with
+  metadata binding and linear row traversal.
+- `tools/diff-side-content-test.f` — codec roundtrip, corruption, path,
+  transaction, SHA interference, repeated growth, ownership, and traversal
+  regressions.
 - `tools/kernel-perf-lint-core.f` — reusable diff scanner requiring kernel codegen changes to carry a profile/waiver row in `tools/ptx/perf-rows.tsv`.
 - `tools/kernel-perf-lint.f` — CLI wrapper for the kernel profile-row diff lint.
 - `tools/kernel-perf-lint-test.f` — checked fixture coverage for the kernel profile-row diff lint.
@@ -991,9 +1002,14 @@ points stay listed.
 - `tools/maki-dep-lint-core.f` — one-way habu<-maki dependency guard: token-scans src/ lib/ test/ for a forbidden maki/ path reference.
 - `tools/maki-dep-lint.f` — CLI wrapper for the maki one-way dependency lint.
 - `tools/maki-dep-lint-test.f` — checked fixture coverage for the maki one-way dependency lint.
-- `tools/namespace-lint-core.f` — flags maki definitions at global scope (outside any subsystem package): case-insensitive definer/package matching (the dictionary is case-insensitive) including `KERNEL:`, whitelisting E-* constants, the documented ARRAY substrate, and legacy BEGIN-/END- pairs; the active maki-namespace guard (subsumed the retired maki-ns-lint, dot habu-maki-ns-lint-reconcile).
-- `tools/namespace-lint.f` — CLI wrapper for the maki namespace lint (enforcing: throws on any global-def finding).
-- `tools/namespace-lint-test.f` — checked fixture coverage for the maki namespace lint (detection, case-insensitivity, scope, whitelist, live strict sweep).
+- `tools/namespace-lint-core.f` — flags governed definitions at global scope:
+  the maki namespace ledger plus package-owned side-content modules, with E-*
+  exemptions limited to legacy maki sources.
+- `tools/namespace-lint.f` — enforcing CLI wrapper for governed namespace
+  ownership.
+- `tools/namespace-lint-test.f` — checked namespace fixtures for detection,
+  case-insensitivity, scope, legacy exemptions, owned-tool errors, and the live
+  strict sweep.
 - `tools/error-code-lint-core.f` — global E- throw-code uniqueness lint: flags a negative code claimed by two different E- names across src/ lib/ tools/ test/ maki/.
 - `tools/error-code-lint.f` — CLI wrapper for the E- throw-code uniqueness lint (enforcing).
 - `tools/error-code-lint-test.f` — checked fixture coverage for the E- throw-code uniqueness lint.

@@ -1,16 +1,14 @@
-\ namespace-lint-core.f - flag maki definitions that live outside a subsystem
-\ package (the dot habu-maki-subsystem-pkgs ledger tool).
+\ namespace-lint-core.f - flag governed definitions outside their packages.
 \
-\ The dot replaces stem-prefix namespacing with real per-subsystem packages
-\ (TENSOR, LOSS, OPTIM, ONNX, ...). A definition written at GLOBAL scope inside a
-\ maki file (no `package` block open) leaks into the shared dictionary and is the
-\ opposite of that goal, so this lint reports each one as a TODO-ledger entry.
+\ The maki ledger rejects definitions outside subsystem packages. The governed
+\ tool list extends that fail-closed rule to modules that have completed their
+\ package migration; side-content errors therefore cannot return to global scope.
 \
-\ Scan: each maki/*.f source is TOKENIZEd (PARENS? on, so `\` line comments and
-\ `( )` stack comments are stripped and `s"` bodies stay single tokens), then the
-\ token stream is walked while tracking `package`/`;package` depth. Every
+\ Scan: each governed source is TOKENIZEd (PARENS? on, so `\` line comments and
+\ `( )` stack comments are stripped and `s"` bodies stay single tokens), then
+\ the token stream is walked while tracking `package`/`;package` depth. Every
 \ defining word (`:`, `constant`, `variable`, `create`, `DEFTYPE`, `KERNEL:`, ...)
-\ seen at depth 0 names a global maki def; its name token is a finding unless
+\ seen at depth 0 names a global definition; its name token is a finding unless
 \ whitelisted. Definer and package tokens match case-INSENSITIVELY: the dictionary
 \ is case-insensitive (docs/forth.md § Naming), so `CREATE BUF` defines a global
 \ and `;package` closes a package exactly like their lower-case spellings; a
@@ -19,7 +17,8 @@
 \ the multi-package subsystem files - dot habu-maki-ns-lint-reconcile).
 \
 \ Whitelist (documented substrate / cross-cutting, NOT flagged):
-\   - E-*  names: cross-cutting error-code constants, top-level by convention.
+\   - E-* names in maki/: cross-cutting error-code constants, top-level by
+\     convention. Package-governed tool modules receive no such exemption.
 \   - maki/array.f: the documented ARRAY value-array substrate (T-GET/T-SET/...),
 \     used bare across lib/ptx tests; packaging it is churn for negative gain.
 \   - BEGIN-*/END-* names: legacy scope pairs (owed a FOO/;FOO rename by their own
@@ -32,7 +31,7 @@
 \ NAMESPACE-LINT prints the ledger and the count without throwing (a report view).
 \ NAMESPACE-LINT-STRICT throws on any finding and is the gate entrypoint now that the
 \ eval/gpu GLOBAL clusters have landed in per-subsystem packages: the ledger is clean,
-\ enforcement is on, and any NEW global maki def outside a package fails the gate.
+\ enforcement is on, and any new governed global definition fails the gate.
 \
 \ Load after lib/errors.f, lib/string.f, lib/memory.f, lib/fs.f, tools/lint/text.f,
 \ and tools/lint/token.f.
@@ -48,12 +47,13 @@ create NL-NBUF 32 allot
 variable NL-PATHU
 variable NL-INSTR                       \ inside an s" ... " string literal body
 variable NL-DEPTH                       \ current package nesting depth
-variable NL-BAD                         \ primary findings (global maki defs)
+variable NL-BAD                         \ primary findings (governed global defs)
 variable NL-LEGACY                      \ legacy BEGIN-/END- pair tally
 variable NL-FILES
 variable NL-REPORT?
 variable NL-ND#
 variable NL-QI
+variable NL-ALLOW-E
 
 : NL-NL ( -- ) 10 emit ;
 
@@ -109,13 +109,19 @@ variable NL-QI
    repeat
    1 and 0= 0= ;
 
-\ E-* error constants are documented cross-cutting exceptions
+\ E-* constants are cross-cutting exceptions only in the legacy maki ledger
 : NL-WHITELISTED? ( ptr u8 n -- bool ) {: a:ptr u:n :}
-   a u s" E-" LINT-PREFIX? ;
+   NL-ALLOW-E @ 0= 0= a u s" E-" LINT-PREFIX? and ;
 
 \ ---- file selection ---------------------------------------------------------
 : NL-MAKI-SRC? ( ptr u8 n -- bool ) {: a:ptr u:n :}
    a u s" maki/" LINT-CONTAINS?  a u s" .f" HAS-EXT?  and ;
+
+: NL-OWNED-TOOL? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   a u s" tools/diff-side-content.f" LINT-STR= if
+      LINT-TRUE exit
+   then
+   a u s" tools/diff-side-content-read.f" LINT-STR= ;
 
 \ documented ARRAY substrate + test/canary scaffolding are exempt from the scan
 : NL-SKIP-FILE? ( ptr u8 n -- bool ) {: a:ptr u:n :}
@@ -131,7 +137,7 @@ variable NL-QI
 : NL-HIT ( ptr u8 n -- ) {: nptr:ptr nu:n :}
    NL-REPORT? @ if
       s" NAMESPACE " type NL-WHERE
-      s" : global maki def '" type  nptr nu type  s" ' outside a package" type
+      s" : global def '" type  nptr nu type  s" ' outside a package" type
       NL-NL
    then
    NL-BAD @ 1+ NL-BAD ! ;
@@ -179,13 +185,21 @@ variable NL-QI
    NL-SCAN-TOKENS ;
 
 \ findings from scanning one string in isolation (reset -> scan -> count); tests
-: NL-COUNT ( ptr u8 n -- n )
+: NL-COUNT-MODE ( ptr u8 n bool -- n )
+   {: a:ptr u:n allow:bool :}
    NL-REPORT? @ {: report:bool :}
    NL-REPORT-OFF
+   allow NL-ALLOW-E !
    0 NL-BAD !  0 NL-LEGACY !
-   NL-SCAN-STR
+   a u NL-SCAN-STR
    report NL-REPORT!
    NL-BAD @ ;
+
+: NL-COUNT ( ptr u8 n -- n )
+   LINT-TRUE NL-COUNT-MODE ;
+
+: NL-STRICT-COUNT ( ptr u8 n -- n )
+   LINT-FALSE NL-COUNT-MODE ;
 
 : NL-LEGACY-COUNT ( ptr u8 n -- n )
    NL-REPORT? @ {: report:bool :}
@@ -196,19 +210,22 @@ variable NL-QI
    NL-LEGACY @ ;
 
 : NL-SCAN-FILE ( ptr u8 n -- ) {: a:ptr u:n :}
-   a u NL-MAKI-SRC? 0= if exit then
-   a u NL-SKIP-FILE? if exit then
+   a u NL-MAKI-SRC? {: maki:bool :}
+   maki 0= a u NL-OWNED-TOOL? 0= and if exit then
+   maki a u NL-SKIP-FILE? and if exit then
+   maki NL-ALLOW-E !
    a u NL-PATH!
    NL-FILES @ 1+ NL-FILES !
    a u NL-BUF NL-CAP READ-FILE NL-SCAN-STR ;
 
 : NL-RUN ( -- )
    0 NL-BAD !  0 NL-LEGACY !  0 NL-FILES !
-   s" maki/" [: NL-SCAN-FILE ;] WALK-FILES ;
+   s" maki/" [: NL-SCAN-FILE ;] WALK-FILES
+   s" tools/" [: NL-SCAN-FILE ;] WALK-FILES ;
 
 : NL-SUMMARY ( -- )
    s" namespace-lint: " type
-   NL-FILES  @ NL-U. s"  maki file(s), " type
+   NL-FILES  @ NL-U. s"  governed file(s), " type
    NL-BAD    @ NL-U. s"  global-def finding(s), " type
    NL-LEGACY @ NL-U. s"  legacy-pair(s)" type NL-NL ;
 
@@ -216,7 +233,7 @@ variable NL-QI
 : NAMESPACE-LINT ( -- )
    NL-REPORT-ON  NL-RUN  NL-SUMMARY ;
 
-\ gate entry (enforcing): any global maki def outside a package fails the gate
+\ gate entry: any governed global definition outside a package fails
 : NAMESPACE-LINT-STRICT ( -- )
    NAMESPACE-LINT
    NL-BAD @ 0 > if 1 throw then ;

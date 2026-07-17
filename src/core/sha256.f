@@ -51,6 +51,11 @@ create HH0 $6a09e667 , $bb67ae85 , $3c6ef372 , $a54ff53a , $510e527f , $9b05688c
 create H $40 allot   create WS $200 allot   create ST $40 allot
 
 $1000 constant SHA-IO-CAP
+$40 constant SHA-CTX-H-U
+$40 constant SHA-CTX-TAIL-OFF
+$80 constant SHA-CTX-TAIL-U-OFF
+$88 constant SHA-CTX-TOTAL-OFF
+$90 constant SHA256-CTX-U
 -1 constant SHA-E-OPEN
 -2 constant SHA-E-READ
 
@@ -79,6 +84,10 @@ variable SHA-W
 variable SHA-N
 variable SHA-TL
 variable SHA-UB
+variable SHA-CTX
+variable SHA-OWNER
+
+create SHA-CALLER-CTX SHA256-CTX-U allot
 
 : SHA-A-FIELD ( -- ptr ptr u8 )
    SHA-A 0 ptr-field ;
@@ -137,6 +146,24 @@ variable SHA-UB
 
 : SHA-BLOCK-A! ( ptr u8 -- )
    SHA-BLOCK-A-FIELD ! ;
+
+: SHA-CTX-FIELD ( -- ptr ptr u8 )
+   SHA-CTX 0 ptr-field ;
+
+: SHA-CTX@ ( -- ptr u8 )
+   SHA-CTX-FIELD @ ;
+
+: SHA-CTX! ( ptr u8 -- )
+   SHA-CTX-FIELD ! ;
+
+: SHA-OWNER-FIELD ( -- ptr ptr u8 )
+   SHA-OWNER 0 ptr-field ;
+
+: SHA-OWNER@ ( -- ptr u8 )
+   SHA-OWNER-FIELD @ ;
+
+: SHA-OWNER! ( ptr u8 -- )
+   SHA-OWNER-FIELD ! ;
 
 : STV ( n -- n )
    cells ST + @ ;
@@ -236,6 +263,50 @@ create PBLK $80 allot
    PBLK SHA-BLOCK
    SHA-NBLK @ 1 > if PBLK $40 ZPTR+ SHA-BLOCK then
    8 0 DO  H i cells + @  SHA-OUT@ i 4 * ZPTR+ BE32!  LOOP ;
+
+: SHA-CTX-U64@ ( ptr u8 -- n )
+   SHA-P!
+   0 SHA-W !
+   8 0 DO
+      SHA-W @ 8 lshift SHA-P@ i ZBYTE@ or SHA-W !
+   LOOP
+   SHA-W @ ;
+
+: SHA-CTX-SAVE ( ptr u8 -- )
+   SHA-CTX!
+   H SHA-CTX@ SHA-CTX-H-U BMOVE
+   SHA-TAIL SHA-CTX@ SHA-CTX-TAIL-OFF ZPTR+ SHA-CTX-H-U BMOVE
+   SHA-TAIL-U @ SHA-CTX@ SHA-CTX-TAIL-U-OFF ZPTR+ BE64!
+   SHA-TOTAL @ SHA-CTX@ SHA-CTX-TOTAL-OFF ZPTR+ BE64! ;
+
+: SHA-CTX-RESTORE ( ptr u8 -- )
+   SHA-CTX!
+   SHA-CTX@ H SHA-CTX-H-U BMOVE
+   SHA-CTX@ SHA-CTX-TAIL-OFF ZPTR+ SHA-TAIL SHA-CTX-H-U BMOVE
+   SHA-CTX@ SHA-CTX-TAIL-U-OFF ZPTR+ SHA-CTX-U64@ SHA-TAIL-U !
+   SHA-CTX@ SHA-CTX-TOTAL-OFF ZPTR+ SHA-CTX-U64@ SHA-TOTAL ! ;
+
+: SHA256-CTX-RESET ( ptr u8 -- )
+   SHA-OWNER!
+   SHA-CALLER-CTX SHA-CTX-SAVE
+   SHA256-RESET
+   SHA-OWNER@ SHA-CTX-SAVE
+   SHA-CALLER-CTX SHA-CTX-RESTORE ;
+
+: SHA256-CTX-UPDATE ( ptr u8 ptr u8 n -- )
+   SHA-U ! SHA-A! SHA-OWNER!
+   SHA-CALLER-CTX SHA-CTX-SAVE
+   SHA-OWNER@ SHA-CTX-RESTORE
+   SHA-A@ SHA-U @ SHA256-UPDATE
+   SHA-OWNER@ SHA-CTX-SAVE
+   SHA-CALLER-CTX SHA-CTX-RESTORE ;
+
+: SHA256-CTX-FINAL ( ptr u8 ptr u8 -- )
+   SHA-OUT! SHA-OWNER!
+   SHA-CALLER-CTX SHA-CTX-SAVE
+   SHA-OWNER@ SHA-CTX-RESTORE
+   SHA-OUT@ SHA256-FINAL
+   SHA-CALLER-CTX SHA-CTX-RESTORE ;
 
 : SHA256 ( ptr u8 n ptr u8 -- )
    SHA-OUT! SHA-U ! SHA-A!
