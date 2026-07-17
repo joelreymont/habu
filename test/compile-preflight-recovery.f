@@ -22,5 +22,12 @@ s" package CPR-NEST public : CPR-BAD ( -- ) include FILEMAP.md ; ;package"
 CPR-EVAL 70 1 CPR-EXPECT
 
 get-current CPR-WID @ 2 CPR-EXPECT
-73 73 3 CPR-EXPECT
+
+LOWER-CERT-HOOK:INSTALL
+: CPR-GLOBAL ( -- n ) 73 ;
+package CPR-AFTER ;package
+: CPR-USE ( -- n ) CPR-GLOBAL ;
+CPR-USE 73 3 CPR-EXPECT
+
+73 73 4 CPR-EXPECT
 s" compile-preflight-recovery: ok" type cr

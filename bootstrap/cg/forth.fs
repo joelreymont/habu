@@ -260,6 +260,7 @@ $240 constant QENT-CELL   \ [: nested entry address (the xt ;] pushes)
 $248 constant QXH-CELL    \ saved EXIT chain head across the quotation
 $250 constant DEF-TKA-CELL \ original qualified definition spelling
 $258 constant DEF-TKL-CELL
+$27C0 constant PKGRESYNC-CELL \ checker package-resync latch; mirrors native layout
 $2800 constant RSTK-OFF   \ user return stack — 256 cells, below DATA-START
 256 constant RSTK-CELLS
 RSTK-OFF RSTK-CELLS cells + constant RSTK-END
@@ -3185,6 +3186,14 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
    C-CALL-X11-SAVED
    done LBL, ;
 
+: EMIT-PKG-RESYNC ( -- )
+   LBL {: done :} \ typed-local-lint: allow-bare-local - Gforth-hosted label id.
+   9 DATA PKGRESYNC-CELL LDR,  9 done CBZ,
+      9 0 MOVZ,  9 DATA PKGRESYNC-CELL STR,
+      9 DATA PKG-PUB-CELL LDR,  9 done CBNZ,
+         LCHKENDPKG 19 C-PACKAGE-CHECK-CALL
+   done LBL, ;
+
 : C-PACKAGE-RECORD-MATCH ( n n -- )
    \ typed-local-lint: allow-bare-local - stock Gforth rejects Habu type suffixes.
    {: hit miss :}
@@ -4262,6 +4271,7 @@ variable CFSK2
    9 DATA LOOPSP-CELL STR,
    9 DATA PKG-PUB-CELL STR,  9 DATA PKG-PRI-CELL STR,
    9 DATA PKG-PARENT-CELL STR,  9 DATA PKG-REC-CELL STR,
+   9 DATA PKGRESYNC-CELL STR,
    9 DATA P2-CELL STR,  9 DATA TXN-WF-I-CELL STR,
    9 DATA P2BODY0-CELL STR,  9 DATA P2INP-CELL STR,
    9 DATA P2INE-CELL STR,  9 DATA P2DP-CELL STR,
@@ -5942,6 +5952,7 @@ variable P2SK
       12 10 PKGSNAP-PRI LDR,     12 DATA PKG-PRI-CELL STR,
       12 10 PKGSNAP-PARENT LDR,  12 DATA PKG-PARENT-CELL STR,
       12 10 PKGSNAP-REC LDR,     12 DATA PKG-REC-CELL STR,
+      12 1 MOVZ,  12 DATA PKGRESYNC-CELL STR,
       15 DATA EVALERR-CELL STR,
       9 DATA EVALD-CELL STR,
       EMIT-RESET-COMPILE-STATE
@@ -6005,6 +6016,7 @@ variable P2SK
    LBL {: LMAIN :}  LBL {: LEXIT :}  LBL {: LCOMPILE :}  LBL {: LUNDEF :}   \ allocate up-front (byte-free) so the LMAIN store below is in scope
    LMAIN EMIT-MAIN-RUNTIME-LABELS
    LMAIN LBL,
+      EMIT-PKG-RESYNC
       LMAIN LEXIT LCOMPILE EMIT-TOKEN-DISPATCH
       LMAIN LUNDEF EMIT-INTERPRET
 	      \ ---------------- COMPILE ----------------

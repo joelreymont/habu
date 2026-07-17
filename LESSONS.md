@@ -4,6 +4,12 @@
 
 Last updated: 2026-07-17
 
+- **Package rollback has two owners.** Restoring the engine's current/public/private
+  WIDs is incomplete unless recovery also resynchronizes the checker's package
+  mode before the next token; `get-current` proves only the engine half. Follow a
+  caught in-package failure with a canonical checked global definition, a package
+  transition, and a checked reference to expose either half drifting.
+
 - **Checker policy that constrains compile-time behavior must run before the
   immediate BLR, not only at definition publication.** The definition hook
   correctly rejected unmodeled immediates after body reconstruction, but
