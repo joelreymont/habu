@@ -1,6 +1,6 @@
 ---
 title: Typed defining words + provenance mints
-status: active
+status: open
 priority: 2
 issue-type: task
 created-at: "\"2026-07-01T23:07:20.866786+02:00\""
@@ -50,3 +50,22 @@ macOS fixpoint; prove through the Linux gate (zed - device-window class);
 (4) N>CODE-PTR / null-ptr / lib P>N N>P / task x3 / imgdump code-ptr - the
 mint batch proper, after (2) and (3) settle.
 Adopted DTC-EVAL/FDEF-EVAL rows preserved untouched.
+
+BATCH 1 LANDED 2026-07-17 (typedefs lane, commit 07f493c1; claim RELEASED,
+workspace retired): the 17 redundant treeshake raw-cell rows are gone,
+TRUST 363->346. Rebased onto master (one LESSONS.md conflict, resolved as
+pure-addition superset; no treeshake row was touched by master; master's
+new CPR-EVAL/CPR-HOOK rows are checker-hook boundaries, NOT the redundant
+raw-cell class - no scope change). Re-proven on the rebased tree: fixpoint
+x2 byte-identical b09ed0ea (and re-verified identical on the final
+integration tree - the proven->final delta was doc/ptx-tool only, engine
+prefix clean); old-binary boot ok both directions; trust-lint,
+trusted-inventory strict, PEINV strict (298 axioms, no PRIM movement),
+seal-absence, boot-pin, maki, gate-stdlib all green. PERF BRACKET: tree
+pass admissible (e=54706 b=76300) AND master baseline pass admissible
+(e=55245 b=77000) in the same quiet window - the batch is perf-neutral and
+the prior held-state hard-fail (0.04% over at load 8.6) is retroactively
+confirmed as box noise. REMAINING on this dot (~31 sites, unclaimed): the
+two adopted evaluate-boundary rows (DTC-EVAL, FDEF-EVAL) via a typed
+defining-word capability, and the named checked provenance mints
+(MMAP>PTR, VA>PTR, N>CODE-PTR, null-ptr role et al).
