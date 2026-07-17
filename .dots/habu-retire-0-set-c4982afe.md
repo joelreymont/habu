@@ -5,7 +5,6 @@ priority: 2
 issue-type: task
 created-at: "2026-07-01T22:54:40.854598+02:00"
 blocks:
-  - habu-staged-fixpoint-src-0b5fc6e6
   - habu-seal-set-check-b3676b33
 ---
 
@@ -59,3 +58,12 @@ live hb-build maker with two prim-axiom TRUST rows + XREF-NULL null mints.
 src/habu/aot-lib.f keeps its window with a concrete gap inventory on the
 image-writers dot (relocation-core pointer roles; partially dischargeable
 by the typed dictionary-record capability).
+
+EDGE NOTE 2026-07-17 (orchestrator): the 2026-07-07 pin named
+habu-staged-fixpoint-src-0b5fc6e6, which is now CLOSED (archived) - the
+builder-prefix dissolution dependency has landed, so the 6 builder-prefix
+set-check sites are candidates for retirement per this dot's own program
+(re-audit them against the landed staged-fixpoint state). Remaining recorded
+blocker edge: habu-seal-set-check-b3676b33 (test spans). SETCHECK inventory
+count is 14 (was 8 at the 07-07 audit) - re-audit the delta when this dot is
+next dispatched.
