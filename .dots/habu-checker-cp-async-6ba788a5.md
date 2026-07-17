@@ -1,6 +1,6 @@
 ---
 title: "Checker: cp.async pipeline typestate capability"
-status: active
+status: open
 priority: 2
 issue-type: task
 created-at: "\"2026-07-16T19:10:50.469826+02:00\""
@@ -14,3 +14,32 @@ re-touches the registry (core edit + fixpoint rebake; deliberately excluded
 from the lib-only stage-3 commit). mmctx remains referenced.
 
 Claim: agent=cpasync workspace=.jj-ws/fable-cpasync (host lane - checker typestate; NO zed access, byte-identical PTX is the device-equivalence proof)
+
+BLOCKED ANALYSIS 2026-07-17 (cpasync lane, LESSONS finding landed as commit
+26ae31a5-rebased; claim RELEASED, no untrust, no engine edit, checker never
+weakened). The capability CANNOT land until prerequisites resolve - four
+proven blockers, full detail in LESSONS.md:
+(1) DOMINANT: all 9 tilepipe bodies mint phantom kernel tokens from bare
+register literals - untrusting them needs the checked-mint capability owned
+by habu-ptx-phantom-preserving-3df9db92 (open, unstarted); a cp.async
+typestate alone discharges ZERO rows (same precedent as
+habu-linear-once-resource-4c58a7a1's note).
+(2) the dynamic protocol (issue->commit->wait->bar.sync->read + parity flip)
+is fused inside the shared byte-sensitive emitter MM-PIPE-KLOOP-WITH
+(lib/ptx/cg-matmul-emit.f), consumed verbatim by cg-matmul.f/cg-mma.f/
+maki/lower-mm.f - needs the staging-emitter decomposition dot
+habu-decompose-pipelined-staging-49c97cba (minted 2026-07-17) with device re-goldens.
+(3) the bar.sync transition must compose with habu-ptx-m5-mask-eb0716f1
+(open, unstarted) - not duplicate it.
+(4) RUNTIME loop-carried parity alternation ($KLOOP xor-flipped %r15) is a
+property of the emitted PTX's runtime dataflow, outside an emit-time
+stack-effect checker - only same-body parity consistency is ever
+emit-time-checkable; the alternation slice stays a named boundary
+permanently unless a runtime-dataflow capability exists.
+ORDERING: phantom-preserving-3df9db92 AND m5-mask-eb0716f1 AND the
+decomposition dot land first; THEN this dot adds the linear pipeline-slot
+kind, re-expresses tilepipe bodies, lands the 4 dynamic negatives
+(read-before-wait, parity mismatch, missing commit, double-wait). The 7
+structural negatives already reject today (tile-pipe-neg-test.f green).
+mmacc TFAM row: verified unreferenced, deliberately left to ride the next
+registry edit (avoids a standalone fixpoint rebake).
