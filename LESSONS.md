@@ -4,6 +4,13 @@
 
 Last updated: 2026-07-17
 
+- **Closing a dot that OWNS TRUSTED.md rows requires repointing those rows in the SAME
+  commit, and the integrator's battery must run `trusted-inventory -- strict` (owner
+  liveness), not just trusted-inventory-test.f.** (cp-async closure incident, 2026-07-17.)
+  The closure of habu-checker-cp-async left 8 classification rows citing the archived dot;
+  the test fixture stayed green (it checks sync, not owner liveness) and the red only
+  surfaced in the NEXT lane's strict run. Rule: `dot off` on any dot named in TRUSTED.md
+  = same-commit repoint to a live dot (or sanctioned cap:), verified by strict before push.
 - **The cp.async pipeline-slot typestate is nominal state-family transitions + parity
   unification — the four dynamic negatives reject with ZERO checker LOGIC, exactly the M5
   "the negative needs zero machinery" pattern.** (dot habu-checker-cp-async-6ba788a5, host
