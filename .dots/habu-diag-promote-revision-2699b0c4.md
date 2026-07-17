@@ -18,3 +18,10 @@ rev-ids via REV:COMMIT; no new error codes. REMAINING on this dot: the
 invalidated-evidence promotion (string[] -> evidence-id[]) once the
 EVIDENCE owner registry lands with the evidence dots, and the
 parent-diagnostic durable-identity consideration.
+
+NOTE 2026-07-17 (keywire landing afd6fa0c): diagnostic.f serializes
+producer/config/rev ids as process-local 8B raws - fine while bundles
+are in-memory, but if diagnostics ever become durable/portable they need
+the KEY>WIRE cross-process forms (surfaces now exist on all owners).
+Fold that migration into this dot's next leg or mint one when
+durability lands.
