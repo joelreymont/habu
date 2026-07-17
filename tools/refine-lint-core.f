@@ -225,7 +225,7 @@ variable RFL-LE
       31 of s" maki/evidence/schema.f" endof
       32 of s" maki/evidence/policy.f" endof
       33 of s" maki/artifact.f" endof
-      34 of s" maki/evidence/policy.f" endof
+      34 of s" maki/schema.f" endof
       35 of s" maki/evidence/promote.f" endof
       36 of s" lib/cad-num-types.f" endof
       37 of s" lib/cad-num-types.f" endof

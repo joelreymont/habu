@@ -754,6 +754,18 @@ points stay listed.
 - `maki/numpolicy-test.f` — rank ordering, the pinned 4×4 composition table,
   satisfaction, the TF32/GELU/recompute refusal fixtures with positive controls, the
   op bridge, wire roundtrip, and fail-closed throws.
+- `maki/schema.f` — the schema-definition identity registry + wire codec (the
+  schema-id leg of MODEL-CAD-V2-PLAN.md § 23.9): `SCHEMA:REGISTER` interns the
+  canonical, version-independent schema NAME to a content-addressed
+  `CAD-KIND:schema-id` (equal names share one id), plus `NAME$`/`EQUAL?`/`VALIDATE`/
+  `COUNT` and the `ID>WIRE` (total) / `WIRE>ID` (`id-result`: ok / wrong-width /
+  unknown, fail-closed) 8-byte little-endian codec pair. Retires the former
+  maki/evidence/policy.f `RAW>SCHEMA-ID` placeholder; raw conversions stay private
+  (the target.f/artifact.f pattern). Distinct concern from maki/evidence/schema.f
+  (package EVID, the evidence-bundle presence schema). Owns -5330..-5333.
+- `maki/schema-test.f` — content-addressed interning (equal names one id), the wire
+  round-trip, fail-closed decode (wrong-width + unresolved raw), cross-role
+  rejection, and the private-mint unforgeability negatives.
 - `maki/sched-key.f` — section-7.4 schedule keys: the typed `skey` product (now
   carrying the region's requested `NPOL:dom` policy, REGION-POL's per-op OP-DOM fold,
   so a different policy is a different key), the durable `SK-KEY$` render (region

@@ -54,6 +54,7 @@
 
 require lib/prelude.f
 require maki/artifact.f            \ ARTIFACT:EQUAL? - the value-level artifact identity
+require maki/schema.f              \ SCHEMA:REGISTER - the § 23.9 schema-id owner package
 require maki/evidence/schema.f
 
 \ maki owns -5000..-5099; evidence-policy uses -5098..-5099 (the E-RPT-GATE
@@ -109,9 +110,9 @@ private
 \ after the value-level binding held (the maki/target/target.f:54 mint pattern).
 TRUSTED: MINT-GRANT-PROOF ( -- grant-proof )  0 ;
 
-\ RAW>SCHEMA-ID: the ONLY producer of a schema-id cell, backing the POLICY:SCHEMA
-\ singleton (below). Private, so a raw n cannot forge a policy schema identity.
-TRUSTED: RAW>SCHEMA-ID ( n -- CAD-KIND:schema-id ) ;
+\ Schema-id minting now lives in its § 23.9 owner package (maki/schema.f): the
+\ former private RAW>SCHEMA-ID placeholder is RETIRED here and POLICY:SCHEMA
+\ (below) delegates to SCHEMA:REGISTER, so no schema-id refinement is owned here.
 
 \ Artifact-id equality is now ARTIFACT:EQUAL? (maki/artifact.f), which owns the
 \ artifact-id raw projection with the registry - retiring policy.f's former AID>RAW /
@@ -224,13 +225,13 @@ public
    need
    POLICY-GATE--SET:MAKE ;
 
-\ SCHEMA: the canonical identity of the V1 promotion policy schema (the default gate
-\ set). V1 has exactly ONE policy schema, so this is a fixed singleton identity; a
-\ schema REGISTRY interning multiple named schema versions is a follow-on when policies
-\ beyond the default exist. It is the public producer of CAD-KIND:schema-id (retiring
-\ the test-only T>SID fabrication); the backing mint is PRIVATE, so it cannot be forged.
-0 constant DEFAULT-SCHEMA-RAW
-: SCHEMA ( -- CAD-KIND:schema-id )  DEFAULT-SCHEMA-RAW RAW>SCHEMA-ID ;
+\ SCHEMA: the canonical identity of the V1 promotion-policy schema. The schema
+\ DEFINITION identity now lives in its § 23.9 owner package (maki/schema.f):
+\ SCHEMA:REGISTER interns the canonical, version-independent schema NAME and content-
+\ addresses it, so equal names share one id. This word is the default policy's
+\ interned schema id (retiring the former POLICY-local RAW>SCHEMA-ID placeholder and
+\ the test-only T>SID fabrication); the schema-id mint stays PRIVATE to package SCHEMA.
+: SCHEMA ( -- CAD-KIND:schema-id )  s" promotion-policy" SCHEMA:REGISTER ;
 
 \ CHECK: the single sealed site of value-level artifact binding AND numeric-policy
 \ enforcement. On a clean policy pass it mints and returns the grant; on refusal it

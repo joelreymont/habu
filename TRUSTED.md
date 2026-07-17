@@ -653,7 +653,8 @@ that source is explicitly certified; they are not stale-checked by the default
 | MINT-GRADCHECK-PROOF | `-- gradcheck-proof` | Private R7 evidence mint: the class-private gradcheck proof token, minted only by `EVID:GRADCHECK`. | `maki/evidence/schema-test.f` | maki/evidence/schema.f | 2026-07-14 |
 | MINT-PROFILE-PROOF | `-- profile-proof` | Private R7 evidence mint: the class-private profile proof token, minted only by `EVID:PROFILE`. | `maki/evidence/schema-test.f` | maki/evidence/schema.f | 2026-07-14 |
 | MINT-GRANT-PROOF | `-- grant-proof` | Private R7 promotion mint: the sealed grant token, minted only by `POLICY:CHECK` after the value-level artifact binding holds, so a raw n cannot forge `POLICY:granted`. | `maki/evidence/policy-test.f` | maki/evidence/policy.f | 2026-07-14 |
-| RAW>SCHEMA-ID | `n -- CAD-KIND:schema-id` | Private schema-id mint backing the `POLICY:SCHEMA` singleton (the V1 default-policy schema identity); private, so a raw n cannot forge a policy schema identity, and it is the public producer that retired the test-only `T>SID` fabrication. | `maki/evidence/policy-test.f` | maki/evidence/policy.f | 2026-07-14 |
+| RAW>SCHEMA-ID | `n -- CAD-KIND:schema-id` | Private schema-id registry refinement after canonical-name validation, capacity validation, and append-only slot allocation (the maki/artifact.f `RAW>ARTIFACT-ID` pattern); the only public producer is `SCHEMA:REGISTER`, which interns the version-independent schema name, so a raw n cannot forge a schema identity (MODEL-CAD-V2-PLAN.md § 23.9 foreign-id contract; dot habu-schema-schema-id-3a6827e9, retiring the former maki/evidence/policy.f placeholder). | `maki/schema-test.f` | maki/schema.f | 2026-07-17 |
+| SCHEMA-ID>RAW | `CAD-KIND:schema-id -- n` | Private schema identity projection used only by bounds validation, name-table access, `SCHEMA:EQUAL?`, and the `SCHEMA:ID>WIRE` / `WIRE>ID` codec; no public raw conversion is exported. | `maki/schema-test.f` | maki/schema.f | 2026-07-17 |
 | RAW>PROMOTED | `n -- promoted` | Private R7 stage mint: the promoted-artifact witness, minted only by `ART:PROMOTE` from an `ART:built` + a sealed `POLICY:granted`, so a raw n cannot forge a promoted artifact and no caller can fabricate one around the sealed promotion transition. | `maki/evidence/promote-test.f` | maki/evidence/promote.f | 2026-07-14 |
 | RAW>RGN | `n -- CAD-KIND:region` | Private fusion-planner region refinement after `FP-CK` and the region-range validator prove the raw table position names a planned region (R3 owner-module rule; landed by the closed dot `habu-maki-apply-cad-27b7a7d7`, owned by `habu-epic-model-cad-70b629a9`). | `maki/fusion-plan-test.f` | maki/fusion-plan.f | 2026-07-12 |
 | RGN>RAW | `CAD-KIND:region -- n` | Private region projection used only by fusion-plan bounds revalidation, region-indexed owner tables, and the `REGION_<rid>` render boundaries; no public raw cast is exported (landed by the closed dot `habu-maki-apply-cad-27b7a7d7`, owned by `habu-epic-model-cad-70b629a9`). | `maki/fusion-plan-test.f` | maki/fusion-plan.f | 2026-07-12 |
@@ -1377,7 +1378,8 @@ maki/evidence/schema.f:MINT-GOLDEN-PROOF prim-axiom habu-epic-model-cad-70b629a9
 maki/evidence/schema.f:MINT-GRADCHECK-PROOF prim-axiom habu-epic-model-cad-70b629a9
 maki/evidence/schema.f:MINT-PROFILE-PROOF prim-axiom habu-epic-model-cad-70b629a9
 maki/evidence/policy.f:MINT-GRANT-PROOF prim-axiom habu-epic-model-cad-70b629a9
-maki/evidence/policy.f:RAW>SCHEMA-ID prim-axiom habu-epic-model-cad-70b629a9
+maki/schema.f:RAW>SCHEMA-ID prim-axiom habu-epic-model-cad-70b629a9
+maki/schema.f:SCHEMA-ID>RAW prim-axiom habu-epic-model-cad-70b629a9
 maki/evidence/promote.f:RAW>PROMOTED prim-axiom habu-epic-model-cad-70b629a9
 maki/target/target.f:RAW>TARGET-ID prim-axiom habu-epic-model-cad-70b629a9
 maki/target/target.f:TARGET-ID>RAW prim-axiom habu-epic-model-cad-70b629a9
