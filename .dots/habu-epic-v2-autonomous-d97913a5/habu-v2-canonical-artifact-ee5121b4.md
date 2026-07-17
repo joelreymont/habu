@@ -55,3 +55,5 @@ NOTE 2026-07-17: JOURNAL/REV codecs landed (16de285f) - the envelope's
 audit-event-id and rev-id/source-revisions fields are now expressible;
 only the user-gated capability field and the wire-form reconciliation
 remain gated.
+
+Claim: agent=artimpl3 workspace=.jj-ws/fable-artimpl3 (slice 3: event/rev envelope fields via JOURNAL/REV codecs; owns maki/db/artifact.f)
