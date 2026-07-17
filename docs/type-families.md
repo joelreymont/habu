@@ -1864,6 +1864,15 @@ WIDTH(enum)               = tag width
 WIDTH(boxed<...>)         = 1
 ```
 
+`TFAM-WIDTH@` (`src/core/type-family.f`) computes this. The `boxed`/`niche-null`
+policies collapse the stack width to one cell regardless of kind (a boxed value
+is a single `ptr fam-box`, §22.4; a niche value is a single cell, §22.3), so the
+width branch keys on the policy before the kind. That branch is reached today
+ONLY through the `TFAM-LAYOUT!` mutator — no declaration accepts `boxed` or
+`niche-null` yet (both reject at the `POLICY` clause, §22.0) — so it is check-sound
+shared metadata the boxed/niche accept slices consume; it never changes the width
+of a `stack-cell-tag` or `packed-tag` family (packed keeps the cell width, §22.2).
+
 v1 should keep type parameters cell-kinded:
 
 ```forth
@@ -2167,6 +2176,17 @@ ptr tree-box<a>
 Use this for recursive or large ADTs.
 
 Do not start with boxed layout.
+
+**Checker status.** `TFAM-WIDTH@` reports width 1 for a `TL-BOXED` family (§18),
+and the runtime record library `lib/layout/box.f` (`BOX-ALLOC` / `BOX-TAG!` /
+`BOX-DEREF-TAG` / `BOX-PAY!` / `BOX-PAY@`, a grow-only arena over
+`MEM-ALLOC-CELLS`) is the reusable runtime half the ctor/`MATCH` codegen will
+call. `POLICY boxed` still REJECTS at the declaration (`layout policy not yet
+supported`, §22.0/§24): the remaining COUPLED accept block — accept the policy,
+invert the §24 self-reference reject to a pointer layout, generate the alloc/
+store/return-ptr constructor, and lower `MATCH` to deref-then-tag — is not
+incrementally mergeable and lands with the full constructor/match/stack-op/
+invalid-tag tests PLAN item 16 requires before public exposure.
 
 ---
 

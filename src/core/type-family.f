@@ -303,10 +303,23 @@ variable TFAM-N   0 TFAM-N !
 : TFAM-DERIVE-HASH? ( n -- bool ) TFAM-DERIVE@ DRV-HASH and 0 <> ;
 : TFAM-DERIVE-ANY? ( n -- bool ) TFAM-DERIVE@ 0 <> ;
 
+\ a boxed value is a single heap/DATA pointer (docs §22.4 `ptr fam-box`) and a
+\ niche value is a single cell with the discriminant folded into the payload
+\ (docs §22.3) — both collapse the stack width to one cell regardless of kind,
+\ so the width branch below keys on the policy before the kind. Reached today
+\ ONLY through the direct TFAM-LAYOUT! mutator (no declaration accepts boxed /
+\ niche-null yet — both reject at the POLICY clause), so this is check-sound
+\ metadata the boxed/niche accept slices consume; it never changes the width of
+\ a stack-cell-tag or packed family (packed keeps the cell width, docs §22.2).
+: TFAM-BOXED-OR-NICHE? ( n -- bool ) {: id:n :}   \ policy collapses the value to one cell
+   id TFAM-LAYOUT-POLICY@ {: p:n :}
+   p TL-BOXED = p TL-NICHE = or ;
+
 \ logical width in stack cells (docs/type-families.md §18 WIDTH function):
-\ sum = max payload slots + one tag cell; enum = tag only (slots 0); product =
-\ field cells, no tag; cell/evidence families are one cell.
+\ boxed/niche = one cell; sum = max payload slots + one tag cell; enum = tag only
+\ (slots 0); product = field cells, no tag; cell/evidence families are one cell.
 : TFAM-WIDTH@ ( n -- n ) {: id:n :}
+   id TFAM-BOXED-OR-NICHE? IF 1 EXIT THEN
    id TFAM-SUM? id TFAM-ENUM? or IF id TFAM-SLOTS@ 1 + EXIT THEN
    id TFAM-PRODUCT? IF id TFAM-SLOTS@ EXIT THEN
    1 ;

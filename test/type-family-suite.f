@@ -44,7 +44,7 @@ variable TC     variable FOUNDF
 variable FID    variable PID    variable AID    variable PTID   variable CLID
 variable VOK    variable VERR   variable FX     variable NP     variable NC
 variable NA     variable R1     variable L0     variable NQ
-variable NPTR
+variable NPTR   variable WBX
 \ whitebox boundary (dot habu-hb-crash-bare-c5be6634): checker-internal colon
 \ words probed at top level go through named trusted shims.
 TRUSTED: TWX-CHECKER-SNAPSHOT-PREPARE ( -- ) CHECKER-SNAPSHOT-PREPARE ;
@@ -680,6 +680,25 @@ PQL @ TWX-LAY-SIZE@ 16 T=  PQL @ TWX-LAY-ALIGN@ 8 T=   PQL @ TWX-LAY-TAGW@ 0 T=
 41 PKAC-S-RT 41 T=
 7 PKAC-P-RT 7 PKAC-S-RT T=
 ;package
+
+\ ---------------------------------------------------------------------------
+\ boxed / niche-null stack width = 1 (docs §18 WIDTH(boxed)=1, §22.3 niche one
+\ cell). No declaration accepts boxed/niche yet (both reject at the POLICY
+\ clause), so this shared W=1 metadata is exercised through the direct
+\ TWX-TFAM-LAYOUT! mutator, exactly like the packed descriptor (LAY) unit tests.
+\ A multi-slot SUM (default width slots+1) collapses to 1 under boxed and under
+\ niche, but keeps its cell width under stack-cell-tag AND packed (packed is a
+\ MEMORY-ABI descriptor only, §22.2) — the regression guard that the branch
+\ fires for boxed/niche alone.
+\ ---------------------------------------------------------------------------
+s" pkgw" CHECKER-PACKAGE-PRIVATE s" wbx" 1 TK-SUM TWX-TFAM-DECL WBX !
+WBX @ 2 TWX-TFAM-SLOTS!                                       \ 2 payload slots
+WBX @ TWX-TFAM-LAYOUT-POLICY@ TL-STACK-CELL-TAG T=            \ default policy
+WBX @ TFAM-WIDTH@ 3 T=                                        \ slots + tag
+WBX @ TL-BOXED       TWX-TFAM-LAYOUT!   WBX @ TFAM-WIDTH@ 1 T=
+WBX @ TL-NICHE       TWX-TFAM-LAYOUT!   WBX @ TFAM-WIDTH@ 1 T=
+WBX @ TL-PACKED-TAG  TWX-TFAM-LAYOUT!   WBX @ TFAM-WIDTH@ 3 T=  \ packed keeps cell width
+WBX @ TL-STACK-CELL-TAG TWX-TFAM-LAYOUT!   WBX @ TFAM-WIDTH@ 3 T=  \ restored
 
 \ ---------------------------------------------------------------------------
 \ report: "ok" on success, nonzero exit on any failure.
