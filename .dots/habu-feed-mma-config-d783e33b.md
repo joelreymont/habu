@@ -13,3 +13,11 @@ MMM-WIDE-M2 (MMA-MFRAGS=2 BK=32 pad=8 stages=2 dyn ldmatrix, 128x64 block,
 2133.9 GFLOP/s = 1.13x Triton at 2048^3/918MHz; stages=1 static variant
 2084.1). Add MMA-MFRAGS to the searched axes; note the block-M-aware launch
 (gridY = M/(64*MFRAGS), shapes multiple of 128) when wiring lower-mm dispatch.
+
+UPDATE 2026-07-17 (wave2 landing cb8fa57e): new measured best is
+MMM-WIDE-M4-S1 (MMA-MFRAGS=4 BK=32 pad=8 stages=1 STATIC 49152B ldmatrix,
+256x64 block): 2707.3 GFLOP/s = 1.43x Triton at 2048^3/918MHz; MFRAGS=4
+stages=2 dynamic is occupancy-bound and slower (2394.1). Static smem means
+no dynamic-launch coupling for this config, but block-M grids now need
+M multiple of 256 (MFRAGS=4) - the autotuner must key MFRAGS by shape
+(512^3 favors it at 2032.7; ragged/small M needs MFRAGS<=2 or 1).

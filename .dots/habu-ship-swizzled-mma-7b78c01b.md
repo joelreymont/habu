@@ -15,3 +15,12 @@ consumer-visible couplings beyond the swizzled 64x64 config: dynamic .shared
 at launch and block-M-aware grids (gridY = M/128, M multiple of 128; small/
 ragged shapes need the MFRAGS=1 path or padding). The stages=1 STATIC 128x64
 variant (2084.1, 28672B) avoids the dynamic-smem coupling at -2.4%.
+
+UPDATE 2026-07-17 (wave2 landing cb8fa57e): best is now MMM-WIDE-M4-S1
+(MFRAGS=4 stages=1 STATIC 49152B, 2707.3 = 1.43x Triton) which REMOVES the
+dynamic-smem coupling flagged in the previous update (static fits the 48KiB
+opt-in cap? verify: 49152B = 48KiB exactly - check the static .shared limit
+on sm_87 before flipping) but tightens the shape coupling to M multiple of
+256. The B-side ldmatrix fragment proof (mma-probe.f MP-BLDM-ALL) also
+feeds this flip: transposed Bs staging changes the staging emitters the
+default flip must carry.
