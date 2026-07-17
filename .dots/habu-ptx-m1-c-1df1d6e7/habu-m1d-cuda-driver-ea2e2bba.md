@@ -4,8 +4,6 @@ status: open
 priority: 2
 issue-type: task
 created-at: "2026-06-25T13:48:30.821016+02:00"
-blocks:
-  - habu-infra-zed-unreachable-c3d8c991
   - habu-m1c-marshalling-out-99ccd38c
 ---
 
