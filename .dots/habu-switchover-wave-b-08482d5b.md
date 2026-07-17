@@ -226,3 +226,9 @@ Census omission folded into scope: PROC-CMD-RUN-RC
 (lib/process-command.f:193, scalar rc, ~3 caller files) migrates with
 the capture cluster when the capability lands (its sibling OUTCOME word
 rides the same cluster - migrate together for coherence).
+
+NOTE 2026-07-18 (layout DoR amendment): the capability lands for NAMED
+payload products - when unblocked, migrate the 25 option<tuple> words by
+minting small named payload PRODUCTs (e.g. str-slice for ptr u8 n) and
+returning option<that>, not anonymous runs; the raw-run spelling is
+optional staged sugar (layout slice 6).

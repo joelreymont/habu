@@ -60,3 +60,27 @@ integration (the test/-is-exempt assumption was wrong - inventory
 counts test-metaprog sites). NEXT: slice 2 (PK-LAYOUT parser groups).
 
 Claim: agent=laycap2 workspace=.jj-ws/fable-laycap2 (SLICE 2 only: PK-LAYOUT parser param groups + declaration marking; sig-parse accepts, construct stays fail-closed)
+
+DOR AMENDMENT 2026-07-18 (laycap2 stop + orchestrator decision): SLICE 2
+AS WRITTEN WAS NON-BOUNDED - two couplings proven: (A) the raw-run tuple
+term was never built (slice 1's "existing fam<args> term suffices"
+conclusion is valid for NAMED layout-family args only; an anonymous run
+like option<off len> has no width-W representation, and building one
+means a reserved registry family + sealing + rendering + re-opening the
+landed slice-1 decision); (B) the declaration surface (LAYOUT header
+clause) lives in src/core/sumtype.f per the 18 one-grammar rule -
+outside the slice write set. DECISION: re-scope the program to NAMED
+payload products - option<str-slice> with PRODUCT str-slice ptr u8 n is
+the better Habu shape (small typed domain words over raw tuples), the
+lane's probes prove named args ALREADY parse-accept with construction
+fail-closed, and wave-B migrates by minting small named payload products.
+NEW SLICE MAP: slice 2' = pin named-arg acceptance + fail-closed
+construction (fixtures/docs only, landing now); slice 3 = constructor/
+MATCH effects for multi-cell NAMED args (TFC-SCH-TERM/TFC-PAY-ROW
+PUSH-LOGICAL expansion - the probes' verdict-0 constructions flip);
+slice 4 = width-aware dual-emitter lowering (unchanged); slice 5 =
+nested/linear stage-lift (unchanged); slice 6 (OPTIONAL sugar, staged) =
+raw-run fold: reserved tuple family + TFAM-INST-WIDTH@ tuple branch +
+SIG-TYPE PK run-fold + TFAM-PK read-hook + sumtype.f LAYOUT clause -
+Couplings A/B above are its spec; requires expanding the write set to
+sumtype.f when claimed. Wave-B's migration note updated accordingly.
