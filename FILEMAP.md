@@ -787,6 +787,10 @@ points stay listed.
   match the reference, sumnorm role/value swaps diverge numerically, gemm
   double-accumulate is ptxas-rejected, and the attention role swaps emit
   byte-identical PTX (a codegen no-op); a recorded SKIP off-device.
+- `maki/eval-device-fault-test.f` — regression that a ptxas-clean-but-launch-
+  faulting no-check candidate (raw span pointer used as the grid index -> OOB read
+  -> contained GPU MMU fault) is GRADED as the `EVN-DEVICE-FAULT` bucket and the
+  grader survives to grade the next candidate GREEN; a recorded SKIP off-device.
 - `maki/async-dag.f` — typed immutable async execution DAG (V2 §22.3 host
   schema): nominal stream/event/node identities, the `akind` node sum
   (kernel/copy/memset/event-record/event-wait), explicit ordering edges, and

@@ -20,16 +20,24 @@
 \ words (GRADE-CANDIDATE / GRADE-NOCHECK-CANDIDATE / EVN-*) live in the same package
 \ (maki/eval-device.f), so they resolve bare here; the CMP- state + API and the
 \ device fixture stay private to this file.
+\
+\ Device-gated (maki/device-smoke.f pattern): the ablation launches every no-check
+\ candidate on the GPU, so off-device CMP-RUN records a SKIP and this file still
+\ check-loads; on the Orin it runs and asserts.
+
+require lib/test.f
+require maki/eval-device.f
+
 package EVAL
 
 private
 
 variable NC0  variable NC1  variable NC2     \ counts of verdict 0 / 1 / 2
-variable NU-EMIT  variable NU-PTXAS  variable NU-WRONG  variable NU-GREEN
+variable NU-EMIT  variable NU-PTXAS  variable NU-WRONG  variable NU-FAULT  variable NU-GREEN
 
 : CMP-RESET ( -- )
    0 NC0 !  0 NC1 !  0 NC2 !
-   0 NU-EMIT !  0 NU-PTXAS !  0 NU-WRONG !  0 NU-GREEN ! ;
+   0 NU-EMIT !  0 NU-PTXAS !  0 NU-WRONG !  0 NU-FAULT !  0 NU-GREEN ! ;
 
 : CMP-CHECKED-RECORD ( n -- )
    dup 0 = if NC0 @ 1+ NC0 ! then
@@ -41,6 +49,7 @@ variable NU-EMIT  variable NU-PTXAS  variable NU-WRONG  variable NU-GREEN
       EVN-EMIT-FAIL of NU-EMIT @ 1+ NU-EMIT ! endof
       EVN-PTXAS-FAIL of NU-PTXAS @ 1+ NU-PTXAS ! endof
       EVN-DEVICE-WRONG of NU-WRONG @ 1+ NU-WRONG ! endof
+      EVN-DEVICE-FAULT of NU-FAULT @ 1+ NU-FAULT ! endof
       EVN-GREEN of NU-GREEN @ 1+ NU-GREEN ! endof
    endcase ;
 
@@ -52,43 +61,74 @@ variable NU-EMIT  variable NU-PTXAS  variable NU-WRONG  variable NU-GREEN
 : CMP-BUGS   ( -- n )  NC0 @ NC1 @ + ;            \ rejected + semantic-wrong
 : CMP-STATIC ( -- n )  NC0 @ ;                    \ bugs the checker caught before any run
 : CMP-HB-RUNS ( -- n )  NC1 @ NC2 @ + ;           \ Habu-PTX runs only the CERTIFIED candidates
-: CMP-NOCHECK-RUNS ( -- n )  NU-EMIT @ NU-PTXAS @ + NU-WRONG @ + NU-GREEN @ + ;
-: CMP-NOCHECK-LATE-FAILS ( -- n )  NU-EMIT @ NU-PTXAS @ + NU-WRONG @ + ;
+: CMP-NOCHECK-RUNS ( -- n )  NU-EMIT @ NU-PTXAS @ + NU-WRONG @ + NU-FAULT @ + NU-GREEN @ + ;
+: CMP-NOCHECK-LATE-FAILS ( -- n )  NU-EMIT @ NU-PTXAS @ + NU-WRONG @ + NU-FAULT @ + ;
 
-T-RESET
-CMP-RESET
 \ fixture: 3 correct SAXPY phrasings, 5 distinct type/stack errors, 1 semantic (x+y)
-s" K ( span<space-global,f32,extent-n> span<space-global,f32,extent-n> uniform<f32> -- ) {: x y a :} x GRID-CTX {: g :} x g LOAD a SCALE y g LOAD +. y g STORE"  CMP-SCORE  \ correct
-s" K ( span<space-global,f32,extent-n> span<space-global,f32,extent-n> uniform<f32> -- ) {: x y a :} x GRID-CTX {: g :} y g LOAD x g LOAD a SCALE +. y g STORE"  CMP-SCORE  \ correct
-s" K ( span<space-global,f32,extent-n> span<space-global,f32,extent-n> uniform<f32> -- ) {: x y a :} x GRID-CTX {: g :} y g LOAD x g LOAD a SCALE swap drop drop x g LOAD a SCALE y g LOAD +. y g STORE"  CMP-SCORE  \ correct
-s" K ( span<space-global,f32,extent-n> span<space-global,f32,extent-n> uniform<f32> -- ) {: x y a :} x GRID-CTX {: g :} x g LOAD a SCALE y g LOAD +."             CMP-SCORE  \ type/stack: no store
-s" K ( span<space-global,f32,extent-n> span<space-global,f32,extent-n> uniform<f32> -- ) {: x y a :} x GRID-CTX {: g :} x g LOAD y SCALE y g LOAD +. y g STORE"   CMP-SCORE  \ type/stack: span as uniform
-s" K ( span<space-global,f32,extent-n> span<space-global,f32,extent-n> uniform<f32> -- ) {: x y a :} x x LOAD a SCALE y x LOAD +. y x STORE"                      CMP-SCORE  \ type/stack: span as gridctx
-s" K ( span<space-global,f32,extent-n> span<space-global,f32,extent-n> uniform<f32> -- ) {: x y a :} x GRID-CTX {: g :} x g LOAD a SCALE +. y g STORE"             CMP-SCORE  \ type/stack: +. underflow
-s" K ( span<space-global,f32,extent-n> span<space-global,f32,extent-n> uniform<f32> -- ) {: x y a :} x GRID-CTX {: g :} x g LOAD a SCALE y g LOAD +. y g STORE a SCALE"  CMP-SCORE  \ type/stack: extra op
-s" K ( span<space-global,f32,extent-n> span<space-global,f32,extent-n> uniform<f32> -- ) {: x y a :} x GRID-CTX {: g :} x g LOAD y g LOAD +. y g STORE"           CMP-SCORE  \ SEMANTIC: x+y (certifies, device-wrong)
+: CMP-FIXTURE ( -- )
+   s" K ( span<space-global,f32,extent-n> span<space-global,f32,extent-n> uniform<f32> -- ) {: x y a :} x GRID-CTX {: g :} x g LOAD a SCALE y g LOAD +. y g STORE"  CMP-SCORE  \ correct
+   s" K ( span<space-global,f32,extent-n> span<space-global,f32,extent-n> uniform<f32> -- ) {: x y a :} x GRID-CTX {: g :} y g LOAD x g LOAD a SCALE +. y g STORE"  CMP-SCORE  \ correct
+   s" K ( span<space-global,f32,extent-n> span<space-global,f32,extent-n> uniform<f32> -- ) {: x y a :} x GRID-CTX {: g :} y g LOAD x g LOAD a SCALE swap drop drop x g LOAD a SCALE y g LOAD +. y g STORE"  CMP-SCORE  \ correct
+   s" K ( span<space-global,f32,extent-n> span<space-global,f32,extent-n> uniform<f32> -- ) {: x y a :} x GRID-CTX {: g :} x g LOAD a SCALE y g LOAD +."             CMP-SCORE  \ type/stack: no store
+   s" K ( span<space-global,f32,extent-n> span<space-global,f32,extent-n> uniform<f32> -- ) {: x y a :} x GRID-CTX {: g :} x g LOAD y SCALE y g LOAD +. y g STORE"   CMP-SCORE  \ type/stack: span as uniform
+   s" K ( span<space-global,f32,extent-n> span<space-global,f32,extent-n> uniform<f32> -- ) {: x y a :} x x LOAD a SCALE y x LOAD +. y x STORE"                      CMP-SCORE  \ type/stack: span as gridctx
+   s" K ( span<space-global,f32,extent-n> span<space-global,f32,extent-n> uniform<f32> -- ) {: x y a :} x GRID-CTX {: g :} x g LOAD a SCALE +. y g STORE"             CMP-SCORE  \ type/stack: +. underflow
+   s" K ( span<space-global,f32,extent-n> span<space-global,f32,extent-n> uniform<f32> -- ) {: x y a :} x GRID-CTX {: g :} x g LOAD a SCALE y g LOAD +. y g STORE a SCALE"  CMP-SCORE  \ type/stack: extra op
+   s" K ( span<space-global,f32,extent-n> span<space-global,f32,extent-n> uniform<f32> -- ) {: x y a :} x GRID-CTX {: g :} x g LOAD y g LOAD +. y g STORE"           CMP-SCORE ;  \ SEMANTIC: x+y (certifies, device-wrong)
 
-\ fixture shape: 3 green, 5 type/stack rejects, 1 semantic
-NC2 @  3 T=
-NC0 @  5 T=
-NC1 @  1 T=
-\ the checker caught the 5 type/stack bugs with ZERO device runs; the semantic one needs a run
-CMP-STATIC  5 T=
-\ the unchecked arm attempts every candidate, including checker rejects
-CMP-NOCHECK-RUNS  9 T=
-NU-EMIT @  0 T=
-NU-PTXAS @  0 T=
-NU-WRONG @  6 T=
-NU-GREEN @  3 T=
-CMP-NOCHECK-LATE-FAILS  6 T=
+\ Expected without-checker device buckets, re-derived for the split-out FAULT bucket
+\ (the pre-mint tallies assumed NU-WRONG=6 = every non-green candidate "completes as
+\ device-wrong"; that was NEVER produced on device -- the first on-device run crashed
+\ because one candidate FAULTS the GPU rather than completing). Per candidate:
+\   1-3 correct SAXPY phrasings ........................ GREEN  (x3)
+\   4  no store: y stays memset 0, valid addresses ..... WRONG  (ran, bad value)
+\   5  span-as-uniform: span used as a SCALE scalar ..... WRONG  (arith on a pointer bit-pattern)
+\   6  span-as-gridctx: raw span pointer used as the
+\      element INDEX -> out-of-bounds read ............. FAULT  (contained nvgpu MMU fault)
+\   7  +. underflow: arithmetic on a stale register ..... WRONG  (bad value, addresses valid)
+\   8  extra trailing op after a correct store .......... WRONG  (kept as pre-mint expectation)
+\   9  semantic x+y: certifies, runs, wrong number ...... WRONG
+\ Only candidate 6 misuses a pointer in an ADDRESSING position, so exactly one FAULT;
+\ the other five non-green candidates complete as WRONG. NU-WRONG 6 -> 5, NU-FAULT 0 -> 1;
+\ the aggregate late-fail count stays 6. The on-device follow-up leg confirms the exact
+\ WRONG/FAULT split (e.g. if a codegen-underflow candidate instead ptxas-fails).
+: CMP-ASSERT ( -- )
+   \ fixture shape: 3 green, 5 type/stack rejects, 1 semantic
+   NC2 @  3 T=
+   NC0 @  5 T=
+   NC1 @  1 T=
+   \ the checker caught the 5 type/stack bugs with ZERO device runs; the semantic one needs a run
+   CMP-STATIC  5 T=
+   \ the unchecked arm attempts every candidate, including checker rejects
+   CMP-NOCHECK-RUNS  9 T=
+   NU-EMIT @  0 T=
+   NU-PTXAS @  0 T=
+   NU-WRONG @  5 T=       \ was 6: the span-as-gridctx faulter split out into NU-FAULT
+   NU-FAULT @  1 T=       \ span-as-gridctx: raw pointer used as index -> OOB read -> MMU fault
+   NU-GREEN @  3 T=
+   CMP-NOCHECK-LATE-FAILS  6 T= ;
 
-s" === checker ablation: Habu-PTX WITH vs WITHOUT its static checker ===" type cr
-s" fixture: " type CMP-TOTAL . s" candidates, " type CMP-BUGS . s" bugs (" type NC0 @ . s" type/stack + " type NC1 @ . s" semantic)" type cr
-s" WITH checker:    " type CMP-STATIC . s" / " type CMP-BUGS . s" bugs caught BEFORE execution (located diagnostics); GPU runs = " type CMP-HB-RUNS . cr
-s" WITHOUT checker: 0 / " type CMP-BUGS . s" bugs caught before execution; attempted emit/ptxas/device = " type CMP-NOCHECK-RUNS . cr
-s" WITHOUT checker later failures: emit=" type NU-EMIT @ . s" ptxas=" type NU-PTXAS @ . s" device-wrong=" type NU-WRONG @ . s" green=" type NU-GREEN @ . cr
-s" => the static checker catches the type/stack bug class for free; that is the checker's value. Confirmed vs real Triton on the Orin (docs/eval-triton.md): Triton catches name/type errors at compile but the stack-discipline class only at runtime (3/5 battery bugs slipped to runtime)." type cr
+: CMP-SUMMARY ( -- )
+   s" === checker ablation: Habu-PTX WITH vs WITHOUT its static checker ===" type cr
+   s" fixture: " type CMP-TOTAL . s" candidates, " type CMP-BUGS . s" bugs (" type NC0 @ . s" type/stack + " type NC1 @ . s" semantic)" type cr
+   s" WITH checker:    " type CMP-STATIC . s" / " type CMP-BUGS . s" bugs caught BEFORE execution (located diagnostics); GPU runs = " type CMP-HB-RUNS . cr
+   s" WITHOUT checker: 0 / " type CMP-BUGS . s" bugs caught before execution; attempted emit/ptxas/device = " type CMP-NOCHECK-RUNS . cr
+   s" WITHOUT checker later failures: emit=" type NU-EMIT @ . s" ptxas=" type NU-PTXAS @ . s" device-wrong=" type NU-WRONG @ . s" device-fault=" type NU-FAULT @ . s" green=" type NU-GREEN @ . cr
+   s" => the static checker catches the type/stack bug class for free -- including one bug that FAULTS the GPU without it (device-fault), not just a wrong number. Confirmed vs real Triton on the Orin (docs/eval-triton.md): Triton catches name/type errors at compile but the stack-discipline class only at runtime (3/5 battery bugs slipped to runtime)." type cr ;
 
-T-REPORT
+\ Device-gated: every no-check candidate launches on the GPU, so off-device this is
+\ a recorded SKIP and the file still check-loads; on the Orin it runs and asserts.
+: CMP-RUN ( -- )
+   T-RESET
+   CUDA:OPEN? 0= if
+      s" eval-compare: libcuda unavailable -> checker-ablation device leg SKIPPED (off-device; file check-loads)" type cr
+      T-REPORT exit then
+   CMP-RESET
+   CMP-FIXTURE
+   CMP-ASSERT
+   CMP-SUMMARY
+   T-REPORT ;
+
+CMP-RUN
 
 ;package

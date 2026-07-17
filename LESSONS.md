@@ -122,7 +122,24 @@ Last updated: 2026-07-17
   scans test/gate-stdlib-*.f - so a `maki/*-device-test.f` (Orin-only, CUDA-probe
   SKIP off-device) keeps both lints green with zero registration; the ONLY rule is
   keep it out of `maki/test.f` (it needs CUDA + a device). This is why
-  maki/onnx/deploy-device-test.f appears in neither lint table.
+  maki/onnx/deploy-device-test.f appears in neither lint table. Keep a device
+  test device-PROVEN before adding it to `maki/test.f`: an unvalidated device fix
+  in the shared maki gate can red master on the next on-device run.
+- **Untrusted GPU launches must be FORK-isolated, and the parent must never init
+  CUDA (dot habu-eval-grader-device).** The eval grader's device leg threw E-CUDA
+  uncaught on a contained MMU fault (a no-check candidate using a raw span pointer
+  as the grid index -> out-of-bounds read) and killed the grader before any tally.
+  In-process `catch` alone is insufficient: a faulted CUDA context is not
+  trustworthy for the next candidate. The fix runs each launch in its own
+  `PROC-FORK` child that inits CUDA fresh, classifies the run under `catch`, and
+  `die`s with a small (<256) exit code; the parent maps the wait-outcome (exited
+  code / signal death / timeout) to a verdict. The load-bearing constraint the RCA
+  did not spell out: the PARENT must only `CUDA:OPEN?`-probe (dlopen), never
+  `cuInit`/retain a context before forking, so each child is a clean CUDA process
+  and a fault dies with its child. Grade a launch fault as a DISTINCT bucket
+  (`EVN-DEVICE-FAULT` = "kernel crashed"), never as `EVN-DEVICE-WRONG` = "ran,
+  bad values"; the ablation needs to show the checker prevents GPU faults, not
+  only wrong numbers.
 - **zed's ~/Work/habu is stale vs current master (missing files, not just a stale
   bin/hb).** Running a current-master device leg means transferring the FULL
   workspace tree to an isolated /tmp dir on zed and `HABU_ALLOW_BOOTSTRAP=1

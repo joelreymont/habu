@@ -16,6 +16,7 @@ require lib/fs.f
 require lib/fs-mutate.f
 require lib/process.f
 require lib/process-argv.f
+require lib/process-fork.f
 require lib/ffi.f
 require lib/float.f
 require lib/fmt.f
@@ -42,11 +43,25 @@ create ED-PATH 64 allot  create ED-KN 32 allot
 variable ED-DEV variable ED-CTX variable ED-MOD variable ED-FUNC
 variable ED-DX variable ED-DY variable ED-AB variable ED-NV variable ED-RBUF
 
-\ verdict codes for the without-checker arm (eval-internal; the CMP- ablation reads them)
+\ Verdict buckets for the without-checker arm (eval-internal; the CMP- ablation
+\ reads them). The device leg keeps two failure modes distinct that a naive grader
+\ conflates: EVN-DEVICE-WRONG is "the kernel RAN and produced bad values" (a
+\ semantic/value bug); EVN-DEVICE-FAULT is "the kernel CRASHED the launch" (an
+\ out-of-bounds access -> contained GPU MMU fault, or any other launch throw).
+\ Grading them apart lets the ablation report that the checker prevents GPU
+\ FAULTS, not only wrong numbers. Do NOT overload WRONG for a fault.
 0 constant EVN-EMIT-FAIL
 1 constant EVN-PTXAS-FAIL
 2 constant EVN-DEVICE-WRONG
 3 constant EVN-GREEN
+4 constant EVN-DEVICE-FAULT
+
+\ Fork-child exit codes: the isolated device-launch child dies with one of these,
+\ and the parent maps them back to the EVN-* device buckets. Small (<256) so the
+\ kernel's low-8 exit-bit mask preserves them; distinct from 0 and reserved codes.
+$21 constant ED-EXIT-GREEN     \ device output == golden
+$22 constant ED-EXIT-WRONG     \ device ran, output != golden
+$23 constant ED-EXIT-FAULT     \ launch threw (E-CUDA etc.) / crashed
 
 : ED-RUN ( ptr u8 n -- n ) {: pa pu :}          \ cubin path -> f32 result bits
    ED-RBUF 4 PTXSENT:FILL                        \ poison readback: a dropped copy-back fails closed
@@ -132,8 +147,53 @@ create GQ-OUT $1000 allot  create GQ-ERR $1000 allot
    MAKI-GRADE:PTXAS$        >LEN  GQ-OUT $1000 >LEN  GQ-ERR $1000 >LEN  10000 >MS  RUN-ARGV-CAPTURE
    {: outu erru rc :}  rc RC>N ;
 
-: GRADE-DEVICE-VERDICT ( -- n )
-   MAKI-GRADE:CUBIN$ DEVICE-CORRECT? if 2 else 1 then ;
+\ ---- device launch, ISOLATED in a forked child ----------------------------
+\ A ptxas-clean candidate can still fault the GPU: a type-buggy no-check
+\ candidate (e.g. a raw span pointer used as the grid index, eval-compare.f)
+\ does an out-of-bounds read -> contained nvgpu MMU fault -> nonzero CUresult ->
+\ CUDA:RC0 throws E-CUDA. In-process that throw crashes the grader before any
+\ tally prints, and even a caught fault leaves the CUDA context untrustworthy for
+\ the next candidate. So each launch runs in its OWN forked child -- the same
+\ subprocess isolation GRADE-EMIT / GRADE-PTXAS already use: the parent never
+\ touches CUDA, the child inits CUDA fresh, classifies the run under catch, and
+\ dies with a classified exit code. A faulted context dies with the child; the
+\ next candidate forks a clean process.
+variable ED-CODE               \ child-local: the classified exit code to die with
+
+: ED-CLASSIFY ( -- )           \ store GREEN/WRONG on a clean run, FAULT on any throw
+   [: MAKI-GRADE:CUBIN$ DEVICE-CORRECT?
+      if ED-EXIT-GREEN else ED-EXIT-WRONG then ED-CODE ! ;] catch {: rc:n :}
+   rc 0= if exit then                        \ clean run: ED-CODE holds GREEN/WRONG
+   ED-EXIT-FAULT ED-CODE ! ;                  \ launch threw (E-CUDA etc.) -> fault
+
+: ED-CHILD-LAUNCH ( -- )       \ fork child: classify, then die with the code (no return)
+   ED-CLASSIFY
+   s" grade-device-child" ED-CODE @ die ;
+
+: ED-EXIT>VERDICT ( n -- n )   \ child exit code -> EVN device bucket (unknown -> fault)
+   {: code:n :}
+   code ED-EXIT-GREEN = if EVN-GREEN exit then
+   code ED-EXIT-WRONG = if EVN-DEVICE-WRONG exit then
+   EVN-DEVICE-FAULT ;
+
+: ED-OUTCOME>VERDICT ( outcome -- n )   \ child wait-outcome -> EVN device bucket
+   MATCH outcome
+     exited OF ED-EXIT>VERDICT ENDOF
+     signaled OF drop EVN-DEVICE-FAULT ENDOF     \ signal death (SIGSEGV/SIGKILL) = fault
+     timeout OF EVN-DEVICE-FAULT ENDOF           \ blocking wait never times out; fail-closed
+   ;MATCH ;
+
+\ device bucket -> with-checker 0/1/2 verdict. The with-checker arm only launches
+\ CERTIFIED (type-safe) candidates, so a device FAULT is not expected here (the
+\ checker rejects the out-of-bounds class); a fault or a wrong value both collapse
+\ to 1 = "certifies but not device-correct".
+: ED-VERDICT>CERT ( n -- n )
+   EVN-GREEN = if 2 else 1 then ;
+
+: GRADE-DEVICE-VERDICT ( -- n )   \ fork-isolated launch -> EVN-GREEN / -WRONG / -FAULT
+   PROC-FORK PID>N {: pid:n :}
+   pid 0= if ED-CHILD-LAUNCH then               \ child never returns
+   pid >PID PROC-WAIT-OUTCOME ED-OUTCOME>VERDICT ;
 
 public
 
@@ -144,7 +204,7 @@ public
    a u GRADE-WRITE-DRIVER
    GRADE-EMIT  0 = if MAKI-GRADE:CLEAN 1 exit then
    GRADE-PTXAS 0 <> if MAKI-GRADE:CLEAN 1 exit then
-   GRADE-DEVICE-VERDICT {: v:n :}
+   GRADE-DEVICE-VERDICT ED-VERDICT>CERT {: v:n :}
    MAKI-GRADE:CLEAN
    v ;
 
@@ -153,7 +213,7 @@ public
    a u GRADE-WRITE-UNCHECKED-DRIVER
    GRADE-EMIT 0 = if MAKI-GRADE:CLEAN EVN-EMIT-FAIL exit then
    GRADE-PTXAS 0 <> if MAKI-GRADE:CLEAN EVN-PTXAS-FAIL exit then
-   GRADE-DEVICE-VERDICT 2 = if EVN-GREEN else EVN-DEVICE-WRONG then {: v:n :}
+   GRADE-DEVICE-VERDICT {: v:n :}                \ EVN-GREEN / -WRONG / -FAULT (fork-isolated)
    MAKI-GRADE:CLEAN
    v ;
 
