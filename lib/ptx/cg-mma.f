@@ -47,6 +47,7 @@ require src/arch/ptx/emit.f
 require lib/ptx/cg.f
 require lib/ptx/header.f
 require lib/ptx/cg-matmul.f
+require lib/ptx/cpp-slot.f
 
 \ ============ TILE CONFIGURATION (dot habu-mma-larger-bk) =====================
 \ Emit-time knobs. Their DEFAULT values reproduce the BK=32 scalar+cvt kernel
@@ -603,6 +604,16 @@ variable MMA-LMODE   0 MMA-LMODE !
    MMA-MFRAGS @ 1 > if bufr ktr MMA-CPW-STAGE exit then
    MMA-CPN 0 do  i bufr ktr MMA-CP-CHUNK  loop ;
 
+\ single-buffer cp.async ISSUE, the audited mint core (dot habu-wire-cppslot-typestate-
+\ ce2463df): emits the As/Bs stage for this iteration's ONE slot (MMA-CP-STAGE verbatim)
+\ and mints that slot's cpp-pending witness - the CPPSLOT protocol entry. Trusted only
+\ for the phantom mint: a checked word cannot fabricate the nominal family cell
+\ (`( n -- cpp-pending<p> ) 0` rejects), the same audited-mint-core class as the
+\ NP-MINT-CHECK-sealed tile mints and the CPPSLOT COMMIT/WAIT transitions. The
+\ commit->wait->read ORDERING this slot enters is checked at the caller
+\ (MMA-PIPE-KLOOP-SINGLE); misorderings reject (lib/ptx/cg-mma-slot-neg-test.f).
+TRUSTED: MMA-STAGE-ISSUE ( n n -- cpp-pending<p> )   MMA-CP-STAGE 0 ;
+
 \ double-buffered (MMA-STAGES=2) cp.async pipeline, BK-parameterized (mirror of MM-PIPE-KLOOP-WITH).
 \ The compute quotation sits on the data stack from entry to its `execute` slot (as in MM-PIPE).
 \ Composed from the shared CPP-* protocol steps (cg-matmul-emit.f); MMA-CP-STAGE is the As/Bs
@@ -624,13 +635,19 @@ variable MMA-LMODE   0 MMA-LMODE !
 
 \ single-buffer (MMA-STAGES=1) K-loop: stage, drain, compute, reuse. Fewer bar.sync per K than
 \ BK=32 (bigger tile) but no cp.async/compute overlap; fits the 48 KiB static cap at BK=64.
-\ Same CPP-* protocol steps, minus the parity/prefetch (single read-window = SH).
+\ Single read-window = SH, no parity/prefetch. The per-iteration protocol is CHECKED
+\ (dot habu-wire-cppslot-typestate-ce2463df): MMA-STAGE-ISSUE mints this iteration's
+\ cpp-pending slot at the cp.async issue, and CPPSLOT COMMIT -> WAIT -> READ thread the
+\ slot typestate so a misordered emission (wait-before-commit, dropped wait/sync fence,
+\ read-before-wait) is a checker reject, not silent bad PTX. Byte-identical to the
+\ former fused steps: WAIT emits `wait_group 0` + `bar.sync` (the pre-compute fence);
+\ the trailing CPP-SYNC is the buffer-reuse fence after compute.
 : MMA-PIPE-KLOOP-SINGLE ( [ -- ] -- )
    CPP-KT-INIT
    CPP-SINGLE-WINDOW                                              \ single buffer base = SH
    CPP-KGUARD
-   11 14 MMA-CP-STAGE  CPP-COMMIT  0 CPP-WAIT
-   CPP-SYNC  execute  CPP-SYNC
+   11 14 MMA-STAGE-ISSUE  CPPSLOT:COMMIT  CPPSLOT:WAIT  CPPSLOT:READ
+   execute  CPP-SYNC
    MMA-BK @ CPP-KT-ADVANCE
    CPP-KTAIL ;
 

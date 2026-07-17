@@ -4,6 +4,30 @@
 
 Last updated: 2026-07-17
 
+- **The CPPSLOT typestate threads through the single-buffer MMA-PIPE-KLOOP-SINGLE
+  byte-identically and GENUINELY — but only via one new trusted issue-mint, and that
+  mint is the sanctioned audited-mint-core class, not debt.** (dot
+  habu-wire-cppslot-typestate-ce2463df, cppwire2 lane, host, no device.) Unlike the
+  fixtures — which take `cpp-pending` from their SIGNATURE (trust-neutral) — the
+  production loop mints a fresh slot PER ITERATION at the in-body cp.async issue, and
+  a checked word cannot fabricate a nominal family cell (`( n -- cpp-pending<p> ) 0`
+  rejects `expected cpp-pending actual n`). Two-horned: keep the loop checked =>
+  external trusted mint; make the loop trusted to host the mint => unchecked body =>
+  hollow thread. Sanction rationale (coordinator, on the NP-MINT-CHECK precedent):
+  fresh phantom mints are trusted BY DESIGN — a per-iteration `cpp-pending<p>` mint is
+  exactly the audited-mint-core class, identical in kind to the CPPSLOT COMMIT/WAIT
+  transitions; the dot's reshaped acceptance is "audited mint core + checked
+  protocol", so +1 one-line mint (`MMA-STAGE-ISSUE ( n n -- cpp-pending<p> )
+  MMA-CP-STAGE 0`) buying fail-closed protocol enforcement on the shipping best
+  kernel's path (MMM-WIDE-B-M4-S1, stages=1) is a net soundness win. Falsification
+  discipline that separates this from a hollow gesture: (1) fail-closed proof first
+  (a stray int in the exact production word exits 70); (2) misorder probes on the
+  PRODUCTION word (wait-before-commit, dropped wait/sync both reject); (3) a
+  committed read-after-issue negative that PINS the mint's pending state — if the
+  mint is ever laundered to return ready, the negative certifies and the suite fails;
+  (4) 21-kernel off-device golden dump byte-identical before/after, twice. The
+  double-buffer path stays refuted (cross-slot commit/wait pairing, entry above);
+  single-buffer is the one place the single-slot lifecycle is real.
 - **Cross-process id identity needs a CONTENT-key wire form, and the decisive test is a
   spawned fresh bin/hb that registers DECOYS FIRST.** (dot habu-wire-content-key, keywire
   lane.) The § 23.9 origin-class table's cross-process form for content-addressed families

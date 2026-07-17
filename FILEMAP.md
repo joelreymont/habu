@@ -602,7 +602,15 @@ points stay listed.
 - `lib/ptx/cg-mma.f` — TF32 tensor-core (mma.sync.aligned.m16n8k8) tiled GEMM
   (MMM): same 64x64 block and cp.async double-buffered staging as the register-
   blocked SGEMM, the 4x4 fma micro-tile swapped for warp-level MMA tiles (the
-  compute-roof beat-Triton lever).
+  compute-roof beat-Triton lever). The single-buffer (stages=1) K-loop threads
+  the CPPSLOT typestate: `MMA-STAGE-ISSUE` (the trusted cp.async issue mint)
+  -> `CPPSLOT:COMMIT`/`WAIT`/`READ`, so the per-iteration protocol ordering is
+  checker-enforced, byte-identical to the fused steps.
+- `lib/ptx/cg-mma-slot-neg-test.f` — production-shaped falsification
+  regressions for that checked single-buffer protocol: the in-order shape
+  certifies; wait-before-commit, dropped-wait, and read-after-issue reject on
+  the real `MMA-STAGE-ISSUE` mint (the read-after-issue leg pins the mint's
+  cpp-pending state, the anti-tautology guard).
 - `lib/ptx/cg-activation.f` — PTX codegen for the gelu/silu elementwise
   activations, mirroring the maki host references op-for-op for f32 golden parity.
 - `lib/ptx/ad.f` / `lib/ptx/ad-test.f` — reverse-mode autograd transform v0

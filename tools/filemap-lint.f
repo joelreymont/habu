@@ -18,7 +18,9 @@ require tools/lint/intern.f
 require tools/lint/token.f
 require tools/lint/lib.f
 
-$20000 constant FM-BUF-CAP
+\ FILEMAP.md outgrew the old $20000 cap (130944 B on 2026-07-17, 128 B under);
+\ grow by constant only - the READ-FILE overflow stays a loud lint failure.
+$40000 constant FM-BUF-CAP
 8 constant FM-ROOT-MAX
 16 constant FM-EXC-MAX
 

@@ -525,6 +525,7 @@ variable GSI-TL-FILE-A
    s" lib/ptx/tile-v4a-neg-test.f" GSI-INCLUDE
    s" lib/ptx/tile-pipe-neg-test.f" GSI-INCLUDE
    s" lib/ptx/cpp-slot-neg-test.f" GSI-INCLUDE
+   s" lib/ptx/cg-mma-slot-neg-test.f" GSI-INCLUDE
    s" lib/ptx/gemm-checked-neg-test.f" GSI-INCLUDE
    s" lib/ptx/attention-checked-neg-test.f" GSI-INCLUDE ;
 

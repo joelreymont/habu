@@ -327,6 +327,7 @@ TEST:;SUITE
 
 TEST:SUITE ptx-cpp-slot-neg
    lib/ptx/cpp-slot-neg-test.f
+   lib/ptx/cg-mma-slot-neg-test.f
 TEST:;SUITE
 
 TEST:SUITE ptx-gemm-checked-neg
