@@ -2,7 +2,7 @@
 
 ## Current map (2026-07-17)
 
-`bin/hb` is 165367 bytes on macOS ARM64. Its emitted `__text` is 133448
+`bin/hb` is 165367 bytes on macOS ARM64. Its emitted `__text` is 132576
 bytes. Set `HABU_ENGINE_SIZE_MAP=1` on a native fixpoint build to print the
 per-region map. `src/habu/engine-size.f` records the exact `ASM-LEN` cursor at
 each emitter boundary and emits no target bytes. The fixpoint driver forwards
@@ -17,7 +17,7 @@ interpret/string            1188
 interpret/number              48
 interpret/find               112
 compile/adt                 2236
-compile/semi                6972
+compile/semi                6100
 compile/local                496
 compile/p2wide              2460
 compile/keywords           10820
@@ -61,6 +61,8 @@ assignable to an emitter boundary.
 
 The first current repair shares the mutually exclusive hooked publication
 tail in `EM-COMPILE-PUBLISH`, reducing `compile/semi` by exactly 3200 bytes.
+Sharing the successful record-publication and final state-reset tails removes
+another 872 bytes.
 The file remains on the same 16 KB Mach-O page floor; later cuts must reduce
 `__text` to at most 77824 bytes for a file below 100000 bytes.
 

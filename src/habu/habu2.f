@@ -5507,7 +5507,7 @@ s" em-p2-finish" s" --" TRUST
    2 5 MOVZ,  LPROT LABEL@ BL,  LFLUSH LABEL@ BL, ;
 s" em-compile-flush-pend" s" --" TRUST
 
-: EM-COMPILE-PUBLISH-TRUSTED ( -- )
+: EM-COMPILE-PUBLISH-TRUSTED ( label -- ) {: publish:label :}
    LBL LBL LBL {: ttrusted ndhas ndchk :}
    10 DATA TRUSTED-CELL LDR,  10 ttrusted CBNZ,
       \ hook-certified sig'd definition (TSIG holds the captured signature, so
@@ -5524,15 +5524,11 @@ s" em-compile-flush-pend" s" --" TRUST
       C-CALL-CHECK-DOES
    ndchk LBL,
    C-CALL-TRUST-PEND
-   NDICT NDICT 1 ADDI,  LHIDXADD LABEL@ BL,
-   EM-REC-WIDE-PUBLISH
-   EM-P2-FINISH
-   C-CLEAR-TRUSTED-STATE
-   9 0 MOVZ,  9 DATA PEND-CELL STR,
-   LMAIN LABEL@ B, ;
-s" em-compile-publish-trusted" s" --" TRUST
+   publish B, ;
+s" em-compile-publish-trusted" s" label --" TRUST
 
-: EM-COMPILE-PUBLISH-HOOKED ( -- )
+: EM-COMPILE-PUBLISH-HOOKED ( label label -- )
+   {: publish:label finish:label :}
    LBL LBL LBL LBL {: nohook:label rejected:label inl:label done:label :}
    9 DATA P2-CELL LDR,  9 nohook CBNZ,                \ pass-2 second ';': no hook re-check
    9 DATA HOOK-CELL LDR,  9 nohook CBZ,
@@ -5544,25 +5540,29 @@ s" em-compile-publish-trusted" s" --" TRUST
       \ publish path (item 12 slice 3b).
       LOWER-TXN:FREEZE
       EM-P2-TRIGGER
-   nohook LBL,  NDICT NDICT 1 ADDI,  LHIDXADD LABEL@ BL,
-   EM-REC-WIDE-PUBLISH
-   done B,
+   nohook LBL,  publish B,
    rejected LBL,  11 DATA PEND-CELL LDR,  12 11 16 LDR,  12 12 DNAME-EXT ANDI,  12 inl CBZ,
       CP 11 24 LDR,  done B,                           \ ext name in code space: CP := pre-name CP
    inl LBL,  CP 11 0 LDR,                              \ inline name: CP := colon entry
    done LBL,
-   EM-P2-FINISH
-   C-CLEAR-TRUSTED-STATE
-   9 0 MOVZ,  9 DATA PEND-CELL STR,  LMAIN LABEL@ B, ;
-s" em-compile-publish-hooked" s" --" TRUST
+   finish B, ;
+s" em-compile-publish-hooked" s" label label --" TRUST
 
 : EM-COMPILE-PUBLISH ( -- )
-   LBL {: hooked:label :}
+   LBL LBL LBL {: hooked:label publish:label finish:label :}
    9 DATA HOOK-CELL LDR,  9 hooked CBZ,
    9 DATA TSIG-U-CELL LDR,  9 hooked CBZ,
-   EM-COMPILE-PUBLISH-TRUSTED
+   publish EM-COMPILE-PUBLISH-TRUSTED
    hooked LBL,
-   EM-COMPILE-PUBLISH-HOOKED ;
+   publish finish EM-COMPILE-PUBLISH-HOOKED
+   publish LBL,
+   NDICT NDICT 1 ADDI,  LHIDXADD LABEL@ BL,
+   EM-REC-WIDE-PUBLISH
+   finish LBL,
+   EM-P2-FINISH
+   C-CLEAR-TRUSTED-STATE
+   9 0 MOVZ,  9 DATA PEND-CELL STR,
+   LMAIN LABEL@ B, ;
 s" em-compile-publish" s" --" TRUST
 
 : EM-COMPILE-SEMI ( label -- ) {: lnotsemi:label :}
