@@ -108,3 +108,8 @@ TRUSTED: BROADCAST ( uniform<f32> -- tile<f32,b,m> )
 \ it PRESERVES the SECOND phantom through REPMIX3B rather than minting one.
 : BLOCK-MAX-SELECT ( uniform<f32> tile<f32,b,m> uniform<f32> -- tile<f32,b,m> )
    [: EMIT-BLOCK-MAX-SELECT ;] PTXREP:REPMIX3B ;
+\ M5b: BLOCK-MAX-SELECT's emitter contains a block reduction with bar.sync, but
+\ its declared shape produces a TILE (not a uniform), so the E-ADD-EFFECT
+\ shape-detector cannot see the barrier. Declare it explicitly, so a call reached
+\ under divergent control rejects as a divergent barrier exactly like BLOCK-MAX.
+s" BLOCK-MAX-SELECT" PTX-BARRIER!

@@ -604,8 +604,13 @@ create AXBUF AXBUF-CAP allot
 \ an optional count operand; UNSAFE-TOK? bans all three inside checked bodies).
 \ Their axioms keep them checker-known so the seal-time internal-word marking
 \ pass leaves them top-level executable (dot habu-hb-crash-bare-c5be6634).
+\ ptx-barrier! (M5b) is the same class as trust: it resolves its string operand
+\ to a symbol and mutates that word's control flags (a checker-registry side
+\ effect a census execution over random operands cannot exercise soundly);
+\ UNSAFE-TOK? bans it inside checked bodies, and its axiom keeps it top-level
+\ executable so library source can declare an explicit barrier.
 : AX-NOEXEC-C ( -- ptr u8 n )
-   s"  seal-capture seal-friend prot-wid-add drain-pretrust wf-tokix@ wf-off@ wf-pos@ wf-fam@ wf-width@ wf-term@ wf-flags@ tfam-width@ locw-hw@ p2-carve-w p2-live-w@ p2-live-cum@ p2-locseq-reset wide-mark rec-wide-publish rec-min-in@ layout-valid-desc-cell tfam-name$ tfam-arity@ tfam-kind@ tfam-public? tfam-derive-eq? tfam-derive-hash? tfam-var-start@ tfam-var-count@ sumv-name$ sumv-ctor-pkg$ lower-cert:cell@ lower-cert:bytes trust check check! typefamily sumtype enum product layout-buffer typed-buffer typed-variable " ;
+   s"  seal-capture seal-friend prot-wid-add drain-pretrust wf-tokix@ wf-off@ wf-pos@ wf-fam@ wf-width@ wf-term@ wf-flags@ tfam-width@ locw-hw@ p2-carve-w p2-live-w@ p2-live-cum@ p2-locseq-reset wide-mark rec-wide-publish rec-min-in@ layout-valid-desc-cell tfam-name$ tfam-arity@ tfam-kind@ tfam-public? tfam-derive-eq? tfam-derive-hash? tfam-var-start@ tfam-var-count@ sumv-name$ sumv-ctor-pkg$ lower-cert:cell@ lower-cert:bytes trust ptx-barrier! check check! typefamily sumtype enum product layout-buffer typed-buffer typed-variable " ;
 
 : AX-CAT ( ptr u8 n -- n )
    2dup AX-HAS-QUOTE? if 2drop AX-NOEXEC exit then

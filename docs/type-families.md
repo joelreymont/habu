@@ -2694,18 +2694,44 @@ The user writes algebraic data types. The checker owns refinement and exhaustive
 
 That is the whole job.
 
-### 9.1.2 Uniformity and the block-uniform barrier model (M5)
+### 9.1.2 Uniformity and the block-uniform barrier model (M5 / M5b)
 
 `uniform<T>` is a block-uniform value (identical across all lanes);
 `tile<T,B,M>` is lane-varying. A block collective typed
 `( tile<..> -- uniform<..> )` (BLOCK-MAX/BLOCK-SUM) lowers to a
 shared-memory reduction with `bar.sync` and is flagged `CTL-BARRIER`
 structurally at effect registration (E-ADD-EFFECT — the one choke point
-shared by `:` and `TRUSTED:` definitions); the checker rejects a
-`CTL-BARRIER` call inside any open control frame (if/begin/do/case) as a
-non-block-uniform-reachable barrier (`E-DIVERGENT-BARRIER`). Producing a
-uniform from a tile under divergent control is unsound and now
-untypeable. Regression fixtures: lib/ptx/uniform-barrier-test.f.
-Documented conservatism: a collective under a provably-uniform branch
-(uniform<bool> condition) also rejects until per-frame uniformity
-tracking lands (see the M5 remainder dot).
+shared by `:` and `TRUSTED:` definitions). The cp.async WAIT
+(`( cpp-committed<p> -- cpp-ready<p> )`) is the same barrier and rides the
+same flag. Producing a uniform from a tile — or a ready slot from a
+committed one — under divergent control is unsound and untypeable.
+
+**Explicit barrier marking (M5b).** Not every barrier has the
+`( tile -- uniform )` (or committed→ready) SHAPE the structural detector
+keys on. BLOCK-MAX-SELECT emits `bar.sync` internally but its declared
+effect RETURNS a tile, so the detector misses it. Such a word is declared
+a barrier explicitly with the top-level directive `s" NAME" PTX-BARRIER!`
+(collective.f marks BLOCK-MAX-SELECT this way). `PTX-BARRIER!` ORs the same
+`CTL-BARRIER` flag onto the word's control-flag record — no parallel
+registry — so it composes at the identical call-site choke. Marking is
+monotone-safe: it can only ADD a rejection under control flow, never force
+an unsound acceptance; unknown names fail closed.
+
+**Per-frame uniformity acceptance (M5b).** Each open control frame carries
+a `CF.UNI` flag. An `if` whose condition resolves to `uniform<bool>` (a
+block-uniform predicate — a DISTINCT family from a lane-varying `bool`) is
+a block-uniform branch: every lane of the block takes the same path, so a
+barrier inside is sound. The `if` consumes the `uniform<bool>` flag and
+marks its frame `CF.UNI`. A `CTL-BARRIER` call is accepted iff EVERY
+enclosing frame is uniform (`ALL-CF-UNIFORM?`); otherwise it rejects
+(`E-DIVERGENT-BARRIER`, diagnostic "divergent barrier"). begin/do/case,
+quotations, and match frames never set `CF.UNI`, so a barrier inside a
+loop or a match still rejects, and a uniform branch nested inside a
+lane-varying branch rejects (the outer frame can diverge lanes). This is
+sound and no longer over-rejects the legitimate block-uniform-branch case.
+
+Regression fixtures: lib/ptx/uniform-barrier-test.f (uniform-branch
+positives UB-UNIF-IF / UB-UNIF-NESTED, BLOCK-MAX-SELECT positives
+UB-BMS-STRAIGHT / UB-BMS-UNIF-IF, and the divergent negatives UB-MIXED-IF
+/ UB-BMS-IF alongside the lane-varying UB-BMAX-IF / -BEGIN / -DO) and
+lib/ptx/cpp-slot-neg-test.f (BAD-DIVBAR).

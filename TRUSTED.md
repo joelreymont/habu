@@ -2019,6 +2019,7 @@ prim - checker-deftyped-variable - pe-ptr-u8 pe-in pe-n pe-in pe-ptr-u8 pe-in pe
 prim - checker-lbuf-name-guard - pe-ptr-u8 pe-in pe-n pe-in
 prim - checker-defined? - pe-ptr-u8 pe-in pe-n pe-in pe-f pe-out
 prim - trust - pe-ptr-u8 pe-in pe-n pe-in pe-ptr-u8 pe-in pe-n pe-in
+prim - ptx-barrier! - pe-ptr-u8 pe-in pe-n pe-in
 prim - tfam-n@ - pe-n pe-out
 prim - tfam-width@ - pe-n pe-in pe-n pe-out
 prim - tfam-name$ - pe-n pe-in pe-ptr-u8 pe-out pe-n pe-out

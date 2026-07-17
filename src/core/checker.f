@@ -4699,6 +4699,14 @@ PRIM: CHECKER-DEFINED? PE-PTR-U8 PE-IN PE-N PE-IN  PE-F PE-OUT PRIM;
 \ habu-hb-crash-bare-c5be6634); UNSAFE-TOK? still rejects `trust` inside
 \ checked bodies, so the axiom adds no checked-code capability.
 PRIM: TRUST PE-PTR-U8 PE-IN PE-N PE-IN PE-PTR-U8 PE-IN PE-N PE-IN PRIM;
+\ PTX-BARRIER! ( name$ -- ) is the top-level explicit barrier-declaration word
+\ (M5b): it marks a named word a block-uniform barrier so a call reached under
+\ divergent control rejects. The axiom keeps it checker-known so the seal-time
+\ internal-word marking pass leaves it executable at top level, exactly like
+\ TRUST; UNSAFE-TOK? rejects `ptx-barrier!` inside checked bodies, so the axiom
+\ adds no checked-code capability. Marking is monotone-safe: it only ever ADDS a
+\ rejection under control flow and can never force an unsound acceptance.
+PRIM: PTX-BARRIER! PE-PTR-U8 PE-IN PE-N PE-IN PRIM;
 PRIM: TFAM-N@ PE-N PE-OUT PRIM;
 PRIM: TFAM-WIDTH@ PE-N PE-IN  PE-N PE-OUT PRIM;
 \ Public-signature metadata: registry accessors so the checked public-signatures
@@ -5690,6 +5698,19 @@ variable NORET-FMEND
    sym CTL-FLAGS-SYM CTL-BARRIER or sym swap NORET-ADD-SYM ;
 ' PTX-BARRIER-SET PTX-BARRIER-SET-XT !
 
+\ M5b explicit per-word barrier declaration. Some block-uniform-barrier words do
+\ not carry the tile->uniform (or committed->ready) SHAPE the E-ADD-EFFECT
+\ detector keys on: BLOCK-MAX-SELECT emits bar.sync internally but RETURNS a tile
+\ (a masked scatter of the arg-max cotangent), so the structural detector misses
+\ it. Mark such a word BY NAME after its definition; it then flags CTL-BARRIER and
+\ composes at the same BARRIER-CUR?/ALL-CF-UNIFORM? choke as the shape-detected
+\ collectives — no parallel registry, the same NORET control-flag path. Unknown
+\ names fail closed so a typo can never silently leave a barrier unmarked.
+: PTX-BARRIER! ( ptr u8 n -- ) {: a:ptr u:n :}
+   a u CHECKER-FIND-ACTIVE-SYM dup 0= IF
+      drop s" PTX-BARRIER!: unknown word" 76 die
+   ELSE PTX-BARRIER-SET THEN ;
+
 \ CURSYM: the resolved symbol of the current body token (set by DO-TOK, 0 for
 \ literals/definers/memory tokens), so the throw/dead classification after the
 \ effect application reuses one symbol resolution instead of re-scanning.
@@ -5727,6 +5748,7 @@ variable CURSYM
 : UNSAFE-TOK? ( ptr u8 n -- bool ) {: a:ptr u:n :}
    a u s" evaluate" CORE-STR=CI IF RES-TRUE EXIT THEN
    a u s" trust" CORE-STR=CI IF RES-TRUE EXIT THEN
+   a u s" ptx-barrier!" CORE-STR=CI IF RES-TRUE EXIT THEN
    a u s" layout-buffer" CORE-STR=CI IF RES-TRUE EXIT THEN
    a u s" typed-buffer" CORE-STR=CI IF RES-TRUE EXIT THEN
    a u s" typed-variable" CORE-STR=CI IF RES-TRUE EXIT THEN
@@ -6804,7 +6826,8 @@ $50 constant CF.XDP-OFF
 $58 constant CF.TXD-OFF
 $60 constant CF.TXR-OFF
 $68 constant CF.TXS-OFF
-$70 constant CFS-REC
+$70 constant CF.UNI-OFF
+$78 constant CFS-REC
 $8 constant CFS-REC-ALIGN
 0 constant CFS-REC-PTR-MASK
 
@@ -6822,6 +6845,11 @@ $8 constant CFS-REC-ALIGN
 : CF.TXD ( ptr a -- ptr a ) CF.TXD-OFF + ;
 : CF.TXR ( ptr a -- ptr a ) CF.TXR-OFF + ;
 : CF.TXS ( ptr a -- ptr a ) CF.TXS-OFF + ;
+\ CF.UNI: M5b per-frame block-uniformity. Nonzero when the frame is a control
+\ branch whose condition is provably block-uniform (a uniform<bool> predicate),
+\ so every lane of the block takes the same path. A block-collective/barrier is
+\ sound only when EVERY open frame is uniform (ALL-CF-UNIFORM?).
+: CF.UNI ( ptr a -- ptr a ) CF.UNI-OFF + ;
 
 CF.KND-OFF 0 cells CHECKER-LAYOUT=
 CF.SA-OFF 1 cells CHECKER-LAYOUT=
@@ -6837,7 +6865,8 @@ CF.XDP-OFF 10 cells CHECKER-LAYOUT=
 CF.TXD-OFF 11 cells CHECKER-LAYOUT=
 CF.TXR-OFF 12 cells CHECKER-LAYOUT=
 CF.TXS-OFF 13 cells CHECKER-LAYOUT=
-CFS-REC 14 cells CHECKER-LAYOUT=
+CF.UNI-OFF 14 cells CHECKER-LAYOUT=
+CFS-REC 15 cells CHECKER-LAYOUT=
 CFS-REC-ALIGN CELL CHECKER-LAYOUT=
 CFS-REC CFS-REC-ALIGN mod 0 CHECKER-LAYOUT=
 CFS-REC-PTR-MASK 0 CHECKER-LAYOUT=
@@ -6855,6 +6884,7 @@ CFS-REC-PTR-MASK 0 CHECKER-LAYOUT=
 0 CF.TXD CF.TXD-OFF CHECKER-LAYOUT=
 0 CF.TXR CF.TXR-OFF CHECKER-LAYOUT=
 0 CF.TXS CF.TXS-OFF CHECKER-LAYOUT=
+0 CF.UNI CF.UNI-OFF CHECKER-LAYOUT=
 
 create CFS 32 CFS-REC * allot
 variable CTMP  variable RTMP  variable INDO
@@ -6915,6 +6945,7 @@ variable RHAS   variable RDIN   variable RDOUT   variable RRIN    variable RROUT
      k rec CF.KND !  s0 rec CF.SA !  s1 rec CF.SB !
      r0 rec CF.RA !  r1 rec CF.RB !
      #LOC @ rec CF.LN !
+     0 rec CF.UNI !                        \ default non-uniform; CF-IF marks a uniform<bool> branch
      #CFC @ 1 + #CFC ! THEN ;
 
 : CF@K CF-TOP CF.KND @ ;
@@ -6935,6 +6966,16 @@ variable RHAS   variable RDIN   variable RDOUT   variable RRIN    variable RROUT
 : CF-DROP #CFC @ 1 - #CFC ! ;
 
 : CF-MT? #CFC @ 0 > 0= ;
+
+\ M5b: is EVERY open control frame a proven block-uniform branch? A block
+\ collective/barrier is block-uniform-reachable only when no enclosing frame can
+\ diverge lanes — one non-uniform frame (a lane-varying if, or ANY begin/do/case/
+\ quotation/match frame, which never sets CF.UNI) makes the reach unsound.
+: ALL-CF-UNIFORM? ( -- bool )
+   0 BEGIN dup #CFC @ < WHILE
+      dup CF-ROW CF.UNI @ 0= IF drop RES-FALSE EXIT THEN
+      1 +
+   REPEAT drop RES-TRUE ;
 
 : CF-FAIL ( -- )
    0 OK !
@@ -7019,7 +7060,34 @@ variable RECEFF   variable RECEFF-ON   variable RECEFF-UEND   variable RECEFF-SY
    RECURSE-CACHE? IF RECEFF @ E-PTR CF-RECURSE-EFF
    ELSE -1 UNCK ! THEN ;
 
-: CF-IF  STEP-BOOL-IN  1 DCUR @ 0 RCUR @ 0 CF-PUSH ;   \ IF consumes a flag, not any value
+\ M5b uniform-branch acceptance. `if` normally consumes a plain `bool`. A GPU
+\ predicate that is provably identical across every lane of the block is a
+\ DISTINCT family `uniform<bool>` (the M2 uniform<T> vs tile<..> split). When the
+\ pending condition on top of DCUR is exactly `uniform<bool>`, the `if` is a
+\ block-uniform branch: consume it and mark the frame CF.UNI so a collective
+\ inside certifies. Any other flag (a bare `bool` from a lane-varying compare, or
+\ a `uniform<f32>` which is not a flag at all) keeps the plain STEP-BOOL-IN path.
+: COND-UNIFORM? ( -- bool )   \ top of DCUR resolves to uniform<bool>?
+   PTX-UNIFORM-FAM @ 0= IF RES-FALSE EXIT THEN
+   DCUR @ R-RES dup TAG S-PUSH <> IF drop RES-FALSE EXIT THEN
+   P>TYPE T-RES dup TAG T-PARAM <> IF drop RES-FALSE EXIT THEN
+   dup PARAM>FAM PTX-UNIFORM-FAM @ <> IF drop RES-FALSE EXIT THEN
+   dup PARAM>ARGC 1 <> IF drop RES-FALSE EXIT THEN
+   0 PARAM>ARG T-RES dup TAG T-CON <> IF drop RES-FALSE EXIT THEN
+   PAY CC-BOOL = ;
+
+: STEP-UNIFORM-BOOL-IN ( -- )   \ consume a uniform<bool> block-uniform predicate
+   PARAM-SCR-N @ {: base:n :}
+   CC-BOOL MK-CON PARAM-SCR+
+   base s" uniform" PTX-UNIFORM-FAM @ MK-PARAM
+   STEP-TYPE-IN ;
+
+: CF-IF   \ IF consumes a flag (bool or a block-uniform uniform<bool>)
+   COND-UNIFORM? {: uni:bool :}
+   uni IF STEP-UNIFORM-BOOL-IN ELSE STEP-BOOL-IN THEN
+   #CFC @ {: n0:n :}
+   1 DCUR @ 0 RCUR @ 0 CF-PUSH
+   uni  #CFC @ n0 >  and IF -1 CF-TOP CF.UNI ! THEN ;
 
 : CF-CASE ( -- )
    7 DCUR @ 0 RCUR @ 0 CF-PUSH
@@ -8173,7 +8241,7 @@ variable CONFAM    \ resolved family id while CONM = 2
    TKF TKFU @ DO-TOK
    OK @ IF TKF TKFU @ THROW-CUR? IF THROW-EDGE THEN THEN
    OK @ IF TKF TKFU @ DEAD-CUR? IF a u DEAD-OWNER! -1 DEADP ! THEN THEN
-   OK @ #CFC @ 0 > and IF BARRIER-CUR? IF a u REJECT-DIVBAR THEN THEN
+   OK @ #CFC @ 0 > and IF BARRIER-CUR? IF ALL-CF-UNIFORM? 0= IF a u REJECT-DIVBAR THEN THEN THEN
    TKF TKFU @ ESCAPED-STRING-OPENER? IF SKIP-ESCAPED-STRING-PAYLOAD ELSE
    TKF TKFU @ NORMAL-STRING-OPENER? IF SKIP-STRING-PAYLOAD THEN THEN
    TKF TKFU @ PARSE-LIT? IF SKIP-PARSE-LIT-PAYLOAD THEN
