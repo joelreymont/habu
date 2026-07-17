@@ -30,6 +30,7 @@ $32 constant MAP-ANON-PRIVATE-FIXED
 57  constant NR-CLOSE
 82  constant NR-FSYNC
 35  constant NR-UNLINKAT
+34  constant NR-MKDIRAT
 38  constant NR-RENAMEAT
 37  constant NR-LINKAT
 52  constant NR-FCHMOD
@@ -118,6 +119,7 @@ $1012 constant MAP-ANON-PRIVATE-FIXED
 6   constant NR-CLOSE
 95  constant NR-FSYNC
 465 constant NR-RENAMEAT
+475 constant NR-MKDIRAT
 470 constant NR-FSTATAT64
 471 constant NR-LINKAT
 124 constant NR-FCHMOD

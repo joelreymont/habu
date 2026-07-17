@@ -34,6 +34,7 @@ $32 constant MAP-ANON-PRIVATE-FIXED
 220 constant NR-FORK      \ clone(SIGCHLD, 0, 0, 0, 0)
 38  constant NR-RENAME
 38  constant NR-RENAMEAT
+34  constant NR-MKDIRAT
 35  constant NR-UNLINKAT
 37  constant NR-LINKAT
 52  constant NR-FCHMOD

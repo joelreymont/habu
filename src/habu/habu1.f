@@ -1771,6 +1771,10 @@ variable SZA-I
    2 G-POP  1 G-POP  0 G-POP
    NR-UNLINKAT SYS,  SYS-PUSH-ERRNO ;
 
+: BMKDIRAT ( -- )
+   2 G-POP  1 G-POP  0 G-POP
+   NR-MKDIRAT SYS,  SYS-PUSH-ERRNO ;
+
 : BRENAME ( -- )
    1 G-POP  0 G-POP
    HB-TARGET-LINUX? IF
@@ -2345,6 +2349,7 @@ SOURCE-INIT
    s" open-rd" ['] BOPENRD FPRIM-L
    s" access" ['] BACCESS FPRIM-L
    s" unlink" ['] BUNLINK FPRIM-L   s" unlinkat" ['] BUNLINKAT FPRIM-L
+   s" mkdirat" ['] BMKDIRAT FPRIM-L
    s" rename" ['] BRENAME FPRIM-L   s" renameat" ['] BRENAMEAT FPRIM-L
    s" link" ['] BLINK FPRIM-L   s" fchmod" ['] BFCHMOD FPRIM-L
    s" chmod" ['] BCHMOD FPRIM-L

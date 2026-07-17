@@ -51,7 +51,7 @@ the syscall-number register and trap instruction are target-owned:
 - Linux/aarch64 uses Linux numbers and `svc #0`.
 
 Directory-bound filesystem operations additionally require `openat`,
-`fstat`, no-follow `fstatat`, `renameat`, `unlinkat`, `linkat`, `fchmod`,
+`fstat`, no-follow `fstatat`, `mkdirat`, `renameat`, `unlinkat`, `linkat`, `fchmod`,
 `fsync`, and a
 kernel entropy fill. The
 checked primitive surface normalizes the entropy operation to bytes written:

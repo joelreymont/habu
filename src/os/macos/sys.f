@@ -33,6 +33,7 @@ $E6  constant NR-POLL
 $F4  constant NR-SPAWN     \ posix_spawn(&pid, path, 0, 0, argv, envp)
 $80  constant NR-RENAME
 $1D1 constant NR-RENAMEAT
+$1DB constant NR-MKDIRAT
 $1D8 constant NR-UNLINKAT
 $1D7 constant NR-LINKAT
 $7C  constant NR-FCHMOD

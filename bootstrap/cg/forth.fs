@@ -878,6 +878,10 @@ previous definitions
    2 G-POP  1 G-POP  0 G-POP
    NR-UNLINKAT SYS,  SYS-PUSH-ERRNO ;
 
+: BMKDIRAT ( -- )
+   2 G-POP  1 G-POP  0 G-POP
+   NR-MKDIRAT SYS,  SYS-PUSH-ERRNO ;
+
 : BRENAMEAT ( -- )
    3 G-POP  2 G-POP  1 G-POP  0 G-POP
    NR-RENAMEAT SYS,  SYS-PUSH-ERRNO ;
@@ -1191,6 +1195,7 @@ variable FSTAT-BUF
    s" ioctl" ['] BIOCTL FPRIM-L
    s" mmap" ['] BMMAP FPRIM-L   s" patch32" ['] BPATCH32 FPRIM
    s" unlinkat" ['] BUNLINKAT FPRIM-L   s" renameat" ['] BRENAMEAT FPRIM-L
+   s" mkdirat" ['] BMKDIRAT FPRIM-L
    s" link" ['] BLINK FPRIM-L   s" fchmod" ['] BFCHMOD FPRIM-L
    s" fstat64" ['] BFSTAT64 FPRIM-L
    s" fstatat-nofollow" ['] BFSTATAT-NOFOLLOW FPRIM-L

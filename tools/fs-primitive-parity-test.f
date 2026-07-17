@@ -9,6 +9,9 @@ package FS-PRIMITIVE-PARITY
 private
 
 $78563412 constant U32-VALUE
+448 constant MODE-0700
+$200 constant LINUX-REMOVE-DIR
+$80 constant MACOS-REMOVE-DIR
 
 create U32-BYTES
    $12 c, $34 c, $56 c, $78 c,
@@ -26,6 +29,7 @@ create A-Z FS-PATHZ-CAP allot
 create HARD-Z FS-PATHZ-CAP allot
 create REL-A $61 c, 0 c,
 create REL-B $62 c, 0 c,
+create REL-DIR $64 c, $69 c, $72 c, 0 c,
 create REL-LINK $6C c, $69 c, $6E c, $6B c, 0 c,
 create IO-BUF 16 allot
 create STAT-BUF FS-STAT-CAP allot
@@ -99,12 +103,18 @@ variable IO-OFF
 : CLOSE-MUST ( fd -- )
    close-rc MUST-RC ;
 
+: REMOVE-DIR-FLAG ( -- n )
+   HB-TARGET-LINUX? if LINUX-REMOVE-DIR exit then
+   HB-TARGET-MACOS? if MACOS-REMOVE-DIR exit then
+   FS-TARGET-UNKNOWN ;
+
 : HAS ( ptr u8 n ptr u8 n -- ) {: path:ptr pathu:n text:ptr textu:n :}
    path pathu LINT-SOURCE:LOAD
    LINT-SOURCE:TEXT text textu LINT-CONTAINS? TTRUE ;
 
 : LINUX-NUMBERS ( -- )
    s" src/os/linux/sys.f" s" 56  constant NR-OPENAT" HAS
+   s" src/os/linux/sys.f" s" 34  constant NR-MKDIRAT" HAS
    s" src/os/linux/sys.f" s" 35  constant NR-UNLINKAT" HAS
    s" src/os/linux/sys.f" s" 37  constant NR-LINKAT" HAS
    s" src/os/linux/sys.f" s" 52  constant NR-FCHMOD" HAS
@@ -118,6 +128,7 @@ variable IO-OFF
 
 : RECOVERY-LINUX-NUMBERS ( -- )
    s" bootstrap/cg/sys.fs" s" 56  constant NR-OPENAT" HAS
+   s" bootstrap/cg/sys.fs" s" 34  constant NR-MKDIRAT" HAS
    s" bootstrap/cg/sys.fs" s" 35  constant NR-UNLINKAT" HAS
    s" bootstrap/cg/sys.fs" s" 37  constant NR-LINKAT" HAS
    s" bootstrap/cg/sys.fs" s" 52  constant NR-FCHMOD" HAS
@@ -131,6 +142,7 @@ variable IO-OFF
 
 : MACOS-NUMBERS ( -- )
    s" src/os/macos/sys.f" s" $1CF constant NR-OPENAT" HAS
+   s" src/os/macos/sys.f" s" $1DB constant NR-MKDIRAT" HAS
    s" src/os/macos/sys.f" s" $1D8 constant NR-UNLINKAT" HAS
    s" src/os/macos/sys.f" s" $1D7 constant NR-LINKAT" HAS
    s" src/os/macos/sys.f" s" $7C  constant NR-FCHMOD" HAS
@@ -144,6 +156,7 @@ variable IO-OFF
 
 : RECOVERY-MACOS-NUMBERS ( -- )
    s" bootstrap/cg/sys.fs" s" 463 constant NR-OPENAT" HAS
+   s" bootstrap/cg/sys.fs" s" 475 constant NR-MKDIRAT" HAS
    s" bootstrap/cg/sys.fs" s" 472 constant NR-UNLINKAT" HAS
    s" bootstrap/cg/sys.fs" s" 471 constant NR-LINKAT" HAS
    s" bootstrap/cg/sys.fs" s" 124 constant NR-FCHMOD" HAS
@@ -170,6 +183,7 @@ variable IO-OFF
 
 : PRIMITIVES ( -- )
    s" src/habu/habu1.f" S\" s\" openat\" ['] BOPENAT FPRIM-L" HAS
+   s" src/habu/habu1.f" S\" s\" mkdirat\" ['] BMKDIRAT FPRIM-L" HAS
    s" src/habu/habu1.f" S\" s\" open-errno\" ['] BOPEN-ERRNO FPRIM-L" HAS
    s" src/habu/habu1.f" S\" s\" link\" ['] BLINK FPRIM-L" HAS
    s" src/habu/habu1.f" S\" s\" fchmod\" ['] BFCHMOD FPRIM-L" HAS
@@ -177,6 +191,7 @@ variable IO-OFF
    s" src/habu/habu1.f" S\" s\" fstatat-nofollow\" ['] BFSTATAT-NOFOLLOW FPRIM-L" HAS
    s" src/habu/habu1.f" S\" s\" close-rc\" ['] BCLOSE-RC FPRIM-L" HAS
    s" bootstrap/cg/forth.fs" S\" s\" openat\" ['] BOPENAT FPRIM-L" HAS
+   s" bootstrap/cg/forth.fs" S\" s\" mkdirat\" ['] BMKDIRAT FPRIM-L" HAS
    s" bootstrap/cg/forth.fs" S\" s\" open-errno\" ['] BOPEN-ERRNO FPRIM-L" HAS
    s" bootstrap/cg/forth.fs" S\" s\" link\" ['] BLINK FPRIM-L" HAS
    s" bootstrap/cg/forth.fs" S\" s\" fchmod\" ['] BFCHMOD FPRIM-L" HAS
@@ -184,6 +199,7 @@ variable IO-OFF
    s" bootstrap/cg/forth.fs" S\" s\" fstatat-nofollow\" ['] BFSTATAT-NOFOLLOW FPRIM-L" HAS
    s" bootstrap/cg/forth.fs" S\" s\" close-rc\" ['] BCLOSE-RC FPRIM-L" HAS
    s" src/core/checker.f" s" PRIM: link" HAS
+   s" src/core/checker.f" s" PRIM: mkdirat" HAS
    s" src/core/checker.f" s" PRIM: open-errno" HAS
    s" src/core/checker.f" s" PRIM: fchmod" HAS
    s" src/core/checker.f" s" PRIM: fstatat-nofollow" HAS ;
@@ -207,6 +223,8 @@ variable IO-OFF
    ROOT-Z FS:O-DIRECTORY FS:O-NOFOLLOW or 0 open N>FD {: dir:fd :}
    dir REL-A FS-O-RDWR FS-O-CREAT or FS:O-EXCL or FS:O-NOFOLLOW or
    $180 openat N>FD {: file:fd :}
+   dir REL-DIR MODE-0700 mkdirat MUST-RC
+   dir REL-DIR REMOVE-DIR-FLAG unlinkat MUST-RC
    file s" abc" WRITE-SPAN
    file fsync MUST-RC
    file FS:MODE-0755 fchmod MUST-RC
