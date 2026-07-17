@@ -38,14 +38,16 @@
 \ NUM-N tag).
 \
 \ Fail closed: an out-of-range wire id or raw numeric tag is a named throw.
-\ maki -> habu only; numpolicy owns -5145..-5146.
+\ maki -> habu only; numpolicy owns -5145..-5147.
 
 require lib/prelude.f
 require lib/errors.f
+require maki/cad-kinds.f            \ CAD-KIND:numeric-policy-id nominal identity
 require maki/op-registry.f          \ NUM-* raw numeric class, OPR-NUMERIC
 
 -5145 constant E-NPOL-DOM       \ numeric-policy wire/ordinal id out of range
 -5146 constant E-NPOL-APPROX    \ approximate evidence cannot satisfy a stricter numeric policy
+-5147 constant E-NPOL-WIRE      \ ID>WIRE output buffer smaller than the fixed wire width
 
 package NPOL
 public
@@ -125,5 +127,91 @@ ENUM dom DERIVE eq
       E-NPOL-DOM throw
    endcase ;
 : OP-DOM ( MAKI:opkind -- dom )  MAKI:OPR-NUMERIC NUM>DOM ;   \ an op's numeric domain (achieved AND, folded by REGION-POL, requested)
+
+\ ---- § 23.9 numeric-policy-id: audited nominal identity + wire codec -----------
+\ ENGINEERING DECISION - numeric-policy descriptor scope (resolved in dot
+\ habu-npol-numeric-policy-a90657e1 from real usage): a numeric policy is a SINGLE
+\ proof `dom`, NOT a per-region map or tolerance bundle. Every maki consumer binds
+\ exactly one dom - sched-key.f REGION-POL ( region -- dom ) and its `FIELD pol
+\ NPOL:dom`, cad.f REGION-ACHIEVED ( region -- dom ), evidence/schema.f `FIELD pol
+\ NPOL:dom`, evidence/policy.f `FIELD npol NPOL:dom` and GOLD-VERDICT's `need` dom -
+\ and no numeric tolerance value exists anywhere (the enum lattice
+\ {exact,ulp,relative,empirical} captures it). The region->policy association lives in
+\ sched-key's per-region key, not in a policy bundle. So the identity's content is its
+\ single dom, and DOM>N / N>DOM (rank 0..3) is the exact content key the plan names as
+\ the minimal precedent (MODEL-CAD-V2-PLAN.md § 23.9 numeric-policy-id row).
+
+\ WIRE>ID decode result (the maki/db/artifact.f art-result custom-sum idiom): `ok`
+\ carries the refined nominal id; the reject arms are the fixed-width byte-decode
+\ refusals. A bespoke per-package sum, not result<a,b>, so a total ok construction
+\ leaves no free error variable.
+SUMTYPE id-result 1
+   VARIANT ok a ;VARIANT
+   VARIANT wrong-width ;VARIANT
+   VARIANT unknown ;VARIANT
+;SUMTYPE
+
+private
+
+4 constant DOM-COUNT            \ closed dom cardinality (exact..empirical); matches N>DOM
+8 constant WIRE-BYTES           \ fixed little-endian wire width of the registry raw
+
+\ Private representation refinements (owner-only, TRUSTED:, never public), the
+\ maki/target/target.f RAW>TARGET-ID / TARGET-ID>RAW precedent. The raw IS the dom
+\ rank (0..3), so an id is content-addressed by its proof domain.
+TRUSTED: RAW>NUMERIC-POLICY-ID ( n -- CAD-KIND:numeric-policy-id ) ;
+TRUSTED: NUMERIC-POLICY-ID>RAW ( CAD-KIND:numeric-policy-id -- n ) ;
+
+: ID-CK ( CAD-KIND:numeric-policy-id -- n )
+   NUMERIC-POLICY-ID>RAW dup 0 < over DOM-COUNT >= or if E-NPOL-DOM throw then ;
+
+: LE-PUT ( n ptr u8 n -- ) {: v:n a:ptr w:n :}
+   0 begin dup w < while
+      dup {: k:n :}
+      v k 8 * rshift $FF and  a k + c!
+      1+
+   repeat drop ;
+
+: LE-GET ( ptr u8 n -- n ) {: a:ptr w:n :}
+   0  0 begin dup w < while
+      dup {: k:n :}
+      a k + c@ k 8 * lshift  rot or swap
+      1+
+   repeat drop ;
+
+: R-OK ( a -- id-result<a> )          NPOL-ID--RESULT:OK ;
+: R-WRONG-WIDTH ( -- id-result<a> )   NPOL-ID--RESULT:WRONG-WIDTH ;
+: R-UNKNOWN ( -- id-result<a> )       NPOL-ID--RESULT:UNKNOWN ;
+
+public
+
+\ REGISTER interns a numeric policy: the content is its single proof dom, so equal
+\ doms intern to one id (content-addressed). The ONLY authority-bearing public mint,
+\ bound to a real dom value, never a raw cast.
+: REGISTER ( dom -- CAD-KIND:numeric-policy-id )
+   DOM>N RAW>NUMERIC-POLICY-ID ;
+
+\ POLICY-DOM projects an id back to its proof domain (fail-closed on a corrupt id).
+: POLICY-DOM ( CAD-KIND:numeric-policy-id -- dom )
+   ID-CK N>DOM ;
+
+: VALIDATE ( CAD-KIND:numeric-policy-id -- CAD-KIND:numeric-policy-id )
+   dup ID-CK drop ;
+
+\ ID>WIRE is total for a valid id (E-NPOL-WIRE if the cap cannot hold the fixed
+\ width); WIRE>ID reads the fixed width, validates the raw FAIL-CLOSED, and refines
+\ to the nominal id only on success (§ 23.9).
+: ID>WIRE ( CAD-KIND:numeric-policy-id ptr u8 n -- n )
+   {: id:CAD-KIND:numeric-policy-id out:ptr cap:n :}
+   cap WIRE-BYTES < if E-NPOL-WIRE throw then
+   id ID-CK  out  WIRE-BYTES  LE-PUT
+   WIRE-BYTES ;
+
+: WIRE>ID ( ptr u8 n -- id-result<CAD-KIND:numeric-policy-id> )
+   {: a:ptr u:n :}
+   u WIRE-BYTES <> if R-WRONG-WIDTH exit then
+   a WIRE-BYTES LE-GET {: raw:n :}
+   raw 0 < raw DOM-COUNT >= or if R-UNKNOWN exit then
+   raw RAW>NUMERIC-POLICY-ID R-OK ;
 
 ;package

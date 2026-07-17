@@ -122,4 +122,40 @@ PIPE-TF32-EXACT 2 T=                           \ TF32 matmul + exact elementwise
 ' TRY-NDOM-HI      E-NPOL-DOM   TTHROWS         \ wire id out of range
 ' TRY-NDOM-NEG     E-NPOL-DOM   TTHROWS
 
+\ § 23.9 numeric-policy-id: constructor + wire codec round-trip + fail-closed decode.
+\ Reopen the owner package for LE-PUT / DOM-COUNT (an out-of-range wire raw is only
+\ forgeable inside the owning package).
+package NPOL
+
+512 constant TT-WCAP
+create TT-WBUF TT-WCAP allot
+
+: TT-RT ( dom -- n )                            \ 0 = REGISTER->ID>WIRE->WIRE>ID keeps the dom
+   dup {: d:dom :}
+   REGISTER TT-WBUF TT-WCAP ID>WIRE {: len:n :}
+   TT-WBUF len WIRE>ID
+   MATCH id-result
+      ok          OF POLICY-DOM RANK  d RANK  = if 0 else 1 then ENDOF
+      wrong-width OF 2 ENDOF
+      unknown     OF 3 ENDOF
+   ;MATCH ;
+
+: TT-WIRE-WIDTH ( -- n )                        \ a 4-byte buffer decodes as wrong-width
+   TT-WBUF 4 WIRE>ID
+   MATCH id-result  ok OF drop 8 ENDOF  wrong-width OF 2 ENDOF  unknown OF 3 ENDOF  ;MATCH ;
+
+: TT-WIRE-UNKNOWN ( -- n )                      \ raw == DOM-COUNT (one past the closed range): unknown
+   DOM-COUNT  TT-WBUF WIRE-BYTES LE-PUT
+   TT-WBUF WIRE-BYTES WIRE>ID
+   MATCH id-result  ok OF drop 9 ENDOF  wrong-width OF 2 ENDOF  unknown OF 3 ENDOF  ;MATCH ;
+
+NPOL-DOM:EXACT     TT-RT 0 T=
+NPOL-DOM:ULP       TT-RT 0 T=
+NPOL-DOM:RELATIVE  TT-RT 0 T=
+NPOL-DOM:EMPIRICAL TT-RT 0 T=
+TT-WIRE-WIDTH 2 T=
+TT-WIRE-UNKNOWN 3 T=
+
+;package
+
 T-REPORT
