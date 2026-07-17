@@ -225,10 +225,11 @@ variable PET-START-NS
    PET-RESET
    s" HB_LOAD_PCT" s" 250" PET-ENV+
    PROC-ENV-INHERIT-MISSING
-   s" bin/hb" s" require lib/test/budget.f 100 T-BUDGET-MS . "
+   s" bin/hb" s" require test/tail-ratchet.f TAIL-BUDGET:GROUP-MS . TAIL-BUDGET:PROCESS-MS . "
    PET-OUT PET-CAP PET-ERR PET-CAP PET-HB-TIMEOUT-MS PET-STDIN-CAPTURE
    0 T= 0 T= {: outu:n :}
-   PET-OUT outu s" 250" CONTAINS? TTRUE ;
+   PET-OUT outu s" 20000" CONTAINS? TTRUE
+   PET-OUT outu s" 25000" CONTAINS? TTRUE ;
 
 : PET-RUN-ENV-STDIN-OUTCOME-FALSE-LARGE ( -- )
    PET-RESET

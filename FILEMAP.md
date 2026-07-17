@@ -1568,10 +1568,10 @@ points stay listed.
 - `test/gate-validation-worker.f` — candidate/baseline validation evidence runner.
 - `test/gate-process-child.f` — fresh-process exec/fork telemetry inheritance fixture.
 - `test/gate-stdlib.f` — thin entry wrapper for lint/stdlib gate slices.
-- `test/gate-tail-process.f` — focused resident-fork runner and 10-second ratchet
-  for the stdlib process-boundary tail.
-- `test/tail-ratchet.f` — exact per-member direct/subject process-count and
-  elapsed-time ratchet for the stdlib process tail.
+- `test/gate-tail-process.f` — focused resident-fork runner and load-scaled
+  nominal 10-second ratchet for the stdlib process-boundary tail.
+- `test/tail-ratchet.f` — exact per-member direct/subject process-count,
+  elapsed-time ratchet, and shared load-scaled tail budget policy.
 - `test/gate-stdlib-lib.f` — side-effect-free lint/stdlib gate harness helpers.
 - `test/gate-stdlib-cases.f` — executable lint/stdlib suite declarations.
 - `test/gate-engine.f` — thin entry wrapper for engine/public-hb gate slices.

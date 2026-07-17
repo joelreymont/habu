@@ -38,7 +38,6 @@ require lib/test/subject.f
 require test/tail-ratchet.f
 
 2048 constant UDG-CAP
-10000 constant UDG-TIMEOUT-MS
 70 constant UDG-REJECT-RC           \ interpret-level reject exit (RC-REJECT)
 
 variable UDG-ROOT-U
@@ -106,7 +105,7 @@ create UDG-EMPTY 1 allot            \ zero-length stdin
    s" --load" >LEN PROC-ARGV+
    UDG-CHILD >LEN PROC-ARGV+
    UDG-HB$ >LEN  UDG-EMPTY 0 >LEN  UDG-OUT UDG-CAP >LEN
-   UDG-ERR UDG-CAP >LEN  UDG-TIMEOUT-MS >MS  RUN-ARGV-STDIN-CAPTURE-OUTCOME
+   UDG-ERR UDG-CAP >LEN  TAIL-BUDGET:PROCESS-MS >MS  RUN-ARGV-STDIN-CAPTURE-OUTCOME
    UDG-STORE! ;
 
 \ Run the program as a piped stdin program (no --load), the other cold-prefix path.
@@ -115,7 +114,7 @@ create UDG-EMPTY 1 allot            \ zero-length stdin
    UDG-IN!
    PROC-ARGV-RESET
    UDG-HB$ >LEN  UDG-IN$ >LEN  UDG-OUT UDG-CAP >LEN
-   UDG-ERR UDG-CAP >LEN  UDG-TIMEOUT-MS >MS  RUN-ARGV-STDIN-CAPTURE-OUTCOME
+   UDG-ERR UDG-CAP >LEN  TAIL-BUDGET:PROCESS-MS >MS  RUN-ARGV-STDIN-CAPTURE-OUTCOME
    UDG-STORE! ;
 
 package UDG-EXEC
@@ -125,7 +124,7 @@ public
 : SUBJECT ( ptr u8 n -- )
    TAIL-RATCHET:SUBJECT
    UDG-OUT UDG-CAP >LEN UDG-ERR UDG-CAP >LEN
-   UDG-TIMEOUT-MS >MS SUBJECT:RUN UDG-STORE! ;
+   TAIL-BUDGET:PROCESS-MS >MS SUBJECT:RUN UDG-STORE! ;
 
 ;package
 
@@ -419,8 +418,6 @@ package UDG-PARITY
 
 3 constant DIRECT-N
 25 constant SUBJECT-N
-8000 constant MAX-MS
-
 : RESULT ( -- ptr u8 n ptr u8 n n )
    UDG-OUT UDG-OUT-U @ UDG-ERR UDG-ERR-U @ UDG-RC @ ;
 
@@ -457,7 +454,7 @@ public
    UDG-EXACT$ POS-LOAD ;
 
 : CHECK ( -- )
-   DIRECT-N SUBJECT-N MAX-MS TAIL-RATCHET:CHECK ;
+   DIRECT-N SUBJECT-N TAIL-RATCHET:CHECK ;
 
 ;package
 

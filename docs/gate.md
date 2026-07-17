@@ -302,7 +302,7 @@ Architecture target:
 - candidate validation uses at most 3 worker execs plus 8 nested execs;
 - normal runtime uses at most 2 owner execs plus 10 subject execs and 10 seconds;
 - the stdlib process tail retains exactly 15 direct execs and 167 isolated
-  subject cases, with a 10-second group ratchet;
+  subject cases, with a nominal 10-second group ratchet;
 - `boundary <= 20`;
 - slowest host-source semantic test under 10 seconds on Jetson/Orin;
 - hot Jetson/Orin median near 30 seconds once candidate-source batching and
@@ -310,8 +310,11 @@ Architecture target:
 
 Global exec/fork totals are diagnostic census values, not performance limits:
 process API tests intentionally launch large fixed matrices, and co-located
-reapers depend on whether a case runs inside a pool worker. Per-owner ratchets
-catch semantic engine-boot regressions without conflating those contracts.
+reapers depend on whether a case runs inside a pool worker. Tail child and
+group deadlines scale through the same bounded `HB_LOAD_PCT` policy as the
+owning profile, preserving the nominal 8/10-second limits on an idle host.
+Per-owner ratchets catch semantic engine-boot regressions without conflating
+those contracts.
 
 Generated stats, caches, build images, and test logs remain local artifacts and
 are never committed. Standalone snapshot-launcher tooling is not part of the

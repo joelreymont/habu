@@ -36,7 +36,6 @@ require lib/test/subject.f
 require test/tail-ratchet.f
 
 2048 constant SPK-CAP
-10000 constant SPK-TIMEOUT-MS
 ENGINE-ERROR:SEAL-PACKAGE constant SPK-SEAL-RC
 
 variable SPK-ROOT-U
@@ -249,7 +248,7 @@ create SPK-EMPTY 1 allot             \ zero-length stdin
    s" --load" >LEN PROC-ARGV+
    SPK-CHILD >LEN PROC-ARGV+
    SPK-HB$ >LEN  SPK-EMPTY 0 >LEN  SPK-OUT SPK-CAP >LEN
-   SPK-ERR SPK-CAP >LEN  SPK-TIMEOUT-MS >MS  RUN-ARGV-STDIN-CAPTURE-OUTCOME
+   SPK-ERR SPK-CAP >LEN  TAIL-BUDGET:PROCESS-MS >MS  RUN-ARGV-STDIN-CAPTURE-OUTCOME
    SPK-STORE! ;
 
 \ Run the forge as a piped stdin program (no --load), the other cold-prefix path.
@@ -258,7 +257,7 @@ create SPK-EMPTY 1 allot             \ zero-length stdin
    SPK-IN!
    PROC-ARGV-RESET
    SPK-HB$ >LEN  SPK-IN$ >LEN  SPK-OUT SPK-CAP >LEN
-   SPK-ERR SPK-CAP >LEN  SPK-TIMEOUT-MS >MS  RUN-ARGV-STDIN-CAPTURE-OUTCOME
+   SPK-ERR SPK-CAP >LEN  TAIL-BUDGET:PROCESS-MS >MS  RUN-ARGV-STDIN-CAPTURE-OUTCOME
    SPK-STORE! ;
 
 package SPK-EXEC
@@ -268,7 +267,7 @@ public
 : SUBJECT ( ptr u8 n -- )
    TAIL-RATCHET:SUBJECT
    SPK-OUT SPK-CAP >LEN SPK-ERR SPK-CAP >LEN
-   SPK-TIMEOUT-MS >MS SUBJECT:RUN SPK-STORE! ;
+   TAIL-BUDGET:PROCESS-MS >MS SUBJECT:RUN SPK-STORE! ;
 
 ;package
 
@@ -287,8 +286,6 @@ package SPK-PARITY
 
 3 constant DIRECT-N
 50 constant SUBJECT-N
-8000 constant MAX-MS
-
 : RESULT ( -- ptr u8 n ptr u8 n n )
    SPK-OUT SPK-OUT-U @ SPK-ERR SPK-ERR-U @ SPK-RC @ ;
 
@@ -321,7 +318,7 @@ public
    SPK-OK-PKG-FORGE$ POS-LOAD ;
 
 : CHECK ( -- )
-   DIRECT-N SUBJECT-N MAX-MS TAIL-RATCHET:CHECK ;
+   DIRECT-N SUBJECT-N TAIL-RATCHET:CHECK ;
 
 ;package
 

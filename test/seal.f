@@ -28,7 +28,6 @@ require lib/test/subject.f
 require test/tail-ratchet.f
 
 2048 constant SLV-CAP
-10000 constant SLV-TIMEOUT-MS
 ENGINE-ERROR:SEAL-VIOLATION constant SLV-SEAL-RC
 
 variable SLV-ROOT-U
@@ -366,7 +365,7 @@ create SLV-EMPTY 1 allot            \ zero-length stdin
    s" --load" >LEN PROC-ARGV+
    SLV-CHILD >LEN PROC-ARGV+
    SLV-HB$ >LEN  SLV-EMPTY 0 >LEN  SLV-OUT SLV-CAP >LEN
-   SLV-ERR SLV-CAP >LEN  SLV-TIMEOUT-MS >MS  RUN-ARGV-STDIN-CAPTURE-OUTCOME
+   SLV-ERR SLV-CAP >LEN  TAIL-BUDGET:PROCESS-MS >MS  RUN-ARGV-STDIN-CAPTURE-OUTCOME
    SLV-STORE! ;
 
 \ Run the forge as a piped stdin program (no --load), the other cold-prefix path.
@@ -375,7 +374,7 @@ create SLV-EMPTY 1 allot            \ zero-length stdin
    SLV-IN!
    PROC-ARGV-RESET
    SLV-HB$ >LEN  SLV-IN$ >LEN  SLV-OUT SLV-CAP >LEN
-   SLV-ERR SLV-CAP >LEN  SLV-TIMEOUT-MS >MS  RUN-ARGV-STDIN-CAPTURE-OUTCOME
+   SLV-ERR SLV-CAP >LEN  TAIL-BUDGET:PROCESS-MS >MS  RUN-ARGV-STDIN-CAPTURE-OUTCOME
    SLV-STORE! ;
 
 package SLV-EXEC
@@ -385,7 +384,7 @@ public
 : SUBJECT ( ptr u8 n -- )
    TAIL-RATCHET:SUBJECT
    SLV-OUT SLV-CAP >LEN SLV-ERR SLV-CAP >LEN
-   SLV-TIMEOUT-MS >MS SUBJECT:RUN SLV-STORE! ;
+   TAIL-BUDGET:PROCESS-MS >MS SUBJECT:RUN SLV-STORE! ;
 
 ;package
 
@@ -637,8 +636,6 @@ package SLV-PARITY
 
 6 constant DIRECT-N
 51 constant SUBJECT-N
-8000 constant MAX-MS
-
 : RESULT ( -- ptr u8 n ptr u8 n n )
    SLV-OUT SLV-OUT-U @ SLV-ERR SLV-ERR-U @ SLV-RC @ ;
 
@@ -671,7 +668,7 @@ public
    SLV-LANG-FORGE$ POS-LOAD ;
 
 : CHECK ( -- )
-   DIRECT-N SUBJECT-N MAX-MS TAIL-RATCHET:CHECK ;
+   DIRECT-N SUBJECT-N TAIL-RATCHET:CHECK ;
 
 ;package
 

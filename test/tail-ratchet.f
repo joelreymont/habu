@@ -3,6 +3,21 @@
 require lib/test.f
 require lib/process.f
 
+package TAIL-BUDGET
+
+8000 constant GROUP-NOMINAL-MS
+10000 constant PROCESS-NOMINAL-MS
+
+public
+
+: GROUP-MS ( -- n )
+   GROUP-NOMINAL-MS T-BUDGET-MS ;
+
+: PROCESS-MS ( -- n )
+   PROCESS-NOMINAL-MS T-BUDGET-MS ;
+
+;package
+
 package TAIL-RATCHET
 
 $800 constant CAP
@@ -51,12 +66,12 @@ public
    out outu SAVED-OUT SAVED-OUT-U @ T$=
    err erru SAVED-ERR SAVED-ERR-U @ T$= ;
 
-: CHECK ( n n n -- ) {: direct:n subject:n max-ms:n :}
+: CHECK ( n n -- ) {: direct:n subject:n :}
    s" exact direct child-process count" T-LABEL
    DIRECTS @ direct T=
    s" exact subject child-process count" T-LABEL
    SUBJECTS @ subject T=
    s" nested child-process group time" T-LABEL
-   ELAPSED-MS max-ms <= TTRUE ;
+   ELAPSED-MS TAIL-BUDGET:GROUP-MS <= TTRUE ;
 
 ;package

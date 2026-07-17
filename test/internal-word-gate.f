@@ -35,7 +35,6 @@ require lib/test/subject.f
 require test/tail-ratchet.f
 
 2048 constant IWG-CAP
-10000 constant IWG-TIMEOUT-MS
 70 constant IWG-REJECT-RC           \ interpret-level reject exit (RC-REJECT)
 67 constant IWG-THROW-RC            \ engine uncaught-throw boundary exit
 
@@ -101,7 +100,7 @@ create IWG-EMPTY 1 allot            \ zero-length stdin
    s" --load" >LEN PROC-ARGV+
    IWG-CHILD >LEN PROC-ARGV+
    IWG-HB$ >LEN  IWG-EMPTY 0 >LEN  IWG-OUT IWG-CAP >LEN
-   IWG-ERR IWG-CAP >LEN  IWG-TIMEOUT-MS >MS  RUN-ARGV-STDIN-CAPTURE-OUTCOME
+   IWG-ERR IWG-CAP >LEN  TAIL-BUDGET:PROCESS-MS >MS  RUN-ARGV-STDIN-CAPTURE-OUTCOME
    IWG-STORE! ;
 
 \ Run the program as a piped stdin program (no --load), the other cold-prefix path.
@@ -110,7 +109,7 @@ create IWG-EMPTY 1 allot            \ zero-length stdin
    IWG-IN!
    PROC-ARGV-RESET
    IWG-HB$ >LEN  IWG-IN$ >LEN  IWG-OUT IWG-CAP >LEN
-   IWG-ERR IWG-CAP >LEN  IWG-TIMEOUT-MS >MS  RUN-ARGV-STDIN-CAPTURE-OUTCOME
+   IWG-ERR IWG-CAP >LEN  TAIL-BUDGET:PROCESS-MS >MS  RUN-ARGV-STDIN-CAPTURE-OUTCOME
    IWG-STORE! ;
 
 package IWG-EXEC
@@ -120,7 +119,7 @@ public
 : SUBJECT ( ptr u8 n -- )
    TAIL-RATCHET:SUBJECT
    IWG-OUT IWG-CAP >LEN IWG-ERR IWG-CAP >LEN
-   IWG-TIMEOUT-MS >MS SUBJECT:RUN IWG-STORE! ;
+   TAIL-BUDGET:PROCESS-MS >MS SUBJECT:RUN IWG-STORE! ;
 
 ;package
 
@@ -429,8 +428,6 @@ package IWG-PARITY
 
 3 constant DIRECT-N
 41 constant SUBJECT-N
-8000 constant MAX-MS
-
 : RESULT ( -- ptr u8 n ptr u8 n n )
    IWG-OUT IWG-OUT-U @ IWG-ERR IWG-ERR-U @ IWG-RC @ ;
 
@@ -467,7 +464,7 @@ public
    IWG-RAW-FORGE$ POS-LOAD ;
 
 : CHECK ( -- )
-   DIRECT-N SUBJECT-N MAX-MS TAIL-RATCHET:CHECK ;
+   DIRECT-N SUBJECT-N TAIL-RATCHET:CHECK ;
 
 ;package
 

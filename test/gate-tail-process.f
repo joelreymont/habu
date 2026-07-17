@@ -14,13 +14,12 @@ require test/gate-stats.f
 require lib/content-key.f
 require test/gate-stdlib-lib.f
 require test/gate-stdlib-inline-lib.f
+require test/tail-ratchet.f
 
 \ Member ratchets pin 15 direct engines and 167 SUBJECT forks. Direct engines
 \ are only raw parity representatives, except seal.f's three clean-start
 \ protected-WID capacity boundaries; all other semantic cases use SUBJECT.
 package TAIL-GROUP
-
-10000 constant MAX-MS
 
 variable START-NS
 
@@ -29,7 +28,7 @@ variable START-NS
 
 : FAIL ( n -- ) {: elapsed:n :}
    s" tail-process elapsed-ms=" type elapsed GT-U-TYPE
-   s"  max-ms=" type MAX-MS GT-U-TYPE cr
+   s"  max-ms=" type TAIL-BUDGET:PROCESS-MS GT-U-TYPE cr
    s" tail process time ratchet exceeded" T-EX-FAIL die ;
 
 public
@@ -39,7 +38,7 @@ public
    mono-ns START-NS !
    GSI-TAIL-PROCESS
    ELAPSED-MS {: elapsed:n :}
-   elapsed MAX-MS > if elapsed FAIL then ;
+   elapsed TAIL-BUDGET:PROCESS-MS > if elapsed FAIL then ;
 
 ;package
 
