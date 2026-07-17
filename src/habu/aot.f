@@ -43,7 +43,9 @@ variable AOT-HEXACC
 
 \ Named boundary: installs the user-source checker hook; `set-check` is a
 \ compiler-control op the checker rejects inside a checked body (top-level only).
-TRUSTED: INSTALL-USER-HOOK ( -- ) ['] USER-HOOK set-check ;
+TRUSTED: INSTALL-USER-HOOK ( -- )
+   LOWER-CERT-HOOK:INSTALL
+   ['] USER-HOOK set-check ;
 
 : GO ( -- )
    AOT-RUNTIME-ARGS

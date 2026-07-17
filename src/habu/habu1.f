@@ -1953,11 +1953,43 @@ variable SZA-I
       9 CP CMP,     C-CS bad BCOND,      \ xt >= CP (unsigned) -> reject
    ok LBL,
       A DATA HOOK-CELL STR,
+      A done CBNZ,
+      A DATA COMPILE-PREFLIGHT-CELL STR,
       done B,
    bad LBL,
       0 2 MOVZ,  1 msg ADR,  2 29 MOVZ,  NR-WRITE SYS,
       0 70 MOVZ,  NR-EXIT-GROUP SYS,
    msg LBL,  s" set-check: invalid checker xt" BYTES,
+   done LBL, ;
+
+\ set-preflight ( xt -- ): single-assignment installer for the
+\ checker-owned immediate preflight. `0 set-check` clears the paired protected
+\ cell while reloading the canonical prefix; the checker may then install one live
+\ JIT entry, and an identical reinstall is inert. While checking stays armed,
+\ even a TRUSTED: caller cannot replace the hook.
+: BSETPREFLIGHT ( -- )
+   LBL LBL LBL LBL LBL LBL LBL
+   {: bad:label invalid:label empty:label emit:label done:label msg:label invalid-msg:label :}
+   A G-POP
+   10 DATA COMPILE-PREFLIGHT-CELL LDR,
+   10 empty CBZ,
+      10 A CMP,  C-EQ done BCOND,
+      bad B,
+   empty LBL,
+      A invalid CBZ,
+      A DBASE CMP,  C-CC invalid BCOND,
+      A CP CMP,     C-CS invalid BCOND,
+   A DATA COMPILE-PREFLIGHT-CELL STR,
+   done B,
+   bad LBL,
+      1 msg ADR,  2 39 MOVZ,  emit B,
+   invalid LBL,
+      1 invalid-msg ADR,  2 27 MOVZ,
+   emit LBL,
+      0 2 MOVZ,  NR-WRITE SYS,
+      0 70 MOVZ,  NR-EXIT-GROUP SYS,
+   msg LBL,  s" set-preflight: invalid or replaced hook" BYTES,
+   invalid-msg LBL,  s" set-preflight: invalid hook" BYTES,
    done LBL, ;
 
 \ set-top-check ( xt -- ): install the top-row token hook (dot
@@ -2268,6 +2300,7 @@ SOURCE-INIT
    s" wordlist" ['] BWORDLIST FPRIM-L   s" get-current" ['] BGETCUR FPRIM-L
    s" set-current" ['] BSETCUR FPRIM-L  s" search-wl" ['] BSWL 3 GDEREF-L
    s" set-check" ['] BSETCHECK 1 GDEREF-L   s" check@" ['] BCHECKFETCH FPRIM-L
+   s" set-preflight" ['] BSETPREFLIGHT 1 GDEREF-L
    s" set-top-check" ['] BSETTOPCHECK 1 GDEREF-L   s" top-check@" ['] BTOPCHECKFETCH FPRIM-L ;
 
 : EMIT-PRIMS ( -- )

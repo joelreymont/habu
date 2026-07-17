@@ -357,9 +357,15 @@ $258 constant DEF-TKL-CELL
 \ $250..$350, and DEF-TKA/DEF-TKL survive inside it only because their liveness
 \ is confined to the definition NAME token, when the virtual stack is empty.
 $27A8 constant CMM-CELL
-\ PKG-* ($27C0..$27D8), DEFER-* ($27E0..$27E8), and the old $2780..$27A0
-\ pass-2 cells are reclaimed by the immutable lowering transaction. The
-\ retired descriptor-hook slot $27F0 is reused by TOP-HOOK-CELL below.
+\ PKG-* ($27C0..$27D8), the old DEFER-META slot ($27E0), and the old
+\ $2780..$27A0 pass-2 cells are reclaimed by the immutable lowering
+\ transaction. The final old defer slot is the protected compile-immediate
+\ preflight hook. The
+\ checker installs it before arming HOOK-CELL; the compiler calls it before
+\ every source-defined immediate in a checked body, and 0 is an invalid armed
+\ state. It persists through snapshots like HOOK-CELL.
+$27E8 constant COMPILE-PREFLIGHT-CELL
+\ The retired descriptor-hook slot $27F0 is reused by TOP-HOOK-CELL below.
 \ TOP-HOOK-CELL: top-row token hook xt (dot habu-typed-top-engine-2b2e88aa,
 \ docs/typed-top-level.md §2.1). 0 = no hook: the interpret dispatch is
 \ byte-for-byte today's behavior (tier 0). Installed only through the
@@ -381,8 +387,8 @@ $27F0 constant TOP-HOOK-CELL
 \ clear it so no build-process code pointer reaches a restored image. $27F8 is
 \ the final reclaimed cell before RSTK-OFF and is protected with TOP-HOOK-CELL.
 $27F8 constant ENGINE-SNAP-XT-CELL
-TOP-HOOK-CELL constant ENGINE-HOOK-OFF
-2 cells constant ENGINE-HOOK-LEN
+COMPILE-PREFLIGHT-CELL constant ENGINE-HOOK-OFF
+3 cells constant ENGINE-HOOK-LEN
 \ Top-row event class codes: the protocol between the interpret dispatch and
 \ an installed top-row hook. Word/tick events pass the LFIND flag word
 \ (bit 0 found, bit 1 DNAME-IMM, bits 8-15 DNAME-MIN-IN); literals pass 0.

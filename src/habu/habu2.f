@@ -130,6 +130,8 @@ variable LINTERNAL   variable LINTMSG   \ interpret-mode internal-word reject (D
 26 constant INTMSG-LEN    \ byte length of "hb: internal engine word: " (LINTMSG)
 variable LMININ   variable LMINMSG   \ interpret-mode certified-word underdepth reject (DNAME-MIN-IN) + its message
 32 constant MINMSG-LEN    \ byte length of "hb: interpret stack underdepth: " (LMINMSG)
+variable LPREFMISS   variable LPREFMISSMSG   \ armed checker without its compile-immediate preflight
+35 constant PREFMISSMSG-LEN   \ byte length of "hb: compile preflight hook missing\n"
 variable LORPHAN   variable LORPHANMSG   \ orphan control-flow closer reject (empty CFSTK pop) + its message
 40 constant ORPHANMSG-LEN  \ byte length of "hb: control-flow closer without opener: " (LORPHANMSG)
 variable LCFCAP   variable LCFCAPMSG   \ control-flow stack overflow reject (LCFPUSH at CFSTK-DEPTH-MAX) + its message
@@ -349,6 +351,7 @@ s" c-bp-watch-dump" s" label label --" TRUST
    LWIDEMSG LABEL@ LBL, s" hb: interpret-mode layout value: " BYTES,     \ WIDEMSG-LEN bytes; LWIDE appends the token + newline
    LINTMSG LABEL@ LBL, s" hb: internal engine word: " BYTES,             \ INTMSG-LEN bytes; LINTERNAL appends the token + newline
    LMINMSG LABEL@ LBL, s" hb: interpret stack underdepth: " BYTES,       \ MINMSG-LEN bytes; LMININ appends the token + newline
+   LPREFMISSMSG LABEL@ LBL, S\" hb: compile preflight hook missing\n" BYTES, \ PREFMISSMSG-LEN contiguous bytes
    LORPHANMSG LABEL@ LBL, s" hb: control-flow closer without opener: " BYTES,   \ ORPHANMSG-LEN bytes; LORPHAN appends the closer token + newline
    LCFCAPMSG LABEL@ LBL, s" hb: control-flow nesting too deep: " BYTES,          \ CFCAPMSG-LEN bytes; LCFCAP appends the opener token + newline
    LCSTRMSG LABEL@ LBL, s" hb: counted string too long (max 255)" BYTES,        \ CSTRMSG-LEN bytes; LCSTR appends a newline (fixed label: names the constraint at a glance)
@@ -696,7 +699,7 @@ s" c-bp-watch-dump" s" label label --" TRUST
 \ gap: a post-install disk edit is reloaded unchecked at next boot until the
 \ pin is baked into the image (dot habu-boot-pin-bake-8b284046).
 : EMIT-HOST-LOAD-PREFIX ( -- )
-   16 0 MOVZ,  16 DATA HOOK-CELL STR,
+   16 0 MOVZ,  16 DATA HOOK-CELL STR,  16 DATA COMPILE-PREFLIGHT-CELL STR,
    PFX-TARGET-OK
    PFX-LOAD-BASE-FILES ;
 
@@ -4139,7 +4142,8 @@ TRUSTED: EM-DATA-VA>N ( -- n ) DATA-VA ;
 
    9 0 MOVZ,  9 DATA CUR-CELL STR,
    9 FIRST-DYNAMIC-WID MOVZ,  9 DATA WIDN-CELL STR,
-   9 0 MOVZ,  9 DATA HOOK-CELL STR,  9 DATA TOP-HOOK-CELL STR,
+   9 0 MOVZ,  9 DATA HOOK-CELL STR,  9 DATA COMPILE-PREFLIGHT-CELL STR,
+   9 DATA TOP-HOOK-CELL STR,
    9 0 MOVZ,  9 DATA PROT-WID-N-CELL STR,  \ constructor registry starts empty
    OWNER-WID-EMIT:COLD-LABEL@ BL,
    cwok LBL,  9 0 MOVZ,
@@ -5704,7 +5708,7 @@ s" em-compile-float-ops" s" --" TRUST
 s" em-compile-ops" s" --" TRUST
 
 : EM-COMPILE-CALL ( -- )
-   LBL LBL {: notimm:label depthok:label :}
+   LBL LBL LBL {: notimm:label depthok:label callimm:label :}
    LVSPILL LABEL@ BL,
    9 DATA TKA-CELL LDR,  10 DATA TKL-CELL LDR,  LFIND LABEL@ BL,
    13 LUNDEF LABEL@ CBZ,
@@ -5714,11 +5718,19 @@ s" em-compile-ops" s" --" TRUST
          9 DATA S0-CELL LDR,  10 XDS 9 SUB,  10 10 3 ASRI, \ x10 = interpret depth in cells
          10 14 CMP,  C-LT LMININ LABEL@ BCOND,            \ compile-time depth < declared inputs -> named reject BEFORE the immediate BLRs below the interpret base (dict region still RW here; LDIAGRET restores RX)
       depthok LBL,
-      SP SP 16 SUBI,  30 SP 0 STR,  11 SP 8 STR,
+      SP SP 32 SUBI,  30 SP 0 STR,  11 SP 8 STR,
       2 5 MOVZ,  LPROT LABEL@ BL,
+      9 DATA HOOK-CELL LDR,  9 callimm CBZ,
+      9 DATA COMPILE-PREFLIGHT-CELL LDR,  9 LPREFMISS LABEL@ CBZ,  9 SP 16 STR,
+      C-PUSH-DREC-NAME
+      9 DATA TKA-CELL LDR,  9 G-PUSH
+      9 DATA TKL-CELL LDR,  9 G-PUSH
+      9 DATA TRUSTED-CELL LDR,  9 G-PUSH
+      9 SP 16 LDR,  9 BLR,
+      callimm LBL,
       11 SP 8 LDR,  11 BLR,
       2 3 MOVZ,  LPROT LABEL@ BL,
-      30 SP 0 LDR,  SP SP 16 ADDI,
+      30 SP 0 LDR,  SP SP 32 ADDI,
       LMAIN LABEL@ B,
    notimm LBL,
    C-CALL  LMAIN LABEL@ B, ;
@@ -5918,6 +5930,9 @@ s" em-repl-recover" s" --" TRUST
    0 2 MOVZ,  1 LMINMSG LABEL@ ADR,  2 MINMSG-LEN MOVZ,  NR-WRITE SYS,
    0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,
    0 2 MOVZ,  1 LQNL LABEL@ ADR,  1 1 1 ADDI,  2 1 MOVZ,  NR-WRITE SYS,
+   LDIAGRET LABEL@ B,
+   LPREFMISS LABEL@ LBL,
+   0 2 MOVZ,  1 LPREFMISSMSG LABEL@ ADR,  2 PREFMISSMSG-LEN MOVZ,  NR-WRITE SYS,
    LDIAGRET LABEL@ B,
    LORPHAN LABEL@ LBL,                                 \ branch target from LCFPOP: closer with an empty control-flow stack (TKA/TKL hold the closer token)
    0 2 MOVZ,  1 LORPHANMSG LABEL@ ADR,  2 ORPHANMSG-LEN MOVZ,  NR-WRITE SYS,
@@ -6405,6 +6420,7 @@ s" SRCA@" s" -- ptr u8" TRUST
    LBL LWIDE !  LBL LWIDEMSG !  LBL LDIAGRET !
    LBL LINTERNAL !  LBL LINTMSG !
    LBL LMININ !  LBL LMINMSG !
+   LBL LPREFMISS !  LBL LPREFMISSMSG !
    LBL LORPHAN !  LBL LORPHANMSG !
    LBL LCFCAP !  LBL LCFCAPMSG !
    LBL LCSTR !  LBL LCSTRMSG !

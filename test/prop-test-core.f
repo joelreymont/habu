@@ -21,6 +21,7 @@ require lib/process-fork.f
 TRUSTED: PROP-CHECK-HOOK ( ptr u8 n -- n )
    CHECK! dup -1 <> if 70 throw then ;
 TRUSTED: PROP-INSTALL-HOOK ( -- )
+   LOWER-CERT-HOOK:INSTALL
    ['] PROP-CHECK-HOOK set-check ;
 PROP-INSTALL-HOOK
 
@@ -196,7 +197,7 @@ TRUSTED: CHK-HOOK ( ptr u8 n -- n )
 TRUSTED: CHK-COMPILE-CERT ( ptr u8 n -- )
    0 set-check
    evaluate
-   ['] PROP-CHECK-HOOK set-check ;
+   PROP-INSTALL-HOOK ;
 : CHK-BODY$ ( ptr u8 n -- ptr u8 n ) {: a:ptr u:n :}
    a 2 + u 4 - ;
 TRUSTED: CHK  ( ptr u8 n -- )
@@ -301,7 +302,7 @@ variable BSAVE
 \ confirm a false reject - unchecked compile is the point. Queued owner:
 \ habu-seal-set-check-b3676b33 (test set-check behind the friend latch).
 TRUSTED: CONFIRM-FR? ( -- bool )   \ compile unchecked, run, and prove the rejected true-sig body matches
-   SMARK  0 set-check  PBUF PBUF-U @ evaluate  ['] PROP-CHECK-HOOK set-check
+   SMARK  0 set-check  PBUF PBUF-U @ evaluate  PROP-INSTALL-HOOK
    ERR@ 0 = IF  71 NIN @ RUN-MEAS
       LAST-TRAP @ IF  0  ELSE  LAST-MEAS @ DOUT @ =  THEN
    ELSE  0  THEN  SFORGET ;

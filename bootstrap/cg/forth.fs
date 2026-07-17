@@ -170,6 +170,9 @@ $68 constant CRSIG-A-CELL \ runtime created-word effect pending for CREATE
 $70 constant CRSIG-U-CELL
 $27B0 constant DOESB-CELL   \ BODYBUF offset of the DOES> body in current def
 $27B8 constant TRUSTED-CELL \ open definition came from TRUSTED:
+$27E8 constant COMPILE-PREFLIGHT-CELL \ checker-owned hook run before source-defined immediates
+COMPILE-PREFLIGHT-CELL constant ENGINE-HOOK-OFF
+3 cells constant ENGINE-HOOK-LEN
 $27A8 constant CMM-CELL     \ compile-loop ADT-lowering mode (TFAM 10; mirrors src/habu/layout.f)
 $5000 constant TXN-STATE-OFF
 $3000 constant TXN-STATE-LEN
@@ -373,6 +376,8 @@ variable LKWESQ variable LKWECQ variable LKWEDOTQ
 variable LKWTICK variable LKWBTICK
 variable LKWTYPE
 variable LREAD  variable LRBYE  variable LRDIE  variable LRREC  variable LQNL  variable LOKS
+variable LPREFMISS  variable LPREFMISSMSG
+35 constant PREFMISSMSG-LEN
 variable LEX0  variable LUN0   \ re-entrant evaluate: original-path continuations of LEXIT / LUNDEF
 variable LKWLBRACE variable LKWENDLOC variable LLOC-FIND variable LKWCONST
 variable LKWDO variable LKWLOOP variable LKWI
@@ -471,6 +476,7 @@ previous definitions
    EREG addr CMP,  C-CC trap BCOND,
    addr FRIEND-ARENA FRIEND-ARENA-LEN trap GUARD-BAND
    addr PROT-REG-OFF PROT-REG-LEN trap GUARD-BAND
+   addr ENGINE-HOOK-OFF ENGINE-HOOK-LEN trap GUARD-BAND
    addr BODYBUF-OFF BODYBUF-CAP 2 + trap GUARD-BAND
    addr TXN-STATE-OFF TXN-STATE-LEN trap GUARD-BAND
    addr trap [ also GUARD ] BLOB-SPAN [ previous ]
@@ -485,6 +491,7 @@ previous definitions
    DREG ok CBZ,
    addr FRIEND-ARENA FRIEND-ARENA-LEN trap GUARD-ADDR-BAND
    addr PROT-REG-OFF PROT-REG-LEN trap GUARD-ADDR-BAND
+   addr ENGINE-HOOK-OFF ENGINE-HOOK-LEN trap GUARD-ADDR-BAND
    addr BODYBUF-OFF BODYBUF-CAP 2 + trap GUARD-ADDR-BAND
    addr TXN-STATE-OFF TXN-STATE-LEN trap GUARD-ADDR-BAND
    addr trap [ also GUARD ] BLOB-ADDR [ previous ]
@@ -692,7 +699,7 @@ previous definitions
    A G-POP
    A B CMP,
    \ typed-local-lint: allow-bare-local - stock Gforth rejects Habu type suffixes.
-   LBL {: done :}
+   LBL {: done :} \ typed-local-lint: allow-bare-local - Gforth label id
    C-LE done BCOND,
    A B 0 ADDI,
    done LBL,
@@ -939,7 +946,37 @@ previous definitions
 
 : BSETCUR ( -- )    A G-POP  A DATA CUR-CELL STR, ;                                        \ ( wid -- )
 
-: BSETCHECK ( -- )  A G-POP  A DATA HOOK-CELL STR, ;                                       \ ( xt -- ): install check hook
+: BSETCHECK ( -- )
+   LBL {: done :} \ typed-local-lint: allow-bare-local - Gforth label id
+   A G-POP
+   A DATA HOOK-CELL STR,
+   A done CBNZ,
+   A DATA COMPILE-PREFLIGHT-CELL STR,
+   done LBL, ;                                      \ ( xt -- ): install check hook; 0 clears its paired preflight
+
+: BSETPREFLIGHT ( -- )
+   LBL LBL LBL LBL LBL LBL LBL {: bad invalid empty emit done msg invalid-msg :} \ typed-local-lint: allow-bare-local
+   A G-POP
+   10 DATA COMPILE-PREFLIGHT-CELL LDR,
+   10 empty CBZ,
+      10 A CMP,  C-EQ done BCOND,
+      bad B,
+   empty LBL,
+      A invalid CBZ,
+      A DBASE CMP,  C-CC invalid BCOND,
+      A CP CMP,     C-CS invalid BCOND,
+   A DATA COMPILE-PREFLIGHT-CELL STR,
+   done B,
+   bad LBL,
+      1 msg ADR,  2 39 MOVZ,  emit B,
+   invalid LBL,
+      1 invalid-msg ADR,  2 27 MOVZ,
+   emit LBL,
+      0 2 MOVZ,  NR-WRITE SYS,
+      0 70 MOVZ,  NR-EXIT-GROUP SYS,
+   msg LBL,  s" set-preflight: invalid or replaced hook" BYTES,
+   invalid-msg LBL,  s" set-preflight: invalid hook" BYTES,
+   done LBL, ;
 
 \ SEAL-CAPTURE (TFAM 2b-iii): freeze the seal-time ndict truncation watermark
 \ (xref.f baseline token + the cold-prefix assembler's token at the true
@@ -1112,6 +1149,7 @@ previous definitions
    s" wordlist" ['] BWORDLIST FPRIM-L   s" get-current" ['] BGETCUR FPRIM-L
    s" set-current" ['] BSETCUR FPRIM-L  s" search-wl" ['] BSWL FPRIM-L
    s" set-check" ['] BSETCHECK FPRIM-L
+   s" set-preflight" ['] BSETPREFLIGHT FPRIM-L
    s" tok-imm?" ['] BTOKIMM FPRIM ;
 
 : EMIT-PRIMS ( -- )
@@ -1832,7 +1870,7 @@ create ZBYTE 0 c,
    PFX-PATH-CORE-FILES ;
 
 : EMIT-HOST-LOAD-PREFIX ( -- )
-   16 0 MOVZ,  16 DATA HOOK-CELL STR,
+   16 0 MOVZ,  16 DATA HOOK-CELL STR,  16 DATA COMPILE-PREFLIGHT-CELL STR,
    PFX-TARGET-OK
    PFX-LOAD-BASE-FILES ;
 
@@ -2322,6 +2360,7 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
    LKWLBRACE @ LBL, LBRACE-KW 2 BYTES,  LKWENDLOC @ LBL, ENDLOC-KW 2 BYTES,
    LKWCONST @ LBL,  s" constant" BYTES,
    LQNL @ LBL,  QNL-KW 2 BYTES,   LOKS @ LBL,  OKS-KW 4 BYTES,
+   LPREFMISSMSG @ LBL, S\" hb: compile preflight hook missing\n" BYTES,
    LKWDO @ LBL,  s" do" BYTES,    LKWLOOP @ LBL,  s" loop" BYTES,    LKWI @ LBL,  s" i" BYTES,
    LKWTOR @ LBL,  s" >r" BYTES,   LKWRFROM @ LBL,  s" r>" BYTES,   LKWRFET @ LBL,  s" r@" BYTES,
    LKWEXIT @ LBL,  s" exit" BYTES,   LKWREC @ LBL,  s" recurse" BYTES,
@@ -4197,7 +4236,7 @@ variable CFSK2
    9 cwok CBNZ,
    9 0 MOVZ,  9 DATA CUR-CELL STR,
    9 FIRST-DYNAMIC-WID MOVZ,  9 DATA WIDN-CELL STR,
-   9 0 MOVZ,  9 DATA HOOK-CELL STR,
+   9 0 MOVZ,  9 DATA HOOK-CELL STR,  9 DATA COMPILE-PREFLIGHT-CELL STR,
    9 DATA PROT-WID-N-CELL STR,
    9 DATA OWNER-WID-N-CELL STR,
    cwok LBL,
@@ -5556,16 +5595,24 @@ variable P2SK
    lmain EMIT-COMPILE-FLOAT-OPS ;
 
 : EMIT-COMPILE-CALL ( n n -- ) {: lmain lundef :}
-   LBL {: notimm :}
+   LBL LBL {: notimm callimm :} \ typed-local-lint: allow-bare-local - Gforth label ids
    LVSPILL @ BL,
    9 DATA TKA-CELL LDR,  10 DATA TKL-CELL LDR,  LFIND @ BL,
    13 lundef CBZ,
    14 13 2 ANDI,  14 notimm CBZ,
-      SP SP 16 SUBI,  30 SP 0 STR,  11 SP 8 STR,
+      SP SP 32 SUBI,  30 SP 0 STR,  11 SP 8 STR,
       2 5 MOVZ,  LPROT @ BL,
+      9 DATA HOOK-CELL LDR,  9 callimm CBZ,
+      9 DATA COMPILE-PREFLIGHT-CELL LDR,  9 LPREFMISS @ CBZ,  9 SP 16 STR,
+      C-PUSH-DREC-NAME
+      9 DATA TKA-CELL LDR,  9 G-PUSH
+      9 DATA TKL-CELL LDR,  9 G-PUSH
+      9 DATA TRUSTED-CELL LDR,  9 G-PUSH
+      9 SP 16 LDR,  9 BLR,
+      callimm LBL,
       11 SP 8 LDR,  11 BLR,
       2 3 MOVZ,  LPROT @ BL,
-      30 SP 0 LDR,  SP SP 16 ADDI,
+      30 SP 0 LDR,  SP SP 32 ADDI,
       lmain B,
    notimm LBL,
    C-CALL  lmain B, ;
@@ -5854,6 +5901,11 @@ variable P2SK
    9 DATA RSAVSP-CELL LDR,  SP 9 0 ADDI,
    LREAD @ B, ;
 
+: EMIT-PREFMISS ( -- )
+   LPREFMISS @ LBL,
+   0 2 MOVZ,  1 LPREFMISSMSG @ ADR,  2 PREFMISSMSG-LEN MOVZ,  NR-WRITE SYS,
+   0 70 MOVZ,  NR-EXIT-GROUP SYS, ;
+
 : EMIT-UNDEF ( n -- ) {: lundef :}
    lundef LBL,
    0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,
@@ -5907,6 +5959,7 @@ variable P2SK
 	      \ ---------------- COMPILE ----------------
 	   LCOMPILE LBL,
 	      LMAIN LUNDEF EMIT-COMPILE
+	   EMIT-PREFMISS
 	   LUNDEF EMIT-UNDEF
 	   LEXIT LMAIN EMIT-EXIT ;
 
@@ -5922,6 +5975,7 @@ variable P2SK
 : EMIT-LABEL-RUNTIME ( -- )
    LBL LBCHAIN !  LBL LCREATE !  LBL LDOESPATCH !
    LBL LREAD !  LBL LRBYE !  LBL LRDIE !  LBL LRREC !  LBL LQNL !  LBL LOKS !
+   LBL LPREFMISS !  LBL LPREFMISSMSG !
    LBL LEX0 !  LBL LUN0 ! ;
 
 : EMIT-LABEL-CONTROL ( -- )

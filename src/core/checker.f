@@ -5656,6 +5656,7 @@ variable CURSYM
    a u s" deflinear" CORE-STR=CI IF RES-TRUE EXIT THEN
    a u s" value-record" CORE-STR=CI IF RES-TRUE EXIT THEN
    a u s" set-check" CORE-STR=CI IF RES-TRUE EXIT THEN
+   a u s" set-preflight" CORE-STR=CI IF RES-TRUE EXIT THEN
    a u s" parse-imm" CORE-STR=CI IF RES-TRUE EXIT THEN
    a u s" postpone" CORE-STR=CI IF RES-TRUE EXIT THEN
    a u s" compile," CORE-STR=CI IF RES-TRUE EXIT THEN
@@ -5667,7 +5668,8 @@ variable CURSYM
 \ Unsafety is a property of the WORD, not its spelling. UNSAFE-TOK? above keeps
 \ the canonical name list for the DO-TOK1 body reject and for the symbol-less
 \ engine/syntax tokens ([, ], postpone, immediate, compile,, evaluate, trust,
-\ set-check) that never intern a checker symbol. The definers/openers (deftype,
+\ set-check, set-preflight) that never intern a checker symbol. The
+\ definers/openers (deftype,
 \ deflinear, value-record, sumtype, enum, product, typefamily, layout-buffer)
 \ DO intern a symbol, and those are exactly the words that carry a checked
 \ signature or a prim axiom — so they are the only ones an EXPORT alias could
@@ -7758,6 +7760,9 @@ variable PIMM-N
 
 : PIMM-CNT@ ( n -- n )             \ payload token count at declaration index
    cells PIMM-NS + @ ;
+
+: CHECKER-MODELED-IMM? ( ptr u8 n -- bool )
+   CHECKER-FIND-ACTIVE-SYM PIMM-IX 0 < 0= ;
 
 : PARSE-IMM ( ptr u8 n n -- ) {: a:ptr u:n cnt:n :}
    PIMM-N @ PIMM-CAP < 0= IF s" checker: parse-imm table full" 76 die THEN

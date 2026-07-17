@@ -2,7 +2,18 @@
 
 # FIXME: Rewrite this to be concise without losing precision
 
-Last updated: 2026-07-16
+Last updated: 2026-07-17
+
+- **Checker policy that constrains compile-time behavior must run before the
+  immediate BLR, not only at definition publication.** The definition hook
+  correctly rejected unmodeled immediates after body reconstruction, but
+  `include` had already evaluated nested source while the dictionary was RX.
+  A checker-owned preflight cell closes that temporal gap generically: the
+  compiler invokes it for every source-defined immediate while checking is
+  armed; `parse-imm` declarations and outer `TRUSTED:` bodies are the only
+  allows. Keep the cell in the sealed hook band, preserve it in snapshots, and
+  prove warm-boot execution with a modeled immediate rather than checking only
+  that the serialized pointer is nonzero.
 
 - **Before deleting a "wrapper" vocabulary, rg its WORDS as strings — checked
   words can be a graded LLM-authoring surface, not just call sites.** (mmstage3
@@ -5319,3 +5330,18 @@ unchanged (148855). Keys for milestone 2:
   landing. Also disproven: 'prims are baked so old engines cannot tolerate a
   new prim token' — the token never needs parsing; a runtime name lookup
   through search-wl is the tolerant spelling.
+- **Checker uninstall must clear its paired compile preflight.** Native rebuilds
+  begin with `0 set-check`; leaving the old callback armed makes the new checker
+  copy look like a hostile replacement before the canonical prefix can reload.
+- **A TRUSTED: body does not bypass sealed-store guards.** Reinstalling the
+  checker with raw `!` into its protected preflight cell exits 83 after
+  `0 set-check`; the engine-owned `set-preflight` primitive is the required
+  mutation boundary. Token tracing plus JIT disassembly exposed the raw store.
+- **A custom checker hook is a paired lifecycle, not one `set-check`.** Every
+  installer must run `LOWER-CERT-HOOK:INSTALL` first so a preceding
+  `0 set-check` cannot leave checked definitions armed without compile-time
+  preflight; `set-preflight` itself is unsafe inside checked bodies.
+- **Fail-closed diagnostics are byte contracts across both emitters.** Keep the
+  fixed length inclusive of exactly one LF, route recovery through its own
+  missing-preflight label, and compare the complete stderr span so a trailing
+  NUL cannot hide behind substring assertions.

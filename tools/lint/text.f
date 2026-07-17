@@ -16,6 +16,7 @@ s" CHECK!" s" ptr u8 n -- n" TRUST
 
 : LINT-CHECK-HOOK ( ptr u8 n -- n )
    CHECK! dup -1 <> IF 70 throw THEN ;
+LOWER-CERT-HOOK:INSTALL
 ' LINT-CHECK-HOOK set-check
 
 create PATHBUF 1024 allot

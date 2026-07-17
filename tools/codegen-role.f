@@ -330,7 +330,9 @@ TRUSTED: CGR-CHECK! ( ptr u8 n -- n ) CHECK! ;
 \ (src/habu/snap-lib.f SNAP-CHECK-HOOK) byte for byte.
 TRUSTED: CGR-EVALUATE-UNCHECKED ( ptr u8 n -- ) 0 set-check evaluate ;
 TRUSTED: CGR-HOOK ( ptr u8 n -- n ) CHECK! dup -1 <> IF 70 throw THEN ;
-TRUSTED: CGR-HOOK! ( -- ) ['] CGR-HOOK set-check ;
+TRUSTED: CGR-HOOK! ( -- )
+   LOWER-CERT-HOOK:INSTALL
+   ['] CGR-HOOK set-check ;
 
 variable CGR-EV-A
 variable CGR-EV-U

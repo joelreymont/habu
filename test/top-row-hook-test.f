@@ -79,7 +79,9 @@ variable TRH-OK-A
 
 : TRH-SNAP-HOOK-CLEAR ( -- )
    s" ordinary load leaves engine snapshot hook clear" T-LABEL
-   data-base ENGINE-SNAP-XT-CELL + @ 0 T= ;
+   data-base ENGINE-SNAP-XT-CELL + @ 0 T=
+   s" ordinary load leaves compile-immediate preflight armed" T-LABEL
+   data-base COMPILE-PREFLIGHT-CELL + @ 0 <> TTRUE ;
 
 \ The installed top-row hook: record ( class, token bytes, flags ) per event.
 \ typed-local-lint: allow-bare-local - a keeps the ptr u8 byte-span role for BYTE-COPY
@@ -304,9 +306,68 @@ create TRH-EMPTY 1 allot
    s" data-base ENGINE-SNAP-XT-CELL + 99 swap !" TRH-LINE
    SB$ ;
 
+: TRH-PREFLIGHT-FORGE$ ( -- ptr u8 n )
+   SB-RESET
+   s" data-base COMPILE-PREFLIGHT-CELL + 99 swap !" TRH-LINE
+   SB$ ;
+
+: TRH-PREFLIGHT-REPLACE$ ( -- ptr u8 n )
+   SB-RESET
+   s" : TRH-PREFLIGHT-NOOP ( ptr u8 n ptr u8 n bool -- ) drop 2drop 2drop ;" TRH-LINE
+   s" TRUSTED: TRH-PREFLIGHT-REPLACE ( -- ) ['] TRH-PREFLIGHT-NOOP set-preflight ;" TRH-LINE
+   s" TRH-PREFLIGHT-REPLACE" TRH-LINE
+   SB$ ;
+
+: TRH-PREFLIGHT-REINSTALL$ ( -- ptr u8 n )
+   SB-RESET
+   s" 0 set-check" TRH-LINE
+   s" LOWER-CERT-HOOK:INSTALL" TRH-LINE
+   s" : TRH-REINSTALL-I ( -- ) ; immediate" TRH-LINE
+   S\" s\" TRH-REINSTALL-I\" 0 parse-imm" TRH-LINE
+   s" : TRH-REINSTALL-RUN ( -- n ) TRH-REINSTALL-I 73 ;" TRH-LINE
+   s" : TRH-REINSTALL-ASSERT ( -- ) TRH-REINSTALL-RUN 73 <> if 1 throw then check@ 0= if 2 throw then ;" TRH-LINE
+   s" TRH-REINSTALL-ASSERT" TRH-LINE
+   SB$ ;
+
+: MISSING-HOOK$ ( -- ptr u8 n )
+   SB-RESET
+   s" 0 set-check" TRH-LINE
+   s" package PREFLIGHT-MISSING-TEST" TRH-LINE
+   s" : HOOK ( ptr u8 n -- n ) 2drop -1 ;" TRH-LINE
+   s" ' HOOK set-check" TRH-LINE
+   s" : BAD ( -- ) include FILEMAP.md ;" TRH-LINE
+   s" ;package" TRH-LINE
+   SB$ ;
+
+: CUSTOM-HOOK$ ( -- ptr u8 n )
+   SB-RESET
+   s" 0 set-check" TRH-LINE
+   s" package PREFLIGHT-CUSTOM-TEST" TRH-LINE
+   s" : HOOK ( ptr u8 n -- n ) CHECK! dup -1 <> if 70 throw then ;" TRH-LINE
+   s" LOWER-CERT-HOOK:INSTALL" TRH-LINE
+   s" ' HOOK set-check" TRH-LINE
+   s" : BAD ( -- ) include FILEMAP.md ;" TRH-LINE
+   s" ;package" TRH-LINE
+   SB$ ;
+
+: PREFLIGHT-LIFECYCLE ( -- )
+   s" armed checker without preflight emits exact LF-terminated diagnostic" T-LABEL
+   MISSING-HOOK$ TRH-RUN-LOAD
+   TRH-EXITED @ TTRUE
+   TRH-RC @ TRH-REJECT-RC T=
+   TRH-OUT-U @ 0 T=
+   TRH-ERR$ S\" hb: compile preflight hook missing\n" T$=
+   s" custom checker hook rearms preflight before checked definitions" T-LABEL
+   CUSTOM-HOOK$ TRH-RUN-LOAD
+   TRH-EXITED @ TTRUE
+   TRH-RC @ TRH-REJECT-RC T=
+   TRH-OUT-U @ 0 T=
+   TRH-ERR$ s" E-UNMODELED-IMMEDIATE" CONTAINS? TTRUE
+   TRH-ERR$ s" include" CONTAINS? TTRUE ;
+
 : TRH-BELOW-FORGE$ ( -- ptr u8 n )  \ one cell below the band stays writable
    SB-RESET
-   s" data-base TOP-HOOK-CELL 8 - + 99 swap !" TRH-LINE
+   s" data-base COMPILE-PREFLIGHT-CELL 8 - + 99 swap !" TRH-LINE
    SB$ ;
 
 : TRH-ABOVE-FORGE$ ( -- ptr u8 n )  \ one cell past the band stays writable
@@ -315,6 +376,15 @@ create TRH-EMPTY 1 allot
    SB$ ;
 
 : TRH-NEG-SEAL ( -- )
+   s" compile preflight rejects replacement through a TRUSTED: caller" T-LABEL
+   TRH-PREFLIGHT-REPLACE$ TRH-RUN-LOAD
+   TRH-EXITED @ TTRUE
+   TRH-RC @ TRH-REJECT-RC T=
+   TRH-ERR$ s" set-preflight: invalid or replaced hook" CONTAINS? TTRUE
+   s" raw ! into COMPILE-PREFLIGHT-CELL traps ENGINE-ERROR:SEAL-VIOLATION" T-LABEL
+   TRH-PREFLIGHT-FORGE$ TRH-RUN-LOAD
+   TRH-EXITED @ TTRUE
+   TRH-RC @ ENGINE-ERROR:SEAL-VIOLATION T=
    s" raw ! into TOP-HOOK-CELL traps ENGINE-ERROR:SEAL-VIOLATION" T-LABEL
    TRH-SEAL-FORGE$ TRH-RUN-LOAD
    TRH-EXITED @ TTRUE
@@ -341,6 +411,10 @@ create TRH-EMPTY 1 allot
    SB$ ;
 
 : TRH-POSITIVES ( -- )
+   PREFLIGHT-LIFECYCLE
+   s" checker reinstall rearms both hooks after 0 set-check" T-LABEL
+   TRH-PREFLIGHT-REINSTALL$ TRH-RUN-LOAD
+   TRH-ASSERT-OK
    s" valid install dispatches normally and counts 7 window events" T-LABEL
    TRH-CHILD-HOOK$ TRH-RUN-LOAD
    TRH-ASSERT-OK

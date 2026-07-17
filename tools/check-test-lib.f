@@ -1129,12 +1129,13 @@ public
 \ checked-boundary-lint and trusted-inventory (string literals are skipped by
 \ design), so this shape regression IS the policing for the generated seam:
 \ every set-check line in the generated text must be one of the two audited
-\ shapes, with exactly one hook install. The doctored legs prove the scanner
-\ has teeth - a rogue install name or a missing install rejects.
+\ shapes, with exactly one preflight rearm and one hook install. The doctored
+\ legs prove the scanner has teeth - a rogue install name or a missing install
+\ rejects.
 1024 constant CKTP-DOC-CAP
 create CKTP-DOC CKTP-DOC-CAP allot
 variable CKTP-I  variable CKTP-START
-variable CKTP-BAD  variable CKTP-INSTALLS
+variable CKTP-BAD  variable CKTP-INSTALLS  variable CKTP-REARMS
 variable CKTP-DOC-U
 
 : CKTP-LINE-OK? ( ptr u8 n -- bool ) {: a:ptr u:n :}
@@ -1142,12 +1143,16 @@ variable CKTP-DOC-U
    a u s" ' CHECK-F-HOOK set-check" LINT-STR= ;
 
 : CKTP-NOTE-LINE ( ptr u8 n -- ) {: a:ptr u:n :}
+   a u s" LOWER-CERT-HOOK:INSTALL" LINT-STR= if
+      CKTP-REARMS @ 1+ CKTP-REARMS !
+      exit
+   then
    a u s" set-check" CONTAINS? 0= if exit then
    a u s" ' CHECK-F-HOOK set-check" LINT-STR= if CKTP-INSTALLS @ 1+ CKTP-INSTALLS ! then
    a u CKTP-LINE-OK? 0= if -1 CKTP-BAD ! then ;
 
 : CKTP-SCAN ( ptr u8 n -- ) {: a:ptr u:n :}
-   0 CKTP-BAD !  0 CKTP-INSTALLS !
+   0 CKTP-BAD !  0 CKTP-INSTALLS !  0 CKTP-REARMS !
    0 CKTP-START !  0 CKTP-I !
    begin CKTP-I @ u < while
       a CKTP-I @ + c@ 10 = if
@@ -1162,7 +1167,9 @@ variable CKTP-DOC-U
 
 : CKTP-SHAPE-OK? ( ptr u8 n -- bool )
    CKTP-SCAN
-   CKTP-BAD @ 0=  CKTP-INSTALLS @ 1 =  and ;
+   CKTP-BAD @ 0=
+   CKTP-INSTALLS @ 1 = and
+   CKTP-REARMS @ 1 = and ;
 
 : CKTP-PRELUDE ( -- ptr u8 n )
    s" prelude-shape.f" CHK-LABEL!
@@ -1186,6 +1193,7 @@ variable CKTP-DOC-U
    CKTP-PRELUDE {: pa:ptr pu:n :}
    pa pu CKTP-SHAPE-OK? TTRUE
    pa pu s" LOWER-CERT-HOOK:HOOK ;" CONTAINS? TTRUE
+   pa pu s" LOWER-CERT-HOOK:INSTALL" CONTAINS? TTRUE
    pa pu s" 0 set-check" CONTAINS? TTRUE
    pa pu CKTP-DOCTORED$ CKTP-SHAPE-OK? TFALSE
    pa 0 CKTP-SHAPE-OK? TFALSE ;

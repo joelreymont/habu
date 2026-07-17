@@ -1267,9 +1267,34 @@ public
    mdstart mdend s" hb: cannot map fixed data region" BCG-MUST-FIND-BEFORE
    mdstart mdend s" C-EXIT-DIAG" BCG-MUST-FIND-BEFORE ;
 
+package BCG-PREFLIGHT
+
+: RECOVERY ( -- )
+   s" bootstrap/cg/forth.fs" BCG-LOAD
+   s" 35 constant PREFMISSMSG-LEN" BCG-MUST-HAVE
+   S\" LPREFMISSMSG @ LBL, S\\\" hb: compile preflight hook missing\\n\" BYTES," BCG-MUST-HAVE
+   s" 9 DATA COMPILE-PREFLIGHT-CELL LDR,  9 LPREFMISS @ CBZ" BCG-MUST-HAVE
+   s" 2 PREFMISSMSG-LEN MOVZ" BCG-MUST-HAVE ;
+
+: NATIVE ( -- )
+   s" src/habu/habu2.f" BCG-LOAD
+   s" 35 constant PREFMISSMSG-LEN" BCG-MUST-HAVE
+   S\" LPREFMISSMSG LABEL@ LBL, S\\\" hb: compile preflight hook missing\\n\" BYTES," BCG-MUST-HAVE
+   s" 9 DATA COMPILE-PREFLIGHT-CELL LDR,  9 LPREFMISS LABEL@ CBZ" BCG-MUST-HAVE
+   s" 2 PREFMISSMSG-LEN MOVZ" BCG-MUST-HAVE ;
+
+public
+
+: TEST ( -- )
+   RECOVERY
+   NATIVE ;
+
+;package
+
 : BCG-MAIN ( -- )
    T-RESET
    BCG-TEST-MMAP-DIAG
+   BCG-PREFLIGHT:TEST
    BCG-TEST-INSTALL-FAIL-CLOSED
    BCG-TEST-FORTH-SDQ-COMMENT
    BCG-TEST-PREFIX-LIST

@@ -21,6 +21,7 @@ s" CHECK!" s" ptr u8 n -- n" TRUST
 
 : CHK-CHECK-HOOK ( ptr u8 n -- n )
    CHECK! dup -1 <> if 70 throw then ;
+LOWER-CERT-HOOK:INSTALL
 ' CHK-CHECK-HOOK set-check
 s" TYPE-RESERVED?" s" ptr u8 n -- bool" TRUST
 s" CHECKER-DEFTYPE" s" ptr u8 n --" TRUST
@@ -969,6 +970,7 @@ variable CHK-TFAM-NAME-I
    CHK-JSON @ if s" -1 JSON-DIAGS !" CHK-RUN-LN then
    s" : CHECK-F-HOOK ( ptr u8 n -- n )" CHK-RUN-LN
    s"    LOWER-CERT-HOOK:HOOK ;" CHK-RUN-LN
+   s" LOWER-CERT-HOOK:INSTALL" CHK-RUN-LN
    s" ' CHECK-F-HOOK set-check" CHK-RUN-LN ;
 
 : CHK-BUILD-RUN ( -- )

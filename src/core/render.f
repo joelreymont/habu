@@ -503,7 +503,17 @@ variable MDV-I   variable MDV-F
 : MDIAG-MISSING-PROSE ( -- )
    0 0= 0= MDIAG-MISSING-WALK ;
 
+: IMM-CODE$ ( -- ptr u8 n )
+   s" E-UNMODELED-IMMEDIATE" ;
+
+: IMM-CLASS$ ( -- ptr u8 n )
+   s" model_compile_immediate" ;
+
+: IMM-SUGGEST$ ( -- ptr u8 n )
+   s" Declare the compile-time expansion with parse-imm, or move the behavior behind an audited TRUSTED: boundary." ;
+
 : DCODE
+   IMMERR @ if IMM-CODE$ exit then
    NPBAD @ IF s" E-NONPARAMETRIC-EFFECT" ELSE
    CAPREQ @ IF s" E-CAP-TRUSTED" ELSE
    UNSAFE @ IF s" E-UNSAFE" ELSE
@@ -529,6 +539,7 @@ variable MDV-I   variable MDV-F
       RCUR @ R-RES  RBROW @ R-RES  <>
    THEN ;
 : REPAIR-CLASS ( -- a u )
+   IMMERR @ if IMM-CLASS$ exit then
    NPBAD @ IF s" fix_parametric_effect" EXIT THEN
    CAPREQ @ IF s" trusted_boundary_required" EXIT THEN
    UNSAFE @ IF s" trusted_boundary_required" EXIT THEN
@@ -555,6 +566,7 @@ variable MDV-I   variable MDV-F
 \ Short repair hint derived from the stable class. Raw stack rows stay in their
 \ own JSON fields; this text is only for LLM action selection.
 : SUGGEST-TEXT ( -- a u )
+   IMMERR @ if IMM-SUGGEST$ exit then
    NPBAD @ IF
       NPBAD-KIND @ 0= IF
          s" Declare the concrete family in the signature, or keep the body polymorphic over the type variable."
@@ -614,6 +626,11 @@ variable JPOS  variable JLINE  variable JCOL
    fam 0 >= IF s" family '" DTXT  fam FAM-QNAME-REND  s" '" DTXT
    ELSE s" a concrete type" DTXT THEN ;
 : DIAG-PROSE
+   IMMERR @ if
+     IMM-CODE$ DTXT  s"  habu: in " DTXT  NMA @ NMU @ DTXT
+     s" : compile-time immediate '" DTXT  FAILTK FAILTU @ DTXT
+     s" ' has no modeled expansion; declare it with parse-imm or use an audited TRUSTED: boundary" DTXT exit
+   then
    NPBAD @ IF
      s" E-NONPARAMETRIC-EFFECT habu: in " DTXT  NMA @ NMU @ DTXT
      NPBAD-KIND @ 0= IF
@@ -771,6 +788,31 @@ variable JPOS  variable JLINE  variable JCOL
    RSBUF RSN @ RDIAG-APPEND
    0 RDST !  0 RSN ! ;
 ' DIAG-PRINT DIAGXT !
+
+: COMPILE-IMM-PROSE ( ptr u8 n ptr u8 n -- )
+   {: da:ptr du:n ta:ptr tu:n :}
+   IMM-CODE$ DTXT  s"  habu: in " DTXT  da du DTXT
+   s" : compile-time immediate '" DTXT  ta tu DTXT
+   s" ' has no modeled expansion; declare it with parse-imm or use an audited TRUSTED: boundary" DTXT ;
+
+: COMPILE-IMM-JSON ( ptr u8 n ptr u8 n -- )
+   {: da:ptr du:n ta:ptr tu:n :}
+   123 EMIT1
+   s" schema_version" JKEY 1 JNUM 44 EMIT1
+   s" code" JKEY IMM-CODE$ JSTR 44 EMIT1
+   s" repair_class" JKEY IMM-CLASS$ JSTR 44 EMIT1
+   s" verdict" JKEY s" rejected" JSTR 44 EMIT1
+   s" word" JKEY da du JSTR 44 EMIT1
+   s" token" JKEY ta tu JSTR 44 EMIT1
+   s" suggestion" JKEY IMM-SUGGEST$ JSTR
+   125 EMIT1 ;
+
+: COMPILE-IMM-DIAG ( ptr u8 n ptr u8 n -- )
+   1 RDST !  0 RSN !  0 RQM !
+   JSON-DIAGS @ if COMPILE-IMM-JSON else COMPILE-IMM-PROSE then
+   10 EMIT1
+   RSBUF RSN @ RDIAG-APPEND
+   0 RDST !  0 RSN ! ;
 
 \ --- bad stored-signature diagnostics (multi-error TRUST rows; USIG-ADD-BAD).
 \ SGBAD state from the failed parse is still live, so class + suggestion mirror

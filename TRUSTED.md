@@ -393,7 +393,7 @@ that source is explicitly certified; they are not stale-checked by the default
 | c-package-record-match | `label label --` | Generated package-dictionary matcher compares the current token with one record and branches to the supplied match or next labels. | `test/seal-package.f`, `test/run.f` | src/habu/habu2.f | 2026-07-11 |
 | c-package-prot-guard | `--` | Generated package reopen guard rejects any package whose public wordlist is registered as protected. | `test/seal-package.f`, `test/run.f` | src/habu/habu2.f | 2026-07-11 |
 | p2f-entry | `label ptr a n n --` | Pass-2 typed-fetch dispatch consumes source-offset width and descriptor rows, emits validation, and executes the frozen bundle-fetch lowering. | `test/run.f` | src/habu/habu2.f | 2026-07-11 |
-| INSTALL | `--` | Protected checker-hook installer owns the fixed `LOWER-CERT-HOOK:HOOK` execution token and restores the default fail-closed checker after package sealing. | `tools/build-fixpoint-test.f`, `test/gate-aot-negative.f`, `test/engine-suite.f`, `test/run.f` | src/core/check-hook.f | 2026-07-11 |
+| INSTALL | `--` | Protected checker-hook installer owns the fixed `LOWER-CERT-HOOK:HOOK` and compile-immediate `PREFLIGHT` execution tokens, installs the protected preflight cell before arming the default fail-closed checker, and is the required prelude for every custom-hook install. | `tools/build-fixpoint-test.f`, `test/gate-aot-negative.f`, `test/top-row-hook-test.f`, `test/engine-suite.f`, `test/run.f` | src/core/check-hook.f | 2026-07-17 |
 | TR-INSTALL | `--` | Installs the tier-1 top-row tracker hook through the guarded-deref `set-top-check` trust-boundary prim (mirrors `LOWER-CERT-HOOK:INSTALL`'s `' HOOK set-check`); hook installation is not expressible in the checked language. | `test/top-row-warn-test.f`, `test/run.f` | src/core/top-row.f | 2026-07-14 |
 | TR-CERT-DOUT-EMPTY? | `ptr u8 n -- bool` | Unchecked boundary that calls the checker effect-read API (EFFECT-QUERY/EFFECT-DOUT-N) from the checked tier-1 tracker to detect a certified word producing no fixed outputs, so the row pops its declared din precisely instead of graying the tail; reading raw effect-store state is not expressible in the checked language. | `test/top-row-warn-test.f`, `test/run.f` | src/core/top-row.f | 2026-07-15 |
 | CHECKER-CERT-CALL | `ptr u8 n n n --` | Single dynamic-call boundary for the installed lowering-certificate producer; installation is private and single-assignment. | `tools/build-fixpoint-test.f`, `test/lower-cert.f`, `test/run.f` | src/core/checker.f | 2026-07-11 |
@@ -431,7 +431,7 @@ that source is explicitly certified; they are not stale-checked by the default
 | MSIZE | `-- n` | Image-byte test republishes the image buffer capacity to drive the cursor-overflow regression (the silent maker-build failure class). | `tools/image-bytes-test.f`, `test/run.f` | tools/image-bytes-test.f | 2026-07-03 |
 | P5 | `-- i64` | Engine-suite trusted immediate around `POSTPONE`; the compile-time body emits `IM5`, while the declared effect is the runtime value compiled into `TP`. | `test/engine-suite.f`, `test/run.f` | test/engine-suite.f | 2026-06-24 |
 | PROP-CHECK-HOOK | `ptr u8 n -- n` | Property-test fail-closed source hook wraps `CHECK!`; recursive checker invocation cannot be certified by the checked source it protects. | `test/prop-test.f`, `test/gate-debug.f`, `test/run.f` | test/prop-test.f | 2026-06-24 |
-| PROP-INSTALL-HOOK | `--` | Property-test installer sets the fail-closed checker hook; mutating the hook is a named trusted boundary instead of a top-level mutation. | `test/prop-test.f`, `test/gate-debug.f`, `test/run.f` | test/prop-test.f | 2026-06-24 |
+| PROP-INSTALL-HOOK | `--` | Property-test installer rearms the canonical compile preflight before setting its fail-closed custom checker hook. | `test/prop-test.f`, `test/gate-debug.f`, `test/run.f` | test/prop-test.f | 2026-07-17 |
 | CLEAR-MEAS | `R n -- n` | Property-test oracle drains the arbitrary residual data-stack tail left by a generated program while preserving the measured count; this is exactly the value-agnostic depth boundary. | `test/prop-test.f`, `test/gate-debug.f`, `test/run.f` | test/prop-test.f | 2026-06-22 |
 | ERR@ | `-- n` | Reads the engine `evaluate` recovery cell from the live `data-base` header so the in-process property oracle can distinguish clean execution from recovered traps. | `test/prop-test.f`, `test/gate-debug.f`, `test/run.f` | test/prop-test.f | 2026-06-24 |
 | MARK | `--` | Property-test checkpoint captures code, dictionary, and user-signature cursors; these raw interpreter stores are outside the checker model. | `test/prop-test.f`, `test/gate-debug.f`, `test/run.f` | test/prop-test.f | 2026-06-24 |
@@ -531,13 +531,13 @@ that source is explicitly certified; they are not stale-checked by the default
 | JSON-DIAGS | `-- ptr a` | AOT diagnostics read the checker's JSON-mode flag; the checker registry does not publish its own words to later checked loads, so the variable is typed as an axiom for the checked AOT tail. | `test/run.f`, `tools/hb-build.f` | src/habu/aot-closure.f | 2026-07-07 |
 | CHECK! | `ptr u8 n -- n` | The AOT driver hook wraps the engine checker entrypoint for user source; the entrypoint's effect is modeled as a primitive axiom so the checked AOT tail compiles under the toolchain hook. | `test/run.f`, `tools/hb-build.f` | src/habu/aot-closure.f | 2026-07-07 |
 | AOT-CTOR-EVAL | `ptr u8 n --` | The AOT maker compiles generated sumtype-constructor bodies with `evaluate` at its own interpret level; dynamic source evaluation cannot be expressed by the checker. | `test/run.f`, `tools/hb-build.f` | src/habu/aot.f | 2026-07-16 |
-| INSTALL-USER-HOOK | `--` | The AOT maker installs the fail-closed user-source checker hook with `set-check`; hook installation is a compiler-control op the checker rejects inside a checked body. | `test/run.f`, `tools/hb-build.f` | src/habu/aot.f | 2026-07-16 |
+| INSTALL-USER-HOOK | `--` | The AOT maker rearms the canonical compile preflight before installing its fail-closed user-source checker hook. | `test/run.f`, `tools/hb-build.f` | src/habu/aot.f | 2026-07-17 |
 | MK-SBUF@ | `-- ptr u8` | Reads the hb-build maker source buffer pointer stored in a raw variable while compiling the separate maker image. | `tools/hb-build-test.f`, `test/run.f` | src/habu/maker.f | 2026-06-24 |
 | STB@ | `-- ptr u8` | Reads the snapshot source text base pointer stored in a raw variable. | `test/run.f`, `tools/build-fixpoint.f snap` | src/habu/snap-lib.f | 2026-06-26 |
 | STB-CELL@ | `-- ptr n` | Reads the snapshot source text base pointer as a cell-address for executable-header size lookup. | `test/run.f`, `tools/build-fixpoint-test.f` | src/habu/snap-lib.f | 2026-06-26 |
 | SDB@ | `-- ptr u8` | Reads the snapshot dictionary/data-region pointer stored in a raw variable. | `test/run.f`, `tools/build-fixpoint.f snap` | src/habu/snap-lib.f | 2026-06-26 |
 | SNAP-CHECK-HOOK | `ptr u8 n -- n` | Snapshot image installs the fail-closed checker hook into emitted images that need a fresh hook; recursive `CHECK!` hook bodies are trusted boundaries. | `test/run.f`, `test/gate-debug.f` | src/habu/snap-lib.f | 2026-06-26 |
-| SNAP-INSTALL-HOOK | `--` | Snapshot image mutates the checker hook cell only through a named trusted installer. | `test/run.f`, `test/gate-debug.f` | src/habu/snap-lib.f | 2026-06-26 |
+| SNAP-INSTALL-HOOK | `--` | Snapshot image rearms the canonical compile preflight before installing its fail-closed snapshot checker hook. | `test/run.f`, `test/gate-debug.f` | src/habu/snap-lib.f | 2026-07-17 |
 | SNC-PTR | `-- ptr u8` | Scratch snapshot region view over a raw anonymous mmap; canonical-base writer scratch. | `test/run.f snap`, `tools/build-fixpoint-test.f` | src/habu/snap-lib.f | 2026-07-02 |
 | SNC-TEXT-N | `-- n` | Reads the saved text base cell as a plain integer for relocation band math. | `test/run.f snap`, `tools/build-fixpoint-test.f` | src/habu/snap-lib.f | 2026-07-02 |
 | SND-PTR | `-- ptr u8` | Scratch snapshot data view over a raw anonymous mmap; live-cell zeroing target. | `test/run.f snap`, `tools/build-fixpoint-test.f` | src/habu/snap-lib.f | 2026-07-02 |
@@ -764,7 +764,7 @@ that source is explicitly certified; they are not stale-checked by the default
 | CGR-CHECK! | `ptr u8 n -- n` | Code-role transformer invokes the engine checker on extracted definitions before any dynamic compilation. | `tools/codegen-role-test.f`, `test/run.f` | tools/codegen-role.f | 2026-07-12 |
 | CGR-EVALUATE-UNCHECKED | `ptr u8 n --` | Post-certification compiler briefly disables the hook because the preceding checker pass already published the certified definition record; the hook is restored immediately afterward. | `tools/codegen-role-test.f`, `test/run.f` | tools/codegen-role.f | 2026-07-12 |
 | CGR-HOOK | `ptr u8 n -- n` | Code-role transformer fail-closed checker hook rejects every verdict except certification. | `tools/codegen-role-test.f`, `test/run.f` | tools/codegen-role.f | 2026-07-12 |
-| CGR-HOOK! | `--` | Code-role transformer reinstalls its named fail-closed hook after the audited post-certification compile window. | `tools/codegen-role-test.f`, `test/run.f` | tools/codegen-role.f | 2026-07-12 |
+| CGR-HOOK! | `--` | Code-role transformer rearms the canonical compile preflight before reinstalling its fail-closed hook after the audited post-certification compile window. | `tools/codegen-role-test.f`, `test/run.f` | tools/codegen-role.f | 2026-07-17 |
 | CHECK! | `ptr u8 n -- n` | Check driver models the engine checker entrypoint so its fail-closed source hook compiles checked. | `tools/check-test.f`, `test/run.f` | tools/check-core.f | 2026-07-12 |
 | TYPE-RESERVED? | `ptr u8 n -- bool` | Check driver models the checker-owned reserved-type predicate used while validating generated source dependencies. | `tools/check-test.f`, `test/run.f` | tools/check-core.f | 2026-07-12 |
 | CHECKER-DEFTYPE | `ptr u8 n --` | Check driver models the checker primitive that publishes a parsed nominal type in the child validation scope. | `tools/check-test.f`, `test/run.f` | tools/check-core.f | 2026-07-12 |
@@ -827,8 +827,9 @@ check-state transitions are the refresh prelude's `BFR-CHECK-OFF` call (a
 hide.f TRUSTED word with its own row), `src/core/check-hook.f`'s own
 `' HOOK set-check`, and the check-CLI runner prelude that
 `tools/check-core.f` `CHK-BUILD-PREFIX` generates into every check child: a
-`0 set-check` window followed by the `CHECK-F-HOOK` definition and its
-`' CHECK-F-HOOK set-check` re-arm, fail-closed via `70 throw`. That generated
+`0 set-check` window followed by the `CHECK-F-HOOK` definition, canonical
+`LOWER-CERT-HOOK:INSTALL` preflight rearm, and `' CHECK-F-HOOK set-check`
+install, fail-closed via `70 throw`. That generated
 install is lexer-invisible to hook-identity policing by design; its shape is
 pinned by the `check/prelude-hook-shape` regression
 (`tools/check-test-lib.f`), which rejects any other installed hook name or a
@@ -1877,7 +1878,7 @@ src/habu/snap-lib.f:SNAP-CHECK-HOOK builder-emit cap:checker-hook-identity 2
 tools/check-core.f:CHK-CHECK-HOOK stdlib-boundary cap:checker-hook-identity
 tools/lint/text.f:LINT-CHECK-HOOK stdlib-boundary cap:checker-hook-identity
 test/engine-suite.f:ES-VERDICT-HOOK test-metaprog cap:checker-hook-identity 2
-test/prop-test-core.f:PROP-CHECK-HOOK test-metaprog cap:checker-hook-identity 4
+test/prop-test-core.f:PROP-CHECK-HOOK test-metaprog cap:checker-hook-identity 2
 tools/codegen-role.f:CGR-HOOK test-metaprog cap:checker-hook-identity 2
 tools/codegen-role.f:CGR-HOOK! test-metaprog cap:checker-hook-identity
 -->

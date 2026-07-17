@@ -351,7 +351,9 @@ points stay listed.
   hb-build boundary rejections.
 - `tools/cli-run.f` — checked helpers for explicitly installed CLI fixture
   subprocesses.
-- `tools/bootstrap-codegen-test.f` — native source regression for bootstrap codegen fail-closed contracts.
+- `tools/bootstrap-codegen-test.f` — native source regression for bootstrap
+  codegen fail-closed contracts, including byte-span parity for the recovery
+  compile-preflight diagnostic.
 - `tools/imgdump.f` — native image dictionary dump and compare tool.
 - `tools/imgdump-test.f` — checked fixture coverage for image dump compare mode.
 - `tools/imagedisasm.f` — native raw image slice disassembler.
@@ -862,7 +864,7 @@ points stay listed.
 - `tools/stdin-closure-lint.f` — fail-closed drift gate proving stdin-closure consumers stay reconciled with the manifest.
 - `tools/build-fixpoint.f` — checked self-rebuild fixpoint orchestration definitions.
 - `tools/build-fixpoint-main.f` — CLI entrypoint for the self-rebuild fixpoint driver.
-- `tools/build-fixpoint-test.f` — checked fixture coverage for the self-rebuild fixpoint driver.
+- `tools/build-fixpoint-test.f` — checked fixture coverage for the self-rebuild fixpoint driver, including warm-snapshot execution of the persisted compile-immediate preflight hook.
 - `tools/boot-pin.f` — boot-prefix content-pin tool: print/verify the digest of the checker/core source the engine re-reads at boot.
 - `tools/boot-pin-main.f` — CLI entrypoint for the boot-prefix pin tool.
 - `tools/lint/json-writer.f` — compact JSON writer for native lint diagnostics.
@@ -1177,9 +1179,11 @@ points stay listed.
   (number/string/counted-string/char literals, tick, pre-BLR word calls,
   including certified min-in arity in the LFIND flags); `top-check@`
   round-trips; child forges prove `set-top-check` fails closed rc 70 with the
-  named diagnostic on both cold-prefix paths and that a raw store into the
-  sealed TOP-HOOK-CELL band traps `ENGINE-ERROR:SEAL-VIOLATION` while both one-cell
-  neighbors stay writable.
+  named diagnostic on both cold-prefix paths and that raw stores into the
+  sealed compile-preflight/top/snapshot hook band trap
+  `ENGINE-ERROR:SEAL-VIOLATION` while both one-cell neighbors stay writable;
+  custom checker-hook reinstall runs compile preflight, and a missing preflight
+  emits exactly one LF-terminated diagnostic with no trailing byte.
 - `test/top-row-warn-test.f` — tier-1 top-row tracker warning regressions (dot
   habu-typed-top-checker-82cf8b84): child probes assert p1 `' FOO2 execute`,
   p2 `0 0 catch`, and p3 `s" abc" + .` each emit exactly one `hb: top-row:`
@@ -1336,7 +1340,7 @@ points stay listed.
 - `test/gate-runner-support.f` — side-effect-free support bundle for focused runner-entry invocations.
 - `test/gate-runner-entry.f` — tiny CLI entry for focused native runner dispatch.
 - `test/gate-runner-entry-test.f` — standalone-load regression: spawns the documented `gate-runner-support`+`gate-runner-entry` closure and asserts it reaches GR-USAGE (rc 64), proving the whole require chain loads under the raised dictionary cap.
-- `test/load-reject-diag-test.f` — spawn regression: a rejecting `--load` (direct, require-chain, checked-body) must exit 70 WITH a named stderr diagnostic, never silently.
+- `test/load-reject-diag-test.f` — spawn regression: rejecting `--load` paths must exit 70 with named stderr; compile-time `include`/`require` reject before side effects with structured repair, while top-level loaders, runtime `included`/`required`/`provided`, modeled immediates, and audited trusted immediate bodies stay live.
 - `test/gate-stdlib-inline-lib.f` — in-process stdlib gate slice dispatcher for resident runner forks.
 - `test/gate-stdlib-tool-base-ready.f` — resident-runner sentinel that marks the common stdlib tool base as already loaded.
 - `test/gate-stdlib-lint-tools.f` — in-process lint-tools group body loaded after shared setup.

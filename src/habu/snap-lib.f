@@ -251,4 +251,5 @@ TRUSTED: SND-QUARANTINE@ ( n -- n ) cells SND-QUARANTINE + @ ;
 TRUSTED: SNAP-CHECK-HOOK ( ptr u8 n -- n )
    CHECK! dup -1 <> IF 70 throw THEN ;
 TRUSTED: SNAP-INSTALL-HOOK ( -- )
+   LOWER-CERT-HOOK:INSTALL
    ['] SNAP-CHECK-HOOK set-check ;

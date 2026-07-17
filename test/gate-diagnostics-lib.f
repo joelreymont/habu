@@ -449,7 +449,8 @@ variable GDX-TRUST-MAN-U
    s" CO ( -- ) compile," GE-SRC-CHECK-LINE
    s" IM ( -- ) immediate" GE-SRC-CHECK-LINE
    s" LB ( -- ) [" GE-SRC-CHECK-LINE
-   s" RB ( -- ) ]" GE-SRC-CHECK-LINE ;
+   s" RB ( -- ) ]" GE-SRC-CHECK-LINE
+   s" PF ( -- ) 0 set-preflight" GE-SRC-CHECK-LINE ;
 
 : GDX-UNSAFE-CHECKS ( -- )
    GE-HB-RESET
@@ -458,6 +459,7 @@ variable GDX-TRUST-MAN-U
    SB-RESET
    s" 0" GE-OUT-LINE s" 0" GE-OUT-LINE s" 0" GE-OUT-LINE
    s" 0" GE-OUT-LINE s" 0" GE-OUT-LINE s" 0" GE-OUT-LINE
+   s" 0" GE-OUT-LINE
    SB$ s" unsafe compiler words verdict output" GE-EXPECT-OUT
    GE-HB-RESET
    GE-SRC-RESET
@@ -468,6 +470,12 @@ variable GDX-TRUST-MAN-U
    s" token" s" evaluate" s" unsafe checker token" GDX-EXPECT-ERR-JSTR
    s" habu-unsafe.err" s" unsafe diagnostic contract" GDX-DIAG-CONTRACT
    s" diag-repair-class" s" habu-unsafe.err" s" trusted_boundary_required" s" unsafe repair class" GDX-GJA2S
+   GE-HB-RESET
+   GE-SRC-RESET
+   s" : PF ( -- ) 0 set-preflight ;" GE-SRC-LINE
+   s" tools/check.f accepted unsafe set-preflight" GDX-CHECK-JSON
+   s" code" s" E-UNSAFE" s" set-preflight checker E-UNSAFE" GDX-EXPECT-ERR-JSTR
+   s" token" s" set-preflight" s" set-preflight checker token" GDX-EXPECT-ERR-JSTR
    GE-HB-RESET
    GE-SRC-RESET
    s" : EV ( -- n ) evaluate ;" GE-SRC-LINE

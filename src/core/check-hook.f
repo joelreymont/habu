@@ -7,6 +7,13 @@ package LOWER-CERT-HOOK
 : REPORT-UNCHECKABLE ( n -- n )
    dup 1 = JSON-DIAGS @ 0= and DIAGXT @ 0 <> and if DIAGXT @ execute then ;
 
+: PREFLIGHT ( ptr u8 n ptr u8 n bool -- )
+   {: da:ptr du:n ta:ptr tu:n trusted:bool :}
+   trusted if exit then
+   ta tu CHECKER-MODELED-IMM? if exit then
+   da du ta tu COMPILE-IMM-DIAG
+   CHECK-RC throw ;
+
 \ In multi-error mode CHECK already emitted the diagnostic, counted the reject,
 \ and trusted the declared signature. Return -1 so the native publishes the
 \ definition (a non-zero hook return commits it; zero rejects and unpublishes
@@ -30,6 +37,7 @@ public
       CHECK-RC throw then ;
 
 TRUSTED: INSTALL ( -- )
+   ['] PREFLIGHT set-preflight
    ['] HOOK set-check ;
 
 INSTALL

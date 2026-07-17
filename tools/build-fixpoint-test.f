@@ -804,8 +804,30 @@ private
 
 : PROBE! ( -- )
    s" snap-hook-probe.f" BF-A$
-   s\" package SNAP-HOOK-PROBE public\n: ASSERT-CLEAR ( -- )\n   data-base ENGINE-SNAP-XT-CELL + @ 0 <> if 1 throw then ;\n;package\nSNAP-HOOK-PROBE:ASSERT-CLEAR\n"
+   s\" package SNAP-HOOK-PROBE public\n: ASSERT-HOOKS ( -- )\n   data-base ENGINE-SNAP-XT-CELL + @ 0 <> if 1 throw then\n   data-base COMPILE-PREFLIGHT-CELL + @ 0= if 2 throw then ;\n;package\nSNAP-HOOK-PROBE:ASSERT-HOOKS\n: BFT-SNAP-PI ( -- ) ; immediate\ns\" BFT-SNAP-PI\" 0 parse-imm\n: BFT-SNAP-OK ( -- n ) BFT-SNAP-PI 73 ;\n: BFT-SNAP-ASSERT ( -- ) BFT-SNAP-OK 73 <> if 3 throw then ;\nBFT-SNAP-ASSERT\n"
    WRITE-ALL ;
+
+: PROBE-ARGV ( -- )
+   PROC-ARGV-RESET
+   s" --load" BFT-ARG+
+   s" snap-hook-probe.f" BF-A$ BFT-ARG+
+   s" --" BFT-ARG+
+   BFT-ROOT BFT-ARG+ ;
+
+: PROBE-CAPTURE ( -- )
+   PROBE-ARGV
+   PROC-ENV-RESET
+   s" HB_TMP" >LEN BFT-ROOT >LEN PROC-ENV+
+   s" hb-doctored" BF-A$ >LEN BFT-OUT BFT-CAPTURE-CAP >LEN
+   BFT-ERR BFT-CAPTURE-CAP >LEN BFT-TIMEOUT-MS >MS
+   RUN-ARGV-ENV-CAPTURE-OUTCOME
+   MATCH outcome
+     exited OF BFT-DOC-CODE ! 0 0= BFT-DOC-EXITED ! ENDOF
+     signaled OF BFT-DOC-CODE ! 0 0= 0= BFT-DOC-EXITED ! ENDOF
+     timeout OF 0 BFT-DOC-CODE ! 0 0= 0= BFT-DOC-EXITED ! ENDOF
+   ;MATCH {: ou:len eu:len :}
+   ou LEN>N BFT-DOC-OUT-U !
+   eu LEN>N BFT-DOC-ERR-U ! ;
 
 : RAW ( -- )
    HOOK-OFF {: off:n :}
@@ -821,9 +843,11 @@ private
    BFT-DOCTOR-WRITE
    s" hb-doctored" BF-CODESIGN-VERIFY-TMP
    PROBE!
-   s" hb-doctored" BF-A$ s" snap-hook-probe.f" BF-B$ BF-RUN-LOAD-STAGE {: rc:n :}
+   PROBE-CAPTURE
    orig off BFT-BYTE!
-   rc 0 T= ;
+   BFT-DOC-EXITED @ TTRUE
+   BFT-DOC-ERR$ BFT-EMPTY$ T$=
+   BFT-DOC-CODE @ 0 T= ;
 
 : NOHOOK-SOURCE ( -- )
    s" hb-snap-nohook-src" BF-RESET-OUT
