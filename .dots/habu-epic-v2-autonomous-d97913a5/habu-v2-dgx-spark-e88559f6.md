@@ -9,3 +9,7 @@ blocks:
 ---
 
 When the ordered DGX Spark arrives, inventory exact hardware, OS, driver, CUDA, power modes, and supported framework matrix; create a target description and calibrated baseline environment. Install and verify the reference-framework environment, Habu fixpoint/gates, tensor smoke, training smoke, profiler, and artifact transfer. Acceptance: attested target digest, same-session PyTorch/Triton/vendor baselines, Habu compile/profile smoke, and no assumed reuse of another GPU evidence. Depends on reference environment dot.
+
+NOTE 2026-07-17: the Spark hardware is being configured by ANOTHER AGENT
+(user statement). This lane does not dispatch bring-up; coordinate via
+this dot when the configuring agent records the attested target digest.

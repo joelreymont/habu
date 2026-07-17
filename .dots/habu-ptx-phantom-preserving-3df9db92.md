@@ -3,7 +3,7 @@ title: PTX phantom-preserving effects
 status: active
 priority: 2
 issue-type: task
-created-at: "\"\\\"2026-07-01T23:07:20.878978+02:00\\\"\""
+created-at: "\"\\\"\\\\\\\"2026-07-01T23:07:20.878978+02:00\\\\\\\"\\\"\""
 ---
 
 lib/ptx TRUSTED: base is 75 sites but only 17 are genuine register mints; the other ~66 exist because kernel newtype wrappers cannot carry the phantom through checked EMIT-* words (PTX string emitters underneath are already checked). Capability: phantom-preserving effects - kernel-typed values carry their n register representation through checked emitters. Retires 66 sites to a 17-cast mint core. Effort L (~1wk). Directly serves maki: every new kernel op stops minting trusted wrappers (feeds habu-checker-capability-typed-e0c76a02 adjacent work but is orthogonal to loops/smem).
@@ -90,3 +90,5 @@ STATE/SCORE/..., ACC-*) - this is the audited mint core, not debt;
 (iii) ROW / BLOCK-MAX / BLOCK-SUM deferrable; (iv) categories 2c/2d/2e
 unchanged. One documented conservative boundary: VALUE-RECORD input mixed
 with a register mint is not sealed.
+
+Claim: agent=leg2c workspace=.jj-ws/fable-leg2c (LEG 2C: projection-load batch - tile.f/tile-v4.f/tile-v4a.f/tile-smem.f loads; land only if net trust <= -1)
