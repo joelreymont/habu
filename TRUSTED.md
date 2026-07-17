@@ -501,19 +501,6 @@ that source is explicitly certified; they are not stale-checked by the default
 | SCRIPT-ARGC | `-- n` | Returns standalone bundle user argument count. | `tools/hb-build-test.f`, `test/run.f` | src/habu/bundle-argv.f | 2026-06-28 |
 | SCRIPT-ARGV | `n -- ptr u8` | Returns one standalone bundle user argv c-string. | `tools/hb-build-test.f`, `test/run.f` | src/habu/bundle-argv.f | 2026-06-28 |
 | SCRIPT-ARGV$ | `n -- ptr u8 n` | Returns one standalone bundle user argument as counted bytes. | `tools/hb-build-test.f`, `test/run.f` | src/habu/bundle-argv.f | 2026-06-28 |
-| SHAKE? | `-- ptr n` | Treeshaker enable flag cell is a raw variable; checked scanner code needs its cell type pinned before using `@`/`!`. | `test/run.f` | src/habu/treeshake.f | 2026-06-26 |
-| SHK-U | `-- ptr n` | Treeshaker source length cell is a raw variable used by checked scanner bounds tests. | `test/run.f` | src/habu/treeshake.f | 2026-06-30 |
-| SKP | `-- ptr n` | Treeshaker scan cursor cell is a raw variable used by checked token scanning. | `test/run.f` | src/habu/treeshake.f | 2026-06-30 |
-| STS | `-- ptr n` | Treeshaker token-start cell is a raw variable used by checked token scanning. | `test/run.f` | src/habu/treeshake.f | 2026-06-30 |
-| REACHN | `-- ptr n` | Treeshaker reachability-buffer length cell is a raw variable used by checked reachability scanning. | `test/run.f` | src/habu/treeshake.f | 2026-06-30 |
-| TKP | `-- ptr n` | Treeshaker tokenizer cursor cell is a raw variable used by checked token scanning. | `test/run.f` | src/habu/treeshake.f | 2026-06-30 |
-| CHG | `-- ptr bool` | Treeshaker fixpoint-change flag cell is a raw variable used by checked reachability iteration. | `test/run.f` | src/habu/treeshake.f | 2026-06-30 |
-| INDEF | `-- ptr bool` | Treeshaker in-definition flag cell is a raw variable used by checked source scanning. | `test/run.f` | src/habu/treeshake.f | 2026-06-30 |
-| XNAME | `-- ptr bool` | Treeshaker expecting-definition-name flag cell is a raw variable used by checked source scanning. | `test/run.f` | src/habu/treeshake.f | 2026-06-30 |
-| KEEPCUR | `-- ptr bool` | Treeshaker keep-current-definition flag cell is a raw variable used by checked reachability expansion. | `test/run.f` | src/habu/treeshake.f | 2026-06-30 |
-| RSP | `-- ptr n` | Treeshaker reachability scan cursor cell is a raw variable used by checked reachability scanning. | `test/run.f` | src/habu/treeshake.f | 2026-06-30 |
-| RTS | `-- ptr n` | Treeshaker reachability-token-start cell is a raw variable used by checked reachability scanning. | `test/run.f` | src/habu/treeshake.f | 2026-06-30 |
-| TU | `-- ptr n` | Treeshaker current-token length cell is a raw variable used by checked scanner code. | `test/run.f` | src/habu/treeshake.f | 2026-06-30 |
 | HB@ | `-- ptr u8` | Reads the stdin-engine baked-source buffer pointer stored in a raw variable. | `test/run.f` | src/habu/stdin.f | 2026-06-16 |
 | EVAL-HOST | `ptr u8 n --` | Compiles a REPL source buffer in the metabuild host dict for AOT capture; `evaluate`'s net effect is source-dependent so the boundary declares the balanced install-tail effect. | `test/run.f` | src/habu/stdin.f | 2026-07-03 |
 | BLD-PB@ | `-- ptr u8` | Reads the standalone-build source buffer pointer stored in a raw variable. | `test/run.f`, `tools/hb-build.f` | src/habu/build.f | 2026-06-24 |
@@ -663,11 +650,7 @@ that source is explicitly certified; they are not stale-checked by the default
 | OUTPUT | `attnctx<q,d,attn-stage-output> attnacc<f32,b,m> -- attnctx<q,d,attn-stage-done> attnacc<f32,b,m>` | Target primitive for the PV reduction and global output store; FINISH accepts only its done-phase result. | `lib/ptx/attention-checked-test.f`, `lib/ptx/attention-checked-neg-test.f` | lib/ptx/cg-attention.f | 2026-07-12 |
 | CRH | `-- ptr u8` | Crash-handler header buffer is raw dictionary storage copied into signal-safe write output. | `test/gate-debug.f`, `test/run.f` | src/habu/crash.f | 2026-06-30 |
 | BFR-BYTE@ | `ptr u8 n -- u8` | Refresh prelude byte reader over dictionary name bytes; raw record pointers are refined before this checked scanner can read them. | `tools/build-fixpoint-test.f`, `test/run.f` | src/habu/hide.f | 2026-06-29 |
-| SHK-N | `-- ptr n` | Treeshaker token length cell is a raw variable used by checked token comparison loops. | `test/run.f` | src/habu/treeshake.f | 2026-06-30 |
-| SHK-C | `-- ptr n` | Treeshaker byte/delimiter scratch cell is a raw variable used by checked scanner helpers. | `test/run.f` | src/habu/treeshake.f | 2026-06-30 |
-| KEEP-U | `-- ptr n` | Treeshaker candidate-token length cell is a raw variable used by checked keep/reachability scanning. | `test/run.f` | src/habu/treeshake.f | 2026-06-30 |
 | SHK-BYTE+ | `ptr u8 n -- ptr u8` | Refines treeshaker byte-pointer arithmetic for token scanning; the raw `+` is the typed pointer-offset boundary. | `test/run.f` | src/habu/treeshake.f | 2026-06-30 |
-| SCAN-MODE | `-- ptr n` | Treeshaker reachability scan-mode cell is a raw variable used by checked source walks. | `test/run.f` | src/habu/treeshake.f | 2026-06-30 |
 | ZBYTE@ | `ptr u8 n -- u8` | Reads one byte from argv/envp C strings through byte-offset pointer arithmetic. | `test/run.f`, `tools/hb-build-test.f` | src/os/env-base.f | 2026-06-29 |
 | ZBYTE! | `u8 ptr u8 n --` | Writes one byte into target temp-path scratch through byte-offset pointer arithmetic. | `test/run.f`, `tools/build-fixpoint-test.f` | src/os/env-base.f | 2026-06-29 |
 | ZPTR+ | `ptr u8 n -- ptr u8` | Refines argv/envp C-string byte-pointer arithmetic after the `NAME=` prefix. | `test/run.f`, `tools/hb-build-test.f` | src/os/env-base.f | 2026-06-29 |
@@ -1057,24 +1040,7 @@ src/habu/stage2.f:S2-PATH-BUF builder-emit habu-builder-trust-rows-c5d41af6
 src/habu/stage2.f:SBUF@ builder-emit habu-builder-trust-rows-c5d41af6
 src/habu/stdin.f:HB@ builder-emit habu-builder-trust-rows-c5d41af6
 src/habu/stdin.f:EVAL-HOST builder-emit habu-builder-trust-rows-c5d41af6
-src/habu/treeshake.f:SHAKE? builder-emit habu-builder-trust-rows-c5d41af6
-src/habu/treeshake.f:SHK-U builder-emit habu-builder-trust-rows-c5d41af6
-src/habu/treeshake.f:SKP builder-emit habu-builder-trust-rows-c5d41af6
-src/habu/treeshake.f:STS builder-emit habu-builder-trust-rows-c5d41af6
-src/habu/treeshake.f:SHK-N builder-emit habu-builder-trust-rows-c5d41af6
-src/habu/treeshake.f:SHK-C builder-emit habu-builder-trust-rows-c5d41af6
-src/habu/treeshake.f:KEEP-U builder-emit habu-builder-trust-rows-c5d41af6
 src/habu/treeshake.f:SHK-BYTE+ builder-emit habu-builder-trust-rows-c5d41af6
-src/habu/treeshake.f:REACHN builder-emit habu-builder-trust-rows-c5d41af6
-src/habu/treeshake.f:TKP builder-emit habu-builder-trust-rows-c5d41af6
-src/habu/treeshake.f:CHG builder-emit habu-builder-trust-rows-c5d41af6
-src/habu/treeshake.f:INDEF builder-emit habu-builder-trust-rows-c5d41af6
-src/habu/treeshake.f:XNAME builder-emit habu-builder-trust-rows-c5d41af6
-src/habu/treeshake.f:KEEPCUR builder-emit habu-builder-trust-rows-c5d41af6
-src/habu/treeshake.f:RSP builder-emit habu-builder-trust-rows-c5d41af6
-src/habu/treeshake.f:RTS builder-emit habu-builder-trust-rows-c5d41af6
-src/habu/treeshake.f:TU builder-emit habu-builder-trust-rows-c5d41af6
-src/habu/treeshake.f:SCAN-MODE builder-emit habu-builder-trust-rows-c5d41af6
 src/habu/verify-source.f:CHECK-BODY builder-emit habu-builder-trust-rows-c5d41af6
 src/habu/verify-source.f:MULTI-ERR-MODE? builder-emit habu-builder-trust-rows-c5d41af6
 src/habu/verify-source.f:SIG-RAW-MODE! builder-emit habu-builder-trust-rows-c5d41af6

@@ -8,13 +8,11 @@ variable SHAKE?   PTR-VARIABLE SHK-A   variable SHK-U
 variable SKP  variable STS
 PTR-VARIABLE SHK-P  PTR-VARIABLE SHK-Q  variable SHK-N  variable SHK-C
 PTR-VARIABLE KEEP-A  variable KEEP-U
-s" SHAKE?" s" -- ptr n" TRUST
-s" SHK-U" s" -- ptr n" TRUST
-s" SKP" s" -- ptr n" TRUST
-s" STS" s" -- ptr n" TRUST
-s" SHK-N" s" -- ptr n" TRUST
-s" SHK-C" s" -- ptr n" TRUST
-s" KEEP-U" s" -- ptr n" TRUST
+\ SHAKE?/SHK-U/SKP/STS/SHK-N/SHK-C/KEEP-U are raw `variable` cells: the definer
+\ publishes each created word as `-- ptr a` (TVK-RAW, verify-source SIG-RAW-MODE!),
+\ and raw `a` certifies the plain-scalar `@`/`!` use below without a per-cell TRUST
+\ row (dot habu-typed-defining-words: the old `-- ptr n` overrides predated the
+\ raw-variable auto-effect and are retired).
 : SHK-A@ ( -- ptr u8 )
    SHK-A @ ;
 : SHK-P@ ( -- ptr u8 )
@@ -77,16 +75,9 @@ variable REACHN  variable TKP   variable CHG
 variable INDEF   variable XNAME variable KEEPCUR
 variable RSP     variable RTS   PTR-VARIABLE TA    variable TU
 variable SCAN-MODE
-s" REACHN" s" -- ptr n" TRUST
-s" TKP" s" -- ptr n" TRUST
-s" CHG" s" -- ptr bool" TRUST
-s" INDEF" s" -- ptr bool" TRUST
-s" XNAME" s" -- ptr bool" TRUST
-s" KEEPCUR" s" -- ptr bool" TRUST
-s" RSP" s" -- ptr n" TRUST
-s" RTS" s" -- ptr n" TRUST
-s" TU" s" -- ptr n" TRUST
-s" SCAN-MODE" s" -- ptr n" TRUST
+\ REACHN/TKP/CHG/INDEF/XNAME/KEEPCUR/RSP/RTS/TU/SCAN-MODE are raw `variable`
+\ cells; raw `a` certifies their plain-scalar/bool `@`/`!` use with no per-cell
+\ TRUST row (dot habu-typed-defining-words, as above).
 : TA@ ( -- ptr u8 )
    TA @ ;
 

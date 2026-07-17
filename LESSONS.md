@@ -56,6 +56,30 @@ Last updated: 2026-07-17
   prove warm-boot execution with a modeled immediate rather than checking only
   that the serialized pointer is nonzero.
 
+- **A "role-typed variable family" ask is often already covered by existing
+  definers — check before building one.** (typedefs lane, dot
+  habu-typed-defining-words-aa224eb5.) Raw `variable`/`create`/`constant` publish
+  TVK-RAW cells (`-- ptr a`; `@`→`a`, and `a` coerces to `n`/`bool`/`ptr u8`), so
+  they already own plain-scalar/bool/raw cells; `TYPED-VARIABLE`/`TYPED-BUFFER`
+  (layout-buffer.f) own nominal/closed-typed-ptr/xt cells. CHECKER-STORAGE-INFO
+  DELIBERATELY rejects `n`/`bool`/`a`/`idx` (throw 7121) — that is the raw
+  definer's partition, pinned by typed-storage-test R4 (`( n -- n ) RAWV ! RAWV @`
+  certifies; laundering a nominal family through the raw cell rejects). So a
+  per-cell `s" X" s" -- ptr n" TRUST` override on a raw `variable` is REDUNDANT
+  once the definer auto-registers its effect (verify-source SIG-RAW-MODE!,
+  2026-07-15): the 17 treeshake `-- ptr n`/`-- ptr bool` rows predated it; delete
+  them and the raw boundary + a-coercion certifies the checked body unchanged
+  (proven by fixpoint rebuild — treeshake certifies without the rows, TRUST
+  363→346). MLEN already had no row; STB-CELL@ shares a body with STB@.
+- **Provenance-mint placement is load-order-bound, and a macOS rebuild can't
+  prove Linux/snapshot trust rows.** In build-fixpoint.f the baked order puts
+  os/macos/layout.f (pos 2) and image-bytes.f (pos 7) BEFORE roles.f (pos 12), so
+  a roles.f mint (MMAP>PTR/VA>PTR) cannot serve earlier consumers (MBUF-RC>PTR,
+  DATA-VA) — place the mint before its earliest baked consumer. A macOS fixpoint
+  build checks os/macos/* not os/linux/*, and snap-lib.f rides the snapshot
+  builder tail (not the main fixpoint); LINUX-VA>PTR, the Linux DATA-VA row, and
+  STB-CELL@ must be proven through the Linux gate / snapshot-build path, not a
+  macOS-only rebuild.
 - **Before deleting a "wrapper" vocabulary, rg its WORDS as strings — checked
   words can be a graded LLM-authoring surface, not just call sites.** (mmstage3
   lane, dot habu-re-express-tiled-9cc4a73a.) The plan said "delete
