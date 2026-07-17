@@ -1,9 +1,9 @@
 ---
 title: V2 atomic transaction commit
-status: open
+status: active
 priority: 1
 issue-type: task
-created-at: "2026-07-11T12:25:26.960293+02:00"
+created-at: "\"2026-07-11T12:25:26.960293+02:00\""
 blocks:
   - habu-v2-txn-journal-d0bc644f
 ---
@@ -17,3 +17,5 @@ nominal; EMIT-OBLIG/DEC-OBLIG switch to the 32B OBLIG:KEY>WIRE/WIRE>KEY
 content key (base-rev precedent); OBL-SORT/OBL-DEDUP order by content-key
 BYTES (KEY</BYTES< precedent) so the idempotency key / Merkle chain stays
 cross-process-deterministic; fixtures become interned obligation-ids.
+
+Claim: agent=atxn workspace=.jj-ws/fable-atxn (owns maki/db/transaction.f + new commit-machinery files + tests)
