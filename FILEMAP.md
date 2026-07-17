@@ -1550,6 +1550,7 @@ points stay listed.
 - `test/run-files.f` — file sets that key native test suite caches.
 - `test/gate-common.f` — thin entry wrapper for native gate helper definitions.
 - `test/gate-common-lib.f` — side-effect-free native test-suite helper definitions.
+- `test/candidate-runtime.f` — exact-candidate resident runtime source probes.
 - `test/gate-stdlib.f` — thin entry wrapper for lint/stdlib gate slices.
 - `test/gate-stdlib-lib.f` — side-effect-free lint/stdlib gate harness helpers.
 - `test/gate-stdlib-cases.f` — executable lint/stdlib suite declarations.

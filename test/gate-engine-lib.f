@@ -23,6 +23,7 @@ public
 3 constant GENG-REPAIR-ID
 4 constant GENG-RUNTIME-ID
 5 constant GENG-VALIDATE-ID
+6 constant GENG-CONSTRUCT-ID
 $40000 constant GE-MAX-CANDIDATE-BYTES
 
 create GE-SCRIPT-PATH FS-PATH-CAP allot
@@ -48,7 +49,7 @@ create GE-CHECK-OFF-LINE
 99 c, 104 c, 101 c, 99 c, 107 c, 10 c,
 
 : GENG-USAGE ( -- )
-   s" usage: test/gate-engine.f [build|fixtures|repair|runtime|validate] [--pool-slots N]" GENG-USAGE-RC die ;
+   s" usage: test/gate-engine.f [build|fixtures|repair|runtime|validate|construct-parity] [--pool-slots N]" GENG-USAGE-RC die ;
 
 : GENG-ARG$ ( -- ptr u8 n )
    GENG-ARG-I @ SCRIPT-ARGV$ ;
@@ -80,6 +81,7 @@ create GE-CHECK-OFF-LINE
    GENG-ARG$ s" repair" STR= if GENG-REPAIR-ID GENG-SLICE! 0 0= exit then
    GENG-ARG$ s" runtime" STR= if GENG-RUNTIME-ID GENG-SLICE! 0 0= exit then
    GENG-ARG$ s" validate" STR= if GENG-VALIDATE-ID GENG-SLICE! 0 0= exit then
+   GENG-ARG$ s" construct-parity" STR= if GENG-CONSTRUCT-ID GENG-SLICE! 0 0= exit then
    0 0= 0= ;
 
 : GENG-SLICE-OPT ( -- )
@@ -841,6 +843,33 @@ public
    s" TRUSTED: GE-UN3 ( gecn -- n n n ) ;" GE-SRC-LINE
    s" : GE-P3 ( gecn -- ) GE-UN3 . . . ;" GE-SRC-LINE ;
 
+package CONSTRUCT-RUNNER
+private
+
+defer RUN ( ptr u8 n -- )
+
+: DIRECT ( ptr u8 n -- )
+   2drop
+   GE-HB$ GE-SRC-BUF GE-SRC-U @ GE-TIMEOUT-MS GE-RUN-STDIN ;
+
+: PARITY ( ptr u8 n -- )
+   GATE-PARITY:RUN ;
+
+public
+
+: DIRECT! ( -- )
+   [: DIRECT ;] is RUN ;
+
+: PARITY! ( -- )
+   [: PARITY ;] is RUN ;
+
+: SOURCE ( ptr u8 n -- )
+   RUN ;
+
+;package
+
+CONSTRUCT-RUNNER:DIRECT!
+
 : GE-CONSTRUCT-ROUND ( -- )             \ construct == generated ctor, cell-for-cell
    GE-HB-RESET
    GE-SRC-RESET
@@ -852,7 +881,7 @@ public
    s" : GE-T2 ( -- ) 3 4 GE-MK2 GE-P3 ;  GE-T2" GE-SRC-LINE
    s" : GE-T0 ( -- ) GE-MK0 GE-P3 ;  GE-T0" GE-SRC-LINE
    s" : GE-G1 ( -- ) 7 GECN:ONE GE-P3 ;  GE-G1" GE-SRC-LINE
-   GE-HB$ GE-SRC-BUF GE-SRC-U @ GE-TIMEOUT-MS GE-RUN-STDIN
+   s" construct lowering direct/fork parity" CONSTRUCT-RUNNER:SOURCE
    s" construct lowering executes" GE-EXPECT-OK
    SB-RESET                              \ stack prints top-first: tag, slot1, slot0
    s" 0" SB-APPEND GE-SB-LF  s" 0" SB-APPEND GE-SB-LF  s" 7" SB-APPEND GE-SB-LF
@@ -866,7 +895,7 @@ public
    GE-SRC-RESET
    GE-CONSTRUCT-EXEC-SRC
    s" : GE-BADV ( n -- gecn ) construct gecn nope ;" GE-SRC-LINE
-   GE-HB$ GE-SRC-BUF GE-SRC-U @ GE-TIMEOUT-MS GE-RUN-STDIN
+   s" construct bad-variant direct/fork parity" CONSTRUCT-RUNNER:SOURCE
    70 s" unknown construct variant fails closed" GE-EXPECT-RC
    s" hb: construct: unknown variant: nope" s" construct variant diagnostic" GE-EXPECT-ERR-HAS ;
 
@@ -880,7 +909,7 @@ public
    s" ;SUMTYPE" GE-SRC-LINE
    s" ;package" GE-SRC-LINE
    s" : GE-BADF ( n -- gefr ) construct gefr yes ;" GE-SRC-LINE
-   GE-HB$ GE-SRC-BUF GE-SRC-U @ GE-TIMEOUT-MS GE-RUN-STDIN
+   s" construct foreign direct/fork parity" CONSTRUCT-RUNNER:SOURCE
    70 s" foreign-package construct fails closed" GE-EXPECT-RC
    s" hb: construct: unknown family: gefr" s" construct foreign-family diagnostic" GE-EXPECT-ERR-HAS ;
 
@@ -1907,6 +1936,22 @@ create GE-RXE-TML-BUF 512 allot   variable GE-RXE-TML-U
    GT-CLEANUP
    s" PASS: native engine runtime gate slice" type cr ;
 
+: GE-CANDIDATE-CONSTRUCT-RUN ( -- )
+   GE-HB$ {: exe:ptr exeu:n :}
+   GE-HB-RESET
+   s" HABU_UNDER_TEST" >LEN exe exeu >LEN PROC-ENV+
+   s" test/candidate-runtime.f" GE-ARG+
+   exe exeu GE-TIMEOUT-MS GE-RUN-ENV
+   s" candidate construct parity" GE-EXPECT-OK
+   GT-ERR$ nip 0 <> if s" candidate construct parity stderr" GE-FAIL then
+   GT-OUT$ type ;
+
+: GENG-CONSTRUCT-PARITY-SLICE ( -- )
+   s" hb-gate-construct-parity" GT-START
+   GE-CANDIDATE-CONSTRUCT-RUN
+   GT-CLEANUP
+   s" PASS: exact candidate construct parity slice" type cr ;
+
 : GE-MAIN ( -- )
    GENG-PARSE-SLICE
    GENG-SLICE @ GENG-BUILD-ID = if GENG-BUILD-SLICE exit then
@@ -1914,6 +1959,7 @@ create GE-RXE-TML-BUF 512 allot   variable GE-RXE-TML-U
    GENG-SLICE @ GENG-REPAIR-ID = if GENG-REPAIR-SLICE exit then
    GENG-SLICE @ GENG-RUNTIME-ID = if GENG-RUNTIME-SLICE exit then
    GENG-SLICE @ GENG-VALIDATE-ID = if GENG-VALIDATE-SLICE exit then
+   GENG-SLICE @ GENG-CONSTRUCT-ID = if GENG-CONSTRUCT-PARITY-SLICE exit then
    GE-BUILD-FIXPOINT
    GE-RUN-EXTRA-FIXTURES
    GE-CANDIDATE-VALIDATE

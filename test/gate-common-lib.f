@@ -42,6 +42,8 @@ variable GE-EVAL-JSON-DIAGS
 variable GE-EVAL-OUT-SAVE
 variable GE-EVAL-ERR-SAVE
 variable GE-EVAL-STACK-A
+variable GE-EVAL-SRC-A
+variable GE-EVAL-SRC-U
 
 : GE-EVAL-STACK-A-FIELD ( -- ptr ptr u8 )
    GE-EVAL-STACK-A 0 ptr-field ;
@@ -55,6 +57,17 @@ variable GE-EVAL-STACK-A
 : GE-EVAL-STACK ( -- ptr u8 n )
    GE-EVAL-STACK@ 0= if MEM-ALLOC-64K drop GE-EVAL-STACK! then
    GE-EVAL-STACK@ 1 MEM-64K-BYTES ;
+
+: GE-EVAL-SRC-A-FIELD ( -- ptr ptr u8 )
+   GE-EVAL-SRC-A 0 ptr-field ;
+
+: GE-EVAL-SRC! ( ptr u8 n -- ) {: a:ptr u:n :}
+   u 0 < if E-STR-BOUNDS throw then
+   a GE-EVAL-SRC-A-FIELD !
+   u GE-EVAL-SRC-U ! ;
+
+: GE-EVAL-SRC$ ( -- ptr u8 n )
+   GE-EVAL-SRC-A-FIELD @ GE-EVAL-SRC-U @ ;
 
 : GE-STORE-CAPTURE ( len len rc -- ) {: outu:len erru:len rc:rc :}
    rc RC>N OUTCOME:EXITED GT-OUTCOME!
@@ -482,7 +495,7 @@ variable GE-EVAL-STACK-A
    -1 GE-EVAL-ERR-SAVE ! ;
 
 TRUSTED: GE-EVAL-SOURCE-ACT ( -- )
-   GE-SRC-BUF GE-SRC-U @ evaluate ;
+   GE-EVAL-SRC$ evaluate ;
 
 : GE-EVAL-SOURCE-RUNSTACK ( -- )
    ['] GE-EVAL-SOURCE-ACT GE-EVAL-STACK run-in-stack ;
@@ -516,8 +529,12 @@ TRUSTED: GE-EVAL-SOURCE ( -- )
    PROC-CAPTURE-OUTCOME@ GE-STORE-OUTCOME
    rc ;
 
-: GE-EVAL-CAPTURE ( -- )
+: GE-EVAL-CAPTURE-SRC ( ptr u8 n -- )
+   GE-EVAL-SRC!
    [: GE-EVAL-SOURCE ;] GE-CAPTURE-ACTION GE-EVAL-STORE-RC ;
+
+: GE-EVAL-CAPTURE ( -- )
+   GE-SRC-BUF GE-SRC-U @ GE-EVAL-CAPTURE-SRC ;
 
 : GE-EVAL-FORK-EXIT ( n -- )
    s" " rot die ;
@@ -535,12 +552,65 @@ TRUSTED: GE-EVAL-SOURCE ( -- )
    PROC-OUT-W PROC-CLOSE-CELL
    PROC-ERR-W PROC-CLOSE-CELL ;
 
-: GE-EVAL-FORK-CAPTURE ( -- )
+: GE-EVAL-FORK-CAPTURE-SRC ( ptr u8 n -- )
+   GE-EVAL-SRC!
    GE-TIMEOUT-MS >MS PROC-CAPTURE-BEGIN
    GE-EVAL-FORK-SPAWN
    GT-OUT-BUF GT-OUT-CAP >LEN GT-ERR-BUF GT-ERR-CAP >LEN
    PROC-RUN-CAPTURE-OUTCOME-LOOP
    PROC-CAPTURE-FINISH-OUTCOME GE-STORE-OUTCOME ;
+
+: GE-EVAL-FORK-CAPTURE ( -- )
+   GE-SRC-BUF GE-SRC-U @ GE-EVAL-FORK-CAPTURE-SRC ;
+
+package GATE-PARITY
+private
+
+create SRC GE-SRC-CAP allot
+create OUT GT-OUT-CAP allot
+create ERR GT-ERR-CAP allot
+
+variable SRC-U
+variable OUT-U
+variable ERR-U
+variable EXITED
+variable TIMED-OUT
+variable CODE
+
+: SOURCE! ( -- )
+   GE-SRC-U @ GE-SRC-CAP > if E-STR-CAPACITY throw then
+   GE-SRC-BUF SRC GE-SRC-U @ BYTE-COPY
+   GE-SRC-U @ SRC-U ! ;
+
+: SAVE ( -- )
+   GT-OUT$ OUT swap dup OUT-U ! BYTE-COPY
+   GT-ERR$ ERR swap dup ERR-U ! BYTE-COPY
+   GT-EXITED @ EXITED !
+   GT-TIMED-OUT @ TIMED-OUT !
+   GT-CODE @ CODE ! ;
+
+: CHECK ( ptr u8 n -- ) {: label:ptr labelu:n :}
+   SRC SRC-U @ GE-SRC-BUF GE-SRC-U @ STR= 0= if
+      label labelu GE-FAIL
+   then
+   GT-EXITED @ EXITED @ <> if label labelu GE-FAIL then
+   GT-TIMED-OUT @ TIMED-OUT @ <> if label labelu GE-FAIL then
+   GT-CODE @ CODE @ <> if label labelu GE-FAIL then
+   GT-OUT$ OUT OUT-U @ STR= 0= if label labelu GE-FAIL then
+   GT-ERR$ ERR ERR-U @ STR= 0= if label labelu GE-FAIL then ;
+
+public
+
+: RUN ( ptr u8 n -- ) {: label:ptr labelu:n :}
+   SOURCE!
+   GE-HB-RESET
+   GE-HB$ SRC SRC-U @ GE-TIMEOUT-MS GE-RUN-STDIN
+   SAVE
+   s" fork-eval" GS-EVENT
+   SRC SRC-U @ GE-EVAL-FORK-CAPTURE-SRC
+   label labelu CHECK ;
+
+;package
 
 : GE-EVAL-FORK-BAD ( n ptr u8 n ptr u8 n -- )
    {: rc:n needle:ptr needleu:n label:ptr labelu:n :}
