@@ -331,6 +331,10 @@ TEST:SUITE ptx-autograd-neg
    lib/ptx/autograd-neg-test.f
 TEST:;SUITE
 
+TEST:SUITE ptx-uniform-barrier
+   lib/ptx/uniform-barrier-test.f
+TEST:;SUITE
+
 TEST:SUITE ptx-toolchain
    lib/ptx/toolchain-test.f
    tools/ptx/profile-test.f

@@ -1125,6 +1125,17 @@ s" attn-stage-done"    0 TFAM-REG-CELL
 s" uniform"    1 TFAM-REG-CELL
 s" rowidx"     1 TFAM-REG-CELL
 
+\ M5: capture the tile/uniform family ids into the checker's barrier-uniformity
+\ cells (declared in checker.f). A collective typed ( tile<..> -- uniform<..> )
+\ emits bar.sync and is only sound under block-uniform control (checker.f
+\ PTX-BARRIER-SIG?/BARRIER-CUR?). Runs in every load context, like the
+\ registrations above, so the parent verifier and runtime child agree.
+: PTX-FAM-ID ( ptr u8 n -- n )   \ resolve a GLOBAL family name to its id (0 if none)
+   {: na:ptr nu:n :}
+   s" " na nu TFAM-RESOLVE IF ELSE drop 0 THEN ;
+s" tile"    PTX-FAM-ID PTX-TILE-FAM !
+s" uniform" PTX-FAM-ID PTX-UNIFORM-FAM !
+
 \ Internal VREC field constructor: arity 3, PRIVATE in reserved package "@" (not a
 \ spellable user package) so it never resolves from user signatures, while every
 \ field<...> term still carries this reserved family-id for identity comparison.

@@ -4,6 +4,30 @@
 
 Last updated: 2026-07-17
 
+- **M5 barrier-uniformity: VALUE uniformity was ALREADY expressed; only the CONTROL effect was
+  missing.** (dot habu-ptx-m5-mask-eb0716f1, host checker lane.) Leg-1 empty experiment proved the
+  M2 families already distinguish `uniform<T>` (block-uniform) from `tile<..>` (lane-varying): a tile
+  fed where SCALE/FMA./PTX:B- want `uniform<t>` REJECTS by family unification today — the
+  "lane-varying-used-as-uniform" negative needs ZERO checker machinery, just a regression fixture.
+  The genuinely missing piece was block-uniform REACHABILITY: `x BLOCK-MAX` inside an `if` CERTIFIED
+  (the real miss) because bar.sync reachability is a control property no stack effect expresses. The
+  sound minimal model: BLOCK-MAX/BLOCK-SUM have the shape `( tile<..> -- uniform<..> )` — the ONLY
+  way to soundly produce a uniform from a tile is a block reduction with bar.sync — so detect that
+  shape structurally (no per-word directive), flag `CTL-BARRIER`, and reject the call when the CF
+  stack is non-empty (`#CFC>0` = inside if/begin/do/case = not proven block-uniform). Straight-line
+  softmax certifies (#CFC=0); collective-inside-any-control rejects. Conservative (over-rejects a
+  collective under a proven-`uniform<bool>` branch — the documented remainder) but SOUND, and no
+  existing kernel calls a collective under control so nothing regressed.
+- **TRUSTED: words BYPASS the CHECK finalize — attach per-word checker metadata at E-ADD-EFFECT, the
+  one USIG choke both paths share.** (same dot.) First cut set the barrier flag in CHECK's finalize
+  CTL-flags block (checker.f ~8402) and it silently did nothing: `EM-COMPILE-PUBLISH-TRUSTED`
+  (habu2.f) branches PAST `EM-P2-CHECK-DEFINER`, so a `TRUSTED:` word (which is where ALL the
+  collectives live) never runs CHECK. Both `:` (via CHECKER-USIG-CERT-ADD) and TRUSTED: (via
+  TRUST→CHECKER-USIG-ADD) funnel through `USIG-ADD → E-ADD-EFFECT`, which has the din/dout rows AND
+  `CHECKER-REC-SYM`. Detect there. E-ADD-EFFECT is defined BEFORE the NORET flag machinery, so the
+  flag setter is reached through a forward xt hook (`PTX-BARRIER-SET-XT`, the TFAM-RESOLVE-XT
+  pattern), installed after NORET-ADD. Verify a new checker flag actually FIRES on a TRUSTED subject
+  before trusting the finalize path — the `:`-only path passes a green build while doing nothing.
 - **Derive an iGPU tensor peak from the GPU-ONLY sparse-INT8 TOPS, never the marketing TOPS —
   and let a measured kernel rate falsify a candidate peak.** (dot habu-mma-wave-4, roofline
   verdict, docs/kernel-principles.md.) The Orin NX "100 TOPS" headline is GPU + 2× NVDLA, so it

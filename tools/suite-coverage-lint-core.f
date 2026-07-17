@@ -170,6 +170,7 @@ variable SC-NUM-L
    \ device/codegen-weight PTX suites excluded from the resident inprocess groups
    s" lib/ptx/ad-gen-test.f" q execute
    s" lib/ptx/autograd-neg-test.f" q execute
+   s" lib/ptx/uniform-barrier-test.f" q execute
    s" lib/ptx/cuda-driver-test.f" q execute
    s" lib/ptx/sentinel-test.f" q execute
    s" src/arch/ptx/vjp-test.f" q execute

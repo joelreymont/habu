@@ -420,6 +420,7 @@ variable MDV-I   variable MDV-F
       MD-CON-KIND     of s" E-CONSTRUCT-FAMILY-KIND" endof
       MD-CON-VAR      of s" E-CONSTRUCT-UNKNOWN-VARIANT" endof
       MD-CON-TRUNC    of s" E-CONSTRUCT-UNTERMINATED" endof
+      MD-DIVBAR       of s" E-DIVERGENT-BARRIER" endof
       s" E-REJECTED" rot
    endcase ;
 
@@ -439,6 +440,7 @@ variable MDV-I   variable MDV-F
       MD-OPEN-ARGS    of s" fix_match_scrutinee" endof
       MD-JOIN         of s" fix_branch_outputs" endof
       MD-DEPTH        of s" factor_match_nesting" endof
+      MD-DIVBAR       of s" move_collective_to_block_uniform_control" endof
       s" fix_match_syntax" rot
    endcase ;
 
@@ -459,6 +461,7 @@ variable MDV-I   variable MDV-F
       MD-JOIN         of s" Make every branch leave the same stack shape; ;MATCH has one continuation." endof
       MD-DEPTH        of s" Factor the inner match into a named word; control frames are capped." endof
       MD-MISSING-OF   of s" Write `variant OF ... ENDOF` for each branch." endof
+      MD-DIVBAR       of s" Call the block collective on the straight-line (block-uniform) path; do not place it inside if/loop/case or a quotation." endof
       s" Complete the form: MATCH family, variant OF ... ENDOF per variant, ;MATCH." rot
    endcase ;
 
@@ -482,6 +485,7 @@ variable MDV-I   variable MDV-F
       MD-CON-KIND     of s" bad construct: family is not a sum or enum" endof
       MD-CON-VAR      of s" bad construct: unknown variant" endof
       MD-CON-TRUNC    of s" bad construct: missing family or variant token" endof
+      MD-DIVBAR       of s" divergent barrier: block collective requires block-uniform control" endof
       s" bad match: rejected" rot
    endcase ;
 

@@ -545,6 +545,11 @@ points stay listed.
   bodies are owned by the cp.async typestate capability dot.
 - `lib/ptx/collective.f` / `lib/ptx/collective-test.f` — tile-DSL row and
   collective vocabulary (M6) plus the checked stable-softmax proof.
+- `lib/ptx/uniform-barrier-test.f` — M5 uniformity + block-uniform barrier model:
+  `uniform<T>` vs lane-varying `tile` rejects (tile used where a uniform is
+  required), and a block collective (`BLOCK-MAX`/`BLOCK-SUM`, tile-in/uniform-out
+  = a `bar.sync` reduction) reached under open control (if/begin/do) rejects as a
+  divergent barrier, while the straight-line softmax/broadcast kernels certify.
 - `lib/ptx/gemm-checked-test.f` / `lib/ptx/gemm-checked-neg-test.f` — the
   PRODUCTION tiled GEMM certification proof (cg-matmul.f MM-CHECKED is the
   shipped typed kernel) plus negative regressions: inline non-neutral K-loop,

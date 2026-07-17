@@ -430,6 +430,19 @@ variable MATCH-VCOUNT-XT   0 MATCH-VCOUNT-XT !   \ ( n -- n ) : family id -> var
 variable MATCH-PAY-XT      0 MATCH-PAY-XT !      \ ( n n n -- n ) : vid famterm row -- row + instantiated payload
 variable FIELD-FAM   -1 FIELD-FAM !              \ reserved family-id of the internal `field` ctor
 
+\ M5 barrier-uniformity: the `tile` and `uniform` family ids, captured by
+\ type-family.f at registration (loaded after checker.f). A word whose declared
+\ effect consumes a `tile` and produces a `uniform` is a block reduction whose
+\ emitter lowers to a shared-memory reduction with `bar.sync`; that barrier is
+\ only sound under block-uniform control. 0 = registry not loaded => no detection.
+variable PTX-TILE-FAM      0 PTX-TILE-FAM !
+variable PTX-UNIFORM-FAM   0 PTX-UNIFORM-FAM !
+\ Forward hook ( sym -- ): OR CTL-BARRIER into a symbol's control flags. Installed
+\ after the NORET machinery is defined; E-ADD-EFFECT calls it (0 = not yet armed)
+\ for any recorded effect whose shape is a block collective, covering BOTH the
+\ checked `:` and the TRUSTED: publish paths through the one E-ADD-EFFECT choke.
+variable PTX-BARRIER-SET-XT   0 PTX-BARRIER-SET-XT !
+
 \ --- checker package scope state. Declared here (not with the package words
 \ further down) so signature parsing (SIG-FAM?) can resolve family tokens
 \ through the ACTIVE package scope. The mutators stay in the package block.
@@ -652,6 +665,31 @@ variable UF-POSN
    FIELD-FAM @ 0 < IF RES-FALSE EXIT THEN   \ field family not registered (e.g. after TFAM-RESET)
    t T-RES TAG T-PARAM <> IF RES-FALSE EXIT THEN
    t T-RES PARAM>FAM FIELD-FAM @ = ;   \ identity by reserved family-id, not spelling
+
+\ --- M5 barrier-uniformity shape classification -------------------------------
+\ A block collective (BLOCK-MAX/BLOCK-SUM) has the declared shape
+\ ( tile<..> -- uniform<..> ): it reduces a lane-varying tile to a block-uniform
+\ scalar, and its emitter lowers to a shared-memory reduction with `bar.sync`.
+\ That barrier is only sound under BLOCK-UNIFORM control (every lane of the block
+\ reaches it); a call reached under divergent predication deadlocks. E-ADD-EFFECT
+\ detects the shape from the recorded din/dout rows and flags CTL-BARRIER; the
+\ call-site check rejects any such call inside an open control frame (#CFC>0).
+: ROW-ELT-FAM? ( n n -- bool ) {: t:n fam:n :}   \ term t resolves to a T-PARAM of family fam?
+   t T-RES TAG T-PARAM <> IF RES-FALSE EXIT THEN
+   t T-RES PARAM>FAM fam = ;
+
+: ROW-HAS-FAM? ( n n -- bool ) {: fam:n :}       \ ( row fam -- bool ) : row mentions family fam?
+   fam 0= IF drop RES-FALSE EXIT THEN
+   BEGIN dup R-RES TAG S-PUSH = WHILE
+      dup R-RES P>TYPE fam ROW-ELT-FAM? IF drop RES-TRUE EXIT THEN
+      R-RES P>REST
+   REPEAT
+   drop RES-FALSE ;
+
+: PTX-BARRIER-ROWS? ( n n -- bool ) {: din:n dout:n :}   \ tile-in / uniform-out block collective?
+   PTX-UNIFORM-FAM @ 0= IF RES-FALSE EXIT THEN
+   dout PTX-UNIFORM-FAM @ ROW-HAS-FAM? 0= IF RES-FALSE EXIT THEN
+   din PTX-TILE-FAM @ ROW-HAS-FAM? ;
 
 : FIELD-REC ( n -- n )
    0 PARAM>ARG ;
@@ -3961,6 +3999,10 @@ variable RECMI   0 RECMI !
    CHECKER-REC-SYM @ 0 <> HIDX-VALID @ and IF
       off 1 + CHECKER-REC-SYM @ HIDX-EFF!
       UEND @ HIDX-EFF-DEP+
+   THEN
+   CHECKER-REC-SYM @ 0 <>  PTX-BARRIER-SET-XT @ 0 <>  and
+   din dout PTX-BARRIER-ROWS? and IF
+      CHECKER-REC-SYM @ PTX-BARRIER-SET-XT @ execute   \ M5: flag the block collective
    THEN ;
 
 : E-ADD-DELETED ( -- )
@@ -5329,9 +5371,12 @@ variable LBUF-INFO-W
 
 \ Control-effect flags are append-only and later-wins so redefinitions can clear
 \ stale metadata. CTL-DEAD means a call has no normal continuation. CTL-THROW
-\ means a call may reach a catchable throw edge.
+\ means a call may reach a catchable throw edge. CTL-BARRIER (M5) means the call
+\ is a block collective whose emitter contains bar.sync, so it is only sound under
+\ block-uniform control (rejected inside an open control frame — see BARRIER-CUR?).
 1 constant CTL-DEAD
 2 constant CTL-THROW
+4 constant CTL-BARRIER
 $10000 constant NORET-INIT-CAP
 
 0 constant NORET-SYM-CELL
@@ -5557,10 +5602,9 @@ variable REG-SCRATCH-SNAP-XT   0 REG-SCRATCH-SNAP-XT !
 \ NORET-ADD syncs first for the same reason as E-REC-START: it is the only
 \ NORETS appender, and appending over a rewound tail must flush stale flags
 \ before the new entry masks the rewind.
-: NORET-ADD {: a:ptr u:n flag:n :}
+: NORET-ADD-SYM {: sym:n flag:n :}
    HIDX-CTL-SYNC
    NORET-END @ NORET-ENTRY + CELL + NORET-ENSURE
-   a u CHECKER-RECORD-SYM {: sym:n :}
    sym NORET-REC NORET.SYM !
    flag NORET-REC NORET.FLAG !
    NORET-END @ NORET-ENTRY + NORET-END !
@@ -5569,6 +5613,9 @@ variable REG-SCRATCH-SNAP-XT   0 REG-SCRATCH-SNAP-XT !
       flag sym HIDX-CTL!
       NORET-END @ HIDX-CTL-DEP+
    THEN ;
+
+: NORET-ADD {: a:ptr u:n flag:n :}
+   a u CHECKER-RECORD-SYM flag NORET-ADD-SYM ;
 
 : CHECKER-UNDEFINE ( ptr u8 n -- ) {: a:ptr u:n :}
    a u CHECKER-UNDEFINE-GUARD
@@ -5613,6 +5660,12 @@ variable NORET-FMEND
 : CTL-FLAGS {: a:ptr u:n :}
    a u CHECKER-FIND-ACTIVE-SYM CTL-FLAGS-SYM ;
 
+\ M5: OR CTL-BARRIER into a symbol's control flags (append later-wins, preserving
+\ any dead/throw already recorded), then arm the E-ADD-EFFECT hook.
+: PTX-BARRIER-SET ( n -- ) {: sym:n :}
+   sym CTL-FLAGS-SYM CTL-BARRIER or sym swap NORET-ADD-SYM ;
+' PTX-BARRIER-SET PTX-BARRIER-SET-XT !
+
 \ CURSYM: the resolved symbol of the current body token (set by DO-TOK, 0 for
 \ literals/definers/memory tokens), so the throw/dead classification after the
 \ effect application reuses one symbol resolution instead of re-scanning.
@@ -5630,6 +5683,11 @@ variable CURSYM
 : THROW-CUR? ( ptr u8 n -- bool ) {: a:ptr u:n :}
    a u s" throw" CORE-STR= IF RES-TRUE EXIT THEN
    CTL-FLAGS-CUR CTL-THROW and 0 <> ;
+
+\ M5: current token is a block collective (CTL-BARRIER, set by E-ADD-EFFECT). The
+\ classification helpers (ROW-HAS-FAM?/PTX-BARRIER-ROWS?) live above E-ADD-EFFECT.
+: BARRIER-CUR? ( -- bool )
+   CTL-FLAGS-CUR CTL-BARRIER and 0 <> ;
 
 \ Tokens whose execution from a checked body is unsound whatever their
 \ admitting row says: the type-DSL block openers (sumtype.f, PRIM: axioms)
@@ -7308,6 +7366,7 @@ variable MREJ    \ match structural-reject latch: forces verdict 0, never unchec
 16 constant MD-CON-KIND       \ construct family is not a sum or enum
 17 constant MD-CON-VAR        \ construct variant not declared by the family
 18 constant MD-CON-TRUNC      \ construct missing its family/variant operand
+19 constant MD-DIVBAR         \ M5: block collective/barrier reached under divergent control
 
 variable MDIAG        \ latched reason code (0 = none; reset per definition)
 variable MDIAG-FAM    \ nonexhaustive: family id for the name walk
@@ -7722,6 +7781,14 @@ DRAIN-PRETRUST-COMPAT
 : REJECT-UNSAFE ( -- )
    -1 UNSAFE !  0 OK !  -1 FAILSET ! ;
 
+\ M5: a block collective/barrier reached inside an open control frame is not
+\ block-uniform-reachable; latch the reason on the pinned token, then reject.
+\ MDIAG! must precede FAILSET (it latches only while the pin is open).
+: REJECT-DIVBAR ( ptr u8 n -- )
+   MD-DIVBAR MDIAG!
+   FAIL-PIN!
+   0 OK !  -1 FAILSET ! ;
+
 \ p5 certificate soundness (dot habu-checker-fitting-arity-70dc94e4): an
 \ IMMEDIATE word executes at COMPILE time, so a checked body that names one
 \ contributes an EMPTY runtime step while the checker would apply the word's
@@ -8082,6 +8149,7 @@ variable CONFAM    \ resolved family id while CONM = 2
    TKF TKFU @ DO-TOK
    OK @ IF TKF TKFU @ THROW-CUR? IF THROW-EDGE THEN THEN
    OK @ IF TKF TKFU @ DEAD-CUR? IF a u DEAD-OWNER! -1 DEADP ! THEN THEN
+   OK @ #CFC @ 0 > and IF BARRIER-CUR? IF a u REJECT-DIVBAR THEN THEN
    TKF TKFU @ ESCAPED-STRING-OPENER? IF SKIP-ESCAPED-STRING-PAYLOAD ELSE
    TKF TKFU @ NORMAL-STRING-OPENER? IF SKIP-STRING-PAYLOAD THEN THEN
    TKF TKFU @ PARSE-LIT? IF SKIP-PARSE-LIT-PAYLOAD THEN
