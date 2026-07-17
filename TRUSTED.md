@@ -765,6 +765,8 @@ that source is explicitly certified; they are not stale-checked by the default
 | CGR-EVALUATE-UNCHECKED | `ptr u8 n --` | Post-certification compiler briefly disables the hook because the preceding checker pass already published the certified definition record; the hook is restored immediately afterward. | `tools/codegen-role-test.f`, `test/run.f` | tools/codegen-role.f | 2026-07-12 |
 | CGR-HOOK | `ptr u8 n -- n` | Code-role transformer fail-closed checker hook rejects every verdict except certification. | `tools/codegen-role-test.f`, `test/run.f` | tools/codegen-role.f | 2026-07-12 |
 | CGR-HOOK! | `--` | Code-role transformer rearms the canonical compile preflight before reinstalling its fail-closed hook after the audited post-certification compile window. | `tools/codegen-role-test.f`, `test/run.f` | tools/codegen-role.f | 2026-07-17 |
+| CPR-EVAL | `ptr u8 n -- n` | Bootstrap recovery fixture evaluates one controlled definition under `catch` so it can prove a missing compile preflight returns through the language exception path. | `tools/bootstrap.sh` | test/compile-preflight-recovery.f | 2026-07-17 |
+| CPR-HOOK | `ptr u8 n -- n` | Bootstrap recovery fixture installs a test-only certifying hook while deliberately leaving compile preflight unarmed; dynamic hook installation is not expressible in checked source. | `tools/bootstrap.sh` | test/compile-preflight-recovery.f | 2026-07-17 |
 | CHECK! | `ptr u8 n -- n` | Check driver models the engine checker entrypoint so its fail-closed source hook compiles checked. | `tools/check-test.f`, `test/run.f` | tools/check-core.f | 2026-07-12 |
 | TYPE-RESERVED? | `ptr u8 n -- bool` | Check driver models the checker-owned reserved-type predicate used while validating generated source dependencies. | `tools/check-test.f`, `test/run.f` | tools/check-core.f | 2026-07-12 |
 | CHECKER-DEFTYPE | `ptr u8 n --` | Check driver models the checker primitive that publishes a parsed nominal type in the child validation scope. | `tools/check-test.f`, `test/run.f` | tools/check-core.f | 2026-07-12 |
@@ -1497,6 +1499,9 @@ maki/tensor.f:SPACE-RAW prim-axiom habu-epic-model-cad-70b629a9
 maki/onnx/import.f:IMP-ROWS-N prim-axiom habu-epic-model-cad-70b629a9
 maki/onnx/import.f:IMP-COLS-N prim-axiom habu-epic-model-cad-70b629a9
 test/checker-assert.f:CHECK-QUIET-CANDIDATE! test-metaprog habu-primitive-effect-axiom-1119f176
+test/compile-preflight-recovery.f:CPR-EVAL test-metaprog habu-primitive-effect-axiom-1119f176
+test/compile-preflight-recovery.f:CPR-HOOK test-metaprog cap:checker-hook-identity
+test/compile-preflight-recovery.f test-metaprog habu-seal-set-check-b3676b33 1
 test/bootstrap-wide-memory-src.f:BWM-UN2 test-metaprog cap:wide-memory-lowering
 test/bootstrap-wide-memory-src.f:BWM-UN4 test-metaprog cap:wide-memory-lowering
 test/bootstrap-wide-memory-src.f:BWM-XT test-metaprog cap:wide-memory-lowering
