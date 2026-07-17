@@ -458,6 +458,10 @@ TEST:SUITE top-row-hook
    test/top-row-hook-test.f
 TEST:;SUITE
 
+TEST:SUITE compile-preflight-recovery
+   test/compile-preflight-recovery.f
+TEST:;SUITE
+
 TEST:SUITE top-row-warn
    test/top-row-warn-test.f
 TEST:;SUITE

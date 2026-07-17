@@ -259,6 +259,34 @@ bootstrap_wide_gate() {
 
 bootstrap_wide_gate
 
+bootstrap_preflight_recovery_gate() {
+  local src="test/compile-preflight-recovery.f"
+  local bin="$T/bootstrap-preflight-recovery"
+  local out="$T/bootstrap-preflight-recovery.out"
+  local err="$T/bootstrap-preflight-recovery.err"
+  local marker=""
+  local diag=""
+  local rc=0
+
+  "$GF" -e "require $ROOT/test/nf.fs s\" $ROOT/$src\" slurp-file s\" $bin\" FORTH-BUILD-EXE bye"
+  set +e
+  "$bin" >"$out" 2>"$err"
+  rc=$?
+  set -e
+  if ! IFS= read -r marker < "$out"; then
+    marker=""
+  fi
+  if ! IFS= read -r diag < "$err"; then
+    diag=""
+  fi
+  if [[ "$rc" -ne 0 || "$marker" != "compile-preflight-recovery: ok" || "$diag" != "hb: compile preflight hook missing" ]]; then
+    printf 'bootstrap preflight recovery: expected caught rc=0; got rc=%s marker=%s diagnostic=%s\n' "$rc" "$marker" "$diag" >&2
+    exit 75
+  fi
+}
+
+bootstrap_preflight_recovery_gate
+
 emit_src "$T/stage2-src" src/habu/stage2.f
 "$GF" -e "require $ROOT/test/nf.fs s\" $T/stage2-src\" slurp-file s\" $T/hb-stage0\" FORTH-BUILD-EXE bye"
 
@@ -302,6 +330,7 @@ env HABU_UNDER_TEST="$T/hb-stdin" "$T/hb-stdin" --load test/engine-error-package
 env HABU_UNDER_TEST="$T/hb-stdin" "$T/hb-stdin" --load test/catch-frame.f
 env HABU_UNDER_TEST="$T/hb-stdin" "$T/hb-stdin" --load test/type-ctor-suite.f
 env HABU_UNDER_TEST="$T/hb-stdin" "$T/hb-stdin" --load test/top-row-hook-test.f
+env HABU_UNDER_TEST="$T/hb-stdin" "$T/hb-stdin" --load test/compile-preflight-recovery.f
 
 if [[ "${HABU_BOOTSTRAP_CHECK_ONLY:-}" == "1" ]]; then
   printf 'bootstrap check OK: %s/hb-stdin\n' "$T"

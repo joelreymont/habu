@@ -5373,5 +5373,11 @@ unchanged (148855). Keys for milestone 2:
   token text, token index, and byte span together; otherwise a canonical repair
   code can identify an earlier signature token.
 - **A token inside a definition body has not executed.** Lifecycle lints must
-  track definition context before treating `LOWER-CERT-HOOK:INSTALL` as a
-  top-level checker rearm.
+  ignore body-local disable and rearm transitions; only top-level execution
+  changes the current checker state.
+- **Recovery parity needs a raw-emitter runtime fixture.** Testing the final
+  recovery-built `hb-stdin` exercises native stage code and can miss a defect in
+  `bootstrap/cg/forth.fs`; compile and run the same fixture through `FORTH-BUILD-EXE`.
+- **A no-side-effect regression needs an observable side effect.** A fragment
+  that only compiles more code cannot distinguish pre-execution rejection from
+  a later reject; emit a compile-time marker and assert it remains absent.

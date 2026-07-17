@@ -1186,6 +1186,9 @@ points stay listed.
   emits exactly one LF-terminated diagnostic with no trailing byte. The
   no-binary recovery gate reruns this subprocess contract against its private
   Gforth-built `hb-stdin`, not only the native engine.
+- `test/compile-preflight-recovery.f` — native and raw recovery-codegen fixture:
+  a missing compile-preflight inside `catch` + `evaluate` returns code 70,
+  restores the interrupted package scope, and leaves interpretation usable.
 - `test/top-row-warn-test.f` — tier-1 top-row tracker warning regressions (dot
   habu-typed-top-checker-82cf8b84): child probes assert p1 `' FOO2 execute`,
   p2 `0 0 catch`, and p3 `s" abc" + .` each emit exactly one `hb: top-row:`

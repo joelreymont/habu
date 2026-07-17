@@ -43,6 +43,7 @@ create UNDEF-P FS-PATH-CAP allot
 create BODY-P FS-PATH-CAP allot
 create OUTER-P FS-PATH-CAP allot
 create FRAG-P FS-PATH-CAP allot
+create SIDE-P FS-PATH-CAP allot
 create INC-P FS-PATH-CAP allot
 create REQ-P FS-PATH-CAP allot
 create SIGLESS-P FS-PATH-CAP allot
@@ -57,6 +58,7 @@ variable UNDEF-U
 variable BODY-U
 variable OUTER-U
 variable FRAG-U
+variable SIDE-U
 variable INC-U
 variable REQ-U
 variable SIGLESS-U
@@ -85,6 +87,9 @@ variable RC
 : FRAG$ ( -- ptr u8 n )
    FRAG-P FRAG-U @ ;
 
+: SIDE$ ( -- ptr u8 n )
+   SIDE-P SIDE-U @ ;
+
 : INC$ ( -- ptr u8 n )
    INC-P INC-U @ ;
 
@@ -109,11 +114,11 @@ variable RC
 : TRUSTED$ ( -- ptr u8 n )
    TRUSTED-P TRUSTED-U @ ;
 
-: FRAG-FIXTURE! ( ptr u8 n ptr u8 n ptr u8 n -- )
-   {: pre:ptr preu:n post:ptr postu:n path:ptr pathu:n :}
+: FRAG-FIXTURE! ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n -- )
+   {: pre:ptr preu:n frag:ptr fragu:n post:ptr postu:n path:ptr pathu:n :}
    SB-RESET
    pre preu SB-APPEND
-   FRAG$ SB-APPEND
+   frag fragu SB-APPEND
    post postu SB-APPEND
    path pathu SB$ WRITE-ALL ;
 
@@ -141,6 +146,7 @@ variable RC
    s" body.f" BODY-P BODY-U PATH!
    s" outer.f" OUTER-P OUTER-U PATH!
    s" frag.f" FRAG-P FRAG-U PATH!
+   s" side.f" SIDE-P SIDE-U PATH!
    s" imm-include.f" INC-P INC-U PATH!
    s" imm-require.f" REQ-P REQ-U PATH!
    s" imm-signatureless.f" SIGLESS-P SIGLESS-U PATH!
@@ -154,6 +160,7 @@ variable RC
    UNDEF$ s" : LRD-X ( -- ) LRD-NO-SUCH-WORD-XYZ ;" WRITE-ALL
    BODY$ s" : LRD-Y ( n -- n ) drop ;" WRITE-ALL
    FRAG$ s" 1 +" WRITE-ALL
+   SIDE$ S\" [ s\" LRD-FRAGMENT-EXECUTED\" type ]" WRITE-ALL
    SB-RESET
    s" include " SB-APPEND
    UNDEF$ SB-APPEND
@@ -161,9 +168,9 @@ variable RC
 
 : IMM-FIXTURES! ( -- )
    s" -1 JSON-DIAGS ! : LRD-IMM-I ( -- ) 73 include "
-   s"  . ;" INC$ FRAG-FIXTURE!
+   SIDE$ s"  . ;" INC$ FRAG-FIXTURE!
    s" -1 JSON-DIAGS ! : LRD-IMM-R ( -- ) 73 require "
-   s"  . ;" REQ$ FRAG-FIXTURE!
+   SIDE$ s"  . ;" REQ$ FRAG-FIXTURE!
    SIGLESS$ S" 0 set-check
 : RAW-IMM ( -- ) ; immediate
 LOWER-CERT-HOOK:INSTALL
@@ -180,8 +187,8 @@ LOWER-CERT-HOOK:INSTALL
    SB$ ;
 
 : POSITIVE-FIXTURES! ( -- )
-   s" 73 include " s"  ." TOP-INC$ FRAG-FIXTURE!
-   s" 73 require " s"  ." TOP-REQ$ FRAG-FIXTURE!
+   s" 73 include " FRAG$ s"  ." TOP-INC$ FRAG-FIXTURE!
+   s" 73 require " FRAG$ s"  ." TOP-REQ$ FRAG-FIXTURE!
    RUNTIME$ RUNTIME-SOURCE$ WRITE-ALL
    MODELED$ S\" : PI ( -- ) ; immediate s\" PI\" 0 parse-imm : PIM ( -- n ) PI 73 ; PIM ." WRITE-ALL
    TRUSTED$ s" : OK-TI ( -- ) ; immediate TRUSTED: OK-TIM ( -- n ) OK-TI 73 ; OK-TIM ." WRITE-ALL ;
@@ -291,13 +298,15 @@ LOWER-CERT-HOOK:INSTALL
    s" checked include rejects before executing its fragment" T-LABEL
    INC$ RUN
    s" E-UNMODELED-IMMEDIATE" ASSERT-NAMED
-   s" lrd-imm-i" s" include" ASSERT-IMM-DIAG ;
+   s" lrd-imm-i" s" include" ASSERT-IMM-DIAG
+   OUT$ s" LRD-FRAGMENT-EXECUTED" CONTAINS? TFALSE ;
 
 : TEST-IMM-REQUIRE ( -- )
    s" checked require rejects before executing its fragment" T-LABEL
    REQ$ RUN
    s" E-UNMODELED-IMMEDIATE" ASSERT-NAMED
-   s" lrd-imm-r" s" require" ASSERT-IMM-DIAG ;
+   s" lrd-imm-r" s" require" ASSERT-IMM-DIAG
+   OUT$ s" LRD-FRAGMENT-EXECUTED" CONTAINS? TFALSE ;
 
 : TEST-IMM-SIGNATURELESS ( -- )
    s" signatureless immediate gets one canonical preflight diagnostic" T-LABEL

@@ -290,7 +290,16 @@ PD-SIG-OFF PD-SIG-CAP + constant PD-SLOT
 8 constant PD-SLOTS-REL
 TXN-STATE-OFF TXN-STATE-LEN + constant PD-TABLE-OFF   \ band base (= old DATA-START)
 PD-TABLE-OFF PD-SLOTS-REL + PD-CAP PD-SLOT * + constant PD-TABLE-END
-PD-TABLE-END constant DATA-START \ user DP begins above the pending band; frozen artifacts live in mmap storage
+PD-TABLE-END constant PKGSNAP-OFF
+$40 constant PKGSNAP-STRIDE
+6 constant PKGSNAP-SHIFT
+0  constant PKGSNAP-CUR
+8  constant PKGSNAP-PUB
+16 constant PKGSNAP-PRI
+24 constant PKGSNAP-PARENT
+32 constant PKGSNAP-REC
+PKGSNAP-OFF EVAL-MAX-DEPTH PKGSNAP-STRIDE * + constant PKGSNAP-END
+PKGSNAP-END constant DATA-START \ user DP begins above engine-reserved state
 create SQ-KW  115 c, 34 c,      \ build-time bytes for the keyword  s"  (s=115, "=34)
 create CQ-KW  99 c, 34 c,
 create DOTQ-KW 46 c, 34 c,
@@ -377,6 +386,7 @@ variable LKWTICK variable LKWBTICK
 variable LKWTYPE
 variable LREAD  variable LRBYE  variable LRDIE  variable LRREC  variable LQNL  variable LOKS
 variable LPREFMISS  variable LPREFMISSMSG
+variable LTHROWDISPATCH
 35 constant PREFMISSMSG-LEN
 variable LEX0  variable LUN0   \ re-entrant evaluate: original-path continuations of LEXIT / LUNDEF
 variable LKWLBRACE variable LKWENDLOC variable LLOC-FIND variable LKWCONST
@@ -593,6 +603,13 @@ previous definitions
    11 SP 0 ADDI,  11 14 24 STR,
    XDS 14 32 STR,  CP 14 40 STR,  NDICT 14 48 STR,
    11 DATA DP-CELL LDR,  11 14 56 STR,
+   11 DATA EVALD-CELL LDR,
+   12 PKGSNAP-OFF LIT64,  13 11 PKGSNAP-SHIFT LSLI,  12 12 13 ADD,  12 DATA 12 ADD,
+   13 DATA CUR-CELL LDR,        13 12 PKGSNAP-CUR STR,
+   13 DATA PKG-PUB-CELL LDR,    13 12 PKGSNAP-PUB STR,
+   13 DATA PKG-PRI-CELL LDR,    13 12 PKGSNAP-PRI STR,
+   13 DATA PKG-PARENT-CELL LDR, 13 12 PKGSNAP-PARENT STR,
+   13 DATA PKG-REC-CELL LDR,    13 12 PKGSNAP-REC STR,
    11 DATA EVALD-CELL LDR,  11 11 1 ADDI,  11 DATA EVALD-CELL STR,
    9 DATA INP-CELL STR,                              \ INP = a
    11 9 10 ADD,  11 DATA INE-CELL STR,               \ INE = a + u
@@ -910,6 +927,7 @@ previous definitions
 
 : BTHROW ( -- )
    A G-POP                               \ exc -> x9
+   LTHROWDISPATCH @ LBL,
    11 DATA 8 LDR,                        \ HND
    LBL {: lnoh :}  11 lnoh CBZ,
    LBL {: lcorrupt :} \ typed-local-lint: allow-bare-local - gforth-hosted label id, like lnoh/lfixed in this word
@@ -5902,10 +5920,42 @@ variable P2SK
    9 DATA RSAVSP-CELL LDR,  SP 9 0 ADDI,
    LREAD @ B, ;
 
+: EMIT-PREFMISS-RECOVER ( -- )
+   LBL LBL LBL {: loop pop deliver :} \ typed-local-lint: allow-bare-local - Gforth-hosted label ids.
+   15 70 MOVZ,
+   11 DATA HND-CELL LDR,
+   loop LBL,
+      12 DATA EVALD-CELL LDR,  12 deliver CBZ,
+      12 12 1 SUBI,  12 13 14 C-EVAL-FRAME-ADDR
+      14 13 24 LDR,
+      11 pop CBZ,
+      11 14 CMP,  C-LS deliver BCOND,
+   pop LBL,
+      12 13 0 LDR,   12 DATA INP-CELL STR,
+      12 13 8 LDR,   12 DATA INE-CELL STR,
+      CP 13 40 LDR,  NDICT 13 48 LDR,  XDS 13 32 LDR,
+      12 13 56 LDR,  12 DATA DP-CELL STR,
+      9 DATA EVALD-CELL LDR,  9 9 1 SUBI,
+      10 PKGSNAP-OFF LIT64,  12 9 PKGSNAP-SHIFT LSLI,  10 10 12 ADD,  10 DATA 10 ADD,
+      12 10 PKGSNAP-CUR LDR,     12 DATA CUR-CELL STR,
+      12 10 PKGSNAP-PUB LDR,     12 DATA PKG-PUB-CELL STR,
+      12 10 PKGSNAP-PRI LDR,     12 DATA PKG-PRI-CELL STR,
+      12 10 PKGSNAP-PARENT LDR,  12 DATA PKG-PARENT-CELL STR,
+      12 10 PKGSNAP-REC LDR,     12 DATA PKG-REC-CELL STR,
+      15 DATA EVALERR-CELL STR,
+      9 DATA EVALD-CELL STR,
+      EMIT-RESET-COMPILE-STATE
+      loop B,
+   deliver LBL,
+   11 DATA HND-CELL STR,
+   2 5 MOVZ,  LPROT @ BL,
+   9 15 0 ADDI,
+   LTHROWDISPATCH @ B, ;
+
 : EMIT-PREFMISS ( -- )
    LPREFMISS @ LBL,
    0 2 MOVZ,  1 LPREFMISSMSG @ ADR,  2 PREFMISSMSG-LEN MOVZ,  NR-WRITE SYS,
-   0 70 MOVZ,  NR-EXIT-GROUP SYS, ;
+   EMIT-PREFMISS-RECOVER ;
 
 : EMIT-UNDEF ( n -- ) {: lundef :}
    lundef LBL,
@@ -5977,6 +6027,7 @@ variable P2SK
    LBL LBCHAIN !  LBL LCREATE !  LBL LDOESPATCH !
    LBL LREAD !  LBL LRBYE !  LBL LRDIE !  LBL LRREC !  LBL LQNL !  LBL LOKS !
    LBL LPREFMISS !  LBL LPREFMISSMSG !
+   LBL LTHROWDISPATCH !
    LBL LEX0 !  LBL LUN0 ! ;
 
 : EMIT-LABEL-CONTROL ( -- )

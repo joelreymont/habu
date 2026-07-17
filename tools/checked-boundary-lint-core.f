@@ -310,6 +310,9 @@ variable UB-OUT-FD
    s" KERNEL:" UB-TOK=CI if UB-TRUE exit then
    s" :noname" UB-TOK=CI ;
 
+: UB-TOP? ( -- bool )
+   UB-IN-DEF @ UB-NOT ;
+
 : UB-SEMI? ( -- bool )
    s" ;" UB-TOK= ;
 
@@ -462,13 +465,13 @@ variable UB-OUT-FD
       UB-STRICT-BOUNDARY @ if
          UB-CHECKER-MUTATION? UB-TRUSTED @ UB-NOT and if UB-REPORT-MUTATION then
       then
-      UB-SET-CHECK-OFF? if UB-TRUE UB-CHECK-OFF! then
+      UB-SET-CHECK-OFF? UB-TOP? and if UB-TRUE UB-CHECK-OFF! then
       UB-DEF-OPEN? if
          UB-COLON? if UB-HANDLE-COLON then
          UB-TRUE UB-IN-DEF !
       then
-      UB-PREFLIGHT-INSTALL? UB-IN-DEF @ UB-NOT and if UB-FALSE UB-CHECK-OFF! then
-      UB-HANDLE-CHECK-ON
+      UB-PREFLIGHT-INSTALL? UB-TOP? and if UB-FALSE UB-CHECK-OFF! then
+      UB-TOP? if UB-HANDLE-CHECK-ON then
       UB-HANDLE-INSTALL
       UB-HANDLE-TOP-INSTALL
       UB-SEMI? if
