@@ -419,7 +419,8 @@ variable TFAM-RESOLVE-XT   0 TFAM-RESOLVE-XT !   \ ( pkg-a pkg-u name-a name-u -
 variable TFAM-ARITY-XT     0 TFAM-ARITY-XT !     \ ( id -- arity )
 variable TFAM-LAYOUT?-XT   0 TFAM-LAYOUT?-XT !   \ ( id -- bool ) : family id occupies an ADT layout
 variable TFAM-CELL?-XT     0 TFAM-CELL?-XT !     \ ( id -- bool ) : family id is a scalar cell kind (TK-CELL)
-variable TFAM-WIDTH-XT     0 TFAM-WIDTH-XT !     \ ( id -- n ) : logical width in stack cells (docs §18)
+variable TFAM-WIDTH-XT     0 TFAM-WIDTH-XT !     \ ( id -- n ) : declared logical width in stack cells, params-as-cells (docs §18)
+variable TFAM-INST-WIDTH-XT 0 TFAM-INST-WIDTH-XT ! \ ( term -- n ) : INSTANTIATED logical width, arg-aware (docs §18); 0 hook -> declared width
 variable TFAM-CON-LIN-XT   0 TFAM-CON-LIN-XT !   \ ( id -- bool ) : family schemas contain a concrete linear value
 variable CONSTRUCT-FAM-XT  0 CONSTRUCT-FAM-XT !  \ ( ptr u8 n -- n bool ) : item 9 construct family resolve, active package only
 variable CONSTRUCT-STEP-XT 0 CONSTRUCT-STEP-XT ! \ ( ptr u8 n n -- bool ) : item 9 construct variant resolve + step effect
@@ -1102,14 +1103,20 @@ variable TWALK-D
 
 \ T-WIDTH ( n -- n ) : logical width in stack cells of a resolved type term
 \ (docs §18 WIDTH function). Every non-layout term is one cell; a layout-family
-\ T-PARAM asks the registry (sum: slots+tag, enum: tag, product: field cells).
+\ T-PARAM asks the INSTANTIATED width (arg-aware): the registry walks the term's
+\ variant/product schemas substituting each param slot by its resolved arg width,
+\ so a layout arg widens the sum payload / product body. Every cell-kinded
+\ instantiation (all args width 1) yields the declared TFAM-WIDTH@, so this is
+\ behaviour-preserving groundwork while family parameters stay cell-kinded. The
+\ 0-hook (registry not loaded) falls back to the declared family width verbatim.
 \ This is the type-level fact the WF- width-fact surface records for emitters.
 : T-WIDTH ( n -- n ) {: t:n :}
-   t T-RES TAG T-PARAM <> IF 1 EXIT THEN
-   t T-RES PARAM>FAM {: fam:n :}
+   t T-RES {: r:n :}
+   r TAG T-PARAM <> IF 1 EXIT THEN
+   r PARAM>FAM {: fam:n :}
    fam 0 < IF 1 EXIT THEN
    fam TFAM-LAYOUT?* 0= IF 1 EXIT THEN
-   fam TFAM-WIDTH@* ;
+   TFAM-INST-WIDTH-XT @ dup 0= IF drop fam TFAM-WIDTH@* ELSE r swap execute THEN ;
 
 \ --- item 12 slice-3a/3b: hidden physical-field substrate (docs §10-11, §17-18).
 \ PUSH-LOGICAL expands a logical layout T-PARAM in a signature into W hidden
@@ -1132,7 +1139,7 @@ variable TWALK-D
 : MK-HIDDEN ( n n -- n ) {: src0:n slot:n :}
    src0 T-RES {: src:n :}
    src LAYOUT-PARAM? 0= IF s" checker: mk-hidden on non-layout param" 76 die THEN
-   src PARAM>FAM TFAM-WIDTH@* {: w:n :}
+   src T-WIDTH {: w:n :}                     \ instantiated (arg-aware) hidden-field count
    slot 0 < slot w >= or IF s" checker: mk-hidden slot out of range" 76 die THEN
    PARAM-SCR-N @ {: base:n :}
    0 BEGIN dup src PARAM>ARGC < WHILE        \ copy src's arg run into the reentrant scratch
@@ -1159,7 +1166,7 @@ variable TWALK-D
 \ this from PUSH-LOGICAL; in slice 3a only the new fixtures drive it.
 : LAYOUT-PUSH-FIELDS ( n n -- n ) {: type:n row:n :}
    type T-RES {: src:n :}
-   src PARAM>FAM TFAM-WIDTH@* {: w:n :}
+   src T-WIDTH {: w:n :}                     \ instantiated (arg-aware) hidden-field count
    row 0 BEGIN dup w < WHILE                 \ ( row slot )
       dup src swap MK-HIDDEN                 \ ( row slot hid )
       rot MK-PUSH swap                       \ push hid onto row -> ( row' slot )
@@ -1359,7 +1366,7 @@ variable LLC-N
    tl HIDDEN-PARAM? IF RES-FALSE EXIT THEN
    tl LAYOUT-PARAM? 0= IF RES-FALSE EXIT THEN
    th PARAM>FAM tl PARAM>FAM = 0= IF RES-FALSE EXIT THEN
-   th HIDDEN-SLOT@ th PARAM>FAM TFAM-WIDTH@* 1 - = ;   \ whole group: tag on top
+   th HIDDEN-SLOT@ th T-WIDTH 1 - = ;   \ whole group: tag on top (arg-aware bundle width)
 : LOGHID-EXPAND ( n n -- ) {: rh:n rl:n :}   \ expand rl's logical top, re-pair rows
    rl P>TYPE T-RES {: tl:n :}
    tl rl P>REST LAYOUT-PUSH-FIELDS {: re:n :}
@@ -1579,7 +1586,7 @@ variable LTC-P
          t FIELD-PARAM? IF t T-RES FIELD-INNER TWALK-DEEPER RECURSE TWALK-SHALLOWER ELSE
             t T-RES LTC-P !
             LTC-P @ HIDDEN-PARAM? IF
-               LTC-P @ HIDDEN-SLOT@  LTC-P @ PARAM>FAM TFAM-WIDTH@* 1 -  = IF
+               LTC-P @ HIDDEN-SLOT@  LTC-P @ T-WIDTH 1 -  = IF
                   LTC-P @ LAYOUT-LINEAR-COUNT               \ one bundle: count at the tag only
                ELSE 0 THEN
             ELSE LTC-P @ LAYOUT-PARAM? IF
@@ -2478,7 +2485,7 @@ variable SIG-RAW-MODE   0 SIG-RAW-MODE !
    fam TFAM-ARITY* 0 <> IF a u BAD-LOC-ANN EXIT THEN
    PARAM-SCR-N @ a u fam MK-PARAM {: pt:n :}
    pt LAYOUT-PARAM? 0= IF pt EXIT THEN             \ arity-0 cell family: nominal scalar
-   fam TFAM-WIDTH@* 1 <> IF a u BAD-LOC-ANN EXIT THEN   \ W>1 layout locals: dotted tail
+   pt T-WIDTH 1 <> IF a u BAD-LOC-ANN EXIT THEN    \ W>1 layout locals: dotted tail (arity-0 here, so == family width)
    pt 0 MK-HIDDEN ;
 : LOCAL-TYPE ( ptr u8 n -- n ) {: a:ptr u:n :}
    a u s" ptr" CORE-STR= IF FRESH MK-VAR MK-PTR EXIT THEN
@@ -6249,8 +6256,9 @@ variable WF-I
    node P>TYPE T-RES {: t:n :}
    t HIDDEN-PARAM? IF
       t PARAM>FAM {: fam:n :}
-      WF-POS-I @  fam  fam TFAM-WIDTH@*  WF-ADD
-      node  fam TFAM-WIDTH@*  ROW-DROP-N EXIT
+      t T-WIDTH {: w:n :}                       \ arg-aware bundle width (fact + row drop)
+      WF-POS-I @  fam  w  WF-ADD
+      node  w  ROW-DROP-N EXIT
    THEN
    t LAYOUT-PARAM? IF WF-POS-I @  t PARAM>FAM  t T-WIDTH  WF-ADD THEN
    node P>REST ;
@@ -6355,7 +6363,7 @@ variable XG-N   variable XG-TN   variable XG-ROW
 
 : XG-READ-HID ( n -- ) {: t:n :}   \ read the whole W-cell group whose resolved tag is t
    t PARAM>FAM {: fam:n :}
-   fam TFAM-WIDTH@* {: w:n :}
+   t T-WIDTH {: w:n :}                          \ arg-aware bundle width
    t HIDDEN-SLOT@ w 1 - <> IF s" checker: hidden tag not on group top" 76 die THEN
    w 1 - BEGIN dup 0 >= WHILE
       fam over XG-CELL-HID@
@@ -7490,7 +7498,9 @@ variable MTCH-ROW   variable MTCH-I   variable MTCH-TAGT
    RES-TRUE ;
 
 : MATCH-SCRUT? ( n -- bool ) {: fam:n :}   \ verify + walk off the W-cell bundle
-   fam TFAM-WIDTH@* {: w:n :}
+   DCUR @ R-RES {: node:n :}
+   node TAG S-PUSH <> IF RES-FALSE EXIT THEN
+   node P>TYPE T-WIDTH {: w:n :}            \ arg-aware bundle width from the scrutinee tag
    DCUR @ MTCH-ROW !  0 MTCH-I !  0 MTCH-TAGT !
    BEGIN MTCH-I @ w < WHILE
       fam w MTCH-I @ MATCH-SCRUT-CELL? 0= IF RES-FALSE EXIT THEN

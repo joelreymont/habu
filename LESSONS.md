@@ -6066,3 +6066,29 @@ unchanged (148855). Keys for milestone 2:
   but fails in the full gate (`expected 13 got 12`). Prefix every fixture identity
   with the test's own tag (`oblig-test/...`) per docs/forth.md § "unique test-owned
   names"; the collision is silent because REGISTER interning is a no-op, not an error.
+- **Make `T-WIDTH` instantiation-correct by routing through a schema-walk, not by
+  reading the declared registry width.** `TFAM-WIDTH@` assumes every family
+  parameter is one cell; that is exact ONLY while parameters stay cell-kinded
+  (docs §18). The instantiation-correct width substitutes each param slot by its
+  arg's `T-WIDTH` while walking the variant/product schemas — the same
+  substitution `SCHEMA-TERM`/`ENV-TERM!` already did for lowering-cert offsets.
+  Route the arg-aware width via a hook (`TFAM-INST-WIDTH@`, type-family.f) so the
+  checker layer stays a backward caller of `T-WIDTH`; the 0-hook must fall back to
+  the declared width verbatim so the boot prefix is unchanged.
+- **A behaviour-preserving checker source change still moves the fixpoint hash;
+  x2-identical is the real invariant, not equal-to-baseline.** The checker is
+  baked into the engine image, so editing `checker.f`/`type-family.f` changes the
+  binary even when runtime behaviour is byte-identical for every corpus shape.
+  Because item 12 rejects a layout value in a cell parameter, EVERY existing
+  family arg is width 1, so arg-aware width equals the declared width everywhere —
+  proved by all type/layout suites staying green and the fixpoint rebuilding
+  itself byte-identically. Report the hash change vs baseline as expected, and
+  keep the x2-identical proof as the stability invariant.
+- **Unit-test a width/effect function on terms the sig parser would reject by
+  building them directly through `MK-PARAM`.** The whole point of a groundwork
+  slice is that the accept path is not open yet, so a signature like `opt<pt3>`
+  (a multi-cell layout arg) rejects at the sig one-type-per-slot separator check.
+  Construct the resolved `T-PARAM` term with `PARAM-SCR-N@`/`PARAM-SCR+`/`MK-PARAM`
+  (TRUSTED wrappers in the registry suite) to exercise the width function alone,
+  and separately pin the probe shapes as still-rejecting so the groundwork adds no
+  new accepts.

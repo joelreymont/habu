@@ -1705,11 +1705,13 @@ unresolved arg that may later become linear, cannot transport or cross memory;
 identity flow remains legal until TFAM 11 supplies whole-bundle linear counting.
 
 **Width facts for emitters (slice 2).** The checker computes logical widths per
-§18 — `TFAM-WIDTH@ ( id -- n )` in the registry (sum: slots+tag, enum: tag,
-product: field cells, cell/evidence: 1) and `T-WIDTH ( type -- n )` on resolved
-type terms — and records, per checked definition, a width-fact table: one row
-per LAYOUT operand of each transport op and locals capture, holding (body token
-index, operand position 0=top, family-id, registry logical width). Absence of a
+§18 — `TFAM-WIDTH@ ( id -- n )` is the declared params-as-cells width in the
+registry (sum: slots+tag, enum: tag, product: field cells, cell/evidence: 1) and
+`T-WIDTH ( type -- n )` is the arg-aware INSTANTIATED width on a resolved term
+(equal to `TFAM-WIDTH@` for every cell-kinded instantiation) — and records, per
+checked definition, a width-fact table: one row per LAYOUT operand of each
+transport op and locals capture, holding (body token index, operand position
+0=top, family-id, instantiated logical width). Absence of a
 row means every operand is one cell. Query surface (checker-modeled, callable
 from checked code): `WF-N@`, `WF-TOKIX@`, `WF-POS@`, `WF-FAM@`, `WF-WIDTH@`.
 Typed layout `!`/`@` also record one row at operand position 0; this position
@@ -1864,7 +1866,20 @@ WIDTH(enum)               = tag width
 WIDTH(boxed<...>)         = 1
 ```
 
-`TFAM-WIDTH@` (`src/core/type-family.f`) computes this. The `boxed`/`niche-null`
+`TFAM-WIDTH@` (`src/core/type-family.f`) computes the DECLARED width, treating
+every parameter as one cell (exact while parameters stay cell-kinded). The WIDTH
+function above is defined over the INSTANTIATED field/variant types, so
+`T-WIDTH ( type -- n )` (the checker-facing width on a resolved term) routes
+through `TFAM-INST-WIDTH@`, which walks the family's variant/product schemas and
+substitutes each param slot by the `T-WIDTH` of the term's corresponding arg —
+so a wide layout arg widens the sum payload / product body. Every cell-kinded
+instantiation (all args width 1) yields the declared `TFAM-WIDTH@`, so routing
+every checker width site (`T-WIDTH`, hidden-field expansion, the WF fact surface,
+whole-bundle transport, `MATCH` scrutinee walk) through the instantiated width is
+behaviour-preserving groundwork; the 0-hook (registry not loaded) falls back to
+`TFAM-WIDTH@` verbatim. Nested parametric families propagate their own args in a
+later slice; a schema SC-APP field is an arity-0 concrete family today, whose
+instantiated width already equals its declared width. The `boxed`/`niche-null`
 policies collapse the stack width to one cell regardless of kind (a boxed value
 is a single `ptr fam-box`, §22.4; a niche value is a single cell, §22.3), so the
 width branch keys on the policy before the kind. That branch is reached today

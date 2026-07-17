@@ -131,6 +131,15 @@ TRUSTED: TWX-TFL-CVAR? ( ptr u8 n n -- n n bool ) TFL-CVAR? ;
 TRUSTED: TWX-TFL-MATCH-FAM? ( ptr u8 n -- n bool ) TFL-MATCH-FAM? ;
 TRUSTED: TWX-TFL-VAR? ( ptr u8 n n -- n bool ) TFL-VAR? ;
 TRUSTED: TWX-TFL-VPADS ( n n -- n ) TFL-VPADS ;
+\ layout-cap slice 1: build resolved T-PARAM terms directly (bypassing the sig
+\ parser, which rejects a layout arg in a cell param) to unit-test arg-aware width.
+TRUSTED: TWX-T-WIDTH ( n -- n ) T-WIDTH ;
+TRUSTED: TWX-MK-NULLARY ( n -- n ) {: fam:n :}       \ 0-arg term of family fam
+   PARAM-SCR-N @ fam TFAM-NAME$ fam MK-PARAM ;
+TRUSTED: TWX-MK-UNARY ( n n -- n ) {: arg:n fam:n :}  \ fam<arg> term
+   PARAM-SCR-N @ {: base:n :}
+   arg PARAM-SCR+
+   base fam TFAM-NAME$ fam MK-PARAM ;
 
 
 \ Explicit pre-checker layouts: offsets/accessors assert during prefix load;
@@ -699,6 +708,39 @@ WBX @ TL-BOXED       TWX-TFAM-LAYOUT!   WBX @ TFAM-WIDTH@ 1 T=
 WBX @ TL-NICHE       TWX-TFAM-LAYOUT!   WBX @ TFAM-WIDTH@ 1 T=
 WBX @ TL-PACKED-TAG  TWX-TFAM-LAYOUT!   WBX @ TFAM-WIDTH@ 3 T=  \ packed keeps cell width
 WBX @ TL-STACK-CELL-TAG TWX-TFAM-LAYOUT!   WBX @ TFAM-WIDTH@ 3 T=  \ restored
+
+\ ---------------------------------------------------------------------------
+\ arg-aware INSTANTIATED width (layout-cap slice 1, docs §18). T-WIDTH walks a
+\ resolved layout term's variant/product schemas, substituting each param slot by
+\ its arg's width, instead of the declared "every param is one cell" TFAM-WIDTH@.
+\ A width-1 arg reproduces the declared width (behaviour-preserving groundwork,
+\ what every cell-kinded corpus shape uses); a wide layout arg widens the sum
+\ payload — the degenerate case the declared family-only width gets wrong. The
+\ probe shapes stay rejected at the sig layer (slice 1 adds NO new accepts); these
+\ terms are built directly through MK-PARAM to exercise the width function alone.
+\ ---------------------------------------------------------------------------
+variable IWP1  variable IWP3  variable IWOPT  variable IWT
+package pkiw
+ENUM pkiw1 red green ;ENUM                                         \ layout, width 1 (tag only)
+PRODUCT pkiw3 0 FIELD a n FIELD b n FIELD c n ;PRODUCT             \ layout, width 3 (three cells)
+SUMTYPE pkiwo 1 VARIANT none ;VARIANT VARIANT some a ;VARIANT ;SUMTYPE  \ option-like, arity 1
+;package
+s" pkiw" s" pkiw1" TWX-TFAM-FIND-IN drop IWP1 !
+s" pkiw" s" pkiw3" TWX-TFAM-FIND-IN drop IWP3 !
+s" pkiw" s" pkiwo" TWX-TFAM-FIND-IN drop IWOPT !
+\ declared (params-as-cells) widths — the family-only baseline
+IWP1 @ TFAM-WIDTH@ 1 T=                          \ enum: tag only
+IWP3 @ TFAM-WIDTH@ 3 T=                           \ product: three cells
+IWOPT @ TFAM-WIDTH@ 2 T=                          \ sum: max(none=0, some=1-as-cell) + tag
+\ arg-aware width == T-WIDTH of the built terms
+IWP1 @ TWX-MK-NULLARY TWX-T-WIDTH 1 T=            \ enum term self-check
+IWP3 @ TWX-MK-NULLARY TWX-T-WIDTH 3 T=            \ product term self-check
+\ behaviour-preserving: a width-1 layout arg reproduces the declared sum width
+IWP1 @ TWX-MK-NULLARY IWOPT @ TWX-MK-UNARY TWX-T-WIDTH 2 T=       \ opt<enum1> == declared 2
+\ the groundwork proof: a width-3 layout arg widens the sum payload (declared width 2 was degenerate)
+IWP3 @ TWX-MK-NULLARY IWOPT @ TWX-MK-UNARY dup IWT !
+IWT @ TWX-T-WIDTH 4 T=                            \ opt<pt3>: max(0, width(pt3)=3) + tag = 4
+IWOPT @ TFAM-WIDTH@ 2 T=                          \ family-only width unchanged (still 2) — arg-aware differs
 
 \ ---------------------------------------------------------------------------
 \ report: "ok" on success, nonzero exit on any failure.

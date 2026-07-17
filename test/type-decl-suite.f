@@ -1907,6 +1907,21 @@ DIAG-BUFFER$ s\" \"family\":\"tdlrjs\"" TDT-CONTAINS? 0 T=
 0 DIAG-JSON!
 DIAG-BUFFER-OFF
 
+\ ---------------------------------------------------------------------------
+\ layout-cap slice 1 regression guard (dot habu-checker-capability-layout-9b8540bd):
+\ making width computation instantiation-correct adds NO new accepts. A single
+\ multi-cell family parameter (the survey probe shapes option<off len>,
+\ option<ptr u8 n>, result<n n,n>) STILL rejects at the sig one-type-per-slot
+\ separator check — only comma-separated CELL params (tdres<n,n> above) are the
+\ accepted flat-tuple form. These pins fail closed if a later slice opens the
+\ accept prematurely.
+\ ---------------------------------------------------------------------------
+SUMTYPE tdpbopt 1 VARIANT none ;VARIANT VARIANT some a ;VARIANT ;SUMTYPE
+SUMTYPE tdpbres 2 VARIANT ok a ;VARIANT VARIANT err b ;VARIANT ;SUMTYPE
+s" TDPB1 ( -- tdpbopt<off len> )"  CHECK-QUIET-CANDIDATE! 0 T=
+s" TDPB2 ( -- tdpbopt<ptr u8 n> )" CHECK-QUIET-CANDIDATE! 0 T=
+s" TDPB3 ( -- tdpbres<n n,n> )"    CHECK-QUIET-CANDIDATE! 0 T=
+
 : REPORT ( -- )
    #FAIL @ 0 = if s" ok" type cr exit then
    #FAIL @ . s" type-decl-suite: failures" 1 die ;

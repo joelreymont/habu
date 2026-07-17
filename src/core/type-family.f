@@ -770,6 +770,55 @@ variable PF-N   0 PF-N !
 : PF-SLOT@ ( n -- n ) PF-REC@ PF.SLOT @ ;
 : PF-N@ ( -- n ) PF-N @ ;
 
+\ --- arg-aware instantiated width (item 12 / layout-cap slice 1, docs §18). The
+\ registry TFAM-WIDTH@ assumes every parameter contributes one cell; that is exact
+\ WHILE family parameters stay cell-kinded, but §18's WIDTH function is defined
+\ over the INSTANTIATED field/variant types. TFAM-INST-WIDTH@ walks a resolved
+\ layout term's variant/product schemas and substitutes each param slot by the
+\ width of the term's matching arg (T-WIDTH, checker.f), so a layout arg widens
+\ the sum payload / product body. For every cell-kinded instantiation (all args
+\ width 1) it equals TFAM-WIDTH@, so routing T-WIDTH through it is behaviour-
+\ preserving groundwork. Nested parametric families propagate their own args in a
+\ later slice; a schema SC-APP is always an arity-0 concrete payload family today,
+\ whose instantiated width already equals its declared registry width.
+: SCH-NODE-IWIDTH ( n n -- n ) {: node:n term:n :}   \ inst width of one schema node under term's args
+   node SCHEMA-PARAM? IF term node SCHEMA-A@ PARAM>ARG T-WIDTH EXIT THEN
+   node SCHEMA-APP?   IF node SCHEMA-A@ TFAM-WIDTH@ EXIT THEN
+   1 ;
+: SUMV-IWIDTH ( n n -- n ) {: vid:n term:n :}   \ sum of variant vid's payload field inst-widths
+   vid SUMV-SCH-START@ {: ss:n :}
+   0                                            \ acc
+   0 BEGIN dup vid SUMV-SCH-COUNT@ < WHILE       \ ( acc j )
+      ss over + SCHEMA-ROOT@ term SCH-NODE-IWIDTH   \ ( acc j wj )
+      rot + swap                                 \ ( acc' j )
+      1 +
+   REPEAT drop ;
+: SUM-IWIDTH ( n -- n ) {: term:n :}            \ tag + max variant payload inst-width
+   term PARAM>FAM {: fam:n :}
+   fam TFAM-VAR-START@ {: vs:n :}
+   0                                            \ maxpay
+   0 BEGIN dup fam TFAM-VAR-COUNT@ < WHILE        \ ( maxpay j )
+      vs over + term SUMV-IWIDTH                  \ ( maxpay j payj )
+      rot max swap                               \ ( maxpay' j )
+      1 +
+   REPEAT drop
+   1 + ;                                         \ + tag cell
+: PRODUCT-IWIDTH ( n -- n ) {: term:n :}        \ sum of field inst-widths (no tag)
+   term PARAM>FAM {: fam:n :}
+   fam TFAM-FLD-START@ {: fs:n :}
+   0
+   0 BEGIN dup fam TFAM-FLD-COUNT@ < WHILE
+      fs over + PF-SCH@ SCHEMA-ROOT@ term SCH-NODE-IWIDTH
+      rot + swap
+      1 +
+   REPEAT drop ;
+: TFAM-INST-WIDTH@ ( n -- n ) {: term:n :}      \ instantiated logical width of a resolved layout term
+   term PARAM>FAM {: fam:n :}
+   fam TFAM-BOXED-OR-NICHE? IF 1 EXIT THEN
+   fam TFAM-PRODUCT? IF term PRODUCT-IWIDTH EXIT THEN
+   fam TFAM-SUM? fam TFAM-ENUM? or IF term SUM-IWIDTH EXIT THEN
+   1 ;
+
 : PF-MATCH? ( n ptr u8 n n -- bool ) {: fam:n na:ptr nu:n id:n :}
    id PF-FAM@ fam = 0= IF RES-FALSE EXIT THEN
    id PF-NAME$ na nu CORE-STR= ;
@@ -1412,7 +1461,8 @@ variable TFC-I   variable TFC-J   variable TFC-ROW
 ' TFAM-ARITY@  TFAM-ARITY-XT !
 ' TFAM-LAYOUT? TFAM-LAYOUT?-XT !   \ item 7: checker reaches the layout kind for its fail-closed guard
 ' TFAM-CELL?   TFAM-CELL?-XT !     \ nominal scalars: checker reaches the cell kind for LAYOUT-BUFFER admission + pointee governance
-' TFAM-WIDTH@  TFAM-WIDTH-XT !     \ item 12: checker reads logical widths for the WF fact surface
+' TFAM-WIDTH@  TFAM-WIDTH-XT !     \ item 12: checker reads DECLARED logical widths (params-as-cells) for the boot fallback
+' TFAM-INST-WIDTH@ TFAM-INST-WIDTH-XT !   \ layout-cap slice 1: arg-aware INSTANTIATED width for T-WIDTH / WF fact surface
 ' TFAM-CONSTRUCT-FAM  CONSTRUCT-FAM-XT !   \ item 9: construct family resolution (active package only)
 ' TFAM-CONSTRUCT-STEP CONSTRUCT-STEP-XT !  \ item 9: construct variant resolve + inline constructor effect
 ' TFAM-MATCH-FAM     MATCH-FAM-XT !     \ item 9: MATCH family resolution (signature scope)
