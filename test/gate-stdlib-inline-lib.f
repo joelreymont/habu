@@ -502,6 +502,7 @@ variable GSI-TL-FILE-A
    s" lib/ptx/tile-v4a-test.f" GSI-INCLUDE
    s" lib/ptx/tile-pipe-test.f" GSI-INCLUDE
    s" lib/ptx/cpp-pipe-step-test.f" GSI-INCLUDE
+   s" lib/ptx/cpp-slot-test.f" GSI-INCLUDE
    s" lib/ptx/collective-test.f" GSI-INCLUDE
    s" lib/ptx/cg-collective-test.f" GSI-INCLUDE
    s" lib/ptx/autograd-test.f" GSI-INCLUDE
@@ -523,6 +524,7 @@ variable GSI-TL-FILE-A
    s" lib/ptx/tile-acc-neg-test.f" GSI-INCLUDE
    s" lib/ptx/tile-v4a-neg-test.f" GSI-INCLUDE
    s" lib/ptx/tile-pipe-neg-test.f" GSI-INCLUDE
+   s" lib/ptx/cpp-slot-neg-test.f" GSI-INCLUDE
    s" lib/ptx/gemm-checked-neg-test.f" GSI-INCLUDE
    s" lib/ptx/attention-checked-neg-test.f" GSI-INCLUDE ;
 

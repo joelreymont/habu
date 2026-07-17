@@ -548,8 +548,17 @@ points stay listed.
   vocabulary (`mmstage`/`mmaslice`/`mmbslice`/`mmafrag`/`mmbfrag`/`mmracc`,
   `PIPE-LOOP`/`STAGE-SLICES`/`A-FRAG`/`B-FRAG.V4`/`RB-FMA`/`K-UNROLL`) over the
   cg-matmul-emit.f MM-* emitters, byte-identical to EMIT-MATMUL by test, with
-  parity/alignment/layout/naive-path negative regressions; trusted staging
-  bodies are owned by the cp.async typestate capability dot.
+  parity/alignment/layout/naive-path negative regressions. The trusted core is
+  the phantom MINTS only; `RB-FMA` and `PIPE-STORE` (operand-consuming, no mint)
+  are checked and the compute-slot adapter folded into `PIPE-LOOP`.
+- `lib/ptx/cpp-slot.f` / `lib/ptx/cpp-slot-test.f` /
+  `lib/ptx/cpp-slot-neg-test.f` — the cp.async pipeline-slot TYPESTATE (package
+  CPPSLOT): a staged-buffer slot threads `cpp-pending<p>` -> `cpp-committed<p>`
+  -> `cpp-ready<p>` (p = buffer parity), so the dynamic protocol ordering is a
+  CHECKED discipline (`COMMIT`/`WAIT`/`READ`/`READ-STAGE`). The four dynamic
+  negatives — read-before-wait, missing-commit, double-wait, parity mismatch —
+  plus the divergent-barrier negative reject fail-closed; `WAIT`'s bar.sync fence
+  composes with the M5 barrier model. Owns habu-checker-cp-async-6ba788a5.
 - `lib/ptx/collective.f` / `lib/ptx/collective-test.f` — tile-DSL row and
   collective vocabulary (M6) plus the checked stable-softmax proof.
 - `lib/ptx/uniform-barrier-test.f` — M5 uniformity + block-uniform barrier model:

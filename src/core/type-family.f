@@ -1105,7 +1105,6 @@ s" tile"       3 TFAM-REG-CELL
 s" vtile"      3 TFAM-REG-CELL   \ M10: vec4 lane tile, DISTINCT from scalar tile<> (tile-v4a.f)
 s" acc"        3 TFAM-REG-CELL
 s" mmctx"      3 TFAM-REG-CELL
-s" mmacc"      3 TFAM-REG-CELL
 \ Pipelined register-blocked GEMM tile vocabulary (lib/ptx/tile-pipe.f):
 \ <t elem, b block, l layout-atom, w mask, p parity var> on the staged families;
 \ <t, b, g micro-geometry atom, w> on the micro-tile accumulator.
@@ -1115,6 +1114,14 @@ s" mmbslice"   5 TFAM-REG-CELL   \ contiguous 16B-proven B slice (v4 loads legal
 s" mmafrag"    5 TFAM-REG-CELL   \ A operand fragment (4 regs, one k column)
 s" mmbfrag"    5 TFAM-REG-CELL   \ B operand fragment (4 regs, one vec4 row)
 s" mmracc"     4 TFAM-REG-CELL   \ register-blocked micro-tile accumulator
+\ cp.async pipeline-slot typestate (lib/ptx/cpp-slot.f, dot
+\ habu-checker-cp-async-6ba788a5): a staged-buffer slot threads
+\ pending<p> -> committed<p> -> ready<p> across the double-buffer protocol
+\ (p = symbolic buffer parity). The distinct state families make read-before-wait,
+\ missing-commit, double-wait, and parity mismatch fail-closed type errors.
+s" cpp-pending"   1 TFAM-REG-CELL   \ issued: cp.async copies in flight, not yet committed
+s" cpp-committed" 1 TFAM-REG-CELL   \ commit_group closed, wait_group + bar.sync not yet done
+s" cpp-ready"     1 TFAM-REG-CELL   \ waited + bar.sync fenced: the staged tile is block-visible
 s" attnctx"    3 TFAM-REG-CELL
 s" attnacc"    3 TFAM-REG-CELL
 s" attn-stage-q"       0 TFAM-REG-CELL
@@ -1135,6 +1142,12 @@ s" rowidx"     1 TFAM-REG-CELL
    s" " na nu TFAM-RESOLVE IF ELSE drop 0 THEN ;
 s" tile"    PTX-FAM-ID PTX-TILE-FAM !
 s" uniform" PTX-FAM-ID PTX-UNIFORM-FAM !
+\ cp.async pipeline-slot barrier ids: the WAIT step ( cpp-committed<p> -- cpp-ready<p> )
+\ retires the copy group and bar.sync-fences it, so it composes with the M5
+\ barrier model (checker.f PTX-CPWAIT-ROWS?/BARRIER-CUR?) - a WAIT reached under
+\ divergent control is not block-uniform and rejects, exactly like BLOCK-MAX.
+s" cpp-committed" PTX-FAM-ID PTX-CPCOMMITTED-FAM !
+s" cpp-ready"     PTX-FAM-ID PTX-CPREADY-FAM !
 
 \ Internal VREC field constructor: arity 3, PRIVATE in reserved package "@" (not a
 \ spellable user package) so it never resolves from user signatures, while every

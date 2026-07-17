@@ -4,6 +4,36 @@
 
 Last updated: 2026-07-17
 
+- **The cp.async pipeline-slot typestate is nominal state-family transitions + parity
+  unification — the four dynamic negatives reject with ZERO checker LOGIC, exactly the M5
+  "the negative needs zero machinery" pattern.** (dot habu-checker-cp-async-6ba788a5, host
+  lane.) A staged-buffer slot threads `cpp-pending<p>` -> `cpp-committed<p>` -> `cpp-ready<p>`
+  (three nominal TK-CELL families over a symbolic parity, baked in type-family.f). Each
+  protocol word (CPPSLOT COMMIT/WAIT/READ/READ-STAGE in lib/ptx/cpp-slot.f) demands one state
+  and produces the next, so ordinary stack-effect unification rejects read-before-wait (READ
+  wants ready, has pending), missing-commit (WAIT wants committed, has pending), double-wait
+  (2nd WAIT wants committed, has ready), and parity-mismatch (READ-STAGE ties the slot's
+  parity to the mmstage's). No checker.f rule was needed for the negatives — only the family
+  registrations + typed words + fixtures. Key move: the fixtures take their INITIAL slot state
+  from the fixture SIGNATURE (a `cpp-pending<p>` input), so no ISSUE mint word is needed — the
+  issue mint stays the production pipeline's existing trusted boundary, which is what keeps net
+  trusted DOWN.
+- **bar.sync composition with M5 is a one-clause extension: committed->ready IS a block
+  barrier.** WAIT drains the group + bar.sync-fences it, the same block-uniform barrier as a
+  tile->uniform reduction, so PTX-CPWAIT-ROWS? (committed-in/ready-out) becomes one more OR
+  clause in PTX-BARRIER-ROWS? and a WAIT under divergent control rejects (E-DIVERGENT-BARRIER)
+  through the EXISTING BARRIER-CUR?/REJECT-DIVBAR choke — composing, not duplicating M5. Two
+  captured family-id cells (PTX-CPCOMMITTED-FAM/PTX-CPREADY-FAM), same late-capture pattern as
+  PTX-TILE-FAM/PTX-UNIFORM-FAM.
+- **Net trusted-DOWN came from discharging the NON-minting tilepipe bodies, not the mints.**
+  RB-FMA (`2drop MM-KSTEP-FMA`) and PIPE-STORE (`MM-WRITE 2drop`) only consume operands and
+  emit fixed-register instructions — no phantom mint — so they certify as CHECKED `:` words
+  with byte-identical bodies (empirically: they ACCEPT as checked; STAGE-SLICES/A-FRAG/
+  PIPE-ACC-ZERO all REJECT because they produce a family cell from a bare int literal). Fold
+  the PIPE-RUN adapter into PIPE-LOOP's quotation: -3 trusted, +2 for CPPSLOT COMMIT/WAIT
+  transitions = net -1, byte-identical EMIT-PIPED==EMIT-MATMUL. A faithful 3-state transition
+  vocabulary needs an irreducible 2-transition trusted core (pending->committed, committed->
+  ready re-type a phantom, which no checked rule expresses); don't try to check them away.
 - **error-code-lint is part of the OWNING gate for ANY new `E-*` constant, including maki/ — a
   maki-only landing skipped it and put a code collision on master.** (idfam lane integration,
   2026-07-17.) `E-TARGET-WIRE` picked -5251, already claimed by `E-ABL-CAP` (maki/ablate-ptx.f);

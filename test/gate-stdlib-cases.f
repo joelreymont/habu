@@ -280,6 +280,7 @@ TEST:SUITE ptx-stdlib
    lib/ptx/tile-v4a-test.f
    lib/ptx/tile-pipe-test.f
    lib/ptx/cpp-pipe-step-test.f
+   lib/ptx/cpp-slot-test.f
    lib/ptx/collective-test.f
    lib/ptx/cg-collective-test.f
    lib/ptx/autograd-test.f
@@ -322,6 +323,10 @@ TEST:;SUITE
 
 TEST:SUITE ptx-tile-pipe-neg
    lib/ptx/tile-pipe-neg-test.f
+TEST:;SUITE
+
+TEST:SUITE ptx-cpp-slot-neg
+   lib/ptx/cpp-slot-neg-test.f
 TEST:;SUITE
 
 TEST:SUITE ptx-gemm-checked-neg

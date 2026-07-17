@@ -437,6 +437,17 @@ variable FIELD-FAM   -1 FIELD-FAM !              \ reserved family-id of the int
 \ only sound under block-uniform control. 0 = registry not loaded => no detection.
 variable PTX-TILE-FAM      0 PTX-TILE-FAM !
 variable PTX-UNIFORM-FAM   0 PTX-UNIFORM-FAM !
+\ cp.async pipeline-slot typestate (habu-checker-cp-async-6ba788a5): the
+\ `cpp-committed`/`cpp-ready` family ids, captured by type-family.f alongside
+\ tile/uniform. The WAIT step of the cp.async double-buffer protocol has the
+\ declared shape ( cpp-committed<p> -- cpp-ready<p> ): it retires the copy group
+\ and fences with `bar.sync` so the staged tile is block-visible. Like the M5
+\ tile->uniform reduction that is the ONLY sound way to make a uniform, this
+\ committed->ready shape is the ONLY sound way to make a ready slot, so it is the
+\ same block-uniform barrier and composes with CTL-BARRIER at the same choke
+\ (PTX-BARRIER-ROWS?/BARRIER-CUR?). 0 = registry not loaded => no detection.
+variable PTX-CPCOMMITTED-FAM   0 PTX-CPCOMMITTED-FAM !
+variable PTX-CPREADY-FAM       0 PTX-CPREADY-FAM !
 \ Forward hook ( sym -- ): OR CTL-BARRIER into a symbol's control flags. Installed
 \ after the NORET machinery is defined; E-ADD-EFFECT calls it (0 = not yet armed)
 \ for any recorded effect whose shape is a block collective, covering BOTH the
@@ -686,10 +697,23 @@ variable UF-POSN
    REPEAT
    drop RES-FALSE ;
 
-: PTX-BARRIER-ROWS? ( n n -- bool ) {: din:n dout:n :}   \ tile-in / uniform-out block collective?
+: PTX-REDUCE-ROWS? ( n n -- bool ) {: din:n dout:n :}   \ tile-in / uniform-out block reduction?
    PTX-UNIFORM-FAM @ 0= IF RES-FALSE EXIT THEN
    dout PTX-UNIFORM-FAM @ ROW-HAS-FAM? 0= IF RES-FALSE EXIT THEN
    din PTX-TILE-FAM @ ROW-HAS-FAM? ;
+
+\ cp.async WAIT: committed-in / ready-out. The only sound way to make a ready slot
+\ is to retire the copy group and bar.sync-fence it, so this shape is a block
+\ barrier exactly like the tile->uniform reduction (M5), and composes at the same
+\ choke rather than duplicating it.
+: PTX-CPWAIT-ROWS? ( n n -- bool ) {: din:n dout:n :}
+   PTX-CPREADY-FAM @ 0= IF RES-FALSE EXIT THEN
+   dout PTX-CPREADY-FAM @ ROW-HAS-FAM? 0= IF RES-FALSE EXIT THEN
+   din PTX-CPCOMMITTED-FAM @ ROW-HAS-FAM? ;
+
+: PTX-BARRIER-ROWS? ( n n -- bool ) {: din:n dout:n :}   \ block collective (reduction or cp.async fence)?
+   din dout PTX-REDUCE-ROWS? IF RES-TRUE EXIT THEN
+   din dout PTX-CPWAIT-ROWS? ;
 
 : FIELD-REC ( n -- n )
    0 PARAM>ARG ;

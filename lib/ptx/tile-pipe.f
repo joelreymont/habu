@@ -39,26 +39,24 @@
 \ buffer, and RB-FMA requires both fragments to carry THE SAME p (no cross-buffer
 \ operand mixing); w = the mask token threading acc and fragments.
 \
-\ TRUSTED boundary (owner habu-checker-cp-async-6ba788a5, scheduled for deletion):
-\ the DYNAMIC pipeline protocol - cp.async issue -> commit_group -> wait_group N
-\ -> bar.sync -> read, with pending/ready ordering and loop-carried double-buffer
-\ parity ALTERNATION - is beyond the current type system, so the bodies below are
-\ named trusted boundaries over the device-proven emitters. When the cp.async
-\ typestate capability lands, these bodies re-certify as checked code and the
-\ TRUSTED.md rows are removed. Load after lib/ptx/cg-matmul-emit.f (the raw
+\ TRUSTED boundary (owner habu-checker-cp-async-6ba788a5): the phantom MINTS below
+\ (mmctx/mmracc/mmstage/mmaslice/mmbslice/mmafrag/mmbfrag from bare register
+\ literals) stay a small audited trusted core - the checker has no checked mint
+\ (dot habu-ptx-phantom-preserving). What the cp.async typestate capability DID
+\ discharge: the DYNAMIC pipeline PROTOCOL (issue -> commit -> wait -> bar.sync ->
+\ read, with pending/committed/ready ordering + same-body parity) is now a CHECKED
+\ discipline modeled by lib/ptx/cpp-slot.f - bad orderings reject fail-closed
+\ (lib/ptx/cpp-slot-neg-test.f). And the two NON-minting bodies that only consumed
+\ operands - RB-FMA (register-blocked FMA) and PIPE-STORE (the C write) - are now
+\ CHECKED, and the PIPE-RUN adapter folded into PIPE-LOOP. The runtime loop-carried
+\ parity ALTERNATION stays trusted here (a runtime-dataflow property, out of an
+\ emit-time checker's scope). Load after lib/ptx/cg-matmul-emit.f (the raw
 \ emitters; the checked production kernel in lib/ptx/cg-matmul.f sits ABOVE
 \ this vocabulary).
 
 require lib/ptx/cg-matmul-emit.f
 
-variable PIPE-XT   \ pipeline compute-slot body xt (set by PIPE-LOOP, run by PIPE-RUN)
-
-\ compute-slot adapter: MM-PIPE-KLOOP-WITH executes it once, in the slot where the
-\ staged tile is READY (post wait_group + bar.sync); it mints the current-iteration
-\ mmstage token, threads the mmracc token through the body, and discards the
-\ resulting token (the accumulator registers ARE the carried state).
-TRUSTED: PIPE-RUN ( -- )
-   0 0 PIPE-XT @ execute drop ;
+variable PIPE-XT   \ pipeline compute-slot body xt (set by PIPE-LOOP, run inline in its quotation)
 
 \ tile/thread coordinate derivation (ctaid/tid decomposition, shared base) + the
 \ typed A[M,K] * B[K,N] -> C[M,N] contract, consuming the three ABI matrices.
@@ -73,8 +71,13 @@ TRUSTED: PIPE-ACC-ZERO ( mmctx<m,k,q> -- mmctx<m,k,q> mmracc<f32,block-256,geom-
 \ runtime $KLOOP, prefetch-other-buffer, commit_group/wait_group, barriers, parity
 \ flip). The body sees one READY stage per iteration and must preserve the
 \ accumulator; p is universally quantified, so the body cannot assume a parity.
+\ The inline compute-slot adapter: MM-PIPE-KLOOP-WITH executes the quotation once,
+\ in the slot where the staged tile is READY (post wait_group + bar.sync); it mints
+\ the current-iteration mmstage token, threads the mmracc token through the stored
+\ body, and discards the resulting token (the accumulator registers ARE the carried
+\ state). The mmstage mint + raw xt execute are the audited boundary.
 TRUSTED: PIPE-LOOP ( mmctx<m,k,q> mmracc<f32,block-256,g,w> [ mmstage<f32,block-256,geom-as64x32-bs32x64,w,p> mmracc<f32,block-256,g,w> -- mmracc<f32,block-256,g,w> ] -- mmctx<m,k,q> mmracc<f32,block-256,g,w> )
-   PIPE-XT !  [: PIPE-RUN ;] MM-PIPE-KLOOP-WITH ;
+   PIPE-XT !  [: 0 0 PIPE-XT @ execute drop ;] MM-PIPE-KLOOP-WITH ;
 
 \ capability (4): the blocked 2-D layout, split into its two differently-shaped
 \ slices - strided A (scalar-only) and contiguous 16B-aligned B (v4-legal)
@@ -94,7 +97,11 @@ TRUSTED: B-FRAG.V4 ( mmbslice<f32,block-256,geom-as64x32-bs32x64,w,p> n -- mmbfr
 \ capability (2): the register-blocked outer product - 16 FMAs reusing the 4+4
 \ loaded operands. Fragment roles are nominal (A-major rows, B-major cols) and
 \ both fragments must carry the same parity p and mask w as the accumulator.
-TRUSTED: RB-FMA ( mmracc<f32,block-256,geom-mt4x4,w> mmafrag<f32,block-256,geom-as64x32-bs32x64,w,p> mmbfrag<f32,block-256,geom-as64x32-bs32x64,w,p> -- mmracc<f32,block-256,geom-mt4x4,w> )
+\ CHECKED (not trusted): the declared effect consumes the two fragments and
+\ preserves the mmracc; the body is exactly that (2drop, then the fixed-register
+\ FMA emit), so the checker certifies it - the same-parity/same-mask/role rules
+\ ride the declared effect, not a trusted boundary.
+: RB-FMA ( mmracc<f32,block-256,geom-mt4x4,w> mmafrag<f32,block-256,geom-as64x32-bs32x64,w,p> mmbfrag<f32,block-256,geom-as64x32-bs32x64,w,p> -- mmracc<f32,block-256,geom-mt4x4,w> )
    2drop MM-KSTEP-FMA ;
 
 \ the CHECKED emit-time k-unroll: applies an accumulator-preserving indexed body
@@ -105,6 +112,9 @@ TRUSTED: RB-FMA ( mmracc<f32,block-256,geom-mt4x4,w> mmafrag<f32,block-256,geom-
    acc
    cnt 0 ?do  i as bs body execute  loop ;
 
-\ finalize: write the 4x4 micro-tile of C (16 st.global), consuming ctx + acc
-TRUSTED: PIPE-STORE ( mmctx<m,k,q> mmracc<f32,block-256,geom-mt4x4,mask-live> -- )
+\ finalize: write the 4x4 micro-tile of C (16 st.global), consuming ctx + acc.
+\ CHECKED (not trusted): MM-WRITE uses fixed registers and consumes no operands,
+\ so finalizing is just the write emit then dropping the two spent phantoms - a
+\ body the checker certifies against the declared ( ctx acc -- ) effect.
+: PIPE-STORE ( mmctx<m,k,q> mmracc<f32,block-256,geom-mt4x4,mask-live> -- )
    MM-WRITE 2drop ;
