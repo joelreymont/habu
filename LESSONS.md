@@ -4,6 +4,32 @@
 
 Last updated: 2026-07-17
 
+- **`test/type-decl-suite.f` arms ONE diagnostic swallow buffer at the top
+  (`TDIAG-BUF 8192 DIAG-BUFFER!`) and every expected reject APPENDS its rendered
+  diagnostic without a reset until the first inspection; the accumulation was
+  sized to just fit.** (TFAM-16 niche/recursive lane.) Adding 2 reject fixtures
+  overflowed it → `render: diagnostic buffer full` `76 die` mid-suite — a FATAL
+  abort, not a catchable throw (the render happens before `TDT-NEG`'s `catch`).
+  The same declaration renders fine in isolation because `RDIAG-ON=0` there routes
+  to fd 2 (uncapped). Fix = re-arm the swallow buffer (`TDIAG-BUF 8192
+  DIAG-BUFFER!`) at the start of the growing reject section, matching the suite's
+  own re-arm-per-section idiom; do NOT just bump the cap. When adding reject
+  fixtures to an accumulating-buffer suite, re-arm first.
+- **Boxed/niche-null are still reject-until-supported by design; ship the sound
+  SHARED infra without the accept.** (TFAM-16.) `TFAM-WIDTH@` now reports W=1 for
+  `TL-BOXED`/`TL-NICHE` (docs §18/§22.3), reached only via the `TFAM-LAYOUT!`
+  mutator (no declaration accepts either — both reject at the `POLICY` clause), so
+  it is check-sound metadata the accept slices consume, exactly like `PACKED-DESC`
+  landed before its accept-flip. Niche's `some` payload MUST be a `nonnull-ptr<a>`
+  (a plain `ptr` could be null and collide with `none`), and that refined type does
+  not exist yet, so NO family qualifies today — structural recognition is
+  necessary but not sufficient; the honest niche deliverable is validation +
+  reject-until-supported, not a half-predicate. Recursive sums reject the same
+  under stack-cell-tag AND packed (both keep the cell width); mutual recursion is
+  fail-closed via the forward-reference restriction (a payload may reference only
+  an already-declared family), so no schema cycle walk is needed until boxed
+  accept admits forward refs.
+
 - **Checked Habu has NO fsync/fdatasync/dir-sync primitive; the durable-write surface is
   atomic rename only (`RENAME-FILE`/`ATOMIC-WRITE-FILE` = write-temp + rename).** (atxn lane,
   crash-safe commit slice, dot habu-v2-atomic-txn-a3c26066.) Rename gives ATOMICITY and
