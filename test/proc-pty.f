@@ -600,6 +600,33 @@ variable PTYNUM
    s" 6" EXPECT
    s"  ok" EXPECT ;
 
+\ tty-REPL parity for the LCOMPILEDIE compile-error family (dot
+\ habu-convert-residual-compile-f460b9f2). A recoverable compile die typed at the
+\ interactive REPL now recovers the session exactly like an undefined word
+\ (PTY-UNKNOWN / LDIAGRET), instead of exiting the tty. Before the parity change
+\ the same dup-def line exit-group'd and killed the REPL. dup-def is the
+\ rollback-past-a-published-record case: the first PRDUP commits on its own line;
+\ the second line's failure rolls back to that line's start, so PRDUP survives.
+: PTY-COMPILE-DEF ( -- )
+   s" : PRDUP ( -- ) ;" STEP-LN
+   s"  ok" EXPECT ;
+
+: PTY-COMPILE-RECOVER ( -- )
+   s" : PRDUP ( -- ) ;" STEP-LN
+   s" duplicate definition: PRDUP" EXPECT
+   s" habu> " EXPECT
+   s"  ok" REJECT ;
+
+: PTY-COMPILE-AFTER ( -- )
+   s" 7 ." STEP-LN
+   s" 7" EXPECT
+   s"  ok" EXPECT ;
+
+: PTY-COMPILE-RECOVERY ( -- )
+   PTY-COMPILE-DEF
+   PTY-COMPILE-RECOVER
+   PTY-COMPILE-AFTER ;
+
 : PTY-THROW-RECOVERY ( -- )
    PTY-THROW-LINE
    PTY-THROW-AFTER ;
@@ -633,7 +660,8 @@ variable PTYNUM
 
 : PTY-TOOLS ( -- )
    PTY-STEPPER
-   PTY-THROW-RECOVERY ;
+   PTY-THROW-RECOVERY
+   PTY-COMPILE-RECOVERY ;
 
 : PTY-HB ( -- )
    PTY-BASIC

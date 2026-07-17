@@ -1622,6 +1622,111 @@ variable GE-CF-BODY-U
    s" : RXMK ( -- ) create does> ( -- n ) ;" 70 s" does>" GE-RXE-TOP
    s" PASS: recoverable compile errors catchable inside evaluate (session usable) + fail-closed at top level" type cr ;
 
+\ --- dot habu-convert-residual-compile-f460b9f2: residual compile-die conversions ---
+\ The out-of-inventory recoverable die sites (J-DOES/J-QUOT/J-SEMIQUOT 75,
+\ C-SIG-BAD 76, C-DEFER-DIE-TOKEN, C-QUOTE-EOF 74, counted-string 76,
+\ C-LBRACE-STORE-ONE 75, postpone/export-undefined 70) now route through the same
+\ LCOMPILEDIE tail: catchable inside evaluate, byte-identical fail-closed at top level.
+
+create GE-RXE-TML-BUF 512 allot   variable GE-RXE-TML-U
+
+: GE-RXE-TML-BUILD ( -- )   \ ": RXTML ( -- ) {: t0 t1 ... t64 :} ;" (65 locals: one over the 64 cap) into GE-RXE-TML-BUF via the GE-SRC scratch
+   GE-SRC-RESET
+   s" : RXTML ( -- ) {:" GE-SRC+
+   65 0 ?do  GE-SRC-SP  s" t" GE-SRC+  i GE-SRC-U+  loop
+   s"  :} ;" GE-SRC+
+   GE-SRC-U @ GE-RXE-TML-U !
+   GE-SRC-BUF GE-RXE-TML-BUF GE-RXE-TML-U @ BYTE-COPY ;
+
+: GE-RXE-TML$ ( -- ptr u8 n )  GE-RXE-TML-BUF GE-RXE-TML-U @ ;
+
+: GE-RXE-BS ( -- )  $5C GE-SRC-C ;                     \ backslash byte into the source builder
+
+: GE-RXE-ESC-OPEN ( -- )                               \ append the `s\" ` escaped-string opener + delimiter space
+   [char] s GE-SRC-C  GE-RXE-BS  GE-DQ GE-SRC-C  GE-SRC-SP ;
+
+\ counted-string >255 (C-ICQ/C-EICQ/C-CQ/C-ECQ). This cap has no fd-2 label
+\ (byte-identical silent exit 76), so the assertions are code + usable session +
+\ no crash, not a diagnostic string. The evaluate target `c" <256 A>"` embeds a "
+\ so it is passed through an s\" wrapper with \q-escaped quotes.
+: GE-RXE-CSTR-CATCH ( -- )
+   GE-HB-RESET
+   GE-EVAL-CATCH-SRC
+   GE-RXE-ESC-OPEN                                      \ s\"
+   [char] c GE-SRC-C  GE-RXE-BS  [char] q GE-SRC-C  GE-SRC-SP   \ c\q (-> c" ) + delimiter
+   256 [char] A GE-SRC-REPEAT-C
+   GE-RXE-BS  [char] q GE-SRC-C  GE-DQ GE-SRC-C         \ \q closes the counted string; " closes the s\" wrapper
+   s"  GEC-CATCH . cr" GE-SRC-LINE
+   s" : GEC-RXOK ( -- n ) 12321 ; GEC-RXOK . cr" GE-SRC-LINE
+   s" bin/hb" GE-SRC-BUF GE-SRC-U @ GE-TIMEOUT-MS GE-RUN-STDIN
+   s" hb rxe cstr eval-catch usable" GE-EXPECT-OK
+   s" 76" s" hb rxe cstr eval-catch code" GE-EXPECT-OUT-HAS
+   s" 12321" s" hb rxe cstr eval-catch session-usable" GE-EXPECT-OUT-HAS
+   s" habu-crash" s" hb rxe cstr eval-catch no-crash" GE-EXPECT-ERR-LACKS ;
+
+: GE-RXE-CSTR-TOP ( -- )
+   GE-HB-RESET
+   GE-SRC-RESET
+   [char] c GE-SRC-C  GE-DQ GE-SRC-C  GE-SRC-SP         \ c" + delimiter
+   256 [char] A GE-SRC-REPEAT-C
+   GE-DQ GE-SRC-C  GE-SRC-LF
+   s" bin/hb" GE-SRC-BUF GE-SRC-U @ GE-TIMEOUT-MS GE-RUN-STDIN
+   76 s" hb rxe cstr top rc" GE-EXPECT-RC
+   s" habu-crash" s" hb rxe cstr top no-crash" GE-EXPECT-ERR-LACKS ;
+
+\ unterminated string literal (C-QUOTE-EOF). The evaluate target `s" abc` (no
+\ closing quote) is s\"-wrapped so its embedded " does not close the wrapper.
+: GE-RXE-QEOF-CATCH ( -- )
+   GE-HB-RESET
+   GE-EVAL-CATCH-SRC
+   GE-RXE-ESC-OPEN                                      \ s\"
+   [char] s GE-SRC-C  GE-RXE-BS  [char] q GE-SRC-C  GE-SRC-SP   \ s\q (-> s" ) + delimiter
+   s" abc" GE-SRC+  GE-DQ GE-SRC-C                      \ abc" : the target `s" abc` is unterminated; " closes the wrapper
+   s"  GEC-CATCH . cr" GE-SRC-LINE
+   s" : GEC-RXOK ( -- n ) 12321 ; GEC-RXOK . cr" GE-SRC-LINE
+   s" bin/hb" GE-SRC-BUF GE-SRC-U @ GE-TIMEOUT-MS GE-RUN-STDIN
+   s" hb rxe qeof eval-catch usable" GE-EXPECT-OK
+   s" 74" s" hb rxe qeof eval-catch code" GE-EXPECT-OUT-HAS
+   s" 12321" s" hb rxe qeof eval-catch session-usable" GE-EXPECT-OUT-HAS
+   s" bad string literal" s" hb rxe qeof eval-catch diag" GE-EXPECT-ERR-HAS
+   s" habu-crash" s" hb rxe qeof eval-catch no-crash" GE-EXPECT-ERR-LACKS ;
+
+: GE-RXE-QEOF-TOP ( -- )
+   GE-HB-RESET
+   GE-SRC-RESET
+   [char] s GE-SRC-C  GE-DQ GE-SRC-C  GE-SRC-SP  s" abc" GE-SRC+  GE-SRC-LF   \ `s" abc` unterminated
+   s" bin/hb" GE-SRC-BUF GE-SRC-U @ GE-TIMEOUT-MS GE-RUN-STDIN
+   74 s" hb rxe qeof top rc" GE-EXPECT-RC
+   s" bad string literal" s" hb rxe qeof top diag" GE-EXPECT-ERR-HAS
+   s" habu-crash" s" hb rxe qeof top no-crash" GE-EXPECT-ERR-LACKS ;
+
+: GE-RAWEXIT-RESIDUAL ( -- )
+   \ One caught-inside-evaluate + top-level pair per converted site. The eval-catch
+   \ leg proves catchable code + usable session (GEC-RXOK -> 12321); the top leg
+   \ proves byte-identical fail-closed exit + diagnostic.
+   s" : RXDOES ( -- ) create 1 {: v :} does> ( -- ) ;" s" 75" s" does>" GE-RXE-CATCH-USABLE
+   s" : RXDOES ( -- ) create 1 {: v :} does> ( -- ) ;" 75 s" does>" GE-RXE-TOP
+   s" : RXQ ( -- ) [: [: 5 ;] drop ;] drop ;" s" 75" s" [:" GE-RXE-CATCH-USABLE
+   s" : RXQ ( -- ) [: [: 5 ;] drop ;] drop ;" 75 s" [:" GE-RXE-TOP
+   s" : RXSQ ( -- ) 5 ;] drop ;" s" 75" s" ;]" GE-RXE-CATCH-USABLE
+   s" : RXSQ ( -- ) 5 ;] drop ;" 75 s" ;]" GE-RXE-TOP
+   s" defer RXDFR badsig" s" 76" s" RXDFR" GE-RXE-CATCH-USABLE
+   s" defer RXDFR badsig" 76 s" RXDFR" GE-RXE-TOP
+   s" defer" s" 74" s" defer" GE-RXE-CATCH-USABLE
+   s" defer" 74 s" defer" GE-RXE-TOP
+   s" : RXPP ( -- ) postpone RXNOPEWORD ;" s" 70" s" RXNOPEWORD" GE-RXE-CATCH-USABLE
+   s" : RXPP ( -- ) postpone RXNOPEWORD ;" 70 s" RXNOPEWORD" GE-RXE-TOP
+   s" package RXPKG public export RXNOEXPORT ;package" s" 70" s" RXNOEXPORT" GE-RXE-CATCH-USABLE
+   s" package RXPKG public export RXNOEXPORT ;package" 70 s" RXNOEXPORT" GE-RXE-TOP
+   GE-RXE-TML-BUILD
+   GE-RXE-TML$ s" 75" s" t64" GE-RXE-CATCH-USABLE
+   GE-RXE-TML$ 75 s" t64" GE-RXE-TOP
+   GE-RXE-QEOF-CATCH
+   GE-RXE-QEOF-TOP
+   GE-RXE-CSTR-CATCH
+   GE-RXE-CSTR-TOP
+   s" PASS: residual compile dies recover inside evaluate + fail-closed at top level" type cr ;
+
 : GE-RUNTIME-CHECKS ( -- )
    GE-UNCAUGHT-THROW
    GE-INTERP-LAYOUT
@@ -1642,6 +1747,7 @@ variable GE-CF-BODY-U
    GE-ORPHAN-CLOSER
    GE-CF-DEPTH-CAP
    GE-RAWEXIT-RECOVER
+   GE-RAWEXIT-RESIDUAL
    GE-SET-CHECK-NEG
    GE-TYPED-SMOKE
    GE-TIMEOUT-ATTRIBUTION ;

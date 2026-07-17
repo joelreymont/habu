@@ -1794,9 +1794,9 @@ s" c-call-checker-defer" s" --" TRUST
    11 DATA TSIG-A-CELL STR,  12 DATA TSIG-U-CELL STR,
    C-SIG-FULL$  LBCS LABEL@ BL, ;
 
-: C-SIG-BAD ( -- )
+: C-SIG-BAD ( -- )                                   \ malformed created/required stack-sig: recoverable inside evaluate (rc 76), fail-closed exit 76 at top level. Fires before any dict publish (does/defer/trust name not yet counted into NDICT); rollback drops only compile-state + region prot.
    0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,
-   0 76 MOVZ,  NR-EXIT-GROUP SYS, ;
+   0 76 MOVZ,  LCOMPILEDIE LABEL@ B, ;
 
 : C-PARSE-CREATED-SIG ( -- )
    LBL LBL LBL LBL {: cpy cpd done bad :}
@@ -1820,9 +1820,9 @@ s" c-call-checker-defer" s" --" TRUST
 
 : J-DOES ( -- )
    LBL {: dok :}
-   12 DATA LOCF-CELL LDR,  12 dok CBZ,
+   12 DATA LOCF-CELL LDR,  12 dok CBZ,                    \ does> with locals active: recoverable inside evaluate (rc 75), fail-closed exit 75 at top level. Fires before J-DOES emits any does-patch code; only DOESB/compile-state set -> rollback drops it
       0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,
-      0 75 MOVZ,  NR-EXIT-GROUP SYS,
+      0 75 MOVZ,  LCOMPILEDIE LABEL@ B,
    dok LBL,
    9 DATA BODYLEN-CELL LDR,  9 DATA DOESB-CELL STR,
    C-PARSE-CREATED-SIG
@@ -1836,9 +1836,9 @@ s" c-call-checker-defer" s" --" TRUST
 
 : J-QUOT ( -- )
    LBL {: qok :}
-   9 DATA QPATCH-CELL LDR,  9 qok CBZ,
+   9 DATA QPATCH-CELL LDR,  9 qok CBZ,                    \ nested [: quotation opener: recoverable inside evaluate (rc 75), fail-closed exit 75 at top level. Fires before J-QUOT touches QPATCH/emit; rollback drops compile-state
       0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,
-      0 75 MOVZ,  NR-EXIT-GROUP SYS,
+      0 75 MOVZ,  LCOMPILEDIE LABEL@ B,
    qok LBL,
    9 CP 0 ADDI,  9 DATA QPATCH-CELL STR,
    9 $14000000 LIT64,  LCEMIT LABEL@ BL,               \ b-over placeholder
@@ -1850,9 +1850,9 @@ s" c-call-checker-defer" s" --" TRUST
 
 : J-SEMIQUOT ( -- )
    LBL {: sqok :}
-   9 DATA QPATCH-CELL LDR,  9 sqok CBNZ,
+   9 DATA QPATCH-CELL LDR,  9 sqok CBNZ,                  \ ;] with no open quotation: recoverable inside evaluate (rc 75), fail-closed exit 75 at top level. Fires before J-SEMIQUOT emits; rollback drops compile-state
       0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,
-      0 75 MOVZ,  NR-EXIT-GROUP SYS,
+      0 75 MOVZ,  LCOMPILEDIE LABEL@ B,
    sqok LBL,
    14 CP 0 ADDI,  9 DATA EXITH-CELL LDR,  LBCHAIN LABEL@ BL,   \ exits -> this epilogue
    9 DATA QXH-CELL LDR,  9 DATA EXITH-CELL STR,
@@ -2271,9 +2271,9 @@ s" c-store-def-name" s" --" TRUST
    9 $F90003FE LIT64,  LCEMIT LABEL@ BL,
    done LBL, ;
 
-: C-DEFER-DIE-TOKEN ( n -- ) {: rc :}
+: C-DEFER-DIE-TOKEN ( n -- ) {: rc:n :}               \ source misuse of defer/is (malformed syntax $4A, undefined/unset target $46, non-defer target $4C): recoverable inside evaluate, fail-closed exit rc at top level. Every caller fires before the defer record is counted into NDICT (C-DEFER at 2385 pre-publish; C-DEFER-FIND-UNSET before its DP alloc; the is/C-DEFER-TARGET-META sites before DEFER-META-CELL is written), so the eval-frame / REPL rollback drops only compile-state + region prot. Distinct from the pre-trust boot-integrity backstops (C-PD-DIE-FULL exit 72, BSEALCAP exit 73) which do NOT route here and STAY hard exits; C-PD-CAPTURE runs only on C-DEFER's success path (after NDICT bump), so a converted failure never leaves a stale pending-table entry.
    0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,
-   0 rc MOVZ,  NR-EXIT-GROUP SYS, ;
+   0 rc MOVZ,  LCOMPILEDIE LABEL@ B, ;
 s" c-defer-die-token" s" n --" TRUST
 
 : C-DEFER-FIND-UNSET ( -- )
@@ -2478,9 +2478,9 @@ s" bdrainpretrust" s" --" TRUST
    LBL LBL LBL {: pok pnimm pdone :}
    LTOK LABEL@ BL,  C-QUALIFY-SEAL-GUARD                 \ reject `postpone RESERVED:tail` once sealed (TFAM 2b-iii)
    9 DATA TKA-CELL LDR,  10 DATA TKL-CELL LDR,  LFIND LABEL@ BL,
-   13 pok CBNZ,
+   13 pok CBNZ,                                          \ postpone <undefined>: recoverable inside evaluate (rc 70), fail-closed exit 70 at top level. Only LTOK + LFIND ran; nothing published/emitted -> clean rollback
       0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,
-      0 70 MOVZ,  NR-EXIT-GROUP SYS,
+      0 70 MOVZ,  LCOMPILEDIE LABEL@ B,
    pok LBL,
    14 13 2 ANDI,  14 pnimm CBZ,
       C-CALL  pdone B,
@@ -2493,9 +2493,9 @@ s" bdrainpretrust" s" --" TRUST
 : C-QUOTE-START ( -- )
    12 DATA INP-CELL LDR,  12 12 1 ADDI,  13 12 0 ADDI, ;
 
-: C-QUOTE-EOF ( -- )                               \ unterminated or bad-escape string literal: label fd 2 before exit 74
+: C-QUOTE-EOF ( -- )                               \ unterminated or bad-escape string literal: label fd 2, then recoverable inside evaluate (rc 74), fail-closed exit 74 at top level. Emitted into the scan/copy runtime routines (LESCSCAN/LESCCOPY) too; those run at compile-time and their local SP save is discarded by the LCOMPILEDIE recovery (SP reset from the catch/REPL boundary). INP not yet consumed at the die -> clean rollback
    1 LBADSTR LABEL@ ADR,  0 2 MOVZ,  2 BADSTR-MSG-LEN MOVZ,  NR-WRITE SYS,
-   0 74 MOVZ,  NR-EXIT-GROUP SYS, ;
+   0 74 MOVZ,  LCOMPILEDIE LABEL@ B, ;
 
 : C-QUOTE-SCAN ( -- )
    LBL LBL LBL {: sl sd eof :}
@@ -2719,7 +2719,7 @@ variable LTOPHOOK
    C-QUOTE-SCAN
    C-QUOTE-CONSUME
    LBL LBL LBL {: capok cl cd :}
-   10 255 CMPI,  C-LE capok BCOND,  0 76 MOVZ,  NR-EXIT-GROUP SYS,
+   10 255 CMPI,  C-LE capok BCOND,  0 76 MOVZ,  LCOMPILEDIE LABEL@ B,   \ c" over 255 bytes: recoverable inside evaluate (rc 76), fail-closed exit 76 at top level. Byte-identical (this cap has no fd-2 label today; the bare 76 is overloaded with C-SIG-BAD/long-name — attribution dotted separately). Fires before the DP copy -> clean rollback
    capok LBL,
    12 DATA 0 LDR,  15 12 0 ADDI,                       \ x15 = counted string base
    14 12 10 ADD,  14 14 1 ADDI,  14 DP-CHECK
@@ -2754,7 +2754,7 @@ variable LTOPHOOK
    LBL {: capok:label :}
    C-QUOTE-START
    C-ESC-QUOTE-SCAN
-   10 255 CMPI,  C-LE capok BCOND,  0 76 MOVZ,  NR-EXIT-GROUP SYS,
+   10 255 CMPI,  C-LE capok BCOND,  0 76 MOVZ,  LCOMPILEDIE LABEL@ B,   \ c\" over 255 bytes: recoverable inside evaluate (rc 76), fail-closed exit 76 at top level. Fires before C-ESC-QUOTE-CONSUME (INP not consumed) -> clean rollback
    capok LBL,
    C-ESC-QUOTE-CONSUME
    11 16 0 ADDI,  12 16 15 ADD,
@@ -2981,9 +2981,9 @@ s" c-lbrace-die" s" --" TRUST
 
 : C-LBRACE-STORE-ONE ( -- )
    LBL LBL LBL LBL LBL {: nlok ncp ncd tsl tsd :}
-   11 DATA LOCN-CELL LDR,  11 $40 CMPI,  C-LT nlok BCOND,
+   11 DATA LOCN-CELL LDR,  11 $40 CMPI,  C-LT nlok BCOND,   \ more than 64 locals in one definition: recoverable inside evaluate (rc $4B), fail-closed exit $4B at top level. Only LOCN/LOCNAMES compile-state mutated (EM-RESET-COMPILE-STATE zeroes LOCN) -> clean rollback
       0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,
-      0 $4B MOVZ,  NR-EXIT-GROUP SYS,
+      0 $4B MOVZ,  LCOMPILEDIE LABEL@ B,
    nlok LBL,
    11 DATA LOCN-CELL LDR,  12 LOC-REC MOVZ,  11 11 12 MUL,  5 LOCNAMES LIT64,  11 11 5 ADD,  11 DATA 11 ADD,
    14 0 MOVZ,  8 DATA TKL-CELL LDR,  10 DATA TKA-CELL LDR,
@@ -3076,7 +3076,7 @@ s" c-lbrace-die" s" --" TRUST
    C-QUOTE-START
    C-QUOTE-SCAN
    C-QUOTE-LEN
-   10 255 CMPI,  C-LE capok BCOND,  0 76 MOVZ,  NR-EXIT-GROUP SYS,
+   10 255 CMPI,  C-LE capok BCOND,  0 76 MOVZ,  LCOMPILEDIE LABEL@ B,   \ c" over 255 bytes (compile mode): recoverable inside evaluate (rc 76), fail-closed exit 76 at top level. Fires before C-QUOTE-CONSUME-DONE (INP not consumed, nothing emitted) -> clean rollback
    capok LBL,
    C-QUOTE-CONSUME-DONE
    C-QUOTE-SAVE
@@ -3127,7 +3127,7 @@ s" c-lbrace-die" s" --" TRUST
    LBL {: capok:label :}
    C-QUOTE-START
    C-ESC-QUOTE-SCAN
-   10 255 CMPI,  C-LE capok BCOND,  0 76 MOVZ,  NR-EXIT-GROUP SYS,
+   10 255 CMPI,  C-LE capok BCOND,  0 76 MOVZ,  LCOMPILEDIE LABEL@ B,   \ c\" over 255 bytes (compile mode): recoverable inside evaluate (rc 76), fail-closed exit 76 at top level. Fires before C-ESC-QUOTE-CONSUME (INP not consumed) -> clean rollback
    capok LBL,
    C-ESC-QUOTE-CONSUME
    C-ESC-QUOTE-SAVE
@@ -4503,9 +4503,9 @@ s" c-export-tail!" s" --" TRUST
    named LBL,
    C-QUALIFY-SEAL-GUARD
    9 DATA TKA-CELL LDR,  10 DATA TKL-CELL LDR,  LFIND LABEL@ BL,
-   13 found CBNZ,
+   13 found CBNZ,                                          \ EXPORT <undefined>: recoverable inside evaluate (rc 70), fail-closed exit 70 at top level. C-EXPORT's own state is clean (only LTOK + LFIND ran; no SP push, no publish). Caveat (universal, not new): if the failing string ALSO opened the package (package X public export NOPE), the recovery restores the dictionary + compile state but not package scope, so X stays open — identical to the landed LUNDEF/dup-def in-package recoveries; the session is usable for fresh top-level defines. Package-scope rollback is a separate follow-up.
       0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,
-      0 70 MOVZ,  NR-EXIT-GROUP SYS,
+      0 70 MOVZ,  LCOMPILEDIE LABEL@ B,
    found LBL,
    SP SP 32 SUBI,  11 SP 0 STR,  12 SP 8 STR,  13 SP 16 STR,
    11 DATA TKA-CELL LDR,  11 DATA DEF-TKA-CELL STR,
@@ -5896,14 +5896,18 @@ s" em-compile-undef" s" --" TRUST
 \ RX) before re-entering executable EV/handler code. x15 carries the code across the
 \ LPROT syscall (kernel preserves x2-x15, as the LUNCAUGHT reporter already relies on).
 : EM-COMPILE-DIE ( -- )
-   LBL {: ldie:label :}
+   LBL LBL {: ldie:label rdie:label :}
    LCOMPILEDIE LABEL@ LBL,                                  \ entry: x0 = sysexits exit/throw code (die site just wrote its diagnostic)
    15 0 0 ADDI,                                             \ x15 = code (survives LPROT; LEVALREC delivers it as the throw code)
-   9 DATA EVALD-CELL LDR,  9 ldie CBZ,                      \ EVALD==0 -> top-level: fail closed (LREPL/--load exit unchanged)
+   9 DATA EVALD-CELL LDR,  9 ldie CBZ,                      \ EVALD==0 -> no eval frame (top level / tty REPL); EVALD>0 -> unwind escaped eval frames
       2 5 MOVZ,  LPROT LABEL@ BL,                           \ region -> RX
       10 DATA EVALREC-CELL LDR,  10 BR,                     \ -> LEVALREC (escaped-frame unwind + deliver x15)
    ldie LBL,
-   NR-EXIT-GROUP SYS, ;                                     \ x0 still = code
+   9 DATA REPLH-CELL LDR,  9 rdie CBZ,                      \ tty-REPL parity (dot habu-convert-residual-compile-f460b9f2): REPLH!=0 -> recover the interactive session exactly like LUNDEF/LDIAGRET's LUN0 leg instead of exiting; REPLH==0 (script/--load/stdin) -> fail-closed exit byte-identically
+      2 5 MOVZ,  LPROT LABEL@ BL,                           \ region -> RX (idempotent) before re-entering REPL read/handler code: a compile die mid-:-body leaves the region RW
+      LRREC LABEL@ B,                                       \ -> EM-REPL-RECOVER: roll back to the REPL line-start snapshot (same CP/NDICT/DP/XDS/compile-state surface + HIDX stale-skip as the eval-frame recovery) and re-read
+   rdie LBL,
+   NR-EXIT-GROUP SYS, ;                                     \ x0 still = code (REPLH==0): fail-closed exit unchanged
 
 : EM-EVAL-CLEAN-EXIT ( -- )
    9 DATA EVALD-CELL LDR,  9 9 1 SUBI,  9 DATA EVALD-CELL STR,
