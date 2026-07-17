@@ -5269,3 +5269,15 @@ unchanged (148855). Keys for milestone 2:
   found the FPRIM reg, then the name length. The recovery mirror's external-prim-name
   gap is a real capability gap (dot it if a long prim name is ever unavoidable);
   until then, keep engine prim names <=16.
+- **Engine-prefix landings get an old-binary boot gate: the PREVIOUS master
+  fixpoint binary must boot the candidate tree — a commit only its own binary
+  can boot strands every puller.** (pretrust integration.) The worker's gates
+  structurally cannot see this (they always run the fresh binary); the
+  integrator boots the ecosystem binary against the exact rebased tree. When
+  a transition is inherent (a prefix that USES a new engine capability), take
+  it deliberately: tolerant-shim spelling (TRUSTED: runtime search-wl lookup
+  — miss=no-op on old engines, hit=execute on new; probe-proven) as a bounded
+  owned migration boundary, transition + shim-revert bound to a named later
+  landing. Also disproven: 'prims are baked so old engines cannot tolerate a
+  new prim token' — the token never needs parsing; a runtime name lookup
+  through search-wl is the tolerant spelling.
