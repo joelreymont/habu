@@ -24,6 +24,7 @@ require lib/test.f
 require maki/db/transaction.f
 require maki/artifact.f
 require maki/rev.f
+require maki/db/obligation.f
 
 package TX
 
@@ -37,6 +38,20 @@ variable RT-LB
 : OBJ-C ( -- CAD-KIND:artifact-id )   s" tx-obj-c" ARTIFACT:REGISTER ;
 : R0 ( -- CAD-KIND:rev-id )   s" tx-rev-0" REV:COMMIT ;
 : R1 ( -- CAD-KIND:rev-id )   s" tx-rev-1" REV:COMMIT ;
+
+\ OB1 builds and interns a canonical proof-obligation, returning its CAD-KIND:obligation-id.
+\ INTERN is content-addressed, so every call returns the SAME id (retry-stable): the
+\ idempotency key / canonical form stay insertion-order-independent across MK-STD variants.
+: OB1 ( -- CAD-KIND:obligation-id )
+   OBLIG:NEW
+   s" tx-oblig/subject" ARTIFACT:REGISTER OBLIG:SUBJECT
+   OBLIG-RELATION:SEMANTIC-EQUIV OBLIG:RELATION
+   OBLIG-DOMAIN:EXACT OBLIG:DOMAIN
+   OBLIG-INDEPENDENCE:INDEPENDENT OBLIG:POLICY
+   OBLIG-VERIFIER:DIFFERENTIAL-EXEC OBLIG:VERIFIER-CLASS
+   s" tx-oblig/env-sm87" CONFIG:REGISTER OBLIG:ENVIRONMENT
+   s" tx-oblig/producer" PRODUCER:REGISTER OBLIG:PRODUCER
+   OBLIG:SEAL OBLIG:INTERN ;
 
 : BYTES-EQ? ( ptr u8 n ptr u8 n -- bool ) {: a:ptr an:n b:ptr bn:n :}
    an bn <> if false exit then
@@ -67,7 +82,7 @@ variable RT-LB
    OBJ-A DEP+
    7 CAP+  3 CAP+
    1 100 BUDGET+
-   42 OBLIG+
+   OB1 OBLIG+
    BUILD ;
 
 \ MK-STD-REORDER: the SAME logical action, every set added in a different order.
@@ -79,7 +94,7 @@ variable RT-LB
    OBJ-A DEP+
    3 CAP+  7 CAP+
    1 100 BUDGET+
-   42 OBLIG+
+   OB1 OBLIG+
    BUILD ;
 
 \ MK-ALL-PRESENT: MK-STD with OBJ-B read PRESENT rather than a negative lookup.
@@ -91,7 +106,7 @@ variable RT-LB
    OBJ-A DEP+
    7 CAP+  3 CAP+
    1 100 BUDGET+
-   42 OBLIG+
+   OB1 OBLIG+
    BUILD ;
 
 \ MK-DIFF-WRITE: a different write set (OBJ-A instead of OBJ-C).
@@ -111,7 +126,7 @@ variable RT-LB
    OBJ-A DEP+
    7 CAP+  3 CAP+
    1 100 BUDGET+
-   42 OBLIG+
+   OB1 OBLIG+
    BUILD ;
 
 \ MK-DUP: two conflicting writes to OBJ-C.

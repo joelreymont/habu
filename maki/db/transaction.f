@@ -32,10 +32,11 @@
 \       vocabulary code (the plan's capability WIRE form) until CAP lands; migrate to
 \       the nominal when it does.
 \   - budget ledger  : (dimension code, amount) entries, one per dimension.
-\   - obligations    : proof-obligation identity CODES (n). CONSERVATIVE READING: the
-\       obligation MODEL (subject/relation/domain/policy/verifier/environment) is owned
-\       by habu-v2-proof-obligation-6cf70b4f, out of this dot's scope, so an obligation
-\       is held as an identity code that round-trips until that model lands.
+\   - obligations    : CAD-KIND:obligation-id (the interned proof-obligation identity;
+\       maki/db/obligation.f OBLIG:INTERN owns the model subject/relation/domain/policy/
+\       verifier/environment). Canonically ordered by the obligation CONTENT KEY (32-byte
+\       OBLIG:KEY>WIRE), one entry per obligation, so the idempotency key / Merkle chain
+\       stays cross-process-deterministic. The nominal cannot be forged (checker-native).
 \   - commit proposal : TX:PROPOSE derives the proposed revision id by REV:COMMIT over
 \       a digest of (base revision + write set) - the § 23.9 "content-addressed by the
 \       canonical revision content (parent + write set)" form - so deterministic replay
@@ -53,12 +54,13 @@
 \ CANONICAL FORM. Sets are canonicalised at BUILD (sorted by identity, deduplicated -
 \ writes are sorted but NOT deduplicated so a duplicate is detectable), so encoding is
 \ insertion-order-independent. ENCODE emits the canonical bytes; DECODE parses and
-\ rehydrates (REGISTER object keys, REV:WIRE>KEY the base) back through the same builder,
-\ so decode->re-encode is byte-identical. Both wire forms are CROSS-PROCESS content keys
-\ (dot habu-wire-content-key-e5efaa74): object identity on the wire is the artifact store
-\ KEY (ARTIFACT:KEY$, content-addressed), and the base revision is its 32-byte SHA-256
-\ content key (REV:KEY>WIRE / WIRE>KEY, resolved BY CONTENT), so the derived PROPOSE
-\ revision chain is a cross-process-deterministic Merkle chain that survives process death.
+\ rehydrates (REGISTER object keys, REV:WIRE>KEY the base, OBLIG:WIRE>KEY the obligations)
+\ back through the same builder, so decode->re-encode is byte-identical. Every id wire form
+\ is a CROSS-PROCESS content key (dot habu-wire-content-key-e5efaa74): object identity on
+\ the wire is the artifact store KEY (ARTIFACT:KEY$, content-addressed), the base revision
+\ is its 32-byte SHA-256 content key (REV:KEY>WIRE / WIRE>KEY), and each obligation is its
+\ 32-byte content key (OBLIG:KEY>WIRE / WIRE>KEY) - all resolved BY CONTENT, so the derived
+\ PROPOSE revision chain is a cross-process-deterministic Merkle chain that survives process death.
 \
 \ Typed domain outcomes are the bespoke tx-result sum family (the § 23.9 art-result
 \ idiom, never result<a,b>); throws are reserved for capacity boundaries.
@@ -68,6 +70,7 @@ require lib/prelude.f
 require maki/cad-kinds.f
 require maki/artifact.f           \ CAD-KIND:artifact-id: REGISTER / KEY$ / EQUAL? / VALIDATE-ID
 require maki/rev.f                \ CAD-KIND:rev-id: COMMIT / ID>WIRE / WIRE>ID / VALIDATE
+require maki/db/obligation.f      \ CAD-KIND:obligation-id: INTERN / KEY>WIRE / WIRE>KEY / ID-EQUAL? / ID-VALIDATE
 
 -5350 constant E-TX-SET-CAP      \ a read/write/dep/cap/budget/obligation set over its per-txn cap
 -5351 constant E-TX-ENC-BUF      \ canonical encode over the internal scratch or the caller buffer
@@ -130,6 +133,7 @@ private
 4 constant U32W                         \ fixed little-endian length width
 32 constant DIGEST-BYTES                \ SHA-256 output
 32 constant REV-WIRE-W                   \ base-rev cross-process content-key wire width (REV:KEY>WIRE)
+32 constant OBL-WIRE-W                    \ obligation cross-process content-key wire width (OBLIG:KEY>WIRE)
 32 constant WIRE-SCRATCH                \ one base-rev content-key wire form (owner width <= this)
 $8000 constant ENC-CAP                   \ canonical-bytes scratch
 
@@ -166,7 +170,7 @@ variable B-CAP-N
 create B-BUD-DIM SET-CAP cells allot
 create B-BUD-AMT SET-CAP cells allot
 variable B-BUD-N
-create B-OBL SET-CAP cells allot
+SET-CAP TYPED-BUFFER B-OBL CAD-KIND:obligation-id
 variable B-OBL-N
 
 \ ---- per-slot pool columns (parallel; a durable store is a later dot) ----------
@@ -183,7 +187,7 @@ create S-CAP-N TX-CAP cells allot
 create S-BUD-DIM TX-CAP SET-CAP * cells allot
 create S-BUD-AMT TX-CAP SET-CAP * cells allot
 create S-BUD-N TX-CAP cells allot
-create S-OBL TX-CAP SET-CAP * cells allot
+TX-CAP SET-CAP * TYPED-BUFFER S-OBL CAD-KIND:obligation-id
 create S-OBL-N TX-CAP cells allot
 create S-VALID TX-CAP cells allot
 variable S-NEXT
@@ -193,6 +197,8 @@ create EBUF ENC-CAP allot
 variable EO
 create WSC WIRE-SCRATCH allot
 create DGBUF DIGEST-BYTES allot
+create OWA OBL-WIRE-W allot               \ obligation content-key scratch (emit + sort compare a)
+create OWB OBL-WIRE-W allot               \ obligation content-key scratch (sort compare b)
 
 \ ---- decode cursor ------------------------------------------------------------
 PTR-VARIABLE DBASE
@@ -232,6 +238,13 @@ variable BLI
    {: x:CAD-KIND:artifact-id y:CAD-KIND:artifact-id :}
    x ARTIFACT:KEY$ y ARTIFACT:KEY$ BYTES< ;
 
+\ ---- obligation ordering by 32-byte content key (OBLIG:KEY>WIRE, no private raw) ---
+: OBL-KEY< ( CAD-KIND:obligation-id CAD-KIND:obligation-id -- bool )
+   {: x:CAD-KIND:obligation-id y:CAD-KIND:obligation-id :}
+   x OWA OBL-WIRE-W OBLIG:KEY>WIRE drop
+   y OWB OBL-WIRE-W OBLIG:KEY>WIRE drop
+   OWA OBL-WIRE-W OWB OBL-WIRE-W BYTES< ;
+
 \ ---- per-slot column access ---------------------------------------------------
 : BASE@ ( n -- CAD-KIND:rev-id )   S-BASE @ ;
 : READ-N@ ( n -- n )   cells S-READ-N + @ ;
@@ -247,7 +260,7 @@ variable BLI
 : BUD-DIM@ ( n n -- n ) {: s:n k:n :}   s SET-CAP * k + cells S-BUD-DIM + @ ;
 : BUD-AMT@ ( n n -- n ) {: s:n k:n :}   s SET-CAP * k + cells S-BUD-AMT + @ ;
 : OBL-N@ ( n -- n )   cells S-OBL-N + @ ;
-: OBL@ ( n n -- n ) {: s:n k:n :}   s SET-CAP * k + cells S-OBL + @ ;
+: OBL@ ( n n -- CAD-KIND:obligation-id ) {: s:n k:n :}   s SET-CAP * k + S-OBL @ ;
 : VALID! ( n n -- )   cells S-VALID + ! ;
 : VALID@ ( n -- n )   cells S-VALID + @ ;
 
@@ -350,28 +363,28 @@ variable DW
    repeat
    DW @ B-CAP-N ! ;
 
-: OBL-SORT ( -- )                               \ ascending numeric insertion sort of B-OBL
-   1 NSI !
-   begin NSI @ B-OBL-N @ < while
-      NSI @ cells B-OBL + @ {: key:n :}
-      NSI @ NSJ !
-      begin NSJ @ 0 > if NSJ @ 1- cells B-OBL + @ key > else false then while
-         NSJ @ 1- cells B-OBL + @  NSJ @ cells B-OBL + !
-         NSJ @ 1- NSJ !
+: OBL-SORT ( -- )                               \ insertion sort of B-OBL by content-key bytes
+   1 OSI !
+   begin OSI @ B-OBL-N @ < while
+      OSI @ B-OBL @ {: kid:CAD-KIND:obligation-id :}
+      OSI @ OSJ !
+      begin OSJ @ 0 > if kid OSJ @ 1- B-OBL @ OBL-KEY< else false then while
+         OSJ @ 1- B-OBL @  OSJ @ B-OBL !
+         OSJ @ 1- OSJ !
       repeat
-      key NSJ @ cells B-OBL + !
-      NSI @ 1+ NSI !
+      kid OSJ @ B-OBL !
+      OSI @ 1+ OSI !
    repeat ;
 
-: OBL-DEDUP ( -- )
+: OBL-DEDUP ( -- )                              \ one entry per obligation (keep first)
    B-OBL-N @ 0= if exit then
-   1 DW !  1 NSI !
-   begin NSI @ B-OBL-N @ < while
-      NSI @ cells B-OBL + @  DW @ 1- cells B-OBL + @  <> if
-         NSI @ cells B-OBL + @  DW @ cells B-OBL + !
+   1 DW !  1 OSI !
+   begin OSI @ B-OBL-N @ < while
+      OSI @ B-OBL @  DW @ 1- B-OBL @  OBLIG:ID-EQUAL? 0= if
+         OSI @ B-OBL @  DW @ B-OBL !
          DW @ 1+ DW !
       then
-      NSI @ 1+ NSI !
+      OSI @ 1+ OSI !
    repeat
    DW @ B-OBL-N ! ;
 
@@ -461,7 +474,7 @@ variable DW
    B-OBL-N @ s cells S-OBL-N + !
    0 begin dup B-OBL-N @ < while
       dup {: k:n :}
-      k cells B-OBL + @  s SET-CAP * k + cells S-OBL + !
+      k B-OBL @  s SET-CAP * k + S-OBL !
       1+
    repeat drop ;
 
@@ -561,12 +574,13 @@ variable DW
       1+
    repeat drop ;
 
-: EMIT-OBLIG ( n -- ) {: s:n :}
+: EMIT-OBLIG ( n -- ) {: s:n :}                 \ each obligation as its 32-byte content key
    TAG-OBLIG E-U8
    s OBL-N@ U64W E-LE
    0 begin dup s OBL-N@ < while
       dup {: k:n :}
-      s k OBL@ U64W E-LE
+      s k OBL@  OWA OBL-WIRE-W OBLIG:KEY>WIRE {: w:n :}
+      OWA w E-BYTES
       1+
    repeat drop ;
 
@@ -649,9 +663,9 @@ public
    amt B-BUD-N @ cells B-BUD-AMT + !
    B-BUD-N @ 1+ B-BUD-N ! ;
 
-: OBLIG+ ( n -- ) {: o:n :}                      \ proof-obligation identity code
+: OBLIG+ ( CAD-KIND:obligation-id -- ) {: o:CAD-KIND:obligation-id :}   \ interned proof-obligation id
    B-OBL-N @ SET-CAP >= if E-TX-SET-CAP throw then
-   o B-OBL-N @ cells B-OBL + !
+   o OBLIG:ID-VALIDATE  B-OBL-N @ B-OBL !
    B-OBL-N @ 1+ B-OBL-N ! ;
 
 \ BUILD canonicalises the pending sets, stores an immutable transaction into a fresh
@@ -765,13 +779,21 @@ private
       DI @ 1+ DI !
    repeat ;
 
+: DEC-OBL-ONE ( -- )                            \ 32-byte content key -> obligation-id, fail-closed
+   REMAIN OBL-WIRE-W < if D-MALFORMED DFAIL exit then
+   DPTR OBL-WIRE-W OBLIG:WIRE>KEY
+   MATCH OBLIG:id-result
+      ok          OF OBL-WIRE-W DADV  OBLIG+ ENDOF
+      wrong-width OF D-MALFORMED DFAIL ENDOF
+      unknown     OF D-BOUNDS DFAIL ENDOF
+   ;MATCH ;
+
 : DEC-OBLIG ( -- )
    TAG-OBLIG DEC-TAG  DFAILED? if exit then
    DEC-COUNT {: cnt:n :}  DFAILED? if exit then
    0 DI !
    begin DI @ cnt < DFAILED? 0= and while
-      U64W D-LE {: o:n :}
-      DFAILED? 0= if o OBLIG+ then
+      DEC-OBL-ONE
       DI @ 1+ DI !
    repeat ;
 
