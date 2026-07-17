@@ -2342,12 +2342,23 @@ not yet supported at '<policy>'`).
 variant/field payload names the family being declared: a **direct** self-family
 reference (inline `tree<a>`, `ptr tree<a>`, a bare `tree`, or a product self-field)
 makes the family recursive, which only the boxed policy can represent (its pointer
-indirection breaks the width cycle). Since packed/niche/boxed all reject at the
-`POLICY` clause, every family reaching payload parsing is `stack-cell-tag`, so a
-self-reference always rejects here; the boxed accept slice will route a boxed
-family's self-reference to a pointer layout before this reject. Mutual recursion
-(`A` → `B` → `A`) needs a schema cycle walk and is a later boxed sub-slice; this
-covers the direct case only.
+indirection breaks the width cycle). The reject is INDEPENDENT of the stated
+policy: `stack-cell-tag` (default or explicit) and `packed-tag` both keep the
+cell width, so the width cycle is unrepresentable and the self-reference rejects
+`E-TDECL-RECURSIVE` under either (pinned for both, on sum variants and product
+fields, in `test/type-decl-suite.f`). `niche-null` and `boxed` still reject
+EARLIER — at the `POLICY` clause (`E-TDECL-POLICY`, §22.0), before payload
+parsing — so a recursive `boxed` sum reports "layout policy not yet supported",
+not the recursive diagnostic, until the boxed accept slice lands and routes a
+boxed family's self-reference to a pointer layout.
+
+Mutual recursion (`A` → `B` → `A`) is **fail-closed** today, not an open hole: a
+payload may reference only an ALREADY declared family, so at least one family in
+any cycle must forward-reference an unregistered tail, which rejects as an
+unknown payload (`E-TDECL-PAYLOAD`) before any row is created. A schema cycle
+walk becomes necessary only once the boxed accept slice admits forward self /
+mutual references; this section covers the direct case, and the forward-reference
+restriction covers the mutual case.
 
 Diagnostics should show logical types, not hidden fields.
 

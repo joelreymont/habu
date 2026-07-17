@@ -1289,12 +1289,29 @@ s" TYPEFAMILY policy 1" E-TDECL-NAME TDT-NEG
 \ diagnostic (E-TDECL-RECURSIVE), not the generic E-TDECL-PAYLOAD "unknown payload
 \ type". ptr-wrapped, inline, bare, and product-field forms all reject; the reject
 \ rolls back to baseline (TDT-NEG asserts TDT-BASE=). Mutual recursion
-\ (A -> B -> A) needs a schema cycle walk and is a later sub-slice.
+\ (A -> B -> A) is fail-closed today: a payload may only reference an ALREADY
+\ declared family, so a cycle needs a forward reference that rejects as an
+\ unknown payload before any row is created (pinned below). A schema cycle walk
+\ becomes necessary only once boxed accept admits forward self/mutual refs.
 \ ---------------------------------------------------------------------------
 s" SUMTYPE tdrec1 1 VARIANT leaf a ;VARIANT VARIANT node ptr tdrec1<a> ;VARIANT ;SUMTYPE" E-TDECL-RECURSIVE TDT-NEG
 s" SUMTYPE tdrec2 1 VARIANT node tdrec2<a> ;VARIANT ;SUMTYPE" E-TDECL-RECURSIVE TDT-NEG
 s" SUMTYPE tdrec3 0 VARIANT self tdrec3 ;VARIANT ;SUMTYPE" E-TDECL-RECURSIVE TDT-NEG
 s" PRODUCT tdrec4 0 FIELD child tdrec4 ;PRODUCT" E-TDECL-RECURSIVE TDT-NEG
+\ the recursive reject is INDEPENDENT of the stated policy: a direct self-ref
+\ rejects the same under an explicit stack-cell-tag AND under packed-tag (packed
+\ keeps the cell width, so the width cycle is just as unrepresentable), on sum
+\ variants and product fields alike. boxed is the only policy that COULD lay out
+\ recursion, and it is still reject-until-supported, so a recursive boxed sum
+\ rejects earlier — at the POLICY clause (E-TDECL-POLICY), before the self-ref.
+s" SUMTYPE tdrecpk1 0 POLICY packed-tag VARIANT self tdrecpk1 ;VARIANT ;SUMTYPE" E-TDECL-RECURSIVE TDT-NEG
+s" SUMTYPE tdrecpk2 1 POLICY packed-tag VARIANT node ptr tdrecpk2<a> ;VARIANT ;SUMTYPE" E-TDECL-RECURSIVE TDT-NEG
+s" PRODUCT tdrecpk3 0 POLICY packed-tag FIELD child tdrecpk3 ;PRODUCT" E-TDECL-RECURSIVE TDT-NEG
+s" SUMTYPE tdrecsc1 0 POLICY stack-cell-tag VARIANT self tdrecsc1 ;VARIANT ;SUMTYPE" E-TDECL-RECURSIVE TDT-NEG
+s" SUMTYPE tdrecbx1 1 POLICY boxed VARIANT node tdrecbx1<a> ;VARIANT ;SUMTYPE" E-TDECL-POLICY TDT-NEG
+\ mutual recursion is fail-closed: a forward reference to a not-yet-declared
+\ family is an unknown payload (no cycle can be expressed, no row leaks).
+s" SUMTYPE tdmuta 0 VARIANT mk tdmutb ;VARIANT ;SUMTYPE" E-TDECL-PAYLOAD TDT-NEG
 \ a NON-self family payload is unchanged: still the generic unknown-payload reject.
 s" SUMTYPE tdrec5 1 VARIANT node tdother<a> ;VARIANT ;SUMTYPE" E-TDECL-PAYLOAD TDT-NEG
 \ non-recursive payloads are unaffected: a ptr-to-concrete payload still accepts
