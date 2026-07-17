@@ -6187,3 +6187,40 @@ unchanged (148855). Keys for milestone 2:
   Net: the planned parser slice served only raw-run sugar (re-staged by DoR
   amendment), the bounded landing was pins + docs (TDPN1-7), and wave B migrates
   by minting small named payload products instead of anonymous runs.
+- **A generated constructor WORD's effect is a fixed `( a -- fam<a> )` stored
+  signature, so the multi-cell fix is NOT in TFC alone — the CALL must be
+  intercepted.** Layout slice 3: `TFC-PAY-ROW` `MK-PUSH`->`PUSH-LOGICAL` fixes
+  MATCH and the RAW `construct` token (their args come resolved from the
+  scrutinee / declared output), but `TDPBOPT:SOME` is a normal word whose stored
+  1-cell-per-param effect can't consume/produce a wide bundle. Fix: in `DO-TOK`,
+  reverse the resolved sym to its variant (`SUMV-CTOR-SYM`) and, only when the
+  declared output binds the family to a genuinely multi-cell arg
+  (`CONSTRUCT-DECL-MULTICELL?`), route the call through the arg-aware construct
+  step instead of the stored effect. Construct recovers its type args from the
+  DECLARED OUTPUT (bidirectional), since a payloadless variant (`option none`)
+  has no other source — the doc's "one fresh var per param" reconciles as "mint
+  fresh, then bind from the expected type".
+- **Expand payloads only at width>1, and gate the whole slice on arity>0.**
+  `PUSH-LOGICAL` expands ANY closed non-linear layout including a W=1 enum /
+  single-field product, turning a usable logical payload into a hidden field and
+  breaking existing MATCH arms — expand only when `T-WIDTH > 1` (`TFC-PUSH-PAY`).
+  And gate `CONSTRUCT-DECL-MULTICELL?` on `TFAM-ARITY* > 0`: an arity-0 wide sum
+  (e.g. `descriptor`, width from concrete payload fields) has no TYPE ARGS and is
+  the existing machinery, never this slice's parametric-arg capability.
+- **A staged fail-closed pin that evaluates a failing `: NAME ;` prints the
+  compile-hook "hook: non-certified definition" to STDERR — put it in a
+  candidate-validation `diagnostic` suite, not a `positive` one.**
+  `test/candidate-validation.f` (not in the checker write-set) hardcodes
+  per-file stderr expectations; a `positive` case (type-decl-suite) must be
+  stderr-clean. The lowering fail-closed pins (TDT-EVAL-CATCH -> rc 70) belong in
+  type-ctor-suite (a `diagnostic` case that already permits stderr).
+- **A checker-only change can't break runtime — a maki test failing on a SCRATCH
+  engine is often the fresh-process-replay `bin/hb` engine-binary key.**
+  `maki/cad-test.f`'s replay spawns a hardcoded child `bin/hb` whose section-7.4
+  schedule key includes the ENGINE BINARY identity ("same engine binary" is a
+  documented precondition). Running the PARENT from a scratch fixpoint (`hb-fix`,
+  a different hash than the checkout's `bin/hb`) makes parent!=child -> key
+  mismatch -> replay MISS -> two flipped asserts, with ZERO source cause. Proof:
+  a byte-identical pristine scratch build (== `bin/hb`) passes; pointing the
+  child at the scratch engine passes. Verify a suspected maki regression with
+  parent==child before touching code.

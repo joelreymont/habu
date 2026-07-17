@@ -424,6 +424,7 @@ variable TFAM-INST-WIDTH-XT 0 TFAM-INST-WIDTH-XT ! \ ( term -- n ) : INSTANTIATE
 variable TFAM-CON-LIN-XT   0 TFAM-CON-LIN-XT !   \ ( id -- bool ) : family schemas contain a concrete linear value
 variable CONSTRUCT-FAM-XT  0 CONSTRUCT-FAM-XT !  \ ( ptr u8 n -- n bool ) : item 9 construct family resolve, active package only
 variable CONSTRUCT-STEP-XT 0 CONSTRUCT-STEP-XT ! \ ( ptr u8 n n -- bool ) : item 9 construct variant resolve + step effect
+variable CTOR-STEP-XT      0 CTOR-STEP-XT !      \ ( sym -- bool ) : layout-cap slice 3, a generated-constructor CALL whose declared output instantiates a family param at a multi-cell layout arg routes through the arg-aware construct step (the fixed 1-cell-per-param stored effect cannot consume/produce the wide bundle); 0/cell/open args fall through to the ordinary word call
 variable MATCH-FAM-XT      0 MATCH-FAM-XT !      \ ( ptr u8 n -- n bool ) : item 9 MATCH family resolve, signature scope
 variable MATCH-VAR-XT      0 MATCH-VAR-XT !      \ ( ptr u8 n n -- n bool ) : variant tail -> SUMV id within a family
 variable MATCH-VTAG-XT     0 MATCH-VTAG-XT !     \ ( n -- n ) : SUMV id -> declaration-order tag (seen-bitset index)
@@ -1626,6 +1627,41 @@ variable LTC-P
       0 DF-ACT !  0 DF-EXP !  -1 DPOS !
    THEN
    CVLIVE @ DVAR ! ;   \ the variant live at the first-failure capture (-1 = none)
+
+\ CONSTRUCT-DECL-TERM ( fam -- term bool ) : the constructed value's type args are
+\ named only by the DECLARED output (a payloadless variant like `none`, or a
+\ variant that binds only some of the family params, has no other source). Scan
+\ SGOUT for a resolved hidden-field bundle of `fam` and return its term (its args
+\ are the family's instantiation). This is bidirectional: the construct step
+\ copies these args over its fresh param vars (TFC-ARGS!), so a concrete layout
+\ arg — e.g. option<tdpbw2> — makes the payload/output PUSH-LOGICAL-expand to the
+\ arg-aware width. An OPEN declared output (option<a>) stays one logical cell, is
+\ never a hidden field, and is skipped, so cell/open constructions keep their
+\ fresh-var behaviour and the boundary coercion unchanged. Nothing found = fall
+\ back to fresh vars (multi-cell then fails closed, exactly as before this slice).
+variable CDT-ROW
+: CONSTRUCT-DECL-TERM ( n -- n bool ) {: fam:n :}
+   SGOUT @ CDT-ROW !
+   BEGIN CDT-ROW @ R-RES TAG S-PUSH = WHILE
+      CDT-ROW @ R-RES P>TYPE T-RES {: t:n :}
+      t HIDDEN-PARAM? IF t PARAM>FAM fam = IF t RES-TRUE EXIT THEN THEN
+      CDT-ROW @ R-RES P>REST CDT-ROW !
+   REPEAT
+   0 RES-FALSE ;
+
+\ CONSTRUCT-DECL-MULTICELL? ( fam -- bool ) : does the declared output bind a
+\ param of `fam` to a genuinely MULTI-CELL (T-WIDTH>1) layout arg? This is the
+\ gate for the generated-constructor intercept: only such a call needs the
+\ arg-aware construct step; every cell/open/scalar-arg construction keeps the
+\ ordinary stored-effect word call, so no existing construction changes path.
+: CONSTRUCT-DECL-MULTICELL? ( n -- n ) {: fam:n :}
+   fam TFAM-ARITY* 0= IF 0 EXIT THEN         \ arity-0 families have no TYPE ARGS: a wide arity-0 sum (its width from concrete payload fields) is the existing machinery, never this slice's parametric multi-cell-arg capability
+   fam CONSTRUCT-DECL-TERM 0= IF drop 0 EXIT THEN
+   {: t:n :}                                 \ a resolved hidden field of fam; its args are the instantiation
+   0 BEGIN dup t PARAM>ARGC < WHILE
+      t over PARAM>ARG T-WIDTH 1 > IF drop t EXIT THEN
+      1 +
+   REPEAT drop 0 ;
 
 : CHECKER-STEP {: din dout :}
    din dout LIN-EXPLICIT? LINEXP !
@@ -2967,6 +3003,20 @@ TRUSTED: USIGS-CELL-AT ( n -- ptr a )
 
 0 USIGS-USER-OFF !
 0 CHK-CAND !
+
+\ CONSTRUCT-WIDE-STAGED-REJECT ( -- ) : staged lowering fail-closed for a
+\ parametric MULTI-CELL construct/constructor (layout-cap slice 3-4). The checker
+\ certifies the effect (the rows are sound), but v1 lowering keys pads off the
+\ DECLARED family width (TFL-VPADS / the generated ctor body), which is WRONG for
+\ a wide instantiation (option<tdpbw2> tag at slot 2, not slot 1) — the dual
+\ emitter is slice 4. So a REAL definition (CHK-CAND = 0) that would reach codegen
+\ fails closed here rather than emit declared-width pads; a CHECK-CANDIDATE probe
+\ (CHK-CAND ≠ 0) still certifies the type. No new diagnostic code: it renders the
+\ ordinary E-REJECTED, and only fires when the construct is genuinely wide
+\ (CONSTRUCT-DECL-MULTICELL?), so nothing else moves.
+: CONSTRUCT-WIDE-STAGED-REJECT ( -- )
+   CHK-CAND @ 0 <> IF EXIT THEN
+   0 OK !  -1 FAILSET ! ;
 
 variable UCP-I
 
@@ -6233,6 +6283,9 @@ variable WF-I
    a u CHECKER-FIND-ACTIVE-SYM CURSYM !
    FEP-CLEAR
    CURSYM @ CHECKER-FIND-USIG-SYM drop
+   CTOR-STEP-XT @ 0 <> IF                          \ multi-cell generated-constructor call -> arg-aware step
+      CURSYM @ CTOR-STEP-XT @ execute IF EXIT THEN
+   THEN
    FEP-HIT? IF FEP @ EFF-APPLY ELSE
    CURSYM @ TRY-PRIMS IF EXIT THEN
    TSEEN @ 0 <> IF TFA @ E-PTR EFF-APPLY ELSE

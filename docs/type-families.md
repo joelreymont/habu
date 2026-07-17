@@ -1894,13 +1894,33 @@ arg — `option<pt2>` / `result<pt2,n>` with `PRODUCT pt2 0 FIELD x n FIELD y n
 ;PRODUCT` — because the arg is ONE resolved term whose instantiated width
 propagates through `T-WIDTH` above (a nested parametric application such as
 `option<result<n,n>>` resolves the same way). Identity and transport of such an
-instantiation type-check; CONSTRUCTION and `MATCH`-arm payload binding stay
-fail-closed — the generated constructor's payload var is single-cell and cannot
-absorb a W>1 bundle, an `E-MISMATCH` at the constructor token — until the
-width-aware constructor-effect slice lands (dot
-habu-checker-capability-layout-9b8540bd, slices 3-4; pinned both ways in
-`test/type-decl-suite.f` TDPN1-7). A raw multi-token RUN is not a parameter
-arg:
+instantiation type-check; **CONSTRUCTION and `MATCH`-arm payload binding now
+CERTIFY** (dot `habu-checker-capability-layout-9b8540bd`, slice 3). The
+constructor effect (raw `construct` and the generated word, routed through the
+same arg-aware step) and each `MATCH` `OF` arm push the variant payload with
+`PUSH-LOGICAL`, not raw `MK-PUSH`, so a multi-cell layout arg expands to its `W`
+hidden physical fields and the checker row and the runtime cells agree
+(`type-family.f` `TFC-PAY-ROW`). The construct's fresh param vars are then bound
+to the concrete args NAMED by the declared output (`CONSTRUCT-DECL-MULTICELL?`
+→ `TFC-ARGS!`), since a payloadless variant (`option none`) or a variant that
+uses only some params (`result err` at `result<tdpbw2,n>`) has no other source
+for the type arguments; a `MATCH` arm recovers them from the scrutinee the same
+way. So `option<tdpbw2>` is a three-cell bundle with the tag at slot 2, not the
+degenerate slot 1 the declared family width would give. The adversarial set
+stays red — a wrong-width payload, a cross-family bundle, and a linear payload
+all reject (`test/type-decl-suite.f` TDPN4-7 positive, TDPA1-4 negative;
+`test/type-match-suite.f` ML1/ML2).
+
+**LOWERING is STAGED FAIL-CLOSED (slice 4 owns the dual emitter).** v1 lowering
+keys the constructor pads off the DECLARED family width (`TFL-VPADS`, and the
+generated ctor body's `M-p` pad count) — WRONG for a parametric bundle
+(`option<tdpbw2>` `none` needs two pad cells, not one). So a REAL definition
+that would reach codegen with a parametric multi-cell construct fails closed
+(`CONSTRUCT-WIDE-STAGED-REJECT`, gated on `CHK-CAND = 0`) rather than emit
+declared-width pads; a `CHECK-CANDIDATE` probe certifies the same source (the
+rows are sound). A cell instantiation is unaffected and compiles. Pinned:
+`test/type-decl-suite.f` TDPL1 (generated word), TDPL2 (raw `construct`), TDPL3
+(cell instantiation compiles). A raw multi-token RUN is not a parameter arg:
 
 ```forth
 option<off len>

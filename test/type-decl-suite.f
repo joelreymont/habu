@@ -1923,39 +1923,46 @@ s" TDPB2 ( -- tdpbopt<ptr u8 n> )" CHECK-QUIET-CANDIDATE! 0 T=
 s" TDPB3 ( -- tdpbres<n n,n> )"    CHECK-QUIET-CANDIDATE! 0 T=
 
 \ ---------------------------------------------------------------------------
-\ layout-cap slice 2' (same dot, DoR amendment 2026-07-18): a NAMED layout-
-\ family application is the accepted spelling of a multi-cell parameter arg.
-\ option<tdpbw2> / result<tdpbw2,n> / result<tdpbw2,tdpbw2> parse and
-\ identity-check at the signature layer (slice 1's arg-aware instantiated
-\ width), while CONSTRUCTING such an instantiation stays fail-closed: the
-\ generated constructor's payload var is single-cell and cannot absorb the
-\ W>1 bundle, so the constructor token rejects E-MISMATCH (slice 3 flips
-\ these four to accepts). The @tdpbopt.slot2 fragment pins the arg-aware
-\ expansion (declared family width would put the tag at slot1). The raw
-\ multi-token runs above (TDPB1-3) stay rejected: anonymous runs are staged
-\ sugar (slice 6); named payload products are the wave-B shape (docs §18).
+\ layout-cap slice 3 (same dot): constructor + MATCH effects for a NAMED
+\ multi-cell layout-family arg. TDPN1-3 identity-check (slice 1's arg-aware
+\ width). TDPN4-7 CONSTRUCT such an instantiation and now CERTIFY: the payload
+\ input and the layout-bundle output PUSH-LOGICAL-expand to the arg-aware width
+\ (TFC-PAY-ROW), and the family's type args are recovered from the declared
+\ output (CONSTRUCT-DECL-MULTICELL? -> TFC-ARGS!), so option<tdpbw2>'s tag sits
+\ at slot 2 (declared family width would put it at slot 1). The adversarial set
+\ stays RED (TDPA1-4): wrong-width payload two ways, cross-family bundle, and a
+\ linear payload. LOWERING stays staged fail-closed (slice 4 owns the dual
+\ emitter): a REAL definition that would reach codegen with a parametric
+\ multi-cell construct rejects (rc 70) rather than emit declared-width pads
+\ (TDPL1 generated word, TDPL2 raw `construct`); a cell instantiation still
+\ compiles (TDPL3). The raw multi-token runs (TDPB1-3) stay rejected.
 \ ---------------------------------------------------------------------------
 PRODUCT tdpbw2 0 FIELD x n FIELD y n ;PRODUCT
 s" TDPN1 ( tdpbopt<tdpbw2> -- tdpbopt<tdpbw2> )" CHECK-QUIET-CANDIDATE! -1 T=
 s" TDPN2 ( tdpbres<tdpbw2,n> -- tdpbres<tdpbw2,n> )" CHECK-QUIET-CANDIDATE! -1 T=
 s" TDPN3 ( tdpbres<tdpbw2,tdpbw2> -- tdpbres<tdpbw2,tdpbw2> )" CHECK-QUIET-CANDIDATE! -1 T=
+\ flipped: SOME / NONE / OK / ERR on named W>1 args certify.
+s" TDPN4 ( tdpbw2 -- tdpbopt<tdpbw2> ) TDPBOPT:SOME" CHECK-QUIET-CANDIDATE! -1 T=
+s" TDPN5 ( -- tdpbopt<tdpbw2> ) TDPBOPT:NONE" CHECK-QUIET-CANDIDATE! -1 T=
+s" TDPN6 ( tdpbw2 -- tdpbres<tdpbw2,n> ) TDPBRES:OK" CHECK-QUIET-CANDIDATE! -1 T=
+s" TDPN7 ( n -- tdpbres<tdpbw2,n> ) TDPBRES:ERR" CHECK-QUIET-CANDIDATE! -1 T=
+\ adversarial set (stays RED): wrong-width payload two ways, cross-family, linear.
+\ TDPA1's reject also renders the arg-aware expansion: option<tdpbw2>'s tag is at
+\ slot 2 (declared family width would put it at slot 1) — the W=3 slot the
+\ certified TDPN4-7 satisfy by construction.
 TDIAG-BUF 8192 DIAG-BUFFER!  -1 DIAG-JSON!
-s" TDPN4 ( tdpbw2 -- tdpbopt<tdpbw2> ) TDPBOPT:SOME" CHECK-CANDIDATE! 0 T=
+s" TDPA1 ( n -- tdpbopt<tdpbw2> ) TDPBOPT:SOME" CHECK-CANDIDATE! 0 T=
 DIAG-BUFFER$ s\" \"code\":\"E-MISMATCH\"" TDT-CONTAINS? -1 T=
-DIAG-BUFFER$ s\" \"token\":\"TDPBOPT:SOME\"" TDT-CONTAINS? -1 T=
-DIAG-BUFFER$ s\" \"actual\":\"tdpbw2<>" TDT-CONTAINS? -1 T=
-TDIAG-BUF 8192 DIAG-BUFFER!
-s" TDPN5 ( -- tdpbopt<tdpbw2> ) TDPBOPT:NONE" CHECK-CANDIDATE! 0 T=
-DIAG-BUFFER$ s\" \"token\":\"TDPBOPT:NONE\"" TDT-CONTAINS? -1 T=
 DIAG-BUFFER$ s\" @tdpbopt.slot2<tdpbw2<>>" TDT-CONTAINS? -1 T=
-TDIAG-BUF 8192 DIAG-BUFFER!
-s" TDPN6 ( tdpbw2 -- tdpbres<tdpbw2,n> ) TDPBRES:OK" CHECK-CANDIDATE! 0 T=
-DIAG-BUFFER$ s\" \"token\":\"TDPBRES:OK\"" TDT-CONTAINS? -1 T=
-TDIAG-BUF 8192 DIAG-BUFFER!
-s" TDPN7 ( n -- tdpbres<tdpbw2,n> ) TDPBRES:ERR" CHECK-CANDIDATE! 0 T=
-DIAG-BUFFER$ s\" \"token\":\"TDPBRES:ERR\"" TDT-CONTAINS? -1 T=
 0 DIAG-JSON!
 DIAG-BUFFER-OFF
+s" TDPA2 ( tdpbw2 -- tdpbopt<n> ) TDPBOPT:SOME" CHECK-QUIET-CANDIDATE! 0 T=
+s" TDPA3 ( -- tdpbopt<tdpbw2> ) TDPBRES:OK" CHECK-QUIET-CANDIDATE! 0 T=
+s" TDPA4 ( own -- tdpbopt<own> ) TDPBOPT:SOME" CHECK-QUIET-CANDIDATE! 0 T=
+\ NOTE: the staged lowering fail-closed (a REAL compile of a wide construct
+\ rejects rc 70) is pinned in test/type-ctor-suite.f — that suite permits the
+\ compile-hook stderr, while candidate-validation requires this positive suite
+\ to stay stderr-clean.
 
 : REPORT ( -- )
    #FAIL @ 0 = if s" ok" type cr exit then

@@ -490,6 +490,27 @@ s" undefine zpt:unmake" TCE-CATCH E-CTOR-PROTECTED T=
 s" PRODUCT-PROTECTED" type cr
 
 \ ---------------------------------------------------------------------------
+\ layout-cap slice 3 (dot habu-checker-capability-layout-9b8540bd): the lowering
+\ staged fail-closed. A NAMED multi-cell layout construct type-checks (the rows
+\ are sound and CHECK-CANDIDATE certifies it — test/type-decl-suite.f TDPN4-7),
+\ but v1 lowering keys the constructor pads off the DECLARED family width
+\ (TFL-VPADS / the generated ctor body's M-p pads), which is WRONG for a
+\ parametric bundle (clopt<clw2>'s tag sits at slot 2, not slot 1) — the dual
+\ emitter is slice 4. So a REAL definition that would reach codegen with a
+\ parametric multi-cell construct fails closed (rc 70, CONSTRUCT-WIDE-STAGED-
+\ REJECT gated on CHK-CAND) rather than emit declared-width pads: CLFC1 the
+\ generated word, CLFC2 the raw `construct`. A cell instantiation is unaffected
+\ and compiles (CLFC3, rc 0). This suite is a candidate-validation `diagnostic`
+\ case, so the compile-hook stderr the reject prints is permitted here.
+\ ---------------------------------------------------------------------------
+PRODUCT clw2 0 FIELD x n FIELD y n ;PRODUCT
+SUMTYPE clopt 1 VARIANT none ;VARIANT VARIANT some a ;VARIANT ;SUMTYPE
+s" : CLFC1 ( -- clopt<clw2> ) CLOPT:NONE ;" TCE-CATCH 70 T=
+s" : CLFC2 ( -- clopt<clw2> ) construct clopt none ;" TCE-CATCH 70 T=
+s" : CLFC3 ( n -- clopt<n> ) CLOPT:SOME ;" TCE-CATCH 0 T=
+s" LOWER-STAGED-FAIL-CLOSED" type cr
+
+\ ---------------------------------------------------------------------------
 \ report: "ok" on success, nonzero exit on any failure.
 \ ---------------------------------------------------------------------------
 : REPORT ( -- )

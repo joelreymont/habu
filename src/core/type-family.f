@@ -1316,6 +1316,14 @@ variable TFC-I   variable TFC-J   variable TFC-ROW
       TFC-I @ 1 + TFC-I !
    REPEAT ;
 
+: TFC-ARGS! ( n -- ) {: term:n :}   \ copy a resolved family term's args into TFC-VARS
+   term PARAM>ARGC TFC-VAR-CAP > IF s" tfam: layout arity over cap" 76 die THEN
+   0 TFC-I !
+   BEGIN TFC-I @ term PARAM>ARGC < WHILE
+      term TFC-I @ PARAM>ARG  TFC-I @ cells TFC-VARS + !
+      TFC-I @ 1 + TFC-I !
+   REPEAT ;
+
 : TFC-SCH-TERM ( n -- n ) {: node:n :}    \ payload schema node -> checker type term
    node SCHEMA-PARAM? IF node SCHEMA-A@ cells TFC-VARS + @ EXIT THEN
    node SCHEMA-CON?   IF node SCHEMA-A@ MK-CON EXIT THEN
@@ -1331,12 +1339,23 @@ variable TFC-I   variable TFC-J   variable TFC-ROW
    THEN
    s" tfam: unsupported construct payload schema" 76 die ;
 
-: TFC-PAY-ROW ( n n -- n ) {: vid:n row0:n :}   \ payload terms onto row, decl order
+\ TFC-PUSH-PAY ( term row -- row ) : push one payload term. A genuinely
+\ MULTI-CELL (T-WIDTH>1) resolved layout arg expands to its W hidden physical
+\ fields (PUSH-LOGICAL) so the checker row and the runtime cells agree (docs §11)
+\ and the branch/UNMAKE consumes the whole bundle. Everything else — a cell or
+\ pointer payload, a W=1 layout (enum / single-field product, whose one logical
+\ cell IS the value the branch uses), an OPEN param var (construct's fresh var
+\ before any declared-output recovery), and a possibly-linear arg — stays one
+\ logical cell exactly as MK-PUSH did, so every pre-existing construction and
+\ match arm keeps its verdict AND its payload term shape.
+: TFC-PUSH-PAY ( n n -- n )
+   over T-WIDTH 1 > IF PUSH-LOGICAL ELSE MK-PUSH THEN ;
+: TFC-PAY-ROW ( n n -- n ) {: vid:n row0:n :}
    row0 TFC-ROW !
    0 TFC-J !
    BEGIN TFC-J @ vid SUMV-SCH-COUNT@ < WHILE
       vid SUMV-SCH-START@ TFC-J @ + SCHEMA-ROOT@ TFC-SCH-TERM
-      TFC-ROW @ MK-PUSH TFC-ROW !
+      TFC-ROW @ TFC-PUSH-PAY TFC-ROW !
       TFC-J @ 1 + TFC-J !
    REPEAT
    TFC-ROW @ ;
@@ -1360,14 +1379,50 @@ variable TFC-I   variable TFC-J   variable TFC-ROW
    id TFAM-SUM? id TFAM-ENUM? or 0= IF MD-CON-KIND MDIAG! 0 RES-FALSE EXIT THEN
    id RES-TRUE ;
 
-: TFAM-CONSTRUCT-STEP ( ptr u8 n n -- bool ) {: na:ptr nu:n fam:n :}
-   fam na nu SUMV-FIND 0= IF drop MD-CON-VAR MDIAG! RES-FALSE EXIT THEN
-   {: vid:n :}
+\ TFC-CONSTRUCT-STEP-VID ( fam vid -- ) : apply the inline generated-constructor
+\ effect for a resolved (family,variant). One fresh checker var per family param,
+\ then — bidirectionally — the concrete args named by the declared output are
+\ recovered over those vars (CONSTRUCT-DECL-TERM), so a NAMED multi-cell layout
+\ arg makes the payload input and the layout-bundle output PUSH-LOGICAL-expand to
+\ the arg-aware width; cell/open args keep the fresh var and the boundary
+\ coercion, unchanged. Shared by the reserved `construct` token and, for a
+\ multi-cell instantiation, the generated-constructor CALL (TFAM-CTOR-STEP?).
+: TFC-CONSTRUCT-STEP-VID ( n n -- ) {: fam:n vid:n :}
    fam TFAM-ARITY@ TFC-MINT-VARS
+   fam CONSTRUCT-DECL-MULTICELL? {: dt:n :}           \ multi-cell bundle term, else 0
+   dt 0 <> IF dt TFC-ARGS! THEN                       \ recover concrete args ONLY for a multi-cell instantiation; cell/open stay fresh
    FRESH MK-ROW {: base:n :}
    vid base TFC-PAY-ROW {: din:n :}
    fam TFC-FAM-TERM base PUSH-LOGICAL {: dout:n :}
    din dout CHECKER-STEP
+   dt 0 <> IF CONSTRUCT-WIDE-STAGED-REJECT THEN ;     \ staged: a real compile fails closed (lowering can't emit the wide pads yet); a probe still certifies
+
+: TFAM-CONSTRUCT-STEP ( ptr u8 n n -- bool ) {: na:ptr nu:n fam:n :}
+   fam na nu SUMV-FIND 0= IF drop MD-CON-VAR MDIAG! RES-FALSE EXIT THEN
+   {: vid:n :}
+   fam vid TFC-CONSTRUCT-STEP-VID
+   RES-TRUE ;
+
+\ TFAM-CTOR-STEP? ( sym -- bool ) : a generated-constructor CALL whose stored
+\ 1-cell-per-param effect cannot express the instantiation. Reverse the resolved
+\ word symbol to its variant; if the declared output binds this family to a
+\ multi-cell layout arg (CONSTRUCT-DECL-MULTICELL?), apply the arg-aware step and
+\ report handled. Otherwise report unhandled so DO-TOK runs the ordinary word
+\ call — every cell/generic/scalar constructor call is untouched.
+: SUMV-FROM-CTOR-SYM ( n -- n bool ) {: sym:n :}   \ constructor word symbol -> variant id
+   sym 0 <= IF 0 RES-FALSE EXIT THEN
+   0 TF-I !
+   BEGIN TF-I @ SUMV-N @ < WHILE
+      TF-I @ SUMV-CTOR-SYM@ sym = IF TF-I @ RES-TRUE EXIT THEN
+      TF-I @ 1 + TF-I !
+   REPEAT
+   0 RES-FALSE ;
+: TFAM-CTOR-STEP? ( n -- bool ) {: sym:n :}
+   sym SUMV-FROM-CTOR-SYM 0= IF drop RES-FALSE EXIT THEN
+   {: vid:n :}
+   vid SUMV-FAM@ {: fam:n :}
+   fam CONSTRUCT-DECL-MULTICELL? 0= IF RES-FALSE EXIT THEN   \ not a multi-cell instantiation: fall through to the ordinary word call
+   fam vid TFC-CONSTRUCT-STEP-VID
    RES-TRUE ;
 
 \ ---------------------------------------------------------------------------
@@ -1390,14 +1445,6 @@ variable TFC-I   variable TFC-J   variable TFC-ROW
 
 : TFAM-MATCH-VARIANT ( ptr u8 n n -- n bool ) {: na:ptr nu:n fam:n :}
    fam na nu SUMV-FIND ;
-
-: TFC-ARGS! ( n -- ) {: term:n :}   \ copy a resolved family term's args into TFC-VARS
-   term PARAM>ARGC TFC-VAR-CAP > IF s" tfam: match arity over cap" 76 die THEN
-   0 TFC-I !
-   BEGIN TFC-I @ term PARAM>ARGC < WHILE
-      term TFC-I @ PARAM>ARG  TFC-I @ cells TFC-VARS + !
-      TFC-I @ 1 + TFC-I !
-   REPEAT ;
 
 : TFAM-MATCH-PAY ( n n n -- n ) {: vid:n term:n row:n :}   \ variant payload onto row
    term T-RES TFC-ARGS!
@@ -1465,6 +1512,7 @@ variable TFC-I   variable TFC-J   variable TFC-ROW
 ' TFAM-INST-WIDTH@ TFAM-INST-WIDTH-XT !   \ layout-cap slice 1: arg-aware INSTANTIATED width for T-WIDTH / WF fact surface
 ' TFAM-CONSTRUCT-FAM  CONSTRUCT-FAM-XT !   \ item 9: construct family resolution (active package only)
 ' TFAM-CONSTRUCT-STEP CONSTRUCT-STEP-XT !  \ item 9: construct variant resolve + inline constructor effect
+' TFAM-CTOR-STEP?     CTOR-STEP-XT !        \ layout-cap slice 3: generated-constructor CALL on a multi-cell layout arg routes through the arg-aware step
 ' TFAM-MATCH-FAM     MATCH-FAM-XT !     \ item 9: MATCH family resolution (signature scope)
 ' TFAM-MATCH-VARIANT MATCH-VAR-XT !     \ item 9: MATCH branch variant resolve
 ' SUMV-TAG@          MATCH-VTAG-XT !    \ item 9: variant id -> declaration-order tag (bitset index)

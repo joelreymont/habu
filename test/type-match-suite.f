@@ -369,6 +369,20 @@ DIAG-BUFFER-OFF
 s" MATCH-DIAG" type cr
 
 \ ---------------------------------------------------------------------------
+\ layout-cap slice 3 (dot habu-checker-capability-layout-9b8540bd): MATCH on a
+\ NAMED multi-cell layout arg. The some-branch payload PUSH-LOGICAL-expands the
+\ product to its W hidden cells (type-family.f TFC-PAY-ROW), so UNMAKE + typed
+\ locals receive the exact fields (ML1); branch outputs still join. Over-
+\ dropping the bundle leaves a branch imbalance and stays red (ML2), so the
+\ payload really is the wide bundle, not one cell.
+\ ---------------------------------------------------------------------------
+PRODUCT mlw2 0 FIELD x n FIELD y n ;PRODUCT
+SUMTYPE mlopt 1 VARIANT none ;VARIANT VARIANT some a ;VARIANT ;SUMTYPE
+s" ML1 ( mlopt<mlw2> -- n ) MATCH mlopt none OF 0 ENDOF some OF MLW2:UNMAKE {: x:n y:n :} x y + ENDOF ;MATCH" CHECK-QUIET-CANDIDATE! -1 T=
+s" ML2 ( mlopt<mlw2> -- n ) MATCH mlopt none OF 0 ENDOF some OF drop drop 1 ENDOF ;MATCH" CHECK-QUIET-CANDIDATE! 0 T=
+s" MATCH-LAYOUT" type cr
+
+\ ---------------------------------------------------------------------------
 \ report: "ok" on success, nonzero exit on any failure.
 \ ---------------------------------------------------------------------------
 : REPORT ( -- )
