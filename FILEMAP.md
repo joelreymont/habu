@@ -777,6 +777,19 @@ points stay listed.
   namespaced class rides the name), the wire round-trip, fail-closed decode
   (wrong-width + unresolved raw), cross-role rejection, and the private-mint
   unforgeability negatives.
+- `maki/config.f` — the build/config identity registry + wire codec (the config-id
+  leg of MODEL-CAD-V2-PLAN.md § 23.9): `CONFIG:REGISTER` interns the canonical
+  build/config FACT STRING - the deterministic toolchain/build facts REMAINING after
+  target facts (target-id) and numeric facts (numeric-policy-id) in the plan's
+  target/config/numeric three-way split - to a content-addressed `CAD-KIND:config-id`
+  (equal fact sets share one id), plus `FACTS$`/`EQUAL?`/`VALIDATE`/`COUNT` and the
+  `ID>WIRE` (total) / `WIRE>ID` (`id-result`, fail-closed) 8-byte little-endian codec
+  pair. The fact vocabulary is intentionally open (the boundary, not a closed field
+  set, is the decision); raw conversions stay private. Owns -5338..-5341.
+- `maki/config-test.f` — content-addressed interning (equal fact sets one id,
+  distinct flags distinct id), the wire round-trip, fail-closed decode (wrong-width +
+  unresolved raw), cross-role rejection, and the private-mint unforgeability
+  negatives.
 - `maki/sched-key.f` — section-7.4 schedule keys: the typed `skey` product (now
   carrying the region's requested `NPOL:dom` policy, REGION-POL's per-op OP-DOM fold,
   so a different policy is a different key), the durable `SK-KEY$` render (region

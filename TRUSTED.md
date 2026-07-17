@@ -666,6 +666,8 @@ that source is explicitly certified; they are not stale-checked by the default
 | NUMERIC-POLICY-ID>RAW | `CAD-KIND:numeric-policy-id -- n` | Private numeric-policy identity projection used only by bounds validation and the `NPOL:ID>WIRE` / `WIRE>ID` codec; no public raw conversion is exported. | `maki/numpolicy-test.f` | maki/numpolicy.f | 2026-07-17 |
 | RAW>PRODUCER-ID | `n -- CAD-KIND:producer-id` | Private producer-id registry refinement after canonical-name validation, capacity validation, and append-only slot allocation (the maki/artifact.f `RAW>ARTIFACT-ID` pattern); the only public producer is `PRODUCER:REGISTER`, which interns the version-independent producer name, so a raw n cannot forge a producer identity (MODEL-CAD-V2-PLAN.md § 23.9 foreign-id contract; dot habu-producer-producer-id-5e016e1f). | `maki/producer-test.f` | maki/producer.f | 2026-07-17 |
 | PRODUCER-ID>RAW | `CAD-KIND:producer-id -- n` | Private producer identity projection used only by bounds validation, name-table access, `PRODUCER:EQUAL?`, and the `PRODUCER:ID>WIRE` / `WIRE>ID` codec; no public raw conversion is exported. | `maki/producer-test.f` | maki/producer.f | 2026-07-17 |
+| RAW>CONFIG-ID | `n -- CAD-KIND:config-id` | Private config-id registry refinement after canonical-fact-string validation, capacity validation, and append-only slot allocation (the maki/artifact.f `RAW>ARTIFACT-ID` pattern); the only public producer is `CONFIG:REGISTER`, which interns the build/config facts remaining after target facts (target-id) and numeric facts (numeric-policy-id), so a raw n cannot forge a config identity (MODEL-CAD-V2-PLAN.md § 23.9 foreign-id contract; dot habu-config-config-id-06aa21bd). | `maki/config-test.f` | maki/config.f | 2026-07-17 |
+| CONFIG-ID>RAW | `CAD-KIND:config-id -- n` | Private config identity projection used only by bounds validation, fact-table access, `CONFIG:EQUAL?`, and the `CONFIG:ID>WIRE` / `WIRE>ID` codec; no public raw conversion is exported. | `maki/config-test.f` | maki/config.f | 2026-07-17 |
 | DIM-REFINE | `n -- CAD-KIND:dim` | Private validated nominal representation boundary for tensor dimensions; tracked by `habu-v2-r3-type-9f89d1e9`. | `maki/tensor-test.f` | maki/tensor.f | 2026-07-12 |
 | DIM-RAW | `CAD-KIND:dim -- n` | Private dimension projection used only by checked shape algebra and numeric execution boundaries. | `maki/tensor-test.f` | maki/tensor.f | 2026-07-12 |
 | ROWS-REFINE | `n -- CAD-KIND:rows` | Private validated row-role refinement; public construction goes through `SHAPE`. | `maki/tensor-test.f` | maki/tensor.f | 2026-07-12 |
@@ -1391,6 +1393,8 @@ maki/numpolicy.f:RAW>NUMERIC-POLICY-ID prim-axiom habu-epic-model-cad-70b629a9
 maki/numpolicy.f:NUMERIC-POLICY-ID>RAW prim-axiom habu-epic-model-cad-70b629a9
 maki/producer.f:RAW>PRODUCER-ID prim-axiom habu-epic-model-cad-70b629a9
 maki/producer.f:PRODUCER-ID>RAW prim-axiom habu-epic-model-cad-70b629a9
+maki/config.f:RAW>CONFIG-ID prim-axiom habu-epic-model-cad-70b629a9
+maki/config.f:CONFIG-ID>RAW prim-axiom habu-epic-model-cad-70b629a9
 maki/tensor-value.f:RAW>TENSOR prim-axiom habu-epic-model-cad-70b629a9
 maki/tensor-value.f:TENSOR>RAW prim-axiom habu-epic-model-cad-70b629a9
 maki/tensor-value.f:TYPED-LINEAR stdlib-boundary habu-epic-model-cad-70b629a9
