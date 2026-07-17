@@ -786,6 +786,39 @@ points stay listed.
   idempotency key; polarity and base revision are part of the key), the commit proposal
   is deterministic, every field round-trips at its cardinality, truncated bytes decode
   malformed, and capacity/polarity/no-base throw.
+- `maki/db/diagnostic.f` — the common structured Diagnostic IR (MODEL-CAD-V2-PLAN.md
+  § 23.9 "Structured failure IR" + § 23.2): one `diagnostic` handle every checker /
+  compiler / pass / runtime / benchmark / deployment / policy failure lowers to, plus
+  its canonical wire codec (`ENCODE`/`DECODE`). The nine failure classes are the closed
+  `DIAG:class` ENUM (invariant, unsupported, invalid-input, resource, external, numeric,
+  performance, stale-evidence, authorization); `severity`, `phase`, and `repair` are the
+  same closed-ENUM substrate. Common fields: code, class, severity, owner, subject,
+  revision, phase, location, expected/observed facts, dependency cone, counterexample,
+  legal repairs, invalidated evidence, reproduction, environment, parent, progress. The
+  staged builder (`NEW` / typed setters / `BUILD`) returns a custom-sum `build-result`;
+  a diagnostic with no owner or no reproduction is rejected typed (`missing-owner` /
+  `missing-reproduction`), never a throw. Identity fields use the landed nominal ids via
+  their owner packages (owner→producer-id, environment→config-id, subject/counterexample/
+  dependency-cone→artifact-id, serialized by each owner's public codec, never a raw cast);
+  DECODE folds a foreign-id reject into the taxonomy (wrong-width→malformed,
+  unknown→bounds). Fixed little-endian widths, ascending length-delimited tags, custom-sum
+  `decode-result` taxonomy (malformed, noncanonical, bounds, duplicate, unknown-required).
+  CONSERVATIVE READINGS flagged at the definition site: subject modeled as artifact-id
+  (content-digest is ARTIFACT-private), environment as config-id, revision and
+  invalidated-evidence as strings (rev-id / evidence-id have no owner registry yet),
+  parent as the parent's code, location / facts as strings. Owns -5354..-5358.
+- `maki/db/diagnostic-render.f` — the two renderers over one value: `DIAG:RENDER`
+  (human text) and `DIAG:RENDER-JSON` (canonical JSON via the checked lib/json-write.f
+  builder, no host tooling). Both consume the same `diagnostic` handle through the typed
+  accessors and share the single-source enum NAME words, so they never disagree on a
+  label. No construction or mutation surface.
+- `maki/db/diagnostic-test.f` — Diagnostic acceptance: a rich everything-set diagnostic
+  round-trips byte-identically and field-for-field; missing owner / missing reproduction
+  reject typed; both renderers consume the same value (text + JSON substrings); four
+  realistic repo failure classes lower losslessly (A checker reject, B ptxas failure,
+  C device-launch fault, D gate timeout), each proven byte-identical and field-for-field;
+  and the decode-result reject taxonomy (malformed, noncanonical, duplicate, bounds,
+  unknown-required) is reachable and typed.
 - `maki/numpolicy.f` — the typed numeric-policy proof-domain family (`NPOL:dom` =
   exact/ulp/relative/empirical, CAD-PLAN §22.6): the strength lattice
   (`RANK`/`SATISFIES?`/`COMPOSE` weakest-wins), the checked satisfaction gate

@@ -41,6 +41,35 @@ Last updated: 2026-07-17
   transitions = net -1, byte-identical EMIT-PIPED==EMIT-MATMUL. A faithful 3-state transition
   vocabulary needs an irreducible 2-transition trusted core (pending->committed, committed->
   ready re-type a phantom, which no checked rule expresses); don't try to check them away.
+- **`( ptr n -- )` in a stack comment is ONE input of type `ptr n`, not two (a pointer + an
+  index).** (dot habu-v2-structured-diagnostic-18d24536, the Diagnostic IR.) `ptr` is a
+  type constructor that consumes the next token, so `: FLAG@ ( ptr n -- bool )` declared a
+  single pointer-to-n and `cells` then saw `ptr n` where it wanted `n`. A word that genuinely
+  takes a base pointer AND an integer either spells distinct types (`( ptr a n -- )`, two
+  inputs) or — cleaner — references the `create` buffer by name directly (the maki/db/artifact.f
+  column-accessor style) instead of passing it as a `:ptr` local, which also erases `ptr u8`.
+  Refactored 7 per-slot presence flags into one per-slot bitset cell referenced by name.
+- **Do not NAME a checked word after a control word (`BEGIN`, `IF`, `DO`, …) — a bare CALL
+  resolves to the control word, not your definition.** (same dot.) `DIAG:BEGIN` DEFINED
+  cleanly, but a bare `BEGIN` inside a checked body opened a `begin…until` frame and the error
+  surfaced far downstream ("at 'BUILD'"). The reserved-name rule bites at CALL sites, not just
+  definitions; renamed the builder-open word to `NEW`.
+- **A word returning a layout value (PRODUCT/SUMTYPE) cannot be called at TOP LEVEL (interpret
+  mode): "interpret-mode layout value: NAME".** (same dot.) Every diagnostic / build-result /
+  decode-result producer must be wrapped in a `:` word that returns a plain cell before a
+  top-level `T=`/`TTRUE` (the maki/db/artifact-test.f pattern). To read many fields of one
+  decoded value across top-level assertions, store the decoded handle's SLOT (`DIAG>` → n) in a
+  variable and rebuild the handle (`>DIAG`) inside each reader word.
+- **A package's private and public wordlists may hold the SAME tail; in-package bare lookup
+  finds PRIVATE first.** (same dot.) A public `CODE@ ( diagnostic -- n )` was silently shadowed
+  by a same-named private raw column accessor `CODE@ ( n -- n )` for in-package callers (the
+  test and renderer files reopen the package), so `d CODE@` type-errored. Give internal raw
+  accessors a distinct spelling (`CODE-R@`) so the clean public handle name resolves in-package.
+- **An optional field's presence bit must be set on the DECODE path, not only in the builder —
+  and byte-identical re-encode is the test that catches it.** (same dot.) Field-level round-trip
+  passed but re-encode was 16 bytes short: decoded `revision` stored its value yet never set its
+  presence flag, so re-encode omitted the field. A `decode(encode x) → re-encode → byte-compare`
+  assertion catches missing decode-side presence sets that per-field equality checks miss.
 - **error-code-lint is part of the OWNING gate for ANY new `E-*` constant, including maki/ — a
   maki-only landing skipped it and put a code collision on master.** (idfam lane integration,
   2026-07-17.) `E-TARGET-WIRE` picked -5251, already claimed by `E-ABL-CAP` (maki/ablate-ptx.f);
