@@ -11,11 +11,13 @@ create ROOT-BUF FS-PATH-CAP allot
 create DRIVER-BUF FS-PATH-CAP allot
 create PTX-BUF FS-PATH-CAP allot
 create CUBIN-BUF FS-PATH-CAP allot
+create LAUNCH-BUF FS-PATH-CAP allot
 
 variable ROOT-U
 variable DRIVER-U
 variable PTX-U
 variable CUBIN-U
+variable LAUNCH-U
 
 : COPY! ( ptr u8 n ptr u8 ptr n -- ) {: a:ptr u:n dst:ptr lenp:ptr :}
    u FS-PATH-CAP > if E-FS-PATH throw then
@@ -43,7 +45,8 @@ public
    TMPDIR-MKDIR ROOT-BUF ROOT-U COPY!
    ROOT$ s" driver.f" DRIVER-BUF DRIVER-U PATH!
    ROOT$ s" grade.ptx" PTX-BUF PTX-U PATH!
-   ROOT$ s" grade.cubin" CUBIN-BUF CUBIN-U PATH! ;
+   ROOT$ s" grade.cubin" CUBIN-BUF CUBIN-U PATH!
+   ROOT$ s" launch.f" LAUNCH-BUF LAUNCH-U PATH! ;
 
 : DRIVER$ ( -- ptr u8 n )
    DRIVER-BUF DRIVER-U @ ;
@@ -53,6 +56,9 @@ public
 
 : CUBIN$ ( -- ptr u8 n )
    CUBIN-BUF CUBIN-U @ ;
+
+: LAUNCH$ ( -- ptr u8 n )
+   LAUNCH-BUF LAUNCH-U @ ;
 
 : PTXAS$ ( -- ptr u8 n )
    s" PTXAS" GETENV dup 0= if

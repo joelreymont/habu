@@ -4,9 +4,11 @@
 \ failure, never a grader casualty") against the device-launch path. A ptxas-clean
 \ but type-buggy no-check candidate -- a raw span pointer used as the grid index --
 \ does an out-of-bounds GPU read -> contained nvgpu MMU fault -> nonzero CUresult.
-\ Before the fork-isolation fix that throw (E-CUDA) killed the grader before any
-\ tally printed; now GRADE-NOCHECK-CANDIDATE runs each launch in its own forked
-\ child and grades the fault as the distinct EVN-DEVICE-FAULT bucket. The
+\ Before the isolation fix that throw (E-CUDA) killed the grader before any tally
+\ printed; now GRADE-NOCHECK-CANDIDATE runs each launch in its own SPAWNED fresh
+\ bin/hb child and grades the fault as the distinct EVN-DEVICE-FAULT bucket. The
+\ spawn (not bare fork) also makes this suite safe INSIDE the maki gate, where an
+\ earlier suite has already initialized CUDA in-process (CUDA is fork-unsafe). The
 \ regression proves BOTH: the faulter grades as a fault AND the grader survives it
 \ (the very next candidate still grades GREEN).
 \

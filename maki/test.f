@@ -260,6 +260,8 @@ TEST:SUITE maki/eval-live-author-test.f
 TEST:;SUITE
 TEST:SUITE maki/eval-emit-device-test.f
 TEST:;SUITE
+TEST:SUITE maki/eval-device-fault-test.f
+TEST:;SUITE
 TEST:SUITE maki/eval-train.f
 TEST:;SUITE
 TEST:SUITE maki/maki-test.f

@@ -16,7 +16,6 @@ require lib/fs.f
 require lib/fs-mutate.f
 require lib/process.f
 require lib/process-argv.f
-require lib/process-fork.f
 require lib/ffi.f
 require lib/float.f
 require lib/fmt.f
@@ -147,28 +146,32 @@ create GQ-OUT $1000 allot  create GQ-ERR $1000 allot
    MAKI-GRADE:PTXAS$        >LEN  GQ-OUT $1000 >LEN  GQ-ERR $1000 >LEN  10000 >MS  RUN-ARGV-CAPTURE
    {: outu erru rc :}  rc RC>N ;
 
-\ ---- device launch, ISOLATED in a forked child ----------------------------
+\ ---- device launch, ISOLATED in a spawned child process --------------------
 \ A ptxas-clean candidate can still fault the GPU: a type-buggy no-check
 \ candidate (e.g. a raw span pointer used as the grid index, eval-compare.f)
 \ does an out-of-bounds read -> contained nvgpu MMU fault -> nonzero CUresult ->
 \ CUDA:RC0 throws E-CUDA. In-process that throw crashes the grader before any
 \ tally prints, and even a caught fault leaves the CUDA context untrustworthy for
-\ the next candidate. So each launch runs in its OWN forked child -- the same
-\ subprocess isolation GRADE-EMIT / GRADE-PTXAS already use: the parent never
-\ touches CUDA, the child inits CUDA fresh, classifies the run under catch, and
-\ dies with a classified exit code. A faulted context dies with the child; the
-\ next candidate forks a clean process.
-variable ED-CODE               \ child-local: the classified exit code to die with
+\ the next candidate. So each launch runs in its OWN child process -- the same
+\ subprocess isolation GRADE-EMIT / GRADE-PTXAS already use: a SPAWNED fresh
+\ bin/hb, NOT a bare fork. CUDA is fork-unsafe once ANY code in the calling
+\ process has initialized it in-process (the maki gate does, via the device
+\ goldens); a bare-forked child inherits poisoned driver state and misgrades
+\ every launch as a fault (found on-device 2026-07-17). A fresh exec image
+\ always inits CUDA cleanly, a faulted context dies with the child, and the
+\ capture timeout bounds a HUNG kernel (SIGKILL-reaped, graded a fault).
+variable ED-CODE               \ child-side: the classified exit code to die with
+create ED-LCUBIN 64 allot      \ child-side cubin path (recorded by LAUNCH-CUBIN!)
+variable ED-LCUBIN-U
+
+: ED-LCUBIN$ ( -- ptr u8 n )
+   ED-LCUBIN ED-LCUBIN-U @ ;
 
 : ED-CLASSIFY ( -- )           \ store GREEN/WRONG on a clean run, FAULT on any throw
-   [: MAKI-GRADE:CUBIN$ DEVICE-CORRECT?
+   [: ED-LCUBIN$ DEVICE-CORRECT?
       if ED-EXIT-GREEN else ED-EXIT-WRONG then ED-CODE ! ;] catch {: rc:n :}
    rc 0= if exit then                        \ clean run: ED-CODE holds GREEN/WRONG
    ED-EXIT-FAULT ED-CODE ! ;                  \ launch threw (E-CUDA etc.) -> fault
-
-: ED-CHILD-LAUNCH ( -- )       \ fork child: classify, then die with the code (no return)
-   ED-CLASSIFY
-   s" grade-device-child" ED-CODE @ die ;
 
 : ED-EXIT>VERDICT ( n -- n )   \ child exit code -> EVN device bucket (unknown -> fault)
    {: code:n :}
@@ -176,11 +179,11 @@ variable ED-CODE               \ child-local: the classified exit code to die wi
    code ED-EXIT-WRONG = if EVN-DEVICE-WRONG exit then
    EVN-DEVICE-FAULT ;
 
-: ED-OUTCOME>VERDICT ( outcome -- n )   \ child wait-outcome -> EVN device bucket
+: ED-OUTCOME>VERDICT ( outcome -- n )   \ launch-child outcome -> EVN device bucket
    MATCH outcome
      exited OF ED-EXIT>VERDICT ENDOF
      signaled OF drop EVN-DEVICE-FAULT ENDOF     \ signal death (SIGSEGV/SIGKILL) = fault
-     timeout OF EVN-DEVICE-FAULT ENDOF           \ blocking wait never times out; fail-closed
+     timeout OF EVN-DEVICE-FAULT ENDOF           \ hung kernel: SIGKILL-reaped -> fault
    ;MATCH ;
 
 \ device bucket -> with-checker 0/1/2 verdict. The with-checker arm only launches
@@ -190,12 +193,44 @@ variable ED-CODE               \ child-local: the classified exit code to die wi
 : ED-VERDICT>CERT ( n -- n )
    EVN-GREEN = if 2 else 1 then ;
 
-: GRADE-DEVICE-VERDICT ( -- n )   \ fork-isolated launch -> EVN-GREEN / -WRONG / -FAULT
-   PROC-FORK PID>N {: pid:n :}
-   pid 0= if ED-CHILD-LAUNCH then               \ child never returns
-   pid >PID PROC-WAIT-OUTCOME ED-OUTCOME>VERDICT ;
+\ write the launch driver: the spawned bin/hb loads this grader library, then the
+\ generated launcher records the cubin path and exits with the classified code.
+: GRADE-WRITE-LAUNCHER ( -- )
+   SB-RESET
+   s" s" SB-APPEND  34 SB-APPEND-C  32 SB-APPEND-C
+   MAKI-GRADE:CUBIN$ SB-APPEND  34 SB-APPEND-C
+   s"  EVAL:LAUNCH-CUBIN!" SB-APPEND  10 SB-APPEND-C
+   s" EVAL:LAUNCH-EXIT" SB-APPEND  10 SB-APPEND-C
+   MAKI-GRADE:LAUNCH$ SB$ WRITE-ALL ;
+
+create GL-OUT $1000 allot  create GL-ERR $1000 allot
+: GRADE-LAUNCH-ARGV ( -- )
+   PROC-ARGV-RESET
+   s" --load"             >LEN PROC-ARGV+
+   s" maki/eval-device.f" >LEN PROC-ARGV+
+   MAKI-GRADE:LAUNCH$     >LEN PROC-ARGV+ ;
+
+: GRADE-DEVICE-VERDICT ( -- n )   \ spawn-isolated launch -> EVN-GREEN / -WRONG / -FAULT
+   GRADE-WRITE-LAUNCHER
+   GRADE-LAUNCH-ARGV
+   s" bin/hb" >LEN  GL-OUT $1000 >LEN  GL-ERR $1000 >LEN  30000 >MS  RUN-ARGV-CAPTURE-OUTCOME
+   ED-OUTCOME>VERDICT {: outu:len erru:len v:n :}
+   v ;
 
 public
+
+\ ---- child side of the launch isolation (called by the generated launcher) --
+: LAUNCH-CUBIN! ( ptr u8 n -- ) {: a:ptr u:n :}
+   u 63 > if E-FS-PATH throw then              \ ED-PATH >CSTR needs path + NUL in 64
+   a ED-LCUBIN u BYTE-COPY
+   u ED-LCUBIN-U ! ;
+
+\ The child dies with an EMPTY message (the fork-child idiom): the classified
+\ exit code IS the signal, and a named die message would print on every launch,
+\ interleaving noise into the grader's tally output (found on-device).
+: LAUNCH-EXIT ( -- )           \ classify the launch under catch; die with the code
+   ED-CLASSIFY
+   s" " ED-CODE @ die ;
 
 \ ---- the general grade: 2 GREEN / 1 TYPED-BUT-WRONG / 0 REJECTED ----
 : GRADE-CANDIDATE ( ptr u8 n -- n ) {: a u :}

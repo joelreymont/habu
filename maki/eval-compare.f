@@ -76,22 +76,25 @@ variable NU-EMIT  variable NU-PTXAS  variable NU-WRONG  variable NU-FAULT  varia
    s" K ( span<space-global,f32,extent-n> span<space-global,f32,extent-n> uniform<f32> -- ) {: x y a :} x GRID-CTX {: g :} x g LOAD a SCALE y g LOAD +. y g STORE a SCALE"  CMP-SCORE  \ type/stack: extra op
    s" K ( span<space-global,f32,extent-n> span<space-global,f32,extent-n> uniform<f32> -- ) {: x y a :} x GRID-CTX {: g :} x g LOAD y g LOAD +. y g STORE"           CMP-SCORE ;  \ SEMANTIC: x+y (certifies, device-wrong)
 
-\ Expected without-checker device buckets, re-derived for the split-out FAULT bucket
-\ (the pre-mint tallies assumed NU-WRONG=6 = every non-green candidate "completes as
-\ device-wrong"; that was NEVER produced on device -- the first on-device run crashed
-\ because one candidate FAULTS the GPU rather than completing). Per candidate:
+\ Expected without-checker device buckets, MEASURED on the Orin 2026-07-17 (per-
+\ candidate GRADE-NOCHECK-CANDIDATE probe; the pre-mint tallies assumed NU-WRONG=6 =
+\ every non-green candidate "completes as device-wrong" -- never produced on device:
+\ the first on-device run crashed because one candidate FAULTS the GPU). Measured:
 \   1-3 correct SAXPY phrasings ........................ GREEN  (x3)
 \   4  no store: y stays memset 0, valid addresses ..... WRONG  (ran, bad value)
 \   5  span-as-uniform: span used as a SCALE scalar ..... WRONG  (arith on a pointer bit-pattern)
 \   6  span-as-gridctx: raw span pointer used as the
-\      element INDEX -> out-of-bounds read ............. FAULT  (contained nvgpu MMU fault)
-\   7  +. underflow: arithmetic on a stale register ..... WRONG  (bad value, addresses valid)
-\   8  extra trailing op after a correct store .......... WRONG  (kept as pre-mint expectation)
+\      element INDEX -> out-of-bounds read ............. FAULT  (contained nvgpu MMU fault,
+\                                                        invalid pde / virt read in dmesg)
+\   7  +. underflow: unchecked emit references a stale/
+\      undefined register .............................. PTXAS-FAIL (rejected at assembly)
+\   8  extra trailing op after the store: unbalanced
+\      emit -> malformed PTX ........................... PTXAS-FAIL (rejected at assembly)
 \   9  semantic x+y: certifies, runs, wrong number ...... WRONG
-\ Only candidate 6 misuses a pointer in an ADDRESSING position, so exactly one FAULT;
-\ the other five non-green candidates complete as WRONG. NU-WRONG 6 -> 5, NU-FAULT 0 -> 1;
-\ the aggregate late-fail count stays 6. The on-device follow-up leg confirms the exact
-\ WRONG/FAULT split (e.g. if a codegen-underflow candidate instead ptxas-fails).
+\ The two register-discipline bugs (7, 8) fail EARLIER than value-level reasoning
+\ predicts: the unchecked emitter produces PTX that ptxas itself rejects, so they
+\ never reach the GPU. Only candidate 6 misuses a pointer in an ADDRESSING position
+\ -> exactly one FAULT; 4/5/9 complete as WRONG. The aggregate late-fail count stays 6.
 : CMP-ASSERT ( -- )
    \ fixture shape: 3 green, 5 type/stack rejects, 1 semantic
    NC2 @  3 T=
@@ -102,9 +105,9 @@ variable NU-EMIT  variable NU-PTXAS  variable NU-WRONG  variable NU-FAULT  varia
    \ the unchecked arm attempts every candidate, including checker rejects
    CMP-NOCHECK-RUNS  9 T=
    NU-EMIT @  0 T=
-   NU-PTXAS @  0 T=
-   NU-WRONG @  5 T=       \ was 6: the span-as-gridctx faulter split out into NU-FAULT
-   NU-FAULT @  1 T=       \ span-as-gridctx: raw pointer used as index -> OOB read -> MMU fault
+   NU-PTXAS @  2 T=       \ candidates 7+8: register-discipline bugs die at ASSEMBLY (measured)
+   NU-WRONG @  3 T=       \ candidates 4/5/9 ran and produced bad values (measured)
+   NU-FAULT @  1 T=       \ candidate 6: raw pointer used as index -> OOB read -> MMU fault
    NU-GREEN @  3 T=
    CMP-NOCHECK-LATE-FAILS  6 T= ;
 
