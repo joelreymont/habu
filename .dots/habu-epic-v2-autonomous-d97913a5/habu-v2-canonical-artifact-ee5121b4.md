@@ -34,3 +34,19 @@ now free), and reconcile the process-local P-ID dependency wire form with
 the cross-process content-key form (flagged in plan 23.9).
 
 Claim: agent=artimpl2 workspace=.jj-ws/fable-artimpl2 (second slice: foreign-id fields via the landed codecs + envelope VALIDATE; owns maki/db/artifact.f)
+
+SLICE 2 LANDED 2026-07-17 (artimpl2 lane, commit 469f1e15; claim RELEASED).
+The five expressible foreign-id fields joined the envelope (tags 6-10:
+schema/producer/config/npol/target, all digest-covered semantic fields,
+serialized across the owner package boundaries - zero new refinements in
+ARTIFACT), and the envelope ARTIFACT:VALIDATE landed on the freed tail
+(kind-agnostic structural+digest verification sharing DECODE's core, same
+art-result taxonomy). Per-field digest-flip + reject coverage; target-id
+proven on the DECODE side because the shared 16-slot target registry is
+at capacity in integration (documented at the test site + LESSONS).
+DOT REMAINDER (slim): capability-id field (waits habu-user-gated-cap-
+edccf572 vocabulary), audit-event-id + rev-id/source-revisions fields
+(wait the txn/journal dot's JOURNAL + REV/TX codecs), and the
+process-local P-ID vs cross-process content-key wire reconciliation
+(plan 23.9 flag). TAG-CAP-RESERVED + TAG-EVENT commentary hold the wire
+slots.
