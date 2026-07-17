@@ -1545,7 +1545,7 @@ variable LPUTIL         variable LPCELL         variable LPPTRSTORAGE  variable 
 variable LPENGINEERROR  variable LPENGINEERROREFFECTS
 variable LPBYTES        variable LPCHECKER      variable LPRENDER
 variable LPLOWERCERTBASE
-variable LPTYPESCHEMA   variable LPTYPEFAM      variable LPSUMTYPE      variable LPLAYOUTBUF  variable LPLAYOUTVALID
+variable LPTYPESCHEMA   variable LPTYPEFAM      variable LPTYPEFIELD    variable LPSUMTYPE      variable LPLAYOUTBUF  variable LPLAYOUTVALID
 variable LPHOOK         variable LPCELLEFF      variable LPPTRSTORAGEEFF
 variable LPHABULAYOUT   variable LPENVBASE      variable LPINCLUDE
 variable LPSCRIPTARGV   variable LPROLES
@@ -1727,8 +1727,7 @@ create ZBYTE 0 c,
    PFX-COMMON LPPTRSTORAGEEFF s" src/core/pointer-storage-effects.f" PFX-LOAD-ROW ;
 
 : PFX-LOAD-DECL-FILES ( -- )
-   \ Unified STRUCTURE and ENUM declarers load here after the checker hook.
-   ;
+   PFX-COMMON LPTYPEFIELD   s" src/core/type-field.f" PFX-LOAD-ROW ;
 
 : PFX-LOAD-CORE-FILES ( -- )
    PFX-COMMON LPSTRUCTURES   s" src/core/structures.f"  PFX-LOAD-ROW
@@ -1750,8 +1749,8 @@ create ZBYTE 0 c,
 
 : PFX-LOAD-BASE-FILES ( -- )
    PFX-LOAD-CHECKER-FILES
-   PFX-LOAD-DECL-FILES
-   PFX-LOAD-CORE-FILES ;
+   PFX-LOAD-CORE-FILES
+   PFX-LOAD-DECL-FILES ;
 
 \ Accepted stage-0 omission — src/core/top-row.f (dot habu-mirror-top-row-07072823).
 \ The native cold prefix (habu2.f PFX-LOAD-INTMARK/PFX-LOAD-TOPROW) continues past
@@ -1804,8 +1803,7 @@ create ZBYTE 0 c,
    PFX-COMMON LPPTRSTORAGEEFF s" src/core/pointer-storage-effects.f" PFX-PATH-ROW ;
 
 : PFX-PATH-DECL-FILES ( -- )
-   \ Unified STRUCTURE and ENUM declarer paths emit here.
-   ;
+   PFX-COMMON LPTYPEFIELD   s" src/core/type-field.f" PFX-PATH-ROW ;
 
 : PFX-PATH-CORE-FILES ( -- )
    PFX-COMMON LPSTRUCTURES   s" src/core/structures.f"  PFX-PATH-ROW
@@ -1828,8 +1826,8 @@ create ZBYTE 0 c,
 
 : PFX-PATH-FILES ( -- )
    PFX-PATH-CHECKER-FILES
-   PFX-PATH-DECL-FILES
-   PFX-PATH-CORE-FILES ;
+   PFX-PATH-CORE-FILES
+   PFX-PATH-DECL-FILES ;
 
 : EMIT-HOST-LOAD-PREFIX ( -- )
    16 0 MOVZ,  16 DATA HOOK-CELL STR,
@@ -2041,8 +2039,7 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
    PFX-COMMON LPPTRSTORAGEEFF s" src/core/pointer-storage-effects.f" PFX-PROVIDE-ROW ;
 
 : PFX-PROVIDE-DECL-FILES ( -- )
-   \ Unified STRUCTURE and ENUM declarer provide rows emit here.
-   ;
+   PFX-COMMON LPTYPEFIELD   s" src/core/type-field.f" PFX-PROVIDE-ROW ;
 
 : PFX-PROVIDE-CORE-FILES ( -- )
    PFX-COMMON LPSTRUCTURES   s" src/core/structures.f"  PFX-PROVIDE-ROW
@@ -2067,8 +2064,8 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
 
 : PFX-PROVIDE-FILES ( -- )
    PFX-PROVIDE-CHECKER-FILES
-   PFX-PROVIDE-DECL-FILES
-   PFX-PROVIDE-CORE-FILES ;
+   PFX-PROVIDE-CORE-FILES
+   PFX-PROVIDE-DECL-FILES ;
 
 : C-SOURCE-PIPE ( -- )
    SRC-STDINPROG @ LBL,
@@ -5960,7 +5957,7 @@ variable P2SK
    LBL LPSTRUCTURES !  LBL LPBYTES !  LBL LPENGINEERROR !  LBL LPCHECKER !  LBL LPENGINEERROREFFECTS !
    LBL LPLOWERCERTBASE !  LBL LPRENDER !  LBL LPHOOK !
    LBL LPCELLEFF !  LBL LPPTRSTORAGEEFF !
-   LBL LPTYPESCHEMA !  LBL LPTYPEFAM !  LBL LPSUMTYPE !  LBL LPLAYOUTBUF !  LBL LPLAYOUTVALID !
+   LBL LPTYPESCHEMA !  LBL LPTYPEFAM !  LBL LPTYPEFIELD !  LBL LPSUMTYPE !  LBL LPLAYOUTBUF !  LBL LPLAYOUTVALID !
    LBL LPHABULAYOUT !
    LBL LPENVBASE !  LBL LPINCLUDE !  LBL LPSCRIPTARGV !  LBL LPROLES !
    LBL LPENUMS !  LBL LPEXECVECTOR !  LBL LPSHA256 !  LBL LPTFAMSHA !

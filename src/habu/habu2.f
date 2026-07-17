@@ -163,7 +163,7 @@ variable LPUTIL         variable LPCELL         variable LPPTRSTORAGE  variable 
 variable LPENGINEERROR  variable LPENGINEERROREFFECTS
 variable LPBYTES        variable LPCHECKER      variable LPRENDER
 variable LPLOWERCERTBASE
-variable LPTYPESCHEMA   variable LPTYPEFAM      variable LPSUMTYPE      variable LPLAYOUTBUF  variable LPLAYOUTVALID
+variable LPTYPESCHEMA   variable LPTYPEFAM      variable LPTYPEFIELD    variable LPSUMTYPE      variable LPLAYOUTBUF  variable LPLAYOUTVALID
 variable LPHOOK         variable LPCELLEFF      variable LPPTRSTORAGEEFF
 variable LPHABULAYOUT   variable LPENVBASE      variable LPINCLUDE
 variable LPSCRIPTARGV   variable LPINTMARK
@@ -561,8 +561,7 @@ s" c-bp-watch-dump" s" label label --" TRUST
    PFX-COMMON LPPTRSTORAGEEFF s" src/core/pointer-storage-effects.f" PFX-LOAD-ROW ;
 
 : PFX-LOAD-DECL-FILES ( -- )
-   \ Unified STRUCTURE and ENUM declarers load here after the checker hook.
-   ;
+   PFX-COMMON LPTYPEFIELD   s" src/core/type-field.f" PFX-LOAD-ROW ;
 
 : PFX-LOAD-CORE-FILES ( -- )
    PFX-COMMON LPSTRUCTURES   s" src/core/structures.f"  PFX-LOAD-ROW
@@ -585,8 +584,8 @@ s" c-bp-watch-dump" s" label label --" TRUST
 
 : PFX-LOAD-BASE-FILES ( -- )
    PFX-LOAD-CHECKER-FILES
-   PFX-LOAD-DECL-FILES
-   PFX-LOAD-CORE-FILES ;
+   PFX-LOAD-CORE-FILES
+   PFX-LOAD-DECL-FILES ;
 
 : PFX-LOAD-SCRIPT-ARGV ( -- )
    PFX-COMMON LPSCRIPTARGV   s" src/os/script-argv.f"   PFX-LOAD-ROW ;
@@ -654,8 +653,7 @@ s" c-bp-watch-dump" s" label label --" TRUST
    PFX-COMMON LPPTRSTORAGEEFF s" src/core/pointer-storage-effects.f" PFX-PATH-ROW ;
 
 : PFX-PATH-DECL-FILES ( -- )
-   \ Unified STRUCTURE and ENUM declarer paths emit here.
-   ;
+   PFX-COMMON LPTYPEFIELD   s" src/core/type-field.f" PFX-PATH-ROW ;
 
 : PFX-PATH-CORE-FILES ( -- )
    PFX-COMMON LPSTRUCTURES   s" src/core/structures.f"  PFX-PATH-ROW
@@ -681,8 +679,8 @@ s" c-bp-watch-dump" s" label label --" TRUST
 
 : PFX-PATH-FILES ( -- )
    PFX-PATH-CHECKER-FILES
-   PFX-PATH-DECL-FILES
-   PFX-PATH-CORE-FILES ;
+   PFX-PATH-CORE-FILES
+   PFX-PATH-DECL-FILES ;
 
 \ The prefix reload below zeroes HOOK-CELL, so the boot-time load of the
 \ checker/core prefix is itself unchecked. The staged fixpoint pre-pass
@@ -922,8 +920,7 @@ public
    PFX-COMMON LPPTRSTORAGEEFF s" src/core/pointer-storage-effects.f" PFX-PROVIDE-ROW ;
 
 : PFX-PROVIDE-DECL-FILES ( -- )
-   \ Unified STRUCTURE and ENUM declarer provide rows emit here.
-   ;
+   PFX-COMMON LPTYPEFIELD   s" src/core/type-field.f" PFX-PROVIDE-ROW ;
 
 : PFX-PROVIDE-CORE-FILES ( -- )
    PFX-COMMON LPSTRUCTURES   s" src/core/structures.f"  PFX-PROVIDE-ROW
@@ -949,8 +946,8 @@ public
 
 : PFX-PROVIDE-FILES ( -- )
    PFX-PROVIDE-CHECKER-FILES
-   PFX-PROVIDE-DECL-FILES
-   PFX-PROVIDE-CORE-FILES ;
+   PFX-PROVIDE-CORE-FILES
+   PFX-PROVIDE-DECL-FILES ;
 
 : C-SOURCE-PIPE ( -- )
    SRC-STDINPROG LABEL@ LBL,
@@ -6354,7 +6351,7 @@ s" SRCA@" s" -- ptr u8" TRUST
    LBL LPSTRUCTURES !  LBL LPBYTES !  LBL LPENGINEERROR !  LBL LPCHECKER !  LBL LPENGINEERROREFFECTS !
    LBL LPLOWERCERTBASE !  LBL LPRENDER !  LBL LPHOOK !
    LBL LPCELLEFF !  LBL LPPTRSTORAGEEFF !
-   LBL LPTYPESCHEMA !  LBL LPTYPEFAM !  LBL LPSUMTYPE !  LBL LPLAYOUTBUF !  LBL LPLAYOUTVALID !
+   LBL LPTYPESCHEMA !  LBL LPTYPEFAM !  LBL LPTYPEFIELD !  LBL LPSUMTYPE !  LBL LPLAYOUTBUF !  LBL LPLAYOUTVALID !
    LBL LPHABULAYOUT !
    LBL LPENVBASE !  LBL LPINCLUDE !  LBL LPSCRIPTARGV !  LBL LPINTMARK !  LBL LPROLES !
    LBL LPENUMS !  LBL LPEXECVECTOR !  LBL LPSHA256 !  LBL LPTFAMSHA !

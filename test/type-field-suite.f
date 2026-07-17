@@ -1,0 +1,317 @@
+\ type-field-suite.f - focused shared field-registry behavior.
+\ Run against an unbaked edit with:
+\   bin/hb --load src/core/type-field.f test/type-field-suite.f
+\ A refreshed engine already provides src/core/type-field.f and needs only this
+\ file. Test-only TRUSTED shims use xref to reach the sealed private builder;
+\ production callers retain only TYPE-FIELD's public reflection surface.
+
+require lib/test/assert.f
+
+package TYPE-FIELD-TEST
+
+TYPEFAMILY field-test-owner 0
+TYPEFAMILY field-grow-owner 0
+TYPEFAMILY field-nest-owner 0
+TYPEFAMILY field-mark-owner 0
+
+SUMTYPE field-test-enum 0
+   VARIANT payload ;VARIANT
+;SUMTYPE
+
+TRUSTED: TFF-XT ( ptr u8 n -- n )
+   {: a:ptr u:n :}
+   ndict@ 1 -
+   begin dup 0 >= while
+      dup XREF-REC dup a u XREF-MATCH? if nip XREF-START exit then
+      drop 1 -
+   repeat
+   drop s" type-field test: missing private word" 76 die ;
+
+TRUSTED: TFF-OPEN ( -- TYPE-FIELD:field-tx )
+   s" OPEN" TFF-XT execute ;
+TRUSTED: TFF-START
+   ( TYPE-FIELD:field-tx n bool n ptr u8 n -- TYPE-FIELD:field-tx TYPE-FIELD:field-draft )
+   s" START" TFF-XT execute ;
+TRUSTED: TFF-SCHEMA
+   ( TYPE-FIELD:field-tx TYPE-FIELD:field-draft n n n -- TYPE-FIELD:field-tx TYPE-FIELD:field-draft )
+   s" SCHEMA" TFF-XT execute ;
+TRUSTED: TFF-LAYOUT
+   ( TYPE-FIELD:field-tx TYPE-FIELD:field-draft n n n n -- TYPE-FIELD:field-tx TYPE-FIELD:field-draft )
+   s" LAYOUT" TFF-XT execute ;
+TRUSTED: TFF-SOURCE
+   ( TYPE-FIELD:field-tx TYPE-FIELD:field-draft n n n -- TYPE-FIELD:field-tx TYPE-FIELD:field-draft )
+   s" SOURCE" TFF-XT execute ;
+TRUSTED: TFF-ADD
+   ( TYPE-FIELD:field-tx TYPE-FIELD:field-draft -- TYPE-FIELD:field-tx TYPE-FIELD:field-id )
+   s" ADD" TFF-XT execute ;
+TRUSTED: TFF-COMMIT ( TYPE-FIELD:field-tx -- )
+   s" COMMIT" TFF-XT execute ;
+TRUSTED: TFF-ROLLBACK ( TYPE-FIELD:field-tx -- )
+   s" ROLLBACK" TFF-XT execute ;
+TRUSTED: TFF-MARK ( -- n )
+   s" MARK" TFF-XT execute ;
+TRUSTED: TFF-RESTORE ( n -- )
+   s" RESTORE" TFF-XT execute ;
+
+TRUSTED: TFF-FAMILY ( ptr u8 n -- n ) {: a:ptr u:n :}
+   s" type-field-test" a u TFAM-FIND-IN 0= if
+      s" type-field test: missing family" 76 die
+   then ;
+TRUSTED: TFF-VARIANT-START ( n -- n ) TFAM-VAR-START@ ;
+TRUSTED: TFF-SCHEMA-N ( -- n ) SCHEMA-ROOT-N@ ;
+TRUSTED: TFF-PUBLIC ( -- n ) CHECKER-PACKAGE-PUBLIC ;
+TRUSTED: TFF-PRIVATE ( -- n ) CHECKER-PACKAGE-PRIVATE ;
+
+variable TFF-OWNER
+variable TFF-GROW-OWNER
+variable TFF-NEST-OWNER
+variable TFF-MARK-OWNER
+variable TFF-ENUM-OWNER
+variable TFF-VARIANT
+variable TFF-BASE
+
+s" field-test-owner" TFF-FAMILY TFF-OWNER !
+s" field-grow-owner" TFF-FAMILY TFF-GROW-OWNER !
+s" field-nest-owner" TFF-FAMILY TFF-NEST-OWNER !
+s" field-mark-owner" TFF-FAMILY TFF-MARK-OWNER !
+s" field-test-enum" TFF-FAMILY dup TFF-ENUM-OWNER ! TFF-VARIANT-START TFF-VARIANT !
+
+: TFF-FALSE ( -- bool ) 0 0= 0= ;
+: TFF-TRUE ( -- bool ) 0 0= ;
+
+create TFF-NAME-BUF 64 allot
+
+: TFF-BUILD-X ( -- )
+   TFF-OPEN
+   TFF-OWNER @ TFF-FALSE 0 s" x" TFF-START
+   0 CELL FIELD-PUBLIC FIELD-BYTE-ADDRESSABLE or TFF-SCHEMA
+   0 1 0 CELL TFF-LAYOUT
+   7 11 3 TFF-SOURCE
+   TFF-ADD drop
+   TFF-COMMIT ;
+
+: TFF-ASSERT-X-ID ( TYPE-FIELD:field-id -- )
+   dup TYPE-FIELD:FAMILY@ TFF-OWNER @ T=
+   dup TYPE-FIELD:VARIANT? TFALSE
+   dup TYPE-FIELD:SCHEMA@ 0 T=
+   dup TYPE-FIELD:SLOT@ 0 T=
+   dup TYPE-FIELD:CELLS@ 1 T=
+   dup TYPE-FIELD:BYTE-OFF@ 0 T=
+   dup TYPE-FIELD:BYTE-SIZE@ CELL T=
+   dup TYPE-FIELD:ALIGN@ CELL T=
+   dup TYPE-FIELD:FLAGS@ FIELD-PUBLIC FIELD-BYTE-ADDRESSABLE or T=
+   dup TYPE-FIELD:VIS@ TFF-PUBLIC T=
+   dup TFF-NAME-BUF 64 TYPE-FIELD:NAME 1 T=
+   TFF-NAME-BUF 1 s" x" T$=
+   TYPE-FIELD:SOURCE@ 3 T= 11 T= 7 T= ;
+
+: TFF-ASSERT-X ( ptr u8 n -- ) {: a:ptr u:n :}
+   TFF-OWNER @ TFF-FALSE 0 a u TYPE-FIELD:FIND MATCH option
+      none OF TFF-FALSE TTRUE ENDOF
+      some OF TFF-ASSERT-X-ID ENDOF
+   ;MATCH ;
+
+: TFF-ASSERT-MISSING ( -- )
+   TFF-OWNER @ TFF-FALSE 0 s" missing" TYPE-FIELD:FIND MATCH option
+      none OF TFF-TRUE TTRUE ENDOF
+      some OF drop TFF-FALSE TTRUE ENDOF
+   ;MATCH ;
+
+: TFF-NAME-SMALL ( -- )
+   TFF-OWNER @ TFF-FALSE 0 s" x" TYPE-FIELD:FIND MATCH option
+      none OF E-FIELD-ID throw ENDOF
+      some OF TFF-NAME-BUF 0 TYPE-FIELD:NAME drop ENDOF
+   ;MATCH ;
+
+: TFF-BUILD-VARIANT ( -- )
+   TFF-OPEN
+   TFF-ENUM-OWNER @ TFF-TRUE TFF-VARIANT @ s" value" TFF-START
+   0 CELL FIELD-BYTE-ADDRESSABLE TFF-SCHEMA
+   2 1 16 CELL TFF-LAYOUT
+   9 20 5 TFF-SOURCE
+   TFF-ADD drop
+   TFF-COMMIT ;
+
+: TFF-ASSERT-VARIANT-ID ( TYPE-FIELD:field-id -- )
+   dup TYPE-FIELD:FAMILY@ TFF-ENUM-OWNER @ T=
+   dup TYPE-FIELD:VARIANT? TTRUE
+   dup TYPE-FIELD:VARIANT@ TFF-VARIANT @ T=
+   dup TYPE-FIELD:SLOT@ 2 T=
+   dup TYPE-FIELD:BYTE-OFF@ 16 T=
+   dup TYPE-FIELD:VIS@ TFF-PRIVATE T=
+   TYPE-FIELD:SOURCE@ 5 T= 20 T= 9 T= ;
+
+: TFF-ASSERT-VARIANT ( -- )
+   TFF-ENUM-OWNER @ TFF-TRUE TFF-VARIANT @ s" value" TYPE-FIELD:FIND MATCH option
+      none OF TFF-FALSE TTRUE ENDOF
+      some OF TFF-ASSERT-VARIANT-ID ENDOF
+   ;MATCH ;
+
+: TFF-FINISH-SCHEMA ( TYPE-FIELD:field-tx TYPE-FIELD:field-draft -- )
+   0 1 0 CELL TFF-LAYOUT
+   1 0 1 TFF-SOURCE
+   TFF-ADD drop
+   TFF-ROLLBACK ;
+
+: TFF-FINISH-START ( TYPE-FIELD:field-tx TYPE-FIELD:field-draft -- )
+   0 CELL FIELD-PUBLIC TFF-SCHEMA
+   TFF-FINISH-SCHEMA ;
+
+: TFF-BAD-NAME ( -- )
+   TFF-OPEN TFF-OWNER @ TFF-FALSE 0 s" Bad" TFF-START TFF-FINISH-START ;
+
+: TFF-RESERVED-NAME ( -- )
+   TFF-OPEN TFF-OWNER @ TFF-FALSE 0 s" make" TFF-START TFF-FINISH-START ;
+
+: TFF-BAD-ABSENT-VARIANT ( -- )
+   TFF-OPEN TFF-OWNER @ TFF-FALSE 1 s" absent" TFF-START TFF-FINISH-START ;
+
+: TFF-BAD-VARIANT-OWNER ( -- )
+   TFF-OPEN TFF-OWNER @ TFF-TRUE TFF-VARIANT @ s" wrong" TFF-START TFF-FINISH-START ;
+
+: TFF-BAD-SCHEMA ( -- )
+   TFF-OPEN TFF-MARK-OWNER @ TFF-FALSE 0 s" schema" TFF-START
+   TFF-SCHEMA-N CELL FIELD-PUBLIC TFF-SCHEMA TFF-FINISH-SCHEMA ;
+
+: TFF-BAD-ALIGN ( -- )
+   TFF-OPEN TFF-MARK-OWNER @ TFF-FALSE 0 s" align" TFF-START
+   0 3 FIELD-PUBLIC TFF-SCHEMA TFF-FINISH-SCHEMA ;
+
+: TFF-BAD-FLAGS ( -- )
+   TFF-OPEN TFF-MARK-OWNER @ TFF-FALSE 0 s" flags" TFF-START
+   0 CELL 4 TFF-SCHEMA TFF-FINISH-SCHEMA ;
+
+: TFF-BAD-SOURCE ( -- )
+   TFF-OPEN TFF-MARK-OWNER @ TFF-FALSE 0 s" source" TFF-START
+   0 CELL FIELD-PUBLIC TFF-SCHEMA
+   0 1 0 CELL TFF-LAYOUT
+   -1 0 0 TFF-SOURCE
+   TFF-ADD drop TFF-ROLLBACK ;
+
+: TFF-BAD-LAYOUT ( -- )
+   TFF-OPEN TFF-MARK-OWNER @ TFF-FALSE 0 s" layout" TFF-START
+   0 2 FIELD-PUBLIC TFF-SCHEMA
+   0 1 3 CELL TFF-LAYOUT
+   1 0 1 TFF-SOURCE
+   TFF-ADD drop TFF-ROLLBACK ;
+
+: TFF-DUP-ROLLBACK ( -- )
+   TFF-OPEN
+   TFF-GROW-OWNER @ TFF-FALSE 0 s" duplicate" TFF-START
+   0 CELL FIELD-PUBLIC TFF-SCHEMA
+   0 1 0 CELL TFF-LAYOUT
+   1 0 1 TFF-SOURCE
+   TFF-ADD drop
+   TFF-GROW-OWNER @ TFF-FALSE 0 s" duplicate" TFF-START TFF-FINISH-START ;
+
+: TFF-GROW-ONE ( TYPE-FIELD:field-tx ptr u8 n n -- TYPE-FIELD:field-tx )
+   {: a:ptr u:n slot:n :}
+   TFF-GROW-OWNER @ TFF-FALSE 0 a u TFF-START
+   0 CELL FIELD-PUBLIC TFF-SCHEMA
+   slot 1 slot CELL * CELL TFF-LAYOUT
+   3 slot 2 TFF-SOURCE
+   TFF-ADD drop ;
+
+: TFF-BUILD-GROWTH ( -- )
+   TFF-OPEN
+   s" alpha-long" 0 TFF-GROW-ONE
+   s" bravo-long" 1 TFF-GROW-ONE
+   s" charlie-long" 2 TFF-GROW-ONE
+   s" delta-long" 3 TFF-GROW-ONE
+   s" echo-long" 4 TFF-GROW-ONE
+   s" foxtrot-long" 5 TFF-GROW-ONE
+   TFF-COMMIT ;
+
+: TFF-EACH+ ( n TYPE-FIELD:field-id -- n ) drop 1+ ;
+
+: TFF-ASSERT-EACH ( -- )
+   0 TFF-GROW-OWNER @ TFF-FALSE 0 [: TFF-EACH+ ;] TYPE-FIELD:EACH 6 T= ;
+
+: TFF-NEST-ROLLBACK ( -- )
+   TFF-OPEN
+   TFF-NEST-OWNER @ TFF-FALSE 0 s" outer" TFF-START
+   0 CELL FIELD-PUBLIC TFF-SCHEMA
+   0 1 0 CELL TFF-LAYOUT
+   1 0 1 TFF-SOURCE
+   TFF-ADD drop
+   TFF-OPEN
+   TFF-NEST-OWNER @ TFF-FALSE 0 s" inner" TFF-START
+   0 CELL FIELD-PUBLIC TFF-SCHEMA
+   1 1 CELL CELL TFF-LAYOUT
+   1 1 1 TFF-SOURCE
+   TFF-ADD drop
+   TFF-COMMIT
+   TFF-ROLLBACK ;
+
+: TFF-MARK-RESTORE ( -- )
+   TFF-MARK
+   TFF-OPEN
+   TFF-MARK-OWNER @ TFF-FALSE 0 s" temporary" TFF-START
+   0 CELL FIELD-PUBLIC TFF-SCHEMA
+   0 1 0 CELL TFF-LAYOUT
+   1 0 1 TFF-SOURCE
+   TFF-ADD drop
+   TFF-COMMIT
+   TFF-RESTORE ;
+
+: TFF-RANGE-FAIL ( -- )
+   TFF-OPEN
+   TFF-OWNER @ TFF-FALSE 0 s" late" TFF-START TFF-FINISH-START ;
+
+: TFF-RUN ( -- )
+   T-RESET
+   TFF-SCHEMA-N 0 > TTRUE
+   TYPE-FIELD:COUNT TFF-BASE !
+
+   TFF-BUILD-X
+   TYPE-FIELD:COUNT TFF-BASE @ 1 + T=
+   s" x" TFF-ASSERT-X
+   s" X" TFF-ASSERT-X
+   TFF-ASSERT-MISSING
+   [: TFF-NAME-SMALL ;] E-FIELD-CAPACITY TTHROWSQ
+
+   TFF-BUILD-VARIANT
+   TYPE-FIELD:COUNT TFF-BASE @ 2 + T=
+   TFF-ASSERT-VARIANT
+
+   TYPE-FIELD:COUNT TFF-BASE !
+   [: TFF-BAD-NAME ;] E-FIELD-NAME TTHROWSQ
+   TYPE-FIELD:COUNT TFF-BASE @ T=
+   [: TFF-RESERVED-NAME ;] E-FIELD-NAME TTHROWSQ
+   TYPE-FIELD:COUNT TFF-BASE @ T=
+   [: TFF-BAD-ABSENT-VARIANT ;] E-FIELD-VARIANT TTHROWSQ
+   TYPE-FIELD:COUNT TFF-BASE @ T=
+   [: TFF-BAD-VARIANT-OWNER ;] E-FIELD-VARIANT TTHROWSQ
+   TYPE-FIELD:COUNT TFF-BASE @ T=
+   [: TFF-BAD-SCHEMA ;] E-FIELD-SCHEMA TTHROWSQ
+   TYPE-FIELD:COUNT TFF-BASE @ T=
+   [: TFF-BAD-ALIGN ;] E-FIELD-LAYOUT TTHROWSQ
+   TYPE-FIELD:COUNT TFF-BASE @ T=
+   [: TFF-BAD-FLAGS ;] E-FIELD-FLAGS TTHROWSQ
+   TYPE-FIELD:COUNT TFF-BASE @ T=
+   [: TFF-BAD-SOURCE ;] E-FIELD-SOURCE TTHROWSQ
+   TYPE-FIELD:COUNT TFF-BASE @ T=
+   [: TFF-BAD-LAYOUT ;] E-FIELD-LAYOUT TTHROWSQ
+   TYPE-FIELD:COUNT TFF-BASE @ T=
+   [: TFF-DUP-ROLLBACK ;] E-FIELD-DUP TTHROWSQ
+   TYPE-FIELD:COUNT TFF-BASE @ T=
+
+   TFF-BUILD-GROWTH
+   TYPE-FIELD:COUNT TFF-BASE @ 6 + T=
+   TFF-ASSERT-EACH
+
+   TYPE-FIELD:COUNT TFF-BASE !
+   TFF-NEST-ROLLBACK
+   TYPE-FIELD:COUNT TFF-BASE @ T=
+   TFF-MARK-RESTORE
+   TYPE-FIELD:COUNT TFF-BASE @ T=
+
+   \ Returning to a prior owner would split its declaration-ordered range.
+   [: TFF-RANGE-FAIL ;] E-FIELD-RANGE TTHROWSQ
+   TYPE-FIELD:COUNT TFF-BASE @ T=
+
+   T-REPORT ;
+
+TFF-RUN
+
+;package

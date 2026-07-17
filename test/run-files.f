@@ -113,6 +113,7 @@ TR-FILES: TR-UNDER-SOURCE-FILES
    src/habu/rt.f src/habu/crash.f src/os/image-bytes.f src/habu/habu1.f
    src/habu/prof.f src/habu/regalloc.f src/habu/jit.f src/habu/habu2.f
    src/habu/xref.f src/habu/owner-wid-emit-seal.f src/core/layout-buffer-seal.f src/core/lower-cert-seal.f
+   src/core/type-field.f
    src/habu/driver-io.f src/core/include.f src/habu/aot-capture.f
    src/habu/stage2.f src/habu/stdin.f src/habu/snap-lib.f src/habu/snap.f src/habu/repl.f
    src/habu/debug-watch.f src/habu/stepper.f src/habu/debug.f

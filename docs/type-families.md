@@ -268,6 +268,23 @@ constructors, `UNMAKE`, `MATCH`, codecs, hashing, snapshots, and AOT metadata
 all consume that same order. No product-field, value-record-field, anonymous
 sum-payload, or pointer-layout field registry survives the cutover.
 
+`src/core/type-field.f` is the shared provider. Its sealed `TYPE-FIELD` package
+owns nominal linear transaction/draft tokens and nominal `field-id` handles.
+Private declaration-prefix friends build one complete row through `OPEN`,
+`START`, `SCHEMA`, `LAYOUT`, `SOURCE`, and `ADD`, then `COMMIT` or `ROLLBACK`;
+errors abort the current strict-LIFO transaction and restore row, copied-name,
+and draft watermarks. `MARK`/`RESTORE` provide the same atomic high-water
+boundary for later checker rollback integration. Names are canonical lowercase,
+case-insensitively unique within the exact owner key, and may be one character;
+declaration and generated-operation names are reserved. Flags are exactly
+`FIELD-PUBLIC` and `FIELD-BYTE-ADDRESSABLE`.
+
+The public surface is read-only: `TYPE-FIELD:COUNT`, `FIND`, `FAMILY@`,
+`VARIANT?`, `VARIANT@`, `NAME`, `SCHEMA@`, `SLOT@`, `CELLS@`, `BYTE-OFF@`,
+`BYTE-SIZE@`, `ALIGN@`, `FLAGS@`, `VIS@`, `SOURCE@`, and `EACH`. `FIND`
+returns `option<TYPE-FIELD:field-id>`; `NAME` copies into caller-owned storage;
+no arena pointer, raw id conversion, or mutator is public.
+
 ### 2.5 Header clauses and transactions
 
 `POLICY` selects a registered layout policy. `DERIVE` requests generated

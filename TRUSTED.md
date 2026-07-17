@@ -750,6 +750,23 @@ that source is explicitly certified; they are not stale-checked by the default
 | ROW-IDX | `row -- n` | Private NOM proof-erasure projection: reads a `row` handle's record index for bounds checks, interning, and canonical access; no public inverse. Retire when TVK-RAW (`habu-nominal-storage-raw-a3430ef2`) lands. | `lib/nominal/nominal-test.f` | lib/nominal/row.f | 2026-07-15 |
 | MK-BUILDER | `-- nom-builder` | Private NOM linear-token mint: forges the noncopyable transactional builder token; the only producer is `NOM:NEW`/`NOM:ADD` inside builder.f. Retire when TVK-RAW (`habu-nominal-storage-raw-a3430ef2`) lands. | `lib/nominal/nominal-test.f` | lib/nominal/builder.f | 2026-07-15 |
 | BUILDER-DROP | `nom-builder --` | Private NOM linear-token consume: the audited boundary that retires a `nom-builder` on the ADD/FREEZE/ROLLBACK paths where the checker cannot express the linear discard. Retire when TVK-RAW (`habu-nominal-storage-raw-a3430ef2`) lands. | `lib/nominal/nominal-test.f` | lib/nominal/builder.f | 2026-07-15 |
+| TX>N | `TYPE-FIELD:field-tx -- n` | Private TYPE-FIELD proof erasure for the strict-LIFO transaction serial; no public inverse or raw token escapes the sealed package. | `test/type-field-suite.f` | src/core/type-field.f | 2026-07-17 |
+| N>TX | `n -- TYPE-FIELD:field-tx` | Private TYPE-FIELD mint for a validated fresh/current transaction serial; only OPEN and successful staged continuations produce it. | `test/type-field-suite.f` | src/core/type-field.f | 2026-07-17 |
+| DRAFT>N | `TYPE-FIELD:field-draft -- n` | Private TYPE-FIELD proof erasure for the top draft serial before owner/stage checks. | `test/type-field-suite.f` | src/core/type-field.f | 2026-07-17 |
+| N>DRAFT | `n -- TYPE-FIELD:field-draft` | Private TYPE-FIELD mint for the validated top draft serial; START and successful stages are the only producers. | `test/type-field-suite.f` | src/core/type-field.f | 2026-07-17 |
+| ID>N | `TYPE-FIELD:field-id -- n` | Private TYPE-FIELD projection used only before a live row bounds check; public reflection never exposes the raw index. | `test/type-field-suite.f` | src/core/type-field.f | 2026-07-17 |
+| N>ID | `n -- TYPE-FIELD:field-id` | Private TYPE-FIELD mint for an initialized live row index returned by ADD, FIND, or EACH. | `test/type-field-suite.f` | src/core/type-field.f | 2026-07-17 |
+| MARK>N | `TYPE-FIELD:mark -- n` | Private TYPE-FIELD projection for a strict-LIFO rollback mark serial. | `test/type-field-suite.f` | src/core/type-field.f | 2026-07-17 |
+| N>MARK | `n -- TYPE-FIELD:mark` | Private TYPE-FIELD mint for a fully initialized rollback mark. | `test/type-field-suite.f` | src/core/type-field.f | 2026-07-17 |
+| RAW-GROW | `ptr a n n -- ptr a` | Private adapter to the pre-hook arena grower; callers prove capacity multiplication bounds before relocation. | `test/type-field-suite.f` | src/core/type-field.f | 2026-07-17 |
+| RAW-FAMILY-N | `-- n` | Private read-only bridge to the pre-hook sealed family high-water used for owner validation. | `test/type-field-suite.f` | src/core/type-field.f | 2026-07-17 |
+| RAW-VARIANT-N | `-- n` | Private read-only bridge to the pre-hook sealed variant high-water used for optional-owner validation. | `test/type-field-suite.f` | src/core/type-field.f | 2026-07-17 |
+| RAW-VARIANT-FAMILY@ | `n -- n` | Private read-only bridge proving a present variant belongs to the requested family. | `test/type-field-suite.f` | src/core/type-field.f | 2026-07-17 |
+| RAW-SCHEMA-N | `-- n` | Private read-only bridge to the sealed schema-root high-water used before storing a root index. | `test/type-field-suite.f` | src/core/type-field.f | 2026-07-17 |
+| RAW-CANON? | `ptr u8 n -- bool` | Private bridge to the shared canonical lowercase-tail predicate so field and family spelling cannot diverge. | `test/type-field-suite.f` | src/core/type-field.f | 2026-07-17 |
+| RAW-KEYWORD? | `ptr u8 n -- bool` | Private bridge to the declaration keyword predicate used by the reserved field-name gate. | `test/type-field-suite.f` | src/core/type-field.f | 2026-07-17 |
+| RAW-PUBLIC | `-- n` | Private read-only bridge to the package visibility constant used by VIS@. | `test/type-field-suite.f` | src/core/type-field.f | 2026-07-17 |
+| RAW-PRIVATE | `-- n` | Private read-only bridge to the package visibility constant used by VIS@. | `test/type-field-suite.f` | src/core/type-field.f | 2026-07-17 |
 | CAP-COMPILE-RUN | `--` | Model-CAD capture boundary evaluates the generated checked model definition and invokes its dynamic-arity capture word after the active checker hook certifies the definition. | `maki/cad-test.f`, `maki/test.f` | maki/cad.f | 2026-07-12 |
 | CHECK-PASSES? | `ptr u8 n -- bool` | Evaluation harness temporarily suppresses diagnostics, invokes the checker on candidate source, and restores the diagnostic hook; raw checker state mutation is the metaprogramming boundary. | `maki/eval-test.f`, `maki/test.f` | maki/eval.f | 2026-07-12 |
 | JIT-EVALUATE | `ptr u8 n --` | JIT inspection CLI evaluates user-supplied source before resolving and disassembling the requested word; dynamic evaluation cannot be expressed by the checker. | `test/gate-debug.f` | tools/jitdump-core.f | 2026-07-12 |
@@ -1216,6 +1233,23 @@ src/core/combinators.f:TIMES stdlib-boundary habu-multishot-quotations-typed-883
 src/core/combinators.f:EACH stdlib-boundary habu-multishot-quotations-typed-8832cace
 src/core/combinators.f:MAP stdlib-boundary habu-multishot-quotations-typed-8832cace
 src/core/combinators.f:FOLD stdlib-boundary habu-multishot-quotations-typed-8832cace
+src/core/type-field.f:TX>N prim-axiom habu-epic-one-structure-04f9804f
+src/core/type-field.f:N>TX prim-axiom habu-epic-one-structure-04f9804f
+src/core/type-field.f:DRAFT>N prim-axiom habu-epic-one-structure-04f9804f
+src/core/type-field.f:N>DRAFT prim-axiom habu-epic-one-structure-04f9804f
+src/core/type-field.f:ID>N prim-axiom habu-epic-one-structure-04f9804f
+src/core/type-field.f:N>ID prim-axiom habu-epic-one-structure-04f9804f
+src/core/type-field.f:MARK>N prim-axiom habu-epic-one-structure-04f9804f
+src/core/type-field.f:N>MARK prim-axiom habu-epic-one-structure-04f9804f
+src/core/type-field.f:RAW-GROW stdlib-boundary habu-epic-one-structure-04f9804f
+src/core/type-field.f:RAW-FAMILY-N stdlib-boundary habu-epic-one-structure-04f9804f
+src/core/type-field.f:RAW-VARIANT-N stdlib-boundary habu-epic-one-structure-04f9804f
+src/core/type-field.f:RAW-VARIANT-FAMILY@ stdlib-boundary habu-epic-one-structure-04f9804f
+src/core/type-field.f:RAW-SCHEMA-N stdlib-boundary habu-epic-one-structure-04f9804f
+src/core/type-field.f:RAW-CANON? stdlib-boundary habu-epic-one-structure-04f9804f
+src/core/type-field.f:RAW-KEYWORD? stdlib-boundary habu-epic-one-structure-04f9804f
+src/core/type-field.f:RAW-PUBLIC stdlib-boundary habu-epic-one-structure-04f9804f
+src/core/type-field.f:RAW-PRIVATE stdlib-boundary habu-epic-one-structure-04f9804f
 lib/build.f:BUILD-CHECK-RAW stdlib-boundary habu-primitive-effect-axiom-1119f176
 lib/cad-num-types.f:MINT-BYTE-LEN prim-axiom habu-epic-model-cad-70b629a9
 lib/cad-num-types.f:MINT-ITEM-COUNT prim-axiom habu-epic-model-cad-70b629a9
@@ -1786,6 +1820,22 @@ test/type-family-suite.f:TWX-TFL-CVAR? test-metaprog habu-seal-set-check-b3676b3
 test/type-family-suite.f:TWX-TFL-MATCH-FAM? test-metaprog habu-seal-set-check-b3676b33
 test/type-family-suite.f:TWX-TFL-VAR? test-metaprog habu-seal-set-check-b3676b33
 test/type-family-suite.f:TWX-TFL-VPADS test-metaprog habu-seal-set-check-b3676b33
+test/type-field-suite.f:TFF-XT test-metaprog habu-epic-one-structure-04f9804f
+test/type-field-suite.f:TFF-OPEN test-metaprog habu-epic-one-structure-04f9804f
+test/type-field-suite.f:TFF-START test-metaprog habu-epic-one-structure-04f9804f
+test/type-field-suite.f:TFF-SCHEMA test-metaprog habu-epic-one-structure-04f9804f
+test/type-field-suite.f:TFF-LAYOUT test-metaprog habu-epic-one-structure-04f9804f
+test/type-field-suite.f:TFF-SOURCE test-metaprog habu-epic-one-structure-04f9804f
+test/type-field-suite.f:TFF-ADD test-metaprog habu-epic-one-structure-04f9804f
+test/type-field-suite.f:TFF-COMMIT test-metaprog habu-epic-one-structure-04f9804f
+test/type-field-suite.f:TFF-ROLLBACK test-metaprog habu-epic-one-structure-04f9804f
+test/type-field-suite.f:TFF-MARK test-metaprog habu-epic-one-structure-04f9804f
+test/type-field-suite.f:TFF-RESTORE test-metaprog habu-epic-one-structure-04f9804f
+test/type-field-suite.f:TFF-FAMILY test-metaprog habu-epic-one-structure-04f9804f
+test/type-field-suite.f:TFF-VARIANT-START test-metaprog habu-epic-one-structure-04f9804f
+test/type-field-suite.f:TFF-SCHEMA-N test-metaprog habu-epic-one-structure-04f9804f
+test/type-field-suite.f:TFF-PUBLIC test-metaprog habu-epic-one-structure-04f9804f
+test/type-field-suite.f:TFF-PRIVATE test-metaprog habu-epic-one-structure-04f9804f
 src/core/internal-mark.f stdlib-boundary habu-seal-set-check-b3676b33 1
 src/core/checker.f:TRUST stdlib-boundary habu-seal-set-check-b3676b33
 test/gate-common-lib.f:UEND test-metaprog habu-primitive-effect-axiom-1119f176
