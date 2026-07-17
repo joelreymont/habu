@@ -7,6 +7,7 @@ require test/gate-pool.f
 46 constant GAP-DOT
 99 constant GAP-C-LOWER
 $10000 constant GAP-STRIPPED-TEXT-MAX
+$800 constant GAP-DATA-TEXT-MAX
 
 : GAP-N= ( n n ptr u8 n -- ) {: got:n want:n label:ptr labelu:n :}
    got want <> if label labelu GE-FAIL then ;
@@ -153,6 +154,20 @@ $10000 constant GAP-STRIPPED-TEXT-MAX
 \ persistent content, and sets up the return/loop stack.
 : GAP-DATA-SOURCE ( -- )
    GE-SRC-RESET
+   s" package AOT-MAP-TEST" GE-SRC-LINE
+   s" create CODE 16 allot" GE-SRC-LINE
+   s" create REC1 DREC allot" GE-SRC-LINE
+   s" create REC2 DREC allot" GE-SRC-LINE
+   s" 4 constant BODY-LEN" GE-SRC-LINE
+   s" 8 constant CODE-ROW" GE-SRC-LINE
+   s" $40 constant REC2-OFF" GE-SRC-LINE
+   s" : REC! ( ptr a ptr u8 n -- ) {: r:ptr code:ptr len:n :} code r 0 ptr-field ! len r 8 + ! ;" GE-SRC-LINE
+   s" : RECORDS! ( -- ) REC1 CODE BODY-LEN REC! REC2 CODE CODE-ROW + BODY-LEN REC! ;" GE-SRC-LINE
+   s" : CLOSURE! ( -- ) REC1 CLO 0 ptr-field ! REC2 CLO 1 ptr-field ! 0 NEWOFF ! REC2-OFF NEWOFF cell+ ! 2 NCLO ! ;" GE-SRC-LINE
+   s" : EXPECT ( bool ptr u8 n -- ) {: ok:bool label:ptr labelu:n :} ok 0= if label labelu 74 die then ;" GE-SRC-LINE
+   s\" : RUN ( -- ) RECORDS! CLOSURE! REC1 CODE CODE-ROW + MAP-IN-BLOB -1 = s\" AOT closed record range\" EXPECT REC1 CODE CODE-ROW + MAP-TARGET REC2-OFF = s\" AOT adjacent record relocation\" EXPECT ;" GE-SRC-LINE
+   s" RUN" GE-SRC-LINE
+   s" ;package" GE-SRC-LINE
    s" create TABLE 10 , 20 , 30 ," GE-SRC-LINE
    s" variable SUM" GE-SRC-LINE
    s" : MAIN ( -- ) 0 SUM ! 3 0 ?do TABLE i 8 * + @ SUM +! loop SUM @ . ;" GE-SRC-LINE ;
@@ -166,7 +181,13 @@ $10000 constant GAP-STRIPPED-TEXT-MAX
    s" hb-aot-data.f" s" hb-aot-data" s" hb-aot-data-report.json" GAP-PATHS
    GAP-DATA-SOURCE
    s" hb-build AOT data region build" GAP-BUILD-STRICT
+   GB-OUT$ GB-EXEC-TEXT-SIZE GAP-DATA-TEXT-MAX >= if
+      s" hb-build AOT direct private-helper text" GE-FAIL
+   then
    GAP-DATA-EXPECT s" hb-build AOT data region output" GB-RUN-EXPECT
+   s" hb-build AOT direct private-helper call report" GB-AOT-REPORT
+   s" aot-stripped" s" AOT direct private-helper stripped report" GAP-AOT-ASSERT
+   s" aot-compact" s" AOT direct private-helper compact report" GAP-AOT-ASSERT
    s" PASS: hb-build AOT persistent data region (create/,/variable/@/!/+!/loop)" type cr ;
 
 \ item 10 slice 5: a preseeded bad-tag object/AOT test entry. A source declaring a

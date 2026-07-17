@@ -29,6 +29,24 @@ s" AOT-PTR@" s" ptr a -- ptr a" TRUST
    p 12 + AOT-W32@ $D63F0200 = and ;
 : CALL-AT? {: p:ptr e:ptr :}  p 16 + e <= IF p CALL? ELSE 0 0= 0= THEN ;
 
+package AOT-BRANCH
+
+$7C000000 constant MASK
+$14000000 constant OPCODE
+$3FFFFFF constant DELTA-MASK
+$2000000 constant SIGN
+
+: SIGNED ( n -- n ) SIGN xor SIGN - ;
+
+public
+
+: DIRECT? ( n -- bool ) MASK and OPCODE = ;
+
+: TARGET ( ptr u8 n -- ptr u8 ) {: p:ptr w:n :}
+   p w DELTA-MASK and SIGNED 4 * + ;
+
+;package
+
 : REC {: k:n :} ( n -- ptr a )
    AOT-DBASE@ k 48 * + ;          \ dict record k  (0:addr 8:len 16:name-len|flags 24:name|ptr)
 : AOT-FOLD {: c:n :}  c 64 > c 91 < and IF c 32 + ELSE c THEN ;
@@ -127,6 +145,19 @@ create AENB 20 allot  variable AENV  variable AENN
 variable FX
 : FINDADDR ( n -- ptr a ) {: t:n :}  0 FX !
    BEGIN FX @ ndict@ < WHILE  FX @ REC @ t = IF FX @ REC exit THEN  FX @ 1+ FX ! REPEAT  XREF-NULL ;
+
+: REC-CODE-PTR ( ptr a -- ptr ptr u8 ) {: r:ptr :}
+   r 0 ptr-field ;
+
+: REC-CODE-PTR@ ( ptr a -- ptr u8 )
+   REC-CODE-PTR @ ;
+
+: FINDPTR ( ptr u8 -- ptr a ) {: t:ptr :}  0 FX !
+   BEGIN FX @ ndict@ < WHILE
+      FX @ REC dup REC-CODE-PTR@ t = IF exit THEN drop
+      FX @ 1+ FX !
+   REPEAT
+   XREF-NULL ;
 : FINDMAIN ( -- ptr a )  0 FX !
    BEGIN FX @ ndict@ < WHILE  FX @ REC MAIN? IF FX @ REC exit THEN  FX @ 1+ FX ! REPEAT  XREF-NULL ;
 
@@ -173,16 +204,34 @@ MAX-CLO CLO-LIMIT!
    NCLO @ CLO-LIMIT @ >= IF r CLO-OVERFLOW-DIE THEN
    r NCLO @ cells CLO + !  NCLO @ 1+ NCLO ! ;
 variable SP2  variable SEND
+: SCAN-CALLEE ( ptr a ptr a -- ) {: caller:ptr callee:ptr :}
+   callee XREF-FOUND? 0= if exit then
+   callee dup AOT-UNSAFE? if caller swap AOT-UNSAFE-DIE then
+   ADD-CLO ;
+
+: SCAN-TARGET ( ptr a n -- ) {: caller:ptr target:n :}
+   caller target FINDADDR SCAN-CALLEE ;
+
+: SCAN-PTR-TARGET ( ptr a ptr u8 -- ) {: caller:ptr target:ptr :}
+   caller target FINDPTR SCAN-CALLEE ;
+
+: SCAN-DIRECT ( ptr a ptr u8 -- ) {: caller:ptr p:ptr :}
+   p AOT-W32@ dup AOT-BRANCH:DIRECT? if
+      p swap AOT-BRANCH:TARGET caller swap SCAN-PTR-TARGET
+   else
+      drop
+   then ;
+
 : SCAN-REC {: r:ptr :} ( ptr a -- )
    r @ SP2 !  r @ r 8 + @ + SEND !
    BEGIN SP2 @ SEND @ < WHILE
       SP2 @ CALL? IF
-         SP2 @ TGT FINDADDR dup XREF-FOUND? IF
-            dup AOT-UNSAFE? IF r swap AOT-UNSAFE-DIE THEN
-            ADD-CLO
-         ELSE drop THEN
+         r SP2 @ TGT SCAN-TARGET
          SP2 @ 16 + SP2 !
-      ELSE SP2 @ 4 + SP2 ! THEN
+      ELSE
+         r SP2 @ SCAN-DIRECT
+         SP2 @ 4 + SP2 !
+      THEN
    REPEAT ;
 variable WI
 : NO-ENTRY-DIE ( -- )

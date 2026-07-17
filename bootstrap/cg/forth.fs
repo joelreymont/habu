@@ -1068,7 +1068,9 @@ previous definitions
 : BSWL ( -- )
    LBL LBL LBL LBL LBL LBL LBL LBL {: wl wend wnext wcmp wmatch wf1 wf2 winl :}
    2 G-POP  1 G-POP  0 G-POP                      \ wid=x2, u=x1, a=x0
-   3 $20 MOVZ,  5 DBASE 0 ADDI,  6 NDICT 0 ADDI,  11 0 MOVZ,   \ fold mask, rec, count, result
+   11 0 MOVZ,                                      \ result defaults to absent
+   2 OWNER-API-PRI-WID CMPI,  C-EQ wend BCOND,    \ sealed system-private words are never raw-searchable
+   3 $20 MOVZ,  5 DBASE 0 ADDI,  6 NDICT 0 ADDI,  \ fold mask, rec, count
    wl LBL,  6 wend CBZ,
       9 5 40 LDR,  9 2 CMP,  C-NE wnext BCOND,    \ wid mismatch
       9 5 16 LDR,  9 9 12 LSLI,  9 9 12 LSRI,  9 1 CMP,  C-NE wnext BCOND,    \ namelen mismatch

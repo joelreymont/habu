@@ -7,6 +7,31 @@ require src/habu/aot-closure.f
 
 LOWER-CERT-HOOK:INSTALL
 
+package AOT-BRANCH-TEST
+
+create CODE 4 allot
+
+: EXPECT ( bool ptr u8 n -- ) {: ok:bool label:ptr labelu:n :}
+   ok 0= if label labelu GE-FAIL then ;
+
+: TARGET= ( n ptr u8 ptr u8 n -- ) {: instr:n want:ptr label:ptr labelu:n :}
+   CODE instr AOT-BRANCH:TARGET want = label labelu EXPECT ;
+
+public
+
+: RUN ( -- )
+   $14000002 AOT-BRANCH:DIRECT? s" AOT direct B decode" EXPECT
+   $94000003 AOT-BRANCH:DIRECT? s" AOT direct BL decode" EXPECT
+   $54000000 AOT-BRANCH:DIRECT? 0= s" AOT conditional branch exclusion" EXPECT
+   $14000002 CODE 8 + s" AOT forward B target" TARGET=
+   $94000003 CODE 12 + s" AOT forward BL target" TARGET=
+   $17FFFFFF CODE 4 - s" AOT backward B target" TARGET=
+   $97FFFFFE CODE 8 - s" AOT backward BL target" TARGET=
+   CODE FINDPTR 0= s" AOT unregistered direct target exclusion" EXPECT
+   0 REC dup REC-CODE-PTR@ FINDPTR = s" AOT exact record target discovery" EXPECT ;
+
+;package
+
 34 constant GAN-DQ
 
 create GAN-REPORT-PATH FS-PATH-CAP allot
@@ -113,6 +138,7 @@ variable GAN-REPORT-U
 
 : GAN-RUN ( -- )
    s" hb-gate-aot-negative" GT-START
+   AOT-BRANCH-TEST:RUN
    GAN-CLOSURE-LIMIT
    GAN-PATCH32
    GT-CLEANUP

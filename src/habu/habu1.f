@@ -58,6 +58,21 @@ variable FP-A  variable FP-U  variable FP-XT
    PNPOOL PNP @ + RPD !  RPD@ #PL @ cells PNAM + !
    PR-COPY-NAME
    PNP @ PR-U @ + PNP !  #PL @ 1 + #PL ! ;
+
+package ENGINE-HELPER
+
+public
+
+: REGISTER ( ptr u8 n n n -- )
+   REG-PRIM
+   OWNER-API-PRI-WID #PL @ 1- cells PWID + ! ;
+
+: DNAME ( n -- n ) {: idx:n :}
+   idx cells PLEN + @
+   idx cells PWID + @ OWNER-API-PRI-WID = if DNAME-INT or then ;
+
+;package
+
 variable FPL  variable FPE
 
 : FP-ARGS ( ptr u8 n n -- )
@@ -224,6 +239,25 @@ public
    ok B,
    trap LBL,  0 ENGINE-ERROR:SEAL-VIOLATION MOVZ,  NR-EXIT-GROUP SYS,
    ok LBL, ;
+
+package PROT-GUARD
+
+public
+
+: CALL ( n n -- ) {: addr:n len:n :}
+   len 10 = if
+      addr 11 = if
+         12 11 0 ADDI,  11 10 0 ADDI,  10 12 0 ADDI,
+      else
+         11 10 0 ADDI,  10 addr 0 ADDI,
+      then
+   else
+      addr 10 <> if 10 addr 0 ADDI, then
+      len 11 <> if 11 len 0 ADDI, then
+   then
+   LPROTSPAN LABEL@ BL, ;
+
+;package
 
 : PROT-GUARD ( n -- )
    {: addr:n :}
@@ -1372,7 +1406,7 @@ variable SZA-I
    A G-POP  A A 0 LDR,  A G-PUSH ;
 
 : BSTORE ( -- )
-   B G-POP A G-POP  7 8 MOVZ,  B 7 GUARD-SPAN  A B 0 STR, ;
+   B G-POP A G-POP  7 8 MOVZ,  B 7 PROT-GUARD:CALL  A B 0 STR, ;
 
 : BPTRFIELD ( -- )
    B G-POP  A G-POP  B B 3 LSLI,  A A B ADD,  A G-PUSH ;
@@ -2163,7 +2197,9 @@ SOURCE-INIT
    LBL SWL-F2 !
    LBL SWL-INL !
    2 G-POP  1 G-POP  0 G-POP
-   3 $20 MOVZ,  5 DBASE 0 ADDI,  6 NDICT 0 ADDI,  11 0 MOVZ,
+   11 0 MOVZ,
+   2 OWNER-API-PRI-WID CMPI,  C-EQ SWL-END LABEL@ BCOND,
+   3 $20 MOVZ,  5 DBASE 0 ADDI,  6 NDICT 0 ADDI,
    SWL-LOOP LABEL@ LBL,  6 SWL-END LABEL@ CBZ,
       9 5 40 LDR,  9 2 CMP,  C-NE SWL-NEXT LABEL@ BCOND,
       9 5 16 LDR,  9 9 12 LSLI,  9 9 12 LSRI,  9 1 CMP,  C-NE SWL-NEXT LABEL@ BCOND,
@@ -2221,7 +2257,7 @@ SOURCE-INIT
    s" 2>r" ['] B2TOR FPRIM-L  s" 2r>" ['] B2RFROM FPRIM-L  s" 2r@" ['] B2RFETCH FPRIM-L ;
 
 : EMIT-MEMORY-PRIMS ( -- )
-   s" @"    ['] BFETCH 1 GDEREF-L   s" !"    ['] BSTORE 2 GDEREF-L   s" ptr-field" ['] BPTRFIELD FPRIM-L
+   s" @"    ['] BFETCH 1 GDEREF-L   s" !"    ['] BSTORE 2 GDEREF-F   s" ptr-field" ['] BPTRFIELD FPRIM-L
    s" +!" ['] BPLUSSTORE 2 GDEREF-L
    s" c@"   ['] BCFETCH 1 GDEREF-L  s" c!"   ['] BCSTORE 2 GDEREF-L
    s" atomic@" ['] BATFETCH 1 GDEREF-L  s" atomic!" ['] BATSTORE 2 GDEREF-L
@@ -2456,13 +2492,20 @@ SOURCE-INIT
       11 DATA INP-CELL STR,  0 1 MOVZ,  RET,
    TOK-NONE LABEL@ LBL,  11 DATA INP-CELL STR,  0 0 MOVZ,  RET, ;
 
+: EMIT-PROT-SPAN ( -- )
+   LPROTSPAN LABEL@ {: start:label :}
+   LBL {: end:label :}
+   s" (PROT-SPAN)" start LABEL>N end LABEL>N ENGINE-HELPER:REGISTER
+   start LBL,
+   10 11 GUARD-SPAN
+   RET,
+   end LBL, ;
+
 : EMIT-PROT ( -- )
    LPROT LABEL@ LBL,
    0 DBASE 0 ADDI,  1 REGION LIT64,  NR-MPROTECT SYS,  RET,
    \ Runtime lowering guard: x10=address, x11=byte length.
-   LBL dup LPROTSPAN ! LBL,
-   10 11 GUARD-SPAN
-   RET, ;
+   EMIT-PROT-SPAN ;
 
 \ Protected-WID membership (TFAM 2b-v). BL routine: x9 = wid on entry, x13 = 1 if
 \ wid is recorded in the protected-WID registry (PROT-WID-N-CELL entries of the
@@ -2907,11 +2950,11 @@ variable FIND-HMATCH
       dup cells PLBL + LABEL@ DLBL,
       dup cells PEL  + LABEL@ DLBL,
       dup cells PLEN + @ DNAME-INL > IF
-         dup cells PLEN + @ DNAME-EXT or DCQ,
+         dup ENGINE-HELPER:DNAME DNAME-EXT or DCQ,
          dup cells PNLBL + LABEL@ DLBL,
          0 DCQ,
       ELSE
-         dup cells PLEN + @ DCQ,
+         dup ENGINE-HELPER:DNAME DCQ,
          dup cells PNAM + @  over cells PLEN + @  BYTES,
          16  over cells PLEN + @  3 + -4 and  -  dup 0 > IF PNPOOL swap BYTES, ELSE drop THEN
       THEN

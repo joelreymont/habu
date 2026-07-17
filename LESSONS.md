@@ -5952,3 +5952,28 @@ unchanged (148855). Keys for milestone 2:
 - **Diagnostic probes preserve failure status.** Run optional existence and
   content checks separately; a shell `|| true` hides the exact tool failure the
   investigation needs.
+- **Seed isolated workspaces from the exact verified native candidate.** Ignored
+  `bin/hb` is absent in a fresh jj workspace, and a same-sized binary from
+  another checkout can still be stale enough to reject current source. Copy the
+  proven candidate, verify its digest, then refresh it inside the workspace.
+  Read-only scouts must never build or replace another workspace's ignored
+  binary.
+- **Type heterogeneous engine records through field accessors.** A direct AOT
+  branch target is a code pointer, while legacy absolute-call targets are raw
+  numbers. Use a typed `ptr-field` accessor for the record's code-pointer cell;
+  do not erase the distinction with a new `TRUSTED:` cast.
+- **Gate entry wrappers with required-prelude comments are not standalone.** Run
+  them through `test/run.f` or reproduce the documented source list exactly;
+  loading only the wrapper fails before exercising the subject.
+- **Private helper tests must probe the owning public and private WIDs, not only
+  global WID zero.** A record can remain absent globally while becoming reachable
+  through qualified lookup or raw private-WID search.
+- **A relocated code-record span is half-open.** Mapping `target == record-end`
+  through the caller aliases an adjacent source record to the caller's compact
+  end; reject the caller span and resolve the target through the adjacent record.
+- **Generated Forth containing an inner string needs the escaped outer literal.**
+  Use `s\" ... s\" inner\" ..."`; a plain outer `s"` ends at the inner quote and
+  leaves the message text to be parsed as source tokens.
+- **Do not overload `DNAME-INT` to hide one helper from raw lookup.** JIT dump
+  tooling deliberately finds internal records by explicit WID. Reserve raw
+  lookup denial for the sealed owner-private WID and keep internal introspection.

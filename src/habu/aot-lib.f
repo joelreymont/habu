@@ -191,7 +191,6 @@ create SEED-CELLS SEED-MAX cells allot   variable SEED-N
    MLBL LABEL@ BL,                              \ bl <entry root> (resolved when MLBL is placed)
    0 0 MOVZ,  NR-EXIT-GROUP SYS, ;               \ exit(0)
 variable CP2  variable CEND  variable CLEN  variable NEXT-OFF
-: BIMM? {: w:n :}  w $7C000000 and $14000000 = ;
 : BCOND? {: w:n :}  w $FF000010 and $54000000 = ;
 : CBZIMM? {: w:n :}  w $7E000000 and $34000000 = ;
 : TBZIMM? {: w:n :}  w $7E000000 and $36000000 = ;
@@ -275,7 +274,7 @@ variable MAPOUT  variable MAPP  variable MAPE
       CLO-CX @ 1+ CLO-CX ! REPEAT  -1 ;
 TRUSTED: MAP-IN-BLOB ( ptr a ptr u8 -- n ) {: r:ptr t:ptr :}
    t r @ < IF -1 EXIT THEN
-   t r REC-END > IF -1 EXIT THEN
+   t r REC-END >= IF -1 EXIT THEN
    0 MAPOUT !  r @ MAPP !  r REC-END MAPE !
    BEGIN MAPP @ MAPE @ < WHILE
       MAPP @ MAPE @ CALL-AT?  MAPP @ CALL-IN-CLO? and IF
@@ -287,7 +286,7 @@ TRUSTED: MAP-IN-BLOB ( ptr a ptr u8 -- n ) {: r:ptr t:ptr :}
          MAPOUT @ 4 + MAPOUT !  MAPP @ 4 + MAPP !
       THEN
    REPEAT
-   t MAPE @ = IF r REC-NEWOFF MAPOUT @ + ELSE -1 THEN ;
+   -1 ;
 : OLD>NEW {: t:ptr :} ( ptr u8 -- n )
    0 CLO-CX !
    BEGIN CLO-CX @ NCLO @ < WHILE
@@ -298,8 +297,6 @@ TRUSTED: MAP-IN-BLOB ( ptr a ptr u8 -- n ) {: r:ptr t:ptr :}
 : MAP-TARGET! {: r:ptr t:ptr :} ( ptr a ptr u8 -- )
    r t MAP-TARGET TNEW !
    TNEW @ -1 = IF s" aot: PC-relative target removed or outside closure" 74 die THEN ;
-: BTGT26 {: p:ptr w:n :} ( ptr u8 n -- ptr u8 )
-   p  w 0 26 BITS 26 SX 4 * + ;
 : BTGT19 {: p:ptr w:n :} ( ptr u8 n -- ptr u8 )
    p  w 5 19 BITS 19 SX 4 * + ;
 : BTGT14 {: p:ptr w:n :} ( ptr u8 n -- ptr u8 )
@@ -307,8 +304,8 @@ TRUSTED: MAP-IN-BLOB ( ptr a ptr u8 -- n ) {: r:ptr t:ptr :}
 : ADRTGT {: p:ptr w:n :} ( ptr u8 n -- ptr u8 )
    p  w 5 19 BITS 2 lshift  w 29 2 BITS or 21 SX + ;
 : RELOC-W32 {: r:ptr p:ptr w:n :} ( ptr a ptr u8 n -- n )
-   w BIMM? IF
-      r p w BTGT26 MAP-TARGET!
+   w AOT-BRANCH:DIRECT? IF
+      r p w AOT-BRANCH:TARGET MAP-TARGET!
       w $FC000000 and  ASM-LEN TNEW @ REL26 or EXIT THEN
    w BCOND? IF
       r p w BTGT19 MAP-TARGET!
