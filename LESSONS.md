@@ -5387,3 +5387,14 @@ unchanged (148855). Keys for milestone 2:
 - **A no-side-effect regression needs an observable side effect.** A fragment
   that only compiles more code cannot distinguish pre-execution rejection from
   a later reject; emit a compile-time marker and assert it remains absent.
+- **The swizzled TF32 mma.sync GEMM is FEED-BOUND on un-amortized B-side
+  scalar shared loads, not mma-issue-bound — the earlier dependency-bound
+  hypothesis is overturned by ablation.** (mmaparity attribution lane,
+  918MHz-pinned variant-kernel timing decomposition; nsys GPU-metrics is
+  unsupported on the Orin iGPU, so DCE-safe ablated kernel variants are the
+  profiling method there.) Numbers at 2048^3: B-feed 5.04ms of 12.61ms (~40%);
+  cp.async staging floor 7.48ms hidden behind the feed; A-side ldmatrix free
+  (reused 4x); mma issue ~1%; quarter-B-loads ceiling proxy = 2270 GFLOP/s =
+  1.20x Triton. Also: the whole +53% swizzle win was pad=8 unlocking bank-free
+  ldmatrix (no-pad ldmatrix is SLOWER than baseline), and cp.async stages 1 vs
+  2 measure flat — do not invest in stages until the register tile grows.
