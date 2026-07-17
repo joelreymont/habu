@@ -71,3 +71,11 @@ B. BOOTSTRAP-MIRROR TRIPWIRE (enforced red gate). tools/bootstrap-mirror-lint.f
 - Item (2) persisted checker tags (T-*/VR-*/SC-*/TK-*/TL-*): unchanged —
   migrate only with a proven fixpoint-safe encoding, else they join this same
   documented boundary.
+
+NOTE 2026-07-17 (wave-A closure 6040c0ec): this wave also owns
+ACAP-POOL-FIND (src/habu/aot-capture.f:97, -1 sentinel, 2 in-file
+callers with mechanical MATCH shapes). Blocker is bootstrap: option.f
+must enter the AOT-capture metabuild/stdin closure (load-order change)
+and the full engine battery is owed (fixpoint x2, old-binary boot,
+run.f perf verdict, seal/pin/PEINV). Census section-5 assigns
+bootstrap-sensitive items here.
