@@ -1888,26 +1888,29 @@ ONLY through the `TFAM-LAYOUT!` mutator — no declaration accepts `boxed` or
 shared metadata the boxed/niche accept slices consume; it never changes the width
 of a `stack-cell-tag` or `packed-tag` family (packed keeps the cell width, §22.2).
 
-v1 should keep type parameters cell-kinded:
+Declared parameter kinds stay cell (`PK-CELL`) in the registry, but the
+SIGNATURE layer already admits a NAMED layout-family application as a parameter
+arg — `option<pt2>` / `result<pt2,n>` with `PRODUCT pt2 0 FIELD x n FIELD y n
+;PRODUCT` — because the arg is ONE resolved term whose instantiated width
+propagates through `T-WIDTH` above (a nested parametric application such as
+`option<result<n,n>>` resolves the same way). Identity and transport of such an
+instantiation type-check; CONSTRUCTION and `MATCH`-arm payload binding stay
+fail-closed — the generated constructor's payload var is single-cell and cannot
+absorb a W>1 bundle, an `E-MISMATCH` at the constructor token — until the
+width-aware constructor-effect slice lands (dot
+habu-checker-capability-layout-9b8540bd, slices 3-4; pinned both ways in
+`test/type-decl-suite.f` TDPN1-7). A raw multi-token RUN is not a parameter
+arg:
 
 ```forth
-ENUM result 2
+option<off len>
+result<n n,n>
 ```
 
-means:
-
-```text
-a: cell
-b: cell
-```
-
-This rejects:
-
-```forth
-option<result<n,n>>
-```
-
-because `result<n,n>` is a layout value, not a cell type.
+reject at the one-type-per-slot separator. Folding such a run into an anonymous
+tuple term is staged OPTIONAL sugar (same dot, slice 6); the preferred Habu
+shape is a small named payload product per domain pair (docs/forth.md — small
+typed words over raw tuples), which needs no new grammar at all.
 
 Store parameter kinds now even though the hard-cutover grammar initially
 exposes only cell parameters. A later parameter-kind header feature must extend

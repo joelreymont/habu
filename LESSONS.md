@@ -6128,3 +6128,17 @@ unchanged (148855). Keys for milestone 2:
   (TRUSTED wrappers in the registry suite) to exercise the width function alone,
   and separately pin the probe shapes as still-rejecting so the groundwork adds no
   new accepts.
+- **Probe the live accept boundary with PUBLIC families before scoping parser
+  work: the sig one-type-per-slot separator rejects multi-TOKEN runs, not named
+  args.** Layout slice 2 was scoped as "PK-LAYOUT parser groups" against probe
+  shapes like `option<off len>`; empirically a NAMED layout-family application
+  (`option<pt2>`, `result<pt2,n>`, nested `option<result<n,n>>`) ALREADY parses
+  and identity-checks — one resolved term per slot satisfies the separator, and
+  slice 1's arg-aware width sizes the bundle — while constructing such an
+  instantiation fail-closes at the constructor's single-cell payload var
+  (`E-MISMATCH` at the constructor token). The previous entry's "`opt<pt3>`
+  rejects at the separator" held only for its package-PRIVATE fixture families,
+  which are unnameable from a top-level sig; the public/global case accepts.
+  Net: the planned parser slice served only raw-run sugar (re-staged by DoR
+  amendment), the bounded landing was pins + docs (TDPN1-7), and wave B migrates
+  by minting small named payload products instead of anonymous runs.

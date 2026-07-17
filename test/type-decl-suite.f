@@ -1922,6 +1922,41 @@ s" TDPB1 ( -- tdpbopt<off len> )"  CHECK-QUIET-CANDIDATE! 0 T=
 s" TDPB2 ( -- tdpbopt<ptr u8 n> )" CHECK-QUIET-CANDIDATE! 0 T=
 s" TDPB3 ( -- tdpbres<n n,n> )"    CHECK-QUIET-CANDIDATE! 0 T=
 
+\ ---------------------------------------------------------------------------
+\ layout-cap slice 2' (same dot, DoR amendment 2026-07-18): a NAMED layout-
+\ family application is the accepted spelling of a multi-cell parameter arg.
+\ option<tdpbw2> / result<tdpbw2,n> / result<tdpbw2,tdpbw2> parse and
+\ identity-check at the signature layer (slice 1's arg-aware instantiated
+\ width), while CONSTRUCTING such an instantiation stays fail-closed: the
+\ generated constructor's payload var is single-cell and cannot absorb the
+\ W>1 bundle, so the constructor token rejects E-MISMATCH (slice 3 flips
+\ these four to accepts). The @tdpbopt.slot2 fragment pins the arg-aware
+\ expansion (declared family width would put the tag at slot1). The raw
+\ multi-token runs above (TDPB1-3) stay rejected: anonymous runs are staged
+\ sugar (slice 6); named payload products are the wave-B shape (docs §18).
+\ ---------------------------------------------------------------------------
+PRODUCT tdpbw2 0 FIELD x n FIELD y n ;PRODUCT
+s" TDPN1 ( tdpbopt<tdpbw2> -- tdpbopt<tdpbw2> )" CHECK-QUIET-CANDIDATE! -1 T=
+s" TDPN2 ( tdpbres<tdpbw2,n> -- tdpbres<tdpbw2,n> )" CHECK-QUIET-CANDIDATE! -1 T=
+s" TDPN3 ( tdpbres<tdpbw2,tdpbw2> -- tdpbres<tdpbw2,tdpbw2> )" CHECK-QUIET-CANDIDATE! -1 T=
+TDIAG-BUF 8192 DIAG-BUFFER!  -1 DIAG-JSON!
+s" TDPN4 ( tdpbw2 -- tdpbopt<tdpbw2> ) TDPBOPT:SOME" CHECK-CANDIDATE! 0 T=
+DIAG-BUFFER$ s\" \"code\":\"E-MISMATCH\"" TDT-CONTAINS? -1 T=
+DIAG-BUFFER$ s\" \"token\":\"TDPBOPT:SOME\"" TDT-CONTAINS? -1 T=
+DIAG-BUFFER$ s\" \"actual\":\"tdpbw2<>" TDT-CONTAINS? -1 T=
+TDIAG-BUF 8192 DIAG-BUFFER!
+s" TDPN5 ( -- tdpbopt<tdpbw2> ) TDPBOPT:NONE" CHECK-CANDIDATE! 0 T=
+DIAG-BUFFER$ s\" \"token\":\"TDPBOPT:NONE\"" TDT-CONTAINS? -1 T=
+DIAG-BUFFER$ s\" @tdpbopt.slot2<tdpbw2<>>" TDT-CONTAINS? -1 T=
+TDIAG-BUF 8192 DIAG-BUFFER!
+s" TDPN6 ( tdpbw2 -- tdpbres<tdpbw2,n> ) TDPBRES:OK" CHECK-CANDIDATE! 0 T=
+DIAG-BUFFER$ s\" \"token\":\"TDPBRES:OK\"" TDT-CONTAINS? -1 T=
+TDIAG-BUF 8192 DIAG-BUFFER!
+s" TDPN7 ( n -- tdpbres<tdpbw2,n> ) TDPBRES:ERR" CHECK-CANDIDATE! 0 T=
+DIAG-BUFFER$ s\" \"token\":\"TDPBRES:ERR\"" TDT-CONTAINS? -1 T=
+0 DIAG-JSON!
+DIAG-BUFFER-OFF
+
 : REPORT ( -- )
    #FAIL @ 0 = if s" ok" type cr exit then
    #FAIL @ . s" type-decl-suite: failures" 1 die ;
