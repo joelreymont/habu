@@ -1,9 +1,11 @@
 ---
 title: Freeze canonical artifact type and wire contract
-status: active
+status: closed
 priority: 1
 issue-type: task
-created-at: "\"2026-07-13T16:15:58.437032+02:00\""
+created-at: "\"\\\"2026-07-13T16:15:58.437032+02:00\\\"\""
+closed-at: "2026-07-17T14:27:30.488995+02:00"
+close-reason: "Contract frozen and landed (commit dcbe61f9): 6 CAD kinds + verdict-0 fixture proofs, complete wire/package contract in plan 23.9 + type-families 9.1.1, failure taxonomy specced, zero open questions. Implementation dot unblocked."
 blocks:
   - habu-v2-types-artifact-6ee556f8
 ---
@@ -40,3 +42,20 @@ dot. Serialize dispatch until `docs/type-families.md` has exclusive ownership,
 then use `dot on` and commit/push the claim before creating its workspace.
 
 Claim: agent=artifact workspace=.jj-ws/fable-artifact (owns MODEL-CAD-V2-PLAN.md + docs/type-families.md + maki/cad-kinds.f this session)
+
+RESOLVED 2026-07-17 (artifact lane, commit dcbe61f9): ACCEPTANCE MET, zero
+open semantic questions - the frozen slice + plan determined every decision.
+Landed: 6 arity-0 CAD-KIND nominals (artifact-kind, producer-id, config-id,
+numeric-policy-id, capability-id, audit-event-id; content digest deliberately
+NOT a one-cell kind), verdict-pinned fixtures proving all four separations
+statically untypeable (adjacent ids; audit-event vs runtime ADAG:event-id;
+artifact-id vs content-digest; artifact<a> vs artifact<b> via concrete
+phantom kinds), the complete contract in MODEL-CAD-V2-PLAN.md section 23.9
+(package ownership, ENCODE/DECODE/DIGEST/VALIDATE signatures, wire rules,
+digest inclusion/exclusion, failure taxonomy: malformed/noncanonical/bounds/
+duplicate/unknown-required/kind-schema-mismatch/unsupported-migration/
+digest-mismatch), and docs/type-families.md section 9.1.1. Key engineering
+fact documented for the implementation dot: kind separation needs CONCRETE
+kind arguments - two type VARIABLES unify. The implementation dot
+habu-v2-canonical-artifact-ee5121b4 can now proceed without choosing
+semantics; habu-v2-types-artifact-6ee556f8 unblocked.
