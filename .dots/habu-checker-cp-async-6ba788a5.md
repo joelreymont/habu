@@ -55,3 +55,10 @@ capability leg 2b (habu-ptx-phantom-preserving-3df9db92 - the checked-mint
 half; legs 1/2a landed the preserving+sink half), (3) the M5 barrier model
 (habu-ptx-m5-mask-eb0716f1), (4) runtime loop-carried parity stays a named
 boundary permanently (out of checker scope).
+
+BLOCKER 3 DISCHARGED 2026-07-17 (habu-ptx-m5-mask-eb0716f1 closed, commit
+e87cb494): the block-uniform barrier model exists (CTL-BARRIER +
+E-DIVERGENT-BARRIER, #CFC>0 rejection). The cp.async typestate's bar.sync
+transition composes with CTL-BARRIER at the CPP-SYNC seam. Remaining
+blockers: phantom mint capability leg 2b (dominant), and the permanent
+runtime-parity named boundary.

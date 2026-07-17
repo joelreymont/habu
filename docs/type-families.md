@@ -2675,3 +2675,19 @@ A complete Habu ADT implementation must provide:
 The user writes algebraic data types. The checker owns refinement and exhaustiveness. The compiler emits efficient stack-cell layout and real tag checks.
 
 That is the whole job.
+
+### 9.1.2 Uniformity and the block-uniform barrier model (M5)
+
+`uniform<T>` is a block-uniform value (identical across all lanes);
+`tile<T,B,M>` is lane-varying. A block collective typed
+`( tile<..> -- uniform<..> )` (BLOCK-MAX/BLOCK-SUM) lowers to a
+shared-memory reduction with `bar.sync` and is flagged `CTL-BARRIER`
+structurally at effect registration (E-ADD-EFFECT — the one choke point
+shared by `:` and `TRUSTED:` definitions); the checker rejects a
+`CTL-BARRIER` call inside any open control frame (if/begin/do/case) as a
+non-block-uniform-reachable barrier (`E-DIVERGENT-BARRIER`). Producing a
+uniform from a tile under divergent control is unsound and now
+untypeable. Regression fixtures: lib/ptx/uniform-barrier-test.f.
+Documented conservatism: a collective under a provably-uniform branch
+(uniform<bool> condition) also rejects until per-frame uniformity
+tracking lands (see the M5 remainder dot).
