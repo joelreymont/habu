@@ -951,6 +951,8 @@ schema_version	module	file	kind	word	effect	test	doc	owner	status	notes
 1	test-outcome	lib/test/outcome.f	word	T-OUTCOME-EXITED=	(outcome n --)	lib/test/outcome-test.f	docs/stdlib.md	stdlib-test	published	assert a capture completed by exit with this code
 1	test-outcome	lib/test/outcome.f	word	T-OUTCOME-SIGNALED=	(outcome n --)	lib/test/outcome-test.f	docs/stdlib.md	stdlib-test	published	assert a capture died by this signal
 1	test-outcome	lib/test/outcome.f	word	T-OUTCOME-TIMEOUT	(outcome --)	lib/test/outcome-test.f	docs/stdlib.md	stdlib-test	published	assert a capture hit its deadline
+1	test-subject	lib/test/subject.f	module			lib/test/subject-test.f	docs/stdlib.md	stdlib-test-subject	active	fork-isolated dynamic source evaluation with bounded stdout stderr timeout and typed outcome capture
+1	test-subject	lib/test/subject.f	word	SUBJECT:RUN	(ptr u8 n ptr u8 len ptr u8 len ms -- len len outcome)	lib/test/subject-test.f	docs/stdlib.md	stdlib-test-subject	published	run counted source in a disposable child and return bounded output lengths plus its typed outcome
 1	test-runner	lib/test/runner.f	module			lib/test/runner-test.f	docs/stdlib.md	stdlib-test-runner	active	checked native gate runner foundation for temp roots process capture and aggregate failures
 1	test-runner	lib/test/runner.f	word	GT-FAIL-SLOT	(n -- ptr u8)	lib/test/runner-test.f	docs/stdlib.md	stdlib-test-runner	published	return one bounded failure-name slot
 1	test-runner	lib/test/runner.f	word	GT-FAIL-U-PTR	(n -- ptr n)	lib/test/runner-test.f	docs/stdlib.md	stdlib-test-runner	published	return one bounded failure-name length cell

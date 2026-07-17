@@ -52,7 +52,7 @@ PTR-VARIABLE STACK-A
    PROC-ERR-W PROC-CLOSE-CELL ;
 
 \ `evaluate` is deliberately checker-rejected; this is the single dynamic-source
-\ boundary. The active capability dot is habu-batch-candidate-valid-517bfb6f.
+\ boundary. The active capability dot is habu-type-isolated-dynamic-244c0e2c.
 TRUSTED: EVAL ( -- )
    SRC$ evaluate ;
 

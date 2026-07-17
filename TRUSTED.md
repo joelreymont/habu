@@ -733,8 +733,8 @@ that source is explicitly certified; they are not stale-checked by the default
 | CHECKER-DEFRECORD | `ptr u8 n ptr u8 n --` | Check driver models the checker primitive that publishes one parsed record definition and its source descriptor. | `tools/check-test.f`, `test/run.f` | tools/check-core.f | 2026-07-12 |
 | CHECKER-SCOPE-START | `--` | Check driver opens the checker transaction that isolates generated dependency effects from the parent session. | `tools/check-test.f`, `test/run.f` | tools/check-core.f | 2026-07-12 |
 | CHECKER-SCOPE-DONE | `--` | Check driver closes the checker transaction and rolls back generated dependency effects after the checked child verdict. | `tools/check-test.f`, `test/run.f` | tools/check-core.f | 2026-07-12 |
-| EVAL | `--` | Forked subject runner dynamically evaluates generated checked test source; the checker cannot express `evaluate`. Confined to the COW child and tracked by the missing typed dynamic-evaluation capability dot `habu-batch-candidate-valid-517bfb6f`. | `lib/test/subject-test.f`, `test/wide-store-seal.f`, `test/protection-span.f`, `test/lower-txn-protection.f`, `test/top-row-hook-test.f` | lib/test/subject.f | 2026-07-17 |
-| STACK-ARM | `--` | Forked subject runner installs its private stack as S0 and clears inherited catch and TTY recovery cells before dynamic evaluation; raw engine recovery-cell roles are outside checker inference. Confined to the COW child and tracked by `habu-batch-candidate-valid-517bfb6f`. | `lib/test/subject-test.f` | lib/test/subject.f | 2026-07-17 |
+| EVAL | `--` | Forked subject runner dynamically evaluates generated checked test source; the checker cannot express `evaluate`. Confined to the COW child and tracked by the missing typed dynamic-evaluation capability dot `habu-type-isolated-dynamic-244c0e2c`. | `lib/test/subject-test.f`, `test/wide-store-seal.f`, `test/protection-span.f`, `test/lower-txn-protection.f`, `test/top-row-hook-test.f` | lib/test/subject.f | 2026-07-17 |
+| STACK-ARM | `--` | Forked subject runner installs its private stack as S0 and clears inherited catch and TTY recovery cells before dynamic evaluation; raw engine recovery-cell roles are outside checker inference. Confined to the COW child and tracked by `habu-type-isolated-dynamic-244c0e2c`. | `lib/test/subject-test.f` | lib/test/subject.f | 2026-07-17 |
 
 ## Ratchet baseline
 
@@ -1353,6 +1353,7 @@ lib/ptx/rep.f:MINT-ROW-LOAD stdlib-boundary habu-ptx-phantom-preserving-3df9db92
 tools/lint/text.f:CHECK! prim-axiom habu-primitive-effect-axiom-1119f176
 lib/test/snap.f:SNAP= test-metaprog habu-typed-depth-introspection-18f0efda
 lib/test/assert.f:TTHROWS-RAW test-metaprog habu-typed-depth-introspection-18f0efda
+lib/test/subject.f test-metaprog habu-type-isolated-dynamic-244c0e2c 2
 maki/cad.f:CAP-COMPILE-RUN test-metaprog habu-primitive-effect-axiom-1119f176
 maki/eval.f:CHECK-PASSES? test-metaprog habu-primitive-effect-axiom-1119f176
 maki/fusion-plan.f:RAW>RGN prim-axiom habu-epic-model-cad-70b629a9

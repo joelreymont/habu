@@ -42,6 +42,7 @@ Planned module files:
 - `lib/test/assert.f`
 - `lib/test/suite.f`
 - `lib/test/runner.f`
+- `lib/test/subject.f`
 - `lib/property.f`
 - `lib/build.f`
 - `lib/time.f`
@@ -1727,6 +1728,15 @@ through `GT-FLUSH-LINES-FD` during polling and `GT-FLUSH-REMAINDER-FD` at proces
 exit. This keeps parent progress records serialized at line boundaries: a child
 line written in several chunks cannot be split by a parent heartbeat, while a
 final unterminated child fragment is still emitted before PASS/FAIL.
+
+`lib/test/subject.f` publishes `SUBJECT:RUN`, which evaluates one counted source
+inside a disposable fork child, captures bounded stdout and stderr, enforces a
+deadline, and returns a typed process outcome. Copy-on-write isolation prevents
+dictionary and engine-state mutations from escaping the child. Its dynamic
+`evaluate` and raw child stack/handler initialization remain audited boundaries
+owned by `habu-type-isolated-dynamic-244c0e2c`; that capability dot replaces
+both with a digest-bound typed source artifact and explicit isolated execution
+context.
 
 `lib/fs-root.f` publishes `FS:WRITABLE-ROOT? ( ptr u8 n -- bool )`. It returns
 true only for an existing directory to which the process has both write and
