@@ -11,7 +11,9 @@ package TEST
 
 128 constant NAME-CAP
 1024 constant STDIN-CAP
-128 constant ITEM-MAX
+\ Shared suite-table budget. Grow by constant when it fills (FM-BUF-CAP
+\ precedent); keep the loud E-TBL-BOUNDS wall (ITEM-CHECK / ITEM-ALLOC).
+256 constant ITEM-MAX
 32 constant GROUP-MAX
 $10000 constant ARG-CAP
 0 constant GROUP-PARALLEL

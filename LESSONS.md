@@ -152,6 +152,16 @@ Last updated: 2026-07-18
   hit it the same day: the cppslot landing bumped `FM-BUF-CAP` to $40000 (loud-fail
   preserved, test green), and the keywire2 lane routed around it before the bump merged —
   its xproc-env FILEMAP entries were added at integration once the cap fix landed.
+- **When the shared maki suite-table fills, raise `lib/test/suite.f` `ITEM-MAX`
+  (loud-fail preserved) rather than aggregating unrelated suites into one entry.**
+  (dot habu-raise-maki-suite-e1b07544.) It is the FM-BUF-CAP pattern again: a
+  fixed cap sized for a statically-known registration set, grown by constant with
+  the `E-TBL-BOUNDS` wall kept. The capbud lane first squeezed under the 128 cap by
+  aggregating four concern suites behind one `require`-bundle entry; that couples
+  concerns and hides the wall. `ITEM-MAX` is only referenced inside suite.f (all
+  tables `allot` from it), so bumping it (128 → 256) is fully contained. The bound
+  is a real regression: fill the counter to the cap and assert the next
+  `ITEM-ALLOC` throws `E-TBL-BOUNDS` (probe the live counter, not a parallel table).
 - **Cross-process id identity needs a CONTENT-key wire form, and the decisive test is a
   spawned fresh bin/hb that registers DECOYS FIRST.** (dot habu-wire-content-key, keywire
   lane.) The § 23.9 origin-class table's cross-process form for content-addressed families

@@ -163,6 +163,14 @@ package TEST
 : T-NAME-KW ( -- )    s" ;GROUP" CHECK-NAME 2drop ;
 : T-NAME-EMPTY ( -- ) s" "       CHECK-NAME 2drop ;
 
+\ Capacity probe: ITEM-ALLOC is the shared suite-table counter. Fill it to a
+\ target so the next registration exercises the raised ITEM-MAX wall.
+: T-FILL-ITEMS ( n -- ) {: target:n :}
+   target 0 ?do ITEM-ALLOC drop loop ;
+
+: T-ITEM-OVERFLOW ( -- )
+   ITEM-ALLOC drop ;
+
 T-RESET
 
 \ terminator recognizer renamed: ;SUITE, not END-SUITE
@@ -193,6 +201,19 @@ GROUP-CUR @ GROUP-MODE@ GROUP-SEQUENTIAL T=
 GROUP PARA grp-par
 GROUP-CUR @ GROUP-MODE@ GROUP-PARALLEL T=
 ;GROUP
+
+\ Suite-table capacity: the 129th registration (id 128) now allocates where the
+\ old ITEM-MAX=128 cap threw; the (ITEM-MAX+1)th still fails closed loudly.
+RESET
+128 T-FILL-ITEMS
+ITEM-N @ 128 T=
+ITEM-ALLOC 128 T=
+ITEM-N @ 129 T=
+
+RESET
+ITEM-MAX T-FILL-ITEMS
+ITEM-N @ ITEM-MAX T=
+' T-ITEM-OVERFLOW E-TBL-BOUNDS TTHROWS
 
 T-REPORT
 
