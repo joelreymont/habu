@@ -402,16 +402,12 @@ $10000 constant CAP
 create ROOT-BUF FS-PATH-CAP allot
 create DST-BUF FS-PATH-CAP allot
 create SUB-BUF FS-PATH-CAP allot
-create TARGET-BUF FS-PATH-CAP allot
-create LINK-BUF FS-PATH-CAP allot
 create ENGINE-BUF FS-PATH-CAP allot
 create OUT-BUF CAP allot
 create ERR-BUF CAP allot
 
 variable ROOT-U
 variable DST-U
-variable TARGET-U
-variable LINK-U
 variable ENGINE-U
 variable OUT-U
 variable ERR-U
@@ -459,20 +455,13 @@ variable BUILD-RC
 : COPY-ENTRY ( ptr u8 n -- )
    2dup FILE? if COPY-ONE else 2drop then ;
 
-: COPY-SRC ( -- )
-   s" src" [: COPY-ENTRY ;] WALK-FILES ;
-
-: LINK-DIR ( ptr u8 n -- ) {: a:ptr u:n :}
-   PWD$ a u TARGET-BUF JOIN-PATH TARGET-U !
-   ROOT$ a u LINK-BUF JOIN-PATH LINK-U !
-   TARGET-BUF TARGET-U @ LINK-BUF LINK-U @ MAKE-SYMLINK ;
+: COPY-TREE ( ptr u8 n -- )
+   [: COPY-ENTRY ;] WALK-FILES ;
 
 : SEED-ENGINE ( -- )
-   ROOT$ s" bin" LINK-BUF JOIN-PATH LINK-U !
-   LINK-BUF LINK-U @ MAKE-DIRS
-   ROOT$ s" bin/hb" LINK-BUF JOIN-PATH LINK-U !
-   ENGINE$ LINK-BUF LINK-U @ COPY-FILE-STREAM
-   LINK-BUF LINK-U @ CHMOD-X ;
+   s" bin" SUB$ MAKE-DIRS
+   ENGINE$ s" bin/hb" SUB$ COPY-FILE-STREAM
+   s" bin/hb" SUB$ CHMOD-X ;
 
 : LINE ( ptr u8 n -- )
    SB-APPEND UDG-LF ;
@@ -558,9 +547,9 @@ variable BUILD-RC
    s" udg cold build: stderr" type cr ERR$ type cr ;
 
 : BUILD-CANDIDATE ( -- )
-   COPY-SRC
-   s" lib" LINK-DIR
-   s" tools" LINK-DIR
+   s" src" COPY-TREE
+   s" lib" COPY-TREE
+   s" tools" COPY-TREE
    SEED-ENGINE
    PATCH-PREFIX
    BUILD-RUN
