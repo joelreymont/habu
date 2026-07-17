@@ -192,6 +192,8 @@ TEST:SUITE maki/db/evidence-applicability-test.f
 TEST:;SUITE
 TEST:SUITE maki/db/action-test.f
 TEST:;SUITE
+TEST:SUITE maki/db/capbud-test.f
+TEST:;SUITE
 TEST:SUITE maki/cad-test.f
 TEST:;SUITE
 TEST:SUITE maki/cad-bind-test.f

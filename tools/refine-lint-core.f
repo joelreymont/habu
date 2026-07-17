@@ -33,7 +33,7 @@
 
 $40000 constant RFL-STR-CAP     \ trust-lint manifest string store
 $80000 constant RFL-FILE-CAP    \ largest scanned source watermark (checker.f class)
-57 constant RFL-SEED#
+58 constant RFL-SEED#
 8 constant RFL-ALLOW-MAX
 32 constant RFL-NUM-CAP
 
@@ -197,7 +197,12 @@ variable RFL-LE
       \ habu-v2-evidence-applicability-73ac58b9; the RAW>PRODUCER-ID shape.
       54 of s" RAW>OBLIGATION-ID" endof   \ content-addressed by the canonical obligation encoding
       55 of s" RAW>EVIDENCE-ID" endof     \ content-addressed evidence descriptor
-      56 of s" RAW>ACTION-ID" endof       \ name-interned action declaration id
+      \ § 23.9 machine-facing action registry (dot habu-v2-machine-action-a7357409); the
+      \ RAW>OBLIGATION-ID shape. Seeded here to close the NEW-MINT gap its TRUSTED.md row left.
+      56 of s" RAW>ACTION-ID" endof       \ content-addressed by the canonical action name
+      \ § 23 capability + budget enforcement (dot habu-v2-capability-and-0970a96d). A package-local
+      \ CAPTOK:grant nominal (not CAD-KIND), so seed-only - the shape scan covers CAD-KIND:/MIR: only.
+      57 of s" RAW>GRANT" endof           \ append-only capability authority-slot refinement
       E-TBL-BOUNDS throw
    endcase ;
 
@@ -260,6 +265,7 @@ variable RFL-LE
       54 of s" maki/db/obligation.f" endof
       55 of s" maki/db/evidence.f" endof
       56 of s" maki/db/action.f" endof
+      57 of s" maki/db/capability.f" endof
       E-TBL-BOUNDS throw
    endcase ;
 

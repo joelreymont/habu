@@ -2,7 +2,43 @@
 
 # FIXME: Rewrite this to be concise without losing precision
 
-Last updated: 2026-07-17
+Last updated: 2026-07-18
+
+- **An unforgeable value that CARRIES data uses the refined-nominal-HANDLE
+  pattern, not a PRODUCT.** (capbud, dot habu-v2-capability-and-0970a96d.) Probed:
+  a `private` PRODUCT has NO construction surface even for its owner
+  (`E-UNDEFINED: FAMILY:UNMAKE`, docs §9.4); a `public` PRODUCT's generated
+  `FAMILY:MAKE` ACCEPTS a raw n (`( n -- pkg:prod ) PKG-PROD:MAKE` -> verdict -1),
+  so a public handle is forgeable-by-alias (fine for a txn handle whose authority
+  is only a pool slot, UNSAFE for a capability grant where aliasing slot 0 = root).
+  The sound pattern for a value carrying authority: an arity-0 `TYPEFAMILY` over an
+  append-only pool, minted ONLY through a private `TRUSTED: RAW>X`/`X>RAW` pair (the
+  maki/db/action.f `RAW>ACTION-ID` precedent), pool holds the authority. Statically:
+  a raw n where the nominal is required is verdict 0 (forge reject); the private
+  mint is verdict 1 (sealed) cross-package; `=` on the value is verdict 0. Confirm
+  a package-local `TYPEFAMILY` type is usable in a cross-package public signature
+  (it is) before building on it.
+- **The `( ... )` stack comment on a `:` IS the checked signature.** A word doing
+  `c!`/`c@` on a passed buffer pointer must declare `ptr u8` (not bare `ptr`) or the
+  checker rejects at the locals `:}` with `expected: ptr a n actual: ptr n`
+  (verbatim `LE-PUT` copied with a `( ptr n -- )` comment failed; `( ptr u8 n -- )`
+  fixed it). Parameterized result types (`foo-result<CAPTOK:grant>`) also cannot be
+  a `{: :}` local type — specialize the word or keep the value on the stack.
+- **The maki suite table is near full (lib/test/suite.f `ITEM-MAX=128`, ~126
+  live).** Adding several `*-test.f` `TEST:SUITE` lines overflows it -> `E-TBL-BOUNDS`
+  (`-3000`) thrown at LOAD with no suite name printed (stdout lost on the throw).
+  lib/* is off-limits, so AGGREGATE the concern suites into ONE maki/test.f entry
+  that `require`s them (each keeps its own package + `T-RESET`/`T-REPORT`; a failing
+  child `die`s, so the aggregate fails closed) — one concern per test file, one
+  suite-table slot.
+- **refine-lint's NEW-MINT shape scan only covers `CAD-KIND:`/`MIR:` outputs.** A
+  package-local nominal mint (`RAW>GRANT ( n -- CAPTOK:grant )`) is NOT auto-flagged,
+  but seed it anyway (name+owner) for confinement, per the `RAW>TENSOR` precedent.
+  Closing an audited refinement pair is THREE synced edits: the TRUSTED.md manifest
+  row (Site+Tests), the `file:WORD prim-axiom <epic>` classification line, and the
+  refine-lint seed (name+owner, bump `RFL-SEED#`). refine-lint was already RED on
+  master (`RAW>ACTION-ID` had a row + classification but no seed) — a CAD-KIND mint
+  MUST be seeded or NEW-MINT fails.
 
 - **`test/type-decl-suite.f` arms ONE diagnostic swallow buffer at the top
   (`TDIAG-BUF 8192 DIAG-BUFFER!`) and every expected reject APPENDS its rendered

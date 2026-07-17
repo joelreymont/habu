@@ -65,7 +65,10 @@ require lib/string.f
 require lib/fs.f
 require lib/fs-mutate.f
 require maki/rev.f                \ CAD-KIND:rev-id: KEY>WIRE (32-byte content key)
-require maki/db/transaction.f     \ TX: VALIDATE / PROPOSE / BASE-REV / ENCODE-REV / IDEM-KEY>WIRE
+require maki/db/transaction.f     \ TX: VALIDATE / PROPOSE / BASE-REV / ENCODE-REV / IDEM-KEY>WIRE / CAP-MASK@ / BUDGET-AT@
+require maki/db/capability.f      \ CAPTOK:grant / AUTHORIZES?: the granted-authority capability gate
+require maki/db/budget-ledger.f   \ LEDGER:ledger / REQ+ / RESERVE / CHARGE / CHARGED?: the budget gate
+require maki/db/budget-dim.f      \ BUDGET:dim / N>DIM: the shared budget-dimension vocabulary
 
 -5371 constant E-CSTORE-ROOT     \ resolved store root path empty or over the path cap
 -5372 constant E-CSTORE-BUF      \ a revision-content blob over the store scratch capacity
@@ -84,6 +87,22 @@ SUMTYPE commit-result 1
    VARIANT omitted-read ;VARIANT
 ;SUMTYPE
 
+\ Typed AUTHORIZED-commit outcome: COMMIT-AUTHORIZED composes the capability + budget gates around
+\ COMMIT (dot habu-v2-capability-and-0970a96d, the deferred § 23 "capability and resource budgets
+\ cover all effects" legs, plan:3726). `committed` carries the revision id; `conflict`/`duplicate-
+\ write`/`omitted-read` mirror COMMIT's refusals (no charge on any of them); `unauthorized` is the
+\ granted-authority ⊉ declared-capabilities reject (the ACTION:DISPATCH precedent); `exhausted`
+\ names the first budget dimension whose declared reserve exceeds the ledger's remaining. The two
+\ new reject arms fire BEFORE any publish, so an unauthorized or exhausted commit publishes nothing.
+SUMTYPE auth-result 1
+   VARIANT committed a ;VARIANT
+   VARIANT conflict ;VARIANT
+   VARIANT duplicate-write ;VARIANT
+   VARIANT omitted-read ;VARIANT
+   VARIANT unauthorized ;VARIANT
+   VARIANT exhausted BUDGET:dim ;VARIANT
+;SUMTYPE
+
 private
 
 \ ---- readable wrappers over the generated constructor spellings ----------------
@@ -91,6 +110,13 @@ private
 : R-CONFLICT ( -- commit-result<CAD-KIND:rev-id> )                   CSTORE-COMMIT--RESULT:CONFLICT ;
 : R-DUP-WRITE ( -- commit-result<CAD-KIND:rev-id> )                  CSTORE-COMMIT--RESULT:DUPLICATE-WRITE ;
 : R-OMITTED ( -- commit-result<CAD-KIND:rev-id> )                    CSTORE-COMMIT--RESULT:OMITTED-READ ;
+
+: A-COMMITTED ( CAD-KIND:rev-id -- auth-result<CAD-KIND:rev-id> )  CSTORE-AUTH--RESULT:COMMITTED ;
+: A-CONFLICT ( -- auth-result<a> )        CSTORE-AUTH--RESULT:CONFLICT ;
+: A-DUP-WRITE ( -- auth-result<a> )       CSTORE-AUTH--RESULT:DUPLICATE-WRITE ;
+: A-OMITTED ( -- auth-result<a> )         CSTORE-AUTH--RESULT:OMITTED-READ ;
+: A-UNAUTHORIZED ( -- auth-result<a> )    CSTORE-AUTH--RESULT:UNAUTHORIZED ;
+: A-EXHAUSTED ( BUDGET:dim -- auth-result<a> )   CSTORE-AUTH--RESULT:EXHAUSTED ;
 
 \ ---- capacities + fixed widths -------------------------------------------------
 32 constant KEY-W                        \ rev / idem content-key width (REV:KEY>WIRE / SHA-256)
@@ -106,6 +132,7 @@ create KEYBUF   KEY-W allot                \ scratch: a proposed-rev content key
 create BASEBUF  KEY-W allot                \ scratch: a base-rev content key
 create HEADBUF  KEY-W allot                \ durable HEAD bytes, read back
 create IDEMBUF  KEY-W allot                \ idem digest / content-hash scratch
+create AKEY     KEY-W allot                \ authorized-commit idempotency key (CHARGED? / CHARGE key)
 create REVBUF   REV-CAP allot              \ revision content blob
 variable ROOT-SET                          \ -1 once the root is pinned/resolved
 
@@ -279,5 +306,61 @@ public
    r ADVANCE-HEAD
    t r WRITE-IDEM
    r R-COMMITTED ;
+
+private
+
+\ ---- capability + budget composition helpers (the deferred COMMIT gate legs) -----
+\ FOLD-BUDGET folds a transaction's declared budget-ledger entries into the LEDGER request
+\ scratch: each declared (dimension code, amount) resolves to its BUDGET:dim (fail-closed on an
+\ out-of-vocabulary code) and is added, so the ledger request equals the transaction's reserve.
+: FOLD-BUDGET ( txn -- ) {: t:txn :}
+   LEDGER:REQ-CLEAR
+   0 begin dup t TX:BUDGET-COUNT < while
+      dup {: k:n :}
+      t k TX:BUDGET-AT@ {: dimcode:n amt:n :}
+      dimcode BUDGET:N>DIM amt LEDGER:REQ+
+      1+
+   repeat drop ;
+
+\ RESERVE-DIM: -1 if the pending request fits the ledger, else the exhausted dimension ordinal.
+: RESERVE-DIM ( LEDGER:ledger -- n )
+   LEDGER:RESERVE MATCH LEDGER:budget-result
+      ok        OF -1 ENDOF
+      exhausted OF BUDGET:DIM>N ENDOF
+   ;MATCH ;
+
+public
+
+\ COMMIT-AUTHORIZED is the CAPABILITY + BUDGET gated commit (the § 23 "capability and resource
+\ budgets cover all effects" commit legs, plan:3726; dot habu-v2-capability-and-0970a96d). It
+\ (1) rejects `unauthorized` when the granted authority does not contain the transaction's declared
+\ capability SET (mask containment - the ACTION:DISPATCH precedent); (2) rejects `exhausted`, naming
+\ the dimension, when the declared budget reserve does not fit the ledger's remaining - BOTH gates
+\ fire BEFORE any publish, so a rejected authorized commit leaves HEAD unchanged and charges nothing
+\ (composes with the crash-injection acceptance: an exhausted commit is state-identical to a crash
+\ before the marker). It then delegates to the crash-safe COMMIT and, on a FRESH publish, CHARGES
+\ the ledger exactly once keyed by the transaction's idempotency key; a retry (COMMIT resolves it
+\ idempotently WITHOUT republishing, and the key is already charged) charges nothing more, and a
+\ stale-head / duplicate-write / omitted-read COMMIT reject charges nothing. Obligation-discharge
+\ authority stays DEFERRED: no verifier-authority model (who may discharge which obligation) is
+\ landed, so this gate enforces capability + budget only (see the dot's report + follow-on dot).
+: COMMIT-AUTHORIZED ( txn CAPTOK:grant LEDGER:ledger -- auth-result<CAD-KIND:rev-id> )
+   {: t:txn g:CAPTOK:grant l:LEDGER:ledger :}
+   g t TX:CAP-MASK@ CAPTOK:AUTHORIZES? 0= if A-UNAUTHORIZED exit then
+   t FOLD-BUDGET
+   t AKEY KEY-W TX:IDEM-KEY>WIRE drop
+   l AKEY LEDGER:CHARGED? {: retry:bool :}
+   retry 0= if
+      l RESERVE-DIM {: bad:n :}
+      bad 0 >= if bad BUDGET:N>DIM A-EXHAUSTED exit then
+   then
+   t COMMIT MATCH commit-result
+      committed OF                                   \ rev on the stack; charge once on a fresh publish
+                   retry 0= if l AKEY LEDGER:CHARGE drop then
+                   A-COMMITTED ENDOF
+      conflict        OF A-CONFLICT ENDOF
+      duplicate-write OF A-DUP-WRITE ENDOF
+      omitted-read    OF A-OMITTED ENDOF
+   ;MATCH ;
 
 ;package

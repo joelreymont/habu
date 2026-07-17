@@ -677,6 +677,8 @@ that source is explicitly certified; they are not stale-checked by the default
 | EVIDENCE-ID>RAW | `CAD-KIND:evidence-id -- n` | Private evidence identity projection used only by bounds validation, descriptor-table access, `EVIDENCE:EQUAL?`, and the `EVIDENCE:ID>WIRE` / `WIRE>ID` / `KEY>WIRE` / `WIRE>KEY` codecs; no public raw conversion is exported. | `maki/db/evidence-test.f` | maki/db/evidence.f | 2026-07-17 |
 | RAW>ACTION-ID | `n -- CAD-KIND:action-id` | Private action-id registry refinement after canonical-name validation, capacity validation, and append-only slot allocation (the maki/producer.f `RAW>PRODUCER-ID` pattern); the only public producer is `ACTION:REGISTER`, which interns the canonical action name after a completeness check, so a raw n cannot forge an action identity (MODEL-CAD-V2-PLAN.md § 23.9 machine-facing action registry; dot habu-v2-machine-action-a7357409). | `maki/db/action-test.f` | maki/db/action.f | 2026-07-17 |
 | ACTION-ID>RAW | `CAD-KIND:action-id -- n` | Private action identity projection used only by bounds validation, name-table access, `ACTION:EQUAL?`, `DISPATCH` resolution, and the `ENUM-AT` / `DIGEST` canonical enumeration; no public raw conversion is exported. | `maki/db/action-test.f` | maki/db/action.f | 2026-07-17 |
+| RAW>GRANT | `n -- CAPTOK:grant` | Private capability-grant refinement over an append-only authority-slot allocation (the maki/db/action.f `RAW>ACTION-ID` pattern; a package-local `CAPTOK:grant` nominal, not a CAD-KIND identity); the only public producers are `CAPTOK:ROOT` (the trusted authority-origin mint) and `CAPTOK:ATTENUATE` (a subset-checked child derivation), so a raw n cannot forge a capability grant and no nested attenuation can exceed its parent's authority (dot habu-v2-capability-and-0970a96d). | `maki/db/capability-test.f` | maki/db/capability.f | 2026-07-18 |
+| GRANT>RAW | `CAPTOK:grant -- n` | Private grant identity projection used only by bounds validation and pooled authority-slot access (`CAP-MASK@` / `BUDGET@` / `AUTHORIZES?` / `ATTENUATE`); no public raw conversion is exported. | `maki/db/capability-test.f` | maki/db/capability.f | 2026-07-18 |
 | DIM-REFINE | `n -- CAD-KIND:dim` | Private validated nominal representation boundary for tensor dimensions; tracked by `habu-v2-r3-type-9f89d1e9`. | `maki/tensor-test.f` | maki/tensor.f | 2026-07-12 |
 | DIM-RAW | `CAD-KIND:dim -- n` | Private dimension projection used only by checked shape algebra and numeric execution boundaries. | `maki/tensor-test.f` | maki/tensor.f | 2026-07-12 |
 | ROWS-REFINE | `n -- CAD-KIND:rows` | Private validated row-role refinement; public construction goes through `SHAPE`. | `maki/tensor-test.f` | maki/tensor.f | 2026-07-12 |
@@ -1417,6 +1419,8 @@ maki/db/evidence.f:RAW>EVIDENCE-ID prim-axiom habu-epic-model-cad-70b629a9
 maki/db/evidence.f:EVIDENCE-ID>RAW prim-axiom habu-epic-model-cad-70b629a9
 maki/db/action.f:RAW>ACTION-ID prim-axiom habu-epic-model-cad-70b629a9
 maki/db/action.f:ACTION-ID>RAW prim-axiom habu-epic-model-cad-70b629a9
+maki/db/capability.f:RAW>GRANT prim-axiom habu-epic-model-cad-70b629a9
+maki/db/capability.f:GRANT>RAW prim-axiom habu-epic-model-cad-70b629a9
 maki/tensor-value.f:RAW>TENSOR prim-axiom habu-epic-model-cad-70b629a9
 maki/tensor-value.f:TENSOR>RAW prim-axiom habu-epic-model-cad-70b629a9
 maki/tensor-value.f:TYPED-LINEAR stdlib-boundary habu-epic-model-cad-70b629a9

@@ -859,6 +859,28 @@ public
 : BUDGET-COUNT ( txn -- n )   TXN> BUD-N@ ;
 : OBLIG-COUNT ( txn -- n )    TXN> OBL-N@ ;
 
+\ CAP-MASK@ folds the declared capability CODE set into one u64 bitmask. Each capability code is
+\ a closed-vocabulary BIT FLAG (the plan:3652 "stable constant like the TARGET:CAP-* bits" form,
+\ the maki/db/action.f D-CAP model), so a commit gate can test granted-authority ⊇ declared by
+\ mask containment (the ACTION:DISPATCH capability precedent). An empty declared set folds to 0
+\ (⊆ every grant). Additive read accessor over the existing capability-set column - no field
+\ repoint, no behaviour change (dot habu-v2-capability-and-0970a96d, the deferred COMMIT legs).
+: CAP-MASK@ ( txn -- n ) {: t:txn :}
+   t TXN> {: s:n :}
+   0  0 begin dup s CAP-N@ < while
+      dup {: k:n :}
+      swap  s k CAP@ or  swap
+      1+
+   repeat drop ;
+
+\ BUDGET-AT@ reads the k-th declared budget-ledger entry as its (dimension code, amount) pair, so
+\ a commit gate can fold the transaction's declared reserve into a budget request. The dimension
+\ code is the BUDGET:dim ordinal a builder recorded (maki/db/budget-dim.f DIM>N). Additive read
+\ accessor over the existing budget-ledger column - no field repoint, no behaviour change.
+: BUDGET-AT@ ( txn n -- n n ) {: t:txn k:n :}
+   t TXN> {: s:n :}
+   s k BUD-DIM@  s k BUD-AMT@ ;
+
 private
 
 : TX-INIT ( -- )   0 S-NEXT !  0 B-BASE-SET ! ;

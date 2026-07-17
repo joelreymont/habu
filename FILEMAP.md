@@ -804,8 +804,10 @@ points stay listed.
   `CAD-KIND:obligation-id` (maki/db/obligation.f) canonically ordered by 32-byte content
   key; capabilities stay closed-vocabulary codes until the CAP owner lands. `ENCODE-REV`
   emits the canonical revision content (base + write set) and `IDEM-KEY>WIRE` the 32-byte
-  idempotency digest, for the durable commit store. Throws only at capacity / missing-base.
-  Owns -5350..-5353.
+  idempotency digest, for the durable commit store. `CAP-MASK@` (declared capability codes
+  folded to a u64 bitmask) and `BUDGET-AT@` (the k-th declared dimension code + amount) are
+  additive read accessors the authorized-commit gate reads (dot habu-v2-capability-and-0970a96d).
+  Throws only at capacity / missing-base. Owns -5350..-5353.
 - `maki/db/transaction-test.f` — the § 23 acceptance: canonical round-trip and
   insertion-order independence, duplicate/conflicting writes reject, an omitted read
   dependency rejects validation, retry identity is stable (same logical txn -> same
@@ -824,7 +826,13 @@ points stay listed.
   public and are the crash-injection surface (no failpoint branch in `COMMIT`);
   `HEAD-IS?`/`REV-COMPLETE?` let a fresh process assert recover-old-or-complete-new. Uses
   the `ATOMIC-WRITE-FILE`/rename discipline; fsync/dir-sync is a missing native capability
-  (process-crash safe, not power-loss durable). Owns -5371..-5373.
+  (process-crash safe, not power-loss durable). `COMMIT-AUTHORIZED` (dot
+  habu-v2-capability-and-0970a96d) is the capability + budget GATED commit: it rejects
+  `auth-result` `unauthorized` (granted authority ⊉ the txn's declared caps) and `exhausted`
+  (declared reserve ⊄ the ledger remaining, naming the dimension) BEFORE any publish, then
+  delegates to `COMMIT` and charges the ledger exactly once per idempotency key on a fresh
+  publish (a retry / stale-head / validation reject charges nothing). Obligation-discharge
+  authority stays deferred (no verifier-authority model landed). Owns -5371..-5373.
 - `maki/db/commit-store-test.f` — in-process acceptance against a real private store:
   deterministic replay yields an equal revision digest, idempotent retry returns the
   original result, a stale head returns the typed conflict, a duplicate write rejects, and
@@ -965,6 +973,46 @@ points stay listed.
   implemented -> accepted); registry enumeration is canonical (name-ascending) and
   REPLAYABLE (the same set in reverse order digests identically); and the seeded
   declarations reflect the landed surfaces.
+- `maki/db/budget-dim.f` — the closed budget-dimension vocabulary (MODEL-CAD-V2-PLAN.md § 23
+  autonomy resource budgets, plan:3205-3211; dot habu-v2-capability-and-0970a96d). Package
+  BUDGET owns ONE variant-exhaustive `dim` ENUM (compute-time, device-time, storage,
+  candidate-count, retries, external-effects) with a stable `DIM>N` wire ordinal, a fail-closed
+  `N>DIM` inverse, and `DIM-COUNT`. The SINGLE source shared by the capability grant's budget
+  vector and the ledger's remaining vector, so the two never fork a competing dimension set.
+- `maki/db/budget-dim-test.f` — budget-dim acceptance: `DIM>N`/`N>DIM` round-trip over all six
+  dimensions, `DIM-COUNT`, and an out-of-domain ordinal failing closed (E-BUDGET-DIM).
+- `maki/db/capability.f` — the finite, UNFORGEABLE capability GRANT token (MODEL-CAD-V2-PLAN.md
+  § 23 autonomy authority + § 23.1 capability set/tokens, plan:3203-3235; dot
+  habu-v2-capability-and-0970a96d). Package CAPTOK: a grant is a nominal handle (`CAPTOK:grant`)
+  over an append-only authority slot storing an opaque capability-code BITMASK (the user-gated
+  CAP vocabulary is NOT invented here) plus a budget-ceiling vector. Refined via the private
+  TRUSTED `RAW>GRANT`/`GRANT>RAW` pair (the RAW>ACTION-ID precedent), so a raw n cannot forge a
+  grant. `ROOT` is the authority origin; `ATTENUATE` derives a child that is provably a SUBSET on
+  both axes (`escape-cap` / `escape-budget` name an over-reach), so nested actions cannot exceed
+  parent authority. `AUTHORIZES?`/`COVERS?` are the ACTION:DISPATCH containment gates. Owns -5381..-5382.
+- `maki/db/capability-test.f` — grant acceptance: STATIC forge reject (a raw n where a grant is
+  required is verdict 0; the sealed `RAW>GRANT` is unresolvable verdict 1; `=` on a grant rejects)
+  plus dynamic ROOT/ATTENUATE subset-accept, both-axis escape rejects, transitive (grandchild)
+  subset, the AUTHORIZES?/COVERS? gates, and capacity fail-closed.
+- `maki/db/budget-ledger.f` — the monotonic budget LEDGER (MODEL-CAD-V2-PLAN.md § 23.1 resource
+  budgets, "a failed transaction publishes nothing", plan:3234-3241; dot
+  habu-v2-capability-and-0970a96d). Package LEDGER: a pooled-slot handle with a limit + remaining
+  vector (monotonic non-increasing) and a charged idempotency-key set. `RESERVE` is a pure typed
+  fit check (`exhausted` names the dimension); `CHARGE` deducts atomically and IDEMPOTENTLY keyed
+  by a 32-byte idempotency key (a retry never double charges); `DIGEST` content-addresses the
+  canonical state so replaying charges in ANY order digests identically. Owns -5385..-5388.
+- `maki/db/budget-ledger-test.f` — ledger acceptance: RESERVE fit/exhaust (pure, no mutation);
+  CHARGE deduction, idempotent no-double-charge, exhaustion with no deduction and no key; the
+  both-order replay digest (equal charges any order -> equal digest, and a differing set differs);
+  and pool/charged-key capacity fail-closed.
+- `maki/db/commit-store-auth-test.f` — acceptance for `CSTORE:COMMIT-AUTHORIZED` against a real
+  private store: empty-authority pass-through; unauthorized (granted ⊉ declared caps) with HEAD
+  unchanged; authorized commit + HEAD advance + charge-exactly-once; idempotent retry with no
+  double charge and the same revision; exhaustion (typed, dimension-named, HEAD unchanged, no
+  charge); and a duplicate-write reject charging nothing.
+- `maki/db/capbud-test.f` — the aggregate maki/test.f suite for the capability + budget subsystem:
+  one wired entry that runs the four standalone concern suites (budget-dim, capability, budget-
+  ledger, authorized commit), keeping one concern per test file within the maki suite-table budget.
 - `maki/db/keywire-xproc-child.f` — the FRESH-PROCESS decode side of the cross-process
   content-key identity test (dot habu-wire-content-key). Package KWXPC: shared fixed
   key-file layout, shared real descriptors, per-family `REG-*` registrations, and
