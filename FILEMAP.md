@@ -516,8 +516,15 @@ points stay listed.
   phantom-preserving register-emitter combinators (`PTXREP:REP1`/`REP2`/
   `REPMIX2`) that carry a kernel token's `n` register through a checked emitter
   while preserving its phantom type, so type-preserving tile/collective ops
-  certify as checked instead of TRUSTED:. Positive coverage plus the
+  certify as checked instead of TRUSTED:. Also the leg-2b MINTING combinators
+  (`PTXREP:MINT-LOAD`/`MINT-ROW-SPAN`/`MINT-ROW-LOAD`) that repackage operand
+  registers into a NEW projected phantom. Positive coverage plus the
   forge/kind/arity negative regressions (dot habu-ptx-phantom-preserving).
+- `lib/ptx/mint-test.f` / `lib/ptx/mint-neg-test.f` — positive + negative
+  coverage for the leg-2b checked-mint capability (`src/core/checker.f`
+  NP-MINT-CHECK) and the `PTXREP:MINT-*` combinators: legit projected mints
+  certify, free-typed / wrong-family forges reject fail-closed (dot
+  habu-ptx-phantom-preserving).
 - `lib/ptx/tile.f` / `lib/ptx/tile-test.f` — PTX tile-DSL v0 operation
   vocabulary (M4) and the checked SAXPY proof.
 - `lib/ptx/tile-loop.f` / `lib/ptx/tile-loop-test.f` /

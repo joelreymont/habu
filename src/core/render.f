@@ -574,9 +574,11 @@ variable MDV-I   variable MDV-F
    NPBAD @ IF
       NPBAD-KIND @ 0= IF
          s" Declare the concrete family in the signature, or keep the body polymorphic over the type variable."
-      ELSE
+      ELSE NPBAD-KIND @ 1 = IF
          s" Keep each declared type variable distinct; do not unify two quantifiers in the body."
-      THEN EXIT
+      ELSE
+         s" Bind the minted phantom's type arguments to the inputs, or mint it behind an audited TRUSTED: boundary."
+      THEN THEN EXIT
    THEN
    CAPREQ @ IF s" Move this compiler or runtime boundary behind audited TRUST." EXIT THEN
    UNSAFE @ IF s" Move this compiler or runtime boundary behind audited TRUST." EXIT THEN
@@ -641,11 +643,15 @@ variable JPOS  variable JLINE  variable JCOL
        s" : declared type variable '" DTXT  NPBAD-Q1 @ EMIT1
        s" ' is specialized to " DTXT  NP-FAM-REND
        s" ; a declared effect must stay parametric over its quantifier" DTXT
-     ELSE
+     ELSE NPBAD-KIND @ 1 = IF
        s" : declared type variables '" DTXT  NPBAD-Q1 @ EMIT1
        s" ' and '" DTXT  NPBAD-Q2 @ EMIT1
        s" ' are unified; each declared quantifier must stay a distinct variable" DTXT
-     THEN EXIT
+     ELSE
+       s" : declared type variable '" DTXT  NPBAD-Q1 @ EMIT1
+       s" ' is minted into " DTXT  NP-FAM-REND
+       s"  but is unbound in the inputs; a checked definition cannot mint a phantom of input-unrelated type — use an audited TRUSTED: boundary" DTXT
+     THEN THEN EXIT
    THEN
    CAPREQ @ IF
      s" E-CAP-TRUSTED habu: in " DTXT  NMA @ NMU @ DTXT
@@ -772,7 +778,7 @@ variable JPOS  variable JLINE  variable JCOL
      DIAG-FAMILY THEN
    NPBAD @ IF                                             \ non-parametric declared effect
      44 EMIT1 s" quantifier" JKEY 34 EMIT1 NPBAD-Q1 @ JCHAR 34 EMIT1
-     NPBAD-KIND @ IF
+     NPBAD-KIND @ 1 = IF
        44 EMIT1 s" quantifier2" JKEY 34 EMIT1 NPBAD-Q2 @ JCHAR 34 EMIT1
      ELSE
        NPBAD-TERM @ NP-FAM dup 0 >= IF

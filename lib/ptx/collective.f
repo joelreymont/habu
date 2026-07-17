@@ -34,11 +34,18 @@ require lib/ptx/rep.f
 TRUSTED: ROW ( -- rowidx<e> )
    EMIT-ROW ;
 
-TRUSTED: ROW-SPAN ( matrix<space-global,t,e,k> rowidx<e> -- span<space-global,t,k> )
-   EMIT-ROW-SPAN ;
+\ ROW-SPAN / ROW-LOAD REPACKAGE their operand registers into a NEW phantom whose
+\ every type argument is PROJECTED from the operands (row-span: element+col-extent
+\ from the matrix; row-load: element from the span, block+mask from the row ctx).
+\ No fresh phantom is minted, so they are CHECKED callers of PTXREP:MINT-ROW-SPAN /
+\ MINT-ROW-LOAD (lib/ptx/rep.f) — the projection is pinned by the combinator and
+\ the checked-mint provenance seal rejects a free-typed forge; the fresh-mask
+\ ROW-CTX mints stay TRUSTED. Byte-identical to the former EMIT-* TRUSTED: rows.
+: ROW-SPAN ( matrix<space-global,t,e,k> rowidx<e> -- span<space-global,t,k> )
+   [: EMIT-ROW-SPAN ;] PTXREP:MINT-ROW-SPAN ;
 
-TRUSTED: ROW-SPAN-ONCE ( matrix<space-global-once,t,e,k> rowidx<e> -- span<space-global-once,t,k> )
-   EMIT-ROW-SPAN-ONCE ;
+: ROW-SPAN-ONCE ( matrix<space-global-once,t,e,k> rowidx<e> -- span<space-global-once,t,k> )
+   [: EMIT-ROW-SPAN-ONCE ;] PTXREP:MINT-ROW-SPAN ;
 
 TRUSTED: ROW-CTX ( span<space-global,t,k> -- rowctx<b,k,fresh-mask-live> )
    EMIT-ROW-CTX ;
@@ -46,11 +53,11 @@ TRUSTED: ROW-CTX ( span<space-global,t,k> -- rowctx<b,k,fresh-mask-live> )
 TRUSTED: ROW-CTX-ONCE ( span<space-global-once,t,k> -- rowctx<b,k,fresh-mask-live> )
    EMIT-ROW-CTX-ONCE ;
 
-TRUSTED: ROW-LOAD ( span<space-global,t,k> rowctx<b,k,m> -- tile<t,b,m> )
-   EMIT-ROW-LOAD ;
+: ROW-LOAD ( span<space-global,t,k> rowctx<b,k,m> -- tile<t,b,m> )
+   [: EMIT-ROW-LOAD ;] PTXREP:MINT-ROW-LOAD ;
 
-TRUSTED: ROW-LOAD-ONCE ( span<space-global-once,t,k> rowctx<b,k,m> -- tile<t,b,m> )
-   EMIT-ROW-LOAD-ONCE ;
+: ROW-LOAD-ONCE ( span<space-global-once,t,k> rowctx<b,k,m> -- tile<t,b,m> )
+   [: EMIT-ROW-LOAD-ONCE ;] PTXREP:MINT-ROW-LOAD ;
 
 : ROW-STORE ( tile<t,b,m> span<space-global,t,k> rowctx<b,k,m> -- )
    [: EMIT-ROW-STORE ;] PTXREP:SINK3 ;

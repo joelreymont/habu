@@ -83,4 +83,35 @@ TRUSTED: SINK3 ( a b c [ n n n -- ] -- )
 TRUSTED: SINK4 ( a b c d [ n n n n -- ] -- )
    execute ;
 
+\ --- MINTING combinators (dot habu-ptx-phantom-preserving, leg 2b): a checked
+\ wrapper REPACKAGES register operands into a NEW register-phantom family whose
+\ every type argument is PROJECTED from the operands — no fresh var is minted
+\ here, so the fresh-mask CONTEXT mints (GRID-CTX / ROW-CTX / …) stay TRUSTED.
+\ Two soundness layers hold forging no easier than a per-op TRUSTED: row:
+\   (1) the combinator's declared types PIN the projection, so a wrapper cannot
+\       reroute an operand argument — an element<->block relabel REJECTS by
+\       unification, exactly as REP2's shared `a` rejects a cross-family relabel;
+\   (2) the checked-mint output-provenance seal (src/core/checker.f NP-MINT-CHECK)
+\       REJECTS a `:` wrapper that declares an input-unbound output type variable,
+\       so the register<->phantom mint cannot leak a free-typed phantom into
+\       checked code. The a<->n from-register coercion inside `execute` is the
+\       one concentrated trusted boundary, as with REP*/SINK*.
+\ MINT-LOAD ( span<s,t,e> gridctx<b,e,m> [ n n -- n ] -- tile<t,b,m> ) : the
+\ masked coalesced grid load — element from the span, block+mask from the ctx
+\ (LOAD / LOAD-ONCE, space-generic over `s`).
+TRUSTED: MINT-LOAD ( span<s,t,e> gridctx<b,e,m> [ n n -- n ] -- tile<t,b,m> )
+   execute ;
+
+\ MINT-ROW-SPAN ( matrix<s,t,e,k> rowidx<e> [ n n -- n ] -- span<s,t,k> ) : the
+\ one-row slice of a matrix — element from the matrix, column extent `k` carried,
+\ row extent `e` consumed by the row index (ROW-SPAN / ROW-SPAN-ONCE).
+TRUSTED: MINT-ROW-SPAN ( matrix<s,t,e,k> rowidx<e> [ n n -- n ] -- span<s,t,k> )
+   execute ;
+
+\ MINT-ROW-LOAD ( span<s,t,k> rowctx<b,k,m> [ n n -- n ] -- tile<t,b,m> ) : the
+\ one-block-per-row load — element from the span, block+mask from the row ctx
+\ (ROW-LOAD / ROW-LOAD-ONCE).
+TRUSTED: MINT-ROW-LOAD ( span<s,t,k> rowctx<b,k,m> [ n n -- n ] -- tile<t,b,m> )
+   execute ;
+
 ;package

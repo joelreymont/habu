@@ -47,11 +47,16 @@ TRUSTED: GRID-CTX-ONCE ( span<space-global-once,t,e> -- gridctx<b,e,fresh-mask-l
 TRUSTED: COOP-CTX ( span<space-global,t,e> -- coopctx<b,e,fresh-mask-live> )
    EMIT-COOP-CTX ;
 
-TRUSTED: LOAD ( span<space-global,t,e> gridctx<b,e,m> -- tile<t,b,m> )
-   EMIT-LOAD ;
+\ LOAD / LOAD-ONCE REPACKAGE span+gridctx registers into a tile (element from the
+\ span, block+mask from the ctx). No fresh phantom is minted, so they are CHECKED
+\ callers of PTXREP:MINT-LOAD (lib/ptx/rep.f): the projection is pinned by the
+\ combinator's declared types and the checked-mint provenance seal rejects any
+\ free-typed forge. Byte-identical to the former TRUSTED: EMIT-LOAD rows.
+: LOAD ( span<space-global,t,e> gridctx<b,e,m> -- tile<t,b,m> )
+   [: EMIT-LOAD ;] PTXREP:MINT-LOAD ;
 
-TRUSTED: LOAD-ONCE ( span<space-global-once,t,e> gridctx<b,e,m> -- tile<t,b,m> )
-   EMIT-LOAD-ONCE ;
+: LOAD-ONCE ( span<space-global-once,t,e> gridctx<b,e,m> -- tile<t,b,m> )
+   [: EMIT-LOAD-ONCE ;] PTXREP:MINT-LOAD ;
 
 : STORE ( tile<t,b,m> span<space-global,t,e> gridctx<b,e,m> -- )
    [: EMIT-STORE ;] PTXREP:SINK3 ;

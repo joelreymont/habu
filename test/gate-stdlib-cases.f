@@ -268,6 +268,7 @@ TEST:SUITE ptx-stdlib
    lib/ptx/kernel-manifest-test.f
    lib/ptx/launch-test.f
    lib/ptx/rep-test.f
+   lib/ptx/mint-test.f
    lib/ptx/tile-test.f
    lib/ptx/tile-loop-test.f
    lib/ptx/tile-smem-test.f
@@ -297,6 +298,10 @@ TEST:;SUITE
 
 TEST:SUITE ptx-rep-neg
    lib/ptx/rep-neg-test.f
+TEST:;SUITE
+
+TEST:SUITE ptx-mint-neg
+   lib/ptx/mint-neg-test.f
 TEST:;SUITE
 
 TEST:SUITE ptx-tile-loop-neg

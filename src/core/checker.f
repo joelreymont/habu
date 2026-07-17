@@ -8300,6 +8300,138 @@ variable NP-SEEN-N
       oid swap cells NP-ROOT-OID + @ NP-FAIL-ALIAS    \ root already claimed by another quantifier
    THEN ;
 
+\ --- checked-mint output-provenance seal (dot habu-ptx-phantom-preserving,
+\ leg 2b). A CHECKED (:) definition may not introduce, as an argument of a
+\ register-phantom CELL family in an OUTPUT, a declared type variable that is
+\ unbound in its inputs. Producing a cell value of input-unrelated type is a
+\ MINT — sound only behind an audited TRUSTED: boundary, whose register<->phantom
+\ coercion the checker cannot witness. TRUSTED: words bypass CHECK, so a genuine
+\ mint (GRID-CTX minting a fresh block, MK-SPAN minting a span) stays legal there;
+\ a `:` wrapper that forges a free-typed phantom through a mint combinator
+\ (`( span<..,t,..> gridctx<b,e,m> -- tile<u,b,m> )`, u free) rejects here.
+\ Complements NP-CHECK's top-level parametricity seal, which does NOT descend into
+\ family arguments. Raw declared identity (PAY, no T-RES): the body's speculative
+\ binds (a laundering combinator that unified u:=t) do not hide a var whose
+\ declared occurrences are all outputs.
+create NP-INVARS NP-CAP cells allot   variable NP-INVARS-N   \ declared input var ids (dedup)
+variable NP-CELL-TERM   \ output cell-family term currently scanned (for the diagnostic)
+variable NP-OUT-I       \ output cell param arg index (NP-OUT-TERM is non-recursive)
+
+: NP-INVARS+ ( n -- ) {: id:n :}
+   0 BEGIN dup NP-INVARS-N @ < WHILE
+      dup cells NP-INVARS + @ id = IF drop EXIT THEN  1 +
+   REPEAT drop
+   NP-INVARS-N @ NP-CAP < IF
+      id NP-INVARS-N @ cells NP-INVARS + !  NP-INVARS-N @ 1 + NP-INVARS-N !
+   THEN ;
+: NP-INVARS-HAS? ( n -- bool ) {: id:n :}
+   0 BEGIN dup NP-INVARS-N @ < WHILE
+      dup cells NP-INVARS + @ id = IF drop RES-TRUE EXIT THEN  1 +
+   REPEAT drop RES-FALSE ;
+
+\ NP-INVARS-WALK ( t -- ) : raw-collect every declared var id reachable in a term
+\ OR a stack row, descending through ptr pointees, quotation effect rows, and
+\ family arguments. No T-RES: a bound declared var keeps its raw PAY identity.
+: NP-INVARS-WALK ( n -- ) {: t:n :}
+   t R-RES dup TAG S-PUSH = IF
+      BEGIN dup TAG S-PUSH = WHILE
+         dup P>TYPE TWALK-DEEPER RECURSE TWALK-SHALLOWER
+         P>REST R-RES
+      REPEAT drop EXIT
+   THEN drop
+   t ISVAR IF t PAY NP-INVARS+ EXIT THEN
+   t TAG T-PTR = IF t PTR>INNER TWALK-DEEPER RECURSE TWALK-SHALLOWER EXIT THEN
+   t TAG T-QUOT = IF
+      t Q>DIN  TWALK-DEEPER RECURSE TWALK-SHALLOWER
+      t Q>DOUT TWALK-DEEPER RECURSE TWALK-SHALLOWER
+      t Q>RIN  TWALK-DEEPER RECURSE TWALK-SHALLOWER
+      t Q>ROUT TWALK-DEEPER RECURSE TWALK-SHALLOWER EXIT
+   THEN
+   t TAG T-PARAM = IF
+      0 BEGIN dup t PARAM>ARGC < WHILE            \ data-stack index (RECURSE-safe)
+         t over PARAM>ARG TWALK-DEEPER RECURSE TWALK-SHALLOWER
+         1 +
+      REPEAT drop EXIT
+   THEN ;
+
+: NP-CELLFAM? ( n -- bool )   \ raw T-PARAM of a register-phantom cell family
+   {: t:n :}   \ NOT a layout product/sum and NOT a checker-owned hidden physical field:
+   t TAG T-PARAM = 0= IF RES-FALSE EXIT THEN            \ those carry their own construct/field discipline
+   t PARAM>HID 0 > IF RES-FALSE EXIT THEN               \ hidden physical field (expanded layout bundle)
+   t PARAM>FAM dup 0 < IF drop RES-FALSE EXIT THEN
+   dup TFAM-LAYOUT?* IF drop RES-FALSE EXIT THEN         \ product/sum layout family
+   TFAM-CELL?* ;
+
+: NP-FAIL-FREEMINT ( n n -- )   \ ( varid cellterm ) output cell var unbound in inputs (first-wins)
+   {: vid:n ct:n :}
+   NPBAD @ IF EXIT THEN
+   -1 NPBAD !  2 NPBAD-KIND !
+   vid NP-LETTER NPBAD-Q1 !  0 NPBAD-Q2 !  ct NPBAD-TERM ! ;
+
+\ NP-FREE-SCAN ( t -- ) : flag any input-unbound var inside a term nested under the
+\ output cell family stashed in NP-CELL-TERM. Raw (no T-RES) — a body bind cannot
+\ launder the declared var's absence from the inputs.
+: NP-FREE-SCAN ( n -- ) {: t:n :}
+   t ISVAR IF
+      \ only a USER-DECLARED quantifier (a..z, NP-LETTER != '?') can forge a mint;
+      \ internal/fresh vars from family machinery are checker-owned, never user-writable.
+      t PAY NP-LETTER 63 <>  t PAY NP-INVARS-HAS? 0=  and
+      IF t PAY NP-CELL-TERM @ NP-FAIL-FREEMINT THEN EXIT
+   THEN
+   t TAG T-PTR = IF t PTR>INNER TWALK-DEEPER RECURSE TWALK-SHALLOWER EXIT THEN
+   t TAG T-PARAM = IF
+      0 BEGIN dup t PARAM>ARGC < WHILE            \ data-stack index (RECURSE-safe)
+         t over PARAM>ARG TWALK-DEEPER RECURSE TWALK-SHALLOWER
+         NPBAD @ IF drop EXIT THEN
+         1 +
+      REPEAT drop EXIT
+   THEN ;                                         \ T-CON/T-ATOM/T-QUOT: no minted var
+
+: NP-OUT-TERM ( n -- )   \ one output term: if a cell param, seal its var arguments
+   {: t:n :}
+   t NP-CELLFAM? 0= IF EXIT THEN
+   t NP-CELL-TERM !
+   0 NP-OUT-I !
+   BEGIN NP-OUT-I @ t PARAM>ARGC < WHILE
+      t NP-OUT-I @ PARAM>ARG NP-FREE-SCAN
+      NPBAD @ IF EXIT THEN
+      NP-OUT-I @ 1 + NP-OUT-I !
+   REPEAT ;
+
+: NP-OUT-ROW ( n -- )
+   R-RES BEGIN dup TAG S-PUSH = WHILE
+      dup P>TYPE NP-OUT-TERM
+      NPBAD @ IF drop EXIT THEN
+      P>REST R-RES
+   REPEAT drop ;
+
+\ NP-ROW-HAS-FIELD? ( row -- bool ) : does a declared input row consume a
+\ VALUE-RECORD? A record is carried as a reserved `field<rec,name,inner>` term
+\ (FIELD-PARAM?), and it can EXISTENTIALLY hold a polymorphic cell field. So a
+\ checker-native field accessor (`( rec -- fam<a,..> )`, empty body = width
+\ coercion) legitimately surfaces cell vars unbound at the sig surface — a
+\ checker-governed introduction, NOT a register mint. The register-phantom
+\ families this seal protects (span / gridctx / tile / …) are plain cells and
+\ never appear as accessor inputs, so the PTX mint surface is unaffected.
+\ (Conservative boundary: a wrapper mixing a record input with a register mint is
+\ not sealed — an audited, contrived shape.)
+: NP-ROW-HAS-FIELD? ( n -- bool )
+   R-RES BEGIN dup TAG S-PUSH = WHILE
+      dup P>TYPE FIELD-PARAM? IF drop RES-TRUE EXIT THEN
+      P>REST R-RES
+   REPEAT drop RES-FALSE ;
+
+: NP-MINT-CHECK ( -- )   \ output cell params may not introduce input-unbound vars
+   NPBAD @ IF EXIT THEN
+   SGIN @ NP-ROW-HAS-FIELD? IF EXIT THEN
+   SGHASR @ IF SGRIN @ NP-ROW-HAS-FIELD? IF EXIT THEN THEN
+   0 NP-INVARS-N !  TWALK-RESET
+   SGIN @ NP-INVARS-WALK
+   SGHASR @ IF SGRIN @ NP-INVARS-WALK THEN
+   TWALK-RESET
+   SGOUT @ NP-OUT-ROW
+   NPBAD @ 0=  SGHASR @  and IF SGROUT @ NP-OUT-ROW THEN ;
+
 : NP-CHECK ( -- )   \ post-body parametricity seal; sets NPBAD on the first violation
    NP-COLLECT
    0 NP-SEEN-N !
@@ -8307,7 +8439,8 @@ variable NP-SEEN-N
       dup cells NP-ORIG + @ NP-CHECK-ONE
       NPBAD @ IF drop EXIT THEN
       1 +
-   REPEAT drop ;
+   REPEAT drop
+   NP-MINT-CHECK ;
 
 : CHECK-RESET {: a u :}
    u TOKBUF-ENSURE

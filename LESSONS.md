@@ -114,6 +114,46 @@ Last updated: 2026-07-17
   Those remain the leg-2 remainder and genuinely need the deeper rep-provenance / typed-emitter
   capability (or stay trusted mints, like the ~17 `*-REG` from-register casts). Don't conflate the
   cheap forge-proof preserving case with the hard minting case.
+- **Leg 2b: the checked-MINT capability is a checker rule, NOT another lib combinator — and empty
+  experiments proved every lib-only mint design is unsound before any machinery.** (dot
+  habu-ptx-phantom-preserving, leg 2b, host checker lane, src/core/checker.f NP-MINT-CHECK.) Four
+  probes via `CHECK-CANDIDATE!` on the same load path settled the design: (1) a free-output combinator
+  `( a [n->n] -- b )` is a UNIVERSAL forge (mints gridctx from a tile — ACCEPT); (2) a
+  `fresh-mask-live` output in the combinator can't certify a legit wrapper (the combinator's fresh
+  atom and the wrapper's declared fresh atom are DISTINCT rigid tokens, never unify — REJECT
+  everything); (3) a flex-mask combinator certifies legit wrappers but lets a `:` wrapper forge mask
+  AGREEMENT (two independent gridctx forced to share one mask — ACCEPT); (4) a pure-projection
+  combinator enforces the output FAMILY (acc vs tile rejects) and cross-input agreement, but a `:`
+  wrapper declaring a FREE output element var (`tile<u,b,m>`, u unbound) still certifies and PUBLISHES
+  the over-general sig (f32 span -> claim u32 tile ACCEPTS). The root cause: the checker verifies a
+  declared sig is UNIFIABLE with the body, not that it is PRINCIPAL — so any polymorphic mint output
+  can be loosened into an unaudited `:` word, strictly EASIER to forge than a visible TRUSTED: row.
+  The sound fix is a checker seal, not a combinator: a CHECKED word may not introduce, as an argument
+  of a register-phantom CELL family output, a declared type variable unbound in its inputs (producing
+  a cell of input-unrelated type is a mint, sound only behind a TRUSTED: boundary the checker cannot
+  witness). It rides NP-CHECK's post-body parametricity seal (the E-NONPARAMETRIC-EFFECT choke),
+  descending into family args (which NP-CHECK proper does NOT), on RAW declared var identity so a
+  laundering combinator that unified `u:=t` can't hide `u`'s sig-level absence. TRUSTED: bypasses
+  CHECK, so genuine fresh-mask ctx mints (GRID-CTX's free block) stay legal there — the rule is
+  exactly why they cannot be rewritten as checked callers. With the seal, the FEW generic mint
+  combinators (`PTXREP:MINT-LOAD`/`MINT-ROW-SPAN`/`MINT-ROW-LOAD`, per-input-pattern to pin
+  projection) make many load/repackage wrappers checked callers: LOAD/LOAD-ONCE/ROW-SPAN(-ONCE)/
+  ROW-LOAD(-ONCE) converted, net trust -3, byte-identical PTX (24 emit tools). Pure checker+render lib
+  change, so the FULL engine battery was owed and paid (fixpoint x2 byte-identical, DDC dual-chain
+  byte-identical, test/run.f perf-verdict=pass attempts=1).
+- **The mint seal must exempt three checker-owned introductions or it false-rejects legit code, and
+  each needs a DISTINCT guard.** (same dot.) (a) VALUE-RECORD/construct machinery mints INTERNAL
+  fresh vars whose `NP-LETTER` is '?' (not a user a..z quantifier) — e.g. a generated
+  `( a -- box )` constructor expands `box` to hidden `field<>` cells over internal vars; guard: only
+  flag a raw output var that is a real declared letter. (b) A hidden physical field / layout
+  (product/sum) family output carries its own construct + hidden-field anti-forgery; guard:
+  `NP-CELLFAM?` excludes `PARAM>HID>0` and `TFAM-LAYOUT?`. (c) A VALUE-RECORD FIELD ACCESSOR
+  (`( rec -- fam<a,..> )`, empty body = width coercion) legitimately surfaces cell vars unbound at the
+  sig surface — the record is carried as a reserved `field<rec,name,inner>` term (FIELD-PARAM?), and
+  its var identity survives raw AND resolved AND surface-letter checks (the empty body leaves the
+  output quantifier unbound, structurally identical to a free mint); the ONLY reliable signal is the
+  `field<>` INPUT, so the seal steps aside when an input consumes a record. Each false positive cost a
+  fixpoint rebuild to diagnose — build the probe (dump the SGIN term tags/families) before guessing.
 - **Wiring the proven B-side ldmatrix cut the residual B-feed 27%->7% and won +11.9%.** (dot
   habu-mma-wave-3, lib/ptx/cg-mma.f MMA-BLDM.) The MFRAGS=4 winner's un-amortized scalar B feed
   (2 ld.shared + 2 cvt / 8x8 fragment) was replaced by ONE ldmatrix.x2 over a TRANSPOSED staging
