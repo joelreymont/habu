@@ -1,9 +1,9 @@
 ---
-title: "Snap certify regression + labeled snapshot-loader exits"
-status: open
+title: Snap certify regression + labeled snapshot-loader exits
+status: active
 priority: 2
 issue-type: task
-created-at: "2026-07-09T14:18:36.266908+02:00"
+created-at: "\"2026-07-09T14:18:36.266908+02:00\""
 ---
 
 Tracker for two follow-ups exposed while landing TFAM 12 item 6. The trailer
@@ -49,3 +49,5 @@ patched image -> SIGKILL (rc -9) before the loader runs. The trailer magic
 sits at file-offset size-57392 (SNAP-EXTRA-SIZE 16488 pad + ~40KB codesign
 blob follow it), so fixtures must SCAN for the last SNAP-MAGIC occurrence,
 never use FILE-SIZE-relative offsets.
+
+Claim: agent=tfam12 workspace=.jj-ws/fable-tfam12 (checker/engine lane - owns the dot-listed files this session)
