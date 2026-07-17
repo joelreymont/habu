@@ -4,6 +4,13 @@
 
 Last updated: 2026-07-17
 
+- **A worker editing the MAIN working copy instead of its .jj-ws workspace is a recurring
+  failure mode (twice on 2026-07-17: bfeed self-caught, evid caught by the integrator's
+  gate).** Detection: the orchestrator runs `jj st` in the main workspace and requires it
+  CLEAN before gating any lane's stack there — an unexplained modified file during
+  integration is presumed lane leakage: preserve it to a patch, message the lane, restore
+  pristine, re-gate. Worker briefs must include the absolute-path check ("every path starts
+  with .jj-ws/<lane>/") and a pre-seal `jj -R <main> st` clean assertion.
 - **The CPPSLOT typestate threads through the single-buffer MMA-PIPE-KLOOP-SINGLE
   byte-identically and GENUINELY — but only via one new trusted issue-mint, and that
   mint is the sanctioned audited-mint-core class, not debt.** (dot
