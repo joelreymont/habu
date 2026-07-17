@@ -85,6 +85,15 @@ s" CK-XO1 ( CAD-KIND:obligation-id -- CAD-KIND:evidence-id )" NO
 s" CK-XO2 ( CAD-KIND:evidence-id -- CAD-KIND:obligation-id )" NO
 s" CK-XO3 ( CAD-KIND:artifact-id -- CAD-KIND:obligation-id )" NO
 
+\ The machine-facing action identity is a distinct nominal: an action-id names a
+\ PROTOCOL OPERATION (owner package ACTION, maki/db/action.f) and can never launder
+\ into a producer-id (a producing component), a schema-id, or an artifact-id.
+s" CK-ACTION ( CAD-KIND:action-id -- CAD-KIND:action-id )" YES
+s" CK-XAC1 ( CAD-KIND:action-id -- CAD-KIND:producer-id )" NO
+s" CK-XAC2 ( CAD-KIND:producer-id -- CAD-KIND:action-id )" NO
+s" CK-XAC3 ( CAD-KIND:action-id -- CAD-KIND:schema-id )" NO
+s" CK-XAC4 ( CAD-KIND:artifact-id -- CAD-KIND:action-id )" NO
+
 \ Generic typed memory keeps the declared role on store and fetch.
 s" CK-PUT ( CAD-KIND:design-id ptr CAD-KIND:design-id -- ) !" YES
 s" CK-GET ( ptr CAD-KIND:design-id -- CAD-KIND:design-id ) @" YES

@@ -730,13 +730,15 @@ points stay listed.
 - `maki/README.md` / `maki/STATUS.md` — Maki framework overview and current
   verification status outside the Habu trust root.
 - `maki/cad-kinds.f` — package-scoped nominal identities for Model CAD handles,
-  indexes, shape/layout domains, effects, regions, and the canonical artifact
+  indexes, shape/layout domains, effects, regions, the canonical artifact
   envelope provenance roles (artifact-kind, producer/config/numeric-policy/
-  capability ids, persistent audit-event-id).
+  capability ids, persistent audit-event-id), and the machine-facing action-id
+  (owner package ACTION, maki/db/action.f).
 - `maki/cad-kinds-test.f` — qualified identity, cross-role rejection, typed
   memory, and repair-diagnostic regressions for the nominal CAD kinds, plus the
   frozen artifact-envelope invariants: class-vs-identity, audit-event vs runtime
-  ADAG:event-id, artifact-kind separation, and 256-bit digest vs artifact-id.
+  ADAG:event-id, artifact-kind separation, 256-bit digest vs artifact-id, and the
+  action-id vs producer/schema/artifact-id nominal separation.
 - `maki/target/target.f` — immutable target descriptors, semantic interning,
   canonical facts/digests, and the validated `CAD-KIND:target-id` owner API, plus the
   `ID>WIRE`/`WIRE>ID` (raw) and cross-process `KEY>WIRE`/`WIRE>KEY` codec (32-byte
@@ -938,6 +940,31 @@ points stay listed.
   verifier-identity flips the verdict to exactly the affected result), the two structural
   refusals (static-vs-device, performance-vs-equivalence, each with a discharging positive
   control), and the minimal invalidation set per change-set with cache-equals-uncached proven.
+- `maki/db/action.f` — the machine-facing action-schema registry (MODEL-CAD-V2-PLAN.md
+  § 23.9 "Machine-facing action registry", plan:3825; dot habu-v2-machine-action-a7357409).
+  Package ACTION owns `CAD-KIND:action-id` and interns each callable protocol action by
+  canonical NAME (the maki/producer.f precedent) with a full typed declaration: checked
+  input/output `art-kind`, preconditions, effects, capabilities (opaque closed-vocabulary
+  bit CODES — the user-gated vocabulary is not invented here; seeded EMPTY), deterministic/
+  cacheable flags, budget dimensions, produced obligations (reused `OBLIG:relation`),
+  verifier (reused `OBLIG:verifier`), diagnostics (reused `DIAG:class`), and invalidation —
+  each set held as a canonical-by-construction u64 bitmask. `REGISTER` rejects an incomplete
+  declaration (typed) and a name re-registered with a different declaration (conflict);
+  `DISPATCH` is the protocol GATE (never the executor), returning `wrong-kind` /
+  `unauthorized` (declared effects+caps ⊄ granted) / `unsupported` (a `declared`, not-yet-
+  implemented action) / `unknown-action` / `accepted`. `ENUM-AT` / `DIGEST` enumerate
+  name-sorted and digest deterministically, so registrations REPLAY to one enumeration.
+  Seeds SCHEMA:LIST, ARTIFACT:GET, REVISION:DIFF, TX:BEGIN/APPLY/VALIDATE/COMMIT/ABORT,
+  PASS:RUN — `implemented` where a landed surface realizes the op, else `declared`. Owns
+  -5374..-5379.
+- `maki/db/action-test.f` — action-registry acceptance: missing field -> REGISTER
+  incomplete (typed) with an idempotent/conflict control; wrong input kind cannot dispatch
+  STATICALLY (a non-kind in the DISPATCH kind slot is verdict 0, a real art-kind verdict -1
+  — the cad-kinds verdict pattern) PLUS the dynamic wrong-kind reject; unauthorized effects
+  and capabilities reject before execution; staged availability (declared -> unsupported,
+  implemented -> accepted); registry enumeration is canonical (name-ascending) and
+  REPLAYABLE (the same set in reverse order digests identically); and the seeded
+  declarations reflect the landed surfaces.
 - `maki/db/keywire-xproc-child.f` — the FRESH-PROCESS decode side of the cross-process
   content-key identity test (dot habu-wire-content-key). Package KWXPC: shared fixed
   key-file layout, shared real descriptors, per-family `REG-*` registrations, and

@@ -22,6 +22,13 @@ TYPEFAMILY target-id 0
 TYPEFAMILY toolchain-id 0
 TYPEFAMILY pass-id 0
 TYPEFAMILY schema-id 0
+\ The machine-facing callable-action identity (MODEL-CAD-V2-PLAN.md § 23.9
+\ "Machine-facing action registry", plan:3825). One arity-0 nominal per the
+\ obligation-id precedent above; its content-addressed owner registry is package
+\ ACTION (maki/db/action.f). Deliberately distinct from every other identity: an
+\ action-id names a PROTOCOL OPERATION and can never launder into a producer-id
+\ (a producing component), a schema-id, or an artifact-id.
+TYPEFAMILY action-id 0
 
 \ Canonical artifact envelope provenance roles (MODEL-CAD-V2-PLAN.md § 23.9
 \ Canonical typed artifacts). These are the persistent identities the stored

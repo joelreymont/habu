@@ -675,6 +675,8 @@ that source is explicitly certified; they are not stale-checked by the default
 | OBLIGATION-ID>RAW | `CAD-KIND:obligation-id -- n` | Private obligation identity projection used only by bounds validation, content-key access, `OBLIG:ID-EQUAL?`, and the `OBLIG:ID>WIRE` / `WIRE>ID` / `KEY>WIRE` / `WIRE>KEY` codecs; no public raw conversion is exported. | `maki/db/obligation-test.f` | maki/db/obligation.f | 2026-07-17 |
 | RAW>EVIDENCE-ID | `n -- CAD-KIND:evidence-id` | Private evidence-id registry refinement after canonical-descriptor validation, capacity validation, and append-only slot allocation (the maki/producer.f `RAW>PRODUCER-ID` pattern); the only public producer is `EVIDENCE:REGISTER`, which interns the canonical evidence descriptor, so a raw n cannot forge an evidence identity (MODEL-CAD-V2-PLAN.md § 23.9 foreign-id contract; dot habu-v2-evidence-applicability-73ac58b9). | `maki/db/evidence-test.f` | maki/db/evidence.f | 2026-07-17 |
 | EVIDENCE-ID>RAW | `CAD-KIND:evidence-id -- n` | Private evidence identity projection used only by bounds validation, descriptor-table access, `EVIDENCE:EQUAL?`, and the `EVIDENCE:ID>WIRE` / `WIRE>ID` / `KEY>WIRE` / `WIRE>KEY` codecs; no public raw conversion is exported. | `maki/db/evidence-test.f` | maki/db/evidence.f | 2026-07-17 |
+| RAW>ACTION-ID | `n -- CAD-KIND:action-id` | Private action-id registry refinement after canonical-name validation, capacity validation, and append-only slot allocation (the maki/producer.f `RAW>PRODUCER-ID` pattern); the only public producer is `ACTION:REGISTER`, which interns the canonical action name after a completeness check, so a raw n cannot forge an action identity (MODEL-CAD-V2-PLAN.md § 23.9 machine-facing action registry; dot habu-v2-machine-action-a7357409). | `maki/db/action-test.f` | maki/db/action.f | 2026-07-17 |
+| ACTION-ID>RAW | `CAD-KIND:action-id -- n` | Private action identity projection used only by bounds validation, name-table access, `ACTION:EQUAL?`, `DISPATCH` resolution, and the `ENUM-AT` / `DIGEST` canonical enumeration; no public raw conversion is exported. | `maki/db/action-test.f` | maki/db/action.f | 2026-07-17 |
 | DIM-REFINE | `n -- CAD-KIND:dim` | Private validated nominal representation boundary for tensor dimensions; tracked by `habu-v2-r3-type-9f89d1e9`. | `maki/tensor-test.f` | maki/tensor.f | 2026-07-12 |
 | DIM-RAW | `CAD-KIND:dim -- n` | Private dimension projection used only by checked shape algebra and numeric execution boundaries. | `maki/tensor-test.f` | maki/tensor.f | 2026-07-12 |
 | ROWS-REFINE | `n -- CAD-KIND:rows` | Private validated row-role refinement; public construction goes through `SHAPE`. | `maki/tensor-test.f` | maki/tensor.f | 2026-07-12 |
@@ -1413,6 +1415,8 @@ maki/db/obligation.f:RAW>OBLIGATION-ID prim-axiom habu-epic-model-cad-70b629a9
 maki/db/obligation.f:OBLIGATION-ID>RAW prim-axiom habu-epic-model-cad-70b629a9
 maki/db/evidence.f:RAW>EVIDENCE-ID prim-axiom habu-epic-model-cad-70b629a9
 maki/db/evidence.f:EVIDENCE-ID>RAW prim-axiom habu-epic-model-cad-70b629a9
+maki/db/action.f:RAW>ACTION-ID prim-axiom habu-epic-model-cad-70b629a9
+maki/db/action.f:ACTION-ID>RAW prim-axiom habu-epic-model-cad-70b629a9
 maki/tensor-value.f:RAW>TENSOR prim-axiom habu-epic-model-cad-70b629a9
 maki/tensor-value.f:TENSOR>RAW prim-axiom habu-epic-model-cad-70b629a9
 maki/tensor-value.f:TYPED-LINEAR stdlib-boundary habu-epic-model-cad-70b629a9
