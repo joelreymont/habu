@@ -4,6 +4,25 @@
 
 Last updated: 2026-07-17
 
+- **A typed error result over a NOMINAL diagnostic type needs a custom sum family, not the
+  shared `result<a,b>`.** (dot habu-v2-canonical-artifact-ee5121b4, the artifact envelope codec.)
+  Constructing `RESULT:OK` in a TOTAL (ok-only) word leaves the err type variable `b` free, and a
+  free variable will unify with a structural type (`n`, `ptr u8`) but NOT with a nominal ENUM/TYPEFAMILY
+  — `( n -- result<n,e2> ) RESULT:OK` rejects with "expected result<n,e2> actual result<n,a>" while
+  `result<n,ptr u8>` passes. This is the same limitation maki/typestate.f flagged as a "DEVIATION
+  from result<stage,diag-set>". The fix is the lib/cad-num-types.f `numeric-result` idiom: define a
+  bespoke `SUMTYPE foo-result 1` whose ok variant carries the payload `a` and whose error members
+  are baked-in nullary variants — no free error-type variable, so a total ok construction certifies.
+- **A multi-cell PRODUCT/SUMTYPE value cannot be a typed local NOR a polymorphic sum payload;
+  UNMAKE/MATCH it straight off the stack.** (same dot.) `{: d:content-digest :}` fails with
+  "unknown type", and a `VARIANT ok a` payload `a` accepts `n` and arity-0 nominals but rejects a
+  multi-field PRODUCT (`expected a actual hprod<>`). Keep multi-cell values on the stack and destructure
+  immediately; make the sum's ok payload a single cell (an `n` slot/index or an arity-0 handle).
+- **Generated PRODUCT/SUMTYPE constructor names double the family's internal hyphens.**
+  (same dot.) `PRODUCT content-digest` in `package ARTIFACT` generates `ARTIFACT-CONTENT--DIGEST:MAKE`
+  / `:UNMAKE` (package sep is one hyphen, each family hyphen becomes `--`); a nullary variant ctor is
+  `PKG-FAMILY:VARIANT` (e.g. `ARTIFACT-ART--RESULT:MALFORMED`) while `MATCH` arms and payload
+  destructuring use the BARE variant name. Wrap the long spellings in short private words once.
 - **M5 barrier-uniformity: VALUE uniformity was ALREADY expressed; only the CONTROL effect was
   missing.** (dot habu-ptx-m5-mask-eb0716f1, host checker lane.) Leg-1 empty experiment proved the
   M2 families already distinguish `uniform<T>` (block-uniform) from `tile<..>` (lane-varying): a tile

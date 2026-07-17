@@ -718,6 +718,24 @@ points stay listed.
 - `maki/artifact-test.f` — registry interning/equality/key round-trip/count
   regressions, the private-mint unforgeability negative, and fail-closed empty-key /
   out-of-range-id boundaries.
+- `maki/db/artifact.f` — the canonical artifact envelope codec (MODEL-CAD-V2-PLAN.md
+  § 23.9): reopens `package ARTIFACT` to add checked `BUILD`/`ENCODE`/`DECODE`/`DIGEST`
+  over per-kind `weight-artifact`/`kernel-artifact` handles, the four-word
+  `content-digest`, and the `art-result<n>` failure taxonomy (malformed, noncanonical,
+  bounds, duplicate, unknown-required, kind-mismatch, unsupported-migration,
+  digest-mismatch). Fixed little-endian widths, ascending length-delimited tags,
+  canonical ascending/duplicate-free dependency set, opaque retention of unknown
+  optional fields, SHA-256 digest over the semantic prefix (excludes the digest and
+  the created-event). No new trust boundary: handle constructors are checker-native
+  and the only id on the wire (CAD-KIND:artifact-id) uses maki/artifact.f's existing
+  private refinements.
+- `maki/db/artifact-test.f` — envelope acceptance: equal values encode
+  byte-identically and hash identically, dependency insertion order is irrelevant,
+  one semantic field changes the digest while the excluded created-event does not,
+  decode round-trips encode, unknown-required / digest-mismatch / malformed /
+  noncanonical / duplicate / bounds / kind-mismatch / unsupported-migration each
+  return the right typed diagnostic, and an unknown optional field is retained and
+  re-emitted verbatim.
 - `maki/numpolicy.f` — the typed numeric-policy proof-domain family (`NPOL:dom` =
   exact/ulp/relative/empirical, CAD-PLAN §22.6): the strength lattice
   (`RANK`/`SATISFIES?`/`COMPOSE` weakest-wins), the checked satisfaction gate
