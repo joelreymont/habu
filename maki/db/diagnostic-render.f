@@ -24,6 +24,7 @@ require lib/json-write.f
 require maki/db/diagnostic.f
 require maki/producer.f
 require maki/config.f
+require maki/rev.f
 require maki/artifact.f
 
 package DIAG
@@ -90,7 +91,7 @@ variable RB-LEN
 : TB-CX ( diagnostic -- ) {: d:diagnostic :}
    d HAS-COUNTEREXAMPLE? if s" counterexample" d COUNTEREXAMPLE@ ARTIFACT:KEY$ TB-KV then ;
 : TB-REV ( diagnostic -- ) {: d:diagnostic :}
-   d HAS-REVISION? if s" revision" d REVISION@ TB-KV then ;
+   d HAS-REVISION? if s" revision" d REVISION@ REV:CONTENT$ TB-KV then ;
 : TB-ENV ( diagnostic -- ) {: d:diagnostic :}
    d HAS-ENVIRONMENT? if s" environment" d ENVIRONMENT@ CONFIG:FACTS$ TB-KV then ;
 : TB-PARENT ( diagnostic -- ) {: d:diagnostic :}
@@ -137,7 +138,7 @@ variable RB-LEN
 : JSON-CX ( diagnostic -- ) {: d:diagnostic :}
    d HAS-COUNTEREXAMPLE? if d COUNTEREXAMPLE@ ARTIFACT:KEY$ JW-STRING else JW-NULL then ;
 : JSON-REV ( diagnostic -- ) {: d:diagnostic :}
-   d HAS-REVISION? if d REVISION@ JW-STRING else JW-NULL then ;
+   d HAS-REVISION? if d REVISION@ REV:CONTENT$ JW-STRING else JW-NULL then ;
 : JSON-ENV ( diagnostic -- ) {: d:diagnostic :}
    d HAS-ENVIRONMENT? if d ENVIRONMENT@ CONFIG:FACTS$ JW-STRING else JW-NULL then ;
 : JSON-PARENT ( diagnostic -- ) {: d:diagnostic :}

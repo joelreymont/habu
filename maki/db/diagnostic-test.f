@@ -16,13 +16,14 @@
 \ The test reopens package DIAG (a friend) to reach the private wire constants and
 \ slot helpers for adversarial byte buffers; happy-path calls use the public API.
 \ Identity fixtures mint real ids through their owner constructors
-\ (PRODUCER:REGISTER, CONFIG:REGISTER, ARTIFACT:REGISTER) - never a raw cast.
+\ (PRODUCER:REGISTER, CONFIG:REGISTER, REV:COMMIT, ARTIFACT:REGISTER) - never a raw cast.
 
 require lib/test.f
 require maki/db/diagnostic.f
 require maki/db/diagnostic-render.f
 require maki/producer.f
 require maki/config.f
+require maki/rev.f
 require maki/artifact.f
 
 package DIAG
@@ -111,7 +112,7 @@ variable DG-D-SLOT                 \ the last round-tripped diagnostic slot
 : F-HAS-ENV ( -- bool )       D HAS-ENVIRONMENT? ;
 : F-ENV= ( ptr u8 n -- bool ) D ENVIRONMENT@ CONFIG:FACTS$ STR= ;
 : F-HAS-REV ( -- bool )       D HAS-REVISION? ;
-: F-REV= ( ptr u8 n -- bool ) D REVISION@ STR= ;
+: F-REV= ( ptr u8 n -- bool ) D REVISION@ REV:CONTENT$ STR= ;
 : F-HAS-PARENT ( -- bool )    D HAS-PARENT? ;
 : F-PARENT ( -- n )           D PARENT@ ;
 : F-HAS-PROGRESS ( -- bool )  D HAS-PROGRESS? ;
@@ -126,7 +127,7 @@ variable DG-D-SLOT                 \ the last round-tripped diagnostic slot
    s" hb --load x.f" REPRODUCTION
    s" node 42 region 3" LOCATION
    s" cfg-a" CONFIG:REGISTER ENVIRONMENT
-   s" rev-abc123" REVISION
+   s" rev-abc123" REV:COMMIT REVISION
    s" rank=3" EXPECTED+  s" rank=2" OBSERVED+
    s" ev-golden-1" INVALIDATED+
    s" art-dep-1" ARTIFACT:REGISTER CONE+
@@ -213,7 +214,7 @@ s\" \"parent\":99" JSON-HAS TTRUE
    s" SQUARE at token dup" LOCATION
    s" ( n -- n )" EXPECTED+  s" ( n -- n n )" OBSERVED+
    DIAG-REPAIR:CHECKER-FIX REPAIR+
-   s" rev-9f3a" REVISION
+   s" rev-9f3a" REV:COMMIT REVISION
    BUILD OK-DIAG ;
 : A-BYTES ( -- bool )   EX-A BYTES-RT ;
 : A-STORE ( -- )        EX-A RT-STORE ;
@@ -241,6 +242,7 @@ s" rev-9f3a" F-REV= TTRUE
    s" ptxas fatal: unresolved symbol __smem" OBSERVED+
    DIAG-REPAIR:EXTERNAL-FIX REPAIR+
    s" sm87|cuda12" CONFIG:REGISTER ENVIRONMENT
+   s" rev-b1ce" REV:COMMIT REVISION
    BUILD OK-DIAG ;
 : B-BYTES ( -- bool )   EX-B BYTES-RT ;
 : B-STORE ( -- )        EX-B RT-STORE ;
@@ -254,6 +256,7 @@ s" ptxas fatal: unresolved symbol __smem" F-OBS0= TTRUE
 F-REPAIR0 6 T=                              \ external-fix
 F-HAS-ENV TTRUE
 s" sm87|cuda12" F-ENV= TTRUE
+s" rev-b1ce" F-REV= TTRUE
 
 \ C: a device-launch fault (external, phase runtime, subject + counterexample).
 : EX-C ( -- diagnostic )
@@ -267,6 +270,7 @@ s" sm87|cuda12" F-ENV= TTRUE
    DIAG-REPAIR:RETRY REPAIR+
    s" kernel-mm-sm87" ARTIFACT:REGISTER SUBJECT
    s" cx-illegal-idx" ARTIFACT:REGISTER COUNTEREXAMPLE
+   s" rev-c2df" REV:COMMIT REVISION
    BUILD OK-DIAG ;
 : C-BYTES ( -- bool )   EX-C BYTES-RT ;
 : C-STORE ( -- )        EX-C RT-STORE ;
@@ -282,6 +286,7 @@ F-HAS-SUBJECT TTRUE
 s" kernel-mm-sm87" F-SUBJECT= TTRUE
 F-HAS-CX TTRUE
 s" cx-illegal-idx" F-CX= TTRUE
+s" rev-c2df" F-REV= TTRUE
 
 \ D: a gate timeout (resource, phase verify, dependency cone + parent + progress).
 : EX-D ( -- diagnostic )
@@ -297,6 +302,7 @@ s" cx-illegal-idx" F-CX= TTRUE
    s" art-y" ARTIFACT:REGISTER CONE+
    DIAG-REPAIR:RETRY REPAIR+
    70 PARENT  3 PROGRESS
+   s" rev-d3ea" REV:COMMIT REVISION
    BUILD OK-DIAG ;
 : D-BYTES ( -- bool )   EX-D BYTES-RT ;
 : D-STORE ( -- )        EX-D RT-STORE ;
@@ -315,6 +321,7 @@ F-HAS-PARENT TTRUE
 F-PARENT 70 T=
 F-HAS-PROGRESS TTRUE
 F-PROGRESS 3 T=
+s" rev-d3ea" F-REV= TTRUE
 
 \ ---- 5. decode reject taxonomy is reachable and typed --------------------------
 \ malformed: truncate a valid envelope.

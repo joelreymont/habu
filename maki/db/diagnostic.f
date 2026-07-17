@@ -27,6 +27,7 @@
 \ across the package boundary through each owner's public codec, never a raw cast:
 \   owner       -> CAD-KIND:producer-id  (PRODUCER:ID>WIRE / WIRE>ID)
 \   environment -> CAD-KIND:config-id    (CONFIG:ID>WIRE / WIRE>ID)
+\   revision    -> CAD-KIND:rev-id       (REV:ID>WIRE / WIRE>ID)
 \   subject / counterexample / dependency-cone[] -> CAD-KIND:artifact-id, carried
 \                  as their public store KEY$ and re-interned by ARTIFACT:REGISTER
 \                  on decode (idempotent: equal keys share one id).
@@ -39,9 +40,6 @@
 \     (its content-addressed IDENTITY), the strongest identity the repo publishes.
 \   - environment-digest: modeled as CAD-KIND:config-id (the environment's
 \     configuration identity), the landed identity nearest an env fingerprint.
-\   - revision: CAD-KIND:rev-id is a declared nominal with NO owner registry
-\     (nothing can mint or serialize it today), so `revision` is a dot/commit-style
-\     reference STRING. Capability gap dotted: a rev-id owner registry.
 \   - invalidated-evidence[]: CAD-KIND:evidence-id likewise has no owner registry,
 \     so each element is an evidence-reference STRING. Same capability-gap dot.
 \   - parent-diagnostic: diagnostics are not yet content-addressed artifacts in
@@ -63,6 +61,7 @@ require maki/cad-kinds.f
 require maki/artifact.f          \ CAD-KIND:artifact-id owner: REGISTER / KEY$
 require maki/producer.f          \ CAD-KIND:producer-id owner: REGISTER / ID>WIRE / WIRE>ID
 require maki/config.f            \ CAD-KIND:config-id owner: REGISTER / ID>WIRE / WIRE>ID
+require maki/rev.f               \ CAD-KIND:rev-id owner: COMMIT / ID>WIRE / WIRE>ID
 
 \ ---- error codes (diagnostic owns -5354..-5358) -------------------------------
 -5354 constant E-DIAG-CAP        \ a diagnostic pool / per-field array capacity exceeded
@@ -251,7 +250,6 @@ private
 8   constant REPAIR-CAP           \ legal-repair classes per slot
 200 constant REPRO-MAX            \ reproduction command bytes
 96  constant LOC-MAX              \ location string bytes
-96  constant REV-MAX              \ revision reference bytes
 
 \ ---- protocol constants (frozen wire) -----------------------------------------
 8  constant U64W                 \ fixed little-endian scalar width
@@ -276,7 +274,7 @@ $1000 constant SCRATCH-CAP       \ semantic/encode scratch bytes
 11 constant TAG-CONE              \ dependency-cone[]  (artifact-id KEY$ list)
 12 constant TAG-REPAIRS           \ legal-repairs[]    (ordinal list)
 13 constant TAG-ENV               \ CAD-KIND:config-id (optional)
-14 constant TAG-REV               \ revision reference (optional string)
+14 constant TAG-REV               \ CAD-KIND:rev-id (optional)
 15 constant TAG-SUBJECT           \ CAD-KIND:artifact-id KEY$ (optional)
 16 constant TAG-CX                \ counterexample CAD-KIND:artifact-id KEY$ (optional)
 17 constant TAG-PARENT            \ parent-diagnostic code (optional u64)
@@ -316,6 +314,7 @@ DIAG-CAP TYPED-BUFFER SEV-COL     severity
 DIAG-CAP TYPED-BUFFER PHASE-COL   phase
 DIAG-CAP TYPED-BUFFER OWNER-COL   CAD-KIND:producer-id
 DIAG-CAP TYPED-BUFFER ENV-COL     CAD-KIND:config-id
+DIAG-CAP TYPED-BUFFER REV-COL     CAD-KIND:rev-id
 DIAG-CAP TYPED-BUFFER SUBJECT-COL CAD-KIND:artifact-id
 DIAG-CAP TYPED-BUFFER CX-COL      CAD-KIND:artifact-id
 DIAG-CAP CONE-CAP *   TYPED-BUFFER CONE-COL   CAD-KIND:artifact-id
@@ -326,8 +325,6 @@ create B-REPRO DIAG-CAP REPRO-MAX * allot
 create L-REPRO DIAG-CAP cells allot
 create B-LOC   DIAG-CAP LOC-MAX * allot
 create L-LOC   DIAG-CAP cells allot
-create B-REV   DIAG-CAP REV-MAX * allot
-create L-REV   DIAG-CAP cells allot
 
 \ ---- string-list storage (expected / observed / invalidated share one arena) --
 create SL-N     DIAG-CAP LISTS * cells allot
@@ -384,6 +381,8 @@ variable SEEN
 : OWNER-R! ( CAD-KIND:producer-id n -- )    OWNER-COL ! ;
 : ENV-R@ ( n -- CAD-KIND:config-id )        ENV-COL @ ;
 : ENV-R! ( CAD-KIND:config-id n -- )        ENV-COL ! ;
+: REV-R@ ( n -- CAD-KIND:rev-id )           REV-COL @ ;
+: REV-R! ( CAD-KIND:rev-id n -- )           REV-COL ! ;
 : SUBJECT-R@ ( n -- CAD-KIND:artifact-id )  SUBJECT-COL @ ;
 : SUBJECT-R! ( CAD-KIND:artifact-id n -- )  SUBJECT-COL ! ;
 : CX-R@ ( n -- CAD-KIND:artifact-id )       CX-COL @ ;
@@ -408,12 +407,6 @@ variable SEEN
    u s cells L-LOC + ! ;
 : LOC-FETCH ( n -- ptr u8 n ) {: s:n :}
    B-LOC s LOC-MAX * +  s cells L-LOC + @ ;
-: REV-STORE ( ptr u8 n n -- ) {: a:ptr u:n s:n :}
-   u REV-MAX > if E-DIAG-FIELD throw then
-   a  B-REV s REV-MAX * +  u BYTE-COPY
-   u s cells L-REV + ! ;
-: REV-FETCH ( n -- ptr u8 n ) {: s:n :}
-   B-REV s REV-MAX * +  s cells L-REV + @ ;
 
 \ ---- string-list store/fetch (shared arena, indexed by slot/list/item) --------
 : SL-IDX ( n n -- n )         LISTS * + ;                     \ ( slot list -- listcell )
@@ -442,7 +435,7 @@ variable SEEN
    0 s CODE-R!
    0 s PARENT-R!  0 s PROGRESS-R!
    0 s CONE-N!  0 s REPAIR-N!
-   0 s cells L-REPRO + !  0 s cells L-LOC + !  0 s cells L-REV + !
+   0 s cells L-REPRO + !  0 s cells L-LOC + !
    s SL-EXP SL-RESET  s SL-OBS SL-RESET  s SL-INVAL SL-RESET
    0 s FLAG-CELL ! ;
 
@@ -551,6 +544,9 @@ variable SEEN
 : E-ENV-FIELD ( n -- ) {: s:n :}
    s ENV-R@ IDWBUF FID-WIRE-CAP CONFIG:ID>WIRE {: w:n :}
    TAG-ENV IDWBUF w E-STR-FIELD ;
+: E-REV-FIELD ( n -- ) {: s:n :}
+   s REV-R@ IDWBUF FID-WIRE-CAP REV:ID>WIRE {: w:n :}
+   TAG-REV IDWBUF w E-STR-FIELD ;
 : E-SUBJECT-FIELD ( n -- ) {: s:n :}
    s SUBJECT-R@ ARTIFACT:KEY$ {: a:ptr u:n :}
    TAG-SUBJECT a u E-STR-FIELD ;
@@ -560,7 +556,7 @@ variable SEEN
 
 \ ---- optional-field emitters (only when the presence flag is set) --------------
 : E-OPT-ENV ( n -- ) {: s:n :}      s HAS-ENV@ if s E-ENV-FIELD then ;
-: E-OPT-REV ( n -- ) {: s:n :}      s HAS-REV@ if TAG-REV s REV-FETCH E-STR-FIELD then ;
+: E-OPT-REV ( n -- ) {: s:n :}      s HAS-REV@ if s E-REV-FIELD then ;
 : E-OPT-SUBJECT ( n -- ) {: s:n :}  s HAS-SUBJECT@ if s E-SUBJECT-FIELD then ;
 : E-OPT-CX ( n -- ) {: s:n :}       s HAS-CX@ if s E-CX-FIELD then ;
 : E-OPT-PARENT ( n -- ) {: s:n :}   s HAS-PARENT@ if TAG-PARENT s PARENT-R@ E-U64-FIELD then ;
@@ -625,13 +621,11 @@ variable SEEN
    ord 0 < ord hi >= or if D-BOUNDS FAIL 0 exit then
    ord ;
 
-: TAKE-STR ( n n n -- ) {: s:n declen:n which:n :}   \ which: 0=repro 1=loc 2=rev
+: TAKE-STR ( n n n -- ) {: s:n declen:n which:n :}   \ which: 0=repro 1=loc
    declen D-TAKE {: a:ptr u:n :}
    FAILED? if exit then
    which 0 = if u REPRO-MAX > if D-BOUNDS FAIL exit then a u s REPRO-STORE exit then
-   which 1 = if u LOC-MAX  > if D-BOUNDS FAIL exit then a u s LOC-STORE   exit then
-   u REV-MAX > if D-BOUNDS FAIL exit then
-   a u s REV-STORE  FB-REV s FLAG-SET ;      \ revision is optional: mark present
+   u LOC-MAX > if D-BOUNDS FAIL exit then  a u s LOC-STORE ;
 
 : TAKE-STRLIST ( n n n -- ) {: s:n declen:n list:n :}
    declen U64W < if D-BOUNDS FAIL exit then
@@ -698,6 +692,16 @@ variable SEEN
       unknown     OF D-BOUNDS FAIL ENDOF
    ;MATCH ;
 
+: TAKE-IDWIRE-REV ( n n -- ) {: s:n declen:n :}
+   declen D-TAKE {: a:ptr u:n :}
+   FAILED? if exit then
+   a u REV:WIRE>ID
+   MATCH REV:id-result
+      ok          OF s REV-R!  FB-REV s FLAG-SET ENDOF
+      wrong-width OF D-MALFORMED FAIL ENDOF
+      unknown     OF D-BOUNDS FAIL ENDOF
+   ;MATCH ;
+
 : TAKE-SUBJECT ( n n -- ) {: s:n declen:n :}
    declen D-TAKE {: a:ptr u:n :}
    FAILED? if exit then
@@ -724,7 +728,7 @@ variable SEEN
    tag TAG-CONE     = if s declen TAKE-CONE  exit then
    tag TAG-REPAIRS  = if s declen TAKE-REPAIRS  exit then
    tag TAG-ENV      = if s declen TAKE-IDWIRE-ENV  exit then
-   tag TAG-REV      = if s declen 2 TAKE-STR  exit then
+   tag TAG-REV      = if s declen TAKE-IDWIRE-REV  exit then
    tag TAG-SUBJECT  = if s declen TAKE-SUBJECT  exit then
    tag TAG-CX       = if s declen TAKE-CX  exit then
    tag TAG-PARENT   = if declen TAKE-U64 s PARENT-R!  FB-PARENT s FLAG-SET  exit then
@@ -788,8 +792,8 @@ public
    CURRENT @ {: s:n :}   id s ENV-R!  FB-ENV s FLAG-SET ;
 : REPRODUCTION ( ptr u8 n -- )         CURRENT @ REPRO-STORE ;
 : LOCATION ( ptr u8 n -- )             CURRENT @ LOC-STORE ;
-: REVISION ( ptr u8 n -- ) {: a:ptr u:n :}
-   CURRENT @ {: s:n :}   a u s REV-STORE  FB-REV s FLAG-SET ;
+: REVISION ( CAD-KIND:rev-id -- ) {: id:CAD-KIND:rev-id :}
+   CURRENT @ {: s:n :}   id s REV-R!  FB-REV s FLAG-SET ;
 : SUBJECT ( CAD-KIND:artifact-id -- ) {: id:CAD-KIND:artifact-id :}
    CURRENT @ {: s:n :}   id s SUBJECT-R!  FB-SUBJECT s FLAG-SET ;
 : COUNTEREXAMPLE ( CAD-KIND:artifact-id -- ) {: id:CAD-KIND:artifact-id :}
@@ -832,7 +836,7 @@ public
 : HAS-ENVIRONMENT? ( diagnostic -- bool )      DIAG> HAS-ENV@ ;
 : ENVIRONMENT@ ( diagnostic -- CAD-KIND:config-id ) DIAG> ENV-R@ ;
 : HAS-REVISION? ( diagnostic -- bool )         DIAG> HAS-REV@ ;
-: REVISION@ ( diagnostic -- ptr u8 n )         DIAG> REV-FETCH ;
+: REVISION@ ( diagnostic -- CAD-KIND:rev-id )  DIAG> REV-R@ ;
 : HAS-SUBJECT? ( diagnostic -- bool )          DIAG> HAS-SUBJECT@ ;
 : SUBJECT@ ( diagnostic -- CAD-KIND:artifact-id ) DIAG> SUBJECT-R@ ;
 : HAS-COUNTEREXAMPLE? ( diagnostic -- bool )   DIAG> HAS-CX@ ;

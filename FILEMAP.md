@@ -798,15 +798,16 @@ points stay listed.
   staged builder (`NEW` / typed setters / `BUILD`) returns a custom-sum `build-result`;
   a diagnostic with no owner or no reproduction is rejected typed (`missing-owner` /
   `missing-reproduction`), never a throw. Identity fields use the landed nominal ids via
-  their owner packages (owner→producer-id, environment→config-id, subject/counterexample/
-  dependency-cone→artifact-id, serialized by each owner's public codec, never a raw cast);
+  their owner packages (owner→producer-id, environment→config-id, revision→rev-id,
+  subject/counterexample/dependency-cone→artifact-id, serialized by each owner's public
+  codec, never a raw cast);
   DECODE folds a foreign-id reject into the taxonomy (wrong-width→malformed,
   unknown→bounds). Fixed little-endian widths, ascending length-delimited tags, custom-sum
   `decode-result` taxonomy (malformed, noncanonical, bounds, duplicate, unknown-required).
   CONSERVATIVE READINGS flagged at the definition site: subject modeled as artifact-id
-  (content-digest is ARTIFACT-private), environment as config-id, revision and
-  invalidated-evidence as strings (rev-id / evidence-id have no owner registry yet),
-  parent as the parent's code, location / facts as strings. Owns -5354..-5358.
+  (content-digest is ARTIFACT-private), environment as config-id, invalidated-evidence as
+  strings (evidence-id has no owner registry yet), parent as the parent's code, location /
+  facts as strings. Owns -5354..-5358.
 - `maki/db/diagnostic-render.f` — the two renderers over one value: `DIAG:RENDER`
   (human text) and `DIAG:RENDER-JSON` (canonical JSON via the checked lib/json-write.f
   builder, no host tooling). Both consume the same `diagnostic` handle through the typed
