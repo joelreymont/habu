@@ -9,6 +9,10 @@ require lib/fs-mutate.f
 require lib/test.f
 require tools/filemap-lint.f
 
+$20000 constant FLT-OLD-CAP
+$400 constant FLT-PAD-CAP
+FLT-OLD-CAP FLT-PAD-CAP / 1+ constant FLT-LARGE-CHUNKS
+
 create FLT-ROOT FS-PATH-CAP allot
 create FLT-SRC FS-PATH-CAP allot
 create FLT-LISTED FS-PATH-CAP allot
@@ -19,6 +23,8 @@ create FLT-GHOST FS-PATH-CAP allot
 create FLT-MAP1 FS-PATH-CAP allot
 create FLT-MAP2 FS-PATH-CAP allot
 create FLT-MAP3 FS-PATH-CAP allot
+create FLT-MAP4 FS-PATH-CAP allot
+create FLT-PAD FLT-PAD-CAP allot
 
 variable FLT-ROOT-U
 variable FLT-SRC-U
@@ -30,6 +36,7 @@ variable FLT-GHOST-U
 variable FLT-MAP1-U
 variable FLT-MAP2-U
 variable FLT-MAP3-U
+variable FLT-MAP4-U
 
 : FLT-ROOT$ ( -- ptr u8 n ) FLT-ROOT FLT-ROOT-U @ ;
 : FLT-SRC$ ( -- ptr u8 n ) FLT-SRC FLT-SRC-U @ ;
@@ -41,6 +48,7 @@ variable FLT-MAP3-U
 : FLT-MAP1$ ( -- ptr u8 n ) FLT-MAP1 FLT-MAP1-U @ ;
 : FLT-MAP2$ ( -- ptr u8 n ) FLT-MAP2 FLT-MAP2-U @ ;
 : FLT-MAP3$ ( -- ptr u8 n ) FLT-MAP3 FLT-MAP3-U @ ;
+: FLT-MAP4$ ( -- ptr u8 n ) FLT-MAP4 FLT-MAP4-U @ ;
 
 : FLT-ROOT! ( -- )
    s" habu-filemap-lint" TMPDIR-MKDIR
@@ -60,7 +68,8 @@ variable FLT-MAP3-U
    FLT-SRC$ s" ghost.f" FLT-GHOST JOIN-PATH FLT-GHOST-U !
    FLT-ROOT$ s" map1.md" FLT-MAP1 JOIN-PATH FLT-MAP1-U !
    FLT-ROOT$ s" map2.md" FLT-MAP2 JOIN-PATH FLT-MAP2-U !
-   FLT-ROOT$ s" map3.md" FLT-MAP3 JOIN-PATH FLT-MAP3-U ! ;
+   FLT-ROOT$ s" map3.md" FLT-MAP3 JOIN-PATH FLT-MAP3-U !
+   FLT-ROOT$ s" map4.md" FLT-MAP4 JOIN-PATH FLT-MAP4-U ! ;
 
 : FLT-ROW+ ( ptr u8 n -- )
    s" - " SB-APPEND
@@ -88,6 +97,18 @@ variable FLT-MAP3-U
    FLT-GHOST$ FLT-ROW+
    SB$ ;
 
+: FLT-PAD! ( -- )
+   FLT-PAD-CAP 0 ?do
+      32 FLT-PAD i BYTE+ c!
+   loop ;
+
+: FLT-LARGE! ( -- )
+   FLT-MAP4$ FLT-MAP1-SRC$ WRITE-ALL
+   FLT-PAD!
+   FLT-LARGE-CHUNKS 0 ?do
+      FLT-MAP4$ FLT-PAD FLT-PAD-CAP APPEND-FILE
+   loop ;
+
 : FLT-FILES! ( -- )
    FLT-LISTED$ s" \ fixture" WRITE-ALL
    FLT-UNLISTED$ s" \ fixture" WRITE-ALL
@@ -95,7 +116,8 @@ variable FLT-MAP3-U
    FLT-NOTES$ s" fixture notes" WRITE-ALL
    FLT-MAP1$ FLT-MAP1-SRC$ WRITE-ALL
    FLT-MAP2$ FLT-MAP2-SRC$ WRITE-ALL
-   FLT-MAP3$ FLT-MAP3-SRC$ WRITE-ALL ;
+   FLT-MAP3$ FLT-MAP3-SRC$ WRITE-ALL
+   FLT-LARGE! ;
 
 : FLT-PREPARE ( -- )
    FLT-ROOT!
@@ -148,6 +170,13 @@ variable FLT-MAP3-U
    FLT-MAP2$ FLT-RUN
    FM-BAD @ 2 T= ;
 
+: FLT-TEST-LARGE ( -- )
+   FLT-MAP4$ FILE-SIZE FLT-OLD-CAP > TTRUE
+   FM-LINT-RESET
+   FLT-EXCLUDED$ FM-EXC
+   FLT-MAP4$ FLT-RUN
+   FM-BAD @ 0 T= ;
+
 : FLT-CLEANUP ( -- )
    FLT-ROOT$ REMOVE-TREE ;
 
@@ -160,6 +189,7 @@ variable FLT-MAP3-U
    FLT-TEST-STALE-PATH
    FLT-TEST-MISSING-DOC
    FLT-TEST-UNEXCLUDED-WITHOUT-ROW
+   FLT-TEST-LARGE
    FLT-CLEANUP
    FLT-ROOT$ EXISTS? TFALSE
    T-REPORT ;

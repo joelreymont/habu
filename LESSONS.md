@@ -5941,3 +5941,7 @@ unchanged (148855). Keys for milestone 2:
 - **Profile selection must preserve explicit budget overrides in either CLI
   order.** Applying a profile after `--budget-ms` or `--wall-budget-ms` must not
   clear their user flags; cold-cache policy must honor the same flags.
+- **Repository-index linters must use the shared growable source reader.** A
+  fixed 128 KiB `FILEMAP.md` buffer failed immediately after independent master
+  growth. `LINT-SOURCE` already provides bounded dynamic storage; prove the
+  consumer with a fixture larger than the retired cap.

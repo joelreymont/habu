@@ -18,13 +18,9 @@ require tools/lint/intern.f
 require tools/lint/token.f
 require tools/lint/lib.f
 
-\ FILEMAP.md outgrew the old $20000 cap (130944 B on 2026-07-17, 128 B under);
-\ grow by constant only - the READ-FILE overflow stays a loud lint failure.
-$40000 constant FM-BUF-CAP
 8 constant FM-ROOT-MAX
 16 constant FM-EXC-MAX
 
-create FM-BUF FM-BUF-CAP allot
 create FM-NUM 32 allot
 create FM-FILEMAP-BUF FS-PATH-CAP allot
 create FM-ROOT-PATHS FM-ROOT-MAX FS-PATH-CAP * allot
@@ -40,6 +36,9 @@ variable FM-NUM-L
 variable FM-FILEMAP-U
 variable FM-ROOT#
 variable FM-EXC#
+
+: FM-BUF@ ( -- ptr u8 )
+   LINT-SOURCE:TEXT drop ;
 
 : FM-NL ( -- ) 10 emit ;
 
@@ -143,8 +142,9 @@ variable FM-EXC#
    FM-I @ 1+ FM-START !
    FM-I @ 1+ FM-I !
    begin FM-I @ FM-LEN @ < while
-      FM-BUF FM-I @ + c@ 96 = if
-         FM-BUF FM-START @ +  FM-I @ FM-START @ -  2dup FM-PATHISH? if INTERN drop else 2drop then
+      FM-BUF@ FM-I @ BYTE+ c@ 96 = if
+         FM-BUF@ FM-START @ BYTE+  FM-I @ FM-START @ -
+         2dup FM-PATHISH? if INTERN drop else 2drop then
          FM-I @ 1+ FM-I !
          exit
       then
@@ -153,10 +153,11 @@ variable FM-EXC#
 
 : FM-SCAN-PATHS ( -- )
    INTERN-RESET
-   FM-FILEMAP$ FM-BUF FM-BUF-CAP READ-FILE nip FM-LEN !
+   FM-FILEMAP$ LINT-SOURCE:LOAD
+   LINT-SOURCE:TEXT nip FM-LEN !
    0 FM-I !
    begin FM-I @ FM-LEN @ < while
-      FM-BUF FM-I @ + c@ 96 = if
+      FM-BUF@ FM-I @ BYTE+ c@ 96 = if
          FM-SCAN-BTICK
       else
          FM-I @ 1+ FM-I !
