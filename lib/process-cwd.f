@@ -7,7 +7,8 @@ create PROC-CWDZ-BUF PROC-PATHZ-CAP allot
 
 : PROC-SPAWN-ARGV-ENV-CWD-RAW ( ptr u8 ptr a ptr a ptr u8 fd fd fd -- pid )
    {: pathz:ptr argv:ptr envp:ptr cwdz:ptr infd outfd errfd :}
-   pathz argv envp cwdz infd FD>N outfd FD>N errfd FD>N spawn-argv-env-cwd-io >PID ;
+   pathz argv envp cwdz infd FD>N outfd FD>N errfd FD>N spawn-argv-env-cwd-io >PID
+   pathz swap PROCESS-TRACE:EXECUTED ;
 
 : PROC-CWDZ ( ptr u8 len -- ptr u8 ) {: a:ptr u :}
    u LEN>N 0 <= if E-PROC-OUTPUT throw then

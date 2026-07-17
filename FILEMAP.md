@@ -287,9 +287,11 @@ points stay listed.
 
 ## Tools And Gates
 
-- `test/gate-stats.f` — checked append-only counter log and summary helpers for
-  native gate duplicate-work RCA.
-- `test/gate-stats-test.f` — focused fixture for gate stats event counting.
+- `test/gate-stats.f` — checked append-only counter log, complete exec/fork
+  attribution, per-process live counters, owner-row queries, and summary helpers
+  for native gate duplicate-work RCA.
+- `test/gate-stats-test.f` — focused fixture for gate stats event counting,
+  process choke coverage, fresh-child inheritance, and owner-local accounting.
 - `test/perf-verdict.f` — pure PERF-VERDICT policy package for the frozen full-gate
   timing rule: pass/marginal/hard bands, calibration-drift stability, admissibility,
   2-of-3 retry aggregation, and a deterministic ATTEMPT-LINE over a typed attempt record.
@@ -1158,6 +1160,11 @@ points stay listed.
 - `tools/hb-open-failure-test.f` — regression: the built engine names the first unresolved baked prefix source on stderr and exits 74 when started outside the repo.
 - `tools/check-repair-hints-test.f` — checked fixture coverage for repair-class hints.
 - `tools/host-lint.f` — rejects retired host-script workflow tokens.
+- `tools/process-primitive-lint-core.f` — confines raw spawn/fork primitives to
+  the checked process wrapper modules and checker primitive declarations.
+- `tools/process-primitive-lint.f` — live-tree raw process primitive lint.
+- `tools/process-primitive-lint-test.f` — comment/string, raw-call, and owner
+  allowlist coverage for process primitive confinement.
 - `tools/bootstrap-mirror-lint.f` — tripwire: ADT declarations must not enter the gforth-compiled recovery corpus (src/) before the stage-0 pass-2 mirror lands.
 - `tools/bootstrap-mirror-lint-test.f` — focused coverage for the recovery-corpus tripwire (clean src walk + planted overlay).
 - `tools/check-all-errors-core.f` — reusable all-errors checker core; keeps
@@ -1215,7 +1222,7 @@ points stay listed.
 - `tools/refine-lint-core.f` — inventory-driven confinement lint for TRUSTED refinement mints (rows shaped `n -- <nominal family>`): references outside the owning file are findings unless cited by the row's Tests cell or an explicit allowlist; a seed list cross-checked against `TRUSTED.md` plus a mint-shape scan keeps the set from rotting. Interim until the TVK-RAW checker capability lands.
 - `tools/refine-lint.f` — CLI wrapper for the refinement-mint confinement lint.
 - `tools/refine-lint-test.f` — checked fixture coverage: shape/policy fixtures, a red scratch-file mint call outside the tree, and the green live tree run.
-- `tools/suite-coverage-lint-core.f` — derives the gate suite lists from test/gate-stdlib-cases.f, test/gate-stdlib-inline-lib.f, test/gate-stdlib-lint-tools.f, test/run-worker-stdlib.f, and test/gate-engine-lib.f each run; enforces that every TEST:SUITE member is scheduled/manual-documented/spawn-only-documented and that the inprocess GSI-LINT-LIBS-PTX-TOOL list equals the spawned ptx-toolchain list minus the documented spawn-only bench set.
+- `tools/suite-coverage-lint-core.f` — derives the gate suite lists from test/gate-stdlib-cases.f, test/gate-stdlib-inline-lib.f, test/gate-stdlib-lint-tools.f, test/run-worker-stdlib.f, test/gate-engine-lib.f, and test/candidate-validation.f each run; enforces that every TEST:SUITE member is scheduled/manual-documented/spawn-only-documented and that the inprocess GSI-LINT-LIBS-PTX-TOOL list equals the spawned ptx-toolchain list minus the documented spawn-only bench set.
 - `tools/suite-coverage-lint.f` — CLI wrapper for the stdlib gate suite-coverage lint.
 - `tools/suite-coverage-lint-test.f` — checked fixture coverage for the suite-coverage lint: BOL member parsing, orphan detection, ptx missing/extra/spawn-only divergence, exact-equality clean case, and manual/spawn-only table staleness.
 - `tools/host-lint-test.f` — focused coverage for host-script lint policy helpers.
@@ -1355,8 +1362,8 @@ points stay listed.
   helpers (mkdir, remove, rename, cleanup) and their coverage.
 - `lib/map.f` / `lib/map-test.f` — fixed-capacity open-addressed string-key
   map layout and its coverage.
-- `lib/process.f` / `lib/process-test.f` — checked process helpers and their
-  coverage.
+- `lib/process.f` / `lib/process-test.f` — checked process helpers, successful
+  exec/fork observation hooks, and their coverage.
 - `lib/process-argv.f` / `lib/process-argv-test.f` — checked argv process
   helpers and their coverage.
 - `lib/process-command.f` / `lib/process-command-test.f` — checked
@@ -1555,7 +1562,16 @@ points stay listed.
 - `test/gate-common.f` — thin entry wrapper for native gate helper definitions.
 - `test/gate-common-lib.f` — side-effect-free native test-suite helper definitions.
 - `test/candidate-runtime.f` — exact-candidate resident runtime source probes.
+- `test/runtime-subject.f` — fork-isolated exact-candidate source capture adapter.
+- `test/candidate-validation.f` — digest-exact resident candidate validation worker.
+- `test/candidate-validation-test.f` — validation batching and retained-boundary regression.
+- `test/gate-validation-worker.f` — candidate/baseline validation evidence runner.
+- `test/gate-process-child.f` — fresh-process exec/fork telemetry inheritance fixture.
 - `test/gate-stdlib.f` — thin entry wrapper for lint/stdlib gate slices.
+- `test/gate-tail-process.f` — focused resident-fork runner and 10-second ratchet
+  for the stdlib process-boundary tail.
+- `test/tail-ratchet.f` — exact per-member direct/subject process-count and
+  elapsed-time ratchet for the stdlib process tail.
 - `test/gate-stdlib-lib.f` — side-effect-free lint/stdlib gate harness helpers.
 - `test/gate-stdlib-cases.f` — executable lint/stdlib suite declarations.
 - `test/gate-engine.f` — thin entry wrapper for engine/public-hb gate slices.

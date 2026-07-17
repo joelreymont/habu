@@ -329,6 +329,27 @@ variable SC-NUM-L
       1+
    repeat drop ;
 
+\ ---- candidate validation manifest: nearest .f token before each RUN-CASE ------
+: SC-CAND-PATH ( n -- ) {: k:n :}
+   k 1- begin dup 0 >= while
+      dup TOK s" RUN-CASE" LINT-STR= if drop exit then
+      dup TOK SC-STRIP-Q 2dup s" .f" HAS-EXT? if
+         SC-SCHED+
+         drop exit
+      then
+      2drop 1-
+   repeat drop ;
+
+: SC-CAND-TOK ( n -- ) {: k:n :}
+   k TOK s" RUN-CASE" LINT-STR= if k SC-CAND-PATH then ;
+
+: SC-CAND-SCAN$ ( ptr u8 n -- )
+   LINT-TRUE PARENS? ! TOKENIZE
+   1 begin dup TN# @ < while
+      dup SC-CAND-TOK
+      1+
+   repeat drop ;
+
 \ ---- inprocess ptx-toolchain list: the GSI-LINT-LIBS-PTX-TOOL definition body -
 : SC-PTX-DEF-START? ( n -- bool ) {: k:n :}
    k TOK s" GSI-LINT-LIBS-PTX-TOOL" LINT-STR=
@@ -458,6 +479,7 @@ variable SC-NUM-L
    s" test/gate-stdlib-lint-tools.f" SC-LOAD-SCHED-FILE
    s" test/run-worker-stdlib.f" SC-LOAD-SCHED-FILE
    s" test/gate-engine-lib.f" SC-LOAD-SCHED-FILE
+   s" test/candidate-validation.f" SC-SCAN-BUF SC-SCAN-CAP SC-READ SC-CAND-SCAN$
    SC-SCHED-CLOSURE-CORES ;
 
 : SC-LOAD-PTX ( -- )

@@ -1209,6 +1209,28 @@ RUN-CAPTURE  ( ptr u8 len ptr u8 len ptr u8 len ms -- len len rc )
 RUN-CAPTURE-OUTCOME  ( ptr u8 len ptr u8 len ptr u8 len ms -- len len outcome )
 ```
 
+The `PROCESS-TRACE` package exposes the observation seam used by the native
+gate. Its default hooks are no-ops, so normal process behavior is unchanged.
+`EXECUTED` invokes the exec hook exactly once only for a nonnegative spawn
+result; a failed spawn invokes the clear hook and emits no event. `FORKED`
+invokes the fork hook exactly once only in the parent of a successful fork;
+the child invokes the child hook, while a failed fork invokes the clear hook;
+neither emits an event. A throwing successful exec/fork hook kills and reaps
+the new child before propagating the exact hook throw, so observation failure
+cannot orphan a process. `REAPER` classifies the next raw fork as reaper work,
+and every fork outcome resets that role. The package initializes all hooks to
+no-ops and the role to direct. Hook setters are checked quotation APIs:
+
+```forth
+PROCESS-TRACE:EXEC-HOOK!  ( [ ptr u8 n -- ] -- )
+PROCESS-TRACE:FORK-HOOK!  ( [ ptr u8 n -- ] -- )
+PROCESS-TRACE:CLEAR-HOOK! ( [ -- ] -- )
+PROCESS-TRACE:CHILD-HOOK! ( [ -- ] -- )
+PROCESS-TRACE:EXECUTED    ( ptr u8 pid -- pid )
+PROCESS-TRACE:FORKED      ( pid -- pid )
+PROCESS-TRACE:REAPER      ( -- )
+```
+
 `PROC-PATHZ` copies a counted path into the module's private NUL-terminated path
 buffer and throws `E-PROC-OUTPUT` if the path does not fit. `PROC-RUN-RC` composes the
 checked `PROC-SPAWN-IO` and `PROC-WAIT-RC` wrappers rather than the unchecked runtime

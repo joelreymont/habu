@@ -96,7 +96,8 @@ variable SMOKE?
    s"  ns/iter" type ;
 
 : BENCH-SPAWN-HB ( -- )
-   s" bin/hb" >LEN PROC-PATHZ IN-R @ -1 -1 spawn-io PID !
+   s" bin/hb" >LEN PROC-PATHZ
+   IN-R @ >FD -1 >FD -1 >FD PROC-SPAWN-RAW PID>N PID !
    PID @ 0 < if s" bench: spawn failed" BENCH-IO then ;
 
 : RUN-HB ( ptr u8 n -- n ) {: prog:ptr pu :}

@@ -582,7 +582,14 @@ schema_version	module	file	kind	word	effect	test	doc	owner	status	notes
 1	source	lib/source.f	word	SOURCE-LS-CHUNK	(n ptr u8 n [ ptr u8 n n -- ] --)	lib/source-test.f	docs/stdlib.md	stdlib-source	active	process one source line stream read chunk
 1	source	lib/source.f	word	SOURCE-LS-DRAIN	(ptr u8 n [ ptr u8 n n -- ] --)	lib/source-test.f	docs/stdlib.md	stdlib-source	active	stream all lines from the active file descriptor
 1	source	lib/source.f	word	SOURCE-FILE-LINES	(ptr u8 n ptr u8 n [ ptr u8 n n -- ] --)	lib/source-test.f	docs/stdlib.md	stdlib-source	published	stream a counted file path line by line through a callback
-1	process	lib/process.f	module			lib/process-test.f	docs/stdlib.md	stdlib-process	active	counted pathz process wrappers RUN-CAPTURE buffers timeout FD_CLOEXEC cleanup
+1	process	lib/process.f	module			lib/process-test.f	docs/stdlib.md	stdlib-process	active	counted pathz process wrappers RUN-CAPTURE buffers timeout FD_CLOEXEC cleanup and successful exec/fork observation hooks
+1	process	lib/process.f	word	PROCESS-TRACE:EXEC-HOOK!	([ ptr u8 n -- ] --)	test/gate-stats-test.f	docs/stdlib.md	stdlib-process	active	install the successful-exec observation hook
+1	process	lib/process.f	word	PROCESS-TRACE:FORK-HOOK!	([ ptr u8 n -- ] --)	test/gate-stats-test.f	docs/stdlib.md	stdlib-process	active	install the successful-parent-fork observation hook
+1	process	lib/process.f	word	PROCESS-TRACE:CLEAR-HOOK!	([ -- ] --)	test/gate-stats-test.f	docs/stdlib.md	stdlib-process	active	install the failed-process outcome cleanup hook
+1	process	lib/process.f	word	PROCESS-TRACE:CHILD-HOOK!	([ -- ] --)	test/gate-stats-test.f	docs/stdlib.md	stdlib-process	active	install the successful-fork child-state reset hook
+1	process	lib/process.f	word	PROCESS-TRACE:EXECUTED	(ptr u8 pid -- pid)	test/gate-stats-test.f	docs/stdlib.md	stdlib-process	active	record one successful exec while preserving its pid
+1	process	lib/process.f	word	PROCESS-TRACE:FORKED	(pid -- pid)	test/gate-stats-test.f	docs/stdlib.md	stdlib-process	active	record one successful parent fork while preserving its pid
+1	process	lib/process.f	word	PROCESS-TRACE:REAPER	(--)	test/gate-stats-test.f	docs/stdlib.md	stdlib-process	active	classify the next successful fork as a reaper
 1	process	lib/process.f	word	PROC-WAIT-STATUS-RAW	(pid -- n)	lib/process-test.f	docs/stdlib.md	stdlib-process	published	raw wait-status alias captured before checked wrappers decode wait outcomes
 1	process	lib/process.f	word	PROC-SPAWN-RAW	(ptr u8 fd fd fd -- pid)	lib/process-test.f	docs/stdlib.md	stdlib-process	published	raw spawn-io alias captured before checked wrapper shadows the primitive name
 1	process	lib/process.f	word	PROC-KILL-RAW	(pid n -- rc)	lib/process-test.f	docs/stdlib.md	stdlib-process	published	raw kill alias for terminating timed-out capture children

@@ -101,11 +101,31 @@ span for each pool entry (spawned or forked); a fork child records its fork
 label at fork entry and `GS-SPAN` suppresses a child emission whose label
 equals it, so fork-backed tests are not double-counted.
 
+Process telemetry is emitted at the four checked exec chokepoints and the
+checked fork chokepoint, not at wrapper call sites. A successful exec emits
+exactly one row; a failed exec emits none. A successful fork emits exactly one
+parent row; child and failed-fork returns emit none. Reaper work is classified
+separately:
+
+```text
+process-exec<TAB>generation<TAB>owner<TAB>candidate|baseline|other<TAB>path
+process-fork<TAB>generation<TAB>owner<TAB>-<TAB>direct|reaper
+```
+
+The explicit owner is the authoritative pool slot or helper label; otherwise
+the active child label or executable path is used. Performance ratchets are
+owner-local: unrelated concurrent phases and process-contract fixtures remain
+visible in the total without consuming another phase's budget.
+`tools/process-primitive-lint.f` makes the census closed-world by rejecting raw
+spawn/fork primitive calls outside the checked process modules and the checker
+primitive declaration table.
+
 The summary must show:
 
 - total top-level phases;
 - cache/candidate counters;
-- child-Habu and helper-spawn counts;
+- child-Habu, process-exec, candidate-exec, process-fork, process-reaper, and
+  backward-compatible helper-spawn counts;
 - in-process evaluation count;
 - span count and slowest span label;
 - load-span count and total load milliseconds (`load-spans`, `load-ms`);
@@ -278,11 +298,19 @@ Short-term Jetson/Orin target: persistent content cache, uncontended,
 Architecture target:
 
 - `inner-hb + inner-hb-stdin <= 15`;
-- `helper-spawn <= 25`;
+- candidate validation uses at most 3 worker execs plus 8 nested execs;
+- normal runtime uses at most 2 owner execs plus 10 subject execs and 10 seconds;
+- the stdlib process tail retains exactly 15 direct execs and 167 isolated
+  subject cases, with a 10-second group ratchet;
 - `boundary <= 20`;
 - slowest host-source semantic test under 10 seconds on Jetson/Orin;
-- hot Jetson/Orin median near 30 seconds once candidate-source batching and dependency
-  scheduling land.
+- hot Jetson/Orin median near 30 seconds once candidate-source batching and
+  dependency scheduling land.
+
+Global exec/fork totals are diagnostic census values, not performance limits:
+process API tests intentionally launch large fixed matrices, and co-located
+reapers depend on whether a case runs inside a pool worker. Per-owner ratchets
+catch semantic engine-boot regressions without conflating those contracts.
 
 Generated stats, caches, build images, and test logs remain local artifacts and
 are never committed. Standalone snapshot-launcher tooling is not part of the

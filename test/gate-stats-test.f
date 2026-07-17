@@ -11,6 +11,8 @@ require lib/fs-mutate.f
 require lib/process.f
 require lib/process-argv.f
 require lib/process-env.f
+require lib/process-cwd.f
+require lib/process-fork.f
 require test/gate-stats.f
 
 create GST-ROOT-BUF FS-PATH-CAP allot
@@ -121,8 +123,6 @@ variable GST-GEN-SAVE-U
    s" candidate-build-skip" GS-EVENT
    s" candidate-validate" GS-EVENT
    s" candidate-cache-corrupt" GS-EVENT
-   s" helper-spawn" GS-EVENT
-   s" named helper" GS-HELPER-EVENT
    s" test phase" s" host-source" s" gate-runner" s" process" s" -" GS-TEST
    s" art phase" s" artifact" s" gate-runner" s" process" s" -" GS-TEST
    s" fast phase" 12 GS-SPAN
@@ -167,7 +167,7 @@ variable GST-GEN-SAVE-U
    GS-CANDIDATE-BUILD-SKIP @ 1 T=
    GS-CANDIDATE-VALIDATE @ 1 T=
    GS-CANDIDATE-CORRUPT @ 1 T=
-   GS-HELPER-SPAWN @ 2 T=
+   GS-HELPER-SPAWN @ 0 T=
    GS-SPANS @ 6 T=
    GS-SLOW-MS @ 34 T=
    GS-SLOW-LABEL GS-SLOW-U @ s" slow phase" T$= ;
@@ -372,6 +372,215 @@ create GST-GUARD-ERR GST-GUARD-CAP allot
    s" x" GST-GEN-ENV-RUN 1 T= {: erru:n :}
    GST-GUARD-ERR erru s" HABU_GATE_GEN" CONTAINS? TTRUE ;
 
+package GATE-STATS-TEST
+
+create CAND-PATH FS-PATH-CAP allot
+variable CAND-U
+variable UNOWNED-BEFORE
+variable UNOWNED-AFTER
+
+: CAND$ ( -- ptr u8 n )
+   CAND-PATH CAND-U @ ;
+
+: CAND-PREPARE ( -- )
+   GST-ROOT$ s" hb-under-test" CAND-PATH JOIN-PATH CAND-U !
+   s" /usr/bin/true" CAND$ COPY-FILE-STREAM
+   CAND$ CHMOD-X ;
+
+: WAIT-CLEAN ( pid -- )
+   PROC-WAIT-STATUS 0 T= ;
+
+: RAW-EXEC ( ptr u8 n ptr u8 n -- )
+   {: path:ptr pathu:n owner:ptr owneru:n :}
+   path pathu >LEN PROC-PATHZ
+   owner owneru GS-HELPER-EVENT
+   -1 >FD -1 >FD -1 >FD PROC-SPAWN-RAW
+   WAIT-CLEAN ;
+
+: RAW-IO ( -- )
+   s" /usr/bin/true" s" raw-io" RAW-EXEC ;
+
+: RAW-FAIL ( -- )
+   s" /no/such/gate-process" >LEN PROC-PATHZ
+   s" failed-io" GS-HELPER-EVENT
+   -1 >FD -1 >FD -1 >FD PROC-SPAWN-RAW PID>N 0 < TTRUE ;
+
+: RAW-UNOWNED ( -- )
+   s" /usr/bin/true" >LEN PROC-PATHZ
+   -1 >FD -1 >FD -1 >FD PROC-SPAWN-RAW WAIT-CLEAN ;
+
+: RAW-ARGV ( -- )
+   PROC-ARGV-RESET
+   s" /usr/bin/true" >LEN PROC-ARGV-PREPARE
+   s" raw-argv" GS-HELPER-EVENT
+   -1 >FD -1 >FD -1 >FD PROC-SPAWN-ARGV-RAW WAIT-CLEAN
+   PROC-ARGV-RESET ;
+
+: RAW-ENV ( -- )
+   PROC-ARGV-ENV-RESET
+   s" /usr/bin/true" >LEN PROC-ARGV-PREPARE PROC-ENV-PREPARE
+   s" raw-env" GS-HELPER-EVENT
+   -1 >FD -1 >FD -1 >FD PROC-SPAWN-ARGV-ENV-RAW WAIT-CLEAN
+   PROC-ARGV-ENV-RESET ;
+
+: RAW-CWD ( -- )
+   PROC-ARGV-ENV-CWD-RESET
+   s" /usr/bin/true" >LEN PROC-ARGV-PREPARE PROC-ENV-PREPARE
+   s" ." >LEN PROC-CWDZ
+   s" raw-cwd" GS-HELPER-EVENT
+   -1 >FD -1 >FD -1 >FD PROC-SPAWN-ARGV-ENV-CWD-RAW WAIT-CLEAN
+   PROC-ARGV-ENV-CWD-RESET ;
+
+: STDIN-EXEC ( -- )
+   PROC-ARGV-RESET
+   s" /bin/cat" >LEN s" x" >LEN
+   GST-GUARD-OUT GST-GUARD-CAP >LEN GST-GUARD-ERR GST-GUARD-CAP >LEN
+   GST-GUARD-NOMINAL-MS T-BUDGET-MS >MS RUN-ARGV-STDIN-CAPTURE
+   {: outu:len erru:len rc:rc :}
+   rc RC>N 0 T=
+   erru LEN>N 0 T=
+   outu LEN>N 1 T=
+   GST-GUARD-OUT 1 s" x" T$= ;
+
+: CAND-EXEC ( -- )
+   CAND$ s" candidate-case" RAW-EXEC ;
+
+: FORK-EXIT ( n -- )
+   s" " rot die ;
+
+: DIRECT-FORK ( -- )
+   s" direct-fork" GS-HELPER-EVENT
+   PROC-FORK {: pid:pid :}
+   pid PID>N 0= if
+      GATE-PROCESS:LIVE-EXEC# 0 <> if 8 FORK-EXIT then
+      GATE-PROCESS:LIVE-FORK# 0 <> if 9 FORK-EXIT then
+      0 FORK-EXIT
+   then
+   pid WAIT-CLEAN ;
+
+: REAPER-FORKS ( -- )
+   s" reaper-forks" GS-HELPER-EVENT
+   PROCESS-TRACE:REAPER
+   PROC-FORK-RAW {: p1:pid :}
+   p1 PID>N 0= if 0 FORK-EXIT then
+   p1 WAIT-CLEAN
+   s" reaper-forks" GS-HELPER-EVENT
+   PROCESS-TRACE:REAPER
+   PROC-FORK-RAW {: p2:pid :}
+   p2 PID>N 0= if 0 FORK-EXIT then
+   p2 WAIT-CLEAN ;
+
+: EXPECTED-LIVE-FORK# ( -- n )
+   3
+   PROC-REAP-WATCH-FD @ 0 >= if 1+ then ;
+
+: EXPECTED-UNOWNED$ ( -- ptr u8 n )
+   GS-CHILD-U @ 0 > if
+      GS-CHILD-BUF GS-CHILD-U @ GS-UNQUAL$
+      exit
+   then
+   s" /usr/bin/true" ;
+
+: UNOWNED-ROW# ( -- n )
+   GS-BUF GS-U @ s" process-exec" EXPECTED-UNOWNED$
+   GATE-PROCESS:ROW-COUNT$ ;
+
+: PROCESS-RUN ( -- )
+   RAW-IO
+   RAW-FAIL
+   GS-READ
+   UNOWNED-ROW# UNOWNED-BEFORE !
+   RAW-UNOWNED
+   GS-READ
+   UNOWNED-ROW# UNOWNED-AFTER !
+   RAW-ARGV
+   RAW-ENV
+   RAW-CWD
+   STDIN-EXEC
+   CAND-EXEC
+   DIRECT-FORK
+   REAPER-FORKS ;
+
+: PROCESS-EXPECT ( -- )
+   GATE-PROCESS:EXEC# 7 T=
+   GATE-PROCESS:LIVE-EXEC# 7 T=
+   GATE-PROCESS:LIVE-FORK# EXPECTED-LIVE-FORK# T=
+   GATE-PROCESS:CANDIDATE# 1 T=
+   GS-BUF GS-U @ s" process-fork" s" direct-fork"
+      GATE-PROCESS:ROW-COUNT$ 1 T=
+   GS-BUF GS-U @ s" process-fork" s" reaper-forks"
+      GATE-PROCESS:ROW-COUNT$ 2 T=
+   GS-HELPER-SPAWN @ 7 T=
+   GS-BUF GS-U @ s" raw-io" CONTAINS? TTRUE
+   GS-BUF GS-U @ s" failed-io" CONTAINS? TFALSE
+   UNOWNED-AFTER @ UNOWNED-BEFORE @ 1+ T=
+   GS-BUF GS-U @ s" raw-argv" CONTAINS? TTRUE
+   GS-BUF GS-U @ s" /bin/cat" CONTAINS? TTRUE
+   GS-BUF GS-U @ s" candidate-case" CONTAINS? TTRUE
+   GS-BUF GS-U @ s" candidate" CONTAINS? TTRUE
+   GS-BUF GS-U @ s" reaper" CONTAINS? TTRUE ;
+
+: TEST-PROCESS ( -- )
+   GST-ROOT$ GS-ROOT!
+   GATE-PROCESS:LIVE-RESET
+   CAND-PREPARE
+   PROCESS-RUN
+   GST-SCAN
+   PROCESS-EXPECT ;
+
+: THROW-HOOK ( ptr u8 n -- )
+   2drop E-FS-IO throw ;
+
+: HOOK-FAIL-SPAWN ( -- )
+   s" /usr/bin/true" >LEN PROC-PATHZ
+   -1 >FD -1 >FD -1 >FD PROC-SPAWN-RAW drop ;
+
+: HOOK-FAIL-FORK ( -- )
+   PROC-FORK-RAW {: pid:pid :}
+   pid PID>N 0= if 0 FORK-EXIT then ;
+
+: TEST-HOOK-FAIL ( -- )
+   [: THROW-HOOK ;] PROCESS-TRACE:EXEC-HOOK!
+   [: HOOK-FAIL-SPAWN ;] catch E-FS-IO T=
+   -1 >PID PROC-WAIT-STATUS-RAW 0 < TTRUE
+   [: THROW-HOOK ;] PROCESS-TRACE:FORK-HOOK!
+   [: HOOK-FAIL-FORK ;] catch E-FS-IO T=
+   -1 >PID PROC-WAIT-STATUS-RAW 0 < TTRUE
+   GATE-PROCESS:INSTALL ;
+
+: NESTED-RUN ( -- )
+   PROC-ARGV-ENV-RESET
+   s" --load" >LEN PROC-ARGV+
+   s" test/gate-process-child.f" >LEN PROC-ARGV+
+   s" HABU_GATE_STATS" >LEN GS-PATH$ >LEN PROC-ENV+
+   s" bin/hb" >LEN
+   GST-GUARD-OUT GST-GUARD-CAP >LEN
+   GST-GUARD-ERR GST-GUARD-CAP >LEN
+   GST-GUARD-NOMINAL-MS T-BUDGET-MS >MS RUN-ARGV-ENV-CAPTURE
+   {: outu:len erru:len rc:rc :}
+   rc RC>N 0 T=
+   outu LEN>N 0 T=
+   erru LEN>N 0 T= ;
+
+: TEST-NESTED ( -- )
+   GST-ROOT$ GS-ROOT!
+   GATE-PROCESS:LIVE-RESET
+   NESTED-RUN
+   GST-SCAN
+   GATE-PROCESS:EXEC# 2 T=
+   GATE-PROCESS:LIVE-EXEC# 1 T=
+   GS-BUF GS-U @ s" process-fork" s" nested-fork"
+      GATE-PROCESS:ROW-COUNT$ 1 T=
+   GS-BUF GS-U @ s" nested-exec" CONTAINS? TTRUE
+   GS-BUF GS-U @ s" nested-fork" CONTAINS? TTRUE ;
+
+public
+
+: PROCESS ( -- ) s" process choke accounting" T-LABEL TEST-PROCESS ;
+: HOOK-FAIL ( -- ) s" trace failure reaps child" T-LABEL TEST-HOOK-FAIL ;
+: NESTED ( -- ) s" fresh-process telemetry" T-LABEL TEST-NESTED ;
+;package
+
 : GST-TEST-SCAN ( -- )
    GST-PREPARE
    GS-PATH$ FILE? TTRUE
@@ -396,6 +605,9 @@ create GST-GUARD-ERR GST-GUARD-CAP allot
 : GST-MAIN-BODY ( -- )
    T-RESET
    GST-TEST-SCAN
+   GATE-STATS-TEST:PROCESS
+   GATE-STATS-TEST:HOOK-FAIL
+   GATE-STATS-TEST:NESTED
    GST-TEST-LABEL-DUP
    GST-TEST-MULTI
    GST-TEST-AUTH

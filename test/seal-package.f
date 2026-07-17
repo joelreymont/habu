@@ -11,17 +11,14 @@
 \ token sinks that resolve a qualified name without defining it: `'` (tick),
 \ `[']` (bracket-tick), and `postpone`. A user `' TFAM:tail`, `['] TYPE:tail`, or
 \ `postpone MATCH:tail` rejects fail-closed (ENGINE-ERROR:SEAL-PACKAGE) exactly like the
-\ define path, case-insensitively, on both cold-prefix entry paths, while
+\ define path, case-insensitively, while
 \ non-reserved, non-qualified, trailing-colon, and reserved-prefix-but-longer
 \ names resolve normally. `[']`/`postpone` are checker-rejected in checked code
 \ independently of the seal, so their inert positives run under `0 set-check`.
 \
-\ Each program is a standalone forge run in a fresh child engine, so it cannot
-\ include layout.f; the reserved names are written literally in the forge source
-\ (they are the sealed spelling under test). The child engine is HABU_UNDER_TEST
-\ when the gate sets it, else bin/hb, so the assertions run against the freshly
-\ built sealed candidate. Both cold-prefix entry paths are covered: `--load` file
-\ and piped stdin.
+\ Semantic cases run in disposable SUBJECT forks of the sealed candidate. Exact
+\ outcome/stdout/stderr parity against direct `--load` and stdin executions is
+\ pinned below; those direct representatives retain both cold-prefix entry paths.
 \
 \ Run: bin/hb --load lib/errors.f lib/string.f lib/test.f lib/memory.f lib/fs.f
 \   lib/fs-mutate.f lib/process.f lib/process-argv.f lib/process-env.f test/seal-package.f
@@ -35,6 +32,8 @@ require lib/fs-mutate.f
 require lib/process.f
 require lib/process-argv.f
 require lib/process-env.f
+require lib/test/subject.f
+require test/tail-ratchet.f
 
 2048 constant SPK-CAP
 10000 constant SPK-TIMEOUT-MS
@@ -244,6 +243,7 @@ create SPK-EMPTY 1 allot             \ zero-length stdin
 
 \ Run the forge as a --load file with empty stdin.
 : SPK-RUN-LOAD ( ptr u8 n -- )
+   TAIL-RATCHET:DIRECT
    SPK-CHILD 2swap WRITE-ALL
    PROC-ARGV-RESET
    s" --load" >LEN PROC-ARGV+
@@ -254,11 +254,23 @@ create SPK-EMPTY 1 allot             \ zero-length stdin
 
 \ Run the forge as a piped stdin program (no --load), the other cold-prefix path.
 : SPK-RUN-STDIN ( ptr u8 n -- )
+   TAIL-RATCHET:DIRECT
    SPK-IN!
    PROC-ARGV-RESET
    SPK-HB$ >LEN  SPK-IN$ >LEN  SPK-OUT SPK-CAP >LEN
    SPK-ERR SPK-CAP >LEN  SPK-TIMEOUT-MS >MS  RUN-ARGV-STDIN-CAPTURE-OUTCOME
    SPK-STORE! ;
+
+package SPK-EXEC
+
+public
+
+: SUBJECT ( ptr u8 n -- )
+   TAIL-RATCHET:SUBJECT
+   SPK-OUT SPK-CAP >LEN SPK-ERR SPK-CAP >LEN
+   SPK-TIMEOUT-MS >MS SUBJECT:RUN SPK-STORE! ;
+
+;package
 
 : SPK-ASSERT-SEAL ( -- )                     \ child died with the sealed-package exit
    SPK-EXITED @ TTRUE
@@ -271,6 +283,48 @@ create SPK-EMPTY 1 allot             \ zero-length stdin
 : SPK-ASSERT-CTOR-MARK ( -- )
    SPK-OUT SPK-OUT-U @ s" ctor-ready" CONTAINS? TTRUE ;
 
+package SPK-PARITY
+
+3 constant DIRECT-N
+50 constant SUBJECT-N
+8000 constant MAX-MS
+
+: RESULT ( -- ptr u8 n ptr u8 n n )
+   SPK-OUT SPK-OUT-U @ SPK-ERR SPK-ERR-U @ SPK-RC @ ;
+
+: NEG-LOAD ( ptr u8 n -- )
+   2dup SPK-RUN-LOAD SPK-ASSERT-SEAL
+   RESULT TAIL-RATCHET:SNAPSHOT
+   SPK-EXEC:SUBJECT SPK-ASSERT-SEAL
+   RESULT TAIL-RATCHET:SAME ;
+
+: NEG-STDIN ( ptr u8 n -- )
+   2dup SPK-RUN-STDIN SPK-ASSERT-SEAL
+   RESULT TAIL-RATCHET:SNAPSHOT
+   SPK-EXEC:SUBJECT SPK-ASSERT-SEAL
+   RESULT TAIL-RATCHET:SAME ;
+
+: POS-LOAD ( ptr u8 n -- )
+   2dup SPK-RUN-LOAD SPK-ASSERT-OK
+   RESULT TAIL-RATCHET:SNAPSHOT
+   SPK-EXEC:SUBJECT SPK-ASSERT-OK
+   RESULT TAIL-RATCHET:SAME ;
+
+public
+
+: TEST ( -- )
+   s" direct --load and subject preserve raw sealed-package results" T-LABEL
+   s" TFAM" SPK-PKG-FORGE$ NEG-LOAD
+   s" direct stdin and subject preserve raw sealed-package results" T-LABEL
+   s" TFAM" SPK-PKG-FORGE$ NEG-STDIN
+   s" direct --load and subject preserve raw successful results" T-LABEL
+   SPK-OK-PKG-FORGE$ POS-LOAD ;
+
+: CHECK ( -- )
+   DIRECT-N SUBJECT-N MAX-MS TAIL-RATCHET:CHECK ;
+
+;package
+
 : SPK-PREPARE ( -- )
    CLEANUP-RESET
    s" habu-seal-pkg" TMPDIR-MKDIR {: a:ptr u:n :}
@@ -282,14 +336,12 @@ create SPK-EMPTY 1 allot             \ zero-length stdin
    CLEANUP-RUN
    SPK-ROOT EXISTS? TFALSE ;
 
-\ --- one reserved spelling: `package NAME` traps on both entry paths. ---
+\ --- one reserved spelling: `package NAME` traps after the sealed entry. ---
 : SPK-PKG-NEG ( ptr u8 n -- ) {: a:ptr u:n :}
-   a u SPK-PKG-FORGE$ SPK-RUN-LOAD SPK-ASSERT-SEAL
-   a u SPK-PKG-FORGE$ SPK-RUN-STDIN SPK-ASSERT-SEAL ;
+   a u SPK-PKG-FORGE$ SPK-EXEC:SUBJECT SPK-ASSERT-SEAL ;
 
 : SPK-QUAL-NEG ( ptr u8 n -- ) {: a:ptr u:n :}
-   a u SPK-QUAL-FORGE$ SPK-RUN-LOAD SPK-ASSERT-SEAL
-   a u SPK-QUAL-FORGE$ SPK-RUN-STDIN SPK-ASSERT-SEAL ;
+   a u SPK-QUAL-FORGE$ SPK-EXEC:SUBJECT SPK-ASSERT-SEAL ;
 
 : SPK-NEGATIVES ( -- )
    s" package TFAM (canonical) traps" T-LABEL   s" TFAM"  SPK-PKG-NEG
@@ -317,40 +369,37 @@ create SPK-EMPTY 1 allot             \ zero-length stdin
       s" ENGINE-ERROR" SPK-QUAL-NEG ;
 
 : SPK-NEGATIVE-CTOR-WID ( -- )
-   s" generated constructor WID rejects new tail (--load)" T-LABEL
-   SPK-CTOR-WID-FORGE$ SPK-RUN-LOAD SPK-ASSERT-SEAL SPK-ASSERT-CTOR-MARK
-   s" generated constructor WID rejects new tail (stdin)" T-LABEL
-   SPK-CTOR-WID-FORGE$ SPK-RUN-STDIN SPK-ASSERT-SEAL SPK-ASSERT-CTOR-MARK ;
+   s" generated constructor WID rejects new tail" T-LABEL
+   SPK-CTOR-WID-FORGE$ SPK-EXEC:SUBJECT SPK-ASSERT-SEAL SPK-ASSERT-CTOR-MARK ;
 
 : SPK-NEGATIVE-FFI-WIDS ( -- )
    s" sealed FFI rejects reopen" T-LABEL
-   SPK-FFI-REOPEN$ SPK-RUN-LOAD SPK-ASSERT-SEAL
+   SPK-FFI-REOPEN$ SPK-EXEC:SUBJECT SPK-ASSERT-SEAL
    s" sealed FFI rejects redirect" T-LABEL
-   SPK-FFI-REDIRECT$ SPK-RUN-LOAD SPK-ASSERT-SEAL
+   SPK-FFI-REDIRECT$ SPK-EXEC:SUBJECT SPK-ASSERT-SEAL
    s" sealed CUDA rejects reopen" T-LABEL
-   SPK-CUDA-REOPEN$ SPK-RUN-LOAD SPK-ASSERT-SEAL
+   SPK-CUDA-REOPEN$ SPK-EXEC:SUBJECT SPK-ASSERT-SEAL
    s" sealed CUDA rejects redirect" T-LABEL
-   SPK-CUDA-REDIRECT$ SPK-RUN-LOAD SPK-ASSERT-SEAL
+   SPK-CUDA-REDIRECT$ SPK-EXEC:SUBJECT SPK-ASSERT-SEAL
    s" sealed TASK rejects reopen" T-LABEL
-   SPK-TASK-REOPEN$ SPK-RUN-LOAD SPK-ASSERT-SEAL
+   SPK-TASK-REOPEN$ SPK-EXEC:SUBJECT SPK-ASSERT-SEAL
    s" sealed TASK rejects redirect" T-LABEL
-   SPK-TASK-REDIRECT$ SPK-RUN-LOAD SPK-ASSERT-SEAL ;
+   SPK-TASK-REDIRECT$ SPK-EXEC:SUBJECT SPK-ASSERT-SEAL ;
 
 : SPK-POSITIVES ( -- )
    s" non-reserved package still compiles" T-LABEL
-   SPK-OK-PKG-FORGE$ SPK-RUN-LOAD SPK-ASSERT-OK
+   SPK-OK-PKG-FORGE$ SPK-EXEC:SUBJECT SPK-ASSERT-OK
    s" non-reserved qualified def still compiles" T-LABEL
-   SPK-OK-QUAL-FORGE$ SPK-RUN-LOAD SPK-ASSERT-OK
+   SPK-OK-QUAL-FORGE$ SPK-EXEC:SUBJECT SPK-ASSERT-OK
    s" trailing-colon ordinary name is not qualified" T-LABEL
-   SPK-OK-EDGE-FORGE$ SPK-RUN-LOAD SPK-ASSERT-OK
+   SPK-OK-EDGE-FORGE$ SPK-EXEC:SUBJECT SPK-ASSERT-OK
    s" reserved-prefix-but-longer package name allowed" T-LABEL
-   SPK-OK-PREFIX-FORGE$ SPK-RUN-LOAD SPK-ASSERT-OK ;
+   SPK-OK-PREFIX-FORGE$ SPK-EXEC:SUBJECT SPK-ASSERT-OK ;
 
 \ --- TFAM 2b-iii: tick / bracket-tick / postpone token sinks ---
 
 : SPK-TICK-NEG ( ptr u8 n -- ) {: a:ptr u:n :}
-   a u SPK-TICK-FORGE$ SPK-RUN-LOAD SPK-ASSERT-SEAL
-   a u SPK-TICK-FORGE$ SPK-RUN-STDIN SPK-ASSERT-SEAL ;
+   a u SPK-TICK-FORGE$ SPK-EXEC:SUBJECT SPK-ASSERT-SEAL ;
 
 : SPK-NEGATIVES-TICK ( -- )
    s" ' TFAM:tail (canonical) traps" T-LABEL      s" TFAM"  SPK-TICK-NEG
@@ -364,32 +413,34 @@ create SPK-EMPTY 1 allot             \ zero-length stdin
    s" ' ENGINE-ERROR:private traps" T-LABEL       s" ENGINE-ERROR" SPK-TICK-NEG ;
 
 : SPK-NEGATIVES-BTICK-POST ( -- )
-   s" ['] TFAM:tail traps (--load)" T-LABEL
-   s" TFAM" SPK-BTICK-FORGE$ SPK-RUN-LOAD SPK-ASSERT-SEAL
-   s" ['] match:tail (alias) traps (stdin)" T-LABEL
-   s" match" SPK-BTICK-FORGE$ SPK-RUN-STDIN SPK-ASSERT-SEAL
-   s" postpone TFAM:tail traps (--load)" T-LABEL
-   s" TFAM" SPK-POST-FORGE$ SPK-RUN-LOAD SPK-ASSERT-SEAL
-   s" postpone type:tail (alias) traps (stdin)" T-LABEL
-   s" type" SPK-POST-FORGE$ SPK-RUN-STDIN SPK-ASSERT-SEAL ;
+   s" ['] TFAM:tail traps" T-LABEL
+   s" TFAM" SPK-BTICK-FORGE$ SPK-EXEC:SUBJECT SPK-ASSERT-SEAL
+   s" ['] match:tail alias traps" T-LABEL
+   s" match" SPK-BTICK-FORGE$ SPK-EXEC:SUBJECT SPK-ASSERT-SEAL
+   s" postpone TFAM:tail traps" T-LABEL
+   s" TFAM" SPK-POST-FORGE$ SPK-EXEC:SUBJECT SPK-ASSERT-SEAL
+   s" postpone type:tail alias traps" T-LABEL
+   s" type" SPK-POST-FORGE$ SPK-EXEC:SUBJECT SPK-ASSERT-SEAL ;
 
 : SPK-POSITIVES-TICK ( -- )
    s" non-qualified tick still works" T-LABEL
-   SPK-OK-TICK-BARE-FORGE$ SPK-RUN-LOAD SPK-ASSERT-OK
+   SPK-OK-TICK-BARE-FORGE$ SPK-EXEC:SUBJECT SPK-ASSERT-OK
    s" non-reserved qualified tick still works" T-LABEL
-   SPK-OK-TICK-QUAL-FORGE$ SPK-RUN-LOAD SPK-ASSERT-OK
+   SPK-OK-TICK-QUAL-FORGE$ SPK-EXEC:SUBJECT SPK-ASSERT-OK
    s" trailing-colon ordinary name is not qualified (tick)" T-LABEL
-   SPK-OK-TICK-EDGE-FORGE$ SPK-RUN-LOAD SPK-ASSERT-OK
+   SPK-OK-TICK-EDGE-FORGE$ SPK-EXEC:SUBJECT SPK-ASSERT-OK
    s" reserved-prefix-but-longer qualifier ticks fine" T-LABEL
-   SPK-OK-TICK-PREFIX-FORGE$ SPK-RUN-LOAD SPK-ASSERT-OK
+   SPK-OK-TICK-PREFIX-FORGE$ SPK-EXEC:SUBJECT SPK-ASSERT-OK
    s" unchecked ['] on a non-reserved name is inert" T-LABEL
-   SPK-OK-BTICK-FORGE$ SPK-RUN-LOAD SPK-ASSERT-OK
+   SPK-OK-BTICK-FORGE$ SPK-EXEC:SUBJECT SPK-ASSERT-OK
    s" unchecked postpone of a non-reserved name is inert" T-LABEL
-   SPK-OK-POST-FORGE$ SPK-RUN-LOAD SPK-ASSERT-OK ;
+   SPK-OK-POST-FORGE$ SPK-EXEC:SUBJECT SPK-ASSERT-OK ;
 
 : SPK-MAIN ( -- )
    T-RESET
+   TAIL-RATCHET:START
    SPK-PREPARE
+   SPK-PARITY:TEST
    SPK-NEGATIVES
    SPK-NEGATIVES-QUAL
    SPK-NEGATIVE-CTOR-WID
@@ -398,6 +449,7 @@ create SPK-EMPTY 1 allot             \ zero-length stdin
    SPK-NEGATIVES-BTICK-POST
    SPK-POSITIVES
    SPK-POSITIVES-TICK
+   SPK-PARITY:CHECK
    SPK-CLEANUP
    T-REPORT
    s" seal-package-test: ok" type cr ;

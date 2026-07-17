@@ -37,6 +37,114 @@ create PROC-PATHZ-BUF PROC-PATHZ-CAP allot
 create PROC-PFD 24 allot
 create PROC-PROBE 1 allot
 
+\ One checked seam observes every process API execution. Hooks are no-ops
+\ outside instrumented runners. Fork roles are consumed by the next raw fork,
+\ so reaper setup cannot leak its classification to later direct workers.
+package PROCESS-TRACE
+
+0 constant ROLE-DIRECT
+1 constant ROLE-REAPER
+
+variable ROLE   ROLE-DIRECT ROLE !
+variable HOOK-BUSY
+variable HOOK-PID
+variable EXEC-PATHZ
+
+defer EXEC-HOOK ( ptr u8 n -- )
+defer FORK-HOOK ( ptr u8 n -- )
+defer CLEAR-HOOK ( -- )
+defer CHILD-HOOK ( -- )
+
+: DROP-EVENT ( ptr u8 n -- )
+   2drop ;
+
+: ROLE$ ( -- ptr u8 n )
+   ROLE @ ROLE-REAPER = if s" reaper" exit then
+   s" direct" ;
+
+: CLEANUP-CHILD ( pid -- ) {: pid:pid :}
+   \ Cleanup cannot replace the hook failure being propagated: signal and wait
+   \ are both best-effort here, and the original hook throw remains authoritative.
+   pid PID>N SIGKILL kill drop
+   pid PID>N wait-status drop ;
+
+: HOOK-BEGIN ( pid -- ) {: pid:pid :}
+   HOOK-BUSY @ if
+      pid CLEANUP-CHILD
+      E-PROC-SPAWN throw
+   then
+   pid HOOK-PID !
+   -1 HOOK-BUSY ! ;
+
+: HOOK-END ( -- )
+   0 HOOK-BUSY ! ;
+
+: EXEC-NOW ( -- )
+   EXEC-PATHZ @ dup ZLEN EXEC-HOOK ;
+
+: FORK-NOW ( -- )
+   ROLE$ FORK-HOOK ;
+
+: HOOK-FINISH ( n -- ) {: code:n :}
+   HOOK-END
+   code 0 <> if
+      HOOK-PID @ CLEANUP-CHILD
+      code throw
+   then ;
+
+public
+
+: EXEC-HOOK! ( [ ptr u8 n -- ] -- )
+   is EXEC-HOOK ;
+
+: FORK-HOOK! ( [ ptr u8 n -- ] -- )
+   is FORK-HOOK ;
+
+: CLEAR-HOOK! ( [ -- ] -- )
+   is CLEAR-HOOK ;
+
+: CHILD-HOOK! ( [ -- ] -- )
+   is CHILD-HOOK ;
+
+: EXECUTED ( ptr u8 pid -- pid ) {: pathz:ptr pid:pid :}
+   pid PID>N 0 >= if
+      pid HOOK-BEGIN
+      pathz EXEC-PATHZ !
+      [: EXEC-NOW ;] catch HOOK-FINISH
+   else
+      CLEAR-HOOK
+   then
+   pid ;
+
+: FORKED ( pid -- pid ) {: pid:pid :}
+   pid PID>N 0 > if
+      pid HOOK-BEGIN
+      [: FORK-NOW ;] catch {: code:n :}
+      ROLE-DIRECT ROLE !
+      code HOOK-FINISH
+      pid exit
+   then
+   pid PID>N 0= if CHILD-HOOK else CLEAR-HOOK then
+   ROLE-DIRECT ROLE !
+   pid ;
+
+: REAPER ( -- )
+   ROLE-REAPER ROLE ! ;
+
+private
+
+: RESET ( -- )
+   [: DROP-EVENT ;] EXEC-HOOK!
+   [: DROP-EVENT ;] FORK-HOOK!
+   [: ;] CLEAR-HOOK!
+   [: ;] CHILD-HOOK!
+   0 HOOK-BUSY !
+   ROLE-DIRECT ROLE ! ;
+
+RESET
+
+;package
+
 variable PROC-PID
 variable PROC-RC
 variable PROC-OUT-R
@@ -57,7 +165,8 @@ variable PROC-TIMED-OUT                  \ bool: the capture hit its deadline (S
    pid PID>N wait-status ;
 
 : PROC-SPAWN-RAW ( ptr u8 fd fd fd -- pid ) {: pathz:ptr infd outfd errfd :}
-   pathz infd FD>N outfd FD>N errfd FD>N spawn-io >PID ;
+   pathz infd FD>N outfd FD>N errfd FD>N spawn-io >PID
+   pathz swap PROCESS-TRACE:EXECUTED ;
 
 : PROC-KILL-RAW ( pid n -- rc ) {: pid sig :}
    pid PID>N sig kill >RC ;

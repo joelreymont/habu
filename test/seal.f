@@ -8,10 +8,9 @@
 \ language features which update the protected cells through engine primitives
 \ still work post-seal.
 \
-\ Each fixture is a standalone forge program run in a fresh child engine, so it
-\ cannot include layout.f; the offsets are named locally (SLF-*), never bare
-\ magic numbers. The child engine is HABU_UNDER_TEST when the gate sets it, else
-\ bin/hb, so the assertions run against the freshly built sealed candidate.
+\ Semantic fixtures run in disposable SUBJECT forks of the sealed candidate.
+\ Exact outcome/stdout/stderr parity against direct `--load` and stdin runs is
+\ pinned below. Clean-start registry-capacity fixtures remain direct executions.
 \
 \ Run: bin/hb --load lib/errors.f lib/string.f lib/test.f lib/memory.f lib/fs.f
 \   lib/fs-mutate.f lib/process.f lib/process-argv.f lib/process-env.f test/seal.f
@@ -25,6 +24,8 @@ require lib/fs-mutate.f
 require lib/process.f
 require lib/process-argv.f
 require lib/process-env.f
+require lib/test/subject.f
+require test/tail-ratchet.f
 
 2048 constant SLV-CAP
 10000 constant SLV-TIMEOUT-MS
@@ -359,6 +360,7 @@ create SLV-EMPTY 1 allot            \ zero-length stdin
 
 \ Run the forge as a --load file with empty stdin.
 : SLV-RUN-LOAD ( ptr u8 n -- )
+   TAIL-RATCHET:DIRECT
    SLV-CHILD 2swap WRITE-ALL
    PROC-ARGV-RESET
    s" --load" >LEN PROC-ARGV+
@@ -369,11 +371,23 @@ create SLV-EMPTY 1 allot            \ zero-length stdin
 
 \ Run the forge as a piped stdin program (no --load), the other cold-prefix path.
 : SLV-RUN-STDIN ( ptr u8 n -- )
+   TAIL-RATCHET:DIRECT
    SLV-IN!
    PROC-ARGV-RESET
    SLV-HB$ >LEN  SLV-IN$ >LEN  SLV-OUT SLV-CAP >LEN
    SLV-ERR SLV-CAP >LEN  SLV-TIMEOUT-MS >MS  RUN-ARGV-STDIN-CAPTURE-OUTCOME
    SLV-STORE! ;
+
+package SLV-EXEC
+
+public
+
+: SUBJECT ( ptr u8 n -- )
+   TAIL-RATCHET:SUBJECT
+   SLV-OUT SLV-CAP >LEN SLV-ERR SLV-CAP >LEN
+   SLV-TIMEOUT-MS >MS SUBJECT:RUN SLV-STORE! ;
+
+;package
 
 : SLV-ASSERT-SEAL ( -- )                    \ child died with the seal-violation exit
    SLV-EXITED @ TTRUE
@@ -451,10 +465,8 @@ ENGINE-ERROR:SEAL-PACKAGE constant SLV-PWID-RC       \ protected-WID table full
    SLV-ERR$ s" hb: cannot publish into protected word" CONTAINS? TTRUE ;
 
 : SLV-PROT-PUBLISH ( -- )
-   s" : foo:BOGUS ; into a public family's protected WID -> labeled exit 84 (stdin)" T-LABEL
-   SLV-PUBLISH-FORGE$ SLV-RUN-STDIN SLV-ASSERT-PROT-PUBLISH
-   s" : foo:BOGUS ; into a protected WID -> labeled exit 84 (--load)" T-LABEL
-   SLV-PUBLISH-FORGE$ SLV-RUN-LOAD SLV-ASSERT-PROT-PUBLISH ;
+   s" : foo:BOGUS ; into a protected WID -> labeled exit 84" T-LABEL
+   SLV-PUBLISH-FORGE$ SLV-EXEC:SUBJECT SLV-ASSERT-PROT-PUBLISH ;
 
 package OWNER-WID-TEST
 
@@ -559,10 +571,10 @@ public
    SLV-ERR$ s" actual: bool" CONTAINS? TTRUE ;
 
 : CHECKER-REJECTS ( -- )
-   s" n n n" s" owner-wid-preflight?" BAD$ SLV-RUN-LOAD ASSERT-CHECKER-BOOL
-   s" n" s" owner-wid-public?" BAD$ SLV-RUN-LOAD ASSERT-CHECKER-BOOL
-   s" n" s" owner-wid-private?" BAD$ SLV-RUN-LOAD ASSERT-CHECKER-BOOL
-   s" n" s" owner-wid?" BAD$ SLV-RUN-LOAD ASSERT-CHECKER-BOOL ;
+   s" n n n" s" owner-wid-preflight?" BAD$ SLV-EXEC:SUBJECT ASSERT-CHECKER-BOOL
+   s" n" s" owner-wid-public?" BAD$ SLV-EXEC:SUBJECT ASSERT-CHECKER-BOOL
+   s" n" s" owner-wid-private?" BAD$ SLV-EXEC:SUBJECT ASSERT-CHECKER-BOOL
+   s" n" s" owner-wid?" BAD$ SLV-EXEC:SUBJECT ASSERT-CHECKER-BOOL ;
 
 : COUNT-FORGE$ ( -- ptr u8 n )
    SB-RESET
@@ -609,15 +621,57 @@ public
 
 : RUN ( -- )
    s" checked source cannot call the internal owner-WID mutator" T-LABEL
-   ADD-FORGE$ SLV-RUN-LOAD ASSERT-ADD-HIDDEN
+   ADD-FORGE$ SLV-EXEC:SUBJECT ASSERT-ADD-HIDDEN
    s" ordinary source cannot look up the internal owner-WID mutator" T-LABEL
-   ADD-LOOKUP-FORGE$ SLV-RUN-LOAD SLV-ASSERT-OK
+   ADD-LOOKUP-FORGE$ SLV-EXEC:SUBJECT SLV-ASSERT-OK
    s" owner-WID query primitives retain exact checked bool effects" T-LABEL
    CHECKER-REJECTS
    s" owner WID registry layout fits before lowering state" T-LABEL
    LAYOUT
    s" owner-WID preflight and role queries are checked and read-only" T-LABEL
-   SOURCE$ SLV-RUN-LOAD SLV-ASSERT-OK ;
+   SOURCE$ SLV-EXEC:SUBJECT SLV-ASSERT-OK ;
+
+;package
+
+package SLV-PARITY
+
+6 constant DIRECT-N
+51 constant SUBJECT-N
+8000 constant MAX-MS
+
+: RESULT ( -- ptr u8 n ptr u8 n n )
+   SLV-OUT SLV-OUT-U @ SLV-ERR SLV-ERR-U @ SLV-RC @ ;
+
+: NEG-LOAD ( ptr u8 n -- )
+   2dup SLV-RUN-LOAD SLV-ASSERT-SEAL
+   RESULT TAIL-RATCHET:SNAPSHOT
+   SLV-EXEC:SUBJECT SLV-ASSERT-SEAL
+   RESULT TAIL-RATCHET:SAME ;
+
+: NEG-STDIN ( ptr u8 n -- )
+   2dup SLV-RUN-STDIN SLV-ASSERT-SEAL
+   RESULT TAIL-RATCHET:SNAPSHOT
+   SLV-EXEC:SUBJECT SLV-ASSERT-SEAL
+   RESULT TAIL-RATCHET:SAME ;
+
+: POS-LOAD ( ptr u8 n -- )
+   2dup SLV-RUN-LOAD SLV-ASSERT-OK
+   RESULT TAIL-RATCHET:SNAPSHOT
+   SLV-EXEC:SUBJECT SLV-ASSERT-OK
+   RESULT TAIL-RATCHET:SAME ;
+
+public
+
+: TEST ( -- )
+   s" direct --load and subject preserve raw seal results" T-LABEL
+   SLV-CUR-FORGE$ NEG-LOAD
+   s" direct stdin and subject preserve raw seal results" T-LABEL
+   SLV-CUR-FORGE$ NEG-STDIN
+   s" direct --load and subject preserve raw successful results" T-LABEL
+   SLV-LANG-FORGE$ POS-LOAD ;
+
+: CHECK ( -- )
+   DIRECT-N SUBJECT-N MAX-MS TAIL-RATCHET:CHECK ;
 
 ;package
 
@@ -633,113 +687,103 @@ public
    SLV-ROOT EXISTS? TFALSE ;
 
 : SLV-NEGATIVES ( -- )
-   s" ! into CUR-CELL traps via --load" T-LABEL
-   SLV-CUR-FORGE$ SLV-RUN-LOAD SLV-ASSERT-SEAL
-   s" ! into CUR-CELL traps via stdin pipe" T-LABEL
-   SLV-CUR-FORGE$ SLV-RUN-STDIN SLV-ASSERT-SEAL
+   s" ! into CUR-CELL traps" T-LABEL
+   SLV-CUR-FORGE$ SLV-EXEC:SUBJECT SLV-ASSERT-SEAL
    s" overwrite of the latch itself traps (one-way seal)" T-LABEL
-   SLV-LATCH-FORGE$ SLV-RUN-LOAD SLV-ASSERT-SEAL
+   SLV-LATCH-FORGE$ SLV-EXEC:SUBJECT SLV-ASSERT-SEAL
    s" c! into WIDN-CELL traps" T-LABEL
-   SLV-WIDN-C-FORGE$ SLV-RUN-LOAD SLV-ASSERT-SEAL
+   SLV-WIDN-C-FORGE$ SLV-EXEC:SUBJECT SLV-ASSERT-SEAL
    s" +! into WIDN-CELL traps" T-LABEL
-   SLV-WIDN-ADD-FORGE$ SLV-RUN-LOAD SLV-ASSERT-SEAL
+   SLV-WIDN-ADD-FORGE$ SLV-EXEC:SUBJECT SLV-ASSERT-SEAL
    s" atomic! into the band traps" T-LABEL
-   SLV-ATOMIC-FORGE$ SLV-RUN-LOAD SLV-ASSERT-SEAL
+   SLV-ATOMIC-FORGE$ SLV-EXEC:SUBJECT SLV-ASSERT-SEAL
    s" read buffer starting in the band traps" T-LABEL
-   SLV-READ-FORGE$ SLV-RUN-LOAD SLV-ASSERT-SEAL
+   SLV-READ-FORGE$ SLV-EXEC:SUBJECT SLV-ASSERT-SEAL
    s" ! into the protected-WID registry count traps (band 2)" T-LABEL
-   SLV-PWIDN-FORGE$ SLV-RUN-LOAD SLV-ASSERT-SEAL
+   SLV-PWIDN-FORGE$ SLV-EXEC:SUBJECT SLV-ASSERT-SEAL
    s" c! into the protected-WID registry table traps (band 2)" T-LABEL
-   SLV-PWIDT-FORGE$ SLV-RUN-LOAD SLV-ASSERT-SEAL
+   SLV-PWIDT-FORGE$ SLV-EXEC:SUBJECT SLV-ASSERT-SEAL
    s" c! at the band-2 upper boundary (PROT-REG-OFF+PROT-REG-LEN-1) traps" T-LABEL
-   SLV-BAND2-END-FORGE$ SLV-RUN-LOAD SLV-ASSERT-SEAL
+   SLV-BAND2-END-FORGE$ SLV-EXEC:SUBJECT SLV-ASSERT-SEAL
    s" ! into the uncaught-throw reporter hook traps" T-LABEL
-   SLV-UNCGH-FORGE$ SLV-RUN-LOAD SLV-ASSERT-SEAL
+   SLV-UNCGH-FORGE$ SLV-EXEC:SUBJECT SLV-ASSERT-SEAL
    s" ! into the owner-WID count traps (band 3)" T-LABEL
-   OWNER-WID-TEST:COUNT-FORGE$ SLV-RUN-LOAD SLV-ASSERT-SEAL
+   OWNER-WID-TEST:COUNT-FORGE$ SLV-EXEC:SUBJECT SLV-ASSERT-SEAL
    s" c! into the owner-WID table traps (band 3)" T-LABEL
-   OWNER-WID-TEST:TABLE-FORGE$ SLV-RUN-LOAD SLV-ASSERT-SEAL
+   OWNER-WID-TEST:TABLE-FORGE$ SLV-EXEC:SUBJECT SLV-ASSERT-SEAL
    s" c! at the owner-WID band's last byte traps" T-LABEL
-   OWNER-WID-TEST:END-FORGE$ SLV-RUN-LOAD SLV-ASSERT-SEAL
+   OWNER-WID-TEST:END-FORGE$ SLV-EXEC:SUBJECT SLV-ASSERT-SEAL
    s" cp! redirecting emission into band 2 traps at the sink" T-LABEL
-   SLV-CPSET-B2-FORGE$ SLV-RUN-LOAD SLV-ASSERT-SEAL
+   SLV-CPSET-B2-FORGE$ SLV-EXEC:SUBJECT SLV-ASSERT-SEAL
    s" cp! redirecting emission into band 1 traps at the sink" T-LABEL
-   SLV-CPSET-B1-FORGE$ SLV-RUN-LOAD SLV-ASSERT-SEAL ;
+   SLV-CPSET-B1-FORGE$ SLV-EXEC:SUBJECT SLV-ASSERT-SEAL ;
 
 \ One forge per remaining guarded sink — each sink hand-wires its own PROT-GUARD
 \ register, so testing one proves nothing about another's wiring.
 : SLV-NEGATIVES-SINKS ( -- )
    s" atomic-add addr (x10) into the band traps" T-LABEL
-   SLV-ATADD-FORGE$ SLV-RUN-LOAD SLV-ASSERT-SEAL
+   SLV-ATADD-FORGE$ SLV-EXEC:SUBJECT SLV-ASSERT-SEAL
    s" atomic-cas addr (x11, only C guard) into the band traps" T-LABEL
-   SLV-ATCAS-FORGE$ SLV-RUN-LOAD SLV-ASSERT-SEAL
+   SLV-ATCAS-FORGE$ SLV-EXEC:SUBJECT SLV-ASSERT-SEAL
    s" ioctl arg (x2) into the band traps" T-LABEL
-   SLV-IOCTL-FORGE$ SLV-RUN-LOAD SLV-ASSERT-SEAL
+   SLV-IOCTL-FORGE$ SLV-EXEC:SUBJECT SLV-ASSERT-SEAL
    s" poll pollfd array (x0) into the band traps" T-LABEL
-   SLV-POLL-FORGE$ SLV-RUN-LOAD SLV-ASSERT-SEAL
+   SLV-POLL-FORGE$ SLV-EXEC:SUBJECT SLV-ASSERT-SEAL
    s" readlink link buffer (x2) into the band traps" T-LABEL
-   SLV-READLINK-FORGE$ SLV-RUN-LOAD SLV-ASSERT-SEAL
+   SLV-READLINK-FORGE$ SLV-EXEC:SUBJECT SLV-ASSERT-SEAL
    s" stat64 statbuf (x1) into the band traps" T-LABEL
-   SLV-STAT-FORGE$ SLV-RUN-LOAD SLV-ASSERT-SEAL
+   SLV-STAT-FORGE$ SLV-EXEC:SUBJECT SLV-ASSERT-SEAL
    s" lstat64 statbuf (x1) into the band traps" T-LABEL
-   SLV-LSTAT-FORGE$ SLV-RUN-LOAD SLV-ASSERT-SEAL
+   SLV-LSTAT-FORGE$ SLV-EXEC:SUBJECT SLV-ASSERT-SEAL
    s" getdirentries64 dirent buffer (x1) into the band traps" T-LABEL
-   SLV-DENTS-BUF-FORGE$ SLV-RUN-LOAD SLV-ASSERT-SEAL
+   SLV-DENTS-BUF-FORGE$ SLV-EXEC:SUBJECT SLV-ASSERT-SEAL
    s" getdirentries64 basep (x3) into the band traps" T-LABEL
-   SLV-DENTS-BASEP-FORGE$ SLV-RUN-LOAD SLV-ASSERT-SEAL
+   SLV-DENTS-BASEP-FORGE$ SLV-EXEC:SUBJECT SLV-ASSERT-SEAL
    s" mmap addr (x0) into the band traps" T-LABEL
-   SLV-MMAP-FORGE$ SLV-RUN-LOAD SLV-ASSERT-SEAL
+   SLV-MMAP-FORGE$ SLV-EXEC:SUBJECT SLV-ASSERT-SEAL
    s" FFI live pointer arg into band 1 traps before the call" T-LABEL
-   SLV-FFI-B1-FORGE$ SLV-RUN-LOAD SLV-ASSERT-SEAL
+   SLV-FFI-B1-FORGE$ SLV-EXEC:SUBJECT SLV-ASSERT-SEAL
    s" FFI live pointer arg into band 2 traps before the call" T-LABEL
-   SLV-FFI-B2-FORGE$ SLV-RUN-LOAD SLV-ASSERT-SEAL
+   SLV-FFI-B2-FORGE$ SLV-EXEC:SUBJECT SLV-ASSERT-SEAL
    s" FFI live pointer arg crossing owner-WID band traps before the call" T-LABEL
-   OWNER-WID-TEST:FFI-FORGE$ SLV-RUN-LOAD SLV-ASSERT-SEAL ;
+   OWNER-WID-TEST:FFI-FORGE$ SLV-EXEC:SUBJECT SLV-ASSERT-SEAL ;
 
 \ Sealed-dictionary truncation guard (TFAM 2b-iii): FORGET-DEFS-FROM /
 \ HIDE-DEFS-FROM of an engine definition (below the seal-time ndict watermark)
-\ must trap ENGINE-ERROR:SEAL-VIOLATION on both cold-prefix entry paths.
+\ must trap ENGINE-ERROR:SEAL-VIOLATION after the sealed entry.
 : SLV-NEGATIVES-TRUNCATE ( -- )
-   s" FORGET-DEFS-FROM of an engine def traps via --load" T-LABEL
-   SLV-FORGET-ENGINE-FORGE$ SLV-RUN-LOAD SLV-ASSERT-SEAL
-   s" FORGET-DEFS-FROM of an engine def traps via stdin pipe" T-LABEL
-   SLV-FORGET-ENGINE-FORGE$ SLV-RUN-STDIN SLV-ASSERT-SEAL
-   s" HIDE-DEFS-FROM of an engine def traps via --load" T-LABEL
-   SLV-HIDE-ENGINE-FORGE$ SLV-RUN-LOAD SLV-ASSERT-SEAL
-   s" HIDE-DEFS-FROM of an engine def traps via stdin pipe" T-LABEL
-   SLV-HIDE-ENGINE-FORGE$ SLV-RUN-STDIN SLV-ASSERT-SEAL
-   s" direct CHECKER-USIGS-TRUNCATE-FROM traps via --load" T-LABEL
-   SLV-USIG-TRUNC-FORGE$ SLV-RUN-LOAD SLV-ASSERT-SEAL
-   s" direct CHECKER-USIGS-TRUNCATE-FROM traps via stdin pipe" T-LABEL
-   SLV-USIG-TRUNC-FORGE$ SLV-RUN-STDIN SLV-ASSERT-SEAL
-   s" FORGET-DEFS-FROM of the script-argv tail traps via --load" T-LABEL
-   SLV-FORGET-TAIL-FORGE$ SLV-RUN-LOAD SLV-ASSERT-SEAL
-   s" FORGET-DEFS-FROM of the script-argv tail traps via stdin pipe" T-LABEL
-   SLV-FORGET-TAIL-FORGE$ SLV-RUN-STDIN SLV-ASSERT-SEAL
-   s" HIDE-DEFS-FROM of the script-argv tail traps via --load" T-LABEL
-   SLV-HIDE-TAIL-FORGE$ SLV-RUN-LOAD SLV-ASSERT-SEAL
-   s" HIDE-DEFS-FROM of the script-argv tail traps via stdin pipe" T-LABEL
-   SLV-HIDE-TAIL-FORGE$ SLV-RUN-STDIN SLV-ASSERT-SEAL ;
+   s" FORGET-DEFS-FROM of an engine def traps" T-LABEL
+   SLV-FORGET-ENGINE-FORGE$ SLV-EXEC:SUBJECT SLV-ASSERT-SEAL
+   s" HIDE-DEFS-FROM of an engine def traps" T-LABEL
+   SLV-HIDE-ENGINE-FORGE$ SLV-EXEC:SUBJECT SLV-ASSERT-SEAL
+   s" direct CHECKER-USIGS-TRUNCATE-FROM traps" T-LABEL
+   SLV-USIG-TRUNC-FORGE$ SLV-EXEC:SUBJECT SLV-ASSERT-SEAL
+   s" FORGET-DEFS-FROM of the script-argv tail traps" T-LABEL
+   SLV-FORGET-TAIL-FORGE$ SLV-EXEC:SUBJECT SLV-ASSERT-SEAL
+   s" HIDE-DEFS-FROM of the script-argv tail traps" T-LABEL
+   SLV-HIDE-TAIL-FORGE$ SLV-EXEC:SUBJECT SLV-ASSERT-SEAL ;
 
 : SLV-POSITIVES ( -- )
    s" free hole below the band stays writable" T-LABEL
-   SLV-HOLE-FORGE$ SLV-RUN-LOAD SLV-ASSERT-OK
+   SLV-HOLE-FORGE$ SLV-EXEC:SUBJECT SLV-ASSERT-OK
    s" store one past band 2 ($40C8) stays writable" T-LABEL
-   SLV-PAST-BAND2-FORGE$ SLV-RUN-LOAD SLV-ASSERT-OK
+   SLV-PAST-BAND2-FORGE$ SLV-EXEC:SUBJECT SLV-ASSERT-OK
    s" store one past owner-WID band ($4FC8) stays writable" T-LABEL
-   OWNER-WID-TEST:PAST-FORGE$ SLV-RUN-LOAD SLV-ASSERT-OK
+   OWNER-WID-TEST:PAST-FORGE$ SLV-EXEC:SUBJECT SLV-ASSERT-OK
    s" legit cp!/ndict! FORGET round-trip still works" T-LABEL
-   SLV-FORGET-FORGE$ SLV-RUN-LOAD SLV-ASSERT-OK
+   SLV-FORGET-FORGE$ SLV-EXEC:SUBJECT SLV-ASSERT-OK
    s" FORGET-DEFS-FROM of a post-seal user mark still works" T-LABEL
-   SLV-FORGET-USER-FORGE$ SLV-RUN-LOAD SLV-ASSERT-OK
+   SLV-FORGET-USER-FORGE$ SLV-EXEC:SUBJECT SLV-ASSERT-OK
    s" HIDE-DEFS-FROM of a post-seal user mark still works" T-LABEL
-   SLV-HIDE-USER-FORGE$ SLV-RUN-LOAD SLV-ASSERT-OK
+   SLV-HIDE-USER-FORGE$ SLV-EXEC:SUBJECT SLV-ASSERT-OK
    s" post-seal define/package/trusted/defer still work" T-LABEL
-   SLV-LANG-FORGE$ SLV-RUN-LOAD SLV-ASSERT-OK ;
+   SLV-LANG-FORGE$ SLV-EXEC:SUBJECT SLV-ASSERT-OK ;
 
 : SLV-MAIN ( -- )
    T-RESET
+   TAIL-RATCHET:START
    SLV-PREPARE
+   SLV-PARITY:TEST
    SLV-NEGATIVES
    SLV-NEGATIVES-SINKS
    SLV-NEGATIVES-TRUNCATE
@@ -747,6 +791,7 @@ public
    SLV-PWID-CAP
    SLV-PROT-PUBLISH
    OWNER-WID-TEST:RUN
+   SLV-PARITY:CHECK
    SLV-CLEANUP
    T-REPORT
    s" seal-test: ok" type cr ;

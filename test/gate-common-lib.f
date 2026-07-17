@@ -123,22 +123,22 @@ variable GE-EVAL-SRC-U
    PROC-ERR-W PROC-CLOSE-CELL ;
 
 : GE-RUN-ENV ( ptr u8 n n -- ) {: path:ptr pathu:n timeout:n :}
-   path pathu GS-HELPER-EVENT
    PROC-ENV-INHERIT-MISSING
    path pathu >LEN PROC-ARGV-PREPARE {: pathz:ptr argv:ptr :}
    PROC-ENV-PREPARE {: envp:ptr :}
    timeout >MS PROC-CAPTURE-BEGIN
+   path pathu GS-HELPER-EVENT
    pathz argv envp GE-SPAWN-CAPTURE
    GT-OUT-BUF GT-OUT-CAP >LEN GT-ERR-BUF GT-ERR-CAP >LEN
    PROC-RUN-CAPTURE-OUTCOME-LOOP
    PROC-CAPTURE-FINISH-OUTCOME GE-STORE-OUTCOME ;
 
 : GE-RUN-STDIN ( ptr u8 n ptr u8 n n -- ) {: path:ptr pathu:n in:ptr inu:n timeout:n :}
-   path pathu GS-HELPER-EVENT
    PROC-ENV-INHERIT-MISSING
    path pathu >LEN PROC-ARGV-PREPARE {: pathz:ptr argv:ptr :}
    PROC-ENV-PREPARE {: envp:ptr :}
    timeout >MS PROC-STDIN-CAPTURE-BEGIN
+   path pathu GS-HELPER-EVENT
    pathz argv envp GE-SPAWN-STDIN-CAPTURE
    in inu >LEN GT-OUT-BUF GT-OUT-CAP >LEN GT-ERR-BUF GT-ERR-CAP >LEN
    PROC-RUN-STDIN-CAPTURE-OUTCOME-LOOP
@@ -155,7 +155,6 @@ variable GE-EVAL-SRC-U
    PROC-ERR-W PROC-CLOSE-CELL ;
 
 : GE-RUN-STDIN-FILE ( ptr u8 n ptr u8 n n -- ) {: path:ptr pathu:n inpath:ptr inpathu:n timeout:n :}
-   path pathu GS-HELPER-EVENT
    PROC-ENV-INHERIT-MISSING
    inpath inpathu FS-PATHZ open-rd GE-INFD !
    GE-INFD @ 0 < if E-FS-OPEN throw then
@@ -163,6 +162,7 @@ variable GE-EVAL-SRC-U
    path pathu >LEN PROC-ARGV-PREPARE {: pathz:ptr argv:ptr :}
    PROC-ENV-PREPARE {: envp:ptr :}
    timeout >MS PROC-CAPTURE-BEGIN
+   path pathu GS-HELPER-EVENT
    pathz argv envp GE-SPAWN-FILE-CAPTURE
    GT-OUT-BUF GT-OUT-CAP >LEN GT-ERR-BUF GT-ERR-CAP >LEN PROC-RUN-CAPTURE-OUTCOME-LOOP
    PROC-CAPTURE-FINISH-OUTCOME GE-STORE-OUTCOME ;
@@ -552,65 +552,13 @@ TRUSTED: GE-EVAL-SOURCE ( -- )
    PROC-OUT-W PROC-CLOSE-CELL
    PROC-ERR-W PROC-CLOSE-CELL ;
 
-: GE-EVAL-FORK-CAPTURE-SRC ( ptr u8 n -- )
-   GE-EVAL-SRC!
+: GE-EVAL-FORK-CAPTURE ( -- )
+   GE-SRC-BUF GE-SRC-U @ GE-EVAL-SRC!
    GE-TIMEOUT-MS >MS PROC-CAPTURE-BEGIN
    GE-EVAL-FORK-SPAWN
    GT-OUT-BUF GT-OUT-CAP >LEN GT-ERR-BUF GT-ERR-CAP >LEN
    PROC-RUN-CAPTURE-OUTCOME-LOOP
    PROC-CAPTURE-FINISH-OUTCOME GE-STORE-OUTCOME ;
-
-: GE-EVAL-FORK-CAPTURE ( -- )
-   GE-SRC-BUF GE-SRC-U @ GE-EVAL-FORK-CAPTURE-SRC ;
-
-package GATE-PARITY
-private
-
-create SRC GE-SRC-CAP allot
-create OUT GT-OUT-CAP allot
-create ERR GT-ERR-CAP allot
-
-variable SRC-U
-variable OUT-U
-variable ERR-U
-variable EXITED
-variable TIMED-OUT
-variable CODE
-
-: SOURCE! ( -- )
-   GE-SRC-U @ GE-SRC-CAP > if E-STR-CAPACITY throw then
-   GE-SRC-BUF SRC GE-SRC-U @ BYTE-COPY
-   GE-SRC-U @ SRC-U ! ;
-
-: SAVE ( -- )
-   GT-OUT$ OUT swap dup OUT-U ! BYTE-COPY
-   GT-ERR$ ERR swap dup ERR-U ! BYTE-COPY
-   GT-EXITED @ EXITED !
-   GT-TIMED-OUT @ TIMED-OUT !
-   GT-CODE @ CODE ! ;
-
-: CHECK ( ptr u8 n -- ) {: label:ptr labelu:n :}
-   SRC SRC-U @ GE-SRC-BUF GE-SRC-U @ STR= 0= if
-      label labelu GE-FAIL
-   then
-   GT-EXITED @ EXITED @ <> if label labelu GE-FAIL then
-   GT-TIMED-OUT @ TIMED-OUT @ <> if label labelu GE-FAIL then
-   GT-CODE @ CODE @ <> if label labelu GE-FAIL then
-   GT-OUT$ OUT OUT-U @ STR= 0= if label labelu GE-FAIL then
-   GT-ERR$ ERR ERR-U @ STR= 0= if label labelu GE-FAIL then ;
-
-public
-
-: RUN ( ptr u8 n -- ) {: label:ptr labelu:n :}
-   SOURCE!
-   GE-HB-RESET
-   GE-HB$ SRC SRC-U @ GE-TIMEOUT-MS GE-RUN-STDIN
-   SAVE
-   s" fork-eval" GS-EVENT
-   SRC SRC-U @ GE-EVAL-FORK-CAPTURE-SRC
-   label labelu CHECK ;
-
-;package
 
 : GE-EVAL-FORK-BAD ( n ptr u8 n ptr u8 n -- )
    {: rc:n needle:ptr needleu:n label:ptr labelu:n :}

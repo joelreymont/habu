@@ -236,9 +236,6 @@ GS-GEN-INIT
    GS-LF GS-LINE-C+
    GS-PATH$ GS-LINE-BUF GS-LINE-U @ APPEND-FILE ;
 
-: GS-HELPER-EVENT ( ptr u8 n -- )
-   s" helper-spawn" 2swap GS-EVENT-FIELD ;
-
 : GS-INNER-HB-EVENT ( ptr u8 n -- )
    s" inner-hb-spawn" 2swap GS-EVENT-FIELD ;
 
@@ -269,6 +266,119 @@ GS-GEN-INIT
 : GS-CHILD-OWNED? ( ptr u8 n -- bool ) {: a:ptr u:n :}
    GS-CHILD-U @ 0= if GS-FALSE exit then
    a u GS-CHILD-BUF GS-CHILD-U @ STR= ;
+
+\ Complete process telemetry is installed only by the gate stats module. The
+\ process library owns the choke hooks; this package owns gate attribution,
+\ candidate identity, per-process live counts, and the one-shot owner seam.
+package GATE-PROCESS
+
+create OWNER-BUF GS-LINE-CAP allot
+
+variable OWNER-U
+variable EXECS
+variable FORKS
+variable REAPERS
+variable CANDS
+variable LIVE-EXECS
+variable LIVE-FORKS
+variable FIELD-I
+variable FIELD-START
+
+: OWNER-COPY! ( ptr u8 n -- ) {: a:ptr u:n :}
+   u 0 < if E-STR-BOUNDS throw then
+   u GS-LINE-CAP > if E-STR-CAPACITY throw then
+   a OWNER-BUF u BYTE-COPY
+   u OWNER-U ! ;
+
+: OWNER$ ( -- ptr u8 n )
+   OWNER-U @ 0 > if OWNER-BUF OWNER-U @ exit then
+   GS-CHILD-U @ 0 > if GS-CHILD-BUF GS-CHILD-U @ GS-UNQUAL$ exit then
+   GS-EMPTY$ ;
+
+: CANDIDATE? ( ptr u8 n -- bool ) {: path:ptr pathu:n :}
+   s" HABU_UNDER_TEST" GETENV dup 0 <> if
+      path pathu 2swap STR= if GS-TRUE exit then
+   else
+      2drop
+   then
+   path pathu s" hb-under-test" ENDS-WITH? ;
+
+: BASELINE? ( ptr u8 n -- bool ) {: path:ptr pathu:n :}
+   path pathu s" bin/hb" ENDS-WITH? ;
+
+: IDENTITY$ ( ptr u8 n -- ptr u8 n ) {: path:ptr pathu:n :}
+   path pathu CANDIDATE? if s" candidate" exit then
+   path pathu BASELINE? if s" baseline" exit then
+   s" other" ;
+
+: FIELD+ ( ptr u8 n -- )
+   GS-TAB GS-LINE-C+
+   GS-LINE+ ;
+
+: EVENT ( ptr u8 n ptr u8 n ptr u8 n -- )
+   {: kind:ptr kindu:n path:ptr pathu:n ident:ptr identu:n :}
+   GS-ON? 0= if 0 OWNER-U ! exit then
+   GS-LINE-RESET
+   kind kindu GS-LINE+
+   GS-GEN$ FIELD+
+   OWNER$ dup 0= if 2drop path pathu then FIELD+
+   ident identu FIELD+
+   path pathu FIELD+
+   GS-LF GS-LINE-C+
+   GS-PATH$ GS-LINE-BUF GS-LINE-U @ APPEND-FILE
+   0 OWNER-U ! ;
+
+: EXEC-EVENT ( ptr u8 n -- ) {: path:ptr pathu:n :}
+   LIVE-EXECS @ 1+ LIVE-EXECS !
+   s" process-exec" path pathu path pathu IDENTITY$ EVENT ;
+
+: FORK-EVENT ( ptr u8 n -- ) {: role:ptr roleu:n :}
+   LIVE-FORKS @ 1+ LIVE-FORKS !
+   OWNER-U @ 0= GS-CHILD-U @ 0= and if s" root" OWNER-COPY! then
+   s" process-fork" role roleu s" -" EVENT ;
+
+: CHILD-RESET ( -- )
+   0 OWNER-U !
+   0 LIVE-EXECS !
+   0 LIVE-FORKS ! ;
+
+public
+
+: OWNER! ( ptr u8 n -- )
+   GS-ON? if OWNER-COPY! else 2drop then ;
+
+: INSTALL ( -- )
+   [: EXEC-EVENT ;] PROCESS-TRACE:EXEC-HOOK!
+   [: FORK-EVENT ;] PROCESS-TRACE:FORK-HOOK!
+   [: 0 OWNER-U ! ;] PROCESS-TRACE:CLEAR-HOOK!
+   [: CHILD-RESET ;] PROCESS-TRACE:CHILD-HOOK! ;
+
+: COUNTS-RESET ( -- )
+   0 OWNER-U !
+   0 EXECS !
+   0 FORKS !
+   0 REAPERS !
+   0 CANDS ! ;
+
+: LIVE-RESET ( -- )
+   0 LIVE-EXECS !
+   0 LIVE-FORKS ! ;
+
+: EXEC# ( -- n ) EXECS @ ;
+: FORK# ( -- n ) FORKS @ ;
+: REAPER# ( -- n ) REAPERS @ ;
+: CANDIDATE# ( -- n ) CANDS @ ;
+: LIVE-EXEC# ( -- n ) LIVE-EXECS @ ;
+: LIVE-FORK# ( -- n ) LIVE-FORKS @ ;
+
+;package
+
+GATE-PROCESS:INSTALL
+
+\ Legacy wrapper sites now supply attribution only; the process choke writes
+\ the sole count, so a wrapper and its raw spawn cannot double-count one exec.
+: GS-HELPER-EVENT ( ptr u8 n -- )
+   GATE-PROCESS:OWNER! ;
 
 : GS-SPAN-EMIT ( ptr u8 n ptr u8 n n -- ) {: kind:ptr kindu:n label:ptr labelu:n ms:n :}
    GS-ON? 0= if exit then
@@ -318,6 +428,43 @@ GS-GEN-INIT
 
 : GS-TAB+ ( -- )
    GS-TAB GS-LINE-C+ ;
+
+: GS-RUNTIME-SUBJECT-HEAD ( n bool ptr u8 n -- )
+   {: id:n parity:bool src:ptr srcu:n :}
+   s" runtime-subject" GS-LINE+
+   GS-TAB+ s" id=" GS-LINE+ id GS-LINE-U+
+   GS-TAB+ s" mode=" GS-LINE+
+   parity if s" parity" else s" subject" then GS-LINE+
+   GS-TAB+ s" source-sha256=" GS-LINE+ src srcu GS-LINE+ ;
+
+: GS-RUNTIME-SUBJECT-OUTCOME ( bool bool n -- )
+   {: exited:bool timed:bool code:n :}
+   GS-TAB+ s" outcome=" GS-LINE+
+   timed if s" timeout" GS-LINE+ exit then
+   exited if s" exited:" else s" signaled:" then GS-LINE+
+   code GS-LINE-U+ ;
+
+: GS-RUNTIME-SUBJECT-OUT ( n ptr u8 n -- )
+   {: u:n sha:ptr shau:n :}
+   GS-TAB+ s" stdout-len=" GS-LINE+ u GS-LINE-U+
+   GS-TAB+ s" stdout-sha256=" GS-LINE+ sha shau GS-LINE+ ;
+
+: GS-RUNTIME-SUBJECT-ERR ( n ptr u8 n -- )
+   {: u:n sha:ptr shau:n :}
+   GS-TAB+ s" stderr-len=" GS-LINE+ u GS-LINE-U+
+   GS-TAB+ s" stderr-sha256=" GS-LINE+ sha shau GS-LINE+ ;
+
+: GS-RUNTIME-SUBJECT ( n bool ptr u8 n bool bool n n ptr u8 n n ptr u8 n -- )
+   {: id:n parity:bool src:ptr srcu:n exited:bool timed:bool code:n
+      outu:n outsha:ptr outshau:n erru:n errsha:ptr errshau:n :}
+   GS-ON? 0= if exit then
+   GS-LINE-RESET
+   id parity src srcu GS-RUNTIME-SUBJECT-HEAD
+   exited timed code GS-RUNTIME-SUBJECT-OUTCOME
+   outu outsha outshau GS-RUNTIME-SUBJECT-OUT
+   erru errsha errshau GS-RUNTIME-SUBJECT-ERR
+   GS-LF GS-LINE-C+
+   GS-PATH$ GS-LINE-BUF GS-LINE-U @ APPEND-FILE ;
 
 : GS-TEST ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n ptr u8 n -- )
    {: label:ptr labelu:n subj:ptr subju:n run:ptr runu:n bound:ptr boundu:n sha:ptr shau:n :}
@@ -408,6 +555,7 @@ GS-GEN-INIT
    0 GS-CANDIDATE-VALIDATE !
    0 GS-CANDIDATE-CORRUPT !
    0 GS-HELPER-SPAWN !
+   GATE-PROCESS:COUNTS-RESET
    0 GS-SPANS !
    0 GS-SLOW-MS !
    0 GS-SLOW-U !
@@ -624,7 +772,88 @@ GS-GEN-INIT
    u keyu = if GS-TRUE exit then
    GS-BUF off keyu + BYTE+ c@ GS-TAB = ;
 
+package GATE-PROCESS
+
+variable ROW-I
+variable ROW-START
+variable ROW-N
+
+: ROW-MATCH? ( ptr u8 n ptr u8 n ptr u8 n -- bool )
+   {: row:ptr rowu:n kind:ptr kindu:n owner:ptr owneru:n :}
+   row rowu GS-TAB 0 SPLIT-NEXT 0= if 2drop drop GS-FALSE exit then
+   {: got-kind:ptr got-kindu:n next:n :}
+   got-kind got-kindu kind kindu STR= 0= if GS-FALSE exit then
+   row rowu GS-TAB next SPLIT-NEXT 0= if 2drop drop GS-FALSE exit then
+   {: gen:ptr genu:n owner-off:n :}
+   gen genu 2drop
+   row rowu GS-TAB owner-off SPLIT-NEXT 2drop
+   owner owneru STR= ;
+
+: COUNT-ROW ( ptr u8 n ptr u8 n ptr u8 n -- )
+   ROW-MATCH? if ROW-N @ 1+ ROW-N ! then ;
+
+public
+
+: ROW-COUNT$ ( ptr u8 n ptr u8 n ptr u8 n -- n )
+   {: a:ptr u:n kind:ptr kindu:n owner:ptr owneru:n :}
+   0 ROW-N !
+   0 ROW-START !
+   0 ROW-I !
+   begin ROW-I @ u <= while
+      ROW-I @ u = if
+         a ROW-START @ BYTE+ ROW-I @ ROW-START @ -
+         kind kindu owner owneru COUNT-ROW
+      else
+         a ROW-I @ BYTE+ c@ GS-LF = if
+            a ROW-START @ BYTE+ ROW-I @ ROW-START @ -
+            kind kindu owner owneru COUNT-ROW
+            ROW-I @ 1+ ROW-START !
+         then
+      then
+      ROW-I @ 1+ ROW-I !
+   repeat
+   ROW-N @ ;
+
+: FIELD$ ( n n n -- ptr u8 n ) {: off:n u:n field:n :}
+   field 0 < if E-STR-BOUNDS throw then
+   0 FIELD-I !
+   0 FIELD-START !
+   begin FIELD-I @ field < while
+      off u FIELD-START @ GS-FIELD-END {: end:n :}
+      end u >= if GS-BUF 0 exit then
+      end 1+ FIELD-START !
+      FIELD-I @ 1+ FIELD-I !
+   repeat
+   FIELD-START @ u >= if GS-BUF 0 exit then
+   off u FIELD-START @ GS-FIELD-END {: end:n :}
+   GS-BUF off FIELD-START @ + BYTE+ end FIELD-START @ - ;
+
+: COUNT-EXEC ( n n -- ) {: off:n u:n :}
+   EXECS GS-INC
+   GS-HELPER-SPAWN GS-INC
+   off u 3 FIELD$ s" candidate" STR= if
+      CANDS GS-INC
+   then ;
+
+: COUNT-FORK ( n n -- ) {: off:n u:n :}
+   FORKS GS-INC
+   off u 4 FIELD$ s" reaper" STR= if REAPERS GS-INC then ;
+
+public
+
+: COUNT? ( n n -- bool ) {: off:n u:n :}
+   off u s" process-exec" GS-KIND-PREFIX? if
+      off u COUNT-EXEC GS-TRUE exit
+   then
+   off u s" process-fork" GS-KIND-PREFIX? if
+      off u COUNT-FORK GS-TRUE exit
+   then
+   GS-FALSE ;
+
+;package
+
 : GS-COUNT-LINE ( n n -- ) {: off:n u:n :}
+   off u GATE-PROCESS:COUNT? if exit then
    off u GS-COUNT-SPAN
    off u GS-COUNT-LOAD-SPAN
    off u s" top-phase-spawn" GS-LINE= if GS-TOP-PHASE GS-INC exit then
@@ -651,8 +880,7 @@ GS-GEN-INIT
    off u s" candidate-ready" GS-LINE= if GS-CANDIDATE-READY GS-INC exit then
    off u s" candidate-build-skip" GS-LINE= if GS-CANDIDATE-BUILD-SKIP GS-INC exit then
    off u s" candidate-validate" GS-LINE= if GS-CANDIDATE-VALIDATE GS-INC exit then
-   off u s" candidate-cache-corrupt" GS-LINE= if GS-CANDIDATE-CORRUPT GS-INC exit then
-   off u s" helper-spawn" GS-LINE-KEY? if GS-HELPER-SPAWN GS-INC exit then ;
+   off u s" candidate-cache-corrupt" GS-LINE= if GS-CANDIDATE-CORRUPT GS-INC exit then ;
 
 : GS-SCAN ( -- )
    GS-RESET-COUNTS
@@ -731,6 +959,10 @@ GS-GEN-INIT
    GS-CANDIDATE-VALIDATE @ s" candidate-validate" GS-ITEM.
    GS-CANDIDATE-CORRUPT @ s" candidate-corrupt" GS-ITEM.
    GS-HELPER-SPAWN @ s" helper-spawn" GS-ITEM.
+   GATE-PROCESS:EXEC# s" process-exec" GS-ITEM.
+   GATE-PROCESS:FORK# s" process-fork" GS-ITEM.
+   GATE-PROCESS:REAPER# s" process-reaper" GS-ITEM.
+   GATE-PROCESS:CANDIDATE# s" candidate-exec" GS-ITEM.
    GS-SPANS @ s" spans" GS-ITEM.
    GS-LOAD-SPANS @ s" load-spans" GS-ITEM.
    GS-LOAD-MS @ s" load-ms" GS-ITEM.

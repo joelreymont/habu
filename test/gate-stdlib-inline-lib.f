@@ -444,6 +444,10 @@ variable GSI-TL-FILE-A
 : GSI-TAIL-PROCESS ( -- )
    s" stdlib/tail-process" GSI-GROUP-PAR GSI-GROUP-HEADER
    GSI-TEST-SETUP
+   GSI-SETUP!
+   s" lib/test/subject.f" GSI-REQUIRE
+   s" test/tail-ratchet.f" GSI-REQUIRE
+   GSI-TEST!
    GSI-FORK-RESET
    s" tools/hb-cli-contracts-test.f" GSI-FORK-INCLUDE
    s" test/seal.f" GSI-FORK-INCLUDE

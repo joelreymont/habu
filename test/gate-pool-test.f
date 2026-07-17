@@ -177,6 +177,42 @@ variable GPT-KR-LOG-U
    repeat drop
    GPT-COUNT-N @ ;
 
+package GATE-POOL-TEST
+
+variable ROW-I
+variable ROW-START
+
+: SPAN-ROW? ( ptr u8 n ptr u8 n -- bool )
+   {: row:ptr rowu:n label:ptr labelu:n :}
+   rowu 5 < if GS-FALSE exit then
+   row 4 s" span" STR= 0= if GS-FALSE exit then
+   row 4 BYTE+ c@ GS-TAB <> if GS-FALSE exit then
+   row rowu label labelu CONTAINS? ;
+
+public
+
+: SPAN-COUNT$ ( ptr u8 n ptr u8 n -- n )
+   {: a:ptr u:n label:ptr labelu:n :}
+   0 GPT-COUNT-N !
+   0 ROW-START !
+   0 ROW-I !
+   begin ROW-I @ u <= while
+      ROW-I @ u = if
+         a ROW-START @ BYTE+ ROW-I @ ROW-START @ -
+         label labelu SPAN-ROW? if GPT-COUNT-N @ 1+ GPT-COUNT-N ! then
+      else
+         a ROW-I @ BYTE+ c@ GS-LF = if
+            a ROW-START @ BYTE+ ROW-I @ ROW-START @ -
+            label labelu SPAN-ROW? if GPT-COUNT-N @ 1+ GPT-COUNT-N ! then
+            ROW-I @ 1+ ROW-START !
+         then
+      then
+      ROW-I @ 1+ ROW-I !
+   repeat
+   GPT-COUNT-N @ ;
+
+;package
+
 : GPT-EXPECT-TRUNC-OUT ( n -- ) {: outu:n :}
    GPT-OUT outu s" gate-pool failing worker" CONTAINS? TTRUE
    GPT-OUT outu s" [tail truncated " CONTAINS? TTRUE
@@ -284,7 +320,8 @@ variable GPT-KR-LOG-U
    s" fork span child" GPT-TIMEOUT-MS [: GPT-SPAN-CHILD ;] GT-POOL-START-FORK
    GT-POOL-DRAIN
    GS-PATH$ GPT-OUT GPT-CAP READ-ALL {: n:n :}
-   GPT-OUT n s" fork span child" GPT-COUNT$ 1 T=
+   GPT-OUT n s" fork span child" GATE-POOL-TEST:SPAN-COUNT$ 1 T=
+   GPT-OUT n s" process-fork" s" fork span child" GATE-PROCESS:ROW-COUNT$ 3 T=
    GPT-OUT n s" fork span inner" GPT-COUNT$ 1 T= ;
 
 : GPT-SPAN-CASE ( -- )
@@ -317,7 +354,8 @@ variable GPT-KR-LOG-U
    s" fork multi parent" GPT-TIMEOUT-MS [: GPT-SPAN-MULTI-CHILD ;] GT-POOL-START-FORK
    GT-POOL-DRAIN
    GS-PATH$ GPT-OUT GPT-CAP READ-ALL {: n:n :}
-   GPT-OUT n s" fork multi parent" GPT-COUNT$ 1 T=
+   GPT-OUT n s" fork multi parent" GATE-POOL-TEST:SPAN-COUNT$ 1 T=
+   GPT-OUT n s" process-fork" s" fork multi parent" GATE-PROCESS:ROW-COUNT$ 3 T=
    GPT-OUT n s" fork sub one" GPT-COUNT$ 1 T=
    GPT-OUT n s" fork sub two" GPT-COUNT$ 1 T=
    GPT-OUT n s" fork sub three" GPT-COUNT$ 1 T= ;
@@ -328,6 +366,17 @@ variable GPT-KR-LOG-U
    GPT-GS-RESTORE
    GT-POOL-PASS-HOOK-DEFAULT!
    GPT-SPAN-RC @ 0 <> if GPT-SPAN-RC @ throw then ;
+
+create GPT-GEN-SAVE GS-GEN-CAP allot
+variable GPT-GEN-SAVE-U
+
+: GPT-GEN-SAVE! ( -- )
+   GS-GEN$ {: a:ptr u:n :}
+   a GPT-GEN-SAVE u BYTE-COPY
+   u GPT-GEN-SAVE-U ! ;
+
+: GPT-GEN-RESTORE ( -- )
+   GPT-GEN-SAVE GPT-GEN-SAVE-U @ GS-GEN! ;
 
 \ The genuine label-collision mis-fire this dot prevents: a fork child that is
 \ ITSELF a nested pool parent (the TRWE-POST-CANDIDATE shape) emits its nested
@@ -347,18 +396,28 @@ variable GPT-KR-LOG-U
 
 : GPT-NEST-CASE-BODY ( -- )
    GT-ROOT GS-ROOT!
+   s" 7" GS-GEN!
    [: GPT-SPAN-HOOK ;] is GT-POOL-PASS-HOOK
    1 GT-POOL-SLOTS!
    GT-POOL-RESET
    s" fork nest label" GPT-TIMEOUT-MS [: GPT-NEST-CHILD ;] GT-POOL-START-FORK
    GT-POOL-DRAIN
    GS-PATH$ GPT-OUT GPT-CAP READ-ALL {: n:n :}
-   GPT-OUT n s" fork nest label" GPT-COUNT$ 2 T= ;
+   GPT-OUT n s" fork nest label" GATE-POOL-TEST:SPAN-COUNT$ 2 T=
+   GPT-OUT n s" process-fork" s" fork nest label" GATE-PROCESS:ROW-COUNT$ 6 T=
+   GS-READ
+   GS-SCAN
+   GATE-PROCESS:FORK# 6 T=
+   GATE-PROCESS:REAPER# 4 T=
+   GS-BUF GS-U @ S\" process-fork\t7\tfork nest label" CONTAINS? TTRUE
+   GS-BUF GS-U @ S\" process-fork\t7-" CONTAINS? TTRUE ;
 
 : GPT-NEST-CASE ( -- )
    GPT-GS-SAVE!
+   GPT-GEN-SAVE!
    [: GPT-NEST-CASE-BODY ;] catch GPT-SPAN-RC !
    GPT-GS-RESTORE
+   GPT-GEN-RESTORE
    GT-POOL-PASS-HOOK-DEFAULT!
    GPT-SPAN-RC @ 0 <> if GPT-SPAN-RC @ throw then ;
 
@@ -368,17 +427,7 @@ variable GPT-KR-LOG-U
 \ GS-GEN-INIT adopts it at load. With the parent at gen "5", the child's span
 \ must be qualified "g5-<seq>:", never rebooted to root "g0:".
 create GPT-SG-PATH FS-PATH-CAP allot
-create GPT-GEN-SAVE GS-GEN-CAP allot
 variable GPT-SG-PATH-U
-variable GPT-GEN-SAVE-U
-
-: GPT-GEN-SAVE! ( -- )
-   GS-GEN$ {: a:ptr u:n :}
-   a GPT-GEN-SAVE u BYTE-COPY
-   u GPT-GEN-SAVE-U ! ;
-
-: GPT-GEN-RESTORE ( -- )
-   GPT-GEN-SAVE GPT-GEN-SAVE-U @ GS-GEN! ;
 
 : GPT-SG-PATH$ ( -- ptr u8 n )
    GPT-SG-PATH GPT-SG-PATH-U @ ;
@@ -416,6 +465,8 @@ variable GPT-GEN-SAVE-U
    GT-POOL-DRAIN
    GS-PATH$ GPT-OUT GPT-CAP READ-ALL {: n:n :}
    GPT-OUT n s" spawn gen label" GPT-COUNT$ 1 T=
+   GPT-OUT n s" process-exec" s" spawn gen case" GATE-PROCESS:ROW-COUNT$ 1 T=
+   GPT-OUT n s" process-fork" s" spawn gen case" GATE-PROCESS:ROW-COUNT$ 1 T=
    GPT-OUT n s" g5-" GPT-COUNT$ 1 T=
    GPT-OUT n s" g0:spawn gen label" GPT-COUNT$ 0 T= ;
 
@@ -622,7 +673,7 @@ variable GPT-GK-SENTINEL-U
    GT-POOL-DRAIN-SOFT
    GS-PATH$ GPT-OUT GPT-CAP READ-ALL {: n:n :}
    GPT-OUT n s" pool-timeout" GPT-COUNT$ 1 T=
-   GPT-OUT n s" stat hang worker" GPT-COUNT$ 1 T= ;
+   GPT-OUT n s" process-fork" s" stat hang worker" GATE-PROCESS:ROW-COUNT$ 3 T= ;
 
 : GPT-TIMEOUT-STAT-CASE ( -- )
    GPT-GS-SAVE!

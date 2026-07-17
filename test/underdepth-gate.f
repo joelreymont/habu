@@ -6,8 +6,8 @@
 \ record (DNAME-MIN-IN, flags bits 52-59), poked at certification time by the
 \ publish tails and at seal time by src/core/internal-mark.f. Executing it at
 \ bare top level with fewer interpret-stack cells must fail closed with
-\ `hb: interpret stack underdepth: <token>` + rc 70 BEFORE the body runs, on
-\ both cold-prefix source paths (--load file and stdin pipe). Previously
+\ `hb: interpret stack underdepth: <token>` + rc 70 BEFORE the body runs.
+\ Previously
 \ `: FOO2 ( n -- n n ) dup ; FOO2` on an empty stack ran rc 0 silently reading
 \ below the stack base whenever net depth stayed >= 0 (the LMAIN depth floor
 \ never tripped). Positives prove the public surface is untouched: exact and
@@ -16,6 +16,9 @@
 \ reject as a catchable rc-70 throw, and the satisfied-depth CHECK! probing
 \ idiom still works. The REPL recovery smoke lives in test/proc-pty.f
 \ (PTY-UNDERDEPTH).
+\
+\ Semantic cases run in disposable SUBJECT forks. Exact outcome/stdout/stderr
+\ parity retains direct `--load` and stdin representatives below.
 \
 \ Run: bin/hb --load lib/errors.f lib/string.f lib/test.f lib/memory.f lib/fs.f
 \   lib/fs-mutate.f lib/process.f lib/process-argv.f lib/process-env.f
@@ -31,6 +34,8 @@ require lib/process.f
 require lib/process-argv.f
 require lib/process-env.f
 require lib/test/src-shape.f
+require lib/test/subject.f
+require test/tail-ratchet.f
 
 2048 constant UDG-CAP
 10000 constant UDG-TIMEOUT-MS
@@ -95,6 +100,7 @@ create UDG-EMPTY 1 allot            \ zero-length stdin
 
 \ Run the program as a --load file with empty stdin.
 : UDG-RUN-LOAD ( ptr u8 n -- )
+   TAIL-RATCHET:DIRECT
    UDG-CHILD 2swap WRITE-ALL
    PROC-ARGV-RESET
    s" --load" >LEN PROC-ARGV+
@@ -105,11 +111,23 @@ create UDG-EMPTY 1 allot            \ zero-length stdin
 
 \ Run the program as a piped stdin program (no --load), the other cold-prefix path.
 : UDG-RUN-STDIN ( ptr u8 n -- )
+   TAIL-RATCHET:DIRECT
    UDG-IN!
    PROC-ARGV-RESET
    UDG-HB$ >LEN  UDG-IN$ >LEN  UDG-OUT UDG-CAP >LEN
    UDG-ERR UDG-CAP >LEN  UDG-TIMEOUT-MS >MS  RUN-ARGV-STDIN-CAPTURE-OUTCOME
    UDG-STORE! ;
+
+package UDG-EXEC
+
+public
+
+: SUBJECT ( ptr u8 n -- )
+   TAIL-RATCHET:SUBJECT
+   UDG-OUT UDG-CAP >LEN UDG-ERR UDG-CAP >LEN
+   UDG-TIMEOUT-MS >MS SUBJECT:RUN UDG-STORE! ;
+
+;package
 
 : UDG-LF ( -- )
    10 SB-APPEND-C ;
@@ -203,13 +221,10 @@ public
 
 : BOUNDARY ( -- )
    s" 255-cell physical minimum is representable" T-LABEL
-   255 MIN-SIG$ UDG-RUN-LOAD
+   255 MIN-SIG$ UDG-EXEC:SUBJECT
    UDG-ASSERT-OK
-   s" 256-cell physical minimum rejects deterministically via --load" T-LABEL
-   256 MIN-SIG$ UDG-RUN-LOAD
-   ASSERT-CAPACITY
-   s" 256-cell physical minimum rejects deterministically via stdin" T-LABEL
-   256 MIN-SIG$ UDG-RUN-STDIN
+   s" 256-cell physical minimum rejects deterministically" T-LABEL
+   256 MIN-SIG$ UDG-EXEC:SUBJECT
    ASSERT-CAPACITY ;
 
 ;package
@@ -217,11 +232,8 @@ public
 \ --- negatives: certified words fail closed before their body reads garbage --
 
 : UDG-NEG-BARE ( -- )
-   s" bare FOO2 via --load fails closed (was silent below-base read)" T-LABEL
-   s" FOO2" UDG-FOO2$ UDG-RUN-LOAD
-   s" FOO2" UDG-ASSERT-UNDERDEPTH
-   s" bare FOO2 via stdin pipe fails closed" T-LABEL
-   s" FOO2" UDG-FOO2$ UDG-RUN-STDIN
+   s" bare FOO2 fails closed (was silent below-base read)" T-LABEL
+   s" FOO2" UDG-FOO2$ UDG-EXEC:SUBJECT
    s" FOO2" UDG-ASSERT-UNDERDEPTH ;
 
 : UDG-PARTIAL$ ( -- ptr u8 n )           \ depth 1 < declared 2: still underdepth
@@ -255,19 +267,19 @@ public
 
 : UDG-NEG-SHAPES ( -- )
    s" 1 TP2 (partial depth) fails closed" T-LABEL
-   UDG-PARTIAL$ UDG-RUN-LOAD
+   UDG-PARTIAL$ UDG-EXEC:SUBJECT
    s" TP2" UDG-ASSERT-UNDERDEPTH
    s" TRUSTED: declared sig fails closed" T-LABEL
-   UDG-TRUSTED$ UDG-RUN-LOAD
+   UDG-TRUSTED$ UDG-EXEC:SUBJECT
    s" UDG-T" UDG-ASSERT-UNDERDEPTH
    s" defer declared sig fails closed" T-LABEL
-   UDG-DEFER$ UDG-RUN-LOAD
+   UDG-DEFER$ UDG-EXEC:SUBJECT
    s" UDG-D" UDG-ASSERT-UNDERDEPTH
    s" certified sig-less definition fails closed" T-LABEL
-   UDG-SIGLESS$ UDG-RUN-LOAD
+   UDG-SIGLESS$ UDG-EXEC:SUBJECT
    s" UDG-SQ" UDG-ASSERT-UNDERDEPTH
    s" axiom'd engine word (CORE-STR=) fails closed via seal-time poke" T-LABEL
-   UDG-ENGINE$ UDG-RUN-LOAD
+   UDG-ENGINE$ UDG-EXEC:SUBJECT
    s" CORE-STR=" UDG-ASSERT-UNDERDEPTH ;
 
 \ --- p4 compile-path: compile-mode immediate underdepth (docs §5 sub-dot 5) --
@@ -279,8 +291,8 @@ public
 \ DNAME-MIN-IN depth gate the interpret path has (EM-INTERPRET-FIND), so an
 \ immediate at compile-time underdepth diverts to the shared LMININ leg and fails
 \ closed BEFORE the below-base read - rc 70, `hb: interpret stack underdepth:
-\ <token>`, on both cold-prefix source paths (--load and stdin), matching the
-\ FOO2 regression pattern. IMM2/IMM-DROP are defined checked so their
+\ <token>`, matching the FOO2 regression pattern. IMM2/IMM-DROP are defined
+\ checked so their
 \ DNAME-MIN-IN byte is poked before the window opens.
 
 : UDG-IMM-NEG$ ( -- ptr u8 n )           \ IMM2 wants 1 cell; empty interpret stack -> compile-time underdepth
@@ -299,14 +311,11 @@ public
    SB$ ;
 
 : UDG-COMPILE-IMM ( -- )
-   s" compile-time immediate underdepth fails closed via --load" T-LABEL
-   UDG-IMM-NEG$ UDG-RUN-LOAD
-   s" IMM2" UDG-ASSERT-UNDERDEPTH
-   s" compile-time immediate underdepth fails closed via stdin pipe" T-LABEL
-   UDG-IMM-NEG$ UDG-RUN-STDIN
+   s" compile-time immediate underdepth fails closed" T-LABEL
+   UDG-IMM-NEG$ UDG-EXEC:SUBJECT
    s" IMM2" UDG-ASSERT-UNDERDEPTH
    s" compile-time immediate at satisfied depth still compiles" T-LABEL
-   UDG-IMM-POS$ UDG-RUN-LOAD UDG-ASSERT-OK
+   UDG-IMM-POS$ UDG-EXEC:SUBJECT UDG-ASSERT-OK
    s" 777" UDG-ASSERT-OUT ;
 
 \ --- census negatives: unguarded-prim gaps closed via the LARITY table ------
@@ -326,7 +335,7 @@ public
    SB$ ;
 
 : UDG-PRIM-ROW ( ptr u8 n -- ) {: a:ptr u:n :}
-   a u UDG-BARE$ UDG-RUN-LOAD
+   a u UDG-BARE$ UDG-EXEC:SUBJECT
    a u UDG-ASSERT-UNDERFLOW ;
 
 : UDG-NEG-PRIMS ( -- )
@@ -341,7 +350,7 @@ public
    s" bare set-check fails closed pre-execution" T-LABEL
    s" set-check" UDG-PRIM-ROW
    s" partial-depth ffi-call fails closed" T-LABEL
-   SB-RESET s" 0 ffi-call" UDG-LINE SB$ UDG-RUN-LOAD
+   SB-RESET s" 0 ffi-call" UDG-LINE SB$ UDG-EXEC:SUBJECT
    s" ffi-call" UDG-ASSERT-UNDERFLOW ;
 
 \ --- positives: the public top-level surface is untouched -------------------
@@ -388,23 +397,69 @@ public
 
 : UDG-POSITIVES ( -- )
    s" exact declared depth still runs" T-LABEL
-   UDG-EXACT$ UDG-RUN-LOAD UDG-ASSERT-OK
+   UDG-EXACT$ UDG-EXEC:SUBJECT UDG-ASSERT-OK
    s" 10" UDG-ASSERT-OUT
    s" surplus depth still runs" T-LABEL
-   UDG-OVER$ UDG-RUN-LOAD UDG-ASSERT-OK
+   UDG-OVER$ UDG-EXEC:SUBJECT UDG-ASSERT-OK
    s" 9" UDG-ASSERT-OUT
    s" compiled checked-to-checked calls carry no guard" T-LABEL
-   UDG-COMPILED$ UDG-RUN-LOAD UDG-ASSERT-OK
+   UDG-COMPILED$ UDG-EXEC:SUBJECT UDG-ASSERT-OK
    s" 9" UDG-ASSERT-OUT
    s" unchecked user word stays executable (documented boundary)" T-LABEL
-   UDG-RAW$ UDG-RUN-LOAD UDG-ASSERT-OK
+   UDG-RAW$ UDG-EXEC:SUBJECT UDG-ASSERT-OK
    s" 42" UDG-ASSERT-OUT
    s" evaluate delivers a catchable rc-70 reject and execution continues" T-LABEL
-   UDG-CATCH$ UDG-RUN-LOAD UDG-ASSERT-OK
+   UDG-CATCH$ UDG-EXEC:SUBJECT UDG-ASSERT-OK
    s" 70" UDG-ASSERT-OUT
    s" after" UDG-ASSERT-OUT
    s" satisfied-depth CHECK! probe still works" T-LABEL
-   UDG-PROBE$ UDG-RUN-LOAD UDG-ASSERT-OK ;
+   UDG-PROBE$ UDG-EXEC:SUBJECT UDG-ASSERT-OK ;
+
+package UDG-PARITY
+
+3 constant DIRECT-N
+25 constant SUBJECT-N
+8000 constant MAX-MS
+
+: RESULT ( -- ptr u8 n ptr u8 n n )
+   UDG-OUT UDG-OUT-U @ UDG-ERR UDG-ERR-U @ UDG-RC @ ;
+
+: NEG-LOAD ( ptr u8 n -- )
+   2dup UDG-RUN-LOAD
+   s" FOO2" UDG-ASSERT-UNDERDEPTH
+   RESULT TAIL-RATCHET:SNAPSHOT
+   UDG-EXEC:SUBJECT
+   s" FOO2" UDG-ASSERT-UNDERDEPTH
+   RESULT TAIL-RATCHET:SAME ;
+
+: NEG-STDIN ( ptr u8 n -- )
+   2dup UDG-RUN-STDIN
+   s" FOO2" UDG-ASSERT-UNDERDEPTH
+   RESULT TAIL-RATCHET:SNAPSHOT
+   UDG-EXEC:SUBJECT
+   s" FOO2" UDG-ASSERT-UNDERDEPTH
+   RESULT TAIL-RATCHET:SAME ;
+
+: POS-LOAD ( ptr u8 n -- )
+   2dup UDG-RUN-LOAD UDG-ASSERT-OK
+   RESULT TAIL-RATCHET:SNAPSHOT
+   UDG-EXEC:SUBJECT UDG-ASSERT-OK
+   RESULT TAIL-RATCHET:SAME ;
+
+public
+
+: TEST ( -- )
+   s" direct --load and subject preserve raw underdepth results" T-LABEL
+   s" FOO2" UDG-FOO2$ NEG-LOAD
+   s" direct stdin and subject preserve raw underdepth results" T-LABEL
+   s" FOO2" UDG-FOO2$ NEG-STDIN
+   s" direct --load and subject preserve raw successful results" T-LABEL
+   UDG-EXACT$ POS-LOAD ;
+
+: CHECK ( -- )
+   DIRECT-N SUBJECT-N MAX-MS TAIL-RATCHET:CHECK ;
+
+;package
 
 : UDG-PREPARE ( -- )
    CLEANUP-RESET
@@ -419,7 +474,9 @@ public
 
 : UDG-MAIN ( -- )
    T-RESET
+   TAIL-RATCHET:START
    UDG-PREPARE
+   UDG-PARITY:TEST
    UDG-NEG-BARE
    UDG-NEG-SHAPES
    UDG-COMPILE-IMM
@@ -427,6 +484,7 @@ public
    UDG-POSITIVES
    UDG-MINIMUM:ATOMIC-SHAPE
    UDG-MINIMUM:BOUNDARY
+   UDG-PARITY:CHECK
    UDG-CLEANUP
    T-REPORT
    s" underdepth-gate: ok" type cr ;

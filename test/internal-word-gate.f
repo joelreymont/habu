@@ -5,8 +5,8 @@
 \ certified/trusted signature and no primitive axiom) carries DNAME-INT after
 \ the seal-time marking pass (src/core/internal-mark.f). Interpret-mode
 \ execution AND tick of such a word must fail closed with
-\ `hb: internal engine word: <token>` + rc 70 on both cold-prefix source paths
-\ (--load file and stdin pipe). Previously a bare `U-TYPE` in a load file
+\ `hb: internal engine word: <token>` + rc 70. Previously a bare `U-TYPE` in a
+\ load file
 \ consumed below-base garbage as type-term handles and corrupted the process
 \ (wild loads/stores, SIGSEGV at pc=0), so the user-facing top-level name
 \ universe now equals the checker's. Positives prove the public surface is
@@ -14,6 +14,9 @@
 \ E-UNDERFLOW, user unchecked words stay executable, top-level TRUST rows /
 \ TRUSTED: / structures + type-family DSLs still work, and XREF introspection
 \ of internal words survives.
+\
+\ Semantic cases run in disposable SUBJECT forks. Exact outcome/stdout/stderr
+\ parity retains direct `--load` and stdin representatives below.
 \
 \ Run: bin/hb --load lib/errors.f lib/string.f lib/test.f lib/memory.f lib/fs.f
 \   lib/fs-mutate.f lib/process.f lib/process-argv.f lib/process-env.f
@@ -28,6 +31,8 @@ require lib/fs-mutate.f
 require lib/process.f
 require lib/process-argv.f
 require lib/process-env.f
+require lib/test/subject.f
+require test/tail-ratchet.f
 
 2048 constant IWG-CAP
 10000 constant IWG-TIMEOUT-MS
@@ -90,6 +95,7 @@ create IWG-EMPTY 1 allot            \ zero-length stdin
 
 \ Run the program as a --load file with empty stdin.
 : IWG-RUN-LOAD ( ptr u8 n -- )
+   TAIL-RATCHET:DIRECT
    IWG-CHILD 2swap WRITE-ALL
    PROC-ARGV-RESET
    s" --load" >LEN PROC-ARGV+
@@ -100,11 +106,23 @@ create IWG-EMPTY 1 allot            \ zero-length stdin
 
 \ Run the program as a piped stdin program (no --load), the other cold-prefix path.
 : IWG-RUN-STDIN ( ptr u8 n -- )
+   TAIL-RATCHET:DIRECT
    IWG-IN!
    PROC-ARGV-RESET
    IWG-HB$ >LEN  IWG-IN$ >LEN  IWG-OUT IWG-CAP >LEN
    IWG-ERR IWG-CAP >LEN  IWG-TIMEOUT-MS >MS  RUN-ARGV-STDIN-CAPTURE-OUTCOME
    IWG-STORE! ;
+
+package IWG-EXEC
+
+public
+
+: SUBJECT ( ptr u8 n -- )
+   TAIL-RATCHET:SUBJECT
+   IWG-OUT IWG-CAP >LEN IWG-ERR IWG-CAP >LEN
+   IWG-TIMEOUT-MS >MS SUBJECT:RUN IWG-STORE! ;
+
+;package
 
 : IWG-LF ( -- )
    10 SB-APPEND-C ;
@@ -124,26 +142,23 @@ create IWG-EMPTY 1 allot            \ zero-length stdin
    IWG-EXITED @ TTRUE
    IWG-RC @ 0 T= ;
 
-: IWG-NEG-LOAD ( ptr u8 n -- ) {: a:ptr u:n :}   \ bare token via --load must reject
-   a u IWG-TOKEN$ IWG-RUN-LOAD
+: IWG-NEG ( ptr u8 n -- ) {: a:ptr u:n :}
+   a u IWG-TOKEN$ IWG-EXEC:SUBJECT
    a u IWG-ASSERT-INTERNAL ;
 
 \ --- negatives: internal checker words fail closed before their body runs ---
 
 : IWG-NEG-BARE ( -- )
-   s" bare U-TYPE via --load fails closed (was SIGSEGV)" T-LABEL
-   s" U-TYPE" IWG-NEG-LOAD
-   s" bare U-TYPE via stdin pipe fails closed" T-LABEL
-   s" U-TYPE" IWG-TOKEN$ IWG-RUN-STDIN
-   s" U-TYPE" IWG-ASSERT-INTERNAL
+   s" bare U-TYPE fails closed (was SIGSEGV)" T-LABEL
+   s" U-TYPE" IWG-NEG
    s" bare T-RES fails closed" T-LABEL
-   s" T-RES" IWG-NEG-LOAD
+   s" T-RES" IWG-NEG
    s" bare PAIR fails closed" T-LABEL
-   s" PAIR" IWG-NEG-LOAD
+   s" PAIR" IWG-NEG
    s" bare CHECKER-FIND-ACTIVE-SIG fails closed" T-LABEL
-   s" CHECKER-FIND-ACTIVE-SIG" IWG-NEG-LOAD
+   s" CHECKER-FIND-ACTIVE-SIG" IWG-NEG
    s" bare E-INST fails closed" T-LABEL
-   s" E-INST" IWG-NEG-LOAD ;
+   s" E-INST" IWG-NEG ;
 
 : IWG-ARGS-FORGE$ ( -- ptr u8 n )        \ args present: the gate is not depth-keyed
    SB-RESET
@@ -162,13 +177,13 @@ create IWG-EMPTY 1 allot            \ zero-length stdin
 
 : IWG-NEG-SHAPES ( -- )
    s" 1 2 U-TYPE (satisfied depth) still fails closed" T-LABEL
-   IWG-ARGS-FORGE$ IWG-RUN-LOAD
+   IWG-ARGS-FORGE$ IWG-EXEC:SUBJECT
    s" U-TYPE" IWG-ASSERT-INTERNAL
    s" ' U-TYPE (tick laundering) fails closed" T-LABEL
-   IWG-TICK-FORGE$ IWG-RUN-LOAD
+   IWG-TICK-FORGE$ IWG-EXEC:SUBJECT
    s" U-TYPE" IWG-ASSERT-INTERNAL
    s" 0 int-mark: the marking prim is itself internal" T-LABEL
-   IWG-PRIM-FORGE$ IWG-RUN-LOAD
+   IWG-PRIM-FORGE$ IWG-EXEC:SUBJECT
    s" int-mark" IWG-ASSERT-INTERNAL ;
 
 \ --- positives: the public top-level surface is untouched -------------------
@@ -275,7 +290,7 @@ create IWG-EMPTY 1 allot            \ zero-length stdin
    IWG-ERR$ s" 7120" CONTAINS? TTRUE ;
 
 : IWG-NEG-EXPORT ( ptr u8 n -- )         \ EXPORT of an unsafe name rejects
-   IWG-EXPORT-FORGE$ IWG-RUN-LOAD
+   IWG-EXPORT-FORGE$ IWG-EXEC:SUBJECT
    IWG-ASSERT-EXPORT-UNSAFE ;
 
 : IWG-EXPORT-BODY-FORGE$ ( -- ptr u8 n ) \ alias-minting line is the reject; the body never checks
@@ -316,12 +331,12 @@ create IWG-EMPTY 1 allot            \ zero-length stdin
    SB$ ;
 
 : IWG-NEG-OPENER ( ptr u8 n -- )         \ in-body opener at empty declared stack rejects
-   2dup IWG-OPENER-BODY-FORGE$ IWG-RUN-LOAD
+   2dup IWG-OPENER-BODY-FORGE$ IWG-EXEC:SUBJECT
    IWG-OPENER-DIAG$ IWG-ASSERT-DIAG ;
 
 : IWG-OPENER-CASES ( -- )
    s" TYPEFAMILY/PRODUCT DSL still works at top level" T-LABEL
-   IWG-TDSL-TOP-FORGE$ IWG-RUN-LOAD IWG-ASSERT-OK
+   IWG-TDSL-TOP-FORGE$ IWG-EXEC:SUBJECT IWG-ASSERT-OK
    s" TYPEFAMILY in a checked body is rejected unsafe" T-LABEL
    s" TYPEFAMILY" IWG-NEG-OPENER
    s" SUMTYPE in a checked body is rejected unsafe" T-LABEL
@@ -331,7 +346,7 @@ create IWG-EMPTY 1 allot            \ zero-length stdin
    s" PRODUCT in a checked body is rejected unsafe" T-LABEL
    s" PRODUCT" IWG-NEG-OPENER
    s" DEFTYPE/DEFLINEAR/VALUE-RECORD still work at top level" T-LABEL
-   IWG-ROLES-TOP-FORGE$ IWG-RUN-LOAD IWG-ASSERT-OK
+   IWG-ROLES-TOP-FORGE$ IWG-EXEC:SUBJECT IWG-ASSERT-OK
    s" DEFTYPE in a checked body is rejected unsafe" T-LABEL
    s" DEFTYPE" IWG-NEG-OPENER
    s" DEFLINEAR in a checked body is rejected unsafe" T-LABEL
@@ -339,7 +354,7 @@ create IWG-EMPTY 1 allot            \ zero-length stdin
    s" VALUE-RECORD in a checked body is rejected unsafe" T-LABEL
    s" VALUE-RECORD" IWG-NEG-OPENER
    s" EXPORT of a checked word still works" T-LABEL
-   IWG-EXPORT-OK-FORGE$ IWG-RUN-LOAD IWG-ASSERT-OK
+   IWG-EXPORT-OK-FORGE$ IWG-EXEC:SUBJECT IWG-ASSERT-OK
    s" EXPORT DEFTYPE rejects E-EXPORT-UNSAFE" T-LABEL
    s" DEFTYPE" IWG-NEG-EXPORT
    s" EXPORT DEFLINEAR rejects E-EXPORT-UNSAFE" T-LABEL
@@ -355,7 +370,7 @@ create IWG-EMPTY 1 allot            \ zero-length stdin
    s" EXPORT TYPEFAMILY rejects E-EXPORT-UNSAFE" T-LABEL
    s" TYPEFAMILY" IWG-NEG-EXPORT
    s" qualified unsafe alias for a body cannot be minted" T-LABEL
-   IWG-EXPORT-BODY-FORGE$ IWG-RUN-LOAD
+   IWG-EXPORT-BODY-FORGE$ IWG-EXEC:SUBJECT
    IWG-ASSERT-EXPORT-UNSAFE ;
 
 \ --- defer/is laundering (dot habu-checker-unsafety-as-1c537c1f, acceptance b).
@@ -379,36 +394,82 @@ create IWG-EMPTY 1 allot            \ zero-length stdin
 
 : IWG-DEFER-CASES ( -- )
    s" ['] <unsafe> is X (tick laundering) rejects at 'is'" T-LABEL
-   IWG-DEFER-TICK-FORGE$ IWG-RUN-LOAD
+   IWG-DEFER-TICK-FORGE$ IWG-EXEC:SUBJECT
    s" at 'is'" IWG-ASSERT-DIAG
    s" [: <unsafe> ;] is X (quotation laundering) rejects at 'deftype'" T-LABEL
-   IWG-DEFER-QUOT-FORGE$ IWG-RUN-LOAD
+   IWG-DEFER-QUOT-FORGE$ IWG-EXEC:SUBJECT
    s" at 'deftype'" IWG-ASSERT-DIAG ;
 
 : IWG-POSITIVES ( -- )
    s" undefined word still reports E-UNDEFINED" T-LABEL
-   IWG-UNDEF-FORGE$ IWG-RUN-LOAD
+   IWG-UNDEF-FORGE$ IWG-EXEC:SUBJECT
    s" E-UNDEFINED" IWG-ASSERT-DIAG
    s" bare drop still reports E-UNDERFLOW" T-LABEL
-   s" drop" IWG-TOKEN$ IWG-RUN-LOAD
+   s" drop" IWG-TOKEN$ IWG-EXEC:SUBJECT
    s" E-UNDERFLOW" IWG-ASSERT-DIAG
    s" user unchecked word stays executable at top level" T-LABEL
-   IWG-RAW-FORGE$ IWG-RUN-LOAD IWG-ASSERT-OK
+   IWG-RAW-FORGE$ IWG-EXEC:SUBJECT IWG-ASSERT-OK
    s" top-level TRUST row still works" T-LABEL
-   IWG-TRUST-FORGE$ IWG-RUN-LOAD IWG-ASSERT-OK
+   IWG-TRUST-FORGE$ IWG-EXEC:SUBJECT IWG-ASSERT-OK
    s" TRUSTED: + bare call still work" T-LABEL
-   IWG-TRUSTED-FORGE$ IWG-RUN-LOAD IWG-ASSERT-OK
+   IWG-TRUSTED-FORGE$ IWG-EXEC:SUBJECT IWG-ASSERT-OK
    s" structures DSL still works" T-LABEL
-   IWG-STRUCT-FORGE$ IWG-RUN-LOAD IWG-ASSERT-OK
+   IWG-STRUCT-FORGE$ IWG-EXEC:SUBJECT IWG-ASSERT-OK
    s" SUMTYPE DSL still works" T-LABEL
-   IWG-SUMTYPE-FORGE$ IWG-RUN-LOAD IWG-ASSERT-OK
+   IWG-SUMTYPE-FORGE$ IWG-EXEC:SUBJECT IWG-ASSERT-OK
    s" LAYOUT-BUFFER DSL still works" T-LABEL
-   IWG-LBUF-FORGE$ IWG-RUN-LOAD IWG-ASSERT-OK
+   IWG-LBUF-FORGE$ IWG-EXEC:SUBJECT IWG-ASSERT-OK
    s" layout-buffer in a checked body is rejected unsafe" T-LABEL
-   IWG-LBUF-BODY-FORGE$ IWG-RUN-LOAD
+   IWG-LBUF-BODY-FORGE$ IWG-EXEC:SUBJECT
    s" at 'LAYOUT-BUFFER'" IWG-ASSERT-DIAG
    s" XREF of an internal word still works" T-LABEL
-   IWG-XREF-FORGE$ IWG-RUN-LOAD IWG-ASSERT-OK ;
+   IWG-XREF-FORGE$ IWG-EXEC:SUBJECT IWG-ASSERT-OK ;
+
+package IWG-PARITY
+
+3 constant DIRECT-N
+41 constant SUBJECT-N
+8000 constant MAX-MS
+
+: RESULT ( -- ptr u8 n ptr u8 n n )
+   IWG-OUT IWG-OUT-U @ IWG-ERR IWG-ERR-U @ IWG-RC @ ;
+
+: NEG-LOAD ( ptr u8 n -- )
+   2dup IWG-RUN-LOAD
+   s" U-TYPE" IWG-ASSERT-INTERNAL
+   RESULT TAIL-RATCHET:SNAPSHOT
+   IWG-EXEC:SUBJECT
+   s" U-TYPE" IWG-ASSERT-INTERNAL
+   RESULT TAIL-RATCHET:SAME ;
+
+: NEG-STDIN ( ptr u8 n -- )
+   2dup IWG-RUN-STDIN
+   s" U-TYPE" IWG-ASSERT-INTERNAL
+   RESULT TAIL-RATCHET:SNAPSHOT
+   IWG-EXEC:SUBJECT
+   s" U-TYPE" IWG-ASSERT-INTERNAL
+   RESULT TAIL-RATCHET:SAME ;
+
+: POS-LOAD ( ptr u8 n -- )
+   2dup IWG-RUN-LOAD IWG-ASSERT-OK
+   RESULT TAIL-RATCHET:SNAPSHOT
+   IWG-EXEC:SUBJECT IWG-ASSERT-OK
+   RESULT TAIL-RATCHET:SAME ;
+
+public
+
+: TEST ( -- )
+   s" direct --load and subject preserve raw internal-word results" T-LABEL
+   s" U-TYPE" IWG-TOKEN$ NEG-LOAD
+   s" direct stdin and subject preserve raw internal-word results" T-LABEL
+   s" U-TYPE" IWG-TOKEN$ NEG-STDIN
+   s" direct --load and subject preserve raw successful results" T-LABEL
+   IWG-RAW-FORGE$ POS-LOAD ;
+
+: CHECK ( -- )
+   DIRECT-N SUBJECT-N MAX-MS TAIL-RATCHET:CHECK ;
+
+;package
 
 : IWG-PREPARE ( -- )
    CLEANUP-RESET
@@ -423,12 +484,15 @@ create IWG-EMPTY 1 allot            \ zero-length stdin
 
 : IWG-MAIN ( -- )
    T-RESET
+   TAIL-RATCHET:START
    IWG-PREPARE
+   IWG-PARITY:TEST
    IWG-NEG-BARE
    IWG-NEG-SHAPES
    IWG-POSITIVES
    IWG-OPENER-CASES
    IWG-DEFER-CASES
+   IWG-PARITY:CHECK
    IWG-CLEANUP
    T-REPORT
    s" internal-word-gate: ok" type cr ;

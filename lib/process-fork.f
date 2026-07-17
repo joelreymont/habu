@@ -7,7 +7,7 @@ require lib/errors.f
 require lib/process.f
 
 : PROC-FORK-RAW ( -- pid )
-   fork >PID ;
+   fork >PID PROCESS-TRACE:FORKED ;
 
 : PROC-FORK ( -- pid )
    PROC-FORK-RAW {: pid:pid :}
@@ -96,8 +96,10 @@ create PROC-REAP-PFD 16 allot   \ two pollfd cells (8 bytes each)
 \ - the worker never has to track or kill it. The worker must already be its
 \ own group leader; it keeps the wa write end open (dropped only at its exit).
 : PROC-FORK-REAPER ( fd fd -- ) {: pd:fd wa:fd :}
+   PROCESS-TRACE:REAPER
    PROC-FORK-RAW {: ipid:pid :}
    ipid PID>N 0= if
+      PROCESS-TRACE:REAPER
       PROC-FORK-RAW {: r2:pid :}
       r2 PID>N 0= if
          pd wa PROC-CLOSE-EXCEPT2
@@ -136,6 +138,7 @@ create PROC-REAP-PFD 16 allot   \ two pollfd cells (8 bytes each)
 \ blocks; when the pool parent is SIGKILLed the write end EOFs and the reaper
 \ SIGKILLs the child's group.
 : PROC-SPAWN-REAPER ( fd pid -- pid ) {: pd:fd cpid:pid :}
+   PROCESS-TRACE:REAPER
    PROC-FORK-RAW {: rpid:pid :}
    rpid PID>N 0= if
       0 >PID cpid PROC-SETPGID RC>N 0 < if

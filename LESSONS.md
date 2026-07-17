@@ -262,6 +262,28 @@ Last updated: 2026-07-17
   issue->commit->wait->bar.sync->read + buffer-parity obligations to these CPP-* seams; per the
   earlier note, same-body parity consistency is in scope for it, runtime loop-carried alternation is
   not.
+- **Global process totals are census data, not a phase budget.** The full gate
+  deliberately runs large process-API matrices, and pool context adds required
+  co-located reapers. Enforce performance with owner-local architectural
+  ratchets; otherwise concurrent phases charge each other and valid fixtures
+  make an arbitrary global ceiling fail.
+- **Post-spawn telemetry is part of process ownership.** A throwing hook after
+  successful creation must kill and reap the returned child before propagating;
+  an owner label must be armed only after every fallible preflight; and a fork
+  child must reset inherited live counters through a distinct child hook.
+- **A parent-death reaper fixture must never close its parent-death writer while
+  the reaper shares the test process group.** That EOF deliberately makes the
+  reaper SIGKILL its whole group, including the harness. Test fork accounting
+  through the classified fork seam; leave kill-tree behavior to the isolated
+  group-kill fixtures that first establish a separate process group.
+- **Library modules must not require their entry wrappers.** A resident runner
+  loaded `gate-common-lib.f`, then `gate-validation-worker.f` re-entered it via
+  `gate-common.f` and failed at the first duplicate definition. Entry wrappers
+  own prerequisites; modules consume the documented load contract.
+- **Direct/subject byte parity excludes fatal signal diagnostics.** Crash-handler
+  register dumps contain process-specific addresses, so trap/no-handler probes must
+  remain direct. Recover the spawn budget by batching deterministic checked sources,
+  and require per-source digest telemetry plus a dedicated full parity slice.
 - **The checker ALREADY expresses "same phantom in, same phantom out through an emitter" — the
   same-type tile/collective wrappers were trusted UNNECESSARILY.** (dot habu-ptx-phantom-preserving,
   leg 1, host lane, lib/ptx/rep.f.) A row-polymorphic higher-order combinator `( a a [ n n -- n ]
@@ -5904,3 +5926,11 @@ unchanged (148855). Keys for milestone 2:
   tail when `HOOK-CELL=0` or `TSIG-U-CELL=0`; inverting the first condition
   broke the refresh child and the native fixpoint rejected it. Record every
   condition combination, then map each original path to the shared label.
+- **Pin generation-sensitive pool fixtures before asserting exact rows.** A
+  standalone test inherits generation `0`, while the same test inside the full
+  gate inherits its pool slot. Save the caller generation, install a fixture
+  generation, assert parent and child rows against it, then restore the caller.
+- **Measure one-shot attribution immediately around the target process.** An
+  outer pool label is the fallback owner, so later same-path execs can share the
+  same owner and path. Snapshot the row count before and after the target spawn,
+  then separately assert that the failed one-shot owner never appears.

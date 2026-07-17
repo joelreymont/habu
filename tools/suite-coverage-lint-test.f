@@ -76,7 +76,12 @@ variable SCT-GX-U
    SCT-GX-RESET
    s" candidate-test.f GE-SRC-FILE+" SCT-GX-LINE
    SCT-GX$ SC-SCHED-SCAN$
-   s" candidate-test.f" SC-SCHEDULED? TTRUE ;
+   s" candidate-test.f" SC-SCHEDULED? TTRUE
+   SCT-GX-RESET
+   s" candidate-negative.f construct case-kind negative 70" SCT-GX-LINE
+   s" ARMED diagnostic RUN-CASE" SCT-GX-LINE
+   SCT-GX$ SC-CAND-SCAN$
+   s" candidate-negative.f" SC-SCHEDULED? TTRUE ;
 
 \ ---- (b) ptx: spawned unit absent from the inprocess list -> PTX-TOOL-MISSING -
 : SCT-PTX-MISSING ( -- )

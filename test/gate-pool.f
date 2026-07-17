@@ -556,6 +556,7 @@ GT-POOL-ABORT-KILL!
 \ then track its pid so GT-POOL-REAP/KILL-SLOT reap it. Reaper fork failure is
 \ also fail-closed; otherwise a spawned subtree could survive a killed pool.
 : GT-POOL-ARM-SPAWN-REAPER ( idx -- ) {: idx:idx :}
+   idx GT-POOL-LABEL$ GATE-PROCESS:OWNER!
    GT-POOL-DEATH-RD@ idx GT-POOL-PID@ PROC-SPAWN-REAPER {: rpid:pid :}
    rpid PID>N 0 < if E-PROC-SPAWN GT-POOL-THROW then
    rpid idx GT-POOL-REAPER-PID-PTR ! ;
@@ -578,6 +579,7 @@ GT-POOL-ABORT-KILL!
    path pathu >LEN PROC-ARGV-CHECK-PATH
    path pathu >LEN PROC-ARGV-PREPARE {: pathz:ptr argv:ptr :}
    PROC-ENV-PREPARE {: envp:ptr :}
+   idx GT-POOL-LABEL$ GATE-PROCESS:OWNER!
    pathz argv envp -1 >FD idx GT-POOL-OUT-W-PTR @ idx GT-POOL-ERR-W-PTR @
    PROC-SPAWN-ARGV-ENV-RAW {: pid:pid :}
    pid PID>N 0 < if
@@ -653,16 +655,17 @@ GT-POOL-ABORT-KILL!
    idx GT-POOL-CLOSE-WRITES
    idx GT-POOL-CLOSE-CAPTURE
    GT-POOL-SETPGID-SELF
-   GT-POOL-ARM-REAPER
    idx GT-POOL-GEN-CHILD!
    GT-POOL-RED-RESET
    idx GT-POOL-LABEL$ GS-CHILD-LABEL!
+   GT-POOL-ARM-REAPER
    q catch {: rc:n :}
    rc 0= if 0 GT-POOL-FORK-EXIT then
    rc GT-POOL-FORK-THROW ;
 
 \ typed-local-lint: allow-bare-local - q keeps the forked worker quotation effect.
 : GT-POOL-FORK ( idx [ -- ] -- ) {: idx:idx q :}
+   idx GT-POOL-LABEL$ GATE-PROCESS:OWNER!
    PROC-FORK-RAW {: pid:pid :}
    pid PID>N 0 < if E-PROC-SPAWN GT-POOL-THROW then
    pid PID>N 0= if idx q GT-POOL-FORK-CHILD then
