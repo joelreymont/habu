@@ -5945,10 +5945,10 @@ unchanged (148855). Keys for milestone 2:
   fixed 128 KiB `FILEMAP.md` buffer failed immediately after independent master
   growth. `LINT-SOURCE` already provides bounded dynamic storage; prove the
   consumer with a fixture larger than the retired cap.
-- **Nested performance ratchets share the owning host calibration.** The full
-  gate scaled its profile through `HB_LOAD_PCT`, but tail child and group limits
-  remained raw 8/10-second constants. Centralize those limits behind
-  `T-BUDGET-MS`; otherwise a healthy loaded run fails inside its parent budget.
+- **Timeout floors and performance calibration are different policies.**
+  `HB_LOAD_PCT` includes a 3x structural pool-pressure floor so healthy children
+  are not killed; applying it to phase ratchets silently turns nominal 8/10
+  seconds into 24/30. Export measured `HB_CAL_PCT` separately for ratchets.
 - **Diagnostic probes preserve failure status.** Run optional existence and
   content checks separately; a shell `|| true` hides the exact tool failure the
   investigation needs.

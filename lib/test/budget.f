@@ -4,9 +4,10 @@
 \ saturation (concurrent gate runs): a healthy-but-slow child overruns a
 \ fixed budget and throws E-PROC-TIMEOUT (dots
 \ habu-concurrent-multi-workspace-5341c7f4, habu-process-test-standalone-
-\ 9de825bc). T-BUDGET-MS scales a nominal budget by a measured load factor:
-\ the gate measures once at startup (TR-CALIBRATE cal-factor) and exports it
-\ to every worker as HB_LOAD_PCT; a STANDALONE run (no HB_LOAD_PCT) now
+\ 9de825bc). T-BUDGET-MS scales a nominal timeout by HB_LOAD_PCT, which
+\ combines measured host load with the gate's structural pool-pressure floor.
+\ TEST-BUDGET:PERF-MS scales performance ratchets by HB_CAL_PCT, the measured
+\ host calibration alone. A STANDALONE run without either variable now
 \ SELF-CALIBRATES with the same spin probe instead of assuming an idle box -
 \ the proven flake class was exactly a standalone suite running nominal
 \ budgets on a saturated machine. Detection stays BOUNDED: the factor is
@@ -53,14 +54,39 @@ variable T-BUDGET-CAL-SINK
    mono-ns t0 - T-BUDGET-NS-PER-MS /
    T-BUDGET-CAL-REF-MS T-BUDGET-CAL-PCT ;
 
-\ Unset, empty, or non-numeric HB_LOAD_PCT means "no gate-exported factor":
-\ self-calibrate rather than assuming an idle box.
-: T-BUDGET-ENV-PCT ( -- n )
-   s" HB_LOAD_PCT" GETENV STR>NUMBER? MATCH option
+package TEST-BUDGET
+
+variable PERF-PCT
+
+public
+
+: ENV-PCT ( ptr u8 n -- n )
+   GETENV STR>NUMBER? MATCH option
      none OF T-BUDGET-SELF-PCT exit ENDOF
      some OF ENDOF
    ;MATCH
    T-BUDGET-CLAMP ;
+
+private
+
+: PERF-INIT ( -- )
+   s" HB_CAL_PCT" ENV-PCT PERF-PCT ! ;
+
+public
+
+: PERF-SET ( n -- )
+   T-BUDGET-CLAMP PERF-PCT ! ;
+
+: PERF-MS ( n -- n )
+   PERF-PCT @ 0= if PERF-INIT then
+   PERF-PCT @ * 100 / ;
+
+;package
+
+\ Unset, empty, or non-numeric HB_LOAD_PCT means "no gate-exported factor":
+\ self-calibrate rather than assuming an idle box.
+: T-BUDGET-ENV-PCT ( -- n )
+   s" HB_LOAD_PCT" TEST-BUDGET:ENV-PCT ;
 
 : T-BUDGET-INIT ( -- )
    T-BUDGET-ENV-PCT T-BUDGET-PCT ! ;

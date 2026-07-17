@@ -310,11 +310,11 @@ Architecture target:
 
 Global exec/fork totals are diagnostic census values, not performance limits:
 process API tests intentionally launch large fixed matrices, and co-located
-reapers depend on whether a case runs inside a pool worker. Tail child and
-group deadlines scale through the same bounded `HB_LOAD_PCT` policy as the
-owning profile, preserving the nominal 8/10-second limits on an idle host.
-Per-owner ratchets catch semantic engine-boot regressions without conflating
-those contracts.
+reapers depend on whether a case runs inside a pool worker. Tail child timeouts
+use bounded `HB_LOAD_PCT`, including the structural pool-pressure floor;
+performance ratchets use measured `HB_CAL_PCT` only, preserving the nominal
+8/10-second limits on an idle full gate. Per-owner ratchets catch semantic
+engine-boot regressions without conflating those contracts.
 
 Generated stats, caches, build images, and test logs remain local artifacts and
 are never committed. Standalone snapshot-launcher tooling is not part of the

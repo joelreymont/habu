@@ -217,17 +217,18 @@ variable PET-START-NS
    PET-OUT PET-CAP PET-ERR PET-CAP PET-CMD-TIMEOUT-MS PET-STDIN-CAPTURE
    1 T= 0 T= 0 T= ;
 
-\ Budget env carrier (habu-concurrent-multi-workspace-5341c7f4): a spawned hb
-\ child inherits HB_LOAD_PCT through the env rows and scales its budgets by it
-\ end-to-end - proving the gate's exported cal-factor actually reaches
-\ worker-spawned suites. Inherit-missing keeps HOME/PATH so bin/hb boots.
+\ Budget env carriers: a spawned hb child receives structural HB_LOAD_PCT for
+\ timeouts and measured HB_CAL_PCT for performance ratchets. Inherit-missing
+\ keeps HOME/PATH so bin/hb boots.
 : TEST-BUDGET-ENV ( -- )
    PET-RESET
    s" HB_LOAD_PCT" s" 250" PET-ENV+
+   s" HB_CAL_PCT" s" 200" PET-ENV+
    PROC-ENV-INHERIT-MISSING
-   s" bin/hb" s" require test/tail-ratchet.f TAIL-BUDGET:GROUP-MS . TAIL-BUDGET:PROCESS-MS . "
+   s" bin/hb" s" require test/tail-ratchet.f TAIL-BUDGET:GROUP-MS . TAIL-BUDGET:PROCESS-MS . TAIL-BUDGET:TIMEOUT-MS . "
    PET-OUT PET-CAP PET-ERR PET-CAP PET-HB-TIMEOUT-MS PET-STDIN-CAPTURE
    0 T= 0 T= {: outu:n :}
+   PET-OUT outu s" 16000" CONTAINS? TTRUE
    PET-OUT outu s" 20000" CONTAINS? TTRUE
    PET-OUT outu s" 25000" CONTAINS? TTRUE ;
 

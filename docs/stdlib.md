@@ -1709,15 +1709,14 @@ throw code and uses the checker's modeled `catch` effect. `TTHROWS` keeps the
 audited execution-token boundary for top-level test scripts, where `[: ;]`
 quotation syntax is unavailable.
 
-`lib/test/budget.f` provides load-aware timeout budgets for process-spawning
-suites. `T-BUDGET-MS ( n -- n )` scales a nominal budget by the load factor the
-gate measures at startup and exports as `HB_LOAD_PCT` (its printed
-`cal-factor`), so a healthy-but-slow child under box saturation does not read
-as hung. Detection stays bounded: the factor is clamped to 100..300 percent -
-budgets never shrink below nominal, and a genuinely hung child still fails
-within 3x the nominal budget. Standalone runs without `HB_LOAD_PCT` use the
-nominal budget unchanged. Declare budgets as `<nominal> constant` plus a
-`T-BUDGET-MS`-scaling colon word so call sites stay unchanged.
+`lib/test/budget.f` keeps child timeouts and performance ratchets separate.
+`T-BUDGET-MS ( n -- n )` scales a nominal timeout by `HB_LOAD_PCT`, which
+includes measured host load plus the gate's structural pool-pressure floor, so
+a healthy-but-slow child does not read as hung. `TEST-BUDGET:PERF-MS ( n -- n )`
+scales a performance ratchet by measured `HB_CAL_PCT` only, so an idle full gate
+still enforces its nominal phase limits. Both factors are clamped to 100..300
+percent; standalone runs without an exported factor self-calibrate. Declare
+budgets as named nominal constants behind the appropriate scaling word.
 
 `TEST:*` defines reusable suite/group/test orchestration. Project adapters
 install typed hooks with `TEST:SETUP!`, `TEST:TEARDOWN!`, `TEST:DRAIN!`,
