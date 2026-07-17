@@ -9,6 +9,14 @@ require lib/string.f
 require maki/cad.f
 require maki/gradcheck.f
 
+\ ---- audited count projection (MIR typed item-count -> raw count cell) ----------
+\ NODE-/SLOT-COUNT@ return CAD-NUM:item-count; the T= scalar assertions take the
+\ raw cell. Reopen the unsealed CAD-NUM package for one checked bridge over its
+\ private ITEM-COUNT>N projection (no new TRUSTED; mirrors cad.f CAD-IX>N).
+package CAD-NUM public
+: GCT-IC>N ( CAD-NUM:item-count -- n )  ITEM-COUNT>N ;
+;package
+
 package MAKI
 
 \ ---- reason containment helper ---------------------------------------------
@@ -156,8 +164,8 @@ s" no-adjoint:cast" GCT-REASON-IN
 \ ---- IR is NOT corrupted: the throwaway backward pass is released -----------
 MODEL: GC-K ( x:2x2 -- y ) GELU RELU ;
 GC-RUN drop
-MIR-N@ 2 T=                               \ 2 forward nodes, backward pass rolled back
-MIR-IN-SLOTS@ 1 T=                        \ only x; the seed slot was released
+NODE-COUNT@ CAD-NUM:GCT-IC>N 2 T=                               \ 2 forward nodes, backward pass rolled back
+SLOT-COUNT@ CAD-NUM:GCT-IC>N 1 T=                        \ only x; the seed slot was released
 
 \ ---- gate wiring: GRADCHECK-INTO produces a real verdict --------------------
 MODEL: GC-CAST2 ( x:2x2 -- y ) CAST ;

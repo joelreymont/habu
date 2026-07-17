@@ -23,6 +23,14 @@ require lib/float.f
 require maki/onnx/ort-ref-data.f
 require maki/onnx/import.f
 
+\ ---- audited count projection (MIR typed item-count -> raw count cell) ----------
+\ MAKI:NODE-COUNT@ returns CAD-NUM:item-count; the T= scalar assertion takes the
+\ raw cell. Reopen the unsealed CAD-NUM package for one checked bridge over its
+\ private ITEM-COUNT>N projection (no new TRUSTED; mirrors cad.f CAD-IX>N).
+package CAD-NUM public
+: ORF-IC>N ( CAD-NUM:item-count -- n )  ITEM-COUNT>N ;
+;package
+
 package ONNX-ORT-TEST
 
 : ORF-TOL ( -- r )  0.00001 ;   \ see header: f32-vs-f64 rounding floor is 1.24e-7
@@ -40,7 +48,7 @@ ONNX:ENC$ ORF-REF$ STR= TTRUE
 \ ---- import the REAL exported bytes; structure facts ---------------------------
 ORF-REF$ ONNX:IMPORT
 MAKI:MIR-NAME$ s" EXTMLP" STR= TTRUE
-MAKI:MIR-N@ 3 T=                               \ Gemm->linear, Relu, Gemm->linear
+MAKI:NODE-COUNT@ CAD-NUM:ORF-IC>N 3 T=                               \ Gemm->linear, Relu, Gemm->linear
 0 MAKI:MIR-OP@ MAKI:OPKIND>N MAKI:OP-LINEAR T=
 1 MAKI:MIR-OP@ MAKI:OPKIND>N MAKI:OP-RELU T=
 2 MAKI:MIR-OP@ MAKI:OPKIND>N MAKI:OP-LINEAR T=

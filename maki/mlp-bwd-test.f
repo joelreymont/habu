@@ -13,6 +13,14 @@ require maki/cad.f
 require maki/backward.f
 require maki/gradcheck.f
 
+\ ---- audited count projection (MIR typed item-count -> raw count cell) ----------
+\ NODE-COUNT@ returns CAD-NUM:item-count; the T= scalar assertion takes the raw
+\ cell. Reopen the unsealed CAD-NUM package for one checked bridge over its
+\ private ITEM-COUNT>N projection (no new TRUSTED; mirrors cad.f CAD-IX>N).
+package CAD-NUM public
+: MLPT-IC>N ( CAD-NUM:item-count -- n )  ITEM-COUNT>N ;
+;package
+
 package MAKI
 
 : MLPT-REASON-IN ( ptr u8 n -- )  GC-RE$ 2swap CONTAINS? TTRUE ;
@@ -22,7 +30,7 @@ T-RESET
 \ ---- the flagship MLP: x -> LINEAR -> GELU -> LINEAR -> y --------------------
 \ forward IR: node0 LINEAR(x,w1,b1) 2x4 ; node1 GELU 2x4 ; node2 LINEAR(node1,w2,b2) 2x2
 MODEL: MLP ( x:2x3 w1:3x4 b1:1x4 w2:4x2 b2:1x2 -- y ) LINEAR GELU LINEAR ;
-MIR-N@ 3 T=
+NODE-COUNT@ CAD-NUM:MLPT-IC>N 3 T=
 BW-CAN? TTRUE
 BW-BUILD
 

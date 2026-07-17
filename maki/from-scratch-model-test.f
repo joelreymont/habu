@@ -10,6 +10,14 @@ require lib/test.f
 require lib/float.f
 require maki/from-scratch-model.f
 
+\ ---- audited count projection (MIR typed item-count -> raw count cell) ----------
+\ NODE-/SLOT-COUNT@ return CAD-NUM:item-count; the T= scalar assertions take the
+\ raw cell. Reopen the unsealed CAD-NUM package for one checked bridge over its
+\ private ITEM-COUNT>N projection (no new TRUSTED; mirrors cad.f CAD-IX>N).
+package CAD-NUM public
+: SMT-IC>N ( CAD-NUM:item-count -- n )  ITEM-COUNT>N ;
+;package
+
 package MAKI
 
 \ round a float to signed milli-units (round half away from zero)
@@ -24,8 +32,8 @@ T-RESET
 \ ---- MODEL: capture (canonical line; re-issued so the IR is fresh here) ------
 MODEL: SCRATCH-MLP ( x:8x6 w1:6x16 b1:1x16 w2:16x2 b2:1x2 -- y ) LINEAR GELU LINEAR ;
 MODEL-DEFINED? TTRUE
-MIR-N@ 3 T=                                   \ LINEAR, GELU, LINEAR
-MIR-IN-SLOTS@ 5 T=                            \ x, w1, b1, w2, b2
+NODE-COUNT@ CAD-NUM:SMT-IC>N 3 T=                                   \ LINEAR, GELU, LINEAR
+SLOT-COUNT@ CAD-NUM:SMT-IC>N 5 T=                            \ x, w1, b1, w2, b2
 2 MIR-NODE-ID MIR-ROWS@ ROWS-RAW 8 T=  2 MIR-NODE-ID MIR-COLS@ COLS-RAW 2 T=            \ output y = 8x2 (mu, logvar)
 2 MIR-NODE-ID MIR-DT@ DTYPE>N DT-F32 T=  2 MIR-NODE-ID MIR-LAY@ LAYOUT>N LAY-ROW T=
 0 MIR-NODE-ID MIR-ROWS@ ROWS-RAW 8 T=  0 MIR-NODE-ID MIR-COLS@ COLS-RAW 16 T=           \ hidden = 8x16

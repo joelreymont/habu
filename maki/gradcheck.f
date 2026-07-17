@@ -34,6 +34,15 @@ require maki/backward.f
 require maki/executor.f
 require maki/report.f
 
+\ ---- audited count projection (MIR typed item-count -> raw loop/compare cell) ---
+\ NODE-/SLOT-COUNT@ return CAD-NUM:item-count; a ?do bound, an emptiness test, and
+\ EX-RUN-N ( n -- ) take the raw node/slot count. Reopen the unsealed CAD-NUM
+\ package for one checked bridge over its private ITEM-COUNT>N projection (no new
+\ TRUSTED; mirrors cad.f CAD-IX>N).
+package CAD-NUM public
+: GC-IC>N ( CAD-NUM:item-count -- n )  ITEM-COUNT>N ;
+;package
+
 -5115 constant E-GC-EXEC     \ reserved: a node op-kind is not host-executable (gated)
 -5116 constant E-GC-CAP      \ input-buffer arena capacity exceeded
 
@@ -108,7 +117,7 @@ private
 : GC-BIND-INPUTS ( -- )
    EX-RESET
    0 GC-BUMP !
-   MIR-IN-SLOTS@ 0 ?do
+   SLOT-COUNT@ CAD-NUM:GC-IC>N 0 ?do
       i MIR-SLOT-ID {: s:MIR:input-slot :}
       s GC-SLOT-ELEMS {: e:n :}
       GC-BUMP @ {: off:n :}
@@ -143,7 +152,7 @@ private
 
 \ one sampled element: full run (analytic), then finite-diff the forward slice
 : GC-SAMPLE-OK? ( MIR:input-slot n -- bool ) {: s:MIR:input-slot e:n :}
-   MIR-N@ EX-RUN-N
+   NODE-COUNT@ CAD-NUM:GC-IC>N EX-RUN-N
    s e GC-ANALYTIC-EL {: a:r :}
    s e GC-FD-SUM {: fd:r :}
    a fd GC-CLOSE? ;
@@ -177,7 +186,7 @@ private
 \ ---- blocking-op classification (only cast / no-adjoint / unsupported remain) -
 \ first blocking NODE index (op family refetched at the use site), or -1
 : GC-FIRST-BAD ( -- n )
-   MIR-N@ 0 ?do
+   NODE-COUNT@ CAD-NUM:GC-IC>N 0 ?do
       i MIR-NODE-ID MIR-OP@ dup ADJ-HAS? 0=  swap dup ADJ-SUP? 0=  swap EX-OP-OK? 0=  or or
       if i unloop exit then
    loop  -1 ;
@@ -193,7 +202,7 @@ public
 
 \ ---- the host gradcheck: verdict (V-PASS/V-FAIL/V-NOTRUN) + reason in GC-RE$ ---
 : GC-RUN ( -- n )
-   MIR-N@ 0= if GC-RE-RESET s" host: empty model" GC-RE+ V-NOTRUN exit then
+   NODE-COUNT@ CAD-NUM:GC-IC>N 0= if GC-RE-RESET s" host: empty model" GC-RE+ V-NOTRUN exit then
    GC-FIRST-BAD {: bad:n :}
    bad 0< 0= if bad GC-REASON-BAD V-NOTRUN exit then
    MIR-MARK GC-MARK!                              \ restore-mark (nodes slots ins-u)

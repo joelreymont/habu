@@ -47,6 +47,14 @@ require maki/onnx/import.f
 require maki/executor.f
 require maki/fusion-plan.f
 
+\ ---- audited count projection (MIR typed item-count -> raw count cell) ----------
+\ MAKI:NODE-/SLOT-COUNT@ return CAD-NUM:item-count; the T= scalar assertions take
+\ the raw cell. Reopen the unsealed CAD-NUM package for one checked bridge over
+\ its private ITEM-COUNT>N projection (no new TRUSTED; mirrors cad.f CAD-IX>N).
+package CAD-NUM public
+: OIT-IC>N ( CAD-NUM:item-count -- n )  ITEM-COUNT>N ;
+;package
+
 package ONNX-IMPORT-TEST
 
 \ ---- readers (executor-test pattern) -----------------------------------------
@@ -684,8 +692,8 @@ T-RESET
 
 \ ---- fixture A: import facts + host execution + fusion plan ----------------------
 MODEL-A  ONNX:ENC$ ONNX:IMPORT
-MAKI:MIR-N@ 2 T=
-MAKI:MIR-IN-SLOTS@ 3 T=                        \ x + initializers w, b
+MAKI:NODE-COUNT@ CAD-NUM:OIT-IC>N 2 T=
+MAKI:SLOT-COUNT@ CAD-NUM:OIT-IC>N 3 T=                        \ x + initializers w, b
 MAKI:MIR-NAME$ s" GR2" STR= TTRUE
 0 MAKI:MIR-OP@ MAKI:OPKIND>N MAKI:OP-LINEAR T=               \ 3-input Gemm -> linear
 1 MAKI:MIR-OP@ MAKI:OPKIND>N MAKI:OP-RELU T=
@@ -713,10 +721,10 @@ MAKI:FP-REGION-COUNT 1 T=                      \ Gemm -> Relu fuses (matmul + EW
 \ ---- fixture B: float_data init, input-listed initializer, IMPORT-FILE ------------
 WRITE-FIX
 FIX-PATH$ ONNX:IMPORT-FILE                     \ the on-disk .onnx path round-trips
-MAKI:MIR-N@ 1 T=
+MAKI:NODE-COUNT@ CAD-NUM:OIT-IC>N 1 T=
 0 MAKI:MIR-OP@ MAKI:OPKIND>N MAKI:OP-ADD T=
 ONNX:IN# 1 T=                                  \ c is initializer-bound, not a runtime input
-MAKI:MIR-IN-SLOTS@ 2 T=
+MAKI:SLOT-COUNT@ CAD-NUM:OIT-IC>N 2 T=
 10.0 XB 0 T-SET  20.0 XB 1 T-SET  30.0 XB 2 T-SET  40.0 XB 3 T-SET
 MAKI:EX-RESET  ONNX:BIND-INITS  XB 0 ONNX:IN-SLOT@ MAKI:EX-BIND  MAKI:EX-RUN
 ONNX:OUT-NODE@ MAKI:EX-OUT@ 0 >I 11 T=
@@ -727,7 +735,7 @@ FIX-PATH$ REMOVE-FILE
 
 \ ---- fixture C: Mul -> Softmax(axis=-1) --------------------------------------------
 MODEL-C  ONNX:ENC$ ONNX:IMPORT
-MAKI:MIR-N@ 2 T=
+MAKI:NODE-COUNT@ CAD-NUM:OIT-IC>N 2 T=
 0 MAKI:MIR-OP@ MAKI:OPKIND>N MAKI:OP-MUL T=
 1 MAKI:MIR-OP@ MAKI:OPKIND>N MAKI:OP-SOFTMAX-ROW T=
 ONNX:IN# 2 T=
@@ -740,7 +748,7 @@ ONNX:OUT-NODE@ MAKI:EX-OUT@ 1 >M 500 T=
 
 \ ---- fixture D: two-input Gemm -> matmul -------------------------------------------
 MODEL-D  ONNX:ENC$ ONNX:IMPORT
-MAKI:MIR-N@ 1 T=
+MAKI:NODE-COUNT@ CAD-NUM:OIT-IC>N 1 T=
 0 MAKI:MIR-OP@ MAKI:OPKIND>N MAKI:OP-MATMUL T=
 1.0 XB 0 T-SET  2.0 XB 1 T-SET  3.0 XB 2 T-SET  4.0 XB 3 T-SET
 MAKI:EX-RESET  ONNX:BIND-INITS  XB 0 ONNX:IN-SLOT@ MAKI:EX-BIND  MAKI:EX-RUN
@@ -751,7 +759,7 @@ ONNX:OUT-NODE@ MAKI:EX-OUT@ 3 >I 50 T=
 
 \ ---- fixture E: Add with a 1x2 bias -> OP-BIAS, row-broadcast ---------------------
 MODEL-E  ONNX:ENC$ ONNX:IMPORT
-MAKI:MIR-N@ 1 T=
+MAKI:NODE-COUNT@ CAD-NUM:OIT-IC>N 1 T=
 0 MAKI:MIR-OP@ MAKI:OPKIND>N MAKI:OP-BIAS T=                  \ 1xC second operand maps to a bias node
 ONNX:IN# 1 T=                                   \ br is initializer-bound, x is the runtime input
 1.0 XB 0 T-SET  2.0 XB 1 T-SET  3.0 XB 2 T-SET  4.0 XB 3 T-SET
@@ -763,7 +771,7 @@ ONNX:OUT-NODE@ MAKI:EX-OUT@ 3 >I 24 T=
 
 \ ---- fixture F: Mul with a 1x1 scalar -> OP-SCALE --------------------------------
 MODEL-F  ONNX:ENC$ ONNX:IMPORT
-MAKI:MIR-N@ 1 T=
+MAKI:NODE-COUNT@ CAD-NUM:OIT-IC>N 1 T=
 0 MAKI:MIR-OP@ MAKI:OPKIND>N MAKI:OP-SCALE T=                 \ 1x1 second operand maps to a scale node
 1.0 XB 0 T-SET  2.0 XB 1 T-SET  3.0 XB 2 T-SET  4.0 XB 3 T-SET
 MAKI:EX-RESET  ONNX:BIND-INITS  XB 0 ONNX:IN-SLOT@ MAKI:EX-BIND  MAKI:EX-RUN
@@ -774,7 +782,7 @@ ONNX:OUT-NODE@ MAKI:EX-OUT@ 3 >I 12 T=
 
 \ ---- Reshape: shape from the INT64 constant, host-executed ------------------------
 MODEL-RS  ONNX:ENC$ ONNX:IMPORT
-MAKI:MIR-N@ 1 T=
+MAKI:NODE-COUNT@ CAD-NUM:OIT-IC>N 1 T=
 0 MAKI:MIR-OP@ MAKI:OPKIND>N MAKI:OP-RESHAPE T=
 0 MAKI:MIR-ROWS@ 1 T=  0 MAKI:MIR-COLS@ 4 T=    \ target [1,4] read from the shape initializer
 ONNX:IN# 1 T=                                   \ sh is an int64 constant, not a runtime input
@@ -787,7 +795,7 @@ ONNX:OUT-NODE@ MAKI:EX-OUT@ 3 >I 4 T=
 
 \ ---- Transpose: perm [1,0], 2x3 -> 3x2, host-executed -----------------------------
 MODEL-TR  ONNX:ENC$ ONNX:IMPORT
-MAKI:MIR-N@ 1 T=
+MAKI:NODE-COUNT@ CAD-NUM:OIT-IC>N 1 T=
 0 MAKI:MIR-OP@ MAKI:OPKIND>N MAKI:OP-TRANSPOSE T=
 0 MAKI:MIR-ROWS@ 3 T=  0 MAKI:MIR-COLS@ 2 T=
 1.0 XB 0 T-SET  2.0 XB 1 T-SET  3.0 XB 2 T-SET
@@ -802,7 +810,7 @@ ONNX:OUT-NODE@ MAKI:EX-OUT@ 5 >I 6 T=
 
 \ ---- Concat: axis 0 row-append, 2x2 + 1x2 -> 3x2, host-executed -------------------
 MODEL-CC  ONNX:ENC$ ONNX:IMPORT
-MAKI:MIR-N@ 1 T=
+MAKI:NODE-COUNT@ CAD-NUM:OIT-IC>N 1 T=
 0 MAKI:MIR-OP@ MAKI:OPKIND>N MAKI:OP-CONCAT T=
 0 MAKI:MIR-ROWS@ 3 T=  0 MAKI:MIR-COLS@ 2 T=
 1.0 XB 0 T-SET  2.0 XB 1 T-SET  3.0 XB 2 T-SET  4.0 XB 3 T-SET
@@ -816,7 +824,7 @@ ONNX:OUT-NODE@ MAKI:EX-OUT@ 5 >I 20 T=
 
 \ ---- Gemm transB=1 (the common PyTorch Linear export): TRANSPOSE + MATMUL ---------
 MODEL-GTB  ONNX:ENC$ ONNX:IMPORT
-MAKI:MIR-N@ 2 T=
+MAKI:NODE-COUNT@ CAD-NUM:OIT-IC>N 2 T=
 0 MAKI:MIR-OP@ MAKI:OPKIND>N MAKI:OP-TRANSPOSE T=            \ B is transposed by an inserted movement node
 1 MAKI:MIR-OP@ MAKI:OPKIND>N MAKI:OP-MATMUL T=
 ONNX:OUT-NODE@ 1 T=
@@ -831,7 +839,7 @@ ONNX:OUT-NODE@ MAKI:EX-OUT@ 3 >I 5 T=
 
 \ ---- Gemm alpha=2 beta=0: MATMUL + SCALE (synthetic 1x1), C dropped ----------------
 MODEL-GAB  ONNX:ENC$ ONNX:IMPORT
-MAKI:MIR-N@ 2 T=
+MAKI:NODE-COUNT@ CAD-NUM:OIT-IC>N 2 T=
 0 MAKI:MIR-OP@ MAKI:OPKIND>N MAKI:OP-MATMUL T=
 1 MAKI:MIR-OP@ MAKI:OPKIND>N MAKI:OP-SCALE T=               \ alpha=2 -> an inserted scale node
 ONNX:OUT-NODE@ 1 T=
@@ -844,7 +852,7 @@ ONNX:OUT-NODE@ MAKI:EX-OUT@ 3 >I 100 T=
 
 \ ---- residual A: int64_data (field 7) shape drives a Reshape, host-executed --------
 MODEL-RS7  ONNX:ENC$ ONNX:IMPORT
-MAKI:MIR-N@ 1 T=
+MAKI:NODE-COUNT@ CAD-NUM:OIT-IC>N 1 T=
 0 MAKI:MIR-OP@ MAKI:OPKIND>N MAKI:OP-RESHAPE T=
 0 MAKI:MIR-ROWS@ 1 T=  0 MAKI:MIR-COLS@ 4 T=   \ target [1,4] read from the int64_data constant
 1.0 XB 0 T-SET  2.0 XB 1 T-SET  3.0 XB 2 T-SET  4.0 XB 3 T-SET
@@ -856,7 +864,7 @@ ONNX:OUT-NODE@ MAKI:EX-OUT@ 3 >I 4 T=
 
 \ ---- residual A: UNPACKED int64_data (repeated varint fields), host-executed --------
 MODEL-RS7U  ONNX:ENC$ ONNX:IMPORT
-MAKI:MIR-N@ 1 T=
+MAKI:NODE-COUNT@ CAD-NUM:OIT-IC>N 1 T=
 0 MAKI:MIR-ROWS@ 1 T=  0 MAKI:MIR-COLS@ 4 T=   \ target [1,4] from unpacked field-7 varints
 1.0 XB 0 T-SET  2.0 XB 1 T-SET  3.0 XB 2 T-SET  4.0 XB 3 T-SET
 MAKI:EX-RESET  ONNX:BIND-INITS  XB 0 ONNX:IN-SLOT@ MAKI:EX-BIND  MAKI:EX-RUN
@@ -865,7 +873,7 @@ ONNX:OUT-NODE@ MAKI:EX-OUT@ 3 >I 4 T=
 
 \ ---- residual A: NEGATIVE int64_data value (10-byte varint) drives the infer dim ----
 MODEL-RSN7  ONNX:ENC$ ONNX:IMPORT
-MAKI:MIR-N@ 1 T=
+MAKI:NODE-COUNT@ CAD-NUM:OIT-IC>N 1 T=
 0 MAKI:MIR-ROWS@ 3 T=  0 MAKI:MIR-COLS@ 2 T=   \ [-1,2] decoded from int64_data -> rows inferred
 1.0 XB 0 T-SET  2.0 XB 1 T-SET  3.0 XB 2 T-SET
 4.0 XB 3 T-SET  5.0 XB 4 T-SET  6.0 XB 5 T-SET
@@ -875,7 +883,7 @@ ONNX:OUT-NODE@ MAKI:EX-OUT@ 5 >I 6 T=
 
 \ ---- residual B: Reshape [-1,2] (rows inferred), host-executed ----------------------
 MODEL-RSI  ONNX:ENC$ ONNX:IMPORT
-MAKI:MIR-N@ 1 T=
+MAKI:NODE-COUNT@ CAD-NUM:OIT-IC>N 1 T=
 0 MAKI:MIR-OP@ MAKI:OPKIND>N MAKI:OP-RESHAPE T=
 0 MAKI:MIR-ROWS@ 3 T=  0 MAKI:MIR-COLS@ 2 T=   \ 6 elems / cols 2 -> 3 rows
 1.0 XB 0 T-SET  2.0 XB 1 T-SET  3.0 XB 2 T-SET
@@ -886,7 +894,7 @@ ONNX:OUT-NODE@ MAKI:EX-OUT@ 5 >I 6 T=
 
 \ ---- residual B: Reshape [0,-1] (copy rows, infer cols) ----------------------------
 MODEL-RS0  ONNX:ENC$ ONNX:IMPORT
-MAKI:MIR-N@ 1 T=
+MAKI:NODE-COUNT@ CAD-NUM:OIT-IC>N 1 T=
 0 MAKI:MIR-ROWS@ 2 T=  0 MAKI:MIR-COLS@ 3 T=   \ rows copied (0->2), cols inferred (-1->3)
 1.0 XB 0 T-SET  2.0 XB 1 T-SET  3.0 XB 2 T-SET
 4.0 XB 3 T-SET  5.0 XB 4 T-SET  6.0 XB 5 T-SET
@@ -896,7 +904,7 @@ ONNX:OUT-NODE@ MAKI:EX-OUT@ 5 >I 6 T=
 
 \ ---- residual C: Slice rows [1,3) of a 4x2, host-executed vs hand-computed ----------
 MODEL-SL  ONNX:ENC$ ONNX:IMPORT
-MAKI:MIR-N@ 1 T=
+MAKI:NODE-COUNT@ CAD-NUM:OIT-IC>N 1 T=
 0 MAKI:MIR-OP@ MAKI:OPKIND>N MAKI:OP-SLICE T=
 0 MAKI:MIR-ROWS@ 2 T=  0 MAKI:MIR-COLS@ 2 T=
 ONNX:IN# 1 T=                                   \ st/en are int64 constants, not runtime inputs
@@ -922,7 +930,7 @@ ONNX:OUT-NODE@ MAKI:EX-OUT@ 3 >I 6 T=
 
 \ ---- residual D: Gather rows [2,0] of a 3x2, host-executed vs hand-computed ---------
 MODEL-GA  ONNX:ENC$ ONNX:IMPORT
-MAKI:MIR-N@ 1 T=
+MAKI:NODE-COUNT@ CAD-NUM:OIT-IC>N 1 T=
 0 MAKI:MIR-OP@ MAKI:OPKIND>N MAKI:OP-GATHER T=
 0 MAKI:MIR-ROWS@ 2 T=  0 MAKI:MIR-COLS@ 2 T=    \ output rows = index count
 ONNX:IN# 1 T=                                   \ idx is int64->float bridged, not a runtime input
@@ -939,7 +947,7 @@ MAKI:FP-REGION-COUNT 1 T=                       \ a gathered movement output is 
 
 \ ---- residual D: Gather negative indices [-1,0] resolved at import ------------------
 MODEL-GAN  ONNX:ENC$ ONNX:IMPORT
-MAKI:MIR-N@ 1 T=
+MAKI:NODE-COUNT@ CAD-NUM:OIT-IC>N 1 T=
 0 MAKI:MIR-ROWS@ 2 T=  0 MAKI:MIR-COLS@ 2 T=
 1.0 XB 0 T-SET  2.0 XB 1 T-SET  3.0 XB 2 T-SET
 4.0 XB 3 T-SET  5.0 XB 4 T-SET  6.0 XB 5 T-SET
