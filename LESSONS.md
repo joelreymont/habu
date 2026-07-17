@@ -5898,3 +5898,9 @@ unchanged (148855). Keys for milestone 2:
   environment so the final stdin engine reports its own map. A mutable exact
   size baseline is only a ratchet; pair it with an immutable architectural
   ceiling so a baseline update cannot normalize growth.
+- **Prove emitter branch sharing with a runtime truth table before rewriting
+  layout.** An emitter's forward label names the code skipped to, not the body
+  adjacent to the conditional. The hooked publish dispatch selects the shared
+  tail when `HOOK-CELL=0` or `TSIG-U-CELL=0`; inverting the first condition
+  broke the refresh child and the native fixpoint rejected it. Record every
+  condition combination, then map each original path to the shared label.

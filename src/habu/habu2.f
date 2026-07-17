@@ -5557,13 +5557,11 @@ s" em-compile-publish-trusted" s" --" TRUST
 s" em-compile-publish-hooked" s" --" TRUST
 
 : EM-COMPILE-PUBLISH ( -- )
-   LBL LBL {: checked unsigned :}
-   9 DATA HOOK-CELL LDR,  9 checked CBNZ,
-      EM-COMPILE-PUBLISH-HOOKED
-   checked LBL,
-   9 DATA TSIG-U-CELL LDR,  9 unsigned CBZ,
-      EM-COMPILE-PUBLISH-TRUSTED
-   unsigned LBL,
+   LBL {: hooked:label :}
+   9 DATA HOOK-CELL LDR,  9 hooked CBZ,
+   9 DATA TSIG-U-CELL LDR,  9 hooked CBZ,
+   EM-COMPILE-PUBLISH-TRUSTED
+   hooked LBL,
    EM-COMPILE-PUBLISH-HOOKED ;
 s" em-compile-publish" s" --" TRUST
 
