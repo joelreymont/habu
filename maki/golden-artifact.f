@@ -316,7 +316,10 @@ private
    GA-PF-IDX @ 1+ GA-PF-IDX ! ;
 : GA-PF-TOKEN ( ptr u8 n -- ) {: ta:ptr tu:n :}
    tu 0= if exit then
-   ta tu STR>FLOAT 0= if E-GA-PARSE throw then
+   ta tu STR>FLOAT MATCH option
+     none OF E-GA-PARSE throw ENDOF
+     some OF ENDOF
+   ;MATCH
    GA-PF-STORE ;
 : GA-PF-STEP ( ptr u8 n n -- n bool ) {: va:ptr vu:n start:n :}   \ value start -- nextstart continue?
    va vu STR:LENGTH $20 start STR:OFFSET STR:SPLIT-NEXT

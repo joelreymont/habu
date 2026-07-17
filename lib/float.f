@@ -107,16 +107,16 @@ public
    ;MATCH ;
 
 \ ---- public entry ---------------------------------------------------------
-: STR>FLOAT ( ptr u8 n -- r bool ) {: a0:ptr u0 :}
+: STR>FLOAT ( ptr u8 n -- option<r> ) {: a0:ptr u0:n :}
    -1 FL-VALID !
    a0 u0 FL-STRIP-SIGN {: a:ptr u neg :}
    a u FL-PARSE-EXP {: mlen :}
    a mlen FL-SIG MATCH option
-     none OF 0.0 0 0= 0= exit ENDOF                 \ bad significand -> 0.0, false
+     none OF OPTION:NONE exit ENDOF                 \ bad significand -> NONE
      some OF ENDOF                                  \ SOME significand left on the stack
    ;MATCH
    u 0=  FL-VALID @ 0= or
-   if drop 0.0 0 0= 0= exit then
+   if drop OPTION:NONE exit then                    \ empty mantissa / invalid -> NONE
    FL-EXPV @ POW10 f*
    neg if fnegate then
-   0 0= ;
+   OPTION:SOME ;

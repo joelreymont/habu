@@ -8,11 +8,16 @@ require lib/float.f
 
 : FL-NEAR ( r r -- bool ) f- fabs 0.000001 f< ;
 
-: T-FL ( ptr u8 n r -- ) {: want :}                 \ parse string, expect want
-   STR>FLOAT {: ok :}
-   want FL-NEAR ok and T-ASSERT ;
-: T-FL-BAD ( ptr u8 n -- )                          \ parse string, expect failure
-   STR>FLOAT {: ok :} drop ok 0= T-ASSERT ;
+: T-FL ( ptr u8 n r -- ) {: want:r :}               \ parse string, expect want
+   STR>FLOAT MATCH option
+     none OF 0 0= 0= ENDOF                           \ none -> false (unexpected)
+     some OF want FL-NEAR ENDOF                       \ some(r) -> r ~ want
+   ;MATCH T-ASSERT ;
+: T-FL-BAD ( ptr u8 n -- )                          \ parse string, expect NONE
+   STR>FLOAT MATCH option
+     none OF 0 0= ENDOF                              \ none -> true
+     some OF drop 0 0= 0= ENDOF                       \ some -> false (unexpected)
+   ;MATCH T-ASSERT ;
 
 : FL-RUN ( -- )
    T-RESET

@@ -427,7 +427,10 @@ variable JR-NI                               \ number-validator cursor
 
 : JR-FLOAT ( -- r )
    JR-KIND @ dup JT-INT = swap JT-FLOAT = or 0= if E-JR-STATE throw then
-   JR-SPAN$ STR>FLOAT 0= if E-JR-NUMBER throw then ;
+   JR-SPAN$ STR>FLOAT MATCH option
+     none OF E-JR-NUMBER throw ENDOF
+     some OF ENDOF
+   ;MATCH ;
 
 \ ---- string value decode (unescape into caller buffer) --------------------
 : JR-UDST-FIELD ( -- ptr ptr u8 )
