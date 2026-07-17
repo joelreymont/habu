@@ -1,9 +1,9 @@
 ---
 title: Freeze canonical artifact type and wire contract
-status: open
+status: active
 priority: 1
 issue-type: task
-created-at: "2026-07-13T16:15:58.437032+02:00"
+created-at: "\"2026-07-13T16:15:58.437032+02:00\""
 blocks:
   - habu-v2-types-artifact-6ee556f8
 ---
@@ -38,3 +38,5 @@ migration, and digest-mismatch outcomes. This dot owns only the plan/type
 contract plus CAD kinds/tests; the encoder remains with the parent implementation
 dot. Serialize dispatch until `docs/type-families.md` has exclusive ownership,
 then use `dot on` and commit/push the claim before creating its workspace.
+
+Claim: agent=artifact workspace=.jj-ws/fable-artifact (owns MODEL-CAD-V2-PLAN.md + docs/type-families.md + maki/cad-kinds.f this session)
