@@ -10,7 +10,7 @@ require lib/string.f
 require lib/fmt.f
 require maki/cad-kinds.f
 
--5251 constant E-TARGET-WIRE     \ ID>WIRE output buffer smaller than the fixed wire width
+-5247 constant E-TARGET-WIRE     \ ID>WIRE output buffer smaller than the fixed wire width
 -5252 constant E-TARGET-CAP
 -5253 constant E-TARGET-FACT
 -5254 constant E-TARGET-ID

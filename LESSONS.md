@@ -4,6 +4,14 @@
 
 Last updated: 2026-07-17
 
+- **error-code-lint is part of the OWNING gate for ANY new `E-*` constant, including maki/ — a
+  maki-only landing skipped it and put a code collision on master.** (idfam lane integration,
+  2026-07-17.) `E-TARGET-WIRE` picked -5251, already claimed by `E-ABL-CAP` (maki/ablate-ptx.f);
+  the lane's gate list (focused tests, maki suite, trust/refine/host/filemap lints) and the
+  orchestrator's integration battery both omitted error-code-lint, which only surfaced when the
+  next engine landing ran the full gate-stdlib slice. Rule: any diff adding or changing an error
+  code runs tools/error-code-lint.f before commit, and the integrator's battery includes it for
+  every landing that touches `.f` files — grep for a free code first, never pick by adjacency.
 - **A typed error result over a NOMINAL diagnostic type needs a custom sum family, not the
   shared `result<a,b>`.** (dot habu-v2-canonical-artifact-ee5121b4, the artifact envelope codec.)
   Constructing `RESULT:OK` in a TOTAL (ok-only) word leaves the err type variable `b` free, and a
