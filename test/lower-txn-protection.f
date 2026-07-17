@@ -4,11 +4,7 @@ require lib/errors.f
 require lib/string.f
 require lib/test.f
 require lib/test/outcome.f
-require lib/memory.f
-require lib/fs.f
-require lib/process.f
-require lib/process-argv.f
-require lib/process-env.f
+require lib/test/subject.f
 
 package LOWER-TXN-PROTECTION-TEST
 
@@ -22,13 +18,6 @@ variable OUT-U
 : LINE ( ptr u8 n -- )
    SB-APPEND
    $A SB-APPEND-C ;
-
-: HB$ ( -- ptr u8 n )
-   s" HABU_UNDER_TEST" >LEN PROC-ENV-DEFAULT$? if LEN>N exit then
-   2drop
-   s" HABU_UNDER_TEST" GETENV dup 0= if
-      2drop s" bin/hb" exit
-   then ;
 
 : PRELUDE ( -- )
    s" require lib/ffi-abi.f" LINE
@@ -86,13 +75,7 @@ variable OUT-U
    SB$ ;
 
 : CAPTURE ( ptr u8 n -- len len outcome ) {: src:ptr srcu:n :}
-   PROC-ARGV-RESET
-   HB$ >LEN
-   src srcu >LEN
-   OUT CAP >LEN
-   ERR CAP >LEN
-   TIMEOUT-MS >MS
-   RUN-ARGV-STDIN-CAPTURE-OUTCOME ;
+   src srcu OUT CAP >LEN ERR CAP >LEN TIMEOUT-MS >MS SUBJECT:RUN ;
 
 : EXPECT ( ptr u8 n n -- ) {: src:ptr srcu:n want:n :}
    src srcu CAPTURE want T-OUTCOME-EXITED=

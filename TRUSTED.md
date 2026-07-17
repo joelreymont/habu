@@ -157,8 +157,8 @@ that source is explicitly certified; they are not stale-checked by the default
 | em-compile-drop-locals | `--` | Emits optional locals-frame teardown before a compiled definition returns. | `test/run.f` | src/habu/habu2.f | 2026-06-25 |
 | em-compile-ret | `--` | Emits the raw return epilogue for a compiled definition. | `test/run.f` | src/habu/habu2.f | 2026-06-25 |
 | em-compile-flush-pend | `--` | Finalizes the pending dictionary entry length and flips/flushed the generated code region. | `test/run.f` | src/habu/habu2.f | 2026-06-25 |
-| em-compile-publish-trusted | `--` | Emits checked/trusted publication for declarations, DOES> signatures, and trust metadata. | `test/run.f` | src/habu/habu2.f | 2026-06-25 |
-| em-compile-publish-hooked | `--` | Emits hook-based publication for ordinary compiled definitions. | `test/run.f` | src/habu/habu2.f | 2026-06-25 |
+| em-compile-publish-trusted | `label --` | Emits checked/trusted publication for declarations, DOES> signatures, and trust metadata, branching to the supplied publication label. | `test/run.f` | src/habu/habu2.f | 2026-07-17 |
+| em-compile-publish-hooked | `label label --` | Emits hook-based publication for ordinary compiled definitions, branching to the supplied publication or finish label. | `test/run.f` | src/habu/habu2.f | 2026-07-17 |
 | p2w-entry | `label ptr a n n n --` | Pass-2 width-aware transport dispatch case (item 12 slice 3b): keyword match, per-operand width query, and the `ext` lowering emitter run through `JIT-XT-EXECUTE`. | `test/run.f` | src/habu/habu2.f | 2026-07-06 |
 | em-compile-p2wide | `--` | Emits the pass-2 width dispatch stage: the 18 whole-bundle transport cases between the local-reference and keyword tiers. | `test/run.f` | src/habu/habu2.f | 2026-07-06 |
 | em-p2-start | `--` | Emits the pass-2 re-entry: saves the live input, repoints the tokenizer at the captured body, rewinds CP/DP, resets per-definition compile state, and re-emits the prologue. | `test/run.f` | src/habu/habu2.f | 2026-07-06 |
@@ -733,6 +733,8 @@ that source is explicitly certified; they are not stale-checked by the default
 | CHECKER-DEFRECORD | `ptr u8 n ptr u8 n --` | Check driver models the checker primitive that publishes one parsed record definition and its source descriptor. | `tools/check-test.f`, `test/run.f` | tools/check-core.f | 2026-07-12 |
 | CHECKER-SCOPE-START | `--` | Check driver opens the checker transaction that isolates generated dependency effects from the parent session. | `tools/check-test.f`, `test/run.f` | tools/check-core.f | 2026-07-12 |
 | CHECKER-SCOPE-DONE | `--` | Check driver closes the checker transaction and rolls back generated dependency effects after the checked child verdict. | `tools/check-test.f`, `test/run.f` | tools/check-core.f | 2026-07-12 |
+| EVAL | `--` | Forked subject runner dynamically evaluates generated checked test source; the checker cannot express `evaluate`. Confined to the COW child and tracked by the missing typed dynamic-evaluation capability dot `habu-batch-candidate-valid-517bfb6f`. | `lib/test/subject-test.f`, `test/wide-store-seal.f`, `test/protection-span.f`, `test/lower-txn-protection.f`, `test/top-row-hook-test.f` | lib/test/subject.f | 2026-07-17 |
+| STACK-ARM | `--` | Forked subject runner installs its private stack as S0 and clears inherited catch and TTY recovery cells before dynamic evaluation; raw engine recovery-cell roles are outside checker inference. Confined to the COW child and tracked by `habu-batch-candidate-valid-517bfb6f`. | `lib/test/subject-test.f` | lib/test/subject.f | 2026-07-17 |
 
 ## Ratchet baseline
 

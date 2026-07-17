@@ -645,6 +645,10 @@ points stay listed.
   inside package `TEST`.
 - `lib/test/suite-test.f` — focused package-scoped coverage for `TEST:*`
   setup/teardown hooks, groups, tests, stdin tests, filters, and argument feeds.
+- `lib/test/subject.f` — reusable fork-evaluate capture boundary for testing
+  source against the running engine without booting a nested engine process.
+- `lib/test/subject-test.f` — focused capture, dictionary-isolation,
+  inherited-handler, diagnostic, and timeout coverage for `SUBJECT:RUN`.
 - `lib/test/src-shape.f` — shared `package SHAPE` source-shape assertions: LOAD
   auto-sizes an OS-backed buffer to a whole source file (fail-closed CHECK-FIT
   diagnostic above the ceiling), then HAS?/MUST-HAVE/MUST-LACK/COUNT=/COUNT

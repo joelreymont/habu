@@ -3,12 +3,7 @@
 require lib/errors.f
 require lib/test.f
 require lib/test/outcome.f
-require lib/string.f
-require lib/memory.f
-require lib/fs.f
-require lib/process.f
-require lib/process-argv.f
-require lib/process-env.f
+require lib/test/subject.f
 
 package PROTECTION-TEST
 
@@ -21,21 +16,8 @@ ENGINE-ERROR:SEAL-VIOLATION constant VIOLATION-RC
 create OUT CAP allot
 create ERR CAP allot
 
-: HB$ ( -- ptr u8 n )
-   s" HABU_UNDER_TEST" >LEN PROC-ENV-DEFAULT$? if LEN>N exit then
-   2drop
-   s" HABU_UNDER_TEST" GETENV dup 0= if
-      2drop s" bin/hb" exit
-   then ;
-
 : CAPTURE ( ptr u8 n -- len len outcome ) {: src:ptr u:n :}
-   PROC-ARGV-RESET
-   HB$ >LEN
-   src u >LEN
-   OUT CAP >LEN
-   ERR CAP >LEN
-   TIMEOUT-MS >MS
-   RUN-ARGV-STDIN-CAPTURE-OUTCOME ;
+   src u OUT CAP >LEN ERR CAP >LEN TIMEOUT-MS >MS SUBJECT:RUN ;
 
 : EXPECT ( ptr u8 n n -- ) {: src:ptr u:n want:n :}
    src u CAPTURE want T-OUTCOME-EXITED=

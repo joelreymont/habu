@@ -12,11 +12,7 @@ require lib/errors.f
 require lib/string.f
 require lib/test.f
 require lib/test/outcome.f
-require lib/memory.f
-require lib/fs.f
-require lib/process.f
-require lib/process-argv.f
-require lib/process-env.f
+require lib/test/subject.f
 
 $800 constant WSS-CAP
 10000 constant WSS-TIMEOUT-MS
@@ -29,13 +25,6 @@ variable WSS-OUT-U
 : WSS-LINE ( ptr u8 n -- )
    SB-APPEND
    $A SB-APPEND-C ;
-
-: WSS-HB$ ( -- ptr u8 n )
-   s" HABU_UNDER_TEST" >LEN PROC-ENV-DEFAULT$? if LEN>N exit then
-   2drop
-   s" HABU_UNDER_TEST" GETENV dup 0= if
-      2drop s" bin/hb" exit
-   then ;
 
 : WSS-FAMILY ( -- )
    s" SUMTYPE wss-res 2" WSS-LINE
@@ -130,45 +119,40 @@ variable WSS-OUT-U
    s" WSS-TXN" WSS-LINE
    SB$ ;
 
-: WSS-CAPTURE ( ptr u8 n -- len len outcome ) {: src:ptr srcu:n :}
-   WSS-HB$ >LEN
-   src srcu >LEN
-   WSS-OUT WSS-CAP >LEN
-   WSS-ERR WSS-CAP >LEN
-   WSS-TIMEOUT-MS >MS
-   RUN-ARGV-STDIN-CAPTURE-OUTCOME ;
+: WSS-RUN ( ptr u8 n -- len len outcome ) {: src:ptr srcu:n :}
+   src srcu WSS-OUT WSS-CAP >LEN WSS-ERR WSS-CAP >LEN
+   WSS-TIMEOUT-MS >MS SUBJECT:RUN ;
 
-: WSS-RUN ( ptr u8 n -- len len outcome )
-   PROC-ARGV-RESET
-   WSS-CAPTURE ;
-
-: WSS-ASSERT-RC ( len len outcome n -- ) {: want:n :}
+: WSS-ASSERT ( len len outcome n -- ) {: want:n :}
    want T-OUTCOME-EXITED=
    LEN>N drop
    LEN>N WSS-OUT-U !
    WSS-OUT WSS-OUT-U @ s" WSS-ARMED" CONTAINS? TTRUE ;
 
+: WSS-EXPECT ( ptr u8 n n -- ) {: src:ptr srcu:n want:n :}
+   src srcu WSS-RUN want WSS-ASSERT ;
+
 : WSS-NORMAL-TEST ( -- )
    s" ordinary W=2 store remains green" T-LABEL
-   WSS-NORMAL$ WSS-RUN 0 WSS-ASSERT-RC ;
+   WSS-NORMAL$ 0 WSS-EXPECT ;
 
 : WSS-FIRST-TEST ( -- )
    s" first-cell protected intersection traps before mutation" T-LABEL
-   WSS-FIRST$ WSS-RUN ENGINE-ERROR:SEAL-VIOLATION WSS-ASSERT-RC ;
+   WSS-FIRST$ ENGINE-ERROR:SEAL-VIOLATION WSS-EXPECT ;
 
 : WSS-LATER-TEST ( -- )
    s" later-cell protected intersection traps before mutation" T-LABEL
-   WSS-LATER$ WSS-RUN ENGINE-ERROR:SEAL-VIOLATION WSS-ASSERT-RC ;
+   WSS-LATER$ ENGINE-ERROR:SEAL-VIOLATION WSS-EXPECT ;
 
 : WSS-TXN-TEST ( -- )
    s" generated W=2 lower crossing traps through LPROTSPAN ABI" T-LABEL
-   WSS-TXN-LOWER$ WSS-RUN ENGINE-ERROR:SEAL-VIOLATION WSS-ASSERT-RC
+   WSS-TXN-LOWER$ ENGINE-ERROR:SEAL-VIOLATION WSS-EXPECT
    s" generated W=2 upper crossing traps through LPROTSPAN ABI" T-LABEL
-   WSS-TXN-UPPER$ WSS-RUN ENGINE-ERROR:SEAL-VIOLATION WSS-ASSERT-RC
+   WSS-TXN-UPPER$ ENGINE-ERROR:SEAL-VIOLATION WSS-EXPECT
    s" generated W=2 exact lower neighbor remains writable" T-LABEL
-   WSS-TXN-BEFORE$ WSS-RUN 0 WSS-ASSERT-RC
+   WSS-TXN-BEFORE$ 0 WSS-EXPECT
    s" generated W=2 exact upper neighbor remains writable" T-LABEL
-   WSS-TXN-AFTER$ WSS-RUN 0 WSS-ASSERT-RC ;
+   WSS-TXN-AFTER$ 0 WSS-EXPECT ;
 
 : WSS-MAIN ( -- )
    T-RESET

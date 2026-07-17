@@ -11,10 +11,11 @@
 \ pre-BLR (EM-INTERPRET-FIND, LFIND flags). Positives: an in-process logging
 \ hook observes the exact (class, token, flags) sequence for one deliberate
 \ token window — including certified min-in arity in the tick/word flags —
-\ and `top-check@` round-trips the installed xt. Negatives (child processes,
-\ both cold-prefix source paths): an invalid install dies rc 70 with the
+\ and `top-check@` round-trips the installed xt. Cold-prefix process negatives
+\ prove an invalid install dies rc 70 with the
 \ named diagnostic before any dispatch BLR, and a raw store into the sealed
-\ hook cells trap ENGINE-ERROR:SEAL-VIOLATION while both band neighbors stay writable.
+\ hook cells evaluated in an isolated fork traps ENGINE-ERROR:SEAL-VIOLATION
+\ while both band neighbors stay writable.
 \ Hook uninstalled = today's dispatch, proven by the rest of the native gate.
 \
 \ Run: bin/hb --load lib/errors.f lib/string.f lib/test.f lib/memory.f
@@ -24,6 +25,7 @@
 require lib/errors.f
 require lib/string.f
 require lib/test.f
+require lib/test/subject.f
 require lib/memory.f
 require lib/fs.f
 require lib/fs-mutate.f
@@ -240,8 +242,8 @@ create TRH-EMPTY 1 allot
    u TRH-IN-U ! ;
 
 \ Run the program as a --load file with empty stdin.
-: TRH-RUN-LOAD ( ptr u8 n -- )
-   TRH-CHILD 2swap WRITE-ALL
+: TRH-RUN-LOAD ( ptr u8 n -- ) {: src:ptr srcu:n :}
+   TRH-CHILD src srcu WRITE-ALL
    PROC-ARGV-RESET
    s" --load" >LEN PROC-ARGV+
    TRH-CHILD >LEN PROC-ARGV+
@@ -250,12 +252,16 @@ create TRH-EMPTY 1 allot
    TRH-STORE! ;
 
 \ Run the program as a piped stdin program (no --load), the other cold-prefix path.
-: TRH-RUN-STDIN ( ptr u8 n -- )
-   TRH-IN!
+: TRH-RUN-STDIN ( ptr u8 n -- ) {: src:ptr srcu:n :}
+   src srcu TRH-IN!
    PROC-ARGV-RESET
    TRH-HB$ >LEN  TRH-IN$ >LEN  TRH-OUT TRH-IO-CAP >LEN
    TRH-ERR TRH-IO-CAP >LEN  TRH-TIMEOUT-MS >MS  RUN-ARGV-STDIN-CAPTURE-OUTCOME
    TRH-STORE! ;
+
+: TRH-RUN-SUBJECT ( ptr u8 n -- ) {: src:ptr srcu:n :}
+   src srcu TRH-OUT TRH-IO-CAP >LEN TRH-ERR TRH-IO-CAP >LEN
+   TRH-TIMEOUT-MS >MS SUBJECT:RUN TRH-STORE! ;
 
 : TRH-LF ( -- )
    10 SB-APPEND-C ;
@@ -377,27 +383,27 @@ create TRH-EMPTY 1 allot
 
 : TRH-NEG-SEAL ( -- )
    s" compile preflight rejects replacement through a TRUSTED: caller" T-LABEL
-   TRH-PREFLIGHT-REPLACE$ TRH-RUN-LOAD
+   TRH-PREFLIGHT-REPLACE$ TRH-RUN-SUBJECT
    TRH-EXITED @ TTRUE
    TRH-RC @ TRH-REJECT-RC T=
    TRH-ERR$ s" set-preflight: invalid or replaced hook" CONTAINS? TTRUE
    s" raw ! into COMPILE-PREFLIGHT-CELL traps ENGINE-ERROR:SEAL-VIOLATION" T-LABEL
-   TRH-PREFLIGHT-FORGE$ TRH-RUN-LOAD
+   TRH-PREFLIGHT-FORGE$ TRH-RUN-SUBJECT
    TRH-EXITED @ TTRUE
    TRH-RC @ ENGINE-ERROR:SEAL-VIOLATION T=
    s" raw ! into TOP-HOOK-CELL traps ENGINE-ERROR:SEAL-VIOLATION" T-LABEL
-   TRH-SEAL-FORGE$ TRH-RUN-LOAD
+   TRH-SEAL-FORGE$ TRH-RUN-SUBJECT
    TRH-EXITED @ TTRUE
    TRH-RC @ ENGINE-ERROR:SEAL-VIOLATION T=
    s" raw ! into ENGINE-SNAP-XT-CELL traps ENGINE-ERROR:SEAL-VIOLATION" T-LABEL
-   TRH-SNAP-SEAL-FORGE$ TRH-RUN-LOAD
+   TRH-SNAP-SEAL-FORGE$ TRH-RUN-SUBJECT
    TRH-EXITED @ TTRUE
    TRH-RC @ ENGINE-ERROR:SEAL-VIOLATION T=
    s" one cell below the band stays writable" T-LABEL
-   TRH-BELOW-FORGE$ TRH-RUN-LOAD
+   TRH-BELOW-FORGE$ TRH-RUN-SUBJECT
    TRH-ASSERT-OK
    s" one cell past the band stays writable" T-LABEL
-   TRH-ABOVE-FORGE$ TRH-RUN-LOAD
+   TRH-ABOVE-FORGE$ TRH-RUN-SUBJECT
    TRH-ASSERT-OK ;
 
 : TRH-CHILD-HOOK$ ( -- ptr u8 n )   \ valid install runs; hook observes each event
@@ -413,7 +419,7 @@ create TRH-EMPTY 1 allot
 : TRH-POSITIVES ( -- )
    PREFLIGHT-LIFECYCLE
    s" checker reinstall rearms both hooks after 0 set-check" T-LABEL
-   TRH-PREFLIGHT-REINSTALL$ TRH-RUN-LOAD
+   TRH-PREFLIGHT-REINSTALL$ TRH-RUN-SUBJECT
    TRH-ASSERT-OK
    s" valid install dispatches normally and counts 7 window events" T-LABEL
    TRH-CHILD-HOOK$ TRH-RUN-LOAD
