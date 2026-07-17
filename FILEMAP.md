@@ -892,6 +892,22 @@ points stay listed.
   cross-process `KEY>WIRE`/`WIRE>KEY` round-trips, the SHA-256 content-key identity,
   fail-closed decode (wrong-width + unresolved raw), cross-role rejection, and the
   private-mint unforgeability negatives.
+- `maki/db/evidence-applicability.f` — obligation closure + evidence applicability
+  (MODEL-CAD-V2-PLAN.md § 23.9; dot habu-v2-evidence-applicability-73ac58b9). Package APPLIC
+  composes the landed `OBLIG:DISCHARGE` / `INVALIDATED-BY?` primitives over a tracked
+  obligation set, an available-evidence pool, and a change-set into `VERDICT` — the typed
+  `applicability` sum (applicable / stale / missing / inapplicable): `stale` when discharged
+  evidence is invalidated by a changed subject/dependency, `inapplicable` when evidence is
+  about the subject but a non-subject axis rejects (the home of "static proof cannot satisfy
+  device execution" and "performance cannot satisfy equivalence"), `missing` when no evidence
+  is even about the subject. `INVALIDATED-SET-UNCACHED` / `INVALIDATED-SET-CACHED` compute the
+  minimal invalidation set (a u64 bitmask over the tracked slots) directly and via a reverse
+  dependency-index cache; `CLOSURE-EQUAL?` proves they agree. No new trust boundary; owns -5370.
+- `maki/db/evidence-applicability-test.f` — the closure/applicability acceptance: the
+  mutation matrix (mutating each of subject / domain / relation / environment / verifier-class /
+  verifier-identity flips the verdict to exactly the affected result), the two structural
+  refusals (static-vs-device, performance-vs-equivalence, each with a discharging positive
+  control), and the minimal invalidation set per change-set with cache-equals-uncached proven.
 - `maki/db/keywire-xproc-child.f` — the FRESH-PROCESS decode side of the cross-process
   content-key identity test (dot habu-wire-content-key). Package KWXPC: shared fixed
   key-file layout, shared real descriptors, per-family `REG-*` registrations, and
