@@ -1251,11 +1251,26 @@ TDF @ TWX-TFAM-LAYOUT-POLICY@ TL-PACKED-TAG T=
 s" tpol" s" tdpolpkr" TWX-TFAM-FIND-IN TDOK ! TDF !
 TDOK @ -1 T=
 TDF @ TWX-TFAM-LAYOUT-POLICY@ TL-PACKED-TAG T=
+\ Re-arm the diagnostic swallow buffer before the layout-policy/recursive reject
+\ fixtures. The buffer armed at the top of the suite accumulates every expected
+\ reject's rendered diagnostic (its content is never inspected here — it only
+\ silences stderr) and was sized to just fit; re-arming resets its offset so this
+\ growing TFAM-16 section keeps headroom, matching the suite's re-arm-per-section
+\ idiom (§1434, §1447, §1599, …).
+TDIAG-BUF 8192 DIAG-BUFFER!
 \ not-yet-supported policies reject on every header (grammar-gated until lowering).
 s" SUMTYPE tdpolns2 1 POLICY niche-null VARIANT some a ;VARIANT ;SUMTYPE" E-TDECL-POLICY TDT-NEG
 s" SUMTYPE tdpolns3 1 POLICY boxed VARIANT some a ;VARIANT ;SUMTYPE" E-TDECL-POLICY TDT-NEG
 s" ENUM tdpolns4 POLICY boxed red green ;ENUM" E-TDECL-POLICY TDT-NEG
 s" PRODUCT tdpolns5 0 POLICY niche-null FIELD x n ;PRODUCT" E-TDECL-POLICY TDT-NEG
+\ niche-null reject-until-supported is TOTAL and shape-independent: even the exact
+\ null-pointer-niche option shape (a 2-variant sum { none (empty), some (one
+\ pointer) }, docs §22.3) rejects at the POLICY clause. The policy is validated
+\ before any variant, so no structurally "niche-eligible" family is accepted
+\ before its prerequisites land (the nonnull-ptr refined type that keeps `some`
+\ off the null discriminant, plus the W=1 MATCH/ctor lowering).
+s" SUMTYPE tdpolnq1 1 POLICY niche-null VARIANT none ;VARIANT VARIANT some ptr u8 ;VARIANT ;SUMTYPE" E-TDECL-POLICY TDT-NEG
+s" ENUM tdpolnq2 POLICY niche-null red green ;ENUM" E-TDECL-POLICY TDT-NEG
 \ unknown policy names reject (incl. the v1 non-goal `custom`).
 s" SUMTYPE tdpolun1 1 POLICY bogus VARIANT some a ;VARIANT ;SUMTYPE" E-TDECL-POLICY TDT-NEG
 s" SUMTYPE tdpolun2 1 POLICY custom VARIANT some a ;VARIANT ;SUMTYPE" E-TDECL-POLICY TDT-NEG

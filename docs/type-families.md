@@ -2153,6 +2153,31 @@ one cell
 
 Do not make this implicit for arbitrary pointers. Require a non-null type or capability.
 
+**Which families qualify.** The v1 niche is the *null-pointer* niche only: a
+two-variant sum whose first (`none`) variant is payloadless and whose second
+(`some`) variant is a single `nonnull-ptr<a>`. `none` is represented by the null
+pointer and `some` by the non-null pointer, so the whole value is one cell (§18
+`WIDTH(niche-null) = 1`) and `MATCH` discriminates by a null test on that cell
+rather than by reading a separate tag. The unused-enum-tag niche and the
+arbitrary-pointer niche are v1 non-goals.
+
+The `nonnull-ptr<a>` payload is load-bearing, not decoration. A plain `ptr` does
+**not** qualify: a null `some` pointer would be indistinguishable from `none`, so
+the null test would misclassify it. The refined, checker-tracked non-null pointer
+type is therefore a hard prerequisite — and the v1 grammar/checker has no such
+type yet, so **no currently declarable family qualifies**.
+
+**Checker status — reject-until-supported (total).** `TFAM-WIDTH@` already
+reports width 1 for a `TL-NICHE` family (§18, shared with boxed), but `POLICY
+niche-null` still REJECTS at the declaration with `layout policy not yet
+supported` (§22.0/§24). The reject is validated at the `POLICY` clause, before
+the variants, so it is shape-independent: even the exact `{ none, some ptr }`
+option shape rejects (pinned in `test/type-decl-suite.f`), never silently
+half-accepted. Niche is exposed only once both prerequisites land — the
+`nonnull-ptr<a>` refined type and the W=1 `MATCH`/constructor lowering it shares
+with boxed — together with the constructor/match/stack-op/invalid-tag tests
+PLAN item 16 requires before any physical-layout policy is public.
+
 ### 22.4 Boxed layout
 
 Later:
