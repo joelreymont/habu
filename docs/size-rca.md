@@ -1,5 +1,66 @@
 # `bin/hb` size RCA — byte-exact `__text` region map
 
+## Current map (2026-07-17)
+
+`bin/hb` is 165367 bytes on macOS ARM64. Its emitted `__text` is 136648
+bytes. Set `HABU_ENGINE_SIZE_MAP=1` on a native fixpoint build to print the
+per-region map. `src/habu/engine-size.f` records the exact `ASM-LEN` cursor at
+each emitter boundary and emits no target bytes. The fixpoint driver forwards
+the setting to every child, so the final stdin-engine map is reproducible:
+
+```text
+main/startup                 5272
+main/comment                 364
+interpret/colon             3268
+interpret/define           16564
+interpret/string            1188
+interpret/number              48
+interpret/find               112
+compile/adt                 2236
+compile/semi               10172
+compile/local                496
+compile/p2wide              2460
+compile/keywords           10820
+compile/literal               36
+compile/ops                 2456
+compile/call                 616
+compile/undef                732
+compile/die                  108
+compile/exit                1608
+compile/eval-recover         660
+main/underflow               160
+primitives/base            18276
+primitives/arity             856
+primitives/extra             784
+primitives/prof              196
+primitives/float             756
+primitives/cemit             100
+primitives/capture           140
+primitives/token             104
+primitives/protect           288
+primitives/protected-wid    1508
+primitives/aot-owner        1384
+primitives/flush              72
+primitives/find              952
+primitives/hash-index        828
+primitives/number            332
+primitives/top-hook           68
+dictionary-code             7352
+runtime                     9484
+seed-dictionary             8268
+aot-seed                   25524
+baked-source                   0
+```
+
+The 2026-07-03 cold-prefix defect described below has already been fixed:
+`main/startup` fell from 40724 to 5272 bytes. It is not the current regression.
+The current dominant regions are the AOT REPL seed, base primitives, definition
+dispatch, compile-keyword dispatch, and semicolon publication. Permanent region
+measurement prevents stale attribution and makes every future size change
+assignable to an emitter boundary.
+
+## Historical map and resolved cold-prefix RCA
+
 Measured 2026-07-03 on the fable tip (`bin/hb` = 148855 bytes, macOS ARM64).
 Supersedes the *estimates* in `.dots/habu-bisect-engine-growth-759ffd33.md`,
 which were gross correlations. Every number below is measured from the

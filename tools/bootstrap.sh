@@ -87,6 +87,7 @@ SRC_COMMON=(
   src/habu/prof.f
   src/habu/regalloc.f
   src/habu/jit.f
+  src/habu/engine-size.f
   src/habu/habu2.f
   src/habu/xref.f
   src/habu/owner-wid-emit-seal.f

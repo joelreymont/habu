@@ -427,6 +427,10 @@ TEST:SUITE icode-fixup
    test/icode-fixup-test.f
 TEST:;SUITE
 
+TEST:SUITE engine-size
+   test/engine-size-test.f
+TEST:;SUITE
+
 TEST:SUITE tail-pure-fixtures
    lib/json-write-test.f
    lib/json-read-test.f

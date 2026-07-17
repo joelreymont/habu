@@ -224,7 +224,9 @@ variable BF-AUD-N
 
 : BF-PREPARE-ENV ( -- )
    PROC-ENV-RESET
-   s" HB_TMP" >LEN BF-TMP$ >LEN PROC-ENV+ ;
+   s" HB_TMP" >LEN BF-TMP$ >LEN PROC-ENV+
+   s" HABU_ENGINE_SIZE_MAP" GETENV {: map:ptr mapu:n :}
+   mapu 0 > if s" HABU_ENGINE_SIZE_MAP" >LEN map mapu >LEN PROC-ENV+ then ;
 
 : BF-FINISH-PID ( pid -- n ) {: pid :}
    PROC-ARGV-ENV-RESET
@@ -790,6 +792,7 @@ public
    out outu s" src/habu/prof.f" BF-APPEND-SOURCE
    out outu s" src/habu/regalloc.f" BF-APPEND-SOURCE
    out outu s" src/habu/jit.f" BF-APPEND-SOURCE
+   out outu s" src/habu/engine-size.f" BF-APPEND-SOURCE
    out outu s" src/habu/habu2.f" BF-APPEND-SOURCE
    out outu s" src/habu/xref.f" BF-APPEND-SOURCE
    out outu s" src/habu/owner-wid-emit-seal.f" BF-APPEND-SOURCE
@@ -895,6 +898,7 @@ public
    out outu s" src/habu/prof.f" BF-APPEND-SOURCE
    out outu s" src/habu/regalloc.f" BF-APPEND-SOURCE
    out outu s" src/habu/jit.f" BF-APPEND-SOURCE
+   out outu s" src/habu/engine-size.f" BF-APPEND-SOURCE
    out outu s" src/habu/habu2.f" BF-APPEND-SOURCE
    out outu s" src/habu/owner-wid-emit-seal.f" BF-APPEND-SOURCE
    out outu BF-APPEND-DRIVER-IO ;

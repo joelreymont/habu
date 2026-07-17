@@ -5890,3 +5890,11 @@ unchanged (148855). Keys for milestone 2:
   and deliberately NOT built - a subtly-wrong external-name seed would be
   masked at the DDC fixpoint because the native refresh re-emits the dict,
   so proving it needs bespoke pre-refresh verification no gate performs today.
+- **Keep a permanent emitted-engine region map; historical RCA goes stale.**
+  The July cold-prefix duplication was already fixed (`main/startup` fell from
+  40724 to 5272 bytes), while later growth moved into definition dispatch,
+  compile dispatch, primitives, and the AOT REPL seed. Exact `ASM-LEN` markers
+  emit no target bytes, and the fixpoint driver must forward the measurement
+  environment so the final stdin engine reports its own map. A mutable exact
+  size baseline is only a ratchet; pair it with an immutable architectural
+  ceiling so a baseline update cannot normalize growth.

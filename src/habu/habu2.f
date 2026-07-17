@@ -4615,16 +4615,16 @@ s" em-interpret-find" s" --" TRUST
 
 : EM-INTERPRET-WORDS ( -- )
    LBL {: lnotnum :}
-   EM-INTERPRET-DEFINE-KEYWORDS
-   EM-INTERPRET-STRING-KEYWORDS
+   EM-INTERPRET-DEFINE-KEYWORDS s" interpret/define" ENGINE-SIZE:MARK
+   EM-INTERPRET-STRING-KEYWORDS s" interpret/string" ENGINE-SIZE:MARK
    lnotnum EM-INTERPRET-NUMBER
-   lnotnum LBL,
-   EM-INTERPRET-FIND ;
+   lnotnum LBL,               s" interpret/number" ENGINE-SIZE:MARK
+   EM-INTERPRET-FIND          s" interpret/find" ENGINE-SIZE:MARK ;
 s" em-interpret-words" s" --" TRUST
 
 : EM-INTERPRET ( -- )
    LBL {: lnotcolon :}
-   lnotcolon EM-INTERPRET-COLON
+   lnotcolon EM-INTERPRET-COLON s" interpret/colon" ENGINE-SIZE:MARK
    EM-INTERPRET-WORDS ;
 s" em-interpret" s" --" TRUST
 
@@ -6311,23 +6311,27 @@ s" em-compile-adt-mode" s" --" TRUST
 : EM-COMPILE ( -- )
    LBL {: lnotsemi :}
    LCOMPILE LABEL@ LBL,
-   EM-COMPILE-ADT-MODE
-   lnotsemi EM-COMPILE-SEMI
-   EM-COMPILE-LOCAL
-   EM-COMPILE-P2WIDE
-   EM-COMPILE-KEYWORDS
-   EM-COMPILE-LITERAL
-   EM-COMPILE-OPS
-   EM-COMPILE-CALL
-   EM-COMPILE-UNDEF
-   EM-COMPILE-DIE             \ branch-target only (die sites B, here with x0 = code); ends by branching/exiting
-   EM-COMPILE-EXIT
-   EM-EVAL-THROW-RECOVER ;    \ branch-target only (reached via EVALREC-CELL); ends by branching
+   EM-COMPILE-ADT-MODE        s" compile/adt" ENGINE-SIZE:MARK
+   lnotsemi EM-COMPILE-SEMI   s" compile/semi" ENGINE-SIZE:MARK
+   EM-COMPILE-LOCAL           s" compile/local" ENGINE-SIZE:MARK
+   EM-COMPILE-P2WIDE          s" compile/p2wide" ENGINE-SIZE:MARK
+   EM-COMPILE-KEYWORDS        s" compile/keywords" ENGINE-SIZE:MARK
+   EM-COMPILE-LITERAL         s" compile/literal" ENGINE-SIZE:MARK
+   EM-COMPILE-OPS             s" compile/ops" ENGINE-SIZE:MARK
+   EM-COMPILE-CALL            s" compile/call" ENGINE-SIZE:MARK
+   EM-COMPILE-UNDEF           s" compile/undef" ENGINE-SIZE:MARK
+   EM-COMPILE-DIE             s" compile/die" ENGINE-SIZE:MARK
+   EM-COMPILE-EXIT            s" compile/exit" ENGINE-SIZE:MARK
+   EM-EVAL-THROW-RECOVER      s" compile/eval-recover" ENGINE-SIZE:MARK ;
 s" em-compile" s" --" TRUST
 
 : EMIT-MAIN ( -- )
    LBL LMAIN !  LBL LEXIT !  LBL LCOMPILE !  LBL LUNDEF !  LBL LUNDERFLOW !  LBL LARITY !
-   EM-STARTUP  EM-COMMENT  EM-INTERPRET  EM-COMPILE  EM-INTERPRET-UNDERFLOW ;
+   EM-STARTUP                 s" main/startup" ENGINE-SIZE:MARK
+   EM-COMMENT                 s" main/comment" ENGINE-SIZE:MARK
+   EM-INTERPRET
+   EM-COMPILE
+   EM-INTERPRET-UNDERFLOW     s" main/underflow" ENGINE-SIZE:MARK ;
 s" emit-main" s" --" TRUST
 
 \ Pre-execution arity guard (LARITY). A deref/execute/dispatch primitive (@ !
@@ -6653,24 +6657,24 @@ s" AOT-PWID-BUF@" s" -- ptr u8" TRUST
    A G-PUSH ;
 
 : EMIT-PRIMITIVE-SECTIONS ( -- )
-   EMIT-PRIMS  OWNER-WID-EMIT:PRIMS
-   EMIT-ARITY-GUARD             \ bake LARITY after prims so guarded entry labels resolve
+   EMIT-PRIMS  OWNER-WID-EMIT:PRIMS s" primitives/base" ENGINE-SIZE:MARK
+   EMIT-ARITY-GUARD             s" primitives/arity" ENGINE-SIZE:MARK
    s" snap-rebase" ['] BSNAPREBASE FPRIM
-   s" DRAIN-PRETRUST" ['] BDRAINPRETRUST FPRIM   \ dot habu-engine-pre-trust-77410827
-   s" tok-imm?" ['] BTOKIMM 2 GDEREF-F
-   EMIT-PROF-PRIMS
-   EMIT-FP-PRIMS
-   EMIT-CEMIT
-   EMIT-BCAP
-   EMIT-TOK
-   EMIT-PROT
-   EMIT-PROTWID  OWNER-WID-EMIT:ROUTINES
-   EM-AOT-OWNER-ROUTINE
-   EMIT-FLUSH
-   EMIT-FIND
-   EMIT-HIDX
-   EMIT-NUM
-   EMIT-TOPHOOK ;
+   s" DRAIN-PRETRUST" ['] BDRAINPRETRUST FPRIM
+   s" tok-imm?" ['] BTOKIMM 2 GDEREF-F s" primitives/extra" ENGINE-SIZE:MARK
+   EMIT-PROF-PRIMS            s" primitives/prof" ENGINE-SIZE:MARK
+   EMIT-FP-PRIMS              s" primitives/float" ENGINE-SIZE:MARK
+   EMIT-CEMIT                 s" primitives/cemit" ENGINE-SIZE:MARK
+   EMIT-BCAP                  s" primitives/capture" ENGINE-SIZE:MARK
+   EMIT-TOK                   s" primitives/token" ENGINE-SIZE:MARK
+   EMIT-PROT                  s" primitives/protect" ENGINE-SIZE:MARK
+   EMIT-PROTWID  OWNER-WID-EMIT:ROUTINES s" primitives/protected-wid" ENGINE-SIZE:MARK
+   EM-AOT-OWNER-ROUTINE       s" primitives/aot-owner" ENGINE-SIZE:MARK
+   EMIT-FLUSH                 s" primitives/flush" ENGINE-SIZE:MARK
+   EMIT-FIND                  s" primitives/find" ENGINE-SIZE:MARK
+   EMIT-HIDX                  s" primitives/hash-index" ENGINE-SIZE:MARK
+   EMIT-NUM                   s" primitives/number" ENGINE-SIZE:MARK
+   EMIT-TOPHOOK               s" primitives/top-hook" ENGINE-SIZE:MARK ;
 
 : EMIT-DICTIONARY-SECTIONS ( -- )
    EMIT-CREATE
@@ -6701,19 +6705,21 @@ s" AOT-PWID-BUF@" s" -- ptr u8" TRUST
 : EMIT-CODE-SECTIONS ( -- )
    EMIT-MAIN
    EMIT-PRIMITIVE-SECTIONS
-   EMIT-DICTIONARY-SECTIONS
-   EMIT-RUNTIME-SECTIONS
-   EMIT-DICT
-   EMIT-AOT-SEED ;
+   EMIT-DICTIONARY-SECTIONS   s" dictionary-code" ENGINE-SIZE:MARK
+   EMIT-RUNTIME-SECTIONS      s" runtime" ENGINE-SIZE:MARK
+   EMIT-DICT                  s" seed-dictionary" ENGINE-SIZE:MARK
+   EMIT-AOT-SEED              s" aot-seed" ENGINE-SIZE:MARK ;
 
 : EMIT-SOURCE-BYTES ( -- )
    LSRC LABEL@ LBL,  SRCA@ SRCN @ BYTES, ;
 
 : EMIT-FORTH ( ptr u8 n -- )
+   ENGINE-SIZE:RESET
    EMIT-RESET-BUILDER
    EMIT-LABELS
    EMIT-CODE-SECTIONS
-   EMIT-SOURCE-BYTES ;
+   EMIT-SOURCE-BYTES          s" baked-source" ENGINE-SIZE:MARK
+   s" HABU_ENGINE_SIZE_MAP" GETENV nip 0 > if ENGINE-SIZE:REPORT then ;
 s" emit-forth" s" ptr u8 n --" TRUST
 
 package ENGINE-BUILD

@@ -87,6 +87,7 @@ points stay listed.
 - `src/habu/habu2.f` — compiler/control-flow layer.
 - `src/habu/driver-io.f` — shared fail-closed artifact writer for internal
   build drivers.
+- `src/habu/engine-size.f` — exact emitted-engine region measurement rows.
 - `src/habu/jit.f` — register JIT helpers.
 - `src/habu/regalloc.f` — virtual stack register allocator.
 - `src/habu/aot-capture.f` — host-only AOT-REPL capture: scans metabuild-compiled words for inter-word call sites and builds the seed blob/records/reloc-table.
@@ -1528,6 +1529,7 @@ points stay listed.
 - `test/icode-fixup-test.f` — checked ARM64 label-chain and reusable fixup-slot
   regressions covering mixed relocation kinds, interleaved labels, historical
   reuse beyond capacity, exact simultaneous capacity, and overflow diagnostics.
+- `test/engine-size-test.f` — exact emitted-engine region row and delta tests.
 - `test/gate-pool.f` — bounded checked process pool used by native gate runners.
 - `test/gate-pool-test.f` — focused fork-backed pool worker coverage.
 - `test/gate-pool-orphan-test.f` — regression: pool workers reaped on parent death.
