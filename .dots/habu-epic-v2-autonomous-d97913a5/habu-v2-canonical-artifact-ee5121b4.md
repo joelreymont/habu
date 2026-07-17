@@ -50,3 +50,8 @@ edccf572 vocabulary), audit-event-id + rev-id/source-revisions fields
 process-local P-ID vs cross-process content-key wire reconciliation
 (plan 23.9 flag). TAG-CAP-RESERVED + TAG-EVENT commentary hold the wire
 slots.
+
+NOTE 2026-07-17: JOURNAL/REV codecs landed (16de285f) - the envelope's
+audit-event-id and rev-id/source-revisions fields are now expressible;
+only the user-gated capability field and the wire-form reconciliation
+remain gated.
