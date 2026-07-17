@@ -170,6 +170,28 @@ n-tiles, A fragment reused 4×). Landed **375.6 / 393.5 / 398.5 GFLOP/s** at
   and a tf32 is two b16 halves, so `.trans` splits every tf32) — the transpose must live in the
   **staging**, not the load. That proof feeds `habu-ship-swizzled-mma`; the mma-issue 32 % is a
   harder tensor-core-throughput bound.
+- **B-SIDE LDMATRIX WIRED — WIN (2026-07-17 `habu-mma-wave-3`, `lib/ptx/cg-mma.f` `MMA-BLDM`):** the
+  proven transposed-`Bs` law was wired into the wide tile — a new scalar **transposed staging**
+  (`SHM_BT[n][k]=B[k][n]`, coalesced global read / strided shared write; cp.async cannot scatter a
+  contiguous chunk so it is a scalar copy) plus **one `ldmatrix.sync.aligned.m8n8.x2` per 8×8 B
+  fragment** replacing the per-n-tile 2 `ld.shared`+2 `cvt` scalar feed. **MFRAGS=4 BK=32 pad=8
+  bpad=4 stages=1 single-buffer dynamic (50176 B) measured 3026.6 GFLOP/s at 2048³ (918 MHz) =
+  +11.9 % over the scalar-B winner `MMM-WIDE-M4-S1` (2707.3, reproduced same-session 2704.0/2707.2)
+  and 1.60× Triton (1890.5)**, element-exact at 256³ AND 512³ (B-ldmatrix + scalar+cvt cross-check),
+  two runs ±0.14 %. **DCE-safe ablation re-attribution** (`mma-ablate.f`, 2048³): the residual B-feed
+  fell **27 % → 7 %** (51.4 → 12.1 ms) — a 4.2× cut, exactly the predicted "drop toward the mma-issue
+  floor" — leaving the kernel at **93 % of its own quarter-B ceiling** (vs 73 % scalar-B); the
+  mma-issue (21 %) is now the dominant residual and the harder tensor-core-throughput floor.
+  **BANK GEOMETRY IS DECISIVE — the ldmatrix must read a conflict-free stride:** the n-major BT row
+  stride `BK+bpad` sets the ldmatrix read start-bank stride. `bpad=4` (stride 36 words ≡ 4 mod 32 →
+  the 8 tile rows span 8 distinct 4-bank windows) gives the 3026.6 win; `bpad=0` (stride 32 → all 8
+  rows alias **one** 4-bank window, an 8-way conflict) collapses to **1318.5 GFLOP/s — WORSE than the
+  scalar-B baseline**, the *same* "measure the optimization at the layout it needs" trap as the
+  original unpadded-As `ldmatrix` miss. The 16 B ldmatrix-row alignment (`(BK+bpad)*4` a multiple of
+  16) is enforced fail-closed in the emitter (`MMA-CHECK-BLDM` → `E-MMA-BLDM`): a misaligned bpad
+  faults the GPU (sm machine-check), so it must never reach a launch. Double-buffer (stages=2, 100 KB,
+  1 block/SM) and MFRAGS=2 both lose to the MFRAGS=4 single-buffer tile (same occupancy-beats-overlap
+  lesson as wave-2). Next lever is the mma-issue floor (tensor-core throughput).
 
 ## The five things that govern speed (check all five)
 

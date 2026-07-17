@@ -4,6 +4,28 @@
 
 Last updated: 2026-07-17
 
+- **Wiring the proven B-side ldmatrix cut the residual B-feed 27%->7% and won +11.9%.** (dot
+  habu-mma-wave-3, lib/ptx/cg-mma.f MMA-BLDM.) The MFRAGS=4 winner's un-amortized scalar B feed
+  (2 ld.shared + 2 cvt / 8x8 fragment) was replaced by ONE ldmatrix.x2 over a TRANSPOSED staging
+  SHM_BT[n][k]=B[k][n] (the device-proven MP-BLDM-ALL law). Measured 3026.6 GFLOP/s at 2048^3
+  (918 MHz) = +11.9% over the scalar-B winner 2707.3 and 1.60x Triton, element-exact 256^3/512^3.
+  The fresh ablation confirmed the mechanism: B-feed 27%->7% (51.4->12.1 ms, a 4.2x cut), now 93%
+  of its own quarter-B ceiling (was 73%); mma-issue (21%, tensor-core throughput) is the new floor.
+  The transpose MUST be a SCALAR staging (coalesced global read B[k][n], strided shared write
+  BT[n][k]): cp.async copies a contiguous chunk and cannot scatter a transpose, so there is no
+  cp.async B path - but the B tile is tiny and reused across all M-frags, so the scalar stores are
+  amortized to noise.
+- **A transposed-staging ldmatrix lives or dies on its READ bank stride - measure it, again.**
+  (habu-mma-wave-3.) The n-major BT row stride BK+bpad sets the ldmatrix read start-bank stride.
+  bpad=4 (stride 36 words = 4 mod 32 -> the 8 tile rows hit 8 distinct 4-bank windows, conflict-
+  free) = 3026.6; bpad=0 (stride 32 -> all 8 rows alias ONE 4-bank window, 8-way conflict) = 1318.5,
+  WORSE than the scalar-B baseline it replaced. Identical trap to the original unpadded-As ldmatrix
+  miss: an aliased ldmatrix is far slower than the scalar loads it removes. Also: bpad must keep the
+  BT row stride a multiple of 16 B (ldmatrix.m8n8.b16 addresses each 16 B row) - a misaligned stride
+  (bpad not a multiple of 4) FAULTS the GPU (sm machine-check err, not a wrong result), so the
+  emitter enforces it fail-closed (MMA-CHECK-BLDM -> E-MMA-BLDM) and a bad knob never reaches a
+  launch. A bpad=2 typo in a test leg proved this the hard way (2 GPU fault clusters) before the
+  guard + negative regression landed.
 - **A checker cp.async pipeline-typestate dot cannot discharge its own tilepipe
   TRUSTED rows alone — it depends on THREE prerequisites, two of them unstarted.**
   (dot habu-checker-cp-async-6ba788a5, host lane, no device.) The 9 lib/ptx/tile-pipe.f
@@ -37,7 +59,6 @@ Last updated: 2026-07-17
   cp.async capability's core edit to avoid a standalone engine rebake. With the capability
   blocked, the honest move is to leave it folded-in-waiting, not to rebake the engine for one
   row a later registry edit removes for free.
-
 - **`num_stages` is tile-size AND occupancy dependent — a bigger register/smem tile can
   flip stages=2 from a win to a loss.** (dot habu-mma-wave-2, MMA-MFRAGS=4.) At the MFRAGS=2
   wide MMA tile, double-buffered cp.async (stages=2) was +2.4% over single-buffer. At MFRAGS=4

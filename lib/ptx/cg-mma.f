@@ -65,6 +65,7 @@ require lib/ptx/cg-matmul.f
 8  constant MMA-MK                              \ mma.sync K per substep (m16n8k8)
 49152 constant MMA-SMEM-STATIC-CAP              \ sm_87 static .shared per-block ceiling (48 KiB)
 -6100 constant E-MMA-SMEM                        \ derived shared tile exceeds the legal budget
+-6102 constant E-MMA-BLDM                        \ B-ldmatrix config illegal (non-16B BT row, or MFRAGS=1)
 
 variable MMA-BK      32 MMA-BK !               \ staged K-tile depth
 variable MMA-PAD      0 MMA-PAD !              \ As row pad floats
@@ -103,11 +104,29 @@ variable MMA-MFRAGS   1 MMA-MFRAGS !          \ M-fragments (16-row units) per w
 \ M-frag 0 per n-tile: isolates the 2nd M-frag mma-issue cost).
 variable MMA-ABLATE   0 MMA-ABLATE !
 
+\ B-SIDE ldmatrix over a TRANSPOSED Bs (dot habu-mma-wave-3). The wide path's per-n-tile scalar B
+\ feed (MMA-B-LOAD-WIDE, 2 ld.shared + 2 cvt / fragment, un-amortized on the residual 27% B-feed) is
+\ replaced by ONE ldmatrix.sync.aligned.m8n8.x2 per 8x8 B fragment. The device-proven law (element-
+\ exact, tools/ptx/mma-probe.f MP-BLDM-ALL): a NON-trans ldmatrix over a TRANSPOSED staging
+\ SHM_BT[n][k]=B[k][n] returns exactly {b0,b1}={B[ks+t][gid],B[ks+4+t][gid]} (ldmatrix.trans is
+\ unusable for tf32 - it splits every tf32 into its two b16 halves, so the transpose MUST live in the
+\ staging). WIDE PATH ONLY (MFRAGS>1); MMA-BLDM=0 keeps every pinned config BYTE-IDENTICAL. The
+\ n-major BT row stride is BK+MMA-BPAD floats: a NEW bank geometry (the transpose scatters the shared
+\ write and the ldmatrix read), so MMA-BPAD is a measured knob (BPAD=4 -> BTROW=36 words, an ldmatrix
+\ read start-bank stride of 4 -> conflict-free 8-row tiles; BPAD=0 fits the 48 KiB static cap but the
+\ 8 tile rows alias one 4-bank window). The staging is a scalar TRANSPOSED copy (coalesced global
+\ read B[k][n], strided shared write BT[n][k]) since cp.async cannot scatter a contiguous chunk.
+variable MMA-BLDM   0 MMA-BLDM !              \ 1 = B-fragment ldmatrix over transposed Bs (wide path)
+variable MMA-BPAD   0 MMA-BPAD !              \ BT row pad floats (n-major row stride = BK+BPAD)
+
 : MMA-BROWS  ( -- n )  MMA-BM MMA-MFRAGS @ * ;        \ output block rows = 64*MFRAGS (default 64)
 : MMA-AROW-F ( -- n )  MMA-BK @ MMA-PAD @ + ;         \ As row stride, floats
 : MMA-AROW-B ( -- n )  MMA-AROW-F 4 * ;               \ As row stride, bytes (default 128)
 : MMA-ASB    ( -- n )  MMA-BROWS MMA-AROW-B * ;       \ As tile bytes / Bs byte offset (default 8192)
-: MMA-BSB    ( -- n )  MMA-BK @ MMA-BN * 4 * ;        \ Bs tile bytes (default 8192)
+: MMA-BTROW-F ( -- n )  MMA-BK @ MMA-BPAD @ + ;       \ transposed-Bs (BT) row stride, floats (n-major over k)
+: MMA-BTROW-B ( -- n )  MMA-BTROW-F 4 * ;             \ BT row stride, bytes (multiple of 16 for ldmatrix rows)
+: MMA-BSB    ( -- n )  MMA-BLDM @ if MMA-BN MMA-BTROW-F * 4 * else MMA-BK @ MMA-BN * 4 * then ;  \ B tile bytes (BT if BLDM)
+: MMA-BTCPN  ( -- n )  MMA-BN MMA-BK @ * 256 / ;      \ transposed-B scalar chunk-sets/thread (64*BK/256)
 : MMA-BUFB   ( -- n )  MMA-ASB MMA-BSB + ;            \ one cp.async buffer (default 16384)
 : MMA-SMEM   ( -- n )  MMA-BUFB MMA-STAGES @ * ;      \ total shared bytes (default 32768)
 : MMA-KSUBS  ( -- n )  MMA-BK @ MMA-MK / ;            \ mma.sync K substeps per tile (default 4)
@@ -143,6 +162,17 @@ variable MMA-ABLATE   0 MMA-ABLATE !
 : MMA-CHECK-SMEM ( -- )                                \ fail closed on an illegal static tile
    MMA-DYNSMEM @ if exit then
    MMA-SMEM MMA-SMEM-STATIC-CAP > if E-MMA-SMEM throw then ;
+
+\ fail closed on an illegal B-ldmatrix config (dot habu-mma-wave-3). ldmatrix.sync.aligned.m8n8.b16
+\ addresses each 8x8 tile ROW (16 B) and requires a 16 B aligned row address, so the transposed BT row
+\ stride MMA-BTROW-B = (BK+BPAD)*4 MUST be a multiple of 16 (else the per-lane ldmatrix addresses are
+\ misaligned and the launch faults - a device sm machine-check, NOT a wrong result). B-ldmatrix is also
+\ wide-path only (MFRAGS>1); at MFRAGS=1 the non-wide path would silently ignore BLDM. Reject both here
+\ so a bad knob combination throws at EMIT time instead of faulting the GPU.
+: MMA-CHECK-BLDM ( -- )
+   MMA-BLDM @ 0= if exit then
+   MMA-MFRAGS @ 2 < if E-MMA-BLDM throw then            \ B-ldmatrix is defined only on the wide (MFRAGS>1) path
+   MMA-BTROW-B 15 and 0= 0= if E-MMA-BLDM throw then ;  \ BT row stride not a multiple of 16 B -> misaligned ldmatrix rows
 
 \ FRAGMENT-LOAD MODE (dot habu-mma-ldmatrix-fragment). The 16x8 A fragment and 8x8 B fragment
 \ can be fed to the tensor cores three ways; mode is fixed at emit time:
@@ -310,6 +340,21 @@ variable MMA-LMODE   0 MMA-LMODE !
    47 47 MMA-AROW-B MMA-SCALE                   \ * As row byte stride
    s" shr.u32 %r49,%r46,1;" PTX-L  s" shl.b32 %r49,%r49,4;" PTX-L ; \ (tsel>>1)*16 = kcol hi bytes
 
+\ B-ldmatrix loop-invariant lane base (dot habu-mma-wave-3). %r35 = ASB + (warp_col*32 + r)*BTROW-B
+\ + p*16, where r=lane&7 (n-row of the 8x8 tile), p=(lane>>3)&1 (k-hi half). Per (ks,j) the ldmatrix
+\ address is then %r16 + %r35 + j*8*BTROW-B + ks*4. Self-contained (reads only invariants %r25 lane,
+\ %r27 warp_col; scratch %r36,%r37), so it is independent of the A-ldmatrix (LMODE) geometry.
+: MMA-SETUP-BLDM-WIDE ( -- )
+   s" and.b32 %r36,%r25,7;" PTX-L               \ r = lane&7
+   s" shl.b32 %r37,%r27,5;" PTX-L               \ warp_col*32
+   s" add.u32 %r36,%r37,%r36;" PTX-L            \ warp_col*32 + r
+   36 36 MMA-BTROW-B MMA-SCALE                  \ * BT row byte stride
+   s" shr.u32 %r37,%r25,3;" PTX-L               \ tsel = lane>>3
+   s" and.b32 %r37,%r37,1;" PTX-L               \ p = tsel&1
+   s" shl.b32 %r37,%r37,4;" PTX-L               \ p*16 (k-hi half byte offset)
+   s" add.u32 %r36,%r36,%r37;" PTX-L
+   SB-RESET s" add.u32 %r35,%r36," SB-APPEND MMA-ASB SB-U s" ;" SB-APPEND SB$ PTX-L ;   \ + Bs byte offset (BT base)
+
 : MMA-SETUP-WIDE ( -- )                         \ loop-invariant lane geometry + M-frag-0 shared/global bases
    s" shr.u32 %r24,%r8,5;" PTX-L                \ warpid
    s" and.b32 %r25,%r8,31;" PTX-L               \ lane
@@ -331,7 +376,8 @@ variable MMA-LMODE   0 MMA-LMODE !
    s" add.u32 %r34,%r10,%r34;" PTX-L
    s" shl.b32 %r40,%r29,1;" PTX-L
    s" add.u32 %r34,%r34,%r40;" PTX-L
-   MMA-LMODE @ 2 = if MMA-SETUP-LDM-WIDE then ;
+   MMA-LMODE @ 2 = if MMA-SETUP-LDM-WIDE then
+   MMA-BLDM @ if MMA-SETUP-BLDM-WIDE then ;
 
 \ --- wide A fragment for M-frag f -> tf32 group %r(50+6f), +f*16 rows past the M-frag-0 base ---
 : MMA-A-BASE-WIDE ( n n -- ) {: ks:n f:n :}     \ %r40 = As base = %r16 + %r30 + f*16*AROW-B + (ks+t)*4
@@ -381,6 +427,16 @@ variable MMA-LMODE   0 MMA-LMODE !
    SB-RESET s" cvt.rna.tf32.f32 %r55,%f" SB-APPEND bt 1+ SB-U s" ;" SB-APPEND SB$ PTX-L ;
 : MMA-B-LOAD-WIDE ( n -- )  MMA-LMODE @ 0= if MMA-B-CVT-WIDE else MMA-B-RAW then ;
 
+\ B-side ldmatrix (dot habu-mma-wave-3): ONE ldmatrix.x2 loads the 8x8 B fragment for n-tile j at
+\ K-substep ks from the transposed BT staging -> {%r54,%r55} = {b0,b1} (the mma B operand). Address =
+\ %r16 + %r35 (invariant lane base) + j*8*BTROW-B + ks*4, aligned to 16 B per lane (BTROW-B mult 16,
+\ ks in {0,8,16,24}). Replaces the 2 ld.shared + 2 cvt (mode 0) / 2 raw loads (mode 1/2) per fragment.
+: MMA-B-LDM-WIDE ( n n -- ) {: ks:n j:n :}
+   j 8 * MMA-BTROW-B *  ks 4 * +  {: off:n :}   \ (ks,j) byte offset from the lane base
+   SB-RESET s" add.u32 %r48,%r35," SB-APPEND off SB-U s" ;" SB-APPEND SB$ PTX-L
+   s" add.u32 %r48,%r16,%r48;" PTX-L
+   s" ldmatrix.sync.aligned.m8n8.x2.shared.b16 {%r54,%r55},[%r48];" PTX-L ;
+
 : MMA-MMA-WIDE ( n n -- ) {: f:n j:n :}         \ mma for M-frag f, n-tile j: D(=%f(10+16f+4j)..) = A(group f).B(%r54,55) + D
    10 f 16 * + j 4 * + {: d:n :}
    f MMA-AREG {: g:n :}
@@ -398,20 +454,29 @@ variable MMA-LMODE   0 MMA-LMODE !
 : MMA-ABL-MFRAGS ( -- n )                        \ how many M-frags to mma per n-tile
    MMA-ABLATE @ 3 = if 1 else MMA-MFRAGS @ then ;
 
-\ one n-tile j: load its 8x8 B fragment ONCE, then mma it against every M-frag (B REUSED MFRAGS times)
-: MMA-NTILE-WIDE ( n -- ) {: j:n :}
-   j MMA-ABL-LOADB? if j MMA-B-LOAD-WIDE then
+\ one n-tile j: load its 8x8 B fragment ONCE, then mma it against every M-frag (B REUSED MFRAGS times).
+\ MMA-BLDM=0 keeps the scalar path BYTE-IDENTICAL (else branch = the legacy body); MMA-BLDM=1 issues one
+\ ldmatrix.x2 (ks needed for the BT address, hence the (ks j) signature - unused by the scalar path).
+: MMA-NTILE-WIDE ( n n -- ) {: ks:n j:n :}
+   MMA-BLDM @ if
+      j MMA-ABL-LOADB? if ks j MMA-B-LDM-WIDE then
+   else
+      j MMA-ABL-LOADB? if j MMA-B-LOAD-WIDE then
+   then
    MMA-ABL-MFRAGS 0 do  i j MMA-MMA-WIDE  loop ;
 
-\ one MMA-K substep: load MFRAGS A fragments (persist across n-tiles), set Bs base %r44, do 4 n-tiles
+\ one MMA-K substep: load MFRAGS A fragments (persist across n-tiles), set Bs base %r44 (scalar path
+\ only; the BLDM path addresses BT directly from %r35), do 4 n-tiles.
 : MMA-KSTEP-WIDE ( n -- ) {: ks:n :}
    MMA-MFRAGS @ 0 do  ks i MMA-LOAD-A-WIDE  loop
-   SB-RESET s" add.u32 %r42,%r29," SB-APPEND ks SB-U s" ;" SB-APPEND SB$ PTX-L
-   s" shl.b32 %r42,%r42,8;" PTX-L
-   SB-RESET s" add.u32 %r44,%r16," SB-APPEND MMA-ASB SB-U s" ;" SB-APPEND SB$ PTX-L
-   s" add.u32 %r44,%r44,%r42;" PTX-L
-   s" add.u32 %r44,%r44,%r31;" PTX-L
-   4 0 do  i MMA-NTILE-WIDE  loop ;
+   MMA-BLDM @ 0= if
+      SB-RESET s" add.u32 %r42,%r29," SB-APPEND ks SB-U s" ;" SB-APPEND SB$ PTX-L
+      s" shl.b32 %r42,%r42,8;" PTX-L
+      SB-RESET s" add.u32 %r44,%r16," SB-APPEND MMA-ASB SB-U s" ;" SB-APPEND SB$ PTX-L
+      s" add.u32 %r44,%r44,%r42;" PTX-L
+      s" add.u32 %r44,%r44,%r31;" PTX-L
+   then
+   4 0 do  ks i MMA-NTILE-WIDE  loop ;
 
 : MMA-KTILE-WIDE ( -- )  MMA-KSUBS 0 do  i MMA-MK * MMA-KSTEP-WIDE  loop ;
 
@@ -502,9 +567,37 @@ variable MMA-LMODE   0 MMA-LMODE !
    SB-RESET s" add.u32 %r23,%r" SB-APPEND bufr SB-U s" ,%r23;" SB-APPEND SB$ PTX-L
    SB-RESET s" add.u32 %r23,%r23," SB-APPEND MMA-ASB SB-U s" ;" SB-APPEND SB$ PTX-L
    s" cp.async.cg.shared.global [%r23],[%rd11],16;" PTX-L ;
+
+\ TRANSPOSED-Bs staging (dot habu-mma-wave-3): one scalar element BT[n][k] = B[ktr+k][colBase+n], with
+\ c = tid_lin + m*256, n = c&63, k = c>>6. Global read is coalesced (a warp's 32 lanes -> 32 contiguous
+\ n = 128 B), the shared write is strided (BT n-major, row stride BTROW-B). cp.async CANNOT do the
+\ transpose (a contiguous 16 B chunk would scatter across BT rows), so this is a scalar copy; the B
+\ tile is tiny (64*BK) and reused across all MFRAGS M-frags, so the extra stores are amortized. Uses
+\ only prefetch scratch %r20..23 / %rd10..11 (invariants %r24..34 survive; the loaded value rides %r20
+\ after c is dead).
+: MMA-CPW-CHUNK-BT ( n n n -- ) {: m:n bufr:n ktr:n :}
+   SB-RESET s" add.u32 %r20,%r8," SB-APPEND m 256 * SB-U s" ;" SB-APPEND SB$ PTX-L      \ c = tid_lin + m*256
+   s" and.b32 %r21,%r20,63;" PTX-L                                                      \ n = c & 63
+   s" shr.u32 %r22,%r20,6;" PTX-L                                                       \ k = c >> 6
+   SB-RESET s" add.u32 %r23,%r" SB-APPEND ktr SB-U s" ,%r22;" SB-APPEND SB$ PTX-L        \ ktr + k
+   s" mad.lo.u32 %r23,%r23,%r2,%r10;" PTX-L                                             \ (ktr+k)*N + colBase
+   s" add.u32 %r23,%r23,%r21;" PTX-L                                                    \ + n
+   s" mul.wide.u32 %rd10,%r23,4;" PTX-L  s" add.u64 %rd11,%rd2,%rd10;" PTX-L
+   s" ld.global.b32 %r20,[%rd11];" PTX-L                                                \ B[ktr+k][colBase+n] (c dead)
+   23 21 MMA-BTROW-B MMA-SCALE                                                          \ %r23 = n * BTROW-B
+   s" shl.b32 %r22,%r22,2;" PTX-L                                                       \ k*4
+   s" add.u32 %r23,%r23,%r22;" PTX-L
+   SB-RESET s" add.u32 %r23,%r23," SB-APPEND MMA-ASB SB-U s" ;" SB-APPEND SB$ PTX-L      \ + Bs byte offset
+   SB-RESET s" add.u32 %r23,%r" SB-APPEND bufr SB-U s" ,%r23;" SB-APPEND SB$ PTX-L       \ + buffer base
+   s" st.shared.b32 [%r23],%r20;" PTX-L ;
+
 : MMA-CPW-STAGE ( n n -- ) {: bufr:n ktr:n :}
    MMA-ACPN 0 do  i bufr ktr MMA-CPW-CHUNK-A  loop
-   MMA-BCPN 0 do  i bufr ktr MMA-CPW-CHUNK-B  loop ;
+   MMA-BLDM @ if
+      MMA-BTCPN 0 do  i bufr ktr MMA-CPW-CHUNK-BT  loop
+   else
+      MMA-BCPN 0 do  i bufr ktr MMA-CPW-CHUNK-B  loop
+   then ;
 
 : MMA-CP-STAGE ( n n -- ) {: bufr:n ktr:n :}   \ stage one K-tile (As+Bs) into buffer bufr from column ktr
    MMA-MFRAGS @ 1 > if bufr ktr MMA-CPW-STAGE exit then
@@ -562,6 +655,7 @@ variable MMA-LMODE   0 MMA-LMODE !
 
 : MMA-BODY ( -- )
    MMA-CHECK-SMEM
+   MMA-CHECK-BLDM
    MMA-MFRAGS @ 1 > if
       MMA-THREAD-SETUP-WIDE  MMA-ACC-ZERO-WIDE  MMA-SETUP-WIDE
       [: MMA-KTILE-WIDE ;] MMA-KLOOP  MMA-STORE-WIDE  exit

@@ -172,6 +172,25 @@ variable GB-SMEM-DYN                    \ dynamic .shared bytes for the launch (
    32 MMA-BK !  0 MMA-PAD !  2 MMA-STAGES !  0 MMA-DYNSMEM !  0 MMA-LMODE !  1 MMA-MFRAGS !
    0 GB-SMEM-DYN !  64 GB-OTY ! ;
 
+\ B-SIDE ldmatrix wide config (dot habu-mma-wave-3): the transposed-Bs staging + ldmatrix.x2 B fragments
+\ replace the per-n-tile scalar B feed. bpad is the BT n-major row pad (measured bank-geometry knob).
+\ Restores MFRAGS=1 / BLDM=0 / BPAD=0.
+: GB-MMM-CFGW-B ( n n n n n n -- ) {: bk:n pad:n stages:n dyn:n mfrags:n bpad:n :}
+   bk MMA-BK !  pad MMA-PAD !  stages MMA-STAGES !  dyn MMA-DYNSMEM !  2 MMA-LMODE !  mfrags MMA-MFRAGS !
+   1 MMA-BLDM !  bpad MMA-BPAD !
+   MMA-DYNSMEM @ if MMA-SMEM else 0 then GB-SMEM-DYN !
+   s" == MMM-WIDE-B MFRAGS=" type mfrags GB-INT. s"  BK=" type bk GB-INT. s"  pad=" type pad GB-INT.
+   s"  bpad=" type bpad GB-INT. s"  stages=" type stages GB-INT. s"  dyn=" type dyn GB-INT.
+   s"  block=" type MMA-BROWS GB-INT. s" x64  smem=" type MMA-SMEM GB-INT. s" B  ==" type cr
+   s" habu-gemm-bench" PTXTC:PREPARE
+   PTX-CAPTURE-ON  EMIT-MATMUL-MMA  PTX-CAPTURE-OFF
+   GB-ASSEMBLE
+   64 GB-OT !  MMA-BROWS GB-OTY !
+   s" MMM" GB-KERNEL
+   PTXTC:CLEAN
+   32 MMA-BK !  0 MMA-PAD !  2 MMA-STAGES !  0 MMA-DYNSMEM !  0 MMA-LMODE !  1 MMA-MFRAGS !
+   0 MMA-BLDM !  0 MMA-BPAD !  0 GB-SMEM-DYN !  64 GB-OTY ! ;
+
 \ the raised-BK / bank-swizzled configuration space (all element-exact per tools/ptx/mma-gemm-check.f)
 : GB-MMM-SWEEP ( -- )
    32 0 2 0 0 GB-MMM-CFG               \ committed default baseline (BK=32, stages=2, scalar+cvt) - A/B reference
@@ -192,6 +211,16 @@ variable GB-SMEM-DYN                    \ dynamic .shared bytes for the launch (
    32 8 2 1 2 4 GB-MMM-CFGW            \ WIDE MFRAGS=4 BK=32 pad=8 stages=2 DYNAMIC ldmatrix (256x64, 98304 B) - dot habu-mma-wave-2
    32 8 1 0 2 4 GB-MMM-CFGW ;          \ WIDE MFRAGS=4 BK=32 pad=8 stages=1 STATIC ldmatrix (256x64, 49152 B) - single-buffer occupancy variant
 
+\ B-side-ldmatrix sweep (dot habu-mma-wave-3): same-session A/B against the MFRAGS=4 scalar-B winner
+\ (2707.3), then the transposed-Bs B-ldmatrix at bpad {0,4} single-buffer and bpad=4 double-buffer.
+: GB-MMM-WIDE-B-SWEEP ( -- )
+   32 0 2 0 0 GB-MMM-CFG               \ BK=32 baseline (same-session A/B reference)
+   32 8 1 0 2 4 GB-MMM-CFGW            \ MFRAGS=4 stages=1 STATIC scalar-B ldmatrix-A (the 2707.3 winner reference)
+   32 8 1 1 4 0 GB-MMM-CFGW-B          \ MFRAGS=4 bpad=0 stages=1 DYN B-ldmatrix (256x64; bank-aliased read, budget test)
+   32 8 1 1 4 4 GB-MMM-CFGW-B          \ MFRAGS=4 bpad=4 stages=1 DYN B-ldmatrix (256x64; conflict-free read stride 36)
+   32 8 2 1 4 4 GB-MMM-CFGW-B          \ MFRAGS=4 bpad=4 stages=2 DYN double-buffer B-ldmatrix (256x64)
+   32 8 2 1 2 4 GB-MMM-CFGW-B ;        \ MFRAGS=2 bpad=4 stages=2 DYN B-ldmatrix (128x64)
+
 public
 
 : GB-MMM-BENCH ( -- )                  \ FP32 roof reference + the larger-BK/swizzle sweep (focused)
@@ -203,6 +232,11 @@ public
    CUDA:OPEN? 0= if s" gemm-bench: libcuda unavailable -> SKIPPED (off-device)" type cr exit then
    GB-MM
    GB-MMM-WIDE-SWEEP ;
+
+: GB-WIDE-B-BENCH ( -- )               \ FP32 roof + MFRAGS=4 scalar-B winner + B-side ldmatrix sweep (dot habu-mma-wave-3)
+   CUDA:OPEN? 0= if s" gemm-bench: libcuda unavailable -> SKIPPED (off-device)" type cr exit then
+   GB-MM
+   GB-MMM-WIDE-B-SWEEP ;
 
 
 : GB-ALL ( -- )

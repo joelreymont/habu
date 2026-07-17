@@ -143,6 +143,22 @@ create MGC-MAXERR 1 cells allot
    s" -- emitter SMEM legality: BK=64 stages=2 static -> " type
    rc E-MMA-SMEM = if s" fail-closed E-MMA-SMEM (PASS)" type else s" NOT fail-closed rc=" type rc . s"  (FAIL)" type then cr ;
 
+\ negative+positive regression (dot habu-mma-wave-3): a B-ldmatrix config with a BT row stride that is
+\ not a 16 B multiple (BK+BPAD not a multiple of 4) must fail closed in the EMITTER with E-MMA-BLDM, not
+\ emit a kernel whose ldmatrix rows are misaligned and fault the GPU at launch. bpad=2 -> BTROW=34*4=136 B
+\ (not 16-aligned) must throw; bpad=4 -> 36*4=144 B (aligned) must emit; MFRAGS=1+BLDM must throw. Device-
+\ independent (pure emit). This is the guard that keeps a bad knob from ever reaching a faulting launch.
+: MGC-BLDM-NEG ( -- )
+   4 MMA-MFRAGS !  32 MMA-BK !  8 MMA-PAD !  1 MMA-STAGES !  1 MMA-DYNSMEM !  2 MMA-LMODE !  1 MMA-BLDM !
+   2 MMA-BPAD !  MGC-TRY-EMIT {: r2:n :}                  \ bpad=2 -> misaligned BT row -> must throw E-MMA-BLDM
+   4 MMA-BPAD !  MGC-TRY-EMIT {: r4:n :}                  \ bpad=4 -> 16 B aligned -> must emit (0)
+   1 MMA-MFRAGS !  4 MMA-BPAD !  MGC-TRY-EMIT {: rm1:n :}  \ MFRAGS=1 + BLDM -> wide-path-only -> must throw E-MMA-BLDM
+   1 MMA-MFRAGS !  32 MMA-BK !  0 MMA-PAD !  2 MMA-STAGES !  0 MMA-DYNSMEM !  0 MMA-LMODE !  0 MMA-BLDM !  0 MMA-BPAD !
+   s" -- B-ldmatrix legality: bpad=2->" type r2 . s"  bpad=4->" type r4 . s"  MFRAGS=1->" type rm1 . cr
+   r2 E-MMA-BLDM =  r4 0=  and  rm1 E-MMA-BLDM =  and
+   if s" -- B-ldmatrix legality: fail-closed on misaligned BT row + MFRAGS=1, emits when aligned (PASS)" type cr
+   else s" mma-gemm-check: B-ldmatrix legality regression FAILED" 1 die then ;
+
 \ negative+positive regression (dot habu-mma-wave-2): the zero-block / ragged-M launch guard must throw
 \ MGC-E-ZEROBLK below BROWS and at a non-multiple, and pass on exact multiples. Device-independent.
 variable MGC-TN
@@ -201,10 +217,26 @@ variable MGC-TN
    mode MGC-MODE
    32 MMA-BK !  0 MMA-PAD !  2 MMA-STAGES !  0 MMA-DYNSMEM !  1 MMA-MFRAGS !  64 MGC-SA !  128 MGC-SB ! ;
 
+\ B-SIDE ldmatrix config (dot habu-mma-wave-3): transposed-Bs staging + ldmatrix.x2 B fragments. Checked
+\ mode 2 (A + B ldmatrix) at the block-M-aware edges; the same shapes are also checked scalar+cvt (mode 0
+\ MGC-CFG-WIDE legs) as the RNE-exact cross-reference, so agreeing element-exact vs the host ref proves both
+\ lmodes agree. Restores MFRAGS=1 / BLDM=0 / BPAD=0 and the 64/128 edges.
+: MGC-CFG-WIDE-B ( n n n n n n -- ) {: bk:n pad:n stages:n dyn:n mfrags:n bpad:n :}
+   bk MMA-BK !  pad MMA-PAD !  stages MMA-STAGES !  dyn MMA-DYNSMEM !  mfrags MMA-MFRAGS !
+   1 MMA-BLDM !  bpad MMA-BPAD !
+   MMA-BROWS MGC-SA !  MMA-BROWS 2 * MGC-SB !
+   s" -- WIDE-B (B-ldmatrix transposed Bs) MFRAGS=" type mfrags .  s"  BK=" type bk .  s"  pad=" type pad .
+   s"  bpad=" type bpad .  s"  stages=" type stages .  s"  dyn=" type dyn .
+   s"  (" type MGC-SA @ . s" ^3," type MGC-SB @ . s" ^3):" type cr
+   2 MGC-MODE
+   32 MMA-BK !  0 MMA-PAD !  2 MMA-STAGES !  0 MMA-DYNSMEM !  1 MMA-MFRAGS !
+   0 MMA-BLDM !  0 MMA-BPAD !  64 MGC-SA !  128 MGC-SB ! ;
+
 public
 : MGC-ALL ( -- )
    MGC-SMEM-NEG                                        \ emitter fail-closed check (device-independent)
    MGC-ZEROBLK-NEG                                     \ zero-block/ragged-M launch guard (device-independent)
+   MGC-BLDM-NEG                                        \ B-ldmatrix misaligned/MFRAGS=1 fail-closed (device-independent)
    CUDA:OPEN? 0= if s" mma-gemm-check: libcuda unavailable -> SKIPPED (off-device)" type cr exit then
    s" == TF32 mma.sync GEMM device-correctness (element-exact vs host) ==" type cr
    0 MGC-MODE  1 MGC-MODE  2 MGC-MODE
@@ -223,6 +255,11 @@ public
    s" == MFRAGS=4 register tile configs (dot habu-mma-wave-2, 256x64 block) ==" type cr
    32 8 2 1 2 4 MGC-CFG-WIDE                           \ MFRAGS=4 BK=32 pad=8 double-buffer DYNAMIC ldmatrix (256x64, 98304 B)
    32 8 2 1 0 4 MGC-CFG-WIDE                           \ MFRAGS=4 BK=32 pad=8 double-buffer DYNAMIC scalar+cvt (exact-RNE cross-check)
+   s" == B-side ldmatrix transposed-Bs configs (dot habu-mma-wave-3) ==" type cr
+   32 8 1 1 4 0 MGC-CFG-WIDE-B                         \ MFRAGS=4 bpad=0 single-buffer DYN B-ldmatrix (256x64; bank-aliased read, fits static budget)
+   32 8 1 1 4 4 MGC-CFG-WIDE-B                         \ MFRAGS=4 bpad=4 single-buffer DYN B-ldmatrix (256x64; conflict-free read stride 36)
+   32 8 2 1 4 4 MGC-CFG-WIDE-B                         \ MFRAGS=4 bpad=4 double-buffer DYN B-ldmatrix (256x64)
+   32 8 2 1 2 4 MGC-CFG-WIDE-B                         \ MFRAGS=2 bpad=4 double-buffer DYN B-ldmatrix (128x64)
    0 MMA-LMODE ! ;                                     \ restore the committed default (baseline scalar+cvt)
 
 ;package
