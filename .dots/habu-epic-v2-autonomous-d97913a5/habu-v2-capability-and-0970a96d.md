@@ -1,9 +1,9 @@
 ---
 title: V2 capability and budget enforcement
-status: open
+status: active
 priority: 1
 issue-type: task
-created-at: "2026-07-11T12:25:27.142308+02:00"
+created-at: "\"2026-07-11T12:25:27.142308+02:00\""
 blocks:
   - habu-v2-machine-action-a7357409
 ---
@@ -15,3 +15,5 @@ deferred COMMIT validate-composition legs - wiring capability-set and
 budget-ledger checks (and the obligation-discharge authority model) into
 maki/db/commit-store.f COMMIT once the enforcement surfaces exist; the
 landed TX:VALIDATE + APPLIC closure are the substrate.
+
+Claim: agent=capbud workspace=.jj-ws/fable-capbud (mechanism legs with opaque capability codes; vocabulary content stays user-gated; owns new maki/db capability/budget files + commit-store COMMIT wiring)
