@@ -1,5 +1,5 @@
 ---
-title: "EPIC: one STRUCTURE and ENUM type DSL"
+title: "M1: unified ENUM and STRUCTURE operational"
 status: open
 priority: 1
 issue-type: task
@@ -9,3 +9,8 @@ blocks:
 ---
 
 Hard-cutover program. Expose exactly one record declaration surface, STRUCTURE ... ;STRUCTURE, and one variant declaration surface, ENUM ... ;ENUM. STRUCTURE owns typed named fields, generics, checked MAKE/UNMAKE, reflection, and layout policy while lowering to the internal product representation. ENUM owns payloadless and payload-bearing named variants, uses the same field schema, and lets the compiler derive tag-only versus tagged-union representation. Remove PRODUCT, SUMTYPE, VALUE-RECORD, BEGIN-STRUCTURE, END-STRUCTURE, and every compatibility alias after tree-wide migration. No compatibility mode, fallback, or deprecated parser path. Parent: habu-epic-model-cad-70b629a9.
+
+Milestone contract: this is the first operational milestone. Finish every child,
+including field-schema review repairs, then independently review and run the exact
+native/recovery/fixpoint/full gates before fast-forwarding green master. M2 and
+later milestones do not begin implementation until this milestone is closed.
