@@ -1,9 +1,11 @@
 ---
 title: "Switchover wave B: option<tuple> + result<T,errno> process family"
-status: active
+status: open
 priority: 2
 issue-type: task
 created-at: "\"2026-07-04T22:18:57.005375+02:00\""
+blocks:
+  - habu-checker-capability-layout-9b8540bd
 ---
 
 docs/census-switchover.md section 5 wave B. The 25 multi-value+flag words (SPLIT-NEXT string.f:180, NEXT-LINE object.f:274 r8, RX-FIND* regex.f:454/464, LOAD object-index.f:116, JSONLF-*/JSONL-PARSE-ROW, PROC-ENV-DEFAULT0, FL-STRIP-SIGN, tool row parsers) to option<tuple>; the 34-site process rc family (PROC-WAIT-RC r17, PROC-RUN-RC r11, RUN-CAPTURE/PROC-CAPTURE-RC@ len-len-rc + process-env/cwd/argv mirrors) to result<T,errno> over E-PROC-*. Raw habu1.f emitters (BRUNRC/BPIPE/BPOLL/...) stay rc-sentinel at the trusted boundary; only checked wrappers migrate. DEPENDS: wave A patterns proven, item 12 multi-cell.
@@ -210,3 +212,17 @@ PROC-STATUS>OUTCOME are the raw kind/code producers = Wave C outcome-sum territo
 (migrate there, not as result). Wave B scalar-rc half is COMPLETE.
 
 Claim: agent=waveb workspace=.jj-ws/fable-waveb (wave-B caller files per the census section-5 list)
+
+SURVEY RESOLVED 2026-07-17 (waveb lane, no commit - correct): the
+unblocked wave-B scope is COMPLETE (all 6 scalar-rc process words landed
+as result<n,n> by prior slices, census zero-hit repo-wide, spawn suites
+green). The ENTIRE remainder - all 25 option<tuple> words and the
+len-len-rc CAPTURE cluster - is PROVEN blocked on
+habu-checker-capability-layout-9b8540bd (open): three live-checker probes
+fail closed (option<off len>, option<ptr u8 n>, result<n n,n> all
+rejected; scalar forms certify). Boxing would change runtime
+representation - not a substitute. Blocker edge added; claim released.
+Census omission folded into scope: PROC-CMD-RUN-RC
+(lib/process-command.f:193, scalar rc, ~3 caller files) migrates with
+the capture cluster when the capability lands (its sibling OUTCOME word
+rides the same cluster - migrate together for coherence).
