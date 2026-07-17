@@ -1770,7 +1770,7 @@ create GE-RXE-TML-BUF 512 allot   variable GE-RXE-TML-U
    s"  GEC-CATCH . cr" GE-SRC-LINE
    s" package PKY ;package" GE-SRC-LINE
    s" : GEC-RXOK ( -- n ) 12321 ; GEC-RXOK . cr" GE-SRC-LINE
-   s" bin/hb" GE-SRC-BUF GE-SRC-U @ GE-TIMEOUT-MS GE-RUN-STDIN
+   GE-HB$ GE-SRC-BUF GE-SRC-U @ GE-TIMEOUT-MS GE-RUN-STDIN
    s" hb pkgscope eval-closed rc" GE-EXPECT-OK
    s" 70" s" hb pkgscope eval-closed code" GE-EXPECT-OUT-HAS
    s" 12321" s" hb pkgscope eval-closed scope-restored-global" GE-EXPECT-OUT-HAS
@@ -1788,7 +1788,7 @@ create GE-RXE-TML-BUF 512 allot   variable GE-RXE-TML-U
    s" : GEC-W1 ( -- n ) 321 ;" GE-SRC-LINE
    s" package PKZ ;package" GE-SRC-LINE
    s" : GEC-W2 ( -- n ) GEC-W1 ; GEC-W2 . cr" GE-SRC-LINE
-   s" bin/hb" GE-SRC-BUF GE-SRC-U @ GE-TIMEOUT-MS GE-RUN-STDIN
+   GE-HB$ GE-SRC-BUF GE-SRC-U @ GE-TIMEOUT-MS GE-RUN-STDIN
    s" hb pkgscope checker-resync rc" GE-EXPECT-OK
    s" 321" s" hb pkgscope checker-resync resolves-global" GE-EXPECT-OUT-HAS ;
 
@@ -1806,7 +1806,7 @@ create GE-RXE-TML-BUF 512 allot   variable GE-RXE-TML-U
    s" : AFTERW ( -- n ) 22 ;" GE-SRC-LINE
    s" ;package" GE-SRC-LINE
    s" AA:BEFOREW AA:AFTERW + . cr" GE-SRC-LINE     \ 11+22=33 proves both landed in AA:public (`.` is newline-terminated here)
-   s" bin/hb" GE-SRC-BUF GE-SRC-U @ GE-TIMEOUT-MS GE-RUN-STDIN
+   GE-HB$ GE-SRC-BUF GE-SRC-U @ GE-TIMEOUT-MS GE-RUN-STDIN
    s" hb pkgscope eval-stays rc" GE-EXPECT-OK
    s" 70" s" hb pkgscope eval-stays code" GE-EXPECT-OUT-HAS
    s" 33" s" hb pkgscope eval-stays package-stays-open" GE-EXPECT-OUT-HAS ;
@@ -1818,7 +1818,7 @@ create GE-RXE-TML-BUF 512 allot   variable GE-RXE-TML-U
    GE-SRC-RESET
    s" package PKT public export PKTNOPE ;package" GE-SRC-LINE
    s" : NEVER ( -- n ) 999 ; NEVER . cr" GE-SRC-LINE
-   s" bin/hb" GE-SRC-BUF GE-SRC-U @ GE-TIMEOUT-MS GE-RUN-STDIN
+   GE-HB$ GE-SRC-BUF GE-SRC-U @ GE-TIMEOUT-MS GE-RUN-STDIN
    \ process exits at the export error before NEVER/999 (fail-closed)
    70 s" hb pkgscope top-exit fail-closed rc" GE-EXPECT-RC ;
 
