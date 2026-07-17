@@ -60,3 +60,33 @@ program, 2d (~17 mints) is the intended permanent core, 2e is
 cg-matmul.f:1 (unfenced once the decomp lane retired - now available).
 
 Claim: agent=leg2b workspace=.jj-ws/fable-leg2b (LEG 2B: the checked-mint / rep-provenance capability - owns src/core/checker.f + type-family.f this session)
+
+LEG 2B LANDED 2026-07-17 (leg2b lane, commit a2a8386e; claim RELEASED).
+HONEST DESIGN FINDING: the checked-mint case is a CHECKER RULE, not a lib
+combinator - four empty-experiment probes proved every lib-only mint
+design forgeable (free-output combinator = universal forge; fresh-mask
+variants either reject legit wrappers or launder mask agreement; and a `:`
+wrapper can LOOSEN any polymorphic mint output into an unaudited
+over-general published sig, strictly easier to forge than a visible
+TRUSTED row). Landed: the NP-MINT-CHECK seal riding the
+E-NONPARAMETRIC-EFFECT choke - a CHECKED word may not introduce a
+register-phantom cell-family output type var unbound in its inputs
+(descends into family args on raw declared identity). Three checker-owned
+exemptions (internal ?-vars, hidden/layout params, VALUE-RECORD field
+accessors). The seal retroactively hardens ALL existing checked mints
+against free-var loosening. Pilot: 6 pure-projection wrappers converted
+(LOAD/LOAD-ONCE/ROW-SPAN(-ONCE)/ROW-LOAD(-ONCE)) via 3 projection-pinning
+combinators (MINT-LOAD/MINT-ROW-SPAN/MINT-ROW-LOAD); net trust -3
+(trust-lint 664->661). 6 negatives + positives wired. Fixpoint x2
+byte-identical on the integration tree = 561be65e (the report's e7e82e37
+was a stale mid-session hash; the sealed workspace binary and my
+independent x2 rebuild agree on 561be65e); DDC dual-chain identical; all
+24 emit tools byte-identical; run.f perf-verdict pass attempts=1.
+REMAINDER: (i) convertible pure-projection loads (FANIN-LOAD, INDEX-*
+loads, LOAD-V4/.V4, STAGE/SLOAD) - net-0 each unless input patterns
+shared, batch later; (ii) genuine fresh-mask mints STAY TRUSTED by the
+seal's own logic (GRID-CTX family, ROW-CTX family, BROADCAST, attention
+STATE/SCORE/..., ACC-*) - this is the audited mint core, not debt;
+(iii) ROW / BLOCK-MAX / BLOCK-SUM deferrable; (iv) categories 2c/2d/2e
+unchanged. One documented conservative boundary: VALUE-RECORD input mixed
+with a register mint is not sealed.

@@ -62,3 +62,13 @@ E-DIVERGENT-BARRIER, #CFC>0 rejection). The cp.async typestate's bar.sync
 transition composes with CTL-BARRIER at the CPP-SYNC seam. Remaining
 blockers: phantom mint capability leg 2b (dominant), and the permanent
 runtime-parity named boundary.
+
+BLOCKER 1 SHAPE RESOLVED 2026-07-17 (phantom leg 2b, commit a2a8386e):
+the NP-MINT-CHECK seal proves genuine fresh mints CANNOT become checked
+callers (a checked word may not introduce an unbound phantom output var -
+that is the soundness line itself). So blocker 1's resolution for tilepipe
+is NOT "zero trust": the PIPE-* bodies keep a SMALL audited mint core
+(the mmctx/mmstage/... literal mints) while the PROTOCOL becomes checked
+via the typestate capability over the CPP-* seams. When this dot lands,
+its acceptance should read "TRUSTED surface shrunk to the audited mint
+core + checked protocol", not "rows deleted to zero".
