@@ -1,9 +1,11 @@
 ---
 title: "Artifact contract round 2: id codecs + VALIDATE rename"
-status: open
+status: active
 priority: 2
 issue-type: task
-created-at: "2026-07-17T15:20:36.550809+02:00"
+created-at: "\"2026-07-17T15:20:36.550809+02:00\""
 ---
 
 The frozen canonical-artifact contract (habu-freeze-canonical-artifact-3b6b7087) claimed the implementation could proceed without choosing semantics; the implementation lane (habu-v2-canonical-artifact-ee5121b4 first slice, commit d0754aa6) proved it under-specified in two load-bearing places plus two realization notes - resolve them so the envelope's remaining fields can land: (1) VALIDATE NAME COLLISION: plan 23.9 mandates public ARTIFACT:VALIDATE ( owned-bytes -- result ) but maki/artifact.f already publishes ARTIFACT:VALIDATE ( artifact-id -- artifact-id ) and a package public wordlist rejects duplicate tails (empirically confirmed) - the contract must rename one (candidates: id leg -> VALIDATE-ID, envelope leg -> VALIDATE-BYTES); update plan 23.9 + type-families 9.1.1 + the artifact.f rename with consumers greped. (2) FOREIGN NOMINAL ID FIELDS UNINSTANTIABLE: schema-id, producer-id, config-id, numeric-policy-id, capability-id, audit-event-id, rev-id, target-id have NO owner-provided constructor or wire codec anywhere, so nothing can obtain a value and no-new-trust-boundary forbids per-family refinements in ARTIFACT - the contract must either specify owner-package constructors/codecs (preferred: each id family's owner publishes MAKE/raw-refinement pairs like ARTIFACT-ID>RAW/RAW>ARTIFACT-ID, one audited boundary per family) or explicitly bless private refinements inside package ARTIFACT; decide, document in plan 23.9, and mint the per-family implementation work. (3) record the two realization notes as contract text: result<a,b> cannot pin a nominal err type in total ok constructions (custom sum family idiom is the blessed shape, see LESSONS 2026-07-17) and owned-bytes realized as caller-buffer+length per the codec.f precedent. Acceptance: plan + type-families updated; VALIDATE collision resolved with a landed rename; the id-family constructor/codec decision documented with per-family dots minted (or the refinement blessing recorded); the implementation dot unblocked for the remaining fields. Files: MODEL-CAD-V2-PLAN.md 23.9, docs/type-families.md 9.1.1, maki/artifact.f (rename leg), follow-up dots. Ownership: V2 artifact contract.
+
+Claim: agent=contractr2 workspace=.jj-ws/fable-contractr2 (owns MODEL-CAD-V2-PLAN.md 23.9 + docs/type-families.md 9.1.1 + maki/artifact.f this session)
