@@ -1462,7 +1462,7 @@ test/layout-valid-product-bad.f:RAW test-metaprog cap:fetched-adt-validation
 test/layout-valid-w1-bad.f:RAW test-metaprog cap:fetched-adt-validation
 test/type-layout-lower-pending.f test-metaprog habu-interpret-wide-gate-1d70acf7 4
 test/type-layout-lower-pending.f:TWX-TFAM-FIND-IN test-metaprog habu-seal-set-check-b3676b33
-test/type-match-suite.f:FREE-MTOK test-metaprog habu-tfam-11-linear-99fa9990
+test/type-match-suite.f:FREE-MTOK test-metaprog habu-tfam-11b-open-ee9c72c6
 test/engine-suite.f:T-CHECK-PASSES test-metaprog habu-primitive-effect-axiom-1119f176
 test/engine-suite.f:T-RDF test-metaprog cap:checker-hook-identity 2
 test/engine-suite.f:TR-SYM-LAYOUT-RAW test-metaprog cap:checker-registry-whitebox
