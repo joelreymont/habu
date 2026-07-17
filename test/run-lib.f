@@ -31,6 +31,15 @@ $3 constant TR-LATE-PHASES
 2 constant TR-PROFILE-JETSON-ORIN-CLOCKS-4X2
 3 constant TR-PROFILE-LINUX-ARM64-4X2
 
+package RUN-BUDGET
+
+public
+
+30000 constant MACOS-MS
+35000 constant MACOS-WALL-MS
+
+;package
+
 \ Budget calibration: profile budget tables were tuned green on a reference
 \ host; a startup spin probe measures this run's speed against the profile's
 \ reference probe time and scales the timed budgets so load or downclocking
@@ -287,26 +296,36 @@ variable TR-PRE-DIAG-FILE
 
 : TR-PROFILE-APPLY ( n -- ) {: id:n :}
    id TR-PROFILE-ID !
-   0 TR-BUDGET-USER !
-   0 TR-WALL-BUDGET-USER !
    id case
       TR-PROFILE-MACOS-ARM64-10X2 of
          10 TR-TOP-POOL-SLOTS!
          2 TR-NESTED-POOL !
-         40000 TR-CAL-SCALED TR-BUDGET !
-         45000 TR-CAL-SCALED TR-WALL-BUDGET !
+         TR-BUDGET-USER @ 0= if
+            RUN-BUDGET:MACOS-MS TR-CAL-SCALED TR-BUDGET !
+         then
+         TR-WALL-BUDGET-USER @ 0= if
+            RUN-BUDGET:MACOS-WALL-MS TR-CAL-SCALED TR-WALL-BUDGET !
+         then
       endof
       TR-PROFILE-JETSON-ORIN-CLOCKS-4X2 of
          4 GT-POOL-SLOTS!
          2 TR-NESTED-POOL !
-         100000 TR-CAL-SCALED TR-BUDGET !
-         110000 TR-CAL-SCALED TR-WALL-BUDGET !
+         TR-BUDGET-USER @ 0= if
+            100000 TR-CAL-SCALED TR-BUDGET !
+         then
+         TR-WALL-BUDGET-USER @ 0= if
+            110000 TR-CAL-SCALED TR-WALL-BUDGET !
+         then
       endof
       TR-PROFILE-LINUX-ARM64-4X2 of
          4 GT-POOL-SLOTS!
          2 TR-NESTED-POOL !
-         120000 TR-CAL-SCALED TR-BUDGET !
-         0 TR-WALL-BUDGET !
+         TR-BUDGET-USER @ 0= if
+            120000 TR-CAL-SCALED TR-BUDGET !
+         then
+         TR-WALL-BUDGET-USER @ 0= if
+            0 TR-WALL-BUDGET !
+         then
       endof
    endcase ;
 
@@ -326,7 +345,7 @@ variable TR-PRE-DIAG-FILE
 
 : TR-COLD-BUDGET-MS ( -- n )
    TR-PROFILE-ID @ case
-      TR-PROFILE-MACOS-ARM64-10X2 of 70000 TR-CAL-SCALED endof
+      TR-PROFILE-MACOS-ARM64-10X2 of RUN-BUDGET:MACOS-MS TR-CAL-SCALED endof
       TR-PROFILE-JETSON-ORIN-CLOCKS-4X2 of 150000 TR-CAL-SCALED endof
       TR-PROFILE-LINUX-ARM64-4X2 of 150000 TR-CAL-SCALED endof
       TR-BUDGET @ swap
@@ -334,7 +353,7 @@ variable TR-PRE-DIAG-FILE
 
 : TR-COLD-WALL-BUDGET-MS ( -- n )
    TR-PROFILE-ID @ case
-      TR-PROFILE-MACOS-ARM64-10X2 of 70000 TR-CAL-SCALED endof
+      TR-PROFILE-MACOS-ARM64-10X2 of RUN-BUDGET:MACOS-WALL-MS TR-CAL-SCALED endof
       TR-PROFILE-JETSON-ORIN-CLOCKS-4X2 of 160000 TR-CAL-SCALED endof
       TR-PROFILE-LINUX-ARM64-4X2 of 0 endof
       TR-WALL-BUDGET @ swap

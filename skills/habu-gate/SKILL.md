@@ -21,7 +21,7 @@ bin/hb --load test/run.f
 Run with explicit timing policy:
 
 ```sh
-bin/hb --load test/run.f -- --pool-slots 12 --nested-pool-slots 2 --budget-ms 70000
+bin/hb --load test/run.f -- --perf-profile macos-arm64-10x2 --timings
 ```
 
 Run the macOS timing profile:
@@ -33,7 +33,7 @@ bin/hb --load test/run.f -- --under bin/hb --timings
 Reuse an already-built Habu candidate instead of rebuilding it:
 
 ```sh
-bin/hb --load test/run.f -- --under bin/hb --pool-slots 12 --nested-pool-slots 2 --budget-ms 70000
+bin/hb --load test/run.f -- --under bin/hb --perf-profile macos-arm64-10x2 --timings
 ```
 
 Run focused tests through their owning load path before the full gate. Keep

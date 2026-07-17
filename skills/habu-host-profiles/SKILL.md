@@ -12,9 +12,9 @@ nested pool slots, and timing budgets. Put manual overrides after
 
 Profiles:
 
-- `macos-arm64-12x2`: macOS ARM64 target, `--pool-slots 12`,
-  `--nested-pool-slots 2`, hot `--budget-ms 40000`,
-  `--wall-budget-ms 45000`; cold `70000` / `70000`.
+- `macos-arm64-10x2`: macOS ARM64 target, `--pool-slots 10`,
+  `--nested-pool-slots 2`, hot and cold `--budget-ms 30000`,
+  `--wall-budget-ms 35000`.
 - `jetson-orin-clocks-4x2`: Linux target on NVIDIA Jetson with CPUs `0-7`
   online, `--pool-slots 4`, `--nested-pool-slots 2`, hot
   `--budget-ms 100000`, `--wall-budget-ms 110000`; cold `150000` / `160000`.

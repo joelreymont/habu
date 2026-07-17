@@ -5934,3 +5934,10 @@ unchanged (148855). Keys for milestone 2:
   outer pool label is the fallback owner, so later same-path execs can share the
   same owner and path. Snapshot the row count before and after the target spawn,
   then separately assert that the failed one-shot owner never appears.
+- **A faster gate is not protected until its profile budget is tightened.** A
+  24-second implementation still permits the old regression when the verdict
+  allows 70 seconds. Pin the new nominal and wall ceilings for persistent and
+  cold-cache paths, then prove both through the real calibrated runner.
+- **Profile selection must preserve explicit budget overrides in either CLI
+  order.** Applying a profile after `--budget-ms` or `--wall-budget-ms` must not
+  clear their user flags; cold-cache policy must honor the same flags.

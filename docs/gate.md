@@ -186,17 +186,18 @@ instead of recording a red phase.
 Timing regression checks are host-specific. Use named profiles instead of
 remembering slot counts or cache state:
 
-| Profile | Host proof | Slots | Nested | Persistent budget | Scratch-cache budget |
+| Profile | Host proof | Slots | Nested | Persistent nominal budget | Scratch-cache nominal budget |
 |---|---|---:|---:|---:|---:|
-| `macos-arm64-10x2` | macOS ARM64 target | 10 | 2 | 40000ms / 45000ms wall | 70000ms / 70000ms wall |
+| `macos-arm64-10x2` | macOS ARM64 target | 10 | 2 | 30000ms / 35000ms wall | 30000ms / 35000ms wall |
 | `jetson-orin-clocks-4x2` | Linux target, NVIDIA Jetson model, CPUs `0-7` online | 4 | 2 | 100000ms / 110000ms wall | 150000ms / 160000ms wall |
 | `linux-arm64-4x2` | Linux ARM64 target | 4 | 2 | 120000ms | 150000ms |
 
 The default profile is `auto`: the runner inspects the target and host files
 before the suite starts. Manual `--perf-profile NAME` forces a profile. Manual
-`--pool-slots`, `--nested-pool-slots`, `--budget-ms`, or `--wall-budget-ms`
-arguments override the profile when they appear after it. Top-level
-`--pool-slots` is capped at 12.
+`--budget-ms` and `--wall-budget-ms` override the profile in either argument
+order and remain unscaled. Pool overrides must appear after the profile;
+top-level `--pool-slots` is capped at 12. Table budgets are nominal and scale
+with the calibrated host factor.
 
 `--cold-cache` selects a private per-run scratch cache root under the suite temp
 directory, applies the profile scratch-cache budget unless the user supplied
