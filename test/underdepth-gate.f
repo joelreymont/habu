@@ -19,6 +19,7 @@
 \
 \ Run: bin/hb --load lib/errors.f lib/string.f lib/test.f lib/memory.f lib/fs.f
 \   lib/fs-mutate.f lib/process.f lib/process-argv.f lib/process-env.f
+\   lib/process-cwd.f
 \   test/underdepth-gate.f
 
 require lib/errors.f
@@ -30,6 +31,7 @@ require lib/fs-mutate.f
 require lib/process.f
 require lib/process-argv.f
 require lib/process-env.f
+require lib/process-cwd.f
 require lib/test/src-shape.f
 
 2048 constant UDG-CAP
@@ -388,6 +390,245 @@ public
    s" TYPE-FIELD:ALIGN@" UDG-PF-ROW
    s" TYPE-FIELD:FLAGS@" UDG-PF-ROW ;
 
+\ A qualified cold-prefix definition creates only the public package WID; its
+\ header keeps private WID zero until `package NAME` first opens it.  Build an
+\ isolated candidate from a private source-tree copy so the real startup
+\ internal-mark pass must classify that exact owner shape.
+package UDG-COLD
+
+$10000 constant CAP
+180000 constant BUILD-TIMEOUT-MS
+
+create ROOT-BUF FS-PATH-CAP allot
+create DST-BUF FS-PATH-CAP allot
+create SUB-BUF FS-PATH-CAP allot
+create TARGET-BUF FS-PATH-CAP allot
+create LINK-BUF FS-PATH-CAP allot
+create ENGINE-BUF FS-PATH-CAP allot
+create OUT-BUF CAP allot
+create ERR-BUF CAP allot
+
+variable ROOT-U
+variable DST-U
+variable TARGET-U
+variable LINK-U
+variable ENGINE-U
+variable OUT-U
+variable ERR-U
+variable BUILD-RC
+
+: ROOT$ ( -- ptr u8 n )
+   ROOT-BUF ROOT-U @ ;
+
+: OUT$ ( -- ptr u8 n )
+   OUT-BUF OUT-U @ ;
+
+: ERR$ ( -- ptr u8 n )
+   ERR-BUF ERR-U @ ;
+
+: ABS? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   u 0= if 0 0= 0= exit then
+   a c@ [char] / = ;
+
+: PWD$ ( -- ptr u8 n )
+   s" PWD" GETENV dup 0= if E-FS-PATH throw then ;
+
+: ENGINE$ ( -- ptr u8 n )
+   UDG-HB$ {: a:ptr u:n :}
+   a u ABS? if a u exit then
+   PWD$ a u ENGINE-BUF JOIN-PATH ENGINE-U !
+   ENGINE-BUF ENGINE-U @ ;
+
+: SUB$ ( ptr u8 n -- ptr u8 n )
+   ROOT$ 2swap SUB-BUF JOIN-PATH
+   SUB-BUF swap ;
+
+: PARENT-U ( ptr u8 n -- n ) {: a:ptr u:n :}
+   u begin dup 0 > while
+      1- dup a + c@ [char] / = if 1+ exit then
+   repeat
+   drop 0 ;
+
+: COPY-ONE ( ptr u8 n -- ) {: a:ptr u:n :}
+   ROOT$ a u DST-BUF JOIN-PATH DST-U !
+   DST-BUF DST-U @ {: d:ptr du:n :}
+   d du PARENT-U {: pu:n :}
+   pu 0 > if d pu MAKE-DIRS then
+   a u d du COPY-FILE-STREAM ;
+
+: COPY-ENTRY ( ptr u8 n -- )
+   2dup FILE? if COPY-ONE else 2drop then ;
+
+: COPY-SRC ( -- )
+   s" src" [: COPY-ENTRY ;] WALK-FILES ;
+
+: LINK-DIR ( ptr u8 n -- ) {: a:ptr u:n :}
+   PWD$ a u TARGET-BUF JOIN-PATH TARGET-U !
+   ROOT$ a u LINK-BUF JOIN-PATH LINK-U !
+   TARGET-BUF TARGET-U @ LINK-BUF LINK-U @ MAKE-SYMLINK ;
+
+: SEED-ENGINE ( -- )
+   ROOT$ s" bin" LINK-BUF JOIN-PATH LINK-U !
+   LINK-BUF LINK-U @ MAKE-DIRS
+   ROOT$ s" bin/hb" LINK-BUF JOIN-PATH LINK-U !
+   ENGINE$ LINK-BUF LINK-U @ COPY-FILE-STREAM
+   LINK-BUF LINK-U @ CHMOD-X ;
+
+: LINE ( ptr u8 n -- )
+   SB-APPEND UDG-LF ;
+
+: PREFIX-SOURCE$ ( -- ptr u8 n )
+   SB-RESET
+   s" LOWER-CERT-HOOK:INSTALL" LINE
+   s" : UDG-PUBLIC:KNOWN ( n -- n ) ;" LINE
+   s" 0 set-check" LINE
+   s" : UDG-PUBLIC:UNKNOWN ( -- ) ;" LINE
+   s" 76 constant UDG-PREFIX-RC" LINE
+   s" : UDG-PUBLIC-ONLY? ( -- bool )" LINE
+   S\"    s\" UDG-PUBLIC\" -1 XREF-FIND-WL" LINE
+   s"    dup XREF-FOUND? 0= if drop 0 0= 0= exit then" LINE
+   s"    dup XREF-START 0 > swap 1 XREF-CELL@ 0= and ;" LINE
+   s" : UDG-REQUIRE-PUBLIC-ONLY ( -- )" LINE
+   s"    UDG-PUBLIC-ONLY? if exit then" LINE
+   S\"    s\" udg cold prefix: package is not public-only\" UDG-PREFIX-RC die ;" LINE
+   s" UDG-REQUIRE-PUBLIC-ONLY" LINE
+   SB$ ;
+
+: SCAN-SUB ( ptr u8 n ptr u8 n -- n )
+   {: hay:ptr hayu:n needle:ptr needleu:n :}
+   hayu needleu < if -1 exit then
+   0 begin dup hayu needleu - <= while
+      dup hay + needleu needle needleu STR= if exit then
+      1+
+   repeat
+   drop -1 ;
+
+: PATCH-PREFIX ( -- )
+   s" src/core/internal-mark.f" SUB$ {: path:ptr pathu:n :}
+   path pathu OUT-BUF CAP READ-ALL OUT-U !
+   OUT-BUF OUT-U @
+   S\" LOWER-CERT-HOOK:INSTALL\nIMK-OWNER-ALLOC\nIMK-PASS"
+   SCAN-SUB {: off:n :}
+   off 0 < if E-FS-IO throw then
+   path pathu OUT-BUF off WRITE-ALL
+   path pathu PREFIX-SOURCE$ APPEND-FILE
+   path pathu OUT-BUF off + OUT-U @ off - APPEND-FILE ;
+
+: HB$ ( -- ptr u8 n )
+   s" bin/hb" SUB$ ;
+
+: BUILD-STORE ( len len rc -- )
+   RC>N BUILD-RC !
+   LEN>N ERR-U !
+   LEN>N OUT-U ! ;
+
+: BUILD-RUN ( -- )
+   PROC-ARGV-RESET
+   PROC-ENV-RESET
+   PROC-ENV-INHERIT-MISSING
+   s" --load" >LEN PROC-ARGV+
+   s" lib/errors.f" >LEN PROC-ARGV+
+   s" lib/string.f" >LEN PROC-ARGV+
+   s" lib/memory.f" >LEN PROC-ARGV+
+   s" lib/fs.f" >LEN PROC-ARGV+
+   s" lib/fs-mutate.f" >LEN PROC-ARGV+
+   s" lib/vector.f" >LEN PROC-ARGV+
+   s" lib/process.f" >LEN PROC-ARGV+
+   s" lib/process-argv.f" >LEN PROC-ARGV+
+   s" lib/process-env.f" >LEN PROC-ARGV+
+   s" lib/process-fork.f" >LEN PROC-ARGV+
+   s" lib/source.f" >LEN PROC-ARGV+
+   s" lib/build.f" >LEN PROC-ARGV+
+   s" lib/codesign.f" >LEN PROC-ARGV+
+   s" lib/content-key.f" >LEN PROC-ARGV+
+   s" tools/date.f" >LEN PROC-ARGV+
+   s" tools/build-fixpoint.f" >LEN PROC-ARGV+
+   s" tools/build-fixpoint-main.f" >LEN PROC-ARGV+
+   s" --" >LEN PROC-ARGV+
+   s" install" >LEN PROC-ARGV+
+   s" --force" >LEN PROC-ARGV+
+   ENGINE$ >LEN ROOT$ >LEN OUT-BUF CAP >LEN ERR-BUF CAP >LEN
+   BUILD-TIMEOUT-MS >MS RUN-ARGV-ENV-CWD-CAPTURE
+   BUILD-STORE ;
+
+: BUILD-DIAG ( -- )
+   BUILD-RC @ 0= if exit then
+   s" udg cold build: rc " type BUILD-RC @ . cr
+   s" udg cold build: stdout" type cr OUT$ type cr
+   s" udg cold build: stderr" type cr ERR$ type cr ;
+
+: BUILD-CANDIDATE ( -- )
+   COPY-SRC
+   s" lib" LINK-DIR
+   s" tools" LINK-DIR
+   SEED-ENGINE
+   PATCH-PREFIX
+   BUILD-RUN
+   BUILD-DIAG
+   BUILD-RC @ 0 T=
+   HB$ EXISTS? TTRUE ;
+
+: RUN-STORE ( len len rc -- )
+   RC>N UDG-RC !
+   LEN>N UDG-ERR-U !
+   LEN>N UDG-OUT-U !
+   0 0= UDG-EXITED ! ;
+
+: RUN-LOAD ( ptr u8 n -- )
+   UDG-CHILD 2swap WRITE-ALL
+   PROC-ARGV-RESET
+   PROC-ENV-RESET
+   PROC-ENV-INHERIT-MISSING
+   s" --load" >LEN PROC-ARGV+
+   UDG-CHILD >LEN PROC-ARGV+
+   HB$ >LEN ROOT$ >LEN UDG-OUT UDG-CAP >LEN UDG-ERR UDG-CAP >LEN
+   UDG-TIMEOUT-MS >MS RUN-ARGV-ENV-CWD-CAPTURE
+   RUN-STORE ;
+
+: RUN-STDIN ( ptr u8 n -- ) {: a:ptr u:n :}
+   PROC-ARGV-RESET
+   PROC-ENV-RESET
+   PROC-ENV-INHERIT-MISSING
+   HB$ >LEN ROOT$ >LEN a u >LEN UDG-OUT UDG-CAP >LEN
+   UDG-ERR UDG-CAP >LEN UDG-TIMEOUT-MS >MS
+   RUN-ARGV-ENV-CWD-STDIN-CAPTURE
+   RUN-STORE ;
+
+: ASSERT-INTERNAL ( ptr u8 n -- ) {: a:ptr u:n :}
+   UDG-EXITED @ TTRUE
+   UDG-RC @ UDG-REJECT-RC T=
+   UDG-ERR$ s" hb: internal engine word: " CONTAINS? TTRUE
+   UDG-ERR$ a u CONTAINS? TTRUE ;
+
+: CASES ( -- )
+   s" public-only package known input rejects via --load" T-LABEL
+   s" UDG-PUBLIC:KNOWN" RUN-LOAD
+   s" UDG-PUBLIC:KNOWN" UDG-ASSERT-UNDERDEPTH
+   s" public-only package known input rejects via stdin" T-LABEL
+   s" UDG-PUBLIC:KNOWN" RUN-STDIN
+   s" UDG-PUBLIC:KNOWN" UDG-ASSERT-UNDERDEPTH
+   s" public-only package unknown word is internal via --load" T-LABEL
+   s" UDG-PUBLIC:UNKNOWN" RUN-LOAD
+   s" UDG-PUBLIC:UNKNOWN" ASSERT-INTERNAL
+   s" public-only package unknown word is internal via stdin" T-LABEL
+   s" UDG-PUBLIC:UNKNOWN" RUN-STDIN
+   s" UDG-PUBLIC:UNKNOWN" ASSERT-INTERNAL ;
+
+: PREPARE ( -- )
+   s" habu-udg-cold" TMPDIR-MKDIR {: a:ptr u:n :}
+   a ROOT-BUF u BYTE-COPY
+   u ROOT-U !
+   ROOT$ CLEANUP-TREE+ ;
+
+public
+
+: RUN ( -- )
+   PREPARE
+   BUILD-CANDIDATE
+   CASES ;
+
+;package
+
 \ --- positives: the public top-level surface is untouched -------------------
 
 : UDG-EXACT$ ( -- ptr u8 n )
@@ -469,6 +710,7 @@ public
    UDG-COMPILE-IMM
    UDG-NEG-PRIMS
    UDG-PF-PACKAGE
+   UDG-COLD:RUN
    UDG-POSITIVES
    UDG-MINIMUM:ATOMIC-SHAPE
    UDG-MINIMUM:BOUNDARY
