@@ -28,6 +28,35 @@ Last updated: 2026-07-17
   (4) 21-kernel off-device golden dump byte-identical before/after, twice. The
   double-buffer path stays refuted (cross-slot commit/wait pairing, entry above);
   single-buffer is the one place the single-slot lifecycle is real.
+- **Migrating a fixed-width scalar SET to 32-byte content-key elements: move BYTES, keep
+  concrete-per-buffer sorts, guard with a CKEY comparator + a one-element insertion
+  scratch.** (dot habu-wire-content-key, keywire2/item-3: the v1->v2 envelope migration.)
+  The dependency/source-revision sets went from 8-byte cell elements to 32-byte content
+  keys. A 32-byte element can't ride the data stack, so the insertion sort copies the
+  element being placed into a `DKEY`/`SKEY` scratch and shifts with `BYTE-COPY`; ordering
+  uses a fixed-width `CKEY-LT?`/`CKEY-EQ?` byte comparator (the transaction.f `BYTES<`
+  precedent narrowed to `CKW`). The concrete-per-buffer rule still holds (byte access on a
+  `ptr` local is fine, but the buffer touch stays per-buffer: DSCR vs SSCR). The decode
+  ascending/dedup check replaces the `-1` raw sentinel with a `k>0` guard (a byte string
+  has no smaller-than-all sentinel). Store the wire BYTES (not the nominal) so decode ->
+  re-encode is byte-identical; validate each element resolves via `WIRE>KEY` fail-closed.
+- **Habu stack-effect comments are CHECKED types, and use TYPES not local names; a
+  create-buffer element address is `ptr u8`, never bare `ptr`.** `: DEP-AT ( s k -- ptr )`
+  fails `'ptr' needs an element type`; write `( s k -- ptr u8 )`. And `( pa pb -- bool )`
+  fails `unknown type 'pa'` — the signature must read `( ptr u8 ptr u8 -- bool )` even
+  when the locals are `{: pa:ptr pb:ptr :}`. A loop that `exit`s mid-body must `drop` the
+  loop index before pushing the result, or the return arity mismatches.
+- **A friend that BUILDS an envelope from outside package ARTIFACT needs the set-builders
+  public.** `BUILD-WEIGHT`'s doc names `DEPS-RESET/DEP+`/`SREVS-RESET/SREV+` as the build
+  protocol, but they were private, so only code reopening the package could add deps. The
+  cross-process ENVELOPE test (its own package) needs them, so they became public (the
+  scratch address helpers `DSCR-AT`/`SSCR-AT` stay private). Reopening the package (as
+  artifact-test.f does) is the alternative, but it pollutes ARTIFACT with spawn scaffolding.
+- **FILEMAP.md sat ~128 bytes under filemap-lint's `FM-BUF-CAP` ($20000); any addition
+  overflowed the lint's read buffer** (`lint: file exceeds buffer: FILEMAP.md`). Two lanes
+  hit it the same day: the cppslot landing bumped `FM-BUF-CAP` to $40000 (loud-fail
+  preserved, test green), and the keywire2 lane routed around it before the bump merged —
+  its xproc-env FILEMAP entries were added at integration once the cap fix landed.
 - **Cross-process id identity needs a CONTENT-key wire form, and the decisive test is a
   spawned fresh bin/hb that registers DECOYS FIRST.** (dot habu-wire-content-key, keywire
   lane.) The § 23.9 origin-class table's cross-process form for content-addressed families

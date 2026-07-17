@@ -53,10 +53,12 @@
 \ CANONICAL FORM. Sets are canonicalised at BUILD (sorted by identity, deduplicated -
 \ writes are sorted but NOT deduplicated so a duplicate is detectable), so encoding is
 \ insertion-order-independent. ENCODE emits the canonical bytes; DECODE parses and
-\ rehydrates (REGISTER object keys, REV:WIRE>ID the base) back through the same builder,
-\ so decode->re-encode is byte-identical. Object identity on the wire is the artifact
-\ store KEY (ARTIFACT:KEY$, the content-addressed identity), and the base revision uses
-\ REV:ID>WIRE - both this-round process-local forms, § 23.9 reconciliation out of scope.
+\ rehydrates (REGISTER object keys, REV:WIRE>KEY the base) back through the same builder,
+\ so decode->re-encode is byte-identical. Both wire forms are CROSS-PROCESS content keys
+\ (dot habu-wire-content-key-e5efaa74): object identity on the wire is the artifact store
+\ KEY (ARTIFACT:KEY$, content-addressed), and the base revision is its 32-byte SHA-256
+\ content key (REV:KEY>WIRE / WIRE>KEY, resolved BY CONTENT), so the derived PROPOSE
+\ revision chain is a cross-process-deterministic Merkle chain that survives process death.
 \
 \ Typed domain outcomes are the bespoke tx-result sum family (the § 23.9 art-result
 \ idiom, never result<a,b>); throws are reserved for capacity boundaries.
@@ -127,7 +129,8 @@ private
 8 constant U64W                         \ fixed little-endian scalar width
 4 constant U32W                         \ fixed little-endian length width
 32 constant DIGEST-BYTES                \ SHA-256 output
-16 constant WIRE-SCRATCH                \ one base-rev wire form (owner width <= this)
+32 constant REV-WIRE-W                   \ base-rev cross-process content-key wire width (REV:KEY>WIRE)
+32 constant WIRE-SCRATCH                \ one base-rev content-key wire form (owner width <= this)
 $8000 constant ENC-CAP                   \ canonical-bytes scratch
 
 \ Canonical ascending field tags.
@@ -508,7 +511,7 @@ variable DW
 
 : EMIT-BASE ( n -- ) {: s:n :}
    TAG-BASE E-U8
-   s BASE@ WSC WIRE-SCRATCH REV:ID>WIRE {: w:n :}
+   s BASE@ WSC WIRE-SCRATCH REV:KEY>WIRE {: w:n :}   \ 32-byte cross-process content key
    WSC w E-BYTES ;
 
 : EMIT-READ ( n -- ) {: s:n :}
@@ -774,10 +777,10 @@ private
 
 : DEC-BASE ( -- bool )                          \ true = opened a builder on the base rev
    TAG-BASE DEC-TAG  DFAILED? if false exit then
-   REMAIN U64W < if D-MALFORMED DFAIL false exit then
-   DPTR U64W REV:WIRE>ID
+   REMAIN REV-WIRE-W < if D-MALFORMED DFAIL false exit then
+   DPTR REV-WIRE-W REV:WIRE>KEY                  \ resolve the base content key BY CONTENT
    MATCH REV:id-result
-      ok          OF U64W DADV  OPEN true ENDOF
+      ok          OF REV-WIRE-W DADV  OPEN true ENDOF
       wrong-width OF D-MALFORMED DFAIL false ENDOF
       unknown     OF D-BOUNDS DFAIL false ENDOF
    ;MATCH ;

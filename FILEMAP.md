@@ -852,6 +852,17 @@ points stay listed.
   spawns a fresh bin/hb (the child fixture) that decodes them, proving identity survives
   PROCESS DEATH for all seven families (schema, producer, config, rev, target, numeric-
   policy, artifact). The spawn/capture is the maki/cad-test.f fresh-process pattern.
+- `maki/db/keywire-xproc-env-child.f` — the fresh-process decode side of the v2
+  ENVELOPE + TRANSACTION cross-process test (dot habu-wire-content-key, item-3 leg):
+  registers decoys first, reproduces the journal depth (the digest-excluded 8-byte
+  event survives only by replay), then DECODEs the parent's envelope and transaction
+  bytes, printing `XPROC-OK` iff both decode ok and the txn base revision resolves to
+  the same content.
+- `maki/db/keywire-xproc-env-test.f` — the v2-migration counterpart of the keywire
+  xproc test: BUILDs a v2 envelope (self-id, 2-dep set, foreign ids, source-revision,
+  event) and a transaction (base rev + sets), ENCODEs both to a fixed-layout file, and
+  spawns the env child — proving envelope identity and the transaction Merkle base
+  survive process death under the 32-byte content-key wire forms.
 - `maki/numpolicy.f` — the typed numeric-policy proof-domain family (`NPOL:dom` =
   exact/ulp/relative/empirical, CAD-PLAN §22.6): the strength lattice
   (`RANK`/`SATISFIES?`/`COMPOSE` weakest-wins), the checked satisfaction gate

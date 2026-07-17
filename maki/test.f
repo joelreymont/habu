@@ -232,6 +232,8 @@ TEST:SUITE maki/rev-test.f
 TEST:;SUITE
 TEST:SUITE maki/db/keywire-xproc-test.f
 TEST:;SUITE
+TEST:SUITE maki/db/keywire-xproc-env-test.f
+TEST:;SUITE
 TEST:SUITE maki/evidence/schema-test.f
 TEST:;SUITE
 TEST:SUITE maki/evidence/policy-test.f

@@ -12,13 +12,13 @@
 \ envelope here.
 \
 \ NO NEW TRUST BOUNDARY / NO RAW-N IDENTITY: the envelope handle types are checked
-\ PRODUCTs whose MAKE/UNMAKE constructors are checker-native (no TRUSTED:); the
-\ only id used on the wire is CAD-KIND:artifact-id, serialized through the EXISTING
-\ private ARTIFACT-ID>RAW / RAW>ARTIFACT-ID refinements already blessed by
-\ maki/artifact.f (visible here because we reopen the same package). The digest is
-\ a real SHA-256 over the semantic bytes, reusing the baked src/core/sha256.f word
-\ SHA256, never a one-cell n->digest cast: content-digest is a four-word owned
-\ value, structurally distinct from every id.
+\ PRODUCTs whose MAKE/UNMAKE constructors are checker-native (no TRUSTED:); the envelope's
+\ own CAD-KIND:artifact-id is held whole in a typed column and serialized on the wire as its
+\ cross-process CONTENT KEY through the EXISTING public ARTIFACT:KEY>WIRE / fail-closed
+\ WIRE>KEY (blessed by maki/artifact.f, callable bare because we reopen the same package) -
+\ never a raw cast. The digest is a real SHA-256 over the semantic bytes, reusing the baked
+\ src/core/sha256.f word SHA256, never a one-cell n->digest cast: content-digest is a
+\ four-word owned value, structurally distinct from every id.
 \
 \ KIND SEPARATION is realized as flat per-kind families (weight-artifact vs
 \ kernel-artifact), the contract-blessed alternative to parametric application:
@@ -37,27 +37,38 @@
 \     under a new audit event does not change its digest (proven by ADT-EXCLUDED-DIGEST).
 \   - source-revisions[] (TAG-SREVS) is an ascending/duplicate-free set of
 \     CAD-KIND:rev-id, mirroring the artifact-id dependency set mechanics but with the
-\     element obtained across the boundary via REV:ID>WIRE and validated fail-closed
-\     via REV:WIRE>ID. It is a DIGEST-COVERED semantic field (§ 23.9 field list:
+\     element obtained across the boundary via REV:KEY>WIRE and validated fail-closed
+\     via REV:WIRE>KEY. It is a DIGEST-COVERED semantic field (§ 23.9 field list:
 \     "source-revisions[] ... ordered source-revision identities" is semantic
 \     provenance): EMIT-SEMANTIC emits it as the last digest-covered field, so
 \     changing the set flips the digest (proven by ADT-SREVS-DIGEST).
+\
+\ V2 CROSS-PROCESS WIRE (this dot, habu-wire-content-key-e5efaa74). SCHEMA-VERSION is
+\ now 2: the artifact-id (TAG-ID), the dependency set (TAG-DEPS), the source-revision set
+\ (TAG-SREVS), and the four content-addressed foreign ids (schema/producer/config/target)
+\ serialise as their owner's 32-byte SHA-256 CONTENT KEY (ARTIFACT:KEY>WIRE / REV:KEY>WIRE
+\ / X:KEY>WIRE) rather than the pre-migration process-local registry raw, so envelope
+\ identity survives process death: a decoded content key resolves BY CONTENT against the
+\ local registry (WIRE>KEY), never by registration order. numeric-policy's KEY>WIRE is
+\ byte-coincident with its ID>WIRE (its content IS the dom rank, already cross-process
+\ stable), and the created-event (audit-event-id) stays the 8-byte occurrence SEQUENCE
+\ (JOURNAL:ID>WIRE - a sequence is occurrence-local; its cross-process replica identity is
+\ the flagged journal design point, out of this dot's scope). A v1 (raw-index) envelope
+\ decodes as unsupported-migration (DEC-POST version gate); no persisted v1 goldens exist.
+\ The digest-coverage table is FROZEN across the migration: the SAME fields stay
+\ covered/excluded, only their wire width changes.
 \ Every foreign id is serialized ACROSS the package boundary through its owner's total
-\ ID>WIRE and fail-closed WIRE>ID (§ 23.9 "Foreign identity constructors and wire
-\ codecs"): ARTIFACT never mints, raw-casts, or range-checks a foreign id. A WIRE>ID
+\ KEY>WIRE and fail-closed WIRE>KEY (§ 23.9 "Foreign identity constructors and wire
+\ codecs"): ARTIFACT never mints, raw-casts, or range-checks a foreign id. A WIRE>KEY
 \ refusal folds into the envelope taxonomy exactly as the contract fixes: wrong-width
 \ -> malformed (truncated/over-long id bytes), unknown -> bounds (out-of-range/
 \ unresolved id); a duplicate rev in the set -> duplicate. Together with the
 \ second-slice foreign ids (schema/producer/config/numeric-policy/target) and the
 \ first-slice fields (schema-version, kind, producer-version, artifact-id identity,
 \ the artifact-id dependency set, and the content digest) the envelope now binds every
-\ semantic identity the plan names EXCEPT the only two still out of the checker's
-\ reach: capabilities-used[] (CAD-KIND:capability-id, a user-gated closed vocabulary -
-\ owner CAP, a product decision; its ascending tag stays reserved, see
-\ TAG-CAP-RESERVED) and the process-local P-ID / dependency / foreign-id raw wire form,
-\ which the § 23.9 origin-class table reconciles with the cross-process SHA-256 content
-\ key (that migration - which likewise governs the rev-id set element and the event
-\ sequence - remains the flagged out-of-scope item owned by a later dot).
+\ semantic identity the plan names EXCEPT the one still out of the checker's reach:
+\ capabilities-used[] (CAD-KIND:capability-id, a user-gated closed vocabulary - owner
+\ CAP, a product decision; its ascending tag stays reserved, see TAG-CAP-RESERVED).
 \
 \ VALIDATE (§ 23.9 ARTIFACT:VALIDATE, the bare tail freed by the maki/artifact.f
 \ VALIDATE-ID rename) is the kind-AGNOSTIC leg: it checks owned bytes structurally
@@ -69,19 +80,20 @@
 require lib/prelude.f
 require maki/cad-kinds.f
 require maki/artifact.f          \ reopen package ARTIFACT + its blessed id refinements
-require maki/schema.f            \ SCHEMA:REGISTER / ID>WIRE / WIRE>ID (schema-id owner)
-require maki/producer.f          \ PRODUCER:REGISTER / ID>WIRE / WIRE>ID (producer-id owner)
-require maki/config.f            \ CONFIG:REGISTER / ID>WIRE / WIRE>ID (config-id owner)
-require maki/numpolicy.f         \ NPOL:REGISTER / ID>WIRE / WIRE>ID (numeric-policy-id owner)
-require maki/target/target.f     \ TARGET:REGISTER / ID>WIRE / WIRE>ID (target-id owner)
+require maki/schema.f            \ SCHEMA:REGISTER / KEY>WIRE / WIRE>KEY (schema-id owner)
+require maki/producer.f          \ PRODUCER:REGISTER / KEY>WIRE / WIRE>KEY (producer-id owner)
+require maki/config.f            \ CONFIG:REGISTER / KEY>WIRE / WIRE>KEY (config-id owner)
+require maki/numpolicy.f         \ NPOL:REGISTER / KEY>WIRE / WIRE>KEY (numeric-policy-id owner)
+require maki/target/target.f     \ TARGET:REGISTER / KEY>WIRE / WIRE>KEY (target-id owner)
 require maki/journal.f           \ JOURNAL:APPEND / ID>WIRE / WIRE>ID (audit-event-id owner)
-require maki/rev.f               \ REV:COMMIT / ID>WIRE / WIRE>ID (rev-id owner)
+require maki/rev.f               \ REV:COMMIT / KEY>WIRE / WIRE>KEY (rev-id owner)
 
 -5274 constant E-ART-ENV-DEP     \ dependency-set builder over the per-envelope cap
 -5275 constant E-ART-ENV-BUF     \ ENCODE output buffer smaller than the canonical bytes
 -5276 constant E-ART-ENV-SEM     \ semantic prefix over the internal scratch (unreachable cap)
 -5277 constant E-ART-ENV-SREV    \ source-revision-set builder over the per-envelope cap
--5278 constant E-ART-ENV-SRVW    \ REV:ID>WIRE returned a width the fixed set element cannot hold
+-5278 constant E-ART-ENV-SRVW    \ REV:KEY>WIRE returned a width the fixed set element cannot hold
+-5279 constant E-ART-ENV-DIDW    \ ARTIFACT:KEY>WIRE returned a width the fixed set element cannot hold
 
 package ARTIFACT
 public
@@ -142,29 +154,31 @@ private
 : R-DIGEST ( -- art-result<n> )       ARTIFACT-ART--RESULT:DIGEST-MISMATCH ;
 
 \ ---- protocol constants (frozen wire) -----------------------------------------
-1 constant SCHEMA-VERSION            \ the only schema version this reader supports
+2 constant SCHEMA-VERSION            \ the only schema version this reader supports (v2:
+                                     \ id/dep/foreign-id fields carry the cross-process
+                                     \ content key; v1 bytes decode as unsupported-migration)
 0 constant KIND-WEIGHT               \ wire kind discriminant for weight-artifact
 1 constant KIND-KERNEL               \ wire kind discriminant for kernel-artifact
 
 \ Canonical ascending field tags. 1..11 are the digest-covered semantic fields
-\ (1..5 first-slice scalars/set + artifact-id; 6..10 the foreign-id families whose
-\ owners publish an ID>WIRE/WIRE>ID pair; 11 the rev-id source-revision set); 12 and
-\ 13 are excluded from the digest; unknown tags (> TAG-KNOWN-MAX) are optional-or-
-\ required extension fields. The digest and event fields keep the HIGHEST decoded tags
-\ because EMIT-SEMANTIC emits every digest-covered field as the ascending wire prefix
-\ and the stored digest+event follow it; a semantic field with a tag above them would
-\ break ascending order.
+\ (1..5 first-slice scalars/set + artifact-id content key; 6..10 the foreign-id families
+\ whose owners publish a KEY>WIRE/WIRE>KEY cross-process pair; 11 the rev-id source-
+\ revision set); 12 and 13 are excluded from the digest; unknown tags (> TAG-KNOWN-MAX)
+\ are optional-or-required extension fields. The digest and event fields keep the HIGHEST
+\ decoded tags because EMIT-SEMANTIC emits every digest-covered field as the ascending
+\ wire prefix and the stored digest+event follow it; a semantic field with a tag above
+\ them would break ascending order.
 1  constant TAG-VER
 2  constant TAG-KIND
 3  constant TAG-PVER
-4  constant TAG-ID
-5  constant TAG-DEPS
-6  constant TAG-SCHEMA                 \ CAD-KIND:schema-id         (SCHEMA:ID>WIRE/WIRE>ID)
-7  constant TAG-PRODUCER               \ CAD-KIND:producer-id       (PRODUCER:ID>WIRE/WIRE>ID)
-8  constant TAG-CONFIG                 \ CAD-KIND:config-id         (CONFIG:ID>WIRE/WIRE>ID)
-9  constant TAG-NPOL                   \ CAD-KIND:numeric-policy-id (NPOL:ID>WIRE/WIRE>ID)
-10 constant TAG-TARGET                 \ CAD-KIND:target-id         (TARGET:ID>WIRE/WIRE>ID)
-11 constant TAG-SREVS                  \ source-revisions[]: CAD-KIND:rev-id set (REV:ID>WIRE/WIRE>ID)
+4  constant TAG-ID                     \ CAD-KIND:artifact-id       (ARTIFACT:KEY>WIRE/WIRE>KEY)
+5  constant TAG-DEPS                   \ dependency set: CAD-KIND:artifact-id content keys
+6  constant TAG-SCHEMA                 \ CAD-KIND:schema-id         (SCHEMA:KEY>WIRE/WIRE>KEY)
+7  constant TAG-PRODUCER               \ CAD-KIND:producer-id       (PRODUCER:KEY>WIRE/WIRE>KEY)
+8  constant TAG-CONFIG                 \ CAD-KIND:config-id         (CONFIG:KEY>WIRE/WIRE>KEY)
+9  constant TAG-NPOL                   \ CAD-KIND:numeric-policy-id (NPOL:KEY>WIRE/WIRE>KEY, 8B)
+10 constant TAG-TARGET                 \ CAD-KIND:target-id         (TARGET:KEY>WIRE/WIRE>KEY)
+11 constant TAG-SREVS                  \ source-revisions[]: CAD-KIND:rev-id set (REV:KEY>WIRE/WIRE>KEY)
 12 constant TAG-DIGEST                 \ stored content digest (excluded from digest)
 13 constant TAG-EVENT                  \ created-event: CAD-KIND:audit-event-id (JOURNAL, excluded)
 13 constant TAG-KNOWN-MAX
@@ -181,13 +195,15 @@ private
 2 constant HDR-W                      \ tag byte + flags byte
 32 constant DIGEST-BYTES              \ 256-bit content digest
 32 constant FID-WIRE-CAP              \ scratch cap for one foreign-id wire form (owner width <= this)
-\ Source-revision set element = the rev-id wire form (maki/rev.f WIRE-BYTES, this-round
-\ 8-byte little-endian). The set packs FIXED-width elements back to back, so the width
-\ is a protocol constant here; SREV+ guards it against REV:ID>WIRE's returned width so a
-\ future wider rev wire form fails closed (E-ART-ENV-SRVW) rather than truncating. The
-\ same § 23.9 process-local-raw vs content-key reconciliation that governs every other
-\ foreign id governs this element.
-8 constant SREV-WIRE-W
+\ Cross-process content-key wire width (§ 23.9 origin-class table, content-addressed
+\ registry intern): the artifact-id, every dependency, and each source-revision element
+\ are the owner's 32-byte SHA-256 content key (ARTIFACT:KEY>WIRE / REV:KEY>WIRE), so
+\ identity survives process death - a decoded key resolves BY CONTENT against the local
+\ registry, never by registration order. The dependency and source-revision SETS pack
+\ FIXED-width CKW elements back to back, so the width is a protocol constant here; DEP+
+\ and SREV+ guard it against the owner KEY>WIRE returned width so a future wider content
+\ key fails closed (E-ART-ENV-DIDW / E-ART-ENV-SRVW) rather than truncating.
+32 constant CKW
 
 \ taxonomy codes accumulated during decode, mapped to art-result at the boundary
 1 constant D-MALFORMED
@@ -210,11 +226,10 @@ $2000 constant ROPAQUE-CAP            \ retained opaque optional-field arena
 create P-VER   ENV-CAP cells allot
 create P-KIND  ENV-CAP cells allot
 create P-PVER  ENV-CAP cells allot
-create P-ID    ENV-CAP cells allot             \ CAD-KIND:artifact-id raw
 create P-DEPN  ENV-CAP cells allot
-create P-DEP   ENV-CAP DEP-CAP * cells allot   \ ascending, duplicate-free id raws
+create P-DEP   ENV-CAP DEP-CAP * CKW * allot   \ ascending, duplicate-free content keys
 create P-SREVN ENV-CAP cells allot             \ source-revision set count
-create P-SREV  ENV-CAP SREV-CAP * cells allot  \ ascending, duplicate-free rev wire forms
+create P-SREV  ENV-CAP SREV-CAP * CKW * allot  \ ascending, duplicate-free rev content keys
 create P-ROFF  ENV-CAP cells allot             \ retained opaque byte offset
 create P-RLEN  ENV-CAP cells allot             \ retained opaque byte length
 variable P-NEXT                                \ ring cursor
@@ -223,6 +238,7 @@ variable P-NEXT                                \ ring cursor
 \ Each holds the already-valid nominal id whole; ARTIFACT never sees its raw. Typed
 \ per-slot buffers (the maki/target/target.f TYPED-VARIABLE/LAYOUT-BUFFER precedent)
 \ so the checker keeps the family: a producer-id can never land in a schema column.
+ENV-CAP TYPED-BUFFER ID-COL       CAD-KIND:artifact-id      \ the envelope's own identity
 ENV-CAP TYPED-BUFFER SCHEMA-COL   CAD-KIND:schema-id
 ENV-CAP TYPED-BUFFER PRODUCER-COL CAD-KIND:producer-id
 ENV-CAP TYPED-BUFFER CONFIG-COL   CAD-KIND:config-id
@@ -235,13 +251,15 @@ create IDWBUF FID-WIRE-CAP allot               \ scratch for one foreign-id wire
 create ROPAQUE ROPAQUE-CAP allot
 variable ROPAQUE-U
 
-\ ---- dependency-set builder scratch -------------------------------------------
-create DSCR DEP-CAP cells allot
+\ ---- dependency-set builder scratch (32-byte content keys) --------------------
+create DSCR DEP-CAP CKW * allot
 variable DSCR-N
+create DKEY CKW allot                          \ one-element insertion-sort scratch
 
-\ ---- source-revision-set builder scratch --------------------------------------
-create SSCR SREV-CAP cells allot
+\ ---- source-revision-set builder scratch (32-byte content keys) ---------------
+create SSCR SREV-CAP CKW * allot
 variable SSCR-N
+create SKEY CKW allot                          \ one-element insertion-sort scratch
 
 \ ---- scratch encode buffer + cursor (semantic prefix and full envelope) --------
 create EBUF SCRATCH-CAP allot
@@ -257,8 +275,8 @@ variable DPREV                                 \ last tag seen (ascending check)
 variable DERR                                  \ 0 = ok, else taxonomy code
 variable SEEN                                  \ seen-required bitset over tags 1..TAG-KNOWN-MAX
 variable SAW-DIGEST
-variable DEC-PREVDEP                           \ previous dep raw (ascending check)
-variable DEC-PREVSREV                          \ previous source-rev wire form (ascending check)
+create DEC-PREVDEP CKW allot                   \ previous dep content key (ascending check)
+create DEC-PREVSREV CKW allot                  \ previous source-rev content key (ascending check)
 
 \ ---- per-slot column access ---------------------------------------------------
 : VER@ ( n -- n )    cells P-VER + @ ;
@@ -267,8 +285,6 @@ variable DEC-PREVSREV                          \ previous source-rev wire form (
 : KIND! ( n n -- )   cells P-KIND + ! ;
 : PVER@ ( n -- n )   cells P-PVER + @ ;
 : PVER! ( n n -- )   cells P-PVER + ! ;
-: ID@ ( n -- n )     cells P-ID + @ ;
-: ID! ( n n -- )     cells P-ID + ! ;
 : DEPN@ ( n -- n )   cells P-DEPN + @ ;
 : DEPN! ( n n -- )   cells P-DEPN + ! ;
 : SREVN@ ( n -- n )  cells P-SREVN + @ ;
@@ -278,10 +294,15 @@ variable DEC-PREVSREV                          \ previous source-rev wire form (
 : RLEN@ ( n -- n )   cells P-RLEN + @ ;
 : RLEN! ( n n -- )   cells P-RLEN + ! ;
 
-: DEP@ ( n n -- n ) {: s:n k:n :}      s DEP-CAP * k + cells P-DEP + @ ;
-: DEP! ( n n n -- ) {: v:n s:n k:n :}   v  s DEP-CAP * k + cells P-DEP + ! ;
-: SREV@ ( n n -- n ) {: s:n k:n :}      s SREV-CAP * k + cells P-SREV + @ ;
-: SREV! ( n n n -- ) {: v:n s:n k:n :}   v  s SREV-CAP * k + cells P-SREV + ! ;
+\ Content-key set elements are 32 fixed bytes each; the per-slot accessor yields the
+\ element's byte address (BYTE-COPY / c@ move it), never a cell value.
+: DEP-AT ( s k -- ptr u8 ) {: s:n k:n :}   s DEP-CAP * k +  CKW *  P-DEP + ;
+: SREV-AT ( s k -- ptr u8 ) {: s:n k:n :}   s SREV-CAP * k +  CKW *  P-SREV + ;
+
+\ The envelope's own identity is the whole nominal id in a typed column (like the
+\ foreign ids); it serialises as ARTIFACT:KEY>WIRE / WIRE>KEY, never a raw cast.
+: ID-ID@ ( n -- CAD-KIND:artifact-id )             ID-COL @ ;
+: ID-ID! ( CAD-KIND:artifact-id n -- )             ID-COL ! ;
 
 \ Foreign-id per-slot access: fetch/store the WHOLE nominal id through the typed
 \ column, so the family is checker-preserved and no raw ever surfaces in ARTIFACT.
@@ -324,6 +345,25 @@ variable DEC-PREVSREV                          \ previous source-rev wire form (
       1+
    repeat drop true ;
 
+\ ---- fixed 32-byte content-key comparison (the set-canonicalisation ordering) --
+\ Lexicographic over CKW bytes, the transaction.f BYTES< precedent narrowed to a fixed
+\ width. Byte access on ptr locals only, so it composes with the concrete-per-buffer
+\ sort words (docs/forth.md § ptr locals and cell access).
+: CKEY-EQ? ( ptr u8 ptr u8 -- bool ) {: pa:ptr pb:ptr :}
+   0 begin dup CKW < while
+      dup {: k:n :}
+      pa k + c@  pb k + c@  <> if drop false exit then
+      1+
+   repeat drop true ;
+
+: CKEY-LT? ( ptr u8 ptr u8 -- bool ) {: pa:ptr pb:ptr :}
+   0 begin dup CKW < while
+      dup {: k:n :}
+      pa k + c@  pb k + c@  {: ca:n cb:n :}
+      ca cb <> if drop ca cb < exit then
+      1+
+   repeat drop false ;
+
 \ ---- semantic-prefix emitter (shared by ENCODE, DIGEST, DECODE re-hash) --------
 : E-RESET ( -- )   0 EO ! ;
 
@@ -354,57 +394,65 @@ variable DEC-PREVSREV                          \ previous source-rev wire form (
    U64W U32W E-LE
    v U64W E-LE ;
 
-\ The dependency set field: tag, flags, len, count then count ascending id raws.
+\ The dependency set field: tag, flags, len, count then count ascending content keys.
 : E-DEPS-FIELD ( n -- ) {: s:n :}
    s DEPN@ {: cnt:n :}
    TAG-DEPS FLAG-REQUIRED E-HEAD
-   cnt 1+ U64W * U32W E-LE                     \ payload = count word + cnt id words
+   U64W  cnt CKW *  +  U32W E-LE                \ payload = count word + cnt content keys
    cnt U64W E-LE
    0 begin dup cnt < while
       dup {: k:n :}
-      s k DEP@ U64W E-LE
+      s k DEP-AT  CKW  E-BYTES
       1+
    repeat drop ;
 
-\ The source-revision set field: tag, flags, len, count then count ascending rev wire
-\ forms. Mirrors E-DEPS-FIELD but each element is a fixed SREV-WIRE-W rev-id wire form
-\ (obtained via REV:ID>WIRE at BUILD, re-emitted here as its canonical bytes).
+\ The source-revision set field: tag, flags, len, count then count ascending rev content
+\ keys. Mirrors E-DEPS-FIELD but each element is a fixed CKW rev-id content key (obtained
+\ via REV:KEY>WIRE at BUILD, re-emitted here as its canonical bytes).
 : E-SREVS-FIELD ( n -- ) {: s:n :}
    s SREVN@ {: cnt:n :}
    TAG-SREVS FLAG-REQUIRED E-HEAD
-   U64W  cnt SREV-WIRE-W *  +  U32W E-LE        \ payload = count word + cnt rev wire forms
+   U64W  cnt CKW *  +  U32W E-LE                \ payload = count word + cnt rev content keys
    cnt U64W E-LE
    0 begin dup cnt < while
       dup {: k:n :}
-      s k SREV@ SREV-WIRE-W E-LE
+      s k SREV-AT  CKW  E-BYTES
       1+
    repeat drop ;
 
 \ A length-delimited opaque-bytes field: tag, required flag, len, then the bytes.
-\ Used for foreign-id fields whose payload is the owner ID>WIRE canonical form; the
+\ Used for foreign-id fields whose payload is the owner KEY>WIRE canonical form; the
 \ length is the owner-returned width, never a hardcoded ARTIFACT constant.
 : E-WIRE-FIELD ( n ptr u8 n -- ) {: tag:n a:ptr u:n :}
    tag FLAG-REQUIRED E-HEAD
    u U32W E-LE
    a u E-BYTES ;
 
-\ Foreign-id field emitters: serialize the stored nominal id ACROSS the owner
-\ package boundary with X:ID>WIRE (total for a valid id), then frame it. No raw
-\ cast, no refinement in ARTIFACT.
+\ The envelope's own identity field: serialize the stored artifact-id as its 32-byte
+\ cross-process content key (ARTIFACT:KEY>WIRE, bare in the reopened package), then frame
+\ it. The identity is digest-covered; its content key is stable across process death.
+: E-ID-FIELD ( n -- ) {: s:n :}
+   s ID-ID@ IDWBUF FID-WIRE-CAP KEY>WIRE {: w:n :}
+   TAG-ID IDWBUF w E-WIRE-FIELD ;
+
+\ Foreign-id field emitters: serialize the stored nominal id ACROSS the owner package
+\ boundary with X:KEY>WIRE (the cross-process content key; total for a valid id), then
+\ frame it. No raw cast, no refinement in ARTIFACT. numeric-policy's KEY>WIRE is byte-
+\ coincident with its ID>WIRE (its content IS the dom rank, already cross-process stable).
 : E-SCHEMA-FIELD ( n -- ) {: s:n :}
-   s SCHEMA-ID@ IDWBUF FID-WIRE-CAP SCHEMA:ID>WIRE {: w:n :}
+   s SCHEMA-ID@ IDWBUF FID-WIRE-CAP SCHEMA:KEY>WIRE {: w:n :}
    TAG-SCHEMA IDWBUF w E-WIRE-FIELD ;
 : E-PRODUCER-FIELD ( n -- ) {: s:n :}
-   s PRODUCER-ID@ IDWBUF FID-WIRE-CAP PRODUCER:ID>WIRE {: w:n :}
+   s PRODUCER-ID@ IDWBUF FID-WIRE-CAP PRODUCER:KEY>WIRE {: w:n :}
    TAG-PRODUCER IDWBUF w E-WIRE-FIELD ;
 : E-CONFIG-FIELD ( n -- ) {: s:n :}
-   s CONFIG-ID@ IDWBUF FID-WIRE-CAP CONFIG:ID>WIRE {: w:n :}
+   s CONFIG-ID@ IDWBUF FID-WIRE-CAP CONFIG:KEY>WIRE {: w:n :}
    TAG-CONFIG IDWBUF w E-WIRE-FIELD ;
 : E-NPOL-FIELD ( n -- ) {: s:n :}
-   s NPOL-ID@ IDWBUF FID-WIRE-CAP NPOL:ID>WIRE {: w:n :}
+   s NPOL-ID@ IDWBUF FID-WIRE-CAP NPOL:KEY>WIRE {: w:n :}
    TAG-NPOL IDWBUF w E-WIRE-FIELD ;
 : E-TARGET-FIELD ( n -- ) {: s:n :}
-   s TARGET-ID@ IDWBUF FID-WIRE-CAP TARGET:ID>WIRE {: w:n :}
+   s TARGET-ID@ IDWBUF FID-WIRE-CAP TARGET:KEY>WIRE {: w:n :}
    TAG-TARGET IDWBUF w E-WIRE-FIELD ;
 
 \ The digest-EXCLUDED created-event: a single audit-event-id wire field serialized
@@ -422,7 +470,7 @@ variable DEC-PREVSREV                          \ previous source-rev wire form (
    TAG-VER  s VER@  E-U64-FIELD
    TAG-KIND s KIND@ E-U64-FIELD
    TAG-PVER s PVER@ E-U64-FIELD
-   TAG-ID   s ID@   E-U64-FIELD
+   s E-ID-FIELD
    s E-DEPS-FIELD
    s E-SCHEMA-FIELD
    s E-PRODUCER-FIELD
@@ -474,24 +522,6 @@ variable DEC-PREVSREV                          \ previous source-rev wire form (
    declen U64W <> if D-BOUNDS FAIL 0 exit then
    U64W D-LE ;
 
-: TAKE-DEPS ( n n -- ) {: s:n declen:n :}
-   declen U64W < if D-BOUNDS FAIL exit then
-   U64W D-LE {: cnt:n :}
-   FAILED? if exit then
-   cnt 0 < cnt DEP-CAP > or if D-BOUNDS FAIL exit then
-   declen cnt 1+ U64W * <> if D-BOUNDS FAIL exit then
-   cnt s DEPN!
-   -1 DEC-PREVDEP !
-   0 begin dup cnt < FAILED? 0= and while
-      dup {: k:n :}
-      U64W D-LE {: d:n :}
-      d DEC-PREVDEP @ = if D-DUP FAIL then
-      d DEC-PREVDEP @ < if D-NONCANON FAIL then
-      d s k DEP!
-      d DEC-PREVDEP !
-      1+
-   repeat drop ;
-
 : TAKE-DIGEST ( n -- ) {: declen:n :}
    declen DIGEST-BYTES <> if D-BOUNDS FAIL exit then
    REMAIN DIGEST-BYTES < if D-MALFORMED FAIL exit then
@@ -501,17 +531,30 @@ variable DEC-PREVSREV                          \ previous source-rev wire form (
 
 \ ---- foreign-id field bodies -------------------------------------------------
 \ The payload is exactly `declen` bytes at the cursor; we hand them to the owner's
-\ fail-closed X:WIRE>ID and fold its reject arms into the envelope taxonomy per the
-\ § 23.9 contract: wrong-width (declared length is not the id's canonical width) ->
-\ malformed (truncated/over-long id bytes); unknown (raw does not resolve in the
-\ owner registry/vocabulary) -> bounds (out-of-range/unresolved id). On ok we hold
-\ the refined nominal id whole in the slot's typed column and advance the cursor.
+\ fail-closed X:WIRE>KEY (JOURNAL:WIRE>ID for the event sequence) and fold its reject
+\ arms into the envelope taxonomy per the § 23.9 contract: wrong-width (declared length
+\ is not the id's canonical width) -> malformed (truncated/over-long id bytes); unknown
+\ (content key does not resolve in the owner registry) -> bounds (out-of-range/unresolved
+\ id). On ok we hold the refined nominal id whole in the slot's typed column and advance.
 : FID-PTR ( -- ptr u8 )    DBASE 0 ptr-field @ DPOS @ + ;
 : FID-ADVANCE ( n -- )     DPOS @ + DPOS ! ;
 
+\ The envelope's own identity: resolve the 32-byte content key fail-closed through
+\ ARTIFACT:WIRE>KEY (bare in the reopened package) BY CONTENT, folding the reject arms
+\ exactly like a foreign id (wrong-width -> malformed, unknown -> bounds), and hold the
+\ refined nominal id whole in the slot's typed column.
+: TAKE-ID ( n n -- ) {: s:n declen:n :}
+   REMAIN declen < if D-MALFORMED FAIL exit then
+   FID-PTR declen WIRE>KEY
+   MATCH id-result
+      ok          OF s ID-ID!  declen FID-ADVANCE ENDOF
+      wrong-width OF D-MALFORMED FAIL ENDOF
+      unknown     OF D-BOUNDS FAIL ENDOF
+   ;MATCH ;
+
 : TAKE-SCHEMA ( n n -- ) {: s:n declen:n :}
    REMAIN declen < if D-MALFORMED FAIL exit then
-   FID-PTR declen SCHEMA:WIRE>ID
+   FID-PTR declen SCHEMA:WIRE>KEY
    MATCH SCHEMA:id-result
       ok          OF s SCHEMA-ID!  declen FID-ADVANCE ENDOF
       wrong-width OF D-MALFORMED FAIL ENDOF
@@ -520,7 +563,7 @@ variable DEC-PREVSREV                          \ previous source-rev wire form (
 
 : TAKE-PRODUCER ( n n -- ) {: s:n declen:n :}
    REMAIN declen < if D-MALFORMED FAIL exit then
-   FID-PTR declen PRODUCER:WIRE>ID
+   FID-PTR declen PRODUCER:WIRE>KEY
    MATCH PRODUCER:id-result
       ok          OF s PRODUCER-ID!  declen FID-ADVANCE ENDOF
       wrong-width OF D-MALFORMED FAIL ENDOF
@@ -529,7 +572,7 @@ variable DEC-PREVSREV                          \ previous source-rev wire form (
 
 : TAKE-CONFIG ( n n -- ) {: s:n declen:n :}
    REMAIN declen < if D-MALFORMED FAIL exit then
-   FID-PTR declen CONFIG:WIRE>ID
+   FID-PTR declen CONFIG:WIRE>KEY
    MATCH CONFIG:id-result
       ok          OF s CONFIG-ID!  declen FID-ADVANCE ENDOF
       wrong-width OF D-MALFORMED FAIL ENDOF
@@ -538,7 +581,7 @@ variable DEC-PREVSREV                          \ previous source-rev wire form (
 
 : TAKE-NPOL ( n n -- ) {: s:n declen:n :}
    REMAIN declen < if D-MALFORMED FAIL exit then
-   FID-PTR declen NPOL:WIRE>ID
+   FID-PTR declen NPOL:WIRE>KEY
    MATCH NPOL:id-result
       ok          OF s NPOL-ID!  declen FID-ADVANCE ENDOF
       wrong-width OF D-MALFORMED FAIL ENDOF
@@ -547,7 +590,7 @@ variable DEC-PREVSREV                          \ previous source-rev wire form (
 
 : TAKE-TARGET ( n n -- ) {: s:n declen:n :}
    REMAIN declen < if D-MALFORMED FAIL exit then
-   FID-PTR declen TARGET:WIRE>ID
+   FID-PTR declen TARGET:WIRE>KEY
    MATCH TARGET:id-result
       ok          OF s TARGET-ID!  declen FID-ADVANCE ENDOF
       wrong-width OF D-MALFORMED FAIL ENDOF
@@ -566,35 +609,71 @@ variable DEC-PREVSREV                          \ previous source-rev wire form (
       unknown     OF D-BOUNDS FAIL ENDOF
    ;MATCH ;
 
-\ One source-revision set element: validate the fixed-width rev wire form fail-closed
-\ through REV:WIRE>ID (unknown -> bounds, wrong-width -> malformed), then enforce the
-\ ascending/duplicate-free set invariant on its wire form (duplicate -> duplicate,
-\ descending -> noncanonical), and store the canonical wire form. Mirrors the
-\ per-element arm of TAKE-DEPS across the REV boundary.
+\ One dependency set element: validate the fixed 32-byte artifact content key fail-closed
+\ through ARTIFACT:WIRE>KEY (bare) BY CONTENT (unknown -> bounds, wrong-width ->
+\ malformed), then enforce the ascending/duplicate-free set invariant on its content-key
+\ BYTES via CMP32 (duplicate -> duplicate, descending -> noncanonical), and store the
+\ canonical content key. `k > 0` gates the ascending check so the first element has no
+\ predecessor to compare (the pre-migration -1 raw sentinel has no byte-string analogue).
+: DEP-ELEM ( n n -- ) {: s:n k:n :}
+   REMAIN CKW < if D-MALFORMED FAIL exit then
+   FID-PTR CKW WIRE>KEY
+   MATCH id-result
+      ok          OF drop ENDOF
+      wrong-width OF D-MALFORMED FAIL ENDOF
+      unknown     OF D-BOUNDS FAIL ENDOF
+   ;MATCH
+   FAILED? if exit then
+   k 0 > if
+      FID-PTR DEC-PREVDEP CKEY-EQ? if D-DUP FAIL exit then
+      FID-PTR DEC-PREVDEP CKEY-LT? if D-NONCANON FAIL exit then
+   then
+   FID-PTR  s k DEP-AT   CKW BYTE-COPY
+   FID-PTR  DEC-PREVDEP  CKW BYTE-COPY
+   CKW FID-ADVANCE ;
+
+: TAKE-DEPS ( n n -- ) {: s:n declen:n :}
+   declen U64W < if D-BOUNDS FAIL exit then
+   U64W D-LE {: cnt:n :}
+   FAILED? if exit then
+   cnt 0 < cnt DEP-CAP > or if D-BOUNDS FAIL exit then
+   declen  U64W cnt CKW * +  <> if D-BOUNDS FAIL exit then
+   cnt s DEPN!
+   0 begin dup cnt < FAILED? 0= and while
+      dup {: k:n :}
+      s k DEP-ELEM
+      1+
+   repeat drop ;
+
+\ One source-revision set element: validate the fixed 32-byte rev content key fail-closed
+\ through REV:WIRE>KEY BY CONTENT (unknown -> bounds, wrong-width -> malformed), then
+\ enforce the ascending/duplicate-free set invariant on its content-key BYTES via CMP32
+\ (duplicate -> duplicate, descending -> noncanonical), and store the canonical content
+\ key. Mirrors DEP-ELEM across the REV boundary.
 : SREV-ELEM ( n n -- ) {: s:n k:n :}
-   REMAIN SREV-WIRE-W < if D-MALFORMED FAIL exit then
-   FID-PTR SREV-WIRE-W REV:WIRE>ID
+   REMAIN CKW < if D-MALFORMED FAIL exit then
+   FID-PTR CKW REV:WIRE>KEY
    MATCH REV:id-result
       ok          OF drop ENDOF
       wrong-width OF D-MALFORMED FAIL ENDOF
       unknown     OF D-BOUNDS FAIL ENDOF
    ;MATCH
    FAILED? if exit then
-   FID-PTR SREV-WIRE-W LE-GET {: d:n :}
-   d DEC-PREVSREV @ = if D-DUP FAIL exit then
-   d DEC-PREVSREV @ < if D-NONCANON FAIL exit then
-   d s k SREV!
-   d DEC-PREVSREV !
-   SREV-WIRE-W FID-ADVANCE ;
+   k 0 > if
+      FID-PTR DEC-PREVSREV CKEY-EQ? if D-DUP FAIL exit then
+      FID-PTR DEC-PREVSREV CKEY-LT? if D-NONCANON FAIL exit then
+   then
+   FID-PTR  s k SREV-AT   CKW BYTE-COPY
+   FID-PTR  DEC-PREVSREV  CKW BYTE-COPY
+   CKW FID-ADVANCE ;
 
 : TAKE-SREVS ( n n -- ) {: s:n declen:n :}
    declen U64W < if D-BOUNDS FAIL exit then
    U64W D-LE {: cnt:n :}
    FAILED? if exit then
    cnt 0 < cnt SREV-CAP > or if D-BOUNDS FAIL exit then
-   declen  U64W cnt SREV-WIRE-W * +  <> if D-BOUNDS FAIL exit then
+   declen  U64W cnt CKW * +  <> if D-BOUNDS FAIL exit then
    cnt s SREVN!
-   -1 DEC-PREVSREV !
    0 begin dup cnt < FAILED? 0= and while
       dup {: k:n :}
       s k SREV-ELEM
@@ -627,7 +706,7 @@ variable DEC-PREVSREV                          \ previous source-rev wire form (
    tag TAG-VER      = if declen TAKE-U64 s VER!   exit then
    tag TAG-KIND     = if declen TAKE-U64 s KIND!  exit then
    tag TAG-PVER     = if declen TAKE-U64 s PVER!  exit then
-   tag TAG-ID       = if declen TAKE-U64 s ID!    exit then
+   tag TAG-ID       = if s declen TAKE-ID         exit then
    tag TAG-DEPS     = if s declen TAKE-DEPS       exit then
    tag TAG-SCHEMA   = if s declen TAKE-SCHEMA     exit then
    tag TAG-PRODUCER = if s declen TAKE-PRODUCER   exit then
@@ -714,40 +793,45 @@ variable DEC-PREVSREV                          \ previous source-rev wire form (
    s DEC-RESULT ;
 
 \ ---- dependency-set builder (canonicalises to ascending, duplicate-free) -------
+\ DEPS-RESET / DEP+ are the public build protocol BUILD-WEIGHT documents (the caller
+\ populates the pending dependency set before BUILD); the scratch address helper stays
+\ private.
+: DSCR-AT ( k -- ptr u8 )   CKW * DSCR + ;         \ element k byte address in DSCR
+
+public
 : DEPS-RESET ( -- )   0 DSCR-N ! ;
 
-: DEP+ ( CAD-KIND:artifact-id -- )
-   ARTIFACT-ID>RAW {: r:n :}
+: DEP+ ( CAD-KIND:artifact-id -- ) {: id:CAD-KIND:artifact-id :}
+   id IDWBUF FID-WIRE-CAP KEY>WIRE {: w:n :}    \ 32-byte cross-process content key
+   w CKW <> if E-ART-ENV-DIDW throw then
    DSCR-N @ DEP-CAP >= if E-ART-ENV-DEP throw then
-   r DSCR DSCR-N @ cells + !
+   IDWBUF  DSCR-N @ DSCR-AT  CKW BYTE-COPY
    DSCR-N @ 1+ DSCR-N ! ;
+private
 
-: DSCR@ ( n -- n )   cells DSCR + @ ;
-: DSCR! ( n n -- )   cells DSCR + ! ;
-
-\ Ascending, duplicate-free scalar-set canonicalisation. deps and source-revisions run
-\ the SAME insertion sort + neighbour dedup, but the checker binds a cell buffer to its
-\ concrete `create` name (a bare `ptr` local supports only byte access), so - per the
-\ per-buffer sort precedent in maki/db/transaction.f - each set canonicalises over its
-\ own DSCR / SSCR buffer, sharing only the SORT cursors.
+\ Ascending, duplicate-free content-key-set canonicalisation. deps and source-revisions
+\ run the SAME insertion sort + neighbour dedup, but the concrete-per-buffer rule
+\ (docs/forth.md § ptr locals and cell access) forbids a shared sort over a `ptr` buffer
+\ base, so - per the maki/db/transaction.f precedent - each set canonicalises over its
+\ own DSCR / SSCR buffer, sharing only the SORT cursors and the CKEY-* byte comparators.
+\ The element being inserted is copied to the DKEY / SKEY scratch because it is 32 bytes,
+\ not a stack cell.
 variable SORT-I
 variable SORT-J
 variable DEDUP-W
 
-: SORT-SHIFT ( n -- ) {: v:n :}                \ shift v left into its sorted place in DSCR
-   SORT-I @ SORT-J !
-   begin
-      SORT-J @ 0 >  SORT-J @ 1- DSCR@ v >  and
-   while
-      SORT-J @ 1- DSCR@  SORT-J @ DSCR!
-      SORT-J @ 1- SORT-J !
-   repeat
-   v SORT-J @ DSCR! ;
-
 : DEPS-SORT ( -- )                              \ insertion sort DSCR[0..DSCR-N)
    1 SORT-I !
    begin SORT-I @ DSCR-N @ < while
-      SORT-I @ DSCR@ SORT-SHIFT
+      SORT-I @ DSCR-AT  DKEY  CKW BYTE-COPY      \ DKEY = DSCR[i]
+      SORT-I @ SORT-J !
+      begin
+         SORT-J @ 0 > if  DKEY  SORT-J @ 1- DSCR-AT  CKEY-LT?  else false then
+      while
+         SORT-J @ 1- DSCR-AT  SORT-J @ DSCR-AT  CKW BYTE-COPY   \ DSCR[j] = DSCR[j-1]
+         SORT-J @ 1- SORT-J !
+      repeat
+      DKEY  SORT-J @ DSCR-AT  CKW BYTE-COPY      \ DSCR[j] = DKEY
       SORT-I @ 1+ SORT-I !
    repeat ;
 
@@ -756,8 +840,8 @@ variable DEDUP-W
    1 DEDUP-W !
    1 SORT-I !
    begin SORT-I @ DSCR-N @ < while
-      SORT-I @ DSCR@  DEDUP-W @ 1- DSCR@  <> if
-         SORT-I @ DSCR@ DEDUP-W @ DSCR!
+      SORT-I @ DSCR-AT  DEDUP-W @ 1- DSCR-AT  CKEY-EQ? 0= if
+         SORT-I @ DSCR-AT  DEDUP-W @ DSCR-AT  CKW BYTE-COPY
          DEDUP-W @ 1+ DEDUP-W !
       then
       SORT-I @ 1+ SORT-I !
@@ -770,41 +854,42 @@ variable DEDUP-W
    DSCR-N @ s DEPN!
    0 begin dup DSCR-N @ < while
       dup {: k:n :}
-      k DSCR@ s k DEP!
+      k DSCR-AT  s k DEP-AT  CKW BYTE-COPY
       1+
    repeat drop ;
 
 \ ---- source-revision-set builder (canonicalises to ascending, duplicate-free) --
 \ The same set discipline as the dependency builder over the SSCR buffer, but the
-\ element is the rev-id wire form obtained ACROSS the REV boundary via REV:ID>WIRE
+\ element is the rev-id content key obtained ACROSS the REV boundary via REV:KEY>WIRE
 \ (never a raw cast); the fixed set width is guarded fail-closed against a future wider
-\ rev wire form.
-: SSCR@ ( n -- n )   cells SSCR + @ ;
-: SSCR! ( n n -- )   cells SSCR + ! ;
+\ rev content key.
+\ SREVS-RESET / SREV+ are the public source-revision build protocol (mirror DEPS-RESET /
+\ DEP+); the scratch address helper stays private.
+: SSCR-AT ( k -- ptr u8 )   CKW * SSCR + ;         \ element k byte address in SSCR
 
+public
 : SREVS-RESET ( -- )   0 SSCR-N ! ;
 
-: SREV+ ( CAD-KIND:rev-id -- )
-   IDWBUF FID-WIRE-CAP REV:ID>WIRE {: w:n :}
-   w SREV-WIRE-W <> if E-ART-ENV-SRVW throw then
+: SREV+ ( CAD-KIND:rev-id -- ) {: id:CAD-KIND:rev-id :}
+   id IDWBUF FID-WIRE-CAP REV:KEY>WIRE {: w:n :}
+   w CKW <> if E-ART-ENV-SRVW throw then
    SSCR-N @ SREV-CAP >= if E-ART-ENV-SREV throw then
-   IDWBUF w LE-GET  SSCR-N @ SSCR!
+   IDWBUF  SSCR-N @ SSCR-AT  CKW BYTE-COPY
    SSCR-N @ 1+ SSCR-N ! ;
-
-: SREV-SHIFT ( n -- ) {: v:n :}                \ shift v left into its sorted place in SSCR
-   SORT-I @ SORT-J !
-   begin
-      SORT-J @ 0 >  SORT-J @ 1- SSCR@ v >  and
-   while
-      SORT-J @ 1- SSCR@  SORT-J @ SSCR!
-      SORT-J @ 1- SORT-J !
-   repeat
-   v SORT-J @ SSCR! ;
+private
 
 : SREVS-SORT ( -- )                             \ insertion sort SSCR[0..SSCR-N)
    1 SORT-I !
    begin SORT-I @ SSCR-N @ < while
-      SORT-I @ SSCR@ SREV-SHIFT
+      SORT-I @ SSCR-AT  SKEY  CKW BYTE-COPY      \ SKEY = SSCR[i]
+      SORT-I @ SORT-J !
+      begin
+         SORT-J @ 0 > if  SKEY  SORT-J @ 1- SSCR-AT  CKEY-LT?  else false then
+      while
+         SORT-J @ 1- SSCR-AT  SORT-J @ SSCR-AT  CKW BYTE-COPY   \ SSCR[j] = SSCR[j-1]
+         SORT-J @ 1- SORT-J !
+      repeat
+      SKEY  SORT-J @ SSCR-AT  CKW BYTE-COPY      \ SSCR[j] = SKEY
       SORT-I @ 1+ SORT-I !
    repeat ;
 
@@ -813,8 +898,8 @@ variable DEDUP-W
    1 DEDUP-W !
    1 SORT-I !
    begin SORT-I @ SSCR-N @ < while
-      SORT-I @ SSCR@  DEDUP-W @ 1- SSCR@  <> if
-         SORT-I @ SSCR@ DEDUP-W @ SSCR!
+      SORT-I @ SSCR-AT  DEDUP-W @ 1- SSCR-AT  CKEY-EQ? 0= if
+         SORT-I @ SSCR-AT  DEDUP-W @ SSCR-AT  CKW BYTE-COPY
          DEDUP-W @ 1+ DEDUP-W !
       then
       SORT-I @ 1+ SORT-I !
@@ -827,7 +912,7 @@ variable DEDUP-W
    SSCR-N @ s SREVN!
    0 begin dup SSCR-N @ < while
       dup {: k:n :}
-      k SSCR@ s k SREV!
+      k SSCR-AT  s k SREV-AT  CKW BYTE-COPY
       1+
    repeat drop ;
 
@@ -845,7 +930,7 @@ variable DEDUP-W
    DEPS-CANON  SREVS-CANON
    SLOT-ALLOC {: s:n :}
    ver s VER!  disc s KIND!  pver s PVER!
-   identity ARTIFACT-ID>RAW s ID!
+   identity s ID-ID!
    schema s SCHEMA-ID!  producer s PRODUCER-ID!  config s CONFIG-ID!
    npol s NPOL-ID!  target s TARGET-ID!
    event s EVENT-ID!
