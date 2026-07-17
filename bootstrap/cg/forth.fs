@@ -342,7 +342,20 @@ create PNPOOL PRIM-NAME-CAP chars allot   variable PNP   variable #PL
    #PL @ PRIM-CAP >= if 1 abort" cg: primitive table overflow" then
    PNP @ + PRIM-NAME-CAP > if 1 abort" cg: primitive name pool overflow" then ;
 
+\ Fail-closed inline-name cap: EMIT-DICT stores prim names in a fixed 16-byte
+\ (DNAME-INL) inline slot and never emits DNAME-EXT external-name records, so a
+\ longer name overflows the record, misaligns the seed dictionary, and wedges
+\ BUILD-MACHO's fixup walk in a ~40-min EXC_BAD_ACCESS loop. Reject at
+\ registration with an instant named diagnostic instead (dot
+\ habu-mirror-emit-external-73e98647).
+: PRIM-INL-CAP? ( na nu -- )
+   dup DNAME-INL > if
+      cr ." stage0: prim name exceeds inline cap: " type cr
+      1 abort" stage0: prim name exceeds inline cap"
+   else 2drop then ;
+
 : REG-PRIM ( ptr u8 n n -- ) {: na nu lbl elbl -- :}
+   na nu PRIM-INL-CAP?
    nu REG-ROOM?
    lbl  #PL @ cells PLBL + !
    elbl #PL @ cells PEL  + !
