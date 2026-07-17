@@ -380,6 +380,16 @@ GE-FILES: GE-REPAIR-HINTS-RUN-FILES
    GE-CANDIDATE$ s" type-family suite on Habu-under-test" GE-TYPE-FAMILY-SUITE-ON
    s" bin/hb" s" type-family suite on bin/hb" GE-TYPE-FAMILY-SUITE-ON ;
 
+: GE-TYPE-FIELD-SUITE-ON ( ptr u8 n ptr u8 n -- ) {: exe:ptr exeu:n label:ptr labelu:n :}
+   GE-HB-RESET
+   GE-SRC-RESET
+   s" test/type-field-suite.f" GE-SRC-FILE+
+   exe exeu label labelu GE-SUITE-RUN ;
+
+: GE-TYPE-FIELD-SUITE ( -- )
+   GE-CANDIDATE$ s" type-field suite on Habu-under-test" GE-TYPE-FIELD-SUITE-ON
+   s" bin/hb" s" type-field suite on bin/hb" GE-TYPE-FIELD-SUITE-ON ;
+
 : GE-TYPE-FAMILY-ROLLBACK-SUITE-ON ( ptr u8 n ptr u8 n -- )
    {: exe:ptr exeu:n label:ptr labelu:n :}
    GE-HB-RESET
@@ -1764,6 +1774,7 @@ create GE-RXE-TML-BUF 512 allot   variable GE-RXE-TML-U
    GE-CANDIDATE-SIZE-CHECK
    GE-ENGINE-SUITE
    GE-TYPE-FAMILY-SUITE
+   GE-TYPE-FIELD-SUITE
    GE-TYPE-FAMILY-ROLLBACK-SUITE
    GE-TYPE-DECL-SUITE
    GE-TYPE-CTOR-SUITE

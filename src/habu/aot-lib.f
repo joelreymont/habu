@@ -76,6 +76,17 @@ s" AOT-PB@" s" -- ptr u8" TRUST
 variable MLBL  variable REC2
 create OLDA MAX-CLO cells allot   create NEWOFF MAX-CLO cells allot   create BLEN MAX-CLO cells allot
 
+\ Persist only runtime type metadata before measuring the stripped AOT DATA
+\ span. Full CHECKER-SNAPSHOT-PREPARE also bakes compiler/checker work arenas and
+\ cannot fit the compact stripped image.
+TRUSTED: AOT-TFAM-PERSIST ( -- ) TFAM-SNAPSHOT-PERSIST ;
+TRUSTED: AOT-SCHEMA-PERSIST ( -- ) SCHEMA-SNAPSHOT-PERSIST ;
+TRUSTED: AOT-TFAM-EACH ( [ n n -- ] -- ) TFAM-AOT-EACH-STATE ;
+: AOT-META-PERSIST ( -- )
+   AOT-TFAM-PERSIST
+   AOT-SCHEMA-PERSIST
+   TYPE-FIELD:AOT-PERSIST ;
+
 : AOT-W32! ( n ptr u8 -- ) {: w:n a:ptr :}
    w a c!  w 8 rshift a 1+ c!  w 16 rshift a 2 + c!  w 24 rshift a 3 + c! ;
 
@@ -181,12 +192,22 @@ create SEED-CELLS SEED-MAX cells allot   variable SEED-N
       1 +
    REPEAT drop ;
 
+: EMIT-META-CELL ( n n -- ) {: dst:n value:n :}
+   9 value LIT64,
+   10 dst LIT64,
+   9 10 0 STR, ;
+
+: EMIT-META-STATE ( -- )
+   [: EMIT-META-CELL ;] AOT-TFAM-EACH
+   [: EMIT-META-CELL ;] TYPE-FIELD:AOT-EACH-STATE ;
+
 : EMIT-ENTRY
    SP SP 2048 SUBI,  SP SP 2048 SUBI,  SP SP 2048 SUBI,  SP SP 2048 SUBI,
    SP SP 2048 SUBI,  SP SP 2048 SUBI,  SP SP 2048 SUBI,  SP SP 2048 SUBI,
    XDS SP 0 ADDI,
    EMIT-DATA-REGION-MAP                          \ map DATA-VA, set x20/S0
    EMIT-DATA-COPY                                \ restore persistent data + DP
+   EMIT-META-STATE                               \ restore type registry state cells
    EMIT-SEED                                     \ push preseeded value-stack cells (empty for MAIN)
    MLBL LABEL@ BL,                              \ bl <entry root> (resolved when MLBL is placed)
    0 0 MOVZ,  NR-EXIT-GROUP SYS, ;               \ exit(0)
@@ -295,9 +316,16 @@ TRUSTED: MAP-IN-BLOB ( ptr a ptr u8 -- n ) {: r:ptr t:ptr :}
       CLO-CX @ 1+ CLO-CX ! REPEAT  -1 ;
 : MAP-TARGET {: r:ptr t:ptr :} ( ptr a ptr u8 -- n )
    r t MAP-IN-BLOB dup -1 <> IF EXIT THEN drop  t OLD>NEW ;
+: MAP-TARGET-DIE {: r:ptr t:ptr :} ( ptr a ptr u8 -- )
+   s" aot: PC-relative target removed or outside closure word='" AETXT
+   r AEREC-TXT
+   s" ' target=" AETXT t AEJNUM
+   s"  container='" AETXT t FIND-SPAN AEREC-TXT
+   s" '" AETXT 10 AE1
+   s" aot: PC-relative target removed or outside closure" 74 die ;
 : MAP-TARGET! {: r:ptr t:ptr :} ( ptr a ptr u8 -- )
    r t MAP-TARGET TNEW !
-   TNEW @ -1 = IF s" aot: PC-relative target removed or outside closure" 74 die THEN ;
+   TNEW @ -1 = IF r t MAP-TARGET-DIE THEN ;
 : BTGT26 {: p:ptr w:n :} ( ptr u8 n -- ptr u8 )
    p  w 0 26 BITS 26 SX 4 * + ;
 : BTGT19 {: p:ptr w:n :} ( ptr u8 n -- ptr u8 )
@@ -362,6 +390,7 @@ variable RP  variable RE  variable RV
       WI @ 1+ WI ! REPEAT ;
 
 : AOT-LINK ( -- )
+   AOT-META-PERSIST
    AOT-DATA-SPAN
    AOT-DATA-TEXTPTR? IF AOT-DATA-TEXTPTR-DIE THEN
    CLOSURE  ASM-INIT  LBL MLBL !  LBL BLOB-LBL !

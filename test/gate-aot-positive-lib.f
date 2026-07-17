@@ -169,6 +169,37 @@ $10000 constant GAP-STRIPPED-TEXT-MAX
    GAP-DATA-EXPECT s" hb-build AOT data region output" GB-RUN-EXPECT
    s" PASS: hb-build AOT persistent data region (create/,/variable/@/!/+!/loop)" type cr ;
 
+\ Grow the shared field row, draft, transaction, and name arenas before AOT
+\ capture, then resolve the persisted sixth field in the stripped executable.
+: GAP-TYPE-FIELD-SOURCE ( -- )
+   GE-SRC-RESET
+   s" package GAP-TYPE-FIELD" GE-SRC-LINE
+   s" public" GE-SRC-LINE
+   s" PRODUCT gap-aot-owner 0 FIELD legacy n ;PRODUCT" GE-SRC-LINE
+   S\" : GAP-FAMILY ( -- TYPE-FIELD:family-id ) s\" gap-aot-owner\" TYPE-FIELD:FAMILY ;" GE-SRC-LINE
+   s" : GAP-SCHEMA ( TYPE-FIELD:field-tx TYPE-FIELD:field-draft -- TYPE-FIELD:field-tx TYPE-FIELD:field-draft ) 0 TYPE-FIELD:SCHEMA-ID CELL TYPE-FIELD:ALIGNMENT TYPE-FIELD:PUBLIC-BYTE-FLAGS TYPE-FIELD:SCHEMA ;" GE-SRC-LINE
+   s" : GAP-LAYOUT ( TYPE-FIELD:field-tx TYPE-FIELD:field-draft n -- TYPE-FIELD:field-tx TYPE-FIELD:field-draft ) {: slot:n :} slot TYPE-FIELD:SLOT-ID 1 TYPE-FIELD:CELL-COUNT slot CELL * TYPE-FIELD:BYTE-OFF CELL TYPE-FIELD:BYTE-SIZE TYPE-FIELD:LAYOUT ;" GE-SRC-LINE
+   s" : GAP-SOURCE ( TYPE-FIELD:field-tx TYPE-FIELD:field-draft n -- TYPE-FIELD:field-tx TYPE-FIELD:field-draft ) {: off:n :} 1 TYPE-FIELD:SOURCE-ID off TYPE-FIELD:SOURCE-OFF 1 TYPE-FIELD:SOURCE-LEN TYPE-FIELD:SOURCE ;" GE-SRC-LINE
+   s" : GAP-FINISH ( TYPE-FIELD:field-tx TYPE-FIELD:field-draft n -- ) {: slot:n :} GAP-SCHEMA slot GAP-LAYOUT slot GAP-SOURCE TYPE-FIELD:ADD TYPE-FIELD:COMMIT ;" GE-SRC-LINE
+   s" : GAP-ROW ( TYPE-FIELD:field-tx ptr u8 n n -- TYPE-FIELD:field-tx ) {: a:ptr u:n slot:n :} a u TYPE-FIELD:START GAP-SCHEMA slot GAP-LAYOUT slot GAP-SOURCE TYPE-FIELD:ADD ;" GE-SRC-LINE
+   S\" : GAP-BUILD ( -- ) GAP-FAMILY TYPE-FIELD:OPEN s\" alpha-long\" TYPE-FIELD:START GAP-FAMILY TYPE-FIELD:OPEN s\" bravo-long\" TYPE-FIELD:START GAP-FAMILY TYPE-FIELD:OPEN s\" charlie-long\" TYPE-FIELD:START GAP-FAMILY TYPE-FIELD:OPEN s\" delta-long\" TYPE-FIELD:START GAP-FAMILY TYPE-FIELD:OPEN s\" echo-long\" TYPE-FIELD:START 4 GAP-FINISH 3 GAP-FINISH 2 GAP-FINISH 1 GAP-FINISH 0 GAP-FINISH GAP-FAMILY TYPE-FIELD:OPEN s\" foxtrot-long\" 5 GAP-ROW TYPE-FIELD:COMMIT ;" GE-SRC-LINE
+   s" GAP-BUILD" GE-SRC-LINE
+   S\" : MAIN ( -- ) TYPE-FIELD:COUNT TYPE-FIELD:FIELD-COUNT>N . GAP-FAMILY s\" foxtrot-long\" TYPE-FIELD:FIND TYPE-FIELD:SLOT@ 5 TYPE-FIELD:SLOT-ID TYPE-FIELD:SLOT= IF 5 ELSE 0 THEN . ;" GE-SRC-LINE
+   s" ;package" GE-SRC-LINE ;
+
+: GAP-TYPE-FIELD-EXPECT ( -- ptr u8 n )
+   SB-RESET
+   s" 6" GE-OUT-LINE
+   s" 5" GE-OUT-LINE
+   SB$ ;
+
+: GAP-TYPE-FIELD ( -- )
+   s" hb-aot-type-field.f" s" hb-aot-type-field" s" hb-aot-type-field-report.json" GAP-PATHS
+   GAP-TYPE-FIELD-SOURCE
+   s" hb-build AOT type-field arena build" GAP-BUILD-STRICT
+   GAP-TYPE-FIELD-EXPECT s" hb-build AOT type-field arena output" GB-RUN-EXPECT
+   s" PASS: hb-build AOT type-field arena roundtrip" type cr ;
+
 \ item 10 slice 5: a preseeded bad-tag object/AOT test entry. A source declaring a
 \ matched family + helper is AOT-built with a SELECTED non-MAIN entry (the helper)
 \ and a forged value-stack seed (payload slots + an out-of-range tag), so the
@@ -239,6 +270,7 @@ $10000 constant GAP-STRIPPED-TEXT-MAX
    s" hb-gate-aot-bundle-data" GT-START
    GAP-BUNDLE
    GAP-DATA
+   GAP-TYPE-FIELD
    GT-CLEANUP ;
 
 : GAP-RUN-PRESEED ( -- )

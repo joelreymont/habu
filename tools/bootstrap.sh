@@ -164,8 +164,8 @@ EOF
 }
 
 emit_decl_src() {
-  # Unified STRUCTURE and ENUM declarers load here after the checker hook.
-  :
+  cat src/core/type-field.f >> "$1"
+  printf '\n' >> "$1"
 }
 
 emit_src() {
@@ -210,10 +210,10 @@ emit_src() {
   printf '\n' >> "$out"
   cat src/core/pointer-storage-effects.f >> "$out"
   printf '\n' >> "$out"
+  printf "LOWER-CERT-HOOK:INSTALL\n" >> "$out"
   emit_decl_src "$out"
   cat src/core/structures.f >> "$out"
   printf '\n' >> "$out"
-  printf "LOWER-CERT-HOOK:INSTALL\n" >> "$out"
   local f
   for f in "${SRC_COMMON[@]}"; do
     cat "$f" >> "$out"

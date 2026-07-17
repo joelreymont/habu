@@ -5281,3 +5281,20 @@ unchanged (148855). Keys for milestone 2:
   landing. Also disproven: 'prims are baked so old engines cannot tolerate a
   new prim token' — the token never needs parsing; a runtime name lookup
   through search-wl is the tolerant spelling.
+- **A post-checker declarer is only checked if the fixpoint/recovery source installs
+  `LOWER-CERT-HOOK` before appending the declarer seam.** Ordering the file between
+  checker and core is insufficient when the hook is installed afterward: its API
+  exists but has no certified effect rows. Pin checker -> hook -> declarer -> core
+  in both source generators and their byte-order tests.
+- **A relocatable transactional registry must persist arena capacity, not only live
+  rows.** Grow row, draft, transaction, and string arenas independently, snapshot
+  every relocated backing store, reject capture with live linear transactions, and
+  prove a post-capture/AOT lookup beyond every boot capacity.
+- **Stripped AOT closure must scan the executable entry path, not an assumed whole
+  dictionary record.** Include the final instruction, follow PC-relative
+  `CREATE`/`DOES>` branches into internal record offsets, and start dependency
+  scanning at the earliest reachable offset so unreachable compile-time prefixes
+  do not become runtime dependencies. Persist runtime registry arenas selectively,
+  then restore their fixed-address state cells in the AOT entry; full checker
+  snapshot preparation retains compiler work arenas and can overflow the compact
+  image.

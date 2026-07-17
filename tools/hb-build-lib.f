@@ -515,7 +515,6 @@ HBB-INSTALL-CHILD-LINTS
    s" src/core/check-hook.f" HBB-KEY-FILE+
    s" src/core/cell-effects.f" HBB-KEY-FILE+
    s" src/core/pointer-storage-effects.f" HBB-KEY-FILE+
-   s" lib/adt/option.f" HBB-KEY-FILE+
    s" src/core/type-field.f" HBB-KEY-FILE+
    s" src/core/structures.f" HBB-KEY-FILE+
    s" src/core/roles.f" HBB-KEY-FILE+

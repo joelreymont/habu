@@ -584,8 +584,8 @@ s" c-bp-watch-dump" s" label label --" TRUST
 
 : PFX-LOAD-BASE-FILES ( -- )
    PFX-LOAD-CHECKER-FILES
-   PFX-LOAD-CORE-FILES
-   PFX-LOAD-DECL-FILES ;
+   PFX-LOAD-DECL-FILES
+   PFX-LOAD-CORE-FILES ;
 
 : PFX-LOAD-SCRIPT-ARGV ( -- )
    PFX-COMMON LPSCRIPTARGV   s" src/os/script-argv.f"   PFX-LOAD-ROW ;
@@ -679,8 +679,8 @@ s" c-bp-watch-dump" s" label label --" TRUST
 
 : PFX-PATH-FILES ( -- )
    PFX-PATH-CHECKER-FILES
-   PFX-PATH-CORE-FILES
-   PFX-PATH-DECL-FILES ;
+   PFX-PATH-DECL-FILES
+   PFX-PATH-CORE-FILES ;
 
 \ The prefix reload below zeroes HOOK-CELL, so the boot-time load of the
 \ checker/core prefix is itself unchecked. The staged fixpoint pre-pass
@@ -946,8 +946,8 @@ public
 
 : PFX-PROVIDE-FILES ( -- )
    PFX-PROVIDE-CHECKER-FILES
-   PFX-PROVIDE-CORE-FILES
-   PFX-PROVIDE-DECL-FILES ;
+   PFX-PROVIDE-DECL-FILES
+   PFX-PROVIDE-CORE-FILES ;
 
 : C-SOURCE-PIPE ( -- )
    SRC-STDINPROG LABEL@ LBL,

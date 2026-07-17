@@ -404,7 +404,8 @@ create LF $0A c,
    s" PFX-COMMON" s" LPLAYOUTVALID" s" src/core/layout-valid.f" EXPECT-ROW
    s" PFX-COMMON" s" LPHOOK" s" src/core/check-hook.f" EXPECT-ROW
    s" PFX-COMMON" s" LPCELLEFF" s" src/core/cell-effects.f" EXPECT-ROW
-   s" PFX-COMMON" s" LPPTRSTORAGEEFF" s" src/core/pointer-storage-effects.f" EXPECT-ROW ;
+   s" PFX-COMMON" s" LPPTRSTORAGEEFF" s" src/core/pointer-storage-effects.f" EXPECT-ROW
+   s" PFX-COMMON" s" LPTYPEFIELD" s" src/core/type-field.f" EXPECT-ROW ;
 
 : EXPECT-CORE ( -- )
    s" PFX-COMMON" s" LPSTRUCTURES" s" src/core/structures.f" EXPECT-ROW
@@ -483,21 +484,21 @@ create LF $0A c,
 : NATIVE-ROWS ( -- )
    CAPTURE-PREFIX
    EXPECT-NATIVE
-   37 ASSERT-EQUAL
+   38 ASSERT-EQUAL
    s" src/core/structures-effects.f" BCG-MUST-LACK
    s" LPSTRUCTEFF" BCG-MUST-LACK ;
 
 : GFORTH-ROWS ( -- )
    CAPTURE-PREFIX
    EXPECT-GFORTH
-   34 ASSERT-EQUAL
+   35 ASSERT-EQUAL
    s" src/core/structures-effects.f" BCG-MUST-LACK
    s" LPSTRUCTEFF" BCG-MUST-LACK ;
 
 : EXPECT-FILE ( ptr u8 n -- )
    EXPECT+  LF 1 EXPECT+ ;
 
-: EXPECT-RECOVERY ( -- )
+: EXPECT-DECL-CHECKER ( -- )
    0 EXPECT-U !
    s" src/core/util.f" EXPECT-FILE
    s" src/core/cell.f" EXPECT-FILE
@@ -515,7 +516,15 @@ create LF $0A c,
    s" src/core/layout-valid.f" EXPECT-FILE
    s" src/core/check-hook.f" EXPECT-FILE
    s" src/core/cell-effects.f" EXPECT-FILE
-   s" src/core/pointer-storage-effects.f" EXPECT-FILE
+   s" src/core/pointer-storage-effects.f" EXPECT-FILE ;
+
+: EXPECT-RECOVERY ( -- )
+   EXPECT-DECL-CHECKER
+   s" src/core/structures.f" EXPECT-FILE ;
+
+: EXPECT-FIXPOINT ( -- )
+   EXPECT-DECL-CHECKER
+   s" src/core/type-field.f" EXPECT-FILE
    s" src/core/structures.f" EXPECT-FILE ;
 
 : EXPECT-RECOVERY-COMMON ( -- )
@@ -823,15 +832,15 @@ public
    EXPECT-RECOVERY
    RECOVERY$ EXPECT$ T$=
    RECOVERY$ 18 ASSERT-UNIQUE
-   s" emit_decl_src() {" s" emit_src() {" s" cat src/" SCOPE-N 0 T=
+   s" emit_decl_src() {" s" emit_src() {" s" cat src/core/type-field.f" SCOPE-N 1 T=
    s" emit_src() {" s"   local f" S\" emit_decl_src \"$out\"" SCOPE-N 1 T=
    s" emit_src() {" s"   local f" s" LOWER-CERT-HOOK:INSTALL" SCOPE-N 1 T=
    s" emit_src() {" s"   local f"
       s" src/core/pointer-storage-effects.f" S\" emit_decl_src \"$out\"" SCOPE-BEFORE
    s" emit_src() {" s"   local f"
-      S\" emit_decl_src \"$out\"" s" src/core/structures.f" SCOPE-BEFORE
+      s" LOWER-CERT-HOOK:INSTALL" S\" emit_decl_src \"$out\"" SCOPE-BEFORE
    s" emit_src() {" s"   local f"
-      s" src/core/structures.f" s" LOWER-CERT-HOOK:INSTALL" SCOPE-BEFORE
+      S\" emit_decl_src \"$out\"" s" src/core/structures.f" SCOPE-BEFORE
    0 RECOVERY-U !
    s" SRC_COMMON=(" s" emit_boot_hide() {" MODE-ARRAY s" "
       [: RECOVERY+ ;] CAPTURE 29 T=
@@ -843,12 +852,12 @@ public
 : FIXPOINT ( -- )
    0 FIXPOINT-U !
    s" : BF-APPEND-CHECKER-BOOT" s" : BF-APPEND-CORE-BYTES"
-   MODE-SOURCE s" BF-APPEND-SOURCE" [: FIXPOINT+ ;] CAPTURE 18 T=
-   EXPECT-RECOVERY
+   MODE-SOURCE s" BF-APPEND-SOURCE" [: FIXPOINT+ ;] CAPTURE 19 T=
+   EXPECT-FIXPOINT
    FIXPOINT$ EXPECT$ T$=
-   FIXPOINT$ 18 ASSERT-UNIQUE
+   FIXPOINT$ 19 ASSERT-UNIQUE
    s" : BF-APPEND-DECL-FILES" s" : BF-APPEND-CORE-FILES"
-   s" BF-APPEND-SOURCE" SCOPE-N 0 T=
+   s" BF-APPEND-SOURCE" SCOPE-N 1 T=
    s" : BF-APPEND-RUN-PRELUDE" s" : BF-APPEND-STDIN-RUN-PRELUDE"
    s" BF-APPEND-CHECKER-BOOT" SCOPE-N 1 T=
    s" : BF-APPEND-RUN-PRELUDE" s" : BF-APPEND-STDIN-RUN-PRELUDE"
@@ -860,9 +869,9 @@ public
    s" : BF-APPEND-RUN-PRELUDE" s" : BF-APPEND-STDIN-RUN-PRELUDE"
       s" BF-APPEND-CHECKER-BOOT" s" BF-APPEND-DECL-FILES" SCOPE-BEFORE
    s" : BF-APPEND-RUN-PRELUDE" s" : BF-APPEND-STDIN-RUN-PRELUDE"
-      s" BF-APPEND-DECL-FILES" s" BF-APPEND-CORE-FILES" SCOPE-BEFORE
+      s" LOWER-CERT-HOOK:INSTALL" s" BF-APPEND-DECL-FILES" SCOPE-BEFORE
    s" : BF-APPEND-RUN-PRELUDE" s" : BF-APPEND-STDIN-RUN-PRELUDE"
-      s" BF-APPEND-CORE-FILES" s" LOWER-CERT-HOOK:INSTALL" SCOPE-BEFORE
+      s" BF-APPEND-DECL-FILES" s" BF-APPEND-CORE-FILES" SCOPE-BEFORE
    0 FIXPOINT-U !
    s" : BF-APPEND-COMMON" s" : BF-APPEND-DRIVER-IO" MODE-COMMON s" "
       [: FIXPOINT+ ;] CAPTURE 30 T=

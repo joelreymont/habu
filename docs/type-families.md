@@ -268,22 +268,31 @@ constructors, `UNMAKE`, `MATCH`, codecs, hashing, snapshots, and AOT metadata
 all consume that same order. No product-field, value-record-field, anonymous
 sum-payload, or pointer-layout field registry survives the cutover.
 
-`src/core/type-field.f` is the shared provider. Its sealed `TYPE-FIELD` package
-owns nominal linear transaction/draft tokens and nominal `field-id` handles.
-Private declaration-prefix friends build one complete row through `OPEN`,
-`START`, `SCHEMA`, `LAYOUT`, `SOURCE`, and `ADD`, then `COMMIT` or `ROLLBACK`;
-errors abort the current strict-LIFO transaction and restore row, copied-name,
-and draft watermarks. `MARK`/`RESTORE` provide the same atomic high-water
-boundary for later checker rollback integration. Names are canonical lowercase,
-case-insensitively unique within the exact owner key, and may be one character;
-declaration and generated-operation names are reserved. Flags are exactly
-`FIELD-PUBLIC` and `FIELD-BYTE-ADDRESSABLE`.
+`src/core/type-field.f` is the shared provider. Its protected `TYPE-FIELD`
+package owns nominal roles for family, variant, schema, slot, cell count, byte
+layout, source span, visibility, field count, and committed `field-id` handles.
+Linear `field-tx` and `field-draft` roles enforce the staged builder protocol.
 
-The public surface is read-only: `TYPE-FIELD:COUNT`, `FIND`, `FAMILY@`,
+The declaration-prefix friend surface builds a row through `OPEN`, `START` or
+`START-VARIANT`, `SCHEMA`, `LAYOUT`, `SOURCE`, and `ADD`, then `COMMIT` or
+`ROLLBACK`. `OPEN` accepts only a family owned by the lexically active package;
+cross-package mutation throws `TYPE-FIELD:E-VISIBILITY`. Errors abort the whole
+strict-LIFO transaction stack and restore row, copied-name, and draft
+watermarks. `ADD` returns only the transaction token: a `field-id` is minted
+only by `FIND`, `FIND-VARIANT`, or `EACH` after the outer commit publishes its
+rows. A rolled-back slot therefore cannot leak a stale handle when reused.
+
+`START` copies parser/name storage before canonicalization or any parser-adjacent
+string operation. Names are canonical lowercase, case-insensitively unique
+within the exact owner key, and may be one character; declaration and generated
+operation names are reserved. Flags are exposed only through named public/private
+and byte-addressable constructors.
+
+Reflection is role typed: `COUNT`, `FIND`, `FIND-VARIANT`, `FAMILY@`,
 `VARIANT?`, `VARIANT@`, `NAME`, `SCHEMA@`, `SLOT@`, `CELLS@`, `BYTE-OFF@`,
-`BYTE-SIZE@`, `ALIGN@`, `FLAGS@`, `VIS@`, `SOURCE@`, and `EACH`. `FIND`
-returns `option<TYPE-FIELD:field-id>`; `NAME` copies into caller-owned storage;
-no arena pointer, raw id conversion, or mutator is public.
+`BYTE-SIZE@`, `ALIGN@`, `FLAGS@`, `VIS@`, `SOURCE@`, and `EACH`. `FIND` throws
+`E-ID` when absent and `E-VISIBILITY` when the family or field is hidden. `NAME`
+copies into caller-owned storage; no arena pointer or raw id conversion escapes.
 
 ### 2.5 Header clauses and transactions
 
@@ -321,7 +330,8 @@ type-schema private layouts
 type-family private layouts
 render support
 checker hook
-unified STRUCTURE and ENUM
+shared field declarer arena
+legacy core / unified STRUCTURE and ENUM consumer
 remaining core
 ```
 
@@ -1963,7 +1973,20 @@ TFAM-SNAPSHOT-PERSIST
 SCHEMA-SNAPSHOT-PERSIST
 ```
 
-They run through the checker's `REG-EXT-PERSIST` hook, on the same snapshot
+`TYPE-FIELD:SNAPSHOT-HOOK` chains that path and relocates the complete capacity
+of every row, draft, transaction, and copied-name arena. Snapshot capture is
+rejected while a field transaction or draft remains active. The focused suite
+grows all four arenas beyond their boot capacities before persistence; the AOT
+gate resolves and reflects the sixth committed field from the stripped image.
+
+Stripped AOT persistence is narrower than full snapshot preparation. It copies
+only the family, schema, and field runtime arenas into the compact DATA image,
+then emits entry code that restores their fixed-address pointer, capacity, and
+high-water cells before `MAIN`. Capturing the complete checker snapshot would
+retain compiler work arenas and exceed the stripped image's bounded code/data
+budget.
+
+These hooks run through the checker's `REG-EXT-PERSIST` path, on the same snapshot
 preparation path that persists concrete types, value records, symbols, user
 signatures, and no-return metadata. That hook also drops the transient rollback
 frame arenas back to their baked boot stores (`RBF-SNAP-RESET`,

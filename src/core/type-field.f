@@ -1,76 +1,122 @@
 \ type-field.f - transactional shared field metadata.
 \
-\ TYPE-FIELD owns the single ordered field registry used by the unified
-\ STRUCTURE and payload ENUM declarers. Mutators stay private so only the
-\ post-hook declaration prefix can publish rows; the public surface is typed,
-\ read-only reflection over nominal field-id values.
-
-s" lib/adt/option.f" required
-
-7123 constant E-FIELD-TX
-7124 constant E-FIELD-DRAFT
-7125 constant E-FIELD-FAMILY
-7126 constant E-FIELD-VARIANT
-7127 constant E-FIELD-NAME
-7128 constant E-FIELD-DUP
-7129 constant E-FIELD-SCHEMA
-7130 constant E-FIELD-LAYOUT
-7131 constant E-FIELD-FLAGS
-7132 constant E-FIELD-SOURCE
-7133 constant E-FIELD-ID
-7134 constant E-FIELD-CAPACITY
-7135 constant E-FIELD-RANGE
-7136 constant E-FIELD-MARK
-
-1 constant FIELD-PUBLIC
-2 constant FIELD-BYTE-ADDRESSABLE
-FIELD-PUBLIC FIELD-BYTE-ADDRESSABLE or constant FIELD-FLAG-MASK
+\ TYPE-FIELD owns the ordered field registry shared by STRUCTURE and payload
+\ ENUM declarations. Builder calls are package-scoped, fully role typed, and
+\ transactional. Published reflection never exposes arena pointers or raw ids.
 
 package TYPE-FIELD
 public
 
+7123 constant E-TX
+7124 constant E-DRAFT
+7125 constant E-FAMILY
+7126 constant E-VARIANT
+7127 constant E-NAME
+7128 constant E-DUP
+7129 constant E-SCHEMA
+7130 constant E-LAYOUT
+7131 constant E-FLAGS
+7132 constant E-SOURCE
+7133 constant E-ID
+7134 constant E-CAPACITY
+7135 constant E-RANGE
+7136 constant E-VISIBILITY
+
 s" TYPE-FIELD:field-id" CHECKER-DEFTYPE
+s" TYPE-FIELD:family-id" CHECKER-DEFTYPE
+s" TYPE-FIELD:variant-id" CHECKER-DEFTYPE
+s" TYPE-FIELD:schema-id" CHECKER-DEFTYPE
+s" TYPE-FIELD:slot" CHECKER-DEFTYPE
+s" TYPE-FIELD:cell-count" CHECKER-DEFTYPE
+s" TYPE-FIELD:byte-off" CHECKER-DEFTYPE
+s" TYPE-FIELD:byte-size" CHECKER-DEFTYPE
+s" TYPE-FIELD:alignment" CHECKER-DEFTYPE
+s" TYPE-FIELD:field-flags" CHECKER-DEFTYPE
+s" TYPE-FIELD:source-id" CHECKER-DEFTYPE
+s" TYPE-FIELD:source-off" CHECKER-DEFTYPE
+s" TYPE-FIELD:source-len" CHECKER-DEFTYPE
+s" TYPE-FIELD:visibility" CHECKER-DEFTYPE
+s" TYPE-FIELD:field-count" CHECKER-DEFTYPE
+s" TYPE-FIELD:field-tx" CHECKER-DEFLINEAR
+s" TYPE-FIELD:field-draft" CHECKER-DEFLINEAR
 
 private
 
-DEFLINEAR TYPE-FIELD:field-tx
-DEFLINEAR TYPE-FIELD:field-draft
-
-s" TYPE-FIELD:mark" CHECKER-DEFTYPE
-
-\ Audited representation boundaries. Runtime values are scalar arena indices
-\ or serials; only these private words mint or erase their nominal roles.
+\ Private proof erasure/minting. Every mint follows the validation local to its
+\ role; field-id is minted only while scanning committed rows.
+TRUSTED: ID>N ( TYPE-FIELD:field-id -- n ) ;
+TRUSTED: N>ID ( n -- TYPE-FIELD:field-id ) ;
+TRUSTED: FAMILY>N ( TYPE-FIELD:family-id -- n ) ;
+TRUSTED: N>FAMILY ( n -- TYPE-FIELD:family-id ) ;
+TRUSTED: VARIANT>N ( TYPE-FIELD:variant-id -- n ) ;
+TRUSTED: N>VARIANT ( n -- TYPE-FIELD:variant-id ) ;
+TRUSTED: SCHEMA>N ( TYPE-FIELD:schema-id -- n ) ;
+TRUSTED: N>SCHEMA ( n -- TYPE-FIELD:schema-id ) ;
+TRUSTED: SLOT>N ( TYPE-FIELD:slot -- n ) ;
+TRUSTED: N>SLOT ( n -- TYPE-FIELD:slot ) ;
+TRUSTED: CELLS>N ( TYPE-FIELD:cell-count -- n ) ;
+TRUSTED: N>CELLS ( n -- TYPE-FIELD:cell-count ) ;
+TRUSTED: BYTE-OFF>N ( TYPE-FIELD:byte-off -- n ) ;
+TRUSTED: N>BYTE-OFF ( n -- TYPE-FIELD:byte-off ) ;
+TRUSTED: BYTE-SIZE>N ( TYPE-FIELD:byte-size -- n ) ;
+TRUSTED: N>BYTE-SIZE ( n -- TYPE-FIELD:byte-size ) ;
+TRUSTED: ALIGN>N ( TYPE-FIELD:alignment -- n ) ;
+TRUSTED: N>ALIGN ( n -- TYPE-FIELD:alignment ) ;
+TRUSTED: FLAGS>N ( TYPE-FIELD:field-flags -- n ) ;
+TRUSTED: N>FLAGS ( n -- TYPE-FIELD:field-flags ) ;
+TRUSTED: SOURCE-ID>N ( TYPE-FIELD:source-id -- n ) ;
+TRUSTED: N>SOURCE-ID ( n -- TYPE-FIELD:source-id ) ;
+TRUSTED: SOURCE-OFF>N ( TYPE-FIELD:source-off -- n ) ;
+TRUSTED: N>SOURCE-OFF ( n -- TYPE-FIELD:source-off ) ;
+TRUSTED: SOURCE-LEN>N ( TYPE-FIELD:source-len -- n ) ;
+TRUSTED: N>SOURCE-LEN ( n -- TYPE-FIELD:source-len ) ;
+TRUSTED: VIS>N ( TYPE-FIELD:visibility -- n ) ;
+TRUSTED: N>VIS ( n -- TYPE-FIELD:visibility ) ;
+TRUSTED: COUNT>N ( TYPE-FIELD:field-count -- n ) ;
+TRUSTED: N>COUNT ( n -- TYPE-FIELD:field-count ) ;
 TRUSTED: TX>N ( TYPE-FIELD:field-tx -- n ) ;
 TRUSTED: N>TX ( n -- TYPE-FIELD:field-tx ) ;
 TRUSTED: DRAFT>N ( TYPE-FIELD:field-draft -- n ) ;
 TRUSTED: N>DRAFT ( n -- TYPE-FIELD:field-draft ) ;
-TRUSTED: ID>N ( TYPE-FIELD:field-id -- n ) ;
-TRUSTED: N>ID ( n -- TYPE-FIELD:field-id ) ;
-TRUSTED: MARK>N ( TYPE-FIELD:mark -- n ) ;
-TRUSTED: N>MARK ( n -- TYPE-FIELD:mark ) ;
 
-\ The registries and allocator load before the checker hook and deliberately
-\ expose no user effects. Keep their use inside this sealed private boundary.
+\ Pre-hook registry and image persistence boundaries.
 TRUSTED: RAW-GROW ( ptr a n n -- ptr a ) ARENA-BYTES-GROW ;
 TRUSTED: RAW-FAMILY-N ( -- n ) TFAM-N@ ;
+TRUSTED: RAW-FAMILY-RESOLVE ( ptr u8 n ptr u8 n -- n bool ) TFAM-RESOLVE ;
+TRUSTED: RAW-FAMILY-PKG$ ( n -- ptr u8 n ) TFAM-PKG$ ;
+TRUSTED: RAW-FAMILY-VIS@ ( n -- n ) TFAM-VIS@ ;
+TRUSTED: RAW-FAMILY-PRODUCT? ( n -- bool ) TFAM-PRODUCT? ;
+TRUSTED: RAW-FAMILY-SUM? ( n -- bool ) TFAM-SUM? ;
+TRUSTED: RAW-FAMILY-ENUM? ( n -- bool ) TFAM-ENUM? ;
+TRUSTED: RAW-ACTIVE-PKG$ ( -- ptr u8 n ) TFAM-ACTIVE-PKG$ ;
 TRUSTED: RAW-VARIANT-N ( -- n ) SUMV-N@ ;
+TRUSTED: RAW-VARIANT-FIND ( n ptr u8 n -- n bool ) SUMV-FIND ;
 TRUSTED: RAW-VARIANT-FAMILY@ ( n -- n ) SUMV-FAM@ ;
 TRUSTED: RAW-SCHEMA-N ( -- n ) SCHEMA-ROOT-N@ ;
 TRUSTED: RAW-CANON? ( ptr u8 n -- bool ) TF-CANON? ;
 TRUSTED: RAW-KEYWORD? ( ptr u8 n -- bool ) TDECL-KEYWORD? ;
 TRUSTED: RAW-PUBLIC ( -- n ) CHECKER-PACKAGE-PUBLIC ;
 TRUSTED: RAW-PRIVATE ( -- n ) CHECKER-PACKAGE-PRIVATE ;
+TRUSTED: RAW-PERSIST ( ptr a ptr a n -- bool ) REG-PERSIST-BUF ;
+TRUSTED: RAW-U8 ( ptr a -- ptr u8 ) ;
 
-$7FFFFFFFFFFFFFFF constant FIELD-MAX-N
-4 constant FIELD-CAP-INIT
-16 constant FIELD-NAME-INIT
+$7FFFFFFFFFFFFFFF constant MAX-N
+4 constant CAP-INIT
+16 constant NAME-INIT
 
-1 constant DRAFT-SCHEMA
-2 constant DRAFT-LAYOUT
-4 constant DRAFT-SOURCE
-DRAFT-SCHEMA DRAFT-LAYOUT or DRAFT-SOURCE or constant DRAFT-COMPLETE
+1 constant FLAG-PUBLIC
+2 constant FLAG-BYTE
+FLAG-PUBLIC FLAG-BYTE or constant FLAG-MASK
 
-\ Published row: owner key, copied name, schema/layout, flags, and source.
+: B-FALSE ( -- bool ) 0 0= 0= ;
+: B-TRUE ( -- bool ) 0 0= ;
+
+1 constant STAGE-SCHEMA
+2 constant STAGE-LAYOUT
+4 constant STAGE-SOURCE
+STAGE-SCHEMA STAGE-LAYOUT or STAGE-SOURCE or constant STAGE-DONE
+
+\ Published row.
 0 cells constant ROW.FAMILY-OFF
 1 cells constant ROW.HAS-VARIANT-OFF
 2 cells constant ROW.VARIANT-OFF
@@ -104,7 +150,7 @@ DRAFT-SCHEMA DRAFT-LAYOUT or DRAFT-SOURCE or constant DRAFT-COMPLETE
 : ROW.SOURCE-OFF ( ptr a -- ptr a ) ROW.SOURCE-OFF-OFF + ;
 : ROW.SOURCE-LEN ( ptr a -- ptr a ) ROW.SOURCE-LEN-OFF + ;
 
-\ A draft is a full row plus its owning transaction, unique token, and stages.
+\ Draft row plus owner transaction, token, and stage bitmap.
 15 cells constant DRAFT.TX-OFF
 16 cells constant DRAFT.TOKEN-OFF
 17 cells constant DRAFT.STATE-OFF
@@ -114,99 +160,77 @@ DRAFT-SCHEMA DRAFT-LAYOUT or DRAFT-SOURCE or constant DRAFT-COMPLETE
 : DRAFT.TOKEN ( ptr a -- ptr a ) DRAFT.TOKEN-OFF + ;
 : DRAFT.STATE ( ptr a -- ptr a ) DRAFT.STATE-OFF + ;
 
-\ Transaction frames make nested commit/rollback strict LIFO.
+\ Strict-LIFO transaction frame.
 0 cells constant TX.ROW-OFF
 1 cells constant TX.NAME-OFF
 2 cells constant TX.DRAFT-OFF
-3 cells constant TX.TOKEN-OFF
-4 cells constant TX-REC
+3 cells constant TX.FAMILY-OFF
+4 cells constant TX.TOKEN-OFF
+5 cells constant TX-REC
 
 : TX.ROW ( ptr a -- ptr a ) TX.ROW-OFF + ;
 : TX.NAME ( ptr a -- ptr a ) TX.NAME-OFF + ;
 : TX.DRAFT ( ptr a -- ptr a ) TX.DRAFT-OFF + ;
+: TX.FAMILY ( ptr a -- ptr a ) TX.FAMILY-OFF + ;
 : TX.TOKEN ( ptr a -- ptr a ) TX.TOKEN-OFF + ;
 
-\ Marks support later checker rollback integration without exposing pointers.
-0 cells constant MARK.ROW-OFF
-1 cells constant MARK.NAME-OFF
-2 cells constant MARK.DRAFT-OFF
-3 cells constant MARK.TX-OFF
-4 cells constant MARK.TOKEN-OFF
-5 cells constant MARK-REC
+: LAYOUT= ( n n -- )
+   <> if E-LAYOUT throw then ;
 
-: MARK.ROW ( ptr a -- ptr a ) MARK.ROW-OFF + ;
-: MARK.NAME ( ptr a -- ptr a ) MARK.NAME-OFF + ;
-: MARK.DRAFT ( ptr a -- ptr a ) MARK.DRAFT-OFF + ;
-: MARK.TX ( ptr a -- ptr a ) MARK.TX-OFF + ;
-: MARK.TOKEN ( ptr a -- ptr a ) MARK.TOKEN-OFF + ;
+ROW.FAMILY-OFF 0 cells LAYOUT=
+ROW.HAS-VARIANT-OFF 1 cells LAYOUT=
+ROW.VARIANT-OFF 2 cells LAYOUT=
+ROW.NAME-OFF-OFF 3 cells LAYOUT=
+ROW.NAME-LEN-OFF 4 cells LAYOUT=
+ROW.SCHEMA-OFF 5 cells LAYOUT=
+ROW.SLOT-OFF 6 cells LAYOUT=
+ROW.CELLS-OFF 7 cells LAYOUT=
+ROW.BYTE-OFF-OFF 8 cells LAYOUT=
+ROW.BYTE-SIZE-OFF 9 cells LAYOUT=
+ROW.ALIGN-OFF 10 cells LAYOUT=
+ROW.FLAGS-OFF 11 cells LAYOUT=
+ROW.SOURCE-ID-OFF 12 cells LAYOUT=
+ROW.SOURCE-OFF-OFF 13 cells LAYOUT=
+ROW.SOURCE-LEN-OFF 14 cells LAYOUT=
+ROW-REC 15 cells LAYOUT=
+DRAFT.TX-OFF 15 cells LAYOUT=
+DRAFT.TOKEN-OFF 16 cells LAYOUT=
+DRAFT.STATE-OFF 17 cells LAYOUT=
+DRAFT-REC 18 cells LAYOUT=
+TX.ROW-OFF 0 cells LAYOUT=
+TX.NAME-OFF 1 cells LAYOUT=
+TX.DRAFT-OFF 2 cells LAYOUT=
+TX.FAMILY-OFF 3 cells LAYOUT=
+TX.TOKEN-OFF 4 cells LAYOUT=
+TX-REC 5 cells LAYOUT=
 
-: FIELD-LAYOUT= ( n n -- )
-   <> if E-FIELD-LAYOUT throw then ;
-
-ROW.FAMILY-OFF 0 cells FIELD-LAYOUT=
-ROW.HAS-VARIANT-OFF 1 cells FIELD-LAYOUT=
-ROW.VARIANT-OFF 2 cells FIELD-LAYOUT=
-ROW.NAME-OFF-OFF 3 cells FIELD-LAYOUT=
-ROW.NAME-LEN-OFF 4 cells FIELD-LAYOUT=
-ROW.SCHEMA-OFF 5 cells FIELD-LAYOUT=
-ROW.SLOT-OFF 6 cells FIELD-LAYOUT=
-ROW.CELLS-OFF 7 cells FIELD-LAYOUT=
-ROW.BYTE-OFF-OFF 8 cells FIELD-LAYOUT=
-ROW.BYTE-SIZE-OFF 9 cells FIELD-LAYOUT=
-ROW.ALIGN-OFF 10 cells FIELD-LAYOUT=
-ROW.FLAGS-OFF 11 cells FIELD-LAYOUT=
-ROW.SOURCE-ID-OFF 12 cells FIELD-LAYOUT=
-ROW.SOURCE-OFF-OFF 13 cells FIELD-LAYOUT=
-ROW.SOURCE-LEN-OFF 14 cells FIELD-LAYOUT=
-ROW-REC 15 cells FIELD-LAYOUT=
-DRAFT.TX-OFF 15 cells FIELD-LAYOUT=
-DRAFT.TOKEN-OFF 16 cells FIELD-LAYOUT=
-DRAFT.STATE-OFF 17 cells FIELD-LAYOUT=
-DRAFT-REC 18 cells FIELD-LAYOUT=
-TX.ROW-OFF 0 cells FIELD-LAYOUT=
-TX.NAME-OFF 1 cells FIELD-LAYOUT=
-TX.DRAFT-OFF 2 cells FIELD-LAYOUT=
-TX.TOKEN-OFF 3 cells FIELD-LAYOUT=
-TX-REC 4 cells FIELD-LAYOUT=
-MARK.ROW-OFF 0 cells FIELD-LAYOUT=
-MARK.NAME-OFF 1 cells FIELD-LAYOUT=
-MARK.DRAFT-OFF 2 cells FIELD-LAYOUT=
-MARK.TX-OFF 3 cells FIELD-LAYOUT=
-MARK.TOKEN-OFF 4 cells FIELD-LAYOUT=
-MARK-REC 5 cells FIELD-LAYOUT=
-
-create ROW-BOOT FIELD-CAP-INIT ROW-REC * allot
+create ROW-BOOT CAP-INIT ROW-REC * allot
 PTR-VARIABLE ROW-P   ROW-BOOT ROW-P !
-variable ROW-CAP   FIELD-CAP-INIT ROW-CAP !
+variable ROW-CAP   CAP-INIT ROW-CAP !
 variable ROW-N
+variable COMMIT-N
 
-create DRAFT-BOOT FIELD-CAP-INIT DRAFT-REC * allot
+create DRAFT-BOOT CAP-INIT DRAFT-REC * allot
 PTR-VARIABLE DRAFT-P   DRAFT-BOOT DRAFT-P !
-variable DRAFT-CAP   FIELD-CAP-INIT DRAFT-CAP !
+variable DRAFT-CAP   CAP-INIT DRAFT-CAP !
 variable DRAFT-N
 variable DRAFT-SERIAL
 
-create TX-BOOT FIELD-CAP-INIT TX-REC * allot
+create TX-BOOT CAP-INIT TX-REC * allot
 PTR-VARIABLE TX-P   TX-BOOT TX-P !
-variable TX-CAP   FIELD-CAP-INIT TX-CAP !
+variable TX-CAP   CAP-INIT TX-CAP !
 variable TX-DEPTH
 variable TX-SERIAL
 
-create MARK-BOOT FIELD-CAP-INIT MARK-REC * allot
-PTR-VARIABLE MARK-P   MARK-BOOT MARK-P !
-variable MARK-CAP   FIELD-CAP-INIT MARK-CAP !
-variable MARK-N
-variable MARK-SERIAL
-
-create NAME-BOOT FIELD-NAME-INIT allot
+create NAME-BOOT NAME-INIT allot
 PTR-VARIABLE NAME-P   NAME-BOOT NAME-P !
-variable NAME-CAP   FIELD-NAME-INIT NAME-CAP !
+variable NAME-CAP   NAME-INIT NAME-CAP !
 variable NAME-N
 
 : NEXT-CAP ( n n n -- n ) {: need:n cap:n stride:n :}
-   need 0 < stride 0 <= or if E-FIELD-CAPACITY throw then
-   FIELD-MAX-N stride / {: limit:n :}
-   need limit > if E-FIELD-CAPACITY throw then
+   need 0 < stride 0 <= or if E-CAPACITY throw then
+   MAX-N stride / {: limit:n :}
+   need limit > if E-CAPACITY throw then
    cap limit 2 / > if need else cap 2 * need max then ;
 
 : ROW-ENSURE ( n -- ) {: need:n :}
@@ -227,15 +251,9 @@ variable NAME-N
    TX-P @ TX-CAP @ TX-REC * cap TX-REC * RAW-GROW TX-P !
    cap TX-CAP ! ;
 
-: MARK-ENSURE ( n -- ) {: need:n :}
-   need MARK-CAP @ <= if exit then
-   need MARK-CAP @ MARK-REC NEXT-CAP {: cap:n :}
-   MARK-P @ MARK-CAP @ MARK-REC * cap MARK-REC * RAW-GROW MARK-P !
-   cap MARK-CAP ! ;
-
 : NAME-ENSURE ( n -- ) {: add:n :}
-   add 0 < if E-FIELD-CAPACITY throw then
-   NAME-N @ FIELD-MAX-N add - > if E-FIELD-CAPACITY throw then
+   add 0 < if E-CAPACITY throw then
+   NAME-N @ MAX-N add - > if E-CAPACITY throw then
    NAME-N @ add + {: need:n :}
    need NAME-CAP @ <= if exit then
    need NAME-CAP @ 1 NEXT-CAP {: cap:n :}
@@ -243,100 +261,27 @@ variable NAME-N
    cap NAME-CAP ! ;
 
 : ROW-REC@ ( n -- ptr a ) {: id:n :}
-   id 0 < id ROW-N @ >= or if E-FIELD-ID throw then
+   id 0 < id ROW-N @ >= or if E-ID throw then
+   id ROW-REC * ROW-P @ + ;
+
+: LIVE-REC@ ( n -- ptr a ) {: id:n :}
+   id 0 < id COMMIT-N @ >= or if E-ID throw then
    id ROW-REC * ROW-P @ + ;
 
 : DRAFT-REC@ ( n -- ptr a ) {: id:n :}
-   id 0 < id DRAFT-N @ >= or if E-FIELD-DRAFT throw then
+   id 0 < id DRAFT-N @ >= or if E-DRAFT throw then
    id DRAFT-REC * DRAFT-P @ + ;
 
 : TX-REC@ ( n -- ptr a ) {: id:n :}
-   id 0 < id TX-DEPTH @ >= or if E-FIELD-TX throw then
+   id 0 < id TX-DEPTH @ >= or if E-TX throw then
    id TX-REC * TX-P @ + ;
 
-: MARK-REC@ ( n -- ptr a ) {: id:n :}
-   id 0 < id MARK-N @ >= or if E-FIELD-MARK throw then
-   id MARK-REC * MARK-P @ + ;
-
-: NAME-BASE ( -- ptr u8 ) NAME-P @ BYTE-VIEW ;
+: NAME-BASE ( -- ptr u8 ) NAME-P @ RAW-U8 ;
 
 : NAME$ ( n n -- ptr u8 n ) {: off:n u:n :}
-   off 0 < u 0 < or if E-FIELD-ID throw then
-   off NAME-N @ > NAME-N @ off - u < or if E-FIELD-ID throw then
+   off 0 < u 0 < or if E-ID throw then
+   off NAME-N @ > NAME-N @ off - u < or if E-ID throw then
    NAME-BASE off + u ;
-
-: ASCII-FOLD ( n -- n ) {: c:n :}
-   c 65 >= c 90 <= and if c 32 + else c then ;
-
-: FIELD-CI= ( ptr u8 n ptr u8 n -- bool ) {: a:ptr au:n b:ptr bu:n :}
-   au bu <> if 0 0= 0= exit then
-   0 begin dup au < while
-      dup a + c@ ASCII-FOLD over b + c@ ASCII-FOLD <> if
-         drop 0 0= 0= exit
-      then
-      1+
-   repeat drop 0 0= ;
-
-: FIELD-NAME= ( ptr u8 n ptr a -- bool ) {: a:ptr u:n row:ptr :}
-   row ROW.NAME-OFF @ row ROW.NAME-LEN @ NAME$ a u FIELD-CI= ;
-
-: GENERATED-NAME? ( ptr u8 n -- bool ) {: a:ptr u:n :}
-   a u s" make" FIELD-CI= if 0 0= exit then
-   a u s" unmake" FIELD-CI= if 0 0= exit then
-   a u s" tag" FIELD-CI= if 0 0= exit then
-   a u s" eq" FIELD-CI= if 0 0= exit then
-   a u s" hash" FIELD-CI= if 0 0= exit then
-   a u s" order" FIELD-CI= if 0 0= exit then
-   a u s" encode" FIELD-CI= if 0 0= exit then
-   a u s" decode" FIELD-CI= ;
-
-: FIELD-RESERVED? ( ptr u8 n -- bool ) {: a:ptr u:n :}
-   a u RAW-KEYWORD? if 0 0= exit then
-   a u s" structure" FIELD-CI= if 0 0= exit then
-   a u s" ;structure" FIELD-CI= if 0 0= exit then
-   a u GENERATED-NAME? ;
-
-: REQUIRE-NAME ( ptr u8 n -- ) {: a:ptr u:n :}
-   u 0= if E-FIELD-NAME throw then
-   a u RAW-CANON? 0= if E-FIELD-NAME throw then
-   a u FIELD-RESERVED? if E-FIELD-NAME throw then ;
-
-: REQUIRE-FAMILY ( n -- ) {: fam:n :}
-   fam 0 < fam RAW-FAMILY-N >= or if E-FIELD-FAMILY throw then ;
-
-: REQUIRE-OWNER ( n bool n -- ) {: fam:n has:bool variant:n :}
-   fam REQUIRE-FAMILY
-   has if
-      variant 0 < variant RAW-VARIANT-N >= or if E-FIELD-VARIANT throw then
-      variant RAW-VARIANT-FAMILY@ fam <> if E-FIELD-VARIANT throw then
-   else
-      variant 0 <> if E-FIELD-VARIANT throw then
-   then ;
-
-: ROW-OWNER? ( n n bool n -- bool ) {: id:n fam:n has:bool variant:n :}
-   id ROW-REC@ {: row:ptr :}
-   row ROW.FAMILY @ fam =
-   row ROW.HAS-VARIANT @ has if 1 else 0 then = and
-   row ROW.VARIANT @ variant = and ;
-
-: OWNER-SEEN? ( n bool n -- bool ) {: fam:n has:bool variant:n :}
-   0 begin dup ROW-N @ < while
-      dup fam has variant ROW-OWNER? if drop 0 0= exit then
-      1+
-   repeat drop 0 0= 0= ;
-
-: REQUIRE-CONTIGUOUS ( n bool n -- ) {: fam:n has:bool variant:n :}
-   fam has variant OWNER-SEEN? 0= if exit then
-   ROW-N @ 1 - fam has variant ROW-OWNER? 0= if E-FIELD-RANGE throw then ;
-
-: REQUIRE-UNIQUE ( n bool n ptr u8 n -- )
-   {: fam:n has:bool variant:n a:ptr u:n :}
-   0 begin dup ROW-N @ < while
-      dup fam has variant ROW-OWNER? if
-         dup ROW-REC@ a u rot FIELD-NAME= if drop E-FIELD-DUP throw then
-      then
-      1+
-   repeat drop ;
 
 : COPY-NAME ( ptr u8 n -- n ) {: a:ptr u:n :}
    u NAME-ENSURE
@@ -348,12 +293,100 @@ variable NAME-N
    NAME-N @ u + NAME-N !
    off ;
 
+: ASCII-FOLD ( n -- n ) {: c:n :}
+   c 65 >= c 90 <= and if c 32 + else c then ;
+
+: CI= ( ptr u8 n ptr u8 n -- bool ) {: a:ptr au:n b:ptr bu:n :}
+   au bu <> if 0 0= 0= exit then
+   0 begin dup au < while
+      dup a + c@ ASCII-FOLD over b + c@ ASCII-FOLD <> if
+         drop 0 0= 0= exit
+      then
+      1+
+   repeat drop 0 0= ;
+
+: FIELD-NAME= ( ptr u8 n ptr a -- bool ) {: a:ptr u:n row:ptr :}
+   row ROW.NAME-OFF @ row ROW.NAME-LEN @ NAME$ a u CI= ;
+
+: GENERATED? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   a u s" make" CI= if 0 0= exit then
+   a u s" unmake" CI= if 0 0= exit then
+   a u s" tag" CI= if 0 0= exit then
+   a u s" eq" CI= if 0 0= exit then
+   a u s" hash" CI= if 0 0= exit then
+   a u s" order" CI= if 0 0= exit then
+   a u s" encode" CI= if 0 0= exit then
+   a u s" decode" CI= ;
+
+: RESERVED? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   a u RAW-KEYWORD? if 0 0= exit then
+   a u s" structure" CI= if 0 0= exit then
+   a u s" ;structure" CI= if 0 0= exit then
+   a u GENERATED? ;
+
+: REQUIRE-NAME ( ptr u8 n -- ) {: a:ptr u:n :}
+   u 0= if E-NAME throw then
+   a u RAW-CANON? 0= if E-NAME throw then
+   a u RESERVED? if E-NAME throw then ;
+
+: REQUIRE-FAMILY ( n -- ) {: fam:n :}
+   fam 0 < fam RAW-FAMILY-N >= or if E-FAMILY throw then ;
+
+: FAMILY-OWNED? ( n -- bool )
+   RAW-FAMILY-PKG$ RAW-ACTIVE-PKG$ CORE-STR= ;
+
+: FAMILY-VISIBLE? ( n -- bool ) {: fam:n :}
+   fam RAW-FAMILY-VIS@ RAW-PUBLIC = if 0 0= exit then
+   fam FAMILY-OWNED? ;
+
+: REQUIRE-VISIBLE ( n -- )
+   dup REQUIRE-FAMILY
+   FAMILY-VISIBLE? 0= if E-VISIBILITY throw then ;
+
+: REQUIRE-OWNED ( n -- )
+   dup REQUIRE-FAMILY
+   FAMILY-OWNED? 0= if E-VISIBILITY throw then ;
+
+: REQUIRE-VARIANT ( n n -- ) {: fam:n variant:n :}
+   variant 0 < variant RAW-VARIANT-N >= or if E-VARIANT throw then
+   variant RAW-VARIANT-FAMILY@ fam <> if E-VARIANT throw then ;
+
+: ROW-OWNER? ( n n bool n -- bool ) {: id:n fam:n has:bool variant:n :}
+   id ROW-REC@ {: row:ptr :}
+   row ROW.FAMILY @ fam =
+   row ROW.HAS-VARIANT @ has if 1 else 0 then = and
+   row ROW.VARIANT @ variant = and ;
+
+: ROW-VISIBLE? ( ptr a -- bool ) {: row:ptr :}
+   row ROW.FAMILY @ FAMILY-VISIBLE? 0= if 0 0= 0= exit then
+   row ROW.FLAGS @ FLAG-PUBLIC and 0 <> if 0 0= exit then
+   row ROW.FAMILY @ FAMILY-OWNED? ;
+
+: OWNER-SEEN? ( n bool n -- bool ) {: fam:n has:bool variant:n :}
+   0 begin dup ROW-N @ < while
+      dup fam has variant ROW-OWNER? if drop 0 0= exit then
+      1+
+   repeat drop 0 0= 0= ;
+
+: REQUIRE-CONTIGUOUS ( n bool n -- ) {: fam:n has:bool variant:n :}
+   fam has variant OWNER-SEEN? 0= if exit then
+   ROW-N @ 1 - fam has variant ROW-OWNER? 0= if E-RANGE throw then ;
+
+: REQUIRE-UNIQUE ( n bool n ptr u8 n -- )
+   {: fam:n has:bool variant:n a:ptr u:n :}
+   0 begin dup ROW-N @ < while
+      dup fam has variant ROW-OWNER? if
+         dup ROW-REC@ a u rot FIELD-NAME= if drop E-DUP throw then
+      then
+      1+
+   repeat drop ;
+
 : NEXT-SERIAL ( ptr n -- n ) {: cell:ptr :}
-   cell @ FIELD-MAX-N = if E-FIELD-CAPACITY throw then
+   cell @ MAX-N = if E-CAPACITY throw then
    cell @ 1 + dup cell ! ;
 
 : TX-TOP-REC ( -- ptr a )
-   TX-DEPTH @ 0= if E-FIELD-TX throw then
+   TX-DEPTH @ 0= if E-TX throw then
    TX-DEPTH @ 1 - TX-REC@ ;
 
 : TX-TOP? ( n -- bool ) {: token:n :}
@@ -361,75 +394,74 @@ variable NAME-N
    TX-TOP-REC TX.TOKEN @ token = ;
 
 : REQUIRE-TX ( n -- )
-   TX-TOP? 0= if E-FIELD-TX throw then ;
+   TX-TOP? 0= if E-TX throw then ;
 
-: ROLLBACK-RAW ( n -- ) {: token:n :}
-   token REQUIRE-TX
+: ROLLBACK-TOP ( -- )
    TX-TOP-REC {: tx:ptr :}
    tx TX.ROW @ ROW-N !
    tx TX.NAME @ NAME-N !
    tx TX.DRAFT @ DRAFT-N !
    TX-DEPTH @ 1 - TX-DEPTH ! ;
 
+: ABORT-ALL ( -- )
+   begin TX-DEPTH @ 0 > while ROLLBACK-TOP repeat ;
+
 : REQUIRE-DRAFT ( n n -- ptr a ) {: tx-token:n draft-token:n :}
    tx-token REQUIRE-TX
-   DRAFT-N @ TX-TOP-REC TX.DRAFT @ <= if E-FIELD-DRAFT throw then
+   DRAFT-N @ TX-TOP-REC TX.DRAFT @ <= if E-DRAFT throw then
    DRAFT-N @ 1 - DRAFT-REC@ {: draft:ptr :}
-   draft DRAFT.TX @ tx-token <> if E-FIELD-DRAFT throw then
-   draft DRAFT.TOKEN @ draft-token <> if E-FIELD-DRAFT throw then
+   draft DRAFT.TX @ tx-token <> if E-DRAFT throw then
+   draft DRAFT.TOKEN @ draft-token <> if E-DRAFT throw then
    draft ;
 
 : REQUIRE-STAGE-NEW ( ptr a n -- ) {: draft:ptr stage:n :}
-   draft DRAFT.STATE @ stage and 0 <> if E-FIELD-DRAFT throw then ;
+   draft DRAFT.STATE @ stage and 0 <> if E-DRAFT throw then ;
 
-variable ARG-TX
-variable ARG-DRAFT
-variable ARG-FAMILY
-variable ARG-HAS-VARIANT
-variable ARG-VARIANT
-variable ARG-NAME-A
-variable ARG-NAME-U
-variable ARG-A
-variable ARG-B
-variable ARG-C
-variable ARG-D
-variable RESULT-DRAFT
-variable RESULT-ID
+variable A-TX
+variable A-DRAFT
+variable A-VAR-F
+variable A-VAR
+variable A-NAME
+variable A-NAME-U
+variable A-X
+variable A-Y
+variable A-Z
+variable A-W
+variable R-DRAFT
 
 : ABORT-THROW ( n -- ) {: code:n :}
    code 0= if exit then
-   ARG-TX @ TX-TOP? if ARG-TX @ ROLLBACK-RAW then
+   ABORT-ALL
    code throw ;
 
-: OPEN ( -- TYPE-FIELD:field-tx )
-   TX-DEPTH @ 1 + TX-ENSURE
-   TX-SERIAL NEXT-SERIAL {: token:n :}
-   TX-DEPTH @ TX-REC * TX-P @ + {: tx:ptr :}
-   ROW-N @ tx TX.ROW !
-   NAME-N @ tx TX.NAME !
-   DRAFT-N @ tx TX.DRAFT !
-   token tx TX.TOKEN !
-   TX-DEPTH @ 1 + TX-DEPTH !
-   token N>TX ;
-
 : START-CORE ( -- )
-   ARG-TX @ REQUIRE-TX
-   DRAFT-N @ TX-TOP-REC TX.DRAFT @ <> if E-FIELD-DRAFT throw then
-   ARG-FAMILY @ ARG-HAS-VARIANT @ 0= 0= ARG-VARIANT @ REQUIRE-OWNER
-   ARG-NAME-A @ ARG-NAME-U @ REQUIRE-NAME
-   ARG-FAMILY @ ARG-HAS-VARIANT @ 0= 0= ARG-VARIANT @ REQUIRE-CONTIGUOUS
-   ARG-FAMILY @ ARG-HAS-VARIANT @ 0= 0= ARG-VARIANT @
-      ARG-NAME-A @ ARG-NAME-U @ REQUIRE-UNIQUE
-   ARG-NAME-U @ NAME-ENSURE
+   A-TX @ REQUIRE-TX
+   TX-TOP-REC TX.FAMILY @ {: fam:n :}
+   DRAFT-N @ TX-TOP-REC TX.DRAFT @ <> if E-DRAFT throw then
+
+   \ The caller may have passed parse-name storage. Copy it before any s" or
+   \ parser-adjacent validation can reuse the interpreter token buffer.
+   A-NAME @ A-NAME-U @ COPY-NAME {: name-off:n :}
+   name-off A-NAME-U @ NAME$ {: name:ptr name-u:n :}
+
+   A-VAR-F @ if
+      fam RAW-FAMILY-SUM? fam RAW-FAMILY-ENUM? or 0= if E-FAMILY throw then
+      fam A-VAR @ REQUIRE-VARIANT
+   else
+      fam RAW-FAMILY-PRODUCT? 0= if E-FAMILY throw then
+   then
+   name name-u REQUIRE-NAME
+   fam A-VAR-F @ 0= 0= A-VAR @ REQUIRE-CONTIGUOUS
+   fam A-VAR-F @ 0= 0= A-VAR @ name name-u REQUIRE-UNIQUE
+
    DRAFT-N @ 1 + DRAFT-ENSURE
-   ARG-NAME-A @ ARG-NAME-U @ COPY-NAME {: name-off:n :}
    DRAFT-SERIAL NEXT-SERIAL {: token:n :}
    DRAFT-N @ DRAFT-REC * DRAFT-P @ + {: draft:ptr :}
-   ARG-FAMILY @ draft ROW.FAMILY !
-   ARG-HAS-VARIANT @ draft ROW.HAS-VARIANT !
-   ARG-VARIANT @ draft ROW.VARIANT !
+   fam draft ROW.FAMILY !
+   A-VAR-F @ draft ROW.HAS-VARIANT !
+   A-VAR @ draft ROW.VARIANT !
    name-off draft ROW.NAME-OFF !
-   ARG-NAME-U @ draft ROW.NAME-LEN !
+   name-u draft ROW.NAME-LEN !
    0 draft ROW.SCHEMA !
    0 draft ROW.SLOT !
    0 draft ROW.CELLS !
@@ -440,88 +472,55 @@ variable RESULT-ID
    0 draft ROW.SOURCE-ID !
    0 draft ROW.SOURCE-OFF !
    0 draft ROW.SOURCE-LEN !
-   ARG-TX @ draft DRAFT.TX !
+   A-TX @ draft DRAFT.TX !
    token draft DRAFT.TOKEN !
    0 draft DRAFT.STATE !
    DRAFT-N @ 1 + DRAFT-N !
-   token RESULT-DRAFT ! ;
+   token R-DRAFT ! ;
 
-: START ( TYPE-FIELD:field-tx n bool n ptr u8 n -- TYPE-FIELD:field-tx TYPE-FIELD:field-draft )
-   {: fam:n has:bool variant:n a:ptr u:n :}
-   TX>N ARG-TX !
-   fam ARG-FAMILY !
-   has if 1 else 0 then ARG-HAS-VARIANT !
-   variant ARG-VARIANT !
-   a ARG-NAME-A !
-   u ARG-NAME-U !
-   [: START-CORE ;] catch ABORT-THROW
-   ARG-TX @ N>TX RESULT-DRAFT @ N>DRAFT ;
+: START-RUN ( n bool n ptr u8 n -- )
+   {: tx:n has:bool variant:n a:ptr u:n :}
+   tx A-TX !
+   has if 1 else 0 then A-VAR-F !
+   variant A-VAR !
+   a A-NAME !
+   u A-NAME-U !
+   [: START-CORE ;] catch ABORT-THROW ;
 
 : SCHEMA-CORE ( -- )
-   ARG-TX @ ARG-DRAFT @ REQUIRE-DRAFT {: draft:ptr :}
-   draft DRAFT-SCHEMA REQUIRE-STAGE-NEW
-   ARG-A @ 0 < ARG-A @ RAW-SCHEMA-N >= or if E-FIELD-SCHEMA throw then
-   ARG-B @ 0 <= if E-FIELD-LAYOUT throw then
-   ARG-B @ dup 1 - and 0 <> if E-FIELD-LAYOUT throw then
-   ARG-C @ FIELD-FLAG-MASK invert and 0 <> if E-FIELD-FLAGS throw then
-   ARG-A @ draft ROW.SCHEMA !
-   ARG-B @ draft ROW.ALIGN !
-   ARG-C @ draft ROW.FLAGS !
-   draft DRAFT.STATE dup @ DRAFT-SCHEMA or swap ! ;
-
-: SCHEMA ( TYPE-FIELD:field-tx TYPE-FIELD:field-draft n n n -- TYPE-FIELD:field-tx TYPE-FIELD:field-draft )
-   {: root:n align:n flags:n :}
-   DRAFT>N ARG-DRAFT !
-   TX>N ARG-TX !
-   root ARG-A !
-   align ARG-B !
-   flags ARG-C !
-   [: SCHEMA-CORE ;] catch ABORT-THROW
-   ARG-TX @ N>TX ARG-DRAFT @ N>DRAFT ;
+   A-TX @ A-DRAFT @ REQUIRE-DRAFT {: draft:ptr :}
+   draft STAGE-SCHEMA REQUIRE-STAGE-NEW
+   A-X @ 0 < A-X @ RAW-SCHEMA-N >= or if E-SCHEMA throw then
+   A-Y @ 0 <= if E-LAYOUT throw then
+   A-Y @ dup 1 - and 0 <> if E-LAYOUT throw then
+   A-Z @ FLAG-MASK invert and 0 <> if E-FLAGS throw then
+   A-X @ draft ROW.SCHEMA !
+   A-Y @ draft ROW.ALIGN !
+   A-Z @ draft ROW.FLAGS !
+   draft DRAFT.STATE dup @ STAGE-SCHEMA or swap ! ;
 
 : LAYOUT-CORE ( -- )
-   ARG-TX @ ARG-DRAFT @ REQUIRE-DRAFT {: draft:ptr :}
-   draft DRAFT-LAYOUT REQUIRE-STAGE-NEW
-   ARG-A @ 0 < ARG-B @ 0 < or ARG-C @ 0 < or ARG-D @ 0 < or
-      if E-FIELD-LAYOUT throw then
-   ARG-A @ FIELD-MAX-N ARG-B @ - > if E-FIELD-LAYOUT throw then
-   ARG-C @ FIELD-MAX-N ARG-D @ - > if E-FIELD-LAYOUT throw then
-   ARG-A @ draft ROW.SLOT !
-   ARG-B @ draft ROW.CELLS !
-   ARG-C @ draft ROW.BYTE-OFF !
-   ARG-D @ draft ROW.BYTE-SIZE !
-   draft DRAFT.STATE dup @ DRAFT-LAYOUT or swap ! ;
-
-: LAYOUT ( TYPE-FIELD:field-tx TYPE-FIELD:field-draft n n n n -- TYPE-FIELD:field-tx TYPE-FIELD:field-draft )
-   {: slot:n cells:n byte-off:n byte-size:n :}
-   DRAFT>N ARG-DRAFT !
-   TX>N ARG-TX !
-   slot ARG-A !
-   cells ARG-B !
-   byte-off ARG-C !
-   byte-size ARG-D !
-   [: LAYOUT-CORE ;] catch ABORT-THROW
-   ARG-TX @ N>TX ARG-DRAFT @ N>DRAFT ;
+   A-TX @ A-DRAFT @ REQUIRE-DRAFT {: draft:ptr :}
+   draft STAGE-LAYOUT REQUIRE-STAGE-NEW
+   A-X @ 0 < A-Y @ 0 < or A-Z @ 0 < or A-W @ 0 < or
+      if E-LAYOUT throw then
+   A-X @ MAX-N A-Y @ - > if E-LAYOUT throw then
+   A-Z @ MAX-N A-W @ - > if E-LAYOUT throw then
+   A-X @ draft ROW.SLOT !
+   A-Y @ draft ROW.CELLS !
+   A-Z @ draft ROW.BYTE-OFF !
+   A-W @ draft ROW.BYTE-SIZE !
+   draft DRAFT.STATE dup @ STAGE-LAYOUT or swap ! ;
 
 : SOURCE-CORE ( -- )
-   ARG-TX @ ARG-DRAFT @ REQUIRE-DRAFT {: draft:ptr :}
-   draft DRAFT-SOURCE REQUIRE-STAGE-NEW
-   ARG-A @ 0 < ARG-B @ 0 < or ARG-C @ 0 < or if E-FIELD-SOURCE throw then
-   ARG-B @ FIELD-MAX-N ARG-C @ - > if E-FIELD-SOURCE throw then
-   ARG-A @ draft ROW.SOURCE-ID !
-   ARG-B @ draft ROW.SOURCE-OFF !
-   ARG-C @ draft ROW.SOURCE-LEN !
-   draft DRAFT.STATE dup @ DRAFT-SOURCE or swap ! ;
-
-: SOURCE ( TYPE-FIELD:field-tx TYPE-FIELD:field-draft n n n -- TYPE-FIELD:field-tx TYPE-FIELD:field-draft )
-   {: source:n off:n u:n :}
-   DRAFT>N ARG-DRAFT !
-   TX>N ARG-TX !
-   source ARG-A !
-   off ARG-B !
-   u ARG-C !
-   [: SOURCE-CORE ;] catch ABORT-THROW
-   ARG-TX @ N>TX ARG-DRAFT @ N>DRAFT ;
+   A-TX @ A-DRAFT @ REQUIRE-DRAFT {: draft:ptr :}
+   draft STAGE-SOURCE REQUIRE-STAGE-NEW
+   A-X @ 0 < A-Y @ 0 < or A-Z @ 0 < or if E-SOURCE throw then
+   A-Y @ MAX-N A-Z @ - > if E-SOURCE throw then
+   A-X @ draft ROW.SOURCE-ID !
+   A-Y @ draft ROW.SOURCE-OFF !
+   A-Z @ draft ROW.SOURCE-LEN !
+   draft DRAFT.STATE dup @ STAGE-SOURCE or swap ! ;
 
 : DRAFT>ROW ( ptr a ptr a -- ) {: draft:ptr row:ptr :}
    draft ROW.FAMILY @ row ROW.FAMILY !
@@ -541,133 +540,352 @@ variable RESULT-ID
    draft ROW.SOURCE-LEN @ row ROW.SOURCE-LEN ! ;
 
 : ADD-CORE ( -- )
-   ARG-TX @ ARG-DRAFT @ REQUIRE-DRAFT {: draft:ptr :}
-   draft DRAFT.STATE @ DRAFT-COMPLETE <> if E-FIELD-DRAFT throw then
-   draft ROW.BYTE-OFF @ draft ROW.ALIGN @ mod 0 <> if E-FIELD-LAYOUT throw then
+   A-TX @ A-DRAFT @ REQUIRE-DRAFT {: draft:ptr :}
+   draft DRAFT.STATE @ STAGE-DONE <> if E-DRAFT throw then
+   draft ROW.BYTE-OFF @ draft ROW.ALIGN @ mod 0 <> if E-LAYOUT throw then
    ROW-N @ 1 + ROW-ENSURE
-   ROW-N @ {: id:n :}
-   id ROW-REC * ROW-P @ + {: row:ptr :}
+   ROW-N @ ROW-REC * ROW-P @ + {: row:ptr :}
    draft row DRAFT>ROW
-   id 1 + ROW-N !
-   DRAFT-N @ 1 - DRAFT-N !
-   id RESULT-ID ! ;
-
-: ADD ( TYPE-FIELD:field-tx TYPE-FIELD:field-draft -- TYPE-FIELD:field-tx TYPE-FIELD:field-id )
-   DRAFT>N ARG-DRAFT !
-   TX>N ARG-TX !
-   [: ADD-CORE ;] catch ABORT-THROW
-   ARG-TX @ N>TX RESULT-ID @ N>ID ;
+   ROW-N @ 1 + ROW-N !
+   DRAFT-N @ 1 - DRAFT-N ! ;
 
 : COMMIT-CORE ( -- )
-   ARG-TX @ REQUIRE-TX
-   DRAFT-N @ TX-TOP-REC TX.DRAFT @ <> if E-FIELD-DRAFT throw then
-   TX-DEPTH @ 1 - TX-DEPTH ! ;
+   A-TX @ REQUIRE-TX
+   DRAFT-N @ TX-TOP-REC TX.DRAFT @ <> if E-DRAFT throw then
+   TX-DEPTH @ 1 - TX-DEPTH !
+   TX-DEPTH @ 0= if ROW-N @ COMMIT-N ! then ;
+
+: ROLLBACK-CORE ( -- )
+   A-TX @ REQUIRE-TX
+   ROLLBACK-TOP ;
+
+: SNAPSHOT-PERSIST ( -- )
+   TX-DEPTH @ 0 <> if E-TX throw then
+   DRAFT-N @ 0 <> if E-DRAFT throw then
+   ROW-P ROW-BOOT ROW-CAP @ ROW-REC * RAW-PERSIST drop
+   DRAFT-P DRAFT-BOOT DRAFT-CAP @ DRAFT-REC * RAW-PERSIST drop
+   TX-P TX-BOOT TX-CAP @ TX-REC * RAW-PERSIST drop
+   NAME-P NAME-BOOT NAME-CAP @ RAW-PERSIST drop ;
+
+variable PREV-SNAP-XT
+REG-EXT-PERSIST-XT @ PREV-SNAP-XT !
+
+TRUSTED: SNAPSHOT-HOOK ( -- )
+   PREV-SNAP-XT @ dup 0= if drop else execute then
+   SNAPSHOT-PERSIST ;
+
+' SNAPSHOT-HOOK REG-EXT-PERSIST-XT !
+
+public
+
+\ Role constructors validate raw parser/registry outputs before minting.
+: FAMILY ( ptr u8 n -- TYPE-FIELD:family-id ) {: a:ptr u:n :}
+   RAW-ACTIVE-PKG$ a u RAW-FAMILY-RESOLVE 0= if E-FAMILY throw then
+   N>FAMILY ;
+
+: VARIANT ( TYPE-FIELD:family-id ptr u8 n -- TYPE-FIELD:variant-id )
+   {: a:ptr u:n :}
+   FAMILY>N {: fam:n :}
+   fam REQUIRE-VISIBLE
+   fam a u RAW-VARIANT-FIND 0= if E-VARIANT throw then
+   N>VARIANT ;
+
+: SCHEMA-ID ( n -- TYPE-FIELD:schema-id ) {: n:n :}
+   n 0 < n RAW-SCHEMA-N >= or if E-SCHEMA throw then
+   n N>SCHEMA ;
+
+: SLOT-ID ( n -- TYPE-FIELD:slot ) {: n:n :}
+   n 0 < if E-LAYOUT throw then n N>SLOT ;
+
+: CELL-COUNT ( n -- TYPE-FIELD:cell-count ) {: n:n :}
+   n 0 < if E-LAYOUT throw then n N>CELLS ;
+
+: BYTE-OFF ( n -- TYPE-FIELD:byte-off ) {: n:n :}
+   n 0 < if E-LAYOUT throw then n N>BYTE-OFF ;
+
+: BYTE-SIZE ( n -- TYPE-FIELD:byte-size ) {: n:n :}
+   n 0 < if E-LAYOUT throw then n N>BYTE-SIZE ;
+
+: ALIGNMENT ( n -- TYPE-FIELD:alignment ) {: n:n :}
+   n 0 <= if E-LAYOUT throw then
+   n dup 1 - and 0 <> if E-LAYOUT throw then
+   n N>ALIGN ;
+
+: SOURCE-ID ( n -- TYPE-FIELD:source-id ) {: n:n :}
+   n 0 < if E-SOURCE throw then n N>SOURCE-ID ;
+
+: SOURCE-OFF ( n -- TYPE-FIELD:source-off ) {: n:n :}
+   n 0 < if E-SOURCE throw then n N>SOURCE-OFF ;
+
+: SOURCE-LEN ( n -- TYPE-FIELD:source-len ) {: n:n :}
+   n 0 < if E-SOURCE throw then n N>SOURCE-LEN ;
+
+: PUBLIC-FLAGS ( -- TYPE-FIELD:field-flags )
+   FLAG-PUBLIC N>FLAGS ;
+
+: PRIVATE-FLAGS ( -- TYPE-FIELD:field-flags )
+   0 N>FLAGS ;
+
+: PUBLIC-BYTE-FLAGS ( -- TYPE-FIELD:field-flags )
+   FLAG-PUBLIC FLAG-BYTE or N>FLAGS ;
+
+: PRIVATE-BYTE-FLAGS ( -- TYPE-FIELD:field-flags )
+   FLAG-BYTE N>FLAGS ;
+
+: PUBLIC-VIS ( -- TYPE-FIELD:visibility ) RAW-PUBLIC N>VIS ;
+: PRIVATE-VIS ( -- TYPE-FIELD:visibility ) RAW-PRIVATE N>VIS ;
+: FIELD-COUNT>N ( TYPE-FIELD:field-count -- n ) COUNT>N ;
+
+: FIELD-ID= ( TYPE-FIELD:field-id TYPE-FIELD:field-id -- bool )
+   ID>N swap ID>N = ;
+: FAMILY= ( TYPE-FIELD:family-id TYPE-FIELD:family-id -- bool )
+   FAMILY>N swap FAMILY>N = ;
+: VARIANT= ( TYPE-FIELD:variant-id TYPE-FIELD:variant-id -- bool )
+   VARIANT>N swap VARIANT>N = ;
+: SCHEMA= ( TYPE-FIELD:schema-id TYPE-FIELD:schema-id -- bool )
+   SCHEMA>N swap SCHEMA>N = ;
+: SLOT= ( TYPE-FIELD:slot TYPE-FIELD:slot -- bool )
+   SLOT>N swap SLOT>N = ;
+: CELL-COUNT= ( TYPE-FIELD:cell-count TYPE-FIELD:cell-count -- bool )
+   CELLS>N swap CELLS>N = ;
+: BYTE-OFF= ( TYPE-FIELD:byte-off TYPE-FIELD:byte-off -- bool )
+   BYTE-OFF>N swap BYTE-OFF>N = ;
+: BYTE-SIZE= ( TYPE-FIELD:byte-size TYPE-FIELD:byte-size -- bool )
+   BYTE-SIZE>N swap BYTE-SIZE>N = ;
+: ALIGNMENT= ( TYPE-FIELD:alignment TYPE-FIELD:alignment -- bool )
+   ALIGN>N swap ALIGN>N = ;
+: FLAGS= ( TYPE-FIELD:field-flags TYPE-FIELD:field-flags -- bool )
+   FLAGS>N swap FLAGS>N = ;
+: SOURCE-ID= ( TYPE-FIELD:source-id TYPE-FIELD:source-id -- bool )
+   SOURCE-ID>N swap SOURCE-ID>N = ;
+: SOURCE-OFF= ( TYPE-FIELD:source-off TYPE-FIELD:source-off -- bool )
+   SOURCE-OFF>N swap SOURCE-OFF>N = ;
+: SOURCE-LEN= ( TYPE-FIELD:source-len TYPE-FIELD:source-len -- bool )
+   SOURCE-LEN>N swap SOURCE-LEN>N = ;
+: VISIBILITY= ( TYPE-FIELD:visibility TYPE-FIELD:visibility -- bool )
+   VIS>N swap VIS>N = ;
+
+\ Scoped builder: OPEN binds the transaction to a family owned by the active
+\ package. All following roles are nominal, and every failure aborts the whole
+\ nested transaction stack before propagating its named error.
+: OPEN ( TYPE-FIELD:family-id -- TYPE-FIELD:field-tx )
+   FAMILY>N {: fam:n :}
+   fam REQUIRE-OWNED
+   TX-DEPTH @ 1 + TX-ENSURE
+   TX-SERIAL NEXT-SERIAL {: token:n :}
+   TX-DEPTH @ TX-REC * TX-P @ + {: tx:ptr :}
+   ROW-N @ tx TX.ROW !
+   NAME-N @ tx TX.NAME !
+   DRAFT-N @ tx TX.DRAFT !
+   fam tx TX.FAMILY !
+   token tx TX.TOKEN !
+   TX-DEPTH @ 1 + TX-DEPTH !
+   token N>TX ;
+
+: START ( TYPE-FIELD:field-tx ptr u8 n -- TYPE-FIELD:field-tx TYPE-FIELD:field-draft )
+   {: a:ptr u:n :}
+   TX>N {: tx:n :}
+   tx B-FALSE 0 a u START-RUN
+   tx N>TX R-DRAFT @ N>DRAFT ;
+
+: START-VARIANT
+   ( TYPE-FIELD:field-tx TYPE-FIELD:variant-id ptr u8 n -- TYPE-FIELD:field-tx TYPE-FIELD:field-draft )
+   {: a:ptr u:n :}
+   VARIANT>N {: variant:n :}
+   TX>N {: tx:n :}
+   tx B-TRUE variant a u START-RUN
+   tx N>TX R-DRAFT @ N>DRAFT ;
+
+: PARSE-START ( TYPE-FIELD:field-tx -- TYPE-FIELD:field-tx TYPE-FIELD:field-draft )
+   parse-name START ;
+
+: PARSE-START-VARIANT
+   ( TYPE-FIELD:field-tx TYPE-FIELD:variant-id -- TYPE-FIELD:field-tx TYPE-FIELD:field-draft )
+   parse-name START-VARIANT ;
+
+: SCHEMA
+   ( TYPE-FIELD:field-tx TYPE-FIELD:field-draft TYPE-FIELD:schema-id TYPE-FIELD:alignment TYPE-FIELD:field-flags -- TYPE-FIELD:field-tx TYPE-FIELD:field-draft )
+   FLAGS>N A-Z !
+   ALIGN>N A-Y !
+   SCHEMA>N A-X !
+   DRAFT>N A-DRAFT !
+   TX>N A-TX !
+   [: SCHEMA-CORE ;] catch ABORT-THROW
+   A-TX @ N>TX A-DRAFT @ N>DRAFT ;
+
+: LAYOUT
+   ( TYPE-FIELD:field-tx TYPE-FIELD:field-draft TYPE-FIELD:slot TYPE-FIELD:cell-count TYPE-FIELD:byte-off TYPE-FIELD:byte-size -- TYPE-FIELD:field-tx TYPE-FIELD:field-draft )
+   BYTE-SIZE>N A-W !
+   BYTE-OFF>N A-Z !
+   CELLS>N A-Y !
+   SLOT>N A-X !
+   DRAFT>N A-DRAFT !
+   TX>N A-TX !
+   [: LAYOUT-CORE ;] catch ABORT-THROW
+   A-TX @ N>TX A-DRAFT @ N>DRAFT ;
+
+: SOURCE
+   ( TYPE-FIELD:field-tx TYPE-FIELD:field-draft TYPE-FIELD:source-id TYPE-FIELD:source-off TYPE-FIELD:source-len -- TYPE-FIELD:field-tx TYPE-FIELD:field-draft )
+   SOURCE-LEN>N A-Z !
+   SOURCE-OFF>N A-Y !
+   SOURCE-ID>N A-X !
+   DRAFT>N A-DRAFT !
+   TX>N A-TX !
+   [: SOURCE-CORE ;] catch ABORT-THROW
+   A-TX @ N>TX A-DRAFT @ N>DRAFT ;
+
+: ADD ( TYPE-FIELD:field-tx TYPE-FIELD:field-draft -- TYPE-FIELD:field-tx )
+   DRAFT>N A-DRAFT !
+   TX>N A-TX !
+   [: ADD-CORE ;] catch ABORT-THROW
+   A-TX @ N>TX ;
 
 : COMMIT ( TYPE-FIELD:field-tx -- )
-   TX>N ARG-TX !
+   TX>N A-TX !
    [: COMMIT-CORE ;] catch ABORT-THROW ;
 
 : ROLLBACK ( TYPE-FIELD:field-tx -- )
-   TX>N ROLLBACK-RAW ;
+   TX>N A-TX !
+   [: ROLLBACK-CORE ;] catch ABORT-THROW ;
 
-: MARK ( -- TYPE-FIELD:mark )
-   MARK-N @ 1 + MARK-ENSURE
-   MARK-SERIAL NEXT-SERIAL {: token:n :}
-   MARK-N @ MARK-REC * MARK-P @ + {: mark:ptr :}
-   ROW-N @ mark MARK.ROW !
-   NAME-N @ mark MARK.NAME !
-   DRAFT-N @ mark MARK.DRAFT !
-   TX-DEPTH @ mark MARK.TX !
-   token mark MARK.TOKEN !
-   MARK-N @ 1 + MARK-N !
-   token N>MARK ;
+: COUNT ( -- TYPE-FIELD:field-count ) COMMIT-N @ N>COUNT ;
 
-: RESTORE ( TYPE-FIELD:mark -- )
-   MARK>N {: token:n :}
-   MARK-N @ 0= if E-FIELD-MARK throw then
-   MARK-N @ 1 - MARK-REC@ {: mark:ptr :}
-   mark MARK.TOKEN @ token <> if E-FIELD-MARK throw then
-   mark MARK.ROW @ ROW-N @ > if E-FIELD-MARK throw then
-   mark MARK.NAME @ NAME-N @ > if E-FIELD-MARK throw then
-   mark MARK.DRAFT @ DRAFT-N @ > if E-FIELD-MARK throw then
-   mark MARK.TX @ TX-DEPTH @ > if E-FIELD-MARK throw then
-   mark MARK.ROW @ ROW-N !
-   mark MARK.NAME @ NAME-N !
-   mark MARK.DRAFT @ DRAFT-N !
-   mark MARK.TX @ TX-DEPTH !
-   MARK-N @ 1 - MARK-N ! ;
+\ Stripped AOT capture persists only runtime metadata, not the checker's entire
+\ snapshot state. This idempotent protected entry rejects live transactions.
+: AOT-PERSIST ( -- ) SNAPSHOT-PERSIST ;
 
-public
-
-: COUNT ( -- n ) ROW-N @ ;
-
-: FIND ( n bool n ptr u8 n -- option<TYPE-FIELD:field-id> )
-   {: fam:n has:bool variant:n a:ptr u:n :}
-   fam has variant REQUIRE-OWNER
-   0 begin dup ROW-N @ < while
-      dup fam has variant ROW-OWNER? if
-         dup ROW-REC@ a u rot FIELD-NAME= if N>ID OPTION:SOME exit then
-      then
-      1+
-   repeat drop OPTION:NONE ;
+TRUSTED: AOT-EACH-STATE ( [ n n -- ] -- ) {: q :} \ typed-local-lint: allow-bare-local - preserves the quotation effect
+   ROW-P dup @ q execute
+   ROW-CAP dup @ q execute
+   ROW-N dup @ q execute
+   COMMIT-N dup @ q execute
+   DRAFT-P dup @ q execute
+   DRAFT-CAP dup @ q execute
+   DRAFT-N dup @ q execute
+   DRAFT-SERIAL dup @ q execute
+   TX-P dup @ q execute
+   TX-CAP dup @ q execute
+   TX-DEPTH dup @ q execute
+   TX-SERIAL dup @ q execute
+   NAME-P dup @ q execute
+   NAME-CAP dup @ q execute
+   NAME-N dup @ q execute ;
 
 private
 
+: FIND-RAW ( n bool n ptr u8 n -- TYPE-FIELD:field-id )
+   {: fam:n has:bool variant:n a:ptr u:n :}
+   fam REQUIRE-VISIBLE
+   has if fam variant REQUIRE-VARIANT then
+   0 begin dup COMMIT-N @ < while
+      dup fam has variant ROW-OWNER? if
+         dup ROW-REC@ a u rot FIELD-NAME= if
+            dup LIVE-REC@ ROW-VISIBLE? 0= if drop E-VISIBILITY throw then
+            N>ID exit
+         then
+      then
+      1+
+   repeat drop E-ID throw ;
+
 : FIELD-REC ( TYPE-FIELD:field-id -- ptr a )
-   ID>N ROW-REC@ ;
+   ID>N LIVE-REC@ dup ROW-VISIBLE? 0= if drop E-VISIBILITY throw then ;
 
 public
 
-: FAMILY@ ( TYPE-FIELD:field-id -- n ) FIELD-REC ROW.FAMILY @ ;
-: VARIANT? ( TYPE-FIELD:field-id -- bool ) FIELD-REC ROW.HAS-VARIANT @ 0= 0= ;
-: VARIANT@ ( TYPE-FIELD:field-id -- n )
-   FIELD-REC {: row:ptr :}
-   row ROW.HAS-VARIANT @ 0= if E-FIELD-VARIANT throw then
-   row ROW.VARIANT @ ;
+: FIND ( TYPE-FIELD:family-id ptr u8 n -- TYPE-FIELD:field-id )
+   {: a:ptr u:n :}
+   FAMILY>N B-FALSE 0 a u FIND-RAW ;
 
-: NAME ( TYPE-FIELD:field-id ptr u8 n -- n ) {: dst:ptr cap:n :}
-   cap 0 < if E-FIELD-CAPACITY throw then
-   ID>N ROW-REC@ {: row:ptr :}
+: FIND-VARIANT
+   ( TYPE-FIELD:family-id TYPE-FIELD:variant-id ptr u8 n -- TYPE-FIELD:field-id )
+   {: a:ptr u:n :}
+   VARIANT>N {: variant:n :}
+   FAMILY>N B-TRUE variant a u FIND-RAW ;
+
+: FAMILY@ ( TYPE-FIELD:field-id -- TYPE-FIELD:family-id )
+   FIELD-REC ROW.FAMILY @ N>FAMILY ;
+
+: VARIANT? ( TYPE-FIELD:field-id -- bool )
+   FIELD-REC ROW.HAS-VARIANT @ 0= 0= ;
+
+: VARIANT@ ( TYPE-FIELD:field-id -- TYPE-FIELD:variant-id )
+   FIELD-REC {: row:ptr :}
+   row ROW.HAS-VARIANT @ 0= if E-VARIANT throw then
+   row ROW.VARIANT @ N>VARIANT ;
+
+: NAME
+   ( TYPE-FIELD:field-id ptr u8 TYPE-FIELD:byte-size -- TYPE-FIELD:byte-size )
+   BYTE-SIZE>N {: cap:n :}
+   {: dst:ptr :}
+   ID>N LIVE-REC@ dup ROW-VISIBLE? 0= if drop E-VISIBILITY throw then
+   {: row:ptr :}
    row ROW.NAME-LEN @ {: u:n :}
-   cap u < if E-FIELD-CAPACITY throw then
+   cap u < if E-CAPACITY throw then
    row ROW.NAME-OFF @ u NAME$ {: src:ptr su:n :}
    0 begin dup su < while
       dup src + c@ over dst + c!
       1+
    repeat drop
-   su ;
+   su N>BYTE-SIZE ;
 
-: SCHEMA@ ( TYPE-FIELD:field-id -- n ) FIELD-REC ROW.SCHEMA @ ;
-: SLOT@ ( TYPE-FIELD:field-id -- n ) FIELD-REC ROW.SLOT @ ;
-: CELLS@ ( TYPE-FIELD:field-id -- n ) FIELD-REC ROW.CELLS @ ;
-: BYTE-OFF@ ( TYPE-FIELD:field-id -- n ) FIELD-REC ROW.BYTE-OFF @ ;
-: BYTE-SIZE@ ( TYPE-FIELD:field-id -- n ) FIELD-REC ROW.BYTE-SIZE @ ;
-: ALIGN@ ( TYPE-FIELD:field-id -- n ) FIELD-REC ROW.ALIGN @ ;
-: FLAGS@ ( TYPE-FIELD:field-id -- n ) FIELD-REC ROW.FLAGS @ ;
-: VIS@ ( TYPE-FIELD:field-id -- n )
-   FLAGS@ FIELD-PUBLIC and 0 <> if
-      RAW-PUBLIC
+: SCHEMA@ ( TYPE-FIELD:field-id -- TYPE-FIELD:schema-id )
+   FIELD-REC ROW.SCHEMA @ N>SCHEMA ;
+: SLOT@ ( TYPE-FIELD:field-id -- TYPE-FIELD:slot )
+   FIELD-REC ROW.SLOT @ N>SLOT ;
+: CELLS@ ( TYPE-FIELD:field-id -- TYPE-FIELD:cell-count )
+   FIELD-REC ROW.CELLS @ N>CELLS ;
+: BYTE-OFF@ ( TYPE-FIELD:field-id -- TYPE-FIELD:byte-off )
+   FIELD-REC ROW.BYTE-OFF @ N>BYTE-OFF ;
+: BYTE-SIZE@ ( TYPE-FIELD:field-id -- TYPE-FIELD:byte-size )
+   FIELD-REC ROW.BYTE-SIZE @ N>BYTE-SIZE ;
+: ALIGN@ ( TYPE-FIELD:field-id -- TYPE-FIELD:alignment )
+   FIELD-REC ROW.ALIGN @ N>ALIGN ;
+: FLAGS@ ( TYPE-FIELD:field-id -- TYPE-FIELD:field-flags )
+   FIELD-REC ROW.FLAGS @ N>FLAGS ;
+
+: VIS@ ( TYPE-FIELD:field-id -- TYPE-FIELD:visibility )
+   FIELD-REC ROW.FLAGS @ FLAG-PUBLIC and 0 <> if
+      PUBLIC-VIS
    else
-      RAW-PRIVATE
+      PRIVATE-VIS
    then ;
 
-: SOURCE@ ( TYPE-FIELD:field-id -- n n n )
+: SOURCE@
+   ( TYPE-FIELD:field-id -- TYPE-FIELD:source-id TYPE-FIELD:source-off TYPE-FIELD:source-len )
    FIELD-REC {: row:ptr :}
-   row ROW.SOURCE-ID @
-   row ROW.SOURCE-OFF @
-   row ROW.SOURCE-LEN @ ;
+   row ROW.SOURCE-ID @ N>SOURCE-ID
+   row ROW.SOURCE-OFF @ N>SOURCE-OFF
+   row ROW.SOURCE-LEN @ N>SOURCE-LEN ;
 
-: EACH ( R n bool n [ R TYPE-FIELD:field-id -- R ] -- R )
-   {: fam:n has:bool variant:n q :} \ typed-local-lint: allow-bare-local - quotation bound as ordinary local (docs/forth.md)
-   fam has variant REQUIRE-OWNER
-   0 begin dup ROW-N @ < while
-      dup fam has variant ROW-OWNER? if
-         dup >r N>ID q execute r>
+: EACH
+   ( R TYPE-FIELD:family-id [ R TYPE-FIELD:field-id -- R ] -- R )
+   {: q :} \ typed-local-lint: allow-bare-local - quotation preserves R.
+   FAMILY>N {: fam:n :}
+   fam REQUIRE-VISIBLE
+   0 begin dup COMMIT-N @ < while
+      dup fam B-FALSE 0 ROW-OWNER? if
+         dup LIVE-REC@ ROW-VISIBLE? if dup >r N>ID q execute r> then
       then
       1+
    repeat drop ;
 
-\ Seal both package sections after the complete provider has published.
+: EACH-VARIANT
+   ( R TYPE-FIELD:family-id TYPE-FIELD:variant-id [ R TYPE-FIELD:field-id -- R ] -- R )
+   {: q :} \ typed-local-lint: allow-bare-local - quotation preserves R.
+   VARIANT>N {: variant:n :}
+   FAMILY>N {: fam:n :}
+   fam REQUIRE-VISIBLE
+   fam variant REQUIRE-VARIANT
+   0 begin dup COMMIT-N @ < while
+      dup fam B-TRUE variant ROW-OWNER? if
+         dup LIVE-REC@ ROW-VISIBLE? if dup >r N>ID q execute r> then
+      then
+      1+
+   repeat drop ;
+
+\ Both sections are immutable after the cold-prefix friend phase. Qualified
+\ public reflection remains callable; package reopening and all private state
+\ remain sealed.
 private
 get-current prot-wid-add
 public
