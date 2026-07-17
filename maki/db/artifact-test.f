@@ -17,11 +17,32 @@
 \   ADT-MIGRATION               : an unsupported schema version -> unsupported-migration
 \   ADT-OPAQUE                  : an unknown OPTIONAL field is retained and re-emitted verbatim
 \
+\ Second slice (foreign-id fields via the owner ID>WIRE/WIRE>ID codecs + VALIDATE):
+\   ADT-{SCHEMA,PRODUCER,CONFIG,NPOL}-DIGEST : each digest-covered foreign id flips the
+\                                 content digest when it changes (two-id ENCODE flip)
+\   ADT-TARGET-DIGEST           : target-id is digest-covered too, proven via the DECODE
+\                                 path (its registry is a full 16-slot shared resource in
+\                                 the integration suite, so no fresh target can be minted)
+\   ADT-FID-UNKNOWN (per tag)   : an out-of-range foreign id -> bounds (WIRE>ID unknown)
+\   ADT-FID-WIDTH (per tag)     : a wrong-width foreign id -> malformed (WIRE>ID wrong-width)
+\   ADT-VALIDATE-OK             : VALIDATE accepts the golden weight envelope
+\   ADT-VALIDATE-KERNEL         : VALIDATE is kind-agnostic (a kernel envelope validates)
+\   ADT-VALIDATE-{MALFORMED,DIGEST,UNKNOWN-REQ} : VALIDATE rejects each corruption class
+\ Byte-identical decode->re-encode (ADT-ROUNDTRIP) proves every foreign id round-trips.
+\
 \ The test reopens package ARTIFACT (a friend) to reach the private wire constants
-\ and craft adversarial byte buffers; happy-path calls use the public API.
+\ and craft adversarial byte buffers; happy-path calls use the public API. The
+\ foreign-id fixtures mint real ids through their owner constructors (SCHEMA:REGISTER,
+\ PRODUCER:REGISTER, CONFIG:REGISTER, NPOL:REGISTER, TARGET:REGISTER/SM87) - never a
+\ raw cast - exactly as a real producer would.
 
 require lib/test.f
 require maki/db/artifact.f
+require maki/schema.f
+require maki/producer.f
+require maki/config.f
+require maki/numpolicy.f
+require maki/target/target.f
 
 package ARTIFACT
 
@@ -73,10 +94,47 @@ variable ADT-TB-U
 : ADT-DEP1 ( -- CAD-KIND:artifact-id )  s" adt-dep-1" REGISTER ;
 : ADT-DEP2 ( -- CAD-KIND:artifact-id )  s" adt-dep-2" REGISTER ;
 
-\ a canonical two-dependency weight envelope with the given schema/producer/event
+\ foreign-id fixtures (minted through the owner constructors; two distinct per family
+\ so a per-field digest flip has something to change to).
+: ADT-SCHEMA ( -- CAD-KIND:schema-id )         s" adt-schema-a"   SCHEMA:REGISTER ;
+: ADT-SCHEMA2 ( -- CAD-KIND:schema-id )        s" adt-schema-b"   SCHEMA:REGISTER ;
+: ADT-PRODUCER ( -- CAD-KIND:producer-id )     s" adt-producer-a" PRODUCER:REGISTER ;
+: ADT-PRODUCER2 ( -- CAD-KIND:producer-id )    s" adt-producer-b" PRODUCER:REGISTER ;
+: ADT-CONFIG ( -- CAD-KIND:config-id )         s" adt-config-a"   CONFIG:REGISTER ;
+: ADT-CONFIG2 ( -- CAD-KIND:config-id )        s" adt-config-b"   CONFIG:REGISTER ;
+: ADT-NPOL ( -- CAD-KIND:numeric-policy-id )   NPOL-DOM:EXACT NPOL:REGISTER ;
+: ADT-NPOL2 ( -- CAD-KIND:numeric-policy-id )  NPOL-DOM:ULP   NPOL:REGISTER ;
+: ADT-TARGET ( -- CAD-KIND:target-id )         TARGET:SM87 ;
+\ target-id lives in a small SHARED registry (16 slots) that the full maki suite
+\ fills, so - unlike the room-having schema/producer/config/npol families - a fresh
+\ alternative target cannot be minted when integrated. We therefore prove target-id
+\ digest coverage by the DECODE path (swap the encoded raw for another ALREADY-valid
+\ target, require digest-mismatch), which needs no new slot but does need at least
+\ two registered targets. In isolation only sm87 (raw 0) exists, so register one more
+\ IFF the registry has no alternative yet; a no-op once the suite has populated it.
+: ADT-ENSURE-ALT-TARGET ( -- )
+   TARGET:COUNT 2 < if
+      s" adt-tgt-alt"
+      TARGET:ISA-PTX 80 32 1024 49152 TARGET:CAP-PTX TARGET:DESCRIPTOR
+      TARGET:REGISTER drop
+   then ;
+
+\ a canonical two-dependency weight envelope with the given schema-version /
+\ producer-version / created-event and the default foreign ids.
 : ADT-BUILD-STD ( n n n -- weight-artifact ) {: ver:n pver:n event:n :}
    DEPS-RESET  ADT-DEP1 DEP+  ADT-DEP2 DEP+
-   ver pver ADT-ID1 event BUILD-WEIGHT ;
+   ver pver ADT-ID1
+   ADT-SCHEMA ADT-PRODUCER ADT-CONFIG ADT-NPOL ADT-TARGET
+   event BUILD-WEIGHT ;
+
+\ a two-dependency weight envelope with schema-version/producer-version/event fixed
+\ and the five foreign ids supplied, so a per-field digest flip varies exactly one.
+: ADT-BUILD-IDS ( CAD-KIND:schema-id CAD-KIND:producer-id CAD-KIND:config-id CAD-KIND:numeric-policy-id CAD-KIND:target-id -- weight-artifact )
+   {: schema:CAD-KIND:schema-id producer:CAD-KIND:producer-id
+      config:CAD-KIND:config-id npol:CAD-KIND:numeric-policy-id
+      target:CAD-KIND:target-id :}
+   DEPS-RESET  ADT-DEP1 DEP+  ADT-DEP2 DEP+
+   1 1 ADT-ID1  schema producer config npol target  0 BUILD-WEIGHT ;
 
 \ ---- adversarial byte builder (uses the private wire constants) ----------------
 : ADT-TB-RESET ( -- )   0 ADT-TB-U ! ;
@@ -105,9 +163,11 @@ ADT-EQ-HASH TTRUE
 
 \ dependency insertion order must not matter (builder canonicalises the set)
 : ADT-DEP-ORDER ( -- bool )
-   DEPS-RESET ADT-DEP1 DEP+ ADT-DEP2 DEP+  1 1 ADT-ID1 0 BUILD-WEIGHT
+   DEPS-RESET ADT-DEP1 DEP+ ADT-DEP2 DEP+
+   1 1 ADT-ID1 ADT-SCHEMA ADT-PRODUCER ADT-CONFIG ADT-NPOL ADT-TARGET 0 BUILD-WEIGHT
    ADT-A 512 ENCODE-WEIGHT {: la:n :}
-   DEPS-RESET ADT-DEP2 DEP+ ADT-DEP1 DEP+  1 1 ADT-ID1 0 BUILD-WEIGHT
+   DEPS-RESET ADT-DEP2 DEP+ ADT-DEP1 DEP+
+   1 1 ADT-ID1 ADT-SCHEMA ADT-PRODUCER ADT-CONFIG ADT-NPOL ADT-TARGET 0 BUILD-WEIGHT
    ADT-B 512 ENCODE-WEIGHT {: lb:n :}
    ADT-A la ADT-B lb ADT-BYTES-EQ? ;
 ADT-DEP-ORDER TTRUE
@@ -181,7 +241,8 @@ ADT-BOUNDS 3 T=
 
 : ADT-KIND-MISMATCH ( -- n )               \ a kernel envelope decoded as weight
    DEPS-RESET ADT-DEP1 DEP+
-   1 1 ADT-ID1 0 BUILD-KERNEL ADT-A 512 ENCODE-KERNEL {: la:n :}
+   1 1 ADT-ID1 ADT-SCHEMA ADT-PRODUCER ADT-CONFIG ADT-NPOL ADT-TARGET 0 BUILD-KERNEL
+   ADT-A 512 ENCODE-KERNEL {: la:n :}
    ADT-A la DECODE-WEIGHT ADT-CODE ;
 ADT-KIND-MISMATCH 6 T=
 
@@ -205,6 +266,105 @@ ADT-MIGRATION 7 T=
    slot WEIGHT-OF ADT-C 512 ENCODE-WEIGHT {: lc:n :}
    ADT-A full ADT-C lc ADT-BYTES-EQ? ;      \ re-emit is byte-identical (retained verbatim)
 ADT-OPAQUE TTRUE
+
+\ ---- 7. each digest-covered foreign id flips the content digest ----------------
+\ Vary exactly ONE foreign id (all others held at the default fixture) and require
+\ the digest to change: every foreign id is a digest-covered semantic field.
+: ADT-SCHEMA-DIGEST ( -- bool )
+   ADT-SCHEMA  ADT-PRODUCER ADT-CONFIG ADT-NPOL ADT-TARGET ADT-BUILD-IDS DIGEST-WEIGHT
+   ADT-SCHEMA2 ADT-PRODUCER ADT-CONFIG ADT-NPOL ADT-TARGET ADT-BUILD-IDS DIGEST-WEIGHT
+   DIGEST-EQ? 0= ;
+ADT-SCHEMA-DIGEST TTRUE
+
+: ADT-PRODUCER-DIGEST ( -- bool )
+   ADT-SCHEMA ADT-PRODUCER  ADT-CONFIG ADT-NPOL ADT-TARGET ADT-BUILD-IDS DIGEST-WEIGHT
+   ADT-SCHEMA ADT-PRODUCER2 ADT-CONFIG ADT-NPOL ADT-TARGET ADT-BUILD-IDS DIGEST-WEIGHT
+   DIGEST-EQ? 0= ;
+ADT-PRODUCER-DIGEST TTRUE
+
+: ADT-CONFIG-DIGEST ( -- bool )
+   ADT-SCHEMA ADT-PRODUCER ADT-CONFIG  ADT-NPOL ADT-TARGET ADT-BUILD-IDS DIGEST-WEIGHT
+   ADT-SCHEMA ADT-PRODUCER ADT-CONFIG2 ADT-NPOL ADT-TARGET ADT-BUILD-IDS DIGEST-WEIGHT
+   DIGEST-EQ? 0= ;
+ADT-CONFIG-DIGEST TTRUE
+
+: ADT-NPOL-DIGEST ( -- bool )
+   ADT-SCHEMA ADT-PRODUCER ADT-CONFIG ADT-NPOL  ADT-TARGET ADT-BUILD-IDS DIGEST-WEIGHT
+   ADT-SCHEMA ADT-PRODUCER ADT-CONFIG ADT-NPOL2 ADT-TARGET ADT-BUILD-IDS DIGEST-WEIGHT
+   DIGEST-EQ? 0= ;
+ADT-NPOL-DIGEST TTRUE
+
+\ target-id is digest-covered, proven via DECODE: swapping the encoded target raw for
+\ another VALID target changes the recomputed digest, so DECODE reports digest-mismatch
+\ (8). Target is the LAST semantic field, so its wire raw sits at a fixed offset from
+\ the end: tail = [target 14][digest 38][event 14]; target payload = [la-60, la-52).
+\ The replacement (r0+1 mod COUNT) is always a valid, distinct raw once COUNT >= 2.
+ADT-ENSURE-ALT-TARGET
+: ADT-TARGET-DIGEST ( -- n )
+   1 1 0 ADT-BUILD-STD ADT-A 512 ENCODE-WEIGHT {: la:n :}
+   la 60 -  {: tpos:n :}
+   ADT-A tpos + U64W LE-GET  1+ TARGET:COUNT mod       \ another valid, distinct target raw
+   ADT-A tpos + U64W LE-PUT
+   ADT-A la DECODE-WEIGHT ADT-CODE ;
+ADT-TARGET-DIGEST 8 T=
+
+\ ---- 8. per-field foreign-id decode rejects surface the right taxonomy ----------
+\ A single foreign-id field is enough to reach its owner WIRE>ID: an out-of-range raw
+\ decodes as `unknown` -> bounds (3); a wrong declared width decodes as `wrong-width`
+\ -> malformed (1). Each family is exercised at its own tag.
+: ADT-FID-UNKNOWN ( n -- n ) {: tag:n :}    \ single field, out-of-range raw
+   ADT-TB-RESET
+   tag FLAG-REQUIRED 9999 ADT-TB-U64-FIELD
+   ADT-TB$ DECODE-WEIGHT ADT-CODE ;
+: ADT-FID-WIDTH ( n -- n ) {: tag:n :}      \ single field, wrong declared width (4)
+   ADT-TB-RESET
+   tag ADT-TB-U8  FLAG-REQUIRED ADT-TB-U8
+   4 U32W ADT-TB-LE   0 U32W ADT-TB-LE
+   ADT-TB$ DECODE-WEIGHT ADT-CODE ;
+
+TAG-SCHEMA   ADT-FID-UNKNOWN 3 T=
+TAG-SCHEMA   ADT-FID-WIDTH   1 T=
+TAG-PRODUCER ADT-FID-UNKNOWN 3 T=
+TAG-PRODUCER ADT-FID-WIDTH   1 T=
+TAG-CONFIG   ADT-FID-UNKNOWN 3 T=
+TAG-CONFIG   ADT-FID-WIDTH   1 T=
+TAG-NPOL     ADT-FID-UNKNOWN 3 T=
+TAG-NPOL     ADT-FID-WIDTH   1 T=
+TAG-TARGET   ADT-FID-UNKNOWN 3 T=
+TAG-TARGET   ADT-FID-WIDTH   1 T=
+
+\ ---- 9. envelope VALIDATE: accepts the golden, kind-agnostic, rejects corruption -
+: ADT-VALIDATE-OK ( -- n )                 \ golden weight envelope validates
+   1 1 0 ADT-BUILD-STD ADT-A 512 ENCODE-WEIGHT {: la:n :}
+   ADT-A la VALIDATE ADT-CODE ;
+ADT-VALIDATE-OK 0 T=
+
+: ADT-VALIDATE-KERNEL ( -- n )             \ kind-agnostic: a kernel envelope also validates
+   DEPS-RESET ADT-DEP1 DEP+
+   1 1 ADT-ID1 ADT-SCHEMA ADT-PRODUCER ADT-CONFIG ADT-NPOL ADT-TARGET 0 BUILD-KERNEL
+   ADT-A 512 ENCODE-KERNEL {: la:n :}
+   ADT-A la VALIDATE ADT-CODE ;
+ADT-VALIDATE-KERNEL 0 T=
+
+: ADT-VALIDATE-MALFORMED ( -- n )          \ truncated bytes -> malformed
+   1 1 0 ADT-BUILD-STD ADT-A 512 ENCODE-WEIGHT {: la:n :}
+   ADT-A la 1- VALIDATE ADT-CODE ;
+ADT-VALIDATE-MALFORMED 1 T=
+
+: ADT-VALIDATE-DIGEST ( -- n )             \ corrupted stored digest -> digest-mismatch
+   1 1 0 ADT-BUILD-STD ADT-A 512 ENCODE-WEIGHT {: la:n :}
+   la 30 -  {: dpos:n :}
+   ADT-A dpos + c@ 1 xor  ADT-A dpos + c!
+   ADT-A la VALIDATE ADT-CODE ;
+ADT-VALIDATE-DIGEST 8 T=
+
+: ADT-VALIDATE-UNKNOWN-REQ ( -- n )        \ unknown REQUIRED field -> unknown-required
+   1 1 0 ADT-BUILD-STD ADT-A 512 ENCODE-WEIGHT {: la:n :}
+   200 ADT-A la + c!
+   FLAG-REQUIRED ADT-A la 1+ + c!
+   0 ADT-A la 2 + + U32W LE-PUT
+   ADT-A la HDR-W + U32W + VALIDATE ADT-CODE ;
+ADT-VALIDATE-UNKNOWN-REQ 5 T=
 
 T-REPORT
 

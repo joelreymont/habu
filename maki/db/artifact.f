@@ -26,20 +26,44 @@
 \ other at compile time. A wire kind-discriminant carries the same fact for DECODE,
 \ which reports kind-mismatch when the bytes name a different kind than the reader.
 \
-\ SCOPE (first slice): the envelope fields realized here are the ones expressible
-\ with zero new trust boundary - schema-version, kind, producer-version, identity
-\ (CAD-KIND:artifact-id), an ascending/duplicate-free dependency set
-\ (CAD-KIND:artifact-id), the digest-excluded created-event scalar, and the content
-\ digest. The remaining contract fields (schema-id, producer-id, config-id,
-\ numeric-policy-id, capability-id, audit-event-id, source-revision rev-id, and
-\ target-id) are nominal families with NO owner-provided constructor or wire codec
-\ anywhere in the repo yet; serializing them would require a refinement the "no new
-\ trust boundary" rule forbids here. Those fields await their owner constructors -
-\ tracked by the implementation dot.
+\ SCOPE (second slice): the digest-covered semantic identity fields whose OWNER
+\ packages now publish an audited ID>WIRE / WIRE>ID pair join the envelope -
+\ schema-id (SCHEMA), producer-id (PRODUCER), config-id (CONFIG),
+\ numeric-policy-id (NPOL), and target-id (TARGET). Each is serialized ACROSS the
+\ package boundary through its owner's total ID>WIRE and fail-closed WIRE>ID
+\ (§ 23.9 "Foreign identity constructors and wire codecs"): ARTIFACT never mints,
+\ raw-casts, or range-checks a foreign id - it only holds the already-valid nominal
+\ value (checker-native TYPED-BUFFER storage) and delegates the wire boundary. A
+\ WIRE>ID refusal folds into the envelope taxonomy exactly as the contract fixes:
+\ wrong-width -> malformed (truncated/over-long id bytes), unknown -> bounds
+\ (out-of-range/unresolved id). Together with the first-slice fields (schema-version,
+\ kind, producer-version, artifact-id identity, the ascending/duplicate-free
+\ artifact-id dependency set, the digest-excluded created-event, and the content
+\ digest) the envelope now binds every digest-covered semantic identity the plan
+\ names except the two that are deliberately out of this dot's scope:
+\ capability-id (a user-gated closed vocabulary - owner CAP, product decision) and
+\ audit-event-id (the digest-EXCLUDED append-only journal sequence - owner JOURNAL,
+\ rides the object-store/txn dot). Their ascending tags stay reserved (see
+\ TAG-CAP-RESERVED / TAG-EVENT). The first-slice P-ID/dependency wire form is still
+\ the process-local registry raw; reconciling it (and every foreign id's raw wire)
+\ with the cross-process SHA-256 content key (§ 23.9 origin-class table) remains the
+\ flagged out-of-scope migration owned by a later dot.
+\
+\ VALIDATE (§ 23.9 ARTIFACT:VALIDATE, the bare tail freed by the maki/artifact.f
+\ VALIDATE-ID rename) is the kind-AGNOSTIC leg: it checks owned bytes structurally
+\ and verifies the recomputed digest against the stored digest WITHOUT refining to a
+\ per-kind handle, returning the same art-result taxonomy as DECODE. It shares the
+\ DEC-POST structural/version/digest core with DECODE; DECODE additionally pins the
+\ exact reader kind, VALIDATE accepts any KNOWN kind.
 
 require lib/prelude.f
 require maki/cad-kinds.f
 require maki/artifact.f          \ reopen package ARTIFACT + its blessed id refinements
+require maki/schema.f            \ SCHEMA:REGISTER / ID>WIRE / WIRE>ID (schema-id owner)
+require maki/producer.f          \ PRODUCER:REGISTER / ID>WIRE / WIRE>ID (producer-id owner)
+require maki/config.f            \ CONFIG:REGISTER / ID>WIRE / WIRE>ID (config-id owner)
+require maki/numpolicy.f         \ NPOL:REGISTER / ID>WIRE / WIRE>ID (numeric-policy-id owner)
+require maki/target/target.f     \ TARGET:REGISTER / ID>WIRE / WIRE>ID (target-id owner)
 
 -5274 constant E-ART-ENV-DEP     \ dependency-set builder over the per-envelope cap
 -5275 constant E-ART-ENV-BUF     \ ENCODE output buffer smaller than the canonical bytes
@@ -108,22 +132,39 @@ private
 0 constant KIND-WEIGHT               \ wire kind discriminant for weight-artifact
 1 constant KIND-KERNEL               \ wire kind discriminant for kernel-artifact
 
-\ Canonical ascending field tags. 1..5 are the digest-covered semantic fields; 6
-\ and 7 are excluded from the digest; unknown tags (>= 8) are optional-or-required
-\ extension fields.
-1 constant TAG-VER
-2 constant TAG-KIND
-3 constant TAG-PVER
-4 constant TAG-ID
-5 constant TAG-DEPS
-6 constant TAG-DIGEST                 \ stored content digest (excluded from digest)
-7 constant TAG-EVENT                  \ created-event scalar (excluded from digest)
-7 constant TAG-KNOWN-MAX
+\ Canonical ascending field tags. 1..10 are the digest-covered semantic fields
+\ (1..5 first-slice scalars/set + artifact-id; 6..10 the foreign-id families whose
+\ owners now publish an ID>WIRE/WIRE>ID pair); 11 and 12 are excluded from the
+\ digest; unknown tags (> TAG-KNOWN-MAX) are optional-or-required extension fields.
+\ The digest and event fields keep the HIGHEST tags because EMIT-SEMANTIC emits every
+\ digest-covered field as the ascending wire prefix and the stored digest+event
+\ follow it; a semantic field with a tag above them would break ascending order.
+1  constant TAG-VER
+2  constant TAG-KIND
+3  constant TAG-PVER
+4  constant TAG-ID
+5  constant TAG-DEPS
+6  constant TAG-SCHEMA                 \ CAD-KIND:schema-id         (SCHEMA:ID>WIRE/WIRE>ID)
+7  constant TAG-PRODUCER               \ CAD-KIND:producer-id       (PRODUCER:ID>WIRE/WIRE>ID)
+8  constant TAG-CONFIG                 \ CAD-KIND:config-id         (CONFIG:ID>WIRE/WIRE>ID)
+9  constant TAG-NPOL                   \ CAD-KIND:numeric-policy-id (NPOL:ID>WIRE/WIRE>ID)
+10 constant TAG-TARGET                 \ CAD-KIND:target-id         (TARGET:ID>WIRE/WIRE>ID)
+11 constant TAG-DIGEST                 \ stored content digest (excluded from digest)
+12 constant TAG-EVENT                  \ created-event scalar (excluded from digest)
+12 constant TAG-KNOWN-MAX
+\ Tag reserved for the one out-of-scope digest-covered identity so a future landing
+\ keeps ascending order without renumbering: capabilities-used[] (CAD-KIND:capability-id,
+\ closed vocabulary, owner CAP - a user-gated product decision). audit-event-id is the
+\ digest-EXCLUDED append-only journal link; TAG-EVENT already carries the created-event
+\ scalar and the JOURNAL-minted nominal awaits the object-store/txn dot. Documented,
+\ not yet wired here.
+13 constant TAG-CAP-RESERVED          \ capabilities-used[] (reserved; not decoded here)
 1 constant FLAG-REQUIRED              \ flags bit 0: an unknown field flagged required rejects
 8 constant U64W                       \ fixed little-endian scalar width
 4 constant U32W                       \ fixed little-endian length width
 2 constant HDR-W                      \ tag byte + flags byte
 32 constant DIGEST-BYTES              \ 256-bit content digest
+32 constant FID-WIRE-CAP              \ scratch cap for one foreign-id wire form (owner width <= this)
 
 \ taxonomy codes accumulated during decode, mapped to art-result at the boundary
 1 constant D-MALFORMED
@@ -153,6 +194,18 @@ create P-ROFF  ENV-CAP cells allot             \ retained opaque byte offset
 create P-RLEN  ENV-CAP cells allot             \ retained opaque byte length
 variable P-NEXT                                \ ring cursor
 
+\ ---- foreign-id columns (checker-native typed storage) ------------------------
+\ Each holds the already-valid nominal id whole; ARTIFACT never sees its raw. Typed
+\ per-slot buffers (the maki/target/target.f TYPED-VARIABLE/LAYOUT-BUFFER precedent)
+\ so the checker keeps the family: a producer-id can never land in a schema column.
+ENV-CAP TYPED-BUFFER SCHEMA-COL   CAD-KIND:schema-id
+ENV-CAP TYPED-BUFFER PRODUCER-COL CAD-KIND:producer-id
+ENV-CAP TYPED-BUFFER CONFIG-COL   CAD-KIND:config-id
+ENV-CAP TYPED-BUFFER NPOL-COL     CAD-KIND:numeric-policy-id
+ENV-CAP TYPED-BUFFER TARGET-COL   CAD-KIND:target-id
+
+create IDWBUF FID-WIRE-CAP allot               \ scratch for one foreign-id wire form
+
 create ROPAQUE ROPAQUE-CAP allot
 variable ROPAQUE-U
 
@@ -172,7 +225,7 @@ variable DLEN
 variable DPOS
 variable DPREV                                 \ last tag seen (ascending check)
 variable DERR                                  \ 0 = ok, else taxonomy code
-variable SEEN                                  \ seen-required bitset over tags 1..7
+variable SEEN                                  \ seen-required bitset over tags 1..TAG-KNOWN-MAX
 variable SAW-DIGEST
 variable DEC-PREVDEP                           \ previous dep raw (ascending check)
 
@@ -196,6 +249,19 @@ variable DEC-PREVDEP                           \ previous dep raw (ascending che
 
 : DEP@ ( n n -- n ) {: s:n k:n :}      s DEP-CAP * k + cells P-DEP + @ ;
 : DEP! ( n n n -- ) {: v:n s:n k:n :}   v  s DEP-CAP * k + cells P-DEP + ! ;
+
+\ Foreign-id per-slot access: fetch/store the WHOLE nominal id through the typed
+\ column, so the family is checker-preserved and no raw ever surfaces in ARTIFACT.
+: SCHEMA-ID@ ( n -- CAD-KIND:schema-id )           SCHEMA-COL @ ;
+: SCHEMA-ID! ( CAD-KIND:schema-id n -- )           SCHEMA-COL ! ;
+: PRODUCER-ID@ ( n -- CAD-KIND:producer-id )       PRODUCER-COL @ ;
+: PRODUCER-ID! ( CAD-KIND:producer-id n -- )       PRODUCER-COL ! ;
+: CONFIG-ID@ ( n -- CAD-KIND:config-id )           CONFIG-COL @ ;
+: CONFIG-ID! ( CAD-KIND:config-id n -- )           CONFIG-COL ! ;
+: NPOL-ID@ ( n -- CAD-KIND:numeric-policy-id )     NPOL-COL @ ;
+: NPOL-ID! ( CAD-KIND:numeric-policy-id n -- )     NPOL-COL ! ;
+: TARGET-ID@ ( n -- CAD-KIND:target-id )           TARGET-COL @ ;
+: TARGET-ID! ( CAD-KIND:target-id n -- )           TARGET-COL ! ;
 
 : SLOT-ALLOC ( -- n )                          \ ring reuse; first-slice pool
    P-NEXT @  dup 1+ ENV-CAP mod P-NEXT ! ;
@@ -265,17 +331,50 @@ variable DEC-PREVDEP                           \ previous dep raw (ascending che
       1+
    repeat drop ;
 
-\ Emit ONLY the digest-covered semantic fields (tags 1..5) into EBUF from a slot.
+\ A length-delimited opaque-bytes field: tag, required flag, len, then the bytes.
+\ Used for foreign-id fields whose payload is the owner ID>WIRE canonical form; the
+\ length is the owner-returned width, never a hardcoded ARTIFACT constant.
+: E-WIRE-FIELD ( n ptr u8 n -- ) {: tag:n a:ptr u:n :}
+   tag FLAG-REQUIRED E-HEAD
+   u U32W E-LE
+   a u E-BYTES ;
+
+\ Foreign-id field emitters: serialize the stored nominal id ACROSS the owner
+\ package boundary with X:ID>WIRE (total for a valid id), then frame it. No raw
+\ cast, no refinement in ARTIFACT.
+: E-SCHEMA-FIELD ( n -- ) {: s:n :}
+   s SCHEMA-ID@ IDWBUF FID-WIRE-CAP SCHEMA:ID>WIRE {: w:n :}
+   TAG-SCHEMA IDWBUF w E-WIRE-FIELD ;
+: E-PRODUCER-FIELD ( n -- ) {: s:n :}
+   s PRODUCER-ID@ IDWBUF FID-WIRE-CAP PRODUCER:ID>WIRE {: w:n :}
+   TAG-PRODUCER IDWBUF w E-WIRE-FIELD ;
+: E-CONFIG-FIELD ( n -- ) {: s:n :}
+   s CONFIG-ID@ IDWBUF FID-WIRE-CAP CONFIG:ID>WIRE {: w:n :}
+   TAG-CONFIG IDWBUF w E-WIRE-FIELD ;
+: E-NPOL-FIELD ( n -- ) {: s:n :}
+   s NPOL-ID@ IDWBUF FID-WIRE-CAP NPOL:ID>WIRE {: w:n :}
+   TAG-NPOL IDWBUF w E-WIRE-FIELD ;
+: E-TARGET-FIELD ( n -- ) {: s:n :}
+   s TARGET-ID@ IDWBUF FID-WIRE-CAP TARGET:ID>WIRE {: w:n :}
+   TAG-TARGET IDWBUF w E-WIRE-FIELD ;
+
+\ Emit the digest-covered semantic fields (tags 1..10) into EBUF from a slot, in
+\ ascending tag order: first-slice scalars/deps then the five foreign ids.
 : EMIT-SEMANTIC ( n -- ) {: s:n :}
    E-RESET
    TAG-VER  s VER@  E-U64-FIELD
    TAG-KIND s KIND@ E-U64-FIELD
    TAG-PVER s PVER@ E-U64-FIELD
    TAG-ID   s ID@   E-U64-FIELD
-   s E-DEPS-FIELD ;
+   s E-DEPS-FIELD
+   s E-SCHEMA-FIELD
+   s E-PRODUCER-FIELD
+   s E-CONFIG-FIELD
+   s E-NPOL-FIELD
+   s E-TARGET-FIELD ;
 
 \ ---- SHA-256 content digest over the semantic prefix --------------------------
-: HASH-SEMANTIC ( n -- )                       \ slot -> EBUF holds fields 1..5, DGBUF = 32 digest bytes
+: HASH-SEMANTIC ( n -- )                       \ slot -> EBUF holds fields 1..10, DGBUF = 32 digest bytes
    EMIT-SEMANTIC
    EBUF EO @ DGBUF SHA256 ;
 
@@ -289,12 +388,12 @@ variable DEC-PREVDEP                           \ previous dep raw (ascending che
 
 \ ---- full canonical envelope into EBUF ----------------------------------------
 : EMIT-ENVELOPE ( n -- ) {: s:n :}
-   s HASH-SEMANTIC                             \ EBUF = tags 1..5, DGBUF = their digest
+   s HASH-SEMANTIC                             \ EBUF = tags 1..10, DGBUF = their digest
    TAG-DIGEST FLAG-REQUIRED E-HEAD
    DIGEST-BYTES U32W E-LE
    DGBUF DIGEST-BYTES E-BYTES
    TAG-EVENT s EVENT@ E-U64-FIELD              \ excluded scalar
-   s RLEN@ 0 > if                              \ retained opaque optionals (tags > 7)
+   s RLEN@ 0 > if                              \ retained opaque optionals (tags > TAG-KNOWN-MAX)
       ROPAQUE s ROFF@ +  s RLEN@  E-BYTES
    then ;
 
@@ -342,8 +441,64 @@ variable DEC-PREVDEP                           \ previous dep raw (ascending che
    DPOS @ DIGEST-BYTES + DPOS !
    true SAW-DIGEST ! ;
 
-\ capture an unknown OPTIONAL field verbatim (tag>=8, always after tags 1..7) into
-\ the retained arena so a forward-compatible ENCODE re-emits it byte-for-byte.
+\ ---- foreign-id field bodies -------------------------------------------------
+\ The payload is exactly `declen` bytes at the cursor; we hand them to the owner's
+\ fail-closed X:WIRE>ID and fold its reject arms into the envelope taxonomy per the
+\ § 23.9 contract: wrong-width (declared length is not the id's canonical width) ->
+\ malformed (truncated/over-long id bytes); unknown (raw does not resolve in the
+\ owner registry/vocabulary) -> bounds (out-of-range/unresolved id). On ok we hold
+\ the refined nominal id whole in the slot's typed column and advance the cursor.
+: FID-PTR ( -- ptr u8 )    DBASE 0 ptr-field @ DPOS @ + ;
+: FID-ADVANCE ( n -- )     DPOS @ + DPOS ! ;
+
+: TAKE-SCHEMA ( n n -- ) {: s:n declen:n :}
+   REMAIN declen < if D-MALFORMED FAIL exit then
+   FID-PTR declen SCHEMA:WIRE>ID
+   MATCH SCHEMA:id-result
+      ok          OF s SCHEMA-ID!  declen FID-ADVANCE ENDOF
+      wrong-width OF D-MALFORMED FAIL ENDOF
+      unknown     OF D-BOUNDS FAIL ENDOF
+   ;MATCH ;
+
+: TAKE-PRODUCER ( n n -- ) {: s:n declen:n :}
+   REMAIN declen < if D-MALFORMED FAIL exit then
+   FID-PTR declen PRODUCER:WIRE>ID
+   MATCH PRODUCER:id-result
+      ok          OF s PRODUCER-ID!  declen FID-ADVANCE ENDOF
+      wrong-width OF D-MALFORMED FAIL ENDOF
+      unknown     OF D-BOUNDS FAIL ENDOF
+   ;MATCH ;
+
+: TAKE-CONFIG ( n n -- ) {: s:n declen:n :}
+   REMAIN declen < if D-MALFORMED FAIL exit then
+   FID-PTR declen CONFIG:WIRE>ID
+   MATCH CONFIG:id-result
+      ok          OF s CONFIG-ID!  declen FID-ADVANCE ENDOF
+      wrong-width OF D-MALFORMED FAIL ENDOF
+      unknown     OF D-BOUNDS FAIL ENDOF
+   ;MATCH ;
+
+: TAKE-NPOL ( n n -- ) {: s:n declen:n :}
+   REMAIN declen < if D-MALFORMED FAIL exit then
+   FID-PTR declen NPOL:WIRE>ID
+   MATCH NPOL:id-result
+      ok          OF s NPOL-ID!  declen FID-ADVANCE ENDOF
+      wrong-width OF D-MALFORMED FAIL ENDOF
+      unknown     OF D-BOUNDS FAIL ENDOF
+   ;MATCH ;
+
+: TAKE-TARGET ( n n -- ) {: s:n declen:n :}
+   REMAIN declen < if D-MALFORMED FAIL exit then
+   FID-PTR declen TARGET:WIRE>ID
+   MATCH TARGET:id-result
+      ok          OF s TARGET-ID!  declen FID-ADVANCE ENDOF
+      wrong-width OF D-MALFORMED FAIL ENDOF
+      unknown     OF D-BOUNDS FAIL ENDOF
+   ;MATCH ;
+
+\ capture an unknown OPTIONAL field verbatim (tag > TAG-KNOWN-MAX, always after the
+\ known tags) into the retained arena so a forward-compatible ENCODE re-emits it
+\ byte-for-byte.
 : RETAIN-FIELD ( n n n n -- ) {: s:n tag:n flags:n declen:n :}
    REMAIN declen < if D-MALFORMED FAIL exit then
    HDR-W U32W + declen +  {: whole:n :}         \ tag+flags+len+payload bytes
@@ -364,13 +519,18 @@ variable DEC-PREVDEP                           \ previous dep raw (ascending che
 : KNOWN-BODY ( n n n -- ) {: s:n tag:n declen:n :}
    tag SEEN? if D-DUP FAIL exit then
    tag SEEN-TAG
-   tag TAG-VER    = if declen TAKE-U64 s VER!   exit then
-   tag TAG-KIND   = if declen TAKE-U64 s KIND!  exit then
-   tag TAG-PVER   = if declen TAKE-U64 s PVER!  exit then
-   tag TAG-ID     = if declen TAKE-U64 s ID!    exit then
-   tag TAG-DEPS   = if s declen TAKE-DEPS       exit then
-   tag TAG-DIGEST = if declen TAKE-DIGEST       exit then
-   tag TAG-EVENT  = if declen TAKE-U64 s EVENT! exit then ;
+   tag TAG-VER      = if declen TAKE-U64 s VER!   exit then
+   tag TAG-KIND     = if declen TAKE-U64 s KIND!  exit then
+   tag TAG-PVER     = if declen TAKE-U64 s PVER!  exit then
+   tag TAG-ID       = if declen TAKE-U64 s ID!    exit then
+   tag TAG-DEPS     = if s declen TAKE-DEPS       exit then
+   tag TAG-SCHEMA   = if s declen TAKE-SCHEMA     exit then
+   tag TAG-PRODUCER = if s declen TAKE-PRODUCER   exit then
+   tag TAG-CONFIG   = if s declen TAKE-CONFIG     exit then
+   tag TAG-NPOL     = if s declen TAKE-NPOL       exit then
+   tag TAG-TARGET   = if s declen TAKE-TARGET     exit then
+   tag TAG-DIGEST   = if declen TAKE-DIGEST       exit then
+   tag TAG-EVENT    = if declen TAKE-U64 s EVENT! exit then ;
 
 : FIELD-STEP ( n -- ) {: s:n :}
    D-U8 {: tag:n :}   FAILED? if exit then
@@ -391,7 +551,10 @@ variable DEC-PREVDEP                           \ previous dep raw (ascending che
 
 : REQUIRED-COMPLETE? ( -- bool )
    TAG-VER SEEN? TAG-KIND SEEN? and TAG-PVER SEEN? and
-   TAG-ID SEEN? and TAG-DEPS SEEN? and TAG-EVENT SEEN? and
+   TAG-ID SEEN? and TAG-DEPS SEEN? and
+   TAG-SCHEMA SEEN? and TAG-PRODUCER SEEN? and TAG-CONFIG SEEN? and
+   TAG-NPOL SEEN? and TAG-TARGET SEEN? and
+   TAG-EVENT SEEN? and
    SAW-DIGEST @ 0<> and ;
 
 : DEC-SETUP ( ptr u8 n -- ) {: a:ptr u:n :}
@@ -404,13 +567,27 @@ variable DEC-PREVDEP                           \ previous dep raw (ascending che
       s FIELD-STEP
    repeat ;
 
-: DEC-VALIDATE ( n n -- ) {: s:n expkind:n :}
-   FAILED? if exit then
-   REQUIRED-COMPLETE? 0= if D-MALFORMED FAIL exit then
-   s KIND@ expkind <> if D-KIND FAIL exit then
+: KNOWN-KIND? ( n -- bool )   dup KIND-WEIGHT = swap KIND-KERNEL = or ;
+
+\ Structural core shared by DECODE (kind-pinned) and VALIDATE (kind-agnostic): once
+\ the kind is settled, verify version (migration) then the recomputed digest against
+\ the stored one. Order is preserved from the first slice - migration before digest.
+: DEC-POST ( n -- ) {: s:n :}
    s VER@ SCHEMA-VERSION <> if D-MIGRATION FAIL exit then
    s HASH-SEMANTIC
    DGBUF STOREDG DIG-BYTES-EQ? 0= if D-DIGEST FAIL exit then ;
+
+: DEC-VALIDATE ( n n -- ) {: s:n expkind:n :}   \ DECODE: pin the exact reader kind
+   FAILED? if exit then
+   REQUIRED-COMPLETE? 0= if D-MALFORMED FAIL exit then
+   s KIND@ expkind <> if D-KIND FAIL exit then
+   s DEC-POST ;
+
+: DEC-VALIDATE-ANY ( n -- ) {: s:n :}           \ VALIDATE: accept any KNOWN kind
+   FAILED? if exit then
+   REQUIRED-COMPLETE? 0= if D-MALFORMED FAIL exit then
+   s KIND@ KNOWN-KIND? 0= if D-KIND FAIL exit then
+   s DEC-POST ;
 
 : DEC-RESULT ( n -- art-result<n> ) {: s:n :}
    DERR @ 0= if s R-OK exit then
@@ -487,12 +664,21 @@ variable DEDUP-W
    repeat drop ;
 
 \ ---- BUILD: populate a fresh slot from typed field values ----------------------
-: BUILD-SLOT ( n n CAD-KIND:artifact-id n n -- n )
-   {: ver:n pver:n identity:CAD-KIND:artifact-id event:n disc:n :}
+\ The foreign ids are already-valid nominals from their owner constructors; BUILD
+\ holds each whole in its typed column (no raw, no refinement here). The pending
+\ DEPS-* set becomes the canonical dependency column. `disc` is the wire kind
+\ discriminant supplied by the per-kind public builder.
+: BUILD-SLOT ( n n CAD-KIND:artifact-id CAD-KIND:schema-id CAD-KIND:producer-id CAD-KIND:config-id CAD-KIND:numeric-policy-id CAD-KIND:target-id n n -- n )
+   {: ver:n pver:n identity:CAD-KIND:artifact-id
+      schema:CAD-KIND:schema-id producer:CAD-KIND:producer-id
+      config:CAD-KIND:config-id npol:CAD-KIND:numeric-policy-id
+      target:CAD-KIND:target-id event:n disc:n :}
    DEPS-CANON
    SLOT-ALLOC {: s:n :}
    ver s VER!  disc s KIND!  pver s PVER!
    identity ARTIFACT-ID>RAW s ID!
+   schema s SCHEMA-ID!  producer s PRODUCER-ID!  config s CONFIG-ID!
+   npol s NPOL-ID!  target s TARGET-ID!
    event s EVENT!
    s STORE-DEPS
    0 s ROFF!  0 s RLEN!
@@ -508,7 +694,10 @@ variable DEDUP-W
 public
 
 \ ---- weight-kind envelope API -------------------------------------------------
-: BUILD-WEIGHT ( n n CAD-KIND:artifact-id n -- weight-artifact )
+\ ( schema-version producer-version artifact-id schema-id producer-id config-id
+\   numeric-policy-id target-id created-event -- weight-artifact ); the pending
+\ DEPS-RESET/DEP+ set supplies the dependency column.
+: BUILD-WEIGHT ( n n CAD-KIND:artifact-id CAD-KIND:schema-id CAD-KIND:producer-id CAD-KIND:config-id CAD-KIND:numeric-policy-id CAD-KIND:target-id n -- weight-artifact )
    KIND-WEIGHT BUILD-SLOT >WART ;
 
 : DIGEST-WEIGHT ( weight-artifact -- content-digest )
@@ -524,7 +713,8 @@ public
 : WEIGHT-OF ( n -- weight-artifact )   >WART ;
 
 \ ---- kernel-kind envelope API -------------------------------------------------
-: BUILD-KERNEL ( n n CAD-KIND:artifact-id n -- kernel-artifact )
+\ Same field order as BUILD-WEIGHT.
+: BUILD-KERNEL ( n n CAD-KIND:artifact-id CAD-KIND:schema-id CAD-KIND:producer-id CAD-KIND:config-id CAD-KIND:numeric-policy-id CAD-KIND:target-id n -- kernel-artifact )
    KIND-KERNEL BUILD-SLOT >KART ;
 
 : DIGEST-KERNEL ( kernel-artifact -- content-digest )
@@ -544,6 +734,22 @@ public
    ARTIFACT-CONTENT--DIGEST:UNMAKE {: y0:n y1:n y2:n y3:n :}   \ unpack the top digest
    ARTIFACT-CONTENT--DIGEST:UNMAKE {: x0:n x1:n x2:n x3:n :}   \ unpack the lower digest
    x0 y0 = x1 y1 = and x2 y2 = and x3 y3 = and ;
+
+\ ---- envelope VALIDATE (§ 23.9 ARTIFACT:VALIDATE) -----------------------------
+\ Full structural validation + digest verification over owned bytes WITHOUT pinning
+\ or refining a per-kind handle: it accepts any KNOWN kind (weight or kernel) and
+\ folds the recomputed-vs-stored digest check in, returning the same art-result
+\ taxonomy as DECODE. The ok arm carries the validated pool slot (a single cell, per
+\ the multi-cell realization rule that forbids the four-word content-digest as a sum
+\ payload); the recomputed digest equals the stored digest on ok and is recoverable
+\ by decoding to a kind handle and calling DIGEST-WEIGHT / DIGEST-KERNEL. No raw id
+\ or trust boundary is exposed.
+: VALIDATE ( ptr u8 n -- art-result<n> ) {: a:ptr u:n :}
+   a u DEC-SETUP
+   SLOT-ALLOC {: s:n :}
+   s DEC-SLOT-FILL
+   s DEC-VALIDATE-ANY
+   s DEC-RESULT ;
 
 private
 

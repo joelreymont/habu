@@ -31,6 +31,26 @@ Last updated: 2026-07-17
   / `:UNMAKE` (package sep is one hyphen, each family hyphen becomes `--`); a nullary variant ctor is
   `PKG-FAMILY:VARIANT` (e.g. `ARTIFACT-ART--RESULT:MALFORMED`) while `MATCH` arms and payload
   destructuring use the BARE variant name. Wrap the long spellings in short private words once.
+- **A codec test that needs a SECOND id of a capacity-bounded shared registry can't mint one
+  in the integration suite — prove digest coverage on the DECODE side instead.** (dot
+  habu-v2-canonical-artifact-ee5121b4 slice 2, the foreign-id envelope fields.) The digest-flip
+  test for `target-id` registered a fresh descriptor; that passed in the focused test (registry
+  had 2 entries) but threw `E-TARGET-CAP` (-5252) in `maki/test.f` because `TARGET`'s registry is
+  a 16-slot shared resource the suite already fills to `TARGET:COUNT = 16`. Interning by name is
+  cheap for the 256-slot SCHEMA/PRODUCER/CONFIG families and free for NPOL (dom→rank, no slot),
+  but TARGET is tight, and in the full suite you cannot even NAME a second target (only the
+  library-registered `sm87`, raw 0, is reachable). Fix: prove target-id is digest-covered by
+  swapping the ENCODED target raw for another already-valid raw (`(r0+1) mod TARGET:COUNT`) and
+  requiring `digest-mismatch` — no new slot; guard a one-target isolated run by registering one
+  alternative only when `TARGET:COUNT < 2`. Lesson: pick digest-coverage proofs that don't grow a
+  bounded shared registry, and run the FULL owning suite (not just the focused test) before sealing —
+  registry capacity is load-order/global state the focused test never exercises.
+- **A byte-pointer stack-effect must be spelled `ptr u8` (two tokens), not bare `ptr`.** (same
+  slice.) `: E-WIRE-FIELD ( n ptr n -- ) {: tag:n a:ptr u:n :}` rejects at `:}` with "expected
+  n ptr u8 n actual n ptr n": the `a:ptr` local reconstructs to a `ptr u8` in the effect, and a
+  producer `( -- ptr )` fails with "'ptr' needs an element type". Write `( n ptr u8 n -- )` and
+  `( -- ptr u8 )`. The `:ptr` local shorthand and the `ptr u8` effect spelling denote the same
+  one-cell byte pointer.
 - **M5 barrier-uniformity: VALUE uniformity was ALREADY expressed; only the CONTROL effect was
   missing.** (dot habu-ptx-m5-mask-eb0716f1, host checker lane.) Leg-1 empty experiment proved the
   M2 families already distinguish `uniform<T>` (block-uniform) from `tile<..>` (lane-varying): a tile

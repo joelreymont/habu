@@ -726,23 +726,37 @@ points stay listed.
   regressions, the private-mint unforgeability negative, and fail-closed empty-key /
   out-of-range-id boundaries.
 - `maki/db/artifact.f` — the canonical artifact envelope codec (MODEL-CAD-V2-PLAN.md
-  § 23.9): reopens `package ARTIFACT` to add checked `BUILD`/`ENCODE`/`DECODE`/`DIGEST`
-  over per-kind `weight-artifact`/`kernel-artifact` handles, the four-word
+  § 23.9): reopens `package ARTIFACT` to add checked `BUILD`/`ENCODE`/`DECODE`/`DIGEST`/
+  `VALIDATE` over per-kind `weight-artifact`/`kernel-artifact` handles, the four-word
   `content-digest`, and the `art-result<n>` failure taxonomy (malformed, noncanonical,
   bounds, duplicate, unknown-required, kind-mismatch, unsupported-migration,
   digest-mismatch). Fixed little-endian widths, ascending length-delimited tags,
   canonical ascending/duplicate-free dependency set, opaque retention of unknown
   optional fields, SHA-256 digest over the semantic prefix (excludes the digest and
-  the created-event). No new trust boundary: handle constructors are checker-native
-  and the only id on the wire (CAD-KIND:artifact-id) uses maki/artifact.f's existing
-  private refinements.
+  the created-event). The five digest-covered foreign identity fields — schema-id,
+  producer-id, config-id, numeric-policy-id, target-id — are serialized ACROSS the
+  owner package boundary via each owner's total `ID>WIRE` / fail-closed `WIRE>ID`
+  (SCHEMA/PRODUCER/CONFIG/NPOL/TARGET); a `WIRE>ID` reject folds into the taxonomy
+  (wrong-width→malformed, unknown→bounds). `VALIDATE` is the kind-AGNOSTIC leg (full
+  structural + digest check over owned bytes, any known kind, sharing DECODE's core).
+  No new trust boundary: handle constructors are checker-native, foreign ids are held
+  whole in typed columns (never raw-cast in ARTIFACT), and the only in-package id on
+  the wire (CAD-KIND:artifact-id) uses maki/artifact.f's existing private refinements.
+  Reserved-but-unwired: capability-id (owner CAP, user-gated) and the journal-minted
+  audit-event-id (owner JOURNAL); the process-local raw wire form still awaits the
+  cross-process content-key reconciliation (§ 23.9, out of scope).
 - `maki/db/artifact-test.f` — envelope acceptance: equal values encode
   byte-identically and hash identically, dependency insertion order is irrelevant,
   one semantic field changes the digest while the excluded created-event does not,
-  decode round-trips encode, unknown-required / digest-mismatch / malformed /
-  noncanonical / duplicate / bounds / kind-mismatch / unsupported-migration each
-  return the right typed diagnostic, and an unknown optional field is retained and
-  re-emitted verbatim.
+  decode round-trips encode (every field, foreign ids included), unknown-required /
+  digest-mismatch / malformed / noncanonical / duplicate / bounds / kind-mismatch /
+  unsupported-migration each return the right typed diagnostic, and an unknown optional
+  field is retained and re-emitted verbatim. Second slice: each foreign id flips the
+  digest (schema/producer/config/npol by a two-id ENCODE flip, target-id via the DECODE
+  digest-mismatch path since its 16-slot registry is shared/full in the suite), each
+  foreign field surfaces bounds (out-of-range) / malformed (wrong-width) on a bad
+  decode, and `VALIDATE` accepts the golden weight AND kernel envelopes (kind-agnostic)
+  while rejecting each corruption class.
 - `maki/numpolicy.f` — the typed numeric-policy proof-domain family (`NPOL:dom` =
   exact/ulp/relative/empirical, CAD-PLAN §22.6): the strength lattice
   (`RANK`/`SATISFIES?`/`COMPOSE` weakest-wins), the checked satisfaction gate
