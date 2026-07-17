@@ -1200,6 +1200,16 @@ variable SZA-I
    11 SP 0 ADDI,  11 14 24 STR,
    XDS 14 32 STR,  CP 14 40 STR,  NDICT 14 48 STR,
    11 DATA DP-CELL LDR,  11 14 56 STR,
+   \ snapshot the open-package scope for this eval frame (PKGSNAP[EVALD]); the LEVALREC
+   \ pop loop restores it, so an in-package define aborted inside evaluate rolls the
+   \ package scope back to this boundary instead of leaving it dangling open.
+   11 DATA EVALD-CELL LDR,                            \ x11 = EVALD (this frame's depth, pre-bump)
+   12 PKGSNAP-OFF LIT64,  11 11 PKGSNAP-SHIFT LSLI,  12 12 11 ADD,  12 DATA 12 ADD,   \ x12 = &PKGSNAP[EVALD]
+   11 DATA CUR-CELL LDR,        11 12 PKGSNAP-CUR STR,
+   11 DATA PKG-PUB-CELL LDR,    11 12 PKGSNAP-PUB STR,
+   11 DATA PKG-PRI-CELL LDR,    11 12 PKGSNAP-PRI STR,
+   11 DATA PKG-PARENT-CELL LDR, 11 12 PKGSNAP-PARENT STR,
+   11 DATA PKG-REC-CELL LDR,    11 12 PKGSNAP-REC STR,
    11 DATA EVALD-CELL LDR,  11 11 1 ADDI,  11 DATA EVALD-CELL STR,
    9 DATA INP-CELL STR,                              \ INP = a
    11 9 10 ADD,  11 DATA INE-CELL STR,               \ INE = a + u

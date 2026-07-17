@@ -134,6 +134,8 @@ variable LORPHAN   variable LORPHANMSG   \ orphan control-flow closer reject (em
 40 constant ORPHANMSG-LEN  \ byte length of "hb: control-flow closer without opener: " (LORPHANMSG)
 variable LCFCAP   variable LCFCAPMSG   \ control-flow stack overflow reject (LCFPUSH at CFSTK-DEPTH-MAX) + its message
 35 constant CFCAPMSG-LEN   \ byte length of "hb: control-flow nesting too deep: " (LCFCAPMSG)
+variable LCSTR   variable LCSTRMSG   \ counted-string >255 reject (C-ICQ/C-EICQ/C-CQ/C-ECQ) + its fd-2 message (dot habu-recovery-pkg-scope-e0bd98e2)
+37 constant CSTRMSG-LEN    \ byte length of "hb: counted string too long (max 255)" (LCSTRMSG); previously a bare silent 76 shared with C-SIG-BAD
 variable LCOMPILEDIE   \ shared recoverable compile-error tail (dot habu-raw-exit-compile): a die site that already wrote its diagnostic branches here with x0 = its sysexits exit code. Inside evaluate (EVALD>0) the aborted compile unwinds as a catchable throw of that SAME code via LEVALREC (RSP/CP/NDICT/XDS/DP + compile-state rollback, HIDX tolerates the stale records); at top level (EVALD==0) it exit_group(x0) byte-identically to the old raw exit.
 31 constant CONFMSG-LEN   \ byte length of "hb: construct: unknown family: " (EM-COMPILE-ADT-MODE)
 32 constant CONVMSG-LEN   \ byte length of "hb: construct: unknown variant: " (EM-COMPILE-ADT-MODE)
@@ -349,6 +351,7 @@ s" c-bp-watch-dump" s" label label --" TRUST
    LMINMSG LABEL@ LBL, s" hb: interpret stack underdepth: " BYTES,       \ MINMSG-LEN bytes; LMININ appends the token + newline
    LORPHANMSG LABEL@ LBL, s" hb: control-flow closer without opener: " BYTES,   \ ORPHANMSG-LEN bytes; LORPHAN appends the closer token + newline
    LCFCAPMSG LABEL@ LBL, s" hb: control-flow nesting too deep: " BYTES,          \ CFCAPMSG-LEN bytes; LCFCAP appends the opener token + newline
+   LCSTRMSG LABEL@ LBL, s" hb: counted string too long (max 255)" BYTES,        \ CSTRMSG-LEN bytes; LCSTR appends a newline (fixed label: names the constraint at a glance)
    LDICTFULL LABEL@ LBL, s" hb: dictionary full at: " BYTES,             \ CAPMSG-LEN bytes; capacity arms append the token + newline
    LCODEFULL LABEL@ LBL, s" hb: code space full at: " BYTES,             \ CAPMSG-LEN bytes
    LSNAPBAD LABEL@ LBL, s" hb: snapshot trailer corrupt" BYTES,  NL-KW 1 BYTES,               \ SNAPBAD-MSG-LEN bytes incl. newline
@@ -2719,7 +2722,7 @@ variable LTOPHOOK
    C-QUOTE-SCAN
    C-QUOTE-CONSUME
    LBL LBL LBL {: capok cl cd :}
-   10 255 CMPI,  C-LE capok BCOND,  0 76 MOVZ,  LCOMPILEDIE LABEL@ B,   \ c" over 255 bytes: recoverable inside evaluate (rc 76), fail-closed exit 76 at top level. Byte-identical (this cap has no fd-2 label today; the bare 76 is overloaded with C-SIG-BAD/long-name — attribution dotted separately). Fires before the DP copy -> clean rollback
+   10 255 CMPI,  C-LE capok BCOND,  LCSTR LABEL@ B,   \ c" over 255 bytes: named fd-2 label (LCSTR) then rc 76 via LCOMPILEDIE -- recoverable inside evaluate, fail-closed exit 76 at top level. Fires before the DP copy -> clean rollback
    capok LBL,
    12 DATA 0 LDR,  15 12 0 ADDI,                       \ x15 = counted string base
    14 12 10 ADD,  14 14 1 ADDI,  14 DP-CHECK
@@ -2754,7 +2757,7 @@ variable LTOPHOOK
    LBL {: capok:label :}
    C-QUOTE-START
    C-ESC-QUOTE-SCAN
-   10 255 CMPI,  C-LE capok BCOND,  0 76 MOVZ,  LCOMPILEDIE LABEL@ B,   \ c\" over 255 bytes: recoverable inside evaluate (rc 76), fail-closed exit 76 at top level. Fires before C-ESC-QUOTE-CONSUME (INP not consumed) -> clean rollback
+   10 255 CMPI,  C-LE capok BCOND,  LCSTR LABEL@ B,   \ c\" over 255 bytes: named fd-2 label (LCSTR) then rc 76 via LCOMPILEDIE -- recoverable inside evaluate, fail-closed exit 76 at top level. Fires before C-ESC-QUOTE-CONSUME (INP not consumed) -> clean rollback
    capok LBL,
    C-ESC-QUOTE-CONSUME
    11 16 0 ADDI,  12 16 15 ADD,
@@ -3076,7 +3079,7 @@ s" c-lbrace-die" s" --" TRUST
    C-QUOTE-START
    C-QUOTE-SCAN
    C-QUOTE-LEN
-   10 255 CMPI,  C-LE capok BCOND,  0 76 MOVZ,  LCOMPILEDIE LABEL@ B,   \ c" over 255 bytes (compile mode): recoverable inside evaluate (rc 76), fail-closed exit 76 at top level. Fires before C-QUOTE-CONSUME-DONE (INP not consumed, nothing emitted) -> clean rollback
+   10 255 CMPI,  C-LE capok BCOND,  LCSTR LABEL@ B,   \ c" over 255 bytes (compile mode): named fd-2 label (LCSTR) then rc 76 via LCOMPILEDIE -- recoverable inside evaluate, fail-closed exit 76 at top level. Fires before C-QUOTE-CONSUME-DONE (INP not consumed, nothing emitted) -> clean rollback
    capok LBL,
    C-QUOTE-CONSUME-DONE
    C-QUOTE-SAVE
@@ -3127,7 +3130,7 @@ s" c-lbrace-die" s" --" TRUST
    LBL {: capok:label :}
    C-QUOTE-START
    C-ESC-QUOTE-SCAN
-   10 255 CMPI,  C-LE capok BCOND,  0 76 MOVZ,  LCOMPILEDIE LABEL@ B,   \ c\" over 255 bytes (compile mode): recoverable inside evaluate (rc 76), fail-closed exit 76 at top level. Fires before C-ESC-QUOTE-CONSUME (INP not consumed) -> clean rollback
+   10 255 CMPI,  C-LE capok BCOND,  LCSTR LABEL@ B,   \ c\" over 255 bytes (compile mode): named fd-2 label (LCSTR) then rc 76 via LCOMPILEDIE -- recoverable inside evaluate, fail-closed exit 76 at top level. Fires before C-ESC-QUOTE-CONSUME (INP not consumed) -> clean rollback
    capok LBL,
    C-ESC-QUOTE-CONSUME
    C-ESC-QUOTE-SAVE
@@ -4145,6 +4148,7 @@ TRUSTED: EM-DATA-VA>N ( -- n ) DATA-VA ;
    9 DATA AOT-SEED-DONE-CELL STR,
    9 DATA AOT-SEED-ARM-CELL STR,
    9 DATA PKG-PUB-CELL STR,  9 DATA PKG-PRI-CELL STR,  9 DATA PKG-PARENT-CELL STR,  9 DATA PKG-REC-CELL STR,  9 DATA LOOPSP-CELL STR,
+   9 DATA PKGRESYNC-CELL STR,                            \ checker resync latch clear at boot (dot habu-recovery-pkg-scope)
    9 DATA P2-CELL STR,  9 DATA P2BODY0-CELL STR,
    9 DATA P2INP-CELL STR,  9 DATA P2INE-CELL STR,  9 DATA P2DP-CELL STR,
    9 DATA P2W0-CELL STR,  9 DATA P2W1-CELL STR,  9 DATA P2W2-CELL STR,  9 DATA P2W3-CELL STR,
@@ -4183,9 +4187,30 @@ TRUSTED: EM-DATA-VA>N ( -- n ) DATA-VA ;
    EM-SNAPSHOT-RESTORE
    EM-STARTUP-RUNTIME-STATE ;
 
+\ Checker package-scope resync drain (dot habu-recovery-pkg-scope-e0bd98e2). A
+\ compile-error recovery rolls the ENGINE package scope back to the boundary
+\ (PKGSNAP / RPKG); the checker keeps its OWN package scope (CHECKER-PACKAGE-MODE/
+\ NAME/U). Rolling back one without the other would introduce an engine/checker
+\ desync (today both dangle together). The recovery legs arm PKGRESYNC-CELL; this
+\ runs once at the LMAIN loop top and, when the restored engine scope is GLOBAL
+\ (PKG-PUB==0), resets the checker to NONE via the existing global checker-end-package
+\ so the pair stays consistent. (Exotic residual, dotted: a package legitimately open
+\ ACROSS the boundary whose failing input also changed package scope leaves the
+\ checker at the inner scope; the engine still restores the boundary correctly.)
+\ Hot path is one LDR + CBZ per token when the flag is clear.
+: EM-PKG-RESYNC ( -- )
+   LBL {: nosync:label :}
+   9 DATA PKGRESYNC-CELL LDR,  9 nosync CBZ,
+      9 0 MOVZ,  9 DATA PKGRESYNC-CELL STR,
+      9 DATA PKG-PUB-CELL LDR,  9 nosync CBNZ,        \ engine scope non-global -> leave the checker as is
+         LCHKENDPKG 19 nosync C-FIND-CHECKER          \ x11 = checker-end-package XT (nosync if absent: cold load / no checker)
+         C-CALL-X11-SAVED
+   nosync LBL, ;
+
 : EM-COMMENT ( -- )
    LBL LBL LBL {: notcom skln skpar :}
    LMAIN LABEL@ LBL,
+      EM-PKG-RESYNC
       \ depth-floor guard: the just-interpreted top-level word must never leave
       \ the data stack below its base (S0). XDS < S0 is a proven underflow — name
       \ the offending word and fail closed instead of running on garbage / a signal.
@@ -5739,6 +5764,17 @@ s" em-reset-compile-state" s" --" TRUST
       12 13 8 LDR,   12 DATA INE-CELL STR,
       CP 13 40 LDR,  NDICT 13 48 LDR,  XDS 13 32 LDR,
       12 13 56 LDR,  12 DATA DP-CELL STR,
+      \ roll the open-package scope back to this frame's boundary (PKGSNAP[EVALD-1]),
+      \ parallel to CP/NDICT/DP above: an in-package define aborted inside evaluate must
+      \ not leave the package dangling. x11(handler)/x13(&frame)/x15(code) preserved; x9/x10 scratch.
+      9 DATA EVALD-CELL LDR,  9 9 1 SUBI,                    \ x9 = EVALD-1 (pre-decrement index)
+      10 PKGSNAP-OFF LIT64,  9 9 PKGSNAP-SHIFT LSLI,  10 10 9 ADD,  10 DATA 10 ADD,   \ x10 = &PKGSNAP[EVALD-1]
+      9 10 PKGSNAP-CUR LDR,     9 DATA CUR-CELL STR,
+      9 10 PKGSNAP-PUB LDR,     9 DATA PKG-PUB-CELL STR,
+      9 10 PKGSNAP-PRI LDR,     9 DATA PKG-PRI-CELL STR,
+      9 10 PKGSNAP-PARENT LDR,  9 DATA PKG-PARENT-CELL STR,
+      9 10 PKGSNAP-REC LDR,     9 DATA PKG-REC-CELL STR,
+      9 1 MOVZ,  9 DATA PKGRESYNC-CELL STR,                  \ arm the checker resync (drained at next LMAIN)
       15 DATA EVALERR-CELL STR,                       \ EVALERR = code
       12 DATA EVALD-CELL LDR,  12 12 1 SUBI,  12 DATA EVALD-CELL STR,
       EM-RESET-COMPILE-STATE                          \ clobbers x9 only; x11,x15 preserved
@@ -5814,6 +5850,14 @@ s" em-eval-throw-recover" s" --" TRUST
    9 DATA RSAVDP-CELL LDR,  9 DATA DP-CELL STR,
    9 DATA S0-CELL LDR,  XDS 9 0 ADDI,
    EM-RESET-COMPILE-STATE
+   \ roll the open-package scope back to this REPL line's boundary (RPKG snapshot),
+   \ alongside the RSAVCP/RSAVND/RSAVDP/RSAVSP rollback above, and arm the checker resync.
+   9 DATA RPKG-CUR LDR,      9 DATA CUR-CELL STR,
+   9 DATA RPKG-PUB LDR,      9 DATA PKG-PUB-CELL STR,
+   9 DATA RPKG-PRI LDR,      9 DATA PKG-PRI-CELL STR,
+   9 DATA RPKG-PARENT LDR,   9 DATA PKG-PARENT-CELL STR,
+   9 DATA RPKG-REC LDR,      9 DATA PKG-REC-CELL STR,
+   9 1 MOVZ,  9 DATA PKGRESYNC-CELL STR,
    9 DATA RSAVSP-CELL LDR,  SP 9 0 ADDI,
    LREAD LABEL@ B, ;
 s" em-repl-recover" s" --" TRUST
@@ -5849,6 +5893,14 @@ s" em-repl-recover" s" --" TRUST
       10 DATA EVALREC-CELL LDR,  10 BR,                     \ -> LEVALREC (frame unwind + deliver)
    LUN0 LABEL@ LBL,
    9 DATA REPLH-CELL LDR,  9 LRDIE LABEL@ CBZ,
+   \ Restore RX before re-entering the REPL read/handler code (dot habu-recovery-pkg-scope-e0bd98e2):
+   \ an undefined word (LUNDEF), orphan closer (LORPHAN), or cf-cap (LCFCAP) that aborts a `:`-body
+   \ at the tty REPL leaves the JIT code region RW; EM-REPL-RECOVER -> LREAD -> RD-LINE then executes
+   \ compiled code in a writable region -> W^X SIGBUS. This is the same RX restore the EVALD>0 leg
+   \ above and LCOMPILEDIE's ldie leg already do; idempotent for the interpret-level diagnostics
+   \ (LWIDE/LINTERNAL/LMININ) that share this LUN0 tail with the region already RX. Pre-existing
+   \ crash surfaced by the REPL package-scope fixture (in-package `: FOO NOPEWORD ;` at the tty).
+   2 5 MOVZ,  LPROT LABEL@ BL,
    EM-REPL-RECOVER
    LRDIE LABEL@ LBL,
    0 70 MOVZ,  NR-EXIT-GROUP SYS,
@@ -5907,7 +5959,18 @@ s" em-compile-undef" s" --" TRUST
       2 5 MOVZ,  LPROT LABEL@ BL,                           \ region -> RX (idempotent) before re-entering REPL read/handler code: a compile die mid-:-body leaves the region RW
       LRREC LABEL@ B,                                       \ -> EM-REPL-RECOVER: roll back to the REPL line-start snapshot (same CP/NDICT/DP/XDS/compile-state surface + HIDX stale-skip as the eval-frame recovery) and re-read
    rdie LBL,
-   NR-EXIT-GROUP SYS, ;                                     \ x0 still = code (REPLH==0): fail-closed exit unchanged
+   NR-EXIT-GROUP SYS,                                       \ x0 still = code (REPLH==0): fail-closed exit unchanged
+   \ Counted-string-too-long diagnostic (dot habu-recovery-pkg-scope-e0bd98e2). The
+   \ four c"/c\" cap sites (C-ICQ/C-EICQ/C-CQ/C-ECQ) used a bare `0 76 MOVZ,
+   \ LCOMPILEDIE B,` that was byte-identically SILENT and overloaded with C-SIG-BAD's
+   \ 76. This branch target writes a named fd-2 label first, then routes through the
+   \ SAME LCOMPILEDIE tail with x0=76 (catchable throw inside evaluate, fail-closed
+   \ exit 76 at top level). No new exit code, no new TRUST site (emitted inside this
+   \ pre-existing untrusted tail word).
+   LCSTR LABEL@ LBL,
+   0 2 MOVZ,  1 LCSTRMSG LABEL@ ADR,  2 CSTRMSG-LEN MOVZ,  NR-WRITE SYS,
+   0 2 MOVZ,  1 LQNL LABEL@ ADR,  1 1 1 ADDI,  2 1 MOVZ,  NR-WRITE SYS,   \ LQNL[1] = newline
+   0 76 MOVZ,  LCOMPILEDIE LABEL@ B, ;
 
 : EM-EVAL-CLEAN-EXIT ( -- )
    9 DATA EVALD-CELL LDR,  9 9 1 SUBI,  9 DATA EVALD-CELL STR,
@@ -5925,6 +5988,12 @@ s" em-eval-clean-exit" s" --" TRUST
    CP DATA RSAVCP-CELL STR,
    NDICT DATA RSAVND-CELL STR,
    9 DATA DP-CELL LDR,  9 DATA RSAVDP-CELL STR,
+   \ snapshot the open-package scope for this REPL line (EM-REPL-RECOVER restores it)
+   9 DATA CUR-CELL LDR,       9 DATA RPKG-CUR STR,
+   9 DATA PKG-PUB-CELL LDR,   9 DATA RPKG-PUB STR,
+   9 DATA PKG-PRI-CELL LDR,   9 DATA RPKG-PRI STR,
+   9 DATA PKG-PARENT-CELL LDR, 9 DATA RPKG-PARENT STR,
+   9 DATA PKG-REC-CELL LDR,   9 DATA RPKG-REC STR,
    9 DATA REPLH-CELL LDR,  9 BLR,
    XDS XDS 8 SUBI,  10 XDS 0 LDR,
    XDS XDS 8 SUBI,  11 XDS 0 LDR,
@@ -6338,6 +6407,7 @@ s" SRCA@" s" -- ptr u8" TRUST
    LBL LMININ !  LBL LMINMSG !
    LBL LORPHAN !  LBL LORPHANMSG !
    LBL LCFCAP !  LBL LCFCAPMSG !
+   LBL LCSTR !  LBL LCSTRMSG !
    LBL LCOMPILEDIE !
    LBL LDICTFULL !  LBL LCODEFULL !
    LBL LSNAPBAD !  LBL LSNAPVER !

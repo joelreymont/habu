@@ -906,6 +906,44 @@ lesson — keep the specific word/code/path, cut the prose.
   precedent); mirror-lint is unaffected (no ADT keyword added). Testing gotcha:
   `bin/hb file.f` enters the tty REPL and blocks after the file — feed source via
   stdin (`bin/hb < file`) as the GE- gate DSL does.
+- **Compile-error recovery must roll back the OPEN-PACKAGE scope, and it is a
+  boundary SNAPSHOT/RESTORE, not a reset** (dot habu-recovery-pkg-scope-e0bd98e2).
+  An in-package `:` aborted inside `evaluate` (LUNDEF/dup-def/every LCOMPILEDIE
+  site) or typed at the tty REPL left the package dangling open (PKG-PUB stayed the
+  package's public wid), so later top-level defines landed in it silently. Unlike
+  EM-RESET-COMPILE-STATE's zeroed compile state, package scope can be legitimately
+  NON-zero across a boundary (a package open before the evaluate/REPL line), so it
+  must be snapshotted at the boundary and restored — exactly like CP/NDICT/DP.
+  Native-only: B-EVAL snapshots the five cells (CUR/PKG-PUB/PKG-PRI/PKG-PARENT/
+  PKG-REC; WIDN is monotonic, do NOT roll it back) into a per-eval-depth PKGSNAP
+  band (bumps DATA-START, PD-table precedent), the LEVALREC pop loop restores
+  PKGSNAP[EVALD-1] per frame, and LREAD/LRREC do the same via fixed RPKG cells for
+  the tty line. Seed hard-exits compile errors (no LCOMPILEDIE), so this is
+  native-only, matching the residual-compile precedent.
+- **Rolling back the engine package scope WITHOUT the checker's own scope
+  (CHECKER-PACKAGE-MODE/NAME/U) INTRODUCES a desync** the shared-dangling state
+  never had: engine→global but checker still records into the stale package, so a
+  bare global def is mis-recorded and a later `;package`/`package` orphans it →
+  spurious rc70 at the next checked reference. Keep them in step: recovery arms a
+  PKGRESYNC latch drained once at LMAIN (EM-PKG-RESYNC) that resets the checker to
+  NONE (the existing global `checker-end-package`) when the restored engine scope
+  is global — no checker.f package-guard (tfam) surface is touched. Residual
+  (dotted): a package legitimately open ACROSS the boundary whose failing input
+  ALSO changed package scope leaves the checker at the inner scope.
+- **The tty-REPL leg of the shared interpret-reject tail (LDIAGRET → LUN0) was
+  missing the RX restore that every sibling leg has, so any undefined word /
+  orphan closer / cf-cap that aborted a `:`-body AT THE TTY REPL W^X-SIGBUS'd**
+  (pre-existing; surfaced by the REPL package-scope fixture). The EVALD>0 leg and
+  LCOMPILEDIE's ldie/rdie leg both `2 5 MOVZ LPROT BL` (region→RX) before
+  re-entering executable code; LUN0 re-entered EM-REPL-RECOVER→LREAD→RD-LINE with
+  the JIT region still RW from the aborted compile → crash. Interpret-level rejects
+  (PTY-UNKNOWN) and dup-def (LCOMPILEDIE) never exposed it; `: FOO NOPEWORD ;` at
+  the tty did. Fix: the same LPROT at LUN0, idempotent for the interpret-level
+  diagnostics that share the tail with the region already RX.
+- **`.` in the native engine is NEWLINE-terminated, not space-terminated:**
+  `11 . 22 . cr` emits `11\n22\n\n`, so a gate assertion for two dotted numbers on
+  one line (`11 22`) never matches — assert them separately or dot a single derived
+  value (`a b + .`).
 - **Do not port relative linked-list words by habit:** SwiftForth's
   `@REL`/`!REL`/`,REL`/link traversal words bake dictionary-relative pointer
   arithmetic into APIs. Habu should model node layout with structures, runtime

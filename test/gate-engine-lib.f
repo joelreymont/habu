@@ -1645,9 +1645,10 @@ create GE-RXE-TML-BUF 512 allot   variable GE-RXE-TML-U
 : GE-RXE-ESC-OPEN ( -- )                               \ append the `s\" ` escaped-string opener + delimiter space
    [char] s GE-SRC-C  GE-RXE-BS  GE-DQ GE-SRC-C  GE-SRC-SP ;
 
-\ counted-string >255 (C-ICQ/C-EICQ/C-CQ/C-ECQ). This cap has no fd-2 label
-\ (byte-identical silent exit 76), so the assertions are code + usable session +
-\ no crash, not a diagnostic string. The evaluate target `c" <256 A>"` embeds a "
+\ counted-string >255 (C-ICQ/C-EICQ/C-CQ/C-ECQ). This cap now carries a named fd-2
+\ label ("hb: counted string too long (max 255)", dot habu-recovery-pkg-scope-e0bd98e2)
+\ that disambiguates the 76 it shares with C-SIG-BAD; the assertions add that label on
+\ both the eval-catch and top-level legs. The evaluate target `c" <256 A>"` embeds a "
 \ so it is passed through an s\" wrapper with \q-escaped quotes.
 : GE-RXE-CSTR-CATCH ( -- )
    GE-HB-RESET
@@ -1662,6 +1663,7 @@ create GE-RXE-TML-BUF 512 allot   variable GE-RXE-TML-U
    s" hb rxe cstr eval-catch usable" GE-EXPECT-OK
    s" 76" s" hb rxe cstr eval-catch code" GE-EXPECT-OUT-HAS
    s" 12321" s" hb rxe cstr eval-catch session-usable" GE-EXPECT-OUT-HAS
+   s" counted string too long" s" hb rxe cstr eval-catch label" GE-EXPECT-ERR-HAS
    s" habu-crash" s" hb rxe cstr eval-catch no-crash" GE-EXPECT-ERR-LACKS ;
 
 : GE-RXE-CSTR-TOP ( -- )
@@ -1672,6 +1674,7 @@ create GE-RXE-TML-BUF 512 allot   variable GE-RXE-TML-U
    GE-DQ GE-SRC-C  GE-SRC-LF
    s" bin/hb" GE-SRC-BUF GE-SRC-U @ GE-TIMEOUT-MS GE-RUN-STDIN
    76 s" hb rxe cstr top rc" GE-EXPECT-RC
+   s" counted string too long" s" hb rxe cstr top label" GE-EXPECT-ERR-HAS
    s" habu-crash" s" hb rxe cstr top no-crash" GE-EXPECT-ERR-LACKS ;
 
 \ unterminated string literal (C-QUOTE-EOF). The evaluate target `s" abc` (no
@@ -1727,6 +1730,82 @@ create GE-RXE-TML-BUF 512 allot   variable GE-RXE-TML-U
    GE-RXE-CSTR-TOP
    s" PASS: residual compile dies recover inside evaluate + fail-closed at top level" type cr ;
 
+\ --- Package-scope rollback across compile-error recovery (dot habu-recovery-pkg-scope-e0bd98e2) ---
+\ A compile error aborting an in-package definition must roll the OPEN-PACKAGE scope
+\ back to the boundary scope, exactly like CP/NDICT/DP. Before the fix the package
+\ stayed dangling open and later top-level defines landed in it silently.
+
+: GE-PKGSCOPE-EVAL-CLOSED ( -- )
+   \ Package opened INSIDE the failing evaluate: caught, and the eval-frame recovery
+   \ restores the evaluate-entry scope (global), so the package is CLOSED. Discriminator:
+   \ a dangling package would make the following top-level `package` nest-fail (exit 75
+   \ mid-batch, so GEC-RXOK never prints); a restored global scope opens+closes it and
+   \ reaches the fresh global define.
+   GE-HB-RESET
+   GE-EVAL-CATCH-SRC
+   s" package PKX public export PKNOPE ;package" GE-SRC-S"
+   s"  GEC-CATCH . cr" GE-SRC-LINE
+   s" package PKY ;package" GE-SRC-LINE
+   s" : GEC-RXOK ( -- n ) 12321 ; GEC-RXOK . cr" GE-SRC-LINE
+   s" bin/hb" GE-SRC-BUF GE-SRC-U @ GE-TIMEOUT-MS GE-RUN-STDIN
+   s" hb pkgscope eval-closed rc" GE-EXPECT-OK
+   s" 70" s" hb pkgscope eval-closed code" GE-EXPECT-OUT-HAS
+   s" 12321" s" hb pkgscope eval-closed scope-restored-global" GE-EXPECT-OUT-HAS
+   s" habu-crash" s" hb pkgscope eval-closed no-crash" GE-EXPECT-ERR-LACKS ;
+
+: GE-PKGSCOPE-CHECKER-RESYNC ( -- )
+   \ With NO intervening package op between the caught error and a checked reference:
+   \ the bare def GEC-W1 must record in GLOBAL checker scope, and the later checked
+   \ GEC-W2 (after a real package op that would orphan a mis-recorded PKX:GEC-W1) must
+   \ still resolve. An engine-only rollback (checker left stale-PKX) rc70s at GEC-W2.
+   GE-HB-RESET
+   GE-EVAL-CATCH-SRC
+   s" package PKX public export PKNOPE ;package" GE-SRC-S"
+   s"  GEC-CATCH . cr" GE-SRC-LINE
+   s" : GEC-W1 ( -- n ) 321 ;" GE-SRC-LINE
+   s" package PKZ ;package" GE-SRC-LINE
+   s" : GEC-W2 ( -- n ) GEC-W1 ; GEC-W2 . cr" GE-SRC-LINE
+   s" bin/hb" GE-SRC-BUF GE-SRC-U @ GE-TIMEOUT-MS GE-RUN-STDIN
+   s" hb pkgscope checker-resync rc" GE-EXPECT-OK
+   s" 321" s" hb pkgscope checker-resync resolves-global" GE-EXPECT-OUT-HAS ;
+
+: GE-PKGSCOPE-EVAL-STAYS ( -- )
+   \ Package legitimately open at evaluate ENTRY must NOT be closed by recovery: the
+   \ eval-frame rollback restores the evaluate-entry scope. AA open at top level; the
+   \ failing string does not touch packages, so after the caught error AA is still open
+   \ (AA:BEFOREW / AA:AFTERW both resolve public) and `;package` closes it cleanly.
+   GE-HB-RESET
+   GE-EVAL-CATCH-SRC
+   s" package AA public" GE-SRC-LINE
+   s" : BEFOREW ( -- n ) 11 ;" GE-SRC-LINE
+   s" : FOO ( -- ) NOPEWORD ;" GE-SRC-S"
+   s"  GEC-CATCH . cr" GE-SRC-LINE
+   s" : AFTERW ( -- n ) 22 ;" GE-SRC-LINE
+   s" ;package" GE-SRC-LINE
+   s" AA:BEFOREW AA:AFTERW + . cr" GE-SRC-LINE     \ 11+22=33 proves both landed in AA:public (`.` is newline-terminated here)
+   s" bin/hb" GE-SRC-BUF GE-SRC-U @ GE-TIMEOUT-MS GE-RUN-STDIN
+   s" hb pkgscope eval-stays rc" GE-EXPECT-OK
+   s" 70" s" hb pkgscope eval-stays code" GE-EXPECT-OUT-HAS
+   s" 33" s" hb pkgscope eval-stays package-stays-open" GE-EXPECT-OUT-HAS ;
+
+: GE-PKGSCOPE-TOP-EXIT ( -- )
+   \ Top-level (EVALD==0, no eval frame, no handler): an in-package compile error is
+   \ still a fail-closed exit — package-scope rollback does not change the exit path.
+   GE-HB-RESET
+   GE-SRC-RESET
+   s" package PKT public export PKTNOPE ;package" GE-SRC-LINE
+   s" : NEVER ( -- n ) 999 ; NEVER . cr" GE-SRC-LINE
+   s" bin/hb" GE-SRC-BUF GE-SRC-U @ GE-TIMEOUT-MS GE-RUN-STDIN
+   \ process exits at the export error before NEVER/999 (fail-closed)
+   70 s" hb pkgscope top-exit fail-closed rc" GE-EXPECT-RC ;
+
+: GE-PKGSCOPE-RECOVERY ( -- )
+   GE-PKGSCOPE-EVAL-CLOSED
+   GE-PKGSCOPE-CHECKER-RESYNC
+   GE-PKGSCOPE-EVAL-STAYS
+   GE-PKGSCOPE-TOP-EXIT
+   s" PASS: package scope rolls back on compile-error recovery (closed/stays-open/checker/top-exit)" type cr ;
+
 : GE-RUNTIME-CHECKS ( -- )
    GE-UNCAUGHT-THROW
    GE-INTERP-LAYOUT
@@ -1748,6 +1827,7 @@ create GE-RXE-TML-BUF 512 allot   variable GE-RXE-TML-U
    GE-CF-DEPTH-CAP
    GE-RAWEXIT-RECOVER
    GE-RAWEXIT-RESIDUAL
+   GE-PKGSCOPE-RECOVERY
    GE-SET-CHECK-NEG
    GE-TYPED-SMOKE
    GE-TIMEOUT-ATTRIBUTION ;

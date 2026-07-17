@@ -205,6 +205,22 @@ $40 constant EVAL-FRAME-SIZE
 $6 constant EVAL-FRAME-SHIFT
 $10 constant EVAL-MAX-DEPTH
 \ $2780..$27A8 (TSIG/TCSIG/CRSIG) relocated into the friend arena above.
+\ RPKG-* / PKGRESYNC-CELL (dot habu-recovery-pkg-scope-e0bd98e2): the REPL-line
+\ analogue of the eval-frame PKGSNAP band. EM-REPL-READ (LREAD) snapshots the five
+\ live package-scope cells at line-start; EM-REPL-RECOVER (LRREC) restores them so a
+\ compile error typed at the tty REPL rolls the open-package scope back to the
+\ line-start scope, alongside the existing RSAVCP/RSAVND/RSAVDP/RSAVSP rollback.
+\ PKGRESYNC-CELL is armed by both recovery legs and drained once at LMAIN
+\ (EM-PKG-RESYNC): when the restored engine scope is global it resets the checker's
+\ own package scope (checker-end-package) so engine and checker stay in step. These
+\ six cells sit in the reclaimed $2780..$27C0 band (rg-verified unused repo-wide,
+\ documented free above); small DATA-relative offsets, direct LDR/STR.
+$2780 constant RPKG-CUR
+$2788 constant RPKG-PUB
+$2790 constant RPKG-PRI
+$2798 constant RPKG-PARENT
+$27A0 constant RPKG-REC
+$27C0 constant PKGRESYNC-CELL
 $27B0 constant DOESB-CELL
 $27B8 constant TRUSTED-CELL
 $37D0 constant EVALD-CELL
@@ -458,9 +474,34 @@ PD-SIG-OFF PD-SIG-CAP + constant PD-SLOT      \ per-slot stride
 TXN-STATE-OFF TXN-STATE-LEN + constant PD-TABLE-OFF   \ band base (= old DATA-START); [0]=count
 PD-TABLE-OFF PD-SLOTS-REL + PD-CAP PD-SLOT * + constant PD-TABLE-END
 
+\ --- Package-scope eval-frame snapshot band (dot habu-recovery-pkg-scope-e0bd98e2) ---
+\ A compile-error recovery must roll the OPEN-PACKAGE scope back to the boundary
+\ scope, exactly as the eval frame rolls back CP/NDICT/DP/XDS: an in-package
+\ definition aborted inside `evaluate` must NOT leave the package dangling open so
+\ that later top-level defines land in it silently. Package scope is five live
+\ cells (CUR/PKG-PUB/PKG-PRI/PKG-PARENT/PKG-REC); WIDN is monotonic and is NOT
+\ rolled back (stale wids are harmless, like NDICT-truncated records). Unlike the
+\ zeroed compile-state (EM-RESET-COMPILE-STATE), package scope can be legitimately
+\ NON-zero across a boundary (a package open before the evaluate/REPL line), so it
+\ is a boundary SNAPSHOT+RESTORE, not a reset. B-EVAL (habu1.f) saves the five
+\ cells into PKGSNAP[EVALD]; the LEVALREC pop loop restores PKGSNAP[EVALD-1] per
+\ escaped frame. Eight-cell power-of-2 stride (five used) so the slot address is a
+\ shift, mirroring EVAL-FRAME-SHIFT. Transient (empty at rest / snapshot time). It
+\ sits at the TOP of the reserved region and bumps DATA-START (PD-table / protected-
+\ WID growth precedent) so no existing engine offset moves.
+PD-TABLE-END constant PKGSNAP-OFF
+$40 constant PKGSNAP-STRIDE              \ 8-cell slot (5 used), power-of-2 for shift addressing
+6 constant PKGSNAP-SHIFT
+0  constant PKGSNAP-CUR                   \ in-slot offsets, matching the C-PACKAGE cells below
+8  constant PKGSNAP-PUB
+16 constant PKGSNAP-PRI
+24 constant PKGSNAP-PARENT
+32 constant PKGSNAP-REC
+PKGSNAP-OFF EVAL-MAX-DEPTH PKGSNAP-STRIDE * + constant PKGSNAP-END
+
 \ DATA-START: first offset of the user DP heap (allot/,/c,); everything below is
 \ engine-reserved state (snapshot saves [0,DATA-START); DP-CHECK bounds the heap
 \ >= DATA-START; task-user cells stop at EVAL-FRAME and sixteen evaluator
 \ frames occupy $43C0..$47C0. The lowering state ends at $8000; the pre-trust defer
 \ pending band follows, then the immutable lowering blob lives outside DATA.
-PD-TABLE-END constant DATA-START
+PKGSNAP-END constant DATA-START

@@ -627,6 +627,33 @@ variable PTYNUM
    PTY-COMPILE-RECOVER
    PTY-COMPILE-AFTER ;
 
+\ Package-scope rollback at the tty REPL (dot habu-recovery-pkg-scope-e0bd98e2). A
+\ line that opens a package and then aborts mid-definition must roll the open-package
+\ scope back to the line-start scope (global here), NOT leave the package dangling
+\ open so later defines land in it silently. Before the fix the aborted
+\ `package PRP public : PRFOO NOPEWORD ;` left PRP open, and the next `package PRQ`
+\ nest-rejected. Now: the failing line recovers, a FRESH package opens cleanly, and
+\ the next define lands global and runs.
+: PTY-PKGSCOPE-FAIL ( -- )
+   s" package PRP public : PRFOO ( -- ) NOPEWORD ;" STEP-LN
+   s" E-UNDEFINED: NOPEWORD" EXPECT
+   s" habu> " EXPECT
+   s"  ok" REJECT ;
+
+: PTY-PKGSCOPE-FRESH ( -- )                        \ a dangling PRP would make this `package` nest-reject (no " ok")
+   s" package PRQ ;package" STEP-LN
+   s"  ok" EXPECT ;
+
+: PTY-PKGSCOPE-GLOBAL ( -- )                       \ the next define lands global and runs; a checked reference confirms checker scope is in step
+   s" : PRDONE ( -- n ) 4242 ;  : PRUSE ( -- n ) PRDONE ;  PRUSE ." STEP-LN
+   s" 4242" EXPECT
+   s"  ok" EXPECT ;
+
+: PTY-PKGSCOPE-RECOVERY ( -- )
+   PTY-PKGSCOPE-FAIL
+   PTY-PKGSCOPE-FRESH
+   PTY-PKGSCOPE-GLOBAL ;
+
 : PTY-THROW-RECOVERY ( -- )
    PTY-THROW-LINE
    PTY-THROW-AFTER ;
@@ -661,7 +688,8 @@ variable PTYNUM
 : PTY-TOOLS ( -- )
    PTY-STEPPER
    PTY-THROW-RECOVERY
-   PTY-COMPILE-RECOVERY ;
+   PTY-COMPILE-RECOVERY
+   PTY-PKGSCOPE-RECOVERY ;
 
 : PTY-HB ( -- )
    PTY-BASIC
