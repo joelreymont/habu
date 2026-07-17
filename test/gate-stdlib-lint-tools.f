@@ -75,6 +75,9 @@
 : GSI-LINT-TOOLS-TRUSTED-INVENTORY ( -- )
    s" tools/trusted-inventory-test.f" GSI-INCLUDE ;
 
+: GSI-LINT-TOOLS-PRIMITIVE-EFFECT-INVENTORY ( -- )
+   s" tools/primitive-effect-inventory-test.f" GSI-INCLUDE ;
+
 : GSI-LINT-TOOLS-BOOTSTRAP-MIRROR ( -- )
    s" tools/bootstrap-mirror-lint-test.f" GSI-INCLUDE ;
 
@@ -91,6 +94,7 @@
    s" lint-tools/error-code" GSI-FORK-TIMEOUT-MS [: GSI-LINT-TOOLS-ERROR-CODE ;] GT-POOL-START-FORK
    s" lint-tools/host" GSI-FORK-TIMEOUT-MS [: GSI-LINT-TOOLS-HOST ;] GT-POOL-START-FORK
    s" lint-tools/trusted-inventory" GSI-FORK-TIMEOUT-MS [: GSI-LINT-TOOLS-TRUSTED-INVENTORY ;] GT-POOL-START-FORK
+   s" lint-tools/primitive-effect-inventory" GSI-FORK-TIMEOUT-MS [: GSI-LINT-TOOLS-PRIMITIVE-EFFECT-INVENTORY ;] GT-POOL-START-FORK
    s" lint-tools/bootstrap-mirror" GSI-FORK-TIMEOUT-MS [: GSI-LINT-TOOLS-BOOTSTRAP-MIRROR ;] GT-POOL-START-FORK
    GSI-FORK-DRAIN ;
 

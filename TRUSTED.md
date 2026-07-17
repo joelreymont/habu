@@ -450,6 +450,12 @@ that source is explicitly certified; they are not stale-checked by the default
 | AX-STK | `n -- n` | Primitive-axiom census walks a persistent effect-node stack list (`EN-PUSH` chain) to count its arity; raw checker node layout is the boundary. | `test/prop-test.f`, `test/gate-debug.f`, `test/run.f` | test/prop-test-core.f | 2026-07-03 |
 | AX-ARITY | `n -- n n` | Primitive-axiom census reads one PES axiom's declared data in/out arity from its effect record. | `test/prop-test.f`, `test/gate-debug.f`, `test/run.f` | test/prop-test-core.f | 2026-07-03 |
 | AXEVAL | `-- n` | Primitive-axiom census evaluates the generated per-axiom measurement runner in-process; dynamic `evaluate` is outside the checker model. | `test/prop-test.f`, `test/gate-debug.f`, `test/run.f` | test/prop-test-core.f | 2026-07-03 |
+| LIVE-COUNT | `-- n` | Primitive-effect inventory reads the live PES axiom row count (`#PE`) for the row-for-row cross-check; the internal axiom table is outside the checker model. | `tools/primitive-effect-inventory-test.f`, `test/run.f` | tools/primitive-effect-inventory.f | 2026-07-17 |
+| LIVE-PKG$ | `n -- ptr u8 n` | Primitive-effect inventory recovers one PES axiom's folded defining-package spelling from the checker symbol table. | `tools/primitive-effect-inventory-test.f`, `test/run.f` | tools/primitive-effect-inventory.f | 2026-07-17 |
+| LIVE-NAME$ | `n -- ptr u8 n` | Primitive-effect inventory recovers one PES axiom's folded primitive name from the checker symbol table. | `tools/primitive-effect-inventory-test.f`, `test/run.f` | tools/primitive-effect-inventory.f | 2026-07-17 |
+| LIVE-STK | `n -- n` | Primitive-effect inventory walks a persistent effect-node stack list (`EN-PUSH` chain) to count its arity; raw checker node layout is the boundary. | `tools/primitive-effect-inventory-test.f`, `test/run.f` | tools/primitive-effect-inventory.f | 2026-07-17 |
+| LIVE-ARITY | `n -- n n` | Primitive-effect inventory reads one PES axiom's declared data in/out arity from its effect record. | `tools/primitive-effect-inventory-test.f`, `test/run.f` | tools/primitive-effect-inventory.f | 2026-07-17 |
+| LIVE-TRUSTED-ONLY? | `n -- bool` | Primitive-effect inventory reads one PES axiom's `PE-TRUSTED-ONLY` flag (set by `PRIM-TRUSTED-ONLY!`); the flag word cell is internal checker state. | `tools/primitive-effect-inventory-test.f`, `test/run.f` | tools/primitive-effect-inventory.f | 2026-07-17 |
 | MOVZHW | `n n n -- n` | ARM64 source test reuses the raw unchecked encoder effect after conditional source loading or CLI-runner bake. | `tools/asm-src-test.f`, `test/run.f` | tools/asm-src-test.f | 2026-06-30 |
 | ENC-ADD | `n n n -- n` | ARM64 source test republishes the raw add-instruction encoder effect for fixture assertions. | `tools/asm-src-test.f`, `test/run.f` | tools/asm-src-test.f | 2026-06-30 |
 | ENC-LDR | `n n n -- n` | ARM64 source test republishes the raw load-instruction encoder effect for fixture assertions. | `tools/asm-src-test.f`, `test/run.f` | tools/asm-src-test.f | 2026-06-30 |
@@ -1816,6 +1822,12 @@ test/prop-test-core.f:AX-NAME$ prim-axiom habu-primitive-effect-axiom-1119f176
 test/prop-test-core.f:AX-STK prim-axiom habu-primitive-effect-axiom-1119f176
 test/prop-test-core.f:AX-ARITY prim-axiom habu-primitive-effect-axiom-1119f176
 test/prop-test-core.f:AXEVAL prim-axiom habu-primitive-effect-axiom-1119f176
+tools/primitive-effect-inventory.f:LIVE-COUNT prim-axiom habu-primitive-effect-axiom-1119f176
+tools/primitive-effect-inventory.f:LIVE-PKG$ prim-axiom habu-primitive-effect-axiom-1119f176
+tools/primitive-effect-inventory.f:LIVE-NAME$ prim-axiom habu-primitive-effect-axiom-1119f176
+tools/primitive-effect-inventory.f:LIVE-STK prim-axiom habu-primitive-effect-axiom-1119f176
+tools/primitive-effect-inventory.f:LIVE-ARITY prim-axiom habu-primitive-effect-axiom-1119f176
+tools/primitive-effect-inventory.f:LIVE-TRUSTED-ONLY? prim-axiom habu-primitive-effect-axiom-1119f176
 tools/asm-src-test.f:MOVZHW test-metaprog habu-builder-trust-rows-c5d41af6
 tools/asm-src-test.f:ENC-ADD test-metaprog habu-builder-trust-rows-c5d41af6
 tools/asm-src-test.f:ENC-LDR test-metaprog habu-builder-trust-rows-c5d41af6
@@ -1868,4 +1880,335 @@ test/engine-suite.f:ES-VERDICT-HOOK test-metaprog cap:checker-hook-identity 2
 test/prop-test-core.f:PROP-CHECK-HOOK test-metaprog cap:checker-hook-identity 4
 tools/codegen-role.f:CGR-HOOK test-metaprog cap:checker-hook-identity 2
 tools/codegen-role.f:CGR-HOOK! test-metaprog cap:checker-hook-identity
+-->
+
+## Primitive-effect inventory
+
+`tools/primitive-effect-inventory.f` (package `PEINV`) ratchets the authoritative
+primitive-effect axiom rows -- every `PRIM: name eff... PRIM;` and
+`PPRIM: pkg name eff... PPRIM;` in the checker's PES table -- independently of the
+`prim-axiom` trust-site class above. That class counts the checker's axiom-model
+`TRUSTED` sites (nominal casts, the census/inventory readers); it does NOT count
+the axiom rows themselves. This inventory does, so permanent trust owners and the
+primitive rows they read stay distinct quantities.
+
+Each row's identity is the canonical tuple
+`<kind> <defining-package> <word-spelling> <flags> <normalized-effect-tokens>`
+(kind `prim`|`pprim`; package `-` for a bare `PRIM:`; spelling and effect tokens
+folded lowercase; flags `trusted-only` when `PRIM-TRUSTED-ONLY!` marks the row).
+Identity never depends on a path, line, ordinal, or PES address, so
+case/whitespace/comment-only source edits preserve it; an added, deleted,
+duplicated, or reordered identity does not. `strict` additionally cross-checks the
+parsed rows against the live `#PE` registry (package/name, arity, trusted-only)
+row-for-row, proving the source parse is faithful to the in-image table.
+
+The block below is the committed manifest: one canonical identity per row, in
+manifest (load) order -- deliberately ordered, NOT sorted, so a pure reorder is
+detectable and the exact row can be named. `baseline TRUSTED.md` fails closed on
+any add/delete/duplicate/reorder; regenerate the block with
+`bin/hb --load tools/primitive-effect-inventory.f -- manifest` as the explicit
+migration when the axiom set legitimately changes. Identical axioms may repeat
+legitimately (e.g. `path0`/`PATH0` -- the same case-insensitive symbol with an
+identical effect is declared in two checker.f sections); the manifest records the
+repeat and the ratchet enforces its exact multiplicity.
+
+<!-- primitive-effect-inventory-manifest
+prim - dup - pe-a pe-in pe-a pe-out pe-a pe-out
+prim - drop - pe-a pe-in
+prim - swap - pe-a pe-in pe-b pe-in pe-b pe-out pe-a pe-out
+prim - over - pe-a pe-in pe-b pe-in pe-a pe-out pe-b pe-out pe-a pe-out
+prim - nip - pe-a pe-in pe-b pe-in pe-b pe-out
+prim - tuck - pe-a pe-in pe-b pe-in pe-b pe-out pe-a pe-out pe-b pe-out
+prim - rot - pe-a pe-in pe-b pe-in pe-c pe-in pe-b pe-out pe-c pe-out pe-a pe-out
+prim - -rot - pe-a pe-in pe-b pe-in pe-c pe-in pe-c pe-out pe-a pe-out pe-b pe-out
+prim - 2dup - pe-a pe-in pe-b pe-in pe-a pe-out pe-b pe-out pe-a pe-out pe-b pe-out
+prim - 2drop - pe-a pe-in pe-b pe-in
+prim - 2swap - pe-a pe-in pe-b pe-in pe-c pe-in pe-d pe-in pe-c pe-out pe-d pe-out pe-a pe-out pe-b pe-out
+prim - 2over - pe-a pe-in pe-b pe-in pe-c pe-in pe-d pe-in pe-a pe-out pe-b pe-out pe-c pe-out pe-d pe-out pe-a pe-out pe-b pe-out
+prim - + - pe-n pe-in pe-n pe-in pe-n pe-out
+prim - + - pe-ptr-a pe-in pe-n pe-in pe-ptr-a pe-out
+prim - + - pe-n pe-in pe-ptr-a pe-in pe-ptr-a pe-out
+prim - - - pe-n pe-in pe-n pe-in pe-n pe-out
+prim - - - pe-ptr-a pe-in pe-n pe-in pe-ptr-a pe-out
+prim - - - pe-ptr-a pe-in pe-ptr-a pe-in pe-n pe-out
+prim - * - pe-n pe-in pe-n pe-in pe-n pe-out
+prim - and - pe-n pe-in pe-n pe-in pe-n pe-out
+prim - and - pe-f pe-in pe-f pe-in pe-f pe-out
+prim - or - pe-n pe-in pe-n pe-in pe-n pe-out
+prim - or - pe-f pe-in pe-f pe-in pe-f pe-out
+prim - xor - pe-n pe-in pe-n pe-in pe-n pe-out
+prim - xor - pe-f pe-in pe-f pe-in pe-f pe-out
+prim - 1+ - pe-n pe-in pe-n pe-out
+prim - 1+ - pe-ptr-a pe-in pe-ptr-a pe-out
+prim - 1- - pe-n pe-in pe-n pe-out
+prim - 1- - pe-ptr-a pe-in pe-ptr-a pe-out
+prim - negate - pe-n pe-in pe-n pe-out
+prim - invert - pe-n pe-in pe-n pe-out
+prim - 0= - pe-a pe-in pe-f pe-out
+prim - 0< - pe-n pe-in pe-f pe-out
+prim - = - pe-n pe-in pe-n pe-in pe-f pe-out
+prim - = - pe-ptr-a pe-in pe-ptr-a pe-in pe-f pe-out
+prim - < - pe-n pe-in pe-n pe-in pe-f pe-out
+prim - < - pe-ptr-a pe-in pe-ptr-a pe-in pe-f pe-out
+prim - > - pe-n pe-in pe-n pe-in pe-f pe-out
+prim - > - pe-ptr-a pe-in pe-ptr-a pe-in pe-f pe-out
+prim - <> - pe-n pe-in pe-n pe-in pe-f pe-out
+prim - <> - pe-ptr-a pe-in pe-ptr-a pe-in pe-f pe-out
+prim - <= - pe-n pe-in pe-n pe-in pe-f pe-out
+prim - <= - pe-ptr-a pe-in pe-ptr-a pe-in pe-f pe-out
+prim - >= - pe-n pe-in pe-n pe-in pe-f pe-out
+prim - >= - pe-ptr-a pe-in pe-ptr-a pe-in pe-f pe-out
+prim - / - pe-n pe-in pe-n pe-in pe-n pe-out
+prim - mod - pe-n pe-in pe-n pe-in pe-n pe-out
+prim - /mod - pe-n pe-in pe-n pe-in pe-n pe-out pe-n pe-out
+prim - abs - pe-n pe-in pe-n pe-out
+prim - min - pe-n pe-in pe-n pe-in pe-n pe-out
+prim - max - pe-n pe-in pe-n pe-in pe-n pe-out
+prim - lshift - pe-n pe-in pe-n pe-in pe-n pe-out
+prim - rshift - pe-n pe-in pe-n pe-in pe-n pe-out
+prim - cells - pe-n pe-in pe-n pe-out
+prim - cell+ - pe-ptr-a pe-in pe-ptr-a pe-out
+prim - cell+ - pe-n pe-in pe-n pe-out
+prim - chars - pe-n pe-in pe-n pe-out
+prim - char+ - pe-ptr-a pe-in pe-ptr-a pe-out
+prim - char+ - pe-n pe-in pe-n pe-out
+prim - @ - pe-ptr-a pe-in pe-a pe-out
+prim - ! - pe-a pe-in pe-ptr-a pe-in
+prim - ptr-field - pe-ptr-a pe-in pe-n pe-in pe-ptr-ptr-b pe-out
+prim - +! - pe-n pe-in pe-ptr-n pe-in
+prim - c@ - pe-ptr-u8 pe-in pe-u8 pe-out
+prim - c! - pe-u8 pe-in pe-ptr-u8 pe-in
+prim - atomic@ - pe-ptr-a pe-in pe-a pe-out
+prim - atomic! - pe-a pe-in pe-ptr-a pe-in
+prim - atomic-add - pe-n pe-in pe-ptr-n pe-in pe-n pe-out
+prim - atomic-cas - pe-a pe-in pe-a pe-in pe-ptr-a pe-in pe-a pe-out
+prim - fence - -
+prim - run-in-stack - pe-n pe-in pe-ptr-u8 pe-in pe-n pe-in
+prim - count - pe-ptr-u8 pe-in pe-ptr-u8 pe-out pe-n pe-out
+prim - . - pe-n pe-in
+prim - .s - -
+prim - depth - pe-n pe-out
+prim - here - pe-ptr-a-raw pe-out
+prim - allot - pe-n pe-in
+prim - , - pe-n pe-in
+prim - c, - pe-n pe-in
+prim - type - pe-ptr-u8 pe-in pe-n pe-in
+prim - script-argc - pe-n pe-out
+prim - script-argv$ - pe-n pe-in pe-ptr-u8 pe-out pe-n pe-out
+prim - throw - pe-n pe-in
+prim - die - pe-ptr-u8 pe-in pe-n pe-in pe-n pe-in
+prim - open - pe-ptr-u8 pe-in pe-n pe-in pe-n pe-in pe-n pe-out
+prim - read - pe-n pe-in pe-ptr-u8 pe-in pe-n pe-in pe-n pe-out
+prim - ioctl - pe-n pe-in pe-n pe-in pe-ptr-a pe-in pe-n pe-out
+prim - mmap - pe-n pe-in pe-n pe-in pe-n pe-in pe-n pe-in pe-n pe-in pe-n pe-in pe-n pe-out
+prim - path0 - pe-ptr-u8 pe-in pe-n pe-in pe-ptr-u8 pe-out
+prim - open-rd - pe-ptr-u8 pe-in pe-n pe-out
+prim - access - pe-ptr-u8 pe-in pe-n pe-in pe-n pe-out
+prim - unlink - pe-ptr-u8 pe-in pe-n pe-out
+prim - rename - pe-ptr-u8 pe-in pe-ptr-u8 pe-in pe-n pe-out
+prim - chmod - pe-ptr-u8 pe-in pe-n pe-in pe-n pe-out
+prim - symlink - pe-ptr-u8 pe-in pe-ptr-u8 pe-in pe-n pe-out
+prim - readlink - pe-ptr-u8 pe-in pe-ptr-u8 pe-in pe-n pe-in pe-n pe-out
+prim - mkdir - pe-ptr-u8 pe-in pe-n pe-in pe-n pe-out
+prim - rmdir - pe-ptr-u8 pe-in pe-n pe-out
+prim - stat64 - pe-ptr-u8 pe-in pe-ptr-u8 pe-in pe-n pe-out
+prim - lstat64 - pe-ptr-u8 pe-in pe-ptr-u8 pe-in pe-n pe-out
+prim - getdirentries64 - pe-n pe-in pe-ptr-u8 pe-in pe-n pe-in pe-ptr-n pe-in pe-n pe-out
+prim - pipe - pe-n pe-out pe-n pe-out pe-n pe-out
+prim - dup2 - pe-n pe-in pe-n pe-in pe-n pe-out
+prim - fcntl - pe-n pe-in pe-n pe-in pe-n pe-in pe-n pe-out
+prim - poll - pe-ptr-a pe-in pe-n pe-in pe-n pe-in pe-n pe-out
+prim - kill - pe-n pe-in pe-n pe-in pe-n pe-out
+prim - setpgid - pe-n pe-in pe-n pe-in pe-n pe-out
+prim - spawn-io - pe-ptr-u8 pe-in pe-n pe-in pe-n pe-in pe-n pe-in pe-n pe-out
+prim - spawn-argv-io - pe-ptr-u8 pe-in pe-ptr-a pe-in pe-n pe-in pe-n pe-in pe-n pe-in pe-n pe-out
+prim - spawn-argv-env-io - pe-ptr-u8 pe-in pe-ptr-a pe-in pe-ptr-a pe-in pe-n pe-in pe-n pe-in pe-n pe-in pe-n pe-out
+prim - spawn-argv-env-cwd-io - pe-ptr-u8 pe-in pe-ptr-a pe-in pe-ptr-a pe-in pe-ptr-u8 pe-in pe-n pe-in pe-n pe-in pe-n pe-in pe-n pe-out
+prim - fork - pe-n pe-out
+prim - wait-rc - pe-n pe-in pe-n pe-out
+prim - wait-status - pe-n pe-in pe-n pe-out
+prim - patch32 trusted-only pe-n pe-in pe-n pe-in
+prim - snap-rebase - pe-n pe-in pe-n pe-in pe-n pe-in pe-n pe-in pe-n pe-in pe-n pe-in
+prim - write - pe-n pe-in pe-ptr-u8 pe-in pe-n pe-in pe-n pe-out
+prim - close - pe-n pe-in
+prim - epoch-seconds - pe-n pe-out
+prim - mono-ns - pe-n pe-out
+prim - prof-on - pe-n pe-in
+prim - prof-report - -
+prim - rbase - pe-n pe-out
+prim - cp@ - pe-n pe-out
+prim - cp! - pe-n pe-in
+prim - dbase@ - pe-n pe-out
+prim - check@ - pe-n pe-out
+prim - ndict@ - pe-n pe-out
+prim - ndict! - pe-n pe-in
+prim - seal-capture - -
+prim - seal-friend - -
+prim - drain-pretrust - -
+prim - data-base - pe-ptr-a pe-out
+prim - prot-wid-add - pe-n pe-in
+prim - owner-wid-preflight? - pe-n pe-in pe-n pe-in pe-n pe-in pe-f pe-out
+prim - owner-wid-public? - pe-n pe-in pe-f pe-out
+prim - owner-wid-private? - pe-n pe-in pe-f pe-out
+prim - owner-wid? - pe-n pe-in pe-f pe-out
+prim - tfam-ctor-word? - pe-ptr-u8 pe-in pe-n pe-in pe-f pe-out
+prim - wordlist - pe-n pe-out
+prim - get-current - pe-n pe-out
+prim - set-current - pe-n pe-in
+prim - search-wl - pe-ptr-u8 pe-in pe-n pe-in pe-n pe-in pe-n pe-out
+prim - parse-name - pe-ptr-u8 pe-out pe-n pe-out
+prim - core-str= - pe-ptr-u8 pe-in pe-n pe-in pe-ptr-u8 pe-in pe-n pe-in pe-f pe-out
+prim - core-str=ci - pe-ptr-u8 pe-in pe-n pe-in pe-ptr-u8 pe-in pe-n pe-in pe-f pe-out
+prim - pathz - pe-ptr-u8 pe-in pe-n pe-in pe-ptr-u8 pe-in
+prim - path0 - pe-ptr-u8 pe-in pe-n pe-in pe-ptr-u8 pe-out
+prim - rd32 - pe-ptr-u8 pe-in pe-n pe-out
+prim - diag-file! - pe-ptr-u8 pe-in pe-n pe-in
+prim - diag-origin! - pe-n pe-in pe-n pe-in pe-n pe-in
+prim - diag-json! - pe-f pe-in
+prim - diag-buffer! - pe-ptr-u8 pe-in pe-n pe-in
+prim - diag-buffer-off - -
+prim - diag-buffer$ - pe-ptr-u8 pe-out pe-n pe-out
+prim - checker-scope-start - -
+prim - checker-scope-done - -
+prim - check-candidate! - pe-ptr-u8 pe-in pe-n pe-in pe-n pe-out
+prim - check - pe-ptr-u8 pe-in pe-n pe-in pe-n pe-out
+prim - check! - pe-ptr-u8 pe-in pe-n pe-in pe-n pe-out
+prim - checker-candidate-scope-start - -
+prim - checker-candidate-scope-done - -
+prim - checker-usigs-truncate-from - pe-ptr-u8 pe-in pe-n pe-in
+prim - checker-usigs-truncate-from-raw - pe-ptr-u8 pe-in pe-n pe-in
+prim - checker-undefine - pe-ptr-u8 pe-in pe-n pe-in
+prim - checker-undefine-guard - pe-ptr-u8 pe-in pe-n pe-in
+prim - checker-export - pe-ptr-u8 pe-in pe-n pe-in
+prim - checker-package-active? - pe-f pe-out
+prim - checker-deftype - pe-ptr-u8 pe-in pe-n pe-in
+prim - checker-deflinear - pe-ptr-u8 pe-in pe-n pe-in
+prim - checker-defrecord - pe-ptr-u8 pe-in pe-n pe-in pe-ptr-u8 pe-in pe-n pe-in
+prim - checker-deffamily - pe-ptr-u8 pe-in pe-n pe-in pe-ptr-u8 pe-in pe-n pe-in
+prim - checker-defsum - pe-ptr-u8 pe-in pe-n pe-in pe-ptr-u8 pe-in pe-n pe-in
+prim - checker-defsum-noend - pe-ptr-u8 pe-in pe-n pe-in pe-ptr-u8 pe-in pe-n pe-in
+prim - checker-defenum - pe-ptr-u8 pe-in pe-n pe-in pe-ptr-u8 pe-in pe-n pe-in
+prim - checker-defproduct - pe-ptr-u8 pe-in pe-n pe-in pe-ptr-u8 pe-in pe-n pe-in
+prim - checker-layout-info - pe-ptr-u8 pe-in pe-n pe-in pe-n pe-out pe-n pe-out pe-f pe-out
+prim - checker-storage-info - pe-ptr-u8 pe-in pe-n pe-in pe-n pe-out pe-f pe-out
+prim - checker-deflayout-buffer - pe-ptr-u8 pe-in pe-n pe-in pe-ptr-u8 pe-in pe-n pe-in pe-ptr-u8 pe-in pe-n pe-in
+prim - checker-deftyped-buffer - pe-ptr-u8 pe-in pe-n pe-in pe-ptr-u8 pe-in pe-n pe-in pe-ptr-u8 pe-in pe-n pe-in
+prim - checker-deftyped-variable - pe-ptr-u8 pe-in pe-n pe-in pe-ptr-u8 pe-in pe-n pe-in
+prim - checker-lbuf-name-guard - pe-ptr-u8 pe-in pe-n pe-in
+prim - checker-defined? - pe-ptr-u8 pe-in pe-n pe-in pe-f pe-out
+prim - trust - pe-ptr-u8 pe-in pe-n pe-in pe-ptr-u8 pe-in pe-n pe-in
+prim - tfam-n@ - pe-n pe-out
+prim - tfam-width@ - pe-n pe-in pe-n pe-out
+prim - tfam-name$ - pe-n pe-in pe-ptr-u8 pe-out pe-n pe-out
+prim - tfam-arity@ - pe-n pe-in pe-n pe-out
+prim - tfam-kind@ - pe-n pe-in pe-n pe-out
+prim - tfam-public? - pe-n pe-in pe-f pe-out
+prim - tfam-derive-eq? - pe-n pe-in pe-f pe-out
+prim - tfam-derive-hash? - pe-n pe-in pe-f pe-out
+prim - tfam-var-start@ - pe-n pe-in pe-n pe-out
+prim - tfam-var-count@ - pe-n pe-in pe-n pe-out
+prim - sumv-name$ - pe-n pe-in pe-ptr-u8 pe-out pe-n pe-out
+prim - sumv-ctor-pkg$ - pe-n pe-in pe-ptr-u8 pe-out pe-n pe-out
+prim - wf-n@ - pe-n pe-out
+prim - wf-off@ - pe-n pe-in pe-n pe-out
+prim - wf-pos@ - pe-n pe-in pe-n pe-out
+prim - wf-fam@ - pe-n pe-in pe-n pe-out
+prim - wf-width@ - pe-n pe-in pe-n pe-out
+prim - wf-term@ - pe-n pe-in pe-n pe-out
+prim - wf-flags@ - pe-n pe-in pe-n pe-out
+prim - wf-wide? - pe-f pe-out
+prim - wf-needs-p2? - pe-f pe-out
+prim - wf-w-at - pe-n pe-in pe-n pe-in pe-n pe-out
+prim - wide-mark - -
+prim - rec-wide-publish - -
+prim - rec-min-in@ - pe-n pe-out
+prim - locw-hw@ - pe-n pe-in pe-n pe-out
+prim - locw-hw-n@ - pe-n pe-out
+pprim lower-cert magic - pe-n pe-out
+pprim lower-cert version - pe-n pe-out
+pprim lower-cert header-cells - pe-n pe-out
+pprim lower-cert magic-cell - pe-n pe-out
+pprim lower-cert version-cell - pe-n pe-out
+pprim lower-cert total-bytes-cell - pe-n pe-out
+pprim lower-cert needs-cell - pe-n pe-out
+pprim lower-cert wf-count-cell - pe-n pe-out
+pprim lower-cert bind-count-cell - pe-n pe-out
+pprim lower-cert fetch-count-cell - pe-n pe-out
+pprim lower-cert fetch-data-cells-cell - pe-n pe-out
+pprim lower-cert wf-cells - pe-n pe-out
+pprim lower-cert fetch-cells - pe-n pe-out
+pprim lower-cert check-cells - pe-n pe-out
+pprim lower-cert guard-cells - pe-n pe-out
+pprim lower-cert fetch-flag - pe-n pe-out
+pprim lower-cert store-flag - pe-n pe-out
+pprim lower-cert body-len-cell - pe-n pe-out
+pprim lower-cert body-hash-cell - pe-n pe-out
+pprim lower-cert fnv-offset - pe-n pe-out
+pprim lower-cert fnv-prime - pe-n pe-out
+pprim lower-cert cell-count - pe-n pe-out
+pprim lower-cert cell@ - pe-n pe-in pe-n pe-out
+pprim lower-cert bytes trusted-only pe-ptr-u8 pe-out pe-n pe-out
+pprim lower-cert-hook hook - pe-ptr-u8 pe-in pe-n pe-in pe-n pe-out
+pprim checker-cert install - pe-n pe-in
+pprim checker-cert produce - pe-ptr-u8 pe-in pe-n pe-in pe-n pe-in
+prim - p2-locseq-reset - -
+prim - p2-carve-w - pe-n pe-in pe-n pe-out
+prim - p2-live-w@ - pe-n pe-in pe-n pe-out
+prim - p2-live-cum@ - pe-n pe-in pe-n pe-out
+prim - sumv-n@ - pe-n pe-out
+prim - pf-n@ - pe-n pe-out
+prim - tf-str-u@ - pe-n pe-out
+prim - tf-pk-n@ - pe-n pe-out
+prim - schema-n@ - pe-n pe-out
+prim - schema-root-n@ - pe-n pe-out
+prim - checker-defer - pe-ptr-u8 pe-in pe-n pe-in
+prim - checker-package - pe-ptr-u8 pe-in pe-n pe-in
+prim - checker-public - -
+prim - checker-private - -
+prim - checker-end-package - -
+prim - ffi-call - pe-ptr-a pe-in pe-n pe-in pe-n pe-out
+prim - ffi-call-n trusted-only pe-ptr-a pe-in pe-n pe-in pe-n pe-in pe-n pe-out
+prim - ffi-call-bounded trusted-only pe-ptr-a pe-in pe-ptr-b pe-in pe-n pe-in pe-n pe-in pe-n pe-out
+prim - ffi-call-abi-bounded trusted-only pe-ptr-a pe-in pe-ptr-b pe-in pe-ptr-c pe-in pe-ptr-d pe-in pe-ptr-e pe-in pe-n pe-in pe-n pe-in pe-n pe-out
+prim - ffi-call-abi-r-bounded trusted-only pe-ptr-a pe-in pe-ptr-b pe-in pe-ptr-c pe-in pe-ptr-d pe-in pe-ptr-e pe-in pe-n pe-in pe-n pe-in pe-r pe-out
+prim - ffi-call-abi - pe-ptr-a pe-in pe-ptr-b pe-in pe-ptr-c pe-in pe-n pe-in pe-n pe-in pe-n pe-out
+prim - ffi-call-abi-r - pe-ptr-a pe-in pe-ptr-b pe-in pe-ptr-c pe-in pe-n pe-in pe-n pe-in pe-r pe-out
+prim - f+ - pe-r pe-in pe-r pe-in pe-r pe-out
+prim - f- - pe-r pe-in pe-r pe-in pe-r pe-out
+prim - f* - pe-r pe-in pe-r pe-in pe-r pe-out
+prim - f/ - pe-r pe-in pe-r pe-in pe-r pe-out
+prim - fnegate - pe-r pe-in pe-r pe-out
+prim - fabs - pe-r pe-in pe-r pe-out
+prim - fsqrt - pe-r pe-in pe-r pe-out
+prim - f< - pe-r pe-in pe-r pe-in pe-f pe-out
+prim - f> - pe-r pe-in pe-r pe-in pe-f pe-out
+prim - f= - pe-r pe-in pe-r pe-in pe-f pe-out
+prim - f0< - pe-r pe-in pe-f pe-out
+prim - f0= - pe-r pe-in pe-f pe-out
+prim - s>f - pe-n pe-in pe-r pe-out
+prim - f>s - pe-r pe-in pe-n pe-out
+prim - f. - pe-r pe-in
+prim - s" - pe-ptr-u8 pe-out pe-n pe-out
+prim - c" - pe-ptr-u8 pe-out
+prim - ." - -
+prim - s\" - pe-ptr-u8 pe-out pe-n pe-out
+prim - c\" - pe-ptr-u8 pe-out
+prim - .\" - -
+prim - ['] - pe-n pe-out
+prim - char - pe-n pe-out
+prim - [char] - pe-n pe-out
+prim - emit - pe-n pe-in
+prim - cr - -
+prim - space - -
+prim - u. - pe-n pe-in
+prim - create - pe-ptr-a pe-out
+prim - variable - pe-ptr-a pe-out
+prim - constant - pe-a pe-out
+prim - typefamily - -
+prim - sumtype - -
+prim - enum - -
+prim - product - -
+prim - layout-buffer - pe-n pe-in
+prim - typed-buffer - pe-n pe-in
+prim - typed-variable - -
 -->

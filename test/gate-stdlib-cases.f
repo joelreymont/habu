@@ -107,6 +107,10 @@ TEST:SUITE trusted-inventory
    tools/trusted-inventory-test.f
 TEST:;SUITE
 
+TEST:SUITE primitive-effect-inventory
+   tools/primitive-effect-inventory-test.f
+TEST:;SUITE
+
 TEST:SUITE json-file-cursor
    tools/json-file-test.f
 TEST:;SUITE
