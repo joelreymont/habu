@@ -25,3 +25,33 @@ the API session limit then killed the survivors mid-flight. Disposition:
   self-file for 9549fdd8). Minted this session: execute-of-stored-xt soundness
   gap 5923c543 (HIGH, from the symset review).
 Goal remains active for a future session to resume the drain.
+
+DRAIN PLAN v2 (distilled 2026-07-17 after user review; the loop was
+fanning out - 369 open vs 343 at day start despite ~25 closures):
+RULE 1 - queued != dispatched. "Work discovered = work queued" still
+mints the dot, but dispatch priority is PRE-EXISTING tracker dots; a
+fresh residual is dispatched only when it BLOCKS a pre-existing chain.
+Residuals that neither block nor shrink the tracker get folded into an
+existing dot instead of minted where possible.
+RULE 2 - lane budget 2 concurrent workers max (3+ caused LESSONS merge
+churn and the master-divergence race); checker lanes exclusive.
+RULE 3 - convergence check at every landing: net open count must fall;
+a landing that would mint more than it closes folds its residuals.
+PRIORITY ORDER:
+(a) migration mass first - maki-migrate(8) libs-migrate(5)
+    tests-migrate(4) delete-legacy(3) switchover-wave(3): mechanical
+    host-glue retirement, burns count fastest;
+(b) type-system program - v2-r3(7) v2-types(7) type-dsl(6) +
+    checker-capability(3), serialized on the checker lane;
+(c) V2 persistence/autonomous remainder - evidence-applicability next
+    after proof-obligation lands, then differential/machine-action/
+    capability chain;
+(d) device dots queue against the Spark (being configured by another
+    agent - coordinate via habu-v2-dgx-spark-e88559f6); zed reserved
+    for deployment-facing legs;
+(e) E2 user-gated parked for Joel: fp16 policy, CAP vocabulary,
+    onnxruntime reference, Triton-baseline decision.
+Epics close last as containers; this goal closes last with the landing
+table. In-flight check against this standard: oblig = (c), keep;
+leg2c = elaboration with a built-in net<=-1 STOP - honor its outcome,
+no successor legs either way.
