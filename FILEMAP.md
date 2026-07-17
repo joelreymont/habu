@@ -53,7 +53,7 @@ points stay listed.
 - `src/core/lower-cert-base.f` — boot-safe, package-scoped lowering-certificate ABI and fail-closed producer dispatcher loaded immediately after the checker.
 - `src/core/type-schema.f` — persistent type-schema node arena (package TFAM) referenced by families/variants/fields as schema roots.
 - `src/core/type-family.f` — package-scoped type-family (TFAM), sum-variant (SUMV), product-field, and layout registries with snapshot persist.
-- `src/core/type-field.f` — protected transactional shared field arena with a sealed compiler capability, nominal owner/layout/source roles, schema-derived widths, ordered non-overlapping rows, commit-only field ids, and visibility checks.
+- `src/core/type-field.f` — protected transactional shared field arena with friend-only mutation, reflection-only public words, schema/policy-derived canonical layout, commit-only field ids, and visibility checks.
 - `src/core/render.f` — human/JSON diagnostics and signature recording.
 - `src/core/sumtype.f` — TYPEFAMILY/SUMTYPE declaration grammar registering package-aware families, variants, and payload schemas.
 - `src/core/layout-buffer.f` — generative checked storage for closed ADT layouts; owns allocation, zero initialization, bounds, stride, and the sole typed-layout pointer introduction boundary.
@@ -1371,7 +1371,7 @@ points stay listed.
 - `test/layout-valid-root-bad.f` — armed child-process invalid root-tag regression.
 - `test/layout-valid-growth.f` — forty-level nested-SUM fetch proving descriptor, environment, and guard arena growth.
 - `test/type-family-suite.f` — behavior suite for the package-scoped TFAM/SUMV/product/layout/SCHEMA registries.
-- `test/type-field-suite.f` — native-gated field-arena coverage for capability gating, staged errors, schema/layout mismatches, row overlap, strict LIFO, rollback reuse, visibility, parser-token copying, arena growth, finalized tag-only rejection, and reflection.
+- `test/type-field-suite.f` — native-gated field-arena coverage for interpret-mode mutation rejection, canonical first offsets and gap-free schema layout, staged errors, strict LIFO, rollback reuse, visibility, parser-token copying, arena growth, finalized tag-only rejection, and reflection.
 - `test/type-family-rollback-suite.f` — behavior suite for the checker's depth-safe transactional candidate/scope rollback frames.
 - `test/type-export-suite.f` — checker-level EXPORT alias suite (CHECKER-EXPORT): cross-package alias fidelity, defer/control-flag copy, every reject class, scope/candidate rollback of alias rows.
 - `test/export-package.f` — EXPORT keyword engine-contract regressions: child forges pin dual-name execution, the top-level hb-build directive no-op, generated-ctor re-export, DNAME-WIDE parity, and every reject exit status.

@@ -780,8 +780,6 @@ that source is explicitly certified; they are not stale-checked by the default
 | N>VIS | `n -- TYPE-FIELD:visibility` | Private mint from the checker package visibility constants. | `test/type-field-suite.f` | src/core/type-field.f | 2026-07-17 |
 | COUNT>N | `TYPE-FIELD:field-count -- n` | Private projection of the committed field high-water. | `test/type-field-suite.f` | src/core/type-field.f | 2026-07-17 |
 | N>COUNT | `n -- TYPE-FIELD:field-count` | Private mint from the committed field high-water. | `test/type-field-suite.f` | src/core/type-field.f | 2026-07-17 |
-| CAP>N | `TYPE-FIELD:build-cap -- n` | Private projection for validating and threading the sealed compiler capability. | `test/type-field-suite.f` | src/core/type-field.f | 2026-07-17 |
-| N>CAP | `n -- TYPE-FIELD:build-cap` | Private mint used only after the compiler capability token validates. | `test/type-field-suite.f` | src/core/type-field.f | 2026-07-17 |
 | TX>N | `TYPE-FIELD:field-tx -- n` | Private proof erasure for the strict-LIFO transaction serial. | `test/type-field-suite.f` | src/core/type-field.f | 2026-07-17 |
 | N>TX | `n -- TYPE-FIELD:field-tx` | Private mint for a validated fresh or current transaction serial. | `test/type-field-suite.f` | src/core/type-field.f | 2026-07-17 |
 | DRAFT>N | `TYPE-FIELD:field-draft -- n` | Private proof erasure for the top draft serial. | `test/type-field-suite.f` | src/core/type-field.f | 2026-07-17 |
@@ -793,6 +791,7 @@ that source is explicitly certified; they are not stale-checked by the default
 | RAW-FAMILY-VIS@ | `n -- n` | Private read-only bridge to family visibility. | `test/type-field-suite.f` | src/core/type-field.f | 2026-07-17 |
 | RAW-FAMILY-PRODUCT? | `n -- bool` | Private read-only bridge validating product-owned fields. | `test/type-field-suite.f` | src/core/type-field.f | 2026-07-17 |
 | RAW-FAMILY-SUM? | `n -- bool` | Private read-only bridge validating sum-variant fields. | `test/type-field-suite.f` | src/core/type-field.f | 2026-07-17 |
+| RAW-FAMILY-POLICY@ | `n -- n` | Private read-only bridge deriving field layout from the owning family's policy. | `test/type-field-suite.f` | src/core/type-field.f | 2026-07-17 |
 | RAW-ACTIVE-PKG$ | `-- ptr u8 n` | Private read-only bridge to the lexically active package identity. | `test/type-field-suite.f` | src/core/type-field.f | 2026-07-17 |
 | RAW-VARIANT-N | `-- n` | Private read-only bridge to the sealed variant high-water. | `test/type-field-suite.f` | src/core/type-field.f | 2026-07-17 |
 | RAW-VARIANT-FIND | `n ptr u8 n -- n bool` | Private bridge to family-scoped variant resolution. | `test/type-field-suite.f` | src/core/type-field.f | 2026-07-17 |
@@ -804,7 +803,16 @@ that source is explicitly certified; they are not stale-checked by the default
 | RAW-PUBLIC | `-- n` | Private read-only bridge to package public visibility. | `test/type-field-suite.f` | src/core/type-field.f | 2026-07-17 |
 | RAW-PRIVATE | `-- n` | Private read-only bridge to package private visibility. | `test/type-field-suite.f` | src/core/type-field.f | 2026-07-17 |
 | RAW-U8 | `ptr a -- ptr u8` | Private role cast after NAME-P supplies a valid byte-arena pointer. | `test/type-field-suite.f` | src/core/type-field.f | 2026-07-17 |
-| TFF-CAP | `-- TYPE-FIELD:build-cap` | Focused white-box mint for exercising the compiler-capability-gated field builder; ordinary checked source cannot construct this role. | `test/type-field-suite.f` | test/type-field-suite.f | 2026-07-17 |
+| B-OPEN | `TYPE-FIELD:family-id -- TYPE-FIELD:field-tx` | Focused white-box call to the friend-only field transaction opener. | `test/type-field-suite.f` | test/type-field-suite.f | 2026-07-17 |
+| B-START | `TYPE-FIELD:field-tx ptr u8 n -- TYPE-FIELD:field-tx TYPE-FIELD:field-draft` | Focused white-box call to the friend-only field draft starter. | `test/type-field-suite.f` | test/type-field-suite.f | 2026-07-17 |
+| B-START-VARIANT | `TYPE-FIELD:field-tx TYPE-FIELD:variant-id ptr u8 n -- TYPE-FIELD:field-tx TYPE-FIELD:field-draft` | Focused white-box call to the friend-only variant-field draft starter. | `test/type-field-suite.f` | test/type-field-suite.f | 2026-07-17 |
+| B-PARSE-START | `TYPE-FIELD:field-tx -- TYPE-FIELD:field-tx TYPE-FIELD:field-draft` | Focused white-box call to the parser-token field draft starter. | `test/type-field-suite.f` | test/type-field-suite.f | 2026-07-17 |
+| B-SCHEMA | `TYPE-FIELD:field-tx TYPE-FIELD:field-draft TYPE-FIELD:schema-id TYPE-FIELD:alignment TYPE-FIELD:field-flags -- TYPE-FIELD:field-tx TYPE-FIELD:field-draft` | Focused white-box call to schema-derived field layout staging. | `test/type-field-suite.f` | test/type-field-suite.f | 2026-07-17 |
+| B-LAYOUT | `TYPE-FIELD:field-tx TYPE-FIELD:field-draft TYPE-FIELD:slot TYPE-FIELD:cell-count TYPE-FIELD:byte-off TYPE-FIELD:byte-size -- TYPE-FIELD:field-tx TYPE-FIELD:field-draft` | Focused white-box call validating supplied layout claims against canonical metadata. | `test/type-field-suite.f` | test/type-field-suite.f | 2026-07-17 |
+| B-SOURCE | `TYPE-FIELD:field-tx TYPE-FIELD:field-draft TYPE-FIELD:source-id TYPE-FIELD:source-off TYPE-FIELD:source-len -- TYPE-FIELD:field-tx TYPE-FIELD:field-draft` | Focused white-box call to source-span staging. | `test/type-field-suite.f` | test/type-field-suite.f | 2026-07-17 |
+| B-ADD | `TYPE-FIELD:field-tx TYPE-FIELD:field-draft -- TYPE-FIELD:field-tx` | Focused white-box call to canonical field insertion. | `test/type-field-suite.f` | test/type-field-suite.f | 2026-07-17 |
+| B-COMMIT | `TYPE-FIELD:field-tx --` | Focused white-box call to field transaction commit. | `test/type-field-suite.f` | test/type-field-suite.f | 2026-07-17 |
+| B-ROLLBACK | `TYPE-FIELD:field-tx --` | Focused white-box call to field transaction rollback. | `test/type-field-suite.f` | test/type-field-suite.f | 2026-07-17 |
 | CAP-COMPILE-RUN | `--` | Model-CAD capture boundary evaluates the generated checked model definition and invokes its dynamic-arity capture word after the active checker hook certifies the definition. | `maki/cad-test.f`, `maki/test.f` | maki/cad.f | 2026-07-12 |
 | CHECK-PASSES? | `ptr u8 n -- bool` | Evaluation harness temporarily suppresses diagnostics, invokes the checker on candidate source, and restores the diagnostic hook; raw checker state mutation is the metaprogramming boundary. | `maki/eval-test.f`, `maki/test.f` | maki/eval.f | 2026-07-12 |
 | JIT-EVALUATE | `ptr u8 n --` | JIT inspection CLI evaluates user-supplied source before resolving and disassembling the requested word; dynamic evaluation cannot be expressed by the checker. | `test/gate-debug.f` | tools/jitdump-core.f | 2026-07-12 |
@@ -1275,8 +1283,6 @@ src/core/type-field.f:TX>N prim-axiom habu-epic-one-structure-04f9804f
 src/core/type-field.f:N>TX prim-axiom habu-epic-one-structure-04f9804f
 src/core/type-field.f:DRAFT>N prim-axiom habu-epic-one-structure-04f9804f
 src/core/type-field.f:N>DRAFT prim-axiom habu-epic-one-structure-04f9804f
-src/core/type-field.f:CAP>N prim-axiom habu-epic-one-structure-04f9804f
-src/core/type-field.f:N>CAP prim-axiom habu-epic-one-structure-04f9804f
 src/core/type-field.f:ID>N prim-axiom habu-epic-one-structure-04f9804f
 src/core/type-field.f:N>ID prim-axiom habu-epic-one-structure-04f9804f
 src/core/type-field.f:FAMILY>N prim-axiom habu-epic-one-structure-04f9804f
@@ -1314,6 +1320,7 @@ src/core/type-field.f:RAW-FAMILY-PKG$ stdlib-boundary habu-epic-one-structure-04
 src/core/type-field.f:RAW-FAMILY-VIS@ stdlib-boundary habu-epic-one-structure-04f9804f
 src/core/type-field.f:RAW-FAMILY-PRODUCT? stdlib-boundary habu-epic-one-structure-04f9804f
 src/core/type-field.f:RAW-FAMILY-SUM? stdlib-boundary habu-epic-one-structure-04f9804f
+src/core/type-field.f:RAW-FAMILY-POLICY@ stdlib-boundary habu-epic-one-structure-04f9804f
 src/core/type-field.f:RAW-ACTIVE-PKG$ stdlib-boundary habu-epic-one-structure-04f9804f
 src/core/type-field.f:RAW-VARIANT-N stdlib-boundary habu-epic-one-structure-04f9804f
 src/core/type-field.f:RAW-VARIANT-FIND stdlib-boundary habu-epic-one-structure-04f9804f
@@ -1895,7 +1902,16 @@ test/type-family-suite.f:TWX-TFL-CVAR? test-metaprog habu-seal-set-check-b3676b3
 test/type-family-suite.f:TWX-TFL-MATCH-FAM? test-metaprog habu-seal-set-check-b3676b33
 test/type-family-suite.f:TWX-TFL-VAR? test-metaprog habu-seal-set-check-b3676b33
 test/type-family-suite.f:TWX-TFL-VPADS test-metaprog habu-seal-set-check-b3676b33
-test/type-field-suite.f:TFF-CAP test-metaprog habu-epic-one-structure-04f9804f
+test/type-field-suite.f:B-OPEN test-metaprog habu-epic-one-structure-04f9804f
+test/type-field-suite.f:B-START test-metaprog habu-epic-one-structure-04f9804f
+test/type-field-suite.f:B-START-VARIANT test-metaprog habu-epic-one-structure-04f9804f
+test/type-field-suite.f:B-PARSE-START test-metaprog habu-epic-one-structure-04f9804f
+test/type-field-suite.f:B-SCHEMA test-metaprog habu-epic-one-structure-04f9804f
+test/type-field-suite.f:B-LAYOUT test-metaprog habu-epic-one-structure-04f9804f
+test/type-field-suite.f:B-SOURCE test-metaprog habu-epic-one-structure-04f9804f
+test/type-field-suite.f:B-ADD test-metaprog habu-epic-one-structure-04f9804f
+test/type-field-suite.f:B-COMMIT test-metaprog habu-epic-one-structure-04f9804f
+test/type-field-suite.f:B-ROLLBACK test-metaprog habu-epic-one-structure-04f9804f
 src/core/internal-mark.f stdlib-boundary habu-seal-set-check-b3676b33 1
 src/core/checker.f:TRUST stdlib-boundary habu-seal-set-check-b3676b33
 test/gate-common-lib.f:UEND test-metaprog habu-primitive-effect-axiom-1119f176
