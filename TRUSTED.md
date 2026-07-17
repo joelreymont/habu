@@ -780,6 +780,8 @@ that source is explicitly certified; they are not stale-checked by the default
 | N>VIS | `n -- TYPE-FIELD:visibility` | Private mint from the checker package visibility constants. | `test/type-field-suite.f` | src/core/type-field.f | 2026-07-17 |
 | COUNT>N | `TYPE-FIELD:field-count -- n` | Private projection of the committed field high-water. | `test/type-field-suite.f` | src/core/type-field.f | 2026-07-17 |
 | N>COUNT | `n -- TYPE-FIELD:field-count` | Private mint from the committed field high-water. | `test/type-field-suite.f` | src/core/type-field.f | 2026-07-17 |
+| CAP>N | `TYPE-FIELD:build-cap -- n` | Private projection for validating and threading the sealed compiler capability. | `test/type-field-suite.f` | src/core/type-field.f | 2026-07-17 |
+| N>CAP | `n -- TYPE-FIELD:build-cap` | Private mint used only after the compiler capability token validates. | `test/type-field-suite.f` | src/core/type-field.f | 2026-07-17 |
 | TX>N | `TYPE-FIELD:field-tx -- n` | Private proof erasure for the strict-LIFO transaction serial. | `test/type-field-suite.f` | src/core/type-field.f | 2026-07-17 |
 | N>TX | `n -- TYPE-FIELD:field-tx` | Private mint for a validated fresh or current transaction serial. | `test/type-field-suite.f` | src/core/type-field.f | 2026-07-17 |
 | DRAFT>N | `TYPE-FIELD:field-draft -- n` | Private proof erasure for the top draft serial. | `test/type-field-suite.f` | src/core/type-field.f | 2026-07-17 |
@@ -796,11 +798,13 @@ that source is explicitly certified; they are not stale-checked by the default
 | RAW-VARIANT-FIND | `n ptr u8 n -- n bool` | Private bridge to family-scoped variant resolution. | `test/type-field-suite.f` | src/core/type-field.f | 2026-07-17 |
 | RAW-VARIANT-FAMILY@ | `n -- n` | Private read-only bridge proving variant-family ownership. | `test/type-field-suite.f` | src/core/type-field.f | 2026-07-17 |
 | RAW-SCHEMA-N | `-- n` | Private read-only bridge to the sealed schema-root high-water. | `test/type-field-suite.f` | src/core/type-field.f | 2026-07-17 |
+| RAW-SCHEMA-WIDTH | `n -- n` | Private read-only bridge deriving a schema root's logical cell width. | `test/type-field-suite.f` | src/core/type-field.f | 2026-07-17 |
 | RAW-CANON? | `ptr u8 n -- bool` | Private bridge to the canonical lowercase-tail predicate. | `test/type-field-suite.f` | src/core/type-field.f | 2026-07-17 |
 | RAW-KEYWORD? | `ptr u8 n -- bool` | Private bridge to the declaration keyword predicate. | `test/type-field-suite.f` | src/core/type-field.f | 2026-07-17 |
 | RAW-PUBLIC | `-- n` | Private read-only bridge to package public visibility. | `test/type-field-suite.f` | src/core/type-field.f | 2026-07-17 |
 | RAW-PRIVATE | `-- n` | Private read-only bridge to package private visibility. | `test/type-field-suite.f` | src/core/type-field.f | 2026-07-17 |
 | RAW-U8 | `ptr a -- ptr u8` | Private role cast after NAME-P supplies a valid byte-arena pointer. | `test/type-field-suite.f` | src/core/type-field.f | 2026-07-17 |
+| TFF-CAP | `-- TYPE-FIELD:build-cap` | Focused white-box mint for exercising the compiler-capability-gated field builder; ordinary checked source cannot construct this role. | `test/type-field-suite.f` | test/type-field-suite.f | 2026-07-17 |
 | CAP-COMPILE-RUN | `--` | Model-CAD capture boundary evaluates the generated checked model definition and invokes its dynamic-arity capture word after the active checker hook certifies the definition. | `maki/cad-test.f`, `maki/test.f` | maki/cad.f | 2026-07-12 |
 | CHECK-PASSES? | `ptr u8 n -- bool` | Evaluation harness temporarily suppresses diagnostics, invokes the checker on candidate source, and restores the diagnostic hook; raw checker state mutation is the metaprogramming boundary. | `maki/eval-test.f`, `maki/test.f` | maki/eval.f | 2026-07-12 |
 | JIT-EVALUATE | `ptr u8 n --` | JIT inspection CLI evaluates user-supplied source before resolving and disassembling the requested word; dynamic evaluation cannot be expressed by the checker. | `test/gate-debug.f` | tools/jitdump-core.f | 2026-07-12 |
@@ -1271,6 +1275,8 @@ src/core/type-field.f:TX>N prim-axiom habu-epic-one-structure-04f9804f
 src/core/type-field.f:N>TX prim-axiom habu-epic-one-structure-04f9804f
 src/core/type-field.f:DRAFT>N prim-axiom habu-epic-one-structure-04f9804f
 src/core/type-field.f:N>DRAFT prim-axiom habu-epic-one-structure-04f9804f
+src/core/type-field.f:CAP>N prim-axiom habu-epic-one-structure-04f9804f
+src/core/type-field.f:N>CAP prim-axiom habu-epic-one-structure-04f9804f
 src/core/type-field.f:ID>N prim-axiom habu-epic-one-structure-04f9804f
 src/core/type-field.f:N>ID prim-axiom habu-epic-one-structure-04f9804f
 src/core/type-field.f:FAMILY>N prim-axiom habu-epic-one-structure-04f9804f
@@ -1313,6 +1319,7 @@ src/core/type-field.f:RAW-VARIANT-N stdlib-boundary habu-epic-one-structure-04f9
 src/core/type-field.f:RAW-VARIANT-FIND stdlib-boundary habu-epic-one-structure-04f9804f
 src/core/type-field.f:RAW-VARIANT-FAMILY@ stdlib-boundary habu-epic-one-structure-04f9804f
 src/core/type-field.f:RAW-SCHEMA-N stdlib-boundary habu-epic-one-structure-04f9804f
+src/core/type-field.f:RAW-SCHEMA-WIDTH stdlib-boundary habu-epic-one-structure-04f9804f
 src/core/type-field.f:RAW-CANON? stdlib-boundary habu-epic-one-structure-04f9804f
 src/core/type-field.f:RAW-KEYWORD? stdlib-boundary habu-epic-one-structure-04f9804f
 src/core/type-field.f:RAW-PUBLIC stdlib-boundary habu-epic-one-structure-04f9804f
@@ -1888,6 +1895,7 @@ test/type-family-suite.f:TWX-TFL-CVAR? test-metaprog habu-seal-set-check-b3676b3
 test/type-family-suite.f:TWX-TFL-MATCH-FAM? test-metaprog habu-seal-set-check-b3676b33
 test/type-family-suite.f:TWX-TFL-VAR? test-metaprog habu-seal-set-check-b3676b33
 test/type-family-suite.f:TWX-TFL-VPADS test-metaprog habu-seal-set-check-b3676b33
+test/type-field-suite.f:TFF-CAP test-metaprog habu-epic-one-structure-04f9804f
 src/core/internal-mark.f stdlib-boundary habu-seal-set-check-b3676b33 1
 src/core/checker.f:TRUST stdlib-boundary habu-seal-set-check-b3676b33
 test/gate-common-lib.f:UEND test-metaprog habu-primitive-effect-axiom-1119f176

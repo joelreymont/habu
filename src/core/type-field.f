@@ -1,8 +1,8 @@
 \ type-field.f - transactional shared field metadata.
 \
-\ TYPE-FIELD owns the ordered field registry shared by PRODUCT and payload
-\ SUMTYPE declarations. Builder calls are package-scoped, fully role typed, and
-\ transactional. Published reflection never exposes arena pointers or raw ids.
+\ TYPE-FIELD owns ordered field metadata for structure declarations and
+\ payload-bearing variants. Builder calls require the sealed compiler
+\ capability; published reflection never exposes arena pointers or raw ids.
 
 package TYPE-FIELD
 public
@@ -37,6 +37,7 @@ s" TYPE-FIELD:source-off" CHECKER-DEFTYPE
 s" TYPE-FIELD:source-len" CHECKER-DEFTYPE
 s" TYPE-FIELD:visibility" CHECKER-DEFTYPE
 s" TYPE-FIELD:field-count" CHECKER-DEFTYPE
+s" TYPE-FIELD:build-cap" CHECKER-DEFTYPE
 s" TYPE-FIELD:field-tx" CHECKER-DEFLINEAR
 s" TYPE-FIELD:field-draft" CHECKER-DEFLINEAR
 
@@ -74,6 +75,8 @@ TRUSTED: VIS>N ( TYPE-FIELD:visibility -- n ) ;
 TRUSTED: N>VIS ( n -- TYPE-FIELD:visibility ) ;
 TRUSTED: COUNT>N ( TYPE-FIELD:field-count -- n ) ;
 TRUSTED: N>COUNT ( n -- TYPE-FIELD:field-count ) ;
+TRUSTED: CAP>N ( TYPE-FIELD:build-cap -- n ) ;
+TRUSTED: N>CAP ( n -- TYPE-FIELD:build-cap ) ;
 TRUSTED: TX>N ( TYPE-FIELD:field-tx -- n ) ;
 TRUSTED: N>TX ( n -- TYPE-FIELD:field-tx ) ;
 TRUSTED: DRAFT>N ( TYPE-FIELD:field-draft -- n ) ;
@@ -92,6 +95,7 @@ TRUSTED: RAW-VARIANT-N ( -- n ) SUMV-N@ ;
 TRUSTED: RAW-VARIANT-FIND ( n ptr u8 n -- n bool ) SUMV-FIND ;
 TRUSTED: RAW-VARIANT-FAMILY@ ( n -- n ) SUMV-FAM@ ;
 TRUSTED: RAW-SCHEMA-N ( -- n ) SCHEMA-ROOT-N@ ;
+TRUSTED: RAW-SCHEMA-WIDTH ( n -- n ) SCHEMA-ROOT@ TDECL-SCH-WIDTH ;
 TRUSTED: RAW-CANON? ( ptr u8 n -- bool ) TF-CANON? ;
 TRUSTED: RAW-KEYWORD? ( ptr u8 n -- bool ) TDECL-KEYWORD? ;
 TRUSTED: RAW-PUBLIC ( -- n ) CHECKER-PACKAGE-PUBLIC ;
@@ -101,6 +105,7 @@ TRUSTED: RAW-U8 ( ptr a -- ptr u8 ) ;
 $7FFFFFFFFFFFFFFF constant MAX-N
 4 constant CAP-INIT
 16 constant NAME-INIT
+1 constant BUILD-CAP-TOKEN
 
 1 constant FLAG-PUBLIC
 2 constant FLAG-BYTE
@@ -382,6 +387,19 @@ variable NAME-N
 : ABORT-ALL ( -- )
    begin TX-DEPTH @ 0 > while ROLLBACK-TOP repeat ;
 
+: REQUIRE-BUILD-CAP ( n -- )
+   BUILD-CAP-TOKEN <> if
+      ABORT-ALL
+      E-VISIBILITY throw
+   then ;
+
+: USE-BUILD-CAP ( TYPE-FIELD:build-cap -- n )
+   CAP>N dup REQUIRE-BUILD-CAP ;
+
+: REQUIRE-NO-DRAFT ( -- )
+   TX-DEPTH @ 0= if exit then
+   TX-TOP-REC TX.DRAFT-ROW @ 0 >= if E-DRAFT throw then ;
+
 : REQUIRE-DRAFT ( n n -- ptr a ) {: tx-token:n draft-token:n :}
    tx-token REQUIRE-TX
    TX-TOP-REC {: tx:ptr :}
@@ -412,51 +430,86 @@ variable R-DRAFT
    ABORT-ALL
    code throw ;
 
-: START-CORE ( -- )
-   A-TX @ REQUIRE-TX
-   TX-TOP-REC {: tx:ptr :}
-   tx TX.FAMILY @ {: fam:n :}
+: REQUIRE-SUM-OWNER ( n -- ) {: fam:n :}
+   fam RAW-FAMILY-SUM? 0= if E-FAMILY throw then
+   fam A-VAR @ REQUIRE-VARIANT ;
+
+: REQUIRE-PRODUCT-OWNER ( n -- )
+   RAW-FAMILY-PRODUCT? 0= if E-FAMILY throw then ;
+
+: REQUIRE-OWNER-KIND ( n -- ) {: fam:n :}
+   A-VAR-F @ if fam REQUIRE-SUM-OWNER exit then
+   fam REQUIRE-PRODUCT-OWNER ;
+
+: START-OWNER ( ptr a -- n ) {: tx:ptr :}
    tx TX.DRAFT-ROW @ 0 >= if E-DRAFT throw then
+   tx TX.FAMILY @ dup REQUIRE-OWNER-KIND ;
 
-   \ The caller may have passed parse-name storage. Copy it before any s" or
-   \ parser-adjacent validation can reuse the interpreter token buffer.
-   A-NAME @ A-NAME-U @ COPY-NAME {: name-off:n :}
-   name-off A-NAME-U @ NAME$ {: name:ptr name-u:n :}
-
-   A-VAR-F @ if
-      fam RAW-FAMILY-SUM? 0= if E-FAMILY throw then
-      fam A-VAR @ REQUIRE-VARIANT
-   else
-      fam RAW-FAMILY-PRODUCT? 0= if E-FAMILY throw then
-   then
+: REQUIRE-START-NAME ( n n -- ) {: fam:n off:n :}
+   off A-NAME-U @ NAME$ {: name:ptr name-u:n :}
    name name-u REQUIRE-NAME
    fam A-VAR-F @ 0= 0= A-VAR @ REQUIRE-CONTIGUOUS
-   fam A-VAR-F @ 0= 0= A-VAR @ name name-u REQUIRE-UNIQUE
+   fam A-VAR-F @ 0= 0= A-VAR @ name name-u REQUIRE-UNIQUE ;
 
-   ROW-N @ 1 + ROW-ENSURE
-   DRAFT-SERIAL NEXT-SERIAL {: token:n :}
-   ROW-N @ {: row-id:n :}
-   row-id ROW-REC * ROW-P @ + {: row:ptr :}
+: START-NAME ( n -- n n ) {: fam:n :}
+   A-NAME @ A-NAME-U @ COPY-NAME {: off:n :}
+   fam off REQUIRE-START-NAME
+   fam off ;
+
+: ROW-INIT-KEY ( ptr a n n -- ) {: row:ptr fam:n off:n :}
    fam row ROW.FAMILY !
    A-VAR-F @ row ROW.HAS-VARIANT !
    A-VAR @ row ROW.VARIANT !
-   name-off row ROW.NAME-OFF !
-   name-u row ROW.NAME-LEN !
+   off row ROW.NAME-OFF !
+   A-NAME-U @ row ROW.NAME-LEN ! ;
+
+: ROW-INIT-SCHEMA ( ptr a -- ) {: row:ptr :}
    0 row ROW.SCHEMA !
+   0 row ROW.ALIGN !
+   0 row ROW.FLAGS ! ;
+
+: ROW-INIT-LAYOUT ( ptr a -- ) {: row:ptr :}
    0 row ROW.SLOT !
    0 row ROW.CELLS !
    0 row ROW.BYTE-OFF !
-   0 row ROW.BYTE-SIZE !
-   0 row ROW.ALIGN !
-   0 row ROW.FLAGS !
+   0 row ROW.BYTE-SIZE ! ;
+
+: ROW-INIT-SOURCE ( ptr a -- ) {: row:ptr :}
    0 row ROW.SOURCE-ID !
    0 row ROW.SOURCE-OFF !
-   0 row ROW.SOURCE-LEN !
-   ROW-N @ 1 + ROW-N !
+   0 row ROW.SOURCE-LEN ! ;
+
+: ROW-INIT ( ptr a n n -- ) {: row:ptr fam:n off:n :}
+   row fam off ROW-INIT-KEY
+   row ROW-INIT-SCHEMA
+   row ROW-INIT-LAYOUT
+   row ROW-INIT-SOURCE ;
+
+: ROW-NEXT ( -- n ptr a )
+   ROW-N @ 1 + ROW-ENSURE
+   ROW-N @ dup ROW-REC * ROW-P @ + ;
+
+: ROW-ALLOC ( n n -- n ) {: fam:n off:n :}
+   ROW-NEXT {: id:n row:ptr :}
+   row fam off ROW-INIT
+   id 1 + ROW-N !
+   id ;
+
+: TX-DRAFT! ( n n ptr a -- ) {: row-id:n token:n tx:ptr :}
    row-id tx TX.DRAFT-ROW !
    token tx TX.DRAFT-TOKEN !
-   0 tx TX.DRAFT-STATE !
+   0 tx TX.DRAFT-STATE ! ;
+
+: DRAFT-ACTIVATE ( ptr a n -- ) {: tx:ptr row-id:n :}
+   DRAFT-SERIAL NEXT-SERIAL {: token:n :}
+   row-id token tx TX-DRAFT!
    token R-DRAFT ! ;
+
+: START-CORE ( -- )
+   A-TX @ REQUIRE-TX
+   TX-TOP-REC dup START-OWNER
+   START-NAME ROW-ALLOC
+   DRAFT-ACTIVATE ;
 
 : START-RUN ( n bool n ptr u8 n -- )
    {: tx:n has:bool variant:n a:ptr u:n :}
@@ -502,11 +555,43 @@ variable R-DRAFT
    A-Z @ row ROW.SOURCE-LEN !
    STAGE-SOURCE STAGE+ ;
 
+: REQUIRE-SCHEMA-WIDTH ( ptr a -- ) {: row:ptr :}
+   row ROW.SCHEMA @ RAW-SCHEMA-WIDTH
+   row ROW.CELLS @ <> if E-LAYOUT throw then ;
+
+: PREV-OWNER? ( n ptr a -- bool ) {: id:n row:ptr :}
+   id 0= if 0 0= 0= exit then
+   id 1 - row ROW.FAMILY @ row ROW.HAS-VARIANT @ 0= 0=
+   row ROW.VARIANT @ ROW-OWNER? ;
+
+: REQUIRE-AFTER ( n n n -- ) {: start:n prev:n len:n :}
+   prev MAX-N len - > if E-LAYOUT throw then
+   start prev len + < if E-LAYOUT throw then ;
+
+: REQUIRE-SLOT-AFTER ( ptr a ptr a -- ) {: row:ptr prev:ptr :}
+   row ROW.SLOT @ prev ROW.SLOT @ prev ROW.CELLS @ REQUIRE-AFTER ;
+
+: REQUIRE-BYTE-AFTER ( ptr a ptr a -- ) {: row:ptr prev:ptr :}
+   row ROW.BYTE-OFF @ prev ROW.BYTE-OFF @
+   prev ROW.BYTE-SIZE @ REQUIRE-AFTER ;
+
+: REQUIRE-ROW-ORDER ( n ptr a -- ) {: id:n row:ptr :}
+   id row PREV-OWNER? 0= if exit then
+   id 1 - ROW-REC@ {: prev:ptr :}
+   row prev REQUIRE-SLOT-AFTER
+   row prev REQUIRE-BYTE-AFTER ;
+
+: REQUIRE-ROW-LAYOUT ( n ptr a -- ) {: id:n row:ptr :}
+   row REQUIRE-SCHEMA-WIDTH
+   row ROW.BYTE-SIZE @ 0= if E-LAYOUT throw then
+   row ROW.BYTE-OFF @ row ROW.ALIGN @ mod 0 <> if E-LAYOUT throw then
+   id row REQUIRE-ROW-ORDER ;
+
 : ADD-CORE ( -- )
    A-TX @ A-DRAFT @ REQUIRE-DRAFT {: row:ptr :}
    TX-TOP-REC {: tx:ptr :}
    tx TX.DRAFT-STATE @ STAGE-DONE <> if E-DRAFT throw then
-   row ROW.BYTE-OFF @ row ROW.ALIGN @ mod 0 <> if E-LAYOUT throw then
+   tx TX.DRAFT-ROW @ row REQUIRE-ROW-LAYOUT
    -1 tx TX.DRAFT-ROW !
    0 tx TX.DRAFT-TOKEN !
    0 tx TX.DRAFT-STATE ! ;
@@ -610,12 +695,15 @@ public
 : VISIBILITY= ( TYPE-FIELD:visibility TYPE-FIELD:visibility -- bool )
    VIS>N swap VIS>N = ;
 
-\ Scoped builder: OPEN binds the transaction to a family owned by the active
-\ package. All following roles are nominal, and every failure aborts the whole
-\ nested transaction stack before propagating its named error.
-: OPEN ( TYPE-FIELD:family-id -- TYPE-FIELD:field-tx )
+\ The sealed compiler capability gates every mutation. OPEN also binds the
+\ transaction to a family owned by the active package; every failure aborts the
+\ whole nested transaction stack before propagating its named error.
+: OPEN
+   ( TYPE-FIELD:build-cap TYPE-FIELD:family-id -- TYPE-FIELD:build-cap TYPE-FIELD:field-tx )
    FAMILY>N {: fam:n :}
+   USE-BUILD-CAP {: cap:n :}
    fam REQUIRE-OWNED
+   REQUIRE-NO-DRAFT
    TX-DEPTH @ 1 + TX-ENSURE
    TX-SERIAL NEXT-SERIAL {: token:n :}
    TX-DEPTH @ TX-REC * TX-P @ + {: tx:ptr :}
@@ -627,73 +715,86 @@ public
    0 tx TX.DRAFT-TOKEN !
    0 tx TX.DRAFT-STATE !
    TX-DEPTH @ 1 + TX-DEPTH !
-   token N>TX ;
+   cap N>CAP token N>TX ;
 
-: START ( TYPE-FIELD:field-tx ptr u8 n -- TYPE-FIELD:field-tx TYPE-FIELD:field-draft )
+: START
+   ( TYPE-FIELD:build-cap TYPE-FIELD:field-tx ptr u8 n -- TYPE-FIELD:build-cap TYPE-FIELD:field-tx TYPE-FIELD:field-draft )
    {: a:ptr u:n :}
    TX>N {: tx:n :}
+   USE-BUILD-CAP {: cap:n :}
    tx B-FALSE 0 a u START-RUN
-   tx N>TX R-DRAFT @ N>DRAFT ;
+   cap N>CAP tx N>TX R-DRAFT @ N>DRAFT ;
 
 : START-VARIANT
-   ( TYPE-FIELD:field-tx TYPE-FIELD:variant-id ptr u8 n -- TYPE-FIELD:field-tx TYPE-FIELD:field-draft )
+   ( TYPE-FIELD:build-cap TYPE-FIELD:field-tx TYPE-FIELD:variant-id ptr u8 n -- TYPE-FIELD:build-cap TYPE-FIELD:field-tx TYPE-FIELD:field-draft )
    {: a:ptr u:n :}
    VARIANT>N {: variant:n :}
    TX>N {: tx:n :}
+   USE-BUILD-CAP {: cap:n :}
    tx B-TRUE variant a u START-RUN
-   tx N>TX R-DRAFT @ N>DRAFT ;
+   cap N>CAP tx N>TX R-DRAFT @ N>DRAFT ;
 
-: PARSE-START ( TYPE-FIELD:field-tx -- TYPE-FIELD:field-tx TYPE-FIELD:field-draft )
+: PARSE-START
+   ( TYPE-FIELD:build-cap TYPE-FIELD:field-tx -- TYPE-FIELD:build-cap TYPE-FIELD:field-tx TYPE-FIELD:field-draft )
    parse-name START ;
 
 : PARSE-START-VARIANT
-   ( TYPE-FIELD:field-tx TYPE-FIELD:variant-id -- TYPE-FIELD:field-tx TYPE-FIELD:field-draft )
+   ( TYPE-FIELD:build-cap TYPE-FIELD:field-tx TYPE-FIELD:variant-id -- TYPE-FIELD:build-cap TYPE-FIELD:field-tx TYPE-FIELD:field-draft )
    parse-name START-VARIANT ;
 
 : SCHEMA
-   ( TYPE-FIELD:field-tx TYPE-FIELD:field-draft TYPE-FIELD:schema-id TYPE-FIELD:alignment TYPE-FIELD:field-flags -- TYPE-FIELD:field-tx TYPE-FIELD:field-draft )
+   ( TYPE-FIELD:build-cap TYPE-FIELD:field-tx TYPE-FIELD:field-draft TYPE-FIELD:schema-id TYPE-FIELD:alignment TYPE-FIELD:field-flags -- TYPE-FIELD:build-cap TYPE-FIELD:field-tx TYPE-FIELD:field-draft )
    FLAGS>N A-Z !
    ALIGN>N A-Y !
    SCHEMA>N A-X !
    DRAFT>N A-DRAFT !
    TX>N A-TX !
+   USE-BUILD-CAP {: cap:n :}
    [: SCHEMA-CORE ;] catch ABORT-THROW
-   A-TX @ N>TX A-DRAFT @ N>DRAFT ;
+   cap N>CAP A-TX @ N>TX A-DRAFT @ N>DRAFT ;
 
 : LAYOUT
-   ( TYPE-FIELD:field-tx TYPE-FIELD:field-draft TYPE-FIELD:slot TYPE-FIELD:cell-count TYPE-FIELD:byte-off TYPE-FIELD:byte-size -- TYPE-FIELD:field-tx TYPE-FIELD:field-draft )
+   ( TYPE-FIELD:build-cap TYPE-FIELD:field-tx TYPE-FIELD:field-draft TYPE-FIELD:slot TYPE-FIELD:cell-count TYPE-FIELD:byte-off TYPE-FIELD:byte-size -- TYPE-FIELD:build-cap TYPE-FIELD:field-tx TYPE-FIELD:field-draft )
    BYTE-SIZE>N A-W !
    BYTE-OFF>N A-Z !
    CELLS>N A-Y !
    SLOT>N A-X !
    DRAFT>N A-DRAFT !
    TX>N A-TX !
+   USE-BUILD-CAP {: cap:n :}
    [: LAYOUT-CORE ;] catch ABORT-THROW
-   A-TX @ N>TX A-DRAFT @ N>DRAFT ;
+   cap N>CAP A-TX @ N>TX A-DRAFT @ N>DRAFT ;
 
 : SOURCE
-   ( TYPE-FIELD:field-tx TYPE-FIELD:field-draft TYPE-FIELD:source-id TYPE-FIELD:source-off TYPE-FIELD:source-len -- TYPE-FIELD:field-tx TYPE-FIELD:field-draft )
+   ( TYPE-FIELD:build-cap TYPE-FIELD:field-tx TYPE-FIELD:field-draft TYPE-FIELD:source-id TYPE-FIELD:source-off TYPE-FIELD:source-len -- TYPE-FIELD:build-cap TYPE-FIELD:field-tx TYPE-FIELD:field-draft )
    SOURCE-LEN>N A-Z !
    SOURCE-OFF>N A-Y !
    SOURCE-ID>N A-X !
    DRAFT>N A-DRAFT !
    TX>N A-TX !
+   USE-BUILD-CAP {: cap:n :}
    [: SOURCE-CORE ;] catch ABORT-THROW
-   A-TX @ N>TX A-DRAFT @ N>DRAFT ;
+   cap N>CAP A-TX @ N>TX A-DRAFT @ N>DRAFT ;
 
-: ADD ( TYPE-FIELD:field-tx TYPE-FIELD:field-draft -- TYPE-FIELD:field-tx )
+: ADD
+   ( TYPE-FIELD:build-cap TYPE-FIELD:field-tx TYPE-FIELD:field-draft -- TYPE-FIELD:build-cap TYPE-FIELD:field-tx )
    DRAFT>N A-DRAFT !
    TX>N A-TX !
+   USE-BUILD-CAP {: cap:n :}
    [: ADD-CORE ;] catch ABORT-THROW
-   A-TX @ N>TX ;
+   cap N>CAP A-TX @ N>TX ;
 
-: COMMIT ( TYPE-FIELD:field-tx -- )
+: COMMIT ( TYPE-FIELD:build-cap TYPE-FIELD:field-tx -- TYPE-FIELD:build-cap )
    TX>N A-TX !
-   [: COMMIT-CORE ;] catch ABORT-THROW ;
+   USE-BUILD-CAP {: cap:n :}
+   [: COMMIT-CORE ;] catch ABORT-THROW
+   cap N>CAP ;
 
-: ROLLBACK ( TYPE-FIELD:field-tx -- )
+: ROLLBACK ( TYPE-FIELD:build-cap TYPE-FIELD:field-tx -- TYPE-FIELD:build-cap )
    TX>N A-TX !
-   [: ROLLBACK-CORE ;] catch ABORT-THROW ;
+   USE-BUILD-CAP {: cap:n :}
+   [: ROLLBACK-CORE ;] catch ABORT-THROW
+   cap N>CAP ;
 
 : COUNT ( -- TYPE-FIELD:field-count ) COMMIT-N @ N>COUNT ;
 
