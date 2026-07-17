@@ -4,6 +4,23 @@
 
 Last updated: 2026-07-17
 
+- **The fused cp.async K-loop decomposed into shared CPP-* protocol step words, byte-identical
+  across 20 configs — no device time.** (dot habu-decompose-pipelined-staging-49c97cba,
+  prerequisite for habu-checker-cp-async-6ba788a5.) MM-PIPE-KLOOP-WITH (cg-matmul-emit.f) and
+  cg-mma.f's MMA-PIPE-KLOOP-WITH / MMA-PIPE-KLOOP-SINGLE now COMPOSE named steps defined once in
+  cg-matmul-emit.f: CPP-COMMIT / CPP-WAIT n / CPP-SYNC (bar.sync) / CPP-CUR-WINDOW (read-window
+  base %r16) / CPP-NEXT-WINDOW (prefetch dst %r18) / CPP-FLIP (parity xor) / CPP-KGUARD / CPP-KTAIL
+  / CPP-PF-TEST / CPP-PF-ELSE / CPP-PF-END / CPP-KT-INIT/NEXT/ADVANCE / CPP-PARITY-INIT. The
+  STAGE-ISSUE step stays per-file (MM-CP-STAGE / MMA-CP-STAGE — the As/Bs chunk geometry differs);
+  the CPP-* steps are geometry-independent and parameterized only by buffer-byte-size and BK, so MM
+  (16384/32) and every non-default MMA config thread the SAME words and emit identical bytes (this
+  is why MMA-DEFAULT? could already call MM-PIPE-KLOOP-WITH wholesale). The whole safety net was a
+  pure off-device emit-dump (EMIT-MATMUL + 19 EMIT-MATMUL-MMA configs: default lmode0/1/2,
+  larger-BK single/double, padded, wide MFRAGS=2/4, B-ldmatrix bpad0/4) sha'd before vs after the
+  factoring — byte-identical, proven twice. The typestate capability attaches per-step
+  issue->commit->wait->bar.sync->read + buffer-parity obligations to these CPP-* seams; per the
+  earlier note, same-body parity consistency is in scope for it, runtime loop-carried alternation is
+  not.
 - **The checker ALREADY expresses "same phantom in, same phantom out through an emitter" — the
   same-type tile/collective wrappers were trusted UNNECESSARILY.** (dot habu-ptx-phantom-preserving,
   leg 1, host lane, lib/ptx/rep.f.) A row-polymorphic higher-order combinator `( a a [ n n -- n ]

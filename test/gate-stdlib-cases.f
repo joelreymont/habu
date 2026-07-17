@@ -278,6 +278,7 @@ TEST:SUITE ptx-stdlib
    lib/ptx/tile-v4-test.f
    lib/ptx/tile-v4a-test.f
    lib/ptx/tile-pipe-test.f
+   lib/ptx/cpp-pipe-step-test.f
    lib/ptx/collective-test.f
    lib/ptx/cg-collective-test.f
    lib/ptx/autograd-test.f

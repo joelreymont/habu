@@ -605,49 +605,34 @@ variable MMA-LMODE   0 MMA-LMODE !
 
 \ double-buffered (MMA-STAGES=2) cp.async pipeline, BK-parameterized (mirror of MM-PIPE-KLOOP-WITH).
 \ The compute quotation sits on the data stack from entry to its `execute` slot (as in MM-PIPE).
+\ Composed from the shared CPP-* protocol steps (cg-matmul-emit.f); MMA-CP-STAGE is the As/Bs
+\ (or transposed-Bs) stage-issue, MMA-BUFB / MMA-BK @ carry the BK/pad/stage-parameterized bytes.
 : MMA-PIPE-KLOOP-WITH ( [ -- ] -- )
-   s" mov.u32 %r14,0;" PTX-L  s" mov.u32 %r15,0;" PTX-L
-   11 14 MMA-CP-STAGE
-   s" cp.async.commit_group;" PTX-L
-   s" $KLOOP:" PTX-L
-   s" setp.ge.u32 %p1,%r14,%r3;" PTX-L  s" @%p1 bra $KEND;" PTX-L
-   SB-RESET s" mul.lo.u32 %r16,%r15," SB-APPEND MMA-BUFB SB-U s" ;" SB-APPEND SB$ PTX-L
-   s" add.u32 %r16,%r11,%r16;" PTX-L
-   SB-RESET s" add.u32 %r17,%r14," SB-APPEND MMA-BK @ SB-U s" ;" SB-APPEND SB$ PTX-L
-   s" setp.lt.u32 %p2,%r17,%r3;" PTX-L
-   s" @!%p2 bra $NOPF;" PTX-L
-   s" xor.b32 %r18,%r15,1;" PTX-L
-   SB-RESET s" mul.lo.u32 %r18,%r18," SB-APPEND MMA-BUFB SB-U s" ;" SB-APPEND SB$ PTX-L
-   s" add.u32 %r18,%r11,%r18;" PTX-L
-   18 17 MMA-CP-STAGE
-   s" cp.async.commit_group;" PTX-L
-   s" cp.async.wait_group 1;" PTX-L
-   s" bra $PFDONE;" PTX-L
-   s" $NOPF:" PTX-L
-   s" cp.async.wait_group 0;" PTX-L
-   s" $PFDONE:" PTX-L
-   s" bar.sync 0;" PTX-L
-   execute
-   s" bar.sync 0;" PTX-L
-   SB-RESET s" add.u32 %r14,%r14," SB-APPEND MMA-BK @ SB-U s" ;" SB-APPEND SB$ PTX-L
-   s" xor.b32 %r15,%r15,1;" PTX-L
-   s" bra $KLOOP;" PTX-L  s" $KEND:" PTX-L ;
+   CPP-KT-INIT  CPP-PARITY-INIT
+   11 14 MMA-CP-STAGE  CPP-COMMIT
+   CPP-KGUARD
+   MMA-BUFB CPP-CUR-WINDOW
+   MMA-BK @ CPP-KT-NEXT  CPP-PF-TEST
+   MMA-BUFB CPP-NEXT-WINDOW  18 17 MMA-CP-STAGE
+   CPP-COMMIT  1 CPP-WAIT
+   CPP-PF-ELSE
+   0 CPP-WAIT
+   CPP-PF-END
+   CPP-SYNC  execute  CPP-SYNC
+   MMA-BK @ CPP-KT-ADVANCE  CPP-FLIP
+   CPP-KTAIL ;
 
 \ single-buffer (MMA-STAGES=1) K-loop: stage, drain, compute, reuse. Fewer bar.sync per K than
 \ BK=32 (bigger tile) but no cp.async/compute overlap; fits the 48 KiB static cap at BK=64.
+\ Same CPP-* protocol steps, minus the parity/prefetch (single read-window = SH).
 : MMA-PIPE-KLOOP-SINGLE ( [ -- ] -- )
-   s" mov.u32 %r14,0;" PTX-L
-   s" mov.u32 %r16,%r11;" PTX-L                                    \ single buffer base = SH
-   s" $KLOOP:" PTX-L
-   s" setp.ge.u32 %p1,%r14,%r3;" PTX-L  s" @%p1 bra $KEND;" PTX-L
-   11 14 MMA-CP-STAGE
-   s" cp.async.commit_group;" PTX-L
-   s" cp.async.wait_group 0;" PTX-L
-   s" bar.sync 0;" PTX-L
-   execute
-   s" bar.sync 0;" PTX-L
-   SB-RESET s" add.u32 %r14,%r14," SB-APPEND MMA-BK @ SB-U s" ;" SB-APPEND SB$ PTX-L
-   s" bra $KLOOP;" PTX-L  s" $KEND:" PTX-L ;
+   CPP-KT-INIT
+   CPP-SINGLE-WINDOW                                              \ single buffer base = SH
+   CPP-KGUARD
+   11 14 MMA-CP-STAGE  CPP-COMMIT  0 CPP-WAIT
+   CPP-SYNC  execute  CPP-SYNC
+   MMA-BK @ CPP-KT-ADVANCE
+   CPP-KTAIL ;
 
 : MMA-KLOOP ( [ -- ] -- )                                          \ pick the pipeline for the active config
    MMA-DEFAULT? if MM-PIPE-KLOOP-WITH exit then

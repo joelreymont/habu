@@ -167,6 +167,47 @@ MM-ASB 16 / 256 / constant MM-CPN        \ cp.async 16B chunks/thread per array 
       loop
    loop ;
 
+\ ===== cp.async double-buffer pipeline: decomposed protocol STEP emitters =====
+\ MM-PIPE-KLOOP-WITH (below), cg-mma.f MMA-PIPE-KLOOP-WITH, and MMA-PIPE-KLOOP-SINGLE are
+\ all COMPOSED from these named CPP-* steps, so the future cp.async typestate capability
+\ (habu-checker-cp-async-6ba788a5) can attach a per-step obligation (issue->commit->wait->
+\ bar.sync->read, buffer-parity) without touching a fused loop body. Pure emit-time
+\ factoring: each step emits the exact bytes the fused loop did, so every pinned config
+\ stays byte-identical. The STAGE-ISSUE step is the per-file MM-CP-STAGE / MMA-CP-STAGE (the
+\ As/Bs chunk geometry differs); these CPP-* steps are the geometry-independent protocol
+\ control shared verbatim by both K-loops. Shared register contract: %r3=K, %r11=SH base,
+\ %r14=kt, %r15=buffer parity, %r16=current read-window base, %r17=next kt, %r18=prefetch
+\ (other) window base, %p1/%p2 loop/prefetch predicates; bufb = one buffer's byte size.
+: CPP-KT-INIT ( -- )       s" mov.u32 %r14,0;" PTX-L ;           \ kt = 0
+: CPP-PARITY-INIT ( -- )   s" mov.u32 %r15,0;" PTX-L ;           \ double-buffer parity = 0
+: CPP-COMMIT ( -- )        s" cp.async.commit_group;" PTX-L ;    \ close the current cp.async issue group
+: CPP-WAIT ( n -- )                                              \ block until <= n committed groups remain in flight
+   SB-RESET s" cp.async.wait_group " SB-APPEND SB-U s" ;" SB-APPEND SB$ PTX-L ;
+: CPP-SYNC ( -- )          s" bar.sync 0;" PTX-L ;               \ block barrier: staged tile visible / buffer-reuse fence
+: CPP-FLIP ( -- )          s" xor.b32 %r15,%r15,1;" PTX-L ;      \ rotate double-buffer parity for the next iteration
+: CPP-SINGLE-WINDOW ( -- ) s" mov.u32 %r16,%r11;" PTX-L ;        \ single-buffer read-window base = SH
+: CPP-CUR-WINDOW ( n -- )                                        \ read-window base %r16 = SH + parity*bufb
+   SB-RESET s" mul.lo.u32 %r16,%r15," SB-APPEND SB-U s" ;" SB-APPEND SB$ PTX-L
+   s" add.u32 %r16,%r11,%r16;" PTX-L ;
+: CPP-NEXT-WINDOW ( n -- )                                       \ prefetch(other) window base %r18 = SH + (parity^1)*bufb
+   s" xor.b32 %r18,%r15,1;" PTX-L
+   SB-RESET s" mul.lo.u32 %r18,%r18," SB-APPEND SB-U s" ;" SB-APPEND SB$ PTX-L
+   s" add.u32 %r18,%r11,%r18;" PTX-L ;
+: CPP-KT-NEXT ( n -- )                                           \ next tile column %r17 = kt + bk
+   SB-RESET s" add.u32 %r17,%r14," SB-APPEND SB-U s" ;" SB-APPEND SB$ PTX-L ;
+: CPP-KT-ADVANCE ( n -- )                                        \ kt += bk
+   SB-RESET s" add.u32 %r14,%r14," SB-APPEND SB-U s" ;" SB-APPEND SB$ PTX-L ;
+: CPP-KGUARD ( -- )                                              \ loop head + exit test: $KLOOP: while kt < K
+   s" $KLOOP:" PTX-L
+   s" setp.ge.u32 %p1,%r14,%r3;" PTX-L  s" @%p1 bra $KEND;" PTX-L ;
+: CPP-KTAIL ( -- )                                               \ loop back-edge + exit label
+   s" bra $KLOOP;" PTX-L  s" $KEND:" PTX-L ;
+: CPP-PF-TEST ( -- )                                             \ prefetch iff a next tile exists: skip to $NOPF when next_kt >= K
+   s" setp.lt.u32 %p2,%r17,%r3;" PTX-L  s" @!%p2 bra $NOPF;" PTX-L ;
+: CPP-PF-ELSE ( -- )                                             \ close prefetch arm, open drain arm
+   s" bra $PFDONE;" PTX-L  s" $NOPF:" PTX-L ;
+: CPP-PF-END ( -- )        s" $PFDONE:" PTX-L ;                  \ join prefetch/drain arms
+
 \ Double-buffered (stages=2) cp.async software pipeline. Two SH buffers (parity in %r15,
 \ bases SH + parity*MM-BUFB); tile t+1 is cp.async-prefetched into the OTHER buffer while
 \ tile t computes from the current one, so the global->shared latency overlaps compute.
@@ -178,34 +219,24 @@ MM-ASB 16 / 256 / constant MM-CPN        \ cp.async 16B chunks/thread per array 
 \ the compute slot, reading the current buffer base %r16): the FMA 4x4 micro-tile (MM-KSTEP-TILE
 \ below) and the tensor-core MMA tile (lib/ptx/cg-mma.f) share this exact cp.async scaffold, so
 \ both paths validate the same double-buffered staging and gemm-bench times the same loop shape.
+\ The body reads top-to-bottom as the cp.async protocol: issue -> commit -> (per iter) window,
+\ prefetch-or-drain, sync, read, sync, advance, flip.
 : MM-PIPE-KLOOP-WITH ( [ -- ] -- )   \ q = compute for one staged K-tile from buffer base %r16
-   s" mov.u32 %r14,0;" PTX-L                                       \ kt = 0
-   s" mov.u32 %r15,0;" PTX-L                                       \ buffer parity = 0
-   11 14 MM-CP-STAGE                                              \ prologue: tile 0 -> buffer 0 (%r11=SH)
-   s" cp.async.commit_group;" PTX-L
-   s" $KLOOP:" PTX-L
-   s" setp.ge.u32 %p1,%r14,%r3;" PTX-L  s" @%p1 bra $KEND;" PTX-L
-   SB-RESET s" mul.lo.u32 %r16,%r15," SB-APPEND MM-BUFB SB-U s" ;" SB-APPEND SB$ PTX-L
-   s" add.u32 %r16,%r11,%r16;" PTX-L                               \ %r16 = cur buffer base
-   s" add.u32 %r17,%r14,32;" PTX-L                                 \ next_kt
-   s" setp.lt.u32 %p2,%r17,%r3;" PTX-L                             \ has a next tile?
-   s" @!%p2 bra $NOPF;" PTX-L
-   s" xor.b32 %r18,%r15,1;" PTX-L
-   SB-RESET s" mul.lo.u32 %r18,%r18," SB-APPEND MM-BUFB SB-U s" ;" SB-APPEND SB$ PTX-L
-   s" add.u32 %r18,%r11,%r18;" PTX-L                               \ %r18 = other buffer base
-   18 17 MM-CP-STAGE                                              \ prefetch next tile -> other buffer
-   s" cp.async.commit_group;" PTX-L
-   s" cp.async.wait_group 1;" PTX-L                               \ tile t done, prefetch t+1 still in flight
-   s" bra $PFDONE;" PTX-L
-   s" $NOPF:" PTX-L
-   s" cp.async.wait_group 0;" PTX-L                               \ tail: drain the last tile
-   s" $PFDONE:" PTX-L
-   s" bar.sync 0;" PTX-L                                          \ all threads' cp.async for tile t visible
-   execute                                                       \ per-tile compute from %r16
-   s" bar.sync 0;" PTX-L                                          \ compute done before buffer reuse
-   s" add.u32 %r14,%r14,32;" PTX-L                                 \ kt += bk
-   s" xor.b32 %r15,%r15,1;" PTX-L                                 \ flip buffer
-   s" bra $KLOOP;" PTX-L  s" $KEND:" PTX-L ;
+   CPP-KT-INIT  CPP-PARITY-INIT
+   11 14 MM-CP-STAGE  CPP-COMMIT                                  \ prologue: issue tile 0 -> buffer 0 (%r11=SH), commit
+   CPP-KGUARD
+   MM-BUFB CPP-CUR-WINDOW                                         \ read-window = current parity buffer
+   MM-BK CPP-KT-NEXT  CPP-PF-TEST                                 \ prefetch only if a next tile exists
+   MM-BUFB CPP-NEXT-WINDOW  18 17 MM-CP-STAGE                     \ prefetch next tile -> other buffer
+   CPP-COMMIT  1 CPP-WAIT                                         \ commit prefetch, keep it in flight
+   CPP-PF-ELSE
+   0 CPP-WAIT                                                     \ tail: drain the last tile
+   CPP-PF-END
+   CPP-SYNC                                                       \ all threads' cp.async for tile t visible
+   execute                                                        \ per-tile compute from %r16
+   CPP-SYNC                                                       \ compute done before buffer reuse
+   MM-BK CPP-KT-ADVANCE  CPP-FLIP
+   CPP-KTAIL ;
 
 : MM-KSTEP-TILE ( -- )   MM-CUR-BASES  MM-BK 0 do  i MM-KSTEP  loop ;   \ FMA 4x4 compute
 : MM-PIPE-KLOOP ( -- )   [: MM-KSTEP-TILE ;] MM-PIPE-KLOOP-WITH ;

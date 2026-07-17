@@ -560,9 +560,18 @@ points stay listed.
   `lib/ptx/cg-attention.f` — PTX codegen emit-mode lowering for tile ops:
   scalar, vectorized v4, row/collective, the register-blocked SGEMM emitters
   (the byte-sensitive MM-* surface shared verbatim by lower-mm.f and cg-mma.f),
-  and the fused attention kernel. The cg-collective test pins the block-reduction
+  and the fused attention kernel. The fused cp.async K-loop is decomposed into
+  shared `CPP-*` protocol STEP emitters (issue via MM-CP-STAGE, `CPP-COMMIT` /
+  `CPP-WAIT` / `CPP-SYNC` barrier / `CPP-CUR-WINDOW` read-window / `CPP-FLIP`
+  parity) that MM-PIPE-KLOOP-WITH and cg-mma.f's K-loops compose byte-identically,
+  shaped for the cp.async typestate obligations (habu-checker-cp-async-6ba788a5).
+  The cg-collective test pins the block-reduction
   emit shape: the two-level warp shfl.sync.down reduction with the inactive-lane
   identity seed threaded through both shuffle levels.
+- `lib/ptx/cpp-pipe-step-test.f` — exact-byte regression for those decomposed
+  `CPP-*` cp.async pipeline step emitters: each step's PTX fragment is pinned via
+  PTX-CAPTURE, so a drift in any single protocol step fails closed (the
+  tile-pipe-test.f byte-capture pattern at step granularity).
 - `lib/ptx/cg-matmul.f` — the PRODUCTION checked tiled GEMM: EMIT-MATMUL ships
   the certified KERNEL: MM-CHECKED composed from the tile-pipe vocabulary
   (MM-BEGIN / MM-K-LOOP / MM-STORE, the eval lane's GEMM authoring words); the
