@@ -89,6 +89,14 @@ Last updated: 2026-07-17
   cell, and CUSTOM stays fail-closed until an explicit validator is installed;
   a generic range check does not establish any of those ABIs.
 
+- **Reject common field errors and overlap before invoking layout policy.** A
+  CUSTOM callback must never observe a row that the registry already knows is
+  invalid. Pin the order with a callback counter, not only the final throw code.
+
+- **Trust classification does not replace the source-effect manifest.** Every
+  source-only `TRUSTED:` wrapper needs both its exact effect-table row and its
+  independently owned classification row.
+
 - **Package rollback has two owners.** Restoring the engine's current/public/private
   WIDs is incomplete unless recovery also resynchronizes the checker's package
   mode before the next token; `get-current` proves only the engine half. Follow a

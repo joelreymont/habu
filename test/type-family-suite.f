@@ -48,7 +48,6 @@ variable NFID   variable BFID   variable CFID   variable NVID   variable BVID
 variable VOK    variable VERR   variable FX     variable NP     variable NC
 variable NA     variable R1     variable L0     variable NQ
 variable NPTR
-0 constant T-CUSTOM-FLAGS-NONE
 \ whitebox boundary (dot habu-hb-crash-bare-c5be6634): checker-internal colon
 \ words probed at top level go through named trusted shims.
 TRUSTED: TWX-CHECKER-SNAPSHOT-PREPARE ( -- ) CHECKER-SNAPSHOT-PREPARE ;
@@ -140,17 +139,22 @@ TRUSTED: TWX-TFL-VPADS ( n n -- n ) TFL-VPADS ;
 
 package TYPE-FAMILY-TEST
 
+variable CUSTOM-CALLS
+
 : CUSTOM-FIELD? ( n n n n n n n n -- bool )
    {: fam:n sch:n slot:n cellsn:n boff:n bytesn:n al:n flags:n :}
+   CUSTOM-CALLS @ 1 + CUSTOM-CALLS !
    fam CFID @ = sch 1 = and
    slot 0= and cellsn 1 = and
    boff CELL 2 / = and bytesn CELL 2 / = and
-   al CELL 2 / = and flags T-CUSTOM-FLAGS-NONE = and ;
+   al CELL 2 / = and flags 0= and ;
 
 public
 
 : INSTALL-CUSTOM ( -- )
+   0 CUSTOM-CALLS !
    [: CUSTOM-FIELD? ;] TWX-PF-CUSTOM-CHECK! ;
+: CUSTOM-CALLS@ ( -- n ) CUSTOM-CALLS @ ;
 
 ;package
 
@@ -608,16 +612,24 @@ TWX-PF-BEGIN PFTX !
 PFTX @ CFID @ PF-NO-VARIANT s" custom-ok" 1 0 1
    CELL 2 / CELL 2 / CELL 2 / PF-FLAGS-NONE
    TWX-PF-ADD PFTX !
-PFTX @ TWX-PF-ROLLBACK
+PFTX @ TWX-PF-COMMIT
+TYPE-FAMILY-TEST:CUSTOM-CALLS@ 1 T=
 TWX-PF-BEGIN PFTX !
-PFTX @ CFID @ PF-NO-VARIANT s" custom-bad" 1 0 1
-   CELL 2 / 2 CELL 2 / PF-FLAGS-NONE
+PFTX @ CFID @ PF-NO-VARIANT s" custom-bad" 1 1 1
+   CELL CELL 2 / + CELL 2 / CELL 2 / PF-FLAGS-NONE
    ' TWX-PF-ADD catch TC ! T-PF-DROP
 TC @ E-PF-LAYOUT T=  PFTX @ TWX-PF-ROLLBACK
+TYPE-FAMILY-TEST:CUSTOM-CALLS@ 2 T=
+TWX-PF-BEGIN PFTX !
+PFTX @ CFID @ PF-NO-VARIANT s" custom-overlap" 1 0 1
+   CELL 2 / CELL 2 / CELL 2 / PF-FLAGS-NONE
+   ' TWX-PF-ADD catch TC ! T-PF-DROP
+TC @ E-PF-LAYOUT T=  PFTX @ TWX-PF-ROLLBACK
+TYPE-FAMILY-TEST:CUSTOM-CALLS@ 2 T=
 TWX-PF-CUSTOM-CHECK-RESET
 TWX-PF-BEGIN PFTX !
-PFTX @ CFID @ PF-NO-VARIANT s" custom-reset" 1 0 1
-   CELL 2 / CELL 2 / CELL 2 / PF-FLAGS-NONE
+PFTX @ CFID @ PF-NO-VARIANT s" custom-reset" 1 1 1
+   CELL CELL 2 / + CELL 2 / CELL 2 / PF-FLAGS-NONE
    ' TWX-PF-ADD catch TC ! T-PF-DROP
 TC @ E-PF-LAYOUT T=  PFTX @ TWX-PF-ROLLBACK
 PTID @ TL-STACK-CELL-TAG TWX-TFAM-LAYOUT!

@@ -1067,14 +1067,16 @@ PF-CUSTOM-CHECK-RESET
       TF-I @ 1 + TF-I !
    REPEAT
    RES-FALSE ;
-: PF-LAYOUT-REQUIRE ( n n n n n n n n -- )
+: PF-LAYOUT-COMMON-REQUIRE ( n n n n n n n n -- )
    {: fam:n sch:n slot:n cellsn:n boff:n bytesn:n al:n flags:n :}
    flags PF-FLAGS-NONE <> IF E-PF-FLAGS throw THEN
    slot cellsn PF-RANGE-OK? 0= IF E-PF-LAYOUT throw THEN
    boff bytesn PF-RANGE-OK? 0= IF E-PF-LAYOUT throw THEN
    al PF-POW2? 0= IF E-PF-LAYOUT throw THEN
    boff al mod 0 <> IF E-PF-LAYOUT throw THEN
-   sch PF-SCHEMA-WIDTH cellsn <> IF E-PF-LAYOUT throw THEN
+   sch PF-SCHEMA-WIDTH cellsn <> IF E-PF-LAYOUT throw THEN ;
+: PF-LAYOUT-POLICY-REQUIRE ( n n n n n n n n -- )
+   {: fam:n sch:n slot:n cellsn:n boff:n bytesn:n al:n flags:n :}
    fam TFAM-LAYOUT-POLICY@ case
       TL-STACK-CELL-TAG of
          slot cellsn boff bytesn al PF-STACK-REQUIRE
@@ -1111,8 +1113,9 @@ PF-CUSTOM-CHECK-RESET
    na nu PF-NAME-REQUIRE
    fam var na nu PF-DUP? IF E-TFAM-DUP throw THEN
    fam sch PF-SCHEMA-OK? 0= IF E-PF-SCHEMA throw THEN
-   fam sch slot cellsn boff bytesn al flags PF-LAYOUT-REQUIRE
+   fam sch slot cellsn boff bytesn al flags PF-LAYOUT-COMMON-REQUIRE
    fam var slot cellsn boff bytesn PF-OVERLAP? IF E-PF-LAYOUT throw THEN
+   fam sch slot cellsn boff bytesn al flags PF-LAYOUT-POLICY-REQUIRE
    PF-ENSURE
    na nu TF-INTERN {: noff:n :}
    PF-N @ {: id:n :}
