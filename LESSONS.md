@@ -4,6 +4,32 @@
 
 Last updated: 2026-07-17
 
+- **Checked Habu has NO fsync/fdatasync/dir-sync primitive; the durable-write surface is
+  atomic rename only (`RENAME-FILE`/`ATOMIC-WRITE-FILE` = write-temp + rename).** (atxn lane,
+  crash-safe commit slice, dot habu-v2-atomic-txn-a3c26066.) Rename gives ATOMICITY and
+  correct PROCESS-crash recovery — the page cache survives process death, which is exactly
+  the model the spawn-a-child acceptance exercises — but NOT power-loss / kernel-crash
+  durability. The commit store makes the single `HEAD` rename its linearization point
+  (recover-old-or-complete-new) and reports the fsync gap as the remaining native capability
+  rather than adding host code or trust. When a durability primitive is missing, dot it and
+  bound the guarantee precisely; do not fake it.
+- **`TX:PROPOSE` interns a revision by the SHA-256 DIGEST of its content, so
+  `REV:KEY>WIRE(rev) = SHA-256(SHA-256(revision content))` — a DOUBLE hash.** (same lane.)
+  A content-address integrity check on a stored revision object (file bytes = the raw
+  content) must therefore hash the file once to get the content digest, then hash THAT to
+  match the rev key. A single hash silently fails the integrity check (4 tests red, no type
+  error) — the digest-vs-content boundary is invisible to the checker.
+- **The general V2 content-addressed OBJECT STORE did not exist yet; `maki/store.f` is a
+  different concern (append-only schedule/evidence ROWS keyed by the section 7.4 schedule
+  key), not a revision/object store.** (same lane.) The crash-safe commit dot therefore
+  landed a MINIMAL file-backed store (`maki/db/commit-store.f`: one file per revision + a
+  HEAD marker + an idempotency record) as part of the slice, per the plan's "over the V2
+  object store" — decide store-existence from the plan's own sections, not the filename.
+- **Checker edges hit building CSTORE: (1) a word consuming a PARAMETERIZED sum needs the
+  concrete type arg in its signature — `( commit-result<CAD-KIND:rev-id> -- n )`, not bare
+  `commit-result` ("wrong arity for type family"); (2) a pointer LOCAL's element type flows
+  from a `ptr u8` INPUT annotation — a bare `ptr` input makes `{: kp:ptr :}` fail with
+  "'ptr' needs an element type". Annotate byte-pointer args as `ptr u8` in the stack effect.**
 - **A worker editing the MAIN working copy instead of its .jj-ws workspace is a recurring
   failure mode (twice on 2026-07-17: bfeed self-caught, evid caught by the integrator's
   gate).** Detection: the orchestrator runs `jj st` in the main workspace and requires it

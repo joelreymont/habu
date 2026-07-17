@@ -722,6 +722,28 @@ public
    EBUF out EO @ BYTE-COPY
    EO @ ;
 
+\ ENCODE-REV writes the canonical REVISION CONTENT (base revision + write set only, the
+\ § 23.9 content-addressed revision form) into a caller buffer and returns the length.
+\ This is exactly the byte string PROPOSE digests through REV:COMMIT, so a durable
+\ content-addressed store can persist a revision under REV:KEY>WIRE(PROPOSE) and read it
+\ back with a matching SHA-256 (E-TX-ENC-BUF if the buffer cannot hold it).
+: ENCODE-REV ( txn ptr u8 n -- n ) {: t:txn out:ptr cap:n :}
+   t TXN> EMIT-REV
+   EO @ cap > if E-TX-ENC-BUF throw then
+   EBUF out EO @ BYTE-COPY
+   EO @ ;
+
+\ IDEM-KEY>WIRE writes the 32-byte idempotency DIGEST (SHA-256 over the full canonical
+\ action, the raw preimage of IDEMPOTENCY-KEY's four words) into a caller buffer and
+\ returns DIGEST-BYTES. A durable store keys an idempotency record by these bytes so a
+\ retry of the same logical transaction resolves the original result across process death
+\ (E-TX-ENC-BUF if the buffer cannot hold the fixed width).
+: IDEM-KEY>WIRE ( txn ptr u8 n -- n ) {: t:txn out:ptr cap:n :}
+   cap DIGEST-BYTES < if E-TX-ENC-BUF throw then
+   t TXN> EMIT-CANON
+   EBUF EO @ out SHA256
+   DIGEST-BYTES ;
+
 private
 
 : DEC-READ ( -- )

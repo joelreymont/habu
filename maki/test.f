@@ -178,6 +178,10 @@ TEST:SUITE maki/db/artifact-test.f
 TEST:;SUITE
 TEST:SUITE maki/db/transaction-test.f
 TEST:;SUITE
+TEST:SUITE maki/db/commit-store-test.f
+TEST:;SUITE
+TEST:SUITE maki/db/commit-store-crash-test.f
+TEST:;SUITE
 TEST:SUITE maki/db/diagnostic-test.f
 TEST:;SUITE
 TEST:SUITE maki/db/obligation-test.f

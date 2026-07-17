@@ -797,16 +797,46 @@ points stay listed.
   full canonical action (stable across retries); `PROPOSE` is the commit proposal - the
   proposed `CAD-KIND:rev-id` via `REV:COMMIT` over a digest of (base + write set), so
   replay reproduces the rev-id; `ENCODE`/`DECODE` round-trip the canonical bytes,
-  rehydrating objects via `ARTIFACT:REGISTER` and the base via `REV:WIRE>ID`. Objects use
-  `CAD-KIND:artifact-id`; capabilities and obligations are held as closed-vocabulary
-  codes until the CAP owner and the proof-obligation model (habu-v2-proof-obligation)
-  land. Throws only at capacity / missing-base. Owns -5350..-5353.
+  rehydrating objects via `ARTIFACT:REGISTER`, the base via `REV:WIRE>KEY`, and obligations
+  via `OBLIG:WIRE>KEY`. Objects use `CAD-KIND:artifact-id`; obligations are interned
+  `CAD-KIND:obligation-id` (maki/db/obligation.f) canonically ordered by 32-byte content
+  key; capabilities stay closed-vocabulary codes until the CAP owner lands. `ENCODE-REV`
+  emits the canonical revision content (base + write set) and `IDEM-KEY>WIRE` the 32-byte
+  idempotency digest, for the durable commit store. Throws only at capacity / missing-base.
+  Owns -5350..-5353.
 - `maki/db/transaction-test.f` — the § 23 acceptance: canonical round-trip and
   insertion-order independence, duplicate/conflicting writes reject, an omitted read
   dependency rejects validation, retry identity is stable (same logical txn -> same
   idempotency key; polarity and base revision are part of the key), the commit proposal
   is deterministic, every field round-trips at its cardinality, truncated bytes decode
-  malformed, and capacity/polarity/no-base throw.
+  malformed, and capacity/polarity/no-base throw. Obligations are interned via `OBLIG:`.
+- `maki/db/commit-store.f` — the crash-safe transaction commit slice over a MINIMAL
+  file-backed object store (MODEL-CAD-V2-PLAN.md § 23 "Commit atomically publishes ...;
+  recovery either observes the old revision or the complete new revision"; V2-2 exit).
+  Package CSTORE: one file per revision (revs/&lt;revhex&gt;, content-addressed via
+  `REV:KEY>WIRE`), a single HEAD commit marker advanced by one atomic rename (the
+  linearization point), and a commits/&lt;idemhex&gt; idempotency record. `COMMIT` validates
+  (composing `TX:VALIDATE`), honours idempotency, rejects a stale base/head with the typed
+  `commit-result` `conflict`, then stages the revision, advances the marker, and records
+  the idempotency key. The three publish steps `STAGE-REV`/`ADVANCE-HEAD`/`WRITE-IDEM` are
+  public and are the crash-injection surface (no failpoint branch in `COMMIT`);
+  `HEAD-IS?`/`REV-COMPLETE?` let a fresh process assert recover-old-or-complete-new. Uses
+  the `ATOMIC-WRITE-FILE`/rename discipline; fsync/dir-sync is a missing native capability
+  (process-crash safe, not power-loss durable). Owns -5371..-5373.
+- `maki/db/commit-store-test.f` — in-process acceptance against a real private store:
+  deterministic replay yields an equal revision digest, idempotent retry returns the
+  original result, a stale head returns the typed conflict, a duplicate write rejects, and
+  crash injection at every publish boundary (before-rev / after-rev / after-head) never
+  exposes a partial revision.
+- `maki/db/commit-store-crash-child.f` — package CSCRASH: the fresh-process crash side.
+  `RUN-PARTIAL` runs a PREFIX of the real publish sequence against a shared store and lets
+  the process die at that boundary. Shared content-addressed fixtures make the child's
+  proposed revision key equal the parent's.
+- `maki/db/commit-store-crash-test.f` — the DECISIVE cross-process crash + recovery test:
+  the parent writes a genesis head, spawns a fresh bin/hb that crashes after the object
+  stage (recovery sees OLD) or after the marker advance (recovery sees the COMPLETE NEW
+  revision), and asserts the invariant by content key. Spawn/capture is the
+  keywire-xproc-env fresh-process pattern.
 - `maki/db/diagnostic.f` — the common structured Diagnostic IR (MODEL-CAD-V2-PLAN.md
   § 23.9 "Structured failure IR" + § 23.2): one `diagnostic` handle every checker /
   compiler / pass / runtime / benchmark / deployment / policy failure lowers to, plus
