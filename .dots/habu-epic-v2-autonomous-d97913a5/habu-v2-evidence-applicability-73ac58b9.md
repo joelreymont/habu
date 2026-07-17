@@ -9,3 +9,9 @@ blocks:
 ---
 
 Implement obligation closure and evidence applicability over exact subject/dependency/schema/target/numeric/verifier/environment digests. Produce typed stale/missing/inapplicable results and the minimal invalidation set. Acceptance: mutation matrix pins each key component, static proof cannot satisfy required device execution, performance evidence cannot satisfy equivalence, and cache-hit closure equals uncached closure.
+
+NOTE 2026-07-17 (diag landing 6b19cda8): when this dot (or the promotion
+sibling) lands, mint the EVIDENCE owner package per the plan-23.9 codec
+mechanism (evidence-id constructor + refinement pair + ID>WIRE/WIRE>ID) -
+the diagnostic IR's invalidated-evidence[] field is waiting on it to be
+promoted from string[] to nominal ids (see habu-diag-nominal-ids dot).
