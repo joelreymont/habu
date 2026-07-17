@@ -1061,7 +1061,7 @@ variable GE-DFULL-I                 \ copy/definition loop index
    GE-SCRIPT-PATH GE-SCRIPT-U @ GE-ARG+
    s" alpha" GE-ARG+
    s" beta" GE-ARG+
-   s" bin/hb" GE-TIMEOUT-MS GE-RUN-ENV
+   GE-HB$ GE-TIMEOUT-MS GE-RUN-ENV
    s" hb script argv mode" GE-EXPECT-OK
    SB-RESET s" 2" SB-APPEND GE-SB-LF s" alpha" SB-APPEND GE-SB-LF s" beta" SB-APPEND GE-SB-LF
    SB$ s" hb script argv mode output" GE-EXPECT-OUT
@@ -1072,14 +1072,14 @@ variable GE-DFULL-I                 \ copy/definition loop index
    s" ARGC ." GE-SRC-LINE
    s" 1 ARGV$ type cr" GE-SRC-LINE
    s" 2 ARGV$ type cr" GE-SRC-LINE
-   s" bin/hb" GE-SRC-BUF GE-SRC-U @ GE-TIMEOUT-MS GE-RUN-STDIN
+   GE-HB$ GE-SRC-BUF GE-SRC-U @ GE-TIMEOUT-MS GE-RUN-STDIN
    s" hb pipeline argv mode" GE-EXPECT-OK
    SB-RESET s" 3" SB-APPEND GE-SB-LF s" alpha" SB-APPEND GE-SB-LF s" beta" SB-APPEND GE-SB-LF
    SB$ s" hb pipeline argv mode output" GE-EXPECT-OUT
    GE-HB-RESET
    GT-ROOT s" no-such-hb-script.f" GE-SCRIPT-PATH JOIN-PATH GE-SCRIPT-U !
    GE-SCRIPT-PATH GE-SCRIPT-U @ GE-ARG+
-   s" bin/hb" GE-TIMEOUT-MS GE-RUN-ENV
+   GE-HB$ GE-TIMEOUT-MS GE-RUN-ENV
    74 s" hb missing script rc" GE-EXPECT-RC ;
 
 : GE-GOOD-TYPED ( -- )
@@ -1219,7 +1219,7 @@ variable GE-DFULL-I                 \ copy/definition loop index
    GE-HB-RESET
    GE-SRC-RESET
    s" drop @ ." GE-SRC-LINE
-   s" bin/hb" GE-SRC-BUF GE-SRC-U @ GE-TIMEOUT-MS GE-RUN-STDIN
+   GE-HB$ GE-SRC-BUF GE-SRC-U @ GE-TIMEOUT-MS GE-RUN-STDIN
    70 s" hb top-level underflow rc" GE-EXPECT-RC
    s" E-UNDERFLOW" s" hb top-level underflow diagnostic" GE-EXPECT-ERR-HAS
    s" drop" s" hb top-level underflow token" GE-EXPECT-ERR-HAS ;
@@ -1231,7 +1231,7 @@ variable GE-DFULL-I                 \ copy/definition loop index
    GE-HB-RESET
    GE-SRC-RESET
    tok toku GE-SRC-LINE
-   s" bin/hb" GE-SRC-BUF GE-SRC-U @ GE-TIMEOUT-MS GE-RUN-STDIN
+   GE-HB$ GE-SRC-BUF GE-SRC-U @ GE-TIMEOUT-MS GE-RUN-STDIN
    70 s" hb deref-first arity rc" GE-EXPECT-RC
    s" E-UNDERFLOW" s" hb deref-first arity diagnostic" GE-EXPECT-ERR-HAS
    tok toku s" hb deref-first arity token" GE-EXPECT-ERR-HAS ;
@@ -1244,7 +1244,7 @@ variable GE-DFULL-I                 \ copy/definition loop index
    GE-HB-RESET
    GE-SRC-RESET
    s" variable GAV 5 GAV !" GE-SRC-LINE
-   s" bin/hb" GE-SRC-BUF GE-SRC-U @ GE-TIMEOUT-MS GE-RUN-STDIN
+   GE-HB$ GE-SRC-BUF GE-SRC-U @ GE-TIMEOUT-MS GE-RUN-STDIN
    s" hb valid deref store succeeds" GE-EXPECT-OK ;
 
 : GE-NESTED-DEF-SRC ( ptr u8 n -- ) {: body:ptr bodyu:n :}
@@ -1265,7 +1265,7 @@ variable GE-DFULL-I                 \ copy/definition loop index
    GE-HB-RESET
    s" : ZZ ( -- n ) 5 ;" GE-NESTED-DEF-SRC
    s" ZZ ." GE-SRC-LINE
-   s" bin/hb" GE-SRC-BUF GE-SRC-U @ GE-TIMEOUT-MS GE-RUN-STDIN
+   GE-HB$ GE-SRC-BUF GE-SRC-U @ GE-TIMEOUT-MS GE-RUN-STDIN
    s" hb nested checked def rc" GE-EXPECT-OK
    SB-RESET s" 5" SB-APPEND GE-SB-LF
    SB$ s" hb nested checked def output" GE-EXPECT-OUT
@@ -1277,7 +1277,7 @@ variable GE-DFULL-I                 \ copy/definition loop index
    \ REJECTED (rc 70). Proven: BAD ( -- n ) drop is rejected at 'drop'.
    GE-HB-RESET
    s" : BAD ( -- n ) drop ;" GE-NESTED-DEF-SRC
-   s" bin/hb" GE-SRC-BUF GE-SRC-U @ GE-TIMEOUT-MS GE-RUN-STDIN
+   GE-HB$ GE-SRC-BUF GE-SRC-U @ GE-TIMEOUT-MS GE-RUN-STDIN
    70 s" hb nested bad def rc" GE-EXPECT-RC
    s" bad" s" hb nested bad def word" GE-EXPECT-ERR-HAS
    s" drop" s" hb nested bad def token" GE-EXPECT-ERR-HAS
@@ -1302,7 +1302,7 @@ variable GE-DFULL-I                 \ copy/definition loop index
    GE-EVAL-UNDEF-SRC
    s" : T1 ( -- ) [: GO ;] catch . cr ;" GE-SRC-LINE
    s" T1" GE-SRC-LINE
-   s" bin/hb" GE-SRC-BUF GE-SRC-U @ GE-TIMEOUT-MS GE-RUN-STDIN
+   GE-HB$ GE-SRC-BUF GE-SRC-U @ GE-TIMEOUT-MS GE-RUN-STDIN
    s" hb eval-undef catch rc" GE-EXPECT-OK
    s" 70" s" hb eval-undef catch code" GE-EXPECT-OUT-HAS
    s" E-UNDEFINED" s" hb eval-undef catch diag" GE-EXPECT-ERR-HAS
@@ -1316,7 +1316,7 @@ variable GE-DFULL-I                 \ copy/definition loop index
    GE-HB-RESET
    GE-EVAL-UNDEF-SRC
    s" GO" GE-SRC-LINE
-   s" bin/hb" GE-SRC-BUF GE-SRC-U @ GE-TIMEOUT-MS GE-RUN-STDIN
+   GE-HB$ GE-SRC-BUF GE-SRC-U @ GE-TIMEOUT-MS GE-RUN-STDIN
    70 s" hb eval-undef no-catch rc" GE-EXPECT-RC
    s" E-UNDEFINED" s" hb eval-undef no-catch diag" GE-EXPECT-ERR-HAS
    s" UNDEFINED-WORD-XYZ" s" hb eval-undef no-catch token" GE-EXPECT-ERR-HAS
@@ -1328,7 +1328,7 @@ variable GE-DFULL-I                 \ copy/definition loop index
    GE-HB-RESET
    GE-SRC-RESET
    s" : FOO ( -- ) UNDEFINED-WORD-XYZ ;" GE-SRC-LINE
-   s" bin/hb" GE-SRC-BUF GE-SRC-U @ GE-TIMEOUT-MS GE-RUN-STDIN
+   GE-HB$ GE-SRC-BUF GE-SRC-U @ GE-TIMEOUT-MS GE-RUN-STDIN
    70 s" hb top-level undef-compile rc" GE-EXPECT-RC
    s" E-UNDEFINED" s" hb top-level undef-compile diag" GE-EXPECT-ERR-HAS
    s" UNDEFINED-WORD-XYZ" s" hb top-level undef-compile token" GE-EXPECT-ERR-HAS
@@ -1353,7 +1353,7 @@ variable GE-DFULL-I                 \ copy/definition loop index
    GE-EVAL-CATCH-SRC
    src srcu GE-SRC-S"
    s"  GEC-CATCH . cr" GE-SRC-LINE
-   s" bin/hb" GE-SRC-BUF GE-SRC-U @ GE-TIMEOUT-MS GE-RUN-STDIN ;
+   GE-HB$ GE-SRC-BUF GE-SRC-U @ GE-TIMEOUT-MS GE-RUN-STDIN ;
 
 : GE-EVAL-INTERP-UNDEF-CATCH ( -- )
    \ Dot habu-interpret-err-under-8876b500: an undefined INTERPRET-mode token
@@ -1388,7 +1388,7 @@ variable GE-DFULL-I                 \ copy/definition loop index
    s"  INCLUDE-EVALUATE" GE-SRC-LINE
    s" s" GE-SRC+ GE-DQ GE-SRC-C s"  ALIVE-AFTER" GE-SRC+ GE-DQ GE-SRC-C
    s"  type cr" GE-SRC-LINE
-   s" bin/hb" GE-SRC-BUF GE-SRC-U @ GE-TIMEOUT-MS GE-RUN-STDIN
+   GE-HB$ GE-SRC-BUF GE-SRC-U @ GE-TIMEOUT-MS GE-RUN-STDIN
    70 s" hb eval underflow no-catch rc" GE-EXPECT-RC
    s" E-UNDERFLOW" s" hb eval underflow no-catch diag" GE-EXPECT-ERR-HAS
    s" " s" hb eval underflow no-catch dead marker" GE-EXPECT-OUT
@@ -1400,7 +1400,7 @@ variable GE-DFULL-I                 \ copy/definition loop index
    GE-HB-RESET
    GE-SRC-RESET
    s" drop drop drop" GE-SRC-LINE
-   s" bin/hb" GE-SRC-BUF GE-SRC-U @ GE-TIMEOUT-MS GE-RUN-STDIN
+   GE-HB$ GE-SRC-BUF GE-SRC-U @ GE-TIMEOUT-MS GE-RUN-STDIN
    70 s" hb top-level underflow rc unchanged" GE-EXPECT-RC
    s" E-UNDERFLOW" s" hb top-level underflow diag unchanged" GE-EXPECT-ERR-HAS
    s" PASS: top-level underflow fail-closed rc70 (unchanged)" type cr ;
@@ -1451,7 +1451,7 @@ variable GE-DFULL-I                 \ copy/definition loop index
    s" : XI ( -- ) " GE-SRC+
    tok toku GE-SRC+
    s"  ;" GE-SRC-LINE
-   s" bin/hb" GE-SRC-BUF GE-SRC-U @ GE-TIMEOUT-MS GE-RUN-STDIN
+   GE-HB$ GE-SRC-BUF GE-SRC-U @ GE-TIMEOUT-MS GE-RUN-STDIN
    70 label labelu GE-EXPECT-RC
    s" control-flow closer without opener" label labelu GE-EXPECT-ERR-HAS
    tok toku label labelu GE-EXPECT-ERR-HAS
@@ -1489,12 +1489,12 @@ variable GE-DFULL-I                 \ copy/definition loop index
    \ wrong CODE base) are the two RCA shapes; both must exit 70, never signal.
    GE-HB-RESET
    GE-SRC-RESET s" 1 set-check" GE-SRC-LINE
-   s" bin/hb" GE-SRC-BUF GE-SRC-U @ GE-TIMEOUT-MS GE-RUN-STDIN
+   GE-HB$ GE-SRC-BUF GE-SRC-U @ GE-TIMEOUT-MS GE-RUN-STDIN
    70 s" hb set-check tiny-xt rc" GE-EXPECT-RC
    s" set-check: invalid checker xt" s" hb set-check tiny-xt diag" GE-EXPECT-ERR-HAS
    GE-HB-RESET
    GE-SRC-RESET s" dbase@ $1B0 + @ set-check" GE-SRC-LINE
-   s" bin/hb" GE-SRC-BUF GE-SRC-U @ GE-TIMEOUT-MS GE-RUN-STDIN
+   GE-HB$ GE-SRC-BUF GE-SRC-U @ GE-TIMEOUT-MS GE-RUN-STDIN
    70 s" hb set-check dbase-garbage rc" GE-EXPECT-RC
    s" set-check: invalid checker xt" s" hb set-check dbase-garbage diag" GE-EXPECT-ERR-HAS
    s" PASS: set-check fail-closed on garbage xt (rc 70, named diagnostic)" type cr ;
@@ -1533,7 +1533,7 @@ variable GE-CF-BODY-U
    \ guards depth == CFSTK-DEPTH-MAX and rejects like the orphan closer.
    GE-HB-RESET
    n GE-CF-NEST
-   s" bin/hb" GE-CF-BODY$ GE-TIMEOUT-MS GE-RUN-STDIN
+   GE-HB$ GE-CF-BODY$ GE-TIMEOUT-MS GE-RUN-STDIN
    70 label labelu GE-EXPECT-RC
    s" control-flow nesting too deep" label labelu GE-EXPECT-ERR-HAS
    s" if" label labelu GE-EXPECT-ERR-HAS
@@ -1550,13 +1550,13 @@ variable GE-CF-BODY-U
    CFSTK-DEPTH-MAX 50 + s" hb cf-cap was-crash"  GE-CF-OVERCAP-1
    GE-HB-RESET
    CFSTK-DEPTH-MAX GE-CF-NEST
-   s" bin/hb" GE-CF-BODY$ GE-TIMEOUT-MS GE-RUN-STDIN
+   GE-HB$ GE-CF-BODY$ GE-TIMEOUT-MS GE-RUN-STDIN
    70 s" hb cf-cap region-full rc" GE-EXPECT-RC
    s" control-flow nesting too deep" s" hb cf-cap region-full not-cap" GE-EXPECT-ERR-LACKS
    s" habu-crash" s" hb cf-cap region-full no-crash" GE-EXPECT-ERR-LACKS
    GE-HB-RESET
    31 GE-CF-NEST
-   s" bin/hb" GE-CF-BODY$ GE-TIMEOUT-MS GE-RUN-STDIN
+   GE-HB$ GE-CF-BODY$ GE-TIMEOUT-MS GE-RUN-STDIN
    s" hb cf-cap legal-31" GE-EXPECT-OK
    CFSTK-DEPTH-MAX 1 + GE-CF-NEST
    GE-CF-BODY$ GE-EVAL-CATCH-RUN
@@ -1581,7 +1581,7 @@ variable GE-CF-BODY-U
    src srcu GE-SRC-S"
    s"  GEC-CATCH . cr" GE-SRC-LINE
    s" : GEC-RXOK ( -- n ) 12321 ; GEC-RXOK . cr" GE-SRC-LINE
-   s" bin/hb" GE-SRC-BUF GE-SRC-U @ GE-TIMEOUT-MS GE-RUN-STDIN
+   GE-HB$ GE-SRC-BUF GE-SRC-U @ GE-TIMEOUT-MS GE-RUN-STDIN
    s" hb rawexit eval-catch usable" GE-EXPECT-OK
    code codeu s" hb rawexit eval-catch code" GE-EXPECT-OUT-HAS
    s" 12321" s" hb rawexit eval-catch session-usable" GE-EXPECT-OUT-HAS
@@ -1596,7 +1596,7 @@ variable GE-CF-BODY-U
    GE-HB-RESET
    GE-SRC-RESET
    src srcu GE-SRC-LINE
-   s" bin/hb" GE-SRC-BUF GE-SRC-U @ GE-TIMEOUT-MS GE-RUN-STDIN
+   GE-HB$ GE-SRC-BUF GE-SRC-U @ GE-TIMEOUT-MS GE-RUN-STDIN
    rc s" hb rawexit top-level rc" GE-EXPECT-RC
    diag diagu s" hb rawexit top-level diag" GE-EXPECT-ERR-HAS
    s" habu-crash" s" hb rawexit top-level no-crash" GE-EXPECT-ERR-LACKS ;
@@ -1659,7 +1659,7 @@ create GE-RXE-TML-BUF 512 allot   variable GE-RXE-TML-U
    GE-RXE-BS  [char] q GE-SRC-C  GE-DQ GE-SRC-C         \ \q closes the counted string; " closes the s\" wrapper
    s"  GEC-CATCH . cr" GE-SRC-LINE
    s" : GEC-RXOK ( -- n ) 12321 ; GEC-RXOK . cr" GE-SRC-LINE
-   s" bin/hb" GE-SRC-BUF GE-SRC-U @ GE-TIMEOUT-MS GE-RUN-STDIN
+   GE-HB$ GE-SRC-BUF GE-SRC-U @ GE-TIMEOUT-MS GE-RUN-STDIN
    s" hb rxe cstr eval-catch usable" GE-EXPECT-OK
    s" 76" s" hb rxe cstr eval-catch code" GE-EXPECT-OUT-HAS
    s" 12321" s" hb rxe cstr eval-catch session-usable" GE-EXPECT-OUT-HAS
@@ -1672,7 +1672,7 @@ create GE-RXE-TML-BUF 512 allot   variable GE-RXE-TML-U
    [char] c GE-SRC-C  GE-DQ GE-SRC-C  GE-SRC-SP         \ c" + delimiter
    256 [char] A GE-SRC-REPEAT-C
    GE-DQ GE-SRC-C  GE-SRC-LF
-   s" bin/hb" GE-SRC-BUF GE-SRC-U @ GE-TIMEOUT-MS GE-RUN-STDIN
+   GE-HB$ GE-SRC-BUF GE-SRC-U @ GE-TIMEOUT-MS GE-RUN-STDIN
    76 s" hb rxe cstr top rc" GE-EXPECT-RC
    s" counted string too long" s" hb rxe cstr top label" GE-EXPECT-ERR-HAS
    s" habu-crash" s" hb rxe cstr top no-crash" GE-EXPECT-ERR-LACKS ;
@@ -1687,7 +1687,7 @@ create GE-RXE-TML-BUF 512 allot   variable GE-RXE-TML-U
    s" abc" GE-SRC+  GE-DQ GE-SRC-C                      \ abc" : the target `s" abc` is unterminated; " closes the wrapper
    s"  GEC-CATCH . cr" GE-SRC-LINE
    s" : GEC-RXOK ( -- n ) 12321 ; GEC-RXOK . cr" GE-SRC-LINE
-   s" bin/hb" GE-SRC-BUF GE-SRC-U @ GE-TIMEOUT-MS GE-RUN-STDIN
+   GE-HB$ GE-SRC-BUF GE-SRC-U @ GE-TIMEOUT-MS GE-RUN-STDIN
    s" hb rxe qeof eval-catch usable" GE-EXPECT-OK
    s" 74" s" hb rxe qeof eval-catch code" GE-EXPECT-OUT-HAS
    s" 12321" s" hb rxe qeof eval-catch session-usable" GE-EXPECT-OUT-HAS
@@ -1698,7 +1698,7 @@ create GE-RXE-TML-BUF 512 allot   variable GE-RXE-TML-U
    GE-HB-RESET
    GE-SRC-RESET
    [char] s GE-SRC-C  GE-DQ GE-SRC-C  GE-SRC-SP  s" abc" GE-SRC+  GE-SRC-LF   \ `s" abc` unterminated
-   s" bin/hb" GE-SRC-BUF GE-SRC-U @ GE-TIMEOUT-MS GE-RUN-STDIN
+   GE-HB$ GE-SRC-BUF GE-SRC-U @ GE-TIMEOUT-MS GE-RUN-STDIN
    74 s" hb rxe qeof top rc" GE-EXPECT-RC
    s" bad string literal" s" hb rxe qeof top diag" GE-EXPECT-ERR-HAS
    s" habu-crash" s" hb rxe qeof top no-crash" GE-EXPECT-ERR-LACKS ;
