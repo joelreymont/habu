@@ -176,6 +176,8 @@ TEST:SUITE maki/artifact-test.f
 TEST:;SUITE
 TEST:SUITE maki/db/artifact-test.f
 TEST:;SUITE
+TEST:SUITE maki/db/transaction-test.f
+TEST:;SUITE
 TEST:SUITE maki/cad-test.f
 TEST:;SUITE
 TEST:SUITE maki/cad-bind-test.f
@@ -221,6 +223,10 @@ TEST:;SUITE
 TEST:SUITE maki/producer-test.f
 TEST:;SUITE
 TEST:SUITE maki/config-test.f
+TEST:;SUITE
+TEST:SUITE maki/journal-test.f
+TEST:;SUITE
+TEST:SUITE maki/rev-test.f
 TEST:;SUITE
 TEST:SUITE maki/evidence/schema-test.f
 TEST:;SUITE

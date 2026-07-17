@@ -667,6 +667,10 @@ that source is explicitly certified; they are not stale-checked by the default
 | PRODUCER-ID>RAW | `CAD-KIND:producer-id -- n` | Private producer identity projection used only by bounds validation, name-table access, `PRODUCER:EQUAL?`, and the `PRODUCER:ID>WIRE` / `WIRE>ID` codec; no public raw conversion is exported. | `maki/producer-test.f` | maki/producer.f | 2026-07-17 |
 | RAW>CONFIG-ID | `n -- CAD-KIND:config-id` | Private config-id registry refinement after canonical-fact-string validation, capacity validation, and append-only slot allocation (the maki/artifact.f `RAW>ARTIFACT-ID` pattern); the only public producer is `CONFIG:REGISTER`, which interns the build/config facts remaining after target facts (target-id) and numeric facts (numeric-policy-id), so a raw n cannot forge a config identity (MODEL-CAD-V2-PLAN.md § 23.9 foreign-id contract; dot habu-config-config-id-06aa21bd). | `maki/config-test.f` | maki/config.f | 2026-07-17 |
 | CONFIG-ID>RAW | `CAD-KIND:config-id -- n` | Private config identity projection used only by bounds validation, fact-table access, `CONFIG:EQUAL?`, and the `CONFIG:ID>WIRE` / `WIRE>ID` codec; no public raw conversion is exported. | `maki/config-test.f` | maki/config.f | 2026-07-17 |
+| RAW>AUDIT-EVENT-ID | `n -- CAD-KIND:audit-event-id` | Private audit-event-id journal refinement after descriptor validation, capacity validation, and monotonic append-sequence assignment (the maki/artifact.f `RAW>ARTIFACT-ID` pattern); the only public producer is `JOURNAL:APPEND`, which mints the next occurrence-identified sequence at append time, so a raw n cannot forge an audit-event identity (MODEL-CAD-V2-PLAN.md § 23.9 foreign-id contract; dot habu-v2-txn-journal-d0bc644f). | `maki/journal-test.f` | maki/journal.f | 2026-07-17 |
+| AUDIT-EVENT-ID>RAW | `CAD-KIND:audit-event-id -- n` | Private audit-event identity projection used only by bounds validation, descriptor-table access, `JOURNAL:SEQ`/`EQUAL?`, and the `JOURNAL:ID>WIRE` / `WIRE>ID` codec; no public raw conversion is exported. | `maki/journal-test.f` | maki/journal.f | 2026-07-17 |
+| RAW>REV-ID | `n -- CAD-KIND:rev-id` | Private rev-id registry refinement after canonical-revision-content validation, capacity validation, and append-only slot allocation (the maki/artifact.f `RAW>ARTIFACT-ID` pattern); the only public producer is `REV:COMMIT`, which content-addresses the canonical revision content (parent + write set), so a raw n cannot forge a revision identity (MODEL-CAD-V2-PLAN.md § 23.9 foreign-id contract; dot habu-v2-txn-journal-d0bc644f). | `maki/rev-test.f` | maki/rev.f | 2026-07-17 |
+| REV-ID>RAW | `CAD-KIND:rev-id -- n` | Private revision identity projection used only by bounds validation, content-table access, `REV:EQUAL?`, and the `REV:ID>WIRE` / `WIRE>ID` codec; no public raw conversion is exported. | `maki/rev-test.f` | maki/rev.f | 2026-07-17 |
 | DIM-REFINE | `n -- CAD-KIND:dim` | Private validated nominal representation boundary for tensor dimensions; tracked by `habu-v2-r3-type-9f89d1e9`. | `maki/tensor-test.f` | maki/tensor.f | 2026-07-12 |
 | DIM-RAW | `CAD-KIND:dim -- n` | Private dimension projection used only by checked shape algebra and numeric execution boundaries. | `maki/tensor-test.f` | maki/tensor.f | 2026-07-12 |
 | ROWS-REFINE | `n -- CAD-KIND:rows` | Private validated row-role refinement; public construction goes through `SHAPE`. | `maki/tensor-test.f` | maki/tensor.f | 2026-07-12 |
@@ -1393,6 +1397,10 @@ maki/producer.f:RAW>PRODUCER-ID prim-axiom habu-epic-model-cad-70b629a9
 maki/producer.f:PRODUCER-ID>RAW prim-axiom habu-epic-model-cad-70b629a9
 maki/config.f:RAW>CONFIG-ID prim-axiom habu-epic-model-cad-70b629a9
 maki/config.f:CONFIG-ID>RAW prim-axiom habu-epic-model-cad-70b629a9
+maki/journal.f:RAW>AUDIT-EVENT-ID prim-axiom habu-epic-model-cad-70b629a9
+maki/journal.f:AUDIT-EVENT-ID>RAW prim-axiom habu-epic-model-cad-70b629a9
+maki/rev.f:RAW>REV-ID prim-axiom habu-epic-model-cad-70b629a9
+maki/rev.f:REV-ID>RAW prim-axiom habu-epic-model-cad-70b629a9
 maki/tensor-value.f:RAW>TENSOR prim-axiom habu-epic-model-cad-70b629a9
 maki/tensor-value.f:TENSOR>RAW prim-axiom habu-epic-model-cad-70b629a9
 maki/tensor-value.f:TYPED-LINEAR stdlib-boundary habu-epic-model-cad-70b629a9

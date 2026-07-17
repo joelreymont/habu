@@ -766,6 +766,26 @@ points stay listed.
   foreign field surfaces bounds (out-of-range) / malformed (wrong-width) on a bad
   decode, and `VALIDATE` accepts the golden weight AND kernel envelopes (kind-agnostic)
   while rejecting each corruption class.
+- `maki/db/transaction.f` — the deterministic transaction data model (MODEL-CAD-V2-PLAN.md
+  § 23 "Deterministic transactions" + § 23.1). Package TX: the checked immutable `txn`
+  handle (transaction id), base revision (`CAD-KIND:rev-id`), read set WITH negative
+  lookups (present/absent per object), write object set, dependency edges, capability
+  set, budget ledger, and obligations, all canonically ordered by identity and
+  deduplicated at `BUILD`. `VALIDATE` returns the `tx-result<n>` sum (duplicate-write /
+  omitted-read rejects; ok otherwise); `IDEMPOTENCY-KEY` is a SHA-256 `idem-key` over the
+  full canonical action (stable across retries); `PROPOSE` is the commit proposal - the
+  proposed `CAD-KIND:rev-id` via `REV:COMMIT` over a digest of (base + write set), so
+  replay reproduces the rev-id; `ENCODE`/`DECODE` round-trip the canonical bytes,
+  rehydrating objects via `ARTIFACT:REGISTER` and the base via `REV:WIRE>ID`. Objects use
+  `CAD-KIND:artifact-id`; capabilities and obligations are held as closed-vocabulary
+  codes until the CAP owner and the proof-obligation model (habu-v2-proof-obligation)
+  land. Throws only at capacity / missing-base. Owns -5350..-5353.
+- `maki/db/transaction-test.f` — the § 23 acceptance: canonical round-trip and
+  insertion-order independence, duplicate/conflicting writes reject, an omitted read
+  dependency rejects validation, retry identity is stable (same logical txn -> same
+  idempotency key; polarity and base revision are part of the key), the commit proposal
+  is deterministic, every field round-trips at its cardinality, truncated bytes decode
+  malformed, and capacity/polarity/no-base throw.
 - `maki/numpolicy.f` — the typed numeric-policy proof-domain family (`NPOL:dom` =
   exact/ulp/relative/empirical, CAD-PLAN §22.6): the strength lattice
   (`RANK`/`SATISFIES?`/`COMPOSE` weakest-wins), the checked satisfaction gate
@@ -813,6 +833,28 @@ points stay listed.
   distinct flags distinct id), the wire round-trip, fail-closed decode (wrong-width +
   unresolved raw), cross-role rejection, and the private-mint unforgeability
   negatives.
+- `maki/journal.f` — the append-only audit journal + audit-event-id wire codec (the
+  audit-event-id leg of MODEL-CAD-V2-PLAN.md § 23.9): `JOURNAL:APPEND` records an event
+  descriptor and mints the NEXT monotonic sequence id - OCCURRENCE-identified, so an
+  identical descriptor appended twice yields two DISTINCT ids (never content-addressed) -
+  plus `DESC$`/`SEQ`/`EQUAL?`/`VALIDATE`/`COUNT` and the `ID>WIRE` (total) / `WIRE>ID`
+  (`id-result`, fail-closed) 8-byte little-endian sequence codec. audit-event-id is the
+  digest-EXCLUDED provenance link; raw conversions stay private. Owns -5342..-5345.
+- `maki/journal-test.f` — occurrence identity (identical descriptor -> distinct ids,
+  monotonic sequence), descriptor projection, the wire round-trip, fail-closed decode
+  (wrong-width + unresolved sequence), cross-role rejection, and the private-mint
+  unforgeability negatives.
+- `maki/rev.f` — the revision identity registry + wire codec (the rev-id leg of
+  MODEL-CAD-V2-PLAN.md § 23.9): `REV:COMMIT` content-addresses the canonical revision
+  content (parent + write set, serialised by maki/db/transaction.f) to a
+  `CAD-KIND:rev-id` (equal content shares one id, so deterministic replay reproduces the
+  rev-id), plus `CONTENT$`/`EQUAL?`/`VALIDATE`/`COUNT` and the `ID>WIRE` (total) /
+  `WIRE>ID` (`id-result`, fail-closed) 8-byte little-endian codec. This leg owns rev-id
+  IDENTITY; the revision-content canonical FORM lives in the transaction dot. Raw
+  conversions stay private. Owns -5346..-5349.
+- `maki/rev-test.f` — content-addressed COMMIT (equal content one id, distinct parent
+  distinct id), the wire round-trip, fail-closed decode (wrong-width + unresolved raw),
+  cross-role rejection, and the private-mint unforgeability negatives.
 - `maki/sched-key.f` — section-7.4 schedule keys: the typed `skey` product (now
   carrying the region's requested `NPOL:dom` policy, REGION-POL's per-op OP-DOM fold,
   so a different policy is a different key), the durable `SK-KEY$` render (region
