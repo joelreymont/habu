@@ -50,6 +50,8 @@ TRUSTED: TWX-SCHEMA-CON ( n -- n ) SCHEMA-CON ;
 TRUSTED: TWX-SCHEMA-ROOT+ ( n -- n ) SCHEMA-ROOT+ ;
 TRUSTED: TWX-LAY-N@ ( -- n ) LAY-N@ ;
 TRUSTED: TWX-LAY-ADD ( n n n n n -- n ) LAY-ADD ;
+TRUSTED: TWX-LAY-FAM@ ( n -- n ) LAY-FAM@ ;
+TRUSTED: TWX-LAY-FIND ( n -- n bool ) LAY-FIND ;
 TRUSTED: TWX-PF-BEGIN ( -- n ) PF-BEGIN ;
 TRUSTED: TWX-PF-ADD ( n n n ptr u8 n n n n n n n n -- n ) PF-ADD ;
 TRUSTED: TWX-PF-COMMIT ( n -- ) PF-COMMIT ;
@@ -59,7 +61,8 @@ variable P-TFAM   variable P-SUMV   variable P-PF   variable P-LAY
 variable P-SCHN   variable P-SCHR   variable P-STRU  variable P-PKN
 variable P-SYMN   variable P-SYMU   variable P-DEPTH
 variable A-TFAM   variable A-SYMN   variable B-TFAM  variable B-SYMN
-variable PFTX     variable PFSCH   variable PFOWN
+variable PFTX     variable PFSCH   variable PFOWN    variable PFID
+variable LAYID
 
 \ clean TFAM/SCHEMA slate (SYM/USIG/DFER/package remain live checker state).
 TWX-TFAM-RESET
@@ -94,11 +97,15 @@ TWX-CAND-START
    PFTX @ PFOWN @ PF-NO-VARIANT s" fld" PFSCH @
       0 1 0 CELL CELL PF-FLAGS-NONE TWX-PF-ADD PFTX !
    PFTX @ TWX-PF-COMMIT
-   FOUNDF @ TL-BOXED 8 8 8 TWX-LAY-ADD drop
+   PFOWN @ TL-BOXED 8 8 8 TWX-LAY-ADD LAYID !
    1 TWX-SCHEMA-CON drop   2 TWX-SCHEMA-PARAM drop
    0 TWX-SCHEMA-PARAM TWX-SCHEMA-ROOT+ drop
-   \ found INSIDE the candidate.
+   \ every dependent registry resolves the same candidate-family owner.
    s" rbc" s" cand" TWX-TFAM-FIND-IN FOUNDF ! drop  FOUNDF @ -1 T=
+   PFOWN @ TYPE-FIELD:NO-VARIANT s" fld" TYPE-FIELD:FIND FOUNDF ! PFID !
+   FOUNDF @ -1 T=   PFID @ TYPE-FIELD:FAMILY@ PFOWN @ T=
+   LAYID @ TWX-LAY-FAM@ PFOWN @ T=
+   PFOWN @ TWX-LAY-FIND FOUNDF ! LAYID @ T=   FOUNDF @ -1 T=
 0 TWX-CAND-DONE drop
 
 \ every counter restored to the pre-candidate baseline.
@@ -112,6 +119,9 @@ TF-STR-U @     P-STRU @ T=
 TF-PK-N @      P-PKN @ T=
 \ the candidate family cannot be found post-rollback.
 s" rbc" s" cand" TWX-TFAM-FIND-IN FOUNDF ! drop  FOUNDF @ 0 T=
+\ its field and layout rows cannot survive as cross-registry orphans.
+PFOWN @ TYPE-FIELD:NO-VARIANT s" fld" TYPE-FIELD:FIND FOUNDF ! drop  FOUNDF @ 0 T=
+PFOWN @ TWX-LAY-FIND FOUNDF ! drop  FOUNDF @ 0 T=
 \ re-adding the exact same (package,tail) after rollback succeeds (no leaked dup).
 s" rbc" CHECKER-PACKAGE-PRIVATE s" cand" 2 TK-PRODUCT ' TWX-TFAM-DECL catch  TC !  drop
 TC @ 0 T=

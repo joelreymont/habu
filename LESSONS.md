@@ -73,6 +73,12 @@ Last updated: 2026-07-17
   golden-dump of every pinned config's emitted PTX BEFORE the edit, sha+cmp AFTER (twice) - byte
   identical. An off-device pure-emit dump is the cheap, exact byte-identity gate.
 
+- **Store paired `( value bool )` results in reverse output order, then name both.**
+  `TFAM-FIND-IN FOUNDF ! PFOWN !` stored the values correctly, but later passed
+  `FOUNDF` to `LAY-ADD`; count-only rollback checks stayed green while the field
+  and layout rows had different owners. Assert the shared owner before rollback
+  and assert both dependent registries miss after it.
+
 - **Package rollback has two owners.** Restoring the engine's current/public/private
   WIDs is incomplete unless recovery also resynchronizes the checker's package
   mode before the next token; `get-current` proves only the engine half. Follow a

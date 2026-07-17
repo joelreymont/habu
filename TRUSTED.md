@@ -1611,6 +1611,8 @@ test/type-family-rollback-suite.f:TWX-SCHEMA-CON test-metaprog habu-seal-set-che
 test/type-family-rollback-suite.f:TWX-SCHEMA-ROOT+ test-metaprog habu-seal-set-check-b3676b33
 test/type-family-rollback-suite.f:TWX-LAY-N@ test-metaprog habu-seal-set-check-b3676b33
 test/type-family-rollback-suite.f:TWX-LAY-ADD test-metaprog habu-seal-set-check-b3676b33
+test/type-family-rollback-suite.f:TWX-LAY-FAM@ test-metaprog habu-seal-set-check-b3676b33
+test/type-family-rollback-suite.f:TWX-LAY-FIND test-metaprog habu-seal-set-check-b3676b33
 test/type-family-rollback-suite.f:TWX-PF-BEGIN test-metaprog habu-seal-set-check-b3676b33
 test/type-family-rollback-suite.f:TWX-PF-ADD test-metaprog habu-seal-set-check-b3676b33
 test/type-family-rollback-suite.f:TWX-PF-COMMIT test-metaprog habu-seal-set-check-b3676b33
