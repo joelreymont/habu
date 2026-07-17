@@ -1013,6 +1013,25 @@ points stay listed.
 - `maki/db/capbud-test.f` — the aggregate maki/test.f suite for the capability + budget subsystem:
   one wired entry that runs the four standalone concern suites (budget-dim, capability, budget-
   ledger, authorized commit), keeping one concern per test file within the maki suite-table budget.
+- `maki/db/agent-loop.f` — the bounded autonomous agent-loop CONTROLLER (MODEL-CAD-V2-PLAN.md § 23.2
+  repair loop + § 23.9 implementation-order item 8 "Agent-loop controller with bounded progress and
+  deterministic replay", plan:3255-3272 / plan:3852; dot habu-v2-bounded-autonomous-1c598fcf). The
+  capstone that COMPOSES the landed substrate, forking none of it. Package ALOOP: `RUN` drives an
+  UNTRUSTED chooser (a checked `[ -- n txn ]` quotation proposing an action ordinal + txn) under a
+  ROOT grant ATTENUATEd to a child + a budget LEDGER, gating every proposal through ACTION:DISPATCH
+  and committing the sole mutation via CSTORE:COMMIT-AUTHORIZED; a trusted metric quotation (canonical
+  `APPLIC-SATISFIED`, counting tracked obligations whose APPLIC:VERDICT is applicable) measures
+  progress. Three bounds (iterations, consecutive non-progress, budget) guarantee termination with a
+  typed `loop-result` (`promoted` / `blocked` naming a `blocked-reason`); committed decisions are
+  journaled by idempotency key for deterministic replay + crash/retry idempotency. Owns -5389..-5391.
+- `maki/db/agent-loop-test.f` — controller acceptance against a real private store + the landed
+  substrate: promote-on-progress and the APPLIC focused-verifier path; the untrusted-chooser static
+  verdict fixtures (a missing/raw-n txn slot is a checker reject); registry-gate rejects (out-of-range
+  ordinal, declared/wrong-kind action -> blocked(illegal-action), no mutation); non-progress and
+  iteration bounds terminate; authority + budget hold (DISPATCH-effect / commit-capability / ledger-
+  exhaustion / attenuation-escape -> typed blocked, HEAD unchanged); crash/retry idempotency (charge
+  once, HEAD stable); replay-without-the-chooser (journal key + HEAD + ledger digest identical); and
+  the tracked-obligation / journal capacity throws.
 - `maki/db/keywire-xproc-child.f` — the FRESH-PROCESS decode side of the cross-process
   content-key identity test (dot habu-wire-content-key). Package KWXPC: shared fixed
   key-file layout, shared real descriptors, per-family `REG-*` registrations, and
