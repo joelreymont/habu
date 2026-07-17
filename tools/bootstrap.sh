@@ -301,6 +301,7 @@ chmod +x "$T/hb-stdin"
 env HABU_UNDER_TEST="$T/hb-stdin" "$T/hb-stdin" --load test/engine-error-package.f
 env HABU_UNDER_TEST="$T/hb-stdin" "$T/hb-stdin" --load test/catch-frame.f
 env HABU_UNDER_TEST="$T/hb-stdin" "$T/hb-stdin" --load test/type-ctor-suite.f
+env HABU_UNDER_TEST="$T/hb-stdin" "$T/hb-stdin" --load test/top-row-hook-test.f
 
 if [[ "${HABU_BOOTSTRAP_CHECK_ONLY:-}" == "1" ]]; then
   printf 'bootstrap check OK: %s/hb-stdin\n' "$T"

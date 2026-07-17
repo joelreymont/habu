@@ -1189,6 +1189,7 @@ public
    s" hb-snap-src" BCG-MUST-LACK
    s" hb-snap0" BCG-MUST-LACK
    s" bootstrap check OK: %s/hb-stdin" BCG-MUST-HAVE
+   S\" env HABU_UNDER_TEST=\q$T/hb-stdin\q \q$T/hb-stdin\q --load test/top-row-hook-test.f" BCG-MUST-HAVE
    s" mv " BCG-MUST-HAVE
    s" bin/hb" BCG-MUST-HAVE ;
 

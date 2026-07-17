@@ -1183,7 +1183,9 @@ points stay listed.
   sealed compile-preflight/top/snapshot hook band trap
   `ENGINE-ERROR:SEAL-VIOLATION` while both one-cell neighbors stay writable;
   custom checker-hook reinstall runs compile preflight, and a missing preflight
-  emits exactly one LF-terminated diagnostic with no trailing byte.
+  emits exactly one LF-terminated diagnostic with no trailing byte. The
+  no-binary recovery gate reruns this subprocess contract against its private
+  Gforth-built `hb-stdin`, not only the native engine.
 - `test/top-row-warn-test.f` — tier-1 top-row tracker warning regressions (dot
   habu-typed-top-checker-82cf8b84): child probes assert p1 `' FOO2 execute`,
   p2 `0 0 catch`, and p3 `s" abc" + .` each emit exactly one `hb: top-row:`

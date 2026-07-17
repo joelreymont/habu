@@ -5345,3 +5345,7 @@ unchanged (148855). Keys for milestone 2:
   fixed length inclusive of exactly one LF, route recovery through its own
   missing-preflight label, and compare the complete stderr span so a trailing
   NUL cannot hide behind substring assertions.
+- **Emitter-source parity does not prove recovery runtime parity.** Run the same
+  exact-byte subprocess assertion with `HABU_UNDER_TEST` bound to the private
+  Gforth-built `hb-stdin`; the recovery gate must prove rc 70, empty stdout, and
+  the 35-byte LF-terminated, NUL-free diagnostic before installing anything.

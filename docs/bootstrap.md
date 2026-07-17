@@ -106,7 +106,10 @@ tools/bootstrap.sh
 ```
 
 `HABU_BOOTSTRAP_CHECK_ONLY=1` builds the private Gforth/native bootstrap chain
-through `hb-stdin` and exits before replacing `bin/hb`.
+through `hb-stdin` and exits before replacing `bin/hb`. Before returning, the
+recovery-built engine runs the top-row hook subprocess regression against
+itself; the missing compile-preflight path must exit 70 with empty stdout and
+exactly `hb: compile preflight hook missing` plus one LF on stderr.
 
 ## DDC Audit (Diverse Double-Compiling)
 
