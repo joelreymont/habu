@@ -439,6 +439,9 @@ variable BUILD-RC
    ROOT$ 2swap SUB-BUF JOIN-PATH
    SUB-BUF swap ;
 
+: BUILD-TMP$ ( -- ptr u8 n )
+   s" hb-tmp" SUB$ ;
+
 : PARENT-U ( ptr u8 n -- n ) {: a:ptr u:n :}
    u begin dup 0 > while
       1- dup a + c@ [char] / = if 1+ exit then
@@ -515,6 +518,7 @@ variable BUILD-RC
    PROC-ARGV-RESET
    PROC-ENV-RESET
    PROC-ENV-INHERIT-MISSING
+   s" HB_TMP" >LEN BUILD-TMP$ >LEN PROC-ENV-SET
    s" --load" >LEN PROC-ARGV+
    s" lib/errors.f" >LEN PROC-ARGV+
    s" lib/string.f" >LEN PROC-ARGV+
@@ -547,6 +551,7 @@ variable BUILD-RC
    s" udg cold build: stderr" type cr ERR$ type cr ;
 
 : BUILD-CANDIDATE ( -- )
+   BUILD-TMP$ MAKE-DIRS
    s" src" COPY-TREE
    s" lib" COPY-TREE
    s" tools" COPY-TREE
