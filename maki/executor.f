@@ -51,6 +51,15 @@ require maki/move.f
 require maki/reduce-bwd.f
 require maki/scatter.f
 
+\ ---- audited count projection (MIR typed item-count -> raw loop/compare cell) ---
+\ Reopen the unsealed CAD-NUM package for one checked bridge over its private
+\ ITEM-COUNT>N projection (no new TRUSTED), mirroring cad.f CAD-IX>N: a bounds
+\ compare / count sink needs the raw cell the NODE-/SLOT-COUNT@ item-count cannot
+\ flow into.
+package CAD-NUM public
+: EX-IC>N ( CAD-NUM:item-count -- n )  ITEM-COUNT>N ;
+;package
+
 -5130 constant E-EX-CAP       \ node arena / index scratch capacity exceeded
 -5131 constant E-EX-UNSUP     \ op-kind has no host-executable reference (cast / decode)
 -5132 constant E-EX-UNBOUND   \ an operand names a model-input slot with no bound buffer
@@ -75,7 +84,7 @@ create EX-IDX    EX-IDX-CAP cells allot          \ int index scratch (gather/sca
 
 \ ---- slot / node addressing ------------------------------------------------
 : EX-IN-CK ( n -- n )                   \ validate a raw model-input slot index
-   dup 0 < over MIR-IN-SLOTS@ >= or if E-EX-SLOT throw then ;
+   dup 0 < over SLOT-COUNT@ CAD-NUM:EX-IC>N >= or if E-EX-SLOT throw then ;
 
 : EX-SLOT-PTR ( MIR:input-slot -- ptr a ) {: s:MIR:input-slot :}   \ bound buffer (fail closed)
    s SLOT>RAW EX-IN-CK {: raw:n :}
@@ -408,7 +417,7 @@ public
 
 \ ---- run a node prefix (forward slice) or the whole IR ---------------------
 : EX-RUN-N ( n -- )  dup EX-PLAN  EX-EXEC ;
-: EX-RUN ( -- )      MIR-N@ EX-RUN-N ;
+: EX-RUN ( -- )      NODE-COUNT@ CAD-NUM:EX-IC>N EX-RUN-N ;
 
 \ plan node buffers only (no execution): the async-DAG replay driver
 \ (maki/plan-ir.f) places the arena once, then EX-STEPs nodes in the sealed
@@ -424,19 +433,19 @@ public
 \ custom plan is valid only until the next EX-RUN(-N).
 : EX-OFF! ( n CAD-KIND:node-id -- ) {: off:n nd:CAD-KIND:node-id :}   \ arena offset (cells), node
    nd NODE>RAW {: raw:n :}
-   raw 0 < raw MIR-N@ >= or if E-EX-NODE throw then
+   raw 0 < raw NODE-COUNT@ CAD-NUM:EX-IC>N >= or if E-EX-NODE throw then
    off 0 <  off nd EX-NODE-ELEMS + EX-ARENA-CELLS >  or if E-EX-CAP throw then
    off raw cells EX-OFF + ! ;
 
 : EX-STEP ( CAD-KIND:node-id -- ) {: nd:CAD-KIND:node-id :}   \ execute one node under the current plan
    nd NODE>RAW {: raw:n :}
-   raw 0 < raw MIR-N@ >= or if E-EX-NODE throw then
+   raw 0 < raw NODE-COUNT@ CAD-NUM:EX-IC>N >= or if E-EX-NODE throw then
    nd EX-NODE ;
 
 \ ---- read a node's output buffer (after EX-RUN / EX-RUN-N) ------------------
 : EX-OUT@ ( CAD-KIND:node-id -- ptr a ) {: nd:CAD-KIND:node-id :}
    nd NODE>RAW {: raw:n :}
-   raw 0 < raw MIR-N@ >= or if E-EX-NODE throw then
+   raw 0 < raw NODE-COUNT@ CAD-NUM:EX-IC>N >= or if E-EX-NODE throw then
    nd EX-NODE-PTR ;
 
 ;package

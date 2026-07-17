@@ -31,6 +31,14 @@ require maki/traffic.f
 require maki/store.f
 require maki/report.f
 
+\ ---- audited count projection (MIR typed item-count -> raw loop/compare cell) ---
+\ Reopen the unsealed CAD-NUM package for one checked bridge over its private
+\ ITEM-COUNT>N projection (no new TRUSTED), mirroring cad.f CAD-IX>N: a ?do bound
+\ needs the raw cell the NODE-COUNT@ item-count cannot flow into.
+package CAD-NUM public
+: SV-IC>N ( CAD-NUM:item-count -- n )  ITEM-COUNT>N ;
+;package
+
 -5111 constant E-SV-CALIB    \ malformed calibration flop-byte value on parse
 
 package MAKI
@@ -132,6 +140,6 @@ public
 
 \ write one save-vs-recompute decision row per forward tensor an adjoint needs.
 : SAVED-INTO ( report -- report )
-   MIR-N@ 0 ?do  i MIR-NODE-ID SV-NODE-INTO  loop ;
+   NODE-COUNT@ CAD-NUM:SV-IC>N 0 ?do  i MIR-NODE-ID SV-NODE-INTO  loop ;
 
 ;package

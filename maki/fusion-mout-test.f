@@ -31,11 +31,19 @@ require lib/string.f
 require maki/cad.f
 require maki/fusion-plan.f
 
+\ ---- audited count projection (MIR typed item-count -> raw loop/compare cell) ---
+\ Reopen the unsealed CAD-NUM package for one checked bridge over its private
+\ ITEM-COUNT>N projection (no new TRUSTED), mirroring cad.f CAD-IX>N: a ?do bound
+\ needs the raw cell the NODE-COUNT@ item-count cannot flow into.
+package CAD-NUM public
+: MOUT-IC>N ( CAD-NUM:item-count -- n )  ITEM-COUNT>N ;
+;package
+
 package MAKI
 
 \ materialized outputs planned into region r
 : MOUT-RGN ( CAD-KIND:region -- n ) {: r:CAD-KIND:region :}
-   0  MIR-N@ 0 ?do
+   0  NODE-COUNT@ CAD-NUM:MOUT-IC>N 0 ?do
       i MIR-NODE-ID {: node:CAD-KIND:node-id :}
       node FP-RID@ r FP-RGN=  node MIR-MAT@  and if 1+ then
    loop ;

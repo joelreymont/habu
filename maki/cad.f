@@ -100,6 +100,10 @@ require maki/evidence/schema.f      \ EVID:golden-leg / EVID:prec-class: the typ
 \ over its private INDEX>N projection (no new TRUSTED). dot habu-migrate-maki-str-6e5cabd4.
 package CAD-NUM public
 : CAD-IX>N ( CAD-NUM:index -- n )  INDEX>N ;
+\ MIR NODE-/SLOT-/MATERIALIZED-COUNT return CAD-NUM:item-count; a ?do bound, a
+\ slot-count equality, and the materialized-count report sink need the raw cell
+\ the typed form cannot flow into (same no-new-TRUSTED bridge as CAD-IX>N).
+: CAD-IC>N ( CAD-NUM:item-count -- n )  ITEM-COUNT>N ;
 ;package
 
 -5020 constant E-CAD-NOMODEL   \ command issued with no model defined
@@ -616,7 +620,7 @@ public
 : MODEL-CAPTURED? ( -- bool )  MIR-PROV@ MAKI-PROV:CAPTURED MAKI-PROV:EQ ;
 : MODEL-IMPORTED? ( -- bool )  MIR-PROV@ MAKI-PROV:IMPORTED MAKI-PROV:EQ ;
 : MODEL-NAME$ ( -- ptr u8 n )  MIR-NAME$ ;
-: MODEL-K ( -- n )  MIR-N@ ;
+: MODEL-K ( -- n )  NODE-COUNT@ CAD-NUM:CAD-IC>N ;
 
 private
 
@@ -786,7 +790,7 @@ private
    cls CLASS-MATMUL   = if nd RB-MM-BIAS nd RB-MM nd MIR-SHAPE! exit then
    nd RB-EW-PARAM  nd RB-DATA nd MIR-SHAPE! ;
 
-: REPROP-ALL ( -- )  MIR-N@ 0 ?do  i MIR-NODE-ID REPROP-NODE  loop ;
+: REPROP-ALL ( -- )  NODE-COUNT@ CAD-NUM:CAD-IC>N 0 ?do  i MIR-NODE-ID REPROP-NODE  loop ;
 
 \ ---- BIND-SHAPES parse: positional "[name:]RxC" specs, one per input slot ------
 64 constant BS-CAP
@@ -827,8 +831,8 @@ variable BS-N
    s MIR-SLOT-COLS@  BS-COLS i cells + @  BS-COL
    s MIR-SLOT-SHAPE! ;
 : BS-BIND ( -- )
-   BS-N @ MIR-IN-SLOTS@ <> if E-CAD-BIND-COUNT throw then
-   MIR-IN-SLOTS@ 0 ?do  i BS-APPLY  loop
+   BS-N @ SLOT-COUNT@ CAD-NUM:CAD-IC>N <> if E-CAD-BIND-COUNT throw then
+   SLOT-COUNT@ CAD-NUM:CAD-IC>N 0 ?do  i BS-APPLY  loop
    REPROP-ALL
    FP-RESET ;
 
@@ -862,11 +866,11 @@ private
    PROV-ROW+
    MODEL-K MODEL-K REPORT:OPS!
    MODEL-K REPORT:REGIONS!
-   MIR-MAT-COUNT REPORT:MATERIALIZED! ;
+   MATERIALIZED-COUNT CAD-NUM:CAD-IC>N REPORT:MATERIALIZED! ;
 
 : LOWER-KEYS ( report -- report )              \ shape/dtype/layout of the model output
-   MIR-N@ 0= if exit then
-   MIR-N@ 1- MIR-NODE-ID {: out:CAD-KIND:node-id :}
+   NODE-COUNT@ CAD-NUM:CAD-IC>N 0= if exit then
+   NODE-COUNT@ CAD-NUM:CAD-IC>N 1- MIR-NODE-ID {: out:CAD-KIND:node-id :}
    out MIR-SHAPE-KEY  REPORT:SHAPE!
    out MIR-DTYPE-KEY  REPORT:DTYPE!
    out MIR-LAYOUT-KEY REPORT:LAYOUT! ;
@@ -883,7 +887,7 @@ private
    FP-BUILD
    MODEL-K FP-REGION-COUNT REPORT:OPS!
    FP-REGION-COUNT REPORT:REGIONS!
-   MIR-MAT-COUNT REPORT:MATERIALIZED!
+   MATERIALIZED-COUNT CAD-NUM:CAD-IC>N REPORT:MATERIALIZED!
    FP-REPORT+
    TRF-INTO ;
 
@@ -903,7 +907,7 @@ private
    node MOVE-WARN$ REPORT:WARN+ ;
 
 : MEM-MOVE-ROWS ( report -- report )
-   MIR-N@ 0 ?do  i MIR-NODE-ID MEM-MOVE-ROW+  loop ;
+   NODE-COUNT@ CAD-NUM:CAD-IC>N 0 ?do  i MIR-NODE-ID MEM-MOVE-ROW+  loop ;
 
 : MEMORY-INTO ( report -- report )
    FP-BUILD                                          \ region + materialization flags (6.x)
@@ -917,7 +921,7 @@ private
 \ process from schedules.rows): a hit replays the selection PROMOTE recorded for
 \ this exact key; a miss keeps the defaults ("using defaults" - cad-6 tunes).
 : REGION-HAS-SOFTMAX? ( CAD-KIND:region -- bool ) {: r:CAD-KIND:region :}   \ region carries a softmax-row op (two reductions)
-   MIR-N@ 0 ?do
+   NODE-COUNT@ CAD-NUM:CAD-IC>N 0 ?do
       i MIR-NODE-ID {: node:CAD-KIND:node-id :}
       node FP-RID@ r FP-RGN=  node MIR-OP@ MAKI-OPKIND:SOFTMAX-ROW MAKI-OPKIND:EQ  and if unloop true exit then
    loop false ;
@@ -1083,7 +1087,7 @@ private
    acc  node MIR-OP@ NPOL:OP-DOM  NPOL:COMPOSE ;
 : REGION-ACHIEVED ( CAD-KIND:region -- NPOL:dom ) {: r:CAD-KIND:region :}   \ weakest op-achieved domain over the region
    NPOL-DOM:EXACT
-   MIR-N@ 0 ?do
+   NODE-COUNT@ CAD-NUM:CAD-IC>N 0 ?do
       i MIR-NODE-ID {: node:CAD-KIND:node-id :}
       node FP-RID@ r FP-RGN= if node NODE-ACHIEVED then
    loop ;

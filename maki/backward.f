@@ -47,6 +47,15 @@ require maki/model-ir.f
 require maki/adjoint.f
 require maki/report.f
 
+\ ---- audited count projection (MIR typed item-count -> raw loop/compare cell) ---
+\ The MIR NODE-/SLOT-COUNT@ accessors return CAD-NUM:item-count; a ?do bound, a
+\ capacity compare, and a count snapshot need the raw cell the typed form cannot
+\ flow into. Reopen the unsealed CAD-NUM package for one checked bridge over its
+\ private ITEM-COUNT>N projection (no new TRUSTED), mirroring cad.f CAD-IX>N.
+package CAD-NUM public
+: BW-IC>N ( CAD-NUM:item-count -- n )  ITEM-COUNT>N ;
+;package
+
 -5105 constant E-BW-EMPTY   \ reverse transform of an empty IR
 -5106 constant E-BW-NOADJ   \ a forward op has no adjoint (cast) on the path
 -5107 constant E-BW-UNSUP   \ a forward op's adjoint is v1-unsupported (named reason)
@@ -71,7 +80,7 @@ variable BW-BUILT?
 : BW-CK ( -- )  BW-BUILT? @ 0= if E-BW-STATE throw then ;
 
 \ input-slot bounds check (backward.f owns no slot table; validate against model-ir)
-: MIR-IS-CK-OK ( n -- n )  dup 0 < over MIR-IN-SLOTS@ >= or if E-BW-STATE throw then ;
+: MIR-IS-CK-OK ( n -- n )  dup 0 < over SLOT-COUNT@ CAD-NUM:BW-IC>N >= or if E-BW-STATE throw then ;
 
 \ ---- operand-ref descriptor (input slot or producer node) -------------------
 : REF-ROWS ( MIR:operand-ref -- CAD-KIND:rows ) {: r:MIR:operand-ref :}
@@ -370,7 +379,7 @@ public
 \ first forward NODE lacking a supported adjoint, or -1 (scans forward nodes only);
 \ returns the node index (the op family is refetched at the use site).
 : BW-FIRST-BAD ( -- n )
-   BW-BUILT? @ if BW-FWD-N @ else MIR-N@ then {: n:n :}
+   BW-BUILT? @ if BW-FWD-N @ else NODE-COUNT@ CAD-NUM:BW-IC>N then {: n:n :}
    n 0 ?do  i MIR-NODE-ID MIR-OP@ BW-OK-OP? 0= if i unloop exit then  loop  -1 ;
 
 : BW-CAN? ( -- bool )  BW-FIRST-BAD 0< ;
@@ -394,13 +403,13 @@ public
 \ ---- build the backward IR over the current forward node table ---------------
 : BW-BUILD ( -- )
    0 BW-BUILT? !
-   MIR-N@ 0= if E-BW-EMPTY throw then
-   MIR-N@ BW-NCAP > MIR-IN-SLOTS@ BW-SCAP >= or if E-BW-CAP throw then
+   NODE-COUNT@ CAD-NUM:BW-IC>N 0= if E-BW-EMPTY throw then
+   NODE-COUNT@ CAD-NUM:BW-IC>N BW-NCAP > SLOT-COUNT@ CAD-NUM:BW-IC>N BW-SCAP >= or if E-BW-CAP throw then
    BW-CAN? 0= if
       BW-FIRST-BAD {: bad:n :}
       bad MIR-NODE-ID MIR-OP@ ADJ-HAS? if E-BW-UNSUP else E-BW-NOADJ then throw
    then
-   MIR-N@ BW-FWD-N !
+   NODE-COUNT@ CAD-NUM:BW-IC>N BW-FWD-N !
    BW-RESET-TABLES
    BW-SEED-OUTPUT
    BW-FWD-N @ 0 ?do  BW-FWD-N @ 1- i - MIR-NODE-ID BW-STEP  loop
@@ -408,7 +417,7 @@ public
 
 \ ---- accessors --------------------------------------------------------------
 : BW-FWD-N@     ( -- n )      BW-CK BW-FWD-N @ ;
-: BW-BWD-COUNT  ( -- n )      BW-CK MIR-N@ BW-FWD-N @ - ;
+: BW-BWD-COUNT  ( -- n )      BW-CK NODE-COUNT@ CAD-NUM:BW-IC>N BW-FWD-N @ - ;
 : BW-SEED-SLOT@ ( -- MIR:input-slot )  BW-CK BW-SEED @ ;
 : BW-NODE-CT@ ( CAD-KIND:node-id -- MIR:operand-ref )
    BW-CK dup NODE>RAW {: raw:n :}
@@ -427,7 +436,7 @@ public
 
 : BW-COUNT-ROW$ ( -- ptr u8 n )
    SB-RESET s" backward.nodes: fwd=" SB-APPEND BW-FWD-N @ SB-INT
-   s"  bwd=" SB-APPEND MIR-N@ BW-FWD-N @ - SB-INT SB$ ;
+   s"  bwd=" SB-APPEND NODE-COUNT@ CAD-NUM:BW-IC>N BW-FWD-N @ - SB-INT SB$ ;
 
 : BW-GRAD-ROW$ ( MIR:input-slot -- ptr u8 n ) {: s:MIR:input-slot :}
    SB-RESET s" backward.grad: input " SB-APPEND s SLOT>RAW SB-INT
@@ -442,7 +451,7 @@ public
    BW-CK
    BW-SEED-ROW$ REPORT:WARN+
    BW-COUNT-ROW$ REPORT:WARN+
-   MIR-IN-SLOTS@ 0 ?do
+   SLOT-COUNT@ CAD-NUM:BW-IC>N 0 ?do
       i MIR-SLOT-ID {: s:MIR:input-slot :}
       s BW-SEED @ MIR-SLOT= 0= if s BW-GRAD-ROW$ REPORT:WARN+ then
    loop ;

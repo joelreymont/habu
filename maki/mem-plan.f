@@ -34,6 +34,14 @@ require lib/fmt.f
 require maki/report.f
 require maki/model-ir.f
 
+\ ---- audited count projection (MIR typed item-count -> raw loop/compare cell) ---
+\ Reopen the unsealed CAD-NUM package for one checked bridge over its private
+\ ITEM-COUNT>N projection (no new TRUSTED), mirroring cad.f CAD-IX>N: a ?do bound
+\ needs the raw cell the NODE-/SLOT-COUNT@ item-count cannot flow into.
+package CAD-NUM public
+: MP-IC>N ( CAD-NUM:item-count -- n )  ITEM-COUNT>N ;
+;package
+
 \ -5076 (E-MP-ALIGN) retired: the align family makes an out-of-range class a
 \ checker reject; the code stays reserved to mem-plan.
 -5077 constant E-MP-NAME      \ staged tensor name exceeds the name buffer
@@ -107,13 +115,13 @@ create MP-NM MP-NM-CAP allot  variable MP-NM-U
 
 : MP-SLOT-READ? ( MIR:input-slot -- bool ) {: s:MIR:input-slot :}
    s MIR-IN-REF {: ref:MIR:operand-ref :}
-   MIR-N@ 0 ?do
+   NODE-COUNT@ CAD-NUM:MP-IC>N 0 ?do
       i MIR-NODE-ID ref MP-USES 0 > if unloop true exit then
    loop false ;
 
 : MP-SLOT-GATHERED? ( MIR:input-slot -- bool ) {: s:MIR:input-slot :}
    s MIR-IN-REF {: ref:MIR:operand-ref :}
-   MIR-N@ 0 ?do
+   NODE-COUNT@ CAD-NUM:MP-IC>N 0 ?do
       i MIR-NODE-ID {: nd:CAD-KIND:node-id :}
       nd MIR-OP@ MAKI-OPKIND:GATHER MAKI-OPKIND:EQ  nd MIR-IN-COUNT@ 0 >  and if
          nd 0 MIR-INPUT-IDX MIR-IN@ ref MIR-REF= if unloop true exit then
@@ -128,7 +136,7 @@ create MP-NM MP-NM-CAP allot  variable MP-NM-U
 
 : MP-SLOT-BROADCAST? ( MIR:input-slot -- bool ) {: s:MIR:input-slot :}
    s MIR-IN-REF {: ref:MIR:operand-ref :}
-   MIR-N@ 0 ?do
+   NODE-COUNT@ CAD-NUM:MP-IC>N 0 ?do
       i MIR-NODE-ID {: nd:CAD-KIND:node-id :}
       nd ref MP-USES 0 > if s nd MP-BROADCAST-AT? unloop exit then
    loop false ;
@@ -223,7 +231,7 @@ public
 \ emit per-hot-tensor coalescing rows into a report; caller runs FP-BUILD first so
 \ the materialization flags reflect the fusion plan.
 : MEM-PLAN-INTO ( report -- report )
-   MIR-IN-SLOTS@ 0 ?do  i MIR-SLOT-ID MP-INPUT-STEP   loop
-   MIR-N@        0 ?do  i MIR-NODE-ID MP-OUTPUT-STEP  loop ;
+   SLOT-COUNT@ CAD-NUM:MP-IC>N 0 ?do  i MIR-SLOT-ID MP-INPUT-STEP   loop
+   NODE-COUNT@ CAD-NUM:MP-IC>N        0 ?do  i MIR-NODE-ID MP-OUTPUT-STEP  loop ;
 
 ;package

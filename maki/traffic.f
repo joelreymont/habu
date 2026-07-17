@@ -22,6 +22,14 @@ require maki/move-facts.f
 require maki/fusion-plan.f
 require maki/report.f
 
+\ ---- audited count projection (MIR typed item-count -> raw loop/compare cell) ---
+\ Reopen the unsealed CAD-NUM package for one checked bridge over its private
+\ ITEM-COUNT>N projection (no new TRUSTED), mirroring cad.f CAD-IX>N: a ?do bound
+\ needs the raw cell the NODE-/SLOT-COUNT@ item-count cannot flow into.
+package CAD-NUM public
+: TRF-IC>N ( CAD-NUM:item-count -- n )  ITEM-COUNT>N ;
+;package
+
 -5075 constant E-TRF-CAP     \ per-region external-source set capacity exceeded
 
 package MAKI
@@ -56,10 +64,10 @@ private
 public
 
 : TRF-BOUND? ( -- bool )
-   MIR-IN-SLOTS@ 0 ?do
+   SLOT-COUNT@ CAD-NUM:TRF-IC>N 0 ?do
       i MIR-SLOT-ID TRF-SLOT-BOUND? 0= if unloop false exit then
    loop
-   MIR-N@ 0 ?do
+   NODE-COUNT@ CAD-NUM:TRF-IC>N 0 ?do
       i MIR-NODE-ID TRF-NODE-BOUND? 0= if unloop false exit then
    loop
    true ;
@@ -75,7 +83,7 @@ private
 public
 
 : TRF-BEFORE ( -- n )
-   0 MIR-N@ 0 ?do
+   0 NODE-COUNT@ CAD-NUM:TRF-IC>N 0 ?do
       i MIR-NODE-ID {: node:CAD-KIND:node-id :}
       node TRF-NODE-IN-BYTES node TRF-NODE-BYTES + +
    loop ;
@@ -118,14 +126,14 @@ variable TRF-SRC-N
 
 : TRF-RGN-READS ( CAD-KIND:region -- n ) {: r:CAD-KIND:region :}
    TRF-SRC-RESET
-   MIR-N@ 0 ?do
+   NODE-COUNT@ CAD-NUM:TRF-IC>N 0 ?do
       i MIR-NODE-ID {: node:CAD-KIND:node-id :}
       node FP-RID@ r FP-RGN= if node r TRF-NODE-READS+ then
    loop
    0 TRF-SRC-N @ 0 ?do  i TRF-SRC@ TRF-REF-BYTES +  loop ;
 
 : TRF-RGN-WRITES ( CAD-KIND:region -- n ) {: r:CAD-KIND:region :}
-   0 MIR-N@ 0 ?do
+   0 NODE-COUNT@ CAD-NUM:TRF-IC>N 0 ?do
       i MIR-NODE-ID {: node:CAD-KIND:node-id :}
       node FP-RID@ r FP-RGN= node MIR-MAT@ and if node TRF-NODE-BYTES + then
    loop ;
@@ -165,7 +173,7 @@ private
    s"  shape " SB-APPEND nd MIR-ROWS@ nd MIR-COLS@ TRF-SHAPE+ SB$ ;
 
 : TRF-GATHERED+ ( report -- report )
-   MIR-N@ 0 ?do
+   NODE-COUNT@ CAD-NUM:TRF-IC>N 0 ?do
       i MIR-NODE-ID {: node:CAD-KIND:node-id :}
       node MIR-MOVE? if
          node MIR-MOVE-VERDICT@ MVV-GATHERED = if
@@ -175,11 +183,11 @@ private
    loop ;
 
 : TRF-UNBOUND+ ( report -- report )
-   MIR-IN-SLOTS@ 0 ?do
+   SLOT-COUNT@ CAD-NUM:TRF-IC>N 0 ?do
       i MIR-SLOT-ID {: s:MIR:input-slot :}
       s TRF-SLOT-BOUND? 0= if s TRF-UNBOUND-SLOT$ REPORT:WARN+ then
    loop
-   MIR-N@ 0 ?do
+   NODE-COUNT@ CAD-NUM:TRF-IC>N 0 ?do
       i MIR-NODE-ID {: node:CAD-KIND:node-id :}
       node TRF-NODE-BOUND? 0= if node TRF-UNBOUND-NODE$ REPORT:WARN+ then
    loop ;

@@ -30,6 +30,14 @@ require maki/op-registry.f
 require maki/move-facts.f
 require maki/report.f
 
+\ ---- audited count projection (MIR typed item-count -> raw loop/compare cell) ---
+\ Reopen the unsealed CAD-NUM package for one checked bridge over its private
+\ ITEM-COUNT>N projection (no new TRUSTED), mirroring cad.f CAD-IX>N: a ?do bound
+\ / bounds compare needs the raw cell the NODE-COUNT@ item-count cannot flow into.
+package CAD-NUM public
+: FP-IC>N ( CAD-NUM:item-count -- n )  ITEM-COUNT>N ;
+;package
+
 -5072 constant E-FP-CAP     \ region / split table capacity exceeded
 -5073 constant E-FP-IDX     \ node / region / split index out of range
 -5074 constant E-FP-STATE   \ region facts requested before FP-BUILD
@@ -94,7 +102,7 @@ variable FP-BUILT?
 \ total times producer node's output is consumed across the table
 : FP-REF-USES ( CAD-KIND:node-id -- n )
    MIR-NODE-REF {: ref:MIR:operand-ref :}
-   0 MIR-N@ 0 ?do
+   0 NODE-COUNT@ CAD-NUM:FP-IC>N 0 ?do
       i MIR-NODE-ID ref FP-USES +
    loop ;
 
@@ -242,13 +250,13 @@ variable FP-MV-FUSE?                          \ movements dissolve/fuse? (defaul
 
 : FP-ASSIGN ( -- )
    0 FP-RN !
-   MIR-N@ 0 ?do  i MIR-NODE-ID FP-STEP  loop ;
+   NODE-COUNT@ CAD-NUM:FP-IC>N 0 ?do  i MIR-NODE-ID FP-STEP  loop ;
 
 \ ---- materialization flags (interior cleared; boundaries set) ---------------
 : FP-REGION-OUT? ( CAD-KIND:node-id -- bool )   \ consumed by a node in another region
    {: nd:CAD-KIND:node-id :}
    nd MIR-NODE-REF {: ref:MIR:operand-ref :}
-   MIR-N@ 0 ?do
+   NODE-COUNT@ CAD-NUM:FP-IC>N 0 ?do
       i MIR-NODE-ID {: node:CAD-KIND:node-id :}
       node ref FP-USES 0 >
       node FP-RID-RAW nd FP-RID-RAW <> and if unloop true exit then
@@ -266,7 +274,7 @@ variable FP-MV-FUSE?                          \ movements dissolve/fuse? (defaul
    nd FP-REGION-OUT? ;                          \ region output
 
 : FP-MARK ( -- )
-   MIR-N@ 0 ?do
+   NODE-COUNT@ CAD-NUM:FP-IC>N 0 ?do
       i MIR-NODE-ID {: node:CAD-KIND:node-id :}
       node FP-MAT-FLAG node MIR-MAT!
    loop ;
@@ -312,7 +320,7 @@ variable FP-MV-FUSE?                          \ movements dissolve/fuse? (defaul
 
 : FP-SPLITS ( -- )
    0 FP-SP-N !
-   MIR-N@ 0 ?do  i MIR-NODE-ID FP-SPLIT-STEP  loop ;
+   NODE-COUNT@ CAD-NUM:FP-IC>N 0 ?do  i MIR-NODE-ID FP-SPLIT-STEP  loop ;
 
 public
 
@@ -353,7 +361,7 @@ public
    {: nd:CAD-KIND:node-id :}
    FP-CK
    nd NODE>RAW {: raw:n :}
-   raw 0 < raw MIR-N@ >= or if E-FP-IDX throw then
+   raw 0 < raw NODE-COUNT@ CAD-NUM:FP-IC>N >= or if E-FP-IDX throw then
    nd FP-RID-RAW RAW>RGN ;
 
 : FP-RGN= ( CAD-KIND:region CAD-KIND:region -- bool )

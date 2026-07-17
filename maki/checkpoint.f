@@ -40,6 +40,14 @@ require maki/fusion-plan.f
 require maki/backward.f
 require maki/executor.f
 
+\ ---- audited count projection (MIR typed item-count -> raw loop/compare cell) ---
+\ Reopen the unsealed CAD-NUM package for one checked bridge over its private
+\ ITEM-COUNT>N projection (no new TRUSTED), mirroring cad.f CAD-IX>N: a ?do bound
+\ needs the raw cell the NODE-COUNT@ item-count cannot flow into.
+package CAD-NUM public
+: CK-IC>N ( CAD-NUM:item-count -- n )  ITEM-COUNT>N ;
+;package
+
 -5135 constant E-CK-STATE     \ run / accessor used before a successful CK-SETUP
 -5136 constant E-CK-INTERVAL  \ a forward segment is not one contiguous node interval (v1)
 -5137 constant E-CK-CROSS     \ one backward node reads interiors of two segments
@@ -68,7 +76,7 @@ variable CK-BUILT?
 
 \ ---- forward-plan snapshot (segment ids + boundary flags, before BW-BUILD) --
 : CK-SNAP ( -- )
-   MIR-N@ CK-NF !
+   NODE-COUNT@ CAD-NUM:CK-IC>N CK-NF !
    FP-RESET FP-BUILD
    CK-NF @ 0 ?do
       i MIR-NODE-ID {: node:CAD-KIND:node-id :}
@@ -132,7 +140,7 @@ variable CK-I        \ current segment's interior buffers (plan walk)
 
 : CK-PLAN-BWD ( -- )                    \ backward nodes persist past the scratch window
    CK-SCR0 @ CK-SCRW @ + CK-BUMP !
-   MIR-N@ CK-NF @ ?do  i CK-PLACE  loop ;
+   NODE-COUNT@ CAD-NUM:CK-IC>N CK-NF @ ?do  i CK-PLACE  loop ;
 
 public
 
@@ -200,7 +208,7 @@ public
 : CK-BWD ( -- )
    CK-CK
    0 CK-REMATS !
-   MIR-N@ CK-NF @ ?do  i CK-BWD-STEP  loop ;
+   NODE-COUNT@ CAD-NUM:CK-IC>N CK-NF @ ?do  i CK-BWD-STEP  loop ;
 
 \ ---- plan facts + live-buffer accounting (docs/maki/train.md memory bound) ---
 : CK-SEG-N@  ( -- n )  CK-CK CK-SEGS @ ;
@@ -213,7 +221,7 @@ public
 : CK-SAVED-FULL@ ( -- n )  CK-CK CK-NF @ ;
 
 \ peak live node buffers for a whole step: checkpointed vs full materialization
-: CK-LIVE@      ( -- n )  CK-CK  CK-B-N @ CK-IMAX @ +  MIR-N@ CK-NF @ -  + ;
-: CK-LIVE-FULL@ ( -- n )  CK-CK  MIR-N@ ;
+: CK-LIVE@      ( -- n )  CK-CK  CK-B-N @ CK-IMAX @ +  NODE-COUNT@ CAD-NUM:CK-IC>N CK-NF @ -  + ;
+: CK-LIVE-FULL@ ( -- n )  CK-CK  NODE-COUNT@ CAD-NUM:CK-IC>N ;
 
 ;package
