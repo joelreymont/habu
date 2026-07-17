@@ -50,3 +50,11 @@ habu-checker-cp-async-6ba788a5 ordering).
 V4-ALIGN, cg.f *-REG R>BITS BITS>R, cg-attention Q/K/V/O-REG).
 (2e, fence-blocked: cg-matmul.f:1 only - the staging-decomposition lane
 barely intersects this program.)
+
+LEG 2A LANDED 2026-07-17 (commit c2f1c298, habu-phantom-leg-2a-cf31f9f0
+closed): SINK3/SINK4/REPMIX3/REPMIX3B added, 16 more wrappers checked,
+net -12 (TRUST now 314, trust-lint 664 sites). Remaining on this dot:
+leg 2b - the DEEPER capability (mint a NEW phantom from an emitter
+output: ctx/load/reduce/stage families), category 2c rides the cp.async
+program, 2d (~17 mints) is the intended permanent core, 2e is
+cg-matmul.f:1 (unfenced once the decomp lane retired - now available).
