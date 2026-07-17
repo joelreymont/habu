@@ -5420,3 +5420,13 @@ unchanged (148855). Keys for milestone 2:
   (gridY = M/(64*MFRAGS), shapes multiple of 128, As/Bs staged with independent chunk
   counts since BM!=BN) - a 64^3 check on a 128-row block launches zero blocks and
   silently "passes" all-zero unless the shape is raised.
+- **The stage0 mirror's 16-byte inline prim-name cap is now fail-closed at
+  registration** (bootstrap/cg/forth.fs PRIM-INL-CAP? in REG-PRIM, dot
+  habu-mirror-emit-external-73e98647): a >16-char FPRIM used to overflow the
+  fixed EMIT-DICT record and wedge gforth's BUILD-MACHO fixup walk in a ~40-min
+  EXC_BAD_ACCESS loop; it now dies in 0.12s with "stage0: prim name exceeds
+  inline cap: <name>". Keep prim names <=16 chars (native handles longer via
+  DNAME-EXT, the mirror does not); full DNAME-EXT mirror parity was assessed
+  and deliberately NOT built - a subtly-wrong external-name seed would be
+  masked at the DDC fixpoint because the native refresh re-emits the dict,
+  so proving it needs bespoke pre-refresh verification no gate performs today.
