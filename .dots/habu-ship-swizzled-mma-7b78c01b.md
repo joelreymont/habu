@@ -7,3 +7,11 @@ created-at: "2026-07-15T22:11:50.766761+02:00"
 ---
 
 Residual from habu-mma-larger-bk-1ae1c6b2 (2026-07-15): the proven best MMA config (BK=32 MMA-PAD=8 stages=2 ldmatrix, +53.5% over the shipped scalar+cvt default at equal clocks, element-exact, fits 36 KiB static shared) is committed as an OPT-IN because flipping the default is coupled three ways: (1) the FENCED maki/lower-mm.f LMM-MMA-BODY shares the emitter's global config (sol's region territory + makipools remainder - coordinate); (2) lib/ptx/opt-test.f pins cvt.rna.tf32.f32 which the ldmatrix path does not emit - the pin must be re-derived honestly for the new default; (3) the shipped 884.9 GFLOP/s competitive golden must be refreshed at the historical 918 MHz clock first (habu-re-measure-mma dot). Fix when the fence releases and the clock re-measure lands: flip the emitter default to the swizzled config, re-derive opt-test pins, run the full lower-mm/maki device goldens, update the competitive row + docs. Acceptance: default emit = swizzled config, all device goldens green, honest new competitive row, no consumer left on the slow path unintentionally. Files: lib/ptx/cg-mma.f default knobs, lib/ptx/opt-test.f, maki/lower-mm.f coordination, perf/competitive rows. Ownership: ptx MMA production config.
+
+UPDATE 2026-07-17 (bfeed landing 7c7e7102): the flip target should be
+re-evaluated - the new measured best is MMM-WIDE-M2 (MMA-MFRAGS=2, 128x64
+block, DYNAMIC smem 57344B, 2133.9 GFLOP/s = 1.13x Triton), which adds two
+consumer-visible couplings beyond the swizzled 64x64 config: dynamic .shared
+at launch and block-M-aware grids (gridY = M/128, M multiple of 128; small/
+ragged shapes need the MFRAGS=1 path or padding). The stages=1 STATIC 128x64
+variant (2084.1, 28672B) avoids the dynamic-smem coupling at -2.4%.
