@@ -1715,6 +1715,8 @@ test/type-family-suite.f:TWX-PACKED-NARROW test-metaprog habu-seal-set-check-b36
 test/type-family-suite.f:TWX-PF-BEGIN test-metaprog habu-seal-set-check-b3676b33
 test/type-family-suite.f:TWX-PF-ADD test-metaprog habu-seal-set-check-b3676b33
 test/type-family-suite.f:TWX-PF-COMMIT test-metaprog habu-seal-set-check-b3676b33
+test/type-family-suite.f:TWX-PF-CUSTOM-CHECK! test-metaprog habu-seal-set-check-b3676b33
+test/type-family-suite.f:TWX-PF-CUSTOM-CHECK-RESET test-metaprog habu-seal-set-check-b3676b33
 test/type-family-suite.f:TWX-PF-ROLLBACK test-metaprog habu-seal-set-check-b3676b33
 test/type-family-suite.f:TWX-SCHEMA-A@ test-metaprog habu-seal-set-check-b3676b33
 test/type-family-suite.f:TWX-SCHEMA-APP test-metaprog habu-seal-set-check-b3676b33

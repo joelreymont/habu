@@ -84,6 +84,11 @@ Last updated: 2026-07-17
   and layout rows had different owners. Assert the shared owner before rollback
   and assert both dependent registries miss after it.
 
+- **A stored layout-policy id needs its own field validator.** STACK/PACKED use
+  canonical cell mapping, NICHE aliases one cell, BOXED reserves the leading tag
+  cell, and CUSTOM stays fail-closed until an explicit validator is installed;
+  a generic range check does not establish any of those ABIs.
+
 - **Package rollback has two owners.** Restoring the engine's current/public/private
   WIDs is incomplete unless recovery also resynchronizes the checker's package
   mode before the next token; `get-current` proves only the engine half. Follow a

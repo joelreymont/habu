@@ -951,8 +951,8 @@ WIDTH(product<...>) = sum of field widths
 ```
 
 Each PF row stores the schema root, logical cell slot/count, byte offset/size,
-alignment, and flags. `stack-cell-tag` and `packed-tag` currently admit only the
-canonical cell payload mapping:
+alignment, and flags. `stack-cell-tag` and `packed-tag` admit only the canonical
+cell payload mapping:
 
 ```text
 byte-offset = cell-slot * CELL
@@ -960,9 +960,16 @@ byte-size   = cell-count * CELL
 alignment   = CELL
 ```
 
-Both multiplications are overflow-checked. `niche`, `boxed`, and `custom` field
-rows reject until those policies own explicit ABI validators; metadata accepted
-by a generic range check is not enough to define a layout ABI.
+Both multiplications are overflow-checked. `niche` admits only one logical and
+physical cell at slot/offset zero. `boxed` uses the public record contract from
+`lib/layout/box.f`: logical slot `s` maps to byte offset `(1+s)*CELL`, after the
+leading tag cell, with cell-sized, cell-aligned payloads. `custom` delegates to
+an explicitly installed validator after the common range, schema-width,
+alignment, flag, and overlap checks; the default validator rejects. These are
+internal registry contracts only: the declaration grammar continues to reject
+`niche-null`, `boxed`, and `custom` until their complete lowering is public.
+The custom predicate receives `(family schema slot cells byte-offset byte-size
+alignment flags -- bool)`; false becomes `E-PF-LAYOUT` without publishing a row.
 
 PF mutation is a strict-LIFO nested transaction. `PF-N` includes provisional
 rows, while `PF-COMMIT-N` is the only reflection high-water. `ADD` returns the

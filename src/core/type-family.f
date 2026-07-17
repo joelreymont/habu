@@ -892,8 +892,8 @@ variable PF-TX-SERIAL   0 PF-TX-SERIAL !
    PF-TX-DEPTH @ 1 - PF-TX-DEPTH ! ;
 
 \ ADD validation. Field rows carry explicit logical-cell and memory-layout
-\ metadata under every registered family policy; no policy implies CELL-sized
-\ storage. Policy-specific lowering consumes these validated facts later.
+\ metadata. Every built-in policy owns a validator; custom providers install
+\ one explicitly and otherwise reject. Lowering consumes only validated facts.
 $7FFFFFFFFFFFFFFF constant PF-MAX-N
 0 constant PF-FLAGS-NONE
 
@@ -1018,6 +1018,43 @@ $7FFFFFFFFFFFFFFF constant PF-MAX-N
 : PF-CELL-BYTES ( n -- n ) {: n:n :}
    n 0 < n PF-MAX-N CELL / > or IF E-PF-LAYOUT throw THEN
    n cells ;
+: PF-CELL-MAP? ( n n n n n -- bool )
+   {: slot:n cellsn:n boff:n bytesn:n al:n :}
+   slot PF-CELL-BYTES boff =
+   cellsn PF-CELL-BYTES bytesn = and
+   al CELL = and ;
+: PF-STACK-REQUIRE ( n n n n n -- )
+   PF-CELL-MAP? 0= if E-PF-LAYOUT throw then ;
+: PF-PACKED-REQUIRE ( n n n n n -- )
+   PF-CELL-MAP? 0= if E-PF-LAYOUT throw then ;
+: PF-NICHE-REQUIRE ( n n n n n -- )
+   {: slot:n cellsn:n boff:n bytesn:n al:n :}
+   slot 0= cellsn 1 = and
+   boff 0= and bytesn CELL = and al CELL = and
+   0= if E-PF-LAYOUT throw then ;
+: PF-BOX-OFF ( n -- n ) {: slot:n :}
+   slot PF-MAX-N CELL / 1 - > if E-PF-LAYOUT throw then
+   slot 1 + PF-CELL-BYTES ;
+: PF-BOXED-REQUIRE ( n n n n n -- )
+   {: slot:n cellsn:n boff:n bytesn:n al:n :}
+   slot PF-BOX-OFF boff =
+   cellsn PF-CELL-BYTES bytesn = and
+   al CELL = and
+   0= if E-PF-LAYOUT throw then ;
+
+: PF-CUSTOM-REJECT? ( n n n n n n n n -- bool )
+   2drop 2drop 2drop 2drop RES-FALSE ;
+\ Provider input: family, schema, logical slot/cells, byte offset/size, align,
+\ flags. Common range/schema/alignment/flag checks run before this policy hook.
+defer PF-CUSTOM-CHECK ( n n n n n n n n -- bool )
+: PF-CUSTOM-CHECK! ( [ n n n n n n n n -- bool ] -- )
+   is PF-CUSTOM-CHECK ;
+: PF-CUSTOM-CHECK-RESET ( -- )
+   [: PF-CUSTOM-REJECT? ;] is PF-CUSTOM-CHECK ;
+PF-CUSTOM-CHECK-RESET
+
+: PF-CUSTOM-REQUIRE ( n n n n n n n n -- )
+   PF-CUSTOM-CHECK 0= if E-PF-LAYOUT throw then ;
 : PF-OVERLAP? ( n n n n n n -- bool )
    {: fam:n var:n slot:n cellsn:n boff:n bytesn:n :}
    0 TF-I !
@@ -1038,22 +1075,24 @@ $7FFFFFFFFFFFFFFF constant PF-MAX-N
    al PF-POW2? 0= IF E-PF-LAYOUT throw THEN
    boff al mod 0 <> IF E-PF-LAYOUT throw THEN
    sch PF-SCHEMA-WIDTH cellsn <> IF E-PF-LAYOUT throw THEN
-   fam TFAM-LAYOUT-POLICY@ CASE
-      TL-STACK-CELL-TAG OF
-         slot PF-CELL-BYTES boff <> IF E-PF-LAYOUT throw THEN
-         cellsn PF-CELL-BYTES bytesn <> IF E-PF-LAYOUT throw THEN
-         al CELL <> IF E-PF-LAYOUT throw THEN
-      ENDOF
-      TL-PACKED-TAG OF
-         slot PF-CELL-BYTES boff <> IF E-PF-LAYOUT throw THEN
-         cellsn PF-CELL-BYTES bytesn <> IF E-PF-LAYOUT throw THEN
-         al CELL <> IF E-PF-LAYOUT throw THEN
-      ENDOF
-      TL-NICHE OF E-PF-LAYOUT throw ENDOF
-      TL-BOXED OF E-PF-LAYOUT throw ENDOF
-      TL-CUSTOM OF E-PF-LAYOUT throw ENDOF
+   fam TFAM-LAYOUT-POLICY@ case
+      TL-STACK-CELL-TAG of
+         slot cellsn boff bytesn al PF-STACK-REQUIRE
+      endof
+      TL-PACKED-TAG of
+         slot cellsn boff bytesn al PF-PACKED-REQUIRE
+      endof
+      TL-NICHE of
+         slot cellsn boff bytesn al PF-NICHE-REQUIRE
+      endof
+      TL-BOXED of
+         slot cellsn boff bytesn al PF-BOXED-REQUIRE
+      endof
+      TL-CUSTOM of
+         fam sch slot cellsn boff bytesn al flags PF-CUSTOM-REQUIRE
+      endof
       E-PF-LAYOUT throw
-   ENDCASE ;
+   endcase ;
 : PF-DUP? ( n n ptr u8 n -- bool ) {: fam:n var:n na:ptr nu:n :}
    0 TF-I !
    BEGIN TF-I @ PF-N @ < WHILE

@@ -44,9 +44,11 @@ variable #CASE
 \ catch-code stash (TC) + result-flag stash (FOUNDF) + id/node scratch.
 variable TC     variable FOUNDF
 variable FID    variable PID    variable AID    variable PTID   variable CLID
+variable NFID   variable BFID   variable CFID   variable NVID   variable BVID
 variable VOK    variable VERR   variable FX     variable NP     variable NC
 variable NA     variable R1     variable L0     variable NQ
 variable NPTR
+0 constant T-CUSTOM-FLAGS-NONE
 \ whitebox boundary (dot habu-hb-crash-bare-c5be6634): checker-internal colon
 \ words probed at top level go through named trusted shims.
 TRUSTED: TWX-CHECKER-SNAPSHOT-PREPARE ( -- ) CHECKER-SNAPSHOT-PREPARE ;
@@ -63,6 +65,8 @@ TRUSTED: TWX-PACKED-NARROW ( n -- n ) PACKED-NARROW ;
 TRUSTED: TWX-PF-BEGIN ( -- n ) PF-BEGIN ;
 TRUSTED: TWX-PF-ADD ( n n n ptr u8 n n n n n n n n -- n ) PF-ADD ;
 TRUSTED: TWX-PF-COMMIT ( n -- ) PF-COMMIT ;
+TRUSTED: TWX-PF-CUSTOM-CHECK! ( [ n n n n n n n n -- bool ] -- ) PF-CUSTOM-CHECK! ;
+TRUSTED: TWX-PF-CUSTOM-CHECK-RESET ( -- ) PF-CUSTOM-CHECK-RESET ;
 TRUSTED: TWX-PF-ROLLBACK ( n -- ) PF-ROLLBACK ;
 TRUSTED: TWX-SCHEMA-A@ ( n -- n ) SCHEMA-A@ ;
 TRUSTED: TWX-SCHEMA-APP ( n n n -- n ) SCHEMA-APP ;
@@ -133,6 +137,22 @@ TRUSTED: TWX-TFL-CVAR? ( ptr u8 n n -- n n bool ) TFL-CVAR? ;
 TRUSTED: TWX-TFL-MATCH-FAM? ( ptr u8 n -- n bool ) TFL-MATCH-FAM? ;
 TRUSTED: TWX-TFL-VAR? ( ptr u8 n n -- n bool ) TFL-VAR? ;
 TRUSTED: TWX-TFL-VPADS ( n n -- n ) TFL-VPADS ;
+
+package TYPE-FAMILY-TEST
+
+: CUSTOM-FIELD? ( n n n n n n n n -- bool )
+   {: fam:n sch:n slot:n cellsn:n boff:n bytesn:n al:n flags:n :}
+   fam CFID @ = sch 1 = and
+   slot 0= and cellsn 1 = and
+   boff CELL 2 / = and bytesn CELL 2 / = and
+   al CELL 2 / = and flags T-CUSTOM-FLAGS-NONE = and ;
+
+public
+
+: INSTALL-CUSTOM ( -- )
+   [: CUSTOM-FIELD? ;] TWX-PF-CUSTOM-CHECK! ;
+
+;package
 
 
 \ Explicit pre-checker layouts: offsets/accessors assert during prefix load;
@@ -363,6 +383,13 @@ PID @ s" ok" TWX-SUMV-FIND FOUNDF ! drop  FOUNDF @ -1 T=
 FID @ s" none" TWX-SUMV-FIND FOUNDF ! drop  FOUNDF @ 0 T=
 FID @ s" ok" 0 0 0 0 ' TWX-SUMV-ADD catch   TC ! 2drop 2drop 2drop drop  TC @ E-TFAM-DUP T=
 
+\ Dedicated policy fixtures keep the policy rows independent of earlier fields.
+s" pfpol" CHECKER-PACKAGE-PUBLIC s" niche" 0 TK-SUM TWX-TFAM-DECL NFID !
+NFID @ s" some" 0 0 0 1 TWX-SUMV-ADD NVID !
+s" pfpol" CHECKER-PACKAGE-PUBLIC s" boxed" 0 TK-SUM TWX-TFAM-DECL BFID !
+BFID @ s" item" 0 0 0 1 TWX-SUMV-ADD BVID !
+s" pfpol" CHECKER-PACKAGE-PUBLIC s" custom" 0 TK-PRODUCT TWX-TFAM-DECL CFID !
+
 \ ---------------------------------------------------------------------------
 \ 11. shared fields: atomic tx add, committed reflection, dup rejection.
 \ ---------------------------------------------------------------------------
@@ -527,9 +554,13 @@ PFTX @ PTID @ PF-NO-VARIANT s" zero-app" PFAPP @
    20 1 20 cells CELL CELL PF-FLAGS-NONE TWX-PF-ADD PFTX !
 PFTX @ TWX-PF-ROLLBACK
 
-\ STACK and PACKED accept only the canonical cell mapping. Other policies
-\ reject otherwise-valid rows until their field ABI validators exist.
+\ Every built-in policy owns its field ABI. CUSTOM is fail-closed until its
+\ explicit provider is installed.
 PTID @ TL-STACK-CELL-TAG TWX-TFAM-LAYOUT!
+TWX-PF-BEGIN PFTX !
+PFTX @ PTID @ PF-NO-VARIANT s" stack-ok" 1 20 1 20 cells CELL CELL PF-FLAGS-NONE
+   TWX-PF-ADD PFTX !
+PFTX @ TWX-PF-ROLLBACK
 TWX-PF-BEGIN PFTX !
 PFTX @ PTID @ PF-NO-VARIANT s" stack-bad" 1 20 1 21 cells CELL CELL PF-FLAGS-NONE
    ' TWX-PF-ADD catch TC ! T-PF-DROP
@@ -537,25 +568,56 @@ TC @ E-PF-LAYOUT T=  PFTX @ TWX-PF-ROLLBACK
 
 PTID @ TL-PACKED-TAG TWX-TFAM-LAYOUT!
 TWX-PF-BEGIN PFTX !
+PFTX @ PTID @ PF-NO-VARIANT s" packed-ok" 1 20 1 20 cells CELL CELL PF-FLAGS-NONE
+   TWX-PF-ADD PFTX !
+PFTX @ TWX-PF-ROLLBACK
+TWX-PF-BEGIN PFTX !
 PFTX @ PTID @ PF-NO-VARIANT s" packed-bad" 1 20 1 20 cells 2 cells CELL PF-FLAGS-NONE
    ' TWX-PF-ADD catch TC ! T-PF-DROP
 TC @ E-PF-LAYOUT T=  PFTX @ TWX-PF-ROLLBACK
 
-PTID @ TL-NICHE TWX-TFAM-LAYOUT!
+NFID @ TL-NICHE TWX-TFAM-LAYOUT!
 TWX-PF-BEGIN PFTX !
-PFTX @ PTID @ PF-NO-VARIANT s" niche-bad" 1 20 1 20 cells CELL CELL PF-FLAGS-NONE
+PFTX @ NFID @ NVID @ s" niche-ok" 1 0 1 0 CELL CELL PF-FLAGS-NONE
+   TWX-PF-ADD PFTX !
+PFTX @ TWX-PF-ROLLBACK
+TWX-PF-BEGIN PFTX !
+PFTX @ NFID @ NVID @ s" niche-bad" 1 1 1 CELL CELL CELL PF-FLAGS-NONE
    ' TWX-PF-ADD catch TC ! T-PF-DROP
 TC @ E-PF-LAYOUT T=  PFTX @ TWX-PF-ROLLBACK
 
-PTID @ TL-BOXED TWX-TFAM-LAYOUT!
+BFID @ TL-BOXED TWX-TFAM-LAYOUT!
 TWX-PF-BEGIN PFTX !
-PFTX @ PTID @ PF-NO-VARIANT s" boxed-bad" 1 20 1 20 cells CELL CELL PF-FLAGS-NONE
+PFTX @ BFID @ BVID @ s" boxed-ok" 1 0 1 CELL CELL CELL PF-FLAGS-NONE
+   TWX-PF-ADD PFTX !
+PFTX @ TWX-PF-ROLLBACK
+TWX-PF-BEGIN PFTX !
+PFTX @ BFID @ BVID @ s" boxed-bad" 1 0 1 0 CELL CELL PF-FLAGS-NONE
    ' TWX-PF-ADD catch TC ! T-PF-DROP
 TC @ E-PF-LAYOUT T=  PFTX @ TWX-PF-ROLLBACK
 
-PTID @ TL-CUSTOM TWX-TFAM-LAYOUT!
+CFID @ TL-CUSTOM TWX-TFAM-LAYOUT!
 TWX-PF-BEGIN PFTX !
-PFTX @ PTID @ PF-NO-VARIANT s" custom-bad" 1 20 1 20 cells CELL CELL PF-FLAGS-NONE
+PFTX @ CFID @ PF-NO-VARIANT s" custom-unset" 1 0 1
+   CELL 2 / CELL 2 / CELL 2 / PF-FLAGS-NONE
+   ' TWX-PF-ADD catch TC ! T-PF-DROP
+TC @ E-PF-LAYOUT T=  PFTX @ TWX-PF-ROLLBACK
+
+TYPE-FAMILY-TEST:INSTALL-CUSTOM
+TWX-PF-BEGIN PFTX !
+PFTX @ CFID @ PF-NO-VARIANT s" custom-ok" 1 0 1
+   CELL 2 / CELL 2 / CELL 2 / PF-FLAGS-NONE
+   TWX-PF-ADD PFTX !
+PFTX @ TWX-PF-ROLLBACK
+TWX-PF-BEGIN PFTX !
+PFTX @ CFID @ PF-NO-VARIANT s" custom-bad" 1 0 1
+   CELL 2 / 2 CELL 2 / PF-FLAGS-NONE
+   ' TWX-PF-ADD catch TC ! T-PF-DROP
+TC @ E-PF-LAYOUT T=  PFTX @ TWX-PF-ROLLBACK
+TWX-PF-CUSTOM-CHECK-RESET
+TWX-PF-BEGIN PFTX !
+PFTX @ CFID @ PF-NO-VARIANT s" custom-reset" 1 0 1
+   CELL 2 / CELL 2 / CELL 2 / PF-FLAGS-NONE
    ' TWX-PF-ADD catch TC ! T-PF-DROP
 TC @ E-PF-LAYOUT T=  PFTX @ TWX-PF-ROLLBACK
 PTID @ TL-STACK-CELL-TAG TWX-TFAM-LAYOUT!
@@ -715,7 +777,7 @@ FID @ TFAM-ARITY@ 1 T=
 FID @ TFAM-KIND@ TK-SUM T=
 FID @ 0 TWX-TFAM-PK@ PK-TYPE T=
 s" pkgd" s" tree" TWX-TFAM-FIND-IN FOUNDF ! drop  FOUNDF @ -1 T=
-TFAM-N@ 9 T=
+TFAM-N@ 12 T=
 
 \ ---------------------------------------------------------------------------
 \ 14. snapshot persist/restore: run the exact words TWX-CHECKER-SNAPSHOT-PREPARE
