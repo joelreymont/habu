@@ -302,6 +302,14 @@ variable UB-OUT-FD
 : UB-TRUSTED? ( -- bool )
    s" TRUSTED:" UB-TOK=CI ;
 
+: UB-DEF-OPEN? ( -- bool )
+   UB-COLON? if UB-TRUE exit then
+   s" +:" UB-TOK=CI if UB-TRUE exit then
+   s" CHECKED:" UB-TOK=CI if UB-TRUE exit then
+   UB-TRUSTED? if UB-TRUE exit then
+   s" KERNEL:" UB-TOK=CI if UB-TRUE exit then
+   s" :noname" UB-TOK=CI ;
+
 : UB-SEMI? ( -- bool )
    s" ;" UB-TOK= ;
 
@@ -455,8 +463,8 @@ variable UB-OUT-FD
          UB-CHECKER-MUTATION? UB-TRUSTED @ UB-NOT and if UB-REPORT-MUTATION then
       then
       UB-SET-CHECK-OFF? if UB-TRUE UB-CHECK-OFF! then
-      UB-COLON? if
-         UB-HANDLE-COLON
+      UB-DEF-OPEN? if
+         UB-COLON? if UB-HANDLE-COLON then
          UB-TRUE UB-IN-DEF !
       then
       UB-PREFLIGHT-INSTALL? UB-IN-DEF @ UB-NOT and if UB-FALSE UB-CHECK-OFF! then
