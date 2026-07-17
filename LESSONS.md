@@ -375,6 +375,24 @@ Last updated: 2026-07-17
   output quantifier unbound, structurally identical to a free mint); the ONLY reliable signal is the
   `field<>` INPUT, so the seal steps aside when an input consumes a record. Each false positive cost a
   fixpoint rebuild to diagnose — build the probe (dump the SGIN term tags/families) before guessing.
+- **Leg 2c: the projection-load "batch" had exactly ONE genuine sharing win, because the mint
+  combinators are NOMINALLY PINNED and the batch's 8 loads have 8 distinct family shapes.** (dot
+  habu-ptx-phantom-preserving, leg 2c.) A MINT-* combinator pins its projection by NAMING concrete
+  families (type-family.f registers span/vspan/tile/vtile/gridctx/coopctx/fanctx/idxctx/uniqidxctx as
+  distinct TK-CELL families — there is no family variable), so two wrappers SHARE a combinator only if
+  their full (input families, output family, quotation arity) coincide. Surveying the 8 candidates:
+  LOAD-V4 (span<s,t,e> gridctx<b,e,m> -- tile<t,b,m>) is IDENTICAL to the scalar load shape — v4-ness
+  is pure codegen (EMIT-LOAD-V4), not a type change — so it reuses the EXISTING PTXREP:MINT-LOAD (net
+  -1, no new combinator, byte-identical PTX proven x2). The other 7 are each a UNIQUE shape:
+  FANIN-LOAD (ptr+fanctx), INDEX-DENSE-LOAD (idxctx) vs UNIQUE-INDEX-DENSE-LOAD (uniqidxctx, a DISTINCT
+  family), INDEX-LOAD (3-operand), LOAD.V4 (vspan/vtile), STAGE (span<global> -> span<shared>), SLOAD
+  (coopctx) — no two share, and none matches an existing combinator. The mission's hypothesized
+  "one indexed-load / one V4 / one smem shape" sharings are all FALSE under nominal pinning: idxctx and
+  uniqidxctx never unify, LOAD-V4≠LOAD.V4 (scalar vs vec4 families), STAGE≠SLOAD (span-shared vs tile
+  outputs). Converting the 7 would need single-use combinators = net 0 each = RELOCATED, not reduced,
+  trust (worse: +machinery, +negatives for no gain) — so they STAY TRUSTED. The batch's honest maximum
+  is the LOAD-V4 net -1. Loosening a combinator to a family variable to force sharing would reopen
+  exactly the projection forge the NP-MINT-CHECK seal closes; don't.
 - **Wiring the proven B-side ldmatrix cut the residual B-feed 27%->7% and won +11.9%.** (dot
   habu-mma-wave-3, lib/ptx/cg-mma.f MMA-BLDM.) The MFRAGS=4 winner's un-amortized scalar B feed
   (2 ld.shared + 2 cvt / 8x8 fragment) was replaced by ONE ldmatrix.x2 over a TRANSPOSED staging
