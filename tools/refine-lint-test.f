@@ -63,7 +63,8 @@ create RFLT-OUT-BUF RFLT-OUT-CAP allot
    s" 7 rows-refine drop" RFL-COUNT-STR 1 T=           \ the dictionary is case-insensitive
    s" 1 RAW>NODE 2 RAW>SLOT" RFL-COUNT-STR 2 T=
    s" 1 RAW>ANODE 2 RAW>ASTREAM 3 RAW>AEVENT" RFL-COUNT-STR 3 T=
-   s" 3 N>LBTK drop" RFL-COUNT-STR 1 T= ;              \ seed-only mint without a manifest row
+   s" 3 N>LBTK drop" RFL-COUNT-STR 1 T=                 \ seed-only mint without a manifest row
+   s" 3 TQX>QS drop" RFL-COUNT-STR 1 T= ;               \ test-owned qualified mint
 
 : RFLT-STR-CONTENT$ ( -- ptr u8 n )
    SB-RESET
@@ -91,6 +92,7 @@ create RFLT-OUT-BUF RFLT-OUT-CAP allot
 : RFLT-CONFINE-POLICY ( -- )
    \ owner file is allowed
    s" maki/tensor.f" s" 1 ROWS-REFINE drop" RFL-COUNT-STR-AT 0 T=
+   s" test/type-decl-suite.f" s" 1 TQX>QS drop" RFL-COUNT-STR-AT 0 T=
    \ a file cited by the mint's TRUSTED.md Tests cell is allowed
    s" maki/model-ir-test.f" s" 0 RAW>SLOT drop" RFL-COUNT-STR-AT 0 T=
    s" maki/async-dag.f" s" 0 RAW>ANODE drop" RFL-COUNT-STR-AT 0 T=
@@ -176,9 +178,9 @@ create RFLT-OUT-BUF RFLT-OUT-CAP allot
    RFL-REPORT-OFF
    0 RFL-BAD !
    RFL-SELECT
-   \ 1 SEED-DRIFT plus one STALE-SEED per in-root seed; the test/-owned seed
-   \ is exempt, so the total remains exactly RFL-SEED#.
-   RFL-BAD @ RFL-SEED# T=
+   \ 1 SEED-DRIFT plus one STALE-SEED per in-root seed; two test/-owned seeds
+   \ are exempt, so the total is one below RFL-SEED#.
+   RFL-BAD @ RFL-SEED# 1- T=
    0 RFL-BAD !
    RFL-REPORT-ON ;
 
