@@ -3,7 +3,7 @@ title: "Checker capability: layout-polymorphic family params"
 status: active
 priority: 2
 issue-type: task
-created-at: "\"\\\"\\\\\\\"2026-07-03T23:36:48.964243+02:00\\\\\\\"\\\"\""
+created-at: "\"\\\"\\\\\\\"\\\\\\\\\\\\\\\"2026-07-03T23:36:48.964243+02:00\\\\\\\\\\\\\\\"\\\\\\\"\\\"\""
 ---
 
 Follow-on capability, not in PLAN.md v1: item 12 rejects layout types in cell-only family parameters, so span<result<...>>/containers of ADTs are inexpressible. Add layout-polymorphic parameter kinds (families declaring param kinds that accept layout values with width propagation into instantiation and lowering) so collections of sums/products type-check. Needs: param-kind metadata (TFAM 2a records), width-aware instantiation (TFAM 12 machinery), negative fixtures flip to positive. Depends: TFAM 12, 16.
@@ -84,3 +84,17 @@ raw-run fold: reserved tuple family + TFAM-INST-WIDTH@ tuple branch +
 SIG-TYPE PK run-fold + TFAM-PK read-hook + sumtype.f LAYOUT clause -
 Couplings A/B above are its spec; requires expanding the write set to
 sumtype.f when claimed. Wave-B's migration note updated accordingly.
+
+SLICE 2' LANDED 2026-07-18 (laycap2 lane, commit 2f5b42c7; claim
+RELEASED): named-layout-arg acceptance pinned positive (TDPN1-3 incl.
+two-layout-arg result), fail-closed constructions pinned with exact
+diagnostics (TDPN4-7; TDPN5 pins the ARG-AWARE W=3 tag slot - a live
+validation of slice 1), docs 18 corrected (its nested-reject claim was
+empirically false - nested named applications identity-accept today,
+construction fail-closed; noted, unpinned, slice-5 territory). Raw runs
+stay pinned rejecting (TDPB1-3). NEXT: slice 3 - constructor/MATCH
+effects for multi-cell NAMED args (TFC-SCH-TERM/TFC-PAY-ROW
+PUSH-LOGICAL expansion; the TDPN4-7 verdict-0 constructions flip to
+positive with adversarial negatives preserved; MATCH payload binding).
+
+Claim: agent=laycap3 workspace=.jj-ws/fable-laycap3 (SLICE 3: constructor/MATCH effects for named multi-cell args; lowering stays fail-closed staged)
