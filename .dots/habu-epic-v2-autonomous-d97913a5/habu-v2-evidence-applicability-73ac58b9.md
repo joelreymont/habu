@@ -1,9 +1,11 @@
 ---
 title: V2 evidence applicability checker
-status: active
+status: closed
 priority: 1
 issue-type: task
-created-at: "\"2026-07-11T12:25:27.265401+02:00\""
+created-at: "\"\\\"2026-07-11T12:25:27.265401+02:00\\\"\""
+closed-at: "2026-07-17T22:35:23.553437+02:00"
+close-reason: "Applicability checker + identity legs landed (7f9fd877/d60c0389): mutation matrix complete, refusal rules proven with controls, cache==uncached closure over 7 change-sets, EVIDENCE registry landed. Txn repoint folded into the atomic-txn dot."
 ---
 
 Edge note 2026-07-17: blocker habu-v2-proof-obligation-6cf70b4f SATISFIED
@@ -28,3 +30,19 @@ obligation schema (package OBLIG, DISCHARGE/INVALIDATED-BY?) is landed
 and is this dot's substrate.
 
 Claim: agent=evid workspace=.jj-ws/fable-evid (owns new evidence/closure files + the folded legs; SANCTIONED: one-line CAD-KIND additions for obligation-id + evidence-id in maki/cad-kinds.f with verdict fixtures)
+
+RESOLVED 2026-07-17 (evid lane, commits 7f9fd877 + d60c0389): ACCEPTANCE
+MET. Identity legs: CAD-KIND:obligation-id minted with verdict fixtures
+(evidence-id already existed); OBLIG content-addressed INTERN registry +
+both wire codecs; new package EVIDENCE (maki/db/evidence.f) per the
+owner-registry template - the owner the diagnostic invalidated-evidence
+promotion waits on. +4 audited refinement mints rowed/seeded, strict +
+baseline green. Core: package APPLIC VERDICT composing the landed
+DISCHARGE/INVALIDATED-BY? into the typed applicable/stale/inapplicable/
+missing sum; mutation matrix pins EVERY key component with named
+verdicts; static-proof-cannot-satisfy-device and performance-cannot-
+satisfy-equivalence proven with positive controls; cached vs uncached
+invalidation closure proven EQUAL over 7 change-sets with exact minimal
+masks pinned. Conservative digest-axis mapping documented at the
+definition site. The txn obligation repoint (now mechanically enabled)
+is folded into habu-v2-atomic-txn-a3c26066 with the lane's precise spec.
