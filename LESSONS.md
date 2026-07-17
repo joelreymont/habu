@@ -4,6 +4,34 @@
 
 Last updated: 2026-07-17
 
+- **Derive an iGPU tensor peak from the GPU-ONLY sparse-INT8 TOPS, never the marketing TOPS —
+  and let a measured kernel rate falsify a candidate peak.** (dot habu-mma-wave-4, roofline
+  verdict, docs/kernel-principles.md.) The Orin NX "100 TOPS" headline is GPU + 2× NVDLA, so it
+  cannot back out the GPU tensor rate. The AGX Orin Technical Brief's GPU-ONLY figure (170 sparse
+  INT8 TOPS = 2048 dense INT8 MAC/SM/clock at 16 SM / 1.3 GHz) is the clean anchor: it is the
+  GA100 (A100) full rate, 2× the GeForce/GA102 consumer rate, which proves Orin's Tensor Cores
+  are NOT GeForce-throttled. The fixed 3rd-gen ratio ladder INT8:FP16:TF32 = 4:2:1 then gives
+  TF32 = 512 FMA/SM/clock, so the sm_87 Orin NX dense-TF32 peak = 8 SM × 512 × 2 × 918e6 =
+  **7520 GFLOP/s** at 918 MHz. Two independent checks kept the derivation honest: the same
+  lane×clock×2 method reproduces the NVIDIA-published FP32 roofs (Orin NX 1.9 TFLOPS, AGX Orin
+  5.3 TFLOPS = 16×128×2×1.3e9 exactly), and our measured best 3026.6 > 1880 *falsifies* the
+  fully-throttled GA102 TF32 rate (128 FMA/SM/clock → 1880 peak) outright — a kernel can't beat
+  its roof. A residual 512-vs-256 FP32-accumulate-throttle ambiguity survives the marketing data
+  but is discounted by the phase decomposition (only ~27% of runtime is mma-issue, so we are not
+  at 80% of a 3760 peak) and does not move the verdict.
+- **A perf program closes on a ROOFLINE + LEVER-INVENTORY argument, not on hitting 100% of a
+  peak.** (habu-mma-wave-4.) The tf32 mma.sync GEMM is at 40% of the 7520 tf32 tensor peak, 93%
+  of its own DCE-safe quarter-B feed-ceiling, and 1.60× Triton (which is at 25% of the same
+  peak). The gap to peak is real but *uncapturable*: every tf32 kernel lever from waves 1-3 is
+  spent (A- and B-side ldmatrix, MFRAGS=4, single-buffer-static occupancy), the three wave-4
+  candidates (wider M-frags, dual-issue across M-frags, wait_group placement) are each a spent
+  constraint not headroom, and the 21% residual mma-issue is the Tensor Cores doing the GEMM's
+  FIXED mma count (N³/1024 instructions) at the widest tf32 shape that exists — m16n8k8. There is
+  no m16n8k16 for tf32; a denser accumulate shape means fp16/bf16, which changes the numerics
+  contract. So the honest verdict is CLOSE (no lever dot minted), with fp16/bf16 recorded as a
+  USER-GATED numerics-policy question and the residual handed to the autotuner + default-flip
+  dots. Lesson: when the roofline shows headroom but the lever inventory is empty and the
+  instruction shape is maxed, the deliverable is a documented close, not another kernel rung.
 - **The fused cp.async K-loop decomposed into shared CPP-* protocol step words, byte-identical
   across 20 configs — no device time.** (dot habu-decompose-pipelined-staging-49c97cba,
   prerequisite for habu-checker-cp-async-6ba788a5.) MM-PIPE-KLOOP-WITH (cg-matmul-emit.f) and

@@ -193,6 +193,140 @@ n-tiles, A fragment reused 4×). Landed **375.6 / 393.5 / 398.5 GFLOP/s** at
   1 block/SM) and MFRAGS=2 both lose to the MFRAGS=4 single-buffer tile (same occupancy-beats-overlap
   lesson as wave-2). Next lever is the mma-issue floor (tensor-core throughput).
 
+## TF32 tensor-core ROOFLINE VERDICT (wave-4) — the mma.sync GEMM program is on the tf32 issue floor
+
+Waves 1-3 took the TF32 `mma.sync` GEMM from 884.9 to **3026.6 GFLOP/s** (2048³, 918 MHz).
+Wave-4 is the desk verdict: derive the sm_87 Orin NX TF32 tensor-core theoretical peak from
+architecture facts, place the measured ladder against it, and decide whether a kernel lever
+remains or the perf program closes. **No device session was run** — see the closing note.
+
+### Deriving the sm_87 Orin NX dense-TF32 tensor peak at 918 MHz
+
+Architecture facts (NVIDIA sources, cited below):
+- **Orin NX 16GB GPU:** 1024 CUDA cores, 32 Tensor Cores, Ampere `sm_87`, 918 MHz max GPU
+  clock (base = boost). [Orin NX data sheet / NVIDIA-confirmed spec pages.]
+- **Per-SM structure (authoritative):** *"128 CUDA cores per SM … and four 3rd Generation
+  Tensor cores per SM"* — NVIDIA Jetson AGX Orin Series Technical Brief v1.2, p.5. So Orin NX =
+  1024/128 = **8 SMs** = 32/4 = 8 SMs (both counts agree). This is the same 8-SM count the 25W
+  mode-3 measurement environment already uses.
+- **3rd-gen Ampere dense-TF32 rate = 512 TF32 FMA per SM per clock.** Anchor: A100 (GA100,
+  same 4× 3rd-gen Tensor Cores/SM) publishes **156 dense TF32 TFLOPS** at 108 SMs / 1.41 GHz,
+  and dense FP16 = 312 TFLOPS with TF32 = ½ of FP16. Back out the per-SM rate:
+  `156e12 / (108 × 1.41e9 × 2 FLOP/FMA) = 512 TF32 FMA/SM/clock` (= 128 per Tensor Core, ×4).
+  [NVIDIA Ampere Architecture In-Depth blog; A100 datasheet/whitepaper.]
+- **Orin runs the Tensor Cores at the FULL (GA100-class) rate, NOT the GeForce/GA102 consumer
+  throttle.** Decisive evidence: AGX Orin's **GPU-only** INT8 = *170 sparse TOPS* (Technical
+  Brief p.5, GPU compute excluding the 2× NVDLA), i.e.
+  `170e12 / (16 SM × 1.3e9) / 2(sparse) / 2(op→MAC) = 2048 dense INT8 MAC/SM/clock` — exactly
+  the GA100 INT8 rate and **2× the GA102 consumer rate** (~1024). A part whose INT8 is full
+  GA100-rate does not carry the GeForce market-segmentation throttle, so the fixed 3rd-gen ratio
+  ladder **INT8 : FP16 : TF32 = 4 : 2 : 1** (in MAC/FMA per SM per clock) holds: TF32 = 512
+  FMA/SM/clock.
+
+**Peak arithmetic:**
+
+```
+P_peak(TF32, dense) = SMs × (TF32 FMA/SM/clock) × 2 FLOP/FMA × clock
+                    = 8 × 512 × 2 × 918e6
+                    = 8192 × 918e6
+                    = 7.52e12 FLOP/s  ≈  7520 GFLOP/s
+```
+
+**Cross-checks (the derivation is trustworthy where it reproduces measured/published roofs):**
+- Same method on the FP32 CUDA roof: `8 × 128 × 2 × 918e6 = 1880 GFLOP/s` — the repo's measured
+  FP32 roof, and NVIDIA lists Orin NX FP32 = **1.9 TFLOPS**. The AGX Orin brief's own Figure-1
+  FP32 = **5.3 TFLOPS** is exactly `16 × 128 × 2 × 1.3e9`, confirming the lane/clock/FMA=2 model
+  end-to-end on an NVIDIA-published number.
+- **Our measured best 3026.6 > 1880** (the FP32 CUDA roof *and* the fully-throttled GA102 TF32
+  rate of 128 FMA/SM/clock → 1880 peak). A kernel cannot exceed its hardware roof, so the
+  consumer-throttled interpretation is *ruled out by measurement*.
+- **Discounted alternative (flagged honestly):** if `sm_87` carried only the GeForce
+  *FP32-accumulate* half-throttle (TF32 = 256 FMA/SM/clock → **3760** peak), the best would sit
+  at 80% of peak. That is inconsistent with (i) the DCE-safe phase decomposition, which spends
+  only ~27% of runtime issuing mma (a kernel at 80% of tensor peak would be mma-saturated), and
+  (ii) a hand-written tensor kernel achieving a *higher* fraction of its roof than our FP32 CUDA
+  kernel (52% of the FP32 roof) — tensor kernels are harder to feed, so they attain a *lower*
+  roof-fraction, not higher. Both the INT8=GA100-class evidence and the measurement favor
+  **512/7520**. **The verdict below is identical under either peak.**
+
+### The measured ladder vs the 7520 GFLOP/s dense-TF32 peak (2048³, 918 MHz)
+
+| rung | GFLOP/s | % of 7520 TF32 peak | vs Triton 1890.5 |
+|---|---|---|---|
+| **theoretical dense-TF32 peak** | **7520** | 100% | 3.98× |
+| single-mma proxy ceiling (drops M-frags 1-3 mma; *unphysical*) | ~3810 | 50.7% | 2.02× |
+| MFRAGS=4 scalar-B quarter-B ceiling (wave-2 proxy) | 3711 | 49.3% | 1.96× |
+| wave-3 winner's own quarter-B ceiling (B-feed removed) | ~3259 | 43.3% | 1.72× |
+| **MMM-WIDE-B-M4-S1 — current best (wave-3)** | **3026.6** | **40.2%** | **1.60×** |
+| MMM-WIDE-M4-S1 — scalar-B MFRAGS=4 (wave-2) | 2707.3 | 36.0% | 1.43× |
+| MMM-WIDE-M2 — MFRAGS=2 parity (amortize) | 2133.9 | 28.4% | 1.13× |
+| **Triton `tl.dot` allow_tf32 (baseline)** | **1890.5** | **25.1%** | 1.00× |
+| MMM-SWZ-BK64 — A-side ldmatrix (wave-1) | 1369.6 | 18.2% | 0.72× |
+| MMM — scalar+cvt TF32 baseline | 884.9 | 11.8% | 0.47× |
+
+*(FP32 reference points sit on the separate 1880 GFLOP/s CUDA-core roof, not this tensor roof:
+FP32 `MM` = 979.9 = 52% of 1880.)* The current best is **40.2% of the derived tf32 tensor peak,
+93% of its own quarter-B feed-ceiling** (DCE-safe ablation, `tools/ptx/mma-ablate.f`: B-feed
+12.1/169.7 ms = 7%, mma-issue 34.9/169.7 ms = 21%), and **1.60× Triton** — which itself only
+reaches 25% of the same peak.
+
+### VERDICT: (a) CLOSE the tf32 mma.sync GEMM perf program — the residual is the irreducible tf32 issue floor
+
+The kernel-lever inventory from waves 1-3 is **exhausted**, and the three instruction-level
+candidates named for wave-4 are each already spent or a hard constraint, not headroom:
+- **Wider M register tile / more M-frags:** done — MFRAGS=4 (256×64 block, 64 f32
+  accumulators/lane). MFRAGS=8 needs 128 f32 accumulators/lane and a 512×64 tile: it blows the
+  255-register budget (guaranteed spill) and the shared-memory cap. Not viable.
+- **Dual-issue scheduling across M-frags:** the 4 M-frags already expose independent mma
+  accumulator chains (ILP), and the block runs 8 warps across the 4 SM warp-schedulers. The 21%
+  mma-issue is the Tensor Cores consuming *real, fixed* work, not a scheduling stall.
+- **Accumulator pressure / `wait_group` placement:** MFRAGS=4 sits at the register sweet spot
+  (wider spills); single-buffer static already beat double-buffer (occupancy-beats-overlap once
+  the B-feed is amortized), so cp.async wait placement has no remaining overlap to win.
+
+The residual 21% "mma-issue" is the **Tensor Cores doing the GEMM's fixed mma work** — a 2048³
+GEMM is `N³/1024 = 8.39M` m16n8k8 mma instructions, a count no schedule can reduce. Cutting
+mma-issue time needs a *denser instruction shape*, and **for TF32 the widest shape is already in
+use**: `mma.sync.m16n8k8` (the only wider-K tf32 shapes are m16n8k4/k8; there is **no m16n8k16
+for tf32** — that shape exists only for fp16/bf16/int8). The tf32 instruction-shape lever is
+therefore spent. At **40% of the theoretical tf32 tensor peak, 93% of its own feed-ceiling, and
+1.60× a mature autotuned Triton baseline**, the TF32 `mma.sync` GEMM is on its practical issue
+floor. **Recommendation: close the GEMM perf program.** No wave-4 lever dot is minted — there is
+no quantified tf32 instruction-level lever with measured headroom to hand off.
+
+**Where the residual goes:**
+- **Autotuner (`habu-feed-mma-config-d783e33b`):** per-shape BM/BN/BK/MFRAGS/stages search may
+  extract single-digit-% gains on specific (non-2048³, tall/skinny, odd-K) shapes. This is
+  *config search over the existing shapes*, not a new instruction-level lever.
+- **Default-flip (`habu-ship-swizzled-mma-7b78c01b`):** productize the wave-3 winner as the
+  emitted default and refresh the competitive `HABU-MMM-TF32` row.
+- **fp16/bf16 shapes — USER-GATED numerics-policy question, OUT OF SCOPE, not implemented.** The
+  *only* remaining instruction-level lever is a denser accumulate shape (`mma.sync.m16n8k16`
+  fp16/bf16), which ~2× the K per instruction and lifts the tensor peak — but it **changes the
+  numerics contract** (fp16/bf16 inputs vs the tf32-for-f32 eval policy). This is a precision
+  decision for the user, not a kernel-perf decision. If and only if the user relaxes the
+  tf32-for-f32 policy does a new perf lever open; recorded here so the closure is auditable.
+
+**Sources (peak derivation):**
+- NVIDIA Jetson AGX Orin Series Technical Brief v1.2, July 2022 (`TB_10749-001_v1.2`), p.5:
+  "128 CUDA cores per SM … four 3rd Generation Tensor cores per SM"; AGX Orin 64GB = 2048 CUDA /
+  64 TC / 170 sparse INT8 GPU-TOPS / 5.3 FP32 TFLOPs; 2× NVDLA v2.0.
+- NVIDIA "NVIDIA Ampere Architecture In-Depth" developer blog + A100 datasheet/whitepaper:
+  each 3rd-gen Tensor Core = 256 FP16 FMA/clock (1024/SM); A100 dense TF32 = 156 TFLOPS = ½ FP16
+  312 TFLOPS; 108 SMs @ 1.41 GHz → 512 TF32 FMA/SM/clock.
+- Orin NX 16GB spec (1024 CUDA / 32 TC / 918 MHz / FP32 1.9 TFLOPS / 100 INT8 TOPS incl. DLA;
+  2× NVDLA v2.0) — NVIDIA Orin NX data sheet and vendor spec pages.
+
+**Why no device session.** The mission allowed a pure mma-issue-rate micro-benchmark only if the
+desk analysis genuinely needed one. It did not: the peak is pinned by authoritative NVIDIA data
+(the 8-SM count, the 512 TF32 FMA/SM/clock rate, the GA100-class full-rate evidence), the
+existing productized DCE-safe ablation already supplies the on-device phase decomposition, and
+the verdict (close) is **invariant** to the one residual ambiguity (512 vs 256 FMA/SM/clock) — a
+probe could refine the *practical* issue roof but cannot open a tf32 instruction-level lever that
+waves 1-3 did not already close. A pure-mma probe would only convert "40% of a strongly-inferred
+7520 peak" into "40% of a measured 7520 peak"; it does not change the recommendation. The Orin
+was left untouched (no new perf-rows rows; the ladder above is the committed registry).
+
 ## The five things that govern speed (check all five)
 
 1. **Occupancy** — enough resident warps to hide latency. *Means, not goal*: a
