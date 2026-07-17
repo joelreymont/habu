@@ -548,7 +548,7 @@ create AXBUF AXBUF-CAP allot
 
 \ ---- classification lists (folded lowercase, as stored in the symbol table) --
 : AX-GEN-LIST ( -- ptr u8 n )
-   s"  dup drop swap over nip tuck rot -rot 2dup 2drop 2swap 2over + - * and or xor 1+ 1- negate invert 0= 0< = < > <> <= >= / mod /mod abs min max lshift rshift cells cell+ chars char+ depth here rbase cp@ dbase@ check@ ndict@ data-base get-current epoch-seconds mono-ns script-argc . u. emit cr space s>f wf-n@ locw-hw-n@ tfam-n@ sumv-n@ pf-n@ tf-str-u@ tf-pk-n@ schema-n@ schema-root-n@ wf-wide? wf-needs-p2? wf-w-at owner-wid-preflight? owner-wid-public? owner-wid-private? owner-wid? lower-cert:magic lower-cert:version lower-cert:header-cells lower-cert:magic-cell lower-cert:version-cell lower-cert:total-bytes-cell lower-cert:needs-cell lower-cert:wf-count-cell lower-cert:bind-count-cell lower-cert:fetch-count-cell lower-cert:fetch-data-cells-cell lower-cert:wf-cells lower-cert:fetch-cells lower-cert:check-cells lower-cert:guard-cells lower-cert:fetch-flag lower-cert:store-flag lower-cert:body-len-cell lower-cert:body-hash-cell lower-cert:fnv-offset lower-cert:fnv-prime lower-cert:cell-count " ;
+   s"  dup drop swap over nip tuck rot -rot 2dup 2drop 2swap 2over + - * and or xor 1+ 1- negate invert 0= 0< = < > <> <= >= / mod /mod abs min max lshift rshift cells cell+ chars char+ depth here rbase cp@ dbase@ check@ ndict@ data-base get-current epoch-seconds mono-ns script-argc . u. emit cr space s>f wf-n@ locw-hw-n@ tfam-n@ sumv-n@ pf-n@ tf-str-u@ tf-pk-n@ schema-n@ schema-root-n@ wf-wide? wf-needs-p2? wf-w-at ct-live? owner-wid-preflight? owner-wid-public? owner-wid-private? owner-wid? type-field:count type-field:no-variant lower-cert:magic lower-cert:version lower-cert:header-cells lower-cert:magic-cell lower-cert:version-cell lower-cert:total-bytes-cell lower-cert:needs-cell lower-cert:wf-count-cell lower-cert:bind-count-cell lower-cert:fetch-count-cell lower-cert:fetch-data-cells-cell lower-cert:wf-cells lower-cert:fetch-cells lower-cert:check-cells lower-cert:guard-cells lower-cert:fetch-flag lower-cert:store-flag lower-cert:body-len-cell lower-cert:body-hash-cell lower-cert:fnv-offset lower-cert:fnv-prime lower-cert:cell-count " ;
 : AX-MEM-LIST ( -- ptr u8 n )
    s"  @ ! ptr-field +! c@ c! count rd32 core-str= core-str=ci tfam-ctor-word? type " ;
 : AX-FLOAT-LIST ( -- ptr u8 n )
@@ -589,8 +589,11 @@ create AXBUF AXBUF-CAP allot
 \ row + a checker-defer row per pending slot) — a checker-substrate mutation
 \ of the trust/seal-capture class; a census execution would re-drain an
 \ already-empty table at best and inject duplicate registry rows at worst.
-\ The read-only owner-wid predicates are total over numeric dummy operands and
-\ stay difftested in AX-GEN-LIST against the valid cold-empty registry.
+\ The read-only owner-wid predicates and ct-live? are total over numeric dummy
+\ operands and stay difftested in AX-GEN-LIST. TYPE-FIELD's count and no-variant
+\ readers are likewise total zero-input values. Its find, iterator, and indexed
+\ reflection words need live registry ids and strings, so dummy execution is not
+\ meaningful and can fail on bounds.
 \ tfam-ctor-word? is a pure registry-read predicate and stays difftested in
 \ AX-MEM-LIST (empty census registry -> false, one flag out).
 \ trust records a live checker signature from its string operands (a checker
@@ -605,7 +608,7 @@ create AXBUF AXBUF-CAP allot
 \ Their axioms keep them checker-known so the seal-time internal-word marking
 \ pass leaves them top-level executable (dot habu-hb-crash-bare-c5be6634).
 : AX-NOEXEC-C ( -- ptr u8 n )
-   s"  seal-capture seal-friend prot-wid-add drain-pretrust wf-tokix@ wf-off@ wf-pos@ wf-fam@ wf-width@ wf-term@ wf-flags@ tfam-width@ locw-hw@ p2-carve-w p2-live-w@ p2-live-cum@ p2-locseq-reset wide-mark rec-wide-publish rec-min-in@ layout-valid-desc-cell tfam-name$ tfam-arity@ tfam-kind@ tfam-public? tfam-derive-eq? tfam-derive-hash? tfam-var-start@ tfam-var-count@ sumv-name$ sumv-ctor-pkg$ lower-cert:cell@ lower-cert:bytes trust check check! typefamily sumtype enum product layout-buffer typed-buffer typed-variable " ;
+   s"  seal-capture seal-friend prot-wid-add drain-pretrust wf-tokix@ wf-off@ wf-pos@ wf-fam@ wf-width@ wf-term@ wf-flags@ tfam-width@ locw-hw@ p2-carve-w p2-live-w@ p2-live-cum@ p2-locseq-reset wide-mark rec-wide-publish rec-min-in@ layout-valid-desc-cell tfam-name$ tfam-arity@ tfam-kind@ tfam-public? tfam-derive-eq? tfam-derive-hash? tfam-var-start@ tfam-var-count@ sumv-name$ sumv-ctor-pkg$ type-field:find type-field:each type-field:family@ type-field:variant@ type-field:name$ type-field:schema@ type-field:slot@ type-field:cells@ type-field:byte-off@ type-field:bytes@ type-field:align@ type-field:flags@ lower-cert:cell@ lower-cert:bytes trust check check! typefamily sumtype enum product layout-buffer typed-buffer typed-variable " ;
 
 : AX-CAT ( ptr u8 n -- n )
    2dup AX-HAS-QUOTE? if 2drop AX-NOEXEC exit then

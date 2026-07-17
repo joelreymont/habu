@@ -385,14 +385,14 @@ create SLV-EMPTY 1 allot            \ zero-length stdin
 
 \ --- protected-WID table capacity (dot habu-seal-protwid-cap-6f1c9d2b) --------------
 \ Each PUBLIC ADT family registers one protected WID (xref.f PROT-WID-CTOR-ADD ->
-\ prot-wid-add); the table holds PROT-WID-MAX (256, raised from 16) entries. A batch
+\ prot-wid-add); the table holds PROT-WID-MAX entries shared with baked packages. A batch
 \ child declaring K public families is generated with unique letter-pair names (each
 \ family scopes its own 'foo' variant, so the variant name may repeat). Red-first: at
 \ the old cap of 16 the 17th family exits ENGINE-ERROR:SEAL-PACKAGE (84) with NO diagnostic, so
 \ both the "succeed past 16" (rc 0) and the "labeled overflow" (stderr names the
-\ table) assertions fail. Driven via SLV-RUN-LOAD (a file), not stdin: 257 families
-\ exceed the 2 KB SLV-IN buffer.
-16384 constant PWG-CAP                       \ room for 256+ families at ~46 bytes each
+\ table) assertions fail. A full-table program exceeds the 2 KB SLV-IN buffer,
+\ so it runs through SLV-RUN-LOAD rather than stdin.
+16384 constant PWG-CAP                       \ room for PROT-WID-MAX+1 families
 create PWG-BUF PWG-CAP allot
 variable PWG-U
 
@@ -417,6 +417,30 @@ variable PWG-U
    0 begin dup k < while dup PWG-FAMILY 1+ repeat drop
    PWG$ ;
 
+: PWG-BASE-FORGE$ ( -- ptr u8 n )
+   SB-RESET
+   s" data-base PROT-WID-N-CELL + @ ." SB-APPEND SLV-LF
+   SB$ ;
+
+variable PWG-BASE
+
+\ Probe the same fresh child used by the capacity forges. This test process has
+\ loaded packages that legitimately occupy more protected WIDs than that child.
+: PWG-BASE! ( -- )
+   PWG-BASE-FORGE$ SLV-RUN-LOAD
+   SLV-EXITED @ 0= IF s" seal-test: protected-WID probe timed out" T-EX-FAIL die THEN
+   SLV-RC @ 0 <> IF s" seal-test: protected-WID probe failed" T-EX-FAIL die THEN
+   SLV-OUT SLV-OUT-U @ TRIM STR>NUMBER? MATCH option
+      none OF s" seal-test: invalid protected-WID probe" T-EX-FAIL die ENDOF
+      some OF PWG-BASE ! ENDOF
+   ;MATCH
+   PWG-BASE @ 0 < PWG-BASE @ PROT-WID-MAX > or IF
+      s" seal-test: protected-WID probe out of range" T-EX-FAIL die
+   THEN ;
+
+: PWG-ROOM ( -- n )
+   PROT-WID-MAX PWG-BASE @ - ;
+
 ENGINE-ERROR:SEAL-PACKAGE constant SLV-PWID-RC       \ protected-WID table full
 : SLV-ERR$ ( -- ptr u8 n )  SLV-ERR SLV-ERR-U @ ;
 : SLV-ASSERT-PWID-FULL ( -- )                \ child died with the LABELED protected-WID-full exit
@@ -425,12 +449,15 @@ ENGINE-ERROR:SEAL-PACKAGE constant SLV-PWID-RC       \ protected-WID table full
    SLV-ERR$ s" hb: protected-WID table full" CONTAINS? TTRUE ;
 
 : SLV-PWID-CAP ( -- )
+   PWG-BASE!
+   s" protected-WID registry leaves at least 17 family slots" T-LABEL
+   PWG-ROOM 17 >= TTRUE
    s" 17 public ADT families succeed past the old 16 cap" T-LABEL
    17 PWG-GEN SLV-RUN-LOAD SLV-ASSERT-OK
-   s" 256 public families succeed at the raised cap" T-LABEL
-   256 PWG-GEN SLV-RUN-LOAD SLV-ASSERT-OK
-   s" the 257th public family overflows -> labeled 'protected-WID table full' exit 84" T-LABEL
-   257 PWG-GEN SLV-RUN-LOAD SLV-ASSERT-PWID-FULL ;
+   s" public families fill every remaining protected-WID slot" T-LABEL
+   PWG-ROOM PWG-GEN SLV-RUN-LOAD SLV-ASSERT-OK
+   s" one family past remaining capacity reports protected-WID table full" T-LABEL
+   PWG-ROOM 1+ PWG-GEN SLV-RUN-LOAD SLV-ASSERT-PWID-FULL ;
 
 \ --- publish-into-protected-word guard (dot habu-label-two-silent-bd8e5d09) -----------
 \ Once the friend latch is sealed, publishing a definition into a protected WID (a public

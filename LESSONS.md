@@ -5573,3 +5573,6 @@ unchanged (148855). Keys for milestone 2:
   Qualified definitions may create a header with public WID set and private WID
   zero; size a cell-aligned power-of-two hash from nonzero keys at source load,
   then reject malformed keys, duplicates, or census/build count drift.
+- **Capacity fixtures must budget preinstalled registry entries.** A bounded
+  shared table is not empty at test start; derive remaining room from its live
+  count, then prove the last available slot succeeds and the next one fails.
