@@ -1353,7 +1353,8 @@ lib/ptx/rep.f:MINT-ROW-LOAD stdlib-boundary habu-ptx-phantom-preserving-3df9db92
 tools/lint/text.f:CHECK! prim-axiom habu-primitive-effect-axiom-1119f176
 lib/test/snap.f:SNAP= test-metaprog habu-typed-depth-introspection-18f0efda
 lib/test/assert.f:TTHROWS-RAW test-metaprog habu-typed-depth-introspection-18f0efda
-lib/test/subject.f test-metaprog habu-type-isolated-dynamic-244c0e2c 2
+lib/test/subject.f:EVAL test-metaprog habu-batch-candidate-valid-517bfb6f
+lib/test/subject.f:STACK-ARM test-metaprog habu-batch-candidate-valid-517bfb6f
 maki/cad.f:CAP-COMPILE-RUN test-metaprog habu-primitive-effect-axiom-1119f176
 maki/eval.f:CHECK-PASSES? test-metaprog habu-primitive-effect-axiom-1119f176
 maki/fusion-plan.f:RAW>RGN prim-axiom habu-epic-model-cad-70b629a9
