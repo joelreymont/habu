@@ -1610,7 +1610,9 @@ test/type-family-rollback-suite.f:TWX-SCHEMA-CON test-metaprog habu-seal-set-che
 test/type-family-rollback-suite.f:TWX-SCHEMA-ROOT+ test-metaprog habu-seal-set-check-b3676b33
 test/type-family-rollback-suite.f:TWX-LAY-N@ test-metaprog habu-seal-set-check-b3676b33
 test/type-family-rollback-suite.f:TWX-LAY-ADD test-metaprog habu-seal-set-check-b3676b33
+test/type-family-rollback-suite.f:TWX-PF-BEGIN test-metaprog habu-seal-set-check-b3676b33
 test/type-family-rollback-suite.f:TWX-PF-ADD test-metaprog habu-seal-set-check-b3676b33
+test/type-family-rollback-suite.f:TWX-PF-COMMIT test-metaprog habu-seal-set-check-b3676b33
 test/type-ctor-suite.f:TWX-CHECKER-RECORD-SYM test-metaprog habu-seal-set-check-b3676b33
 test/type-ctor-suite.f:TWX-FRESH test-metaprog habu-seal-set-check-b3676b33
 test/type-ctor-suite.f:TWX-MULTI-ERR-BEGIN test-metaprog habu-seal-set-check-b3676b33
@@ -1645,11 +1647,6 @@ test/type-decl-suite.f:TWX-PAIR test-metaprog habu-seal-set-check-b3676b33
 test/type-decl-suite.f:TWX-PARAM-SCR+ test-metaprog habu-seal-set-check-b3676b33
 test/type-decl-suite.f:TWX-PARAM>FAM test-metaprog habu-seal-set-check-b3676b33
 test/type-decl-suite.f:TWX-PARAM>HID test-metaprog habu-seal-set-check-b3676b33
-test/type-decl-suite.f:TWX-PF-FAM@ test-metaprog habu-seal-set-check-b3676b33
-test/type-decl-suite.f:TWX-PF-FIND test-metaprog habu-seal-set-check-b3676b33
-test/type-decl-suite.f:TWX-PF-NAME$ test-metaprog habu-seal-set-check-b3676b33
-test/type-decl-suite.f:TWX-PF-SCH@ test-metaprog habu-seal-set-check-b3676b33
-test/type-decl-suite.f:TWX-PF-SLOT@ test-metaprog habu-seal-set-check-b3676b33
 test/type-decl-suite.f:TWX-PUSH-LOGICAL test-metaprog habu-seal-set-check-b3676b33
 test/type-decl-suite.f:TWX-R-RES test-metaprog habu-seal-set-check-b3676b33
 test/type-decl-suite.f:TWX-SCHEMA-A@ test-metaprog habu-seal-set-check-b3676b33
@@ -1691,10 +1688,10 @@ test/type-family-suite.f:TWX-LAY-SIZE@ test-metaprog habu-seal-set-check-b3676b3
 test/type-family-suite.f:TWX-LAY-TAGW@ test-metaprog habu-seal-set-check-b3676b33
 test/type-family-suite.f:TWX-PACKED-DESC test-metaprog habu-seal-set-check-b3676b33
 test/type-family-suite.f:TWX-PACKED-NARROW test-metaprog habu-seal-set-check-b3676b33
+test/type-family-suite.f:TWX-PF-BEGIN test-metaprog habu-seal-set-check-b3676b33
 test/type-family-suite.f:TWX-PF-ADD test-metaprog habu-seal-set-check-b3676b33
-test/type-family-suite.f:TWX-PF-FAM@ test-metaprog habu-seal-set-check-b3676b33
-test/type-family-suite.f:TWX-PF-FIND test-metaprog habu-seal-set-check-b3676b33
-test/type-family-suite.f:TWX-PF-SLOT@ test-metaprog habu-seal-set-check-b3676b33
+test/type-family-suite.f:TWX-PF-COMMIT test-metaprog habu-seal-set-check-b3676b33
+test/type-family-suite.f:TWX-PF-ROLLBACK test-metaprog habu-seal-set-check-b3676b33
 test/type-family-suite.f:TWX-SCHEMA-A@ test-metaprog habu-seal-set-check-b3676b33
 test/type-family-suite.f:TWX-SCHEMA-APP test-metaprog habu-seal-set-check-b3676b33
 test/type-family-suite.f:TWX-SCHEMA-APP? test-metaprog habu-seal-set-check-b3676b33
@@ -2081,6 +2078,21 @@ prim - tfam-var-start@ - pe-n pe-in pe-n pe-out
 prim - tfam-var-count@ - pe-n pe-in pe-n pe-out
 prim - sumv-name$ - pe-n pe-in pe-ptr-u8 pe-out pe-n pe-out
 prim - sumv-ctor-pkg$ - pe-n pe-in pe-ptr-u8 pe-out pe-n pe-out
+prim - ct-live? - pe-n pe-in pe-f pe-out
+pprim type-field count - pe-n pe-out
+pprim type-field no-variant - pe-n pe-out
+pprim type-field find - pe-n pe-in pe-n pe-in pe-ptr-u8 pe-in pe-n pe-in pe-n pe-out pe-f pe-out
+pprim type-field each - pe-n pe-in pe-n pe-in pe-n pe-in pe-n pe-out pe-f pe-out
+pprim type-field family@ - pe-n pe-in pe-n pe-out
+pprim type-field variant@ - pe-n pe-in pe-n pe-out
+pprim type-field name$ - pe-n pe-in pe-ptr-u8 pe-out pe-n pe-out
+pprim type-field schema@ - pe-n pe-in pe-n pe-out
+pprim type-field slot@ - pe-n pe-in pe-n pe-out
+pprim type-field cells@ - pe-n pe-in pe-n pe-out
+pprim type-field byte-off@ - pe-n pe-in pe-n pe-out
+pprim type-field bytes@ - pe-n pe-in pe-n pe-out
+pprim type-field align@ - pe-n pe-in pe-n pe-out
+pprim type-field flags@ - pe-n pe-in pe-n pe-out
 prim - wf-n@ - pe-n pe-out
 prim - wf-off@ - pe-n pe-in pe-n pe-out
 prim - wf-pos@ - pe-n pe-in pe-n pe-out
@@ -2128,7 +2140,6 @@ prim - p2-carve-w - pe-n pe-in pe-n pe-out
 prim - p2-live-w@ - pe-n pe-in pe-n pe-out
 prim - p2-live-cum@ - pe-n pe-in pe-n pe-out
 prim - sumv-n@ - pe-n pe-out
-prim - pf-n@ - pe-n pe-out
 prim - tf-str-u@ - pe-n pe-out
 prim - tf-pk-n@ - pe-n pe-out
 prim - schema-n@ - pe-n pe-out

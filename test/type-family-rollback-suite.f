@@ -50,13 +50,16 @@ TRUSTED: TWX-SCHEMA-CON ( n -- n ) SCHEMA-CON ;
 TRUSTED: TWX-SCHEMA-ROOT+ ( n -- n ) SCHEMA-ROOT+ ;
 TRUSTED: TWX-LAY-N@ ( -- n ) LAY-N@ ;
 TRUSTED: TWX-LAY-ADD ( n n n n n -- n ) LAY-ADD ;
-TRUSTED: TWX-PF-ADD ( n ptr u8 n n n -- n ) PF-ADD ;
+TRUSTED: TWX-PF-BEGIN ( -- n ) PF-BEGIN ;
+TRUSTED: TWX-PF-ADD ( n n n ptr u8 n n n n n n n n -- n ) PF-ADD ;
+TRUSTED: TWX-PF-COMMIT ( n -- ) PF-COMMIT ;
 
    variable TC
 variable P-TFAM   variable P-SUMV   variable P-PF   variable P-LAY
 variable P-SCHN   variable P-SCHR   variable P-STRU  variable P-PKN
 variable P-SYMN   variable P-SYMU   variable P-DEPTH
 variable A-TFAM   variable A-SYMN   variable B-TFAM  variable B-SYMN
+variable PFTX     variable PFSCH   variable PFOWN
 
 \ clean TFAM/SCHEMA slate (SYM/USIG/DFER/package remain live checker state).
 TWX-TFAM-RESET
@@ -74,7 +77,7 @@ s" rbpre" s" base" 0 0 0 0 TWX-SUMV-ADD drop
 
 TFAM-N@       P-TFAM !
 SUMV-N@       P-SUMV !
-PF-N@         P-PF !
+TYPE-FIELD:COUNT P-PF !
 TWX-LAY-N@        P-LAY !
 SCHEMA-N@     P-SCHN !
 SCHEMA-ROOT-N@ P-SCHR !
@@ -85,8 +88,12 @@ TWX-CAND-START
    s" rbc" CHECKER-PACKAGE-PRIVATE s" cand" 2 TK-PRODUCT TWX-TFAM-DECL drop
    s" rbc" s" cand" 0 0 0 0 TWX-SUMV-ADD drop
    \ a product field + layout keyed on the just-added candidate family.
-   s" rbc" s" cand" TWX-TFAM-FIND-IN FOUNDF ! drop
-   FOUNDF @ s" fld" 0 0 TWX-PF-ADD drop
+   s" rbc" s" cand" TWX-TFAM-FIND-IN FOUNDF ! PFOWN !
+   0 TWX-SCHEMA-PARAM TWX-SCHEMA-ROOT+ PFSCH !
+   TWX-PF-BEGIN PFTX !
+   PFTX @ PFOWN @ PF-NO-VARIANT s" fld" PFSCH @
+      0 1 0 CELL CELL PF-FLAGS-NONE TWX-PF-ADD PFTX !
+   PFTX @ TWX-PF-COMMIT
    FOUNDF @ TL-BOXED 8 8 8 TWX-LAY-ADD drop
    1 TWX-SCHEMA-CON drop   2 TWX-SCHEMA-PARAM drop
    0 TWX-SCHEMA-PARAM TWX-SCHEMA-ROOT+ drop
@@ -97,7 +104,7 @@ TWX-CAND-START
 \ every counter restored to the pre-candidate baseline.
 TFAM-N@        P-TFAM @ T=
 SUMV-N@        P-SUMV @ T=
-PF-N@          P-PF @ T=
+TYPE-FIELD:COUNT P-PF @ T=
 TWX-LAY-N@         P-LAY @ T=
 SCHEMA-N@      P-SCHN @ T=
 SCHEMA-ROOT-N@ P-SCHR @ T=

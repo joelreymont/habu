@@ -38,6 +38,8 @@ variable #CASE
       1+
    repeat drop
    T-FAIL s" assert strings differ: both " type ga gu type cr ;
+: T-PF-DROP ( n n n ptr u8 n n n n n n n n -- )
+   2drop 2drop 2drop 2drop 2drop 2drop ;
 
 \ catch-code stash (TC) + result-flag stash (FOUNDF) + id/node scratch.
 variable TC     variable FOUNDF
@@ -58,10 +60,10 @@ TRUSTED: TWX-LAY-SIZE@ ( n -- n ) LAY-SIZE@ ;
 TRUSTED: TWX-LAY-TAGW@ ( n -- n ) LAY-TAGW@ ;
 TRUSTED: TWX-PACKED-DESC ( n -- n n n ) PACKED-DESC ;
 TRUSTED: TWX-PACKED-NARROW ( n -- n ) PACKED-NARROW ;
-TRUSTED: TWX-PF-ADD ( n ptr u8 n n n -- n ) PF-ADD ;
-TRUSTED: TWX-PF-FAM@ ( n -- n ) PF-FAM@ ;
-TRUSTED: TWX-PF-FIND ( n ptr u8 n -- n bool ) PF-FIND ;
-TRUSTED: TWX-PF-SLOT@ ( n -- n ) PF-SLOT@ ;
+TRUSTED: TWX-PF-BEGIN ( -- n ) PF-BEGIN ;
+TRUSTED: TWX-PF-ADD ( n n n ptr u8 n n n n n n n n -- n ) PF-ADD ;
+TRUSTED: TWX-PF-COMMIT ( n -- ) PF-COMMIT ;
+TRUSTED: TWX-PF-ROLLBACK ( n -- ) PF-ROLLBACK ;
 TRUSTED: TWX-SCHEMA-A@ ( n -- n ) SCHEMA-A@ ;
 TRUSTED: TWX-SCHEMA-APP ( n n n -- n ) SCHEMA-APP ;
 TRUSTED: TWX-SCHEMA-APP? ( n -- bool ) SCHEMA-APP? ;
@@ -147,9 +149,12 @@ TF-REC-PTR-MASK 0 T=
 SUMV-REC 10 cells T=
 SUMV-REC-ALIGN CELL T=
 SUMV-REC-PTR-MASK 0 T=
-PF-REC 5 cells T=
+PF-REC 11 cells T=
 PF-REC-ALIGN CELL T=
 PF-REC-PTR-MASK 0 T=
+PF-TX-REC 3 cells T=
+PF-TX-REC-ALIGN CELL T=
+PF-TX-REC-PTR-MASK 0 T=
 LAY-REC 5 cells T=
 LAY-REC-ALIGN CELL T=
 LAY-REC-PTR-MASK 0 T=
@@ -359,17 +364,237 @@ FID @ s" none" TWX-SUMV-FIND FOUNDF ! drop  FOUNDF @ 0 T=
 FID @ s" ok" 0 0 0 0 ' TWX-SUMV-ADD catch   TC ! 2drop 2drop 2drop drop  TC @ E-TFAM-DUP T=
 
 \ ---------------------------------------------------------------------------
-\ 11. product fields: add, per-family key, dup rejection.
-\    TWX-PF-ADD ( fam name-a name-u sch slot -- id )
+\ 11. shared fields: atomic tx add, committed reflection, dup rejection.
 \ ---------------------------------------------------------------------------
-PTID @ s" x" 0 0 TWX-PF-ADD FX !            FX @ TWX-PF-FAM@ PTID @ T=   FX @ TWX-PF-SLOT@ 0 T=
-PTID @ s" y" 0 1 TWX-PF-ADD drop
-PTID @ s" z" 0 2 TWX-PF-ADD drop
-PID  @ s" a" 0 0 TWX-PF-ADD drop
-PID  @ s" b" 0 1 TWX-PF-ADD drop            \ 5 fields > seed cap 4 -> PF grew
-PTID @ s" x" TWX-PF-FIND FOUNDF !  FX @ T=  FOUNDF @ -1 T=
-PTID @ s" q" TWX-PF-FIND FOUNDF ! drop  FOUNDF @ 0 T=
-PTID @ s" x" 0 0 ' TWX-PF-ADD catch   TC ! 2drop 2drop drop  TC @ E-TFAM-DUP T=
+variable PFTX   variable PFOUT   variable PFIN
+variable PFBASE variable PFSTR   variable PFSCH
+variable PFBAD  variable PFAPP   variable PFARG
+TYPE-FIELD:COUNT FX !
+TWX-PF-BEGIN PFTX !
+PFTX @ PTID @ PF-NO-VARIANT s" x" 1 0 1 0 CELL CELL PF-FLAGS-NONE TWX-PF-ADD PFTX !
+PFTX @ PTID @ PF-NO-VARIANT s" y" 1 1 1 CELL CELL CELL PF-FLAGS-NONE TWX-PF-ADD PFTX !
+PFTX @ PTID @ PF-NO-VARIANT s" z" 1 2 1 2 cells CELL CELL PF-FLAGS-NONE TWX-PF-ADD PFTX !
+PFTX @ PTID @ PF-NO-VARIANT s" a" 1 3 1 3 cells CELL CELL PF-FLAGS-NONE TWX-PF-ADD PFTX !
+PFTX @ PTID @ PF-NO-VARIANT s" b" 1 4 1 4 cells CELL CELL PF-FLAGS-NONE TWX-PF-ADD PFTX !
+TYPE-FIELD:COUNT FX @ T=                       \ provisional ids are not reflected
+PFTX @ TWX-PF-COMMIT
+TYPE-FIELD:COUNT FX @ 5 + T=                   \ 5 fields > seed cap 4 -> PF grew
+PTID @ TYPE-FIELD:NO-VARIANT s" x" TYPE-FIELD:FIND FOUNDF !  FX @ T=  FOUNDF @ -1 T=
+PTID @ TYPE-FIELD:NO-VARIANT s" q" TYPE-FIELD:FIND FOUNDF ! drop  FOUNDF @ 0 T=
+FX @ TYPE-FIELD:FAMILY@ PTID @ T=
+FX @ TYPE-FIELD:VARIANT@ TYPE-FIELD:NO-VARIANT T=
+FX @ TYPE-FIELD:SLOT@ 0 T=       FX @ TYPE-FIELD:CELLS@ 1 T=
+FX @ TYPE-FIELD:BYTE-OFF@ 0 T=   FX @ TYPE-FIELD:BYTES@ CELL T=
+FX @ TYPE-FIELD:ALIGN@ CELL T=    FX @ TYPE-FIELD:FLAGS@ PF-FLAGS-NONE T=
+FX @ TYPE-FIELD:NAME$ s" x" T$=
+PTID @ TYPE-FIELD:NO-VARIANT 0 TYPE-FIELD:EACH FOUNDF ! FX @ T= FOUNDF @ -1 T=
+PTID @ TYPE-FIELD:NO-VARIANT -1 TYPE-FIELD:EACH FOUNDF ! drop FOUNDF @ 0 T=
+
+TWX-PF-BEGIN PFTX !
+PFTX @ PTID @ PF-NO-VARIANT s" x" 1 5 1 5 cells CELL CELL PF-FLAGS-NONE
+   ' TWX-PF-ADD catch TC ! 2drop 2drop 2drop 2drop 2drop 2drop
+TC @ E-TFAM-DUP T=
+PFTX @ TWX-PF-ROLLBACK
+
+\ names are reserved independently of layout, and owner/variant membership is
+\ validated before any row or interned string becomes visible.
+TWX-PF-BEGIN PFTX !
+PFTX @ PTID @ PF-NO-VARIANT s" make" 1 5 1 5 cells CELL CELL PF-FLAGS-NONE
+   ' TWX-PF-ADD catch TC ! T-PF-DROP
+TC @ E-PF-NAME T=
+PFTX @ TWX-PF-ROLLBACK
+
+TWX-PF-BEGIN PFTX !
+PFTX @ FID @ PF-NO-VARIANT s" absent" 1 0 1 0 4 4 PF-FLAGS-NONE
+   ' TWX-PF-ADD catch TC ! T-PF-DROP
+TC @ E-PF-OWNER T=
+PFTX @ TWX-PF-ROLLBACK
+
+TWX-PF-BEGIN PFTX !
+PFTX @ PTID @ VOK @ s" wrong-owner" 1 5 1 40 CELL CELL PF-FLAGS-NONE
+   ' TWX-PF-ADD catch TC ! T-PF-DROP
+TC @ E-PF-OWNER T=
+PFTX @ TWX-PF-ROLLBACK
+
+\ Optional variant ids are part of the key. Packed rows still use the current
+\ canonical cell payload ABI until a distinct packed-field ABI exists.
+TWX-PF-BEGIN PFTX !
+PFTX @ FID @ VOK @ s" value" 1 0 1 0 CELL CELL PF-FLAGS-NONE TWX-PF-ADD PFTX !
+PFTX @ FID @ VERR @ s" value" 1 0 1 0 CELL CELL PF-FLAGS-NONE TWX-PF-ADD PFTX !
+PFTX @ TWX-PF-COMMIT
+FID @ VOK @ s" value" TYPE-FIELD:FIND FOUNDF ! PFOUT !  FOUNDF @ -1 T=
+FID @ VERR @ s" value" TYPE-FIELD:FIND FOUNDF ! PFIN !   FOUNDF @ -1 T=
+PFOUT @ PFIN @ = 0 T=
+PFOUT @ TYPE-FIELD:VARIANT@ VOK @ T=
+PFOUT @ TYPE-FIELD:BYTES@ CELL T=  PFOUT @ TYPE-FIELD:ALIGN@ CELL T=
+PFIN @ TYPE-FIELD:VARIANT@ VERR @ T=
+PFIN @ TYPE-FIELD:BYTES@ CELL T=   PFIN @ TYPE-FIELD:ALIGN@ CELL T=
+
+\ Recursive schema validation: owner param bounds, concrete liveness, malformed
+\ PTR/QUOT shapes, APP family/arity/root/kind/visibility, and a valid APP.
+0 TWX-SCHEMA-PARAM TWX-SCHEMA-ROOT+ PFBAD !
+TWX-PF-BEGIN PFTX !
+PFTX @ PTID @ PF-NO-VARIANT s" bad-param" PFBAD @ 20 1 20 cells CELL CELL PF-FLAGS-NONE
+   ' TWX-PF-ADD catch TC ! T-PF-DROP
+TC @ E-PF-SCHEMA T=  PFTX @ TWX-PF-ROLLBACK
+
+\ PARAM width is defined only for cell-kinded owner parameters. Layout/type
+\ parameters remain fail-closed until field-width instantiation exists.
+0 TWX-SCHEMA-PARAM TWX-SCHEMA-ROOT+ PFBAD !
+TWX-PF-BEGIN PFTX !
+PFTX @ FID @ VOK @ s" type-param" PFBAD @ 1 1 CELL CELL CELL PF-FLAGS-NONE
+   ' TWX-PF-ADD catch TC ! T-PF-DROP
+TC @ E-PF-SCHEMA T=  PFTX @ TWX-PF-ROLLBACK
+FID @ 0 PK-LAYOUT TWX-TFAM-PK!
+TWX-PF-BEGIN PFTX !
+PFTX @ FID @ VOK @ s" layout-param" PFBAD @ 1 1 CELL CELL CELL PF-FLAGS-NONE
+   ' TWX-PF-ADD catch TC ! T-PF-DROP
+TC @ E-PF-SCHEMA T=  PFTX @ TWX-PF-ROLLBACK
+FID @ 0 PK-CELL TWX-TFAM-PK!
+TWX-PF-BEGIN PFTX !
+PFTX @ FID @ VOK @ s" cell-param" PFBAD @ 1 1 CELL CELL CELL PF-FLAGS-NONE
+   TWX-PF-ADD PFTX !
+PFTX @ TWX-PF-ROLLBACK
+FID @ 0 PK-TYPE TWX-TFAM-PK!
+
+99999 TWX-SCHEMA-CON TWX-SCHEMA-ROOT+ PFBAD !
+TWX-PF-BEGIN PFTX !
+PFTX @ PTID @ PF-NO-VARIANT s" bad-con" PFBAD @ 20 1 20 cells CELL CELL PF-FLAGS-NONE
+   ' TWX-PF-ADD catch TC ! T-PF-DROP
+TC @ E-PF-SCHEMA T=  PFTX @ TWX-PF-ROLLBACK
+
+SCH-PTR SCHEMA-N@ 0 0 TWX-SCHEMA-NEW TWX-SCHEMA-ROOT+ PFBAD !
+TWX-PF-BEGIN PFTX !
+PFTX @ PTID @ PF-NO-VARIANT s" bad-ptr" PFBAD @ 20 1 20 cells CELL CELL PF-FLAGS-NONE
+   ' TWX-PF-ADD catch TC ! T-PF-DROP
+TC @ E-PF-SCHEMA T=  PFTX @ TWX-PF-ROLLBACK
+
+SCH-QUOT 2 0 SCH-QUOT-ROWS TWX-SCHEMA-NEW TWX-SCHEMA-ROOT+ PFBAD !
+TWX-PF-BEGIN PFTX !
+PFTX @ PTID @ PF-NO-VARIANT s" bad-quot" PFBAD @ 20 1 20 cells CELL CELL PF-FLAGS-NONE
+   ' TWX-PF-ADD catch TC ! T-PF-DROP
+TC @ E-PF-SCHEMA T=  PFTX @ TWX-PF-ROLLBACK
+
+99999 0 0 TWX-SCHEMA-APP TWX-SCHEMA-ROOT+ PFBAD !
+TWX-PF-BEGIN PFTX !
+PFTX @ PTID @ PF-NO-VARIANT s" dead-app" PFBAD @ 20 1 20 cells CELL CELL PF-FLAGS-NONE
+   ' TWX-PF-ADD catch TC ! T-PF-DROP
+TC @ E-PF-SCHEMA T=  PFTX @ TWX-PF-ROLLBACK
+
+PID @ 0 1 TWX-SCHEMA-APP TWX-SCHEMA-ROOT+ PFBAD !
+TWX-PF-BEGIN PFTX !
+PFTX @ PTID @ PF-NO-VARIANT s" arity-app" PFBAD @ 20 1 20 cells CELL CELL PF-FLAGS-NONE
+   ' TWX-PF-ADD catch TC ! T-PF-DROP
+TC @ E-PF-SCHEMA T=  PFTX @ TWX-PF-ROLLBACK
+
+PID @ SCHEMA-ROOT-N@ 2 TWX-SCHEMA-APP TWX-SCHEMA-ROOT+ PFBAD !
+TWX-PF-BEGIN PFTX !
+PFTX @ PTID @ PF-NO-VARIANT s" range-app" PFBAD @ 20 1 20 cells CELL CELL PF-FLAGS-NONE
+   ' TWX-PF-ADD catch TC ! T-PF-DROP
+TC @ E-PF-SCHEMA T=  PFTX @ TWX-PF-ROLLBACK
+
+FID @ 1 1 TWX-SCHEMA-APP TWX-SCHEMA-ROOT+ PFBAD !
+TWX-PF-BEGIN PFTX !
+PFTX @ PTID @ PF-NO-VARIANT s" private-app" PFBAD @ 20 1 20 cells CELL CELL PF-FLAGS-NONE
+   ' TWX-PF-ADD catch TC ! T-PF-DROP
+TC @ E-PF-SCHEMA T=  PFTX @ TWX-PF-ROLLBACK
+
+CC-N TWX-SCHEMA-CON TWX-SCHEMA-ROOT+ PFARG !
+CC-N TWX-SCHEMA-CON TWX-SCHEMA-ROOT+ drop
+PID @ PFARG @ 2 TWX-SCHEMA-APP TWX-SCHEMA-ROOT+ PFAPP !
+PID @ 0 PK-LAYOUT TWX-TFAM-PK!
+TWX-PF-BEGIN PFTX !
+PFTX @ PTID @ PF-NO-VARIANT s" kind-app" PFAPP @ 20 1 20 cells CELL CELL PF-FLAGS-NONE
+   ' TWX-PF-ADD catch TC ! T-PF-DROP
+TC @ E-PF-SCHEMA T=  PFTX @ TWX-PF-ROLLBACK
+PID @ 0 PK-CELL TWX-TFAM-PK!
+TWX-PF-BEGIN PFTX !
+PFTX @ PTID @ PF-NO-VARIANT s" valid-app" PFAPP @ 20 1 20 cells CELL CELL PF-FLAGS-NONE
+   TWX-PF-ADD PFTX !
+PFTX @ TWX-PF-ROLLBACK
+
+\ A zero-arity APP has no argument-root range, so its only canonical start is
+\ zero. The canonical form remains accepted.
+CLID @ 1 0 TWX-SCHEMA-APP TWX-SCHEMA-ROOT+ PFBAD !
+TWX-PF-BEGIN PFTX !
+PFTX @ PTID @ PF-NO-VARIANT s" zero-app-start" PFBAD @
+   20 1 20 cells CELL CELL PF-FLAGS-NONE
+   ' TWX-PF-ADD catch TC ! T-PF-DROP
+TC @ E-PF-SCHEMA T=  PFTX @ TWX-PF-ROLLBACK
+CLID @ 0 0 TWX-SCHEMA-APP TWX-SCHEMA-ROOT+ PFAPP !
+TWX-PF-BEGIN PFTX !
+PFTX @ PTID @ PF-NO-VARIANT s" zero-app" PFAPP @
+   20 1 20 cells CELL CELL PF-FLAGS-NONE TWX-PF-ADD PFTX !
+PFTX @ TWX-PF-ROLLBACK
+
+\ STACK and PACKED accept only the canonical cell mapping. Other policies
+\ reject otherwise-valid rows until their field ABI validators exist.
+PTID @ TL-STACK-CELL-TAG TWX-TFAM-LAYOUT!
+TWX-PF-BEGIN PFTX !
+PFTX @ PTID @ PF-NO-VARIANT s" stack-bad" 1 20 1 21 cells CELL CELL PF-FLAGS-NONE
+   ' TWX-PF-ADD catch TC ! T-PF-DROP
+TC @ E-PF-LAYOUT T=  PFTX @ TWX-PF-ROLLBACK
+
+PTID @ TL-PACKED-TAG TWX-TFAM-LAYOUT!
+TWX-PF-BEGIN PFTX !
+PFTX @ PTID @ PF-NO-VARIANT s" packed-bad" 1 20 1 20 cells 2 cells CELL PF-FLAGS-NONE
+   ' TWX-PF-ADD catch TC ! T-PF-DROP
+TC @ E-PF-LAYOUT T=  PFTX @ TWX-PF-ROLLBACK
+
+PTID @ TL-NICHE TWX-TFAM-LAYOUT!
+TWX-PF-BEGIN PFTX !
+PFTX @ PTID @ PF-NO-VARIANT s" niche-bad" 1 20 1 20 cells CELL CELL PF-FLAGS-NONE
+   ' TWX-PF-ADD catch TC ! T-PF-DROP
+TC @ E-PF-LAYOUT T=  PFTX @ TWX-PF-ROLLBACK
+
+PTID @ TL-BOXED TWX-TFAM-LAYOUT!
+TWX-PF-BEGIN PFTX !
+PFTX @ PTID @ PF-NO-VARIANT s" boxed-bad" 1 20 1 20 cells CELL CELL PF-FLAGS-NONE
+   ' TWX-PF-ADD catch TC ! T-PF-DROP
+TC @ E-PF-LAYOUT T=  PFTX @ TWX-PF-ROLLBACK
+
+PTID @ TL-CUSTOM TWX-TFAM-LAYOUT!
+TWX-PF-BEGIN PFTX !
+PFTX @ PTID @ PF-NO-VARIANT s" custom-bad" 1 20 1 20 cells CELL CELL PF-FLAGS-NONE
+   ' TWX-PF-ADD catch TC ! T-PF-DROP
+TC @ E-PF-LAYOUT T=  PFTX @ TWX-PF-ROLLBACK
+PTID @ TL-STACK-CELL-TAG TWX-TFAM-LAYOUT!
+
+TWX-PF-BEGIN PFTX !
+PFTX @ PTID @ PF-NO-VARIANT s" flag-bad" 1 20 1 20 cells CELL CELL 1
+   ' TWX-PF-ADD catch TC ! T-PF-DROP
+TC @ E-PF-FLAGS T=  PFTX @ TWX-PF-ROLLBACK
+
+TWX-PF-BEGIN PFTX !
+PFTX @ PTID @ PF-NO-VARIANT s" overlap" 1 0 1 0 CELL CELL PF-FLAGS-NONE
+   ' TWX-PF-ADD catch TC ! T-PF-DROP
+TC @ E-PF-LAYOUT T=  PFTX @ TWX-PF-ROLLBACK
+
+\ Nested commit remains provisional. Outer rollback restores both high-waters;
+\ the next outer commit reuses the retired id and string space.
+TYPE-FIELD:COUNT PFBASE !  TF-STR-U @ PFSTR !
+TWX-PF-BEGIN PFOUT !
+PFOUT @ PTID @ PF-NO-VARIANT s" outer" 1 20 1 20 cells CELL CELL PF-FLAGS-NONE TWX-PF-ADD PFOUT !
+TYPE-FIELD:COUNT PFBASE @ T=  TF-STR-U @ PFSTR @ > -1 T=
+TWX-PF-BEGIN PFIN !
+PFIN @ PTID @ PF-NO-VARIANT s" inner" 1 21 1 21 cells CELL CELL PF-FLAGS-NONE TWX-PF-ADD PFIN !
+PFIN @ TWX-PF-COMMIT
+TYPE-FIELD:COUNT PFBASE @ T=
+PTID @ TYPE-FIELD:NO-VARIANT s" inner" TYPE-FIELD:FIND FOUNDF ! drop  FOUNDF @ 0 T=
+PFOUT @ TWX-PF-ROLLBACK
+TYPE-FIELD:COUNT PFBASE @ T=  TF-STR-U @ PFSTR @ T=
+PTID @ TYPE-FIELD:NO-VARIANT s" outer" TYPE-FIELD:FIND FOUNDF ! drop  FOUNDF @ 0 T=
+PTID @ TYPE-FIELD:NO-VARIANT s" inner" TYPE-FIELD:FIND FOUNDF ! drop  FOUNDF @ 0 T=
+
+TWX-PF-BEGIN PFTX !
+PFTX @ PTID @ PF-NO-VARIANT s" reuse" 1 20 1 20 cells CELL CELL PF-FLAGS-NONE TWX-PF-ADD PFTX !
+PFTX @ TWX-PF-COMMIT
+PTID @ TYPE-FIELD:NO-VARIANT s" reuse" TYPE-FIELD:FIND FOUNDF ! PFBASE @ T=  FOUNDF @ -1 T=
+
+\ Strict LIFO tokens reject stale/non-top commit without corrupting either frame.
+TWX-PF-BEGIN PFOUT !  TWX-PF-BEGIN PFIN !
+PFOUT @ ' TWX-PF-COMMIT catch TC ! drop  TC @ E-PF-TX T=
+PFIN @ TWX-PF-ROLLBACK  PFOUT @ TWX-PF-ROLLBACK
 
 \ ---------------------------------------------------------------------------
 \ 12. layout records: one per family, keyed by family; dup rejection.
@@ -505,7 +730,7 @@ FID @ 0 TWX-TFAM-PK@ PK-TYPE T=
 FID @ TWX-TFAM-SLOTS@ 3 T=
 s" pkgb" s" res" TWX-TFAM-FIND-IN FOUNDF ! PID @ T= FOUNDF @ -1 T=
 FID @ s" ok" TWX-SUMV-FIND FOUNDF ! VOK @ T= FOUNDF @ -1 T=
-PTID @ s" x" TWX-PF-FIND FOUNDF ! FX @ T= FOUNDF @ -1 T=
+PTID @ TYPE-FIELD:NO-VARIANT s" x" TYPE-FIELD:FIND FOUNDF ! FX @ T= FOUNDF @ -1 T=
 FID @ TWX-LAY-FIND FOUNDF ! TWX-LAY-SIZE@ 16 T= FOUNDF @ -1 T=
 R1 @ TWX-SCHEMA-ROOT@ TWX-SCHEMA-TAG@ SCH-PARAM T=
 NA @ TWX-SCHEMA-TAG@ SCH-APP T=

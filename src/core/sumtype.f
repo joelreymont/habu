@@ -54,17 +54,19 @@ variable TDECL-CUR-FAM              \ family id being declared (-1 outside a bod
 \ registries retire by counter (linear scans, interned offsets), so restoring
 \ the high-water marks fully removes a failed declaration's rows.
 variable TDM-TFAM   variable TDM-STR   variable TDM-PK
-variable TDM-SUMV   variable TDM-PF    variable TDM-LAY
+variable TDM-SUMV   variable TDM-PF    variable TDM-PFC   variable TDM-LAY
 variable TDM-SCH    variable TDM-ROOT
 variable TDECL-FAM-REG   \ family id registered by the LAST successful sum (-1 = none)
 
 : TDECL-MARK ( -- )
    TFAM-N @ TDM-TFAM !   TF-STR-U @ TDM-STR !   TF-PK-N @ TDM-PK !
-   SUMV-N @ TDM-SUMV !   PF-N @ TDM-PF !        LAY-N @ TDM-LAY !
+   SUMV-N @ TDM-SUMV !   PF-N @ TDM-PF !
+   PF-COMMIT-N @ TDM-PFC !   LAY-N @ TDM-LAY !
    SCH-N @ TDM-SCH !     SCH-ROOT-N @ TDM-ROOT ! ;
 : TDECL-RESTORE ( -- )
    TDM-TFAM @ TFAM-N !   TDM-STR @ TF-STR-U !   TDM-PK @ TF-PK-N !
-   TDM-SUMV @ SUMV-N !   TDM-PF @ PF-N !        TDM-LAY @ LAY-N !
+   TDM-SUMV @ SUMV-N !   TDM-PF @ PF-N !
+   TDM-PFC @ PF-COMMIT-N !   TDM-LAY @ LAY-N !
    TDM-SCH @ SCH-N !     TDM-ROOT @ SCH-ROOT-N ! ;
 
 : TDECL-REPORT ( -- )
@@ -120,18 +122,7 @@ variable TDECL-FAM-REG   \ family id registered by the LAST successful sum (-1 =
 \ --- name gate: reserved signature/type tokens, control words, and grammar
 \ keywords may not name a family or variant (docs §1, PLAN item 6).
 : TDECL-KEYWORD? ( ptr u8 n -- bool ) {: a:ptr u:n :}
-   a u s" variant" CORE-STR=CI IF RES-TRUE EXIT THEN
-   a u s" ;variant" CORE-STR=CI IF RES-TRUE EXIT THEN
-   a u s" ;sumtype" CORE-STR=CI IF RES-TRUE EXIT THEN
-   a u s" enum" CORE-STR=CI IF RES-TRUE EXIT THEN       \ item 14 enum block definer
-   a u s" ;enum" CORE-STR=CI IF RES-TRUE EXIT THEN      \ item 14 enum block close (;FOO)
-   a u s" product" CORE-STR=CI IF RES-TRUE EXIT THEN    \ item 15 product block definer
-   a u s" ;product" CORE-STR=CI IF RES-TRUE EXIT THEN   \ item 15 product block close (;FOO)
-   a u s" field" CORE-STR=CI IF RES-TRUE EXIT THEN      \ item 15 product field keyword
-   a u s" policy" CORE-STR=CI IF RES-TRUE EXIT THEN     \ item 16 layout-policy header keyword
-   a u s" derive" CORE-STR=CI IF RES-TRUE EXIT THEN     \ derive S1 header keyword
-   a u s" typefamily" CORE-STR=CI IF RES-TRUE EXIT THEN
-   a u s" sumtype" CORE-STR=CI ;
+   a u TF-GRAMMAR-KEYWORD? ;
 
 : TDECL-CONTROL? ( ptr u8 n -- bool ) {: a:ptr u:n :}
    a u s" if" CORE-STR=CI IF RES-TRUE EXIT THEN
@@ -161,7 +152,6 @@ variable TDECL-FAM-REG   \ family id registered by the LAST successful sum (-1 =
 : TDECL-RESERVED? ( ptr u8 n -- bool ) {: a:ptr u:n :}
    u 1 = IF RES-TRUE EXIT THEN                    \ a..z incl n/f/r type letters
    a u VREC-FIND IF drop RES-TRUE EXIT THEN drop
-   a u s" field" CORE-STR= IF RES-TRUE EXIT THEN
    a u CON-OF 0 <> IF RES-TRUE EXIT THEN          \ builtin + deftype CT names
    a u ATOM-TOK? IF RES-TRUE EXIT THEN
    a u FRESH-ATOM-TOK? IF RES-TRUE EXIT THEN
@@ -609,14 +599,18 @@ variable TDD-I   variable TDD-J   variable TDD-K
 \ variants and private products have no construction surface (fail-closed).
 variable TDP-N   \ product field count (schema roots)
 variable TDP-W   \ cumulative product cell width / next field's cell OFFSET
+variable TDP-FAM
+variable TDP-TX
 
 : TDECL-REQUIRE-FIELD-NAME ( ptr u8 n -- ) {: a:ptr u:n :}
    u 0= IF a u s" missing field name" E-TDECL-SYNTAX TDECL-THROW THEN
    a u DELIM? IF a u s" bad field name" E-TDECL-SYNTAX TDECL-THROW THEN
-   a u TDECL-KEYWORD? IF a u s" reserved field name" E-TDECL-NAME TDECL-THROW THEN
    a u TF-CANON? 0= IF
       a u s" field name must be a lowercase tail" E-TFAM-CASE TDECL-THROW
-   THEN ;
+   THEN
+   a u TDECL-TOK!
+   s" reserved field name" TDECL-WHY!
+   a u PF-NAME-REQUIRE ;
 
 \ --- layout-kinded product fields S1 (dot habu-checker-capability-layout-4e7f1f03):
 \ a PRODUCT field may be typed as an S1-tier layout family — sum/enum kind,
@@ -642,19 +636,20 @@ variable TDP-W   \ cumulative product cell width / next field's cell OFFSET
    a u TDECL-PAY-ELEM ;
 
 \ TDECL-PRODUCT-FIELD ( fam -- ) : the `field` keyword is already consumed; read
-\ the field tail + one field-shaped type into a schema root, add the PF row.
-\ PF.SLOT is the field's cumulative CELL OFFSET and the product's SLOTS/width
-\ is the field-width sum — identity with the old field-index/field-count values
-\ while every admitted field is one cell, and the correct shape for wider tiers.
+\ the field tail + one field-shaped type into a schema root, atomically add the
+\ PF row. Existing PRODUCT fields use the canonical CELL payload ABI admitted
+\ by stack-cell-tag and packed-tag; other policies remain fail-closed in PF.
 : TDECL-PRODUCT-FIELD ( n -- ) {: fam:n :}
    TDECL-NEXT {: fna:ptr fnu:n :}
    fna fnu TDECL-REQUIRE-FIELD-NAME
    SCHEMA-ROOT-N@ {: ss:n :}
    TDECL-NEXT TDECL-FIELD-ELEM SCHEMA-ROOT+ drop    \ one field type (family/letter/con/ptr T)
+   ss SCHEMA-ROOT@ TDECL-SCH-WIDTH {: fw:n :}
    fna fnu TDECL-TOK!
    s" duplicate field" TDECL-WHY!
-   fam fna fnu ss TDP-W @ PF-ADD drop               \ PF-ADD: canon + dup-reject
-   ss SCHEMA-ROOT@ TDECL-SCH-WIDTH TDP-W @ + TDP-W !
+   TDP-TX @ fam PF-NO-VARIANT fna fnu ss
+   TDP-W @ fw TDP-W @ cells fw cells CELL PF-FLAGS-NONE PF-ADD TDP-TX !
+   fw TDP-W @ + TDP-W !
    TDP-N @ 1 + TDP-N ! ;
 
 : TDECL-PRODUCT-FIELDS ( n -- ) {: fam:n :}
@@ -677,6 +672,26 @@ variable TDP-W   \ cumulative product cell width / next field's cell OFFSET
    fam vstart 2 TFAM-VAR-RANGE!
    fam vstart 2 TDECL-CTOR-PUBLISH ;
 
+: TDECL-PRODUCT-TX-BODY ( -- )
+   TDP-FAM @ {: fam:n :}
+   PF-N @ {: fstart:n :}
+   SCHEMA-ROOT-N@ {: rstart:n :}
+   0 TDP-N !   0 TDP-W !
+   fam TDECL-PRODUCT-FIELDS
+   TDP-N @ 0= IF TDN-A @ TDN-U @ s" empty product" E-TDECL-SYNTAX TDECL-THROW THEN
+   fam fstart TDP-N @ TFAM-FLD-RANGE!
+   fam TDP-W @ TFAM-SLOTS!               \ product width = field cell width sum (no tag)
+   fam TDECL-LAYOUT-DESC
+   fam rstart TDECL-PRODUCT-ROWS
+   fam fam TFAM-VAR-START@ 1 TDECL-DERIVE-REQUIRE ;
+
+: TDECL-PRODUCT-TX ( n -- ) {: fam:n :}
+   fam TDP-FAM !
+   PF-BEGIN TDP-TX !
+   [: TDECL-PRODUCT-TX-BODY ;] catch {: rc:n :}
+   rc 0= 0= IF TDP-TX @ PF-ROLLBACK rc throw THEN
+   TDP-TX @ PF-COMMIT ;
+
 : CHECKER-DEFPRODUCT-BODY ( -- )
    TDECL-REQUIRE-FIT
    TDN-A @ TDN-U @ TDECL-REQUIRE-FAMILY-NAME
@@ -687,16 +702,7 @@ variable TDP-W   \ cumulative product cell width / next field's cell OFFSET
    fam TDECL-CUR-FAM !                    \ field self-references reject by id
    fam TDECL-POLICY                       \ optional POLICY clause before the fields
    fam TDECL-DERIVE                       \ optional DERIVE clause (derive S2)
-   PF-N @ {: fstart:n :}
-   SCHEMA-ROOT-N@ {: rstart:n :}
-   0 TDP-N !   0 TDP-W !
-   fam TDECL-PRODUCT-FIELDS
-   TDP-N @ 0= IF TDN-A @ TDN-U @ s" empty product" E-TDECL-SYNTAX TDECL-THROW THEN
-   fam fstart TDP-N @ TFAM-FLD-RANGE!
-   fam TDP-W @ TFAM-SLOTS!               \ product width = field cell width sum (no tag)
-   fam TDECL-LAYOUT-DESC
-   fam rstart TDECL-PRODUCT-ROWS
-   fam  fam TFAM-VAR-START@  1 TDECL-DERIVE-REQUIRE   \ field roles: the make row's schema
+   fam TDECL-PRODUCT-TX
    fam TDECL-FAM-REG ! ;
 
 : CHECKER-DEFPRODUCT ( ptr u8 n ptr u8 n -- )   \ name, buffered body tokens

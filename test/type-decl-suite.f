@@ -87,11 +87,6 @@ TRUSTED: TWX-PAIR ( n n -- ) PAIR ;
 TRUSTED: TWX-PARAM-SCR+ ( n -- ) PARAM-SCR+ ;
 TRUSTED: TWX-PARAM>FAM ( n -- n ) PARAM>FAM ;
 TRUSTED: TWX-PARAM>HID ( n -- n ) PARAM>HID ;
-TRUSTED: TWX-PF-FAM@ ( n -- n ) PF-FAM@ ;
-TRUSTED: TWX-PF-FIND ( n ptr u8 n -- n bool ) PF-FIND ;
-TRUSTED: TWX-PF-NAME$ ( n -- ptr u8 n ) PF-NAME$ ;
-TRUSTED: TWX-PF-SCH@ ( n -- n ) PF-SCH@ ;
-TRUSTED: TWX-PF-SLOT@ ( n -- n ) PF-SLOT@ ;
 TRUSTED: TWX-PUSH-LOGICAL ( n n -- n ) PUSH-LOGICAL ;
 TRUSTED: TWX-R-RES ( n -- n ) R-RES ;
 TRUSTED: TWX-SCHEMA-A@ ( n -- n ) SCHEMA-A@ ;
@@ -127,11 +122,11 @@ TRUSTED: TWX-UNIFY ( n n -- bool ) UNIFY ;
 : TDT-BASE! ( -- )
    TFAM-N@ TDB-TFAM !   SUMV-N@ TDB-SUMV !
    SCHEMA-N@ TDB-SCH !  SCHEMA-ROOT-N@ TDB-ROOT !
-   TF-STR-U@ TDB-STR !  TF-PK-N@ TDB-PK !   PF-N@ TDB-PF ! ;
+   TF-STR-U@ TDB-STR !  TF-PK-N@ TDB-PK !   TYPE-FIELD:COUNT TDB-PF ! ;
 : TDT-BASE= ( -- )
    TFAM-N@ TDB-TFAM @ T=   SUMV-N@ TDB-SUMV @ T=
    SCHEMA-N@ TDB-SCH @ T=  SCHEMA-ROOT-N@ TDB-ROOT @ T=
-   TF-STR-U@ TDB-STR @ T=  TF-PK-N@ TDB-PK @ T=   PF-N@ TDB-PF @ T= ;
+   TF-STR-U@ TDB-STR @ T=  TF-PK-N@ TDB-PK @ T=   TYPE-FIELD:COUNT TDB-PF @ T= ;
 : TDT-NEG ( ptr u8 n n -- ) {: a:ptr u:n code:n :}
    TDT-BASE!
    a u TDT-EVAL-CATCH code T=
@@ -331,18 +326,18 @@ TDF @ TWX-TFAM-SLOTS@ 2 T=
 TDF @ TFAM-WIDTH@ 2 T=
 \ two PF field rows, id-keyed by (family, tail), in declaration slot order.
 TDF @ TWX-TFAM-FLD-COUNT@ 2 T=
-TDF @ s" fst" TWX-PF-FIND TDOK ! TDX !
+TDF @ TYPE-FIELD:NO-VARIANT s" fst" TYPE-FIELD:FIND TDOK ! TDX !
 TDOK @ -1 T=
-TDX @ TWX-PF-FAM@ TDF @ T=
-TDX @ TWX-PF-SLOT@ 0 T=
-TDX @ TWX-PF-NAME$ s" fst" T$=
-TDF @ s" snd" TWX-PF-FIND TDOK ! TDY !
+TDX @ TYPE-FIELD:FAMILY@ TDF @ T=
+TDX @ TYPE-FIELD:SLOT@ 0 T=
+TDX @ TYPE-FIELD:NAME$ s" fst" T$=
+TDF @ TYPE-FIELD:NO-VARIANT s" snd" TYPE-FIELD:FIND TDOK ! TDY !
 TDOK @ -1 T=
-TDY @ TWX-PF-SLOT@ 1 T=
+TDY @ TYPE-FIELD:SLOT@ 1 T=
 \ field schema: fst = paramref 0, snd = paramref 1 (one cell each).
-TDX @ TWX-PF-SCH@ TWX-SCHEMA-ROOT@ TWX-SCHEMA-PARAM? -1 T=
-TDX @ TWX-PF-SCH@ TWX-SCHEMA-ROOT@ TWX-SCHEMA-A@ 0 T=
-TDY @ TWX-PF-SCH@ TWX-SCHEMA-ROOT@ TWX-SCHEMA-A@ 1 T=
+TDX @ TYPE-FIELD:SCHEMA@ TWX-SCHEMA-ROOT@ TWX-SCHEMA-PARAM? -1 T=
+TDX @ TYPE-FIELD:SCHEMA@ TWX-SCHEMA-ROOT@ TWX-SCHEMA-A@ 0 T=
+TDY @ TYPE-FIELD:SCHEMA@ TWX-SCHEMA-ROOT@ TWX-SCHEMA-A@ 1 T=
 \ generated-word metadata (item 15): two generator-owned SUMV rows sharing the
 \ field schema range, ctor package derived from the (pkg, tail) identity.
 TDF @ TFAM-VAR-COUNT@ 2 T=
@@ -372,9 +367,9 @@ TDOK @ -1 T=
 TDF @ TFAM-ARITY@ 0 T=
 TDF @ TWX-TFAM-SLOTS@ 2 T=
 TDF @ TFAM-WIDTH@ 2 T=
-TDF @ s" x" TWX-PF-FIND TDOK ! TDX !   TDOK @ -1 T=
-TDX @ TWX-PF-SCH@ TWX-SCHEMA-ROOT@ TWX-SCHEMA-CON? -1 T=
-TDX @ TWX-PF-SCH@ TWX-SCHEMA-ROOT@ TWX-SCHEMA-A@ CC-N T=
+TDF @ TYPE-FIELD:NO-VARIANT s" x" TYPE-FIELD:FIND TDOK ! TDX !   TDOK @ -1 T=
+TDX @ TYPE-FIELD:SCHEMA@ TWX-SCHEMA-ROOT@ TWX-SCHEMA-CON? -1 T=
+TDX @ TYPE-FIELD:SCHEMA@ TWX-SCHEMA-ROOT@ TWX-SCHEMA-A@ CC-N T=
 s" TDPT-ID ( tdpoint -- tdpoint )" CHECK-QUIET-CANDIDATE! -1 T=
 
 \ mixed param + ptr fields: a ptr field is one cell; arity 1 has one param field.
@@ -385,11 +380,11 @@ PRODUCT tdbuf 1
 s" " s" tdbuf" TWX-TFAM-FIND-IN TDOK ! TDF !
 TDOK @ -1 T=
 TDF @ TWX-TFAM-SLOTS@ 2 T=
-TDF @ s" raw" TWX-PF-FIND TDOK ! TDX !   TDOK @ -1 T=
-TDX @ TWX-PF-SLOT@ 1 T=
-TDX @ TWX-PF-SCH@ TWX-SCHEMA-ROOT@ TWX-SCHEMA-PTR? -1 T=
-TDX @ TWX-PF-SCH@ TWX-SCHEMA-ROOT@ TWX-SCHEMA-A@ TWX-SCHEMA-CON? -1 T=
-TDX @ TWX-PF-SCH@ TWX-SCHEMA-ROOT@ TWX-SCHEMA-A@ TWX-SCHEMA-A@ s" u8" TWX-CON-OF T=
+TDF @ TYPE-FIELD:NO-VARIANT s" raw" TYPE-FIELD:FIND TDOK ! TDX !   TDOK @ -1 T=
+TDX @ TYPE-FIELD:SLOT@ 1 T=
+TDX @ TYPE-FIELD:SCHEMA@ TWX-SCHEMA-ROOT@ TWX-SCHEMA-PTR? -1 T=
+TDX @ TYPE-FIELD:SCHEMA@ TWX-SCHEMA-ROOT@ TWX-SCHEMA-A@ TWX-SCHEMA-CON? -1 T=
+TDX @ TYPE-FIELD:SCHEMA@ TWX-SCHEMA-ROOT@ TWX-SCHEMA-A@ TWX-SCHEMA-A@ s" u8" TWX-CON-OF T=
 
 \ ---------------------------------------------------------------------------
 \ item 12 (habu-tfam-12), slice 1 — layout-aware generic stack ops. A logical
@@ -703,13 +698,13 @@ TDF @ TFAM-KIND@ TK-PRODUCT T=
 TDF @ TWX-TFAM-SLOTS@ 3 T=                    \ sum of field cell widths (all 1)
 TDF @ TFAM-WIDTH@ 3 T=
 TDF @ TWX-TFAM-FLD-START@ TDX !
-TDX @ TWX-PF-SLOT@ 0 T=                       \ cumulative cell offsets
-TDX @ 1 + TWX-PF-SLOT@ 1 T=
-TDX @ 2 + TWX-PF-SLOT@ 2 T=
-TDX @ TWX-PF-SCH@ TWX-SCHEMA-ROOT@ TWX-SCHEMA-APP? -1 T=
+TDX @ TYPE-FIELD:SLOT@ 0 T=                       \ cumulative cell offsets
+TDX @ 1 + TYPE-FIELD:SLOT@ 1 T=
+TDX @ 2 + TYPE-FIELD:SLOT@ 2 T=
+TDX @ TYPE-FIELD:SCHEMA@ TWX-SCHEMA-ROOT@ TWX-SCHEMA-APP? -1 T=
 s" " s" tdcolor" TWX-TFAM-FIND-IN TDOK ! TDY !
-TDX @ TWX-PF-SCH@ TWX-SCHEMA-ROOT@ TWX-SCHEMA-A@ TDY @ T=   \ SC-APP carries the enum family-id
-TDX @ 2 + TWX-PF-SCH@ TWX-SCHEMA-ROOT@ TWX-SCHEMA-CON? -1 T=
+TDX @ TYPE-FIELD:SCHEMA@ TWX-SCHEMA-ROOT@ TWX-SCHEMA-A@ TDY @ T=   \ SC-APP carries the enum family-id
+TDX @ 2 + TYPE-FIELD:SCHEMA@ TWX-SCHEMA-ROOT@ TWX-SCHEMA-CON? -1 T=
 TDF @ TFAM-VAR-START@ TWX-SUMV-PAYCELLS@ 3 T=       \ make/unmake rows carry cell width
 \ generated MAKE/UNMAKE consume/produce the fields as their families.
 s" TDP1 ( tdcolor tdlight n -- tdprec ) TDPREC:MAKE" CHECK-QUIET-CANDIDATE! -1 T=
@@ -767,7 +762,7 @@ s" " s" tdpwide" TWX-TFAM-FIND-IN TDOK ! TDF !
 TDOK @ -1 T=
 TDF @ TWX-TFAM-SLOTS@ 2 T=
 TDF @ TFAM-WIDTH@ 2 T=
-TDF @ TWX-TFAM-FLD-START@ TWX-PF-SCH@ TWX-SCHEMA-ROOT@ TWX-SCHEMA-APP? -1 T=
+TDF @ TWX-TFAM-FLD-START@ TYPE-FIELD:SCHEMA@ TWX-SCHEMA-ROOT@ TWX-SCHEMA-APP? -1 T=
 s" TDP-WIDE-MAKE ( tdpw -- tdpwide ) TDPWIDE:MAKE" CHECK-QUIET-CANDIDATE! -1 T=
 \ a SELF-referential field is recursive: item 16 boxed sub-slice 1 rejects it with
 \ the §24 recursive-sum diagnostic (E-TDECL-RECURSIVE), not the generic payload one.
@@ -1155,6 +1150,7 @@ s" ENUM tdres red ;ENUM" E-TFAM-DUP TDT-NEG
 \ malformed product declarations (item 15): every reject rolls back to baseline
 \ via the shared transactional path (TDT-NEG asserts TDT-BASE=, incl. PF-N), so
 \ no family, field, or schema row survives a failed product.
+TDIAG-BUF 8192 DIAG-BUFFER!
 \ empty / unterminated bodies.
 s" PRODUCT tdpempty 0 ;PRODUCT" E-TDECL-SYNTAX TDT-NEG
 s" PRODUCT tdpnoterm 2 FIELD fst a FIELD snd b" E-TDECL-SYNTAX TDT-NEG
@@ -1166,7 +1162,8 @@ s" PRODUCT tdpoor 0 FIELD x a ;PRODUCT" E-TDECL-PAYLOAD TDT-NEG
 s" PRODUCT tdpptr 1 FIELD x ptr ;PRODUCT" E-TDECL-SYNTAX TDT-NEG
 \ bad field names: uppercase, grammar keyword.
 s" PRODUCT tdpfc 1 FIELD X a ;PRODUCT" E-TFAM-CASE TDT-NEG
-s" PRODUCT tdpfk 1 FIELD field a ;PRODUCT" E-TDECL-NAME TDT-NEG
+s" PRODUCT tdpffield 0 FIELD field n ;PRODUCT" E-PF-NAME TDT-NEG
+s" PRODUCT tdpfmake 0 FIELD make n ;PRODUCT" E-PF-NAME TDT-NEG
 \ a stray token where FIELD is expected.
 s" PRODUCT tdpstray 1 stray FIELD x a ;PRODUCT" E-TDECL-SYNTAX TDT-NEG
 \ missing arity token.
@@ -1379,11 +1376,11 @@ TDOK @ -1 T=
 TDF @ TWX-TFAM-SLOTS@ 1 T=
 s" tdqc" s" cprod" TWX-TFAM-FIND-IN TDOK ! TDF !
 TDOK @ -1 T=
-TDF @ s" child" TWX-PF-FIND TDOK ! TDY !
+TDF @ TYPE-FIELD:NO-VARIANT s" child" TYPE-FIELD:FIND TDOK ! TDY !
 TDOK @ -1 T=
 s" tdqp" s" qslot" TWX-TFAM-FIND-IN TDOK ! TDX !   TDOK @ -1 T=
-TDY @ TWX-PF-SCH@ TWX-SCHEMA-ROOT@ TWX-SCHEMA-APP? -1 T=
-TDY @ TWX-PF-SCH@ TWX-SCHEMA-ROOT@ TWX-SCHEMA-A@ TDX @ T=
+TDY @ TYPE-FIELD:SCHEMA@ TWX-SCHEMA-ROOT@ TWX-SCHEMA-APP? -1 T=
+TDY @ TYPE-FIELD:SCHEMA@ TWX-SCHEMA-ROOT@ TWX-SCHEMA-A@ TDX @ T=
 \ negatives: named code + full registry rollback each time.
 \ a bogus qualifier never resolves.
 s" SUMTYPE tdqb1 0 VARIANT bv nopkg:qslot ;VARIANT ;SUMTYPE" E-TDECL-PAYLOAD TDT-NEG
@@ -1444,6 +1441,13 @@ DIAG-BUFFER$ s" duplicate variant" TDT-CONTAINS? -1 T=
 s" ENUM tdediag red red ;ENUM" E-TFAM-DUP TDT-NEG
 DIAG-BUFFER$ s" bad enum declaration" TDT-CONTAINS? -1 T=
 DIAG-BUFFER$ s" duplicate variant" TDT-CONTAINS? -1 T=
+\ PRODUCT delegates reserved field names to the PF registry truth while the
+\ declaration layer owns the exact token/reason packet.
+TDIAG-BUF 8192 DIAG-BUFFER!
+s" PRODUCT tdpfdiag 0 FIELD make n ;PRODUCT" E-PF-NAME TDT-NEG
+DIAG-BUFFER$ s" bad product declaration" TDT-CONTAINS? -1 T=
+DIAG-BUFFER$ s" reserved field name" TDT-CONTAINS? -1 T=
+DIAG-BUFFER$ s" at 'make'" TDT-CONTAINS? -1 T=
 \ item 16: a policy reject flows into the same declaration-shaped prose packet —
 \ it rides the standard TWX-TDECL-THROW path, so it needs no repair-diagnostics (item
 \ 13) change; the richer JSON ADT fields join it unchanged when item 13 lands.

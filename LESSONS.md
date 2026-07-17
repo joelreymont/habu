@@ -5552,3 +5552,9 @@ unchanged (148855). Keys for milestone 2:
 - **A harness must preserve the child outcome before comparing output.** The
   legacy NF runner discards status and stderr, so an undefined cold-prefix token
   surfaced as a false wide-memory mismatch instead of its exact rc 70 diagnostic.
+- **Evolve the existing registry truth in place.** A richer shared field model
+  belongs in PF with its current consumers migrated atomically; a parallel arena,
+  name pool, declaration seam, and duplicate roles create conflicting authority.
+- **Package reflection needs package-aware checker rows.** Keep raw registry
+  words as implementation detail and model the sealed public surface with
+  `PPRIM:` package/tail rows; a colon-spelled `PRIM:` name loses package identity.

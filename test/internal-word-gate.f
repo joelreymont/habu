@@ -143,7 +143,9 @@ create IWG-EMPTY 1 allot            \ zero-length stdin
    s" bare CHECKER-FIND-ACTIVE-SIG fails closed" T-LABEL
    s" CHECKER-FIND-ACTIVE-SIG" IWG-NEG-LOAD
    s" bare E-INST fails closed" T-LABEL
-   s" E-INST" IWG-NEG-LOAD ;
+   s" E-INST" IWG-NEG-LOAD
+   s" bare PF-BEGIN mutation fails closed" T-LABEL
+   s" PF-BEGIN" IWG-NEG-LOAD ;
 
 : IWG-ARGS-FORGE$ ( -- ptr u8 n )        \ args present: the gate is not depth-keyed
    SB-RESET
@@ -241,6 +243,24 @@ create IWG-EMPTY 1 allot            \ zero-length stdin
    s" PRODUCT iwgpr 0 FIELD x n ;PRODUCT" SB-APPEND IWG-LF
    SB$ ;
 
+: IWG-PF-REFLECT-FORGE$ ( -- ptr u8 n )  \ packaged committed reflection is checked/public
+   SB-RESET
+   s" PRODUCT iwgpf 0 FIELD x n ;PRODUCT" SB-APPEND IWG-LF
+   s" : IWG-PF-READ ( -- n )" SB-APPEND IWG-LF
+   s"    TYPE-FIELD:COUNT drop" SB-APPEND IWG-LF
+   s"    TFAM-N@ 1 - TYPE-FIELD:NO-VARIANT 0 TYPE-FIELD:EACH if drop else drop then" SB-APPEND IWG-LF
+   S\"    TFAM-N@ 1 - TYPE-FIELD:NO-VARIANT s\" x\" TYPE-FIELD:FIND" SB-APPEND IWG-LF
+   s"    if dup TYPE-FIELD:FAMILY@ drop dup TYPE-FIELD:VARIANT@ drop" SB-APPEND IWG-LF
+   s"       dup TYPE-FIELD:NAME$ 2drop dup TYPE-FIELD:SCHEMA@ drop" SB-APPEND IWG-LF
+   s"       dup TYPE-FIELD:CELLS@ drop dup TYPE-FIELD:BYTE-OFF@ drop" SB-APPEND IWG-LF
+   s"       dup TYPE-FIELD:BYTES@ drop dup TYPE-FIELD:ALIGN@ drop" SB-APPEND IWG-LF
+   s"       dup TYPE-FIELD:FLAGS@ drop TYPE-FIELD:SLOT@ else drop -1 then ;" SB-APPEND IWG-LF
+   s" IWG-PF-READ . cr" SB-APPEND IWG-LF
+   SB$ ;
+
+: IWG-PF-RAW-FORGE$ ( -- ptr u8 n )      \ raw implementation names are not checked/public
+   s" : IWG-PF-RAW ( n n ptr u8 n -- n bool ) PF-FIND ;" ;
+
 \ The roles.f nominal definers are the same hazard class as the openers but
 \ admitted via certified usigs, not PRIM: axioms (dot
 \ habu-checker-deftype-deflinear-8e9d1dc5): declare + use each at top level.
@@ -322,6 +342,11 @@ create IWG-EMPTY 1 allot            \ zero-length stdin
 : IWG-OPENER-CASES ( -- )
    s" TYPEFAMILY/PRODUCT DSL still works at top level" T-LABEL
    IWG-TDSL-TOP-FORGE$ IWG-RUN-LOAD IWG-ASSERT-OK
+   s" packaged field reflection is checked/public" T-LABEL
+   IWG-PF-REFLECT-FORGE$ IWG-RUN-LOAD IWG-ASSERT-OK
+   s" raw field reflection is unavailable to checked code" T-LABEL
+   IWG-PF-RAW-FORGE$ IWG-RUN-LOAD
+   s" at 'PF-FIND'" IWG-ASSERT-DIAG
    s" TYPEFAMILY in a checked body is rejected unsafe" T-LABEL
    s" TYPEFAMILY" IWG-NEG-OPENER
    s" SUMTYPE in a checked body is rejected unsafe" T-LABEL
