@@ -5353,3 +5353,6 @@ unchanged (148855). Keys for milestone 2:
   Pass the reconstructed body buffer already containing the immediate token to
   `CHECK!`; a bespoke short JSON object silently drops spans, effects, return
   rows, schema validation, and repair-packet compatibility.
+- **Test-harness package privacy does not extend into spawned fixtures.** Keep
+  harness support short and private, but give generated child words collision-
+  resistant names because each fixture loads into the engine's global scope.

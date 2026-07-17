@@ -27,264 +27,293 @@ require tools/gate-json-assert-core.f
 require tools/argv.f
 require tools/repair-packet-core.f
 
-$1000 constant LRD-CAP
-60000 constant LRD-TIMEOUT-MS
-70 constant LRD-REJECT-RC            \ the checked-reject exit class
-3 constant LRD-TEST-OUT-U
-5 constant LRD-TEST-ERR-U
+package LOAD-REJECT-TEST
 
-create LRD-OUT LRD-CAP allot
-create LRD-ERR LRD-CAP allot
-create LRD-EMPTY 1 allot             \ zero-length stdin
-create LRD-BASE FS-PATH-CAP allot
-create LRD-UNDEF-PATH FS-PATH-CAP allot
-create LRD-BODY-PATH FS-PATH-CAP allot
-create LRD-OUTER-PATH FS-PATH-CAP allot
-create LRD-FRAG-PATH FS-PATH-CAP allot
-create LRD-INC-PATH FS-PATH-CAP allot
-create LRD-REQ-PATH FS-PATH-CAP allot
-create LRD-TOP-INC-PATH FS-PATH-CAP allot
-create LRD-TOP-REQ-PATH FS-PATH-CAP allot
-create LRD-RUNTIME-PATH FS-PATH-CAP allot
-create LRD-MODELED-PATH FS-PATH-CAP allot
-create LRD-TRUSTED-PATH FS-PATH-CAP allot
+$1000 constant CAP
+60000 constant TIMEOUT-MS
+70 constant REJECT-RC
+3 constant TEST-OUT-U
+5 constant TEST-ERR-U
 
-variable LRD-BASE-U
-variable LRD-UNDEF-U
-variable LRD-BODY-U
-variable LRD-OUTER-U
-variable LRD-FRAG-U
-variable LRD-INC-U
-variable LRD-REQ-U
-variable LRD-TOP-INC-U
-variable LRD-TOP-REQ-U
-variable LRD-RUNTIME-U
-variable LRD-MODELED-U
-variable LRD-TRUSTED-U
-variable LRD-OUT-U
-variable LRD-ERR-U
-variable LRD-EXITED
-variable LRD-RC
+create OUT CAP allot
+create ERR CAP allot
+create EMPTY 1 allot
+create BASE FS-PATH-CAP allot
+create UNDEF-P FS-PATH-CAP allot
+create BODY-P FS-PATH-CAP allot
+create OUTER-P FS-PATH-CAP allot
+create FRAG-P FS-PATH-CAP allot
+create INC-P FS-PATH-CAP allot
+create REQ-P FS-PATH-CAP allot
+create TOP-INC-P FS-PATH-CAP allot
+create TOP-REQ-P FS-PATH-CAP allot
+create RUNTIME-P FS-PATH-CAP allot
+create MODELED-P FS-PATH-CAP allot
+create TRUSTED-P FS-PATH-CAP allot
 
-: LRD-BASE$ ( -- ptr u8 n )
-   LRD-BASE LRD-BASE-U @ ;
+variable BASE-U
+variable UNDEF-U
+variable BODY-U
+variable OUTER-U
+variable FRAG-U
+variable INC-U
+variable REQ-U
+variable TOP-INC-U
+variable TOP-REQ-U
+variable RUNTIME-U
+variable MODELED-U
+variable TRUSTED-U
+variable OUT-U
+variable ERR-U
+variable EXITED
+variable RC
 
-: LRD-UNDEF$ ( -- ptr u8 n )
-   LRD-UNDEF-PATH LRD-UNDEF-U @ ;
+: BASE$ ( -- ptr u8 n )
+   BASE BASE-U @ ;
 
-: LRD-BODY$ ( -- ptr u8 n )
-   LRD-BODY-PATH LRD-BODY-U @ ;
+: UNDEF$ ( -- ptr u8 n )
+   UNDEF-P UNDEF-U @ ;
 
-: LRD-OUTER$ ( -- ptr u8 n )
-   LRD-OUTER-PATH LRD-OUTER-U @ ;
+: BODY$ ( -- ptr u8 n )
+   BODY-P BODY-U @ ;
 
-: LRD-FRAG$ ( -- ptr u8 n )
-   LRD-FRAG-PATH LRD-FRAG-U @ ;
+: OUTER$ ( -- ptr u8 n )
+   OUTER-P OUTER-U @ ;
 
-: LRD-INC$ ( -- ptr u8 n )
-   LRD-INC-PATH LRD-INC-U @ ;
+: FRAG$ ( -- ptr u8 n )
+   FRAG-P FRAG-U @ ;
 
-: LRD-REQ$ ( -- ptr u8 n )
-   LRD-REQ-PATH LRD-REQ-U @ ;
+: INC$ ( -- ptr u8 n )
+   INC-P INC-U @ ;
 
-: LRD-TOP-INC$ ( -- ptr u8 n )
-   LRD-TOP-INC-PATH LRD-TOP-INC-U @ ;
+: REQ$ ( -- ptr u8 n )
+   REQ-P REQ-U @ ;
 
-: LRD-TOP-REQ$ ( -- ptr u8 n )
-   LRD-TOP-REQ-PATH LRD-TOP-REQ-U @ ;
+: TOP-INC$ ( -- ptr u8 n )
+   TOP-INC-P TOP-INC-U @ ;
 
-: LRD-RUNTIME$ ( -- ptr u8 n )
-   LRD-RUNTIME-PATH LRD-RUNTIME-U @ ;
+: TOP-REQ$ ( -- ptr u8 n )
+   TOP-REQ-P TOP-REQ-U @ ;
 
-: LRD-MODELED$ ( -- ptr u8 n )
-   LRD-MODELED-PATH LRD-MODELED-U @ ;
+: RUNTIME$ ( -- ptr u8 n )
+   RUNTIME-P RUNTIME-U @ ;
 
-: LRD-TRUSTED$ ( -- ptr u8 n )
-   LRD-TRUSTED-PATH LRD-TRUSTED-U @ ;
+: MODELED$ ( -- ptr u8 n )
+   MODELED-P MODELED-U @ ;
 
-: LRD-WRITE-FRAG-FIXTURE ( ptr u8 n ptr u8 n ptr u8 n -- )
+: TRUSTED$ ( -- ptr u8 n )
+   TRUSTED-P TRUSTED-U @ ;
+
+: FRAG-FIXTURE! ( ptr u8 n ptr u8 n ptr u8 n -- )
    {: pre:ptr preu:n post:ptr postu:n path:ptr pathu:n :}
    SB-RESET
    pre preu SB-APPEND
-   LRD-FRAG$ SB-APPEND
+   FRAG$ SB-APPEND
    post postu SB-APPEND
    path pathu SB$ WRITE-ALL ;
 
 \ Resolve the child engine (the gate-runner-entry-test pattern).
-: LRD-HB$ ( -- ptr u8 n )
+: HB$ ( -- ptr u8 n )
    s" HABU_UNDER_TEST" >LEN PROC-ENV-DEFAULT$? if LEN>N exit then
    2drop
    s" HABU_UNDER_TEST" GETENV dup 0= if
       2drop s" bin/hb" exit
    then ;
 
-: LRD-SETUP ( -- )
+: PATH! ( ptr u8 n ptr u8 ptr n -- )
+   {: name:ptr nameu:n dst:ptr lenp:ptr :}
+   BASE$ name nameu dst JOIN-PATH lenp ! ;
+
+: ROOT! ( -- )
    CLEANUP-RESET
    s" habu-load-reject-diag" TMPDIR-MKDIR {: a:ptr u:n :}
-   a LRD-BASE u BYTE-COPY
-   u LRD-BASE-U !
-   LRD-BASE$ CLEANUP-TREE+
-   LRD-BASE$ s" undef.f" LRD-UNDEF-PATH JOIN-PATH LRD-UNDEF-U !
-   LRD-BASE$ s" body.f" LRD-BODY-PATH JOIN-PATH LRD-BODY-U !
-   LRD-BASE$ s" outer.f" LRD-OUTER-PATH JOIN-PATH LRD-OUTER-U !
-   LRD-BASE$ s" frag.f" LRD-FRAG-PATH JOIN-PATH LRD-FRAG-U !
-   LRD-BASE$ s" imm-include.f" LRD-INC-PATH JOIN-PATH LRD-INC-U !
-   LRD-BASE$ s" imm-require.f" LRD-REQ-PATH JOIN-PATH LRD-REQ-U !
-   LRD-BASE$ s" top-include.f" LRD-TOP-INC-PATH JOIN-PATH LRD-TOP-INC-U !
-   LRD-BASE$ s" top-require.f" LRD-TOP-REQ-PATH JOIN-PATH LRD-TOP-REQ-U !
-   LRD-BASE$ s" runtime.f" LRD-RUNTIME-PATH JOIN-PATH LRD-RUNTIME-U !
-   LRD-BASE$ s" modeled.f" LRD-MODELED-PATH JOIN-PATH LRD-MODELED-U !
-   LRD-BASE$ s" trusted.f" LRD-TRUSTED-PATH JOIN-PATH LRD-TRUSTED-U !
-   LRD-UNDEF$ s" : LRD-X ( -- ) LRD-NO-SUCH-WORD-XYZ ;" WRITE-ALL
-   LRD-BODY$ s" : LRD-Y ( n -- n ) drop ;" WRITE-ALL
-   LRD-FRAG$ s" 1 +" WRITE-ALL
+   a BASE u BYTE-COPY
+   u BASE-U !
+   BASE$ CLEANUP-TREE+ ;
+
+: PATHS! ( -- )
+   s" undef.f" UNDEF-P UNDEF-U PATH!
+   s" body.f" BODY-P BODY-U PATH!
+   s" outer.f" OUTER-P OUTER-U PATH!
+   s" frag.f" FRAG-P FRAG-U PATH!
+   s" imm-include.f" INC-P INC-U PATH!
+   s" imm-require.f" REQ-P REQ-U PATH!
+   s" top-include.f" TOP-INC-P TOP-INC-U PATH!
+   s" top-require.f" TOP-REQ-P TOP-REQ-U PATH!
+   s" runtime.f" RUNTIME-P RUNTIME-U PATH!
+   s" modeled.f" MODELED-P MODELED-U PATH!
+   s" trusted.f" TRUSTED-P TRUSTED-U PATH! ;
+
+: REJECT-FIXTURES! ( -- )
+   UNDEF$ s" : LRD-X ( -- ) LRD-NO-SUCH-WORD-XYZ ;" WRITE-ALL
+   BODY$ s" : LRD-Y ( n -- n ) drop ;" WRITE-ALL
+   FRAG$ s" 1 +" WRITE-ALL
    SB-RESET
    s" include " SB-APPEND
-   LRD-UNDEF$ SB-APPEND
-   LRD-OUTER$ SB$ WRITE-ALL
-   s" -1 JSON-DIAGS ! : LRD-IMM-I ( -- ) 73 include "
-   s"  . ;" LRD-INC$ LRD-WRITE-FRAG-FIXTURE
-   s" -1 JSON-DIAGS ! : LRD-IMM-R ( -- ) 73 require "
-   s"  . ;" LRD-REQ$ LRD-WRITE-FRAG-FIXTURE
-   s" 73 include " s"  ." LRD-TOP-INC$ LRD-WRITE-FRAG-FIXTURE
-   s" 73 require " s"  ." LRD-TOP-REQ$ LRD-WRITE-FRAG-FIXTURE
-   SB-RESET
-   S\" : LRD-RUN-I ( -- ) 73 s\" " SB-APPEND LRD-FRAG$ SB-APPEND
-   S\" \" included . ; : LRD-RUN-R ( -- ) 73 s\" " SB-APPEND LRD-FRAG$ SB-APPEND
-   S\" \" required . ; : LRD-RUN-P ( -- ) s\" " SB-APPEND LRD-FRAG$ SB-APPEND
-   S\" \" provided ; LRD-RUN-I LRD-RUN-R LRD-RUN-P" SB-APPEND
-   LRD-RUNTIME$ SB$ WRITE-ALL
-   LRD-MODELED$ S\" : LRD-PI ( -- ) ; immediate s\" LRD-PI\" 0 parse-imm : LRD-PIM ( -- n ) LRD-PI 73 ; LRD-PIM ." WRITE-ALL
-   LRD-TRUSTED$ s" : LRD-TI ( -- ) ; immediate TRUSTED: LRD-TIM ( -- n ) LRD-TI 73 ; LRD-TIM ." WRITE-ALL ;
+   UNDEF$ SB-APPEND
+   OUTER$ SB$ WRITE-ALL ;
 
-: LRD-STORE! ( len len outcome -- )
+: IMM-FIXTURES! ( -- )
+   s" -1 JSON-DIAGS ! : LRD-IMM-I ( -- ) 73 include "
+   s"  . ;" INC$ FRAG-FIXTURE!
+   s" -1 JSON-DIAGS ! : LRD-IMM-R ( -- ) 73 require "
+   s"  . ;" REQ$ FRAG-FIXTURE! ;
+
+: RUNTIME-SOURCE$ ( -- ptr u8 n )
+   SB-RESET
+   S\" : RUN-I ( -- ) 73 s\" " SB-APPEND FRAG$ SB-APPEND
+   S\" \" included . ; : RUN-R ( -- ) 73 s\" " SB-APPEND FRAG$ SB-APPEND
+   S\" \" required . ; : RUN-P ( -- ) s\" " SB-APPEND FRAG$ SB-APPEND
+   S\" \" provided ; RUN-I RUN-R RUN-P" SB-APPEND
+   SB$ ;
+
+: POSITIVE-FIXTURES! ( -- )
+   s" 73 include " s"  ." TOP-INC$ FRAG-FIXTURE!
+   s" 73 require " s"  ." TOP-REQ$ FRAG-FIXTURE!
+   RUNTIME$ RUNTIME-SOURCE$ WRITE-ALL
+   MODELED$ S\" : PI ( -- ) ; immediate s\" PI\" 0 parse-imm : PIM ( -- n ) PI 73 ; PIM ." WRITE-ALL
+   TRUSTED$ s" : OK-TI ( -- ) ; immediate TRUSTED: OK-TIM ( -- n ) OK-TI 73 ; OK-TIM ." WRITE-ALL ;
+
+: FIXTURES! ( -- )
+   REJECT-FIXTURES!
+   IMM-FIXTURES!
+   POSITIVE-FIXTURES! ;
+
+: SETUP ( -- )
+   ROOT!
+   PATHS!
+   FIXTURES! ;
+
+: STORE! ( len len outcome -- )
    MATCH outcome
-     exited OF LRD-RC ! 0 0= LRD-EXITED ! ENDOF
-     signaled OF LRD-RC ! 0 0= 0= LRD-EXITED ! ENDOF
-     timeout OF 0 LRD-RC ! 0 0= 0= LRD-EXITED ! ENDOF
+     exited OF RC ! 0 0= EXITED ! ENDOF
+     signaled OF RC ! 0 0= 0= EXITED ! ENDOF
+     timeout OF 0 RC ! 0 0= 0= EXITED ! ENDOF
    ;MATCH
-   LEN>N LRD-ERR-U !  LEN>N LRD-OUT-U ! ;
+   LEN>N ERR-U !  LEN>N OUT-U ! ;
 
 \ Spawn `<hb> --load <fixture>` with empty stdin, capture the exit outcome.
-: LRD-RUN ( ptr u8 n -- ) {: path:ptr pathu:n :}
+: RUN ( ptr u8 n -- ) {: path:ptr pathu:n :}
    PROC-ARGV-RESET
    s" --load" >LEN PROC-ARGV+
    path pathu >LEN PROC-ARGV+
-   LRD-HB$ >LEN  LRD-EMPTY 0 >LEN  LRD-OUT LRD-CAP >LEN
-   LRD-ERR LRD-CAP >LEN  LRD-TIMEOUT-MS >MS  RUN-ARGV-STDIN-CAPTURE-OUTCOME
-   LRD-STORE! ;
+   HB$ >LEN  EMPTY 0 >LEN  OUT CAP >LEN
+   ERR CAP >LEN  TIMEOUT-MS >MS  RUN-ARGV-STDIN-CAPTURE-OUTCOME
+   STORE! ;
 
-: LRD-ERR$ ( -- ptr u8 n )
-   LRD-ERR LRD-ERR-U @ ;
+: ERR$ ( -- ptr u8 n )
+   ERR ERR-U @ ;
 
-: LRD-OUT$ ( -- ptr u8 n )
-   LRD-OUT LRD-OUT-U @ ;
+: OUT$ ( -- ptr u8 n )
+   OUT OUT-U @ ;
 
 \ Every rejecting load: exit-kind EXIT, rc 70, EMPTY stdout, NON-EMPTY stderr
 \ that names the failing token — the silent-exit-70 red/green discriminator.
-: LRD-ASSERT-NAMED ( ptr u8 n -- ) {: name:ptr nameu:n :}
-   LRD-EXITED @ TTRUE
-   LRD-RC @ LRD-REJECT-RC T=
-   LRD-OUT-U @ 0 T=
-   LRD-ERR-U @ 0 > TTRUE
-   LRD-ERR$ name nameu CONTAINS? TTRUE ;
+: ASSERT-NAMED ( ptr u8 n -- ) {: name:ptr nameu:n :}
+   EXITED @ TTRUE
+   RC @ REJECT-RC T=
+   OUT-U @ 0 T=
+   ERR-U @ 0 > TTRUE
+   ERR$ name nameu CONTAINS? TTRUE ;
 
-: LRD-ASSERT-OK ( -- )
-   LRD-EXITED @ TTRUE
-   LRD-RC @ 0 T=
-   LRD-ERR-U @ 0 T= ;
+: ASSERT-OK ( -- )
+   EXITED @ TTRUE
+   RC @ 0 T=
+   ERR-U @ 0 T= ;
 
-: LRD-ASSERT-OK-OUT ( ptr u8 n -- )
+: ASSERT-OK-OUT ( ptr u8 n -- )
    {: a:ptr u:n :}
-   LRD-ASSERT-OK
-   LRD-OUT$ a u CONTAINS? TTRUE ;
+   ASSERT-OK
+   OUT$ a u CONTAINS? TTRUE ;
 
-: LRD-ASSERT-IMM-DIAG ( ptr u8 n ptr u8 n -- )
+: ASSERT-IMM-DIAG ( ptr u8 n ptr u8 n -- )
    {: word:ptr wordu:n token:ptr tokenu:n :}
-   LRD-ERR$ JSON-PARSE dup GJA-OBJ {: root:n :}
+   ERR$ JSON-PARSE dup GJA-OBJ {: root:n :}
    root GJA-DIAG-CONTRACT-ROW
    root s" code" GJA-REQ s" E-UNMODELED-IMMEDIATE" GJA-ASSERT-STR
    root s" repair_class" GJA-REQ s" model_compile_immediate" GJA-ASSERT-STR
    root s" word" GJA-REQ word wordu GJA-ASSERT-STR
    root s" token" GJA-REQ token tokenu GJA-ASSERT-STR
-   LRD-ERR$ 2dup RP-COUNT >r RP-FIRST r> RP-PACKET
+   ERR$ 2dup RP-COUNT >r RP-FIRST r> RP-PACKET
    {: pa:ptr pu:n :}
-   pa LRD-OUT pu BYTE-COPY
-   LRD-OUT pu JSON-PARSE dup GJA-OBJ {: packet:n :}
+   pa OUT pu BYTE-COPY
+   OUT pu JSON-PARSE dup GJA-OBJ {: packet:n :}
    packet s" model_compile_immediate" GJA-REPAIR-HEAD
    packet GJA-REPAIR-DEF ;
 
-: LRD-TEST-STORE-SIGNALED ( -- )
+: TEST-STORE-SIGNALED ( -- )
    s" signaled outcome remains distinguishable from exit" T-LABEL
-   LRD-TEST-OUT-U >LEN LRD-TEST-ERR-U >LEN SIGKILL OUTCOME:SIGNALED LRD-STORE!
-   LRD-EXITED @ TFALSE
-   LRD-RC @ SIGKILL T=
-   LRD-OUT-U @ LRD-TEST-OUT-U T=
-   LRD-ERR-U @ LRD-TEST-ERR-U T= ;
+   TEST-OUT-U >LEN TEST-ERR-U >LEN SIGKILL OUTCOME:SIGNALED STORE!
+   EXITED @ TFALSE
+   RC @ SIGKILL T=
+   OUT-U @ TEST-OUT-U T=
+   ERR-U @ TEST-ERR-U T= ;
 
-: LRD-TEST-STORE-TIMEOUT ( -- )
+: TEST-STORE-TIMEOUT ( -- )
    s" timeout outcome remains distinguishable from exit" T-LABEL
-   LRD-TEST-OUT-U >LEN LRD-TEST-ERR-U >LEN OUTCOME:TIMEOUT LRD-STORE!
-   LRD-EXITED @ TFALSE
-   LRD-RC @ 0 T=
-   LRD-OUT-U @ LRD-TEST-OUT-U T=
-   LRD-ERR-U @ LRD-TEST-ERR-U T= ;
+   TEST-OUT-U >LEN TEST-ERR-U >LEN OUTCOME:TIMEOUT STORE!
+   EXITED @ TFALSE
+   RC @ 0 T=
+   OUT-U @ TEST-OUT-U T=
+   ERR-U @ TEST-ERR-U T= ;
 
-: LRD-TEST-UNDEF ( -- )
+: TEST-UNDEF ( -- )
    s" direct --load reject names the undefined word" T-LABEL
-   LRD-UNDEF$ LRD-RUN
-   s" E-UNDEFINED" LRD-ASSERT-NAMED
-   LRD-ERR$ s" LRD-NO-SUCH-WORD-XYZ" CONTAINS? TTRUE ;
+   UNDEF$ RUN
+   s" E-UNDEFINED" ASSERT-NAMED
+   ERR$ s" LRD-NO-SUCH-WORD-XYZ" CONTAINS? TTRUE ;
 
-: LRD-TEST-BODY ( -- )
+: TEST-BODY ( -- )
    s" checked-body reject names word and token" T-LABEL
-   LRD-BODY$ LRD-RUN
-   s" in lrd-y" LRD-ASSERT-NAMED
-   LRD-ERR$ s" at 'drop'" CONTAINS? TTRUE ;
+   BODY$ RUN
+   s" in lrd-y" ASSERT-NAMED
+   ERR$ s" at 'drop'" CONTAINS? TTRUE ;
 
-: LRD-TEST-REQUIRE-CHAIN ( -- )
+: TEST-REQUIRE-CHAIN ( -- )
    s" require-chain reject names the undefined word" T-LABEL
-   LRD-OUTER$ LRD-RUN
-   s" E-UNDEFINED" LRD-ASSERT-NAMED
-   LRD-ERR$ s" LRD-NO-SUCH-WORD-XYZ" CONTAINS? TTRUE ;
+   OUTER$ RUN
+   s" E-UNDEFINED" ASSERT-NAMED
+   ERR$ s" LRD-NO-SUCH-WORD-XYZ" CONTAINS? TTRUE ;
 
-: LRD-TEST-IMM-INCLUDE ( -- )
+: TEST-IMM-INCLUDE ( -- )
    s" checked include rejects before executing its fragment" T-LABEL
-   LRD-INC$ LRD-RUN
-   s" E-UNMODELED-IMMEDIATE" LRD-ASSERT-NAMED
-   s" lrd-imm-i" s" include" LRD-ASSERT-IMM-DIAG ;
+   INC$ RUN
+   s" E-UNMODELED-IMMEDIATE" ASSERT-NAMED
+   s" lrd-imm-i" s" include" ASSERT-IMM-DIAG ;
 
-: LRD-TEST-IMM-REQUIRE ( -- )
+: TEST-IMM-REQUIRE ( -- )
    s" checked require rejects before executing its fragment" T-LABEL
-   LRD-REQ$ LRD-RUN
-   s" E-UNMODELED-IMMEDIATE" LRD-ASSERT-NAMED
-   s" lrd-imm-r" s" require" LRD-ASSERT-IMM-DIAG ;
+   REQ$ RUN
+   s" E-UNMODELED-IMMEDIATE" ASSERT-NAMED
+   s" lrd-imm-r" s" require" ASSERT-IMM-DIAG ;
 
-: LRD-TEST-PREFLIGHT-POSITIVES ( -- )
+: TEST-PREFLIGHT-POSITIVES ( -- )
    s" top-level include remains live" T-LABEL
-   LRD-TOP-INC$ LRD-RUN s" 74" LRD-ASSERT-OK-OUT
+   TOP-INC$ RUN s" 74" ASSERT-OK-OUT
    s" top-level require remains live" T-LABEL
-   LRD-TOP-REQ$ LRD-RUN s" 74" LRD-ASSERT-OK-OUT
+   TOP-REQ$ RUN s" 74" ASSERT-OK-OUT
    s" runtime included required and provided remain live" T-LABEL
-   LRD-RUNTIME$ LRD-RUN s" 74" LRD-ASSERT-OK-OUT
+   RUNTIME$ RUN s" 74" ASSERT-OK-OUT
    s" parse-imm modeled immediate remains live" T-LABEL
-   LRD-MODELED$ LRD-RUN s" 73" LRD-ASSERT-OK-OUT
+   MODELED$ RUN s" 73" ASSERT-OK-OUT
    s" trusted immediate body remains live" T-LABEL
-   LRD-TRUSTED$ LRD-RUN s" 73" LRD-ASSERT-OK-OUT ;
+   TRUSTED$ RUN s" 73" ASSERT-OK-OUT ;
 
-: LRD-MAIN ( -- )
+: MAIN ( -- )
    T-RESET
-   LRD-SETUP
-   LRD-TEST-STORE-SIGNALED
-   LRD-TEST-STORE-TIMEOUT
-   LRD-TEST-UNDEF
-   LRD-TEST-BODY
-   LRD-TEST-REQUIRE-CHAIN
-   LRD-TEST-IMM-INCLUDE
-   LRD-TEST-IMM-REQUIRE
-   LRD-TEST-PREFLIGHT-POSITIVES
+   SETUP
+   TEST-STORE-SIGNALED
+   TEST-STORE-TIMEOUT
+   TEST-UNDEF
+   TEST-BODY
+   TEST-REQUIRE-CHAIN
+   TEST-IMM-INCLUDE
+   TEST-IMM-REQUIRE
+   TEST-PREFLIGHT-POSITIVES
    CLEANUP-RUN
    T-REPORT
    s" load-reject-diag-test: ok" type cr ;
 
-LRD-MAIN
+MAIN
+
+;package
