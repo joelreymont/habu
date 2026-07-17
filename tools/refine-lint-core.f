@@ -33,7 +33,7 @@
 
 $40000 constant RFL-STR-CAP     \ trust-lint manifest string store
 $80000 constant RFL-FILE-CAP    \ largest scanned source watermark (checker.f class)
-50 constant RFL-SEED#
+51 constant RFL-SEED#
 8 constant RFL-ALLOW-MAX
 32 constant RFL-NUM-CAP
 
@@ -186,6 +186,8 @@ variable RFL-LE
       \ § 23.9 foreign-id refinement (dot habu-npol-numeric-policy-a90657e1); the
       \ RAW>TARGET-ID / RAW>ARTIFACT-ID shape-scanned mint precedent.
       49 of s" RAW>NUMERIC-POLICY-ID" endof
+      \ § 23.9 foreign-id per-family legs; the RAW>TARGET-ID / RAW>ARTIFACT-ID shape.
+      50 of s" RAW>PRODUCER-ID" endof     \ dot habu-producer-producer-id-5e016e1f
       E-TBL-BOUNDS throw
    endcase ;
 
@@ -241,6 +243,7 @@ variable RFL-LE
       47 of s" lib/nominal/binding.f" endof
       48 of s" lib/nominal/row.f" endof
       49 of s" maki/numpolicy.f" endof
+      50 of s" maki/producer.f" endof
       E-TBL-BOUNDS throw
    endcase ;
 

@@ -218,6 +218,8 @@ TEST:SUITE maki/numpolicy-test.f
 TEST:;SUITE
 TEST:SUITE maki/schema-test.f
 TEST:;SUITE
+TEST:SUITE maki/producer-test.f
+TEST:;SUITE
 TEST:SUITE maki/evidence/schema-test.f
 TEST:;SUITE
 TEST:SUITE maki/evidence/policy-test.f

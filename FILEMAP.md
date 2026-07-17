@@ -766,6 +766,17 @@ points stay listed.
 - `maki/schema-test.f` — content-addressed interning (equal names one id), the wire
   round-trip, fail-closed decode (wrong-width + unresolved raw), cross-role
   rejection, and the private-mint unforgeability negatives.
+- `maki/producer.f` — the producer identity registry + wire codec (the producer-id
+  leg of MODEL-CAD-V2-PLAN.md § 23.9): `PRODUCER:REGISTER` interns the canonical,
+  version-independent producer NAME (a namespaced machine-facing component
+  identifier; producer-version is a separate envelope field, class rides the name)
+  to a content-addressed `CAD-KIND:producer-id`, plus `NAME$`/`EQUAL?`/`VALIDATE`/
+  `COUNT` and the `ID>WIRE` (total) / `WIRE>ID` (`id-result`, fail-closed) 8-byte
+  little-endian codec pair. Raw conversions stay private. Owns -5334..-5337.
+- `maki/producer-test.f` — content-addressed interning (equal names one id, a
+  namespaced class rides the name), the wire round-trip, fail-closed decode
+  (wrong-width + unresolved raw), cross-role rejection, and the private-mint
+  unforgeability negatives.
 - `maki/sched-key.f` — section-7.4 schedule keys: the typed `skey` product (now
   carrying the region's requested `NPOL:dom` policy, REGION-POL's per-op OP-DOM fold,
   so a different policy is a different key), the durable `SK-KEY$` render (region
