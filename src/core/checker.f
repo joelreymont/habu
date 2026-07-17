@@ -7640,14 +7640,16 @@ variable SKI  variable SKF
 : FAIL-SPAN! ( -- )
    TSTART @ FAILB !
    FAILB @ FAILTU @ + FAILE ! ;
+: FAIL-PIN! ( ptr u8 n -- )
+   {: a:ptr u:n :}
+   u TOKBUF-ENSURE
+   a FAILTK u CCOPY
+   u FAILTU !
+   TOKIX @ FAILIX !
+   FAIL-SPAN! ;
+
 : CAP-FAIL ( ptr u8 n -- )
-   FAILSET @ 0= IF
-      {: a:ptr u:n :}
-      u TOKBUF-ENSURE
-      a FAILTK u CCOPY  u FAILTU !  TOKIX @ FAILIX !  FAIL-SPAN!
-   ELSE
-      2drop
-   THEN ;
+   FAILSET @ 0= IF FAIL-PIN! ELSE 2drop THEN ;
 create DIAGFB 256 allot   variable DIAGFU
 variable DIAGL0  variable DIAGC0  variable DIAGB0
 : DIAG-FILE! ( ptr u8 n -- ) {: a:ptr u:n :}
@@ -7763,12 +7765,24 @@ variable PIMM-N
 
 package CHECKER-PREFLIGHT
 
-variable TA
-variable TU
-variable BA
-variable BU
+variable TARGET-A
+variable TARGET-U
+variable BODY-A
+variable BODY-U
 variable VERDICT
 variable ACTIVE
+
+: TARGET-A@ ( -- ptr u8 )
+   TARGET-A 0 ptr-field @ ;
+
+: TARGET-A! ( ptr u8 -- )
+   TARGET-A 0 ptr-field ! ;
+
+: BODY-A@ ( -- ptr u8 )
+   BODY-A 0 ptr-field @ ;
+
+: BODY-A! ( ptr u8 -- )
+   BODY-A 0 ptr-field ! ;
 
 : TAIL-WS? ( -- bool )
    TI @ BEGIN dup TBLEN @ < WHILE
@@ -7780,7 +7794,7 @@ variable ACTIVE
 : FORCED? ( ptr u8 n -- bool ) {: a:ptr u:n :}
    ACTIVE @ 0= IF RES-FALSE EXIT THEN
    TAIL-WS? 0= IF RES-FALSE EXIT THEN
-   a u TA @ TU @ CORE-STR=CI ;
+   a u TARGET-A@ TARGET-U @ CORE-STR=CI ;
 
 public
 
@@ -8062,7 +8076,9 @@ variable CONFAM    \ resolved family id while CONM = 2
    TKF TKFU @ HIDROW-STEP? 0= IF                       \ depth/.s fail closed over hidden cells
    TKF TKFU @ XPORT-STEP? 0= IF                        \ whole-bundle transport row surgery
    TKF TKFU @ RS-TOK? 0= IF
-   TKF TKFU @ CHECKER-PREFLIGHT:BODY-TOK? IF REJECT-IMMEDIATE THEN   \ live immediate with a usig: wrong-certificate reject (p5)
+   TKF TKFU @ CHECKER-PREFLIGHT:BODY-TOK? IF
+      a u FAIL-PIN! REJECT-IMMEDIATE
+   THEN   \ live immediate with a usig: wrong-certificate reject (p5)
    TKF TKFU @ DO-TOK
    OK @ IF TKF TKFU @ THROW-CUR? IF THROW-EDGE THEN THEN
    OK @ IF TKF TKFU @ DEAD-CUR? IF a u DEAD-OWNER! -1 DEADP ! THEN THEN
@@ -8637,13 +8653,13 @@ variable CAND-A   variable CAND-U   variable CAND-VERDICT
 package CHECKER-PREFLIGHT
 
 : RUN ( -- )
-   BA @ BU @ CHECK! VERDICT ! ;
+   BODY-A@ BODY-U @ CHECK! VERDICT ! ;
 
 public
 
 : CHECK! ( ptr u8 n ptr u8 n -- n )
    {: ba:ptr bu:n ta:ptr tu:n :}
-   ba BA !  bu BU !  ta TA !  tu TU !
+   ba BODY-A!  bu BODY-U !  ta TARGET-A!  tu TARGET-U !
    -1 ACTIVE !
    [: RUN ;] catch {: rc:n :}
    0 ACTIVE !

@@ -5365,3 +5365,13 @@ unchanged (148855). Keys for milestone 2:
   literal `bin/hb` is reserved for explicit baseline probes. Otherwise an exact
   rebased gate can fail on a stale installed engine while never testing the
   rebuilt artifact it claims to certify.
+- **Locals and package words collide case-insensitively.** A local `ba` shadows a
+  private word `BA`, so `ba BA !` stores through the local value instead of the
+  intended cell. Give persistent state semantic names distinct from every local,
+  and use typed pointer accessors for pointer-valued cells.
+- **Changing a checker failure class also changes its complete origin.** Repin
+  token text, token index, and byte span together; otherwise a canonical repair
+  code can identify an earlier signature token.
+- **A token inside a definition body has not executed.** Lifecycle lints must
+  track definition context before treating `LOWER-CERT-HOOK:INSTALL` as a
+  top-level checker rearm.

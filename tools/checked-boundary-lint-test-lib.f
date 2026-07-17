@@ -91,6 +91,7 @@ create CBLT-LF-BYTE 10 c,
 : CBLT-NOPREF$ ( -- ptr u8 n )
    SB-RESET
    s" 0 set-check" SB-APPEND CBLT-LF
+   s" TRUSTED: PREP ( -- ) LOWER-CERT-HOOK:INSTALL ;" SB-APPEND CBLT-LF
    s" ' LINT-CHECK-HOOK set-check" SB-APPEND CBLT-LF
    s" : SHOULD-STAY-UNCHECKED ( n -- n ) dup ;" SB-APPEND CBLT-LF
    SB$ ;

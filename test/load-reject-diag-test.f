@@ -168,7 +168,7 @@ variable RC
 : RAW-IMM ( -- ) ; immediate
 LOWER-CERT-HOOK:INSTALL
 -1 JSON-DIAGS !
-: LRD-IMM-S ( -- n ) RAW-IMM 73 ;
+: LRD-IMM-S ( mystery:foo -- n ) RAW-IMM 73 ;
 " WRITE-ALL ;
 
 : RUNTIME-SOURCE$ ( -- ptr u8 n )
@@ -303,7 +303,11 @@ LOWER-CERT-HOOK:INSTALL
    s" signatureless immediate gets one canonical preflight diagnostic" T-LABEL
    SIGLESS$ RUN
    s" E-UNMODELED-IMMEDIATE" ASSERT-NAMED
-   s" lrd-imm-s" s" RAW-IMM" ASSERT-IMM-DIAG ;
+   s" lrd-imm-s" s" RAW-IMM" ASSERT-IMM-DIAG
+   ERR$ JSON-PARSE dup GJA-OBJ {: root:n :}
+   root s" token_index" 1 GJA-ASSERT-INT-FIELD
+   root s" byte_start" 31 GJA-ASSERT-INT-FIELD
+   root s" byte_end" 38 GJA-ASSERT-INT-FIELD ;
 
 : TEST-PREFLIGHT-POSITIVES ( -- )
    s" top-level include remains live" T-LABEL

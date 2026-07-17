@@ -679,6 +679,29 @@ public
    GE-CANDIDATE$ s" wide-memory suite on Habu-under-test" GE-WIDE-MEMORY-SUITE-ON
    s" bin/hb" s" wide-memory suite on bin/hb" GE-WIDE-MEMORY-SUITE-ON ;
 
+package GENG
+private
+
+: RUNTIME-MARK$ ( -- ptr u8 n )
+   s" GE-RUNTIME-SUBJECT-BEGIN" ;
+
+public
+
+: ASSERT-RUNTIME-SUBJECT ( -- )
+   GE-SRC-RESET
+   s" test/gate-engine-lib.f" GE-SRC-FILE+
+   GE-SRC-BUF GE-SRC-U @ RUNTIME-MARK$ GE-SHAPE-FIND
+      s" runtime subject marker literal" GE-SHAPE-FOUND 1+ {: first:n :}
+   GE-SRC-BUF GE-SRC-U @ first RUNTIME-MARK$ GE-SHAPE-FIND-AFTER
+      s" runtime subject marker" GE-SHAPE-FOUND {: start:n :}
+   GE-SRC-BUF GE-SRC-U @ start s" bin/hb" GE-SHAPE-FIND-AFTER
+      s" runtime subject bypasses candidate" GE-SHAPE-NOT-FOUND ;
+
+;package
+
+\ GE-RUNTIME-SUBJECT-BEGIN: every executable under this marker must dispatch
+\ through GE-HB$; the source-shape regression forbids the baseline path here.
+
 \ The former GE-CAND-SMOKE (hook-installed / checked-compile-run / baked-word-
 \ resolves) is now three T= probes inside test/engine-suite.f, so it rides the
 \ existing engine-suite candidate launch (GE-ENGINE-SUITE-ON) instead of a second
@@ -1807,6 +1830,7 @@ create GE-RXE-TML-BUF 512 allot   variable GE-RXE-TML-U
    s" PASS: package scope rolls back on compile-error recovery (closed/stays-open/checker/top-exit)" type cr ;
 
 : GE-RUNTIME-CHECKS ( -- )
+   GENG:ASSERT-RUNTIME-SUBJECT
    GE-UNCAUGHT-THROW
    GE-INTERP-LAYOUT
    GE-CONSTRUCT-EXEC

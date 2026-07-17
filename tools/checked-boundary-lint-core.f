@@ -38,6 +38,7 @@ variable UB-BAD
 variable UB-CHECK-OFF
 variable UB-NUM-I
 variable UB-TRUSTED
+variable UB-IN-DEF
 variable UB-CARRY-OFF
 variable UB-JSON
 variable UB-STRICT-BOUNDARY
@@ -440,22 +441,32 @@ variable UB-OUT-FD
    UB-NUM UB-PREV2-A! 0 UB-PREV2-U !
    0 UB-I ! 1 UB-LINE ! 1 UB-COL !
    UB-CARRY-OFF @ UB-CHECK-OFF !
-   UB-FALSE UB-TRUSTED ! ;
+   UB-FALSE UB-TRUSTED !
+   UB-FALSE UB-IN-DEF ! ;
 
 : UB-SCAN ( -- )
    UB-RESET-FILE-SCAN
    begin UB-NEXT-TOK while
-      UB-TRUSTED? if UB-TRUE UB-TRUSTED ! then
+      UB-TRUSTED? if
+         UB-TRUE UB-TRUSTED !
+         UB-TRUE UB-IN-DEF !
+      then
       UB-STRICT-BOUNDARY @ if
          UB-CHECKER-MUTATION? UB-TRUSTED @ UB-NOT and if UB-REPORT-MUTATION then
       then
       UB-SET-CHECK-OFF? if UB-TRUE UB-CHECK-OFF! then
-      UB-COLON? if UB-HANDLE-COLON then
-      UB-PREFLIGHT-INSTALL? if UB-FALSE UB-CHECK-OFF! then
+      UB-COLON? if
+         UB-HANDLE-COLON
+         UB-TRUE UB-IN-DEF !
+      then
+      UB-PREFLIGHT-INSTALL? UB-IN-DEF @ UB-NOT and if UB-FALSE UB-CHECK-OFF! then
       UB-HANDLE-CHECK-ON
       UB-HANDLE-INSTALL
       UB-HANDLE-TOP-INSTALL
-      UB-SEMI? if UB-FALSE UB-TRUSTED ! then
+      UB-SEMI? if
+         UB-FALSE UB-TRUSTED !
+         UB-FALSE UB-IN-DEF !
+      then
       UB-SAVE-PREV
    repeat ;
 
