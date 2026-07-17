@@ -216,6 +216,7 @@ variable SUITE-TIMINGS
    s" map-stdlib" SUITE-LABEL= if SUITE-TRUE exit then
    s" ffi-abi" SUITE-LABEL= if SUITE-TRUE exit then
    s" ptx-stdlib" SUITE-LABEL= if SUITE-TRUE exit then
+   s" ptx-rep-neg" SUITE-LABEL= if SUITE-TRUE exit then
    s" ptx-tile-loop-neg" SUITE-LABEL= if SUITE-TRUE exit then
    s" ptx-tile-smem-neg" SUITE-LABEL= if SUITE-TRUE exit then
    s" ptx-tile-acc-neg" SUITE-LABEL= if SUITE-TRUE exit then

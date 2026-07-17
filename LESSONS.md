@@ -4,6 +4,28 @@
 
 Last updated: 2026-07-17
 
+- **The checker ALREADY expresses "same phantom in, same phantom out through an emitter" — the
+  same-type tile/collective wrappers were trusted UNNECESSARILY.** (dot habu-ptx-phantom-preserving,
+  leg 1, host lane, lib/ptx/rep.f.) A row-polymorphic higher-order combinator `( a a [ n n -- n ]
+  -- a )` (`PTXREP:REP2`; `REP1`/`REPMIX2` for the unary/first-preserved arities) makes a kernel
+  token's `n` register flow THROUGH a checked EMIT-* quotation while the SAME phantom `a` is
+  returned. The three forge/kind/arity soundness properties fall out of the EXISTING unifier for
+  free, NO checker/type-family change: forge (`mmaslice`->`mmbslice`) rejects because both operands
+  and the result must unify to one `a`; a wide layout family cannot bind the single-cell var `a`
+  (kind); the `[ n n -- n ]` quotation pins arity. So ~23 per-op TRUSTED: wrappers (`+.` `-.` `*.`
+  `/.` `SCALE` `RELU` `EXP.` `U/` `B-` `B/` `NEG` and their `-V4`/`.V4` variants across tile.f /
+  tile-v4.f / tile-v4a.f / collective.f / ad-saved.f) became CHECKED `:` callers of three
+  forge-proof combinators (net trust -20), byte-identical PTX (verified via PTX-CAPTURE cmp). Empty
+  experiment first (exp1: `[: EMIT-ADD ;] REP2` certifies; a wide `SUMTYPE` and a cross-family
+  relabel both REJECT) grounded the whole design before any edit.
+- **The mission framed this as checker+type-family work, but the honest finding placed it in a lib
+  combinator — because the type-CHANGING wrappers, not the type-PRESERVING ones, are what actually
+  need a checker capability.** `LOAD` (span->tile), `GRID-CTX`, `STAGE`, `BLOCK-MAX`, `BROADCAST`,
+  the ctx/load/store/reduce family MINT a NEW phantom the emitter's output register cannot witness,
+  so a same-type combinator can't retire them (its `a` output can only be a type you already hold).
+  Those remain the leg-2 remainder and genuinely need the deeper rep-provenance / typed-emitter
+  capability (or stay trusted mints, like the ~17 `*-REG` from-register casts). Don't conflate the
+  cheap forge-proof preserving case with the hard minting case.
 - **Wiring the proven B-side ldmatrix cut the residual B-feed 27%->7% and won +11.9%.** (dot
   habu-mma-wave-3, lib/ptx/cg-mma.f MMA-BLDM.) The MFRAGS=4 winner's un-amortized scalar B feed
   (2 ld.shared + 2 cvt / 8x8 fragment) was replaced by ONE ldmatrix.x2 over a TRANSPOSED staging

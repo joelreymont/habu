@@ -512,6 +512,12 @@ points stay listed.
   (contract: docs/ptx-sketch.md "Kernel ABI contract"). Tests pin schema
   fragments, per-kind lowering, both hashes (the content-hash contract is
   recomputed mechanically), byte-determinism, and the unnamed-record negative.
+- `lib/ptx/rep.f` / `lib/ptx/rep-test.f` / `lib/ptx/rep-neg-test.f` —
+  phantom-preserving register-emitter combinators (`PTXREP:REP1`/`REP2`/
+  `REPMIX2`) that carry a kernel token's `n` register through a checked emitter
+  while preserving its phantom type, so type-preserving tile/collective ops
+  certify as checked instead of TRUSTED:. Positive coverage plus the
+  forge/kind/arity negative regressions (dot habu-ptx-phantom-preserving).
 - `lib/ptx/tile.f` / `lib/ptx/tile-test.f` — PTX tile-DSL v0 operation
   vocabulary (M4) and the checked SAXPY proof.
 - `lib/ptx/tile-loop.f` / `lib/ptx/tile-loop-test.f` /

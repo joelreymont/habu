@@ -19,6 +19,8 @@
 \ constructors; fixed kernel-ABI spans may still assert a named extent token.
 \ Load after lib/errors.f.
 
+require lib/ptx/rep.f
+
 TRUSTED: MK-SPAN ( ptr<space-global,t> u32 -- span<space-global,t,fresh-extent-n> )
    drop ;
 
@@ -91,23 +93,28 @@ TRUSTED: INDEX-SCATTER-ADD ( tile<t,b,m> span<space-global,u32,i> span<space-glo
 TRUSTED: INDEX-STORE ( tile<t,b,m> span<space-global,u32,i> span<space-global,t,e> uniqidxctx<b,i,e,m> -- )
    EMIT-INDEX-STORE ;
 
-TRUSTED: SCALE ( tile<t,b,m> uniform<t> -- tile<t,b,m> )
-   EMIT-SCALE ;
+\ Phantom-preserving pointwise ops: CHECKED callers of the PTXREP register-emitter
+\ combinators (lib/ptx/rep.f). The operand tile's register flows through the
+\ ( n … -- n ) emitter and the SAME tile phantom is returned, so these certify
+\ instead of asserting a TRUSTED: boundary. FMA. keeps its boundary until the
+\ ternary mix combinator lands (leg 2).
+: SCALE ( tile<t,b,m> uniform<t> -- tile<t,b,m> )
+   [: EMIT-SCALE ;] PTXREP:REPMIX2 ;
 
 TRUSTED: FMA. ( uniform<t> tile<t,b,m> tile<t,b,m> -- tile<t,b,m> )
    EMIT-FMA ;
 
-TRUSTED: +. ( tile<t,b,m> tile<t,b,m> -- tile<t,b,m> )
-   EMIT-ADD ;
+: +. ( tile<t,b,m> tile<t,b,m> -- tile<t,b,m> )
+   [: EMIT-ADD ;] PTXREP:REP2 ;
 
-TRUSTED: -. ( tile<t,b,m> tile<t,b,m> -- tile<t,b,m> )
-   EMIT-SUB ;
+: -. ( tile<t,b,m> tile<t,b,m> -- tile<t,b,m> )
+   [: EMIT-SUB ;] PTXREP:REP2 ;
 
-TRUSTED: *. ( tile<t,b,m> tile<t,b,m> -- tile<t,b,m> )
-   EMIT-MUL ;
+: *. ( tile<t,b,m> tile<t,b,m> -- tile<t,b,m> )
+   [: EMIT-MUL ;] PTXREP:REP2 ;
 
-TRUSTED: /. ( tile<t,b,m> tile<t,b,m> -- tile<t,b,m> )
-   EMIT-DIV ;
+: /. ( tile<t,b,m> tile<t,b,m> -- tile<t,b,m> )
+   [: EMIT-DIV ;] PTXREP:REP2 ;
 
-TRUSTED: RELU ( tile<t,b,m> -- tile<t,b,m> )
-   EMIT-RELU ;
+: RELU ( tile<t,b,m> -- tile<t,b,m> )
+   [: EMIT-RELU ;] PTXREP:REP1 ;

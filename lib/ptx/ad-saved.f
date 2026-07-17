@@ -12,9 +12,13 @@
 \ until the buffer stash/reload lands; NEG already has codegen (EMIT-NEG = neg.f32). Load
 \ after lib/ptx/cg-collective.f (EMIT-NEG) and lib/ptx/collective.f.
 
+require lib/ptx/rep.f
+
 \ sign flip - polymorphic over tile / uniform (forward tile-NEG is self-adjoint; the
-\ B-/B/ adjoints negate a block-uniform). One emit (neg.f32) serves both.
-TRUSTED: NEG ( a -- a )  EMIT-NEG ;
+\ B-/B/ adjoints negate a block-uniform). One emit (neg.f32) serves both. The
+\ phantom `a` flows THROUGH the ( n -- n ) neg emitter, so NEG is a CHECKED caller
+\ of PTXREP:REP1 (lib/ptx/rep.f) - no strip-and-re-mint trusted boundary.
+: NEG ( a -- a )  [: EMIT-NEG ;] PTXREP:REP1 ;
 
 \ saved register tiles (a nonlinear op's saved input / output)
 TRUSTED: SAVED-X ( -- tile<f32,b,m> )  E-PTX-NOIMPL throw ;

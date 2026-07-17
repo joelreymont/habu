@@ -6,7 +6,11 @@
 \ a type change. A kernel built from these ops emits ld.global.v4.f32 / st.global.v4
 \ with 4 elements per thread and predicated scalar residual lanes for general n.
 \ These are PTX PRIMITIVES (TRUSTED: boundary, like tile.f). Load after
-\ lib/ptx/cg.f + cg-vec.f.
+\ lib/ptx/cg.f + cg-vec.f. The pointwise ops PRESERVE the tile phantom, so they
+\ are CHECKED callers of the PTXREP register-emitter combinators (lib/ptx/rep.f);
+\ context/load/store keep their trusted mint/sink boundaries.
+
+require lib/ptx/rep.f
 
 TRUSTED: GRID-CTX-V4 ( span<space-global,t,e> -- gridctx<b,e,fresh-mask-live> )
    EMIT-GRID-CTX-V4 ;
@@ -17,20 +21,20 @@ TRUSTED: LOAD-V4 ( span<space-global,t,e> gridctx<b,e,m> -- tile<t,b,m> )
 TRUSTED: STORE-V4 ( tile<t,b,m> span<space-global,t,e> gridctx<b,e,m> -- )
    EMIT-STORE-V4 ;
 
-TRUSTED: SCALE-V4 ( tile<t,b,m> uniform<t> -- tile<t,b,m> )
-   EMIT-SCALE-V4 ;
+: SCALE-V4 ( tile<t,b,m> uniform<t> -- tile<t,b,m> )
+   [: EMIT-SCALE-V4 ;] PTXREP:REPMIX2 ;
 
-TRUSTED: ADD-V4 ( tile<t,b,m> tile<t,b,m> -- tile<t,b,m> )
-   EMIT-ADD-V4 ;
+: ADD-V4 ( tile<t,b,m> tile<t,b,m> -- tile<t,b,m> )
+   [: EMIT-ADD-V4 ;] PTXREP:REP2 ;
 
-TRUSTED: SUB-V4 ( tile<t,b,m> tile<t,b,m> -- tile<t,b,m> )
-   EMIT-SUB-V4 ;
+: SUB-V4 ( tile<t,b,m> tile<t,b,m> -- tile<t,b,m> )
+   [: EMIT-SUB-V4 ;] PTXREP:REP2 ;
 
-TRUSTED: MUL-V4 ( tile<t,b,m> tile<t,b,m> -- tile<t,b,m> )
-   EMIT-MUL-V4 ;
+: MUL-V4 ( tile<t,b,m> tile<t,b,m> -- tile<t,b,m> )
+   [: EMIT-MUL-V4 ;] PTXREP:REP2 ;
 
-TRUSTED: DIV-V4 ( tile<t,b,m> tile<t,b,m> -- tile<t,b,m> )
-   EMIT-DIV-V4 ;
+: DIV-V4 ( tile<t,b,m> tile<t,b,m> -- tile<t,b,m> )
+   [: EMIT-DIV-V4 ;] PTXREP:REP2 ;
 
-TRUSTED: RELU-V4 ( tile<t,b,m> -- tile<t,b,m> )
-   EMIT-RELU-V4 ;
+: RELU-V4 ( tile<t,b,m> -- tile<t,b,m> )
+   [: EMIT-RELU-V4 ;] PTXREP:REP1 ;

@@ -489,6 +489,7 @@ variable GSI-TL-FILE-A
    s" lib/ptx/kernel-abi-test.f" GSI-INCLUDE
    s" lib/ptx/kernel-manifest-test.f" GSI-INCLUDE
    s" lib/ptx/launch-test.f" GSI-INCLUDE
+   s" lib/ptx/rep-test.f" GSI-INCLUDE
    s" lib/ptx/tile-test.f" GSI-INCLUDE
    s" lib/ptx/tile-loop-test.f" GSI-INCLUDE
    s" lib/ptx/tile-smem-test.f" GSI-INCLUDE
@@ -513,6 +514,7 @@ variable GSI-TL-FILE-A
 : GSI-LINT-LIBS-PTX-NEG ( -- )
    s" stdlib/lint-libs/ptx-neg" GSI-GROUP-SEQ GSI-GROUP-HEADER
    GSI-TEST-SETUP
+   s" lib/ptx/rep-neg-test.f" GSI-INCLUDE
    s" lib/ptx/tile-loop-neg-test.f" GSI-INCLUDE
    s" lib/ptx/tile-smem-neg-test.f" GSI-INCLUDE
    s" lib/ptx/tile-acc-neg-test.f" GSI-INCLUDE

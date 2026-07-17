@@ -33,7 +33,11 @@
 \ / EMIT-STORE-V4 / EMIT-*-V4 in cg-vec.f) - only the checker types differ, so a typed
 \ kernel lowers to byte-identical PTX. TRUSTED: because the emit lowers to PTX the
 \ checker cannot infer; the declared effect is the contract (TRUSTED.md). Load after
-\ lib/ptx/cg.f + lib/ptx/cg-vec.f + lib/ptx/tile.f + lib/ptx/tile-v4.f.
+\ lib/ptx/cg.f + lib/ptx/cg-vec.f + lib/ptx/tile.f + lib/ptx/tile-v4.f. The
+\ pointwise ops PRESERVE the vtile phantom, so they are CHECKED callers of the
+\ PTXREP register-emitter combinators (lib/ptx/rep.f).
+
+require lib/ptx/rep.f
 
 \ V4-ALIGN: the 16-byte alignment obligation. Identity emit (the base pointer is
 \ unchanged), re-tagged as a proven-aligned vspan. TRUSTED because the alignment
@@ -54,20 +58,20 @@ TRUSTED: LOAD.V4 ( vspan<space-global,t,e> gridctx<b,e,m> -- vtile<t,b,m> )
 TRUSTED: STORE.V4 ( vtile<t,b,m> vspan<space-global,t,e> gridctx<b,e,m> -- )
    EMIT-STORE-V4 ;
 
-TRUSTED: SCALE.V4 ( vtile<t,b,m> uniform<t> -- vtile<t,b,m> )
-   EMIT-SCALE-V4 ;
+: SCALE.V4 ( vtile<t,b,m> uniform<t> -- vtile<t,b,m> )
+   [: EMIT-SCALE-V4 ;] PTXREP:REPMIX2 ;
 
-TRUSTED: ADD.V4 ( vtile<t,b,m> vtile<t,b,m> -- vtile<t,b,m> )
-   EMIT-ADD-V4 ;
+: ADD.V4 ( vtile<t,b,m> vtile<t,b,m> -- vtile<t,b,m> )
+   [: EMIT-ADD-V4 ;] PTXREP:REP2 ;
 
-TRUSTED: SUB.V4 ( vtile<t,b,m> vtile<t,b,m> -- vtile<t,b,m> )
-   EMIT-SUB-V4 ;
+: SUB.V4 ( vtile<t,b,m> vtile<t,b,m> -- vtile<t,b,m> )
+   [: EMIT-SUB-V4 ;] PTXREP:REP2 ;
 
-TRUSTED: MUL.V4 ( vtile<t,b,m> vtile<t,b,m> -- vtile<t,b,m> )
-   EMIT-MUL-V4 ;
+: MUL.V4 ( vtile<t,b,m> vtile<t,b,m> -- vtile<t,b,m> )
+   [: EMIT-MUL-V4 ;] PTXREP:REP2 ;
 
-TRUSTED: DIV.V4 ( vtile<t,b,m> vtile<t,b,m> -- vtile<t,b,m> )
-   EMIT-DIV-V4 ;
+: DIV.V4 ( vtile<t,b,m> vtile<t,b,m> -- vtile<t,b,m> )
+   [: EMIT-DIV-V4 ;] PTXREP:REP2 ;
 
-TRUSTED: RELU.V4 ( vtile<t,b,m> -- vtile<t,b,m> )
-   EMIT-RELU-V4 ;
+: RELU.V4 ( vtile<t,b,m> -- vtile<t,b,m> )
+   [: EMIT-RELU-V4 ;] PTXREP:REP1 ;

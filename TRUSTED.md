@@ -560,13 +560,10 @@ that source is explicitly certified; they are not stale-checked by the default
 | INDEX-LOAD | `span<space-global,u32,i> span<space-global,t,e> idxctx<b,i,e,m> -- tile<t,b,m>` | PTX generic indexed gather: loads `data[idx[i]]` with a runtime `idx[i] < e` guard while the checker enforces shared index/data extent tokens through `idxctx`. | `lib/ptx/tile-test.f`, `tools/ptx/indexed-scatter-gradcheck.f` | lib/ptx/tile.f | 2026-07-01 |
 | INDEX-SCATTER-ADD | `tile<t,b,m> span<space-global,u32,i> span<space-global,t,e> idxctx<b,i,e,m> --` | PTX generic indexed scatter-add: accumulates active lanes into `data[idx[i]]` with `red.global.add.f32`, safe for duplicate indices and the conservative AD default. | `lib/ptx/tile-test.f`, `tools/ptx/indexed-scatter-gradcheck.f` | lib/ptx/tile.f | 2026-07-01 |
 | INDEX-STORE | `tile<t,b,m> span<space-global,u32,i> span<space-global,t,e> uniqidxctx<b,i,e,m> --` | PTX indexed plain store: writes `data[idx[i]]` only when the caller supplies a `uniqidxctx` uniqueness witness; duplicate-prone indexed updates must use `INDEX-SCATTER-ADD`. | `lib/ptx/tile-test.f` | lib/ptx/tile.f | 2026-07-01 |
-| SCALE | `tile<t,b,m> uniform<t> -- tile<t,b,m>` | PTX tile-DSL v0: tile times a uniform scalar; lowers to PTX mul.rn (no contraction) the checker cannot infer (a tile primitive). | `lib/ptx/tile-test.f` | lib/ptx/tile.f | 2026-06-27 |
-| FMA. | `uniform<t> tile<t,b,m> tile<t,b,m> -- tile<t,b,m>` | PTX tile-DSL v0: fused multiply-add `a*x+y` with one rounding; lowers to PTX fma.rn the checker cannot infer (a tile primitive). | `lib/ptx/tile-test.f`, `tools/ptx/saxpy-test.f` | lib/ptx/tile.f | 2026-06-29 |
-| +. | `tile<t,b,m> tile<t,b,m> -- tile<t,b,m>` | PTX tile-DSL v0: elementwise tile add with matching mask; lowers to PTX add.rn the checker cannot infer (a tile primitive). | `lib/ptx/tile-test.f` | lib/ptx/tile.f | 2026-06-29 |
-| -. | `tile<t,b,m> tile<t,b,m> -- tile<t,b,m>` | PTX tile-DSL v0: elementwise tile subtract with matching mask; lowers to PTX sub.rn the checker cannot infer (a tile primitive). | `lib/ptx/tile-test.f`, `tools/ptx/saxpy-test.f` | lib/ptx/tile.f | 2026-06-29 |
-| *. | `tile<t,b,m> tile<t,b,m> -- tile<t,b,m>` | PTX tile-DSL v0: elementwise tile multiply with matching mask; lowers to PTX mul.rn the checker cannot infer (a tile primitive). | `lib/ptx/autograd-test.f`, `lib/ptx/tile-test.f` | lib/ptx/tile.f | 2026-06-29 |
-| /. | `tile<t,b,m> tile<t,b,m> -- tile<t,b,m>` | PTX tile-DSL v0: elementwise tile divide with matching mask; lowers to PTX div.rn the checker cannot infer (a tile primitive). | `lib/ptx/tile-test.f`, `tools/ptx/saxpy-test.f` | lib/ptx/tile.f | 2026-06-29 |
-| RELU | `tile<t,b,m> -- tile<t,b,m>` | PTX tile-DSL v0: elementwise ReLU over one tile; lowers to PTX max with zero, which the checker cannot infer (a tile primitive). | `lib/ptx/tile-test.f` | lib/ptx/tile.f | 2026-06-29 |
+| FMA. | `uniform<t> tile<t,b,m> tile<t,b,m> -- tile<t,b,m>` | PTX tile-DSL v0: fused multiply-add `a*x+y` with one rounding; lowers to PTX fma.rn the checker cannot infer (a tile primitive). Keeps its boundary until the ternary phantom-preserving mix combinator lands (leg 2 of habu-ptx-phantom-preserving). | `lib/ptx/tile-test.f`, `tools/ptx/saxpy-test.f` | lib/ptx/tile.f | 2026-06-29 |
+| REP1 | `a [ n -- n ] -- a` | PTX phantom-preserving effects (dot habu-ptx-phantom-preserving): applies a checked unary register emitter to a single-cell kernel token's `n` register and returns the SAME phantom `a`. The `a<->n` from-register identity inside `q execute` is the only trusted coercion (the codegen analogue of the cg.f `*-REG` mints); forge/kind/arity safety is the checker's own unification over `a` and the `[ n -- n ]` quotation. Retires the per-op RELU / EXP. / NEG / RELU-V4 / RELU.V4 boundaries. | `lib/ptx/rep-test.f`, `lib/ptx/rep-neg-test.f` | lib/ptx/rep.f | 2026-07-17 |
+| REP2 | `a a [ n n -- n ] -- a` | PTX phantom-preserving effects: applies a checked binary register emitter to two operands of ONE shared phantom `a` and returns `a`. Forge is rejected because both operands and the result must unify to one `a` (an `mmaslice`/`mmbslice` mix cannot relabel); a wide layout family cannot bind single-cell `a` (kind); the `[ n n -- n ]` quotation pins arity. Retires the per-op `+.` / `-.` / `*.` / `/.` / `U/` and their V4/`.V4` variants. | `lib/ptx/rep-test.f`, `lib/ptx/rep-neg-test.f` | lib/ptx/rep.f | 2026-07-17 |
+| REPMIX2 | `a b [ n n -- n ] -- a` | PTX phantom-preserving effects: applies a checked binary register emitter preserving the FIRST operand's phantom `a` while consuming an independent single-cell operand `b`; the output must equal `a`, so it cannot forge a different family. Retires the per-op SCALE / B- / B/ and their V4/`.V4` variants. | `lib/ptx/rep-test.f`, `lib/ptx/rep-neg-test.f` | lib/ptx/rep.f | 2026-07-17 |
 | TILE-LOOP | `n tile<t,b,m> [ tile<t,b,m> -- tile<t,b,m> ] -- tile<t,b,m>` | PTX tile-DSL checked counted loop (K-reduction / streaming): applies an accumulator-preserving body `n` times. The checker enforces the body's `( tile -- tile )` effect at every call site (capability (a) of habu-checker-capability-typed); the emit unroll lowers to PTX the checker cannot infer (a tile primitive). | `lib/ptx/tile-loop-test.f`, `lib/ptx/tile-loop-neg-test.f` | lib/ptx/tile-loop.f | 2026-06-27 |
 | STAGE | `span<space-global,t,e> coopctx<b,e,m> -- span<space-shared,t,e>` | PTX tile-DSL shared-memory staging (capability (b)): cooperatively copies a global block into `SMEM`, emits `bar.sync`, and returns a `space-shared` span. It rejects elementwise `gridctx` so lanes cannot branch around barriers. | `lib/ptx/tile-smem-test.f`, `lib/ptx/tile-smem-neg-test.f`, `tools/ptx/smem-cg.f`, `tools/ptx/saxpy-test.f` | lib/ptx/tile-smem.f | 2026-06-30 |
 | SLOAD | `span<space-shared,t,e> coopctx<b,e,m> -- tile<t,b,m>` | PTX tile-DSL shared load (capability (b)): reads a register tile from a `space-shared` span under the same cooperative mask; rejects a `space-global` span and rejects elementwise contexts. | `lib/ptx/tile-smem-test.f`, `lib/ptx/tile-smem-neg-test.f`, `tools/ptx/smem-cg.f`, `tools/ptx/saxpy-test.f` | lib/ptx/tile-smem.f | 2026-06-30 |
@@ -578,22 +575,10 @@ that source is explicitly certified; they are not stale-checked by the default
 | GRID-CTX-V4 | `span<space-global,t,e> -- gridctx<b,e,fresh-mask-live>` | PTX v4 tile DSL: derives a flat grid context where each thread owns four consecutive elements and mints a fresh rigid mask token for that context; general `N` is handled by scalar residual lanes in load/store. | `lib/ptx/tile-v4-test.f` | lib/ptx/tile-v4.f | 2026-06-29 |
 | LOAD-V4 | `span<space-global,t,e> gridctx<b,e,m> -- tile<t,b,m>` | PTX v4 tile DSL: lowers to `ld.global.v4.f32` for full vectors and predicated scalar loads for residual lanes while preserving the scalar tile type. | `lib/ptx/tile-v4-test.f`, `tools/ptx/saxpy-test.f` | lib/ptx/tile-v4.f | 2026-06-29 |
 | STORE-V4 | `tile<t,b,m> span<space-global,t,e> gridctx<b,e,m> --` | PTX v4 tile DSL: lowers to `st.global.v4.f32` for full vectors and predicated scalar stores for residual lanes while preserving the scalar tile type. | `lib/ptx/tile-v4-test.f`, `tools/ptx/saxpy-test.f` | lib/ptx/tile-v4.f | 2026-06-29 |
-| SCALE-V4 | `tile<t,b,m> uniform<t> -- tile<t,b,m>` | PTX v4 tile DSL: lane-wise multiply for the four-register tile representation; codegen detail only, checked effect matches scalar `SCALE`. | `lib/ptx/tile-v4-test.f` | lib/ptx/tile-v4.f | 2026-06-29 |
-| ADD-V4 | `tile<t,b,m> tile<t,b,m> -- tile<t,b,m>` | PTX v4 tile DSL: lane-wise add for the four-register tile representation; codegen detail only, checked effect matches scalar `+.`. | `lib/ptx/tile-v4-test.f` | lib/ptx/tile-v4.f | 2026-06-29 |
-| SUB-V4 | `tile<t,b,m> tile<t,b,m> -- tile<t,b,m>` | PTX v4 tile DSL: lane-wise subtract for the four-register tile representation; codegen detail only, checked effect matches scalar `-.`. | `lib/ptx/tile-v4-test.f`, `tools/ptx/saxpy-test.f` | lib/ptx/tile-v4.f | 2026-06-29 |
-| MUL-V4 | `tile<t,b,m> tile<t,b,m> -- tile<t,b,m>` | PTX v4 tile DSL: lane-wise multiply for the four-register tile representation; codegen detail only, checked effect matches scalar `*.`. | `lib/ptx/tile-v4-test.f` | lib/ptx/tile-v4.f | 2026-06-29 |
-| DIV-V4 | `tile<t,b,m> tile<t,b,m> -- tile<t,b,m>` | PTX v4 tile DSL: lane-wise divide for the four-register tile representation; codegen detail only, checked effect matches scalar `/.`. | `lib/ptx/tile-v4-test.f`, `tools/ptx/saxpy-test.f` | lib/ptx/tile-v4.f | 2026-06-29 |
-| RELU-V4 | `tile<t,b,m> -- tile<t,b,m>` | PTX v4 tile DSL: lane-wise ReLU for the four-register tile representation; codegen detail only, checked effect matches scalar `RELU`. | `lib/ptx/tile-v4-test.f` | lib/ptx/tile-v4.f | 2026-06-29 |
 | V4-ALIGN | `span<space-global,t,e> -- vspan<space-global,t,e>` | PTX M10 vec4 alignment obligation: the trusted boundary that asserts a global span's base is 16-byte aligned (like MK-SPAN asserts extent) and re-tags it as a `vspan`. Identity in emit (the base is unchanged); the only route to a vspan, so a vectorized access on an unaligned base is a fail-closed type error. | `lib/ptx/tile-v4a-test.f`, `lib/ptx/tile-v4a-neg-test.f` | lib/ptx/tile-v4a.f | 2026-07-15 |
 | GRID-CTX.V4 | `span<space-global,t,e> -- gridctx<b,e,fresh-mask-live>` | PTX M10 vec4 tile DSL: derives a flat grid context where each thread owns four consecutive elements and mints a fresh rigid mask; touches no memory so it needs no alignment proof (a plain span). | `lib/ptx/tile-v4a-test.f`, `lib/ptx/tile-v4a-neg-test.f` | lib/ptx/tile-v4a.f | 2026-07-15 |
 | LOAD.V4 | `vspan<space-global,t,e> gridctx<b,e,m> -- vtile<t,b,m>` | PTX M10 typed vec4 load: consumes a 16B-proven `vspan` (alignment obligation) and yields a `vtile` (the vec4 lane type, distinct from scalar tile<>). Lowers to `ld.global.v4.f32` plus the @%p-guarded scalar residual tail; emit shared with tile-v4.f. | `lib/ptx/tile-v4a-test.f`, `lib/ptx/tile-v4a-neg-test.f` | lib/ptx/tile-v4a.f | 2026-07-15 |
 | STORE.V4 | `vtile<t,b,m> vspan<space-global,t,e> gridctx<b,e,m> --` | PTX M10 typed vec4 store: consumes a `vtile` and a 16B-proven `vspan`. Lowers to `st.global.v4.f32` plus the @%p-guarded scalar residual tail (the n-mod-4 residual is the mask m); a scalar tile or an unaligned span is a fail-closed type error. | `lib/ptx/tile-v4a-test.f`, `lib/ptx/tile-v4a-neg-test.f` | lib/ptx/tile-v4a.f | 2026-07-15 |
-| SCALE.V4 | `vtile<t,b,m> uniform<t> -- vtile<t,b,m>` | PTX M10 typed vec4 DSL: lane-wise multiply by a broadcast scalar over the four-register vtile; emit shared with tile-v4.f `SCALE-V4`. | `lib/ptx/tile-v4a-test.f` | lib/ptx/tile-v4a.f | 2026-07-15 |
-| ADD.V4 | `vtile<t,b,m> vtile<t,b,m> -- vtile<t,b,m>` | PTX M10 typed vec4 DSL: lane-wise add over the four-register vtile; emit shared with tile-v4.f `ADD-V4`. | `lib/ptx/tile-v4a-test.f` | lib/ptx/tile-v4a.f | 2026-07-15 |
-| SUB.V4 | `vtile<t,b,m> vtile<t,b,m> -- vtile<t,b,m>` | PTX M10 typed vec4 DSL: lane-wise subtract over the four-register vtile; emit shared with tile-v4.f `SUB-V4`. | `lib/ptx/tile-v4a-test.f` | lib/ptx/tile-v4a.f | 2026-07-15 |
-| MUL.V4 | `vtile<t,b,m> vtile<t,b,m> -- vtile<t,b,m>` | PTX M10 typed vec4 DSL: lane-wise multiply over the four-register vtile; emit shared with tile-v4.f `MUL-V4`. | `lib/ptx/tile-v4a-test.f` | lib/ptx/tile-v4a.f | 2026-07-15 |
-| DIV.V4 | `vtile<t,b,m> vtile<t,b,m> -- vtile<t,b,m>` | PTX M10 typed vec4 DSL: lane-wise divide over the four-register vtile; emit shared with tile-v4.f `DIV-V4`. | `lib/ptx/tile-v4a-test.f` | lib/ptx/tile-v4a.f | 2026-07-15 |
-| RELU.V4 | `vtile<t,b,m> -- vtile<t,b,m>` | PTX M10 typed vec4 DSL: lane-wise ReLU over the four-register vtile; emit shared with tile-v4.f `RELU-V4`. | `lib/ptx/tile-v4a-test.f` | lib/ptx/tile-v4a.f | 2026-07-15 |
 | PIPE-RUN | `--` | Pipelined-GEMM tile DSL: the compute-slot adapter MM-PIPE-KLOOP-WITH executes once per emitted pipeline; mints the current-iteration `mmstage` token and threads the `mmracc` token through the stored body xt. Trusted because the token mint and raw xt execute have no checked model; owned by the cp.async typestate capability and deleted when it lands. | `lib/ptx/tile-pipe-test.f`, `lib/ptx/tile-pipe-neg-test.f` | lib/ptx/tile-pipe.f | 2026-07-16 |
 | PIPE-SETUP | `matrix<space-global,f32,m,k> matrix<space-global,f32,k,q> matrix<space-global,f32,m,q> -- mmctx<m,k,q>` | Pipelined-GEMM tile DSL: tile/thread coordinate derivation (ctaid/tid decomposition, shared base) consuming the typed A[M,K]*B[K,N]->C[M,N] operands; emit is MM-THREAD-SETUP verbatim. | `lib/ptx/tile-pipe-test.f`, `lib/ptx/tile-pipe-neg-test.f` | lib/ptx/tile-pipe.f | 2026-07-16 |
 | PIPE-ACC-ZERO | `mmctx<m,k,q> -- mmctx<m,k,q> mmracc<f32,block-256,geom-mt4x4,mask-live>` | Pipelined-GEMM tile DSL: mints the zeroed 16-register 4x4 micro-tile accumulator (%f10..%f25); emit is MM-ACC-ZERO-EMIT verbatim. `mmracc` is nominally distinct from `tile`/`acc`, so naive stores on it reject. | `lib/ptx/tile-pipe-test.f`, `lib/ptx/tile-pipe-neg-test.f` | lib/ptx/tile-pipe.f | 2026-07-16 |
@@ -615,13 +600,8 @@ that source is explicitly certified; they are not stale-checked by the default
 | ROW-SCATTER-ADD | `tile<t,b,m> span<space-global,t,k> rowctx<b,k,m> --` | PTX tile-DSL AD row memory adjoint: masked `red.global.add.f32` to rowbase+lane offset; conservative default for `ROW-LOAD` adjoints unless a checked once-space witness selects ROW-STORE-ONCE. | `lib/ptx/collective-test.f`, `tools/ptx/saxpy-test.f` | lib/ptx/collective.f | 2026-06-30 |
 | BLOCK-MAX | `tile<f32,b,m> -- uniform<f32>` | PTX tile-DSL M6: shared-memory thread-0 fold over `PTX-BLOCK@` lanes; inactive lanes contribute max identity (-inf) at the reducer, independent of the tile value. Warp-shfl remains future perf work. | `lib/ptx/collective-test.f` | lib/ptx/collective.f | 2026-06-29 |
 | BLOCK-SUM | `tile<f32,b,m> -- uniform<f32>` | PTX tile-DSL M6: shared-memory thread-0 fold over `PTX-BLOCK@` lanes; inactive lanes contribute sum identity (0) at the reducer, so direct row sums and backward cotangents do not depend on `ROW-LOAD` seeding. | `lib/ptx/collective-test.f` | lib/ptx/collective.f | 2026-06-29 |
-| B- | `tile<t,b,m> uniform<t> -- tile<t,b,m>` | PTX package-public tile-DSL M6 word (`PTX:B-` at call sites): tile minus a broadcast uniform scalar; lowers to PTX sub.rn the checker cannot infer. | `lib/ptx/collective-test.f` | lib/ptx/collective.f | 2026-06-29 |
-| B/ | `tile<t,b,m> uniform<t> -- tile<t,b,m>` | PTX package-public tile-DSL M6 word (`PTX:B/` at call sites): tile divided by a broadcast uniform scalar; lowers to PTX div.rn the checker cannot infer. | `lib/ptx/collective-test.f` | lib/ptx/collective.f | 2026-06-29 |
-| U/ | `uniform<t> uniform<t> -- uniform<t>` | PTX package-public tile-DSL word (`PTX:U/` at call sites): uniform divided by uniform for the softmax `PTX:B/` adjoint (`ds = -Sum(dz*z)/s`); lowers to PTX div.rn the checker cannot infer. | `lib/ptx/collective-test.f` | lib/ptx/collective.f | 2026-06-29 |
-| EXP. | `tile<f32,b,m> -- tile<f32,b,m>` | PTX tile-DSL M6: elementwise exp (ex2.approx.ftz(x*log2e), tolerance acceptance-gated); a primitive the checker cannot infer. | `lib/ptx/collective-test.f` | lib/ptx/collective.f | 2026-06-29 |
 | BROADCAST | `uniform<f32> -- tile<f32,b,m>` | PTX tile-DSL AD: fills a tile from a uniform (named form of the broadcast in `PTX:B-`/`PTX:B/`); the mutual adjoint of BLOCK-SUM for reverse-mode AD; a primitive the checker cannot infer. | `lib/ptx/autograd-test.f` | lib/ptx/collective.f | 2026-06-29 |
 | BLOCK-MAX-SELECT | `uniform<f32> tile<f32,b,m> uniform<f32> -- tile<f32,b,m>` | PTX tile-DSL AD: the BLOCK-MAX adjoint - a masked scatter routing the cotangent to the arg-max lane (deterministic lowest-lane tie-break), 0 elsewhere; a primitive the checker cannot infer. | `lib/ptx/collective-test.f` | lib/ptx/collective.f | 2026-06-29 |
-| NEG | `a -- a` | PTX tile-DSL AD: polymorphic sign flip (forward NEG self-adjoint; the `PTX:B-`/`PTX:B/` adjoints negate a block-uniform); lowers to PTX neg.f32. | `lib/ptx/ad-saved-test.f` | lib/ptx/ad-saved.f | 2026-06-27 |
 | SAVED-X | `-- tile<f32,b,m>` | PTX tile-DSL AD saved-value: a nonlinear adjoint's saved forward input tile; materialised by the save-vs-recompute pass the checker cannot infer (body throws E-PTX-NOIMPL pending buffer reload, habu-ad-thread-saved). | `lib/ptx/ad-saved-test.f` | lib/ptx/ad-saved.f | 2026-06-27 |
 | SAVED-Y | `-- tile<f32,b,m>` | PTX tile-DSL AD saved-value: a nonlinear adjoint's saved forward output tile (EXP. bwd = dz*y); body throws E-PTX-NOIMPL pending buffer reload. | `lib/ptx/ad-saved-test.f` | lib/ptx/ad-saved.f | 2026-06-27 |
 | SAVED-Z | `-- tile<f32,b,m>` | PTX tile-DSL AD saved-value: `PTX:B/`'s saved output tile z (ds = -Sum(dz*z)/s); body throws E-PTX-NOIMPL pending buffer reload. | `lib/ptx/ad-saved-test.f` | lib/ptx/ad-saved.f | 2026-06-27 |
@@ -1295,7 +1275,6 @@ lib/ptx/cuda-driver.f:CU-EVENT-DESTROY stdlib-boundary habu-ptx-m1-c-1df1d6e7
 lib/ptx/cuda-driver.f:CU-EVENT-RECORD stdlib-boundary habu-ptx-m1-c-1df1d6e7
 lib/ptx/cuda-driver.f:CU-EVENT-SYNCHRONIZE stdlib-boundary habu-ptx-m1-c-1df1d6e7
 lib/ptx/cuda-driver.f:CU-EVENT-ELAPSED-TIME stdlib-boundary habu-ptx-m1-c-1df1d6e7
-lib/ptx/ad-saved.f:NEG stdlib-boundary habu-adg-lowering-multi-24043a69
 lib/ptx/ad-saved.f:SAVED-X stdlib-boundary habu-adg-lowering-multi-24043a69
 lib/ptx/ad-saved.f:SAVED-Y stdlib-boundary habu-adg-lowering-multi-24043a69
 lib/ptx/ad-saved.f:SAVED-Z stdlib-boundary habu-adg-lowering-multi-24043a69
@@ -1334,10 +1313,6 @@ lib/ptx/collective.f:ROW-STORE-ONCE stdlib-boundary habu-ptx-phantom-preserving-
 lib/ptx/collective.f:ROW-SCATTER-ADD stdlib-boundary habu-ptx-phantom-preserving-3df9db92
 lib/ptx/collective.f:BLOCK-MAX stdlib-boundary habu-ptx-phantom-preserving-3df9db92
 lib/ptx/collective.f:BLOCK-SUM stdlib-boundary habu-ptx-phantom-preserving-3df9db92
-lib/ptx/collective.f:B- stdlib-boundary habu-ptx-phantom-preserving-3df9db92
-lib/ptx/collective.f:B/ stdlib-boundary habu-ptx-phantom-preserving-3df9db92
-lib/ptx/collective.f:U/ stdlib-boundary habu-ptx-phantom-preserving-3df9db92
-lib/ptx/collective.f:EXP. stdlib-boundary habu-ptx-phantom-preserving-3df9db92
 lib/ptx/collective.f:BROADCAST stdlib-boundary habu-ptx-phantom-preserving-3df9db92
 lib/ptx/collective.f:BLOCK-MAX-SELECT stdlib-boundary habu-ptx-phantom-preserving-3df9db92
 lib/ptx/tile-acc.f:ACC-ZERO stdlib-boundary habu-ptx-phantom-preserving-3df9db92
@@ -1351,22 +1326,10 @@ lib/ptx/tile-smem.f:SSTORE stdlib-boundary habu-ptx-phantom-preserving-3df9db92
 lib/ptx/tile-v4.f:GRID-CTX-V4 stdlib-boundary habu-ptx-phantom-preserving-3df9db92
 lib/ptx/tile-v4.f:LOAD-V4 stdlib-boundary habu-ptx-phantom-preserving-3df9db92
 lib/ptx/tile-v4.f:STORE-V4 stdlib-boundary habu-ptx-phantom-preserving-3df9db92
-lib/ptx/tile-v4.f:SCALE-V4 stdlib-boundary habu-ptx-phantom-preserving-3df9db92
-lib/ptx/tile-v4.f:ADD-V4 stdlib-boundary habu-ptx-phantom-preserving-3df9db92
-lib/ptx/tile-v4.f:SUB-V4 stdlib-boundary habu-ptx-phantom-preserving-3df9db92
-lib/ptx/tile-v4.f:MUL-V4 stdlib-boundary habu-ptx-phantom-preserving-3df9db92
-lib/ptx/tile-v4.f:DIV-V4 stdlib-boundary habu-ptx-phantom-preserving-3df9db92
-lib/ptx/tile-v4.f:RELU-V4 stdlib-boundary habu-ptx-phantom-preserving-3df9db92
 lib/ptx/tile-v4a.f:V4-ALIGN stdlib-boundary habu-ptx-phantom-preserving-3df9db92
 lib/ptx/tile-v4a.f:GRID-CTX.V4 stdlib-boundary habu-ptx-phantom-preserving-3df9db92
 lib/ptx/tile-v4a.f:LOAD.V4 stdlib-boundary habu-ptx-phantom-preserving-3df9db92
 lib/ptx/tile-v4a.f:STORE.V4 stdlib-boundary habu-ptx-phantom-preserving-3df9db92
-lib/ptx/tile-v4a.f:SCALE.V4 stdlib-boundary habu-ptx-phantom-preserving-3df9db92
-lib/ptx/tile-v4a.f:ADD.V4 stdlib-boundary habu-ptx-phantom-preserving-3df9db92
-lib/ptx/tile-v4a.f:SUB.V4 stdlib-boundary habu-ptx-phantom-preserving-3df9db92
-lib/ptx/tile-v4a.f:MUL.V4 stdlib-boundary habu-ptx-phantom-preserving-3df9db92
-lib/ptx/tile-v4a.f:DIV.V4 stdlib-boundary habu-ptx-phantom-preserving-3df9db92
-lib/ptx/tile-v4a.f:RELU.V4 stdlib-boundary habu-ptx-phantom-preserving-3df9db92
 lib/ptx/tile-pipe.f:PIPE-RUN stdlib-boundary habu-checker-cp-async-6ba788a5
 lib/ptx/tile-pipe.f:PIPE-SETUP stdlib-boundary habu-checker-cp-async-6ba788a5
 lib/ptx/tile-pipe.f:PIPE-ACC-ZERO stdlib-boundary habu-checker-cp-async-6ba788a5
@@ -1400,13 +1363,10 @@ lib/ptx/tile.f:INDEX-DENSE-STORE stdlib-boundary habu-ptx-phantom-preserving-3df
 lib/ptx/tile.f:INDEX-LOAD stdlib-boundary habu-ptx-phantom-preserving-3df9db92
 lib/ptx/tile.f:INDEX-SCATTER-ADD stdlib-boundary habu-ptx-phantom-preserving-3df9db92
 lib/ptx/tile.f:INDEX-STORE stdlib-boundary habu-ptx-phantom-preserving-3df9db92
-lib/ptx/tile.f:SCALE stdlib-boundary habu-ptx-phantom-preserving-3df9db92
+lib/ptx/rep.f:REP1 stdlib-boundary habu-ptx-phantom-preserving-3df9db92
+lib/ptx/rep.f:REP2 stdlib-boundary habu-ptx-phantom-preserving-3df9db92
+lib/ptx/rep.f:REPMIX2 stdlib-boundary habu-ptx-phantom-preserving-3df9db92
 lib/ptx/tile.f:FMA. stdlib-boundary habu-ptx-phantom-preserving-3df9db92
-lib/ptx/tile.f:+. stdlib-boundary habu-ptx-phantom-preserving-3df9db92
-lib/ptx/tile.f:-. stdlib-boundary habu-ptx-phantom-preserving-3df9db92
-lib/ptx/tile.f:*. stdlib-boundary habu-ptx-phantom-preserving-3df9db92
-lib/ptx/tile.f:/. stdlib-boundary habu-ptx-phantom-preserving-3df9db92
-lib/ptx/tile.f:RELU stdlib-boundary habu-ptx-phantom-preserving-3df9db92
 tools/lint/text.f:CHECK! prim-axiom habu-primitive-effect-axiom-1119f176
 lib/test/snap.f:SNAP= test-metaprog habu-typed-depth-introspection-18f0efda
 lib/test/assert.f:TTHROWS-RAW test-metaprog habu-typed-depth-introspection-18f0efda

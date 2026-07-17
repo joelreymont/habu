@@ -23,7 +23,11 @@
 \ collective under divergent control flow is the separate M5 uniformity model,
 \ not yet here.
 \ Load after lib/errors.f, lib/ptx/cg.f, lib/ptx/header.f, and
-\ lib/ptx/cg-collective.f (EMIT-*).
+\ lib/ptx/cg-collective.f (EMIT-*). Broadcast/exp ops that PRESERVE the operand
+\ phantom are CHECKED callers of the PTXREP register-emitter combinators
+\ (lib/ptx/rep.f); reductions/broadcast-mints keep their trusted boundaries.
+
+require lib/ptx/rep.f
 
 TRUSTED: ROW ( -- rowidx<e> )
    EMIT-ROW ;
@@ -64,21 +68,21 @@ TRUSTED: BLOCK-SUM ( tile<f32,b,m> -- uniform<f32> )
 package PTX
 public
 
-TRUSTED: B- ( tile<t,b,m> uniform<t> -- tile<t,b,m> )
-   EMIT-B- ;
+: B- ( tile<t,b,m> uniform<t> -- tile<t,b,m> )
+   [: EMIT-B- ;] PTXREP:REPMIX2 ;
 
-TRUSTED: B/ ( tile<t,b,m> uniform<t> -- tile<t,b,m> )
-   EMIT-B/ ;
+: B/ ( tile<t,b,m> uniform<t> -- tile<t,b,m> )
+   [: EMIT-B/ ;] PTXREP:REPMIX2 ;
 
 \ U/ : uniform / uniform - the scalar divide the softmax B/ adjoint needs
 \ (ds = -Sum(dz*z)/s divides one block-uniform by another). Lowers to div.rn.f32.
-TRUSTED: U/ ( uniform<t> uniform<t> -- uniform<t> )
-   EMIT-U/ ;
+: U/ ( uniform<t> uniform<t> -- uniform<t> )
+   [: EMIT-U/ ;] PTXREP:REP2 ;
 
 ;package
 
-TRUSTED: EXP. ( tile<f32,b,m> -- tile<f32,b,m> )
-   EMIT-EXP ;
+: EXP. ( tile<f32,b,m> -- tile<f32,b,m> )
+   [: EMIT-EXP ;] PTXREP:REP1 ;
 
 \ BROADCAST is the named form of the implicit broadcast in PTX:B-/PTX:B/, and the type-dual
 \ (mutual adjoint) of BLOCK-SUM: reverse-mode AD substitutes BROADCAST for the
