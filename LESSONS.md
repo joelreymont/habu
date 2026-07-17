@@ -5549,3 +5549,6 @@ unchanged (148855). Keys for milestone 2:
   and deliberately NOT built - a subtly-wrong external-name seed would be
   masked at the DDC fixpoint because the native refresh re-emits the dict,
   so proving it needs bespoke pre-refresh verification no gate performs today.
+- **A harness must preserve the child outcome before comparing output.** The
+  legacy NF runner discards status and stderr, so an undefined cold-prefix token
+  surfaced as a false wide-memory mismatch instead of its exact rc 70 diagnostic.
