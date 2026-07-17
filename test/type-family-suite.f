@@ -66,6 +66,7 @@ TRUSTED: TWX-PF-ADD ( n n n ptr u8 n n n n n n n n -- n ) PF-ADD ;
 TRUSTED: TWX-PF-COMMIT ( n -- ) PF-COMMIT ;
 TRUSTED: TWX-PF-CUSTOM-CHECK! ( [ n n n n n n n n -- bool ] -- ) PF-CUSTOM-CHECK! ;
 TRUSTED: TWX-PF-CUSTOM-CHECK-RESET ( -- ) PF-CUSTOM-CHECK-RESET ;
+TRUSTED: TWX-PF-FLAGS-NONE ( -- n ) PF-FLAGS-NONE ;
 TRUSTED: TWX-PF-ROLLBACK ( n -- ) PF-ROLLBACK ;
 TRUSTED: TWX-SCHEMA-A@ ( n -- n ) SCHEMA-A@ ;
 TRUSTED: TWX-SCHEMA-APP ( n n n -- n ) SCHEMA-APP ;
@@ -147,7 +148,7 @@ variable CUSTOM-CALLS
    fam CFID @ = sch 1 = and
    slot 0= and cellsn 1 = and
    boff CELL 2 / = and bytesn CELL 2 / = and
-   al CELL 2 / = and flags 0= and ;
+   al CELL 2 / = and flags TWX-PF-FLAGS-NONE = and ;
 
 public
 

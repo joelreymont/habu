@@ -49,6 +49,7 @@ that source is explicitly certified; they are not stale-checked by the default
 | TWX-PF-COMMIT | `n --` | Whitebox adapter for checker-prefix type-family state whose internal word has no public checker signature. | `test/type-family-suite.f`, `test/run.f` | test/type-family-suite.f | 2026-07-17 |
 | TWX-PF-CUSTOM-CHECK! | `[ n n n n n n n n -- bool ] --` | Whitebox adapter for checker-prefix type-family provider configuration whose internal word has no public checker signature. | `test/type-family-suite.f`, `test/run.f` | test/type-family-suite.f | 2026-07-17 |
 | TWX-PF-CUSTOM-CHECK-RESET | `--` | Whitebox adapter for checker-prefix type-family provider configuration whose internal word has no public checker signature. | `test/type-family-suite.f`, `test/run.f` | test/type-family-suite.f | 2026-07-17 |
+| TWX-PF-FLAGS-NONE | `-- n` | Whitebox adapter for the pre-hook field-flags constant, which has no checker signature. | `test/type-family-suite.f`, `test/run.f` | test/type-family-suite.f | 2026-07-17 |
 | TWX-PF-ROLLBACK | `n --` | Whitebox adapter for checker-prefix type-family state whose internal word has no public checker signature. | `test/type-family-suite.f`, `test/run.f` | test/type-family-suite.f | 2026-07-17 |
 | TWX-SCHEMA-A@ | `n -- n` | Whitebox adapter for checker-prefix type-family state whose internal word has no public checker signature. | `test/type-family-suite.f`, `test/run.f` | test/type-family-suite.f | 2026-07-17 |
 | TWX-SCHEMA-APP | `n n n -- n` | Whitebox adapter for checker-prefix type-family state whose internal word has no public checker signature. | `test/type-family-suite.f`, `test/run.f` | test/type-family-suite.f | 2026-07-17 |
@@ -1803,6 +1804,7 @@ test/type-family-suite.f:TWX-PF-ADD test-metaprog habu-seal-set-check-b3676b33
 test/type-family-suite.f:TWX-PF-COMMIT test-metaprog habu-seal-set-check-b3676b33
 test/type-family-suite.f:TWX-PF-CUSTOM-CHECK! test-metaprog habu-seal-set-check-b3676b33
 test/type-family-suite.f:TWX-PF-CUSTOM-CHECK-RESET test-metaprog habu-seal-set-check-b3676b33
+test/type-family-suite.f:TWX-PF-FLAGS-NONE test-metaprog habu-seal-set-check-b3676b33
 test/type-family-suite.f:TWX-PF-ROLLBACK test-metaprog habu-seal-set-check-b3676b33
 test/type-family-suite.f:TWX-SCHEMA-A@ test-metaprog habu-seal-set-check-b3676b33
 test/type-family-suite.f:TWX-SCHEMA-APP test-metaprog habu-seal-set-check-b3676b33

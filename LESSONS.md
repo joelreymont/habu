@@ -95,7 +95,8 @@ Last updated: 2026-07-17
 
 - **Trust classification does not replace the source-effect manifest.** Every
   source-only `TRUSTED:` wrapper needs both its exact effect-table row and its
-  independently owned classification row.
+  independently owned classification row. A checked test that needs a pre-hook
+  constant must adapt that named constant explicitly, never duplicate its literal.
 
 - **Package rollback has two owners.** Restoring the engine's current/public/private
   WIDs is incomplete unless recovery also resynchronizes the checker's package
