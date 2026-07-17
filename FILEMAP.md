@@ -841,6 +841,34 @@ points stay listed.
   C device-launch fault, D gate timeout), each proven byte-identical and field-for-field;
   and the decode-result reject taxonomy (malformed, noncanonical, duplicate, bounds,
   unknown-required) is reachable and typed.
+- `maki/db/obligation.f` — the typed proof-obligation schema (MODEL-CAD-V2-PLAN.md
+  § 23.9 "Proof obligations and independent verifiers", plan:3737-3755). Package OBLIG:
+  the immutable `obligation` value naming a subject (`CAD-KIND:artifact-id`), a claimed
+  `relation`, a proof `domain`, an `independence` policy, a `verifier` class, a required
+  environment (`CAD-KIND:config-id`), and the proposing producer (`CAD-KIND:producer-id`)
+  plus its dependency cone. The six proof domains (exact, approximate, empirical, device,
+  safety, performance) are one closed DERIVE-eq ENUM with NO coercion lattice (contrast
+  maki/numpolicy.f NPOL:dom, the numeric-equivalence strength lattice it PROJECTS from via
+  the total one-way `NPOL>DOMAIN` bridge: exact→exact, ulp/relative→approximate,
+  empirical→empirical; device/safety/performance have no numeric source). `DISCHARGE`
+  is the named-field gate returning the `discharge-result` sum (wrong-subject / wrong-domain
+  / wrong-relation / wrong-environment / wrong-verifier-class / not-independent / ok);
+  `INVALIDATED-BY?` invalidates exactly the affected obligation (subject or dependency-cone
+  member). Canonical `ENCODE`/`DECODE` (ascending length-delimited tags, LE widths,
+  `decode-result` taxonomy) serialize the subject and dependency cone as artifact `KEY$`
+  and the environment / producer as their owner cross-process content keys (CONFIG /
+  PRODUCER `KEY>WIRE`, fail-closed `WIRE>KEY`). Conservative readings flagged at the
+  definition site (subject as artifact-id, environment as config-id, policy as the
+  independence governance only, relation/verifier closed vocabularies, producer as the
+  claimant). No new trust boundary. Owns -5359..-5362.
+- `maki/db/obligation-test.f` — proof-obligation acceptance, each plan rule by a named
+  test: wrong-domain evidence cannot discharge (a typed `wrong-domain` reject plus the
+  cad-kinds verdict-fixture static leg — the checker rejects a `relation` or raw int where
+  a `domain` is required); subject / environment / relation / verifier-class mismatch
+  rejects; the producer cannot be the sole verifier under an INDEPENDENT policy while a
+  SELF-VERIFY policy permits it; a changed dependency invalidates the affected obligation
+  and an UNRELATED obligation survives; the NPOL:dom→domain projection; a byte-identical +
+  field-for-field round-trip; and the decode reject taxonomy including the foreign-id fold.
 - `maki/db/keywire-xproc-child.f` — the FRESH-PROCESS decode side of the cross-process
   content-key identity test (dot habu-wire-content-key). Package KWXPC: shared fixed
   key-file layout, shared real descriptors, per-family `REG-*` registrations, and

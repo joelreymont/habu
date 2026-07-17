@@ -5999,3 +5999,11 @@ unchanged (148855). Keys for milestone 2:
 - **Diagnostic probes preserve failure status.** Run optional existence and
   content checks separately; a shell `|| true` hides the exact tool failure the
   investigation needs.
+- **A new test's REGISTER names must not collide with another suite's fixtures.**
+  `maki/test.f` runs every suite in ONE process over shared append-only registries
+  (ARTIFACT/CONFIG/PRODUCER). A later suite that asserts a count DELTA over a name
+  it treats as fresh (e.g. producer-test's `s" agent/search"`, `COUNT BASE-N @ 2 +`)
+  breaks if an earlier suite already interned that exact name — it passes standalone
+  but fails in the full gate (`expected 13 got 12`). Prefix every fixture identity
+  with the test's own tag (`oblig-test/...`) per docs/forth.md § "unique test-owned
+  names"; the collision is silent because REGISTER interning is a no-op, not an error.
