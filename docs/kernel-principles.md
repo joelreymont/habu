@@ -112,16 +112,39 @@ n-tiles, A fragment reused 4×). Landed **375.6 / 393.5 / 398.5 GFLOP/s** at
   ONE `ldmatrix.x4` for the A fragment is ~1.2% *slower* (43 vs 38 reg, 0 spill;
   370.0/388.9/394.3 vs 376.1/393.5/398.5 GFLOP/s). All modes element-exact
   (`mma-probe` MP-LDM-ALL + `mma-gemm-check` 64³/128³); default stays the exact-RNE
-  scalar+cvt feed. **Lesson: this rung is issue/dependency-bound, not
-  fragment-feed-bound** — throughput is invariant to load flavor, so the limiter
-  is the per-warp mma dependency chain (A reused only 4×, each mma waiting on the
-  B loads just before it) and the BK=32 `bar.sync` cadence.
-- Remaining rungs (dotted `habu-tensor-core-mma`, cad-6 search), reordered by the
-  step-3c evidence: a **16×64 warp tile** (4-warp / 128-thread staging → 8×
-  A-reuse, more independent mma per fragment) and **larger BK + swizzled shared**
-  (fewer syncs; a transposed/swizzled Bs also unlocks B-side `ldmatrix`, where the
-  proven mechanism amortizes). cad-6 should search warp-tile shape and BK — not
-  fragment-load flavor — on this axis.
+  scalar+cvt feed. The step-3c lesson "this rung is issue/dependency-bound, not
+  fragment-feed-bound" was **WRONG, and its error is the instructive part**: it
+  measured `ldmatrix` on an *unpadded* As, whose 16 fragment-row addresses (row
+  stride 128 B = 32 words) all alias one shared-memory bank — a 16-way conflict
+  that serialized the load and hid the win. **Measure an optimization at the layout
+  it needs.**
+- **CORRECTED (2026-07-15 `habu-mma-larger-bk`, 2026-07-17 `habu-close-mma-gemm` +
+  `habu-mma-amortize-the`):** padding As to a bank-free stride (`MMA-PAD=8`) makes
+  `ldmatrix` **+53%** (885.8 → 1358.9 GFLOP/s at 2048³, 918 MHz — past FP32 `MM`
+  981.9). At that padded/ldmatrix rung a 918 MHz variant-kernel timing decomposition
+  (nsys GPU-metrics is unsupported on this iGPU, so DCE-safe ablated kernels are the
+  profiling method) shows the kernel is **FEED-BOUND on un-amortized B-side scalar
+  `ld.shared` loads (5.04 ms of 12.61 ms ≈ 40 %, each 8×8 B fragment fed exactly one
+  mma), NOT issue/dependency-bound** — the cp.async staging floor (7.48 ms) is hidden
+  behind the feed, A-side ldmatrix is ~free (reused 4×), mma issue is ~1 %; the
+  quarter-B-loads proxy = **2270 GFLOP/s** ceiling. **THE lever is a wider M register
+  tile** (`lib/ptx/cg-mma.f` `MMA-MFRAGS`): each warp owns MFRAGS stacked 16-row
+  M-fragments, so each 8×8 B fragment is **reused across MFRAGS M-frags** and a taller
+  block (`BM = 64·MFRAGS`) also halves *global* B staging. `MFRAGS=2` (128×64 block,
+  32 f32 accumulators/lane, double-buffered dynamic .shared 57344 B) measured
+  **2133.9 GFLOP/s at 2048³ = 1.13× Triton (1890.5) — the first Habu GEMM past parity**,
+  +55.7 % over the shipped swizzled `MMM-SWZ-BK64` and 94 % of the 2270 ceiling
+  (element-exact `mma-gemm-check` 128³/256³, two runs ±0.04 %). Note stages 1-vs-2 was
+  flat at the narrow tile but stages=2 is +2.4 % at the wide tile — the amortized feed
+  re-exposes the cp.async floor, so overlap matters again. **Residual** (productized
+  DCE-safe ablation `tools/ptx/mma-ablate.f`, the `MMA-ABLATE` knob, 2048³ 918 MHz):
+  the 128×64 kernel is STILL **~36 % B-feed** (full 241.2 ms → quarter-B 153.5 ms, its
+  own ceiling **3357 GFLOP/s**) and now **~15 % mma-issue** for the 2nd M-frag
+  (full − single-mma 35.2 ms), so parity is reached but the tile is not saturated — the
+  next lever is **B-side `ldmatrix` on a transposed/swizzled Bs** (one ldmatrix replaces
+  8 scalar B loads; needs a NEW element-exact fragment proof in `mma-probe.f` FIRST) and/or
+  MFRAGS=4. The general method: attribute with DCE-safe ablated kernel variants (the iGPU
+  has no counter profiling), then attack the phase the decomposition names.
 
 ## The five things that govern speed (check all five)
 

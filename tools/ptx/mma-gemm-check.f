@@ -30,8 +30,8 @@ require tools/ptx/bench.f
 
 package MMAGEMMCHECK
 
-128 constant MGC-MAX                       \ largest square edge (buffers sized for this)
-MGC-MAX MGC-MAX * constant MGC-CAP         \ 16384 elems
+256 constant MGC-MAX                       \ largest square edge (buffers sized for this; 256 for the wide 128-row block)
+MGC-MAX MGC-MAX * constant MGC-CAP         \ 65536 elems
 
 create MGC-HA MGC-CAP cells allot          \ host A (f64)
 create MGC-HB MGC-CAP cells allot          \ host B
@@ -43,7 +43,9 @@ create MGC-PC MGC-CAP 4 * allot
 create MGC-QO $1000 allot  create MGC-QE $1000 allot
 variable MGC-DA  variable MGC-DB  variable MGC-DC
 variable MGC-N   variable MGC-BADI
+variable MGC-SA  variable MGC-SB            \ the two square edges each config is checked at (default 64/128)
 create MGC-MAXERR 1 cells allot
+64 MGC-SA !  128 MGC-SB !
 
 \ deterministic varied small integers (1..13 / 1..11), distinct enough to catch mis-mapping
 : MGC-FILL ( -- ) {: :}
@@ -82,7 +84,7 @@ create MGC-MAXERR 1 cells allot
    MGC-DA @ MGC-PA e 4 * PTXBENCH:HTOD
    MGC-DB @ MGC-PB e 4 * PTXBENCH:HTOD
    16 PTXBENCH:BLOCK!  16 PTXBENCH:BLOCKY!
-   n 64 / PTXBENCH:GRID!  n 64 / PTXBENCH:GRIDY!
+   n 64 / PTXBENCH:GRID!  n MMA-BROWS / PTXBENCH:GRIDY!   \ gridY = M/block-rows (BROWS=64*MFRAGS)
    36 PTXBENCH:PARAM-BYTES!
    MMA-DYNSMEM @ if MMA-SMEM PTXBENCH:SHARED! else 0 PTXBENCH:SHARED! then   \ dynamic .shared tile
    PTXBENCH:PREPARE-LAUNCH
@@ -143,8 +145,8 @@ create MGC-MAXERR 1 cells allot
    PTXTC:CUBIN$ PTXBENCH:CUBIN!
    s" MMM" PTXBENCH:KERNEL!  s" MMM" PTXBENCH:LABEL!
    PTXBENCH:OPEN  PTXBENCH:LOAD
-   64 MGC-ONE
-   128 MGC-ONE
+   MGC-SA @ MGC-ONE
+   MGC-SB @ MGC-ONE
    PTXBENCH:UNLOAD  PTXBENCH:CLOSE
    PTXTC:CLEAN ;
 
@@ -156,6 +158,17 @@ create MGC-MAXERR 1 cells allot
    s"  dyn=" type dyn . s" :" type cr
    mode MGC-MODE
    32 MMA-BK !  0 MMA-PAD !  2 MMA-STAGES !  0 MMA-DYNSMEM ! ;   \ restore the committed defaults
+
+\ WIDER-M config (dot habu-mma-amortize-the): MFRAGS>1 grows the block to 64*MFRAGS rows, so it
+\ is checked at 128^3 (1 M-block, 2 N-blocks) and 256^3 (multiple M-blocks) - 64^3 would launch
+\ zero blocks in M. Restores MFRAGS=1 and the 64/128 edges.
+: MGC-CFG-WIDE ( n n n n n n -- ) {: bk:n pad:n stages:n dyn:n mode:n mfrags:n :}
+   bk MMA-BK !  pad MMA-PAD !  stages MMA-STAGES !  dyn MMA-DYNSMEM !  mfrags MMA-MFRAGS !
+   128 MGC-SA !  256 MGC-SB !
+   s" -- WIDE config MFRAGS=" type mfrags .  s"  BK=" type bk .  s"  pad=" type pad .
+   s"  stages=" type stages .  s"  dyn=" type dyn . s"  (128^3,256^3):" type cr
+   mode MGC-MODE
+   32 MMA-BK !  0 MMA-PAD !  2 MMA-STAGES !  0 MMA-DYNSMEM !  1 MMA-MFRAGS !  64 MGC-SA !  128 MGC-SB ! ;
 
 public
 : MGC-ALL ( -- )
@@ -171,6 +184,10 @@ public
    32 8 2 0 0 MGC-CFG                                  \ BK=32 padded (bank-swizzled As), scalar+cvt
    32 8 2 0 2 MGC-CFG                                  \ BK=32 padded, ldmatrix (bank-free fragment rows)
    64 8 2 1 2 MGC-CFG                                  \ BK=64 padded double-buffer DYNAMIC, ldmatrix
+   s" == wider-M register tile configs (dot habu-mma-amortize-the) ==" type cr
+   32 8 2 1 2 2 MGC-CFG-WIDE                           \ MFRAGS=2 BK=32 pad=8 double-buffer DYNAMIC ldmatrix (128x64)
+   32 8 1 0 2 2 MGC-CFG-WIDE                           \ MFRAGS=2 BK=32 pad=8 SINGLE-buffer STATIC ldmatrix (128x64)
+   32 8 2 1 0 2 MGC-CFG-WIDE                           \ MFRAGS=2 BK=32 pad=8 double-buffer DYNAMIC scalar+cvt (exact-RNE cross-check)
    0 MMA-LMODE ! ;                                     \ restore the committed default (baseline scalar+cvt)
 
 ;package

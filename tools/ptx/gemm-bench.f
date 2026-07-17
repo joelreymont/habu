@@ -36,8 +36,10 @@ $3F800000 constant GB-ONE             \ 1.0f bit pattern (A/B fill)
 create GB-QO $1000 allot  create GB-QE $1000 allot
 variable GB-DA  variable GB-DB  variable GB-DC
 variable GB-NV                         \ M=N=K (square) as the u32 kernel param
-variable GB-OT                         \ output-tile edge: 64 (MM blocked) / 16 (MMN naive)
+variable GB-OT                         \ output-tile edge (grid X / N cols): 64 (MM/MMM blocked) / 16 (MMN naive)
+variable GB-OTY                        \ output-tile M edge (grid Y): = GB-OT, except 64*MFRAGS for the wider-M MMM tile
 variable GB-SMEM-DYN                    \ dynamic .shared bytes for the launch (0 = static)
+64 GB-OTY !
 
 : GB-INT. ( n -- )  SB-RESET SB-INT SB$ type ;
 
@@ -58,7 +60,7 @@ variable GB-SMEM-DYN                    \ dynamic .shared bytes for the launch (
 : GB-PARAMS ( n -- ) {: s:n :}         \ 2D grid = (s/tile)^2 output tiles, 16x16 block
    s GB-NV !
    GB-BLK PTXBENCH:BLOCK!        GB-BLK PTXBENCH:BLOCKY!
-   s GB-OT @ / PTXBENCH:GRID!    s GB-OT @ / PTXBENCH:GRIDY!
+   s GB-OT @ / PTXBENCH:GRID!    s GB-OTY @ / PTXBENCH:GRIDY!   \ gridY = M/block-rows (GB-OTY = 64*MFRAGS for wide)
    36 PTXBENCH:PARAM-BYTES!
    GB-SMEM-DYN @ PTXBENCH:SHARED!         \ dynamic .shared tile (0 = static)
    PTXBENCH:PREPARE-LAUNCH
@@ -106,7 +108,7 @@ variable GB-SMEM-DYN                    \ dynamic .shared bytes for the launch (
    s" habu-gemm-bench" PTXTC:PREPARE
    PTX-CAPTURE-ON  EMIT-MATMUL-NAIVE  PTX-CAPTURE-OFF
    GB-ASSEMBLE
-   16 GB-OT !
+   16 GB-OT !  16 GB-OTY !
    s" MMN" GB-KERNEL
    PTXTC:CLEAN ;
 
@@ -115,7 +117,7 @@ variable GB-SMEM-DYN                    \ dynamic .shared bytes for the launch (
    s" habu-gemm-bench" PTXTC:PREPARE
    PTX-CAPTURE-ON  EMIT-MATMUL  PTX-CAPTURE-OFF
    GB-ASSEMBLE
-   64 GB-OT !
+   64 GB-OT !  64 GB-OTY !
    s" MM" GB-KERNEL
    PTXTC:CLEAN ;
 
@@ -129,7 +131,7 @@ variable GB-SMEM-DYN                    \ dynamic .shared bytes for the launch (
    s" habu-gemm-bench" PTXTC:PREPARE
    PTX-CAPTURE-ON  EMIT-MATMUL-MMA  PTX-CAPTURE-OFF
    GB-ASSEMBLE
-   64 GB-OT !
+   64 GB-OT !  64 GB-OTY !
    s" MMM" GB-KERNEL
    PTXTC:CLEAN ;
 
@@ -147,10 +149,28 @@ variable GB-SMEM-DYN                    \ dynamic .shared bytes for the launch (
    s" habu-gemm-bench" PTXTC:PREPARE
    PTX-CAPTURE-ON  EMIT-MATMUL-MMA  PTX-CAPTURE-OFF
    GB-ASSEMBLE
-   64 GB-OT !
+   64 GB-OT !  64 GB-OTY !
    s" MMM" GB-KERNEL
    PTXTC:CLEAN
    32 MMA-BK !  0 MMA-PAD !  2 MMA-STAGES !  0 MMA-DYNSMEM !  0 MMA-LMODE !  0 GB-SMEM-DYN ! ;
+
+\ WIDER-M register-tile config (dot habu-mma-amortize-the): each warp owns MFRAGS stacked
+\ 16-row M-frags so the block is 64*MFRAGS x 64 and grid Y = s / (64*MFRAGS). Amortizes the
+\ B-side fragment feed (each B fragment reused across MFRAGS M-frags). Restores MFRAGS=1.
+: GB-MMM-CFGW ( n n n n n n -- ) {: bk:n pad:n stages:n dyn:n mode:n mfrags:n :}
+   bk MMA-BK !  pad MMA-PAD !  stages MMA-STAGES !  dyn MMA-DYNSMEM !  mode MMA-LMODE !  mfrags MMA-MFRAGS !
+   MMA-DYNSMEM @ if MMA-SMEM else 0 then GB-SMEM-DYN !
+   s" == MMM-WIDE MFRAGS=" type mfrags GB-INT. s"  BK=" type bk GB-INT. s"  pad=" type pad GB-INT.
+   s"  stages=" type stages GB-INT. s"  dyn=" type dyn GB-INT. s"  frag=" type mode GB-INT.
+   s"  block=" type MMA-BROWS GB-INT. s" x64  smem=" type MMA-SMEM GB-INT. s" B  ==" type cr
+   s" habu-gemm-bench" PTXTC:PREPARE
+   PTX-CAPTURE-ON  EMIT-MATMUL-MMA  PTX-CAPTURE-OFF
+   GB-ASSEMBLE
+   64 GB-OT !  MMA-BROWS GB-OTY !
+   s" MMM" GB-KERNEL
+   PTXTC:CLEAN
+   32 MMA-BK !  0 MMA-PAD !  2 MMA-STAGES !  0 MMA-DYNSMEM !  0 MMA-LMODE !  1 MMA-MFRAGS !
+   0 GB-SMEM-DYN !  64 GB-OTY ! ;
 
 \ the raised-BK / bank-swizzled configuration space (all element-exact per tools/ptx/mma-gemm-check.f)
 : GB-MMM-SWEEP ( -- )
@@ -161,12 +181,26 @@ variable GB-SMEM-DYN                    \ dynamic .shared bytes for the launch (
    32 8 2 0 2 GB-MMM-CFG               \ BK=32 padded (bank-swizzled As), ldmatrix
    64 8 2 1 2 GB-MMM-CFG ;             \ BK=64 padded double-buffer dynamic, ldmatrix
 
+\ wider-M B-feed-amortization sweep (dot habu-mma-amortize-the): same-session A/B against the
+\ pinned swizzled baselines, then the 128x64 wide tiles. All element-exact per mma-gemm-check.f.
+: GB-MMM-WIDE-SWEEP ( -- )
+   32 0 2 0 0 GB-MMM-CFG               \ BK=32 baseline (same-session A/B reference)
+   32 8 2 0 2 GB-MMM-CFG               \ MMM-SWZ 64x64 ldmatrix (static, prior best-fits-static)
+   64 8 2 1 2 GB-MMM-CFG               \ MMM-SWZ-BK64 (shipped best, 1369.6)
+   32 8 2 1 2 2 GB-MMM-CFGW            \ WIDE MFRAGS=2 BK=32 pad=8 stages=2 DYNAMIC ldmatrix (128x64, 57344 B)
+   32 8 1 0 2 2 GB-MMM-CFGW ;          \ WIDE MFRAGS=2 BK=32 pad=8 stages=1 STATIC ldmatrix (128x64, 28672 B)
+
 public
 
 : GB-MMM-BENCH ( -- )                  \ FP32 roof reference + the larger-BK/swizzle sweep (focused)
    CUDA:OPEN? 0= if s" gemm-bench: libcuda unavailable -> SKIPPED (off-device)" type cr exit then
    GB-MM
    GB-MMM-SWEEP ;
+
+: GB-WIDE-BENCH ( -- )                 \ FP32 roof reference + swizzled baselines + wider-M B-feed sweep
+   CUDA:OPEN? 0= if s" gemm-bench: libcuda unavailable -> SKIPPED (off-device)" type cr exit then
+   GB-MM
+   GB-MMM-WIDE-SWEEP ;
 
 
 : GB-ALL ( -- )

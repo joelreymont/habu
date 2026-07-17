@@ -5398,3 +5398,25 @@ unchanged (148855). Keys for milestone 2:
   1.20x Triton. Also: the whole +53% swizzle win was pad=8 unlocking bank-free
   ldmatrix (no-pad ldmatrix is SLOWER than baseline), and cp.async stages 1 vs
   2 measure flat — do not invest in stages until the register tile grows.
+- **A wider M register tile amortized the B-side feed and took the TF32 mma.sync
+  GEMM PAST Triton parity: 2133.9 GFLOP/s at 2048^3 = 1.13x Triton (1890.5), the
+  first Habu GEMM to beat it.** (dot habu-mma-amortize-the-dd182428, lib/ptx/cg-mma.f
+  `MMA-MFRAGS` knob.) The feed-bound attribution said each 8x8 B fragment fed exactly
+  one mma (zero reuse, ~40% of iteration). Fix = each warp owns MFRAGS stacked 16-row
+  M-fragments; per K-substep it loads MFRAGS A fragments (ldmatrix, ~free) and then,
+  per n-tile, loads its B fragment ONCE and issues MFRAGS mma against it -> B fragment
+  reused MFRAGS times. MFRAGS=2 also grows the block to 128x64 (BM=64*MFRAGS), which
+  HALVES global B staging too. Result at 918 MHz vs the shipped swizzled best 1369.6:
+  +55.7% (94% of the 2270 quarter-B ceiling); 32 f32 accumulators/lane, 57344 B
+  double-buffered dynamic .shared, 2 blocks/SM. Method notes that paid off: (1) gate
+  every new behavior behind `MFRAGS>1` so all 15 pinned MFRAGS=1 configs stay
+  BYTE-IDENTICAL (captured goldens + cmp before/after) - the wider tile reused the
+  device-proven m16n8k8 fragment layout at +f*16-row base offsets, so NO new
+  fragment-layout proof was needed, only the full-kernel element-exact golden at
+  128^3/256^3 (ldmatrix AND scalar+cvt cross-check, same C[0][0]). (2) stages 1-vs-2
+  flipped from FLAT (narrow tile) to +2.4% (wide tile): amortizing the feed re-exposes
+  the cp.async floor, so the "don't invest in stages" rule is tile-size-dependent -
+  re-measure knobs after the tile changes. (3) The harness must be block-M-aware
+  (gridY = M/(64*MFRAGS), shapes multiple of 128, As/Bs staged with independent chunk
+  counts since BM!=BN) - a 64^3 check on a 128-row block launches zero blocks and
+  silently "passes" all-zero unless the shape is raised.

@@ -668,6 +668,14 @@ points stay listed.
   device-gated on `CUDA:OPEN?` (recorded SKIP off-device). Correctness is owned by
   `tools/ptx/mma-gemm-check.f`, timing by `tools/ptx/gemm-bench.f`; this only shapes
   the launch.
+- `tools/ptx/mma-ablate.f` — DCE-safe timing decomposition of the wider-M TF32
+  mma.sync GEMM (`lib/ptx/cg-mma.f` `MMA-ABLATE` knob): emits the 128x64 wide config
+  at each ablation mode (full / quarter-B / half-B / single-mma), each keeping every
+  mma + store live so ptxas cannot delete the ablated work, and times them
+  same-session to attribute per-phase cost (B-feed, mma-issue) and the quarter-B
+  ceiling — the iGPU has no counter profiling, so ablated variants are the method.
+  Device-gated on `CUDA:OPEN?` (recorded SKIP off-device); results in ablated modes
+  are numerically WRONG on purpose (correctness owned by `tools/ptx/mma-gemm-check.f`).
 - `maki/README.md` / `maki/STATUS.md` — Maki framework overview and current
   verification status outside the Habu trust root.
 - `maki/cad-kinds.f` — package-scoped nominal identities for Model CAD handles,
