@@ -20,8 +20,9 @@
 \ These combinators are the ONLY trusted boundary they concentrate: the `a<->n`
 \ from-register identity inside `q execute` is exactly the coercion the checker
 \ cannot express, the codegen analogue of the cg.f *-REG mints. Every pointwise
-\ kernel op that PRESERVES its operand's phantom type is now a checked caller of
-\ one of these three, so ~20 per-op TRUSTED: wrappers collapse to this core.
+\ kernel op that PRESERVES its operand's phantom type — and every phantom-CONSUMING
+\ store that returns nothing (the SINK* family) — is now a checked caller of one of
+\ these combinators, so per-op TRUSTED: wrappers collapse to this core.
 \ Load before the tile / collective op vocabularies (lib/ptx/cg.f supplies the
 \ EMIT-* leaves the callers quote).
 
@@ -47,6 +48,39 @@ TRUSTED: REP2 ( a a [ n n -- n ] -- a )
 \ phantom `a` while consuming a second operand of an independent single-cell type
 \ `b` (SCALE: tile * uniform -> tile; B- / B/: tile ∘ uniform -> tile).
 TRUSTED: REPMIX2 ( a b [ n n -- n ] -- a )
+   execute ;
+
+\ REPMIX3 ( a b c [ n n n -- n ] -- a ) : ternary op preserving the FIRST
+\ operand's phantom `a` while consuming two independent single-cell operands
+\ `b c` (ACC-FMA: acc ∘ tile ∘ tile -> acc). The output must equal `a`, so it
+\ cannot forge a different family; a wide operand cannot bind single-cell `a`
+\ (kind); the [ n n n -- n ] quotation pins arity.
+TRUSTED: REPMIX3 ( a b c [ n n n -- n ] -- a )
+   execute ;
+
+\ REPMIX3B ( a b c [ n n n -- n ] -- b ) : ternary op preserving the SECOND
+\ operand's phantom `b` — the FMA-shaped ops whose result phantom is the MIDDLE
+\ operand, not the first (FMA.: uniform ∘ tile ∘ tile -> tile; BLOCK-MAX-SELECT:
+\ uniform ∘ tile ∘ uniform -> tile). The emitter's needed register order IS the
+\ declared operand order, so the wrapper reshuffles nothing and the byte-identity
+\ is direct; the output must equal `b`, so it cannot forge the first family.
+TRUSTED: REPMIX3B ( a b c [ n n n -- n ] -- b )
+   execute ;
+
+\ SINK3 ( a b c [ n n n -- ] -- ) : a ternary phantom-CONSUMING store — three
+\ independent single-cell operands `a b c` push their registers through a
+\ ( n n n -- ) sink emitter that returns nothing (STORE / STORE-ONCE /
+\ SCATTER-ADD / FANIN-SCATTER-ADD / INDEX-DENSE-STORE / ROW-STORE* / SSTORE /
+\ STORE-V4 / STORE.V4). The sink returns NO phantom, so it can neither mint nor
+\ forge one (an output declaration rejects); a wide operand cannot bind
+\ single-cell `a` (kind); the [ n n n -- ] quotation pins arity.
+TRUSTED: SINK3 ( a b c [ n n n -- ] -- )
+   execute ;
+
+\ SINK4 ( a b c d [ n n n n -- ] -- ) : the 4-operand indexed sink
+\ (INDEX-SCATTER-ADD / INDEX-STORE) — the same sink discipline with one more
+\ single-cell operand; the [ n n n n -- ] quotation pins the wider arity.
+TRUSTED: SINK4 ( a b c d [ n n n n -- ] -- )
    execute ;
 
 ;package

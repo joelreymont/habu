@@ -10,12 +10,14 @@
 \ `e`, column extent `k`, block `b`, mask `m` are polymorphic type vars threaded
 \ by unification (NB n/f/r are reserved tokens - use e/k/b/m/t).
 \
-\ These are PTX PRIMITIVES (TRUSTED: boundaries). The forward ops now LOWER in
-\ emit mode: each body calls its EMIT-* helper (lib/ptx/cg-collective.f), so the
+\ These are PTX PRIMITIVES. The context/row-address/reduction words that MINT a
+\ phantom stay TRUSTED: boundaries; the phantom-CONSUMING row stores (ROW-STORE*,
+\ ROW-SCATTER-ADD) and the phantom-preserving BLOCK-MAX-SELECT are CHECKED callers
+\ of the PTXREP:SINK3 / REPMIX3B combinators (lib/ptx/rep.f). Each body still
+\ lowers in emit mode through its EMIT-* helper (lib/ptx/cg-collective.f), so the
 \ checked SOFTMAX-ROWS body that ptx-collective-test.f certifies also emits PTX -
 \ shared-mem + bar.sync block reduction, reducer-identity inactive lanes (proven
-\ correct-vs-golden on the Orin by tools/ptx/softmax-launch.f). BLOCK-MAX-SELECT
-\ (the BLOCK-MAX adjoint) lowers through EMIT-BLOCK-MAX-SELECT.
+\ correct-vs-golden on the Orin by tools/ptx/softmax-launch.f).
 \
 \ BOUNDARY (named, tested). As in lib/ptx/tile.f, context producers mint fresh
 \ rigid mask tokens per call, while shared tokens prove agreement through loads,
@@ -50,14 +52,14 @@ TRUSTED: ROW-LOAD ( span<space-global,t,k> rowctx<b,k,m> -- tile<t,b,m> )
 TRUSTED: ROW-LOAD-ONCE ( span<space-global-once,t,k> rowctx<b,k,m> -- tile<t,b,m> )
    EMIT-ROW-LOAD-ONCE ;
 
-TRUSTED: ROW-STORE ( tile<t,b,m> span<space-global,t,k> rowctx<b,k,m> -- )
-   EMIT-ROW-STORE ;
+: ROW-STORE ( tile<t,b,m> span<space-global,t,k> rowctx<b,k,m> -- )
+   [: EMIT-ROW-STORE ;] PTXREP:SINK3 ;
 
-TRUSTED: ROW-STORE-ONCE ( tile<t,b,m> span<space-global-once,t,k> rowctx<b,k,m> -- )
-   EMIT-ROW-STORE-ONCE ;
+: ROW-STORE-ONCE ( tile<t,b,m> span<space-global-once,t,k> rowctx<b,k,m> -- )
+   [: EMIT-ROW-STORE-ONCE ;] PTXREP:SINK3 ;
 
-TRUSTED: ROW-SCATTER-ADD ( tile<t,b,m> span<space-global,t,k> rowctx<b,k,m> -- )
-   EMIT-ROW-SCATTER-ADD ;
+: ROW-SCATTER-ADD ( tile<t,b,m> span<space-global,t,k> rowctx<b,k,m> -- )
+   [: EMIT-ROW-SCATTER-ADD ;] PTXREP:SINK3 ;
 
 TRUSTED: BLOCK-MAX ( tile<f32,b,m> -- uniform<f32> )
    EMIT-BLOCK-MAX ;
@@ -95,5 +97,7 @@ TRUSTED: BROADCAST ( uniform<f32> -- tile<f32,b,m> )
 \ cotangent ds to the arg-max lane and 0 elsewhere (sub-gradient). Inputs: ds (the
 \ uniform cotangent), the saved tile x, and the saved max mx. Tie-break is the
 \ deterministic LOWEST global lane index, matched to the forward BLOCK-MAX.
-TRUSTED: BLOCK-MAX-SELECT ( uniform<f32> tile<f32,b,m> uniform<f32> -- tile<f32,b,m> )
-   EMIT-BLOCK-MAX-SELECT ;
+\ BLOCK-MAX-SELECT's result tile is the MIDDLE operand (ds ∘ x ∘ mx -> tile), so
+\ it PRESERVES the SECOND phantom through REPMIX3B rather than minting one.
+: BLOCK-MAX-SELECT ( uniform<f32> tile<f32,b,m> uniform<f32> -- tile<f32,b,m> )
+   [: EMIT-BLOCK-MAX-SELECT ;] PTXREP:REPMIX3B ;

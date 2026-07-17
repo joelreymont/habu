@@ -55,8 +55,8 @@ TRUSTED: GRID-CTX.V4 ( span<space-global,t,e> -- gridctx<b,e,fresh-mask-live> )
 TRUSTED: LOAD.V4 ( vspan<space-global,t,e> gridctx<b,e,m> -- vtile<t,b,m> )
    EMIT-LOAD-V4 ;
 
-TRUSTED: STORE.V4 ( vtile<t,b,m> vspan<space-global,t,e> gridctx<b,e,m> -- )
-   EMIT-STORE-V4 ;
+: STORE.V4 ( vtile<t,b,m> vspan<space-global,t,e> gridctx<b,e,m> -- )
+   [: EMIT-STORE-V4 ;] PTXREP:SINK3 ;
 
 : SCALE.V4 ( vtile<t,b,m> uniform<t> -- vtile<t,b,m> )
    [: EMIT-SCALE-V4 ;] PTXREP:REPMIX2 ;

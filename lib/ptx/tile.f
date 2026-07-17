@@ -8,9 +8,11 @@
 \ the reserved generic-int token, never an extent var - use `e`.
 \
 \ These are PTX PRIMITIVES: the checker cannot infer a body that lowers to PTX, so
-\ each is a TRUSTED: boundary whose declared effect is the contract (see
-\ TRUSTED.md). Bodies throw E-PTX-NOIMPL until codegen lands (M4e) - kernels are
-\ CHECKED here, not run.
+\ the phantom-MINTING contexts and loads are TRUSTED: boundaries whose declared
+\ effect is the contract (see TRUSTED.md). The phantom-CONSUMING stores return
+\ nothing, so they are CHECKED callers of the PTXREP:SINK* combinators
+\ (lib/ptx/rep.f) — the operand registers flow through the ( n … -- ) emitter and
+\ no phantom is minted. Kernels are CHECKED here, not run.
 \
 \ BOUNDARY (named, tested). The checker proves space / extent / mask AGREEMENT by
 \ shared token. Context producers mint a fresh rigid mask per call, so independently
@@ -51,14 +53,14 @@ TRUSTED: LOAD ( span<space-global,t,e> gridctx<b,e,m> -- tile<t,b,m> )
 TRUSTED: LOAD-ONCE ( span<space-global-once,t,e> gridctx<b,e,m> -- tile<t,b,m> )
    EMIT-LOAD-ONCE ;
 
-TRUSTED: STORE ( tile<t,b,m> span<space-global,t,e> gridctx<b,e,m> -- )
-   EMIT-STORE ;
+: STORE ( tile<t,b,m> span<space-global,t,e> gridctx<b,e,m> -- )
+   [: EMIT-STORE ;] PTXREP:SINK3 ;
 
-TRUSTED: STORE-ONCE ( tile<t,b,m> span<space-global-once,t,e> gridctx<b,e,m> -- )
-   EMIT-STORE-ONCE ;
+: STORE-ONCE ( tile<t,b,m> span<space-global-once,t,e> gridctx<b,e,m> -- )
+   [: EMIT-STORE-ONCE ;] PTXREP:SINK3 ;
 
-TRUSTED: SCATTER-ADD ( tile<t,b,m> span<space-global,t,e> gridctx<b,e,m> -- )
-   EMIT-SCATTER-ADD ;
+: SCATTER-ADD ( tile<t,b,m> span<space-global,t,e> gridctx<b,e,m> -- )
+   [: EMIT-SCATTER-ADD ;] PTXREP:SINK3 ;
 
 TRUSTED: FANIN-CTX ( ptr<space-global,t> -- fanctx<b,extent-n,fresh-mask-live> )
    EMIT-FANIN-CTX ;
@@ -66,8 +68,8 @@ TRUSTED: FANIN-CTX ( ptr<space-global,t> -- fanctx<b,extent-n,fresh-mask-live> )
 TRUSTED: FANIN-LOAD ( ptr<space-global,t> fanctx<b,e,m> -- tile<t,b,m> )
    EMIT-FANIN-LOAD ;
 
-TRUSTED: FANIN-SCATTER-ADD ( tile<t,b,m> ptr<space-global,t> fanctx<b,e,m> -- )
-   EMIT-FANIN-SCATTER-ADD ;
+: FANIN-SCATTER-ADD ( tile<t,b,m> ptr<space-global,t> fanctx<b,e,m> -- )
+   [: EMIT-FANIN-SCATTER-ADD ;] PTXREP:SINK3 ;
 
 TRUSTED: INDEX-CTX ( span<space-global,u32,i> span<space-global,t,e> -- idxctx<b,i,e,fresh-mask-live> )
    EMIT-INDEX-CTX ;
@@ -81,28 +83,29 @@ TRUSTED: INDEX-DENSE-LOAD ( span<space-global,t,i> idxctx<b,i,e,m> -- tile<t,b,m
 TRUSTED: UNIQUE-INDEX-DENSE-LOAD ( span<space-global,t,i> uniqidxctx<b,i,e,m> -- tile<t,b,m> )
    EMIT-UNIQUE-INDEX-DENSE-LOAD ;
 
-TRUSTED: INDEX-DENSE-STORE ( tile<t,b,m> span<space-global,t,i> idxctx<b,i,e,m> -- )
-   EMIT-INDEX-DENSE-STORE ;
+: INDEX-DENSE-STORE ( tile<t,b,m> span<space-global,t,i> idxctx<b,i,e,m> -- )
+   [: EMIT-INDEX-DENSE-STORE ;] PTXREP:SINK3 ;
 
 TRUSTED: INDEX-LOAD ( span<space-global,u32,i> span<space-global,t,e> idxctx<b,i,e,m> -- tile<t,b,m> )
    EMIT-INDEX-LOAD ;
 
-TRUSTED: INDEX-SCATTER-ADD ( tile<t,b,m> span<space-global,u32,i> span<space-global,t,e> idxctx<b,i,e,m> -- )
-   EMIT-INDEX-SCATTER-ADD ;
+: INDEX-SCATTER-ADD ( tile<t,b,m> span<space-global,u32,i> span<space-global,t,e> idxctx<b,i,e,m> -- )
+   [: EMIT-INDEX-SCATTER-ADD ;] PTXREP:SINK4 ;
 
-TRUSTED: INDEX-STORE ( tile<t,b,m> span<space-global,u32,i> span<space-global,t,e> uniqidxctx<b,i,e,m> -- )
-   EMIT-INDEX-STORE ;
+: INDEX-STORE ( tile<t,b,m> span<space-global,u32,i> span<space-global,t,e> uniqidxctx<b,i,e,m> -- )
+   [: EMIT-INDEX-STORE ;] PTXREP:SINK4 ;
 
 \ Phantom-preserving pointwise ops: CHECKED callers of the PTXREP register-emitter
 \ combinators (lib/ptx/rep.f). The operand tile's register flows through the
 \ ( n … -- n ) emitter and the SAME tile phantom is returned, so these certify
-\ instead of asserting a TRUSTED: boundary. FMA. keeps its boundary until the
-\ ternary mix combinator lands (leg 2).
+\ instead of asserting a TRUSTED: boundary. FMA.'s result tile is the MIDDLE
+\ operand (uniform ∘ tile ∘ tile -> tile), so it preserves the SECOND phantom
+\ through REPMIX3B.
 : SCALE ( tile<t,b,m> uniform<t> -- tile<t,b,m> )
    [: EMIT-SCALE ;] PTXREP:REPMIX2 ;
 
-TRUSTED: FMA. ( uniform<t> tile<t,b,m> tile<t,b,m> -- tile<t,b,m> )
-   EMIT-FMA ;
+: FMA. ( uniform<t> tile<t,b,m> tile<t,b,m> -- tile<t,b,m> )
+   [: EMIT-FMA ;] PTXREP:REPMIX3B ;
 
 : +. ( tile<t,b,m> tile<t,b,m> -- tile<t,b,m> )
    [: EMIT-ADD ;] PTXREP:REP2 ;

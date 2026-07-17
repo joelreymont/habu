@@ -18,9 +18,13 @@
 \
 \ These words consume `coopctx`, not the elementwise `gridctx`: every block lane must
 \ reach `bar.sync`, so bounds are not allowed to branch lanes out before staging.
-\ TRUSTED: because the emit lowers to PTX cp.async/ld.shared/st.shared + barriers the
-\ checker cannot infer; the declared effect is the contract (TRUSTED.md). Load after
-\ lib/ptx/tile.f.
+\ STAGE / SLOAD MINT a phantom (shared span / register tile), so they stay TRUSTED:
+\ boundaries whose declared effect is the contract (TRUSTED.md); the phantom-CONSUMING
+\ SSTORE returns nothing, so it is a CHECKED caller of PTXREP:SINK3 (lib/ptx/rep.f).
+\ The emit lowers to PTX cp.async/ld.shared/st.shared + barriers the checker cannot
+\ infer. Load after lib/ptx/tile.f.
+
+require lib/ptx/rep.f
 
 TRUSTED: STAGE ( span<space-global,t,e> coopctx<b,e,m> -- span<space-shared,t,e> )
    EMIT-STAGE ;
@@ -28,5 +32,5 @@ TRUSTED: STAGE ( span<space-global,t,e> coopctx<b,e,m> -- span<space-shared,t,e>
 TRUSTED: SLOAD ( span<space-shared,t,e> coopctx<b,e,m> -- tile<t,b,m> )
    EMIT-SLOAD ;
 
-TRUSTED: SSTORE ( tile<t,b,m> span<space-shared,t,e> coopctx<b,e,m> -- )
-   EMIT-SSTORE ;
+: SSTORE ( tile<t,b,m> span<space-shared,t,e> coopctx<b,e,m> -- )
+   [: EMIT-SSTORE ;] PTXREP:SINK3 ;

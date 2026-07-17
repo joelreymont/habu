@@ -19,16 +19,21 @@
 \   ACC-LOOP  n acc [ acc -- acc ] -> acc : the accumulator-typed counted loop (the
 \                                         K-reduction), enforcing an acc-preserving body.
 \
-\ TRUSTED: because the emit lowers to PTX (mov.f32 0f0; fma.rn.f32; the loop unroll) the
-\ checker cannot infer; the declared effect is the contract (TRUSTED.md). The bodies emit
-\ via the cg.f helpers, so a checked KERNEL: using these LOWERS to PTX (device-verified by
+\ ACC-ZERO / ACC-TILE MINT a phantom (acc / tile) and ACC-LOOP is the acc-preserving
+\ counted loop, so they stay TRUSTED: boundaries whose declared effect is the contract
+\ (TRUSTED.md); ACC-FMA PRESERVES its FIRST operand's accumulator phantom, so it is a
+\ CHECKED caller of PTXREP:REPMIX3 (lib/ptx/rep.f). The emit lowers to PTX (mov.f32
+\ 0f0; fma.rn.f32; the loop unroll) the checker cannot infer; the bodies emit via the
+\ cg.f helpers, so a checked KERNEL: using these LOWERS to PTX (device-verified by
 \ tools/ptx/acc-device-test.f). Load after lib/ptx/cg.f and lib/ptx/tile.f.
+
+require lib/ptx/rep.f
 
 TRUSTED: ACC-ZERO ( gridctx<b,e,m> -- acc<t,b,m> )
    EMIT-ACC-ZERO ;
 
-TRUSTED: ACC-FMA ( acc<t,b,m> tile<t,b,m> tile<t,b,m> -- acc<t,b,m> )
-   EMIT-ACC-FMA ;
+: ACC-FMA ( acc<t,b,m> tile<t,b,m> tile<t,b,m> -- acc<t,b,m> )
+   [: EMIT-ACC-FMA ;] PTXREP:REPMIX3 ;
 
 TRUSTED: ACC-TILE ( acc<t,b,m> -- tile<t,b,m> )
    EMIT-ACC-TILE ;
