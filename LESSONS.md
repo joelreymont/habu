@@ -5349,3 +5349,7 @@ unchanged (148855). Keys for milestone 2:
   exact-byte subprocess assertion with `HABU_UNDER_TEST` bound to the private
   Gforth-built `hb-stdin`; the recovery gate must prove rc 70, empty stdout, and
   the 35-byte LF-terminated, NUL-free diagnostic before installing anything.
+- **Compile preflight diagnostics must enter the canonical checker renderer.**
+  Pass the reconstructed body buffer already containing the immediate token to
+  `CHECK!`; a bespoke short JSON object silently drops spans, effects, return
+  rows, schema validation, and repair-packet compatibility.

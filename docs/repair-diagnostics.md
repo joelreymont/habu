@@ -18,7 +18,7 @@ Fields:
 | Field | Type | Presence | Meaning |
 | --- | --- | --- | --- |
 | `schema_version` | integer | required | Current checker diagnostic schema version. |
-| `code` | string | required | Stable error code such as `E-MISMATCH`, `E-REJECTED`, `E-UNDEFINED`, `E-UNSAFE`, `E-BAD-SIGNATURE`, `E-BAD-LOCAL-SHAPE`, `E-LINEAR-LOCAL`, `E-DEAD-CODE`, or `E-UNCHECKABLE`. |
+| `code` | string | required | Stable error code such as `E-MISMATCH`, `E-REJECTED`, `E-UNDEFINED`, `E-UNSAFE`, `E-UNMODELED-IMMEDIATE`, `E-BAD-SIGNATURE`, `E-BAD-LOCAL-SHAPE`, `E-LINEAR-LOCAL`, `E-DEAD-CODE`, or `E-UNCHECKABLE`. |
 | `repair_class` | string | required | Stable repair bucket used by LLM repair loops. |
 | `verdict` | string | required | `rejected` or `uncheckable`; certification is not emitted as a diagnostic. |
 | `word` | string | required | Failing definition name as seen by the checker. |
@@ -130,6 +130,9 @@ Current checker classes:
   that requires audited `TRUST` or a modeled rewrite. This includes adversarial
   attempts to call `evaluate`, declare effects with `TRUST`, or disable/replace
   the checker hook with `set-check` from inside a checked definition.
+- `model_compile_immediate`: a checked definition names an immediate whose
+  compile-time expansion has no checker model; declare its token consumption
+  with `parse-imm` or isolate it behind an audited `TRUSTED:` boundary.
 - `factor_local_shape`: locals were introduced inside active control flow, inside
   a quotation, or after a dead `exit` path; factor a helper or move locals before
   control opens.
@@ -167,6 +170,7 @@ The checker `suggestion` field is stable short text derived only from
 | `fix_type` | `Change the body so produced types match the signature.` |
 | `fix_return_stack` | `Balance return-stack transfers before the definition exits.` |
 | `trusted_boundary_required` | `Move this compiler or runtime boundary behind audited TRUST.` |
+| `model_compile_immediate` | `Declare the compile-time expansion with parse-imm, or move the behavior behind an audited TRUSTED: boundary.` |
 | `factor_local_shape` | `Move locals to a live top-level path or factor a helper.` |
 | `factor_linear_local` | `Keep the linear value on the stack; do not bind it to a local.` |
 | `remove_dead_code` | `Remove tokens after the terminating control word, or move the work before it.` |

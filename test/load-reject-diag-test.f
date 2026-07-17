@@ -10,7 +10,8 @@
 \
 \ Run: bin/hb --load lib/errors.f lib/string.f lib/test.f lib/memory.f lib/fs.f
 \   lib/fs-mutate.f lib/process.f lib/process-argv.f lib/process-env.f
-\   test/load-reject-diag-test.f
+\   tools/json.f tools/gate-json-assert-core.f tools/argv.f
+\   tools/repair-packet-core.f test/load-reject-diag-test.f
 
 require lib/errors.f
 require lib/string.f
@@ -21,6 +22,10 @@ require lib/fs-mutate.f
 require lib/process.f
 require lib/process-argv.f
 require lib/process-env.f
+require tools/json.f
+require tools/gate-json-assert-core.f
+require tools/argv.f
+require tools/repair-packet-core.f
 
 $1000 constant LRD-CAP
 60000 constant LRD-TIMEOUT-MS
@@ -139,7 +144,7 @@ variable LRD-RC
    LRD-OUTER$ SB$ WRITE-ALL
    s" -1 JSON-DIAGS ! : LRD-IMM-I ( -- ) 73 include "
    s"  . ;" LRD-INC$ LRD-WRITE-FRAG-FIXTURE
-   s" : LRD-IMM-R ( -- ) 73 require "
+   s" -1 JSON-DIAGS ! : LRD-IMM-R ( -- ) 73 require "
    s"  . ;" LRD-REQ$ LRD-WRITE-FRAG-FIXTURE
    s" 73 include " s"  ." LRD-TOP-INC$ LRD-WRITE-FRAG-FIXTURE
    s" 73 require " s"  ." LRD-TOP-REQ$ LRD-WRITE-FRAG-FIXTURE
@@ -194,6 +199,21 @@ variable LRD-RC
    LRD-ASSERT-OK
    LRD-OUT$ a u CONTAINS? TTRUE ;
 
+: LRD-ASSERT-IMM-DIAG ( ptr u8 n ptr u8 n -- )
+   {: word:ptr wordu:n token:ptr tokenu:n :}
+   LRD-ERR$ JSON-PARSE dup GJA-OBJ {: root:n :}
+   root GJA-DIAG-CONTRACT-ROW
+   root s" code" GJA-REQ s" E-UNMODELED-IMMEDIATE" GJA-ASSERT-STR
+   root s" repair_class" GJA-REQ s" model_compile_immediate" GJA-ASSERT-STR
+   root s" word" GJA-REQ word wordu GJA-ASSERT-STR
+   root s" token" GJA-REQ token tokenu GJA-ASSERT-STR
+   LRD-ERR$ 2dup RP-COUNT >r RP-FIRST r> RP-PACKET
+   {: pa:ptr pu:n :}
+   pa LRD-OUT pu BYTE-COPY
+   LRD-OUT pu JSON-PARSE dup GJA-OBJ {: packet:n :}
+   packet s" model_compile_immediate" GJA-REPAIR-HEAD
+   packet GJA-REPAIR-DEF ;
+
 : LRD-TEST-STORE-SIGNALED ( -- )
    s" signaled outcome remains distinguishable from exit" T-LABEL
    LRD-TEST-OUT-U >LEN LRD-TEST-ERR-U >LEN SIGKILL OUTCOME:SIGNALED LRD-STORE!
@@ -232,15 +252,13 @@ variable LRD-RC
    s" checked include rejects before executing its fragment" T-LABEL
    LRD-INC$ LRD-RUN
    s" E-UNMODELED-IMMEDIATE" LRD-ASSERT-NAMED
-   LRD-ERR$ S\" \"repair_class\":\"model_compile_immediate\"" CONTAINS? TTRUE
-   LRD-ERR$ s" parse-imm" CONTAINS? TTRUE ;
+   s" lrd-imm-i" s" include" LRD-ASSERT-IMM-DIAG ;
 
 : LRD-TEST-IMM-REQUIRE ( -- )
    s" checked require rejects before executing its fragment" T-LABEL
    LRD-REQ$ LRD-RUN
    s" E-UNMODELED-IMMEDIATE" LRD-ASSERT-NAMED
-   LRD-ERR$ s" LRD-IMM-R" CONTAINS? TTRUE
-   LRD-ERR$ s" require" CONTAINS? TTRUE ;
+   s" lrd-imm-r" s" require" LRD-ASSERT-IMM-DIAG ;
 
 : LRD-TEST-PREFLIGHT-POSITIVES ( -- )
    s" top-level include remains live" T-LABEL

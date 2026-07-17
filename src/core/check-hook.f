@@ -8,10 +8,10 @@ package LOWER-CERT-HOOK
    dup 1 = JSON-DIAGS @ 0= and DIAGXT @ 0 <> and if DIAGXT @ execute then ;
 
 : PREFLIGHT ( ptr u8 n ptr u8 n bool -- )
-   {: da:ptr du:n ta:ptr tu:n trusted:bool :}
+   {: ba:ptr bu:n ta:ptr tu:n trusted:bool :}
    trusted if exit then
    ta tu CHECKER-MODELED-IMM? if exit then
-   da du ta tu COMPILE-IMM-DIAG
+   ba bu CHECK! 0 <> if s" checker: preflight did not reject unmodeled immediate" 76 die then
    CHECK-RC throw ;
 
 \ In multi-error mode CHECK already emitted the diagnostic, counted the reject,

@@ -789,31 +789,6 @@ variable JPOS  variable JLINE  variable JCOL
    0 RDST !  0 RSN ! ;
 ' DIAG-PRINT DIAGXT !
 
-: COMPILE-IMM-PROSE ( ptr u8 n ptr u8 n -- )
-   {: da:ptr du:n ta:ptr tu:n :}
-   IMM-CODE$ DTXT  s"  habu: in " DTXT  da du DTXT
-   s" : compile-time immediate '" DTXT  ta tu DTXT
-   s" ' has no modeled expansion; declare it with parse-imm or use an audited TRUSTED: boundary" DTXT ;
-
-: COMPILE-IMM-JSON ( ptr u8 n ptr u8 n -- )
-   {: da:ptr du:n ta:ptr tu:n :}
-   123 EMIT1
-   s" schema_version" JKEY 1 JNUM 44 EMIT1
-   s" code" JKEY IMM-CODE$ JSTR 44 EMIT1
-   s" repair_class" JKEY IMM-CLASS$ JSTR 44 EMIT1
-   s" verdict" JKEY s" rejected" JSTR 44 EMIT1
-   s" word" JKEY da du JSTR 44 EMIT1
-   s" token" JKEY ta tu JSTR 44 EMIT1
-   s" suggestion" JKEY IMM-SUGGEST$ JSTR
-   125 EMIT1 ;
-
-: COMPILE-IMM-DIAG ( ptr u8 n ptr u8 n -- )
-   1 RDST !  0 RSN !  0 RQM !
-   JSON-DIAGS @ if COMPILE-IMM-JSON else COMPILE-IMM-PROSE then
-   10 EMIT1
-   RSBUF RSN @ RDIAG-APPEND
-   0 RDST !  0 RSN ! ;
-
 \ --- bad stored-signature diagnostics (multi-error TRUST rows; USIG-ADD-BAD).
 \ SGBAD state from the failed parse is still live, so class + suggestion mirror
 \ REPAIR-CLASS's signature arm (same stable strings).
