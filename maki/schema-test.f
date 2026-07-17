@@ -1,9 +1,11 @@
 \ maki/schema-test.f - checked acceptance for the schema-id identity family
 \ (maki/schema.f, dot habu-schema-schema-id-3a6827e9). Covers the § 23.9 per-family
 \ contract: content-addressed interning (equal names share one id), the ID>WIRE /
-\ WIRE>ID round-trip, fail-closed decode (wrong width + unresolved raw), cross-role
-\ rejection (a schema-id API cannot take a foreign nominal), and privacy (no public
-\ raw cast). Every refusal is paired with a resolving positive control so no
+\ WIRE>ID round-trip, the cross-process KEY>WIRE / WIRE>KEY content-key round-trip
+\ (and that the content key IS the SHA-256 of the interned name, not the process-local
+\ raw), fail-closed decode (wrong width + unresolved raw / unresolved content key),
+\ cross-role rejection (a schema-id API cannot take a foreign nominal), and privacy
+\ (no public raw cast). Every refusal is paired with a resolving positive control so no
 \ TTHROWS is vacuous.
 
 require lib/test.f
@@ -40,8 +42,10 @@ s" promotion-policy" REG SCHEMA:VALIDATE SCHEMA:NAME$ s" promotion-policy" T$=
 \ ---- checker: cross-role rejection + privacy (no public raw cast) ---------------
 s" SC-OK ( CAD-KIND:schema-id -- CAD-KIND:schema-id ) SCHEMA:VALIDATE" YES
 s" SC-NAME ( CAD-KIND:schema-id -- ptr u8 n ) SCHEMA:NAME$" YES
+s" SC-KW ( CAD-KIND:schema-id ptr u8 n -- n ) SCHEMA:KEY>WIRE" YES    \ content-key encode
 s" SC-XA ( CAD-KIND:artifact-id -- ptr u8 n ) SCHEMA:NAME$" NO       \ artifact-id is not a schema-id
 s" SC-XP ( CAD-KIND:producer-id -- CAD-KIND:schema-id ) SCHEMA:VALIDATE" NO
+s" SC-XKW ( CAD-KIND:producer-id ptr u8 n -- n ) SCHEMA:KEY>WIRE" NO   \ a foreign id cannot encode
 s" SCHEMA:RAW>SCHEMA-ID" 0 search-wl 0= TTRUE                         \ mint is private
 s" SCHEMA:SCHEMA-ID>RAW" 0 search-wl 0= TTRUE                         \ projection is private
 
@@ -83,11 +87,55 @@ create TT-WBUF TT-WCAP allot
    TT-WBUF WIRE-BYTES WIRE>ID
    MATCH id-result  ok OF drop 9 ENDOF  wrong-width OF 2 ENDOF  unknown OF 3 ENDOF  ;MATCH ;
 
+\ ---- cross-process content-key codec (KEY>WIRE / WIRE>KEY) ---------------------
+create TT-SHA CK-BYTES allot
+
+: TT-CKEY-RT ( CAD-KIND:schema-id -- n )       \ 0 = content key round-trips to an EQUAL? id
+   dup {: orig:CAD-KIND:schema-id :}
+   TT-WBUF TT-WCAP KEY>WIRE {: len:n :}
+   TT-WBUF len WIRE>KEY
+   MATCH id-result
+      ok          OF orig EQUAL? if 0 else 1 then ENDOF
+      wrong-width OF 2 ENDOF
+      unknown     OF 3 ENDOF
+   ;MATCH ;
+
+: TT-CKEY-ALL ( -- n )                         \ 0 iff EVERY registered schema key round-trips
+   SCH-N @ 0 ?do
+      i RAW>SCHEMA-ID TT-CKEY-RT 0<> if 1 unloop exit then
+   loop 0 ;
+
+: TT-CKEY-WIDTH ( -- n )                       \ an 8-byte buffer decodes as wrong-width
+   TT-WBUF 8 WIRE>KEY
+   MATCH id-result  ok OF drop 8 ENDOF  wrong-width OF 2 ENDOF  unknown OF 3 ENDOF  ;MATCH ;
+
+: TT-FILL-FF ( -- )                            \ 32 bytes no registered name can hash to
+   0 begin dup CK-BYTES < while
+      dup {: k:n :}
+      $FF  TT-WBUF k +  c!
+      1+
+   repeat drop ;
+
+: TT-CKEY-UNKNOWN ( -- n )                     \ a 32-byte non-registered key decodes as unknown
+   TT-FILL-FF
+   TT-WBUF CK-BYTES WIRE>KEY
+   MATCH id-result  ok OF drop 9 ENDOF  wrong-width OF 2 ENDOF  unknown OF 3 ENDOF  ;MATCH ;
+
+: TT-CKEY-IS-SHA ( -- n )                      \ 0 iff KEY>WIRE == SHA-256(name), NOT the raw index
+   0 RAW>SCHEMA-ID {: id:CAD-KIND:schema-id :}
+   id NAME$ TT-SHA SHA256                       \ expected content key = hash of the interned name
+   id TT-WBUF TT-WCAP KEY>WIRE drop             \ actual content key from KEY>WIRE
+   TT-WBUF TT-SHA CK-EQ? if 0 else 1 then ;
+
 ' TT-ID-NEG E-SCHEMA-ID TTHROWS
 ' TT-ID-BIG E-SCHEMA-ID TTHROWS
 TT-WIRE-ALL 0 T=
 TT-WIRE-WIDTH 2 T=
 TT-WIRE-UNKNOWN 3 T=
+TT-CKEY-ALL 0 T=
+TT-CKEY-WIDTH 2 T=
+TT-CKEY-UNKNOWN 3 T=
+TT-CKEY-IS-SHA 0 T=
 
 ;package
 

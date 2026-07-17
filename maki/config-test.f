@@ -39,8 +39,10 @@ s" tc=ptxas-12.4|opt=O3|det=1" REG CONFIG:VALIDATE CONFIG:FACTS$ s" tc=ptxas-12.
 \ ---- checker: cross-role rejection + privacy (no public raw cast) ---------------
 s" CF-OK ( CAD-KIND:config-id -- CAD-KIND:config-id ) CONFIG:VALIDATE" YES
 s" CF-FACTS ( CAD-KIND:config-id -- ptr u8 n ) CONFIG:FACTS$" YES
+s" CF-KW ( CAD-KIND:config-id ptr u8 n -- n ) CONFIG:KEY>WIRE" YES             \ content-key encode
 s" CF-XT ( CAD-KIND:target-id -- CAD-KIND:config-id ) CONFIG:VALIDATE" NO      \ target-id is not a config-id
 s" CF-XN ( CAD-KIND:numeric-policy-id -- ptr u8 n ) CONFIG:FACTS$" NO          \ numeric-policy-id is not a config-id
+s" CF-XKW ( CAD-KIND:target-id ptr u8 n -- n ) CONFIG:KEY>WIRE" NO             \ a foreign id cannot encode
 s" CONFIG:RAW>CONFIG-ID" 0 search-wl 0= TTRUE                                   \ mint is private
 s" CONFIG:CONFIG-ID>RAW" 0 search-wl 0= TTRUE                                   \ projection is private
 
@@ -82,11 +84,55 @@ create TT-WBUF TT-WCAP allot
    TT-WBUF WIRE-BYTES WIRE>ID
    MATCH id-result  ok OF drop 9 ENDOF  wrong-width OF 2 ENDOF  unknown OF 3 ENDOF  ;MATCH ;
 
+\ ---- cross-process content-key codec (KEY>WIRE / WIRE>KEY) ---------------------
+create TT-SHA CK-BYTES allot
+
+: TT-CKEY-RT ( CAD-KIND:config-id -- n )       \ 0 = content key round-trips to an EQUAL? id
+   dup {: orig:CAD-KIND:config-id :}
+   TT-WBUF TT-WCAP KEY>WIRE {: len:n :}
+   TT-WBUF len WIRE>KEY
+   MATCH id-result
+      ok          OF orig EQUAL? if 0 else 1 then ENDOF
+      wrong-width OF 2 ENDOF
+      unknown     OF 3 ENDOF
+   ;MATCH ;
+
+: TT-CKEY-ALL ( -- n )                         \ 0 iff EVERY registered config key round-trips
+   CFG-N @ 0 ?do
+      i RAW>CONFIG-ID TT-CKEY-RT 0<> if 1 unloop exit then
+   loop 0 ;
+
+: TT-CKEY-WIDTH ( -- n )                       \ an 8-byte buffer decodes as wrong-width
+   TT-WBUF 8 WIRE>KEY
+   MATCH id-result  ok OF drop 8 ENDOF  wrong-width OF 2 ENDOF  unknown OF 3 ENDOF  ;MATCH ;
+
+: TT-FILL-FF ( -- )                            \ 32 bytes no registered fact set can hash to
+   0 begin dup CK-BYTES < while
+      dup {: k:n :}
+      $FF  TT-WBUF k +  c!
+      1+
+   repeat drop ;
+
+: TT-CKEY-UNKNOWN ( -- n )                     \ a 32-byte non-registered key decodes as unknown
+   TT-FILL-FF
+   TT-WBUF CK-BYTES WIRE>KEY
+   MATCH id-result  ok OF drop 9 ENDOF  wrong-width OF 2 ENDOF  unknown OF 3 ENDOF  ;MATCH ;
+
+: TT-CKEY-IS-SHA ( -- n )                      \ 0 iff KEY>WIRE == SHA-256(facts), NOT the raw index
+   0 RAW>CONFIG-ID {: id:CAD-KIND:config-id :}
+   id FACTS$ TT-SHA SHA256
+   id TT-WBUF TT-WCAP KEY>WIRE drop
+   TT-WBUF TT-SHA CK-EQ? if 0 else 1 then ;
+
 ' TT-ID-NEG E-CONFIG-ID TTHROWS
 ' TT-ID-BIG E-CONFIG-ID TTHROWS
 TT-WIRE-ALL 0 T=
 TT-WIRE-WIDTH 2 T=
 TT-WIRE-UNKNOWN 3 T=
+TT-CKEY-ALL 0 T=
+TT-CKEY-WIDTH 2 T=
+TT-CKEY-UNKNOWN 3 T=
+TT-CKEY-IS-SHA 0 T=
 
 ;package
 

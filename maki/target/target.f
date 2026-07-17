@@ -54,11 +54,13 @@ private
 16 constant TGT-CAP
 32 constant TGT-LABEL-MAX
 TGT-CAP TGT-LABEL-MAX * constant TGT-LABEL-CAP
+32 constant CK-BYTES                        \ SHA-256 content-key width (cross-process wire form)
 
 TGT-CAP LAYOUT-BUFFER TGT-DESCS descriptor
 create TGT-LABELS TGT-LABEL-CAP allot
 create TGT-LO TGT-CAP cells allot
 create TGT-LL TGT-CAP cells allot
+create TGT-CK TGT-CAP CK-BYTES * allot       \ per-id SHA-256 content key over the canonical facts
 variable TGT-LABEL-U
 variable TGT-N
 TYPED-VARIABLE TGT-SM87 CAD-KIND:target-id  \ interned sm87 target id ( -- ptr CAD-KIND:target-id )
@@ -89,6 +91,35 @@ $100000001b3 constant TGT-HASH-PRIME
    TGT-HASH-BASIS
    isa HASH-MIX arch HASH-MIX warp HASH-MIX
    threads HASH-MIX shared HASH-MIX caps HASH-MIX ;
+
+\ Canonical, label-independent descriptor serialization: the exact facts that own
+\ identity (isa/arch/warp/threads/shared/caps), rendered deterministically. This is the
+\ content the cross-process content key hashes (SHA-256), and the public FACTS$ view.
+: DESC-FACTS$ ( descriptor -- ptr u8 n )
+   DESC-UN
+   {: isa:n arch:n warp:n threads:n shared:n caps:n :}
+   SB-RESET
+   s" isa=" SB-APPEND isa SB-INT
+   s" |arch=" SB-APPEND arch SB-INT
+   s" |warp=" SB-APPEND warp SB-INT
+   s" |threads=" SB-APPEND threads SB-INT
+   s" |shared=" SB-APPEND shared SB-INT
+   s" |caps=" SB-APPEND caps SB-INT
+   SB$ ;
+
+: CK@ ( n -- ptr u8 )   CK-BYTES * TGT-CK + ;   \ per-id content-key slot base
+
+: CK-EQ? ( ptr u8 ptr u8 -- bool ) {: pa:ptr pb:ptr :}   \ fixed 32-byte content-key compare
+   0 begin dup CK-BYTES < while
+      dup {: k:n :}
+      pa k + c@  pb k + c@  <> if drop false exit then
+      1+
+   repeat drop true ;
+
+: CK-FIND ( ptr u8 -- n ) {: p:ptr :}   \ raw id whose content key equals p's 32 bytes, or -1
+   TGT-N @ 0 ?do
+      i CK@ p CK-EQ? if i unloop exit then
+   loop -1 ;
 
 : DESC-EQ? ( descriptor descriptor -- bool )
    \ typed-local-lint: allow-bare-local - closed descriptor bundles preserve roles.
@@ -148,12 +179,20 @@ $100000001b3 constant TGT-HASH-PRIME
 : SM87! ( CAD-KIND:target-id -- )
    TGT-SM87 ! ;
 
-\ ---- § 23.9 foreign-id wire codec helpers -------------------------------------
-\ Wire form (this round): the process-local registry raw as a fixed-width 8-byte
-\ little-endian scalar, matching the landed maki/db/artifact.f id-on-wire (TAG-ID /
-\ U64W). Migrating to the cross-process content key (§ 23.9 origin-class table:
-\ SHA-256, 32 bytes) is the reconciliation item the plan marks OUT OF SCOPE for this
-\ contract round; the envelope implementation dot owns that migration.
+\ ---- § 23.9 foreign-id wire codecs --------------------------------------------
+\ Two audited public codecs share the private RAW>TARGET-ID refinement:
+\   - ID>WIRE / WIRE>ID: the PROCESS-LOCAL registry raw as a fixed-width 8-byte
+\     little-endian scalar. Admissible only for intra-process wire paths; NEVER for a
+\     digest-covered, cross-process, or durable identity (a raw index means a different
+\     descriptor in another process).
+\   - KEY>WIRE / WIRE>KEY: the CROSS-PROCESS content key - SHA-256 over the canonical
+\     label-independent facts (DESC-FACTS$), fixed 32-byte little-endian (§ 23.9
+\     origin-class table, content-addressed registry intern row; "TARGET:DIGEST@ already
+\     yields the content key" - DIGEST@ is the 64-bit fold view, KEY>WIRE is its
+\     collision-resistant 256-bit wire form). Equal descriptors digest identically in
+\     every process, so this form survives process death: WIRE>KEY resolves the 32 bytes
+\     against the local registry by CONTENT, never by registration order. The per-id
+\     content key is interned at REGISTER (TGT-CK).
 8 constant WIRE-BYTES
 
 : LE-PUT ( n ptr u8 n -- ) {: v:n a:ptr w:n :}
@@ -191,6 +230,7 @@ public
    TGT-N @ {: raw:n :}
    d raw DESC-RAW!
    label labelu raw LABEL-PUT
+   d DESC-FACTS$  raw CK@  SHA256              \ intern the cross-process content key
    raw 1+ TGT-N !
    raw RAW>TARGET-ID ;
 
@@ -218,6 +258,24 @@ public
    u WIRE-BYTES <> if R-WRONG-WIDTH exit then
    a WIRE-BYTES LE-GET {: raw:n :}
    raw 0 < raw TGT-N @ >= or if R-UNKNOWN exit then
+   raw RAW>TARGET-ID R-OK ;
+
+\ KEY>WIRE writes the id's cross-process content key (SHA-256 over the canonical facts,
+\ 32 fixed bytes); total for a valid id (E-TARGET-WIRE if the cap cannot hold CK-BYTES).
+\ WIRE>KEY is the audited cross-process boundary: it reads the 32-byte content key and
+\ resolves it against the local registry BY CONTENT (never by registration order),
+\ refining to the nominal id only on a content match.
+: KEY>WIRE ( CAD-KIND:target-id ptr u8 n -- n )
+   {: id:CAD-KIND:target-id out:ptr cap:n :}
+   cap CK-BYTES < if E-TARGET-WIRE throw then
+   id ID-CK CK@  out  CK-BYTES  BYTE-COPY
+   CK-BYTES ;
+
+: WIRE>KEY ( ptr u8 n -- id-result<CAD-KIND:target-id> )
+   {: a:ptr u:n :}
+   u CK-BYTES <> if R-WRONG-WIDTH exit then
+   a CK-FIND {: raw:n :}
+   raw 0 < if R-UNKNOWN exit then
    raw RAW>TARGET-ID R-OK ;
 
 : DESCRIPTOR@ ( CAD-KIND:target-id -- descriptor )
@@ -254,16 +312,7 @@ public
    DESCRIPTOR@ DESC-UN nip nip nip nip nip ;
 
 : FACTS$ ( CAD-KIND:target-id -- ptr u8 n )
-   DESCRIPTOR@ DESC-UN
-   {: isa:n arch:n warp:n threads:n shared:n caps:n :}
-   SB-RESET
-   s" isa=" SB-APPEND isa SB-INT
-   s" |arch=" SB-APPEND arch SB-INT
-   s" |warp=" SB-APPEND warp SB-INT
-   s" |threads=" SB-APPEND threads SB-INT
-   s" |shared=" SB-APPEND shared SB-INT
-   s" |caps=" SB-APPEND caps SB-INT
-   SB$ ;
+   DESCRIPTOR@ DESC-FACTS$ ;
 
 : COUNT ( -- n )
    TGT-N @ ;

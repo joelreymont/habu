@@ -40,8 +40,10 @@ s" pass/lowering" REG PRODUCER:VALIDATE PRODUCER:NAME$ s" pass/lowering" T$=
 \ ---- checker: cross-role rejection + privacy (no public raw cast) ---------------
 s" PR-OK ( CAD-KIND:producer-id -- CAD-KIND:producer-id ) PRODUCER:VALIDATE" YES
 s" PR-NAME ( CAD-KIND:producer-id -- ptr u8 n ) PRODUCER:NAME$" YES
+s" PR-KW ( CAD-KIND:producer-id ptr u8 n -- n ) PRODUCER:KEY>WIRE" YES            \ content-key encode
 s" PR-XS ( CAD-KIND:schema-id -- CAD-KIND:producer-id ) PRODUCER:VALIDATE" NO   \ schema-id is not a producer-id
 s" PR-XC ( CAD-KIND:config-id -- ptr u8 n ) PRODUCER:NAME$" NO
+s" PR-XKW ( CAD-KIND:schema-id ptr u8 n -- n ) PRODUCER:KEY>WIRE" NO             \ a foreign id cannot encode
 s" PRODUCER:RAW>PRODUCER-ID" 0 search-wl 0= TTRUE                                \ mint is private
 s" PRODUCER:PRODUCER-ID>RAW" 0 search-wl 0= TTRUE                                \ projection is private
 
@@ -83,11 +85,55 @@ create TT-WBUF TT-WCAP allot
    TT-WBUF WIRE-BYTES WIRE>ID
    MATCH id-result  ok OF drop 9 ENDOF  wrong-width OF 2 ENDOF  unknown OF 3 ENDOF  ;MATCH ;
 
+\ ---- cross-process content-key codec (KEY>WIRE / WIRE>KEY) ---------------------
+create TT-SHA CK-BYTES allot
+
+: TT-CKEY-RT ( CAD-KIND:producer-id -- n )     \ 0 = content key round-trips to an EQUAL? id
+   dup {: orig:CAD-KIND:producer-id :}
+   TT-WBUF TT-WCAP KEY>WIRE {: len:n :}
+   TT-WBUF len WIRE>KEY
+   MATCH id-result
+      ok          OF orig EQUAL? if 0 else 1 then ENDOF
+      wrong-width OF 2 ENDOF
+      unknown     OF 3 ENDOF
+   ;MATCH ;
+
+: TT-CKEY-ALL ( -- n )                         \ 0 iff EVERY registered producer key round-trips
+   PRD-N @ 0 ?do
+      i RAW>PRODUCER-ID TT-CKEY-RT 0<> if 1 unloop exit then
+   loop 0 ;
+
+: TT-CKEY-WIDTH ( -- n )                       \ an 8-byte buffer decodes as wrong-width
+   TT-WBUF 8 WIRE>KEY
+   MATCH id-result  ok OF drop 8 ENDOF  wrong-width OF 2 ENDOF  unknown OF 3 ENDOF  ;MATCH ;
+
+: TT-FILL-FF ( -- )                            \ 32 bytes no registered name can hash to
+   0 begin dup CK-BYTES < while
+      dup {: k:n :}
+      $FF  TT-WBUF k +  c!
+      1+
+   repeat drop ;
+
+: TT-CKEY-UNKNOWN ( -- n )                     \ a 32-byte non-registered key decodes as unknown
+   TT-FILL-FF
+   TT-WBUF CK-BYTES WIRE>KEY
+   MATCH id-result  ok OF drop 9 ENDOF  wrong-width OF 2 ENDOF  unknown OF 3 ENDOF  ;MATCH ;
+
+: TT-CKEY-IS-SHA ( -- n )                      \ 0 iff KEY>WIRE == SHA-256(name), NOT the raw index
+   0 RAW>PRODUCER-ID {: id:CAD-KIND:producer-id :}
+   id NAME$ TT-SHA SHA256
+   id TT-WBUF TT-WCAP KEY>WIRE drop
+   TT-WBUF TT-SHA CK-EQ? if 0 else 1 then ;
+
 ' TT-ID-NEG E-PRODUCER-ID TTHROWS
 ' TT-ID-BIG E-PRODUCER-ID TTHROWS
 TT-WIRE-ALL 0 T=
 TT-WIRE-WIDTH 2 T=
 TT-WIRE-UNKNOWN 3 T=
+TT-CKEY-ALL 0 T=
+TT-CKEY-WIDTH 2 T=
+TT-CKEY-UNKNOWN 3 T=
+TT-CKEY-IS-SHA 0 T=
 
 ;package
 

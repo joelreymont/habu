@@ -723,14 +723,20 @@ points stay listed.
   frozen artifact-envelope invariants: class-vs-identity, audit-event vs runtime
   ADAG:event-id, artifact-kind separation, and 256-bit digest vs artifact-id.
 - `maki/target/target.f` — immutable target descriptors, semantic interning,
-  canonical facts/digests, and the validated `CAD-KIND:target-id` owner API.
+  canonical facts/digests, and the validated `CAD-KIND:target-id` owner API, plus the
+  `ID>WIRE`/`WIRE>ID` (raw) and cross-process `KEY>WIRE`/`WIRE>KEY` codec (32-byte
+  SHA-256 over the canonical `DESC-FACTS$`, § 23.9 origin-class table).
 - `maki/target/target-test.f` — target identity, descriptor validation,
   round-trip, capability non-aliasing, role rejection, and privacy regressions.
 - `maki/artifact.f` — the built-artifact identity registry: `ARTIFACT:REGISTER`
   interns a section-7.4 store key to a validated `CAD-KIND:artifact-id` (content
   addressed: equal keys share one id), plus `KEY$`/`EQUAL?`/`VALIDATE-ID`/`COUNT`. The
   public producer the R7 evidence/policy layer was missing (retiring the test-only
-  `T>AID` fabrication); raw conversions stay private (the target.f pattern).
+  `T>AID` fabrication); raw conversions stay private (the target.f pattern). Also owns
+  the cross-process `KEY>WIRE`/`WIRE>KEY` codec (§ 23.9 origin-class table): the 32-byte
+  SHA-256 content key over the interned store key, resolved by content in any process
+  (the digest-covered id + dependency wire form the envelope migrates to). Owns
+  -5244..-5246 + -5248.
 - `maki/artifact-test.f` — registry interning/equality/key round-trip/count
   regressions, the private-mint unforgeability negative, and fail-closed empty-key /
   out-of-range-id boundaries.
@@ -820,6 +826,17 @@ points stay listed.
   C device-launch fault, D gate timeout), each proven byte-identical and field-for-field;
   and the decode-result reject taxonomy (malformed, noncanonical, duplicate, bounds,
   unknown-required) is reachable and typed.
+- `maki/db/keywire-xproc-child.f` — the FRESH-PROCESS decode side of the cross-process
+  content-key identity test (dot habu-wire-content-key). Package KWXPC: shared fixed
+  key-file layout, shared real descriptors, per-family `REG-*` registrations, and
+  `RESOLVE-ALL` - loaded by a spawned bin/hb that registers DECOYS FIRST (shifting raw
+  indices), reads the parent's key file, and `WIRE>KEY`-resolves every family's content
+  key BY CONTENT, printing `XPROC-OK` iff each decoded id projects to its descriptor.
+- `maki/db/keywire-xproc-test.f` — the DECISIVE cross-process test: this process
+  `KEY>WIRE`-encodes each migrated family's content key into a fixed-layout key file and
+  spawns a fresh bin/hb (the child fixture) that decodes them, proving identity survives
+  PROCESS DEATH for all seven families (schema, producer, config, rev, target, numeric-
+  policy, artifact). The spawn/capture is the maki/cad-test.f fresh-process pattern.
 - `maki/numpolicy.f` — the typed numeric-policy proof-domain family (`NPOL:dom` =
   exact/ulp/relative/empirical, CAD-PLAN §22.6): the strength lattice
   (`RANK`/`SATISFIES?`/`COMPOSE` weakest-wins), the checked satisfaction gate
@@ -827,7 +844,11 @@ points stay listed.
   the key token `NAME`, the `DOM>N`/`N>DOM` wire projection, and the
   `NUM>DOM`/`OP-DOM` bridge from op-registry's raw numeric class - the PER-OP axis a
   region's requested policy folds through (maki/sched-key.f REGION-POL), retiring the
-  old per-class requested-policy table. Owns -5145..-5146.
+  old per-class requested-policy table. Also the `REGISTER` mint and the `ID>WIRE`/
+  `WIRE>ID` (8-byte rank) plus `KEY>WIRE`/`WIRE>KEY` codec - numeric-policy is the
+  documented § 23.9 exception whose content key IS the 8-byte rank (already cross-
+  process-stable), so the cross-process codec coincides with the rank codec.
+  Owns -5145..-5147.
 - `maki/numpolicy-test.f` — rank ordering, the pinned 4×4 composition table,
   satisfaction, the TF32/GELU/recompute refusal fixtures with positive controls, the
   op bridge, wire roundtrip, and fail-closed throws.
@@ -835,11 +856,13 @@ points stay listed.
   schema-id leg of MODEL-CAD-V2-PLAN.md § 23.9): `SCHEMA:REGISTER` interns the
   canonical, version-independent schema NAME to a content-addressed
   `CAD-KIND:schema-id` (equal names share one id), plus `NAME$`/`EQUAL?`/`VALIDATE`/
-  `COUNT` and the `ID>WIRE` (total) / `WIRE>ID` (`id-result`: ok / wrong-width /
-  unknown, fail-closed) 8-byte little-endian codec pair. Retires the former
-  maki/evidence/policy.f `RAW>SCHEMA-ID` placeholder; raw conversions stay private
-  (the target.f/artifact.f pattern). Distinct concern from maki/evidence/schema.f
-  (package EVID, the evidence-bundle presence schema). Owns -5330..-5333.
+  `COUNT` and TWO codecs sharing the private refinement: `ID>WIRE`/`WIRE>ID` (8-byte
+  process-local raw) and the cross-process `KEY>WIRE`/`WIRE>KEY` (32-byte SHA-256
+  content key over the interned name, § 23.9 origin-class table; resolved by content in
+  any process). Retires the former maki/evidence/policy.f `RAW>SCHEMA-ID` placeholder;
+  raw conversions stay private (the target.f/artifact.f pattern). Distinct concern from
+  maki/evidence/schema.f (package EVID, the evidence-bundle presence schema).
+  Owns -5330..-5333.
 - `maki/schema-test.f` — content-addressed interning (equal names one id), the wire
   round-trip, fail-closed decode (wrong-width + unresolved raw), cross-role
   rejection, and the private-mint unforgeability negatives.
@@ -848,8 +871,9 @@ points stay listed.
   version-independent producer NAME (a namespaced machine-facing component
   identifier; producer-version is a separate envelope field, class rides the name)
   to a content-addressed `CAD-KIND:producer-id`, plus `NAME$`/`EQUAL?`/`VALIDATE`/
-  `COUNT` and the `ID>WIRE` (total) / `WIRE>ID` (`id-result`, fail-closed) 8-byte
-  little-endian codec pair. Raw conversions stay private. Owns -5334..-5337.
+  `COUNT` and two codecs: `ID>WIRE`/`WIRE>ID` (8-byte raw) and the cross-process
+  `KEY>WIRE`/`WIRE>KEY` (32-byte SHA-256 content key over the interned name, § 23.9).
+  Raw conversions stay private. Owns -5334..-5337.
 - `maki/producer-test.f` — content-addressed interning (equal names one id, a
   namespaced class rides the name), the wire round-trip, fail-closed decode
   (wrong-width + unresolved raw), cross-role rejection, and the private-mint
@@ -859,10 +883,11 @@ points stay listed.
   build/config FACT STRING - the deterministic toolchain/build facts REMAINING after
   target facts (target-id) and numeric facts (numeric-policy-id) in the plan's
   target/config/numeric three-way split - to a content-addressed `CAD-KIND:config-id`
-  (equal fact sets share one id), plus `FACTS$`/`EQUAL?`/`VALIDATE`/`COUNT` and the
-  `ID>WIRE` (total) / `WIRE>ID` (`id-result`, fail-closed) 8-byte little-endian codec
-  pair. The fact vocabulary is intentionally open (the boundary, not a closed field
-  set, is the decision); raw conversions stay private. Owns -5338..-5341.
+  (equal fact sets share one id), plus `FACTS$`/`EQUAL?`/`VALIDATE`/`COUNT` and two
+  codecs: `ID>WIRE`/`WIRE>ID` (8-byte raw) and the cross-process `KEY>WIRE`/`WIRE>KEY`
+  (32-byte SHA-256 content key over the interned facts, § 23.9). The fact vocabulary is
+  intentionally open (the boundary, not a closed field set, is the decision); raw
+  conversions stay private. Owns -5338..-5341.
 - `maki/config-test.f` — content-addressed interning (equal fact sets one id,
   distinct flags distinct id), the wire round-trip, fail-closed decode (wrong-width +
   unresolved raw), cross-role rejection, and the private-mint unforgeability
@@ -882,10 +907,12 @@ points stay listed.
   MODEL-CAD-V2-PLAN.md § 23.9): `REV:COMMIT` content-addresses the canonical revision
   content (parent + write set, serialised by maki/db/transaction.f) to a
   `CAD-KIND:rev-id` (equal content shares one id, so deterministic replay reproduces the
-  rev-id), plus `CONTENT$`/`EQUAL?`/`VALIDATE`/`COUNT` and the `ID>WIRE` (total) /
-  `WIRE>ID` (`id-result`, fail-closed) 8-byte little-endian codec. This leg owns rev-id
-  IDENTITY; the revision-content canonical FORM lives in the transaction dot. Raw
-  conversions stay private. Owns -5346..-5349.
+  rev-id), plus `CONTENT$`/`EQUAL?`/`VALIDATE`/`COUNT` and two codecs: `ID>WIRE`/`WIRE>ID`
+  (8-byte raw) and the cross-process `KEY>WIRE`/`WIRE>KEY` (32-byte SHA-256 content key
+  over the interned revision content, § 23.9; the transaction revision chain becomes a
+  Merkle chain of content keys). This leg owns rev-id IDENTITY; the revision-content
+  canonical FORM lives in the transaction dot. Raw conversions stay private.
+  Owns -5346..-5349.
 - `maki/rev-test.f` — content-addressed COMMIT (equal content one id, distinct parent
   distinct id), the wire round-trip, fail-closed decode (wrong-width + unresolved raw),
   cross-role rejection, and the private-mint unforgeability negatives.

@@ -30,13 +30,18 @@
 \ the toolchain contract; the boundary (exclude target facts / numeric facts) is the
 \ decision the plan's split fixes.
 \
-\ WIRE FORM (this round): the process-local registry raw as a fixed-width 8-byte
-\ little-endian scalar, matching the landed maki/target/target.f, maki/numpolicy.f,
-\ maki/schema.f, and maki/producer.f precedents and the maki/db/artifact.f
-\ id-on-wire. The § 23.9 origin-class table names the cross-process content key
-\ (SHA-256, 32 bytes) as the eventual form; the plan marks reconciling the process-
-\ local raw with that content key OUT OF SCOPE for this contract round (the envelope
-\ implementation dot owns the migration).
+\ WIRE FORMS. Two audited public codecs share the private RAW>CONFIG-ID refinement:
+\   - ID>WIRE / WIRE>ID: the PROCESS-LOCAL registry raw as a fixed-width 8-byte
+\     little-endian scalar. Admissible only for intra-process wire paths (e.g.
+\     maki/db/diagnostic.f bundles that never leave the process); NEVER for a
+\     digest-covered, cross-process, or durable identity.
+\   - KEY>WIRE / WIRE>KEY: the CROSS-PROCESS content key - SHA-256 over the interned
+\     canonical config-fact bytes, fixed 32-byte little-endian (§ 23.9 origin-class
+\     table, content-addressed registry intern row). Equal fact sets digest identically
+\     in every process, so this form survives process death: WIRE>KEY resolves the 32
+\     bytes against the local registry by CONTENT, never by registration order. This is
+\     the digest-covered / durable wire form the envelope and transaction codecs
+\     consume. The per-id content key is interned at REGISTER (CFG-CK).
 \
 \ Fail closed: an empty/oversized fact string, an out-of-range id, a wrong-width or
 \ unresolved wire buffer are named throws / reject variants. maki -> habu only;
@@ -70,10 +75,12 @@ private
 256 constant CFG-KEY-MAX                    \ max bytes per canonical config-fact string
 CFG-CAP CFG-KEY-MAX * constant CFG-KEY-CAP
 8 constant WIRE-BYTES                        \ fixed little-endian wire width of the registry raw
+32 constant CK-BYTES                         \ SHA-256 content-key width (cross-process wire form)
 
 create CFG-KEYS CFG-KEY-CAP allot            \ interned fact bytes, back to back
 create CFG-KO   CFG-CAP cells allot           \ per-id fact offset into CFG-KEYS
 create CFG-KL   CFG-CAP cells allot           \ per-id fact length
+create CFG-CK   CFG-CAP CK-BYTES * allot      \ per-id SHA-256 content key over the fact bytes
 variable CFG-KEY-U                             \ bytes used in CFG-KEYS
 variable CFG-N                                  \ registered count
 
@@ -98,13 +105,28 @@ TRUSTED: CONFIG-ID>RAW ( CAD-KIND:config-id -- n ) ;
       i KEY@ a u STR= if i unloop exit then
    loop -1 ;
 
+: CK@ ( n -- ptr u8 )   CK-BYTES * CFG-CK + ;   \ per-id content-key slot base
+
 : KEY-PUT ( ptr u8 n n -- ) {: a:ptr u:n raw:n :}
    CFG-KEY-U @ u + CFG-KEY-CAP > if E-CONFIG-CAP throw then
    CFG-KEY-U @ {: off:n :}
    a CFG-KEYS off + u BYTE-COPY
    off raw cells CFG-KO + !
    u   raw cells CFG-KL + !
+   a u  raw CK@  SHA256                        \ intern the cross-process content key
    off u + CFG-KEY-U ! ;
+
+: CK-EQ? ( ptr u8 ptr u8 -- bool ) {: pa:ptr pb:ptr :}   \ fixed 32-byte content-key compare
+   0 begin dup CK-BYTES < while
+      dup {: k:n :}
+      pa k + c@  pb k + c@  <> if drop false exit then
+      1+
+   repeat drop true ;
+
+: CK-FIND ( ptr u8 -- n ) {: p:ptr :}   \ raw id whose content key equals p's 32 bytes, or -1
+   CFG-N @ 0 ?do
+      i CK@ p CK-EQ? if i unloop exit then
+   loop -1 ;
 
 : LE-PUT ( n ptr u8 n -- ) {: v:n a:ptr w:n :}
    0 begin dup w < while
@@ -165,6 +187,24 @@ public
    u WIRE-BYTES <> if R-WRONG-WIDTH exit then
    a WIRE-BYTES LE-GET {: raw:n :}
    raw 0 < raw CFG-N @ >= or if R-UNKNOWN exit then
+   raw RAW>CONFIG-ID R-OK ;
+
+\ KEY>WIRE writes the id's cross-process content key (SHA-256 over the interned fact
+\ bytes, 32 fixed bytes); total for a valid id (E-CONFIG-WIRE if the cap cannot hold
+\ CK-BYTES). WIRE>KEY is the audited cross-process boundary: it reads the 32-byte
+\ content key and resolves it against the local registry BY CONTENT (never by
+\ registration order), refining to the nominal id only on a content match.
+: KEY>WIRE ( CAD-KIND:config-id ptr u8 n -- n )
+   {: id:CAD-KIND:config-id out:ptr cap:n :}
+   cap CK-BYTES < if E-CONFIG-WIRE throw then
+   id ID-CK CK@  out  CK-BYTES  BYTE-COPY
+   CK-BYTES ;
+
+: WIRE>KEY ( ptr u8 n -- id-result<CAD-KIND:config-id> )
+   {: a:ptr u:n :}
+   u CK-BYTES <> if R-WRONG-WIDTH exit then
+   a CK-FIND {: raw:n :}
+   raw 0 < if R-UNKNOWN exit then
    raw RAW>CONFIG-ID R-OK ;
 
 : COUNT ( -- n )  CFG-N @ ;

@@ -4,6 +4,32 @@
 
 Last updated: 2026-07-17
 
+- **Cross-process id identity needs a CONTENT-key wire form, and the decisive test is a
+  spawned fresh bin/hb that registers DECOYS FIRST.** (dot habu-wire-content-key, keywire
+  lane.) The § 23.9 origin-class table's cross-process form for content-addressed families
+  is a 32-byte SHA-256 over the interned descriptor (name/facts/store-key/rev-content),
+  interned in a per-id column at REGISTER; `KEY>WIRE` copies it, `WIRE>KEY` resolves it by
+  scanning content keys (BY CONTENT, not by registration order). The proof that identity
+  survives PROCESS DEATH is a child process that registers decoys first so its real ids get
+  DIFFERENT raw indices than the parent, then decodes the parent's keys — the raw-index wire
+  form would resolve to a decoy, the content key resolves correctly (maki/db/keywire-xproc-*).
+- **Private words persist across `package` REOPENS, so a reopened package's second file
+  collides on a duplicate private name.** maki/db/artifact.f reopens `package ARTIFACT` and
+  defines a private `R-OK`; adding an id-result `R-OK` to maki/artifact.f (loaded first)
+  produced `duplicate definition: R-OK`. Fix: prefix the second file's wrappers distinctly
+  (`IDR-OK`). Same-package private words are ONE namespace across every file that reopens it.
+- **Add the cross-process codec, don't rename the raw one — a live consumer still needs it.**
+  The § 23.9 contract names the wire codec `ID>WIRE`/`WIRE>ID`, but maki/db/diagnostic.f
+  (out of the migration's write set) still serializes producer/config/rev via the raw
+  `ID>WIRE`. So the content-key codec is a NEW public pair `KEY>WIRE`/`WIRE>KEY` alongside
+  the raw pair, not a rename. numeric-policy is the documented exception: its content key IS
+  its 8-byte rank (already cross-process-stable), so `KEY>WIRE` delegates to `ID>WIRE`.
+- **A later suite test must reuse an already-registered id, never register into a
+  cap-filled global registry.** maki/target/target-test.f `CAP-FILL`s the 16-slot target
+  registry earlier in maki/test.f; the cross-process test first registered a fresh target
+  and threw E-TARGET-CAP in-suite (green standalone). Fix: use `TARGET:SM87` (INIT-registered
+  in every process). Process-global append-only registries with caps are a hidden ordering
+  coupling between suites.
 - **Closing a dot that OWNS TRUSTED.md rows requires repointing those rows in the SAME
   commit, and the integrator's battery must run `trusted-inventory -- strict` (owner
   liveness), not just trusted-inventory-test.f.** (cp-async closure incident, 2026-07-17.)

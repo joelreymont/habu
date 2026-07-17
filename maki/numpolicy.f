@@ -214,4 +214,18 @@ public
    raw 0 < raw DOM-COUNT >= or if R-UNKNOWN exit then
    raw RAW>NUMERIC-POLICY-ID R-OK ;
 
+\ CROSS-PROCESS CONTENT KEY (KEY>WIRE / WIRE>KEY). Numeric-policy is the documented
+\ EXCEPTION to the § 23.9 origin-class 32-byte SHA-256 form: a numeric policy's ENTIRE
+\ content is its single proof `dom`, whose canonical serialization is the rank ordinal
+\ 0..3 (DOM>N / N>DOM), and the § 23.9 numeric-policy-id row explicitly blesses that
+\ minimal wire precedent. The rank is the enum ORDINAL, not a process-local registry
+\ INDEX, so it is ALREADY cross-process-stable (rank 2 is `relative` in every process)
+\ and content-addressed - wrapping it in a 32-byte SHA-256 would be pure ceremony over a
+\ 2-bit value and would not improve cross-process identity. So this family's canonical
+\ content key IS its 8-byte rank, and the content-key codec coincides with ID>WIRE /
+\ WIRE>ID. It is exposed under the KEY>WIRE / WIRE>KEY names so the envelope calls a
+\ uniform cross-process surface across every content-addressed family.
+: KEY>WIRE ( CAD-KIND:numeric-policy-id ptr u8 n -- n )   ID>WIRE ;
+: WIRE>KEY ( ptr u8 n -- id-result<CAD-KIND:numeric-policy-id> )   WIRE>ID ;
+
 ;package

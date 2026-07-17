@@ -85,8 +85,10 @@ TARGET:COUNT BASE-N @ 1+ T=
 
 s" TGT-OK ( CAD-KIND:target-id -- CAD-KIND:target-id ) TARGET:VALIDATE" YES
 s" TGT-ROUND ( CAD-KIND:target-id -- CAD-KIND:target-id ) TARGET:DESCRIPTOR@ TARGET:RESOLVE" YES
+s" TGT-KW ( CAD-KIND:target-id ptr u8 n -- n ) TARGET:KEY>WIRE" YES            \ content-key encode
 s" TGT-TOOL ( CAD-KIND:toolchain-id -- ptr u8 n ) TARGET:LABEL$" NO
 s" TGT-ART ( CAD-KIND:artifact-id -- ptr u8 n ) TARGET:LABEL$" NO
+s" TGT-XKW ( CAD-KIND:artifact-id ptr u8 n -- n ) TARGET:KEY>WIRE" NO          \ a foreign id cannot encode
 s" TARGET:RAW>TARGET-ID" 0 search-wl 0= TTRUE
 
 \ capacity: the seventeenth distinct descriptor rejects. The registry is
@@ -143,9 +145,53 @@ create TT-WBUF TT-WCAP allot
    TT-WBUF WIRE-BYTES WIRE>ID
    MATCH id-result  ok OF drop 9 ENDOF  wrong-width OF 2 ENDOF  unknown OF 3 ENDOF  ;MATCH ;
 
+\ ---- cross-process content-key codec (KEY>WIRE / WIRE>KEY) ---------------------
+create TT-SHA CK-BYTES allot
+
+: TT-CKEY-RT ( CAD-KIND:target-id -- n )       \ 0 = content key round-trips to an EQUAL? id
+   dup {: orig:CAD-KIND:target-id :}
+   TT-WBUF TT-WCAP KEY>WIRE {: len:n :}
+   TT-WBUF len WIRE>KEY
+   MATCH id-result
+      ok          OF orig EQUAL? if 0 else 1 then ENDOF
+      wrong-width OF 2 ENDOF
+      unknown     OF 3 ENDOF
+   ;MATCH ;
+
+: TT-CKEY-ALL ( -- n )                         \ 0 iff EVERY registered target key round-trips
+   TGT-N @ 0 ?do
+      i RAW>TARGET-ID TT-CKEY-RT 0<> if 1 unloop exit then
+   loop 0 ;
+
+: TT-CKEY-WIDTH ( -- n )                       \ an 8-byte buffer decodes as wrong-width
+   TT-WBUF 8 WIRE>KEY
+   MATCH id-result  ok OF drop 8 ENDOF  wrong-width OF 2 ENDOF  unknown OF 3 ENDOF  ;MATCH ;
+
+: TT-FILL-FF ( -- )                            \ 32 bytes no registered descriptor can hash to
+   0 begin dup CK-BYTES < while
+      dup {: k:n :}
+      $FF  TT-WBUF k +  c!
+      1+
+   repeat drop ;
+
+: TT-CKEY-UNKNOWN ( -- n )                     \ a 32-byte non-registered key decodes as unknown
+   TT-FILL-FF
+   TT-WBUF CK-BYTES WIRE>KEY
+   MATCH id-result  ok OF drop 9 ENDOF  wrong-width OF 2 ENDOF  unknown OF 3 ENDOF  ;MATCH ;
+
+: TT-CKEY-IS-SHA ( -- n )                      \ 0 iff KEY>WIRE == SHA-256(facts), NOT the raw index
+   0 RAW>TARGET-ID {: id:CAD-KIND:target-id :}
+   id FACTS$ TT-SHA SHA256
+   id TT-WBUF TT-WCAP KEY>WIRE drop
+   TT-WBUF TT-SHA CK-EQ? if 0 else 1 then ;
+
 TT-WIRE-ALL 0 T=
 TT-WIRE-WIDTH 2 T=
 TT-WIRE-UNKNOWN 3 T=
+TT-CKEY-ALL 0 T=
+TT-CKEY-WIDTH 2 T=
+TT-CKEY-UNKNOWN 3 T=
+TT-CKEY-IS-SHA 0 T=
 
 ;package
 

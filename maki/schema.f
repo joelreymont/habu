@@ -28,12 +28,22 @@
 \      versioned grammar lives behind schema-version; schema-id is the schema NAME.
 \ So the interned content is the canonical schema name bytes; equal names are one id.
 \
-\ WIRE FORM (this round): the process-local registry raw as a fixed-width 8-byte
-\ little-endian scalar, matching the landed maki/target/target.f and maki/numpolicy.f
-\ precedents and the maki/db/artifact.f id-on-wire. The § 23.9 origin-class table
-\ names the cross-process content key (SHA-256, 32 bytes) as the eventual form;
-\ the plan marks reconciling the process-local raw with that content key OUT OF
-\ SCOPE for this contract round (envelope implementation dot owns the migration).
+\ WIRE FORMS. Two audited public codecs share the private RAW>SCHEMA-ID refinement:
+\   - ID>WIRE / WIRE>ID: the PROCESS-LOCAL registry raw as a fixed-width 8-byte
+\     little-endian scalar. Admissible only for intra-process wire paths (e.g.
+\     maki/db/diagnostic.f bundles that never leave the process); NEVER for a
+\     digest-covered, cross-process, or durable identity (a raw index means a
+\     different descriptor in another process).
+\   - KEY>WIRE / WIRE>KEY: the CROSS-PROCESS content key - SHA-256 over the
+\     interned canonical schema-name bytes, fixed 32-byte little-endian (§ 23.9
+\     origin-class table, content-addressed registry intern row). Equal names
+\     digest identically in every process, so this form survives process death:
+\     WIRE>KEY resolves the 32 bytes against the local registry by CONTENT, never
+\     by registration order. This is the digest-covered / durable wire form the
+\     envelope and transaction codecs consume.
+\ The per-id content key is interned alongside the name at REGISTER (SCH-CK), so it
+\ costs one SHA-256 per fresh registration and a content-key column, never a rehash
+\ on the wire path.
 \
 \ Fail closed: an empty/oversized name, an out-of-range id, a wrong-width or
 \ unresolved wire buffer are named throws / reject variants. maki -> habu only;
@@ -67,10 +77,12 @@ private
 256 constant SCH-KEY-MAX                    \ max bytes per canonical schema name
 SCH-CAP SCH-KEY-MAX * constant SCH-KEY-CAP
 8 constant WIRE-BYTES                        \ fixed little-endian wire width of the registry raw
+32 constant CK-BYTES                         \ SHA-256 content-key width (cross-process wire form)
 
 create SCH-KEYS SCH-KEY-CAP allot            \ interned name bytes, back to back
 create SCH-KO   SCH-CAP cells allot           \ per-id name offset into SCH-KEYS
 create SCH-KL   SCH-CAP cells allot           \ per-id name length
+create SCH-CK   SCH-CAP CK-BYTES * allot      \ per-id SHA-256 content key over the name bytes
 variable SCH-KEY-U                             \ bytes used in SCH-KEYS
 variable SCH-N                                  \ registered count
 
@@ -95,13 +107,28 @@ TRUSTED: SCHEMA-ID>RAW ( CAD-KIND:schema-id -- n ) ;
       i KEY@ a u STR= if i unloop exit then
    loop -1 ;
 
+: CK@ ( n -- ptr u8 )   CK-BYTES * SCH-CK + ;   \ per-id content-key slot base
+
 : KEY-PUT ( ptr u8 n n -- ) {: a:ptr u:n raw:n :}
    SCH-KEY-U @ u + SCH-KEY-CAP > if E-SCHEMA-CAP throw then
    SCH-KEY-U @ {: off:n :}
    a SCH-KEYS off + u BYTE-COPY
    off raw cells SCH-KO + !
    u   raw cells SCH-KL + !
+   a u  raw CK@  SHA256                        \ intern the cross-process content key
    off u + SCH-KEY-U ! ;
+
+: CK-EQ? ( ptr u8 ptr u8 -- bool ) {: pa:ptr pb:ptr :}   \ fixed 32-byte content-key compare
+   0 begin dup CK-BYTES < while
+      dup {: k:n :}
+      pa k + c@  pb k + c@  <> if drop false exit then
+      1+
+   repeat drop true ;
+
+: CK-FIND ( ptr u8 -- n ) {: p:ptr :}   \ raw id whose content key equals p's 32 bytes, or -1
+   SCH-N @ 0 ?do
+      i CK@ p CK-EQ? if i unloop exit then
+   loop -1 ;
 
 : LE-PUT ( n ptr u8 n -- ) {: v:n a:ptr w:n :}
    0 begin dup w < while
@@ -161,6 +188,24 @@ public
    u WIRE-BYTES <> if R-WRONG-WIDTH exit then
    a WIRE-BYTES LE-GET {: raw:n :}
    raw 0 < raw SCH-N @ >= or if R-UNKNOWN exit then
+   raw RAW>SCHEMA-ID R-OK ;
+
+\ KEY>WIRE writes the id's cross-process content key (SHA-256 over the interned name,
+\ 32 fixed bytes) into the caller buffer; total for a valid id (E-SCHEMA-WIRE if the
+\ cap cannot hold CK-BYTES). WIRE>KEY is the audited cross-process boundary: it reads
+\ the 32-byte content key and resolves it against the local registry BY CONTENT
+\ (never by registration order), refining to the nominal id only on a content match.
+: KEY>WIRE ( CAD-KIND:schema-id ptr u8 n -- n )
+   {: id:CAD-KIND:schema-id out:ptr cap:n :}
+   cap CK-BYTES < if E-SCHEMA-WIRE throw then
+   id ID-CK CK@  out  CK-BYTES  BYTE-COPY
+   CK-BYTES ;
+
+: WIRE>KEY ( ptr u8 n -- id-result<CAD-KIND:schema-id> )
+   {: a:ptr u:n :}
+   u CK-BYTES <> if R-WRONG-WIDTH exit then
+   a CK-FIND {: raw:n :}
+   raw 0 < if R-UNKNOWN exit then
    raw RAW>SCHEMA-ID R-OK ;
 
 : COUNT ( -- n )  SCH-N @ ;

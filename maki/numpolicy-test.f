@@ -149,12 +149,43 @@ create TT-WBUF TT-WCAP allot
    TT-WBUF WIRE-BYTES WIRE>ID
    MATCH id-result  ok OF drop 9 ENDOF  wrong-width OF 2 ENDOF  unknown OF 3 ENDOF  ;MATCH ;
 
+\ ---- cross-process content-key codec (KEY>WIRE / WIRE>KEY) ---------------------
+\ Numeric-policy's content key IS its 8-byte rank (the documented § 23.9 exception), so
+\ the codec coincides with ID>WIRE / WIRE>ID; prove both the dom-preserving round-trip
+\ and the byte-for-byte coincidence.
+create TT-KBUF TT-WCAP allot
+
+: TT-CKEY-RT ( dom -- n )                       \ 0 = REGISTER->KEY>WIRE->WIRE>KEY keeps the dom
+   dup {: d:dom :}
+   REGISTER TT-WBUF TT-WCAP KEY>WIRE {: len:n :}
+   TT-WBUF len WIRE>KEY
+   MATCH id-result
+      ok          OF POLICY-DOM RANK  d RANK  = if 0 else 1 then ENDOF
+      wrong-width OF 2 ENDOF
+      unknown     OF 3 ENDOF
+   ;MATCH ;
+
+: TT-CKEY-IS-RANK ( -- n )                      \ 0 iff KEY>WIRE == ID>WIRE (the 8-byte rank)
+   NPOL-DOM:RELATIVE REGISTER {: id:CAD-KIND:numeric-policy-id :}
+   id TT-WBUF TT-WCAP ID>WIRE {: la:n :}
+   id TT-KBUF TT-WCAP KEY>WIRE {: lb:n :}
+   la lb <> if 1 exit then
+   la WIRE-BYTES <> if 2 exit then
+   0 begin dup la < while
+      dup {: k:n :}
+      TT-WBUF k + c@  TT-KBUF k + c@  <> if drop 3 exit then
+      1+
+   repeat drop 0 ;
+
 NPOL-DOM:EXACT     TT-RT 0 T=
 NPOL-DOM:ULP       TT-RT 0 T=
 NPOL-DOM:RELATIVE  TT-RT 0 T=
 NPOL-DOM:EMPIRICAL TT-RT 0 T=
 TT-WIRE-WIDTH 2 T=
 TT-WIRE-UNKNOWN 3 T=
+NPOL-DOM:EXACT     TT-CKEY-RT 0 T=
+NPOL-DOM:EMPIRICAL TT-CKEY-RT 0 T=
+TT-CKEY-IS-RANK 0 T=
 
 ;package
 
