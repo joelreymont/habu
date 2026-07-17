@@ -1001,12 +1001,62 @@ PRODUCT pair 2
 
 Landed (item 15). A product is a single-shape record family (`TK-PRODUCT`):
 each `FIELD name type` registers one product-field row keyed by
-`(family-id, field tail)` plus one field schema, in declaration slot order
-(slot 0 deepest). There is no tag and no variants:
+`(family-id, optional-variant-id, field tail)` plus one field schema, in
+declaration slot order (slot 0 deepest). Product rows use
+`TYPE-FIELD:NO-VARIANT`; sum/enum-owned rows use their `SUMV` id. The same PF
+arena and `TF-INTERN` string pool are the sole field authority. There is no tag
+and no product variant:
 
 ```text
 WIDTH(product<...>) = sum of field widths
 ```
+
+Each PF row stores the schema root, logical cell slot/count, byte offset/size,
+alignment, and flags. `stack-cell-tag` and `packed-tag` currently admit only the
+canonical cell payload mapping:
+
+```text
+byte-offset = cell-slot * CELL
+byte-size   = cell-count * CELL
+alignment   = CELL
+```
+
+Both multiplications are overflow-checked. `niche`, `boxed`, and `custom` field
+rows reject until those policies own explicit ABI validators; metadata accepted
+by a generic range check is not enough to define a layout ABI.
+
+PF mutation is a strict-LIFO nested transaction. `PF-N` includes provisional
+rows, while `PF-COMMIT-N` is the only reflection high-water. `ADD` returns the
+transaction token, never a field id; nested commit remains provisional and only
+the outer commit publishes ids. Rollback restores both the PF row mark and the
+shared interned-string mark. `TFAM-RESET` clears both high-waters and transient
+transaction state. Checker rollback requires no open field transaction and
+restores `PF-N`/`PF-COMMIT-N` together. Snapshot persistence retains committed
+PF rows/high-waters while resetting the process-local transaction arena.
+
+Checked consumers use the sealed package surface:
+
+```forth
+TYPE-FIELD:COUNT       ( -- n )
+TYPE-FIELD:NO-VARIANT  ( -- n )
+TYPE-FIELD:FIND        ( family variant name-addr name-len -- id bool )
+TYPE-FIELD:EACH        ( family variant start -- id bool )
+TYPE-FIELD:FAMILY@     ( id -- family )
+TYPE-FIELD:VARIANT@    ( id -- variant )
+TYPE-FIELD:NAME$       ( id -- name-addr name-len )
+TYPE-FIELD:SCHEMA@     ( id -- schema-root )
+TYPE-FIELD:SLOT@       ( id -- cell-slot )
+TYPE-FIELD:CELLS@      ( id -- cell-count )
+TYPE-FIELD:BYTE-OFF@   ( id -- byte-offset )
+TYPE-FIELD:BYTES@      ( id -- byte-size )
+TYPE-FIELD:ALIGN@      ( id -- alignment )
+TYPE-FIELD:FLAGS@      ( id -- flags )
+```
+
+`EACH` treats a negative start as an explicit miss. Schema validation is
+recursive and owner-relative: a zero-arity `SC-APP` has canonical argument-root
+start zero, and an owner `SC-PARAM` is admitted only for a cell-kinded parameter
+until width instantiation exists for variable-width parameter kinds.
 
 Field names are their own tail namespace (single letters such as `x` are
 legal, lowercase canon enforced, duplicates reject). Field and variant payload

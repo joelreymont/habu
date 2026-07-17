@@ -878,7 +878,8 @@ variable PF-COMMIT-N   0 PF-COMMIT-N !
    REPEAT
    0 RES-FALSE ;
 : PF-EACH ( n n n -- n bool ) {: fam:n var:n start:n :}
-   start 0 max TF-I !
+   start 0 < IF 0 RES-FALSE EXIT THEN
+   start TF-I !
    BEGIN TF-I @ PF-COMMIT-N @ < WHILE
       TF-I @ PF-REC@ {: r:ptr :}
       fam var r PF-ROW-OWNER? IF TF-I @ RES-TRUE EXIT THEN
@@ -958,8 +959,7 @@ variable PF-TX-SERIAL   0 PF-TX-SERIAL !
 $7FFFFFFFFFFFFFFF constant PF-MAX-N
 0 constant PF-FLAGS-NONE
 
-: PF-RESERVED? ( ptr u8 n -- bool ) {: a:ptr u:n :}
-   a u s" field" CORE-STR=CI IF RES-TRUE EXIT THEN
+: TF-GRAMMAR-KEYWORD? ( ptr u8 n -- bool ) {: a:ptr u:n :}
    a u s" variant" CORE-STR=CI IF RES-TRUE EXIT THEN
    a u s" ;variant" CORE-STR=CI IF RES-TRUE EXIT THEN
    a u s" typefamily" CORE-STR=CI IF RES-TRUE EXIT THEN
@@ -969,8 +969,11 @@ $7FFFFFFFFFFFFFFF constant PF-MAX-N
    a u s" ;enum" CORE-STR=CI IF RES-TRUE EXIT THEN
    a u s" product" CORE-STR=CI IF RES-TRUE EXIT THEN
    a u s" ;product" CORE-STR=CI IF RES-TRUE EXIT THEN
+   a u s" field" CORE-STR=CI IF RES-TRUE EXIT THEN
    a u s" policy" CORE-STR=CI IF RES-TRUE EXIT THEN
-   a u s" derive" CORE-STR=CI IF RES-TRUE EXIT THEN
+   a u s" derive" CORE-STR=CI ;
+: PF-RESERVED? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   a u TF-GRAMMAR-KEYWORD? IF RES-TRUE EXIT THEN
    a u s" make" CORE-STR=CI IF RES-TRUE EXIT THEN
    a u s" unmake" CORE-STR=CI IF RES-TRUE EXIT THEN
    a u s" tag" CORE-STR=CI IF RES-TRUE EXIT THEN
@@ -1007,7 +1010,8 @@ $7FFFFFFFFFFFFFFF constant PF-MAX-N
       node SCHEMA-B@ node SCHEMA-C@ or 0= 0= IF 0 RES-FALSE EXIT THEN
       node SCHEMA-A@ {: idx:n :}
       idx 0 < idx owner TFAM-ARITY@ >= or IF 0 RES-FALSE EXIT THEN
-      owner idx TFAM-PK@ RES-TRUE EXIT
+      owner idx TFAM-PK@ dup PK-CELL <> IF drop 0 RES-FALSE EXIT THEN
+      RES-TRUE EXIT
    THEN
    node SCHEMA-CON? IF
       node SCHEMA-B@ node SCHEMA-C@ or 0= 0= IF 0 RES-FALSE EXIT THEN
@@ -1044,6 +1048,7 @@ $7FFFFFFFFFFFFFFF constant PF-MAX-N
       node SCHEMA-B@ {: start:n :}
       node SCHEMA-C@ {: count:n :}
       count fam TFAM-ARITY@ <> IF 0 RES-FALSE EXIT THEN
+      count 0= start 0= 0= and IF 0 RES-FALSE EXIT THEN
       start 0 < start SCH-ROOT-N @ > or IF 0 RES-FALSE EXIT THEN
       count SCH-ROOT-N @ start - > IF 0 RES-FALSE EXIT THEN
       0 BEGIN dup count < WHILE
@@ -1072,6 +1077,9 @@ $7FFFFFFFFFFFFFFF constant PF-MAX-N
    n 0 > IF n n 1 - and 0= ELSE RES-FALSE THEN ;
 : PF-RANGE-OVERLAP? ( n n n n -- bool ) {: a:n au:n b:n bu:n :}
    a b bu + < b a au + < and ;
+: PF-CELL-BYTES ( n -- n ) {: n:n :}
+   n 0 < n PF-MAX-N CELL / > or IF E-PF-LAYOUT throw THEN
+   n cells ;
 : PF-OVERLAP? ( n n n n n n -- bool )
    {: fam:n var:n slot:n cellsn:n boff:n bytesn:n :}
    0 TF-I !
@@ -1092,7 +1100,22 @@ $7FFFFFFFFFFFFFFF constant PF-MAX-N
    al PF-POW2? 0= IF E-PF-LAYOUT throw THEN
    boff al mod 0 <> IF E-PF-LAYOUT throw THEN
    sch PF-SCHEMA-WIDTH cellsn <> IF E-PF-LAYOUT throw THEN
-   fam TFAM-LAYOUT-POLICY@ dup 0 < swap TL-MAX > or IF E-PF-LAYOUT throw THEN ;
+   fam TFAM-LAYOUT-POLICY@ CASE
+      TL-STACK-CELL-TAG OF
+         slot PF-CELL-BYTES boff <> IF E-PF-LAYOUT throw THEN
+         cellsn PF-CELL-BYTES bytesn <> IF E-PF-LAYOUT throw THEN
+         al CELL <> IF E-PF-LAYOUT throw THEN
+      ENDOF
+      TL-PACKED-TAG OF
+         slot PF-CELL-BYTES boff <> IF E-PF-LAYOUT throw THEN
+         cellsn PF-CELL-BYTES bytesn <> IF E-PF-LAYOUT throw THEN
+         al CELL <> IF E-PF-LAYOUT throw THEN
+      ENDOF
+      TL-NICHE OF E-PF-LAYOUT throw ENDOF
+      TL-BOXED OF E-PF-LAYOUT throw ENDOF
+      TL-CUSTOM OF E-PF-LAYOUT throw ENDOF
+      E-PF-LAYOUT throw
+   ENDCASE ;
 : PF-DUP? ( n n ptr u8 n -- bool ) {: fam:n var:n na:ptr nu:n :}
    0 TF-I !
    BEGIN TF-I @ PF-N @ < WHILE
@@ -1124,6 +1147,31 @@ $7FFFFFFFFFFFFFFF constant PF-MAX-N
    al r PF.ALIGN !   flags r PF.FLAGS !
    id 1 + PF-N !
    tx ;
+
+package TYPE-FIELD
+
+public
+
+: COUNT ( -- n ) PF-N@ ;
+: NO-VARIANT ( -- n ) PF-NO-VARIANT ;
+: FIND ( n n ptr u8 n -- n bool ) PF-FIND ;
+: EACH ( n n n -- n bool ) PF-EACH ;
+: FAMILY@ ( n -- n ) PF-FAM@ ;
+: VARIANT@ ( n -- n ) PF-VAR@ ;
+: NAME$ ( n -- ptr u8 n ) PF-NAME$ ;
+: SCHEMA@ ( n -- n ) PF-SCH@ ;
+: SLOT@ ( n -- n ) PF-SLOT@ ;
+: CELLS@ ( n -- n ) PF-CELLS@ ;
+: BYTE-OFF@ ( n -- n ) PF-BYTE-OFF@ ;
+: BYTES@ ( n -- n ) PF-BYTES@ ;
+: ALIGN@ ( n -- n ) PF-ALIGN@ ;
+: FLAGS@ ( n -- n ) PF-FLAGS@ ;
+
+private
+get-current prot-wid-add
+public
+get-current prot-wid-add
+;package
 
 \ Concrete schema linearity. Family arguments are checker terms and are
 \ accounted by LAYOUT-MAYBE-LINEAR? / LAYOUT-LINEAR-COUNT; this metadata walk

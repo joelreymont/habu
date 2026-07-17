@@ -228,8 +228,8 @@ variable FIELD-I
    begin FIELD-I @ 0 >= while
       fam TFAM-FLD-START@ FIELD-I @ + {: field:n :}
       term ENV-TERM!
-      field PF-SCH@ SCHEMA-ROOT@ SCHEMA-TERM
-      off field PF-SLOT@ + WALK-TASK -rot 0 TASK-PUSH
+      field TYPE-FIELD:SCHEMA@ SCHEMA-ROOT@ SCHEMA-TERM
+      off field TYPE-FIELD:SLOT@ + WALK-TASK -rot 0 TASK-PUSH
       FIELD-I @ 1 - FIELD-I !
    repeat ;
 

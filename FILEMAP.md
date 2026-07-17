@@ -19,7 +19,7 @@ points stay listed.
 - `skills/habu-build/SKILL.md` — current AOT and REPL build commands.
 - `docs/bootstrap.md` — no-binary recovery, native refresh, and porting.
 - `docs/forth.md` — blocking Forth style rules.
-- `docs/type-families.md` — generic lowercase type-family/ADT design plan.
+- `docs/type-families.md` — generic lowercase type-family/ADT design plan, including the canonical shared field key, transaction lifecycle, persistence, and reflection contract.
 - `docs/effects.md` — stack-effect syntax plus the R8 CAD capability-effect design (static op-schema row, checker propagation, Maki registration, capability tokens, planner legality, runtime resolver, cache identity).
 - `docs/census-switchover.md` — site-level inventory for the post-TFAM switchover: sentinel-return conventions to migrate to option/result, legacy enum clusters, value-record/PTX-IR products, ADT-dischargeable trust rows, and the wave-ordered migration plan.
 - `docs/gate.md` — native gate architecture, proof subjects, metrics, and
@@ -56,7 +56,7 @@ points stay listed.
 - `src/core/checker.f` — native stack-effect checker and verifier.
 - `src/core/lower-cert-base.f` — boot-safe, package-scoped lowering-certificate ABI and fail-closed producer dispatcher loaded immediately after the checker.
 - `src/core/type-schema.f` — persistent type-schema node arena (package TFAM) referenced by families/variants/fields as schema roots.
-- `src/core/type-family.f` — package-scoped TFAM/SUMV/layout registries and the shared transactional field-schema arena with commit-only reflection and snapshot/rollback integration.
+- `src/core/type-family.f` — package-scoped TFAM/SUMV/layout registries and the shared transactional field-schema arena with canonical STACK/PACKED validation, sealed `TYPE-FIELD` reflection, and snapshot/rollback integration.
 - `src/core/render.f` — human/JSON diagnostics and signature recording.
 - `src/core/sumtype.f` — TYPEFAMILY/SUMTYPE/PRODUCT declaration grammar registering package-aware families, variants, and atomic shared field schemas.
 - `src/core/layout-buffer.f` — generative checked storage for closed ADT layouts; owns allocation, zero initialization, bounds, stride, and the sole typed-layout pointer introduction boundary.

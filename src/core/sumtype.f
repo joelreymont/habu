@@ -122,18 +122,7 @@ variable TDECL-FAM-REG   \ family id registered by the LAST successful sum (-1 =
 \ --- name gate: reserved signature/type tokens, control words, and grammar
 \ keywords may not name a family or variant (docs §1, PLAN item 6).
 : TDECL-KEYWORD? ( ptr u8 n -- bool ) {: a:ptr u:n :}
-   a u s" variant" CORE-STR=CI IF RES-TRUE EXIT THEN
-   a u s" ;variant" CORE-STR=CI IF RES-TRUE EXIT THEN
-   a u s" ;sumtype" CORE-STR=CI IF RES-TRUE EXIT THEN
-   a u s" enum" CORE-STR=CI IF RES-TRUE EXIT THEN       \ item 14 enum block definer
-   a u s" ;enum" CORE-STR=CI IF RES-TRUE EXIT THEN      \ item 14 enum block close (;FOO)
-   a u s" product" CORE-STR=CI IF RES-TRUE EXIT THEN    \ item 15 product block definer
-   a u s" ;product" CORE-STR=CI IF RES-TRUE EXIT THEN   \ item 15 product block close (;FOO)
-   a u s" field" CORE-STR=CI IF RES-TRUE EXIT THEN      \ item 15 product field keyword
-   a u s" policy" CORE-STR=CI IF RES-TRUE EXIT THEN     \ item 16 layout-policy header keyword
-   a u s" derive" CORE-STR=CI IF RES-TRUE EXIT THEN     \ derive S1 header keyword
-   a u s" typefamily" CORE-STR=CI IF RES-TRUE EXIT THEN
-   a u s" sumtype" CORE-STR=CI ;
+   a u TF-GRAMMAR-KEYWORD? ;
 
 : TDECL-CONTROL? ( ptr u8 n -- bool ) {: a:ptr u:n :}
    a u s" if" CORE-STR=CI IF RES-TRUE EXIT THEN
@@ -617,10 +606,12 @@ variable TDP-TX
 : TDECL-REQUIRE-FIELD-NAME ( ptr u8 n -- ) {: a:ptr u:n :}
    u 0= IF a u s" missing field name" E-TDECL-SYNTAX TDECL-THROW THEN
    a u DELIM? IF a u s" bad field name" E-TDECL-SYNTAX TDECL-THROW THEN
-   a u TDECL-KEYWORD? IF a u s" reserved field name" E-TDECL-NAME TDECL-THROW THEN
    a u TF-CANON? 0= IF
       a u s" field name must be a lowercase tail" E-TFAM-CASE TDECL-THROW
-   THEN ;
+   THEN
+   a u TDECL-TOK!
+   s" reserved field name" TDECL-WHY!
+   a u PF-NAME-REQUIRE ;
 
 \ --- layout-kinded product fields S1 (dot habu-checker-capability-layout-4e7f1f03):
 \ a PRODUCT field may be typed as an S1-tier layout family — sum/enum kind,
@@ -647,8 +638,8 @@ variable TDP-TX
 
 \ TDECL-PRODUCT-FIELD ( fam -- ) : the `field` keyword is already consumed; read
 \ the field tail + one field-shaped type into a schema root, atomically add the
-\ PF row. Existing PRODUCT fields use the canonical CELL payload ABI; PF itself
-\ dispatches by policy and stores the explicit general metadata.
+\ PF row. Existing PRODUCT fields use the canonical CELL payload ABI admitted
+\ by stack-cell-tag and packed-tag; other policies remain fail-closed in PF.
 : TDECL-PRODUCT-FIELD ( n -- ) {: fam:n :}
    TDECL-NEXT {: fna:ptr fnu:n :}
    fna fnu TDECL-REQUIRE-FIELD-NAME

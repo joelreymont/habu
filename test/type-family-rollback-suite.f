@@ -77,7 +77,7 @@ s" rbpre" s" base" 0 0 0 0 TWX-SUMV-ADD drop
 
 TFAM-N@       P-TFAM !
 SUMV-N@       P-SUMV !
-PF-N@         P-PF !
+TYPE-FIELD:COUNT P-PF !
 TWX-LAY-N@        P-LAY !
 SCHEMA-N@     P-SCHN !
 SCHEMA-ROOT-N@ P-SCHR !
@@ -104,7 +104,7 @@ TWX-CAND-START
 \ every counter restored to the pre-candidate baseline.
 TFAM-N@        P-TFAM @ T=
 SUMV-N@        P-SUMV @ T=
-PF-N@          P-PF @ T=
+TYPE-FIELD:COUNT P-PF @ T=
 TWX-LAY-N@         P-LAY @ T=
 SCHEMA-N@      P-SCHN @ T=
 SCHEMA-ROOT-N@ P-SCHR @ T=
