@@ -43,3 +43,15 @@ kind, re-expresses tilepipe bodies, lands the 4 dynamic negatives
 structural negatives already reject today (tile-pipe-neg-test.f green).
 mmacc TFAM row: verified unreferenced, deliberately left to ride the next
 registry edit (avoids a standalone fixpoint rebake).
+
+BLOCKER 2 DISCHARGED 2026-07-17 (habu-decompose-pipelined-staging-49c97cba
+closed, commit 9e642e70): the protocol steps now exist as named checked
+CPP-* words in cg-matmul-emit.f with documented per-step obligations
+(issue opens pending<parity>; CPP-COMMIT closes the group; CPP-WAIT n
+retires; CPP-SYNC separates wait/read and read/reuse; CPP-CUR-WINDOW
+reads ready<parity>; CPP-NEXT-WINDOW writes pending<!parity>; CPP-FLIP =
+same-body parity consistency). Remaining blockers: (1) phantom mint
+capability leg 2b (habu-ptx-phantom-preserving-3df9db92 - the checked-mint
+half; legs 1/2a landed the preserving+sink half), (3) the M5 barrier model
+(habu-ptx-m5-mask-eb0716f1), (4) runtime loop-carried parity stays a named
+boundary permanently (out of checker scope).
