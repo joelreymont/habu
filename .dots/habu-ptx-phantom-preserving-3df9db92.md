@@ -1,6 +1,6 @@
 ---
 title: PTX phantom-preserving effects
-status: active
+status: open
 priority: 2
 issue-type: task
 created-at: "\"\\\"\\\\\\\"2026-07-01T23:07:20.878978+02:00\\\\\\\"\\\"\""
@@ -92,3 +92,21 @@ unchanged. One documented conservative boundary: VALUE-RECORD input mixed
 with a register mint is not sealed.
 
 Claim: agent=leg2c workspace=.jj-ws/fable-leg2c (LEG 2C: projection-load batch - tile.f/tile-v4.f/tile-v4a.f/tile-smem.f loads; land only if net trust <= -1)
+
+LEG 2C RESOLVED 2026-07-17 (leg2c lane, commit b34ac7ae; claim RELEASED).
+The batch's honest arithmetic: in-batch sharing was ZERO under nominal
+projection pinning (all three hypothesized sharings false - distinct
+families/arities), so the batch's only genuine win was LOAD-V4 reusing
+the EXISTING MINT-LOAD (v4-ness is pure codegen): net -1, zero new
+combinators, positive regression added, byte-identity x3. The other 7
+loads are documented net-0 single-use boundaries and STAY trusted -
+converting them would relocate trust, not reduce it.
+PROGRAM FLOOR REACHED: legs 1/2a/2b/2c complete. Every remaining lib/ptx
+trusted row this dot owns is either (i) the PROVEN-permanent audited mint
+core (fresh-mask ctx/collective/attention mints, MK-SPAN*/MM-ABI-class
+launch mints - MM-ABI verified 2d-class launch-ABI mint, the last
+cg-matmul.f row - tile-pipe mint core, CPPSLOT COMMIT/WAIT/STAGE-ISSUE)
+or (ii) a documented net-0 boundary (the 7 loads). This dot's remaining
+role is STANDING OWNER of those rows; final closure requires converting
+the proven-permanent core to sanctioned cap: owners (a policy decision -
+do not close before that conversion or strict orphans ~30 rows).
