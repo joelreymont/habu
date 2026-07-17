@@ -15,3 +15,13 @@ sibling) lands, mint the EVIDENCE owner package per the plan-23.9 codec
 mechanism (evidence-id constructor + refinement pair + ID>WIRE/WIRE>ID) -
 the diagnostic IR's invalidated-evidence[] field is waiting on it to be
 promoted from string[] to nominal ids (see habu-diag-nominal-ids dot).
+
+NOTE 2026-07-17 (obligation landing 8df2320f): this dot's implementation
+now also owns the obligation-identity leg the txn repoint needs: mint
+CAD-KIND:obligation-id (report-first since cad-kinds is frozen - the
+integrator will sanction the one-line kind addition with the claim),
+an OBLIG interning registry + KEY>WIRE/WIRE>KEY per the plan-23.9
+mechanism, and the mechanical maki/db/transaction.f obligation-code
+repoint - plus the EVIDENCE owner registry per the earlier note. The
+obligation schema (package OBLIG, DISCHARGE/INVALIDATED-BY?) is landed
+and is this dot's substrate.
