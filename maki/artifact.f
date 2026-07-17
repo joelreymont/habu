@@ -85,8 +85,14 @@ public
    {: x:CAD-KIND:artifact-id y:CAD-KIND:artifact-id :}
    x ARTIFACT-ID>RAW y ARTIFACT-ID>RAW = ;
 
-\ VALIDATE fails closed on an out-of-range id (the target.f VALIDATE precedent).
-: VALIDATE ( CAD-KIND:artifact-id -- CAD-KIND:artifact-id )  dup ID-CK drop ;
+\ VALIDATE-ID fails closed on an out-of-range id (the target.f VALIDATE
+\ precedent). Named -ID (not bare VALIDATE) because package ARTIFACT also owns the
+\ envelope-bytes codec (maki/db/artifact.f), whose contract leg is
+\ ARTIFACT:VALIDATE ( owned-bytes -- result<content-digest,diag-set> )
+\ (MODEL-CAD-V2-PLAN.md § 23.9); a package public wordlist rejects duplicate tails,
+\ so the identity-registry range check keeps the -ID tail and frees bare VALIDATE
+\ for the envelope leg.
+: VALIDATE-ID ( CAD-KIND:artifact-id -- CAD-KIND:artifact-id )  dup ID-CK drop ;
 
 : COUNT ( -- n )  ART-N @ ;
 

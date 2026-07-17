@@ -712,7 +712,7 @@ points stay listed.
   round-trip, capability non-aliasing, role rejection, and privacy regressions.
 - `maki/artifact.f` — the built-artifact identity registry: `ARTIFACT:REGISTER`
   interns a section-7.4 store key to a validated `CAD-KIND:artifact-id` (content
-  addressed: equal keys share one id), plus `KEY$`/`EQUAL?`/`VALIDATE`/`COUNT`. The
+  addressed: equal keys share one id), plus `KEY$`/`EQUAL?`/`VALIDATE-ID`/`COUNT`. The
   public producer the R7 evidence/policy layer was missing (retiring the test-only
   `T>AID` fabrication); raw conversions stay private (the target.f pattern).
 - `maki/artifact-test.f` — registry interning/equality/key round-trip/count

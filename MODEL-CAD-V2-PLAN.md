@@ -3539,6 +3539,18 @@ digest); `VALIDATE` checks bytes without full refinement and yields the
 recomputed digest or a diagnostic. No signature exposes a raw `n` identity or a
 trust boundary.
 
+**Identity-registry `VALIDATE-ID` versus envelope `VALIDATE` (collision
+resolved).** `ARTIFACT:VALIDATE` above is the ENVELOPE-bytes leg. Package
+`ARTIFACT` ALSO owns the content-addressed identity registry (maki/artifact.f),
+which published a same-named range check
+`VALIDATE ( CAD-KIND:artifact-id -- CAD-KIND:artifact-id )`. A package public
+wordlist rejects duplicate tails, so the two legs cannot coexist. Resolution
+(landed): the identity-registry leg is renamed `ARTIFACT:VALIDATE-ID`, freeing
+the bare `VALIDATE` tail for this envelope-bytes operation. `VALIDATE-ID` fails
+closed on an out-of-range id (the maki/target/target.f `VALIDATE` precedent);
+`VALIDATE` (envelope) recomputes and returns the content digest or a typed
+diagnostic. Consumers updated with the rename: maki/artifact-test.f.
+
 ##### Wire format (frozen)
 
 - Fixed little-endian widths for every scalar; no host-endianness or
@@ -3589,6 +3601,119 @@ Decode/validate outcomes are explicit typed `diag-set` variants, never silent:
 Malformed, noncanonical, and digest-mismatch are thus explicit typed results of
 `DECODE`/`VALIDATE`, not exceptions or sentinels; `ENCODE` of a validated
 envelope and `DIGEST` are total.
+
+##### Foreign identity constructors and wire codecs
+
+The envelope binds eleven nominal identity fields (the table above), but only
+`CAD-KIND:artifact-id` has an owner-published producer and — via reopening
+`package ARTIFACT` — a wire path today (maki/artifact.f `ARTIFACT:REGISTER` plus
+its private `RAW>ARTIFACT-ID` / `ARTIFACT-ID>RAW`). The other identity families
+— `schema-id`, `producer-id`, `config-id`, `numeric-policy-id`, `capability-id`,
+`audit-event-id`, `rev-id`, and `target-id` — have NO caller-reachable
+constructor or wire codec, so nothing can obtain a value and the "no new trust
+boundary" rule forbids the envelope codec from minting or raw-casting a foreign
+id itself. This is resolved by OWNER-published surface, never by a per-family
+refinement inside `ARTIFACT`.
+
+DECISION. Each identity family's OWNER package publishes an audited pair,
+extending the maki/artifact.f `RAW>ARTIFACT-ID` / `ARTIFACT-ID>RAW` precedent —
+one audited boundary per family:
+
+- **Private representation refinements** (owner-only, `TRUSTED:`, never public):
+  `RAW>X-ID ( n -- CAD-KIND:X-id )` and `X-ID>RAW ( CAD-KIND:X-id -- n )`.
+- **Public constructor** — the ONLY authority-bearing public mint, bound to the
+  id's real origin (registry intern, content digest, closed vocabulary entry, or
+  commit/append sequence). Never a public raw cast.
+- **Public wire codec** — `X:ID>WIRE ( CAD-KIND:X-id ptr u8 n -- n )` (total;
+  writes the id's fixed-width canonical bytes to a caller buffer + cap and
+  returns the byte count; safe because it consumes an already-valid nominal id)
+  and `X:WIRE>ID ( ptr u8 n -- X:id-result )` (the audited boundary; reads the
+  fixed-width bytes, validates through the owner registry/vocabulary FAIL-CLOSED,
+  and refines to the nominal id only on success, returning a typed result — the
+  custom-sum-family idiom in "Realization notes" below, never a bare raw cast).
+
+The envelope codec (maki/db/artifact.f) calls `X:ID>WIRE` / `X:WIRE>ID` across
+the package boundary for every identity field; it never mints, raw-casts, or
+range-checks a foreign id. A `WIRE>ID` failure folds into the envelope taxonomy
+(`bounds` for an out-of-range/unresolved id, `malformed` for truncated id bytes);
+adding a distinct `unresolved-identity` variant is a taxonomy amendment for the
+implementation dot, not a new boundary.
+
+WIRE FORM. The identity fields are digest-covered SEMANTIC fields (except
+`audit-event-id`, which is digest-excluded), and "Digest coverage" requires the
+digest to be cross-process-stable (equal semantic content digests identically
+across processes and storage sites). A process-local registry INDEX is therefore
+NOT an admissible wire form for a digest-covered identity — it would break that
+guarantee. The wire form per origin class is:
+
+| Origin class | Families | Canonical wire form | Width |
+|---|---|---|---|
+| content-addressed registry intern | schema-id, producer-id, config-id, numeric-policy-id, rev-id, target-id | the owner's canonical descriptor content key (SHA-256), fixed little-endian | 32 bytes |
+| closed vocabulary | capability-id | the shared vocabulary code (a stable constant like the `TARGET:CAP-*` bits), fixed little-endian | 8 bytes |
+| append-only sequence | audit-event-id | the journal-assigned monotonic sequence number, fixed little-endian (digest-excluded) | 8 bytes |
+
+The first-slice artifact-id and dependency wire form stores the registry RAW
+(maki/db/artifact.f `P-ID`), which is process-local; reconciling it with the
+cross-process content-key form above is an explicit item for the implementation
+dot (migrate to the content-key form, or document envelopes as process-local and
+rehydrated through the store). That reconciliation is out of scope for this
+contract round.
+
+PER-FAMILY SURFACE. Each row below is a small mechanical dot: resolve any
+NEEDS-DECISION descriptor content first, then open/reopen the owner package with
+the private refinements, the public constructor, and the wire-codec pair, and add
+a checked test (positive round-trip + fail-closed negative + cross-role
+rejection). The NEEDS-DECISION items are the descriptor CONTENT only; the
+mechanism (owner-published refinement + constructor + fail-closed wire codec) is
+fixed for every family.
+
+| Family | Owner package | Constructor / origin | NEEDS-DECISION |
+|---|---|---|---|
+| `target-id` | `TARGET` (maki/target/target.f, EXISTS) | `TARGET:REGISTER` interns a descriptor; `TARGET:DIGEST@` already yields the content key. Only the public `ID>WIRE` / `WIRE>ID` pair is missing. | none — smallest dot |
+| `audit-event-id` | new `JOURNAL` (persistence; §23.9 "append-only audit records") | `JOURNAL:APPEND ( event-desc -- CAD-KIND:audit-event-id )` mints the next monotonic sequence id at append time; occurrence-identified, never content-addressed. | none (plan-implied); waits on the object store / journal (implementation order item 2) |
+| `rev-id` | new `REV`/`TX` (§23.9 "immutable revision and transaction commit") | minted at COMMIT; content-addressed by the canonical revision content (parent + write set) so deterministic replay reproduces identical rev-ids. | revision-content canonical form (engineering; part of the TX dot) |
+| `schema-id` | new `SCHEMA` (protocol op `SCHEMA:LIST`; the partial `RAW>SCHEMA-ID` placeholder in maki/evidence/policy.f must be retired into it) | `SCHEMA:REGISTER` interns a schema definition; content-addressed by its canonical bytes. | the schema-definition canonical grammar (what a schema is / its field set) — NEEDS-DECISION |
+| `producer-id` | new `PRODUCER` (the machine-facing action/component registry, §23.9) | `PRODUCER:REGISTER` interns a producing component's stable identity (version-independent — `producer-version` is a separate envelope field); content-addressed. | what uniquely identifies a producer (name only? name + class?) — NEEDS-DECISION |
+| `config-id` | new `CONFIG` | `CONFIG:REGISTER` interns the canonical build/config facts; content-addressed. | which build/config facts are canonical / digest-covered — NEEDS-DECISION |
+| `numeric-policy-id` | `NPOL` (maki/numpolicy.f, reopened) | `NPOL:REGISTER` interns a numeric policy; content-addressed. `NPOL:DOM>N` / `N>DOM` is the existing minimal wire precedent if a policy is a single `dom`. | numeric-policy descriptor scope (single `dom` vs a per-region / tolerance bundle) — NEEDS-DECISION |
+| `capability-id` | new `CAP` | closed vocabulary: named capability constructors over a shared registry (like `NPOL:dom` / `TARGET:CAP-*`); wire = the stable vocabulary code. | the initial capability vocabulary content (which capabilities exist) — NEEDS-DECISION (product) |
+
+Only `capability-id`'s vocabulary content is a product decision; `schema-id`,
+`producer-id`, `config-id`, and `numeric-policy-id` descriptor contents are
+engineering contracts resolvable within their per-family dot, and `target-id`,
+`audit-event-id`, and `rev-id` need no new decision.
+
+##### Realization notes (blessed shapes)
+
+Two shapes the first implementation slice (habu-v2-canonical-artifact-ee5121b4,
+maki/db/artifact.f) proved necessary are CONTRACT, not deviations, so remaining
+envelope work inherits them:
+
+- **A typed error result over a NOMINAL diagnostic taxonomy is a bespoke
+  per-package SUM FAMILY, not the shared `result<a,b>`.** Constructing the ok arm
+  in a total (ok-only) word leaves `result`'s error type variable free, and a
+  free variable unifies with a structural type (`n`, `ptr u8`) but NOT with a
+  nominal ENUM/TYPEFAMILY, so `( n -- result<n,diag> ) RESULT:OK` is rejected
+  (LESSONS 2026-07-17). The blessed shape is the lib/cad-num-types.f
+  `numeric-result` idiom: a bespoke `SUMTYPE x-result 1` whose `ok` arm carries a
+  SINGLE-CELL payload (an index or arity-0 handle — a multi-cell PRODUCT can be
+  neither a sum payload nor a typed local) and whose error members are baked-in
+  nullary variants. The landed `art-result` (malformed / noncanonical / bounds /
+  duplicate / unknown-required / kind-mismatch / unsupported-migration /
+  digest-mismatch) is exactly this, and each family's `WIRE>ID` result uses the
+  same idiom. The `result<...,diag-set>` in "Conceptual checked signatures"
+  therefore DENOTES this per-package sum family; it is not the polymorphic
+  lib/adt/result.f type.
+- **`owned-bytes` is realized as a caller-supplied buffer + length
+  (`ptr u8 n`), not a first-class value.** ENCODE writes canonical bytes into a
+  caller buffer and returns the length; DECODE/VALIDATE read a caller buffer +
+  length. This follows the lib/nominal/codec.f precedent
+  (`CHUNK-ENCODE ( start count buf cap -- len )`,
+  `CHUNK-DECODE ( buf len -- start count )`) and the landed
+  `ENCODE-WEIGHT ( weight-artifact ptr u8 n -- n )` /
+  `DECODE-WEIGHT ( ptr u8 n -- art-result<n> )`. The `content-digest` stays a
+  four-word owned multi-cell value consumed straight off the stack (`UNMAKE`),
+  per the same multi-cell rule.
 
 #### Deterministic transactions
 

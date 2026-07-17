@@ -35,7 +35,7 @@ create AT-BUF 8 allot
 
 package ARTIFACT
 public
-: AT-ID-NEG ( -- )  -1 RAW>ARTIFACT-ID VALIDATE drop ;      \ negative id rejects
+: AT-ID-NEG ( -- )  -1 RAW>ARTIFACT-ID VALIDATE-ID drop ;   \ negative id rejects
 : AT-ID-BIG ( -- )  9999 RAW>ARTIFACT-ID KEY$ 2drop ;      \ out-of-range id rejects
 ;package
 
@@ -48,7 +48,7 @@ s" AR-OK-EQUAL ( CAD-KIND:artifact-id CAD-KIND:artifact-id -- bool ) ARTIFACT:EQ
    CHECK-QUIET-CANDIDATE! -1 T=
 s" AR-OK-KEY ( CAD-KIND:artifact-id -- ptr u8 n ) ARTIFACT:KEY$"
    CHECK-QUIET-CANDIDATE! -1 T=
-s" AR-OK-VALIDATE ( CAD-KIND:artifact-id -- CAD-KIND:artifact-id ) ARTIFACT:VALIDATE"
+s" AR-OK-VALIDATE-ID ( CAD-KIND:artifact-id -- CAD-KIND:artifact-id ) ARTIFACT:VALIDATE-ID"
    CHECK-QUIET-CANDIDATE! -1 T=
 
 \ ---- forge / mis-bind negatives ----------------------------------------------

@@ -824,6 +824,24 @@ per-stage families until parametric application enters the declaration grammar
 envelope parametrically or as flat per-kind families; the checker enforces the
 separation either way.
 
+Each identity family is OBTAINED and SERIALIZED through its OWNER package, never
+through a refinement inside the envelope codec. An owner publishes a private
+`RAW>X-ID` / `X-ID>RAW` representation refinement (the maki/artifact.f /
+maki/target/target.f precedent), one public authority-bearing constructor bound
+to the id's origin (registry intern, content digest, closed vocabulary, or
+commit/append sequence), and a public wire-codec pair `X:ID>WIRE` (total) /
+`X:WIRE>ID` (fail-closed, returning a custom sum-family result). The envelope
+codec calls these across the package boundary and adds no per-family boundary of
+its own; the per-family owner, origin, wire width, and open descriptor decisions
+are tabulated in MODEL-CAD-V2-PLAN.md § 23.9 "Foreign identity constructors and
+wire codecs". Because `package ARTIFACT` owns both the content-addressed identity
+registry (`ARTIFACT:REGISTER`, maki/artifact.f) and the envelope-bytes codec
+(maki/db/artifact.f), and a public wordlist rejects duplicate tails, the
+identity-registry range check is `ARTIFACT:VALIDATE-ID`
+(`CAD-KIND:artifact-id -- CAD-KIND:artifact-id`) and the bare `ARTIFACT:VALIDATE`
+tail is reserved for the envelope-bytes leg
+(`owned-bytes -- result<content-digest,diag-set>`).
+
 ### 9.2 Removed `SUMTYPE`
 
 Pre-cutover syntax:
