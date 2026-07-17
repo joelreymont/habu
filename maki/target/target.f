@@ -10,6 +10,7 @@ require lib/string.f
 require lib/fmt.f
 require maki/cad-kinds.f
 
+-5251 constant E-TARGET-WIRE     \ ID>WIRE output buffer smaller than the fixed wire width
 -5252 constant E-TARGET-CAP
 -5253 constant E-TARGET-FACT
 -5254 constant E-TARGET-ID
@@ -32,6 +33,17 @@ public
 
 SUMTYPE descriptor 0
    VARIANT value n n n n n n ;VARIANT
+;SUMTYPE
+
+\ WIRE>ID decode result (MODEL-CAD-V2-PLAN.md § 23.9 "Foreign identity
+\ constructors and wire codecs", the art-result custom-sum idiom): `ok` carries the
+\ refined nominal id; the reject arms are the fixed-width byte-decode refusals the
+\ contract names (wrong width, unresolved/out-of-range value). A bespoke per-package
+\ sum, not result<a,b>, so a total ok construction leaves no free error variable.
+SUMTYPE id-result 1
+   VARIANT ok a ;VARIANT
+   VARIANT wrong-width ;VARIANT
+   VARIANT unknown ;VARIANT
 ;SUMTYPE
 
 ;package
@@ -136,6 +148,32 @@ $100000001b3 constant TGT-HASH-PRIME
 : SM87! ( CAD-KIND:target-id -- )
    TGT-SM87 ! ;
 
+\ ---- § 23.9 foreign-id wire codec helpers -------------------------------------
+\ Wire form (this round): the process-local registry raw as a fixed-width 8-byte
+\ little-endian scalar, matching the landed maki/db/artifact.f id-on-wire (TAG-ID /
+\ U64W). Migrating to the cross-process content key (§ 23.9 origin-class table:
+\ SHA-256, 32 bytes) is the reconciliation item the plan marks OUT OF SCOPE for this
+\ contract round; the envelope implementation dot owns that migration.
+8 constant WIRE-BYTES
+
+: LE-PUT ( n ptr u8 n -- ) {: v:n a:ptr w:n :}
+   0 begin dup w < while
+      dup {: k:n :}
+      v k 8 * rshift $FF and  a k + c!
+      1+
+   repeat drop ;
+
+: LE-GET ( ptr u8 n -- n ) {: a:ptr w:n :}
+   0  0 begin dup w < while
+      dup {: k:n :}
+      a k + c@ k 8 * lshift  rot or swap
+      1+
+   repeat drop ;
+
+: R-OK ( a -- id-result<a> )          TARGET-ID--RESULT:OK ;
+: R-WRONG-WIDTH ( -- id-result<a> )   TARGET-ID--RESULT:WRONG-WIDTH ;
+: R-UNKNOWN ( -- id-result<a> )       TARGET-ID--RESULT:UNKNOWN ;
+
 public
 
 : DESCRIPTOR ( n n n n n n -- descriptor )
@@ -163,6 +201,24 @@ public
 
 : VALIDATE ( CAD-KIND:target-id -- CAD-KIND:target-id )
    dup ID-CK drop ;
+
+\ ID>WIRE is total for a valid nominal id: it writes the id's fixed-width canonical
+\ bytes into the caller buffer and returns the byte count (E-TARGET-WIRE if the cap
+\ cannot hold the fixed width). WIRE>ID is the audited boundary: it reads the fixed
+\ width, validates the raw through the append-only registry FAIL-CLOSED, and refines
+\ to the nominal id only on success, returning a typed id-result (§ 23.9).
+: ID>WIRE ( CAD-KIND:target-id ptr u8 n -- n )
+   {: id:CAD-KIND:target-id out:ptr cap:n :}
+   cap WIRE-BYTES < if E-TARGET-WIRE throw then
+   id ID-CK  out  WIRE-BYTES  LE-PUT
+   WIRE-BYTES ;
+
+: WIRE>ID ( ptr u8 n -- id-result<CAD-KIND:target-id> )
+   {: a:ptr u:n :}
+   u WIRE-BYTES <> if R-WRONG-WIDTH exit then
+   a WIRE-BYTES LE-GET {: raw:n :}
+   raw 0 < raw TGT-N @ >= or if R-UNKNOWN exit then
+   raw RAW>TARGET-ID R-OK ;
 
 : DESCRIPTOR@ ( CAD-KIND:target-id -- descriptor )
    ID-CK DESC-RAW@ ;

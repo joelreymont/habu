@@ -111,4 +111,42 @@ package TARGET
 
 ;package
 
+\ § 23.9 foreign-id wire codec: round-trip every registered target + fail-closed
+\ decode. Reopen the owner package for LE-PUT / registry internals (an out-of-range
+\ wire raw is only forgeable inside the owning package).
+package TARGET
+
+1024 constant TT-WCAP
+create TT-WBUF TT-WCAP allot
+
+: TT-WIRE-RT ( CAD-KIND:target-id -- n )        \ 0 = round-trips to an EQUAL? id
+   dup {: orig:CAD-KIND:target-id :}
+   TT-WBUF TT-WCAP ID>WIRE {: len:n :}
+   TT-WBUF len WIRE>ID
+   MATCH id-result
+      ok          OF orig EQUAL? if 0 else 1 then ENDOF
+      wrong-width OF 2 ENDOF
+      unknown     OF 3 ENDOF
+   ;MATCH ;
+
+: TT-WIRE-ALL ( -- n )                          \ 0 iff EVERY registered target round-trips
+   TGT-N @ 0 ?do
+      i RAW>TARGET-ID TT-WIRE-RT 0<> if 1 unloop exit then
+   loop 0 ;
+
+: TT-WIRE-WIDTH ( -- n )                        \ a 4-byte buffer decodes as wrong-width
+   TT-WBUF 4 WIRE>ID
+   MATCH id-result  ok OF drop 8 ENDOF  wrong-width OF 2 ENDOF  unknown OF 3 ENDOF  ;MATCH ;
+
+: TT-WIRE-UNKNOWN ( -- n )                      \ an out-of-range raw decodes as unknown
+   TGT-N @ 100 +  TT-WBUF WIRE-BYTES LE-PUT
+   TT-WBUF WIRE-BYTES WIRE>ID
+   MATCH id-result  ok OF drop 9 ENDOF  wrong-width OF 2 ENDOF  unknown OF 3 ENDOF  ;MATCH ;
+
+TT-WIRE-ALL 0 T=
+TT-WIRE-WIDTH 2 T=
+TT-WIRE-UNKNOWN 3 T=
+
+;package
+
 T-REPORT
