@@ -46,6 +46,12 @@ CELL constant TAGW-CELL     \ default tag width: one stack cell
 7106 constant E-TFAM-AMBIG    \ two other-package public families tie on a tail (7103 = E-SCHEMA-BAD)
 7104 constant E-TFAM-ARITY    \ negative arity
 7105 constant E-TFAM-KIND     \ unknown kind
+7123 constant E-PF-TX         \ stale or non-LIFO field transaction
+7124 constant E-PF-OWNER      \ invalid family / optional-variant ownership
+7125 constant E-PF-NAME       \ reserved field tail
+7126 constant E-PF-SCHEMA     \ malformed or owner-incompatible schema
+7127 constant E-PF-LAYOUT     \ invalid field layout metadata / policy
+7128 constant E-PF-FLAGS      \ undefined field flag bits
 
 variable TF-I                 \ private scan/copy index
 variable TF-PUB               \ private first-public-match accumulator (-1 = none)
@@ -711,37 +717,65 @@ TF-SHA16-DEFAULT
    TF-CTOR-BUF TF-CTOR-U @ ;
 
 \ ---------------------------------------------------------------------------
-\ product fields, keyed by (family-id, field tail).
+\ shared fields, keyed by (family-id, optional-variant-id, field tail).
+\ PF-N includes rows provisional in the active transaction; PF-COMMIT-N is the
+\ reflection high-water. ADD never returns a row id, so an id becomes observable
+\ only after the outer transaction commits.
 \ ---------------------------------------------------------------------------
+-1 constant PF-NO-VARIANT
 0 cells constant PF.FAM-OFF
-1 cells constant PF.NAME-OFF-AT
-2 cells constant PF.NAME-U-OFF
-3 cells constant PF.SCH-OFF
-4 cells constant PF.SLOT-OFF
-5 cells constant PF-REC
+1 cells constant PF.VAR-OFF
+2 cells constant PF.NAME-OFF-AT
+3 cells constant PF.NAME-U-OFF
+4 cells constant PF.SCH-OFF
+5 cells constant PF.SLOT-OFF
+6 cells constant PF.CELLS-OFF
+7 cells constant PF.BYTE-OFF-AT
+8 cells constant PF.BYTES-OFF
+9 cells constant PF.ALIGN-OFF
+10 cells constant PF.FLAGS-OFF
+11 cells constant PF-REC
 CELL constant PF-REC-ALIGN
 0 constant PF-REC-PTR-MASK
 
 : PF.FAM ( ptr a -- ptr a ) PF.FAM-OFF + ;
+: PF.VAR ( ptr a -- ptr a ) PF.VAR-OFF + ;
 : PF.NAME-OFF ( ptr a -- ptr a ) PF.NAME-OFF-AT + ;
 : PF.NAME-U ( ptr a -- ptr a ) PF.NAME-U-OFF + ;
 : PF.SCH ( ptr a -- ptr a ) PF.SCH-OFF + ;
 : PF.SLOT ( ptr a -- ptr a ) PF.SLOT-OFF + ;
+: PF.CELLS ( ptr a -- ptr a ) PF.CELLS-OFF + ;
+: PF.BYTE-OFF ( ptr a -- ptr a ) PF.BYTE-OFF-AT + ;
+: PF.BYTES ( ptr a -- ptr a ) PF.BYTES-OFF + ;
+: PF.ALIGN ( ptr a -- ptr a ) PF.ALIGN-OFF + ;
+: PF.FLAGS ( ptr a -- ptr a ) PF.FLAGS-OFF + ;
 
 PF.FAM-OFF 0 cells TF-LAYOUT=
-PF.NAME-OFF-AT 1 cells TF-LAYOUT=
-PF.NAME-U-OFF 2 cells TF-LAYOUT=
-PF.SCH-OFF 3 cells TF-LAYOUT=
-PF.SLOT-OFF 4 cells TF-LAYOUT=
-PF-REC 5 cells TF-LAYOUT=
+PF.VAR-OFF 1 cells TF-LAYOUT=
+PF.NAME-OFF-AT 2 cells TF-LAYOUT=
+PF.NAME-U-OFF 3 cells TF-LAYOUT=
+PF.SCH-OFF 4 cells TF-LAYOUT=
+PF.SLOT-OFF 5 cells TF-LAYOUT=
+PF.CELLS-OFF 6 cells TF-LAYOUT=
+PF.BYTE-OFF-AT 7 cells TF-LAYOUT=
+PF.BYTES-OFF 8 cells TF-LAYOUT=
+PF.ALIGN-OFF 9 cells TF-LAYOUT=
+PF.FLAGS-OFF 10 cells TF-LAYOUT=
+PF-REC 11 cells TF-LAYOUT=
 PF-REC-ALIGN CELL TF-LAYOUT=
 PF-REC PF-REC-ALIGN mod 0 TF-LAYOUT=
 PF-REC-PTR-MASK 0 TF-LAYOUT=
 0 PF.FAM PF.FAM-OFF TF-LAYOUT=
+0 PF.VAR PF.VAR-OFF TF-LAYOUT=
 0 PF.NAME-OFF PF.NAME-OFF-AT TF-LAYOUT=
 0 PF.NAME-U PF.NAME-U-OFF TF-LAYOUT=
 0 PF.SCH PF.SCH-OFF TF-LAYOUT=
 0 PF.SLOT PF.SLOT-OFF TF-LAYOUT=
+0 PF.CELLS PF.CELLS-OFF TF-LAYOUT=
+0 PF.BYTE-OFF PF.BYTE-OFF-AT TF-LAYOUT=
+0 PF.BYTES PF.BYTES-OFF TF-LAYOUT=
+0 PF.ALIGN PF.ALIGN-OFF TF-LAYOUT=
+0 PF.FLAGS PF.FLAGS-OFF TF-LAYOUT=
 
 4 constant PF-CAP-INIT
 variable PF-CAP-V   PF-CAP-INIT PF-CAP-V !
@@ -750,6 +784,7 @@ create PF-A-BOOT   PF-CAP-INIT PF-REC * allot
 variable PF-A-P   PF-A-BOOT PF-A-P !
 : PF-BASE ( -- ptr a ) PF-A-P @ ;
 variable PF-N   0 PF-N !
+variable PF-COMMIT-N   0 PF-COMMIT-N !
 
 : PF-GROW ( n -- ) {: need:n :}
    need PF-CAP-V @ 2 * max {: nc:n :}
@@ -758,17 +793,27 @@ variable PF-N   0 PF-N !
 : PF-ENSURE ( -- )
    PF-N @ PF-CAP-V @ < IF exit THEN
    PF-N @ 1 + PF-GROW ;
-: PF-REC@ ( n -- ptr a ) {: id:n :}
+: PF-ROW ( n -- ptr a ) {: id:n :}
    id 0 < IF s" tfam: bad field id" 76 die THEN
    id PF-N @ >= IF s" tfam: bad field id" 76 die THEN
    id PF-REC * PF-BASE + ;
+: PF-REC@ ( n -- ptr a ) {: id:n :}
+   id 0 < IF s" tfam: bad committed field id" 76 die THEN
+   id PF-COMMIT-N @ >= IF s" tfam: bad committed field id" 76 die THEN
+   id PF-REC * PF-BASE + ;
 
 : PF-FAM@ ( n -- n ) PF-REC@ PF.FAM @ ;
+: PF-VAR@ ( n -- n ) PF-REC@ PF.VAR @ ;
 : PF-NAME$ ( n -- ptr u8 n ) {: id:n :}
    id PF-REC@ {: r:ptr :}  r PF.NAME-OFF @ r PF.NAME-U @ TF-OFF$ ;
 : PF-SCH@ ( n -- n ) PF-REC@ PF.SCH @ ;
 : PF-SLOT@ ( n -- n ) PF-REC@ PF.SLOT @ ;
-: PF-N@ ( -- n ) PF-N @ ;
+: PF-CELLS@ ( n -- n ) PF-REC@ PF.CELLS @ ;
+: PF-BYTE-OFF@ ( n -- n ) PF-REC@ PF.BYTE-OFF @ ;
+: PF-BYTES@ ( n -- n ) PF-REC@ PF.BYTES @ ;
+: PF-ALIGN@ ( n -- n ) PF-REC@ PF.ALIGN @ ;
+: PF-FLAGS@ ( n -- n ) PF-REC@ PF.FLAGS @ ;
+: PF-N@ ( -- n ) PF-COMMIT-N @ ;
 
 \ --- arg-aware instantiated width (item 12 / layout-cap slice 1, docs §18). The
 \ registry TFAM-WIDTH@ assumes every parameter contributes one cell; that is exact
@@ -819,27 +864,266 @@ variable PF-N   0 PF-N !
    fam TFAM-SUM? fam TFAM-ENUM? or IF term SUM-IWIDTH EXIT THEN
    1 ;
 
-: PF-MATCH? ( n ptr u8 n n -- bool ) {: fam:n na:ptr nu:n id:n :}
-   id PF-FAM@ fam = 0= IF RES-FALSE EXIT THEN
-   id PF-NAME$ na nu CORE-STR= ;
-: PF-FIND ( n ptr u8 n -- n bool ) {: fam:n na:ptr nu:n :}
+: PF-ROW-OWNER? ( n n ptr a -- bool ) {: fam:n var:n r:ptr :}
+   r PF.FAM @ fam = r PF.VAR @ var = and ;
+: PF-MATCH? ( n n ptr u8 n n -- bool ) {: fam:n var:n na:ptr nu:n id:n :}
+   id PF-REC@ {: r:ptr :}
+   fam var r PF-ROW-OWNER? 0= IF RES-FALSE EXIT THEN
+   r PF.NAME-OFF @ r PF.NAME-U @ TF-OFF$ na nu CORE-STR= ;
+: PF-FIND ( n n ptr u8 n -- n bool ) {: fam:n var:n na:ptr nu:n :}
    0 TF-I !
-   BEGIN TF-I @ PF-N @ < WHILE
-      fam na nu TF-I @ PF-MATCH? IF TF-I @ RES-TRUE EXIT THEN
+   BEGIN TF-I @ PF-COMMIT-N @ < WHILE
+      fam var na nu TF-I @ PF-MATCH? IF TF-I @ RES-TRUE EXIT THEN
       TF-I @ 1 + TF-I !
    REPEAT
    0 RES-FALSE ;
-: PF-ADD ( n ptr u8 n n n -- n ) {: fam:n na:ptr nu:n sch:n slot:n :}
-   na nu TF-REQUIRE-CANON
-   fam na nu PF-FIND IF drop E-TFAM-DUP throw THEN drop   \ drop the id from FIND's (id-or-0 flag)
+: PF-EACH ( n n n -- n bool ) {: fam:n var:n start:n :}
+   start 0 max TF-I !
+   BEGIN TF-I @ PF-COMMIT-N @ < WHILE
+      TF-I @ PF-REC@ {: r:ptr :}
+      fam var r PF-ROW-OWNER? IF TF-I @ RES-TRUE EXIT THEN
+      TF-I @ 1 + TF-I !
+   REPEAT
+   0 RES-FALSE ;
+
+\ Strict-LIFO transaction frames. Nested COMMIT keeps rows provisional; only
+\ the outer COMMIT advances PF-COMMIT-N. Every frame owns both mutable marks.
+0 cells constant PFTX.PFN-OFF
+1 cells constant PFTX.STRU-OFF
+2 cells constant PFTX.TOK-OFF
+3 cells constant PF-TX-REC
+CELL constant PF-TX-REC-ALIGN
+0 constant PF-TX-REC-PTR-MASK
+
+: PFTX.PFN ( ptr a -- ptr a ) PFTX.PFN-OFF + ;
+: PFTX.STRU ( ptr a -- ptr a ) PFTX.STRU-OFF + ;
+: PFTX.TOK ( ptr a -- ptr a ) PFTX.TOK-OFF + ;
+
+PFTX.PFN-OFF 0 cells TF-LAYOUT=
+PFTX.STRU-OFF 1 cells TF-LAYOUT=
+PFTX.TOK-OFF 2 cells TF-LAYOUT=
+PF-TX-REC 3 cells TF-LAYOUT=
+PF-TX-REC-ALIGN CELL TF-LAYOUT=
+PF-TX-REC PF-TX-REC-ALIGN mod 0 TF-LAYOUT=
+PF-TX-REC-PTR-MASK 0 TF-LAYOUT=
+0 PFTX.PFN PFTX.PFN-OFF TF-LAYOUT=
+0 PFTX.STRU PFTX.STRU-OFF TF-LAYOUT=
+0 PFTX.TOK PFTX.TOK-OFF TF-LAYOUT=
+
+4 constant PF-TX-CAP-INIT
+variable PF-TX-CAP-V   PF-TX-CAP-INIT PF-TX-CAP-V !
+create PF-TX-BOOT   PF-TX-CAP-INIT PF-TX-REC * allot
+variable PF-TX-P   PF-TX-BOOT PF-TX-P !
+variable PF-TX-DEPTH   0 PF-TX-DEPTH !
+variable PF-TX-SERIAL   0 PF-TX-SERIAL !
+
+: PF-TX-BASE ( -- ptr a ) PF-TX-P @ ;
+: PF-TX-GROW ( -- )
+   PF-TX-CAP-V @ 2 * {: nc:n :}
+   PF-TX-P PF-TX-CAP-V @ PF-TX-REC * nc PF-TX-REC * REG-GROW1
+   nc PF-TX-CAP-V ! ;
+: PF-TX-ENSURE ( -- )
+   PF-TX-DEPTH @ PF-TX-CAP-V @ < IF EXIT THEN
+   PF-TX-GROW ;
+: PF-TX-AT ( n -- ptr a ) PF-TX-REC * PF-TX-BASE + ;
+: PF-TX-TOP ( -- ptr a )
+   PF-TX-DEPTH @ 0= IF E-PF-TX throw THEN
+   PF-TX-DEPTH @ 1 - PF-TX-AT ;
+: PF-TX-REQUIRE ( n -- ) PF-TX-TOP PFTX.TOK @ <> IF E-PF-TX throw THEN ;
+
+: PF-BEGIN ( -- n )
+   PF-TX-ENSURE
+   PF-TX-SERIAL @ 1 + dup 0 <= IF drop E-PF-TX throw THEN
+   dup PF-TX-SERIAL ! {: tok:n :}
+   PF-TX-DEPTH @ PF-TX-AT {: r:ptr :}
+   PF-N @ r PFTX.PFN !
+   TF-STR-U @ r PFTX.STRU !
+   tok r PFTX.TOK !
+   PF-TX-DEPTH @ 1 + PF-TX-DEPTH !
+   tok ;
+: PF-COMMIT ( n -- ) {: tx:n :}
+   tx PF-TX-REQUIRE
+   PF-TX-DEPTH @ 1 - PF-TX-DEPTH !
+   PF-TX-DEPTH @ 0= IF PF-N @ PF-COMMIT-N ! THEN ;
+: PF-ROLLBACK ( n -- ) {: tx:n :}
+   tx PF-TX-REQUIRE
+   PF-TX-TOP {: r:ptr :}
+   r PFTX.PFN @ PF-N !
+   r PFTX.STRU @ TF-STR-U !
+   PF-TX-DEPTH @ 1 - PF-TX-DEPTH ! ;
+
+\ ADD validation. Field rows carry explicit logical-cell and memory-layout
+\ metadata under every registered family policy; no policy implies CELL-sized
+\ storage. Policy-specific lowering consumes these validated facts later.
+$7FFFFFFFFFFFFFFF constant PF-MAX-N
+0 constant PF-FLAGS-NONE
+
+: PF-RESERVED? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   a u s" field" CORE-STR=CI IF RES-TRUE EXIT THEN
+   a u s" variant" CORE-STR=CI IF RES-TRUE EXIT THEN
+   a u s" ;variant" CORE-STR=CI IF RES-TRUE EXIT THEN
+   a u s" typefamily" CORE-STR=CI IF RES-TRUE EXIT THEN
+   a u s" sumtype" CORE-STR=CI IF RES-TRUE EXIT THEN
+   a u s" ;sumtype" CORE-STR=CI IF RES-TRUE EXIT THEN
+   a u s" enum" CORE-STR=CI IF RES-TRUE EXIT THEN
+   a u s" ;enum" CORE-STR=CI IF RES-TRUE EXIT THEN
+   a u s" product" CORE-STR=CI IF RES-TRUE EXIT THEN
+   a u s" ;product" CORE-STR=CI IF RES-TRUE EXIT THEN
+   a u s" policy" CORE-STR=CI IF RES-TRUE EXIT THEN
+   a u s" derive" CORE-STR=CI IF RES-TRUE EXIT THEN
+   a u s" make" CORE-STR=CI IF RES-TRUE EXIT THEN
+   a u s" unmake" CORE-STR=CI IF RES-TRUE EXIT THEN
+   a u s" tag" CORE-STR=CI IF RES-TRUE EXIT THEN
+   a u s" eq" CORE-STR=CI IF RES-TRUE EXIT THEN
+   a u s" hash" CORE-STR=CI IF RES-TRUE EXIT THEN
+   a u s" order" CORE-STR=CI IF RES-TRUE EXIT THEN
+   a u s" encode" CORE-STR=CI IF RES-TRUE EXIT THEN
+   a u s" decode" CORE-STR=CI ;
+: PF-NAME-REQUIRE ( ptr u8 n -- ) {: a:ptr u:n :}
+   a u TF-REQUIRE-CANON
+   a u PF-RESERVED? IF E-PF-NAME throw THEN ;
+
+: PF-FAM-LIVE? ( n -- bool ) {: fam:n :} fam 0 >= fam TFAM-N @ < and ;
+: PF-OWNER-OK? ( n n -- bool ) {: fam:n var:n :}
+   fam PF-FAM-LIVE? 0= IF RES-FALSE EXIT THEN
+   var PF-NO-VARIANT = IF fam TFAM-PRODUCT? EXIT THEN
+   var 0 < var SUMV-N @ >= or IF RES-FALSE EXIT THEN
+   var SUMV-FAM@ fam =
+   fam TFAM-SUM? fam TFAM-ENUM? or and ;
+: PF-FAM-VISIBLE? ( n n -- bool ) {: owner:n fam:n :}
+   fam TFAM-PUBLIC? IF RES-TRUE EXIT THEN
+   fam TFAM-PKG$ owner TFAM-PKG$ CORE-STR= ;
+: PF-APP-KIND ( n -- n ) {: fam:n :}
+   fam TFAM-KIND@ TK-EVIDENCE = IF PK-EVIDENCE EXIT THEN
+   fam TFAM-LAYOUT? IF PK-LAYOUT EXIT THEN
+   PK-CELL ;
+: PF-KIND-OK? ( n n -- bool ) {: got:n want:n :}
+   want PK-TYPE = IF got PK-EVIDENCE <> EXIT THEN
+   got want = ;
+
+: PF-NODE-KIND? ( n n -- n bool ) {: owner:n node:n :}
+   node SCHEMA-NODE-OK? 0= IF 0 RES-FALSE EXIT THEN
+   node SCHEMA-PARAM? IF
+      node SCHEMA-B@ node SCHEMA-C@ or 0= 0= IF 0 RES-FALSE EXIT THEN
+      node SCHEMA-A@ {: idx:n :}
+      idx 0 < idx owner TFAM-ARITY@ >= or IF 0 RES-FALSE EXIT THEN
+      owner idx TFAM-PK@ RES-TRUE EXIT
+   THEN
+   node SCHEMA-CON? IF
+      node SCHEMA-B@ node SCHEMA-C@ or 0= 0= IF 0 RES-FALSE EXIT THEN
+      node SCHEMA-A@ CT-LIVE? IF PK-CELL RES-TRUE ELSE 0 RES-FALSE THEN EXIT
+   THEN
+   node SCHEMA-PTR? IF
+      node SCHEMA-B@ node SCHEMA-C@ or 0= 0= IF 0 RES-FALSE EXIT THEN
+      node SCHEMA-A@ dup node >= IF drop 0 RES-FALSE EXIT THEN
+      owner swap RECURSE 0= IF drop 0 RES-FALSE EXIT THEN drop
+      PK-CELL RES-TRUE EXIT
+   THEN
+   node SCHEMA-QUOT? IF
+      node SCHEMA-A@ dup 0= swap -1 = or 0= IF 0 RES-FALSE EXIT THEN
+      node SCHEMA-C@ SCH-QUOT-ROWS <> IF 0 RES-FALSE EXIT THEN
+      node SCHEMA-B@ {: start:n :}
+      start 0 < start SCH-ROOT-N @ > or IF 0 RES-FALSE EXIT THEN
+      SCH-QUOT-ROWS SCH-ROOT-N @ start - > IF 0 RES-FALSE EXIT THEN
+      0 BEGIN dup SCH-QUOT-ROWS < WHILE
+         dup >r
+         start r@ + SCHEMA-ROOT@ dup node >= IF
+            drop r> drop drop 0 RES-FALSE EXIT
+         THEN
+         owner swap RECURSE 0= IF
+            drop r> drop drop 0 RES-FALSE EXIT
+         THEN
+         drop r> drop 1 +
+      REPEAT drop
+      PK-CELL RES-TRUE EXIT
+   THEN
+   node SCHEMA-APP? IF
+      node SCHEMA-A@ {: fam:n :}
+      fam PF-FAM-LIVE? 0= IF 0 RES-FALSE EXIT THEN
+      owner fam PF-FAM-VISIBLE? 0= IF 0 RES-FALSE EXIT THEN
+      node SCHEMA-B@ {: start:n :}
+      node SCHEMA-C@ {: count:n :}
+      count fam TFAM-ARITY@ <> IF 0 RES-FALSE EXIT THEN
+      start 0 < start SCH-ROOT-N @ > or IF 0 RES-FALSE EXIT THEN
+      count SCH-ROOT-N @ start - > IF 0 RES-FALSE EXIT THEN
+      0 BEGIN dup count < WHILE
+         dup >r
+         start r@ + SCHEMA-ROOT@ dup node >= IF
+            drop r> drop drop 0 RES-FALSE EXIT
+         THEN
+         owner swap RECURSE 0= IF drop r> drop drop 0 RES-FALSE EXIT THEN
+         fam r@ TFAM-PK@ PF-KIND-OK? 0= IF r> drop drop 0 RES-FALSE EXIT THEN
+         r> drop
+         1 +
+      REPEAT drop
+      fam PF-APP-KIND RES-TRUE EXIT
+   THEN
+   0 RES-FALSE ;
+: PF-SCHEMA-OK? ( n n -- bool ) {: owner:n sch:n :}
+   sch 0 < sch SCH-ROOT-N @ >= or IF RES-FALSE EXIT THEN
+   owner sch SCHEMA-ROOT@ PF-NODE-KIND? nip ;
+: PF-SCHEMA-WIDTH ( n -- n ) {: sch:n :}
+   sch SCHEMA-ROOT@ {: node:n :}
+   node SCHEMA-APP? IF node SCHEMA-A@ TFAM-WIDTH@ ELSE 1 THEN ;
+
+: PF-RANGE-OK? ( n n -- bool ) {: off:n len:n :}
+   off 0 >= len 0 > and IF off PF-MAX-N len - <= ELSE RES-FALSE THEN ;
+: PF-POW2? ( n -- bool ) {: n:n :}
+   n 0 > IF n n 1 - and 0= ELSE RES-FALSE THEN ;
+: PF-RANGE-OVERLAP? ( n n n n -- bool ) {: a:n au:n b:n bu:n :}
+   a b bu + < b a au + < and ;
+: PF-OVERLAP? ( n n n n n n -- bool )
+   {: fam:n var:n slot:n cellsn:n boff:n bytesn:n :}
+   0 TF-I !
+   BEGIN TF-I @ PF-N @ < WHILE
+      TF-I @ PF-ROW {: r:ptr :}
+      fam var r PF-ROW-OWNER? IF
+         slot cellsn r PF.SLOT @ r PF.CELLS @ PF-RANGE-OVERLAP? IF RES-TRUE EXIT THEN
+         boff bytesn r PF.BYTE-OFF @ r PF.BYTES @ PF-RANGE-OVERLAP? IF RES-TRUE EXIT THEN
+      THEN
+      TF-I @ 1 + TF-I !
+   REPEAT
+   RES-FALSE ;
+: PF-LAYOUT-REQUIRE ( n n n n n n n n -- )
+   {: fam:n sch:n slot:n cellsn:n boff:n bytesn:n al:n flags:n :}
+   flags PF-FLAGS-NONE <> IF E-PF-FLAGS throw THEN
+   slot cellsn PF-RANGE-OK? 0= IF E-PF-LAYOUT throw THEN
+   boff bytesn PF-RANGE-OK? 0= IF E-PF-LAYOUT throw THEN
+   al PF-POW2? 0= IF E-PF-LAYOUT throw THEN
+   boff al mod 0 <> IF E-PF-LAYOUT throw THEN
+   sch PF-SCHEMA-WIDTH cellsn <> IF E-PF-LAYOUT throw THEN
+   fam TFAM-LAYOUT-POLICY@ dup 0 < swap TL-MAX > or IF E-PF-LAYOUT throw THEN ;
+: PF-DUP? ( n n ptr u8 n -- bool ) {: fam:n var:n na:ptr nu:n :}
+   0 TF-I !
+   BEGIN TF-I @ PF-N @ < WHILE
+      TF-I @ PF-ROW {: r:ptr :}
+      fam var r PF-ROW-OWNER? IF
+         r PF.NAME-OFF @ r PF.NAME-U @ TF-OFF$ na nu CORE-STR= IF RES-TRUE EXIT THEN
+      THEN
+      TF-I @ 1 + TF-I !
+   REPEAT
+   RES-FALSE ;
+
+: PF-ADD ( n n n ptr u8 n n n n n n n n -- n )
+   {: tx:n fam:n var:n na:ptr nu:n sch:n slot:n cellsn:n boff:n bytesn:n al:n flags:n :}
+   tx PF-TX-REQUIRE
+   fam var PF-OWNER-OK? 0= IF E-PF-OWNER throw THEN
+   na nu PF-NAME-REQUIRE
+   fam var na nu PF-DUP? IF E-TFAM-DUP throw THEN
+   fam sch PF-SCHEMA-OK? 0= IF E-PF-SCHEMA throw THEN
+   fam sch slot cellsn boff bytesn al flags PF-LAYOUT-REQUIRE
+   fam var slot cellsn boff bytesn PF-OVERLAP? IF E-PF-LAYOUT throw THEN
    PF-ENSURE
-   PF-N @ {: id:n :}
    na nu TF-INTERN {: noff:n :}
+   PF-N @ {: id:n :}
+   id PF-REC * PF-BASE + {: r:ptr :}
+   fam r PF.FAM !   var r PF.VAR !
+   noff r PF.NAME-OFF !   nu r PF.NAME-U !   sch r PF.SCH !
+   slot r PF.SLOT !   cellsn r PF.CELLS !
+   boff r PF.BYTE-OFF !   bytesn r PF.BYTES !
+   al r PF.ALIGN !   flags r PF.FLAGS !
    id 1 + PF-N !
-   id PF-REC@ {: r:ptr :}
-   fam r PF.FAM !   noff r PF.NAME-OFF !   nu r PF.NAME-U !
-   sch r PF.SCH !   slot r PF.SLOT !
-   id ;
+   tx ;
 
 \ Concrete schema linearity. Family arguments are checker terms and are
 \ accounted by LAYOUT-MAYBE-LINEAR? / LAYOUT-LINEAR-COUNT; this metadata walk
@@ -853,7 +1137,7 @@ defer TFCL-NODE-XT ( n -- bool )
 : TFAM-CONCRETE-LINEAR? ( n -- bool ) {: fam:n :}
    fam TFAM-PRODUCT? IF
       0 BEGIN dup fam TFAM-FLD-COUNT@ < WHILE
-         fam TFAM-FLD-START@ over + PF-SCH@ SCHEMA-ROOT@ TFCL-NODE-XT IF drop RES-TRUE EXIT THEN
+         fam TFAM-FLD-START@ over + PF-ROW PF.SCH @ SCHEMA-ROOT@ TFCL-NODE-XT IF drop RES-TRUE EXIT THEN
          1 +
       REPEAT drop
       RES-FALSE EXIT
@@ -1007,7 +1291,8 @@ variable LAY-N   0 LAY-N !
 \ ---------------------------------------------------------------------------
 : TFAM-RESET ( -- )
    0 TFAM-N !   0 TF-STR-U !   0 TF-PK-N !
-   0 SUMV-N !   0 PF-N !   0 LAY-N !
+   0 SUMV-N !   0 PF-N !   0 PF-COMMIT-N !   0 LAY-N !
+   0 PF-TX-DEPTH !   0 PF-TX-SERIAL !
    -1 FIELD-FAM ! ;   \ field family is de-registered until re-declared, so its id can't dangle
 TFAM-RESET
 
@@ -1073,6 +1358,7 @@ variable TF-RBF-DEPTH   0 TF-RBF-DEPTH !
 : TF-RBF-CUR ( -- ptr a ) TF-RBF-DEPTH @ TF-RBF-REC * TF-RBF-BASE + ;
 
 : TFAM-ROLLBACK-SAVE ( -- )
+   PF-TX-DEPTH @ IF s" tfam: rollback frame inside field transaction" 76 die THEN
    TF-RBF-ENSURE
    TF-RBF-CUR {: r:ptr :}
    TFAM-N @ r TFRB.TFAMN !
@@ -1089,7 +1375,7 @@ variable TF-RBF-DEPTH   0 TF-RBF-DEPTH !
    r TFRB.STRU @ TF-STR-U !
    r TFRB.PKN @ TF-PK-N !
    r TFRB.SUMVN @ SUMV-N !
-   r TFRB.PFN @ PF-N !
+   r TFRB.PFN @ dup PF-N ! PF-COMMIT-N !
    r TFRB.LAYN @ LAY-N ! ;
 
 \ TFAM-RBF-SNAP-RESET ( -- ) : snapshot prepare — frames are transient (depth 0
@@ -1099,6 +1385,11 @@ variable TF-RBF-DEPTH   0 TF-RBF-DEPTH !
    TF-RBF-BOOT TF-RBF-P !
    TF-RBF-CAP-INIT TF-RBF-CAP-V !
    0 TF-RBF-DEPTH ! ;
+
+: PF-TX-SNAP-RESET ( -- )
+   PF-TX-DEPTH @ IF s" checker: snapshot inside field transaction" 76 die THEN
+   PF-TX-BOOT PF-TX-P !
+   PF-TX-CAP-INIT PF-TX-CAP-V ! ;
 
 \ combined registry rollback hooks: one SAVE/RESTORE pair the checker's core
 \ RBF-PUSH/POP drives, so TFAM + SCHEMA frames stay in lockstep with core marks.
@@ -1132,6 +1423,7 @@ REG-EXT-RB-INSTALL
 : REG-EXT-PERSIST ( -- )
    TFAM-SNAPSHOT-PERSIST
    SCHEMA-SNAPSHOT-PERSIST
+   PF-TX-SNAP-RESET            \ field transactions are process-local
    RBF-SNAP-RESET               \ core rollback frames are process-local
    TFAM-RBF-SNAP-RESET          \ TFAM registry rollback frames
    SCHEMA-RBF-SNAP-RESET ;      \ SCHEMA registry rollback frames

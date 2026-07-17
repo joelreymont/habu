@@ -56,9 +56,9 @@ points stay listed.
 - `src/core/checker.f` — native stack-effect checker and verifier.
 - `src/core/lower-cert-base.f` — boot-safe, package-scoped lowering-certificate ABI and fail-closed producer dispatcher loaded immediately after the checker.
 - `src/core/type-schema.f` — persistent type-schema node arena (package TFAM) referenced by families/variants/fields as schema roots.
-- `src/core/type-family.f` — package-scoped type-family (TFAM), sum-variant (SUMV), product-field, and layout registries with snapshot persist.
+- `src/core/type-family.f` — package-scoped TFAM/SUMV/layout registries and the shared transactional field-schema arena with commit-only reflection and snapshot/rollback integration.
 - `src/core/render.f` — human/JSON diagnostics and signature recording.
-- `src/core/sumtype.f` — TYPEFAMILY/SUMTYPE declaration grammar registering package-aware families, variants, and payload schemas.
+- `src/core/sumtype.f` — TYPEFAMILY/SUMTYPE/PRODUCT declaration grammar registering package-aware families, variants, and atomic shared field schemas.
 - `src/core/layout-buffer.f` — generative checked storage for closed ADT layouts; owns allocation, zero initialization, bounds, stride, and the sole typed-layout pointer introduction boundary.
 - `src/core/layout-valid.f` — package-scoped producer for immutable, source-bound lowering certificates: canonical source-offset width rows, bind widths, fetch descriptors, and exact guard-domain evidence.
 - `src/core/layout-buffer-seal.f` — post-xref capability erasure for layout-buffer authorization.
@@ -1812,7 +1812,7 @@ points stay listed.
   run or be ticked from interpretation state.
 - `test/atomics-smoke.f` / `test/run-in-stack-smoke.f` — tasking primitive
   smoke tests for atomics and the in-stack runner.
-- `test/internal-word-gate.f` — engine-internal word execution gate regressions
+- `test/internal-word-gate.f` — engine-internal execution-gate regressions, including sealed field mutation and checked read-only field reflection.
   (dot habu-hb-crash-bare-c5be6634): bare/ticked internal checker colon words
   fail closed with `hb: internal engine word:` + rc 70 on both cold-prefix
   paths; positives pin E-UNDEFINED/E-UNDERFLOW, unchecked user words, TRUST/
@@ -2049,7 +2049,7 @@ points stay listed.
 - `test/layout-valid-active-bad.f` — armed child-process active nested invalid-tag regression.
 - `test/layout-valid-root-bad.f` — armed child-process invalid root-tag regression.
 - `test/layout-valid-growth.f` — forty-level nested-SUM fetch proving descriptor, environment, and guard arena growth.
-- `test/type-family-suite.f` — behavior suite for the package-scoped TFAM/SUMV/product/layout/SCHEMA registries.
-- `test/type-family-rollback-suite.f` — behavior suite for the checker's depth-safe transactional candidate/scope rollback frames.
+- `test/type-family-suite.f` — behavior suite for TFAM/SUMV/layout/SCHEMA plus shared field schema validation, nested transactions, policies, and reflection.
+- `test/type-family-rollback-suite.f` — behavior suite for depth-safe candidate/scope rollback including committed shared field and string-pool restoration.
 - `test/type-export-suite.f` — checker-level EXPORT alias suite (CHECKER-EXPORT): cross-package alias fidelity, defer/control-flag copy, every reject class, scope/candidate rollback of alias rows.
 - `test/export-package.f` — EXPORT keyword engine-contract regressions: child forges pin dual-name execution, the top-level hb-build directive no-op, generated-ctor re-export, DNAME-WIDE parity, and every reject exit status.

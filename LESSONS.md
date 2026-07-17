@@ -6443,3 +6443,6 @@ rides on top; (3) measure JIT code-area use with a chained probe file
 (`bin/hb --load maki/test.f probe.f` + LATEST XREF.) — code was at 92% of
 the 4 MB split, so dict-only repartition was refuted by measurement before
 any build.
+- **Evolve the existing registry truth in place.** A richer shared field model
+  belongs in PF with its current consumers migrated atomically; a parallel arena,
+  name pool, declaration seam, and duplicate roles create conflicting authority.

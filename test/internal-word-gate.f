@@ -157,7 +157,9 @@ public
    s" bare CHECKER-FIND-ACTIVE-SIG fails closed" T-LABEL
    s" CHECKER-FIND-ACTIVE-SIG" IWG-NEG
    s" bare E-INST fails closed" T-LABEL
-   s" E-INST" IWG-NEG ;
+   s" E-INST" IWG-NEG
+   s" bare PF-BEGIN mutation fails closed" T-LABEL
+   s" PF-BEGIN" IWG-NEG-LOAD ;
 
 : IWG-ARGS-FORGE$ ( -- ptr u8 n )        \ args present: the gate is not depth-keyed
    SB-RESET
@@ -255,6 +257,19 @@ public
    s" PRODUCT iwgpr 0 FIELD x n ;PRODUCT" SB-APPEND IWG-LF
    SB$ ;
 
+: IWG-PF-REFLECT-FORGE$ ( -- ptr u8 n )  \ committed reflection is checked/public
+   SB-RESET
+   s" PRODUCT iwgpf 0 FIELD x n ;PRODUCT" SB-APPEND IWG-LF
+   s" : IWG-PF-READ ( -- n )" SB-APPEND IWG-LF
+   s"    TFAM-N@ 1 - PF-NO-VARIANT 0 PF-EACH if drop else drop then" SB-APPEND IWG-LF
+   S\"    TFAM-N@ 1 - PF-NO-VARIANT s\" x\" PF-FIND" SB-APPEND IWG-LF
+   s"    if dup PF-FAM@ drop dup PF-VAR@ drop dup PF-NAME$ 2drop" SB-APPEND IWG-LF
+   s"       dup PF-SCH@ drop dup PF-CELLS@ drop dup PF-BYTE-OFF@ drop" SB-APPEND IWG-LF
+   s"       dup PF-BYTES@ drop dup PF-ALIGN@ drop dup PF-FLAGS@ drop" SB-APPEND IWG-LF
+   s"       PF-SLOT@ else drop -1 then ;" SB-APPEND IWG-LF
+   s" IWG-PF-READ . cr" SB-APPEND IWG-LF
+   SB$ ;
+
 \ The roles.f nominal definers are the same hazard class as the openers but
 \ admitted via certified usigs, not PRIM: axioms (dot
 \ habu-checker-deftype-deflinear-8e9d1dc5): declare + use each at top level.
@@ -336,6 +351,8 @@ public
 : IWG-OPENER-CASES ( -- )
    s" TYPEFAMILY/PRODUCT DSL still works at top level" T-LABEL
    IWG-TDSL-TOP-FORGE$ IWG-EXEC:SUBJECT IWG-ASSERT-OK
+   s" committed PF reflection is checked/public" T-LABEL
+   IWG-PF-REFLECT-FORGE$ IWG-RUN-LOAD IWG-ASSERT-OK
    s" TYPEFAMILY in a checked body is rejected unsafe" T-LABEL
    s" TYPEFAMILY" IWG-NEG-OPENER
    s" SUMTYPE in a checked body is rejected unsafe" T-LABEL
