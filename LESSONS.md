@@ -5558,3 +5558,18 @@ unchanged (148855). Keys for milestone 2:
 - **Package reflection needs package-aware checker rows.** Keep raw registry
   words as implementation detail and model the sealed public surface with
   `PPRIM:` package/tail rows; a colon-spelled `PRIM:` name loses package identity.
+- **Package effects need package-aware runtime minima too.** Resolve a COLON's
+  WID through its package record and query the exact public/private checker
+  symbol; global-only seal marking leaves qualified bodies reading below-base.
+- **Reset bounded diagnostic capture between negative-test sections.** Expected
+  rejects still append full packets; an added regression can otherwise overflow
+  the buffer before the assertions that actually inspect diagnostic content.
+- **Pre-hook `TRUSTED:` definitions do not record checker effects.** With
+  `HOOK-CELL` zero, the no-hook publish path skips `C-CALL-TRUST-PEND`; a named
+  callable boundary such as `LOWER-CERT-HOOK:INSTALL` therefore needs an explicit
+  trusted-only primitive axiom before seal-time unknown package words are marked
+  internal, preserving top-level startup without granting checked-body access.
+- **Package-owner indexes must census live WID keys, not assume package shape.**
+  Qualified definitions may create a header with public WID set and private WID
+  zero; size a cell-aligned power-of-two hash from nonzero keys at source load,
+  then reject malformed keys, duplicates, or census/build count drift.

@@ -74,10 +74,11 @@ points stay listed.
   on the xt/value residuals a depth floor cannot reach (docs/typed-top-level.md
   §5 sub-dot 3).
 - `src/core/internal-mark.f` — seal-time internal-word marking pass (last
-  cold-prefix source): sets `DNAME-INT` on every engine-prefix COLON record
-  with no checker-known effect so bare top-level execution and tick fail
-  closed (`hb: internal engine word:`, rc 70); data records are exempt
-  (push-only, engine-auto-trusted class); self-sealing unchecked boundary.
+  cold-prefix source): resolves global and exact public/private package COLON
+  records to checker symbols, marks unknown globals and owned package words
+  internal, and stores known required input minima so bare top-level execution
+  fails closed before the body; data records and non-package wordlist records
+  are exempt; self-sealing unchecked boundary.
 - `src/core/combinators.f` — legacy higher-order library words baked into
   `bin/hb` (audited unchecked boundary; new higher-order words are checked).
 
@@ -1167,7 +1168,9 @@ points stay listed.
   run or be ticked from interpretation state.
 - `test/atomics-smoke.f` / `test/run-in-stack-smoke.f` — tasking primitive
   smoke tests for atomics and the in-stack runner.
-- `test/internal-word-gate.f` — engine-internal execution-gate regressions, including sealed field mutation and checked read-only field reflection.
+- `test/internal-word-gate.f` — engine-internal execution-gate regressions,
+  including unknown package words, the pre-hook installer boundary, sealed
+  field mutation, and checked read-only field reflection.
   (dot habu-hb-crash-bare-c5be6634): bare/ticked internal checker colon words
   fail closed with `hb: internal engine word:` + rc 70 on both cold-prefix
   paths; positives pin E-UNDEFINED/E-UNDERFLOW, unchecked user words, TRUST/
@@ -1184,7 +1187,8 @@ points stay listed.
   declared inputs fails closed with `hb: interpret stack underdepth:` + rc 70
   on both cold-prefix paths; positives pin exact/surplus depth, unguarded
   compiled calls, the unchecked-word boundary, catchable evaluate rejects, and
-  the CHECK! probe. REPL recovery smoke: test/proc-pty.f PTY-UNDERDEPTH.
+  the CHECK! probe, plus empty-stack coverage for every public `TYPE-FIELD`
+  wrapper. REPL recovery smoke: test/proc-pty.f PTY-UNDERDEPTH.
 - `test/top-row-hook-test.f` — top-row hook engine regressions (dot
   habu-typed-top-engine-2b2e88aa): an in-process logging hook observes the
   exact (class, token, flags) event per interpret-dispatch token class

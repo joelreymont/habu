@@ -35,6 +35,7 @@ require lib/test/src-shape.f
 2048 constant UDG-CAP
 10000 constant UDG-TIMEOUT-MS
 70 constant UDG-REJECT-RC           \ interpret-level reject exit (RC-REJECT)
+ENGINE-ERROR:SEAL-PACKAGE constant UDG-SEAL-RC
 
 variable UDG-ROOT-U
 variable UDG-CHILD-U
@@ -344,6 +345,49 @@ public
    SB-RESET s" 0 ffi-call" UDG-LINE SB$ UDG-RUN-LOAD
    s" ffi-call" UDG-ASSERT-UNDERFLOW ;
 
+\ Package COLON records are classified through their owning package record,
+\ so public wrappers receive the same pre-body minimum-input gate as globals.
+: UDG-PF-ROW ( ptr u8 n -- ) {: a:ptr u:n :}
+   a u UDG-BARE$ UDG-RUN-LOAD
+   a u UDG-ASSERT-UNDERDEPTH ;
+
+: UDG-PF-ZERO$ ( -- ptr u8 n )
+   SB-RESET
+   s" TYPE-FIELD:COUNT drop" UDG-LINE
+   s" TYPE-FIELD:NO-VARIANT drop" UDG-LINE
+   SB$ ;
+
+: UDG-PF-REOPEN$ ( -- ptr u8 n )
+   s" package TYPE-FIELD" UDG-BARE$ ;
+
+: UDG-PF-PUBLISH$ ( -- ptr u8 n )
+   s" : TYPE-FIELD:EVIL ( -- ) ;" UDG-BARE$ ;
+
+: UDG-PF-ASSERT-SEALED ( -- )
+   UDG-EXITED @ TTRUE
+   UDG-RC @ UDG-SEAL-RC T= ;
+
+: UDG-PF-PACKAGE ( -- )
+   s" zero-input TYPE-FIELD wrappers remain callable" T-LABEL
+   UDG-PF-ZERO$ UDG-RUN-LOAD UDG-ASSERT-OK
+   s" protected TYPE-FIELD package rejects reopen" T-LABEL
+   UDG-PF-REOPEN$ UDG-RUN-LOAD UDG-PF-ASSERT-SEALED
+   s" protected TYPE-FIELD package rejects qualified publish" T-LABEL
+   UDG-PF-PUBLISH$ UDG-RUN-LOAD UDG-PF-ASSERT-SEALED
+   s" required-input TYPE-FIELD wrappers reject before their bodies" T-LABEL
+   s" TYPE-FIELD:FIND" UDG-PF-ROW
+   s" TYPE-FIELD:EACH" UDG-PF-ROW
+   s" TYPE-FIELD:FAMILY@" UDG-PF-ROW
+   s" TYPE-FIELD:VARIANT@" UDG-PF-ROW
+   s" TYPE-FIELD:NAME$" UDG-PF-ROW
+   s" TYPE-FIELD:SCHEMA@" UDG-PF-ROW
+   s" TYPE-FIELD:SLOT@" UDG-PF-ROW
+   s" TYPE-FIELD:CELLS@" UDG-PF-ROW
+   s" TYPE-FIELD:BYTE-OFF@" UDG-PF-ROW
+   s" TYPE-FIELD:BYTES@" UDG-PF-ROW
+   s" TYPE-FIELD:ALIGN@" UDG-PF-ROW
+   s" TYPE-FIELD:FLAGS@" UDG-PF-ROW ;
+
 \ --- positives: the public top-level surface is untouched -------------------
 
 : UDG-EXACT$ ( -- ptr u8 n )
@@ -424,6 +468,7 @@ public
    UDG-NEG-SHAPES
    UDG-COMPILE-IMM
    UDG-NEG-PRIMS
+   UDG-PF-PACKAGE
    UDG-POSITIVES
    UDG-MINIMUM:ATOMIC-SHAPE
    UDG-MINIMUM:BOUNDARY

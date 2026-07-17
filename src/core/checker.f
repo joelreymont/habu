@@ -4707,6 +4707,8 @@ PPRIM: LOWER-CERT CELL@ PE-N PE-IN PE-N PE-OUT PPRIM;
 PPRIM: LOWER-CERT BYTES PE-PTR-U8 PE-OUT PE-N PE-OUT PPRIM;
 PRIM-TRUSTED-ONLY!
 PPRIM: LOWER-CERT-HOOK HOOK PE-PTR-U8 PE-IN PE-N PE-IN PE-N PE-OUT PPRIM;
+PPRIM: LOWER-CERT-HOOK INSTALL PPRIM;
+PRIM-TRUSTED-ONLY!
 PPRIM: CHECKER-CERT INSTALL PE-N PE-IN PPRIM;
 PPRIM: CHECKER-CERT PRODUCE PE-PTR-U8 PE-IN PE-N PE-IN PE-N PE-IN PPRIM;
 PRIM: P2-LOCSEQ-RESET PRIM;
@@ -5051,13 +5053,21 @@ $20 constant CK-SEAL-LATCH-OFF          \ = layout.f FRIEND-LATCH-CELL
    a u CHECKER-FIND-ACTIVE-SYM PRIM-FIRST-SYM
    dup 0 <> IF E-PTR FEP-SET RES-TRUE ELSE drop RES-FALSE THEN ;
 
+\ din cell count for an exact symbol's active user row or primitive axiom;
+\ -1 when the checker knows no effect. Package-aware seal-time classification
+\ resolves the dictionary record to an exact symbol before querying this.
+: SIG-MIN-IN-SYM ( n -- n ) {: sym:n :}
+   sym 0= IF -1 EXIT THEN
+   sym CHECKER-FIND-USIG-SYM IF FEP @ ER.MINI @ EXIT THEN
+   sym PRIM-FIRST-SYM dup 0= IF drop -1 EXIT THEN
+   E-PTR ER.MINI @ ;
+
 \ SIG-MIN-IN: din cell count for a NAME's active effect (user row or prim
 \ axiom); -1 when the checker knows no effect. Seal-time consumer:
 \ src/core/internal-mark.f pokes known engine-prefix records with it (dot
 \ habu-habu-certified-words-84e84eaf).
 : SIG-MIN-IN ( ptr u8 n -- n )
-   FIND-SIG 0= IF -1 EXIT THEN
-   FEP @ ER.MINI @ ;
+   CHECKER-FIND-ACTIVE-SYM SIG-MIN-IN-SYM ;
 
 \ ---- effect-read export API (dot habu-expose-checker-effect-95e853eb) ---------
 \ A cold-prefix consumer (src/core/top-row.f, and the tier-2 typed top-row, dot

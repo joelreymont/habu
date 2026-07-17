@@ -393,7 +393,7 @@ that source is explicitly certified; they are not stale-checked by the default
 | c-package-record-match | `label label --` | Generated package-dictionary matcher compares the current token with one record and branches to the supplied match or next labels. | `test/seal-package.f`, `test/run.f` | src/habu/habu2.f | 2026-07-11 |
 | c-package-prot-guard | `--` | Generated package reopen guard rejects any package whose public wordlist is registered as protected. | `test/seal-package.f`, `test/run.f` | src/habu/habu2.f | 2026-07-11 |
 | p2f-entry | `label ptr a n n --` | Pass-2 typed-fetch dispatch consumes source-offset width and descriptor rows, emits validation, and executes the frozen bundle-fetch lowering. | `test/run.f` | src/habu/habu2.f | 2026-07-11 |
-| INSTALL | `--` | Protected checker-hook installer owns the fixed `LOWER-CERT-HOOK:HOOK` and compile-immediate `PREFLIGHT` execution tokens, installs the protected preflight cell before arming the default fail-closed checker, and is the required prelude for every custom-hook install. | `tools/build-fixpoint-test.f`, `test/gate-aot-negative.f`, `test/top-row-hook-test.f`, `test/engine-suite.f`, `test/run.f` | src/core/check-hook.f | 2026-07-17 |
+| INSTALL | `--` | Protected checker-hook installer owns the fixed `LOWER-CERT-HOOK:HOOK` and compile-immediate `PREFLIGHT` execution tokens, installs the protected preflight cell before arming the default fail-closed checker, and is the required prelude for every custom-hook install. | `test/internal-word-gate.f`, `tools/build-fixpoint-test.f`, `test/gate-aot-negative.f`, `test/top-row-hook-test.f`, `test/engine-suite.f`, `test/run.f` | src/core/check-hook.f | 2026-07-17 |
 | TR-INSTALL | `--` | Installs the tier-1 top-row tracker hook through the guarded-deref `set-top-check` trust-boundary prim (mirrors `LOWER-CERT-HOOK:INSTALL`'s `' HOOK set-check`); hook installation is not expressible in the checked language. | `test/top-row-warn-test.f`, `test/run.f` | src/core/top-row.f | 2026-07-14 |
 | TR-CERT-DOUT-EMPTY? | `ptr u8 n -- bool` | Unchecked boundary that calls the checker effect-read API (EFFECT-QUERY/EFFECT-DOUT-N) from the checked tier-1 tracker to detect a certified word producing no fixed outputs, so the row pops its declared din precisely instead of graying the tail; reading raw effect-store state is not expressible in the checked language. | `test/top-row-warn-test.f`, `test/run.f` | src/core/top-row.f | 2026-07-15 |
 | CHECKER-CERT-CALL | `ptr u8 n n n --` | Single dynamic-call boundary for the installed lowering-certificate producer; installation is private and single-assignment. | `tools/build-fixpoint-test.f`, `test/lower-cert.f`, `test/run.f` | src/core/checker.f | 2026-07-11 |
@@ -2133,6 +2133,7 @@ pprim lower-cert cell-count - pe-n pe-out
 pprim lower-cert cell@ - pe-n pe-in pe-n pe-out
 pprim lower-cert bytes trusted-only pe-ptr-u8 pe-out pe-n pe-out
 pprim lower-cert-hook hook - pe-ptr-u8 pe-in pe-n pe-in pe-n pe-out
+pprim lower-cert-hook install trusted-only -
 pprim checker-cert install - pe-n pe-in
 pprim checker-cert produce - pe-ptr-u8 pe-in pe-n pe-in pe-n pe-in
 prim - p2-locseq-reset - -

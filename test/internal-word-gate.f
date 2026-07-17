@@ -142,6 +142,12 @@ create IWG-EMPTY 1 allot            \ zero-length stdin
    s" PAIR" IWG-NEG-LOAD
    s" bare CHECKER-FIND-ACTIVE-SIG fails closed" T-LABEL
    s" CHECKER-FIND-ACTIVE-SIG" IWG-NEG-LOAD
+   s" bare CHECKER-PREFLIGHT:MODELED? fails closed" T-LABEL
+   s" CHECKER-PREFLIGHT:MODELED?" IWG-NEG-LOAD
+   s" bare CHECKER-PREFLIGHT:BODY-TOK? fails closed" T-LABEL
+   s" CHECKER-PREFLIGHT:BODY-TOK?" IWG-NEG-LOAD
+   s" bare CHECKER-PREFLIGHT:CHECK! fails closed" T-LABEL
+   s" CHECKER-PREFLIGHT:CHECK!" IWG-NEG-LOAD
    s" bare E-INST fails closed" T-LABEL
    s" E-INST" IWG-NEG-LOAD
    s" bare PF-BEGIN mutation fails closed" T-LABEL
@@ -321,23 +327,28 @@ create IWG-EMPTY 1 allot            \ zero-length stdin
    s" IWG-XOK . cr" SB-APPEND IWG-LF
    SB$ ;
 
-: IWG-OPENER-BODY-FORGE$ ( ptr u8 n -- ptr u8 n )   \ ": IWG-OBAD ( -- ) <opener> ;"
+: IWG-BODY-FORGE$ ( ptr u8 n -- ptr u8 n )   \ ": IWG-OBAD ( -- ) <token> ;"
    SB-RESET
    s" : IWG-OBAD ( -- ) " SB-APPEND
    SB-APPEND
    s"  ;" SB-APPEND IWG-LF
    SB$ ;
 
-: IWG-OPENER-DIAG$ ( ptr u8 n -- ptr u8 n )   \ pinned reject site "at '<opener>'"
+: IWG-BODY-DIAG$ ( ptr u8 n -- ptr u8 n )   \ pinned reject site "at '<token>'"
    SB-RESET
    s" at '" SB-APPEND
    SB-APPEND
    s" '" SB-APPEND
    SB$ ;
 
-: IWG-NEG-OPENER ( ptr u8 n -- )         \ in-body opener at empty declared stack rejects
-   2dup IWG-OPENER-BODY-FORGE$ IWG-RUN-LOAD
-   IWG-OPENER-DIAG$ IWG-ASSERT-DIAG ;
+: IWG-NEG-BODY ( ptr u8 n -- )         \ in-body token at empty declared stack rejects
+   2dup IWG-BODY-FORGE$ IWG-RUN-LOAD
+   IWG-BODY-DIAG$ IWG-ASSERT-DIAG ;
+
+: IWG-NEG-CAP-BODY ( ptr u8 n -- )     \ trusted-only primitive rejects checked caller
+   2dup IWG-BODY-FORGE$ IWG-RUN-LOAD
+   s" E-CAP-TRUSTED" IWG-ASSERT-DIAG
+   IWG-BODY-DIAG$ IWG-ASSERT-DIAG ;
 
 : IWG-OPENER-CASES ( -- )
    s" TYPEFAMILY/PRODUCT DSL still works at top level" T-LABEL
@@ -347,22 +358,24 @@ create IWG-EMPTY 1 allot            \ zero-length stdin
    s" raw field reflection is unavailable to checked code" T-LABEL
    IWG-PF-RAW-FORGE$ IWG-RUN-LOAD
    s" at 'PF-FIND'" IWG-ASSERT-DIAG
+   s" pre-hook installer rejects from checked bodies" T-LABEL
+   s" LOWER-CERT-HOOK:INSTALL" IWG-NEG-CAP-BODY
    s" TYPEFAMILY in a checked body is rejected unsafe" T-LABEL
-   s" TYPEFAMILY" IWG-NEG-OPENER
+   s" TYPEFAMILY" IWG-NEG-BODY
    s" SUMTYPE in a checked body is rejected unsafe" T-LABEL
-   s" SUMTYPE" IWG-NEG-OPENER
+   s" SUMTYPE" IWG-NEG-BODY
    s" ENUM in a checked body is rejected unsafe" T-LABEL
-   s" ENUM" IWG-NEG-OPENER
+   s" ENUM" IWG-NEG-BODY
    s" PRODUCT in a checked body is rejected unsafe" T-LABEL
-   s" PRODUCT" IWG-NEG-OPENER
+   s" PRODUCT" IWG-NEG-BODY
    s" DEFTYPE/DEFLINEAR/VALUE-RECORD still work at top level" T-LABEL
    IWG-ROLES-TOP-FORGE$ IWG-RUN-LOAD IWG-ASSERT-OK
    s" DEFTYPE in a checked body is rejected unsafe" T-LABEL
-   s" DEFTYPE" IWG-NEG-OPENER
+   s" DEFTYPE" IWG-NEG-BODY
    s" DEFLINEAR in a checked body is rejected unsafe" T-LABEL
-   s" DEFLINEAR" IWG-NEG-OPENER
+   s" DEFLINEAR" IWG-NEG-BODY
    s" VALUE-RECORD in a checked body is rejected unsafe" T-LABEL
-   s" VALUE-RECORD" IWG-NEG-OPENER
+   s" VALUE-RECORD" IWG-NEG-BODY
    s" EXPORT of a checked word still works" T-LABEL
    IWG-EXPORT-OK-FORGE$ IWG-RUN-LOAD IWG-ASSERT-OK
    s" EXPORT DEFTYPE rejects E-EXPORT-UNSAFE" T-LABEL
@@ -423,6 +436,8 @@ create IWG-EMPTY 1 allot            \ zero-length stdin
    IWG-TRUST-FORGE$ IWG-RUN-LOAD IWG-ASSERT-OK
    s" TRUSTED: + bare call still work" T-LABEL
    IWG-TRUSTED-FORGE$ IWG-RUN-LOAD IWG-ASSERT-OK
+   s" pre-hook package installer stays callable" T-LABEL
+   s" LOWER-CERT-HOOK:INSTALL" IWG-TOKEN$ IWG-RUN-LOAD IWG-ASSERT-OK
    s" structures DSL still works" T-LABEL
    IWG-STRUCT-FORGE$ IWG-RUN-LOAD IWG-ASSERT-OK
    s" SUMTYPE DSL still works" T-LABEL
