@@ -1066,29 +1066,6 @@ REG-EXT-RB-INSTALL
       TF-STR-U @ TF-STR-CAP-V !
    THEN ;
 
-\ AOT copies the relocated arena bytes from user DATA, then restores these
-\ fixed-address registry state cells before MAIN. The callback receives
-\ (destination-address, captured-value) pairs.
-TRUSTED: TFAM-AOT-EACH-STATE ( [ n n -- ] -- ) {: q :} \ typed-local-lint: allow-bare-local - preserves the quotation effect
-   TF-STR-P dup @ q execute
-   TF-STR-CAP-V dup @ q execute
-   TF-STR-U dup @ q execute
-   TF-PK-P dup @ q execute
-   TF-PK-CAP-V dup @ q execute
-   TF-PK-N dup @ q execute
-   TF-A-P dup @ q execute
-   TF-CAP-V dup @ q execute
-   TFAM-N dup @ q execute
-   SUMV-A-P dup @ q execute
-   SUMV-CAP-V dup @ q execute
-   SUMV-N dup @ q execute
-   PF-A-P dup @ q execute
-   PF-CAP-V dup @ q execute
-   PF-N dup @ q execute
-   LAY-A-P dup @ q execute
-   LAY-CAP-V dup @ q execute
-   LAY-N dup @ q execute ;
-
 \ install the friend-only registry persist hook read by CHECKER-SNAPSHOT-PREPARE.
 : REG-EXT-PERSIST ( -- )
    TFAM-SNAPSHOT-PERSIST

@@ -520,14 +520,8 @@ that source is explicitly certified; they are not stale-checked by the default
 | CA-MULTI-END | `-- n` | Reads the multi-error reject count and clears the mode for the fail-closed exit decision; same unpublished-mode-word boundary as `CA-MULTI-BEGIN`. | `tools/check-all-errors-test.f` | tools/check-all-errors-core.f | 2026-07-07 |
 | AOT-PB@ | `-- ptr u8` | Reads the AOT build source buffer pointer stored in a raw variable. | `test/run.f`, `tools/hb-build.f` | src/habu/aot-lib.f | 2026-06-24 |
 | MAP-IN-BLOB | `ptr a ptr u8 -- n` | AOT relocation maps an old call-target byte address to its new CODE offset by walking a dictionary record's compacted blob span; the record-cell read plus the pointer round-trips through the scratch cells are outside checked pointer inference until the typed dictionary-record schema lands. | `test/run.f`, `tools/hb-build.f` | src/habu/aot-lib.f | 2026-07-16 |
-| AOT-TFAM-PERSIST | `--` | Invokes the internal family/variant/layout persistence entry before the stripped AOT DATA span is measured. | `test/gate-aot-positive-lib.f` | src/habu/aot-lib.f | 2026-07-17 |
-| AOT-SCHEMA-PERSIST | `--` | Invokes the internal schema persistence entry before the stripped AOT DATA span is measured. | `test/gate-aot-positive-lib.f` | src/habu/aot-lib.f | 2026-07-17 |
-| AOT-TFAM-EACH | `[ n n -- ] --` | Enumerates fixed-address family-registry state cells and their captured values so the stripped AOT entry restores metadata after relocating the persisted arenas. | `test/gate-aot-positive-lib.f` | src/habu/aot-lib.f | 2026-07-17 |
-| TFAM-AOT-EACH-STATE | `[ n n -- ] --` | Erases the heterogeneous raw pointer and scalar roles of fixed-address family-registry state cells while enumerating their captured machine-word values for stripped AOT entry initialization. | `test/gate-aot-positive-lib.f` | src/core/type-family.f | 2026-07-17 |
 | AOT-DBASE@ | `-- ptr a` | Reads the runtime dictionary base pointer for AOT dictionary-record scans; record fields are mixed, so callers specialize the pointee type at each access. | `test/run.f`, `tools/hb-build.f` | src/habu/aot-closure.f | 2026-06-24 |
 | AOT-PTR@ | `ptr a -- ptr a` | Reads a dictionary long-name pointer field whose pointee is another address; the checker cannot express this pointer-to-pointer load yet. | `test/run.f`, `tools/hb-build.f` | src/habu/aot-closure.f | 2026-06-24 |
-| IN-REC? | `ptr u8 ptr a -- bool` | Compares a decoded code pointer with raw dictionary-record bounds so CREATE/DOES> PC-relative dependencies enter the stripped AOT closure. | `test/gate-aot-positive-lib.f` | src/habu/aot-closure.f | 2026-07-17 |
-| PC>N | `ptr u8 -- n` | Projects a decoded PC-relative code target to its raw address for closure-entry offset ordering; no public inverse exists. | `test/gate-aot-positive-lib.f` | src/habu/aot-closure.f | 2026-07-17 |
 | JSON-DIAGS | `-- ptr a` | AOT diagnostics read the checker's JSON-mode flag; the checker registry does not publish its own words to later checked loads, so the variable is typed as an axiom for the checked AOT tail. | `test/run.f`, `tools/hb-build.f` | src/habu/aot-closure.f | 2026-07-07 |
 | CHECK! | `ptr u8 n -- n` | The AOT driver hook wraps the engine checker entrypoint for user source; the entrypoint's effect is modeled as a primitive axiom so the checked AOT tail compiles under the toolchain hook. | `test/run.f`, `tools/hb-build.f` | src/habu/aot-closure.f | 2026-07-07 |
 | AOT-CTOR-EVAL | `ptr u8 n --` | The AOT maker compiles generated sumtype-constructor bodies with `evaluate` at its own interpret level; dynamic source evaluation cannot be expressed by the checker. | `test/run.f`, `tools/hb-build.f` | src/habu/aot.f | 2026-07-16 |
@@ -756,8 +750,8 @@ that source is explicitly certified; they are not stale-checked by the default
 | ROW-IDX | `row -- n` | Private NOM proof-erasure projection: reads a `row` handle's record index for bounds checks, interning, and canonical access; no public inverse. Retire when TVK-RAW (`habu-nominal-storage-raw-a3430ef2`) lands. | `lib/nominal/nominal-test.f` | lib/nominal/row.f | 2026-07-15 |
 | MK-BUILDER | `-- nom-builder` | Private NOM linear-token mint: forges the noncopyable transactional builder token; the only producer is `NOM:NEW`/`NOM:ADD` inside builder.f. Retire when TVK-RAW (`habu-nominal-storage-raw-a3430ef2`) lands. | `lib/nominal/nominal-test.f` | lib/nominal/builder.f | 2026-07-15 |
 | BUILDER-DROP | `nom-builder --` | Private NOM linear-token consume: the audited boundary that retires a `nom-builder` on the ADD/FREEZE/ROLLBACK paths where the checker cannot express the linear discard. Retire when TVK-RAW (`habu-nominal-storage-raw-a3430ef2`) lands. | `lib/nominal/nominal-test.f` | lib/nominal/builder.f | 2026-07-15 |
-| ID>N | `TYPE-FIELD:field-id -- n` | Private projection used only before committed-row bounds and visibility checks. | `test/type-field-suite.f`, `test/gate-aot-positive-lib.f` | src/core/type-field.f | 2026-07-17 |
-| N>ID | `n -- TYPE-FIELD:field-id` | Private mint used only for a committed row found by FIND or EACH; ADD never returns an id. | `test/type-field-suite.f`, `test/gate-aot-positive-lib.f` | src/core/type-field.f | 2026-07-17 |
+| ID>N | `TYPE-FIELD:field-id -- n` | Private projection used only before committed-row bounds and visibility checks. | `test/type-field-suite.f` | src/core/type-field.f | 2026-07-17 |
+| N>ID | `n -- TYPE-FIELD:field-id` | Private mint used only for a committed row found by FIND or EACH; ADD never returns an id. | `test/type-field-suite.f` | src/core/type-field.f | 2026-07-17 |
 | FAMILY>N | `TYPE-FIELD:family-id -- n` | Private projection of a family role after public resolution. | `test/type-field-suite.f` | src/core/type-field.f | 2026-07-17 |
 | N>FAMILY | `n -- TYPE-FIELD:family-id` | Private mint after family resolution or committed-row validation. | `test/type-field-suite.f` | src/core/type-field.f | 2026-07-17 |
 | VARIANT>N | `TYPE-FIELD:variant-id -- n` | Private projection of a variant role after family membership validation. | `test/type-field-suite.f` | src/core/type-field.f | 2026-07-17 |
@@ -784,20 +778,19 @@ that source is explicitly certified; they are not stale-checked by the default
 | N>SOURCE-LEN | `n -- TYPE-FIELD:source-len` | Private mint after source-length validation or committed-row lookup. | `test/type-field-suite.f` | src/core/type-field.f | 2026-07-17 |
 | VIS>N | `TYPE-FIELD:visibility -- n` | Private projection of a named field-visibility role. | `test/type-field-suite.f` | src/core/type-field.f | 2026-07-17 |
 | N>VIS | `n -- TYPE-FIELD:visibility` | Private mint from the checker package visibility constants. | `test/type-field-suite.f` | src/core/type-field.f | 2026-07-17 |
-| COUNT>N | `TYPE-FIELD:field-count -- n` | Private projection of the committed field high-water. | `test/type-field-suite.f`, `test/gate-aot-positive-lib.f` | src/core/type-field.f | 2026-07-17 |
-| N>COUNT | `n -- TYPE-FIELD:field-count` | Private mint from the committed field high-water. | `test/type-field-suite.f`, `test/gate-aot-positive-lib.f` | src/core/type-field.f | 2026-07-17 |
+| COUNT>N | `TYPE-FIELD:field-count -- n` | Private projection of the committed field high-water. | `test/type-field-suite.f` | src/core/type-field.f | 2026-07-17 |
+| N>COUNT | `n -- TYPE-FIELD:field-count` | Private mint from the committed field high-water. | `test/type-field-suite.f` | src/core/type-field.f | 2026-07-17 |
 | TX>N | `TYPE-FIELD:field-tx -- n` | Private proof erasure for the strict-LIFO transaction serial. | `test/type-field-suite.f` | src/core/type-field.f | 2026-07-17 |
 | N>TX | `n -- TYPE-FIELD:field-tx` | Private mint for a validated fresh or current transaction serial. | `test/type-field-suite.f` | src/core/type-field.f | 2026-07-17 |
 | DRAFT>N | `TYPE-FIELD:field-draft -- n` | Private proof erasure for the top draft serial. | `test/type-field-suite.f` | src/core/type-field.f | 2026-07-17 |
 | N>DRAFT | `n -- TYPE-FIELD:field-draft` | Private mint for the validated top draft serial. | `test/type-field-suite.f` | src/core/type-field.f | 2026-07-17 |
-| RAW-GROW | `ptr a n n -- ptr a` | Private adapter to the pre-hook arena grower; callers prove capacity multiplication bounds. | `test/type-field-suite.f`, `test/gate-aot-positive-lib.f` | src/core/type-field.f | 2026-07-17 |
+| RAW-GROW | `ptr a n n -- ptr a` | Private adapter to the pre-hook arena grower; callers prove capacity multiplication bounds. | `test/type-field-suite.f` | src/core/type-field.f | 2026-07-17 |
 | RAW-FAMILY-N | `-- n` | Private read-only bridge to the sealed family high-water. | `test/type-field-suite.f` | src/core/type-field.f | 2026-07-17 |
 | RAW-FAMILY-RESOLVE | `ptr u8 n ptr u8 n -- n bool` | Private bridge to package-aware family resolution. | `test/type-field-suite.f` | src/core/type-field.f | 2026-07-17 |
 | RAW-FAMILY-PKG$ | `n -- ptr u8 n` | Private read-only bridge to a family's package name for ownership checks. | `test/type-field-suite.f` | src/core/type-field.f | 2026-07-17 |
 | RAW-FAMILY-VIS@ | `n -- n` | Private read-only bridge to family visibility. | `test/type-field-suite.f` | src/core/type-field.f | 2026-07-17 |
 | RAW-FAMILY-PRODUCT? | `n -- bool` | Private read-only bridge validating product-owned fields. | `test/type-field-suite.f` | src/core/type-field.f | 2026-07-17 |
 | RAW-FAMILY-SUM? | `n -- bool` | Private read-only bridge validating sum-variant fields. | `test/type-field-suite.f` | src/core/type-field.f | 2026-07-17 |
-| RAW-FAMILY-ENUM? | `n -- bool` | Private read-only bridge validating enum-variant fields. | `test/type-field-suite.f` | src/core/type-field.f | 2026-07-17 |
 | RAW-ACTIVE-PKG$ | `-- ptr u8 n` | Private read-only bridge to the lexically active package identity. | `test/type-field-suite.f` | src/core/type-field.f | 2026-07-17 |
 | RAW-VARIANT-N | `-- n` | Private read-only bridge to the sealed variant high-water. | `test/type-field-suite.f` | src/core/type-field.f | 2026-07-17 |
 | RAW-VARIANT-FIND | `n ptr u8 n -- n bool` | Private bridge to family-scoped variant resolution. | `test/type-field-suite.f` | src/core/type-field.f | 2026-07-17 |
@@ -807,11 +800,7 @@ that source is explicitly certified; they are not stale-checked by the default
 | RAW-KEYWORD? | `ptr u8 n -- bool` | Private bridge to the declaration keyword predicate. | `test/type-field-suite.f` | src/core/type-field.f | 2026-07-17 |
 | RAW-PUBLIC | `-- n` | Private read-only bridge to package public visibility. | `test/type-field-suite.f` | src/core/type-field.f | 2026-07-17 |
 | RAW-PRIVATE | `-- n` | Private read-only bridge to package private visibility. | `test/type-field-suite.f` | src/core/type-field.f | 2026-07-17 |
-| RAW-PERSIST | `ptr a ptr a n -- bool` | Private bridge relocating a field arena into snapshot-persistent storage. | `test/type-field-suite.f`, `test/gate-aot-positive-lib.f` | src/core/type-field.f | 2026-07-17 |
 | RAW-U8 | `ptr a -- ptr u8` | Private role cast after NAME-P supplies a valid byte-arena pointer. | `test/type-field-suite.f` | src/core/type-field.f | 2026-07-17 |
-| SNAPSHOT-HOOK | `--` | Chains the prior engine snapshot hook and persists every field arena; indirect execution prevents inference. | `test/type-field-suite.f`, `test/gate-aot-positive-lib.f` | src/core/type-field.f | 2026-07-17 |
-| AOT-EACH-STATE | `[ n n -- ] --` | Enumerates fixed-address field-registry state cells and their captured values so the stripped AOT entry restores metadata after relocating the persisted arenas. | `test/gate-aot-positive-lib.f` | src/core/type-field.f | 2026-07-17 |
-| TFF-CHECKER-SNAPSHOT-PREPARE | `--` | Focused TYPE-FIELD snapshot regression invokes the engine-owned persistence entrypoint after growing all field arenas. | `test/type-field-suite.f` | test/type-field-suite.f | 2026-07-17 |
 | CAP-COMPILE-RUN | `--` | Model-CAD capture boundary evaluates the generated checked model definition and invokes its dynamic-arity capture word after the active checker hook certifies the definition. | `maki/cad-test.f`, `maki/test.f` | maki/cad.f | 2026-07-12 |
 | CHECK-PASSES? | `ptr u8 n -- bool` | Evaluation harness temporarily suppresses diagnostics, invokes the checker on candidate source, and restores the diagnostic hook; raw checker state mutation is the metaprogramming boundary. | `maki/eval-test.f`, `maki/test.f` | maki/eval.f | 2026-07-12 |
 | JIT-EVALUATE | `ptr u8 n --` | JIT inspection CLI evaluates user-supplied source before resolving and disassembling the requested word; dynamic evaluation cannot be expressed by the checker. | `test/gate-debug.f` | tools/jitdump-core.f | 2026-07-12 |
@@ -1023,15 +1012,10 @@ src/habu/aot-capture.f:AOT-N>U8 builder-emit habu-builder-trust-rows-c5d41af6
 src/habu/aot-capture.f:AOT-CELL@ builder-emit habu-builder-trust-rows-c5d41af6
 src/habu/aot-closure.f:AOT-DBASE@ builder-emit habu-builder-trust-rows-c5d41af6
 src/habu/aot-closure.f:AOT-PTR@ builder-emit habu-builder-trust-rows-c5d41af6
-src/habu/aot-closure.f:IN-REC? builder-emit habu-builder-trust-rows-c5d41af6
-src/habu/aot-closure.f:PC>N prim-axiom habu-builder-trust-rows-c5d41af6
 src/habu/aot-closure.f:JSON-DIAGS prim-axiom habu-primitive-effect-axiom-1119f176
 src/habu/aot-closure.f:CHECK! prim-axiom habu-primitive-effect-axiom-1119f176
 src/habu/aot-lib.f:AOT-PB@ builder-emit habu-builder-trust-rows-c5d41af6
 src/habu/aot-lib.f:MAP-IN-BLOB builder-emit habu-typed-dictionary-record-c67adddb
-src/habu/aot-lib.f:AOT-TFAM-PERSIST builder-emit habu-typed-dictionary-record-c67adddb
-src/habu/aot-lib.f:AOT-SCHEMA-PERSIST builder-emit habu-typed-dictionary-record-c67adddb
-src/habu/aot-lib.f:AOT-TFAM-EACH builder-emit habu-typed-dictionary-record-c67adddb
 src/habu/aot.f:AOT-CTOR-EVAL builder-emit habu-builder-trust-rows-c5d41af6
 src/habu/aot.f:INSTALL-USER-HOOK builder-emit cap:checker-hook-identity
 src/habu/build.f:BLD-PB@ builder-emit habu-builder-trust-rows-c5d41af6
@@ -1324,7 +1308,6 @@ src/core/type-field.f:RAW-FAMILY-PKG$ stdlib-boundary habu-epic-one-structure-04
 src/core/type-field.f:RAW-FAMILY-VIS@ stdlib-boundary habu-epic-one-structure-04f9804f
 src/core/type-field.f:RAW-FAMILY-PRODUCT? stdlib-boundary habu-epic-one-structure-04f9804f
 src/core/type-field.f:RAW-FAMILY-SUM? stdlib-boundary habu-epic-one-structure-04f9804f
-src/core/type-field.f:RAW-FAMILY-ENUM? stdlib-boundary habu-epic-one-structure-04f9804f
 src/core/type-field.f:RAW-ACTIVE-PKG$ stdlib-boundary habu-epic-one-structure-04f9804f
 src/core/type-field.f:RAW-VARIANT-N stdlib-boundary habu-epic-one-structure-04f9804f
 src/core/type-field.f:RAW-VARIANT-FIND stdlib-boundary habu-epic-one-structure-04f9804f
@@ -1334,11 +1317,7 @@ src/core/type-field.f:RAW-CANON? stdlib-boundary habu-epic-one-structure-04f9804
 src/core/type-field.f:RAW-KEYWORD? stdlib-boundary habu-epic-one-structure-04f9804f
 src/core/type-field.f:RAW-PUBLIC stdlib-boundary habu-epic-one-structure-04f9804f
 src/core/type-field.f:RAW-PRIVATE stdlib-boundary habu-epic-one-structure-04f9804f
-src/core/type-field.f:RAW-PERSIST stdlib-boundary habu-epic-one-structure-04f9804f
 src/core/type-field.f:RAW-U8 prim-axiom habu-epic-one-structure-04f9804f
-src/core/type-field.f:SNAPSHOT-HOOK stdlib-boundary habu-epic-one-structure-04f9804f
-src/core/type-field.f:AOT-EACH-STATE builder-emit habu-epic-one-structure-04f9804f
-src/core/type-family.f:TFAM-AOT-EACH-STATE builder-emit habu-epic-one-structure-04f9804f
 lib/build.f:BUILD-CHECK-RAW stdlib-boundary habu-primitive-effect-axiom-1119f176
 lib/cad-num-types.f:MINT-BYTE-LEN prim-axiom habu-epic-model-cad-70b629a9
 lib/cad-num-types.f:MINT-ITEM-COUNT prim-axiom habu-epic-model-cad-70b629a9
@@ -1909,7 +1888,6 @@ test/type-family-suite.f:TWX-TFL-CVAR? test-metaprog habu-seal-set-check-b3676b3
 test/type-family-suite.f:TWX-TFL-MATCH-FAM? test-metaprog habu-seal-set-check-b3676b33
 test/type-family-suite.f:TWX-TFL-VAR? test-metaprog habu-seal-set-check-b3676b33
 test/type-family-suite.f:TWX-TFL-VPADS test-metaprog habu-seal-set-check-b3676b33
-test/type-field-suite.f:TFF-CHECKER-SNAPSHOT-PREPARE test-metaprog habu-epic-one-structure-04f9804f
 src/core/internal-mark.f stdlib-boundary habu-seal-set-check-b3676b33 1
 src/core/checker.f:TRUST stdlib-boundary habu-seal-set-check-b3676b33
 test/gate-common-lib.f:UEND test-metaprog habu-primitive-effect-axiom-1119f176

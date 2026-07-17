@@ -1,7 +1,7 @@
 \ type-field.f - transactional shared field metadata.
 \
-\ TYPE-FIELD owns the ordered field registry shared by STRUCTURE and payload
-\ ENUM declarations. Builder calls are package-scoped, fully role typed, and
+\ TYPE-FIELD owns the ordered field registry shared by PRODUCT and payload
+\ SUMTYPE declarations. Builder calls are package-scoped, fully role typed, and
 \ transactional. Published reflection never exposes arena pointers or raw ids.
 
 package TYPE-FIELD
@@ -79,7 +79,7 @@ TRUSTED: N>TX ( n -- TYPE-FIELD:field-tx ) ;
 TRUSTED: DRAFT>N ( TYPE-FIELD:field-draft -- n ) ;
 TRUSTED: N>DRAFT ( n -- TYPE-FIELD:field-draft ) ;
 
-\ Pre-hook registry and image persistence boundaries.
+\ Pre-hook registry boundaries.
 TRUSTED: RAW-GROW ( ptr a n n -- ptr a ) ARENA-BYTES-GROW ;
 TRUSTED: RAW-FAMILY-N ( -- n ) TFAM-N@ ;
 TRUSTED: RAW-FAMILY-RESOLVE ( ptr u8 n ptr u8 n -- n bool ) TFAM-RESOLVE ;
@@ -87,7 +87,6 @@ TRUSTED: RAW-FAMILY-PKG$ ( n -- ptr u8 n ) TFAM-PKG$ ;
 TRUSTED: RAW-FAMILY-VIS@ ( n -- n ) TFAM-VIS@ ;
 TRUSTED: RAW-FAMILY-PRODUCT? ( n -- bool ) TFAM-PRODUCT? ;
 TRUSTED: RAW-FAMILY-SUM? ( n -- bool ) TFAM-SUM? ;
-TRUSTED: RAW-FAMILY-ENUM? ( n -- bool ) TFAM-ENUM? ;
 TRUSTED: RAW-ACTIVE-PKG$ ( -- ptr u8 n ) TFAM-ACTIVE-PKG$ ;
 TRUSTED: RAW-VARIANT-N ( -- n ) SUMV-N@ ;
 TRUSTED: RAW-VARIANT-FIND ( n ptr u8 n -- n bool ) SUMV-FIND ;
@@ -97,7 +96,6 @@ TRUSTED: RAW-CANON? ( ptr u8 n -- bool ) TF-CANON? ;
 TRUSTED: RAW-KEYWORD? ( ptr u8 n -- bool ) TDECL-KEYWORD? ;
 TRUSTED: RAW-PUBLIC ( -- n ) CHECKER-PACKAGE-PUBLIC ;
 TRUSTED: RAW-PRIVATE ( -- n ) CHECKER-PACKAGE-PRIVATE ;
-TRUSTED: RAW-PERSIST ( ptr a ptr a n -- bool ) REG-PERSIST-BUF ;
 TRUSTED: RAW-U8 ( ptr a -- ptr u8 ) ;
 
 $7FFFFFFFFFFFFFFF constant MAX-N
@@ -116,7 +114,7 @@ FLAG-PUBLIC FLAG-BYTE or constant FLAG-MASK
 4 constant STAGE-SOURCE
 STAGE-SCHEMA STAGE-LAYOUT or STAGE-SOURCE or constant STAGE-DONE
 
-\ Published row.
+\ Field row; rows at [COMMIT-N, ROW-N) are provisional.
 0 cells constant ROW.FAMILY-OFF
 1 cells constant ROW.HAS-VARIANT-OFF
 2 cells constant ROW.VARIANT-OFF
@@ -150,29 +148,24 @@ STAGE-SCHEMA STAGE-LAYOUT or STAGE-SOURCE or constant STAGE-DONE
 : ROW.SOURCE-OFF ( ptr a -- ptr a ) ROW.SOURCE-OFF-OFF + ;
 : ROW.SOURCE-LEN ( ptr a -- ptr a ) ROW.SOURCE-LEN-OFF + ;
 
-\ Draft row plus owner transaction, token, and stage bitmap.
-15 cells constant DRAFT.TX-OFF
-16 cells constant DRAFT.TOKEN-OFF
-17 cells constant DRAFT.STATE-OFF
-18 cells constant DRAFT-REC
-
-: DRAFT.TX ( ptr a -- ptr a ) DRAFT.TX-OFF + ;
-: DRAFT.TOKEN ( ptr a -- ptr a ) DRAFT.TOKEN-OFF + ;
-: DRAFT.STATE ( ptr a -- ptr a ) DRAFT.STATE-OFF + ;
-
-\ Strict-LIFO transaction frame.
+\ Strict-LIFO transaction frame. A provisional row lives at ROW-N beyond
+\ COMMIT-N; the owning frame carries its draft handle and stage state.
 0 cells constant TX.ROW-OFF
 1 cells constant TX.NAME-OFF
-2 cells constant TX.DRAFT-OFF
-3 cells constant TX.FAMILY-OFF
-4 cells constant TX.TOKEN-OFF
-5 cells constant TX-REC
+2 cells constant TX.FAMILY-OFF
+3 cells constant TX.TOKEN-OFF
+4 cells constant TX.DRAFT-ROW-OFF
+5 cells constant TX.DRAFT-TOKEN-OFF
+6 cells constant TX.DRAFT-STATE-OFF
+7 cells constant TX-REC
 
 : TX.ROW ( ptr a -- ptr a ) TX.ROW-OFF + ;
 : TX.NAME ( ptr a -- ptr a ) TX.NAME-OFF + ;
-: TX.DRAFT ( ptr a -- ptr a ) TX.DRAFT-OFF + ;
 : TX.FAMILY ( ptr a -- ptr a ) TX.FAMILY-OFF + ;
 : TX.TOKEN ( ptr a -- ptr a ) TX.TOKEN-OFF + ;
+: TX.DRAFT-ROW ( ptr a -- ptr a ) TX.DRAFT-ROW-OFF + ;
+: TX.DRAFT-TOKEN ( ptr a -- ptr a ) TX.DRAFT-TOKEN-OFF + ;
+: TX.DRAFT-STATE ( ptr a -- ptr a ) TX.DRAFT-STATE-OFF + ;
 
 : LAYOUT= ( n n -- )
    <> if E-LAYOUT throw then ;
@@ -193,16 +186,14 @@ ROW.SOURCE-ID-OFF 12 cells LAYOUT=
 ROW.SOURCE-OFF-OFF 13 cells LAYOUT=
 ROW.SOURCE-LEN-OFF 14 cells LAYOUT=
 ROW-REC 15 cells LAYOUT=
-DRAFT.TX-OFF 15 cells LAYOUT=
-DRAFT.TOKEN-OFF 16 cells LAYOUT=
-DRAFT.STATE-OFF 17 cells LAYOUT=
-DRAFT-REC 18 cells LAYOUT=
 TX.ROW-OFF 0 cells LAYOUT=
 TX.NAME-OFF 1 cells LAYOUT=
-TX.DRAFT-OFF 2 cells LAYOUT=
-TX.FAMILY-OFF 3 cells LAYOUT=
-TX.TOKEN-OFF 4 cells LAYOUT=
-TX-REC 5 cells LAYOUT=
+TX.FAMILY-OFF 2 cells LAYOUT=
+TX.TOKEN-OFF 3 cells LAYOUT=
+TX.DRAFT-ROW-OFF 4 cells LAYOUT=
+TX.DRAFT-TOKEN-OFF 5 cells LAYOUT=
+TX.DRAFT-STATE-OFF 6 cells LAYOUT=
+TX-REC 7 cells LAYOUT=
 
 create ROW-BOOT CAP-INIT ROW-REC * allot
 PTR-VARIABLE ROW-P   ROW-BOOT ROW-P !
@@ -210,10 +201,6 @@ variable ROW-CAP   CAP-INIT ROW-CAP !
 variable ROW-N
 variable COMMIT-N
 
-create DRAFT-BOOT CAP-INIT DRAFT-REC * allot
-PTR-VARIABLE DRAFT-P   DRAFT-BOOT DRAFT-P !
-variable DRAFT-CAP   CAP-INIT DRAFT-CAP !
-variable DRAFT-N
 variable DRAFT-SERIAL
 
 create TX-BOOT CAP-INIT TX-REC * allot
@@ -239,12 +226,6 @@ variable NAME-N
    ROW-P @ ROW-CAP @ ROW-REC * cap ROW-REC * RAW-GROW ROW-P !
    cap ROW-CAP ! ;
 
-: DRAFT-ENSURE ( n -- ) {: need:n :}
-   need DRAFT-CAP @ <= if exit then
-   need DRAFT-CAP @ DRAFT-REC NEXT-CAP {: cap:n :}
-   DRAFT-P @ DRAFT-CAP @ DRAFT-REC * cap DRAFT-REC * RAW-GROW DRAFT-P !
-   cap DRAFT-CAP ! ;
-
 : TX-ENSURE ( n -- ) {: need:n :}
    need TX-CAP @ <= if exit then
    need TX-CAP @ TX-REC NEXT-CAP {: cap:n :}
@@ -267,10 +248,6 @@ variable NAME-N
 : LIVE-REC@ ( n -- ptr a ) {: id:n :}
    id 0 < id COMMIT-N @ >= or if E-ID throw then
    id ROW-REC * ROW-P @ + ;
-
-: DRAFT-REC@ ( n -- ptr a ) {: id:n :}
-   id 0 < id DRAFT-N @ >= or if E-DRAFT throw then
-   id DRAFT-REC * DRAFT-P @ + ;
 
 : TX-REC@ ( n -- ptr a ) {: id:n :}
    id 0 < id TX-DEPTH @ >= or if E-TX throw then
@@ -400,7 +377,6 @@ variable NAME-N
    TX-TOP-REC {: tx:ptr :}
    tx TX.ROW @ ROW-N !
    tx TX.NAME @ NAME-N !
-   tx TX.DRAFT @ DRAFT-N !
    TX-DEPTH @ 1 - TX-DEPTH ! ;
 
 : ABORT-ALL ( -- )
@@ -408,14 +384,16 @@ variable NAME-N
 
 : REQUIRE-DRAFT ( n n -- ptr a ) {: tx-token:n draft-token:n :}
    tx-token REQUIRE-TX
-   DRAFT-N @ TX-TOP-REC TX.DRAFT @ <= if E-DRAFT throw then
-   DRAFT-N @ 1 - DRAFT-REC@ {: draft:ptr :}
-   draft DRAFT.TX @ tx-token <> if E-DRAFT throw then
-   draft DRAFT.TOKEN @ draft-token <> if E-DRAFT throw then
-   draft ;
+   TX-TOP-REC {: tx:ptr :}
+   tx TX.DRAFT-ROW @ 0 < if E-DRAFT throw then
+   tx TX.DRAFT-TOKEN @ draft-token <> if E-DRAFT throw then
+   tx TX.DRAFT-ROW @ ROW-REC@ ;
 
-: REQUIRE-STAGE-NEW ( ptr a n -- ) {: draft:ptr stage:n :}
-   draft DRAFT.STATE @ stage and 0 <> if E-DRAFT throw then ;
+: REQUIRE-STAGE-NEW ( n -- ) {: stage:n :}
+   TX-TOP-REC TX.DRAFT-STATE @ stage and 0 <> if E-DRAFT throw then ;
+
+: STAGE+ ( n -- ) {: stage:n :}
+   TX-TOP-REC TX.DRAFT-STATE dup @ stage or swap ! ;
 
 variable A-TX
 variable A-DRAFT
@@ -436,8 +414,9 @@ variable R-DRAFT
 
 : START-CORE ( -- )
    A-TX @ REQUIRE-TX
-   TX-TOP-REC TX.FAMILY @ {: fam:n :}
-   DRAFT-N @ TX-TOP-REC TX.DRAFT @ <> if E-DRAFT throw then
+   TX-TOP-REC {: tx:ptr :}
+   tx TX.FAMILY @ {: fam:n :}
+   tx TX.DRAFT-ROW @ 0 >= if E-DRAFT throw then
 
    \ The caller may have passed parse-name storage. Copy it before any s" or
    \ parser-adjacent validation can reuse the interpreter token buffer.
@@ -445,7 +424,7 @@ variable R-DRAFT
    name-off A-NAME-U @ NAME$ {: name:ptr name-u:n :}
 
    A-VAR-F @ if
-      fam RAW-FAMILY-SUM? fam RAW-FAMILY-ENUM? or 0= if E-FAMILY throw then
+      fam RAW-FAMILY-SUM? 0= if E-FAMILY throw then
       fam A-VAR @ REQUIRE-VARIANT
    else
       fam RAW-FAMILY-PRODUCT? 0= if E-FAMILY throw then
@@ -454,28 +433,29 @@ variable R-DRAFT
    fam A-VAR-F @ 0= 0= A-VAR @ REQUIRE-CONTIGUOUS
    fam A-VAR-F @ 0= 0= A-VAR @ name name-u REQUIRE-UNIQUE
 
-   DRAFT-N @ 1 + DRAFT-ENSURE
+   ROW-N @ 1 + ROW-ENSURE
    DRAFT-SERIAL NEXT-SERIAL {: token:n :}
-   DRAFT-N @ DRAFT-REC * DRAFT-P @ + {: draft:ptr :}
-   fam draft ROW.FAMILY !
-   A-VAR-F @ draft ROW.HAS-VARIANT !
-   A-VAR @ draft ROW.VARIANT !
-   name-off draft ROW.NAME-OFF !
-   name-u draft ROW.NAME-LEN !
-   0 draft ROW.SCHEMA !
-   0 draft ROW.SLOT !
-   0 draft ROW.CELLS !
-   0 draft ROW.BYTE-OFF !
-   0 draft ROW.BYTE-SIZE !
-   0 draft ROW.ALIGN !
-   0 draft ROW.FLAGS !
-   0 draft ROW.SOURCE-ID !
-   0 draft ROW.SOURCE-OFF !
-   0 draft ROW.SOURCE-LEN !
-   A-TX @ draft DRAFT.TX !
-   token draft DRAFT.TOKEN !
-   0 draft DRAFT.STATE !
-   DRAFT-N @ 1 + DRAFT-N !
+   ROW-N @ {: row-id:n :}
+   row-id ROW-REC * ROW-P @ + {: row:ptr :}
+   fam row ROW.FAMILY !
+   A-VAR-F @ row ROW.HAS-VARIANT !
+   A-VAR @ row ROW.VARIANT !
+   name-off row ROW.NAME-OFF !
+   name-u row ROW.NAME-LEN !
+   0 row ROW.SCHEMA !
+   0 row ROW.SLOT !
+   0 row ROW.CELLS !
+   0 row ROW.BYTE-OFF !
+   0 row ROW.BYTE-SIZE !
+   0 row ROW.ALIGN !
+   0 row ROW.FLAGS !
+   0 row ROW.SOURCE-ID !
+   0 row ROW.SOURCE-OFF !
+   0 row ROW.SOURCE-LEN !
+   ROW-N @ 1 + ROW-N !
+   row-id tx TX.DRAFT-ROW !
+   token tx TX.DRAFT-TOKEN !
+   0 tx TX.DRAFT-STATE !
    token R-DRAFT ! ;
 
 : START-RUN ( n bool n ptr u8 n -- )
@@ -488,93 +468,58 @@ variable R-DRAFT
    [: START-CORE ;] catch ABORT-THROW ;
 
 : SCHEMA-CORE ( -- )
-   A-TX @ A-DRAFT @ REQUIRE-DRAFT {: draft:ptr :}
-   draft STAGE-SCHEMA REQUIRE-STAGE-NEW
+   A-TX @ A-DRAFT @ REQUIRE-DRAFT {: row:ptr :}
+   STAGE-SCHEMA REQUIRE-STAGE-NEW
    A-X @ 0 < A-X @ RAW-SCHEMA-N >= or if E-SCHEMA throw then
    A-Y @ 0 <= if E-LAYOUT throw then
    A-Y @ dup 1 - and 0 <> if E-LAYOUT throw then
    A-Z @ FLAG-MASK invert and 0 <> if E-FLAGS throw then
-   A-X @ draft ROW.SCHEMA !
-   A-Y @ draft ROW.ALIGN !
-   A-Z @ draft ROW.FLAGS !
-   draft DRAFT.STATE dup @ STAGE-SCHEMA or swap ! ;
+   A-X @ row ROW.SCHEMA !
+   A-Y @ row ROW.ALIGN !
+   A-Z @ row ROW.FLAGS !
+   STAGE-SCHEMA STAGE+ ;
 
 : LAYOUT-CORE ( -- )
-   A-TX @ A-DRAFT @ REQUIRE-DRAFT {: draft:ptr :}
-   draft STAGE-LAYOUT REQUIRE-STAGE-NEW
+   A-TX @ A-DRAFT @ REQUIRE-DRAFT {: row:ptr :}
+   STAGE-LAYOUT REQUIRE-STAGE-NEW
    A-X @ 0 < A-Y @ 0 < or A-Z @ 0 < or A-W @ 0 < or
       if E-LAYOUT throw then
    A-X @ MAX-N A-Y @ - > if E-LAYOUT throw then
    A-Z @ MAX-N A-W @ - > if E-LAYOUT throw then
-   A-X @ draft ROW.SLOT !
-   A-Y @ draft ROW.CELLS !
-   A-Z @ draft ROW.BYTE-OFF !
-   A-W @ draft ROW.BYTE-SIZE !
-   draft DRAFT.STATE dup @ STAGE-LAYOUT or swap ! ;
+   A-X @ row ROW.SLOT !
+   A-Y @ row ROW.CELLS !
+   A-Z @ row ROW.BYTE-OFF !
+   A-W @ row ROW.BYTE-SIZE !
+   STAGE-LAYOUT STAGE+ ;
 
 : SOURCE-CORE ( -- )
-   A-TX @ A-DRAFT @ REQUIRE-DRAFT {: draft:ptr :}
-   draft STAGE-SOURCE REQUIRE-STAGE-NEW
+   A-TX @ A-DRAFT @ REQUIRE-DRAFT {: row:ptr :}
+   STAGE-SOURCE REQUIRE-STAGE-NEW
    A-X @ 0 < A-Y @ 0 < or A-Z @ 0 < or if E-SOURCE throw then
    A-Y @ MAX-N A-Z @ - > if E-SOURCE throw then
-   A-X @ draft ROW.SOURCE-ID !
-   A-Y @ draft ROW.SOURCE-OFF !
-   A-Z @ draft ROW.SOURCE-LEN !
-   draft DRAFT.STATE dup @ STAGE-SOURCE or swap ! ;
-
-: DRAFT>ROW ( ptr a ptr a -- ) {: draft:ptr row:ptr :}
-   draft ROW.FAMILY @ row ROW.FAMILY !
-   draft ROW.HAS-VARIANT @ row ROW.HAS-VARIANT !
-   draft ROW.VARIANT @ row ROW.VARIANT !
-   draft ROW.NAME-OFF @ row ROW.NAME-OFF !
-   draft ROW.NAME-LEN @ row ROW.NAME-LEN !
-   draft ROW.SCHEMA @ row ROW.SCHEMA !
-   draft ROW.SLOT @ row ROW.SLOT !
-   draft ROW.CELLS @ row ROW.CELLS !
-   draft ROW.BYTE-OFF @ row ROW.BYTE-OFF !
-   draft ROW.BYTE-SIZE @ row ROW.BYTE-SIZE !
-   draft ROW.ALIGN @ row ROW.ALIGN !
-   draft ROW.FLAGS @ row ROW.FLAGS !
-   draft ROW.SOURCE-ID @ row ROW.SOURCE-ID !
-   draft ROW.SOURCE-OFF @ row ROW.SOURCE-OFF !
-   draft ROW.SOURCE-LEN @ row ROW.SOURCE-LEN ! ;
+   A-X @ row ROW.SOURCE-ID !
+   A-Y @ row ROW.SOURCE-OFF !
+   A-Z @ row ROW.SOURCE-LEN !
+   STAGE-SOURCE STAGE+ ;
 
 : ADD-CORE ( -- )
-   A-TX @ A-DRAFT @ REQUIRE-DRAFT {: draft:ptr :}
-   draft DRAFT.STATE @ STAGE-DONE <> if E-DRAFT throw then
-   draft ROW.BYTE-OFF @ draft ROW.ALIGN @ mod 0 <> if E-LAYOUT throw then
-   ROW-N @ 1 + ROW-ENSURE
-   ROW-N @ ROW-REC * ROW-P @ + {: row:ptr :}
-   draft row DRAFT>ROW
-   ROW-N @ 1 + ROW-N !
-   DRAFT-N @ 1 - DRAFT-N ! ;
+   A-TX @ A-DRAFT @ REQUIRE-DRAFT {: row:ptr :}
+   TX-TOP-REC {: tx:ptr :}
+   tx TX.DRAFT-STATE @ STAGE-DONE <> if E-DRAFT throw then
+   row ROW.BYTE-OFF @ row ROW.ALIGN @ mod 0 <> if E-LAYOUT throw then
+   -1 tx TX.DRAFT-ROW !
+   0 tx TX.DRAFT-TOKEN !
+   0 tx TX.DRAFT-STATE ! ;
 
 : COMMIT-CORE ( -- )
    A-TX @ REQUIRE-TX
-   DRAFT-N @ TX-TOP-REC TX.DRAFT @ <> if E-DRAFT throw then
+   TX-TOP-REC TX.DRAFT-ROW @ 0 >= if E-DRAFT throw then
    TX-DEPTH @ 1 - TX-DEPTH !
    TX-DEPTH @ 0= if ROW-N @ COMMIT-N ! then ;
 
 : ROLLBACK-CORE ( -- )
    A-TX @ REQUIRE-TX
    ROLLBACK-TOP ;
-
-: SNAPSHOT-PERSIST ( -- )
-   TX-DEPTH @ 0 <> if E-TX throw then
-   DRAFT-N @ 0 <> if E-DRAFT throw then
-   ROW-P ROW-BOOT ROW-CAP @ ROW-REC * RAW-PERSIST drop
-   DRAFT-P DRAFT-BOOT DRAFT-CAP @ DRAFT-REC * RAW-PERSIST drop
-   TX-P TX-BOOT TX-CAP @ TX-REC * RAW-PERSIST drop
-   NAME-P NAME-BOOT NAME-CAP @ RAW-PERSIST drop ;
-
-variable PREV-SNAP-XT
-REG-EXT-PERSIST-XT @ PREV-SNAP-XT !
-
-TRUSTED: SNAPSHOT-HOOK ( -- )
-   PREV-SNAP-XT @ dup 0= if drop else execute then
-   SNAPSHOT-PERSIST ;
-
-' SNAPSHOT-HOOK REG-EXT-PERSIST-XT !
 
 public
 
@@ -583,7 +528,7 @@ public
    RAW-ACTIVE-PKG$ a u RAW-FAMILY-RESOLVE 0= if E-FAMILY throw then
    N>FAMILY ;
 
-: VARIANT ( TYPE-FIELD:family-id ptr u8 n -- TYPE-FIELD:variant-id )
+: VARIANT-ID ( TYPE-FIELD:family-id ptr u8 n -- TYPE-FIELD:variant-id )
    {: a:ptr u:n :}
    FAMILY>N {: fam:n :}
    fam REQUIRE-VISIBLE
@@ -676,9 +621,11 @@ public
    TX-DEPTH @ TX-REC * TX-P @ + {: tx:ptr :}
    ROW-N @ tx TX.ROW !
    NAME-N @ tx TX.NAME !
-   DRAFT-N @ tx TX.DRAFT !
    fam tx TX.FAMILY !
    token tx TX.TOKEN !
+   -1 tx TX.DRAFT-ROW !
+   0 tx TX.DRAFT-TOKEN !
+   0 tx TX.DRAFT-STATE !
    TX-DEPTH @ 1 + TX-DEPTH !
    token N>TX ;
 
@@ -749,27 +696,6 @@ public
    [: ROLLBACK-CORE ;] catch ABORT-THROW ;
 
 : COUNT ( -- TYPE-FIELD:field-count ) COMMIT-N @ N>COUNT ;
-
-\ Stripped AOT capture persists only runtime metadata, not the checker's entire
-\ snapshot state. This idempotent protected entry rejects live transactions.
-: AOT-PERSIST ( -- ) SNAPSHOT-PERSIST ;
-
-TRUSTED: AOT-EACH-STATE ( [ n n -- ] -- ) {: q :} \ typed-local-lint: allow-bare-local - preserves the quotation effect
-   ROW-P dup @ q execute
-   ROW-CAP dup @ q execute
-   ROW-N dup @ q execute
-   COMMIT-N dup @ q execute
-   DRAFT-P dup @ q execute
-   DRAFT-CAP dup @ q execute
-   DRAFT-N dup @ q execute
-   DRAFT-SERIAL dup @ q execute
-   TX-P dup @ q execute
-   TX-CAP dup @ q execute
-   TX-DEPTH dup @ q execute
-   TX-SERIAL dup @ q execute
-   NAME-P dup @ q execute
-   NAME-CAP dup @ q execute
-   NAME-N dup @ q execute ;
 
 private
 

@@ -134,9 +134,7 @@ variable FX
 \ COPY/RELOCATE arrays (OLDA/NEWOFF/BLEN) are all sized by MAX-CLO; ADD-CLO fails
 \ closed at the cap so a large closure can never write past the tables.
 1024 constant MAX-CLO
-create CLO MAX-CLO cells allot
-create CLO-START MAX-CLO cells allot
-variable NCLO  variable CLO-CX
+create CLO MAX-CLO cells allot   variable NCLO  variable CLO-CX
 variable ROOTREC
 variable CLO-LIMIT
 : CLO-LIMIT! {: n:n :}
@@ -170,67 +168,13 @@ MAX-CLO CLO-LIMIT!
 : CLO-OVERFLOW-DIE {: r:ptr :} ( ptr a -- )
    JSON-DIAGS @ IF r CLO-OVERFLOW-JSON ELSE r CLO-OVERFLOW-PROSE THEN
    s" aot: closure exceeds MAX-CLO" 74 die ;
-: START-MIN! ( n ptr a -- ) {: start:n cell:ptr :}
-   cell @ dup 0= IF drop start ELSE start min THEN cell ! ;
-: ADD-CLO-AT ( ptr a n -- ) {: r:ptr start:n :}
-   r IN-CLO? IF start CLO-CX @ cells CLO-START + START-MIN! EXIT THEN
-   NCLO @ CLO-LIMIT @ >= IF r CLO-OVERFLOW-DIE THEN
-   r NCLO @ cells CLO + !
-   start NCLO @ cells CLO-START + START-MIN!
-   NCLO @ 1+ NCLO ! ;
 : ADD-CLO {: r:ptr :} ( ptr a -- )
-   r r @ ADD-CLO-AT ;
-
-\ CREATE/DOES> words reach their definer runtime with a compact PC-relative
-\ branch, not the absolute call stencil. Treat every external PC-relative code
-\ target as a closure edge so its containing dictionary blob survives stripping.
-: AOT-BIMM? {: w:n :}  w $7C000000 and $14000000 = ;
-: AOT-BCOND? {: w:n :}  w $FF000010 and $54000000 = ;
-: AOT-CBZIMM? {: w:n :}  w $7E000000 and $34000000 = ;
-: AOT-TBZIMM? {: w:n :}  w $7E000000 and $36000000 = ;
-: AOT-ADR? {: w:n :}  w $9F000000 and $10000000 = ;
-: AOT-BITS {: w:n lo:n width:n :}
-   w lo rshift 1 width lshift 1 - and ;
-: AOT-SX {: f:n width:n :}
-   f 1 width 1 - lshift xor 1 width 1 - lshift - ;
-: AOT-PCREL-TGT ( ptr u8 -- ptr u8 bool ) {: p:ptr :}
-   p AOT-W32@ {: w:n :}
-   w AOT-BIMM? IF p w 0 26 AOT-BITS 26 AOT-SX 4 * + 0 0= EXIT THEN
-   w AOT-BCOND? w AOT-CBZIMM? or IF
-      p w 5 19 AOT-BITS 19 AOT-SX 4 * + 0 0= EXIT
-   THEN
-   w AOT-TBZIMM? IF p w 5 14 AOT-BITS 14 AOT-SX 4 * + 0 0= EXIT THEN
-   w AOT-ADR? IF
-      p w 5 19 AOT-BITS 2 lshift w 29 2 AOT-BITS or 21 AOT-SX + 0 0= EXIT
-   THEN
-   p 0 0= 0= ;
-: REC-CODE-END ( ptr a -- n ) {: r:ptr :}
-   r @ r 8 + @ 4 + + ;
-TRUSTED: PC>N ( ptr u8 -- n ) ;
-: REC-ENTRY? ( ptr a n -- bool )
-   swap @ = ;
-TRUSTED: IN-REC? ( ptr u8 ptr a -- bool ) {: target:ptr r:ptr :}
-   target r @ >= target r REC-CODE-END < and ;
-: FIND-SPAN ( ptr u8 -- ptr a ) {: t:ptr :}
-   0 FX !
-   BEGIN FX @ ndict@ < WHILE
-      FX @ REC {: r:ptr :}
-      t r IN-REC? IF r EXIT THEN
-      FX @ 1+ FX !
-   REPEAT
-   XREF-NULL ;
-: ADD-PCREL-CLO ( ptr a ptr u8 -- ) {: owner:ptr p:ptr :}
-   p AOT-PCREL-TGT 0= IF drop EXIT THEN {: target:ptr :}
-   target owner IN-REC? IF EXIT THEN
-   target FIND-SPAN dup XREF-FOUND? IF
-      dup target PC>N REC-ENTRY? IF
-         dup AOT-UNSAFE? IF owner swap AOT-UNSAFE-DIE THEN
-      THEN
-      target PC>N ADD-CLO-AT
-   ELSE drop THEN ;
-variable SP2  variable SEND  variable WI
+   r IN-CLO? IF exit THEN
+   NCLO @ CLO-LIMIT @ >= IF r CLO-OVERFLOW-DIE THEN
+   r NCLO @ cells CLO + !  NCLO @ 1+ NCLO ! ;
+variable SP2  variable SEND
 : SCAN-REC {: r:ptr :} ( ptr a -- )
-   WI @ cells CLO-START + @ SP2 !  r REC-CODE-END SEND !
+   r @ SP2 !  r @ r 8 + @ + SEND !
    BEGIN SP2 @ SEND @ < WHILE
       SP2 @ CALL? IF
          SP2 @ TGT FINDADDR dup XREF-FOUND? IF
@@ -238,11 +182,9 @@ variable SP2  variable SEND  variable WI
             ADD-CLO
          ELSE drop THEN
          SP2 @ 16 + SP2 !
-      ELSE
-         r SP2 @ ADD-PCREL-CLO
-         SP2 @ 4 + SP2 !
-      THEN
+      ELSE SP2 @ 4 + SP2 ! THEN
    REPEAT ;
+variable WI
 : NO-ENTRY-DIE ( -- )
    s" aot: entry word not found: " AETXT  ENTRY-NAME$ AETXT  10 AE1
    s" aot: no entry" 74 die ;
