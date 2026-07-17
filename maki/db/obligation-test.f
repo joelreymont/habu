@@ -272,6 +272,76 @@ create VDIAG 4096 allot
    $AB CK-BYTES TBB-FILL
    TBB$ DC-CODE ;
 
+\ ---- obligation-id registry (reopened OBLIG friend reaches the private raw) -----
+1024 constant OBID-WCAP
+create OBID-WBUF OBID-WCAP allot
+create OBID-SHA CK-BYTES allot
+
+\ Equal obligations (byte-identical ENCODE) intern to ONE id; distinct obligations do not.
+: OBID-INTERN-EQ ( -- bool )   OBL-CANON INTERN  OBL-CANON INTERN  ID-EQUAL? ;
+: OBID-INTERN-NE ( -- bool )   OBL-CANON INTERN  OBL-OTHER INTERN  ID-EQUAL? ;
+
+: OBID-WIRE-RT ( CAD-KIND:obligation-id -- n )   \ 0 = ID>WIRE/WIRE>ID round-trips to an EQUAL? id
+   dup {: orig:CAD-KIND:obligation-id :}
+   OBID-WBUF OBID-WCAP ID>WIRE {: len:n :}
+   OBID-WBUF len WIRE>ID
+   MATCH id-result
+      ok OF orig ID-EQUAL? if 0 else 1 then ENDOF
+      wrong-width OF 2 ENDOF
+      unknown OF 3 ENDOF
+   ;MATCH ;
+
+: OBID-WIRE-ALL ( -- n )                         \ 0 iff EVERY interned id round-trips (raw)
+   OBLID-N @ 0 ?do
+      i RAW>OBLIGATION-ID OBID-WIRE-RT 0<> if 1 unloop exit then
+   loop 0 ;
+
+: OBID-WIRE-WIDTH ( -- n )   OBID-WBUF 4 WIRE>ID
+   MATCH id-result  ok OF drop 8 ENDOF  wrong-width OF 2 ENDOF  unknown OF 3 ENDOF  ;MATCH ;
+
+: OBID-WIRE-UNKNOWN ( -- n )                     \ an out-of-range raw -> unknown
+   OBLID-N @ 100 +  OBID-WBUF U64W LE-PUT
+   OBID-WBUF U64W WIRE>ID
+   MATCH id-result  ok OF drop 9 ENDOF  wrong-width OF 2 ENDOF  unknown OF 3 ENDOF  ;MATCH ;
+
+: OBID-CKEY-RT ( CAD-KIND:obligation-id -- n )   \ 0 = KEY>WIRE/WIRE>KEY round-trips to an EQUAL? id
+   dup {: orig:CAD-KIND:obligation-id :}
+   OBID-WBUF OBID-WCAP KEY>WIRE {: len:n :}
+   OBID-WBUF len WIRE>KEY
+   MATCH id-result
+      ok OF orig ID-EQUAL? if 0 else 1 then ENDOF
+      wrong-width OF 2 ENDOF
+      unknown OF 3 ENDOF
+   ;MATCH ;
+
+: OBID-CKEY-ALL ( -- n )                         \ 0 iff EVERY interned id round-trips (content key)
+   OBLID-N @ 0 ?do
+      i RAW>OBLIGATION-ID OBID-CKEY-RT 0<> if 1 unloop exit then
+   loop 0 ;
+
+: OBID-CKEY-WIDTH ( -- n )   OBID-WBUF 8 WIRE>KEY
+   MATCH id-result  ok OF drop 8 ENDOF  wrong-width OF 2 ENDOF  unknown OF 3 ENDOF  ;MATCH ;
+
+: OBID-FILL-FF ( -- )                            \ 32 bytes no interned obligation can hash to
+   0 begin dup CK-BYTES < while
+      dup {: k:n :}  $FF OBID-WBUF k + c!  1+
+   repeat drop ;
+
+: OBID-CKEY-UNKNOWN ( -- n )                     \ a non-registered 32-byte key -> unknown
+   OBID-FILL-FF  OBID-WBUF CK-BYTES WIRE>KEY
+   MATCH id-result  ok OF drop 9 ENDOF  wrong-width OF 2 ENDOF  unknown OF 3 ENDOF  ;MATCH ;
+
+: OBID-CKEY-IS-SHA ( -- n )                      \ 0 iff KEY>WIRE == SHA-256(ENCODE(obligation))
+   OBL-CANON {: o:obligation :}
+   o INTERN {: id:CAD-KIND:obligation-id :}
+   o OB-A 1024 ENCODE {: len:n :}
+   OB-A len OBID-SHA SHA256
+   id OBID-WBUF OBID-WCAP KEY>WIRE drop
+   OBID-WBUF OBID-SHA OBLID-CK-EQ? if 0 else 1 then ;
+
+: OBID-ID-NEG ( -- )   -1 RAW>OBLIGATION-ID ID-VALIDATE drop ;
+: OBID-ID-BIG ( -- )   OBLID-N @ 100 + RAW>OBLIGATION-ID ID-VALIDATE drop ;
+
 T-RESET
 
 \ ---- ACCEPTANCE 1: wrong-domain evidence cannot discharge ----------------------
@@ -331,6 +401,26 @@ OB-DEC-BOUNDS 3 T=
 OB-DEC-ENUM-OOR 3 T=
 OB-DEC-ENV-WIDTH 1 T=
 OB-DEC-ENV-UNKNOWN 3 T=
+
+\ ---- obligation-id registry: content-addressed identity + wire codecs ----------
+OBID-INTERN-EQ TTRUE                   \ equal obligations intern to ONE id
+OBID-INTERN-NE TFALSE                  \ distinct obligations intern to distinct ids
+OBID-WIRE-ALL 0 T=                     \ every interned id round-trips (process-local raw)
+OBID-WIRE-WIDTH 2 T=                   \ a 4-byte buffer -> wrong-width
+OBID-WIRE-UNKNOWN 3 T=                 \ an out-of-range raw -> unknown
+OBID-CKEY-ALL 0 T=                     \ every interned id round-trips (cross-process content key)
+OBID-CKEY-WIDTH 2 T=                   \ an 8-byte buffer -> wrong-width
+OBID-CKEY-UNKNOWN 3 T=                 \ a non-registered 32-byte key -> unknown
+OBID-CKEY-IS-SHA 0 T=                  \ KEY>WIRE == SHA-256(canonical encoding), not the raw index
+' OBID-ID-NEG E-OBL-ID-RANGE TTHROWS
+' OBID-ID-BIG E-OBL-ID-RANGE TTHROWS
+\ static leg: obligation-id is a nominal the checker guards; the mint stays private.
+s" OBID-VOK ( CAD-KIND:obligation-id -- CAD-KIND:obligation-id ) OBLIG:ID-VALIDATE" VCHECK -1 T=
+s" OBID-VXA ( CAD-KIND:artifact-id -- CAD-KIND:obligation-id ) OBLIG:ID-VALIDATE" VCHECK 0 T=
+s" OBID-VKW ( CAD-KIND:obligation-id ptr u8 n -- n ) OBLIG:KEY>WIRE" VCHECK -1 T=
+s" OBID-VXKW ( CAD-KIND:evidence-id ptr u8 n -- n ) OBLIG:KEY>WIRE" VCHECK 0 T=
+s" OBLIG:RAW>OBLIGATION-ID" 0 search-wl 0= TTRUE
+s" OBLIG:OBLIGATION-ID>RAW" 0 search-wl 0= TTRUE
 
 T-REPORT
 

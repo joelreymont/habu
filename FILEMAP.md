@@ -860,7 +860,12 @@ points stay listed.
   PRODUCER `KEY>WIRE`, fail-closed `WIRE>KEY`). Conservative readings flagged at the
   definition site (subject as artifact-id, environment as config-id, policy as the
   independence governance only, relation/verifier closed vocabularies, producer as the
-  claimant). No new trust boundary. Owns -5359..-5362.
+  claimant). Also the content-addressed owner registry for `CAD-KIND:obligation-id`:
+  `INTERN` interns an obligation by its canonical ENCODE bytes (equal obligations share one
+  id) plus `ID-EQUAL?` / `ID-VALIDATE` / `ID-COUNT` and two wire codecs — `ID>WIRE`/`WIRE>ID`
+  (8-byte process-local raw) and cross-process `KEY>WIRE`/`WIRE>KEY` (32-byte SHA-256 of the
+  canonical encoding). Private `RAW>OBLIGATION-ID` / `OBLIGATION-ID>RAW` refinements are the
+  only trust boundary. Owns -5359..-5365.
 - `maki/db/obligation-test.f` — proof-obligation acceptance, each plan rule by a named
   test: wrong-domain evidence cannot discharge (a typed `wrong-domain` reject plus the
   cad-kinds verdict-fixture static leg — the checker rejects a `relation` or raw int where
@@ -869,6 +874,24 @@ points stay listed.
   SELF-VERIFY policy permits it; a changed dependency invalidates the affected obligation
   and an UNRELATED obligation survives; the NPOL:dom→domain projection; a byte-identical +
   field-for-field round-trip; and the decode reject taxonomy including the foreign-id fold.
+  Also the obligation-id registry: content-addressed interning (equal obligations one id),
+  the `ID>WIRE`/`WIRE>ID` and cross-process `KEY>WIRE`/`WIRE>KEY` round-trips, the SHA-256
+  content-key identity, fail-closed decode (wrong-width + unknown), and range-checked mints.
+- `maki/db/evidence.f` — the evidence-descriptor identity registry + wire codec (the
+  evidence-id leg of MODEL-CAD-V2-PLAN.md § 23.9; dot habu-v2-evidence-applicability-73ac58b9).
+  Package EVIDENCE: `EVIDENCE:REGISTER` interns the canonical evidence DESCRIPTOR bytes to a
+  content-addressed `CAD-KIND:evidence-id` (equal descriptors share one id), plus
+  `DESCRIPTOR$`/`EQUAL?`/`VALIDATE`/`COUNT` and two codecs — `ID>WIRE`/`WIRE>ID` (8-byte raw)
+  and the cross-process `KEY>WIRE`/`WIRE>KEY` (32-byte SHA-256 content key over the interned
+  descriptor). The durable identity the diagnostic IR's `invalidated-evidence[]` promotes to;
+  a DIFFERENT concern from the proof-EVIDENCE value (package OBLIG) and the evidence CLASS
+  families (package EVID). Private `RAW>EVIDENCE-ID` / `EVIDENCE-ID>RAW` refinements are the
+  only trust boundary. Owns -5366..-5369.
+- `maki/db/evidence-test.f` — evidence-id acceptance: content-addressed interning (equal
+  descriptors one id, distinct descriptors distinct id), the `ID>WIRE`/`WIRE>ID` and
+  cross-process `KEY>WIRE`/`WIRE>KEY` round-trips, the SHA-256 content-key identity,
+  fail-closed decode (wrong-width + unresolved raw), cross-role rejection, and the
+  private-mint unforgeability negatives.
 - `maki/db/keywire-xproc-child.f` — the FRESH-PROCESS decode side of the cross-process
   content-key identity test (dot habu-wire-content-key). Package KWXPC: shared fixed
   key-file layout, shared real descriptors, per-family `REG-*` registrations, and

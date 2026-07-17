@@ -671,6 +671,10 @@ that source is explicitly certified; they are not stale-checked by the default
 | AUDIT-EVENT-ID>RAW | `CAD-KIND:audit-event-id -- n` | Private audit-event identity projection used only by bounds validation, descriptor-table access, `JOURNAL:SEQ`/`EQUAL?`, and the `JOURNAL:ID>WIRE` / `WIRE>ID` codec; no public raw conversion is exported. | `maki/journal-test.f` | maki/journal.f | 2026-07-17 |
 | RAW>REV-ID | `n -- CAD-KIND:rev-id` | Private rev-id registry refinement after canonical-revision-content validation, capacity validation, and append-only slot allocation (the maki/artifact.f `RAW>ARTIFACT-ID` pattern); the only public producer is `REV:COMMIT`, which content-addresses the canonical revision content (parent + write set), so a raw n cannot forge a revision identity (MODEL-CAD-V2-PLAN.md § 23.9 foreign-id contract; dot habu-v2-txn-journal-d0bc644f). | `maki/rev-test.f` | maki/rev.f | 2026-07-17 |
 | REV-ID>RAW | `CAD-KIND:rev-id -- n` | Private revision identity projection used only by bounds validation, content-table access, `REV:EQUAL?`, and the `REV:ID>WIRE` / `WIRE>ID` codec; no public raw conversion is exported. | `maki/rev-test.f` | maki/rev.f | 2026-07-17 |
+| RAW>OBLIGATION-ID | `n -- CAD-KIND:obligation-id` | Private obligation-id registry refinement after canonical-encoding content-key computation and content-addressed dedup / append (the maki/producer.f `RAW>PRODUCER-ID` pattern); the only public producer is `OBLIG:INTERN`, which content-addresses an obligation by its canonical ENCODE bytes, so a raw n cannot forge an obligation identity (MODEL-CAD-V2-PLAN.md § 23.9 foreign-id contract; dot habu-v2-evidence-applicability-73ac58b9). | `maki/db/obligation-test.f` | maki/db/obligation.f | 2026-07-17 |
+| OBLIGATION-ID>RAW | `CAD-KIND:obligation-id -- n` | Private obligation identity projection used only by bounds validation, content-key access, `OBLIG:ID-EQUAL?`, and the `OBLIG:ID>WIRE` / `WIRE>ID` / `KEY>WIRE` / `WIRE>KEY` codecs; no public raw conversion is exported. | `maki/db/obligation-test.f` | maki/db/obligation.f | 2026-07-17 |
+| RAW>EVIDENCE-ID | `n -- CAD-KIND:evidence-id` | Private evidence-id registry refinement after canonical-descriptor validation, capacity validation, and append-only slot allocation (the maki/producer.f `RAW>PRODUCER-ID` pattern); the only public producer is `EVIDENCE:REGISTER`, which interns the canonical evidence descriptor, so a raw n cannot forge an evidence identity (MODEL-CAD-V2-PLAN.md § 23.9 foreign-id contract; dot habu-v2-evidence-applicability-73ac58b9). | `maki/db/evidence-test.f` | maki/db/evidence.f | 2026-07-17 |
+| EVIDENCE-ID>RAW | `CAD-KIND:evidence-id -- n` | Private evidence identity projection used only by bounds validation, descriptor-table access, `EVIDENCE:EQUAL?`, and the `EVIDENCE:ID>WIRE` / `WIRE>ID` / `KEY>WIRE` / `WIRE>KEY` codecs; no public raw conversion is exported. | `maki/db/evidence-test.f` | maki/db/evidence.f | 2026-07-17 |
 | DIM-REFINE | `n -- CAD-KIND:dim` | Private validated nominal representation boundary for tensor dimensions; tracked by `habu-v2-r3-type-9f89d1e9`. | `maki/tensor-test.f` | maki/tensor.f | 2026-07-12 |
 | DIM-RAW | `CAD-KIND:dim -- n` | Private dimension projection used only by checked shape algebra and numeric execution boundaries. | `maki/tensor-test.f` | maki/tensor.f | 2026-07-12 |
 | ROWS-REFINE | `n -- CAD-KIND:rows` | Private validated row-role refinement; public construction goes through `SHAPE`. | `maki/tensor-test.f` | maki/tensor.f | 2026-07-12 |
@@ -1405,6 +1409,10 @@ maki/journal.f:RAW>AUDIT-EVENT-ID prim-axiom habu-epic-model-cad-70b629a9
 maki/journal.f:AUDIT-EVENT-ID>RAW prim-axiom habu-epic-model-cad-70b629a9
 maki/rev.f:RAW>REV-ID prim-axiom habu-epic-model-cad-70b629a9
 maki/rev.f:REV-ID>RAW prim-axiom habu-epic-model-cad-70b629a9
+maki/db/obligation.f:RAW>OBLIGATION-ID prim-axiom habu-epic-model-cad-70b629a9
+maki/db/obligation.f:OBLIGATION-ID>RAW prim-axiom habu-epic-model-cad-70b629a9
+maki/db/evidence.f:RAW>EVIDENCE-ID prim-axiom habu-epic-model-cad-70b629a9
+maki/db/evidence.f:EVIDENCE-ID>RAW prim-axiom habu-epic-model-cad-70b629a9
 maki/tensor-value.f:RAW>TENSOR prim-axiom habu-epic-model-cad-70b629a9
 maki/tensor-value.f:TENSOR>RAW prim-axiom habu-epic-model-cad-70b629a9
 maki/tensor-value.f:TYPED-LINEAR stdlib-boundary habu-epic-model-cad-70b629a9

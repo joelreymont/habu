@@ -93,18 +93,19 @@
 \ an explicit, named, tested boundary (plan:3747 "non-coercible without a policy
 \ constructor").
 \
-\ ---- TRANSACTION REPOINT (item 4): NOT a small mechanical repoint -----------------
-\ maki/db/transaction.f holds obligations as opaque u64 identity CODES (TX:OBLIG+,
-\ S-OBL). Repointing them to THIS schema needs an obligation IDENTITY with a
-\ cross-process wire codec (a CAD-KIND:obligation-id nominal + an owner registry with
-\ KEY>WIRE/WIRE>KEY, mirroring maki/producer.f). CAD-KIND:obligation-id is MISSING
-\ from the frozen maki/cad-kinds.f, and an interning identity registry is a substantial
-\ addition, not a mechanical repoint - so transaction.f is left untouched. Precise
-\ follow-up recorded in the dot report and FILEMAP.
+\ ---- OBLIGATION-ID REGISTRY + TRANSACTION REPOINT ---------------------------------
+\ CAD-KIND:obligation-id now exists (maki/cad-kinds.f) and its content-addressed owner
+\ registry lives at the tail of this file (dot habu-v2-evidence-applicability-73ac58b9):
+\ INTERN interns an obligation by its CANONICAL ENCODING (so equal obligations share one
+\ id) and ID>WIRE/WIRE>ID + KEY>WIRE/WIRE>KEY are its process-local and cross-process wire
+\ codecs, mirroring maki/producer.f. maki/db/transaction.f can now repoint its opaque u64
+\ obligation CODES (TX:OBLIG+, S-OBL) to CAD-KIND:obligation-id via KEY>WIRE/WIRE>KEY (the
+\ cross-process content-key form its base-rev already uses); that mechanical repoint is
+\ tracked in the dot report.
 \
 \ FIRST-SLICE POOL: a bounded ring of live slots with fixed per-field caps (the
 \ maki/db/diagnostic.f first-slice convention); a durable obligation store is a later
-\ dot. maki -> habu only; obligation owns -5359..-5362.
+\ dot. maki -> habu only; obligation owns -5359..-5365.
 
 require lib/prelude.f
 require maki/cad-kinds.f
@@ -113,11 +114,14 @@ require maki/artifact.f           \ CAD-KIND:artifact-id owner: REGISTER / KEY$ 
 require maki/config.f             \ CAD-KIND:config-id owner: REGISTER / KEY>WIRE / WIRE>KEY / EQUAL?
 require maki/producer.f           \ CAD-KIND:producer-id owner: REGISTER / KEY>WIRE / WIRE>KEY / EQUAL?
 
-\ ---- error codes (obligation owns -5359..-5362) -------------------------------
+\ ---- error codes (obligation owns -5359..-5365) -------------------------------
 -5359 constant E-OBL-CAP         \ an obligation pool / dependency-cone capacity exceeded
 -5360 constant E-OBL-BUF         \ ENCODE output buffer smaller than the canonical bytes
 -5361 constant E-OBL-SEM         \ encode scratch overflow (unreachable internal cap)
 -5362 constant E-OBL-ORD         \ an enum ordinal outside its closed domain (fail-closed inverse)
+-5363 constant E-OBL-ID-WIRE     \ obligation-id ID>WIRE / KEY>WIRE output buffer smaller than the fixed width
+-5364 constant E-OBL-ID-CAP      \ obligation-id registry (distinct interned obligations) exhausted
+-5365 constant E-OBL-ID-RANGE    \ obligation-id outside the interned range
 
 package OBLIG
 public
@@ -180,6 +184,15 @@ SUMTYPE decode-result 0
    VARIANT bounds ;VARIANT
    VARIANT duplicate ;VARIANT
    VARIANT unknown-required ;VARIANT
+;SUMTYPE
+
+\ obligation-id wire-decode result (the § 23.9 art-result custom-sum idiom, the
+\ maki/producer.f id-result precedent): `ok` carries the refined nominal id; the reject
+\ arms are the fixed-width byte-decode refusals (wrong width, unresolved/out-of-range raw).
+SUMTYPE id-result 1
+   VARIANT ok a ;VARIANT
+   VARIANT wrong-width ;VARIANT
+   VARIANT unknown ;VARIANT
 ;SUMTYPE
 
 private
@@ -747,10 +760,109 @@ public
 \ artifact.f WEIGHT-OF precedent).
 : OBL-OF ( n -- obligation )   >OBL ;
 
+\ ============================================================================
+\ OBLIGATION-ID REGISTRY (identity leg, dot habu-v2-evidence-applicability-73ac58b9)
+\ The content-addressed owner of CAD-KIND:obligation-id: INTERN interns an obligation
+\ by its CANONICAL ENCODING (byte-identical ENCODE output), so equal obligations share
+\ ONE id. The private RAW>OBLIGATION-ID / OBLIGATION-ID>RAW refinements stay owner-only
+\ (the maki/producer.f pattern), and the ID>WIRE/WIRE>ID + KEY>WIRE/WIRE>KEY pairs are
+\ the process-local and cross-process wire codecs the transaction repoint consumes.
+\ Content-addressed by the 32-byte SHA-256 of the canonical encoding: the preimage is
+\ reconstructable from the obligation handle, so only the content key is stored.
+\ ============================================================================
+
+private
+
+TRUSTED: RAW>OBLIGATION-ID ( n -- CAD-KIND:obligation-id ) ;
+TRUSTED: OBLIGATION-ID>RAW ( CAD-KIND:obligation-id -- n ) ;
+
+64 constant OBLID-CAP                       \ max distinct interned obligations (v1 first slice)
+create OBLID-CK OBLID-CAP CK-BYTES * allot  \ per-id SHA-256 content key over the canonical encoding
+create OBLID-DG CK-BYTES allot              \ scratch digest
+create OBLID-ENC SCRATCH-CAP allot          \ scratch canonical bytes for INTERN
+variable OBLID-N                             \ interned count
+
+: OBLID-CK@ ( n -- ptr u8 )   CK-BYTES * OBLID-CK + ;   \ per-id content-key slot base
+
+: OBLID-RANGE-CK ( CAD-KIND:obligation-id -- n )
+   OBLIGATION-ID>RAW dup 0 < over OBLID-N @ >= or if E-OBL-ID-RANGE throw then ;
+
+: OBLID-CK-EQ? ( ptr u8 ptr u8 -- bool ) {: pa:ptr pb:ptr :}   \ fixed 32-byte content-key compare
+   0 begin dup CK-BYTES < while
+      dup {: k:n :}
+      pa k + c@  pb k + c@  <> if drop false exit then
+      1+
+   repeat drop true ;
+
+: OBLID-CK-FIND ( ptr u8 -- n ) {: p:ptr :}   \ raw id whose content key equals p's 32 bytes, or -1
+   OBLID-N @ 0 ?do
+      i OBLID-CK@ p OBLID-CK-EQ? if i unloop exit then
+   loop -1 ;
+
+: IDR-OK ( a -- id-result<a> )          OBLIG-ID--RESULT:OK ;
+: IDR-WRONG-WIDTH ( -- id-result<a> )   OBLIG-ID--RESULT:WRONG-WIDTH ;
+: IDR-UNKNOWN ( -- id-result<a> )       OBLIG-ID--RESULT:UNKNOWN ;
+
+public
+
+\ INTERN content-addresses an obligation by its canonical encoding: equal obligations
+\ (byte-identical ENCODE) intern to ONE CAD-KIND:obligation-id. The ONLY authority-bearing
+\ public mint, bound to a real canonical encoding, never a raw cast.
+: INTERN ( obligation -- CAD-KIND:obligation-id ) {: o:obligation :}
+   o OBLID-ENC SCRATCH-CAP ENCODE {: len:n :}
+   OBLID-ENC len OBLID-DG SHA256
+   OBLID-DG OBLID-CK-FIND {: found:n :}
+   found 0 >= if found RAW>OBLIGATION-ID exit then
+   OBLID-N @ OBLID-CAP >= if E-OBL-ID-CAP throw then
+   OBLID-N @ {: raw:n :}
+   OBLID-DG raw OBLID-CK@ CK-BYTES BYTE-COPY
+   raw 1+ OBLID-N !
+   raw RAW>OBLIGATION-ID ;
+
+\ ID-EQUAL? is same-obligation identity: interning makes byte-identical obligations share
+\ one raw id, so raw equality is exactly canonical-encoding equality.
+: ID-EQUAL? ( CAD-KIND:obligation-id CAD-KIND:obligation-id -- bool )
+   {: x:CAD-KIND:obligation-id y:CAD-KIND:obligation-id :}
+   x OBLIGATION-ID>RAW y OBLIGATION-ID>RAW = ;
+
+: ID-VALIDATE ( CAD-KIND:obligation-id -- CAD-KIND:obligation-id )   dup OBLID-RANGE-CK drop ;
+
+\ ID>WIRE / WIRE>ID: the PROCESS-LOCAL registry raw as a fixed 8-byte little-endian scalar
+\ (intra-process bundles only; NEVER a durable/cross-process identity).
+: ID>WIRE ( CAD-KIND:obligation-id ptr u8 n -- n )
+   {: id:CAD-KIND:obligation-id out:ptr cap:n :}
+   cap U64W < if E-OBL-ID-WIRE throw then
+   id OBLID-RANGE-CK  out  U64W  LE-PUT
+   U64W ;
+
+: WIRE>ID ( ptr u8 n -- id-result<CAD-KIND:obligation-id> ) {: a:ptr u:n :}
+   u U64W <> if IDR-WRONG-WIDTH exit then
+   a U64W LE-GET {: raw:n :}
+   raw 0 < raw OBLID-N @ >= or if IDR-UNKNOWN exit then
+   raw RAW>OBLIGATION-ID IDR-OK ;
+
+\ KEY>WIRE / WIRE>KEY: the CROSS-PROCESS content key (SHA-256 over the canonical encoding,
+\ 32 fixed bytes). Equal obligations digest identically in every process, so WIRE>KEY
+\ resolves BY CONTENT and the id survives process death - the transaction codec's
+\ obligation wire form.
+: KEY>WIRE ( CAD-KIND:obligation-id ptr u8 n -- n )
+   {: id:CAD-KIND:obligation-id out:ptr cap:n :}
+   cap CK-BYTES < if E-OBL-ID-WIRE throw then
+   id OBLID-RANGE-CK OBLID-CK@  out  CK-BYTES  BYTE-COPY
+   CK-BYTES ;
+
+: WIRE>KEY ( ptr u8 n -- id-result<CAD-KIND:obligation-id> ) {: a:ptr u:n :}
+   u CK-BYTES <> if IDR-WRONG-WIDTH exit then
+   a OBLID-CK-FIND {: raw:n :}
+   raw 0 < if IDR-UNKNOWN exit then
+   raw RAW>OBLIGATION-ID IDR-OK ;
+
+: ID-COUNT ( -- n )   OBLID-N @ ;
+
 private
 
 : OBL-CODEC-INIT ( -- )
-   0 OB-NEXT !  0 EV-NEXT !  0 OB-CUR ! ;
+   0 OB-NEXT !  0 EV-NEXT !  0 OB-CUR !  0 OBLID-N ! ;
 
 OBL-CODEC-INIT
 ;package

@@ -182,6 +182,8 @@ TEST:SUITE maki/db/diagnostic-test.f
 TEST:;SUITE
 TEST:SUITE maki/db/obligation-test.f
 TEST:;SUITE
+TEST:SUITE maki/db/evidence-test.f
+TEST:;SUITE
 TEST:SUITE maki/cad-test.f
 TEST:;SUITE
 TEST:SUITE maki/cad-bind-test.f

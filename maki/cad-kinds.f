@@ -12,6 +12,12 @@ TYPEFAMILY analysis-id 0
 TYPEFAMILY plan-id 0
 TYPEFAMILY artifact-id 0
 TYPEFAMILY evidence-id 0
+\ The immutable proof-OBLIGATION identity (MODEL-CAD-V2-PLAN.md § 23.9; dot
+\ habu-v2-evidence-applicability-73ac58b9). Deliberately distinct from
+\ evidence-id: EVIDENCE discharges an obligation, but neither identity may launder
+\ into the other. Its content-addressed owner registry is package OBLIG
+\ (maki/db/obligation.f), the transaction codec's obligation wire form.
+TYPEFAMILY obligation-id 0
 TYPEFAMILY target-id 0
 TYPEFAMILY toolchain-id 0
 TYPEFAMILY pass-id 0

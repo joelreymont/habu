@@ -39,6 +39,7 @@ s" CK-ANALYSIS ( CAD-KIND:analysis-id -- CAD-KIND:analysis-id )" YES
 s" CK-PLAN ( CAD-KIND:plan-id -- CAD-KIND:plan-id )" YES
 s" CK-ARTIFACT ( CAD-KIND:artifact-id -- CAD-KIND:artifact-id )" YES
 s" CK-EVIDENCE ( CAD-KIND:evidence-id -- CAD-KIND:evidence-id )" YES
+s" CK-OBLIGATION ( CAD-KIND:obligation-id -- CAD-KIND:obligation-id )" YES
 s" CK-TARGET ( CAD-KIND:target-id -- CAD-KIND:target-id )" YES
 s" CK-TOOLCHAIN ( CAD-KIND:toolchain-id -- CAD-KIND:toolchain-id )" YES
 s" CK-PASS ( CAD-KIND:pass-id -- CAD-KIND:pass-id )" YES
@@ -76,6 +77,13 @@ s" CK-X16 ( CAD-KIND:cols -- CAD-KIND:address-space )" NO
 s" CK-X19 ( CAD-KIND:address-space -- CAD-KIND:stage )" NO
 s" CK-X20 ( CAD-KIND:stage -- CAD-KIND:effect )" NO
 s" CK-X21 ( CAD-KIND:effect -- CAD-KIND:region )" NO
+
+\ The proof-OBLIGATION identity and the EVIDENCE identity are distinct nominals:
+\ evidence discharges an obligation but can never launder into its identity, and
+\ neither collapses to the artifact-id it is measured on.
+s" CK-XO1 ( CAD-KIND:obligation-id -- CAD-KIND:evidence-id )" NO
+s" CK-XO2 ( CAD-KIND:evidence-id -- CAD-KIND:obligation-id )" NO
+s" CK-XO3 ( CAD-KIND:artifact-id -- CAD-KIND:obligation-id )" NO
 
 \ Generic typed memory keeps the declared role on store and fetch.
 s" CK-PUT ( CAD-KIND:design-id ptr CAD-KIND:design-id -- ) !" YES
