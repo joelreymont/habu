@@ -40,6 +40,15 @@ require maki/model-ir.f
 require maki/fusion-plan.f
 require maki/move-facts.f
 
+\ ---- audited count projection (MIR typed item-count -> raw loop cell) -----------
+\ NODE-COUNT@ returns CAD-NUM:item-count; the node-scan ?do bound needs the raw
+\ cell the typed form cannot flow into. Reopen the unsealed CAD-NUM package for
+\ one checked bridge over its private ITEM-COUNT>N projection (no new TRUSTED;
+\ mirrors cad.f CAD-IX>N). Kernel PTX bytes are unaffected.
+package CAD-NUM public
+: LMV-IC>N ( CAD-NUM:item-count -- n )  ITEM-COUNT>N ;
+;package
+
 -5205 constant E-LMV-NOTMOVE  \ region is not a materialized movement region
 -5206 constant E-LMV-MULTI    \ region is not exactly one movement node (v1 cap)
 -5207 constant E-LMV-OP       \ movement op is not in the v1 copy set
@@ -108,7 +117,7 @@ variable LMV-BUILT?
 : LMV-MEMBERS ( CAD-KIND:region -- n )  FP-REGION-MEMBERS ;       \ validated owner count
 : LMV-FIND-NODE ( CAD-KIND:region -- ) {: rid:CAD-KIND:region :}
    rid LMV-MEMBERS 1 <> if E-LMV-MULTI throw then      \ v1: a copy region is one node
-   MIR-N@ 0 ?do
+   NODE-COUNT@ CAD-NUM:LMV-IC>N 0 ?do
       i MIR-NODE-ID {: node:CAD-KIND:node-id :}
       node rid LMV-IN-REGION? if node LMV-NODE! then
    loop

@@ -51,6 +51,15 @@ require maki/fusion-plan.f
 require maki/move-view.f
 require maki/bcast.f
 
+\ ---- audited count projection (MIR typed item-count -> raw loop cell) -----------
+\ NODE-COUNT@ returns CAD-NUM:item-count; the node-scan ?do bound needs the raw
+\ cell the typed form cannot flow into. Reopen the unsealed CAD-NUM package for
+\ one checked bridge over its private ITEM-COUNT>N projection (no new TRUSTED;
+\ mirrors cad.f CAD-IX>N). Kernel PTX bytes are unaffected.
+package CAD-NUM public
+: LEW-IC>N ( CAD-NUM:item-count -- n )  ITEM-COUNT>N ;
+;package
+
 -5170 constant E-LEW-NOTEW    \ region class is not pure elementwise
 -5171 constant E-LEW-OP       \ op in the region chain is not a v1-supported elementwise op
 -5172 constant E-LEW-INPUTS   \ region has more than the v1 input cap (4)
@@ -114,7 +123,7 @@ variable LEW-NIN                            \ region input count
 \ movements (MVW-CHECK-EW folds a FREE offset OR a STAGED transpose, and fails closed on a
 \ chained / mat / non-slot source before any emit).
 : LEW-CHECK-OPS ( CAD-KIND:region -- ) {: rid:CAD-KIND:region :}
-   MIR-N@ 0 ?do
+   NODE-COUNT@ CAD-NUM:LEW-IC>N 0 ?do
       i MIR-NODE-ID {: node:CAD-KIND:node-id :}
       node rid LEW-IN-REGION? if
          node MIR-MOVE? if node MIR-NODE-REF MVW-CHECK-EW
@@ -147,7 +156,7 @@ variable LEW-NIN                            \ region input count
 \ as the virtual movement-node input its consumer scans, not as a direct input.
 : LEW-COLLECT-INS ( CAD-KIND:region -- ) {: rid:CAD-KIND:region :}
    0 LEW-NIN !
-   MIR-N@ 0 ?do
+   NODE-COUNT@ CAD-NUM:LEW-IC>N 0 ?do
       i MIR-NODE-ID {: node:CAD-KIND:node-id :}
       node rid LEW-IN-REGION? node MIR-MOVE? 0= and if rid node LEW-SCAN-INS then
    loop ;
@@ -158,13 +167,13 @@ variable LEW-NIN                            \ region input count
 \ maki/fusion-mout-test.f). LEW-FIND-OUT asserts that invariant as defense-in-depth: != 1 is a
 \ corrupted plan (>1 structurally impossible, 0 a materialization-flag regression), never a v1 cap.
 : LEW-MAT-COUNT ( CAD-KIND:region -- n ) {: rid:CAD-KIND:region :}
-   0 MIR-N@ 0 ?do
+   0 NODE-COUNT@ CAD-NUM:LEW-IC>N 0 ?do
       i MIR-NODE-ID {: node:CAD-KIND:node-id :}
       node rid LEW-IN-REGION? node MIR-MAT@ and if 1+ then
    loop ;
 : LEW-FIND-OUT ( CAD-KIND:region -- ) {: rid:CAD-KIND:region :}
    rid LEW-MAT-COUNT 1 <> if E-LEW-MULTIOUT throw then
-   MIR-N@ 0 ?do
+   NODE-COUNT@ CAD-NUM:LEW-IC>N 0 ?do
       i MIR-NODE-ID {: node:CAD-KIND:node-id :}
       node rid LEW-IN-REGION? node MIR-MAT@ and if node LEW-OUTNODE! then
    loop ;
@@ -311,7 +320,7 @@ private
    ;MATCH
    nd LEW-NR! ;
 : LEW-CHAIN ( -- )                               \ movement members emit no compute (folded)
-   MIR-N@ 0 ?do
+   NODE-COUNT@ CAD-NUM:LEW-IC>N 0 ?do
       i MIR-NODE-ID {: node:CAD-KIND:node-id :}
       node 0 LEW-RID @ LEW-IN-REGION? node MIR-MOVE? 0= and if node LEW-EMIT-NODE then
    loop ;

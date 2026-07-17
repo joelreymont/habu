@@ -54,6 +54,15 @@ require maki/lower-red.f
 require maki/lower-mm.f
 require maki/lower-move.f
 
+\ ---- audited count projection (MIR typed item-count -> raw loop cell) -----------
+\ NODE-COUNT@ returns CAD-NUM:item-count; the whole-model node-scan ?do bounds
+\ need the raw cell the typed form cannot flow into. Reopen the unsealed CAD-NUM
+\ package for one checked bridge over its private ITEM-COUNT>N projection (no new
+\ TRUSTED; mirrors cad.f CAD-IX>N). Launch config + emitted PTX bytes unaffected.
+package CAD-NUM public
+: LLA-IC>N ( CAD-NUM:item-count -- n )  ITEM-COUNT>N ;
+;package
+
 -5180 constant E-LLA-INPUT   \ a region input is not a model input slot (single-region path: slots only)
 -5181 constant E-LLA-CAP     \ region element count exceeds the launch arena capacity
 -5182 constant E-MDL-UNRESOLVED \ a region input names a producer node with no device buffer yet
@@ -336,7 +345,7 @@ public
 : LLA-REGION-REDUCE? ( CAD-KIND:region -- bool )  FP-REGION-CLASSMIX  1 CLASS-ROW-REDUCE lshift  and  0= 0= ;
 : LLA-REGION-MOVE? ( CAD-KIND:region -- bool ) {: rid:CAD-KIND:region :}
    rid FP-REGION-MEMBERS drop
-   MIR-N@ 0 ?do
+   NODE-COUNT@ CAD-NUM:LLA-IC>N 0 ?do
       i MIR-NODE-ID {: node:CAD-KIND:node-id :}
       node FP-RID@ rid FP-RGN= node MIR-MOVE? and node MIR-MAT@ and if unloop true exit then
    loop false ;
@@ -441,7 +450,7 @@ variable MDL-NEW  variable MDL-NRED  variable MDL-NMM  variable MDL-NMV  variabl
 \ read the final model output node's device buffer back into LLA-HOUT (guarded), and point
 \ the golden accessors (LLA-OUT-NODE / LLA-ELEMS) at it so LG-COMPARE-LIN reads the model output.
 : MDL-READBACK ( -- )
-   MIR-N@ 1- MIR-NODE-ID {: out:CAD-KIND:node-id :}
+   NODE-COUNT@ CAD-NUM:LLA-IC>N 1- MIR-NODE-ID {: out:CAD-KIND:node-id :}
    out MIR-ROWS@ out MIR-COLS@ SHAPE-ELEMS DIM-RAW {: e:n :}
    out MDL-DEVPTR@ {: dp:n :}
    dp 0= if E-MDL-NOOUT throw then
@@ -451,7 +460,7 @@ variable MDL-NEW  variable MDL-NRED  variable MDL-NMM  variable MDL-NMV  variabl
    e 0 ?do  LLA-HRB i 4 * + SF-LD PTXSENT:GUARD F32>F64  LLA-HOUT i T-SET  loop
    out LLA-OUT-NODE! e LLA-ELEMS ! ;
 : MDL-FREE-ALL ( -- )
-   MIR-N@ 0 ?do
+   NODE-COUNT@ CAD-NUM:LLA-IC>N 0 ?do
       i MIR-NODE-ID {: node:CAD-KIND:node-id :} node MDL-DEVPTR@ {: dp:n :}
       dp 0= 0= if dp >CUDA-DEVPTR CUDA:CUMEMFREE CUDA:RC0 0 node MDL-DEVPTR! then
    loop ;
@@ -469,7 +478,7 @@ public
 \ every materialized-node region has a registered cubin (the device golden gate needs assembled
 \ kernels; without them the gate must fall back to the host leg rather than throw E-MDL-CUBIN).
 : MDL-CUBINS-READY? ( -- bool )
-   MIR-N@ 0 ?do
+   NODE-COUNT@ CAD-NUM:LLA-IC>N 0 ?do
       i MIR-NODE-ID {: node:CAD-KIND:node-id :}
       node MIR-MAT@ if
          node FP-RID@ MDL-RIDX cells MDL-CUBIN-LEN + @  \ validated table-index boundary
@@ -480,7 +489,7 @@ public
 \ ---- per-class region tally over the materialized nodes (tolerance composition inputs) ----
 : MDL-COUNT-REGIONS ( -- )
    0 MDL-NEW !  0 MDL-NRED !  0 MDL-NMM !  0 MDL-NMV !  0 MDL-NR !
-   MIR-N@ 0 ?do
+   NODE-COUNT@ CAD-NUM:LLA-IC>N 0 ?do
       i MIR-NODE-ID {: node:CAD-KIND:node-id :}
       node MIR-MAT@ if
          node FP-RID@ {: rid:CAD-KIND:region :}
@@ -503,7 +512,7 @@ public
 \ under catch here (a capability check, not error masking); a real device error is not caught.
 : MDL-LOWERABLE? ( -- bool )
    GA-SUPPORTED? 0= if false exit then
-   MIR-N@ 0 ?do
+   NODE-COUNT@ CAD-NUM:LLA-IC>N 0 ?do
       i MIR-NODE-ID {: node:CAD-KIND:node-id :}
       node MIR-MAT@ if
          node FP-RID@ 0 MDL-PROBE-RID !          \ typed region round-trips through the cell (checker-enforced)
@@ -518,7 +527,7 @@ public
 : LOWER-MODEL-RUN ( -- )
    LLA-CTX-OPEN
    MDL-BUF-RESET
-   MIR-N@ 0 ?do
+   NODE-COUNT@ CAD-NUM:LLA-IC>N 0 ?do
       i MIR-NODE-ID {: node:CAD-KIND:node-id :}
       node MIR-MAT@ if node FP-RID@ MDL-EXEC-REGION then
    loop

@@ -30,6 +30,15 @@ require maki/executor.f
 require maki/report.f
 require maki/golden-artifact.f
 
+\ ---- audited count projection (MIR typed item-count -> raw loop/compare cell) ---
+\ NODE-COUNT@ returns CAD-NUM:item-count; a render INT, an emptiness test, and
+\ EX-RUN-N ( n -- ) take the raw node count. Reopen the unsealed CAD-NUM package
+\ for one checked bridge over its private ITEM-COUNT>N projection (no new TRUSTED;
+\ mirrors cad.f CAD-IX>N).
+package CAD-NUM public
+: GO-IC>N ( CAD-NUM:item-count -- n )  ITEM-COUNT>N ;
+;package
+
 -5140 constant E-GOLD-CAP     \ golden per-node snapshot arena capacity exceeded
 
 package MAKI
@@ -56,7 +65,7 @@ private
    true ;
 
 : GO-SELF? ( -- bool )
-   MIR-N@ 0 ?do
+   NODE-COUNT@ CAD-NUM:GO-IC>N 0 ?do
       i MIR-NODE-ID GO-NODE-OK? 0= if false unloop exit then
    loop true ;
 
@@ -79,18 +88,18 @@ private
    s" golden: op not host-executable " GO-RE+ nd MIR-OP@ OPR-NAME GO-RE+ ;
 
 : GO-PASS-REASON ( -- )
-   GO-RE-RESET s" host self-consistent (" GO-RE+ MIR-N@ GO-RE-INT
+   GO-RE-RESET s" host self-consistent (" GO-RE+ NODE-COUNT@ CAD-NUM:GO-IC>N GO-RE-INT
    s"  nodes); device-vs-host pending" GO-RE+ ;
 
 public
 
 \ ---- the host self-consistency verdict: V-PASS / V-FAIL / V-NOTRUN + reason ----
 : GO-RUN ( -- n )
-   MIR-N@ 0= if GO-RE-RESET s" golden: empty model" GO-RE+ V-NOTRUN exit then
+   NODE-COUNT@ CAD-NUM:GO-IC>N 0= if GO-RE-RESET s" golden: empty model" GO-RE+ V-NOTRUN exit then
    GA-FIRST-BAD {: bad:n :}
    bad 0< 0= if bad GO-REASON-BAD V-NOTRUN exit then
    GA-BIND-SYNTH
-   MIR-N@ EX-RUN-N                                   \ composed forward chain
+   NODE-COUNT@ CAD-NUM:GO-IC>N EX-RUN-N                                   \ composed forward chain
    GO-SELF? 0= if GO-RE-RESET s" golden: composed chain not self-consistent" GO-RE+ V-FAIL exit then
    GO-PASS-REASON  V-PASS ;
 

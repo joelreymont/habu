@@ -58,6 +58,10 @@ package CAD-NUM public
 : GA-IX>N ( CAD-NUM:index -- n )     INDEX>N ;
 : GA-BL>N ( CAD-NUM:byte-len -- n )  BYTE-LEN>N ;
 : GA-BO>N ( CAD-NUM:byte-off -- n )  BYTE-OFF>N ;
+\ MIR NODE-/SLOT-COUNT@ return CAD-NUM:item-count; a ?do bound, an artifact
+\ input-count render/compare, and EX-RUN-N ( n -- ) take the raw cell the typed
+\ form cannot flow into (same no-new-TRUSTED bridge as GA-IX>N).
+: GA-IC>N ( CAD-NUM:item-count -- n )  ITEM-COUNT>N ;
 ;package
 
 -5165 constant E-GA-CAP     \ input / expected / text buffer capacity exceeded
@@ -109,11 +113,11 @@ public
 : GA-OP-BLOCKS? ( opkind -- bool )               \ op has no host oracle / reference?
    dup OPR-COMPLETE? 0=  swap EX-OP-OK? 0= or ;
 : GA-SUPPORTED? ( -- bool )
-   MIR-N@ 0 ?do
+   NODE-COUNT@ CAD-NUM:GA-IC>N 0 ?do
       i MIR-NODE-ID MIR-OP@ GA-OP-BLOCKS? if false unloop exit then
    loop true ;
 : GA-FIRST-BAD ( -- n )                           \ first blocking node index, or -1 (op refetched at use)
-   MIR-N@ 0 ?do
+   NODE-COUNT@ CAD-NUM:GA-IC>N 0 ?do
       i MIR-NODE-ID MIR-OP@ GA-OP-BLOCKS? if i unloop exit then
    loop -1 ;
 private
@@ -147,7 +151,7 @@ private
 variable GA-IDX-MIN
 : GA-IDX-ROWS ( MIR:input-slot -- n ) {: s:MIR:input-slot :}   \ min src rows over gathers indexing slot s (0 = none)
    0 GA-IDX-MIN !
-   MIR-N@ 0 ?do
+   NODE-COUNT@ CAD-NUM:GA-IC>N 0 ?do
       i MIR-NODE-ID {: nd:CAD-KIND:node-id :}
       nd s GA-NODE-IDX? if
          nd GA-SRC-ROWS {: r:n :}
@@ -173,7 +177,7 @@ variable GA-IDX-MIN
 public
 : GA-BIND-SYNTH ( -- )                            \ reset EX; bind+fill synthetic inputs
    EX-RESET  0 GA-BUMP !
-   MIR-IN-SLOTS@ 0 ?do
+   SLOT-COUNT@ CAD-NUM:GA-IC>N 0 ?do
       i MIR-SLOT-ID {: s:MIR:input-slot :}
       s GA-ALLOC-SLOT
       s GA-IN-PTR s EX-BIND
@@ -202,12 +206,12 @@ private
 
 public
 : GA-EXISTS? ( -- bool )
-   MIR-N@ 0= if false exit then
+   NODE-COUNT@ CAD-NUM:GA-IC>N 0= if false exit then
    GA-PATH$ FILE? ;
 private
 
 \ ---- tolerance --------------------------------------------------------------
-: GA-OUT-NODE ( -- CAD-KIND:node-id )  MIR-N@ 1- MIR-NODE-ID ;
+: GA-OUT-NODE ( -- CAD-KIND:node-id )  NODE-COUNT@ CAD-NUM:GA-IC>N 1- MIR-NODE-ID ;
 : GA-DEFAULT-TOL ( dtype -- n n )                 \ dtype -> atol-exp rtol-exp
    MATCH dtype
       df32  OF GA-F32-ATOL-EXP GA-F32-RTOL-EXP ENDOF
@@ -241,7 +245,7 @@ private
    s" artifact.model" GA-T-KEY  MIR-NAME$ GA-T+ GA-T-NL
    s" artifact.tolerance.atol-exp" GA-T-KEY  GA-ATOL-EXP @ GA-T-INT GA-T-NL
    s" artifact.tolerance.rtol-exp" GA-T-KEY  GA-RTOL-EXP @ GA-T-INT GA-T-NL
-   s" artifact.inputs" GA-T-KEY  MIR-IN-SLOTS@ GA-T-INT GA-T-NL ;
+   s" artifact.inputs" GA-T-KEY  SLOT-COUNT@ CAD-NUM:GA-IC>N GA-T-INT GA-T-NL ;
 : GA-WRITE-INPUT ( MIR:input-slot -- ) {: s:MIR:input-slot :}
    s SLOT>RAW {: raw:n :}
    s" input" raw GA-T-IKEY  s" .shape" GA-T-KEY
@@ -254,16 +258,16 @@ private
    s" output.data"  GA-T-KEY  nd EX-OUT@ nd EX-NODE-ELEMS GA-WRITE-DATA GA-T-NL ;
 : GA-BUILD-TEXT ( -- )
    GA-T-RESET  GA-WRITE-HEADER
-   MIR-IN-SLOTS@ 0 ?do  i MIR-SLOT-ID GA-WRITE-INPUT  loop
+   SLOT-COUNT@ CAD-NUM:GA-IC>N 0 ?do  i MIR-SLOT-ID GA-WRITE-INPUT  loop
    GA-WRITE-OUTPUT ;
 
 public
 : GA-SAVE ( -- )
-   MIR-N@ 0= if E-GA-UNSUP throw then
+   NODE-COUNT@ CAD-NUM:GA-IC>N 0= if E-GA-UNSUP throw then
    GA-SUPPORTED? 0= if E-GA-UNSUP throw then
    GA-SET-SAVE-TOL
    GA-BIND-SYNTH
-   MIR-N@ EX-RUN-N
+   NODE-COUNT@ CAD-NUM:GA-IC>N EX-RUN-N
    GA-BUILD-TEXT
    GA-ENSURE-DIR
    GA-PATH$ GA-TEXT GA-TEXT-U @ WRITE-ALL ;
@@ -341,7 +345,7 @@ private
    s" artifact.tolerance.rtol-exp: " GA-REQ-LINE  GA-VAL$ GA-PARSE-INT-VAL GA-RTOL-EXP ! ;
 : GA-PARSE-COUNT ( -- )
    s" artifact.inputs: " GA-REQ-LINE  GA-VAL$ GA-PARSE-INT-VAL
-   MIR-IN-SLOTS@ <> if E-GA-SHAPE throw then ;
+   SLOT-COUNT@ CAD-NUM:GA-IC>N <> if E-GA-SHAPE throw then ;
 : GA-PARSE-INPUT ( MIR:input-slot -- ) {: s:MIR:input-slot :}
    s SLOT>RAW {: raw:n :}
    s GA-SLOT-ELEMS {: e:n :}
@@ -361,7 +365,7 @@ private
 : GA-PARSE ( -- )
    GA-PARSE-TOL  GA-PARSE-COUNT
    EX-RESET  0 GA-BUMP !
-   MIR-IN-SLOTS@ 0 ?do  i MIR-SLOT-ID GA-PARSE-INPUT  loop
+   SLOT-COUNT@ CAD-NUM:GA-IC>N 0 ?do  i MIR-SLOT-ID GA-PARSE-INPUT  loop
    GA-PARSE-OUTPUT ;
 
 public
@@ -401,14 +405,14 @@ public
 \ GA-VERDICT runs the forward IR on the currently-bound inputs (GA-LOAD must precede it)
 \ and compares its output to the loaded expected under the loaded tolerance.
 : GA-VERDICT ( -- n )
-   MIR-N@ EX-RUN-N
+   NODE-COUNT@ CAD-NUM:GA-IC>N EX-RUN-N
    GA-OUT-NODE {: nd:CAD-KIND:node-id :}
    nd EX-OUT@  GA-EXP  GA-EXP-N @  GA-ATOL-EXP @  GA-RTOL-EXP @  GA-COMPARE
    if GA-PASS-REASON V-PASS else GA-FAIL-REASON V-FAIL then ;
 
 \ GA-CHECK is the full external-artifact verdict for the current model.
 : GA-CHECK ( -- n )
-   MIR-N@ 0= if GA-RE-RESET s" golden: empty model" GA-RE+ V-NOTRUN exit then
+   NODE-COUNT@ CAD-NUM:GA-IC>N 0= if GA-RE-RESET s" golden: empty model" GA-RE+ V-NOTRUN exit then
    GA-SUPPORTED? 0= if GA-RE-RESET s" golden: model not host-executable" GA-RE+ V-NOTRUN exit then
    GA-EXISTS? 0= if GA-RE-RESET s" golden: no external reference artifact" GA-RE+ V-NOTRUN exit then
    GA-LOAD drop

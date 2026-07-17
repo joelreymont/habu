@@ -68,6 +68,15 @@ require maki/bcast.f
 require maki/layernorm.f
 require maki/rmsnorm.f
 
+\ ---- audited count projection (MIR typed item-count -> raw loop cell) -----------
+\ NODE-COUNT@ returns CAD-NUM:item-count; the node-scan ?do bound needs the raw
+\ cell the typed form cannot flow into. Reopen the unsealed CAD-NUM package for
+\ one checked bridge over its private ITEM-COUNT>N projection (no new TRUSTED;
+\ mirrors cad.f CAD-IX>N). Kernel PTX bytes are unaffected.
+package CAD-NUM public
+: LRED-IC>N ( CAD-NUM:item-count -- n )  ITEM-COUNT>N ;
+;package
+
 -5185 constant E-LRED-NOTRED   \ region class mix is not a supported row-reduce region
 -5186 constant E-LRED-OP       \ a region op is neither a v1 elementwise op nor a supported reduction
 -5187 constant E-LRED-MULTIRED \ region does not have exactly one reduction node (v1 cap)
@@ -137,7 +146,7 @@ variable LRED-NIN                              \ region input count
    ;MATCH ;
 
 : LRED-RED-COUNT ( CAD-KIND:region -- n ) {: rid:CAD-KIND:region :}   \ reduction nodes in the region
-   0 MIR-N@ 0 ?do
+   0 NODE-COUNT@ CAD-NUM:LRED-IC>N 0 ?do
       i MIR-NODE-ID {: node:CAD-KIND:node-id :}
       node rid LRED-IN-REGION? node MIR-OP@ LRED-RED-OP? and if 1+ then
    loop ;
@@ -145,7 +154,7 @@ variable LRED-NIN                              \ region input count
 \ compute members must be a reduction or v1 EW op; movement members must be v1-foldable
 \ dissolved movements (MVW-CHECK fails closed on staged / mat / non-slot source).
 : LRED-CHECK-OPS ( CAD-KIND:region -- ) {: rid:CAD-KIND:region :}
-   MIR-N@ 0 ?do
+   NODE-COUNT@ CAD-NUM:LRED-IC>N 0 ?do
       i MIR-NODE-ID {: node:CAD-KIND:node-id :}
       node rid LRED-IN-REGION? if
          node MIR-MOVE? if node MIR-NODE-REF MVW-CHECK
@@ -177,7 +186,7 @@ variable LRED-NIN                              \ region input count
 \ virtual movement-node input its consumer scans, not as a direct input.
 : LRED-COLLECT-INS ( CAD-KIND:region -- ) {: rid:CAD-KIND:region :}
    0 LRED-NIN !
-   MIR-N@ 0 ?do
+   NODE-COUNT@ CAD-NUM:LRED-IC>N 0 ?do
       i MIR-NODE-ID {: node:CAD-KIND:node-id :}
       node rid LRED-IN-REGION? node MIR-MOVE? 0= and if rid node LRED-SCAN-INS then
    loop ;
@@ -188,13 +197,13 @@ variable LRED-NIN                              \ region input count
 \ LRED-FIND-OUT asserts that invariant as defense-in-depth: != 1 is a corrupted plan (>1
 \ structurally impossible, 0 a materialization-flag regression), never a v1 cap.
 : LRED-MAT-COUNT ( CAD-KIND:region -- n ) {: rid:CAD-KIND:region :}
-   0 MIR-N@ 0 ?do
+   0 NODE-COUNT@ CAD-NUM:LRED-IC>N 0 ?do
       i MIR-NODE-ID {: node:CAD-KIND:node-id :}
       node rid LRED-IN-REGION? node MIR-MAT@ and if 1+ then
    loop ;
 : LRED-FIND-OUT ( CAD-KIND:region -- ) {: rid:CAD-KIND:region :}
    rid LRED-MAT-COUNT 1 <> if E-LRED-MULTIOUT throw then
-   MIR-N@ 0 ?do
+   NODE-COUNT@ CAD-NUM:LRED-IC>N 0 ?do
       i MIR-NODE-ID {: node:CAD-KIND:node-id :}
       node rid LRED-IN-REGION? node MIR-MAT@ and if node LRED-OUTNODE! then
    loop ;
@@ -323,7 +332,7 @@ private
    ;MATCH
    nd LRED-NR! ;
 : LRED-CHAIN ( -- )                              \ movement members emit no compute (folded)
-   MIR-N@ 0 ?do
+   NODE-COUNT@ CAD-NUM:LRED-IC>N 0 ?do
       i MIR-NODE-ID {: node:CAD-KIND:node-id :}
       node 0 LRED-RID @ LRED-IN-REGION? node MIR-MOVE? 0= and if node LRED-EMIT-NODE then
    loop ;

@@ -15,6 +15,14 @@ require maki/cad.f
 require maki/golden-artifact.f
 require maki/golden.f
 
+\ ---- audited count projection (MIR typed item-count -> raw count cell) ----------
+\ NODE-COUNT@ returns CAD-NUM:item-count; EX-RUN-N ( n -- ) takes the raw node
+\ count. Reopen the unsealed CAD-NUM package for one checked bridge over its
+\ private ITEM-COUNT>N projection (no new TRUSTED; mirrors cad.f CAD-IX>N).
+package CAD-NUM public
+: GT-IC>N ( CAD-NUM:item-count -- n )  ITEM-COUNT>N ;
+;package
+
 package MAKI
 
 : GT-IN-PTR ( n -- ptr a )  MIR-SLOT-ID GA-IN-PTR ;
@@ -108,7 +116,7 @@ GA-BIND-SYNTH
 \ y row0 = x row idx[0]=3 (flat 6 -> 6*0.17+0.4 = 1.42). The old all-0.0 fill and
 \ an index-IGNORING positional-copy kernel would both put x[0,0] = 0.40 there, so
 \ this output separates real row selection from both failure shapes.
-MIR-N@ EX-RUN-N
+NODE-COUNT@ CAD-NUM:GT-IC>N EX-RUN-N
 0 MIR-NODE-ID EX-OUT@ 0 T-GET 100.0 f* 0.5 f+ f>s 142 T=      \ y[0,0] = x[3,0], NOT...
 0 GT-IN-PTR 0 T-GET 100.0 f* 0.5 f+ f>s  40 T=    \ ...the row-0 value 0.40
 0 MIR-NODE-ID EX-OUT@ 4 T-GET 100.0 f* 0.5 f+ f>s  74 T=      \ y[2,0] = x[1,0] (flat 2: 0.74)

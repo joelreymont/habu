@@ -40,6 +40,14 @@ require maki/executor.f
 require maki/golden-artifact.f
 require maki/lower-launch.f
 
+\ ---- audited count projection (MIR typed item-count -> raw loop cell) -----------
+\ NODE-COUNT@ returns CAD-NUM:item-count; EX-RUN-N ( n -- ) takes the raw node
+\ count. Reopen the unsealed CAD-NUM package for one checked bridge over its
+\ private ITEM-COUNT>N projection (no new TRUSTED; mirrors cad.f CAD-IX>N).
+package CAD-NUM public
+: LG-IC>N ( CAD-NUM:item-count -- n )  ITEM-COUNT>N ;
+;package
+
 package MAKI
 
 \ ---- reason buffer ---------------------------------------------------------
@@ -125,7 +133,7 @@ public
    CUDA:OPEN? 0= if
       LG-RE-RESET s" lower-golden: off-device (libcuda unavailable)" LG-RE+  V-NOTRUN exit then
    GA-BIND-SYNTH                                \ bind + fill synthetic inputs (host + device share them)
-   MIR-N@ EX-RUN-N                              \ host reference
+   NODE-COUNT@ CAD-NUM:LG-IC>N EX-RUN-N                              \ host reference
    rid LG-CLASS {: cls:n :}
    cls PREC@ LG-PREC-V !                        \ the precision this verdict is judged under
    rid cls LG-RUN
@@ -185,7 +193,7 @@ public
    CUDA:OPEN? 0= if
       LG-RE-RESET s" lower-model-golden: off-device (libcuda unavailable)" LG-RE+  V-NOTRUN exit then
    GA-BIND-SYNTH                                \ bind + fill synthetic inputs (host + device share them)
-   MIR-N@ EX-RUN-N                              \ host reference (whole model, f64)
+   NODE-COUNT@ CAD-NUM:LG-IC>N EX-RUN-N                              \ host reference (whole model, f64)
    MDL-COUNT-REGIONS                            \ tally region classes for the composed tolerance
    MDL-PREC LG-PREC-V !                         \ the composed verdict's judged precision
    LOWER-MODEL-RUN                              \ device (fills LLA-HOUT = final node, f32 -> f64)

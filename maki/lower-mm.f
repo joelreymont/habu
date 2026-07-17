@@ -76,6 +76,15 @@ require maki/model-ir.f
 require maki/fusion-plan.f
 require maki/move-view.f
 
+\ ---- audited count projection (MIR typed item-count -> raw loop cell) -----------
+\ NODE-COUNT@ returns CAD-NUM:item-count; the node-scan ?do bound needs the raw
+\ cell the typed form cannot flow into. Reopen the unsealed CAD-NUM package for
+\ one checked bridge over its private ITEM-COUNT>N projection (no new TRUSTED;
+\ mirrors cad.f CAD-IX>N). Kernel PTX bytes are unaffected.
+package CAD-NUM public
+: LMM-IC>N ( CAD-NUM:item-count -- n )  ITEM-COUNT>N ;
+;package
+
 -5193 constant E-LMM-NOTMM     \ region class mix is not a supported matmul region
 -5194 constant E-LMM-OP        \ a region op is neither the contraction nor a v1 unary EW epilogue
 -5195 constant E-LMM-MULTIMM   \ region does not have exactly one contraction node (v1 cap)
@@ -150,7 +159,7 @@ variable LMM-BLK                               \ 1 = shape fits the register-blo
    ;MATCH ;
 
 : LMM-MM-COUNT ( CAD-KIND:region -- n ) {: rid:CAD-KIND:region :}   \ contraction nodes in the region
-   0 MIR-N@ 0 ?do
+   0 NODE-COUNT@ CAD-NUM:LMM-IC>N 0 ?do
       i MIR-NODE-ID {: node:CAD-KIND:node-id :}
       node rid LMM-IN-REGION? node MIR-OP@ LMM-MM-OP? and if 1+ then
    loop ;
@@ -158,7 +167,7 @@ variable LMM-BLK                               \ 1 = shape fits the register-blo
 \ compute members must be the contraction or a v1 unary EW epilogue; movement members must
 \ be v1-foldable dissolved movements (MVW-CHECK fails closed on staged / mat / non-slot source).
 : LMM-CHECK-OPS ( CAD-KIND:region -- ) {: rid:CAD-KIND:region :}
-   MIR-N@ 0 ?do
+   NODE-COUNT@ CAD-NUM:LMM-IC>N 0 ?do
       i MIR-NODE-ID {: node:CAD-KIND:node-id :}
       node rid LMM-IN-REGION? if
          node MIR-MOVE? if node MIR-NODE-REF MVW-CHECK
@@ -170,7 +179,7 @@ variable LMM-BLK                               \ 1 = shape fits the register-blo
    rid LMM-MM-COUNT 1 <> if E-LMM-MULTIMM throw then ;
 
 : LMM-FIND-MM ( CAD-KIND:region -- ) {: rid:CAD-KIND:region :}   \ the sole contraction node (count checked already)
-   MIR-N@ 0 ?do
+   NODE-COUNT@ CAD-NUM:LMM-IC>N 0 ?do
       i MIR-NODE-ID {: node:CAD-KIND:node-id :}
       node rid LMM-IN-REGION? node MIR-OP@ LMM-MM-OP? and if node LMM-MMNODE! then
    loop ;
@@ -204,13 +213,13 @@ variable LMM-BLK                               \ 1 = shape fits the register-blo
 \ LMM-FIND-OUT asserts that invariant as defense-in-depth: != 1 is a corrupted plan (>1
 \ structurally impossible, 0 a materialization-flag regression), never a v1 cap.
 : LMM-MAT-COUNT ( CAD-KIND:region -- n ) {: rid:CAD-KIND:region :}
-   0 MIR-N@ 0 ?do
+   0 NODE-COUNT@ CAD-NUM:LMM-IC>N 0 ?do
       i MIR-NODE-ID {: node:CAD-KIND:node-id :}
       node rid LMM-IN-REGION? node MIR-MAT@ and if 1+ then
    loop ;
 : LMM-FIND-OUT ( CAD-KIND:region -- ) {: rid:CAD-KIND:region :}
    rid LMM-MAT-COUNT 1 <> if E-LMM-MULTIOUT throw then
-   MIR-N@ 0 ?do
+   NODE-COUNT@ CAD-NUM:LMM-IC>N 0 ?do
       i MIR-NODE-ID {: node:CAD-KIND:node-id :}
       node rid LMM-IN-REGION? node MIR-MAT@ and if node LMM-OUTNODE! then
    loop ;
@@ -329,7 +338,7 @@ private
    ;MATCH
    nd LMM-NR! ;
 : LMM-EPI-CHAIN ( -- )                           \ epilogue nodes in topo order (skip folded movement)
-   MIR-N@ 0 ?do
+   NODE-COUNT@ CAD-NUM:LMM-IC>N 0 ?do
       i MIR-NODE-ID {: node:CAD-KIND:node-id :}
       node 0 LMM-RID @ LMM-IN-REGION?  node LMM-MMNODE@ MIR-NODE= 0=  and
       node MIR-MOVE? 0= and if node LMM-EPI-NODE then

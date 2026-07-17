@@ -20,6 +20,14 @@ require maki/lower-mm.f
 require maki/lower-red.f
 require maki/lower-move.f
 
+\ ---- audited count projection (MIR typed item-count -> raw compare cell) --------
+\ MATERIALIZED-COUNT returns CAD-NUM:item-count; the T= scalar assertion takes the
+\ raw cell. Reopen the unsealed CAD-NUM package for one checked bridge over its
+\ private ITEM-COUNT>N projection (no new TRUSTED; mirrors cad.f CAD-IX>N).
+package CAD-NUM public
+: LMT-IC>N ( CAD-NUM:item-count -- n )  ITEM-COUNT>N ;
+;package
+
 package MAKI
 
 \ off-device the whole-model golden is an honest not-run; on-device the real run needs registered
@@ -129,7 +137,7 @@ MODEL: MFFN ( x:4x8 w1:8x16 b1:1x16 w2:16x8 b2:1x8 -- y ) LINEAR GELU LINEAR RMS
 MODEL-K 4 T=
 FP-BUILD
 FP-REGION-COUNT 3 T=
-MIR-MAT-COUNT   3 T=
+MATERIALIZED-COUNT CAD-NUM:LMT-IC>N   3 T=
 2 FP-REGION-ID 0 LMT-STALE-RID !              \ save a valid id across the next plan rebuild
 
 \ region class routing (the whole-model dispatch reuses these)
