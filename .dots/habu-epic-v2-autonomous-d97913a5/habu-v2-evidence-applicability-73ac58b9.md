@@ -1,12 +1,13 @@
 ---
 title: V2 evidence applicability checker
-status: open
+status: active
 priority: 1
 issue-type: task
-created-at: "2026-07-11T12:25:27.265401+02:00"
-blocks:
-  - habu-v2-proof-obligation-6cf70b4f
+created-at: "\"2026-07-11T12:25:27.265401+02:00\""
 ---
+
+Edge note 2026-07-17: blocker habu-v2-proof-obligation-6cf70b4f SATISFIED
+and removed - the obligation schema landed (8df2320f).
 
 Implement obligation closure and evidence applicability over exact subject/dependency/schema/target/numeric/verifier/environment digests. Produce typed stale/missing/inapplicable results and the minimal invalidation set. Acceptance: mutation matrix pins each key component, static proof cannot satisfy required device execution, performance evidence cannot satisfy equivalence, and cache-hit closure equals uncached closure.
 
@@ -25,3 +26,5 @@ mechanism, and the mechanical maki/db/transaction.f obligation-code
 repoint - plus the EVIDENCE owner registry per the earlier note. The
 obligation schema (package OBLIG, DISCHARGE/INVALIDATED-BY?) is landed
 and is this dot's substrate.
+
+Claim: agent=evid workspace=.jj-ws/fable-evid (owns new evidence/closure files + the folded legs; SANCTIONED: one-line CAD-KIND additions for obligation-id + evidence-id in maki/cad-kinds.f with verdict fixtures)
