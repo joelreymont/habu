@@ -3457,6 +3457,139 @@ evidence are first-class linked artifacts, never comments attached to a mutable
 row. Decoders reject non-canonical representations, unknown required fields,
 kind/schema disagreement, digest mismatch, and unsupported migrations.
 
+The rest of this subsection is the FROZEN package/type/wire contract for that
+envelope (dot `habu-freeze-canonical-artifact-3b6b7087`). It fixes identities,
+signatures, wire rules, digest coverage, and the typed failure taxonomy so the
+encoder implementation (`habu-v2-canonical-artifact-ee5121b4`) can proceed
+without choosing any semantics.
+
+##### Package ownership
+
+`ARTIFACT` (maki/artifact.f) owns the canonical envelope: encode, decode,
+digest, validate, and the interned content-addressed identity
+`CAD-KIND:artifact-id` (already `ARTIFACT:REGISTER`). `ART` (maki/typestate.f)
+stays the promotion TYPESTATE package and is not the envelope owner;
+`ART:built` is the staged product that NAMES a validated
+`CAD-KIND:artifact-id` (its `art` field) plus a package-sealed `build-proof`.
+The envelope contract adds no new trust boundary: encode/decode are ordinary
+checked words over owned bytes, and the only authority-bearing mints stay the
+existing private `RAW>ARTIFACT-ID` refinement (maki/artifact.f) and the staged
+proof-token mints. No public `n`-to-id or `n`-to-digest cast is introduced.
+
+##### Envelope identities (nominal, checker-enforced)
+
+The envelope binds these persistent nominal identities, all arity-0
+`CAD-KIND` families (maki/cad-kinds.f), so an equally-shaped scalar of one
+role can never unify with another:
+
+| Envelope field | Nominal identity | Role |
+|---|---|---|
+| schema-id | `CAD-KIND:schema-id` | schema registry identity |
+| kind | `CAD-KIND:artifact-kind` | artifact semantic CLASS (never the identity) |
+| identity | `CAD-KIND:artifact-id` | content-addressed artifact IDENTITY |
+| producer-id | `CAD-KIND:producer-id` | producing component identity |
+| config facts | `CAD-KIND:config-id` | build/config identity |
+| numeric-policy | `CAD-KIND:numeric-policy-id` | numeric-domain policy identity |
+| capabilities-used[] | `CAD-KIND:capability-id` | capability identity |
+| created-event | `CAD-KIND:audit-event-id` | persistent append-only audit-record link |
+| dependencies[] | `CAD-KIND:artifact-id` | ordered dependency identities |
+| source-revisions[] | `CAD-KIND:rev-id` | ordered source-revision identities |
+| target facts | `CAD-KIND:target-id` | validated target identity |
+
+`artifact-kind` (the CLASS) is deliberately distinct from `artifact-id` (the
+IDENTITY): a kind can never stand in for an id, in either direction.
+`audit-event-id` is a PERSISTENT provenance identity and must never unify with
+the EPHEMERAL runtime synchronization event `ADAG:event-id` (maki/async-dag.f);
+CUDA and future `ASYNC:event` handles are synchronization resources, not audit
+provenance. The 256-bit `content-digest` is NOT a one-cell nominal kind (a
+one-cell id-shaped scalar would launder as a digest); it is an owned multi-cell
+value type owned by `ARTIFACT` (256 bits / four 64-bit words), structurally
+distinct from every id. The logical envelope is `artifact<kind>`, parameterized
+by the artifact-kind, so two artifacts of DIFFERENT kind never unify
+(`artifact<a>` versus `artifact<b>`); the encoder may realize this parametrically
+or as flat per-kind families (the stage-family precedent under "Stage families"
+in the R7 addendum), and the checker enforces separation either way.
+
+Non-unification is proven by verdict-pinned checker fixtures in
+`maki/cad-kinds-test.f`: adjacent envelope roles reject
+(`CK-XA1`..`CK-XA8`), `artifact-kind` versus `artifact-id`
+(`CK-XA6`/`CK-XA7`), `audit-event-id` versus `ADAG:event-id`
+(`CK-EV-X1`/`CK-EV-X2`), `artifact<weight-kind>` versus `artifact<kernel-kind>`
+(`CK-ART-XK`), and `artifact-id` versus the 256-bit digest
+(`CK-DIG-X1`/`CK-DIG-X2`), each paired with a resolving positive control.
+
+##### Conceptual checked signatures
+
+The four envelope operations are checked words returning typed
+`result<...,diag-set>` (lib/adt/result.f); `owned-bytes` is the owned canonical
+byte vector, `content-digest` the 256-bit owned value:
+
+~~~forth
+ARTIFACT:ENCODE   ( artifact<k> -- result<owned-bytes,diag-set> )
+ARTIFACT:DECODE   ( owned-bytes -- result<artifact<k>,diag-set> )
+ARTIFACT:DIGEST   ( artifact<k> -- content-digest )
+ARTIFACT:VALIDATE ( owned-bytes -- result<content-digest,diag-set> )
+~~~
+
+`ENCODE` serializes a validated in-memory envelope to canonical bytes;
+`DECODE` parses and validates bytes back to a typed `artifact<k>`, refining the
+nominal identities only after every check passes; `DIGEST` is total over an
+already-validated envelope (it cannot fail — a validated envelope always has a
+digest); `VALIDATE` checks bytes without full refinement and yields the
+recomputed digest or a diagnostic. No signature exposes a raw `n` identity or a
+trust boundary.
+
+##### Wire format (frozen)
+
+- Fixed little-endian widths for every scalar; no host-endianness or
+  variable-width scalar encoding.
+- Versioned, length-delimited fields: each field carries its tag and byte
+  length; the envelope carries `schema-id` + `schema-version`.
+- Ascending field tags; a decoder that sees a non-ascending or repeated tag
+  rejects (canonical order is total, duplicates are `duplicate`).
+- Unknown REQUIRED field: reject (`unknown-required`). Unknown OPTIONAL field:
+  retained OPAQUELY and re-emitted byte-for-byte, so a forward-compatible
+  reader neither drops nor reinterprets it.
+- Dependency and capability SETS are canonically ordered (ascending by their
+  nominal identity) and duplicate-free; unordered or duplicated sets are
+  `noncanonical`.
+- Version handling is EXACT match or a registered deterministic migration from
+  the stored `schema-version` to the reader's; any other version is
+  `unsupported-migration`. A migration is a pure registered function, never
+  ad-hoc reinterpretation.
+- Every length and count is bounds-checked before use (`bounds`); truncated or
+  over-long input is `malformed`.
+
+##### Digest coverage
+
+The `content-digest` covers every SEMANTIC field and dependency version and
+EXCLUDES: the digest itself, storage location, timestamps, runtime handles, and
+the `audit-event-id` identity. Equal semantic content therefore digests
+identically across processes and storage sites, and re-recording the same
+artifact under a new audit event or location does not change its digest. The
+STORED-ENVELOPE identity (the row a store keys on) includes the canonical
+provenance PLUS the persistent `audit-event-id` link, so provenance is a
+first-class linked identity, not a mutable annotation.
+
+##### Typed failure taxonomy
+
+Decode/validate outcomes are explicit typed `diag-set` variants, never silent:
+
+| Variant | Meaning |
+|---|---|
+| `malformed` | truncated, over-long, or structurally unparseable bytes |
+| `noncanonical` | legal-but-non-canonical encoding (bad field order, unordered/duplicate set, non-minimal form) |
+| `bounds` | a length or count outside its declared/representable range |
+| `duplicate` | a repeated field tag or set element |
+| `unknown-required` | an unknown field flagged REQUIRED |
+| `kind/schema mismatch` | `kind`/`schema-id`/`schema-version` disagree with the decoded shape |
+| `unsupported-migration` | stored version has no registered deterministic migration to the reader's |
+| `digest-mismatch` | recomputed `content-digest` differs from the stored digest |
+
+Malformed, noncanonical, and digest-mismatch are thus explicit typed results of
+`DECODE`/`VALIDATE`, not exceptions or sentinels; `ENCODE` of a validated
+envelope and `DIGEST` are total.
+
 #### Deterministic transactions
 
 Transactions use snapshot isolation with explicit read and write sets. Each

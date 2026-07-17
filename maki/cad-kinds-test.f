@@ -4,6 +4,7 @@ require lib/test.f
 require lib/string.f
 require test/checker-assert.f
 require maki/cad-kinds.f
+require maki/async-dag.f              \ ADAG:event-id: the runtime async event identity
 
 package CAD-KIND-TEST
 
@@ -110,6 +111,73 @@ s" CKT-ST2 ( n -- CAD-KIND:region ) 0 CKT-RID ! 0 CKT-RID @" NO
 variable CKT-CELL
 s" CKT-P1 ( -- ptr CAD-KIND:region ) CKT-CELL" NO
 s" CKT-P2 ( -- ptr CAD-KIND:cols ) CKT-CELL" NO
+
+\ ---- Canonical artifact envelope provenance roles (§ 23.9) ------------------
+\ Every new envelope identity resolves by its qualified nominal identity.
+s" CK-AKIND ( CAD-KIND:artifact-kind -- CAD-KIND:artifact-kind )" YES
+s" CK-PRODUCER ( CAD-KIND:producer-id -- CAD-KIND:producer-id )" YES
+s" CK-CONFIG ( CAD-KIND:config-id -- CAD-KIND:config-id )" YES
+s" CK-NPOLICY ( CAD-KIND:numeric-policy-id -- CAD-KIND:numeric-policy-id )" YES
+s" CK-CAP ( CAD-KIND:capability-id -- CAD-KIND:capability-id )" YES
+s" CK-AUDIT ( CAD-KIND:audit-event-id -- CAD-KIND:audit-event-id )" YES
+
+\ Adjacent envelope roles never collapse to one cell-shaped scalar identity.
+s" CK-XA1 ( CAD-KIND:artifact-kind -- CAD-KIND:producer-id )" NO
+s" CK-XA2 ( CAD-KIND:producer-id -- CAD-KIND:config-id )" NO
+s" CK-XA3 ( CAD-KIND:config-id -- CAD-KIND:numeric-policy-id )" NO
+s" CK-XA4 ( CAD-KIND:numeric-policy-id -- CAD-KIND:capability-id )" NO
+s" CK-XA5 ( CAD-KIND:capability-id -- CAD-KIND:audit-event-id )" NO
+\ The artifact CLASS is not the artifact IDENTITY (a kind cannot forge an id).
+s" CK-XA6 ( CAD-KIND:artifact-kind -- CAD-KIND:artifact-id )" NO
+s" CK-XA7 ( CAD-KIND:artifact-id -- CAD-KIND:artifact-kind )" NO
+\ An existing neighbor role does not launder into a new envelope identity.
+s" CK-XA8 ( CAD-KIND:schema-id -- CAD-KIND:config-id )" NO
+
+\ Generic typed memory keeps the new role on store and fetch.
+s" CK-CAP-PUT ( CAD-KIND:capability-id ptr CAD-KIND:capability-id -- ) !" YES
+s" CK-CAP-GET ( ptr CAD-KIND:capability-id -- CAD-KIND:capability-id ) @" YES
+s" CK-CAP-BAD ( CAD-KIND:producer-id ptr CAD-KIND:capability-id -- ) !" NO
+
+\ The PERSISTENT audit-event identity is not the EPHEMERAL runtime async event
+\ (ADAG:event-id): audit provenance can never unify with a synchronization
+\ resource handle, in either direction.
+s" CK-EV-POS ( ADAG:event-id -- ADAG:event-id )" YES
+s" CK-EV-X1 ( CAD-KIND:audit-event-id -- ADAG:event-id )" NO
+s" CK-EV-X2 ( ADAG:event-id -- CAD-KIND:audit-event-id )" NO
+
+\ ---- Envelope kind separation and digest/id separation ---------------------
+\ artifact<k> is the canonical envelope keyed by artifact-kind (package ARTIFACT
+\ owns the real fielded type; these test-scoped stand-ins prove the checker
+\ MECHANISM that enforces the frozen invariants without pinning the encoder's
+\ representation). Distinct concrete kinds never unify. The 256-bit content
+\ digest is a multi-cell owned value that never unifies with the one-cell
+\ artifact-id, so no id-shaped scalar can be read or stored as a digest.
+\ artifact<k>: the envelope stand-in, parameterized by kind.
+TYPEFAMILY artifact 1
+\ weight-kind / kernel-kind: two distinct concrete artifact kinds.
+TYPEFAMILY weight-kind 0
+TYPEFAMILY kernel-kind 0
+\ content-digest: the 256-bit digest as four 64-bit words (deliberately not one cell).
+PRODUCT content-digest 0
+   FIELD w0 n
+   FIELD w1 n
+   FIELD w2 n
+   FIELD w3 n
+;PRODUCT
+
+s" CK-ART-POS ( artifact<weight-kind> -- artifact<weight-kind> )" YES
+s" CK-ART-XK ( artifact<weight-kind> -- artifact<kernel-kind> )" NO
+s" CK-DIG-POS ( content-digest -- content-digest )" YES
+s" CK-DIG-X1 ( CAD-KIND:artifact-id -- content-digest )" NO
+s" CK-DIG-X2 ( content-digest -- CAD-KIND:artifact-id )" NO
+
+\ Failure packet exposes both qualified roles to a repair agent.
+s" CK-BAD-EVENT ( CAD-KIND:audit-event-id -- CAD-KIND:artifact-id )" DIAG<
+s\" \"expected\"" DIAG?
+s\" \"actual\"" DIAG?
+s" cad-kind:artifact-id<> " DIAG?
+s" cad-kind:audit-event-id<> " DIAG?
+DIAG-END
 
 T-REPORT
 

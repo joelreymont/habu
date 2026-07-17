@@ -17,6 +17,24 @@ TYPEFAMILY toolchain-id 0
 TYPEFAMILY pass-id 0
 TYPEFAMILY schema-id 0
 
+\ Canonical artifact envelope provenance roles (MODEL-CAD-V2-PLAN.md § 23.9
+\ Canonical typed artifacts). These are the persistent identities the stored
+\ envelope binds: `artifact-kind` is the artifact's semantic CLASS and is
+\ deliberately distinct from `artifact-id` (its content-addressed IDENTITY, line
+\ 13), so a kind can never stand in for an id. `audit-event-id` is the append-only
+\ audit record link (§23.9 "append-only audit records"); it is a persistent
+\ provenance identity, NOT the ephemeral runtime synchronization event
+\ `ADAG:event-id` (maki/async-dag.f) - the two must never unify. The 256-bit
+\ content digest is NOT declared here: a one-cell nominal would let an id-shaped
+\ scalar launder as a digest; it is an owned multi-cell value type owned by the
+\ envelope encoder (package ARTIFACT), kept structurally distinct from every id.
+TYPEFAMILY artifact-kind 0
+TYPEFAMILY producer-id 0
+TYPEFAMILY config-id 0
+TYPEFAMILY numeric-policy-id 0
+TYPEFAMILY capability-id 0
+TYPEFAMILY audit-event-id 0
+
 \ Model and lowering domain roles.
 \ dtype and layout are NOT declared here: those roles are owned by the maki
 \ ENUM families (`dtype` in maki/tensor.f, `layout` in maki/tensor-value.f),

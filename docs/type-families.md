@@ -781,6 +781,49 @@ validates its range, generation, schema, or provenance first. Use `DEFTYPE`
 only when a global nominal plus its generated raw converter pair is the desired
 contract.
 
+#### 9.1.1 Canonical artifact envelope identities
+
+The `CAD-KIND` package (maki/cad-kinds.f) is the worked example of authority-safe
+arity-0 nominals, and it owns the identities the canonical artifact envelope
+binds (MODEL-CAD-V2-PLAN.md § 23.9 Canonical typed artifacts; dot
+`habu-freeze-canonical-artifact-3b6b7087`). The envelope-provenance roles are
+`CAD-KIND:artifact-kind`, `producer-id`, `config-id`, `numeric-policy-id`,
+`capability-id`, and `audit-event-id`, alongside the pre-existing
+`artifact-id`, `schema-id`, `rev-id`, and `target-id`. Each is a distinct
+family id, so no id-shaped scalar of one role unifies with another — the
+type-family mechanism, not a runtime tag check, is the confusion barrier.
+
+Three separations are contract, each pinned by a verdict-0 fixture with a
+resolving positive in `maki/cad-kinds-test.f`:
+
+- **class versus identity.** `artifact-kind` (the artifact's semantic CLASS) is
+  a different family from `artifact-id` (its content-addressed IDENTITY), so a
+  kind can never be read or stored where an id is required, or vice versa
+  (`CK-XA6`/`CK-XA7`).
+- **persistent audit versus ephemeral runtime event.** `audit-event-id` is the
+  append-only audit-record link; it is a persistent provenance identity and
+  never unifies with the runtime async synchronization event `ADAG:event-id`
+  (maki/async-dag.f) — a synchronization resource handle, not provenance
+  (`CK-EV-X1`/`CK-EV-X2`).
+- **identity versus content digest.** The 256-bit content digest is
+  deliberately NOT a one-cell nominal kind — a one-cell digest would be a
+  scalar an id could launder into. It is an owned multi-cell value type (four
+  64-bit words) owned by the envelope encoder (package `ARTIFACT`), so
+  `artifact-id` and the digest never unify (`CK-DIG-X1`/`CK-DIG-X2`).
+
+The logical envelope is `artifact<kind>`: a family parameterized by the
+artifact-kind. Distinct concrete kinds do not unify — `artifact<weight-kind>`
+and `artifact<kernel-kind>` are different types (`CK-ART-XK`) — while an
+identity `( artifact<k> -- artifact<k> )` certifies. Two DISTINCT parameter
+VARIABLES `a`/`b` in a bare `( artifact<a> -- artifact<b> )` signature would
+unify (the checker binds the fresh vars), so kind separation is expressed with
+CONCRETE kind arguments, exactly as the flat stage families
+(MODEL-CAD-V2-PLAN.md, "Stage families") realize `model<elaborated>` as
+per-stage families until parametric application enters the declaration grammar
+(§ 9.4). The encoder (`habu-v2-canonical-artifact-ee5121b4`) may realize the
+envelope parametrically or as flat per-kind families; the checker enforces the
+separation either way.
+
 ### 9.2 Removed `SUMTYPE`
 
 Pre-cutover syntax:

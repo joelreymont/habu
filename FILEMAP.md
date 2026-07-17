@@ -694,9 +694,13 @@ points stay listed.
 - `maki/README.md` / `maki/STATUS.md` — Maki framework overview and current
   verification status outside the Habu trust root.
 - `maki/cad-kinds.f` — package-scoped nominal identities for Model CAD handles,
-  indexes, shape/layout domains, effects, and regions.
+  indexes, shape/layout domains, effects, regions, and the canonical artifact
+  envelope provenance roles (artifact-kind, producer/config/numeric-policy/
+  capability ids, persistent audit-event-id).
 - `maki/cad-kinds-test.f` — qualified identity, cross-role rejection, typed
-  memory, and repair-diagnostic regressions for the nominal CAD kinds.
+  memory, and repair-diagnostic regressions for the nominal CAD kinds, plus the
+  frozen artifact-envelope invariants: class-vs-identity, audit-event vs runtime
+  ADAG:event-id, artifact-kind separation, and 256-bit digest vs artifact-id.
 - `maki/target/target.f` — immutable target descriptors, semantic interning,
   canonical facts/digests, and the validated `CAD-KIND:target-id` owner API.
 - `maki/target/target-test.f` — target identity, descriptor validation,
