@@ -1,6 +1,6 @@
 ---
 title: "Checker capability: layout-polymorphic family params"
-status: active
+status: open
 priority: 2
 issue-type: task
 created-at: "\"\\\"2026-07-03T23:36:48.964243+02:00\\\"\""
@@ -40,3 +40,21 @@ battery) - slices 1-4 = the flat wave-B unblock; (5) nested ADTs +
 linear payloads stage-lift.
 
 Claim: agent=laycap1 workspace=.jj-ws/fable-laycap1 (SLICE 1 only: tuple term + arg-aware T-WIDTH + width-site routing; no new accepts)
+
+SLICE 1 LANDED 2026-07-18 (laycap1 lane, commit ff33f023 + integration
+fixes; claim RELEASED): T-WIDTH is arg-aware (TFAM-INST-WIDTH@ walks
+variant/product schemas substituting each param's instantiated arg
+width via a forward hook), all 11 TFAM-WIDTH@* checker call sites
+routed, the term representation confirmed as the EXISTING resolved
+fam<args> T-PARAM term (no parser coupling - the design of record
+holds). Width-correctness proven: opt<pt3> computes 4 where the
+family-only width was a degenerate 2; cell-width args stay behavior-
+preserving. NO new accepts: the three probe shapes now PINNED rejecting
+(tdpbopt/tdpbres fixtures). Fixpoint x2 646a9979 (changed vs base as
+expected - baked source; x2-stable is the invariant; re-verified
+identical on the integration tree); the slice's HELD run.f verdict was
+caused by the pre-existing refine-lint red from the maction landing
+(RAW>ACTION-ID unseeded) - fixed on master (6cfaacc2) before this
+integration; the 3 new test wrappers' classification rows added at
+integration (the test/-is-exempt assumption was wrong - inventory
+counts test-metaprog sites). NEXT: slice 2 (PK-LAYOUT parser groups).
