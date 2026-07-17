@@ -928,7 +928,7 @@ points stay listed.
   per-definition checker runs as the diagnostic isolation boundary.
 - `tools/check-all-errors.f` — CLI wrapper for all-errors checking.
 - `tools/check-all-errors-test.f` — checked fixture coverage for all-errors checking.
-- `tools/checked-boundary-lint-core.f` — reusable unchecked-boundary scanner core for checker and CLI paths.
+- `tools/checked-boundary-lint-core.f` — reusable unchecked-boundary scanner core for checker and CLI paths; requires canonical compile-preflight rearm after `0 set-check`.
 - `tools/checked-boundary-lint.f` — CLI wrapper for unchecked-boundary lint.
 - `tools/checked-boundary-lint-test-lib.f` — load-only unchecked-boundary lint fixture library for resident runner tests.
 - `tools/checked-boundary-lint-test.f` — checked fixture coverage for unchecked-boundary lint.
@@ -1342,7 +1342,7 @@ points stay listed.
 - `test/gate-runner-support.f` — side-effect-free support bundle for focused runner-entry invocations.
 - `test/gate-runner-entry.f` — tiny CLI entry for focused native runner dispatch.
 - `test/gate-runner-entry-test.f` — standalone-load regression: spawns the documented `gate-runner-support`+`gate-runner-entry` closure and asserts it reaches GR-USAGE (rc 64), proving the whole require chain loads under the raised dictionary cap.
-- `test/load-reject-diag-test.f` — spawn regression: rejecting `--load` paths must exit 70 with named stderr; compile-time `include`/`require` reject before side effects with structured repair, while top-level loaders, runtime `included`/`required`/`provided`, modeled immediates, and audited trusted immediate bodies stay live.
+- `test/load-reject-diag-test.f` — spawn regression: rejecting `--load` paths must exit 70 with named stderr; signature-bearing and signatureless compile-time immediates reject before side effects with one structured repair packet, while top-level loaders, runtime `included`/`required`/`provided`, modeled immediates, and audited trusted immediate bodies stay live.
 - `test/gate-stdlib-inline-lib.f` — in-process stdlib gate slice dispatcher for resident runner forks.
 - `test/gate-stdlib-tool-base-ready.f` — resident-runner sentinel that marks the common stdlib tool base as already loaded.
 - `test/gate-stdlib-lint-tools.f` — in-process lint-tools group body loaded after shared setup.

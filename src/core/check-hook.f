@@ -10,8 +10,10 @@ package LOWER-CERT-HOOK
 : PREFLIGHT ( ptr u8 n ptr u8 n bool -- )
    {: ba:ptr bu:n ta:ptr tu:n trusted:bool :}
    trusted if exit then
-   ta tu CHECKER-MODELED-IMM? if exit then
-   ba bu CHECK! 0 <> if s" checker: preflight did not reject unmodeled immediate" 76 die then
+   ta tu CHECKER-PREFLIGHT:MODELED? if exit then
+   ba bu ta tu CHECKER-PREFLIGHT:CHECK! 0 <> if
+      s" checker: preflight did not reject unmodeled immediate" 76 die
+   then
    CHECK-RC throw ;
 
 \ In multi-error mode CHECK already emitted the diagnostic, counted the reject,

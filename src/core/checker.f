@@ -7761,8 +7761,33 @@ variable PIMM-N
 : PIMM-CNT@ ( n -- n )             \ payload token count at declaration index
    cells PIMM-NS + @ ;
 
-: CHECKER-MODELED-IMM? ( ptr u8 n -- bool )
+package CHECKER-PREFLIGHT
+
+variable TA
+variable TU
+variable BA
+variable BU
+variable VERDICT
+variable ACTIVE
+
+: TAIL-WS? ( -- bool )
+   TI @ BEGIN dup TBLEN @ < WHILE
+      dup TBYTE@ 32 > IF drop RES-FALSE EXIT THEN
+      1 +
+   REPEAT
+   drop RES-TRUE ;
+
+: FORCED? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   ACTIVE @ 0= IF RES-FALSE EXIT THEN
+   TAIL-WS? 0= IF RES-FALSE EXIT THEN
+   a u TA @ TU @ CORE-STR=CI ;
+
+public
+
+: MODELED? ( ptr u8 n -- bool )
    CHECKER-FIND-ACTIVE-SYM PIMM-IX 0 < 0= ;
+
+;package
 
 : PARSE-IMM ( ptr u8 n n -- ) {: a:ptr u:n cnt:n :}
    PIMM-N @ PIMM-CAP < 0= IF s" checker: parse-imm table full" 76 die THEN
@@ -7795,12 +7820,19 @@ s" parse-imm" s" ptr u8 n n --" TRUST
 variable PIMM-STREAM
 -1 PIMM-STREAM !
 
-: IMM-BODY-TOK? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+package CHECKER-PREFLIGHT
+
+public
+
+: BODY-TOK? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   a u FORCED? IF RES-TRUE EXIT THEN
    a u PARSE-LIT? IF RES-FALSE EXIT THEN
    a u CHECKER-FIND-ACTIVE-SYM {: sym:n :}
    sym CHECKER-FIND-USIG-SYM 0= IF RES-FALSE EXIT THEN
    sym PIMM-IX 0 < 0= IF RES-FALSE EXIT THEN
    a u tok-imm? 0 <> ;
+
+;package
 
 : REJECT-IMMEDIATE ( -- )
    -1 IMMERR !  0 OK !  -1 FAILSET ! ;
@@ -8030,7 +8062,7 @@ variable CONFAM    \ resolved family id while CONM = 2
    TKF TKFU @ HIDROW-STEP? 0= IF                       \ depth/.s fail closed over hidden cells
    TKF TKFU @ XPORT-STEP? 0= IF                        \ whole-bundle transport row surgery
    TKF TKFU @ RS-TOK? 0= IF
-   TKF TKFU @ IMM-BODY-TOK? IF REJECT-IMMEDIATE THEN   \ live immediate with a usig: wrong-certificate reject (p5)
+   TKF TKFU @ CHECKER-PREFLIGHT:BODY-TOK? IF REJECT-IMMEDIATE THEN   \ live immediate with a usig: wrong-certificate reject (p5)
    TKF TKFU @ DO-TOK
    OK @ IF TKF TKFU @ THROW-CUR? IF THROW-EDGE THEN THEN
    OK @ IF TKF TKFU @ DEAD-CUR? IF a u DEAD-OWNER! -1 DEADP ! THEN THEN
@@ -8601,6 +8633,24 @@ variable CAND-A   variable CAND-U   variable CAND-VERDICT
    0 VSIG !
    a u verdict CHECKER-CERT:PRODUCE
    verdict ;
+
+package CHECKER-PREFLIGHT
+
+: RUN ( -- )
+   BA @ BU @ CHECK! VERDICT ! ;
+
+public
+
+: CHECK! ( ptr u8 n ptr u8 n -- n )
+   {: ba:ptr bu:n ta:ptr tu:n :}
+   ba BA !  bu BU !  ta TA !  tu TU !
+   -1 ACTIVE !
+   [: RUN ;] catch {: rc:n :}
+   0 ACTIVE !
+   rc 0 <> IF rc throw THEN
+   VERDICT @ ;
+
+;package
 
 : DOES-DIN ( n -- n )
    FRESH MK-VAR MK-PTR swap MK-PUSH ;

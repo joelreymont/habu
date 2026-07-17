@@ -253,6 +253,9 @@ variable UB-OUT-FD
 : UB-SET-CHECK-ON? ( -- bool )
    s" set-check" UB-TOK=CI s" 0" UB-PREV=CI UB-NOT and ;
 
+: UB-PREFLIGHT-INSTALL? ( -- bool )
+   s" LOWER-CERT-HOOK:INSTALL" UB-TOK=CI ;
+
 \ A hook install is `' NAME set-check` / `['] NAME set-check`: current token
 \ `set-check`, two-back token the tick, one-back token the installed hook name.
 \ Requiring the tick two-back also excludes the `' set-check` name reference
@@ -344,6 +347,12 @@ variable UB-OUT-FD
    UB-JSON-ORIGIN
    s" checker hook remains installed" s" set-check" UB-JSON-FINISH ;
 
+: UB-JSON-PREFLIGHT ( -- )
+   s" E-CHECKER-MUTATION" UB-JSON-BASE
+   s" word" LJW-KEY s" set-check" LJW-STRING LJW-COMMA
+   UB-JSON-ORIGIN
+   s" LOWER-CERT-HOOK:INSTALL" s" set-check" UB-JSON-FINISH ;
+
 : UB-JSON-ROGUE-HOOK ( -- )
    s" E-UNAUDITED-HOOK" UB-JSON-BASE
    s" word" LJW-KEY UB-PREV$ LJW-STRING LJW-COMMA
@@ -377,6 +386,15 @@ variable UB-OUT-FD
    s" : `" UB-OUT UB-TOK$ UB-OUT
    s" ` mutates checker state in strict boundary mode" UB-OUT UB-NL ;
 
+: UB-REPORT-PREFLIGHT ( -- )
+   UB-BAD @ 1+ UB-BAD !
+   UB-JSON @ if UB-JSON-PREFLIGHT exit then
+   s" MISSING-PREFLIGHT-REARM " UB-OUT
+   UB-FILE-A@ UB-FILE-U @ UB-OUT
+   UB-COLON-C UB-C UB-TOK-LINE @ UB-U$ UB-OUT
+   UB-COLON-C UB-C UB-TOK-COL @ UB-U$ UB-OUT
+   s" : use `LOWER-CERT-HOOK:INSTALL` before replacing the checker hook" UB-OUT UB-NL ;
+
 : UB-REPORT-ROGUE-HOOK ( -- )
    UB-BAD @ 1+ UB-BAD !
    UB-JSON @ if UB-JSON-ROGUE-HOOK exit then
@@ -401,6 +419,10 @@ variable UB-OUT-FD
    UB-SET-CHECK-INSTALL? UB-NOT if exit then
    UB-HOOK-ALLOWED? if exit then
    UB-REPORT-ROGUE-HOOK ;
+
+: UB-HANDLE-CHECK-ON ( -- )
+   UB-SET-CHECK-ON? UB-NOT if exit then
+   UB-CHECK-OFF @ if UB-REPORT-PREFLIGHT then ;
 
 : UB-HANDLE-TOP-INSTALL ( -- )
    UB-SET-TOP-CHECK-INSTALL? UB-NOT if exit then
@@ -429,7 +451,8 @@ variable UB-OUT-FD
       then
       UB-SET-CHECK-OFF? if UB-TRUE UB-CHECK-OFF! then
       UB-COLON? if UB-HANDLE-COLON then
-      UB-SET-CHECK-ON? if UB-FALSE UB-CHECK-OFF! then
+      UB-PREFLIGHT-INSTALL? if UB-FALSE UB-CHECK-OFF! then
+      UB-HANDLE-CHECK-ON
       UB-HANDLE-INSTALL
       UB-HANDLE-TOP-INSTALL
       UB-SEMI? if UB-FALSE UB-TRUSTED ! then

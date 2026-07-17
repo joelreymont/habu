@@ -45,6 +45,7 @@ create OUTER-P FS-PATH-CAP allot
 create FRAG-P FS-PATH-CAP allot
 create INC-P FS-PATH-CAP allot
 create REQ-P FS-PATH-CAP allot
+create SIGLESS-P FS-PATH-CAP allot
 create TOP-INC-P FS-PATH-CAP allot
 create TOP-REQ-P FS-PATH-CAP allot
 create RUNTIME-P FS-PATH-CAP allot
@@ -58,6 +59,7 @@ variable OUTER-U
 variable FRAG-U
 variable INC-U
 variable REQ-U
+variable SIGLESS-U
 variable TOP-INC-U
 variable TOP-REQ-U
 variable RUNTIME-U
@@ -88,6 +90,9 @@ variable RC
 
 : REQ$ ( -- ptr u8 n )
    REQ-P REQ-U @ ;
+
+: SIGLESS$ ( -- ptr u8 n )
+   SIGLESS-P SIGLESS-U @ ;
 
 : TOP-INC$ ( -- ptr u8 n )
    TOP-INC-P TOP-INC-U @ ;
@@ -138,6 +143,7 @@ variable RC
    s" frag.f" FRAG-P FRAG-U PATH!
    s" imm-include.f" INC-P INC-U PATH!
    s" imm-require.f" REQ-P REQ-U PATH!
+   s" imm-signatureless.f" SIGLESS-P SIGLESS-U PATH!
    s" top-include.f" TOP-INC-P TOP-INC-U PATH!
    s" top-require.f" TOP-REQ-P TOP-REQ-U PATH!
    s" runtime.f" RUNTIME-P RUNTIME-U PATH!
@@ -157,7 +163,13 @@ variable RC
    s" -1 JSON-DIAGS ! : LRD-IMM-I ( -- ) 73 include "
    s"  . ;" INC$ FRAG-FIXTURE!
    s" -1 JSON-DIAGS ! : LRD-IMM-R ( -- ) 73 require "
-   s"  . ;" REQ$ FRAG-FIXTURE! ;
+   s"  . ;" REQ$ FRAG-FIXTURE!
+   SIGLESS$ S" 0 set-check
+: RAW-IMM ( -- ) ; immediate
+LOWER-CERT-HOOK:INSTALL
+-1 JSON-DIAGS !
+: LRD-IMM-S ( -- n ) RAW-IMM 73 ;
+" WRITE-ALL ;
 
 : RUNTIME-SOURCE$ ( -- ptr u8 n )
    SB-RESET
@@ -234,7 +246,7 @@ variable RC
    root s" repair_class" GJA-REQ s" model_compile_immediate" GJA-ASSERT-STR
    root s" word" GJA-REQ word wordu GJA-ASSERT-STR
    root s" token" GJA-REQ token tokenu GJA-ASSERT-STR
-   ERR$ 2dup RP-COUNT >r RP-FIRST r> RP-PACKET
+   ERR$ 2dup RP-COUNT dup 1 T= >r RP-FIRST r> RP-PACKET
    {: pa:ptr pu:n :}
    pa OUT pu BYTE-COPY
    OUT pu JSON-PARSE dup GJA-OBJ {: packet:n :}
@@ -287,6 +299,12 @@ variable RC
    s" E-UNMODELED-IMMEDIATE" ASSERT-NAMED
    s" lrd-imm-r" s" require" ASSERT-IMM-DIAG ;
 
+: TEST-IMM-SIGNATURELESS ( -- )
+   s" signatureless immediate gets one canonical preflight diagnostic" T-LABEL
+   SIGLESS$ RUN
+   s" E-UNMODELED-IMMEDIATE" ASSERT-NAMED
+   s" lrd-imm-s" s" RAW-IMM" ASSERT-IMM-DIAG ;
+
 : TEST-PREFLIGHT-POSITIVES ( -- )
    s" top-level include remains live" T-LABEL
    TOP-INC$ RUN s" 74" ASSERT-OK-OUT
@@ -309,6 +327,7 @@ variable RC
    TEST-REQUIRE-CHAIN
    TEST-IMM-INCLUDE
    TEST-IMM-REQUIRE
+   TEST-IMM-SIGNATURELESS
    TEST-PREFLIGHT-POSITIVES
    CLEANUP-RUN
    T-REPORT

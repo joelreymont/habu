@@ -5356,3 +5356,12 @@ unchanged (148855). Keys for milestone 2:
 - **Test-harness package privacy does not extend into spawned fixtures.** Keep
   harness support short and private, but give generated child words collision-
   resistant names because each fixture loads into the engine's global scope.
+- **Compile preflight must force the compiler-provided token into checker
+  classification.** A dictionary immediate created while checking is off has no
+  signature row, so an ordinary body scan mislabels it undefined. The dedicated
+  preflight entry pins the final token as `E-UNMODELED-IMMEDIATE` and emits one
+  canonical repair packet for signature-bearing and signatureless immediates.
+- **Candidate gates must execute the candidate.** Runtime helpers use `GE-HB$`;
+  literal `bin/hb` is reserved for explicit baseline probes. Otherwise an exact
+  rebased gate can fail on a stale installed engine while never testing the
+  rebuilt artifact it claims to certify.
