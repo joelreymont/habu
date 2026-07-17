@@ -4,6 +4,40 @@
 
 Last updated: 2026-07-17
 
+- **A checker cp.async pipeline-typestate dot cannot discharge its own tilepipe
+  TRUSTED rows alone — it depends on THREE prerequisites, two of them unstarted.**
+  (dot habu-checker-cp-async-6ba788a5, host lane, no device.) The 9 lib/ptx/tile-pipe.f
+  `TRUSTED:` rows are trusted for a DOMINANT reason that is NOT cp.async: every body
+  mints a nominal phantom token (`mmctx`/`mmracc`/`mmstage`/`mmaslice`/…) from a bare
+  register-number literal, and the checker has no checked mint — minting/casting phantom
+  kernel tokens is always a trusted boundary here (MK-SPAN, MM-ABI, `>LEN`/`>IDX`). That
+  mint gap is owned by habu-ptx-phantom-preserving-3df9db92 (open, unstarted), so no
+  tilepipe row is untrustable until that lands. Landing the cp.async typestate discipline
+  alone discharges nothing — mirrors habu-linear-once-resource-4c58a7a1's own note ("no
+  TRUSTED row discharged by the execute fix alone … blocked on kinds PLUS rewriting the
+  wrappers"). The dynamic protocol (cp.async issue→commit→wait→bar.sync→read, parity flip)
+  is emitted ATOMICALLY inside MM-PIPE-KLOOP-WITH (cg-matmul-emit.f), run once at emit time;
+  the K-loop is a RUNTIME `$KLOOP` branch, so read-before-wait / missing-commit / double-wait
+  are not expressible at the tilepipe surface without DECOMPOSING that shared, byte-sensitive
+  emitter (consumed verbatim by cg-matmul.f, cg-mma.f, maki/lower-mm.f). And bar.sync needs
+  the M5 barrier model (habu-ptx-m5-mask-eb0716f1, open, unstarted) to compose with.
+- **A stack-effect checker over the EMIT-TIME program cannot prove RUNTIME loop-carried
+  parity alternation.** The Forth checker verifies emit-time stack effects; the emitter emits
+  the double-buffer loop body ONCE and parity lives in a runtime register (`%r15`, flipped by
+  `xor`). "parity alternates correctly across `$KLOOP` iterations" is a property of the emitted
+  PTX's runtime dataflow, outside the checker's model — this is the deep reason it stays
+  trusted. What IS emit-time-checkable (given the decomposed emitter) is the weaker SAME-BODY
+  property: within one loop body the read requires a `ready<p>` slot whose symbolic parity `p`
+  matches, and the prefetch writes `pending<¬p>`. Don't conflate the runtime alternation (out
+  of scope) with same-body parity consistency (in scope once the emitter is decomposed).
+- **When a folded-in registry removal is DEFERRED to ride a capability's registry edit, do
+  not split it into a lone fixpoint rebake if that capability is blocked.** The `mmacc` TFAM
+  row (type-family.f) is verified unreferenced (only prose/comments/one stale LLM transcript
+  use `mmacc<…>`; live code uses `mmracc`), but its removal was deliberately deferred to the
+  cp.async capability's core edit to avoid a standalone engine rebake. With the capability
+  blocked, the honest move is to leave it folded-in-waiting, not to rebake the engine for one
+  row a later registry edit removes for free.
+
 - **`num_stages` is tile-size AND occupancy dependent — a bigger register/smem tile can
   flip stages=2 from a win to a loss.** (dot habu-mma-wave-2, MMA-MFRAGS=4.) At the MFRAGS=2
   wide MMA tile, double-buffered cp.async (stages=2) was +2.4% over single-buffer. At MFRAGS=4
