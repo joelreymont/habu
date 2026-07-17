@@ -41,6 +41,32 @@ Last updated: 2026-07-17
   transitions = net -1, byte-identical EMIT-PIPED==EMIT-MATMUL. A faithful 3-state transition
   vocabulary needs an irreducible 2-transition trusted core (pending->committed, committed->
   ready re-type a phantom, which no checked rule expresses); don't try to check them away.
+- **The CPPSLOT typestate CANNOT be threaded through the SHIPPING double-buffered PIPE-LOOP
+  path: the software pipeline's emitted commit and wait land on DIFFERENT slots, so no single
+  emit-time cpp-slot token can carry commit->wait->read.** (dot habu-wire-cppslot-typestate-
+  ce2463df, host lane, no device; BLOCKED, proven from the EMIT-MATMUL golden + the write set.)
+  EMIT-MATMUL's ONE emitted `$KLOOP` body emits `cp.async.commit_group;` for the PREFETCH slot
+  (tile kt+1) immediately followed by `cp.async.wait_group 1;` draining the CURRENT slot (tile
+  kt); the current slot's commit is the prologue commit (kt=0) or the SAME instruction on the
+  prior runtime pass (loop-carried, outside an emit-time stack checker). So the linear
+  cpp-pending->committed->ready->read of CPPSLOT (a SINGLE-slot lifecycle, matching only the
+  single-buffer MMA-PIPE-KLOOP-SINGLE) has NO same-body commit->wait pair to model on the
+  double-buffered f32 path. Three independent walls, any one fatal: (1) BYTE — CPPSLOT:WAIT
+  emits `cp.async.wait_group 0;`+`bar.sync 0;` (adjacent), but the double buffer emits
+  `wait_group 1;` (overlap arm) / `wait_group 0;` (drain arm) in SEPARATE branches with the
+  `bar.sync 0;` after the `$PFDONE` join, matching NEITHER arm — composing CPPSLOT anywhere in
+  the loop drifts bytes. (2) OWNERSHIP — the only CHECKED surface on this path is the stored
+  compute body RB-TILE (cg-matmul.f), whose `( mmstage mmracc -- mmracc )` effect is SHARED with
+  the maki LLM-eval authoring vocab (MM-K-LOOP); PIPE-LOOP is `TRUSTED:` so a token threaded
+  inside its quotation is unchecked, and a ready slot PIPE-LOOP mints-and-consumes itself is a
+  self-satisfying tautology disconnected from the real issue (a hollow gesture, not a protocol
+  check). (3) INTERFACE — MM-PIPE-KLOOP-WITH's `( [ -- ] -- )` compute-quotation interface is
+  consumed with UNTYPED `[ -- ]` bodies by maki/lower-mm.f (`[: MMA-KTILE ;]`) and cg-mma.f, so
+  giving the quotation a cpp-slot token breaks out-of-write-set callers. The checked cp.async
+  protocol therefore fits the single-slot pipeline OR a loop-carried-token capability (out of an
+  emit-time stack checker's model), NOT the shipping double-buffered path — the honest close is a
+  documented BLOCKED, not byte drift or a laundered ready-mint. No code changed; every byte pin
+  stays green.
 - **`( ptr n -- )` in a stack comment is ONE input of type `ptr n`, not two (a pointer + an
   index).** (dot habu-v2-structured-diagnostic-18d24536, the Diagnostic IR.) `ptr` is a
   type constructor that consumes the next token, so `: FLAG@ ( ptr n -- bool )` declared a
