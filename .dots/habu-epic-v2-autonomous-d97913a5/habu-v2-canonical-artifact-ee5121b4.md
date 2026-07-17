@@ -26,3 +26,9 @@ numeric/capability/audit-event fields cannot join the envelope until
 their owner families get constructors/wire-codecs, and the envelope
 VALIDATE could not be published due to the ARTIFACT:VALIDATE name
 collision (digest verification folded into DECODE meanwhile).
+
+ROUND-2 NOTE 2026-07-17: contract gaps resolved (676d5a7b). Remaining for
+this dot when the id-family codecs land: add the foreign-id fields to the
+envelope via the owner-package codecs, publish the envelope VALIDATE (tail
+now free), and reconcile the process-local P-ID dependency wire form with
+the cross-process content-key form (flagged in plan 23.9).
