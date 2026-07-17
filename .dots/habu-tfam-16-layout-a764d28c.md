@@ -1,6 +1,6 @@
 ---
 title: "TFAM 16: layout policies"
-status: active
+status: open
 priority: 2
 issue-type: task
 created-at: "\"2026-07-03T23:36:48.961669+02:00\""
@@ -369,3 +369,24 @@ REMAINING: niche-null, boxed (+ recursive-sum reject), optional mixed
 narrow-width payload tier (payload-offsets LAY field).
 
 Claim: agent=tfam16 workspace=.jj-ws/fable-tfam16 (checker lane - owns src/core/type-family.f + checker.f + layout fixtures this session)
+
+SLICES LANDED 2026-07-17 (tfam16 lane, commits ed7a3ca6/74991b10/
+f007e9ed/001a13d9; claim RELEASED): survey confirmed the audit accurate
+(work genuinely remained, unlike the two prior stale dots). Landed:
+shared W=1 width metadata for boxed AND niche (TFAM-WIDTH@, mutator-only
+reach, unit-tested against packed regression); niche-null validation
+spec + TOTAL reject-until-supported (proven shape-independent - the
+nonnull-ptr<a> refined type does not exist yet so no declarable family
+qualifies, documented 22.3); recursive-sum reject hardened across ALL
+policies (stack-cell-tag + packed forms; boxed rejects at the POLICY
+clause; mutual recursion fail-closed via forward-reference restriction;
+stale 24 packed claim fixed). Test-infra bug root-caused (type-decl
+suite's single-armed TDIAG-BUF swallow buffer - re-armed per section per
+the suite's own idiom, not a cap bump; LESSONS). Fixpoint x2 6d34fcb0;
+full run.f perf-verdict pass attempts=1 on the exact stack.
+REMAINDER (this dot stays open): (1) boxed ACCEPT - the coupled block
+(accept + alloc-ctor codegen + MATCH deref + self-ref grammar +
+construct/match/stack-op/invalid-tag tests) - the maki recursive-IR
+unlock; (2) niche ACCEPT - gated on a nonnull-ptr<a> refined type
+capability + the shared W=1 MATCH/ctor lowering; (3) the optional mixed
+narrow-width payload tier (payload-offsets LAY field).
