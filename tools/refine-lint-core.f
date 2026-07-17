@@ -33,7 +33,7 @@
 
 $40000 constant RFL-STR-CAP     \ trust-lint manifest string store
 $80000 constant RFL-FILE-CAP    \ largest scanned source watermark (checker.f class)
-56 constant RFL-SEED#
+57 constant RFL-SEED#
 8 constant RFL-ALLOW-MAX
 32 constant RFL-NUM-CAP
 
@@ -197,6 +197,7 @@ variable RFL-LE
       \ habu-v2-evidence-applicability-73ac58b9; the RAW>PRODUCER-ID shape.
       54 of s" RAW>OBLIGATION-ID" endof   \ content-addressed by the canonical obligation encoding
       55 of s" RAW>EVIDENCE-ID" endof     \ content-addressed evidence descriptor
+      56 of s" RAW>ACTION-ID" endof       \ name-interned action declaration id
       E-TBL-BOUNDS throw
    endcase ;
 
@@ -258,6 +259,7 @@ variable RFL-LE
       53 of s" maki/rev.f" endof
       54 of s" maki/db/obligation.f" endof
       55 of s" maki/db/evidence.f" endof
+      56 of s" maki/db/action.f" endof
       E-TBL-BOUNDS throw
    endcase ;
 
