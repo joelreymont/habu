@@ -30,8 +30,8 @@ require tools/ptx/bench.f
 
 package MMAGEMMCHECK
 
-256 constant MGC-MAX                       \ largest square edge (buffers sized for this; 256 for the wide 128-row block)
-MGC-MAX MGC-MAX * constant MGC-CAP         \ 65536 elems
+512 constant MGC-MAX                       \ largest square edge (buffers sized for this; 512 for the wide 256-row MFRAGS=4 block)
+MGC-MAX MGC-MAX * constant MGC-CAP         \ 262144 elems
 
 create MGC-HA MGC-CAP cells allot          \ host A (f64)
 create MGC-HB MGC-CAP cells allot          \ host B
@@ -46,6 +46,7 @@ variable MGC-N   variable MGC-BADI
 variable MGC-SA  variable MGC-SB            \ the two square edges each config is checked at (default 64/128)
 create MGC-MAXERR 1 cells allot
 64 MGC-SA !  128 MGC-SB !
+-6101 constant MGC-E-ZEROBLK               \ launch M < the block rows (BROWS) or a ragged multiple -> silent zero/partial C
 
 \ deterministic varied small integers (1..13 / 1..11), distinct enough to catch mis-mapping
 : MGC-FILL ( -- ) {: :}
@@ -107,8 +108,20 @@ create MGC-MAXERR 1 cells allot
       then
    loop ;
 
+\ HARDENING (dot habu-mma-wave-2): fail closed on a zero-block / ragged-M launch. The launch grid is
+\ gridY = M/BROWS (BROWS = 64*MFRAGS, MMA-BROWS). At M < BROWS gridY=0 so the kernel NEVER runs and C
+\ is read back unchanged (all-zero at a zeroed C), which a naive check could mistake for a correct
+\ small GEMM; at a non-multiple M the tail rows are silently never computed. Both are meaningless
+\ measurements, so require M to be a positive exact multiple of the M block rows before any launch.
+: MGC-SHAPE-OK? ( n -- bool ) {: n:n :}    \ n is a positive exact multiple of the M block rows
+   n MMA-BROWS <  0=                        \ n >= BROWS  (else gridY = n/BROWS = 0, kernel never runs)
+   n MMA-BROWS mod 0=  and ;                \ exact multiple (else the tail M rows are never computed)
+: MGC-CHECK-SHAPE ( n -- )                  \ throw the named code on a zero-block / ragged-M launch shape
+   MGC-SHAPE-OK? 0= if MGC-E-ZEROBLK throw then ;
+
 : MGC-ONE ( n -- ) {: n:n :}               \ one square GEMM correctness run
    n MGC-N !
+   n MGC-CHECK-SHAPE                        \ refuse a zero-block / ragged-M shape (else the row is meaningless)
    MGC-FILL  MGC-REF  MGC-LAUNCH  MGC-COMPARE {: bad:n :}
    s" MMM " type n . s" x" type n . s" x" type n . s"  : " type
    bad 0= if
@@ -129,6 +142,23 @@ create MGC-MAXERR 1 cells allot
    32 MMA-BK !  0 MMA-PAD !  2 MMA-STAGES !  0 MMA-DYNSMEM !
    s" -- emitter SMEM legality: BK=64 stages=2 static -> " type
    rc E-MMA-SMEM = if s" fail-closed E-MMA-SMEM (PASS)" type else s" NOT fail-closed rc=" type rc . s"  (FAIL)" type then cr ;
+
+\ negative+positive regression (dot habu-mma-wave-2): the zero-block / ragged-M launch guard must throw
+\ MGC-E-ZEROBLK below BROWS and at a non-multiple, and pass on exact multiples. Device-independent.
+variable MGC-TN
+: MGC-TRY-SHAPE ( n -- n )  MGC-TN !  [: MGC-TN @ MGC-CHECK-SHAPE ;] catch ;   \ 0 = ok, else throw code
+: MGC-ZEROBLK-NEG ( -- )
+   2 MMA-MFRAGS !                                   \ BROWS = 128
+   64  MGC-TRY-SHAPE {: r64:n :}                     \ 64 < 128 -> gridY=0 -> must throw
+   128 MGC-TRY-SHAPE {: r128:n :}                    \ exact 1 M-block -> ok
+   192 MGC-TRY-SHAPE {: r192:n :}                    \ 192 % 128 = 64 -> ragged tail -> must throw
+   256 MGC-TRY-SHAPE {: r256:n :}                    \ exact 2 M-blocks -> ok
+   1 MMA-MFRAGS !
+   s" -- zero-block guard (MFRAGS=2, BROWS=128): 64->" type r64 . s"  128->" type r128 .
+   s"  192->" type r192 . s"  256->" type r256 . cr
+   r64 MGC-E-ZEROBLK =  r192 MGC-E-ZEROBLK =  and  r128 0=  and  r256 0=  and
+   if s" -- zero-block guard: fail-closed on <BROWS and ragged, pass on exact multiples (PASS)" type cr
+   else s" mma-gemm-check: zero-block guard regression FAILED" 1 die then ;
 
 \ one fragment-load mode: set MMA-LMODE, re-emit + re-assemble + re-load MMM, check 64^3 + 128^3.
 : MGC-MODE ( n -- ) {: mode:n :}
@@ -159,20 +189,22 @@ create MGC-MAXERR 1 cells allot
    mode MGC-MODE
    32 MMA-BK !  0 MMA-PAD !  2 MMA-STAGES !  0 MMA-DYNSMEM ! ;   \ restore the committed defaults
 
-\ WIDER-M config (dot habu-mma-amortize-the): MFRAGS>1 grows the block to 64*MFRAGS rows, so it
-\ is checked at 128^3 (1 M-block, 2 N-blocks) and 256^3 (multiple M-blocks) - 64^3 would launch
-\ zero blocks in M. Restores MFRAGS=1 and the 64/128 edges.
+\ WIDER-M config (dot habu-mma-amortize-the, MFRAGS=4 dot habu-mma-wave-2): MFRAGS>1 grows the block to
+\ 64*MFRAGS rows, so it is checked at the two block-M-aware edges BROWS (1 M-block, all N-blocks) and
+\ 2*BROWS (multiple M-blocks) - 128^3/256^3 at MFRAGS=2, 256^3/512^3 at MFRAGS=4. A shape below BROWS
+\ would launch zero M-blocks (now the MGC-CHECK-SHAPE guard throws). Restores MFRAGS=1 and the 64/128 edges.
 : MGC-CFG-WIDE ( n n n n n n -- ) {: bk:n pad:n stages:n dyn:n mode:n mfrags:n :}
    bk MMA-BK !  pad MMA-PAD !  stages MMA-STAGES !  dyn MMA-DYNSMEM !  mfrags MMA-MFRAGS !
-   128 MGC-SA !  256 MGC-SB !
+   MMA-BROWS MGC-SA !  MMA-BROWS 2 * MGC-SB !          \ block-M-aware edges from BROWS (128/256 at MFRAGS=2, 256/512 at MFRAGS=4)
    s" -- WIDE config MFRAGS=" type mfrags .  s"  BK=" type bk .  s"  pad=" type pad .
-   s"  stages=" type stages .  s"  dyn=" type dyn . s"  (128^3,256^3):" type cr
+   s"  stages=" type stages .  s"  dyn=" type dyn . s"  (" type MGC-SA @ . s" ^3," type MGC-SB @ . s" ^3):" type cr
    mode MGC-MODE
    32 MMA-BK !  0 MMA-PAD !  2 MMA-STAGES !  0 MMA-DYNSMEM !  1 MMA-MFRAGS !  64 MGC-SA !  128 MGC-SB ! ;
 
 public
 : MGC-ALL ( -- )
    MGC-SMEM-NEG                                        \ emitter fail-closed check (device-independent)
+   MGC-ZEROBLK-NEG                                     \ zero-block/ragged-M launch guard (device-independent)
    CUDA:OPEN? 0= if s" mma-gemm-check: libcuda unavailable -> SKIPPED (off-device)" type cr exit then
    s" == TF32 mma.sync GEMM device-correctness (element-exact vs host) ==" type cr
    0 MGC-MODE  1 MGC-MODE  2 MGC-MODE
@@ -188,6 +220,9 @@ public
    32 8 2 1 2 2 MGC-CFG-WIDE                           \ MFRAGS=2 BK=32 pad=8 double-buffer DYNAMIC ldmatrix (128x64)
    32 8 1 0 2 2 MGC-CFG-WIDE                           \ MFRAGS=2 BK=32 pad=8 SINGLE-buffer STATIC ldmatrix (128x64)
    32 8 2 1 0 2 MGC-CFG-WIDE                           \ MFRAGS=2 BK=32 pad=8 double-buffer DYNAMIC scalar+cvt (exact-RNE cross-check)
+   s" == MFRAGS=4 register tile configs (dot habu-mma-wave-2, 256x64 block) ==" type cr
+   32 8 2 1 2 4 MGC-CFG-WIDE                           \ MFRAGS=4 BK=32 pad=8 double-buffer DYNAMIC ldmatrix (256x64, 98304 B)
+   32 8 2 1 0 4 MGC-CFG-WIDE                           \ MFRAGS=4 BK=32 pad=8 double-buffer DYNAMIC scalar+cvt (exact-RNE cross-check)
    0 MMA-LMODE ! ;                                     \ restore the committed default (baseline scalar+cvt)
 
 ;package

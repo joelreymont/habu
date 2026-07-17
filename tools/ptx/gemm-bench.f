@@ -187,8 +187,10 @@ variable GB-SMEM-DYN                    \ dynamic .shared bytes for the launch (
    32 0 2 0 0 GB-MMM-CFG               \ BK=32 baseline (same-session A/B reference)
    32 8 2 0 2 GB-MMM-CFG               \ MMM-SWZ 64x64 ldmatrix (static, prior best-fits-static)
    64 8 2 1 2 GB-MMM-CFG               \ MMM-SWZ-BK64 (shipped best, 1369.6)
-   32 8 2 1 2 2 GB-MMM-CFGW            \ WIDE MFRAGS=2 BK=32 pad=8 stages=2 DYNAMIC ldmatrix (128x64, 57344 B)
-   32 8 1 0 2 2 GB-MMM-CFGW ;          \ WIDE MFRAGS=2 BK=32 pad=8 stages=1 STATIC ldmatrix (128x64, 28672 B)
+   32 8 2 1 2 2 GB-MMM-CFGW            \ WIDE MFRAGS=2 BK=32 pad=8 stages=2 DYNAMIC ldmatrix (128x64, 57344 B) - parity 2133.9
+   32 8 1 0 2 2 GB-MMM-CFGW            \ WIDE MFRAGS=2 BK=32 pad=8 stages=1 STATIC ldmatrix (128x64, 28672 B)
+   32 8 2 1 2 4 GB-MMM-CFGW            \ WIDE MFRAGS=4 BK=32 pad=8 stages=2 DYNAMIC ldmatrix (256x64, 98304 B) - dot habu-mma-wave-2
+   32 8 1 0 2 4 GB-MMM-CFGW ;          \ WIDE MFRAGS=4 BK=32 pad=8 stages=1 STATIC ldmatrix (256x64, 49152 B) - single-buffer occupancy variant
 
 public
 

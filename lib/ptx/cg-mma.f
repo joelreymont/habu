@@ -116,6 +116,14 @@ variable MMA-ABLATE   0 MMA-ABLATE !
 : MMA-ACPN   ( -- n )  MMA-BROWS MMA-BK @ * 4 / 256 / ; \ wide As cp.async chunk-sets/thread (BROWS!=BN)
 : MMA-BCPN   ( -- n )  MMA-BK @ MMA-BN * 4 / 256 / ;  \ wide Bs cp.async chunk-sets/thread
 : MMA-AREG   ( n -- n )  6 * 50 + ;                   \ tf32 A-fragment reg group base for M-frag f
+\ Register-pool sizing (dot habu-mma-wave-2). The mode-0 wide cvt temps and the header
+\ .reg .f32/.b32 counts must grow past the 16*MFRAGS accumulators for a wider M tile, but MUST
+\ stay BYTE-IDENTICAL at MFRAGS<=2 (all shipped/pinned configs). MMA-FTEMP=42 at MFRAGS=2 (= the
+\ current hardcoded %f42..47), MMA-FREGS/MMA-RREGS = 48/64 at MFRAGS<=2 (= the current header),
+\ and only MFRAGS>2 (the new 256-row MFRAGS=4 tile) enlarges them.
+: MMA-FTEMP  ( -- n )  16 MMA-MFRAGS @ * 10 + ;       \ wide cvt temp base (just past the accumulators)
+: MMA-FREGS  ( -- n )  MMA-MFRAGS @ 2 > if 16 MMA-MFRAGS @ * 16 + else 48 then ;   \ .reg .f32 pool
+: MMA-RREGS  ( -- n )  MMA-MFRAGS @ 2 > if 6 MMA-MFRAGS @ * 48 + else 64 then ;    \ .reg .b32 pool
 : MMA-DEFAULT? ( -- bool )                             \ the byte-identical baseline config
    MMA-BK @ 32 =  MMA-PAD @ 0=  and  MMA-STAGES @ 2 =  and  MMA-DYNSMEM @ 0=  and
    MMA-MFRAGS @ 1 =  and ;
@@ -336,14 +344,15 @@ variable MMA-LMODE   0 MMA-LMODE !
    ks f MMA-A-BASE-WIDE
    8 MMA-AROW-B * {: a1o:n :}
    f MMA-AREG {: g:n :}
-   s" ld.shared.f32 %f42,[%r40];" PTX-L
-   SB-RESET s" ld.shared.f32 %f43,[%r40+" SB-APPEND a1o SB-U s" ];" SB-APPEND SB$ PTX-L
-   s" ld.shared.f32 %f44,[%r40+16];" PTX-L
-   SB-RESET s" ld.shared.f32 %f45,[%r40+" SB-APPEND a1o 16 + SB-U s" ];" SB-APPEND SB$ PTX-L
-   SB-RESET s" cvt.rna.tf32.f32 %r" SB-APPEND g SB-U s" ,%f42;" SB-APPEND SB$ PTX-L
-   SB-RESET s" cvt.rna.tf32.f32 %r" SB-APPEND g 1+ SB-U s" ,%f43;" SB-APPEND SB$ PTX-L
-   SB-RESET s" cvt.rna.tf32.f32 %r" SB-APPEND g 2 + SB-U s" ,%f44;" SB-APPEND SB$ PTX-L
-   SB-RESET s" cvt.rna.tf32.f32 %r" SB-APPEND g 3 + SB-U s" ,%f45;" SB-APPEND SB$ PTX-L ;
+   MMA-FTEMP {: ft:n :}                          \ = 42 at MFRAGS=2 (byte-identical); higher for MFRAGS=4
+   SB-RESET s" ld.shared.f32 %f" SB-APPEND ft SB-U s" ,[%r40];" SB-APPEND SB$ PTX-L
+   SB-RESET s" ld.shared.f32 %f" SB-APPEND ft 1+ SB-U s" ,[%r40+" SB-APPEND a1o SB-U s" ];" SB-APPEND SB$ PTX-L
+   SB-RESET s" ld.shared.f32 %f" SB-APPEND ft 2 + SB-U s" ,[%r40+16];" SB-APPEND SB$ PTX-L
+   SB-RESET s" ld.shared.f32 %f" SB-APPEND ft 3 + SB-U s" ,[%r40+" SB-APPEND a1o 16 + SB-U s" ];" SB-APPEND SB$ PTX-L
+   SB-RESET s" cvt.rna.tf32.f32 %r" SB-APPEND g SB-U s" ,%f" SB-APPEND ft SB-U s" ;" SB-APPEND SB$ PTX-L
+   SB-RESET s" cvt.rna.tf32.f32 %r" SB-APPEND g 1+ SB-U s" ,%f" SB-APPEND ft 1+ SB-U s" ;" SB-APPEND SB$ PTX-L
+   SB-RESET s" cvt.rna.tf32.f32 %r" SB-APPEND g 2 + SB-U s" ,%f" SB-APPEND ft 2 + SB-U s" ;" SB-APPEND SB$ PTX-L
+   SB-RESET s" cvt.rna.tf32.f32 %r" SB-APPEND g 3 + SB-U s" ,%f" SB-APPEND ft 3 + SB-U s" ;" SB-APPEND SB$ PTX-L ;
 : MMA-A-RAW-WIDE ( n n -- ) {: ks:n f:n :}      \ mode 1: 4 scalar ld.shared.b32 -> group f
    ks f MMA-A-BASE-WIDE
    8 MMA-AROW-B * {: a1o:n :}
@@ -365,9 +374,11 @@ variable MMA-LMODE   0 MMA-LMODE !
    MMA-LMODE @ 0= if MMA-A-CVT-WIDE else MMA-A-RAW-WIDE then ;
 
 : MMA-B-CVT-WIDE ( n -- ) {: j:n :}             \ mode 0: f32 load + cvt.rna, temps past the wide accumulators
-   SB-RESET s" ld.shared.f32 %f46,[%r44+" SB-APPEND j 32 * SB-U s" ];" SB-APPEND SB$ PTX-L
-   SB-RESET s" ld.shared.f32 %f47,[%r44+" SB-APPEND j 32 * 1024 + SB-U s" ];" SB-APPEND SB$ PTX-L
-   s" cvt.rna.tf32.f32 %r54,%f46;" PTX-L  s" cvt.rna.tf32.f32 %r55,%f47;" PTX-L ;
+   MMA-FTEMP 4 + {: bt:n :}                      \ = 46 at MFRAGS=2 (byte-identical); higher for MFRAGS=4
+   SB-RESET s" ld.shared.f32 %f" SB-APPEND bt SB-U s" ,[%r44+" SB-APPEND j 32 * SB-U s" ];" SB-APPEND SB$ PTX-L
+   SB-RESET s" ld.shared.f32 %f" SB-APPEND bt 1+ SB-U s" ,[%r44+" SB-APPEND j 32 * 1024 + SB-U s" ];" SB-APPEND SB$ PTX-L
+   SB-RESET s" cvt.rna.tf32.f32 %r54,%f" SB-APPEND bt SB-U s" ;" SB-APPEND SB$ PTX-L
+   SB-RESET s" cvt.rna.tf32.f32 %r55,%f" SB-APPEND bt 1+ SB-U s" ;" SB-APPEND SB$ PTX-L ;
 : MMA-B-LOAD-WIDE ( n -- )  MMA-LMODE @ 0= if MMA-B-CVT-WIDE else MMA-B-RAW then ;
 
 : MMA-MMA-WIDE ( n n -- ) {: f:n j:n :}         \ mma for M-frag f, n-tile j: D(=%f(10+16f+4j)..) = A(group f).B(%r54,55) + D
@@ -568,7 +579,10 @@ variable MMA-LMODE   0 MMA-LMODE !
    then
    s" .visible .entry MMM(.param .u64 pA,.param .u64 pB,.param .u64 pC,.param .u32 pM,.param .u32 pN,.param .u32 pK)" PTX-L
    s" {" PTX-L
-   s" .reg .pred %p<4>;" PTX-L  s" .reg .f32 %f<48>;" PTX-L  s" .reg .b32 %r<64>;" PTX-L  s" .reg .b64 %rd<48>;" PTX-L
+   s" .reg .pred %p<4>;" PTX-L
+   SB-RESET s" .reg .f32 %f<" SB-APPEND MMA-FREGS SB-U s" >;" SB-APPEND SB$ PTX-L   \ 48 at MFRAGS<=2 (byte-identical)
+   SB-RESET s" .reg .b32 %r<" SB-APPEND MMA-RREGS SB-U s" >;" SB-APPEND SB$ PTX-L   \ 64 at MFRAGS<=2 (byte-identical)
+   s" .reg .b64 %rd<48>;" PTX-L
    MMA-DYNSMEM @ 0= if
       SB-RESET s" .shared .align 16 .b8 SH[" SB-APPEND MMA-SMEM SB-U s" ];" SB-APPEND SB$ PTX-L
    then

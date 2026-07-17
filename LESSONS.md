@@ -4,6 +4,41 @@
 
 Last updated: 2026-07-17
 
+- **`num_stages` is tile-size AND occupancy dependent — a bigger register/smem tile can
+  flip stages=2 from a win to a loss.** (dot habu-mma-wave-2, MMA-MFRAGS=4.) At the MFRAGS=2
+  wide MMA tile, double-buffered cp.async (stages=2) was +2.4% over single-buffer. At MFRAGS=4
+  the *opposite* holds: single-buffer STATIC (49152 B = the 48 KiB cap) beats double-buffer
+  DYNAMIC (98304 B) by +11.6% (2707.3 vs 2394.1 GFLOP/s at 2048^3). Cause: the double-buffer
+  256x64 tile needs 98 KiB so only 1 block/SM (8 warps) resides, while the single-buffer tile
+  fits 2-3 blocks/SM, AND the 4x B-feed amortization moved the roofline off the cp.async floor
+  so occupancy now beats overlap. Never assume a stages setting carries across a tile resize;
+  re-measure it. The measured best (2707.3 = +26.9% over the 2133.9 parity, 1.43x Triton) was
+  the config the prior amortize lesson would have predicted to be *worse* (no overlap).
+- **A wider register tile re-weights the roofline: attack the phase the FRESH ablation names,
+  not last rung's.** (habu-mma-wave-2.) MFRAGS=2's residual was 36% B-feed / 15% mma-issue, so
+  "B-side ldmatrix" looked like the next lever. MFRAGS=4's DCE-safe ablation shows B-feed fell
+  to 27% but 2nd-4th-M-frag mma-issue ROSE to 32% (now dominant) - amortizing the feed 4x turned
+  a feed-bound tile toward tensor-core-issue-bound. Re-run the attribution after every tile
+  change; the biggest lever moves.
+- **tf32 B-fragment ldmatrix needs a TRANSPOSED staging, never `ldmatrix.trans`.** (habu-mma-
+  wave-2, proven element-exact in tools/ptx/mma-probe.f MP-BLDM-ALL before any kernel use - the
+  required "prove lane->element FIRST" for the top device-bug class.) The mma m16n8k8 B fragment
+  is b0=B[t][gid], b1=B[t+4][gid] (gid=lane>>2, t=lane&3). The non-trans ldmatrix.m8n8 result law
+  is reg = tile[row=lane>>2][tf32col=lane&3] (the SAME law the A ldmatrix.x4 proof pins), so the
+  8x8 b16 tile it reads must be B-TRANSPOSED: stage SHM_BT[n][k]=B[k][n] (n-major), then one
+  ldmatrix.x2 over the two k-half b16 tiles returns {b0,b1} exactly. `ldmatrix.trans` is NOT an
+  option for tf32: it transposes at b16 granularity and a tf32 is two adjacent b16 halves, so
+  .trans splits every tf32 - the transpose must live in the STAGING, not the load. Proven
+  element-exact (integer operands, 0 mismatches of 128); feeds habu-ship-swizzled-mma.
+- **Keep a new codegen knob byte-identical for the shipped configs by GATING the register-pool
+  header, not just the body.** (habu-mma-wave-2.) MFRAGS=4 needs 64 f32 accumulators/lane, so the
+  `.reg .f32 %f<48>`/`.reg .b32 %r<64>` header and the mode-0 cvt temp base (%f42) must grow. Making
+  them formula-driven for ALL MFRAGS would have changed the MFRAGS=1/2 emitted text and broken the
+  pinned SWZ / SWZ-BK64 / lower-mm / parity goldens. Fix: `MMA-FREGS`/`MMA-RREGS`/`MMA-FTEMP` return
+  the exact literal 48/64/42 at MFRAGS<=2 and only enlarge at MFRAGS>2. Prove it: capture a
+  golden-dump of every pinned config's emitted PTX BEFORE the edit, sha+cmp AFTER (twice) - byte
+  identical. An off-device pure-emit dump is the cheap, exact byte-identity gate.
+
 - **Package rollback has two owners.** Restoring the engine's current/public/private
   WIDs is incomplete unless recovery also resynchronizes the checker's package
   mode before the next token; `get-current` proves only the engine half. Follow a

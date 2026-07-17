@@ -145,6 +145,31 @@ n-tiles, A fragment reused 4×). Landed **375.6 / 393.5 / 398.5 GFLOP/s** at
   8 scalar B loads; needs a NEW element-exact fragment proof in `mma-probe.f` FIRST) and/or
   MFRAGS=4. The general method: attribute with DCE-safe ablated kernel variants (the iGPU
   has no counter profiling), then attack the phase the decomposition names.
+- **SATURATED (2026-07-17 `habu-mma-wave-2`, `lib/ptx/cg-mma.f` `MMA-MFRAGS=4`):** the
+  attribution named MFRAGS=4 as a lever, and it pays big — **2707.3 GFLOP/s at 2048³ (918
+  MHz), +26.9 % over the MFRAGS=2 parity (2133.9) and 1.43× Triton (1890.5)**, element-exact
+  at 256³ AND 512³ (ldmatrix + scalar+cvt cross-check), two runs ±0.09 %, references
+  reproduced ±0.07 %. The **256×64 block reuses each 8×8 B fragment across 4 M-frags** (64
+  f32 accumulators/lane, `%f<80>`/`%r<72>` register pools that stay byte-identical at
+  MFRAGS≤2). The counter-intuitive winner: **single-buffer STATIC (49152 B = the 48 KiB cap)
+  BEATS double-buffer dynamic (98304 B) by +11.6 %** (2707 vs 2394) — the exact *opposite* of
+  the MFRAGS=2 finding that stages=2 helped. Reason: at MFRAGS=4 the double-buffer tile needs
+  98 KiB so only **1 block/SM** (8 warps) resides, while the single-buffer tile fits 2–3
+  blocks/SM; and the 4× B-feed amortization has re-weighted the roofline off the cp.async
+  floor, so **occupancy now beats overlap**. The lesson: `num_stages` is tile-size- *and*
+  occupancy-dependent — re-measure it at every tile, and a bigger register/smem tile can
+  flip stages=2 from a win to a loss. **New residual attribution** (`mma-ablate.f`, 2048³):
+  B-feed fell to **27 %** (51.4/190.3 ms, down from 36 %) but the **2nd–4th-M-frag mma-issue
+  rose to 32 %** (60.4/190.3 ms, up from 15 %) — the roofline **shifted from feed-bound toward
+  tensor-core-issue-bound**, own quarter-B ceiling 3711 GFLOP/s (73 % attained). The remaining
+  27 % B-feed is now addressable by the **B-side ldmatrix fragment layout, proven element-exact
+  in isolation** (`tools/ptx/mma-probe.f` `MP-BLDM-ALL`): a non-trans `ldmatrix.x2` on a
+  **transposed** `SHM_BT[n][k] = B[k][n]` returns exactly `b0=B[t][gid], b1=B[t+4][gid]` —
+  because the ldmatrix result law is `reg = tile[row=lane>>2][tf32col=lane&3]`, so the tile it
+  reads must be Bᵀ. `ldmatrix.trans` is **not** usable for tf32 (it transposes at b16 granularity
+  and a tf32 is two b16 halves, so `.trans` splits every tf32) — the transpose must live in the
+  **staging**, not the load. That proof feeds `habu-ship-swizzled-mma`; the mma-issue 32 % is a
+  harder tensor-core-throughput bound.
 
 ## The five things that govern speed (check all five)
 

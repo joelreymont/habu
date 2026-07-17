@@ -200,6 +200,72 @@ MP-M MP-N * constant MP-CE          \ C elems = 128
    MP-LANE  MP-MMA  MP-STORE-D                    \ MP-LANE re-derives the D-store geometry (%r4,%r5,%r8)
    s" ret;" PTX-L  s" }" PTX-L ;
 
+\ ============================ B-side ldmatrix FRAGMENT-LOAD variant (dot habu-mma-wave-2) ==========
+\ The wave-2 lever (dot): replace the warp's scalar B loads with ONE ldmatrix from a TRANSPOSED Bs.
+\ This is NEW geometry - the top cause of "correct in NumPy, garbage on device" - so it is proven
+\ element-exact in isolation HERE before any kernel use (feeds habu-ship-swizzled-mma).
+\
+\ WHY TRANSPOSED Bs. The device-proven B fragment is b0=B[t][gid], b1=B[t+4][gid] (gid=lane>>2,
+\ t=lane&3). ldmatrix.m8n8 (non-trans) returns, for each loaded 8x8-b16 tile, reg = tile[row=lane>>2]
+\ [tf32col=lane&3] (the SAME result law the A-fragment ldmatrix.x4 proof pins). So a tile T with
+\ T[lane>>2][lane&3] = B[lane&3][lane>>2] must be the TRANSPOSE of B: stage SHM_BT[n][k] = B[k][n]
+\ (n-major, k contiguous, row stride 8 tf32 = 32 B). Then one ldmatrix.x2 loads the two b16 tiles
+\ (k-cols 0-3 and 4-7): reg0 = SHM_BT[gid][t] = B[t][gid] = b0, reg1 = SHM_BT[gid][t+4] = B[t+4][gid]
+\ = b1 - exactly {b0,b1}. ldmatrix.TRANS is NOT usable: it transposes at b16 granularity and a tf32 is
+\ two b16 halves, so .trans would split every tf32 - the transpose must be in the STAGING, not the load.
+\ A is loaded the proven global scalar+cvt way (MP-LOAD-A) so this isolates ONLY the B mapping.
+256 constant MP-BLDM-SHB          \ shared bytes: B transposed, 8x8 tf32 (SHM_BT[n][k], row stride 32 B)
+
+: MP-BLDM-HEAD ( -- )
+   s" .visible .entry MMABLDM(.param .u64 pA, .param .u64 pB, .param .u64 pC)" PTX-L
+   s" {" PTX-L
+   s" .reg .f32 %f<32>;" PTX-L
+   s" .reg .b32 %r<48>;" PTX-L
+   s" .reg .b64 %rd<16>;" PTX-L
+   SB-RESET s" .shared .align 16 .b8 SHM[" SB-APPEND MP-BLDM-SHB SB-U s" ];" SB-APPEND SB$ PTX-L ;
+
+\ cooperative global->shared TRANSPOSED staging (single warp, 2 elems/lane): SHM_BT[n][k] = B[k][n].
+: MP-BLDM-STAGE-BT ( -- )
+   s" mov.u32 %r1, %tid.x;" PTX-L
+   s" mov.u32 %r7, SHM;" PTX-L
+   2 0 do                                        \ e = lane + m*32 ; n = e>>3, k = e&7
+      SB-RESET s" add.u32 %r20, %r1, " SB-APPEND i 32 * SB-U s" ;" SB-APPEND SB$ PTX-L
+      s" shr.u32 %r21, %r20, 3;" PTX-L           \ n = e>>3
+      s" and.b32 %r22, %r20, 7;" PTX-L           \ k = e&7
+      s" shl.b32 %r23, %r22, 3;" PTX-L           \ global src B[k][n] = k*8 + n
+      s" add.u32 %r23, %r23, %r21;" PTX-L
+      s" mul.wide.u32 %rd10, %r23, 4;" PTX-L  s" add.u64 %rd11, %rd2, %rd10;" PTX-L
+      s" ld.global.b32 %r24, [%rd11];" PTX-L
+      s" shl.b32 %r25, %r21, 5;" PTX-L           \ shared dst SHM + n*32 + k*4
+      s" shl.b32 %r23, %r22, 2;" PTX-L
+      s" add.u32 %r25, %r25, %r23;" PTX-L
+      s" add.u32 %r25, %r7, %r25;" PTX-L
+      s" st.shared.b32 [%r25], %r24;" PTX-L
+   loop
+   s" bar.sync 0;" PTX-L ;
+
+\ ldmatrix.x2 from SHM_BT: tile p (=lane>>3, clamped to {0,1}) row r (=lane&7), addr = SHM + r*32 + p*16.
+\ reg0 = b0 = B[t][gid], reg1 = b1 = B[t+4][gid] -> the mma B operand {%r14,%r15}.
+: MP-BLDM-LOAD-B ( -- )
+   s" mov.u32 %r1, %tid.x;" PTX-L
+   s" mov.u32 %r7, SHM;" PTX-L
+   s" and.b32 %r2, %r1, 7;" PTX-L                \ r = lane&7 (row within the 8x8 tile)
+   s" shr.u32 %r3, %r1, 3;" PTX-L                \ p = lane>>3
+   s" and.b32 %r3, %r3, 1;" PTX-L                \ clamp to {0,1} (lanes 16-31 addr ignored; keep it in-range)
+   s" shl.b32 %r4, %r2, 5;" PTX-L                \ r*32
+   s" shl.b32 %r5, %r3, 4;" PTX-L                \ p*16 (k-hi half offset)
+   s" add.u32 %r4, %r4, %r5;" PTX-L
+   s" add.u32 %r4, %r7, %r4;" PTX-L
+   s" ldmatrix.sync.aligned.m8n8.x2.shared.b16 {%r14,%r15}, [%r4];" PTX-L ;
+
+: EMIT-MMA-BLDM-PROBE ( -- )
+   PTX-HEADER-SM87  PTX-NL
+   MP-BLDM-HEAD  MP-PARAMS  MP-BLDM-STAGE-BT
+   MP-BLDM-LOAD-B                                 \ B operand -> %r14,%r15
+   MP-LANE  MP-LOAD-A                             \ A operand (global scalar+cvt, proven) -> %r10..13, D geometry
+   MP-MMA  MP-STORE-D
+   s" ret;" PTX-L  s" }" PTX-L ;
+
 \ ============================ HOST reference + device run =====================
 create MP-HA MP-AE cells allot      \ host A (f64 cells)
 create MP-HB MP-BE cells allot      \ host B
@@ -282,6 +348,7 @@ create MP-MAXERR 1 cells allot      \ holds one f64 max abs error
 public
 : MP-EMIT ( -- )  EMIT-MMA-PROBE ;          \ dump the scalar probe PTX to stdout (inspection)
 : MP-LDM-EMIT ( -- )  EMIT-MMA-LDM-PROBE ;  \ dump the ldmatrix probe PTX to stdout (inspection)
+: MP-BLDM-EMIT ( -- )  EMIT-MMA-BLDM-PROBE ;  \ dump the B-side ldmatrix probe PTX to stdout (inspection)
 : MP-ALL ( -- )
    CUDA:OPEN? 0= if s" mma-probe: libcuda unavailable -> SKIPPED (off-device)" type cr exit then
    s" habu-mma-probe" PTXTC:PREPARE
@@ -304,7 +371,19 @@ public
    MP-COMPARE MP-REPORT
    PTXTC:CLEAN ;
 
+: MP-BLDM-ALL ( -- )
+   CUDA:OPEN? 0= if s" mma-probe: libcuda unavailable -> SKIPPED (off-device)" type cr exit then
+   s" habu-mma-bldm-probe" PTXTC:PREPARE
+   PTX-CAPTURE-ON  EMIT-MMA-BLDM-PROBE  PTX-CAPTURE-OFF
+   MP-ASSEMBLE
+   MP-FILL-HOST  MP-REF
+   s" MMABLDM" MP-RUN-DEVICE
+   s" == MMA fragment-isolation probe: m16n8k8 tf32, single warp (A scalar+cvt + B ldmatrix.x2 transposed-Bs) ==" type cr
+   MP-COMPARE MP-REPORT
+   PTXTC:CLEAN ;
+
 ;package
 
 MMAPROBE:MP-ALL
 MMAPROBE:MP-LDM-ALL
+MMAPROBE:MP-BLDM-ALL

@@ -68,8 +68,14 @@ variable MA-NV                           \ M=N=K (square) kernel param
    MA-DC @ 0 <> if MA-DC @ PTXBENCH:DEVICE-FREE then
    0 MA-DA !  0 MA-DB !  0 MA-DC ! ;
 
-: MA-WIDE-KNOBS ( -- )                   \ the fixed wide config under study (mode reset per ablate leg)
-   2 MMA-MFRAGS !  32 MMA-BK !  8 MMA-PAD !  2 MMA-STAGES !  1 MMA-DYNSMEM !  2 MMA-LMODE ! ;
+\ the wide config under study (MFRAGS/stages/dyn selectable; dot habu-mma-wave-2 adds the MFRAGS=4 leg).
+variable MA-CFG-MFRAGS  variable MA-CFG-STAGES  variable MA-CFG-DYN
+2 MA-CFG-MFRAGS !  2 MA-CFG-STAGES !  1 MA-CFG-DYN !
+: MA-WIDE-KNOBS ( -- )                   \ apply the config under study (mode reset per ablate leg)
+   MA-CFG-MFRAGS @ MMA-MFRAGS !  32 MMA-BK !  8 MMA-PAD !
+   MA-CFG-STAGES @ MMA-STAGES !  MA-CFG-DYN @ MMA-DYNSMEM !  2 MMA-LMODE ! ;
+: MA-CFG! ( n n n -- ) {: mfrags:n stages:n dyn:n :}   \ select the config under study
+   mfrags MA-CFG-MFRAGS !  stages MA-CFG-STAGES !  dyn MA-CFG-DYN ! ;
 : MA-RESTORE ( -- )                      \ back to the committed defaults
    1 MMA-MFRAGS !  32 MMA-BK !  0 MMA-PAD !  2 MMA-STAGES !  0 MMA-DYNSMEM !  0 MMA-LMODE !  0 MMA-ABLATE ! ;
 
@@ -101,7 +107,8 @@ variable MA-NV                           \ M=N=K (square) kernel param
 
 : MA-SHAPE ( n -- ) {: s:n :}            \ full/quarter/half/single at shape s; print the decomposition
    s 2048 = if 30 else 80 then {: it:n :}
-   s" == wider-M ablation decomposition, " type s MA-INT. s" ^3 (918 MHz pin) ==" type cr
+   s" == wider-M ablation decomposition, MFRAGS=" type MA-CFG-MFRAGS @ MA-INT. s"  stages=" type
+   MA-CFG-STAGES @ MA-INT.  s"  dyn=" type MA-CFG-DYN @ MA-INT.  s"  " type s MA-INT. s" ^3 (918 MHz pin) ==" type cr
    0 s it MA-RUN {: full:n :}
    1 s it MA-RUN {: qb:n :}
    2 s it MA-RUN {: hb:n :}
@@ -115,8 +122,10 @@ variable MA-NV                           \ M=N=K (square) kernel param
 public
 : MA-ALL ( -- )
    CUDA:OPEN? 0= if s" mma-ablate: libcuda unavailable -> SKIPPED (off-device)" type cr MA-RESTORE exit then
-   s" == MMM-WIDE (MFRAGS=2 BK=32 pad=8 stages=2 dyn ldmatrix, 128x64) DCE-safe cost decomposition ==" type cr
-   1024 MA-SHAPE
+   s" == MMM-WIDE ldmatrix tiles: DCE-safe per-phase cost decomposition (918 MHz pin) ==" type cr
+   2 2 1 MA-CFG!                          \ MFRAGS=2 parity config (128x64, stages=2 dyn) - reference attribution
+   2048 MA-SHAPE
+   4 1 0 MA-CFG!                          \ MFRAGS=4 winner (256x64, stages=1 static) - dot habu-mma-wave-2
    2048 MA-SHAPE
    MA-RESTORE ;
 ;package
