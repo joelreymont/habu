@@ -946,3 +946,14 @@ T-REPORT
   checks that can `throw` in a `--` helper, then make the value-returning word's
   remaining path structurally return its declared outputs. A final throw-only
   fallback in a word declared as `-- value...` can confuse path-effect merging.
+
+## ptr locals and cell access
+
+A `{: p:ptr ... :}` local supports BYTE access only; cell-width `@`/`!`
+through a bare `ptr` local does not certify. Consequence: a generic
+word parameterized over "some cell buffer base" cannot be written
+checked (e.g. a shared canonical-set sort over caller buffers); the
+blessed pattern is CONCRETE per-buffer words sharing only scalar
+cursor/index helpers - see maki/db/transaction.f's per-buffer sorts and
+maki/db/artifact.f's DSCR/SSCR pair. Factor the arithmetic, duplicate
+the buffer touch.

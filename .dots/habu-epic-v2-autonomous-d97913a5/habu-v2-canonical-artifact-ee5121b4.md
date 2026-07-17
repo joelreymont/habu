@@ -1,9 +1,11 @@
 ---
 title: V2 canonical artifact envelope
-status: active
+status: closed
 priority: 1
 issue-type: task
-created-at: "\"\\\"2026-07-11T12:25:26.829932+02:00\\\"\""
+created-at: "\"\\\"\\\\\\\"2026-07-11T12:25:26.829932+02:00\\\\\\\"\\\"\""
+closed-at: "2026-07-17T18:52:08.295818+02:00"
+close-reason: "Envelope complete across three slices (aa83dcd0/469f1e15/7cc29623): all plan-named fields bound, digest coverage per the frozen table test-proven, VALIDATE landed; gated legs handed to the user-gated CAP dot and the new wire-content-key dot."
 ---
 
 Implement MODEL-CAD-V2-PLAN.md:1812-1830 first artifact slice. Define checked Artifact<Kind> metadata schemas for schema id/version, kind, payload digest, producer, source revisions, dependencies, target/config/numeric facts, capabilities, and event id using required V2 nominal/layout types; add canonical encode/decode and malformed/noncanonical/kind-mismatch negatives. No raw n identity or trust boundary. Acceptance: equal values encode/hash identically, one semantic field changes the digest, decode round-trips, unknown required fields and digest mismatch return typed diagnostics. Files: new maki/db/artifact.f plus focused test and FILEMAP.
@@ -57,3 +59,16 @@ only the user-gated capability field and the wire-form reconciliation
 remain gated.
 
 Claim: agent=artimpl3 workspace=.jj-ws/fable-artimpl3 (slice 3: event/rev envelope fields via JOURNAL/REV codecs; owns maki/db/artifact.f)
+
+RESOLVED 2026-07-17 (artimpl3 lane, commit 7cc29623 = slice 3): EVERY
+plan-named envelope field is now bound. Slice 3: created-event upgraded
+to CAD-KIND:audit-event-id via the JOURNAL codec (TAG 13, digest-EXCLUDED,
+exclusion test-proven); source-revisions[] as an ascending duplicate-free
+rev-id set via the REV codec (TAG 11, digest-COVERED, flip test-proven);
+tags renumbered with TAG-CAP-RESERVED=14 kept above TAG-KNOWN-MAX so it
+rides the unknown-extension path. The dot CLOSES with its two gated legs
+handed to live owners: (1) capabilities-used[] field rides
+habu-user-gated-cap-edccf572 (vocabulary decision + envelope wiring);
+(2) the process-local-raw vs cross-process content-key wire migration is
+minted as habu-wire-content-key (applies to P-ID, deps, all foreign-id
+raws, the rev-id set elements, and the audit-event sequence).
