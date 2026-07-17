@@ -24,3 +24,11 @@ on sm_87 before flipping) but tightens the shape coupling to M multiple of
 256. The B-side ldmatrix fragment proof (mma-probe.f MP-BLDM-ALL) also
 feeds this flip: transposed Bs staging changes the staging emitters the
 default flip must carry.
+
+UPDATE 2026-07-17 (wave3 landing 58faceba): flip target moves again -
+MMM-WIDE-B-M4-S1 (3026.6 = 1.60x Triton) is single-buffer but DYNAMIC
+50176B (> the 49152B sm_87 static cap by 1KiB), so the dynamic-launch
+coupling RETURNS for the best config; the flip decision should weigh
+MMM-WIDE-M4-S1 (2707.3, static 49152B, no coupling) vs the extra +11.9%.
+B-ldmatrix also adds the transposed-Bs scalar staging emitters to the
+surface the flip must carry.

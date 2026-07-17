@@ -21,3 +21,11 @@ stages=2 dynamic is occupancy-bound and slower (2394.1). Static smem means
 no dynamic-launch coupling for this config, but block-M grids now need
 M multiple of 256 (MFRAGS=4) - the autotuner must key MFRAGS by shape
 (512^3 favors it at 2032.7; ragged/small M needs MFRAGS<=2 or 1).
+
+UPDATE 2026-07-17 (wave3 landing 58faceba): new measured best is
+MMM-WIDE-B-M4-S1 (MMA-BLDM=1 bpad=4 MFRAGS=4 BK=32 pad=8 stages=1
+single-buffer DYNAMIC 50176B): 3026.6 GFLOP/s = 1.60x Triton at
+2048^3/918MHz. New axes for the autotuner: MMA-BLDM (0/1) and MMA-BPAD
+(multiples of 4 only - emitter fail-closes otherwise); shape keying
+unchanged (M multiple of 256 at MFRAGS=4). 512^3 favors it at 1802.6,
+1024^3 at 2746.0.
