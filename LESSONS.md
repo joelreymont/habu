@@ -841,6 +841,14 @@ fits.
   commands or `&&` from the gate onward; cross-lane semantic conflicts do not show as rebase
   conflicts. Gate entry wrappers catch their own top-level throws, print phase label + code/name,
   rethrow so rc stays useful.
+- **Cross-host "gate green" does not transfer — regate on the integrating host before treating
+  master as green.** A tree landed green on the spark failed the Mac battery's stale-status doc
+  lint (`N/N/N` measurement params read as a count-shaped string); assume per-host slice
+  composition differs until proven identical.
+- **A `bin/hb` older than the tree's core dies at the first unknown core word (bare name +
+  exit 70) — and fixpoint refresh children spawn the checkout's `./bin/hb`, so a fresh DRIVER
+  engine is not enough.** Recover by installing the freshest local engine as `bin/hb` first
+  (new inode: `cp` to temp + `mv`, never over the live file), then `install --force`.
 
 ## VCS, Dots & Parallel Agents
 

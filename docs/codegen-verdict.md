@@ -168,7 +168,8 @@ Orin.
 ## Item 3 — the kernel set, normalized to %-of-roof
 
 All via CUDA-event GPU timing (the committed `PTXBENCH:BENCH-GPU-NS`), one
-warmup, iters = 200/80/30 at 512/1024/2048, cubins assembled `-arch=sm_121a`.
+warmup, iters = 200 at 512³, 80 at 1024³, 30 at 2048³, cubins assembled
+`-arch=sm_121a`.
 GPU was never contended during measurement (0% util between launches).
 
 | kernel | 512³ | 1024³ | 2048³ | bound | %-of-roof (2048³) |
