@@ -54,19 +54,25 @@ variable TDECL-CUR-FAM              \ family id being declared (-1 outside a bod
 \ registries retire by counter (linear scans, interned offsets), so restoring
 \ the high-water marks fully removes a failed declaration's rows.
 variable TDM-TFAM   variable TDM-STR   variable TDM-PK
-variable TDM-SUMV   variable TDM-PF    variable TDM-PFC   variable TDM-LAY
+variable TDM-SUMV   variable TDM-LAY
 variable TDM-SCH    variable TDM-ROOT
 variable TDECL-FAM-REG   \ family id registered by the LAST successful sum (-1 = none)
 
+\ PF-N / PF-COMMIT-N are NOT snapshot here: the only declaration that mutates PF
+\ is PRODUCT, and it runs its fields inside TDECL-PRODUCT-TX's own PF transaction
+\ (PF-BEGIN … PF-ADD … PF-ROLLBACK/PF-COMMIT), which restores PF-N on any field
+\ failure and advances PF-COMMIT-N only on the outer commit; no later step throws,
+\ so a rejected PRODUCT leaves both PF marks at baseline without a second snapshot
+\ (dot habu-protect-type-field-04d91409; regression: type-decl-suite duplicate-field
+\ TDT-NEG). SUMTYPE/ENUM/TYPEFAMILY never touch PF. The checker-scope frame's own
+\ PF marks (type-family.f TFAM-ROLLBACK-SAVE/RESTORE) stay for rejected families.
 : TDECL-MARK ( -- )
    TFAM-N @ TDM-TFAM !   TF-STR-U @ TDM-STR !   TF-PK-N @ TDM-PK !
-   SUMV-N @ TDM-SUMV !   PF-N @ TDM-PF !
-   PF-COMMIT-N @ TDM-PFC !   LAY-N @ TDM-LAY !
+   SUMV-N @ TDM-SUMV !   LAY-N @ TDM-LAY !
    SCH-N @ TDM-SCH !     SCH-ROOT-N @ TDM-ROOT ! ;
 : TDECL-RESTORE ( -- )
    TDM-TFAM @ TFAM-N !   TDM-STR @ TF-STR-U !   TDM-PK @ TF-PK-N !
-   TDM-SUMV @ SUMV-N !   TDM-PF @ PF-N !
-   TDM-PFC @ PF-COMMIT-N !   TDM-LAY @ LAY-N !
+   TDM-SUMV @ SUMV-N !   TDM-LAY @ LAY-N !
    TDM-SCH @ SCH-N !     TDM-ROOT @ SCH-ROOT-N ! ;
 
 : TDECL-REPORT ( -- )
