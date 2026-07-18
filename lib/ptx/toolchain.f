@@ -5,6 +5,7 @@ require lib/string.f
 require lib/fs.f
 require lib/fs-mutate.f
 require lib/process-argv.f
+require lib/adt/option.f             \ option<n>: TRY-PTXAS$ reports a resolved ptxas as present/absent
 
 package PTXTC
 
@@ -20,6 +21,9 @@ variable CUBIN-U
 
 variable ERR-P            \ last ASSEMBLE stderr buffer + byte count, for diagnostics
 variable ERR-U
+
+variable PTXAS-P          \ resolved ptxas path pointer, parked by TRY-PTXAS$ for PTXAS$
+                          \ (env-override and string-literal pointers are process-stable, so no copy)
 
 create TC-ARCH-BUF 32 allot   \ assembler target label (e.g. sm_121a); TC-ARCH-U 0 = unset
 variable TC-ARCH-U            \ never defaulted: ASSEMBLE fails closed until a caller sets it
@@ -44,6 +48,10 @@ variable TC-ARCH-U            \ never defaulted: ASSEMBLE fails closed until a c
    ROOT-U @ 0 > if ROOT$ REMOVE-TREE then
    0 ROOT-U ! ;
 
+\ Park a resolved ptxas path pointer and report it present with its byte length.
+: PTXAS-FOUND ( ptr u8 n -- option<n> ) {: a:ptr u:n :}
+   a PTXAS-P !  u OPTION:SOME ;
+
 public
 
 \ Set the ptxas target from the active target's label (maki resolves it by
@@ -67,14 +75,24 @@ public
 : CUBIN$ ( -- ptr u8 n )
    CUBIN-BUF CUBIN-U @ ;
 
-\ Resolve ptxas: the PTXAS env override wins; then the CUDA 13 install (its ptxas
-\ knows sm_121a); then the legacy 12.6 path; else name every path tried and fail
-\ closed. No silent dead-path default - a missing ptxas is a loud throw.
+\ Probe ptxas without failing: the PTXAS env override wins (trusted, as before -
+\ set means chosen); then the CUDA 13 install (its ptxas knows sm_121a); then the
+\ legacy 12.6 path, each existence-checked with FILE?. SOME len parks the winning
+\ path pointer in PTXAS-P; NONE means no ptxas resolved on any known path. The path
+\ list lives here only. No throws - callers decide whether absence is fatal.
+: TRY-PTXAS$ ( -- option<n> )
+   s" PTXAS" GETENV dup 0 > if PTXAS-FOUND exit then 2drop
+   s" /usr/local/cuda/bin/ptxas"      2dup FILE? if PTXAS-FOUND exit then 2drop
+   s" /usr/local/cuda-12.6/bin/ptxas" 2dup FILE? if PTXAS-FOUND exit then 2drop
+   OPTION:NONE ;
+
+\ Resolve ptxas, fail closed: the single place that turns an unresolved ptxas into
+\ a loud named throw. No silent dead-path default.
 : PTXAS$ ( -- ptr u8 n )
-   s" PTXAS" GETENV dup 0= if 2drop else exit then
-   s" /usr/local/cuda/bin/ptxas"      2dup FILE? if exit then 2drop
-   s" /usr/local/cuda-12.6/bin/ptxas" 2dup FILE? if exit then 2drop
-   E-PTXTC-PTXAS throw ;
+   TRY-PTXAS$ MATCH option
+     none OF E-PTXTC-PTXAS throw ENDOF
+     some OF PTXAS-P @ swap ENDOF
+   ;MATCH ;
 
 : ASSEMBLE ( ptr u8 len ptr u8 len -- n )
    {: out:ptr outcap:len err:ptr errcap:len :}

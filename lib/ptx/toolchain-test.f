@@ -1,6 +1,7 @@
 \ toolchain-test.f - checked tests for PTXTC artifact helpers.
 
 require lib/test.f
+require lib/adt/option.f
 require lib/ptx/toolchain.f
 
 package PTXTC-TEST
@@ -20,11 +21,26 @@ variable PATH-B-U
 : PATH-B$ ( -- ptr u8 n )
    PATH-B PATH-B-U @ ;
 
+\ probe present (this host has ptxas): PTXAS$ returns the same non-empty path.
+: ASSERT-PTXAS-PRESENT ( n -- )   \ n = TRY-PTXAS$ reported length
+   PTXTC:PTXAS$ nip          \ ( probe-len ptxas-len )
+   dup 0 > TTRUE             \ resolved path is non-empty
+   = TTRUE ;                 \ and PTXAS$ agrees with the probe
+
+\ Per host class: TRY-PTXAS$ is the fail-open probe. Present -> PTXAS$ resolves the
+\ same path; absent (this CUDA-less Mac) -> PTXAS$ fails closed with E-PTXTC-PTXAS.
+\ Both arms are real assertions; the present arm runs on a ptxas-equipped host.
+: ASSERT-PTXAS ( -- )
+   PTXTC:TRY-PTXAS$ MATCH option
+     none OF [: PTXTC:PTXAS$ 2drop ;] E-PTXTC-PTXAS TTHROWSQ ENDOF
+     some OF ASSERT-PTXAS-PRESENT ENDOF
+   ;MATCH ;
+
 : PREPARE-PATHS ( -- )
    s" habu-ptx-toolchain" PTXTC:PREPARE
    PTXTC:PTX$ FILE? TFALSE
    PTXTC:CUBIN$ FILE? TFALSE
-   PTXTC:PTXAS$ nip 0 > TTRUE
+   ASSERT-PTXAS
    PTXTC:PTX$ s" ptx" WRITE-ALL
    PTXTC:PTX$ FILE? TTRUE
    PTXTC:CLEAN

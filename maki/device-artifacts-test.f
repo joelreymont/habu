@@ -1,6 +1,7 @@
 \ device-artifacts-test.f - private grader artifact path tests.
 
 require lib/test.f
+require lib/adt/option.f
 require maki/device-artifacts.f
 
 package MAKI-GRADE-TEST
@@ -20,12 +21,28 @@ variable PATH-B-U
 : PATH-B$ ( -- ptr u8 n )
    PATH-B PATH-B-U @ ;
 
+\ probe present (this host has ptxas): PTXAS$ returns the same non-empty path.
+: ASSERT-PTXAS-PRESENT ( n -- )   \ n = TRY-PTXAS$ reported length
+   MAKI-GRADE:PTXAS$ nip     \ ( probe-len ptxas-len )
+   dup 0 > TTRUE             \ resolved path is non-empty
+   = TTRUE ;                 \ and PTXAS$ agrees with the probe
+
+\ Per host class: MAKI-GRADE:PTXAS$ delegates to the checked toolchain resolver, so
+\ PTXTC:TRY-PTXAS$ is its fail-open probe. Present -> PTXAS$ resolves the same path;
+\ absent (this CUDA-less Mac) -> PTXAS$ fails closed with E-PTXTC-PTXAS. Both arms are
+\ real assertions; the present arm runs on a ptxas-equipped host.
+: ASSERT-PTXAS ( -- )
+   PTXTC:TRY-PTXAS$ MATCH option
+     none OF [: MAKI-GRADE:PTXAS$ 2drop ;] E-PTXTC-PTXAS TTHROWSQ ENDOF
+     some OF ASSERT-PTXAS-PRESENT ENDOF
+   ;MATCH ;
+
 : PREPARE-PATHS ( -- )
    s" habu-grade-artifacts" MAKI-GRADE:PREPARE
    MAKI-GRADE:DRIVER$ FILE? TFALSE
    MAKI-GRADE:PTX$ FILE? TFALSE
    MAKI-GRADE:CUBIN$ FILE? TFALSE
-   MAKI-GRADE:PTXAS$ nip 0 > TTRUE
+   ASSERT-PTXAS
    MAKI-GRADE:DRIVER$ s" x" WRITE-ALL
    MAKI-GRADE:DRIVER$ FILE? TTRUE
    MAKI-GRADE:CLEAN
