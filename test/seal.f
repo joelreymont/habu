@@ -400,7 +400,10 @@ public
 \ Each PUBLIC ADT family registers one protected WID (xref.f PROT-WID-CTOR-ADD ->
 \ prot-wid-add); the table holds PROT-WID-MAX (256, raised from 16) entries. A batch
 \ child declaring K public families is generated with unique letter-pair names (each
-\ family scopes its own 'foo' variant, so the variant name may repeat). Red-first: at
+\ family scopes its own 'foo' variant, so the variant name may repeat). The
+\ protected system packages occupy rows before user source loads. Probe that
+\ clean-process baseline so the test fills every remaining row exactly.
+\ Red-first: at
 \ the old cap of 16 the 17th family exits ENGINE-ERROR:SEAL-PACKAGE (84) with NO diagnostic, so
 \ both the "succeed past 16" (rc 0) and the "labeled overflow" (stderr names the
 \ table) assertions fail. Driven via SLV-RUN-LOAD (a file), not stdin: 257 families
@@ -437,13 +440,25 @@ ENGINE-ERROR:SEAL-PACKAGE constant SLV-PWID-RC       \ protected-WID table full
    SLV-RC @ SLV-PWID-RC T=
    SLV-ERR$ s" hb: protected-WID table full" CONTAINS? TTRUE ;
 
+: PWG-BASE-FORGE$ ( -- ptr u8 n )
+   s" data-base PROT-WID-N-CELL + @ ." ;
+
+: PWG-BASE@ ( -- n )
+   PWG-BASE-FORGE$ SLV-RUN-LOAD SLV-ASSERT-OK
+   SLV-OUT SLV-OUT-U @ TRIM STR>NUMBER? MATCH option
+     some OF ENDOF
+     none OF T-FAIL 0 ENDOF
+   ;MATCH ;
+
 : SLV-PWID-CAP ( -- )
+   PROT-WID-MAX PWG-BASE@ - {: cap:n :}
+   cap 0 > TTRUE
    s" 17 public ADT families succeed past the old 16 cap" T-LABEL
    17 PWG-GEN SLV-RUN-LOAD SLV-ASSERT-OK
-   s" 256 public families succeed at the raised cap" T-LABEL
-   256 PWG-GEN SLV-RUN-LOAD SLV-ASSERT-OK
-   s" the 257th public family overflows -> labeled 'protected-WID table full' exit 84" T-LABEL
-   257 PWG-GEN SLV-RUN-LOAD SLV-ASSERT-PWID-FULL ;
+   s" public families fill every non-system protected-WID row" T-LABEL
+   cap PWG-GEN SLV-RUN-LOAD SLV-ASSERT-OK
+   s" one family past user capacity overflows with a labeled exit 84" T-LABEL
+   cap 1+ PWG-GEN SLV-RUN-LOAD SLV-ASSERT-PWID-FULL ;
 
 \ --- publish-into-protected-word guard (dot habu-label-two-silent-bd8e5d09) -----------
 \ Once the friend latch is sealed, publishing a definition into a protected WID (a public
@@ -634,7 +649,7 @@ public
 
 package SLV-PARITY
 
-6 constant DIRECT-N
+7 constant DIRECT-N
 51 constant SUBJECT-N
 : RESULT ( -- ptr u8 n ptr u8 n n )
    SLV-OUT SLV-OUT-U @ SLV-ERR SLV-ERR-U @ SLV-RC @ ;

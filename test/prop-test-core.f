@@ -610,7 +610,7 @@ create AXBUF AXBUF-CAP allot
 \ UNSAFE-TOK? bans it inside checked bodies, and its axiom keeps it top-level
 \ executable so library source can declare an explicit barrier.
 : AX-NOEXEC-C ( -- ptr u8 n )
-   s"  seal-capture seal-friend prot-wid-add drain-pretrust wf-tokix@ wf-off@ wf-pos@ wf-fam@ wf-width@ wf-term@ wf-flags@ tfam-width@ locw-hw@ p2-carve-w p2-live-w@ p2-live-cum@ p2-locseq-reset wide-mark rec-wide-publish rec-min-in@ layout-valid-desc-cell tfam-name$ tfam-arity@ tfam-kind@ tfam-public? tfam-derive-eq? tfam-derive-hash? tfam-var-start@ tfam-var-count@ sumv-name$ sumv-ctor-pkg$ lower-cert:cell@ lower-cert:bytes trust ptx-barrier! check check! typefamily sumtype enum product layout-buffer typed-buffer typed-variable " ;
+   s"  seal-capture seal-friend prot-wid-add drain-pretrust wf-tokix@ wf-off@ wf-pos@ wf-fam@ wf-width@ wf-term@ wf-flags@ tfam-width@ locw-hw@ p2-carve-w p2-live-w@ p2-live-cum@ p2-locseq-reset wide-mark rec-wide-publish rec-min-in@ layout-valid-desc-cell tfam-name$ tfam-arity@ tfam-kind@ tfam-public? tfam-derive-eq? tfam-derive-hash? tfam-var-start@ tfam-var-count@ sumv-name$ sumv-ctor-pkg$ ct-live? type-field:count type-field:no-variant type-field:find type-field:each type-field:family@ type-field:variant@ type-field:name$ type-field:schema@ type-field:slot@ type-field:cells@ type-field:byte-off@ type-field:bytes@ type-field:align@ type-field:flags@ lower-cert:cell@ lower-cert:bytes trust ptx-barrier! check check! typefamily sumtype enum product layout-buffer typed-buffer typed-variable " ;
 
 : AX-CAT ( ptr u8 n -- n )
    2dup AX-HAS-QUOTE? if 2drop AX-NOEXEC exit then

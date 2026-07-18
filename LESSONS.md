@@ -6449,3 +6449,7 @@ any build.
 - **Package reflection needs package-aware checker rows.** Keep raw registry
   words as implementation detail and model the sealed public surface with
   `PPRIM:` package/tail rows; a colon-spelled `PRIM:` name loses package identity.
+- **A protected package consumes protected-WID capacity.** Capacity tests must
+  probe the clean child baseline, then fill the remaining rows exactly.
+- **Primitive rows have two synchronized proofs.** Update the ordered effect
+  manifest and the executable/no-exec census classification with every row change.
