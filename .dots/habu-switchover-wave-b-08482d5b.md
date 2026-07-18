@@ -1,6 +1,6 @@
 ---
 title: "Switchover wave B: option<tuple> + result<T,errno> process family"
-status: active
+status: open
 priority: 2
 issue-type: task
 created-at: "\"\\\"\\\\\\\"2026-07-04T22:18:57.005375+02:00\\\\\\\"\\\"\""
@@ -272,7 +272,7 @@ REMAINDER RECLASSIFIED (waveb2 survey, recorded verbatim):
 Claim released 2026-07-18: batch 1 merged; workspace .jj-ws/fable-waveb2
 retired. Next claimant starts with the SPLIT-NEXT/NEXT-LINE prelude batch.
 
-Claim: agent=waveb3 workspace=.jj-ws/fable-waveb3 (batch 2: SPLIT-NEXT/NEXT-LINE prelude cluster via 3-field named payload product; engine battery owed — string.f is in the fixpoint prefix)
+Claim (RELEASED 2026-07-18, batch 2 merged): agent=waveb3 workspace=.jj-ws/fable-waveb3 (batch 2: SPLIT-NEXT/NEXT-LINE prelude cluster via 3-field named payload product; engine battery owed — string.f is in the fixpoint prefix)
 
 BATCH 2 LANDED 2026-07-18 (waveb3 lane, gated green — engine battery below):
 the SPLIT-NEXT / NEXT-LINE prelude cluster migrated to named-product options.
