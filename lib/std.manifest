@@ -324,8 +324,8 @@ schema_version	module	file	kind	word	effect	test	doc	owner	status	notes
 1	regex	lib/regex.f	word	RX-PREFIX-LEN	(ptr u8 len ptr u8 len off -- option<len>)	lib/regex-test.f	docs/stdlib.md	stdlib-regex	published	match from a start offset: SOME match length, else NONE
 1	regex	lib/regex.f	word	RX-PREPARE	(len ptr u8 len --)	lib/regex-test.f	docs/stdlib.md	stdlib-regex	published	validate args and bytecode before matching
 1	regex	lib/regex.f	word	RX-MATCH?	(ptr u8 len ptr u8 len -- bool)	lib/regex-test.f	docs/stdlib.md	stdlib-regex	published	test whole-input regex match
-1	regex	lib/regex.f	word	RX-FIND-FROM	(ptr u8 len ptr u8 len off -- off len bool)	lib/regex-test.f	docs/stdlib.md	stdlib-regex	published	find a regex match from a start offset
-1	regex	lib/regex.f	word	RX-FIND	(ptr u8 len ptr u8 len -- off len bool)	lib/regex-test.f	docs/stdlib.md	stdlib-regex	published	find first regex match offset and length
+1	regex	lib/regex.f	word	RX-FIND-FROM	(ptr u8 len ptr u8 len off -- option<rx:hit>)	lib/regex-test.f	docs/stdlib.md	stdlib-regex	published	find a regex match span from a start offset: SOME(off,len), else NONE
+1	regex	lib/regex.f	word	RX-FIND	(ptr u8 len ptr u8 len -- option<rx:hit>)	lib/regex-test.f	docs/stdlib.md	stdlib-regex	published	find first regex match span: SOME(off,len), else NONE
 1	regex	lib/regex.f	word	RX-COUNT	(ptr u8 len ptr u8 len -- count)	lib/regex-test.f	docs/stdlib.md	stdlib-regex	published	count non-overlapping regex matches
 1	map	lib/map.f	module			lib/map-test.f	docs/stdlib.md	stdlib-map	active	v1 map storage uses ptr a n cells and ptr u8 n keys, never unchecked addr dereference
 1	map	lib/map.f	word	MAP-CHECK-CAP	(count --)	lib/map-test.f	docs/stdlib.md	stdlib-map	published	validate a positive map capacity

@@ -33,8 +33,10 @@ variable RXT-RX-LEN
    >LEN RXT-BUF-PTR RXT-RX-LEN @ >LEN RX-MATCH? ;
 
 : RXT-FIND ( ptr u8 n -- n n bool )
-   >LEN RXT-BUF-PTR RXT-RX-LEN @ >LEN RX-FIND {: off len found :}
-   off OFF>N len LEN>N found ;
+   >LEN RXT-BUF-PTR RXT-RX-LEN @ >LEN RX-FIND MATCH option
+     none OF 0 0 STR-FALSE ENDOF
+     some OF RX-HIT:UNMAKE LEN>N swap OFF>N swap STR-TRUE ENDOF
+   ;MATCH ;
 
 : RXT-COUNT ( ptr u8 n -- n )
    >LEN RXT-BUF-PTR RXT-RX-LEN @ >LEN RX-COUNT COUNT>N ;
@@ -214,6 +216,17 @@ variable RXT-RX-LEN
    s" xabc" RXT-FIND RXT-ASSERT-NOT-FOUND
    s" abc" RXT-FIND 0 3 RXT-ASSERT-FOUND ;
 
+: RXT-FIND-OFF ( ptr u8 n -- n )   \ direct option contract: SOME -> off (as n), NONE -> -1
+   >LEN RXT-BUF-PTR RXT-RX-LEN @ >LEN RX-FIND MATCH option
+     none OF -1 ENDOF
+     some OF RX-HIT:UNMAKE LEN>N drop OFF>N ENDOF
+   ;MATCH ;
+
+: RXT-TEST-FIND-OPTION ( -- )
+   s" a.c" RXT-COMPILE!
+   s" zzaXczz" RXT-FIND-OFF 2 T=       \ SOME hit carries off = 2
+   s" zzz" RXT-FIND-OFF -1 T= ;        \ NONE -> only the sentinel via MATCH
+
 : RXT-TEST-COUNT ( -- )
    s" a+" RXT-COMPILE!
    s" aaabaa" RXT-COUNT 2 T=
@@ -258,6 +271,7 @@ variable RXT-RX-LEN
    RXT-TEST-MATCH-ESCAPED
    RXT-TEST-MATCH-REPEATS
    RXT-TEST-FIND
+   RXT-TEST-FIND-OPTION
    RXT-TEST-COUNT
    RXT-TEST-THROWS
    RXT-REPORT ;

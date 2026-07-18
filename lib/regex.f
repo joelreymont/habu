@@ -457,18 +457,30 @@ variable RX-COUNT-POS
      some OF LEN>N text-u LEN>N = ENDOF               \ whole input must match
    ;MATCH ;
 
-: RX-FIND-FROM ( ptr u8 len ptr u8 len off -- off len bool ) {: text:ptr text-u rx:ptr rx-u from :}
+\ A regex hit is a matched (offset, length) span in the searched text. RX-FIND*
+\ return option<rx:hit>: SOME(off,len) when a match exists, NONE when none does —
+\ the checked replacement for the former (off len bool) value+flag return, so a
+\ caller cannot read the span on the no-match path (switchover wave B).
+package RX
+public
+PRODUCT hit 0
+  FIELD off off
+  FIELD len len
+;PRODUCT
+;package
+
+: RX-FIND-FROM ( ptr u8 len ptr u8 len off -- option<rx:hit> ) {: text:ptr text-u:len rx:ptr rx-u:len from:off :}   \ SOME first match span at/after `from`, else NONE
    from OFF>N 0 < if E-RX-SYNTAX throw then
    from begin dup OFF>N text-u LEN>N <= while
       dup >r text text-u rx rx-u r> RX-PREFIX-LEN MATCH option
         none OF ENDOF                                \ no match here: advance
-        some OF STR-TRUE exit ENDOF                    \ ( off len ) found
+        some OF RX-HIT:MAKE OPTION:SOME exit ENDOF     \ ( off len ) -> SOME hit
       ;MATCH
       OFF>N 1 + >OFF
    repeat drop
-   0 >OFF 0 >LEN STR-FALSE ;
+   OPTION:NONE ;
 
-: RX-FIND ( ptr u8 len ptr u8 len -- off len bool ) {: text:ptr text-u rx:ptr rx-u :}
+: RX-FIND ( ptr u8 len ptr u8 len -- option<rx:hit> ) {: text:ptr text-u:len rx:ptr rx-u:len :}   \ SOME first match span, else NONE
    text-u rx rx-u RX-PREPARE
    text text-u rx rx-u 0 >OFF RX-FIND-FROM ;
 
@@ -477,16 +489,18 @@ variable RX-COUNT-POS
    0 RX-COUNT-N !
    0 RX-COUNT-POS !
    begin RX-COUNT-POS @ text-u LEN>N <= while
-      text text-u rx rx-u RX-COUNT-POS @ >OFF RX-FIND-FROM if
-         RX-COUNT-N @ 1+ RX-COUNT-N !
-         LEN>N dup 0 > if
-            swap OFF>N swap +
-         else
-            drop OFF>N 1+
-         then
-         RX-COUNT-POS !
-      else
-         2drop text-u LEN>N 1 + RX-COUNT-POS !
-      then
+      text text-u rx rx-u RX-COUNT-POS @ >OFF RX-FIND-FROM MATCH option
+        none OF text-u LEN>N 1 + RX-COUNT-POS ! ENDOF
+        some OF                                       \ ( off len ) matched span
+           RX-COUNT-N @ 1+ RX-COUNT-N !
+           RX-HIT:UNMAKE
+           LEN>N dup 0 > if
+              swap OFF>N swap +
+           else
+              drop OFF>N 1+
+           then
+           RX-COUNT-POS !
+        ENDOF
+      ;MATCH
    repeat
    RX-COUNT-N @ >COUNT ;
