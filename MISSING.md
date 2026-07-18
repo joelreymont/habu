@@ -280,6 +280,6 @@ Parent: `habu-habu-quirk-fixes-5a0d1f1e`.
 | Locals may shadow ordinary words (`i`/`j`/`k`/`code`/`dup`) | `habu-c4-locals-shadow-3c7310cb` | open |
 | Fixpoint + gate-green constraint for all engine fixes | `habu-constraint-fixpoint-gate-81094225` | open |
 
-Foundation A = the nominal-types dot + the widening dot. Foundation B = the two
+Foundation A = the nominal-types dot + the widening dot. [2026-07-18: this table is stale post dot-burndown; A1's live dot is habu-foundation-a1-declarable (see .dots), which carries the depth-review update: CT registry already data-driven, A1 = declarability surface.] Foundation B = the two
 locals-shadowing dots + the block-scope dot. Foundation C = the bare-pointer dot
 (template, done) generalized, with the unknown-token dot as prior art.

@@ -273,6 +273,7 @@ variable SS-ERR-U
 : SS-SKIP-PATH? ( ptr u8 n -- bool )
    SS-REL
    2dup s" .jj-ws/" LINT-STARTS-WITH? IF 2drop SS-TRUE exit THEN
+   2dup s" docs/archive/" LINT-STARTS-WITH? IF 2drop SS-TRUE exit THEN   \ frozen history: counts there are records, not claims
    s" maki/" LINT-STARTS-WITH? ;
 
 : SS-MD? ( ptr u8 n -- bool )
