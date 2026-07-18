@@ -4811,6 +4811,7 @@ PPRIM: LOWER-CERT CHECK-CELLS PE-N PE-OUT PPRIM;
 PPRIM: LOWER-CERT GUARD-CELLS PE-N PE-OUT PPRIM;
 PPRIM: LOWER-CERT FETCH-FLAG PE-N PE-OUT PPRIM;
 PPRIM: LOWER-CERT STORE-FLAG PE-N PE-OUT PPRIM;
+PPRIM: LOWER-CERT XPAD-FLAG PE-N PE-OUT PPRIM;
 PPRIM: LOWER-CERT BODY-LEN-CELL PE-N PE-OUT PPRIM;
 PPRIM: LOWER-CERT BODY-HASH-CELL PE-N PE-OUT PPRIM;
 PPRIM: LOWER-CERT FNV-OFFSET PE-N PE-OUT PPRIM;
@@ -6143,6 +6144,7 @@ variable WF-I
 
 1 constant WF-FETCH-FLAG
 2 constant WF-STORE-FLAG
+4 constant WF-XPAD-FLAG   \ layout-cap slice 4: construct/MATCH extra-pad fact (w = instantiated_pads - declared_pads)
 
 : WFS ( -- ptr a ) WFS-P @ ;
 
@@ -6359,9 +6361,15 @@ variable WF-I
       dup WF-WIDTH@ 1 > IF drop RES-TRUE EXIT THEN
       1 +
    REPEAT drop RES-FALSE ;
+: WF-XPAD? ( -- bool )   \ layout-cap slice 4: any construct/MATCH extra-pad fact (triggers pass-2 even at extra=1)
+   0 BEGIN dup WF-N @ < WHILE
+      dup WF-FLAGS@ WF-XPAD-FLAG and 0 <> IF drop RES-TRUE EXIT THEN
+      1 +
+   REPEAT drop RES-FALSE ;
 : WF-FETCH? ( n -- bool ) WF-FLAGS@ WF-FETCH-FLAG and 0 <> ;
 : WF-NEEDS-P2? ( -- bool )
    WF-WIDE? IF RES-TRUE EXIT THEN
+   WF-XPAD? IF RES-TRUE EXIT THEN
    0 BEGIN dup WF-N @ < WHILE
       dup WF-FETCH? IF drop RES-TRUE EXIT THEN
       1 +

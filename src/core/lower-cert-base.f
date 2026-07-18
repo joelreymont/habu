@@ -29,6 +29,7 @@ $4841425543455254 constant MAGIC-V
 3 constant GUARD-NCELLS
 1 constant FETCH-BIT
 2 constant STORE-BIT
+4 constant XPAD-BIT      \ layout-cap slice 4: construct/MATCH extra-pad fact flag
 $CBF29CE484222325 constant FNV-OFFSET-V
 $100000001B3 constant FNV-PRIME-V
 
@@ -118,6 +119,7 @@ public
 : GUARD-CELLS ( -- n ) GUARD-NCELLS ;
 : FETCH-FLAG ( -- n ) FETCH-BIT ;
 : STORE-FLAG ( -- n ) STORE-BIT ;
+: XPAD-FLAG ( -- n ) XPAD-BIT ;
 : BODY-LEN-CELL ( -- n ) BODY-LEN-I ;
 : BODY-HASH-CELL ( -- n ) BODY-HASH-I ;
 : FNV-OFFSET ( -- n ) FNV-OFFSET-V ;

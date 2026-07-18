@@ -490,25 +490,57 @@ s" undefine zpt:unmake" TCE-CATCH E-CTOR-PROTECTED T=
 s" PRODUCT-PROTECTED" type cr
 
 \ ---------------------------------------------------------------------------
-\ layout-cap slice 3 (dot habu-checker-capability-layout-9b8540bd): the lowering
-\ staged fail-closed. A NAMED multi-cell layout construct type-checks (the rows
-\ are sound and CHECK-CANDIDATE certifies it — test/type-decl-suite.f TDPN4-7),
-\ but v1 lowering keys the constructor pads off the DECLARED family width
-\ (TFL-VPADS / the generated ctor body's M-p pads), which is WRONG for a
-\ parametric bundle (clopt<clw2>'s tag sits at slot 2, not slot 1) — the dual
-\ emitter is slice 4. So a REAL definition that would reach codegen with a
-\ parametric multi-cell construct fails closed (rc 70, CONSTRUCT-WIDE-STAGED-
-\ REJECT gated on CHK-CAND) rather than emit declared-width pads: CLFC1 the
-\ generated word, CLFC2 the raw `construct`. A cell instantiation is unaffected
-\ and compiles (CLFC3, rc 0). This suite is a candidate-validation `diagnostic`
-\ case, so the compile-hook stderr the reject prints is permitted here.
+\ layout-cap slice 4 (dot habu-checker-capability-layout-9b8540bd): width-aware
+\ construct/MATCH lowering. The checker records a per-call-site extra-pad fact
+\ (instantiated_pads - declared_pads, WF-XPAD-FLAG) so pass 2 (native
+\ EM-ADT-CON-VAR / EM-COMPILE-CALL / EM-ADT-MATCH-OF, gforth mirror) emits the
+\ arg-aware pad count. The slice-3 staged reject FLIPS: CLFC1 (generated ctor)
+\ and CLFC2 (raw `construct`) now compile AND round-trip; CLFC3 (cell) unchanged.
+\ A NESTED parametric arg (arity>0) stays fail-closed for slice 5. This suite is
+\ a candidate-validation `diagnostic` case, so the nested reject's stderr is
+\ permitted here.
 \ ---------------------------------------------------------------------------
 PRODUCT clw2 0 FIELD x n FIELD y n ;PRODUCT
 SUMTYPE clopt 1 VARIANT none ;VARIANT VARIANT some a ;VARIANT ;SUMTYPE
-s" : CLFC1 ( -- clopt<clw2> ) CLOPT:NONE ;" TCE-CATCH 70 T=
-s" : CLFC2 ( -- clopt<clw2> ) construct clopt none ;" TCE-CATCH 70 T=
+s" : CLFC1 ( -- clopt<clw2> ) CLOPT:NONE ;" TCE-CATCH 0 T=
+s" : CLFC2 ( -- clopt<clw2> ) construct clopt none ;" TCE-CATCH 0 T=
 s" : CLFC3 ( n -- clopt<n> ) CLOPT:SOME ;" TCE-CATCH 0 T=
-s" LOWER-STAGED-FAIL-CLOSED" type cr
+\ end-to-end runtime round-trips: construct a wide bundle, MATCH it back, assert
+\ the exact payload cells. Generated ctor (extra=0 SOME, extra=1 NONE), raw
+\ `construct` NONE, and MATCH's arg-aware payload skip.
+: CLFC-SOME ( n n -- clopt<clw2> ) CLW2:MAKE CLOPT:SOME ;
+: CLFC-NONEG ( -- clopt<clw2> ) CLOPT:NONE ;
+: CLFC-NONER ( -- clopt<clw2> ) construct clopt none ;
+: CLFC-GET ( clopt<clw2> -- n ) MATCH clopt none OF 999 ENDOF some OF CLW2:UNMAKE + ENDOF ;MATCH ;
+: CLFC-RT-SOME ( -- n ) 3 4 CLFC-SOME CLFC-GET ;
+: CLFC-RT-NONEG ( -- n ) CLFC-NONEG CLFC-GET ;
+: CLFC-RT-NONER ( -- n ) CLFC-NONER CLFC-GET ;
+CLFC-RT-SOME 7 T=
+CLFC-RT-NONEG 999 T=
+CLFC-RT-NONER 999 T=
+\ wave-B probe shapes as named payload products: result<clw2,n> (W=2 ok payload
+\ + cell err) and option<clfs3> (W=3 payload) — the shipping form of the P1/P2/P3
+\ raw runs (option<off len>, option<ptr u8 n>, result<n n,n>).
+PRODUCT clfs3 0 FIELD a n FIELD b n FIELD c n ;PRODUCT
+SUMTYPE clfres 2 VARIANT ok a ;VARIANT VARIANT err b ;VARIANT ;SUMTYPE
+: CLFC-ROK ( n n -- clfres<clw2,n> ) CLW2:MAKE CLFRES:OK ;
+: CLFC-RERR ( n -- clfres<clw2,n> ) CLFRES:ERR ;
+: CLFC-RGET ( clfres<clw2,n> -- n ) MATCH clfres ok OF CLW2:UNMAKE + ENDOF err OF ENDOF ;MATCH ;
+: CLFC-RT-OK ( -- n ) 5 6 CLFC-ROK CLFC-RGET ;
+: CLFC-RT-ERR ( -- n ) 77 CLFC-RERR CLFC-RGET ;
+CLFC-RT-OK 11 T=
+CLFC-RT-ERR 77 T=
+: CLFC-S3SOME ( n n n -- clopt<clfs3> ) CLFS3:MAKE CLOPT:SOME ;
+: CLFC-S3NONE ( -- clopt<clfs3> ) CLOPT:NONE ;
+: CLFC-S3GET ( clopt<clfs3> -- n ) MATCH clopt none OF -1 ENDOF some OF CLFS3:UNMAKE + + ENDOF ;MATCH ;
+: CLFC-RT-S3 ( -- n ) 1 2 3 CLFC-S3SOME CLFC-S3GET ;
+: CLFC-RT-SN ( -- n ) CLFC-S3NONE CLFC-S3GET ;
+CLFC-RT-S3 6 T=
+CLFC-RT-SN -1 T=
+\ slice-5 boundary stays fail-closed: a nested parametric arg (arity>0) still
+\ rejects rather than lower with the flat extra-pad model.
+s" : CLFC-NESTED ( -- clopt<clfres<n,n>> ) CLOPT:NONE ;" TCE-CATCH 70 T=
+s" LOWER-WIDTH-AWARE-ROUNDTRIP" type cr
 
 \ ---------------------------------------------------------------------------
 \ report: "ok" on success, nonzero exit on any failure.

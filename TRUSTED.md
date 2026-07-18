@@ -2099,6 +2099,7 @@ pprim lower-cert check-cells - pe-n pe-out
 pprim lower-cert guard-cells - pe-n pe-out
 pprim lower-cert fetch-flag - pe-n pe-out
 pprim lower-cert store-flag - pe-n pe-out
+pprim lower-cert xpad-flag - pe-n pe-out
 pprim lower-cert body-len-cell - pe-n pe-out
 pprim lower-cert body-hash-cell - pe-n pe-out
 pprim lower-cert fnv-offset - pe-n pe-out

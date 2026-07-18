@@ -4,6 +4,38 @@
 
 Last updated: 2026-07-18
 
+- **Width-aware construct/MATCH lowering (layout-cap slice 4) is an EXTRA-PAD fact,
+  not a full re-lowering.** (dot habu-checker-capability-layout-9b8540bd.) A
+  generated constructor body already emits `declared_pads 0s + tag` and leaves the
+  payload untouched, so a wide instantiation needs ONLY `instantiated_pads -
+  declared_pads` extra zero pushes — the reserved `construct` and `MATCH OF` legs
+  add them to the declared pad count, and the generated-ctor CALL pushes them
+  before its `BL`. The checker records the fact only when the delta is positive, so
+  every cell/arity-0 family emits no fact, stays pass-1, and is byte-identical
+  (proved by AOT cmp of a non-wide program). Because the delta can be 1 (not
+  "wide"), the fact needs its OWN flag (`WF-XPAD-FLAG`) to trigger `NEEDS-P2`;
+  reusing the width>1 test would silently drop 1-pad cases.
+- **Adding a WF-cert flag ripples through FIVE places, and the cert VALIDATOR bites
+  first.** A new WF flag (value 4) needs: `lower-cert-base.f` constant, a
+  `PPRIM: LOWER-CERT ...` checker model, the `VALIDATE-WF` flag mask (was `& 3`,
+  hardcoded to fetch/store) AND its `has-wide`/`NEEDS-CELL` accounting, the
+  `primitive-effect-inventory` manifest in TRUSTED.md, and the `prop-test-core.f`
+  AX-CENSUS `AX-GEN-LIST` (an unclassified axiom fails the census). First symptom
+  of the missing validator branch was `hb: malformed lowering certificate`, not a
+  checker miss — the checker recorded the flag fine; the emitter's cert gate
+  rejected it. The pass-2 legs also need a found-vs-missing bit from the width
+  lookup (missing returns width 1, which a construct leg can't distinguish from a
+  real 1-pad fact) — add x11 to `EMIT-WIDTH-LOOKUP`; existing callers reload x11 so
+  it is inert for them.
+- **The maki cad-replay + candidate-validation "baseline" reds are the SAME
+  parent!=child engine artifact, not a regression.** cad-test.f's replay child
+  hardcodes `s" bin/hb"` and the CAD store key includes the engine binary hash, so
+  running the suite through ANY candidate != the installed bin/hb misses the
+  rehydration (F100/F101). Proof it is not the change: cad passes through a
+  byte-identical-to-bin/hb candidate; it fails through every slice-4 candidate.
+  Both reds clear when bin/hb is refreshed to the new fixpoint at integration
+  (identical to slice 3). Do NOT bisect emitter changes for it — check parent vs
+  child binary first.
 - **FS-SKIP-DIR? skipped .jj/.git/.dots but never .jj-ws, so every walker (lints,
   candidate discovery) saw stale worker-workspace trees — a MAIN-CHECKOUT-ONLY latent
   red.** (2026-07-18, found by the first main-checkout run.f in days: 478

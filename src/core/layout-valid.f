@@ -273,7 +273,7 @@ variable FIELD-I
    repeat drop ;
 
 : NEEDS-P2 ( -- n )
-   WF-WIDE? HAS-VALID @ 0 <> or if 1 else 0 then ;
+   WF-WIDE? HAS-VALID @ 0 <> or WF-XPAD? or if 1 else 0 then ;
 
 : STREAM-BASE ( -- n )
    HEADER-N

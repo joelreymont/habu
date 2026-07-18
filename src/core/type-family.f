@@ -1369,6 +1369,49 @@ variable TFC-I   variable TFC-J   variable TFC-ROW
    REPEAT
    base fam TFAM-NAME$ fam MK-PARAM ;
 
+\ layout-cap slice 4 (dot habu-checker-capability-layout-9b8540bd): width-aware
+\ construct/MATCH lowering. The checker records, per genuinely-wide FLAT instantiation
+\ (a multi-cell layout arg that is itself an arity-0 named product/family), one
+\ extra-pad fact keyed at the construct/ctor-call/`of` token: w = instantiated_pads -
+\ declared_pads, flagged WF-XPAD-FLAG so pass-2 fires even when the difference is 1.
+\ Pass 2 (native EM-ADT-CON-VAR / EM-COMPILE-CALL / EM-ADT-MATCH-OF, gforth mirror)
+\ adds those extra zero cells so the physical bundle matches the arg-aware width. A
+\ nested parametric arg (arity>0) stays outside the flat model and keeps the slice-3
+\ staged fail-closed (construct) / declared-width (match), tracked to slice 5.
+variable TFC-NEST
+: TFC-CON-FLAT? ( n -- bool ) {: dt:n :}   \ every multi-cell arg is a flat arity-0 family
+   0 TFC-NEST !
+   0 TFC-I !
+   BEGIN TFC-I @ dt PARAM>ARGC < WHILE
+      dt TFC-I @ PARAM>ARG dup T-WIDTH 1 > swap PARAM>ARGC 0 > and IF -1 TFC-NEST ! THEN
+      TFC-I @ 1 + TFC-I !
+   REPEAT
+   TFC-NEST @ 0= ;
+
+: TFC-VAR-PAYCELLS ( n -- n ) {: vid:n :}   \ sum of instantiated payload cell widths for a variant
+   0
+   0 TFC-J !
+   BEGIN TFC-J @ vid SUMV-SCH-COUNT@ < WHILE
+      vid SUMV-SCH-START@ TFC-J @ + SCHEMA-ROOT@ TFC-SCH-TERM T-WIDTH +
+      TFC-J @ 1 + TFC-J !
+   REPEAT ;
+
+: TFC-CON-XPAD-RECORD ( n n n -- ) {: fam:n vid:n famterm:n :}   \ record the wide construct's extra-pad fact
+   famterm T-WIDTH 1 -                          \ instantiated slots
+   vid TFC-VAR-PAYCELLS -                        \ - instantiated payload cells = instantiated pads
+   fam TFAM-SLOTS@ vid SUMV-PAYCELLS@ - -        \ - declared pads = extra pads
+   {: extra:n :}
+   extra 0 > IF 0 fam 0 extra WF-XPAD-FLAG WF-ADD-FULL THEN ;
+
+: TFAM-MATCH-XPAD-RECORD ( n n -- ) {: vid:n term:n :}   \ record a wide MATCH arm's extra-pad fact
+   term T-RES {: rt:n :}
+   rt TFC-CON-FLAT? 0= IF EXIT THEN             \ nested arm: leave declared width (slice 5)
+   rt T-WIDTH 1 -                                \ instantiated slots
+   vid TFC-VAR-PAYCELLS -                        \ - instantiated payload cells = instantiated pads
+   vid SUMV-FAM@ TFAM-SLOTS@ vid SUMV-PAYCELLS@ - -   \ - declared pads = extra pads
+   {: extra:n :}
+   extra 0 > IF 0 vid SUMV-FAM@ 0 extra WF-XPAD-FLAG WF-ADD-FULL THEN ;
+
 : TFAM-ACTIVE-PKG$ ( -- ptr u8 n )        \ active checker package ("" at top level)
    CHECKER-PACKAGE-ACTIVE? IF CHECKER-PACKAGE-NAME CHECKER-PACKAGE-U @ EXIT THEN
    s" " ;
@@ -1393,9 +1436,15 @@ variable TFC-I   variable TFC-J   variable TFC-ROW
    dt 0 <> IF dt TFC-ARGS! THEN                       \ recover concrete args ONLY for a multi-cell instantiation; cell/open stay fresh
    FRESH MK-ROW {: base:n :}
    vid base TFC-PAY-ROW {: din:n :}
-   fam TFC-FAM-TERM base PUSH-LOGICAL {: dout:n :}
+   fam TFC-FAM-TERM {: famterm:n :}
+   dt 0 <> IF                                         \ layout-cap slice 4: width-aware lowering, else fail closed
+      dt TFC-CON-FLAT? IF fam vid famterm TFC-CON-XPAD-RECORD THEN
+   THEN
+   famterm base PUSH-LOGICAL {: dout:n :}
    din dout CHECKER-STEP
-   dt 0 <> IF CONSTRUCT-WIDE-STAGED-REJECT THEN ;     \ staged: a real compile fails closed (lowering can't emit the wide pads yet); a probe still certifies
+   dt 0 <> IF
+      dt TFC-CON-FLAT? 0= IF CONSTRUCT-WIDE-STAGED-REJECT THEN   \ nested parametric arg: slice 5 (staged fail-closed)
+   THEN ;
 
 : TFAM-CONSTRUCT-STEP ( ptr u8 n n -- bool ) {: na:ptr nu:n fam:n :}
    fam na nu SUMV-FIND 0= IF drop MD-CON-VAR MDIAG! RES-FALSE EXIT THEN
@@ -1448,6 +1497,7 @@ variable TFC-I   variable TFC-J   variable TFC-ROW
 
 : TFAM-MATCH-PAY ( n n n -- n ) {: vid:n term:n row:n :}   \ variant payload onto row
    term T-RES TFC-ARGS!
+   vid term TFAM-MATCH-XPAD-RECORD            \ layout-cap slice 4: wide arm records its extra-pad lowering fact
    vid row TFC-PAY-ROW ;
 
 \ ---------------------------------------------------------------------------

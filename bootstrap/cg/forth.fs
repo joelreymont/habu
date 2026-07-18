@@ -224,6 +224,7 @@ $4841425543455254 constant MAGIC
 3 constant CHECK-CELLS
 3 constant GUARD-CELLS
 1 constant FETCH-FLAG
+4 constant XPAD-FLAG        \ layout-cap slice 4: construct/MATCH extra-pad fact flag
 $CBF29CE484222325 constant FNV-OFFSET
 $100000001B3 constant FNV-PRIME
 
@@ -4797,13 +4798,13 @@ also LOWER-CERT also LOWER-TXN-LOOKUP definitions
    15 WF-CELLS cells MOVZ,  15 13 15 MUL,
    11 11 HEADER-CELLS cells ADDI,  11 11 15 ADD,
    15 11 0 LDR,  9 15 CMP,  C-EQ keyeq BCOND,  C-HI drift BCOND,
-   missing LBL,  10 1 MOVZ,  RET,
+   missing LBL,  10 1 MOVZ,  11 0 MOVZ,  RET,          \ x11=0: not found (default width 1)
    keyeq LBL,
       15 11 1 cells LDR,  14 15 CMP,  C-EQ found BCOND,  C-HI drift BCOND,
-      10 1 MOVZ,  RET,
+      10 1 MOVZ,  11 0 MOVZ,  RET,                     \ pos below cursor row: not found
    found LBL,
       10 11 2 cells LDR,
-      13 13 1 ADDI,  13 DATA TXN-WF-I-CELL STR,  RET,
+      13 13 1 ADDI,  13 DATA TXN-WF-I-CELL STR,  11 1 MOVZ,  RET,   \ x11=1: found (layout-cap slice 4 xpad legs)
    drift LBL,  [ also LOWER-TXN-CODE ] DRIFT-LABEL 37 DIE [ previous ] ;
 
 : EMIT-DESC ( -- )
@@ -4996,7 +4997,7 @@ also LOWER-CERT also LOWER-TXN definitions
    done LBL, ;
 
 : VALIDATE-WF ( n -- ) {: bad :} \ typed-local-lint: allow-bare-local
-   LBL LBL LBL LBL LBL LBL {: loop ordered flags fetch advance done :} \ typed-local-lint: allow-bare-local
+   LBL LBL LBL LBL LBL LBL LBL {: loop ordered flags fetch advance done xdone :} \ typed-local-lint: allow-bare-local
    5 11 WF-COUNT-CELL cells LDR,
    13 11 HEADER-CELLS cells ADDI,
    14 0 MOVZ,  9 0 MOVZ,  8 0 MOVZ,  6 0 MOVZ,  7 0 MOVZ,
@@ -5013,8 +5014,10 @@ also LOWER-CERT also LOWER-TXN definitions
       15 1 CMPI,  C-LS flags BCOND,  9 1 MOVZ,
    flags LBL,
       17 13 3 cells LDR,
-      15 17 3 ANDI,  15 17 CMP,  C-NE bad BCOND,
+      15 17 7 ANDI,  15 17 CMP,  C-NE bad BCOND,      \ flags subset {fetch,store,xpad}
       17 3 CMPI,  C-EQ bad BCOND,
+      15 17 XPAD-FLAG ANDI,  15 xdone CBZ,  9 1 MOVZ, \ layout-cap slice 4: xpad row marks needs-p2
+   xdone LBL,
       15 17 FETCH-FLAG ANDI,  15 fetch CBNZ,  advance B,
    fetch LBL,  8 8 1 ADDI,
    advance LBL,
@@ -5636,7 +5639,20 @@ variable P2SK
    lmain EMIT-COMPILE-FLOAT-OPS ;
 
 : EMIT-COMPILE-CALL ( n n -- ) {: lmain lundef :}
-   LBL LBL {: notimm callimm :} \ typed-local-lint: allow-bare-local - Gforth label ids
+   LBL LBL LBL LBL LBL {: notimm callimm noxc ploop pdone :} \ typed-local-lint: allow-bare-local - Gforth label ids
+   9 DATA P2-CELL LDR,  9 noxc CBZ,               \ layout-cap slice 4: pass-2 wide generated-ctor call adds extra pads
+      9 DATA TKA-CELL LDR,  10 DATA TXN-SRC-A-CELL LDR,  9 9 10 SUB,  10 0 MOVZ,
+      LP2CWAT @ BL,                               \ x10 = extra pads, x11 = found
+      11 noxc CBZ,                                \ ordinary call (no fact): normal lowering
+      SP SP 16 SUBI,  10 SP 0 STR,                \ frame the count across LVPUSHC spills
+      2 3 MOVZ,  LPROT @ BL,                       \ region -> RW for emission
+      ploop LBL,
+         10 SP 0 LDR,  10 pdone CBZ,
+         11 0 MOVZ,  LVPUSHC @ BL,                 \ push one extra zero pad below the declared body's pads
+         10 SP 0 LDR,  10 10 1 SUBI,  10 SP 0 STR,  ploop B,
+      pdone LBL,
+      SP SP 16 ADDI,
+   noxc LBL,
    LVSPILL @ BL,
    9 DATA TKA-CELL LDR,  10 DATA TKL-CELL LDR,  LFIND @ BL,
    13 lundef CBZ,
@@ -5720,7 +5736,7 @@ variable P2SK
 \ CMM=2 leg: resolve variant, emit, mode off
 : EM-ADT-CON-VAR ( n -- ) {: lmain :} \ typed-local-lint: allow-bare-local
    \ typed-local-lint: allow-bare-local - stock Gforth rejects Habu type suffixes.
-   LBL LBL {: vmsg vok :}
+   LBL LBL LBL {: vmsg vok nox :} \ typed-local-lint: allow-bare-local - Gforth label ids
    LBCAP @ BL,                          \ operand reaches the checker's body too
    2 5 MOVZ,  LPROT @ BL,               \ region -> RX: checker-call window
    LTFLCVAR 9 C-FIND-GLOBAL
@@ -5738,6 +5754,14 @@ variable P2SK
       0 70 MOVZ,  NR-EXIT-GROUP SYS,
    vmsg LBL,  s" hb: construct: unknown variant: " BYTES,
    vok LBL,
+   9 DATA P2-CELL LDR,  9 nox CBZ,      \ layout-cap slice 4: pass-2 wide construct adds extra pads
+      SP SP 16 SUBI,  12 SP 0 STR,  13 SP 8 STR,      \ save declared pads + tag across the query
+      9 DATA TKA-CELL LDR,  10 DATA TXN-SRC-A-CELL LDR,  9 9 10 SUB,  10 0 MOVZ,
+      LP2CWAT @ BL,                                   \ x10 = extra pads, x11 = found
+      12 SP 0 LDR,  13 SP 8 LDR,  SP SP 16 ADDI,
+      11 nox CBZ,
+         12 12 10 ADD,                                \ x12 = declared + extra pads
+   nox LBL,
    EM-ADT-CON-PUSHES                    \ frames the counters, then flips back to RW
    12 0 MOVZ,  12 DATA CMM-CELL STR,
    lmain B, ;
@@ -5862,7 +5886,7 @@ variable P2SK
 
 : EM-ADT-MATCH-OF ( n -- ) {: lmain :} \ typed-local-lint: allow-bare-local
    \ typed-local-lint: allow-bare-local - stock Gforth rejects Habu type suffixes.
-   LBL LBL {: emsg eok :}
+   LBL LBL LBL {: emsg eok noxm :} \ typed-local-lint: allow-bare-local - Gforth label ids
    LBCAP @ BL,
    0 LKWOF @ ADR,  1 2 MOVZ,  LKWCMP @ BL,
    0 eok CBNZ,
@@ -5872,6 +5896,12 @@ variable P2SK
       0 70 MOVZ,  NR-EXIT-GROUP SYS,
    emsg LBL,  s" hb: match: expected of: " BYTES,
    eok LBL,
+   9 DATA P2-CELL LDR,  9 noxm CBZ,     \ layout-cap slice 4: pass-2 wide match arm adds extra pads to CMPADS
+      9 DATA TKA-CELL LDR,  10 DATA TXN-SRC-A-CELL LDR,  9 9 10 SUB,  10 0 MOVZ,
+      LP2CWAT @ BL,                     \ x10 = extra pads, x11 = found
+      11 noxm CBZ,
+         14 DATA CMPADS-CELL LDR,  14 14 10 ADD,  14 DATA CMPADS-CELL STR,
+   noxm LBL,
    14 DATA CMTAG-CELL LDR,
    9 $D2800010 LIT64,  14 14 5 LSLI,  9 9 14 ORR,  LCEMIT @ BL,   \ movz x16, #tag
    $F85F8269 C-EMITW

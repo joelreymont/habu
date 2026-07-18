@@ -1911,16 +1911,29 @@ stays red — a wrong-width payload, a cross-family bundle, and a linear payload
 all reject (`test/type-decl-suite.f` TDPN4-7 positive, TDPA1-4 negative;
 `test/type-match-suite.f` ML1/ML2).
 
-**LOWERING is STAGED FAIL-CLOSED (slice 4 owns the dual emitter).** v1 lowering
-keys the constructor pads off the DECLARED family width (`TFL-VPADS`, and the
-generated ctor body's `M-p` pad count) — WRONG for a parametric bundle
-(`option<tdpbw2>` `none` needs two pad cells, not one). So a REAL definition
-that would reach codegen with a parametric multi-cell construct fails closed
-(`CONSTRUCT-WIDE-STAGED-REJECT`, gated on `CHK-CAND = 0`) rather than emit
-declared-width pads; a `CHECK-CANDIDATE` probe certifies the same source (the
-rows are sound). A cell instantiation is unaffected and compiles. Pinned:
-`test/type-decl-suite.f` TDPL1 (generated word), TDPL2 (raw `construct`), TDPL3
-(cell instantiation compiles). A raw multi-token RUN is not a parameter arg:
+**LOWERING is WIDTH-AWARE (slice 4 landed, dual emitter).** The declared family
+width (`TFL-VPADS`, the generated ctor body's `M-p` pad count) is WRONG for a
+parametric bundle (`option<tdpbw2>` `none` needs two pad cells, not one), so the
+checker records a per-call-site **extra-pad fact** (`WF-XPAD-FLAG`, `w =
+instantiated_pads - declared_pads`) at the construct-variant / generated-ctor-
+call / `MATCH` `OF` token, keyed and consumed exactly like the §17 transport
+width facts (`TFC-CON-XPAD-RECORD` / `TFAM-MATCH-XPAD-RECORD`, recorded only when
+the difference is positive so cell/arity-0 families emit no fact and stay byte-
+identical). The flag also drives `NEEDS-P2` even when the difference is 1. Pass 2
+adds those extra zero cells below the declared pads: the reserved `construct`
+leg (`EM-ADT-CON-VAR`) and the `MATCH` `OF` leg (`EM-ADT-MATCH-OF`) add them to
+the declared pad count, and the generated-constructor CALL (`EM-COMPILE-CALL`)
+pushes the extra zeros before its `BL` so the declared body's pads+tag land on
+top — all gated on pass 2, so pass 1 and every non-wide shape lower byte-
+identically. The gforth recovery mirror (`bootstrap/cg/forth.fs`) carries the
+same legs; the cert validator (`VALIDATE-WF`) admits the flag and the width
+lookup returns a found bit so a leg distinguishes a wide fact from a scalar
+default. A nested parametric arg (arity>0) stays fail-closed
+(`CONSTRUCT-WIDE-STAGED-REJECT`, gated on `TFC-CON-FLAT?`) for slice 5. Pinned:
+`test/type-ctor-suite.f` CLFC1 (generated word round-trip), CLFC2 (raw
+`construct` round-trip), CLFC3 (cell instantiation compiles), the wave-B
+result/option end-to-end round-trips, and the nested staged reject. A raw
+multi-token RUN is not a parameter arg:
 
 ```forth
 option<off len>
