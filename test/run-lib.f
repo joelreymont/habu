@@ -36,10 +36,15 @@ package RUN-BUDGET
 
 public
 
-30000 constant MACOS-MS
-35000 constant MACOS-WALL-MS
-30000 constant SPARK-MS
-35000 constant SPARK-WALL-MS
+\ Timed-budget stop-lines per 10x2 host profile (ms). Raised +5000 to absorb the
+\ maki suite now routed into the gate (dot habu-route-the-maki-e61d8a1b): on the
+\ maki-dominated retry/cold attempts the maki child (~26s wall) becomes the long
+\ pole, so the elapsed budget moves up to the former wall value (35000) and the
+\ wall rises with it, restoring the pass-attempt headroom the maki wall consumed.
+35000 constant MACOS-MS
+40000 constant MACOS-WALL-MS
+35000 constant SPARK-MS
+40000 constant SPARK-WALL-MS
 
 ;package
 
@@ -327,11 +332,14 @@ variable TR-PRE-DIAG-FILE
       TR-PROFILE-JETSON-ORIN-CLOCKS-4X2 of
          4 GT-POOL-SLOTS!
          2 TR-NESTED-POOL !
+         \ +17% over the pre-maki 100000/110000 - the same relative bump spark took,
+         \ applied unmeasured (no Jetson here) because the Orin runs maki's CUDA legs
+         \ and has fewer pool slots, so its maki wall scales with its ~3.3x budget.
          TR-BUDGET-USER @ 0= if
-            100000 TR-CAL-SCALED TR-BUDGET !
+            117000 TR-CAL-SCALED TR-BUDGET !
          then
          TR-WALL-BUDGET-USER @ 0= if
-            110000 TR-CAL-SCALED TR-WALL-BUDGET !
+            128000 TR-CAL-SCALED TR-WALL-BUDGET !
          then
       endof
       TR-PROFILE-LINUX-ARM64-4X2 of
@@ -373,7 +381,7 @@ variable TR-PRE-DIAG-FILE
 : TR-COLD-BUDGET-MS ( -- n )
    TR-PROFILE-ID @ case
       TR-PROFILE-MACOS-ARM64-10X2 of RUN-BUDGET:MACOS-MS TR-CAL-SCALED endof
-      TR-PROFILE-JETSON-ORIN-CLOCKS-4X2 of 150000 TR-CAL-SCALED endof
+      TR-PROFILE-JETSON-ORIN-CLOCKS-4X2 of 175000 TR-CAL-SCALED endof
       TR-PROFILE-LINUX-ARM64-4X2 of 150000 TR-CAL-SCALED endof
       TR-PROFILE-DGX-SPARK-10X2 of RUN-BUDGET:SPARK-MS TR-CAL-SCALED endof
       TR-BUDGET @ swap
@@ -382,7 +390,7 @@ variable TR-PRE-DIAG-FILE
 : TR-COLD-WALL-BUDGET-MS ( -- n )
    TR-PROFILE-ID @ case
       TR-PROFILE-MACOS-ARM64-10X2 of RUN-BUDGET:MACOS-WALL-MS TR-CAL-SCALED endof
-      TR-PROFILE-JETSON-ORIN-CLOCKS-4X2 of 160000 TR-CAL-SCALED endof
+      TR-PROFILE-JETSON-ORIN-CLOCKS-4X2 of 187000 TR-CAL-SCALED endof
       TR-PROFILE-LINUX-ARM64-4X2 of 0 endof
       TR-PROFILE-DGX-SPARK-10X2 of RUN-BUDGET:SPARK-WALL-MS TR-CAL-SCALED endof
       TR-WALL-BUDGET @ swap
@@ -1785,10 +1793,61 @@ public
    s" --rerun-failed: " type TR-RERUN-N @ TR-NUM$ type
    s"  phase(s) from " type TR-RED-LIST$ type cr ;
 
+\ The maki suite as an early external child (dot habu-route-the-maki-e61d8a1b).
+\ Before this the gate proved NOTHING about maki: deleting a word maki/report.f
+\ load-bears on gated GREEN while breaking the Model CAD pipeline. maki/test.f is
+\ a self-contained ~20s suite (bin/hb --load maki/test.f) that sits at the DICT-CAP
+\ word wall, so it must run STANDALONE - never with the gate base libs prepended,
+\ which would overflow its image. It starts here so its wall overlaps the whole
+\ DAG, holds one top pool slot, and a nonzero rc fails the gate closed through the
+\ normal red-phase path (GT-POOL-RED# in TR-COMPLETE).
+: TR-MAKI-LABEL ( -- ptr u8 n )
+   s" native maki checked suite" ;
+
+: TR-MAKI-TMP! ( -- )
+   GT-ROOT s" gate-maki" TR-PATH-BUF JOIN-PATH TR-PATH-U !
+   TR-PATH$ MAKE-DIRS ;
+
+\ Export the gate's measured load/calibration factors so maki's own per-suite
+\ timeout and performance budgets scale with contention, exactly as the resident
+\ phases do (TR-PHASE-RESIDENT-SETUP): HB_LOAD_PCT carries the pool-pressure floor
+\ for timeout budgets, HB_CAL_PCT the measured factor for performance ratchets.
+: TR-MAKI-PCT-ENV+ ( -- )
+   s" HB_LOAD_PCT" >LEN TR-LOAD-PCT-EXPORT TR-PCT$ >LEN PROC-ENV+
+   s" HB_CAL_PCT" >LEN TR-CAL-PCT TR-PCT$ >LEN PROC-ENV+ ;
+
+: TR-MAKI-BASE ( -- )
+   PROC-ARGV-RESET
+   PROC-ENV-RESET
+   TR-MAKI-TMP!
+   s" HB_TMP" >LEN TR-PATH$ >LEN PROC-ENV+
+   TR-BUILD-CACHE-ENV
+   TR-MAKI-PCT-ENV+
+   PROC-ENV-INHERIT-MISSING
+   s" --load"  >LEN PROC-ARGV+
+   s" maki/test.f"  >LEN PROC-ARGV+ ;
+
+\ host-source subject (maki checks the working-tree source), unique label so the
+\ pool-pass span attributes cleanly and no duplicate-label guard trips.
+: TR-MAKI-TEST ( -- )
+   TR-MAKI-LABEL
+   s" host-source"
+   s" bin"
+   s" process"
+   s" -"
+   GS-TEST ;
+
+: TR-MAKI-START ( -- )
+   TR-MAKI-BASE
+   s" top-phase-spawn" GS-EVENT
+   TR-MAKI-TEST
+   s" bin/hb" TR-MAKI-LABEL TR-TIMEOUT-MS GT-POOL-START ;
+
 : TR-EARLY-EXTERNAL-START ( -- )
    GT-POOL-RESET
    TR-PRE-TOOLS-START
    TR-PRE-CANDIDATE-START
+   TR-MAKI-START
    TR-UNDER-READY @ 0= if
       15 >IDX TR-PHASE-START
    else

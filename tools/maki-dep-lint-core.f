@@ -6,6 +6,12 @@
 \ trust root. Until this lint, the seam was held only by review + the gate's explicit
 \ allow-lists.
 \
+\ ONE sanctioned exception (dot habu-route-the-maki-e61d8a1b): the native gate
+\ (test/run-lib.f) names the maki suite entry maki/test.f so it can SPAWN it as a
+\ black-box subprocess. That is not an import - habu never loads maki into its image
+\ - so the guarded dependency direction is intact. MDL-GATE-ROUTE? allows exactly
+\ that one token in exactly that one file; every other maki/ token still throws.
+\
 \ Scan: each src/, lib/, test/ Forth file is TOKENIZEd (which strips `\` line comments
 \ and `( )` stack-effect comments and keeps `s"` string bodies as tokens), then every
 \ whole token is matched for `maki/` - not a raw-file substring match, so prose in
@@ -20,6 +26,7 @@ $80000 constant MDL-CAP   \ >= largest scanned source (checker.f grew past $4000
 32 constant MDL-NCAP
 10 constant MDL-LF
 48 constant MDL-ZERO
+34 constant MDL-DQUOTE   \ TOKENIZE keeps an s" body's closing quote on the token
 
 create MDL-BUF  MDL-CAP allot
 create MDL-NBUF MDL-NCAP allot
@@ -78,9 +85,24 @@ variable MDL-REPORT?
    then
    MDL-BAD+ ;
 
+\ The sole sanctioned habu->maki reference: test/run-lib.f names the maki suite
+\ entry maki/test.f to SPAWN it (dot habu-route-the-maki-e61d8a1b). Allow exactly
+\ that token - the bare load path maki/test.f or its s" body maki/test.f" (the
+\ closing quote rides on the token) - in exactly that file. A longer near-miss
+\ (maki/test.fs) or the token in any other file is still a finding.
+: MDL-GATE-ROUTE? ( ptr u8 n -- bool ) {: t:ptr tu :}
+   MDL-PATH MDL-PATHU @ s" test/run-lib.f" LINT-STR= 0= if MDL-FALSE exit then
+   t tu s" maki/test.f" LINT-STARTS-WITH? 0= if MDL-FALSE exit then
+   s" maki/test.f" nip {: pu :}
+   tu pu = if MDL-TRUE exit then
+   tu pu 1+ = if t tu 1- + c@ MDL-DQUOTE = exit then
+   MDL-FALSE ;
+
 : MDL-SCAN-TOKENS ( -- )
    0 begin dup TN# @ < while
-      dup TOK 2dup s" maki/" LINT-CONTAINS? IF MDL-HIT ELSE 2drop THEN
+      dup TOK 2dup s" maki/" LINT-CONTAINS? IF
+         2dup MDL-GATE-ROUTE? IF 2drop ELSE MDL-HIT THEN
+      ELSE 2drop THEN
       1+
    repeat drop ;
 
