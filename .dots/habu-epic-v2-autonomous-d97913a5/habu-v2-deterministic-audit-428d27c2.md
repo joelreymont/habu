@@ -9,3 +9,9 @@ blocks:
 ---
 
 Implement append-only canonical events for action requests/results, transaction commits, verifier runs, evidence decisions, promotion, activation, and rollback. Replay from an empty store must reproduce revision/artifact/evidence/state digests without invoking the LLM. Acceptance: event omission/reorder/tamper rejects, nondeterministic action is marked and must carry captured output evidence, and replay is byte-stable across fresh processes.
+
+NOTE 2026-07-18 (promotion landing ecc1a806): this dot also owns wiring
+DAUTH:AUTHORIZED-DISCHARGE into CSTORE:COMMIT-AUTHORIZED (the third
+validate leg) - needs obligation/evidence context threaded through
+transaction/commit-store parameters; the landed DAUTH gate is the
+reusable surface.
