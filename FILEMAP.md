@@ -1392,6 +1392,27 @@ points stay listed.
   pairing verdicts (the FP32-vs-TF32 reject + resolving positives), the E-CEVID unit-category
   / capacity / oversized-row throws, and the static numeric-policy/raw-n/identity-slot
   checker-reject candidates with resolving positives.
+- `maki/competitive-evidence-store.f` — the DURABLE typed store codec for cevid/v1 evidence
+  rows (reopens package CEVID; the persistence follow-on to the schema). ENCODE derives the
+  KEY = the single canonical `RENDER` (every field participates, cache-state included) and
+  wraps it in the schema=cevid/v1 versioned envelope; the store key is SHA-256(render) and
+  the file is rows/hex(store-key), published crash-safe with `ATOMIC-WRITE-FILE` (temp+rename)
+  and content-addressed (a re-PUT is byte-identical). DECODE treats persisted bytes as
+  untrusted and returns the typed `load-result` sum (ok<evidence> / malformed), mapping the
+  structural throws (schema/fields/label/token/canon + the schema's own E-CEVID-UNIT/-CAP) to
+  `malformed` at the catch boundary and re-throwing any other code (IO/width/root never
+  masquerade). LOAD adds absent (no file) and the content-path identity check (the file at
+  this key must decode to the query render). No embedded content digest: the SHA-256 filename
+  already commits to the content, so the canonical re-render is the integrity axis. Reuses
+  maki/competitive-evidence.f's render only (no wire duplication); no run-metric MEASURE
+  change (no runtime consumer needs per-metric units). Owns -5422..-5428.
+- `maki/competitive-evidence-store-test.f` — the flagship GEMM/SAXPY encode goldens, the
+  in-memory encode->decode->re-encode and durable PUT->fresh-LOAD->re-encode byte-for-byte
+  round-trips, the typed absent/malformed LOAD verdicts (a planted foreign row + garbage), the
+  content-key composition (cold vs warm is a distinct durable file), and one `malformed`
+  forgery per DECODE axis (schema tag, meta schema, bad token, field count, bad label,
+  wrong-category unit, over-capacity value, non-canonical spelling) each resolving against the
+  clean base row.
 - `tools/eval-triton.f` — migrates the SHIPPED SAXPY and GEMM competitive evidence
   (docs/eval-triton.md, tools/ptx/perf-rows.tsv) into the typed BENCH store/report path
   as an EXTERNAL consumer of the store seal (package EVAL-TRITON, public API only, no raw

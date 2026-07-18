@@ -302,6 +302,8 @@ TEST:SUITE tools/eval-triton-test.f
 TEST:;SUITE
 TEST:SUITE maki/competitive-evidence-test.f
 TEST:;SUITE
+TEST:SUITE maki/competitive-evidence-store-test.f
+TEST:;SUITE
 TEST:SUITE maki/cuda-types-test.f
 TEST:;SUITE
 TEST:SUITE maki/cuda-driver-test.f
