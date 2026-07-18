@@ -1,6 +1,6 @@
 ---
 title: "Switchover wave B: option<tuple> + result<T,errno> process family"
-status: active
+status: open
 priority: 2
 issue-type: task
 created-at: "\"\\\"\\\\\\\"\\\\\\\\\\\\\\\"2026-07-04T22:18:57.005375+02:00\\\\\\\\\\\\\\\"\\\\\\\"\\\"\""
@@ -354,7 +354,7 @@ and OUTCOME sibling) needs prelude placement + engine battery + spawn-suite proo
 GJA-SUGGEST-ROW are census misclassifications for Wave C. The raw-kernel SPLIT-NEXT
 retirement is TVK-RAW territory, not wave B.
 
-Claim: agent=waveb4 workspace=.jj-ws/fable-waveb4 (batch 3: JSONLF-* json-file cluster — package the module, line/row named products, option<pkg:prod> per the batch-1/2 pattern; tools/json-file.f is NOT in the fixpoint prefix)
+Claim (RELEASED 2026-07-18, batch 3 merged): agent=waveb4 workspace=.jj-ws/fable-waveb4 (batch 3: JSONLF json-file cluster via package JSONF + line/row named products)
 
 BATCH 3 LANDED 2026-07-18 (waveb4 lane, gated green — NO engine battery owed,
 tools/json-file.f is on-demand, not in the fixpoint prefix): the JSONLF-* json-file

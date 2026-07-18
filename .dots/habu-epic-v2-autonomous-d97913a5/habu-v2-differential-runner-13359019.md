@@ -114,3 +114,26 @@ changes). BLOCKED: raise/land a DICT-CAP bump (or a per-suite forget in
 the maki/test.f framework) so the three suites join the monolithic gate.
 STILL OPEN on the dot: a durable per-case output store (run-log remains a
 bounded LOG-CAP=64 first slice).
+
+TENSOR LEG MERGED 2026-07-18 (difftensor lane, commit rebased 9f1c8e49;
+claim RELEASED; full battery green on the merged stack). Items 1-4 of
+the remainder landed: tensor forward suite (float elementwise comparator
+per ort-ref, NPOL:dom + u64 fixed-point tolerance over SUBJ-T/REF-T),
+real subject-source injection (different injected subjects produce
+different correctly-classified outcomes; dying subject -> faulted),
+DIFFSUITE structured DECODE (TLV round-trip + digest-integrity +
+unknown-key rejects), durable suite-id registry on the sanctioned
+cad-kinds suite-id TYPEFAMILY (TRUSTED rows RAW>SUITE-ID/SUITE-ID>RAW,
+refine-lint seed 59; RFL-SEED#=60). Torch ABSENT on this host - item 5
+stays the landed TORCH-REFERENCE interface + recorded skip.
+STILL OPEN on this dot:
+- maki/test.f registration of the three new suites (diff-suite-id,
+  diff-runner-tensor, diff-runner-inject): BLOCKED on dict capacity -
+  DICT-CAP 16384 with maki peak ndict 16347. The fix chain is
+  habu-lprot-narrow-protection-03cc8d7f (mprotect windows; must land
+  first or the region growth trips the runtime time ratchet) then the
+  prepared region-growth commit (REGION 8M, DICT-CAP 32768). Until then
+  the three suites are standalone-gated (green, gate results in the
+  claim record above).
+- durable per-case output store (run-log is a bounded LOG-CAP=64 first
+  slice).
