@@ -3,7 +3,9 @@
 \ This isolated fixture does not load xref.f's constructor-package registration
 \ bridge. Keep the hook inert while the fixture exercises wide codegen.
 : BWM-STAGE0-PROT-NOP ( ptr u8 n -- ) 2drop ;
-' BWM-STAGE0-PROT-NOP TDECL-PROT-WID-XT !
+: BWM-PROT-INSTALL ( -- ) [: BWM-STAGE0-PROT-NOP ;] is TDECL-PROT-WID-XT ;
+BWM-PROT-INSTALL
+-1 TDECL-PROT-WID-ARMED !
 
 SUMTYPE bwm2 1
   VARIANT pair a ;VARIANT

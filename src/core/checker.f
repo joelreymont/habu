@@ -413,23 +413,30 @@ PARAM-SCR-BOOT PARAM-SCR-P !    PARAM-SCR-INIT PARAM-SCR-CAP-V !
 
 \ --- resolved type-family (TFAM) identity for T-PARAM terms. The TFAM registry
 \ lives in src/core/type-family.f, loaded AFTER checker.f, so its query words are
-\ reached through friend xt hooks installed at prefix load (0 = not yet loaded).
-\ The TFAM-RESOLVE*/TFAM-ARITY* wrappers live just below RES-FALSE (which they use).
-variable TFAM-RESOLVE-XT   0 TFAM-RESOLVE-XT !   \ ( pkg-a pkg-u name-a name-u -- id true | false )
-variable TFAM-ARITY-XT     0 TFAM-ARITY-XT !     \ ( id -- arity )
-variable TFAM-LAYOUT?-XT   0 TFAM-LAYOUT?-XT !   \ ( id -- bool ) : family id occupies an ADT layout
-variable TFAM-CELL?-XT     0 TFAM-CELL?-XT !     \ ( id -- bool ) : family id is a scalar cell kind (TK-CELL)
-variable TFAM-WIDTH-XT     0 TFAM-WIDTH-XT !     \ ( id -- n ) : declared logical width in stack cells, params-as-cells (docs §18)
-variable TFAM-INST-WIDTH-XT 0 TFAM-INST-WIDTH-XT ! \ ( term -- n ) : INSTANTIATED logical width, arg-aware (docs §18); 0 hook -> declared width
-variable TFAM-CON-LIN-XT   0 TFAM-CON-LIN-XT !   \ ( id -- bool ) : family schemas contain a concrete linear value
-variable CONSTRUCT-FAM-XT  0 CONSTRUCT-FAM-XT !  \ ( ptr u8 n -- n bool ) : item 9 construct family resolve, active package only
-variable CONSTRUCT-STEP-XT 0 CONSTRUCT-STEP-XT ! \ ( ptr u8 n n -- bool ) : item 9 construct variant resolve + step effect
-variable CTOR-STEP-XT      0 CTOR-STEP-XT !      \ ( sym -- bool ) : layout-cap slice 3, a generated-constructor CALL whose declared output instantiates a family param at a multi-cell layout arg routes through the arg-aware construct step (the fixed 1-cell-per-param stored effect cannot consume/produce the wide bundle); 0/cell/open args fall through to the ordinary word call
-variable MATCH-FAM-XT      0 MATCH-FAM-XT !      \ ( ptr u8 n -- n bool ) : item 9 MATCH family resolve, signature scope
-variable MATCH-VAR-XT      0 MATCH-VAR-XT !      \ ( ptr u8 n n -- n bool ) : variant tail -> SUMV id within a family
-variable MATCH-VTAG-XT     0 MATCH-VTAG-XT !     \ ( n -- n ) : SUMV id -> declaration-order tag (seen-bitset index)
-variable MATCH-VCOUNT-XT   0 MATCH-VCOUNT-XT !   \ ( n -- n ) : family id -> variant count (exhaustiveness domain)
-variable MATCH-PAY-XT      0 MATCH-PAY-XT !      \ ( n n n -- n ) : vid famterm row -- row + instantiated payload
+\ reached through friend hooks: each is a `defer` with a checker-visible declared
+\ effect, given a registry-not-loaded DEFAULT here and rebound with `is` to the
+\ real query word by type-family.f at prefix load. Declaring the effect makes a
+\ hook call statically effect-known, so the checker never models it as an opaque
+\ executed xt (dot habu-checker-exec-of-5923c543). Defaults bind below RES-FALSE
+\ (which several need). Hooks reached only after the registry is armed carry no
+\ default and stay unset (executing one before install fails closed via
+\ DEFER-UNSET) — these are the CONSTRUCT-STEP / MATCH-* / TFAM-CON-LIN query
+\ hooks, whose call sites never run before type-family.f installs them.
+defer TFAM-RESOLVE-XT ( ptr u8 n ptr u8 n -- n bool )   \ pkg + name -> family id, true | false
+defer TFAM-ARITY-XT ( n -- n )                          \ family id -> declared arity
+defer TFAM-LAYOUT?-XT ( n -- bool )                     \ family id occupies an ADT layout
+defer TFAM-CELL?-XT ( n -- bool )                       \ family id is a scalar cell kind (TK-CELL)
+defer TFAM-WIDTH-XT ( n -- n )                           \ declared logical width in stack cells, params-as-cells (docs §18)
+defer TFAM-INST-WIDTH-XT ( n -- n )                     \ INSTANTIATED logical width of a resolved layout term, arg-aware (docs §18)
+defer TFAM-CON-LIN-XT ( n -- bool )                     \ family schemas contain a concrete linear value
+defer CONSTRUCT-FAM-XT ( ptr u8 n -- n bool )           \ item 9 construct family resolve, active package only
+defer CONSTRUCT-STEP-XT ( ptr u8 n n -- bool )          \ item 9 construct variant resolve + step effect
+defer CTOR-STEP-XT ( n -- bool )                        \ layout-cap slice 3: a generated-constructor CALL whose declared output instantiates a family param at a multi-cell layout arg routes through the arg-aware construct step (the fixed 1-cell-per-param stored effect cannot consume/produce the wide bundle); 0/cell/open args fall through to the ordinary word call
+defer MATCH-FAM-XT ( ptr u8 n -- n bool )               \ item 9 MATCH family resolve, signature scope
+defer MATCH-VAR-XT ( ptr u8 n n -- n bool )             \ variant tail -> SUMV id within a family
+defer MATCH-VTAG-XT ( n -- n )                           \ SUMV id -> declaration-order tag (seen-bitset index)
+defer MATCH-VCOUNT-XT ( n -- n )                        \ family id -> variant count (exhaustiveness domain)
+defer MATCH-PAY-XT ( n n n -- n )                        \ vid famterm row -- row + instantiated payload
 variable FIELD-FAM   -1 FIELD-FAM !              \ reserved family-id of the internal `field` ctor
 
 \ M5 barrier-uniformity: the `tile` and `uniform` family ids, captured by
@@ -450,11 +457,12 @@ variable PTX-UNIFORM-FAM   0 PTX-UNIFORM-FAM !
 \ (PTX-BARRIER-ROWS?/BARRIER-CUR?). 0 = registry not loaded => no detection.
 variable PTX-CPCOMMITTED-FAM   0 PTX-CPCOMMITTED-FAM !
 variable PTX-CPREADY-FAM       0 PTX-CPREADY-FAM !
-\ Forward hook ( sym -- ): OR CTL-BARRIER into a symbol's control flags. Installed
-\ after the NORET machinery is defined; E-ADD-EFFECT calls it (0 = not yet armed)
-\ for any recorded effect whose shape is a block collective, covering BOTH the
-\ checked `:` and the TRUSTED: publish paths through the one E-ADD-EFFECT choke.
-variable PTX-BARRIER-SET-XT   0 PTX-BARRIER-SET-XT !
+\ Forward hook ( n -- ): OR CTL-BARRIER into a symbol's control flags. A `defer`
+\ so E-ADD-EFFECT calls it with a statically-known effect; the registry-not-armed
+\ DEFAULT (bound below) drops the sym as a no-op, covering the window before
+\ PTX-BARRIER-SET installs. Reached from BOTH the checked `:` and the TRUSTED:
+\ publish paths through the one E-ADD-EFFECT choke.
+defer PTX-BARRIER-SET-XT ( n -- )
 
 \ --- checker package scope state. Declared here (not with the package words
 \ further down) so signature parsing (SIG-FAM?) can resolve family tokens
@@ -552,21 +560,37 @@ SPA-BOOT SPA-P !   MAXPUSH-INIT SPA-CAP !
 : RES-FALSE ( -- bool )
    0 0= 0= ;
 
-\ friend xt wrappers over the TFAM registry query surface (installed by
-\ type-family.f at prefix load); a 0 hook resolves nothing / arity 0. Both hooks
-\ always return a fixed row (id-or-0 + flag, arity int), never a variable arity.
-\ The xt sits ABOVE its data args, so we must not `?dup` it before `execute` (that
-\ would leave a stray xt under the args and misalign the call) — branch on a dup.
-: TFAM-RESOLVE* ( ptr u8 n ptr u8 n -- n bool )
-   TFAM-RESOLVE-XT @ dup 0= IF drop 2drop 2drop 0 RES-FALSE ELSE execute THEN ;
-: TFAM-ARITY* ( n -- n )
-   TFAM-ARITY-XT @ dup 0= IF 2drop 0 ELSE execute THEN ;
-: TFAM-LAYOUT?* ( n -- bool )      \ 0 hook (registry not yet loaded) -> not a layout
-   TFAM-LAYOUT?-XT @ dup 0= IF 2drop RES-FALSE ELSE execute THEN ;
-: TFAM-CELL?* ( n -- bool )        \ 0 hook (registry not yet loaded) -> not a cell family
-   TFAM-CELL?-XT @ dup 0= IF 2drop RES-FALSE ELSE execute THEN ;
-: TFAM-WIDTH@* ( n -- n )          \ 0 hook (registry not yet loaded) -> one cell
-   TFAM-WIDTH-XT @ dup 0= IF 2drop 1 ELSE execute THEN ;
+\ The `*` query wrappers callers use: each invokes the effect-known defer, so
+\ callers stay unchanged while the fetch/execute of a raw variable is gone.
+: TFAM-RESOLVE* ( ptr u8 n ptr u8 n -- n bool ) TFAM-RESOLVE-XT ;
+: TFAM-ARITY* ( n -- n ) TFAM-ARITY-XT ;
+: TFAM-LAYOUT?* ( n -- bool ) TFAM-LAYOUT?-XT ;
+: TFAM-CELL?* ( n -- bool ) TFAM-CELL?-XT ;
+: TFAM-WIDTH@* ( n -- n ) TFAM-WIDTH-XT ;
+
+\ Registry-not-loaded DEFAULTS for the TFAM query hooks (wrapped in a word so the
+\ `[: ;]` quotations compile; `[: ;] is` is not valid at interpret level). Each
+\ default reproduces the old 0-hook fallback: resolve nothing / arity 0 / not a
+\ layout / not a cell / one cell / the declared family width / no construct family
+\ / no match family / not a wide-ctor call. type-family.f rebinds each hook with
+\ `is` to the real query word once the registry exists.
+: TFAM-QUERY-DEFAULTS ( -- )
+   [: 2drop 2drop 0 RES-FALSE ;] is TFAM-RESOLVE-XT
+   [: drop 0 ;] is TFAM-ARITY-XT
+   [: drop RES-FALSE ;] is TFAM-LAYOUT?-XT
+   [: drop RES-FALSE ;] is TFAM-CELL?-XT
+   [: drop 1 ;] is TFAM-WIDTH-XT
+   [: PARAM>FAM TFAM-WIDTH@* ;] is TFAM-INST-WIDTH-XT
+   [: 2drop 0 RES-FALSE ;] is CONSTRUCT-FAM-XT
+   [: 2drop 0 RES-FALSE ;] is MATCH-FAM-XT
+   [: drop RES-FALSE ;] is CTOR-STEP-XT ;
+TFAM-QUERY-DEFAULTS
+
+\ registry-not-armed default for the PTX block-barrier hook: drop the sym (do not
+\ flag), exactly what the old 0-hook guard did; checker.f rebinds it once
+\ PTX-BARRIER-SET is defined below.
+: PTX-BARRIER-DEFAULT ( -- ) [: drop ;] is PTX-BARRIER-SET-XT ;
+PTX-BARRIER-DEFAULT
 
 : TV-NEXT? ( n -- n bool )
    dup ISVAR 0= IF RES-FALSE EXIT THEN
@@ -1112,15 +1136,17 @@ variable TWALK-D
 \ so a layout arg widens the sum payload / product body. Every cell-kinded
 \ instantiation (all args width 1) yields the declared TFAM-WIDTH@, so this is
 \ behaviour-preserving groundwork while family parameters stay cell-kinded. The
-\ 0-hook (registry not loaded) falls back to the declared family width verbatim.
-\ This is the type-level fact the WF- width-fact surface records for emitters.
+\ the registry-not-loaded default (bound in TFAM-QUERY-DEFAULTS) falls back to the
+\ declared family width verbatim (the term's own family, since a cell-kinded
+\ instantiation equals the declared width); type-family.f rebinds the hook to the
+\ arg-aware TFAM-INST-WIDTH@. This is the type-level fact the WF- surface records.
 : T-WIDTH ( n -- n ) {: t:n :}
    t T-RES {: r:n :}
    r TAG T-PARAM <> IF 1 EXIT THEN
    r PARAM>FAM {: fam:n :}
    fam 0 < IF 1 EXIT THEN
    fam TFAM-LAYOUT?* 0= IF 1 EXIT THEN
-   TFAM-INST-WIDTH-XT @ dup 0= IF drop fam TFAM-WIDTH@* ELSE r swap execute THEN ;
+   r TFAM-INST-WIDTH-XT ;
 
 \ --- item 12 slice-3a/3b: hidden physical-field substrate (docs §10-11, §17-18).
 \ PUSH-LOGICAL expands a logical layout T-PARAM in a signature into W hidden
@@ -1228,7 +1254,7 @@ variable LBUF-PEND-U   0 LBUF-PEND-U !
          r over PARAM>ARG RECURSE IF drop RES-TRUE EXIT THEN
          1 +
       REPEAT drop
-      r PARAM>FAM TFAM-CON-LIN-XT @ execute EXIT
+      r PARAM>FAM TFAM-CON-LIN-XT EXIT
    THEN
    r TAG T-CON <> IF RES-FALSE EXIT THEN
    r PAY CT-LINEAR? ;
@@ -1237,7 +1263,7 @@ variable LBUF-PEND-U   0 LBUF-PEND-U !
       p over PARAM>ARG LAYOUT-ARG-LINEARISH? IF drop RES-TRUE EXIT THEN
       1 +
    REPEAT drop
-   p PARAM>FAM TFAM-CON-LIN-XT @ execute ;
+   p PARAM>FAM TFAM-CON-LIN-XT ;
 
 \ --- whole-bundle linear accounting (item 11, docs §19). A sum/enum whose type
 \ args include a linear con is ONE linear unit as a value: LAYOUT-LINEAR-COUNT
@@ -1262,7 +1288,7 @@ variable LBUF-PEND-U   0 LBUF-PEND-U !
          rot + swap                                 \ ( acc' j )
          1 +
       REPEAT drop
-      r PARAM>FAM TFAM-CON-LIN-XT @ execute IF 1 + THEN
+      r PARAM>FAM TFAM-CON-LIN-XT IF 1 + THEN
       EXIT
    THEN
    r TAG T-CON <> IF 0 EXIT THEN
@@ -1274,7 +1300,7 @@ variable LBUF-PEND-U   0 LBUF-PEND-U !
       rot + swap                                 \ ( acc' j )
       1 +
    REPEAT drop
-   p PARAM>FAM TFAM-CON-LIN-XT @ execute IF 1 + THEN ;
+   p PARAM>FAM TFAM-CON-LIN-XT IF 1 + THEN ;
 : LAYOUT-LINEAR? ( n -- bool ) LAYOUT-LINEAR-COUNT 0 <> ;
 : LAYOUT-ARGS-OPEN? ( n -- bool ) {: p:n :}
    0 BEGIN dup p PARAM>ARGC < WHILE
@@ -2632,10 +2658,11 @@ variable PKA  variable PKU  variable PKHAVE          \ one-token push-back
    a u s" |"  CORE-STR= ;
 
 \ SIG-QUOT-XT parses a quotation ([ in -- out | rin -- rout ]) as a family
-\ argument (SC-QUOT). It needs PSTACK, defined below SIG-TYPE, so it is reached
-\ through a friend xt installed just after PSTACK (same late-binding shape as
-\ TFAM-RESOLVE-XT). 0 = not yet installed (never reached before install).
-variable SIG-QUOT-XT   0 SIG-QUOT-XT !
+\ argument (SC-QUOT). It needs PSTACK, defined below SIG-TYPE, so it is a `defer`
+\ bound with `is` to SIG-PARSE-QUOT just after PSTACK (same late-binding shape as
+\ TFAM-RESOLVE-XT). Left unset until then: it is never reached before install, so
+\ an unset call fails closed via DEFER-UNSET rather than the old execute-of-0.
+defer SIG-QUOT-XT ( -- n )
 
 \ SIG-END-PARAM ( base a u fam -- t ) : close a parsed family application. Reject
 \ (family-specific arity diagnostic) when the arg count differs from the family's
@@ -2656,14 +2683,14 @@ variable SIG-QUOT-XT   0 SIG-QUOT-XT !
 \ family branch only builds a real `family<...>`; every no-`<` path (and the
 \ not-a-family path) falls through to the shared `ptr`/TOK-TYPE tail.
 : SIG-TYPE ( ptr u8 n -- n ) {: a:ptr u:n :}
-   a u s" [" CORE-STR= IF SIG-QUOT-XT @ execute EXIT THEN   \ `[ in -- out ]` xt<effect> quot (opener consumed)
+   a u s" [" CORE-STR= IF SIG-QUOT-XT EXIT THEN   \ `[ in -- out ]` xt<effect> quot (opener consumed)
    a u SIG-FAM? IF {: fam:n :}                        \ ( id ) resolved family; build application
       NEXT-SIG-TOK 2dup s" <" CORE-STR= IF
          2drop PARAM-SCR-N @ {: base:n :}
          BEGIN
             NEXT-SIG-TOK 2dup s" >" CORE-STR= IF 2drop base a u fam SIG-END-PARAM EXIT THEN
             2dup DELIM? IF SGBAD-SYNTAX! base a u fam MK-PARAM EXIT THEN
-            2dup s" [" CORE-STR= IF 2drop SIG-QUOT-XT @ execute ELSE RECURSE THEN  \ quotation arg (SC-QUOT) or nested type
+            2dup s" [" CORE-STR= IF 2drop SIG-QUOT-XT ELSE RECURSE THEN  \ quotation arg (SC-QUOT) or nested type
             PARAM-SCR+
             NEXT-SIG-TOK 2dup s" ," CORE-STR= IF 2drop ELSE
             2dup s" >" CORE-STR= IF 2drop base a u fam SIG-END-PARAM EXIT ELSE
@@ -2782,7 +2809,8 @@ create ROWMAP 26 cells allot
       2dup s" ]" CORE-STR= IF 2drop ELSE SGBAD-SYNTAX! THEN
       qin qout qrbase qrbase MK-QUOT         \ no return clause: rin = rout = base
    THEN ;
-' SIG-PARSE-QUOT SIG-QUOT-XT !
+: SIG-QUOT-INSTALL ( -- ) [: SIG-PARSE-QUOT ;] is SIG-QUOT-XT ;
+SIG-QUOT-INSTALL
 
 variable SGHASR                          \ a return-stack clause ( ... | rin -- rout ) present?
 variable RR-SHARED                       \ the shared return row, allocated lazily on '|'
@@ -4117,9 +4145,9 @@ variable RECMI   0 RECMI !
       off 1 + CHECKER-REC-SYM @ HIDX-EFF!
       UEND @ HIDX-EFF-DEP+
    THEN
-   CHECKER-REC-SYM @ 0 <>  PTX-BARRIER-SET-XT @ 0 <>  and
+   CHECKER-REC-SYM @ 0 <>
    din dout PTX-BARRIER-ROWS? and IF
-      CHECKER-REC-SYM @ PTX-BARRIER-SET-XT @ execute   \ M5: flag the block collective
+      CHECKER-REC-SYM @ PTX-BARRIER-SET-XT   \ M5: flag the block collective (default no-op before armed)
    THEN ;
 
 : E-ADD-DELETED ( -- )
@@ -4146,7 +4174,12 @@ variable NMA  variable NMU              \ current definition name (set by DO-TOK
 variable MULTI-ERR      \ multi-error load mode active?
 variable MULTI-ERR-N    \ rejected definitions recorded this load
 0 MULTI-ERR !   0 MULTI-ERR-N !
-variable BADSIG-XT   0 BADSIG-XT !      \ ( sig-a sig-u n name-a name-u n -- )
+\ bad stored-signature diagnostic hook (render.f installs BADSIG-DIAG). A `defer`
+\ with a no-op DEFAULT so the diagnostic call is statically effect-known; the
+\ default drops the sig+name spans, exactly the old 0-hook fallback.
+defer BADSIG-XT ( ptr u8 n ptr u8 n -- )
+: BADSIG-DEFAULT ( -- ) [: 2drop 2drop ;] is BADSIG-XT ;
+BADSIG-DEFAULT
 
 : MULTI-ERR? ( -- bool ) MULTI-ERR @ 0 <> ;
 
@@ -4162,7 +4195,7 @@ variable BADSIG-XT   0 BADSIG-XT !      \ ( sig-a sig-u n name-a name-u n -- )
    THEN
    na nu USIG-BAD-FOREIGN? 0= IF EXIT THEN
    1 MULTI-ERR-N +!
-   sa su na nu BADSIG-XT @ dup 0= IF drop 2drop 2drop ELSE execute THEN ;
+   sa su na nu BADSIG-XT ;
 
 : USIG-ADD ( ptr u8 n ptr u8 n -- ) {: sa:ptr su:n na:ptr nu:n :}
    NEW
@@ -5004,18 +5037,23 @@ variable DFER-END
 \ constructor package (closed-but-callable, PLAN Package Shape).
 7111 constant E-CTOR-PROTECTED
 7121 constant E-CHECKER-LAYOUT-BUFFER
-variable CTOR-PKG?-XT      0 CTOR-PKG?-XT !
-variable CTOR-WORD?-XT     0 CTOR-WORD?-XT !
-variable CTOR-EXTEND?-XT   0 CTOR-EXTEND?-XT !
+\ ctor-protection query hooks (item 8), rebound by type-family.f. The
+\ registry-not-loaded default reports "not a protected ctor", matching the old
+\ 0-hook guards which skipped the throw before the registry existed.
+defer CTOR-PKG?-XT ( ptr u8 n -- bool )       \ name is a recorded ctor package?
+defer CTOR-WORD?-XT ( ptr u8 n -- bool )      \ name is a generated ctor word?
+defer CTOR-EXTEND?-XT ( ptr u8 n -- bool )    \ new tail in a closed ctor package?
+: CTOR-PROT-DEFAULTS ( -- )
+   [: 2drop RES-FALSE ;] is CTOR-PKG?-XT
+   [: 2drop RES-FALSE ;] is CTOR-WORD?-XT
+   [: 2drop RES-FALSE ;] is CTOR-EXTEND?-XT ;
+CTOR-PROT-DEFAULTS
 
 : CHECKER-UNDEFINE-GUARD ( ptr u8 n -- ) {: a:ptr u:n :}
-   CTOR-WORD?-XT @ 0= IF EXIT THEN
-   a u CTOR-WORD?-XT @ execute IF E-CTOR-PROTECTED throw THEN ;
+   a u CTOR-WORD?-XT IF E-CTOR-PROTECTED throw THEN ;
 
 : CHECKER-PACKAGE ( ptr u8 n -- )
-   CTOR-PKG?-XT @ 0 <> IF
-      2dup CTOR-PKG?-XT @ execute IF E-CTOR-PROTECTED throw THEN
-   THEN
+   2dup CTOR-PKG?-XT IF E-CTOR-PROTECTED throw THEN
    CHECKER-PACKAGE-COPY
    CHECKER-PACKAGE-PRIVATE CHECKER-PACKAGE-MODE ! ;
 
@@ -5120,9 +5158,7 @@ $20 constant CK-SEAL-LATCH-OFF          \ = layout.f FRIEND-LATCH-CELL
          CHECKER-QPKG$ CHECKER-SEALED-PKG? IF E-CHECKER-LAYOUT-BUFFER throw THEN
       THEN
    THEN
-   CTOR-EXTEND?-XT @ 0 <> IF
-      a u CTOR-EXTEND?-XT @ execute IF E-CTOR-PROTECTED throw THEN
-   THEN ;
+   a u CTOR-EXTEND?-XT IF E-CTOR-PROTECTED throw THEN ;
 
 \ typed-local-lint: allow-bare-local - a preserves ptr u8 role.
 : CHECKER-GLOBAL-SYM ( ptr u8 n -- n ) {: a u:n :}
@@ -5414,9 +5450,7 @@ variable DFER-POS
    $4E throw ;
 
 : CHECKER-USIG-CERT-ADD ( ptr u8 n ptr u8 n -- ) {: sa:ptr su:n na:ptr nu:n :}
-   CTOR-EXTEND?-XT @ 0 <> IF
-      na nu CTOR-EXTEND?-XT @ execute IF E-CTOR-PROTECTED throw THEN
-   THEN
+   na nu CTOR-EXTEND?-XT IF E-CTOR-PROTECTED throw THEN
    na nu CHECKER-REC-NAME!
    CHECKER-CERT-DUP? IF CHECKER-DUP-DEFINITION THEN
    sa su CHECKER-REC-A@ CHECKER-REC-U@ USIG-ADD ;
@@ -5702,8 +5736,14 @@ variable REG-PERSIST-DELTA
 \ so they cannot be named here. They install their combined persist word into
 \ this cell; a 0 cell keeps the call a no-op before they load. Same late-binding
 \ shape the checker already uses for the source-check hook (`set-check`).
-variable REG-EXT-PERSIST-XT   0 REG-EXT-PERSIST-XT !
-variable REG-SCRATCH-SNAP-XT   0 REG-SCRATCH-SNAP-XT !
+defer REG-EXT-PERSIST-XT ( -- )
+defer REG-SCRATCH-SNAP-XT ( -- )
+\ registry-not-loaded defaults: no extension registry to persist / no scratch to
+\ snapshot before type-schema.f / type-family.f / render.f install the real words.
+: REG-EXT-DEFAULTS ( -- )
+   [: ;] is REG-EXT-PERSIST-XT
+   [: ;] is REG-SCRATCH-SNAP-XT ;
+REG-EXT-DEFAULTS
 
 : CHECKER-SNAPSHOT-PREPARE ( -- )
    TOKBUF-RESET
@@ -5716,8 +5756,8 @@ variable REG-SCRATCH-SNAP-XT   0 REG-SCRATCH-SNAP-XT !
    USIGS-SNAPSHOT-PERSIST
    HIDX-EFF-BASE-CLEAR
    NORET-SNAPSHOT-PERSIST
-   REG-EXT-PERSIST-XT @ dup 0= if drop else execute then
-   REG-SCRATCH-SNAP-XT @ dup 0= if drop else execute then ;
+   REG-EXT-PERSIST-XT
+   REG-SCRATCH-SNAP-XT ;
 
 : NORET-REC ( -- ptr a )
    NORET-END @ NORET-CELL ;
@@ -5804,7 +5844,8 @@ variable NORET-FMEND
 \ any dead/throw already recorded), then arm the E-ADD-EFFECT hook.
 : PTX-BARRIER-SET ( n -- ) {: sym:n :}
    sym CTL-FLAGS-SYM CTL-BARRIER or sym swap NORET-ADD-SYM ;
-' PTX-BARRIER-SET PTX-BARRIER-SET-XT !
+: PTX-BARRIER-SET-INSTALL ( -- ) [: PTX-BARRIER-SET ;] is PTX-BARRIER-SET-XT ;
+PTX-BARRIER-SET-INSTALL
 
 \ M5b explicit per-word barrier declaration. Some block-uniform-barrier words do
 \ not carry the tile->uniform (or committed->ready) SHAPE the E-ADD-EFFECT
@@ -6335,9 +6376,7 @@ variable WF-I
    a u CHECKER-FIND-ACTIVE-SYM CURSYM !
    FEP-CLEAR
    CURSYM @ CHECKER-FIND-USIG-SYM drop
-   CTOR-STEP-XT @ 0 <> IF                          \ multi-cell generated-constructor call -> arg-aware step
-      CURSYM @ CTOR-STEP-XT @ execute IF EXIT THEN
-   THEN
+   CURSYM @ CTOR-STEP-XT IF EXIT THEN              \ multi-cell generated-constructor call -> arg-aware step (default rejects pre-registry)
    FEP-HIT? IF FEP @ EFF-APPLY ELSE
    CURSYM @ TRY-PRIMS IF EXIT THEN
    TSEEN @ 0 <> IF TFA @ E-PTR EFF-APPLY ELSE
@@ -6725,7 +6764,12 @@ variable P2SEQ
       dup cells P2LW + @  rot +  swap
       1 +
    REPEAT drop ;
-variable LOCSHOWXT  0 LOCSHOWXT !
+\ per-local type display hook (render.f installs SHOW-LOCAL-TYPE). A `defer` with a
+\ no-op DEFAULT so the call is statically effect-known; the default drops the
+\ name span + length + type, matching the old 0-hook skip before render binds it.
+defer LOCSHOWXT ( ptr u8 n n -- )
+: LOCSHOW-DEFAULT ( -- ) [: 2drop drop ;] is LOCSHOWXT ;
+LOCSHOW-DEFAULT
 variable #CFC
 variable QDEPTH
 
@@ -6763,10 +6807,9 @@ variable LCO
    t idx cells LOCTV + @ UNIFY OK @ and OK ! ;
 
 : LOC-SHOW-ONE ( n -- ) {: idx:n :}
-   LOCSHOWXT @ 0= if exit then
    idx cells LOCSHOW + @ 0= if exit then
    LOCNB idx LOC-NAME-W * +  idx cells LOCLN + @  idx cells LOCTV + @
-   LOCSHOWXT @ execute ;
+   LOCSHOWXT ;
 
 : LOC-SHOW-GROUP ( -- )
    OK @ 0= if exit then
@@ -7593,8 +7636,7 @@ variable MDIAG-VCNT   \ nonexhaustive: variant count
    0 OK !  -1 FAILSET !  -1 MREJ !  0 MM ! ;
 
 : MATCH-BEGIN ( -- )
-   MATCH-FAM-XT @ 0= IF 0 OK ! EXIT THEN   \ stage engines without the registry fail closed
-   1 MM ! ;
+   1 MM ! ;   \ enter match mode; an unarmed registry fails closed at the family resolve (MATCH-FAM-XT default rejects)
 
 variable MTCH-ROW   variable MTCH-I   variable MTCH-TAGT
 
@@ -7628,7 +7670,7 @@ variable MTCH-ROW   variable MTCH-I   variable MTCH-TAGT
    MD-SCRUT MDIAG! ;
 
 : MATCH-FAM-TOK ( ptr u8 n -- ) {: a:ptr u:n :}
-   a u MATCH-FAM-XT @ execute 0= IF drop MATCH-REJECT EXIT THEN
+   a u MATCH-FAM-XT 0= IF drop MATCH-REJECT EXIT THEN
    {: fam:n :}
    #CFC @ 30 > IF MD-DEPTH MDIAG! MATCH-REJECT EXIT THEN   \ two CFS frames per match: reject, never UNCK
    fam MATCH-SCRUT? 0= IF fam MATCH-SCRUT-DIAG MATCH-REJECT EXIT THEN
@@ -7640,7 +7682,7 @@ variable MTCH-ROW   variable MTCH-I   variable MTCH-TAGT
    MTCH-ROW @ r MF.BASE !
    RCUR @ r MF.RBASE !
    0 r MF.OUT !  0 r MF.ROUT !  0 r MF.HAS !
-   fam MATCH-VCOUNT-XT @ execute dup r MF.VCNT !
+   fam MATCH-VCOUNT-XT dup r MF.VCNT !
    MSEEN-ALLOC r MF.SEEN !
    TOKIX @ r MF.TIX !
    MTCH-ROW @ DCUR !                         \ bundle popped; branches re-derive their rows
@@ -7698,10 +7740,10 @@ variable MTCH-ROW   variable MTCH-I   variable MTCH-TAGT
 
 : MATCH-VARIANT-TOK ( ptr u8 n -- ) {: a:ptr u:n :}
    a u s" ;match" CORE-STR= IF MATCH-SEMI EXIT THEN
-   a u MF-CUR MF.FAM @ MATCH-VAR-XT @ execute 0= IF
+   a u MF-CUR MF.FAM @ MATCH-VAR-XT 0= IF
       drop MD-VAR-UNKNOWN MDIAG! 0 OK !  -1 MREJ !  -1 MPEND !  3 MM !  EXIT THEN
    {: vid:n :}
-   vid MATCH-VTAG-XT @ execute {: tag:n :}
+   vid MATCH-VTAG-XT {: tag:n :}
    MF-CUR MF.SEEN @ tag MSEEN-GET IF MD-VAR-DUP MDIAG! 0 OK !  -1 MREJ ! THEN   \ duplicate variant
    MF-CUR MF.SEEN @ tag MSEEN-SET
    vid MPEND !
@@ -7713,7 +7755,7 @@ variable MTCH-ROW   variable MTCH-I   variable MTCH-TAGT
    r MF.BASE @ DCUR !
    r MF.RBASE @ RCUR !
    MPEND @ 0 < 0= IF
-      MPEND @  r MF.TERM @  DCUR @  MATCH-PAY-XT @ execute DCUR !
+      MPEND @  r MF.TERM @  DCUR @  MATCH-PAY-XT DCUR !
    THEN
    10  r MF.BASE @  0  r MF.RBASE @  0  CF-PUSH
    0 DEADP !
@@ -7757,9 +7799,21 @@ variable MTCH-ROW   variable MTCH-I   variable MTCH-TAGT
    a u s" recurse" CORE-STR= IF CF-RECURSE RES-TRUE EXIT THEN
    RES-FALSE ;
 \ first token of the checked text is the word's NAME (skipped, kept for the
-\ recorder); RECXT (installed by render.f) records certified sigs by name.
-variable TOK0  variable RECXT  0 RECXT !
-variable DIAGXT  0 DIAGXT !              \ reject-diagnostic hook (render.f installs)
+\ recorder). RECXT (installed by render.f) records certified sigs by name; DIAGXT
+\ (installed by render.f) renders a reject/uncheckable diagnostic. Both are
+\ `defer`s with no-op DEFAULTS so the calls are statically effect-known and render
+\ rebinds each to the real word. DIAG-QUIET counts nested quiet-check scopes: the
+\ candidate-probe harness suppresses diagnostics by bumping it, and the firer
+\ skips the render while it is non-zero — replacing the old "zero the hook to
+\ suppress" trick, which a `defer` cannot express as data.
+variable TOK0
+defer RECXT ( ptr u8 n -- )
+defer DIAGXT ( -- )
+variable DIAG-QUIET
+: DIAG-HOOK-DEFAULTS ( -- )
+   [: 2drop ;] is RECXT
+   [: ;] is DIAGXT ;
+DIAG-HOOK-DEFAULTS
 variable CTLNEW
 \ the engine folds A-Z in keyword and dict matching — fold every token the same
 \ way (into a scratch copy: the source text may live in the read-only image).
@@ -8331,8 +8385,7 @@ variable CONM      \ 0 off | 1 expecting family token | 2 expecting variant toke
 variable CONFAM    \ resolved family id while CONM = 2
 
 : CONSTRUCT-BEGIN ( -- )
-   CONSTRUCT-FAM-XT @ 0= IF 0 OK ! EXIT THEN
-   1 CONM ! ;
+   1 CONM ! ;   \ enter family-token mode; an unarmed registry rejects at the family resolve (CONSTRUCT-FAM-XT default)
 
 \ A failed family resolve still consumes the variant token (poisoned CONFAM
 \ -1): the three-token form always captures whole, so the trailing operand can
@@ -8340,12 +8393,12 @@ variable CONFAM    \ resolved family id while CONM = 2
 \ uncheckable-undefined verdict.
 : CONSTRUCT-TOK ( ptr u8 n -- ) {: a:ptr u:n :}
    CONM @ 1 = IF
-      a u CONSTRUCT-FAM-XT @ execute IF CONFAM ! ELSE drop 0 OK !  -1 CONFAM ! THEN
+      a u CONSTRUCT-FAM-XT IF CONFAM ! ELSE drop 0 OK !  -1 CONFAM ! THEN
       2 CONM !
       EXIT THEN
    CONFAM @ 0 < 0= IF
-      a u CONFAM @ MATCH-VAR-XT @ execute IF CVLIVE ! ELSE drop THEN   \ latch variant SUMV id for the mismatch capture
-      a u CONFAM @ CONSTRUCT-STEP-XT @ execute 0= IF 0 OK ! THEN
+      a u CONFAM @ MATCH-VAR-XT IF CVLIVE ! ELSE drop THEN   \ latch variant SUMV id for the mismatch capture
+      a u CONFAM @ CONSTRUCT-STEP-XT 0= IF 0 OK ! THEN
       -1 CVLIVE !                                                      \ variant leaves scope with the step
    THEN
    0 CONM ! ;
@@ -8830,7 +8883,7 @@ variable CTOR-PEND-N   variable CTOR-PEND-I
    dup DVERD !
    dup 0 =  over 1 = JSON-DIAGS @ and  or
    dup MEO-ON @ and IF MEO-APPLY THEN     \ file-relative origin for this def's diagnostic
-   DIAGXT @ 0 <> and IF DIAGXT @ execute THEN
+   DIAG-QUIET @ 0= and IF DIAGXT THEN
    dup -1 = NMU @ 0 > and IF
       0 CTLNEW !
       DEADP @ XSET @ 0= and IF CTLNEW @ CTL-DEAD or CTLNEW ! THEN
@@ -8842,7 +8895,7 @@ variable CTOR-PEND-N   variable CTOR-PEND-I
          SGA @ SGU @  NMA @ NMU @  CHECKER-USIG-CERT-ADD
          CERT-REPOINT-ROWS
       ELSE
-         RECXT @ 0 <> IF NMA @ NMU @ RECXT @ execute THEN
+         NMA @ NMU @ RECXT
       THEN
    THEN
    dup 0 =  MULTI-ERR?  and  NMU @ 0 >  and IF          \ reject in multi-error mode:

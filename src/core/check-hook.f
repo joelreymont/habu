@@ -5,7 +5,7 @@ package LOWER-CERT-HOOK
 70 constant CHECK-RC
 
 : REPORT-UNCHECKABLE ( n -- n )
-   dup 1 = JSON-DIAGS @ 0= and DIAGXT @ 0 <> and if DIAGXT @ execute then ;
+   dup 1 = JSON-DIAGS @ 0= and DIAG-QUIET @ 0= and if DIAGXT then ;
 
 : PREFLIGHT ( ptr u8 n ptr u8 n bool -- )
    {: ba:ptr bu:n ta:ptr tu:n trusted:bool :}

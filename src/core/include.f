@@ -339,5 +339,8 @@ immediate
 
 \ constructor generation (sumtype.f, loaded earlier in the boot prefix) crosses
 \ evaluate only through this audited INCLUDE-EVALUATE boundary; engines without
-\ include.f (stage builders) leave the cell 0 and generation stays fail-closed.
-' INCLUDE-EVALUATE TDECL-EVAL-XT !
+\ include.f (stage builders) leave TDECL-EVAL-ARMED 0 and generation stays
+\ fail-closed. Bind the defer (wrapped so the quotation compiles), then arm.
+: TDECL-EVAL-INSTALL ( -- ) [: INCLUDE-EVALUATE ;] is TDECL-EVAL-XT ;
+TDECL-EVAL-INSTALL
+-1 TDECL-EVAL-ARMED !

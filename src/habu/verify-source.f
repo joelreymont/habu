@@ -291,7 +291,7 @@ create BODY-BUF BODYBUF-CAP allot
    TOKEN-A @ TOKEN-U @ STRING-OPENER? IF TOKEN-A @ TOKEN-U @ SKIP-STRING-REST THEN ;
 
 TRUSTED: CHECK-BODY ( ptr u8 n -- n )
-   CHECK! dup 1 = JSON-DIAGS @ 0= and DIAGXT @ 0 <> and IF DIAGXT @ execute THEN ;
+   CHECK! dup 1 = JSON-DIAGS @ 0= and DIAG-QUIET @ 0= and IF DIAGXT THEN ;
 
 \ Checker-internal mode flag read; the checker registry does not publish
 \ MULTI-ERR? to later checked loads, so this rides the same trusted boundary

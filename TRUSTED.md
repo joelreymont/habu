@@ -403,7 +403,7 @@ that source is explicitly certified; they are not stale-checked by the default
 | SCRIPT-SOURCE? | `-- bool` | Detects user-load or verified-compiler source-list mode from captured process argv. | `tools/hb-cli-contracts-test.f`, `tools/build-fixpoint-test.f` | src/os/script-argv.f | 2026-07-11 |
 | SNAP= | `[ R -- S ] [ R -- S ] --` | Typed depth-introspection comparator (dot habu-typed-depth-introspection-18f0efda) and the sole snapshot boundary now that the untyped `T{ -> }T` DSL is retired: the checker verifies the two quotations leave an identical row shape S at CHECK time, so a shape mismatch is rejected before runtime; only the depth-marked drain of each quotation's output row stays trusted, and both drains are inlined into this one word. Values are compared through the checked TS-* judge path. | `lib/test/snap-test.f`, `lib/array-test.f`, `test/run.f` | lib/test/snap.f | 2026-07-03 |
 | BUILD-CHECK-RAW | `ptr u8 n -- n` | Build helper boundary around `CHECK!`; the checker cannot certify a source definition by evaluating its own checker recursively. | `lib/build-test.f`, `test/run.f` | lib/build.f | 2026-06-18 |
-| CHECK-QUIET-CANDIDATE! | `ptr u8 n -- n` | Shared test harness boundary that temporarily suppresses checker diagnostics and runs `CHECK-CANDIDATE!`; recursive checker invocation and raw `DIAGXT` mutation are centralized here. | `test/engine-suite.f`, `lib/array-test.f`, `lib/vector-test.f`, `lib/string-test.f`, `lib/json-write-test.f`, `tools/image-bytes-test.f`, `tools/asm-checked-test.f`, `lib/ptx/tile-test.f`, `lib/ptx/collective-test.f`, `test/run.f` | test/checker-assert.f | 2026-06-30 |
+| CHECK-QUIET-CANDIDATE! | `ptr u8 n -- n` | Shared test harness boundary that temporarily suppresses checker diagnostics and runs `CHECK-CANDIDATE!`; recursive checker invocation and the `DIAG-QUIET` suppression counter are centralized here. | `test/engine-suite.f`, `lib/array-test.f`, `lib/vector-test.f`, `lib/string-test.f`, `lib/json-write-test.f`, `tools/image-bytes-test.f`, `tools/asm-checked-test.f`, `lib/ptx/tile-test.f`, `lib/ptx/collective-test.f`, `test/run.f` | test/checker-assert.f | 2026-06-30 |
 | MBUF | `-- ptr u8` | Image-byte test reuses the raw checked boundary loaded from `src/os/image-bytes.f`; the test may run after the file is already baked, so it republishes the audited effect locally. | `tools/image-bytes-test.f`, `test/run.f` | tools/image-bytes-test.f | 2026-06-30 |
 | M-BOUNDS-RC | `-- n` | Image-byte test republishes the raw bounds-error status accessor from the image writer boundary. | `tools/image-bytes-test.f`, `test/run.f` | tools/image-bytes-test.f | 2026-06-30 |
 | M-RESET | `--` | Image-byte test republishes the raw image-writer reset effect from the audited image-byte boundary. | `tools/image-bytes-test.f`, `test/run.f` | tools/image-bytes-test.f | 2026-06-30 |
@@ -1561,7 +1561,7 @@ test/engine-suite.f:TPN2 test-metaprog habu-primitive-effect-axiom-1119f176
 test/immediate-model-test.f:IMT-PASSES test-metaprog habu-primitive-effect-axiom-1119f176
 test/engine-suite.f:ES-PATCH32 test-metaprog habu-checker-capability-gate-14022ba9
 test/engine-suite.f:set-check test-metaprog cap:checker-hook-identity
-test/engine-suite.f test-metaprog habu-seal-set-check-b3676b33 6
+test/engine-suite.f test-metaprog habu-seal-set-check-b3676b33 7
 test/engine-suite.f:ES-REND-SIG$ test-metaprog habu-seal-set-check-b3676b33
 test/engine-suite.f:ES-JSON-DIAGS! test-metaprog habu-seal-set-check-b3676b33
 test/engine-suite.f:TG-RESET test-metaprog habu-seal-set-check-b3676b33

@@ -742,8 +742,17 @@ variable TDP-TX
 \ (include.f), reached through this friend xt installed by type-family-sha.f
 \ once both sides exist (the TF-SHA16-XT pattern) — the generator itself
 \ adds no unchecked code.
-variable TDECL-EVAL-XT   0 TDECL-EVAL-XT !
-variable TDECL-PROT-WID-XT   0 TDECL-PROT-WID-XT !
+\ Generated-constructor eval crossing and protected-width recorder, reached
+\ through `defer` hooks so the call is statically effect-known (no execute of a
+\ raw stored xt). include.f / aot.f bind TDECL-EVAL-XT; xref.f binds
+\ TDECL-PROT-WID-XT. A separate ARMED flag records whether the real word is
+\ installed: a stage builder that omits those files leaves the flag 0, and the
+\ generator fails closed exactly as the old `hook @ 0=` guard did (a `defer`
+\ cannot be probed for its binding, so the flag carries that fact).
+defer TDECL-EVAL-XT ( ptr u8 n -- )
+defer TDECL-PROT-WID-XT ( ptr u8 n -- )
+variable TDECL-EVAL-ARMED
+variable TDECL-PROT-WID-ARMED
 
 $1000 constant TDGEN-CAP   \ derived-eq diagonal text is O(V^2); the C, guard still dies at the cap
 create TDGEN-BUF TDGEN-CAP allot
@@ -834,8 +843,8 @@ variable TDGEN-K    variable TDGEN-M    variable TDGEN-B
    s"  ;" TDGEN-APP ;
 
 : TDECL-GEN-EVAL ( -- )   \ the one audited eval crossing for generated words
-   TDECL-EVAL-XT @ 0= IF s" sumtype: constructor eval hook not installed" 76 die THEN
-   TDGEN-BUF TDGEN-U @ TDECL-EVAL-XT @ execute ;
+   TDECL-EVAL-ARMED @ 0= IF s" sumtype: constructor eval hook not installed" 76 die THEN
+   TDGEN-BUF TDGEN-U @ TDECL-EVAL-XT ;
 
 : TDECL-CTOR-WORD ( n n -- ) {: fam:n vid:n :}
    TDGEN-CLEAR
@@ -852,10 +861,10 @@ variable TDGEN-K    variable TDGEN-M    variable TDGEN-B
    vid TDGEN-NA @ TDGEN-NU @ CHECKER-RECORD-SYM SUMV-CTOR-SYM! ;
 
 : TDECL-CTOR-PROT-WID ( n -- ) {: vid:n :}
-   TDECL-PROT-WID-XT @ 0= IF s" sumtype: protected-wid hook not installed" 76 die THEN
+   TDECL-PROT-WID-ARMED @ 0= IF s" sumtype: protected-wid hook not installed" 76 die THEN
    TDGEN-CLEAR
    vid TDGEN-NAME
-   TDGEN-NA @ TDGEN-NU @ TDECL-PROT-WID-XT @ execute ;
+   TDGEN-NA @ TDGEN-NU @ TDECL-PROT-WID-XT ;
 
 \ product generated words (item 15): `: PKG:MAKE ( fields -- fam<..> ) ;` and
 \ `: PKG:UNMAKE ( fam<..> -- fields ) ;`. Both bodies are EMPTY and the pending

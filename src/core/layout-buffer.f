@@ -101,11 +101,11 @@ PTR-VARIABLE LBUF-EVAL-A
 variable LBUF-EVAL-U
 
 : LBUF-EVAL-RUN ( -- )
-   LBUF-EVAL-A 0 ptr-field @ LBUF-EVAL-U @ TDECL-EVAL-XT @ execute ;
+   LBUF-EVAL-A 0 ptr-field @ LBUF-EVAL-U @ TDECL-EVAL-XT ;
 
 : LBUF-EVAL ( ptr u8 n ptr u8 n -- n )
    {: src:ptr srcu:n name:ptr nameu:n :}
-   TDECL-EVAL-XT @ 0= if E-LAYOUT-BUFFER throw then
+   TDECL-EVAL-ARMED @ 0= if E-LAYOUT-BUFFER throw then
    name nameu LBUF-PEND!
    src LBUF-EVAL-A 0 ptr-field !  srcu LBUF-EVAL-U !
    [: LBUF-EVAL-RUN ;] catch
@@ -119,7 +119,7 @@ variable LBUF-EVAL-U
    parse-name {: name:ptr nameu:n :}
    parse-name {: type:ptr typeu:n :}
    nameu 0= if E-LAYOUT-BUFFER throw then
-   TDECL-EVAL-XT @ 0= if E-LAYOUT-BUFFER throw then
+   TDECL-EVAL-ARMED @ 0= if E-LAYOUT-BUFFER throw then
    name nameu LBUF-NAME-GUARD
    count type typeu LBUF-VALIDATE
    here {: base:ptr :}
@@ -202,7 +202,7 @@ variable STGT-START
    parse-name {: name:ptr nameu:n :}
    STORAGE-PARSE-TYPE {: type:ptr typeu:n :}
    nameu 0= if E-LAYOUT-BUFFER throw then
-   TDECL-EVAL-XT @ 0= if E-LAYOUT-BUFFER throw then
+   TDECL-EVAL-ARMED @ 0= if E-LAYOUT-BUFFER throw then
    name nameu LBUF-NAME-GUARD
    count type typeu STORAGE-VALIDATE
    here {: base:ptr :}
@@ -218,7 +218,7 @@ variable STGT-START
    parse-name {: name:ptr nameu:n :}
    STORAGE-PARSE-TYPE {: type:ptr typeu:n :}
    nameu 0= if E-LAYOUT-BUFFER throw then
-   TDECL-EVAL-XT @ 0= if E-LAYOUT-BUFFER throw then
+   TDECL-EVAL-ARMED @ 0= if E-LAYOUT-BUFFER throw then
    name nameu LBUF-NAME-GUARD
    1 type typeu STORAGE-VALIDATE
    here {: base:ptr :}

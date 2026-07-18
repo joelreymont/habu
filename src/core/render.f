@@ -88,7 +88,8 @@ variable RATOM-I
    SEEN-BOOT SEEN-P !
    MAXTV-INIT SEEN-CAP ! ;
 
-' SEEN-SNAPSHOT-RESET REG-SCRATCH-SNAP-XT !
+: REG-SCRATCH-SNAP-INSTALL ( -- ) [: SEEN-SNAPSHOT-RESET ;] is REG-SCRATCH-SNAP-XT ;
+REG-SCRATCH-SNAP-INSTALL
 : RATOM-RESET ( -- )
    0 RATOM-N ! ;
 
@@ -325,7 +326,8 @@ variable RSHOW-DST
    t REND-TYPE
    10 EMIT1
    RSHOW-DST @ RDST ! ;
-' SHOW-LOCAL-TYPE LOCSHOWXT !
+: LOCSHOW-INSTALL ( -- ) [: SHOW-LOCAL-TYPE ;] is LOCSHOWXT ;
+LOCSHOW-INSTALL
 
 \ REND-SIG ( -- a u ) : render the just-checked word's effect "in -- out" —
 \ inputs from the base row's instantiation (BROW), outputs from DCUR.
@@ -797,7 +799,8 @@ variable JPOS  variable JLINE  variable JCOL
    10 EMIT1
    RSBUF RSN @ RDIAG-APPEND
    0 RDST !  0 RSN ! ;
-' DIAG-PRINT DIAGXT !
+: DIAG-PRINT-INSTALL ( -- ) [: DIAG-PRINT ;] is DIAGXT ;
+DIAG-PRINT-INSTALL
 
 \ --- bad stored-signature diagnostics (multi-error TRUST rows; USIG-ADD-BAD).
 \ SGBAD state from the failed parse is still live, so class + suggestion mirror
@@ -832,7 +835,8 @@ variable JPOS  variable JLINE  variable JCOL
    10 EMIT1
    RSBUF RSN @ RDIAG-APPEND
    0 RDST !  0 RSN ! ;
-' BADSIG-DIAG BADSIG-XT !
+: BADSIG-DIAG-INSTALL ( -- ) [: BADSIG-DIAG ;] is BADSIG-XT ;
+BADSIG-DIAG-INSTALL
 
 \ --- top-level type-family declaration diagnostics (PLAN item 6). A bad
 \ TYPEFAMILY/SUMTYPE reports a declaration-shaped packet: decl kind, family,
@@ -903,4 +907,5 @@ variable JPOS  variable JLINE  variable JCOL
    REND-SIG 2drop        \ rendered only to detect unmodeled tags / var count
    RQM @ 0 =  NLET @ 27 <  and IF na nu CHECKER-USIG-CERT-CURRENT EXIT THEN
    na nu REC-REFUSE-DIAG ;
-' REC-SIG RECXT !
+: REC-SIG-INSTALL ( -- ) [: REC-SIG ;] is RECXT ;
+REC-SIG-INSTALL

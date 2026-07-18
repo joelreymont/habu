@@ -34,6 +34,13 @@ create PNPOOL PRIM-NAME-CAP allot   variable PNP   variable #PL
 variable RPD
 variable PR-A  variable PR-U  variable PR-L  variable PR-E
 variable FP-A  variable FP-U  variable FP-XT
+\ FP-XT holds the body-emitter xt that FPRIM/FPRIM-L/FPRIM-WID execute while
+\ assembling a primitive's machine-code body. This is the metabuild assembler
+\ (habu1.f is compiled by the seed, never certified by the checker), so
+\ `FP-XT @ execute` here is NOT a checked-code firer of RSEXEC and the
+\ stored-xt-launder flip (dot habu-checker-exec-of-5923c543, RSEXEC T-VAR) does
+\ not reach it. Left as a raw variable by design: a TRUSTED machine-code
+\ boundary, not a checked hook to migrate to defer/xt-cell.
 : RPD@ ( -- ptr u8 ) RPD 0 ptr-field @ ;
 : PR-A@ ( -- ptr u8 ) PR-A 0 ptr-field @ ;
 : FP-A@ ( -- ptr u8 ) FP-A 0 ptr-field @ ;

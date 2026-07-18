@@ -288,7 +288,6 @@ variable TC-UEND
 variable TC-NEND
 variable TC-SYMN
 variable TC-SYMU
-variable TC-DIAG
 \ whitebox boundary (dot habu-hb-crash-bare-c5be6634): checker-internal state
 \ probes are named unchecked words - bare internal tokens fail closed at top
 \ level under the internal-word gate.
@@ -299,10 +298,9 @@ variable TC-DIAG
    SYM-N @ TC-SYMN !
    SYM-STR-U @ TC-SYMU ! ;
 : TC-DIAG-OFF ( -- )
-   DIAGXT @ TC-DIAG !
-   0 DIAGXT ! ;
+   1 DIAG-QUIET +! ;
 : TC-DIAG-ON ( -- )
-   TC-DIAG @ DIAGXT ! ;
+   -1 DIAG-QUIET +! ;
 : TC-UEND=? ( -- bool )
    UEND @ TC-UEND @ = ;
 : TC-NEND=? ( -- bool )
@@ -1188,19 +1186,25 @@ s" CBAD-SCQ-REND ( -- n ) T-SCQ-MK" CHECK-CANDIDATE! 0 T=
 s" SC-QUOT diagnostic renders quot rows and return clause" T-LABEL
 DIAG-BUFFER$ s" scq-fam<[ n-- n | a-- a],f32>" T-HAS? -1 T=
 DIAG-BUFFER-OFF
-variable TSHOW-XT
 variable TSHOW-N
 : TSHOW-HOOK ( ptr u8 n n -- )
    drop
    s" x" CORE-STR= 0= if T-FAIL then
    TSHOW-N @ 1 + TSHOW-N ! ;
-LOCSHOWXT @ TSHOW-XT !
-' TSHOW-HOOK LOCSHOWXT !
+\ LOCSHOWXT is a defer, so swap the test hook / render hook in with `is` (which is
+\ compile-mode only, hence colon words). TSHOW-RESTORE names render's
+\ SHOW-LOCAL-TYPE, a checker-internal not published to checked loads, so it is an
+\ unchecked whitebox probe like the file's other internal-state helpers.
+0 set-check
+: TSHOW-INSTALL ( -- ) [: TSHOW-HOOK ;] is LOCSHOWXT ;
+: TSHOW-RESTORE ( -- ) [: SHOW-LOCAL-TYPE ;] is LOCSHOWXT ;
+LOWER-CERT-HOOK:INSTALL
+TSHOW-INSTALL
 0 TSHOW-N !
 s" COK-SHOW-INFERRED ( i64 -- i64 ) {: x:? :} x" T-CHECK-PASSES
 s" CBAD-SHOW-INFERRED ( i64 -- ) {: x:? :} x x" T-CHECK-REJECTS
 TSHOW-N @ 2 T=
-TSHOW-XT @ LOCSHOWXT !
+TSHOW-RESTORE
 s" T-NEED-I64" s" i64 --" TRUST
 s" T-NEED-U32" s" u32 --" TRUST
 s" T-NEED-U16" s" u16 --" TRUST
@@ -1669,7 +1673,6 @@ LOWER-CERT:CELL-COUNT 10 T=
 LOWER-CERT:NEEDS-CELL LOWER-CERT:CELL@ 0 T=
 LOWER-CERT:WF-COUNT-CELL LOWER-CERT:CELL@ 0 T=
 
-variable ES-CPX-DIAG
 variable ES-CPX-CP
 variable ES-CPX-ND
 \ unsigned body with an unsafe token: checker verdict 0, engine rejects
@@ -1677,7 +1680,7 @@ variable ES-CPX-ND
 \ >16-char name: C-STORE-NAME copies it into code space before the entry, so
 \ the reject rollback must reclaim the name bytes too (CP := pre-name CP)
 : ES-CPX-BAD-EXT$ ( -- ptr u8 n ) s" : ES-CPX-BAD-EXTENDED-NAME 0 set-check ;" ;
-DIAGXT @ ES-CPX-DIAG !  0 DIAGXT !
+1 DIAG-QUIET +!
 cp@ ES-CPX-CP !  ndict@ ES-CPX-ND !
 ES-CPX-BAD$ evaluate
 s" cpx-reject-1" T-LABEL cp@ ES-CPX-CP @ T=
@@ -1693,7 +1696,7 @@ ES-CPX-BAD-EXT$ evaluate
 s" cpx-reject-ext-3" T-LABEL cp@ ES-CPX-CP @ T=
 s" cpx-reject-ext-ndict" T-LABEL ndict@ ES-CPX-ND @ T=
 LOWER-CERT-HOOK:INSTALL
-ES-CPX-DIAG @ DIAGXT !
+-1 DIAG-QUIET +!
 \ retry after rejects: the accepted definition lands on the reclaimed entry
 : ES-CPX-GOOD ( n -- n ) 1 + ;
 6 ES-CPX-GOOD 7 T=

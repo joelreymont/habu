@@ -1233,9 +1233,9 @@ defer TFCL-NODE-XT ( n -- bool )
    RES-FALSE ;
 
 : TFCL-NODE-INSTALL ( -- )
-   [: TFCL-NODE? ;] is TFCL-NODE-XT ;
+   [: TFCL-NODE? ;] is TFCL-NODE-XT
+   [: TFAM-CONCRETE-LINEAR? ;] is TFAM-CON-LIN-XT ;
 TFCL-NODE-INSTALL
-' TFAM-CONCRETE-LINEAR? TFAM-CON-LIN-XT !
 
 \ ---------------------------------------------------------------------------
 \ logical layout records, one per family that has a resolved physical layout.
@@ -1494,7 +1494,8 @@ REG-EXT-RB-INSTALL
    RBF-SNAP-RESET               \ core rollback frames are process-local
    TFAM-RBF-SNAP-RESET          \ TFAM registry rollback frames
    SCHEMA-RBF-SNAP-RESET ;      \ SCHEMA registry rollback frames
-' REG-EXT-PERSIST REG-EXT-PERSIST-XT !
+: REG-EXT-PERSIST-INSTALL ( -- ) [: REG-EXT-PERSIST ;] is REG-EXT-PERSIST-XT ;
+REG-EXT-PERSIST-INSTALL
 
 \ ---------------------------------------------------------------------------
 \ Built-in parametric cell families — the checker parser's parametric type
@@ -1915,22 +1916,26 @@ variable TFC-I   variable TFC-J   variable TFC-ROW
    {: fam:n :}
    va vu fam TFL-CVAR? ;
 
-\ Install the checker's friend xt hooks: checker.f loads before this file, so it
-\ resolves families / reads arities during signature parsing through these cells.
-' TFAM-SIG-RESOLVE TFAM-RESOLVE-XT !
-' TFAM-CTOR-PKG?    CTOR-PKG?-XT !     \ item 8: constructor-package reopen reject
-' TFAM-CTOR-WORD?   CTOR-WORD?-XT !    \ item 8: generated-word undefine reject
-' TFAM-CTOR-EXTEND? CTOR-EXTEND?-XT !  \ item 8: closed-package extra-tail reject
-' TFAM-ARITY@  TFAM-ARITY-XT !
-' TFAM-LAYOUT? TFAM-LAYOUT?-XT !   \ item 7: checker reaches the layout kind for its fail-closed guard
-' TFAM-CELL?   TFAM-CELL?-XT !     \ nominal scalars: checker reaches the cell kind for LAYOUT-BUFFER admission + pointee governance
-' TFAM-WIDTH@  TFAM-WIDTH-XT !     \ item 12: checker reads DECLARED logical widths (params-as-cells) for the boot fallback
-' TFAM-INST-WIDTH@ TFAM-INST-WIDTH-XT !   \ layout-cap slice 1: arg-aware INSTANTIATED width for T-WIDTH / WF fact surface
-' TFAM-CONSTRUCT-FAM  CONSTRUCT-FAM-XT !   \ item 9: construct family resolution (active package only)
-' TFAM-CONSTRUCT-STEP CONSTRUCT-STEP-XT !  \ item 9: construct variant resolve + inline constructor effect
-' TFAM-CTOR-STEP?     CTOR-STEP-XT !        \ layout-cap slice 3: generated-constructor CALL on a multi-cell layout arg routes through the arg-aware step
-' TFAM-MATCH-FAM     MATCH-FAM-XT !     \ item 9: MATCH family resolution (signature scope)
-' TFAM-MATCH-VARIANT MATCH-VAR-XT !     \ item 9: MATCH branch variant resolve
-' SUMV-TAG@          MATCH-VTAG-XT !    \ item 9: variant id -> declaration-order tag (bitset index)
-' TFAM-VAR-COUNT@    MATCH-VCOUNT-XT !  \ item 9: exhaustiveness domain size
-' TFAM-MATCH-PAY     MATCH-PAY-XT !     \ item 9: branch payload row from the scrutinee's args
+\ Install the checker's friend hooks: checker.f loads before this file, so it
+\ resolves families / reads arities during signature parsing through these
+\ defers. Wrapped in a word so the `[: ;]` quotations compile (`is` binds each
+\ defer to the real query word, replacing the old raw-variable stores).
+: TFAM-HOOK-INSTALL ( -- )
+   [: TFAM-SIG-RESOLVE ;] is TFAM-RESOLVE-XT
+   [: TFAM-CTOR-PKG? ;]    is CTOR-PKG?-XT     \ item 8: constructor-package reopen reject
+   [: TFAM-CTOR-WORD? ;]   is CTOR-WORD?-XT    \ item 8: generated-word undefine reject
+   [: TFAM-CTOR-EXTEND? ;] is CTOR-EXTEND?-XT  \ item 8: closed-package extra-tail reject
+   [: TFAM-ARITY@ ;]  is TFAM-ARITY-XT
+   [: TFAM-LAYOUT? ;] is TFAM-LAYOUT?-XT   \ item 7: checker reaches the layout kind for its fail-closed guard
+   [: TFAM-CELL? ;]   is TFAM-CELL?-XT     \ nominal scalars: checker reaches the cell kind for LAYOUT-BUFFER admission + pointee governance
+   [: TFAM-WIDTH@ ;]  is TFAM-WIDTH-XT     \ item 12: checker reads DECLARED logical widths (params-as-cells) for the boot fallback
+   [: TFAM-INST-WIDTH@ ;] is TFAM-INST-WIDTH-XT   \ layout-cap slice 1: arg-aware INSTANTIATED width for T-WIDTH / WF fact surface
+   [: TFAM-CONSTRUCT-FAM ;]  is CONSTRUCT-FAM-XT   \ item 9: construct family resolution (active package only)
+   [: TFAM-CONSTRUCT-STEP ;] is CONSTRUCT-STEP-XT  \ item 9: construct variant resolve + inline constructor effect
+   [: TFAM-CTOR-STEP? ;]     is CTOR-STEP-XT        \ layout-cap slice 3: generated-constructor CALL on a multi-cell layout arg routes through the arg-aware step
+   [: TFAM-MATCH-FAM ;]     is MATCH-FAM-XT     \ item 9: MATCH family resolution (signature scope)
+   [: TFAM-MATCH-VARIANT ;] is MATCH-VAR-XT     \ item 9: MATCH branch variant resolve
+   [: SUMV-TAG@ ;]          is MATCH-VTAG-XT    \ item 9: variant id -> declaration-order tag (bitset index)
+   [: TFAM-VAR-COUNT@ ;]    is MATCH-VCOUNT-XT  \ item 9: exhaustiveness domain size
+   [: TFAM-MATCH-PAY ;]     is MATCH-PAY-XT ;   \ item 9: branch payload row from the scrutinee's args
+TFAM-HOOK-INSTALL

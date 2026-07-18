@@ -16,9 +16,9 @@ package EVAL
 public
 
 TRUSTED: CHECK-PASSES? ( ptr u8 n -- bool )
-   DIAGXT @ >r  0 DIAGXT !          \ silence reject diagnostics during scoring
+   1 DIAG-QUIET +!                  \ silence reject diagnostics during scoring
    CHECK-CANDIDATE!  -1 =           \ verdict: -1 certified / 0 rejected / 1 uncheckable
-   r> DIAGXT ! ;
+   -1 DIAG-QUIET +! ;
 
 variable PASS                       \ certified-candidate tally
 variable TOTAL                      \ scored-candidate tally
