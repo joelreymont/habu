@@ -208,6 +208,10 @@ TEST:SUITE maki/db/capbud-test.f
 TEST:;SUITE
 TEST:SUITE maki/db/agent-loop-test.f
 TEST:;SUITE
+TEST:SUITE maki/db/audit-log-test.f
+TEST:;SUITE
+TEST:SUITE maki/db/commit-store-discharge-test.f
+TEST:;SUITE
 TEST:SUITE maki/cad-test.f
 TEST:;SUITE
 TEST:SUITE maki/cad-bind-test.f
@@ -261,6 +265,8 @@ TEST:;SUITE
 TEST:SUITE maki/db/keywire-xproc-test.f
 TEST:;SUITE
 TEST:SUITE maki/db/keywire-xproc-env-test.f
+TEST:;SUITE
+TEST:SUITE maki/db/audit-log-xproc-test.f
 TEST:;SUITE
 TEST:SUITE maki/evidence/schema-test.f
 TEST:;SUITE

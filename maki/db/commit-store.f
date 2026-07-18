@@ -69,6 +69,9 @@ require maki/db/transaction.f     \ TX: VALIDATE / PROPOSE / BASE-REV / ENCODE-R
 require maki/db/capability.f      \ CAPTOK:grant / AUTHORIZES?: the granted-authority capability gate
 require maki/db/budget-ledger.f   \ LEDGER:ledger / REQ+ / RESERVE / CHARGE / CHARGED?: the budget gate
 require maki/db/budget-dim.f      \ BUDGET:dim / N>DIM: the shared budget-dimension vocabulary
+require maki/db/obligation.f      \ OBLIG: obligation / evidence / EV-SUBJECT@ / EV-VERIFIER@: the discharge read surface
+require maki/db/promotion-authority.f  \ DAUTH:AUTHORIZED-DISCHARGE / authority: the folded obligation-discharge authority gate
+require maki/db/audit-log.f       \ AUDIT:RECORD-EVIDENCE-DECISION: the canonical discharge-decision event
 
 -5371 constant E-CSTORE-ROOT     \ resolved store root path empty or over the path cap
 -5372 constant E-CSTORE-BUF      \ a revision-content blob over the store scratch capacity
@@ -103,6 +106,26 @@ SUMTYPE auth-result 1
    VARIANT exhausted BUDGET:dim ;VARIANT
 ;SUMTYPE
 
+\ Typed DISCHARGE-gated commit outcome: COMMIT-DISCHARGED composes the folded obligation-discharge
+\ AUTHORITY gate (DAUTH:AUTHORIZED-DISCHARGE - the § 23.9 "who may discharge which obligation" third
+\ validate leg, dot habu-v2-deterministic-audit-428d27c2) AROUND COMMIT-AUTHORIZED's capability +
+\ budget legs. `committed`/`conflict`/`duplicate-write`/`omitted-read`/`unauthorized`/`exhausted`
+\ mirror COMMIT-AUTHORIZED; `not-discharged` folds every OBLIG:DISCHARGE named-field refusal (the
+\ evidence does not discharge the obligation) and `unauthorized-verifier` is the identity leg (the
+\ discharging verifier is not on the authority allowlist). The discharge leg fires FIRST and BEFORE
+\ any publish, so a non-discharged or unauthorized-verifier commit publishes nothing and charges
+\ nothing; a successful discharge records the decision as a canonical audit event before publishing.
+SUMTYPE commit-discharge-result 1
+   VARIANT committed a ;VARIANT
+   VARIANT conflict ;VARIANT
+   VARIANT duplicate-write ;VARIANT
+   VARIANT omitted-read ;VARIANT
+   VARIANT unauthorized ;VARIANT
+   VARIANT exhausted BUDGET:dim ;VARIANT
+   VARIANT not-discharged ;VARIANT
+   VARIANT unauthorized-verifier ;VARIANT
+;SUMTYPE
+
 private
 
 \ ---- readable wrappers over the generated constructor spellings ----------------
@@ -117,6 +140,15 @@ private
 : A-OMITTED ( -- auth-result<a> )         CSTORE-AUTH--RESULT:OMITTED-READ ;
 : A-UNAUTHORIZED ( -- auth-result<a> )    CSTORE-AUTH--RESULT:UNAUTHORIZED ;
 : A-EXHAUSTED ( BUDGET:dim -- auth-result<a> )   CSTORE-AUTH--RESULT:EXHAUSTED ;
+
+: CD-COMMITTED ( CAD-KIND:rev-id -- commit-discharge-result<CAD-KIND:rev-id> )  CSTORE-COMMIT--DISCHARGE--RESULT:COMMITTED ;
+: CD-CONFLICT ( -- commit-discharge-result<a> )        CSTORE-COMMIT--DISCHARGE--RESULT:CONFLICT ;
+: CD-DUP-WRITE ( -- commit-discharge-result<a> )       CSTORE-COMMIT--DISCHARGE--RESULT:DUPLICATE-WRITE ;
+: CD-OMITTED ( -- commit-discharge-result<a> )         CSTORE-COMMIT--DISCHARGE--RESULT:OMITTED-READ ;
+: CD-UNAUTHORIZED ( -- commit-discharge-result<a> )    CSTORE-COMMIT--DISCHARGE--RESULT:UNAUTHORIZED ;
+: CD-EXHAUSTED ( BUDGET:dim -- commit-discharge-result<a> )   CSTORE-COMMIT--DISCHARGE--RESULT:EXHAUSTED ;
+: CD-NOT-DISCHARGED ( -- commit-discharge-result<a> )  CSTORE-COMMIT--DISCHARGE--RESULT:NOT-DISCHARGED ;
+: CD-UNAUTH-VERIFIER ( -- commit-discharge-result<a> ) CSTORE-COMMIT--DISCHARGE--RESULT:UNAUTHORIZED-VERIFIER ;
 
 \ ---- capacities + fixed widths -------------------------------------------------
 32 constant KEY-W                        \ rev / idem content-key width (REV:KEY>WIRE / SHA-256)
@@ -329,22 +361,17 @@ private
       exhausted OF BUDGET:DIM>N ENDOF
    ;MATCH ;
 
-public
-
-\ COMMIT-AUTHORIZED is the CAPABILITY + BUDGET gated commit (the § 23 "capability and resource
-\ budgets cover all effects" commit legs, plan:3726; dot habu-v2-capability-and-0970a96d). It
-\ (1) rejects `unauthorized` when the granted authority does not contain the transaction's declared
-\ capability SET (mask containment - the ACTION:DISPATCH precedent); (2) rejects `exhausted`, naming
-\ the dimension, when the declared budget reserve does not fit the ledger's remaining - BOTH gates
-\ fire BEFORE any publish, so a rejected authorized commit leaves HEAD unchanged and charges nothing
-\ (composes with the crash-injection acceptance: an exhausted commit is state-identical to a crash
-\ before the marker). It then delegates to the crash-safe COMMIT and, on a FRESH publish, CHARGES
-\ the ledger exactly once keyed by the transaction's idempotency key; a retry (COMMIT resolves it
-\ idempotently WITHOUT republishing, and the key is already charged) charges nothing more, and a
-\ stale-head / duplicate-write / omitted-read COMMIT reject charges nothing. Obligation-discharge
-\ authority stays DEFERRED: no verifier-authority model (who may discharge which obligation) is
-\ landed, so this gate enforces capability + budget only (see the dot's report + follow-on dot).
-: COMMIT-AUTHORIZED ( txn CAPTOK:grant LEDGER:ledger -- auth-result<CAD-KIND:rev-id> )
+\ AUTHORIZED-PUBLISH is the shared CAPABILITY + BUDGET gated publish (the § 23 "capability and
+\ resource budgets cover all effects" commit legs, plan:3726; dot habu-v2-capability-and-0970a96d):
+\ (1) reject `unauthorized` when the granted authority does not contain the transaction's declared
+\ capability SET (mask containment - the ACTION:DISPATCH precedent); (2) reject `exhausted`, naming
+\ the dimension, when the declared reserve does not fit the ledger - BOTH gates fire BEFORE any
+\ publish, so a rejected commit leaves HEAD unchanged and charges nothing. It then delegates to the
+\ crash-safe COMMIT and, on a FRESH publish, CHARGES the ledger exactly once keyed by the idempotency
+\ key; an idempotent retry / a stale-head / duplicate-write / omitted-read reject charges nothing.
+\ COMMIT-AUTHORIZED and COMMIT-DISCHARGED share this body so the capability + budget behaviour is
+\ single-sourced.
+: AUTHORIZED-PUBLISH ( txn CAPTOK:grant LEDGER:ledger -- auth-result<CAD-KIND:rev-id> )
    {: t:txn g:CAPTOK:grant l:LEDGER:ledger :}
    g t TX:CAP-MASK@ CAPTOK:AUTHORIZES? 0= if A-UNAUTHORIZED exit then
    t FOLD-BUDGET
@@ -361,6 +388,57 @@ public
       conflict        OF A-CONFLICT ENDOF
       duplicate-write OF A-DUP-WRITE ENDOF
       omitted-read    OF A-OMITTED ENDOF
+   ;MATCH ;
+
+\ RECORD-DISCHARGE-EVENT records the canonical evidence-decision audit event from a discharged
+\ evidence's subject + verifier identity (outcome 0 = authorized-discharge). The evidence binds at
+\ word entry (the OBLIG:DISCHARGE local-binding precedent - a sum payload cannot bind inside a MATCH arm).
+: RECORD-DISCHARGE-EVENT ( OBLIG:evidence -- ) {: e:OBLIG:evidence :}
+   e OBLIG:EV-SUBJECT@  e OBLIG:EV-VERIFIER@  0  AUDIT:RECORD-EVIDENCE-DECISION ;
+
+\ ---- the folded obligation-discharge AUTHORITY leg (dot habu-v2-deterministic-audit-428d27c2) ----
+\ DISCHARGE-OUTCOME runs DAUTH:AUTHORIZED-DISCHARGE (verifier CLASS + INDEPENDENCE + identity-
+\ ALLOWLIST) and projects it to an ordinal: 0 authorized-discharge (and it RECORDS the decision as
+\ a canonical evidence-decision audit event from the discharged evidence's subject + verifier); 1 a
+\ folded DISCHARGE named-field refusal; 2 the verifier is not on the authority allowlist. The
+\ multi-cell authority is consumed by AUTHORIZED-DISCHARGE (top-of-stack), then the authz-result is
+\ the only value on the stack when it is MATCHed (the maki/db/promotion-authority.f discipline).
+: DISCHARGE-OUTCOME ( OBLIG:obligation OBLIG:evidence DAUTH:authority -- n )
+   DAUTH:AUTHORIZED-DISCHARGE MATCH DAUTH:authz-result
+      ok             OF RECORD-DISCHARGE-EVENT 0 ENDOF
+      not-discharged OF 1 ENDOF
+      unauthorized   OF 2 ENDOF
+   ;MATCH ;
+
+public
+
+\ COMMIT-AUTHORIZED is the CAPABILITY + BUDGET gated commit (dot habu-v2-capability-and-0970a96d).
+\ It is exactly AUTHORIZED-PUBLISH; obligation-discharge authority is the SEPARATE COMMIT-DISCHARGED
+\ entry point below, so existing capability + budget callers (the agent loop) are unchanged.
+: COMMIT-AUTHORIZED ( txn CAPTOK:grant LEDGER:ledger -- auth-result<CAD-KIND:rev-id> )
+   AUTHORIZED-PUBLISH ;
+
+\ COMMIT-DISCHARGED threads DAUTH:AUTHORIZED-DISCHARGE as the THIRD validate leg around the
+\ capability + budget publish (the folded § 23.9 "who may discharge which obligation" gate; dot
+\ habu-v2-deterministic-audit-428d27c2). The obligation + discharge evidence + authority are new
+\ parameters (the transaction value carries no discharge context). The discharge leg fires FIRST:
+\ a non-discharging evidence returns `not-discharged` and an unauthorized verifier
+\ `unauthorized-verifier`, BOTH before any capability/budget check or publish - so a refused commit
+\ leaves HEAD unchanged and charges nothing. A successful discharge records the decision as an audit
+\ event, then delegates to the shared capability + budget publish, mirroring its committed / conflict
+\ / duplicate-write / omitted-read / unauthorized / exhausted outcomes.
+: COMMIT-DISCHARGED ( txn CAPTOK:grant LEDGER:ledger OBLIG:obligation OBLIG:evidence DAUTH:authority -- commit-discharge-result<CAD-KIND:rev-id> )
+   DISCHARGE-OUTCOME {: outcome:n :}
+   {: t:txn g:CAPTOK:grant l:LEDGER:ledger :}
+   outcome 1 = if CD-NOT-DISCHARGED exit then
+   outcome 2 = if CD-UNAUTH-VERIFIER exit then
+   t g l AUTHORIZED-PUBLISH MATCH auth-result
+      committed       OF CD-COMMITTED ENDOF
+      conflict        OF CD-CONFLICT ENDOF
+      duplicate-write OF CD-DUP-WRITE ENDOF
+      omitted-read    OF CD-OMITTED ENDOF
+      unauthorized    OF CD-UNAUTHORIZED ENDOF
+      exhausted       OF CD-EXHAUSTED ENDOF
    ;MATCH ;
 
 ;package

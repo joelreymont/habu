@@ -6266,3 +6266,44 @@ unchanged (148855). Keys for milestone 2:
   fine), but a BARE reference goes ambiguous once two exist. Fix: rename the new sum
   to a unique tail (authz-result). Lesson: pick distinct tails for new public sums,
   and prefer qualified `PKG:family` in signatures across boundaries.
+
+- **Thread a new gate leg into a widely-called word by a SIBLING entry, not an arity
+  change.** The deterministic-audit dot (habu-v2-deterministic-audit-428d27c2) had to fold
+  `DAUTH:AUTHORIZED-DISCHARGE` into `CSTORE:COMMIT-AUTHORIZED` as a third validate leg, but
+  the agent loop + capbud/aloop suites call `COMMIT-AUTHORIZED ( txn grant ledger -- )` and
+  are NOT in the write set. Changing its arity would break them. Fix: factor the existing
+  body into a private `AUTHORIZED-PUBLISH` (single-sourced capability+budget publish), keep
+  `COMMIT-AUTHORIZED` as a thin wrapper (byte-identical behaviour -> every existing test stays
+  green), and add a SIBLING `COMMIT-DISCHARGED ( txn grant ledger obl ev authority -- )` that
+  runs the discharge leg first, then delegates to the shared publish. "New parameters, not a
+  one-line follow-up" = a new entry point, not a mutated signature.
+- **A sum-variant PAYLOAD cannot bind as a typed local INSIDE a MATCH arm, even a single-cell
+  product.** `MATCH DAUTH:authz-result ok OF {: e:OBLIG:evidence :} ...` rejected with
+  "expected: oblig:evidence<> actual: oblig:evidence<>" (identical types, still a non-certified
+  definition) although a 1-field product binds fine at a word's ENTRY (OBLIG:DISCHARGE does
+  `{: o:obligation e:evidence :}`). Fix: factor a helper whose entry consumes the payload
+  (`: RECORD-DISCHARGE-EVENT ( OBLIG:evidence -- ) {: e:OBLIG:evidence :} ...`) and call it
+  bare from the arm (`ok OF RECORD-DISCHARGE-EVENT 0 ENDOF`). The MATCH-test decoders that
+  work all `drop`/consume the payload straight off the stack in-arm, never bind it.
+- **An arity-1 SUMTYPE needs its type ARGUMENT in a signature (`family<T>`), but its bare
+  qualifier in a MATCH selector.** A decoder `: DCODE ( CSTORE:commit-discharge-result -- n )`
+  failed `SGBAD-ARITY?` ("wrong arity for type family") because `commit-discharge-result` is
+  `SUMTYPE ... 1`; the signature must read `( commit-discharge-result<CAD-KIND:rev-id> -- n )`
+  (bare tail + arg, the commit-store-auth-test.f ACODE `auth-result<CAD-KIND:rev-id>`
+  precedent) while the body's `MATCH CSTORE:commit-discharge-result` takes the qualifier with
+  NO arg. Do not put the qualifier and the `<...>` arg together. Also: the generated
+  constructor doubles EVERY hyphen of the tail — `commit-discharge-result` ->
+  `CSTORE-COMMIT--DISCHARGE--RESULT:COMMITTED`, `verify-result` -> `AUDIT-VERIFY--RESULT:OK`,
+  `event-kind` -> `AUDIT-EVENT--KIND:TXN-COMMIT`.
+- **A content-CHAINED audit log must own a self-contained store, not share the occurrence
+  journal.** maki/journal.f (the audit-event-id owner) is append-only occurrence identity that
+  maki/db/promotion.f also appends closure descriptors to; a hash-chain over that shared
+  journal would interleave non-chained records and break verification. So maki/db/audit-log.f
+  keeps its OWN fixed-record array + hash chain + sequence, and only REFERENCES the landed
+  identities by their cross-process content keys. Byte-stability across processes then comes
+  for free: because every event carries content keys (never process-local raws), a fresh
+  decoy-shifted child rebuilds a byte-identical serialized frame (the keywire-xproc pattern),
+  and `STATE-DIGEST` — a pure fold over the frame bytes, touching no registry — reproduces the
+  identical digest. Nondeterminism is enforced by API shape (the only marked-event constructor
+  demands a captured evidence-id) plus a `VERIFY-LOG` `bad-nondeterministic` reject for a
+  marked record whose capture was zeroed; there is no reachable runtime throw to leave dead.

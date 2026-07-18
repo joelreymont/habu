@@ -831,8 +831,14 @@ points stay listed.
   `auth-result` `unauthorized` (granted authority ⊉ the txn's declared caps) and `exhausted`
   (declared reserve ⊄ the ledger remaining, naming the dimension) BEFORE any publish, then
   delegates to `COMMIT` and charges the ledger exactly once per idempotency key on a fresh
-  publish (a retry / stale-head / validation reject charges nothing). Obligation-discharge
-  authority stays deferred (no verifier-authority model landed). Owns -5371..-5373.
+  publish (a retry / stale-head / validation reject charges nothing). `COMMIT-DISCHARGED` (dot
+  habu-v2-deterministic-audit-428d27c2) threads `DAUTH:AUTHORIZED-DISCHARGE` as the THIRD
+  validate leg: it takes new obligation + discharge-evidence + authority parameters, runs the
+  folded verifier-class / independence / identity-allowlist gate FIRST (a non-discharge is
+  `commit-discharge-result` `not-discharged`, an off-allowlist verifier `unauthorized-verifier`,
+  both before any publish or charge), records the successful decision as a canonical
+  `AUDIT:RECORD-EVIDENCE-DECISION` event, then delegates to the shared capability + budget
+  publish (`AUTHORIZED-PUBLISH`, single-sourced with `COMMIT-AUTHORIZED`). Owns -5371..-5373.
 - `maki/db/commit-store-test.f` — in-process acceptance against a real private store:
   deterministic replay yields an equal revision digest, idempotent retry returns the
   original result, a stale head returns the typed conflict, a duplicate write rejects, and
@@ -847,6 +853,42 @@ points stay listed.
   stage (recovery sees OLD) or after the marker advance (recovery sees the COMPLETE NEW
   revision), and asserts the invariant by content key. Spawn/capture is the
   keywire-xproc-env fresh-process pattern.
+- `maki/db/commit-store-discharge-test.f` — acceptance for the folded obligation-discharge
+  third leg `CSTORE:COMMIT-DISCHARGED` (dot habu-v2-deterministic-audit-428d27c2): an
+  authorized discharge commits and records ONE evidence-decision audit event; a non-discharging
+  evidence is `not-discharged` (the discharge leg fires BEFORE the capability leg) and an
+  off-allowlist verifier `unauthorized-verifier`, both leaving HEAD unchanged, charging nothing,
+  and recording no event; the capability + budget legs still gate a discharged commit.
+- `maki/db/audit-log.f` — the canonical, content-chained audit EVENT log + deterministic replay
+  (MODEL-CAD-V2-PLAN.md § 23.9 "append-only audit records and deterministic replay"; dot
+  habu-v2-deterministic-audit-428d27c2). Package AUDIT: eight typed event kinds (action
+  request/result, txn-commit, verifier-run, evidence-decision, promotion, activation, rollback)
+  each recorded as a fixed 131-byte canonical record wired to the landed identities by their
+  CROSS-PROCESS content keys (`REV:KEY>WIRE` / `TX:IDEM-KEY>WIRE` / `ARTIFACT:KEY>WIRE` /
+  `EVIDENCE:KEY>WIRE` / `PRODUCER:KEY>WIRE`) and CONTENT-CHAINED (each record embeds the SHA-256
+  of the previous). `VERIFY-LOG` rejects tamper / reorder / omission (typed `verify-result`
+  `broken-chain` / `bad-head`) and a marked nondeterministic record stripped of its captured-output
+  key (`bad-nondeterministic`). `STATE-DIGEST` is the byte-stable replay: a rolling fold over a
+  serialized log frame that uses the CAPTURED key for a nondeterministic event and the primary key
+  for a deterministic one, invoking no chooser/registry, so it reproduces identically in any
+  process. Self-contained store (distinct from `maki/journal.f`'s occurrence journal, which
+  promotion also appends to). Owns -5614..-5615.
+- `maki/db/audit-log-test.f` — in-process acceptance: a 6-event log verifies; a mid-record tamper
+  is `broken-chain` at the next index and a last-record tamper `bad-head`; a record swap and a
+  dropped middle record are `broken-chain`; a nondeterministic captured verifier run verifies and
+  its captured key (not the live output) drives the replay digest; a stripped capture is
+  `bad-nondeterministic`; a static fixture proves a marked verifier run cannot be recorded without
+  a captured id; re-recording against a fresh store reproduces the digest without a chooser;
+  overflow / small-buffer fail closed.
+- `maki/db/audit-log-xproc-child.f` — package AUDIT-XPROC: the fresh-process replay side. Shared
+  `BUILD-LOG` records the canonical event sequence from content-addressed identities (no store);
+  `RUN-CHILD` reads the parent's serialized frame, `VERIFY-LOG`s it, then rebuilds the same log
+  from an EMPTY store under a decoy-shifted registry and prints XPROC-OK iff the rebuild is
+  byte-identical.
+- `maki/db/audit-log-xproc-test.f` — the DECISIVE cross-process byte-stability test: the parent
+  serializes the log to a file and spawns a fresh bin/hb (decoy-shifted) that rebuilds a
+  byte-identical frame, proving replay is byte-stable across processes because events are keyed by
+  cross-process content keys. Spawn/capture is the keywire-xproc fresh-process pattern.
 - `maki/db/diagnostic.f` — the common structured Diagnostic IR (MODEL-CAD-V2-PLAN.md
   § 23.9 "Structured failure IR" + § 23.2): one `diagnostic` handle every checker /
   compiler / pass / runtime / benchmark / deployment / policy failure lowers to, plus
