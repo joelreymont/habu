@@ -973,6 +973,30 @@ points stay listed.
   implemented -> accepted); registry enumeration is canonical (name-ascending) and
   REPLAYABLE (the same set in reverse order digests identically); and the seeded
   declarations reflect the landed surfaces.
+- `maki/db/diff-suite.f` — the DifferentialSuite artifact schema (MODEL-CAD-V2-PLAN.md
+  § "Automatic differential verification", plan:3782-3796; dot
+  habu-v2-differential-suite-2d896ced). Package DIFFSUITE: an immutable content-addressed
+  suite naming deterministic generators/corpora (content-key sets), independent reference
+  producers (`CAD-KIND:producer-id` set), normalization + minimizer descriptors (content
+  keys), comparison domain/tolerance, metamorphic properties (content-key set), target
+  needs (`CAD-KIND:target-id`), seed, and the reused `BUDGET:dim` vector. The comparison
+  domain COMPOSES with `NPOL:dom` (held as `CAD-KIND:numeric-policy-id`; exact -> zero
+  tolerance, approximate -> positive tolerance); the independence policy REUSES
+  `OBLIG:independence` (under `independent` a reference may not alias the subject producer,
+  by content-key = `PRODUCER:EQUAL?`). `SEAL` returns a typed `build-result`
+  (incomplete / tolerance-mismatch / reference-not-independent / ok). `DIGEST-INTO` is
+  SHA-256 over the canonical semantic prefix (every field digest-covered, the envelope
+  precedent); `ENCODE` appends the stored digest; `CASE-ID(suite,k)` = SHA-256(digest ||
+  seed || k) for deterministic replay. Owns -5392..-5394.
+- `maki/db/diff-suite-test.f` — DifferentialSuite acceptance: a per-field digest FLIP
+  MATRIX (every one of the twelve semantic fields flips the digest; identical suites and
+  permuted set order hash equally); incompatible comparison domain/tolerance pairs REJECT
+  typed (exact+nonzero, ulp/relative+zero -> tolerance-mismatch) with compatible controls;
+  a reference cannot alias the subject under `independent` (reference-not-independent) with
+  the `self-verify` and distinct-reference positive controls; deterministic case-id replay
+  (same suite/any order -> identical case-id sequence, different seed -> different); the
+  canonical envelope round-trips byte-identically and carries the DIGEST-INTO tail; and the
+  static leg (nominal id families are checker-guarded).
 - `maki/db/budget-dim.f` — the closed budget-dimension vocabulary (MODEL-CAD-V2-PLAN.md § 23
   autonomy resource budgets, plan:3205-3211; dot habu-v2-capability-and-0970a96d). Package
   BUDGET owns ONE variant-exhaustive `dim` ENUM (compute-time, device-time, storage,

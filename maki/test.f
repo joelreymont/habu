@@ -192,6 +192,8 @@ TEST:SUITE maki/db/evidence-applicability-test.f
 TEST:;SUITE
 TEST:SUITE maki/db/action-test.f
 TEST:;SUITE
+TEST:SUITE maki/db/diff-suite-test.f
+TEST:;SUITE
 TEST:SUITE maki/db/capbud-test.f
 TEST:;SUITE
 TEST:SUITE maki/db/agent-loop-test.f

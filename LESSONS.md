@@ -187,7 +187,17 @@ Last updated: 2026-07-18
   registry earlier in maki/test.f; the cross-process test first registered a fresh target
   and threw E-TARGET-CAP in-suite (green standalone). Fix: use `TARGET:SM87` (INIT-registered
   in every process). Process-global append-only registries with caps are a hidden ordering
-  coupling between suites.
+  coupling between suites. (Re-confirmed by the diff-suite flip-matrix's second target: an
+  arch=100 descriptor RESOLVES target-test's existing cap-fill slot rather than minting a
+  new one — the maki/db/artifact-test.f ADT-TARGET2 precedent.)
+- **A `create` buffer's bare address infers `ptr a`, so byte comparators want it consumed
+  IMMEDIATELY, not after pointer arithmetic on other stack items.** In a digest-tail check
+  `EA la CKW - DB CKW MEM=` failed with `MEM=` seeing `ptr a` for `EA`: the create address
+  keeps its default cell-pointer type while the arithmetic runs on the length below it, and
+  `MEM= ( ptr u8 ... )` then rejects it — even though `EA EB la MEM=` (create address
+  consumed directly) unifies `EA` to `ptr u8` fine. Fix: `BYTE-COPY` the span into a fresh
+  `create` buffer (BYTE-COPY takes any `ptr`), then compare the two buffers passed directly.
+  (diff-suite-test ENC-DIGEST-TAIL, 2026-07-18.)
 - **Closing a dot that OWNS TRUSTED.md rows requires repointing those rows in the SAME
   commit, and the integrator's battery must run `trusted-inventory -- strict` (owner
   liveness), not just trusted-inventory-test.f.** (cp-async closure incident, 2026-07-17.)
