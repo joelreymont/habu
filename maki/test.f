@@ -212,6 +212,10 @@ TEST:SUITE maki/db/diff-runner-spawn-test.f
 TEST:;SUITE
 TEST:SUITE maki/db/diff-runner-inject-test.f
 TEST:;SUITE
+TEST:SUITE maki/db/diff-case-store-test.f
+TEST:;SUITE
+TEST:SUITE maki/db/diff-case-store-xproc-test.f
+TEST:;SUITE
 TEST:SUITE maki/db/capbud-test.f
 TEST:;SUITE
 TEST:SUITE maki/db/agent-loop-test.f

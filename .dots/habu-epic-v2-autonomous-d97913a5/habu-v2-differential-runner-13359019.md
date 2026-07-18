@@ -147,3 +147,79 @@ torch spawn stays the recorded-skip boundary until a torch-bearing host
 exists.
 
 Claim: agent=diffstore workspace=.jj-ws/fable-diffstore (durable per-case output store; closes the dot when merged)
+
+DURABLE PER-CASE OUTPUT STORE LANDED 2026-07-18 (diffstore lane, workspace
+.jj-ws/fable-diffstore; NOT yet merged/pushed). Zero new TRUSTED/TRUST rows
+(the checkable logic is fully typed). Discharges the last open acceptance item
+"store every input/output/environment".
+
+DESIGN. New package CASESTORE, one concern per file (maki/db/diff-case-store.f):
+a durable, content-keyed, crash-safe per-case record store - a DIFFERENT concern
+from diff-runner.f (the in-memory RUN + bounded LOG-CAP=64 run-log, kept AS the
+in-memory view) and diff-suite-id.f (interned suite identity). The bounded
+run-log stays; the durable path is file-per-case (unbounded), so NO silent
+LOG-CAP truncation remains in the durable path: storing is TOTAL per case or
+throws (named E-CASESTORE-ROOT -5415, E-CASESTORE-KEYW -5416; owner content-key
+width guarded == CKW, grep-verified unused). Crash-safe write is the commit-store
+idiom: build the whole fixed record, then ATOMIC-WRITE-FILE (temp+rename) - a
+reader ever sees the file absent or the COMPLETE record. Same power-loss fsync
+boundary the commit-store dot already tracks (rename gives process-crash recovery).
+
+KEY COMPOSITION. The record's leading 128-byte DESCRIPTOR is
+subject-key(32) || suite-digest(32) || environment-key(32) || case-id(32),
+built from the SAME words the runner's EMIT-EVIDENCE success key uses -
+PRODUCER:KEY>WIRE (subject), DIFFSUITE:DIGEST-INTO (suite), CONFIG:KEY>WIRE
+(environment digest) - PLUS DIFFSUITE:CASE-ID (the deterministic content-addressed
+per-case id the MINIMIZE distinct-CASE-ID mechanism already mints, reused). The
+STORE KEY = SHA-256(descriptor); the file is <root>/cases/<hex(store-key)>. Every
+component is content-derived and registration-order-independent, so a fresh
+process that rebuilds the identical suite/environment/subject derives a
+byte-identical store key (the keywire-xproc content-key property, applied to the
+whole record). Fixed-width byte-stable envelope (REC-W=155): descriptor(128)
+param(u64) subj-kind(1) subj-val(u64) ref-kind(1) ref-val(u64) verdict(1); the
+runner's typed run-result / ref-result / case-verdict sums lower to those bytes
+(produced/faulted, value/skip, CASE-VERDICT>N). LOAD rebuilds the descriptor,
+re-derives the key, reads the file, and confirms the embedded descriptor matches
+(content-path integrity), returning typed ok/absent/malformed/mismatch.
+
+FIXTURES ADDED: maki/db/diff-case-store.f (package CASESTORE: PUT / LOAD /
+HAS? / PATH$ / RECORD-INTO / REC-WIDTH / ROOT! / ROOT$ / ROOT+ / RESET +
+rehydrated-slot accessors PARAM@/SUBJ-KIND@/SUBJ-VAL@/REF-KIND@/REF-VAL@/
+VERDICT@/REC@; error codes -5415..-5416); maki/db/diff-case-store-test.f
+(in-process acceptance, every public word: durable round-trip of input/outputs/
+outcome/environment, fault+skip lowering, HAS?/absent, RECORD-INTO byte-match ==
+rehydrated REC@, environment-keyed / subject-keyed / case-keyed distinctness,
+malformed + mismatch fail-closed arms via PATH$ corruption); maki/db/
+diff-case-store-xproc-child.f (package CSXP: shared suite/env/subject builders +
+deterministic per-case outcomes + STORE-ALL/VERIFY-ALL) and maki/db/
+diff-case-store-xproc-test.f (the DECISIVE cross-process proof: parent PUTs
+records, a FRESH bin/hb with a DECOY-SHIFTED registry rebuilds each case, LOADs,
+and byte-matches the rehydrated record - durable identity survives process death,
+the keywire-xproc pattern). Both new suites registered in maki/test.f next to the
+diff suites.
+
+GATES (all green in-workspace, this exact tree):
+  typed-local-diff-lint (diff)          exit 0, 0 bare-local finding(s)
+  error-code-lint                       exit 0, 0 finding(s)
+  host-lint                             exit 0, 0 finding(s)
+  filemap-lint                          exit 0, 0 finding(s)
+  trust-lint                            exit 0, 0 finding(s)  (691 sites / 719 rows, no new)
+  refine-lint                           exit 0, 0 finding(s)  (60 mints)
+  stale-status-lint                     exit 0, 0 finding(s)
+  trusted-inventory -- strict           exit 0 (unclassified 0; no new TRUST)
+  dot-dep-lint                          exit 0, 0 finding(s)
+  diff-suite-test / diff-suite-id-test  test: ok
+  diff-runner-test / -tensor / -inject  test: ok
+  diff-runner-spawn-test                test: ok
+  diff-case-store-test                  test: ok  (NEW)
+  diff-case-store-xproc-test            test: ok  (NEW, real fresh bin/hb child)
+  maki/test.f                           EXIT 0, all suites PASS; peak ndict 16672/32768
+  test/gate-stdlib.f                    PASS
+
+OPEN ITEMS ON THIS DOT: NONE besides the torch recorded-skip boundary. The
+durable per-case output store is complete; the run-log LOG-CAP=64 first slice is
+now explicitly the in-memory view backed by the durable store (no silent
+truncation in the durable path). The only remaining boundary is item 5, the real
+PyTorch spawn behind DIFFRUN_TORCH: torch is ABSENT on this host, so
+TORCH-REFERENCE stays the landed interface + recorded skip until a torch-bearing
+host exists. Orchestrator closes the dot at merge.
