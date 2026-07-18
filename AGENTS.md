@@ -29,6 +29,16 @@ current verification state lives in `STATUS.md`.
   downstream code. Documentation or process edits do not discharge the trigger;
   they only support the compiler/checker fix or capability dot.
 
+## Orchestrator Role (BLOCKING)
+
+- The primary session is the planner: it designs, plans, orchestrates,
+  dispatches, reviews merges, and merges only excellent code.
+- All coding is done by Opus subagents at xhigh reasoning effort; the
+  orchestrator never implements directly.
+- Review every worker diff hunk-by-hunk before merging: no hacks, no scope
+  shaving, long-term-correct only. Substandard work goes back to the worker
+  or a fresh lane — it does not merge.
+
 ## Conventions
 
 - **Project-defined Forth words are UPPER-CASE; built-ins stay as-is/lower-case.**
