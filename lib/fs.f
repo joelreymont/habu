@@ -340,6 +340,7 @@ variable FS-IO-WR
 : FS-SKIP-DIR? ( ptr u8 n -- bool )
    BASENAME
    2dup s" .jj" FS-PATH= if 2drop FS-TRUE exit then
+   2dup s" .jj-ws" FS-PATH= if 2drop FS-TRUE exit then
    2dup s" .git" FS-PATH= if 2drop FS-TRUE exit then
    s" .dots" FS-PATH= ;
 
