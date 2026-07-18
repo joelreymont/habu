@@ -87,6 +87,17 @@ SPEC-CAND$ CHECK-QUIET-CANDIDATE! -1 T=
 SPEC-CAND: GGBAD O[p q] = A[ r IX[p] ] B[q r] * +SUM r ;      \ A[r ix[p]]: ix<extr> in A's row slot
 SPEC-CAND$ CHECK-QUIET-CANDIDATE!  0 T=
 
+\ --- (a) the index-variable and tensor lookups now return option<>; a MATCH that
+\ forgets the none arm fails certification - the exhaustiveness every SP-*-POS /
+\ SP-EXT-SLOT / TR-FIND consumer here now relies on. -1 accept, 0 reject.
+s" SAOK ( option<n> -- ) MATCH option none OF ENDOF some OF drop ENDOF ;MATCH "  CHECK-QUIET-CANDIDATE! -1 T=
+s" SANE ( option<n> -- ) MATCH option some OF drop ENDOF ;MATCH "                CHECK-QUIET-CANDIDATE!  0 T=
+
+\ --- (c) the factor-index (SP-FI-*) table index is its own type: a raw n cannot
+\ address the table without the explicit >SP-FI crossing.
+s" SFIOK  ( sp-fi -- ptr u8 n ) SP-FI-VAR@ "  CHECK-QUIET-CANDIDATE! -1 T=
+s" SFIRAW ( n -- ptr u8 n ) SP-FI-VAR@ "      CHECK-QUIET-CANDIDATE!  0 T=
+
 ;package
 
 T-REPORT

@@ -48,6 +48,8 @@
 \ (the candidate-B flip protection). maki -> habu only; maki owns -5019, -5036..-5039.
 
 require maki/extent-tensor.f
+require lib/adt/option.f             \ option<>: index-variable and tensor lookups return present/absent
+require lib/type/value-nominal.f     \ NOMINAL:: the factor-index (SP-FI) table index is its own type
 
 -5036 constant E-SPEC-SYNTAX    \ malformed spec grammar (brackets, =, keywords, terminator)
 -5037 constant E-SPEC-EXTENT    \ an index variable's extent #<UPPER> is not declared
@@ -114,15 +116,29 @@ create SP-FI-GATH  SP-FI-CAP SP-TNAME * allot
 create SP-FI-GATHL SP-FI-CAP cells allot
 variable SP-FI-N
 
-: SP-FAC-T-SLOT ( n -- ptr a )  SP-TNAME *  SP-FAC-T + ;
-: SP-FI-VAR-SLOT ( n -- ptr a ) SP-IDX-NAME * SP-FI-VAR + ;
-: SP-FI-GATH-SLOT ( n -- ptr a ) SP-TNAME * SP-FI-GATH + ;
+\ sp-fi is the row index into the factor-index (SP-FI-*) parallel arrays: its own
+\ type, so a factor number or a raw counter cannot index the table without the
+\ explicit `>SP-FI` crossing. The SP-FAC offset column is the base row of a factor.
+public
+NOMINAL: SP-FI
+private
+
+: SP-FAC-T-SLOT   ( n -- ptr a )      SP-TNAME *  SP-FAC-T + ;   \ n = factor number
+: SP-FI-VAR-SLOT  ( sp-fi -- ptr a )  SP-FI>N SP-IDX-NAME * SP-FI-VAR + ;
+: SP-FI-GATH-SLOT ( sp-fi -- ptr a )  SP-FI>N SP-TNAME * SP-FI-GATH + ;
+: SP-FAC-OFF@     ( n -- sp-fi )      cells SP-FAC-OFF + @ >SP-FI ;   \ a factor's base SP-FI row
+
+public
+: SP-FI-VAR@  ( sp-fi -- ptr u8 n ) {: fi:sp-fi :}  fi SP-FI-VAR-SLOT   fi SP-FI>N cells SP-FI-VARL + @ ;
+: SP-FI-GATH@ ( sp-fi -- ptr u8 n ) {: fi:sp-fi :}  fi SP-FI-GATH-SLOT  fi SP-FI>N cells SP-FI-GATHL + @ ;
+private
 
 : SP-FI+ ( ptr u8 n ptr u8 n -- ) {: va:ptr vu:n ga:ptr gu:n :}
    SP-FI-N @ SP-FI-CAP >= if E-SPEC-ARITY throw then
    vu SP-IDX-NAME > gu SP-TNAME > or if E-SPEC-SYNTAX throw then
-   va SP-FI-N @ SP-FI-VAR-SLOT vu BYTE-COPY   vu SP-FI-N @ cells SP-FI-VARL + !
-   ga SP-FI-N @ SP-FI-GATH-SLOT gu BYTE-COPY  gu SP-FI-N @ cells SP-FI-GATHL + !
+   SP-FI-N @ >SP-FI {: fi:sp-fi :}
+   va fi SP-FI-VAR-SLOT vu BYTE-COPY   vu fi SP-FI>N cells SP-FI-VARL + !
+   ga fi SP-FI-GATH-SLOT gu BYTE-COPY  gu fi SP-FI>N cells SP-FI-GATHL + !
    SP-FI-N @ 1 + SP-FI-N ! ;
 : SP-FAC+ ( ptr u8 n n n -- ) {: na:ptr nu:n off:n cnt:n :}
    SP-FAC-N @ SP-FAC-CAP >= if E-SPEC-ARITY throw then
@@ -136,11 +152,9 @@ public
 : SPEC-FAC-NAME@ ( n -- ptr u8 n ) {: i:n :}  i SP-FAC-T-SLOT  i cells SP-FAC-TL + @ ;
 : SPEC-FAC-RANK@ ( n -- n ) cells SP-FAC-CNT + @ ;
 : SPEC-FAC-IDX@ ( n n -- ptr u8 n ) {: f:n k:n :}   \ k-th factor index's variable
-   f cells SP-FAC-OFF + @  k +  {: fi:n :}
-   fi SP-FI-VAR-SLOT  fi cells SP-FI-VARL + @ ;
+   f SP-FAC-OFF@ SP-FI>N k + >SP-FI SP-FI-VAR@ ;
 : SPEC-FAC-GATHER@ ( n n -- ptr u8 n ) {: f:n k:n :}  \ k-th factor index's gather ("" if none)
-   f cells SP-FAC-OFF + @  k +  {: fi:n :}
-   fi SP-FI-GATH-SLOT  fi cells SP-FI-GATHL + @ ;
+   f SP-FAC-OFF@ SP-FI>N k + >SP-FI SP-FI-GATH@ ;
 private
 
 \ ---- lexer over the collected spec body: whitespace separates, and `[ ] = *`
@@ -272,12 +286,18 @@ variable SP-EXT-U
    [char] # SP-EXT-BUF c!  1 SP-EXT-U !
    u 0 ?do  a i + c@ SP-UC  SP-EXT-BUF SP-EXT-U @ + c!  SP-EXT-U @ 1 + SP-EXT-U !  loop
    SP-EXT-BUF SP-EXT-U @ ;
-: SP-EXT-SLOT ( ptr u8 n -- n )   \ registry slot of the var's extent, or E-SPEC-EXTENT
-   SP-EXT$ XR-FIND 0= if E-SPEC-EXTENT throw then ;
-: SP-FREE-POS ( ptr u8 n -- n bool ) {: a:ptr u:n :}
-   SP-FREE-N @ 0 ?do  a u i SPEC-FREE@ STR= if i true unloop exit then loop  0 false ;
-: SP-CT-POS ( ptr u8 n -- n bool ) {: a:ptr u:n :}
-   SP-CT-N @ 0 ?do  a u i SPEC-CT@ STR= if i true unloop exit then loop  0 false ;
+: SP-EXT-SLOT ( ptr u8 n -- xr-slot )   \ registry slot of the var's extent, or E-SPEC-EXTENT
+   SP-EXT$ XR-FIND MATCH option
+      none OF E-SPEC-EXTENT throw ENDOF
+      some OF ENDOF
+   ;MATCH ;
+\ position of a variable in the free / contraction index list, or none.
+: SP-FREE-POS ( ptr u8 n -- option<n> ) {: a:ptr u:n :}
+   SP-FREE-N @ 0 ?do  a u i SPEC-FREE@ STR= if i OPTION:SOME unloop exit then loop  OPTION:NONE ;
+: SP-CT-POS ( ptr u8 n -- option<n> ) {: a:ptr u:n :}
+   SP-CT-N @ 0 ?do  a u i SPEC-CT@ STR= if i OPTION:SOME unloop exit then loop  OPTION:NONE ;
+: SP-FREE? ( ptr u8 n -- bool )  SP-FREE-POS MATCH option  none OF false ENDOF  some OF drop true ENDOF ;MATCH ;
+: SP-CT?   ( ptr u8 n -- bool )  SP-CT-POS   MATCH option  none OF false ENDOF  some OF drop true ENDOF ;MATCH ;
 
 \ ---- code emitters (append candidate-B source into the XG buffer) -------------
 \ a nested loop position (0-outer..count-1-inner) -> the habu loop counter i/j.
@@ -288,10 +308,19 @@ variable SP-EXT-U
    E-SPEC-ARITY throw ;
 \ the runtime source of one index var: a free index is a projected local f<pos>,
 \ a contraction index is the loop counter for its nesting depth.
+\ a free index is a projected local f<pos>; a contraction index is the loop counter
+\ for its nesting depth (SP-EMIT-COUNTER reads the contraction position).
+: SP-EMIT-FREE-SRC ( n -- ) {: pos:n :}  s" f" XG+ pos XG-INT s"  " XG+ ;
+: SP-EMIT-CT-SRC ( ptr u8 n -- ) {: a:ptr u:n :}
+   a u SP-CT-POS MATCH option
+      none OF E-SPEC-UNBOUND throw ENDOF
+      some OF SP-CT-N @ SP-EMIT-COUNTER ENDOF
+   ;MATCH ;
 : SP-EMIT-IDX-SRC ( ptr u8 n -- ) {: a:ptr u:n :}
-   a u SP-FREE-POS if  s" f" XG+ XG-INT s"  " XG+  exit then drop
-   a u SP-CT-POS   if  SP-CT-N @ SP-EMIT-COUNTER  exit then drop
-   E-SPEC-UNBOUND throw ;
+   a u SP-FREE-POS MATCH option
+      none OF a u SP-EMIT-CT-SRC ENDOF
+      some OF SP-EMIT-FREE-SRC ENDOF
+   ;MATCH ;
 : SP-EMIT-INJ ( ptr u8 n -- )  s" >" XG+  SP-EXT$ XG+  s"  " XG+ ;   \ >#<UPPER>
 \ one factor index: <source> >#<ext> [<gather>@]
 : SP-EMIT-FACTOR-IDX ( n n -- ) {: f:n k:n :}
@@ -351,24 +380,34 @@ variable SP-EXT-U
 
 \ ---- semantic validation: every malformed spec is a named throw BEFORE any code
 \ is generated (no partial word definitions on a bad spec). --------------------
-: SP-CHK-TENSOR ( ptr u8 n n n -- ) {: a:ptr u:n wk:n rk:n :}
-   a u TR-FIND 0= if E-SPEC-TENSOR throw then
-   {: slot:n :}
-   slot TR-KIND@ wk <> if E-SPEC-TENSOR throw then
+: SP-TENSOR-SLOT ( ptr u8 n -- tr-slot )   \ registry slot of a tensor/gather, or E-SPEC-TENSOR
+   TR-FIND MATCH option
+      none OF E-SPEC-TENSOR throw ENDOF
+      some OF ENDOF
+   ;MATCH ;
+: SP-CHK-RANK ( tr-slot n -- ) {: slot:tr-slot rk:n :}
    slot TR-RANK@ rk <> if E-SPEC-ARITY throw then ;
+: SP-CHK-DATA ( ptr u8 n n -- ) {: a:ptr u:n rk:n :}   \ require a declared data tensor of rank rk
+   a u SP-TENSOR-SLOT {: slot:tr-slot :}
+   slot TR-KIND@ TR-KIND-DATA? 0= if E-SPEC-TENSOR throw then
+   slot rk SP-CHK-RANK ;
+: SP-CHK-GATHER ( ptr u8 n n -- ) {: a:ptr u:n rk:n :}  \ require a declared gather of rank rk
+   a u SP-TENSOR-SLOT {: slot:tr-slot :}
+   slot TR-KIND@ TR-KIND-GATHER? 0= if E-SPEC-TENSOR throw then
+   slot rk SP-CHK-RANK ;
 : SP-CHK-VAR-EXT ( ptr u8 n -- )  SP-EXT-SLOT drop ;
 : SP-CHK-BOUND ( ptr u8 n -- ) {: a:ptr u:n :}
-   a u SP-FREE-POS nip if exit then
-   a u SP-CT-POS   nip if exit then
+   a u SP-FREE? if exit then
+   a u SP-CT? if exit then
    E-SPEC-UNBOUND throw ;
 : SP-CHK-FACTOR-IDX ( n n -- ) {: f:n k:n :}
    f k SPEC-FAC-IDX@ {: va:ptr vu:n :}
    va vu SP-CHK-VAR-EXT
    va vu SP-CHK-BOUND
    f k SPEC-FAC-GATHER@ {: ga:ptr gu:n :}
-   gu 0 > if  ga gu 1 TR-GATHER SP-CHK-TENSOR  then ;   \ a gather is a rank-1 ITENSOR
+   gu 0 > if  ga gu 1 SP-CHK-GATHER  then ;   \ a gather is a rank-1 ITENSOR
 : SP-CHK-FACTOR ( n -- ) {: f:n :}
-   f SPEC-FAC-NAME@  TR-TENSOR  f SPEC-FAC-RANK@  SP-CHK-TENSOR
+   f SPEC-FAC-NAME@  f SPEC-FAC-RANK@  SP-CHK-DATA
    f SPEC-FAC-RANK@ 0 ?do  f i SP-CHK-FACTOR-IDX  loop ;
 : SP-VALIDATE ( -- )
    SP-FREE-N @ 1 < SP-FREE-N @ 2 > or if E-SPEC-ARITY throw then   \ 1..2 free indices
@@ -376,7 +415,7 @@ variable SP-EXT-U
    SP-FAC-N @ 0= if E-SPEC-SYNTAX throw then
    SP-FAC-N @ 1 > SP-STAR? @ 0= and if E-SPEC-SYNTAX throw then    \ >1 factor requires *
    SP-FAC-N @ 1 = SP-STAR? @ and    if E-SPEC-SYNTAX throw then    \ 1 factor forbids *
-   SPEC-OUT$ TR-TENSOR SP-FREE-N @ SP-CHK-TENSOR                   \ output: data tensor, rank == free count
+   SPEC-OUT$ SP-FREE-N @ SP-CHK-DATA                              \ output: data tensor, rank == free count
    SP-FREE-N @ 0 ?do  i SPEC-FREE@ SP-CHK-VAR-EXT  loop
    SP-CT-N @ 0 ?do  i SPEC-CT@ SP-CHK-VAR-EXT  loop
    SP-FAC-N @ 0 ?do  i SP-CHK-FACTOR  loop ;

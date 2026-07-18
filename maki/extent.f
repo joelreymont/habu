@@ -43,6 +43,8 @@
 require lib/prelude.f                 \ true/false
 require maki/array.f                 \ T-AT: the ptr+offset address word the accessors reuse
 require lib/string.f                 \ STR=, BYTE-COPY: registry name storage
+require lib/adt/option.f             \ option<xr-slot>: XR-FIND returns a present/absent slot
+require lib/type/value-nominal.f     \ NOMINAL:: the registry slot index + length columns are their own types
 
 -5031 constant E-EXT-NAME     \ EXTENT: surface name missing, empty, or not '#'-prefixed
 -5032 constant E-EXT-UNDECL   \ TENSOR:/ITENSOR: referenced an extent no EXTENT: declared
@@ -62,6 +64,17 @@ TYPEFAMILY ix 1
 \ always sound (a nominal cell IS a cell). The reverse `>#name` is per-extent so
 \ the target extent is pinned, never inferred.
 TRUSTED: IX>N ( ix<e> -- n ) ;
+
+\ Registry data-layer nominals (value-nominal.f). The extent registry is a set of
+\ parallel arrays; making its slot index and its two string-length columns their
+\ own checker types stops the swaps a raw `n` hides. `xr-slot` is the row index: a
+\ rank, a loop counter, or a tensor-registry slot can no longer pose as an extent
+\ slot without the explicit `>XR-SLOT` crossing. `xr-surf-len` and `xr-tail-len`
+\ are the surface-name and tail lengths as DISTINCT types, so a name accessor that
+\ reads the wrong length column is an author-time reject, not a silent bug.
+NOMINAL: XR-SLOT
+NOMINAL: XR-SURF-LEN
+NOMINAL: XR-TAIL-LEN
 
 private
 
@@ -101,35 +114,45 @@ create XR-TLEN XR-CAP cells allot
 create XR-VAL  XR-CAP cells allot
 variable XR-N
 
-: XR-SURF-SLOT ( n -- ptr a )  XR-NAME-CAP *  XR-SURF + ;
-: XR-TAIL-SLOT ( n -- ptr a )  XR-NAME-CAP *  XR-TAIL + ;
+\ column byte-slot bases: the one place raw cells-offset math lives, hidden behind
+\ the `xr-slot` index so a bare n can never address a name column.
+: XR-SURF-PTR ( xr-slot -- ptr a )  XR-SLOT>N XR-NAME-CAP *  XR-SURF + ;
+: XR-TAIL-PTR ( xr-slot -- ptr a )  XR-SLOT>N XR-NAME-CAP *  XR-TAIL + ;
 
 public
 
-: XR-SURF@ ( n -- ptr u8 n ) {: i:n :}  i XR-SURF-SLOT  i cells XR-SLEN + @ ;
-: XR-TAIL@ ( n -- ptr u8 n ) {: i:n :}  i XR-TAIL-SLOT  i cells XR-TLEN + @ ;
-: XR-VAL@  ( n -- n )  cells XR-VAL + @ ;
+\ one accessor per column, each with a distinct typed effect. The surface-name and
+\ tail lengths are DISTINCT nominals, so reading the wrong length column rejects.
+: XR-SLEN@ ( xr-slot -- xr-surf-len )  XR-SLOT>N cells XR-SLEN + @ >XR-SURF-LEN ;
+: XR-TLEN@ ( xr-slot -- xr-tail-len )  XR-SLOT>N cells XR-TLEN + @ >XR-TAIL-LEN ;
+: XR-VAL@  ( xr-slot -- n )            XR-SLOT>N cells XR-VAL + @ ;
+: XR-SURF@ ( xr-slot -- ptr u8 n ) {: s:xr-slot :}  s XR-SURF-PTR  s XR-SLEN@ XR-SURF-LEN>N ;
+: XR-TAIL@ ( xr-slot -- ptr u8 n ) {: s:xr-slot :}  s XR-TAIL-PTR  s XR-TLEN@ XR-TAIL-LEN>N ;
 
-\ resolve a surface name to its registry slot; false = never declared.
-: XR-FIND ( ptr u8 n -- n bool ) {: a:ptr u:n :}
+\ resolve a surface name to its registry slot; absent = option<xr-slot> none, so a
+\ caller that forgets the not-found branch fails certification.
+: XR-FIND ( ptr u8 n -- option<xr-slot> ) {: a:ptr u:n :}
    XR-N @ 0 ?do
-      a u  i XR-SURF@ STR= if  i true  unloop exit  then
-   loop  0 false ;
+      a u  i >XR-SLOT XR-SURF@ STR= if  i >XR-SLOT OPTION:SOME  unloop exit  then
+   loop  OPTION:NONE ;
 
-\ resolve or fail closed: the value+tail a tensor definer needs for one extent.
-: XR-REQUIRE ( ptr u8 n -- n )
-   XR-FIND 0= if E-EXT-UNDECL throw then ;
+\ resolve or fail closed: the slot a tensor definer needs for one extent.
+: XR-REQUIRE ( ptr u8 n -- xr-slot )
+   XR-FIND MATCH option
+      none OF E-EXT-UNDECL throw ENDOF
+      some OF ENDOF
+   ;MATCH ;
 
 private
 
 : XR-ADD ( n ptr u8 n ptr u8 n -- ) {: val:n sa:ptr su:n ta:ptr tu:n :}
    XR-N @ XR-CAP >= if E-EXT-CAP throw then
    su XR-NAME-CAP > tu XR-NAME-CAP > or if E-EXT-CAP throw then
-   XR-N @ {: i:n :}
-   sa i XR-SURF-SLOT su BYTE-COPY  su i cells XR-SLEN + !
-   ta i XR-TAIL-SLOT tu BYTE-COPY  tu i cells XR-TLEN + !
-   val i cells XR-VAL + !
-   i 1 + XR-N ! ;
+   XR-N @ >XR-SLOT {: i:xr-slot :}
+   sa i XR-SURF-PTR su BYTE-COPY  su i XR-SLOT>N cells XR-SLEN + !
+   ta i XR-TAIL-PTR tu BYTE-COPY  tu i XR-SLOT>N cells XR-TLEN + !
+   val i XR-SLOT>N cells XR-VAL + !
+   XR-N @ 1 + XR-N ! ;
 
 \ ---- #name -> lowercase family tail (extm/extk/...) --------------------------
 create XM-BUF XR-NAME-CAP allot

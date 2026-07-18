@@ -82,6 +82,20 @@ s" GG ( -- ix<extm> ) 1 IXT@ "      CHECK-QUIET-CANDIDATE!  0 T=   \ raw n into 
 ' TRY-GATHER E-EXT-RANGE TTHROWS
 3 PI 0 T-AT !                       \ restore the original valid permutation entry
 
+\ --- (b) the tensor kind is a real sum type: kind-vs-rank confusion is a type
+\ mismatch, and every branch on the kind must be exhaustive. -1 accept, 0 reject.
+s" TKR   ( tr-slot -- n ) TR-RANK@ "            CHECK-QUIET-CANDIDATE! -1 T=   \ rank column is a plain n
+s" TKK   ( tr-slot -- n ) TR-KIND@ "            CHECK-QUIET-CANDIDATE!  0 T=   \ a kind is not an n
+s" TKP   ( tr-slot -- bool ) TR-KIND@ TR-KIND-DATA? "  CHECK-QUIET-CANDIDATE! -1 T=   \ branch on the kind
+s" TKEX  ( tensor-kind -- ) MATCH tensor-kind data OF ENDOF gather OF ENDOF ;MATCH "  CHECK-QUIET-CANDIDATE! -1 T=
+s" TKNE  ( tensor-kind -- ) MATCH tensor-kind data OF ENDOF ;MATCH "  CHECK-QUIET-CANDIDATE!  0 T=   \ missing gather arm
+
+\ --- (c) the tensor-registry slot index is its own type: a raw n cannot address a
+\ registry row without the explicit `>TR-SLOT` crossing.
+s" TSOK  ( tr-slot -- n ) TR-RANK@ "            CHECK-QUIET-CANDIDATE! -1 T=
+s" TSRAW ( n -- n ) TR-RANK@ "                  CHECK-QUIET-CANDIDATE!  0 T=   \ raw n as a slot: reject
+s" TSMK  ( n -- n ) >TR-SLOT TR-RANK@ "         CHECK-QUIET-CANDIDATE! -1 T=   \ explicit crossing restores it
+
 ;package
 
 T-REPORT

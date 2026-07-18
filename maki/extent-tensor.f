@@ -40,6 +40,8 @@
 \ maki -> habu only.
 
 require maki/extent.f
+require lib/adt/option.f             \ option<tr-slot>: TR-FIND returns a present/absent slot
+require lib/type/value-nominal.f     \ NOMINAL:: the tensor-registry slot index is its own type
 
 package MAKI
 
@@ -57,18 +59,46 @@ variable TG-NAME-U
 8 constant TG-RANK-CAP
 create TG-SLOT-A TG-RANK-CAP cells allot
 variable TG-NR
-: TG-SLOT@ ( n -- n )  cells TG-SLOT-A + @ ;
-: TG-SLOT+ ( n -- ) {: s:n :}
+\ TG-SLOT-A holds one extent-registry slot per rank, so it stores `xr-slot` values;
+\ the input to TG-SLOT@ is a rank position (0..r-1).
+: TG-SLOT@ ( n -- xr-slot )  cells TG-SLOT-A + @ >XR-SLOT ;
+: TG-SLOT+ ( xr-slot -- ) {: s:xr-slot :}
    TG-NR @ TG-RANK-CAP >= if E-EXT-CAP throw then
-   s TG-NR @ cells TG-SLOT-A + !  TG-NR @ 1 + TG-NR ! ;
+   s XR-SLOT>N TG-NR @ cells TG-SLOT-A + !  TG-NR @ 1 + TG-NR ! ;
 
 \ ---- tensor registry: accessor NAME -> (rank, kind). SPEC: (maki/spec.f) reads it
 \ to give named throws for an undeclared tensor or a factor whose index count does
 \ not match the tensor's rank, instead of an undefined-word crash inside the
 \ generated evaluate. Rank of a gather is 1 (the single domain index a gather call
 \ IX[m] consumes). ------------------------------------------------------------
-0 constant TR-TENSOR                               \ data tensor: NAME@ / NAME!
-1 constant TR-GATHER                               \ gather index tensor: NAME@ only
+\ tensor kind: a real sum type, not a bare integer flag. The kind is its own
+\ checker type, so a rank or a raw 0/1 cannot pose as a kind, and every branch on
+\ the kind is an exhaustive MATCH (a forgotten arm fails certification).
+\ `data` = a data tensor (NAME@ / NAME!); `gather` = a gather index tensor (NAME@).
+public
+SUMTYPE tensor-kind 0
+   VARIANT data ;VARIANT
+   VARIANT gather ;VARIANT
+;SUMTYPE
+
+\ tr-slot is the tensor-registry row index, its own type: a rank or an extent slot
+\ cannot address a tensor row without the explicit `>TR-SLOT` crossing.
+NOMINAL: TR-SLOT
+
+\ kind predicates SPEC: (maki/spec.f) uses to demand a data tensor or a gather.
+: TR-KIND-DATA?   ( tensor-kind -- bool )  MATCH tensor-kind  data OF true  ENDOF  gather OF false ENDOF ;MATCH ;
+: TR-KIND-GATHER? ( tensor-kind -- bool )  MATCH tensor-kind  data OF false ENDOF  gather OF true  ENDOF ;MATCH ;
+
+private
+
+\ short constructors + the raw-cell tag projection/rebuild. The kind is stored as
+\ its variant tag in a flat cell (TR-KIND-A) and rebuilt into the sum on read, so
+\ the registry array stays a plain cell array while every reader sees `tensor-kind`.
+: KIND-DATA   ( -- tensor-kind )  MAKI-TENSOR--KIND:DATA ;
+: KIND-GATHER ( -- tensor-kind )  MAKI-TENSOR--KIND:GATHER ;
+: KIND>TAG ( tensor-kind -- n )  MATCH tensor-kind  data OF 0 ENDOF  gather OF 1 ENDOF ;MATCH ;
+: TAG>KIND ( n -- tensor-kind )  0 = if KIND-DATA else KIND-GATHER then ;
+
 32 constant TR-NAME-CAP
 64 constant TR-CAP
 create TR-NAMES  TR-CAP TR-NAME-CAP * allot
@@ -76,23 +106,26 @@ create TR-NLEN   TR-CAP cells allot
 create TR-RANK-A TR-CAP cells allot
 create TR-KIND-A TR-CAP cells allot
 variable TR-N
-: TR-SLOT ( n -- ptr a )  TR-NAME-CAP *  TR-NAMES + ;
-: TR-ADD ( ptr u8 n n n -- ) {: a:ptr u:n rank:n kind:n :}
+: TR-NAME-PTR ( tr-slot -- ptr a )  TR-SLOT>N TR-NAME-CAP *  TR-NAMES + ;
+: TR-ADD ( ptr u8 n n tensor-kind -- )
+   KIND>TAG {: a:ptr u:n rank:n tag:n :}
    TR-N @ TR-CAP >= if E-EXT-CAP throw then
    u TR-NAME-CAP > if E-EXT-CAP throw then
-   TR-N @ {: i:n :}
-   a i TR-SLOT u BYTE-COPY  u i cells TR-NLEN + !
-   rank i cells TR-RANK-A + !  kind i cells TR-KIND-A + !
+   TR-N @ >TR-SLOT {: i:tr-slot :}
+   a i TR-NAME-PTR u BYTE-COPY  u i TR-SLOT>N cells TR-NLEN + !
+   rank i TR-SLOT>N cells TR-RANK-A + !  tag i TR-SLOT>N cells TR-KIND-A + !
    TR-N @ 1 + TR-N ! ;
 
 public
 
-: TR-FIND ( ptr u8 n -- n bool ) {: a:ptr u:n :}
+: TR-NAME@ ( tr-slot -- ptr u8 n ) {: s:tr-slot :}  s TR-NAME-PTR  s TR-SLOT>N cells TR-NLEN + @ ;
+\ NAME -> registry slot; absent = option<tr-slot> none, so a caller must handle it.
+: TR-FIND ( ptr u8 n -- option<tr-slot> ) {: a:ptr u:n :}
    TR-N @ 0 ?do
-      a u  i TR-SLOT  i cells TR-NLEN + @  STR= if  i true  unloop exit  then
-   loop  0 false ;
-: TR-RANK@ ( n -- n )  cells TR-RANK-A + @ ;
-: TR-KIND@ ( n -- n )  cells TR-KIND-A + @ ;
+      a u  i >TR-SLOT TR-NAME@  STR= if  i >TR-SLOT OPTION:SOME  unloop exit  then
+   loop  OPTION:NONE ;
+: TR-RANK@ ( tr-slot -- n )            TR-SLOT>N cells TR-RANK-A + @ ;
+: TR-KIND@ ( tr-slot -- tensor-kind )  TR-SLOT>N cells TR-KIND-A + @ TAG>KIND ;
 
 private
 
@@ -144,7 +177,7 @@ public
 : TENSOR: ( -- )
    parse-name TG-NAME!
    TG-PARSE-EXTS
-   TG-NAME$ TG-NR @ TR-TENSOR TR-ADD              \ record NAME -> (rank, data tensor) for SPEC:
+   TG-NAME$ TG-NR @ KIND-DATA TR-ADD              \ record NAME -> (rank, data tensor) for SPEC:
    XG-RESET
    TG-EMIT-BASE
    s" : " XG+  TG-NAME$ XG+  s" @ ( " XG+  TG-SIG-ARGS  s" -- r ) " XG+
@@ -161,7 +194,7 @@ public
    parse-name TG-NAME!
    TG-PARSE-EXTS
    TG-NR @ 2 <> if E-EXT-NAME throw then           \ exactly domain + codomain
-   TG-NAME$ 1 TR-GATHER TR-ADD                      \ record NAME -> (rank 1, gather) for SPEC:
+   TG-NAME$ 1 KIND-GATHER TR-ADD                    \ record NAME -> (rank 1, gather) for SPEC:
    XG-RESET
    TG-EMIT-BASE
    s" : " XG+  TG-NAME$ XG+  s" @ ( ix<" XG+  0 TG-SLOT@ XR-TAIL@ XG+  s" > -- ix<" XG+

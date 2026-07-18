@@ -48,8 +48,11 @@ s" XNOUT ( ix<extea> -- n )"         CHECK-QUIET-CANDIDATE!  0 T=
 ' TRY-NEG  E-EXT-VALUE TTHROWS #XNEG
 : TRY-ZERO ( -- ) 0 EXTENT: ;
 ' TRY-ZERO E-EXT-VALUE TTHROWS #XZERO
-s" #XNEG"  XR-FIND nip 0= -1 T=      \ nothing minted: bad names absent from the registry
-s" #XZERO" XR-FIND nip 0= -1 T=
+\ XR-FIND now returns option<xr-slot>; a bad name resolves to none.
+: XR-ABSENT? ( ptr u8 n -- bool )
+   XR-FIND MATCH option  none OF true ENDOF  some OF drop false ENDOF ;MATCH ;
+s" #XNEG"  XR-ABSENT? -1 T=          \ nothing minted: bad names absent from the registry
+s" #XZERO" XR-ABSENT? -1 T=
 \ the shared decimal emitter itself fails closed on a negative (defense in depth).
 : TRY-XGI  ( -- ) -3 XG-INT ;
 ' TRY-XGI  E-EXT-VALUE TTHROWS
@@ -63,6 +66,16 @@ s" #XZERO" XR-FIND nip 0= -1 T=
 create ET-DIAG 4096 allot  ET-DIAG 4096 DIAG-BUFFER!
 ' TRY-DUP E-TFAM-DUP TTHROWS
 DIAG-BUFFER-OFF
+
+\ --- (c) the registry slot index is its own type: a raw n cannot address a column.
+\ CHECK-QUIET-CANDIDATE!: -1 accept, 0 reject.
+s" XSOK  ( xr-slot -- n ) XR-VAL@ "            CHECK-QUIET-CANDIDATE! -1 T=   \ a real slot reads a column
+s" XSRAW ( n -- n ) XR-VAL@ "                  CHECK-QUIET-CANDIDATE!  0 T=   \ raw n as a slot: reject
+s" XSMK  ( n -- n ) >XR-SLOT XR-VAL@ "         CHECK-QUIET-CANDIDATE! -1 T=   \ explicit crossing restores it
+
+\ --- (c) surface-name length and tail length are DISTINCT: wrong column = reject.
+s" XLOK  ( xr-slot -- xr-surf-len ) XR-SLEN@ " CHECK-QUIET-CANDIDATE! -1 T=   \ right length column
+s" XLBAD ( xr-slot -- xr-surf-len ) XR-TLEN@ " CHECK-QUIET-CANDIDATE!  0 T=   \ tail length where surface length wanted
 
 ;package
 
