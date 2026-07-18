@@ -1,6 +1,6 @@
 ---
 title: "Checker capability: layout-polymorphic family params"
-status: active
+status: open
 priority: 2
 issue-type: task
 created-at: "\"\\\"\\\\\\\"\\\\\\\\\\\\\\\"2026-07-03T23:36:48.964243+02:00\\\\\\\\\\\\\\\"\\\\\\\"\\\"\""
@@ -98,3 +98,24 @@ PUSH-LOGICAL expansion; the TDPN4-7 verdict-0 constructions flip to
 positive with adversarial negatives preserved; MATCH payload binding).
 
 Claim: agent=laycap3 workspace=.jj-ws/fable-laycap3 (SLICE 3: constructor/MATCH effects for named multi-cell args; lowering stays fail-closed staged)
+
+SLICE 3 LANDED 2026-07-18 (laycap3 lane, commit 67d18669 after rebase;
+claim RELEASED): the capability FLIP. TFC-PUSH-PAY expands payload terms
+only at T-WIDTH>1 (W=1/cells/open vars untouched - the maki-preserving
+gate); TFC-CONSTRUCT-STEP-VID recovers concrete args from the declared
+output; the generated-constructor CALL is intercepted in DO-TOK and
+routed arg-aware only when the declared output binds a genuinely
+multi-cell arg. TDPN4-7 FLIPPED (SOME/NONE/OK/ERR on named W>1 args
+certify); MATCH destructures the exact hidden cells (ML1); four
+adversarials red (wrong-width x2 incl. the W=3 slot diag, cross-family,
+linear); raw-run/identity/ZP/MB19/linear pins all preserved. LOWERING
+STAGED FAIL-CLOSED: a real definition constructing a parametric
+multi-cell instantiation dies rc-70 E-REJECTED (CLFC1-3 pinned) - never
+a silent miscompile. Fixpoint x2 8b2f8d72 (re-verified identical on the
+integration tree); the slice's two battery reds were proven artifacts
+(STATUS date - already fixed on master; cad replay parent!=child engine
+- clears with the installed binary; both confirmed green at integration).
+NEXT: slice 4 - width-aware construct/match lowering in BOTH emitters
+(native EM-ADT-CON-PUSHES + gforth mirror CMPADS-CELL) via the 17
+WF-fact + EM-P2-TRIGGER mechanism; the CLFC staged rejects flip; runtime
+round-trips land; then option/result get marked and wave-B unblocks.
