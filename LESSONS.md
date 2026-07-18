@@ -1,6459 +1,1467 @@
 # Lessons
 
-# FIXME: Rewrite this to be concise without losing precision
-
 Last updated: 2026-07-18
 
-- **A destruction review is not integrated until every unfixed finding has a
-  detailed dot.** Reconcile each finding against existing dot descriptions,
-  extend a matching dot when its acceptance misses part of the finding, and add
-  a new dot for every uncovered invariant before landing the reviewed slice.
-- **The shared `result<a,b>` family instantiates with TWO DISTINCT nominal products
-  (`result<pcap:captured,pcap:failed>`), and the checker enforces the payload types.**
-  (2026-07-18, switchover wave B capture cluster, dot habu-switchover-wave-b-08482d5b.)
-  Probed via CHECK-QUIET-CANDIDATE!: OK-with-cap and ERR-with-fail certify (-1); the
-  swaps (OK given the fail type, ERR given the cap type) fail-closed (0); a MATCH whose
-  arms leak mismatched product payloads rejects (0). The err payload being a nominal
-  PRODUCT works because the signature DECLARES it concretely — the old "free err var
-  won't unify with a nominal" limit only bites a TOTAL ok-only construction, not a
-  declared two-product effect. The LESSONS note that a multi-field PRODUCT can't be a
-  sum payload is STALE post-flat-multi-cell (commit 13f8a504); option/result carry
-  products fine now.
-- **A "capture" primitive's rc is a COMPLETION CODE, never an errno, and the captured
-  lengths are valid on BOTH the ok and err arm.** (same dot.) OS spawn/wait failures
-  THROW (E-PROC-SPAWN/E-PROC-WAIT) — no negative errno is ever returned; the returned rc
-  is the child's own completion code (nonzero exit, or 128+signal). And callers read the
-  captured stdout/stderr on the FAILURE path (tools/check-core.f CHK-HANDLE-HB emits the
-  child's output when rc!=0 — linters/compilers-under-test exit nonzero with findings on
-  their streams). So the census's `result<(outlen,errlen),errno>` model is wrong twice:
-  the correct shape is `result<captured(out,err), failed(out,err,code)>` — both products
-  carry the lengths, only the failure adds the code, nothing is a sentinel. Do NOT put the
-  lengths in the ok arm only.
-- **Inline `PKG-PROD:UNMAKE {: f:role ... :}` INSIDE a MATCH arm certifies** (same dot) —
-  the "arm payload binds to a word param, not an in-arm local" rule is only about binding
-  the PRODUCT ITSELF to a local; UNMAKE-then-bind-the-unpacked-FIELDS is fine inline. A
-  result value also survives an intervening store op below it, so you can stash a constant
-  buffer ptr (`err ERR-P !`) before MATCHing the result on the stack.
-- **Per-file `X-CAPTURE>N ( len len rc -- n n n )` adapters are the migration chokepoint.**
-  (same dot.) Dozens of downstream spawn tests funnel every call site through one such
-  adapter; migrate the adapter to `( result<...> -- n n n )` (MATCH -> outn errn code, 0
-  on clean exit) and its callers stay byte-for-byte unchanged. lib/process.f /
-  process-argv.f / process-env.f are in the fixpoint INSTALL prefix but the migration is
-  codegen-neutral (build-fixpoint never calls the RC-form words) so the fixpoint stays
-  byte-identical; process-cwd.f / process-command.f are on-demand.
-- **A new content-addressed CAD-KIND owner with a `TRUSTED: RAW>X`/`X>RAW` pair needs
-  FOUR coordinated edits or a gate goes red — trusted-inventory strict and refine-lint
-  each read a DIFFERENT registry.** (2026-07-18, maki/experiment/run.f run-id owner, dot
-  habu-v2-experiment-run-7c1d1906.) The full checklist: (1) the one-line `TYPEFAMILY x-id`
-  in maki/cad-kinds.f; (2) the human `| NAME | sig | desc | test | src | date |` row in
-  TRUSTED.md for BOTH `RAW>X` and `X>RAW`; (3) the machine-readable classification-block
-  row `maki/.../file.f:RAW>X prim-axiom habu-epic-model-cad-70b629a9` (and `:X>RAW ...`) —
-  trusted-inventory strict fails "unclassified site(s)" on the *block*, NOT the human table;
-  (4) add `RAW>X` (the mint direction only; the `X>RAW` projection is not mint-shaped) to
-  the `RFL-SEED-NAME$`/`RFL-SEED-OWNER$` case tables in tools/refine-lint-core.f and bump
-  `RFL-SEED#` — else refine-lint throws NEW-MINT. All four are the artifact/producer/config/
-  journal precedent; grep an existing owner (e.g. RAW>CONFIG-ID) across the tree to find
-  every site.
-- **A verdict-fixture (`CHECK-CANDIDATE!`) candidate string compiles in the CURRENT package
-  context, so reopening the owning package lets the candidate name that package's public
-  types/words BARE.** (same dot, run-metric-test.f static leg.) `package RUNMETRIC` then
-  `s" ( report-metric -- ... ) AS-OBJECTIVE" VCHECK 0 T=` certifies the reject with bare
-  names (the cad-kinds-test `content-digest` bare-type precedent); qualified `PKG:` also
-  works. Two distinct single-field `PRODUCT`s (report-metric vs objective-metric) never
-  unify, so "held-out metric as a training objective" is a compile-time reject — the
-  artifact.f weight/kernel flat-family pattern, now the metric-population separation.
-- **Width-aware construct/MATCH lowering (layout-cap slice 4) is an EXTRA-PAD fact,
-  not a full re-lowering.** (dot habu-checker-capability-layout-9b8540bd.) A
-  generated constructor body already emits `declared_pads 0s + tag` and leaves the
-  payload untouched, so a wide instantiation needs ONLY `instantiated_pads -
-  declared_pads` extra zero pushes — the reserved `construct` and `MATCH OF` legs
-  add them to the declared pad count, and the generated-ctor CALL pushes them
-  before its `BL`. The checker records the fact only when the delta is positive, so
-  every cell/arity-0 family emits no fact, stays pass-1, and is byte-identical
-  (proved by AOT cmp of a non-wide program). Because the delta can be 1 (not
-  "wide"), the fact needs its OWN flag (`WF-XPAD-FLAG`) to trigger `NEEDS-P2`;
-  reusing the width>1 test would silently drop 1-pad cases.
-- **Adding a WF-cert flag ripples through FIVE places, and the cert VALIDATOR bites
-  first.** A new WF flag (value 4) needs: `lower-cert-base.f` constant, a
-  `PPRIM: LOWER-CERT ...` checker model, the `VALIDATE-WF` flag mask (was `& 3`,
-  hardcoded to fetch/store) AND its `has-wide`/`NEEDS-CELL` accounting, the
-  `primitive-effect-inventory` manifest in TRUSTED.md, and the `prop-test-core.f`
-  AX-CENSUS `AX-GEN-LIST` (an unclassified axiom fails the census). First symptom
-  of the missing validator branch was `hb: malformed lowering certificate`, not a
-  checker miss — the checker recorded the flag fine; the emitter's cert gate
-  rejected it. The pass-2 legs also need a found-vs-missing bit from the width
-  lookup (missing returns width 1, which a construct leg can't distinguish from a
-  real 1-pad fact) — add x11 to `EMIT-WIDTH-LOOKUP`; existing callers reload x11 so
-  it is inert for them.
-- **The maki cad-replay + candidate-validation "baseline" reds are the SAME
-  parent!=child engine artifact, not a regression.** cad-test.f's replay child
-  hardcodes `s" bin/hb"` and the CAD store key includes the engine binary hash, so
-  running the suite through ANY candidate != the installed bin/hb misses the
-  rehydration (F100/F101). Proof it is not the change: cad passes through a
-  byte-identical-to-bin/hb candidate; it fails through every slice-4 candidate.
-  Both reds clear when bin/hb is refreshed to the new fixpoint at integration
-  (identical to slice 3). Do NOT bisect emitter changes for it — check parent vs
-  child binary first.
-- **FS-SKIP-DIR? skipped .jj/.git/.dots but never .jj-ws, so every walker (lints,
-  candidate discovery) saw stale worker-workspace trees — a MAIN-CHECKOUT-ONLY latent
-  red.** (2026-07-18, found by the first main-checkout run.f in days: 478
-  process-primitive-lint findings and a candidate-validation fail, all from
-  ./.jj-ws/<old-lane>/ copies; worker gates never see it because workspace trees
-  contain no .jj-ws.) Fixed at the root (lib/fs.f skip list). Rules: (1) new
-  conventional untracked directories must be added to FS-SKIP-DIR? when introduced;
-  (2) the integrator periodically runs run.f in the MAIN checkout too - it is a
-  distinct gate context from worker workspaces.
-- **A spawn-isolated subject signals SUCCESS by natural load completion (exit 0),
-  never `bye`.** (diff-runner, dot habu-v2-differential-runner-13359019.) `bin/hb
-  --load driver.f` that ENDS with `bye` exits **70** (the FFI-file convention code
-  eval-device.f documents: it ignores the emit rc and reads captured stdout); a
-  driver that just prints its result and lets `--load` finish exits **0**. Any
-  spawn taxonomy where the exit code IS the fault signal (produced iff exit 0)
-  must have its subject driver complete naturally; `die`/`throw`/hang still fault.
-- **`WRITE-ALL ( path-ptr path-len data-ptr data-len -- )` is PATH first, DATA
-  second** (verified via `FS-WRITE-BY-FLAGS ( pa pu src u flags )`). Reversing the
-  pairs opens the DATA bytes as a path -> `E-FS-OPEN` (-2102). `MAKI-GRADE`'s
-  `GRADE-WRITE-DRIVER`/`GRADE-EMIT` are the correct-order precedents.
-- **Copy a shared-builder (`SB`) span to a stable buffer before calling anything
-  that may reuse `SB`.** `MAKI-GRADE:PREPARE` (via JOIN-PATH) reuses the shared
-  builder, so a source word that returns `SB$` and then hands it across `PREPARE`
-  reads clobbered bytes. Copy `SB$` into an owned buffer first (the spawn adapter
-  copies its source into `SP-SRC` before `PREPARE`/`WRITE-ALL`).
-- **A MATCH-arm payload binds to a WORD PARAMETER of its type, not to an in-arm
-  typed LOCAL.** `ok OF {: d:PKG:product :} ... ENDOF` fails to certify (`expected:
-  pkg:product<> actual: pkg:product<>`), but `ok OF SOME-WORD ENDOF` where
-  `SOME-WORD ( PKG:product -- ... )` certifies (the diagnostic-test `ok OF DIAG>`
-  precedent, and a declared word param with the SAME product type works). Factor
-  the arm body into a word taking the payload as a parameter.
-- **The maki suite table `ITEM-MAX` is now 256 (was 128).** `lib/test/suite.f`
-  was bumped, so a couple of extra `TEST:SUITE` lines in `maki/test.f` (131 live)
-  no longer risk `E-TBL-BOUNDS`; the earlier "aggregate to dodge 128" note is stale.
-- **An unforgeable value that CARRIES data uses the refined-nominal-HANDLE
-  pattern, not a PRODUCT.** (capbud, dot habu-v2-capability-and-0970a96d.) Probed:
-  a `private` PRODUCT has NO construction surface even for its owner
-  (`E-UNDEFINED: FAMILY:UNMAKE`, docs §9.4); a `public` PRODUCT's generated
-  `FAMILY:MAKE` ACCEPTS a raw n (`( n -- pkg:prod ) PKG-PROD:MAKE` -> verdict -1),
-  so a public handle is forgeable-by-alias (fine for a txn handle whose authority
-  is only a pool slot, UNSAFE for a capability grant where aliasing slot 0 = root).
-  The sound pattern for a value carrying authority: an arity-0 `TYPEFAMILY` over an
-  append-only pool, minted ONLY through a private `TRUSTED: RAW>X`/`X>RAW` pair (the
-  maki/db/action.f `RAW>ACTION-ID` precedent), pool holds the authority. Statically:
-  a raw n where the nominal is required is verdict 0 (forge reject); the private
-  mint is verdict 1 (sealed) cross-package; `=` on the value is verdict 0. Confirm
-  a package-local `TYPEFAMILY` type is usable in a cross-package public signature
-  (it is) before building on it.
-- **The `( ... )` stack comment on a `:` IS the checked signature.** A word doing
-  `c!`/`c@` on a passed buffer pointer must declare `ptr u8` (not bare `ptr`) or the
-  checker rejects at the locals `:}` with `expected: ptr a n actual: ptr n`
-  (verbatim `LE-PUT` copied with a `( ptr n -- )` comment failed; `( ptr u8 n -- )`
-  fixed it). Parameterized result types (`foo-result<CAPTOK:grant>`) also cannot be
-  a `{: :}` local type — specialize the word or keep the value on the stack.
-- **The maki suite table is near full (lib/test/suite.f `ITEM-MAX=128`, ~126
-  live).** Adding several `*-test.f` `TEST:SUITE` lines overflows it -> `E-TBL-BOUNDS`
-  (`-3000`) thrown at LOAD with no suite name printed (stdout lost on the throw).
-  lib/* is off-limits, so AGGREGATE the concern suites into ONE maki/test.f entry
-  that `require`s them (each keeps its own package + `T-RESET`/`T-REPORT`; a failing
-  child `die`s, so the aggregate fails closed) — one concern per test file, one
-  suite-table slot.
-- **refine-lint's NEW-MINT shape scan only covers `CAD-KIND:`/`MIR:` outputs.** A
-  package-local nominal mint (`RAW>GRANT ( n -- CAPTOK:grant )`) is NOT auto-flagged,
-  but seed it anyway (name+owner) for confinement, per the `RAW>TENSOR` precedent.
-  Closing an audited refinement pair is THREE synced edits: the TRUSTED.md manifest
-  row (Site+Tests), the `file:WORD prim-axiom <epic>` classification line, and the
-  refine-lint seed (name+owner, bump `RFL-SEED#`). refine-lint was already RED on
-  master (`RAW>ACTION-ID` had a row + classification but no seed) — a CAD-KIND mint
-  MUST be seeded or NEW-MINT fails.
-
-- **`test/type-decl-suite.f` arms ONE diagnostic swallow buffer at the top
-  (`TDIAG-BUF 8192 DIAG-BUFFER!`) and every expected reject APPENDS its rendered
-  diagnostic without a reset until the first inspection; the accumulation was
-  sized to just fit.** (TFAM-16 niche/recursive lane.) Adding 2 reject fixtures
-  overflowed it → `render: diagnostic buffer full` `76 die` mid-suite — a FATAL
-  abort, not a catchable throw (the render happens before `TDT-NEG`'s `catch`).
-  The same declaration renders fine in isolation because `RDIAG-ON=0` there routes
-  to fd 2 (uncapped). Fix = re-arm the swallow buffer (`TDIAG-BUF 8192
-  DIAG-BUFFER!`) at the start of the growing reject section, matching the suite's
-  own re-arm-per-section idiom; do NOT just bump the cap. When adding reject
-  fixtures to an accumulating-buffer suite, re-arm first.
-- **Boxed/niche-null are still reject-until-supported by design; ship the sound
-  SHARED infra without the accept.** (TFAM-16.) `TFAM-WIDTH@` now reports W=1 for
-  `TL-BOXED`/`TL-NICHE` (docs §18/§22.3), reached only via the `TFAM-LAYOUT!`
-  mutator (no declaration accepts either — both reject at the `POLICY` clause), so
-  it is check-sound metadata the accept slices consume, exactly like `PACKED-DESC`
-  landed before its accept-flip. Niche's `some` payload MUST be a `nonnull-ptr<a>`
-  (a plain `ptr` could be null and collide with `none`), and that refined type does
-  not exist yet, so NO family qualifies today — structural recognition is
-  necessary but not sufficient; the honest niche deliverable is validation +
-  reject-until-supported, not a half-predicate. Recursive sums reject the same
-  under stack-cell-tag AND packed (both keep the cell width); mutual recursion is
-  fail-closed via the forward-reference restriction (a payload may reference only
-  an already-declared family), so no schema cycle walk is needed until boxed
-  accept admits forward refs.
-
-- **Checked Habu has NO fsync/fdatasync/dir-sync primitive; the durable-write surface is
-  atomic rename only (`RENAME-FILE`/`ATOMIC-WRITE-FILE` = write-temp + rename).** (atxn lane,
-  crash-safe commit slice, dot habu-v2-atomic-txn-a3c26066.) Rename gives ATOMICITY and
-  correct PROCESS-crash recovery — the page cache survives process death, which is exactly
-  the model the spawn-a-child acceptance exercises — but NOT power-loss / kernel-crash
-  durability. The commit store makes the single `HEAD` rename its linearization point
-  (recover-old-or-complete-new) and reports the fsync gap as the remaining native capability
-  rather than adding host code or trust. When a durability primitive is missing, dot it and
-  bound the guarantee precisely; do not fake it.
-- **`TX:PROPOSE` interns a revision by the SHA-256 DIGEST of its content, so
-  `REV:KEY>WIRE(rev) = SHA-256(SHA-256(revision content))` — a DOUBLE hash.** (same lane.)
-  A content-address integrity check on a stored revision object (file bytes = the raw
-  content) must therefore hash the file once to get the content digest, then hash THAT to
-  match the rev key. A single hash silently fails the integrity check (4 tests red, no type
-  error) — the digest-vs-content boundary is invisible to the checker.
-- **The general V2 content-addressed OBJECT STORE did not exist yet; `maki/store.f` is a
-  different concern (append-only schedule/evidence ROWS keyed by the section 7.4 schedule
-  key), not a revision/object store.** (same lane.) The crash-safe commit dot therefore
-  landed a MINIMAL file-backed store (`maki/db/commit-store.f`: one file per revision + a
-  HEAD marker + an idempotency record) as part of the slice, per the plan's "over the V2
-  object store" — decide store-existence from the plan's own sections, not the filename.
-- **Checker edges hit building CSTORE: (1) a word consuming a PARAMETERIZED sum needs the
-  concrete type arg in its signature — `( commit-result<CAD-KIND:rev-id> -- n )`, not bare
-  `commit-result` ("wrong arity for type family"); (2) a pointer LOCAL's element type flows
-  from a `ptr u8` INPUT annotation — a bare `ptr` input makes `{: kp:ptr :}` fail with
-  "'ptr' needs an element type". Annotate byte-pointer args as `ptr u8` in the stack effect.**
-- **A worker editing the MAIN working copy instead of its .jj-ws workspace is a recurring
-  failure mode (twice on 2026-07-17: bfeed self-caught, evid caught by the integrator's
-  gate).** Detection: the orchestrator runs `jj st` in the main workspace and requires it
-  CLEAN before gating any lane's stack there — an unexplained modified file during
-  integration is presumed lane leakage: preserve it to a patch, message the lane, restore
-  pristine, re-gate. Worker briefs must include the absolute-path check ("every path starts
-  with .jj-ws/<lane>/") and a pre-seal `jj -R <main> st` clean assertion.
-- **The CPPSLOT typestate threads through the single-buffer MMA-PIPE-KLOOP-SINGLE
-  byte-identically and GENUINELY — but only via one new trusted issue-mint, and that
-  mint is the sanctioned audited-mint-core class, not debt.** (dot
-  habu-wire-cppslot-typestate-ce2463df, cppwire2 lane, host, no device.) Unlike the
-  fixtures — which take `cpp-pending` from their SIGNATURE (trust-neutral) — the
-  production loop mints a fresh slot PER ITERATION at the in-body cp.async issue, and
-  a checked word cannot fabricate a nominal family cell (`( n -- cpp-pending<p> ) 0`
-  rejects `expected cpp-pending actual n`). Two-horned: keep the loop checked =>
-  external trusted mint; make the loop trusted to host the mint => unchecked body =>
-  hollow thread. Sanction rationale (coordinator, on the NP-MINT-CHECK precedent):
-  fresh phantom mints are trusted BY DESIGN — a per-iteration `cpp-pending<p>` mint is
-  exactly the audited-mint-core class, identical in kind to the CPPSLOT COMMIT/WAIT
-  transitions; the dot's reshaped acceptance is "audited mint core + checked
-  protocol", so +1 one-line mint (`MMA-STAGE-ISSUE ( n n -- cpp-pending<p> )
-  MMA-CP-STAGE 0`) buying fail-closed protocol enforcement on the shipping best
-  kernel's path (MMM-WIDE-B-M4-S1, stages=1) is a net soundness win. Falsification
-  discipline that separates this from a hollow gesture: (1) fail-closed proof first
-  (a stray int in the exact production word exits 70); (2) misorder probes on the
-  PRODUCTION word (wait-before-commit, dropped wait/sync both reject); (3) a
-  committed read-after-issue negative that PINS the mint's pending state — if the
-  mint is ever laundered to return ready, the negative certifies and the suite fails;
-  (4) 21-kernel off-device golden dump byte-identical before/after, twice. The
-  double-buffer path stays refuted (cross-slot commit/wait pairing, entry above);
-  single-buffer is the one place the single-slot lifecycle is real.
-- **Migrating a fixed-width scalar SET to 32-byte content-key elements: move BYTES, keep
-  concrete-per-buffer sorts, guard with a CKEY comparator + a one-element insertion
-  scratch.** (dot habu-wire-content-key, keywire2/item-3: the v1->v2 envelope migration.)
-  The dependency/source-revision sets went from 8-byte cell elements to 32-byte content
-  keys. A 32-byte element can't ride the data stack, so the insertion sort copies the
-  element being placed into a `DKEY`/`SKEY` scratch and shifts with `BYTE-COPY`; ordering
-  uses a fixed-width `CKEY-LT?`/`CKEY-EQ?` byte comparator (the transaction.f `BYTES<`
-  precedent narrowed to `CKW`). The concrete-per-buffer rule still holds (byte access on a
-  `ptr` local is fine, but the buffer touch stays per-buffer: DSCR vs SSCR). The decode
-  ascending/dedup check replaces the `-1` raw sentinel with a `k>0` guard (a byte string
-  has no smaller-than-all sentinel). Store the wire BYTES (not the nominal) so decode ->
-  re-encode is byte-identical; validate each element resolves via `WIRE>KEY` fail-closed.
-- **Habu stack-effect comments are CHECKED types, and use TYPES not local names; a
-  create-buffer element address is `ptr u8`, never bare `ptr`.** `: DEP-AT ( s k -- ptr )`
-  fails `'ptr' needs an element type`; write `( s k -- ptr u8 )`. And `( pa pb -- bool )`
-  fails `unknown type 'pa'` — the signature must read `( ptr u8 ptr u8 -- bool )` even
-  when the locals are `{: pa:ptr pb:ptr :}`. A loop that `exit`s mid-body must `drop` the
-  loop index before pushing the result, or the return arity mismatches.
-- **A friend that BUILDS an envelope from outside package ARTIFACT needs the set-builders
-  public.** `BUILD-WEIGHT`'s doc names `DEPS-RESET/DEP+`/`SREVS-RESET/SREV+` as the build
-  protocol, but they were private, so only code reopening the package could add deps. The
-  cross-process ENVELOPE test (its own package) needs them, so they became public (the
-  scratch address helpers `DSCR-AT`/`SSCR-AT` stay private). Reopening the package (as
-  artifact-test.f does) is the alternative, but it pollutes ARTIFACT with spawn scaffolding.
-- **FILEMAP.md sat ~128 bytes under filemap-lint's `FM-BUF-CAP` ($20000); any addition
-  overflowed the lint's read buffer** (`lint: file exceeds buffer: FILEMAP.md`). Two lanes
-  hit it the same day: the cppslot landing bumped `FM-BUF-CAP` to $40000 (loud-fail
-  preserved, test green), and the keywire2 lane routed around it before the bump merged —
-  its xproc-env FILEMAP entries were added at integration once the cap fix landed.
-- **When the shared maki suite-table fills, raise `lib/test/suite.f` `ITEM-MAX`
-  (loud-fail preserved) rather than aggregating unrelated suites into one entry.**
-  (dot habu-raise-maki-suite-e1b07544.) It is the FM-BUF-CAP pattern again: a
-  fixed cap sized for a statically-known registration set, grown by constant with
-  the `E-TBL-BOUNDS` wall kept. The capbud lane first squeezed under the 128 cap by
-  aggregating four concern suites behind one `require`-bundle entry; that couples
-  concerns and hides the wall. `ITEM-MAX` is only referenced inside suite.f (all
-  tables `allot` from it), so bumping it (128 → 256) is fully contained. The bound
-  is a real regression: fill the counter to the cap and assert the next
-  `ITEM-ALLOC` throws `E-TBL-BOUNDS` (probe the live counter, not a parallel table).
-- **Cross-process id identity needs a CONTENT-key wire form, and the decisive test is a
-  spawned fresh bin/hb that registers DECOYS FIRST.** (dot habu-wire-content-key, keywire
-  lane.) The § 23.9 origin-class table's cross-process form for content-addressed families
-  is a 32-byte SHA-256 over the interned descriptor (name/facts/store-key/rev-content),
-  interned in a per-id column at REGISTER; `KEY>WIRE` copies it, `WIRE>KEY` resolves it by
-  scanning content keys (BY CONTENT, not by registration order). The proof that identity
-  survives PROCESS DEATH is a child process that registers decoys first so its real ids get
-  DIFFERENT raw indices than the parent, then decodes the parent's keys — the raw-index wire
-  form would resolve to a decoy, the content key resolves correctly (maki/db/keywire-xproc-*).
-- **Private words persist across `package` REOPENS, so a reopened package's second file
-  collides on a duplicate private name.** maki/db/artifact.f reopens `package ARTIFACT` and
-  defines a private `R-OK`; adding an id-result `R-OK` to maki/artifact.f (loaded first)
-  produced `duplicate definition: R-OK`. Fix: prefix the second file's wrappers distinctly
-  (`IDR-OK`). Same-package private words are ONE namespace across every file that reopens it.
-- **Add the cross-process codec, don't rename the raw one — a live consumer still needs it.**
-  The § 23.9 contract names the wire codec `ID>WIRE`/`WIRE>ID`, but maki/db/diagnostic.f
-  (out of the migration's write set) still serializes producer/config/rev via the raw
-  `ID>WIRE`. So the content-key codec is a NEW public pair `KEY>WIRE`/`WIRE>KEY` alongside
-  the raw pair, not a rename. numeric-policy is the documented exception: its content key IS
-  its 8-byte rank (already cross-process-stable), so `KEY>WIRE` delegates to `ID>WIRE`.
-- **A later suite test must reuse an already-registered id, never register into a
-  cap-filled global registry.** maki/target/target-test.f `CAP-FILL`s the 16-slot target
-  registry earlier in maki/test.f; the cross-process test first registered a fresh target
-  and threw E-TARGET-CAP in-suite (green standalone). Fix: use `TARGET:SM87` (INIT-registered
-  in every process). Process-global append-only registries with caps are a hidden ordering
-  coupling between suites. (Re-confirmed by the diff-suite flip-matrix's second target: an
-  arch=100 descriptor RESOLVES target-test's existing cap-fill slot rather than minting a
-  new one — the maki/db/artifact-test.f ADT-TARGET2 precedent.)
-- **A `create` buffer's bare address infers `ptr a`, so byte comparators want it consumed
-  IMMEDIATELY, not after pointer arithmetic on other stack items.** In a digest-tail check
-  `EA la CKW - DB CKW MEM=` failed with `MEM=` seeing `ptr a` for `EA`: the create address
-  keeps its default cell-pointer type while the arithmetic runs on the length below it, and
-  `MEM= ( ptr u8 ... )` then rejects it — even though `EA EB la MEM=` (create address
-  consumed directly) unifies `EA` to `ptr u8` fine. Fix: `BYTE-COPY` the span into a fresh
-  `create` buffer (BYTE-COPY takes any `ptr`), then compare the two buffers passed directly.
-  (diff-suite-test ENC-DIGEST-TAIL, 2026-07-18.)
-- **Closing a dot that OWNS TRUSTED.md rows requires repointing those rows in the SAME
-  commit, and the integrator's battery must run `trusted-inventory -- strict` (owner
-  liveness), not just trusted-inventory-test.f.** (cp-async closure incident, 2026-07-17.)
-  The closure of habu-checker-cp-async left 8 classification rows citing the archived dot;
-  the test fixture stayed green (it checks sync, not owner liveness) and the red only
-  surfaced in the NEXT lane's strict run. Rule: `dot off` on any dot named in TRUSTED.md
-  = same-commit repoint to a live dot (or sanctioned cap:), verified by strict before push.
-- **The cp.async pipeline-slot typestate is nominal state-family transitions + parity
-  unification — the four dynamic negatives reject with ZERO checker LOGIC, exactly the M5
-  "the negative needs zero machinery" pattern.** (dot habu-checker-cp-async-6ba788a5, host
-  lane.) A staged-buffer slot threads `cpp-pending<p>` -> `cpp-committed<p>` -> `cpp-ready<p>`
-  (three nominal TK-CELL families over a symbolic parity, baked in type-family.f). Each
-  protocol word (CPPSLOT COMMIT/WAIT/READ/READ-STAGE in lib/ptx/cpp-slot.f) demands one state
-  and produces the next, so ordinary stack-effect unification rejects read-before-wait (READ
-  wants ready, has pending), missing-commit (WAIT wants committed, has pending), double-wait
-  (2nd WAIT wants committed, has ready), and parity-mismatch (READ-STAGE ties the slot's
-  parity to the mmstage's). No checker.f rule was needed for the negatives — only the family
-  registrations + typed words + fixtures. Key move: the fixtures take their INITIAL slot state
-  from the fixture SIGNATURE (a `cpp-pending<p>` input), so no ISSUE mint word is needed — the
-  issue mint stays the production pipeline's existing trusted boundary, which is what keeps net
-  trusted DOWN.
-- **bar.sync composition with M5 is a one-clause extension: committed->ready IS a block
-  barrier.** WAIT drains the group + bar.sync-fences it, the same block-uniform barrier as a
-  tile->uniform reduction, so PTX-CPWAIT-ROWS? (committed-in/ready-out) becomes one more OR
-  clause in PTX-BARRIER-ROWS? and a WAIT under divergent control rejects (E-DIVERGENT-BARRIER)
-  through the EXISTING BARRIER-CUR?/REJECT-DIVBAR choke — composing, not duplicating M5. Two
-  captured family-id cells (PTX-CPCOMMITTED-FAM/PTX-CPREADY-FAM), same late-capture pattern as
-  PTX-TILE-FAM/PTX-UNIFORM-FAM.
-- **Net trusted-DOWN came from discharging the NON-minting tilepipe bodies, not the mints.**
-  RB-FMA (`2drop MM-KSTEP-FMA`) and PIPE-STORE (`MM-WRITE 2drop`) only consume operands and
-  emit fixed-register instructions — no phantom mint — so they certify as CHECKED `:` words
-  with byte-identical bodies (empirically: they ACCEPT as checked; STAGE-SLICES/A-FRAG/
-  PIPE-ACC-ZERO all REJECT because they produce a family cell from a bare int literal). Fold
-  the PIPE-RUN adapter into PIPE-LOOP's quotation: -3 trusted, +2 for CPPSLOT COMMIT/WAIT
-  transitions = net -1, byte-identical EMIT-PIPED==EMIT-MATMUL. A faithful 3-state transition
-  vocabulary needs an irreducible 2-transition trusted core (pending->committed, committed->
-  ready re-type a phantom, which no checked rule expresses); don't try to check them away.
-- **The CPPSLOT typestate CANNOT be threaded through the SHIPPING double-buffered PIPE-LOOP
-  path: the software pipeline's emitted commit and wait land on DIFFERENT slots, so no single
-  emit-time cpp-slot token can carry commit->wait->read.** (dot habu-wire-cppslot-typestate-
-  ce2463df, host lane, no device; BLOCKED, proven from the EMIT-MATMUL golden + the write set.)
-  EMIT-MATMUL's ONE emitted `$KLOOP` body emits `cp.async.commit_group;` for the PREFETCH slot
-  (tile kt+1) immediately followed by `cp.async.wait_group 1;` draining the CURRENT slot (tile
-  kt); the current slot's commit is the prologue commit (kt=0) or the SAME instruction on the
-  prior runtime pass (loop-carried, outside an emit-time stack checker). So the linear
-  cpp-pending->committed->ready->read of CPPSLOT (a SINGLE-slot lifecycle, matching only the
-  single-buffer MMA-PIPE-KLOOP-SINGLE) has NO same-body commit->wait pair to model on the
-  double-buffered f32 path. Three independent walls, any one fatal: (1) BYTE — CPPSLOT:WAIT
-  emits `cp.async.wait_group 0;`+`bar.sync 0;` (adjacent), but the double buffer emits
-  `wait_group 1;` (overlap arm) / `wait_group 0;` (drain arm) in SEPARATE branches with the
-  `bar.sync 0;` after the `$PFDONE` join, matching NEITHER arm — composing CPPSLOT anywhere in
-  the loop drifts bytes. (2) OWNERSHIP — the only CHECKED surface on this path is the stored
-  compute body RB-TILE (cg-matmul.f), whose `( mmstage mmracc -- mmracc )` effect is SHARED with
-  the maki LLM-eval authoring vocab (MM-K-LOOP); PIPE-LOOP is `TRUSTED:` so a token threaded
-  inside its quotation is unchecked, and a ready slot PIPE-LOOP mints-and-consumes itself is a
-  self-satisfying tautology disconnected from the real issue (a hollow gesture, not a protocol
-  check). (3) INTERFACE — MM-PIPE-KLOOP-WITH's `( [ -- ] -- )` compute-quotation interface is
-  consumed with UNTYPED `[ -- ]` bodies by maki/lower-mm.f (`[: MMA-KTILE ;]`) and cg-mma.f, so
-  giving the quotation a cpp-slot token breaks out-of-write-set callers. The checked cp.async
-  protocol therefore fits the single-slot pipeline OR a loop-carried-token capability (out of an
-  emit-time stack checker's model), NOT the shipping double-buffered path — the honest close is a
-  documented BLOCKED, not byte drift or a laundered ready-mint. No code changed; every byte pin
-  stays green.
-- **`( ptr n -- )` in a stack comment is ONE input of type `ptr n`, not two (a pointer + an
-  index).** (dot habu-v2-structured-diagnostic-18d24536, the Diagnostic IR.) `ptr` is a
-  type constructor that consumes the next token, so `: FLAG@ ( ptr n -- bool )` declared a
-  single pointer-to-n and `cells` then saw `ptr n` where it wanted `n`. A word that genuinely
-  takes a base pointer AND an integer either spells distinct types (`( ptr a n -- )`, two
-  inputs) or — cleaner — references the `create` buffer by name directly (the maki/db/artifact.f
-  column-accessor style) instead of passing it as a `:ptr` local, which also erases `ptr u8`.
-  Refactored 7 per-slot presence flags into one per-slot bitset cell referenced by name.
-- **Do not NAME a checked word after a control word (`BEGIN`, `IF`, `DO`, …) — a bare CALL
-  resolves to the control word, not your definition.** (same dot.) `DIAG:BEGIN` DEFINED
-  cleanly, but a bare `BEGIN` inside a checked body opened a `begin…until` frame and the error
-  surfaced far downstream ("at 'BUILD'"). The reserved-name rule bites at CALL sites, not just
-  definitions; renamed the builder-open word to `NEW`.
-- **A word returning a layout value (PRODUCT/SUMTYPE) cannot be called at TOP LEVEL (interpret
-  mode): "interpret-mode layout value: NAME".** (same dot.) Every diagnostic / build-result /
-  decode-result producer must be wrapped in a `:` word that returns a plain cell before a
-  top-level `T=`/`TTRUE` (the maki/db/artifact-test.f pattern). To read many fields of one
-  decoded value across top-level assertions, store the decoded handle's SLOT (`DIAG>` → n) in a
-  variable and rebuild the handle (`>DIAG`) inside each reader word.
-- **A package's private and public wordlists may hold the SAME tail; in-package bare lookup
-  finds PRIVATE first.** (same dot.) A public `CODE@ ( diagnostic -- n )` was silently shadowed
-  by a same-named private raw column accessor `CODE@ ( n -- n )` for in-package callers (the
-  test and renderer files reopen the package), so `d CODE@` type-errored. Give internal raw
-  accessors a distinct spelling (`CODE-R@`) so the clean public handle name resolves in-package.
-- **An optional field's presence bit must be set on the DECODE path, not only in the builder —
-  and byte-identical re-encode is the test that catches it.** (same dot.) Field-level round-trip
-  passed but re-encode was 16 bytes short: decoded `revision` stored its value yet never set its
-  presence flag, so re-encode omitted the field. A `decode(encode x) → re-encode → byte-compare`
-  assertion catches missing decode-side presence sets that per-field equality checks miss.
-- **error-code-lint is part of the OWNING gate for ANY new `E-*` constant, including maki/ — a
-  maki-only landing skipped it and put a code collision on master.** (idfam lane integration,
-  2026-07-17.) `E-TARGET-WIRE` picked -5251, already claimed by `E-ABL-CAP` (maki/ablate-ptx.f);
-  the lane's gate list (focused tests, maki suite, trust/refine/host/filemap lints) and the
-  orchestrator's integration battery both omitted error-code-lint, which only surfaced when the
-  next engine landing ran the full gate-stdlib slice. Rule: any diff adding or changing an error
-  code runs tools/error-code-lint.f before commit, and the integrator's battery includes it for
-  every landing that touches `.f` files — grep for a free code first, never pick by adjacency.
-- **A typed error result over a NOMINAL diagnostic type needs a custom sum family, not the
-  shared `result<a,b>`.** (dot habu-v2-canonical-artifact-ee5121b4, the artifact envelope codec.)
-  Constructing `RESULT:OK` in a TOTAL (ok-only) word leaves the err type variable `b` free, and a
-  free variable will unify with a structural type (`n`, `ptr u8`) but NOT with a nominal ENUM/TYPEFAMILY
-  — `( n -- result<n,e2> ) RESULT:OK` rejects with "expected result<n,e2> actual result<n,a>" while
-  `result<n,ptr u8>` passes. This is the same limitation maki/typestate.f flagged as a "DEVIATION
-  from result<stage,diag-set>". The fix is the lib/cad-num-types.f `numeric-result` idiom: define a
-  bespoke `SUMTYPE foo-result 1` whose ok variant carries the payload `a` and whose error members
-  are baked-in nullary variants — no free error-type variable, so a total ok construction certifies.
-- **A multi-cell PRODUCT/SUMTYPE value cannot be a typed local NOR a polymorphic sum payload;
-  UNMAKE/MATCH it straight off the stack.** (same dot.) `{: d:content-digest :}` fails with
-  "unknown type", and a `VARIANT ok a` payload `a` accepts `n` and arity-0 nominals but rejects a
-  multi-field PRODUCT (`expected a actual hprod<>`). Keep multi-cell values on the stack and destructure
-  immediately; make the sum's ok payload a single cell (an `n` slot/index or an arity-0 handle).
-- **Generated PRODUCT/SUMTYPE constructor names double the family's internal hyphens.**
-  (same dot.) `PRODUCT content-digest` in `package ARTIFACT` generates `ARTIFACT-CONTENT--DIGEST:MAKE`
-  / `:UNMAKE` (package sep is one hyphen, each family hyphen becomes `--`); a nullary variant ctor is
-  `PKG-FAMILY:VARIANT` (e.g. `ARTIFACT-ART--RESULT:MALFORMED`) while `MATCH` arms and payload
-  destructuring use the BARE variant name. Wrap the long spellings in short private words once.
-- **A codec test that needs a SECOND id of a capacity-bounded shared registry can't mint one
-  in the integration suite — prove digest coverage on the DECODE side instead.** (dot
-  habu-v2-canonical-artifact-ee5121b4 slice 2, the foreign-id envelope fields.) The digest-flip
-  test for `target-id` registered a fresh descriptor; that passed in the focused test (registry
-  had 2 entries) but threw `E-TARGET-CAP` (-5252) in `maki/test.f` because `TARGET`'s registry is
-  a 16-slot shared resource the suite already fills to `TARGET:COUNT = 16`. Interning by name is
-  cheap for the 256-slot SCHEMA/PRODUCER/CONFIG families and free for NPOL (dom→rank, no slot),
-  but TARGET is tight, and in the full suite you cannot even NAME a second target (only the
-  library-registered `sm87`, raw 0, is reachable). Fix: prove target-id is digest-covered by
-  swapping the ENCODED target raw for another already-valid raw (`(r0+1) mod TARGET:COUNT`) and
-  requiring `digest-mismatch` — no new slot; guard a one-target isolated run by registering one
-  alternative only when `TARGET:COUNT < 2`. Lesson: pick digest-coverage proofs that don't grow a
-  bounded shared registry, and run the FULL owning suite (not just the focused test) before sealing —
-  registry capacity is load-order/global state the focused test never exercises.
-- **A byte-pointer stack-effect must be spelled `ptr u8` (two tokens), not bare `ptr`.** (same
-  slice.) `: E-WIRE-FIELD ( n ptr n -- ) {: tag:n a:ptr u:n :}` rejects at `:}` with "expected
-  n ptr u8 n actual n ptr n": the `a:ptr` local reconstructs to a `ptr u8` in the effect, and a
-  producer `( -- ptr )` fails with "'ptr' needs an element type". Write `( n ptr u8 n -- )` and
-  `( -- ptr u8 )`. The `:ptr` local shorthand and the `ptr u8` effect spelling denote the same
-  one-cell byte pointer.
-- **M5 barrier-uniformity: VALUE uniformity was ALREADY expressed; only the CONTROL effect was
-  missing.** (dot habu-ptx-m5-mask-eb0716f1, host checker lane.) Leg-1 empty experiment proved the
-  M2 families already distinguish `uniform<T>` (block-uniform) from `tile<..>` (lane-varying): a tile
-  fed where SCALE/FMA./PTX:B- want `uniform<t>` REJECTS by family unification today — the
-  "lane-varying-used-as-uniform" negative needs ZERO checker machinery, just a regression fixture.
-  The genuinely missing piece was block-uniform REACHABILITY: `x BLOCK-MAX` inside an `if` CERTIFIED
-  (the real miss) because bar.sync reachability is a control property no stack effect expresses. The
-  sound minimal model: BLOCK-MAX/BLOCK-SUM have the shape `( tile<..> -- uniform<..> )` — the ONLY
-  way to soundly produce a uniform from a tile is a block reduction with bar.sync — so detect that
-  shape structurally (no per-word directive), flag `CTL-BARRIER`, and reject the call when the CF
-  stack is non-empty (`#CFC>0` = inside if/begin/do/case = not proven block-uniform). Straight-line
-  softmax certifies (#CFC=0); collective-inside-any-control rejects. Conservative (over-rejects a
-  collective under a proven-`uniform<bool>` branch — the documented remainder) but SOUND, and no
-  existing kernel calls a collective under control so nothing regressed.
-- **TRUSTED: words BYPASS the CHECK finalize — attach per-word checker metadata at E-ADD-EFFECT, the
-  one USIG choke both paths share.** (same dot.) First cut set the barrier flag in CHECK's finalize
-  CTL-flags block (checker.f ~8402) and it silently did nothing: `EM-COMPILE-PUBLISH-TRUSTED`
-  (habu2.f) branches PAST `EM-P2-CHECK-DEFINER`, so a `TRUSTED:` word (which is where ALL the
-  collectives live) never runs CHECK. Both `:` (via CHECKER-USIG-CERT-ADD) and TRUSTED: (via
-  TRUST→CHECKER-USIG-ADD) funnel through `USIG-ADD → E-ADD-EFFECT`, which has the din/dout rows AND
-  `CHECKER-REC-SYM`. Detect there. E-ADD-EFFECT is defined BEFORE the NORET flag machinery, so the
-  flag setter is reached through a forward xt hook (`PTX-BARRIER-SET-XT`, the TFAM-RESOLVE-XT
-  pattern), installed after NORET-ADD. Verify a new checker flag actually FIRES on a TRUSTED subject
-  before trusting the finalize path — the `:`-only path passes a green build while doing nothing.
-- **Derive an iGPU tensor peak from the GPU-ONLY sparse-INT8 TOPS, never the marketing TOPS —
-  and let a measured kernel rate falsify a candidate peak.** (dot habu-mma-wave-4, roofline
-  verdict, docs/kernel-principles.md.) The Orin NX "100 TOPS" headline is GPU + 2× NVDLA, so it
-  cannot back out the GPU tensor rate. The AGX Orin Technical Brief's GPU-ONLY figure (170 sparse
-  INT8 TOPS = 2048 dense INT8 MAC/SM/clock at 16 SM / 1.3 GHz) is the clean anchor: it is the
-  GA100 (A100) full rate, 2× the GeForce/GA102 consumer rate, which proves Orin's Tensor Cores
-  are NOT GeForce-throttled. The fixed 3rd-gen ratio ladder INT8:FP16:TF32 = 4:2:1 then gives
-  TF32 = 512 FMA/SM/clock, so the sm_87 Orin NX dense-TF32 peak = 8 SM × 512 × 2 × 918e6 =
-  **7520 GFLOP/s** at 918 MHz. Two independent checks kept the derivation honest: the same
-  lane×clock×2 method reproduces the NVIDIA-published FP32 roofs (Orin NX 1.9 TFLOPS, AGX Orin
-  5.3 TFLOPS = 16×128×2×1.3e9 exactly), and our measured best 3026.6 > 1880 *falsifies* the
-  fully-throttled GA102 TF32 rate (128 FMA/SM/clock → 1880 peak) outright — a kernel can't beat
-  its roof. A residual 512-vs-256 FP32-accumulate-throttle ambiguity survives the marketing data
-  but is discounted by the phase decomposition (only ~27% of runtime is mma-issue, so we are not
-  at 80% of a 3760 peak) and does not move the verdict.
-- **A perf program closes on a ROOFLINE + LEVER-INVENTORY argument, not on hitting 100% of a
-  peak.** (habu-mma-wave-4.) The tf32 mma.sync GEMM is at 40% of the 7520 tf32 tensor peak, 93%
-  of its own DCE-safe quarter-B feed-ceiling, and 1.60× Triton (which is at 25% of the same
-  peak). The gap to peak is real but *uncapturable*: every tf32 kernel lever from waves 1-3 is
-  spent (A- and B-side ldmatrix, MFRAGS=4, single-buffer-static occupancy), the three wave-4
-  candidates (wider M-frags, dual-issue across M-frags, wait_group placement) are each a spent
-  constraint not headroom, and the 21% residual mma-issue is the Tensor Cores doing the GEMM's
-  FIXED mma count (N³/1024 instructions) at the widest tf32 shape that exists — m16n8k8. There is
-  no m16n8k16 for tf32; a denser accumulate shape means fp16/bf16, which changes the numerics
-  contract. So the honest verdict is CLOSE (no lever dot minted), with fp16/bf16 recorded as a
-  USER-GATED numerics-policy question and the residual handed to the autotuner + default-flip
-  dots. Lesson: when the roofline shows headroom but the lever inventory is empty and the
-  instruction shape is maxed, the deliverable is a documented close, not another kernel rung.
-- **The fused cp.async K-loop decomposed into shared CPP-* protocol step words, byte-identical
-  across 20 configs — no device time.** (dot habu-decompose-pipelined-staging-49c97cba,
-  prerequisite for habu-checker-cp-async-6ba788a5.) MM-PIPE-KLOOP-WITH (cg-matmul-emit.f) and
-  cg-mma.f's MMA-PIPE-KLOOP-WITH / MMA-PIPE-KLOOP-SINGLE now COMPOSE named steps defined once in
-  cg-matmul-emit.f: CPP-COMMIT / CPP-WAIT n / CPP-SYNC (bar.sync) / CPP-CUR-WINDOW (read-window
-  base %r16) / CPP-NEXT-WINDOW (prefetch dst %r18) / CPP-FLIP (parity xor) / CPP-KGUARD / CPP-KTAIL
-  / CPP-PF-TEST / CPP-PF-ELSE / CPP-PF-END / CPP-KT-INIT/NEXT/ADVANCE / CPP-PARITY-INIT. The
-  STAGE-ISSUE step stays per-file (MM-CP-STAGE / MMA-CP-STAGE — the As/Bs chunk geometry differs);
-  the CPP-* steps are geometry-independent and parameterized only by buffer-byte-size and BK, so MM
-  (16384/32) and every non-default MMA config thread the SAME words and emit identical bytes (this
-  is why MMA-DEFAULT? could already call MM-PIPE-KLOOP-WITH wholesale). The whole safety net was a
-  pure off-device emit-dump (EMIT-MATMUL + 19 EMIT-MATMUL-MMA configs: default lmode0/1/2,
-  larger-BK single/double, padded, wide MFRAGS=2/4, B-ldmatrix bpad0/4) sha'd before vs after the
-  factoring — byte-identical, proven twice. The typestate capability attaches per-step
-  issue->commit->wait->bar.sync->read + buffer-parity obligations to these CPP-* seams; per the
-  earlier note, same-body parity consistency is in scope for it, runtime loop-carried alternation is
-  not.
-- **Global process totals are census data, not a phase budget.** The full gate
-  deliberately runs large process-API matrices, and pool context adds required
-  co-located reapers. Enforce performance with owner-local architectural
-  ratchets; otherwise concurrent phases charge each other and valid fixtures
-  make an arbitrary global ceiling fail.
-- **Post-spawn telemetry is part of process ownership.** A throwing hook after
-  successful creation must kill and reap the returned child before propagating;
-  an owner label must be armed only after every fallible preflight; and a fork
-  child must reset inherited live counters through a distinct child hook.
-- **A parent-death reaper fixture must never close its parent-death writer while
-  the reaper shares the test process group.** That EOF deliberately makes the
-  reaper SIGKILL its whole group, including the harness. Test fork accounting
-  through the classified fork seam; leave kill-tree behavior to the isolated
-  group-kill fixtures that first establish a separate process group.
-- **Library modules must not require their entry wrappers.** A resident runner
-  loaded `gate-common-lib.f`, then `gate-validation-worker.f` re-entered it via
-  `gate-common.f` and failed at the first duplicate definition. Entry wrappers
-  own prerequisites; modules consume the documented load contract.
-- **Direct/subject byte parity excludes fatal signal diagnostics.** Crash-handler
-  register dumps contain process-specific addresses, so trap/no-handler probes must
-  remain direct. Recover the spawn budget by batching deterministic checked sources,
-  and require per-source digest telemetry plus a dedicated full parity slice.
-- **The checker ALREADY expresses "same phantom in, same phantom out through an emitter" — the
-  same-type tile/collective wrappers were trusted UNNECESSARILY.** (dot habu-ptx-phantom-preserving,
-  leg 1, host lane, lib/ptx/rep.f.) A row-polymorphic higher-order combinator `( a a [ n n -- n ]
-  -- a )` (`PTXREP:REP2`; `REP1`/`REPMIX2` for the unary/first-preserved arities) makes a kernel
-  token's `n` register flow THROUGH a checked EMIT-* quotation while the SAME phantom `a` is
-  returned. The three forge/kind/arity soundness properties fall out of the EXISTING unifier for
-  free, NO checker/type-family change: forge (`mmaslice`->`mmbslice`) rejects because both operands
-  and the result must unify to one `a`; a wide layout family cannot bind the single-cell var `a`
-  (kind); the `[ n n -- n ]` quotation pins arity. So ~23 per-op TRUSTED: wrappers (`+.` `-.` `*.`
-  `/.` `SCALE` `RELU` `EXP.` `U/` `B-` `B/` `NEG` and their `-V4`/`.V4` variants across tile.f /
-  tile-v4.f / tile-v4a.f / collective.f / ad-saved.f) became CHECKED `:` callers of three
-  forge-proof combinators (net trust -20), byte-identical PTX (verified via PTX-CAPTURE cmp). Empty
-  experiment first (exp1: `[: EMIT-ADD ;] REP2` certifies; a wide `SUMTYPE` and a cross-family
-  relabel both REJECT) grounded the whole design before any edit.
-- **The mission framed this as checker+type-family work, but the honest finding placed it in a lib
-  combinator — because the type-CHANGING wrappers, not the type-PRESERVING ones, are what actually
-  need a checker capability.** `LOAD` (span->tile), `GRID-CTX`, `STAGE`, `BLOCK-MAX`, `BROADCAST`,
-  the ctx/load/store/reduce family MINT a NEW phantom the emitter's output register cannot witness,
-  so a same-type combinator can't retire them (its `a` output can only be a type you already hold).
-  Those remain the leg-2 remainder and genuinely need the deeper rep-provenance / typed-emitter
-  capability (or stay trusted mints, like the ~17 `*-REG` from-register casts). Don't conflate the
-  cheap forge-proof preserving case with the hard minting case.
-- **Leg 2b: the checked-MINT capability is a checker rule, NOT another lib combinator — and empty
-  experiments proved every lib-only mint design is unsound before any machinery.** (dot
-  habu-ptx-phantom-preserving, leg 2b, host checker lane, src/core/checker.f NP-MINT-CHECK.) Four
-  probes via `CHECK-CANDIDATE!` on the same load path settled the design: (1) a free-output combinator
-  `( a [n->n] -- b )` is a UNIVERSAL forge (mints gridctx from a tile — ACCEPT); (2) a
-  `fresh-mask-live` output in the combinator can't certify a legit wrapper (the combinator's fresh
-  atom and the wrapper's declared fresh atom are DISTINCT rigid tokens, never unify — REJECT
-  everything); (3) a flex-mask combinator certifies legit wrappers but lets a `:` wrapper forge mask
-  AGREEMENT (two independent gridctx forced to share one mask — ACCEPT); (4) a pure-projection
-  combinator enforces the output FAMILY (acc vs tile rejects) and cross-input agreement, but a `:`
-  wrapper declaring a FREE output element var (`tile<u,b,m>`, u unbound) still certifies and PUBLISHES
-  the over-general sig (f32 span -> claim u32 tile ACCEPTS). The root cause: the checker verifies a
-  declared sig is UNIFIABLE with the body, not that it is PRINCIPAL — so any polymorphic mint output
-  can be loosened into an unaudited `:` word, strictly EASIER to forge than a visible TRUSTED: row.
-  The sound fix is a checker seal, not a combinator: a CHECKED word may not introduce, as an argument
-  of a register-phantom CELL family output, a declared type variable unbound in its inputs (producing
-  a cell of input-unrelated type is a mint, sound only behind a TRUSTED: boundary the checker cannot
-  witness). It rides NP-CHECK's post-body parametricity seal (the E-NONPARAMETRIC-EFFECT choke),
-  descending into family args (which NP-CHECK proper does NOT), on RAW declared var identity so a
-  laundering combinator that unified `u:=t` can't hide `u`'s sig-level absence. TRUSTED: bypasses
-  CHECK, so genuine fresh-mask ctx mints (GRID-CTX's free block) stay legal there — the rule is
-  exactly why they cannot be rewritten as checked callers. With the seal, the FEW generic mint
-  combinators (`PTXREP:MINT-LOAD`/`MINT-ROW-SPAN`/`MINT-ROW-LOAD`, per-input-pattern to pin
-  projection) make many load/repackage wrappers checked callers: LOAD/LOAD-ONCE/ROW-SPAN(-ONCE)/
-  ROW-LOAD(-ONCE) converted, net trust -3, byte-identical PTX (24 emit tools). Pure checker+render lib
-  change, so the FULL engine battery was owed and paid (fixpoint x2 byte-identical, DDC dual-chain
-  byte-identical, test/run.f perf-verdict=pass attempts=1).
-- **The mint seal must exempt three checker-owned introductions or it false-rejects legit code, and
-  each needs a DISTINCT guard.** (same dot.) (a) VALUE-RECORD/construct machinery mints INTERNAL
-  fresh vars whose `NP-LETTER` is '?' (not a user a..z quantifier) — e.g. a generated
-  `( a -- box )` constructor expands `box` to hidden `field<>` cells over internal vars; guard: only
-  flag a raw output var that is a real declared letter. (b) A hidden physical field / layout
-  (product/sum) family output carries its own construct + hidden-field anti-forgery; guard:
-  `NP-CELLFAM?` excludes `PARAM>HID>0` and `TFAM-LAYOUT?`. (c) A VALUE-RECORD FIELD ACCESSOR
-  (`( rec -- fam<a,..> )`, empty body = width coercion) legitimately surfaces cell vars unbound at the
-  sig surface — the record is carried as a reserved `field<rec,name,inner>` term (FIELD-PARAM?), and
-  its var identity survives raw AND resolved AND surface-letter checks (the empty body leaves the
-  output quantifier unbound, structurally identical to a free mint); the ONLY reliable signal is the
-  `field<>` INPUT, so the seal steps aside when an input consumes a record. Each false positive cost a
-  fixpoint rebuild to diagnose — build the probe (dump the SGIN term tags/families) before guessing.
-- **Leg 2c: the projection-load "batch" had exactly ONE genuine sharing win, because the mint
-  combinators are NOMINALLY PINNED and the batch's 8 loads have 8 distinct family shapes.** (dot
-  habu-ptx-phantom-preserving, leg 2c.) A MINT-* combinator pins its projection by NAMING concrete
-  families (type-family.f registers span/vspan/tile/vtile/gridctx/coopctx/fanctx/idxctx/uniqidxctx as
-  distinct TK-CELL families — there is no family variable), so two wrappers SHARE a combinator only if
-  their full (input families, output family, quotation arity) coincide. Surveying the 8 candidates:
-  LOAD-V4 (span<s,t,e> gridctx<b,e,m> -- tile<t,b,m>) is IDENTICAL to the scalar load shape — v4-ness
-  is pure codegen (EMIT-LOAD-V4), not a type change — so it reuses the EXISTING PTXREP:MINT-LOAD (net
-  -1, no new combinator, byte-identical PTX proven x2). The other 7 are each a UNIQUE shape:
-  FANIN-LOAD (ptr+fanctx), INDEX-DENSE-LOAD (idxctx) vs UNIQUE-INDEX-DENSE-LOAD (uniqidxctx, a DISTINCT
-  family), INDEX-LOAD (3-operand), LOAD.V4 (vspan/vtile), STAGE (span<global> -> span<shared>), SLOAD
-  (coopctx) — no two share, and none matches an existing combinator. The mission's hypothesized
-  "one indexed-load / one V4 / one smem shape" sharings are all FALSE under nominal pinning: idxctx and
-  uniqidxctx never unify, LOAD-V4≠LOAD.V4 (scalar vs vec4 families), STAGE≠SLOAD (span-shared vs tile
-  outputs). Converting the 7 would need single-use combinators = net 0 each = RELOCATED, not reduced,
-  trust (worse: +machinery, +negatives for no gain) — so they STAY TRUSTED. The batch's honest maximum
-  is the LOAD-V4 net -1. Loosening a combinator to a family variable to force sharing would reopen
-  exactly the projection forge the NP-MINT-CHECK seal closes; don't.
-- **Wiring the proven B-side ldmatrix cut the residual B-feed 27%->7% and won +11.9%.** (dot
-  habu-mma-wave-3, lib/ptx/cg-mma.f MMA-BLDM.) The MFRAGS=4 winner's un-amortized scalar B feed
-  (2 ld.shared + 2 cvt / 8x8 fragment) was replaced by ONE ldmatrix.x2 over a TRANSPOSED staging
-  SHM_BT[n][k]=B[k][n] (the device-proven MP-BLDM-ALL law). Measured 3026.6 GFLOP/s at 2048^3
-  (918 MHz) = +11.9% over the scalar-B winner 2707.3 and 1.60x Triton, element-exact 256^3/512^3.
-  The fresh ablation confirmed the mechanism: B-feed 27%->7% (51.4->12.1 ms, a 4.2x cut), now 93%
-  of its own quarter-B ceiling (was 73%); mma-issue (21%, tensor-core throughput) is the new floor.
-  The transpose MUST be a SCALAR staging (coalesced global read B[k][n], strided shared write
-  BT[n][k]): cp.async copies a contiguous chunk and cannot scatter a transpose, so there is no
-  cp.async B path - but the B tile is tiny and reused across all M-frags, so the scalar stores are
-  amortized to noise.
-- **A transposed-staging ldmatrix lives or dies on its READ bank stride - measure it, again.**
-  (habu-mma-wave-3.) The n-major BT row stride BK+bpad sets the ldmatrix read start-bank stride.
-  bpad=4 (stride 36 words = 4 mod 32 -> the 8 tile rows hit 8 distinct 4-bank windows, conflict-
-  free) = 3026.6; bpad=0 (stride 32 -> all 8 rows alias ONE 4-bank window, 8-way conflict) = 1318.5,
-  WORSE than the scalar-B baseline it replaced. Identical trap to the original unpadded-As ldmatrix
-  miss: an aliased ldmatrix is far slower than the scalar loads it removes. Also: bpad must keep the
-  BT row stride a multiple of 16 B (ldmatrix.m8n8.b16 addresses each 16 B row) - a misaligned stride
-  (bpad not a multiple of 4) FAULTS the GPU (sm machine-check err, not a wrong result), so the
-  emitter enforces it fail-closed (MMA-CHECK-BLDM -> E-MMA-BLDM) and a bad knob never reaches a
-  launch. A bpad=2 typo in a test leg proved this the hard way (2 GPU fault clusters) before the
-  guard + negative regression landed.
-- **A checker cp.async pipeline-typestate dot cannot discharge its own tilepipe
-  TRUSTED rows alone — it depends on THREE prerequisites, two of them unstarted.**
-  (dot habu-checker-cp-async-6ba788a5, host lane, no device.) The 9 lib/ptx/tile-pipe.f
-  `TRUSTED:` rows are trusted for a DOMINANT reason that is NOT cp.async: every body
-  mints a nominal phantom token (`mmctx`/`mmracc`/`mmstage`/`mmaslice`/…) from a bare
-  register-number literal, and the checker has no checked mint — minting/casting phantom
-  kernel tokens is always a trusted boundary here (MK-SPAN, MM-ABI, `>LEN`/`>IDX`). That
-  mint gap is owned by habu-ptx-phantom-preserving-3df9db92 (open, unstarted), so no
-  tilepipe row is untrustable until that lands. Landing the cp.async typestate discipline
-  alone discharges nothing — mirrors habu-linear-once-resource-4c58a7a1's own note ("no
-  TRUSTED row discharged by the execute fix alone … blocked on kinds PLUS rewriting the
-  wrappers"). The dynamic protocol (cp.async issue→commit→wait→bar.sync→read, parity flip)
-  is emitted ATOMICALLY inside MM-PIPE-KLOOP-WITH (cg-matmul-emit.f), run once at emit time;
-  the K-loop is a RUNTIME `$KLOOP` branch, so read-before-wait / missing-commit / double-wait
-  are not expressible at the tilepipe surface without DECOMPOSING that shared, byte-sensitive
-  emitter (consumed verbatim by cg-matmul.f, cg-mma.f, maki/lower-mm.f). And bar.sync needs
-  the M5 barrier model (habu-ptx-m5-mask-eb0716f1, open, unstarted) to compose with.
-- **A stack-effect checker over the EMIT-TIME program cannot prove RUNTIME loop-carried
-  parity alternation.** The Forth checker verifies emit-time stack effects; the emitter emits
-  the double-buffer loop body ONCE and parity lives in a runtime register (`%r15`, flipped by
-  `xor`). "parity alternates correctly across `$KLOOP` iterations" is a property of the emitted
-  PTX's runtime dataflow, outside the checker's model — this is the deep reason it stays
-  trusted. What IS emit-time-checkable (given the decomposed emitter) is the weaker SAME-BODY
-  property: within one loop body the read requires a `ready<p>` slot whose symbolic parity `p`
-  matches, and the prefetch writes `pending<¬p>`. Don't conflate the runtime alternation (out
-  of scope) with same-body parity consistency (in scope once the emitter is decomposed).
-- **When a folded-in registry removal is DEFERRED to ride a capability's registry edit, do
-  not split it into a lone fixpoint rebake if that capability is blocked.** The `mmacc` TFAM
-  row (type-family.f) is verified unreferenced (only prose/comments/one stale LLM transcript
-  use `mmacc<…>`; live code uses `mmracc`), but its removal was deliberately deferred to the
-  cp.async capability's core edit to avoid a standalone engine rebake. With the capability
-  blocked, the honest move is to leave it folded-in-waiting, not to rebake the engine for one
-  row a later registry edit removes for free.
-- **`num_stages` is tile-size AND occupancy dependent — a bigger register/smem tile can
-  flip stages=2 from a win to a loss.** (dot habu-mma-wave-2, MMA-MFRAGS=4.) At the MFRAGS=2
-  wide MMA tile, double-buffered cp.async (stages=2) was +2.4% over single-buffer. At MFRAGS=4
-  the *opposite* holds: single-buffer STATIC (49152 B = the 48 KiB cap) beats double-buffer
-  DYNAMIC (98304 B) by +11.6% (2707.3 vs 2394.1 GFLOP/s at 2048^3). Cause: the double-buffer
-  256x64 tile needs 98 KiB so only 1 block/SM (8 warps) resides, while the single-buffer tile
-  fits 2-3 blocks/SM, AND the 4x B-feed amortization moved the roofline off the cp.async floor
-  so occupancy now beats overlap. Never assume a stages setting carries across a tile resize;
-  re-measure it. The measured best (2707.3 = +26.9% over the 2133.9 parity, 1.43x Triton) was
-  the config the prior amortize lesson would have predicted to be *worse* (no overlap).
-- **A wider register tile re-weights the roofline: attack the phase the FRESH ablation names,
-  not last rung's.** (habu-mma-wave-2.) MFRAGS=2's residual was 36% B-feed / 15% mma-issue, so
-  "B-side ldmatrix" looked like the next lever. MFRAGS=4's DCE-safe ablation shows B-feed fell
-  to 27% but 2nd-4th-M-frag mma-issue ROSE to 32% (now dominant) - amortizing the feed 4x turned
-  a feed-bound tile toward tensor-core-issue-bound. Re-run the attribution after every tile
-  change; the biggest lever moves.
-- **tf32 B-fragment ldmatrix needs a TRANSPOSED staging, never `ldmatrix.trans`.** (habu-mma-
-  wave-2, proven element-exact in tools/ptx/mma-probe.f MP-BLDM-ALL before any kernel use - the
-  required "prove lane->element FIRST" for the top device-bug class.) The mma m16n8k8 B fragment
-  is b0=B[t][gid], b1=B[t+4][gid] (gid=lane>>2, t=lane&3). The non-trans ldmatrix.m8n8 result law
-  is reg = tile[row=lane>>2][tf32col=lane&3] (the SAME law the A ldmatrix.x4 proof pins), so the
-  8x8 b16 tile it reads must be B-TRANSPOSED: stage SHM_BT[n][k]=B[k][n] (n-major), then one
-  ldmatrix.x2 over the two k-half b16 tiles returns {b0,b1} exactly. `ldmatrix.trans` is NOT an
-  option for tf32: it transposes at b16 granularity and a tf32 is two adjacent b16 halves, so
-  .trans splits every tf32 - the transpose must live in the STAGING, not the load. Proven
-  element-exact (integer operands, 0 mismatches of 128); feeds habu-ship-swizzled-mma.
-- **Keep a new codegen knob byte-identical for the shipped configs by GATING the register-pool
-  header, not just the body.** (habu-mma-wave-2.) MFRAGS=4 needs 64 f32 accumulators/lane, so the
-  `.reg .f32 %f<48>`/`.reg .b32 %r<64>` header and the mode-0 cvt temp base (%f42) must grow. Making
-  them formula-driven for ALL MFRAGS would have changed the MFRAGS=1/2 emitted text and broken the
-  pinned SWZ / SWZ-BK64 / lower-mm / parity goldens. Fix: `MMA-FREGS`/`MMA-RREGS`/`MMA-FTEMP` return
-  the exact literal 48/64/42 at MFRAGS<=2 and only enlarge at MFRAGS>2. Prove it: capture a
-  golden-dump of every pinned config's emitted PTX BEFORE the edit, sha+cmp AFTER (twice) - byte
-  identical. An off-device pure-emit dump is the cheap, exact byte-identity gate.
-
-- **Package rollback has two owners.** Restoring the engine's current/public/private
-  WIDs is incomplete unless recovery also resynchronizes the checker's package
-  mode before the next token; `get-current` proves only the engine half. Follow a
-  caught in-package failure with a canonical checked global definition, a package
-  transition, and a checked reference to expose either half drifting.
-
-- **Checker policy that constrains compile-time behavior must run before the
-  immediate BLR, not only at definition publication.** The definition hook
-  correctly rejected unmodeled immediates after body reconstruction, but
-  `include` had already evaluated nested source while the dictionary was RX.
-  A checker-owned preflight cell closes that temporal gap generically: the
-  compiler invokes it for every source-defined immediate while checking is
-  armed; `parse-imm` declarations and outer `TRUSTED:` bodies are the only
-  allows. Keep the cell in the sealed hook band, preserve it in snapshots, and
-  prove warm-boot execution with a modeled immediate rather than checking only
-  that the serialized pointer is nonzero.
-
-- **A "role-typed variable family" ask is often already covered by existing
-  definers — check before building one.** (typedefs lane, dot
-  habu-typed-defining-words-aa224eb5.) Raw `variable`/`create`/`constant` publish
-  TVK-RAW cells (`-- ptr a`; `@`→`a`, and `a` coerces to `n`/`bool`/`ptr u8`), so
-  they already own plain-scalar/bool/raw cells; `TYPED-VARIABLE`/`TYPED-BUFFER`
-  (layout-buffer.f) own nominal/closed-typed-ptr/xt cells. CHECKER-STORAGE-INFO
-  DELIBERATELY rejects `n`/`bool`/`a`/`idx` (throw 7121) — that is the raw
-  definer's partition, pinned by typed-storage-test R4 (`( n -- n ) RAWV ! RAWV @`
-  certifies; laundering a nominal family through the raw cell rejects). So a
-  per-cell `s" X" s" -- ptr n" TRUST` override on a raw `variable` is REDUNDANT
-  once the definer auto-registers its effect (verify-source SIG-RAW-MODE!,
-  2026-07-15): the 17 treeshake `-- ptr n`/`-- ptr bool` rows predated it; delete
-  them and the raw boundary + a-coercion certifies the checked body unchanged
-  (proven by fixpoint rebuild — treeshake certifies without the rows, TRUST
-  363→346). MLEN already had no row; STB-CELL@ shares a body with STB@.
-- **Provenance-mint placement is load-order-bound, and a macOS rebuild can't
-  prove Linux/snapshot trust rows.** In build-fixpoint.f the baked order puts
-  os/macos/layout.f (pos 2) and image-bytes.f (pos 7) BEFORE roles.f (pos 12), so
-  a roles.f mint (MMAP>PTR/VA>PTR) cannot serve earlier consumers (MBUF-RC>PTR,
-  DATA-VA) — place the mint before its earliest baked consumer. A macOS fixpoint
-  build checks os/macos/* not os/linux/*, and snap-lib.f rides the snapshot
-  builder tail (not the main fixpoint); LINUX-VA>PTR, the Linux DATA-VA row, and
-  STB-CELL@ must be proven through the Linux gate / snapshot-build path, not a
-  macOS-only rebuild.
-- **Before deleting a "wrapper" vocabulary, rg its WORDS as strings — checked
-  words can be a graded LLM-authoring surface, not just call sites.** (mmstage3
-  lane, dot habu-re-express-tiled-9cc4a73a.) The plan said "delete
-  MM-BEGIN/MM-K-LOOP/MM-STORE with the MM-STATE boundary", but maki's eval lane
-  grades LLM candidates as SOURCE STRINGS composing exactly those three words
-  (eval-emit fixtures, eval-matrix VOCAB-NEED rows, live-author), including
-  reject-shape fixtures pinned to their effects. The fix that kept every
-  consumer green: preserve the three names and stack surfaces, re-express their
-  bodies over the typed tile-pipe words (mmacc -> mmracc underneath), and prove
-  the candidate emissions byte-identical (a double-MM-K-LOOP capture leg).
-  Also: a require cycle from layering a checked kernel above a vocabulary that
-  requires the kernel's emitters is broken by splitting emitters into their own
-  file (cg-matmul-emit.f) - reversing or mid-file requires is order-fragile.
-- **A new checker atom prefix (ATOM-TOK?) reserves the ENTIRE lowercase
-  `prefix-*` token namespace across every declaration site — sweep the tree for
-  collisions before choosing the spelling.** (tilepipe lane, dot
-  habu-typed-pipelined-register-4d20acb5.) Signature atoms are prefix-gated
-  (`space-`/`extent-`/`mask-`/`block-`/`align-`; now `geom-`/`parity-`), and
-  TYPE-RESERVED? consults ATOM-TOK? for enum/sum variant and nominal-type
-  declarations too: a first-choice `layout-` prefix made maki's existing enum
-  variant `layout-conflict` a reserved name and failed maki loads with throw
-  7110 far from the cause. `rg '\bprefix-'` across `*.f`/`*.fs` before baking;
-  the collision surfaces only when the colliding module next loads, not in the
-  fixpoint build itself. Atoms are kind-free interned tokens (prefix = lexical
-  gate only), so an honest new prefix is a 1-line additive checker row baked by
-  the normal fixpoint x2.
-- **The native single-pass ARM64 assembler silently wrapped out-of-reach
-  relocations while the trusted Gforth seed generator already rejected them —
-  derive the native boundary from the seed, don't reinvent it.**
-  dot habu-check-arm64-relocation-8eee7fad. `src/arch/arm64/icode.f` masked
-  branch/ADR deltas (D19/D26/ENC-ADRD) with no signed-range check, so any
-  forward/backward BCOND/CBZ/CBNZ/ADR past reach in the 2 MB code window wrapped
-  to a wrong target; `bootstrap/cg/asm.fs` already threw via `?REL26`/`?REL19`/
-  `ENC-ADR`'s `within` bounds. Fix: shared `?REL26`/`?REL19`/`?ADR` (each a pure
-  `*-OK?` predicate + a die wrapper, mirroring `FX-KIND-OK?`/`?FX-KIND`) called at
-  BOTH the immediate encode sites (BR-EMIT/ADR, ELSE) and the deferred chokepoint
-  (FX-ENC), before any mutation, with bounds `LO <= d < HI` matching `within`
-  exactly (LO inclusive, HI exclusive). Parity was exact — no asm.fs change.
-- **Boundary tests for a reach that the buffer can't physically span: craft the
-  label position, don't emit MB of code.** REL19/ADR reach (±2^18 words) fits the
-  2 MB window so far-branch dies are real; REL26 reach (±2^25 words ≈ ±128 MB)
-  overflows the code-buffer guard long before the reach check, so REL26 boundary
-  fixtures set the bind position via `ASM-CP !` directly. Deferred PATCH always
-  targets the real site word (FXS = word 0), so even a crafted *negative* ASM-CP
-  is memory-safe — it only feeds the delta arithmetic, never the write address.
-  Backward (immediate) cases naturally exercise max-negative deltas; forward
-  (deferred) cases exercise max-positive; each PASS pins the exact instruction
-  word, each one-beyond dies exit 72 via a child-process fixture.
-- **Deferred backpatch is per-fixup atomic, not per-chain.** FX-ENC validates
-  reach before returning patch bits, so a failed patch dies before its PATCH
-  write — the failing fixup's code word and FXS/FXK slot stay untouched. But
-  LBL, binds the label and clears its FXH head before walking the pending chain,
-  so a mid-chain out-of-reach failure leaves earlier in-reach fixups already
-  patched and freed. Document the per-fixup invariant honestly rather than
-  claiming whole-chain atomicity; `die` exits, so post-die state is only
-  observable as the child's exit code + diagnostic.
-
-- **High-frequency architectural defaults need an entry rule and a machine
-  gate, not a buried reference.** `docs/forth.md` already made packages the
-  default, but the session-level instructions summarized casing without package
-  ownership, so generated tests repeatedly fell back to raw stems such as
-  `LRD-*`. Repeat the package-first invariant concisely in `AGENTS.md`; reject
-  violations by exact-diff inspection until the checked package-diff gate lands.
-  Documentation discoverability alone does not constrain generation.
-
-- **A surgical GPU devfreq min=max pin reproduces the shipped 918 MHz clock within
-  0.15% — use it to make cross-session perf rows comparable.** dot
-  habu-re-measure-mma-9fe40cd1. The larger-BK MMA sweep landed at the UNBOOSTED
-  408 MHz DVFS pin, ~half the shipped orin-nx-25w absolutes; re-measuring with the
-  GPU devfreq pinned `min_freq=max_freq=918000000` (25W mode-3 untouched, restored
-  to the as-found 408 MHz after) reproduced the shipped 2026-07-14 MM 979866 /
-  MMM 884889 as 981225 / 885794 (<=0.15%), proving the pin == the historical
-  measurement clock — no `jetson_clocks` apply (GPU-only blast radius, exact
-  verifiable restore) was needed. The swizzle win is clock-independent as expected:
-  MMM-SWZ +53.4% / MMM-SWZ-BK64 +54.6% over the BK=32 baseline at BOTH clocks. At
-  918 MHz the swizzled kernel is 1358.9-1369.6 GFLOP/s = 72% of Triton's 1890.5
-  (vs the scalar baseline's 47%), so the competitive lever is flipping the emitted
-  default to pad=8 ldmatrix (separate dot), NOT the clock — the shipped
-  HABU-MMM-TF32 row tracks the scalar default and stays 884889 until the default
-  flips (tools/ptx/perf-rows.tsv orin-nx-25w-918mhz rows; tools/eval-triton.f).
-- **Automatic-fusion device win is LATENCY (fewer global round-trips), not peak
-  GB/s.** Benching the AUTOMATICALLY-emitted region kernels of an Add->Mul->Relu
-  chain at scale (1M elems, 200 iters, CUDA events) on the Orin 25W: fused
-  (1 kernel, 16 B/elem) and ablated (3 kernels, 32 B/elem) BOTH saturate the same
-  ~42 GB/s 1-elem/thread memory roof, so the per-row GBS is ~equal - the fusion
-  win shows up as the fused kernel finishing 2.07x faster because it moves 2x
-  fewer bytes. Report the sum-of-kernel-ns ratio (like tools/ptx/fusion-compare.f),
-  not a bandwidth delta; a "both rows ~roof, ratio in the note" pair is the honest
-  shape (maki/fusion-bench-device-test.f, dot habu-automatic-op-fusion).
-- **The device emit child re-plans in a fresh process, so the fusion mode must
-  ride in the model SOURCE STRING, not just the parent toggle.** `LOWER-DRIVER!`
-  writes a child driver that appends a bare `FP-BUILD` (default fusion ON). To
-  build ablated cubins, pass the model source with a trailing `; FP-FUSE-OFF!`
-  suffix (child order: `MODEL:` -> toggle -> `FP-BUILD`) so child region ids/
-  kernels match the parent's ablated plan. `FP-FUSE-OFF!` is persistent across
-  `FP-BUILD` and `MODEL:`/`CAP-BEGIN` does not reset it.
-- **A new maki device test needs no lint registration.** `filemap-lint` only
-  walks src/tools/test/lib/bootstrap (not maki/), and `suite-coverage-lint` only
-  scans test/gate-stdlib-*.f - so a `maki/*-device-test.f` (Orin-only, CUDA-probe
-  SKIP off-device) keeps both lints green with zero registration; the ONLY rule is
-  keep it out of `maki/test.f` (it needs CUDA + a device). This is why
-  maki/onnx/deploy-device-test.f appears in neither lint table. Keep a device
-  test device-PROVEN before adding it to `maki/test.f`: an unvalidated device fix
-  in the shared maki gate can red master on the next on-device run.
-- **Untrusted GPU launches must be SPAWN-isolated -- bare fork is NOT enough
-  (dot habu-eval-grader-device).** The eval grader's device leg threw E-CUDA
-  uncaught on a contained MMU fault (a no-check candidate using a raw span pointer
-  as the grid index -> out-of-bounds read) and killed the grader before any tally.
-  In-process `catch` alone is insufficient: a faulted CUDA context is not
-  trustworthy for the next candidate. A first fix using a bare `PROC-FORK` child
-  passed STANDALONE (parent had only dlopen'd libcuda) but failed INSIDE the maki
-  gate: an earlier suite (the device numeric goldens) had already initialized CUDA
-  in-process, and CUDA is fork-unsafe after init -- the forked child inherits
-  poisoned driver state, every launch misgrades as fault, and no journal MMU fault
-  appears (the E-CUDA is child-side init failure, not a GPU fault). The correct
-  isolation is the GRADE-EMIT discipline: SPAWN a fresh `bin/hb` that loads the
-  grader lib plus a generated launcher, classifies the launch under `catch`, and
-  `die`s with a small (<256) exit code and an EMPTY message (`s" " code die`; a
-  named message prints per launch and pollutes tally output). The parent maps the
-  capture outcome (exit code / signal death / timeout) to the verdict; the capture
-  timeout also bounds a HUNG kernel (SIGKILL-reaped -> graded fault). Grade a
-  launch fault as a DISTINCT bucket (`EVN-DEVICE-FAULT` = "kernel crashed"), never
-  as `EVN-DEVICE-WRONG` = "ran, bad values"; the ablation needs to show the
-  checker prevents GPU faults, not only wrong numbers. Also measured on-device:
-  expected buckets derived by value-level reasoning were wrong for 2/6 candidates
-  -- the unchecked emitter turns register-discipline bugs into PTX that ptxas
-  itself REJECTS at assembly, so they never reach the GPU; measure per-candidate
-  verdicts on device before pinning tallies.
-- **zed's ~/Work/habu is stale vs current master (missing files, not just a stale
-  bin/hb).** Running a current-master device leg means transferring the FULL
-  workspace tree to an isolated /tmp dir on zed and `HABU_ALLOW_BOOTSTRAP=1
-  tools/bootstrap.sh` a fresh Linux engine THERE (gforth, ~30s) - never touching
-  ~/Work/habu. Working fully in /tmp keeps the box sha-identical as-found with no
-  bin/hb backup/restore dance at all. ptxas is at /usr/local/cuda/bin (add to PATH).
-
-- **Jj's default word-level diff can visually concatenate numeric replacements.**
-  A deleted `$200000` beside an inserted `$400000` rendered as
-  `$200000400000`; inspect the source or `jj diff --git` before diagnosing a
-  malformed token. Never probe `jj diff --check`; generate `jj diff --git` and
-  run the repository's checked diff lint instead.
-
-- **Track a new local bookmark before its first push.** `jj git push --bookmark`
-  refuses to create an untracked remote bookmark; run `jj bookmark track
-  <name> --remote=origin` first.
-
-- **The dot CLI search verb is `dot find`, not `dot search`.** Unknown verbs
-  fall through to quick-add and create malformed work; use only documented
-  subcommands and remove accidental dots immediately before other work relies
-  on them.
-
-- **A post-hook replacement seam must not drag its legacy parser across the
-  hook.** `sumtype.f` reads private type-family registries that the checker
-  correctly rejects outside their package (`E-UNDEFINED ... TFAM-N`). Keep the
-  legacy parser in its existing pre-hook phase until the unified checked
-  declarers replace it; put only the empty replacement seam and independently
-  checkable remaining core after the hook.
-
-- **A downstream snapshot crash needs an exact old-order control before it is
-  attributed to loader movement.** Rebuilding the same tree with the prior
-  structures/effects order reproduced the identical stale-DATA-pointer fault,
-  proving the snapshot regression was baseline rather than causal to the seam.
-
-- **Sealing declared-effect parametricity must target sealed FAMILIES, not all
-  concrete specialization.** The nominal-storage effect seal (post-body
-  `NP-CHECK`) rejects a declared quantifier that resolves to an arity-0 nominal
-  or layout family, plus quantifier aliasing. The first instinct — reject *any*
-  concrete specialization of a declared quantifier — is a corpus bloodbath:
-  `( ptr a -- n ) @` (46+ sites), `( -- ptr a )` (190+), etc. legitimately let a
-  pointee `a` widen to a plain scalar. Grep the corpus for the risky signature
-  shapes BEFORE choosing the predicate; the forgery target is validated identity
-  (`CAD-KIND`/layout), and plain-scalar widening (`a := n`/`u8`) is the pervasive,
-  intended looseness. `NOM-SCALAR? or LAYOUT-PARAM?` is the exact fence.
-- **Row-walk the declared sig rows, not `NMAP`, to enumerate quantifiers.** Typed
-  local annotations (`{: x:a :}`) route through `VAR-OF` and pollute `NMAP` with
-  non-signature vars; walking `SGIN/SGOUT/SGRIN/SGROUT` (S-PUSH chain + `ptr`
-  pointee, not into quotation/param subterms) yields exactly the declared
-  quantifiers and dodges deferred parametric-cell governance. Reverse-map an id to
-  its source letter through `NMAP` only for the diagnostic.
-- **Test fixtures needing concrete-effect helper words should use checked words +
-  `LAYOUT-BUFFER`, not `TRUST`.** `s" NAME" s" eff" TRUST` is counted as a
-  `CL-TRUST` site by the trusted-inventory ratchet, so three scaffolding `TRUST`
-  calls in `engine-suite.f` tripped `RATCHET-BAD`. A checked identity word
-  (`: ID ( fam -- fam ) ;`), a checked collapse (`( g g -- g ) nip`), and the
-  generated `LAYOUT-BUFFER` accessor (`n LAYOUT-BUFFER AT fam` → `AT ( n -- ptr fam )`)
-  cover the value/alias/pointer producers with ZERO added trust surface and no
-  `TRUSTED.md` edit.
-- **A cold-prefix `.f` file sees a baked, name-stripped checker, not
-  `checker.f` from disk (top-row landing).** `bin/hb` reloads prefix *content*
-  from the checkout, but the visible dictionary at a prefix file's load is the
-  last build's baked engine: internal `:`/`constant` names (`E-PTR`, `EN-CON`,
-  `CHECKER-FIND-ACTIVE-SYM`, `PE-EFF@`) are treeshaken away, so a new prefix file
-  can only use engine prims, core words, the curated public checker API, and
-  hardcoded ABI constants. Editing prefix-file *content* needs no rebuild;
-  adding a file to the *list* (habu2.f `PFX-LOAD-*`/`PFX-PATH`/`PFX-PROVIDE` +
-  `LP*` var + `EMIT-LABEL-SOURCES` + hb-build-lib.f content key) does. Corollary:
-  `set-check`/`set-top-check` are guarded-deref trust-boundary prims — a *checked*
-  `:` word sees them as "undefined"; install from a `TRUSTED:` word (mirror
-  `LOWER-CERT-HOOK:INSTALL`). And install *after* internal-mark: its top-level
-  `0 set-check` suspends a token hook whose re-arm lives inside a word body
-  (invisible to the hook), so an earlier install stays suspended for user code.
-- **The R7 plan's type-schema spellings are pseudocode; probe the checker, don't
-  transcribe them.** The addendum writes `STRUCTURE`/`FIELD`/`DERIVE eq`/
-  `VARIANT got ... ;VARIANT`, but the real keywords are `TYPEFAMILY` (arity-0
-  proof tokens, per sub-dot 1) / `PRODUCT` / `SUMTYPE` (concrete payload
-  `VARIANT name type ;VARIANT`), `ENUM` takes no arity, and two footguns bite:
-  bare dtype tails like `f32`/`tf32` are RESERVED atom tokens (rejected as
-  variant names — class-prefix them), and variant names are PACKAGE-scoped
-  (`TDECL-VAR-SCOPE?`), so N same-package slot sums cannot all reuse `got`/
-  `absent`. Building the schema file + a `CHECK-QUIET-CANDIDATE!` probe and
-  iterating on real checker output found both in minutes; guessing from the
-  plan would have wasted a load cycle each.
-
-- **Nullary proof-token mints (`( -- proof )`) aren't "mint-shaped" to
-  refine-lint, but still seed them.** `RFL-MINT-SHAPE?` keys on `n -- family`
-  (raw-in, family-out), so a `( -- certify-proof )` mint never trips the
-  NEW-MINT shape scan — but the refine-lint seed list is the CONFINEMENT set
-  (owner-file-only references), independent of shape. Seed private mints there
-  anyway (mirroring sub-dot 1's `RAW>*`) so they can't leak, and give each a
-  TRUSTED.md main-table row + classification row. The confinement scan skips
-  `s" ... "` bodies, so a mint name inside a `CHECK-QUIET-CANDIDATE!` fixture
-  string does not count as an outside reference.
-
-- **Resolved fixups are not live assembler state:** counting historical rows
-  exhausted `NFX` after `$1000` sequential forward references and made `LBL,`
-  quadratic. Keep per-label pending chains, reclaim their slots through a free
-  list, and make `NFX` count only simultaneous pending relocations.
-
-- **A free-list head must name an allocated slot:** bounds against capacity do
-  not reject a head in the never-allocated suffix. Validate it against the
-  allocation frontier before dereferencing its link.
-
-- **Single-pass relocation patching validates signed reach before masking:**
-  `D26`, `D19`, and `ENC-ADRD` currently wrap out-of-range deltas silently,
-  unlike the recovery assembler. Keep in-range opcode regressions while the
-  separately tracked relocation-range fix adds fail-closed bounds.
-
-- **A dependency edge names what the new dot blocks:** `dot add -a TARGET`
-  records the new dot as blocking `TARGET`. For successor work, add successor
-  IDs to the predecessor's `blocks:` and verify the resulting order with
-  `dot ready`.
-
-- **A live low-level word does not prove a matching require-registry row:**
-  resident images can contain assembler words while `require` reloads their
-  source and hits duplicate definitions. Capability-probe before conditional
-  includes, then run both fresh-process and resident focused gates.
-
-- **A boot-prefix primitive is not implemented until both emitters execute its
-  focused behavior.** `tok-imm?` existed in `src/habu/habu2.f` but not
-  `bootstrap/cg/forth.fs`; native fixpoint passed while no-binary recovery died
-  with rc 70. Pair source-shape registration assertions with an actual Gforth
-  stage-0 execution before claiming recovery parity.
-
-- **A dot claim names the actual implementation workspace, not the first
-  workspace that exposed the bug.** When review splits mixed work into separate
-  commits, update and commit the claim before continuing in the new workspace;
-  stale claims defeat overlap detection and review routing.
-
-- **Scan every active dot's claimed files before dispatch, not only sibling
-  workspaces.** The pointer-storage worker overlapped the active owner-persist
-  lane in both engine emitters and recovery inventories. A workspace boundary
-  prevents filesystem collisions; only an active-dot ownership census prevents
-  semantic merge collisions.
-- **Source certification must reproduce the real prefix, not rely on the live
-  dictionary.** Once checker layout assertions consumed `CORE-LAYOUT-RC`, the
-  standalone checker-self fixture failed while the real util/cell/checker load
-  was valid. Build one reusable exact-prefix fixture and extend it for later
-  layers; a fictitious standalone source is neither a positive nor a negative
-  proof.
-- **A pre-checker definer and its post-hook effect are one source-order unit:**
-  isolating `PTR-VARIABLE` requires the definer before `checker.f` and its sole
-  `TRUST` row after `check-hook.f` in every native, recovery, pin, cache, and
-  diagnostic inventory; moving only the body breaks cold boot, while moving
-  only the effect preserves the wrong owner.
-
-- **Null-check the backing cell before refining a pointer field:** `ptr-field @`
-  returns a typed pointer, so comparing it with numeric zero violates the
-  checker contract. Test the raw address cell before allocating, then use the
-  refined field accessor after it is nonzero.
-
-- **Grow-on-demand readers consume the requested size exactly once:** duplicating
-  a `FILE-SIZE` result before the grow helper left one `n` under `READ-ALL` and
-  the checker rejected the reader's declared single-result effect. Let the grow
-  helper own the size; read afterward from its stored capacity.
-
-- **A checker-acceptance tightening breaks fixture files that only fail at
-  LOAD time:** the wide-PRODUCT minimum-accounting fix made `FIND-SUB`'s
-  `option<idx>` reject when bound to an `:n` local, and
-  tools/build-fixpoint-test.f had two such latent bindings that turned the
-  whole build-fixpoint suite red at load (rc 70) though no checker gate was
-  red. After tightening acceptance, run the suites that LOAD tool fixtures,
-  not only the checker gates; convert at the producer
-  (`FIND-SUB BFT-FOUND {: idx:n :}`), never bind the sum to a scalar local.
-
-- **A reusable buffer is live until its last semantic consumer:** owner-row
-  freeze reused `AOT-REC-BUF` after record proof but before boot-manifest lookup,
-  so fixture success depended on target records landing beyond the overwritten
-  prefix. Give independently live artifacts disjoint regions, and regress the
-  final consumer after every intervening phase.
-- **A source lint needs a production census, not only mutation fixtures:** the
-  clobber lint retained legacy label syntax while production moved to `LABEL@`,
-  making a future clean result vacuous after its fixed input cap is repaired.
-  Assert nonzero routine and edge counts against authoritative sources so token
-  grammar drift fails closed.
-- **Generated-call liveness needs explicit return and preserve contracts:** once
-  current `LABEL@` calls became visible, seven of nine reports were legitimate
-  saved-register or returned-register flows, while `LPROTWIDQ` exposed the real
-  x5/x6 loop-state clobber. Keep contract fixtures beside a genuinely clobbering
-  control, and back each preserve row with concrete save/restore code until the
-  typed machine-effect schema replaces the table.
-- **Make the native-process preflight a separate blocking step:** printing
-  `pgrep` output and then starting a gate in the same shell still launches the
-  gate when another workspace is active. Inspect a standalone process census,
-  wait for zero real Habu children, and only then issue the native command.
-- **Regenerate the typed-diff artifact after the final edit:** a later census
-  helper introduced bare locals after the first lint pass, and only the commit
-  checkpoint caught it. The proof must describe the exact tree being committed,
-  not an earlier patch snapshot.
-- **A typed-locals group does not replace the caller-visible effect:** putting
-  `( -- result )` after locals can describe the post-binding stack while hiding
-  the inputs from readers. State the full public effect before `{: ... :}` so
-  reviews and tools see the same contract.
-
-- **An optional lint root is an audit bypass:** `trust-lint` silently skipped
-  absent roots and audited only `src/` plus `lib/`, leaving 16 existing
-  `maki/` and `tools/` TRUST sites outside `TRUSTED.md`. Keep one explicit,
-  required root set, recurse over both `.f` and `.fs`, and regress nested
-  unmanifested sites by exact `file:line: word` diagnostics.
-
-- **Describe bootstrap parity at the implementation boundary:** when the
-  Gforth recovery host mirrors pass-2 lowering, calling parity merely
-  behavioral or claiming there is no mirror contradicts the code. Name the
-  mirrored lookup, validation, and emitter surfaces and prove the recovered
-  compiler with the same focused fixtures.
-
-- **Nested family payloads have two widths:** an SC-APP is one schema root but
-  occupies the referenced family's full physical `WIDTH`. Sum padding,
-  `SUMV-PAYCELLS`, product offsets, and constructor instantiation must all use
-  that physical width; enum parsing must reset both root and physical counters.
-- **Compute a nested tag offset once:** layout validation must pass the same
-  canonical offset to the root check and every variant guard. Re-deriving it
-  after cursor movement embedded offset zero in accessor certificates and
-  rejected valid inactive variants.
-- **A gate reference includes its fixture inventory:** adding child-load rows
-  without the files, `FILEMAP.md`, and trust ownership makes the full gate fail
-  at `E-FS-OPEN` before the intended assertion runs.
-- **Generated checked fixtures are language clients:** their emitted source
-  must obey lowercase family/variant grammar and use typed pointer conversions
-  plus `ffi-call-bounded`; generated strings do not excuse obsolete primitives
-  or untyped boundaries.
-- **Sink guards must preserve the sink ABI, not only reject bad addresses:**
-  adding an inline code-target guard to `LCEMIT` clobbered x12/x13, while
-  lowering callers keep placement state live across emission. Save and restore
-  every guard scratch register at the sink boundary, then prove mixed-width
-  locals through the cold bootstrap compiler; a valid target address alone does
-  not prove the guarded emitter is transparent.
-- **Exercise ephemeral compiler mappings while they are live:** a post-compile
-  protection test sees only an unmapped artifact. Trust only a syntax-simple raw
-  state accessor; keep the immediate probe, sink action, and cleanup assertion
-  checked. Enter pass-2 before the sink, use an invalid-fd `read` for non-mutating
-  neighbor probes, then assert the mapping state is zero after publication.
-- **Proof tables need arena growth when valid source length is not statically
-  bounded:** the pass-2 local-bind table capped every definition at 256 bind
-  occurrences even though branch joins keep the compiler's 64-live-local frame
-  bound intact. Keep the live frame fixed, but grow monotone replay evidence and
-  regress 257 sequential branch-scoped binds.
-- **Immutable artifacts need size-derived mappings, not a generous fixed band:**
-  a 64-KiB lowering blob imposed an undocumented certificate-size language
-  limit. Page-round the validated source plus evidence, mmap exactly that span,
-  protect it read-only during replay, and unmap it at transaction commit; keep
-  only its base and capacity in protected engine state.
-- **Consume package operations, not internal implementation words:** the check
-  driver duplicated `LOWER-CERT-HOOK` internals to report and classify a verdict.
-  Calling the public `LOWER-CERT-HOOK:HOOK` preserves one diagnostic/multi-error
-  contract and lets the reporter remain private; do not replace package scope
-  with global name prefixes or forwarding aliases.
-- **Replay cursors start from the producer's sequence origin, not the pass-mode
-  value:** `EM-P2-START` reused `x9=1` after enabling pass 2 and accidentally
-  initialized the certified local-bind cursor to row 1. Keep mode and cursor
-  initialization distinct; exact-consumption checks catch the tail mismatch,
-  but the wrong first width can already emit invalid frame accesses.
-- **A protected sink owns a byte interval, not an address:** start-only checks
-  let unaligned `!`, syscall buffers, and fixed mappings begin immediately below
-  compiler state and overwrite across its boundary. Pass the sink's real byte
-  length, reject `addr+len` wrap, and test half-open lower/upper neighbors. When
-  a compiler artifact is passed to `mprotect`, mmap it separately and round its
-  length to the largest supported target page (64 KiB on arm64 Linux); macOS's
-  16 KiB or a local Linux 4 KiB acceptance does not prove deployment safety. When
-  an engine layout offset grows past 16 bits, every emitted
-  load must use `LIT64,`; `MOVZ,` spills bit 16 into the shift field and silently
-  initializes the wrong address. Re-derive each sink's pop order too: `BPATCH32`
-  popped target into x9 but guarded x10 (the instruction word), so normal boot
-  exposed the wrong-register guard as a false overflow while the real target was
-  unprotected. Guarding `cp!` alone is insufficient: an allowed final-word CP
-  still lets the next defining word overrun. Put the code-interval check in
-  `LCEMIT` so every instruction write, including `CREATE` and `CONSTANT`, owns
-  the same fail-closed bound.
-- **Probe "over-conservative reject" claims by removing the guard and reading
-  what breaks:** the TFAM 11 open-arg layout reject LOOKED like pure
-  conservatism (scalar `( a -- a a ) dup` certifies + defers linearity to call
-  sites, but layout `( tdlin<a> -- tdlin<a> tdlin<a> ) dup` rejects). Width was a
-  red herring — cell-kinded params make a layout's width fixed regardless of args,
-  so it's a linearity question, not width. But deleting the `LAYOUT-ARGS-OPEN?`
-  gate in `PUSH-LOGICAL` (always expand) broke every construct-accept case
-  (type-linear A1/A5/A6/A7 → E-REJECTED with declared==inferred): the 1-cell
-  open-arg form is LOAD-BEARING for the constructor's raw→hidden boundary coercion
-  (a ctor yields `lq2<ltok,?b>` with the un-provided arg open). Lesson: a
-  fail-closed guard can be over-conservative AND structurally load-bearing at once
-  — a checker-boot-prefix edit + one suite run separates "flip a fixture" from "a
-  dedicated multi-part feature." (habu-tfam-11-linear piece 3: stop-and-report.)
-- **Reuse the conservation machinery, don't add a transport special-case:** the
-  TFAM 11 move-class relaxation (swap/rot/>r of a linear layout bundle) needed
-  ZERO new classification code — deleting XG-READ-GROUP's blanket linear-bundle
-  reject let linear bundles read through XG-READ-HID, and XPORT-APPLY's existing
-  LIN-SNAPSHOT/LIN-CHECK (bundle counted once at its tag by LAYOUT-LINEAR-COUNT)
-  already accepts a permutation (before=after) and rejects copy/drop. Locals
-  capture kept rejecting for free (LOC-BIND-GROUPS removes the bundle from the
-  counted rows at bind → count drop → reject), and boundary-loss/return-stack
-  stranding are caught by the boundary balance. When a fail-closed v1 guard sits
-  in front of a general count/conservation path, relaxing = deleting the guard,
-  not adding op-class logic. (habu-tfam-11-linear slice 4.)
-- **checker.f is a boot-time prefix — a checker edit is live at next boot, no
-  rebuild needed to test:** run the fixtures against the current bin/hb
-  immediately; the fixpoint rebuild is only for the byte-identity gate. But do
-  NOT `rm bin/hb` before the install path (it builds to a temp then installs);
-  a manual rm strands you with no builder — restore from a sibling fable
-  workspace's bin/hb (same base) if it happens.
-- **Snapshot-image regressions scan for the trailer magic and re-sign each
-  patch:** the 48-byte trailer is NOT at file-end — SNAP-EXTRA-SIZE pad plus
-  the macOS codesign blob follow it (measured magic at size-57392), so locate
-  it by scanning for the LAST SNAP-MAGIC occurrence, never FILE-SIZE offsets.
-  An un-resigned patched image is SIGKILLed (rc -9) before the loader runs.
-  Corrupting the magic is a fall-through COLD BOOT (rc 0), not a reject; the
-  rejection legs are version>max (rc 80) and a positive-but-oversized
-  region-len/ndict middle byte (rc 79) — data-len top bytes can SIGSEGV
-  instead. Fixture: BFT-TEST-SNAP-TRAILER.
-- **An assembled-source certify pass makes file-local `0 set-check` windows
-  false-reject; convert the window to a named TRUSTED: boundary instead of
-  teaching the verifier to skip:** BF-CERTIFY-SNAP rejected snap.f (undefined
-  SNAPGO from require'd snap-lib.f inside its `0 set-check` window) and
-  blocked `-- snap`. Making VERIFY:SOURCE-BUF honor set-check spans would
-  have weakened every generated-source certify; converting SNAP-RETIRE-GO to
-  `TRUSTED:` (body skipped by the scanner, effect audited in TRUSTED.md)
-  fixed the route, let BF-AUDIT-BOUNDARY pin BFR-CHECK-OFF as the only
-  check-off line in generated sources, and retired snap-build.f outright.
-- **Generated constructor WID protection belongs after emission, not inside
-  `C-STORE`:** a `C-STORE`-time predicate re-enters Forth while the native
-  definition machinery is mid-publish and has no stable generated-word identity.
-  The sound producer is post-generation: regenerate one constructor name from
-  SUMV metadata, validate it with `TFAM-CTOR-WORD?`, resolve the record through
-  xref, then native `prot-wid-add` the wordlist. Native seal rejects need a child
-  process fixture because rc 84 exits the engine and cannot be caught in-process.
-  Calling an unchecked-prefix predicate from checked xref code needs a `PRIM:`
-  effect row (type-family.f loads before xref.f in every context) — NOT a
-  `TRUSTED: ... evaluate` name-lookup wrapper, which launders the call and adds
-  a manifest row for a word that is lexically in scope.
-- **bin/hb keeps NO baked checker DATA — the boot prefix re-parses from disk:**
-  `EMIT-COLD-PREFIX` (habu2.f PFX-LOAD-BASE-FILES) reloads util→checker→
-  type-family→…→sha256→combinators→xref at EVERY boot, so top-level writes to
-  checker cells from COMMON-tail files (habu2.f) never reach the installed
-  binary — a canary literal store proved it. A hook between a checker-prefix
-  file and later support must live in its own prefix file (e.g.
-  `src/core/type-family-sha.f`) registered in ALL prefix/source registries:
-  habu2.f PFX tables ×3 + label var/init, bootstrap/cg/forth.fs mirrors ×5,
-  build-fixpoint COMMON+SNAP-KEEP, srclist.f, bootstrap.sh SRC_COMMON,
-  diagnose-hb-core.f (+ COMMON-N count in diagnose-hb-test.f), shadow-lint.f,
-  hb-build-lib.f key list, test/run-files.f, FILEMAP.md.
-- **Escape every joined segment, including the last:** the constructor-package
-  derivation escaped '-' only inside the package segment, so top-level family
-  `a-b-c` collided with package `a` family `b-c` (both `A-B-C`) — the pinned
-  A-B+c example passed and hid it. An escape/join scheme is injective only if
-  EVERY joined component is escaped; a raw final component is safe only behind
-  a fixed-width delimiter (the SHA-fallback's 16-hex region).
-- **Suite helpers that return shared-buffer strings need an intern before the
-  second call:** TF-CTOR-PKG$ returns TF-CTOR-BUF; asserting determinism by
-  calling twice compared the buffer with itself (vacuously green) until the
-  first result was TF-INTERNed. Copy-out before re-deriving in tests.
-- **A "free" DATA offset next to a guarded band may be someone's base pointer:**
-  $40C8 (just past the PROT-REG band) looked like the natural home for the
-  sealed TOP-HOOK-CELL, but it IS lib/task.f TASK-USER-BASE and test/seal.f
-  pins it writable. New sealed cells go into an rg-verified reclaimed hole
-  ($27F0, the retired descriptor-hook slot) with their own GUARD-SPAN/
-  PROT-GUARD band instead of growing an existing band whose end is a public
-  boundary. Also: a pre-BLR dispatch event means the uninstalling
-  `0 set-top-check` call logs itself — event-sequence fixtures must count the
-  trailing two events.
-
-Concise findings only: what worked, what failed, why. Coding standards live in
-`docs/forth.md`; API details in `docs/` near their feature. One tight bullet per
-lesson — keep the specific word/code/path, cut the prose.
+Durable, transferable rules only — "when X, do/never Y because Z", with the
+specific word / path / constant / error kept. Coding standards live in
+`docs/forth.md`; API details in `docs/` near their feature. Pure status
+narrative ("X landed on date D") is not a lesson; the full dated campaign log
+with all falsification detail is archived in `docs/archive/lessons-2026h1.md`
+and in git history. One tight bullet per lesson; add a section only if none
+fits.
 
 ## Checker Soundness
 
-- **Definer capacities are values, not syntax:** the original
-  `LAYOUT-BUFFER NAME family 16` grammar forced every caller to duplicate its
-  named capacity and add a drift assertion. `count LAYOUT-BUFFER NAME family`
-  lets runtime validation consume the authoritative value while source
-  preverification records only the count-independent accessor signature.
-- **A raw-storage API needs a validating ADT decoder, not a typed-pointer cast:**
-  maps intentionally expose caller-owned cells through `MAP-SLOT-FIELD`, so they
-  cannot promise representation integrity. Removing the dedicated state pointer
-  still matters: `MAP-SLOT-STATE@` now converts only raw 0/1/2 to constructors
-  and throws `ENGINE-ERROR:BAD-TAG` otherwise, while the public nominal getter/setter prevent
-  accidental tag laundering in checked code.
-- **Make exit-only seal tests mutation-sensitive:** target the sealed latch with
-  a zero-valued ADT cell. If a wide-store loop omits a later guard or writes
-  before loading the latch, that store opens the seal and the child exits 0
-  instead of `ENGINE-ERROR:SEAL-VIOLATION`; emit an armed marker immediately before the
-  sink so an earlier compile/setup exit cannot satisfy the rc assertion. Pair
-  this runtime probe with the lowering golden that pins STR after the full
-  address-range guard.
-- **A typed pointee proves identity, not storage capacity:** wide ADT `!`/`@`
-  can refine `ptr a` to `ptr family` and lower from compile-time `W`, but a
-  plain `variable` still owns one cell; callers allocate `W` cells until
-  `LAYOUT-BUFFER` owns stride/bounds, W=0 rejects as non-addressable, and wide
-  `!` must run the two-band seal guard per destination cell so a later slot
-  cannot cross into protected memory after an unprotected base.
-- **A qualified def's engine->checker record call must key off the QUALIFIED
-  name, and read it from a STABLE buffer:** every sig'd `: PKG:tail (..)` recorded
-  twice at `;` — the hook cert under the qualified body-buffer name (correct) AND
-  `C-CALL-TRUST-PEND` under the BARE dict-record tail (`C-PUSH-DREC-NAME` read the
-  published record whose name is the rewritten tail), leaking a bare-global `tail`
-  effect row that shadowed core prims and certified bare-tail calls the engine
-  rejects; `TRUSTED: PKG:tail` had ONLY that bare row (qualified lookup found
-  nothing). Fix: `C-PUSH-DREC-NAME` pushes the body buffer's first token
-  (BODYBUF-OFF) = byte-identical to the cert path's NMA, so CHECKER-RECORD-SYM
-  splits the `:` into the PUBLIC (pkg,tail) sym. Two traps: DEF-TKA is a raw
-  SOURCE pointer (stale across a multi-line body → hb-stage boot SIGSEGV), the
-  body buffer is a fixed engine DATA region; and scratch must avoid x11 (holds the
-  trust XT for the later C-CALL-X11-SAVED BLR). Gforth stage0 has no package
-  system, so its record name IS the full name — no mirror change
-  (habu-qualified-defs-leak-aadeb5c9).
-- **Post-check scratch read by a later pass must be keyed by something the
-  branch joins never pop:** TFAM 12's pass-2 width-aware emitter reads checker
-  locals widths AFTER the hook certifies, but the live table (`LOCW`) is popped
-  at joins (`CF-LOC-REST`) and frame slots are reused by sibling arms — live-
-  index reads died 76 or took a sibling's width while the verdict stayed -1.
-  Landed fix (habu-tfam-12-pass): key the durable table by a monotone bind
-  sequence (`LOCW-HW[LOCSEQ]`, assigned in `LOC-ADD`, finalized via
-  `LOCSEQIX[live]` at the `:}` bind, reset only in `CHECK-RESET`), and let the
-  pass-2 carve REPLAY binds in textual order (`P2-CARVE-W` consumes one seq per
-  group local, rebuilding a live table `P2LW` the slot math reads). Replay
-  alignment holds because `LOC-BEGIN` rejects `{:` in dead code and quotations;
-  `LOCW-HW@` dies 76 on any skew. Host such pass-2 scratch in checker.f, not
-  new engine DATA cells — the fixed DATA map is full ($3A00..$3C88 is the FFI
-  block) and the checker already owns the facts.
-- **Diagnosing with the row renderer beats guessing:** the branch-local exec row
-  first rejected not from the branch at all — a RAW generated-constructor call
-  + immediate local bind (`7 TLP--RES:ERR {: r :}`) rejects identically at top
-  level (ctor output is still in the CTOR-PEND signature-boundary window). Test
-  seeds must be checked maker words; reduce with `CHECK-QUIET-CANDIDATE!`
-  probes before blaming the new mechanism.
-- **A new static gate's blast radius includes the test corpus's own
-  metaprogramming:** checker-computed DNAME-WIDE marking made the interpret
-  tick gate fire on the layout goldens' `' TLP-DUP` — correct enforcement, not
-  a bug. Test-only xt introspection must live in the raw-xt TRUSTED boundary
-  (search-wl), not interpret `'`, once ticking is part of the gate surface.
-  When a checker fact needs an engine-side record flag, prefer a checker-owned
-  latch stored BY VALUE at the single record choke point (E-ADD-EFFECT) and
-  consumed by the publish tails after ndict++ — the existing `wide-mark`
-  newest-record prim then needs no pend variant, and staleness is impossible
-  because every consuming publish runs its own record flow last.
-- **Staged fixtures can encode an unsound expectation — re-derive from physical
-  truth before wiring them in:** the staged constant shape-carry fixtures
-  (PST-CONST-K-CARRY$ `CAE-CV-K | -- cae-cv`) expected a 2-field record effect
-  from a ONE-cell bake — certifying USE words that push fewer cells than
-  declared. A definer's recordable effect is bounded by what its runtime
-  actually stores (C-CONSTANT pops one cell), and the untyped interpret stack
-  has no sound shape source (adjacent-producer inference mis-carries on
-  `MK 5 constant K`). Verdict: `-- a` is the permanent constant contract; wide
-  values are gated at interpret DISPATCH (DNAME-WIDE), which dominates every
-  downstream value-pop consumer — gate production, not each definer.
-
-- **Layout transport is a per-token mode, not a per-var flag:** generic stack
-  prims share polymorphic effect vars (`dup` and `0=` both use `PE-A`), so you
-  cannot mark a var "layout-transportable". Item 12 sets `LAYOUT-XPORT` in
-  `DO-TOK1`/`LOC-BIND` only for the whole-bundle ops (dup/drop/swap/over/nip/
-  rot/-rot/tuck/2dup/2drop/2swap/2over, >r/r>/r@/2>r/2r>/2r@, locals) and lets
-  `U-TYPE`'s `LAYOUT-BLOCK?` allow a var↔layout-param bind only in that mode;
-  every other touch (inspecting prims, control preds, execute/catch, con/ptr/
-  atom) still fails closed exactly as item 7. Accepting is sound because a
-  layout value is still ONE physical cell (item 7 kept it one `T-PARAM` cell, no
-  `LAYOUT-PUSH-FIELDS` yet, no published constructors → wider values aren't even
-  constructible). The mode MUST be reset (`0 LAYOUT-XPORT !`) after `CHECK-SCAN`
-  before boundary `SUNI-COERCE`, else a generic output var wrongly absorbs a
-  layout when the last body token happened to be a transport op.
-- **`?dup` was UNCK, not reject:** `?dup` is unmodeled (not a `PRIM:`, not in
-  `CF-TOK?`/`RS-TOK?`) so it falls to the undefined path and marks `UNCK=1` —
-  any checked word using it is "uncheckable", an escape hatch. Item 12 added
-  `QDUP-STEP?` to REJECT `?dup` on a layout value (it branches on the tag cell);
-  the scalar union effect (`x -- x x | x`) is still unmodeled and dotted
-  (`habu-model-dup-checked`).
-- **A layout param hides its payload from the linear count:** the linear
-  discipline counts concrete linear CONS on rows, so `tdlin<own>` (one opaque
-  `T-PARAM` cell) dup/dropped freely while bare `own drop` rejected — the
-  destruction review caught it. Transport binds now reject any layout whose
-  family args resolve linear OR are still unbound vars (may later bind linear),
-  fail-closed until TFAM 11 counts whole bundles; identity flow stays legal.
-- **IBUFSZ is another src/core growth watermark, and it exits SILENTLY:** the
-  engine's boot source-prefix copy loops (habu2 `SRC-SFAIL`/`SRC-BFAIL`) exit a
-  bare `74` with no message when the concatenated prefix reaches `IBUFSZ`
-  (src/habu/layout.f, Gforth mirror bootstrap/cg/forth.fs). Growing checker.f
-  ~2.4KB (item 12 slice-3a) made `install --force` fail as an opaque
-  `E-BUILD-STATUS: refresh child failed`; the leftover `hb-stdin-mk` run by
-  hand reproduced the silent 74. Bumped 1M->1.5M in both mirrors; silent
-  capacity exits are dotted to print their own name before dying. The
-  definer capacity exits are now labeled (`hb: dictionary full at: <token>`
-  77 / `hb: code space full at: <token>` 76, habu-gate-runner-entry-81c84af0)
-  — a capacity wall that prints only the current token is unattributable (the
-  dict-full one surfaced as a lone ':' byte). DICT-CAP is a growth watermark
-  too: the gate-runner-support closure crossed 8192 records; cap now 16384
-  with CFSTK-OFF/DICT-SIZE/HIDX-SLOTS/HIDX-BYTES scaled in step and the
-  LFIND probe masks derived from HIDX-SLOTS instead of hardcoded.
-- **A copied `bin/hb` is not a frozen baseline:** the small engine LOADS
-  `src/core/*.f` from the working tree at boot (`hb: cannot open src/core/util.f`
-  when run outside the repo), so an old binary run in an edited tree exhibits
-  the EDITED checker — red/green comparisons must pin the source tree state,
-  not the binary. Chasing "engine words not in any tracked source" wasted a
-  session hour before one out-of-tree run exposed the boot-time load.
-- **Growable registries that own a string pool must rebase on relocation:** CT/
-  VREC/SYMS records hold ABSOLUTE pointers into their `*-STR` pool; growing the
-  pool (mmap relocate) or persisting it to fresh DATA dangles them. `*-STR-REBASE`
-  adds the move delta to every stored name pointer (VREC also to VR-ATOM/VR-PARAM
-  node `VN.A`). Grow the RECORD/NODE arrays to mmap BEFORE the string pool so a
-  rebase never mutates the pristine baked boot buffer. SYMS additionally must stay
-  a power of 2 (HIDX mask) and drop+rebuild the HIDX index on grow (that IS the
-  rehash). Reserve `pkgu+nameu` string bytes up front in SYM-INTERN so no
-  mid-record grow dangles a just-written PKG-A.
-- **`create ... allot` checker arenas convert to boot+P without touching callers:**
-  replace `create X ...` with `create X-BOOT ...` + `variable X-P` + `: X ( -- ptr
-  a ) X-P @ ;`; every `cells X +` site is unchanged. Live caps become a `variable
-  *-CAP-V` + `: *-CAP *-CAP-V @ ;`; the `create`s use the `*-INIT` constant.
-- **The image build buffer MSIZE must be >= MPAGE:** `src/os/image-bytes.f MSIZE`
-  ($90000) bounds MBUF, which holds the whole `__text` (up to TEXTSZ). The macho
-  code-limit check allows up to `MPAGE` ($100000), so an engine with $8F000..$FF000
-  of code passes the 73-check but overflows MBUF with M-BOUNDS `75` (maker builds
-  spawn with fd -1, so the error is silent — run the leftover stage2-src by hand
-  to see it). Bumping core code past ~585KB tripped this; MSIZE raised to $120000.
-  This is the "maker __text wall" the watermark lesson warns about.
-- **The lint tokenizer TMAX is a src/core growth watermark:** `tools/lint/token.f
-  TMAX` ($6000) caps CODE tokens (comments/`( )` stripped) per linted file;
-  checker.f is the largest. Growing it throws E-LINT-TOKEN-CAP `77` from
-  shadow-lint. DRY helped once; then bump TMAX ($6000->$8000).
-- **A value-less unification trail undoes FRESH binds only:** TV!/RV! record just
-  `(var-id, is-row)` and TRIAL-REST unwinds to UNBOUND — correct because U-TYPE/
-  U-ROW only bind post-resolution (UNBOUND) vars. It cannot undo a RE-bind
-  (compression overwriting an existing binding), so path compression must run only
-  at trial depth 0 (permanent, no undo needed) OR the trail must record old
-  values. The trail needs one invariant the wholesale memcpy did not: no NEW
-  (TRAIL-RESET) between TRIAL-SAVE/REST — verified because EFF-APPLY only does
-  FRESH + trailed binds, never reaching NEW/E-PARSE-ADD.
-- **Native MULTI-ERR load != the check-all-errors re-driver:** both emit the same
-  rich JSON (same DIAGXT), but the native load's line/byte are DEF-BUFFER-relative
-  (2nd def reports line 1) while the goldens pin FILE-relative positions
-  (`DIAGL0/DIAGB0` set per-def by the re-driver via `VERIFY:SOURCE-BUF-AT`), and
-  the native mode suppresses cross-def cascades (trusts the declared sig) where the
-  re-driver reports them. Rewiring onto the native mode needs a new capability
-  (thread the compiler's per-def file position into DIAG-ORIGIN! during load) plus
-  a cascade-policy decision — it is not a drop-in swap.
-
-- **Cache-rewind detectors belong at the append choke point, not only reads:**
-  the checker symbol-index epoch cache first compared arena watermarks at read
-  time; candidate rollback followed by the next definition's recurse-cache
-  record regrew `UEND` past the watermark and masked the rewind, so a stale
-  cached effect offset resolved into overwritten bytes. `E-REC-START` and
-  `NORET-ADD` now sync before appending — regrowth itself flushes the cache
-  before truncated offsets are reused.
-- **Cached arena offsets need a +1 encoding:** offset 0 is a legal record
-  position after `USIGS-RESET`, so a 0-means-none cache silently dropped the
-  first record; the engine-suite grow fixture caught it.
-- **`variable`/`create` definitions publish checker records:** a capacity
-  fixture that shrinks `USIGS-CAP-U` and then defines a `variable` before
-  sampling has already forced the grow it meant to measure. Define fixture
-  cells before mutating capacity state.
-- **Engine-suite must not assume a runtime-sized checker store:** a restored
-  snapshot boots with the persisted (smaller, DATA-backed) `USIGS`; reset
-  fixtures normalize with one `USIGS-RESET` first so the suite passes under
-  both `bin/hb` and a warm snapshot engine.
-- **Giant words hide effects even with correct signatures:** a survey renderer
-  combined input scanning, row validation, aggregate mutation, and JSON emission
-  in one body. Split multi-pass work into cursor/pass/row/render helpers first;
-  line comments then document only the non-obvious transitions that remain.
-- **Core checker helpers share the loaded image:** `CK-TRUE` looked local in
-  `src/core/checker.f` but collided with `lib/content-key.f` during the full
-  suite. Use feature-owned helper prefixes and prove against the full image, not
-  only isolated checker probes.
-- **Keep `roles.f` TRUST site rows stable:** inserting `DEFLINEAR` above the
-  trusted role casts shifted every manifest site. Put new definers below the
-  audited cast block unless the manifest is deliberately re-audited.
-- **Typed FFI bindings need a resolver word, not a global handle:** `FFI:` can
-  generate checked wrappers while CUDA/libc/tasking each keep their own
-  `DLSYM` policy. The wrapper should cache the resolved symbol, throw on zero,
-  erase roles only at `FFI-ARG!`, and refine the returned cell to `rc`/nominal.
-- **Destructure value records before typed locals:** `ptxir-node` fields are
-  hidden `field<...>` tokens, so `{: op:n :}` rejects until `PTXIR-NODE>` turns
-  the record back into raw field types.
-- **Multi-line words need useful line effects:** value-record checker work
-  exposed helpers whose stack motion had to be reconstructed. Put the word
-  effect on the definition line; add body-line effects only where they improve
-  review. Empty/no-op line comments are noise, so factor instead.
-- **Parser-word table rows must execute at top level:** `PRIM:` originally sat
-  inside `PT-*` colon words, so it would compile instead of consuming the next
-  source token; literal names such as `s"` then broke compilation. Primitive
-  effect declarations now run top-level: `PRIM:` consumes the name token
-  immediately and the `PE-IN`/`PE-OUT` constructors build the stored effect.
-- **`tools/check.f` must pre-register source-local `deftype`:** preverify parses
-  signatures before the child executes source, so valid nominal declarations
-  looked unknown and bad declarations died as raw prose. The tool now scans
-  `deftype` first inside a checker scope, registers valid names, and emits JSON
-  for invalid names.
-- **Symbol interners must consume miss sentinels:** `SYM-INTERN` initially left
-  the `0` id returned by a failed `SYM-FIND` under the new id, corrupting the
-  first `TRUST` during stage-source loading. For `( id bool )` finders, every
-  miss path must `drop` the sentinel before publishing a new record.
-- **Checker metadata loops need owned indexes:** the integer-type table crash was
-  `CT-FIND` using `over` to recover the loop code after pushing search strings;
-  it passed a pointer as the type code and `CT-NAME$` fetched through garbage.
-  Store table scan indexes in named cells or locals before pushing payload data.
-- **Cell `@` must reject byte spans:** `CHECK!` accepted `ptr u8 @` because the
-  primitive model treated `@` as unconstrained `ptr a -- a`. The fix belongs in
-  checker primitive semantics: concrete `ptr u8` uses `c@`/`c!`; pointer-valued
-  cells are modeled as `ptr ptr u8` and read through `ptr-field @`.
-- **Package reopen is scope, include is composition:** reopening `package NAME`
-  resumes the same private/public wordlists and duplicate set; `--load`,
-  source-list, or include still owns file dependency order. Do not include a
-  file merely to share the package namespace.
-- **Optional dependency loaders use `required`, not `included`:** `tools/check-all-errors-core.f`
-  re-included `src/habu/verify-source.f` after `tools/build-fixpoint.f` had
-  required it, so resident engine workers hit duplicate `SOURCE-A`. When a tool
-  conditionally loads shared support, keep the XREF guard if useful but use the
-  require registry for the actual load.
-- **Package public tails are the API:** once a module has `package TASK`, the
-  public spelling should be `TASK:KILL`/`TASK:DONE?`, not global-style
-  `TASK-KILL`/`TASK-DONE?`. Keep implementation helpers private and put the
-  caller-facing surface in the `public` section.
-- **Test fixture state belongs in a package:** focused framework tests should use
-  a private package (`package FEATURE-TEST`) with short private names instead of
-  global stems such as `TST-*`; only the public framework API is qualified.
-- **Self-calls use `RECURSE`:** naming the word being defined inside its own body
-  can compile the wrong target and crash at runtime. Recursive helpers must use
-  `RECURSE`, then keep the checker regression that exercises the recursive path.
-- **Checker source expansion keeps lint ownership:** `tools/check.f` flattens
-  `require`/`required` dependencies into a temp source for checker execution, but
-  trust/signature/boundary/reserved-name lints must still scan the original input
-  path so manifest sites stay stable.
-- **Core byte helpers are not string-library setup:** `lib/ffi-abi.f` used
-  `BYTE-COPY`, so `include lib/ffi.f` failed unless `lib/string.f` happened to
-  be loaded first. Small primitive helpers used across unrelated libraries
-  belong in a narrow `src/core/*.f` prelude file, and test entry files should
-  include their own setup instead of making suites encode broad library order.
-- **Scanner opener predicates should read source bytes:** `create`d token tables
-  are `ptr a`, not `ptr u8`; use checked byte helpers for token-shape tests
-  instead of passing dictionary data to source-string APIs.
-- **Runtime data slots must not overlap evaluate frames:** `EVAL-FRAME` spans
-  `$3800..$39FF`; putting task or FFI scratch cells inside that range corrupts
-  nested `include`/`evaluate` and makes definers fail as if tasks were live.
-  Keep per-runtime scratch after the full frame area and before `DATA-START`.
-- **Module entry files own dependency setup:** `include lib/task.f` must work
-  without the caller knowing `errors`/`memory`/`ffi` order. Test/tool entries
-  use `require` for setup, and suite declarations list only entry files plus
-  script args. Shared warm setup must also use `required`, and snapshots must
-  preserve the require registry so baked support is not reloaded at runtime.
-- **Tool entries must not borrow suite prelude:** `tools/dot-dep-lint.f` passed
-  inside the stdlib suite but failed standalone at `CLEANUP-RESET` because the
-  suite had already loaded `lib/fs-mutate.f`. Every tool entry must require the
-  exact files needed by its own top-level path.
-- **Test runners must not keep loop state across test execution:** an included
-  maki fixture using caught throws (`TTHROWS`) truncated the remaining suite when
-  `lib/test/suite.f RUN-BODY` used `?do`; explicit index/count cells keep suite
-  iteration outside the return-stack state that tests may legitimately unwind.
-- **Run comments are not dependency setup:** `lib/render-test.f` and
-  `lib/report-test.f` had accurate command comments but failed when loaded
-  directly. Test and library entry files must `require` their own dependencies.
-- **Stdlib leaves hid missing requires for months; bare-load them to prove it:**
-  `lib/float.f` consumed `lib/string.f` words and `lib/fmt.f` consumed both
-  (its header even *documented* the deps) with no `require` lines — masked
-  everywhere by gate load order, surfacing only as a consumer "workaround"
-  require (`maki/ablate-fusion-test.f`) whose comment mis-attributed the dep.
-  The proof and the regression are the same command: a bare
-  `bin/hb --load lib/<mod>.f` + one word call must load green standalone; fix
-  the module that *consumes* the words, then delete the consumer workaround.
-- **Baked prefix files must be marked `provided`:** `bin/hb` loads core prefix
-  files before user source, but the `require` registry was empty, so
-  `require src/core/sha256.f` reloaded `W32` and hit duplicate definition.
-  The source-prefix builder now appends `provided` rows for every baked prefix
-  path before user/test source runs.
-- **A new baked core file has two prefix owners, not one.** Native
-  `habu2.f`/fixpoint registration does not update the Gforth recovery compiler;
-  mirror its load, path, provide, and label rows in `bootstrap/cg/forth.fs`, and
-  concatenate it in `tools/bootstrap.sh`, or recovery-only consumers see an
-  undefined public word despite a green native prefix.
-- **Tasked engines need process-wide fatal exits:** Linux `exit(93)` terminates
-  only the calling pthread, so checker/die paths can leave workers alive and
-  make process captures time out. Native and bootstrap emitters must use
-  `NR-EXIT-GROUP` for process termination; `pthread_exit` remains the task-local
-  stop boundary.
-- **Task facilities need owner state above pthreads:** SwiftForth-style
-  facilities make same-owner `GET` and non-owner `RELEASE` no-ops; a raw
-  pthread mutex exposes deadlock/error behavior instead. Track an owner token in
-  the facility record and keep pthreads as the private blocking primitive.
-- **Warm-image tails must not reload prefix-owned layout:** target layout files
-  are part of the engine prefix. Snapshot tail tools append image emitters
-  (`elf.f`/`macho.f`) only; re-appending `src/os/*/layout.f` redefines image
-  constants and breaks warm-image baking.
-- **Duplicate package definitions belong at publish time:** package namespaces
-  concentrate many natural names, so same-wordlist redefinition must fail in
-  both `C-QUALIFY-DEF` and the certified checker signature recorder. Explicit
-  `TRUST` remains the audited override/refinement path; normal definitions must
-  not silently replace earlier package public/private rows.
-- **Parallel implementations need namespaced public words:** `lib/ptx/ad.f` and
-  `lib/ptx/ad-dag.f` both used `AD-EMIT-REV`; duplicate-definition rejection
-  correctly stopped the combined PTX suite. Keep experimental and replacement
-  implementations behind distinct public names or packages until one retires.
-- **Local-first compiler dispatch still owns checker capture:** moving local
-  references ahead of keyword dispatch means `C-LOCAL-REF` must call `LBCAP`
-  after `LLOC-FIND`; otherwise runtime emits the local but the hook checks a
-  different body.
-- **Namespace qualification is only a non-edge colon:** `HB:COUNT` qualifies
-  through a wordlist; `GE-FILES:` stays an ordinary Forth word. Keep `LFIND`,
-  definition storage, xref, and docs on that same rule.
-- **Forth language rules live in `docs/forth.md`:** checker/type/style guidance
-  was moved out of this file so there is one standards source for stack comments,
-  `TRUST`, roles, locals, checked DSLs, booleans, pointer fields, quotations,
-  `catch`, and phase tokens.
-- **Checker model cutovers must rebind the hook:** reloading
-  `src/core/checker.f` and `src/core/render.f` without reloading
-  `src/core/check-hook.f` left `HOOK` calling the old `CHECK!`; the generated
-  bootstrap/fixpoint source has to refresh all three together.
-- **Old seeds may lack envp capture:** the Linux seed could read script arguments
-  but not `HB_TMP` through `GETENV`, so stage2/fixpoint now passes the temp root
-  explicitly after `--` and keeps generated paths under the build driver.
-- **`ptr-field` is cell-indexed:** Linux stage2 crashed in `ARGV$` because
-  `src/os/*/env.f` used `ptr-field` for DATA byte offsets and pre-multiplied
-  argv/envp indexes. Header reads are audited byte-offset boundaries; argv/envp
-  entries use raw cell indexes.
-- **Do not publish facts with empty trusted stubs:** adding
-  `HB-TARGET-LINUX?`/`HB-TARGET-MACOS?` to `src/core/roles.f` as empty
-  `TRUSTED:` words made `EM-ENTRY-ARGS` branch on stale stack data during
-  stage2 emission. Target predicates live in `src/os/<target>/target.f`; only
-  nominal identity casts belong in `roles.f`.
-- **Typed storage bugs cluster around raw state:** the Linux tree-shaker/env work
-  exposed pointer and boolean state cells that looked like plain `n` cells. The
-  durable rule belongs in `docs/forth.md`; the lesson is that removing unchecked
-  file scopes quickly finds these hidden contracts.
-- **Try a checked factor before new trust:** `FS-BYTE-OFFSET` looked like it
-  needed a primitive, but `: BYTE+ ( ptr u8 n -- ptr u8 ) + ;` certified against
-  existing pointer arithmetic and let the trust row disappear.
-- **Removing a `TRUST` site also removes its inventory class row:** typing
-  `src/habu/repl.f`'s `DATAB` and deleting the `0 set-check` REPL append wrapper
-  left a stale `trusted-inventory-classes` row, so the full suite failed only in
-  `native stdlib lint tools`. Run `tools/trusted-inventory-test.f` whenever a
-  trusted boundary disappears.
-- **Split generated unchecked spans by evidence:** `build-fixpoint` could keep
-  `rt.f`, `crash.f`, `image-bytes.f`, and `regalloc.f` checked; only target
-  image/sign, `habu1/prof`, and `jit/habu2` still need the raw emitter boundary.
-- **Model phase tokens as checked cells:** `asm`/`img`/`snap` cannot be empty
-  trusted ghosts when their defining files are checked; push a nominal cell at
-  the producer and erase/preserve it at the next phase boundary.
-- **Function-passing is a checked capability — don't default to unchecked:** I
-  almost copied `combinators.f`'s `0 set-check` boundary for a generic comparator
-  `SORT!`. Empirically the checker verifies a quotation parameter executed through
-  a call chain AND a `?do`/`begin` loop (E1–E5 probes), so `lib/sort.f` `SORT!`
-  ( `ptr a n [ a a -- bool ] --` ) is fully checked. `combinators.f` MAP/FOLD/EACH
-  are an unchecked boundary that predates this and could likely be checked too —
-  it is not a model to copy. The reusable rule is in `docs/forth.md`.
-- **Deferred execution must carry its effect:** raw xt cells (`variable`/`@ execute`
-  or `['] ... is`) let the stored implementation escape checker knowledge.
-  `defer NAME ( effect )` plus `[: IMPL ;] is NAME` keeps assignment checked, and
-  every source pre-verifier (`hb-build`, all-errors reducers) must learn new
-  top-level definers instead of treating them as ordinary tokens.
-- **Eval grading is not load checking:** `CHECK!` is the persistent load hook and
-  must keep certified signatures for later definitions. Model-candidate grading
-  uses `CHECK-CANDIDATE!`, which suppresses duplicate-name rejection only for that
-  candidate and restores `USIGS`/`NORETS` afterward.
-- **Runtime definers must publish checker facts:** a parent preverify pass cannot
-  help the child checker registry. `create`/`variable`/`constant` must publish
-  their `TRUST` effects in the native compiler when the hook is installed.
-- **Parser-word payloads are part of the checked body:** `[char]`/`char` consume a
-  source token before codegen, so the compiler body capture must append that token
-  and the checker must model the parser word as one literal plus one skipped token.
-- **Keep include as a two-leaf boundary:** source composition needs checked
-  path/read/depth code plus only the mmap pointer refinement and final `evaluate`
-  crossing as `TRUSTED:` leaves. Do not grow include to hide source-order bugs.
-- **Malformed control is not uncheckable:** orphan closers and unterminated
-  `if`/loop/quotation/`case` frames must set `OK=0`; `UNCK` is for missing
-  checker model coverage, not syntax imbalance.
-- **The checker modeling an invariant does not make the engine fail-closed:** the
-  checker's `CF-THEN`/`CF-UNTIL`/... already `CF-FAIL`ed on an empty control-flow
-  stack, but the native `:`-body compile emits token-by-token FIRST and the
-  post-`;` `HOOK` (`CHECK!`→throw 70) runs only after. `: XI ( -- ) THEN ;`
-  SIGBUS'd (rc 134): `LCFPOP` decremented the empty engine CFSTK to -1, read a
-  bogus branch origin below the base, and `LPAT` dereferenced it (dot
-  habu-orphan-control-word-0370b49d). Root fix is at the shared pop, not per
-  closer: guard `LCFPOP` at depth 0 → branch to a named `LORPHAN` reject that
-  joins the `LDIAGRET` tail (catchable RC-REJECT 70 under evaluate, rc-70 at top
-  level), exactly like `E-UNDEFINED`. One guard covers THEN/ELSE/REPEAT/ENDOF and
-  LOOP/+LOOP (both call `LCFPOP` before their loop-frame work) and hardens
-  UNTIL/AGAIN/ENDCASE (they only avoided the crash by never dereferencing the
-  bogus origin / a zeroed slack cell). Valid flow keeps depth ≥ 1 at every pop, so
-  emitted code is byte-identical. Mirror the guard in `bootstrap/cg/forth.fs`
-  (gforth recovery seed) as a fail-closed hard rc-70.
-- **Recoverable compile-error die sites route through one parametric tail
+- **`checker.f` (and `type-family.f`/`sumtype.f`/…) is a boot-time SOURCE prefix,
+  not baked engine bytes.** `bin/hb` recompiles `src/core/*.f` from the working
+  tree at every launch (`EMIT-COLD-PREFIX`/`PFX-LOAD-BASE-FILES`), so a
+  checker-only edit changes behavior with a byte-identical binary and needs no
+  rebuild to test — run fixtures against the current `bin/hb` immediately; the
+  fixpoint rebuild is only for the byte-identity gate. But a NEW prefix file, or
+  an engine (habu1/habu2) change, needs a rebuild and all its manifests (see
+  "new baked prefix file" below). Do NOT `rm bin/hb` before an install path (it
+  builds to temp then installs) — a manual rm strands you; restore from a sibling
+  workspace's `bin/hb`. Prefix-internal `:`/`constant` names are treeshaken away
+  and are checker-invisible to later tool sources unless a `PRIM:` row persists
+  their effect; a cold-prefix `.f` sees only engine prims, core words, the curated
+  public checker API, and hardcoded ABI constants.
+- **The `( ... )` stack comment on a `:` IS the checked signature, and its tokens
+  are TYPES, not local names.** `( got expected -- bool )` silently binds
+  `got`/`expected` as fresh type vars (later `n n` op mismatches "at '<='"); write
+  `( n n -- bool )`. Locals `{: got :}` may use any name; the sig may not.
+- **A byte pointer is spelled `ptr u8` (two tokens), never bare `ptr`.** `ptr` is
+  a constructor that consumes the next token, so `( ptr n -- )` is ONE input of
+  type `ptr n`, and a bare `( -- ptr )` fails "'ptr' needs an element type". A
+  word doing `c!`/`c@` on a passed buffer, or a `create`-buffer element address,
+  declares `ptr u8`. A base pointer AND an integer is `( ptr a n -- )` (two
+  inputs) or — cleaner — reference the `create` buffer by name (column-accessor
+  style) instead of passing it as a `:ptr` local. `ptr n` (a length after the
+  pointer) is `ptr n n` in an effect. The `:ptr` local shorthand reconstructs to
+  `ptr u8` in the effect.
+- **A `create` buffer's bare address infers `ptr a`; consume it IMMEDIATELY.**
+  Pointer arithmetic on other stack items below it leaves the create address at
+  its default cell-pointer type, so a later `MEM=`/`c@` rejects it as `ptr a`.
+  `BYTE-COPY` the span into a fresh `create` buffer (BYTE-COPY takes any `ptr`)
+  and compare buffers passed directly.
+- **Cell `@` must reject byte spans.** `ptr u8` uses `c@`/`c!`; pointer-valued
+  cells are modeled `ptr ptr u8` and read through `ptr-field @`. `ptr-field` is
+  cell-indexed — argv/envp/DATA byte offsets use raw byte access, not
+  pre-multiplied `ptr-field` indexes.
+- **`close` is `( fd -- )`, no status; `wait-rc` is WEXITSTATUS-only** (a
+  signal-killed child reports rc 0 — use `PROC-WAIT-RC` for 128+sig). Modeling a
+  phantom result cell gets rejected at branch joins.
+- **`?dup` is UNCK (uncheckable), not reject** — unmodeled, so any word using it
+  is an escape hatch. `QDUP-STEP?` rejects `?dup` on a layout value; the scalar
+  union effect stays dotted (`habu-model-dup-checked`). Malformed control (orphan
+  closers, unterminated if/loop/quotation/case) must set `OK=0`; `UNCK` is for
+  missing model coverage, not syntax imbalance.
+- **A trusted span constructor must MINT a fresh rigid (skolem) extent/mask token
+  per call, not reuse a nominal atom or a unification var.** Two parses of
+  `extent-n` produce string-equal atoms (independent spans wrongly unify equal);
+  a field type-var unifies freely (same unsoundness). `MK-SPAN` mints a per-call
+  rigid token that unifies only with itself; `MK-SPAN=` stamps ONE fresh token on
+  both outputs (the explicit share-one form). Kernel SIGNATURES use nominal atoms
+  (`extent-r`/`extent-c`, equal-by-name, to ASSERT agreement); CONSTRUCTORS mint
+  fresh. `GRID-CTX`/`ROW-CTX` mint fresh masks. This is a real checker extension
+  (per-call rigid minting), not a signature convention. `TRUSTED:` bypasses CHECK,
+  so genuine fresh-mask ctx mints stay legal there — that is exactly why they
+  cannot be rewritten as checked callers.
+- **The checker "same phantom in, same phantom out through an emitter" is already
+  expressed — type-PRESERVING emitter wrappers need NO trust.** A row-polymorphic
+  combinator `( a a [ n n -- n ] -- a )` (`PTXREP:REP2`/`REP1`/`REPMIX2`) makes a
+  token's `n` register flow through a checked `EMIT-*` quotation while the SAME
+  phantom `a` returns; forge/kind/arity soundness fall out of the existing unifier
+  (forge rejects because both operands+result unify to one `a`; a wide family can't
+  bind single-cell `a`; the quotation pins arity). ~23 per-op TRUSTED wrappers
+  became checked callers, byte-identical PTX. Type-CHANGING wrappers (LOAD span→tile,
+  GRID-CTX, STAGE, BLOCK-MAX, BROADCAST) MINT a new phantom the emitter output can't
+  witness and genuinely need the mint capability — don't conflate the cheap
+  forge-proof preserving case with the hard minting case.
+- **The checked-MINT capability is a CHECKER SEAL, not a lib combinator; every
+  lib-only mint design is unsound.** A CHECKED word may not introduce, as an
+  argument of a register-phantom CELL family output, a declared type variable
+  unbound in its inputs (producing a cell of input-unrelated type is a mint, sound
+  only behind a `TRUSTED:` boundary the checker cannot witness). It rides
+  `NP-CHECK`'s post-body parametricity seal (the `E-NONPARAMETRIC-EFFECT` choke),
+  descending into family args on RAW declared-var identity so a laundering
+  combinator that unified `u:=t` can't hide `u`'s sig-level absence. The seal must
+  EXEMPT three checker-owned introductions, each with a distinct guard: (a) internal
+  fresh vars whose `NP-LETTER` is '?' (only flag a real declared letter); (b) hidden
+  physical field/layout family outputs (`NP-CELLFAM?` excludes `PARAM>HID>0`/
+  `TFAM-LAYOUT?`); (c) VALUE-RECORD field accessors (the seal steps aside when an
+  input consumes a `field<>` record). Each false positive costs a fixpoint rebuild
+  to diagnose — build the SGIN-term-tag probe before guessing. Mint combinators are
+  NOMINALLY PINNED (span/tile/gridctx/… are distinct TK-CELL families, no family
+  variable), so two wrappers share one only if their full (input families, output
+  family, quotation arity) coincide; loosening to a family variable reopens the
+  projection forge — don't.
+- **The checker verifies a declared sig is UNIFIABLE with the body, not that it is
+  PRINCIPAL** — so any polymorphic mint output can be loosened into an unaudited
+  `:` word, strictly EASIER to forge than a visible TRUSTED row. That is why the
+  seal above is necessary.
+- **A stack-effect checker over the EMIT-TIME program cannot prove RUNTIME
+  loop-carried parity/alternation.** The Forth checker verifies emit-time stack
+  effects; the emitter emits a double-buffer loop body ONCE and parity lives in a
+  runtime register (`xor`-flipped). "parity alternates across iterations" is out of
+  scope; what IS emit-time-checkable (given a decomposed emitter) is the weaker
+  SAME-BODY property (read requires `ready<p>` whose symbolic parity matches, prefetch
+  writes `pending<¬p>`). Don't conflate the two. A per-iteration `cpp-pending<p>`
+  mint at an in-body cp.async issue is trusted BY DESIGN (audited-mint-core class,
+  same as CPPSLOT COMMIT/WAIT transitions); a checked word cannot fabricate a nominal
+  family cell (`( n -- cpp-pending<p> ) 0` rejects). CPPSLOT typestate fits the
+  SINGLE-buffer `MMA-PIPE-KLOOP-SINGLE` (one same-body commit→wait→read); it CANNOT
+  thread the shipping double-buffered `PIPE-LOOP` (commit and wait land on different
+  slots, three independent walls: byte drift, trusted-quotation ownership, out-of-write-set
+  untyped-quotation callers) — the honest close there is a documented BLOCKED, not byte
+  drift or a laundered ready-mint.
+- **The cp.async pipeline-slot typestate is nominal state-family transitions +
+  parity unification — the dynamic negatives reject with ZERO checker LOGIC (the M5
+  "negative needs zero machinery" pattern).** A slot threads
+  `cpp-pending<p>`→`committed<p>`→`ready<p>` (three nominal TK-CELL families over a
+  symbolic parity); ordinary stack-effect unification rejects read-before-wait,
+  missing-commit, double-wait, and parity mismatch with only family registrations +
+  typed words + fixtures. Fixtures take their INITIAL slot state from the fixture
+  SIGNATURE (a `cpp-pending<p>` input) so no ISSUE mint word is needed — the issue
+  mint stays the production pipeline's existing trusted boundary, which keeps net
+  trust DOWN. `bar.sync` composition is a one-clause extension: committed→ready IS a
+  block barrier, so WAIT drains + fences the same block-uniform barrier as a
+  tile→uniform reduction (one OR clause in `PTX-BARRIER-ROWS?`), and WAIT under
+  divergent control rejects through the existing `E-DIVERGENT-BARRIER` choke.
+- **M5 barrier-uniformity: VALUE uniformity was already expressed; only the CONTROL
+  effect was missing.** M2 families already reject a `tile` fed where `uniform<t>`
+  is wanted (the lane-varying-as-uniform negative needs zero machinery). The gap was
+  block-uniform REACHABILITY: `x BLOCK-MAX` inside an `if` wrongly certified because
+  bar.sync reachability is a control property no stack effect expresses. Model:
+  `BLOCK-MAX`/`BLOCK-SUM` have shape `( tile<..> -- uniform<..> )` — the only sound
+  way to produce a uniform from a tile is a block reduction with bar.sync — so detect
+  the shape structurally, flag `CTL-BARRIER`, and reject the call when the CF stack is
+  non-empty (`#CFC>0` = inside control = not proven block-uniform). Conservative but
+  sound; nothing regressed.
+- **`TRUSTED:` words BYPASS the CHECK finalize — attach per-word checker metadata at
+  `E-ADD-EFFECT`, the one USIG choke both paths share.** Setting a checker flag in
+  CHECK's finalize block silently does nothing for a `TRUSTED:` word (where all the
+  collectives live), because `EM-COMPILE-PUBLISH-TRUSTED` branches past
+  `EM-P2-CHECK-DEFINER`. Both `:` and `TRUSTED:` funnel through
+  `USIG-ADD → E-ADD-EFFECT`; detect there (via a forward xt hook installed after
+  NORET-ADD). Adding a new WF-cert flag ripples through FIVE places
+  (`lower-cert-base.f` constant, `PPRIM: LOWER-CERT` model, the `VALIDATE-WF` flag
+  mask — was hardcoded `& 3` — plus its width accounting, the TRUSTED.md
+  `primitive-effect-inventory` manifest, and the `prop-test-core.f` AX-CENSUS
+  list). The cert VALIDATOR bites first: the first symptom of a missing validator
+  branch is `hb: malformed lowering certificate`, not a checker miss — verify a new
+  flag actually FIRES on a TRUSTED subject before trusting the finalize path.
+- **The native publish path re-records every SIGNED definition through `TRUST`.**
+  `EM-COMPILE-PUBLISH` routes any `:` with a `( ... )` sig through
+  `EM-COMPILE-PUBLISH-TRUSTED → C-CALL-TRUST-PEND → USIG-ADD`, i.e. after the hook.
+  Any "reject but continue" (multi-error) mode must survive that re-parse, else an
+  unparseable sig kills the whole load with `checker: bad stored signature` from the
+  SECOND path, not from CHECK.
+- **A qualified def's engine→checker record call must key off the QUALIFIED name,
+  read from a STABLE buffer.** Every `: PKG:tail (..)` recorded twice at `;` — the
+  cert under the qualified name (correct) AND a bare-global `tail` row that shadowed
+  core prims and certified bare-tail calls the engine rejects. Fix: `C-PUSH-DREC-NAME`
+  pushes the body buffer's first token (byte-identical to the cert path). Traps:
+  `DEF-TKA` is a raw SOURCE pointer (stale across a multi-line body → boot SIGSEGV;
+  the body buffer is fixed engine DATA); scratch must avoid x11 (holds the trust XT
+  for the later BLR). Gforth stage0 has no packages, so its record name IS the full
+  name — no mirror change. A new consumer is a bug magnet for old producers:
+  instrument the sym/record store with tiny probes (`CHECKER-FIND-ACTIVE-SYM`,
+  `USIG-FIND-OFF-SYM`), don't stare at the new code.
+- **Duplicate package definitions must fail at publish time, in BOTH
+  `C-QUALIFY-DEF` and the certified recorder.** Package namespaces concentrate
+  natural names; normal defs must not silently replace earlier public/private rows.
+  Explicit `TRUST` is the audited override. Private words persist across `package`
+  REOPENS (one namespace across every file that reopens it), so a reopened package's
+  second file colliding on a private name is `duplicate definition` — prefix the
+  second file's tail distinctly. A package's private and public wordlists may hold
+  the same tail; in-package bare lookup finds PRIVATE first (give internal raw
+  accessors a distinct spelling like `CODE-R@` so the public handle resolves).
+- **Package reopen is SCOPE; include is COMPOSITION.** Reopening `package NAME`
+  resumes the same wordlists + duplicate set; `include`/source-list still owns file
+  dependency order. Do not include a file merely to share a namespace. Namespace
+  qualification is only a non-edge colon (`HB:COUNT` qualifies through a wordlist;
+  `GE-FILES:` is an ordinary word).
+- **Recoverable compile-error die sites route through ONE parametric tail
   (LCOMPILEDIE), not new error codes.** Runtime-compiler rejects that
-  `NR-EXIT-GROUP`'d — duplicate definition ($4E), colon/dict overflow ($4C/$4D),
-  package-keyword misuse ($4A/$4B), locals-in-a-quotation ($4B, C-LBRACE-DIE +
-  C-LOCAL-REF), does>-body checker reject (70, C-DIE-DOES) — are now catchable
-  inside `evaluate` (dot habu-raw-exit-compile). Each site still writes its
-  diagnostic to fd 2, then `LCOMPILEDIE LABEL@ B,` with x0 = its code.
-  LCOMPILEDIE is the parametric sibling of LDIAGRET: EVALD>0 restores RX
-  (idempotent), moves x0→x15, branches LEVALREC so the SAME code is delivered as
-  a catchable throw after the eval-frame rollback (input cursor + CP/NDICT
-  truncation + compile state); EVALD==0 keeps the exact `exit_group(code)`, so
-  top-level diagnostic + exit are byte-identical. Two findings overrode the dot's
-  framing: (1) these are positive *sysexits-style* codes, which
-  `tools/error-code-lint-core.f` EXCLUDES by design (only negative `E-*` are the
-  uniqueness namespace) and which are overloaded across unrelated meanings
-  (78=dup-def AND mmap-fail; 76=code-full AND counted-string) — so NO `E-*`
-  fits and NO new code/inventory row is needed; keep the number as both exit and
-  throw, like RC-REJECT=70. (2) The overflow rollback is consistent because HIDX
-  skips any record index ≥ NDICT (`C-HIDX-INS`/`C-HIDX-DUP?`/FIND all guard it),
-  so LEVALREC's NDICT truncation makes rolled-back records stale/invisible — a
-  dup-def that fails AFTER publishing the first record still leaves a usable
-  dictionary (proven: catch, then a fresh define+run works). The pure
-  emit-op tail checks as `( -- )` with NO `s" ... TRUST` row — do NOT copy the
-  sibling em-* TRUST lines by habit; a needless new TRUST site trips the
-  trusted-inventory ratchet (F12). Seed keeps hard exits (LCFPOP/LCFCAP
-  precedent); mirror-lint is unaffected (no ADT keyword added). Testing gotcha:
-  `bin/hb file.f` enters the tty REPL and blocks after the file — feed source via
-  stdin (`bin/hb < file`) as the GE- gate DSL does.
-- **Compile-error recovery must roll back the OPEN-PACKAGE scope, and it is a
-  boundary SNAPSHOT/RESTORE, not a reset** (dot habu-recovery-pkg-scope-e0bd98e2).
-  An in-package `:` aborted inside `evaluate` (LUNDEF/dup-def/every LCOMPILEDIE
-  site) or typed at the tty REPL left the package dangling open (PKG-PUB stayed the
-  package's public wid), so later top-level defines landed in it silently. Unlike
-  EM-RESET-COMPILE-STATE's zeroed compile state, package scope can be legitimately
-  NON-zero across a boundary (a package open before the evaluate/REPL line), so it
-  must be snapshotted at the boundary and restored — exactly like CP/NDICT/DP.
-  Native-only: B-EVAL snapshots the five cells (CUR/PKG-PUB/PKG-PRI/PKG-PARENT/
-  PKG-REC; WIDN is monotonic, do NOT roll it back) into a per-eval-depth PKGSNAP
-  band (bumps DATA-START, PD-table precedent), the LEVALREC pop loop restores
-  PKGSNAP[EVALD-1] per frame, and LREAD/LRREC do the same via fixed RPKG cells for
-  the tty line. Seed hard-exits compile errors (no LCOMPILEDIE), so this is
-  native-only, matching the residual-compile precedent.
-- **Rolling back the engine package scope WITHOUT the checker's own scope
-  (CHECKER-PACKAGE-MODE/NAME/U) INTRODUCES a desync** the shared-dangling state
-  never had: engine→global but checker still records into the stale package, so a
-  bare global def is mis-recorded and a later `;package`/`package` orphans it →
-  spurious rc70 at the next checked reference. Keep them in step: recovery arms a
-  PKGRESYNC latch drained once at LMAIN (EM-PKG-RESYNC) that resets the checker to
-  NONE (the existing global `checker-end-package`) when the restored engine scope
-  is global — no checker.f package-guard (tfam) surface is touched. Residual
-  (dotted): a package legitimately open ACROSS the boundary whose failing input
-  ALSO changed package scope leaves the checker at the inner scope.
-- **The tty-REPL leg of the shared interpret-reject tail (LDIAGRET → LUN0) was
-  missing the RX restore that every sibling leg has, so any undefined word /
-  orphan closer / cf-cap that aborted a `:`-body AT THE TTY REPL W^X-SIGBUS'd**
-  (pre-existing; surfaced by the REPL package-scope fixture). The EVALD>0 leg and
-  LCOMPILEDIE's ldie/rdie leg both `2 5 MOVZ LPROT BL` (region→RX) before
-  re-entering executable code; LUN0 re-entered EM-REPL-RECOVER→LREAD→RD-LINE with
-  the JIT region still RW from the aborted compile → crash. Interpret-level rejects
-  (PTY-UNKNOWN) and dup-def (LCOMPILEDIE) never exposed it; `: FOO NOPEWORD ;` at
-  the tty did. Fix: the same LPROT at LUN0, idempotent for the interpret-level
-  diagnostics that share the tail with the region already RX.
-- **`.` in the native engine is NEWLINE-terminated, not space-terminated:**
-  `11 . 22 . cr` emits `11\n22\n\n`, so a gate assertion for two dotted numbers on
-  one line (`11 22`) never matches — assert them separately or dot a single derived
-  value (`a b + .`).
-- **Do not port relative linked-list words by habit:** SwiftForth's
-  `@REL`/`!REL`/`,REL`/link traversal words bake dictionary-relative pointer
-  arithmetic into APIs. Habu should model node layout with structures, runtime
-  collections with arrays/maps, and dispatch with checked `case` or execution
-  vectors.
-- **Pre-checker records need explicit layouts, not an unchecked defining DSL:**
-  keep core offsets, strides, alignment, and pointer roles as asserted explicit
-  layouts; load the generic structure DSL only after the checker hook so its
-  definitions are checked and no separate pre-hook effect rows are needed.
-- **Checker-to-render features need hooks, not load-order shortcuts:** `checker.f`
-  loads before `render.f`, so `{: x:? :}` records show-inferred locals in checker
-  state and calls `LOCSHOWXT`; `render.f` installs the printer after its type
-  renderer exists.
-- **Generated candidates must honor package exports:** after `lib/ptx/collective.f`
-  moved `B-`/`B/` behind `package PTX`, maki softmax grader strings that still
-  used bare `B-`/`B/` certified as rejected. External generated code must call
-  exported package words as `PTX:B-`/`PTX:B/`; reopened-package bare names are only
-  for code loaded inside that package.
+  `NR-EXIT-GROUP`'d (dup-def $4E, colon/dict overflow $4C/$4D, package misuse,
+  locals-in-quotation, does>-body reject) are now catchable inside `evaluate`. Each
+  writes its diagnostic to fd 2, then `LCOMPILEDIE` (EVALD>0 → catchable throw after
+  eval-frame rollback; EVALD==0 → exact `exit_group(code)`). These are positive
+  sysexits-style codes that `error-code-lint` EXCLUDES and that overload across
+  meanings (78=dup-def AND mmap-fail; 76=code-full AND counted-string) — NO `E-*`
+  fits, keep the number as both exit and throw (like RC-REJECT=70), and do NOT copy
+  a sibling em-* TRUST line by habit (a needless TRUST site trips the ratchet).
+- **The checker modeling an invariant does not make the ENGINE fail-closed.** The
+  native `:`-body compiles token-by-token FIRST; the post-`;` HOOK runs only after,
+  so `: XI ( -- ) THEN ;` SIGBUS'd (`LCFPOP` decremented an empty CFSTK to -1 and
+  dereferenced a bogus origin). Guard at the shared pop (`LCFPOP` depth-0 → named
+  `LORPHAN` reject joining `LDIAGRET`), covering THEN/ELSE/REPEAT/ENDOF/LOOP/+LOOP;
+  valid flow keeps depth≥1 so emitted code is byte-identical. Mirror the guard in
+  `bootstrap/cg/forth.fs` as a fail-closed hard rc-70.
+- **Compile-error recovery must snapshot/restore OPEN-PACKAGE scope AND the
+  checker's own package scope together.** Package scope can be legitimately non-zero
+  across an `evaluate`/REPL boundary, so it is a boundary SNAPSHOT/RESTORE (like
+  CP/NDICT/DP), not a reset — else a failed in-package `:` leaves the package
+  dangling open and later top-level defines land in it. Rolling back the ENGINE scope
+  without the checker's (`CHECKER-PACKAGE-MODE/NAME/U`) introduces a desync
+  (engine→global, checker still in the stale package) → spurious rc70 at the next
+  checked reference; keep them in step via a `PKGRESYNC` latch drained at LMAIN. The
+  tty-REPL leg of the interpret-reject tail (`LDIAGRET → LUN0`) needs the same RX
+  restore (`LPROT`) every sibling leg has, or a `:`-body aborted at the tty W^X-SIGBUSes.
+- **Post-check scratch read by a later pass must be keyed by a monotone sequence the
+  branch joins never pop.** TFAM-12's pass-2 width-aware emitter read live locals
+  widths (`LOCW`), but joins pop it and sibling arms reuse frame slots — reads died
+  76 or took a sibling's width. Key the durable table by a monotone bind sequence
+  (`LOCW-HW[LOCSEQ]`, finalized at `:}`, reset only in `CHECK-RESET`); host such
+  pass-2 scratch in `checker.f`, not new engine DATA cells (the fixed DATA map is
+  full). Layout transport is a per-TOKEN mode (`LAYOUT-XPORT`), not a per-var flag —
+  set only for whole-bundle ops (dup/drop/swap/…, >r/r>/…, locals) and RESET after
+  `CHECK-SCAN` before boundary coercion, else a generic output var wrongly absorbs a
+  layout.
+- **A cache-rewind/epoch detector belongs at the APPEND choke point, not only
+  reads.** Candidate rollback + the next def's recurse-cache regrew `UEND` past the
+  read-time watermark and masked the rewind, resolving a stale offset into
+  overwritten bytes. `E-REC-START`/`NORET-ADD` now sync before appending. Cached
+  arena offsets need a +1 encoding (offset 0 is a legal record position). A
+  value-less unification trail (`TV!`/`RV!` record only `(var-id,is-row)`) undoes
+  FRESH binds only; path compression must run at trial depth 0, and no `NEW` between
+  TRIAL-SAVE/REST.
+- **A checker-acceptance TIGHTENING breaks fixture files that only fail at LOAD
+  time.** The wide-PRODUCT minimum-accounting fix made an `option<idx>` reject when
+  bound to an `:n` local, turning suites red at load though no checker gate was red.
+  After tightening acceptance, run the suites that LOAD tool fixtures, not only the
+  checker gates; convert at the producer, never bind a sum to a scalar local.
+- **Never NAME a word after a control word** (`BEGIN`, `IF`, `DO`, `START` for a
+  builder-open) — a bare CALL resolves to the control word, and the error surfaces
+  far downstream. Self-calls use `RECURSE`; naming the word inside its own body can
+  compile the wrong target. `defer NAME ( effect )` + `[: IMPL ;] is NAME` keeps
+  deferred execution checked; `is` needs a checker-visible defer target-kind
+  (`tools/check.f` rejects `is` on non-defer before runtime). `create`/`variable`/
+  `constant` must publish their `TRUST` effects in the native compiler when the hook
+  is installed (a parent preverify can't help the child registry). Parser-word
+  payloads (`[char]`/`char`, `s"`) are part of the checked body — the capture must
+  append the consumed token.
+- **Try a checked factor before new trust.** `FS-BYTE-OFFSET` looked primitive but
+  `: BYTE+ ( ptr u8 n -- ptr u8 ) + ;` certified against existing pointer arithmetic
+  and retired the trust row. Function-passing IS a checked capability: the checker
+  verifies a quotation param executed through a call chain AND a `?do`/`begin` loop,
+  so `SORT!` `( ptr a n [ a a -- bool ] -- )` is fully checked — don't copy
+  `combinators.f`'s `0 set-check` boundary (an old unchecked boundary, not a model).
+- **A `0 set-check` span may exist only because ONE primitive lacks an axiom row —
+  probe before accepting it as a boundary.** Both hook-install spans disabled
+  checking solely because the hook body calls `CHECK!` (unknown to the checker); a
+  one-line `s" CHECK!" s" ptr u8 n -- n" TRUST` + the hook def proved the span
+  retirable, turning an opaque check-off region into one audited prim-axiom TRUST
+  row. Duplicate TRUST of the same primitive across files is idempotent.
+- **A TRUST row on a `:` word that CHECK!-certifies is REDUNDANT by construction** —
+  the build's certify pass runs CHECK! on every `:` body and throws on reject/uncheckable.
+  Before hand-converting a TRUST batch, try mass-removal + rebuild first; only rows on
+  non-`:` forms (variables needing cell refinements, real machine-code boundaries) are
+  load-bearing (one batch: 40/41 rows deleted, repo TRUST 398→358). Expect benign
+  binary drift (certification-layout shifts move the baked AOT-REPL address immediates
+  EM-SEED-AOT re-relocates at boot); the fixpoint gate is x2 self-reproduction, not a
+  frozen sha vs baseline. `variable`/`create` publish checker records — define fixture
+  cells before mutating capacity state.
+- **`create ... allot` checker arenas convert to boot+P without touching callers:**
+  `create X ...` → `create X-BOOT ...` + `variable X-P` + `: X ( -- ptr a ) X-P @ ;`;
+  `cells X +` sites unchanged. Growable registries that own a string pool must rebase
+  on relocation: CT/VREC/SYMS hold ABSOLUTE pointers into their `*-STR` pool; grow the
+  RECORD/NODE arrays to mmap BEFORE the string pool so a rebase never mutates the
+  baked boot buffer; SYMS must stay a power of 2 and drop+rebuild HIDX on grow.
+- **Suite-visible checker words are checked even in TEST files: bools are not n.**
+  Round-trips lost to `-1`/`0` where `bool` was declared, and a render flag only the
+  fixpoint CERTIFY pass caught (local stdin runs parse unchecked). The `0 0=` / `0 0= 0=`
+  literal idiom is the convention; run the certify path early when adding checked
+  prefix words. `test/candidate-validation.f` hardcodes per-file stderr — a fail-closed
+  pin that evaluates a failing `: NAME ;` prints the hook diagnostic to stderr, so put
+  it in a `diagnostic` suite, not a stderr-clean `positive` one.
+- **CHECK! is line-oriented and REGISTERS what it certifies.** Feed it one
+  whitespace-normalized line (multi-line body → verdict 1 regardless); after a -1
+  verdict the name is registered, so a checked re-compile dies duplicate-definition —
+  compile certified text under `0 set-check`, reinstall the hook right after
+  (`CHK-COMPILE-CERT`). Leaving the hook off compiles later defs untyped, so every
+  later CHECK! referencing them rejects — the failure appears one check DOWNSTREAM.
+  `CHECK-CANDIDATE!` suppresses duplicate-name rejection only for that candidate and
+  restores `USIGS`/`NORETS` after; raw-text scanners must implement engine-normalization
+  parity (sig only at token index 1, once, later a skipped comment) or a mid-body
+  `( ... )` clobbers SGIN/SGOUT.
+- **A checker DRIVER must never EXECUTE candidate code — reuse the verify path, not
+  the load path.** The all-errors CLI nearly shipped on `evaluate` (runs top-level
+  candidate forms in the checking process, pollutes the live dictionary; checker-scope
+  rollback restores registries, NOT cp/ndict). The crash-immune point is
+  `VERIFY:SOURCE-BUF` (parse+check, zero execution). Checker.f words are NOT
+  registry-published to later checked loads — checker-internal access from tools rides
+  small documented `TRUSTED:` one-liners.
+- **A new baked prefix file has SEVEN+ synchronized owners; miss one and recovery or
+  a puller breaks.** Native `habu2.f`/fixpoint does NOT update the Gforth recovery
+  compiler: mirror load/path/provide/label rows in `bootstrap/cg/forth.fs`, concatenate
+  in `tools/bootstrap.sh` (SRC_COMMON), and update `build-fixpoint.f` (CHECKER-BOOT/
+  COMMON/SNAP-KEEP), `boot-pin.f`, `diagnose-hb-core.f` (+ count in its test),
+  `hb-build-lib.f` key list, `test/run-files.f`, `FILEMAP.md`, and pinned row counts
+  (`boot-pin-test.f` PFX-LOAD-ROW, `diagnose-hb-test.f` common-source, `bootstrap-codegen-test.f`).
+  Baked prefix files must be marked `provided` (else `require src/core/sha256.f`
+  reloads `W32`). The first ceiling a new prefix file trips is stage2's `S2-SOURCE-CAP`.
+- **A NEW engine PRIM used by boot-prefix source lands in TWO stages** (the running
+  binary re-reads the prefix at its boot, so checker.f can't reference a prim the
+  current engine lacks → `E-UNDEFINED` before any build): stage 1 emit+register the
+  prim + its `PRIM:`/`TRUST` row (the literal token keeps it through treeshake) and
+  build; stage 2 add the prefix code that CALLS it and build again. A prim CALLED
+  from the prefix bricks every OLD binary in the ecosystem (the prefix is re-read by
+  old engines; a bare new-prim token is `E-UNDEFINED` exit 70). A `PRIM: NAME PRIM;`
+  axiom line is tolerated (parses a name only); an inherent transition takes a
+  bounded tolerant shim — a `TRUSTED:` word resolving the prim by runtime
+  `s" NAME" 0 search-wl` (miss→drop on old engines, find→execute on new), owned by a
+  live stored-xt dot with a stated removal condition. A stage0-mirror PRIM's
+  dictionary name must be ≤16 (`DNAME-INL`): the mirror only emits inline prim names;
+  a >16 name wedges gforth's `BUILD-MACHO` fixup walk in a ~40-min EXC_BAD_ACCESS
+  loop (now fail-closed `PRIM-INL-CAP?`). Same lands-in-two-stages rule for a
+  cross-layer checker word consumed by a habu-layer file.
+- **Cross-agent engine landings BRICK sibling binaries.** A new cold-prefix file
+  (e.g. `engine-error.f`) makes every other agent's baked-prefix-list `bin/hb` fail
+  AT BOOT with `E-UNDEFINED` on updated consumers (find the baked list with
+  `strings bin/hb | rg '^(src|lib)/'`). A hybrid revert-and-refresh does NOT compose
+  (mixed-generation sources fail the child build); recover via the documented gforth
+  bootstrap (which is why mirroring the prefix into `forth.fs` is BLOCKING for any new
+  cold-prefix file). Pull-and-refresh after every fetch that crosses an engine landing.
+  A seed `bin/hb` older than the engine prefix crashes the refresh AND the gate with
+  `E-UNDEFINED` + SIGABRT (rc 134) while `install --force` still exits 0 — refresh the
+  main tree immediately and reseed every worker workspace.
+- **Extensible nominal types must be explicit.** `DEFTYPE` registers a copied global
+  nominal before signatures use it (silent auto-interning would turn typos into valid
+  roles). Do not publish facts with empty trusted stubs (`HB-TARGET-LINUX?` as an
+  empty `TRUSTED:` made `EM-ENTRY-ARGS` branch on stale stack data) — target
+  predicates live in `src/os/<target>/target.f`; only nominal identity casts belong in
+  `roles.f`. Keep `roles.f` TRUST-site rows stable (a new definer above the audited
+  cast block shifts every manifest site).
+- **Ground capability claims in the SOURCE, not the dot tracker + spec.** M2
+  (parametric checker) and local type inference were declared "large unbuilt gates"
+  from `dot ls` + the spec calling them "large"; a 10-second certify/reject probe
+  through `bin/hb` refuted both (fully built+landed). A "missing dot" can mean DONE,
+  not unbuilt — probe before sizing a checker feature as a prerequisite. The R7 plan's
+  type-schema spellings are pseudocode; the real keywords are `TYPEFAMILY`/`PRODUCT`/
+  `SUMTYPE`/`ENUM` — build the file + a `CHECK-QUIET-CANDIDATE!` probe and iterate on
+  real checker output rather than transcribing a plan.
+- **Diagnose with the row renderer, not by guessing.** A branch-local reject
+  reproduced identically at top level (ctor output still in the CTOR-PEND
+  signature-boundary window) — test seeds must be checked maker words. A new static
+  gate's blast radius includes the test corpus's own metaprogramming (DNAME-WIDE
+  marking fired on `' TLP-DUP` — correct enforcement); test-only xt introspection
+  lives in the raw-xt TRUSTED boundary once ticking is a gate surface. Rank new
+  structural rejects ABOVE the uncheckable verdict (trailing tokens soften a hard
+  reject to UNCK, which multi-error loads trust differently); latch reason codes with
+  the token pin, not at render time, and truncation must latch BEFORE the
+  output-boundary coercion.
+
+## Types, ADTs & Signatures
+
+- **A multi-cell PRODUCT / wide value (tagged sum with payload) cannot be a typed
+  LOCAL nor a polymorphic sum/`result`/`option` payload param — only single-cell
+  types (arity-0 `TYPEFAMILY`, payloadless `ENUM`) can.** `{: d:content-digest :}`
+  and `result<POLICY:granted,n>` both reject ("unknown type" / "expected a actual
+  granted<>"). Consume wide values straight off the stack via `UNMAKE`/`MATCH`, kept
+  DEEPEST so single-cell operands pop as locals first. Signal a fallible
+  product-returning transition by THROWing a named code, not `result<product,_>`
+  (the schema.f RESULT-DROP wall). A 1-field product binds fine at a word's ENTRY. A
+  `MATCH`-arm payload also cannot bind to a typed local INSIDE the arm even single-cell
+  (`ok OF {: e:evidence :}` rejects with identical expected/actual) — factor a helper
+  whose ENTRY consumes the payload and call it bare from the arm. Inline
+  `PKG-PROD:UNMAKE {: f:role ... :}` inside an arm certifies (the rule is only about
+  binding the PRODUCT itself). A result value survives an intervening store below it.
+  (Post-flat-multi-cell commit 13f8a504, a multi-field PRODUCT CAN be a sum payload
+  when the signature DECLARES it concretely; only a free err var vs a nominal still bites.)
+- **A typed error result over a NOMINAL type needs a bespoke sum family, not shared
+  `result<a,b>`.** Constructing `RESULT:OK` in a TOTAL (ok-only) word leaves err var
+  `b` free; a free var unifies with a structural type but NOT a nominal ENUM/TYPEFAMILY.
+  Define `SUMTYPE foo-result 1` whose ok variant carries the payload and whose error
+  members are baked-in nullary variants (the `numeric-result` idiom). An arity-1
+  SUMTYPE needs its type ARGUMENT in a signature (`family<CAD-KIND:rev-id>`, "wrong
+  arity for type family" otherwise) but its BARE qualifier in a `MATCH` selector — do
+  not put qualifier and `<...>` together. A parameterized `result` type can't be a
+  `{: :}` local — specialize the word or keep it on the stack.
+- **A generated PRODUCT/SUMTYPE constructor DOUBLES every internal hyphen of the
+  family and prefixes the (escaped) package.** `PRODUCT content-digest` in `package
+  ARTIFACT` generates `ARTIFACT-CONTENT--DIGEST:MAKE`; a nullary variant ctor is
+  `PKG-FAMILY:VARIANT`; `MATCH` arms and destructuring use the BARE variant name.
+  Package-private family ctors live in a DERIVED escaped package
+  (`PRODUCT pxevid` in `package PX-PROBE` → `PX--PROBE-PXEVID:MAKE`). Wrap long
+  spellings in short private words. Escaped ctor names >32 chars SHA-fall-back to an
+  unreadable `Thexhash-TAIL` (readability cap `TF-CTOR-NAME-LIMIT`, raised 16→32; not a
+  structural bound — long names store via DNAME-EXT). Keep `len(PKG)+1+len(escaped-family)
+  ≤ 32` for any family a caller must construct by name.
+- **A word returning a layout value (PRODUCT/SUMTYPE) cannot be called at TOP LEVEL**
+  ("interpret-mode layout value") — wrap the construct/UNMAKE/assert in one checked
+  word and call THAT from top level (store the decoded handle's slot in a variable and
+  rebuild the handle in each reader). Layout bundles also silently corrupt under
+  interpret-mode dup/drop/swap (one physical cell moved); gate wide producers at
+  interpret DISPATCH with a `DNAME-WIDE` dict bit (fail-closed, named diagnostic),
+  don't type the REPL. Checked compile-mode calls of the same marked word stay legal.
+- **Type-family names obey package public/private exactly like words; `EXPORT` does
+  NOT apply (they are checker registry entries, no xt).** To name a family `PKG:name`
+  in a cross-package signature/local, declare the `TYPEFAMILY` in the package's
+  `public` section (visibility captured at declaration). A `private`-section family
+  resolves only inside its own package. A BARE cross-package family reference is
+  FRAGILE: a second same-tail family in another package makes it "unknown type" (it
+  resolved only while globally unique) — pick distinct tails for new public sums and
+  prefer qualified `PKG:family` across boundaries. Order gotcha: declare the family
+  before the private mint/erase `TRUSTED:` words that reference it.
+- **Package-owned CAD ids are arity-0 cell families (`TYPEFAMILY id 0`), not global
+  DEFTYPEs.** That already gives package-qualified identity, typed pointer storage,
+  rollback, snapshots, replay, and qualified diagnostics; `DEFTYPE` instead installs a
+  global nominal + raw converter words. An unforgeable value that CARRIES data uses the
+  refined-nominal-HANDLE pattern: an arity-0 `TYPEFAMILY` over an append-only pool,
+  minted ONLY through a private `TRUSTED: RAW>X`/`X>RAW` pair, pool holds the
+  authority (a `private` PRODUCT has no construction surface even for its owner; a
+  `public` PRODUCT's generated `MAKE` accepts a raw n = forgeable-by-alias, fine for a
+  pool-slot txn handle, UNSAFE for a capability grant). Generic `variable`/`create`
+  storage does NOT retain a nominal pointee between definitions (each use instantiates
+  the generic pointer independently, both certify) — keep raw storage private, expose
+  typed accessors.
+- **A new content-addressed CAD-KIND owner (`TRUSTED: RAW>X`/`X>RAW`) needs FOUR
+  coordinated edits or a gate goes red** — trusted-inventory strict and refine-lint
+  read DIFFERENT registries: (1) `TYPEFAMILY x-id` in `maki/cad-kinds.f`; (2) human
+  TRUSTED.md rows for BOTH `RAW>X` and `X>RAW`; (3) the machine `file:RAW>X prim-axiom
+  <epic>` classification block row for both (strict fails "unclassified site(s)" on the
+  BLOCK, not the human table); (4) the `RFL-SEED-NAME$`/`RFL-SEED-OWNER$` case + bumped
+  `RFL-SEED#` in `refine-lint-core.f` for the MINT direction only (else `NEW-MINT`).
+  Only `n -- CAD-KIND:x` is shape-scanned; the projection is seed-exempt. Nullary
+  proof-token mints (`( -- proof )`) aren't mint-shaped to refine-lint but STILL seed
+  them (the seed list is the CONFINEMENT set). The POOL refine-lint phase is stricter
+  than standalone — a mint clean standalone can red the gate.
+- **A new TRUSTED: word needs rows in BOTH TRUSTED.md sections (effect table AND
+  site-registry `file:name class owner`), owned by a LIVE dot — never the implementing
+  dot (it closes).** trust-lint checks the markdown; `trusted-inventory-test` checks
+  the site-registry — DIFFERENT corpora, a diff passing one can fail the other, so gate
+  TRUSTED-touching diffs on BOTH. Reuse a sibling `stdlib-boundary` placeholder owner.
+  A file-level fold (`builder-emit` in habu2.f) needs its count bumped in the
+  `trusted-inventory-classes` block too. A computed-argument `set-check`
+  (`check@ set-check`, not literal `0` or a ticked name) is a trusted-inventory site
+  (file-level count row), separate from `checked-boundary-lint`. A near-full fixed
+  arena is a latent capacity bug a downstream lane inherits (the class arena `CSTR-CAP`
+  sat at 65528/65536 → a bare `class arena overflow` die on +4 rows) — budget the
+  scratch arena when growing a ratcheted manifest, not just the count.
+- **A product TYPE PARAMETER binds only cell-tier types (n or nominal `TYPEFAMILY`);
+  a sum/enum/product family cannot instantiate it.** So a generic `comparison<a>` over
+  a metric unit needs nominal-cell unit witnesses; prefer concrete per-variant families
+  (`comparison-gbps`/`-gflops` with distinct readings) when variants are few — the
+  number is unit-typed with ZERO trusted surface. `T-WIDTH`/`TFAM-WIDTH@` assume every
+  param is one cell (exact only while params stay cell-kinded, docs §18); route
+  arg-aware width through a hook (`TFAM-INST-WIDTH@`) that falls back to the declared
+  width so the boot prefix is unchanged. `PUSH-LOGICAL` must expand a payload only at
+  `T-WIDTH > 1` (expanding a W=1 enum/single-field product breaks existing MATCH arms)
+  and gate `CONSTRUCT-DECL-MULTICELL?` on arity>0.
+- **A generated constructor WORD's effect is a fixed `( a -- fam<a> )` stored sig, so
+  a multi-cell fix must intercept the CALL, not just the ctor.** `MATCH` and the RAW
+  `construct` token get args resolved from scrutinee/declared output, but a normal
+  ctor word's stored 1-cell-per-param effect can't consume/produce a wide bundle —
+  reverse the sym to its variant (`SUMV-CTOR-SYM`) and route through the arg-aware
+  construct step only when the declared output binds the family to a genuinely
+  multi-cell arg. Construct recovers type args from the DECLARED OUTPUT (bidirectional).
+  Reuse the step machinery: construct's effect built from SUMV metadata + applied
+  through ordinary `CHECKER-STEP` bought unification diagnostics + linear conservation
+  for free. A reserved capture form must CONSUME its operand tokens even on failure
+  (poisoned state), else they fall to word lookup and soften a hard reject to
+  uncheckable-undefined. Product destructure fell out of TWO existing mechanisms
+  unchanged (the k=0 pending-ctor window + the symmetric LOGHID row coercion) — read the
+  unifier before designing a new coercion.
+- **Layout linearity: a value that resolves linear must be rejected at its OWN
+  bind/ref site, not assumed covered by DCUR/RCUR counting.** Locals bypass
+  `LIN-CHECK` (`LOC-REF?` re-pushes a tv with no step; a typed linear `LOC-BIND` sets
+  `LINEXP=1` and skips the check), so `{: x:own :} x x` certified while stack `dup`
+  rejected. Reject binding any linear-resolving value into a local (`LIN-LOCAL-BIND-CHECK`)
+  + taint poly local refs (`LIN-LOCAL-REF-TAINT`), both gated on `LIN-ANY?` so the
+  no-`deflinear` self-build pays nothing. A layout PARAM hides its payload from the
+  linear count (`tdlin<own>` dup/dropped freely while `own drop` rejected) — transport
+  binds reject any layout whose family args resolve linear OR are still unbound. When a
+  fail-closed v1 guard sits in front of a general count/conservation path, RELAXING =
+  deleting the guard (TFAM-11 move-class needed zero new classification code), not
+  adding op-class logic — but a guard can be over-conservative AND structurally
+  load-bearing at once (the 1-cell open-arg form carries the ctor's raw→hidden
+  coercion), so probe by removing it and reading what breaks.
+- **A checker atom PREFIX reserves the ENTIRE lowercase `prefix-*` namespace across
+  every declaration site — sweep before choosing the spelling.** A `layout-` prefix
+  made maki's enum variant `layout-conflict` reserved (throw 7110 far from the cause);
+  `rg '\bprefix-'` across `*.f`/`*.fs` first. In PTX signatures `r` is float and `c`
+  is char, not type vars — use `e`/`k` for extents. Bare dtype tails (`f32`/`tf32`)
+  are reserved atom tokens (rejected as variant names — class-prefix them); variant
+  names are PACKAGE-scoped, so N same-package slot sums can't all reuse `got`/`absent`.
+- **A checker-visible fact needing an engine record flag prefers a checker-owned latch
+  stored BY VALUE at the single record choke (`E-ADD-EFFECT`), consumed by the publish
+  tails after ndict++** — staleness is then impossible. A definer's recordable effect
+  is bounded by what its runtime actually stores (`C-CONSTANT` pops one cell, so `-- a`
+  is the permanent constant contract; wide values are gated at interpret DISPATCH, which
+  dominates every downstream consumer — gate production, not each definer). Internal
+  checker effects (literals, cell fetch/store, control words) build their rows directly
+  and never parse signature strings.
 
 ## Tool & Infra
 
-- **Evaluator depth must exceed legal include depth:** `LAYOUT-BUFFER` evaluates
-  one generated accessor while loading, so an included test on a legal dependency
-  chain reached `EVALD=8` and hit the native depth `BRK` although its focused run
-  passed. Reserve frames above task-user cells, derive snapshot clearing from
-  `EVAL-MAX-DEPTH`, and pin `EVAL-MAX-DEPTH > INCLUDE-MAX-DEPTH`.
-- **Keep lint classifier fixtures outside the linted implementation:** an inline
-  `s" LAYOUT-BUFFER DUP ..."` self-check in `shadow-lint.f` was later tokenized
-  as source by the live lint and reported its fixture name as a real primitive
-  shadow. Put classifier probes in the owning test entry so production scans
-  cannot reinterpret test strings as source definitions.
-- **Exit-status mapping must honor deliberate small codes, not flatten them:**
-  fixing BTHROW's masked no-handler exit (`-2816 throw` exited 0 SILENTLY,
-  `-2802` an aliased 14 — fail-open for any tool reading the rc) with an
-  always-fixed rc broke the ecosystem's deliberate throw-as-exit contracts:
-  lib/argv.f usage 64, the check hook's documented "bad definition exits 70",
-  lint findings `1 throw` — all asserted by tests with empty/exact stderr, and
-  all REQUIRED to stay throws for in-process catchers (`CHECK-CANDIDATE!`,
-  `PARSE-RC`). The sound mapping: [1,255] exits byte-identically (those codes
-  were never masked); anything else prints `hb: uncaught throw code N` on fd 2
-  and exits UNCAUGHT-RC 67. The same [0,255]-else-67 rule in the `die`
-  primitive closed the DRV-FAIL second masked layer without touching any
-  driver (driver-io.f loads in OBJIMG contexts without layout.f, so the
-  primitive — not the library — owns the mapping). Closed by
-  habu-engine-bthrow-no-02c6b017 (reporter baked at the EM-EVAL-THROW-RECOVER
-  tail, reached from BTHROW via UNCGH-CELL).
-- **Dictionary records are read-only at runtime — flag writes are engine
-  prims:** an xref.f Forth-level `!` into a record's name cell SIGBUSed (the
-  dict lives in the RX region); the `immediate` keyword's shape is the model —
-  an engine prim wrapping the store in the LPROT RW/RX mprotect bracket
-  (habu1.f BWIDEMARK for DNAME-WIDE). Forth-side dict mutation is truncation
-  only (`ndict!`/`cp!`); anything touching record bytes needs a prim.
-- **A seal watermark must be captured where the SOURCE ends, not where a file
-  ends:** SEAL-CAPTURE at the tail of xref.f froze the truncation watermark
-  below src/os/script-argv.f (loaded after it), leaving the argv tail
-  FORGET/HIDEable rc 0. The boot prefix is CONCATENATED before anything
-  evaluates (ndict is still the prim boundary at assembly time), so the fix is
-  a second SEAL-CAPTURE token appended by the cold-prefix assembler after ALL
-  engine files + provide rows (capture is monotonic — re-running only raises
-  the watermark; snap-gated so snapshots keep their bake-time value). Guards
-  keyed to "end of file X" rot the moment a file loads after X
-  (habu-tfam-2b-iii-5d25b52f).
-- **Don't guard a prim whose legitimate caller is indistinguishable from the
-  attacker:** a raw `ndict!` watermark guard needs a principal, but the engine
-  refresh runs as ordinary post-seal `--load` source and legitimately
-  truncates below the watermark (hide.f BFR-NDICT!); any exemption reachable
-  by that source is reachable by an attacker's. The sound sequencing is to
-  eliminate the legitimate below-watermark caller first (staged-fixpoint
-  fresh-process refresh), then add the guard — meanwhile the actual spoof is
-  closed one layer up (sealed USIG registry → redefine exits 78).
-- **Interpret-mode is the untyped surface — gate wide producers, don't type
-  the REPL:** layout bundles silently corrupted under top-level dup/drop/swap
-  (one physical cell moved; a TRUSTED `( -- pp<n,n> )` maker exposed it). The
-  sound v1 is a DNAME-WIDE dict bit tested at interpret dispatch/tick (fail
-  closed, named diagnostic, LUNDEF recovery shape) rather than dynamic width
-  tagging of the interpret stack, which would re-implement the checker at
-  runtime. Checked compile-mode calls of the same marked word stay legal —
-  that discrimination is the regression's guard leg
-  (habu-tfam-12-interpret-10b385b1; checker-side record-time marking
-  sequenced). Growing the engine also crossed the stage2/maker source caps
-  ($C0000, 33 bytes over — another loud growth watermark, bumped in step).
-- **layout.f is not the sole owner of fixed DATA cells:** a "free hole" read
-  from layout.f alone ($36B0, between INE-CELL and FRCLM-CELL) was actually
-  FRFREE-CELL — the JIT float-pool bitmask defined in src/habu/regalloc.f —
-  and storing the uncaught-throw reporter address there made the engine jump
-  to PC=0xff (lldb caught it in one run). Before claiming a DATA slot, `rg`
-  the ADDRESS across src/ lib/ bootstrap/ (regalloc.f, debug.f, and lib/task.f
-  all define cells outside layout.f); the one proven-safe home was $3D00 with
-  lib/task.f TASK-USER-BASE bumped to $3D08.
-- **Mid-compile bridge calls into checker words need an RX window:** the compile
-  loop holds the code REGION RW between colon start and the `;` flush, and the
-  checker words the C-FIND-GLOBAL bridge targets are COMPILED INTO that region —
-  a BLR from the loop fetches a writable page and SIGBUSes under W^X (crash
-  signature: pc == x11, SIGBUS, mid-body). Bracket the find+call with
-  `2 5 MOVZ, LPROT` / `2 3 MOVZ, LPROT` (EM-P2-CARVE-W's "caller holds the RX
-  window" is the documented precedent — the P2 calls run at `;` post-flush or
-  under a caller window; a NEW mid-body call site must open its own). DATA
-  stores are legal in either state; die legs exit, so their prot state is
-  irrelevant; anything that may EMIT (LVPUSHC can spill) must be back in RW.
-- **The compile loop's central body capture is the LBCAP at
-  EM-COMPILE-KEYWORDS' head:** locals capture in C-LOCAL-REF, `;` is never
-  captured (EM-COMPILE-SEMI runs earlier), and everything else (keywords,
-  literals, ops, calls, undefined) is captured by that one keyword-head LBCAP.
-  Any dispatch inserted UPSTREAM that consumes tokens (TFAM 10's ADT mode) must
-  LBCAP them itself or the checker's body is silently truncated — construct
-  first rejected with MD-CON-TRUNC because the checked body ended at
-  `construct` while the engine had already consumed the operand tokens.
-- **A documented DATA "free hole" can be a live table's interior:** layout.f
-  called $260 (old DEF-WL slot) free, but `VVAL-OFF` ($250) + `VSMAX` cells is
-  the JIT virtual-stack value table $250..$350 — $260 is VVAL[2]; DEF-TKA/
-  DEF-TKL coexist at $250/$258 only because their liveness is confined to the
-  definition NAME token, when the VS is empty. Exact-constant rg is not
-  enough: also check every RANGED region (table base + capacity) covering the
-  candidate. A mode cell at $260 read VS garbage; its own fail-closed guard
-  caught it at the first stage build (TFAM 10 CMM-CELL landed at $27A8, the
-  last old CRSIG slot). The other old holes ($2780..$27A0, $27C0..$27E8) were
-  meanwhile reclaimed by habu1.f P2-* — free-hole comments rot, so correct
-  them whenever a slot is taken or found stale.
-- **`wait-rc` is WEXITSTATUS-only:** a signal-killed child (SIGABRT = rc 134)
-  reports rc 0 through the raw primitive. All in-repo users are migrated
-  (bench.f -> PROC-WAIT-RC; the dead PROC-WAIT-RAW alias retired from
-  lib/process.f + manifest + docs) with an end-to-end 128+sig regression
-  (TEST-PROC-WAIT-RC-SIGNAL). The primitive itself (habu1.f BWAITRC + its
-  checker PES row) still exists engine-side; its removal is the routed
-  remainder of habu-wait-rc-masks-9ae37cd0.
-- **Path materialization must share one fail-closed emitter:** `s" <path>"`
-  loader/prefix lines were hand-rolled with zero escaping in `lib/source.f`
-  (`SOURCE-APPEND-PROVIDED`) and `tools/check-core.f` (`CHK-APPEND-REQUIRED`,
-  `CHK-BUILD-PREFIX` DIAG-FILE! label). A `"`/newline in a path silently broke
-  source structure. One `SOURCE-APPEND-QPATH` (validates via `SOURCE-PATH-SAFE?`,
-  throws `E-FS-PATH-UNSAFE` on `"`/`\`/LF/CR) now owns all three sites; output is
-  byte-identical for safe paths. Reject fail-closed, do not quote-escape.
-- **`required`/`included`/`provided` take stack strings only:** the result-cache
-  closure lint (`test/run-result-cache-test.f`) looked like it "missed" them, but
-  those words only appear as `s" path" required` — already covered by
-  `LINT-SQUOTES` scanning every `s" X.f"`. Only `require`/`include` are the
-  parse-name immediate forms (`LINT-REQUIRE`). No standalone gap there; real
-  event-log cross-check is the item-5 rewrite.
-- **reserved-name-lint runs only over user source, never core:** it fires only
-  inside `tools/check.f` (`CHK-RUN-RESERVED-NAMES`) on the checked source, and the
-  repo lint slice runs clobber/shadow/host/filemap/trust — not reserved-name over
-  `src/`. So reserving loader words (`include`/`included`/`require`/`required`/
-  `provided`) is gate-safe even though `src/core/include.f` defines them; core is
-  self-checked by the compiler hook, a different path.
+- **Repo lints, the lint tokenizer, and whole-source readers all carry a
+  largest-file capacity watermark, and an uncaught positive throw dies SILENT.**
+  Fixed `$20000`/`$40000`/`$80000` file buffers (shadow-lint, trust-lint, trusted-inventory,
+  maki-dep-lint, error-code-lint), the tokenizer `TMAX` ($6000→$8000), and `filemap-lint`
+  `FM-BUF-CAP` all trip "file exceeds buffer" as `checker.f` grows (it is the largest).
+  `filemap-lint` `INTERN-MAX` ($200) sat below FILEMAP.md's backticked-path count → rc 76,
+  ZERO output, a bogus downstream artifact, masked by any `| tail; echo $?` pipe. Rules:
+  size caps from the real corpus with the driver NAMED in a comment; sweep EVERY READ-FILE
+  cap in one pass when a named file trips one; route lint CLIs through `LINT-MAIN` (catch,
+  print `tool: threw <code> (<name>)`, re-throw); the shared `LINT-READ-DIE` prints the
+  offending path; never read `$?` after a pipeline.
+- **A capacity exit must ATTRIBUTE itself everywhere — a lone token byte or a bare rc
+  is unattributable.** Engine dict-full = `hb: dictionary full at: <token>` (77), code
+  space (76), and each store labels its own die. Distinguish the two engine arms:
+  `here`/`allot` track DATA space; `:`/`create`/`variable` each consume ONE `ndict`
+  record — "dictionary full" is the ndict cap, so trimming buffer SIZES does NOT help
+  word-count overflow. Watermarks that grow same-commit: `DICT-CAP` (8192→16384→ scaled
+  with CFSTK-OFF/DICT-SIZE/HIDX-SLOTS), the boot source-prefix `IBUFSZ` (silent bare `74`,
+  1M→1.5M in native + gforth mirror), the image build `MSIZE` (must be ≥ `MPAGE`; silent
+  `M-BOUNDS 75`, raised to $120000), the stage2/maker source caps ($C0000). A load path
+  that only ever runs SUBSETS needs an explicit whole-closure regression (the
+  gate-runner-support closure hit ~9.3k dict entries against the old 8192 cap).
+- **`maki/test.f` is at the DICT-CAP word-count wall** (~16284/16384 on master): it
+  accumulates EVERY suite's defs into ONE image with no per-suite forget, so a new
+  subsystem's suites overflow it as `hb: dictionary full at: :` at a LATER unrelated
+  suite. Keep new suites gated STANDALONE (their own `bin/hb file-test.f`), or land a
+  precedented `DICT-CAP` bump in `layout.f`.
+- **The shared maki suite table (`lib/test/suite.f ITEM-MAX`) is a capacity wall too;
+  RAISE it (loud-fail preserved), do not aggregate unrelated suites into one entry** —
+  overflow throws `E-TBL-BOUNDS` (-3000) at LOAD with stdout lost. `ITEM-MAX` is only
+  referenced inside suite.f (128→256, fully contained). Same FM-BUF-CAP pattern: a fixed
+  cap sized for a statically-known registration set, grown by constant with the wall kept.
+  The `maki-suite ITEM-MAX=128` note is stale.
+- **A copied `bin/hb` is NOT a frozen baseline** — the small engine LOADS `src/core/*.f`
+  from the WORKING TREE at boot, so an old binary in an edited tree exhibits the EDITED
+  checker; red/green comparisons must pin the SOURCE tree state, not the binary. (Chasing
+  "engine words not in any tracked source" wasted a session before one out-of-tree run
+  exposed it.) A worker `.jj-ws/*` tree has no `bin/hb` (`bin/` is gitignored) — provision
+  each with a COPY (never a symlink into main — a workspace rebuild would overwrite the
+  binary other workers use). Stale worker workspaces hold stale baked binaries that produce
+  FAKE gate reds when reused.
+- **`FS-SKIP-DIR?` must skip every conventional untracked dir, and the integrator runs
+  `run.f` in the MAIN checkout too.** It skipped `.jj`/`.git`/`.dots` but not `.jj-ws`, so
+  every walker saw stale worker-workspace trees (478 phantom lint findings) — a
+  MAIN-CHECKOUT-ONLY latent red workers never see (their trees contain no `.jj-ws`). Fixed
+  at the root (`lib/fs.f` skip list); add new conventional untracked dirs there when
+  introduced.
+- **Stdlib files have three registry points (source file, `lib/std.manifest`,
+  `FILEMAP.md`) plus `TEST:SUITE` + `TRUSTED.md` for any `TRUSTED:`.** Match
+  `tools/public-signatures.f` output EXACTLY (`TRUSTED:`/constants get no row; effect must
+  sit immediately after the word name, before `{: :}` locals, or it is invisible). Miss the
+  manifest → direct manifest gate fails; miss FILEMAP.md → derived filemap-lint fails (every
+  .f/.fs under src/tools/test/lib must be listed or a committed exclusion). The lint-manifest
+  slice is the OWNING gate a new-lib lane must run (host/filemap/trust/coverage do NOT cover
+  it). `lib/` subdirs (`lib/ptx/`) are research sub-libraries: gate `SMT-COLLECT-LIB-FILE`
+  on `SMT-LIB-FILE?` (flat `lib/<module>.f` only) so coverage tracks flat modules; nested
+  dirs stay trust-audited + `-test.f` + gate-covered but out of the curated manifest
+  (mirrors top-level `maki/`).
+- **Stdlib leaves hide missing requires for months — bare-load them to prove it.** A
+  module consuming another's words with no `require` line is masked by gate load order and
+  surfaces only as a consumer "workaround" require. Proof and regression are the same
+  command: `bin/hb --load lib/<mod>.f` + one word call must load green standalone; fix the
+  module that CONSUMES the words, delete the consumer workaround. Module ENTRY files own
+  dependency setup; test/tool entries `require` their own deps (run comments are not
+  dependency setup). Optional loaders use `require`/`required` (include-once), never
+  `include`, or a resident worker re-evaluates and hits duplicate definition. Core byte
+  helpers used across unrelated libs belong in a narrow `src/core/*.f` prelude, not
+  `lib/string.f`.
+- **Repo-scale source lints must STREAM, not vectorize.** `lib/vector.f` element access is
+  O(index) (`VEC-CELL-FIELD` does `0 ?do cell+ loop`), so `LEX-SOURCE` (8 pushes/token) took
+  9.2s on one file and a 141k fill is 63.9s; the checked idiom is `off cells +`
+  (constant-time, 0.39s). A streaming scanner over the source buffer cut a repo scan 33s→0.9s
+  / a 400KB stage2 file 40s→2s, byte-identical output; use raw `parse-name` for definer
+  payloads so `(CMP)` isn't mistaken for a comment.
+- **Token equality is not site classification.** Source-lex records kill comment/string
+  false positives, but name-position refs still count (`: TRUSTED:` needed a
+  definer-ref filter). Token lints must match dictionary-significant words
+  CASE-INSENSITIVELY (`CREATE`/`;package` define/close exactly like lowercase — an upper
+  closer leaving depth>0 hides every later def; keep exemption prefixes like `E-`
+  case-sensitive). Keep lint classifier fixtures OUTSIDE the linted implementation (an
+  inline `s" LAYOUT-BUFFER ..."` self-check got tokenized as real source). Cross-check a new
+  scanner against raw `rg` per-file counts and eyeball every difference before trusting
+  totals. `reserved-name-lint` runs only over user source (inside `tools/check.f`), never
+  core — reserving loader words is gate-safe though `src/core/include.f` defines them.
+  `variable I` passes the raw engine but breaks `tools/check.f` (i/j are loop-control) —
+  generated converters run reserved-name-lint after prefix stripping (→ `IX`/`JX`).
+- **`DISCOVER`/whole-file dep scans must walk COLON BODIES.** The dominant real idiom is a
+  `s" path" required` guarded inside a colon helper then bare-called at top level; a
+  body-skipping walker never sees it and returns stale keys. Lex the ENTIRE token stream,
+  record guarded loaders unconditionally (superset of the runtime closure, safe under
+  monotone load-if-absent guards), reject fail-closed on dynamic paths/loader shadow/undefine
+  unless the file is a declared boundary in `dynamic-tail-manifest.f`. A scratch-capacity
+  limit must fail only the CONSUMER that needs the value, not the whole scan (Discovery's
+  `SD-PATH $400` threw on merely consuming any >1KB literal — set an overflow flag, reject
+  only if that string reaches a loader word). `include` and `require` do NOT share a
+  registry — a widely-`--load`ed tool must not grow new lib requires; for digests use the
+  baked `SHA256`/`SHA256-FILE`.
+- **Content-key cache keys hash the PATH string, not just the bytes** (`CK-FILE+`), so keys
+  over `HB_TMP`-relative artifacts change per tmp root — for emitted intermediates hash a
+  stable logical label + the file digest, length-framed with a distinct tag per stage.
+  Cache keys carry the PRODUCER's identity: the object cache keying only `sha(bin/hb)`
+  missed because the producer is the maker = f(engine, checker/codegen sources) — qualify
+  with `HBB-MAKER-KEY-HEX`. `SHA256-FILE` resets the global SHA state (can't nest an outer
+  cache key) and writes the digest to `SHA-DIGEST` resetting `SHA-OUT` (hex wrappers keep
+  their own output pointer). Content-key caches stay memory-resident during a key build (load
+  once per root, append new rows in memory). Content-key REUSE is not a warm snapshot — say
+  `cache-root=persistent`/`scratch`, reserve "warm" for `tools/warm-image.f`.
+- **One public binary `bin/hb`** (tty REPL / piped stdin / `hb script.f args` /
+  `hb --load lib.f tool.f -- args`); build-only engines stay temp under `HB_TMP`, `bin/`
+  holds exactly `bin/hb` (a second file fails the gate; persistent tool state goes under
+  `XDG_CACHE_HOME`). No-binary recovery installs only `bin/hb` via
+  `HABU_ALLOW_BOOTSTRAP=1 tools/bootstrap.sh` (Gforth makes `HB_TMP` artifacts, then
+  self-refresh); daily work never uses the Gforth path. Pipe vs script vs source-list mode:
+  non-tty stdin with bytes = pipeline mode even if `argc>1`; empty non-tty stdin + `argc>1`
+  runs `argv[1]`; `--load src... -- args` leaves fd0 as tool data. Reproduce gate failures
+  with raw stdin + the wrapper's own prefix, not file-argument mode (different code path).
+- **Bootstrap source parity matters, and parity is native fixpoint.** `tools/bootstrap.sh`
+  must append the same native layers as `build-fixpoint.f` (incl. `image-bytes.f`); keep
+  `bootstrap/cg/forth.fs` emitter calls syntactically real (`MOVZ,`, `BCOND,`) so Gforth
+  catches a comma-less word immediately. The proof is byte-for-byte self-rebuild through
+  build-fixpoint; retire bootstrap token-diff lints as a second source of truth. Gforth host
+  needs locals — Homebrew 0.7.3 can't parse `{:`; use snapshot `0.7.9` (probes check exact `1`
+  output AND exit 0, since 0.7.3 reports the error yet continues). Native port gates prove
+  `bin/hb`/target-source/syscalls/ELF-AOT/checker/lints/self-refresh/REPL — do not install
+  JS/Python/Rust to prove a native port; external Python baselines live as fenced
+  ```python``` in docs (`host-lint` `1 throw`s on any `.py` path).
+- **`Habu-under-test` is the SMALL engine, not a snapshot; candidate size is
+  RATCHETED.** Promoting `hb-new` (snapshot trailer bakes MBs of live DATA → 22MB
+  candidates that jump into zeroed code on Linux) is wrong; promote `hb-stdin`, enforce a
+  small candidate size. `GE-MAX-CANDIDATE-BYTES` only rejects catastrophic bloat — gradual
+  growth needs committed per-target baseline rows (`test/gate-build-size.f`, per-target
+  because Mach-O/ELF differ): growth fails until the same commit bumps the row, shrinkage
+  prints `STALE-BASELINE`, an unmeasured target (0) fails closed. Bake side-effect-free phase
+  libs into a warm gate runner keyed by runner source + seed image; baking the runner FROM
+  the candidate on the critical path regressed the gate — start it in the early pool.
+- **`bin/hb file.f` (no `--load`) drops to a REPL after a clean load and blocks on stdin
+  (looks like a hang / rc 124); pipe `< /dev/null`.** Errors still exit non-zero
+  immediately; gate/test files that call `T-REPORT`/`die` exit on their own. Any tool that
+  ends with a plain `throw`-on-findings (not `bye`) has the same shape — redirect
+  `</dev/null` (rc 0 clean, rc 1 findings). A spawned build child must be given `/dev/null`
+  stdin, never inherit it: a `#!/usr/bin/env bin/hb` script falls into the stdin REPL after
+  its body and `read`s fd 0; an inherited never-EOF pipe blocks forever (only reddens via the
+  per-phase timeout). `BUILD-RUN` opens `/dev/null` and passes it as infd (root fix; adding
+  `bye` to each fixture is a band-aid). Pipe-scoped env vars lie: put the env on the Habu
+  side (`printf '' | env HB_TMP=/tmp/x bin/hb ...`).
+- **`tools/check.f <file>` preverifies in ISOLATION — not for require-dependent files.** It
+  does not process the require chain or FFI/`deftype` metaprogramming, so it reports
+  `E-UNDEFINED` on lib words even for green files. Typecheck a device tool the way it loads:
+  `bin/hb --load <full prelude> <file>` with the trailing `MAIN` run line stripped
+  (`sed '/^MAIN$/d'`) so a clean typecheck exits 0 instead of throwing at `CUDA:OPEN`. A
+  static checkability probe is only as honest as its registry context: probing a maker-only
+  file through `check.f` came back clean because check-core's own requires (`tools/json.f`)
+  had put `JSON-DIAGS` into the probe registry — the real maker compile then rejected it. The
+  oracle must BE the context (the live stage/maker compile). `--all-errors` checks top-level
+  defs independently, so on bundled stdlib it falsely flags deps undefined and multiplies
+  time — run the fast bundle check first, all-errors only after failure; `--source-list`
+  all-errors walks original files with cross-file support replay through
+  `VERIFY:SOURCE-BUF-IN-SCOPE` (a collected-but-undispatched form is a silent no-op — fix
+  both ends).
+- **A CLI tool that reads AMBIENT argv must NOT be `included` into a shared image
+  carrying foreign argv.** `perf-regress.f` (`SCRIPT-ARGV$`) `included` into the resident
+  image read the harness's `--under bin/hb` and threw `E-FS-STAT` before parse — a
+  deterministic argv contamination misread as a fork/COW race. Run such tools SPAWNED
+  (clean argv), carry the assertion in an argv-free `-test.f`. Corollary: a public diagnostic
+  must reset ALL state it can read (a stale `LAST-LINE$` cursor made a path error masquerade
+  as a malformed-row error). Reproduce the include argv leak with
+  `bin/hb --load a.f cli.f -- <args>` — no fork needed.
+- **A `TEST:SUITE` block is ONE `bin/hb --load` spawn (all files into one image
+  sequentially), so suite files must be package-scoped, duplicate-safe, tolerant of an
+  earlier file's installed check hook and shared library/registry state.** A test suite that
+  opens `package X` must close it with `;package` before `T-REPORT`, or a LATER suite dies
+  `exit 75` printing a bare token (the engine's does>/quotation compile guard hits the
+  still-active package) — the crash is 1-2 suites later than the culprit, whose own suite
+  PASSES. A later suite reusing an already-registered id (or a name an earlier suite
+  interned) fails only in the full gate — prefix every fixture identity with the test's own
+  tag; use an already-INIT-registered id (`TARGET:SM87`) rather than minting into a
+  cap-bounded shared registry. Test files reopening a shared package need globally-unique
+  helper tails (`SUBJ-A` collides across two `package DIFFRUN` files → `duplicate definition
+  rc=78`).
+- **"Wired into a TEST:SUITE" is not "runs".** `gate-stdlib-cases.f` suites execute only if
+  a `SUITE-*-LABEL?` slice selects the label AND someone invokes that slice; the resident
+  `test/run.f` runs the in-process GSI groups + a few spawned slices, NOT the full TEST:SUITE
+  inventory — the two lists are hand-synced and drift silently (four checker-invariant suites
+  ran in NO automatic gate). `suite-coverage-lint.f` now derives all three lists each run and
+  forces every member into scheduled / manual-documented / spawn-only-documented; wire a new
+  lint into BOTH the cases suite + the scheduled lint-tools GSI fork (prove each path red with
+  a transient drift). The standalone `-- lint-tools` slice and the gate's resident phase 17
+  are DIFFERENT code paths.
+- **Gate slices see different lints — the integrator runs the slice that OWNS each touched
+  file class.** maki-dep-lint (dependency direction) and error-code-lint live in the
+  lint-tools slice; a lane validating only lint-libs + maki/test can land a maki/ reference or
+  a code collision in the stdlib layer and stay green until the resident run. `error-code-lint`
+  is part of the OWNING gate for ANY new `E-*` (including maki/, whose subdirs a bare `maki/*.f`
+  glob misses — scan recursively); grep for a free negative code, never pick by adjacency
+  (error codes are a global namespace with real collisions). `maki/` as a code TOKEN trips
+  maki-dep-lint anywhere but maki/ files — register only prefixes that actually occur.
+- **Off-device `CUDA:OPEN?`-style SKIP guards are a FAIL-OPEN class.** They kept
+  `fusion-compare.f` green for weeks off-device while it would die uncaught (missing /tmp cubin,
+  `E-CUDA`) the moment a device appeared. A device suite is proven only by an on-device run;
+  every device tool's top-level entry probes `CUDA:OPEN?`, prints a recorded SKIP line, exits
+  (the GB-ALL shape) so it composes into host suites; prefer self-emit + fail-closed throws
+  over prebuilt /tmp artifacts, and key device legs on the probed device-FFI capability. A
+  new `maki/*-device-test.f` needs NO lint registration (filemap-lint walks src/tools/test/lib
+  only) — keep it OUT of `maki/test.f` (needs CUDA) and device-PROVEN before adding anywhere.
+- **PTX/emitter shape tests are NOT assembler proof.** `ptxas` rejects undeclared predicates
+  above `%p15` and stale resource pools (`%p<8>` when the emitter now needs `%p21`); a text
+  fixture rendered plausible text that never assembled. Keep the text fixture, then assemble
+  the EXACT emitted artifact through checked emit → `ptxas` → (for perf) CUDA launch. In-process
+  PTX text tests use a `PTX-L` sink hook (`PTX-CAPTURE-ON`/`-OFF`, fail-closed on overflow), not
+  a subprocess. `zed`'s ptxas is at `/usr/local/cuda-12.6/bin` (not on PATH); the box's
+  `~/Work/habu` is stale vs master — run a device leg by transferring the FULL tree to an
+  isolated `/tmp` dir and bootstrapping a fresh engine THERE, never touching `~/Work/habu`.
+- **Do not spawn assertion tools for semantic checks; keep cores in-process, reserve child
+  `hb` for real CLI boundaries.** Gate JSON assertions, checker diagnostics, and lint cores are
+  checked library words — calling them in-process cut hot helper spawns (151→123) while
+  preserving coverage. Split every CLI tool into a `*-core.f` (reusable, buffered output,
+  caller-supplied scratch) + a thin `*-main.f`; the test installs an output buffer and
+  `require`s the core (the require-time run becomes the captured end-to-end fixture). Reserve
+  child `hb` for argv/env/stdin/exit/source-label contracts, and for negative COMPILER probes
+  (rejected source can exit through checker/compiler `die` before `catch` returns) — route
+  semantic negatives through `CHECK-CANDIDATE!`/`CHECK-ALL-ERRORS-BUF` + diagnostic rendering.
+  Never assert engine-COMPILE failures through in-process `catch`-around-`evaluate`: a
+  definition-compile failure SIGBUS-crashes (rc 134) and an interpret-level failure returns 0 to
+  catch, while plain stdin/`--load` exit an orderly rc 70 — pin them as gate child-process
+  cases (`GE-RUN-STDIN` + `GE-EXPECT-RC`).
+- **A core/wrapper split updates every child load list AND every warm-image path.** Missing
+  transitive deps show as child rc 70 before the parent can explain it. Entry/core splits must
+  not WIDEN worker preload — a core is a win only if loaded by the worker that needs it (pulling
+  SARIF into the shared diagnostics lib made every diagnostic worker compile it). Warm image
+  entries cannot hide deps behind `include` (the baked source map can crash the include
+  boundary) — bake the core into the warm image when it fits + load a no-include `*-main.f`, or
+  pass core+entry explicitly.
+- **The dot ledger DRIFTS from head — audit before assigning, and `rc 0` is NOT proof.** A
+  sweep of 129 open dots found 6 fully landed, 10 with stale premises, 3 TRUSTED.md rows owned by
+  archived dots (`trusted-inventory --strict` red on DOT-EXISTS?, invisible because the gate runs
+  FIXTURES not live strict). Verify a dot's claim against head; `dot off` only after
+  `rg <id> TRUSTED.md` + reassigning rows; engine-suite standalone exits 0 after checker errors
+  (drop-to-REPL masks) — the last-line `ok` marker or the full gate is the signal. Reproduce
+  engine-suite changes through `bin/hb --repl < test/engine-suite.f` (a `cp@ patch32` proof
+  passes via `--load` yet SIGILLs via the stdin REPL). Hot-cache full-gate passes do not prove
+  the engine-build closure — `test/run.f -- --cold-cache` exercises the native build slice
+  (merge-gate runs cold); when a change adds a transitive `require` to any gate file, run cold
+  before claiming green.
 
-- **One image-writing tail; the engine cannot route through OBJLINK:** the ~585 KB
-  engine `__text` overflows OBJLINK `MERGE-CAP` ($10000/64 KB), and baking
-  `lib/object*.f` into `bin/hb` breaks "small source-loading engine", so unify by
-  sharing `DRV-EMIT-IMAGE ( sig$ path$ -- )` in `src/habu/driver-io.f` (loaded after
-  macho/sign in every context) across all six emitters — stage2/build/maker/stdin/
-  aot-lib and OBJIMG:WRITE — instead of physically merging the engine as an object.
-  The OBJIMG `TEXT>ASM`re-load (`ASM-INIT ; <bytes> BYTES,`) is a byte-identity:
-  `BUILD-MACHO`/`CODESIG2` read only `CODE`+`CODELEN` (= `ASM-LEN`, always 4-aligned);
-  `ASM-INIT` clears only label/fixup state that `BUILD-IMAGE` never reads. Build
-  drivers are NOT baked into the final REPL `bin/hb`, so refactoring their emission
-  tails leaves`bin/hb` byte-stable — only `hb-stage`/`hb-stdin-mk` intermediates
-  change, and the `stage` fixpoint still proves self-rebuild identity.
-- **Single-file CLI tools stay testable through the lint sink:** when file
-  ownership forbids a core+wrapper split, route all output through
-  `LINT-OUT-WRITE`, keep the API in a package `public` section, and let the test
-  install `LINT-OUT-BUFFER!` before `require`-ing the tool — the require-time
-  main run becomes the captured live end-to-end fixture
-  (`tools/trusted-inventory-test.f`).
-- **Token equality is not site classification:** source-lex word records already
-  kill comment/string false positives, but name-position references still count
-  — `: TRUSTED:` in `bootstrap/src/defining.fs` needed a definer-ref filter on
-  the previous word token. Cross-check a new scanner against raw `rg` per-file
-  counts and eyeball every difference before trusting totals.
-- **`lib/vector.f` element access is O(index), so filling a vector is O(n²):**
-  `VEC-CELL-FIELD` computes cell slots with `0 ?do cell+ loop`; measured 141k
-  `VEC-PUSH-N` = 65s while a 135KB `c@` loop is ~0ms, and `LEX-SOURCE` took
-  9.2s on `bootstrap/cg/forth.fs` alone (8 pushes/token). Until
-  habu-fix-quadratic-vec-7044f70d lands, keep source-lex off repo-scale paths
-  and stream instead — rewriting trusted-inventory as a streaming scanner cut
-  the repo scan from 33s to 0.9s with byte-identical TSV.
-- **Repo lints carry a largest-source watermark:** shadow-lint, trust-lint
-  callers, and stale-status-lint all had fixed $20000 file buffers with
-  checker.f already at 96.5% of the cap; growing a core file tripped
-  `lint: file exceeds buffer` across the gate. When growing src/core, check
-  the lint file-buffer caps like the maker `__text`/`CODE-CAP` walls.
-- **Top-level tokens resolve during execution, not per line:** a snapshot
-  entry cannot run `FORGET-DEFS-FROM ... SNAPGO` as one top-level line — the
-  hide removes `SNAPGO` before it is parsed. Compile the sequence into one
-  (unchecked-boundary) word first so every name is resolved before the
-  retire runs.
-- **Warm snapshots can retire the builder tail and beat the cold engine:**
-  the snap source loads the dev keep surface first, marks the builder tail
-  (`SNAP-TAIL-MARK`), and `FORGET-DEFS-FROM` retires names+code+sigs before
-  `SNAPGO`; with the hash-indexed checker the restored image checks defs-1000
-  faster than `bin/hb` (0.15s vs 0.18s) and boots in ~0.02s.
-- **Test framework and project policy are separate:** `lib/test.f` owns the
-  reusable suite/group/test mechanics and setup/teardown hooks; Habu-specific
-  warm images, filters, and process argv live in the Habu test adapter.
-- **Source-list preverify needs its own diagnostics:** `tools/check.f --source-list`
-  can fail before the child `hb` run, so relying on the child stderr collapses to
-  exit 70. Buffer preverify checker diagnostics directly, print the source-list
-  entries in default mode, keep `--json-errors` JSON-only, and prove the behavior
-  through the `TEST:SUITE check-cli-boundary` runner instead of shell chunk-bisecting.
-- **Focused suites go through the runner support entry:** `test/gate-stdlib.f`
-  assumes `lib/process-env.f`, `test/gate-pool.f`, and runner setup are already
-  loaded; a hand prelude crashed in `PROC-ENV+`. Use
-  `bin/hb --load test/gate-runner-support.f test/gate-runner-entry.f -- lint-libs-ptx`
-  or `-- check-cli` so the new suite groups print `GROUP:`/`PASS:` and carry their
-  process/env context.
-- **Emitter shape tests are not assembler proof:** `tools/ptx/softmax-bwd-cg.f`
-  rendered plausible text but `ptxas` rejected undeclared predicates above `%p15`;
-  `tools/ptx/softmax-bwd-opt-cg.f` rendered `SOFTMAX_BWD_OPT` while loading stale
-  `[p_x]`. For PTX emitters, keep the text fixture, then assemble the exact emitted
-  artifact before claiming device proof.
-- **Test entry files should not end in `bye`:** `maki/eval-device-test.f`,
-  `maki/eval-compare.f`, `tools/ptx/softmax-launch.f`, and
-  `tools/ptx/softmax-gradcheck.f` all printed `test: ok` and then exited nonzero
-  because of a trailing top-level `bye`. Let `T-REPORT` be the exit boundary for
-  loadable tests.
-- **In-process eval needs state rollback:** `GE-EVAL-FORGET` must restore more
-  than `cp`/`ndict`/`UEND`; current wordlist and `JSON-DIAGS` leaked across
-  resident tests until they were snapshotted. Runtime-wide profiler state is
-  not covered by that rollback, so profiler tests remain process sentinels.
-- **Resident suites must preserve parallelism:** moving all `lint-libs` into one
-  in-process runner serialized PTX and regressed time. Split resident groups by
-  parallel-safe cohorts (`core`, `ptx`, `ptx-neg`, `ptx-toolchain`, artifact
-  fast checks) so setup duplication and child `hb` launches drop without turning
-  the suite single-file.
-- **Resident forks need explicit harness context:** a forked in-process test does
-  not see the `PROC-ENV+` vector prepared for spawned children, and `GETENV`
-  still reads the host env. Install Habu-side defaults for helper spawns and
-  direct warm/check overrides for in-process helpers, or resident tests rebuild
-  warm images and silently lose caches.
-- **Nested candidate fixtures need explicit argv targets:** resident defaults can
-  select the candidate for the outer test process, but a nested fixture that
-  calls `GETENV` may still fall back to stale host `bin/hb`. Pass the candidate
-  executable as a script arg for child-spawning fixtures such as `test/proc-pty.f`.
-- **In-process tool tests need injectable executable context:** `tools/check-test.f`
-  can run standalone or inside the resident suite; nested raw-`hb` sentinels must
-  use a library-level `HB!` override or `PROC-ENV-DEFAULT$?` suite default instead
-  of rereading process env from a forked worker.
-- **End-to-end time includes entry compilation:** `test/run.f` can report
-  sub-30s after `TR-GATE-START!` while `/usr/bin/time` is still >40s because
-  parent load compiles resident support first. The next architecture cut must
-  remove top-level support compilation from the timed command, not just optimize
-  scheduled phases.
-- **Content-key caches must stay memory-resident during a key build:** re-reading
-  `content-key.cache` for every `CK-FILE+` made hot launchers pay repeated I/O.
-  Load the cache once per root and append new rows to the in-memory copy.
-- **Semantic tool slices should dispatch directly:** routing `tool-boundary-trust`
-  through the generic stdlib suite kept a process/test-suite boundary on the
-  critical path. Direct `GSI-*` dispatch in resident forks cuts inner `hb`
-  launches and makes the slowest slice visible.
-- **No-binary bootstrap is its own gate path:** Gforth runs `bootstrap/cg/forth.fs`,
-  so Habu typed locals such as `done:label` are literal Gforth names and break
-  codegen. The bootstrap data region must also fit static checker state
-  (`USIGS-BOOT`), and its native reload prelude must reset user signatures and
-  hide from `SEQ` before reloading current source.
-- **Do not bake one-off AOT gate support into broad runner images:** adding
-  `tools/aot-call-report.f` to the runner image overflowed the checker user-signature
-  snapshot even though AOT phases are scheduled cold/early. Keep AOT-only report/assert
-  helpers on the cold AOT paths and reserve the runner image for phases it actually runs.
-- **Direct hb-build linting is an adapter, not a runner dependency:** baking
-  `aot-lint-core`/`signature-lint-core` into `hb-gate-warm` also overflowed the
-  user-signature snapshot. Keep `hb-build-lib` defaulting to child CLI lints and
-  install direct lint hooks only in cold AOT phases that already load the cores.
-- **Gate budgets are stop-line thresholds, not comfort blankets:** raising the
-  default native gate budget to 160s hid duplicated gate work after the suite had
-  already been cut near 90s. Keep the default at the current green threshold and
-  make regressions explicit; use `test/run.f -- --budget-ms N` as the explicit
-  slow-host override while the 30s architecture work removes duplicate
-  launches/builds.
-- **Content-key reuse is not a warm snapshot:** the steady-state suite uses a
-  persistent content-key cache for the candidate/build artifacts, not a warm
-  snapshot harness. Reports and docs must say `cache-root=persistent`/`scratch`;
-  reserve "warm" for the explicit `tools/warm-image.f` feature tests.
-- **Cache Habu-under-test by content, not path:** the full gate's first wall was
-  a fresh fixpoint build before any under-test phase could start. Hash `bin/hb`,
-  the runner/build harness, and every emitted engine/repl source; a persistent
-  hit can unblock under-test slices immediately, while a miss still runs the
-  normal fixpoint and installs the produced candidate under that key.
-- **Candidate production is not validation:** a cache hit correctly skipped the
-  fixpoint producer, but also skipped `GE-ENGINE-SUITE` and hook/dictionary
-  checks because `GENG-BUILD-SLICE` mixed build and proof. Keep the producer
-  build-only; always run a candidate validation row after the `under`
-  capability is ready, including cache and `--under PATH` imports.
-- **Persistent maker caches must be keyed by emitted maker inputs:** once
-  `HABU_BUILD_CACHE` points outside the per-run temp root, `hb-aot-mk` and
-  `hb-build-mk` cannot be fixed filenames. Hash the build library, loaded
-  helper libs, build-fixpoint source, target source, common engine source, and
-  selected AOT/REPL driver, then put the mode in the key.
-- **Warm snapshots must serialize used state, not reserved arenas:** hiding
-  dictionary names without rewinding `cp` leaves dead code in snapshots, and
-  static checker arenas (`create ... allot`) bake reserved capacity into every
-  image. Warm images now compact tail code and heap-allocate checker signatures,
-  copying only used signature bytes into the snapshot payload.
-- **Content keys cannot nest the global SHA context:** `SHA256-FILE` resets the
-  global SHA state, so using it while an outer cache key is active collapses the
-  key. Build a tagged manifest of version strings, file names, and per-file
-  digests, hash the manifest once with `lib/content-key.f`, and prove
-  invalidation by changing a baked source and requiring a miss.
-- **SHA output ownership is caller-visible state:** `SHA256-FILE` writes the raw
-  digest to `SHA-DIGEST` and resets `SHA-OUT`; wrappers such as
-  `SHA256-FILE-HEX` must keep their caller output pointer separately and render
-  from `SHA-DIGEST`, not from the global `SHA-OUT`.
-- **Stdlib files have three registry points:** adding a library file requires
-  the source file, `lib/std.manifest`, and `FILEMAP.md`. Miss the manifest and
-  the direct manifest gate fails; miss `FILEMAP.md` and the derived
-  filemap-lint fails (every .f/.fs under src/tools/test/lib must be listed or
-  be a committed exclusion row — the old hand-kept required list is gone).
-- **Pool slots are host policy, not universal truth:** on this macOS/aarch64
-  12-core host, persistent-cache full suites run 24.341s internal / 26.72s wall with
-  8 top-level slots and 2 nested slots. Keep Linux conservative until measured
-  there, cap dynamic slots below reserved artifact slots, and use
-  discoverable argv knobs:
-  `test/run.f -- --pool-slots N --nested-pool-slots M`.
-- **`Habu-under-test` is the small engine, not a snapshot:** the native engine
-  gate accidentally promoted `hb-new`, whose snapshot trailer baked `$14523b4`
-  bytes of live DATA and produced 22 MB candidates that could jump into zeroed
-  dictionary code on Linux. Promote `hb-stdin`, enforce a small candidate size,
-  and leave snapshots as explicit `tools/warm-image.f` feature artifacts only.
-- **Candidate size is ratcheted, not just capped:** `GE-MAX-CANDIDATE-BYTES`
-  only rejects catastrophic bloat; gradual engine growth needs the committed
-  per-target baseline rows in `test/gate-build-size.f` (TRUSTED.md-style
-  manifest). Growth fails the build/validate slices until the same commit bumps
-  the row; shrinkage prints `STALE-BASELINE` so the row is lowered; an
-  unmeasured target row (0) fails closed printing the measured size. Baselines
-  are per-target because Mach-O and ELF candidates differ in size.
-- **Pipe-scoped env vars are easy to lie with:** `env HB_TMP=/tmp/x printf '' |
-  bin/hb ...` sets `HB_TMP` only for `printf`; to preserve a gate temp root, put
-  the env on the Habu side: `printf '' | env HB_TMP=/tmp/x bin/hb ...`.
-- **Gate budget proofs need an uncontended Habu host:** full-gate timing is
-  meaningless while another worktree is running `test/run.f`; a concurrent
-  `habu-maki` gate pushed local runs from ~125s to ~154s and left active `hb`
-  children competing for CPU. Check for active Habu gates before claiming a
-  budget regression or pass. In this exec environment, focused `--load` smoke
-  commands also need explicit stdin EOF (`printf '' | bin/hb --load ...`) or the
-  REPL can wait on an open pipe until the harness kills it.
-- **Gate phase order must follow measured tails:** adding dictionary/checker
-  coverage can turn a formerly short late slice into the critical tail. Keep
-  `test/run.f` `TR-LATE-ORDER` sorted by measured post-warm duration so coverage
-  additions do not push a 20s+ slice behind every lint cleanup phase. Split
-  check-warm-only tails (`engine fixture`, `dictionary/checker`) from
-  tools-warm-dependent tails; waiting for both warm images before starting all
-  late phases wastes several seconds. Record warm completion in persistent flags,
-  not fixed pool-slot probes, before reusing slots for later phases. The gate
-  pool poll timeout is part of the budget too; a 1000ms poll can lose the whole
-  margin at the final phase, while `$64`ms keeps attribution responsive without
-  busy-spinning. On this 4-online-core Linux/aarch64 target, six top-level slots
-  outperformed eight because several phases spawn nested pools.
-- **Do not spawn assertion tools for semantic checks:** gate JSON assertions are
-  checked library words in `tools/gate-json-assert-core.f`; calling them
-  in-process preserved coverage and cut hot helper spawns from 151 to 123.
-- **Do not run negative compiler probes through raw `evaluate`:** positive
-  `GE-EVAL-CAPTURE` can run in-process, but rejected source can exit through
-  checker/compiler `die` before `catch` returns. Migrate semantic negative tests
-  through `CHECK-CANDIDATE!` plus diagnostic rendering; keep true CLI/die
-  boundaries as child-process sentinels.
-- **Use checker-core buffer adapters for semantic negatives:** `CHECK-ALL-ERRORS-BUF`
-  reuses `VERIFY:SOURCE-BUF` candidate scope and diagnostic-buffer rendering
-  without writing a temp file or spawning `hb`. It is valid for ordinary semantic
-  rejects such as package no-return flow and duplicate-definition. Full-source
-  failures such as duplicates must be handled before per-definition isolation,
-  or the fallback can falsely pass. Do not add `TRUST` for checker internals just
-  to name the duplicate; keep a generic diagnostic until a typed checker
-  diagnostic API exists.
-- **Warm image cache publishes must be stamp-last:** a failed warm-tools bake
-  wrote a new `hb-tools-warm.trust.f` beside an old image/stamp, so the next
-  cache hit paired mismatched artifacts and failed with `checker: duplicate
-  definition: repl-file-cap`. Build into candidate image/trust paths, delete
-  the old stamp before publish, rename artifacts, then write the stamp last.
-- **Warm images must clear include state before snapshot:** a support file that
-  used `include` left `INCLUDE-BUFS-A` pointing at an mmap address from the
-  baker process. Restored warm images then failed nested includes with
-  `include: read failed`. Snapshot prep must close/reset include buffers,
-  cursors, depth, and path state before `SNAPGO`.
-- **Fixed artifact slots must not be reused by the dynamic pool:** warm/check/AOT
-  artifact phases used fixed slots that the normal pool later reused before the
-  readiness flags were marked. That made `TR-DRAIN-UNTIL-WARM` wait on unrelated
-  engine/debug work and hid cold-cache overlap. Put fixed artifacts in pool
-  slots outside the dynamic slot range and let normal phases use slots `0..N-1`.
-- **Focused gate wins must survive the full DAG:** splitting
-  `tool-boundary-lints` into parallel suites cut the focused tool slice from
-  ~22.8s to ~18.3s, but hot full gate regressed slightly under contention and
-  added top-level subprocesses. Keep the in-process semantic cuts; revert splits
-  that only win in isolation.
-- **Do not split resident groups past setup amortization:** splitting combined
-  tool-doc/tool-repair residents into five single-purpose resident forks made a
-  steady-state macOS run regress from 29.04s/26.760s to 30.40s/28.031s. Parallelism that
-  duplicates resident setup and adds fork scheduling loses even when individual
-  subtests look independent.
-- **Inline resident work must overlap child suites:** the winning
-  `tool-boundary-lints` cut split tests into load-only libs, skipped the cold
-  child suite, and ran inline lints immediately before `GT-POOL-DRAIN`; running
-  them before spawning sibling suites serialized the slice and lost the full-DAG
-  win.
-- **Do not make inline gate work a serial dumping ground:** inlining
-  check-repair/doc/typed-local semantics into the single stdlib hook made zed's
-  tool slice wait on one resident thread for ~56s. Split independent semantics
-  into first-class resident-runner rows; the steady-state local suite fell to
-  24.579s while still running candidate validation.
-- **Run the suite from `bin/hb`, not a top snapshot:** replacing a broad
-  top-level `hb-test-suite` image with direct `bin/hb --load test/run.f` kept
-  the small engine as the entry point, removed a generated setup artifact, and
-  still held macOS steady-state wall time under 30s. Cache-fill remains a separate
-  profile because candidate and builder artifacts are legitimate misses.
-- **Share support at the family-worker level, not the suite root:** preloading
-  all runner support in `test/run-resident.f` removed repeated loads but serialized
-  an 18.3s `setup/shared-support` span and regressed macOS wall time to ~39s.
-  The winning shape overlaps non-stdlib phases with shared stdlib setup, classifies
-  every `run-worker-stdlib.f` phase behind that setup, and loads engine/diagnostic
-  support once inside a phase-family worker before forking child tests from that
-  image. macOS hot fell to ~19s wall; zed hot fell from ~82s to ~60s wall.
-- **Warm launchers hide duplicated checker work:** after removing the top
-  snapshot, direct checker diagnostics exposed repeated `tools/check.f` support
-  loads. Semantic diagnostic tests should call `tools/check-core.f` in-process
-  with fd capture; only true CLI stderr/argv contracts keep a child `hb`.
-- **Load repeated semantic setup once:** the stdlib tool groups were paying the
-  same checked lint/check-all-errors setup in every resident process. The current
-  suite loads that common tool base once as silent suite setup, then forks
-  phase-owned resident workers without removing CLI boundary coverage.
-- **Discovered content-cache misses must switch budget class:** a default run
-  after changing `test/run.f` rebuilt candidate/build artifacts but still used
-  the steady-state macOS budget, failing despite all tests passing. Candidate and
-  builder artifact misses now apply the scratch-cache budget unless the user
-  supplied explicit budget args.
-- **Stats schemas need content assertions, not just counters:** `GS-ROW` first
-  emitted `sha/boundary/runner/subject/label` despite docs promising
-  `label/subject/runner/boundary/sha`. Tests must assert representative TSV row
-  content so telemetry remains usable for scheduling RCA.
-- **Every telemetry label needs one owning emitter:** fork children share the
-  stats file, so a child emitting its fork label and the pool pass-hook emitting
-  the same label double-counted spans (238 vs 193 real). The pool owns spans for
-  its entries: `GT-POOL-FORK-CHILD` records the fork label via `GS-CHILD-LABEL!`
-  and `GS-SPAN` skips matching labels; load time is a separate `span-load` class
-  so slowest-test attribution stays tests-only.
-- **Pool failures must drain, not kill:** dying at the first red child hid
-  sibling failures and cost one gate run per red. `GT-POOL-FAIL` records a red
-  row (label, outcome, capture paths) and continues; `GT-POOL-DRAIN` stays
-  fail-closed by dying after the drain when reds exist, and the top runner keeps
-  `GT-ROOT` on failure so the streamed per-child capture files survive triage.
-- **Concurrent jj ops can revert uncommitted workspace edits:** a sibling
-  agent's operations made this workspace's `jj diff` fail with a divergent-op
-  error, and `jj workspace update-stale` then rebuilt the working copy from the
-  last snapshot, discarding on-disk edits. In shared-repo parallel sessions,
-  `jj commit` each verified change immediately; do not accumulate uncommitted
-  work across another agent's active operations.
-- **Late-bound suite hooks need `defer`:** redefining `SUITE-INLINE-WORK` after
-  `GATE-STDLIB-MAIN` compiled still called the old xt. Use a checked `defer`
-  hook installed by the resident entry, and execute inline work at the
-  existing pre-drain point so it overlaps sibling child suites.
-- **Build caches must be default-on and content-keyed:** a 40s budget failed a
-  cache-fill run at 71.015s even though the steady-state path was ~31s. Keep
-  `hb-under-test`, maker, artifact, and file-digest caches under the default
-  user cache root, remove opt-in cache overrides, and let the budget catch real
-  regressions.
-- **Artifact caches must key content, not temp paths:** `hb-build` output caching
-  first missed every run because `CK-FILE+` included the temporary source path in
-  addition to the digest. Use a stable logical label plus the source digest for
-  generated/temp-owned inputs. AOT-positive fell to ~13s hot, but the full gate
-  barely moved because AOT-negative became the critical path.
-- **Schedule early only when the artifact invariant is already true:** hot gates
-  restore content-keyed `HABU_UNDER_TEST` before `TR-EARLY-START`, so source-only
-  lint slices can run early under the candidate. Guard early manifest/libs on
-  `TR-UNDER-READY`; leave artifact lint late because filling the early pool
-  regressed the full DAG.
-- **Strict duplicates expose generic fixture names:** once redefinition fails
-  closed, tool fixtures named `OK`/`BAD`/`FOLD` and shared helpers named `STR=`
-  collide with baked or sibling words. Prefix generated names by fixture/tool and
-  keep shared lint helpers in a tool-owned vocabulary.
-- **Core bootstrap helpers need private names:** do not move public stdlib words
-  behind checker-hook trust to dodge duplicate definitions. Give bootstrap-only
-  helpers a core-owned name such as `CORE-STR=` and let `lib/string.f` publish
-  the public `STR=` contract so stale native `bin/hb` can self-refresh.
-- **`is` needs checker-owned target kind:** runtime `DEFER-MAGIC` validation is
-  not enough. `defer` must record a checker-visible target-kind entry, and
-  `tools/check.f` must reject `is` on non-defer words before runtime.
-- **Warm snapshot tails hide, they do not replay:** replaying baked core/target
-  files used to dodge duplicate `SNAP-OUT`, but it also reset state by accident.
-  Emit `HIDE-DEFS-FROM SNAP-OUT`, append `snap.f`, and test that old tail deps
-  are absent.
-- **Image mmap pointers are transient:** `MBUF-A` persisted through a restored
-  image and crashed the next `IMG-M8`. Snapshot writers must clear mmap-backed
-  image buffer pointers/cursors before building a new header.
-- **Reserved parser names need a preflight lint:** `variable I` can pass the raw
-  engine but make `tools/check.f --source-list` fail as silent rc 70 because `i/j`
-  are compiler loop-control tokens. `tools/reserved-name-lint.f` now runs before
-  the checker child; generated converters must run it after prefix stripping so
-  naturalized names become `IX`/`JX`, not bare `I`/`J`.
-- **The emitted stage prefix has two check regions - retire preflight asserts
-  only for the checked one:** in the generated stage source the checker-boot
-  (util/structures/checker/render) plus asm/icode/mnem load inside the
-  `BFR-CHECK-OFF .. ' HOOK set-check` window (unchecked), while
-  habu1/prof/regalloc/jit/habu2 load with `HOOK` on (blocking-checked). So a
-  stack-effect regression in a habu1/habu2 `:` emitter fails the stage compile
-  outright, but icode's does not - only the non-blocking `BF-CERTIFY` static scan
-  covers icode. When retiring the `BF-PREFLIGHT` textual asserts, drop the
-  habu1/habu2 typed-shape guards (real blocking check now covers them) but keep
-  icode's until `BF-CERTIFY` flips blocking, and keep the same-type codegen-role
-  asserts (`LABEL@ B,` vs `@ B ;`; `SZA-I @ +` vs `over +`) that no checker can
-  express. Prove the replacement with a negative fixture (emitter underflow ->
-  `BF-CERTIFY-RC` 70), not by trusting the compile.
-- **Re-emitting the same source across build stages is a boot-reload TOCTOU:**
-  `build-fixpoint` re-reads the boot-prefix files for the stage2, stdin, and snap
-  emissions and the stamp-key re-emit; a mid-build source edit would let stage N
-  build from one revision and N+1 from another, silently entering the installed
-  image. `BF-PIN` pins each emitted path's content digest (keyed by SHA-256 of
-  the path) on first read via the single `BF-APPEND-SOURCE` choke point and
-  re-verifies on every reload, so there is no separate manifest to drift and a
-  mismatch throws `E-BUILD-BOOT-DRIFT`. Baking the digest for boot-*time* reload
-  verification is a separate engine change (dot habu-boot-pin-bake).
-- **Focused gate slices need a temp root:** direct-loading
-  `test/gate-dictionary.f` does not run `TR-START`; use `test/run.f` or an
-  explicit suite temp/cache root, or generated artifacts resolve under `/` and
-  fail with `E-FS-OPEN`.
-- **Nested lint subprocesses need their own timeout caps:** fast tool probes can
-  keep a tight timeout, but a fixture that spawns `trust-lint` or another
-  repo-scale tool must use a separate cap sized for aggregate-gate contention.
-- **Repo-scale source lints stream, not vectorize:** duplicate-definition linting
-  generated stage2 source took >40s when it first built a full token vector. A
-  streaming scanner over the source buffer cut the same 400KB stage2 file to ~2s;
-  use raw `parse-name` semantics for definer payloads so words such as `(CMP)` are
-  not mistaken for comments.
-- **Dot blocker edges need a gate:** stale `.dots/*` `blocks:` IDs made work look
-  blocked on deleted/completed tasks. `tools/dot-dep-lint.f` now walks `.dots/`
-  directly and fails the lint slice on any blocker that is not backed by a dot
-  file.
-- **Ignored dot archive cannot satisfy active blockers:** `.dots/archive/` is not
-  tracked, so a clean host may not have the same archived files. Dot dependency
-  lint must ignore archive entries and active dots must drop completed blockers.
-- **Arm the opaque throw, don't guess the buffer:** a ~1-in-hundreds fork-worker
-  `E-STR-CAPACITY -2201` (event-closure-test, stdlib/tail-pure) would not
-  reproduce in 340+ runs and every capacity source was ruled out (all builders
-  reset before first use; real host TMPDIR=49 keeps the largest SB build ~336;
-  `s"`/`S\"` never touch SB at runtime OR compile; content-key cache inactive).
-  Machine saturation only yields 5s WAITs (over-subscription), not the flake. The
-  fix for an unreproducible race is not a capacity bump — it is arming the throw
-  site: `test/gate-pool.f GT-POOL-FORK-THROW` now calls `tools/why-threw.f`
-  `WHY-THREW-DUMP` so ANY worker throw prints one `WHY-THREW:` line per shared
-  builder (SB/CK/CK-ROW) fill+cap before dying, self-identifying the buffer on the
-  next occurrence. The gate `.f` closure is triple-registered: `FILEMAP.md`, the
-  result-cache closure member set (`test/run-files.f TR-GATE-HARNESS-FILES`, or
-  `run-result-cache-test.f CLOSURE-LINT` fails), and every `require`d file must be
-  a closure member.
-- **Hot-cache full-gate passes do not prove the engine-build closure; cold is the
-  merge oracle.** A green `test/run.f` at 8.3s was a cache-HOT run that SKIPPED the
-  native engine build slice; `test/run.f -- --cold-cache` exercises it and caught a
-  `duplicate definition: CK-CAP` (rc 78, "Habu-under-test build artifact missing")
-  my change introduced. Root cause: adding one `require` to a gate file (gate-pool.f
-  -> why-threw.f -> lib/content-key.f) registered content-key EARLIER, so the later
-  `include lib/content-key.f` in `test/gate-stdlib.f`/`test/gate-common.f`
-  re-evaluated it. Fix at root with require-dedup, not definition tolerance: those
-  build-manifest lines must be `require lib/content-key.f` (include-once), never
-  `include`. When a change adds a transitive `require` to any gate file, run the
-  cold gate before claiming green — merge-gate runs cold.
-- **New PTX trusted primitives need rows before merge:** local `master` had
-  `RELU`/`RELU-V4` TRUSTED sites without `TRUSTED.md` rows; the full native lint
-  slice caught it. Add the row and a checked kernel fixture in the same change.
-- **PTX elementwise ops share one codegen contract:** scalar and v4 tile binary
-  ops route through typed opcode-to-mnemonic helpers; adding `-.`/`/.` means
-  updating scalar/v4 TRUSTED rows plus both type-check and emitted-mnemonic tests.
-- **Device proofs must fail closed:** CUDA/FFI proof tools are not allowed to
-  print `NO` and exit success, reuse stale readback buffers, or drop Driver rc
-  values. Device gates need rc-checked wrappers, private temp roots, sentinels,
-  cleanup, and nonuniform multi-element goldens before they can support claims.
-- **Gate speed RCA follows the phase wall clock:** warm images cut repeated
-  inner-tool recompiles; the bigger wall cut came from a bounded checked DAG
-  pool. Do not mutate `bin/hb` inside the gate: build candidates under private
-  `HB_TMP`, run independent stdlib/diagnostic/engine slices concurrently, bound
-  nested pools with `--nested-pool-slots`, and delay short timeout-sensitive
-  lints until the heavy wave drains.
-- **Full DAG timing beats isolated wins:** on Linux/aarch64, separate hb-build
-  maker warming and warm-tools manifest loading passed focused probes but
-  regressed the full gate under contention. Keep only schedule moves that improve
-  the documented full command; record reverted timings in the dot so failed
-  variants are not rediscovered.
-- **Borrow SwiftForth semantics, not unsafe contracts:** SwiftForth's `PLACE`,
-  `APPEND`, `ZPLACE`, and `ZAPPEND` explicitly do not check destination capacity.
-  In Habu, borrowed string-buffer utilities must carry capacity and length cells
-  (`BUF-APPEND*`) and throw named errors; do not import unchecked string mutation
-  under familiar names.
-- **Gate budgets must match measured host capacity:** on 2026-06-28 the full
-  native gate was all-green at 100.985s internal time on the 4-online-core
-  Linux/aarch64 target. A 90s default budget was below measured capacity for the
-  current suite; keep the 90s/30s goal active, but use the documented full-gate
-  command and phase timings to earn lower budgets instead of dropping coverage.
-- **Gate instrumentation must survive cleanup:** appending counters under `GT-ROOT`
-  and summarizing after `GT-CLEANUP` produces a false all-zero report. Emit the
-  stats summary before deleting the gate temp tree, then enforce the time budget.
-- **Shared Habu-under-test is a pipeline prerequisite:** build the candidate in
-  the early engine-build slot, publish it atomically, print path+SHA, then release
-  downstream phases onto `HABU_UNDER_TEST`. This preserves overlap and proves the
-  rebuilt binary without serializing the whole gate behind fixpoint.
-- **Candidate-output phases need the parent artifact path:** the resident runner
-  waited forever after `native engine build slice` because phase 15 wrote
-  `hb-stdin` under its private `HB_TMP`, while `TR-DRAIN-UNTIL-UNDER` waited for
-  `GT-ROOT/hb-under-test`. Pass `HABU_UNDER_TEST` into the producer phase and make
-  the drain fail once `GT-POOL-LIVE` is zero instead of polling an empty pool.
-- **PTY fixtures should wait for events, not fixed quiet time:** `test/proc-pty.f`
-  spent ~18.5s wall with <1s CPU because each interaction waited six 50ms quiet
-  polls. Preserve max wait windows, but use small named poll intervals and a
-  minimal quiet threshold so prompt-driven tests finish when the expected bytes
-  arrive.
-- **Batch diagnostic fixtures at the source:** if many checked rejects use the
-  same tool load path, write one source file, run one `check-all-errors`, and
-  assert each JSONL row by `word`/`repair_class`. Per-case checker spawns hide
-  real coverage behind startup cost.
-- **Merge positive builder proofs by invariant:** if two successful builds only
-  differ by fixture payload, one strict feature bundle can own recursion, parser,
-  closure, binary-shape, and output checks. Size caps should prove "no engine
-  embed" for that bundle, not preserve a tiny-source threshold.
-- **Do not lock shared maker caches:** AOT positive/negative can miss the same
-  maker key concurrently. A mkdir lock timed out under full-gate contention and
-  left a stale lock after pool teardown. Build makers in each private `HB_TMP`
-  and publish the completed executable with atomic `rename`; cold races may
-  duplicate work, but they cannot deadlock the cache.
-- **Semantic check-tool fixtures should not spawn the wrapper:** reserve
-  `tools/check.f` subprocesses for argv/env/stdin/exit/source-label contracts.
-  `tools/check-test.f` kept positive verification and unterminated-string
-  diagnostics as full wrapper subprocesses even though `VERIFY:SOURCE-BUF` and
-  `CHECK-ALL-ERRORS-FILE` already owned those invariants.
-- **Use checker-warm for checker CLI smokes:** when a test must keep a real
-  `tools/check.f` argv/stdin boundary, run it through the checker-warm image
-  with `check-core` baked and only `tools/check-main.f` loaded. The general
-  tools-warm image should not recompile checker core for each smoke.
-- **Batch source-list checks by dependency graph:** engine fixture checks for
-  fs/process libraries spawned one checker-warm child per module group even
-  though the unique dependency closure is one ordered source list. One combined
-  `GE-CHECK-SRC-LIST` preserved certification coverage and cut the focused
-  fixture slice by about 10s.
-- **Nested gate captures report outcomes:** under full gate concurrency, 1s/5s
-  `RUN-ARGV-CAPTURE` calls can throw silently before `T-REPORT` (`rc 58` is
-  `E-PROC-TIMEOUT`). Gate boundaries use outcome capture plus attribution:
-  case/phase, executable, argv/load list, outcome kind/code, named rc, capture
-  bytes/cap, stdout, and stderr.
-- **Gate entries catch their own throws:** a direct `test/gate-engine.f -- build`
-  can fail before child attribution runs. Entry wrappers catch top-level throws,
-  print the phase label plus throw code/name, then rethrow so rc stays useful.
-- **Small-engine suites use test-owned checker fixtures:** `bin/hb` must not bake
-  image/spawn emitter words just so checker algebra probes can run. Use local
-  `T-*` TRUST rows for role algebra in `test/engine-suite.f`; keep real emitter
-  source coverage in build-fixpoint/source-shape tests.
-- **Manifest lint needs top-level scheduling under load:** `stdlib-manifest-test`
-  was fast alone but its internal `public-signatures` child hit the old 5s
-  timeout under full-gate contention and surfaced only as `rc 58` until pool
-  outcome attribution printed the throw code. Schedule the manifest lint as a
-  direct gate phase, size its child timeout for aggregate contention, and keep
-  the test instead of hiding it inside a nested batch.
-- **Outcome helpers belong in process libraries:** `gate-common` had duplicated
-  the env/no-stdin outcome capture loop because `lib/process-env.f` only exposed
-  the stdin outcome variant. Add missing `RUN-ARGV-ENV-*-OUTCOME` helpers in the
-  process layer, with `process-env-test`, manifest, and docs rows, before wiring
-  gate attribution to them.
-- **Pool slot state is an invariant:** free=`-1`, active=`0`, done=`1`; set
-  active before spawning. A live-count pool with free slots still marked free
-  ignores its fds and spins forever after children exit.
-- **Native port gates do not need language runtimes:** port validation proves
-  `bin/hb`, target source selection, syscalls/env, ELF AOT, checker/lints,
-  self-refresh, REPL, and Habu tooling on the target. Do not install JS/Python/
-  Rust/TS/model stacks to prove a native port.
-- **One public binary:** `bin/hb` (tty REPL, piped stdin, `hb script.f args`, or
-  `hb --load lib.f tool.f -- args`). Build-only engines stay temp under `HB_TMP`;
-  no legacy aliases/maker binaries.
-- **Pipe vs script vs source-list mode:** non-tty stdin with bytes = pipeline mode
-  even if `argc>1` (`hb seed count < prog.f`); empty non-tty stdin + `argc>1` runs
-  `argv[1]` as a script; `--load src... -- args` reads listed files and leaves fd0
-  as tool data (`READ-STDIN-ALL`). Reproduce gate check failures with raw stdin +
-  the wrapper's own prefix — not file-argument mode (different code path).
-- **No-binary recovery installs only `bin/hb`** (generated/ignored): recover with
-  `HABU_ALLOW_BOOTSTRAP=1 tools/bootstrap.sh`; Gforth makes only `HB_TMP`
-  artifacts, then `bin/hb` self-refreshes. Daily work never uses the Gforth path.
-- **Bootstrap source parity matters:** `tools/bootstrap.sh` must append the same
-  native source layers as `tools/build-fixpoint.f` (including
-  `src/os/image-bytes.f`). Keep bootstrap `bootstrap/cg/forth.fs` emitter calls
-  syntactically real (`MOVZ,`, `BCOND,`, `ADDI,`) because Gforth catches the
-  comma-less raw word immediately.
-- **Gforth host needs locals:** Homebrew 0.7.3 can't parse `{:` and isn't usable;
-  use snapshot `0.7.9_20260610` (macOS: configure `UNSUITABLE_CC=none`, wrapper
-  execs `gforth-itc -i gforth-light.fi`) or `GFORTH=…/gforth-fast`. Bootstrap
-  probes must check output (exact `1`) AND exit 0 — 0.7.3 reports the locals error
-  yet lets later shell stages continue.
-- **Target source lists are a build invariant:** bootstrap and native fixpoint
-  select `src/os/<target>/{sys,env,image,sign}` together; hard-coding one OS bakes
-  its assumptions into later generations.
-- **Private temp dirs for native builds:** parallel jj workspaces share `/tmp`;
-  fixed names race. Allocate+export private `HB_TMP` (create it before spawning
-  makers — a missing temp root collapses into an empty nonzero failure); derive
-  parent artifact paths and child `HB_TMP` from the same getter. Cleanup prefers
-  `trash` but falls back to direct removal (trash rejects `/var/folders`).
-- **Parity is native fixpoint, not mirror drift:** the proof is byte-for-byte
-  self-rebuild through build-fixpoint; retire bootstrap token-diff lints as a
-  second source of truth.
-- **Active work lives in dots, not a root plan:** once tasks have `.dots/*.md`, a
-  root plan is drift. Current verification in `STATUS.md`, memory in `LESSONS.md`,
-  ready work in `dot ready`. Completed/landed plans retire their root docs; root
-  Markdown is contracts, status, or active work only.
-- **On-device validated: this environment IS an Orin (2026-06-27).** Local GPU
-  (`/dev/nvidia0`, `nvidia-smi` = "Orin (nvgpu)", compute_cap 8.7), `ptxas` 12.6,
-  Tegra `libcuda.so`. Proven end-to-end: checked SAXPY → `PTX-EMIT-SAXPY` →
-  `ptxas -arch=sm_87` → cubin → **loaded as a live GPU module via the Habu FFI**
-  (`tools/ptx/cuda-load.f`): `cuInit`/`cuDeviceGet`/`cuDevicePrimaryCtxRetain`
-  (NOT `cuCtxCreate` — that hangs on the Orin's camera primary context)/
-  `cuCtxSetCurrent`/`cuModuleLoad`/`cuModuleGetFunction` all rc 0, valid function
-  handle. FFI usage: `DLOPEN-SLOT @`/`DLSYM-SLOT @` give dlopen/dlsym; `ffi-call
-  ( argbuf fn -- rc )` loads x0..x7 (≤8 args). Run-mode hangs (use `--load`, not
-  `bin/hb file.f`); processes hang on exit unless the module/ctx are released.
-- **GPU launch WORKS — the blocker was driver SYMBOL VERSIONING, not the FFI/ABI
-  (resolved 2026-06-27).** `cuMemAlloc` returned 201 INVALID_CONTEXT *even though*
-  `cuCtxGetCurrent` confirmed the context was current (handle matched the retained
-  ctx) — which REFUTED the x18/TLS hypothesis. The real cause: the modern CUDA
-  driver's actual entry points are the **`_v2` symbols**; `dlsym("cuMemAlloc")`
-  returns a deprecated stub that fails. Using `cuMemAlloc_v2` / `cuMemsetD32_v2` /
-  `cuMemcpyDtoH_v2` (the non-versioned setup/launch symbols are fine: `cuInit`,
-  `cuDeviceGet`, `cuModuleLoad`, `cuModuleGetFunction`, `cuFuncSetBlockShape`,
-  `cuParamSetv`, `cuParamSetSize`, `cuLaunchGrid`, `cuCtxSynchronize`) the **full
-  SAXPY launch runs and is CORRECT** on the Orin: y = a*x+y = 3*2+0 = 6.0
-  (f32 0x40C00000), matching the CPU golden (`tools/ptx/cuda-launch.f`, PASS).
-  The deprecated `cuLaunchGrid`/`cuParamSet*` path (<=8 args) avoids needing an
-  `ffi-call` >8-arg extension for `cuLaunchKernel`. NO engine change was needed.
-  The eval-matrix data path is OPEN: emit checked kernel -> ptxas -> cubin ->
-  load -> launch -> compare golden, all from Habu.
-- **Real Triton on the Orin without a reflash (eval matrix DONE 2026-06-27).** The
-  GPU driver is BSP-pinned at CUDA 12.6 (`cuDriverGetVersion=12060`); a 13.x driver
-  needs a destructive JetPack-7 reflash (don't). pypi's default torch is `cu130` →
-  won't load (`driver too old`), and the Jetson torch index `pypi.jetson-ai-lab.dev`
-  is DNS-unreachable — BUT `download.pytorch.org` carries `torch-2.9.1+cu126`
-  aarch64/cp310, and **cu126 matches the 12.6 driver exactly**, so
-  `torch.cuda.is_available()` is True. The generic SBSA wheel has no sm_87 ATen cubins
-  (`cudaErrorNoKernelImageForDevice` on `x+x`), but **Triton JIT-compiles each kernel
-  for sm_87 at runtime**, so Triton kernels run — just avoid ATen GPU ops (alloc +
-  H2D/D2H memcpy only). Result (`docs/eval-triton.md`): scalar Habu-PTX measured
-  42.5 GB/s vs Triton 63 GB/s; RCA showed the gap was **codegen vectorization**
-  (scalar global loads/stores vs vectorized global traffic), and the checked v4
-  tile path now reaches ~63 GB/s parity. Triton catches name/type errors at compile
-  but the **stack-discipline class only at runtime** (3/5 battery bugs slipped,
-  incl. a missing-store → silent 0.0) where Habu-PTX's checker rejects at author
-  time. The thesis MECHANISM is now backed by real-target data; do not revive the
-  superseded launch-path-gap explanation.
-- **No-checker ablation must run the whole unchecked path:** counting
-  `GRADE-CANDIDATE` rejects as "without checker" lies because the checker already
-  short-circuited them. `maki/eval-compare.f` now emits a throwaway `0 set-check`
-  driver for the no-checker arm and attempts emit -> ptxas -> device golden for all
-  9 SAXPY candidates. Measured on the Orin: checked catches 5/6 bugs before GPU;
-  no-checker catches 0/6 before execution, emits+assembles all 9, and all 6 buggy
-  candidates fail only as device-wrong.
-- **External baseline stays out of the tree (host-lint).** `host-lint` WALK-FILES the
-  whole repo and `1 throw`s on any `.py` path; `.md`/`.f` content is not scanned. So
-  the Triton (Python) baseline lives as fenced ```python blocks in `docs/eval-triton.md`
-  (reproduction reference) with the working scripts in `/tmp`; the Habu reducers
-  (`bandwidth.f`, `eval-compare.f`, `eval-device.f`) remain the live column.
-- **Model-driven pass@k needs an INDEPENDENT generator, not a curated fixture.** A
-  real pass@k/repair number requires a stochastic generator we don't curate (curating
-  the bug distribution makes the number a construction). Used independent Claude
-  `general-purpose` subagents (k=5/task/target) as the generator; graded each through
-  the target's full loop (Triton compile+device-golden; Habu checker+emit+ptxas+device).
-  Result (docs/eval-triton.md): SAXPY 5/5 both; softmax Triton 5/5, Habu 3/5→5/5 after
-  diagnostic-guided repair (1–2 rounds). Both highly reachable; the differentiator is
-  failure MODE — every Habu failure was an author-time static reject with a located
-  order diagnostic (`at 'row-store' expected: tile span rowctx actual: span rowctx tile`),
-  zero GPU, which drove repair. Honest caveats logged: the softmax pass@1 gap was
-  CONFOUNDED by my own prompt mis-spec of ROW-STORE's arg order (real order tile/span/ctx),
-  and Triton produced no failures to repair so repair-rounds isn't a symmetric comparison.
-- **Subagent grading harness gotchas:** Triton `@jit` rejects `exec`'d source ("should
-  be defined in a Python file") — import the candidate as a real module file. Loading
-  `maki/eval-device-sm.f` as a library runs its inline test block + `bye`; strip to a
-  definitions-only copy for reuse. Normalize generated Habu candidates (strip a leading
-  `:`/trailing `;`) before wrapping as `: K ... ;`. ROW-STORE consumes (tile span ctx)
-  with the tile DEEPEST — the natural idiom leaves the tile on the stack then appends
-  span+ctx.
-- **v4 vectorization closes the bandwidth gap to Triton; 63 GB/s is the MEMORY ceiling,
-  not codegen (2026-06-27).** The scalar codegen emitted `ld.global.f32` (1 elem/thread)
-  -> 42.5 GB/s vs Triton's `ld.global.v2` 63. Added a checked v4 tile vocab
-  (`lib/ptx/cg-vec.f` EMIT-*-V4 + `tile-v4.f`: `ld.global.v4.f32`/`st.global.v4.f32`,
-  4 elems/thread, same parametric tile types so the SAME SAXPY body certifies — v4 is a
-  codegen rep, not a type change) -> 63 GB/s, MATCHING Triton (device-golden PASS). Then
-  tried to BEAT it: unrolled grid-strided v4 K=1/2/4/8 (up to 8 v4 loads in flight) is
-  FLAT at 63; occupancy is 40x saturated (Orin NX = 4 SMs / 6144 threads); EMC already
-  maxed (3199 MHz, jetson_clocks no-op). So 63 is the achievable streaming bandwidth
-  (~62% of the ~102 GB/s Orin NX spec), and BOTH targets sit at it. You cannot beat the
-  memory system on a memory-bound kernel — "faster than Triton" needs LESS traffic
-  (op fusion) or a COMPUTE-bound kernel. Sig gotcha: v4 emit-helper stack sigs must use
-  the generic-int token `n` (role names like `base`/`spanrd` bind as fresh type vars and
-  the checker rejected at `!`). Device knobs: nvpmodel -m 0 (MAXN) was rejected on this
-  unit; jetson_clocks locks clocks but needs `--store` before `--restore`.
-- **Rigid-token fix is now a precise, bounded change (located 2026-06-27).** The
-  checker instantiates a called word's effect by RE-PARSING its stored signature
-  STRING per call (user/prim sigs are stored as text at `USIGS`, checker.f:886;
-  re-parsed through `SIG-TYPE`). Type vars freshen per parse (`NMAP-RESET` +
-  `VAR-OF`→`FRESH`), but nominal atoms (`MK-ATOM`) keep their literal name, so two
-  parses of `extent-n`/`mask-live` produce string-equal atoms — the exact reason a
-  constructor's extent/mask is NOT fresh per call (the soundness gap). FIX: add a
-  fresh-marker atom convention (e.g. `mask-fresh`/`extent-fresh`); in `SIG-TYPE`/
-  `MK-ATOM`, mint a UNIQUE name (base + a global counter) for a marked atom so each
-  call's parse yields a distinct RIGID atom that string-mismatches others. Declare
-  `GRID-CTX`/`ROW-CTX`/`MK-SPAN` outputs with the fresh marker. Result: two
-  independent ctxs get distinct rigid masks → a mixed-mask op rejects (a generic
-  op's var requires both equal; distinct rigid atoms don't unify), while one ctx
-  bound to a local reuses its single fresh mask → SAXPY still certifies. The
-  checker now stores fresh atom templates and renders recorded rigid outputs back
-  as distinct templates, so wrapper words preserve equality/distinctness too.
-- **Local type inference is already built too (proven 2026-06-27).** Like M2, the
-  inference.md feature ("infer bodies, annotate the edge") is operational in the
-  shipped checker: untyped intermediate locals (`{: x :}`/`{: g :}`/`{: c :}`)
-  certify, the checker infers each from top-of-stack and threads its tokens, and a
-  mis-used inferred local rejects with a precise type (an inferred `gridctx` used
-  where a `span` is required → "expected span actual gridctx", exit 70). The
-  SAXPY/SOFTMAX kernels rely on it (the mask/extent tokens thread through inferred
-  intermediates). Only the `{: x:? :}` show-inferred form (inference.md marks it
-  "proposal, not implemented") is unbuilt. Two named "Habu features to land" (M2,
-  local inference) were already shipped — always probe the checker before sizing.
-- **Native helper leafness is a control-flow invariant:** extending `LCFPOP` to
-  emit local-frame teardown made it call `LCEMIT`; without saving `x30`, `RET`
-  jumped back into `LCFPOP` (`pc=lr=...aa44`) and branch-local definitions hung
-  at compile time. Any helper that gains a `BL` gets a real LR frame in the same
-  change.
-- **Extensible nominal types must be explicit:** `DEFTYPE` registers a copied,
-  global nominal role before signatures use it; unknown signature tokens still
-  reject. Silent auto-interning would turn typos into distinct "valid" roles.
-- **Ground capability claims in the source, not the dot tracker + spec.** The PLAN
-  review concluded "M2 (parametric checker) is a large unbuilt gate" from `dot ls`
-  (no `m2` dot) + the spec calling it "large", and elevated it to CRITICAL. A
-  10-second empirical check refuted it: M2 is fully built+landed in
-  `src/core/checker.f` (`SIG-TYPE`/`MK-PARAM` parse `span<...>`, field-by-field
-  unify, `render.f` round-trip, `KERNEL:`/`GRID:`/`WHERE`) and works in the
-  installed `bin/hb` — a matching parametric sig certifies (exit 0), space/extent
-  mismatches reject with field-precise diagnostics (exit 70). A "missing dot" can
-  mean *done*, not *unbuilt*. Before sizing a checker feature as a prerequisite,
-  run a minimal certify/reject probe through `bin/hb`; the real unbuilt frontier
-  was M4 (the tile *operations*: MK-SPAN/LOAD/STORE/SCALE/collectives — absent),
-  not M2.
-- **Dot hygiene:** use only documented commands — `dot add "T" -d '…'`,
-  `dot ready`, `dot ls`, `dot tree`, `dot show <id>`, `dot on/off <id> -r '…'`.
-  Mark/close the exact printed ID (don't infer from filenames). `-P <root-id>`
-  only when `.dots/<root-id>/<root-id>.md` exists; never `-P`/`-a` a nested id (it
-  writes a blocking edge / stray dirs / ambiguous IDs). Quote `-d` (backticks,
-  `$`, Forth punctuation). Handoff: leave the dot open, record commit + pending
-  edits + definition-of-done in the committed doc, close only after the validated
-  commit; add step-level child dots for in-progress work.
-- **Worker ownership starts with `dot on`, not the spawn call.** I dispatched
-  isolated workers while their dots still said `open`, so another orchestrator
-  could legally select the same work from `dot ready`. The blocking rule now
-  lives in `AGENTS.md`: record the agent/workspace, activate and publish the
-  exact leaf, synchronize, then re-verify immediately before dispatch. Keep it
-  active through review and integration, and close it only after the reviewed
-  commit and owning gates land. An unpushed active bit is not a cross-lane claim.
-- **Keep debugger docs in the agent index:** list `docs/debugging.md` (`.s`, watch
-  cells, REPL `step`, breakpoints, `jitdump`, `imgdump`) in `FILEMAP.md`, guarded
-  by `tools/filemap-lint.f`, so RCA starts with existing tools.
-- **Focused lint/check reruns copy the test load list:** lint tools have non-obvious
-  deps (`tools/date.f`, `lib/memory.f`, `lib/vector.f`, `tools/lint/intern.f`).
-  Copy the `TEST:SUITE` entry list from `test/gate-stdlib-cases.f` or the tool
-  header instead of reconstructing from memory.
-- **Use the current gate command, not stale handoffs:** after the Darwin spawn
-  F04 macOS validation, the old handoff gate without `test/gate-pool.f` exited at
-  `GT-POOL-START`; the `docs/bootstrap.md` command with
-  `test/gate-pool.f test/run.f` passed the full native gate.
-- **Close platform dots only with target evidence:** Darwin spawn factoring closed
-  after real macOS arm64 refresh, source-shape, process/argv/env/cwd, PTY, and
-  full native gate passes; Linux evidence alone was not enough for F04.
-- **Checked DSL incidents moved into the standard:** the `GE-FILES:`/`CHK-FILES:`
-  generic `execute` failure and `tools/gate-json-assert.f` raw `[']` row failure
-  are now covered by the checked DSL/quotation rules in `docs/forth.md`.
-- **Layout constants need one owner:** load `src/habu/layout.f` before every
-  runtime prefix (env, baked REPL, stepper, watch, debug). Refresh once with
-  compatibility constants if the installed `bin/hb` needs them, then remove dups
-  and prove with the regenerated binary.
-- **Retire stale benchmark programs:** the old cross-language LLM matrix already
-  answered the active planning question (Habu cost was roughly 8-10x TypeScript/
-  Rust on the hard array tail). Do not maintain that harness while GPU/PTX is the
-  focus; keep only the status note unless a new publication-grade claim becomes
-  active work.
-- **Manifest policy is row data plus one validator:** doc and module-note
-  requirements in `tools/stdlib-manifest-test.f` stay maintainable when grouped
-  as checked rows; branch ladders hide policy drift and make adding requirements
-  look like control-flow work.
-- **stdlib gained `ffi`/`float`/`fmt`:** `lib/ffi.f` (typed `DLOPEN`/`DLSYM`/
-  `CALL0..6`/`>CSTR` over the `ffi-call` trampoline), `lib/float.f` (`STR>FLOAT`
-  decimal→f64 + `POW10`), `lib/fmt.f` (`SB-U`/`SB-INT`/`SB-FIX` builders +
-  `.U`/`F.N` — renamed 2026-07 from `U.0`/`.0`: number-shaped names are
-  parser-claimable and now lint-rejected, E-NUMERIC-DEFINITION). Registering a
-  new lib = `std.manifest` rows for every public
-  colon word (match `tools/public-signatures.f` output *exactly* —
-  `TRUSTED:`/constants are NOT extracted, so they get no row), a
-  `FILEMAP.md` row, a `TEST:SUITE` entry, and `TRUSTED.md` rows for any
-  `TRUSTED:`. The doc-contract check is a curated spot-list, not per-module.
-- **Warm image entries cannot hide dependencies behind include:** a normal
-  `tools/check.f` can `include tools/check-core.f`, but warm images load entry
-  files through their baked source map and the include boundary can fail or crash.
-  Bake the core into the warm image when it fits, then load a no-include
-  `*-main.f` entry; otherwise pass core+entry explicitly with `CLI-TOOLS-LOAD2`.
-- **Fixed pool slots must be reserved before dynamic starts:** starting a
-  dedicated slot after a general phase can reset an active slot, orphan the child,
-  and leave `GT-POOL-LIVE` permanently high. `GT-POOL-START-SLOT` now fails
-  closed on active-slot reuse; start fixed-slot artifact builders before free-slot
-  phases that might claim their indexes.
-- **Habu's locals/loop discipline costs first-time iteration:** porting real code
-  (a real application's tegrastats/netpbm parsers to its own Habu tree) hit the same walls
-  repeatedly — no local bind after `exit`, a `begin/while` condition may only add
-  a flag, a no-`else` `if` must be stack-neutral, `i`/`j`/`k` are reserved loop
-  words. The rules now live in `docs/forth.md`; once known, later ports needed
-  ~zero checker iterations. The win is verification, not authoring speed.
-- **A checker driver must never execute candidate code - reuse the verify
-  path, not the load path:** the all-errors CLI rewire nearly shipped on
-  `evaluate` (the native MULTI-ERR load), which runs top-level candidate forms
-  in the checking process and pollutes the live dictionary (checker-scope
-  rollback restores registries, NOT cp/ndict - RBF-POP). The crash-immune
-  reuse point is VERIFY:SOURCE-BUF (parse+check, zero execution) with the
-  multi-error continue decision inside VERIFY-BODY. Also: checker.f words are
-  NOT registry-published to later checked loads (MULTI-ERR? rejected at the
-  engine rebuild despite being dictionary-visible) - checker-internal access
-  from tools rides small documented TRUSTED: one-liners, same class as
-  CHECK-BODY.
-- **Advisory soundness findings rot — and can be born rotten:** the prop-test
-  metamorphic ROUNDTRIP amplifier was 100% inconsistent from its introduction
-  (REND-SIG's "just-checked effect" contract is destroyed by CHECK's own
-  certify epilogue: CHECKER-USIG-CERT-ADD → USIG-ADD → NEW wipes BROW/DCUR,
-  checker.f:5782/3338/1137) yet the gate stayed green for its whole life
-  because inconsistencies were counted "(logged, non-fatal)" and shards mute
-  output. A property tester that prints findings and exits 0 is error masking;
-  the counters must be fatal at the summary. And a 100% failure rate on a
-  metamorphic leg means the HARNESS CONTRACT is broken (one root cause), not N
-  distinct checker misses — probe the contract word directly (CHECK! then
-  REND-SIG on one line) before shrinking N "different" cases.
-- **The emitted stage prefix has two check regions - retire textual asserts
-  only against a real check that covers the same region:** in the generated
-  stage source the checker-boot (util/structures/checker/render) plus
-  asm/icode/mnem load inside the `BFR-CHECK-OFF .. ' HOOK set-check` window
-  (unchecked at stage-compile time), while habu1/prof/regalloc/jit/habu2 load
-  with `HOOK` on (blocking-checked). The habu1/habu2 typed-shape preflight
-  asserts retired against the stage compile; icode's retired only once
-  BF-CERTIFY flipped blocking (the static scan checks the whole emitted source,
-  set-check windows included). Kept: same-type codegen-role asserts
-  (`LABEL@ B,` vs `@ B ;`; `SZA-I @ +` vs `over +`) no checker can express
-  (dot habu-preflight-codegen-role), and icode's mmap-fail-closed +
-  no-static-allot executable-memory invariants. Prove the replacement with a
-  negative fixture (emitter underflow -> `BF-CERTIFY-RC` 70), not by trusting
-  the compile. (Ported from fable c33ec3e66479.)
-- **Re-emitting the same source across build stages is a boot-reload TOCTOU:**
-  `build-fixpoint` re-reads the boot-prefix files for the stage2, stdin, and snap
-  emissions and the stamp-key re-emit; a mid-build source edit would let stage N
-  build from one revision and N+1 from another, silently entering the installed
-  image. `BF-PIN` pins each emitted path's content digest (keyed by SHA-256 of
-  the path) on first read via the single `BF-APPEND-SOURCE` choke point and
-  re-verifies on every reload, so there is no separate manifest to drift and a
-  mismatch throws `E-BUILD-BOOT-DRIFT`. Baking the digest for boot-*time* reload
-  verification is a separate engine change (dot habu-boot-pin-bake). (Ported
-  from fable eb9ee4631166.)
-- **The dot ledger drifts from head — audit before assigning:** the 2026-07-06
-  sweep of 129 open dots found 6 already fully landed+proven (object/linker epic
-  parent + 5 others), 10 with stale premises ("no tiled GEMM" when cg-matmul.f is
-  device-proven; counts off by 30-50 rows), and 3 TRUSTED.md rows owned by
-  archived dots (`trusted-inventory -- strict` red on DOT-EXISTS?, invisible to
-  the gate because the gate suite runs fixtures, not live strict). Rules: verify
-  a dot's claim against head before working it; `dot off` only after checking
-  `rg <id> TRUSTED.md` and reassigning owner rows; suite `rc 0` is NOT proof —
-  engine-suite standalone exits 0 after checker errors (drop-to-REPL masks), so
-  the last-line `ok` marker or the full gate is the signal.
+## Gate Harness, Scheduling & Caching
 
-## VCS
+- **Full-DAG timing beats isolated wins; every focused optimization must survive the whole
+  command under contention.** Splitting suites, per-phase forks, higher nested pools, and
+  preloading shared setup all passed focused probes but regressed the full gate — record reverted
+  timings in the dot so failed variants aren't rediscovered. The winning shape overlaps
+  non-stdlib phases with shared stdlib setup, loads the common tool base ONCE as silent suite
+  setup, then forks phase-owned resident workers that inherit it copy-on-write (their unchanged
+  `require` lists dedupe against the inherited image and load only the family delta). Do NOT
+  widen the shared base further: pre-setup fork spans are reap-inflated by the serial setup (a
+  phase exiting during setup reads ~the setup duration), so widening puts serial load on every
+  post-setup fork's critical path — reclassify only HIGH-redundancy family workers.
+- **Gate budgets are stop-line thresholds tuned per HOST PROFILE, not comfort blankets.**
+  macOS/generic-Linux/Jetson have different CPU envelopes even at the same pool policy — auto-detect
+  a concrete profile; portable budget = base × (probe-ms / profile-reference-ms) clamped
+  [100%,300%], factor 100% for unmeasured profiles, never scale user `--budget-ms`. A spin probe
+  (~95ms macOS ref) captures load/downclocking (what actually failed green trees); print
+  cal-ms/cal-factor so a stretched budget is visible telemetry. Timeout floors ≠ ratchets:
+  `HB_LOAD_PCT` carries a 3× structural pool-pressure floor so healthy children aren't killed;
+  export measured `HB_CAL_PCT` separately for phase ratchets (applying the load floor silently
+  turned nominal 8/10s into 24/30s). A faster gate is not protected until its budget is TIGHTENED
+  (a 24s impl still permits the old regression at a 70s verdict). Never bump MAX-MS to pass a
+  ratchet — the engine battery's runtime ratchet catches real per-process regressions (region
+  growth to 8MB regressed boot +41ms via LPROT's full-region mprotect brackets, linear in the flip
+  window). Report cache-fill as budget coverage and persistent-cache as the architecture number;
+  discovered content-cache misses switch to the scratch-cache budget class.
+- **Cache Habu-under-test by CONTENT not path, keep the producer build-only, always validate.**
+  Hash `bin/hb` + runner/build harness + every emitted engine/repl source; a hit unblocks
+  under-test slices, a miss runs the fixpoint and installs under that key. A hit that also skips
+  `GE-ENGINE-SUITE`/hook checks is wrong — candidate PRODUCTION is not VALIDATION; run a candidate
+  validation row after the `under` capability is ready. Build the candidate in the early
+  engine-build slot, publish atomically (path+SHA), then release downstream phases onto
+  `HABU_UNDER_TEST` (pass it INTO the producer phase; make the drain fail once `GT-POOL-LIVE` is
+  zero, not poll an empty pool). Cache stamps assert the INSTALLED artifact from CONSUMED inputs
+  (record each stage-source digest at emit/consume via `BF-RECORD-STAGE`, assemble from those +
+  the post-install engine hash; re-hashing the tree races mid-build edits). Gate retries need FRESH
+  `XDG_CACHE_HOME` + `HB_TMP` per ATTEMPT (a reused cache replays a timeout-poisoned verdict as a
+  false persistent red). A fresh gate root does not imply zero aggregate cache hits — the suite
+  proves maker/artifact hit paths inside one attempt; retry isolation rejects INHERITED artifacts
+  while preserving the within-attempt hit-counter contract.
+- **Private temp dirs for native builds; shared `/tmp` races parallel agents.** `HB_TMP` defaults
+  to `/tmp` with fixed names (`stage2-src`, `hb-stdin-got`) — concurrent workspaces corrupt each
+  other's refresh/gate with transient opaque exits. Allocate+export a private `HB_TMP` (create it
+  BEFORE spawning makers — a missing temp root collapses to an empty nonzero failure) and
+  `HABU_BUILD_CACHE` per workspace; derive parent-artifact and child `HB_TMP` from the same getter.
+  Do NOT lock shared maker caches (a mkdir lock timed out under contention, left a stale lock) —
+  build makers in each private `HB_TMP`, publish with atomic `rename` (cold races duplicate work,
+  never deadlock). Re-emitting source across build stages is a boot-reload TOCTOU: `BF-PIN` pins
+  each emitted path's content digest on first read via the single `BF-APPEND-SOURCE` choke and
+  re-verifies on reload (throws `E-BUILD-BOOT-DRIFT`); baking the digest for BOOT-time reload
+  verification is a separate engine change. `BF-*` spawn helpers must reset `PROC-ARGV` before
+  their own stage (warm images reuse one process across phases — stale argv leaks). Full-gate
+  timing is meaningless while another worktree runs `test/run.f` — check for active Habu gates /
+  stray `bin/hb --load test/run.f` (killed runs orphan spinning fork workers at full CPU) before
+  claiming a budget regression.
+- **Pool slot state is an invariant (free=-1, active=0, done=1; set active BEFORE spawn); fixed
+  artifact slots must not be reused by the dynamic pool.** A live-count pool with free slots still
+  marked free spins forever after children exit; a fixed slot started after a general phase resets
+  an active slot and orphans the child (`GT-POOL-START-SLOT` fails closed on active-slot reuse —
+  start fixed-slot builders before free-slot phases). Put fixed artifacts in slots OUTSIDE the
+  dynamic range, let normal phases use `0..N-1`. On the 4-online-core Linux/Orin target six top
+  slots beat eight (several phases spawn nested pools); the macOS profile is 10 top / 2 nested;
+  choose defaults from documented FULL-gate timings, not a single slice. Keep the pool poll timeout
+  small (`$64`ms) — a 1000ms poll can lose the whole margin at the final phase. Nested lint
+  subprocesses need their own timeout caps sized for aggregate contention (a fixture spawning a
+  repo-scale tool needs a bigger cap; `rc 58` = `E-PROC-TIMEOUT` surfaces only once outcome
+  attribution prints the throw code).
+- **Pool failures must DRAIN, not kill; and telemetry has one owning emitter per label.**
+  `GT-POOL-FAIL` records a red row + capture paths and continues, `GT-POOL-DRAIN` dies after the
+  drain when reds exist, `GT-ROOT` survives on failure so per-child captures survive triage. Fork
+  children share the stats file, so the pool owns spans for its entries (`GT-POOL-FORK-CHILD`
+  records the fork label, `GS-SPAN` skips matching labels, load time is a separate `span-load`
+  class); the test pool legitimately reuses one label across entries, so dedup by a single-use
+  ownership claim + rejecting duplicate TEST-ROW labels at index time, NOT by rejecting duplicate
+  pool labels. Suppression is process-local, ownership is not — a pool parent's authoritative spans
+  bypass the fork-child dedupe (`GS-SPAN-AUTH`); qualify a byte-keyed (row,span) pair with the
+  EMITTING process's generation, never the slot's. Emit the stats SUMMARY before deleting the gate
+  temp tree, then enforce the budget. A per-worker parent-death reaper must NOT be a
+  `wait(-1)`-visible child of its worker (`PROC-WAIT-RC` on `-1` blocked forever) — double-fork so
+  it reparents to init yet inherits the worker's group. Shard a fuzzer across forked slots but mute
+  shard stderr (`/dev/null`) — bounded capture buffers overflow (`E-PROC-TRUNCATED`); a false-cert
+  still reports via nonzero exit.
+- **An uncaught throw in a `--load`/spawn child exits with the throw code's low 8 bits and
+  prints NOTHING — decode before guessing, and give build drivers a reporting boundary.** Opaque
+  exits are `throw-code mod 256`: add multiples of 256 until a known `E-*` appears (exit 56 =
+  `E-PROC-TRUNCATED` -2504; exit 104 = `E-STR-BOUNDS` -2200). Size capture/arena buffers to the cap
+  the ADMITTING path enforces (a ~28KB PTX overflowed a `$4000` child-capture buffer), not the
+  first example that fits; capture buffers size for isolated jj-workspace PATHS (long), not the
+  short main checkout. Boundary validation on external input (env/argv) must `die` with a
+  source-pointing message NAMING the input; keep bare named throws for in-process callers where the
+  harness still has the code. `DRV-FAIL`/`M-FAIL` now report "driver: uncaught throw code N" at
+  every stage/maker boundary; a 1-byte diagnostic + clean exit means a raw engine capacity path
+  (dict/code cap), not a throw — when `catch` cannot intercept a death, hunt for `exit_group`
+  emitters, not throwers, and falsify with an in-state control (`' evaluate catch` on a known throw).
+- **A pool/gate publication chain must MECHANICALLY test the verdict — human eyes are not a
+  gate.** Three red-master pushes, same class: `gate; ...; bookmark set && push` (the `;` discards
+  the gate exit); `bin/hb --load lint.f | tail && push` (guards on TAIL's exit → `set -o pipefail`
+  or `out=$(cmd); rc=$?`); "print the log then push in the same batch" (`rg -q 'RUN_EXIT=0' "$LOG"
+  && move && push`). Regate the MERGED tree, CHECK the result, then move bookmarks — separate
+  commands or `&&` from the gate onward; cross-lane semantic conflicts do not show as rebase
+  conflicts. Gate entry wrappers catch their own top-level throws, print phase label + code/name,
+  rethrow so rc stays useful.
 
-- **Diff gates must scan locals:** typed definitions are not enough; added `{:
-  ... :}` groups need typed locals unless they are the documented
-  role-preserving exception from `docs/forth.md`. Use the Habu-native
-  `tools/typed-local-diff-lint.f`; manual `rg` scans are too easy to skip or
-  misread.
-- **Repo edits go through patches/Edit:** even mechanical/one-line changes, so
-  broad rewrites, duplicate defs, and shell-expanded capture groups stay reviewable.
-- **Commits are proof checkpoints:** run the path-specific Habu gate before
-  `jj commit`; a skipped or failed gate stays uncommitted or becomes a blocker
-  dot, never a "commit now, fix later" checkpoint.
-- **Don't parallelize VCS status:** `jj st` and `git status` race on
-  `.git/index.lock`; run index-touching Git/JJ commands sequentially.
-- **Pushes reject conflicted ancestors:** a clean worktree + green gate don't clear
-  jj conflict metadata; check the pushed range for `conflict` and resolve the
-  earliest one first.
-- **History filters must include JJ refs:** after removing generated outputs,
-  verify `git rev-list --objects --all`, not just `master`; colocated JJ keeps
-  blobs via `refs/jj/keep` and `.jjconflict-*`. Ignore generated output by
-  shape (JSON/JSONL/logs/reports), not run name, so reruns can't enter a change.
+## VCS, Dots & Parallel Agents
+
+- **A destruction review is not integrated until every unfixed finding has a
+  detailed dot.** Reconcile each finding against existing dots, extend a matching
+  dot when its acceptance misses part of the finding, and add a new dot for every
+  uncovered invariant before landing the reviewed slice.
+
+- **Concurrent jj ops can REVERT uncommitted workspace edits — back up BEFORE
+  `update-stale`.** A sibling agent's op forks the operation log; the next
+  `jj workspace update-stale` REBUILDS the working copy to the recorded op, discarding
+  unsnapshotted on-disk edits and leaving a divergent twin (whose snapshot may be STALE). The
+  0-byte patch a failed `jj diff` writes is the tell. Protocol: copy edited files out, run
+  update-stale, verify the concurrent commit's file set doesn't overlap yours, restore from backup
+  on a fresh `jj new`, abandon the empty leftovers (lossless every time; guessing at jj state is
+  not). In shared-repo parallel sessions, `jj commit` each verified change IMMEDIATELY; after any
+  main-workspace write while workers are live, `jj st` at once (three `dot add` dots were lost this
+  way). Never base parallel workspaces on a mutable working-copy commit — branch each from a
+  STABLE commit. Don't parallelize VCS status (`jj st`/`git status` race on `.git/index.lock`).
+- **Worker workspace path discipline: Edit/Read the `.jj-ws/<ws>/…` absolute path, never the
+  main tree.** A `cd` in Bash does not change where Edit/Read resolve — editing the main path while
+  Bash builds in the workspace silently edits the wrong tree (the build never sees it, the main
+  tree gets polluted). Worker briefs include the absolute-path check ("every path starts with
+  `.jj-ws/<lane>/`") and a pre-seal `jj -R <main> st` clean assertion; the integrator requires the
+  main workspace CLEAN before gating (an unexplained modified file = presumed lane leakage: preserve
+  to a patch, message the lane, restore pristine, re-gate). Commit each proven-green slice
+  immediately — uncommitted worker edits are one cleanup away from loss. Clean up a lane's workspace
+  the moment its work merges (`jj workspace forget <name>` + rm the dir in one step); ~40 stale dirs
+  invited a bulk removal that looked like data loss. Workers NEVER write the shared checkout
+  (`bin/hb` included) — `cp` over a LIVE `bin/hb` poisons the macOS AMFI vnode cache (exit 137
+  SIGKILL for that path only, valid bytes at a fresh path run fine); replace via a NEW inode
+  (write-temp + rename, which is why the installer never triggers it).
+- **Before dispatching a worker against a shared dot, probe the other lane's in-flight work AND
+  verify the dot's premise on the CLAIMED tree.** An S2 slice was implemented twice concurrently
+  (same dot id) and a full lane retired unsalvaged — a one-minute `jj log -r 'master ~ fable::'`
+  scan + the dot's blocker graph beats a duplicated lane. `dot ready` honors only RECORDED edges
+  (prose references never gate dispatch) and `blocks:` means BLOCKED-BY (this dot's dependencies),
+  so before claiming a ready dot verify its `Files:` exist on master (one `rg`/`jj file list`);
+  when a lane reports premise-missing, record the blocked-by edge immediately so the ready list
+  stays truthful. A lagging branch can carry a stale plan — diff the dot against master's version
+  and rebase onto the plan-owner's branch BEFORE implementing (a destruction review is only as good
+  as the spec it is given). A probe must name its LAYER (an `E-UNDEFINED` from a checked colon body
+  is a CHECKER-grammar verdict, not runtime-resolver evidence); disagreeing probes mean the
+  SEMANTICS are inconsistent — itself a finding. Stage-then-fan-out beats one long worker: stage 1
+  resolves the core contract, stage 2 parallel workers port disjoint file clusters, stage 3 one
+  integrator gates the exact tree; serial only for the core contract, the merge commit, and the
+  gate/bookmark window.
+- **`dot on` at DISPATCH is the cross-lane claim; `dot off` only at landing, and closing a dot
+  is not done until its file deletion is COMMITTED.** An unpushed active bit is not a claim; parked
+  dots go back to `open` so `active` never lies. `dot off` archives the file (gitignored) and
+  orphans every TRUSTED.md row + every `blocks:` edge naming it — in the SAME commit re-point rows
+  to a live successor owner (prim-axioms to the axiom dot, program rows to the live epic's
+  self-named file) and sweep `blocks:` lists (remove an emptied `blocks:` header too), then gate
+  that exact tree with dot-dep-lint. trusted-inventory --strict resolves owners only at
+  `.dots/<id>.md` or `.dots/<id>/<id>.md`; a child dot under another parent's dir is invisible as an
+  owner. Never leave closures in the working copy across a merge window — `jj new <tip>` orphans
+  them (archive copy persists, tracked open copy returns → Ambiguous ID); every `dot off` is
+  immediately followed by dot-dep-lint + `jj commit`.
+- **Use only documented `dot` subcommands — an unknown form is QUICK-ADD and creates a stray
+  task.** `dot dep check`, `dot dep --help`, and even `<unknown> --help` all create dots; consult
+  `dot --help`, inspect `jj diff` after every tracker command. The search verb is `dot find`, not
+  `dot search`. `dot add -a TARGET` records the new dot as BLOCKING TARGET; the local CLI retained
+  only the LAST repeated `-a` (dropping earlier prerequisites) — patch the frontmatter, run
+  dot-dep-lint, verify the rendered tree. `-P <root-id>` only when `.dots/<root-id>/<root-id>.md`
+  exists; never `-P`/`-a` a nested id. `dot on` re-quotes metadata each transition (never re-run on
+  an active dot). Never interpolate Markdown backticks into a shell `dot add -d` — command
+  substitution executes them and can erase a stack effect; pass text as data. Mark/close the exact
+  PRINTED id, not a filename.
+- **Two push-verification failure modes: an empty `jj log -r` result must be tested with
+  `[ -n ]`, and "Move SIDEWAYS bookmark master" means NOT a fast-forward.** A dot was closed on a
+  landing that never pushed (empty result eyeballed as success, blocking two lanes); a sideways
+  master push orphaned another agent's commit. Protocol: positive ancestry check
+  (`[ -n "$(jj log -r 'origin-tip & ::candidate')" ]`) BEFORE moving bookmarks; treat "sideways" in
+  push output as stop-the-line; end the window with move-bookmarks → push → `jj new <tip>` in that
+  order (leaving `@` on a pushed commit makes the next snapshot AMEND it). Track a new local bookmark
+  before its first push (`jj bookmark track <name> --remote=origin`). Pushes reject conflicted
+  ancestors (a clean worktree + green gate don't clear conflict metadata — resolve the earliest
+  `conflict` in the pushed range). Jj's default word-level diff can visually concatenate numeric
+  replacements (`$200000` beside `$400000` → `$200000400000`) — inspect source or `jj diff --git`;
+  never `jj diff --check`. History filters must include JJ refs (`refs/jj/keep`, `.jjconflict-*`);
+  ignore generated output by SHAPE, not run name.
+- **STATUS/trust/audit DATES follow the gate's UTC day, not the operator's local calendar.**
+  `stale-status-lint`/`trust-lint` use native `DATE-NOW` UTC; rolling "Last verified" to a local
+  date after midnight makes pushed master red until UTC catches up — `date -u +%F` before any date
+  roll and pass that UTC day to manual invocations. Diff gates must scan LOCALS (`tools/typed-local-diff-lint.f`,
+  not `rg`); run it against the exact integration diff (a squashed stack can hide an earlier untyped
+  local), stream large patches (keep a fixture above the old 1024-line limit). Repo edits go through
+  patches/Edit even for one-liners; commit is a gate (scan diffs for defs/unchecked boundaries,
+  check exact owning `bin/hb --load` paths, boundary tests exist), never "commit now, fix later".
 
 ## Code Quality
 
-- **Stack-snapshot DSL is shared:** `lib/test/snap.f` owns `T{ ... -> ... }T`
-  (TRUSTED only for the depth/drain core; counts, stores, judge, and report are
-  checked and aggregate into the `T-*` counters). Test files require
-  `lib/test.f` instead of copying the trusted boundary.
-- **`.` ends the line in Habu:** `value .` inside a message splits it across
-  lines; inline counters/failure text need digit emitters (`GT-U-TYPE`,
-  `TS-N.`).
-- **Line effects must earn their place:** `maki/optim-tensor.f` needed comments
-  around the non-obvious `ADAM` return order, but empty line-end stack comments
-  are noise. Prefer smaller words; add body-line effects only where they prevent
-  real stack-state reconstruction.
-- **Bare-local lint markers are per locals group:** `typed-local-diff-lint`
-  clears its allow state at each `:}`. In `bootstrap/cg/*.fs`, stock Gforth
-  forces bare locals, so every changed `{: ... :}` group needs its own
-  `typed-local-lint: allow-bare-local` marker.
-- **`cell+` loops are not a pointer idiom, they are O(index):** `lib/vector.f`
-  `VEC-CELL-FIELD` computed slot addresses with `off 0 ?do cell+ loop`, making
-  every access O(index) and a 141k `VEC-PUSH` fill quadratic (63.9s). The
-  checker already models `ptr a n + -> ptr a`, so `off cells +` is the
-  constant-time checked idiom (same fill: 0.39s). Guard container hot paths
-  with a large-N functional fill in the owning budgeted test, not wall-clock
-  asserts.
+- **Split multi-pass work into cursor/pass/row/render helpers; giant words hide effects even
+  with correct signatures.** Put the word effect on the definition line; add body-line effects only
+  where they prevent real stack-state reconstruction (empty/no-op line comments are noise — factor
+  instead). State the full public effect BEFORE `{: ... :}` (locals-then-`( -- result )` hides the
+  inputs from readers). Bare-local lint markers are per locals-group (`typed-local-diff-lint` clears
+  allow-state at each `:}`; in `bootstrap/cg/*.fs` stock Gforth forces bare locals, so each changed
+  group needs its own `allow-bare-local` marker). Prefer hex for machine-adjacent literals (bytes,
+  ASCII, masks, offsets, crypto); decimal for small human counts.
+- **Do not port SwiftForth's unchecked contracts by habit.** `PLACE`/`APPEND`/`ZPLACE` don't check
+  destination capacity — borrowed string utilities carry capacity+length cells (`BUF-APPEND*`) and
+  throw named errors. Don't port relative linked-list words (`@REL`/`,REL`) — model node layout with
+  structures, collections with arrays/maps, dispatch with checked `case`/execution vectors.
+  `SB-CAP` is 1024 — build >1KB fixtures with `APPEND-FILE` loops, not the string builder (an SB
+  overflow in fixture CONSTRUCTION exits the whole suite with a bare masked rc before `T-REPORT`).
+  Stack-snapshot DSL is shared (`lib/test/snap.f` owns `T{ ... -> ... }T`); require `lib/test.f`
+  instead of copying the trusted boundary.
+- **`.` ends the line in the native engine (newline-terminated, not space).** `11 . 22 . cr`
+  emits `11\n22\n\n`, so a gate assertion for two dotted numbers on one line never matches — assert
+  separately or dot a single derived value. Inline counters/failure text need digit emitters
+  (`GT-U-TYPE`, `TS-N.`).
 
-## Runtime, Codegen, AOT
+## Runtime, Codegen & AOT
 
-- **Measure `__text` from the emit cursor, not gross size deltas.** `ASM-LEN`
-  (`src/arch/arm64/icode.f`) is the exact byte offset into the `CODE` buffer that
-  becomes `__text`; a zero-byte `SZ` probe after each `EMIT-*` in `EMIT-FORTH`
-  gives a byte-exact region map (proof it perturbs nothing: the final probe reads
-  the true `__text` size). This falsified two "+16 KB feature" correlations: the
-  dict-hash (HIDX) code is <1 KB of `__text` (its table is a runtime mmap; only
-  148 seed dict records are baked, not the 2099 runtime words), and a "-16 KB"
-  from removing it is a page-rounding artifact, not real code. Full map in
-  `docs/size-rca.md`. Rule: the map decides which lever pays; never remove a
-  wanted feature on an unmeasured delta.
-- **The 35% `__text` elephant was a 4x-inlined cold-prefix, not features.**
-  `EMIT-SOURCE` emitted the checker/stdlib provided-files prefix (`EMIT-COLD-PREFIX`
-  - `PFX-LOAD-SCRIPT-ARGV-COLD` + `PFX-PROVIDE-FILES`) inline at four source-entry
-  points (~9.6 KB each = 39568 B). `PFX-PROVIDE-FILES` also built `s" <path>"
-  provided\n` for ~19 files CHARACTER-BY-CHARACTER (~36 B/char). Fix, same as the
-  escape-decoder BL precedent: factor the trio behind `LCOLDPFX` (one BL, save x30
-  across internal calls) and the per-row append behind leaf `LAPPPROV` (x12=str,
-  no BL so no frame); branch over both so the fall-through startup skips them.
-  148855 -> 99319 (-33%), byte-for-byte fixpoint held. Sole lever; dict schema
-  (7156 B, load-bearing) and tree-shake (unsound with REPL source embedded) don't.
-- **AOT-REPL M2: the metabuild host and `bin/hb` are DIFFERENT engine shapes —
-  you cannot capture the REPL in the host and base-rebase it in.** `EMIT-SOURCE`
-  (habu2.f:781) branches `STDIN? @ IF C-SOURCE-STDIN ELSE C-SOURCE-BAKED`. The
-  metabuild host that runs `stdin.f GO` (hb-stdin-mk, and hb-stage) is
-  `STDIN?=false` = a BIG C-SOURCE-BAKED engine (585 KB `__text`); `bin/hb` is
-  `STDIN?=true` (stdin.f:86) = a SMALL C-SOURCE-STDIN engine (113 KB) carrying
-  the ~39 KB PFX-load-from-checkout + tty-REPL machinery the host never emits.
-  Measured: host vs bin/hb engine code is 6.7% byte-identical, chunk shifts are
-  non-uniform (40 chunks at -0x9960, 39 not found). So primitive bodies sit at
-  unrelated offsets and every word call is an absolute `movz/movk/movk x16; blr`
-  (habu2.f:100) — LSNAPRBC (habu2.f:2475) only base-rebases ONE detect range by
-  one delta and skips region VAs, so it CANNOT map host→target offsets nor remap
-  region-word calls across different region layouts. M1 worked ONLY because
-  `AOT-PROBE 12345` has zero calls. Correct fix: capture in a SMALL STDIN?=true
-  engine (region = [cold-prefix][REPL] at bin/hb's offsets) via a dump→rebake
-  build pass; then only __text ASLR rebase is needed. Two SMALL engines are
-  offset-stable across LSRC edits (verified: 100% identical engine code). Detail
-  - evidence in dot habu-decide-unbake-repl-735b1565.md "M2 BLOCKED".
-- **`evaluate` is a transactional throw boundary now (Design-Y):** a throw whose
-  handler is beyond an active `evaluate` boundary (default `HOOK` `throw`s 70 on a
-  checker-rejected `:`) rolls back each escaped eval frame (INP/INE/CP/NDICT/XDS/DP
-  - compile-state, `EVALERR-CELL`=code, `EVALD`--) then reaches the handler.
-  `BTHROW` branches via `EVALREC-CELL` to `LEVALREC` when `EVALD>0`. Preserve ANS:
-  throws still reach an outer `catch`; do NOT make `evaluate` swallow throws
-  (Design-X) — the `TTHROWSQ`/`catch` harness relies on a throw crossing
-  `evaluate`. In-process negatives: `[: bad evaluate ;] catch` or `evaluate`+`ERR@`.
-- **New engine DATA cells must audit LIBRARY offsets, not just layout.f:** placed
-  `EVALREC-CELL` at `$3A00` thinking `$3A00..$3C88` was free per layout.f — but
-  `lib/ffi-abi.f` claims that whole block (`FFI-BUF-OFF $3A00` … `FFI-KPARAM#-OFF
-  $3C80`) and `lib/task.f` grows `TASK-USER-BASE` up from `$3D00`. An FFI call
-  overwrote the cell, so a throw crossing `evaluate` in any FFI-using program
-  (i.e. run under `include`, EVALD>0) branched to a data address (SIGSEGV). The
-  only free engine cell is the `$3CA0..$3D00` gap. Grep `constant .*(OFF|CELL|BASE)`
-  across `src/ lib/` before claiming a DATA offset; regression:
-  `FFI-T-EVALREC-DISJOINT` in `lib/ffi-abi-test.f`.
-- **Top-level escaped literals corrupt positionally:** interpret-mode `S\"`/
-  `.\"` can yield an empty/garbage span at a load-composition-dependent
-  position (repro: `--load` a file requiring `lib/test/snap.f` +
-  `lib/test/suite.f`, then a probe with several long top-level `S\"` lines —
-  one prints empty; consumed by a byte loop it segfaults in `c@`). Compiled
-  escaped literals inside `:` definitions are stable — bind expected strings
-  in checked words. Engine dot: habu-interpret-mode-escaped-d8dad34b.
-- **Warm snapshots must not re-run the cold prefix:** restored images already
-  carry support words/signatures. Mark snapshot boot (`SNAP-CELL`) and skip the
-  source prefix, or reloaded core words can shadow warm support words and bind
-  trusted signatures to the wrong runtime code.
-- **Snapshot persistent stores before image write:** compact checker stores
-  (`USIGS`, `NORET`) back into snapshotted boot arrays and reset only transient
-  token buffers. Never snapshot pointers into build-time anonymous mappings.
-- **Instruction patching flushes the patched line, not `[addr, CP)`:** `patch32`
-  can patch at `cp@`; range flushing through `CP` is empty there and leaves stale
-  instructions at cache-line boundaries.
-- **Snapshot images relocate only engine-text refs:** fixed VAs keep dict/data
-  addresses valid; rebase engine-text call chains + seed-prim slots, restore live
-  per-boot cells (argv/envp, RBASE, S0, wordlist, hook) after copying. Accept a
-  trailer only when `region-len + data-len` ends exactly at the trailer offset
-  (magic also appears in code). Output paths use guarded `PATH0` buffers (a small
-  buffer overwrites trailer magic → silent cold image).
-- **`evaluate` is re-entrant state:** `B-EVAL` saves INP/INE, SP, XDS, CP, NDICT,
-  DP, return addr, then branches to the interpreter top; clean end keeps defs,
-  error restores compile state and sets `EVALERR`.
-- **Fixed DATA cells require layout audits:** placing `EVAL-FRAME` in a free-looking
-  gap overlapped regalloc tables → invalid ARM64 fields. Centralize fixed header
-  offsets, verify non-overlap. x20 is the engine DATA base, not scratch — no
-  runtime/debug helper reuses it before the next `DATA` access.
-- **Runtime spans use OS-backed memory, not bigger DATA caps:** static dict storage
-  can use DATA; runtime source/report/JSONL/capture buffers size from measured
-  bytes via `MEM-ALLOC-64K-SPAN`/`lib/memory.f`. Derive the live base through
-  `data-base`, never a duplicated numeric DATA address (a gen-1 stage runs old
-  startup while interpreting new source).
-- **Warm composition finds hidden DATA buffers:** `diag-origin`, `signature-lint`,
-  `trust-lint`, and `icode` failed only when loaded together. Runtime file
-  buffers, scan tables, assembler code, and fixup tables belong in OS mappings;
-  keep dictionary DATA for persistent definitions and small cells.
-- **Warm JSON parser storage is runtime scratch:** `tools/json.f` parse tables,
-  string storage, and writer/error buffers are part of the warm checker prefix;
-  keep them in lazy `lib/memory.f` mappings or the 67 KiB warm trust sidecar can
-  fail before diagnostics run.
-- **Batched warm tools expose static scratch debt:** after xref/checker state
-  growth, static 256 KiB buffers in `build-fixpoint`, `hb-build`, `repair-packet`,
-  `json-only`, `repair-schema-doc-test`, and `stdlib-manifest-test` failed as
-  silent rc 76 under warm suites. Large source, capture, doc, and JSON buffers use
-  lazy `lib/memory.f` mappings; update the owning load list, not the batch shape.
-- **Code/dict region guards (a lone `:` failing closed):** check `cp@ dbase@ -`.
-  At/past `REGION - $4000` → code-region guard (remove one-use compiled fixtures,
-  then grow `REGION`). Well below + rc 77 → dictionary guard: grow `DICT-CAP`,
-  `CFSTK-OFF`, `DICT-SIZE` together (native + bootstrap mirrors), then recheck code
-  headroom (larger `DICT-SIZE` moves code up). Undefined tokens near a huge word =
-  BODYBUF pressure: factor the colon body into section words. Capacity bumps are
-  layout work — prefer removing one-use signatures first.
-- **AOT compaction needs an old→new map:** removing call-stencil padding is safe
-  only when every PC-relative source (`B/BL`, cond branches, `ADR`) is remapped and
-  range-checked; keep mapper cursors separate from copy cursors. Capability checks
-  need a source-level pass (inlined data-space prims like `here` vanish from
-  closure scans). Keep the >256-word closure fixture above the old threshold.
-- **JIT inliner must reject PC-relative branches:** byte-copying a small prim body
-  with an internal branch preserves the old target (compiled `epoch-seconds`
-  branched back into the seed prim, returned 0). Branch-bearing bodies compile as
-  calls unless relocated.
-- **Registry/name growth fails closed at build time:** process prims overflowed the
-  96-entry seed registry and corrupted the stage image; keep `REG-PRIM`
-  capacities named/checked. `EMIT-DICT` encodes names > `DNAME-INL` out-of-line
-  (inline-only corrupts `DREC`). Dictionary names are strings with flags above the
-  length field, one decode path (low-bit flags recreate a 255-byte cap).
-- **Emitter helpers called from several C-\* words are text multipliers:** the
-  escape decoder (`C-ESC-DECODE-BASIC` + `C-ESC-HEX-X9`) expanded inline into
-  the scan and copy loops of all six quote handlers - ~4.1KB of duplicate
-  engine text. Emitting it once behind forward labels (`EMIT-ESC-DECODE`,
-  `LESCDEC`/`LESCHEX`, x9 in -> x9 out + x10 class flag, callers test x10)
-  shaved 3308 text bytes and dropped a whole 16KB `__TEXT` page
-  (`otool -l` text end vs page boundary tells you if a shave pays). Callers
-  must re-audit register liveness across the new `BL`: the scan count and copy
-  length lived in x10, exactly the flag register, so scan counts in x11 and
-  copy saves x10 with the SP idiom.
-- **Factor emitters before growing them:** `EM-COMPILE` is near the body-capture
-  limit; new compile paths become named emitter helpers with TRUST rows (a
-  body-capacity exit during self-build is a structure signal). Label locals must
-  match label values exactly (an extra name consumes stale generator state and
-  crashes later). Values surviving an emitted `BL` need explicit stack saves or a
-  documented callee-preserved contract — `EMIT-BCAP` clobbers `x16`, so a quote
-  start kept there made the maker copy from `0x40`.
-- **Dispatch factoring starts with semantic groups:** split long native/recovery
-  compiler dispatch chains into checked helper groups before adding a row DSL;
-  source-shape tests guard helper presence, call graph, and removal of old chains.
-- **Emitter punctuation caused stage2 false trails:** a dropped comma changes the
-  token (`BL,` vs `BL`) and surfaced only as a terse undefined-token exit in
-  generated stage2; the durable emitter-source rule now lives in `docs/forth.md`.
-- **Mirrored codegen lands twice:** `src/habu/` and `bootstrap/cg/` are one
-  contract, two sources — factor both, prove native fixpoint + Gforth recovery.
-  They may use different assembler-word vocabularies for the same instructions;
-  preserve each file's opcode spelling and run the native engine gate + bootstrap
-  codegen tests. Move-wide (`LVMOVK`) refactors need compiled-literal cases (zero,
-  all-ones, MOVZ/MOVK, MOVN/MOVK) — top-level parser checks don't prove the JIT
-  materializer. Recovery seed prims drift unless grouped + bootstrapped (a native
-  fixpoint alone doesn't prove no-binary recovery). Bootstrap metadata parsing
-  must fail closed (`BODY-ARITY`/`EFFECT-FLAGS` rethrow under the diagnostic
-  boundary, never default to arity 1 / flags 0).
-- **Encoder factoring needs value fixtures + shape guards:** add executable
-  fixtures with known instruction words for every encoder touched; source-shape
-  scans only prove the file stayed factored.
-- **Target image byte cursors are one contract:** ELF, Mach-O, signing share
-  `MBUF`/cursor/endian-patch vocabulary under executable fixtures + shape guards;
-  target files hold only format-layout policy.
-- **Trust-call emitters name the protocol:** push one data cell, push the signature
-  pair, call x11 with LR saved — not raw inline `G-PUSH`/`BLR`. `TRUSTED:` bodies
-  don't take locals reliably; factor checked helpers and keep the body to the
-  asserted primitive op (parsing stops at `{:` otherwise). Trust audit dates follow
-  the gate's epoch/UTC day (near local midnight a local date can be "future").
-- **Useful register lint needs contracts:** model callee returns/preserves,
-  no-return exits, routine boundaries, syscall clobbers, LR/SP; raw
-  write-before-BL/read-after-BL rules are mostly false.
-- **Split open vs read failure labels:** `EMIT-SOURCE-READ` shared one label;
-  on open failure x12 still held the path → `close` on a non-fd. Distinct labels
-  for no-resource-acquired vs acquired, even with the same exit code. Scratch cells
-  are caller state — helpers don't reuse a caller's loop-index var (`SOURCE-LINE-END`
-  clobbered the outer `SOURCE-I`); branch paths preserve loop indexes.
+- **Fixed engine DATA cells require a LIBRARY-wide offset audit, not just `layout.f`.**
+  `layout.f` is not the sole owner: `regalloc.f` (float-pool bitmask), `debug.f`, `lib/task.f`
+  (`TASK-USER-BASE`), and `lib/ffi-abi.f` (`FFI-BUF-OFF $3A00..$3C80`) all define cells outside it;
+  a documented "free hole" can be a live TABLE's interior (`$260` is `VVAL[2]` of the JIT
+  virtual-stack). `grep 'constant .*(OFF|CELL|BASE)'` across `src/ lib/ bootstrap/` AND check every
+  RANGED region (table base + capacity) before claiming a slot; free-hole comments rot — correct
+  them when a slot is taken or found stale. Runtime spans (source/report/JSONL/capture) use
+  OS-backed memory (`MEM-ALLOC-64K-SPAN`/`lib/memory.f`, `$1002` anon mmap), never bigger DATA caps;
+  static dict storage + small cells use DATA. Derive the live base through `data-base`, never a
+  duplicated numeric address. Evaluate frames + FFI/task scratch live above the full frame area and
+  below `DATA-START`; overlapping them corrupts nested `include`/`evaluate`.
+- **`evaluate` is a transactional throw boundary (Design-Y).** A throw whose handler is beyond an
+  active `evaluate` rolls back each escaped frame (INP/INE/CP/NDICT/XDS/DP + compile state,
+  `EVALERR-CELL`=code, `EVALD`--) then reaches the handler; `BTHROW` branches via `EVALREC-CELL` to
+  `LEVALREC` when `EVALD>0`. Throws still reach an outer `catch` — do NOT make `evaluate` swallow
+  them (the `TTHROWS`/`catch` harness relies on a throw crossing `evaluate`). When an
+  error-recovery mechanism is upgraded, migrate EVERY branch to the old entry in the same change —
+  the sibling left behind (the LMAIN underflow EVALD>0 leg still using rollback-and-return) is the
+  residual bug, fail-open both ways. One throw contract per boundary; re-verify a dot's exact repro
+  on the current base before red-first work.
+- **Warm snapshots: skip the cold prefix, persist checker stores to DATA, clear transient mmap
+  pointers.** A restored image already carries support words/signatures — mark snapshot boot
+  (`SNAP-CELL`) and skip the source prefix, or reloaded core words shadow warm support words. `USIGS`
+  can grow dynamically but must be COMPACTED into the DATA-resident boot buffer before exec (size the
+  persisted capacity for the supported workload). Snapshot writers clear mmap-backed image buffer
+  pointers/cursors (`MBUF-A` persisted → crashed the next `IMG-M8`) and reset include state
+  (`INCLUDE-BUFS-A` pointed at the baker's mmap → "include: read failed"). Snapshot images relocate
+  only engine-text refs (fixed VAs keep dict/data valid); accept a trailer only when
+  `region-len + data-len` ends exactly at the trailer offset (magic also appears in code); locate the
+  trailer by scanning for the LAST `SNAP-MAGIC` (48-byte trailer is NOT at file-end — SNAP-EXTRA-SIZE
+  pad + macOS codesign blob follow); an un-resigned patched image is SIGKILLed (rc -9). Snapshot DATA
+  must exclude invocation-mode hooks (`REPLH-CELL` built under a TTY made a later `--load` enter the
+  REPL) — canonicalize to zero and recompute batch-vs-interactive after restore; any hook a
+  cold-prefix file arms must be explicitly disarmed in the snapshot-zero path unless its warm-boot
+  behavior is executed-tested. A snapshot build can carry TWO checker copies (engine cold prefix +
+  build payload) — install a fixed first-copy `CHECKER-SNAPSHOT-PREPARE` and invoke it before the
+  payload checker prepares.
+- **Measure `__text` from the emit cursor (`ASM-LEN`), never gross size deltas.** A zero-byte `SZ`
+  probe after each `EMIT-*` gives a byte-exact region map (proof it perturbs nothing: the final probe
+  reads true `__text` size). This falsified two "+16KB feature" correlations (the dict-hash HIDX code
+  is <1KB `__text`; a "-16KB" was a page-rounding artifact). The 35% `__text` elephant was a
+  4×-inlined cold-prefix (`EMIT-COLD-PREFIX` inline at four entry points, per-row append
+  char-by-char), fixed by factoring behind `LCOLDPFX` (one BL) + leaf `LAPPPROV` — 148855→99319, byte
+  fixpoint held. Emitter helpers called from several `C-*` words are text multipliers (the escape
+  decoder expanded inline into all six quote handlers, ~4.1KB) — emit once behind forward labels, and
+  callers must re-audit register liveness across the new `BL` (scan count / copy length shared the
+  flag register). Keep a PERMANENT emitted-engine region map — historical RCA goes stale (July's
+  cold-prefix duplication was already fixed; later growth moved into dispatch/primitives/AOT seed);
+  pair a mutable exact-size ratchet with an IMMUTABLE architectural ceiling so a baseline update
+  can't normalize growth.
+- **A shared native helper that gains a `BL` needs a real LR frame, and a new scratch register
+  must be one the helper ALREADY clobbers.** Extending `LCFPOP` to call `LCEMIT` without saving x30
+  made `RET` jump back into `LCFPOP` (branch-local defs hung). A cap loaded into x14 (which `LCFPUSH`
+  never touched but `J-ELSE` uses to carry the IF-branch origin) clobbered live state → `LPAT`
+  dereferenced the cap value; use x12, which `LCFPUSH` already overwrites (provably dead). Before
+  picking a scratch reg in a BL-called emitter, grep every caller for save/restore of "unused"
+  registers. `data-base` (x20/DATA) ≠ `dbase@` (x26/DBASE) — watch CF-stack memory through DBASE. x20
+  is XREG-RBASE (text base) pre-DATA-INIT and DATA base after; x13/x14/x15 carry argc/argv/envp until
+  `EM-DATA-INIT` stores them (a boot emitter running earlier must use x12). Values surviving an
+  emitted `BL` need explicit stack saves (`EMIT-BCAP` clobbers x16). Dictionary records are
+  read-only at runtime (the RX region) — flag writes are engine prims wrapping the store in the LPROT
+  RW/RX bracket; Forth-side dict mutation is truncation only (`ndict!`/`cp!`).
+- **Mid-compile bridge calls into checker words need an RX window.** The compile loop holds the code
+  REGION RW between `:` start and the `;` flush, and the bridged checker words are COMPILED INTO that
+  region — a BLR fetches a writable page and SIGBUSes under W^X (signature: pc==x11, SIGBUS,
+  mid-body). Bracket find+call with `MOVZ LPROT` (region→RX then →RW). The compile loop's central
+  body capture is the `LBCAP` at `EM-COMPILE-KEYWORDS`' head — any dispatch inserted UPSTREAM that
+  consumes tokens (an ADT mode) must `LBCAP` them itself or the checked body is silently truncated.
+  xts live in TWO regions: baked prims in `__text` at the PIE base; runtime colon/`TRUSTED:` defs in
+  the JIT `[DBASE,CP)` region — every real checker hook is a source-loaded def, so `set-check` can
+  fail-closed cheaply with `DBASE ≤ xt < CP` (no LIT64), but the window can't tell a true entry from
+  any in-range address.
+- **AOT compaction/JIT inlining must remap or reject PC-relative branches.** Removing call-stencil
+  padding is safe only when every `B/BL`/cond-branch/`ADR` source is remapped and range-checked
+  (separate mapper/copy cursors); a byte-copied prim body with an internal branch preserves the old
+  target (`epoch-seconds` returned 0) — branch-bearing bodies compile as calls unless relocated.
+  Instruction patching flushes the PATCHED line, not `[addr,CP)` (empty range at `cp@` leaves stale
+  instructions). Native single-pass ARM64 relocation must validate signed reach BEFORE masking
+  (`D26`/`D19`/`ENC-ADRD` silently wrapped out-of-range deltas; the trusted Gforth seed already
+  threw via `?REL26`/`?REL19`) — derive the native boundary from the seed via shared
+  `?REL26`/`?REL19`/`?ADR` predicates at both the immediate encode sites and the deferred choke,
+  before any mutation. Deferred backpatch is per-fixup atomic, not per-chain (`FX-ENC` validates
+  reach before the PATCH write, but `LBL` clears the chain head before walking, so a mid-chain
+  out-of-reach failure leaves earlier fixups patched). Boundary tests for a reach the buffer can't
+  span craft the label position (`ASM-CP !`), don't emit MB of code.
+- **Mirrored codegen (`src/habu/` + `bootstrap/cg/`) is one contract, two sources — factor both,
+  prove native fixpoint + Gforth recovery.** They may use different assembler vocabularies for the
+  same instructions; preserve each file's opcode spelling. A boot-prefix primitive is not implemented
+  until BOTH emitters execute its focused behavior (`tok-imm?` existed in habu2.f but not forth.fs →
+  native fixpoint passed while no-binary recovery died rc 70). Bootstrap metadata parsing must fail
+  closed (`BODY-ARITY`/`EFFECT-FLAGS` rethrow, never default to arity 1 / flags 0). Adding a stage0
+  keyword needs THREE coordinated forth.fs edits (`variable LKWxxx`, keyword bytes in `EMIT-KWDATA`,
+  the `LBL LKWxxx !` label-init) — missing the third leaves the label 0, binding label 0 corrupts the
+  table, and the ONLY symptom is `hb: snapshot trailer corrupt` (exit 79) at generated-engine startup,
+  nowhere near the cause. A `LQNL` (newline label in habu2.f) can't be ADR'd from habu1.f code — build
+  a fixed message self-contained (`LIT64`-packed bytes on SP), don't reference a habu2.f message-table
+  label. A punctuation slip (`BL,` vs `BL`) surfaces only as a terse undefined-token exit in generated
+  stage2. Move-wide (`LVMOVK`) refactors need compiled-literal cases (zero, all-ones, MOVZ/MOVK,
+  MOVN/MOVK) — top-level parser checks don't prove the JIT materializer.
+- **Registry/name growth fails closed at build time.** Process prims overflowed the 96-entry seed
+  registry and corrupted the stage image; native primitive additions cross habu1.f's 160-row
+  `PRIM-CAP` (`primitive registry full`) — keep named capacities above the emitted count. `EMIT-DICT`
+  encodes names > `DNAME-INL` (16) out-of-line (inline-only corrupts `DREC`); dictionary names are
+  strings with flags above the length field, one decode path. A seal watermark must be captured where
+  the SOURCE ends, not where a file ends (`SEAL-CAPTURE` at xref.f's tail froze the watermark below
+  `script-argv.f` loaded after it) — the fix is a second SEAL-CAPTURE token appended after ALL engine
+  files + provide rows (capture is monotonic). Don't guard a prim whose legitimate caller is
+  indistinguishable from the attacker (the engine refresh legitimately truncates below the watermark
+  as ordinary post-seal source) — eliminate the legitimate below-watermark caller first, close the
+  spoof one layer up (sealed USIG registry → redefine exits 78).
+- **Recoverable engine capacity/reject legs must ROLL BACK every monotonic allocator the def
+  touched (CP, NDICT, DP, name bytes) or be documented as leaked.** The hooked publish reject skipped
+  the NDICT bump but leaked emitted code (44 bytes/retry) because CP was never rolled back; the pending
+  dict record holds the rollback target (slot 0 = post-name, slot 24 = pre-name CP for `DNAME-EXT`
+  names). Reject-path matrix: hooked publish (verdict 0) rolls back and continues; trusted publish
+  exits via `C-DIE-DOES`; `create`/`variable`/`constant` publish BEFORE `C-DEFHOOK` and discard the
+  hook verdict; a throw caught across a compiling definition still leaks CP (dotted). Rejected
+  definitions must free every per-definition resource. Exit-status mapping honors deliberate small
+  codes: `[1,255]` exits byte-identically, anything else prints `hb: uncaught throw code N` on fd 2
+  and exits `UNCAUGHT-RC 67` (the same rule in `die` closed the DRV masked layer); tasked engines use
+  `NR-EXIT-GROUP` for process termination (`pthread_exit` is task-local; Linux `exit(93)` terminates
+  only the calling pthread and leaves workers alive → process captures time out).
+- **Pre-trust defers land via a pending table drained after `: TRUST`, not by reordering the
+  checker.** Native `C-DEFER` unconditionally LFINDs `trust`/`checker-defer` and exits 70, so any
+  `defer` before their decls killed boot — branch on `C-PRETRUST-READY?`, else copy the qualified name
+  + effect sig into a fixed engine-DATA table and replay via `DRAIN-PRETRUST` (an FPRIM + forth.fs
+  mirror) right after `: TRUST`. Both name AND sig must be copied (the dict record holds only the bare
+  tail; the sig is never in the record). The earliest prefix point a `defer` is legal is AFTER
+  `exec-vector.f` (which defines `DEFER-UNSET`), not util.f. The checker-defer bridge needs BOTH
+  engine→checker calls (`C-CALL-TRUST-PEND` usig row AND `C-CALL-CHECKER-DEFER` flag); mirroring one
+  without the other still rejects `is`. Bootstrap has NO deferred words, so any `defer` in a prefix
+  file breaks no-binary recovery until forth.fs mirrors defer/is. Diagnostic origins belong in the
+  scanner's SINGLE pass — recomputing line/column by rescanning from byte 0 per definition made
+  fixpoint certification quadratic (98% of time on a 1MB/3250-def source); advance byte/line/line-start
+  together and snapshot O(1).
 
-## Runtime And REPL
+## Runtime & REPL
 
-- **A word that `parse-name`s twice hangs under `bin/hb file.f`, not `--load`:**
-  the new `TEST:GROUP SEQ|PARA name` opener reads two tokens; single-script mode
-  loops on the second `parse-name`, but `--load`/`included` (how the gate runs)
-  are fine. Test DSL parsing words through `--load`, and drive rejection paths by
-  calling the factored string validators (`MODE-OF`/`CHECK-NAME`) on `s"` literals
-  under `TTHROWS`, not by feeding tokens to the parser at top level.
-- **DSL keyword names collide case-insensitively:** `TEST:GROUP` rejects a group
-  literally named `seq`/`SEQ` (and `PARA`, `GROUP`, `SUITE`, …) with `E-SUITE-NAME`
-  because names are matched `STR=CI` against the reserved set. The suite-test group
-  `seq` became `seq-grp` after the rename. Pick group labels outside the reserved
-  keyword set.
-- **Process capture lifecycle has one owner:** keep fd setup, nonblocking
-  probe/drain, stdin write, timeout poll, cleanup, and finish in `lib/process.f`;
-  argv/env/cwd layers prepare state only. Duplication made every capture variant
-  a stack-juggling audit.
-- **Linux spawn needs an exec-failure handshake:** `clone` success ≠ `execve`
-  success. `PROC-SPAWN-IO` uses a close-on-exec error pipe: child writes one byte before
-  exiting on `chdir`/`dup2`/`execve` failure; parent reads EOF = success, or reads
-  the byte, reaps, returns `-1`. Copy the fd to x0 before reusing that register for
-  the marker byte. Else checked `PROC-SPAWN-IO` returns a pid for a missing exe.
-- **Baked REPL needs explicit hook boundaries:** the snapshot prepends `0 set-check`
-  then reinstalls `HOOK` before user input. The tty bundle emits `0 set-check`
-  before `repl-term.f`/`repl.f`/watch/stepper/debug and then only `' HOOK
-  set-check`; defining a second `HB-CHECK-HOOK` collides once explicit
-  duplicate-definition enforcement is active. Core fixtures (`src/core/sha256.f`)
-  don't disable checking themselves; put `0 set-check` in the harness.
-- **`--load` leaves stdin as tool data:** so a post-load probe piped to fd0 doesn't
-  run — put capacity probes in an explicit loaded source file when measuring
-  `here`/metadata. Test load lists factor into `TEST:SUITE … TEST:;SUITE`
-  blocks with short lines (long physical lines hit the reader buffer).
-- **PTY behavior needs a real pty harness:** `script(1)` interleaves echo/output;
-  drive a pty directly and poll for exit when testing prompt, raw mode, history,
-  Ctrl-C/Ctrl-D, async termination.
-- **`close` is `( fd -- )`, no status:** modeling `( fd -- rc )` leaves a phantom
-  cell rejected at branch joins; for atomic output write a temp file and commit
-  with fallible filesystem words.
-- **Native crashes need debugger state first:** for SIGSEGV/SIGILL/DATA/stack
-  corruption set breakpoints, step, inspect data-stack + watch cells; extend the
-  debugger before print-marker probes. Stale binaries hide fixes — remove output
-  artifacts before generate-then-run tests, never silence the build.
-- **Stdin/Forth byte fixtures:** `s" …\n"` keeps the literal `\` and `n`; use a
-  byte buffer (`10 c,`/`STR-LF`) for newlines. `\\` is a different token from the
-  comment word `\`. Checked helpers are defined before use (a forward ref can
-  surface later as an unpublished word).
+- **A word that `parse-name`s twice hangs under `bin/hb file.f`, not `--load`.** A `TEST:GROUP SEQ|PARA
+  name` opener reads two tokens; single-script mode loops on the second `parse-name`, but
+  `--load`/`included` (how the gate runs) are fine. Drive rejection paths by calling the factored
+  string validators on `s"` literals under `TTHROWS`, not by feeding tokens to the parser at top level.
+  DSL keyword names collide case-insensitively (`TEST:GROUP` rejects a group named `seq`/`SEQ`/`PARA`
+  with `E-SUITE-NAME` via `STR=CI`) — pick labels outside the reserved set. Locals and package words
+  also collide case-insensitively (`ba` shadows a private `BA` → `ba BA !` stores through the local) —
+  give persistent state semantic names distinct from every local.
+- **Process capture lifecycle has one owner (`lib/process.f`).** Keep fd setup, nonblocking
+  probe/drain, stdin write, timeout poll, cleanup, finish there; argv/env/cwd layers prepare state only
+  (duplication made every capture variant a stack-juggling audit). Linux spawn needs an exec-failure
+  handshake: `clone` success ≠ `execve` success — `PROC-SPAWN-IO` uses a close-on-exec error pipe
+  (child writes one byte on chdir/dup2/execve failure; parent reads EOF=success or the byte=fail),
+  copy the fd to x0 before reusing that register for the marker byte, else a checked spawn returns a
+  pid for a missing exe. `--load` leaves stdin as tool data (a post-load fd0 probe doesn't run — put
+  capacity probes in a loaded source file). PTY behavior needs a real pty harness (`script(1)`
+  interleaves echo/output) — drive a pty directly and poll for exit. Stdin/Forth byte fixtures: `s" …\n"`
+  keeps the literal `\`+`n` — use a byte buffer (`10 c,`) for newlines; `\\` is a different token from
+  the comment word `\`. Native crashes need debugger state first (breakpoints, step, data-stack +
+  watch cells) before print-marker probes; remove output artifacts before generate-then-run tests
+  (stale binaries hide fixes).
 
-## Darwin And Syscalls
+## Darwin & Syscalls
 
-- **Raw Darwin syscalls are not libc:** `posix_spawn` (244) takes the private 5-arg
-  kernel ABI `pid*, path, adesc, argv, envp`; `wait4` status is `(status>>8)&0xff`;
-  check carry + errno-in-x0. Initialize ALL expected zero/null arg registers before
-  `svc` (`gettimeofday` returned `EFAULT` from stale x2 after a `write`). Syscall
-  output buffers use audited DATA scratch, not live `sp`.
-- **Process redirection uses XNU spawn descriptors:** empty file-action blobs are
-  invalid (pass null when no remap); mark parent-only pipe/pty fds close-on-exec
-  before spawning. PTY = `/dev/ptmx` + ioctl, not `forkpty`/`openpty`.
-- **`F_SETNOSIGPIPE` still needs normalized failure:** closed-pipe `write` reports
-  `EPIPE=32` which can collide with a valid byte count; normalize carry in the
-  syscall prim, validate counts, keep a 32-byte closed-pipe regression.
-- **Darwin time is not a syscall:** `clock_gettime*`/`mach_absolute_time` are
-  libSystem/commpage; the no-libSystem clock reads `CNTVCT_EL0`/`CNTFRQ_EL0` and
-  converts via quotient/remainder (avoid `ticks*1e9` overflow).
-- **LC_MAIN gets argc/argv/envp in x0-x2** (no kernel start-stack); capture at entry
-  and restore after snapshot boot.
-- **Recursive dir walks need per-depth buffers:** `getdirentries64` records are
-  batch-local; index dirent buffers, offsets, lengths, cookies, fds by depth — even
-  a global current-record pointer is unsafe (the child walk overwrites it).
-- **Share filesystem traversal mechanics, not policy:** `WALK-FILES` skips repo
-  metadata while `REMOVE-TREE` must delete `.dots` and unlink symlinks first.
-  Factor open/read/record/child-path/close helpers in `lib/fs.f`; keep deletion
-  choices in `lib/fs-mutate.f`.
-- **Symlink deletion lstats first:** `EXISTS?`/`FILE?`/`DIR?` follow symlinks and
-  broken links look absent; `REMOVE-TREE` tests `SYMLINK?` before existence/type.
-  Repeatable fixtures use `MAKE-DIRS` or clean the tree before `MAKE-DIR`.
-- **Path syscall tests use stable NUL strings:** private path-copy helpers can make
-  a primitive smoke test fail with `EFAULT`, hiding whether the ABI or fixture glue
-  is wrong. Same-typed string pairs (`ptr u8 n` path vs stdin bytes) need an
-  order test — the checker can't distinguish them.
+- **Raw Darwin syscalls are not libc.** `posix_spawn` (244) takes the private 5-arg kernel ABI
+  `pid*, path, adesc, argv, envp`; `wait4` status is `(status>>8)&0xff`; check carry + errno-in-x0;
+  initialize ALL expected zero/null arg registers before `svc` (`gettimeofday` returned `EFAULT` from
+  stale x2 after a `write`); syscall output buffers use audited DATA scratch, not live `sp`. Spawn
+  failure reports carry-set with `x0=errno` (use `LDRW` for the success `pid_t`; `SP` produced giant
+  bogus negative pids); prove a missing exe as `-ENOENT`. Process redirection uses XNU spawn
+  descriptors (empty file-action blobs are invalid — pass null; mark parent-only pipe/pty fds
+  close-on-exec before spawning; PTY = `/dev/ptmx` + ioctl). `F_SETNOSIGPIPE` still needs normalized
+  failure (`EPIPE=32` can collide with a valid byte count — normalize carry in the prim). Darwin time
+  is not a syscall (`clock_gettime`/`mach_absolute_time` are libSystem/commpage; the no-libSystem clock
+  reads `CNTVCT_EL0`/`CNTFRQ_EL0`, converts via quotient/remainder to avoid `ticks*1e9` overflow).
+  `LC_MAIN` gets argc/argv/envp in x0-x2 (capture at entry, restore after snapshot boot).
+- **Recursive dir walks need per-depth buffers.** `getdirentries64` records are batch-local — index
+  dirent buffers, offsets, lengths, cookies, fds by depth (even a global current-record pointer is
+  unsafe — the child walk overwrites it). Share filesystem MECHANICS not policy: `WALK-FILES` skips
+  repo metadata while `REMOVE-TREE` deletes `.dots` and unlinks symlinks first — factor
+  open/read/record/child/close in `lib/fs.f`, keep deletion in `lib/fs-mutate.f`. Symlink deletion
+  lstats first (`EXISTS?`/`FILE?`/`DIR?` follow symlinks; broken links look absent — test `SYMLINK?`
+  before existence/type). Path syscall tests use stable NUL strings (private path-copy helpers can make
+  a smoke fail `EFAULT`, hiding whether the ABI or fixture glue is wrong); same-typed `ptr u8 n` pairs
+  (path vs stdin bytes) need an order test — the checker can't distinguish them.
 
-## FFI / GPU (PTX)
+## FFI, GPU & PTX
 
-- **Relaxing a fail-closed class re-audits every site that leaned on the old
-  rejection:** maki/lower-red.f LRED-BODY hardwires input 0 as the FULL data
-  operand's row span; only LRED-CLASSIFY-INS's blanket BC-COL rejection kept a
-  hand-built broadcast out of position 0. Unlocking BC-COL (stride-1 span,
-  2026-07-08) therefore needed a NEW input-0-must-be-FULL guard + negative
-  fixture, and exposed that BC-ROW/BC-SCALAR in position 0 were already silently
-  mis-loadable. Before widening an accepted-class set, grep every consumer of
-  the classification for positional/shape assumptions the old set masked.
-- **TF32 mma.sync: prove the fragment layout element-EXACT in isolation FIRST.**
-  The PTX-ISA m16n8k8 tf32 layout (gid=lane>>2, t=lane&3: A a0=A[gid][t]
-  a1=A[gid+8][t] a2=A[gid][t+4] a3=A[gid+8][t+4]; B b0=B[t][gid] b1=B[t+4][gid];
-  D d0=D[gid][2t] d1=D[gid][2t+1] d2=D[gid+8][2t] d3=D[gid+8][2t+1]) is the course's
-  #1 "correct in NumPy, garbage on device" bug source. Make it verifiable: feed
-  small INTEGER operands (exact in tf32's 10-bit mantissa, sums < 2^24 exact in the
-  f32 accumulator) so a correct kernel is BIT-EXACT vs a host matmul — any
-  permutation mismatches. `tools/ptx/mma-probe.f` (one tile) then
-  `tools/ptx/mma-gemm-check.f` (full K-loop) caught nothing only because the layout
-  was right; the point is they COULD.
-- **A correct mma.sync tile does not mean a fast GEMM.** The step-3 MMA kernel
-  (`lib/ptx/cg-mma.f`, 8 warps / 16×32 warp tile / manual scalar `ld.shared`
-  fragment loads, reusing the f32 path's cp.async double-buffer) is device-correct
-  and on the tensor-core roof but measured 375–398 GFLOP/s — UNDER the tuned f32
-  cp.async tile (442) and ~21% of Triton. ptxas said 38 reg / 0 spill (vs f32's 56),
-  i.e. it is load/ALU-bound (bank-conflicting scalar fragment loads + 48 `cvt.rna.
-  tf32`/tile starving the MMA units), not register-bound. Reuse→stage→pipeline: the
-  landed rung is the tile+license; ldmatrix / 16×64 warp tile / bigger BK / bank
-  swizzle are the measured rungs that follow (dotted).
-- **Emit the kernel IN-PROCESS when a runtime request must reach the emitter.**
-  `maki/precision-device-test.f` used to spawn a child `bin/hb` to emit the kernel;
-  a child re-builds the IR fresh and DROPS the parent's `PREC!` request, so the
-  dispatch (`LMM-MMA?` reads `CLASS-MATMUL PREC@`) never saw tf32. In-process
-  `PTX-CAPTURE-ON 0 LMM-EMIT PTX-CAPTURE-OFF` (like `gemm-bench.f`) sees the request
-  and emits the mma.sync kernel — the passing tf32 golden is the running license.
-- **Share the cp.async pipeline scaffold via a compute QUOTATION, not a copy.**
-  `MM-PIPE-KLOOP-WITH ( [ -- ] -- )` emits the double-buffer staging once and
-  `execute`s the per-tile compute quotation in the compute slot; the f32 4×4 fma
-  (`[: MM-KSTEP-TILE ;]`) and the tf32 MMA tile (`[: MMA-KTILE ;]`) both pass their
-  compute through it, so both validate the exact same staging. The quotation stays
-  on the stack under the stack-neutral emit words and is consumed at the slot — no
-  bare-local needed. Signature type is `[ in -- out ]`, caller is `[: … ;]`.
-- **Kernel benchmarks need a generic launch layer:** a SAXPY-shaped profiler
-  hides the optimization question. Keep CUDA module/function/param/launch/timing
-  in `tools/ptx/bench.f`, keep bytes/FLOPs in the workload layer, and always print
-  fused-vs-unfused rows when claiming fusion moved memory traffic.
-- **Do not call host launch timing a GPU profile:** CUDA kernel optimization
-  evidence needs device elapsed time (`cuEventRecord`/`cuEventElapsedTime`) in a
-  `gpu_elapsed_ns` row. Keep host-loop timing separate for launch-overhead work.
-- **PTX profile runs must include `ptxas`, not just text tests:** the v4 SAXPY
-  text fixture expected `%p21`/`%rd22`, but `CG-OPEN` still declared scalar-sized
-  pools (`%p<8>`, `%r<16>`, `%rd<16>`). Benchmarking through checked emit →
-  `ptxas` → CUDA launch exposed the stale resource contract; keep assembly in
-  perf proof loops.
-- **FFI needs almost no new ABI machinery:** an AAPCS64 C-call is a non-leaf
-  `FPRIM` (gets the x30 frame) that `G-POP`s fn + arg buffer, loads `x0..x7`,
-  `BLR,`, `G-PUSH`es `x0`. `XDS` is `x19` (AAPCS64 callee-saved) so the C callee
-  preserves the data stack free. The CUDA Driver surface (except `cuLaunchKernel`'s
-  9th–11th stack args) is integer/pointer-only, so the float scalar rides in the
-  `kernelParams` buffer — no v-register handling. `ffi-call : ( ptr a n -- n )`,
-  fail-closed.
-- **Dynamic-ELF FFI is checked emitter code:** `bin/hb` is a dynamic ET_EXEC
-  (`PT_INTERP=/lib/ld-linux-aarch64.so.1`, `DT_NEEDED libc.so.6`, SysV `.hash`,
-  `R_AARCH64_GLOB_DAT` into a fixed-vaddr GOT, `DF_BIND_NOW`, no PLT) so ld.so
-  fills `DLOPEN-SLOT`/`DLSYM-SLOT` (`ptr a`, read with `@`) for `ffi-call`. Place
-  the R+W segment (.dynamic+GOT) at a FIXED high vaddr so slot addresses are
-  compile-time constants independent of code size. Both the AOT (`BUILD-ELF`) and
-  snapshot (`BUILD-SNAP-HDR` + `snap.f`) image paths must go dynamic — the
-  self-host fixpoint, not just `BUILD-ELF`, is the acceptance test.
-- **no-crt dlopen works:** glibc ld.so initializes libc.so enough that a
-  no-startfiles binary (own `_start`, no `__libc_start_main`) can `dlopen` libcuda
-  - call `cuInit` (proven on the Orin with `gcc -no-pie -nostartfiles`).
-- **`cp@` is only stable inside a compiled word:** to emit a runtime stub (a C-ABI
-  leaf for `ffi-call`), write at `cp@` via `patch32` and call from inside `: WORD ;`.
-  The interpreter compiles each top-level line into a transient buffer at `cp@`, so
-  a top-level `cp@ patch32` clobbers the executing line (the `add` ran, `ret`
-  landed in junk → `SIGILL`). Engine-suite proofs pass via `--load` yet `SIGILL`
-  via the gate's stdin REPL — always reproduce engine-suite changes through
-  `bin/hb --repl < test/engine-suite.f`.
-- **Verify emitted primitive bytes statically:** compute the exact ARM64 encodings
-  and `grep` the on-disk `bin/hb` for the contiguous byte stream (ASLR slides the
-  `[']` xt; file bytes are fixed) — proves codegen without a runtime call.
-- **M3 has two proof levels:** `tools/ptx/saxpy.f` emits `.version 8.3`/
-  `.target sm_87` PTX and `tools/ptx/ptxas-smoke.f` proves `ptxas` assembly on
-  Orin without committing `.ptx`/`.cubin` artifacts. GPU launch + CPU golden is
-  not an M3 completion proof until the Habu CUDA Driver harness (M1d) launches
-  the cubin; the old `/tmp/saxpy_run.c` C smoke was useful evidence, not repo
-  infrastructure.
-
-- **M4a crux — trusted span constructors need FRESH extent-token minting
-  (proven 2026-06-27).** M2's parametric types are built and work, but the M4
-  constructor `MK-SPAN ( ptr u32 -- span<...,extent-n> )` cannot just use the
-  nominal atom `extent-n`: a probe (`TRUSTED: MKS … span<…,extent-n>` twice, fed to
-  `NEEDSAME ( span<…,extent-n> span<…,extent-n> -- )`) CERTIFIES (exit 0), so two
-  *independent* spans wrongly share `extent-n` — violating ptx-sketch.md ("a lone
-  MK-SPAN yields a fresh N that unifies with nothing"). The model split: kernel
-  *signatures* use nominal atoms (`extent-r`/`extent-c`, equal-by-name, to ASSERT
-  agreement), but *constructors* must mint a fresh extent per call (`MK-SPAN=` is
-  the explicit share-one-fresh-token form). The landed design: a field
-  **type-variable** (`span<…,e>`) does NOT work — fresh unification
-  vars unify freely, so two independent spans could always be unified "equal,"
-  which is exactly the unsoundness to prevent. The constructor must mint a
-  per-call-fresh **rigid (skolem) extent token** that unifies only with itself;
-  `MK-SPAN=` mints one rigid token stamped on both outputs. A kernel needing equal
-  extents is polymorphic in the extent and requires the SAME token twice, so
-  passing two DISTINCT rigid skolems forces them equal and FAILS (reject), while
-  two `MK-SPAN=` outputs share one skolem and pass. This is a genuine checker
-  extension (per-call rigid-token minting at trusted constructors), not just word
-  signatures. Constructor signatures now use `fresh-extent-*` / `fresh-mask-*`
-  templates; `GRID-CTX`/`ROW-CTX` mint fresh masks and the engine gate proves
-  both direct and recorded-signature reject paths.
-
-- **Device-vs-host GOLDEN compares device f32 against the f32-NARROWED host, not
-  the raw f64 (proven 2026-07-04, `maki/lower-golden.f`).** The host executor runs
-  f64, the device kernel f32; comparing device bits to the raw host f64 folds the
-  dtype step into the error budget and blows the CAD-PLAN §11 tol (atol 1e-6, rtol
-  1e-5). Round the host elem onto the f32 grid first (`F64>F32 F32>F64`), then
-  `|dev - host_f32| <= atol + rtol*|host_f32|` measures REAL kernel error (f32
-  rounding along the chain + `ex2.approx`), not representation. First real
-  device-golden of the CAD plan: a GELU→RELU region matched to 6 decimals on Orin.
-- **Generated multi-input elementwise kernels reset the CG counters from the input
-  count, not `CG-RESET` (`maki/lower-ew.f`).** `CG-RESET` presets the SAXPY ABI
-  (2 spans, `%rd3` free). A region kernel has K input spans + 1 output span, so
-  after the param loads set `CG-NRD = K+2`, `CG-NF = 1` (no uniform param), `CG-NR
-  = 2` (`%r1` = n, the bound `EMIT-GRID-CTX` branches on). Pass any span reg to
-  `EMIT-GRID-CTX` (it ignores the base; the index is from `%tid`), share the one
-  returned offset across every `EMIT-LOAD`/`EMIT-STORE`.
-- **In-process PTX text tests need a `PTX-L` sink hook, not a subprocess
-  (`src/arch/ptx/emit.f`).** The cg emitters flush each line through `PTX-L`, so a
-  host test can't inspect their output without capture. A one-variable redirect
-  (`PTX-CAPTURE-ON`/`$`/`-OFF`) routes lines into a buffer (fail closed on
-  overflow), default stdout unchanged — lets `maki/lower-ew-test.f` assert
-  "exactly one `.version`, one entry, `ex2.approx`/`max.f32` present" off-device
-  with no `bin/hb` spawn. `.f` emit-driver signatures must use checker type tokens
-  (`n`/`ptr`/`bool`), never descriptive names (`node`/`rid`) — those parse as
-  unknown types.
+- **FFI needs almost no new ABI machinery: an AAPCS64 C-call is a non-leaf `FPRIM`.** It `G-POP`s
+  fn + arg buffer, loads x0..x7, `BLR,`, `G-PUSH`es x0; `XDS`=x19 (callee-saved) so the C callee
+  preserves the data stack. The CUDA Driver surface (except `cuLaunchKernel`'s 9th–11th stack args) is
+  integer/pointer-only, so a float scalar rides in the `kernelParams` buffer — no v-register handling.
+  `ffi-call : ( ptr a n -- n )`, fail-closed. Dynamic-ELF FFI is checked emitter code: `bin/hb` is a
+  dynamic ET_EXEC (`PT_INTERP`, `DT_NEEDED libc.so.6`, `R_AARCH64_GLOB_DAT` into a fixed-vaddr GOT,
+  `DF_BIND_NOW`, no PLT) so ld.so fills `DLOPEN-SLOT`/`DLSYM-SLOT` (`ptr a`, read with `@`); place the
+  R+W segment at a FIXED high vaddr so slot addresses are compile-time constants; BOTH AOT
+  (`BUILD-ELF`) and snapshot image paths must go dynamic (the self-host fixpoint is the acceptance
+  test). no-crt dlopen works (glibc ld.so initializes libc enough that a no-startfiles binary can
+  dlopen libcuda). Keep FFI ABI separate from loader binding (`lib/ffi-abi.f` portable + gateable;
+  `lib/ffi.f` the loader layer). A mechanical guard on all 8 FFI arg registers is UNSOUND — ffi-call
+  loads 8 cells regardless of arity, so slots past the real args hold STALE values; only `ffi-call-n`
+  carries x14=nargs (guard `argbuf[0..nargs)`, BEFORE the x20 repurpose), and the CHECKED library
+  funnels integer/pointer calls through it.
+- **GPU launch works via the `_v2` driver symbols — the deprecated stub fails.** `dlsym("cuMemAlloc")`
+  returns a deprecated stub that returns 201 INVALID_CONTEXT even with the context current; use
+  `cuMemAlloc_v2`/`cuMemsetD32_v2`/`cuMemcpyDtoH_v2` (setup/launch non-versioned symbols are fine).
+  Use `cuDevicePrimaryCtxRetain` (NOT `cuCtxCreate` — hangs on the Orin's camera primary context); the
+  deprecated `cuLaunchGrid`/`cuParamSet*` path (≤8 args) avoids an `ffi-call` >8-arg extension. GPU
+  readback args are dst-then-src (`cuMemcpyDtoH_v2 (dstHost srcDevice n)`) — a per-call `rc` print
+  localizes a bad readback, and compute goldens by hand (a wrong assertion `2*4+40=48≠44` blamed a
+  correct GPU). A retained primary context HANGS AT PROCESS EXIT, not in the kernel — pair
+  `cuDevicePrimaryCtxRetain` with `cuModuleUnload` + `cuDevicePrimaryCtxRelease` before `bye`, and
+  write launch markers to a FILE (piped stdout block-buffers, lost on a timeout-kill; use fd-2 markers
+  to a file). Untrusted GPU launches must be SPAWN-isolated — bare fork is NOT enough (CUDA is
+  fork-unsafe after init; a forked child inherits poisoned driver state and misgrades every launch as
+  fault); SPAWN a fresh `bin/hb` that classifies the launch under `catch`, `die`s with a small empty-message
+  code, and grade a launch FAULT (kernel crashed) as a DISTINCT bucket from WRONG (ran, bad values). On
+  device, ptxas itself REJECTS register-discipline bugs at assembly so they never reach the GPU —
+  measure per-candidate verdicts on device before pinning tallies.
+- **`cp@` is only stable inside a compiled word.** The interpreter compiles each top-level line into a
+  transient buffer at `cp@`, so a top-level `cp@ patch32` clobbers the executing line (`SIGILL`); write
+  a runtime stub at `cp@` via `patch32` from inside `: WORD ;`. Verify emitted primitive bytes
+  statically (compute the exact ARM64 encodings, `grep` the on-disk `bin/hb` for the contiguous stream
+  — ASLR slides the xt but file bytes are fixed). Real Triton runs on the Orin (BSP-pinned CUDA 12.6):
+  `torch-2.9.1+cu126` matches the 12.6 driver, the generic SBSA wheel has no sm_87 ATen cubins
+  (`cudaErrorNoKernelImageForDevice` — Triton JIT-compiles each kernel for sm_87, but pass a custom
+  CUDA-event `do_bench=` since autotune's `tensor.zero_()` calls a torch GPU kernel), keep torch to
+  alloc + memcpy. Triton catches name/type errors at compile but the stack-discipline class only at
+  runtime (a missing store → silent 0.0), where Habu-PTX's checker rejects at author time — that is the
+  thesis mechanism, now backed by real-target pass@k data (SAXPY 5/5 both; softmax Triton 5/5, Habu
+  3/5→5/5 after diagnostic-guided repair). Triton `tl.dot` on fp32 silently runs TF32 tensor cores on
+  sm_87 (`rel_err ~8e-4` fingerprint) — record the arithmetic class next to any GEMM number.
+- **v4 vectorization is a pure codegen rep, not a type change — 63 GB/s is the MEMORY ceiling.**
+  Scalar `ld.global.f32` (1 elem/thread) → 42.5 GB/s; v4 (`ld.global.v4.f32`, same parametric tile
+  types so the SAME SAXPY body certifies) → 63, matching Triton; unrolled grid-strided v4 stays FLAT
+  (occupancy 40× saturated, EMC maxed) — you cannot beat the memory system on a memory-bound kernel, so
+  "faster than Triton" needs LESS traffic (fusion) or a compute-bound kernel. v4 emit-helper stack sigs
+  must use the generic-int token `n` (role names bind as fresh type vars → rejected at `!`). A typed
+  vec4 layer can be added ADDITIVELY: register arity-3 `vspan`/`vtile` TFAM rows (like `acc`; needs one
+  `install --force` rebuild), `V4-ALIGN ( span -- vspan )` the sole trusted route, put the vspan
+  obligation on `LOAD.V4`/`STORE.V4` (where memory is touched) not the ctx — the TRUSTED bodies reuse
+  the existing `-V4` emit words verbatim so the typed kernel lowers to BYTE-IDENTICAL PTX (inherits the
+  passing device golden for free). Automatic-fusion device win is LATENCY (fewer global round-trips),
+  not peak GB/s — report the sum-of-kernel-ns ratio, not a bandwidth delta; the fusion mode must ride
+  in the model SOURCE STRING (`; FP-FUSE-OFF!`), not just a parent toggle (the device emit child
+  re-plans in a fresh process). A reduction-dominated fusion win is bounded well below the equal-cost-op
+  Nx model (layernorm fused-vs-ablated 1.41× not ~3×: the block-per-row reduction dominates, the EW
+  epilogue folds in at ~zero marginal cost) — report the honest measured ratio with root cause.
+- **TF32 mma.sync: prove the fragment layout element-EXACT in isolation FIRST** (the #1
+  "correct in NumPy, garbage on device" bug source). The m16n8k8 tf32 layout (gid=lane>>2, t=lane&3:
+  A a0=A[gid][t]…; B b0=B[t][gid] b1=B[t+4][gid]; D d0=D[gid][2t]…) is verified BIT-EXACT vs a host
+  matmul with small INTEGER operands (exact in tf32's 10-bit mantissa, sums <2^24 exact in the f32
+  accumulator) — any permutation mismatches (`tools/ptx/mma-probe.f` then `mma-gemm-check.f`). tf32
+  fragments ride ldmatrix.b16 as half-pairs — a tf32 is 2 adjacent b16 halves, so an 8×8 b16 tile IS
+  one 8×8 ldmatrix tile; `ldmatrix.trans` is NOT an option (it transposes at b16 granularity, splitting
+  every tf32 — the transpose lives in the STAGING, a scalar coalesced global read + strided shared
+  write, since cp.async can't scatter a transpose). mma.sync.tf32 reads the TOP bits of the raw f32
+  register, so `ld.shared.b32` with NO cvt is a valid feed (<1 ulp tf32, inside licensed rtol; keep
+  cvt.rna where the golden must stay bit-identical). Emit the kernel IN-PROCESS when a runtime `PREC!`
+  request must reach the emitter (a child re-builds IR fresh and DROPS the request); share the cp.async
+  scaffold via a compute QUOTATION (`MM-PIPE-KLOOP-WITH ( [ -- ] -- )`), not a copy.
+- **A transposed-staging ldmatrix lives or dies on its READ bank stride — measure it, and measure an
+  optimization AT the layout it needs.** The prior "MMA is not fragment-feed-bound" verdict measured
+  the UNPADDED ldmatrix, whose As row stride 128B=32 words aliases bank 0 (16-way conflict) and hides
+  the tensor-core win; padding As to a bank-spread stride (`MMA-PAD=8` floats, a multiple of 4 so
+  cp.async's 16B chunks stay aligned) made mode-2 ldmatrix jump +54.8% (the swizzle is the lever, BK the
+  garnish). bpad sets the ldmatrix read start-bank stride: bpad=4 (stride 36=4 mod 32, conflict-free) =
+  3026.6; bpad=0 (all 8 rows alias one window, 8-way conflict) = 1318.5, WORSE than the scalar baseline
+  it replaced; bpad must keep the BT row stride a multiple of 16B (ldmatrix.m8n8.b16), and a misaligned
+  stride FAULTS the GPU (sm machine-check, not a wrong result) — the emitter enforces it fail-closed
+  (`MMA-CHECK-BLDM → E-MMA-BLDM`). B-side ldmatrix over a TRANSPOSED staging cut the residual B-feed
+  27%→7% (+11.9%). Element-exactness is the safety net that lets a padded-address rewrite be trusted.
+- **A wider M register tile amortizes the B-side feed and re-weights the roofline; re-run the
+  attribution after every tile change.** The TF32 mma.sync GEMM was FEED-BOUND on un-amortized B-side
+  scalar shared loads (~40%), not mma-issue-bound (the earlier dependency-bound hypothesis overturned by
+  DCE-safe ablation — nsys GPU-metrics is unsupported on the Orin iGPU, so ablated kernel variants are
+  the profiling method). Each warp owning MFRAGS stacked 16-row M-fragments reuses each B fragment
+  MFRAGS times and halves global B staging → past Triton parity (2133.9 GFLOP/s = 1.13×), then B-side
+  ldmatrix on the wide tile +11.9%. `num_stages` is tile-size AND occupancy dependent: stages=2 flipped
+  from flat (narrow tile) to +2.4% (wide tile), then at MFRAGS=4 single-buffer STATIC (48KiB cap) beat
+  double-buffer DYNAMIC by +11.6% (occupancy beats overlap once the feed is amortized) — never assume a
+  stages setting carries across a tile resize. Gate every new behavior behind `MFRAGS>1`/`BK>32`/knob so
+  all pinned configs stay BYTE-IDENTICAL (capture goldens + cmp before/after twice; the wider tile
+  reused the device-proven fragment layout at offset, so only a full-kernel element-exact golden was
+  needed); parameterize a shared emitter word (reused verbatim by the FENCED `maki/lower-mm.f`) with a
+  byte-identical DEFAULT, don't fork — and emit `shl` when a stride is a power of two, `mul.lo`
+  otherwise. The harness must be block-M-aware (a 64^3 check on a 128-row block launches ZERO blocks and
+  silently "passes" all-zero).
+- **A perf program closes on a ROOFLINE + LEVER-INVENTORY argument, not on hitting 100% of a peak.**
+  Derive the iGPU tensor peak from the GPU-ONLY sparse-INT8 TOPS (never the marketing "100 TOPS" =
+  GPU+NVDLA), cross-check by reproducing NVIDIA-published FP32 roofs and by a measured kernel rate
+  FALSIFYING a candidate peak (a kernel can't beat its roof); the honest verdict when the roofline shows
+  headroom but the lever inventory is empty and the instruction shape is maxed (no m16n8k16 for tf32) is
+  a documented CLOSE with a user-gated numerics question, not another kernel rung. Build the cheap
+  single-variable ablation BEFORE the big rewrite (a negative measured result that redirects two dots is
+  a deliverable). A GPU devfreq min=max pin reproduces the shipped 918 MHz within 0.15% (GPU-only blast
+  radius, exact restore) to make cross-session rows comparable — the shipped perf row tracks the scalar
+  default until the emitted default flips to pad=8 ldmatrix. A whole-model device corruption probe must
+  be MAGNITUDE-INDEPENDENT (an activation swap converges to identity for large-positive
+  pre-activations — vacuously passes) — use a PTX mutation (operand-base redirect / fma(a,b,c)→fma(a,a,c))
+  on a matmul region, and keep the COMMITTED e2e proof the clean PASS (demonstrate corruption in a temp
+  copy). A sibling kernel's corruption-probe predicate name does NOT transfer — dump the actual PTX (the
+  predicate numbering shifts with region input count). The block reduction is warp-shfl now
+  (`shfl.sync.down.b32` takes `%f` regs directly, membermask -1 well-formed since blocks are warp
+  multiples).
+- **ncu on the Orin NX likely HARD-HUNG the box on first attach — treat Nsight Compute as a
+  device-risk operation.** One `sudo ncu -k … --launch-count 1` printed "Connected to process" and never
+  produced a section; within minutes zed dropped off the tailnet (18+ min, physical power cycle required).
+  Prefer `nsys` GPU-metrics sampling or variant-kernel timing decomposition; if retrying ncu, use a
+  minimal single section, a tiny shape, and expect to lose the box.
+- **PTX collectives / adjoints need op-local inactive identity and address-space tokens.**
+  `cg-collective.f` writes `active ? tile : identity(op)` before the shared fold (`BLOCK-MAX` -inf,
+  `BLOCK-SUM` 0) regardless of how `ROW-LOAD` seeded inactive lanes — direct row-sum/backward can't rely
+  on softmax's accidental `EXP(-inf)=0`. Read-once is a distinct address-space token (`space-global-once`
+  + `LOAD-ONCE`/`STORE-ONCE`), never a cast from ordinary `span<space-global>`; LOAD adjoints default to
+  `SCATTER-ADD` (plain store is gated by an affine/read-once proof); indexed memory carries two extents +
+  a uniqueness token (`idxctx` → `INDEX-SCATTER-ADD`; plain `INDEX-STORE` needs `uniqidxctx`). Relaxing a
+  fail-closed class re-audits every site that leaned on the old rejection (unlocking BC-COL needed a NEW
+  input-0-must-be-FULL guard and exposed BC-ROW/BC-SCALAR already silently mis-loadable) — grep every
+  consumer of a classification for positional/shape assumptions the old set masked. Generated
+  multi-input elementwise kernels reset CG counters from the input COUNT (`CG-NRD=K+2`), not `CG-RESET`
+  (which presets the 2-span SAXPY ABI). A composed-Gemm DEVICE golden must pick a form whose matmul
+  epilogue is empty or a unary activation: transB becomes a standalone materialized transpose region
+  (device-emittable), but OP-SCALE/OP-BIAS fuse as epilogue nodes and `LMM-EPI-OP?` accepts ONLY
+  relu/gelu/silu (alpha≠1 or a separate bias rejects fail-closed `E-LMM-OP`). Kernel benchmarks need a
+  generic launch layer + device elapsed time (`cuEventElapsedTime` `gpu_elapsed_ns`), not host-loop
+  timing called a GPU profile. `.f` emit-driver signatures use checker type tokens (`n`/`ptr`/`bool`),
+  never descriptive names (`node`/`rid`).
+- **Device-vs-host GOLDEN compares device f32 against the f32-NARROWED host, not the raw f64.** The
+  host runs f64, the device f32 — round the host elem onto the f32 grid first (`F64>F32 F32>F64`) then
+  `|dev - host_f32| ≤ atol + rtol*|host_f32|`, else the dtype step folds into the error budget and blows
+  the tol. Since no onnxruntime exists for a composed Gemm, the committed host-executor result (validated
+  ==ort at 1e-5 on the pure-matmul fixture) is the oracle — device-vs-host discipline, ort leg a
+  documented residual. Device goldens for hand-built (non-capturable) IR feed the child driver via a
+  shared checked source-text builder the parent also EVALUATEs (one source of truth; the off-device load
+  already validates the child text).
 
 ## Linux AOT / ELF
 
-- **Linux AOT gates parse ELF structure:** inspect ELF64 program headers and
-  validate the executable `PT_LOAD` segment; Mach-O text-size thresholds aren't
-  portable constants.
-- **Instruction disassemblers read instruction width:** `DISASM` loads one ARM64
-  u32 at a time; a u64-load-and-mask can cross a 4-byte mmap fixture end.
-- **`die` modeling belongs to the Forth standard:** the Linux AOT failure came
-  from treating `0 0` as a fake string and mixing `throw`/process-exit control
-  effects; the lasting rule now lives in `docs/forth.md`.
+- **Linux AOT gates parse ELF structure** (inspect ELF64 program headers, validate the executable
+  `PT_LOAD`); Mach-O text-size thresholds aren't portable. Instruction disassemblers read instruction
+  WIDTH (`DISASM` loads one ARM64 u32; a u64-load-and-mask can cross a 4-byte mmap fixture end). The
+  maker `__text` sits at the `MPAGE` wall (engine text + full baked compiler source, fail-closed at
+  `MPAGE - CODE-OFF`; on master exactly at the cap, zero margin) — any net compiler-source growth (even
+  +131 bytes) fails the AOT gate `macho: code exceeds __TEXT page`; prove causality with an A/B maker
+  build, fix is capacity or source diet, not shaving to squeeze under. The maker CACHE masks builder
+  overflows (rebuilds only on content-key miss, so a nearly-full CODE buffer stays green until any
+  engine-source edit) — when growing src/core check maker `__text` vs `CODE-CAP-WORDS` (icode.f) AND
+  `MPAGE` (macho.f/elf.f), keep both guards aligned. `AOT-LINK` must start on a fresh line (a final
+  `\`-comment without a newline swallows the sentinel → maker exits 0 without the artifact). `die`
+  modeling belongs to the Forth standard (the Linux AOT failure was treating `0 0` as a fake string).
 
 ## Diagnostics & Benchmarks
 
-- **Diagnostics are an API:** JSON errors carry `schema_version:1`, source spans,
-  verdict, word, token, expected, actual; wrappers keep valid JSON object lines and
-  fail nonzero on rejection. Source origins are wrapper-owned (definition-relative
-  spans; inject origin markers, keep them out of user bundles). Repair/diagnostic
-  rows keep a source-preserving effect field (`R x -- R x`) beside the normalized
-  one; `fix_return_stack` only when the data stack already matches (a bad `>r` that
-  drops a declared output is `add_producer` first).
-- **Lint-infra fixed caps are tree-growth time bombs, and uncaught positive
-  throws die silent:** `INTERN-MAX` $200 sat below FILEMAP.md's 513 backticked
-  paths, so `filemap-lint` exited rc=76 (`E-LINT-INTERN-CAP`) with ZERO output
-  and a bogus downstream FILEMAP-UNLISTED artifact — and a piped gate check
-  (`... | tail; echo $?`) masked the rc, reporting green. Same disease shape as
-  the rc=77 gate-runner death (dot habu-focused-gate-runner-12b9812a): unlabeled
-  capacity exits — engine dict-full 77 there, lint intern-cap 76 here —
-  different subsystems; capacity exits must attribute themselves everywhere.
-  Fixes: size caps from the real corpus with the driver named in a comment;
-  route lint CLIs through `LINT-MAIN` (catch, print `tool: threw <code>
-  (<name>)`, re-throw); never read `$?` after a pipeline.
-- **Error codes are a global namespace; lint it, don't trust review:** three
-  live collisions (E-CUDA/E-FUSE both -5002, E-PTX-READBACK/E-MK-EVAL both
-  -5003, E-LMV-NOOUT+E-LMV-REG/E-ABL-NOSUB+E-ABL-CAP at -5210/-5211) plus a
-  fresh one (E-MECH-* reusing adjoint's -5100..-5103) all slipped past review
-  because no gate proved uniqueness. `tools/error-code-lint.f` now fails any
-  negative code claimed by two different E- names (allowing sysexits-style
-  positive exit codes, -FIRST/-LAST range sentinels, and exact same-name
-  re-registrations). Claim a fresh block in the file header before minting
-  codes; keep older widely-used codes stable and renumber the newer claimant.
-- **Repair packets are mechanically consumable in checked code:** `DIAG-BUFFER!`
-  + `DIAG-JSON!` + `DIAG-ORIGIN! 1 1 0` around `CHECK-CANDIDATE!` capture the
-  JSONL diagnostic in-process with candidate-relative `byte_start`/`byte_end`
-  (no TRUSTED needed — only `DIAGXT` mutation forces trust). The checker flags
-  the LAST surplus producer for `remove_producer`, and an unconsumed-input
-  surplus flags `token_index` 0 (the definition-name token) — mechanical editors
-  must guard index 0 or they delete the name. `add_producer`/`fix_type` packets
-  carry no insertable/replacement token, so a mechanical repairer reports those
-  honest UNREPAIRABLE (maki/eval-repair-mech.f; gap dots
-  habu-repair-packet-machine-879ad716, habu-repair-packet-typed-62bc5df2).
-- **JSON quoting/storage split:** the `s"` quoting rule moved to `docs/forth.md`;
-  the infra lesson is that row artifacts exceeded fixed builders, so large
-  prompt/response/replay fields need chunked Habu emitters or OS-backed storage.
-- **Check phases must be silent:** `hb` can emit checker diagnostics yet exit 0 for
-  a loaded file; live drivers treat ANY stdout/stderr from a check-only child as
-  rejection. Expected-throw fixtures stay quiet (opt-in row/error reporters at the
-  CLI boundary) so negative tests assert throw codes without `FAIL` lines.
-- **Core/CLI lint splits need output routing:** standalone lint CLIs may write
-  findings to stdout, while `tools/check.f` must surface the same findings on
-  stderr. When moving a lint in-process, make the checked core accept/configure
-  its output fd and add check-wrapper tests for text and JSON stderr routing.
-- **Don't pull unchecked parsers into checked tests:** `tools/json.f` is an
-  unchecked `catch` boundary; checked reducers use small checked interface fixtures
-  for the checker gate and runtime tests with the real parser until the typed
-  `catch` dot lands. Checker-only stubs are contracts — update the stub in the same
-  change as any consumed API move (runtime tests with the real module don't prove
-  the gate models new constants/effects/codes).
-- **`tools/check.f` modes:** `--all-errors` checks top-level defs independently, so
-  on bundled stdlib it falsely flags deps as undefined and multiplies gate time —
-  run the fast fail-closed bundle check first, all-errors only after failure or
-  explicit request; use `--json-errors` for full driver bundles. Don't accidentally
-  type-check a CLI main: the runner executes the final source after checking, so
-  scripts with a top-level `MAIN` need a no-main fixture or safe argv/env.
-- **Benchmark axes stay separate:** trial pass, task pass@k, repair rounds, wall
-  time, generated-token cost (a proxy, not hidden reasoning). Reports are
-  deterministic (evidence-derived text, no wall-clock stamp; provable with `cmp`
-  before archiving outside git). Habu-only vs cross-language claims use distinct
-  artifacts (Forth-only run = repair/replay behavior; 600-row array run = "best LLM
-  target"). Stale-status lint ignores fenced evidence blocks, keeps prose strict.
-- **Stateful scanners split at cursor phases:** `tools/stale-status-lint.f` became
-  reviewable when `SS-COUNT-LINE?` delegated cursor advance, digit runs, ratio
-  tails, whitespace skipping, and keyword checks to typed helpers. Keep fixtures
-  around the boundary behavior: short counts, embedded alnums, partial ratios,
-  case-insensitive keywords, fenced blocks, and long files.
-- **Live sweeps resume + enforce coverage by identity:** model calls/repairs can
-  die before a row; resume on `(model_id, arm, task_id, trial)` without duplicating,
-  record expected identities during the run, and fail before report generation if
-  any row is missing. Required ablations (structured vs raw vs blind feedback) are
-  default with tested opt-out — env-gated arms get silently skipped. Use
-  `*-OUTCOME` process APIs (`PROC-OUTCOME>RC`) so a timeout still emits a row, and
-  include task/model/arm/trial/child-rc in missing-row errors.
-- **Codex benchmark candidates come from `--output-last-message`:** `codex exec
-  --json` stdout is event streams (tool output, truncation) for token accounting
-  only; read the last-message file as the candidate, and use `--cd` to a clean temp
-  dir + clean `CODEX_HOME` + disabled apps/plugins (a smoke prompt fell 29k→11.5k
-  input tokens; rows still report output tokens only).
-- **Background Codex scouts need explicit stdin/output:** redirect stdin from
-  `/dev/null`, pass `--output-last-message /tmp/name.out`; stdout logs alone are
-  unreliable evidence.
-- **Dogfood benchmark hot paths:** per-call glue (model-response parsing) is
-  Habu-native; host parsers hide missing Habu JSON/string/file primitives and
-  weaken the LLM-native proof. LLM helper surfaces match validator surfaces — if
-  the validator accepts `A-ARGMAX`/`A-PREFIX-SUM!`/`A-RUNMAX!`, the prompt names
-  those exact helpers (else it rewards stack gymnastics).
-- **Schema-v2 changes touch every fixture + spawner:** rows with
-  `diagnostic_count>0` need `repair_class_stats` summing to the row total with
-  preserved `first_round`/`first_order`; report fixtures build full rows by hand;
-  CLI runner `--load` lists and doc/dot verification commands stay synced when a
-  reducer gains a dependency (`expanded-report.f`→`validate-results-lib.f`,
-  `tools/json.f`→`lib/memory.f`). Prove with the exact failing child fixture before
-  the full gate. Report reducers use dedicated scratch cells (`RR-I/J/K` get
-  clobbered by nested helpers); a checked reducer exposed a `RR-RATIO.` stack leak
-  that truncated a table — add row-count regressions and `cmp` regenerated reports.
-- **Doc contract fixtures need stable anchors:** when `grep -F` gates API prose,
-  keep the phrase contiguous or assert a shorter stable substring; line wrapping
-  hides a present contract. LLM stdlib examples cite `lib/std.manifest`,
-  `docs/stdlib.md`, runnable `examples/` — not invented API.
-- **Public-signature rows:** `tools/public-signatures.f` records only
-  `: WORD ( in -- out ) …` with locals AFTER the effect comment; checked `lib/*.f`
-  defs (even internals) are captured, track as `active` rows. Effect-drift compares
-  full normalized tokens (returning on first shared whitespace made `n --` equal
-  `n -- n`).
-- **Capacity-sensitive bundles:** keep narrow source-shape/fixture DSLs in their own
-  small `TEST:SUITE` and task-specific byte/source builders in the owning
-  test/driver until multiple users prove shared surface — appending to large
-  live-driver bundles surfaces as an unrelated rc 76 capacity failure. Load
-  transitive deps in child bundles (`lib/build.f` needs `lib/process.f` for
-  `PROC-RUN-RC`). Large native tool bundles (lint tables + `json.f` + big buffers) can
-  corrupt reads — lean standalone reader + distinct scratch vars; stream large
-  JSONL in chunks, reserve fixed buffers only for bounded summaries.
-- **Source-shape checks distinguish code from quoted code:** generated builders may
-  contain strings such as `s" 0 set-check"` that are intended runtime source.
-  Tests that ban generated check-off lines should match newline-delimited source
-  lines, not raw substrings.
-- **Build helper fixtures stay split by boundary:** composing bootstrap-codegen,
-  warm-image, build-fixpoint, hb-build, and codesign tests in one `hb` image hit
-  rc 76 before `hb-build-test.f` started, while each boundary group passed alone.
-  Keep `bootstrap-helper-fixtures`, `build-fixpoint-fixtures`, and
-  `hb-build-fixtures` separate.
-- **Captured gate children need heartbeat polls:** a silent child looks hung if
-  `poll` waits the full timeout; gate capture loops poll in heartbeat slices,
-  print label-only wait lines, keep child stdout/stderr for failures. Progress
-  must exist at every blocking layer — a top-level `PROC-WAIT-RC` blinds the user even
-  if children print heartbeats.
-- **Gate heartbeat capture has one owner:** `lib/test/runner.f` owns
-  progress-aware drain/flush/stdin capture. Gate files set up phases and
-  assertions only; direct `PROC-PFD`/poll loops there recreate process debt.
-- **Habu-spawned `hb` children need explicit env:** `RUN-ARGV-CAPTURE` doesn't
-  inherit env like a shell; use env-aware process APIs + `PROC-ENV-INHERIT-MISSING`.
-  Process capture buffers size for isolated jj workspace paths (not the short main
-  checkout) or valid forks throw `E-PROC-TRUNCATED`. Split setup vs runtime
-  timeouts (`DS-HB-TIMEOUT` vs `DS-RUN-TIMEOUT`) so a checker/build subprocess
-  isn't timed out by a runtime-loop budget. Live-row extras (`runtime`) are set
-  after `DS-LR-PASS`/`DS-LR-FAIL` (`DS-CONFIG-LR-COMMON` resets row fields).
-- **Core/wrapper splits update every child load list:** when a CLI tool gains a
-  reusable checked core (`tools/diag-origin-core.f`), update the wrapper tests,
-  build drivers, gate suites, benchmark checker builders, docs, and filemap in
-  the same change. Missing transitive deps (`lib/errors.f`, `lib/string.f`) showed
-  up as child rc 70 before the parent test could explain the failure.
-- **Checker-loaded cores borrow scratch buffers:** moving a CLI scanner in-process
-  under `tools/check.f` must not duplicate large static file/string buffers.
-  `trust-lint-core` initially plus `check.f` buffers corrupted `SCRIPT-ARGC`
-  before parsing; expose caller-supplied scratch buffers and let wrappers own
-  standalone storage.
-- **All-errors keeps definition isolation, not wrapper spawning:** split
-  `tools/check-all-errors-core.f` from the CLI and call it in-process from
-  `tools/check.f`, but keep the per-definition `bin/hb` children: each generated
-  checked definition may fail independently while later diagnostics still need to
-  be collected. Borrow checker buffers for capture; wrapper-only static buffers
-  stay outside the composed checker bundle.
-- **`stage2-src` cap is a builder contract:** AOT maker generation can exceed the
-  256 KiB stage2 reader for tiny user source; reproduce with `hb-build` child
-  output, raise the named cap deliberately, keep fail-closed overflow.
-- **Source scanners and lint cores exposed standards gaps:** substring source-use
-  matches, same-type numeric buffer arguments, and unchecked shared lint cores now
-  have durable rules in `docs/forth.md`. The remaining lesson is to keep bulky
-  exact-token scanner helpers out of base bundles unless their driver needs them.
-- **Commit is a gate, not a checkpoint:** the project rule now treats `jj commit`
-  as blocked until changed Forth diffs are scanned for definitions and unchecked
-  boundaries, exact owning `bin/hb --load ...` paths are checked, and boundary
-  tests/dots exist. This prevents "commit first, typecheck later" drift.
-- **Gate phase files need their loader prefix:** `test/gate-stdlib.f` is not a
-  standalone script; running it without the documented `docs/bootstrap.md`
-  `--load` prefix omits `lib/process-env.f` and fails at
-  `PROC-ENV-INHERIT-MISSING` before testing changed code. Use the exact native
-  gate command for commit evidence.
-- **Warm gate runners are harness artifacts:** bake side-effect-free phase libs
-  into a runner keyed by the runner source and seed image, then pass
-  `HABU_UNDER_TEST` as runtime env for candidate checks. Baking the runner from
-  the candidate on the critical path regressed the full gate to 98.469s; starting
-  the runner in the early pool keeps the gate at 80.467s.
-- **Warm-image tails mirror builder deps and trailer layout:** warm snapshot
-  sources that append `src/os/*/{elf,macho}.f` must first append ARM64
-  assembler/code-buffer sources and target/shared layout
-  (`src/arch/arm64/{asm,icode}.f`, `src/os/<target>/layout.f`,
-  `src/habu/layout.f`), or child snapshots fail at `ASM-LEN`/`CODE-OFF`. The
-  snapshot trailer must remain the final 40 bytes of the rounded text segment;
-  absorb alignment padding into the copied DATA span instead of writing zeros
-  after the trailer, or startup misses `SNAP-CELL` and replays the cold prefix.
-- **Stage2 source input is runtime scratch:** a refreshed snapshot `bin/hb`
-  starts with substantial DATA already occupied by the checked prefix. Keeping
-  stage2's `$80000` source buffer as `here ... allot` combines with `CODE` and
-  `MBUF` and trips the silent native `DP-CHECK` guard on the second refresh. Use
-  the same primitive-facing `$1002` anonymous/private `mmap` convention as
-  `lib/memory.f` for that buffer; raw Linux `$22` is for emitted startup syscalls,
-  not the public `mmap` primitive.
-- **Phase-token and row-sealing fixes moved into the standard:** the `asm`/`img`/
-  `snap` ordering and implicit-row underflow lessons are now checker/type-model
-  rules in `docs/forth.md`.
-- **Emitter hard-hook cutovers keep roles until raw opcodes:** checked public
-  helpers should retain nominal roles (`reg`, `ptr bool`, `ptr a`) and erase only
-  at raw mnemonic/immediate boundaries (`REG>N`, narrow trusted fixed-VA numeric
-  helpers). The CF-ENTRY cutover worked by keeping dispatchers checked and moving
-  only raw `execute` into `EM-HXT-EXECUTE`; whole trusted dispatcher bodies with
-  scratch cells crashed during `EMIT-FORTH`.
-- **Benchmark driver buffers are shared infrastructure:** the LLM drivers route
-  raw model text, repair packets, bundle output, and checker captures through
-  `DS-*` spans. Keep those spans OS-backed and capacity-checked at the shared
-  helpers (`DS-OUT-TEXT!`, `DS-READ-OUT-FILE`, `DS-HB-CAPTURE-MS`) so one arm
-  cannot silently bias pass/reject accounting with a local fixed-buffer throw.
-- **PTX toolchain proof has two gates:** first, Habu must emit header-complete
-  PTX and `ptxas` must assemble it; second, the CUDA Driver harness must launch
-  the cubin and compare CPU golden. On `zed`, `ptxas` exists at
-  `/usr/local/cuda-12.6/bin/ptxas` but is not on `PATH`.
-- **Composable gate helpers cannot own large static buffers:** loading
-  `tools/hb-build-lib.f` ahead of `test/gate-build-common.f` tripped the native
-  data-space guard at the common executable read buffer before any new checked
-  helper ran. When a gate helper may compose with other checked tools, model
-  file/image storage as runtime `lib/memory.f` allocation sized from `FILE-SIZE`;
-  keep always-resident `create ... allot` buffers for small fixed metadata only.
-- **`STATUS.md` verified date is UTC for the gate:** `stale-status-lint` uses the
-  native `DATE-NOW` UTC date unless an explicit test date is passed. Do not
-  update `Last verified` to the operator's local date during a late-night run;
-  the full gate will reject it even if a manual lint with a local date passes.
-  Trust audit dates follow the same rule through `trust-lint`.
-- **Gate phase cuts must move coverage, not drop it:** AOT-negative was slow
-  because it repeated checker/signature/AOT-lint failures through full
-  `hb-build` children. Keep one CLI boundary for hb-build-only behavior such as
-  closure-limit failure, and move semantic assertions to their owning checked
-  tool tests (`check-test`, diagnostics, `aot-lint-test`, `hb-build-test`).
-- **Do not spawn assertion tools from fixture loops:** repair-hints spent most
-  of its time re-invoking `gate-json-assert` for JSON schema/class checks after
-  each checker rejection. Split assertion tools into checked cores plus thin CLI
-  entries, load the core in the owning fixture, and keep subprocesses only for
-  the boundary under test.
-- **Gate dependencies are per phase, not global:** waiting for every warm image
-  before launching every worker serialized independent builder long poles behind
-  unrelated tool images. Start phases as soon as their own prerequisites exist
-  and only export warm-tool env to phases that actually use it.
-- **Gate pool defaults need full-load measurement:** isolated slices improved
-  when the stdlib nested pool rose from 2 to 4, but the full gate only improved
-  after measuring outer-pool contention on the 4-thread Orin. Keep a higher
-  max for explicit overrides, but choose the default from documented full-gate
-  timings, not from a single slice.
-- **Warm-image trust export is a batch artifact:** `public-signatures --trust`
-  already accepts many files, so warm-image baking should export all support
-  signatures in one child and size the runtime capture buffer for the measured
-  batched output. Per-file export children hide startup cost and make warm
-  phases look inherently slow.
-- **Warm trust preludes expose only standard signatures:** a word like
-  `tools/date.f` `PARSE-YMD` is invisible to `public-signatures --trust` when
-  its `( in -- out )` comment appears after `{: :}` locals. Warm-loaded CLI
-  wrappers then fail before runtime. Keep the effect immediately after the word
-  name, and pass cross-image buffers as real `ptr u8` values from
-  `MEM-ALLOC-BYTES`, not raw `create` storage.
-- **Semantic xref belongs in the image:** when investigating dictionary or call
-  ownership, prefer baked native Forth words (`LATEST`, `XREF-FIND`, `XREF`,
-  `SEE`, `WORDS`) over source search. If the existing words do not expose the
-  needed relationship, extend that in-image surface instead of normalizing text
-  search as the semantic path.
-- **Snapshot checker state must fit DATA, not only mmap:** `USIGS` can grow
-  dynamically while checking, but warm snapshot images must persist the table
-  into the DATA-resident boot buffer before exec. When warm-image composition
-  grows, size the persisted boot capacity for the supported gate workload and
-  rerun the native snapshot/full gate.
-- **Typed-local checks happen before validation:** splitting or moving Forth
-  source can make old bare locals look newly introduced. Run the diff locals
-  scan before focused tests, annotate concrete roles (`n`, `len`, etc.), and
-  let `bin/hb` reject wrong annotations instead of treating the move as legacy.
-- **Diff lint must stream large patches:** `typed-local-diff-lint` read the diff
-  dynamically but still fed all lines through the capped shared `SPLIT-LINES`
-  table. Commit gates should process patch lines in place and keep a fixture
-  above the old 1024-line limit.
-- **Keep global warm images lean:** baking large one-off tool cores into the
-  shared warm image can leave too little dictionary/data headroom for tools that
-  are loaded later. Prefer explicit multi-file warm loads for the boundary that
-  needs them, and measure cached child time separately from warm build/cleanup.
-- **Do not bake verifier cores into the gate runner for one slice:** adding
-  `src/habu/verify-source.f` to `TR-RUNNER-SUPPORT-FILES` overflowed the warm
-  runner's persisted checker signature table (`checker: user sigs snapshot too
-  large`). Batch dictionary checker cases through the existing checker warm image
-  unless the shared runner really needs the verifier resident.
-- **GPU readback args are dst-then-src; verify the golden by hand:** maki AXPY on
-  the Orin produced `y[0]` unchanged because `cuMemcpyDtoH_v2` was called as
-  `(srcDevice dstHost n)` — it is `(dstHost srcDevice n)`. The kernel was correct
-  the whole time; only readback failed. A per-call `rc` print localized it (all
-  rc=0 except `dtoh=1`). Separately, the test's own golden was wrong: `2*4+40=48`,
-  not 44 — the GPU was right, the assertion was the bug. Compute goldens, never eyeball.
-- **A retained CUDA primary context hangs at process exit, not in the kernel:**
-  the emitted SOFTMAX-ROWS "hung" — but stderr markers (fd 2, unbuffered syscall)
-  showed `cuCtxSynchronize` RETURNED; the stall was teardown with a live
-  `cuDevicePrimaryCtxRetain` + loaded module. Adding `cuModuleUnload` +
-  `cuDevicePrimaryCtxRelease` before `bye` exits clean. Buffered stdout (and any
-  `tr`/`tail` in the pipe) is lost on a hang — localize with fd-2 markers to a file.
-- **PTX collectives need op-local inactive identity:** `lib/ptx/cg-collective.f`
-  now writes `active ? tile : identity(op)` before the shared-memory fold, so
-  `BLOCK-MAX` gets -inf and `BLOCK-SUM` gets 0 regardless of how `ROW-LOAD` seeded
-  inactive lanes. Direct row-sum/backward paths cannot rely on softmax's accidental
-  `EXP(-inf)=0` behavior.
-- **Stack-signature tokens must be TYPES, not role words:** `( got expected -- bool )`
-  silently binds `got`/`expected` as fresh type vars, so a downstream `n n` op
-  mismatches with a confusing `at '<='`. Use `( n n -- bool )`. Locals `{: got :}`
-  may use any name; the `( ... )` stack sig may not.
-- **lib/ subdirs are research sub-libraries, not flat stdlib:** the stdlib manifest
-  grammar (`SMT-LIB-FILE?`) only admits flat `lib/<module>.f`, but the coverage
-  walk recursed and demanded module rows for `lib/ptx/*.f` it could not express.
-  Gate `SMT-COLLECT-LIB-FILE` on `SMT-LIB-FILE?` so coverage tracks only flat
-  modules; nested dirs (`lib/ptx/`) stay trust-audited + `-test.f` + gate-covered
-  but out of the curated public-API manifest (mirrors top-level `maki/`).
-- **Warm-image tests must use the warm form, not re-`--load` bundled libs:**
-  `repair-packet-test`'s no-args case reloaded `lib/... repair-packet.f`
-  through the warm image — recompiling libs the warm binary already has (~3s
-  uncontended vs ~0.5s warm
-  form). Under ~14-way pool concurrency it blew past the 10s timeout, so the
-  subprocess came back `TIMEOUT` not `EXIT`: the tell was assertions on `kind`/
-  `code`/stderr failing while the `stdout==0` assertion passed. Route every warm
-  subprocess through `CLI-TOOLS-LOAD`.
-- **DATA layout overlaps can masquerade as checker hangs:** package runtime cells
-  at `$268..$280` overlapped the JIT virtual-stack value array (`VVAL-OFF=$250`);
-  a fifth literal `10` wrote `$270`, poisoned `PKG-PRI-CELL`, and sent lookup into
-  bogus wordlist state. Relocate persistent cells outside JIT scratch ranges and
-  gate with a five-literal compiler regression.
-- **Device-FFI "launch hang" RCA: write markers to a FILE, not piped stdout.** A
-  device gradcheck (`tools/ptx/gradcheck.f`) looked like it hung mid-launch, but
-  piped stdout block-buffers so `type cr` progress markers were lost on the
-  timeout-kill. File-output markers showed every cuda call returned — the hang was
-  at process EXIT from a retained primary context never released (the line-169
-  gotcha). Always pair `cuDevicePrimaryCtxRetain` with `cuModuleUnload` +
-  `cuDevicePrimaryCtxRelease` before exit (a `GC-FINI`); `acc-device-test.f` works
-  only because it does.
-- **All-errors checks should be scoped, not subprocessed:** per-definition
-  `bin/hb --load ...` gave correct stderr isolation but dominated the tool gate.
-  Use a checker registry scope plus diagnostic-buffer capture for normal
-  duplicate-definition semantics, and reserve candidate scope only for generated
-  candidate checks where shadowing loaded libraries is intentional.
-- **Tool fixtures need entry/lib splits:** if a `*-test.f` validates semantic JSON
-  or text output by spawning `bin/hb --load ... tool.f`, it rebuilds the same core
-  for every case. Put reusable logic and buffered output in `*-core.f`, leave
-  `tool.f` as a thin `MAIN` entry, and keep only one CLI smoke for argv/wrapper
-  behavior.
-- **Evaluate frames must live outside compiler scratch:** `EVAL-FRAME=$280`
-  overlapped `VVAL-OFF=$250` and `SNAPSTK-OFF=$360`; compiling a seven-argument
-  call inside `evaluate` overwrote the saved outer `INP` and crashed on the next
-  token. Keep re-entrant evaluator frames above scratch and below `DATA-START`,
-  with an engine-suite high-arity `evaluate` regression.
-- **Create persistent gate roots before content-key hashing:** per-file digest
-  cache uses the gate content root's `content-key.cache`, so the gate must create
-  the persistent root before any `CK-FILE+` key construction, including
-  under-test cache restore.
-- **Build-fixpoint child helpers own argv state:** warm gate images reuse one
-  process across phases, so stale `PROC-ARGV` entries from a prior tool command
-  can leak into `BF-RUN-LOAD-STAGE` and run the wrong child entry. Every `BF-*`
-  spawn helper resets argv before preparing its own stage/exe command.
-- **Keep FFI ABI separate from loader binding:** AAPCS64 marshalling, out-params,
-  and `void** kernelParams` are portable and gateable on every host; `DLOPEN`/
-  `DLSYM` depend on OS image support (`DLOPEN-SLOT`/`DLSYM-SLOT` on dynamic ELF).
-  Put portable helpers in `lib/ffi-abi.f`, keep `lib/ffi.f` as the loader layer,
-  and invoke gate slices through their wrapper so includes like `content-key.f`
-  are owned in one place.
-- **Spawn command builders should return a checked summary:** a helper that mutates
-  global `PROC-ARGV`/`PROC-ENV` and then immediately spawns can fail invisibly if
-  the caller never observes the prepared state. Return the prepared argc (or an
-  equivalent checked summary) and assert it before `PROC-ARGV-PREPARE`; the
-  build-fixpoint fixture caught an empty child invocation this way.
-- **Suite timing RCA separates cache-fill from steady state:** after a native
-  spawn/harness rebuild, the full suite measured 65.093s internal with artifact
-  misses/candidate install before the early-lint scheduler fix, 41.551s internal
-  with one artifact refill after the fix, then 30.123s internal steady-state with
-  candidate-hit=1. Treat cache-fill as budget coverage and persistent-cache runs
-  as the harness architecture number; do not compare cache-fill to prior
-  steady-state runs.
-- **Early lint phases still need build quiescence:** `lint-manifest` and
-  `lint-libs` need only the under-test binary semantically, but starting their
-  nested stdlib pools while artifact builders are rebuilding exposed intermittent
-  `E-FS-IO` under full-DAG contention. Start them early only when
-  `TR-WARM-DONE?` is already true; otherwise let the late DAG overlap them with
-  the long checker/tool tails.
-- **Spawn boundaries preserve errno until attribution:** Darwin `posix_spawn`
-  failure reports carry-set with `x0=errno`; using `SP` in that path produced
-  giant bogus negative pids, and collapsing to the wrapper throw left only
-  `rc 60`. Success writes a 32-bit `pid_t`, so load it with `LDRW`. Keep raw
-  spawns returning `pid|-errno`, prove missing executable as `-ENOENT`, and
-  print test/path/errno before resetting argv/env state.
-- **Small-engine tools own their non-baked layout deps:** after shrinking
-  `bin/hb`, tools like `imgdump` cannot assume target executable constants such
-  as `DATA-SIZE` are resident. Load target layout on demand, but keep common
-  dictionary layout in the cold prefix so duplicate-definition checks stay
-  fail-closed.
-- **Trust drift is audit maintenance, not architecture work:** moving emitter
-  helpers shifts `TRUSTED.md` site pins and correctly fails `trust-lint`; update
-  those rows after deciding the boundary still belongs. Do not hide a red
-  `trust-lint` by starting a broad trust-reduction refactor in the same change.
-- **Trust-lint string storage must scale with the manifest:** adding audited PTX
-  boundaries pushed `TRUSTED.md` past the old 64 KiB string arena and failed
-  before drift reporting. Keep manifest parsing backed by a generous dynamic
-  buffer so the gate remains enforceable as rows grow.
-- **Prefer hex for machine-adjacent literals:** byte values, ASCII, masks,
-  offsets, format fields, and crypto constants should use `$hex`. Decimal is for
-  small counts and human quantities; stage/bootstrap code should not transcribe
-  spec constants into decimal just because both parse.
-- **Emitter labels must be scoped across nested helpers:** Linux `spawn-io`
-  generated a `b .` self-loop because `LINUX-SPAWN` stored branch labels in
-  shared `LNX-*` variables, then nested helpers reused `LNX-DONE`. Use typed
-  label locals for emitter control flow whenever a word calls another emitter
-  helper that can allocate labels.
-- **Timing budgets are host profiles, not global truth:** macOS ARM64, generic
-  Linux ARM64, and Jetson/Orin have different CPU envelopes even with the same
-  4/2 pool policy. Let the suite auto-detect a concrete host profile, use
-  `--cold-cache` for cache-fill proofs, and reserve generic budgets for local
-  safety checks.
-- **In-process fixtures must restore global harness state:** `gate-stats-test`
-  set `GS-ROOT!` to a temporary file and deleted it; the next in-process test
-  then failed recording `GS-SPAN`. Any fixture that mutates shared harness roots,
-  argv/env, output buffers, or cleanup registries must save/restore them before
-  returning to a resident runner.
-- **Pointer slots deserve typed definers:** repeated `variable FOO` plus
-  `FOO 0 ptr-field` wrappers create avoidable trust rows and noisy manifest
-  drift. Use `PTR-VARIABLE` for pointer-valued global cells and `PTR-FIELD:`
-  for pointer-valued structure fields; keep `TRUST` only for real pointer
-  refinement boundaries such as raw `mmap` results or byte-offset arithmetic.
-- **Structured variable records must add cursor first:** when replacing
-  `cell+ len + UALIGN ...` arena math with structure sizes, compute
-  `cursor HEADER + len + UALIGN ...`; `cursor HEADER len + ...` leaves the
-  cursor underneath the computed size and can fail as an opaque source-load
-  throw. Preserve the tail base while writing later fields such as `*.SYM`.
-- **Do not reuse VM layout names for checker structures:** names like `CF-REC`
-  may already be target layout constants. Structure size words are real
-  dictionary entries, so use distinct checker-local names such as `CFS-REC`
-  instead of relying on silent shadowing.
-- **Checker delete rows need a nonzero first cell:** append-only delete/clear
-  rows can carry flag `0`, so fixed DFER/NORET records put `SYM` first and use
-  only a zero symbol cell as the table terminator.
-- **Internal checker effects should not parse strings:** literals, cell
-  fetch/store, and control words are checker-owned semantics. Build their rows
-  directly and reserve signature parsing for source comments and audited
-  `TRUST` input.
-- **PTX extent variables avoid reserved one-letter types:** in signatures, `r`
-  is float and `c` is char, not type variables. Use tokens such as `e`/`k` for
-  matrix row/column extents; otherwise diagnostics report concrete `r`/`c`
-  mismatches instead of the intended parametric shape.
-- **PTX optimizer values should be structure records:** a value-numbered IR fits
-  checked Habu as explicit node records plus construction-time canonicalization:
-  fold constants and peepholes before interning, use commutative key ordering for
-  CSE, and run DCE as a root live-mark pass with static value fixtures before any
-  device/lowering claim.
-- **AD straight-line boundaries need named errors:** reverse-mode source reversal
-  must reject control-flow tokens case-insensitively before VJP lookup. Letting
-  `if`/`loop` fall into a generic no-VJP path hides the real unsupported
-  capability and gives weaker repair packets.
-- **LOAD adjoints default to scatter-add:** without a checked read-once witness,
-  the AD pass must accumulate cotangents with `SCATTER-ADD`/`ROW-SCATTER-ADD`.
-  Plain store is an optimization gated by an affine/read-once proof, not an
-  inference from the current per-thread effect system.
-- **Read-once is a distinct PTX address-space token:** model the optimization as
-  `space-global-once` plus `LOAD-ONCE`/`STORE-ONCE`, never as a cast from ordinary
-  `span<space-global,...>`. The checker can then reject both accidental plain
-  stores from normal spans and accidental use of once spans through normal stores.
-- **Indexed PTX memory needs two extents and uniqueness as a token:** `idxctx`
-  carries both the dense index span extent and the indexed data span extent;
-  duplicate-safe updates use `INDEX-SCATTER-ADD`, while plain `INDEX-STORE`
-  requires `uniqidxctx` instead of assuming `idx[i]` is unique.
-- **PTX IR needs distinct symbolic inputs before AD algebra:** a single generic
-  `INPUT` node is enough for peepholes, but softmax backward fixtures need stable
-  input symbols (`y`, `dy`) plus block-algebra nodes (`BLOCK-SUM`, `B-`) so the
-  closed form can be proven as a value graph instead of an output string.
-- **Subtree status docs need lint fences, not wording games:** `maki/STATUS.md`
-  should be able to own maki counts without avoiding count-shaped prose. Keep root
-  self-check counts fenced to root `STATUS.md`, and explicitly skip extracted
-  application subtrees in `stale-status-lint`.
-- **Concatenated source must preserve `required` identity:** any tool that
-  materializes multiple files into one source stream must emit `provided`
-  markers before each file. Otherwise dependencies owned by each test/module
-  reload already concatenated files and fail with duplicate definitions.
-- **Resident suite setup is not a warm snapshot:** after removing top warm
-  launchers, a fully phase-owned split regressed by compiling the stdlib tool
-  base independently in many fork workers. Keep the parent scheduler small, load
-  the common stdlib tool base once as explicit setup, then fork phase workers so
-  they inherit it copy-on-write.
-- **Checker tool smokes use the core capture path:** `tools/check-test.f` spent
-  over 5s spawning `bin/hb --load tools/check.f` to prove file-label JSON even
-  though `CHECK-ALL-ERRORS-FILE` already preserves that label in-process. Keep
-  public behavior assertions on loaded checker cores; reserve child `hb` only for
-  process-exit, argv, stdin, or stderr routing contracts.
-- **AOT semantic diagnostics must not load maker support:** closure-limit JSON is
-  a dictionary/closure analysis invariant, not an image-emission invariant.
-  Keep `aot-closure.f` resident-testable and load `aot-lib.f` only in the maker
-  path; otherwise a small negative diagnostic test inherits seconds of builder
-  setup and looks like a cache problem.
-- **A file-top `0 set-check` window covers every file appended AFTER it in the
-  concatenated build source, not just its own file.** (habu-checked-image-writers
-  aot-lib half.) `src/habu/aot-lib.f`'s window (retired here) spanned into
-  `src/habu/aot.f`, which has no window of its own — removing aot-lib.f's line
-  newly exposed aot.f's `AOT-CTOR-EVAL` (`evaluate`) and `GO`'s
-  `['] USER-HOOK set-check` to the hook. Closing a cross-file window means making
-  the whole span checkable; otherwise the setcheck count only MOVES (net-zero),
-  never ratchets down. Probe with the exact maker prefix (`asm`/`icode`/`mnem`
-  reloaded on the baked engine + closure + lib + aot.f under the live hook),
-  stubbing only the maker-only words (`EM-DATA-VA>N`, `SYS,`, `DRV-*`, mmap/syscall
-  constants) with faithful effects — the load aborts at the FIRST reject, so
-  iterate. The genuine gap was far smaller than the dot's inventory feared: the
-  ADR/ADRP/B/BCOND/CBZ/TBZ patchers, `PATCH-BL`, and `REL*`/`BTGT*`/`ADRTGT`/
-  `AOT-W32!` all check as-is over `n`/`ptr u8`; only `MAP-IN-BLOB` (dict-record
-  cell read + pointer round-trips through scratch vars) needs a `TRUSTED:` boundary
-  (owner `habu-typed-dictionary-record-c67adddb`), `CLO-OFF`'s address-as-number
-  local was mistyped `:ptr` (→`:n`, mirroring aot-closure `FINDADDR`), and the two
-  aot.f boundaries isolate `evaluate`/`set-check` (forth.md: trust the op not the
-  dispatcher — `GO` stays checked). aot-lib.f/aot.f are maker-only, so the fixpoint
-  engine sha stayed byte-identical (they never bake into `bin/hb`).
-- **Entry/core splits must not widen worker preload:** moving a CLI tool to a
-  reusable core is only a win if the core is loaded by the worker that needs it.
-  Pulling SARIF into the shared diagnostics library made every diagnostic worker
-  compile it; isolate heavy cores in phase-owned worker files and prove hot plus
-  cold-cache timing.
-- **Nested test parallelism needs a top-level slot retune:** worker-local fork
-  pools fixed tail/lint span tails without recompiling setup, but keeping the
-  old 12-way Mac top pool made cold cache fill slower through contention. The
-  measured Mac profile is 10 top slots with 2 nested slots; prove cold wall time
-  against the prior clean-tree baseline before landing scheduler changes.
-- **Escaped source literals belong in Habu, not test harnesses:** when snapshots
-  need embedded quotes or control bytes, implement parser words (`S\"`/`C\"`/
-  `.\"`) and teach checker/scanners the same syntax. Do not route expected JSON
-  through production renderers just to avoid literal escaping.
-- **Source-shape tests need source-sized buffers:** tests that read generated
-  sources such as `bootstrap/cg/forth.fs` must size their buffers for the current
-  generated file or allocate dynamically. A stale `$20000` cap fails as
-  `E-FS-CAPACITY` before assertions run, which hides the actual regression being
-  tested.
-- **Rejected definitions must free every per-definition resource:** the hooked
-  publish reject path skipped the NDICT bump but leaked the emitted machine code
-  (44 bytes per `: X drop... ;` retry) because CP was never rolled back; the
-  pending dict record already holds the rollback target (slot 0 = post-name
-  entry; slot 24 = pre-name CP for `DNAME-EXT` names, whose bytes sit in code
-  space before the entry), so the reject branch reloads it instead of adding a
-  DATA cell. When auditing reject/abort paths, enumerate every monotonic
-  allocator the definition touched (CP, NDICT, DP, name bytes) and prove each
-  is restored or explicitly documented as leaked. Reject-path matrix: hooked
-  publish (verdict 0) rolls back and continues; trusted publish (signed defs)
-  exits via `C-DIE-DOES` on a raw-verdict reject; `create`/`variable`/
-  `constant` publish BEFORE `C-DEFHOOK`, which discards the hook verdict
-  (habu2.f:1310-1317) — they neither reject nor exit on the raw-verdict path
-  (dot habu-definer-verdict-discarded-096e8a01); a throw caught across a
-  compiling definition still leaks CP and compile state
-  (dot habu-catch-path-reject-60a18d38).
-- **TRUSTED.md pins `file:line` for every TRUST site:** any edit that changes a
-  source file's line count below an existing site fails `trust-lint` with
-  STALE-ROW findings for every later row. When ownership rules forbid touching
-  the manifest, keep the edit line-count-neutral (habu2.f's inline-label style
-  makes this natural); otherwise refresh the manifest rows in the same change.
-- **The maker image sits at the MPAGE wall:** the AOT maker's `__text` is
-  engine text plus the full baked compiler source, fail-closed at
-  `MPAGE - CODE-OFF` (`src/os/macos/macho.f:160`), and on master it measured
-  exactly at the cap — zero margin. Any net growth of compiler source (even
-  +131 bytes) fails the hb-build AOT gate with `macho: code exceeds __TEXT
-  page`. Prove causality with an A/B maker build (same `bin/hb`, fresh
-  `HB_TMP`/`HABU_BUILD_CACHE`, tree with and without the change); the fix is
-  capacity (MPAGE) or source diet, not shaving the change to squeeze under.
-- **Shared /tmp races parallel agents:** `HB_TMP` defaults to `/tmp` with fixed
-  artifact names (`stage2-src`, `hb-stdin-got`); concurrent workspaces corrupt
-  each other's refresh/gate runs with transient opaque exits. Always run
-  fixpoint/gate/hb-build with a private `HB_TMP` (and `HABU_BUILD_CACHE`) per
-  workspace.
-- **`CK-FILE+` keys the path, not just the bytes:** it hashes the path string
-  into the fragment stream, so keys over `HB_TMP`-relative artifacts change per
-  tmp root. For emitted intermediates, hash a stable logical label plus the
-  file digest instead, length-framed with a distinct tag per stage
-  (`BF-STAMP-DG+`) so a dropped component can never alias another.
-- **`include` and `require` do not share a registry:** adding
-  `require lib/content-key.f` to a tool duplicated `CK-CAP` in the engine gate
-  slice because `test/gate-common.f` already `include`s that lib. Widely
-  `--load`ed tools must not grow new lib requires; for digests, use the baked
-  `SHA256`/`SHA256-FILE`/`SHA256>HEX` words that every `bin/hb` carries.
-- **Cache stamps assert the installed artifact, from consumed inputs:** record
-  each stage-source digest at the moment the build emits/consumes it
-  (`BF-RECORD-STAGE`/`BF-RECORD-STDIN`) and assemble the stamp from those
-  recorded digests plus the post-install engine hash. Re-hashing the tree after
-  the build races mid-build edits, and a pre-install engine hash never matches
-  the next run. `-- all` stamps only when its product byte-matches the engine.
-- **Cache keys carry the producer's identity, not a proxy:** the object cache
-  first keyed only sha(bin/hb), but the producer is the maker =
-  f(engine, checker/codegen sources); a source-level codegen change with a
-  stale engine still hit. Qualify the key with the exact producer key
-  (`HBB-MAKER-KEY-HEX`) so key and producer share one identity by construction.
-- **AOT-LINK must start on a fresh line:** appending ` AOT-LINK ` directly after
-  source bytes lets a final `\` comment without a newline swallow the sentinel,
-  so the maker exits 0 without `hb-aot-got`. Emit an LF before the sentinel and
-  keep an hb-build fixture whose AOT source ends in a backslash comment with no
-  newline.
-- **Proof flows must force past caches:** `tools/seed.f` and
-  `tools/bootstrap.sh` exist to prove a rebuild, so they pass
-  `install --force`; a matching stamp must never stand in for the proof.
-  Audit every spawner of a cached command when adding a skip path.
-- **`bin/` holds exactly `bin/hb`:** `BLTT-TEST-PUBLIC-BINS` fails the gate on
-  any second file there. Persistent tool state (fixpoint stamp) goes under
-  `XDG_CACHE_HOME`/`~/.cache` like `TR-PERSIST-DEFAULT`, not next to the binary.
-- **Raw-text checker consumers see comments the load path strips:** the engine's
-  `EM-COMMENT` removes `( ... )` before capture, but `CHECK!`/`CHECK-CANDIDATE!`
-  scan raw text, so CHECK-SCAN's `'( '` handler re-parsed mid-body comments as
-  signatures and clobbered SGIN/SGOUT/DCUR (SNEAK certified). Scanner rules must
-  implement engine-normalization parity explicitly: sig only at token index 1,
-  once, everything later a skipped comment.
-- **The maker cache masks builder capacity overflows:** the AOT gate rebuilds
-  the maker only on content-key misses, so a nearly full CODE buffer stays green
-  until any engine-source edit forces a fresh build (`icode: code buffer
-  overflow` / `macho: code exceeds __TEXT page`). When growing src/core, check
-  headroom: maker `__text` size vs `CODE-CAP-WORDS` (icode.f) and `MPAGE`
-  (macho.f/elf.f), and keep both guards aligned.
-- **Share family deltas by fork inheritance, not by widening the suite base:**
-  preloading the diag/dict/engine/debug/aot-neg gate libs into the parent
-  shared setup regressed the hot gate 16.5s -> 28.3s because the serial setup
-  span (7952ms -> 16825ms) sits on the critical path of every post-setup fork.
-  The winning move costs zero serial time: reclassify only high-redundancy
-  family workers (diag slices, dictionary) to fork after the tool base — their
-  unchanged `require` lists dedupe against the inherited image and load only
-  the family gate-lib deltas (diag load 11453ms -> 6743ms, dict 2973ms ->
-  2453ms, ~6.5s process CPU saved, slowest-test 12260ms -> 10405ms). Widening
-  the base further waits on the content-keyed image-restore residual.
-- **Pre-setup fork spans are reap-inflated by the serial setup:** the parent
-  does not poll the pool while `included` compiles the shared base, so every
-  phase that exits during setup gets its span recorded at reap and reads as
-  ~the setup duration (baseline debug/dict/aot-neg all "7.96s"; with a 16.8s
-  setup, aot-pos read 16.8s). Attribute pre-setup phases with their own
-  span-load rows and logs, never the pool span.
-- **`aot-closure.f` and `clobber-lint.f` cannot share one image:** both define
-  `CX`, so any parent base containing src/habu/aot-closure.f makes the
-  lint-tools clobber fork fail with `duplicate definition: CX` (rc 78). Strict
-  duplicate rejection caught the debt; rename/package-scope is dotted.
-- **Per-phase PASS stamps only pay on critical-path phases:** the result cache
-  (key = label + bin/hb + candidate sha + declared TR-FILES: set, stamps under
-  the persistent root, red runs never stamp) correctly skipped debug/aot-neg
-  as 'PASS (cached)', but zero-diff wall time did not move because those
-  phases fork pre-setup off the critical path. The wall win needs declared
-  sets for the setup/stdlib/engine tail, which needs enumerable verdict
-  inputs first. Undeclared = never cached is the fail-closed default; the
-  closure lint in test/run-result-cache-test.f rejects sets missing files
-  referenced by member require lines or existing s" source literals.
-- **Killed gate runs leave spinning fork workers:** SIGKILLing a hung top
-  runner orphans its forked pool workers, which keep polling at full CPU and
-  quietly slow every later timing run. Check for and kill stray
-  `bin/hb --load test/run.f` processes before believing a gate measurement.
-- **A pool parent-death reaper must NOT be a `wait(-1)`-visible child of its
-  worker:** the fix for the orphan-spin above arms a per-worker reaper (watches
-  a death pipe; SIGKILLs the worker's group on parent death). Arming it as a
-  direct child of the worker stalled `stdlib/tail-process` ~190s because
-  `lib/process-test.f` TEST-WAIT-BAD does `-1 >PID PROC-WAIT-RC` (`wait4(-1)`,
-  expecting ECHILD with no children) and blocked forever on the reaper. Evidence
-  was `wait4` (lldb x16=7) at 0% CPU, not a busy loop; isolated repros never ran
-  a `wait(-1)` so never reproduced. Fix (`PROC-FORK-REAPER` in
-  lib/process-fork.f): double-fork so the reaper reparents to init (invisible to
-  `wait(-1)`) yet inherits the worker's process group; it also watches a
-  worker-alive pipe and self-exits on the worker's exit, so no orphan leaks and
-  the worker never tracks or kills it. Regression: `GPT-WAIT-NEG-CASE`.
-- **Shard a fuzzer across forked slots, but mute shard stderr:** the property
-  checker fuzzer (`test/prop-test-core.f`) now runs `PROP-SHARD-N` forked slots,
-  each a distinct golden-ratio-spread seed for `DEFAULT-COUNT` iterations, so one
-  gate phase covers N x count distinct-seed programs in ~one shard's wall time; a
-  nonzero shard exit fails the phase. Gotcha: each shard's checker prints a
-  per-reject diagnostic to stderr, and the gate's capture buffers are bounded
-  (`GT-ERR-CAP` = 32KB); N shards overflow it and trip `E-PROC-TRUNCATED`, failing
-  the capture. Fix: each shard redirects fd 2 to `/dev/null` (`SHARD-MUTE-STDERR`)
-  — a false-cert still reports on stdout and via the shard's nonzero exit, so the
-  signal is preserved. New net-0 generator ops (valid `leave`, `s" .." 2drop`,
-  `[: ;] execute`, `>r r@ drop r>`, mid-body `{: zN :} zN`) can only ever cause
-  extra *rejections*, never false-certs — a false-cert needs a real checker vs.
-  runtime disagreement, which the generator cannot manufacture.
-- **Always launch gates with explicit stdin EOF:** two stalls of
-  stdlib/tail-build happened only on runs without `printf '' |`; fixture
-  scripts spawned by BUILD-RUN inherit the suite stdin and can wait in the
-  stdin REPL on an open never-EOF pipe (dot habu-rca-tail-build-d6b0391d).
-- **Scale budgets by a measured reference, per profile:** timed gate budgets
-  are stop-lines tuned on a reference host, so the portable form is
-  base-budget x (probe-ms / profile-reference-ms) clamped to [100%,300%],
-  never scaling user-supplied --budget-ms, and factor 100% for profiles
-  whose reference probe has not been measured (reference constant 0). A
-  spin probe (~95ms macOS ref) captures load/downclocking, which is what
-  actually failed green trees; print cal-ms/cal-factor in the perf line so
-  a stretched budget is visible telemetry, not a silent comfort blanket.
-- **`maki/` as a code token trips maki-dep-lint anywhere but maki/ files:** a
-  span-stray prefix table in test/gate-stats.f listed `s" maki/"`; maki-dep-lint
-  matches the whole token `maki/` (not in `\` or `( )` comments) and red the
-  gate. Register only prefixes that actually occur; speculative `maki/ bench/
-  src/ ...` were both dead and lint-forbidden. Real stray roots on a green gate:
-  `lib/ tools/ test/ dictionary/ lint-tools/`, `fork` / `fs mutation` /
-  `process` / `hb baseline` fixtures, and `*-lint` names -> expected=167,
-  unexpected=0 baseline so a new unrowed span is visible, not drowned.
-- **The test pool legitimately reuses one label across entries** (battery starts
-  12x `soft overflow`), so "reject duplicate pool labels at GT-POOL-START*" is
-  wrong. Fix span identity two ways instead: a single-use ownership claim
-  (GS-CHILD-CLAIM? consumes GS-CHILD-U so a fork child suppresses its one
-  pool-owned span once, not every later same-label span) plus rejecting
-  duplicate TEST-ROW labels at index time (GS-LABEL-SUBJ attribution is
-  ambiguous otherwise). Both proved by reverting: dedup miscounts to 0, dup
-  rows scan without throwing.
-- **gate-pool-test.f can `require test/run-lib.f` cheaply:** the resident
-  stdlib worker GSI-INCLUDEs it COW from a parent that already loaded run-lib.f
-  (no-op), so only standalone/child spawns pay the load. That lets the kept-root
-  e2e drive the real TR-COMPLETE->TR-RED-COMPLETE->TR-KEPT-ROOT-LINE red path
-  (child keeps its capture root; parent parses `capture root kept:`, asserts the
-  pool-*-out.log survives, then REMOVE-TREEs it) without a full injected gate.
-- **A spawned build child must be given /dev/null stdin, never inherit it:** the
-  intermittent stdlib/tail-build hang was `BUILD-RUN` (lib/build.f) running
-  fixture command scripts through `PROC-RUN-RC`, which spawns with `-1 -1 -1`
-  fds = inherit all, including fd 0. A `#!/usr/bin/env bin/hb` script falls into
-  the stdin REPL after its body and `read`s fd 0; when the pool worker's
-  inherited fd 0 is an open never-EOF pipe, it blocks forever (only reddens via
-  the per-phase timeout). Reproduce deterministically: `bin/hb cmd.f` with fd 0 =
-  an open fifo (writer held open) hangs; `< /dev/null` runs and exits rc 0. Fix:
-  BUILD-RUN opens /dev/null read-only and passes it as infd via PROC-RUN-IO-RC
-  (out/err still -1 = inherited so pool logs capture output). This is the
-  root-cause fix; adding `bye` to each fixture would be a redundant band-aid.
-  Separately, pool children that must die on parent SIGKILL is orphan-cleanup,
-  not this hang's cause.
+- **Diagnostics are an API.** JSON errors carry `schema_version:1`, source spans, verdict, word,
+  token, expected, actual; wrappers keep valid JSON object lines and fail nonzero on rejection. Source
+  origins are wrapper-owned (definition-relative spans; inject origin markers, keep them out of user
+  bundles). Repair/diagnostic rows keep a source-preserving effect field beside the normalized one;
+  `fix_return_stack` only when the data stack already matches (a bad `>r` dropping a declared output is
+  `add_producer` first). Repair packets are mechanically consumable in checked code (`DIAG-BUFFER!` +
+  `DIAG-JSON!` + `DIAG-ORIGIN! 1 1 0` around `CHECK-CANDIDATE!`, no TRUSTED unless mutating `DIAGXT`):
+  the checker flags the LAST surplus producer for `remove_producer`, an unconsumed-input surplus flags
+  `token_index 0` (the name token — guard it or a mechanical editor deletes the name);
+  `add_producer`/`fix_type` carry no replacement token → report honest UNREPAIRABLE. Repair diagnostics
+  are a SUM of evidence shapes, not one nullable mega-record (dispatch on shape, preserve its required
+  evidence, never fabricate the other variant's fields). Changing a checker failure CLASS also changes
+  its complete origin — repin token text, index, and byte span together, or a repair code identifies an
+  earlier token. Check phases must be SILENT (any stdout/stderr from a check-only child = rejection to
+  live drivers); expected-throw fixtures stay quiet. A compile-preflight diagnostic must enter the
+  canonical `CHECK!` renderer (a bespoke short JSON drops spans/effects/repair-compat) and pin an
+  unmodeled immediate as `E-UNMODELED-IMMEDIATE`; never exit a check hook bare (verdict-1 with no DIAGXT
+  threw rc 70 with zero diagnostics).
+- **Error codes are a global namespace — lint uniqueness, claim a fresh block in the file header.**
+  Live collisions (E-CUDA/E-FUSE both -5002, etc.) slipped past review; `error-code-lint.f` fails any
+  negative code claimed by two `E-*` names (allowing sysexits-style positive exits, range sentinels,
+  same-name re-registrations). Keep older widely-used codes stable, renumber the newer claimant; a bulk
+  `E-*`→`ENGINE-ERROR:*` migration must EXCLUDE its replacement spelling and end with an exact
+  legacy/near-miss scan (a non-token-exact match corrupts the new spelling). Removing a satisfied class
+  error is fine only when it had a single runtime reader.
+- **A benchmark reports axes SEPARATELY, deterministically, from evidence.** Trial pass, task pass@k,
+  repair rounds, wall time, generated-token cost (a proxy, not hidden reasoning); reports are
+  evidence-derived text with no wall-clock stamp (provable with `cmp` before archiving outside git);
+  Habu-only vs cross-language claims use distinct artifacts. Model-driven pass@k needs an INDEPENDENT
+  stochastic generator we don't curate (curating the bug distribution makes the number a construction)
+  — used independent Claude subagents (k=5/task) graded through each target's full loop; the
+  differentiator is failure MODE (every Habu failure was an author-time static reject with a located
+  diagnostic, zero GPU). Log honest caveats (a softmax gap confounded by my own prompt mis-spec of
+  arg order; Triton produced no failures to repair so repair-rounds isn't symmetric). Phase-token task
+  surfaces make pass@1 near-trivial BY DESIGN (the checked phase words admit one type-correct order) —
+  say so; the emit-level gates catch only SEEDED bug shapes (same-type role swaps, dead-value stores,
+  double-phase kernels retain every required token and grade GREEN) — only a device numeric golden
+  closes that class, so pin those wrong-but-green shapes as acknowledged regressions. Live sweeps
+  resume + enforce coverage by identity `(model_id, arm, task_id, trial)`, record expected identities
+  during the run, fail before report generation if any row is missing (use `*-OUTCOME` process APIs so
+  a timeout still emits a row). Record token metrics in the unit you HAVE next to a slot for the unit you
+  want (estimators belong in the replay engine, not the recorded artifact). Codex candidates come from
+  `--output-last-message` (stdout `--json` is event streams for token accounting only) with `--cd` to a
+  clean temp dir + clean `CODEX_HOME`; background scouts need explicit stdin `/dev/null` + `--output-last-message`.
+- **Advisory soundness findings ROT — and can be born rotten.** A prop-test metamorphic amplifier was
+  100% inconsistent from introduction (a broken harness contract, not N distinct misses) yet the gate
+  stayed green because inconsistencies were "(logged, non-fatal)" and shards mute output — a property
+  tester that prints findings and exits 0 is error masking; make the counters FATAL at the summary, and
+  a 100% failure rate on a metamorphic leg means the CONTRACT is broken (probe the contract word directly
+  before shrinking N "different" cases). Stateful scanners split at cursor phases (`SS-COUNT-LINE?`
+  delegating advance/digit-run/ratio/keyword to typed helpers) with fixtures around the boundary. Report
+  reducers use DEDICATED scratch cells (`RR-I/J/K` get clobbered by nested helpers; a `RR-RATIO.` stack
+  leak truncated a table) — add row-count regressions and `cmp` regenerated reports. Doc-contract
+  fixtures need stable anchors (line wrapping hides a `grep -F` phrase — assert a shorter contiguous
+  substring). Dogfood benchmark hot paths (per-call glue is Habu-native; host parsers hide missing Habu
+  primitives) and match LLM helper surfaces to validator surfaces exactly. Subtree status docs use lint
+  FENCES not wording games (keep root self-check counts fenced to root `STATUS.md`, skip extracted
+  subtrees in `stale-status-lint`).
 
-## Dict-hash stage 1 landed: dormant table + LHIDXBUILD (2026-07-03)
+## Generated-Code Verification & Signal/Async Effects
 
-Third attempt, evidence-first, is green through stage 1 (table infra +
-startup build, no consumers): install --force byte-fixpoint holds, gate
-PASS, trust-lint 0, typed-local-diff-lint 0, `-- snap` builds. Keys:
+- **Host stack effects do not certify generated MACHINE state.** An emitter can be stack-correct while
+  its output clobbers a live register, flags, frame slot, SP, or a caller-owned buffer — give emitted
+  operands and callable routines first-class effects, then verify liveness/frame invariants over the
+  resolved CFG (handwritten name-to-mask tables are transitional diagnostics only; raw
+  write-before-BL/read-after-BL rules are mostly false). An emitter's forward LABEL names the code
+  SKIPPED to, not the body adjacent to the conditional — record every condition combination and map each
+  original path to the shared label before rewriting layout (inverting a hooked-publish dispatch
+  condition broke the refresh child). Prove emitter branch SHARING with a runtime truth table. Concurrency
+  claims need EMITTED-code proof (single-thread behavior can't distinguish acquire/release from ordinary
+  loads/stores — scan the live routine, pin LDAR/STLR order); model them as named assembler operations,
+  not instruction words at call sites. Generated-state proofs need a BACKEND-specific last mile — ARM64
+  CFG/register verification does not cover PTX (bind virtual def/use, predicates, barriers, address
+  spaces, `ptxas` facts, cubin/SASS identity, and device evidence separately). PTX declarations and
+  `ptxas` observations have DIFFERENT authority (declared params/registers/spaces vs proprietary
+  stack/spill facts — the latter belong in a content-bound attestation).
+- **Signal handlers need asynchronous-entry effects, not ordinary call effects.** The kernel supplies
+  target-specific live registers + a ucontext frame; the handler may edit saved PC/SP and terminate via
+  `sigreturn`/a no-return syscall — a BL-routine contract can't prove that boundary; type its frame,
+  allowed operations, reentrancy, and terminator per target. A `catch` effect is sound only if runtime
+  restores the WHOLE typed frame (data SP + machine SP is insufficient when the checker also promises
+  return/loop-stack preservation). Balanced stack effects do not prove BOUNDED execution (a word can
+  return every stack to its declared row while recursion retains a live return value and grows without
+  bound) — pair runtime extent guards with compositional peak-use certificates. A representable
+  by-value bound is not a semantic COMPOSITION bound (a 127-cell effect row fits `ER.MINI` but carries
+  only 25 exact bindings and fails ordinary repeated composition) — large canonical typed sets need
+  opaque nominal handles over sealed immutable content; handles/offsets/order/hashes must never become
+  authority or identity. Do not shrink a semantic capacity around checker OVERcounting — fix
+  `ROW-CELLS`/effect recording; a smaller row hides the compiler defect. Proof/replay tables are
+  ARENAS, not policy caps (grow the producer tables, validate byte arithmetic at the immutable consumer
+  boundary; compiler replay evidence must be immutable, source-byte-keyed, consumed exactly once). A
+  guard row must certify both the expected tag AND its domain (`{offset,tag,limit}`, `0 ≤ tag < limit`).
+- **Structural ADTs are UNTRUSTED until a validator establishes semantics.** A public PRODUCT
+  constructor proves layout + field roles, not mask/ordering/bound/cache-legality — validate every
+  parser/artifact/persistence/FFI/registry ingress before any permissive decision. A raw boxed pointer
+  needs bounds metadata at the ALLOCATION boundary (store capacity in a hidden preceding cell, reject
+  both signed bounds before address arithmetic, prove the rejected write leaves its neighbor intact).
+  Typed storage with untyped accessors does not preserve semantic roles (an `n` converted independently
+  at a dtype vs layout store satisfies either when tags overlap) — carry the family through internal
+  APIs, convert only inside named wire/table-index owners. A typed layout pointer needs a GENERATIVE
+  introduction boundary + fetch-time validation (a sealed allocator owns count/stride/zero-image/bounds,
+  builds its generated source before allocation so generator failure can't leak DATA, and every fetch
+  validates active tags; erase every one-shot arming word + backing cell after compiling its direct
+  callers, or a globally-callable arming surface is an unchecked cast). Seal an OWNER only after all
+  constituent files load (sealing blocks reopen; keep raw→nominal mints private+audited while assembling,
+  seal in the final slice); protecting publication does not protect package REOPEN (package lookup must
+  reject every protected WID). A recovery/guard vocabulary must never leak into the ambient search order
+  (a private `BAND` helper shadowed the instruction emitter and crashed stage0) — balanced local
+  `also`/`previous` at each call site.
 
-- Recovered the verbatim attempt-2 step-2 code from `jj op log` (the
-  revert op `jj restore src/habu/{habu1,habu2,layout,snap-lib}.f TRUSTED.md`;
-  its hidden pre-image is the working code). Reapply from history, don't
-  rewrite.
-- The recovered code had a real bug to drop: `LBL LHIDXADD ! LBL
-  LHIDXBUILD !` was written TWICE (a half-applied jj restore, finding #6) —
-  allocate each label ONCE.
-- Startup control flow (verified on the CLI-refactored tree): EM-STARTUP
-  runs MMAP-DATA -> DATA-INIT -> SNAPSHOT-RESTORE (falls through both arms)
-  -> STARTUP-RUNTIME-STATE, whose `LVRINIT BL,`/EMIT-SOURCE point is reached
-  unconditionally after the `cwok` merge with data mapped + NDICT final.
-  That is the correct LHIDXBUILD BL site (cold + warm).
-- The gate never boots hb-new/snapshot images as launchers (bootstrap.md),
-  so the descoped restored-image rc-134 crash cannot redden the gate; `-- snap`
-  only *emits* hb-new (runs cold-boot hb-stdin), never boots it.
-- Trust-drift minimization: put emitted BLs on the SAME physical line as an
-  existing emit call (`LVRINIT LABEL@ BL,  LHIDXBUILD LABEL@ BL,`) so no
-  line is added and the 54 downstream habu2.f TRUST rows never drift. Only
-  genuinely new lines (snap-lib zeroing, EMIT-HIDX in the section list)
-  drifted 4 rows; re-pin by hand from trust-lint's SITE-DRIFT scanned-line.
-- `W32` is a BAKED engine word: a `: W32 ... ;` smoke "duplicate definition"
-  is pre-existing (identical on the clean baseline), not a hash-table bug.
-  Always run the new smoke on the baseline binary before trusting it.
+## Friend-Arena Seals & Boot Protection
 
-## Dict-hash landed end-to-end (FIND + dup-check probes) (2026-07-03)
-
-Attempt 3 completed all 5 stages, each byte-fixpoint + gate green:
-
-- **First-match-stops is safe because the engine rejects duplicates.** Proved
-  with `: R ; : R ;` -> exit 78. So each (wid, folded-name) key is in the table
-  at most once; the probe stops at the first VALIDATED slot (idx<NDICT, wid==x2,
-  folded name equal) or the first EMPTY slot. `undefine` retires IN PLACE
-  (xref.f XREF-RETIRE sets record+40 wordlist to XREF-RETIRED-WL = -2), NOT by
-  truncation, so retired records keep their slot but are skipped by the wid
-  check (-2 never equals a real search wid). Verified: undefine+redefine and a
-  duplicate-behind-a-retired-slot both resolve/reject correctly.
-- **The linear FIND-LOOP already "continues past a match" (last-wins), which is
-  equivalent to first-match only because dups are rejected.** Don't assume; it
-  reads like last-wins but there is exactly one live match.
-- **DICT-CAP (8192) < HIDX-SLOTS (16384) is the no-infinite-probe invariant** -
-  the open-addressed table is at most 50% full, so both insert and probe always
-  hit an empty slot. No bound needed.
-- **The dup-check probe is AUTHORITATIVE (not a fallback) on the no-dup path** -
-  that is where the O(NDICT)->O(1) win is. Keep the linear scan only behind an
-  `HIDXP==0` guard. The self-host fixpoint is the proof: a wrong no-dup verdict
-  would allow a double-definition and break the byte fixpoint.
-- **Factor an emitted probe into habu1.f (past the last TRUST row) and wire it in
-  with SAME-LINE edits to habu2.f for ZERO trust drift.** `C-HIDX-DUP?` lives in
-  habu1.f; C-REJECT-DUP-DEF gains only two modified lines. Label LOCALS are
-  referenced BARE (`dnext BCOND`); only global label VARIABLES take `LABEL@`
-  (`FIND-DONE LABEL@`). Mixing the two is a wrong-address branch = crash.
-- **Feature growth trips size/buffer watermarks; bump them same-commit.** The
-  engine grew one 16KB page: size ratchet 132343->148855 in gate-build-size.f.
-  The AOT maker source (engine + AOT driver, ~$80173) crossed the 512KB
-  MK-SOURCE-CAP; the stdin path (S2-SOURCE-CAP, same $80000) had only ~6.4KB
-  margin. Both are BUILD-DRIVER buffers (maker.f/stage2.f, not baked into
-  bin/hb) -> bumping to $A0000 does NOT change the fixpoint binary.
-- **Measure the engine speedup with `0 set-check`** to isolate parse+FIND+dup
-  from the (linear) checker: 2.44x at W=6000 and growing with W, vs ~1.16x with
-  the checker on. The hash flattens the engine's O(W^2); the checker is the
-  linear remainder.
-
-## Design-before-evidence caused two emitter reverts (2026-07-03)
-
-Two dict-hash implementation attempts were reverted for preventable
-reasons, all research/design failures, none coding failures:
-
-- Designed around an ASSUMED runtime semantic (newest-wins redefinition)
-  that a one-line stdin experiment against bin/hb would have falsified
-  (`: R 1 ; : R 2 ;` -> engine REJECTS duplicates, exit 78). Verify every
-  semantic assumption a design rests on with a direct experiment BEFORE
-  writing code against it.
-- Emitted code into unmapped control flow twice: EM-SEED-DICT runs before
-  the data region is mapped (the 8-line EM-STARTUP word says so), and the
-  EM-STARTUP-RUNTIME-STATE tail after EMIT-SOURCE is unreachable on some
-  paths. Before inserting into an emitter region: read the containing
-  words end-to-end, list every entry path, and verify reachability with
-  the debugger where any doubt remains.
-- Used an unvalidated test harness (piping into hb-stage) for hours; the
-  clean-tree control run that exposed it took two minutes. Run the control
-  FIRST every time a new validation method is introduced.
-Debugger note that unblocks all of this: breakpoints on hb binaries only
-stick if set on the LIVE process (`process launch -s`, then `br set -a
-<addr> -H`, then continue) - pre-launch breakpoints are wiped by startup
-text remapping. The binary funnels all exits through two syscall sites,
-so "which path exited" is one breakpoint away.
-- **A spawned build child must be given /dev/null stdin, never inherit it:** the
-  intermittent stdlib/tail-build hang was `BUILD-RUN` (lib/build.f) running
-  fixture command scripts through `PROC-RUN-RC`, which spawns with `-1 -1 -1`
-  fds = inherit all, including fd 0. A `#!/usr/bin/env bin/hb` script falls into
-  the stdin REPL after its body and `read`s fd 0; when the pool worker's
-  inherited fd 0 is an open never-EOF pipe, it blocks forever (only reddens via
-  the per-phase timeout). Reproduce deterministically: `bin/hb cmd.f` with fd 0 =
-  an open fifo (writer held open) hangs; `< /dev/null` runs and exits rc 0. Fix:
-  BUILD-RUN opens /dev/null read-only and passes it as infd via PROC-RUN-IO-RC
-  (out/err still -1 = inherited so pool logs capture output). This is the
-  root-cause fix; adding `bye` to each fixture would be a redundant band-aid.
-  Separately, pool children that must die on parent SIGKILL is orphan-cleanup,
-  not this hang's cause.
-
-- **An uncaught throw exits with the raw code and ZERO output — always give
-  build drivers a reporting boundary:** the post-rebase "in-pool-only" AOT
-  gate RED (maker build rc 74, empty logs) was a 104-byte image-buffer
-  overrun: engine text + embedded source grew past `MSIZE` ($90000), `M-FAIL`
-  `2drop`ped its own message and threw 75, and `BTHROW`'s no-handler path
-  (habu1.f) exits with x0 = the throw code, silently. Nothing was
-  pool-specific — the pool was just the only place a fresh maker build ran.
-  Diagnosis pattern that worked: catch-wrap the driver phase (`WHY-THREW`
-  style) to get the code, then phase-bisect inside the driver; renumbering
-  candidate exit sites (diagnostic build) proved the code was COMPUTED, not a
-  literal — `throw` codes surface as exit codes mod 256 (75 could be -181,
-  -2229, ...; here it was literal M-BOUNDS-RC). Fixes: MSIZE derived from the
-  loud MPAGE guard + load-time `*-MSIZE-CHECK` asserts in both writers so the
-  buffer can never again be the binding constraint; `M-FAIL` now writes its
-  message before throwing; `DRV-FAIL` (driver-io.f) reports "driver: uncaught
-  throw code N" at every stage/maker/build driver boundary while preserving
-  the exit code; hb-build's maker die message carries the child rc.
-
-## AOT-REPL milestone 1: one-word seed baked into bin/hb (2026-07-03)
-
-Proved the EM-SEED-DICT-style AOT seed end to end: a metabuild-compiled word
-(`AOT-PROBE`) is emitted into bin/hb as a dict record + code blob and is
-callable at boot with no source parse (EM-SEED-AOT in habu2.f, armed by the
-stdin driver's AOT-CAPTURE). Fixpoint byte-identical, gate green, size
-unchanged (148855). Keys for milestone 2:
-
-- **x13/x14/x15 carry argc/argv/envp until EM-DATA-INIT stores them.** Any
-  boot emitter that runs BEFORE EM-DATA-INIT (EM-SEED-DICT, EM-SEED-AOT) must
-  not use x13-x15 — a copy-loop counter in x14 clobbered argv and SIGSEGV'd in
-  argv processing at boot. Use x12. x20 is XREG-RBASE (text base) pre-DATA-INIT
-  and DATA base after — one register, dual role; read RBASE-CELL for the saved
-  text base once x20 is repurposed.
-- **The AOT sample/REPL word must be defined in a driver loaded ONLY for the
-  stdin build (stdin.f), never in habu2.f.** habu2.f is reloaded in every
-  build, including the stage2 build an AOT-seeded bin/hb runs to rebuild
-  itself; `: WORD` there hits "duplicate definition" against the seeded copy
-  and aborts the install. The stdin metabuild host is hb-stage (built from
-  stage2.f, empty AOT, no seed), so its definition is always fresh — that IS
-  the fixpoint's escape hatch.
-- **Don't `evaluate`/`set-check` inside the metabuild GO — the interpreter's
-  checker-hook state makes them throw.** Define + measure through the normal
-  top-level source path. habu1/jit/habu2 load CHECKED (`' HOOK set-check` after
-  the CHECK-OFF span), so raw region byte reads need SRCA@-style TRUST ptr-u8
-  accessors (+ TRUSTED.md rows + inventory `TRUST` baseline bump).
-- **New emitter label locals need `:label` typing** (`{: x:label :}`) or
-  typed-local-diff-lint flags the new group even though older emitter groups
-  are untyped (lint only sees the diff).
-- **Open-address dictionary indexes must reclaim stale rollback slots on
-  insert, not only skip them on lookup.** `ndict!`/`cp!` rollback can leave
-  probe-chain entries whose record index is no longer live. Duplicate lookup
-  must keep probing past them, but insertion must reuse the first stale or
-  empty slot; otherwise repeated checked/evaluated candidates eventually fill
-  the fixed table with dead entries and spin.
-- **Process-pool orphan protection is fail-closed.** A spawned child whose
-  process group or parent-death reaper cannot be armed must fail the test
-  immediately through the pool cleanup path. Running the test anyway silently
-  drops the only proof that timeout/parent-death cleanup reaches grandchildren.
-- **Bootstrap writer caps are temporary-stage caps, not final-binary budgets.**
-  The Gforth recovery stage embeds current source in its generated executable;
-  when source grows, the bootstrap-only `MPAGE`/`MSIZE` guards must grow
-  together or no-binary recovery fails before native fixpoint can produce the
-  small `bin/hb`. Final-size ratchets belong in `test/gate-build-size.f`.
-- **Diagnostic lint fixtures must mute expected findings.** `MDL-COUNT` was
-  correctly counting synthetic `maki/` tokens, but it printed those expected
-  findings into the shared lint-tools output and the gate-stats fixture counted
-  them as real span noise. Public lint entrypoints stay loud and fail-closed;
-  in-memory fixture counters need an explicit quiet/report switch.
-- **Do not export build scratch cells as trusted API.** Image writer state such
-  as `MLEN` should be hidden behind checked accessors (`MLEN@`/`MLEN!`) and
-  typed role constructors (`M-O@` via `>OFF`) instead of manifest rows for raw
-  variables. Also keep checker boot independent of helpers loaded later in the
-  stage source; a checker self-type helper must use already-available typed
-  primitives, not `BYTE+` from `src/core/bytes.f`.
-- **Assert durable formats exactly; splice runtime fields at test time.** When a
-  committed string (cache key, report row) gains a runtime-dependent field (the
-  bin/hb content key), do not weaken the test to substring containment - three
-  fragment checks prove neither order nor adjacency nor absence of junk. Build
-  the expected string by splicing the runtime field between committed literals
-  and compare whole with STR=/T$=. If the actual lives in the shared SB builder
-  (SK-KEY$), copy it out before building the expected string in SB.
-- **Pipe-delimited keys are a tracked ADT seam, not a design.** Stringly keys
-  make semantically distinct fields (dtype vs layout) indistinguishable bytes;
-  the typed-record swap is specced in habu-cad-adt-swap (blocked on TFAM 14/15).
-  Keep string rendering at the durable-store boundary only.
-- **A gate only gates if it guards the push.** Chaining `gate; ...; bookmark set
-  && push` runs the push even when the gate failed (the `;` discards the gate's
-  exit). fable was briefly pushed red when a clean rebase hid a semantic
-  cross-lane conflict (capture-time shape legality vs a lowering test fixture
-  that NEEDED an illegal model). Regate the merged tree, CHECK the result, and
-  only then move bookmarks - separate commands, or `&&` from the gate onward.
-  Cross-lane semantic conflicts do not show up as rebase conflicts.
-- **`tools/typed-local-diff-lint.f` returns to the REPL - feed it `</dev/null`.**
-  It ends with a plain `throw`-on-findings, not `bye`; a bare
-  `bin/hb tools/typed-local-diff-lint.f diff.patch` then blocks reading stdin and
-  looks like a multi-minute hang/timeout (rc 124). Redirect `</dev/null` and it
-  exits fast (rc 0 clean, rc 1 on findings). Same shape for any tool that does
-  not exit at end-of-load.
-- **`tools/check.f <file>` preverifies in isolation - not for require-dependent
-  files.** It does not process the file's `require` chain or FFI/`deftype`
-  metaprogramming, so it reports `E-UNDEFINED` on lib words (`>CSTR`,
-  FFI-generated bindings) even for green files. Typecheck a device tool the way
-  it actually loads: `bin/hb --load <full prelude> <file>` with the trailing
-  `MAIN` run line stripped (`sed '/^MAIN$/d'`) so a clean typecheck exits 0
-  instead of throwing at the off-device `CUDA:OPEN`.
-- **A launcher that reuses another file's internals rots silently.**
-  `tools/ptx/matmul-device-test.f` borrowed `ED-SYM`/`ED-LIB`/`ED-H` from
-  `maki/eval-device.f`; when eval-device migrated to the checked bindings those
-  DLSYM words vanished and matmul was left uncheckable (nothing gated it). Prefer
-  a shared library (`lib/ptx/cuda-driver.f`) over reaching into a peer's cells.
-- **Opaque habu exit codes are `throw-code mod 256` - decode before guessing.**
-  A device test dying with exit 56 / exit 211 and no diagnostics was
-  `E-PROC-TRUNCATED` (-2504) / `E-GA-CAP` (-5165): add multiples of 256 until a
-  known error constant appears, then grep `lib/errors.f` and the owning package.
-  Two real hits in one session: the blocked-tile PTX (~28 KB) overflowing a
-  `$4000` child-capture buffer, and 3 blocked-GEMM inputs (8256 cells)
-  overflowing the `$2000` golden input arena. Size capture/arena buffers to the
-  cap the admitting path enforces (launch caps: 4 inputs x 4096 elems), not to
-  the first example that fits.
-- **The generic SBSA torch wheel has no sm_87 ATen kernels - only Triton's own
-  JIT output runs.** Anything that calls a torch GPU kernel fails with
-  `cudaErrorNoKernelImageForDevice`, including the HIDDEN one inside Triton's
-  autotuner (`do_bench` clears L2 via `tensor.zero_()`). Pass a custom
-  CUDA-event `do_bench=` to `@triton.autotune` and keep torch to alloc + memcpy.
-- **Triton `tl.dot` on fp32 silently runs TF32 tensor cores on sm_87** - a
-  measured `rel_err ~8e-4` vs a CPU f32 reference is the fingerprint (pure f32
-  FMA gives ~1e-6). Record the arithmetic class next to any GEMM number; a
-  Triton-vs-f32-FMA comparison is cross-precision and must say so.
-- **A perf hypothesis is only worth its ablation - "load/ALU-bound" was wrong.**
-  The MMA rung-1 diagnosis (scalar fragment loads + 48 cvt/tile starve the
-  tensor cores) predicted ldmatrix as the biggest jump; a 3-mode single-variable
-  ablation (`cg-mma.f MMA-LMODE`) falsified it: dropping every cvt is FLAT and
-  ldmatrix.x4 is ~1.2% SLOWER (43 vs 38 reg). When throughput is invariant to a
-  mechanism swap, the bottleneck is what the swap holds constant (here the mma
-  dependency chain + bar.sync cadence). Build the cheap ablation BEFORE the big
-  rewrite; a negative measured result that redirects two dots is a deliverable.
-- **tf32 fragments ride ldmatrix.b16 as half-pairs - no tf32 ldmatrix needed.**
-  A tf32 value is 2 adjacent b16 halves, so an 8-row x 4-tf32-col tile IS one
-  8x8 b16 ldmatrix tile and the 16x8 A fragment = one ldmatrix.x4 whose 4 result
-  regs map exactly to the mma.sync A layout. And mma.sync.tf32 reads the top
-  bits of the raw f32 register, so `ld.shared.b32` with NO cvt is a valid tf32
-  feed (truncation vs cvt.rna RNE: <1 ulp tf32, inside the licensed rtol 2e-3;
-  keep cvt.rna where the golden must stay bit-identical).
-- **bin/hb bakes ONLY primitives - a generated `constant` is re-read source, not
-  image data.** The stage source's colon words/constants (the whole checker
-  included) are re-parsed from the checkout at every boot (PFX-LOAD-BASE-FILES);
-  EMIT-DICT bakes just the #PL primitive registry, and the AOT boot-run seed
-  arms only on the interactive REPL entry. So "bake a digest into the image and
-  verify at startup" designs need a metacompiler baked-data capability (dot
-  habu-baked-boot-data), not an emitted source line — an injected boot token
-  (VERIFY-BOOT-PIN) died E-UNDEFINED on every boot and bricked self-rebuild
-  (restore bin/hb from a sibling checkout). Corollary: a fail-closed-by-default
-  boot check deadlocks self-hosting — the rebuild command boots the engine over
-  the very prefix it needs to rebuild; default off/warn, strict opt-in.
-- **CHECK! is line-oriented and registers what it certifies.** Feeding it a
-  multi-line definition body returns verdict 1 no matter how well-typed —
-  whitespace-normalize to one line first (prop-test builds single-line PBUF
-  strings). And after a -1 verdict the name is registered, so a CHECKED
-  re-compile of the same text dies duplicate-definition: compile certified text
-  under `0 set-check` and reinstall the hook right after (CHK-COMPILE-CERT
-  shape). Leaving the hook off compiles later definitions untyped, which makes
-  every later CHECK! that references them reject — the failure appears one
-  check DOWNSTREAM of the mistake.
-- **Driving real emitters in isolation works via `included` trio + certified
-  eval, not via the built image.** Retired emitter xts in bin/hb crash on
-  `execute`; instead load src/arch/arm64/{asm,icode,mnem}.f live (object-image
-  precedent), extract the emitter definition from the stage source, CHECK! it,
-  compile, run, and decode CODE words + fixup tables. Generation-suffixed names
-  (NAME-A, NAME-B per check region) beat CHK-MARK rollback for repeated checks:
-  two engine bugs make the rollback route unusable today (undefined-in-evaluate
-  under catch crashes natively, dot habu-undefined-word-in-d9dc3452; CHECK!
-  records go stale across ndict rollback + re-definition, dot
-  habu-check-records-go-4f62cd2e).
-- **Clean up worker workspaces immediately after merging (user rule
-  2026-07-07).** Once a lane's commits are merged into fable and the dot is
-  closed, `jj workspace forget <name>` + remove the directory in the SAME merge
-  window - never leave merged workspaces around. Dozens of stale checkouts
-  invite exactly the collision we hit: another session's cleanup swept them
-  (with one lane's uncommitted work) into ~/Downloads. Corollaries: (a) prefix
-  workspaces by campaign owner (fable-*) so ownership is visible; (b) workers
-  commit early - uncommitted work in a workspace is one cleanup away from loss;
-  (c) never bulk-remove workspace dirs you do not own.
-- **xts live in TWO code regions; validate hook installs against the JIT one
-  (dot habu-stdlib-check-hook-fd883aea).** Baked primitives (`' dup`) sit in the
-  engine binary's `__text` at the PIE image base (~`$104…`, measured 4.36e9);
-  runtime colon/`TRUSTED:` defs are JIT-compiled into the RBASE-VA region
-  (`$300000000..+REGION`, x26/DBASE .. x28/CP). Every real checker hook — `HOOK`,
-  `SNAP-CHECK-HOOK`, `USER-HOOK`, `ES-VERDICT-HOOK` — is a source-loaded def, so
-  its xt is always in `[DBASE, CP)` when `set-check` fires (even inside the baked
-  `bin/hb`, the cold prefix re-JITs the checker). So `set-check` can fail-closed
-  cheaply with two register compares `DBASE <= xt < CP` (no LIT64): 0 stays legal;
-  `1`, a DATA-region address (~4.67e12 > CP), a baked-prim xt, and a code word
-  mis-read via `dbase@ HOOK-CELL + @` (~4.34e9 < DBASE) all fall outside and die
-  rc-70 with a named diagnostic instead of BLRing into garbage. Limit: the window
-  can't tell a true entry from any in-range address (mid-instruction / dict
-  record) — it catches wild installs, not a well-formed pointer into live code.
-  Measure xt magnitudes with the engine before choosing the predicate; do not
-  assume one region.
-- **A computed-argument `set-check` (e.g. `check@ set-check`) is a trusted-
-  inventory site.** The scanner skips string bodies, so `s" … set-check"` fixtures
-  don't count, but a real `set-check` whose argument is neither literal `0` nor a
-  ticked name lands in the file's file-level count in `TRUSTED.md`. Adding the
-  round-trip test to a file with a `file class dot N` count row means bumping N
-  (engine-suite 47→48), not adding a named row — that ratchet is separate from
-  `checked-boundary-lint` (which passed it as a test boundary).
-- **jj worker workspaces have no `bin/hb`.** `bin/` is gitignored, so a fresh
-  `jj workspace add` tree cannot run gates or spawn-based fixtures (task tests
-  die with `E-PROC-SPAWN`). Provision each worker workspace with a *copy* of
-  `bin/hb` (never a symlink into the main tree — a workspace rebuild through a
-  symlinked `bin/` would overwrite the binary other workers are using).
-- **Friend-arena write seal (TFAM 2b-i).** The sound way to make checker/wordlist
-  state unforgeable from user source is a runtime range guard at every raw write
-  *sink*, not name-hiding or type-provenance: only the sink sees the real target
-  address, and `data-base <off> + !` computes it with no engine-word name. Layout:
-  relocate the crown-jewel cells into ONE contiguous DATA band placed BELOW
-  `DATA-START` (so `allot`/`,`/`c,`/DP, bounded ≥ DATA-START by DP-CHECK, cannot
-  reach it by construction — no guard needed there). The latch cell IS the band
-  base (0 = open, band-len = sealed); the guard reads it, so post-seal any write
-  into the band — including the latch — traps: one-way self-sealing. Guard shape
-  (two-band since 2b-v, native + stage0 mirror): `ldr latch;cbz open` gate, then
-  per band `sub;cmpi;b.cc trap` (exit ENGINE-ERROR:SEAL-VIOLATION), mirroring
-  `B-TASK-LIVE-GUARD`/`DP-CHECK`; the branch makes the leaf body non-inlinable so
-  it compiles to an out-of-line call (correct, ~size-neutral). Seal is emitted by
-  the cold-prefix generator (after `PFX-PROVIDE-FILES` in `LCOLDPFX` and in
-  `C-SOURCE-BAKED`) so it fires before the first user token on every entry
-  (--load / stdin / evaluate / REPL / baked). Engine writes to the same cells use
-  dedicated `DATA <CELL> STR,` prims (BSETCUR/BWORDLIST/BSETCHECK/…), never `!`,
-  so word-definition/packages/TRUSTED:/DEFER keep working while raw `!` traps.
-- **Emitter words in habu1.f/habu2.f are checked.** `: FOO ( areg -- )` is a typed
-  stack effect, not a comment — `areg` is an unknown type. A word taking a register
-  number is `( n -- )` (like `DP-CHECK`). And definition ORDER matters: a guard used
-  by an early prim (e.g. `BPOLL` ~line 543) must be defined before it, or the build
-  dies `E-UNDEFINED` — habu1.f words ARE visible in habu2.f (DP-CHECK is used there),
-  so a cross-file E-UNDEFINED is really an earlier same-file forward-reference.
-- **Worker workspace path discipline.** Edit/Read the worker workspace absolute
-  path (`.jj-ws/<ws>/…`), never the main-tree path — a `cd` in Bash does not change
-  where Edit/Read resolve. Editing `/Users/.../habu/src/...` while Bash builds in
-  `/Users/.../habu/.jj-ws/<ws>/src/...` silently edits the wrong tree (the build
-  never sees your change; the main tree gets polluted). Commit each proven-green
-  slice immediately — uncommitted worker edits can be clobbered.
-- **Gate timeouts under concurrent-agent load are false.** A gate RED of
-  `hb script argv mode`/`process-test` with `outcome: timeout code 9 / rc 137` or
-  `fork worker throw -2502` at ~2min wall / <30% CPU is fork/spawn exhaustion, not
-  a real break. Re-run `test/run.f -- --pool-slots 2 --nested-pool-slots 1
-  --budget-ms 240000` and re-run the failing fixture in isolation `</dev/null`
-  before treating it as a regression. (`bin/hb file.f` also drops to a stdin REPL
-  after the file, so test file-mode with `</dev/null`.)
-- **Linear values laundered through `{: :}` locals — locals bypass `LIN-CHECK`.**
-  `LOC-REF?` re-pushes a local's tv straight onto `DCUR` with no CHECKER-STEP, and
-  `LOC-BIND` of a *typed* linear local is an explicit step (`LINEXP=1`) that skips
-  snapshot/check — so `{: x:own :} x x` (dup), `{: x:own :}` (leak) and
-  `x FREE x FREE` (double-consume) all certified while the stack `dup` correctly
-  rejected. Fix (option b, a real static discipline, not a guard): reject binding
-  any value that resolves linear into a local outright (`LIN-LOCAL-BIND-CHECK` in
-  `LOC-BIND`, new `LINLOCBAD` flag → `E-LINEAR-LOCAL`/`factor_linear_local`); plus
-  taint every poly local reference (`LIN-LOCAL-REF-TAINT` in `LOC-REF?`) so the
-  deferred case `( a -- ) {: x :} x x FREE FREE` (poly local that only later binds
-  linear) is caught by `LIN-TAINT-SCAN`. Both are gated on `LIN-ANY?`, so the whole
-  no-`deflinear` self-build/stdlib pays nothing and non-linear locals are untouched.
-  Full path-sensitive consume-exactly-once (referenced once per live branch instead
-  of blanket-reject) needs per-local live state snapshotted on the CF frames —
-  deferred to item-12 locals width-awareness, dotted separately. Lesson: an
-  explicit-effect step and a bare tv re-push are the two ways a discipline that
-  only watches `DCUR`/`RCUR` counts can be blindsided; a new value sink (locals,
-  fields, a store) must be checked at its own bind/ref site, not assumed covered.
-- **DISCOVER (record-only event log) could not replace check-core's whole-file
-  dep scan until its walker scanned colon bodies.** The original
-  `tools/source-discovery.f` skipped every colon body, so it never saw the
-  dominant real idiom — a `s" path" required`/`included` guarded inside a
-  colon-defined helper then bare-called at top level (e.g.
-  `tools/check-all-errors-core.f` `CA-MAYBE-VERIFY-SOURCE`) — and EC:BUILD keys
-  built on it could return stale hits. RESOLVED (TFAM 5 redrive,
-  docs/design-tfam-5-redrive.md): the walker now lexes the ENTIRE token stream,
-  records guarded loaders unconditionally (superset of the runtime closure —
-  safe for keys, and sound for preverify under the repo's monotone
-  load-if-absent guards), and rejects fail-closed on dynamic paths, loader
-  shadow/undefine, `UNDEFINE-IF-DEFINED` retirement, and bad openers unless the
-  file is a declared boundary in `tools/dynamic-tail-manifest.f` (path+reason
-  table; entries skip the offending form, never record it). Verify any future
-  closure source against the colon-wrapped idiom before trusting it.
-- **A scratch-capacity limit must fail only the consumer that needs the value,
-  not the whole scan.** Discovery's loader-path scratch (`SD-PATH`, $400) threw
-  `E-DISC-CAPACITY` while merely *consuming* any >1KB string literal, falsely
-  rejecting `src/core/checker.f` from whole-file scanning. Runtime loader paths
-  are capped at `INCLUDE-PATH-CAP` anyway, so oversized strings are legal data:
-  set an overflow flag during the string scan and reject only if that string
-  reaches a loader word.
-- **`SB-CAP` is 1024 — build >1KB test fixtures with `APPEND-FILE` loops, not
-  the string builder.** An SB overflow inside a fixture builder exits the whole
-  suite with a bare masked rc (e.g. -3804 -> exit 36) and no output; if a test
-  run dies silently with a small rc, suspect an uncaught throw in fixture
-  *construction* before T-REPORT.
-- **`--all-errors --source-list` was a proven no-op (D4) — the redrive checks
-  original files with cross-file support.** The materialized temp is only
-  `"path" required` lines (zero defs), so all-errors scanned nothing and only
-  preverify's FIRST error surfaced. Now `CHK-RUN-ALL` in list mode walks
-  `CHK-DEP-ORDER`, runs `CHECK-ALL-ERRORS-FILE` per original file, and
-  registers each clean file through `CHECK-ALL-ERRORS-SUPPORT+` so later files
-  see real prefix state (support replayed after every `CHECKER-SCOPE-START`,
-  failures annotated and rethrown, never swallowed). Failed files are NOT
-  registered as support: replaying a broken file would raw-fail every
-  successor; missing-def diagnostics downstream are the honest cascade.
-- **all-errors support replay funnels through verify-source.** `CA-COLLECT-SUPPORT`
-  only collects byte ranges; the actual replay is `VERIFY:SOURCE-BUF-IN-SCOPE`.
-  So an all-errors support gap has two halves: all-errors must COLLECT the form
-  (deftype/deflinear/value-record/immediate/EXPORT were missing) AND verify-source
-  `RECORD-DEFINER?` must DISPATCH it (top-level `TRUST` was ignored). A collected
-  form verify-source ignores is a silent no-op. Fix both ends for parity.
-- **verify-source drops top-level strings; recover them with a skip ring.** The
-  main scanner uses `NEXT-SCAN` (SKIP-STRINGS set) which discards `s" ..."`
-  literals, so a bare `s" NAME" s" SIG" TRUST` loses its args. Record the last two
-  skipped top-level literals into a 2-slot ring reset per `NEXT-SCAN` call; at the
-  `TRUST` token the ring holds exactly that statement's NAME/SIG (both skipped in
-  the same call). Value = literal minus opener+space prefix (3 for `s"`, 4 for
-  `S\"`) minus the closing quote.
-- **`certify: stage2-src rejected rc 70 (non-blocking) / sig-type: at 'EXIT'` is
-  pre-existing.** The build's `BF-CERTIFY-ACT` runs `VERIFY:SOURCE-BUF` over the
-  whole engine source; it rejects non-blocking with the original verify-source too
-  (proven by rebuilding both ways). Not a signal that an engine edit broke
-  verify-source — reproduce with the unmodified tree before attributing it.
-- **`test/gate-stdlib.f -- lint-tools` standalone and the gate's phase 17 are
-  DIFFERENT code paths.** The standalone slice runs only the `TEST:SUITE` cases
-  in `test/gate-stdlib-cases.f` admitted by `SUITE-LINT-TOOLS-LABEL?`; it never
-  loads `test/gate-stdlib-lint-tools.f`. The full gate's resident phase 17
-  (`TRWS-RUN` -> `GSI-LINT-TOOLS`) loads only that GSI body. Wiring a new lint
-  into one place leaves the other silently green — add it to BOTH (GSI body +
-  TEST:SUITE row + label allowlist) and prove each path red with a transient
-  drift before trusting it (proven for tools/stdin-closure-lint.f and, later,
-  tools/trusted-inventory-test.f which lived only in the GSI body until it was
-  added to the `trusted-inventory` TEST:SUITE row + allowlist). The standalone
-  entry also assumed a caller prelude and died E-UNDEFINED: FS-PATH-CAP at load
-  (gate-stats.f uses lib/fs.f without requiring it); an entry file must require
-  its own deps so `--load` works standalone.
-- **A bundled gate fork hides which sub-suite failed; split one fork per
-  sub-suite.** The old `lint-tools/dot-maki` fork ran dot/maki/maki-ns/host/
-  trusted-inventory sequentially, so `GT-POOL-FAIL` printed only
-  `FAIL: lint-tools/dot-maki`. Worse, a test file's `T-REPORT` `die` exits the
-  fork and BYPASSES `GSI-INCLUDE`'s catch/per-file FAIL line, so a
-  trusted-inventory ratchet drift left no sub-suite name at all — it was
-  mis-blamed on dot-graph churn three times. Fix = one `GT-POOL-START-FORK` per
-  sub-suite (`lint-tools/dot|maki|maki-ns|host|trusted-inventory`); each fork's
-  exit maps to its own label. Setup is loaded once in the parent and inherited
-  copy-on-write, so the split adds no setup cost; captured assert detail is
-  preserved above the per-fork FAIL line.
-- **The native publish path re-records every signed definition through `TRUST`.**
-  `EM-COMPILE-PUBLISH` routes any colon definition WITH a `( ... )` sig through
-  `EM-COMPILE-PUBLISH-TRUSTED` → `C-CALL-TRUST-PEND`, i.e. after the hook returns
-  the engine calls checker `TRUST(name, declared-sig)` → `USIG-ADD`. Any
-  "reject but continue" checker mode must survive that re-parse: before TFAM 6 a
-  definition with an unparseable sig under `MULTI-ERR` killed the whole load with
-  `checker: bad stored signature` (rc 76) from this second path, not from CHECK.
-  `USIG-ADD` now skips the row in multi-error mode (own-name = already counted;
-  foreign name = raw TRUST row, counted + reported via `BADSIG-XT`).
-- **Top-level `['] evaluate catch` in the stdin interpret loop loses the throw
-  code (rc 0).** The same catch executed from *compiled* code receives the real
-  code, and an uncaught declaration throw still aborts a file/stdin load with a
-  nonzero exit — so loads stay fail-closed. In stdin suites, route eval-catch
-  probes through a compiled helper (`TDT-NEG` in test/type-decl-suite.f), never
-  call the trusted eval-catch word directly at top level.
-- **`bin/hb` loads its checker prefix from source paths at boot.** Edits to an
-  already-listed prefix file (checker.f, type-family.f, sumtype.f...) take
-  effect on the next `bin/hb` run without a rebuild — but a NEW prefix file
-  needs all six manifests (habu2.f PFX rows + label init, bootstrap/cg/forth.fs
-  mirror, tools/bootstrap.sh, tools/build-fixpoint.f, tools/diagnose-hb-core.f,
-  tools/hb-build-lib.f key list, test/run-files.f) plus a rebuild, and the first
-  ceiling it trips is stage2's `S2-SOURCE-CAP` ("stage2: source exceeds buffer").
-- **A seed `bin/hb` older than the engine prefix crashes the refresh AND the
-  gate with `E-UNDEFINED: <new-word>` + SIGABRT (rc 134) + a crash-reg hex
-  dump — and `install --force` still exited 0, leaving the stale binary.**
-  After merging an engine-prefix change (new checker word, new prefix file),
-  refresh the main tree's `bin/hb` immediately and reseed every live worker
-  workspace from it; a worker whose gate dies at load line 1 with
-  `E-UNDEFINED` on a freshly-merged word has a stale seed, not a code bug.
-  Recovery: copy a current workspace engine over the stale seed, rerun the
-  install, rerun the gate. The exit-0-on-crashed-refresh fail-open is dotted
-  (habu-install-force-exits-09c3c981).
-- **Closing a dot (`dot off`) edits the dot graph, so the archive commit itself
-  must pass `dot-dep-lint` before pushing.** Archiving
-  habu-fix-ptx-collective-997cfcce left five dots whose `blocks:` lists named
-  the now-deleted id; the pushed head went red at gate phase 17 while every
-  gate I ran had targeted the pre-archive tree. When closing a dot, `rg` its id
-  across `.dots/` and drop it from every `blocks:` list (delete an emptied
-  `blocks:` key entirely) in the same commit, then gate that exact tree.
-- **Native guard widenings do not propagate to the stage0 mirror by themselves —
-  only the seal-absence pins alarm the drift, and the cheap runtime parity proof
-  is forging the CHECK_ONLY seed.** 2b-v made native PROT-GUARD two-band while
-  the gforth mirror stayed single-band + unguarded cp!/ndict!; nothing failed
-  because pins count what IS, not what SHOULD be. When widening a native seal
-  surface, in the same effort re-pin `SAB-GUARD-PINS` red-first, mirror the
-  emission, then run `HABU_BOOTSTRAP_CHECK_ONLY=1 tools/bootstrap.sh` and pipe
-  seal.f-style forges (`data-base <off> + cp!` etc.) straight into the built
-  `hb-stdin` — rc 83/0 against the actual stage0-built engine beats source
-  review. Mind file order: forth.fs defines sinks top-down, so a newly guarded
-  early sink (cp!/ndict!) needs PROT-GUARD moved above the primitive bodies,
-  where native has it next to the register constants.
-- **A mechanical guard on all FFI arg registers is UNSOUND — guard only
-  [0..nargs); the trampoline that already carries nargs is the sound sink, and
-  the rest is a checker-signature boundary.** ffi-call loads 8 cells into x0-x7
-  regardless of arity, so slots past the real args hold STALE values from a prior
-  call — PROT-GUARDing all 8 false-traps a legit low-arity call whose stale slot
-  holds an old band pointer. Only ffi-call-n carries x14=nargs, so it is the one
-  trampoline that can guard soundly (loop argbuf[0..nargs), guard each, BEFORE the
-  x20 repurpose so x20 still = DATA). Make the CHECKED library funnel its
-  integer/pointer calls through it (CALL0-6/DLOPEN/DLSYM -> ffi-call-n) instead of
-  raw ffi-call — a pure lib change, no prim-signature/checker.f edit. Adding nargs
-  to ffi-call or int-nargs+sret to ffi-call-abi to guard THEM needs their PRIM:
-  sigs widened in src/core/checker.f; if that file is another worker's, it is a
-  named boundary + a dot, not a bypass. Red forge: `data-base <band-off> + 0
-  FFI-PTR-ARG!  1 0 FFI-CALLN` with fn=0 traps 83 (pre-fix it BLRs to 0 ->
-  signal/rc134, a distinct outcome); stale-slot proof is nargs=0 with a band value
-  in slot 0 -> NOT trapped.
-- **A `0 set-check` span may exist only because ONE primitive lacks an axiom
-  row — probe before accepting it as a boundary.** Both hook-install spans
-  (tools/lint/text.f, tools/check-core.f) disabled checking solely because the
-  hook body calls `CHECK!`, which the checker did not know. A one-line fixture
-  (`s" CHECK!" s" ptr u8 n -- n" TRUST` then the hook definition, under the
-  baked hook) proved the span retirable; the swap keeps the file fully checked
-  and turns an opaque check-off region into a single audited prim-axiom TRUST
-  row. Duplicate TRUST of the same primitive in two files is idempotent.
-- **Clean up a lane's jj workspace the moment its work is merged and the agent is
-  finished — `jj workspace forget <name>` + remove the directory in one step.**
-  Finished-lane workspaces accumulated for weeks (~40 dirs) until a manual bulk
-  removal looked like data loss and cost a restore-and-verify round trip; stale
-  workspaces also hold stale baked `bin/hb` binaries that produce fake gate reds
-  when reused. Verify first (no unmerged commits, clean wc), keep active lanes,
-  parked device-blocked chains, and the merge-gate workspace.
-- **A static checkability probe is only as honest as its registry context:**
-  probing src/habu/aot-closure.f through `tools/check.f` came back clean
-  because check-core's own requires (tools/json.f) had put JSON-DIAGS into
-  the probe registry - the real maker compile then rejected it. When asking
-  "does this file check in context X?", the oracle must BE context X (the
-  live stage/maker compile), not a tool whose own dependency closure
-  overlaps the words under test.
-- **Suppression is process-local; ownership is not.** The gate's fork-child
-  span dedupe (GS-CHILD-OWNED?) only ever compares spans emitted within one
-  process, so a pool parent's authoritative pass-hook spans must bypass it
-  (GS-SPAN-AUTH) - a fork child that is itself a pool parent otherwise
-  swallows a nested slot's span whenever labels collide. And any identity
-  qualifier must be applied identically to both halves of a (test row, span)
-  pair; since pairs are always emitted by one process, qualifying with the
-  emitting process's generation keeps them matched, while qualifying
-  authoritative spans with the slot's generation would silently break
-  attribution. Split "who owns this record" from "which identity scope is it
-  in" before adding any qualifier to a byte-keyed dedupe.
-- **An uncaught throw in a `--load` child exits with the throw code's low 8
-  bits and prints nothing** (E-STR-BOUNDS = -2200 surfaced as an opaque rc 104
-  with empty stderr). Boundary validation that can fail on external input (env
-  vars, argv) must `die` with a source-pointing message naming the input;
-  keep bare named throws for in-process programmatic callers, where the
-  enclosing harness still has the code.
-- **A 1-byte diagnostic + clean exit means a raw engine capacity path, not a
-  throw.** The definer code paths write only the CURRENT TOKEN to stderr and
-  `exit_group` with a fixed code when NDICT/CP hit their caps (dictionary full
-  = ':' + rc 77, code space = rc 76) - uncatchable by `catch`, invisible to
-  the BTHROW de-masking, and coincidentally equal to unrelated E- codes
-  (E-LINT-TOKEN-CAP is also 77). When `catch` cannot intercept a death, stop
-  hunting for throwers and hunt for exit_group emitters; when output is one
-  token, suspect a reporter that prints [TKA/TKL] with no label. Falsify
-  cheap hypotheses with in-state controls (`' evaluate catch` on a known
-  throw) before believing a code-number match.
-- **Anything that rides the AOT seed pass is invisible to batch programs.**
-  EM-SEED-AOT runs at LEXIT, and batch input (piped stdin AND --load files) is
-  consumed by the pre-LEXIT interpret loop, so AOT-seeded words (BP., stepper)
-  and AOT-restored state (the protected-WID registry) do not exist while a
-  batch program runs - they appear only for post-seed interactive sessions.
-  Probe with an AOT-seeded word (`BP.` E-UNDEFINED = pre-seed) before assuming
-  boot-restored state is visible. Boot-restored DATA with no name-relocation
-  dependency belongs in EM-STARTUP, not the LEXIT seed.
-- **A tool's full require closure can outgrow the engine dictionary silently.**
-  The gate-runner-support+entry closure registered ~9.3k dict entries; against
-  the old DICT-CAP 8192 it exhausted mid-load and the definer exited rc 77 with
-  a bare token byte and no label. Nothing in the resident gate noticed because
-  phases fork per-phase subsets - only the documented standalone invocation
-  loads the whole closure in one process. Lesson: a load path that only ever
-  runs subsets needs an EXPLICIT whole-closure regression, and capacity exits
-  must carry a label (`hb: dictionary full at: <token>`), never a lone byte.
-- **Definition-compile failures under catch+evaluate crash; interpret failures
-  are swallowed.** `[: s" : X ( -- ) nosuchword ;" INCLUDE-EVALUATE ;] catch`
-  SIGBUS-crashes (rc 134) after printing E-UNDEFINED, and an interpret-level
-  failure under the same boundary prints its diagnostic but returns 0 to catch
-  — while plain stdin and --load exit an orderly rc 70 for both. Found probing
-  the item-9 construct fail-closed contract; repro needs nothing new (dots
-  habu-def-compile-failure-7182eeb2, habu-interpret-err-under-8876b500).
-  Lesson: never assert engine-compile failures through in-process TCE-CATCH —
-  pin them as gate child-process cases (GE-RUN-STDIN + GE-EXPECT-RC), and
-  treat catch-around-evaluate outcomes as untrustworthy until those dots close.
-- **Reuse the step machinery for new checker forms; a reserved form must
-  consume its operand tokens even on failure.** construct's effect is built
-  from SUMV metadata and applied through the ordinary CHECKER-STEP, which
-  bought unification diagnostics AND exact linear conservation for free (the
-  linear-suite parity pins passed first try). And when a capture form's
-  resolution fails, still consume the remaining operand tokens (poisoned
-  state): letting them fall through to word lookup turned a hard ownership
-  reject into a soft uncheckable-undefined verdict, which multi-error loads
-  would then trust-and-publish differently.
-- **A new consumer is a bug magnet for old producers — instrument the sym/record
-  store, don't stare at the new code.** The MATCH suite's CASE-interleave
-  fixtures failed on plain `swap`; the new match machinery was innocent. Walking
-  the checker's authoritative stores with tiny in-suite probes
-  (CHECKER-FIND-ACTIVE-SYM, USIG-FIND-OFF-SYM, SYM-PKG$/VIS dumps) found TWO
-  effect records per qualified definition — every `PKG:TAIL` def (generated
-  constructors included) also records under the bare-global tail, certifying
-  calls the engine rejects and SHADOWING same-named prims for all later
-  definitions (dot habu-qualified-defs-leak-aadeb5c9). The TRUSTED:-qualified
-  control probe (only ONE record, bare-global) localized it to the engine's
-  post-C-QUALIFY-DEF record call in three minutes of probing. Lesson: bisect by
-  declaration-set difference, then dump the store — and expect word-named
-  ADT variants to surface every latent name-resolution bug in the pipeline.
-- **Rank new structural rejects above the uncheckable verdict, or trailing
-  tokens soften them.** A hard match reject (unknown family, overflow) leaves
-  the rest of the block as undefined-word noise, and UNCK would have won in
-  CHECK-VERDICT, blurring verdict 0 into 1 (which multi-error loads trust
-  differently). The MREJ latch in the hard-reject class fixed the whole failure
-  family at once; construct solved the same problem earlier by consuming its
-  full token form even when poisoned. Any future capture form needs one of the
-  two from day one.
-- **Reason codes must be latched with the token pin, not derived at render
-  time.** The §24 match diagnostics work because every failure site latches a
-  reason code under the same first-wins discipline as the FAILSET token pin
-  (and the nonexhaustive latch carries the family/bitset for the name walk).
-  Two ordering traps found by fixtures: truncation must latch BEFORE the
-  output-boundary coercion (whose mismatch otherwise steals the reason), and
-  the reason arm in DCODE/REPAIR-CLASS must rank ABOVE the generic
-  UNDEFERR/DEADERR flags, which post-reject token blur routinely sets.
-- **Suite-visible checker words are checked even in test files: bools are not
-  n.** Three round-trips lost to `-1`/`0` where `bool` was declared
-  (DIAG-JSON!, a CONTAINS? helper, and a render walk flag that only the
-  fixpoint CERTIFY pass caught — local stdin runs parse unchecked and stay
-  green, so run the certify path early when adding checked prefix words).
-  The `0 0=` / `0 0= 0=` literal idiom is the existing convention; T=-style
-  n asserts need bool-specific helpers inside checked words.
-- **Capacity caps sized to "current largest file + headroom" are time bombs;
-  label every capacity exit.** Item 9 grew checker.f past the lint
-  tokenizer's TMAX and shadow-lint died a BARE rc 77 (unlabeled throw,
-  nothing on stderr standalone) — the same failure class as the DICT-CAP
-  lesson above, in a different store. Raised TMAX and the shadow-lint byte
-  cap (which was within 2.7KB of tripping too) and gave TOKEN-ENSURE a
-  labeled die. When a cap comment names a specific file, grep that file's
-  growth in any slice that touches it.
-- **Check whether an existing checker-owned bridge generalizes before designing
-  a new coercion.** Product destructure looked like it needed a new
-  "hidden-run to field-types" unification window; it fell out of TWO existing
-  mechanisms unchanged: the pending-constructor window at k=0 certifies any
-  empty-bodied generated word whose declared sig is metadata truth (expected
-  row = SGIN + 0 cells = inferred row), and the LOGHID logical/hidden row
-  coercion is already SYMMETRIC in U-ROW — so parametric UNMAKE's open input
-  absorbs a caller's concrete hidden run with no input-side special case.
-  Reading the unifier before designing saved a whole checker feature. Same
-  story for publication: recording fixed `make`/`unmake` tails as SUMV rows
-  bought the entire ctor-package protection wall for free.
-- **Stage a cross-layer capability so every commit is one-refresh buildable
-  from its parent's binary.** build-fixpoint `require`s tool sources into the
-  RUNNING engine, so a habu-layer consumer of a brand-new checker word breaks
-  the refresh from the parent binary (TFAM 15 hit E-UNDEFINED CHECKER-DEFPRODUCT
-  live). Land the checker word + its PRIM: exposure in commit A (stage-compiled
-  from source, so ANY parent binary builds it), and the verify-source/check-tool
-  consumers in commit B (A's binary exposes the word). TFAM 14 folded both into
-  one commit, which gates green in-session but leaves refresh-from-parent
-  broken; the two-commit shape costs nothing and keeps the chain sound.
-- **PRIM-FIRST-SYM cannot answer "is this name a prim?" — offset 0 is a real
-  record.** It returns the first PES row's effect OFFSET, and the very first
-  prim row legitimately lives at USIGS offset 0, so `dup` (row 0) reads as
-  "no prim". FIND-SIG's prim fallback carries the same conflation. Existence
-  checks must use PRIM-FIRST-IDX (slot+1, 0 = none). Found building
-  CHECKER-EXPORT's E-EXPORT-PRIM reject; the suite caught it first run.
-- **The $40000 whole-source lint caps all tripped together when checker.f
-  crossed 262144 bytes** (EXPORT alias work) — trust-lint (gate + argv),
-  trusted-inventory, maki-dep-lint, and error-code-lint each died "file
-  exceeds buffer" with NO file name, exactly the labeled-capacity-exit lesson
-  above replaying in four more stores. All five caps are now $80000 with
-  comments naming checker.f, and the shared lint READ-FILE capacity/IO exits
-  print the offending path (LINT-READ-DIE, tools/lint/text.f). When one cap
-  named after a growing file trips, sweep EVERY READ-FILE buffer cap in the
-  same pass instead of raising them one gate failure at a time.
-- **A "no name clash" premise must be checked against TOKEN SURFACES, not just
-  defined words.** The EXPORT dot said "no top-level EXPORT exists today" —
-  true for the dictionary, false for the tree: hb-build's --repl path treats
-  line-leading `EXPORT ` as a build directive (lib/source.f COMMENT-EXPORTS
-  strips it), verify-source consumed it as a no-op declaration, public-
-  signatures collects the names, and lib/prelude.f even defined a top-level
-  `export` shim so directive-carrying programs stayed plainly loadable. The
-  keyword landed as a context split (in-package = re-export declaration; top
-  level = the directive no-op, engine and verify-source agreeing 1:1), and the
-  prelude shim became dead code (a keyword shadows any same-named word at
-  interpret level) and was removed. Sweep grep for the token in STRINGS,
-  comments, directives, and preprocessors before declaring a name free.
-- **checker.f is a boot-time source prefix, not baked engine bytes.** bin/hb
-  compiles src/core/checker.f from the WORKING TREE at every launch, so a
-  checker.f-only edit changes behavior with byte-identical binaries (the
-  byte-fixpoint proves engine-source determinism only), a PRIM: exposure row
-  takes effect for any binary running in that tree, and the TFAM-15 two-commit
-  staging rule really constrains ENGINE (habu1/habu2) changes plus tool
-  sources `require`d into the RUNNING engine — the checker half follows the
-  tree, not the binary. Corollary: prefix-internal colon words are dictionary-
-  visible but checker-invisible to later tool sources unless a PRIM: row
-  persists their effect (CHECKER-PACKAGE-ACTIVE? hit this).
-- **The gap you ledger as "follow-up" will bite before you close the dot —
-  write the proof that exercises it first.** The EXPORT AOT single-body proof
-  failed on first run with E-UNDEFINED because hb-build's COMMENT-EXPORTS
-  stripped the in-package re-export line — the exact divergence the slice-2
-  ledger had filed as a follow-up. The byte-identity proof (alias-variant AOT
-  binary SHA-equal to the source-name-twice variant, same output path so the
-  codesign identifier matches) both caught the gap and pinned the tree-shake
-  contract; the fix (package-aware directive strip) was 30 lines with both
-  miss modes failing safe only BECAUSE the keyword's top-level no-op had
-  landed first. Proof-first ordering turned a latent wrong-program bug into a
-  same-session fix.
-- **Token lints must match dictionary-significant words case-insensitively.**
-  The dictionary is case-insensitive, so `CREATE BUF` defines a global and
-  `;package` closes a package exactly like the lower-case spellings — a
-  lint matching definers/`package` with `LINT-STR=` has both an evasion vector
-  (upper `CREATE`, upper closer leaving depth stuck > 0 hides every later def)
-  and a false-positive vector (upper opener not counted). Proven red-first in
-  the maki-ns-lint reconciliation: 3 misses + 1 false positive on 5 fixtures.
-  `LINT-STR=CI` for anything the engine resolves; keep exemption prefixes
-  (`E-`) case-sensitive so whitelists stay narrow.
-- **Probe the whole USE PATH before sizing a capability slice — the second
-  wall hides behind the first.** Storable-layouts S1 was designed as one
-  checker change (`!`/`@` accepting a `ptr family` address, width-1 tier);
-  a pre-implementation probe of the consumer pattern showed the typed address
-  itself was unproducible — `( -- ptr enum ) VAR-NAME` rejected because a var
-  could not bind a layout pointee (U-TYPE's row-level rule firing under the
-  T-PTR arm's PAIR-STRICT context). Without that probe the mem arm would have
-  landed green-but-unreachable from checked code. The fix keyed on an existing
-  invariant instead of new state: PAIR-STRICT has exactly one call site (ptr
-  pointees) and PAIR inherits it, so CUR-STRICT already IS the "inside a
-  pointee" context flag — one gated relax there, no new mode variable.
-- **A protected table's adjacent control cell belongs to the same guarded
-  metadata band.** Extending the protected-WID table moved `UNCGH-CELL` to its
-  former upper boundary but left that reporter pointer writable, so a user
-  store could redirect the uncaught-throw branch. Define the band through the
-  final engine-owned cell, mirror that length in stage0, and pin both the last
-  protected byte and the first writable byte.
-- **A raw boxed pointer needs bounds metadata at the allocation boundary.** A
-  payload index was applied directly to `[tag|payload]`, so a negative index
-  could overwrite an earlier record. Keep the public tag-first pointer ABI,
-  store capacity in a hidden preceding cell, reject both signed bounds before
-  address arithmetic, and prove the rejected write leaves its neighbor intact.
-- **Independent checker passes need independent registry scopes.** The nominal
-  scan registered valid type families, then `--all-errors` replayed the same
-  source inside that still-mutated scope and diagnosed duplicates. Roll back
-  the nominal/lint phase before replay; the outer command scope still preserves
-  transactionality without leaking pass-local declarations.
-- **Mismatch attribution must come from the failed unification pair, not a row
-  scan.** A matched ADT beside the real failure made `family` name the wrong
-  type; a scalar failure beside an ADT could invent a family. Capture the first
-  failed `(actual, expected)` type pair, process row heads before recursive
-  tails so width differences reach that pair before an occurs-check backstop,
-  and render optional metadata only from the captured terms.
-- **Repair diagnostics are a sum of evidence shapes, not one nullable mega-
-  record.** Definition validation required spans and stack rows from declaration
-  failures that never owned them, while packet generation dropped declaration
-  fields and ADT family identity. Dispatch on the diagnostic shape, preserve its
-  required evidence, and never fabricate fields from the other variant.
-- **Typed storage with untyped accessors does not preserve semantic roles.** An
-  `n` converted independently at a dtype or layout store can satisfy either
-  range when their tags overlap, and converting a typed fetch straight back to
-  `n` erases the only proof consumers need. Carry the family through internal
-  APIs and locals; convert only inside named wire or private table-index owners.
-- **Cross-kind name collision checks must be declaration-order symmetric.** The
-  variant path rejected family tails, but the family path never scanned prior
-  variants, so identical names accepted in one order. Apply the same in-scope
-  rule at both declaration gates and pin unrelated-package acceptance.
-- **Cache-hit tests must own the cache state that makes a hit possible.** An
-  object-cache assertion run without `HABU_BUILD_CACHE` can only miss, while a
-  shared warm artifact may bypass object production entirely. Bind a fresh
-  gate-local cache before proving store, restore, or relink transitions.
-- **Typed layout pointers need a generative introduction boundary and fetch-
-  time validation.** Letting an ordinary `ptr a` unify with `ptr FAMILY`
-  proves neither extent nor continuing representation validity. A sealed
-  allocator must own count, stride, zero-image, and bounds; build its generated
-  source before allocation so generator failure cannot leak DATA. Raw aliases
-  can still corrupt a valid image, so every typed fetch must validate active
-  tags before publishing the bundle. Erase every one-shot authorization word
-  and backing cell after compiling its direct callers: a globally callable or
-  writable arming surface turns the boundary back into an unchecked cast.
-  Validate qualified-name grammar before allocation because native definer
-  failures exit rather than unwind `catch`.
-- **Compiler replay evidence must be immutable, source-bound, and consumed
-  exactly.** Publish a canonical certificate from the checker transaction,
-  freeze the checked source and certificate into a read-only compiler-owned
-  blob, key rows by source-byte offset, and require pass two to consume every
-  width/bind/fetch row once. A live checker lookup or token ordinal lets stale
-  state and alternate hooks change lowering after acceptance.
-- **Proof tables are arenas, not policy caps.** Width and fetch evidence scale
-  with source complexity; fixed row arrays turn a valid large definition into
-  an internal failure. Grow the producer tables and validate byte arithmetic at
-  the immutable consumer boundary.
-- **A growing boot-prefix list needs a growing pin manifest.** Adding core
-  dependencies while retaining a fixed file-count buffer makes recovery fail
-  before it can certify the new prefix. Store ordered per-file digests in a
-  byte-growing manifest; keep the independent exact row-count tripwire.
-- **Bootstrap-safe proof producers need an early fail-closed dispatcher.** The
-  checker can run before the full layout producer loads, so install a sealed
-  package dispatcher immediately after the checker; it may publish only the
-  canonical empty certificate until the full producer installs exactly once.
-  Define its checker-owned package only after `CHECKER-PACKAGE` exists in the
-  cold source stream, and add every new prefix dependency to the transitional
-  bootstrap stream; an older engine cannot load a path absent from its baked
-  prefix table.
-- **Seal the owner package, not only its authority words.** Undefining a
-  producer hook removes the old spelling but an unsealed package can republish
-  authority-shaped exports. The native reserved-name table, checker predicate,
-  and forge tests must cover every trusted package owner.
-- **Variant guards certify both the expected tag and its domain.** A guard row
-  without the certified variant limit cannot prove that a fetched tag belongs
-  to the family. Encode `{offset,tag,limit}`, validate `0 <= tag < limit`, and
-  reject malformed descriptors before pass two copies or executes them. Replay
-  must also reject an observed guard tag outside that domain before deciding
-  whether a guarded nested check is active.
-- **Primitive metadata keys include the defining package.** Package-scoped
-  words may share an unqualified name, so a primitive/effect registry keyed
-  only by spelling can attach the wrong contract. Resolve and record the exact
-  package-qualified producer identity.
-- **Package new seams; do not namespace-migrate an unrelated regression.** A
-  fixed-range test needed three literal updates, not a file-wide API rewrite.
-  Preserve established test helpers unless the feature actually changes their
-  boundary; put only the new helper surface behind a package.
-- **Generated assertions must respect interpret-mode control limits.** Habu's
-  top-level interpreter does not own compile-only `if`/`then`; emit a small
-  checked assertion word, then call it at top level.
-- **Generated failure branches need the full named-error contract.** A numeric
-  code alone does not satisfy `die`; emit the diagnostic string and code so the
-  assertion itself remains checked and the failure is attributable.
-- **Certificate operand positions follow the local-group capacity, not shuffle
-  arity.** The four `P2W` scratch cells bound only fixed-arity stack operators;
-  local bind evidence can name any of 64 group positions and must validate
-  against `TXN-LIVE-W-CAP`.
-- **A recovery vocabulary must never leak into the ambient search order.**
-  Leaving the private guard vocabulary active made its `BAND` helper shadow the
-  existing instruction emitter and crashed stage0 generation. Keep the legacy
-  global guard API unchanged; resolve private additions with balanced local
-  `also`/`previous` brackets at each call site.
-- **Recovery seal guards must use the native friend-latch boundary.** A second
-  prefix latch diverges from native self-hosting and can reject the compiler's
-  own baked package definitions. Mirror the single friend latch and its cold
-  prefix transition instead of adding another mutable authority bit.
-- **Seal source transitions at the interpreted token boundary.** A native
-  store emitted while assembling the source buffer runs before any prefix word;
-  append an idempotent seal token after the trusted prefix instead. Internal
-  builder binaries carry an emitter-only package flag and never become the
-  installed user engine.
-- **Writable extents become sound only in one explicit callee wrapper.** A
-  universal binding generator lets generated source mint trust and mutable XT
-  caches permit redirection. Keep each symbol in an audited `TRUSTED:` word,
-  fix every direction and extent there, and seal the package after definition.
-- **Writable extents belong to exact bindings, never callers.** A caller-selected
-  length can understate a foreign write or use zero to bypass protection. Reject
-  zero extents and have each binding install the callee contract's fixed size.
-- **Protecting publication does not protect package reopen.** Registering a
-  public WID blocks writes through defining sinks, but `package NAME` can still
-  reopen its private dictionary. Package lookup must reject every protected WID.
-- **Fixed test emitters are safer than universal patch wrappers.** Keep each raw
-  `patch32` boundary private to one fixture with fixed instructions; a checked
-  wrapper that accepts arbitrary instruction cells launders code-write authority.
-- **Bootstrap IR must grow outside the Gforth dictionary.** Raising a static
-  `create ... allot` cap steals space from later image buffers and turns code
-  growth into dictionary overflow. Keep the IR heap-backed and resize it with
-  checked arithmetic so compiler growth does not consume dictionary capacity.
-- **A signature may name only installed types.** Execution tokens are currently
-  checker scalars (`n`); spelling an undeclared `xt` role makes self-certification
-  fail even when the runtime cell is valid. Add a nominal role first or use the
-  primitive model's actual scalar contract.
-- **Compiler replay is not a user load.** Sealing before a generated compiler
-  payload blocked its own protected packages; leaving every load open would
-  expose the same authority to applications. Route only statically certified
-  payloads through `--build`, emit `SEAL-FRIEND` before their drivers, and keep
-  `--load`, stdin, baked source, and the REPL sealed before the first user token.
-- **Sealed packages invalidate reopen-based private tests.** Once a library owns
-  and seals a package, later tests cannot enter its private wordlist. Remove
-  tests for retired private machinery; test live public contracts without
-  reopening the owner package.
-- **Capacity guards may precede span guards.** A definition starting four bytes
-  below the code limit fails with the named code-space error before any emitted
-  write can reach the protected band. Assert the earliest valid invariant, not a
-  later sink guard that execution never reaches.
-- **Every typevar-indexed array must follow the live typevar capacity.** Turning
-  `MAXTV` into a growable high-water left render's fixed `SEEN` array behind;
-  its reset loop then filled adjacent hook cells with `-1`. Grow scratch arrays
-  to the live cap and reset their process-local pointers before snapshots.
-- **Gate retries need fresh `XDG_CACHE_HOME` and `HB_TMP` per attempt.** A
-  reused cache can replay a timeout-poisoned result; mint both directories
-  inside the retry loop.
-- **Overlay byte identity proves gate-tool migrations.** Run migrated and
-  baseline tools from separate source overlays on identical clean and dirty
-  inputs, then compare stdout, stderr, and exit status.
-- **Certify target text before building its generator.** A handwritten target
-  probe separates checker limitations from emitter failures before generation
-  adds another fault domain.
-- **Match structural shapes, not interned ids.** Intern order can change across
-  sessions; compare kind, arity, and payload positions unless the ids come from
-  the same registry snapshot.
-- **Back up divergent workspace edits before recovery.** `jj workspace
-  update-stale` rebuilds the working copy and can replace on-disk edits; verify
-  file ownership before restoring them on a fresh change.
-- **Check live sibling diffs before editing shared files.** A cheap ownership
-  check avoids semantic divergence and is preferable to workspace recovery.
-- **Run typed-local lint against the exact integration diff.** A focused branch
-  gate can miss an earlier untyped local retained in a squashed feature stack;
-  the final master-to-feature artifact is the commit proof.
-- **Repo-wide lint input buffers must grow from file size.** A fixed ceiling
-  turns documentation growth into an unrelated lint failure; reuse a
-  high-water allocation rounded by `MEM-ALLOC-64K-SPAN`.
-- **Protocol phases need registered nullary type families.** Free-form atoms in
-  parametric signatures fail stored-signature parsing; register each nominal
-  phase and thread it through the context family so skipped transitions reject.
-- **Package-owned CAD ids are arity-zero cell families, not global DEFTYPEs.**
-  `TYPEFAMILY id 0` already gives package-qualified family identity, typed
-  pointer storage, rollback, snapshots, replay, and qualified diagnostics.
-  `DEFTYPE` instead installs a global nominal plus general raw converter words;
-  keep authority-bearing raw refinement private to the validating owner.
-- **Package words still compete with immediate core syntax.** A packaged word
-  named `BEGIN` resolves as the control word while compiling a body; use a
-  domain verb such as `START` even when the package would otherwise disambiguate.
-- **Generic storage does not retain a nominal pointee between definitions.** A
-  probe stored `n` through a `variable` and fetched the same cell as
-  `CAD-KIND:node-id`; both definitions certified because each use instantiated
-  the generic pointer independently. Model IR therefore keeps raw storage and
-  identity projections private, exposes typed accessors, and pins cross-role
-  rejection instead of treating `variable` or `create` as a typed container.
-- **Never base parallel workspaces on a mutable working-copy commit.** Global
-  descendant rewrites stale sibling workspaces, and `workspace update-stale`
-  can discard files not yet snapshotted by jj. Branch each workspace from a
-  stable commit and apply reviewed API changes independently, or serialize.
-- **Rows and columns need different nominal roles.** A single dimension kind
-  validates magnitude but cannot reject transpose-order mistakes. Keep role
-  changes inside checked shape algebra and project to numbers only at execution,
-  rendering, hashing, or ABI boundaries.
-- **Transfer trust-row ownership before retiring a dot.** The inventory can stay
-  count-green while strict mode is red because classification rows still name a
-  removed capability dot. Reassign landed boundaries to a live permanent owner
-  in the same change that removes the capability dot.
-
-- **A failing `jj diff` with "sibling of the working copy's operation" mid-gate
-  means the snapshot you are gating may be EMPTY — back up edited files BEFORE
-  `jj workspace update-stale`:** update-stale RESETS the working copy (reverting
-  unsnapshotted edits) and can leave a divergent change twin; the non-empty twin
-  holds a possibly STALE snapshot, so restore from your own backups (they are
-  the exact gated bytes), abandon the twin, and re-run the cheap gates on the
-  restored tree. The 0-byte patch file written by the failed diff is the tell.
-- **MATCH arms may produce multiple values, and both arms must agree:** FL-SIG's
-  dot-split rewrote four dpos branch expressions into one MATCH whose arms each
-  push the (ilen fa flen) triple — the checker unifies multi-cell arm effects
-  fine. Diverging arms (`throw`/`exit`/usage-`die`) unify with any shape, so
-  option unwraps built on fail-closed reporters (GE-FAIL, BF-BUILD-RC die,
-  TR-USAGE) need no sentinel filler in the dead arm.
-- **A lagging integration branch can carry a stale plan; check the authoritative
-  version before building.** The Model IR descriptor swap was implemented from
-  fable's copy of a dot whose plan master had already CORRECTED (the G-TAG "enum
-  behind stable n accessors" design was declared INVALID on master, because it
-  leaves the dtype/layout field-swap hole open at the API boundary). The
-  self-run destruction review passed only because it was handed the stale spec.
-  Before executing a dot on a branch behind master, diff the dot against
-  master's version and rebase onto the plan-owner's branch BEFORE implementing,
-  not after; a destruction review is only as good as the spec it is given.
-- **Probe a BLOCKER claim before repeating it.** A plan note said the Model IR
-  family-typed migration was blocked on enum-typed locals. A five-pattern
-  feasibility probe showed everything the migration needs — family-returning
-  accessors, MATCH renders/predicates, dup multi-use, families as word args
-  through factored helpers — certifies without any local; only the `{: x:fam :}`
-  bind rejects, and stack-discipline style never needs it. A missing capability
-  blocks only the code shapes that require it, not the goal; prove the
-  intersection empty before declaring work blocked.
-- **Snapshot main-workspace file writes with a jj command IMMEDIATELY, or an
-  op-state repair will silently revert them.** Three dots created via `dot add`
-  in the main workspace were lost this campaign: concurrent worker-workspace jj
-  ops fork the operation log, and the next `jj workspace update-stale` resets
-  the working copy to the recorded op, discarding unsnapshotted files. Rule:
-  after any main-workspace write while workers are live, run `jj st` at once;
-  before any `update-stale`, back the working copy up first.
-- **A falsification can itself be wrong — record probe CONTEXT.** One review
-  "falsified" the .0 literal-parse hazard with a probe in a different resolution
-  context (checked-candidate vs colon-compile); a later worker's probe plus a
-  structural corroboration (the word missing from the manifest because the
-  tokenizer skips parser-claimable names) proved the hazard real. Probes must
-  name their context (interpret / colon / candidate), and disagreeing probes
-  mean the SEMANTICS are inconsistent — itself a finding (dotted for core).
-- **Gate retries need FRESH `XDG_CACHE_HOME` + `HB_TMP` per attempt.** A reused
-  cache dir replays a timeout-poisoned result-cache PASS/RED verdict, so the
-  retry reproduces the first attempt's flake as a false persistent red. Mint
-  both dirs inside the retry loop, not once outside it.
-- **Overlay byte-identity is the proof standard for migrating gate-critical
-  tools.** Materialize the master copy of the tool in an overlay tree (own
-  copies of the changed files, symlinks for the rest, so its require chain
-  loads its own old sources), run migrated vs master on the SAME inputs — clean
-  and dirty — and diff stdout+stderr+exit. Loading two versions into one
-  session double-defines; overlays don't. (Proven on trust-lint,
-  stale-status-lint, trusted-inventory, tools/date.f.)
-- **Probe-first generation: certify the target text before building its
-  generator.** Hand-write the exact checked source a generator must emit and
-  run it through the UNMODIFIED engine/checker first; only then automate. A
-  generator built against an unproven target conflates emitter bugs with
-  checker rejects and burns cycles bisecting the wrong layer.
-- **Match on structure, not interned ids.** Term/family ids are
-  interning-order artifacts (the payload-pos term-id trap): equality that
-  happens to hold in one session breaks when the intern order shifts. Capture
-  and compare the structural shape (kind, arity, payload positions); treat raw
-  id equality as valid only within one registry snapshot.
-- **Divergent-workspace recovery protocol: back up FIRST, then update-stale.**
-  When a sibling lane's op lands mid-edit (`jj st` errors or a 0-byte diff with
-  edits on disk), copy the edited files out, run `jj workspace update-stale`
-  (it rebuilds the working copy and reverts on-disk edits), verify the
-  concurrent commit's file set does not overlap yours, restore from the backup
-  on a fresh `jj new`, and abandon the divergent empty leftovers. Lossless
-  every time; guessing at jj state is not.
-- **Check the other lane's live diff before touching shared files; STOP beats
-  recovery.** Contested src/core files change under you between fetch and
-  commit. `jj file show -r master <file>` (and the ownership list in the task)
-  before editing turns a would-be semantic divergence into a cheap
-  STOP-and-report; the report is a deliverable, the recovery is pure cost.
-- **Probe the other lane's in-flight work before dispatching against a shared
-  dot.** The S2 wide-store slice was implemented twice concurrently: a fable
-  worker built it from the dot while tfam landed the same slice on master
-  (same dot id, cited in the landed checker comment). The full lane (~284k
-  tokens, checker+engine+tests, all gates green) was retired unsalvaged —
-  master's landed form was equivalent-or-better. Before dispatching a worker
-  against a dot that the other lane's epic owns or references, check master's
-  recent commit subjects and the dot's blocker graph for an active claim; a
-  one-minute `jj log -r 'master ~ fable::'` scan beats a duplicated lane.
-  Corollary (now standing practice): `dot on <id>` + commit + push at the
-  moment of dispatch — a pushed `active` status is the cross-lane claim
-  signal; `dot off` only at landing; parked dots go back to `open` so
-  `active` never lies.
-- **`dot off` breaks `trusted-inventory --strict` if TRUSTED.md rows cite the
-  dot.** Twice now: closing a dot archives its file (gitignored), and every
-  manifest row naming it as owner goes strict-red on the next gate. Before
-  `dot off`, `rg <dot-id> TRUSTED.md`; re-point rows to the live successor
-  owner (friend-latch dot for whitebox shims, the owning epic for campaign
-  casts) IN THE SAME COMMIT as the closure.
-- **Stage-then-fan-out beats one long worker on multi-file missions.** The R3
-  reconciliation (50 files, ~2h) ran as a single agent; only the semantic core
-  (the files where the policy decisions live and the API is fixed) needed one
-  head. Correct shape: stage 1 = one worker resolves the core and publishes
-  the target API/contract; stage 2 = parallel workers port the dependent file
-  clusters under disjoint file ownership (one workspace is fine when ownership
-  is disjoint); stage 3 = one integrator runs the exact-tree gates. Same rule
-  for review (panel of disjoint lenses) and for fix rounds (one worker per
-  disjoint finding cluster). Serial is only for: the core contract, the merge
-  commit itself, and the gate-ladder/bookmark window.
-
-- **Give every native refresh a private `HB_TMP`.** A refresh overlapping other
-  build work surfaced `E-PROC-SPAWN`; the same source reached fixpoint in a fresh
-  artifact root. Isolate fixed-name build artifacts and avoid overlapping proof
-  builds before treating a process-launch failure as compiler corruption.
-- **Retire staged syntax across every token owner.** Removing a compiler keyword
-  is incomplete while verifiers, source analyzers, or lints still recognize it;
-  sweep those owners and require an exact `E-UNDEFINED` regression.
-- **Prove retired keywords against the exact candidate process.** In-process
-  `evaluate` can surface a caught checker throw, while a hardcoded `bin/hb` may
-  lag the candidate. Spawn `GE-HB$` and assert its rc plus diagnostic.
-- **Test private package authority by lookup, not candidate rejection.** An
-  undefined private qualified word makes a checker candidate uncheckable rather
-  than ill-typed. `search-wl` proves the authority is absent; negative candidates
-  remain for public cross-role calls whose signatures are visible.
-- **Assert append-only registries relative to their entry count.** Sequential
-  suites share one process, so an earlier consumer may intern valid objects.
-  Capture the starting count, then prove dedup preserves it and insertion adds one.
-- **Never interpolate Markdown backticks into a shell command.** Shell command
-  substitution executes them even inside a quoted argument and can silently
-  erase a stack effect from `dot add -d`. Pass dot text as data or patch the
-  generated record, then inspect the exact stored description.
-- **Keep worker prompts inside the claimed leaf.** A native-registry leaf may
-  expose lowercase engine primitives; package-scoped checked wrappers belong to
-  the dependent syntax/API leaf. Do not widen file ownership to impose the final
-  surface before its layer is ready.
-- **`dot on` is a transition, not an active-status probe.** The deployed
-  serializer re-quotes `created-at` even on the first transition; repair that
-  exact scalar until the CLI upgrade lands, and never run `dot on` again on an
-  active dot because each rewrite compounds metadata drift. Activate once,
-  publish the claim, then inspect the fetched remote dot file and use local
-  `dot show` for final pre-spawn owner/status verification. A local clean status
-  does not prove the coordination bookmark contains the claim.
-- **Native primitive additions must grow the emitter registry deliberately.**
-  Five sealed-owner WID primitives crossed `src/habu/habu1.f`'s 160-row
-  `PRIM-CAP` and stopped fixpoint with `primitive registry full`; keep the
-  named capacity above the emitted primitive count and prove a fresh rebuild.
-- **Package-private helpers win unqualified lookup inside the package.** An
-  owner-registry test package's private `LF` shadowed the outer `SLV-LF`, so
-  multi-line forge source was concatenated and exited rc 74. Qualify the outer
-  helper explicitly when two builder scopes share a natural tail.
-- **Test hidden native authority through a separate image, never a runtime
-  switch.** A build-time environment flag that publishes an internal mutator is
-  still a production backdoor. Compose an isolated, content-keyed test image
-  whose cold emitter calls the unpublished routine, and keep ordinary lookup
-  unable to name it.
-- **Isolate destructive build fixtures in a child process.** Resetting temp,
-  engine, pin, digest, and extension globals does not restore preexisting
-  caller state. Run the whole build in a child, assert its captured result, and
-  let process exit revoke every build capability and artifact pointer at once.
-- **Private package names are organization, not authority.** Packages reopen by
-  design, exposing private words to the reopened scope. After compiling exact
-  callers, `undefine` mutable capability names and prove reopen cannot recover
-  them.
-- **Publish append-only rows with an atomic row and release count.** Store each
-  aligned pair in one write, release-store the count last, and acquire-load it
-  before scans; clearing only the count on cold reentry leaves stale authority
-  material in raw DATA, so erase every reserved row too.
-- **Materialize addresses beyond scaled-immediate reach.** A direct `LDRW` at a
-  DATA offset above 16380 encoded the wrong cell and made a cold-reentry proof
-  loop forever. Build the full address in a register before word loads/stores.
-- **Concurrency claims need emitted-code proof.** Single-thread behavior cannot
-  distinguish acquire/release instructions from ordinary loads/stores. Scan the
-  live emitted routine and pin acquire, atomic row store, release, and order.
-- **New stage sources belong in every source owner.** Add post-compiler seal
-  files to native builders, recovery composition, cache content keys, file
-  inventories, and tests together; one omitted path preserves authority or
-  reuses stale output.
-- **Erase and verify package words in their owning WID.** Qualified names are
-  not entries in wordlist zero. Reopen the package, select `public` or `private`,
-  then `undefine` and `search-wl` each unqualified tail in `get-current`.
-- **`jj new` off the tip immediately after moving bookmarks onto it.** Leaving
-  @ ON a just-pushed commit means the next `jj commit`/snapshot AMENDS it,
-  rewriting a pushed commit and forcing sideways bookmark pushes (happened
-  with the claim commit amending the pushed DEFTYPE-replay merge). The window
-  protocol ends with: move bookmarks, push, `jj new <tip>` — in that order,
-  every time.
-- **STATUS date rolls use the gate's UTC day, not the local calendar.** The
-  run.f stale-status slice computes today from epoch-seconds (UTC). Rolling
-  "Last verified" to the local date after midnight CEST made pushed master red
-  for the hours until UTC caught up. Check `date -u +%F` before any date roll,
-  and pass that same UTC day to manual stale-status/trust-lint invocations.
-- **Stored checker effect rows are EN-node encoded — live-row walkers do not
-  apply.** Deriving a fact (like min-in cell count) from a stored effect means
-  re-walking the encoded rows; compute it once from the live row at build time
-  and persist it in EFF-REC instead (ER.MINI pattern).
-- **`type`-then-bare-`die` reads below base.** `die` is ( a u code -- ); a
-  failure branch that prints its message first and then calls `1 die` hands
-  die's operands to an empty stack (shadow-lint had exactly this latent bug,
-  exposed by the underdepth guard). Always keep die's message on the stack for
-  die itself.
-- **Replay generated words in the definer's active package section.** Native
-  `DEFTYPE` publishes its derived casts through the current private/public WID;
-  verifier replay that registers only the nominal leaves valid cast calls
-  undefined. Recreate both derived signatures before leaving that package mode,
-  so reopening works while cross-package and global lookup stay closed.
-- **`dot off` is not done until its file deletion is COMMITTED.** Closures run
-  between merge windows in the main workspace get orphaned by the next
-  `jj new <tip>` (the archive copy persists on disk, the tracked open copy
-  returns with the checkout, and the CLI then sees both → Ambiguous ID). Six
-  closures were silently lost this way in one session. Rule: every dot off
-  is immediately followed by dot-dep-lint + `jj commit` in the same breath —
-  batch closures if needed, never leave them in the working copy across a
-  window.
-- **Name the LAYER, not just the context, when recording probe results.** An
-  E-UNDEFINED from a checked colon body is a CHECKER-layer verdict about the
-  token grammar, not evidence about the runtime resolver. The dictionary-vs-
-  literal "contradiction" was three probes hitting different layers (checker
-  float grammar was digit-leading-only; the engine always claimed dot-leading)
-  - recording "context: colon body" instead of "layer: checker grammar" kept
-  the false mystery alive across three campaigns.
-- **Host stack effects do not certify generated machine state.** An emitter can
-  be perfectly stack-correct while its output clobbers a live register, flags,
-  frame slot, SP, or a caller-owned buffer. Give emitted operands and callable
-  routines first-class effects, then verify liveness and frame invariants over
-  the resolved CFG; handwritten name-to-mask tables remain only transitional
-  diagnostics.
-- **A rejecting candidate needs a resolving positive control.** A misspelled,
-  unavailable, or unmodeled target can produce the same quiet rejection as the
-  intended nominal mismatch. Pair each negative matrix with the correct
-  signature or assert the exact expected/actual diagnostic before calling the
-  type boundary covered.
-- **Inspect stored blockers after every multi-dependency `dot add`.** The local
-  CLI retained only the last repeated `-a` argument, silently dropping earlier
-  prerequisites. Patch the exact frontmatter, run dot-dep-lint, and verify the
-  rendered tree before publishing or dispatching the leaf.
-- **Seal an owner only after all constituent files are loaded.** Sealing blocks
-  later package reopening; it cannot be the first slice of a multi-file API.
-  Keep raw-to-nominal mints private and audited while assembling, then let the
-  final owner-migration slice seal them and prove no public conversion remains.
-- **Test nominal runtime bounds with a valid stale value, not a private mint.**
-  Save a publicly validated handle, advance or rebuild its owner, then exercise
-  the stale handle against the guarded consumer. This reaches the defensive
-  range check without expanding raw refinement authority into a test file.
-- **Do not guess dot CLI subcommands.** `dot dep check` was parsed as a request
-  to create a task titled `dep`, and even `<unknown> --help` is quick-add syntax,
-  leaving stray tracker files. Use only commands listed by `dot --help`; inspect
-  or patch dependency frontmatter directly, then validate it through the
-  repository's Habu-native `tools/dot-dep-lint.f`.
-- **Do not shrink a semantic capacity around checker overcounting.** A W34
-  PRODUCT and a repeated W12 input both exceeded the 255-cell minimum-input
-  field even though their physical minima were 34 and 24. Reduce and fix
-  `ROW-CELLS`/effect recording; a smaller effect row would only hide the
-  compiler defect and make composition arbitrarily incomplete.
-- **Structural ADTs are untrusted until a validator establishes semantics.** A
-  public PRODUCT constructor proves layout and field roles, not mask, ordering,
-  bound, or cache-legality invariants. Validate every parser, artifact,
-  persistence, FFI, and registry ingress before any permissive decision.
-- **A prose dot reference is not a dependency until the ID resolves.** Verify
-  every claimed prerequisite with `dot show` before wiring downstream work.
-  Capability documentation must label planned enforcement as planned; future
-  linear-kind checks must never be described as protecting current code.
-- **Run the full native gate without external Habu oversubscription.** Its own
-  macOS profile already runs a 10-way pool; overlapping eight standalone Habu
-  gates caused a pooled repository lint to throw `E-FS-OPEN` while the same
-  exact tree passed alone. Parallelize focused gates together, then give
-  `test/run.f` the host by itself.
-- **Generated-state proofs need a backend-specific last-mile boundary.** ARM64
-  CFG/register verification does not cover PTX merely because both begin with
-  typed emitters. PTX must separately bind virtual def/use, predicates,
-  barriers, address spaces, `ptxas` facts, cubin/SASS identity, and device
-  evidence to the exact target and toolchain before promotion.
-- **A representable by-value bound is not a semantic composition bound.** A
-  127-cell effect row fits `ER.MINI`, but only carries 25 exact bindings and
-  fails ordinary repeated call-site composition. Large canonical typed sets
-  need opaque nominal handles over sealed immutable content; handles, offsets,
-  allocation order, and hashes must never become authority or identity.
-- **Preflight old implementation dots against current code, not their original
-  premise.** Shared hardening can land through another owner while a residual
-  dot stays open. Re-scope the dot to the exact missing regression or parity
-  seam before claiming it; otherwise a worker will duplicate production code
-  and miss the remaining proof gap.
-- **Dependencies must name closable implementation milestones, not permanent
-  trust-row owners.** A capability dot retained only so `TRUSTED.md` rows keep
-  resolving can leave unrelated implementation work blocked after its usable
-  contract has landed. Transfer durable ownership to a checked permanent-owner
-  registry, close the implementation dot on evidence, and depend on that
-  completed milestone.
-- **Signal handlers need asynchronous-entry effects, not ordinary call
-  effects.** The kernel supplies target-specific live registers and a ucontext
-  frame, while the handler may edit saved PC/SP state and terminate through
-  `sigreturn` or a no-return syscall. A BL routine contract cannot prove that
-  boundary; type its frame, allowed operations, reentrancy, and terminator
-  explicitly for each target.
-- **Package-scoped family ctors live in a DERIVED escaped package.** A
-  `PRODUCT pxevid` inside `package PX-PROBE` publishes
-  `PX--PROBE-PXEVID:MAKE`, not `PXEVID:MAKE`; the unescaped spelling does not
-  resolve, and a candidate probe returns verdict 1 (uncheckable), not 0
-  (reject) — which silently satisfies a "not certified" expectation while
-  proving nothing about the type wall. Assert exact candidate verdicts
-  (-1/0/1) and pair every negative with a certifying positive control that
-  names the derived ctor package (docs/type-families.md sec 12).
-- **Runtime completion events are not persistent audit identities.** A CUDA or
-  executor event is an ephemeral synchronization resource, while an artifact's
-  creation event must survive replay and participate in canonical provenance.
-  Give them distinct nominal families, and freeze wire ordering, compatibility,
-  and digest coverage before implementing the artifact codec.
-- **Remove satisfied blocker edges when their owner is archived.** `dot off`
-  removes a completed dot from the live graph, so descendants must no longer
-  name it in `blocks:`. Close a dependency chain leaf-to-root, delete each
-  satisfied edge, and run `dot-dep-lint` before the closure commit.
-- **A fresh gate root does not imply zero aggregate cache hits.** The full suite
-  deliberately proves maker and artifact cache-hit paths inside one attempt.
-  Retry isolation must reject artifacts inherited from a prior attempt while
-  preserving and checking the expected within-attempt hit-counter contract.
-- **`dot` has no free-form help namespace.** An unknown command is treated as a
-  quick-add title, so probes such as `dot dep --help` create stray tasks. Consult
-  `dot --help`, use only listed subcommands, and inspect `jj diff` immediately
-  after every tracker command so accidental records cannot enter a commit.
-- **Constructive ordering rules can make every legal edge forward — keep the
-  seal-time cycle check anyway.** The async DAG's program-order threading,
-  record-before-wait rule, and same-stream-only explicit deps mean insertion
-  order is already a topological order, so smallest-index Kahn reproduces it
-  byte-identically; the seal's Kahn pass exists to verify acyclicity against a
-  buggy or adversarial builder, not to discover an order. Stating that in the
-  file header avoided a "why is replay always 0..N-1?" review round.
-- **PRODUCT values cannot ride the interpret-mode stack.** A top-level test
-  line calling a `( -- fam-product )` accessor dies with `interpret-mode
-  layout value`; wrap the construct/UNMAKE/assert sequence in one checked test
-  word and call that from top level.
-- **A `catch` effect is sound only if runtime restores the whole typed frame.**
-  Restoring data SP and machine SP is insufficient when the checker also
-  promises return- and loop-stack preservation; handler frames must save and
-  restore every modeled stack before resuming the caller.
-- **Balanced stack effects do not prove bounded execution.** A word can return
-  every stack to its declared row while recursion retains a live return value or
-  loop frame and grows without bound. Pair runtime extent guards with
-  compositional peak-use certificates and capacity-checked execution targets.
-- **PTX declarations and `ptxas` observations have different authority.** PTX
-  state can verify declared parameters, virtual registers, and memory spaces;
-  stack and spill facts arise only at the proprietary assembler boundary and
-  belong in its content-bound attestation.
-- **Tracker dependency arrows must agree with prose ownership.** If resource or
-  device evidence consumes a new attestation, the consumer blocks on the
-  producer; reversing that edge makes the documented implementation order
-  impossible even when dependency lint finds no missing ID.
-- **A new TRUSTED nominal mint must update the confinement seed atomically.**
-  `TRUSTED.md` rows alone make the boundary auditable but do not teach
-  `refine-lint` which owner and cited tests may call it. Add the seed name/owner
-  and focused confinement fixtures in the same change; Maki tests do not cover
-  the full lint-tools gate.
-- **A sole public type surface includes auxiliary definers.** A hard cutover
-  from legacy enum syntax must delete counter definers such as `ENUM+` and
-  `ENUM4+` too; zero production consumers do not make a second declaration
-  surface compatible with the one-DSL invariant.
-- **Every device tool's top-level entry gates on `CUDA:OPEN?`.** A bare `MAIN`
-  that assumes libcuda throws an opaque `E-CUDA` off-device and reads as a
-  broken file in host gates (fusion-compare did exactly this while gemm-bench
-  skipped cleanly). Follow the GB-ALL shape: probe `CUDA:OPEN?`, print a
-  recorded SKIP line, exit — then the tool composes into host-side suites.
-- **A `TEST:SUITE` block is ONE `bin/hb --load` spawn, not one per row.** All
-  listed files load into the same image sequentially, so suite files must be
-  package-scoped, duplicate-definition-safe, and tolerant of an earlier file's
-  installed check hook (tools/lint/text.f's strict hook) and shared library
-  state. The resident full-runner adds even more shared state: device/bench
-  tools that pass in a fresh spawn can SIGBUS inprocess, so the resident
-  inprocess suite list is a subset of the spawned slice, not a mirror.
-- **Record token metrics in the unit you actually have, next to a slot for the
-  unit you want.** An orchestrator Agent-tool generation round exposes no
-  per-sample `usage` token counts, so the 2026-07-13 live transcript stayed
-  format v1 (whitespace proxy) instead of inventing model counts; the
-  source-derived `GEN-TOK-EST` column is computed at replay, so BOTH units land
-  on every row (old transcripts included) without editing artifacts, and real
-  v1.1 `tokens` counts slot in later. Estimators belong in the replay engine,
-  not the recorded artifact.
-- **Phase-token task surfaces make authoring pass@1 near-trivial by design —
-  say so in the eval report.** Live gemm/attention rounds went 5/5 first-try
-  because the checked phase words admit exactly one type-correct order; the
-  honest claim is "the checked-pipeline surface is reliably authorable", not
-  "the model wrote a GEMM". The emit-level structural required/forbidden gates
-  catch only the SEEDED bug shapes: same-type role swaps (in/out, Q/K, O-into-V),
-  dead-value stores, and double-phase kernels retain every required token and
-  still grade GREEN — only a device numeric golden closes that class. Pin those
-  wrong-but-green shapes as acknowledged regressions so a future grader
-  strengthening flips them intentionally, not silently.
-- **Bootstrap constants need their own earliest shared owner.** A target-width
-  constant used by pre-checker records cannot live in a legacy definer file;
-  load one invariant-owning source after `util.f` and before every consumer in
-  native, recovery, fixpoint, pin, diagnostic, and cache manifests. Register
-  its post-hook effects in a matching one-concern file, never a legacy DSL's
-  effect owner.
-- **Bootstrap manifest parity needs scoped, complete sequence comparison.** Parse
-  bounded loader definitions, include semicolon-terminated final rows, compare
-  the full ordered sequences and counts, and reject duplicates. Global substring
-  presence and checker-prefix-only tests miss reordered or omitted tail files.
-- **Fixed source arenas need composite byte budgets.** The stage2 source and
-  cold-prefix sources share `IBUFSZ`; measure both, preserve useful assertions,
-  and derive near-cap and cap-plus-one tests from the owner constant before
-  increasing it with explicit headroom. Every landing that grows the compiler
-  corpus must run `SOURCE-BOUNDARY` on the exact merge tree; claim-only commits
-  do not excuse moving master past an exhausted arena. Land a capacity increase
-  on the source-growth chain that requires it: a smaller bare tree can correctly
-  select the previous power of two while the combined tree selects the next.
-  The largest live composite selects the minimal shared power of two; smaller
-  consumers prove headroom and power-of-two shape, not individual minimality.
-- **Unsupported dot subcommands create dots.** `dot dep --help` is parsed as a
-  quick-add for title `dep`; inspect `dot --help`, use `dot add -a` for blockers,
-  and remove accidental tracker entries before committing.
-- **Pre-checker layout assertions need an owner that survives the cutover.**
-  Keep `CORE-LAYOUT-RC` with earliest-loaded `CELL`; schema and family layout
-  checks must not retain a dependency on the structure definer being removed.
-- **Replay gates need one exact candidate at both execution seams.** A parent
-  run from a fresh candidate while spawned fixtures call a stale workspace
-  `bin/hb` changes the engine-key component and creates false cache misses;
-  install the exact candidate copy before running persistence/replay suites.
-- **A folded predicate must seed its boolean before using `and`.** Whitebox
-  layout probes return metadata before their predicate; the first comparison
-  uses `=`, and only later comparisons use `= and`.
-- **A test boundary may cover only one genuinely unmodeled operation.** Keep
-  checker-known scope, definer, and rollback calls in checked orchestration;
-  isolate each pre-hook registry mutation in its own typed `TRUSTED:` leaf.
-- **A new engine primitive used by boot-prefix source lands in TWO stages.** The
-  running binary reloads the boot prefix from disk at ITS boot, so checker.f
-  cannot reference a primitive the current engine lacks (`E-UNDEFINED` before
-  any build step runs). Stage 1: emit + register the primitive and put its
-  TRUST row in the prefix (the literal token also keeps it through treeshake);
-  build. Stage 2: add the prefix code that CALLS it; build again. The final
-  tree still self-hosts (its binary has the prim), and the Gforth recovery
-  compiles habu2.f before booting the prefix, so the recovery path holds.
-- **The checker scans two different buffer kinds, and a token-skip must know
-  which.** Hook-driven loads hand ENGINE-RECONSTRUCTED definition buffers in
-  which an immediate's parsed payload is structurally absent (the immediate ran
-  during compilation); candidate probes scan RAW text where the payload is
-  still present. A payload skip that fires on the wrong kind eats live body
-  tokens (`GRID: ceil-n-256 {: x .. :}` lost its locals opener). Default to
-  the reconstructed kind: USER-INSTALLED strict hooks (tools/lint/text.f) are
-  invisible to the checker, so only the explicit candidate entries may mark
-  raw-text. And never exit a check hook bare: verdict-1 with no DIAGXT used to
-  throw rc 70 with zero diagnostics - the exact opaque-exit class the
-  debugging doc bans; check-hook.f now names the definition and failing token.
-- **"Wired into a TEST:SUITE" is not "runs": gate-stdlib-cases.f suites execute
-  only if a SUITE-*-LABEL? slice list selects the label AND someone invokes that
-  slice - and test/run.f schedules no spawned slice at all.** Four engine-gate
-  negative-regression files (internal-word-gate, underdepth-gate,
-  immediate-model, top-row-hook) sat in unselected suites, copied from each
-  other as templates, and never ran in any automatic gate. Mirroring a suite
-  into a scheduled GSI group (stdlib/tail-process forks isolate hook installs
-  and child spawns) is what makes it real; the completeness lint that makes
-  this class impossible is tracked by habu-derive-inprocess-spawned-a54e760d.
-- Off-device SKIP guards are a fail-open class: `CUDA:OPEN?`-style guards made
-  fusion-compare.f green for weeks off-device while it would die uncaught
-  (missing /tmp cubin, E-CUDA -5002) the moment a device was present. A device
-  suite is only proven by an on-device run; prefer self-emit + fail-closed
-  throws over prebuilt /tmp artifacts, and key device legs on the probed
-  device-FFI capability, not ambient always-off gates.
-- Gate slices see different lints: maki-dep-lint (dependency direction) lives
-  in the lint-tools slice, so a lane that validates only lint-libs + maki/test
-  can land a maki/ reference in the stdlib gate layer and stay green until the
-  resident run.f. Integrator must run the slice that owns each touched file
-  class, not just the suites the diff obviously participates in.
-- Publication chains must be `&&`-guarded end to end: a closure commit went to
-  master with dot-dep-lint RED because the chain ran the lint but did not gate
-  the commit/push on its exit status (dangling blocker left by the closed dot).
-  Run the dot gate, CHECK it, then commit - never `cmd; commit; push` in one
-  unguarded script. Closing a dot must also sweep frontmatter `blocks:` lists
-  that reference it.
-- **Generated ctor-package names silently SHA-fall-back over 16 chars
-  (TF-CTOR-NAME-LIMIT, src/core/type-family.f:604), making the family
-  unconstructable in readable source.** A hyphenated family in a packaged
-  namespace whose escaped `PKG-FAMILY` name exceeds 16 (e.g. `POLICY-REQ--CLASS`
-  17, `POLICY-PROMOTE--POLICY` 22, EVID's `EVID-CERTIFY--SLOT` 18) gets an opaque
-  `Thexhash-TAIL` ctor package instead of `PKG-FAMILY:MAKE`. It is stable
-  (deterministic SHA) but unreadable and fragile, so it cannot appear in
-  committed source. Keep `len(PKG) + 1 + len(escaped-family) <= 16` for any
-  family a caller must construct (hyphens double: `req-class` -> `REQ--CLASS`);
-  this is why R7's `req-class`/`promote-policy` became `req`/`gate-set`, and why
-  EVID's slot sums cannot be built cross-package (blocks bundle construction).
-  RESOLVED 2026-07-14 (dot habu-raise-or-alias-5d2a6b70): audit proved the 16 was
-  NOT a structural bound — the runtime dictionary stores long names via DNAME-EXT
-  (habu2.f C-STORE-NAME) and AOT captures them on the EXT kept-source path
-  (aot-capture.f); the SHA fallback name is itself > 16 bytes and already works.
-  So TF-CTOR-NAME-LIMIT is a readability cap, raised 16 -> 32 (longest real
-  escaped name ~25). Names with escaped length <= 32 now keep the readable
-  `PKG-FAMILY:MAKE` spelling (SHA only past 32); `EVID-CERTIFY--SLOT:CERTIFY-GOT`
-  etc. are constructable by name. Do NOT rename to fit 16 anymore; keep escaped
-  `<= 32`. Fixpoint stays byte-identical (limit is single-sourced prefix code).
-- **Multi-cell layout values (products, tagged sums with payload) cannot be
-  typed locals or `result`/`option` payload params - only single-cell types
-  (TYPEFAMILY, payloadless ENUM) can.** `{: s:EVID:certified :}` and
-  `result<POLICY:granted,n>` both reject ("unknown type ... in signature" /
-  "expected: a actual: granted<>"). Consume multi-cell values straight off the
-  stack via `UNMAKE`/`MATCH` (keep them DEEPEST so single-cell operands pop as
-  locals first), and signal a fallible product-returning transition by THROWing
-  a named code rather than a `result<product,_>` - the same wall the schema.f
-  RESULT-DROP deviation names (dot habu-typestate-result-drop-5ae048a7).
-- **A near-full fixed arena is a latent capacity bug a downstream lane inherits:
-  trusted-inventory's class arena (CSTR-CAP) sat at 65528/65536 with 879
-  classification rows, so adding 4 TRUSTED.md rows overflowed it with a bare
-  `class arena overflow` die.** The ratchet ceiling is derived from row COUNT
-  (fine to grow), but the byte arena was sized with no headroom; bumped
-  $10000 -> $20000 to cover CMAX=1024 rows. Whoever grows a ratcheted manifest
-  must budget the scratch arena, not just the count.
-- The resident `test/run.f` gate does NOT run the full `test/gate-stdlib.f`
-  TEST:SUITE inventory: it runs the in-process GSI groups
-  (test/gate-stdlib-inline-lib.f) plus a few spawned slices. ~40+ cases suites
-  (hashmap, float, prelude, object-*, task, ffi-cabi, device PTX, heavy builds,
-  namespace/error-code lints, ...) run ONLY in the standalone
-  `bin/hb --load test/gate-stdlib.f` full/slice merge gate. The spawned
-  TEST:SUITE lists and the resident GSI lists are hand-synced and drift silently:
-  a member mirrored into no scheduled GSI group runs in no automatic gate (four
-  checker-invariant suites escaped this way; kbench added 7 spawned-only ptx
-  files). `tools/suite-coverage-lint.f` now derives all three lists from the gate
-  files each run and forces every member into scheduled / manual-documented /
-  spawn-only-documented, and holds inprocess GSI-LINT-LIBS-PTX-TOOL ==
-  spawned ptx-toolchain minus the documented SIGBUS bench set. Wire a new lint
-  into BOTH the cases suite + the scheduled lint-tools GSI fork, or the lint that
-  kills orphans becomes an orphan itself.
-- **Package privacy is per-PACKAGE, not per-file: a `private` word is visible to
-  any later `package X` reopen in ANY file, but NOT to non-X code or to a
-  qualified `X:WORD` from outside.** This is the store-seal mechanism (dot
-  habu-v2-typestate-promotion-2266b236): making EVID-PUT/EVID-PUT-G/SCHED-PUT
-  `private` inside `package MAKI` keeps every package-MAKI reopen caller working
-  (maki/cad.f PROMOTE-EVIDENCE, maki/store-replay.f SK-PUT-DURABLE, the store
-  suite - all `package MAKI`) while a cross-package / top-level `MAKI:EVID-PUT`
-  stops resolving. So the store-bypass regression is a verdict-1 (unresolvable)
-  CHECK-QUIET-CANDIDATE!, proven non-vacuous by a paired `MAKI:EVID-GET` read
-  control that still certifies -1 (same qualification mechanism). The threat model
-  the R7 candidate suites use is exactly this: cross-package/top-level forging is
-  rejected; reopening the owning package is inside the trust boundary (the same
-  reason POLICY:MINT-GRANT-PROOF is "sealed" though a package POLICY reopen sees it).
-- **A hyphenated ENUM/family in a package doubles the hyphen in its ctor package
-  name: `EVID` + `golden-leg` -> `EVID-GOLDEN--LEG:DEVICE` (not `-GOLDEN-LEG:`),
-  16 chars so no SHA fallback; `EVID-PREC--CLASS:PREC-F32` likewise.** Assuming the
-  single-hyphen spelling gives E-UNDEFINED. The variant tail after the `:` is NOT
-  doubled (`:PREC-F32`). MATCH still uses the bare family/variant (`MATCH golden-leg
-  host OF ... device OF ... ;MATCH`) cross-package after a require.
-- A pipeline eats the exit status the chain is supposed to guard on:
-  `bin/hb --load lint.f | tail -1 && jj commit ...` guards on TAIL's exit, so a
-  RED lint still commits and pushes (this shipped a red dot gate to master
-  TWICE - the same closure/dangling-blocker class both times). Either
-  `set -o pipefail` at the top of every publication chain, or capture the exit
-  first (`out=$(cmd); rc=$?`). Also: `rg -rln PATTERN` is `--replace ln`, not
-  list-files - the closure sweep displayed the dangling blocker with its id
-  rewritten to "-ln" and it was misread as prose. Sweep with
-  `rg -n 'PATTERN' .dots/` and read the raw lines.
-- **`filemap-lint` treats ANY backtick token containing `/` (or a `.f`/`.fs`
-  extension) as a path that must exist** (tools/filemap-lint.f LINT-CONTAINS?
-  "/" / HAS-EXT?). A FILEMAP.md prose entry like `` `E-FOO/-BAR/-BAZ` `` (compact
-  throw-code list) is read as the path `E-FOO/-BAR/-BAZ` and fails FILEMAP-STALE.
-  Keep slashes out of backticks in FILEMAP prose: write `` `E-EVID-ROW-*` `` or
-  spell the codes separately.
-- **Typed store rehydration recovers FIELDS, not proof-carrying products, and
-  mints no proof token** (R7 sub-dot 6, maki/store-rehydrate.f). A persisted row
-  is untrusted text; `EVID-ROW-DECODE` parses each evidence field through its
-  family (verdict / `EVID:golden-leg` / `EVID:prec-class`) so a bad field count /
-  unknown label / out-of-domain enum throws a named `E-EVID-ROW-*`, never a silent
-  default. It deliberately does NOT build `EVID:certified`/`golden` (those need the
-  class-private MINT-*-PROOF and would forge provenance a mere read never earned -
-  addendum :1824). Re-render goes back through the sealed `EVID-PUT-G` so the
-  read boundary duplicates no wire format and adds no store-planting surface. The
-  schedule KEY can't be re-typed on read (no region facts at load -> no `skey`
-  FNV hash; sched-key.f durable-text boundary), so the schedule side is closed by
-  SEALING the writer (`SK-PUT-DURABLE` -> package-MAKI-private) plus the
-  pre-existing fail-closed SCHED-LINE parse, not by key-shape validation (which
-  would break the synthetic-key mirror the growth test relies on).
-- Third red-master push, third guard shape: the batch DISPLAYED the run.f log
-  (RED visible in output) but the push step had no conditional on it at all -
-  human eyes are not a gate. Every merge step must MECHANICALLY test the
-  verdict: `rg -q 'RUN_EXIT=0' "$LOG" && jj bookmark move ... && push`, never
-  "print the log, then push in the same batch". Also: a new lib/ module needs
-  a lib/std.manifest module row PLUS a word row per public word
-  (stdlib-manifest-test enforces; the lint-manifest slice is the owning gate a
-  new-lib lane must run - host/filemap/trust/coverage do NOT cover it).
-- **A test suite that opens `package X` must close it with `;package`, or a LATER
-  suite in the cumulative `maki/test.f` run dies with an opaque `exit 75` and a
-  bare token (e.g. `package`) on stderr.** The `TEST:SUITE` files are `included`
-  into one process; a suite leaving its package open leaves that package the
-  active wordlist, and a later suite's `package` declaration hits the engine's
-  `does>`/quotation compile guard (`J-QUOT`/`J-DOES`/`J-SEMIQUOT`, habu2.f) which
-  exits 75 printing the current token. It is NOT a dict/code/family/protected-WID
-  capacity limit: the suite that crashes is 1-2 later than the culprit, the
-  culprit's own suite PASSES, and the crash reproduces only when the earlier
-  suite omits `;package`. Diagnosis wasted a long capacity-bisection detour
-  (every "N families / N instantiations overflows" reading was really this same
-  unclosed-package bug in the throwaway test harness). Put `;package` before
-  `T-REPORT` in every package-scoped suite; if a full-suite run dies at an
-  unrelated later suite right after adding yours, check for a missing `;package`
-  first.
-- **A product TYPE PARAMETER binds only cell-tier types (n or nominal
-  `TYPEFAMILY` cells); a sum/enum/product family cannot instantiate it.** So a
-  generic `comparison<a>` over a metric unit needs nominal-cell unit witnesses
-  minted through TRUSTED casts, and the value inside the parametric slot stays
-  unit-agnostic. Two concrete per-unit families (`comparison-gbps`/`-gflops` with
-  distinct `gbps`/`gflops` sum readings) are strictly stronger - the NUMBER is
-  unit-typed, a gflops value cannot enter a gbps slot - with zero TRUSTED surface.
-  Reach for concrete per-variant families over a parametric product when the
-  variants are few and the parameter would only be a cell-tier phantom.
-- **`error-code-lint` scans `maki/target/` etc. (subdirs); a bare `maki/*.f`
-  glob misses them.** `-5252..-5256` are owned by `maki/target/target.f`
-  (E-TARGET-*), invisible to a `rg maki/*.f` scan. Always scan `maki/` (recursive)
-  for a free `-5NNN` block and confirm with `bin/hb tools/error-code-lint.f`.
-- **`jj workspace add` does not change the shell directory.** Run every
-  following `jj` command with that workspace as the explicit working directory;
-  otherwise a claim merge silently advances the caller's unrelated workspace.
-- **A bulk symbol migration must exclude its replacement spelling and end with
-  an exact legacy/near-miss scan.** Rewriting `E-*` after introducing
-  `ENGINE-ERROR:*` can corrupt the new spelling when the match is not token
-  exact; scan for both old tokens and malformed replacement prefixes before
-  testing.
-- **In effects, `ptr n` is one pointer type, not two stack cells.** An emitter
-  taking a pointer plus a numeric length therefore declares `ptr n n`; keep the
-  pointee role and the following scalar visually distinct when editing effects.
-- **Prefix additions have two independent exact-count ratchets.** Update both
-  `test/boot-pin-test.f`'s raw `PFX-LOAD-ROW` count and
-  `tools/diagnose-hb-test.f`'s common-source count; one proves the generator
-  shape while the other proves every baked source is diagnosed.
-- **A reserved package has three independent authorities.** Keep the native
-  reserved-name table, recovery mirror, and `CHECKER-SEALED-PKG?` synchronized;
-  native seal tests alone do not exercise checker-only export/layout guards.
-- **Corrupt the unique embedded lookup token to prove a missing boot bridge.**
-  A normal candidate proves the post-seal bridge succeeds; changing only its
-  sole checker lookup spelling creates the otherwise-protected missing-hook
-  state and gives an exact fail-closed exit regression without a production
-  test hook.
-- **Result-union cutovers must migrate every direct consumer effect.** The
-  process API correctly returned `outcome`, but one gate fixture still declared
-  four scalar results and made green source fail at checker load. Audit direct
-  call sites and replace scalar kind tests with exhaustive `MATCH outcome`
-  storage before declaring the cutover complete.
-- **Diagnostic origins belong in the source scanner's single pass.** Recomputing
-  line and column by rescanning from byte zero for every definition made
-  fixpoint certification quadratic: a 1.0 MB, 3,250-definition source spent
-  98% of sampled time in that rescan. Advance byte, line, and line-start state
-  together at the scanner cursor, then snapshot the token origin in O(1).
-- **Worker preflight must prove required public syntax exists on the claimed
-  tree.** An open downstream dot can look dependency-ready while its requested
-  schema still requires unlanded STRUCTURE/payload ENUM and compiler lowering.
-  Probe the exact grammar and generated words before `dot on`; if absent, wire
-  the transitive implementation milestone and leave the downstream dot open.
-- **One-shot assembler guards retain nominal inputs until validation ends.** A
-  label-binding guard typed as raw `n` weakens the checker at the exact authority
-  boundary. Accept `label`, use a named exit code, and place the guard before
-  every state write; then snapshot fixup, free-list, label, and code state.
-- **Plan dependency claims and dot edges land together.** A plan that says a
-  production authority waits for native fencing is false if the owning dot can
-  still dispatch without it. Update the prose and `blocks:` edge on one reviewed
-  tree, and distinguish baked primitive effects from verifier-added effects.
-- Cross-agent engine landings brick sibling binaries: sol's engine-error
-  namespace added new COLD-PREFIX files (engine-error.f), and every other
-  agent's bin/hb (baked prefix list) then fails AT BOOT with E-UNDEFINED on the
-  updated consumers (checker.f, lib/map.f, src/habu/layout.f, xref.f - find the
-  baked list with `strings - bin/hb | rg '^(src|lib)/'`). A hybrid
-  revert-and-refresh does NOT compose (mixed-generation sources fail the child
-  build). The reliable recovery is the documented gforth bootstrap
-  (HABU_ALLOW_BOOTSTRAP=1 tools/bootstrap.sh) - it works iff the landing
-  mirrored the prefix into bootstrap/cg/forth.fs, which is why that mirror is
-  BLOCKING for any new cold-prefix file. Pull-and-refresh after every fetch
-  that crosses an engine landing; budget minutes, not hours.
-- trusted-inventory STRICT resolves owners only at `.dots/<id>.md` or
-  `.dots/<id>/<id>.md` (self-named epic) - a child dot under ANOTHER parent's
-  directory is invisible as an owner, and closing a dot orphans every row it
-  owns (third occurrence of this class). Re-own rows in the SAME commit that
-  closes their owner: prim-axioms to habu-primitive-effect-axiom-1119f176,
-  program rows to the live epic's self-named file. Also: sweeping a dot's last
-  `blocks:` entry must remove the bare `blocks:` header too, or the frontmatter
-  goes unparseable to some tools.
-- **Canonical-base snapshot rebasing must classify package records before
-  pointer ranges.** At canonical text base zero, a package's raw public/private
-  WIDs look like low text offsets; skip record `[0]/[8]` when `[40] = -1`, while
-  still rebasing an external name pointer.
-- **Snapshot scrubbing must use the exact return-stack extent.** Zeroing from
-  `RSTK-OFF` through `DATA-START` erased persistent protected and owner
-  registries that share the engine-reserved band; derive `RSTK-END` from the
-  256-cell capacity and scrub only that half-open interval.
-- **Owner WID numbers are generation-local; canonical package identity is the
-  persistence authority.** A refresh can retire and rebuild the package with new
-  WIDs, so snapshot capture must rebind the baked AOT name frame and replace
-  stale rows before copying DATA.
-- **Persisted package visibility needs an executable negative proof.** A
-  `search-wl` absence check does not prove qualified compilation is rejected;
-  run the AOT and snapshot images against a checked private-word call and require
-  the undefined-token diagnostic.
-- **Snapshot presence belongs to the loader-authenticated executable extent.**
-  Trailer magic distinguishes formats only after the OS header proves appended
-  content exists; treating missing magic as a cold image lets corrupted snapshots
-  boot through the cold path.
-- **Pre-copy snapshot validation must translate canonical external pointers.**
-  Long dictionary names point into the persisted region coordinate space; map
-  them to the appended source bytes before comparison and never borrow pinned
-  DBASE, NDICT, or CP registers as validator scratch.
-- **Append-only registries publish rows before counts.** Writers use release
-  stores for the count and capture uses acquire loads; model LDAR/STLR as named
-  assembler operations instead of embedding instruction words at call sites.
-- **Persistent builder state must preserve pointer identity explicitly.** Use a
-  typed pointer variable when the pointer itself survives calls, or retain a
-  stable record index and derive the pointer only at the use site.
-- **Snapshot DATA must exclude invocation-mode hooks and latches.** A snapshot
-  built while stdin is a TTY persisted `REPLH-CELL`, so a later `--load` printed
-  success and entered the REPL. Canonicalize those cells to zero and recompute
-  batch versus interactive state after restore on every boot.
-- trusted-inventory --strict needs BOTH a descriptive TRUSTED.md table row AND
-  a CMAP classification row for every new TRUSTED word - the table row alone
-  reads as unclassified. An overflow boundary over a wrapped raw scanner must
-  be proven with an up-front typed guard (ADVANCE-BYTE-OFF before the scan):
-  the raw scan cannot reach MAX-N cheaply, so without the guard the "overflow"
-  case is untestable and silently wraps. (strnum lane findings, 2026-07-15.)
-- **Unknown `dot` forms are mutating until proven otherwise.** Read `dot help`
-  before discovery: a bare positional form can create a dot instead of querying
-  dependencies.
-- A landed "documented skip" claim must be EXECUTED-verified, not
-  header-asserted: sub-dot 3's report said "snapshot/AOT boots skip the
-  tracker (SNAP-CELL-guarded)" but no such guard existed - every snapshot
-  boot SIGSEGVed on the captured-armed hook, and the red (owner-wid-child)
-  hid because that leg runs under HABU_OWNER_WID_HARNESS=1 in a forge phase,
-  not as a plain scheduled test. Two generalizations: (a) any hook/state a
-  cold-prefix file arms must be explicitly disarmed in SND-ZERO-LIVE unless
-  its warm-boot behavior is executed-tested; (b) warm boots replay the
-  unguarded `provided` re-establishment rows that cold boots never expose to
-  late-armed hooks - arm-order equivalence between cold and warm is a claim
-  that needs a snapshot-boot test the moment a new boot-time hook lands.
-- Two push-verification bugs in one day, same root: (a) `jj log -r 'X & ::Y'`
-  prints NOTHING when false - an empty result must be tested with `[ -n ]`,
-  never eyeballed (a dot was closed on a landing that never pushed, blocking
-  two dependent lanes; found by the dependent worker's E-UNDEFINED probe).
-  (b) `jj git push` reporting "Move SIDEWAYS bookmark master" means NOT a
-  fast-forward - a sideways master push orphans other agents' commits (sol's
-  claim commit was dropped for ~1 minute before a corrective rebase+push).
-  The merge protocol is now: positive ancestry check (`[ -n "$(jj log -r
-  'origin-tip & ::candidate' ...)" ]`) BEFORE moving bookmarks, and treat the
-  word "sideways" in push output as an automatic stop-the-line.
-- A whole-model device corruption probe must be MAGNITUDE-INDEPENDENT. A first
-  cut used an activation SWAP (gelu-epilogue cubins vs a relu-epilogue model,
-  same 4x8 MLP) and it VACUOUSLY PASSED on the Orin: the LINEAR layer amplifies
-  the synthetic inputs to large-positive pre-activations where gelu ~= relu to
-  well inside the composed f32 tol, so the "wrong pipeline" matched the golden.
-  Any smooth-vs-relu swap converges to identity for large-positive activations;
-  don't probe a post-LINEAR region with an activation swap (ablate-golden's
-  gelu-vs-relu works because it hits the RAW 4x8 input, not an amplified one).
-  Use a magnitude-independent op (ablate-ptx.f PTX mutation: operand-base
-  redirect %rd1->%rd2 / drop the per-lane index add) on a matmul region - it
-  diverges regardless of sign/scale and drove the whole-model golden to V-FAIL.
-  Corollary: keep the COMMITTED e2e proof the clean PASS, and demonstrate the
-  corruption in a temp copy (a baked probe that fails-to-fail turns the
-  committed proof red on device).
-- Typed-top tier-2 (sub-dot 7) landed STAGED, not default-on: a mode cell in
-  top-row.f defaults to tier-1 (warn), and HABU_TOP_TIER=2 stages tier-2, where
-  each tier-1 warning site instead `throw`s RC-REJECT (70) from the PRE-BLR WORD
-  hook - a clean rc-70 reject, catchable, REPL-recoverable via the SAME
-  EM-REPL-RECOVER path as the native DNAME-MIN-IN underdepth reject, and no crash
-  (p2 `0 0 catch` no longer BLRs into xt 0). Default-on was deferred because the
-  tracker is cold-boot only (snapshot disarms the hook, blocked on 4bd33351) and
-  the child-population blast radius across the suite is large; the parent-level
-  tree census is already clean (0 `hb: top-row:` across run.f + maki), so no
-  parent-level tree fixes were needed - only the default flip remains.
-- Child-env in test fixtures: RUN-ARGV-STDIN-CAPTURE-OUTCOME spawns via the
-  non-env `spawn-argv-io`, which INHERITS the parent environ and IGNORES the
-  PROC-ENV table entirely. To inject a child env var (e.g. HABU_TOP_TIER=2 to
-  force a tier), you MUST use the RUN-ARGV-ENV-* variant + PROC-ENV+; add
-  PROC-ENV-INHERIT-MISSING to keep HB_TMP and the rest, and pin the var
-  explicitly (set "1" for the off case, not just omit it) so a tier-2 gate leg
-  cannot leak into a control child. Cost me one debug cycle (children silently
-  ran tier-1 despite the env row).
-- **Enum-owned state must stay nominal in memory.** Mirroring variants as raw
-  integer constants and storing them in an untyped variable creates a second tag
-  authority. Use `LAYOUT-BUFFER`, generated constructors, typed fetch/store, and
-  exhaustive `MATCH` from declaration through persistence and rendering.
-- **Writable roots need search access too.** `access(W_OK)` accepts mode `0222`,
-  but cache clients cannot traverse it. Root readiness must require `W_OK|X_OK`,
-  with both the predicate and resolver pinned by mode-specific tests.
-- **Capture reports at the completion boundary.** Rendering from mutable worker
-  trace cells leaks implementation state into callers. Capture one typed report
-  when the build finishes, then expose accessors and wire renderers over it.
-- **Failure evidence needs separate owned storage.** Clearing a bounded working
-  path before rejecting it also erases the attempted root, while rendering a
-  maximum-length path through `SB` can mask the owner error. Retain the complete
-  attempt independently and size diagnostic output from its actual length.
-- **Invalidate reports before work starts.** A completed report remains stale
-  truth after the next build fails unless build entry clears its lifecycle
-  state. Invalid report access must fail closed with a named status error.
-- **Quote paths in line diagnostics.** A path is arbitrary bytes, not prose;
-  appending it raw lets tabs and newlines forge fields or records. JSON-quote it
-  even in text mode so each failure remains one exact line.
-- **Duplicate loop indices before interposing the base address.** With
-  `index byte base`, `over` duplicates the byte and corrupts the computed
-  address. Keep `index byte over base + c!` so `over` still selects the index.
-- **Baseline a red performance gate before blaming the candidate.** Master and
-  the cache branch failed identically while an orphan canary consumed a core;
-  compare both trees and audit host workloads before changing code or budgets.
-- **Nested fixture forks need fresh pool and temp ownership.** Reusing inherited
-  pool state collided with the parent captures, and sharing one gate root raced
-  compiler scratch files. Reset the child pool, give each worker its own gate
-  root, and keep cache-sharing fixtures in one worker; AOT coverage then fell
-  from 44 seconds to about 30 seconds without duplicate cold maker builds.
-- Type-family names obey package public/private exactly like words. To let an
-  external package name a family as `PKG:name` in signatures/locals, declare the
-  `TYPEFAMILY` in the package's `public` section (precedent: lib/cad-num-types.f;
-  visibility is captured from `CHECKER-PACKAGE-MODE` at declaration, sumtype.f
-  `TDECL-VIS`). `EXPORT` does NOT apply to family names - they are checker
-  type-registry entries, not dictionary words with an xt, so there is nothing to
-  re-export. A `private`-section family resolves ONLY from inside its own package
-  (own private rows in `TFAM-QUAL-RESOLVE`), which is why an in-package test can
-  write `NOM:path` while an outside consumer cannot. Moving lib/nominal's
-  row/path/binding TYPEFAMILY lines from `private` to `public` let src/cad/effect.f
-  name `NOM:row` directly and deleted two no-op `TRUSTED:` brand casts
-  (ROW>EFF/EFF>ROW) plus their manifest rows - the family stays fail-closed
-  (raw `n` where `NOM:row` is expected still rejects), so publishing the NAME cost
-  no soundness. Ordering gotcha: the family must be declared before the private
-  mint/erase `TRUSTED:` words that reference it, so open the package with the
-  `public` TYPEFAMILY first, then switch to `private` for the arena/mints.
-- **A "fork/COW state-leak race" can be deterministic argv contamination in
-  disguise.** The perf-regress inprocess flake ("malformed registry row: ...
-  device isolation fixture" under `test/run.f -- --under bin/hb`; two lanes filed
-  it as a fork worker inheriting the parent PERF ROWS arena) had NOTHING to do
-  with fork/COW. Real cause: `tools/ptx/perf-regress.f` is a CLI whose registry
-  path is `SCRIPT-ARGC 0 > if 0 SCRIPT-ARGV$`, and it was `included` into the
-  resident gate image. In-process, ambient `SCRIPT-ARGV` is the HARNESS'S argv
-  (`--under bin/hb`), so it `PERF:LOAD "--under"` -> `FILE-SIZE` throws E-FS-STAT
-  (-2101) before any parse. A CLI tool that reads ambient argv must NOT be
-  `included` into a shared image carrying foreign argv - run it spawned (clean
-  argv) and carry its gate assertion in an argv-free `-test.f` fixture. Two
-  reproduce-the-mechanism lessons: (1) `bin/hb --load a.f b.f cli.f -- <args>`
-  faithfully reproduces the inprocess-include argv leak - no fork needed; the
-  "intermittence" was just which invocations carried `-- <args>`. (2) The reason
-  it was misread as a data/arena bug is the SECOND defect: `PERF:RESET` cleared
-  the row arena but not the diagnostic cursor (`PF-LOFF`/`PF-LU` that
-  `LAST-LINE$` reads), so a throw-before-parse printed a STALE line from the
-  previous test - a non-hermetic reset made a path/argv error masquerade as a
-  malformed-row error. Reset ALL state a public diagnostic can read, or the error
-  text lies about the failure class and sends the next lane down the wrong trail.
-- **When a "requested" axis becomes a DERIVED function of the artifact, the
-  promote/refuse test must flip the OTHER axis - and inject it through the typed
-  seam, not a removed knob.** dot habu-per-op-requested: sched-key.f `REGION-POL`
-  now folds each op's intrinsic domain (`NPOL:OP-DOM`) over the region instead of a
-  per-class table, so a region's REQUESTED policy equals its op floor
-  (`= REGION-ACHIEVED`): a pure-gelu region requests relative, a pure-relu region
-  exact - the mixed elementwise class could not express that. Consequence that bit
-  the test rewrite: the old cad-test manufactured a numeric-gate REFUSE on host by
-  flipping the requested policy INDEPENDENTLY (`POL! exact` on a matmul region while
-  achieved stayed relative). Under per-op there is no independent knob, AND on host
-  `GOLDEN-GATE-G` always returns `prec-f32`/exact (the strongest), so
-  `GOLD-ACHIEVED = exact COMPOSE op-floor = op-floor = requested` -> the gate ALWAYS
-  satisfies; you cannot produce an executed refuse from the policy side. The honest
-  executed refuse drives `PROMOTE-NPOL` with an injected
-  `EVID-PREC--CLASS:PREC-TF32` (the device golden's relative leg the report-path
-  gate is parameterized on) against an EXACT-floor region (relu-only): relative
-  achieved cannot satisfy the exact request. Flip only the region's op (gelu vs
-  relu) under a fixed TF32 leg to prove the gate reacts to the per-op requested
-  policy. Removing the ambient table also retired its class error (`E-NPOL-CLASS`,
-  -5147) since `NODE-POL` was its only runtime reader.
-- **A standards doc can silently adopt a plan's aspirational grammar as if
-  shipped — verify every token against the live engine, not a sibling doc.** dot
-  habu-reconcile-forth-md-289ac1be: `docs/forth.md` § Structures And Enums (and
-  `docs/type-families.md`/`MODEL-CAD-V2-PLAN.md`) documented the planned
-  MODEL-CAD-V2 unified `STRUCTURE … ;STRUCTURE` grammar as the current surface and
-  listed `TYPEFAMILY`/`SUMTYPE`/`PRODUCT`/`ENUM`/`VALUE-RECORD`/`BEGIN-STRUCTURE`/
-  `ENUM+` as "removed syntax" with `E-REMOVED-TYPE-SYNTAX` tombstones. Proven by
-  `rg` + one-line `bin/hb` load probes: every "removed" word is a live,
-  heavily-used definer (`src/core/sumtype.f`, `roles.f`, `structures.f`,
-  `enums.f`); `STRUCTURE` does not exist (`E-UNDEFINED: STRUCTURE`, exit 70, not a
-  tombstone); `E-REMOVED-TYPE-SYNTAX` appears nowhere in the engine. The doc even
-  inverted the payload rule — `SUMTYPE` variant payloads are POSITIONAL type
-  tokens (a named `FIELD` inside a variant rejects, `E-TDECL-SYNTAX` 7107) and
-  named `FIELD` belongs to `PRODUCT`; `ENUM` is bare-names-only (an arity or
-  `VARIANT` token rejects, 7101). A token's status is whatever `bin/hb` does with a
-  one-line fixture, never what a cross-referenced doc claims.
-- A snapshot build can carry two checker copies: the engine cold prefix and the
-  generated build payload. Calling the newest `CHECKER-SNAPSHOT-PREPARE` only
-  resets the payload copy; engine AOT hooks can still dereference the first
-  copy's dead mmap owners after restore. Install a fixed first-copy
-  `CHECKER-SNAPSHOT-PREPARE` xt after the cold checker loads, invoke that exact
-  owner before the payload checker prepares, and clear the xt from persisted
-  DATA. Prove the two clearing boundaries independently: inspect the raw image
-  cell for zero to cover capture scrubbing, then re-sign a forged-nonzero image
-  and read the cell from user code to cover startup reset. A normal boot alone
-  lets either boundary hide the other's omission.
-- **Engine-layout regressions belong to the candidate gate, not a stale host
-  tail.** A host `bin/hb` predating a new sealed DATA cell cannot enforce its
-  guard band, so running the fixture there reports a false implementation
-  failure. Launch the fixture from candidate validation, pass the same candidate
-  through `HABU_UNDER_TEST` to its child probes, and keep host tails for contracts
-  shared by both layouts. Suite coverage must derive `GE-SRC-FILE+` candidate
-  members too, or moving a real fixture makes the inventory report a false
-  orphan.
-- **Build-only hooks must branch at the build entry, not inside the shared cold
-  prefix.** `LCOLDPFX` and `LCOLDPFXB` assemble one body for ordinary and build
-  modes; appending a hook unconditionally during base-file loading exposes it to
-  every user source. Reload the saved entry mode at the append seam and regress
-  the ordinary `--load` cell as zero.
-- **A composed-Gemm DEVICE golden must pick a form whose matmul epilogue is empty
-  or a unary activation.** dot habu-device-golden-composed: import.f lowers a
-  non-default Gemm by COMPOSITION - transB inserts a TRANSPOSE movement node,
-  alpha<>1 an OP-SCALE, a separate bias an OP-BIAS. FP-BUILD makes the transB
-  transpose a STANDALONE MATERIALIZED movement region (region 0) that FEEDS the
-  matmul region - and that IS device-emittable (`LMDM-EMIT$` dispatches
-  `LLA-REGION-MOVE?` -> `LMV-EMIT`; lower-mv-device-test.f already goldens a
-  standalone transpose copy kernel), so `Gemm(x,w,transB=1) -> Relu -> Gemm`
-  goldens on the whole-model device path (the movement->matmul cross-region
-  buffer the pure-matmul ort-ref golden never covered). BUT OP-SCALE/OP-BIAS
-  fuse into the matmul region as EPILOGUE nodes, and lower-mm.f `LMM-EPI-OP?`
-  accepts ONLY relu/gelu/silu - so a composed Gemm with alpha<>1 or a separate
-  bias is NOT device-lowerable and rejects FAIL-CLOSED (`LMM-CHECK-OPS` throws
-  E-LMM-OP -5194). Confirmed off-device by calling the private MAKI `LMM-CHECK-OPS`
-  from a `package MAKI` test under `catch`. So keep the composed golden fixture
-  bias-free / alpha=1; the scale/bias matmul epilogue is a residual owned by the
-  FENCED lower-mm.f. Reference: no onnxruntime exists for a composed Gemm, so the
-  committed CRF-Y is the HOST executor oracle (validated ==ort at 1e-5 on the
-  ort-ref fixture) - device-vs-host discipline, ort leg a documented residual.
-  Corruption probe: an in-process PTX capture + `ABL-MUTATE` fma(a,b,acc)->
-  fma(a,a,acc) on the matmul (magnitude-independent, in-bounds) drove the
-  whole-model golden from PASS to a clean REJECT on the Orin.
-- **A reduction-dominated fusion win is bounded well below the equal-cost-op
-  round-trip model.** dot habu-automatic-aggressive-fusion leg a (layernorm):
-  the maki op set has NO separate MODEL:-parseable mean/variance reduce -
-  `OP-LAYERNORM` is ONE row-reduce op doing mean+var+normalize internally (two
-  BLOCK-SUMs in `lower-red.f` LRED-EMIT-LN) - so layernorm's fusable seam is the
-  reduction's EW EPILOGUE (`LAYERNORM SCALE BIAS` = ROW-REDUCE->EW->EW), not a
-  ROW-REDUCE->ROW-REDUCE decomposition. `FP-BUILD` fuses it to ONE region
-  (ablated = 3); both device==host golden PASS. But the measured fused-vs-ablated
-  win was 1.41x, NOT the ~3x the equal-cost 3-op model predicts: the block-per-row
-  reduction dominates (1.07 ms/launch, ~7.8 GB/s - the LRED schedule is not
-  bandwidth-optimal), the scalar-scale + 1xC-bias epilogue folds in at ~zero
-  marginal cost (fused 214.3 vs ablated layernorm-alone 213.5 ms/200 iters), and
-  fusion's only removable work is the two standalone flat-EW passes (43.4+45.6 ms
-  of global round-trips). The round-trip savings are real; the RATIO is capped by
-  whatever fraction of the chain the reduction is not. Report the honest measured
-  ratio with the root cause, never the naive Nx.
-- **A sibling kernel's corruption-probe predicate name does NOT transfer - dump
-  the actual PTX.** RMSNORM's dropped-mask fault targets `@%p2`
-  (`ablate-golden-device-test.f` ABL-G3), but for LAYERNORM `@%p2` is the SCALE
-  broadcast-scalar load mask (harmless to drop: all lanes read element 0 and
-  inactive lanes are discarded at the masked store, so the golden still PASSes).
-  The predicate numbering shifts with region input count: LAYERNORM+affine has 3
-  inputs -> load masks `%p1/%p2/%p3`, and the first block-sum's inactive-lane seed
-  mask is `@%p4 mov.f32 %f5, %f1` (with `%f1` pre-seeded to `0fFF800000` = -inf).
-  Unmasking it leaks -inf into the sum -> mu=-inf -> clean REJECT. Inspect the
-  emitted kernel PTX to pick the reduction-seed mask; never copy a sibling's
-  `@%pN`. Also: `OP-MUL`/`OP-ADD` require SAME-shape operands (SHP-SAME-OK?), so a
-  per-feature 1xC affine gamma is not expressible via MUL - use `OP-SCALE`
-  (1x1/same) + `OP-BIAS` (1xC).
-- **The block reduction is warp-shfl now; `shfl.sync.down.b32` takes `%f` regs
-  directly.** dot habu-ptx-m6-perf-6b979497: `EMIT-REDUCE` in
-  `lib/ptx/cg-collective.f` replaced the O(B) thread-0 shared-memory fold with the
-  standard two-level warp reduction - a full-warp `shfl.sync.down.b32 %fD, %fS,
-  off, 31, -1` tree (offsets 16..1) per 32-lane warp, per-warp partials staged to
-  `SMEM[warp]`, then a final single-warp reduce of the `CG-WARP-COUNT` (= B/32)
-  partials into `SMEM[0]`. `ptxas` accepts the shuffle DIRECTLY on `.f32`
-  registers (c-operand `31` = warp width - 1, membermask `-1` = full 32 lanes),
-  exactly as nvcc emits - no `mov.b32 %f<->%r` round-trip. Blocks are always a
-  warp multiple (`PTX-BLOCK-LEGAL?` requires `n mod 32 = 0`), so all 32 lanes of
-  every warp execute the shuffle and the `-1` membermask is always well-formed;
-  the "tail warp" the plan worried about is (a) k not a warp multiple, handled by
-  the SAME inactive-lane identity seed (`@%p mov v, tile`, else -inf/0/+inf) that
-  threads through BOTH shuffle levels, and (b) the final reduce's up-to-32
-  partials, past-the-count lanes seeded identity via `setp.lt tid, CG-WARP-COUNT`.
-  The final-reduce guard `@%p bra` is warp-uniform (all lanes of warp 0 fall
-  through), so warp 0's shuffle keeps a full membermask - no intra-warp
-  divergence. Measured on the Orin (25W, block-per-row LRED layernorm, the
-  softmax/rmsnorm/layernorm codegen): LN-FUSE-ON 7.83 -> 11.37 GB/s (1.45x),
-  LN-FUSE-OFF 16.64 -> 21.22 GB/s; softmax-launch / sum-launch / gradcheck /
-  lower-red-device / lower-model-device all stay device-golden green.
-- **A predicate-numbering shift does NOT always move a corruption probe - but
-  verify by dumping the PTX.** The warp-shfl rewrite changed the reduction's
-  predicate count, yet `maki/ablate-golden-device-test.f` ABL-G3 still strips the
-  correct `@%p2` (the RMSNORM inactive-lane identity seed): RMSNORM has one
-  ROW-LOAD mask (`@%p1`) then the reduce seed (`@%p2`), and that prefix is
-  unchanged, so the FIRST `@%p2` is still the seed. Confirmed by capturing the
-  emitted RMSNORM PTX (`PTX-CAPTURE-ON 0 FP-REGION-ID LRED-EMIT`) off-device
-  BEFORE trusting the probe - do not assume the shift moved it, and do not assume
-  it didn't; the shuffle reduction still fails-closed to V-FAIL when the seed mask
-  is dropped (inactive lanes leak +inf into the sum).
-- **When an error-recovery mechanism is upgraded, migrate every branch to the old
-  entry in the same change — the sibling left behind becomes the residual bug.**
-  dot habu-interpret-err-under-8876b500: the compile-abort legs (LUNDEF/LWIDE/
-  LMININ) had moved to the catchable RC-REJECT throw via LEVALREC, but the LMAIN
-  underflow guard's EVALD>0 leg still used the old rollback-and-return
-  (EM-EVAL-UNDEF-ROLLBACK: pop the frame, set EVALERR, return). Rollback-and-return
-  is fail-open both ways: `[: INCLUDE-EVALUATE ;] catch` read 0 for E-UNDERFLOW
-  while E-UNDEFINED was correctly caught 70, and a handlerless caller kept
-  interpreting past the failed evaluate with rc 0. One throw contract per boundary;
-  grep for every jump into the retired recovery entry before calling the upgrade
-  done. Also: re-verify a dot's exact repro on the current base before red-first
-  work — both dots of this pair were already fixed by intervening engine work, and
-  the genuine remaining defect was this sibling leg.
-- **The swizzle, not the scalar path, was the tensor-core GEMM bottleneck — pad As
-  and ldmatrix wins +54.8%.** dot habu-mma-larger-bk (lib/ptx/cg-mma.f). The prior
-  design note concluded the MMA kernel was "NOT fragment-feed-bound" because dropping
-  cvt (mode 1) and ldmatrix (mode 2) were flat/1% slower at BK=32. That measured the
-  UNPADDED ldmatrix, whose 16 fragment-row addresses (As row stride 128 B = 32 words)
-  all alias bank 0 — a 16-way shared conflict that serialized the load and hid the
-  tensor-core win. Padding the As row to a bank-spread stride (MMA-PAD=8 floats, kept a
-  multiple of 4 so cp.async's 16 B chunks stay aligned) made mode-2 ldmatrix jump from
-  394 to 612 GFLOP/s at 2048^3 (408 MHz), +54.8% over the scalar baseline (398.5) and
-  past the FP32 CUDA-core kernel (441.8). Larger BK (64, needs dynamic .shared for
-  stages=2 double-buffering past the 48 KiB static cap) added only +0.8% on top — the
-  swizzle is the lever, BK the garnish. Lesson: measure an optimization at the layout
-  it needs (ldmatrix wants a bank-free tile), not on top of a conflicting one, before
-  concluding a path "doesn't help." Element-exactness (tools/ptx/mma-gemm-check.f) was
-  the safety net that let the padded-address rewrite be trusted.
-- **A shared emitter word feeds two callers — parameterize with a byte-identical
-  default, prove it, don't fork.** cg-mma.f's MMA-SETUP/MMA-KTILE are reused verbatim by
-  the FENCED maki/lower-mm.f LMM-MMA-BODY, so the BK/pad/stages knobs had to default to
-  values that re-emit the old PTX byte-for-byte (verified by dumping all three fragment
-  modes before/after and diffing). shl-vs-mul on the As stride was the trap: emit shl
-  when the stride is a power of two (byte-identical at 128) and mul.lo otherwise.
-- **A "pure codegen representation" can be upgraded to a checker-PROVEN capability
-  additively, by wrapping the SAME emit words in new nominal type families — no
-  codegen edit, no legacy-caller churn.** dot habu-ptx-m10-vectorization (lib/ptx/
-  tile-v4a.f). tile-v4.f's `-V4` words kept the scalar `tile<t,b,m>` surface ("v4-ness
-  is a pure codegen detail, typed alignment proofs remain dotted"), and are consumed
-  across maki's fusion codegen + many tools. M10's typed layer (a nominal `vspan`/
-  `vtile`, the 16B-alignment obligation, the n-mod-4 masked tail) was delivered as a
-  SECOND vocabulary (`V4-ALIGN`/`LOAD.V4`/`STORE.V4`, dot-spelled to distinguish from
-  the hyphenated `-V4`) whose TRUSTED bodies REUSE the existing cg-vec.f emit words
-  verbatim — so the typed kernel lowers to BYTE-IDENTICAL PTX (proven in-process with
-  PTX-CAPTURE + T-STR=). That byte-identity is the device-correctness bridge: the typed
-  path inherits the already-passing saxpy-v4-tail device golden (n=4,5,7,1000003, body +
-  @%p tail) for free, and the emit/legacy callers (maki fusion, tools) stay untouched.
-  Retiring the legacy `-V4` path is a separate migration dot, not this one.
-- **Two nominal type families (`vspan`/`vtile`) beat a 4th span parameter for an
-  alignment refinement — and the obligation belongs on the memory op, not the ctx.**
-  A `span<...,align-16>` 4-arity span would break every existing arity-3 `span` site;
-  instead register arity-3 `vspan` (16B-proven global span) + `vtile` (vec4 lane tile)
-  as purely-additive TFAM rows (like `acc`; needs one `install --force` fixpoint rebuild
-  to bake into bin/hb — a library-only change does not). `V4-ALIGN ( span -- vspan )` is
-  the sole route to a vspan (trusted 16B assertion, identity emit, like MK-SPAN asserts
-  extent); `vtile` distinct from `tile` makes "store a vec4 tile through scalar STORE" a
-  fail-closed type error. Put the vspan requirement on LOAD.V4/STORE.V4 (where the
-  ld/st.global.v4 actually touches memory), NOT on the ctx derivation — GRID-CTX.V4
-  takes a plain span, so the misaligned-base negative rejects exactly AT `LOAD.V4`
-  naming `vspan`, the cleanest diagnostic.
-- **New TRUSTED: words need rows in BOTH TRUSTED.md sections, owned by a LIVE dot —
-  never the implementing dot (it closes).** trust-lint checks the markdown effect table
-  AND the site-registry (`file:name class owner`); a missing row fails the gate. Reuse
-  the sibling's `stdlib-boundary` placeholder owner (habu-ptx-phantom-preserving) that
-  every ptx stdlib boundary already uses, because "owner must exist in .dots/" and the
-  m10 dot is removed at closure. Audit date = today, effect string = the source
-  signature verbatim, or trust-lint drift rejects.
-- **ncu on the Orin NX likely hard-hung the box on first attach — treat Nsight
-  Compute as a device-risk operation.** dot habu-close-mma-gemm (profile-first lane).
-  Timeline: fresh bootstrap OK (07:49), one clean MMM single-launch via the new
-  tools/ptx/mma-profile.f harness OK (07:52), then the FIRST `sudo ncu -k MMM
-  --launch-count 1 --clock-control none <sections>` run printed only "==PROF==
-  Connected to process" and never produced a section; within minutes zed dropped
-  off the tailnet (tailscale `tx N rx 0`, ssh/ping timeouts, 18+ min, no watchdog
-  reboot) — a physical power cycle is required. HYPOTHESIS (strong circumstantial,
-  unconfirmed): ncu's perfmon interception wedged the GPU/driver on this
-  L4T 5.15.148 + ncu 2024.3.1 combo. Next lane: after power-cycling, prefer (a)
-  `nsys` GPU-metrics sampling (less invasive) or (b) the harness's variant-kernel
-  timing decomposition over ncu; if trying ncu again, use a minimal single section
-  (`--section SpeedOfLight`), a tiny shape (256), and expect to lose the box.
-  The one-launch profiling harness (tools/ptx/mma-profile.f, config-driven
-  `-- BK PAD STAGES DYN MODE SHAPE`) is host-gate-clean and device-proven; the
-  actual profile evidence is still missing.
-- **Engine-hook migration off raw `@ execute` cells is doubly gated — natively by
-  in-file ordering, and hard-blocked by the stage0 bootstrap mirror.** (dot
-  habu-migrate-engine-hooks stage 2.) Native: `defer` needs `DEFER-UNSET`
-  (exec-vector.f — now loaded before checker.f) AND the checker's `trust`
-  (checker.f ~7706) + `checker-defer` record words already in the dictionary
-  (C-DEFER LFINDs them and dies rc 0x46 printing the token), so inside checker.f
-  only post-TRUST hooks can become defers; a prefix `variable` gets NO checker
-  usig row (the engine registers colon/defer rows, not variables), so a checked
-  installer word cannot read a flag variable — set flags at top level like the
-  old `' X CELL !` installs. Bootstrap: bootstrap/cg/forth.fs has NO deferred
-  words ("deferred-word state is still absent") and the stage0-generated engine
-  re-reads the boot prefix at startup, so ANY `defer` in a prefix file breaks
-  no-binary recovery (proven: full defer migration was native-green through
-  fixpoint x2 + run.f, but test/bootstrap-wide-memory.fs failed; fixture green
-  on native bin/hb). TYPED-VARIABLE xt<E> cells are stage0-compatible (`[:` is
-  mirrored) but the definer lives in layout-buffer.f (prefix 547), after the
-  hook-cell files (540-546). Prereq for stage 2: mirror defer/is into
-  bootstrap/cg/forth.fs (or make the typed-cell definer available pre-checker).
-- **bin/hb is a THIN binary: it re-reads the src prefix at every startup.**
-  Source edits take effect on the next run without `-- install`; an opaque
-  startup death printing one token is usually a prefix-order failure (the token
-  is the current parse point). A broken `-- install` bakes a broken engine —
-  restore bin/hb from jj, not just the source. The prefix load order lives in
-  SEVEN synchronized places: habu2.f x3 PFX tables, bootstrap/cg/forth.fs x3,
-  tools/bootstrap.sh (emit_src + SRC_COMMON), tools/build-fixpoint.f
-  (CHECKER-BOOT / COMMON / SNAP-KEEP), tools/boot-pin.f, tools/diagnose-hb-core.f,
-  plus pinned row counts in tools/bootstrap-codegen-test.f.
-- **Adding a scratch register to a shared native helper must use a register that
-  helper ALREADY clobbers — a sibling caller may hold live state in an
-  "untouched" register across the call.** dot habu-cap-native-control-a5669829
-  (LCFPUSH control-flow-depth cap, the opposite-direction sibling of the LCFPOP
-  orphan-underflow guard). The overflow itself was real and reproduced exactly at
-  the region edge: CFSTK is [CFSTK-OFF, DICT-SIZE) = 4096 B = one depth cell +
-  floor((4096-8)/24)=170 24-byte records; a watch on `dbase@ DICT-SIZE + @` showed
-  N=170 leaves the first code word intact and N=171 (depth-170 push) overwrites it
-  0..→0, spilling into the JIT code area (checker-ON it SIGABRTs at ~N>=210 once
-  the corrupted code runs; checker-OFF it is silent because DEEP is never
-  executed). First guard attempt loaded the cap into x14 — LCFPUSH never touched
-  x14, but J-ELSE does `14 9 0 ADDI … C-PUSHCP … 9 14 0 ADDI` to carry the IF
-  branch origin across the push, so `mov x14,#cap` clobbered it and LPAT
-  dereferenced the cap value (lldb: faulting `ldr w11,[x9]`, x9=0xaa=170). Fix:
-  use x12, which LCFPUSH already overwrites for record math (reloaded on the next
-  line) — provably dead, no caller can rely on it. Lesson: before picking a
-  scratch reg in a BL-called emitter, grep every caller for save/restore of
-  "unused" registers across the call, or reuse one the callee already clobbers.
-  Also: `data-base` (x20/DATA) != `dbase@` (x26/DBASE) — watch CF-stack memory
-  through DBASE, not DATA, or the probe reads the wrong region.
-- **Dot frontmatter `blocks:` means BLOCKED-BY (this dot's dependencies), not
-  "blocks these" — and `dot ready` honors only recorded edges, so prose
-  references never gate dispatch.** Proven by exclusion: cross-check-remapped
-  lists validate-canonical-src under `blocks:` and is absent from `dot ready`
-  while the listed dot appears. Two premature dispatches followed: the
-  quote-diagnostic-paths and validate-canonical-src dots both target files
-  (tools/source-compose.f, tools/diag-remap.f, tools/source-map.f) that no
-  landed lane has created; `dot ready` offered them because nobody recorded the
-  edges. Dispatch protocol now: before claiming a ready dot, verify its Files:
-  exist on master (rg/jj file list — one command), and when a lane reports
-  premise-missing, record the blocked-by edges on the tracker immediately so
-  the ready list stays truthful.
-- **Adding a stage0 keyword to bootstrap/cg/forth.fs needs THREE coordinated
-  edits — `variable LKWxxx`, the keyword bytes in EMIT-KWDATA, AND the fresh
-  `LBL LKWxxx !` in the label-init block — and missing the third is nearly
-  undiagnosable from the symptom.** (deferis lane, dot habu-mirror-defer-is.)
-  An unassigned label variable stays 0; binding label 0 corrupts the label
-  table, and the failure surfaces only as `hb: snapshot trailer corrupt`
-  (exit 79) at generated-engine startup — nowhere near the real cause. When a
-  stage0-generated engine dies with a trailer/snapshot diagnostic right after
-  a forth.fs keyword addition, audit the label-init block first.
-- **A diff that adds TRUSTED:/TRUST sites must gate on tools/
-  trusted-inventory-test.f, not just trust-lint — their corpora differ.**
-  (deferis integration.) The wide-memory defer fixture added three TRUSTED:
-  test words; trust-lint stayed at 0 findings (it checks the TRUSTED.md
-  manifest/effect tables) while trusted-inventory-test failed under run.f
-  (expected 0 unclassified, got 3): every TRUSTED site repo-wide, tests
-  included, needs a site-registry row (class + live-dot-or-cap owner). The
-  quick-gate set for TRUSTED-touching diffs is trust-lint AND
-  trusted-inventory-test.
-- **In this engine the checker hook is the compile-time cost center at ~30:1 —
-  measure against it before minting any dispatch/lookup perf dot.** (kwfold
-  lane, closed habu-fold-compile-keyword.) Checker-ON compile is 5.14us/token
-  vs 0.16us/token checker-OFF on a 500k-token worst-case stream; the entire
-  parse + ~69-compare keyword/op chain + LFIND + emit path is ~3% of
-  checker-on cost, so folding the chain into one hash lookup had a <2%
-  ceiling against multi-day seven-mirror fixpoint surgery. The honest move
-  was measuring first and closing the dot; compile-latency work belongs in
-  single-pass checking (habu-single-pass-checking-aabfb874, evidence copied
-  there).
-- **Replacing hardcoded codegen text with a data-driven record: seed the
-  default record with the exact historical shape, then prove byte-identity by
-  sweeping every emitter's stdout.** The ptx scaffolding ABI existed FOUR times
-  (CG-ENTRY's entry string, CG-PARAMS' ld.param lines, CG-RESET's register
-  seeds 2/3/2, cuda-launch's offsets 0/8/16/20/total 24/block 256) and a dozen
-  producers (relu/exp/acc/ops/...) intentionally reuse the SAXPY entry+layout
-  so one launcher serves them all — so the KABI record's default HAD to be the
-  SAXPY shape or every legacy producer's PTX would shift. Proof method that
-  made the refactor safe: before editing, capture stdout goldens for ALL
-  tools/ptx/*-cg.f plus a probe hitting bench-only paths (EMIT-MATMUL-MMA in
-  each lmode and every GB-MMM-CFG row, EMIT-GELU, EMIT-MATMUL/naive), then
-  re-run and cmp after — 27 outputs, zero diffs, no reliance on eyeballs.
-  Also: `bin/hb file.f` without `--load` drops into the REPL on open stdin and
-  hangs a harness; always `bin/hb --load ... < /dev/null` in capture loops.
-- **A TRUST row on a `:` word that CHECK!-certifies is redundant by
-  construction — the build's certify pass (verify-source VERIFY-SOURCE) already
-  runs CHECK! on every `:` body and throws on reject AND uncheckable.** (btrust
-  lane, habu1 batch: 40 of 41 rows deleted with zero code changes, repo TRUST
-  398→358.) Before hand-converting any TRUST batch, try mass-removal + rebuild
-  first; only rows on non-`:` forms (variables needing cell refinements, real
-  machine-code boundaries) can be load-bearing. Expect benign binary drift:
-  certification-layout shifts move the baked AOT-REPL data-address immediates
-  (MOVZ/MOVK chains EM-SEED-AOT re-relocates at boot); the fixpoint gate is
-  x2 self-reproduction, not a frozen sha vs the pre-change baseline.
-- **DDC byte-identity must be measured at the FIXPOINT, not the raw bootstrap
-  seed.** (ddc lane.) The gforth CHECK_ONLY seed carries dead host-dependent
-  movz/movk AOT-REPL address immediates (542 __text + 191 signature bytes)
-  that EM-SEED-AOT re-relocates at boot; the native fixpoint refresh
-  re-captures the AOT blob from the canonical small engine and erases them, so
-  gforth-seed→refresh == native fixpoint byte-for-byte (verified d0db5fe3).
-  The earlier fix spec (AOT-capture canonicalization) compared the wrong
-  artifact — no engine change was needed; tools/ddc-verify.f encodes the
-  correct chain.
-- **Device goldens for hand-built (non-capturable) IR: feed the child driver
-  via a shared checked source-text builder that the parent also EVALUATEs.**
-  (rx1fold lane.) One source of truth for both legs; the off-device load
-  already validates the child text (the EVALUATE build must succeed), so the
-  only thing pending device time is the compare itself — stronger than the
-  MODEL-text duplication in older device tests. Also a dispatch-protocol
-  reminder: read the dot BODY (landed-leg/residual annotations), not just the
-  Desc head — this dot's host leg had landed 8 days before dispatch and the
-  annotation said so.
-- **`cp` over a LIVE bin/hb poisons the macOS AMFI cache for that vnode — the
-  symptom is exit 137 (SIGKILL) for that path only, with the identical bytes
-  running fine from any fresh path.** (relreach integration incident.) A worker
-  cp'd a seed binary over the shared checkout's bin/hb while gates were exec'ing
-  it; execs racing the truncate+rewrite saw a torn binary, AMFI cached the vnode
-  invalid, and every later exec of even VALID bytes at that path was killed —
-  including the fixpoint installer's own refresh child (E-BUILD-STATUS -2802),
-  and plausibly several phases of an in-flight run.f on a different tree.
-  Discriminator: copy the binary to a fresh path and exec (docs/debugging.md
-  already documents the AMFI gotcha). Cure: replace the file via a NEW inode
-  (rm + cp, or write-temp + rename — which is why the installer itself never
-  triggers this). Rules reinforced: workers NEVER write the shared checkout
-  (bin/hb included) — seed copies flow orchestrator->workspace only; and a
-  multi-phase red on a shared box is suspect if any agent touched bin/hb
-  mid-run — re-verify on an isolated workspace before RCA'ing the tree.
-- **The checker-defer bridge needs BOTH engine→checker calls — C-CALL-TRUST-PEND
-  (the usig row) AND C-CALL-CHECKER-DEFER (the defer flag): checker.f IS-TOK
-  requires both before a checked `is NAME` certifies.** (chkdefer lane, stage0
-  mirror.) Mirroring one without the other still rejects with the same
-  'non-certified definition ... at is' diagnostic. Mirror-side gotchas: define
-  C-CALL-CHECKER-DEFER after C-P2-FIND-GLOBAL (gforth forward reference), and
-  load x12 = PEND-CELL before C-PUSH-DREC-NAME (the mirror variant reads the
-  name from the dictionary record, unlike native's body-buffer read).
-- **test/nf.fs hardcodes /tmp/nf-bin — a cross-worker AMFI + debug-session
-  hazard on a shared box.** (chkdefer lane.) Overwriting it mid-lldb got the
-  binary AMFI-killed and risked another lane's session. Reproduce the
-  wide-memory gate at a private path (require forth.fs by absolute path,
-  FORTH-EXE to a scratch file, same src + 'ok' assert); run the verbatim gate
-  only when /tmp/nf-bin is free (lsof first). Parameterizing nf.fs's paths is
-  queued work if the collision recurs.
-- **The native message-table diagnostic needs the same three-edit rule as the
-  stage0 mirror: variable + EMIT-TRAPH message bytes + EMIT-LABELS label-init
-  — and the native build fails CLOSED on the omission ('icode: label
-  redefined'), unlike the mirror's exit-79 trailer corruption.** (mmapdiag
-  lane.) Also the boot-diagnostic safety pattern: message bytes in the
-  loader-mapped __text section are writable to fd 2 before ANY runtime region
-  exists; ADRD32 fail-closes ADR reach so the pattern survives text growth.
-- **A die-class default-is body must locals-consume its declared inputs or
-  the fixpoint certify pass rejects it (E-BUILD-CERTIFY at 'die'), even though
-  the engine boots green.** (stage2b clean-4 lane, TF-SHA16-UNSET.) Fresh boot
-  loads prefix files before the check hook installs, so only the stage certify
-  sees such bodies — certify is the authority and stays fail-closed. Bind with
-  typed locals ({: a:ptr u:n dst:ptr :}) before the die, per the LBUF-EVAL
-  precedent.
-- **Recovery `BPROTWIDADD` was registered with the leaf wrapper despite emitting
-  `BL`.** The nested protected-WID query replaced `x30`, so the raw bootstrap
-  primitive could not return; `FPRIM` now matches native and preserves the caller.
-- **Run proof gates as standalone commands before VCS mutation.** A failed gate
-  followed by commit/push commands in one shell invocation can leave a successful
-  final exit status; inspect the gate result first, then commit in a later command.
-- **Pre-trust defers land via a pending table drained after `: TRUST`, not by
-  reordering the checker.** (dot habu-engine-pre-trust-77410827.) Native C-DEFER
-  unconditionally ran C-CALL-TRUST-PEND/C-CALL-CHECKER-DEFER, which LFIND
-  `trust`(checker.f:7687)/`checker-defer`(5208) and exit 70 — so any `defer` before
-  line 7687 (the B5 decls, the render/snapshot hook cells) killed boot. Fix
-  (option a): C-DEFER branches on C-PRETRUST-READY? (non-dying finds of both); if
-  absent it COPIES the defer's qualified name (via C-PUSH-DREC-NAME) + effect sig
-  (TSIG-A/U-CELL, which point into the transient source input) into a fixed
-  engine-DATA table, and DRAIN-PRETRUST (an FPRIM baked in habu2.f + the
-  forth.fs mirror, `PRIM:`-axiomed like SEAL-CAPTURE) replays both registrations
-  from the slot copies at a single checker.f token right after `: TRUST`. Both
-  name and sig MUST be copied — the dictionary record holds only the BARE tail
-  (native C-PUSH-DREC-NAME deliberately reads the QUALIFIED body-buffer spelling to
-  avoid the qualified-defs-leak bug), and the sig is never in the record. Fail
-  closed: overflow at declaration (C-PD-DIE-FULL, exit 72) and a non-empty table at
-  SEAL-CAPTURE (BSEALCAP backstop, exit 73), both named. The pending band sits at
-  the TOP of the reserved region and bumps DATA-START (protected-WID growth
-  precedent) so no existing offset moves; because PD-TABLE-OFF ($8000) exceeds the
-  DATA-relative scaled-immediate range ($7FF8), slot access computes an explicit
-  band base (`reg PD-TABLE-OFF LIT64, reg DATA reg ADD`) then small in-slot offsets.
-- **`LQNL` (the newline label) lives in habu2.f, so habu1.f code (BSEALCAP) cannot
-  ADR it — emit the newline as an inline `9 $0A LIT64` byte instead.** The build
-  fails at certify (`E-UNDEFINED ... in bsealcap: undefined word 'LQNL'`), not at
-  assembly. Any habu1.f die that wants a fixed message must build it self-contained
-  (LIT64-packed bytes on SP, like habu2.f's E-UNDEFINED die), not reference a
-  habu2.f message-table label.
-- **Adding a native `TRUST` asm site needs THREE ratchet updates, not one:** a
-  TRUSTED.md manifest table row (trust-lint), and — because `src/habu/habu2.f` is a
-  coarse `builder-emit` file-level fold — bumping that fold's count in the
-  `trusted-inventory-classes` block (trusted-inventory-test RATCHET-BAD#, mapped to
-  assertion 12 `TINV:RATCHET-BAD# 0 T=`). trust-lint and trusted-inventory-test
-  have DIFFERENT corpora; a diff that passes one can fail the other.
-- **The earliest prefix point a `defer` is legal is AFTER exec-vector.f (prefix
-  pos 5), which defines DEFER-UNSET — not util.f (pos 1).** A defer in an earlier
-  file dies 70 at C-DEFER-FIND-UNSET. Relevant when injecting fixtures: the
-  pre-trust-defer overflow regression appends its defers to exec-vector.f.
-- **A negative regression for a prefix-load die spawns a child engine with CWD set
-  to a copied+patched src tree** (prefix paths are CWD-relative `src/...`; the
-  child engine path must be ABSOLUTE since its CWD is the temp root — resolve via
-  `s" PWD" GETENV`). Blank exactly the intended prefix region by wrapping it in
-  unique sentinel comments; scanning for a bare token name blanks the wrong span
-  because the name also appears in a `PRIM:` axiom / comment elsewhere in the
-  file. Injected fixtures: the earliest legal `defer` host is exec-vector.f, and
-  source appended AFTER check-hook.f compiles CHECKED (the hook installs at its
-  load) — use that to prove checked `is`/certify behavior in a child tree.
-- **A new engine prim CALLED from the boot prefix breaks every existing binary in
-  the ecosystem — the prefix is re-read by old engines, and a bare new-prim token
-  is E-UNDEFINED exit 70 for them.** (pretrust integration.) Gates that only boot
-  the freshly-built engine cannot see this; probe with the PREVIOUS master
-  fixpoint binary against the changed tree. Two facts from the probes: a
-  `PRIM: NAME PRIM;` axiom line is tolerated by old engines (it only parses a
-  name), and the "prims are baked so tolerance is impossible" intuition is wrong —
-  a `TRUSTED:` shim that resolves the prim by RUNTIME `s" NAME" 0 search-wl`
-  lookup (both words baked in old engines) boots old engines (miss -> drop) and
-  new engines (find -> execute), verified end-to-end. It must be TRUSTED: because
-  `search-wl` yields plain `PE-N` and RSEXEC soundly rejects execute-of-plain-n —
-  own such a shim with the live stored-xt dot and state the removal condition at
-  the site (pretrust: revert to the bare token at the first stage-2b pre-7687
-  conversion landing, which inherently requires the new engine anyway). Pin the
-  tolerance in-gate by patching the looked-up name to a miss (a gate cannot
-  depend on a historical fixpoint binary).
-- **A new engine PRIM registered in the stage0 mirror MUST have a dictionary name
-  <= DNAME-INL (16 bytes) — the recovery mirror only emits INLINE prim names.** The
-  first draft named the drain prim `DRAIN-PRE-TRUST-DEFERS` (22). The NATIVE build
-  handled it (native prims like `spawn-argv-env-cwd-io`=21 exist), but the
-  gforth-mirror `FORTH-EXE` build wedged: `EMIT-FORTH` (emission) finished fine, but
-  `EMIT-EXE`→`BUILD-MACHO` spun forever in a gforth `EXC_BAD_ACCESS address=-16`
-  signal/longjmp loop (0% forward progress, no nf-bin, ~40 min). All mirror prims
-  were <=12 chars; a >16 name is the first to need external (DNAME-EXT) storage,
-  which the mirror's seed-dict/image path does not emit, so the record's name
-  pointer is garbage and the fixup walk chases it. Renaming to `DRAIN-PRETRUST` (14)
-  fixed it instantly. RCA method that pinned it: `sample <pid>` showed the loop was
-  `_sigtramp`/`longjmp`/`segv_handler` (fault loop, not slow build); lldb
-  `process handle SIGSEGV --stop` gave address -16; a clean-`master` wide-gate build
-  (<45s vs 40 min) proved it was my change; step-probing `EMIT-FORTH` (depth=0, done)
-  vs `EMIT-EXE` (hang) localized it to the image writer; bisecting the mirror change
-  found the FPRIM reg, then the name length. The recovery mirror's external-prim-name
-  gap is a real capability gap (dot it if a long prim name is ever unavoidable);
-  until then, keep engine prim names <=16.
-- **Engine-prefix landings get an old-binary boot gate: the PREVIOUS master
-  fixpoint binary must boot the candidate tree — a commit only its own binary
-  can boot strands every puller.** (pretrust integration.) The worker's gates
-  structurally cannot see this (they always run the fresh binary); the
-  integrator boots the ecosystem binary against the exact rebased tree. When
-  a transition is inherent (a prefix that USES a new engine capability), take
-  it deliberately: tolerant-shim spelling (TRUSTED: runtime search-wl lookup
-  — miss=no-op on old engines, hit=execute on new; probe-proven) as a bounded
-  owned migration boundary, transition + shim-revert bound to a named later
-  landing. Also disproven: 'prims are baked so old engines cannot tolerate a
-  new prim token' — the token never needs parsing; a runtime name lookup
-  through search-wl is the tolerant spelling.
-- **Checker uninstall must clear its paired compile preflight.** Native rebuilds
-  begin with `0 set-check`; leaving the old callback armed makes the new checker
-  copy look like a hostile replacement before the canonical prefix can reload.
-- **A TRUSTED: body does not bypass sealed-store guards.** Reinstalling the
-  checker with raw `!` into its protected preflight cell exits 83 after
-  `0 set-check`; the engine-owned `set-preflight` primitive is the required
-  mutation boundary. Token tracing plus JIT disassembly exposed the raw store.
-- **A custom checker hook is a paired lifecycle, not one `set-check`.** Every
-  installer must run `LOWER-CERT-HOOK:INSTALL` first so a preceding
-  `0 set-check` cannot leave checked definitions armed without compile-time
-  preflight; `set-preflight` itself is unsafe inside checked bodies.
-- **Fail-closed diagnostics are byte contracts across both emitters.** Keep the
-  fixed length inclusive of exactly one LF, route recovery through its own
-  missing-preflight label, and compare the complete stderr span so a trailing
-  NUL cannot hide behind substring assertions.
-- **Emitter-source parity does not prove recovery runtime parity.** Run the same
-  exact-byte subprocess assertion with `HABU_UNDER_TEST` bound to the private
-  Gforth-built `hb-stdin`; the recovery gate must prove rc 70, empty stdout, and
-  the 35-byte LF-terminated, NUL-free diagnostic before installing anything.
-- **Compile preflight diagnostics must enter the canonical checker renderer.**
-  Pass the reconstructed body buffer already containing the immediate token to
-  `CHECK!`; a bespoke short JSON object silently drops spans, effects, return
-  rows, schema validation, and repair-packet compatibility.
-- **Test-harness package privacy does not extend into spawned fixtures.** Keep
-  harness support short and private, but give generated child words collision-
-  resistant names because each fixture loads into the engine's global scope.
-- **Compile preflight must force the compiler-provided token into checker
-  classification.** A dictionary immediate created while checking is off has no
-  signature row, so an ordinary body scan mislabels it undefined. The dedicated
-  preflight entry pins the final token as `E-UNMODELED-IMMEDIATE` and emits one
-  canonical repair packet for signature-bearing and signatureless immediates.
-- **Candidate gates must execute the candidate.** Runtime helpers use `GE-HB$`;
-  literal `bin/hb` is reserved for explicit baseline probes. Otherwise an exact
-  rebased gate can fail on a stale installed engine while never testing the
-  rebuilt artifact it claims to certify.
-- **Locals and package words collide case-insensitively.** A local `ba` shadows a
-  private word `BA`, so `ba BA !` stores through the local value instead of the
-  intended cell. Give persistent state semantic names distinct from every local,
-  and use typed pointer accessors for pointer-valued cells.
-- **Changing a checker failure class also changes its complete origin.** Repin
-  token text, token index, and byte span together; otherwise a canonical repair
-  code can identify an earlier signature token.
-- **A token inside a definition body has not executed.** Lifecycle lints must
-  ignore body-local disable and rearm transitions; only top-level execution
-  changes the current checker state.
-- **Recovery parity needs a raw-emitter runtime fixture.** Testing the final
-  recovery-built `hb-stdin` exercises native stage code and can miss a defect in
-  `bootstrap/cg/forth.fs`; compile and run the same fixture through `FORTH-BUILD-EXE`.
-- **A no-side-effect regression needs an observable side effect.** A fragment
-  that only compiles more code cannot distinguish pre-execution rejection from
-  a later reject; emit a compile-time marker and assert it remains absent.
-- **The swizzled TF32 mma.sync GEMM is FEED-BOUND on un-amortized B-side
-  scalar shared loads, not mma-issue-bound — the earlier dependency-bound
-  hypothesis is overturned by ablation.** (mmaparity attribution lane,
-  918MHz-pinned variant-kernel timing decomposition; nsys GPU-metrics is
-  unsupported on the Orin iGPU, so DCE-safe ablated kernel variants are the
-  profiling method there.) Numbers at 2048^3: B-feed 5.04ms of 12.61ms (~40%);
-  cp.async staging floor 7.48ms hidden behind the feed; A-side ldmatrix free
-  (reused 4x); mma issue ~1%; quarter-B-loads ceiling proxy = 2270 GFLOP/s =
-  1.20x Triton. Also: the whole +53% swizzle win was pad=8 unlocking bank-free
-  ldmatrix (no-pad ldmatrix is SLOWER than baseline), and cp.async stages 1 vs
-  2 measure flat — do not invest in stages until the register tile grows.
-- **A wider M register tile amortized the B-side feed and took the TF32 mma.sync
-  GEMM PAST Triton parity: 2133.9 GFLOP/s at 2048^3 = 1.13x Triton (1890.5), the
-  first Habu GEMM to beat it.** (dot habu-mma-amortize-the-dd182428, lib/ptx/cg-mma.f
-  `MMA-MFRAGS` knob.) The feed-bound attribution said each 8x8 B fragment fed exactly
-  one mma (zero reuse, ~40% of iteration). Fix = each warp owns MFRAGS stacked 16-row
-  M-fragments; per K-substep it loads MFRAGS A fragments (ldmatrix, ~free) and then,
-  per n-tile, loads its B fragment ONCE and issues MFRAGS mma against it -> B fragment
-  reused MFRAGS times. MFRAGS=2 also grows the block to 128x64 (BM=64*MFRAGS), which
-  HALVES global B staging too. Result at 918 MHz vs the shipped swizzled best 1369.6:
-  +55.7% (94% of the 2270 quarter-B ceiling); 32 f32 accumulators/lane, 57344 B
-  double-buffered dynamic .shared, 2 blocks/SM. Method notes that paid off: (1) gate
-  every new behavior behind `MFRAGS>1` so all 15 pinned MFRAGS=1 configs stay
-  BYTE-IDENTICAL (captured goldens + cmp before/after) - the wider tile reused the
-  device-proven m16n8k8 fragment layout at +f*16-row base offsets, so NO new
-  fragment-layout proof was needed, only the full-kernel element-exact golden at
-  128^3/256^3 (ldmatrix AND scalar+cvt cross-check, same C[0][0]). (2) stages 1-vs-2
-  flipped from FLAT (narrow tile) to +2.4% (wide tile): amortizing the feed re-exposes
-  the cp.async floor, so the "don't invest in stages" rule is tile-size-dependent -
-  re-measure knobs after the tile changes. (3) The harness must be block-M-aware
-  (gridY = M/(64*MFRAGS), shapes multiple of 128, As/Bs staged with independent chunk
-  counts since BM!=BN) - a 64^3 check on a 128-row block launches zero blocks and
-  silently "passes" all-zero unless the shape is raised.
-- **The stage0 mirror's 16-byte inline prim-name cap is now fail-closed at
-  registration** (bootstrap/cg/forth.fs PRIM-INL-CAP? in REG-PRIM, dot
-  habu-mirror-emit-external-73e98647): a >16-char FPRIM used to overflow the
-  fixed EMIT-DICT record and wedge gforth's BUILD-MACHO fixup walk in a ~40-min
-  EXC_BAD_ACCESS loop; it now dies in 0.12s with "stage0: prim name exceeds
-  inline cap: <name>". Keep prim names <=16 chars (native handles longer via
-  DNAME-EXT, the mirror does not); full DNAME-EXT mirror parity was assessed
-  and deliberately NOT built - a subtly-wrong external-name seed would be
-  masked at the DDC fixpoint because the native refresh re-emits the dict,
-  so proving it needs bespoke pre-refresh verification no gate performs today.
-- **Keep a permanent emitted-engine region map; historical RCA goes stale.**
-  The July cold-prefix duplication was already fixed (`main/startup` fell from
-  40724 to 5272 bytes), while later growth moved into definition dispatch,
-  compile dispatch, primitives, and the AOT REPL seed. Exact `ASM-LEN` markers
-  emit no target bytes, and the fixpoint driver must forward the measurement
-  environment so the final stdin engine reports its own map. A mutable exact
-  size baseline is only a ratchet; pair it with an immutable architectural
-  ceiling so a baseline update cannot normalize growth.
-- **Prove emitter branch sharing with a runtime truth table before rewriting
-  layout.** An emitter's forward label names the code skipped to, not the body
-  adjacent to the conditional. The hooked publish dispatch selects the shared
-  tail when `HOOK-CELL=0` or `TSIG-U-CELL=0`; inverting the first condition
-  broke the refresh child and the native fixpoint rejected it. Record every
-  condition combination, then map each original path to the shared label.
-- **Pin generation-sensitive pool fixtures before asserting exact rows.** A
-  standalone test inherits generation `0`, while the same test inside the full
-  gate inherits its pool slot. Save the caller generation, install a fixture
-  generation, assert parent and child rows against it, then restore the caller.
-- **Measure one-shot attribution immediately around the target process.** An
-  outer pool label is the fallback owner, so later same-path execs can share the
-  same owner and path. Snapshot the row count before and after the target spawn,
-  then separately assert that the failed one-shot owner never appears.
-- **A faster gate is not protected until its profile budget is tightened.** A
-  24-second implementation still permits the old regression when the verdict
-  allows 70 seconds. Pin the new nominal and wall ceilings for persistent and
-  cold-cache paths, then prove both through the real calibrated runner.
-- **Profile selection must preserve explicit budget overrides in either CLI
-  order.** Applying a profile after `--budget-ms` or `--wall-budget-ms` must not
-  clear their user flags; cold-cache policy must honor the same flags.
-- **Repository-index linters must use the shared growable source reader.** A
-  fixed 128 KiB `FILEMAP.md` buffer failed immediately after independent master
-  growth. `LINT-SOURCE` already provides bounded dynamic storage; prove the
-  consumer with a fixture larger than the retired cap.
-- **Timeout floors and performance calibration are different policies.**
-  `HB_LOAD_PCT` includes a 3x structural pool-pressure floor so healthy children
-  are not killed; applying it to phase ratchets silently turns nominal 8/10
-  seconds into 24/30. Export measured `HB_CAL_PCT` separately for ratchets.
-- **Diagnostic probes preserve failure status.** Run optional existence and
-  content checks separately; a shell `|| true` hides the exact tool failure the
-  investigation needs.
-- **A new test's REGISTER names must not collide with another suite's fixtures.**
-  `maki/test.f` runs every suite in ONE process over shared append-only registries
-  (ARTIFACT/CONFIG/PRODUCER). A later suite that asserts a count DELTA over a name
-  it treats as fresh (e.g. producer-test's `s" agent/search"`, `COUNT BASE-N @ 2 +`)
-  breaks if an earlier suite already interned that exact name — it passes standalone
-  but fails in the full gate (`expected 13 got 12`). Prefix every fixture identity
-  with the test's own tag (`oblig-test/...`) per docs/forth.md § "unique test-owned
-  names"; the collision is silent because REGISTER interning is a no-op, not an error.
-- **Make `T-WIDTH` instantiation-correct by routing through a schema-walk, not by
-  reading the declared registry width.** `TFAM-WIDTH@` assumes every family
-  parameter is one cell; that is exact ONLY while parameters stay cell-kinded
-  (docs §18). The instantiation-correct width substitutes each param slot by its
-  arg's `T-WIDTH` while walking the variant/product schemas — the same
-  substitution `SCHEMA-TERM`/`ENV-TERM!` already did for lowering-cert offsets.
-  Route the arg-aware width via a hook (`TFAM-INST-WIDTH@`, type-family.f) so the
-  checker layer stays a backward caller of `T-WIDTH`; the 0-hook must fall back to
-  the declared width verbatim so the boot prefix is unchanged.
-- **A behaviour-preserving checker source change still moves the fixpoint hash;
-  x2-identical is the real invariant, not equal-to-baseline.** The checker is
-  baked into the engine image, so editing `checker.f`/`type-family.f` changes the
-  binary even when runtime behaviour is byte-identical for every corpus shape.
-  Because item 12 rejects a layout value in a cell parameter, EVERY existing
-  family arg is width 1, so arg-aware width equals the declared width everywhere —
-  proved by all type/layout suites staying green and the fixpoint rebuilding
-  itself byte-identically. Report the hash change vs baseline as expected, and
-  keep the x2-identical proof as the stability invariant.
-- **Unit-test a width/effect function on terms the sig parser would reject by
-  building them directly through `MK-PARAM`.** The whole point of a groundwork
-  slice is that the accept path is not open yet, so a signature like `opt<pt3>`
-  (a multi-cell layout arg) rejects at the sig one-type-per-slot separator check.
-  Construct the resolved `T-PARAM` term with `PARAM-SCR-N@`/`PARAM-SCR+`/`MK-PARAM`
-  (TRUSTED wrappers in the registry suite) to exercise the width function alone,
-  and separately pin the probe shapes as still-rejecting so the groundwork adds no
-  new accepts.
-- **Probe the live accept boundary with PUBLIC families before scoping parser
-  work: the sig one-type-per-slot separator rejects multi-TOKEN runs, not named
-  args.** Layout slice 2 was scoped as "PK-LAYOUT parser groups" against probe
-  shapes like `option<off len>`; empirically a NAMED layout-family application
-  (`option<pt2>`, `result<pt2,n>`, nested `option<result<n,n>>`) ALREADY parses
-  and identity-checks — one resolved term per slot satisfies the separator, and
-  slice 1's arg-aware width sizes the bundle — while constructing such an
-  instantiation fail-closes at the constructor's single-cell payload var
-  (`E-MISMATCH` at the constructor token). The previous entry's "`opt<pt3>`
-  rejects at the separator" held only for its package-PRIVATE fixture families,
-  which are unnameable from a top-level sig; the public/global case accepts.
-  Net: the planned parser slice served only raw-run sugar (re-staged by DoR
-  amendment), the bounded landing was pins + docs (TDPN1-7), and wave B migrates
-  by minting small named payload products instead of anonymous runs.
-- **A generated constructor WORD's effect is a fixed `( a -- fam<a> )` stored
-  signature, so the multi-cell fix is NOT in TFC alone — the CALL must be
-  intercepted.** Layout slice 3: `TFC-PAY-ROW` `MK-PUSH`->`PUSH-LOGICAL` fixes
-  MATCH and the RAW `construct` token (their args come resolved from the
-  scrutinee / declared output), but `TDPBOPT:SOME` is a normal word whose stored
-  1-cell-per-param effect can't consume/produce a wide bundle. Fix: in `DO-TOK`,
-  reverse the resolved sym to its variant (`SUMV-CTOR-SYM`) and, only when the
-  declared output binds the family to a genuinely multi-cell arg
-  (`CONSTRUCT-DECL-MULTICELL?`), route the call through the arg-aware construct
-  step instead of the stored effect. Construct recovers its type args from the
-  DECLARED OUTPUT (bidirectional), since a payloadless variant (`option none`)
-  has no other source — the doc's "one fresh var per param" reconciles as "mint
-  fresh, then bind from the expected type".
-- **Expand payloads only at width>1, and gate the whole slice on arity>0.**
-  `PUSH-LOGICAL` expands ANY closed non-linear layout including a W=1 enum /
-  single-field product, turning a usable logical payload into a hidden field and
-  breaking existing MATCH arms — expand only when `T-WIDTH > 1` (`TFC-PUSH-PAY`).
-  And gate `CONSTRUCT-DECL-MULTICELL?` on `TFAM-ARITY* > 0`: an arity-0 wide sum
-  (e.g. `descriptor`, width from concrete payload fields) has no TYPE ARGS and is
-  the existing machinery, never this slice's parametric-arg capability.
-- **A staged fail-closed pin that evaluates a failing `: NAME ;` prints the
-  compile-hook "hook: non-certified definition" to STDERR — put it in a
-  candidate-validation `diagnostic` suite, not a `positive` one.**
-  `test/candidate-validation.f` (not in the checker write-set) hardcodes
-  per-file stderr expectations; a `positive` case (type-decl-suite) must be
-  stderr-clean. The lowering fail-closed pins (TDT-EVAL-CATCH -> rc 70) belong in
-  type-ctor-suite (a `diagnostic` case that already permits stderr).
-- **A checker-only change can't break runtime — a maki test failing on a SCRATCH
-  engine is often the fresh-process-replay `bin/hb` engine-binary key.**
-  `maki/cad-test.f`'s replay spawns a hardcoded child `bin/hb` whose section-7.4
-  schedule key includes the ENGINE BINARY identity ("same engine binary" is a
-  documented precondition). Running the PARENT from a scratch fixpoint (`hb-fix`,
-  a different hash than the checkout's `bin/hb`) makes parent!=child -> key
-  mismatch -> replay MISS -> two flipped asserts, with ZERO source cause. Proof:
-  a byte-identical pristine scratch build (== `bin/hb`) passes; pointing the
-  child at the scratch engine passes. Verify a suspected maki regression with
-  parent==child before touching code.
-
-- **A multi-cell PRODUCT / a wide value cannot be a typed local or a custom-sum
-  `ok` payload; it must flow on the stack and be UNMAKEd.** Building the promotion
-  typestate (maki/db/promotion.f, dot habu-v2-evidence-promotion-f8312ebe), a
-  2-field `authority` product rejected `{: a:authority :}` with "unknown type
-  'authority'" (a 1-field product bound fine). Same wall the maki/evidence/policy.f
-  CHECK deviation names: sum variant payloads and typed locals are single-cell.
-  Consequences that shaped the design: (1) sealed staged products
-  (Candidate/Verified/... each `FIELD model .. FIELD tok <proof>`) RETURN directly
-  and THROW named refusals (the POLICY:CHECK pattern), since they can't be a
-  `VARIANT ok <stage>` payload; the typed reject is the separately-queried
-  APPLIC:VERDICT sum. (2) When a transition needs TWO wide operands (SATISFY wanted
-  `measured` + the 10-field policy), give the policy a single-cell projection
-  (PPOLICY:BIND -> model expiry + 4 digest words) so only ONE wide product is on the
-  stack at UNMAKE time - avoids deep juggling and the "no deep stacks" rule.
-  Unforgeability + single-cell + free read-back are mutually exclusive under today's
-  types: sealed-token products give unforgeable + free UNMAKE read-back but are
-  multi-cell; arity-0 nominals + RAW>/>RAW give single-cell + unforgeable but need a
-  trust site per direction. The sealed-token + throw route needs the FEWEST trust
-  sites (one `-- proof` mint per stage), and `-- proof` mints are NOT mint-shaped so
-  refine-lint never demands a seed-list edit (only TRUSTED.md manifest + classification
-  rows), keeping the whole change inside a maki/db write-set.
-
-- **A bare cross-package type-family reference is fragile: a second same-tail family
-  in another package makes it "unknown type".** DAUTH's `SUMTYPE auth-result` compiled
-  and tested fine in isolation and in its own suite, but broke maki/db/capbud-test.f
-  ("in acode: unknown type 'auth-result'"): commit-store-auth-test.f's ACODE signature
-  used the BARE tail `auth-result`, which had resolved only because CSTORE:auth-result
-  was globally unique. Family DECLARATIONS are package-scoped (a same tail in a
-  different package is accepted, and qualified refs like PROMOTE:verified are always
-  fine), but a BARE reference goes ambiguous once two exist. Fix: rename the new sum
-  to a unique tail (authz-result). Lesson: pick distinct tails for new public sums,
-  and prefer qualified `PKG:family` in signatures across boundaries.
-
-- **Thread a new gate leg into a widely-called word by a SIBLING entry, not an arity
-  change.** The deterministic-audit dot (habu-v2-deterministic-audit-428d27c2) had to fold
-  `DAUTH:AUTHORIZED-DISCHARGE` into `CSTORE:COMMIT-AUTHORIZED` as a third validate leg, but
-  the agent loop + capbud/aloop suites call `COMMIT-AUTHORIZED ( txn grant ledger -- )` and
-  are NOT in the write set. Changing its arity would break them. Fix: factor the existing
-  body into a private `AUTHORIZED-PUBLISH` (single-sourced capability+budget publish), keep
-  `COMMIT-AUTHORIZED` as a thin wrapper (byte-identical behaviour -> every existing test stays
-  green), and add a SIBLING `COMMIT-DISCHARGED ( txn grant ledger obl ev authority -- )` that
-  runs the discharge leg first, then delegates to the shared publish. "New parameters, not a
-  one-line follow-up" = a new entry point, not a mutated signature.
-- **A sum-variant PAYLOAD cannot bind as a typed local INSIDE a MATCH arm, even a single-cell
-  product.** `MATCH DAUTH:authz-result ok OF {: e:OBLIG:evidence :} ...` rejected with
-  "expected: oblig:evidence<> actual: oblig:evidence<>" (identical types, still a non-certified
-  definition) although a 1-field product binds fine at a word's ENTRY (OBLIG:DISCHARGE does
-  `{: o:obligation e:evidence :}`). Fix: factor a helper whose entry consumes the payload
-  (`: RECORD-DISCHARGE-EVENT ( OBLIG:evidence -- ) {: e:OBLIG:evidence :} ...`) and call it
-  bare from the arm (`ok OF RECORD-DISCHARGE-EVENT 0 ENDOF`). The MATCH-test decoders that
-  work all `drop`/consume the payload straight off the stack in-arm, never bind it.
-- **An arity-1 SUMTYPE needs its type ARGUMENT in a signature (`family<T>`), but its bare
-  qualifier in a MATCH selector.** A decoder `: DCODE ( CSTORE:commit-discharge-result -- n )`
-  failed `SGBAD-ARITY?` ("wrong arity for type family") because `commit-discharge-result` is
-  `SUMTYPE ... 1`; the signature must read `( commit-discharge-result<CAD-KIND:rev-id> -- n )`
-  (bare tail + arg, the commit-store-auth-test.f ACODE `auth-result<CAD-KIND:rev-id>`
-  precedent) while the body's `MATCH CSTORE:commit-discharge-result` takes the qualifier with
-  NO arg. Do not put the qualifier and the `<...>` arg together. Also: the generated
-  constructor doubles EVERY hyphen of the tail — `commit-discharge-result` ->
-  `CSTORE-COMMIT--DISCHARGE--RESULT:COMMITTED`, `verify-result` -> `AUDIT-VERIFY--RESULT:OK`,
-  `event-kind` -> `AUDIT-EVENT--KIND:TXN-COMMIT`.
-- **A content-CHAINED audit log must own a self-contained store, not share the occurrence
-  journal.** maki/journal.f (the audit-event-id owner) is append-only occurrence identity that
-  maki/db/promotion.f also appends closure descriptors to; a hash-chain over that shared
-  journal would interleave non-chained records and break verification. So maki/db/audit-log.f
-  keeps its OWN fixed-record array + hash chain + sequence, and only REFERENCES the landed
-  identities by their cross-process content keys. Byte-stability across processes then comes
-  for free: because every event carries content keys (never process-local raws), a fresh
-  decoy-shifted child rebuilds a byte-identical serialized frame (the keywire-xproc pattern),
-  and `STATE-DIGEST` — a pure fold over the frame bytes, touching no registry — reproduces the
-  identical digest. Nondeterminism is enforced by API shape (the only marked-event constructor
-  demands a captured evidence-id) plus a `VERIFY-LOG` `bad-nondeterministic` reject for a
-  marked record whose capture was zeroed; there is no reachable runtime throw to leave dead.
-- **maki/test.f is at the DICT-CAP word-count wall.** The monolithic gate accumulates EVERY
-  suite's definitions into ONE image (no per-suite forget), peaking at `ndict@` 16284 of
-  `DICT-CAP` 16384 (src/habu/layout.f) on master - only ~100 free word records. Adding a whole
-  subsystem's core+test suites (~148 words for the differential-runner tensor leg) overflows it
-  as `hb: dictionary full at: :` at a LATER suite (eval-device-fault-test.f), not at the new
-  files. Distinguish the two capacity arms: `here`/`allot` track DATA space (the "data payload"),
-  while `:`/`create`/`variable` each consume ONE `ndict` record - "dictionary full" is the ndict
-  cap, so trimming `create ... allot` buffer SIZES does NOT help word-count overflow. Fix when
-  it's your subsystem: keep the new suites gated STANDALONE (their own `bin/hb file-test.f`) and
-  do NOT wire them into maki/test.f, or land a DICT-CAP bump in src/habu/layout.f (a precedented
-  "gate-runner-support" growth, per the layout.f comment - 8192->16384 already happened).
-- **A new §23.9 id-owner mint needs a refine-lint SEED entry, and the POOL refine-lint is
-  stricter than standalone.** Adding `TRUSTED: RAW>SUITE-ID ( n -- CAD-KIND:suite-id )` passed
-  standalone `tools/refine-lint.f` (0 findings) but the test/gate-stdlib.f POOL refine-lint
-  phase went red: `NEW-MINT ... is mint-shaped but not in the refine-lint seed list`. Register
-  the mint in tools/refine-lint-core.f: bump `RFL-SEED#`, add a `RFL-SEED-NAME$` case
-  (`s" RAW>SUITE-ID"`) and the matching `RFL-SEED-OWNER$` owner file, mirroring the RAW>RUN-ID /
-  RAW>EVIDENCE-ID rows. Only the MINT (`n -- CAD-KIND:x`) is shape-scanned; the projection
-  (`CAD-KIND:x -- n`) is seed-exempt. Also add BOTH TRUSTED.md forms (the table row AND the
-  `file:NAME prim-axiom` line) or trust-lint reports UNMANIFESTED.
-- **Test files that reopen a SHARED package need globally-unique helper tails.** diff-runner-test.f
-  and a new diff-runner-tensor-test.f both `package DIFFRUN` and both defined `SUBJ-A`/`T1`/`C1`;
-  each passed standalone but maki/test.f loads them into ONE image and the second collides
-  (`duplicate definition: SUBJ-A rc=78`). Prefix per-file (`T-SUB-A`, `T-TGT`, `T-ENV-A`) so the
-  reopened-package tails never clash across all files that reopen it. (A test in its OWN package,
-  e.g. SUITEID-TEST, is immune.)
-- **hb drops to a REPL after a successful file load; pipe `< /dev/null` for probes.** A probe
-  file that loads cleanly (no error) then waits on stdin and looks like a hang under `timeout`
-  (rc 124). Errors still exit non-zero immediately. Run one-off measurement scripts as
-  `./bin/hb probe.f < /dev/null`. (Gate/test files that call `T-REPORT`/`die` exit on their own.)
-- **Float locals `:r` certify; `s>f` is the int->float primitive (engine-spelled `n`).** A
-  `{: v:r :}` local binds a float fine (contrary to the ptr-local byte-only caveat), and
-  `tol s>f  SCALE s>f  f/` gives a checked fixed-point float bound. For per-loop floats without
-  juggling, stash in a 1-cell buffer and reuse array.f's `T-GET`/`T-SET` (proven `@`->r), not a
-  bare `variable @` (whose result may not unify with `r`).
-
-## Region growth: mprotect flip cost is linear in region size (2026-07-18)
-Doubling REGION to 8 MB for dict growth (DICT-CAP 32768) regressed process
-boot +41 ms (+22%) and tripped the gate-engine runtime time ratchet (10.4 s
-vs MAX-MS 10000) — reproducible on a quiet host. RCA by constant bisection
-(probe builds: 8 MB region + old dict constants = same cost; LPROT flip
-window 4/5/8 MB = 184/203/225 ms nop boot): the cost is entirely LPROT's
-full-region RW<->RX mprotect brackets, linear in the flip window. Lessons:
-(1) the engine battery's ratchet catches real per-process regressions —
-never bump MAX-MS to pass; (2) region growth requires narrow protection
-windows FIRST (dot habu-lprot-narrow-protection-03cc8d7f), then growth
-rides on top; (3) measure JIT code-area use with a chained probe file
-(`bin/hb --load maki/test.f probe.f` + LATEST XREF.) — code was at 92% of
-the 4 MB split, so dict-only repartition was refuted by measurement before
-any build.
-- **Evolve the existing registry truth in place.** A richer shared field model
-  belongs in PF with its current consumers migrated atomically; a parallel arena,
-  name pool, declaration seam, and duplicate roles create conflicting authority.
-- **Package reflection needs package-aware checker rows.** Keep raw registry
-  words as implementation detail and model the sealed public surface with
-  `PPRIM:` package/tail rows; a colon-spelled `PRIM:` name loses package identity.
-- **A protected package consumes protected-WID capacity.** Capacity tests must
-  probe the clean child baseline, then fill the remaining rows exactly.
-- **Primitive rows have two synchronized proofs.** Update the ordered effect
-  manifest and the executable/no-exec census classification with every row change.
+- **Make checker/wordlist state unforgeable from user source with a runtime RANGE GUARD at every raw
+  write SINK, not name-hiding or type-provenance.** Only the sink sees the real target address, and
+  `data-base <off> + !` computes it with no engine-word name. Layout: relocate the crown-jewel cells into
+  ONE contiguous DATA band BELOW `DATA-START` (so `allot`/`,`/DP, bounded ≥ DATA-START by DP-CHECK, can't
+  reach it by construction). The latch cell IS the band base (0=open, band-len=sealed); the guard reads
+  it, so post-seal any write into the band (including the latch) traps — one-way self-sealing. The seal is
+  emitted by the cold-prefix generator (after `PFX-PROVIDE-FILES`) so it fires before the first user token
+  on EVERY entry; engine writes to the same cells use dedicated `DATA <CELL> STR,` prims, never `!`. Don't
+  guard a prim whose legitimate caller is indistinguishable from an attacker — the checker hook lives in
+  the JIT `[DBASE,CP)` region, so `set-check` fail-closes with a two-register range compare. Native seal
+  widenings do NOT propagate to the stage0 mirror by themselves (pins count what IS, not what SHOULD be) —
+  re-pin `SAB-GUARD-PINS` red-first, mirror the emission, and prove parity by forging the CHECK_ONLY seed
+  (`HABU_BOOTSTRAP_CHECK_ONLY=1 tools/bootstrap.sh` + pipe `data-base <off> + cp!` forges → rc 83/0
+  against the actual stage0 engine); mind forth.fs top-down file order (a newly guarded early sink needs
+  PROT-GUARD moved above the primitive bodies). A protected table's ADJACENT control cell belongs to the
+  same guarded band (extending the protected-WID table left `UNCGH-CELL` writable → a user store could
+  redirect the uncaught-throw branch); a sealed cell goes into an rg-verified reclaimed hole with its own
+  guard band, never grows an existing band whose end is a public boundary. A `TRUSTED:` body does NOT
+  bypass sealed-store guards (raw `!` into the protected preflight cell exits 83; the engine-owned
+  `set-preflight` prim is the mutation boundary). A custom checker hook is a paired lifecycle
+  (`LOWER-CERT-HOOK:INSTALL` first, then `set-check`) — install AFTER internal-mark (a top-level
+  `0 set-check` suspends a token hook whose re-arm lives in a word body).
+- **Anything that rides the AOT seed pass (`EM-SEED-AOT` at LEXIT) is invisible to BATCH programs.**
+  Batch input (piped stdin AND --load) is consumed by the pre-LEXIT interpret loop, so AOT-seeded words
+  (BP., stepper) and AOT-restored state (the protected-WID registry) exist only for post-seed interactive
+  sessions — probe with an AOT-seeded word (`BP.` E-UNDEFINED = pre-seed). Boot-restored DATA with no
+  name-relocation dependency belongs in `EM-STARTUP`, not the LEXIT seed. `bin/hb` bakes ONLY primitives
+  (`EMIT-DICT` bakes the #PL registry) — a generated `constant`/checker word is re-parsed source, so
+  "bake a digest and verify at startup" needs a metacompiler baked-data capability (an injected boot
+  token died E-UNDEFINED on every boot and bricked self-rebuild); a fail-closed-by-default boot check
+  deadlocks self-hosting (default off/warn, strict opt-in). The AOT sample/REPL word must be defined in a
+  driver loaded ONLY for the stdin build (never habu2.f, reloaded in every build including the stage2 an
+  AOT-seeded engine runs to rebuild itself → duplicate definition). Open-address dictionary indexes must
+  RECLAIM stale rollback slots on INSERT (not only skip on lookup), or repeated checked candidates fill
+  the fixed table with dead entries and spin. Owner WID numbers are generation-local — canonical package
+  IDENTITY is the persistence authority (a refresh retires+rebuilds packages with new WIDs, so snapshot
+  capture rebinds the baked AOT name frame); canonical-base snapshot rebasing classifies package records
+  before pointer ranges (a raw public/private WID at text base 0 looks like a low text offset — skip
+  record `[0]/[8]` when `[40]=-1`, still rebase an external name pointer); scrub only the exact RSTK
+  extent (zeroing `RSTK-OFF..DATA-START` erased persistent protected/owner registries in the shared
+  reserved band). AOT-REPL M2: the metabuild host and `bin/hb` are DIFFERENT engine shapes
+  (`STDIN?`-branched — a big C-SOURCE-BAKED 585KB host vs a small C-SOURCE-STDIN 113KB bin/hb), so you
+  cannot capture the REPL in the host and base-rebase it in (6.7% byte-identical, non-uniform chunk
+  shifts, every word call an absolute movz/movk/blr `LSNAPRBC` can't remap) — capture in a small
+  STDIN?=true engine.
