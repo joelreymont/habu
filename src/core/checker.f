@@ -8233,12 +8233,31 @@ variable IS-TU
    a u s" catch" CORE-STR= or
    a u s" is" CORE-STR= or ;
 
-: BTICK-NEXT-CONSUMES-XT? ( -- bool )    \ peek (no consume): is the post-target token an xt consumer?
+\ A typed xt<effect> storage cell accessor (TYPED-VARIABLE / TYPED-BUFFER, dot
+\ habu-typed-xt-storage-ddad4af8) certifies with a top output of `ptr xt<...>`.
+\ Recognising it as an xt sink lets `['] W  HK !` retype the tick so the store
+\ fit-checks W's certified effect against the cell's declared effect, instead of
+\ erasing the tick to a plain n and rejecting on `actual: n` (dot
+\ habu-typed-xt-cells-08e1dc2c). Only the immediately-following variable accessor
+\ is caught; a buffer slot store (`['] W idx BUF !`) puts the index between the
+\ tick and the accessor and stays on the quotation-store surface (docs/effects.md).
+: BTICK-XT-CELL-PTR? ( n -- bool )       \ term is `ptr xt<...>` : pointer to a typed xt<effect> cell
+   T-RES dup TAG T-PTR <> IF drop RES-FALSE EXIT THEN
+   PTR>INNER T-RES TAG T-QUOT = ;
+: BTICK-DOUT-XT-CELL? ( ptr a -- bool )  \ effect record's top output term is a typed xt cell pointer
+   EFF-QUOT Q>DOUT R-RES dup TAG S-PUSH = IF P>TYPE BTICK-XT-CELL-PTR? EXIT THEN
+   drop RES-FALSE ;
+: BTICK-STORE-CELL? ( ptr u8 n -- bool ) {: a:ptr u:n :}   \ next token is a typed-xt-cell store accessor
+   a u CHECKER-FIND-ACTIVE-SIG FEP-HIT? 0= IF RES-FALSE EXIT THEN
+   FEP @ BTICK-DOUT-XT-CELL? ;
+
+: BTICK-NEXT-CONSUMES-XT? ( -- bool )    \ peek (no consume): is the post-target token an xt sink?
    TI @ >r
    IS-NEXT-TOKEN {: a:ptr u:n ok:bool :}
    r> TI !
    ok 0= IF RES-FALSE EXIT THEN
-   a u BTICK-XT-CONSUMER? ;
+   a u BTICK-XT-CONSUMER? IF RES-TRUE EXIT THEN
+   a u BTICK-STORE-CELL? ;
 
 : BTICK-TOK ( -- )                       \ [ '] W : consume W, push xt<effect(W)> or a plain n
    IS-TARGET-TOK? 0= IF IS-FAIL EXIT THEN

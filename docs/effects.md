@@ -307,7 +307,16 @@ later callers; use `TRUST` only when the body itself cannot be checked.
   ordinary `ptr` unification and **rejects** on mismatch; `HK @ execute`
   fit-checks the row against `E` exactly like executing a literal `xt<E>` (reuses
   `RSEXEC`). Admissibility is gated by `CHECKER-STORAGE-INFO` (a closed quotation
-  cell, width 1; a malformed quotation body rejects). This is the sound migration
+  cell, width 1; a malformed quotation body rejects). The **tick** store
+  `['] W HK !` also works (dot `habu-typed-xt-cells-08e1dc2c`): `BTICK-TOK`'s
+  lookahead treats a typed-xt-cell accessor as an xt sink, so the tick retypes to
+  `xt<effect(W)>` and the same `ptr` unification fit-checks `E` — a matching store
+  certifies, a mismatch rejects on the effect (not the old plain-`n` erasure), and
+  a plain number still rejects. This is candidate-path only, like every direct-tick
+  retype (the reconstructed `--load` body drops the tick target). A **buffer slot**
+  tick store `['] W idx HKB !` stays out of scope — the index token splits the tick
+  from the accessor, past the single-token lookahead — so use the quotation store
+  `[: W ;] idx HKB !` for buffers. This is the sound migration
   target for the raw xt scratch above: `variable V  ' W V !  : F V @ execute ;`
   still launders `execute` as a pure `( -- )` (the `RSEXEC` `T-VAR` branch, dot
   `habu-checker-exec-of-5923c543`), whereas the typed cell carries `E` end to end.
