@@ -1749,6 +1749,9 @@ points stay listed.
 - `lib/test/outcome-test.f` — focused coverage for the outcome assert helpers.
 - `tools/date.f` — shared checked UTC Gregorian date parsing, formatting, and timestamp helpers.
 - `tools/date-test.f` — focused coverage for shared date helpers.
+- `tools/size-report.f` — parse an engine size map (HABU_ENGINE_SIZE_MAP build output) and render the committed-manifest-style per-contributor byte attribution: phase rows, code total, engine size, header/pad remainder, distance-to-page-floor.
+- `tools/size-report-main.f` — CLI entry for the size-attribution report.
+- `tools/size-report-test.f` — focused coverage for the size-report map parser (last-block wins, source-blob exclusion, per-row lookup).
 - `lib/process-env.f` — checked child envp builder and PATH lookup helpers.
 - `lib/process-env-test.f` — focused coverage for child envp and executable lookup.
 - `lib/process-fork.f` — checked fork wrappers for resident copy-on-write workers.
