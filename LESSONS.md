@@ -4,6 +4,10 @@
 
 Last updated: 2026-07-18
 
+- **A destruction review is not integrated until every unfixed finding has a
+  detailed dot.** Reconcile each finding against existing dot descriptions,
+  extend a matching dot when its acceptance misses part of the finding, and add
+  a new dot for every uncovered invariant before landing the reviewed slice.
 - **The shared `result<a,b>` family instantiates with TWO DISTINCT nominal products
   (`result<pcap:captured,pcap:failed>`), and the checker enforces the payload types.**
   (2026-07-18, switchover wave B capture cluster, dot habu-switchover-wave-b-08482d5b.)
