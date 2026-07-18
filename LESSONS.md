@@ -1508,3 +1508,10 @@ fits.
   `maki-layout-valid` held only stale snapshots of work already on master.
   Diff each head against its parent and check the touched files exist on
   master before deciding recover-vs-drop.
+- A fresh gate workspace has no `bin/hb` (gitignored), and `test/run.f` spawns
+  `bin/hb` children by relative path — the whole battery reds with spawn
+  failures that look like real regressions. Install (or copy) the engine into
+  the workspace BEFORE gating, and diagnose a surprising all-red battery by
+  re-running one suite with output visible before blaming the tree. A lane
+  whose diff is a multi-commit stack must be rebased with `-s <stack root>`,
+  not `-s <tip>` — tip-only rebase orphans the base and manufactures conflicts.
