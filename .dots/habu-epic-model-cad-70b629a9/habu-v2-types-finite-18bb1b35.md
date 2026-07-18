@@ -1,6 +1,6 @@
 ---
 title: "V2 types: finite CAD capability effects design"
-status: active
+status: open
 priority: 1
 issue-type: task
 created-at: "\"2026-07-11T10:25:02.714102+02:00\""
@@ -25,3 +25,9 @@ Leaf decomposition (design-reference note appended to each leaf dot): define-fin
 Gates on the design tree (native `bin/hb`): dot-dep-lint 0 finding(s); stale-status-lint 0 finding(s); host-lint 0 finding(s); filemap-lint 0 finding(s). No `.f`/`.fs` source touched, so no engine battery applies.
 
 First implementation leaf to start: `habu-seal-cad-effect-49cac404` (R8-1 authority boundary). Its prerequisites define-finite (row vocabulary) and add-immutable-nominal (arena) are closed/landed; it still waits on `habu-seal-owners-syntax-63051652` (sealed-package definition syntax, open). Once that lands, seal builds `src/cad/effect-authority.f`, admits only arena-validated handles, exposes no raw handle mint/cast, and seals `CAD-EFFECT` exactly once, per `docs/effects.md` § R8-1.
+
+DESIGN PHASE COMPLETE 2026-07-18 (tfinite lane, merged 9e324100): the dot
+stays OPEN as the umbrella - closure follows its implementation children
+(dot off correctly refused while leaves are open). Design deliverable and
+leaf decomposition recorded above; next leaf habu-seal-cad-effect-49cac404
+waits on habu-seal-owners-syntax-63051652.
