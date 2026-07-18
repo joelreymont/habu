@@ -116,8 +116,23 @@ $D10043FF constant IMK-PROLOGUE
       IMK-I @ 1 + IMK-I !
    REPEAT ;
 
+\ Registry write-protection (dot habu-protect-type-field-04d91409). A din=0
+\ registry control cell (variable/create) is a data record, so IMK-WALK exempts
+\ it and its bare name stays executable — a bare `<cell> !` mutates the registry
+\ past the public API. type-family.f's REG-PROTECT recorded each such cell's
+\ dictionary index in REG-PROT-IDX[0, REG-PROT-N); int-mark them so interpret /
+\ tick fail closed on the bare name exactly like a sig-less colon word, while the
+\ core compiled callers (resolved before this pass) keep working.
+: IMK-SEAL-REGISTRY ( -- )
+   0 IMK-I !
+   BEGIN IMK-I @ REG-PROT-N @ < WHILE
+      REG-PROT-IDX IMK-I @ cells + @ int-mark
+      IMK-I @ 1 + IMK-I !
+   REPEAT ;
+
 : IMK-PASS ( -- )
    IMK-WALK
+   IMK-SEAL-REGISTRY
    IMK-SEAL-PRIM ;
 
 LOWER-CERT-HOOK:INSTALL

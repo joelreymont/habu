@@ -777,14 +777,33 @@ PF-REC-PTR-MASK 0 TF-LAYOUT=
 0 PF.ALIGN PF.ALIGN-OFF TF-LAYOUT=
 0 PF.FLAGS PF.FLAGS-OFF TF-LAYOUT=
 
+\ --- Registry cell write-protection (dot habu-protect-type-field-04d91409;
+\ docs/registry-band.md § Layer 1). A registry control cell is a din=0 data
+\ record, so the seal-time internal-word pass (internal-mark.f) EXEMPTS it and its
+\ bare name stays executable at top level — a bare `<cell> !` mutates the registry
+\ (confirmed exploit: `99 PF-COMMIT-N !` corrupts TYPE-FIELD:COUNT). REG-PROTECT
+\ tags the most-recently-defined record; IMK-SEAL-REGISTRY (internal-mark.f) sets
+\ DNAME-INT on each after the cold prefix loads, so a bare `<cell> @`/`<cell> !`
+\ or `' <cell>` fails closed (`hb: internal engine word`, rc 70) on --load and
+\ stdin. Core compiled callers resolved before that pass are unaffected; checked
+\ user code already rejects the non-certified name (E-UNDEFINED). Read the registry
+\ through the certified public API (TYPE-FIELD:COUNT/FIND/…), never the raw cell.
+64 constant REG-PROT-CAP
+create REG-PROT-IDX  REG-PROT-CAP cells allot
+variable REG-PROT-N   0 REG-PROT-N !
+: REG-PROTECT ( -- )   \ tag the just-defined data record for seal-time internal-marking
+   REG-PROT-N @ REG-PROT-CAP >= IF s" tfam: registry protect overflow" 76 die THEN
+   ndict@ 1 -  REG-PROT-IDX REG-PROT-N @ cells + !
+   1 REG-PROT-N +! ;
+
 4 constant PF-CAP-INIT
-variable PF-CAP-V   PF-CAP-INIT PF-CAP-V !
+variable PF-CAP-V   PF-CAP-INIT PF-CAP-V !   REG-PROTECT
 : PF-CAP ( -- n ) PF-CAP-V @ ;
-create PF-A-BOOT   PF-CAP-INIT PF-REC * allot
-variable PF-A-P   PF-A-BOOT PF-A-P !
+create PF-A-BOOT   PF-CAP-INIT PF-REC * allot   REG-PROTECT
+variable PF-A-P   PF-A-BOOT PF-A-P !   REG-PROTECT
 : PF-BASE ( -- ptr a ) PF-A-P @ ;
-variable PF-N   0 PF-N !
-variable PF-COMMIT-N   0 PF-COMMIT-N !
+variable PF-N   0 PF-N !   REG-PROTECT
+variable PF-COMMIT-N   0 PF-COMMIT-N !   REG-PROTECT
 
 : PF-GROW ( n -- ) {: need:n :}
    need PF-CAP-V @ 2 * max {: nc:n :}
@@ -912,11 +931,11 @@ PF-TX-REC-PTR-MASK 0 TF-LAYOUT=
 0 PFTX.TOK PFTX.TOK-OFF TF-LAYOUT=
 
 4 constant PF-TX-CAP-INIT
-variable PF-TX-CAP-V   PF-TX-CAP-INIT PF-TX-CAP-V !
-create PF-TX-BOOT   PF-TX-CAP-INIT PF-TX-REC * allot
-variable PF-TX-P   PF-TX-BOOT PF-TX-P !
-variable PF-TX-DEPTH   0 PF-TX-DEPTH !
-variable PF-TX-SERIAL   0 PF-TX-SERIAL !
+variable PF-TX-CAP-V   PF-TX-CAP-INIT PF-TX-CAP-V !   REG-PROTECT
+create PF-TX-BOOT   PF-TX-CAP-INIT PF-TX-REC * allot   REG-PROTECT
+variable PF-TX-P   PF-TX-BOOT PF-TX-P !   REG-PROTECT
+variable PF-TX-DEPTH   0 PF-TX-DEPTH !   REG-PROTECT
+variable PF-TX-SERIAL   0 PF-TX-SERIAL !   REG-PROTECT
 
 : PF-TX-BASE ( -- ptr a ) PF-TX-P @ ;
 : PF-TX-GROW ( -- )
