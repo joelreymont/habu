@@ -3183,6 +3183,17 @@ The standing matrix covers:
 The flagship is a fused transformer or temporal-model block. SAXPY remains a
 bandwidth-floor regression, never the headline.
 
+**Schema (landed).** The first checked evidence-row schema for this matrix is
+`maki/competitive-evidence.f` (package `CEVID`): a versioned `cevid/v1` per-side row over
+workload / revision / shape / numeric-policy / target (`CAD-KIND:target-id`) / compiler /
+cache-state / protocol plus the latency / throughput / bytes / launches / memory / energy
+readings over the closed metric UNITS vocabulary `{ns, ms, gflops, gbps, bytes, count,
+watts}` (the `maki/experiment/run-metric.f` deferred fourth axis, decided here).
+Mismatched numeric domains cannot share a comparison row (`E-CEVID-INCOMPARABLE`) and
+cold/warm cache is an explicit field. The flagship GEMM (3026.6 GFLOP/s = 1.60x Triton)
+and SAXPY-V4 rows are migrated and byte-stable-pinned in
+`maki/competitive-evidence-test.f`; see `docs/eval-triton.md`.
+
 ### 22.11 Delivery order
 
 1. Tensor-core and async-pipeline backend.

@@ -29,3 +29,12 @@ test-proven incl. the 13-field flip matrix and deterministic
 BATCH-ID(run-key||k) both orders. Deferred, documented in-source:
 metric UNITS (needs an owner vocabulary) - folded into
 habu-v2-competitive-evidence-5d07d471 (the metrics-matrix consumer).
+
+NOTE 2026-07-18 (compev lane): the deferred metric UNITS vocabulary now
+EXISTS as a sealed closed `unit` enum {ns, ms, gflops, gbps, bytes,
+count, watts} in maki/competitive-evidence.f (package CEVID), the
+competitive-evidence matrix consumer. It is owned by the matrix schema
+that consumes it (not wired into run-metric.f MEASURE, which would change
+that word's signature and every caller); run-metric.f's population/
+direction/aggregation axes are unchanged. joules is deliberately excluded
+(no measured energy in the corpus). Status stays closed.

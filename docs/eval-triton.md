@@ -401,6 +401,21 @@ The regressions in `tools/eval-triton-test.f` pin all three: the two comparable 
 persist, report, and replay byte-stably, and the FP32-vs-TF32 pair can never load as a
 competitive result.
 
+**Richer per-side evidence rows (schema-backed).** The bench/v1 comparison above is
+throughput-only. The § 22.10 matrix's full per-side evidence schema —
+`maki/competitive-evidence.f` (package `CEVID`) — now also carries these rows as versioned
+`cevid/v1` records that add **revision**, **target** (`CAD-KIND:target-id`), **compiler**,
+and the **latency / bytes / launches / memory / energy** fields over the closed metric
+UNITS vocabulary `{ns, ms, gflops, gbps, bytes, count, watts}` (joules excluded — no
+measured energy in the corpus). The **flagship GEMM row** (MMM-WIDE-B-M4-S1 **3026.6
+GFLOP/s = 1.60x Triton 1890.5**, orin-nx-25w-918mhz, 2048³, both TF32/relative —
+`tools/ptx/perf-rows.tsv`) and the **SAXPY-V4 64.209 vs Triton 63.0 GB/s** row are migrated
+and pinned as byte-stable `cevid/v1` goldens in `maki/competitive-evidence-test.f`, which
+also proves a mismatched numeric DOMAIN (FP32-exact vs TF32-relative) can never form a
+comparison row (`E-CEVID-INCOMPARABLE`) and that cold/warm cache state is an explicit
+key field. The metric UNITS vocabulary is the `maki/experiment/run-metric.f` package's
+deferred fourth axis, decided here.
+
 ### Reproduction script (`/tmp/triton_matmul.py`, verbatim)
 
 ```python

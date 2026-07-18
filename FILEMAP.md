@@ -1372,6 +1372,25 @@ points stay listed.
   persist -> rehydrate -> re-persist round-trips, one named-throw fixture per forgery class
   (each resolving against the clean base golden), and the store-seal bypass regression
   (`BENCH:BENCH-ROW-APPEND` unresolvable/verdict 1, paired read + typed-write controls).
+- `maki/competitive-evidence.f` — the checked per-side competitive EVIDENCE row + the
+  closed metric UNITS vocabulary (the § 22.10 matrix's richer schema over
+  maki/competitive-report.f's throughput-only bench/v1). One measurement handle (package
+  CEVID) carries full identity (workload/revision/shape/numeric-policy/target/compiler/
+  cache-state/protocol/baseline over reused BENCH ids + CAD-KIND:target-id + NPOL:dom) and
+  six typed metric readings (latency/throughput/bytes/launches/memory/energy), each a
+  present-value-or-named-absence over the sealed `unit` enum
+  {ns,ms,gflops,gbps,bytes,count,watts} (joules excluded: no measured corpus energy). A
+  reading's unit must match its field CATEGORY (E-CEVID-UNIT); `COMPARABLE?`/`RENDER-PAIR`
+  refuse a mismatched numeric DOMAIN (E-CEVID-INCOMPARABLE), so the Habu-FP32 vs Triton-TF32
+  confusion can never form a comparison row; cache-state is a required field; `RENDER`/
+  `RENDER-PAIR` emit byte-stable cevid/v1 / cevid-cmp/v1 rows. Rows are a bounded first-slice
+  handle pool. Owns -5417..-5421.
+- `maki/competitive-evidence-test.f` — the migrated flagship byte goldens (GEMM
+  MMM-WIDE-B-M4-S1 3026.6 GFLOP/s = 1.60x Triton, SAXPY-V4 64.209 vs Triton 63.0 GB/s), the
+  every-unit render, replay byte-stability, the cold/warm key-alteration, the numeric-policy
+  pairing verdicts (the FP32-vs-TF32 reject + resolving positives), the E-CEVID unit-category
+  / capacity / oversized-row throws, and the static numeric-policy/raw-n/identity-slot
+  checker-reject candidates with resolving positives.
 - `tools/eval-triton.f` — migrates the SHIPPED SAXPY and GEMM competitive evidence
   (docs/eval-triton.md, tools/ptx/perf-rows.tsv) into the typed BENCH store/report path
   as an EXTERNAL consumer of the store seal (package EVAL-TRITON, public API only, no raw
