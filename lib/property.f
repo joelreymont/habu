@@ -17,7 +17,10 @@ variable PROP-SEED
 variable PROP-COUNT
 variable PROP-GEN-DEPTH
 variable PROP-GEN-NEXT
-variable PROP-SHRINK-PRED
+\ the shrink predicate is stored and re-run across the shrink loop; a typed xt
+\ cell keeps its ( -- bool ) effect through store+fetch so execute stays checked
+\ (an untyped variable would launder it -> E-EXEC-OPAQUE-XT).
+TYPED-VARIABLE PROP-SHRINK-PRED [ -- bool ]
 variable PROP-SHRINK-SAVE
 
 create PROP-BUF PROP-BUF-CAP allot

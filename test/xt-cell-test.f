@@ -113,20 +113,30 @@ variable XC-A  variable XC-U
    s" BADQ2" 0 search-wl 0= TTRUE
    s" BADQ3" 0 search-wl 0= TTRUE ;
 
-\ ---- STAGE-3 PIN: plain raw variable @ execute still LAUNDERS ----------------
-\ dot habu-checker-exec-of-5923c543 owns the RSEXEC T-VAR flip (step 3). Today a
-\ raw variable's stored xt @ execute is modeled as a pure ( -- ) quotation, so a
-\ laundering word CERTIFIES. This fixture PINS that unchanged behavior; when stage
-\ 3 flips the RSEXEC T-VAR branch the L1 candidate must REJECT (its ready red
-\ fixture). The typed xt cell above is the SOUND alternative that already
-\ fit-checks (L2 rejects a wrong-row execute today).
+\ ---- STAGE-3: plain raw variable @ execute now REJECTS (E-EXEC-OPAQUE-XT) ------
+\ dot habu-checker-exec-of-5923c543 flipped the RSEXEC T-VAR branch: executing an
+\ xt fetched from untyped memory (a raw variable or create cell) is rejected
+\ because its true stack effect is not statically known. The XCRAW launder that
+\ used to CERTIFY now REJECTS; the typed xt cell above is the SOUND alternative
+\ that fit-checks the row. XC-CODE< runs a candidate with JSON diagnostics into a
+\ buffer and asserts the reject carries the named code.
+create XC-DBUF 8192 allot
+: XC-CODE< ( ptr u8 n -- )   \ run a candidate with JSON diags captured; assert reject (verdict 0)
+   XC-DBUF 8192 DIAG-BUFFER!  0 0= DIAG-JSON!
+   CHECK-CANDIDATE! 0 T= ;
+: XC-CODE? ( ptr u8 n -- )   \ assert the captured diagnostic names this code
+   DIAG-BUFFER$ 2swap CONTAINS? TTRUE ;
+: XC-CODE-END ( -- ) 0 0= 0= DIAG-JSON! DIAG-BUFFER-OFF ;
+
 : XC-REG-RAW ( -- )
    s" variable XCRAW" VERIFY:SOURCE-BUF-IN-SCOPE ;
 
-: XC-SECTION-STAGE3-PIN ( -- )
+: XC-SECTION-STAGE3 ( -- )
    XC-REG-RAW
-   \ STAGE-3 TARGET (flip pending, dot 5923c543): still certifies = laundering
-   s" L1 ( -- ) XCRAW @ execute" CHECK-QUIET-CANDIDATE! -1 T=
+   \ the raw-variable launder now rejects, named E-EXEC-OPAQUE-XT (was -1 before the flip)
+   s" L1 ( -- ) XCRAW @ execute" XC-CODE<
+   s\" \"code\":\"E-EXEC-OPAQUE-XT\"" XC-CODE?
+   XC-CODE-END
    \ contrast: the typed cell fit-checks the row, so a wrong-row execute rejects
    s" L2 ( -- ) HK @ execute" CHECK-QUIET-CANDIDATE! 0 T= ;
 
@@ -137,7 +147,7 @@ variable XC-A  variable XC-U
    XC-SECTION-BUFFER
    XC-SECTION-TICK-STORE
    XC-SECTION-ADMISSIBILITY
-   XC-SECTION-STAGE3-PIN
+   XC-SECTION-STAGE3
    T-REPORT ;
 
 RUN

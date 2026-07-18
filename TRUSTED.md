@@ -34,6 +34,7 @@ that source is explicitly certified; they are not stale-checked by the default
 | Word | Effect | Reason | Tests | Site | Last audited |
 |------|--------|--------|-------|------|--------------|
 | STDIN? | `-- ptr bool` | Engine-builder mode cell that checked drivers set before emitting stdin or file-backed startup behavior. | `test/run.f`, `tools/build-fixpoint-test.f` | src/habu/habu1.f | 2026-06-26 |
+| FP-EMIT | `--` | Metabuild primitive-body emitter: runs the per-primitive data-driven body-emitter xt (`FP-XT`) to lay down raw machine code. The emitter varies per prim and is not typed Habu, so it is confined to this named boundary instead of the checker's opaque-execute reject (`E-EXEC-OPAQUE-XT`, dot `habu-checker-exec-of-5923c543`). | `test/run.f`, `tools/build-fixpoint-test.f` | src/habu/habu1.f | 2026-07-19 |
 | tok-imm? | `ptr u8 n -- n` | Engine primitive axiom: LFIND the token in the live dictionary and push flags&2 (the DNAME-IMM bit), so DO-TOK1 can reject a signature-carrying live immediate as a checked body step (p5 wrong-certificate class, dot habu-checker-fitting-arity-70dc94e4). | `test/immediate-model-test.f` (stdlib/tail-process fork, test/run.f) | src/core/checker.f | 2026-07-13 |
 | parse-imm | `ptr u8 n n --` | Declares a parsing immediate's compile-time payload token count to the checker (GRID: 1, WHERE 3), exempting it from the p5 immediate reject and skipping its payload in the body scan. A wrong count skips live code, so each declaration site is an audited soundness boundary; UNSAFE-TOK? bars it from checked bodies (top-level only). | `lib/ptx/header-test.f` (lint-libs slice + resident ptx group), `test/lower-txn-protection.f`, `test/run.f` | src/core/checker.f | 2026-07-13 |
 | BPW-TAB | `-- ptr ptr n` | Watch-table storage is dictionary data whose cells hold watched DATA pointers; the checker cannot infer this created table's pointee role. | `test/proc-pty.f`, `test/gate-debug.f`, `test/run.f` | src/habu/debug-watch.f | 2026-06-25 |
@@ -987,6 +988,7 @@ src/habu/debug.f:BP-PRINT-ADDR builder-emit habu-builder-trust-rows-c5d41af6
 src/habu/debug.f:BP-PATCH32 builder-emit habu-builder-trust-rows-c5d41af6
 src/habu/debug.f:BP-XT>PTR builder-emit habu-builder-trust-rows-c5d41af6
 src/habu/habu1.f:STDIN? builder-emit habu-builder-trust-rows-c5d41af6
+src/habu/habu1.f:FP-EMIT builder-emit habu-builder-trust-rows-c5d41af6
 src/habu/habu2.f builder-emit habu-builder-trust-rows-c5d41af6 131
 src/habu/hide.f:BFR-N>REC builder-emit habu-builder-trust-rows-c5d41af6
 src/habu/hide.f:BFR-A>U8 builder-emit habu-builder-trust-rows-c5d41af6

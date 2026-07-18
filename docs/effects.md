@@ -316,10 +316,28 @@ later callers; use `TRUST` only when the body itself cannot be checked.
   retype (the reconstructed `--load` body drops the tick target). A **buffer slot**
   tick store `['] W idx HKB !` stays out of scope — the index token splits the tick
   from the accessor, past the single-token lookahead — so use the quotation store
-  `[: W ;] idx HKB !` for buffers. This is the sound migration
-  target for the raw xt scratch above: `variable V  ' W V !  : F V @ execute ;`
-  still launders `execute` as a pure `( -- )` (the `RSEXEC` `T-VAR` branch, dot
-  `habu-checker-exec-of-5923c543`), whereas the typed cell carries `E` end to end.
+  `[: W ;] idx HKB !` for buffers. This is the sound alternative to the raw xt
+  scratch above: `variable V  ' W V !  : F V @ execute ;` now REJECTS at check
+  time (see the opaque-execute rule below), whereas the typed cell carries `E`
+  end to end and executes with a statically known effect.
+- **Executing an xt of unknown provenance from memory is a checked-code error
+  (`E-EXEC-OPAQUE-XT`).** `execute` recovers the effect of the popped execution
+  token from its checker type. A quotation value carries its effect (`[: … ;]`, a
+  `[ in -- out ]` quotation parameter, `['] W` which retypes to `xt<effect(W)>`,
+  or an `xt<effect>` storage cell whose `@` recovers the quotation), so
+  `execute`/`catch` fit-check the row and stay checked. But an xt fetched from an
+  untyped cell — a raw `variable`/`create` fetch — is only a bare type variable:
+  its real stack effect is erased at the store, so executing it would launder
+  whatever the stored xt actually does (mint a type, write a protected registry,
+  …) past the checker. The `RSEXEC` `T-VAR` branch (`src/core/checker.f`) rejects
+  that with `E-EXEC-OPAQUE-XT` (repair class `fix_opaque_execute`), naming the
+  `execute` token and pointing at the three typed routes: a quotation parameter,
+  a `defer` bound with `is`, or a typed `xt<effect>` cell (dot
+  `habu-checker-exec-of-5923c543`). The one standing boundary is the metabuild
+  primitive-body emitter (`FP-EMIT`, a named `TRUSTED:` word in
+  `src/habu/habu1.f`): the per-primitive body emitter is a data-driven xt running
+  raw machine-code emission, which is not typed Habu and cannot carry a static
+  effect, so it stays behind that audited boundary.
 - **Declared polymorphic effects stay parametric.** A quantifier in a declared
   effect (`a`, `ptr a`, …) is a promise that the word works for *every* type at
   that position. The body may not quietly break that promise. After a definition's

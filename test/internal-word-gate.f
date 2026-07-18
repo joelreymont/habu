@@ -424,6 +424,49 @@ public
    IWG-DEFER-QUOT-FORGE$ IWG-EXEC:SUBJECT
    s" at 'deftype'" IWG-ASSERT-DIAG ;
 
+\ --- laundered-execute closure (dot habu-checker-exec-of-5923c543). Executing an
+\ xt fetched from an untyped variable is now rejected at CHECK time as
+\ E-EXEC-OPAQUE-XT (RSEXEC T-VAR flip), so the definer-mint and protected-registry
+\ writes the RCA laundered through `variable V  ' W V !  : F V @ execute ;` can no
+\ longer certify. Each child rejects rc 70 with the named diagnostic before the
+\ body runs, so the mint / store never happens. ----
+
+: IWG-LAUNDER-DEFINER$ ( ptr u8 n -- ptr u8 n )   \ tick <definer> into a var, launder its execute
+   {: a:ptr u:n :}
+   SB-RESET
+   s" variable IWG-LV" SB-APPEND IWG-LF
+   s" ' " SB-APPEND  a u SB-APPEND  s"  IWG-LV !" SB-APPEND IWG-LF
+   s" : IWG-LBAD ( -- ) IWG-LV @ execute ;" SB-APPEND IWG-LF
+   SB$ ;
+
+: IWG-PF-LAUNDER-FORGE$ ( -- ptr u8 n )   \ tick the protected PF cell writer, launder its execute
+   SB-RESET
+   s" variable IWG-PFV" SB-APPEND IWG-LF
+   s" : IWG-PFSET ( -- ) ['] PF-COMMIT-N IWG-PFV ! ;" SB-APPEND IWG-LF
+   s" IWG-PFSET" SB-APPEND IWG-LF
+   s" : IWG-PFBAD ( -- ) IWG-PFV @ execute 99 swap ! ;" SB-APPEND IWG-LF
+   SB$ ;
+
+: IWG-ASSERT-OPAQUE ( -- )   \ child rejected at CHECK (rc 70) naming the opaque-execute reject
+   IWG-EXITED @ TTRUE
+   IWG-RC @ IWG-REJECT-RC T=
+   IWG-ERR$ s" at 'execute'" CONTAINS? TTRUE
+   IWG-ERR$ s" opaque xt of unknown provenance" CONTAINS? TTRUE ;
+
+: IWG-LAUNDER-CASES ( -- )
+   s" deftype laundered through a variable rejects at CHECK (E-EXEC-OPAQUE-XT)" T-LABEL
+   s" deftype" IWG-LAUNDER-DEFINER$ IWG-EXEC:SUBJECT
+   IWG-ASSERT-OPAQUE
+   s" value-record laundered through a variable rejects at CHECK" T-LABEL
+   s" VALUE-RECORD" IWG-LAUNDER-DEFINER$ IWG-EXEC:SUBJECT
+   IWG-ASSERT-OPAQUE
+   s" layout-buffer laundered through a variable rejects at CHECK" T-LABEL
+   s" LAYOUT-BUFFER" IWG-LAUNDER-DEFINER$ IWG-EXEC:SUBJECT
+   IWG-ASSERT-OPAQUE
+   s" PF registry-cell write laundered through a variable rejects at CHECK, not runtime" T-LABEL
+   IWG-PF-LAUNDER-FORGE$ IWG-EXEC:SUBJECT
+   IWG-ASSERT-OPAQUE ;
+
 : IWG-POSITIVES ( -- )
    s" undefined word still reports E-UNDEFINED" T-LABEL
    IWG-UNDEF-FORGE$ IWG-EXEC:SUBJECT
@@ -492,7 +535,7 @@ public
 package IWG-PARITY
 
 7 constant DIRECT-N
-52 constant SUBJECT-N
+56 constant SUBJECT-N
 : RESULT ( -- ptr u8 n ptr u8 n n )
    IWG-OUT IWG-OUT-U @ IWG-ERR IWG-ERR-U @ IWG-RC @ ;
 
@@ -555,6 +598,7 @@ public
    IWG-POSITIVES
    IWG-OPENER-CASES
    IWG-DEFER-CASES
+   IWG-LAUNDER-CASES
    IWG-PARITY:CHECK
    IWG-CLEANUP
    T-REPORT

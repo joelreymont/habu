@@ -34,13 +34,16 @@ create PNPOOL PRIM-NAME-CAP allot   variable PNP   variable #PL
 variable RPD
 variable PR-A  variable PR-U  variable PR-L  variable PR-E
 variable FP-A  variable FP-U  variable FP-XT
-\ FP-XT holds the body-emitter xt that FPRIM/FPRIM-L/FPRIM-WID execute while
-\ assembling a primitive's machine-code body. This is the metabuild assembler
-\ (habu1.f is compiled by the seed, never certified by the checker), so
-\ `FP-XT @ execute` here is NOT a checked-code firer of RSEXEC and the
-\ stored-xt-launder flip (dot habu-checker-exec-of-5923c543, RSEXEC T-VAR) does
-\ not reach it. Left as a raw variable by design: a TRUSTED machine-code
-\ boundary, not a checked hook to migrate to defer/xt-cell.
+\ FP-XT holds the per-primitive body-emitter xt (passed as data through FP-ARGS)
+\ that FPRIM/FPRIM-L/FPRIM-WID run while assembling a primitive's machine-code
+\ body. habu1.f IS certified by the build's static scan, and executing a
+\ data-driven xt fetched from this variable is exactly the opaque-xt shape the
+\ checker now rejects (dot habu-checker-exec-of-5923c543, RSEXEC T-VAR ->
+\ E-EXEC-OPAQUE-XT). It cannot become a defer (the emitter varies per call) or a
+\ typed xt<effect> cell (this is the metabuild assembler emitting raw machine
+\ code, not typed Habu). So the one execute is confined to the named FP-EMIT
+\ boundary below: a TRUSTED: metabuild machine-code emitter, the sole standing
+\ boundary for the stored-xt-launder flip.
 : RPD@ ( -- ptr u8 ) RPD 0 ptr-field @ ;
 : PR-A@ ( -- ptr u8 ) PR-A 0 ptr-field @ ;
 : FP-A@ ( -- ptr u8 ) FP-A 0 ptr-field @ ;
@@ -76,20 +79,25 @@ variable FPL  variable FPE
 : FP-REG ( -- )
    FP-A@ FP-U @ FPL @ FPE @ REG-PRIM ;
 
+\ The sole standing boundary for the opaque-xt-execute flip: run the per-prim
+\ body emitter (a data-driven xt) to lay down raw machine code. TRUSTED: because
+\ the emitted body is not typed Habu and the emitter cannot carry a static effect.
+TRUSTED: FP-EMIT ( -- ) FP-XT @ execute ;
+
 : FPRIM ( ptr u8 n n -- )
    FP-ARGS
    FP-KEEP? 0= IF EXIT THEN
    LBL FPL !  LBL FPE !
    FP-REG
    FPL LABEL@ LBL,  SP SP 16 SUBI,  30 SP 0 STR,
-   FP-XT @ execute  30 SP 0 LDR,  SP SP 16 ADDI,  RET,  FPE LABEL@ LBL, ;
+   FP-EMIT  30 SP 0 LDR,  SP SP 16 ADDI,  RET,  FPE LABEL@ LBL, ;
 
 : FPRIM-L ( ptr u8 n n -- )           \ LEAF prim: no BL/BLR in body -> no x30 frame
    FP-ARGS
    FP-KEEP? 0= IF EXIT THEN
    LBL FPL !  LBL FPE !
    FP-REG
-   FPL LABEL@ LBL,  FP-XT @ execute  RET,  FPE LABEL@ LBL, ;
+   FPL LABEL@ LBL,  FP-EMIT  RET,  FPE LABEL@ LBL, ;
 
 variable FP-WID
 
@@ -101,7 +109,7 @@ variable FP-WID
    FP-REG
    FP-WID @ #PL @ 1- cells PWID + !
    FPL LABEL@ LBL,  SP SP 16 SUBI,  30 SP 0 STR,
-   FP-XT @ execute  30 SP 0 LDR,  SP SP 16 ADDI,  RET,  FPE LABEL@ LBL, ;
+   FP-EMIT  30 SP 0 LDR,  SP SP 16 ADDI,  RET,  FPE LABEL@ LBL, ;
 
 \ --- deref/execute arity-guard table (for the interpret-boundary guard) ---
 \ A deref/execute/dispatch prim (@ ! +! c@ c! atomic@ atomic! atomic-add

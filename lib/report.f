@@ -13,18 +13,18 @@ require lib/render.f
 0 constant AL-L   1 constant AL-R           \ column alignment: left / right
 create COL-HA COL-MAX cells allot  create COL-HN COL-MAX cells allot   \ header text
 create COL-AL COL-MAX cells allot                                       \ alignment
-create COL-XT COL-MAX cells allot                                       \ cell quotation ( row -- )
+COL-MAX TYPED-BUFFER COL-XT [ n -- ]                                    \ per-column cell emitter ( row -- ); typed so store+execute stay checked
 variable COL-N
 variable TBL-R  variable TBL-C
 
 : TBL-RESET ( -- ) 0 COL-N ! ;
 : COL+ ( ptr u8 n n [ n -- ] -- ) {: ha u al q :}
    ha COL-HA COL-N @ cells + !  u COL-HN COL-N @ cells + !
-   al COL-AL COL-N @ cells + !  q COL-XT COL-N @ cells + !
+   al COL-AL COL-N @ cells + !  q COL-N @ COL-XT !
    COL-N @ 1+ COL-N ! ;
 
 : COL-HDR@ ( n -- ptr u8 n ) {: c :} COL-HA c cells + @  COL-HN c cells + @ ;
-: COL-CELL ( n n -- ) {: row c :} row COL-XT c cells + @ execute ;   \ emit one cell
+: COL-CELL ( n n -- ) {: row:n c:n :} row c COL-XT @ execute ;   \ emit one cell
 
 \ CSV: comma-joined header + one comma-joined line per row
 : TBL-CSV ( n -- ) {: nrows :}
