@@ -10,10 +10,17 @@ Use this skill for `bin/hb` recovery and self-refresh.
 ## Requirements
 
 - Run from the repo root.
+- On a fresh machine, FIRST prefer a `bin/hb` seed copied from a trusted
+  checkout of the same OS/arch (docs/seed.md) over any gforth bootstrap.
 - Gforth is only the no-binary recovery host.
 - The recovery host must be Gforth 0.7.9 or newer with `{:` locals support.
 - Known-good host: `gforth 0.7.9_20260610`.
-- Homebrew/system Gforth 0.7.3 is too old.
+- **Gforth 0.7.3 is BANNED for Habu work — never install or build it, not
+  even as a stepping-stone build host.** With no gforth present at all, use
+  the complang *dist* tarball of the pinned snapshot (ships pregenerated
+  kernel images, builds with no pre-existing gforth):
+  `https://www.complang.tuwien.ac.at/forth/gforth/Snapshots/0.7.9_20260610/gforth-0.7.9_20260610.tar.xz`
+  — the GitHub tag archive does NOT self-build (PREFORTH needs a gforth).
 - Prefer `~/.local/bin/gforth` when present.
 
 Verify locals support:
