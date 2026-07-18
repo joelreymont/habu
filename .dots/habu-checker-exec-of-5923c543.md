@@ -1,9 +1,9 @@
 ---
 title: "Checker: execute-of-stored-xt launders unsafe definers from checked bodies"
-status: open
-priority: 2
+status: active
+priority: 1
 issue-type: task
-created-at: "\"2026-07-13T17:24:38.523281+02:00\""
+created-at: "\"\\\"2026-07-13T17:24:38.523281+02:00\\\"\""
 ---
 
 Static invariant: a word whose runtime body invokes an unsafe definer (deftype/value-record/layout-buffer/...) must not certify with a benign stack effect; the checker must not model an unknown executed xt as a pure ( -- ) quotation when that xt's true effect is unknown or unsafe. Where enforced: src/core/checker.f RSEXEC (~1557-1587). Problem (found by symset destruction review 2026-07-13): 'variable XV  ' deftype XV !  : VF ( -- ) XV @ execute ;  VF newtype' certifies VF as ( -- ) but at runtime runs deftype, parsing the live input and minting a type — generalizes to value-record and layout-buffer. Direct '['] deftype execute' correctly rejects (the immediate-tick operand carries its type); the xt's retyped/unsafe effect is LOST when it round-trips through !/@, so execute treats it as pure. The unsafe-symbol set (habu-checker-unsafety-as-1c537c1f) cannot gate this: at the execute site there is no symbol identity to key on. Needs xt-provenance-through-memory tracking (a memory-cell carrying an xt must retain a bound-effect/unsafe taint, or execute of a non-literal xt must be modeled conservatively/rejected in checked bodies). Acceptance: minimal negative fixture (the VF example + value-record + layout-buffer variants) rejects in a checked body; direct-tick and existing checked-quotation-through-'is' cases stay green; a legitimate stored pure xt executed from a checked body still certifies (no false-positive on ordinary deferred words). Files: src/core/checker.f (RSEXEC + xt/variable effect modeling), test/internal-word-gate.f or a new negative regression, docs/effects.md. Verify: red-first fixtures, native fixpoint byte-identical, boot-pin, test/run.f. Depends: relates to habu-typed-top-xt-096a8f1b. Ownership: checker RSEXEC / executed-xt effect modeling. Claim: unassigned.
@@ -42,3 +42,5 @@ E-EXEC-OPAQUE-XT reject with the three negative fixtures, keeping xt-effect
 v1-v9 green; STATUS.md count updates honestly. COORDINATE: steps 1-2 touch the
 checker.f/type-family/layout-buffer regions tfam's active lane is editing - do
 not dispatch until that releases or with explicit region coordination.
+
+PRIORITY RAISED + CLAIMED 2026-07-18 (orchestrator): this dot now owns the closure of the TYPE-FIELD laundered-write exploit (habu-protect-type-field-04d91409 REDECISION): a destruction review wrote a PF registry cell from fully checked source via tick-into-variable + fetch + execute, and the worker proved a PROT-GUARD memory band cannot close that route (its guard-bypass writer is itself launderable - full proof in docs/registry-band.md). The sequenced plan above stands: (1) habu-typed-xt-cells-08e1dc2c mints xt<effect> as a storable cell type; (2) migrate the ~36 raw-var @ execute hook sites (checker plugin dispatch, lbuf/tdecl eval hooks, habu1 fprim/source hooks - fprim* classified as TRUSTED machine-code boundaries) to defer/is or typed xt cells; (3) flip RSEXEC's T-VAR branch to a named E-EXEC-OPAQUE-XT reject with the three definer negative fixtures PLUS the PF laundered-write negative (tick PF cell into variable, fetch, execute, store - must reject at check time; goes in test/internal-word-gate.f). The tfam-lane region conflict noted in the RCA is cleared (that lane landed and closed). Claim: agent=ptf-opus workspace=.jj-ws/habu-checker-exec-of-5923c543
