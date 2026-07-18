@@ -4,6 +4,15 @@
 
 Last updated: 2026-07-18
 
+- **FS-SKIP-DIR? skipped .jj/.git/.dots but never .jj-ws, so every walker (lints,
+  candidate discovery) saw stale worker-workspace trees — a MAIN-CHECKOUT-ONLY latent
+  red.** (2026-07-18, found by the first main-checkout run.f in days: 478
+  process-primitive-lint findings and a candidate-validation fail, all from
+  ./.jj-ws/<old-lane>/ copies; worker gates never see it because workspace trees
+  contain no .jj-ws.) Fixed at the root (lib/fs.f skip list). Rules: (1) new
+  conventional untracked directories must be added to FS-SKIP-DIR? when introduced;
+  (2) the integrator periodically runs run.f in the MAIN checkout too - it is a
+  distinct gate context from worker workspaces.
 - **A spawn-isolated subject signals SUCCESS by natural load completion (exit 0),
   never `bye`.** (diff-runner, dot habu-v2-differential-runner-13359019.) `bin/hb
   --load driver.f` that ENDS with `bye` exits **70** (the FFI-file convention code
