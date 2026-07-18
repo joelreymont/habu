@@ -4,8 +4,6 @@ status: open
 priority: 2
 issue-type: task
 created-at: "\"2026-07-04T22:18:57.005375+02:00\""
-blocks:
-  - habu-checker-capability-layout-9b8540bd
 ---
 
 docs/census-switchover.md section 5 wave B. The 25 multi-value+flag words (SPLIT-NEXT string.f:180, NEXT-LINE object.f:274 r8, RX-FIND* regex.f:454/464, LOAD object-index.f:116, JSONLF-*/JSONL-PARSE-ROW, PROC-ENV-DEFAULT0, FL-STRIP-SIGN, tool row parsers) to option<tuple>; the 34-site process rc family (PROC-WAIT-RC r17, PROC-RUN-RC r11, RUN-CAPTURE/PROC-CAPTURE-RC@ len-len-rc + process-env/cwd/argv mirrors) to result<T,errno> over E-PROC-*. Raw habu1.f emitters (BRUNRC/BPIPE/BPOLL/...) stay rc-sentinel at the trusted boundary; only checked wrappers migrate. DEPENDS: wave A patterns proven, item 12 multi-cell.
@@ -232,3 +230,12 @@ payload products - when unblocked, migrate the 25 option<tuple> words by
 minting small named payload PRODUCTs (e.g. str-slice for ptr u8 n) and
 returning option<that>, not anonymous runs; the raw-run spelling is
 optional staged sugar (layout slice 6).
+
+Edge note 2026-07-18: blocker habu-checker-capability-layout-9b8540bd
+edge REMOVED as satisfied for THIS dot's needs - the flat multi-cell
+capability landed complete (slices 1-4, commit 13f8a504): named
+payload products round-trip through option/result at runtime with
+dual-emitter byte parity. Wave B's remainder migrates NOW via small
+named payload PRODUCTs per the DoR amendment (option<str-slice> etc.);
+the layout dot stays open only for nested/linear (slice 5) and raw-run
+sugar (slice 6), neither needed here.

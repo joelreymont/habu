@@ -1,6 +1,6 @@
 ---
 title: "Checker capability: layout-polymorphic family params"
-status: active
+status: open
 priority: 2
 issue-type: task
 created-at: "\"\\\"\\\\\\\"\\\\\\\\\\\\\\\"\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\"2026-07-03T23:36:48.964243+02:00\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\"\\\\\\\\\\\\\\\"\\\\\\\"\\\"\""
@@ -121,3 +121,24 @@ WF-fact + EM-P2-TRIGGER mechanism; the CLFC staged rejects flip; runtime
 round-trips land; then option/result get marked and wave-B unblocks.
 
 Claim: agent=laycap4 workspace=.jj-ws/fable-laycap4 (SLICE 4: width-aware construct/match lowering in BOTH emitters; CLFC rejects flip; runtime round-trips)
+
+SLICE 4 LANDED 2026-07-18 (laycap4 lane, commit 13f8a504 after rebase;
+claim RELEASED): the FLAT CAPABILITY IS COMPLETE (slices 1-4). Width-
+aware construct/MATCH lowering via the extra-pad WF-XPAD call-site fact
+(recorded only when extra>0 - no fact, no pass-2, existing shapes
+byte-identical by construction AND empirically cmp-proven); pass-2 adds
+the delta zeros in all three legs (reserved construct, MATCH OF,
+generated-ctor CALL) in BOTH emitters - DDC gforth chain == native
+fixpoint 36bf9828 byte-identical (the DoR's flagged dual-emitter risk
+verified). CLFC1/2 flipped to real compiled runtime round-trips;
+CLFC-NESTED preserves the slice-5 boundary; option/result needed NO
+declaration edit (they already accept named args - the real families
+round-trip SOME/NONE/OK/ERR over a named product); the three wave-B
+probe shapes pinned END-TO-END via named payload products. The WF-flag
+ripple spanned five coordinated sites (cert constant, PPRIM, VALIDATE-WF
+mask, PEINV manifest, AX-CENSUS) - the malformed-certificate symptom is
+the tell. Integration: engine refreshed to 36bf9828, ctor suite + maki
++ DDC + FULL run.f green with perf-verdict pass attempts=1 (the two
+worker-side reds were the proven stale-binary artifacts). REMAINING on
+this dot: slice 5 (nested ADTs + linear payloads stage-lift) and slice 6
+(optional raw-run sugar, Couplings A/B spec).
