@@ -3,6 +3,9 @@
 \ parametric families) typing candidate-B's idx<#M> with two extents distinct,
 \ and — the deciding reason — hosting BTC-7's #B*#T product/factorization
 \ structure on existing parametric-family unification with NO new registry.
+\ It also proves the COMPARATIVE case (why the decision, not just adequacy):
+\ the atom substrate silently ACCEPTS a typo'd extent (XP-ATOM-HAZARD) where TFAM
+\ rejects it (XP-TYPO), and a mis-cased tail is rejected (XP-CASE, E-TFAM-CASE).
 \
 \ Run standalone (NOT a routed gate case; BTC-2/BTC-7 own the permanent
 \ regressions):
@@ -54,6 +57,14 @@ s" XP-NOUT ( xidx<xm> -- n )"             CHECK-QUIET-CANDIDATE!  0 T=
 s" XP-NIN ( n -- xidx<xm> )"              CHECK-QUIET-CANDIDATE!  0 T=
 \ typo protection: an undeclared extent name is rejected (unknown signature type).
 s" XP-TYPO ( xidx<xundeclared> -- xidx<xundeclared> )" CHECK-QUIET-CANDIDATE! 0 T=
+\ COMPARATIVE (the atom hazard that makes atoms the WRONG substrate): the SAME
+\ undeclared name spelled as an atom (`extent-*`) is silently ACCEPTED — any
+\ extent-* parses, so a typo'd extent is a live distinct extent, not a reject.
+\ TFAM (XP-TYPO) and CT-roles reject it; atoms do not. Verdict -1 = accept.
+s" XP-ATOM-HAZARD ( xidx<extent-neverdeclared> -- xidx<extent-neverdeclared> )" CHECK-QUIET-CANDIDATE! -1 T=
+\ COMPARATIVE (case discipline): an upper-case tail is rejected — type/family
+\ tails are lowercase (E-TFAM-CASE), so a mis-cased extent cannot resolve.
+s" XP-CASE ( xidx<XM> -- xidx<XM> )" CHECK-QUIET-CANDIDATE! 0 T=
 
 \ --- (b) BTC-7 product/factorization structure on existing TFAM unification ----
 \ a folded row index typed as the product #B*#T (xprod<xm,xn>) is a first-class arg.
