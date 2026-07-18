@@ -6395,3 +6395,18 @@ unchanged (148855). Keys for milestone 2:
   `tol s>f  SCALE s>f  f/` gives a checked fixed-point float bound. For per-loop floats without
   juggling, stash in a 1-cell buffer and reuse array.f's `T-GET`/`T-SET` (proven `@`->r), not a
   bare `variable @` (whose result may not unify with `r`).
+
+## Region growth: mprotect flip cost is linear in region size (2026-07-18)
+Doubling REGION to 8 MB for dict growth (DICT-CAP 32768) regressed process
+boot +41 ms (+22%) and tripped the gate-engine runtime time ratchet (10.4 s
+vs MAX-MS 10000) — reproducible on a quiet host. RCA by constant bisection
+(probe builds: 8 MB region + old dict constants = same cost; LPROT flip
+window 4/5/8 MB = 184/203/225 ms nop boot): the cost is entirely LPROT's
+full-region RW<->RX mprotect brackets, linear in the flip window. Lessons:
+(1) the engine battery's ratchet catches real per-process regressions —
+never bump MAX-MS to pass; (2) region growth requires narrow protection
+windows FIRST (dot habu-lprot-narrow-protection-03cc8d7f), then growth
+rides on top; (3) measure JIT code-area use with a chained probe file
+(`bin/hb --load maki/test.f probe.f` + LATEST XREF.) — code was at 92% of
+the 4 MB split, so dict-only repartition was refuted by measurement before
+any build.

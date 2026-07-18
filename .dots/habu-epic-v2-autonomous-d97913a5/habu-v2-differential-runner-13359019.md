@@ -3,7 +3,7 @@ title: V2 differential runner core
 status: active
 priority: 1
 issue-type: task
-created-at: "\"\\\"2026-07-11T12:25:27.511089+02:00\\\"\""
+created-at: "\"\\\"\\\\\\\"2026-07-11T12:25:27.511089+02:00\\\\\\\"\\\"\""
 blocks:
   - habu-v2-differential-suite-2d896ced
 ---
@@ -137,3 +137,13 @@ STILL OPEN on this dot:
   claim record above).
 - durable per-case output store (run-log is a bounded LOG-CAP=64 first
   slice).
+
+REGISTRATION LANDED 2026-07-18: the dict-capacity chain closed
+(habu-lprot-narrow-protection-03cc8d7f done, region 8MB / DICT-CAP 32768
+merged); diff-suite-id / diff-runner-tensor / diff-runner-inject now
+registered and PASSING inside maki/test.f. Remaining on this dot: the
+durable per-case output store only (run-log LOG-CAP=64 first slice);
+torch spawn stays the recorded-skip boundary until a torch-bearing host
+exists.
+
+Claim: agent=diffstore workspace=.jj-ws/fable-diffstore (durable per-case output store; closes the dot when merged)
