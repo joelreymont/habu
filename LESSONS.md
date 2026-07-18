@@ -6360,3 +6360,38 @@ unchanged (148855). Keys for milestone 2:
   identical digest. Nondeterminism is enforced by API shape (the only marked-event constructor
   demands a captured evidence-id) plus a `VERIFY-LOG` `bad-nondeterministic` reject for a
   marked record whose capture was zeroed; there is no reachable runtime throw to leave dead.
+- **maki/test.f is at the DICT-CAP word-count wall.** The monolithic gate accumulates EVERY
+  suite's definitions into ONE image (no per-suite forget), peaking at `ndict@` 16284 of
+  `DICT-CAP` 16384 (src/habu/layout.f) on master - only ~100 free word records. Adding a whole
+  subsystem's core+test suites (~148 words for the differential-runner tensor leg) overflows it
+  as `hb: dictionary full at: :` at a LATER suite (eval-device-fault-test.f), not at the new
+  files. Distinguish the two capacity arms: `here`/`allot` track DATA space (the "data payload"),
+  while `:`/`create`/`variable` each consume ONE `ndict` record - "dictionary full" is the ndict
+  cap, so trimming `create ... allot` buffer SIZES does NOT help word-count overflow. Fix when
+  it's your subsystem: keep the new suites gated STANDALONE (their own `bin/hb file-test.f`) and
+  do NOT wire them into maki/test.f, or land a DICT-CAP bump in src/habu/layout.f (a precedented
+  "gate-runner-support" growth, per the layout.f comment - 8192->16384 already happened).
+- **A new §23.9 id-owner mint needs a refine-lint SEED entry, and the POOL refine-lint is
+  stricter than standalone.** Adding `TRUSTED: RAW>SUITE-ID ( n -- CAD-KIND:suite-id )` passed
+  standalone `tools/refine-lint.f` (0 findings) but the test/gate-stdlib.f POOL refine-lint
+  phase went red: `NEW-MINT ... is mint-shaped but not in the refine-lint seed list`. Register
+  the mint in tools/refine-lint-core.f: bump `RFL-SEED#`, add a `RFL-SEED-NAME$` case
+  (`s" RAW>SUITE-ID"`) and the matching `RFL-SEED-OWNER$` owner file, mirroring the RAW>RUN-ID /
+  RAW>EVIDENCE-ID rows. Only the MINT (`n -- CAD-KIND:x`) is shape-scanned; the projection
+  (`CAD-KIND:x -- n`) is seed-exempt. Also add BOTH TRUSTED.md forms (the table row AND the
+  `file:NAME prim-axiom` line) or trust-lint reports UNMANIFESTED.
+- **Test files that reopen a SHARED package need globally-unique helper tails.** diff-runner-test.f
+  and a new diff-runner-tensor-test.f both `package DIFFRUN` and both defined `SUBJ-A`/`T1`/`C1`;
+  each passed standalone but maki/test.f loads them into ONE image and the second collides
+  (`duplicate definition: SUBJ-A rc=78`). Prefix per-file (`T-SUB-A`, `T-TGT`, `T-ENV-A`) so the
+  reopened-package tails never clash across all files that reopen it. (A test in its OWN package,
+  e.g. SUITEID-TEST, is immune.)
+- **hb drops to a REPL after a successful file load; pipe `< /dev/null` for probes.** A probe
+  file that loads cleanly (no error) then waits on stdin and looks like a hang under `timeout`
+  (rc 124). Errors still exit non-zero immediately. Run one-off measurement scripts as
+  `./bin/hb probe.f < /dev/null`. (Gate/test files that call `T-REPORT`/`die` exit on their own.)
+- **Float locals `:r` certify; `s>f` is the int->float primitive (engine-spelled `n`).** A
+  `{: v:r :}` local binds a float fine (contrary to the ptr-local byte-only caveat), and
+  `tol s>f  SCALE s>f  f/` gives a checked fixed-point float bound. For per-loop floats without
+  juggling, stash in a 1-cell buffer and reuse array.f's `T-GET`/`T-SET` (proven `@`->r), not a
+  bare `variable @` (whose result may not unify with `r`).

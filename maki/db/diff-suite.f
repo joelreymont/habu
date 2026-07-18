@@ -72,9 +72,20 @@
 \ identical fields (any insertion order) derives an IDENTICAL case-id sequence and a
 \ different seed derives a different one (plan:3789/3796 deterministic replay).
 \
+\ ---- DECODE: the folded structured inverse of ENCODE -----------------------------
+\ DECODE folds over the canonical TLV envelope (13 ascending tag-length-value fields),
+\ reconstructing a suite through the SAME staged builder ENCODE serialized from: fixed
+\ scalars (seed/policy/tolerance) are read directly, foreign content-addressed ids
+\ (subject/comparison/target) are RESOLVED against their owner registries via X:WIRE>KEY
+\ (an unresolved key is `unknown`, never a forged id), and the raw-key fields
+\ (normalization/minimizer/generators/references/properties) are placed verbatim so the
+\ re-SEALed suite's recomputed digest must equal the stored tag-13 digest (else
+\ `noncanonical`). So ENCODE|>DECODE round-trips to a suite of identical digest, and a
+\ tampered, truncated, reordered, or non-locally-resolvable envelope rejects TYPED.
+\
 \ FIRST-SLICE POOL: a bounded ring of live slots with fixed per-field caps (the maki/db
 \ first-slice convention); a durable suite store is a later dot. maki -> habu only;
-\ diff-suite owns -5392..-5394.
+\ diff-suite owns -5392..-5394 (schema) + -5407..-5410 (decode).
 
 require lib/prelude.f
 require maki/cad-kinds.f
@@ -87,6 +98,10 @@ require maki/db/budget-dim.f       \ BUDGET:dim vector vocabulary (reused, not f
 -5392 constant E-DSUITE-CAP        \ a per-suite set or the suite pool capacity exceeded
 -5393 constant E-DSUITE-BUF        \ ENCODE / DIGEST output buffer smaller than the canonical bytes
 -5394 constant E-DSUITE-SEM        \ encode scratch overflow (unreachable internal cap)
+-5407 constant E-DSUITE-DEC-FRAME  \ DECODE: bad TLV framing / bad flags / truncation / trailing bytes
+-5408 constant E-DSUITE-DEC-ORDER  \ DECODE: tag out of canonical order, or recomputed digest mismatch
+-5409 constant E-DSUITE-DEC-BOUNDS \ DECODE: a set count over SET-CAP or an input over the decode scratch cap
+-5410 constant E-DSUITE-DEC-UNKNOWN \ DECODE: a foreign content key (subject/comparison/target) unresolved locally
 
 package DIFFSUITE
 public
@@ -104,6 +119,21 @@ SUMTYPE build-result 0
    VARIANT incomplete ;VARIANT
    VARIANT tolerance-mismatch ;VARIANT
    VARIANT reference-not-independent ;VARIANT
+;SUMTYPE
+
+\ ---- DECODE outcome (the maki/db/diagnostic.f decode-result idiom) ----------------
+\ ok carries the reconstructed sealed suite; the reject arms are the folded structured
+\ decode refusals: malformed (bad TLV framing / truncation / trailing bytes), noncanonical
+\ (tags not in the canonical ascending order, or the recomputed digest disagrees with the
+\ stored tag-13 digest), bounds (a set count over SET-CAP or a field length over cap), and
+\ unknown (a foreign content key - subject / comparison / target - unresolved in the local
+\ registry). A bespoke per-package sum, not result<a,b>, so a total ok leaves no free error.
+SUMTYPE decode-result 0
+   VARIANT ok suite ;VARIANT
+   VARIANT malformed ;VARIANT
+   VARIANT noncanonical ;VARIANT
+   VARIANT bounds ;VARIANT
+   VARIANT unknown ;VARIANT
 ;SUMTYPE
 
 private
@@ -528,6 +558,167 @@ public
    s SEED-R@  CASEBUF DIGEST-BYTES +           U64W LE-PUT
    k          CASEBUF DIGEST-BYTES U64W + +    U64W LE-PUT
    CASEBUF  DIGEST-BYTES U64W + U64W +  out SHA256 ;
+
+\ ---- structured DECODE (folded inverse of ENCODE) -------------------------------
+private
+
+$800 constant DEC-CAP                          \ decode input cap (a suite envelope is < 1KB)
+create DBUF DEC-CAP allot                       \ decode input copy (cursor-indexed, fixed base)
+variable DEC-U                                  \ decode input length
+variable DEC-O                                  \ decode cursor offset
+create DEC-DIG DIGEST-BYTES allot              \ stored tag-13 digest
+create DEC-RECDIG DIGEST-BYTES allot            \ recomputed digest of the reconstructed suite
+variable DEC-SLOT                               \ reconstructed suite slot (returned through the catch boundary)
+
+\ ---- fixed little-endian scalar get (byte access; inverse of LE-PUT) ------------
+: LE-GET ( ptr u8 n -- n ) {: a:ptr w:n :}
+   0  0 begin dup w < while
+      dup {: k:n :}
+      a k + c@ k 8 * lshift  rot or swap
+      1+
+   repeat drop ;
+
+\ ---- cursor readers (fail-closed on truncation) ---------------------------------
+: D-ROOM ( n -- ) {: k:n :}   DEC-O @ k + DEC-U @ > if E-DSUITE-DEC-FRAME throw then ;
+: D-U8 ( -- n )   1 D-ROOM  DBUF DEC-O @ + c@  DEC-O @ 1+ DEC-O ! ;
+: D-AT ( -- ptr u8 )   DBUF DEC-O @ + ;
+: D-SKIP ( n -- ) {: k:n :}   k D-ROOM  DEC-O @ k + DEC-O ! ;
+: D-LE ( n -- n ) {: w:n :}   w D-ROOM  D-AT w LE-GET  w D-SKIP ;
+: D-U32 ( -- n )   U32W D-LE ;
+: D-U64 ( -- n )   U64W D-LE ;
+
+\ ---- field header: expect tag `want`, required flag; return the value length ----
+: D-FIELD ( n -- n ) {: want:n :}
+   D-U8 want <> if E-DSUITE-DEC-ORDER throw then
+   D-U8 FLAG-REQUIRED <> if E-DSUITE-DEC-FRAME throw then
+   D-U32 ;
+
+\ a fixed u64 field: [tag][flag][len=8][u64] -> the u64.
+: D-U64-FIELD ( n -- n ) {: tag:n :}
+   tag D-FIELD U64W <> if E-DSUITE-DEC-FRAME throw then
+   D-U64 ;
+
+\ a fixed-length key field: verify the declared length, return the value address, advance.
+: D-KEY-FIELD ( n n -- ptr u8 ) {: tag:n klen:n :}
+   tag D-FIELD klen <> if E-DSUITE-DEC-FRAME throw then
+   D-AT  klen D-SKIP ;
+
+\ ---- raw content-key placement (the decode inverse of the hashing setters) -------
+: NORM-KEY! ( ptr u8 -- ) {: p:ptr :}
+   p  CUR-SLOT @ NORM-AT  CKW BYTE-COPY  SEEN-NORM MARK-SEEN ;
+: MIN-KEY! ( ptr u8 -- ) {: p:ptr :}
+   p  CUR-SLOT @ MIN-AT  CKW BYTE-COPY  SEEN-MIN MARK-SEEN ;
+: GEN-KEY+ ( ptr u8 -- ) {: p:ptr :}
+   CUR-SLOT @ {: s:n :}
+   s GEN-N@ SET-CAP >= if E-DSUITE-DEC-BOUNDS throw then
+   p  s s GEN-N@ GEN-AT  CKW BYTE-COPY   s GEN-N@ 1+ s GEN-N! ;
+: REF-KEY+ ( ptr u8 -- ) {: p:ptr :}
+   CUR-SLOT @ {: s:n :}
+   s REF-N@ SET-CAP >= if E-DSUITE-DEC-BOUNDS throw then
+   p  s s REF-N@ REF-AT  CKW BYTE-COPY   s REF-N@ 1+ s REF-N! ;
+: PROP-KEY+ ( ptr u8 -- ) {: p:ptr :}
+   CUR-SLOT @ {: s:n :}
+   s PROP-N@ SET-CAP >= if E-DSUITE-DEC-BOUNDS throw then
+   p  s s PROP-N@ PROP-AT  CKW BYTE-COPY   s PROP-N@ 1+ s PROP-N! ;
+
+\ ---- policy ordinal inverse (composes with OBLIG:independence; POLICY-ORD's inverse) -
+: N>POLICY-IND ( n -- OBLIG:independence )
+   case
+      0 of OBLIG-INDEPENDENCE:SELF-VERIFY endof
+      1 of OBLIG-INDEPENDENCE:INDEPENDENT endof
+      E-DSUITE-DEC-FRAME throw
+   endcase ;
+
+\ ---- per-field decoders (drive the staged builder, canonical order) --------------
+: D-SEED ( -- )    TAG-SEED D-U64-FIELD SEED! ;
+: D-SUBJECT ( -- )
+   TAG-SUBJECT CKW D-KEY-FIELD  CKW PRODUCER:WIRE>KEY MATCH PRODUCER:id-result
+      ok OF {: id:CAD-KIND:producer-id :} id SUBJECT ENDOF
+      wrong-width OF E-DSUITE-DEC-UNKNOWN throw ENDOF
+      unknown OF E-DSUITE-DEC-UNKNOWN throw ENDOF
+   ;MATCH ;
+: D-POLICY ( -- )  TAG-POLICY D-U64-FIELD N>POLICY-IND POLICY ;
+: D-COMPARE-TOL ( -- )   \ tag 4 (comparison id) then tag 5 (tolerance) -> one COMPARISON
+   TAG-COMPARE U64W D-KEY-FIELD  U64W NPOL:WIRE>KEY MATCH NPOL:id-result
+      ok OF {: cid:CAD-KIND:numeric-policy-id :}
+         TAG-TOL D-U64-FIELD {: tol:n :}  cid tol COMPARISON
+      ENDOF
+      wrong-width OF E-DSUITE-DEC-UNKNOWN throw ENDOF
+      unknown OF E-DSUITE-DEC-UNKNOWN throw ENDOF
+   ;MATCH ;
+: D-NORM ( -- )    TAG-NORM CKW D-KEY-FIELD NORM-KEY! ;
+: D-MIN ( -- )     TAG-MIN CKW D-KEY-FIELD MIN-KEY! ;
+: D-TARGET ( -- )
+   TAG-TARGET CKW D-KEY-FIELD  CKW TARGET:WIRE>KEY MATCH TARGET:id-result
+      ok OF {: id:CAD-KIND:target-id :} id TARGET-NEED ENDOF
+      wrong-width OF E-DSUITE-DEC-UNKNOWN throw ENDOF
+      unknown OF E-DSUITE-DEC-UNKNOWN throw ENDOF
+   ;MATCH ;
+: D-BUDGET ( -- )
+   TAG-BUDGET D-FIELD BUDGET:DIM-COUNT U64W * <> if E-DSUITE-DEC-FRAME throw then
+   0 begin dup BUDGET:DIM-COUNT < while
+      dup {: d:n :}  D-U64 {: amt:n :}  d BUDGET:N>DIM amt BUDGET!  1+
+   repeat drop ;
+
+\ a content-key set field: [tag][flag][len][cnt:u64][cnt keys]; verify len + cap, count.
+: D-SET-CNT ( n -- n ) {: tag:n :}
+   tag D-FIELD {: len:n :}
+   D-U64 {: cnt:n :}
+   len U64W cnt CKW * + <> if E-DSUITE-DEC-FRAME throw then
+   cnt SET-CAP > if E-DSUITE-DEC-BOUNDS throw then
+   cnt ;
+: D-GEN ( -- )
+   TAG-GEN D-SET-CNT {: cnt:n :}
+   0 begin dup cnt < while  D-AT CKW D-SKIP GEN-KEY+  1+  repeat drop ;
+: D-REF ( -- )
+   TAG-REF D-SET-CNT {: cnt:n :}
+   0 begin dup cnt < while  D-AT CKW D-SKIP REF-KEY+  1+  repeat drop ;
+: D-PROP ( -- )
+   TAG-PROP D-SET-CNT {: cnt:n :}
+   0 begin dup cnt < while  D-AT CKW D-SKIP PROP-KEY+  1+  repeat drop ;
+: D-DIGEST ( -- )
+   TAG-DIGEST DIGEST-BYTES D-KEY-FIELD  DEC-DIG DIGEST-BYTES BYTE-COPY ;
+
+\ ---- reconstruct + integrity gate -----------------------------------------------
+: DEC-VERIFY-DIGEST ( suite -- suite ) {: h:suite :}
+   h DEC-RECDIG DIGEST-BYTES DIGEST-INTO drop
+   DEC-RECDIG DEC-DIG CKEY-EQ? 0= if E-DSUITE-DEC-ORDER throw then
+   h ;
+: DECODE-SEAL ( -- suite )
+   SEAL MATCH build-result
+      ok OF DEC-VERIFY-DIGEST ENDOF
+      incomplete OF E-DSUITE-DEC-FRAME throw ENDOF
+      tolerance-mismatch OF E-DSUITE-DEC-ORDER throw ENDOF
+      reference-not-independent OF E-DSUITE-DEC-ORDER throw ENDOF
+   ;MATCH ;
+: DECODE-RUN ( -- suite )
+   NEW
+   D-SEED D-SUBJECT D-POLICY D-COMPARE-TOL D-NORM D-MIN D-TARGET D-BUDGET
+   D-GEN D-REF D-PROP D-DIGEST
+   DEC-O @ DEC-U @ <> if E-DSUITE-DEC-FRAME throw then
+   DECODE-SEAL ;
+
+: DR-DEC-OK ( n -- decode-result )  >SUITE DIFFSUITE-DECODE--RESULT:OK ;
+: DR-MALFORMED ( -- decode-result )    DIFFSUITE-DECODE--RESULT:MALFORMED ;
+: DR-NONCANON ( -- decode-result )     DIFFSUITE-DECODE--RESULT:NONCANONICAL ;
+: DR-BOUNDS ( -- decode-result )       DIFFSUITE-DECODE--RESULT:BOUNDS ;
+: DR-UNKNOWN ( -- decode-result )      DIFFSUITE-DECODE--RESULT:UNKNOWN ;
+
+public
+
+\ DECODE folds the canonical envelope back into a sealed suite (ok) or a typed reject.
+\ The input is copied into a fixed decode buffer so cursor readers keep byte-typed access;
+\ framing/order/bounds/unknown throws are mapped to their reject variants at the boundary.
+: DECODE ( ptr u8 n -- decode-result ) {: a:ptr u:n :}
+   u DEC-CAP > if DR-BOUNDS exit then
+   a DBUF u BYTE-COPY  u DEC-U !  0 DEC-O !
+   [: DECODE-RUN SUITE> DEC-SLOT ! ;] catch {: code:n :}
+   code 0= if DEC-SLOT @ DR-DEC-OK exit then
+   code E-DSUITE-DEC-FRAME = if DR-MALFORMED exit then
+   code E-DSUITE-DEC-ORDER = if DR-NONCANON exit then
+   code E-DSUITE-DEC-BOUNDS = if DR-BOUNDS exit then
+   code E-DSUITE-DEC-UNKNOWN = if DR-UNKNOWN exit then
+   code throw ;
 
 private
 

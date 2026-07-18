@@ -247,6 +247,47 @@ variable SP-PROP-EXTRA            \ bool: add PROP-2
    EA la CKW - +  DA  CKW BYTE-COPY    \ copy the stored-digest tail into DA
    DA DB KEY= ;
 
+\ ---- structured DECODE (folded inverse of ENCODE) ------------------------------
+: DECODE-CODE ( ptr u8 n -- n )   \ 0 ok, 1 malformed, 2 noncanonical, 3 bounds, 4 unknown
+   DECODE MATCH decode-result
+      ok OF SUITE> drop 0 ENDOF
+      malformed OF 1 ENDOF
+      noncanonical OF 2 ENDOF
+      bounds OF 3 ENDOF
+      unknown OF 4 ENDOF
+   ;MATCH ;
+\ decode, write the decoded suite's digest into out, and report whether decode was ok.
+: DEC-DIGEST-OK? ( ptr u8 n ptr u8 -- bool ) {: a:ptr u:n out:ptr :}
+   a u DECODE MATCH decode-result
+      ok OF out DIGEST! true ENDOF
+      malformed OF false ENDOF
+      noncanonical OF false ENDOF
+      bounds OF false ENDOF
+      unknown OF false ENDOF
+   ;MATCH ;
+: DEC-RT-DIGEST? ( -- bool )      \ ENCODE|>DECODE round-trips to a suite of identical digest
+   SPEC-RESET BUILD-SPEC {: h:suite :}
+   h DA DIGEST!
+   h EA 4096 ENCODE {: la:n :}
+   EA la DB DEC-DIGEST-OK? 0= if false exit then
+   DA DB KEY= ;
+: DEC-RT-OK ( -- n )      SPEC-RESET BUILD-SPEC EA 4096 ENCODE {: la:n :} EA la DECODE-CODE ;
+: DEC-TRUNC ( -- n )      \ a truncated envelope -> malformed
+   SPEC-RESET BUILD-SPEC EA 4096 ENCODE {: la:n :}  EA la 3 - DECODE-CODE ;
+: FLIP-BYTE ( ptr u8 n -- ) {: a:ptr off:n :}   a off + dup c@ 1+ $FF and swap c! ;
+: DEC-TAMPER-DIGEST ( -- n )   \ flip a byte in the stored tag-13 digest tail -> noncanonical
+   SPEC-RESET BUILD-SPEC EA 4096 ENCODE {: la:n :}
+   EA la 1- FLIP-BYTE  EA la DECODE-CODE ;
+: DEC-TAMPER-SUBJECT ( -- n )  \ corrupt the subject content key (offset 20) -> unknown
+   SPEC-RESET BUILD-SPEC EA 4096 ENCODE {: la:n :}
+   EA 20 FLIP-BYTE  EA la DECODE-CODE ;   \ [seed 14B][subj hdr 6B] -> subject key at 20
+: DEC-ORDER-INDEP ( -- bool )  \ generator insertion order -> identical decoded digest
+   false BUILD-GEN-ORDER EA 4096 ENCODE {: la:n :}
+   true  BUILD-GEN-ORDER EB 4096 ENCODE {: lb:n :}
+   EA la DA DEC-DIGEST-OK? 0= if false exit then
+   EB lb DB DEC-DIGEST-OK? 0= if false exit then
+   DA DB KEY= ;
+
 \ ---- field read-back -----------------------------------------------------------
 : RB-SEED ( -- n )    SPEC-RESET BUILD-SPEC SEED@ ;
 : RB-TOL ( -- n )     SPEC-RESET BUILD-SPEC TOLERANCE@ ;
@@ -305,6 +346,14 @@ REPLAY-ORDER TTRUE       \ generator insertion order -> identical case-id sequen
 ENC-EQ-BYTES TTRUE
 ENC-ORDER TTRUE
 ENC-DIGEST-TAIL TTRUE
+
+\ ---- structured DECODE ---------------------------------------------------------
+DEC-RT-DIGEST? TTRUE      \ ENCODE|>DECODE reconstructs a suite of identical digest
+DEC-RT-OK 0 T=           \ a well-formed envelope decodes ok
+DEC-ORDER-INDEP TTRUE    \ generator insertion order does not change the decoded digest
+DEC-TRUNC 1 T=           \ a truncated envelope -> malformed
+DEC-TAMPER-DIGEST 2 T=   \ a tampered stored-digest tail -> noncanonical
+DEC-TAMPER-SUBJECT 4 T=  \ an unresolvable subject content key -> unknown
 
 \ ---- field read-back + incomplete ----------------------------------------------
 RB-SEED 42 T=

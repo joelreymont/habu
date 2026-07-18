@@ -38,6 +38,15 @@ TYPEFAMILY schema-id 0
 \ (a producing component), a schema-id, or an artifact-id.
 TYPEFAMILY action-id 0
 
+\ The immutable DifferentialSuite identity (MODEL-CAD-V2-PLAN.md § "Automatic
+\ differential verification", plan:3782-3796; dot habu-v2-differential-runner-13359019).
+\ A suite-id names a SEALED DifferentialSuite by its content digest; equal suites
+\ (any insertion order) intern to ONE id. Its content-addressed owner registry is
+\ package SUITEID (maki/db/diff-suite-id.f), interning DIFFSUITE:DIGEST-INTO. Distinct
+\ from every other identity: a suite-id names a differential-verification SUITE and can
+\ never launder into an artifact-id, a producer-id, or a config-id.
+TYPEFAMILY suite-id 0
+
 \ Canonical artifact envelope provenance roles (MODEL-CAD-V2-PLAN.md § 23.9
 \ Canonical typed artifacts). These are the persistent identities the stored
 \ envelope binds: `artifact-kind` is the artifact's semantic CLASS and is

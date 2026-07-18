@@ -33,7 +33,7 @@
 
 $40000 constant RFL-STR-CAP     \ trust-lint manifest string store
 $80000 constant RFL-FILE-CAP    \ largest scanned source watermark (checker.f class)
-59 constant RFL-SEED#
+60 constant RFL-SEED#
 8 constant RFL-ALLOW-MAX
 32 constant RFL-NUM-CAP
 
@@ -206,6 +206,10 @@ variable RFL-LE
       \ § 23.4 experiment registry (dot habu-v2-experiment-run-7c1d1906); the
       \ RAW>ARTIFACT-ID shape - content-addressed by the canonical run-key digest.
       58 of s" RAW>RUN-ID" endof          \ content-addressed by the interned run-key digest
+      \ § "Automatic differential verification" durable suite-id registry (dot
+      \ habu-v2-differential-runner-13359019); the RAW>EVIDENCE-ID shape - content-addressed
+      \ by the DifferentialSuite digest.
+      59 of s" RAW>SUITE-ID" endof         \ content-addressed by the interned suite digest
       E-TBL-BOUNDS throw
    endcase ;
 
@@ -270,6 +274,7 @@ variable RFL-LE
       56 of s" maki/db/action.f" endof
       57 of s" maki/db/capability.f" endof
       58 of s" maki/experiment/run.f" endof
+      59 of s" maki/db/diff-suite-id.f" endof
       E-TBL-BOUNDS throw
    endcase ;
 

@@ -71,12 +71,13 @@ create SP-SRC SP-SRC-CAP allot      \ stable source copy (a caller may pass a sh
    s" SB-RESET " SB-APPEND  n SB-INT  s"  SB-INT SB$ type" SB-APPEND  10 SB-APPEND-C
    SB$ ;
 
-public
-
-\ SPAWN-SRC runs source in a fresh bin/hb child under a capture timeout and classifies the
-\ outcome into the runner's run-result taxonomy (clean exit + parseable scalar -> produced;
-\ hang / signal / nonzero exit / unparseable -> faulted).
-: SPAWN-SRC ( ptr u8 n n -- run-result ) {: a:ptr u:n ms:n :}
+\ SPAWN-CAPTURE runs source in a fresh bin/hb child under a capture timeout and returns the
+\ captured-stdout byte length (in SP-OUT) plus whether the outcome was CLEAN (exit 0). It is
+\ the shared spawn/capture boundary behind both the scalar (PARSE-INT) and the tensor
+\ (maki/db/diff-runner-inject.f PARSE-TENSOR) output parsers - one isolation harness, two
+\ output shapes. A hang / signal / nonzero exit reports clean=false, so the parser never
+\ reads a faulted child's stdout.
+: SPAWN-CAPTURE ( ptr u8 n n -- n bool ) {: a:ptr u:n ms:n :}
    u SP-SRC-CAP > if E-DIFFRUN-BUF throw then
    a SP-SRC u BYTE-COPY                        \ copy first: MAKI-GRADE:PREPARE may reuse the shared builder
    s" diffrun-spawn" MAKI-GRADE:PREPARE
@@ -85,7 +86,16 @@ public
    s" bin/hb" >LEN  SP-OUT SP-OUT-CAP >LEN  SP-ERR SP-ERR-CAP >LEN  ms >MS  RUN-ARGV-CAPTURE-OUTCOME
    CLASSIFY-OUTCOME {: outu:len erru:len clean:bool :}
    MAKI-GRADE:CLEAN
-   clean if SP-OUT outu LEN>N PARSE-INT else >FAULTED then ;
+   outu LEN>N clean ;
+
+public
+
+\ SPAWN-SRC runs source in a fresh bin/hb child under a capture timeout and classifies the
+\ outcome into the runner's run-result taxonomy (clean exit + parseable scalar -> produced;
+\ hang / signal / nonzero exit / unparseable -> faulted).
+: SPAWN-SRC ( ptr u8 n n -- run-result )
+   SPAWN-CAPTURE {: outlen:n clean:bool :}
+   clean if SP-OUT outlen PARSE-INT else >FAULTED then ;
 
 : SPAWN-CASE ( n -- run-result )   CASE-SRC SPAWN-MS SPAWN-SRC ;
 : SPAWN-SUBJECT! ( -- )            [: SPAWN-CASE ;] SUBJECT! ;
