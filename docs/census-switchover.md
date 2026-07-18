@@ -78,11 +78,20 @@ Multi-value `-- <vals> bool` (25 total):
 - `lib/regex.f:454 RX-FIND-FROM`, `:464 RX-FIND ( … -- off len bool )` →
   option<(off,len)> (radius 8)
 - `lib/process-env.f:180 PROC-ENV-DEFAULT$?` → option<str>
-- `lib/float.f:51 FL-STRIP-SIGN`
-- tools: `json-file.f:96,101,107,120,128` (JSONLF-* row parsers),
-  `json.f:914,921 JSONL-PARSE-ROW ( -- i64 i64 i64 bool )`,
-  `check-all-errors-core.f:348,613,624`, `imgdump.f:263 HEX-BODY`,
-  `imagedisasm.f:84`, `gate-json-assert-core.f:86 GJA-SUGGEST-ROW`,
+- `lib/float.f FL-STRIP-SIGN` — RECLASSIFIED 2026-07-18 (wave-B final
+  survey): the bool is the sign FACT (negative?), both outputs always
+  valid — an honest boolean, not a sentinel. No migration.
+- tools: `json-file.f` (JSONLF-* row parsers) — DONE (package JSONF,
+  option<jsonf:line>/option<jsonf:row>, wave-B batch 3);
+  `json.f JSONL-PARSE-ROW ( -- i64 i64 i64 bool )` — RECLASSIFIED: the
+  inner JSONL layer is the documented boundary under the migrated JSONF
+  wrapper (option shape lives one level up); no direct migration.
+  `check-all-errors-core.f:348,613,624`, `imgdump.f HEX-BODY`,
+  `imagedisasm.f IMGD-HEX-BODY` — RECLASSIFIED: bool = had-hex-prefix
+  fact, slice valid on both arms; not a sentinel.
+  `gate-json-assert-core.f GJA-SUGGEST-ROW` — RECLASSIFIED: both arms
+  return a valid usable string (suggestion vs class fallthrough); a
+  same-payload 2-arm sum adds nothing. No migration.
   `check-test-lib.f:573`.
 
 Single-value `-- <one> bool` (65 total; biggest option<scalar> class):

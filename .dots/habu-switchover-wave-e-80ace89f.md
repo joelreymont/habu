@@ -79,3 +79,11 @@ must enter the AOT-capture metabuild/stdin closure (load-order change)
 and the full engine battery is owed (fixpoint x2, old-binary boot,
 run.f perf verdict, seal/pin/PEINV). Census section-5 assigns
 bootstrap-sensitive items here.
+
+NOTE 2026-07-18 (from wave-B closure): the bare-n raw scan kernel
+SPLIT-NEXT (lib/string.f:185) is deliberately retained under the typed
+STR:SPLIT-NEXT layer (wave-B batch 2 record in the closed
+habu-switchover-wave-b-08482d5b). Its retirement/typed-view discharge is
+TVK-RAW-class trust-discharge work owned by this wave when its remaining
+direct readers (gate-stats.f, bootstrap-codegen-test.f, string-test
+kernel test) are resolved.

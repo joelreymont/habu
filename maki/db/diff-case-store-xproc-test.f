@@ -52,10 +52,14 @@ create XP-OUT $2000 allot   create XP-ERR $1000 allot
    s" --load"          >LEN PROC-ARGV+
    MAKI-GRADE:DRIVER$  >LEN PROC-ARGV+
    s" bin/hb" >LEN  XP-OUT $2000 >LEN  XP-ERR $1000 >LEN  30000 >MS  RUN-ARGV-CAPTURE
-   {: outu:len erru:len rc:rc :}
-   rc RC>N 0 <> if XP-ERR erru LEN>N type cr then        \ surface child stderr on failure
-   rc RC>N 0 T=
-   XP-OUT outu LEN>N ;
+   MATCH result
+     ok  OF PCAP-CAPTURED:UNMAKE {: outu:len erru:len :}
+        XP-OUT outu LEN>N ENDOF
+     err OF PCAP-FAILED:UNMAKE {: outu:len erru:len c:rc :}
+        XP-ERR erru LEN>N type cr                        \ surface child stderr on failure
+        c RC>N 0 T=
+        XP-OUT outu LEN>N ENDOF
+   ;MATCH ;
 
 T-RESET
 
