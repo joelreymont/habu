@@ -427,6 +427,8 @@ variable GSI-TL-FILE-A
    s" test/icode-fixup-test.f" GSI-FORK-INCLUDE
    s" test/engine-size-test.f" GSI-FORK-INCLUDE
    s" tools/size-report-test.f" GSI-FORK-INCLUDE
+   s" tools/ddc-verify-test.f" GSI-FORK-INCLUDE
+   s" tools/ddc-scheduled-test.f" GSI-FORK-INCLUDE
    s" test/gate-size-attribution-test.f" GSI-FORK-INCLUDE
    s" tools/include-events-test.f" GSI-FORK-INCLUDE
    s" tools/source-discovery-test.f" GSI-FORK-INCLUDE

@@ -15,6 +15,7 @@
 \
 \ The map's final block wins (LOAD keeps the last block); ENGINE defaults to bin/hb.
 
+require lib/prelude.f
 require lib/errors.f
 require lib/string.f
 require lib/memory.f
@@ -143,35 +144,26 @@ public
 : PHASE-CODE? ( n -- bool ) {: idx:n :}
    idx CONTAINER? 0= idx BAKED? 0= and ;
 
-: SUM-ALL ( -- n )
+private
+\ One row-summing loop over the rows a predicate accepts; the four public totals
+\ below are this loop under a fixed row predicate.
+\ typed-local-lint: allow-bare-local - q carries the row predicate effect from the stack signature.
+: SUM-ROWS ( [ n -- bool ] -- n ) {: q :}
    0 ACC !
    0 begin dup ROW-N @ < while
-      dup VAL@ ACC @ + ACC !
+      dup q execute if dup VAL@ ACC @ + ACC ! then
       1+
    repeat drop ACC @ ;
+public
 
-: SUM-CONTAINER ( -- n )
-   0 ACC !
-   0 begin dup ROW-N @ < while
-      dup CONTAINER? if dup VAL@ ACC @ + ACC ! then
-      1+
-   repeat drop ACC @ ;
+: SUM-ALL ( -- n )        [: drop true ;] SUM-ROWS ;
+: SUM-CONTAINER ( -- n )  [: CONTAINER? ;] SUM-ROWS ;
 
 \ Whole emitted __text = every non-container row (emitter phases + baked-source).
-: SUM-TEXT ( -- n )
-   0 ACC !
-   0 begin dup ROW-N @ < while
-      dup CONTAINER? 0= if dup VAL@ ACC @ + ACC ! then
-      1+
-   repeat drop ACC @ ;
+: SUM-TEXT ( -- n )       [: CONTAINER? 0= ;] SUM-ROWS ;
 
 \ Emitter-phase code only (excludes baked-source data).
-: CODE-TOTAL ( -- n )
-   0 ACC !
-   0 begin dup ROW-N @ < while
-      dup PHASE-CODE? if dup VAL@ ACC @ + ACC ! then
-      1+
-   repeat drop ACC @ ;
+: CODE-TOTAL ( -- n )     [: PHASE-CODE? ;] SUM-ROWS ;
 
 : HEADER-BYTES ( -- n )
    s" container/header" FIND MATCH option
@@ -182,7 +174,7 @@ public
 : PAGE ( -- n )
    HB-TARGET-MACOS? if MACOS-PAGE exit then
    HB-TARGET-LINUX? if LINUX-PAGE exit then
-   MACOS-PAGE ;
+   s" size-report: unknown build target" RC-IO die ;
 
 \ Bytes of the text segment (header + __text) above its page floor: the exact
 \ shave of emitted code that recovers one page from the file.
