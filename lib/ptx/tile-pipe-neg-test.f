@@ -26,7 +26,15 @@
 \                              SLOAD: mmstage is not a shared span.
 \   N7 acc-dropping body     - a PIPE-LOOP body that drops the accumulator and
 \                              returns the stage: the loop body must be
-\                              accumulator-preserving.
+\                              accumulator-preserving. This is ALSO the shared-tile
+\                              LIFETIME-ESCAPE pin (dot habu-v2-checked-async): the
+\                              staged shared tile (mmstage) is minted fresh per
+\                              iteration INSIDE PIPE-LOOP and the body's declared
+\                              effect [ mmstage mmracc -- mmracc ] forbids it in the
+\                              output, so a staged shared value cannot escape its
+\                              pipeline scope - reading it is bounded below by
+\                              READ-STAGE (needs a block-visible cpp-ready<p> slot)
+\                              and above by this consume-only body contract.
 
 require lib/ptx/neg-test-lib.f
 require lib/ptx/cg-matmul.f

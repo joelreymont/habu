@@ -136,6 +136,8 @@ TEST:SUITE maki/schedule-test.f
 TEST:;SUITE
 TEST:SUITE maki/sched-key-test.f
 TEST:;SUITE
+TEST:SUITE maki/cp-async-legal-test.f
+TEST:;SUITE
 TEST:SUITE maki/store-test.f
 TEST:;SUITE
 TEST:SUITE maki/store-replay-test.f

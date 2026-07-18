@@ -311,6 +311,16 @@ public
 : CAPS@ ( CAD-KIND:target-id -- n )
    DESCRIPTOR@ DESC-UN nip nip nip nip nip ;
 
+\ Raw-descriptor field views (the DESCRIPTOR@-free duals of SHARED@/CAPS@): a
+\ caller holding an un-interned descriptor value (e.g. TARGET:DESCRIPTOR built
+\ for a legality probe) reads its shared-memory budget / capability bitset
+\ without touching the append-only, capped registry.
+: DESC-SHARED@ ( descriptor -- n )
+   DESC-UN drop nip nip nip nip ;
+
+: DESC-CAPS@ ( descriptor -- n )
+   DESC-UN nip nip nip nip nip ;
+
 : FACTS$ ( CAD-KIND:target-id -- ptr u8 n )
    DESCRIPTOR@ DESC-FACTS$ ;
 
