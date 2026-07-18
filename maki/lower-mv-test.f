@@ -217,11 +217,11 @@ FP-BUILD
 \ (FP-STAGED-FOLDABLE? = EW only), so this is now unreachable by checked planning; the hand-built
 \ plan (dissolve mat=0 + poke the transpose into the consumer region) proves the guard directly.
 MODEL: TNX ( x:4x8 -- y ) TRANSPOSE RMSNORM ;
-FP-BUILD  0 0= 0= 0 MIR-NODE-ID MIR-MAT!  1 0 cells FP-RID + !
+FP-BUILD  0 0= 0= 0 MIR-NODE-ID MIR-MAT!  1 FP-REGION-ID 0 FP-RID-AT !
 ' LMVT-TRY-RED1 E-MVW-STAGED TTHROWS
 
 MODEL: TMX ( x:8x8 w:8x16 -- y ) TRANSPOSE MATMUL ;
-FP-BUILD  0 0= 0= 0 MIR-NODE-ID MIR-MAT!  1 0 cells FP-RID + !
+FP-BUILD  0 0= 0= 0 MIR-NODE-ID MIR-MAT!  1 FP-REGION-ID 0 FP-RID-AT !
 ' LMVT-TRY-MM1 E-MVW-STAGED TTHROWS
 
 \ ---- a non-movement EW op feeding the contraction is a rejected prologue (hand-forced) -----
@@ -231,7 +231,7 @@ FP-BUILD  0 0= 0= 0 MIR-NODE-ID MIR-MAT!  1 0 cells FP-RID + !
 \ analyzer must still reject (defense-in-depth, now unreachable by checked planning).
 MODEL: GM ( x:8x8 w:8x8 -- y ) GELU MATMUL ;
 FP-BUILD
-1 0 cells FP-RID + !                          \ poke GELU (node 0) into the matmul region (region 1)
+1 FP-REGION-ID 0 FP-RID-AT !                  \ poke GELU (node 0) into the matmul region (region 1)
 ' LMVT-TRY-MM1 E-LMM-PROLOGUE TTHROWS
 
 \ ---- an un-materialized movement copy region has no output (hand-forced, defense-in-depth) --

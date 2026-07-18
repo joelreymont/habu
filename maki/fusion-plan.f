@@ -74,17 +74,32 @@ private
 
 128 constant FP-CAP         \ matches MIR-CAP (max nodes, hence max regions/splits)
 
-create FP-RID FP-CAP cells allot        \ per-node region id
+\ ---- nominal region handle (Model-CAD V2 R3, dot habu-maki-apply-cad-27b7a7d7;
+\ storage sealed by dot habu-nominal-storage-migrate). RGN>RAW / RAW>RGN are the
+\ only raw representation authority. The FP-RID column now stores the per-node
+\ region identity as a typed CAD-KIND:region cell (sealed generative storage), so
+\ a raw n can never enter or leave it; the public constructors (FP-REGION-ID /
+\ FP-RID@) still validate the raw table position first, and the parallel
+\ per-region fact arrays stay indexed behind RGN>RAW.
+TRUSTED: RAW>RGN ( n -- CAD-KIND:region ) ;
+TRUSTED: RGN>RAW ( CAD-KIND:region -- n ) ;
+
+FP-CAP TYPED-BUFFER FP-RID-AT CAD-KIND:region  \ per-node region id ( n -- ptr CAD-KIND:region )
 create FP-MMC FP-CAP cells allot         \ per-region matmul count
 create FP-RRC FP-CAP cells allot         \ per-region row-reduce count
 create FP-MEM FP-CAP cells allot         \ per-region member count
 create FP-MIX FP-CAP cells allot         \ per-region class bitmask (1<<class)
 variable FP-RN                            \ region count
 
-create FP-SP-NODE   FP-CAP cells allot    \ per-split node id
+FP-CAP TYPED-BUFFER FP-SP-NODE-AT CAD-KIND:node-id  \ per-split node id ( n -- ptr CAD-KIND:node-id )
 FP-CAP LAYOUT-BUFFER FP-SP-REASON reason  \ per-split reason enum
 variable FP-SP-N
 variable FP-BUILT?
+
+\ node -> region identity (typed read; unguarded, used mid-assign before FP-BUILT?)
+: FP-RID-RGN ( CAD-KIND:node-id -- CAD-KIND:region )  NODE>RAW FP-RID-AT @ ;
+\ node -> raw region index that keys the per-region fact arrays (FP-MMC/RRC/MEM/MIX)
+: FP-RID-RAW ( CAD-KIND:node-id -- n )  FP-RID-RGN RGN>RAW ;
 
 \ The generative buffer owns extent, stride, bounds, and family provenance.
 : FP-SP-REASON-AT ( n -- ptr reason )  FP-SP-REASON ;
@@ -198,9 +213,6 @@ variable FP-MV-FUSE?                          \ movements dissolve/fuse? (defaul
       r cells FP-MMC + @ 0=  r cells FP-RRC + @ 2 <  and  exit then
    true ;
 
-: FP-RID-RAW ( CAD-KIND:node-id -- n )         \ node -> region id (unchecked)
-   NODE>RAW cells FP-RID + @ ;
-
 \ does consumer K fuse into producer P's region?
 : FP-JOIN? ( CAD-KIND:node-id CAD-KIND:node-id -- bool )
    {: k:CAD-KIND:node-id p:CAD-KIND:node-id :}
@@ -230,7 +242,7 @@ variable FP-MV-FUSE?                          \ movements dissolve/fuse? (defaul
 
 : FP-ADD ( CAD-KIND:node-id n -- )           \ place K in region r; bump facts + budgets
    {: k:CAD-KIND:node-id r:n :}
-   r k NODE>RAW cells FP-RID + !
+   r RAW>RGN k NODE>RAW FP-RID-AT !          \ region identity stored typed (sealed cell)
    r cells FP-MEM + dup @ 1+ swap !
    k FP-CLASS {: c:n :}
    1 c lshift  r cells FP-MIX + dup @ rot or swap !
@@ -296,10 +308,10 @@ variable FP-MV-FUSE?                          \ movements dissolve/fuse? (defaul
 \ width-1 layout value cannot be bound into a local (it is a whole bundle), so it
 \ stays on the stack and crosses `!` through its typed slot with no juggling.
 : FP-SP-NODE! ( CAD-KIND:node-id n -- )
-   cells FP-SP-NODE + ! ;
+   FP-SP-NODE-AT ! ;
 
 : FP-SP-NODE@ ( n -- CAD-KIND:node-id )
-   cells FP-SP-NODE + @ ;
+   FP-SP-NODE-AT @ ;
 
 : FP-SPLIT+ ( CAD-KIND:node-id reason -- )
    FP-SP-N @ FP-CAP >= if E-FP-CAP throw then
@@ -341,13 +353,8 @@ public
 
 private
 
-\ ---- nominal region handle (Model-CAD V2 R3, dot habu-maki-apply-cad-27b7a7d7)
-\ These private identity boundaries are the only raw representation authority;
-\ the public constructors (FP-REGION-ID / FP-RID@) validate the raw table
-\ position first, and the FP-RID table stays indexed behind RGN>RAW.
-TRUSTED: RAW>RGN ( n -- CAD-KIND:region ) ;
-TRUSTED: RGN>RAW ( CAD-KIND:region -- n ) ;
-
+\ RAW>RGN / RGN>RAW are declared with the FP-RID typed column above (they must
+\ precede FP-RID-RAW). This validator stays with the public region constructors.
 : RGN-RAW-CK ( n -- n )
    dup 0 < over FP-RN @ >= or if E-FP-IDX throw then ;
 
@@ -362,7 +369,7 @@ public
    FP-CK
    nd NODE>RAW {: raw:n :}
    raw 0 < raw NODE-COUNT@ CAD-NUM:FP-IC>N >= or if E-FP-IDX throw then
-   nd FP-RID-RAW RAW>RGN ;
+   nd FP-RID-RGN ;
 
 : FP-RGN= ( CAD-KIND:region CAD-KIND:region -- bool )
    RGN>RAW swap RGN>RAW = ;

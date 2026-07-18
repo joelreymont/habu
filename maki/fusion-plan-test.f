@@ -203,6 +203,21 @@ s" FPT-NEG-EQ-NODE ( CAD-KIND:region CAD-KIND:node-id -- bool ) FP-RGN=" CHECK-Q
 s" FPT-NEG-EQ-PLAN ( CAD-KIND:region CAD-KIND:plan-id -- bool ) FP-RGN=" CHECK-QUIET-CANDIDATE! 0 T=
 s" FPT-NEG-MEM-RAW ( n -- n ) FP-REGION-MEMBERS"                         CHECK-QUIET-CANDIDATE! 0 T=
 
+\ ---- migrated typed-storage columns (dot habu-nominal-storage-migrate) ------
+\ FP-RID stores CAD-KIND:region and FP-SP-NODE stores CAD-KIND:node-id through
+\ sealed TYPED-BUFFER cells: neither column can be read/written as a raw n,
+\ weakened to a bare `ptr a`, or swapped to the other family. Positives certify.
+s" FPT-RID-AT-OK ( n -- ptr CAD-KIND:region ) FP-RID-AT"        CHECK-QUIET-CANDIDATE! -1 T=
+s" FPT-RID-AT-BARE ( n -- ptr a ) FP-RID-AT"                    CHECK-QUIET-CANDIDATE! 0 T=
+s" FPT-RID-AT-NOUT ( n -- n ) FP-RID-AT @"                      CHECK-QUIET-CANDIDATE! 0 T=
+s" FPT-RID-AT-ND ( n -- ptr CAD-KIND:node-id ) FP-RID-AT"       CHECK-QUIET-CANDIDATE! 0 T=
+s" FPT-RID-AT-NIN ( n n -- ) FP-RID-AT !"                       CHECK-QUIET-CANDIDATE! 0 T=
+s" FPT-SPN-AT-OK ( n -- ptr CAD-KIND:node-id ) FP-SP-NODE-AT"   CHECK-QUIET-CANDIDATE! -1 T=
+s" FPT-SPN-AT-BARE ( n -- ptr a ) FP-SP-NODE-AT"                CHECK-QUIET-CANDIDATE! 0 T=
+s" FPT-SPN-AT-NOUT ( n -- n ) FP-SP-NODE-AT @"                  CHECK-QUIET-CANDIDATE! 0 T=
+s" FPT-SPN-AT-RGN ( n -- ptr CAD-KIND:region ) FP-SP-NODE-AT"   CHECK-QUIET-CANDIDATE! 0 T=
+s" FPT-SPN-AT-NIN ( n n -- ) FP-SP-NODE-AT !"                   CHECK-QUIET-CANDIDATE! 0 T=
+
 \ ---- rendered mismatch pins the qualified family name -----------------------
 \ The renderer emits the INTERNED qualified name (case-folded package, exactly
 \ as word names fold in diagnostics) regardless of term provenance; the

@@ -130,6 +130,16 @@ s" LMT-MD-EF ( CAD-KIND:effect -- ) MDL-DISPATCH" CHECK-QUIET-CANDIDATE! 0 T=
 s" LMT-MD-ST ( CAD-KIND:stage -- ) MDL-DISPATCH" CHECK-QUIET-CANDIDATE! 0 T=
 s" LMT-MD-ND ( CAD-KIND:node-id -- ) MDL-DISPATCH" CHECK-QUIET-CANDIDATE! 0 T=
 
+\ ---- migrated typed operand-ref staging (dot habu-nominal-storage-migrate) -----------------
+\ LLA-IN-REF is now a TYPED-BUFFER of MIR:operand-ref: the sealed column cannot be read/written
+\ as a raw n, weakened to a bare ptr a, or swapped to another family. Positives certify.
+s" LMT-INREF-OK ( n -- ptr MIR:operand-ref ) LLA-IN-REF-AT"     CHECK-QUIET-CANDIDATE! -1 T=
+s" LMT-INREF-BARE ( n -- ptr a ) LLA-IN-REF-AT"                 CHECK-QUIET-CANDIDATE! 0 T=
+s" LMT-INREF-NOUT ( n -- n ) LLA-IN-REF-AT @"                   CHECK-QUIET-CANDIDATE! 0 T=
+s" LMT-INREF-ND ( n -- ptr CAD-KIND:node-id ) LLA-IN-REF-AT"    CHECK-QUIET-CANDIDATE! 0 T=
+s" LMT-INREF-ST-OK ( MIR:operand-ref n -- ) LLA-IN-REF-AT !"    CHECK-QUIET-CANDIDATE! -1 T=
+s" LMT-INREF-ST-NIN ( n n -- ) LLA-IN-REF-AT !"                 CHECK-QUIET-CANDIDATE! 0 T=
+
 \ ==== the multi-region FFN-class model: LINEAR GELU LINEAR RMSNORM ============================
 \ region 0 = LINEAR + GELU epilogue (matmul); region 1 = LINEAR (matmul boundary); region 2 =
 \ RMSNORM (row-reduce barrier). n1 (gelu) and n2 (linear2) are materialized region outputs.

@@ -91,12 +91,12 @@ variable LLA-DEV variable LLA-CTX variable LLA-MOD variable LLA-FUNC
 variable LLA-NIN                                    \ region input count
 variable LLA-ELEMS                                  \ output element count (rows*cols)
 1 LAYOUT-BUFFER LLA-OUT-NODE CAD-KIND:node-id       \ the region's materialized output node (typed 1-slot cell)
-create LLA-IN-REF LLA-MAX-IN cells allot            \ per-input operand ref (RESOLVED to an input slot)
+LLA-MAX-IN TYPED-BUFFER LLA-IN-REF-AT MIR:operand-ref  \ per-input operand ref, RESOLVED to an input slot ( n -- ptr MIR:operand-ref )
 create LLA-IN-ELEMS LLA-MAX-IN cells allot          \ per-input element count (heterogeneous buffers)
 variable LLA-PM  variable LLA-PN  variable LLA-PK   \ matmul u32 kernel params (M, N, K)
 variable LLA-CPA variable LLA-CPB                   \ movement copy-kernel u32 params (p_a, p_b)
-: LLA-IN-REF! ( MIR:operand-ref n -- )  cells LLA-IN-REF + ! ;
-: LLA-IN-REF@ ( n -- MIR:operand-ref )  cells LLA-IN-REF + @ ;
+: LLA-IN-REF! ( MIR:operand-ref n -- )  LLA-IN-REF-AT ! ;
+: LLA-IN-REF@ ( n -- MIR:operand-ref )  LLA-IN-REF-AT @ ;
 : LLA-OUT-NODE! ( CAD-KIND:node-id -- )  0 LLA-OUT-NODE ! ;
 : LLA-STAGED-NODE@ ( -- CAD-KIND:node-id )  0 LLA-OUT-NODE @ ;
 

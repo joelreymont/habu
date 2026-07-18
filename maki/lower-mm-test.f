@@ -173,7 +173,7 @@ FP-BUILD
 \ construction, so this hand-built plan proves the defense-in-depth guard directly.
 MODEL: GM ( x:8x8 w:8x8 -- y ) GELU MATMUL ;
 FP-BUILD
-1 0 cells FP-RID + !                       \ poke GELU (node 0) into the matmul region (region 1)
+1 FP-REGION-ID 0 FP-RID-AT !               \ poke GELU (node 0) into the matmul region (region 1)
 ' LMMT-TRY1 E-LMM-PROLOGUE TTHROWS
 
 \ ---- fail closed: the contraction inner dim K exceeds the v1 accumulation cap ------
@@ -202,7 +202,7 @@ FP-BUILD
 \ back to region 0 (FP-RID, defense-in-depth) simulates a bad plan the analyzer must reject.
 MODEL: M2 ( x:8x8 w:8x8 v:8x8 -- y ) MATMUL RELU MATMUL ;
 FP-BUILD
-0 2 cells FP-RID + !
+0 FP-REGION-ID 2 FP-RID-AT !               \ force the 2nd matmul (node 2) back into region 0
 ' LMMT-TRY E-LMM-MULTIMM TTHROWS
 
 T-REPORT
