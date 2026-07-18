@@ -1,9 +1,9 @@
 ---
 title: V2 deterministic audit replay
-status: open
+status: active
 priority: 1
 issue-type: task
-created-at: "2026-07-11T12:25:27.630504+02:00"
+created-at: "\"2026-07-11T12:25:27.630504+02:00\""
 blocks:
   - habu-v2-txn-journal-d0bc644f
 ---
@@ -15,3 +15,5 @@ DAUTH:AUTHORIZED-DISCHARGE into CSTORE:COMMIT-AUTHORIZED (the third
 validate leg) - needs obligation/evidence context threaded through
 transaction/commit-store parameters; the landed DAUTH gate is the
 reusable surface.
+
+Claim: agent=detaudit workspace=.jj-ws/fable-detaudit (owns new maki/db audit-replay files + the folded commit-store threading)
