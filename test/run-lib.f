@@ -1618,9 +1618,11 @@ public
 \ next-offset back to raw cells. Byte-identical to the raw split for in-buffer
 \ offsets.
 : TR-SPLIT-NEXT ( ptr u8 n n n -- ptr u8 n n bool ) {: a:ptr u:n sep:n start:n :}
-   a u STR:LENGTH sep start STR:OFFSET STR:SPLIT-NEXT
-   {: bl:CAD-NUM:byte-len bo:CAD-NUM:byte-off more?:bool :}
-   bl CAD-NUM:TR-BL>RAW  bo CAD-NUM:TR-BO>RAW  more? ;
+   a u STR:LENGTH sep start STR:OFFSET STR:SPLIT-NEXT MATCH option
+     none OF a 0 start STR-FALSE ENDOF   \ mirror the raw split's (a, 0, start, false)
+     some OF STR-SPLIT:UNMAKE {: fa:ptr bl:CAD-NUM:byte-len bo:CAD-NUM:byte-off :}
+        fa  bl CAD-NUM:TR-BL>RAW  bo CAD-NUM:TR-BO>RAW  STR-TRUE ENDOF
+   ;MATCH ;
 
 \ --rerun-failed: a failing gate run persists its red top-level phases (phase
 \ index plus the exact standalone repro command) under TR-PERSIST$; a later

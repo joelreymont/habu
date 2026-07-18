@@ -86,17 +86,19 @@ public
 : AD-TOKENIZE ( ptr u8 n -- ) {: a u :}
    0 AD-TOK-N !  0 AD-START !
    begin
-      a u STR:LENGTH $20 AD-START @ STR:OFFSET STR:SPLIT-NEXT   ( tokptr byte-len byte-off found )
-   while                                ( tokptr byte-len byte-off )
-      CAD-NUM:AD-BO>N AD-START !         ( tokptr byte-len )
-      CAD-NUM:AD-BL>N                    ( tokptr toklen )
-      dup 0 > if
-         swap a - swap AD-PUSH-TOK      \ ( offset=tokptr-a, len ) recorded
-      else
-         2drop                          \ skip empty token (consecutive spaces)
-      then
-   repeat
-   2drop drop ;                         \ false case left ( a 0 nextstart )
+      a u STR:LENGTH $20 AD-START @ STR:OFFSET STR:SPLIT-NEXT MATCH option
+        none OF STR-FALSE ENDOF          \ no more tokens: end the scan
+        some OF STR-SPLIT:UNMAKE         ( tokptr byte-len byte-off )
+           CAD-NUM:AD-BO>N AD-START !    ( tokptr byte-len )
+           CAD-NUM:AD-BL>N               ( tokptr toklen )
+           dup 0 > if
+              swap a - swap AD-PUSH-TOK  \ ( offset=tokptr-a, len ) recorded
+           else
+              2drop                      \ skip empty token (consecutive spaces)
+           then
+           STR-TRUE ENDOF
+      ;MATCH
+   while repeat ;
 
 \ emit VJP of token i, reconstructing its ptr from the base.
 : AD-EMIT-TOK ( ptr u8 n -- ) {: a ix :}

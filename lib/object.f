@@ -287,9 +287,26 @@ variable LOAD-OFF
    then
    E-OBJ-SCHEMA throw ;
 
-: NEXT-LINE ( ptr u8 n -- ptr u8 n bool ) {: a:ptr u:n :}
-   a u STR:LENGTH LF LOAD-OFF @ STR:OFFSET STR:SPLIT-NEXT >r
-   CAD-NUM:OBJ-BO>N LOAD-OFF ! CAD-NUM:OBJ-BL>N r> ;
+\ A loaded line is the next LF-delimited slice of the object record. NEXT-LINE
+\ advances the shared LOAD-OFF cursor and returns option<obj:line>: SOME(slice)
+\ while a line remains, NONE once the cursor is past the buffer end - the checked
+\ replacement for the former (ptr u8 n bool) value+flag return (switchover wave B).
+\ Public so the generated OBJ-LINE:MAKE/UNMAKE exist (products emit constructors
+\ only in a public context); NEXT-LINE itself stays package-private.
+public
+PRODUCT line 0
+  FIELD ptr ptr u8
+  FIELD len n
+;PRODUCT
+private
+
+: NEXT-LINE ( ptr u8 n -- option<obj:line> ) {: a:ptr u:n :}   \ SOME next LF line slice (cursor advanced), else NONE
+   a u STR:LENGTH LF LOAD-OFF @ STR:OFFSET STR:SPLIT-NEXT MATCH option
+     none OF OPTION:NONE ENDOF
+     some OF STR-SPLIT:UNMAKE {: la:ptr ll:CAD-NUM:byte-len lo:CAD-NUM:byte-off :}
+        lo CAD-NUM:OBJ-BO>N LOAD-OFF !
+        la ll CAD-NUM:OBJ-BL>N OBJ-LINE:MAKE OPTION:SOME ENDOF
+   ;MATCH ;
 
 : MAGIC-LINE ( ptr u8 n -- ) {: a:ptr u:n :}
    a u s" HBOBJ	1" STR= 0= if E-OBJ-SCHEMA throw then ;
@@ -456,10 +473,16 @@ public
    a u END-LF
    CLEAR
    0 LOAD-OFF !
-   a u NEXT-LINE 0= if E-OBJ-SCHEMA throw then
+   a u NEXT-LINE MATCH option
+     none OF E-OBJ-SCHEMA throw ENDOF
+     some OF OBJ-LINE:UNMAKE ENDOF
+   ;MATCH
    MAGIC-LINE
    begin LOAD-OFF @ u < while
-      a u NEXT-LINE 0= if E-OBJ-SCHEMA throw then
+      a u NEXT-LINE MATCH option
+        none OF E-OBJ-SCHEMA throw ENDOF
+        some OF OBJ-LINE:UNMAKE ENDOF
+      ;MATCH
       PARSE-LINE
    repeat
    READY

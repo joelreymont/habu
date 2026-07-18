@@ -278,10 +278,14 @@ public
 : TS-FEED ( ptr u8 n -- ) {: a:ptr u:n :}
    TS-RESET
    0 TS-POS !
-   begin a u STR:LENGTH STR-LF TS-POS @ STR:OFFSET STR:SPLIT-NEXT while   ( lineptr byte-len byte-off )
-      CAD-NUM:TS-BO>N TS-POS !
-      CAD-NUM:TS-BL>N TS-LINE
-   repeat 2drop drop
+   begin a u STR:LENGTH STR-LF TS-POS @ STR:OFFSET STR:SPLIT-NEXT MATCH option   ( SOME lineptr byte-len byte-off )
+     none OF STR-FALSE ENDOF            \ no more lines: end the replay
+     some OF STR-SPLIT:UNMAKE           ( lineptr byte-len byte-off )
+        CAD-NUM:TS-BO>N TS-POS !
+        CAD-NUM:TS-BL>N TS-LINE
+        STR-TRUE ENDOF
+   ;MATCH
+   while repeat
    TS-END ;
 
 private

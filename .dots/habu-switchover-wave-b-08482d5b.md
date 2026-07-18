@@ -273,3 +273,83 @@ Claim released 2026-07-18: batch 1 merged; workspace .jj-ws/fable-waveb2
 retired. Next claimant starts with the SPLIT-NEXT/NEXT-LINE prelude batch.
 
 Claim: agent=waveb3 workspace=.jj-ws/fable-waveb3 (batch 2: SPLIT-NEXT/NEXT-LINE prelude cluster via 3-field named payload product; engine battery owed — string.f is in the fixpoint prefix)
+
+BATCH 2 LANDED 2026-07-18 (waveb3 lane, gated green — engine battery below):
+the SPLIT-NEXT / NEXT-LINE prelude cluster migrated to named-product options.
+
+MIGRATED WORDS + PRODUCTS:
+- lib/string.f: PRODUCT split in package STR (public) — FIELD ptr ptr u8,
+  FIELD len CAD-NUM:byte-len, FIELD next CAD-NUM:byte-off (the field slice + the
+  advance cursor, the 3 role-typed fields the word actually returns). The PUBLIC
+  typed STR:SPLIT-NEXT -> (.. -- option<str:split>): SOME(slice,next) while a
+  field remains, NONE once the start cursor is past the string end. Body wraps
+  the raw scan at the boundary (more? if N>BYTE-LEN rn N>BYTE-OFF STR-SPLIT:MAKE
+  OPTION:SOME else 2drop OPTION:NONE then). std.manifest row updated.
+- lib/object.f: PRODUCT line in package OBJ (public toggle; NEXT-LINE stays
+  package-private) — FIELD ptr ptr u8, FIELD len n. NEXT-LINE -> (.. --
+  option<obj:line>), advancing the shared LOAD-OFF cursor in the SOME arm; its 2
+  in-file callers in OBJ:LOAD rewritten to MATCH (none OF E-OBJ-SCHEMA throw).
+  NEXT-LINE is private, not manifest-listed -> no manifest row.
+
+CALLER SWEEP (all STR:SPLIT-NEXT callers repo-wide -> exhaustive MATCH; no
+sentinel/tuple-run reads left of the migrated public word):
+- lib/process-env.f FIND-EXECUTABLE-IN-PATH, lib/ptx/ad.f AD-TOKENIZE,
+  maki/eval-transcript.f TS-FEED, maki/eval-repair-loop.f COUNT-TOKS: loop-while
+  bodies folded into the some-arm (none OF STR-FALSE / some OF ...body... STR-TRUE
+  ;MATCH while repeat); false-case cleanups dropped (option fully consumed).
+- maki/store-rehydrate.f EVID-SPLIT1 (none->throw) + EVID-ROW-SPLIT4 (5th-field
+  over-fill check -> some OF UNMAKE 2drop drop throw).
+- maki/golden-artifact.f GA-PF-STEP (none OF start STR-FALSE / some -> nextstart).
+- tools/ptx/perf-registry.f FIELD-NEXT + FIELDS-END-CHECK.
+- test/run-lib.f TR-SPLIT-NEXT + test/seal-absence.f SAB-SPLIT-NEXT: these are
+  raw-shaped ( ptr u8 n n bool ) wrappers over STR:SPLIT-NEXT; only their bodies
+  changed (MATCH -> rebuild raw shape, none-arm mirrors raw (a,0,start,false)),
+  their own callers unchanged.
+- lib/string-test.f: STR-T-SPLIT-CHECK rewritten to MATCH (dropped 4 now-dead
+  STR-T-SPLIT-* variables); ADDED STR-TEST-TYPED-SPLIT-OPTION (direct SOME("a",
+  next=2) + NONE(start past end) assertions) wired into STR-TEST-TYPED;
+  STR-TEST-TYPED-SPLIT-OVERFLOW body MATCHes (dead but typechecks the throw);
+  SOK-SPLIT / SBAD-LEN-FOR-OFF / SBAD-RAW-OFF checker-fixture sigs updated to
+  option<str:split>.
+
+RAW-GLOBAL BOUNDARY (recorded for the destruction review): the pre-package
+bare-n primitive `SPLIT-NEXT` (lib/string.f:185, ( ptr u8 n n n -- ptr u8 n n
+bool )) is INTENTIONALLY RETAINED as the low-level byte-scan kernel that the
+typed STR layer wraps (RAW-SPLIT-NEXT) — matching string.f's documented raw-layer
+architecture and batch-1's precedent of migrating only the public typed API
+(RX-FIND / OBJIDX:LOAD, never an underlying primitive). Its only remaining direct
+readers are the two bare-n scan callers test/gate-stats.f ROW-MATCH? and
+tools/bootstrap-codegen-test.f CAPTURE-SPAN (raw-offset byte math), plus
+string-test STR-SPLIT-CHECK (the kernel's own contract test). Routing those
+through STR:SPLIT-NEXT would force gratuitous role->n->role round-tripping with
+new CAD-NUM bridges for no semantic gain; retiring the raw kernel itself is
+separate, gated by TVK-RAW (habu-nominal-storage-raw-a3430ef2). NOT touched here.
+
+CHECKER PROOFS (before writing): (a) a PRODUCT field CAN be a CAD-NUM refinement
+role — probe with FIELD len CAD-NUM:byte-len / FIELD next CAD-NUM:byte-off
+certified, and the swapped-role negative fail-closed (exit 70, "expected ...
+byte-len<> byte-off<> actual ... byte-off<> byte-len<>"); (b) locals `{: :}` bind
+inside a MATCH some-arm; (c) the loop-while-driven-by-MATCH shape certifies.
+GOTCHA recorded: a PRODUCT emits its MAKE/UNMAKE constructors ONLY in a `public`
+context — a private product throws E-UNDEFINED on <PKG>-<PROD>:MAKE. Hence the OBJ
+`line` product is declared under an explicit public/private toggle.
+
+GATES (all green in .jj-ws/fable-waveb3):
+- ENGINE BATTERY: fixpoint refresh x2 byte-identical — both installs
+  sha256=36bf9828160e4d62ae09b08dc79dd2b931dc6ed6c4e63af80fed51f16ce16320 (engine
+  binary unchanged: the migration is library-word codegen-neutral; the prefix
+  libs are LOADED to drive the build, proving old-binary boot). Old-binary boot:
+  pre-change hb loads the new tree (string-test ok, object-test ok). test/run.f
+  full suite exit 0, perf-verdict: performance=pass correctness=t attempts=1.
+- LINTS (all "0 finding(s)", exit 0): dot-dep, host, filemap, error-code, trust,
+  refine, stale-status; trusted-inventory --strict exit 0.
+- FOCUSED (exit 0): lib/string-test.f, lib/object-test.f,
+  tools/stdlib-manifest-test.f, maki/test.f, test/gate-stdlib.f.
+- COMMIT GATE: typed-local-diff-lint on jj diff --git exit 0; no new error codes.
+
+REMAINS (unchanged from waveb2 survey): JSONLF-* json-file cluster (one batch,
+shared product); capture cluster (RUN-CAPTURE / PROC-CAPTURE-RC@ + PROC-CMD-RUN-RC
+and OUTCOME sibling) needs prelude placement + engine battery + spawn-suite proof
+(final wave-B batch); FL-STRIP-SIGN / JSONL-PARSE-ROW / IMGD-HEX-BODY /
+GJA-SUGGEST-ROW are census misclassifications for Wave C. The raw-kernel SPLIT-NEXT
+retirement is TVK-RAW territory, not wave B.

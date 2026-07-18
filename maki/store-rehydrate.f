@@ -60,19 +60,21 @@ private
 
 \ ---- field splitting (the suffix EVID-GET returns is exactly four '|' fields) ----
 : EVID-SPLIT1 ( ptr u8 n n -- ptr u8 n n ) {: a:ptr u:n start:n :}   \ one '|' field from start -> field + next start
-   a u STR:LENGTH $7C start STR:OFFSET STR:SPLIT-NEXT       \ fa byte-len byte-off found?
-   {: fa:ptr fl:CAD-NUM:byte-len fo:CAD-NUM:byte-off more?:bool :}
-   more? 0= if E-EVID-ROW-FIELDS throw then
-   fa  fl CAD-NUM:EVID-BL>N  fo CAD-NUM:EVID-BO>N ;         \ fa fu next
+   a u STR:LENGTH $7C start STR:OFFSET STR:SPLIT-NEXT MATCH option   \ fa byte-len byte-off, else absent
+     none OF E-EVID-ROW-FIELDS throw ENDOF
+     some OF STR-SPLIT:UNMAKE {: fa:ptr fl:CAD-NUM:byte-len fo:CAD-NUM:byte-off :}
+        fa  fl CAD-NUM:EVID-BL>N  fo CAD-NUM:EVID-BO>N ENDOF   \ fa fu next
+   ;MATCH ;
 
 : EVID-ROW-SPLIT4 ( ptr u8 n -- ptr u8 n ptr u8 n ptr u8 n ptr u8 n ) {: a:ptr u:n :}
    a u 0  EVID-SPLIT1  {: s1:n :}       \ certify field slice on stack
    a u s1 EVID-SPLIT1  {: s2:n :}       \ + golden field slice
    a u s2 EVID-SPLIT1  {: s3:n :}       \ + gradcheck field slice
    a u s3 EVID-SPLIT1  {: s4:n :}       \ + profile field slice
-   a u STR:LENGTH $7C s4 STR:OFFSET STR:SPLIT-NEXT   \ a fifth field would over-fill the row
-   if E-EVID-ROW-FIELDS throw then
-   drop drop drop ;                     \ no fifth field: drop the empty split result (ptr byte-len byte-off)
+   a u STR:LENGTH $7C s4 STR:OFFSET STR:SPLIT-NEXT MATCH option   \ a fifth field would over-fill the row
+     none OF ENDOF                       \ no fifth field: nothing to clean
+     some OF STR-SPLIT:UNMAKE 2drop drop E-EVID-ROW-FIELDS throw ENDOF
+   ;MATCH ;
 
 \ ---- one field's value after its expected "label=" prefix -----------------------
 : EVID-FIELD-VALUE ( ptr u8 n ptr u8 n -- ptr u8 n ) {: fa:ptr fu:n la:ptr lu:n :}

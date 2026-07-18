@@ -65,9 +65,11 @@ public
 \ next-offset back to raw cells. Byte-identical to the raw split for in-buffer
 \ offsets.
 : SAB-SPLIT-NEXT ( ptr u8 n n n -- ptr u8 n n bool ) {: a:ptr u:n sep:n start:n :}
-   a u STR:LENGTH sep start STR:OFFSET STR:SPLIT-NEXT
-   {: bl:CAD-NUM:byte-len bo:CAD-NUM:byte-off more?:bool :}
-   bl CAD-NUM:SAB-BL>RAW  bo CAD-NUM:SAB-BO>RAW  more? ;
+   a u STR:LENGTH sep start STR:OFFSET STR:SPLIT-NEXT MATCH option
+     none OF a 0 start STR-FALSE ENDOF   \ mirror the raw split's (a, 0, start, false)
+     some OF STR-SPLIT:UNMAKE {: fa:ptr bl:CAD-NUM:byte-len bo:CAD-NUM:byte-off :}
+        fa  bl CAD-NUM:SAB-BL>RAW  bo CAD-NUM:SAB-BO>RAW  STR-TRUE ENDOF
+   ;MATCH ;
 
 $40000 constant SAB-CAP                 \ mirror scan buffer (forth.fs ~137 KB + headroom)
 $800 constant SAB-NAMES-CAP             \ packed absent-name table capacity (bytes)

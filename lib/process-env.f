@@ -395,14 +395,17 @@ public
       OPTION:NONE exit
    then
    0 >OFF PROC-PATH-I !
-   begin path pathu LEN>N STR:LENGTH PROC-PATH-SEP PROC-PATH-I @ OFF>N STR:OFFSET STR:SPLIT-NEXT while
-      CAD-NUM:PROC-BO>N >OFF PROC-PATH-I !
-      CAD-NUM:PROC-BL>N >LEN cmd cmdu dst PROC-TRY-PATH-SEG MATCH option
-        none OF ENDOF                              \ segment miss: try the next one
-        some OF OPTION:SOME exit ENDOF              \ resolved: re-wrap and return
-      ;MATCH
-   repeat
-   drop 2drop
+   begin path pathu LEN>N STR:LENGTH PROC-PATH-SEP PROC-PATH-I @ OFF>N STR:OFFSET STR:SPLIT-NEXT MATCH option
+     none OF STR-FALSE ENDOF                        \ no more PATH segments: end the scan
+     some OF STR-SPLIT:UNMAKE {: seg:ptr segl:CAD-NUM:byte-len nx:CAD-NUM:byte-off :}
+        nx CAD-NUM:PROC-BO>N >OFF PROC-PATH-I !
+        seg segl CAD-NUM:PROC-BL>N >LEN cmd cmdu dst PROC-TRY-PATH-SEG MATCH option
+          none OF ENDOF                             \ segment miss: try the next one
+          some OF OPTION:SOME exit ENDOF            \ resolved: re-wrap and return
+        ;MATCH
+        STR-TRUE ENDOF
+     ;MATCH
+   while repeat
    OPTION:NONE ;
 
 : FIND-EXECUTABLE ( ptr u8 len ptr u8 -- option<len> ) {: cmd:ptr cmdu:len dst:ptr :}   \ SOME resolved length via $PATH, else NONE

@@ -322,10 +322,12 @@ private
    ;MATCH
    GA-PF-STORE ;
 : GA-PF-STEP ( ptr u8 n n -- n bool ) {: va:ptr vu:n start:n :}   \ value start -- nextstart continue?
-   va vu STR:LENGTH $20 start STR:OFFSET STR:SPLIT-NEXT
-   {: ta:ptr tu:CAD-NUM:byte-len nx:CAD-NUM:byte-off ok:bool :}
-   ok if ta tu CAD-NUM:GA-BL>N GA-PF-TOKEN then
-   nx CAD-NUM:GA-BO>N ok ;
+   va vu STR:LENGTH $20 start STR:OFFSET STR:SPLIT-NEXT MATCH option
+     none OF start STR-FALSE ENDOF        \ no token: cursor unchanged, stop
+     some OF STR-SPLIT:UNMAKE {: ta:ptr tu:CAD-NUM:byte-len nx:CAD-NUM:byte-off :}
+        ta tu CAD-NUM:GA-BL>N GA-PF-TOKEN
+        nx CAD-NUM:GA-BO>N STR-TRUE ENDOF
+   ;MATCH ;
 : GA-PARSE-FLOATS ( ptr u8 n ptr a n -- ) {: va:ptr vu:n dst:ptr cnt:n :}
    dst GA-PF-DST !  cnt GA-PF-CNT !  0 GA-PF-IDX !
    0 begin va vu rot GA-PF-STEP while repeat drop

@@ -38,11 +38,15 @@ variable ER-NTOK  variable ER-ST
 \ typed-local-lint: allow-bare-local  (a keeps the `ptr u8` role the typed split needs)
 : COUNT-TOKS ( ptr u8 n -- n ) {: a u :}
    0 ER-NTOK !  0 ER-ST !
-   begin  a u STR:LENGTH $20 ER-ST @ STR:OFFSET STR:SPLIT-NEXT  while   ( tokptr byte-len byte-off )
-      CAD-NUM:ERL-BO>N ER-ST !                             ( tokptr byte-len )
-      CAD-NUM:ERL-BL>N dup 0 > if  ER-NTOK @ 1+ ER-NTOK !  then  2drop
-   repeat
-   2drop drop  ER-NTOK @ ;
+   begin  a u STR:LENGTH $20 ER-ST @ STR:OFFSET STR:SPLIT-NEXT MATCH option   ( SOME tokptr byte-len byte-off )
+     none OF STR-FALSE ENDOF                              \ no more tokens: end the scan
+     some OF STR-SPLIT:UNMAKE                             ( tokptr byte-len byte-off )
+        CAD-NUM:ERL-BO>N ER-ST !                          ( tokptr byte-len )
+        CAD-NUM:ERL-BL>N dup 0 > if  ER-NTOK @ 1+ ER-NTOK !  then  2drop
+        STR-TRUE ENDOF
+   ;MATCH
+   while repeat
+   ER-NTOK @ ;
 
 variable ER-ROUND  variable ER-TOKENS  variable ER-GREEN  variable ER-EST
 

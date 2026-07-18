@@ -359,12 +359,29 @@ public
    a u BYTE-LEN>N c RAW-INDEX-OF IDX-OPT>INDEX-OPT ;
 
 \ ---- next separator-delimited field (offset advance proven, then raw scan) ------
-: SPLIT-NEXT ( ptr u8 CAD-NUM:byte-len n CAD-NUM:byte-off -- ptr u8 CAD-NUM:byte-len CAD-NUM:byte-off bool )
+\ A split step yields the next separator-delimited field slice plus the advance
+\ cursor (the offset one past the separator, or one past the string end on the
+\ final field). STR:SPLIT-NEXT returns option<str:split>: SOME(slice,next) while
+\ a field remains, NONE once the start cursor is past the string end - the checked
+\ replacement for the former (ptr u8 byte-len byte-off bool) value+flag return
+\ (switchover wave B), so a caller cannot read the slice or cursor on the
+\ no-field path.
+PRODUCT split 0
+  FIELD ptr ptr u8
+  FIELD len CAD-NUM:byte-len
+  FIELD next CAD-NUM:byte-off
+;PRODUCT
+
+: SPLIT-NEXT ( ptr u8 CAD-NUM:byte-len n CAD-NUM:byte-off -- option<str:split> )   \ SOME next field slice + advance cursor, else NONE
    {: a:ptr u:CAD-NUM:byte-len sep:n start:CAD-NUM:byte-off :}
    u SPLIT-SENTINEL-OK
    a u BYTE-LEN>N sep start BYTE-OFF>N RAW-SPLIT-NEXT   \ ( sub-ptr sub-rawlen raw-next more? )
    {: rn:n more?:bool :}                                \ sub-ptr sub-rawlen remain on the stack
-   N>BYTE-LEN  rn N>BYTE-OFF  more? ;
+   more? if
+      N>BYTE-LEN  rn N>BYTE-OFF  STR-SPLIT:MAKE OPTION:SOME
+   else
+      2drop OPTION:NONE
+   then ;
 
 \ ---- caller-owned bounded byte buffer (length cell as byte-len role) ------------
 : BUF-RESET ( ptr len -- )                    RAW-BUF-RESET ;

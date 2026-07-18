@@ -88,13 +88,18 @@ variable LOK-U
    BUF PF-LOFF @ + PF-LU @ ;
 
 : FIELD-NEXT ( -- ptr u8 n )
-   LINE$ STR:LENGTH TAB-C PF-START @ STR:OFFSET STR:SPLIT-NEXT 0= if E-PERF-ROW throw then
-   CAD-NUM:PF-BO>N PF-START !
-   CAD-NUM:PF-BL>N ;
+   LINE$ STR:LENGTH TAB-C PF-START @ STR:OFFSET STR:SPLIT-NEXT MATCH option
+     none OF E-PERF-ROW throw ENDOF
+     some OF STR-SPLIT:UNMAKE           ( fieldptr byte-len byte-off )
+        CAD-NUM:PF-BO>N PF-START !
+        CAD-NUM:PF-BL>N ENDOF           ( fieldptr n )
+   ;MATCH ;
 
 : FIELDS-END-CHECK ( -- )
-   LINE$ STR:LENGTH TAB-C PF-START @ STR:OFFSET STR:SPLIT-NEXT if drop 2drop E-PERF-ROW throw then
-   drop 2drop ;
+   LINE$ STR:LENGTH TAB-C PF-START @ STR:OFFSET STR:SPLIT-NEXT MATCH option
+     none OF ENDOF                       \ end of row: no trailing field
+     some OF STR-SPLIT:UNMAKE 2drop drop E-PERF-ROW throw ENDOF
+   ;MATCH ;
 
 : FIELD-NUM ( -- n )
    FIELD-NEXT STR>NUMBER? MATCH option
