@@ -1,0 +1,9 @@
+---
+title: Retire DEFTYPE onto the family substrate
+status: open
+priority: 1
+issue-type: task
+created-at: "2026-07-18T23:20:52.626482+02:00"
+---
+
+Decision (Joel, 2026-07-18): Habu keeps ONE declarable-nominal surface, and its final name is DEFTYPE - the familiar word, backed by the family substrate. Today two substrates coexist: the CT-role path (DEFTYPE in src/core/roles.f + the CHECKER-DEFTYPE primitive, global table, cross-package collision dies exit 70) and the just-landed NOMINAL: (lib/type/value-nominal.f, package-scoped arity-0 type family, strictly superior per docs/value-nominal-substrate.md). DEFTYPE has zero production call sites - only contract/fixture tests. Retire in three separately gate-provable stages. Stage A: delete the DEFTYPE word plus its DTC-* converter builder and DEFTYPE-CAST-IN/OUT from src/core/roles.f (built-in roles idx/len/fd and DEFLINEAR/VALUE-RECORD stay); migrate test/type-nominal-suite.f's contract pins onto the NOMINAL: surface or fold them into test/value-nominal-suite.f where already covered; update candidate-validation rows/counts, TRUSTED.md (DTC-EVAL row retires), and the trusted-inventory block. Stage B: delete the now-unreferenced CHECKER-DEFTYPE primitive path - checker.f primitive + mint logic, the verify-source.f:428 arm, the check-core.f:652 lexer arm, its TRUST row, the seal-absence.f expectation, and the CKT-PKG-DEFTYPE checker tests that pin the old global-table semantics (package-scoping tests re-pin against the family substrate). The CT table shrinks back to built-in roles plus what DEFLINEAR/VALUE-RECORD genuinely need. Stage C (after stage B AND after the claimed type-the-new-13b0d871 lane lands, since that lane consumes the NOMINAL: word): rename NOMINAL: to DEFTYPE - the word, the file (lib/type/value-nominal.f -> lib/type/deftype.f), suite names, manifest rows, FILEMAP, docs. End state: one declarer spelled DEFTYPE, package-scoped, converters >NAME / NAME>N unchanged in shape.
