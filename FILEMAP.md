@@ -1981,6 +1981,8 @@ points stay listed.
 - `test/gate-pool-orphan-test.f` — regression: pool workers reaped on parent death.
 - `test/run.f` — native test suite entry run directly by `bin/hb`.
 - `test/run-lib.f` — side-effect-free resident native test suite implementation.
+- `test/cal-spin.f` — fresh-child calibration probe: measures the fixed gate spin in a freshly spawned process so the perf verdict's post-run calibration lands on a performance core, not the drifted driver's core.
+- `test/run-lib-test.f` — manual-standalone coverage for the DGX Spark host profile mapping/detection and the fresh-child calibration probe.
 - `test/run-support.f` — minimal scheduler support for starting external phases before resident setup.
 - `test/run-resident.f` — late-loaded resident scheduler that forks phase workers without loading every phase library.
 - `test/run-shared-stdlib.f` — parent-loaded stdlib setup inherited by forked stdlib workers.

@@ -30,6 +30,7 @@ $3 constant TR-LATE-PHASES
 1 constant TR-PROFILE-MACOS-ARM64-10X2
 2 constant TR-PROFILE-JETSON-ORIN-CLOCKS-4X2
 3 constant TR-PROFILE-LINUX-ARM64-4X2
+4 constant TR-PROFILE-DGX-SPARK-10X2
 
 package RUN-BUDGET
 
@@ -37,6 +38,8 @@ public
 
 30000 constant MACOS-MS
 35000 constant MACOS-WALL-MS
+30000 constant SPARK-MS
+35000 constant SPARK-WALL-MS
 
 ;package
 
@@ -51,6 +54,7 @@ T-BUDGET-CAL-ITERS constant TR-CAL-ITERS             \ shared with lib/test/budg
 T-BUDGET-CAL-REF-MACOS-MS constant TR-CAL-REF-MACOS-MS
 0 constant TR-CAL-REF-JETSON-MS
 0 constant TR-CAL-REF-LINUX-MS
+87 constant TR-CAL-REF-SPARK-MS       \ committed: fixed spin on a GB10 X925 performance core (idle box)
 T-BUDGET-MIN-PCT constant TR-CAL-MIN-PCT
 T-BUDGET-MAX-PCT constant TR-CAL-MAX-PCT
 
@@ -247,11 +251,22 @@ variable TR-PRE-DIAG-FILE
 : TR-JETSON-ONLINE? ( -- bool )
    s" /sys/devices/system/cpu/online" TR-HOST-READ TRIM s" 0-7" STR= ;
 
+\ DGX Spark (GB10) exposes no /proc/device-tree; the SMBIOS/DMI product family is
+\ the stable identity ("DGX Spark"). product_name is "NVIDIA_DGX_Spark".
+: TR-SPARK-DMI$ ( -- ptr u8 n )
+   s" /sys/class/dmi/id/product_family" ;
+
+: TR-SPARK-MODEL? ( -- bool )
+   TR-SPARK-DMI$ TR-HOST-READ s" DGX Spark" CONTAINS? ;
+
 : TR-DETECT-PROFILE ( -- n )
    HB-TARGET-MACOS? if TR-PROFILE-MACOS-ARM64-10X2 exit then
    HB-TARGET-LINUX? if
       s" /proc/device-tree/model" EXISTS? if
          TR-JETSON-MODEL? if TR-PROFILE-JETSON-ORIN-CLOCKS-4X2 exit then
+      then
+      TR-SPARK-DMI$ EXISTS? if
+         TR-SPARK-MODEL? if TR-PROFILE-DGX-SPARK-10X2 exit then
       then
       TR-PROFILE-LINUX-ARM64-4X2 exit
    then
@@ -262,6 +277,7 @@ variable TR-PRE-DIAG-FILE
    2dup s" macos-arm64-10x2" STR= if 2drop TR-PROFILE-MACOS-ARM64-10X2 exit then
    2dup s" jetson-orin-clocks-4x2" STR= if 2drop TR-PROFILE-JETSON-ORIN-CLOCKS-4X2 exit then
    2dup s" linux-arm64-4x2" STR= if 2drop TR-PROFILE-LINUX-ARM64-4X2 exit then
+   2dup s" dgx-spark-10x2" STR= if 2drop TR-PROFILE-DGX-SPARK-10X2 exit then
    2drop TR-USAGE ;
 
 : TR-CAL-SPIN ( n -- n )
@@ -277,6 +293,7 @@ variable TR-PRE-DIAG-FILE
       TR-PROFILE-MACOS-ARM64-10X2 of TR-CAL-REF-MACOS-MS endof
       TR-PROFILE-JETSON-ORIN-CLOCKS-4X2 of TR-CAL-REF-JETSON-MS endof
       TR-PROFILE-LINUX-ARM64-4X2 of TR-CAL-REF-LINUX-MS endof
+      TR-PROFILE-DGX-SPARK-10X2 of TR-CAL-REF-SPARK-MS endof
       0 swap
    endcase ;
 
@@ -327,6 +344,16 @@ variable TR-PRE-DIAG-FILE
             0 TR-WALL-BUDGET !
          then
       endof
+      TR-PROFILE-DGX-SPARK-10X2 of
+         10 TR-TOP-POOL-SLOTS!
+         2 TR-NESTED-POOL !
+         TR-BUDGET-USER @ 0= if
+            RUN-BUDGET:SPARK-MS TR-CAL-SCALED TR-BUDGET !
+         then
+         TR-WALL-BUDGET-USER @ 0= if
+            RUN-BUDGET:SPARK-WALL-MS TR-CAL-SCALED TR-WALL-BUDGET !
+         then
+      endof
    endcase ;
 
 : TR-ARGS-DEFAULTS ( -- )
@@ -348,6 +375,7 @@ variable TR-PRE-DIAG-FILE
       TR-PROFILE-MACOS-ARM64-10X2 of RUN-BUDGET:MACOS-MS TR-CAL-SCALED endof
       TR-PROFILE-JETSON-ORIN-CLOCKS-4X2 of 150000 TR-CAL-SCALED endof
       TR-PROFILE-LINUX-ARM64-4X2 of 150000 TR-CAL-SCALED endof
+      TR-PROFILE-DGX-SPARK-10X2 of RUN-BUDGET:SPARK-MS TR-CAL-SCALED endof
       TR-BUDGET @ swap
    endcase ;
 
@@ -356,6 +384,7 @@ variable TR-PRE-DIAG-FILE
       TR-PROFILE-MACOS-ARM64-10X2 of RUN-BUDGET:MACOS-WALL-MS TR-CAL-SCALED endof
       TR-PROFILE-JETSON-ORIN-CLOCKS-4X2 of 160000 TR-CAL-SCALED endof
       TR-PROFILE-LINUX-ARM64-4X2 of 0 endof
+      TR-PROFILE-DGX-SPARK-10X2 of RUN-BUDGET:SPARK-WALL-MS TR-CAL-SCALED endof
       TR-WALL-BUDGET @ swap
    endcase ;
 
@@ -444,6 +473,7 @@ variable TR-PRE-DIAG-FILE
       TR-PROFILE-MACOS-ARM64-10X2 of s" macos-arm64-10x2" endof
       TR-PROFILE-JETSON-ORIN-CLOCKS-4X2 of s" jetson-orin-clocks-4x2" endof
       TR-PROFILE-LINUX-ARM64-4X2 of s" linux-arm64-4x2" endof
+      TR-PROFILE-DGX-SPARK-10X2 of s" dgx-spark-10x2" endof
       s" unknown" rot
    endcase ;
 
@@ -462,11 +492,17 @@ variable TR-PRE-DIAG-FILE
 : TR-CHECK-LINUX-PROFILE ( -- )
    HB-TARGET-LINUX? 0= if s" linux-arm64-4x2 requires Linux target" TR-PROFILE-FAIL then ;
 
+: TR-CHECK-DGX-SPARK-PROFILE ( -- )
+   HB-TARGET-LINUX? 0= if s" dgx-spark-10x2 requires Linux target" TR-PROFILE-FAIL then
+   TR-SPARK-DMI$ EXISTS? 0= if s" dgx-spark-10x2 requires NVIDIA DGX Spark DMI" TR-PROFILE-FAIL then
+   TR-SPARK-MODEL? 0= if s" dgx-spark-10x2 requires NVIDIA DGX Spark model" TR-PROFILE-FAIL then ;
+
 : TR-CHECK-PROFILE ( -- )
    TR-PROFILE-ID @ case
       TR-PROFILE-MACOS-ARM64-10X2 of TR-CHECK-MACOS-PROFILE endof
       TR-PROFILE-JETSON-ORIN-CLOCKS-4X2 of TR-CHECK-JETSON-PROFILE endof
       TR-PROFILE-LINUX-ARM64-4X2 of TR-CHECK-LINUX-PROFILE endof
+      TR-PROFILE-DGX-SPARK-10X2 of TR-CHECK-DGX-SPARK-PROFILE endof
       drop s" unknown perf profile" TR-PROFILE-FAIL
    endcase ;
 
@@ -1807,10 +1843,64 @@ $40000 constant TR-VA-READ-CAP
 create TR-VA-READ-BUF TR-VA-READ-CAP allot
 
 \ ---- pre/post calibration bracket + folded under-test SHA ------------------
+\ POST calibration runs in a FRESHLY SPAWNED child (test/cal-spin.f), not in this
+\ long-lived driver. The spin has zero in-process drift; the observed pre/post
+\ drift is core PLACEMENT: the driver launches on a performance core (pre) but the
+\ scheduler migrates it onto a slower efficiency core while it blocks on the pool,
+\ so its own post-cal spin reads a blended over-time and trips the >10% drift gate
+\ on heterogeneous hosts (GB10). A fresh CPU-bound child inherits the driver's full
+\ affinity mask and is placed on a performance core again, matching the pre-cal
+\ placement. See test/cal-spin.f.
+64 constant TR-CAL-CAP
+create TR-CAL-OUT-BUF TR-CAL-CAP allot
+create TR-CAL-ERR-BUF TR-CAL-CAP allot
+3000 constant TR-CAL-TIMEOUT-MS              \ fresh hb load + one spin is ~240ms; 12x headroom
+
+: TR-CAL-PARSE ( ptr u8 n -- n )             \ trimmed decimal ms, 0 if empty/garbage
+   TRIM STR>NUMBER? MATCH option
+      none OF 0 ENDOF
+      some OF ENDOF
+   ;MATCH ;
+
+: TR-CAL-OUT-MS ( len -- n )                 \ parse the captured stdout of that byte-length
+   TR-CAL-OUT-BUF swap LEN>N TR-CAL-PARSE ;
+
+: TR-CAL-EXITED ( len len n -- n )           \ out-len err-len exit-code; clean exit(0) -> parse, else fail closed
+   0 = if drop TR-CAL-OUT-MS else 2drop 0 then ;
+
+: TR-CAL-NOTRACE ( ptr u8 n -- )             \ no-op spawn-trace event
+   2drop ;
+
+\ Detach the gate-stats spawn trace before the calibration/verdict child spawns.
+\ Those spawns run in TR-FINISH, AFTER GS-SUMMARY reported and GT-CLEANUP removed
+\ the stats/GT-ROOT tree; leaving the EXEC hook live makes the trace write to a
+\ deleted path and throw E-FS-OPEN. They are infrastructure, not suite phases, so
+\ dropping their trace is correct.
+: TR-CAL-UNTRACE ( -- )
+   [: TR-CAL-NOTRACE ;] PROCESS-TRACE:EXEC-HOOK! ;
+
+\ Post-cal spin ms from a fresh child (in-memory capture; no temp dir, since
+\ GT-CLEANUP has already removed GT-ROOT by the time TR-FINISH runs). A nonzero
+\ exit, a signal, a timeout, or unparseable output returns 0, which TR-A-POST
+\ clamps to 1 so the drift gate fails CLOSED (attempt inadmissible).
+: TR-CAL-CHILD-MS? ( -- n )
+   TR-CAL-UNTRACE
+   PROC-ARGV-RESET
+   s" --load" TR-ARG+
+   s" test/cal-spin.f" TR-ARG+
+   s" bin/hb" >LEN
+   TR-CAL-OUT-BUF TR-CAL-CAP >LEN
+   TR-CAL-ERR-BUF TR-CAL-CAP >LEN
+   TR-CAL-TIMEOUT-MS >MS
+   RUN-ARGV-CAPTURE-OUTCOME
+   MATCH outcome
+      exited OF TR-CAL-EXITED ENDOF
+      signaled OF 2drop drop 0 ENDOF
+      timeout OF 2drop 0 ENDOF
+   ;MATCH ;
+
 : TR-POST-CAL! ( -- )
-   mono-ns {: t0:n :}
-   TR-CAL-ITERS TR-CAL-SPIN TR-CAL-SINK !
-   mono-ns t0 - PROC-NS-PER-MS / TR-POST-CAL-MS ! ;
+   TR-CAL-CHILD-MS? TR-POST-CAL-MS ! ;
 
 : TR-A-PRE ( -- n )                          \ pre-calibration spin ms, clamped >=1
    TR-CAL-MEASURED-MS @ dup 1 < if drop 1 then ;
@@ -1837,6 +1927,7 @@ create TR-VA-READ-BUF TR-VA-READ-CAP allot
       TR-PROFILE-MACOS-ARM64-10X2 of TR-TRUE endof
       TR-PROFILE-JETSON-ORIN-CLOCKS-4X2 of TR-TRUE endof
       TR-PROFILE-LINUX-ARM64-4X2 of TR-TRUE endof
+      TR-PROFILE-DGX-SPARK-10X2 of TR-TRUE endof
       TR-FALSE swap
    endcase ;
 
