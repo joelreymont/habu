@@ -5,17 +5,23 @@
 27 constant NDICT
 28 constant CP
 
-$400000 constant REGION
+$800000 constant REGION
 $300000000 constant RBASE-VA
 $48425350414E5321 constant SNAP-MAGIC
 3 constant SNAP-FORMAT-VERSION
 
 \ DICT-SIZE = CFSTK-OFF (= DICT-CAP * DREC record slots) + $1000 control-flow
-\ stack; the code area follows at DBASE+DICT-SIZE inside the $400000 REGION.
+\ stack; the code area follows at DBASE+DICT-SIZE inside the REGION.
 \ Grown $61000 -> $C1000 with DICT-CAP 8192 -> 16384 (the gate-runner-support
 \ tool closure needs ~9.5k records; dot habu-gate-runner-entry-81c84af0).
-\ Keep DICT-CAP/CFSTK-OFF/DICT-SIZE/HIDX-SLOTS/HIDX-BYTES in step.
-$C1000 constant DICT-SIZE
+\ Grown $C1000 -> $181000 with DICT-CAP 16384 -> 32768 and REGION $400000 ->
+\ $800000 (dot habu-lprot-narrow-protection-03cc8d7f): both sides grew because
+\ maki peaked ndict 16347/16384 (dict side full) AND the code area measured ~92%
+\ of the 4 MB split via LATEST/XREF (code side full). Narrowed dict-poke flips
+\ (LPROTREC) keep the seal-time internal-mark cost off the grown region, so the
+\ 4 MB -> 8 MB growth stays under the runtime ratchet. Keep DICT-CAP/CFSTK-OFF/
+\ DICT-SIZE/HIDX-SLOTS/HIDX-BYTES in step.
+$181000 constant DICT-SIZE
 48 constant DREC
 16 constant DNAME-INL
 1 constant OWNER-API-PUB-WID
@@ -57,8 +63,8 @@ $4000000000000000 constant DNAME-WIDE
 \ unchecked user code, TRUSTED: bodies, hide.f refresh shims) are unaffected:
 \ those are declared trusted boundaries.
 $8000000000000000 constant DNAME-INT
-16384 constant DICT-CAP
-$C0000 constant CFSTK-OFF
+32768 constant DICT-CAP
+$180000 constant CFSTK-OFF
 24 constant CF-REC
 8 constant CF-LOCN
 16 constant CF-LOCF
@@ -317,9 +323,11 @@ $524941504449574F constant AOT-OWNER-END-MAGIC
 82 constant AOT-OWNER-RC
 \ Dict-name hash index: slots stay a power of 2 (LFIND probes with the
 \ HIDX-SLOTS 1 - mask) and 2x DICT-CAP so the load factor stays <= 50%;
-\ bytes = slots * 4 (u32 entries). Grown with DICT-CAP 16384.
-$8000 constant HIDX-SLOTS
-$20000 constant HIDX-BYTES
+\ bytes = slots * 4 (u32 entries). Grown with DICT-CAP 32768: HIDX-SLOTS $10000
+\ ($10000 = 65536 exceeds MOVZ imm16, so the three habu1.f probe sites load it
+\ with LIT64), HIDX-BYTES $40000.
+$10000 constant HIDX-SLOTS
+$40000 constant HIDX-BYTES
 $36B8 constant FRCLM-CELL
 $37F8 constant SNAP-CELL
 $1D8 constant SSCR-CELL

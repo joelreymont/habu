@@ -40,12 +40,12 @@ create ERR CAP allot
 
 : TEST-CODE ( -- )
    s" data-base TXN-STATE-OFF 1- + cp!" REJECTS
-   s" dbase@ $C1000 + cp!" ACCEPTS
-   s" dbase@ $400000 + $4000 - 4 - cp!" ACCEPTS
-   s" dbase@ $400000 + 4 - cp!" ACCEPTS
-   s" dbase@ $400000 + 4 - cp! create PST-END" REJECTS
-   s" dbase@ $400000 + 4 - cp! 1 constant PST-END" REJECTS
-   s" dbase@ $400000 + 4 - cp! : PST-END ( -- n ) 1 ;" CODE-FULL-RC EXPECT
+   s" dbase@ DICT-SIZE + cp!" ACCEPTS
+   s" dbase@ REGION + $4000 - 4 - cp!" ACCEPTS
+   s" dbase@ REGION + 4 - cp!" ACCEPTS
+   s" dbase@ REGION + 4 - cp! create PST-END" REJECTS
+   s" dbase@ REGION + 4 - cp! 1 constant PST-END" REJECTS
+   s" dbase@ REGION + 4 - cp! : PST-END ( -- n ) 1 ;" CODE-FULL-RC EXPECT
    s" data-base TXN-STATE-OFF 1 cells - + cp! : PST-CROSS ( -- n ) 1 ;" REJECTS ;
 
 : TEST-SYSCALL ( -- )

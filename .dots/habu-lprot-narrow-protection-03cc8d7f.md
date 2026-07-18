@@ -156,3 +156,61 @@ Gate table (commit-1 tree):
 Files: src/habu/habu1.f (LPROTREC routine + variable; BINTMARK/BMININMARK/BWIDEMARK),
 src/habu/habu2.f (EMIT-LABEL-CORE label alloc; EM-REC-WIDE-PUBLISH),
 bootstrap/cg/forth.fs (mirror: variable + label alloc + EMIT-PROT LPROTREC + BWIDEMARK).
+
+---
+
+## 2026-07-18 — Commit 2: grow region 8 MB, dict 32k; register diff suites (agent=lprot)
+
+Rides on commit 1. Constants (all verified consistent: CFSTK-OFF = DICT-CAP*DREC =
+32768*48 = $180000; DICT-SIZE = CFSTK-OFF + $1000 = $181000; HIDX-SLOTS = 2*DICT-CAP =
+$10000; HIDX-BYTES = HIDX-SLOTS*4 = $40000):
+- src/habu/layout.f: REGION $400000->$800000; DICT-SIZE $C1000->$181000;
+  DICT-CAP 16384->32768; CFSTK-OFF $C0000->$180000; HIDX-SLOTS $8000->$10000;
+  HIDX-BYTES $20000->$40000; grown-history comments updated (maki peaked ndict
+  16347/16384 AND code area ~92% of the 4 MB split -> both sides grow).
+- src/habu/habu1.f: the three `8 HIDX-SLOTS MOVZ,` probe sites (C-HIDX-INS,
+  C-HIDX-DUP?, LFIND) -> `8 HIDX-SLOTS LIT64,` ($10000 = 65536 exceeds MOVZ imm16).
+  Audit `rg "(DICT-SIZE|CFSTK-OFF|REGION|HIDX-BYTES|HIDX-SLOTS) MOVZ" src/ bootstrap/`
+  is EMPTY after the change; DICT-CAP 32768 (< 65536) stays MOVZ at its 9 sites.
+- bootstrap/cg/forth.fs: REGION/DICT-SIZE/DICT-CAP/CFSTK-OFF + comments (mirror has
+  no HIDX-SLOTS/BYTES and no HIDX-SLOTS MOVZ, so no LIT64 change there).
+- test/protection-span.f: baked literals -> engine constants (`$C1000`->`DICT-SIZE`
+  x1; `dbase@ $400000 +`->`dbase@ REGION +` x5) so the seal test tracks the layout.
+- maki/test.f: registered diff-suite-id-test.f (after diff-suite-test),
+  diff-runner-tensor-test.f (after diff-runner-test), diff-runner-inject-test.f
+  (after diff-runner-spawn-test), each with its TEST:;SUITE.
+
+Acceptance (the whole chain exists for this): with commit 1's narrowed dict-poke
+flips, the 4 MB -> 8 MB growth stays UNDER the runtime ratchet instead of the RCA's
+projected +41 ms/boot.
+
+Measurements (macOS arm64, quiet host):
+- 10x nop-boot: 8 MB grown tree mean 181.4 / min 177.7 ms — still UNDER the 188.6 ms
+  4 MB baseline (chain: baseline 188.6 -> commit1 163.7 -> commit2 181.4). Without
+  commit 1 the 8 MB region would have been ~230 ms (baseline + RCA's +41), tripping
+  the ratchet.
+- fixpoint x2 byte-identical: E1 == E2 =
+  sha256 b4d951cb9ec9aec557aa46e17bd4e5989767ef8888bbe04f71d08f3c190068a7.
+- test/run.f perf slice: attempt e=23242 ms vs wall-budget 39900 ms (band=pass).
+- ndict: boot prefix 4149; RCA-measured pre-growth maki closure peak 16347/16384
+  (99.8% of the old cap — the reason for the growth). maki now green with all three
+  new suites at DICT-CAP 32768, so the peak is proven < 32768 (no C-DIE-DICT-FULL);
+  comfortable ~2x headroom.
+
+Gate table (commit-2 tree, all on top of commit 1):
+| gate | result |
+|------|--------|
+| fixpoint x2 byte-identical | PASS (b4d951cb…) |
+| old-binary boot (commit-1 hb built commit-2 fixpoint) | PASS |
+| test/run.f (correctness + runtime ratchet + perf verdict) | RUN_EXIT=0; perf-verdict performance=pass correctness=t; e=23242 < budget 39900 |
+| test/protection-span.f (now DICT-SIZE/REGION tokens) | ok |
+| test/wide-store-seal.f | ok |
+| test/lower-txn-large.f | ok |
+| test/lower-txn-protection.f | ok |
+| test/internal-word-gate.f | ok |
+| maki/test.f (+ 3 new suites) | ok; diff-suite-id PASS, diff-runner-tensor PASS, diff-runner-inject PASS |
+| test/gate-stdlib.f | PASS |
+| host-lint | 0 finding(s) |
+| filemap-lint | 0 finding(s) |
+| typed-local-diff-lint (jj diff --git) | exit 0 |
+| no-binary bootstrap check (forth.fs mirror, grown constants) | PASS (exit 0) |

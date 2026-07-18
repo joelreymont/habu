@@ -2551,7 +2551,7 @@ variable LHIDXBUILD
    rinl LBL,
    16 15 6 4 5 7 C-HIDX-HASH
    6 6 2 EOR,  5 HIDX-SLOTS 1 - LIT64,  6 6 5 AND,
-   8 HIDX-SLOTS MOVZ,
+   8 HIDX-SLOTS LIT64,
    iloop LBL,
       17 6 2 LSLI,  17 14 17 ADD,  4 17 0 LDRW,
       4 idone CBZ,
@@ -2577,7 +2577,7 @@ variable LHIDXBUILD
    16 15 3 4 5 7 C-HIDX-HASH
    4 DATA DEF-WL-CELL LDR,  6 3 4 EOR,  5 HIDX-SLOTS 1 - LIT64,  6 6 5 AND,
    13 0 MOVZ,
-   8 HIDX-SLOTS MOVZ,
+   8 HIDX-SLOTS LIT64,
    dloop LBL,
       4 6 2 LSLI,  4 14 4 ADD,  3 4 0 LDRW,                  \ x3 = slot value
       3 dret CBZ,                                            \ empty slot -> no dup
@@ -2738,7 +2738,7 @@ variable FIND-HMATCH
       14 DATA HIDXP-CELL LDR,  14 FIND-LINEAR LABEL@ CBZ,      \ no table yet -> linear
       9 10 15 4 16 7 C-HIDX-HASH
       6 15 2 EOR,  5 HIDX-SLOTS 1 - LIT64,  6 6 5 AND,                 \ slot = (hash XOR wid) & (HIDX-SLOTS-1)
-      8 HIDX-SLOTS MOVZ,
+      8 HIDX-SLOTS LIT64,
    FIND-HLOOP LABEL@ LBL,
       17 6 2 LSLI,  17 14 17 ADD,  3 17 0 LDRW,               \ x3 = slot value (index+1)
       3 FIND-LINEAR LABEL@ CBZ,                               \ empty slot -> probe miss

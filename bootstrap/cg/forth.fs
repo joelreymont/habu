@@ -18,12 +18,12 @@
 20 constant RBASE
 26 constant DBASE  27 constant NDICT  28 constant CP
 
-$400000 constant REGION       \ mmap region size (4 MB)
+$800000 constant REGION       \ mmap region size (8 MB; grown 4->8 MB with DICT-CAP 16384->32768, dot habu-lprot-narrow-protection-03cc8d7f)
 $300000000 constant RBASE-VA \ FIXED region VA: baked addresses survive re-runs (AOT)
 $340000000 constant DATA-VA  \ FIXED data VA
 $48425350414E5321 constant SNAP-MAGIC \ AOT snapshot trailer marker
 3 constant SNAP-FORMAT-VERSION
-$C1000  constant DICT-SIZE     \ dict + control-flow stack; code area follows
+$181000 constant DICT-SIZE     \ dict + control-flow stack; code area follows (grown $C1000->$181000 with DICT-CAP 32768)
                                \ (= CFSTK-OFF + $1000; grown with DICT-CAP 16384,
                                \ mirrors src/habu/layout.f)
 48      constant DREC          \ dict record: addr(8) clen(8) name-len|flags(8) name|ptr(16) wid(8)
@@ -45,8 +45,8 @@ $2000000000000000 constant DNAME-EXT
 \ interpret dispatch/tick fail closed on it (src/habu/layout.f). Stage0 never
 \ sets the bit (no checker), so the mirrored gate is inert parity.
 $4000000000000000 constant DNAME-WIDE
-16384   constant DICT-CAP      \ CFSTK-OFF / DREC; slots 0..16383 end exactly at CFSTK.
-$C0000  constant CFSTK-OFF     \ control-flow stack: cell[0]=CFSP, then CF-REC frames
+32768   constant DICT-CAP      \ CFSTK-OFF / DREC; slots 0..32767 end exactly at CFSTK.
+$180000 constant CFSTK-OFF     \ control-flow stack: cell[0]=CFSP, then CF-REC frames
 24      constant CF-REC
 8       constant CF-LOCN
 16      constant CF-LOCF
