@@ -21,6 +21,7 @@ points stay listed.
 - `docs/forth.md` — blocking Forth style rules.
 - `docs/type-families.md` — generic lowercase type-family/ADT design plan, including the canonical shared field key, transaction lifecycle, persistence, and reflection contract.
 - `docs/effects.md` — stack-effect syntax plus the R8 CAD capability-effect design (static op-schema row, checker propagation, Maki registration, capability tokens, planner legality, runtime resolver, cache identity).
+- `docs/registry-band.md` — Design C write-protecting the type-registry control cells: the PROT-GUARD/friend-latch machinery the band rides, band placement, the `reg-cell!` privileged-store primitive, trap semantics, boot/fixpoint sequencing, TDECL snapshot redundancy, and the per-sibling rollout recipe.
 - `docs/census-switchover.md` — site-level inventory for the post-TFAM switchover: sentinel-return conventions to migrate to option/result, legacy enum clusters, value-record/PTX-IR products, ADT-dischargeable trust rows, and the wave-ordered migration plan.
 - `docs/gate.md` — native gate architecture, proof subjects, metrics, and
   process-boundary rules.
