@@ -73,6 +73,7 @@ $4000 constant OWNER-CAP
 92 constant CH-BSLASH
 32 constant CH-BLANK
 115 constant CH-S
+124 constant CH-PIPE
 
 variable TAB-A
 variable ARENA-A
@@ -134,6 +135,17 @@ variable OP-OK
 variable OR-HASH
 variable OR-I
 variable OR-MISS
+
+\ manifest-table (Class/Owner column) parser state
+variable TC-N
+variable TC-I
+variable TC-FA
+variable TB-S
+variable TB-LLEN
+variable TB-OK
+variable TB-I
+variable SL-I
+variable SL-CIX
 
 \ streaming scanner state
 variable SRC-PA
@@ -1017,9 +1029,122 @@ public
         a u PC-DUP-MARKER? if LINT-FALSE else a u PC-END then ENDOF
    ;MATCH ;
 
+\ ---- manifest-table class/owner columns ------------------------------------
+\ Manifest-word sites carry their class and owner in two markdown-table columns
+\ (Class, Owner) instead of a mirrored `file:name` line in the classes block. The
+\ block keeps only the facts the table cannot hold: file-level folds, non-word
+\ sites (set-check / hook installs / bare TRUST), and test-only sites. Each
+\ populated table row becomes one named CMAP entry (count 1) keyed on the Site
+\ file and Word, so the ratchet, dead/dup, and unclassified checks resolve those
+\ sites exactly as they did from the block. A row whose Class and Owner cells are
+\ both empty is fold-absorbed: its class lives in a file-level block row, so it
+\ contributes no entry. Exactly one empty cell, or an invalid class/owner, rejects
+\ fail-closed.
+private
+
+: SEP-CH? ( n -- bool )
+   dup CH-DASH =  over CH-COLON =  or  swap CH-BLANK =  or ;
+
+: TABLE-SEP? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   u 0= if LINT-FALSE exit then
+   0 TB-I !
+   begin TB-I @ u < while
+      a TB-I @ + c@ SEP-CH? 0= if LINT-FALSE exit then
+      TB-I @ 1+ TB-I !
+   repeat LINT-TRUE ;
+
+: TC-SEG-MORE? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   TC-I @ u >= if LINT-FALSE exit then
+   a TC-I @ + c@ CH-PIPE <> ;
+
+\ The k-th pipe-delimited field of a row (field 0 is the text after the leading
+\ pipe up to the next pipe), trimmed. Empty span when the field is absent.
+: TCELL$ ( ptr u8 n n -- ptr u8 n ) {: a:ptr u:n k:n :}
+   0 TC-N !
+   0 TC-I !
+   begin TC-I @ u < while
+      a TC-I @ + c@ CH-PIPE = if
+         TC-I @ 1+ TC-FA !
+         TC-I @ 1+ TC-I !
+         begin a u TC-SEG-MORE? while TC-I @ 1+ TC-I ! repeat
+         TC-N @ k = if
+            a TC-FA @ +  TC-I @ TC-FA @ -  LINT-TRIM exit
+         then
+         TC-N @ 1+ TC-N !
+      else
+         TC-I @ 1+ TC-I !
+      then
+   repeat
+   a 0 ;
+
+: ALL-DIGITS? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   u 0= if LINT-FALSE exit then
+   0 SL-I !
+   begin SL-I @ u < while
+      a SL-I @ + c@ ASCII-DIGIT? 0= if LINT-FALSE exit then
+      SL-I @ 1+ SL-I !
+   repeat LINT-TRUE ;
+
+\ Drop a trailing `:line` informational suffix, matching the Site key semantics.
+: SITE-FILE$ ( ptr u8 n -- ptr u8 n ) {: a:ptr u:n :}
+   -1 SL-CIX !
+   0 SL-I !
+   begin SL-I @ u < while
+      a SL-I @ + c@ CH-COLON = if SL-I @ SL-CIX ! then
+      SL-I @ 1+ SL-I !
+   repeat
+   SL-CIX @ 0 < if a u exit then
+   a SL-CIX @ 1+ +  u SL-CIX @ 1+ -  ALL-DIGITS? 0= if a u exit then
+   a SL-CIX @ ;
+
+: TROW-PARSE ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   a u 6 TCELL$ {: ca:ptr cu:n :}
+   a u 7 TCELL$ {: da:ptr du:n :}
+   cu 0= du 0= and if LINT-TRUE exit then
+   cu 0= if LINT-FALSE exit then
+   du 0= if LINT-FALSE exit then
+   ca cu CLASS-VALID? 0= if LINT-FALSE exit then
+   da du OWNER-TOKEN-VALID? 0= if LINT-FALSE exit then
+   a u 0 TCELL$ {: na:ptr nu:n :}
+   nu 0= if LINT-FALSE exit then
+   a u 4 TCELL$ SITE-FILE$ {: fa:ptr fu:n :}
+   fu 0= if LINT-FALSE exit then
+   fa fu na nu ca cu da du 1 CMAP+ LINT-TRUE ;
+
+: TABLE-CLASSIFY ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   a u 0 TCELL$ {: fa:ptr fu:n :}
+   fa fu s" Word" LINT-STR= if LINT-TRUE exit then
+   fa fu TABLE-SEP? if LINT-TRUE exit then
+   a u TROW-PARSE ;
+
+public
+
+\ Parse the `| Word | ... | Class | Owner |` manifest table, appending a named CMAP
+\ entry for every row with a populated Class/Owner. Rows run from the `| Word |`
+\ header to the first line that does not start with a pipe. False when the table is
+\ absent or any data row is malformed (fail-closed).
+: PARSE-TABLE$ ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   a u s" | Word |" LINT-FIND-SUB MATCH option
+     none OF LINT-FALSE exit ENDOF
+     some OF TB-S ! ENDOF
+   ;MATCH
+   LINT-TRUE TB-OK !
+   begin TB-S @ u < while
+      a TB-S @ +  u TB-S @ -  CH-LF LINT-INDEX-OF MATCH option
+        none OF u TB-S @ - ENDOF
+        some OF ENDOF
+      ;MATCH TB-LLEN !
+      TB-LLEN @ 0= if TB-OK @ exit then
+      a TB-S @ + c@ CH-PIPE <> if TB-OK @ exit then
+      a TB-S @ +  TB-LLEN @  TABLE-CLASSIFY 0= if LINT-FALSE TB-OK ! then
+      TB-S @ TB-LLEN @ + 1+ TB-S !
+   repeat
+   TB-OK @ ;
+
 : PARSE-MANIFEST$ ( ptr u8 n -- bool ) {: a:ptr u:n :}
    a u PARSE-OWNERS$ 0= if LINT-FALSE exit then
-   a u PARSE-CLASSES$ ;
+   a u PARSE-CLASSES$ 0= if LINT-FALSE exit then
+   a u PARSE-TABLE$ ;
 
 : CLASSES-FROM ( ptr u8 n -- ) {: a:ptr u:n :}
    OWNERS-RESET
@@ -1032,8 +1157,13 @@ public
       s" trusted-inventory: invalid owner registry in " OUT a u OUT OUT-NL
       E-TINV-OWNERS throw
    then
-   PARSE-CLASSES$ 0= if
+   2dup PARSE-CLASSES$ 0= if
+      2drop
       s" trusted-inventory: invalid classification block in " OUT a u OUT OUT-NL
+      E-TINV-CLASSES throw
+   then
+   PARSE-TABLE$ 0= if
+      s" trusted-inventory: invalid manifest table in " OUT a u OUT OUT-NL
       E-TINV-CLASSES throw
    then ;
 

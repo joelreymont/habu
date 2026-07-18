@@ -520,6 +520,73 @@ variable DF-FILE-U
    S\" <!-- trusted-inventory-classes\nfixture.f test-metaprog dot 1 extra\n-->" TINV:PARSE-CLASSES$ TFALSE
    TINV:CLASSES-RESET ;
 
+\ ---- manifest-table Class/Owner columns ------------------------------------
+\ A manifest-word site carries its class and owner in the two markdown-table
+\ columns; each populated row becomes a named CMAP entry keyed on (Site, Word). A
+\ row with both cells empty is fold-absorbed (its class lives in a file-level block
+\ row) and adds nothing. PARSE-TABLE$ runs from the `| Word |` header to the first
+\ non-pipe line, skipping the header and separator rows.
+: TABLE-1$ ( -- ptr u8 n )   \ TIF-A populated, TIF-B fold-absorbed (empty cells)
+   S\" | Word | Effect | Reason | Tests | Site | Last audited | Class | Owner |\n|--|--|--|--|--|--|--|--|\n| TIF-A | e | r | t | fixture.f | 2026-01-01 | prim-axiom | dot-a |\n| TIF-B | e | r | t | fixture.f | 2026-01-01 |  |  |\n" ;
+
+: FIX-TABLE ( -- )
+   TINV:CLASSES-RESET
+   TABLE-1$ TINV:PARSE-TABLE$ TTRUE
+   TINV:CLASSES# 1 T=                       \ only the populated row lands in the map
+   s" TRUSTED: TIF-A ( -- )" FIX-SCAN
+   0 TINV:ROW-CLASS$ s" prim-axiom" T$=      \ site class resolves from the table
+   0 TINV:ROW-OWNER$ s" dot-a" T$=
+   TINV:CLASSES-RESET ;
+
+\ A Site cell may carry a trailing `:line` suffix; it is stripped so the (file,
+\ Word) key still matches the scanned source file.
+: FIX-TABLE-LINE-SUFFIX ( -- )
+   TINV:CLASSES-RESET
+   S\" | Word | Effect | Reason | Tests | Site | Last audited | Class | Owner |\n|--|--|--|--|--|--|--|--|\n| TIF-A | e | r | t | fixture.f:42 | 2026-01-01 | prim-axiom | dot-a |\n" TINV:PARSE-TABLE$ TTRUE
+   s" TRUSTED: TIF-A ( -- )" FIX-SCAN
+   0 TINV:ROW-CLASS$ s" prim-axiom" T$=
+   TINV:CLASSES-RESET ;
+
+\ A manifest row missing its Class (owner present), an invalid class, or a class
+\ with no owner each rejects the whole table fail-closed.
+: FIX-TABLE-BAD ( -- )
+   TINV:CLASSES-RESET
+   S\" | Word | Effect | Reason | Tests | Site | Last audited | Class | Owner |\n|--|--|--|--|--|--|--|--|\n| TIF-A | e | r | t | fixture.f | 2026-01-01 |  | dot-a |\n" TINV:PARSE-TABLE$ TFALSE
+   TINV:CLASSES-RESET
+   S\" | Word | Effect | Reason | Tests | Site | Last audited | Class | Owner |\n|--|--|--|--|--|--|--|--|\n| TIF-A | e | r | t | fixture.f | 2026-01-01 | bogus | dot-a |\n" TINV:PARSE-TABLE$ TFALSE
+   TINV:CLASSES-RESET
+   S\" | Word | Effect | Reason | Tests | Site | Last audited | Class | Owner |\n|--|--|--|--|--|--|--|--|\n| TIF-A | e | r | t | fixture.f | 2026-01-01 | prim-axiom |  |\n" TINV:PARSE-TABLE$ TFALSE
+   TINV:CLASSES-RESET ;
+
+\ A manifest word must live in exactly one place: a block `file:name` row AND a
+\ populated table row for the same site is a duplicate mapping key.
+: FIX-TABLE-BLOCK-DUP ( -- )
+   TINV:CLASSES-RESET
+   S\" <!-- trusted-inventory-classes\nfixture.f:TIF-A prim-axiom dot\n-->" TINV:PARSE-CLASSES$ TTRUE
+   TABLE-1$ TINV:PARSE-TABLE$ TTRUE
+   TINV:CLASSES# 2 T=
+   TIT-BUF TIT-CAP LINT-OUT-BUFFER!
+   TINV:CMAP-DUP# 1 T=
+   LINT-OUT-BUFFER-OFF
+   LINT-OUT$ s" duplicate mapping row fixture.f:TIF-A" CONTAINS? TTRUE
+   TINV:CLASSES-RESET ;
+
+\ Deleting a residual block row orphans the site it covered: a bare `0 set-check`
+\ has no nameable table key, so its coverage is the file-level block row. Drop that
+\ row and the site is unclassified even though the table still classifies TIF-A.
+: FIX-TABLE-ORPHAN ( -- )
+   TINV:CLASSES-RESET
+   TINV:RESET
+   s" fixture.f" S\" TRUSTED: TIF-A ( -- )\n0 set-check" TINV:SCAN-SOURCE
+   TINV:ROWS 2 T=
+   S\" <!-- trusted-inventory-classes\nfixture.f test-metaprog dot 1\n-->" TINV:PARSE-CLASSES$ TTRUE
+   TABLE-1$ TINV:PARSE-TABLE$ TTRUE
+   TINV:UNCLASSIFIED# 0 T=
+   TINV:CLASSES-RESET
+   TABLE-1$ TINV:PARSE-TABLE$ TTRUE
+   TINV:UNCLASSIFIED# 1 T=
+   TINV:CLASSES-RESET ;
+
 : TIT-MAIN ( -- )
    T-RESET
    SAVE-LIVE
@@ -554,6 +621,11 @@ variable DF-FILE-U
    FIX-BY-FILE
    FIX-RATCHET
    FIX-COUNT-PARSE
+   FIX-TABLE
+   FIX-TABLE-LINE-SUFFIX
+   FIX-TABLE-BAD
+   FIX-TABLE-BLOCK-DUP
+   FIX-TABLE-ORPHAN
    T-REPORT ;
 
 TIT-MAIN

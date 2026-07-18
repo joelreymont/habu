@@ -164,6 +164,12 @@ TLT-LF TLT-LF-BUF c!
    s" |------|--------|--------|-------|------|--------------|" SB-APPEND TLT-LF+
    SB$ ;
 
+: TLT-HEADER8$ ( -- ptr u8 n )   \ header + separator carrying the Class/Owner columns
+   SB-RESET
+   s" | Word | Effect | Reason | Tests | Site | Last audited | Class | Owner |" SB-APPEND TLT-LF+
+   s" |------|--------|--------|-------|------|--------------|-------|-------|" SB-APPEND TLT-LF+
+   SB$ ;
+
 : TLT-BASE-ROW$ ( -- ptr u8 n )
    s" | foo | `n -- n` | fixture | `test/t-fixture.fs` | src/trust.f | 2026-06-13 |" ;
 
@@ -604,6 +610,16 @@ TLT-LF TLT-LF-BUF c!
    TLT-GROW-ROWS TLT-APPEND-GROW-ROWS
    0 TLT-GROW-ROWS TLT-EXPECT-OK ;
 
+\ The manifest table carries two trailing columns (Class, Owner) consumed only by
+\ trusted-inventory. trust-lint keys on Word+Site and reads effect and audit date
+\ from the first six cells, so an 8-column row lints exactly like a 6-column one.
+: TLT-TEST-EXTRA-COLUMNS ( -- )
+   s" extra-columns" TLT-CASE!
+   TLT-SRC-TRUST TLT-BASE-SRC$ WRITE-ALL
+   TLT-MAN TLT-HEADER8$ WRITE-ALL
+   s" | foo | `n -- n` | fixture | `test/t-fixture.fs` | src/trust.f | 2026-06-13 | builder-emit | dot-x |" TLT-APPEND-MAN
+   1 1 TLT-EXPECT-OK ;
+
 : TLT-PREPARE ( -- )
    CLEANUP-RESET
    s" habu-trust-lint" TMPDIR-MKDIR {: a:ptr u :}
@@ -641,6 +657,7 @@ TLT-LF TLT-LF-BUF c!
    TLT-TEST-STALE-ROW
    TLT-TEST-DUP-ROW
    TLT-TEST-GROW-MANIFEST
+   TLT-TEST-EXTRA-COLUMNS
    CLEANUP-RUN
    TLT-ROOT EXISTS? TFALSE
    T-REPORT
