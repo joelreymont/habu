@@ -1,6 +1,6 @@
 \ maki/store.f - the CAD artifact store: on-disk layout + row schemas (dot cad-5).
 \
-\ CAD-PLAN section 13. The single host-side, file-backed store for the Model CAD
+\ docs/archive/cad-plan.md section 13. The single host-side, file-backed store for the Model CAD
 \ pipeline: schedules (key -> selected candidate), measurement history, evidence
 \ rows (per-gate verdicts), fusion profitability facts (section 5.7), and
 \ calibration tables (section 9). Content-addressed by the section 7.4 key that
@@ -351,7 +351,7 @@ public
 
 \ ---- evidence (per-gate verdicts) ------------------------------------------
 \ the golden field records WHICH leg produced the verdict AND, for a device leg, the
-\ LICENSED PRECISION it was judged under (CAD-PLAN 8.1 lever 5): a device model golden
+\ LICENSED PRECISION it was judged under (docs/compute-campaign.md lever 5): a device model golden
 \ (slice 5) writes "golden=device-<v>:<prec>" so a promoted artifact carries both the
 \ proof the device leg ran and the precision row that licensed it; the host
 \ self-consistency / artifact legs write the plain "golden=<v>" (no precision axis).

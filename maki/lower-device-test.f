@@ -1,6 +1,6 @@
 \ maki/lower-device-test.f - the Orin device leg for the elementwise region lowering.
 \
-\ CAD-PLAN section 11 device-vs-host GOLDEN, slice 1. For each elementwise model it builds
+\ docs/archive/cad-plan.md section 11 device-vs-host GOLDEN, slice 1. For each elementwise model it builds
 \ the model, fuses it, and lowers region 0 onto a REGION_0 flat PTX kernel: spawn a fresh
 \ bin/hb (via LOWER-DRIVER!) to EMIT the kernel to PTXTC:PTX$, EMIT-GUARD, ptxas ASSEMBLE +
 \ ASM-REPORT, then LOWER-GOLDEN (maki/lower-golden.f) runs the host executor and the device

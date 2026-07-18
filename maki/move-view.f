@@ -1,6 +1,6 @@
 \ maki/move-view.f - dissolved-movement VIEW resolution for the compute lowerings.
 \
-\ CAD-PLAN 6.3 device leg, slice 4 (deliverable A). A DISSOLVED movement node
+\ docs/archive/cad-plan.md §6.3 device leg, slice 4 (deliverable A). A DISSOLVED movement node
 \ (CLASS-MOVEMENT, MIR-MAT@ = 0, verdict MVV-FREE / MVV-STAGED) is not a kernel: the
 \ fusion planner folds it into the LOAD INDEX MATH of the compute op that reads it
 \ (maki/fusion-plan.f FP-JOIN?). This file owns the pure resolution a compute lowering

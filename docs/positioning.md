@@ -1,7 +1,7 @@
 # Habu Positioning and Subtitles
 
 Reference for README, docs, and announcement copy. The implementation plan this
-language fronts is `docs/model-cad.md`.
+language fronts is `docs/archive/model-cad.md`.
 
 ## Selected positioning (2026-07-04)
 

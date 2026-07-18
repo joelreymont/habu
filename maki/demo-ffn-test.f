@@ -1,12 +1,12 @@
 \ maki/demo-ffn-test.f - the FFN flagship end-to-end demo (dot cad-demo-ffn).
 \
 \ ONE committed, self-contained test that walks the WHOLE Model CAD loop over the
-\ docs/model-cad.md flagship FFN block and locks every number as a regression. It IS
+\ docs/archive/model-cad.md flagship FFN block and locks every number as a regression. It IS
 \ the demo transcript: model defined in the REPL -> LOWER keys -> FUSE regions +
 \ traffic -> MEMORY coalescing -> TILE schedule -> CERTIFY/GOLDEN/GRADCHECK gates ->
 \ OPTIMIZE promote decision -> PROMOTE artifact + store rows -> traffic comparison vs
 \ the unfused baseline. The win is fusion/traffic reduction, not a tensor-core parity
-\ claim (docs/model-cad.md "Flagship demo").
+\ claim (docs/archive/model-cad.md "Flagship demo").
 \
 \ Model (as specified by the cad-demo-ffn dot):
 \   MODEL: FFN-DEMO ( x:4x8 w1:8x16 b1:1x16 w2:16x8 b2:1x8 r:4x8 -- y )
@@ -24,7 +24,7 @@
 \      bare "x" token in the body pushes the ORIGINAL input as RESIDUAL-ADD's second
 \      operand, so node.3.in is "n2 i0" and the separate r input is gone - a real skip.
 \      Named-value capture is the v1 seam; compiling the whole body as ONE checker-
-\      verified composition (CAD-PLAN section 3 full static compilation) is still
+\      verified composition (docs/archive/cad-plan.md section 3 full static compilation) is still
 \      pending. The pipeline, gates, traffic, and promote loop are the full flagship for
 \      both, and FFN-SKIP's backward makes x's gradient SUM two paths (fan-out).
 \

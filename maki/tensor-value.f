@@ -1,6 +1,6 @@
 \ maki/tensor-value.f - the unified single-slot tensor value + its plan mode.
 \
-\ CAD-PLAN section 3 prerequisite. Today's eager maki ops pass a tensor as many
+\ docs/archive/cad-plan.md section 3 prerequisite. Today's eager maki ops pass a tensor as many
 \ stack cells (maki/linear.f: LINEAR ( ptr a ptr a ptr a ptr a n n n -- ); data,
 \ shape and dtype travel apart), so they cannot be re-typed onto descriptors. A
 \ `tensor` is instead ONE stack slot: an opaque nominal handle indexing a
@@ -14,14 +14,14 @@
 \ TV-RESET bumps the store generation, so every outstanding handle from an
 \ earlier generation fails closed (Model-CAD V2 R3: stale handles reject).
 \
-\ Plan mode (CAD-PLAN section 3) is the descriptor-vocabulary base: PLINEAR/PGELU
+\ Plan mode (docs/archive/cad-plan.md section 3) is the descriptor-vocabulary base: PLINEAR/PGELU
 \ do not compute, they append IR records (op-kind, input tensors, output tensor)
 \ to a plan the fusion planner (cad-1) will consume. TV-LINEAR is the eager
 \ interop proof: it unpacks tensor values into the cells the existing eager
 \ LINEAR wants, runs it, and wraps the result back. v1 is the mechanism only - no
 \ fusion, no cost model.
 \
-\ Facts are recorded, never assumed (CAD-PLAN section 4.1): the alignment class is
+\ Facts are recorded, never assumed (docs/archive/cad-plan.md section 4.1): the alignment class is
 \ measured from the real pointer at construction; dtype facts come from
 \ maki/tensor.f's family; a descriptor with no buffer records AL-UNKNOWN, never a
 \ guess. Fail closed: stale/forged handle, missing data, shape mismatch,

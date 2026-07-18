@@ -1,4 +1,4 @@
-\ maki/saved.f - the save-vs-recompute decision (CAD-PLAN sections 9/12, dot cad-9c).
+\ maki/saved.f - the save-vs-recompute decision (docs/archive/cad-plan.md sections 9/12, dot cad-9c).
 \
 \ For each forward tensor an adjoint needs (maki/adjoint.f ADJ-SAVE: the INPUT for
 \ relu/gelu/norms/matmul, the OUTPUT for softmax-row), decide whether to SAVE it

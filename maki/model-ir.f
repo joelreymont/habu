@@ -1,6 +1,6 @@
 \ maki/model-ir.f - the model IR node table + shape/dtype/layout keys + render.
 \
-\ CAD-PLAN section 4 / docs/model-cad.md Phase 1. The model is a DAG; recursive
+\ docs/archive/cad-plan.md section 4 / docs/archive/model-cad.md Phase 1. The model is a DAG; recursive
 \ unboxed ADTs are a type-families v1 non-goal, so nodes reference operands by
 \ TYPED INDEX into a flat table (the lib/ptx/ir.f + tensor-value plan-store
 \ pattern), never by nested value. Each node records: op-kind (maki/op-kind.f),

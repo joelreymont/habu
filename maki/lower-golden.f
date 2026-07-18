@@ -1,6 +1,6 @@
 \ maki/lower-golden.f - device-vs-host GOLDEN for lowered fusion regions (slices 1 + 2).
 \
-\ CAD-PLAN section 11. LOWER-GOLDEN runs the HOST model-IR executor (maki/executor.f
+\ docs/archive/cad-plan.md section 11. LOWER-GOLDEN runs the HOST model-IR executor (maki/executor.f
 \ EX-RUN) and the DEVICE region kernel (maki/lower-launch.f) on the SAME deterministic
 \ synthetic inputs (maki/golden-artifact.f GA-BIND-SYNTH) and compares the two outputs
 \ element-wise. The region's class picks the launch shape and the tolerance:
@@ -13,8 +13,8 @@
 \ host to f32 first removes the double-vs-single representation gap so the tolerance measures
 \ real kernel error, not the dtype step.
 \
-\ Tolerance policy: the per-class rows are OWNED BY maki/precision.f (CAD-PLAN
-\ section 11 + 8.1 lever 5). Each region class carries an ACTIVE precision
+\ Tolerance policy: the per-class rows are OWNED BY maki/precision.f (docs/archive/cad-plan.md
+\ §11 + compute-campaign lever 5). Each region class carries an ACTIVE precision
 \ (default PREC-F32; PREC! requests a demotion such as PREC-TF32 for the matmul
 \ class) and the golden judges under that precision's (atol, rtol) row - the
 \ passing verdict IS the license for running that class at that precision. The

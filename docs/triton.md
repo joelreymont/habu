@@ -6,7 +6,7 @@ Compiler for Tiled Neural Network Computations*, MAPL '19
 Harvard PDF. Sections marked **[modern]** describe today's Triton (Python DSL,
 MLIR era) from general knowledge, not the paper — verify before citing.
 Measured habu-vs-Triton numbers live in `docs/eval-triton.md`; strategy in
-`CAD-PLAN.md` §8.1. This doc is the mechanism reference.
+`docs/archive/cad-plan.md` §8.1. This doc is the mechanism reference.
 
 ## 1. Thesis (paper, 2019)
 
@@ -121,7 +121,7 @@ micro 8–32, nano 1–4). "Better auto-tuning methods could be used."
   arguments. Single-threaded-per-instance tile model is unchanged — that is
   Triton's durable idea.
 
-## 7. Implications for habu (ties to CAD-PLAN §8.1, measured record in eval-triton.md)
+## 7. Implications for habu (ties to docs/compute-campaign.md, measured record in eval-triton.md)
 
 - **Same durable insight, different trust story.** Triton and habu both let
   a scalar-looking program own a tile while the compiler owns concurrency.

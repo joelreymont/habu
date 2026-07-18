@@ -130,7 +130,7 @@ MODEL: BIB ( x:2x4 b:1x4 -- y ) BIAS ;    MODEL-K 1 T=      \ 1xC bias broadcast
 ' TRY-BIAS-BADCOL E-CAD-PARAM-SHAPE TTHROWS
 ' TRY-SCALE-BAD   E-CAD-PARAM-SHAPE TTHROWS
 
-\ ---- the checker rejects malformed model bodies at DEFINITION (CAD-PLAN section 3) ----------
+\ ---- the checker rejects malformed model bodies at DEFINITION (docs/archive/cad-plan.md section 3) ----------
 \ v2 compiles the translated body over package PLAN, so a composition the checker cannot type
 \ is rejected at MODEL: time. MODEL-CAND: yields the exact string MODEL: compiles; EVAL:CHECK-PASSES?
 \ reads the same checker's verdict. Positive controls certify; every arity underflow is rejected.

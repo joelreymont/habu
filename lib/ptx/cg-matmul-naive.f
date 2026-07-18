@@ -1,6 +1,6 @@
 \ cg-matmul-naive.f - the NAIVE one-element-per-thread SGEMM baseline (kernel MMN).
 \
-\ The pre-blocking baseline for the GEMM-vs-Triton comparison (docs/eval-triton.md, CAD-PLAN
+\ The pre-blocking baseline for the GEMM-vs-Triton comparison (docs/eval-triton.md, docs/archive/cad-plan.md
 \ 8.1). Each thread computes one C[row][col] with a global-memory K-loop (fma.rn.f32) - no
 \ shared staging, no register blocking - so it is DRAM/instruction bound and GFLOP/s does NOT
 \ climb with problem size. The register-blocked lib/ptx/cg-matmul.f MM is the improvement over

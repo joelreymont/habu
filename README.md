@@ -267,7 +267,7 @@ Habu should answer those questions directly from the REPL.
 
 The roadmap is not "add more syntax." It is to build the optimization loop.
 The reviewed plan with phases, acceptance criteria, and dependencies is
-[`docs/model-cad.md`](docs/model-cad.md):
+[`docs/archive/model-cad.md`](docs/archive/model-cad.md):
 
 1. **Mega-fusion planner** — regions, legality, materialization points, split
    reasons, traffic estimates, measured results.
@@ -352,9 +352,9 @@ skills/           operational recipes for agents and humans
 
 ## Docs
 
-- [`CAD-PLAN.md`](CAD-PLAN.md) — the Model CAD design: planners, cost model,
+- [`docs/archive/cad-plan.md`](docs/archive/cad-plan.md) — the Model CAD design: planners, cost model,
   schedules, gates.
-- [`docs/model-cad.md`](docs/model-cad.md) — the Model CAD campaign:
+- [`docs/archive/model-cad.md`](docs/archive/model-cad.md) — the Model CAD campaign:
   phases, dots, milestones.
 - [`docs/positioning.md`](docs/positioning.md) — product positioning and copy.
 - [`docs/eval-triton.md`](docs/eval-triton.md) — measured Habu-PTX vs Triton

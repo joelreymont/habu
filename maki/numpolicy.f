@@ -1,4 +1,4 @@
-\ maki/numpolicy.f - the typed numeric-policy proof-domain family (CAD-PLAN A3 +
+\ maki/numpolicy.f - the typed numeric-policy proof-domain family (docs/archive/cad-plan.md §A3 +
 \ section 22.6: "Precision is part of the plan and artifact key. A conversion or
 \ approximate rewrite requires evidence in one of the exact, ULP, relative-error,
 \ or empirically licensed domains").

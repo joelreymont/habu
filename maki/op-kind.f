@@ -1,4 +1,4 @@
-\ maki/op-kind.f - the canonical model op-kind registry (CAD-PLAN section 4.2).
+\ maki/op-kind.f - the canonical model op-kind registry (docs/archive/cad-plan.md section 4.2).
 \
 \ The single op set shared by the Phase-0 MODEL: parser (maki/cad.f) and the
 \ descriptor-mode planning vocabulary (maki/tensor-value.f). One enum, defined

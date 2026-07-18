@@ -1,6 +1,6 @@
 \ maki/schedule.f - schedule families, parameter spaces + closed-form defaults (cad-4).
 \
-\ CAD-PLAN section 7.1/7.2. A schedule never free-forms: it instantiates one of five
+\ docs/archive/cad-plan.md section 7.1/7.2. A schedule never free-forms: it instantiates one of five
 \ FAMILIES over a bounded, enumerable parameter space, which is what makes tuning
 \ tractable and replay exact. This file is the family data + the pure enumeration and
 \ default-selection math; the cache key (region signature / shape class / replay table)

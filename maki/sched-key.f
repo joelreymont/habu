@@ -1,6 +1,6 @@
 \ maki/sched-key.f - schedule cache/replay keys + the cad-5 replay-table seam (cad-4).
 \
-\ CAD-PLAN section 7.4 + section 22.6 (precision in every key). The cache and
+\ docs/archive/cad-plan.md section 7.4 + section 22.6 (precision in every key). The cache and
 \ replay key over a fusion region is (region signature, shape class, dtype key,
 \ layout key, alignment class, requested numeric policy, target, engine hash,
 \ ptxas version). This file renders that whole key as one string and

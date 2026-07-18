@@ -1,4 +1,4 @@
-\ maki/plan-vocab.f - the NAMED, package-scoped model planning vocabulary (CAD-PLAN section 3).
+\ maki/plan-vocab.f - the NAMED, package-scoped model planning vocabulary (docs/archive/cad-plan.md section 3).
 \
 \ Section 3 wants a model body written as the SAME source text (LINEAR GELU LINEAR)
 \ that the checker verifies as an ordinary word over tensor DESCRIPTORS. maki/plan-ops.f

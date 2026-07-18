@@ -1,6 +1,6 @@
 \ maki/from-scratch-model.f - the from-scratch training flagship: a windowed MLP over
 \ feature-sequence windows plus its committed seeded synthetic dataset (dot
-\ habu-maki-from-scratch; docs/model-cad.md Phase 9b; CAD-PLAN section 12).
+\ habu-maki-from-scratch; docs/archive/model-cad.md Phase 9b; docs/archive/cad-plan.md section 12).
 \
 \ Model (captured with MODEL: into the shared model IR): a batch of SC-BATCH=8
 \ feature windows, each SC-FEAT=6 features (3 timesteps x 2 channels) flattened to

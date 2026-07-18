@@ -1,11 +1,11 @@
-\ maki/op-registry.f - the model op registry (CAD-PLAN section 4.2).
+\ maki/op-registry.f - the model op registry (docs/archive/cad-plan.md section 4.2).
 \
 \ One row per op-kind (maki/op-kind.f), the single extension point planners read
 \ instead of learning op names: class, flops-per-element, bytes model (derived
 \ from class), accum-dtype rule, numeric class, input arity, VJP id, and the
 \ scalar CPU reference execution token (the golden oracle at op granularity).
 \
-\ Membership is gated (CAD-PLAN 4.2): a row is COMPLETE only once its reference xt
+\ Membership is gated (docs/archive/cad-plan.md §4.2): a row is COMPLETE only once its reference xt
 \ is bound. OPR-REF fails closed (E-OPR-INCOMPLETE) on an op without one, so GOLDEN
 \ downstream cannot silently skip. silu/rmsnorm/rope references (maki/silu.f,
 \ rmsnorm.f, rope.f) are bound here so those ops are complete; matmul/linear are
@@ -52,13 +52,13 @@ public
 1 constant ACC-F32               \ accumulate f32 regardless (reductions / matmul)
 2 constant ACC-N
 
-\ ---- numeric class (drives GOLDEN tolerance, CAD-PLAN 11) ----
+\ ---- numeric class (drives GOLDEN tolerance, docs/archive/cad-plan.md §11) ----
 0 constant NUM-EXACT             \ bit-exact reference
 1 constant NUM-ULP               \ small ulp arithmetic
 2 constant NUM-RELTOL            \ relative-tolerance (transcendental / accumulated)
 3 constant NUM-N
 
-\ ---- bytes model (derived from class, CAD-PLAN 4.2) ----
+\ ---- bytes model (derived from class, docs/archive/cad-plan.md §4.2) ----
 0 constant BYM-INOUT             \ elementwise: read inputs + write output
 1 constant BYM-ROW               \ row-reduce: read row + write row(s)
 2 constant BYM-TILES             \ matmul: tiles model
@@ -117,7 +117,7 @@ public
    dup OPR-COMPLETE? 0= if E-OPR-INCOMPLETE throw then
    OPKIND>N cells R-REF + @ ;
 
-\ bytes model is a pure function of class (CAD-PLAN 4.2)
+\ bytes model is a pure function of class (docs/archive/cad-plan.md §4.2)
 : OPR-BYTES-MODEL ( opkind -- n )
    OPR-CLASS case
       CLASS-EW         of BYM-INOUT endof

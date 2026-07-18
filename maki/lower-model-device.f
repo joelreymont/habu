@@ -1,6 +1,6 @@
 \ maki/lower-model-device.f - the reusable WHOLE-MODEL device-golden harness (slice 5).
 \
-\ CAD-PLAN section 11 device-vs-host GOLDEN over a MULTI-REGION model. For each region of the
+\ docs/archive/cad-plan.md section 11 device-vs-host GOLDEN over a MULTI-REGION model. For each region of the
 \ model it spawns a fresh bin/hb (via LOWER-DRIVER!) to EMIT that region's REGION_<rid> kernel
 \ into PTXTC:PTX$, ptxas ASSEMBLE, copies the cubin to a per-region path, and registers it with
 \ MDL-CUBIN!. Then LOWER-MODEL-GOLDEN (maki/lower-golden.f) runs the WHOLE forward IR on device

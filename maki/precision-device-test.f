@@ -1,5 +1,5 @@
 \ maki/precision-device-test.f - the Orin device leg for GATE-LICENSED precision
-\ (CAD-PLAN 8.1 lever 5 / step 3a - the tensor-core MMA prerequisite).
+\ (docs/compute-campaign.md lever 5 / step 3a - the tensor-core MMA prerequisite).
 \
 \ Precision is a per-region-class licensed fact, never a global flag: requesting
 \ PREC-TF32 for the matmul class (maki/precision.f PREC!) makes the golden judge

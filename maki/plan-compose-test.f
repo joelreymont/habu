@@ -1,4 +1,4 @@
-\ maki/plan-compose-test.f - CAD-PLAN section 3, achievable half: a model block is an
+\ maki/plan-compose-test.f - docs/archive/cad-plan.md section 3, achievable half: a model block is an
 \ ORDINARY checked word over tensor descriptors, and the checker verifies the WHOLE
 \ composition (stack arity + tensor discipline) at author time.
 \

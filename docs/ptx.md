@@ -58,7 +58,9 @@ PTX is a *virtual* ISA: emit unlimited virtual registers (SSA-ish); `ptxas` does
 the real register allocation, scheduling, and SASS codegen. A from-scratch
 backend therefore does **not** need a world-class allocator. The self-hosted
 `bin/hb` already has an arm64 assembler/encoder (`src/arch/arm64/`), a
-stack→register compiler (`src/habu/jit.f`/`regalloc.f`), and AOT (`src/habu/aot.f`)
+stack→register compiler (`src/habu/jit.f`, with `regalloc.f` a thin slice of
+it), and AOT (`src/habu/aot-capture.f`/`aot-lib.f`/`aot-closure.f`; `aot.f` is
+only the maker entry)
 — but note two honest limits the plan review surfaced: (1) the existing
 "multi-target" axis is **OS/object-format** (macos↔linux over the *same* arm64
 ISA); PTX is a **new ISA** target sharing none of `src/arch/arm64/`, so it is a

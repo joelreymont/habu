@@ -1,6 +1,6 @@
 \ maki/move.f - buffer-level movement reference execution (the golden oracles).
 \
-\ Movement ops (reshape/transpose/slice/concat/gather; CAD-PLAN 4.2
+\ Movement ops (reshape/transpose/slice/concat/gather; docs/archive/cad-plan.md §4.2
 \ CLASS-MOVEMENT) carry NO compute - they are exact layout rewrites. These host
 \ references define the v1 semantics over the 2D row-major model: the golden
 \ oracle the planner's dissolution must reproduce whenever it DOES materialize a

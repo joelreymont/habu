@@ -1,7 +1,7 @@
 \ maki/executor.f - the full-tensor host executor for the model IR (dot cad-7a).
 \
 \ Executes the captured model-IR node table (maki/model-ir.f) at TENSOR granularity
-\ over host float-cell buffers - the GOLDEN composition oracle (CAD-PLAN section 11)
+\ over host float-cell buffers - the GOLDEN composition oracle (docs/archive/cad-plan.md section 11)
 \ and the numeric engine the host gradcheck (maki/gradcheck.f) drives. It walks the
 \ nodes in INDEX (topo) order (a node only references earlier nodes / input slots),
 \ allocates one contiguous float-cell buffer per node from its declared shape out of

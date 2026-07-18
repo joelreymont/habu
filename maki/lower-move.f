@@ -1,6 +1,6 @@
 \ maki/lower-move.f - lower ONE materialized movement region to a copy PTX kernel.
 \
-\ CAD-PLAN 6.3 device leg, slice 4 (deliverable B). A movement node the planner could
+\ docs/archive/cad-plan.md §6.3 device leg, slice 4 (deliverable B). A movement node the planner could
 \ NOT dissolve (MIR-MAT@ = 1: concat / gather / unaligned-slice by verdict, or a fan-out
 \ transpose/slice that crosses a region boundary) is its own region and lowers to a COPY
 \ kernel with remapped indices - the device dual of the maki/move.f host references

@@ -1,6 +1,6 @@
 \ maki/traffic.f - the fusion traffic (global-bytes) estimate (dot cad-2).
 \
-\ CAD-PLAN section 9 bytes model, elements-based v1: bytes = elements * dtype-width
+\ docs/archive/cad-plan.md section 9 bytes model, elements-based v1: bytes = elements * dtype-width
 \ (f32=4). BEFORE fusion every node reads its inputs and writes its output (each op
 \ a separate kernel). AFTER fusion, using the maki/fusion-plan.f region assignment,
 \ each region reads its EXTERNAL inputs once (broadcast discount: an input consumed

@@ -1,4 +1,4 @@
-\ maki/gradcheck.f - host numeric gradcheck over the model IR (CAD-PLAN 12; cad-7a).
+\ maki/gradcheck.f - host numeric gradcheck over the model IR (docs/archive/cad-plan.md 12; cad-7a).
 \
 \ Makes GRADCHECK REAL on the host at TENSOR granularity by driving the full-tensor
 \ executor (maki/executor.f): it builds the backward IR (maki/backward.f), binds host

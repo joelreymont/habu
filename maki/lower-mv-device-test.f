@@ -1,6 +1,6 @@
 \ maki/lower-mv-device-test.f - the Orin device leg for the movement lowering (slice 4).
 \
-\ CAD-PLAN 6.3 device-vs-host GOLDEN. For each movement model it builds the model, fuses it,
+\ docs/archive/cad-plan.md §6.3 device-vs-host GOLDEN. For each movement model it builds the model, fuses it,
 \ and lowers region 0: spawn a fresh bin/hb (via LOWER-DRIVER!) to EMIT the kernel to
 \ PTXTC:PTX$, EMIT-GUARD, ptxas ASSEMBLE + ASM-REPORT, then LOWER-GOLDEN (maki/lower-golden.f)
 \ runs the host executor and the device kernel on the same synthetic inputs and compares. Two

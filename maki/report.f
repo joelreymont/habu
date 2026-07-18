@@ -5,7 +5,7 @@
 \ bytes before/after, per-hot-tensor coalescing status, schedule candidates and
 \ the selected one, the four gate verdicts, profile rows, roofline class, the
 \ artifact/cache key, and warnings/split reasons. It is the single structured
-\ artifact behind every command (docs/model-cad.md Phase 0).
+\ artifact behind every command (docs/archive/model-cad.md Phase 0).
 \
 \ Representation hiding: a report is an opaque `report` handle (DEFTYPE). Every
 \ public constructor/accessor takes or returns `report` plus primitive field
@@ -75,7 +75,7 @@ ENUM roofline
   compute
 ;ENUM
 
-\ ---- per-tensor coalescing status (CAD-PLAN 6.4 access vocabulary) ----
+\ ---- per-tensor coalescing status (docs/archive/cad-plan.md §6.4 access vocabulary) ----
 \ CO-* stay the public numeric vocabulary of the representation-hiding accessors
 \ (REPORT:HOT+ / REPORT:HOT-STATUS@ keep their n signatures); internally the hot
 \ typed status column stores a real ENUM (dot habu-cad-adt-swap, capability S1)

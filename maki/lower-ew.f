@@ -1,6 +1,6 @@
 \ maki/lower-ew.f - lower ONE elementwise fusion region to a flat PTX kernel.
 \
-\ CAD-PLAN sections 2/5/10, device leg slice 1. Given the current model-IR node
+\ docs/archive/cad-plan.md sections 2/5/10, device leg slice 1. Given the current model-IR node
 \ table (maki/model-ir.f) and its fusion plan (maki/fusion-plan.f), LEW-EMIT lowers a
 \ chosen region whose class is PURE ELEMENTWISE (relu/gelu/silu/add/mul chains only -
 \ no reductions, matmul, or movement) to the PTX SOURCE of a flat kernel over

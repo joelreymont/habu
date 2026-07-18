@@ -1,7 +1,7 @@
 \ maki/lower-mv-test.f - host-side checked tests for the movement lowering (slice 4).
 \
 \ Off-device: builds captured models, lowers a movement region to PTX text (in-process
-\ capture, src/arch/ptx/emit.f PTX-CAPTURE-ON), and asserts the two device legs of CAD-PLAN
+\ capture, src/arch/ptx/emit.f PTX-CAPTURE-ON), and asserts the two device legs of docs/archive/cad-plan.md
 \ 6.3. (A) DISSOLVED free movement folds into a compute kernel's base-pointer offset
 \ (maki/move-view.f + lower-ew/red/mm): a slice bakes `add.u64 %rdN, %rdN, r0*cols*4` before the
 \ unchanged op body; a reshape (identity flat) bakes none. (B) a MATERIALIZED movement region

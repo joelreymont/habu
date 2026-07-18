@@ -1,6 +1,6 @@
 \ maki/golden-artifact.f - external GOLDEN reference artifacts + synthetic inputs.
 \
-\ CAD-PLAN section 11: GOLDEN may compare a model's device/host output against an
+\ docs/archive/cad-plan.md section 11: GOLDEN may compare a model's device/host output against an
 \ EXTERNAL reference artifact - a saved tensor dump with a per-artifact tolerance -
 \ instead of only the self-consistency oracle (maki/golden.f). This file owns two
 \ concerns of the same "reference material" seam: (1) the deterministic synthetic
@@ -80,7 +80,7 @@ $8000 constant GA-TEXT-CAP      \ artifact text build / read buffer (bytes)
 96    constant GA-FILE-CAP      \ "<NAME>.artifact" filename buffer
 9     constant GA-DECIMALS      \ float render precision (1e-9 << f32 atol 1e-6)
 
-\ per-dtype default tolerance exponents (CAD-PLAN section 11)
+\ per-dtype default tolerance exponents (docs/archive/cad-plan.md section 11)
 -6 constant GA-F32-ATOL-EXP    -5 constant GA-F32-RTOL-EXP
 -3 constant GA-LOW-ATOL-EXP    -2 constant GA-LOW-RTOL-EXP
 

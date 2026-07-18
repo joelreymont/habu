@@ -1,6 +1,6 @@
 \ maki/fusion-plan.f - the fusion region planner (dot cad-2, traffic-only v1).
 \
-\ CAD-PLAN section 5. Deterministic greedy region growth over the model-IR node
+\ docs/archive/cad-plan.md section 5. Deterministic greedy region growth over the model-IR node
 \ table (maki/model-ir.f) in node order, guarded by the section 5.2 legality matrix
 \ AND a backend-capability gate (FP-BACKEND-EMITS?) so every planned region is
 \ lowerable-by-construction: FP-JOIN? refuses a legal-but-not-yet-emittable fusion
@@ -45,7 +45,7 @@ package CAD-NUM public
 package MAKI
 public
 
-\ ---- split reason family (CAD-PLAN 5.6 subset computable in cad-2) -----------
+\ ---- split reason family (docs/archive/cad-plan.md §5.6 subset computable in cad-2) -----------
 \ Real ENUM (width-1 layout value; dot habu-cad-adt-swap, capability S1 of
 \ habu-checker-capability-typed): the per-split reason is stored/fetched through a
 \ typed `ptr reason` slot (FP-SP-REASON-AT) and every reader dispatches with an
@@ -121,7 +121,7 @@ variable FP-BUILT?
    nd MIR-MOVE? 0= if false exit then
    nd MIR-MOVE-VERDICT@ MV-VD-REPORTS? 0= ;
 
-\ ---- legality (CAD-PLAN 5.2, restricted) -----------------------------------
+\ ---- legality (docs/archive/cad-plan.md §5.2, restricted) -----------------------------------
 \ class-pair fusability ignoring per-region budgets ( cP cK -- bool ); a dissolved
 \ movement producer is transparent (the chain reads through its index rewrite).
 : FP-BASE-FUSE? ( n n -- bool ) {: cp:n ck:n :}
@@ -134,12 +134,12 @@ variable FP-BUILT?
    cp CLASS-DECODE = if ck CLASS-EW = exit then
    false ;
 
-\ ---- backend-capability gate (CAD-PLAN 5.2) --------------------------------
+\ ---- backend-capability gate (docs/archive/cad-plan.md §5.2) --------------------------------
 \ FP-BASE-FUSE? says what is LEGAL to want; this table says what the lowering backend
 \ can actually EMIT, per (producer-class -> consumer-class). Every emittable pair is a
 \ subset of the legal ones; a legal pair the backend cannot yet emit is cleared so the
 \ planner never mints an unlowerable region (plan is lowerable-by-construction). Keeping
-\ the two matrices separate preserves the desired-fusion knowledge (CAD-PLAN 8.1 prologue
+\ the two matrices separate preserves the desired-fusion knowledge (docs/compute-campaign.md prologue
 \ lever) while matching the backend today: when the backend gains a capability, flip one
 \ bit here + add its regression, and the planner fuses it again with no legality edit.
 \

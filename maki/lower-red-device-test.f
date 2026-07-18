@@ -1,6 +1,6 @@
 \ maki/lower-red-device-test.f - the Orin device leg for the row-reduce region lowering.
 \
-\ CAD-PLAN section 11 device-vs-host GOLDEN, slice 2. For each row-reduce model (RMSNORM,
+\ docs/archive/cad-plan.md section 11 device-vs-host GOLDEN, slice 2. For each row-reduce model (RMSNORM,
 \ LAYERNORM, SOFTMAX-ROW, the GELU->RMSNORM prologue-fusion case, the BIAS/SCALE broadcast
 \ prologues, and a hand-built Rx1 column-broadcast prologue) it builds the model, fuses it,
 \ and lowers region 0 onto a REGION_0 block-per-row PTX kernel: spawn a fresh

@@ -1,6 +1,6 @@
 \ maki/golden.f - the host GOLDEN verdict: external artifact OR self-consistency.
 \
-\ GOLDEN-INTO now has TWO legs (CAD-PLAN section 11). When an external reference
+\ GOLDEN-INTO now has TWO legs (docs/archive/cad-plan.md section 11). When an external reference
 \ artifact exists for the current model (maki/golden-artifact.f), GOLDEN is a REAL
 \ output-vs-reference comparison under the artifact's per-dtype tolerance (GA-CHECK).
 \ Otherwise it falls back to the self-consistency v1 oracle this file owns: it runs the

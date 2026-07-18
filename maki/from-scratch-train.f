@@ -1,6 +1,6 @@
 \ maki/from-scratch-train.f - one host-side training step for the from-scratch flagship
 \ and the loop that drives it to convergence (dot habu-maki-from-scratch;
-\ docs/model-cad.md Phase 9b; CAD-PLAN section 12 "the training step is one plan
+\ docs/archive/model-cad.md Phase 9b; docs/archive/cad-plan.md section 12 "the training step is one plan
 \ unit").
 \
 \ Composes the LANDED machinery over the windowed MLP (maki/from-scratch-model.f):

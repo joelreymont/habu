@@ -1,6 +1,6 @@
 \ maki/lower-red.f - lower ONE row-reduce fusion region to a block-per-row PTX kernel.
 \
-\ CAD-PLAN sections 5/11, device leg slice 2. The reduction dual of maki/lower-ew.f.
+\ docs/archive/cad-plan.md sections 5/11, device leg slice 2. The reduction dual of maki/lower-ew.f.
 \ Given the model-IR node table (maki/model-ir.f) and its fusion plan (maki/fusion-plan.f),
 \ LRED-EMIT lowers a region whose class mix is ROW-REDUCE (optionally with LEADING
 \ elementwise PROLOGUE ops and/or TRAILING elementwise EPILOGUE ops fused around the

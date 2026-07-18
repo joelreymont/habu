@@ -1,4 +1,4 @@
-\ maki/adjoint.f - the model-op adjoint registry (CAD-PLAN section 12, dot cad-9a).
+\ maki/adjoint.f - the model-op adjoint registry (docs/archive/cad-plan.md section 12, dot cad-9a).
 \
 \ Per op-kind, the FACTS the model-IR reverse transform (maki/backward.f) needs to
 \ emit a backward region: the adjoint id (also written into the op-registry vjp

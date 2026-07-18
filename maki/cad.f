@@ -1,6 +1,6 @@
 \ maki/cad.f - Model CAD REPL commands + checked MODEL: capture (dot cad-1).
 \
-\ MODEL: is a package-scoped colon definer (CAD-PLAN section 3). It does NOT parse op
+\ MODEL: is a package-scoped colon definer (docs/archive/cad-plan.md section 3). It does NOT parse op
 \ tokens against a table, nor drive a per-token capture engine: it TRANSLATES the model
 \ body into an ordinary checked ": ( tensor ... -- tensor ) ... ;" definition over the
 \ named planning vocabulary (maki/plan-vocab.f, package PLAN), then a single nested
@@ -22,7 +22,7 @@
 \ Surface (single line):  MODEL: NAME ( x:RxC w:RxC ... -- y ) OP OP ... ;
 \ Inputs are declared with shapes; the first is the running "current" tensor and
 \ each op consumes it plus (arity-1) further declared inputs as parameters. Shapes
-\ bind now (the OPTIMIZE-time shape binding of docs/model-cad.md is a later dot);
+\ bind now (the OPTIMIZE-time shape binding of docs/archive/model-cad.md is a later dot);
 \ an unbound extent may be written 0 and renders "?".
 \
 \ Named value references (v1 DAG seam) - a body may NAME a value and reference it as
@@ -627,7 +627,7 @@ private
 \ ---- OPTIMIZE-time shape re-propagation over the committed IR node table -----
 \ Each node's output extents are a pure function of its operands' CURRENT extents
 \ and its op class - the plan-ops.f inference rules re-expressed over IR nodes so a
-\ rebind updates the whole downstream cone (CAD-PLAN section 13). Elementwise and
+\ rebind updates the whole downstream cone (docs/archive/cad-plan.md section 13). Elementwise and
 \ row-reduce forward ops keep the data operand's shape; matmul/linear take rows from
 \ the data operand and cols from the weight (inner dim must agree); each movement op
 \ recomputes its extents from its attrs and re-derives its dissolution verdict.
@@ -1056,7 +1056,7 @@ private
 : GATE-RECORDED? ( report n -- report bool )   \ a recorded verdict (any legal tag)
    over swap REPORT:GATE-TAG@ dup 0 >= swap V-N < and ;
 
-\ PROMOTE gate set (docs/model-cad.md Phase 7 / CAD-PLAN, cad-7 UPDATE fold):
+\ PROMOTE gate set (docs/archive/model-cad.md Phase 7 / docs/archive/cad-plan.md, cad-7 UPDATE fold):
 \ a model promotes when CERTIFY passes AND GOLDEN passes AND GRADCHECK did not
 \ FAIL. GRADCHECK not-run (the model has no host-differentiable backward - cast /
 \ decode) clears the gate exactly like a pass; only a real gradient mismatch

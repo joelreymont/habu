@@ -1,13 +1,13 @@
 \ maki/plan-ops.f - the descriptor-mode planning vocabulary for the full op set.
 \
-\ CAD-PLAN section 3: a model word is ordinary checked Forth executed against a
+\ docs/archive/cad-plan.md section 3: a model word is ordinary checked Forth executed against a
 \ planning vocabulary - the ops append IR records over tensor DESCRIPTORS instead
 \ of computing. maki/tensor-value.f already carries the plan store (PLAN-OP-BEGIN /
 \ PLAN-IN+ / PLAN-OP+) and PLINEAR/PGELU; this file adds the rest of the op set as
 \ PARAMETRIC appenders (op-kind is an argument), so one word covers every op of a
 \ given arity/class and MODEL: capture (maki/cad.f) dispatches to them.
 \
-\ Output descriptor facts are inferred and recorded (CAD-PLAN 4.1): elementwise
+\ Output descriptor facts are inferred and recorded (docs/archive/cad-plan.md §4.1): elementwise
 \ ops keep the data operand's shape/dtype/layout; matmul/linear take rows from the
 \ data operand and cols from the weight and fail closed on an inner-dim mismatch
 \ (E-TV-SHAPE). Each appender returns the output descriptor so the words compose.

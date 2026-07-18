@@ -1,6 +1,6 @@
 \ maki/precision.f - gate-licensed precision classes + per-class tolerance rows.
 \
-\ CAD-PLAN 8.1 lever 5 ("precision policy LICENSED by the gates") + section 11.
+\ docs/compute-campaign.md lever 5 ("precision policy LICENSED by the gates") + section 11.
 \ Precision is NEVER a global flag: PREC! records a REQUESTED precision for one
 \ op-registry region class, maki/lower-golden.f judges that class's golden under
 \ the requested precision's tolerance row, and the LICENSE is the passing golden
@@ -8,7 +8,7 @@
 \
 \ Tolerance rows are (atol, rtol) pairs stored as mantissa*10^exp integers
 \ (POW10 renders the floats; no float memory needed):
-\   f32 (the lower-golden slice 1-4 derivations, CAD-PLAN section 11):
+\   f32 (the lower-golden slice 1-4 derivations, docs/archive/cad-plan.md section 11):
 \     elementwise 1e-6/1e-5, row-reduce 1e-6/1e-4, matmul 1e-6/1e-4,
 \     movement 1e-6/1e-6 (NUM-EXACT copy).
 \   tf32 (matmul class ONLY): atol 1e-6, rtol 2e-3. Derivation: TF32 keeps a

@@ -1,6 +1,6 @@
 \ gemm-bench.f - measure NAIVE vs REGISTER-BLOCKED SGEMM on square GEMMs (CUDA events).
 \
-\ CAD-PLAN 8.1 step 1: the FIRST measured GEMM baseline. Two kernels, same ABI
+\ docs/compute-campaign.md step 1: the FIRST measured GEMM baseline. Two kernels, same ABI
 \ (pA,pB,pC,pM,pN,pK), each emitted once (M/N/K are runtime params), ptxas-assembled,
 \ then timed per shape with CUDA events (tools/ptx/bench.f PTXBENCH, extended with the
 \ 2D block/grid the tiles need) and reported as GFLOP/s (2*M*N*K flops per launch):

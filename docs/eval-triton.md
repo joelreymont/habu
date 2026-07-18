@@ -192,7 +192,7 @@ not raw single-kernel speed, is the performance argument for the checked target.
 The plan to contest the compute-bound column (tensor-core MMA, cp.async
 stages, persistent content-keyed autotuning vs Triton's per-process JIT tuning,
 fusion depth, PROMOTE-owned layout, launch amortization, gate-licensed
-precision) is CAD-PLAN 8.1; this doc stays the measured record.
+precision) is docs/compute-campaign.md; this doc stays the measured record.
 
 **Earned claim:** in this measured SAXPY/softmax slice, a checked stack-effect
 target **shifts the stack-discipline error class left to author time** — caught
@@ -294,7 +294,7 @@ corrected `ROW-STORE` prompt.
 
 ## GEMM: the FIRST measured compute-bound column (2026-07-04)
 
-CAD-PLAN 8.1 step 1. The compute-bound contest starts here: square fp32 GEMMs
+docs/compute-campaign.md step 1. The compute-bound contest starts here: square fp32 GEMMs
 C = A·B at 512, 1024, and 2048, all three columns measured **in the same session
 on the same Orin** (JetPack 6.2.1, sm_87, torch 2.9.1+cu126 / triton 3.5.1 per
 the install recipe above).
@@ -359,7 +359,7 @@ Triton GEMM 2048x2048x2048 iters=30  time_ms=272.6 GFLOP/s=1890.5 max_abs_err=1.
   with tile size" verification, now measured with in-tree tools.
 - **This is our v1 register-blocked tile vs their autotuned kernel — honest gap
   4.6–5.0×.** The Habu side has NO tensor-core MMA and NO cp.async multi-stage
-  pipelining yet (the CAD-PLAN 8.1 steps that follow this baseline): bk=16
+  pipelining yet (the docs/compute-campaign.md steps that follow this baseline): bk=16
   staging, scalar `ld.shared`, single stage. The Triton side autotunes 8 configs
   and its `tl.dot` lowers to **TF32 tensor cores** on sm_87 — the measured
   `rel_err ~7.8e-4` against a CPU f32 reference is TF32-level precision (a pure
@@ -369,7 +369,7 @@ Triton GEMM 2048x2048x2048 iters=30  time_ms=272.6 GFLOP/s=1890.5 max_abs_err=1.
 - These absolute numbers supersede the older 15 W notes in `lib/ptx/cg-matmul.f`
   (~77 naive / ~283 blocked / ~1474 Triton): this session's device power state is
   higher; all three columns above are same-session, same-protocol.
-- Next levers, in CAD-PLAN 8.1 order: `cp.async` multi-stage staging (the
+- Next levers, in docs/compute-campaign.md order: `cp.async` multi-stage staging (the
   schedule family already carries `stages`), wider bk (family floor 32 vs the
   reused kernel's 16), vectorized `ld.shared.v4`, then the `mma.sync` TF32 family
   itself — with the precision *licensed* by the golden gate rather than assumed.
@@ -508,7 +508,7 @@ for S, iters in [(512, 200), (1024, 80), (2048, 30)]:
 
 ## GEMM step 2: pipelining the blocked tile (2026-07-05)
 
-CAD-PLAN 8.1 step 2. Same device, same protocol, same shapes as the step-1
+docs/compute-campaign.md step 2. Same device, same protocol, same shapes as the step-1
 baseline above (fp32 `C = A·B`, CUDA-event timing, one warmup, ITERS 200, 80,
 30 at 512, 1024, 2048, A = B = 1.0). Pure f32 throughout — **no precision
 change** (the device goldens still gate `fma.rn.f32` at rtol 1e-4; TF32/MMA is
@@ -579,7 +579,7 @@ GEMM 2048x2048x2048 iters=30   GFLOP/s_x1000=441801
 
 ## GEMM step 3: TF32 tensor-core `mma.sync` micro-tile (2026-07-05)
 
-CAD-PLAN 8.1 step 3. The FP32 CUDA-core roof (~940 GFLOP/s) caps the `fma.rn.f32`
+docs/compute-campaign.md step 3. The FP32 CUDA-core roof (~940 GFLOP/s) caps the `fma.rn.f32`
 tile (step 2 topped at 442); TF32 tensor cores sit on a *higher* roof, so the
 step-3 lever is `mma.sync`, not more SIMT tiling. Same device / protocol / shapes.
 

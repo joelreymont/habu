@@ -3,7 +3,7 @@
 What maki and the PTX backend are missing to express an indexed (gathered)
 GEMM and lower it through Blackwell's TMA engine — with the stride-legality
 class of `docs/case-tma-stride.md` made unrepresentable. Extends the §8.1
-compute-bound campaign (CAD-PLAN.md) from Orin/sm_87 to a second process
+compute-bound campaign (docs/archive/cad-plan.md) from Orin/sm_87 to a second process
 target; nothing here disturbs the sm_87 sequencing.
 
 The one-sentence position: **gather is a movement plan, not syntax.** The

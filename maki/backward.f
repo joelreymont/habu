@@ -1,4 +1,4 @@
-\ maki/backward.f - the model-IR reverse transform (CAD-PLAN section 12, dot cad-9b).
+\ maki/backward.f - the model-IR reverse transform (docs/archive/cad-plan.md section 12, dot cad-9b).
 \
 \ VJP substitution over the model IR: given a captured forward node table
 \ (maki/model-ir.f, after MODEL: capture), walk the forward nodes in REVERSE and

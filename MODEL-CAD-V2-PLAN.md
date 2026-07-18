@@ -7,8 +7,11 @@ artifact database, incremental build/test architecture, migration, and retiremen
 of V1 singleton state.
 
 This plan supersedes the implementation architecture in CAD-PLAN.md and
-docs/model-cad.md. Their product goals, device measurements, and validated
-workloads remain inputs unless explicitly replaced here.
+docs/archive/model-cad.md, both now archived (`docs/archive/cad-plan.md`,
+`docs/archive/model-cad.md`) as of 2026-07-18. Their product goals, device
+measurements, and validated workloads remain inputs unless explicitly replaced
+here; the living compute-bound measured record (formerly CAD-PLAN §8.1) now
+lives in `docs/compute-campaign.md`.
 
 ## 1. Mission
 

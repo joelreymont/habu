@@ -34,7 +34,6 @@ points stay listed.
 - `docs/case-tma-stride.md` — Triton #10927 case: silent TMA stride-misalignment corruption; the motivating design-rule case.
 - `docs/tma-gather.md` — gathered GEMM + TMA movement-plan design: planner-owned gather lowerings, emitter surface, legality rules, sm_121a target.
 - `docs/golden-syntax.md` — golden-authoring syntax exploration: extent-typed tensor accessors and the spec word.
-- `docs/size-review.md` — size review at 003dfbf2: ranked removal/consolidation findings.
 - `docs/seed.md` — native seed trust root and no-binary recovery.
 - `docs/typed-top-level.md` — checker-modeled typed top level design (top-row
   tracker, xt<effect> typing, adoption tiers) plus the parametric-cell V2
@@ -1249,7 +1248,7 @@ points stay listed.
   spawns the env child — proving envelope identity and the transaction Merkle base
   survive process death under the 32-byte content-key wire forms.
 - `maki/numpolicy.f` — the typed numeric-policy proof-domain family (`NPOL:dom` =
-  exact/ulp/relative/empirical, CAD-PLAN §22.6): the strength lattice
+  exact/ulp/relative/empirical, MODEL-CAD-V2-PLAN.md §22.6): the strength lattice
   (`RANK`/`SATISFIES?`/`COMPOSE` weakest-wins), the checked satisfaction gate
   `ENFORCE` (E-NPOL-APPROX: approximate evidence cannot satisfy a stricter policy),
   the key token `NAME`, the `DOM>N`/`N>DOM` wire projection, and the

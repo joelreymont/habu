@@ -1,4 +1,4 @@
-\ maki/plan-vocab-test.f - CAD-PLAN section 3 over the NAMED planning vocabulary (maki/plan-vocab.f).
+\ maki/plan-vocab-test.f - docs/archive/cad-plan.md section 3 over the NAMED planning vocabulary (maki/plan-vocab.f).
 \
 \ maki/plan-compose-test.f proved the section-3 form using the PARAMETRIC appenders (op-kind
 \ threaded as an OP-* argument). This file proves the SAME thing over the named vocabulary: a

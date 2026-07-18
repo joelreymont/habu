@@ -1,6 +1,6 @@
 \ maki/lower-mm.f - lower ONE matmul/linear fusion region to a tiled-GEMM PTX kernel.
 \
-\ CAD-PLAN sections 5/8/11, device leg slice 3. The contraction dual of maki/lower-ew.f
+\ docs/archive/cad-plan.md sections 5/8/11, device leg slice 3. The contraction dual of maki/lower-ew.f
 \ and maki/lower-red.f. Given the model-IR node table (maki/model-ir.f) and its fusion
 \ plan (maki/fusion-plan.f), LMM-EMIT lowers a region whose class mix is MATMUL (with an
 \ optional TRAILING elementwise EPILOGUE fused after the single contraction - exactly what

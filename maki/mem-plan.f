@@ -1,6 +1,6 @@
 \ maki/mem-plan.f - per-tensor memory access facts + coalescing classifier (cad-3).
 \
-\ CAD-PLAN section 6. After the fusion planner assigns regions and materialization
+\ docs/archive/cad-plan.md section 6. After the fusion planner assigns regions and materialization
 \ flags (maki/fusion-plan.f FP-BUILD), every tensor that touches GLOBAL memory is
 \ either a model INPUT read or a materialized node WRITE; interior fused tensors
 \ never leave registers, so they carry no memory row. This file classifies each such
@@ -10,11 +10,11 @@
 \ One concern: access classification + its report rows (no region growth, no traffic
 \ bytes - those are maki/fusion-plan.f and maki/traffic.f).
 \
-\ Facts are recorded, never assumed (CAD-PLAN 4.1). A model input carries the base
+\ Facts are recorded, never assumed (docs/archive/cad-plan.md §4.1). A model input carries the base
 \ alignment CLASS recorded on its IR slot (AL-UNKNOWN until a bound buffer records a
 \ real one, so the report says "unknown -> scalar" honestly). Buffers the compiler
 \ allocates (fusion intermediates + materialized output writes) are aligned by
-\ construction, so a write is classified at AL-16 (CAD-PLAN 6.4: coalesced-v4 store).
+\ construction, so a write is classified at AL-16 (docs/archive/cad-plan.md §6.4: coalesced-v4 store).
 \
 \ Vector width (6.2.2): largest w in {4,2,1} with alignment >= w*esize (esize from the
 \ dtype table), unit stride (v1: LAY-ROW contiguous innermost), and extent >= w; a

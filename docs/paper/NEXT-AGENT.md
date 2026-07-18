@@ -7,7 +7,7 @@ running in-tree gate/test; NEVER name the private application project
 (NVIDIA model workloads are citable); keep the Moore/OKAD lineage framing
 consistent with README.md + docs/positioning.md.
 
-## Blocked on CAD-PLAN 8.1 results (do NOT write before measuring)
+## Blocked on docs/compute-campaign.md results (do NOT write before measuring)
 1. Section 7 (Performance, compute-bound): run the 8.1 sequence on zed -
    roofline microbenches, GEMM-vs-Triton baseline (extend the
    docs/eval-triton.md protocol + reproduction scripts), cp.async stages,
@@ -51,7 +51,7 @@ consistent with README.md + docs/positioning.md.
    docs/eval-triton.md (worked fused kernel listing K ... ;), lib/ptx
    module convention (one .version, N entries - tools/ptx/saxpy-test.f
    PTXT-COUNT regression), checker-miss RCA discipline (CLAUDE.md).
-4. Section 5 (Model CAD): CAD-PLAN.md + docs/model-cad.md; the FFN demo
+4. Section 5 (Model CAD): docs/archive/cad-plan.md + docs/archive/model-cad.md; the FFN demo
    numbers (maki/demo-ffn-test.f: regions 3, bytes 3040->2272, splits);
    named refs/true skip (maki/cad-ref-test.f, FFN-SKIP node.3.in "n2 i0");
    the four lowering slices (dot habu-maki-lower-tensor SLICE 1-4 entries);

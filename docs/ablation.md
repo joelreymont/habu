@@ -89,7 +89,7 @@ test: ok
 ## Pending rows and their blockers
 
 - **2a predicted-vs-measured traffic**, **2b latency**: need on-device timing / measured
-  GB/s — pending the bench harness (the fenced `tools/ptx/bench.f` lane + CAD-PLAN 8.1
+  GB/s — pending the bench harness (the fenced `tools/ptx/bench.f` lane + docs/compute-campaign.md
   PROFILE/roofline).
 - **6 persistent tuning** (time-to-first-correct vs Triton JIT warmup): pending cad-6.
 - **8 schedule tuned-vs-default deltas**: pending cad-6 tuner output.

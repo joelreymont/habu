@@ -1,6 +1,6 @@
 \ maki/lower-launch.f - upload/launch/readback for one lowered fusion region.
 \
-\ CAD-PLAN section 2 (PTX -> cubin -> launch), device legs slice 1 (elementwise),
+\ docs/archive/cad-plan.md section 2 (PTX -> cubin -> launch), device legs slice 1 (elementwise),
 \ slice 2 (row-reduce), and slice 3 (matmul/linear). Given a region already analyzed by its owning lowering pass and
 \ a cubin assembled from its REGION_<rid> kernel, the RUN word drives the launch: pack
 \ each region input's synthetic host buffer (GA-IN-PTR, the executor's bound buffer after

@@ -2,7 +2,7 @@
 \
 \ A movement node (CLASS-MOVEMENT) is not a kernel; it is a layout REWRITE the
 \ planner either dissolves into index arithmetic or converts into an explicit
-\ materialization (CAD-PLAN 6.3). This file owns the two facts a movement node
+\ materialization (docs/archive/cad-plan.md §6.3). This file owns the two facts a movement node
 \ records in its IR attrs cell - the compact TRANSFORM tag + PARAMETERS, and the
 \ dissolution VERDICT - plus the pure classifier that derives the verdict from the
 \ recorded facts. model-ir.f reads these back per node; plan-ops.f packs them at
@@ -39,7 +39,7 @@ public
 4 constant MV-GATHER
 5 constant MV-TF-N
 
-\ ---- dissolution verdicts (CAD-PLAN 6.3) -----------------------------------
+\ ---- dissolution verdicts (docs/archive/cad-plan.md §6.3) -----------------------------------
 0 constant MVV-FREE          \ stride/offset rewrite: reshape on contiguous, slice aligned
 1 constant MVV-STAGED        \ transpose: dissolves into lane mapping inside a staged region
 2 constant MVV-MATERIALIZE   \ concat (v1) / slice unaligned / reshape non-contiguous
