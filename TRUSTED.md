@@ -286,6 +286,7 @@ that source is explicitly certified; they are not stale-checked by the default
 | CFIELD: | `ptr a n -- ptr a n` | Byte field definer preserves the layout cursor while creating a byte-pointer accessor; `CREATE`/`DOES>` keeps this as a trusted defining boundary. | `test/gate-dictionary.f`, `lib/vector-test.f`, `test/run.f` | src/core/structures-effects.f | 2026-06-30 |
 | END-STRUCTURE | `ptr a n --` | Sealing a structure consumes the layout cursor and writes the final byte size into the created size word. | `test/gate-dictionary.f`, `lib/vector-test.f`, `test/run.f` | src/core/structures-effects.f | 2026-06-30 |
 | DTC-EVAL | `--` | Audited `evaluate` wrapper for `deftype`: compiles the constructed `TRUSTED: >NAME ( n -- NAME ) ;` / `NAME>N` converter shapes so a user-declared nominal integer gets its explicit no-op identity casts. `evaluate` cannot be checker-typed; each generated converter is a proven identity, so this single boundary covers every deftype-derived pair. | `test/engine-suite.f`, `test/run.f` | src/core/roles.f | 2026-07-03 |
+| NG-EVAL | `--` | Audited `evaluate` wrapper for `NOMINAL:`: compiles each generated `TRUSTED: >NAME ( n -- tail ) ;` / `NAME>N` value-nominal converter so the check hook certifies it. `evaluate` cannot be checker-typed; each generated body is a proven no-op identity cast, so this single boundary covers every declaration-derived converter pair (the src/core/roles.f DTC-EVAL / maki/extent.f XG-EVAL pattern). | `test/value-nominal-suite.f`, `test/run.f` | lib/type/value-nominal.f | 2026-07-18 |
 | >IDX | `n -- idx` | Runtime identity cast from a generic cell to the nominal index role; the checker cannot infer nominal role refinement from an empty body. | `test/gate-engine.f`, `test/run.f` | src/core/roles.f | 2026-06-26 |
 | IDX>N | `idx -- n` | Runtime identity cast from the nominal index role back to a generic cell; the checker cannot infer nominal role erasure from an empty body. | `test/gate-engine.f`, `test/run.f` | src/core/roles.f | 2026-06-26 |
 | >LEN | `n -- len` | Runtime identity cast from a generic cell to the nominal length role; the checker cannot infer nominal role refinement from an empty body. | `test/gate-engine.f`, `test/run.f` | src/core/roles.f | 2026-06-26 |
@@ -1377,6 +1378,7 @@ maki/cad.f:CAP-COMPILE-RUN test-metaprog habu-primitive-effect-axiom-1119f176
 maki/eval/eval.f:CHECK-PASSES? test-metaprog habu-primitive-effect-axiom-1119f176
 maki/extent.f:IX>N prim-axiom habu-primitive-effect-axiom-1119f176
 maki/extent.f:XG-EVAL prim-axiom habu-primitive-effect-axiom-1119f176
+lib/type/value-nominal.f:NG-EVAL prim-axiom habu-primitive-effect-axiom-1119f176
 maki/fusion-plan.f:RAW>RGN prim-axiom habu-epic-model-cad-70b629a9
 maki/fusion-plan.f:RGN>RAW prim-axiom habu-epic-model-cad-70b629a9
 maki/model-ir.f:RAW>NODE prim-axiom habu-epic-model-cad-70b629a9

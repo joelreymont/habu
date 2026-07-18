@@ -1686,6 +1686,7 @@ points stay listed.
 - `lib/json-read-test.f` — focused coverage for JSON parser tokens, escapes, structure, errors, and round-trip.
 - `lib/memory.f` — checked OS-backed byte buffer allocation helpers.
 - `lib/memory-test.f` — focused coverage for memory allocation and 64K buffer spans.
+- `lib/type/value-nominal.f` — the `NOMINAL:` declaration surface for value-nominal integer types: mints a package-scoped arity-0 type-family nominal plus its generated `>NAME`/`NAME>N` converter pair (TFAM substrate; docs/value-nominal-substrate.md).
 - `lib/vector.f` — checked growable cell-vector helpers backed by OS memory.
 - `lib/vector-test.f` — focused coverage for vector growth, bounds, typed pointer storage, and iteration.
 - `lib/layout/box.f` — boxed-layout record arena (TFAM 16): bump-allocated tag+payload heap records over the mmap allocator, arena free-all ownership.
@@ -2054,6 +2055,8 @@ points stay listed.
 - `test/type-decl-suite.f` — behavior suite for the TYPEFAMILY/SUMTYPE declaration grammar (positives, negatives, rollback, multi-error, diagnostics).
 - `test/type-nominal-suite.f` — behavior contract for declarable nominal integer types (DEFTYPE roles): same-role accept, other-role/generic-int reject, explicit converters, rollback transactionality, snapshot persistence.
 - `test/type-nominal-dup-bad.f` — child-process negative fixture: a duplicate nominal declaration is refused fail-closed (exit 70, "bad or duplicate signature type").
+- `test/value-nominal-suite.f` — behavior contract for the `NOMINAL:` surface (lib/type/value-nominal.f): same-nominal accept, other-nominal/generic-int reject, explicit converters, converter no-launder, demanded-input direction, and package scoping (same name in two packages stays distinct).
+- `test/value-nominal-dup-bad.f` — child-process negative fixture: a duplicate `NOMINAL:` in one package is refused fail-closed (exit 67, "duplicate family").
 - `test/type-ctor-suite.f` — behavior suite for generated sum constructors (arity-0 publication, payload rejects, parametric/linear gating, package restore).
 - `test/type-linear-suite.f` — whole-bundle linear accounting suite (linear construction/minting/flow accepts; copy/drop/transport/local/unconsumed rejects).
 - `test/type-match-suite.f` — checked MATCH eliminator suite (exhaustiveness, payload refinement, branch joins, linear consumption, depth fail-closure, scope, CASE-interleave pins).

@@ -365,6 +365,20 @@ fits.
   package-scoping is a con-resolution-path change, not "declarability". Three nominal
   substrates coexist (CT role / TFAM arity-0 / extent-atom); which one `EXTENT:`
   mints on is a design decision, not settled by declarability existing.
+- **The `NOMINAL:` value-nominal surface rides TFAM arity-0, not the CT-role
+  package-scoping restructure (`habu-foundation-a1b`).** Probed: a bare arity-0
+  `TYPEFAMILY` tail resolves as a standalone scalar signature type with the exact
+  DEFTYPE strictness (same-nominal accept; vs-`n` reject both ways; cross-nominal
+  reject; converters the only crossing), AND it is package-scoped for free
+  (records key on (package,tail)) — two packages both `NOMINAL: SERIAL` stay
+  distinct, where two `DEFTYPE SERIAL` hard-die (70). So value nominals need **no**
+  `CT-FIND`/`CON-OF` engine change: `lib/type/value-nominal.f` mints an arity-0
+  family with `CHECKER-DEFFAMILY` (fails closed on dup/reserved tail: E-TFAM-DUP /
+  7110, exit 67) and generates the `>NAME`/`NAME>N` identity casts through one
+  audited `evaluate` (`NG-EVAL`, the roles.f `DTC-EVAL` / extent.f `XG-EVAL`
+  pattern). A1b is obviated for value nominals. Keep the declarer a single global
+  keyword (core language surface, like DEFTYPE/ENUM) with all helpers in a package;
+  a package-public declarer would force `PKG:` qualified calls.
 - **A multi-cell PRODUCT / wide value (tagged sum with payload) cannot be a typed
   LOCAL nor a polymorphic sum/`result`/`option` payload param — only single-cell
   types (arity-0 `TYPEFAMILY`, payloadless `ENUM`) can.** `{: d:content-digest :}`
@@ -752,6 +766,27 @@ fits.
 
 ## Gate Harness, Scheduling & Caching
 
+- **A new file / TRUSTED word / candidate case each trips a specific manifest the
+  focused suite never shows — only `test/run.f` does.** (1) A **flat `lib/*.f`**
+  must have a `lib/std.manifest` module row (`stdlib-manifest-test`: "missing
+  module row"); a **subdir** `lib/<sub>/*.f` is outside the flat-stdlib walk
+  (`SMT-FLAT-LIB-FILE?` = exactly one `/`), so type-surface libs like extents and
+  value nominals live in a subdir (`lib/type/…`) to avoid the word-row/doc/drift
+  contract, matching maki/ precedent. (2) A new **`TRUSTED:`** word needs BOTH a
+  `TRUSTED.md` markdown table row (`trust-lint`: "UNMANIFESTED … no TRUSTED.md
+  row") AND a per-site line in the `<!-- trusted-inventory-classes -->` block
+  (`trusted-inventory` ratchet) — mirror the nearest sibling's class/dot
+  (`prim-axiom …`). (3) New **`test/candidate-validation.f`** cases must bump the
+  whitebox counts in `test/candidate-validation-test.f` (`s" test/` total, and the
+  `construct case-kind positive|negative` counts) and add PATH-PIN + DIRECT-PIN
+  rows. (4) Any walked-root `.f` (src/tools/test/lib/bootstrap) needs a
+  `FILEMAP.md` row (`filemap-lint`). Run `test/run.f` before claiming green; a
+  clean focused suite hides all four.
+- **The tail-ratchet asserts EXACT child-process counts AND elapsed ≤ budget
+  (`PROCESS-NOMINAL-MS` 10000 × PERF-MS).** An elapsed-only overshoot with no
+  child-count delta (e.g. 10099/10000) is machine-load noise, not your change —
+  the counts prove your work isn't in that timed group; re-run to confirm it
+  clears.
 - **Full-DAG timing beats isolated wins; every focused optimization must survive the whole
   command under contention.** Splitting suites, per-phase forks, higher nested pools, and
   preloading shared setup all passed focused probes but regressed the full gate — record reverted
