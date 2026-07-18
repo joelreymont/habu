@@ -31,6 +31,9 @@ points stay listed.
 - `docs/inference.md` — Habu→PTX local type inference: infer bodies, annotate the contract edge.
 - `docs/autograd.md` — Habu→PTX reverse-mode autograd: AD as a syntactic reversal; verified gradients.
 - `docs/eval-triton.md` — eval matrix: checked Habu-PTX vs real Triton on the Orin (install, reproduction, results).
+- `docs/case-tma-stride.md` — Triton #10927 case: silent TMA stride-misalignment corruption; the motivating design-rule case.
+- `docs/tma-gather.md` — gathered GEMM + TMA movement-plan design: planner-owned gather lowerings, emitter surface, legality rules, sm_121a target.
+- `docs/golden-syntax.md` — golden-authoring syntax exploration: extent-typed tensor accessors and the spec word.
 - `docs/seed.md` — native seed trust root and no-binary recovery.
 - `docs/typed-top-level.md` — checker-modeled typed top level design (top-row
   tracker, xt<effect> typing, adoption tiers) plus the parametric-cell V2

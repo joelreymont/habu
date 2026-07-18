@@ -430,6 +430,11 @@ the pure compute roof (tensor cores are tensor cores), win on everything
 around it — fusion depth, zero-warmup replay, layout ownership, launch count —
 which is where end-to-end latency lives.
 
+Blackwell extension (second process target, does not disturb the sm_87
+sequencing): gathered GEMM + TMA movement plans on the DGX Spark GB10
+(sm_121a) — design in `docs/tma-gather.md`, motivating silent-corruption case
+in `docs/case-tma-stride.md`.
+
 ## 9. Cost model and calibration
 
 - **Bytes:** per region, unique global reads + writes after fusion, with
