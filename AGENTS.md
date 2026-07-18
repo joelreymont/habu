@@ -39,6 +39,15 @@ current verification state lives in `STATUS.md`.
   shaving, long-term-correct only. Substandard work goes back to the worker
   or a fresh lane — it does not merge.
 
+## Human English (BLOCKING)
+
+- Write updates, reports, dot descriptions, and docs in plain English:
+  ordinary sentences a newcomer could follow. No invented jargon, no
+  compressed codewords, no letter-soup shorthand. Name a thing by what it
+  does, spell out an abbreviation the first time it appears, and prefer "the
+  test suite failed on X" over internal slang. Code identifiers stay exact;
+  the prose around them must read like human writing.
+
 ## Conventions
 
 - **Project-defined Forth words are UPPER-CASE; built-ins stay as-is/lower-case.**

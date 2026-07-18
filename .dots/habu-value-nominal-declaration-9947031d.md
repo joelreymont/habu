@@ -1,0 +1,9 @@
+---
+title: Value-nominal declaration surface (ergonomics)
+status: open
+priority: 2
+issue-type: task
+created-at: "2026-07-18T18:46:09.678300+02:00"
+---
+
+Joel wants the MISSING.md Foundation A ergonomic prize as a near-term deliverable, not a contingency: application code declares its own distinct integer types - a camera serial, a frame index, an exposure time - with one readable line in the unified type DSL, and the checker keeps them apart. What exists today: DEFTYPE (roles.f) mints a distinct checker role with auto converters, locked by test/type-nominal-suite.f, but it is a bare word, not the DSL surface, and its names are global (two packages declaring the same name collide, exit 70). What this dot delivers: (1) the declaration surface - a readable DSL form for value nominals, designed to sit beside STRUCTURE/ENUM; (2) the substrate decision for VALUE nominals specifically: extend DEFTYPE with package-scoped name resolution (that path is habu-foundation-a1b-pkg-6692f4e3, the CON-OF/CT-FIND restructure) OR build value nominals on TFAM arity-0 families (already package-scoped) plus generated converter words - decide with probes, record why; (3) converters and strictness exactly as the suite locks them: distinct from n and from every other nominal, explicit conversion only; (4) tests: a two-package fixture proving same-name nominals in different packages stay distinct, plus the usual negative fixtures; (5) fixpoint + full gate. The measure of done from MISSING.md: count the explicit integer conversions in application source before and after. Coordinate with the live band lane (type-family.f is owned by habu-protect-type-field-04d91409 until it lands) and the extent work (extents are phantom TFAM families per docs/extent-substrate.md; this dot is about VALUE-carrying nominals).
