@@ -267,7 +267,8 @@ variable SS-ERR-U
 : SS-ALLOWED? ( ptr u8 n -- bool )
    SS-REL
    2dup s" STATUS.md" LINT-STR= IF 2drop SS-TRUE exit THEN
-   s" LESSONS.md" LINT-STR= ;
+   2dup s" LESSONS.md" LINT-STR= IF 2drop SS-TRUE exit THEN
+   s" docs/archive/lessons-" LINT-STARTS-WITH? ;
 
 : SS-SKIP-PATH? ( ptr u8 n -- bool )
    SS-REL

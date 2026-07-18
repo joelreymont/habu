@@ -48,7 +48,8 @@ Host-script workflow hooks: retired and gated
 This is the single source of truth for the self-check counts. Other docs
 (`README.md`) point here instead of quoting a number — see
 `tools/stale-status-lint.f`, which fails the gate if a count-shaped string
-reappears outside this file and `LESSONS.md` (the historical log).
+reappears outside this file, `LESSONS.md`, and the archived lesson logs
+(`docs/archive/lessons-*.md`, the relocated historical log).
 
 The native engine type-checks its own toolchain source (`src/`) as it compiles
 it. "Certified" = body inferred and (where a signature is declared) verified
