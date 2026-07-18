@@ -1501,3 +1501,10 @@ fits.
 - Confirm an adversarial rejects for the RIGHT reason (dump the diagnostic):
   slice-3's linear-payload reject was a false negative — `own` was an UNKNOWN
   type in that suite, not a linear violation.
+- Delete bookmarks BY NAME only (`jj bookmark delete <name>`), never with a
+  broad `--deleted` push sweep, and inspect a conflicted bookmark's heads
+  before dropping it: `sol-fields-add-shared` held a real unmerged engine
+  commit (option promotion) that a blind cleanup would have discarded, while
+  `maki-layout-valid` held only stale snapshots of work already on master.
+  Diff each head against its parent and check the touched files exist on
+  master before deciding recover-vs-drop.
