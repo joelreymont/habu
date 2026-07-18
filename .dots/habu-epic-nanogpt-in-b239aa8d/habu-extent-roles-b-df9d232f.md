@@ -5,7 +5,6 @@ priority: 2
 issue-type: task
 created-at: "2026-07-18T17:36:22.580117+02:00"
 blocks:
-  - habu-foundation-a1-declarable-98aebe7b
   - habu-extent-typed-tensor-bde435dc
   - habu-spec-word-generating-0729fbea
   - habu-extent-role-product-8e364885
