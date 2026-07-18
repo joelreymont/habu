@@ -29,3 +29,16 @@ single-buffer DYNAMIC 50176B): 3026.6 GFLOP/s = 1.60x Triton at
 (multiples of 4 only - emitter fail-closes otherwise); shape keying
 unchanged (M multiple of 256 at MFRAGS=4). 512^3 favors it at 1802.6,
 1024^3 at 2746.0.
+
+FOLDED 2026-07-18 (from habu-v2-checked-async-8d460576 closure, casync
+lane): two follow-ons belong to this autotuner dot:
+1. Wire CPLEGAL:REQUIRE (maki/cp-async-legal.f) into per-target candidate
+   legality once stage selection flows to lowering — REQUIRE
+   ( bufb stages target-id -- ) consults the real target descriptor
+   (TARGET:CAP-ASYNC / TARGET:CAP-BARRIER / SHARED@), throws
+   E-CP-ASYNC-TGT (-5082) fail-closed. Today depth is a fixed global
+   config; wiring is due exactly when the autotuner starts choosing
+   stages/buffers per shape+target (MMA-BLDM/MMA-BPAD/MFRAGS axes above).
+2. Add a focused regression for the existing lib-local MMA-CHECK-SMEM /
+   E-MMA-SMEM guard (currently untested); cp-async-legal-test.f is the
+   fixture pattern to copy (raw-descriptor pos/neg + interned-id path).

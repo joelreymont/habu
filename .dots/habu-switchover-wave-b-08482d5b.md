@@ -1,6 +1,6 @@
 ---
 title: "Switchover wave B: option<tuple> + result<T,errno> process family"
-status: active
+status: open
 priority: 2
 issue-type: task
 created-at: "\"\\\"2026-07-04T22:18:57.005375+02:00\\\"\""
@@ -241,3 +241,33 @@ the layout dot stays open only for nested/linear (slice 5) and raw-run
 sugar (slice 6), neither needed here.
 
 Claim: agent=waveb2 workspace=.jj-ws/fable-waveb2 (the unblocked remainder: 25 option<tuple> words + the capture cluster via named payload products)
+
+BATCH 1 LANDED 2026-07-18 (waveb2 lane, commits 24ba55f3 + d92a700b,
+gated green: regex/object-index/object-resolve suites, stdlib-manifest,
+maki, gate-stdlib, full lint battery + strict inventory): first 3
+option<tuple> words migrated via named payload products per the DoR
+amendment. lib/regex.f: PRODUCT hit in package RX (off off, len len);
+RX-FIND / RX-FIND-FROM -> (.. -- option<rx:hit>); RX-COUNT if->MATCH.
+lib/object-index.f + object-resolve.f: PRODUCT rec in package OBJIDX
+(ptr ptr u8, len n); OBJIDX:LOAD -> option<objidx:rec>; std.manifest
+rows updated. Pattern proven end-to-end: PRODUCT-in-package + option<pkg:prod>
++ MATCH at call sites, zero runtime-representation change outside the
+migrated words.
+
+REMAINDER RECLASSIFIED (waveb2 survey, recorded verbatim):
+- SPLIT-NEXT (string.f) / NEXT-LINE (object.f) cluster: needs a 3-field
+  product in a PRELUDE-level package (string.f loads before package
+  infrastructure users) — migrate as its own batch with the full engine
+  battery (fixpoint x2 + old-binary boot) since string.f is engine-prefix.
+- JSONLF-* json-file cluster: migrate together as one batch (shared
+  product, one suite).
+- FL-STRIP-SIGN, JSONL-PARSE-ROW, IMGD-HEX-BODY, GJA-SUGGEST-ROW:
+  census MISclassifications — these are not flag+tuple sentinels in the
+  wave-B sense; they belong to Wave-C sum migrations or need no change.
+  Correct the census rows when Wave C opens.
+- Capture cluster (RUN-CAPTURE / PROC-CAPTURE-RC@ + PROC-CMD-RUN-RC and
+  OUTCOME sibling): needs prelude placement + engine battery + spawn-suite
+  proof; migrate as the final wave-B batch.
+
+Claim released 2026-07-18: batch 1 merged; workspace .jj-ws/fable-waveb2
+retired. Next claimant starts with the SPLIT-NEXT/NEXT-LINE prelude batch.

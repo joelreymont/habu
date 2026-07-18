@@ -1,9 +1,11 @@
 ---
 title: V2 checked async pipeline
-status: active
+status: closed
 priority: 1
 issue-type: task
-created-at: "\"2026-07-11T12:14:25.059595+02:00\""
+created-at: "\"\\\"2026-07-11T12:14:25.059595+02:00\\\"\""
+closed-at: "2026-07-18T09:09:09.217362+02:00"
+close-reason: "Acceptance discharged: missing-wait/barrier-phase/lifetime-escape pinned by landed cpp-slot-neg + cg-mma-slot-neg + tile-pipe-neg N7 fixtures; target/depth legality delta landed as CPLEGAL (maki/cp-async-legal.f, E-CP-ASYNC-TGT fail-closed, suite green); emitted cp.async unchanged (byte-pinned goldens, device-proven history). Follow-ons folded into habu-feed-mma-config-d783e33b."
 ---
 
 Problem: MODEL-CAD-V2-PLAN.md:1397-1417 requires cp.async multistage lowering, but the checker cannot yet prove shared-tile lifetime, barrier phase, or pipeline-depth legality. Fix: implement the first typed two-stage global-to-shared pipeline capability and lower one GEMM tile through it. Acceptance: missing wait, wrong barrier phase, shared lifetime escape, and unsupported target reject statically; emitted cp.async sequence passes ptxas and device golden. Files: src/core/checker.f, lib/ptx/tile.f, lib/ptx/cg-matmul.f, test/type-ptx*.f. Verify: negative checker fixtures, ptx-stdlib gate, Orin golden.
