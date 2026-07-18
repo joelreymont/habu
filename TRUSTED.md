@@ -1667,6 +1667,14 @@ test/type-decl-suite.f:TWX-TFAM-SLOTS@ test-metaprog habu-seal-set-check-b3676b3
 test/type-decl-suite.f:TWX-TFAM-SUM? test-metaprog habu-seal-set-check-b3676b33
 test/type-decl-suite.f:TWX-TFAM-VIS@ test-metaprog habu-seal-set-check-b3676b33
 test/type-decl-suite.f:TWX-UNIFY test-metaprog habu-seal-set-check-b3676b33
+test/type-nominal-suite.f:TWX-CTN@ test-metaprog habu-seal-set-check-b3676b33
+test/type-nominal-suite.f:TWX-CT-FIND test-metaprog habu-seal-set-check-b3676b33
+test/type-nominal-suite.f:TWX-CT-ADD-NOMINAL test-metaprog habu-seal-set-check-b3676b33
+test/type-nominal-suite.f:TWX-RBF-PUSH test-metaprog habu-seal-set-check-b3676b33
+test/type-nominal-suite.f:TWX-RBF-POP test-metaprog habu-seal-set-check-b3676b33
+test/type-nominal-suite.f:TWX-SNAP-PREP test-metaprog habu-seal-set-check-b3676b33
+test/type-nominal-suite.f:TN-NEED-IDX test-metaprog habu-primitive-effect-axiom-1119f176
+test/type-nominal-suite.f:TN-NEED-N test-metaprog habu-primitive-effect-axiom-1119f176
 test/type-family-suite.f:TWX-CHECKER-SNAPSHOT-PREPARE test-metaprog habu-seal-set-check-b3676b33
 test/type-family-suite.f:TWX-T-WIDTH test-metaprog habu-epic-type-system-b88c9ecc
 test/type-family-suite.f:TWX-MK-NULLARY test-metaprog habu-epic-type-system-b88c9ecc

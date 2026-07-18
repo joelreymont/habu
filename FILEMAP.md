@@ -2045,6 +2045,8 @@ points stay listed.
 - `test/prop-test.f` — CLI entry for property-based checker-soundness test.
 - `test/engine-suite.f` — native engine behavior suite.
 - `test/type-decl-suite.f` — behavior suite for the TYPEFAMILY/SUMTYPE declaration grammar (positives, negatives, rollback, multi-error, diagnostics).
+- `test/type-nominal-suite.f` — behavior contract for declarable nominal integer types (DEFTYPE roles): same-role accept, other-role/generic-int reject, explicit converters, rollback transactionality, snapshot persistence.
+- `test/type-nominal-dup-bad.f` — child-process negative fixture: a duplicate nominal declaration is refused fail-closed (exit 70, "bad or duplicate signature type").
 - `test/type-ctor-suite.f` — behavior suite for generated sum constructors (arity-0 publication, payload rejects, parametric/linear gating, package restore).
 - `test/type-linear-suite.f` — whole-bundle linear accounting suite (linear construction/minting/flow accepts; copy/drop/transport/local/unconsumed rejects).
 - `test/type-match-suite.f` — checked MATCH eliminator suite (exhaustiveness, payload refinement, branch joins, linear consumption, depth fail-closure, scope, CASE-interleave pins).

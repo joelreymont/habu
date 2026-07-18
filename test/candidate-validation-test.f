@@ -10,11 +10,13 @@ package CANDIDATE-VALIDATION-TEST
 
 : CASES ( -- )
    s" test/candidate-validation.f" SHAPE:LOAD
-   S\" s\q test/" 28 SHAPE:COUNT=
+   S\" s\q test/" 30 SHAPE:COUNT=
    s" test/engine-suite.f" PATH-PIN
    s" test/type-family-suite.f" PATH-PIN
    s" test/type-family-rollback-suite.f" PATH-PIN
    s" test/type-decl-suite.f" PATH-PIN
+   s" test/type-nominal-suite.f" PATH-PIN
+   s" test/type-nominal-dup-bad.f" PATH-PIN
    s" test/type-ctor-suite.f" PATH-PIN
    s" test/type-linear-suite.f" PATH-PIN
    s" test/type-match-suite.f" PATH-PIN
@@ -63,12 +65,14 @@ package CANDIDATE-VALIDATION-TEST
    1 SHAPE:COUNT= ;
 
 : MANIFESTS ( -- )
-   s" construct case-kind positive" 17 SHAPE:COUNT=
+   s" construct case-kind positive" 18 SHAPE:COUNT=
    s" construct case-kind diagnostic" 3 SHAPE:COUNT=
-   s" construct case-kind negative" 8 SHAPE:COUNT=
+   s" construct case-kind negative" 9 SHAPE:COUNT=
    S\" s\q test/type-family-suite.f\q construct case-kind positive 0 s\q \q s\q \q RUN-CASE" DIRECT-PIN
    S\" s\q test/type-family-rollback-suite.f\q construct case-kind positive 0 s\q \q s\q \q RUN-CASE" DIRECT-PIN
    S\" s\q test/type-decl-suite.f\q construct case-kind positive 0 s\q \q s\q \q RUN-CASE" DIRECT-PIN
+   S\" s\q test/type-nominal-suite.f\q construct case-kind positive 0 s\q \q s\q \q RUN-CASE" DIRECT-PIN
+   S\" s\q test/type-nominal-dup-bad.f\q construct case-kind negative 70\n      s\q TYPE-NOMINAL-DUP-ARMED\q s\q bad or duplicate signature type\q RUN-CASE" DIRECT-PIN
    S\" s\q test/type-linear-suite.f\q construct case-kind positive 0 s\q \q s\q \q RUN-CASE" DIRECT-PIN
    S\" s\q test/type-match-suite.f\q construct case-kind positive 0 s\q \q s\q \q RUN-CASE" DIRECT-PIN
    S\" s\q test/type-layout-lower-pending.f\q construct case-kind positive 0 s\q \q s\q \q RUN-CASE" DIRECT-PIN
