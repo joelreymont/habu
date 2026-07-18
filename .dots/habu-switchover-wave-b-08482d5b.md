@@ -1,9 +1,9 @@
 ---
 title: "Switchover wave B: option<tuple> + result<T,errno> process family"
-status: open
+status: active
 priority: 2
 issue-type: task
-created-at: "\"\\\"\\\\\\\"2026-07-04T22:18:57.005375+02:00\\\\\\\"\\\"\""
+created-at: "\"\\\"\\\\\\\"\\\\\\\\\\\\\\\"2026-07-04T22:18:57.005375+02:00\\\\\\\\\\\\\\\"\\\\\\\"\\\"\""
 ---
 
 docs/census-switchover.md section 5 wave B. The 25 multi-value+flag words (SPLIT-NEXT string.f:180, NEXT-LINE object.f:274 r8, RX-FIND* regex.f:454/464, LOAD object-index.f:116, JSONLF-*/JSONL-PARSE-ROW, PROC-ENV-DEFAULT0, FL-STRIP-SIGN, tool row parsers) to option<tuple>; the 34-site process rc family (PROC-WAIT-RC r17, PROC-RUN-RC r11, RUN-CAPTURE/PROC-CAPTURE-RC@ len-len-rc + process-env/cwd/argv mirrors) to result<T,errno> over E-PROC-*. Raw habu1.f emitters (BRUNRC/BPIPE/BPOLL/...) stay rc-sentinel at the trusted boundary; only checked wrappers migrate. DEPENDS: wave A patterns proven, item 12 multi-cell.
@@ -353,3 +353,5 @@ and OUTCOME sibling) needs prelude placement + engine battery + spawn-suite proo
 (final wave-B batch); FL-STRIP-SIGN / JSONL-PARSE-ROW / IMGD-HEX-BODY /
 GJA-SUGGEST-ROW are census misclassifications for Wave C. The raw-kernel SPLIT-NEXT
 retirement is TVK-RAW territory, not wave B.
+
+Claim: agent=waveb4 workspace=.jj-ws/fable-waveb4 (batch 3: JSONLF-* json-file cluster — package the module, line/row named products, option<pkg:prod> per the batch-1/2 pattern; tools/json-file.f is NOT in the fixpoint prefix)
