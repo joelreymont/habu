@@ -1,15 +1,25 @@
-# Registry Band — write-protecting type-registry control state
+# Registry write-protection
 
-Design record for dot `habu-protect-type-field-04d91409` (Design C, friend-band
-memory protection) and the sibling rollout `habu-protect-sibling-type-44eec932`.
+How the type-registry control cells are protected from bare mutation. Dot
+`habu-protect-type-field-04d91409` (PF registry) and the sibling rollout
+`habu-protect-sibling-type-44eec932`.
+
+Two layers were considered. **Layer 1 (internal-word marking) is the shipped
+enforcement and closes the stated threat model.** Layer 2 (a PROT-GUARD memory
+band) is an audited, *conditional* defense-in-depth option that is **not built** —
+the Layer-2 audit found nothing that requires it. Both are recorded here.
 
 ## Problem
 
-`src/core/type-family.f:781-919` holds the PF (shared-field registry) control
-cells as ordinary `variable`/`create` data records. `src/core/internal-mark.f:28-34`
-exempts data records from internal-word marking by design, so their bare names
-stay resolvable at top level and a bare write corrupts registry state through the
-public API. Confirmed live exploit (current engine, exit 0):
+`src/core/type-family.f` holds the PF (shared-field registry) control cells —
+`PF-CAP-V PF-A-BOOT PF-A-P PF-N PF-COMMIT-N PF-TX-CAP-V PF-TX-BOOT PF-TX-P
+PF-TX-DEPTH PF-TX-SERIAL` — as `variable`/`create` data records. A din=0 data
+record is EXEMPT from the seal-time internal-word marking pass
+(`src/core/internal-mark.f:54-65`, `DNAME-INT` doc: "data records
+(create/variable/constant, does>-instances) are exempt"), because its push-only
+body cannot consume interpret-stack garbage and it is auto-trusted. So its bare
+name stays executable at top level and a bare write mutates the registry past the
+public API. Confirmed exploit on the pre-fix engine (exit 0):
 
 ```
 TYPE-FIELD:COUNT . cr     \ 0
@@ -17,214 +27,162 @@ TYPE-FIELD:COUNT . cr     \ 0
 TYPE-FIELD:COUNT . cr     \ 99   — COUNT corrupted
 ```
 
-The name-visibility seam (move PF into a package, reopen for callers) is proven
-UNIMPLEMENTABLE (dot RE-BLESS paragraph, rule M1): a word may name a private word
-only inside an open package block, and the PF writers are reached from globally
-pinned cross-file API (`CHECKER-DEF*` via `src/habu/verify-source.f:448-505`,
-`tools/check-core.f:718-798`, PRIM rows `src/core/checker.f:4772-4776`), so no
-reopen boundary terminates.
+Scope of the actual hole (measured, not assumed):
 
-Design C instead follows the engine's own stated architecture
-(`internal-mark.f:34`: "the truly dangerous engine cells are owned by the
-PROT-GUARD friend bands, not by name visibility"): **names may stay global; the
-WRITE is what is guarded.**
+- **Bare top-level interpret / tick** (`--load` and stdin): OPEN. `99
+  PF-COMMIT-N !` runs because `PF-COMMIT-N` is interpreted and the data-record
+  exemption leaves it executable.
+- **Checked user code** (`: FOO … PF-COMMIT-N … ;`): already CLOSED. The PF cells
+  are defined before the checker hook installs, so they are never certified;
+  the checker rejects the reference with `E-UNDEFINED` / `non-certified
+  definition` at check time (verified: a checked body reading or writing
+  `PF-COMMIT-N` fails closed before runtime).
+- **Unchecked user code** (`0 set-check …`) and `TRUSTED:` bodies: out of the
+  stated seal threat model (checked habu only).
 
-## Machinery the band rides
+So only the bare-interpret hole needed closing.
 
-The engine already runs a software write-guard, distinct from the LPROT mprotect
-toggle:
+## Layer 1 — internal-word marking (shipped)
 
-- **Store guards** `GUARD-SPAN ( addr len -- )` (`src/habu/habu1.f:211-226`) and
-  `PROT-GUARD ( addr -- )` (`habu1.f:228-241`) are emitted into every guarded
-  store primitive body. Each reads `FRIEND-LATCH-CELL`; if 0 (cold prefix owns
-  the open latch) the guard is inert, otherwise it interval-tests the target
-  against each protected band and, on intersection, writes
-  `ENGINE-ERROR:SEAL-VIOLATION` (= 83, `src/core/engine-error.f:5`) and calls
-  `NR-EXIT-GROUP` — a hard, uncatchable process exit.
-- **Interval emitters** `GUARD-BAND ( addr off len trap -- )` (`habu1.f:164-170`)
-  and `GUARD-ADDR-BAND` (`habu1.f:172-176`) are the half-open overlap tests a
-  band adds itself to.
-- **Guarded sinks** are exactly `! c! +! atomic*`, `patch32`, snapshot rebase,
-  and syscall write buffers (`src/habu/layout.f:108-110`). There is **no**
-  guard-bypassing Forth store: every Forth-level write to a computed address
-  carries the range check.
-- **Existing bands** guarded by the same path: `FRIEND-ARENA`/`-LEN`
-  (`layout.f:125-126`), `PROT-REG-OFF`/`-LEN` (`layout.f:281-282`),
-  `OWNER-REG-OFF`/`-LEN` (`layout.f:310-311`), `TXN-STATE-OFF`/`-LEN`
-  (`layout.f:432-433`), the `GUARD:SPAN`/`GUARD:ADDR` TXN-BLOB band
-  (`habu1.f:178-204`), `ENGINE-HOOK`, `BODYBUF`.
-- **The one-way seal** `EMIT-SEAL-FRIEND` sets `FRIEND-LATCH-CELL :=
-  FRIEND-ARENA-LEN` at the end of the cold prefix (`src/habu/habu2.f:713-728`).
-  The latch cell sits inside the guarded `FRIEND-ARENA` band, so post-seal it
-  cannot be cleared — the seal is monotonic. **There is no post-seal RW window
-  via the latch.**
-- **Guard-bypassing writes** are raw prim-body stores `<reg> DATA <off> STR`
-  (AArch64), never the `!` prim. `TXN-STATE` — a *mutable* band written by the
-  checker after seal — is written exclusively this way (e.g.
-  `habu2.f:4156-4161, 5169, 5397`). This is the model the PF band copies.
+The seal-time pass already fails interpret/tick closed on any record carrying the
+`DNAME-INT` flag: `EM-INTERPRET-FIND` (`src/habu/habu2.f:4604`,
+`14 13 16 ANDI, 14 LINTERNAL … CBNZ`) and interpret-`'` (`habu2.f:2801`) reject
+`hb: internal engine word: <token>` + rc 70 BEFORE the body runs — uniformly,
+with no data-record fast path. The exemption is only that the pass does not *set*
+`DNAME-INT` on data records; setting it on a specific cell makes interpret reject
+that cell. That is the whole fix.
 
-`LPROT` (`habu1.f:2460-2461`, `NR-MPROTECT` over the DICT/CODE region) is a
-SEPARATE mechanism for the RX code region and is **not** used here; the band is a
-software compare with no mprotect (see Boot cost).
+Core-vs-user split (why marking the cells does not break the engine):
 
-## Why a new primitive is required (STOP gate)
+- **Core compiled callers** (`type-family.f`, `sumtype.f`) reference the cells
+  inside `:` bodies. Those references are resolved and baked at COMPILE time,
+  before the marking pass (`internal-mark.f` is the LAST cold-prefix source), and
+  the `DNAME-INT` gate lives in the INTERPRET dispatch, not the compiler. So a
+  compiled `PF-N @` / `PF-COMMIT-N !` keeps working after the mark.
+- **Bare interpret / tick** (user top level): rejected by the gate above.
+- **Checked user compilation**: separately closed by `E-UNDEFINED` (above).
 
-The PF control cells must be written by legit code **after** the seal:
+Implementation:
 
-- The friend latch seals BEFORE the engine's own checker/type-family/sumtype/
-  stdlib source runs; that source writes DATA "post-latch via guard-bypassing
-  DATA stores" (`habu2.f:720-721`). So even `type-family.f:787`'s definition-time
-  `0 PF-COMMIT-N !` and any baked/stdlib `PRODUCT` run post-seal.
-- Empirically confirmed: a post-seal `PRODUCT p 0 FIELD x n FIELD y n ;PRODUCT`
-  advances `TYPE-FIELD:COUNT` 0 → 2 (PF-COMMIT-N written post-seal); `ENUM` and
-  `SUMTYPE` leave it unchanged (only products touch PF).
+- `type-family.f` `REG-PROTECT ( -- )` records the just-defined record's
+  dictionary index (`ndict@ 1 -`) in `REG-PROT-IDX[0, REG-PROT-N)`; each of the
+  ten PF cells calls it on its definition line. Marking is DEFERRED to the pass,
+  so the load-time inits (`0 PF-COMMIT-N !` etc., which interpret at cold load)
+  run before the cell is marked.
+- `internal-mark.f` `IMK-SEAL-REGISTRY` int-marks every recorded index; it runs
+  in `IMK-PASS` before `IMK-SEAL-PRIM` (so `int-mark` is still callable).
+- Uses only existing prims (`ndict@`, `int-mark`) — no new primitive, no layout
+  change, so no fixpoint bootstrap concern.
 
-Once `PF-COMMIT-N` is in a guarded band, its legit `!` writers trap exactly like
-the exploit. The seal latch cannot reopen, and no guard-bypassing Forth store
-exists. Therefore Design C **requires one new privileged store primitive** — the
-"narrow internal-marked bracket" the declaration path uses. This is the
-STOP-for-review gate in the dispatch: the primitive is specified below and must
-be reviewed before it is added to the engine.
+Proof (temp engine + installed byte-fixpoint):
 
-### Proposed primitive `reg-cell!`
+- Bare `99 PF-COMMIT-N !` → `hb: internal engine word: PF-COMMIT-N`, rc **70**,
+  on both `--load` and stdin. All ten cells reject bare (`PF-N`, `PF-A-P`,
+  `PF-TX-DEPTH`, …).
+- A post-seal `PRODUCT p 0 FIELD x n FIELD y n ;PRODUCT` still advances
+  `TYPE-FIELD:COUNT` 0 → 2; the reflection API is intact (declarations admitted).
+- Checked-body reference still `E-UNDEFINED` (unchanged).
+- `install --force` twice → byte-identical shasum. `test/run.f`
+  `perf-verdict: performance=pass` (Layer 1 adds NO per-store cost — it only marks
+  ten records at seal time and calls `REG-PROTECT` at load).
+- Negatives in `test/internal-word-gate.f` (`IWG-REGISTRY-CASES`): bare cell
+  names fail closed; the `99 PF-COMMIT-N !` exploit fails closed on `--load` and
+  stdin; the existing colon-builder rows (`PF-BEGIN`, `PF-FIND`) stay.
+
+Arena rows: the arena BASE names (`PF-A-P`, `PF-A-BOOT`, `PF-TX-P`, `PF-TX-BOOT`)
+are among the marked cells, so a bare row-address computation
+(`PF-A-P @ <off> + !`) dies at the base name. The remaining row-mutation question
+is the same pointer-leak audit as Layer 2.
+
+## Layer 2 — pointer-leak audit + verdict
+
+Layer 1 closes bare interpret and (via `E-UNDEFINED`) checked references BY NAME.
+The only way checked code could still reach PF storage is a public word that
+RETURNS a pointer into it — then `<ptr> !` is type-legal and Layer 1's name gate
+is bypassed. Audit of the retained public surface
+(`type-family.f` `package TYPE-FIELD public`):
+
+| public word | output | pointer into PF storage? |
+|-------------|--------|--------------------------|
+| `COUNT NO-VARIANT FAMILY@ VARIANT@ SCHEMA@ SLOT@ CELLS@ BYTE-OFF@ BYTES@ ALIGN@ FLAGS@` | value `n` | no |
+| `FIND ( n n ptr u8 n -- n bool )` | `n bool` (id + found) | no — the `ptr` is an INPUT |
+| `EACH ( n n n -- n bool )` | `n bool` | no |
+| `NAME$ ( n -- ptr u8 n )` | ptr | into the STRING POOL, not PF storage |
+
+`NAME$` → `PF-NAME$` → `TF-OFF$` (`type-family.f:88-89`, `TF-STR off + u`): the
+pointer is `TF-STR + offset`, into the interned-name arena (the `TF-STR-U`
+registry), NOT the PF record array or the PF counters. Writing through it would
+corrupt a field-name byte string, a separate sibling registry, never the PF
+count/rows.
+
+**Verdict: no public word leaks a pointer into PF storage.** Layer 1 alone closes
+the checked-source threat model for the PF registry. The `NAME$` string-pool
+pointer is a sibling (`TF-STR`) concern, tracked with the sibling rollout, not a
+PF-storage leak. **The band is therefore NOT built.**
+
+## Layer 2 (optional) — the PROT-GUARD band, if depth is ever wanted
+
+Recorded for completeness. It would add coverage ONLY for out-of-model paths
+(a laundered address obtained via unchecked `0 set-check` code, or a `TRUSTED:`
+body computing `data-base + REG-BAND-OFF + off`). Cost: one interval compare on
+every guarded store's check chain. Benefit: the write traps regardless of how the
+address was obtained.
+
+Mechanism (matching the `TXN-STATE`/`PROT-REG` precedent): relocate the PF scalar
+cells into a reserved DATA band `[REG-BAND-OFF, +REG-BAND-LEN)` appended below
+`DATA-START` (`src/habu/layout.f`), add it to `GUARD-SPAN`/`PROT-GUARD`
+(`habu1.f:211-241`) so `!`/`c!`/`+!`/`atomic*` trap a post-seal write there with
+`ENGINE-ERROR:SEAL-VIOLATION` (= 83, uncatchable exit), and route the legit
+declaration-time writes through ONE new guard-bypassing primitive:
 
 ```
-reg-cell! ( n off -- )
+reg-cell! ( n off -- )   \ raw store into REG-BAND; off band-relative, hard-bounded
+                         \ to [0, REG-BAND-LEN) (out-of-range = SEAL-VIOLATION);
+                         \ internal-marked (bare rejects); no checker effect.
 ```
 
-- Raw-stores `n` to `data-base + REG-BAND-OFF + off`.
-- Hard-bounds `off` unsigned to `[0, REG-BAND-LEN)`; out-of-range traps
-  `ENGINE-ERROR:SEAL-VIOLATION` (so the prim can never be an arbitrary-write
-  gadget outside the band).
-- Emitted as a prim body with a raw `STR` — it does NOT consult the friend latch,
-  so it is the sole guard-bypassing writer of the band.
-- **Internal-marked** via the `internal-mark.f` self-seal (extend `IMK-PRIM?`
-  / `IMK-SEAL-PRIM`, `internal-mark.f:108-121`) so a bare/top-level `reg-cell!`
-  rejects with `hb: internal engine word` (rc 70), exactly as bare `PF-ADD`
-  already does (proven). It carries **no** checker effect, so checked code sees
-  `E-UNDEFINED`. Compiled callers reach it because compiled calls bypass the
-  interpret-dispatch internal check.
+plus `reg-cell-addr ( off -- a )` for the address-returning reader so the exploit
+`99 PF-COMMIT-N !` stays type-legal and is enforced by the runtime trap. A new
+primitive is REQUIRED (the friend-latch seal is one-way, so a guarded band is
+writable post-seal only by a raw prim-body store); this is why the band is a
+larger, separately-reviewed change. One generic bounded `reg-cell!` serves all
+seven sibling registries.
 
-Reads are unaffected: only writes carry the guard, so `PF-N @` / `PF-COMMIT-N @`
-readers stay plain `@`. Only WRITE sites convert `<cell> !` → `<off> reg-cell!`.
+Boot cost note: the band is a software compare (no mprotect), so it is NOT in the
+LPROT `+41ms` class (`LESSONS.md:776`); measure the store-guard delta against the
+fixpoint baseline before adopting.
 
-One generic bounded prim serves all seven sibling registries (they share one
-band), keeping the new-primitive surface at exactly one word. A per-cell prim
-family (no `off` argument) is the alternative; it avoids the in-band offset but
-costs ~8-16 prims and does not scale to the siblings — rejected in favor of the
-single bounded prim.
+## TDECL-MARK/RESTORE PF-snapshot redundancy (done)
 
-## Band placement
-
-Cells to protect (dot list, `type-family.f:781-919`):
-
-| cell | kind | site |
-|------|------|------|
-| `PF-CAP-V` | scalar | 781 |
-| `PF-A-P` | scalar ptr | 784 |
-| `PF-N` | scalar | 786 |
-| `PF-COMMIT-N` | scalar | 787 |
-| `PF-TX-CAP-V` | scalar | 915 |
-| `PF-TX-P` | scalar ptr | 917 |
-| `PF-TX-DEPTH` | scalar | 918 |
-| `PF-TX-SERIAL` | scalar | 919 |
-| `PF-A-BOOT` | grown arena | 783 |
-| `PF-TX-BOOT` | grown arena | 916 |
-
-The eight scalars are fixed-size cells and relocate cleanly into a reserved
-`REG-BAND` at fixed DATA offsets, following the DATA-region growth precedent:
-new reserved bands are appended at the top of `[0, DATA-START)` and bump
-`DATA-START` so no existing offset moves (`layout.f:504-521`,
-`PD-TABLE`/`PKGSNAP` precedent). Each becomes a constant returning
-`data-base + REG-BAND-OFF + <cell-off>`; `@` reads it, `<off> reg-cell!` writes.
-
-The two `create … allot` **boot arenas** hold row storage that `REG-GROW1`
-reallocates onto the DP heap; after growth `PF-A-P`/`PF-TX-P` point outside any
-band. Banding the row storage is therefore a Phase-2 sub-design (guard the boot
-arena AND route grown-arena row writes through `reg-cell!`, or box the arena
-base). The direct COUNT-corruption vector is the scalar counters, so Phase 1
-bands the eight scalars; the arena-row protection is tracked separately. The
-band obeys the Friend-Arena adjacency rule (`LESSONS.md:1456-1459`): contiguous,
-includes any adjacent control cell, never extends an existing band whose end is a
-public boundary.
-
-## Trap semantics
-
-A bare or checked `!`/`c!`/`+!`/`atomic*` into the band, post-seal, hits
-`GUARD-SPAN`, which writes `ENGINE-ERROR:SEAL-VIOLATION` (83) to fd 2 and calls
-`NR-EXIT-GROUP` — the process exits 83. This is stronger than the colon-builder
-`internal engine word` rc-70 reject: it is a hard, **uncatchable** exit (not a
-`throw`), identical to a FRIEND-ARENA crown-jewel violation. It surfaces the same
-on every path: `--load file` aborts the load with exit 83; a bare `stdin` line
-exits the REPL process 83. The declaration path never trips it because its
-writes go through `reg-cell!` (guard-bypassing), not `!`.
-
-Negative fixtures (add to `test/internal-word-gate.f`): bare `99 PF-COMMIT-N !`
-on `--load` and on `stdin` must exit 83; bare `reg-cell!` must reject
-`internal engine word`.
-
-## Boot / fixpoint sequencing
-
-1. `REG-BAND` is a fixed DATA offset range appended below `DATA-START` — no
-   runtime allocation.
-2. The band's `GUARD-BAND` entry is compiled into the store prims during
-   cold-prefix prim emission (`habu1.f`), present from engine build.
-3. `FRIEND-LATCH` seals at the end of the cold prefix (`habu2.f:713`), BEFORE
-   `type-family.f`/`sumtype.f`/stdlib evaluate. So `type-family.f`'s init writes
-   and every baked/stdlib `PRODUCT` run post-seal and MUST already use
-   `reg-cell!` — this is why the primitive is load-bearing for the engine's own
-   self-build, not only for user code.
-4. Snapshot / AOT re-entry: `REG-BAND` sits in `[0, DATA-START)`, which the
-   snapshot captures and restores wholesale (`layout.f:516-521`); restore runs in
-   the boot cold prefix with the latch open (`MODE-BUILD` leaves the latch open
-   for the compiler prefix, `habu2.f:726-728`), so restore writes the band
-   without trapping. (Verify in Phase 2 that the snapshot DATA range upper bound
-   is `DATA-START` and moves with the bump.)
-
-## Boot cost
-
-The band adds ONE `GUARD-BAND` (a few compare/branch instructions) to each
-guarded store prim body — a software compare, **no** mprotect syscall. It is NOT
-in the LPROT `+41ms` boot-cost class (`LESSONS.md:776`), which was mprotect
-full-region bracket growth. Per-store runtime cost is a couple of instructions
-only while the latch is sealed. Phase 2 measures the delta against the fixpoint
-build baseline; if it is structurally in the `+41ms` class, stop and report.
-
-## TDECL-MARK/RESTORE redundancy (investigated)
-
-`TDECL-MARK`/`TDECL-RESTORE` (`src/core/sumtype.f:61-70`) snapshot and restore
-`PF-N`/`PF-COMMIT-N` for every declaration. Investigation result: **the PF part
-of that snapshot is redundant.** PF is mutated only by `PRODUCT` (empirically:
-ENUM/SUMTYPE do not change COUNT), and only inside `TDECL-PRODUCT-TX`'s own
-`PF-BEGIN … PF-ADD … PF-ROLLBACK/PF-COMMIT` transaction (`sumtype.f:689-694`),
-which self-restores `PF-N` on failure and advances `PF-COMMIT-N` only on the
-outer commit. No PF write occurs outside that transaction, and the only step
-after it in `CHECKER-DEFPRODUCT-BODY` is a non-throwing `TDECL-FAM-REG !`, so no
-post-commit rollback path exists. Dropping the two PF lines from
-`TDECL-MARK`/`RESTORE` therefore removes two would-be-guarded writes from the hot
-declaration path and means `TDECL-RESTORE` needs no `reg-cell!` at all. This must
-be proven by a negative regression before removal: a `PRODUCT` that throws after
-adding one field must leave `COUNT` and provisional state correct with the
-snapshot removed.
-
-Note the SEPARATE `TFAM-ROLLBACK-SAVE`/`-RESTORE` frame
-(`type-family.f:1408-1427`) is checker-scope rollback for a *rejected family*
-declaration; it restores `PF-COMMIT-N` after a committed product inside a
-later-rejected family and IS load-bearing — its PF writes DO convert to
-`reg-cell!`.
+`TDECL-MARK`/`TDECL-RESTORE` (`src/core/sumtype.f`) no longer snapshot
+`PF-N`/`PF-COMMIT-N`. Only `PRODUCT` mutates PF, and only inside
+`TDECL-PRODUCT-TX`'s own `PF-BEGIN … PF-ADD … PF-ROLLBACK/PF-COMMIT` transaction,
+which restores `PF-N` on any field failure and advances `PF-COMMIT-N` only on the
+outer commit; the sole later step (`TDECL-FAM-REG !`) never throws, so a rejected
+`PRODUCT` leaves both marks at baseline without a second snapshot. `SUMTYPE`/
+`ENUM`/`TYPEFAMILY` never touch PF. Regression: `test/type-decl-suite.f` `tdpdup`
+(a two-field product whose second field duplicates the first throws E-TFAM-DUP
+after one field is added; `TDT-NEG` asserts `TYPE-FIELD:COUNT` is restored). The
+checker-scope frame's own PF marks (`type-family.f` `TFAM-ROLLBACK-SAVE/RESTORE`)
+are load-bearing for rejected families and are unchanged.
 
 ## Per-sibling rollout recipe (`habu-protect-sibling-type-44eec932`)
 
-The pattern is the BAND, shared across all seven registries (`TFAM-N`, `SUMV-N`,
-`TF-STR-U`, `TF-PK-N`, `LAY-N`, `SCH-N`, `SCH-ROOT-N` + their cap/pointer cells):
+The pattern is Layer 1 — marking, shared across all seven registries (`TFAM-N`,
+`SUMV-N`, `TF-STR-U`, `TF-PK-N`, `LAY-N`, `SCH-N`, `SCH-ROOT-N` + their
+cap/pointer/arena cells):
 
-1. Relocate each registry's scalar counter/pointer cells into `REG-BAND` (extend
-   the band; bump `DATA-START`).
-2. Convert every `<cell> !` write site to `<off> reg-cell!`; leave `@` readers
-   unchanged.
-3. Add per-registry bare-write negatives to `test/internal-word-gate.f`.
-4. No new primitive per sibling — `reg-cell!` is generic and shared.
+1. Call `REG-PROTECT` on each registry control cell's definition line (the
+   infrastructure already exists in `type-family.f`; move it earlier in the file
+   if a sibling is defined before it).
+2. `IMK-SEAL-REGISTRY` already marks everything tagged — no change needed.
+3. Add per-registry bare-name + write-exploit negatives to
+   `test/internal-word-gate.f`.
+4. Run the pointer-leak audit for that registry's public surface (e.g. `TF-STR`:
+   `NAME$`'s string-pool pointer becomes in-scope there — decide return-a-copy vs
+   accept, or adopt the optional band).
 5. Re-run the fixpoint (byte-identical) and the owning gates.
 
-The grown-arena row storage protection (see Band placement) is the one piece the
-recipe defers per registry; track it as an explicit sub-item.
+No new primitive is needed for Layer 1. The optional band above is the only piece
+that would introduce one, and only if defense-in-depth against out-of-model
+laundering is ever wanted.
