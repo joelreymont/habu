@@ -8,6 +8,7 @@ require lib/memory.f
 require lib/fs.f
 require lib/fs-mutate.f
 require lib/content-key.f
+require lib/adt/option.f                  \ option<objidx:rec> for LOAD (switchover wave B)
 
 package OBJIDX
 
@@ -113,12 +114,21 @@ public
    ROOT$ MAKE-DIRS
    PATH-BUF PATH-U @ REC-BUF KEY-U 1 + ATOMIC-WRITE-FILE ;
 
-: LOAD ( ptr u8 n -- ptr u8 n bool )
+\ A loaded index record is the stored object-key bytes for a source key.
+\ LOAD returns option<objidx:rec>: SOME(key-bytes) when the index file exists,
+\ NONE when it is absent — the checked replacement for the former
+\ (ptr u8 n bool) value+flag return (switchover wave B).
+PRODUCT rec 0
+  FIELD ptr ptr u8
+  FIELD len n
+;PRODUCT
+
+: LOAD ( ptr u8 n -- option<objidx:rec> )   \ SOME object-key bytes when present, else NONE
    PATH!
-   PATH-BUF PATH-U @ FILE? 0= if KEY-BUF 0 FALSE exit then
+   PATH-BUF PATH-U @ FILE? 0= if OPTION:NONE exit then
    PATH-BUF PATH-U @ REC-BUF KEY-U 1 + READ-ALL {: u:n :}
    u RECORD-CHECK
    REC-BUF KEY-BUF KEY-U BYTE-COPY
-   KEY-BUF KEY-U TRUE ;
+   KEY-BUF KEY-U OBJIDX-REC:MAKE OPTION:SOME ;
 
 ;package

@@ -56,13 +56,17 @@ create KEY3 80 allot
    KEY1 KEY-U OBJKEY$ OBJIDX:STORE
    KEY1 KEY-U OBJIDX:EXISTS? TTRUE
    KEY1 KEY-U OBJIDX:PATH$ s" .idx" ENDS-WITH? TTRUE
-   KEY1 KEY-U OBJIDX:LOAD TTRUE
-   OBJKEY$ T$= ;
+   KEY1 KEY-U OBJIDX:LOAD MATCH option
+     none OF 1 0 T= ENDOF                       \ present key must load SOME
+     some OF OBJIDX-REC:UNMAKE OBJKEY$ T$= ENDOF
+   ;MATCH ;
 
 : MISSES ( -- )
    SOURCE-KEY2!
-   KEY2 KEY-U OBJIDX:LOAD TFALSE
-   nip 0 T= ;
+   KEY2 KEY-U OBJIDX:LOAD MATCH option
+     none OF ENDOF                              \ absent key loads NONE
+     some OF OBJIDX-REC:UNMAKE 2drop 1 0 T= ENDOF
+   ;MATCH ;
 
 : WRITE-BAD-FILE ( -- )
    BADKEY$ OBJIDX:PATH$ s" not-a-key\n" WRITE-ALL ;
@@ -72,7 +76,7 @@ create KEY3 80 allot
    [: KEY1 KEY-U s" nope" OBJIDX:STORE ;] E-OBJ-FIELD TTHROWSQ
    [: s" nope" OBJIDX:PATH$ 2drop ;] E-OBJ-FIELD TTHROWSQ
    WRITE-BAD-FILE
-   [: BADKEY$ OBJIDX:LOAD 2drop drop ;] E-OBJ-FIELD TTHROWSQ ;
+   [: BADKEY$ OBJIDX:LOAD MATCH option none OF ENDOF some OF OBJIDX-REC:UNMAKE 2drop ENDOF ;MATCH ;] E-OBJ-FIELD TTHROWSQ ;
 
 public
 

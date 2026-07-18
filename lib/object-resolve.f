@@ -60,10 +60,11 @@ public
 : LOAD ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n -- bool )
    {: src:ptr srcu:n target:ptr targetu:n checker:ptr checkeru:n compiler:ptr compileru:n :}
    src srcu target targetu checker checkeru compiler compileru SOURCE-KEY!
-   SRC-KEY KEY-U OBJIDX:LOAD {: obj:ptr obju:n hit:bool :}
-   hit 0= if FALSE exit then
-   obj obju OBJSTORE:LOAD
-   src srcu target targetu checker checkeru compiler compileru CHECK-HEADERS
-   TRUE ;
+   SRC-KEY KEY-U OBJIDX:LOAD MATCH option
+     none OF FALSE ENDOF
+     some OF OBJIDX-REC:UNMAKE OBJSTORE:LOAD
+        src srcu target targetu checker checkeru compiler compileru CHECK-HEADERS
+        TRUE ENDOF
+   ;MATCH ;
 
 ;package
