@@ -449,10 +449,38 @@ public
    s" XREF of an internal word still works" T-LABEL
    IWG-XREF-FORGE$ IWG-EXEC:SUBJECT IWG-ASSERT-OK ;
 
+\ --- registry write-protection (dot habu-protect-type-field-04d91409, Layer 1).
+\ A din=0 registry control cell (variable/create) used to stay executable at top
+\ level because the internal-word pass exempts data records; REG-PROTECT +
+\ IMK-SEAL-REGISTRY now mark the PF cells DNAME-INT, so a bare cell name and the
+\ confirmed `99 PF-COMMIT-N !` write both fail closed (rc 70, internal engine
+\ word) on --load and stdin, while checked user code still rejects them earlier
+\ as non-certified (E-UNDEFINED, covered by IWG-OPENER-CASES' PF-FIND row). ----
+: IWG-PF-EXPLOIT-FORGE$ ( -- ptr u8 n )   \ the confirmed exploit: a bare registry-cell write
+   SB-RESET
+   s" 99 PF-COMMIT-N !" SB-APPEND IWG-LF
+   SB$ ;
+
+: IWG-REGISTRY-CASES ( -- )
+   s" bare PF-COMMIT-N registry cell fails closed" T-LABEL
+   s" PF-COMMIT-N" IWG-NEG
+   s" bare PF-N registry cell fails closed" T-LABEL
+   s" PF-N" IWG-NEG
+   s" bare PF-A-P arena base fails closed" T-LABEL
+   s" PF-A-P" IWG-NEG
+   s" bare PF-TX-DEPTH registry cell fails closed" T-LABEL
+   s" PF-TX-DEPTH" IWG-NEG
+   s" registry-cell write exploit fails closed on --load" T-LABEL
+   IWG-PF-EXPLOIT-FORGE$ IWG-RUN-LOAD
+   s" PF-COMMIT-N" IWG-ASSERT-INTERNAL
+   s" registry-cell write exploit fails closed on stdin" T-LABEL
+   IWG-PF-EXPLOIT-FORGE$ IWG-RUN-STDIN
+   s" PF-COMMIT-N" IWG-ASSERT-INTERNAL ;
+
 package IWG-PARITY
 
-5 constant DIRECT-N
-42 constant SUBJECT-N
+7 constant DIRECT-N
+46 constant SUBJECT-N
 : RESULT ( -- ptr u8 n ptr u8 n n )
    IWG-OUT IWG-OUT-U @ IWG-ERR IWG-ERR-U @ IWG-RC @ ;
 
@@ -510,6 +538,7 @@ public
    IWG-PREPARE
    IWG-PARITY:TEST
    IWG-NEG-BARE
+   IWG-REGISTRY-CASES
    IWG-NEG-SHAPES
    IWG-POSITIVES
    IWG-OPENER-CASES
