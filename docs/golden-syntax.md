@@ -91,13 +91,18 @@ small parsing word over the existing sig-grammar machinery — but its value
 depends on B existing (without extent roles the generated code is Candidate-A
 quality, plausible-not-proven), so it is sequenced after, not instead.
 
-## Recommendation
+## Decision
 
-B, then C generating B. A is subsumed (it is B minus the signatures — build
-it once, with them). This keeps faith with both constraints: the small-system
-budget (one defining word + Foundation A the checker needs anyway; the spec
-word is ~a page of parsing on machinery that exists) and the no-stopgap rule
-(every stage is checked; nothing readable-but-unverified ships as an idiom).
-The gathered GEMM lands as the first Candidate-B golden and becomes the
-`docs/tma-gather.md` regression; attention/matmul migrate opportunistically,
-not as a rewrite campaign.
+**C is the default.** Once `SPEC:` lands, it is *the* way goldens are written:
+a new dataflow definition is a `SPEC:` line, and hand-written accessor bodies
+(B) are the escape hatch for what the spec grammar cannot yet express — not
+the norm. B is C's substrate, not a destination: build order is Foundation A
+(checker roles) → B (extent-typed accessors, ~30 lines) → C generating B.
+A is subsumed (it is B minus the signatures — build it once, with them).
+This keeps faith with both constraints: the small-system budget (one defining
+word + Foundation A the checker needs anyway; the spec word is ~a page of
+parsing on machinery that exists) and the no-stopgap rule (every stage is
+checked; nothing readable-but-unverified ships as an idiom). The gathered
+GEMM lands as the first `SPEC:` golden and becomes the `docs/tma-gather.md`
+regression; attention/matmul migrate to `SPEC:` lines opportunistically, not
+as a rewrite campaign.
