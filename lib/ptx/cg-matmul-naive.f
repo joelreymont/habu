@@ -58,6 +58,6 @@ require lib/ptx/header.f
    s" add.u64 %rd11, %rd3, %rd10;" PTX-L  s" st.global.f32 [%rd11], %f1;" PTX-L ;
 
 : EMIT-MATMUL-NAIVE ( -- )
-   PTX-HEADER-SM87  PTX-NL
+   PTX-HEADER  PTX-NL
    MMN-ENTRY  MMN-OPEN  MMN-PARAMS  MMN-COORDS  MMN-KLOOP  MMN-STORE
    s" DONE:" PTX-L  s" ret;" PTX-L  s" }" PTX-L ;

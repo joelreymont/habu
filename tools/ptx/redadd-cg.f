@@ -6,7 +6,7 @@
 \ lib/string.f, src/arch/ptx/emit.f; emits to stdout.
 
 : EMIT-REDADD ( -- )
-   PTX-HEADER-SM87  PTX-NL
+   PTX-HEADER  PTX-NL
    s" .visible .entry REDADD(.param .u64 p_out, .param .u32 p_n)" PTX-L
    s" {" PTX-L
    s" .reg .pred %p<2>;" PTX-L

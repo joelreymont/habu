@@ -182,7 +182,7 @@ KERNEL: CHECKED ( matrix<space-global,f32,extent-q,extent-d> matrix<space-global
 \ checked phase pipeline (CHECKED, or a graded candidate K - maki/eval/emit.f)
 \ can sit between AUTHOR-OPEN and AUTHOR-CLOSE.
 : AUTHOR-OPEN ( -- matrix<space-global,f32,extent-q,extent-d> matrix<space-global,f32,extent-q,extent-d> matrix<space-global,f32,extent-q,extent-d> matrix<space-global,f32,extent-q,extent-d> )
-   PTX-HEADER-SM87  PTX-NL
+   PTX-HEADER  PTX-NL
    s" .visible .entry ATTN(.param .u64 pQ,.param .u64 pK,.param .u64 pV,.param .u64 pO,.param .u32 pN,.param .u32 pD)" PTX-L
    s" {" PTX-L
    s" .reg .pred %p<4>;" PTX-L  s" .reg .f32 %f<16>;" PTX-L  s" .reg .b32 %r<32>;" PTX-L  s" .reg .b64 %rd<24>;" PTX-L

@@ -8,7 +8,7 @@
 : PTX-NL ( -- )
    cr ;
 
-: PTX-HEADER-SM87 ( -- )
+: PTX-HEADER ( -- )
    s" .version 8.3" PTX-L
    s" .target sm_87" PTX-L
    s" .address_size 64" PTX-L ;
@@ -68,7 +68,7 @@
    s" }" PTX-L ;
 
 : PTX-EMIT-SAXPY ( -- )
-   PTX-HEADER-SM87
+   PTX-HEADER
    PTX-NL
    PTX-SAXPY-ENTRY
    PTX-SAXPY-BODY ;

@@ -59,6 +59,7 @@ require lib/ptx/cg.f
 require lib/ptx/header.f
 require maki/cuda-driver.f
 require maki/device-artifacts.f
+require maki/eval/active-target.f
 
 package EVND
 
@@ -125,6 +126,7 @@ create PA-OUT PA-OUT-CAP allot  create PA-ERR PA-ERR-CAP allot
 \ ---- driver + child emit + ptxas (shared across the three tasks) ------------
 : WRITE-DRIVER ( ptr u8 n ptr u8 n ptr u8 n -- ) {: ba:ptr bu:n ca:ptr cu:n sa:ptr su:n :}
    SB-RESET
+   s" PTX-TARGET! " SB-APPEND  ATGT:LABEL$ SB-APPEND  32 SB-APPEND-C  ATGT:VER$ SB-APPEND  10 SB-APPEND-C
    ba bu SB-APPEND  10 SB-APPEND-C
    s" : " SB-APPEND  ca cu SB-APPEND  s"  ;" SB-APPEND  10 SB-APPEND-C
    sa su SB-APPEND  10 SB-APPEND-C
@@ -169,7 +171,7 @@ create PA-OUT PA-OUT-CAP allot  create PA-ERR PA-ERR-CAP allot
 \ fail-closed: a nonzero rc is the wrong-shape signal for gemm double-accumulate)
 : PTXAS ( -- n )
    PROC-ARGV-RESET
-   s" -arch=sm_87"    >LEN PROC-ARGV+
+   SB-RESET s" -arch=" SB-APPEND ATGT:LABEL$ SB-APPEND SB$  >LEN PROC-ARGV+
    MAKI-GRADE:PTX$    >LEN PROC-ARGV+
    s" -o"             >LEN PROC-ARGV+
    MAKI-GRADE:CUBIN$  >LEN PROC-ARGV+

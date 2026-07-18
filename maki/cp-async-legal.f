@@ -5,7 +5,7 @@
 \ copy engine, the block barrier its WAIT drains behind, and enough per-block
 \ shared memory to hold every staged buffer. Those facts live in the target
 \ descriptor (maki/target/target.f: CAP-ASYNC, CAP-BARRIER, SHARED@), but nothing
-\ consulted them at the pipeline decision - the emitters hardcode PTX-HEADER-SM87
+\ consulted them at the pipeline decision - the emitters hardcode PTX-HEADER
 \ and MMA-CHECK-SMEM compares against a hardcoded 48 KiB constant, not the target's
 \ real budget. This gate closes that gap: given a pipeline's per-stage buffer bytes
 \ (bufb, from the tile geometry - lib/ptx MMA-BUFB) and its depth (stages), it

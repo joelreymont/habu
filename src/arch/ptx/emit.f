@@ -32,17 +32,46 @@ variable PTX-CAPTURE?                       \ 0 = stdout ; nonzero = append into
    PTX-CAPTURE? @ if s" " PTX-CAP+ else cr then ;
 
 \ module-target facts as queryable accessors (manifest/export consumers read
-\ these instead of scraping the header text)
+\ these instead of scraping the header text). The .target arch and .version are
+\ a settable pair, not a literal: an emit driver that targets a specific GPU sets
+\ them with PTX-TARGET! before emitting the header, so the .target directive, the
+\ .version, and the ptxas -arch all trace to one target. The default is the sm_87
+\ Orin fixture, which keeps every host-side unit test host-independent.
+32 constant PTX-TGT-CAP
+create PTX-ARCH-BUF PTX-TGT-CAP allot
+create PTX-VER-BUF  PTX-TGT-CAP allot
+variable PTX-ARCH-U
+variable PTX-VER-U
+
+: PTX-TGT-STR! ( ptr u8 n ptr u8 ptr n -- ) {: a:ptr u:n dst:ptr lenp:ptr :}
+   u PTX-TGT-CAP > if E-PTX-CAP throw then
+   a dst u BYTE-COPY  u lenp ! ;
+
+: PTX-ARCH! ( ptr u8 n -- )   PTX-ARCH-BUF PTX-ARCH-U PTX-TGT-STR! ;
+: PTX-VER!  ( ptr u8 n -- )   PTX-VER-BUF  PTX-VER-U  PTX-TGT-STR! ;
+
+: PTX-TARGET-DEFAULT ( -- )   s" sm_87" PTX-ARCH!  s" 8.3" PTX-VER! ;
+PTX-TARGET-DEFAULT
+
+\ parse-and-store the module target: PTX-TARGET! <arch> <version> (two tokens).
+\ Used at the top of an emit driver so the spawned child's header names the GPU
+\ the parent probed; the tokens are consumed by parse-name, never interpreted.
+: PTX-TARGET! ( -- )
+   parse-name PTX-ARCH!  parse-name PTX-VER! ;
+
 : PTX-VERSION$ ( -- ptr u8 n )
-   s" 8.3" ;
+   PTX-VER-BUF PTX-VER-U @ ;
 
 : PTX-SM-TARGET$ ( -- ptr u8 n )
-   s" sm_87" ;
+   PTX-ARCH-BUF PTX-ARCH-U @ ;
 
 : PTX-ADDRESS-SIZE$ ( -- ptr u8 n )
    s" 64" ;
 
-: PTX-HEADER-SM87 ( -- )
+\ Emit the module header from the configured target (default sm_87). The word
+\ keeps its historical name so its many callers stay untouched; its output now
+\ follows PTX-TARGET!.
+: PTX-HEADER ( -- )
    SB-RESET s" .version " SB-APPEND PTX-VERSION$ SB-APPEND SB$ PTX-L
    SB-RESET s" .target " SB-APPEND PTX-SM-TARGET$ SB-APPEND SB$ PTX-L
    SB-RESET s" .address_size " SB-APPEND PTX-ADDRESS-SIZE$ SB-APPEND SB$ PTX-L ;
@@ -102,7 +131,7 @@ variable PTX-CAPTURE?                       \ 0 = stdout ; nonzero = append into
    s" }" PTX-L ;
 
 : PTX-EMIT-SAXPY ( -- )
-   PTX-HEADER-SM87
+   PTX-HEADER
    PTX-NL
    PTX-SAXPY-ENTRY
    PTX-SAXPY-BODY ;

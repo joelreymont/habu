@@ -133,6 +133,8 @@
 -3420 constant E-KEXPORT-KERNEL    \ kernel-export: unknown kernel name / record-name mismatch
 -3421 constant E-KEXPORT-OUTDIR    \ kernel-export: out-dir missing or not a directory
 -3422 constant E-KEXPORT-EMPTY     \ kernel-export: producer emitted no PTX
+-3423 constant E-PTXTC-ARCH        \ ASSEMBLE invoked before TC-ARCH! set the assembler target
+-3424 constant E-PTXTC-PTXAS       \ no ptxas executable found on any known path
 
 \ FFI: -3500..-3599
 -3500 constant E-FFI-FIRST

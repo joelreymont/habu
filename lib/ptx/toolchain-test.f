@@ -40,10 +40,15 @@ variable PATH-B-U
    PATH-A$ FILE? TFALSE
    PTXTC:CLEAN ;
 
+\ ASSEMBLE with no arch configured must fail closed - there is no fallback target.
+create ASM-O 64 allot   create ASM-E 64 allot
+
 public
 
 : RUN ( -- )
    T-RESET
+   \ fail-closed before any TC-ARCH! runs in this process
+   [: ASM-O 64 >LEN  ASM-E 64 >LEN  PTXTC:ASSEMBLE drop ;] E-PTXTC-ARCH TTHROWSQ
    PREPARE-PATHS
    PREPARE-CLEANS-OLD
    T-REPORT ;
@@ -51,3 +56,11 @@ public
 ;package
 
 PTXTC-TEST:RUN
+
+\ TC-ARCH! stores the assembler target and TC-ARCH$ reads it back (reopen the
+\ owner package for the private reader).
+package PTXTC
+T-RESET
+s" sm_121a" TC-ARCH!  TC-ARCH$ s" sm_121a" T$=
+T-REPORT
+;package

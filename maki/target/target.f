@@ -16,6 +16,7 @@ require maki/cad-kinds.f
 -5254 constant E-TARGET-ID
 -5255 constant E-TARGET-LABEL
 -5256 constant E-TARGET-UNKNOWN
+-5249 constant E-TARGET-VER       \ no ptxas ISA .version is known for this target's arch
 
 package TARGET
 public
@@ -64,6 +65,7 @@ create TGT-CK TGT-CAP CK-BYTES * allot       \ per-id SHA-256 content key over t
 variable TGT-LABEL-U
 variable TGT-N
 TYPED-VARIABLE TGT-SM87 CAD-KIND:target-id  \ interned sm87 target id ( -- ptr CAD-KIND:target-id )
+TYPED-VARIABLE TGT-SM121A CAD-KIND:target-id \ interned sm_121a (GB10) target id
 
 TRUSTED: RAW>TARGET-ID ( n -- CAD-KIND:target-id ) ;
 TRUSTED: TARGET-ID>RAW ( CAD-KIND:target-id -- n ) ;
@@ -178,6 +180,9 @@ $100000001b3 constant TGT-HASH-PRIME
 
 : SM87! ( CAD-KIND:target-id -- )
    TGT-SM87 ! ;
+
+: SM121A! ( CAD-KIND:target-id -- )
+   TGT-SM121A ! ;
 
 \ ---- § 23.9 foreign-id wire codecs --------------------------------------------
 \ Two audited public codecs share the private RAW>TARGET-ID refinement:
@@ -330,6 +335,20 @@ public
 : SM87 ( -- CAD-KIND:target-id )
    TGT-SM87 @ VALIDATE ;
 
+: SM121A ( -- CAD-KIND:target-id )
+   TGT-SM121A @ VALIDATE ;
+
+\ The PTX ISA .version the target's ptxas requires: an sm_121a .target directive
+\ is rejected below PTX ISA 8.8 (measured with CUDA 13 ptxas on the GB10), while
+\ sm_87 keeps the 8.3 it has always emitted. Derived from the descriptor's arch,
+\ so the emitted .version and the assembler arch trace to one target fact. Any
+\ arch without a known minimum ISA is a fail-closed throw, never a default.
+: ARCH-VER$ ( CAD-KIND:target-id -- ptr u8 n )
+   ARCH@ {: arch:n :}
+   arch 87 = if s" 8.3" exit then
+   arch 121 = if s" 8.8" exit then
+   E-TARGET-VER throw ;
+
 private
 
 : SM87-DESC ( -- descriptor )
@@ -337,8 +356,14 @@ private
    CAP-PTX CAP-FP16 or CAP-BF16 or CAP-TF32 or CAP-MMA or CAP-ASYNC or CAP-BARRIER or
    DESCRIPTOR ;
 
+: SM121A-DESC ( -- descriptor )
+   ISA-PTX 121 32 1024 49152
+   CAP-ALL
+   DESCRIPTOR ;
+
 : INIT ( -- )
-   s" sm_87" SM87-DESC REGISTER SM87! ;
+   s" sm_87" SM87-DESC REGISTER SM87!
+   s" sm_121a" SM121A-DESC REGISTER SM121A! ;
 
 INIT
 

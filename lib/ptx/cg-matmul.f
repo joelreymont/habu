@@ -68,7 +68,7 @@ KERNEL: MM-CHECKED ( matrix<space-global,f32,extent-m,extent-k> matrix<space-glo
 \ checked kernel body (MM-CHECKED, or a graded candidate K - maki/eval/emit.f)
 \ can sit between MM-AUTHOR-OPEN and MM-AUTHOR-CLOSE.
 : MM-AUTHOR-OPEN ( -- matrix<space-global,f32,extent-m,extent-k> matrix<space-global,f32,extent-k,extent-n> matrix<space-global,f32,extent-m,extent-n> )
-   PTX-HEADER-SM87  PTX-NL
+   PTX-HEADER  PTX-NL
    s" .visible .entry MM(.param .u64 pA,.param .u64 pB,.param .u64 pC,.param .u32 pM,.param .u32 pN,.param .u32 pK)" PTX-L
    s" {" PTX-L
    s" .reg .pred %p<4>;" PTX-L  s" .reg .f32 %f<48>;" PTX-L  s" .reg .b32 %r<64>;" PTX-L  s" .reg .b64 %rd<48>;" PTX-L

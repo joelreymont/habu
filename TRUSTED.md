@@ -368,6 +368,7 @@ that source is explicitly certified; they are not stale-checked by the default
 | c-task-live-guard | `--` | Engine emitter guard that rejects dictionary/source mutation while pthread tasks are live; raw exit path and token printing are assembly-side. | `lib/task-test.f`, `test/gate-stdlib.f`, `test/run.f` | src/habu/habu2.f | 2026-06-30 |
 | CU-INIT | `n -- rc` | Exact CUDA `cuInit` scalar binding in the sealed `CUDA` package. | `lib/ptx/cuda-driver-test.f`, `maki/device-smoke.f` | lib/ptx/cuda-driver.f | 2026-07-11 |
 | CU-DEVICE-GET | `ptr a idx -- rc` | Exact CUDA device lookup binding fixes the output to one writable cell and the index to a scalar. | `lib/ptx/cuda-driver-test.f`, `maki/device-smoke.f` | lib/ptx/cuda-driver.f | 2026-07-11 |
+| CU-DEVICE-GET-ATTRIBUTE | `ptr a n cuda-dev -- rc` | Exact CUDA device-attribute binding fixes the output to one writable cell, stages the attribute id as a scalar, and preserves the nominal device role. | `lib/ptx/cuda-driver-test.f`, `maki/eval/active-target.f` | lib/ptx/cuda-driver.f | 2026-07-19 |
 | CU-DEVICE-PRIMARY-CTX-RETAIN | `ptr a cuda-dev -- rc` | Exact CUDA primary-context binding fixes the output to one writable cell and preserves the nominal device role. | `lib/ptx/cuda-driver-test.f`, `tools/ptx/cuda-launch.f` | lib/ptx/cuda-driver.f | 2026-07-11 |
 | CU-CTX-SET-CURRENT | `cuda-ctx -- rc` | Exact CUDA current-context binding preserves the nominal context role. | `lib/ptx/cuda-driver-test.f`, `tools/ptx/cuda-launch.f` | lib/ptx/cuda-driver.f | 2026-07-11 |
 | CU-MODULE-LOAD | `ptr a ptr u8 -- rc` | Exact CUDA module-load binding fixes the output to one writable cell and the path pointer read-only. | `lib/ptx/cuda-driver-test.f`, `tools/ptx/cuda-launch.f` | lib/ptx/cuda-driver.f | 2026-07-11 |
@@ -1270,6 +1271,7 @@ lib/task.f:FACILITY stdlib-boundary habu-typed-defining-words-aa224eb5
 lib/task-test.f:TASK-CSTRLEN stdlib-boundary habu-ptx-m1-c-1df1d6e7
 lib/ptx/cuda-driver.f:CU-INIT stdlib-boundary habu-ptx-m1-c-1df1d6e7
 lib/ptx/cuda-driver.f:CU-DEVICE-GET stdlib-boundary habu-ptx-m1-c-1df1d6e7
+lib/ptx/cuda-driver.f:CU-DEVICE-GET-ATTRIBUTE stdlib-boundary habu-ptx-m1-c-1df1d6e7
 lib/ptx/cuda-driver.f:CU-DEVICE-PRIMARY-CTX-RETAIN stdlib-boundary habu-ptx-m1-c-1df1d6e7
 lib/ptx/cuda-driver.f:CU-CTX-SET-CURRENT stdlib-boundary habu-ptx-m1-c-1df1d6e7
 lib/ptx/cuda-driver.f:CU-MODULE-LOAD stdlib-boundary habu-ptx-m1-c-1df1d6e7

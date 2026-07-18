@@ -27,7 +27,7 @@ require maki/eval/emit-device.f
       s" eval-emit-device: libcuda unavailable -> device numeric goldens SKIPPED (off-device; file check-loads)" type cr
       T-REPORT exit
    then
-   s" device: cuInit OK -> running sumnorm/gemm/attention numeric goldens on the Orin" type cr
+   s" device: cuInit OK -> running sumnorm/gemm/attention numeric goldens on " type  ATGT:LABEL$ type cr
    \ positive controls: the correct kernel matches the CPU reference within tolerance
    s" sumnorm correct matches ref"        T-LABEL  EVND:SN-GREEN-OK?           TTRUE
    s" gemm correct matches ref"           T-LABEL  EVND:GEMM-GREEN-OK?         TTRUE

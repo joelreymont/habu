@@ -15,6 +15,7 @@ require src/arch/ptx/emit.f
 require lib/ptx/cg.f
 require lib/ptx/sentinel.f
 require lib/ptx/toolchain.f
+require maki/eval/active-target.f
 
 \ package GPU owns the stateful launch machinery. The G- stem drops (GPU carries it:
 \ GPU:SETUP / GPU:LAUNCH / GPU:SGD ...); the CUDA:/PTXSENT: bindings stay the driver's.
@@ -69,8 +70,10 @@ create GQ-ERR $1000 allot
    GEMIT-ERR erru LEN>N  rc RC>N  PTXTC:EMIT-GUARD          \ nonzero emit rc -> surface stderr, throw
    PTXTC:PTX$ GEMIT-OUT outu LEN>N WRITE-ALL  outu LEN>N ;
 
-\ ptxas-assemble the private PTX to the private cubin (fail-closed on nonzero rc)
+\ ptxas-assemble the private PTX to the private cubin (fail-closed on nonzero rc).
+\ The arch comes from the probed active target, never a literal.
 : ASSEMBLE-PTX ( -- )
+   ATGT:LABEL$ PTXTC:TC-ARCH!
    GQ-OUT $1000 >LEN GQ-ERR $1000 >LEN PTXTC:ASSEMBLE
    PTXTC:ASM-REPORT 0= if exit then                        \ ptxas rc 0 -> assembled
    E-PTX-EMIT throw ;                                      \ else surface stderr (ASM-REPORT) + fail closed

@@ -4,6 +4,7 @@ require lib/errors.f
 require lib/string.f
 require lib/fs.f
 require lib/fs-mutate.f
+require lib/ptx/toolchain.f
 
 package MAKI-GRADE
 
@@ -60,9 +61,9 @@ public
 : LAUNCH$ ( -- ptr u8 n )
    LAUNCH-BUF LAUNCH-U @ ;
 
+\ one ptxas resolver for the whole repo: the checked toolchain owns it (env
+\ override, then CUDA 13, then legacy 12.6, else a named throw).
 : PTXAS$ ( -- ptr u8 n )
-   s" PTXAS" GETENV dup 0= if
-      2drop s" /usr/local/cuda-12.6/bin/ptxas"
-   then ;
+   PTXTC:PTXAS$ ;
 
 ;package

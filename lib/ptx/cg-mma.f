@@ -669,7 +669,7 @@ TRUSTED: MMA-STAGE-ISSUE ( n n -- cpp-pending<p> )   MMA-CP-STAGE 0 ;
    MMA-STORE ;
 
 : EMIT-MATMUL-MMA ( -- )
-   PTX-HEADER-SM87  PTX-NL
+   PTX-HEADER  PTX-NL
    MMA-DYNSMEM @ if
       s" .extern .shared .align 16 .b8 SH[];" PTX-L        \ module-scope dynamic .shared (sized at launch)
    then

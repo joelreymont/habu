@@ -111,7 +111,7 @@ MP-M MP-N * constant MP-CE          \ C elems = 128
    s" st.global.f32 [%rd12], %f23;" PTX-L ;
 
 : EMIT-MMA-PROBE ( -- )
-   PTX-HEADER-SM87  PTX-NL
+   PTX-HEADER  PTX-NL
    MP-HEAD  MP-PARAMS  MP-LANE
    MP-LOAD-A  MP-LOAD-B  MP-MMA  MP-STORE-D
    s" ret;" PTX-L  s" }" PTX-L ;
@@ -194,7 +194,7 @@ MP-M MP-N * constant MP-CE          \ C elems = 128
    s" ld.shared.b32 %r15, [%r5];" PTX-L ;
 
 : EMIT-MMA-LDM-PROBE ( -- )
-   PTX-HEADER-SM87  PTX-NL
+   PTX-HEADER  PTX-NL
    MP-LDM-HEAD  MP-PARAMS  MP-LDM-STAGE
    MP-LDM-LOAD-A  MP-LDM-LOAD-B                   \ operands -> %r10..15
    MP-LANE  MP-MMA  MP-STORE-D                    \ MP-LANE re-derives the D-store geometry (%r4,%r5,%r8)
@@ -259,7 +259,7 @@ MP-M MP-N * constant MP-CE          \ C elems = 128
    s" ldmatrix.sync.aligned.m8n8.x2.shared.b16 {%r14,%r15}, [%r4];" PTX-L ;
 
 : EMIT-MMA-BLDM-PROBE ( -- )
-   PTX-HEADER-SM87  PTX-NL
+   PTX-HEADER  PTX-NL
    MP-BLDM-HEAD  MP-PARAMS  MP-BLDM-STAGE-BT
    MP-BLDM-LOAD-B                                 \ B operand -> %r14,%r15
    MP-LANE  MP-LOAD-A                             \ A operand (global scalar+cvt, proven) -> %r10..13, D geometry

@@ -89,6 +89,14 @@ TRUSTED: CU-DEVICE-GET ( ptr a idx -- rc ) {: out:ptr idx:idx :}
    FFI:RESET  out 4 0 FFI:WRITABLE!  idx 1 FFI:VALUE!
    FFI:ARGS FFI:REG-LENS 2 call ffi-call-bounded ;
 
+\ read an integer device attribute (e.g. 75 = COMPUTE_CAPABILITY_MAJOR,
+\ 76 = COMPUTE_CAPABILITY_MINOR) into the caller's 4-byte int slot.
+TRUSTED: CU-DEVICE-GET-ATTRIBUTE ( ptr a n cuda-dev -- rc )
+   {: out:ptr attr:n dev:cuda-dev :}
+   s" cuDeviceGetAttribute" SYMBOL {: call:n :}
+   FFI:RESET  out 4 0 FFI:WRITABLE!  attr 1 FFI:VALUE!  dev 2 FFI:VALUE!
+   FFI:ARGS FFI:REG-LENS 3 call ffi-call-bounded ;
+
 TRUSTED: CU-DEVICE-PRIMARY-CTX-RETAIN ( ptr a cuda-dev -- rc )
    {: out:ptr dev:cuda-dev :}
    s" cuDevicePrimaryCtxRetain" SYMBOL {: call:n :}
@@ -220,6 +228,7 @@ TRUSTED: CU-EVENT-ELAPSED-TIME ( ptr a cuda-event cuda-event -- rc )
 \ below, so no later source can redirect them or add competing bindings.
 : CUINIT ( n -- rc ) CU-INIT ;
 : CUDEVICEGET ( ptr a idx -- rc ) CU-DEVICE-GET ;
+: CUDEVICEGETATTRIBUTE ( ptr a n cuda-dev -- rc ) CU-DEVICE-GET-ATTRIBUTE ;
 : CUDEVICEPRIMARYCTXRETAIN ( ptr a cuda-dev -- rc ) CU-DEVICE-PRIMARY-CTX-RETAIN ;
 : CUCTXSETCURRENT ( cuda-ctx -- rc ) CU-CTX-SET-CURRENT ;
 : CUMODULELOAD ( ptr a ptr u8 -- rc ) CU-MODULE-LOAD ;

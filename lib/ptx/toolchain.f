@@ -21,6 +21,13 @@ variable CUBIN-U
 variable ERR-P            \ last ASSEMBLE stderr buffer + byte count, for diagnostics
 variable ERR-U
 
+create TC-ARCH-BUF 32 allot   \ assembler target label (e.g. sm_121a); TC-ARCH-U 0 = unset
+variable TC-ARCH-U            \ never defaulted: ASSEMBLE fails closed until a caller sets it
+
+: TC-ARCH$ ( -- ptr u8 n )   \ configured arch, or fail closed (no fallback target)
+   TC-ARCH-U @ 0= if E-PTXTC-ARCH throw then
+   TC-ARCH-BUF TC-ARCH-U @ ;
+
 : COPY! ( ptr u8 n ptr u8 ptr n -- ) {: a:ptr u:n dst:ptr lenp:ptr :}
    u FS-PATH-CAP > if E-FS-PATH throw then
    a dst u BYTE-COPY
@@ -39,6 +46,12 @@ variable ERR-U
 
 public
 
+\ Set the ptxas target from the active target's label (maki resolves it by
+\ probing the device). No default: a caller that never sets it cannot assemble.
+: TC-ARCH! ( ptr u8 n -- ) {: a:ptr u:n :}
+   u 0= u 32 > or if E-PTXTC-ARCH throw then
+   a TC-ARCH-BUF u BYTE-COPY  u TC-ARCH-U ! ;
+
 : CLEAN ( -- )
    CLEAN-ROOT ;
 
@@ -54,15 +67,19 @@ public
 : CUBIN$ ( -- ptr u8 n )
    CUBIN-BUF CUBIN-U @ ;
 
+\ Resolve ptxas: the PTXAS env override wins; then the CUDA 13 install (its ptxas
+\ knows sm_121a); then the legacy 12.6 path; else name every path tried and fail
+\ closed. No silent dead-path default - a missing ptxas is a loud throw.
 : PTXAS$ ( -- ptr u8 n )
-   s" PTXAS" GETENV dup 0= if
-      2drop s" /usr/local/cuda-12.6/bin/ptxas"
-   then ;
+   s" PTXAS" GETENV dup 0= if 2drop else exit then
+   s" /usr/local/cuda/bin/ptxas"      2dup FILE? if exit then 2drop
+   s" /usr/local/cuda-12.6/bin/ptxas" 2dup FILE? if exit then 2drop
+   E-PTXTC-PTXAS throw ;
 
 : ASSEMBLE ( ptr u8 len ptr u8 len -- n )
    {: out:ptr outcap:len err:ptr errcap:len :}
    PROC-ARGV-RESET
-   s" -arch=sm_87" >LEN PROC-ARGV+
+   SB-RESET s" -arch=" SB-APPEND TC-ARCH$ SB-APPEND SB$ >LEN PROC-ARGV+
    PTX$ >LEN PROC-ARGV+
    s" -o" >LEN PROC-ARGV+
    CUBIN$ >LEN PROC-ARGV+

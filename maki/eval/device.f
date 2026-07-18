@@ -26,6 +26,7 @@ require lib/ptx/tile.f
 require maki/eval/eval.f
 require maki/cuda-driver.f
 require maki/device-artifacts.f
+require maki/eval/active-target.f
 require lib/ptx/sentinel.f
 
 \ eval-device reopens package EVAL as the SAXPY device-golden module. CHECK-PASSES?
@@ -94,9 +95,15 @@ $23 constant ED-EXIT-FAULT     \ launch threw (E-CUDA etc.) / crashed
    ED-RBUF @ $FFFFFFFF and PTXSENT:GUARD ;
 : DEVICE-CORRECT? ( ptr u8 n -- bool )  ED-RUN $40C00000 = ;   \ golden a*x+y = 6.0
 
+\ append the probed module target so the emit child's .target/.version name this
+\ GPU (parses two tokens: PTX-TARGET! <arch> <version>)
+: GRADE-EMIT-TARGET ( -- )
+   s" PTX-TARGET! " SB-APPEND  ATGT:LABEL$ SB-APPEND  32 SB-APPEND-C  ATGT:VER$ SB-APPEND  10 SB-APPEND-C ;
+
 \ ---- write a driver that defines the candidate kernel K and emits it to stdout ----
 : GRADE-WRITE-DRIVER ( ptr u8 n -- ) {: a u :}
    SB-RESET
+   GRADE-EMIT-TARGET
    s" 256 %BLOCK" SB-APPEND  10 SB-APPEND-C
    s" : " SB-APPEND  a u SB-APPEND  s"  ;" SB-APPEND  10 SB-APPEND-C
    s" CG-RESET CG-HEADER CG-ENTRY CG-OPEN CG-PARAMS 1 SPAN-REG 2 SPAN-REG 1 UNIFORM-REG K CG-RET CG-CLOSE"
@@ -107,6 +114,7 @@ $23 constant ED-EXIT-FAULT     \ launch threw (E-CUDA etc.) / crashed
 : GRADE-WRITE-UNCHECKED-DRIVER ( ptr u8 n -- ) {: a:ptr u:n :}
    SB-RESET
    s" 0 set-check" SB-APPEND  10 SB-APPEND-C
+   GRADE-EMIT-TARGET
    s" 256 %BLOCK" SB-APPEND  10 SB-APPEND-C
    s" : " SB-APPEND  a u SB-APPEND  s"  ;" SB-APPEND  10 SB-APPEND-C
    s" CG-RESET CG-HEADER CG-ENTRY CG-OPEN CG-PARAMS 1 SPAN-REG 2 SPAN-REG 1 UNIFORM-REG K CG-RET CG-CLOSE"
@@ -143,7 +151,7 @@ create GP-OUT $4000 allot  create GP-ERR $1000 allot
 create GQ-OUT $1000 allot  create GQ-ERR $1000 allot
 : GRADE-PTXAS ( -- n )
    PROC-ARGV-RESET
-   s" -arch=sm_87"          >LEN PROC-ARGV+
+   SB-RESET s" -arch=" SB-APPEND ATGT:LABEL$ SB-APPEND SB$  >LEN PROC-ARGV+
    MAKI-GRADE:PTX$          >LEN PROC-ARGV+
    s" -o"                   >LEN PROC-ARGV+
    MAKI-GRADE:CUBIN$        >LEN PROC-ARGV+

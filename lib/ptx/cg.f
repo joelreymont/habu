@@ -65,7 +65,7 @@ variable CG-GRID-IDX   \ flat grid index register last emitted by EMIT-GRID-CTX 
    endcase ;
 
 \ --- module / entry scaffolding ---
-: CG-HEADER ( -- )  PTX-HEADER-SM87  PTX-NL ;
+: CG-HEADER ( -- )  PTX-HEADER  PTX-NL ;
 
 \ A PTX MODULE is exactly ONE .version/.target/.address_size header followed by N
 \ `.visible .entry` kernels; ptxas rejects a second header in one stream. PTX-MODULE{
