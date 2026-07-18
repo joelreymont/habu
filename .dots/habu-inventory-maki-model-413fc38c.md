@@ -6,4 +6,4 @@ issue-type: task
 created-at: "2026-07-18T15:04:37.713527+02:00"
 ---
 
-First nanoGPT step: read maki model/optim/loss/autograd/tokenizer surface; produce the gap list vs GPT-2-small requirements (embeddings gather, gelu, cross-entropy w/ softmax fusion, AdamW, LR schedule, dropout?, weight init, checkpointing) with file:line evidence; mint the build sub-dots from it. Read-only.
+First nanoGPT step: read maki model/optim/loss/autograd/tokenizer surface; produce the gap list vs GPT-2-small requirements (embeddings gather, gelu, cross-entropy w/ softmax fusion, AdamW, LR schedule, dropout?, weight init, checkpointing) with file:line evidence; mint the build sub-dots from it. ALSO extract the SPEC: grammar requirement list from GPT-2-small's op set (which contractions, gather/indexing forms, reductions, broadcasts the spec word must express; which ops stay plain words) — this drives Foundation A1/SPEC: scope. Read-only.
