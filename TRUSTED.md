@@ -1668,9 +1668,9 @@ test/type-decl-suite.f:TWX-TFAM-SUM? test-metaprog habu-seal-set-check-b3676b33
 test/type-decl-suite.f:TWX-TFAM-VIS@ test-metaprog habu-seal-set-check-b3676b33
 test/type-decl-suite.f:TWX-UNIFY test-metaprog habu-seal-set-check-b3676b33
 test/type-family-suite.f:TWX-CHECKER-SNAPSHOT-PREPARE test-metaprog habu-seal-set-check-b3676b33
-test/type-family-suite.f:TWX-T-WIDTH test-metaprog habu-checker-capability-layout-9b8540bd
-test/type-family-suite.f:TWX-MK-NULLARY test-metaprog habu-checker-capability-layout-9b8540bd
-test/type-family-suite.f:TWX-MK-UNARY test-metaprog habu-checker-capability-layout-9b8540bd
+test/type-family-suite.f:TWX-T-WIDTH test-metaprog habu-epic-type-system-b88c9ecc
+test/type-family-suite.f:TWX-MK-NULLARY test-metaprog habu-epic-type-system-b88c9ecc
+test/type-family-suite.f:TWX-MK-UNARY test-metaprog habu-epic-type-system-b88c9ecc
 test/type-family-suite.f:TWX-FRESH test-metaprog habu-seal-set-check-b3676b33
 test/type-family-suite.f:TWX-LAY-ADD test-metaprog habu-seal-set-check-b3676b33
 test/type-family-suite.f:TWX-LAY-ALIGN@ test-metaprog habu-seal-set-check-b3676b33
