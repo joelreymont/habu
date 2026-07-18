@@ -354,6 +354,17 @@ fits.
 
 ## Types, ADTs & Signatures
 
+- **Declarable nominals: the mechanism already exists; the gap is package-scoping.**
+  `DEFTYPE NAME` (roles.f) mints a CT-ROLE past CC-MAX via CT-SET, auto-derives
+  `>NAME`/`NAME>N`, persists via CT-SNAPSHOT-PERSIST, and rolls back through the RBF
+  frame (CTN + CT-STR-U saved/restored at checker.f:8979/9005). Declared roles unify
+  byte-for-byte like built-ins: same-role accept, other-role reject, **role↔n REJECT
+  both ways** (a dot's "generic-int accept" wording was wrong — probe before
+  implementing). CT roles are a **global flat code space** (`CON-OF = CT-FIND`, no
+  package awareness) — a second package declaring the same tail hard-dies (70);
+  package-scoping is a con-resolution-path change, not "declarability". Three nominal
+  substrates coexist (CT role / TFAM arity-0 / extent-atom); which one `EXTENT:`
+  mints on is a design decision, not settled by declarability existing.
 - **A multi-cell PRODUCT / wide value (tagged sum with payload) cannot be a typed
   LOCAL nor a polymorphic sum/`result`/`option` payload param — only single-cell
   types (arity-0 `TYPEFAMILY`, payloadless `ENUM`) can.** `{: d:content-digest :}`
