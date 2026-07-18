@@ -10,7 +10,7 @@ package CANDIDATE-VALIDATION-TEST
 
 : CASES ( -- )
    s" test/candidate-validation.f" SHAPE:LOAD
-   S\" s\q test/" 32 SHAPE:COUNT=
+   S\" s\q test/" 34 SHAPE:COUNT=
    s" test/engine-suite.f" PATH-PIN
    s" test/type-family-suite.f" PATH-PIN
    s" test/type-family-rollback-suite.f" PATH-PIN
@@ -19,6 +19,8 @@ package CANDIDATE-VALIDATION-TEST
    s" test/type-nominal-dup-bad.f" PATH-PIN
    s" test/value-nominal-suite.f" PATH-PIN
    s" test/value-nominal-dup-bad.f" PATH-PIN
+   s" test/cast-suite.f" PATH-PIN
+   s" test/cast-negative-suite.f" PATH-PIN
    s" test/type-ctor-suite.f" PATH-PIN
    s" test/type-linear-suite.f" PATH-PIN
    s" test/type-match-suite.f" PATH-PIN
@@ -67,7 +69,7 @@ package CANDIDATE-VALIDATION-TEST
    1 SHAPE:COUNT= ;
 
 : MANIFESTS ( -- )
-   s" construct case-kind positive" 19 SHAPE:COUNT=
+   s" construct case-kind positive" 21 SHAPE:COUNT=
    s" construct case-kind diagnostic" 3 SHAPE:COUNT=
    s" construct case-kind negative" 10 SHAPE:COUNT=
    S\" s\q test/type-family-suite.f\q construct case-kind positive 0 s\q \q s\q \q RUN-CASE" DIRECT-PIN
@@ -77,6 +79,8 @@ package CANDIDATE-VALIDATION-TEST
    S\" s\q test/type-nominal-dup-bad.f\q construct case-kind negative 70\n      s\q TYPE-NOMINAL-DUP-ARMED\q s\q bad or duplicate signature type\q RUN-CASE" DIRECT-PIN
    S\" s\q test/value-nominal-suite.f\q construct case-kind positive 0 s\q \q s\q \q RUN-CASE" DIRECT-PIN
    S\" s\q test/value-nominal-dup-bad.f\q construct case-kind negative 67\n      s\q VALUE-NOMINAL-DUP-ARMED\q s\q duplicate family\q RUN-CASE" DIRECT-PIN
+   S\" s\q test/cast-suite.f\q construct case-kind positive 0 s\q \q s\q \q RUN-CASE" DIRECT-PIN
+   S\" s\q test/cast-negative-suite.f\q construct case-kind positive 0 s\q \q s\q \q RUN-CASE" DIRECT-PIN
    S\" s\q test/type-linear-suite.f\q construct case-kind positive 0 s\q \q s\q \q RUN-CASE" DIRECT-PIN
    S\" s\q test/type-match-suite.f\q construct case-kind positive 0 s\q \q s\q \q RUN-CASE" DIRECT-PIN
    S\" s\q test/type-layout-lower-pending.f\q construct case-kind positive 0 s\q \q s\q \q RUN-CASE" DIRECT-PIN

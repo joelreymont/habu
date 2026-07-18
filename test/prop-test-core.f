@@ -609,8 +609,12 @@ create AXBUF AXBUF-CAP allot
 \ effect a census execution over random operands cannot exercise soundly);
 \ UNSAFE-TOK? bans it inside checked bodies, and its axiom keeps it top-level
 \ executable so library source can declare an explicit barrier.
+\ cast-pend! arms the checker's one-shot cast-certification window with a name
+\ (ptr,len) that a later CORE-STR=CI reads: a census execution over a random
+\ operand would arm the window with a garbage pointer+length and leave the
+\ checker mid-armed — a checker-substrate mutation of the same class as trust.
 : AX-NOEXEC-C ( -- ptr u8 n )
-   s"  seal-capture seal-friend prot-wid-add drain-pretrust wf-tokix@ wf-off@ wf-pos@ wf-fam@ wf-width@ wf-term@ wf-flags@ tfam-width@ locw-hw@ p2-carve-w p2-live-w@ p2-live-cum@ p2-locseq-reset wide-mark rec-wide-publish rec-min-in@ layout-valid-desc-cell tfam-name$ tfam-arity@ tfam-kind@ tfam-public? tfam-derive-eq? tfam-derive-hash? tfam-var-start@ tfam-var-count@ sumv-name$ sumv-ctor-pkg$ ct-live? type-field:count type-field:no-variant type-field:find type-field:each type-field:family@ type-field:variant@ type-field:name$ type-field:schema@ type-field:slot@ type-field:cells@ type-field:byte-off@ type-field:bytes@ type-field:align@ type-field:flags@ lower-cert:cell@ lower-cert:bytes trust ptx-barrier! check check! typefamily sumtype enum product layout-buffer typed-buffer typed-variable " ;
+   s"  seal-capture seal-friend prot-wid-add drain-pretrust wf-tokix@ wf-off@ wf-pos@ wf-fam@ wf-width@ wf-term@ wf-flags@ tfam-width@ locw-hw@ p2-carve-w p2-live-w@ p2-live-cum@ p2-locseq-reset wide-mark rec-wide-publish rec-min-in@ layout-valid-desc-cell tfam-name$ tfam-arity@ tfam-kind@ tfam-public? tfam-derive-eq? tfam-derive-hash? tfam-var-start@ tfam-var-count@ sumv-name$ sumv-ctor-pkg$ ct-live? type-field:count type-field:no-variant type-field:find type-field:each type-field:family@ type-field:variant@ type-field:name$ type-field:schema@ type-field:slot@ type-field:cells@ type-field:byte-off@ type-field:bytes@ type-field:align@ type-field:flags@ lower-cert:cell@ lower-cert:bytes trust ptx-barrier! cast-pend! check check! typefamily sumtype enum product layout-buffer typed-buffer typed-variable " ;
 
 : AX-CAT ( ptr u8 n -- n )
    2dup AX-HAS-QUOTE? if 2drop AX-NOEXEC exit then

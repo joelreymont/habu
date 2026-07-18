@@ -2078,6 +2078,7 @@ prim - checker-deftyped-buffer - pe-ptr-u8 pe-in pe-n pe-in pe-ptr-u8 pe-in pe-n
 prim - checker-deftyped-variable - pe-ptr-u8 pe-in pe-n pe-in pe-ptr-u8 pe-in pe-n pe-in
 prim - checker-lbuf-name-guard - pe-ptr-u8 pe-in pe-n pe-in
 prim - checker-defined? - pe-ptr-u8 pe-in pe-n pe-in pe-f pe-out
+prim - cast-pend! - pe-ptr-u8 pe-in pe-n pe-in
 prim - trust - pe-ptr-u8 pe-in pe-n pe-in pe-ptr-u8 pe-in pe-n pe-in
 prim - ptx-barrier! - pe-ptr-u8 pe-in pe-n pe-in
 prim - tfam-n@ - pe-n pe-out

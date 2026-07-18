@@ -195,6 +195,8 @@ variable FAILS
    s" test/value-nominal-suite.f" construct case-kind positive 0 s" " s" " RUN-CASE
    s" test/value-nominal-dup-bad.f" construct case-kind negative 67
       s" VALUE-NOMINAL-DUP-ARMED" s" duplicate family" RUN-CASE
+   s" test/cast-suite.f" construct case-kind positive 0 s" " s" " RUN-CASE
+   s" test/cast-negative-suite.f" construct case-kind positive 0 s" " s" " RUN-CASE
    s" test/type-linear-suite.f" construct case-kind positive 0 s" " s" " RUN-CASE
    s" test/type-match-suite.f" construct case-kind positive 0 s" " s" " RUN-CASE
    s" test/type-layout-lower-pending.f" construct case-kind positive 0 s" " s" " RUN-CASE

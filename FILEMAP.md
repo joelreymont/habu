@@ -2061,6 +2061,8 @@ points stay listed.
 - `test/type-nominal-dup-bad.f` — child-process negative fixture: a duplicate nominal declaration is refused fail-closed (exit 70, "bad or duplicate signature type").
 - `test/value-nominal-suite.f` — behavior contract for the `NOMINAL:` surface (lib/type/value-nominal.f): same-nominal accept, other-nominal/generic-int reject, explicit converters, converter no-launder, demanded-input direction, and package scoping (same name in two packages stays distinct).
 - `test/value-nominal-dup-bad.f` — child-process negative fixture: a duplicate `NOMINAL:` in one package is refused fail-closed (exit 67, "duplicate family").
+- `test/cast-suite.f` — positive behavior contract for the `CAST:` checked retype declarer (src/core/roles.f + checker.f CAST-PEND window): empty-body and guarded nominal casts, runtime value pass-through, guard throw, parametric round-trip and generic projection, and checked-caller certification against the published row.
+- `test/cast-negative-suite.f` — reject contract for `CAST:`: E-CAST-ARITY/E-CAST-CLASS/E-CAST-FAM named rejects, identity-certification failures (net-stack and input-consuming bodies), and the unsafe-token reject of `cast:` inside a checked body.
 - `test/type-ctor-suite.f` — behavior suite for generated sum constructors (arity-0 publication, payload rejects, parametric/linear gating, package restore).
 - `test/type-linear-suite.f` — whole-bundle linear accounting suite (linear construction/minting/flow accepts; copy/drop/transport/local/unconsumed rejects).
 - `test/type-match-suite.f` — checked MATCH eliminator suite (exhaustiveness, payload refinement, branch joins, linear consumption, depth fail-closure, scope, CASE-interleave pins).

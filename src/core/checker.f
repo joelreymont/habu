@@ -4829,6 +4829,11 @@ PRIM: CHECKER-DEFTYPED-VARIABLE
    PE-PTR-U8 PE-IN PE-N PE-IN  PE-PTR-U8 PE-IN PE-N PE-IN PRIM;
 PRIM: CHECKER-LBUF-NAME-GUARD PE-PTR-U8 PE-IN PE-N PE-IN PRIM;
 PRIM: CHECKER-DEFINED? PE-PTR-U8 PE-IN PE-N PE-IN  PE-F PE-OUT PRIM;
+\ CAST-PEND! ( name$ -- ) arms the one-shot cast-certification window (defined
+\ near CTOR-PEND below). The axiom keeps it checker-known so the roles.f CAST:
+\ declarer — an ordinary checked word — can call it; unlike CTOR-PEND!/LBUF-PEND!
+\ it is deliberately NOT xref-erased (the rationale rides at the definition).
+PRIM: CAST-PEND! PE-PTR-U8 PE-IN PE-N PE-IN PRIM;
 \ TRUST is the public top-level effect-declaration word ( name$ effect$ -- ).
 \ The axiom keeps it checker-known so the seal-time internal-word marking pass
 \ (src/core/internal-mark.f) leaves it executable at top level (dot
@@ -5918,6 +5923,7 @@ variable CURSYM
    a u s" deftype" CORE-STR=CI IF RES-TRUE EXIT THEN
    a u s" deflinear" CORE-STR=CI IF RES-TRUE EXIT THEN
    a u s" value-record" CORE-STR=CI IF RES-TRUE EXIT THEN
+   a u s" cast:" CORE-STR=CI IF RES-TRUE EXIT THEN
    a u s" set-check" CORE-STR=CI IF RES-TRUE EXIT THEN
    a u s" set-preflight" CORE-STR=CI IF RES-TRUE EXIT THEN
    a u s" parse-imm" CORE-STR=CI IF RES-TRUE EXIT THEN
@@ -5977,6 +5983,7 @@ variable UNSAFE-SYM-N
    s" deftype"       UNSAFE-NAME-ADD
    s" deflinear"     UNSAFE-NAME-ADD
    s" value-record"  UNSAFE-NAME-ADD
+   s" cast:"         UNSAFE-NAME-ADD
    s" sumtype"       UNSAFE-NAME-ADD
    s" enum"          UNSAFE-NAME-ADD
    s" product"       UNSAFE-NAME-ADD
@@ -6018,6 +6025,13 @@ variable UNSAFE-SYM-N
 7114 constant E-EXPORT-SEALED
 7115 constant E-EXPORT-PRIM
 7120 constant E-EXPORT-UNSAFE    \ 7116-7119 = sumtype.f E-TDECL block
+
+\ CAST: legality rejects (dot habu-checked-cast-primitive). A cast declares a
+\ retype between two single-cell machine types; the gate below refuses anything
+\ wider than that class (7121-7128 = layout-buffer/type-family blocks).
+7129 constant E-CAST-ARITY    \ sig is not exactly one input and one output term
+7130 constant E-CAST-CLASS    \ in/out is not a single retype-eligible machine cell
+7131 constant E-CAST-FAM      \ in/out names an undeclared family/type
 
 \ sealed system-package names: checker mirror of the native RESTAB table
 \ (src/habu/habu2.f) — foundational and stable, like CK-SEAL-LATCH-OFF.
@@ -8852,6 +8866,55 @@ variable CTOR-PEND-N   variable CTOR-PEND-I
       CTOR-PEND-I @ 1 + CTOR-PEND-I !
    REPEAT ;
 
+\ --- checked nominal/family cast certification (dot habu-checked-cast-primitive).
+\ CAST: (roles.f) arms this one-shot window with the declared cast name, then
+\ drives an ordinary checked colon compile of ": NAME ( in -- out ) <body> ;".
+\ On the matching CHECK the body is certified against SGIN — the identity retype
+\ ( in -- in ) — while the shared publish tail records the declared ( in -- out )
+\ row. It is the CTOR-PEND sibling for the nominal/family retype class instead of
+\ generated constructors. CAST-PEND! is a plain allowlist prim (above),
+\ deliberately NOT xref-erased: the window only ever admits an ( in -- in )-
+\ certified body retyped within the same single-cell machine class, which adds no
+\ unsoundness a plain checked word could not already contain — a checked word can
+\ already mint a nominal through an existing converter. The legality gate refuses
+\ any wider power (non-unit arity, a class/width reinterpret, an undeclared
+\ family), so exposing the arming prim grants no forgery the checker lacked.
+variable CAST-PEND-A   variable CAST-PEND-U   0 CAST-PEND-U !
+: CAST-PEND! ( ptr u8 n -- ) {: a:ptr u:n :}
+   u CAST-PEND-U !  a CAST-PEND-A ! ;
+: CAST-PEND-CLEAR ( -- ) 0 CAST-PEND-U ! ;
+: CAST-PEND-MATCH? ( -- bool )
+   CAST-PEND-U @ 0 >  NMU @ 0 >  and 0= IF RES-FALSE EXIT THEN
+   CAST-PEND-A @ CAST-PEND-U @ NMA @ NMU @ CORE-STR=CI ;   \ NMA is case-folded; the armed name is verbatim
+
+\ CAST-ROW-1? : the row is exactly one term deep over its base (open or closed).
+: CAST-ROW-1? ( n -- bool )
+   R-RES dup TAG S-PUSH <> IF drop RES-FALSE EXIT THEN
+   P>REST R-RES TAG S-ROW = ;
+\ CAST-ROW-TERM : the single top term of a one-deep row.
+: CAST-ROW-TERM ( n -- n ) R-RES P>TYPE ;
+\ CAST-CELL? : term resolves to a single retype-eligible machine cell — a plain
+\ cell (con or type var), an arity-0 family scalar, or a parametric family cell
+\ (all width 1). A pointer, quotation, atom, or a W>1 layout term is refused as a
+\ class/width reinterpret.
+: CAST-CELL? ( n -- bool ) {: t0:n :}
+   t0 T-RES {: t:n :}
+   t TAG T-CON = IF RES-TRUE EXIT THEN
+   t TAG T-VAR = IF RES-TRUE EXIT THEN
+   t TAG T-PARAM = IF t T-WIDTH 1 = EXIT THEN
+   RES-FALSE ;
+\ CAST-CERTIFY : the matched-window certification. Throw the named reject when the
+\ declared retype is illegal, else certify the body output against SGIN (the
+\ identity ( in -- in ) flow); the shared tail then records the declared row.
+: CAST-CERTIFY ( -- )
+   SGBAD-UNKNOWN? IF E-CAST-FAM throw THEN
+   SGHASR @ 0 <> IF E-CAST-ARITY throw THEN
+   SGIN @ CAST-ROW-1? 0= IF E-CAST-ARITY throw THEN
+   SGOUT @ CAST-ROW-1? 0= IF E-CAST-ARITY throw THEN
+   SGIN @ CAST-ROW-TERM CAST-CELL? 0= IF E-CAST-CLASS throw THEN
+   SGOUT @ CAST-ROW-TERM CAST-CELL? 0= IF E-CAST-CLASS throw THEN
+   SGIN @ SUNI-COERCE ;
+
 \ Generative layout-buffer authorization. xref.f erases every arming-state
 \ dictionary name after compiling the allocator and CHECK, leaving only their
 \ baked direct references. User source therefore cannot arm or mutate the
@@ -8876,6 +8939,9 @@ variable CTOR-PEND-N   variable CTOR-PEND-I
       CTOR-PEND-MATCH? IF
          CTOR-PEND-CLEAR                            \ single shot, even on reject
          CTOR-EXPECTED-ROW SUNI-COERCE
+      ELSE CAST-PEND-MATCH? IF
+         CAST-PEND-CLEAR                            \ single shot, even on reject
+         CAST-CERTIFY                               \ identity retype; the tail publishes ( in -- out )
       ELSE
          LBUF-PEND-MATCH? IF
             -1 LAYOUT-INTRO !
@@ -8884,7 +8950,7 @@ variable CTOR-PEND-N   variable CTOR-PEND-I
          ELSE
             SGOUT @ SUNI-COERCE
          THEN
-      THEN
+      THEN THEN
       OK @ IF SGIN @ BROW !  SGOUT @ DCUR ! THEN    \ record the verified declared effect
    THEN                                        \ SUNI captures declared(exp)/inferred(act)
    LMODE @ 0 <>  #CFC @ 0 <>  or  CONM @ 0 <>  or  MM @ 0 <>  or IF CF-FAIL THEN

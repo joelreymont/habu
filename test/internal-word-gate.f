@@ -377,6 +377,8 @@ public
    s" DEFLINEAR" IWG-NEG-OPENER
    s" VALUE-RECORD in a checked body is rejected unsafe" T-LABEL
    s" VALUE-RECORD" IWG-NEG-OPENER
+   s" cast: in a checked body is rejected unsafe" T-LABEL
+   s" cast:" IWG-NEG-OPENER
    s" EXPORT of a checked word still works" T-LABEL
    IWG-EXPORT-OK-FORGE$ IWG-EXEC:SUBJECT IWG-ASSERT-OK
    s" EXPORT DEFTYPE rejects E-EXPORT-UNSAFE" T-LABEL
@@ -385,6 +387,8 @@ public
    s" DEFLINEAR" IWG-NEG-EXPORT
    s" EXPORT VALUE-RECORD rejects E-EXPORT-UNSAFE" T-LABEL
    s" VALUE-RECORD" IWG-NEG-EXPORT
+   s" EXPORT cast: rejects E-EXPORT-UNSAFE" T-LABEL
+   s" cast:" IWG-NEG-EXPORT
    s" EXPORT SUMTYPE rejects E-EXPORT-UNSAFE" T-LABEL
    s" SUMTYPE" IWG-NEG-EXPORT
    s" EXPORT ENUM rejects E-EXPORT-UNSAFE" T-LABEL
@@ -552,7 +556,7 @@ public
 package IWG-PARITY
 
 7 constant DIRECT-N
-57 constant SUBJECT-N
+59 constant SUBJECT-N
 : RESULT ( -- ptr u8 n ptr u8 n n )
    IWG-OUT IWG-OUT-U @ IWG-ERR IWG-ERR-U @ IWG-RC @ ;
 

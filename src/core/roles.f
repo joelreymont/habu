@@ -233,6 +233,72 @@ variable VRDEF-I
       VRDEF-TOKEN+
    AGAIN ;
 
+\ --- CAST: checked nominal/family retype declarer (dot habu-checked-cast-primitive).
+\ `CAST: NAME ( in -- out ) <body> ;` compiles ONE ordinary checked colon word.
+\ The checker (checker.f CAST-PEND window) certifies <body> under the identity
+\ row ( in -- in ) and publishes the declared ( in -- out ), so the retype is
+\ CHECKED, not trusted — this is the converter form that ends per-declaration
+\ TRUSTED growth. NAME + signature + body are captured from the live input token
+\ by token (parse-name is the only source primitive) and rebuilt into a ": NAME
+\ ( in -- out ) <body> ;" definition; cast bodies are ordinary token code (a guard
+\ that throws, never a raw string literal), so whitespace-joined tokens reproduce
+\ them faithfully. The generated text never contains TRUST/TRUSTED:/set-check.
+\ Top-level-interpret-only like the sibling definers: UNSAFE-TOK? rejects `cast:`
+\ inside checked bodies and EXPORT refuses to alias it (checker.f), so it cannot
+\ be laundered; a certified ( -- ) usig keeps it top-level executable past the
+\ seal-time internal-word marking pass.
+$400 constant CAST-GEN-CAP
+create CAST-GEN CAST-GEN-CAP allot
+variable CAST-GEN-U
+variable CAST-GEN-I
+variable CAST-NAME-OFF
+variable CAST-NAME-U
+
+: CAST-GEN-CLEAR ( -- ) 0 CAST-GEN-U ! ;
+: CAST-GEN-C, ( n -- ) {: c:n :}
+   CAST-GEN-U @ CAST-GEN-CAP >= IF s" cast: generated text too long" 70 die THEN
+   c CAST-GEN CAST-GEN-U @ + c!
+   CAST-GEN-U @ 1 + CAST-GEN-U ! ;
+: CAST-GEN-APP ( ptr u8 n -- ) {: a:ptr u:n :}
+   0 CAST-GEN-I !
+   BEGIN CAST-GEN-I @ u < WHILE
+      a CAST-GEN-I @ + c@ CAST-GEN-C,
+      CAST-GEN-I @ 1 + CAST-GEN-I !
+   REPEAT ;
+
+: CAST-NAME, ( ptr u8 n -- )   \ copy the name into the gen buffer, record its span
+   CAST-GEN-U @ CAST-NAME-OFF !
+   dup CAST-NAME-U !
+   CAST-GEN-APP ;
+: CAST-NAME$ ( -- ptr u8 n )
+   CAST-GEN CAST-NAME-OFF @ + CAST-NAME-U @ ;
+
+: CAST-CAPTURE-BODY ( -- )   \ append remaining live tokens through ';' (space-joined)
+   BEGIN
+      parse-name dup 0= IF s" cast: missing ;" 70 die THEN
+      2dup s" ;" CORE-STR= IF s" ;" CAST-GEN-APP 2drop EXIT THEN
+      CAST-GEN-APP 32 CAST-GEN-C,
+   AGAIN ;
+
+: CAST-EVAL-RUN ( -- ) CAST-GEN CAST-GEN-U @ TDECL-EVAL-XT ;
+: CAST-EVAL ( -- )
+   CAST-NAME$ CAST-PEND!                 \ arm the one-shot cast-certification window
+   [: CAST-EVAL-RUN ;] catch
+   CAST-NAME$ drop 0 CAST-PEND!          \ disarm (zero-length name) on every exit path
+   dup 0 <> IF throw THEN drop ;         \ re-raise a compile/legality reject to the caller
+
+: CAST: ( -- )
+   parse-name dup 0= IF s" cast: missing name" 70 die THEN {: name:ptr nameu:n :}
+   CAST-GEN-CLEAR
+   s" : " CAST-GEN-APP
+   name nameu CAST-NAME,
+   32 CAST-GEN-C,
+   parse-name dup 0= IF s" cast: missing ( in -- out ) signature" 70 die THEN
+   2dup s" (" CORE-STR= 0= IF s" cast: signature must open with (" 70 die THEN
+   CAST-GEN-APP 32 CAST-GEN-C,
+   CAST-CAPTURE-BODY
+   CAST-EVAL ;
+
 \ Seal the aliasable-unsafe words (this file's DEFTYPE/DEFLINEAR/VALUE-RECORD and
 \ the earlier sumtype.f/type-family.f openers) into the checker's identity set so
 \ EXPORT rejects re-exporting any of them BY SYMBOL, not just by their canonical
