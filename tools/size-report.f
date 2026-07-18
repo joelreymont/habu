@@ -1,16 +1,19 @@
 \ size-report.f - render bin/hb size-attribution manifest from an engine size map.
 \
-\ The size map is the per-emitter-phase byte breakdown that src/habu/engine-size.f
-\ prints during the final EMIT-FORTH pass when HABU_ENGINE_SIZE_MAP is set. Capture
-\ it from a build, then render committed-manifest-style rows plus the code total,
-\ engine file size, header/pad remainder, and distance-to-page-floor:
+\ The size map is the per-region byte breakdown that src/habu/engine-size.f prints
+\ during the final image emission (src/habu/driver-io.f DRV-SIZE-MAP) when
+\ HABU_ENGINE_SIZE_MAP is set. It carries one row per emitter phase plus the
+\ container rows the driver attributes post-sign - the header/load commands
+\ (container/header), the zero fill to the __TEXT page (container/text-pad), and
+\ the target tail (Mach-O: container/data-const + container/linkedit +
+\ container/signature; ELF: container/rw-segment). Every byte of the file lands on
+\ a named row, so the rows sum to the exact engine file size.
 \
-\   HABU_ENGINE_SIZE_MAP=1 bin/hb --load ...build... -- stdin > MAP 2>&1
+\   HABU_ENGINE_SIZE_MAP=1 <stdin-metabuild-host> > MAP 2>&1
 \   bin/hb --load lib/errors.f lib/string.f lib/memory.f lib/fs.f \
-\     lib/adt/option.f tools/size-report.f -- MAP [ENGINE]
+\     lib/adt/option.f tools/size-report.f tools/size-report-main.f -- MAP [ENGINE]
 \
-\ A build emits the map once per EMIT-FORTH pass; the final (installed-engine)
-\ block wins, so LOAD keeps the last block only. ENGINE defaults to bin/hb.
+\ The map's final block wins (LOAD keeps the last block); ENGINE defaults to bin/hb.
 
 require lib/errors.f
 require lib/string.f
@@ -20,7 +23,8 @@ require lib/adt/option.f
 
 package SIZE-REPORT
 
-$4000 constant PAGE            \ 16 KiB page floor (campaign page unit; 4 KiB divides it)
+$4000 constant MACOS-PAGE      \ __TEXT segment page on macOS (16 KiB)
+$1000 constant LINUX-PAGE      \ text segment page on Linux (4 KiB)
 256 constant ROW-CAP
 10 constant NL
 $20 constant SP
@@ -34,9 +38,12 @@ variable MAP-A
 variable MAP-U
 variable LI-BEST
 variable SCAN-CUR
+variable ACC
 
 : BLOCK-HEAD$ ( -- ptr u8 n )   s" main/startup" ;
 : SRC-ROW$ ( -- ptr u8 n )      s" baked-source" ;
+: CONTAINER$ ( -- ptr u8 n )    s" container/" ;
+: RESIDUE-ROW$ ( -- ptr u8 n )  s" unattributed-residue" ;
 
 : SLOT ( n ptr a -- ptr a )
    {: idx:n base:ptr :}
@@ -124,12 +131,70 @@ public
       1+
    repeat drop OPTION:NONE ;
 
-\ Total attributed engine code = every row except the source blob.
-: CODE-TOTAL ( -- n )
-   0 0 begin dup ROW-N @ < while
-      dup NAME$ SRC-ROW$ STR= 0= if dup VAL@ rot + swap then
+\ A container row is one the driver attributed post-__text (header, page pad, and
+\ the target tail); the rest are the emitter-phase code rows plus baked-source.
+: CONTAINER? ( n -- bool )
+   NAME$ CONTAINER$ STARTS-WITH? ;
+
+: BAKED? ( n -- bool )
+   NAME$ SRC-ROW$ STR= ;
+
+\ Emitter-phase machine code: neither a container region nor the baked data blob.
+: PHASE-CODE? ( n -- bool ) {: idx:n :}
+   idx CONTAINER? 0= idx BAKED? 0= and ;
+
+: SUM-ALL ( -- n )
+   0 ACC !
+   0 begin dup ROW-N @ < while
+      dup VAL@ ACC @ + ACC !
       1+
-   repeat drop ;
+   repeat drop ACC @ ;
+
+: SUM-CONTAINER ( -- n )
+   0 ACC !
+   0 begin dup ROW-N @ < while
+      dup CONTAINER? if dup VAL@ ACC @ + ACC ! then
+      1+
+   repeat drop ACC @ ;
+
+\ Whole emitted __text = every non-container row (emitter phases + baked-source).
+: SUM-TEXT ( -- n )
+   0 ACC !
+   0 begin dup ROW-N @ < while
+      dup CONTAINER? 0= if dup VAL@ ACC @ + ACC ! then
+      1+
+   repeat drop ACC @ ;
+
+\ Emitter-phase code only (excludes baked-source data).
+: CODE-TOTAL ( -- n )
+   0 ACC !
+   0 begin dup ROW-N @ < while
+      dup PHASE-CODE? if dup VAL@ ACC @ + ACC ! then
+      1+
+   repeat drop ACC @ ;
+
+: HEADER-BYTES ( -- n )
+   s" container/header" FIND MATCH option
+      none OF 0 ENDOF
+      some OF ENDOF
+   ;MATCH ;
+
+: PAGE ( -- n )
+   HB-TARGET-MACOS? if MACOS-PAGE exit then
+   HB-TARGET-LINUX? if LINUX-PAGE exit then
+   MACOS-PAGE ;
+
+\ Bytes of the text segment (header + __text) above its page floor: the exact
+\ shave of emitted code that recovers one page from the file.
+: FLOOR-DIST ( -- n )
+   HEADER-BYTES SUM-TEXT + PAGE mod ;
+
+\ Residue = the file bytes no row attributes. Zero when the map is complete.
+: RESIDUE ( ptr u8 n -- n ) {: ea:ptr eu:n :}
+   ea eu FILE-SIZE SUM-ALL - ;
+
+: .KV ( ptr u8 n n -- ) {: la:ptr lu:n v:n :}
+   la lu type v . ;
 
 : .ROWS ( -- )
    0 begin dup ROW-N @ < while
@@ -137,15 +202,28 @@ public
       1+
    repeat drop ;
 
-\ Committed-manifest-style attribution for ENGINE (ptr u8 n): per-phase rows,
-\ code total, engine file size, header/pad remainder, and distance-to-page-floor
-\ (bytes above the previous 16 KiB floor = the shave that recovers a page).
+\ Full attribution for ENGINE (ptr u8 n): the per-region rows, the code/text/
+\ container subtotals, the file size, distance-to-page-floor, and the residue. A
+\ nonzero residue is emitted as its own named row (unattributed-residue), never
+\ folded into a remainder.
 : PRINT ( ptr u8 n -- ) {: ea:ptr eu:n :}
    .ROWS
-   s" code-total " type CODE-TOTAL .
+   s" code-total " CODE-TOTAL .KV
+   s" engine-text " SUM-TEXT .KV
+   s" container-total " SUM-CONTAINER .KV
+   s" attributed " SUM-ALL .KV
    ea eu FILE-SIZE {: fsz:n :}
-   s" engine " type fsz .
-   s" header+pad " type fsz CODE-TOTAL - .
-   s" page-floor-above " type fsz PAGE mod . ;
+   s" engine-file " fsz .KV
+   s" page-floor-distance " FLOOR-DIST .KV
+   fsz SUM-ALL - {: residue:n :}
+   residue 0 <> if RESIDUE-ROW$ residue .KV then ;
+
+\ Fail-closed reconciliation: exit status 0 only when every byte is attributed.
+\ PRINT already itemises the unattributed-residue row; this enforces the exit
+\ status so an under-reporting map is a loud failure, not a silent remainder.
+: RECONCILE ( ptr u8 n -- ) {: ea:ptr eu:n :}
+   ea eu RESIDUE 0 <> if
+      s" size-report: engine bytes not fully attributed" RC-IO die
+   then ;
 
 ;package

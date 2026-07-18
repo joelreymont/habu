@@ -6741,13 +6741,16 @@ s" AOT-PWID-BUF@" s" -- ptr u8" TRUST
 : EMIT-SOURCE-BYTES ( -- )
    LSRC LABEL@ LBL,  SRCA@ SRCN @ BYTES, ;
 
+\ Records one region row per emitter phase; the container rows (header, page pad,
+\ and the target tail) and the HABU_ENGINE_SIZE_MAP report are added post-sign by
+\ src/habu/driver-io.f DRV-SIZE-MAP, once the image length is final and the map
+\ can reconcile to the exact file size.
 : EMIT-FORTH ( ptr u8 n -- )
    ENGINE-SIZE:RESET
    EMIT-RESET-BUILDER
    EMIT-LABELS
    EMIT-CODE-SECTIONS
-   EMIT-SOURCE-BYTES          s" baked-source" ENGINE-SIZE:MARK
-   s" HABU_ENGINE_SIZE_MAP" GETENV nip 0 > if ENGINE-SIZE:REPORT then ;
+   EMIT-SOURCE-BYTES          s" baked-source" ENGINE-SIZE:MARK ;
 s" emit-forth" s" ptr u8 n --" TRUST
 
 package ENGINE-BUILD

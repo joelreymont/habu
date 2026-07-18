@@ -426,6 +426,8 @@ variable GSI-TL-FILE-A
    s" tools/codegen-role-test.f" GSI-FORK-INCLUDE
    s" test/icode-fixup-test.f" GSI-FORK-INCLUDE
    s" test/engine-size-test.f" GSI-FORK-INCLUDE
+   s" tools/size-report-test.f" GSI-FORK-INCLUDE
+   s" test/gate-size-attribution-test.f" GSI-FORK-INCLUDE
    s" tools/include-events-test.f" GSI-FORK-INCLUDE
    s" tools/source-discovery-test.f" GSI-FORK-INCLUDE
    s" tools/event-closure-test.f" GSI-FORK-INCLUDE

@@ -231,3 +231,23 @@ s" SNAP-EXTRA-SIZE" s" -- n" TRUST
    ELF-RX-META,
    CODE-OFF ELF-RW-AT,
    SNAP-PHASE sfts ;
+
+\ ---------------------------------------------------------------------------
+\ Size-attribution tail: the bytes past the page-aligned text that the driver
+\ (src/habu/driver-io.f DRV-SIZE-MARKS) has to attribute so the emitted size map
+\ reconciles to the exact file length. Mirrors the Mach-O IMG-TAIL surface in
+\ src/os/macos/sign2.f; a Linux image has no code signature, so its whole tail is
+\ the read-write segment (DYNAMIC + GOT) BUILD-ELF appends after the text pad.
+73 constant ELF-TAIL-RC
+1 constant ELF-TAIL-N
+
+: IMG-TAIL-N ( -- n )
+   ELF-TAIL-N ;
+
+: IMG-TAIL-NAME ( n -- ptr u8 n ) {: i:n :}
+   i 0 = if s" container/rw-segment" exit then
+   s" elf: size tail index out of range" ELF-TAIL-RC die ;
+
+: IMG-TAIL-BYTES ( n -- n ) {: i:n :}
+   i 0 = if ELF-RW-SZ exit then
+   s" elf: size tail index out of range" ELF-TAIL-RC die ;

@@ -41,8 +41,27 @@ public
    ASM-LEN N @ END-OFF SLOT !
    N @ 1+ N ! ;
 
+\ Record a region by an explicit byte count instead of the ASM cursor. The
+\ running cumulative offset advances by SIZE (BYTES@ therefore returns SIZE), so
+\ container regions the assembler never wrote — the Mach-O/ELF header, page pad,
+\ data-const/linkedit tail, and code signature — layer onto the same table as
+\ the emitter-phase rows and TOTAL stays the exact file length.
+: MARK-BYTES ( ptr u8 n n -- )
+   {: name:ptr nameu:n size:n :}
+   ROOM
+   name N @ NAME-A SLOT !
+   nameu N @ NAME-U SLOT !
+   N @ PREV-END@ size + N @ END-OFF SLOT !
+   N @ 1+ N ! ;
+
 : COUNT ( -- n )
    N @ ;
+
+\ Sum of every recorded region = last cumulative offset. With the container
+\ rows appended this is the exact emitted image length.
+: TOTAL ( -- n )
+   N @ 0= if 0 exit then
+   N @ 1- END-OFF SLOT @ ;
 
 : NAME$ ( n -- ptr u8 n )
    VALIDATE {: idx:n :}

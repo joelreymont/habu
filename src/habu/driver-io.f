@@ -53,6 +53,49 @@ variable DRV-WALL-U
    phase IMG-DROP
    path pathu DRV-WRITE-IMAGE-PATH ;
 
+74 constant DRV-SIZE-RC
+
+\ Size attribution tail. EMIT-FORTH records one row per emitter phase, but those
+\ rows only cover the assembled __text; the built and signed image also holds the
+\ header/load commands padded to CODE-OFF, the zero fill to the __TEXT page
+\ boundary, and the target tail (Mach-O: __DATA_CONST + __LINKEDIT + code
+\ signature; ELF: the read-write segment). These words attribute those bytes onto
+\ the same table so every byte of the file lands on a named region.
+: DRV-SIZE-TEXTPAD ( -- n )
+   TEXTSZ CODE-OFF CODELEN @ + - ;
+
+: DRV-SIZE-TAIL-MARK ( n -- ) {: i:n :}
+   i IMG-TAIL-NAME i IMG-TAIL-BYTES ENGINE-SIZE:MARK-BYTES ;
+
+: DRV-SIZE-TAIL ( -- )
+   0 begin dup IMG-TAIL-N < while
+      dup DRV-SIZE-TAIL-MARK
+      1+
+   repeat drop ;
+
+: DRV-SIZE-MARKS ( -- )
+   s" container/header" CODE-OFF ENGINE-SIZE:MARK-BYTES
+   s" container/text-pad" DRV-SIZE-TEXTPAD ENGINE-SIZE:MARK-BYTES
+   DRV-SIZE-TAIL ;
+
+\ Fail closed: the sum of every recorded region must equal the exact image
+\ length. A residue means an emitted region has no named row - the build stops
+\ rather than ship an engine whose size the map cannot fully explain.
+: DRV-SIZE-RECONCILE ( -- )
+   ENGINE-SIZE:TOTAL MLEN@ <> if
+      s" driver: size map does not reconcile to image length" DRV-SIZE-RC die
+   then ;
+
+\ Runs only for a full engine emission - EMIT-FORTH left the phase rows in the
+\ table; object images leave it empty and are skipped. Must run after CODESIG2 so
+\ the signature row (SB-SIZE) and MLEN@ are final. HABU_ENGINE_SIZE_MAP prints the
+\ reconciled rows for capture by tools/size-report.f.
+: DRV-SIZE-MAP ( -- )
+   ENGINE-SIZE:COUNT 0= if exit then
+   DRV-SIZE-MARKS
+   DRV-SIZE-RECONCILE
+   s" HABU_ENGINE_SIZE_MAP" GETENV nip 0 > if ENGINE-SIZE:REPORT then ;
+
 \ The single high-level image-emission tail: assemble the current CODE into the
 \ target image, sign it with the caller's sigid, and write it to path. Every
 \ engine driver (stage2/build/stdin/maker/aot-lib) and the object image writer
@@ -62,6 +105,7 @@ variable DRV-WALL-U
 : DRV-EMIT-IMAGE ( ptr u8 n ptr u8 n -- ) {: sig:ptr sigu:n path:ptr pathu:n :}
    ASM-CODE BUILD-IMAGE
    sig sigu SET-SIGID CODESIG2
+   DRV-SIZE-MAP
    path pathu DRV-WRITE-IMAGE ;
 
 : DRV-EXIT-OK ( -- )

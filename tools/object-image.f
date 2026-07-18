@@ -43,6 +43,13 @@ require lib/object-link.f
    s" src/os/image-bytes.f" included
    OBJIMG-LOAD-TARGET-IMAGE ;
 
+\ driver-io.f's DRV-SIZE-MAP references the ENGINE-SIZE table, so it must load
+\ first. An object image never runs EMIT-FORTH, so the table stays empty and
+\ DRV-SIZE-MAP skips - this only satisfies the compile-time dependency.
+: OBJIMG-LOAD-SIZE ( -- )
+   s" ENGINE-SIZE:MARK" OBJIMG-WORD? if exit then
+   s" src/habu/engine-size.f" included ;
+
 : OBJIMG-LOAD-DRIVER ( -- )
    s" DRV-WRITE-IMAGE" OBJIMG-WORD? if exit then
    s" src/habu/driver-io.f" included ;
@@ -50,6 +57,7 @@ require lib/object-link.f
 OBJIMG-LOAD-ASM
 OBJIMG-LOAD-SYS
 OBJIMG-LOAD-IMAGE
+OBJIMG-LOAD-SIZE
 OBJIMG-LOAD-DRIVER
 
 package OBJIMG

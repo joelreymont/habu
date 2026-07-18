@@ -1751,9 +1751,9 @@ points stay listed.
 - `lib/test/outcome-test.f` — focused coverage for the outcome assert helpers.
 - `tools/date.f` — shared checked UTC Gregorian date parsing, formatting, and timestamp helpers.
 - `tools/date-test.f` — focused coverage for shared date helpers.
-- `tools/size-report.f` — parse an engine size map (HABU_ENGINE_SIZE_MAP build output) and render the committed-manifest-style per-contributor byte attribution: phase rows, code total, engine size, header/pad remainder, distance-to-page-floor.
-- `tools/size-report-main.f` — CLI entry for the size-attribution report.
-- `tools/size-report-test.f` — focused coverage for the size-report map parser (last-block wins, source-blob exclusion, per-row lookup).
+- `tools/size-report.f` — parse an engine size map (HABU_ENGINE_SIZE_MAP build output) and render the exact per-contributor byte attribution: emitter-phase rows, the post-sign container rows (header, text-pad, target tail), code/text/container subtotals, engine file size, distance-to-page-floor, and a fail-closed reconciliation that itemises any unattributed residue as its own row.
+- `tools/size-report-main.f` — CLI entry for the size-attribution report; prints the attribution then reconciles to a nonzero exit on any residue.
+- `tools/size-report-test.f` — focused coverage for the size-report map parser and reconciler (last-block wins, container vs code partition, code/text/container subtotals, distance-to-floor).
 - `lib/process-env.f` — checked child envp builder and PATH lookup helpers.
 - `lib/process-env-test.f` — focused coverage for child envp and executable lookup.
 - `lib/process-fork.f` — checked fork wrappers for resident copy-on-write workers.
@@ -2030,6 +2030,7 @@ points stay listed.
 - `test/gate-debug-lib.f` — side-effect-free prop/debug gate definitions.
 - `test/gate-build-hbb.f` — in-process checked hb-build helpers for positive AOT gate coverage.
 - `test/gate-build-size.f` — committed candidate binary size ratchet (per-target baselines, fail-closed on growth).
+- `test/gate-size-attribution-test.f` — committed per-region byte-attribution manifest + gate: reconstructs the whole file from the committed macOS regions, checks the distance-to-page-floor, and couples each target's committed total to the live installed engine (fail-closed on drift); VALIDATE reconciles a captured map against its engine.
 - `test/run-result-cache.f` — per-phase content-keyed PASS-stamp store for the native gate result cache.
 - `test/run-result-cache-test.f` — fixtures for result-cache hit/miss/invalidation and red-never-cached rules.
 - `test/run-budget-cal-test.f` — fixtures for the startup spin-probe budget calibration and clamping.
