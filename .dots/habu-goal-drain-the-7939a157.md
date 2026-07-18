@@ -55,3 +55,33 @@ Epics close last as containers; this goal closes last with the landing
 table. In-flight check against this standard: oblig = (c), keep;
 leg2c = elaboration with a built-in net<=-1 STOP - honor its outcome,
 no successor legs either way.
+
+WIND-DOWN 2026-07-18 (maki orchestrator session, per Joel): this lane STOPS
+after the nomstore landing; all habu work consolidates under ONE Claude Code
+(the type-families successor line). Handoff state:
+- Master green at the nomstore landing (this commit); fixpoint 2cb3b0cc
+  (8MB region / 32k dict / narrow LPROT engine); full battery green.
+- No live claims from this session; all .jj-ws/fable-* workspaces retired.
+- Closed today (9): habu-v2-checked-async-8d460576,
+  habu-lprot-narrow-protection-03cc8d7f, habu-v2-differential-runner-13359019,
+  habu-switchover-wave-b-08482d5b (program complete, 5 batches),
+  habu-v2-types-finite design phase (umbrella stays open),
+  habu-v2-competitive-evidence-5d07d471, habu-persist-typed-cevid-6f08452c,
+  habu-v2-differential-suite-2d896ced (stale-active reconciled),
+  habu-checker-capability-layout-9b8540bd (5 slices; slice 6 = optional p3
+  habu-layout-slice-6-4bb1e4fb), habu-nominal-storage-migrate-47ee0f93.
+- Next-up queue per DRAIN PLAN v2 (recorded above): seal-owners chain
+  (habu-seal-owners-syntax-63051652 gates the first R8 leaf
+  habu-seal-cad-effect-49cac404); wave E trust discharges (owns the raw
+  SPLIT-NEXT kernel note); Foundation A1 + TMA campaigns (successor's own
+  line); device dots queue on Spark (habu-v2-dgx-spark-e88559f6, being
+  configured by another agent); USER-GATED parked: fp16/bf16
+  (habu-user-gated-fp16-58c1b84d), CAP vocabulary
+  (habu-user-gated-cap-edccf572), onnxruntime reference, Triton-baseline.
+- Standing gates and rules: DRAIN PLAN v2 rules above; claim protocol,
+  battery composition, and the day's incident lessons live in LESSONS.md and
+  docs/. Two master-red incidents today came from cross-agent landings
+  (stale-status archive exemption; dangling dedupe blocker edge) - both
+  fixed forward here; consolidation removes that class.
+The goal dot stays ACTIVE for the consolidated instance; it closes LAST with
+the landing table per the original directive.
