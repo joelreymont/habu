@@ -48,6 +48,7 @@
 \ (the candidate-B flip protection). maki -> habu only; maki owns -5019, -5036..-5039.
 
 require maki/extent-tensor.f
+require lib/string.f                 \ STR=, ASCII-UPPER: token compares + index-var -> extent-name fold
 require lib/adt/option.f             \ option<>: index-variable and tensor lookups return present/absent
 require lib/type/value-nominal.f     \ NOMINAL:: the factor-index (SP-FI) table index is its own type
 
@@ -280,11 +281,10 @@ variable SP-STAR?
 \ ---- index-variable -> extent surface (#<UPPER>) and role resolution ----------
 create SP-EXT-BUF 16 allot
 variable SP-EXT-U
-: SP-UC ( n -- n ) {: c:n :}  c 97 >= c 122 <= and if c 32 - else c then ;
 : SP-EXT$ ( ptr u8 n -- ptr u8 n ) {: a:ptr u:n :}   \ index var -> #<UPPER> surface name
    0 SP-EXT-U !
    [char] # SP-EXT-BUF c!  1 SP-EXT-U !
-   u 0 ?do  a i + c@ SP-UC  SP-EXT-BUF SP-EXT-U @ + c!  SP-EXT-U @ 1 + SP-EXT-U !  loop
+   u 0 ?do  a i + c@ ASCII-UPPER  SP-EXT-BUF SP-EXT-U @ + c!  SP-EXT-U @ 1 + SP-EXT-U !  loop
    SP-EXT-BUF SP-EXT-U @ ;
 : SP-EXT-SLOT ( ptr u8 n -- xr-slot )   \ registry slot of the var's extent, or E-SPEC-EXTENT
    SP-EXT$ XR-FIND MATCH option

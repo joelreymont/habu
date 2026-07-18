@@ -1794,6 +1794,9 @@ points stay listed.
 - `lib/build-cache.f` / `lib/build-cache-test.f` — canonical persistent
   build-cache resolution, retained failure evidence, typed source
   classification, and report fixtures.
+- `lib/codegen.f` / `lib/codegen-test.f` — shared bounded byte buffer for
+  building generated Forth source (reset / append-byte / append-string /
+  append-decimal / contents), used by the maki and value-nominal definers.
 - `lib/codesign.f` / `lib/codesign-test.f` — checked executable promotion and
   ad-hoc signing helpers and their coverage.
 - `lib/fs.f` / `lib/fs-test.f` — checked filesystem helpers (walks, reads,

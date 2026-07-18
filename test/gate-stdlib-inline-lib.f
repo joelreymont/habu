@@ -487,6 +487,7 @@ variable GSI-TL-FILE-A
    s" lib/ffi-abi-test.f" GSI-FORK-INCLUDE
    s" lib/array-test.f" GSI-FORK-INCLUDE
    s" lib/table-test.f" GSI-FORK-INCLUDE
+   s" lib/codegen-test.f" GSI-FORK-INCLUDE
    s" lib/regex-test.f" GSI-FORK-INCLUDE
    s" lib/map-test.f" GSI-FORK-INCLUDE
    GSI-FORK-DRAIN ;

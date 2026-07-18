@@ -262,6 +262,10 @@ TEST:SUITE map-stdlib
    lib/map-test.f
 TEST:;SUITE
 
+TEST:SUITE codegen-stdlib
+   lib/codegen-test.f
+TEST:;SUITE
+
 TEST:SUITE ptx-stdlib
    lib/ptx/header-test.f
    lib/ptx/kernel-abi-test.f

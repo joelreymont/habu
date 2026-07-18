@@ -48,6 +48,9 @@
 \ no static trust site is added per declaration and every generated pair is
 \ certified through the check hook by NG-EVAL. Tested by test/value-nominal-suite.f.
 
+require lib/string.f                 \ ASCII-LOWER: fold the surface name to the family tail
+require lib/codegen.f                \ CODEGEN:BUFFER-E: the shared generated-source byte buffer
+
 package VNOM
 
 private
@@ -56,17 +59,14 @@ private
 -6002 constant E-VNOM-CAP      \ generated-source or mangle buffer capacity exceeded
 
 \ ---- generated-source codegen buffer (build the "TRUSTED: ... ;" converter text
-\ each declaration evaluates), mirroring maki/extent.f XG-*. ------------------
+\ each declaration evaluates). The append mechanics live in package CODEGEN
+\ (lib/codegen.f); these thin words bind them to this file's NG-BUFFER instance,
+\ minted with the E-VNOM-CAP throw code its callers already expect. ------------
 $400 constant NG-CAP
-create NG-BUF NG-CAP allot
-variable NG-U
-: NG-RESET ( -- )  0 NG-U ! ;
-: NG-C ( n -- ) {: c:n :}                         \ append one byte
-   NG-U @ 1 + NG-CAP > if E-VNOM-CAP throw then
-   c NG-BUF NG-U @ + c!  NG-U @ 1 + NG-U ! ;
-: NG+ ( ptr u8 n -- ) {: a:ptr u:n :}             \ append a string
-   0 begin dup u < while  dup a + c@ NG-C  1 +  repeat drop ;
-: NG$ ( -- ptr u8 n )  NG-BUF NG-U @ ;
+NG-CAP E-VNOM-CAP E-VNOM-CAP CODEGEN:BUFFER-E NG-BUFFER
+: NG-RESET ( -- )  NG-BUFFER CODEGEN:RESET ;
+: NG+ ( ptr u8 n -- )  NG-BUFFER CODEGEN:APPEND-STRING ;   \ append a string
+: NG$ ( -- ptr u8 n )  NG-BUFFER CODEGEN:CONTENTS ;
 
 \ the one metaprogramming boundary: `evaluate` cannot be checker-typed, so this
 \ audited TRUSTED wrapper compiles the constructed converter text with the check
@@ -76,18 +76,15 @@ variable NG-U
 TRUSTED: NG-EVAL ( -- )  NG$ evaluate ;
 
 \ ---- surface NAME (UPPER-CASE) -> lowercase family tail -----------------------
+\ A second CODEGEN buffer, kept separate from NG-BUFFER because MINT reads the
+\ mangled tail out of here while EMIT-IN/EMIT-OUT build the converter text in
+\ NG-BUFFER. The tail fold is lib/string.f ASCII-LOWER.
 32 constant NM-CAP
-create NM-BUF NM-CAP allot
-variable NM-U
-: NM-LC ( n -- n ) {: c:n :}                      \ ASCII fold A..Z -> a..z
-   c 65 >= c 90 <= and if c 32 + else c then ;
-: NM-C ( n -- ) {: c:n :}
-   NM-U @ NM-CAP >= if E-VNOM-CAP throw then
-   c NM-BUF NM-U @ + c!  NM-U @ 1 + NM-U ! ;
+NM-CAP E-VNOM-CAP E-VNOM-CAP CODEGEN:BUFFER-E NM-BUFFER
 : MANGLE ( ptr u8 n -- ptr u8 n ) {: a:ptr u:n :}
-   0 NM-U !
-   u 0 ?do  a i + c@ NM-LC NM-C  loop
-   NM-BUF NM-U @ ;
+   NM-BUFFER CODEGEN:RESET
+   u 0 ?do  a i + c@ ASCII-LOWER NM-BUFFER CODEGEN:APPEND-BYTE  loop
+   NM-BUFFER CODEGEN:CONTENTS ;
 
 \ ---- converter emitters: `TRUSTED: >NAME ( n -- tail ) ;` (inject) and
 \ `TRUSTED: NAME>N ( tail -- n ) ;` (project), both no-op identity casts. --------

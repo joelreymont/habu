@@ -1523,3 +1523,11 @@ schema_version	module	file	kind	word	effect	test	doc	owner	status	notes
 1	nominal-snapshot	lib/nominal/snapshot.f	word	NOM:DECODE	(ptr u8 n -- row)	lib/nominal/nominal-test.f	docs/stdlib.md	stdlib-nominal	active	decode + validate + publish one row from canonical wire bytes
 1	nominal-snapshot	lib/nominal/snapshot.f	word	NOM:SNAPSHOT	(ptr u8 n -- n)	lib/nominal/nominal-test.f	docs/stdlib.md	stdlib-nominal	active	snapshot all published rows in canonical digest order; returns length
 1	nominal-snapshot	lib/nominal/snapshot.f	word	NOM:RESTORE	(ptr u8 n -- n)	lib/nominal/nominal-test.f	docs/stdlib.md	stdlib-nominal	active	validate and rebuild all rows from a snapshot; returns row count
+1	codegen	lib/codegen.f	module			lib/codegen-test.f	docs/stdlib.md	stdlib-codegen	active	shared bounded byte buffer for building generated Forth source
+1	codegen	lib/codegen.f	word	CODEGEN:BUFFER-E	(n n n --)	lib/codegen-test.f	docs/stdlib.md	stdlib-codegen	active	define a codegen buffer with explicit per-buffer capacity and value error codes
+1	codegen	lib/codegen.f	word	CODEGEN:BUFFER	(n --)	lib/codegen-test.f	docs/stdlib.md	stdlib-codegen	active	define a codegen buffer using the module's own E-CG-CAP and E-CG-VALUE codes
+1	codegen	lib/codegen.f	word	CODEGEN:RESET	(ptr a --)	lib/codegen-test.f	docs/stdlib.md	stdlib-codegen	active	discard a codegen buffer's contents keeping its capacity
+1	codegen	lib/codegen.f	word	CODEGEN:APPEND-BYTE	(n ptr a --)	lib/codegen-test.f	docs/stdlib.md	stdlib-codegen	active	append one byte to a codegen buffer
+1	codegen	lib/codegen.f	word	CODEGEN:APPEND-STRING	(ptr u8 n ptr a --)	lib/codegen-test.f	docs/stdlib.md	stdlib-codegen	active	append a counted byte string to a codegen buffer
+1	codegen	lib/codegen.f	word	CODEGEN:APPEND-DECIMAL	(n ptr a --)	lib/codegen-test.f	docs/stdlib.md	stdlib-codegen	active	append a non-negative decimal to a codegen buffer
+1	codegen	lib/codegen.f	word	CODEGEN:CONTENTS	(ptr a -- ptr u8 n)	lib/codegen-test.f	docs/stdlib.md	stdlib-codegen	active	return a codegen buffer's current contents

@@ -42,7 +42,8 @@
 
 require lib/prelude.f                 \ true/false
 require maki/array.f                 \ T-AT: the ptr+offset address word the accessors reuse
-require lib/string.f                 \ STR=, BYTE-COPY: registry name storage
+require lib/string.f                 \ STR=, BYTE-COPY, ASCII-LOWER: registry name storage + tail fold
+require lib/codegen.f                \ CODEGEN:BUFFER-E: the shared generated-source byte buffer
 require lib/adt/option.f             \ option<xr-slot>: XR-FIND returns a present/absent slot
 require lib/type/value-nominal.f     \ NOMINAL:: the registry slot index + length columns are their own types
 
@@ -80,21 +81,16 @@ private
 
 \ ---- generated-source codegen buffer (build the ": ... ;" / "TRUSTED: ... ;"
 \ text each definer evaluates). Shared by EXTENT: and the tensor accessor definers
-\ (maki/extent-tensor.f, same package). ----------------------------------------
+\ (maki/extent-tensor.f, same package). The append mechanics live in package CODEGEN
+\ (lib/codegen.f); these thin words bind them to this file's XG-BUFFER instance,
+\ minted with the E-EXT-CAP / E-EXT-VALUE throw codes its callers already expect. ---
 $1000 constant XG-CAP                              \ headroom for SPEC:-generated word bodies
-create XG-BUF XG-CAP allot
-variable XG-U
+XG-CAP E-EXT-CAP E-EXT-VALUE CODEGEN:BUFFER-E XG-BUFFER
 
-: XG-RESET ( -- )  0 XG-U ! ;
-: XG-C ( n -- ) {: c:n :}                          \ append one byte
-   XG-U @ 1 + XG-CAP > if E-EXT-CAP throw then
-   c XG-BUF XG-U @ + c!  XG-U @ 1 + XG-U ! ;
-: XG+ ( ptr u8 n -- ) {: a:ptr u:n :}              \ append a string
-   0 begin dup u < while  dup a + c@ XG-C  1 +  repeat drop ;
-: XG-INT ( n -- ) {: v:n :}                        \ append a non-negative decimal
-   v 0 < if E-EXT-VALUE throw then                 \ fail closed: never emit garbage digits for a negative
-   v 10 >= if v 10 / RECURSE then  v 10 mod 48 + XG-C ;
-: XG$ ( -- ptr u8 n )  XG-BUF XG-U @ ;
+: XG-RESET ( -- )  XG-BUFFER CODEGEN:RESET ;
+: XG+ ( ptr u8 n -- )  XG-BUFFER CODEGEN:APPEND-STRING ;   \ append a string
+: XG-INT ( n -- )  XG-BUFFER CODEGEN:APPEND-DECIMAL ;      \ append a non-negative decimal (negative -> E-EXT-VALUE)
+: XG$ ( -- ptr u8 n )  XG-BUFFER CODEGEN:CONTENTS ;
 
 \ the one metaprogramming boundary: `evaluate` cannot be checker-typed, so the
 \ audited TRUSTED wrapper compiles the constructed text with the check hook active
@@ -155,20 +151,21 @@ private
    XR-N @ 1 + XR-N ! ;
 
 \ ---- #name -> lowercase family tail (extm/extk/...) --------------------------
-create XM-BUF XR-NAME-CAP allot
-variable XM-U
+\ A second CODEGEN buffer, kept separate from XG-BUFFER because EXTENT: reads the
+\ mangled tail out of here while it builds the generated word text in XG-BUFFER. The
+\ capacity throw stays E-EXT-NAME (a surface name too long for the tail buffer), the
+\ code the old hand-rolled append raised. The tail fold is lib/string.f ASCII-LOWER.
+XR-NAME-CAP E-EXT-NAME E-EXT-NAME CODEGEN:BUFFER-E XM-BUFFER
 
-: XM-LC ( n -- n ) {: c:n :}  c 65 >= c 90 <= and if c 32 + else c then ;
-: XM-C ( n -- ) {: c:n :}
-   XM-U @ XR-NAME-CAP >= if E-EXT-NAME throw then
-   c XM-BUF XM-U @ + c!  XM-U @ 1 + XM-U ! ;
 : X-MANGLE ( ptr u8 n -- ptr u8 n ) {: a:ptr u:n :}
    u 2 < if E-EXT-NAME throw then                  \ need '#' + at least one char
    a c@ 35 <> if E-EXT-NAME throw then             \ require the leading '#'
-   0 XM-U !
-   [char] e XM-C  [char] x XM-C  [char] t XM-C
-   u 1 ?do  a i + c@ XM-LC XM-C  loop              \ lowercase the tail, skip '#'
-   XM-BUF XM-U @ ;
+   XM-BUFFER CODEGEN:RESET
+   [char] e XM-BUFFER CODEGEN:APPEND-BYTE
+   [char] x XM-BUFFER CODEGEN:APPEND-BYTE
+   [char] t XM-BUFFER CODEGEN:APPEND-BYTE
+   u 1 ?do  a i + c@ ASCII-LOWER XM-BUFFER CODEGEN:APPEND-BYTE  loop   \ lowercase the tail, skip '#'
+   XM-BUFFER CODEGEN:CONTENTS ;
 
 public
 
