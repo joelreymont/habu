@@ -118,16 +118,16 @@ the device, each verified correct-vs-CPU on the Orin:
   v4 tile path reaches ~63 GB/s, matching the Triton SAXPY baseline at the
   streaming-memory ceiling.
 
-- **Device-golden autograder (task-general)** — `maki/eval-device.f` grades a
+- **Device-golden autograder (task-general)** — `maki/eval/device.f` grades a
   candidate by `certify AND run-correct`: `EVAL:GRADE-CANDIDATE` certifies, spawns
   `bin/hb` to emit the candidate's PTX, ptxas-assembles, runs on the Orin, and
   compares the task golden. A SAXPY that computes `x+y` (forgetting the scale)
   *certifies* yet is graded TYPED-WRONG by the device gate, while the correct one
   is GREEN — so device-gated pass@k (1/3) is stricter than certification pass@k
-  (2/3). `maki/eval-device-sm.f` adds the **softmax** task: the type-identical
+  (2/3). `maki/eval/device-sm.f` adds the **softmax** task: the type-identical
   `B-`/`B/` confusion (subtract vs divide) certifies but is caught as TYPED-WRONG,
   proving the gate works for block-reduction kernels, not just SAXPY.
-- **Unified authoring grader** — `maki/eval-author.f` `GRADE-AUTHOR ( a u task -- verdict )`
+- **Unified authoring grader** — `maki/eval/author.f` `GRADE-AUTHOR ( a u task -- verdict )`
   dispatches a candidate to its task's device-golden grader (`TASK-SAXPY` → `EVAL:GRADE-CANDIDATE`,
   `TASK-SOFTMAX` → `EVAL:GRADE-SM`), failing closed on an unknown task. This replaces the
   throwaway `/tmp` grade scripts so the model-driven authoring matrix is reproducible from
@@ -138,8 +138,8 @@ the device, each verified correct-vs-CPU on the Orin:
   bin/hb --load lib/errors.f lib/string.f lib/float.f lib/fmt.f lib/test.f \
     lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f lib/process-env.f lib/ffi.f \
     src/arch/ptx/emit.f lib/ptx/cg.f lib/ptx/header.f lib/ptx/launch.f lib/ptx/cg-collective.f lib/ptx/tile.f \
-    lib/ptx/collective.f maki/eval.f maki/eval-device.f maki/eval-device-sm.f \
-    maki/eval-author.f maki/eval-author-test.f
+    lib/ptx/collective.f maki/eval/eval.f maki/eval/device.f maki/eval/device-sm.f \
+    maki/eval/author.f maki/eval/author-test.f
   ```
 
 - **Eval matrix vs real Triton (validated on the Orin)** — Triton 3.5.1 +
@@ -155,7 +155,7 @@ the device, each verified correct-vs-CPU on the Orin:
     GPU work**; in Triton the analogous kernels **compile clean and are caught only
     at runtime** — 3 of 5 battery bugs slipped to runtime, including a *missing
     store* that silently produced `0.0`. Semantic value bugs (x+y) neither catches
-    statically; both need the device-golden run (`maki/eval-device.f`).
+    statically; both need the device-golden run (`maki/eval/device.f`).
   - **Bandwidth — parity at the hardware ceiling.** Scalar Habu-PTX was 42.5 vs
     Triton 63.0 (RCA: scalar `ld.global.f32` vs Triton's vectorized loads). A checked
     **v4** tile vocab (`lib/ptx/cg-vec.f` + `tile-v4.f`, `ld.global.v4.f32`) lifts
@@ -200,7 +200,7 @@ the device, each verified correct-vs-CPU on the Orin:
   concatenative target genuinely beats the Triton authoring path: same speed, but the
   composition is the program and the type system proves it.
 
-- **Checker ablation (measured)** — `maki/eval-compare.f` now scores each SAXPY
+- **Checker ablation (measured)** — `maki/eval/compare.f` now scores each SAXPY
   candidate twice: the checked arm rejects 5/6 bugs before GPU execution, while the
   no-checker arm emits, assembles, and device-runs all 9 candidates. On the Orin
   fixture, no-checker catches 0 bugs before execution; all 6 buggy candidates reach

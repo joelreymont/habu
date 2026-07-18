@@ -7,7 +7,7 @@
 \ adapters, both real, both outside the runner's checked semantics at the process boundary:
 \
 \   SPAWN-SRC / SPAWN-CASE : the ISOLATED subject adapter (the grader pattern,
-\     maki/eval-device.f). Each case runs in a FRESH spawned bin/hb child, not in-process:
+\     maki/eval/device.f). Each case runs in a FRESH spawned bin/hb child, not in-process:
 \     an untrusted / generated subject that crashes or hangs is a graded FAULT, never a
 \     grader casualty, and a fresh exec image cannot corrupt this process's dictionary. The
 \     child writes its scalar to stdout; the parent captures (outu erru outcome) with the

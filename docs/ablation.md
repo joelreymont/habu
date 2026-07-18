@@ -12,7 +12,7 @@ Status legend: **impl** = landed by this dot (`habu-ablation-fault-injection`); 
 | # | Paper claim (invention) | Row | Status | Evidence (file:line) | Rerun |
 |---|-------------------------|-----|--------|----------------------|-------|
 | 1 | Checker (typed effects) | author-time error battery vs Triton (bugs caught static vs runtime) | pre | `docs/eval-triton.md` (error battery, Orin numbers) | `tools/ansi`/eval harness; see `docs/eval-triton.md` |
-| 1 | Checker (typed effects) | authoring pass@k | pre | `maki/eval-fixture.f`, `maki/eval-test.f` (eval harness) | `bin/hb --load maki/test.f` |
+| 1 | Checker (typed effects) | authoring pass@k | pre | `maki/eval/fixture.f`, `maki/eval/eval-test.f` (eval harness) | `bin/hb --load maki/test.f` |
 | 2a | Fusion byte accounting | predicted-vs-measured traffic (byte model falsifiable at the roofline GB/s) | pending | host byte model `maki/traffic.f`; measured-GB/s device leg **pending bench harness** | — |
 | 2b | Fusion planner | fusion ON/OFF ablation, same kernels regions split (**region count + traffic bytes**) | impl | `maki/ablate-fusion-test.f:55` (rows), toggle `maki/fusion-plan.f:253` (`FP-FUSE-ON!`/`FP-FUSE-OFF!`) | `bin/hb --load maki/ablate-fusion-test.f` (in the maki gate) |
 | 2b | Fusion planner | fusion ON/OFF **latency** per model | pending | latency needs on-device timing **pending bench harness** (cad-6 / PROFILE) | — |
@@ -20,15 +20,15 @@ Status legend: **impl** = landed by this dot (`habu-ablation-fault-injection`); 
 | 3 | Device-vs-host GOLDEN | seeded fault: **transposed / mis-addressed operand** caught | impl | `maki/ablate-golden-device-test.f:87` (`ABL-G2`) | device test (Orin) |
 | 3 | Device-vs-host GOLDEN | seeded fault: **dropped mask** caught | impl | `maki/ablate-golden-device-test.f:94` (`ABL-G3`) | device test (Orin) |
 | 3 | Device-vs-host GOLDEN | seeded fault: **stale kernel** caught | impl | `maki/ablate-golden-device-test.f:104` (`ABL-G4-GOLDEN`) | device test (Orin) |
-| 3 | Device-vs-host GOLDEN | uniform-vs-nonuniform golden sensitivity (sum-launch precedent) | pre | `maki/lower-model-device-test.f` (multi-region whole-model golden, per-class tol) | device test (Orin) |
+| 3 | Device-vs-host GOLDEN | uniform-vs-nonuniform golden sensitivity (sum-launch precedent) | pre | `maki/lower/model-device-test.f` (multi-region whole-model golden, per-class tol) | device test (Orin) |
 | 4 | Sentinels | dropped-copy-back injection caught (vs silent pass without) | impl | `maki/ablate-golden-device-test.f:133` (`ABL-SENT`), guard `lib/ptx/sentinel.f` | device test (Orin) |
 | 5 | Verified gradient | wrong-adjoint detection fixture | pre | `maki/gradcheck-test.f:20` (`DET-BUILD`, deliberately-WRONG relu-bwd) | `bin/hb --load maki/test.f` |
 | 5 | Verified gradient | from-scratch convergence gate (end-to-end proof) | pre | `maki/from-scratch-test.f` (seeded NLL fall + bit-exact determinism) | `bin/hb --load maki/test.f` |
 | 6 | Persistent content-keyed tuning | time-to-first-correct-inference vs Triton warmup; replay determinism across restarts | pending | store/replay exist (`maki/store.f`, `maki/store-replay-test.f`); the time-to-first + JIT-warmup comparison is **pending cad-6** | — |
-| 7 | EXPLAIN packets | repair-rounds / tokens-to-green | pre | `maki/eval-repair.f:47` (`repair-rounds` + `tokens-to-green`, checker-guided loop) | `bin/hb --load maki/test.f` |
-| 7 | EXPLAIN packets | **with-vs-without-packet** A/B ablation | impl | `maki/eval-repair-ab-test.f` (4 seeded authoring-error fixtures, ON=rich packet vs OFF=minimal status-quo signal, same checker + same green kernel); shared engine `maki/eval-repair-loop.f` | `bin/hb --load maki/test.f` (in the maki gate) | — |
+| 7 | EXPLAIN packets | repair-rounds / tokens-to-green | pre | `maki/eval/repair.f:47` (`repair-rounds` + `tokens-to-green`, checker-guided loop) | `bin/hb --load maki/test.f` |
+| 7 | EXPLAIN packets | **with-vs-without-packet** A/B ablation | impl | `maki/eval/repair-ab-test.f` (4 seeded authoring-error fixtures, ON=rich packet vs OFF=minimal status-quo signal, same checker + same green kernel); shared engine `maki/eval/repair-loop.f` | `bin/hb --load maki/test.f` (in the maki gate) | — |
 | 8 | Schedule machinery | tuned-vs-closed-form-default deltas per family | pending | **pending cad-6** (tuner output) | — |
-| 9 | Gate-licensed precision | tf32 request licenses the REAL TF32 tensor-core kernel: `PREC-TF32` -> `maki/lower-mm.f` LMM-MMA? emits the `mma.sync` kernel (`lib/ptx/cg-mma.f`), golden passes device==host within the tf32 row (reason + evidence name tf32), AND the inverse guard: a seeded 0.5% fault fails even under the tf32 band; PREC-RESET re-emits the f32 kernel green | impl | registry `maki/precision.f`; kernel `lib/ptx/cg-mma.f`; fragment/GEMM device proofs `tools/ptx/mma-probe.f` + `tools/ptx/mma-gemm-check.f` (element-exact); license `maki/precision-device-test.f` (legs 1-4); measured `docs/eval-triton.md` GEMM step 3 (375-398 GFLOP/s) | `bin/hb --load maki/precision-device-test.f` (on the Orin); host: in the maki gate |
+| 9 | Gate-licensed precision | tf32 request licenses the REAL TF32 tensor-core kernel: `PREC-TF32` -> `maki/lower/mm.f` LMM-MMA? emits the `mma.sync` kernel (`lib/ptx/cg-mma.f`), golden passes device==host within the tf32 row (reason + evidence name tf32), AND the inverse guard: a seeded 0.5% fault fails even under the tf32 band; PREC-RESET re-emits the f32 kernel green | impl | registry `maki/precision.f`; kernel `lib/ptx/cg-mma.f`; fragment/GEMM device proofs `tools/ptx/mma-probe.f` + `tools/ptx/mma-gemm-check.f` (element-exact); license `maki/precision-device-test.f` (legs 1-4); measured `docs/eval-triton.md` GEMM step 3 (375-398 GFLOP/s) | `bin/hb --load maki/precision-device-test.f` (on the Orin); host: in the maki gate |
 
 ## Fusion ON/OFF ablation numbers (row 2b, measured)
 
@@ -96,9 +96,9 @@ test: ok
 
 ## EXPLAIN packet A/B ablation numbers (row 7, measured)
 
-`bin/hb --load maki/eval-repair-ab-test.f` (in the maki gate) runs 4 seeded
+`bin/hb --load maki/eval/repair-ab-test.f` (in the maki gate) runs 4 seeded
 authoring-error fixtures through the shared repair-loop engine
-(`maki/eval-repair-loop.f`, factored out of `maki/eval-repair.f`). Both arms are
+(`maki/eval/repair-loop.f`, factored out of `maki/eval/repair.f`). Both arms are
 scored by the SAME checker (`EVAL:CHECK-PASSES?`) and CONVERGE TO THE SAME
 green kernel (`GREEN$`), so only the repair PATH differs and the packet's effect is
 isolated. Every candidate (draft, each repair, green) is a real source string run

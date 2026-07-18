@@ -1155,7 +1155,7 @@ points stay listed.
   flip distinct, equal triple = one id); and the counterexample DIAG round-trips losslessly.
 - `maki/db/diff-runner-spawn.f` — the SPAWN-ISOLATED subject adapter + external-process PyTorch
   reference adapter (reopens package DIFFRUN). `SPAWN-SRC` / `SPAWN-CASE` run each case in a
-  FRESH spawned `bin/hb` child (the grader pattern, `maki/eval-device.f`): the child prints its
+  FRESH spawned `bin/hb` child (the grader pattern, `maki/eval/device.f`): the child prints its
   scalar and completes naturally (exit 0 = success, not `bye`); the parent captures the outcome
   and classifies through `CLASSIFY-OUTCOME`, so a crashing/hanging subject is a graded fault,
   never a grader casualty. `TORCH-REFERENCE` is the external torch reference INTERFACE
@@ -1440,15 +1440,15 @@ points stay listed.
   cleanup, and `PTXAS` resolution helpers for device graders.
 - `maki/device-artifacts-test.f` — focused coverage for grader artifact
   uniqueness and cleanup.
-- `maki/eval-emit-device.f` — the device NUMERIC golden for the sumnorm/gemm/
+- `maki/eval/emit-device.f` — the device NUMERIC golden for the sumnorm/gemm/
   attention authoring tasks: emits each candidate, ptxas-assembles, runs on the
   Orin against a CPU reference, and takes max|err|. Owns the canonical
   wrong-but-green fixtures; keyed on the `EVND:ON-DEVICE?` device-FFI probe.
-- `maki/eval-emit-device-test.f` — the Orin device-golden suite: correct kernels
+- `maki/eval/emit-device-test.f` — the Orin device-golden suite: correct kernels
   match the reference, sumnorm role/value swaps diverge numerically, gemm
   double-accumulate is ptxas-rejected, and the attention role swaps emit
   byte-identical PTX (a codegen no-op); a recorded SKIP off-device.
-- `maki/eval-device-fault-test.f` — regression that a ptxas-clean-but-launch-
+- `maki/eval/device-fault-test.f` — regression that a ptxas-clean-but-launch-
   faulting no-check candidate (raw span pointer used as the grid index -> OOB read
   -> contained GPU MMU fault) is GRADED as the `EVN-DEVICE-FAULT` bucket and the
   grader survives to grade the next candidate GREEN; a recorded SKIP off-device.

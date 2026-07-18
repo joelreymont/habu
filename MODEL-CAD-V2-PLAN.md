@@ -826,8 +826,8 @@ non-promotable diagnostic artifact, but promotion rejects.
 This is the fixed implementation census for the three PTX leaves. Files outside
 it require a new reviewed census; they are not silently absorbed into a leaf.
 
-1. Maki lowering originates in `maki/lower-ew.f`, `maki/lower-red.f`,
-   `maki/lower-mm.f`, and `maki/lower-move.f`.
+1. Maki lowering originates in `maki/lower/ew.f`, `maki/lower/red.f`,
+   `maki/lower/mm.f`, and `maki/lower/move.f`.
 2. Expression construction and checked kernel semantics pass through
    `lib/ptx/ir.f`, `lib/ptx/cg.f`, `lib/ptx/header.f`,
    `lib/ptx/collective.f`, and the collective renderer
@@ -837,20 +837,20 @@ it require a new reviewed census; they are not silently absorbed into a leaf.
    `tools/ptx/ptxas-smoke.f`. Device assembly fixtures are consumers of the
    same attestation package, not alternate proof paths.
 4. Cubin registration, module loading, ABI binding, and launch cross
-   `maki/lower-launch.f`.
-5. Device semantic evidence is produced by `maki/lower-golden.f` and exercised
-   end to end by `maki/lower-model-device-test.f`.
+   `maki/lower/launch.f`.
+5. Device semantic evidence is produced by `maki/lower/golden.f` and exercised
+   end to end by `maki/lower/model-device-test.f`.
 6. Evidence presentation, promotion policy, and durable rows cross
    `maki/report.f`, `maki/cad.f`, and `maki/store.f`.
 
 The fixed path is therefore:
 
 ~~~text
-maki/lower-*
+maki/lower/*
   -> lib/ptx/{ir,cg,header,collective} + src/arch/ptx/emit
   -> lib/ptx/toolchain + tools/ptx/ptxas-smoke
-  -> maki/lower-launch
-  -> maki/lower-golden + maki/lower-model-device-test
+  -> maki/lower/launch
+  -> maki/lower/golden + maki/lower/model-device-test
   -> maki/report + maki/cad + maki/store
 ~~~
 
@@ -1358,8 +1358,8 @@ workspace.
 | Memory | `lib/memory.f`, `lib/memory-test.f` | Create/reopen public package `MEM` and add exactly `MEM:CELLS>BYTES ( cell-count -- R<byte-len> )`, `MEM:64K-BYTES ( item-count -- R<byte-len> )`, `MEM:64K-COUNT-FOR ( byte-len -- R<item-count> )`, `MEM:64K-SPAN-BYTES ( byte-len -- R<byte-len> )`, `MEM:ALLOC-BYTES ( alloc-byte-len -- ptr u8 alloc-byte-len )`, `MEM:ALLOC-CELLS ( alloc-cell-count -- ptr a )`, and `MEM:ALLOC-64K ( -- ptr u8 alloc-byte-len )`. Allocation sinks have no zero-admitting overload. The existing global `MEM-ALLOC-BYTES` is removed or tightened only after the exact caller waves below migrate; `MEM-ALLOC-CELLS` and the multi-64K legacy conveniences remain explicitly out of this B5 wave. | `bin/hb --load lib/memory-test.f`; package-first positive signature, zero scalar calculation succeeds, zero allocation conversion returns `zero`, maximum-safe conversions pass, and first overflow/over-allocation fails before `mmap` | sealed CAD-NUM; B5.2 conversions; existing `mmap` boundary |
 | String | `lib/string.f`, `lib/string-test.f` | Add packaged typed `STR:LENGTH`, `STR:OFFSET`, `STR:COUNT`, `STR:FIND-SUB`, `STR:INDEX-OF`, `STR:SPLIT-NEXT`, `STR:BUF-RESET`, `STR:BUF-LEN@`, and `STR:BUF-APPEND`. Only owner-internal calls and `lib/string-test.f` move in this row; the existing `ptr u8 n` global surface remains a named legacy boundary for separate caller dots. Empty strings and empty needles retain zero lengths/offsets. | `bin/hb --load lib/string-test.f`; empty, first/last/not-found substring cases; offset advance overflow; swapped length/offset checker negatives | sealed CAD-NUM; B5.2 byte/index algebra; existing cell-polymorphic `option<a>` carries `CAD-NUM:index` without an option-owner change |
 | Vector | `lib/vector.f`, `lib/vector-test.f` | Add packaged `VEC:INIT`, `VEC:CLEAR`, `VEC:LEN@`, `VEC:CAP@`, `VEC:RESIZE`, `VEC:ENSURE`, `VEC:@`, `VEC:!`, `VEC:PUSH`, and `VEC:EACH`. Length/capacity are `item-count`, access/push uses `index`, and only the private one-cell-per-item adapter produces `cell-count` then `alloc-cell-count`. Assigned direct callers are exactly `maki/sched-key.f`, `tools/lint/intern.f`, and `tools/lint/source-lex.f`; the first is one combined sched-key vector/Model-IR caller commit, and the latter pair belong to the combined memory/vector tool caller commit described below. | `bin/hb --load lib/vector-test.f`, then `bin/hb --load maki/sched-key-test.f` and `bin/hb --load tools/lint/text-foundation-test.f`; zero length remains valid, zero capacity allocation rejects, growth overflow and index/count swaps reject | sealed CAD-NUM; packaged MEM API; bounded-host owns relational bounds/generations, not this row |
-| Model IR | `maki/model-ir.f`, `maki/model-ir-test.f` | Reopen package `MIR` for `MIR:NODE-COUNT@`, `MIR:SLOT-COUNT@`, `MIR:OPERAND-COUNT@`, and `MIR:MATERIALIZED-COUNT`, all returning `item-count`. Keep `MIR:input-index`, `MIR:ref-pos`, and `MIR:operand-ref`; never replace them with scalar `index`. Operand-count callers are exactly `maki/backward-test.f`, `maki/backward.f`, `maki/cad.f`, `maki/checkpoint.f`, `maki/fusion-plan.f`, `maki/lower-ew.f`, `maki/lower-mm.f`, `maki/lower-move.f`, `maki/lower-red.f`, `maki/mem-plan.f`, `maki/saved.f`, `maki/sched-key.f`, and `maki/traffic.f`. Count accessors are added first; those caller files move in separately owned commits, and the old MAKI-prefixed count accessors are removed only after the listed set is empty. | `bin/hb --load maki/model-ir-test.f`, then `bin/hb --load maki/test.f`; zero-node/zero-operand state, maximum capacities, count-versus-index checker negatives, rollback counts | sealed CAD-NUM; existing MIR nominal handles; no typed-storage-definer dependency and no ownership of MI-* storage migration |
-| Shape census | Read-only census of `maki/tensor.f`, `maki/tensor-value.f`, `maki/cad.f`, `maki/executor.f`, `maki/golden-artifact.f`, `maki/gradcheck.f`, `maki/lower-ew.f`, `maki/lower-launch.f`, `maki/lower-mm.f`, `maki/lower-move.f`, `maki/lower-red.f`, `maki/move-view.f`, `maki/plan-ops.f`, `maki/saved.f`, and `maki/traffic.f`; only the census result is added to this plan | Classify every current product as already owned by `MAKI:DIM*`, `MAKI:SHAPE-ELEMS`, or `MAKI:TENSOR-BYTES`, or name an exact residual file/word for a new dot. This row edits no Maki source and adds no CAD-NUM multiplication. | `bin/hb --load maki/tensor-test.f` and `bin/hb --load maki/tensor-value-test.f`; the census records zero/overflow semantics of each owner | read-only after B5.2; any residual becomes a separate owner dot |
+| Model IR | `maki/model-ir.f`, `maki/model-ir-test.f` | Reopen package `MIR` for `MIR:NODE-COUNT@`, `MIR:SLOT-COUNT@`, `MIR:OPERAND-COUNT@`, and `MIR:MATERIALIZED-COUNT`, all returning `item-count`. Keep `MIR:input-index`, `MIR:ref-pos`, and `MIR:operand-ref`; never replace them with scalar `index`. Operand-count callers are exactly `maki/backward-test.f`, `maki/backward.f`, `maki/cad.f`, `maki/checkpoint.f`, `maki/fusion-plan.f`, `maki/lower/ew.f`, `maki/lower/mm.f`, `maki/lower/move.f`, `maki/lower/red.f`, `maki/mem-plan.f`, `maki/saved.f`, `maki/sched-key.f`, and `maki/traffic.f`. Count accessors are added first; those caller files move in separately owned commits, and the old MAKI-prefixed count accessors are removed only after the listed set is empty. | `bin/hb --load maki/model-ir-test.f`, then `bin/hb --load maki/test.f`; zero-node/zero-operand state, maximum capacities, count-versus-index checker negatives, rollback counts | sealed CAD-NUM; existing MIR nominal handles; no typed-storage-definer dependency and no ownership of MI-* storage migration |
+| Shape census | Read-only census of `maki/tensor.f`, `maki/tensor-value.f`, `maki/cad.f`, `maki/executor.f`, `maki/golden-artifact.f`, `maki/gradcheck.f`, `maki/lower/ew.f`, `maki/lower/launch.f`, `maki/lower/mm.f`, `maki/lower/move.f`, `maki/lower/red.f`, `maki/move-view.f`, `maki/plan-ops.f`, `maki/saved.f`, and `maki/traffic.f`; only the census result is added to this plan | Classify every current product as already owned by `MAKI:DIM*`, `MAKI:SHAPE-ELEMS`, or `MAKI:TENSOR-BYTES`, or name an exact residual file/word for a new dot. This row edits no Maki source and adds no CAD-NUM multiplication. | `bin/hb --load maki/tensor-test.f` and `bin/hb --load maki/tensor-value-test.f`; the census records zero/overflow semantics of each owner | read-only after B5.2; any residual becomes a separate owner dot |
 | Final integration | `src/habu/habu2.f`, `FILEMAP.md`, `TRUSTED.md`, `MODEL-CAD-V2-PLAN.md`, `STATUS.md`, and `tools/public-signatures-test.f` only | Load the sealed `lib/cad-num.f`, register the three new owner/test files, audit trusted mints and packaged public signatures, and prove the V2 production entry point uses no legacy global numeric cast or allocation boundary. It does not migrate consumers or change arithmetic. | exact public-signature/trust/filemap/status gates, native fixpoint, then the full owning gates on the rebased tree | every dispatched owner/caller dot above green and integrated |
 
 The memory owner contains exactly two private representation projections:
@@ -1429,9 +1429,9 @@ The Model IR caller census is frozen per replaced accessor:
   `maki/executor.f`, `maki/from-scratch-model-test.f`,
   `maki/fusion-mout-test.f`, `maki/fusion-plan.f`,
   `maki/golden-artifact-test.f`, `maki/golden-artifact.f`, `maki/golden.f`,
-  `maki/gradcheck-test.f`, `maki/gradcheck.f`, `maki/lower-ew.f`,
-  `maki/lower-golden.f`, `maki/lower-launch.f`, `maki/lower-mm.f`,
-  `maki/lower-move.f`, `maki/lower-red.f`, `maki/mem-plan.f`,
+  `maki/gradcheck-test.f`, `maki/gradcheck.f`, `maki/lower/ew.f`,
+  `maki/lower/golden.f`, `maki/lower/launch.f`, `maki/lower/mm.f`,
+  `maki/lower/move.f`, `maki/lower/red.f`, `maki/mem-plan.f`,
   `maki/mlp-bwd-test.f`, `maki/onnx/import-test.f`,
   `maki/onnx/ort-ref-test.f`, `maki/saved.f`, `maki/sched-key.f`, and
   `maki/traffic.f`;
@@ -1440,7 +1440,7 @@ The Model IR caller census is frozen per replaced accessor:
   `maki/gradcheck-test.f`, `maki/gradcheck.f`, `maki/mem-plan.f`,
   `maki/onnx/import-test.f`, and `maki/traffic.f`;
 - operand count: the thirteen files named in the Model IR contract row;
-- materialized count: `maki/cad.f` and `maki/lower-model-test.f`.
+- materialized count: `maki/cad.f` and `maki/lower/model-test.f`.
 
 Each owning Maki caller commit migrates all count accessors in its file. The old
 MAKI-prefixed accessors are removed only after a fresh fixed-string `rg` census
@@ -1459,7 +1459,7 @@ wave, `MEM-ALLOC-BYTES`, is split into disjoint caller dots:
 
 - library callers: `lib/codesign.f`, `lib/content-key.f`, `lib/object-cache.f`,
   `lib/process-argv.f`, `lib/process-env.f`, and `lib/source.f`;
-- Maki callers: `maki/eval-repair-mech.f`, `maki/eval-transcript.f`, and
+- Maki callers: `maki/eval/repair-mech.f`, `maki/eval/transcript.f`, and
   `maki/onnx/import.f`;
 - test callers: `test/gate-build-common.f`, `test/gate-engine-lib.f`,
   `test/gate-pool.f`, `test/gate-stdlib-inline-lib.f`,
@@ -1565,11 +1565,11 @@ and therefore blocks on D0.
 - **D2 — Maki callers** `Migrate Maki string callers to STR:` (13 files):
   `maki/store.f` (INDEX-OF), `maki/store-rehydrate.f` (INDEX-OF, SPLIT-NEXT),
   `maki/competitive-store.f` (INDEX-OF), `maki/cad.f` (INDEX-OF),
-  `maki/eval-transcript.f` (INDEX-OF, SPLIT-NEXT),
+  `maki/eval/transcript.f` (INDEX-OF, SPLIT-NEXT),
   `maki/golden-artifact.f` (INDEX-OF, SPLIT-NEXT),
-  `maki/eval-repair-loop.f` (SPLIT-NEXT), `maki/ablate-ptx.f` (FIND-SUB),
-  `maki/lower-red-test.f`, `maki/lower-mm-test.f`, `maki/lower-ew-test.f`,
-  `maki/lower-mv-test.f`, `maki/onnx/deploy-test.f` (all FIND-SUB). No BUF use; no
+  `maki/eval/repair-loop.f` (SPLIT-NEXT), `maki/ablate-ptx.f` (FIND-SUB),
+  `maki/lower/red-test.f`, `maki/lower/mm-test.f`, `maki/lower/ew-test.f`,
+  `maki/lower/mv-test.f`, `maki/onnx/deploy-test.f` (all FIND-SUB). No BUF use; no
   D0 dependency.
 - **D3 — test callers** `Migrate test string callers to STR:` (7 files):
   `test/boot-pin-test.f` (FIND-SUB), `test/gate-engine-lib.f` (FIND-SUB),
@@ -1601,13 +1601,13 @@ lanes are disjoint by path prefix (`lib/`+`examples/` / `maki/` / `test/` /
 only — those waves merged, so this is sequential, not a concurrent-edit hazard;
 dispatch STR leaves on a base with the MEM/VEC/Model-IR waves merged): the
 following census files were also touched by a landed numeric wave —
-`lib/content-key.f`, `lib/process-env.f` (MEM library); `maki/eval-transcript.f`
+`lib/content-key.f`, `lib/process-env.f` (MEM library); `maki/eval/transcript.f`
 (MEM Maki); `maki/cad.f`, `maki/golden-artifact.f` (Model IR count);
 `test/gate-engine-lib.f`, `test/seal-absence.f` (MEM test);
 `tools/build-fixpoint.f`, `tools/build-fixpoint-test.f`, `tools/codegen-role.f`,
 `tools/codegen-role-test.f`, `tools/hb-build-lib.f`,
-`tools/lint/text-foundation-test.f` (MEM/VEC tool). The `maki/lower-*-test.f`
-files are distinct from the non-test `maki/lower-*.f` files in the Model IR wave.
+`tools/lint/text-foundation-test.f` (MEM/VEC tool). The `maki/lower/*-test.f`
+files are distinct from the non-test `maki/lower/*.f` files in the Model IR wave.
 
 **Ready-to-mint leaf dots** (orchestrator mints; census records verbatim):
 
@@ -1616,7 +1616,7 @@ dot add "Add STR:BUF-APPEND-C typed byte append" -d "Full context: MODEL-CAD-V2-
 
 dot add "Migrate library string callers to STR:" -d "Full context: MODEL-CAD-V2-PLAN.md B5.5a legacy-STR census, library lane. Migrate every raw STR call in these files to the typed STR: surface: examples/string-regex.f (INDEX-OF), lib/json-read.f (INDEX-OF), lib/float.f (INDEX-OF), lib/process-env.f (INDEX-OF, SPLIT-NEXT), lib/object.f (SPLIT-NEXT), lib/ptx/ad.f (SPLIT-NEXT), lib/content-key.f (BUF-APPEND-LEN -> STR:BUF-APPEND, dropping the >LEN pre-conversion). INDEX-OF/FIND-SUB return option<CAD-NUM:index>; SPLIT-NEXT gains the one-past-end offset-advance overflow guard; behavior otherwise byte-identical. Acceptance: no raw STR-LEN/STR-OFF/STR-COUNT/FIND-SUB/INDEX-OF/SPLIT-NEXT/BUF-* call remains in these files (fresh rg census empty); each file's focused test green. Files: examples/string-regex.f, lib/json-read.f, lib/float.f, lib/process-env.f, lib/object.f, lib/ptx/ad.f, lib/content-key.f, plus their focused tests. Verify: bin/hb --load each owned file's focused test; library gate slice. Depends: landed STR owner. Ownership: the 7 listed library files. Claim: unassigned."
 
-dot add "Migrate Maki string callers to STR:" -d "Full context: MODEL-CAD-V2-PLAN.md B5.5a legacy-STR census, Maki lane. Migrate every raw STR call to the typed STR: surface in: maki/store.f (INDEX-OF), maki/store-rehydrate.f (INDEX-OF, SPLIT-NEXT), maki/competitive-store.f (INDEX-OF), maki/cad.f (INDEX-OF), maki/eval-transcript.f (INDEX-OF, SPLIT-NEXT), maki/golden-artifact.f (INDEX-OF, SPLIT-NEXT), maki/eval-repair-loop.f (SPLIT-NEXT), maki/ablate-ptx.f (FIND-SUB), maki/lower-red-test.f, maki/lower-mm-test.f, maki/lower-ew-test.f, maki/lower-mv-test.f, maki/onnx/deploy-test.f (FIND-SUB). No BUF use, no D0 dependency. INDEX-OF/FIND-SUB return option<CAD-NUM:index>; SPLIT-NEXT gains offset-advance overflow guard; behavior byte-identical. Overlap note: maki/cad.f and maki/golden-artifact.f were touched by the landed Model IR count wave (sequential). Acceptance: fresh rg census empty in these files; maki/test.f and each focused test green. Files: the 13 listed Maki files plus their focused tests. Verify: bin/hb --load maki/test.f and the owned focused tests. Depends: landed STR owner. Ownership: the 13 listed Maki files. Claim: unassigned."
+dot add "Migrate Maki string callers to STR:" -d "Full context: MODEL-CAD-V2-PLAN.md B5.5a legacy-STR census, Maki lane. Migrate every raw STR call to the typed STR: surface in: maki/store.f (INDEX-OF), maki/store-rehydrate.f (INDEX-OF, SPLIT-NEXT), maki/competitive-store.f (INDEX-OF), maki/cad.f (INDEX-OF), maki/eval/transcript.f (INDEX-OF, SPLIT-NEXT), maki/golden-artifact.f (INDEX-OF, SPLIT-NEXT), maki/eval/repair-loop.f (SPLIT-NEXT), maki/ablate-ptx.f (FIND-SUB), maki/lower/red-test.f, maki/lower/mm-test.f, maki/lower/ew-test.f, maki/lower/mv-test.f, maki/onnx/deploy-test.f (FIND-SUB). No BUF use, no D0 dependency. INDEX-OF/FIND-SUB return option<CAD-NUM:index>; SPLIT-NEXT gains offset-advance overflow guard; behavior byte-identical. Overlap note: maki/cad.f and maki/golden-artifact.f were touched by the landed Model IR count wave (sequential). Acceptance: fresh rg census empty in these files; maki/test.f and each focused test green. Files: the 13 listed Maki files plus their focused tests. Verify: bin/hb --load maki/test.f and the owned focused tests. Depends: landed STR owner. Ownership: the 13 listed Maki files. Claim: unassigned."
 
 dot add "Migrate test string callers to STR:" -d "Full context: MODEL-CAD-V2-PLAN.md B5.5a legacy-STR census, test lane. Migrate every raw STR call to the typed STR: surface in: test/boot-pin-test.f (FIND-SUB), test/gate-engine-lib.f (FIND-SUB), test/owner-wid-doctor.f (FIND-SUB), test/gate-pool-test.f (FIND-SUB, INDEX-OF), test/seal-absence.f (FIND-SUB, SPLIT-NEXT), test/run-lib.f (SPLIT-NEXT, BUF-RESET, BUF-APPEND, BUF-APPEND-C), test/run-rerun-failed-test.f (BUF-RESET). test/run-lib.f uses BUF-APPEND-C so this leaf blocks on the D0 STR:BUF-APPEND-C owner extension. Overlap note: test/gate-engine-lib.f and test/seal-absence.f were touched by the landed MEM test wave (sequential). Acceptance: fresh rg census empty in these files; each focused test/gate slice green. Files: the 7 listed test files plus their focused tests. Verify: bin/hb --load the owned focused tests / gate slices. Depends: landed STR owner; D0 (STR:BUF-APPEND-C). Ownership: the 7 listed test files. Claim: unassigned."
 

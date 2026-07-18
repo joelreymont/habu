@@ -25,7 +25,7 @@
 \ lib/process.f `outcome` (exited/signaled/timeout) to produced-eligibility, so a hanging
 \ (timeout, SIGKILL-reaped) or dying (signaled / nonzero exit) subject is FAULTED here, and
 \ a clean exit(0) is the only produced-eligible outcome - the grader's EVN-DEVICE-FAULT vs
-\ WRONG precedent (maki/eval-device.f). A faulted subject is NEVER compared, so it can never
+\ WRONG precedent (maki/eval/device.f). A faulted subject is NEVER compared, so it can never
 \ be graded a wrong value.
 \
 \ ---- COMPARISON: composes NPOL:dom + the suite's u64 tolerance ------------------------

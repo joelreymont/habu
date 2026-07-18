@@ -4,7 +4,7 @@
 \ (CLASS-MOVEMENT, MIR-MAT@ = 0, verdict MVV-FREE / MVV-STAGED) is not a kernel: the
 \ fusion planner folds it into the LOAD INDEX MATH of the compute op that reads it
 \ (maki/fusion-plan.f FP-JOIN?). This file owns the pure resolution a compute lowering
-\ (maki/lower-ew.f / lower-red.f / lower-mm.f) needs to fold one: given the operand ref a
+\ (maki/lower/ew.f / lower-red.f / lower-mm.f) needs to fold one: given the operand ref a
 \ compute node reads, decide whether it reads THROUGH a dissolved movement, and if so
 \ resolve the ultimate SOURCE input plus the constant element OFFSET the fold bakes into
 \ the reading kernel's base pointer.

@@ -90,7 +90,7 @@ require maki/sched-key.f
 require maki/store.f
 require maki/store-replay.f          \ durable replay bridge: SK-PUT-DURABLE + REPLAY-ENSURE
 require maki/golden.f
-require maki/lower-golden.f
+require maki/lower/golden.f
 require maki/gradcheck.f
 require maki/evidence/schema.f      \ EVID:golden-leg / EVID:prec-class: the typed home of the promote path's golden provenance (retires the maki/golden.f ambient globals)
 
@@ -977,7 +977,7 @@ private
    s" " MAKI-VERDICT:PASS MAKI-GATE:CERTIFY REPORT:VERDICT!
    s" certify: model-level legality only; kernel legality in cad-5" REPORT:WARN+ ;
 
-\ GOLDEN is REAL (maki/golden.f + maki/lower-golden.f). Precedence: an external reference
+\ GOLDEN is REAL (maki/golden.f + maki/lower/golden.f). Precedence: an external reference
 \ artifact wins; else, when a device is present and the model is device-lowerable, the DEVICE
 \ model golden runs the whole forward IR on the GPU (cross-region device buffers) and compares
 \ the final output vs the host executor under a composed f32 tolerance (LOWER-MODEL-GOLDEN,

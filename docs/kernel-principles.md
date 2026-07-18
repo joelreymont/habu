@@ -92,7 +92,7 @@ Fragment layout is proven **element-exact** in isolation FIRST (integer operands
 exact in tf32 → the mma tile reproduces the integer matmul bit-exact):
 `tools/ptx/mma-probe.f` (one 16×8×8 tile, 128 cells, 0 mismatches), then
 `tools/ptx/mma-gemm-check.f` for the full K-looping kernel at 64³/128³ (0
-mismatches). The kernel is `lib/ptx/cg-mma.f` (`MMM`); `maki/lower-mm.f` emits it
+mismatches). The kernel is `lib/ptx/cg-mma.f` (`MMM`); `maki/lower/mm.f` emits it
 when the matmul class is licensed at TF32, and `maki/precision-device-test.f`
 LOWER-GOLDEN passes device==host within the tf32 row (the running license).
 

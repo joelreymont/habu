@@ -23,7 +23,7 @@
 \ This suite is the positive owner of that invariant: a battery of FAN-OUT models (captured
 \ residual/skip + hand-built extreme fan-out) each asserts MAXMAT == 1 over all planned
 \ regions. The three lowering guards' fail-closed behaviour on a (corrupted) multi-output
-\ plan lives with each pass: maki/lower-ew-test.f, lower-red-test.f, lower-mm-test.f. Host-
+\ plan lives with each pass: maki/lower/ew-test.f, lower-red-test.f, lower-mm-test.f. Host-
 \ only (planner assertion, no PTX/device leg). Load via maki/test.f.
 
 require lib/test.f

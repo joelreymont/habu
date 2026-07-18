@@ -8,7 +8,7 @@
 \      kernel), ablated plans THREE regions (one kernel per op, with global round-trips
 \      between them). FP-REGION-COUNT 1 vs 3 is free off-device coverage.
 \   2. CORRECTNESS (Orin only): each mode is run on device by the SAME whole-model golden
-\      (maki/lower-golden.f LOWER-MODEL-GOLDEN via LOWER-MODEL-RUN, region-by-region f32 with
+\      (maki/lower/golden.f LOWER-MODEL-GOLDEN via LOWER-MODEL-RUN, region-by-region f32 with
 \      cross-region device buffers) and its final output matched against the SAME host
 \      executor reference (EX-RUN, f64) under the composed tolerance. BOTH modes V-PASS -
 \      "run on device twice, both device-correct vs the same golden".
@@ -45,8 +45,8 @@ require lib/test.f
 require lib/fmt.f
 require tools/ptx/bench.f
 require maki/cad.f
-require maki/lower-ew.f
-require maki/lower-model-device.f
+require maki/lower/ew.f
+require maki/lower/model-device.f
 
 package MAKI
 

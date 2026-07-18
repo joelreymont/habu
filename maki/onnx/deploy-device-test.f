@@ -10,7 +10,7 @@
 \                      there is no CUDA, so the file check-loads everywhere.
 \   ODV-DEVICE-GOLD  - ORIN ONLY (CUDA:OPEN? probe-keyed SKIP): each fusion region is emitted by a
 \                      spawned bin/hb that re-imports the committed bytes, ptxas-assembled, and run
-\                      region-by-region on device (maki/lower-launch.f LOWER-MODEL-RUN). The final
+\                      region-by-region on device (maki/lower/launch.f LOWER-MODEL-RUN). The final
 \                      device output matches onnxruntime under the composed device-vs-host tolerance
 \                      plus the ort dtype floor (maki/onnx/deploy-device.f ODV-DEV-ATOL/RTOL).
 \

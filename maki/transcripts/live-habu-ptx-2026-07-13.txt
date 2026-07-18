@@ -1,7 +1,7 @@
 habu-eval-transcript v1
 \ LIVE model-generated pass@k round, 2026-07-13 (dot habu-eval-real-gen-dab1b6cd).
 \ Tasks: the three OFF-DEVICE authoring tasks (sumnorm / gemm / attention);
-\ maki/eval-emit.f grades them at checker/emit level with PTX structural
+\ maki/eval/emit.f grades them at checker/emit level with PTX structural
 \ gates - the device-golden leg is Orin-gated and recorded as a SKIP.
 \ Generator: independent opus-model subagents (orchestrator Agent tool, model
 \ override "opus"; one fresh blind session per sample, zero tool uses; n=5 per

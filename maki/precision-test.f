@@ -1,5 +1,5 @@
 \ maki/precision-test.f - checked tests for gate-licensed precision (maki/precision.f)
-\ and its tolerance composition into the whole-model golden (maki/lower-golden.f).
+\ and its tolerance composition into the whole-model golden (maki/lower/golden.f).
 \
 \ Host-only: defaults (f32 everywhere), the f32 tolerance rows, a tf32 request for
 \ the matmul class switching the selected rtol to 2e-3 (and ONLY for that class),
@@ -12,7 +12,7 @@ require lib/test.f
 require lib/float.f
 require maki/precision.f
 require maki/cad.f
-require maki/lower-golden.f
+require maki/lower/golden.f
 
 package MAKI
 
@@ -89,7 +89,7 @@ PREC-TF32 PREC-F32  PREC-MAX PREC-TF32 T=
 ' TRY-DECODE-TOL E-PREC-ROW   TTHROWS
 
 \ ---- composed model tolerance uses each class's ACTIVE row -----------------------
-\ FFN chain = 2 matmul regions + 1 row-reduce region (maki/lower-model-test.f facts).
+\ FFN chain = 2 matmul regions + 1 row-reduce region (maki/lower/model-test.f facts).
 MODEL: PFFN ( x:4x8 w1:8x16 b1:1x16 w2:16x8 b2:1x8 -- y ) LINEAR GELU LINEAR RMSNORM ;
 FP-BUILD
 MDL-COUNT-REGIONS

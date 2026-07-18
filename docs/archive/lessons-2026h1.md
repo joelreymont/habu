@@ -385,7 +385,7 @@ of the file.
   inside its quotation is unchecked, and a ready slot PIPE-LOOP mints-and-consumes itself is a
   self-satisfying tautology disconnected from the real issue (a hollow gesture, not a protocol
   check). (3) INTERFACE — MM-PIPE-KLOOP-WITH's `( [ -- ] -- )` compute-quotation interface is
-  consumed with UNTYPED `[ -- ]` bodies by maki/lower-mm.f (`[: MMA-KTILE ;]`) and cg-mma.f, so
+  consumed with UNTYPED `[ -- ]` bodies by maki/lower/mm.f (`[: MMA-KTILE ;]`) and cg-mma.f, so
   giving the quotation a cpp-slot token breaks out-of-write-set callers. The checked cp.async
   protocol therefore fits the single-slot pipeline OR a loop-carried-token capability (out of an
   emit-time stack checker's model), NOT the shipping double-buffered path — the honest close is a
@@ -675,7 +675,7 @@ of the file.
   is emitted ATOMICALLY inside MM-PIPE-KLOOP-WITH (cg-matmul-emit.f), run once at emit time;
   the K-loop is a RUNTIME `$KLOOP` branch, so read-before-wait / missing-commit / double-wait
   are not expressible at the tilepipe surface without DECOMPOSING that shared, byte-sensitive
-  emitter (consumed verbatim by cg-matmul.f, cg-mma.f, maki/lower-mm.f). And bar.sync needs
+  emitter (consumed verbatim by cg-matmul.f, cg-mma.f, maki/lower/mm.f). And bar.sync needs
   the M5 barrier model (habu-ptx-m5-mask-eb0716f1, open, unstarted) to compose with.
 - **A stack-effect checker over the EMIT-TIME program cannot prove RUNTIME loop-carried
   parity alternation.** The Forth checker verifies emit-time stack effects; the emitter emits
@@ -1475,7 +1475,7 @@ unchanged (148855). Keys for milestone 2:
   instead of throwing at the off-device `CUDA:OPEN`.
 - **A launcher that reuses another file's internals rots silently.**
   `tools/ptx/matmul-device-test.f` borrowed `ED-SYM`/`ED-LIB`/`ED-H` from
-  `maki/eval-device.f`; when eval-device migrated to the checked bindings those
+  `maki/eval/device.f`; when eval-device migrated to the checked bindings those
   DLSYM words vanished and matmul was left uncheckable (nothing gated it). Prefer
   a shared library (`lib/ptx/cuda-driver.f`) over reaching into a peer's cells.
 - **Opaque habu exit codes are `throw-code mod 256` - decode before guessing.**
@@ -3197,7 +3197,7 @@ unchanged (148855). Keys for milestone 2:
   the safety net that let the padded-address rewrite be trusted.
 - **A shared emitter word feeds two callers — parameterize with a byte-identical
   default, prove it, don't fork.** cg-mma.f's MMA-SETUP/MMA-KTILE are reused verbatim by
-  the FENCED maki/lower-mm.f LMM-MMA-BODY, so the BK/pad/stages knobs had to default to
+  the FENCED maki/lower/mm.f LMM-MMA-BODY, so the BK/pad/stages knobs had to default to
   values that re-emit the old PTX byte-for-byte (verified by dumping all three fragment
   modes before/after and diffing). shl-vs-mul on the As stride was the trap: emit shl
   when the stride is a power of two (byte-identical at 128) and mul.lo otherwise.

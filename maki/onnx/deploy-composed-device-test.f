@@ -11,7 +11,7 @@
 \                      pins CRF-Y to the oracle, so the file check-loads everywhere.
 \   CDV-DEVICE-GOLD  - ORIN ONLY (CUDA:OPEN? probe-keyed SKIP): each fusion region is emitted by a
 \                      spawned bin/hb that re-imports the committed bytes, ptxas-assembled, and run
-\                      region-by-region on device (maki/lower-launch.f LOWER-MODEL-RUN). The final
+\                      region-by-region on device (maki/lower/launch.f LOWER-MODEL-RUN). The final
 \                      device output matches the host oracle under the composed device-vs-host
 \                      tolerance (maki/onnx/deploy-composed-device.f CDV-DEV-ATOL/RTOL).
 \
@@ -29,11 +29,11 @@
 \
 \ FAIL-CLOSED RESIDUAL (alpha/bias): a composed Gemm with alpha<>1 or a separate bias inserts an
 \ OP-SCALE / OP-BIAS node that fuses into the matmul region as an epilogue. OP-SCALE/OP-BIAS are NOT
-\ v1 matmul epilogue ops (maki/lower-mm.f LMM-EPI-OP? accepts only relu/gelu/silu), so that matmul
+\ v1 matmul epilogue ops (maki/lower/mm.f LMM-EPI-OP? accepts only relu/gelu/silu), so that matmul
 \ region is NOT device-lowerable and its emit rejects FAIL-CLOSED (E-LMM-OP). The ALWAYS-RUN section
 \ below proves that fail-closed rejection with the CRF-ALPHA-MODEL$ negative fixture, so the gap is
 \ characterized as executable evidence (not a silent wrong-output miss). Widening the matmul
-\ epilogue to fold a scale/bias belongs to the fenced maki/lower-mm.f and is left as a residual dot.
+\ epilogue to fold a scale/bias belongs to the fenced maki/lower/mm.f and is left as a residual dot.
 \
 \ CORRUPTION SENSITIVITY - that a WRONG kernel is REJECTED (not silently passed) is proven for the
 \ shared whole-model comparator by maki/ablate-golden-device-test.f (seeded PTX mutation, stale
@@ -46,7 +46,7 @@
 \ (needs the CUDA toolkit + a device). Fully checked Habu; maki -> habu only.
 
 require maki/onnx/deploy-composed-device.f
-require maki/lower-mm.f
+require maki/lower/mm.f
 
 package MAKI
 

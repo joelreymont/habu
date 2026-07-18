@@ -11,7 +11,7 @@
 \   Mul+Softmax -> row-reduce   (LRED-EMIT: block-per-row, max/exp/sum/divide)
 \   Concat    -> movement copy  (LMV-EMIT: two-source branch copy)
 \ Off-device the whole-model golden over the imported IR is an honest not-run
-\ (V-NOTRUN); the device run needs the Orin (maki/lower-model-device-test.f pattern).
+\ (V-NOTRUN); the device run needs the Orin (maki/lower/model-device-test.f pattern).
 \ Fixtures are the import-test.f hand-encoded ModelProtos (maki/onnx/encode.f DSL).
 \
 \ Adoption seam (dot habu-cad-f-imported): ONNX:IMPORT adopts the model it built by
@@ -32,11 +32,11 @@ require src/arch/ptx/emit.f
 require maki/cad.f
 require maki/onnx/encode.f
 require maki/onnx/import.f
-require maki/lower-golden.f
-require maki/lower-ew.f
-require maki/lower-mm.f
-require maki/lower-red.f
-require maki/lower-move.f
+require maki/lower/golden.f
+require maki/lower/ew.f
+require maki/lower/mm.f
+require maki/lower/red.f
+require maki/lower/move.f
 
 \ typed substring search: reopen the unsealed CAD-NUM package for a checked index
 \ projection (no new TRUSTED). dot habu-migrate-maki-str-6e5cabd4.

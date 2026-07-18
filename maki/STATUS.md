@@ -37,7 +37,7 @@ still belong only in root `STATUS.md`.
 - **ONNX import** (`maki/onnx.f`, `maki/onnx-test.f`) — the op-coverage lowering
   table (Add/Mul/Relu/Softmax/Gemm → maki/Habu-PTX entries) with a **fail-closed**
   policy: an unsupported op is rejected, never silently approximated. Runnable.
-- **Eval harness core** (`maki/eval.f`, `maki/eval-test.f`) — the thesis's judge:
+- **Eval harness core** (`maki/eval/eval.f`, `maki/eval/eval-test.f`) — the thesis's judge:
   the CHECKER scores each candidate kernel (certify = pass), with pass@1/pass@k
   tallying. The model-generation + repair arm is external; this is the correctness
   gate it is scored against. Runnable.

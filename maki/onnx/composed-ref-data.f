@@ -9,7 +9,7 @@
 \   a standalone materialized MOVEMENT region feeding the matmul region - the whole-model
 \   device path the default-affine ort-ref fixture (maki/onnx/deploy-device-test.f) never
 \   exercises. Layer 2 is a plain 2-input Gemm (bare matmul). No separate bias/alpha node:
-\   OP-BIAS / OP-SCALE are NOT v1 matmul epilogue ops (maki/lower-mm.f LMM-EPI-OP? accepts
+\   OP-BIAS / OP-SCALE are NOT v1 matmul epilogue ops (maki/lower/mm.f LMM-EPI-OP? accepts
 \   only relu/gelu/silu), so a composed Gemm with a separate bias or alpha<>1 fails closed on
 \   the device matmul route (E-LMM-OP). CRF-ALPHA-MODEL$ carries that NEGATIVE fixture and the
 \   sibling test proves the fail-closed rejection - the documented alpha/bias residual.
@@ -150,7 +150,7 @@ private
 public
 
 \ NEGATIVE fixture: a composed alpha<>1 Gemm (MATMUL + inserted OP-SCALE). OP-SCALE is NOT a v1
-\ matmul epilogue op (maki/lower-mm.f LMM-EPI-OP? accepts only relu/gelu/silu), so its matmul
+\ matmul epilogue op (maki/lower/mm.f LMM-EPI-OP? accepts only relu/gelu/silu), so its matmul
 \ region is NOT device-lowerable and the device matmul route rejects it FAIL-CLOSED (E-LMM-OP).
 \ The sibling test proves that fail-closed rejection; this is the documented alpha/bias residual.
 : CRF-ALPHA-MODEL ( -- )

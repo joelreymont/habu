@@ -29,7 +29,7 @@ consistent with README.md + docs/positioning.md.
    (docs/maki/train.md spec, bit-identical maki/checkpoint-test.f), and suite
    growth 77->88 in Section 6; live 2026-07-12 pass@k round
    (checker-as-judge transcript harness, saxpy 4/5+1-repair, softmax 5/5,
-   fused-relu 5/5 — docs/eval-triton.md, maki/eval-live-test.f) in Section 7;
+   fused-relu 5/5 — docs/eval-triton.md, maki/eval/live-test.f) in Section 7;
    Section 4.1 adoption paragraph refreshed to the landed family-typed CAD
    internals (descriptor trio + opkind + SKEY product, field swaps =
    checker rejects — .dots/habu-cad-adt-swap-7bf0bb1f.md). Device/GB/s rows
@@ -56,8 +56,8 @@ consistent with README.md + docs/positioning.md.
    named refs/true skip (maki/cad-ref-test.f, FFN-SKIP node.3.in "n2 i0");
    the four lowering slices (dot habu-maki-lower-tensor SLICE 1-4 entries);
    gate set + promote + store rows (maki/cad-test.f, store.f).
-   Include a generated REGION_0 PTX excerpt (emit via maki/lower-ew.f
-   capture sink; see maki/lower-ew-test.f).
+   Include a generated REGION_0 PTX excerpt (emit via maki/lower/ew.f
+   capture sink; see maki/lower/ew-test.f).
 5. Section 6 (Verified gradients): maki/backward.f headers, from-scratch
    flagship numbers (maki/from-scratch-test.f: NLL 0.130 -> -0.647, 60
    steps, bit-deterministic, GC-RUN V-PASS pre-training).

@@ -17,7 +17,7 @@
 \ tiling, and perf notes live with the emitters in lib/ptx/cg-matmul-emit.f).
 \
 \ MM-BEGIN / MM-K-LOOP / MM-STORE are the checked GEMM AUTHORING VOCABULARY:
-\ maki's eval lane (maki/eval-emit.f, eval-matrix, live-author) grades LLM
+\ maki's eval lane (maki/eval/emit.f, eval-matrix, live-author) grades LLM
 \ candidates that compose exactly these three words between MM-AUTHOR-OPEN and
 \ MM-AUTHOR-CLOSE - the graded candidate text and this file's production body
 \ are the SAME program. Their contracts: skipping MM-K-LOOP still certifies
@@ -65,7 +65,7 @@ KERNEL: MM-CHECKED ( matrix<space-global,f32,extent-m,extent-k> matrix<space-glo
    MM-STORE ;
 
 \ authoring scaffold: header/entry/params up to the three ABI matrices, so a
-\ checked kernel body (MM-CHECKED, or a graded candidate K - maki/eval-emit.f)
+\ checked kernel body (MM-CHECKED, or a graded candidate K - maki/eval/emit.f)
 \ can sit between MM-AUTHOR-OPEN and MM-AUTHOR-CLOSE.
 : MM-AUTHOR-OPEN ( -- matrix<space-global,f32,extent-m,extent-k> matrix<space-global,f32,extent-k,extent-n> matrix<space-global,f32,extent-m,extent-n> )
    PTX-HEADER-SM87  PTX-NL

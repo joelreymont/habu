@@ -9,7 +9,7 @@ Triton is the external system under comparison; it is Python because Triton is
 Python. It is **not** repo automation and nothing in the gate runs it — the
 reproduction scripts below are the canonical reference (kept out of the tree so
 `host-lint` stays green; the Habu-side reducers `tools/ptx/bandwidth.f`,
-`maki/eval-compare.f`, `maki/eval-device.f` are the live Habu column).
+`maki/eval/compare.f`, `maki/eval/device.f` are the live Habu column).
 
 ## Installing Triton on the Orin (no reflash)
 
@@ -81,7 +81,7 @@ print(f"GB/s={(ITERS*3*N*4)/ns:.1f}")
 
 For each candidate, classify *when* the bug is caught: COMPILE (jit/compile
 raises) · RUNTIME (compiles+runs, output ≠ golden) · GREEN. Golden x=2,y=0,a=3 →
-a·x+y = 6.0. The candidates mirror the Habu fixture in `maki/eval-compare.f`.
+a·x+y = 6.0. The candidates mirror the Habu fixture in `maki/eval/compare.f`.
 Kernels: `correct`, `semantic x+y` (forgot the scale), `missing store` (computes,
 never `tl.store`), `operands swapped` (a·y+x), `undefined name` (uses `xx`),
 `scalar-as-pointer` (`tl.load(a+o)` where `a` is a scalar).
@@ -106,7 +106,7 @@ Triton error-catch battery (6 candidates):
 
 ### Internal no-checker Habu ablation
 
-`maki/eval-compare.f` also runs an internal Habu-PTX ablation over the SAXPY
+`maki/eval/compare.f` also runs an internal Habu-PTX ablation over the SAXPY
 fixture: the checked arm grades through `EVAL:GRADE-CANDIDATE`, while the no-checker
 arm emits a throwaway `0 set-check` driver and then attempts ptxas + device golden
 for every candidate. On the Orin run, the checked arm caught 5/6 bugs before GPU
@@ -137,7 +137,7 @@ as wrong output.
   and are caught only at runtime** — 3 of the battery's 5 bugs slipped to runtime,
   including a *missing store* that silently produced `0.0`.
 - **Semantic** value bugs (x+y) neither target catches statically; both need a
-  golden/device run. (Our device-golden grader `maki/eval-device.f` is that run.)
+  golden/device run. (Our device-golden grader `maki/eval/device.f` is that run.)
 - **Bandwidth:** scalar Habu-PTX measured 42.5 GB/s vs Triton 63.0 GB/s; RCA found
   the gap was codegen vectorization (`ld.global.f32` scalar loads/stores vs
   Triton's `ld.global.v2`). Implementing a checked **v4** tile vocabulary
@@ -242,7 +242,7 @@ per target), each given the task + op *semantics* (not the assembled answer), an
 graded every sample through the target's full loop: Triton via compile +
 device-golden (`/tmp/triton-compare/grade_one.py`, `grade_softmax.py`), Habu-PTX
 via checker → emit → ptxas → device-golden (`/tmp/grade_habu*.sh`, wrapping the
-committed `lib/ptx` + `maki/eval-device*.f` pipeline). Generator population: Claude
+committed `lib/ptx` + `maki/eval/device*.f` pipeline). Generator population: Claude
 subagents — state that bias; this is not a claim about all LLMs.
 
 Two tasks, golden x=2,y=0,a=3→6.0 (SAXPY) and softmax([1,2,3,4]):
@@ -310,9 +310,9 @@ note below), so cache warmth is symmetric.
   `bin/hb --load tools/ptx/gemm-bench.f` on the device). It emits + ptxas-assembles
   both in-tree kernels and times them via `tools/ptx/bench.f`:
   `MMN` = naive one-element/thread global-K-loop (`lib/ptx/cg-matmul-naive.f`,
-  the same algorithm the `maki/lower-mm.f` naive fallback tile emits);
+  the same algorithm the `maki/lower/mm.f` naive fallback tile emits);
   `MM` = register-blocked 64×64 tile, shared As/Bs staging, 4×4
-  accumulators/thread (`lib/ptx/cg-matmul.f`, the algorithm the `maki/lower-mm.f`
+  accumulators/thread (`lib/ptx/cg-matmul.f`, the algorithm the `maki/lower/mm.f`
   blocked path emits).
 - **Triton column:** the official-tutorial matmul (`tl.dot`, grouped ordering,
   8 autotune configs over BLOCK_M/N/K × stages × warps), fp32 in/out, on-device
@@ -514,9 +514,9 @@ baseline above (fp32 `C = A·B`, CUDA-event timing, one warmup, ITERS 200, 80,
 change** (the device goldens still gate `fma.rn.f32` at rtol 1e-4; TF32/MMA is
 step 3). Each
 increment re-emits + ptxas-assembles the same in-tree `MM` kernel
-(`lib/ptx/cg-matmul.f`, also the algorithm the `maki/lower-mm.f` blocked path
+(`lib/ptx/cg-matmul.f`, also the algorithm the `maki/lower/mm.f` blocked path
 emits) and re-runs `tools/ptx/gemm-bench.f` on the Orin. Every increment keeps
-the `maki/lower-mm-device-test.f` and `maki/lower-model-device-test.f` goldens
+the `maki/lower/mm-device-test.f` and `maki/lower/model-device-test.f` goldens
 green (incl. the 64×64 blocked MATMUL and LINEAR→GELU cases) — device == host
 within the f32 matmul tolerance, unchanged.
 
@@ -599,7 +599,7 @@ committed integer operands and checks it **element-exact** vs a host matmul (128
 cells, 0 mismatches). Then `tools/ptx/mma-gemm-check.f` proves the full
 K-looping kernel (staging + accumulation + the warp/D-fragment store mapping)
 **element-exact** at 64³ (4096 cells) and 128³ (16384 cells). Licensed: with
-`PREC-TF32` requested for the matmul class, `maki/lower-mm.f` emits this kernel
+`PREC-TF32` requested for the matmul class, `maki/lower/mm.f` emits this kernel
 and `maki/precision-device-test.f` LOWER-GOLDEN passes **device==host within the
 tf32 row (rtol 2e-3, 4096 elems)** — the passing verdict IS the running license;
 a seeded 0.5% store fault still FAILS under tf32, and PREC-RESET re-emits the f32
@@ -702,7 +702,7 @@ then sweeps ALL THREE modes through the full K-looping `MMM` — **element-exact
 The first pass@k round recorded and graded entirely through the committed
 transcript harness — no `/tmp` scripts, no ad hoc subagent logs. This is the
 durable re-run the 2026-06-27 section's "Reproduction status" asked for: the
-in-tree grader (`maki/eval-matrix-main.f`) is the judge, the generation run is a
+in-tree grader (`maki/eval/matrix-main.f`) is the judge, the generation run is a
 committed transcript, and the softmax prompt carries the **corrected**
 `ROW-STORE` order (`tile span rowctx`).
 
@@ -717,7 +717,7 @@ as the sample's next candidate line. Candidates are verbatim model output.
 Transcript: `maki/transcripts/live-habu-ptx-2026-07-12.txt`; replay:
 
 ```
-bin/hb --load maki/eval-matrix-main.f -- maki/transcripts/live-habu-ptx-2026-07-12.txt
+bin/hb --load maki/eval/matrix-main.f -- maki/transcripts/live-habu-ptx-2026-07-12.txt
 ```
 
 | task | target | n | green | pass@1-x1000 | pass@2-x1000 | pass@3-x1000 | repaired | repair-rounds | tokens-to-green | tok-est | GB/s-x10 | device | graded | tok-src |
@@ -755,14 +755,14 @@ committed candidates at replay time; `tok-src` marks the tokens-to-green unit �
   LLMs. There is no Triton arm in this round: nothing here revises the recorded
   Triton column.
 - Durability: the transcripts are committed static files, so the graded tallies
-  above are deterministic replay — `maki/eval-live-test.f` (in the maki suite)
+  above are deterministic replay — `maki/eval/live-test.f` (in the maki suite)
   re-replays the transcript and pins every cell of this table.
 
 ## Live authoring round: collective / 2D-GEMM / attention tasks (2026-07-13)
 
 The second live round extends the task set past the 1-D tile kernels to the
 three OFF-DEVICE authoring tasks graded by the new emit-structural autograder
-(`maki/eval-emit.f`): **sumnorm** (row sum-normalize over the collective
+(`maki/eval/emit.f`): **sumnorm** (row sum-normalize over the collective
 vocabulary — same surface as softmax; the prompt names the block-wide sum
 reduction, and the forbidden `max.f32`/`ex2.approx` gates catch a softmax
 pattern-match), **gemm** (the tiled-GEMM checked phase pipeline
@@ -781,7 +781,7 @@ shape. Repair budget = one diagnostic-guided round; **no sample needed it**.
 Transcript: `maki/transcripts/live-habu-ptx-2026-07-13.txt`; replay:
 
 ```
-bin/hb --load maki/eval-matrix-main.f -- maki/transcripts/live-habu-ptx-2026-07-13.txt
+bin/hb --load maki/eval/matrix-main.f -- maki/transcripts/live-habu-ptx-2026-07-13.txt
 ```
 
 | task | target | n | green | pass@1-x1000 | pass@2-x1000 | pass@3-x1000 | repaired | repair-rounds | tokens-to-green | tok-est | GB/s-x10 | device | graded | tok-src |
@@ -801,7 +801,7 @@ bin/hb --load maki/eval-matrix-main.f -- maki/transcripts/live-habu-ptx-2026-07-
   ROLE or VALUE swap grades GREEN while computing the wrong result: sumnorm
   in/out swap, div-by-sum-squared, gemm double-accumulate (`2·A·B`), attention
   Q/K swap and output-into-V all pass structure. These are pinned at grade 2 as
-  acknowledged wrong-but-green regressions in `maki/eval-emit-test.f`; only a
+  acknowledged wrong-but-green regressions in `maki/eval/emit-test.f`; only a
   device NUMERIC golden closes the class (`habu-eval-device-numeric-c2e98ec4`).
   So the 15/15 headline means "the checked-pipeline surface is reliably
   authorable", not "the model wrote a numerically-correct kernel".
@@ -817,6 +817,6 @@ bin/hb --load maki/eval-matrix-main.f -- maki/transcripts/live-habu-ptx-2026-07-
   committed library emitters — so their pass@1 says the checked-pipeline
   surface is trivially and reliably authorable, not that the model wrote the
   inner PTX. Generator population is one Claude-family model; n=5 per task.
-- Durability: `maki/eval-live-author-test.f` (in the maki suite) re-replays the
+- Durability: `maki/eval/live-author-test.f` (in the maki suite) re-replays the
   transcript, pins every cell of this table, and re-grades each distinct live
   candidate through the emit-structural autograder.

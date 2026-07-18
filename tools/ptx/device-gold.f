@@ -13,7 +13,7 @@
 \ (demonstrated by the corruption probe in the dot: dropping RELU-V4 from the fused
 \ producer makes the fused golden's clamped lanes diverge).
 \
-\ Complements maki/eval-emit-device.f: that grades the EVAL autograder's CANDIDATE
+\ Complements maki/eval/emit-device.f: that grades the EVAL autograder's CANDIDATE
 \ bodies (K driver reconstructions) for the sumnorm/gemm/attention tasks; THIS proves
 \ the exact committed producer entry files (EMIT-MATMUL / ATTN:EMIT / EMIT-FUSED /
 \ EMIT-SAXPY) - a regression editing those committed emit paths is caught here.
@@ -79,7 +79,7 @@ $40400000 constant FU-A-BITS                   \ fused scale a = 3.0
 $40000000 constant BW-A-BITS                   \ bandwidth scale a = 2.0
 
 \ ---- tolerances -------------------------------------------------------------
-\ SGEMM: the K=32 accumulation is judged with the lower-golden (maki/lower-golden.f)
+\ SGEMM: the K=32 accumulation is judged with the lower-golden (maki/lower/golden.f)
 \ linear tolerance |dev - host_f32| <= atol + rtol*|host_f32| (the matmul class row).
 \ attention/fused/bandwidth outputs are exact binary fractions, judged with the
 \ eval-device scalar TOL (1/1024) that splits a correct kernel (err 0) from any

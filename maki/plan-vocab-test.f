@@ -20,7 +20,7 @@
 \ This file locks the hand-authored half that IS expressible today. maki -> habu only.
 
 require lib/test.f
-require maki/eval.f          \ EVAL:CHECK-PASSES?: drive the checker over a candidate string
+require maki/eval/eval.f          \ EVAL:CHECK-PASSES?: drive the checker over a candidate string
 require maki/plan-vocab.f
 require maki/tensor-value.f
 

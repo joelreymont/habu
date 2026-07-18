@@ -3,7 +3,7 @@
 \
 \ LayerNorm-with-affine is the maki op chain `LAYERNORM SCALE BIAS` = ROW-REDUCE -> EW -> EW:
 \ OP-LAYERNORM (maki/op-kind.f, class ROW-REDUCE) already does mean+variance+normalize INTERNALLY
-\ as one block-per-row reduction (maki/lower-red.f LRED-EMIT-LN: two BLOCK-SUMs = mu then var), and
+\ as one block-per-row reduction (maki/lower/red.f LRED-EMIT-LN: two BLOCK-SUMs = mu then var), and
 \ the affine epilogue is a scalar gamma (OP-SCALE, 1x1) then a per-feature beta (OP-BIAS, 1xC). The
 \ maki op set has no separate MODEL:-parseable mean/variance reduce op, so the fusable seam is the
 \ reduction's EW EPILOGUE, not a ROW-REDUCE->ROW-REDUCE decomposition: FP-BUILD's capability table
@@ -14,7 +14,7 @@
 \      ablated (FP-FUSE-OFF!) plans THREE regions (layernorm | scale | bias, each its own kernel with
 \      global round-trips). FP-REGION-COUNT 1 vs 3 is free off-device coverage.
 \   2. CORRECTNESS (Orin only): each mode is run on device by the SAME whole-model golden
-\      (maki/lower-model-device.f LMDM via LOWER-MODEL-GOLDEN, region-by-region f32 with cross-region
+\      (maki/lower/model-device.f LMDM via LOWER-MODEL-GOLDEN, region-by-region f32 with cross-region
 \      device buffers) and its final output matched against the SAME host executor reference (EX-RUN:
 \      LN-FWD then scalar SCALE then 1xC BIAS, f64) under the composed reduction tolerance. BOTH modes
 \      V-PASS - run on device twice, both device-correct vs the same golden.
@@ -59,9 +59,9 @@ require lib/test.f
 require lib/fmt.f
 require tools/ptx/bench.f
 require maki/cad.f
-require maki/lower-ew.f
-require maki/lower-red.f
-require maki/lower-model-device.f
+require maki/lower/ew.f
+require maki/lower/red.f
+require maki/lower/model-device.f
 
 package MAKI
 

@@ -268,7 +268,7 @@ Minimal commands and report objects, conservative implementations.
   class; artifact/cache key; warnings and split reasons.
 - Acceptance: a toy model block defines; every command returns a structured
   report; unsupported input fails closed with a named reason.
-- Exists: eval-harness report discipline (`maki/eval.f`), PTX launch/profile
+- Exists: eval-harness report discipline (`maki/eval/eval.f`), PTX launch/profile
   tools (`tools/ptx/`). New dots: `cad-0a` (report schema), `cad-0b` (commands).
 
 ### Phase 1 — Model IR and shape/layout facts
@@ -346,7 +346,7 @@ failures identify op/region/candidate. `GOLDEN` references are either the
 CPU implementation or an external reference artifact (e.g. saved HF tensor
 dumps for the driving workload) with the tolerance recorded per artifact.
 
-- Exists: checker-as-judge eval (`maki/eval.f`), device golden runs,
+- Exists: checker-as-judge eval (`maki/eval/eval.f`), device golden runs,
   device gradcheck (SOFTMAX-ROWS-BWD), dot
   `habu-committed-device-correctness`. Gate wiring lands inside
   `cad-0b`/`cad-7-optimize`; `cad-7-optimize` also owns the two GOLDEN
@@ -390,7 +390,7 @@ shape-keyed search. Fragment/smem/warp/stage/barrier tokens as checked types.
   device evidence rather than an unchecked public kernel boundary.
 - CAD-PLAN 8.1 step 3 LANDED (2026-07-05): the hard-coded TF32 GEMM path is
   `lib/ptx/cg-mma.f` (`mma.sync.aligned.m16n8k8`, f32 accum, 64×64 CTA), emitted
-  by `maki/lower-mm.f` LMM-MMA? when the matmul class is licensed at TF32.
+  by `maki/lower/mm.f` LMM-MMA? when the matmul class is licensed at TF32.
   Device-correct (element-exact isolation + K-looping proofs, tf32 LOWER-GOLDEN
   license). Measured 375–398 GFLOP/s (docs/eval-triton.md GEMM step 3) — on the
   tensor-core roof but under the tuned f32 tile; the ldmatrix / bigger-warp-tile /
@@ -445,8 +445,8 @@ PROMOTE rules; PROFILE is mandatory to run, non-blocking (CAD-PLAN §11).
 Failures return repair packets. Bench: proposals rejected before GPU,
 golden/gradcheck pass rates, best speedup, cost per accepted improvement.
 
-- Exists: eval harness + pass@k (`maki/eval.f`), repair packets
-  (`tools/repair-packet-core.f`; `maki/eval-repair.f` is rounds/tokens
+- Exists: eval harness + pass@k (`maki/eval/eval.f`), repair packets
+  (`tools/repair-packet-core.f`; `maki/eval/repair.f` is rounds/tokens
   accounting), dot `habu-eval-matrix-live`. New dot deferred until Phase 7
   lands (the loop needs `OPTIMIZE` reports to judge).
 

@@ -145,7 +145,7 @@ mode.
 
 The two top-level probing idioms the dot names:
 
-- **Eval harness** (`maki/eval-fixture.f` and friends): top-level lines of
+- **Eval harness** (`maki/eval/fixture.f` and friends): top-level lines of
   the shape `s" K ( span<…> … ) …" EVAL:CHECK-PASSES? TTRUE` and
   `EVAL:TOTAL @ 8 T=`. Every word is certified (`TRUSTED:
   CHECK-PASSES? ( ptr u8 n -- bool )`, typed `lib/test` comparators), every
@@ -250,7 +250,7 @@ mains, prelude/whitebox scripts, eval fixtures):
 | `require`/`include` lines | every file | unaffected (keyword) |
 | definitions + definers (`:` `TRUSTED:` SUMTYPE/ENUM/PRODUCT `variable` `create` `constant` `defer` DEFTYPE KERNEL:) | everywhere | unaffected; `constant`/`allot` get keyword effects `( n -- )` |
 | single trailing MAIN call | `test/engine-suite.f` REPORT, `tools/host-lint.f` HOST-LINT, `maki/test.f` TEST:RUN, `tools/stale-status-lint.f` SS-MAIN | unaffected `( -- )` |
-| literal → certified-call lines | `maki/eval-fixture.f` (`s" K …" EVAL:CHECK-PASSES? TTRUE`), `5 FOO2 + . cr` | unaffected; now fully checked |
+| literal → certified-call lines | `maki/eval/fixture.f` (`s" K …" EVAL:CHECK-PASSES? TTRUE`), `5 FOO2 + . cr` | unaffected; now fully checked |
 | `CHECK!` probe idiom | `s" : X … ;" CHECK! . cr` (underdepth-gate positive) | unaffected (TRUST `ptr u8 n -- n`) |
 | `' HOOK set-check` installs | `tools/lint/text.f:17`, `tools/check-core.f:24`, `test/engine-suite.f:1436,1525` | unaffected after `set-check`/`check@` retype (§3); `0 set-check` special-cased |
 | `0 set-check` whitebox windows | `test/engine-suite.f` (5 sites), `test/prop-test-core.f`, `src/core/internal-mark.f:48`, `src/habu/aot-lib.f:18` | unaffected by design — the escape hatch |

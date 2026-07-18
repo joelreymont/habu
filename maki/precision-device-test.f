@@ -5,7 +5,7 @@
 \ PREC-TF32 for the matmul class (maki/precision.f PREC!) makes the golden judge
 \ under the tf32 tolerance row (atol 1e-6, rtol 2e-3) and the LICENSE is the passing
 \ verdict itself. The REAL TF32 tensor-core kernel now exists (lib/ptx/cg-mma.f
-\ mma.sync m16n8k8, dispatched by maki/lower-mm.f LMM-MMA? when the matmul class is
+\ mma.sync m16n8k8, dispatched by maki/lower/mm.f LMM-MMA? when the matmul class is
 \ licensed at TF32), so this test licenses THAT kernel, not the f32 one under the band:
 \   (1) request tf32 for CLASS-MATMUL -> LMM-EMIT emits the mma.sync kernel ->
 \       LOWER-GOLDEN V-PASS under the tf32 row AND the reason + LG-PREC-USED@ name tf32
@@ -36,8 +36,8 @@ require lib/ptx/toolchain.f
 require src/arch/ptx/emit.f
 require maki/device-artifacts.f
 require maki/cad.f
-require maki/lower-mm.f
-require maki/lower-golden.f
+require maki/lower/mm.f
+require maki/lower/golden.f
 require maki/precision.f
 require maki/ablate-ptx.f
 

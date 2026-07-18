@@ -257,13 +257,13 @@ facts through the PTX-specific chain without duplicating them.
 The reviewed call graph is fixed to:
 
 ~~~text
-maki/lower-{ew,red,mm,move}.f
+maki/lower/{ew,red,mm,move}.f
   -> lib/ptx/{ir,cg,header,collective}.f
      + lib/ptx/cg-collective.f
      + src/arch/ptx/emit.f
   -> lib/ptx/toolchain.f + tools/ptx/ptxas-smoke.f
-  -> maki/lower-launch.f
-  -> maki/lower-golden.f + maki/lower-model-device-test.f
+  -> maki/lower/launch.f
+  -> maki/lower/golden.f + maki/lower/model-device-test.f
   -> maki/report.f + maki/cad.f + maki/store.f
 ~~~
 

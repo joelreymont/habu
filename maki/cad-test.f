@@ -11,7 +11,7 @@ require lib/fs-mutate.f             \ WRITE-ALL: the replay child driver file
 require maki/device-artifacts.f     \ MAKI-GRADE: private tmp driver path (PREPARE/DRIVER$/CLEAN)
 require maki/report.f
 require maki/cad.f
-require maki/eval.f                 \ EVAL:CHECK-PASSES?: drive the checker over the translated body
+require maki/eval/eval.f                 \ EVAL:CHECK-PASSES?: drive the checker over the translated body
 
 package MAKI
 

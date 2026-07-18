@@ -97,8 +97,8 @@ a layout slot and vice versa reject with cited diagnostics).
 ## `maki/bcast.f` — broadcast-operand classification for lowering
 
 The single source of the broadcast element mapping shared by the host executor
-(`EX-BC@` in `maki/executor.f`) and the compute lowerings (`maki/lower-ew.f`,
-`maki/lower-red.f`), so device output matches the host golden by construction.
+(`EX-BC@` in `maki/executor.f`) and the compute lowerings (`maki/lower/ew.f`,
+`maki/lower/red.f`), so device output matches the host golden by construction.
 `BC-CLASS ( n n n n -- n )` classifies an operand shape `br x bc` against a
 target `R x C` into the four legal flat load-index classes — `BC-FULL` (e),
 `BC-ROW` (1xC: `e mod C`), `BC-COL` (Rx1: `e / C`), `BC-SCALAR` (1x1: 0) — or
@@ -154,5 +154,5 @@ interop, and the swapped-family negatives are proven in the maki suite
 (`bin/hb --load maki/test.f`). The M4 tile-lowering **device** verify legs
 (device goldens for the generated kernels over this metadata) are **parked,
 pending-zed indefinitely** — the host side proves the emitted PTX
-(`maki/lower-ew.f`, `maki/lower-mv-test.f` note the pending device goldens);
+(`maki/lower/ew.f`, `maki/lower/mv-test.f` note the pending device goldens);
 nothing here claims a device measurement.

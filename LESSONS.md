@@ -1238,7 +1238,7 @@ fits.
   stages setting carries across a tile resize. Gate every new behavior behind `MFRAGS>1`/`BK>32`/knob so
   all pinned configs stay BYTE-IDENTICAL (capture goldens + cmp before/after twice; the wider tile
   reused the device-proven fragment layout at offset, so only a full-kernel element-exact golden was
-  needed); parameterize a shared emitter word (reused verbatim by the FENCED `maki/lower-mm.f`) with a
+  needed); parameterize a shared emitter word (reused verbatim by the FENCED `maki/lower/mm.f`) with a
   byte-identical DEFAULT, don't fork — and emit `shl` when a stride is a power of two, `mul.lo`
   otherwise. The harness must be block-M-aware (a 64^3 check on a 128-row block launches ZERO blocks and
   silently "passes" all-zero).

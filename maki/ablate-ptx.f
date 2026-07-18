@@ -6,7 +6,7 @@
 \ edited), so a drifted emitter surfaces as E-ABL-NOSUB, never as a silent no-op
 \ mutation that would let a "caught fault" assertion pass vacuously. The mutated
 \ text is what the test hands to ptxas. maki -> habu only; ablate-ptx owns
-\ -5250..-5251 (moved off -5210..-5211, which maki/lower-move.f already owned;
+\ -5250..-5251 (moved off -5210..-5211, which maki/lower/move.f already owned;
 \ tools/error-code-lint.f now enforces uniqueness).
 
 require lib/errors.f

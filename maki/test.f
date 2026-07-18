@@ -108,15 +108,15 @@ TEST:SUITE maki/fusion-mout-test.f
 TEST:;SUITE
 TEST:SUITE maki/bcast-test.f
 TEST:;SUITE
-TEST:SUITE maki/lower-ew-test.f
+TEST:SUITE maki/lower/ew-test.f
 TEST:;SUITE
-TEST:SUITE maki/lower-red-test.f
+TEST:SUITE maki/lower/red-test.f
 TEST:;SUITE
-TEST:SUITE maki/lower-mm-test.f
+TEST:SUITE maki/lower/mm-test.f
 TEST:;SUITE
-TEST:SUITE maki/lower-mv-test.f
+TEST:SUITE maki/lower/mv-test.f
 TEST:;SUITE
-TEST:SUITE maki/lower-model-test.f
+TEST:SUITE maki/lower/model-test.f
 TEST:;SUITE
 TEST:SUITE maki/precision-test.f
 TEST:;SUITE
@@ -162,7 +162,7 @@ TEST:SUITE maki/onnx/deploy-test.f
 TEST:;SUITE
 TEST:SUITE maki/onnx/ort-ref-test.f
 TEST:;SUITE
-TEST:SUITE maki/eval-test.f
+TEST:SUITE maki/eval/eval-test.f
 TEST:;SUITE
 TEST:SUITE maki/fusion-test.f
 TEST:;SUITE
@@ -310,35 +310,35 @@ TEST:SUITE maki/cuda-driver-test.f
 TEST:;SUITE
 TEST:SUITE maki/device-artifacts-test.f
 TEST:;SUITE
-TEST:SUITE maki/eval-fixture.f
+TEST:SUITE maki/eval/fixture.f
 TEST:;SUITE
-TEST:SUITE maki/eval-repair.f
+TEST:SUITE maki/eval/repair.f
 TEST:;SUITE
-TEST:SUITE maki/eval-repair-ab-test.f
+TEST:SUITE maki/eval/repair-ab-test.f
 TEST:;SUITE
-TEST:SUITE maki/eval-repair-mech-test.f
+TEST:SUITE maki/eval/repair-mech-test.f
 TEST:;SUITE
-TEST:SUITE maki/eval-passk-test.f
+TEST:SUITE maki/eval/passk-test.f
 TEST:;SUITE
-TEST:SUITE maki/eval-transcript-test.f
+TEST:SUITE maki/eval/transcript-test.f
 TEST:;SUITE
-TEST:SUITE maki/eval-matrix-test.f
+TEST:SUITE maki/eval/matrix-test.f
 TEST:;SUITE
-TEST:SUITE maki/eval-matrix-main.f
+TEST:SUITE maki/eval/matrix-main.f
 TEST:;SUITE
-TEST:SUITE maki/eval-live-test.f
+TEST:SUITE maki/eval/live-test.f
 TEST:;SUITE
-TEST:SUITE maki/eval-tokest-test.f
+TEST:SUITE maki/eval/tokest-test.f
 TEST:;SUITE
-TEST:SUITE maki/eval-emit-test.f
+TEST:SUITE maki/eval/emit-test.f
 TEST:;SUITE
-TEST:SUITE maki/eval-live-author-test.f
+TEST:SUITE maki/eval/live-author-test.f
 TEST:;SUITE
-TEST:SUITE maki/eval-emit-device-test.f
+TEST:SUITE maki/eval/emit-device-test.f
 TEST:;SUITE
-TEST:SUITE maki/eval-device-fault-test.f
+TEST:SUITE maki/eval/device-fault-test.f
 TEST:;SUITE
-TEST:SUITE maki/eval-train.f
+TEST:SUITE maki/eval/train.f
 TEST:;SUITE
 TEST:SUITE maki/maki-test.f
 TEST:;SUITE

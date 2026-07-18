@@ -2,7 +2,7 @@
 \
 \ docs/compute-campaign.md lever 5 ("precision policy LICENSED by the gates") + section 11.
 \ Precision is NEVER a global flag: PREC! records a REQUESTED precision for one
-\ op-registry region class, maki/lower-golden.f judges that class's golden under
+\ op-registry region class, maki/lower/golden.f judges that class's golden under
 \ the requested precision's tolerance row, and the LICENSE is the passing golden
 \ verdict itself. The default is PREC-F32 for every class; PREC-RESET restores it.
 \

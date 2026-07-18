@@ -1,5 +1,5 @@
 \ maki/ablate-golden-device-test.f - seeded-fault injection over the device-vs-host GOLDEN
-\ gate (maki/lower-golden.f), the paper effectiveness matrix's GOLDEN + sentinel rows.
+\ gate (maki/lower/golden.f), the paper effectiveness matrix's GOLDEN + sentinel rows.
 \
 \ Paper rows (habu-paper-habu-checked REQUIREMENT):
 \   "Device-vs-host GOLDEN: seeded-fault injection - wrong index / dropped mask / transposed
@@ -36,7 +36,7 @@ require lib/float.f
 require lib/fmt.f
 require lib/ptx/toolchain.f
 require maki/cad.f
-require maki/lower-golden.f
+require maki/lower/golden.f
 require maki/ablate-ptx.f
 
 package MAKI

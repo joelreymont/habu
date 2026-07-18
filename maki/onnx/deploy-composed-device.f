@@ -2,7 +2,7 @@
 \
 \ Closes dot habu-device-golden-composed's device leg: the committed composed-Gemm ModelProto
 \ (maki/onnx/composed-ref-data.f, a transB=1 Gemm MLP) is taken ONNX:IMPORT -> the maki model IR
-\ -> FP-BUILD (fusion regions) -> the whole-model device harness (maki/lower-launch.f
+\ -> FP-BUILD (fusion regions) -> the whole-model device harness (maki/lower/launch.f
 \ LOWER-MODEL-RUN, region-by-region on device with cross-region f32 buffers), and the FINAL device
 \ output is compared against the committed HOST-ORACLE reference (composed-ref-data.f CRF-Y).
 \
@@ -10,10 +10,10 @@
 \ an inserted TRANSPOSE MOVEMENT node (import.f IMP-GEMM-COMPOSED). FP-BUILD makes that transpose a
 \ STANDALONE MATERIALIZED movement region (region 0) whose device output buffer is READ BY the
 \ matmul region (region 1). So this golden exercises the whole-model device path with a MOVEMENT
-\ region feeding a MATMUL region - the class dispatch (maki/lower-model-device.f LMDM-EMIT$ ->
+\ region feeding a MATMUL region - the class dispatch (maki/lower/model-device.f LMDM-EMIT$ ->
 \ LMV-EMIT for the copy kernel, LMM-EMIT for the matmuls) and the movement->matmul cross-region
 \ device buffer that the pure-matmul ort-ref golden never covered. The movement region class is
-\ device-emittable: maki/lower-mv-device-test.f already goldens a standalone materialized TRANSPOSE
+\ device-emittable: maki/lower/mv-device-test.f already goldens a standalone materialized TRANSPOSE
 \ copy kernel, and LOWER-MODEL-RUN routes region 0 through LMV-RUN.
 \
 \ REFERENCE ORACLE (honest): CRF-Y is the maki HOST executor's output, NOT onnxruntime - no ort is
@@ -30,7 +30,7 @@
 \ is the golden.
 \
 \ Tolerance (device f32 vs the host-f64 oracle) = the composed device-vs-host bound MDL-ATOL/MDL-RTOL
-\ (maki/lower-golden.f), which SUMS each region class's precision row: this model is 2 MATMUL + 1
+\ (maki/lower/golden.f), which SUMS each region class's precision row: this model is 2 MATMUL + 1
 \ MOVEMENT region, so atol = 2*mm + 1*mv (3e-6) and rtol = 2*mm + 1*mv (2.0001e-4); the MOVEMENT
 \ region's contribution is its NUM-EXACT copy row (1e-6/1e-6), stated honestly. No ort dtype floor
 \ is added because the reference IS the host executor (not an f32 ort run).
@@ -39,14 +39,14 @@
 \ so the file check-loads + proves the host halves where there is no CUDA. Defining words only (no
 \ load-time run): the spawned emit child re-requires THIS file to rebuild the imported IR + every
 \ region emit word. Fully checked Habu; maki -> habu only. Not part of maki/test.f (needs the CUDA
-\ toolkit + a device). Reuses the maki/lower-model-device.f LMDM-* toolchain buffers/helpers.
+\ toolkit + a device). Reuses the maki/lower/model-device.f LMDM-* toolchain buffers/helpers.
 
 require lib/test.f
 require lib/float.f
 require lib/fmt.f
 require maki/onnx/import.f
 require maki/onnx/composed-ref-data.f
-require maki/lower-model-device.f
+require maki/lower/model-device.f
 
 -5273 constant E-CDV-INPUTS   \ the committed composed fixture must have exactly one runtime input (x)
 
@@ -91,7 +91,7 @@ package MAKI
    loop ;
 
 \ ---- per-region cubin build: spawn a fresh bin/hb that RE-IMPORTS the committed bytes + emits ----
-\ mirrors maki/lower-model-device.f LMDM-EMIT, but the child rebuilds the IR by ONNX:IMPORT of the
+\ mirrors maki/lower/model-device.f LMDM-EMIT, but the child rebuilds the IR by ONNX:IMPORT of the
 \ committed bytes (reqa pulls this file -> the ONNX importer + fixture + every REGION emit word,
 \ including LMV-EMIT for the movement region).
 : CDV-EMIT ( CAD-KIND:region -- ) {: rid:CAD-KIND:region :}

@@ -198,7 +198,7 @@ variable FP-MV-FUSE?                          \ movements dissolve/fuse? (defaul
 
 \ can the backend fold a dissolved STAGED (transpose) movement into a consumer of class ck?
 \ A transpose is a lane permutation, folded per-element off the reading kernel's flat index.
-\ Only the FLAT EW kernel can absorb that (maki/lower-ew.f MVW-CHECK-EW / EMIT-XPOSE-OFF); RED's
+\ Only the FLAT EW kernel can absorb that (maki/lower/ew.f MVW-CHECK-EW / EMIT-XPOSE-OFF); RED's
 \ coalesced row loads and MM's K-loop A/B addressing cannot express a transposed column read, so
 \ the planner materializes the transpose for them (its own copy region) and the consumer reads it
 \ coalesced. v1: EW only - flip this when a strided-column loader lands (habu-maki-fold-staged).

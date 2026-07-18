@@ -2,7 +2,7 @@
 \
 \ Closes dot habu-maki-onnx-import's device leg: a committed ONNX ModelProto is taken
 \ ONNX:IMPORT -> the maki model IR -> FP-BUILD (OPTIMIZE's fusion regions) -> the whole-model
-\ device harness (maki/lower-launch.f LOWER-MODEL-RUN, region-by-region on device with cross-
+\ device harness (maki/lower/launch.f LOWER-MODEL-RUN, region-by-region on device with cross-
 \ region f32 buffers), and the FINAL device output is compared against the COMMITTED onnxruntime
 \ reference values (maki/onnx/ort-ref-data.f ORF-Y) - not just device-vs-host.
 \
@@ -20,7 +20,7 @@
 \ off-device coverage, the device leg is the golden.
 \
 \ Tolerance (device f32 vs onnxruntime f32). |device - ort| <= |device - host_f32| + |host_f32 - ort|.
-\ The first term is the lower-golden composed device-vs-host bound (maki/lower-golden.f MDL-ATOL/
+\ The first term is the lower-golden composed device-vs-host bound (maki/lower/golden.f MDL-ATOL/
 \ MDL-RTOL: summed per-region matmul atol/rtol - the accumulate-across-regions discipline). The
 \ second is the host-f64-vs-ort-f32 rounding floor the ort-ref test measured at 1.24e-7 and licenses
 \ at ORF-TOL 1e-5 (ODV-ORT-FLOOR here). So the device bound is (MDL-ATOL + ODV-ORT-FLOOR, MDL-RTOL),
@@ -40,7 +40,7 @@ require lib/float.f
 require lib/fmt.f
 require maki/onnx/import.f
 require maki/onnx/ort-ref-data.f
-require maki/lower-model-device.f
+require maki/lower/model-device.f
 
 -5239 constant E-ODV-INPUTS   \ the committed ORF fixture must have exactly one runtime input (x)
 
@@ -85,7 +85,7 @@ package MAKI
    loop ;
 
 \ ---- per-region cubin build: spawn a fresh bin/hb that RE-IMPORTS the committed bytes + emits ----
-\ mirrors maki/lower-model-device.f LMDM-EMIT, but the child rebuilds the IR by ONNX:IMPORT of the
+\ mirrors maki/lower/model-device.f LMDM-EMIT, but the child rebuilds the IR by ONNX:IMPORT of the
 \ committed bytes (reqa pulls this file -> the ONNX importer + fixture + every REGION emit word).
 : ODV-EMIT ( CAD-KIND:region -- ) {: rid:CAD-KIND:region :}
    s" ONNX-ORT-TEST:ODV-MODEL$ ONNX:IMPORT"        \ ma: the child re-imports the committed ModelProto

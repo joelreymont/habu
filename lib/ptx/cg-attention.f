@@ -48,7 +48,7 @@ require lib/ptx/header.f
 \ each phase loads/stores through the role it was routed (ATTN-QREG..ATTN-OREG). This
 \ is the ROW-SPAN identity-threading analogue: permuting Q/K/V/O before ATTN:START now
 \ emits genuinely different loads instead of the byte-identical, role-erased kernel, so
-\ the device numeric golden (maki/eval-emit-device.f) catches a role swap.
+\ the device numeric golden (maki/eval/emit-device.f) catches a role swap.
 \ The PTX instruction chunks remain trusted target primitives, as with LOAD/STORE/FMA.
 \ Load after src/arch/ptx/emit.f + lib/ptx/cg.f.
 \ ==============================================================================
@@ -179,7 +179,7 @@ KERNEL: CHECKED ( matrix<space-global,f32,extent-q,extent-d> matrix<space-global
    START STAGE-Q SCORE SOFTMAX OUTPUT FINISH ;
 
 \ authoring scaffold: header/entry/shared up to the four matrix registers, so a
-\ checked phase pipeline (CHECKED, or a graded candidate K - maki/eval-emit.f)
+\ checked phase pipeline (CHECKED, or a graded candidate K - maki/eval/emit.f)
 \ can sit between AUTHOR-OPEN and AUTHOR-CLOSE.
 : AUTHOR-OPEN ( -- matrix<space-global,f32,extent-q,extent-d> matrix<space-global,f32,extent-q,extent-d> matrix<space-global,f32,extent-q,extent-d> matrix<space-global,f32,extent-q,extent-d> )
    PTX-HEADER-SM87  PTX-NL

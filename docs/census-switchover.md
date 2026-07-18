@@ -242,7 +242,7 @@ tools/{json*,imgdump,imagedisasm,date,check-all-errors-core}.f.
 ## 6. Not swept (explicit gaps)
 
 - maki/ sample-based only: overwhelmingly honest predicates; only
-  `maki/eval-repair.f:36 ER-GREEN?` and score encodings are sentinel-ish; not
+  `maki/eval/repair.f:36 ER-GREEN?` and score encodings are sentinel-ish; not
   read line-by-line.
 - test/ trees not swept for sentinels (not public APIs), except VALUE-RECORD
   fixtures.

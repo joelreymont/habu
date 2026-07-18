@@ -56,7 +56,7 @@ require maki/onnx/import.f
 require maki/loss-tensor.f
 require maki/celoss.f
 require maki/optim-tensor.f
-require maki/eval.f
+require maki/eval/eval.f
 
 \ --- curated MAKI: surface via tail-preserving re-export -----------------------
 package MAKI

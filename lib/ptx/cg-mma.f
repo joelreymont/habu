@@ -51,7 +51,7 @@ require lib/ptx/cpp-slot.f
 
 \ ============ TILE CONFIGURATION (dot habu-mma-larger-bk) =====================
 \ Emit-time knobs. Their DEFAULT values reproduce the BK=32 scalar+cvt kernel
-\ BYTE-FOR-BYTE, so lib/ptx/cg-matmul.f (MM), maki/lower-mm.f (LMM-MMA-BODY reuses
+\ BYTE-FOR-BYTE, so lib/ptx/cg-matmul.f (MM), maki/lower/mm.f (LMM-MMA-BODY reuses
 \ MMA-SETUP / MMA-KTILE / MM-PIPE-KLOOP-WITH), lib/ptx/opt-test.f, and the committed
 \ TF32 golden are unchanged. Only cg-mma.f's own EMIT-MATMUL-MMA (and the bench/check
 \ harnesses) raise them; a non-default config uses the MMA-owned staging/pipeline below

@@ -3,7 +3,7 @@ habu-eval-transcript v1
 \ (docs/eval-triton.md): SAXPY 5/5 first-try green; softmax 3/5 first-try with
 \ the two author-rejected samples repaired to green in 1 and 2 rounds. The
 \ kernel sources are the committed grader fixtures, NOT live model output -
-\ this file exists so the replay harness (maki/eval-transcript.f) is proven
+\ this file exists so the replay harness (maki/eval/transcript.f) is proven
 \ against a committed artifact; real runs drop files in this same format.
 target habu-ptx
 task saxpy

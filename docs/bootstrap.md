@@ -205,7 +205,7 @@ the checker stays fail-closed (a bad definition exits 70). `hb-new` is a
 local dev artifact: it is never installed as `bin/hb`, never used as a gate
 or candidate launcher, and must be rebuilt after source changes.
 
-If a device tool (`maki/eval-device.f`, `maki/gpu.f`, `tools/ptx/*`) errors with a
+If a device tool (`maki/eval/device.f`, `maki/gpu.f`, `tools/ptx/*`) errors with a
 cryptic missing-primitive name such as `ffi-call-abi`, the running `bin/hb` predates a
 native FFI primitive — **refresh it with the command above.** The maki test suite
 guards this with `maki/device-smoke.f`: it requires `lib/ffi.f` (which fails closed

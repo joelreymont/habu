@@ -1,6 +1,6 @@
 \ maki/bcast.f - broadcast-operand classification for kernel load-index lowering.
 \
-\ The compute lowerings (maki/lower-ew.f, maki/lower-red.f) must load a region input
+\ The compute lowerings (maki/lower/ew.f, maki/lower/red.f) must load a region input
 \ whose shape is a legal BROADCAST of the region shape (a 1xC bias, a 1x1 scale, an
 \ Rx1 column) with the SAME element mapping the host executor uses, so the device
 \ output matches the golden. This file is the single source of that mapping, mirroring

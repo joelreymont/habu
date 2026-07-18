@@ -97,20 +97,20 @@ create RFLT-OUT-BUF RFLT-OUT-CAP allot
    s" maki/async-dag-test.f" s" 0 RAW>ASTREAM drop" RFL-COUNT-STR-AT 0 T=
    \ another mint's owner is not this mint's boundary
    s" maki/tensor.f" s" 0 RAW>SLOT drop" RFL-COUNT-STR-AT 1 T=
-   s" maki/eval.f" s" 0 RAW>AEVENT drop" RFL-COUNT-STR-AT 1 T=
+   s" maki/eval/eval.f" s" 0 RAW>AEVENT drop" RFL-COUNT-STR-AT 1 T=
    \ any other tree file is a finding
-   s" maki/eval.f" s" 0 RAW>SLOT drop" RFL-COUNT-STR-AT 1 T= ;
+   s" maki/eval/eval.f" s" 0 RAW>SLOT drop" RFL-COUNT-STR-AT 1 T= ;
 
 : RFLT-ALLOWLIST ( -- )
-   s" maki/eval.f" s" 1 ROWS-REFINE drop" RFL-COUNT-STR-AT 1 T=
-   s" ROWS-REFINE" s" maki/eval.f" RFL-ALLOW+
-   s" maki/eval.f" s" 1 ROWS-REFINE drop" RFL-COUNT-STR-AT 0 T=
+   s" maki/eval/eval.f" s" 1 ROWS-REFINE drop" RFL-COUNT-STR-AT 1 T=
+   s" ROWS-REFINE" s" maki/eval/eval.f" RFL-ALLOW+
+   s" maki/eval/eval.f" s" 1 ROWS-REFINE drop" RFL-COUNT-STR-AT 0 T=
    \ the allow entry is mint-specific
-   s" maki/eval.f" s" 1 COLS-REFINE drop" RFL-COUNT-STR-AT 1 T=
+   s" maki/eval/eval.f" s" 1 COLS-REFINE drop" RFL-COUNT-STR-AT 1 T=
    \ reset clears the allowlist
    RFL-RESET
    RFL-INVENTORY
-   s" maki/eval.f" s" 1 ROWS-REFINE drop" RFL-COUNT-STR-AT 1 T= ;
+   s" maki/eval/eval.f" s" 1 ROWS-REFINE drop" RFL-COUNT-STR-AT 1 T= ;
 
 : RFLT-RED-PREPARE ( -- )
    CLEANUP-RESET

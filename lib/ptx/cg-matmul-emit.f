@@ -13,7 +13,7 @@ require lib/ptx/header.f
 \ k-step loads/FMAs, the C micro-tile write, and the software-pipeline K-loop
 \ scaffold. The checked production kernel lives in lib/ptx/cg-matmul.f (typed
 \ tile-pipe composition); this file is the BYTE-SENSITIVE shared surface that
-\ maki/lower-mm.f (LMM-BLK-*/LMM-MMA-BODY fusion bodies) and lib/ptx/cg-mma.f
+\ maki/lower/mm.f (LMM-BLK-*/LMM-MMA-BODY fusion bodies) and lib/ptx/cg-mma.f
 \ (tensor-core MMA) consume verbatim - device-golden-pinned, so its emissions
 \ must not drift.
 \

@@ -15,12 +15,12 @@ require tools/namespace-lint-core.f
 
 : MNLT-FILES ( -- )
    \ maki source selection + documented exemptions
-   s" maki/eval.f"       NL-MAKI-SRC? TTRUE
+   s" maki/eval/eval.f"       NL-MAKI-SRC? TTRUE
    s" lib/string.f"      NL-MAKI-SRC? TFALSE
-   s" maki/eval-test.f"     NL-SKIP-FILE? TTRUE  \ test scaffolding is exempt
+   s" maki/eval/eval-test.f"     NL-SKIP-FILE? TTRUE  \ test scaffolding is exempt
    s" maki/array.f"         NL-SKIP-FILE? TTRUE  \ documented ARRAY substrate
    s" maki/device-smoke.f"  NL-SKIP-FILE? TTRUE  \ gate device-FFI canary (smoke suite)
-   s" maki/eval.f"          NL-SKIP-FILE? TFALSE ;
+   s" maki/eval/eval.f"          NL-SKIP-FILE? TFALSE ;
 
 : MNLT-DETECT ( -- )
    \ a definition at global scope is a finding

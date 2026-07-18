@@ -597,7 +597,7 @@ This is the same packet discipline the checker's repair tooling uses
 mapping: site → `word`/`file`/`line`, expected/actual → same names, failure
 class → `reason`, repair family → `repair_class`, suggestion ↔ the repair
 family's canonical move; EXPLAIN adds blocking fact and minimal repro on
-top. `maki/eval-repair.f` is unrelated accounting (repair rounds and
+top. `maki/eval/repair.f` is unrelated accounting (repair rounds and
 tokens-to-green for the eval matrix).
 
 ## 15. Typed backbone hooks

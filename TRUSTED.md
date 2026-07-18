@@ -733,7 +733,7 @@ that source is explicitly certified; they are not stale-checked by the default
 | MK-BUILDER | `-- nom-builder` | Private NOM linear-token mint: forges the noncopyable transactional builder token; the only producer is `NOM:NEW`/`NOM:ADD` inside builder.f. Retire when TVK-RAW (`habu-nominal-storage-raw-a3430ef2`) lands. | `lib/nominal/nominal-test.f` | lib/nominal/builder.f | 2026-07-15 |
 | BUILDER-DROP | `nom-builder --` | Private NOM linear-token consume: the audited boundary that retires a `nom-builder` on the ADD/FREEZE/ROLLBACK paths where the checker cannot express the linear discard. Retire when TVK-RAW (`habu-nominal-storage-raw-a3430ef2`) lands. | `lib/nominal/nominal-test.f` | lib/nominal/builder.f | 2026-07-15 |
 | CAP-COMPILE-RUN | `--` | Model-CAD capture boundary evaluates the generated checked model definition and invokes its dynamic-arity capture word after the active checker hook certifies the definition. | `maki/cad-test.f`, `maki/test.f` | maki/cad.f | 2026-07-12 |
-| CHECK-PASSES? | `ptr u8 n -- bool` | Evaluation harness temporarily suppresses diagnostics, invokes the checker on candidate source, and restores the diagnostic hook; raw checker state mutation is the metaprogramming boundary. | `maki/eval-test.f`, `maki/test.f` | maki/eval.f | 2026-07-12 |
+| CHECK-PASSES? | `ptr u8 n -- bool` | Evaluation harness temporarily suppresses diagnostics, invokes the checker on candidate source, and restores the diagnostic hook; raw checker state mutation is the metaprogramming boundary. | `maki/eval/eval-test.f`, `maki/test.f` | maki/eval/eval.f | 2026-07-12 |
 | JIT-EVALUATE | `ptr u8 n --` | JIT inspection CLI evaluates user-supplied source before resolving and disassembling the requested word; dynamic evaluation cannot be expressed by the checker. | `test/gate-debug.f` | tools/jitdump-core.f | 2026-07-12 |
 | CHECK! | `ptr u8 n -- n` | Shared lint prelude models the engine checker entrypoint so its fail-closed hook can compile checked before lint sources load. | `tools/trust-lint-test.f`, `test/run.f` | tools/lint/text.f | 2026-07-12 |
 | CGR-EVALUATE | `ptr u8 n --` | Code-role transformer evaluates normalized generated definitions only through its checked driver and converts failures into the tool's explicit evaluation error. | `tools/codegen-role-test.f`, `test/run.f` | tools/codegen-role.f | 2026-07-12 |
@@ -1372,7 +1372,7 @@ lib/test/assert.f:TTHROWS-RAW test-metaprog habu-typed-depth-introspection-18f0e
 lib/test/subject.f:EVAL test-metaprog habu-batch-candidate-valid-517bfb6f
 lib/test/subject.f:STACK-ARM test-metaprog habu-batch-candidate-valid-517bfb6f
 maki/cad.f:CAP-COMPILE-RUN test-metaprog habu-primitive-effect-axiom-1119f176
-maki/eval.f:CHECK-PASSES? test-metaprog habu-primitive-effect-axiom-1119f176
+maki/eval/eval.f:CHECK-PASSES? test-metaprog habu-primitive-effect-axiom-1119f176
 maki/fusion-plan.f:RAW>RGN prim-axiom habu-epic-model-cad-70b629a9
 maki/fusion-plan.f:RGN>RAW prim-axiom habu-epic-model-cad-70b629a9
 maki/model-ir.f:RAW>NODE prim-axiom habu-epic-model-cad-70b629a9
