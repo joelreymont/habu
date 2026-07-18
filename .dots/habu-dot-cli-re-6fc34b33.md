@@ -51,3 +51,5 @@ OPEN residual (this dot stays open pinned to deployment):
   upgrade, then rerun the scratch add/off repro and close this dot.
 
 Claim 2026-07-18: agent=dotscli-opus (external repo ~/Work/dots; no habu workspace - the habu tree is untouched by this lane). Scope: migrate the dots repo (and its ohsnap dependency chain as needed) to zig 0.16, land the existing fix-frontmatter-requote branch (commit 1c6109d) on top, tag a release, bump the brew tap, upgrade the installed CLI, rerun the scratch add/off reproduction to prove the deployed binary no longer re-quotes, then close this dot.
+
+INCIDENT NOTE 2026-07-19: the deployed (old) binary also destroyed a dot file during `dot on` in the habu repo - after `dot add` plus a manual claim-line append, activation left the file holding only the claim line (frontmatter and description gone), reported as "Invalid issue frontmatter". The rebuilt zig-0.16 binary with the frontmatter rewrite fix is waiting on the release steps in this dot; treat this truncation as a second confirmation the release should happen promptly.

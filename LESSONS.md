@@ -1550,3 +1550,16 @@ fits.
   re-running one suite with output visible before blaming the tree. A lane
   whose diff is a multi-commit stack must be rebased with `-s <stack root>`,
   not `-s <tip>` — tip-only rebase orphans the base and manufactures conflicts.
+- A fail-closed toolchain resolver needs per-host-class test assertions. The
+  ptxas resolver was correctly changed from a silent dead-path default to a
+  named throw, but the tests kept asserting unconditional resolution — green
+  on the CUDA dev host, red on the CUDA-less Mac gate host, red master for
+  every other lane. When a resource probe can legitimately differ by host,
+  the test must assert BOTH contract branches (present → path; absent →
+  named throw), never assume the dev host's branch.
+- The installed (pre-fix) dots CLI can destroy a dot file: `dot on` against a
+  freshly added dot left only the appended claim line — frontmatter and body
+  gone. Until the rebuilt zig-0.16 binary ships, prefer editing .dots files
+  directly (set `status: active` in frontmatter) and verify with `dot list`
+  plus dot-dep-lint after every mutation; never trust a dot-CLI rewrite
+  without re-reading the file.
