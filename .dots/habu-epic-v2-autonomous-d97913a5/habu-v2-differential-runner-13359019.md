@@ -1,9 +1,11 @@
 ---
 title: V2 differential runner core
-status: active
+status: closed
 priority: 1
 issue-type: task
-created-at: "\"\\\"\\\\\\\"2026-07-11T12:25:27.511089+02:00\\\\\\\"\\\"\""
+created-at: "\"\\\"\\\\\\\"\\\\\\\\\\\\\\\"2026-07-11T12:25:27.511089+02:00\\\\\\\\\\\\\\\"\\\\\\\"\\\"\""
+closed-at: "2026-07-18T12:18:09.699408+02:00"
+close-reason: "All acceptance discharged: scalar + tensor suites with isolated deterministic execution, injected mismatch minimizes/replays (distinct CASE-ID, original preserved), timeout/crash distinct from numeric mismatch (FAULT dominates, real-child proofs), PyTorch adapter outside Habu semantics (TORCH-REFERENCE interface + recorded skip - torch absent on this host, boundary stands), evidence subject/suite/env keyed, and every input/output/environment durably stored (CASESTORE: content-keyed 155B envelopes, crash-safe temp+rename, fresh-process byte-match proof). Suites registered in maki/test.f; TRUSTED suite-id rows classified prim-axiom under the live epic habu-epic-model-cad-70b629a9."
 blocks:
   - habu-v2-differential-suite-2d896ced
 ---
@@ -146,7 +148,7 @@ durable per-case output store only (run-log LOG-CAP=64 first slice);
 torch spawn stays the recorded-skip boundary until a torch-bearing host
 exists.
 
-Claim: agent=diffstore workspace=.jj-ws/fable-diffstore (durable per-case output store; closes the dot when merged)
+Claim (RELEASED 2026-07-18, merged): agent=diffstore workspace=.jj-ws/fable-diffstore (durable per-case output store)
 
 DURABLE PER-CASE OUTPUT STORE LANDED 2026-07-18 (diffstore lane, workspace
 .jj-ws/fable-diffstore; NOT yet merged/pushed). Zero new TRUSTED/TRUST rows
