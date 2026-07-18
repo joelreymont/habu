@@ -462,14 +462,26 @@ public
    SB$ ;
 
 : IWG-REGISTRY-CASES ( -- )
-   s" bare PF-COMMIT-N registry cell fails closed" T-LABEL
-   s" PF-COMMIT-N" IWG-NEG
-   s" bare PF-N registry cell fails closed" T-LABEL
-   s" PF-N" IWG-NEG
+   s" bare PF-CAP-V registry cell fails closed" T-LABEL
+   s" PF-CAP-V" IWG-NEG
+   s" bare PF-A-BOOT arena fails closed" T-LABEL
+   s" PF-A-BOOT" IWG-NEG
    s" bare PF-A-P arena base fails closed" T-LABEL
    s" PF-A-P" IWG-NEG
+   s" bare PF-N registry cell fails closed" T-LABEL
+   s" PF-N" IWG-NEG
+   s" bare PF-COMMIT-N registry cell fails closed" T-LABEL
+   s" PF-COMMIT-N" IWG-NEG
+   s" bare PF-TX-CAP-V registry cell fails closed" T-LABEL
+   s" PF-TX-CAP-V" IWG-NEG
+   s" bare PF-TX-BOOT arena fails closed" T-LABEL
+   s" PF-TX-BOOT" IWG-NEG
+   s" bare PF-TX-P arena base fails closed" T-LABEL
+   s" PF-TX-P" IWG-NEG
    s" bare PF-TX-DEPTH registry cell fails closed" T-LABEL
    s" PF-TX-DEPTH" IWG-NEG
+   s" bare PF-TX-SERIAL registry cell fails closed" T-LABEL
+   s" PF-TX-SERIAL" IWG-NEG
    s" registry-cell write exploit fails closed on --load" T-LABEL
    IWG-PF-EXPLOIT-FORGE$ IWG-RUN-LOAD
    s" PF-COMMIT-N" IWG-ASSERT-INTERNAL
@@ -480,7 +492,7 @@ public
 package IWG-PARITY
 
 7 constant DIRECT-N
-46 constant SUBJECT-N
+52 constant SUBJECT-N
 : RESULT ( -- ptr u8 n ptr u8 n n )
    IWG-OUT IWG-OUT-U @ IWG-ERR IWG-ERR-U @ IWG-RC @ ;
 

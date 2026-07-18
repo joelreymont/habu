@@ -4,10 +4,15 @@ How the type-registry control cells are protected from bare mutation. Dot
 `habu-protect-type-field-04d91409` (PF registry) and the sibling rollout
 `habu-protect-sibling-type-44eec932`.
 
-Two layers were considered. **Layer 1 (internal-word marking) is the shipped
-enforcement and closes the stated threat model.** Layer 2 (a PROT-GUARD memory
-band) is an audited, *conditional* defense-in-depth option that is **not built** —
-the Layer-2 audit found nothing that requires it. Both are recorded here.
+**Layer 1 (internal-word marking) is shipped and closes bare naming and direct
+checked references. It does NOT close every checked-source route.** A destruction
+review demonstrated a laundered write from fully checked source (below), and
+analysis shows a PROT-GUARD memory band would NOT close it either — the band's own
+guard-bypass writer is itself launderable through the same checker gap. The single
+root cause is the `RSEXEC` `T-VAR` `execute` laundering (`src/core/checker.f:1796-1804`,
+documented `docs/effects.md:311-313`, dot `habu-checker-exec-of-5923c543`); closing
+it closes the whole class. This document records what each layer does and does not
+close.
 
 ## Problem
 
@@ -15,7 +20,7 @@ the Layer-2 audit found nothing that requires it. Both are recorded here.
 `PF-CAP-V PF-A-BOOT PF-A-P PF-N PF-COMMIT-N PF-TX-CAP-V PF-TX-BOOT PF-TX-P
 PF-TX-DEPTH PF-TX-SERIAL` — as `variable`/`create` data records. A din=0 data
 record is EXEMPT from the seal-time internal-word marking pass
-(`src/core/internal-mark.f:54-65`, `DNAME-INT` doc: "data records
+(`src/core/internal-mark.f:28-34`, exemption comment: "data records
 (create/variable/constant, does>-instances) are exempt"), because its push-only
 body cannot consume interpret-stack garbage and it is auto-trusted. So its bare
 name stays executable at top level and a bare write mutates the registry past the
@@ -32,15 +37,25 @@ Scope of the actual hole (measured, not assumed):
 - **Bare top-level interpret / tick** (`--load` and stdin): OPEN. `99
   PF-COMMIT-N !` runs because `PF-COMMIT-N` is interpreted and the data-record
   exemption leaves it executable.
-- **Checked user code** (`: FOO … PF-COMMIT-N … ;`): already CLOSED. The PF cells
-  are defined before the checker hook installs, so they are never certified;
+- **Checked user code, direct name** (`: FOO … PF-COMMIT-N … ;`): CLOSED. The PF
+  cells are defined before the checker hook installs, so they are never certified;
   the checker rejects the reference with `E-UNDEFINED` / `non-certified
   definition` at check time (verified: a checked body reading or writing
   `PF-COMMIT-N` fails closed before runtime).
+- **Checked user code, laundered xt** (`variable V  ' PF-COMMIT-N V !  : F V @
+  execute 99 swap ! ;`): OPEN — and NOT closed by Layer 1 or by a memory band.
+  A destruction review wrote a PF cell this way from fully checked source (COUNT
+  0 → 99, exit 0). `[']` resolves the marked word (the mark gates interpret/tick,
+  not compile-time `[']`), and the `RSEXEC` `T-VAR` branch (`checker.f:1796-1804`)
+  models `V @ execute` as a pure `( -- )` while the real xt runs — dot
+  `habu-checker-exec-of-5923c543`. This route is provenance-blind: it launders any
+  xt, including a would-be guard-bypass writer.
 - **Unchecked user code** (`0 set-check …`) and `TRUSTED:` bodies: out of the
   stated seal threat model (checked habu only).
 
-So only the bare-interpret hole needed closing.
+Layer 1 closes the bare-interpret hole and the direct-name checked reference. The
+laundered-xt route is the checker gap `habu-checker-exec-of-5923c543`; only fixing
+that closes it (see Layer 2).
 
 ## Layer 1 — internal-word marking (shipped)
 
@@ -91,66 +106,49 @@ Proof (temp engine + installed byte-fixpoint):
 
 Arena rows: the arena BASE names (`PF-A-P`, `PF-A-BOOT`, `PF-TX-P`, `PF-TX-BOOT`)
 are among the marked cells, so a bare row-address computation
-(`PF-A-P @ <off> + !`) dies at the base name. The remaining row-mutation question
-is the same pointer-leak audit as Layer 2.
+(`PF-A-P @ <off> + !`) dies at the base name at interpret — but the same laundered
+`[']`→`execute` route reaches the arena from checked source.
 
-## Layer 2 — pointer-leak audit + verdict
+## Layer 2 — why a memory band does NOT close the laundered route
 
-Layer 1 closes bare interpret and (via `E-UNDEFINED`) checked references BY NAME.
-The only way checked code could still reach PF storage is a public word that
-RETURNS a pointer into it — then `<ptr> !` is type-legal and Layer 1's name gate
-is bypassed. Audit of the retained public surface
-(`type-family.f` `package TYPE-FIELD public`):
+A PROT-GUARD write-trap band was considered (relocate the ten cells into a guarded
+DATA band `[REG-BAND-OFF, +REG-BAND-LEN)` added to `GUARD-SPAN`/`PROT-GUARD`,
+`habu1.f:211-241`, so `!`/`c!`/`+!` trap a post-seal write with
+`ENGINE-ERROR:SEAL-VIOLATION`). It does not close the checked-source threat model,
+for a structural reason:
 
-| public word | output | pointer into PF storage? |
-|-------------|--------|--------------------------|
-| `COUNT NO-VARIANT FAMILY@ VARIANT@ SCHEMA@ SLOT@ CELLS@ BYTE-OFF@ BYTES@ ALIGN@ FLAGS@` | value `n` | no |
-| `FIND ( n n ptr u8 n -- n bool )` | `n bool` (id + found) | no — the `ptr` is an INPUT |
-| `EACH ( n n n -- n bool )` | `n bool` | no |
-| `NAME$ ( n -- ptr u8 n )` | ptr | into the STRING POOL, not PF storage |
+- A guarded band traps ordinary stores, so the LEGIT declaration-time writes
+  (`PF-ADD` advancing `PF-N`, `PF-COMMIT` advancing `PF-COMMIT-N`, all post-seal)
+  need a guard-BYPASS writer — a prim `reg-cell! ( n off -- )` doing a raw store.
+  Because PF is a Forth-level registry, that bypass must be a Forth-callable word.
+- A bypass word is a no-effect internal prim — exactly the shape that the `RSEXEC`
+  `T-VAR` gap laundered above. Checked source runs `' reg-cell! V !  V @ execute`
+  and writes any band cell through the bypass, unguarded. Proven analogue:
+  `execute` of a laundered no-effect internal word (`PF-FIND`) runs from a checked
+  def (exit 0). So the band only trades the demonstrated `['] PF-COMMIT-N →
+  execute → !` route for an equivalent `['] reg-cell! → execute` route — no net
+  closure.
+- (The engine's own `TXN-STATE` band is safe only because its writers are inline
+  machine code inside larger compiler prims, never a standalone Forth word. PF's
+  Forth-level writers cannot be made non-launderable that way without rewriting
+  `PF-ADD`/`PF-COMMIT`/… into prim bodies.)
 
-`NAME$` → `PF-NAME$` → `TF-OFF$` (`type-family.f:88-89`, `TF-STR off + u`): the
-pointer is `TF-STR + offset`, into the interned-name arena (the `TF-STR-U`
-registry), NOT the PF record array or the PF counters. Writing through it would
-corrupt a field-name byte string, a separate sibling registry, never the PF
-count/rows.
+The pointer-leak sub-audit (does a public reflection word hand back a PF pointer?)
+is moot under this finding but recorded: `COUNT/NO-VARIANT/FAMILY@/…/FLAGS@` return
+values; `FIND`'s `ptr` is an input; `NAME$` (`type-family.f:88-89`, `TF-OFF$` =
+`TF-STR off +`) returns a STRING-POOL pointer (sibling `TF-STR`), not PF storage.
+So no public word leaks a PF pointer — but that does not matter, because the
+laundered-xt route reaches the cells directly regardless.
 
-**Verdict: no public word leaks a pointer into PF storage.** Layer 1 alone closes
-the checked-source threat model for the PF registry. The `NAME$` string-pool
-pointer is a sibling (`TF-STR`) concern, tracked with the sibling rollout, not a
-PF-storage leak. **The band is therefore NOT built.**
-
-## Layer 2 (optional) — the PROT-GUARD band, if depth is ever wanted
-
-Recorded for completeness. It would add coverage ONLY for out-of-model paths
-(a laundered address obtained via unchecked `0 set-check` code, or a `TRUSTED:`
-body computing `data-base + REG-BAND-OFF + off`). Cost: one interval compare on
-every guarded store's check chain. Benefit: the write traps regardless of how the
-address was obtained.
-
-Mechanism (matching the `TXN-STATE`/`PROT-REG` precedent): relocate the PF scalar
-cells into a reserved DATA band `[REG-BAND-OFF, +REG-BAND-LEN)` appended below
-`DATA-START` (`src/habu/layout.f`), add it to `GUARD-SPAN`/`PROT-GUARD`
-(`habu1.f:211-241`) so `!`/`c!`/`+!`/`atomic*` trap a post-seal write there with
-`ENGINE-ERROR:SEAL-VIOLATION` (= 83, uncatchable exit), and route the legit
-declaration-time writes through ONE new guard-bypassing primitive:
-
-```
-reg-cell! ( n off -- )   \ raw store into REG-BAND; off band-relative, hard-bounded
-                         \ to [0, REG-BAND-LEN) (out-of-range = SEAL-VIOLATION);
-                         \ internal-marked (bare rejects); no checker effect.
-```
-
-plus `reg-cell-addr ( off -- a )` for the address-returning reader so the exploit
-`99 PF-COMMIT-N !` stays type-legal and is enforced by the runtime trap. A new
-primitive is REQUIRED (the friend-latch seal is one-way, so a guarded band is
-writable post-seal only by a raw prim-body store); this is why the band is a
-larger, separately-reviewed change. One generic bounded `reg-cell!` serves all
-seven sibling registries.
-
-Boot cost note: the band is a software compare (no mprotect), so it is NOT in the
-LPROT `+41ms` class (`LESSONS.md:776`); measure the store-guard delta against the
-fixpoint baseline before adopting.
+**Root cause and correct fix.** Both the demonstrated PF write and the band's
+defeat are the ONE checker gap `habu-checker-exec-of-5923c543` (`RSEXEC` `T-VAR`,
+`checker.f:1796-1804`; `docs/effects.md:311-313`): checked `execute` of a laundered
+raw xt is modeled as pure `( -- )` while the real xt runs. Closing it — reject (or
+require a statically-known effect / closed quotation for) `execute` of an
+uncertified laundered xt — closes the PF write, the `reg-cell!` bypass, and the
+whole laundered-mutation class at check time, provenance-blind, with no memory
+band and no new primitive. Layer 1 stays as the author-time reject for bare naming
+and direct checked references; the laundered route is the checker's to close.
 
 ## TDECL-MARK/RESTORE PF-snapshot redundancy (done)
 
@@ -178,11 +176,10 @@ cap/pointer/arena cells):
 2. `IMK-SEAL-REGISTRY` already marks everything tagged — no change needed.
 3. Add per-registry bare-name + write-exploit negatives to
    `test/internal-word-gate.f`.
-4. Run the pointer-leak audit for that registry's public surface (e.g. `TF-STR`:
-   `NAME$`'s string-pool pointer becomes in-scope there — decide return-a-copy vs
-   accept, or adopt the optional band).
-5. Re-run the fixpoint (byte-identical) and the owning gates.
+4. Re-run the fixpoint (byte-identical) and the owning gates.
 
-No new primitive is needed for Layer 1. The optional band above is the only piece
-that would introduce one, and only if defense-in-depth against out-of-model
-laundering is ever wanted.
+Layer 1 (marking) is the shared per-sibling pattern for bare naming and direct
+checked references, and needs no new primitive. The laundered `[']`→`execute`
+route is common to every registry and is NOT a per-sibling memory band (a band's
+bypass writer is itself launderable, above); it is closed once, centrally, by the
+checker fix `habu-checker-exec-of-5923c543`.
