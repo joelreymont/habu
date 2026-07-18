@@ -1,9 +1,9 @@
 ---
 title: "Checker capability: layout-polymorphic family params"
-status: open
+status: active
 priority: 2
 issue-type: task
-created-at: "\"\\\"\\\\\\\"\\\\\\\\\\\\\\\"\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\"2026-07-03T23:36:48.964243+02:00\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\"\\\\\\\\\\\\\\\"\\\\\\\"\\\"\""
+created-at: "\"\\\"\\\\\\\"\\\\\\\\\\\\\\\"\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\"\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\"2026-07-03T23:36:48.964243+02:00\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\"\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\"\\\\\\\\\\\\\\\"\\\\\\\"\\\"\""
 ---
 
 Follow-on capability, not in PLAN.md v1: item 12 rejects layout types in cell-only family parameters, so span<result<...>>/containers of ADTs are inexpressible. Add layout-polymorphic parameter kinds (families declaring param kinds that accept layout values with width propagation into instantiation and lowering) so collections of sums/products type-check. Needs: param-kind metadata (TFAM 2a records), width-aware instantiation (TFAM 12 machinery), negative fixtures flip to positive. Depends: TFAM 12, 16.
@@ -142,3 +142,5 @@ the tell. Integration: engine refreshed to 36bf9828, ctor suite + maki
 worker-side reds were the proven stale-binary artifacts). REMAINING on
 this dot: slice 5 (nested ADTs + linear payloads stage-lift) and slice 6
 (optional raw-run sugar, Couplings A/B spec).
+
+Claim: agent=laycap5 workspace=.jj-ws/fable-laycap5 (SLICE 5: nested ADTs + linear payloads stage-lift; CLFC-NESTED flips; write set: checker + both emitters + fixtures, sumtype.f if the nested header needs it)
