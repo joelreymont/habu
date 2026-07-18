@@ -7,7 +7,7 @@
 \ artifact/cache key, and warnings/split reasons. It is the single structured
 \ artifact behind every command (docs/archive/model-cad.md Phase 0).
 \
-\ Representation hiding: a report is an opaque `report` handle (DEFTYPE). Every
+\ Representation hiding: a report is an opaque `report` handle (a NOMINAL: family). Every
 \ public constructor/accessor takes or returns `report` plus primitive field
 \ values; no signature leaks the record layout. The checker guarantees only a
 \ real `report` (from REPORT:NEW) reaches an accessor, so the internals can swap
@@ -32,6 +32,7 @@ require lib/prelude.f
 require lib/string.f
 require lib/float.f
 require lib/fmt.f
+require lib/type/value-nominal.f   \ NOMINAL: - the REPORT handle family
 
 -5010 constant E-RPT-HANDLE    \ report handle unusable (reserved; see REPORT:NEW)
 -5011 constant E-RPT-FULL      \ arena or list capacity exceeded
@@ -122,9 +123,15 @@ ENUM gate
 
 ;package
 
-package REPORT
+\ REPORT - the Model CAD report handle, a value nominal. Declared at top level
+\ (global scope), NOT inside package REPORT: the family tail `report` is carried
+\ in ~19 consumer modules' signatures, so it must resolve globally the way the
+\ retired global CT-role table did. A package-scoped family would only resolve
+\ inside package REPORT and break every cross-module signature. NOMINAL: derives
+\ the converter pair >REPORT / REPORT>N; internals swap to an ADT in cad-adt-swap.
+NOMINAL: REPORT
 
-DEFTYPE report                 \ opaque handle; internals swap to an ADT in cad-adt-swap
+package REPORT
 
 16 constant RPT-LCAP           \ max items per growable list
 128 constant RPT-CAND-CAP      \ schedule candidates: a whole family space (cad-4, <= 72)
@@ -488,7 +495,7 @@ public
    0 K-DTYPE-O !  0 K-DTYPE-L !  0 K-LAYOUT-O ! 0 K-LAYOUT-L !
    0 K-TARGET-O ! 0 K-TARGET-L ! 0 K-CACHE-O !  0 K-CACHE-L !
    MAKI:G-N 0 ?do  MAKI-VERDICT:NOT-RUN i G-TAG-AT !  0 i cells G-RO + !  0 i cells G-RL + !  loop
-   0 >report ;
+   0 >REPORT ;
 
 \ ---- key setters/getters ---------------------------------------------------
 : MODEL!  ( report ptr u8 n -- report )  ARENA-PUT K-MODEL-L  ! K-MODEL-O  ! ;
