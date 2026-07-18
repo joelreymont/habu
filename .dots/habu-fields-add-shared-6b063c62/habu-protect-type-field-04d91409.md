@@ -1,9 +1,11 @@
 ---
 title: Protect TYPE-FIELD private state
-status: open
+status: closed
 priority: 1
 issue-type: task
 created-at: "2026-07-17T12:11:01.362381+02:00"
+closed-at: "2026-07-19T01:23:57.252228+02:00"
+close-reason: "Closed by the laundered-execute closure: the destruction-review exploit (tick a PF registry writer into a variable, fetch, execute, store into the protected cell) now REJECTS at check time with E-EXEC-OPAQUE-XT before the store runs - fixture landed in test/internal-word-gate.f (slice 3, 6a425244), layered on the sealed PF registry band (99aa254d, IMK-SEAL-REGISTRY over all 10 cells) and the typed xt storage that keeps legitimate hook dispatch checked. The PROT-GUARD memory-band approach was proven insufficient (its guard-bypass writer was itself launderable, docs/registry-band.md); the checker-level reject is the correct closure. Sibling registries tracked by habu-protect-sibling-type-44eec932."
 ---
 
 Review finding: src/core/type-family.f:712-1130 leaves PF constants, variables, arenas, and raw record helpers in the global data namespace; src/core/internal-mark.f exempts data records, so bare source can obtain and mutate registry cells beside the documented TYPE-FIELD package. Fix: place all PF storage/constants/helpers in TYPE-FIELD private scope, provide the smallest colon-only internal builder seam needed by sumtype/type-family/tests, retain only COUNT/NO-VARIANT/FIND/EACH/reflection as checker-visible public API, protect both WIDs, migrate every consumer atomically, and add bare-load/internal-word negatives for raw state and builder names. No compatibility aliases. Acceptance: raw PF data/mutator names reject on --load and stdin; documented TYPE-FIELD API remains checked; type-family, declaration, rollback, internal-word, seal, fixpoint, trust, host, filemap gates green. Files: src/core/type-family.f:712-1154, src/core/sumtype.f, src/core/checker.f, test/type-family-suite.f, test/type-family-rollback-suite.f, test/internal-word-gate.f, docs/type-families.md. Claim: agent=ptf-opus workspace=.jj-ws/habu-protect-type-field-04d91409 (claimed 2026-07-18 by the Mac planner; dot already active, dot-on NOT re-run per protocol)
