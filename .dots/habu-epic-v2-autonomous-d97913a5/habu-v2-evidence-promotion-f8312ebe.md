@@ -1,9 +1,9 @@
 ---
 title: V2 evidence promotion typestate
-status: open
+status: active
 priority: 1
 issue-type: task
-created-at: "2026-07-11T12:25:27.570165+02:00"
+created-at: "\"2026-07-11T12:25:27.570165+02:00\""
 blocks:
   - habu-v2-evidence-applicability-73ac58b9
 ---
@@ -15,3 +15,5 @@ obligation-discharge AUTHORITY model - who may discharge which
 obligation (verifier identity vs class vs independence policy), the
 missing piece for COMMIT-AUTHORIZED's third leg. The landed OBLIG
 verifier/independence fields + APPLIC closure are the substrate.
+
+Claim: agent=evprom workspace=.jj-ws/fable-evprom (owns new maki/db promotion files + tests + the folded discharge-authority model)
