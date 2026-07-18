@@ -2,8 +2,9 @@
 
 Source of record: Tillet, Kung, Cox, *Triton: An Intermediate Language and
 Compiler for Tiled Neural Network Computations*, MAPL '19
-(doi 10.1145/3315508.3329973). Read 2026-07-04 from the extracted text of the
-Harvard PDF. Sections marked **[modern]** describe today's Triton (Python DSL,
+(doi 10.1145/3315508.3329973, PDF:
+https://www.eecs.harvard.edu/~htk/publication/2019-mapl-tillet-kung-cox.pdf).
+Read 2026-07-04 from the extracted text of the Harvard PDF. Sections marked **[modern]** describe today's Triton (Python DSL,
 MLIR era) from general knowledge, not the paper — verify before citing.
 Measured habu-vs-Triton numbers live in `docs/eval-triton.md`; strategy in
 `docs/archive/cad-plan.md` §8.1. This doc is the mechanism reference.
