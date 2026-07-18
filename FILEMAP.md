@@ -1081,6 +1081,51 @@ points stay listed.
   (same suite/any order -> identical case-id sequence, different seed -> different); the
   canonical envelope round-trips byte-identically and carries the DIGEST-INTO tail; and the
   static leg (nominal id families are checker-guarded).
+- `maki/experiment/run.f` — the immutable experiment-run identity (MODEL-CAD-V2-PLAN.md
+  § 23.4, plan:3300-3317; dot habu-v2-experiment-run-7c1d1906). Package RUN owns
+  `CAD-KIND:run-id`: a staged builder (`NEW` + typed setters for seed/rng/dataset/split/
+  preprocess/model/optimizer/numeric/target/compiler/environment/license/authority) whose
+  `SEAL` canonically serializes the thirteen digest-covered fields, SHA-256-digests them, and
+  INTERNS the digest so two equal builds yield ONE run-id (equal keys resume one identity).
+  Fields are typed over the landed § 23.9 identities where owners exist (artifact-id for
+  dataset/model, numeric-policy-id, target-id, config-id for compiler+environment) and
+  content keys where none do (rng/split/preprocess/optimizer/license/authority); the
+  compiler->config-id and license/authority->content-key readings are conservative + flagged
+  at the definition site. `SEAL` rejects `incomplete` on a missing field (license/authority
+  included). `KEY>WIRE`/`WIRE>KEY` are the durable content-key codec; `EQUAL?` is same-run
+  identity; `BATCH-ID(run,k)` = SHA-256(run-key||k) is the deterministic next-batch id. Owns
+  -5616..-5619.
+- `maki/experiment/run-test.f` — run-identity acceptance: a per-field digest FLIP MATRIX
+  (every one of the thirteen semantic fields flips the run digest; identical keys hash
+  equally); intern (equal keys one id, a changed field a distinct id); the cross-process
+  content-key round-trip + fail-closed decode (wrong-width, unknown); missing license /
+  authority / empty -> `incomplete` with a complete-ok control; and deterministic next-batch
+  identity (stable across a rebuild + computation order, distinct per index and per run).
+- `maki/experiment/run-metric.f` — typed metric POPULATIONS with the train/held-out
+  separation (MODEL-CAD-V2-PLAN.md § 23.4, plan:3310-3312; dot
+  habu-v2-experiment-run-7c1d1906). Package RUNMETRIC: two DISTINCT nominal families
+  (`report-metric` any population, `objective-metric` training-objective-eligible) that never
+  unify, so a held-out measurement (a report-metric) passed to the objective consumer
+  `AS-OBJECTIVE` is a compile-time reject (held-out-as-objective STATICALLY untypeable). The
+  sole bridge `PROMOTE-OBJECTIVE` refines a report-metric to an objective ONLY for a `train`
+  population, else the `not-training` reject (dynamic leg). `MEASURE` records a metric over
+  the population/direction/aggregation enums; `COMPARABLE?` forbids comparing unlike
+  populations. Units (the fourth plan axis) is a documented follow-up. Owns -5620.
+- `maki/experiment/run-metric-test.f` — metric acceptance: the STATIC verdict fixtures
+  (report-metric -> AS-OBJECTIVE rejects, objective-metric certifies; the families never
+  unify either way; PROMOTE-OBJECTIVE takes report-metric only) and the DYNAMIC leg (train
+  promotes to an objective, held-out/validation reject not-training); the objective carries
+  its scalar + direction; COMPARABLE? forbids unlike populations/directions.
+- `maki/experiment/run-lineage.f` — the per-run lineage log keyed by run identity, composing
+  with the append-only journal (MODEL-CAD-V2-PLAN.md § 23.4, plan:3296-3298; dot
+  habu-v2-experiment-run-7c1d1906). Package RLINEAGE: `LINEAGE+` records an event through
+  `JOURNAL:APPEND` (a fresh monotonic audit-event-id per append) and buckets it by the run's
+  cross-process content key (`RUN:KEY>WIRE`), so equal run keys - even across a resume - share
+  one lineage; `LINEAGE-COUNT`/`LINEAGE-AT` read the ordered, typed events. Owns -5621.
+- `maki/experiment/run-lineage-test.f` — lineage acceptance: equal keys resume one lineage
+  (append across a rebuild -> LINEAGE-COUNT 2, the rebuild is the same interned id); lineage
+  composes with the journal (two appends -> two distinct audit events); LINEAGE-AT returns
+  each event in order; a different run key has an independent lineage.
 - `maki/db/diff-runner.f` — the differential runner CORE (MODEL-CAD-V2-PLAN.md § "Automatic
   differential verification", plan:3787-3796; dot habu-v2-differential-runner-13359019).
   Package DIFFRUN: over a sealed `DIFFSUITE:suite`, executes cases deterministically through

@@ -212,6 +212,12 @@ TEST:SUITE maki/db/audit-log-test.f
 TEST:;SUITE
 TEST:SUITE maki/db/commit-store-discharge-test.f
 TEST:;SUITE
+TEST:SUITE maki/experiment/run-test.f
+TEST:;SUITE
+TEST:SUITE maki/experiment/run-metric-test.f
+TEST:;SUITE
+TEST:SUITE maki/experiment/run-lineage-test.f
+TEST:;SUITE
 TEST:SUITE maki/cad-test.f
 TEST:;SUITE
 TEST:SUITE maki/cad-bind-test.f

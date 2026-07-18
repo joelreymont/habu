@@ -33,7 +33,7 @@
 
 $40000 constant RFL-STR-CAP     \ trust-lint manifest string store
 $80000 constant RFL-FILE-CAP    \ largest scanned source watermark (checker.f class)
-58 constant RFL-SEED#
+59 constant RFL-SEED#
 8 constant RFL-ALLOW-MAX
 32 constant RFL-NUM-CAP
 
@@ -203,6 +203,9 @@ variable RFL-LE
       \ § 23 capability + budget enforcement (dot habu-v2-capability-and-0970a96d). A package-local
       \ CAPTOK:grant nominal (not CAD-KIND), so seed-only - the shape scan covers CAD-KIND:/MIR: only.
       57 of s" RAW>GRANT" endof           \ append-only capability authority-slot refinement
+      \ § 23.4 experiment registry (dot habu-v2-experiment-run-7c1d1906); the
+      \ RAW>ARTIFACT-ID shape - content-addressed by the canonical run-key digest.
+      58 of s" RAW>RUN-ID" endof          \ content-addressed by the interned run-key digest
       E-TBL-BOUNDS throw
    endcase ;
 
@@ -266,6 +269,7 @@ variable RFL-LE
       55 of s" maki/db/evidence.f" endof
       56 of s" maki/db/action.f" endof
       57 of s" maki/db/capability.f" endof
+      58 of s" maki/experiment/run.f" endof
       E-TBL-BOUNDS throw
    endcase ;
 

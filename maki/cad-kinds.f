@@ -12,6 +12,14 @@ TYPEFAMILY analysis-id 0
 TYPEFAMILY plan-id 0
 TYPEFAMILY artifact-id 0
 TYPEFAMILY evidence-id 0
+\ The immutable experiment-run identity (MODEL-CAD-V2-PLAN.md § 23.4 "Experiment,
+\ dataset, and model registry"; dot habu-v2-experiment-run-7c1d1906). A run is a
+\ content-addressed object whose identity is its full run key (dataset/split/
+\ preprocess/seed/model/optimizer/numeric/target/compiler/environment + license/
+\ authority); equal keys intern to ONE id. Its owner registry is package RUN
+\ (maki/experiment/run.f). Distinct from every other identity: a run-id names a
+\ training/eval RUN and can never launder into an artifact-id or a config-id.
+TYPEFAMILY run-id 0
 \ The immutable proof-OBLIGATION identity (MODEL-CAD-V2-PLAN.md § 23.9; dot
 \ habu-v2-evidence-applicability-73ac58b9). Deliberately distinct from
 \ evidence-id: EVIDENCE discharges an obligation, but neither identity may launder

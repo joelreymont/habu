@@ -4,6 +4,27 @@
 
 Last updated: 2026-07-18
 
+- **A new content-addressed CAD-KIND owner with a `TRUSTED: RAW>X`/`X>RAW` pair needs
+  FOUR coordinated edits or a gate goes red — trusted-inventory strict and refine-lint
+  each read a DIFFERENT registry.** (2026-07-18, maki/experiment/run.f run-id owner, dot
+  habu-v2-experiment-run-7c1d1906.) The full checklist: (1) the one-line `TYPEFAMILY x-id`
+  in maki/cad-kinds.f; (2) the human `| NAME | sig | desc | test | src | date |` row in
+  TRUSTED.md for BOTH `RAW>X` and `X>RAW`; (3) the machine-readable classification-block
+  row `maki/.../file.f:RAW>X prim-axiom habu-epic-model-cad-70b629a9` (and `:X>RAW ...`) —
+  trusted-inventory strict fails "unclassified site(s)" on the *block*, NOT the human table;
+  (4) add `RAW>X` (the mint direction only; the `X>RAW` projection is not mint-shaped) to
+  the `RFL-SEED-NAME$`/`RFL-SEED-OWNER$` case tables in tools/refine-lint-core.f and bump
+  `RFL-SEED#` — else refine-lint throws NEW-MINT. All four are the artifact/producer/config/
+  journal precedent; grep an existing owner (e.g. RAW>CONFIG-ID) across the tree to find
+  every site.
+- **A verdict-fixture (`CHECK-CANDIDATE!`) candidate string compiles in the CURRENT package
+  context, so reopening the owning package lets the candidate name that package's public
+  types/words BARE.** (same dot, run-metric-test.f static leg.) `package RUNMETRIC` then
+  `s" ( report-metric -- ... ) AS-OBJECTIVE" VCHECK 0 T=` certifies the reject with bare
+  names (the cad-kinds-test `content-digest` bare-type precedent); qualified `PKG:` also
+  works. Two distinct single-field `PRODUCT`s (report-metric vs objective-metric) never
+  unify, so "held-out metric as a training objective" is a compile-time reject — the
+  artifact.f weight/kernel flat-family pattern, now the metric-population separation.
 - **Width-aware construct/MATCH lowering (layout-cap slice 4) is an EXTRA-PAD fact,
   not a full re-lowering.** (dot habu-checker-capability-layout-9b8540bd.) A
   generated constructor body already emits `declared_pads 0s + tag` and leaves the
