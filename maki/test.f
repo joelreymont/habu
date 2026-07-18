@@ -72,6 +72,10 @@ TEST:SUITE maki/celoss-test.f
 TEST:;SUITE
 TEST:SUITE maki/matmul-test.f
 TEST:;SUITE
+TEST:SUITE maki/extent-test.f
+TEST:;SUITE
+TEST:SUITE maki/extent-tensor-test.f
+TEST:;SUITE
 TEST:SUITE maki/linear-test.f
 TEST:;SUITE
 TEST:SUITE maki/autograd-tensor-test.f

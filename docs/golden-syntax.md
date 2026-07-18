@@ -74,6 +74,26 @@ Cost: rides on Foundation A (already the named prize in MISSING.md);
 maki-side it is the same ~30-line defining word as A plus signature emission.
 No new parser, no new syntax class — words all the way down.
 
+### Status: what shipped, and the loop-induction gap (be honest)
+
+Candidate B shipped as `maki/extent.f` + `maki/extent-tensor.f` (`EXTENT:` /
+`TENSOR:` / `ITENSOR:`, index family `ix<extent>`, accessors `NAME@`/`NAME!` and
+gather `NAME@`). The delivered author-time flip protection is on **accessor
+calls**: feeding an `ix` of the wrong extent to an accessor is a checker reject.
+
+**The `#K ?DO` yields `idx<#K>` promise above (line 68) is NOT yet implemented.**
+A `#K 0 ?DO` loop hands the checker only the extent *size* (a plain `n`), not the
+extent *type*, so the loop's induction variable stays a bare `n`. The shipped
+surface crosses it explicitly — `#K 0 ?DO  i >#K …  loop` — and that injector
+`>#K` accepts **any** plain `n`: it range-guards the value at runtime (throws
+`E-EXT-RANGE` outside `[0,#K)`) but does **not** statically bind the counter to
+the extent the loop iterates. So `i >#M` written inside a `#K`-loop type-checks.
+Closing that hole — a loop form whose induction variable is typed `ix<#K>` —
+needs a checker/loop-semantics change and is tracked by follow-up dot
+`habu-extent-bound-loop-a70a49b3`. Until it lands, the explicit `>#extent`
+crossing at loop entry is the honest, range-guarded interim binding, and the
+accessor-call flip protection is where the static guarantee actually bites.
+
 ## Candidate C — the spec word (the schematic; later, generated *from* B)
 
 The CAD endgame: the einsum-like statement is the design artifact itself.
