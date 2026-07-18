@@ -568,6 +568,10 @@ Acceptance:
 
 ### R8. Explicit Capability Effects
 
+> Detailed design: `docs/effects.md` § "R8 capability-effect design" (schema
+> encoding, checker propagation, Maki registration, capability tokens, planner
+> legality, runtime resolver, cache identity, and the acceptance-mapping table).
+
 Use explicit capability tokens and op-schema effect rows for:
 
 - pure;

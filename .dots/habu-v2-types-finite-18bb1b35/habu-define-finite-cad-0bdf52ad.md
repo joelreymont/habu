@@ -18,3 +18,5 @@ fixed-width packed paths, hashes as authority, and capacity shrinkage are not
 valid workarounds.
 
 Claim: agent=cadeffect workspace=.jj-ws/fable-effseal
+
+Design-reference (2026-07-18, tfinite): this closed/merged leaf delivered the § R8-0 substrate documented in `docs/effects.md` (the finite ten-atom vocabulary, four slot kinds, conservative `DUP-OK?`/`CACHEABLE?`/`BARRIER?`/`COMMUTE?` tables, and the canonical `REMAP`/`UNION` row algebra) on which the § R8-1 schema encoding and composition rule build.
