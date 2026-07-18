@@ -1798,6 +1798,7 @@ variable QTT  variable QD2  variable QR2
 
 variable RSEXEC-EXP    \ quot explicitly names a linear? (captured before unify binds vars)
 variable EXEC-OPAQUE   \ RSEXEC rejected an execute of an opaque (untyped-memory) xt this token; DO-TOK1 latches the reason (the reject machinery lives far below RSEXEC)
+variable CATCH-OPAQUE  \ RSCATCH rejected a catch of an opaque (untyped-memory) xt this token; latched the same way so the prose names 'catch' not 'execute'
 
 : RSEXEC   \ execute: pop the xt; apply its quot effect (or bind a var to one)
    FRESH MK-VAR FRESH MK-ROW {: tv rest :}
@@ -1854,10 +1855,16 @@ variable RSRET
         RCUR @ QTT @ Q>ROUT  UNIFY-IN OK @ and OK !
      THEN
    ELSE QTT @ TAG T-VAR = IF
-     DCUR @ DCUR @ RCUR @ RCUR @ MK-QUOT QR2 !
-     QTT @ PAY QR2 @ TY-OCC? IF 0 OK ! ELSE
-       QR2 @ QTT @ PAY TV!
-     THEN
+     \ Opaque xt: the caught value is a bare type variable, i.e. an xt of unknown
+     \ provenance fetched from untyped memory (a raw variable or create cell). Its
+     \ true stack effect is not statically known, so catching it in checked code
+     \ launders whatever the stored xt does past the checker just as executing it
+     \ would — reject it identically (dot habu-flip-rscatch-opaque-5da02bd5).
+     \ DO-TOK1 turns the flag into the E-EXEC-OPAQUE-XT diagnostic named on the
+     \ pinned `catch` token. The checked routes are a quotation parameter, a
+     \ `defer` bound with `is`, and a typed `xt<effect>` cell (all recover a
+     \ T-QUOT here).
+     0 OK !  -1 CATCH-OPAQUE !
    ELSE 0 OK ! THEN THEN
    RSRET @ IF 1 MK-CON DCUR @ MK-PUSH DCUR ! THEN ;
 
@@ -7625,6 +7632,7 @@ variable MREJ    \ match structural-reject latch: forces verdict 0, never unchec
 18 constant MD-CON-TRUNC      \ construct missing its family/variant operand
 19 constant MD-DIVBAR         \ M5: block collective/barrier reached under divergent control
 20 constant MD-EXEC-OPAQUE    \ execute of an opaque xt fetched from untyped memory (RSEXEC T-VAR)
+21 constant MD-CATCH-OPAQUE   \ catch of an opaque xt fetched from untyped memory (RSCATCH T-VAR); same E-EXEC-OPAQUE-XT code, prose names 'catch'
 
 variable MDIAG        \ latched reason code (0 = none; reset per definition)
 variable MDIAG-FAM    \ nonexhaustive: family id for the name walk
@@ -8410,7 +8418,7 @@ variable CONFAM    \ resolved family id while CONM = 2
 : DO-TOK1 {: a u :}
    a u TOKFOLD drop
    a u CAP-FAIL
-   0 EXEC-OPAQUE !
+   0 EXEC-OPAQUE !  0 CATCH-OPAQUE !
    TKF TKFU @ LAYOUT-XPORT-TOK? LAYOUT-XPORT !    \ transport op? layout value moves whole
    TOK0 @ IF TKF NMB TKFU @ CCOPY  NMB NMA !  TKFU @ NMU !  0 TOK0 ! ELSE
    TKF TKFU @ LIVE-TOKEN? 0= IF -1 DEADERR ! 0 OK ! ELSE
@@ -8450,6 +8458,7 @@ variable CONFAM    \ resolved family id while CONM = 2
    THEN
    THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN
    EXEC-OPAQUE @ IF MD-EXEC-OPAQUE MDIAG! THEN   \ name the opaque-execute reject on the pinned 'execute' token
+   CATCH-OPAQUE @ IF MD-CATCH-OPAQUE MDIAG! THEN   \ name the opaque-catch reject on the pinned 'catch' token
    LIN-TAINT-SCAN
    OK @ 0=  FAILSET @ 0=  and IF -1 FAILSET ! THEN
    UNCK @  FAILSET @ 0=  and IF -1 FAILSET ! THEN

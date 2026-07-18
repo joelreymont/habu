@@ -140,6 +140,28 @@ create XC-DBUF 8192 allot
    \ contrast: the typed cell fit-checks the row, so a wrong-row execute rejects
    s" L2 ( -- ) HK @ execute" CHECK-QUIET-CANDIDATE! 0 T= ;
 
+\ ---- STAGE-3 CATCH: catch of a raw-variable xt now REJECTS too --------------
+\ dot habu-flip-rscatch-opaque-5da02bd5 flipped the RSCATCH T-VAR branch: catching
+\ an xt fetched from untyped memory is the same launder as executing it, so it is
+\ rejected with the same E-EXEC-OPAQUE-XT code, but the reason names 'catch'. The
+\ typed catch routes (direct tick, quotation parameter, typed xt cell, defer) fit-
+\ check the caught row and stay green.
+: XC-REG-CATCH ( -- )
+   s" defer XC-DF ( n -- n )" VERIFY:SOURCE-BUF-IN-SCOPE ;
+
+: XC-SECTION-CATCH ( -- )
+   XC-REG-CATCH
+   \ the raw-variable catch launder rejects, named E-EXEC-OPAQUE-XT (catch sibling of L1)
+   s" LC ( -- n ) XCRAW @ catch" XC-CODE<
+   s\" \"code\":\"E-EXEC-OPAQUE-XT\"" XC-CODE?
+   s" Catch an xt" XC-CODE?               \ the catch-specific reason fired, not the execute one
+   XC-CODE-END
+   \ typed catch routes stay green: direct tick / quotation parameter / typed cell / defer
+   s" GC1 ( n -- n n ) ['] SP catch" CHECK-QUIET-CANDIDATE! -1 T=
+   s" GC2 ( n [ n -- n ] -- n n ) catch" CHECK-QUIET-CANDIDATE! -1 T=
+   s" GC3 ( n -- n n ) HK @ catch" CHECK-QUIET-CANDIDATE! -1 T=
+   s" GC4 ( n -- n n ) ['] XC-DF catch" CHECK-QUIET-CANDIDATE! -1 T= ;
+
 : RUN ( -- )
    T-RESET
    XC-SECTION-CHECKER
@@ -148,6 +170,7 @@ create XC-DBUF 8192 allot
    XC-SECTION-TICK-STORE
    XC-SECTION-ADMISSIBILITY
    XC-SECTION-STAGE3
+   XC-SECTION-CATCH
    T-REPORT ;
 
 RUN

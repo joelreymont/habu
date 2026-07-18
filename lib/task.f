@@ -327,8 +327,18 @@ TRUSTED: TASK-PATCH ( n n -- )           \ code-emission boundary: patch32 is a
 : TASK-RC>EXIT ( n -- n )
    $FF and ;
 
+\ The scheduler runs an arbitrary per-task body under catch for error recovery.
+\ The body is a ( -- ) xt supplied to ACTIVATE and stored in the task control
+\ block's USER-XT field, so its effect is not statically known at the catch site
+\ (a structure field cannot be a typed xt cell, and one body is polymorphic
+\ across tasks). Catching such an opaque xt is rejected in checked code
+\ (E-EXEC-OPAQUE-XT, dot habu-flip-rscatch-opaque-5da02bd5), so this dynamic
+\ dispatch is confined to a named TRUSTED: boundary, like the file's other
+\ task-runtime boundaries; a task body must be ( -- ).
+TRUSTED: TASK-RUN-USER ( -- n ) TASK-SELF TCB.USER-XT @ catch ;
+
 : TASK-RUNNER ( -- )
-   TASK-SELF TCB.USER-XT @ catch dup 0= if drop exit then
+   TASK-RUN-USER dup 0= if drop exit then
    TASK-RC>EXIT s" task: unhandled throw" rot die ;
 
 : ACTIVATE ( n ptr a -- ) {: xt:n tcb:ptr :}

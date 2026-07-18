@@ -447,10 +447,24 @@ public
    s" : IWG-PFBAD ( -- ) IWG-PFV @ execute 99 swap ! ;" SB-APPEND IWG-LF
    SB$ ;
 
+: IWG-CATCH-DEFINER$ ( ptr u8 n -- ptr u8 n )   \ tick <definer> into a var, launder its catch
+   {: a:ptr u:n :}
+   SB-RESET
+   s" variable IWG-LV" SB-APPEND IWG-LF
+   s" ' " SB-APPEND  a u SB-APPEND  s"  IWG-LV !" SB-APPEND IWG-LF
+   s" : IWG-LBAD ( -- n ) IWG-LV @ catch ;" SB-APPEND IWG-LF
+   SB$ ;
+
 : IWG-ASSERT-OPAQUE ( -- )   \ child rejected at CHECK (rc 70) naming the opaque-execute reject
    IWG-EXITED @ TTRUE
    IWG-RC @ IWG-REJECT-RC T=
    IWG-ERR$ s" at 'execute'" CONTAINS? TTRUE
+   IWG-ERR$ s" opaque xt of unknown provenance" CONTAINS? TTRUE ;
+
+: IWG-ASSERT-OPAQUE-CATCH ( -- )   \ child rejected at CHECK (rc 70) naming the opaque-catch reject
+   IWG-EXITED @ TTRUE
+   IWG-RC @ IWG-REJECT-RC T=
+   IWG-ERR$ s" at 'catch'" CONTAINS? TTRUE
    IWG-ERR$ s" opaque xt of unknown provenance" CONTAINS? TTRUE ;
 
 : IWG-LAUNDER-CASES ( -- )
@@ -465,7 +479,10 @@ public
    IWG-ASSERT-OPAQUE
    s" PF registry-cell write laundered through a variable rejects at CHECK, not runtime" T-LABEL
    IWG-PF-LAUNDER-FORGE$ IWG-EXEC:SUBJECT
-   IWG-ASSERT-OPAQUE ;
+   IWG-ASSERT-OPAQUE
+   s" deftype laundered through a variable + catch also rejects at CHECK" T-LABEL
+   s" deftype" IWG-CATCH-DEFINER$ IWG-EXEC:SUBJECT
+   IWG-ASSERT-OPAQUE-CATCH ;
 
 : IWG-POSITIVES ( -- )
    s" undefined word still reports E-UNDEFINED" T-LABEL
@@ -535,7 +552,7 @@ public
 package IWG-PARITY
 
 7 constant DIRECT-N
-56 constant SUBJECT-N
+57 constant SUBJECT-N
 : RESULT ( -- ptr u8 n ptr u8 n n )
    IWG-OUT IWG-OUT-U @ IWG-ERR IWG-ERR-U @ IWG-RC @ ;
 

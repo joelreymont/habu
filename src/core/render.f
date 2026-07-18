@@ -424,6 +424,7 @@ variable MDV-I   variable MDV-F
       MD-CON-TRUNC    of s" E-CONSTRUCT-UNTERMINATED" endof
       MD-DIVBAR       of s" E-DIVERGENT-BARRIER" endof
       MD-EXEC-OPAQUE  of s" E-EXEC-OPAQUE-XT" endof
+      MD-CATCH-OPAQUE of s" E-EXEC-OPAQUE-XT" endof
       s" E-REJECTED" rot
    endcase ;
 
@@ -445,6 +446,7 @@ variable MDV-I   variable MDV-F
       MD-DEPTH        of s" factor_match_nesting" endof
       MD-DIVBAR       of s" move_collective_to_block_uniform_control" endof
       MD-EXEC-OPAQUE  of s" fix_opaque_execute" endof
+      MD-CATCH-OPAQUE of s" fix_opaque_execute" endof
       s" fix_match_syntax" rot
    endcase ;
 
@@ -467,6 +469,7 @@ variable MDV-I   variable MDV-F
       MD-MISSING-OF   of s" Write `variant OF ... ENDOF` for each branch." endof
       MD-DIVBAR       of s" Call the block collective on the straight-line (block-uniform) path; do not place it inside if/loop/case or a quotation." endof
       MD-EXEC-OPAQUE  of s" Execute an xt whose effect is statically known: a quotation parameter, a defer bound with is, or a typed xt cell. Do not execute an xt fetched from untyped memory." endof
+      MD-CATCH-OPAQUE of s" Catch an xt whose effect is statically known: a quotation parameter, a defer bound with is, or a typed xt cell. Do not catch an xt fetched from untyped memory." endof
       s" Complete the form: MATCH family, variant OF ... ENDOF per variant, ;MATCH." rot
    endcase ;
 
@@ -492,6 +495,7 @@ variable MDV-I   variable MDV-F
       MD-CON-TRUNC    of s" bad construct: missing family or variant token" endof
       MD-DIVBAR       of s" divergent barrier: block collective requires block-uniform control" endof
       MD-EXEC-OPAQUE  of s" execute: opaque xt of unknown provenance (fetched from untyped memory)" endof
+      MD-CATCH-OPAQUE of s" catch: opaque xt of unknown provenance (fetched from untyped memory)" endof
       s" bad match: rejected" rot
    endcase ;
 

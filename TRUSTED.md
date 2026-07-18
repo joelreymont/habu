@@ -362,6 +362,7 @@ that source is explicitly certified; they are not stale-checked by the default
 | PTHREAD-JOIN-CALL | `n ptr a -- n` | Exact task-internal `pthread_join` binding fixes its return-value output to eight writable bytes. | `lib/task-test.f` | lib/task.f | 2026-07-11 |
 | PTHREAD-EXIT-CALL | `n --` | Exact task-internal noreturn `pthread_exit` binding consumes the machine return cell inside the trusted boundary. | `lib/task-test.f` | lib/task.f | 2026-07-11 |
 | SCHED-YIELD-CALL | `-- n` | Exact zero-argument task-internal `sched_yield` binding. | `lib/task-test.f` | lib/task.f | 2026-07-11 |
+| TASK-RUN-USER | `-- n` | Runs the current task's user body under catch and returns the throw code. The body is a ( -- ) xt supplied to ACTIVATE and stored in the task control block, so it is dynamic per task; a structure field cannot be a typed xt cell, so its effect is unknown at the catch site and catching it is rejected in checked code (E-EXEC-OPAQUE-XT). This scheduler dispatch stays a trusted boundary. | `lib/task-test.f`, `test/gate-stdlib.f` | lib/task.f | 2026-07-19 |
 | MUTEX-INIT-CALL | `ptr a n -- n` | Exact task-internal mutex initialization binding fixes the mutex object to its full writable extent. | `lib/task-test.f` | lib/task.f | 2026-07-11 |
 | MUTEX-LOCK-CALL | `ptr a -- n` | Exact task-internal mutex lock binding fixes the mutex object to its full writable extent. | `lib/task-test.f` | lib/task.f | 2026-07-11 |
 | MUTEX-UNLOCK-CALL | `ptr a -- n` | Exact task-internal mutex unlock binding fixes the mutex object to its full writable extent. | `lib/task-test.f` | lib/task.f | 2026-07-11 |
@@ -1264,6 +1265,7 @@ lib/task.f:PTHREAD-CREATE-CALL stdlib-boundary habu-ptx-m1-c-1df1d6e7
 lib/task.f:PTHREAD-JOIN-CALL stdlib-boundary habu-ptx-m1-c-1df1d6e7
 lib/task.f:PTHREAD-EXIT-CALL stdlib-boundary habu-ptx-m1-c-1df1d6e7
 lib/task.f:SCHED-YIELD-CALL stdlib-boundary habu-ptx-m1-c-1df1d6e7
+lib/task.f:TASK-RUN-USER stdlib-boundary habu-ptx-m1-c-1df1d6e7
 lib/task.f:MUTEX-INIT-CALL stdlib-boundary habu-ptx-m1-c-1df1d6e7
 lib/task.f:MUTEX-LOCK-CALL stdlib-boundary habu-ptx-m1-c-1df1d6e7
 lib/task.f:MUTEX-UNLOCK-CALL stdlib-boundary habu-ptx-m1-c-1df1d6e7

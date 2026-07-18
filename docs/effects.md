@@ -327,17 +327,22 @@ later callers; use `TRUST` only when the body itself cannot be checked.
   or an `xt<effect>` storage cell whose `@` recovers the quotation), so
   `execute`/`catch` fit-check the row and stay checked. But an xt fetched from an
   untyped cell — a raw `variable`/`create` fetch — is only a bare type variable:
-  its real stack effect is erased at the store, so executing it would launder
-  whatever the stored xt actually does (mint a type, write a protected registry,
-  …) past the checker. The `RSEXEC` `T-VAR` branch (`src/core/checker.f`) rejects
-  that with `E-EXEC-OPAQUE-XT` (repair class `fix_opaque_execute`), naming the
-  `execute` token and pointing at the three typed routes: a quotation parameter,
-  a `defer` bound with `is`, or a typed `xt<effect>` cell (dot
-  `habu-checker-exec-of-5923c543`). The one standing boundary is the metabuild
-  primitive-body emitter (`FP-EMIT`, a named `TRUSTED:` word in
-  `src/habu/habu1.f`): the per-primitive body emitter is a data-driven xt running
-  raw machine-code emission, which is not typed Habu and cannot carry a static
-  effect, so it stays behind that audited boundary.
+  its real stack effect is erased at the store, so executing OR catching it would
+  launder whatever the stored xt actually does (mint a type, write a protected
+  registry, …) past the checker — `catch` is exactly as unsound as `execute`,
+  since it runs the same opaque body. The `RSEXEC` `T-VAR` branch rejects the
+  execute and the `RSCATCH` `T-VAR` branch rejects the catch
+  (`src/core/checker.f`), both with `E-EXEC-OPAQUE-XT` (repair class
+  `fix_opaque_execute`); the reason names the `execute` or `catch` token it fired
+  on and points at the three typed routes: a quotation parameter, a `defer` bound
+  with `is`, or a typed `xt<effect>` cell (dots
+  `habu-checker-exec-of-5923c543`, `habu-flip-rscatch-opaque-5da02bd5`). Two
+  standing boundaries remain, both named `TRUSTED:` words: the metabuild
+  primitive-body emitter (`FP-EMIT` in `src/habu/habu1.f`), a data-driven xt
+  running raw machine-code emission that is not typed Habu; and the task
+  scheduler's run of a per-task `( -- )` body under catch (`TASK-RUN-USER` in
+  `lib/task.f`), stored in a task control-block field so its effect is unknown at
+  the catch site.
 - **Declared polymorphic effects stay parametric.** A quantifier in a declared
   effect (`a`, `ptr a`, …) is a promise that the word works for *every* type at
   that position. The body may not quietly break that promise. After a definition's
