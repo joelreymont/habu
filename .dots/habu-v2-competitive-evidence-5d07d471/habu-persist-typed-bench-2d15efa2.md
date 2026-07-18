@@ -11,3 +11,8 @@ close-reason: "Merged a3f32118 on master: maki/competitive-store.f - the only pu
 Problem: competitive evidence is currently persisted through raw strings and untyped numeric fields, so a writer can bypass the BENCH comparison schema or replay a row under the wrong policy, kind, or key. Fix: add a checked canonical codec and store records for BENCH comparison values after the R7 store and promotion contracts are sealed; the only public writer accepts the typed comparison value and derives its exact key, schema version, digest, and promotion evidence. Acceptance: cross-policy, cross-kind, wrong-schema, duplicate-field, noncanonical, digest-mismatch, stale-promotion, and direct raw-writer fixtures reject with named E-BENCH codes; a valid row round-trips and replays byte-for-byte; no public raw persistence path remains. Files: new maki/competitive-store.f, maki/competitive-store-test.f, maki/test.f, FILEMAP.md. Verify: exact test, maki/test.f, typed-local diff, host/filemap/dot lints.
 
 Claim: agent=benchstore workspace=.jj-ws/fable-benchschema
+
+NOTE 2026-07-18 (run-identity landing 785c4021): this dot also owns the
+metric UNITS vocabulary (the run-metric package models population/
+direction/aggregation; units deferred pending an owner - decide the
+closed vocabulary here where the evidence matrix consumes it).
