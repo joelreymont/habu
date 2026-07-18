@@ -3,7 +3,7 @@
 \ The emit dual of the maki activation references (maki/gelu.f GELU-F, maki/silu.f
 \ SILU-F): EMIT-GELU / EMIT-SILU lower each op to f32 PTX that MIRRORS the host
 \ scalar formula op-for-op, so a device result matches F64>F32(host) within the
-\ CAD-PLAN section 11 f32 tolerance (atol 1e-6, rtol 1e-5). Same emit-mode
+\ docs/archive/cad-plan.md section 11 f32 tolerance (atol 1e-6, rtol 1e-5). Same emit-mode
 \ discipline as lib/ptx/cg.f and lib/ptx/cg-collective.f: each op consumes and
 \ returns a %f register NUMBER, allocated with CG-NEXT-F; running the op in emit
 \ mode appends its PTX lines. exp() reuses EMIT-EXP (ex2.approx(z*log2e)) and NEG
