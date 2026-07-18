@@ -1957,9 +1957,15 @@ uses only some params (`result err` at `result<tdpbw2,n>`) has no other source
 for the type arguments; a `MATCH` arm recovers them from the scrutinee the same
 way. So `option<tdpbw2>` is a three-cell bundle with the tag at slot 2, not the
 degenerate slot 1 the declared family width would give. The adversarial set
-stays red — a wrong-width payload, a cross-family bundle, and a linear payload
-all reject (`test/type-decl-suite.f` TDPN4-7 positive, TDPA1-4 negative;
-`test/type-match-suite.f` ML1/ML2).
+stays red — a wrong-width payload and a cross-family bundle reject
+(`test/type-decl-suite.f` TDPN4-7 positive, TDPA1-3 negative;
+`test/type-match-suite.f` ML1/ML2). Constructing a LINEAR-payload multi-cell
+sum is SOUND, not an adversarial (the slice-3 `( own -- tdpbopt<own> )` pin was
+a false negative — `own` was undeclared, so it rejected as an unknown type, not
+a linear violation; corrected in slice 5). Linear construction is pinned
+positive in `test/type-linear-suite.f` (A1/A6/A7); the genuinely-unsound path is
+duplicating the constructed bundle (TDPA4B / R1-R13), and linearity is
+transitive through nesting (§19).
 
 **LOWERING is WIDTH-AWARE (slice 4 landed, dual emitter).** The declared family
 width (`TFL-VPADS`, the generated ctor body's `M-p` pad count) is WRONG for a
@@ -1978,11 +1984,22 @@ top — all gated on pass 2, so pass 1 and every non-wide shape lower byte-
 identically. The gforth recovery mirror (`bootstrap/cg/forth.fs`) carries the
 same legs; the cert validator (`VALIDATE-WF`) admits the flag and the width
 lookup returns a found bit so a leg distinguishes a wide fact from a scalar
-default. A nested parametric arg (arity>0) stays fail-closed
-(`CONSTRUCT-WIDE-STAGED-REJECT`, gated on `TFC-CON-FLAT?`) for slice 5. Pinned:
+default. **NESTED named instantiations lower END-TO-END (slice 5).** A named
+multi-cell instantiation used as the payload arg of ANOTHER family
+(`option<result<n,pkg:prod>>`) constructs, certifies, lowers, and
+`MATCH`-destructures under the SAME extra-pad model: every width site
+(`TFAM-INST-WIDTH@`, `TFC-VAR-PAYCELLS`, `famterm T-WIDTH`) already recurses
+through the arg tree, so the inner bundle carries its own pads at its own
+construct site and the outer construct/match adds only the outer delta. The
+flat-only gate `TFC-CON-FLAT?` becomes the recursive width-stability check
+`TFC-CON-CLOSED?` (no open type var anywhere in the arg tree); the only
+remaining fail-closed case is an OPEN inner var (`option<result<n,a>>`), whose
+width is unstable, so it keeps `CONSTRUCT-WIDE-STAGED-REJECT`. Pinned:
 `test/type-ctor-suite.f` CLFC1 (generated word round-trip), CLFC2 (raw
 `construct` round-trip), CLFC3 (cell instantiation compiles), the wave-B
-result/option end-to-end round-trips, and the nested staged reject. A raw
+result/option end-to-end round-trips, the nested CN-RT-* round-trips (2- and
+3-deep, product leaf), the CN-BAD*/CN-TRUNC/CN-OPEN fail-closed adversarials,
+and (candidate diagnostics) `test/type-decl-suite.f` TDNEST1-4 / TDNA1-3. A raw
 multi-token RUN is not a parameter arg:
 
 ```forth
@@ -2030,6 +2047,25 @@ LAYOUT-LINEAR-COUNT  ( row -- n )
 ```
 
 `MATCH` must be a checker control form partly because it is the only sound way to refine linear payloads per variant.
+
+**Linearity is TRANSITIVE through nesting (slice 5, dot
+`habu-checker-capability-layout-9b8540bd`).** A linear con buried inside a
+nested layout arg — the `ltok` in `option<result<ltok,n>>` — makes the OUTER
+bundle one linear unit even though the direct arg (`result<ltok,n>`) is a
+`T-PARAM`, not a con. `LAYOUT-ARG-LINEARISH?` / `LAYOUT-ARG-LIN-N` recurse
+through the arg subtree (reentrant, accumulator on the stack), and
+`LIN-TYPE-COUNT` still samples the whole bundle ONCE at its tag cell, so there
+is no double count. This closes a soundness hole opened by nested construction:
+before the recursion, the outer bundle read as non-linear and could be
+`dup`/`drop`-laundered. Sound behaviour (pinned in `test/type-linear-suite.f`
+NL1-NL7): a linear moving into the constructed payload is consumed once (NL1),
+`MATCH` re-introduces it once and the arm must consume it — re-mint via
+`construct` (NL6) or an explicit destructor — and any copy (NL2), loss
+(NL3/NL4 — including a `none` that would drop the payload), or match-then-drop
+(NL7) rejects; identity/transport of the bundle still flows (NL5). A linear
+inner arg is width-STABLE (a linear con is width 1), so nested-linear
+constructions also lower — the linear discipline and the width model are
+orthogonal.
 
 ---
 

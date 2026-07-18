@@ -383,6 +383,21 @@ s" ML2 ( mlopt<mlw2> -- n ) MATCH mlopt none OF 0 ENDOF some OF drop drop 1 ENDO
 s" MATCH-LAYOUT" type cr
 
 \ ---------------------------------------------------------------------------
+\ layout-cap slice 5 (same dot): MATCH on a NESTED named instantiation. The
+\ some-branch payload of mnopt<mnres<n,n>> is the inner mnres<n,n> bundle, so the
+\ arm receives the whole 2-cell inner value and destructures it with a SECOND
+\ MATCH (MN1). Over-dropping the nested bundle leaves a branch imbalance and stays
+\ red (MN2). The arm can also re-wrap the inner value into a fresh outer bundle
+\ (MN3), proving the payload really is the inner instantiation, not a scalar.
+\ ---------------------------------------------------------------------------
+SUMTYPE mnres 2 VARIANT ok a ;VARIANT VARIANT err b ;VARIANT ;SUMTYPE
+SUMTYPE mnopt 1 VARIANT none ;VARIANT VARIANT some a ;VARIANT ;SUMTYPE
+s" MN1 ( mnopt<mnres<n,n>> -- n ) MATCH mnopt none OF 999 ENDOF some OF MATCH mnres ok OF ENDOF err OF ENDOF ;MATCH ENDOF ;MATCH" CHECK-QUIET-CANDIDATE! -1 T=
+s" MN2 ( mnopt<mnres<n,n>> -- n ) MATCH mnopt none OF 0 ENDOF some OF drop drop 1 ENDOF ;MATCH" CHECK-QUIET-CANDIDATE! 0 T=
+s" MN3 ( mnopt<mnres<n,n>> -- mnopt<mnres<n,n>> ) MATCH mnopt none OF MNOPT:NONE ENDOF some OF MNOPT:SOME ENDOF ;MATCH" CHECK-QUIET-CANDIDATE! -1 T=
+s" MATCH-NESTED" type cr
+
+\ ---------------------------------------------------------------------------
 \ report: "ok" on success, nonzero exit on any failure.
 \ ---------------------------------------------------------------------------
 : REPORT ( -- )

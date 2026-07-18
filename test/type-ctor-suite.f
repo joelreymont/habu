@@ -496,9 +496,8 @@ s" PRODUCT-PROTECTED" type cr
 \ EM-ADT-CON-VAR / EM-COMPILE-CALL / EM-ADT-MATCH-OF, gforth mirror) emits the
 \ arg-aware pad count. The slice-3 staged reject FLIPS: CLFC1 (generated ctor)
 \ and CLFC2 (raw `construct`) now compile AND round-trip; CLFC3 (cell) unchanged.
-\ A NESTED parametric arg (arity>0) stays fail-closed for slice 5. This suite is
-\ a candidate-validation `diagnostic` case, so the nested reject's stderr is
-\ permitted here.
+\ Nested named ADTs land in slice 5 (below). This suite is a candidate-validation
+\ `diagnostic` case, so the adversarials' compile-hook stderr is permitted here.
 \ ---------------------------------------------------------------------------
 PRODUCT clw2 0 FIELD x n FIELD y n ;PRODUCT
 SUMTYPE clopt 1 VARIANT none ;VARIANT VARIANT some a ;VARIANT ;SUMTYPE
@@ -537,9 +536,51 @@ CLFC-RT-ERR 77 T=
 : CLFC-RT-SN ( -- n ) CLFC-S3NONE CLFC-S3GET ;
 CLFC-RT-S3 6 T=
 CLFC-RT-SN -1 T=
-\ slice-5 boundary stays fail-closed: a nested parametric arg (arity>0) still
-\ rejects rather than lower with the flat extra-pad model.
-s" : CLFC-NESTED ( -- clopt<clfres<n,n>> ) CLOPT:NONE ;" TCE-CATCH 70 T=
+\ ---------------------------------------------------------------------------
+\ layout-cap slice 5 (same dot): NESTED named ADTs lower END-TO-END. A named
+\ multi-cell instantiation used as the payload arg of ANOTHER family
+\ (clopt<clfres<n,n>>) constructs, certifies, lowers, and MATCH-destructures — the
+\ slice-3/4 CLFC-NESTED staged reject FLIPS to a real round-trip. Every width site
+\ (TFAM-INST-WIDTH@ / TFC-VAR-PAYCELLS / famterm T-WIDTH) already recurses, so the
+\ SAME extra-pad model lowers each level: the inner bundle carries its own pads at
+\ its own construct site; the outer construct/match adds only the outer delta.
+\ ---------------------------------------------------------------------------
+\ outer clopt<clfres<n,n>> (W=3) over inner clfres<n,n> (W=2): SOME(ok/err), NONE
+\ (generated + raw construct), nested MATCH destructure.
+: CN-IOK ( n -- clfres<n,n> ) CLFRES:OK ;
+: CN-IERR ( n -- clfres<n,n> ) CLFRES:ERR ;
+: CN-SOME ( clfres<n,n> -- clopt<clfres<n,n>> ) CLOPT:SOME ;
+: CN-NONE ( -- clopt<clfres<n,n>> ) CLOPT:NONE ;
+: CN-NONER ( -- clopt<clfres<n,n>> ) construct clopt none ;
+: CN-GET ( clopt<clfres<n,n>> -- n ) MATCH clopt none OF 999 ENDOF some OF MATCH clfres ok OF ENDOF err OF 10 + ENDOF ;MATCH ENDOF ;MATCH ;
+: CN-RT-SOMEOK ( -- n ) 5 CN-IOK CN-SOME CN-GET ;
+: CN-RT-SOMEERR ( -- n ) 7 CN-IERR CN-SOME CN-GET ;
+: CN-RT-NONE ( -- n ) CN-NONE CN-GET ;
+: CN-RT-NONER ( -- n ) CN-NONER CN-GET ;
+CN-RT-SOMEOK 5 T=
+CN-RT-SOMEERR 17 T=
+CN-RT-NONE 999 T=
+CN-RT-NONER 999 T=
+\ deeper: a product leaf inside the nesting (clopt<clfres<clw2,n>>, W=4).
+: CND-IOK ( n n -- clfres<clw2,n> ) CLW2:MAKE CLFRES:OK ;
+: CND-SOME ( clfres<clw2,n> -- clopt<clfres<clw2,n>> ) CLOPT:SOME ;
+: CND-NONE ( -- clopt<clfres<clw2,n>> ) CLOPT:NONE ;
+: CND-GET ( clopt<clfres<clw2,n>> -- n ) MATCH clopt none OF 999 ENDOF some OF MATCH clfres ok OF CLW2:UNMAKE + ENDOF err OF ENDOF ;MATCH ENDOF ;MATCH ;
+: CND-RT-SOME ( -- n ) 3 4 CND-IOK CND-SOME CND-GET ;
+: CND-RT-NONE ( -- n ) CND-NONE CND-GET ;
+CND-RT-SOME 7 T=
+CND-RT-NONE 999 T=
+\ real-compile fail-closed adversarials (rc 70): wrong inner width, cross-family
+\ inner, scalar inner, truncated (no inner value). Full diagnostics (E-MISMATCH,
+\ arg-aware inner slot render) are pinned in test/type-decl-suite.f.
+s" : CN-BADW ( clfres<n,n> -- clopt<clfres<clw2,n>> ) CLOPT:SOME ;" TCE-CATCH 70 T=
+s" : CN-BADF ( clopt<n> -- clopt<clfres<n,n>> ) CLOPT:SOME ;" TCE-CATCH 70 T=
+s" : CN-BADS ( n -- clopt<clfres<n,n>> ) CLOPT:SOME ;" TCE-CATCH 70 T=
+s" : CN-TRUNC ( -- clopt<clfres<n,n>> ) CLOPT:SOME ;" TCE-CATCH 70 T=
+\ soundness boundary: an OPEN inner var has an unstable width, so a real compile
+\ stays staged fail-closed (CONSTRUCT-WIDE-STAGED-REJECT) rather than lower a
+\ width guessed from a=1 cell.
+s" : CN-OPEN ( clfres<n,a> -- clopt<clfres<n,a>> ) CLOPT:SOME ;" TCE-CATCH 70 T=
 s" LOWER-WIDTH-AWARE-ROUNDTRIP" type cr
 
 \ ---------------------------------------------------------------------------

@@ -1210,9 +1210,26 @@ variable LBUF-PEND-U   0 LBUF-PEND-U !
 \ drop/nip/2drop would lose it, and locals capture launders the reference
 \ count. Fail closed on both proven and possible linears; TFAM 11 replaces
 \ this with whole-bundle linear counting.
-: LAYOUT-ARG-LINEARISH? ( n -- bool ) {: t:n :}   \ arg term: linear con or unresolved var
+\ layout-cap slice 5 (dot habu-checker-capability-layout-9b8540bd): linearity is
+\ TRANSITIVE through nested layout args. A NESTED family application arg (e.g. the
+\ lq2<ltok,n> inside option<lq2<ltok,n>>) is a T-PARAM, not a con, so the direct
+\ con/var test misses the linear ltok buried in it; the outer bundle would then
+\ dup/drop-launder the resource. LAYOUT-ARG-LINEARISH? RECURSES into such a nested
+\ layout (self-recursive on the arg subtree — NOT a forward `defer`, which before
+\ `: TRUST` would be captured into the pre-trust pending table and break the
+\ old-engine-compat boot property, test/pre-trust-defer.f), treating the whole
+\ subtree as possibly-linear if any leaf con is linear or any family is
+\ concrete-linear.
+: LAYOUT-ARG-LINEARISH? ( n -- bool ) {: t:n :}   \ arg term: linear con, unresolved var, or nested linear layout
    t T-RES {: r:n :}
    r ISVAR IF RES-TRUE EXIT THEN
+   r TAG T-PARAM = IF                              \ nested layout arg: any arg linear, or the family concrete-linear
+      0 BEGIN dup r PARAM>ARGC < WHILE
+         r over PARAM>ARG RECURSE IF drop RES-TRUE EXIT THEN
+         1 +
+      REPEAT drop
+      r PARAM>FAM TFAM-CON-LIN-XT @ execute EXIT
+   THEN
    r TAG T-CON <> IF RES-FALSE EXIT THEN
    r PAY CT-LINEAR? ;
 : LAYOUT-MAYBE-LINEAR? ( n -- bool ) {: p:n :}    \ resolved layout T-PARAM term
@@ -1229,19 +1246,35 @@ variable LBUF-PEND-U   0 LBUF-PEND-U !
 \ LAYOUT-ARGS-OPEN? is the width question (any arg still an unresolved var):
 \ width-known layouts expand to hidden fields even when linear, so the checker
 \ row and the runtime cells agree; open-arg layouts stay one conservative cell.
-variable LLC-N
-: LAYOUT-ARG-LIN-N ( n -- n ) {: t:n :}   \ 1 when the arg resolves to a linear con
+\ layout-cap slice 5: a nested layout arg contributes its OWN whole-bundle linear
+\ count (recursed), so option<lq2<ltok,n>> carries the one linear unit buried in
+\ the inner lq2 — sampled once at the outer bundle's tag by LIN-TYPE-COUNT, so no
+\ double count. Self-recursive like LAYOUT-ARG-LINEARISH? above (NOT a forward
+\ `defer`, which pre-`: TRUST` would be captured into the pending table). Both the
+\ nested branch and LAYOUT-LINEAR-COUNT keep the accumulator on the STACK, so the
+\ recursion is reentrant.
+: LAYOUT-ARG-LIN-N ( n -- n ) {: t:n :}   \ linear units the arg contributes (con=1, nested layout=recursed subtree)
    t T-RES {: r:n :}
+   r TAG T-PARAM = IF                              \ nested layout arg: sum its args' units + its own concrete-linear
+      0                                            \ acc on the stack (reentrant)
+      0 BEGIN dup r PARAM>ARGC < WHILE             \ ( acc j )
+         r over PARAM>ARG RECURSE                   \ ( acc j nj )
+         rot + swap                                 \ ( acc' j )
+         1 +
+      REPEAT drop
+      r PARAM>FAM TFAM-CON-LIN-XT @ execute IF 1 + THEN
+      EXIT
+   THEN
    r TAG T-CON <> IF 0 EXIT THEN
    r PAY CT-LINEAR? IF 1 ELSE 0 THEN ;
 : LAYOUT-LINEAR-COUNT ( n -- n ) {: p:n :}
-   0 LLC-N !
-   0 BEGIN dup p PARAM>ARGC < WHILE
-      p over PARAM>ARG LAYOUT-ARG-LIN-N LLC-N @ + LLC-N !
+   0                                            \ acc on the stack (reentrant)
+   0 BEGIN dup p PARAM>ARGC < WHILE             \ ( acc j )
+      p over PARAM>ARG LAYOUT-ARG-LIN-N          \ ( acc j nj )
+      rot + swap                                 \ ( acc' j )
       1 +
    REPEAT drop
-   p PARAM>FAM TFAM-CON-LIN-XT @ execute IF LLC-N @ 1 + LLC-N ! THEN
-   LLC-N @ ;
+   p PARAM>FAM TFAM-CON-LIN-XT @ execute IF 1 + THEN ;
 : LAYOUT-LINEAR? ( n -- bool ) LAYOUT-LINEAR-COUNT 0 <> ;
 : LAYOUT-ARGS-OPEN? ( n -- bool ) {: p:n :}
    0 BEGIN dup p PARAM>ARGC < WHILE

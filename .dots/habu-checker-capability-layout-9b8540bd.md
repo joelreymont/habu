@@ -144,3 +144,91 @@ this dot: slice 5 (nested ADTs + linear payloads stage-lift) and slice 6
 (optional raw-run sugar, Couplings A/B spec).
 
 Claim: agent=laycap5 workspace=.jj-ws/fable-laycap5 (SLICE 5: nested ADTs + linear payloads stage-lift; CLFC-NESTED flips; write set: checker + both emitters + fixtures, sumtype.f if the nested header needs it)
+
+SLICE 5 LANDED 2026-07-18 (laycap5 lane, uncommitted-then-committed in this
+workspace; NOT pushed, dot stays active). The flat capability's two open items
+close with a SMALLER surface than the write set anticipated: NO emitter edit, NO
+new WF fact kind, NO 5-site ripple, NO sumtype.f change.
+
+MECHANISMS.
+(1) NESTED named ADTs (option<result<n,pkg:prod>>) construct/certify/lower/
+MATCH end-to-end. Discovery: the checker ALREADY certified nested candidates
+before this slice — every width site recurses (TFAM-INST-WIDTH@ via the
+SCHEMA-PARAM->PARAM>ARG->T-WIDTH path, TFC-VAR-PAYCELLS, famterm T-WIDTH), and
+PUSH-LOGICAL expands to the arg-aware hidden-field count. The ONLY blocker was
+the flat-only gate TFC-CON-FLAT? (rejected any arity>0 arg) driving
+CONSTRUCT-WIDE-STAGED-REJECT on real compiles + suppressing the extra-pad fact.
+Replaced it with the recursive width-stability check TFC-CON-CLOSED? (no open
+type var anywhere in the arg tree; reentrant locals+RECURSE). The SAME extra-pad
+WF-XPAD model lowers each level — the inner bundle carries its own pads at its
+own construct site, the outer construct/match adds only the outer delta — so the
+existing pass-2 legs in BOTH emitters and the existing WF-XPAD fact suffice
+UNCHANGED. Verified end-to-end runtime round-trips at depth 2 and 3 (product
+leaf): CN-RT-SOMEOK=5, CN-RT-SOMEERR=17, CN-RT-NONE=999, CND-RT-SOME=7.
+(2) LINEAR through nesting: FIXED A REAL SOUNDNESS HOLE. option<lq2<ltok,n>>
+read as NON-linear (the direct arg lq2<ltok,n> is a T-PARAM, not a con), so it
+could dup/drop-launder the buried ltok (NL-DUP was ACCEPTED before slice 5).
+Made linearity transitive: LAYOUT-ARG-LINEARISH? and LAYOUT-ARG-LIN-N recurse
+through a nested layout arg (self-recursive RECURSE), LIN-TYPE-COUNT still
+samples once at the bundle tag (no double count). Sound rule now holds: construct
+consumes once, MATCH re-introduces once, dup/drop/none-loss/match-then-drop
+reject. Also corrected the slice-3 TDPA4 FALSE-NEGATIVE (`( own -- tdpbopt<own> )`
+rejected on UNDECLARED `own`, not a linear violation — linear multi-cell
+construction has been sound since item 11).
+
+FLIPPED PINS: CLFC-NESTED (type-ctor-suite, rc70 staged reject -> real
+round-trip). TDPA4 (type-decl-suite, false-negative -> real tdown con, positive
+construct + dup reject TDPA4B).
+ADDED PINS: type-ctor CN-RT-SOMEOK/SOMEERR/NONE/NONER, CND-RT-SOME/NONE, plus
+real-compile fail-closed CN-BADW/BADF/BADS/TRUNC/OPEN (rc70); type-decl
+TDNEST1-4, TDNOPEN (candidate certifies), TDNA1-3 (E-MISMATCH + arg-aware inner
+slot @tdnres.slot2 diagnostics); type-match MN1-3 (nested MATCH destructure/
+imbalance/re-wrap); type-linear NL1-7 (nested-linear construct/dup/drop/none-loss/
+identity/match-remint/match-drop).
+
+SOUND BOUNDARY (not a gap): an OPEN inner var (option<result<n,a>>) has an
+UNSTABLE width, so it certifies as a candidate but its REAL compile stays
+fail-closed via CONSTRUCT-WIDE-STAGED-REJECT (CN-OPEN, rc70). Declaration-level
+nested application over a family's own param (VARIANT wrap dinner<a>) does NOT
+parse today, so the SCH-NODE-IWIDTH SCHEMA-APP branch only ever sees arity-0
+concrete apps (declared width == instantiated) — no latent width gap, nothing to
+5b. NO 5b remainder: the sound subset for nested + linear-through-ADT is complete.
+
+RCA (blocking, resolved): the first draft used `defer LAYOUT-MAYBE-LIN-XT` /
+`defer LAYOUT-LIN-COUNT-XT` forward refs for the mutual recursion. These were the
+FIRST pre-trust defers in src/core/checker.f (the tree declares ZERO;
+checker.f:7947), so the DRAIN-PRETRUST-COMPAT miss branch no longer tolerated an
+empty table -> gate-stdlib pre-trust-defer "old-engine tolerance" hit the
+SEAL-CAPTURE backstop, exit 73. Root-caused via the C-DEFER->C-PD-CAPTURE path
+and re-fixed by making the recursion SELF-recursive (RECURSE), removing both
+defers. (TFCL-NODE-XT is not a counterexample: it is in type-family.f, loaded
+after `: TRUST`.) gate-stdlib green after the fix.
+
+BYTE-IDENTITY (slice-4 discipline): emitter files UNTOUCHED; TFC-CON-CLOSED? ==
+TFC-CON-FLAT? on every non-nested input; the linear recursion only branches on a
+T-PARAM arg. Proven by jitdump cmp of a non-nested WIDE program (NW=clopt<clw2>
+none extra-pad, NS=clopt<clw2> some) between parent-src and slice-5-src on the
+same seed binary (bin/hb loads src/core at boot): BOTH byte-identical.
+
+GATE TABLE (all green, YOUR workspace, fixpoint a3761eae after RCA fix):
+  fixpoint x2 byte-identical  = a3761eae5eb068a18df24aa3453040df5c10cc6d562f0272f81bcaf830a76aee (x2 cmp identical)
+  old-binary boot (b4d951cb)  = rc 0
+  DDC dual-emitter            = ddc: byte-identical a3761eae... (gforth chain == native fixpoint)
+  run.f                       = perf-verdict performance=pass correctness=t attempts=1, no FAIL
+  type-ctor/decl/match/linear = ok ; type-family-suite = ok
+  maki/test.f                 = ok (device leg skipped off-device)
+  test/gate-stdlib.f          = 0 red phases (pre-trust-defer PASS)
+  host-lint                   = 0 finding(s)
+  filemap-lint                = 0 finding(s) (917 paths)
+  trusted-inventory -- strict = baseline (separable folds 2/2; no new trusted surface)
+  typed-local-diff-lint       = rc 0
+  (run.f internal lint battery: parity/shadow/clobber/trust/status/filemap all PASS)
+Files: src/core/checker.f, src/core/type-family.f, docs/type-families.md (18/19),
+LESSONS.md, test/type-{ctor,decl,match,linear}-suite.f.
+
+SLICE 6 (still open, OPTIONAL sugar): raw-run fold (option<off len>, result<n n,n>)
+= reserved anonymous tuple family + TFAM-INST-WIDTH@ tuple branch + SIG-TYPE PK
+run-fold + TFAM-PK read-hook + sumtype.f LAYOUT header clause (Couplings A/B in
+the 2026-07-18 DoR amendment); expands the write set to src/core/sumtype.f. The
+preferred Habu shape remains a small named payload product per domain pair
+(needs no new grammar), so slice 6 is sugar, not a blocker.

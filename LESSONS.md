@@ -1465,3 +1465,20 @@ fits.
   cannot capture the REPL in the host and base-rebase it in (6.7% byte-identical, non-uniform chunk
   shifts, every word call an absolute movz/movk/blr `LSNAPRBC` can't remap) — capture in a small
   STDIN?=true engine.
+- Nested named ADTs needed NO new lowering machinery: the only blocker was the
+  flat-only gate `TFC-CON-FLAT?`; replacing it with recursive width-stability
+  (`TFC-CON-CLOSED?`, no open type var in the arg tree) flips nested end-to-end
+  under the SAME `WF-XPAD` extra-pad model (inner bundle pads at its own site,
+  outer adds only its delta). No emitter edit, no new WF fact kind.
+- Linearity must be TRANSITIVE through nested layout args: `option<lq2<ltok,n>>`
+  dup-laundered the buried `ltok` (NL-DUP was ACCEPTED) because the arg-linear
+  tests only saw a direct con/var, not a nested T-PARAM. Recurse
+  `LAYOUT-ARG-LINEARISH?`/`LAYOUT-ARG-LIN-N`; keep the count accumulator on the
+  STACK (shared `LLC-N` corrupts under recursion).
+- Never add a pre-trust `defer` to src/core/checker.f: the tree declares ZERO
+  (checker.f:7947) and a non-empty pre-trust pending table on a drain miss trips
+  the SEAL-CAPTURE backstop (gate-stdlib pre-trust-defer, exit 73). Use RECURSE
+  for forward recursion instead.
+- Confirm an adversarial rejects for the RIGHT reason (dump the diagnostic):
+  slice-3's linear-payload reject was a false negative — `own` was an UNKNOWN
+  type in that suite, not a linear violation.

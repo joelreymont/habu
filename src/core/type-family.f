@@ -1709,24 +1709,31 @@ variable TFC-I   variable TFC-J   variable TFC-ROW
    REPEAT
    base fam TFAM-NAME$ fam MK-PARAM ;
 
-\ layout-cap slice 4 (dot habu-checker-capability-layout-9b8540bd): width-aware
-\ construct/MATCH lowering. The checker records, per genuinely-wide FLAT instantiation
-\ (a multi-cell layout arg that is itself an arity-0 named product/family), one
+\ layout-cap slice 4/5 (dot habu-checker-capability-layout-9b8540bd): width-aware
+\ construct/MATCH lowering. The checker records, per genuinely-wide CLOSED instantiation
+\ (a multi-cell layout arg, flat arity-0 OR nested named application), one
 \ extra-pad fact keyed at the construct/ctor-call/`of` token: w = instantiated_pads -
 \ declared_pads, flagged WF-XPAD-FLAG so pass-2 fires even when the difference is 1.
 \ Pass 2 (native EM-ADT-CON-VAR / EM-COMPILE-CALL / EM-ADT-MATCH-OF, gforth mirror)
 \ adds those extra zero cells so the physical bundle matches the arg-aware width. A
-\ nested parametric arg (arity>0) stays outside the flat model and keeps the slice-3
-\ staged fail-closed (construct) / declared-width (match), tracked to slice 5.
-variable TFC-NEST
-: TFC-CON-FLAT? ( n -- bool ) {: dt:n :}   \ every multi-cell arg is a flat arity-0 family
-   0 TFC-NEST !
-   0 TFC-I !
-   BEGIN TFC-I @ dt PARAM>ARGC < WHILE
-      dt TFC-I @ PARAM>ARG dup T-WIDTH 1 > swap PARAM>ARGC 0 > and IF -1 TFC-NEST ! THEN
-      TFC-I @ 1 + TFC-I !
-   REPEAT
-   TFC-NEST @ 0= ;
+\ layout-cap slice 5 flips the flat-only gate to a recursive WIDTH-STABILITY check:
+\ a nested named instantiation (option<result<n,pkg:prod>>) lowers correctly under
+\ the SAME extra-pad model because every width site (TFAM-INST-WIDTH@, TFC-VAR-
+\ PAYCELLS, famterm T-WIDTH) already recurses through the arg tree — the inner
+\ bundle is constructed with its OWN extra pads at its own site, and the outer
+\ construct/match only adds the outer delta. The one soundness requirement is that
+\ every width be CLOSED (no open type var anywhere in the arg tree): an open inner
+\ var (option<result<n,a>>) has an unstable width and MUST stay fail-closed, so the
+\ recursion rejects it and CONSTRUCT-WIDE-STAGED-REJECT / declared-width match hold.
+\ (Reentrant: locals + RECURSE, no shared TFC-I.)
+: TFC-CON-CLOSED? ( n -- bool ) {: term:n :}   \ recursively width-stable: no open var anywhere in the arg tree
+   term T-RES {: r:n :}
+   r ISVAR IF RES-FALSE EXIT THEN                 \ open var -> width not stable -> stay fail-closed
+   r TAG T-PARAM <> IF RES-TRUE EXIT THEN          \ con/ptr/atom scalar -> width 1, stable
+   0 BEGIN dup r PARAM>ARGC < WHILE                \ layout: every arg recursively closed
+      r over PARAM>ARG RECURSE 0= IF drop RES-FALSE EXIT THEN
+      1 +
+   REPEAT drop RES-TRUE ;
 
 : TFC-VAR-PAYCELLS ( n -- n ) {: vid:n :}   \ sum of instantiated payload cell widths for a variant
    0
@@ -1745,7 +1752,7 @@ variable TFC-NEST
 
 : TFAM-MATCH-XPAD-RECORD ( n n -- ) {: vid:n term:n :}   \ record a wide MATCH arm's extra-pad fact
    term T-RES {: rt:n :}
-   rt TFC-CON-FLAT? 0= IF EXIT THEN             \ nested arm: leave declared width (slice 5)
+   rt TFC-CON-CLOSED? 0= IF EXIT THEN           \ open-arg (unstable width): leave declared width, stay fail-closed
    rt T-WIDTH 1 -                                \ instantiated slots
    vid TFC-VAR-PAYCELLS -                        \ - instantiated payload cells = instantiated pads
    vid SUMV-FAM@ TFAM-SLOTS@ vid SUMV-PAYCELLS@ - -   \ - declared pads = extra pads
@@ -1777,13 +1784,13 @@ variable TFC-NEST
    FRESH MK-ROW {: base:n :}
    vid base TFC-PAY-ROW {: din:n :}
    fam TFC-FAM-TERM {: famterm:n :}
-   dt 0 <> IF                                         \ layout-cap slice 4: width-aware lowering, else fail closed
-      dt TFC-CON-FLAT? IF fam vid famterm TFC-CON-XPAD-RECORD THEN
+   dt 0 <> IF                                         \ layout-cap slice 4/5: width-aware lowering for a CLOSED (stable-width) instantiation, incl. nested
+      dt TFC-CON-CLOSED? IF fam vid famterm TFC-CON-XPAD-RECORD THEN
    THEN
    famterm base PUSH-LOGICAL {: dout:n :}
    din dout CHECKER-STEP
    dt 0 <> IF
-      dt TFC-CON-FLAT? 0= IF CONSTRUCT-WIDE-STAGED-REJECT THEN   \ nested parametric arg: slice 5 (staged fail-closed)
+      dt TFC-CON-CLOSED? 0= IF CONSTRUCT-WIDE-STAGED-REJECT THEN   \ open-arg (unstable width): stay staged fail-closed
    THEN ;
 
 : TFAM-CONSTRUCT-STEP ( ptr u8 n n -- bool ) {: na:ptr nu:n fam:n :}

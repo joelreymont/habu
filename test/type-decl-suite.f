@@ -1960,11 +1960,49 @@ DIAG-BUFFER$ s\" @tdpbopt.slot2<tdpbw2<>>" TDT-CONTAINS? -1 T=
 DIAG-BUFFER-OFF
 s" TDPA2 ( tdpbw2 -- tdpbopt<n> ) TDPBOPT:SOME" CHECK-QUIET-CANDIDATE! 0 T=
 s" TDPA3 ( -- tdpbopt<tdpbw2> ) TDPBRES:OK" CHECK-QUIET-CANDIDATE! 0 T=
-s" TDPA4 ( own -- tdpbopt<own> ) TDPBOPT:SOME" CHECK-QUIET-CANDIDATE! 0 T=
+\ TDPA4 (slice 5 correction): the slice-3 `( own -- tdpbopt<own> )` pin was a FALSE
+\ negative — `own` is undeclared in this suite, so it rejected as an UNKNOWN type,
+\ not as a linear violation. Constructing a linear-payload multi-cell sum is SOUND
+\ and pinned positive in test/type-linear-suite.f (A1/A6/A7 with a real deflinear
+\ con); the genuinely-unsound path is DUPLICATION of the constructed bundle. With
+\ the real linear con `tdown` (declared above), SOME certifies and dup rejects.
+s" TDPA4 ( tdown -- tdpbopt<tdown> ) TDPBOPT:SOME" CHECK-QUIET-CANDIDATE! -1 T=
+s" TDPA4B ( tdown -- tdpbopt<tdown> tdpbopt<tdown> ) TDPBOPT:SOME dup" CHECK-QUIET-CANDIDATE! 0 T=
 \ NOTE: the staged lowering fail-closed (a REAL compile of a wide construct
 \ rejects rc 70) is pinned in test/type-ctor-suite.f — that suite permits the
 \ compile-hook stderr, while candidate-validation requires this positive suite
 \ to stay stderr-clean.
+
+\ ---------------------------------------------------------------------------
+\ layout-cap slice 5 (same dot): NESTED named ADTs. A named multi-cell family
+\ instantiation used as the payload arg of ANOTHER family (tdnopt<tdnres<n,n>>)
+\ identity-checks and CONSTRUCTS/CERTIFIES — every width site recurses through the
+\ arg tree (TFAM-INST-WIDTH@ / TFC-VAR-PAYCELLS / famterm T-WIDTH). TDNEST1-4
+\ positive; TDNA1-3 adversarial (wrong inner width, cross-family inner, scalar
+\ inner) stay RED with exact E-MISMATCH diagnostics — TDNA1's expected renders the
+\ arg-aware inner slot (clfres<clw2,n> carries an extra @tdnres.slot2). An OPEN
+\ inner var certifies as a candidate (rows sound with a=1) but its REAL compile
+\ stays fail-closed (unstable width) — pinned in test/type-ctor-suite.f CN-OPEN.
+\ ---------------------------------------------------------------------------
+PRODUCT tdnw2 0 FIELD x n FIELD y n ;PRODUCT
+SUMTYPE tdnopt 1 VARIANT none ;VARIANT VARIANT some a ;VARIANT ;SUMTYPE
+SUMTYPE tdnres 2 VARIANT ok a ;VARIANT VARIANT err b ;VARIANT ;SUMTYPE
+s" TDNEST1 ( tdnopt<tdnres<n,n>> -- tdnopt<tdnres<n,n>> )" CHECK-QUIET-CANDIDATE! -1 T=
+s" TDNEST2 ( tdnres<n,n> -- tdnopt<tdnres<n,n>> ) TDNOPT:SOME" CHECK-QUIET-CANDIDATE! -1 T=
+s" TDNEST3 ( -- tdnopt<tdnres<n,n>> ) TDNOPT:NONE" CHECK-QUIET-CANDIDATE! -1 T=
+s" TDNEST4 ( tdnres<tdnw2,n> -- tdnopt<tdnres<tdnw2,n>> ) TDNOPT:SOME" CHECK-QUIET-CANDIDATE! -1 T=
+s" TDNOPEN ( tdnres<n,a> -- tdnopt<tdnres<n,a>> ) TDNOPT:SOME" CHECK-QUIET-CANDIDATE! -1 T=
+TDIAG-BUF 8192 DIAG-BUFFER!  -1 DIAG-JSON!
+s" TDNA1 ( tdnres<n,n> -- tdnopt<tdnres<tdnw2,n>> ) TDNOPT:SOME" CHECK-CANDIDATE! 0 T=
+DIAG-BUFFER$ s\" \"code\":\"E-MISMATCH\"" TDT-CONTAINS? -1 T=
+DIAG-BUFFER$ s\" @tdnres.slot2<tdnw2<>,n>" TDT-CONTAINS? -1 T=
+TDIAG-BUF 8192 DIAG-BUFFER!
+s" TDNA2 ( tdnopt<n> -- tdnopt<tdnres<n,n>> ) TDNOPT:SOME" CHECK-CANDIDATE! 0 T=
+DIAG-BUFFER$ s\" \"code\":\"E-MISMATCH\"" TDT-CONTAINS? -1 T=
+DIAG-BUFFER$ s\" \"family\":\"tdnres\"" TDT-CONTAINS? -1 T=
+0 DIAG-JSON!
+DIAG-BUFFER-OFF
+s" TDNA3 ( n -- tdnopt<tdnres<n,n>> ) TDNOPT:SOME" CHECK-QUIET-CANDIDATE! 0 T=
 
 : REPORT ( -- )
    #FAIL @ 0 = if s" ok" type cr exit then

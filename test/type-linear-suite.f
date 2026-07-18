@@ -116,6 +116,28 @@ s" KR3=" type s" KB3 ( ltok n -- lq2<ltok,n> ) nip construct lq2 err" CHECK-QUIE
 cr
 
 \ ---------------------------------------------------------------------------
+\ layout-cap slice 5 (dot habu-checker-capability-layout-9b8540bd): linearity is
+\ TRANSITIVE through a NESTED layout arg. A linear con buried inside a nested
+\ instantiation (the ltok inside lopt<lq2<ltok,n>>) makes the OUTER bundle one
+\ linear unit — LAYOUT-ARG-LIN-N / LAYOUT-ARG-LINEARISH? recurse through the arg
+\ tree, so LIN-TYPE-COUNT samples the one unit at the outer tag. Before slice 5
+\ the outer bundle read as non-linear and could be dup/dropped, laundering the
+\ resource (a soundness hole). Sound rule: a linear moving INTO the constructed
+\ payload consumes it once (NL1), MATCH re-introduces it once and the arm must
+\ consume it — re-mint (NL6) or free — and any copy (NL2), loss (NL3/NL4), or
+\ match-then-drop (NL7) rejects. Identity/transport still flows (NL5).
+\ ---------------------------------------------------------------------------
+SUMTYPE lopt 1 VARIANT none ;VARIANT VARIANT some a ;VARIANT ;SUMTYPE
+s" NL1=" type s" NC1 ( lq2<ltok,n> -- lopt<lq2<ltok,n>> ) LOPT:SOME" CHECK-QUIET-CANDIDATE! -1 T=
+s" NL2=" type s" NC2 ( lq2<ltok,n> -- lopt<lq2<ltok,n>> lopt<lq2<ltok,n>> ) LOPT:SOME dup" CHECK-QUIET-CANDIDATE! 0 T=
+s" NL3=" type s" NC3 ( lopt<lq2<ltok,n>> -- ) drop" CHECK-QUIET-CANDIDATE! 0 T=
+s" NL4=" type s" NC4 ( lq2<ltok,n> -- lopt<lq2<ltok,n>> ) LOPT:NONE" CHECK-QUIET-CANDIDATE! 0 T=   \ NONE drops the linear payload
+s" NL5=" type s" NC5 ( lopt<lq2<ltok,n>> -- lopt<lq2<ltok,n>> )" CHECK-QUIET-CANDIDATE! -1 T=
+s" NL6=" type s" NC6 ( lopt<lq2<ltok,n>> -- lopt<lq2<ltok,n>> ) MATCH lopt none OF LOPT:NONE ENDOF some OF LOPT:SOME ENDOF ;MATCH" CHECK-QUIET-CANDIDATE! -1 T=
+s" NL7=" type s" NC7 ( lopt<lq2<ltok,n>> -- n ) MATCH lopt none OF 0 ENDOF some OF drop 1 ENDOF ;MATCH" CHECK-QUIET-CANDIDATE! 0 T=
+cr
+
+\ ---------------------------------------------------------------------------
 \ report: "ok" on success, nonzero exit on any failure.
 \ ---------------------------------------------------------------------------
 : REPORT ( -- )
