@@ -190,6 +190,12 @@ TEST:SUITE maki/db/evidence-test.f
 TEST:;SUITE
 TEST:SUITE maki/db/evidence-applicability-test.f
 TEST:;SUITE
+TEST:SUITE maki/db/promotion-policy-test.f
+TEST:;SUITE
+TEST:SUITE maki/db/promotion-authority-test.f
+TEST:;SUITE
+TEST:SUITE maki/db/promotion-test.f
+TEST:;SUITE
 TEST:SUITE maki/db/action-test.f
 TEST:;SUITE
 TEST:SUITE maki/db/diff-suite-test.f

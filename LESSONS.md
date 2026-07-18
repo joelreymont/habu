@@ -6233,3 +6233,36 @@ unchanged (148855). Keys for milestone 2:
   a byte-identical pristine scratch build (== `bin/hb`) passes; pointing the
   child at the scratch engine passes. Verify a suspected maki regression with
   parent==child before touching code.
+
+- **A multi-cell PRODUCT / a wide value cannot be a typed local or a custom-sum
+  `ok` payload; it must flow on the stack and be UNMAKEd.** Building the promotion
+  typestate (maki/db/promotion.f, dot habu-v2-evidence-promotion-f8312ebe), a
+  2-field `authority` product rejected `{: a:authority :}` with "unknown type
+  'authority'" (a 1-field product bound fine). Same wall the maki/evidence/policy.f
+  CHECK deviation names: sum variant payloads and typed locals are single-cell.
+  Consequences that shaped the design: (1) sealed staged products
+  (Candidate/Verified/... each `FIELD model .. FIELD tok <proof>`) RETURN directly
+  and THROW named refusals (the POLICY:CHECK pattern), since they can't be a
+  `VARIANT ok <stage>` payload; the typed reject is the separately-queried
+  APPLIC:VERDICT sum. (2) When a transition needs TWO wide operands (SATISFY wanted
+  `measured` + the 10-field policy), give the policy a single-cell projection
+  (PPOLICY:BIND -> model expiry + 4 digest words) so only ONE wide product is on the
+  stack at UNMAKE time - avoids deep juggling and the "no deep stacks" rule.
+  Unforgeability + single-cell + free read-back are mutually exclusive under today's
+  types: sealed-token products give unforgeable + free UNMAKE read-back but are
+  multi-cell; arity-0 nominals + RAW>/>RAW give single-cell + unforgeable but need a
+  trust site per direction. The sealed-token + throw route needs the FEWEST trust
+  sites (one `-- proof` mint per stage), and `-- proof` mints are NOT mint-shaped so
+  refine-lint never demands a seed-list edit (only TRUSTED.md manifest + classification
+  rows), keeping the whole change inside a maki/db write-set.
+
+- **A bare cross-package type-family reference is fragile: a second same-tail family
+  in another package makes it "unknown type".** DAUTH's `SUMTYPE auth-result` compiled
+  and tested fine in isolation and in its own suite, but broke maki/db/capbud-test.f
+  ("in acode: unknown type 'auth-result'"): commit-store-auth-test.f's ACODE signature
+  used the BARE tail `auth-result`, which had resolved only because CSTORE:auth-result
+  was globally unique. Family DECLARATIONS are package-scoped (a same tail in a
+  different package is accepted, and qualified refs like PROMOTE:verified are always
+  fine), but a BARE reference goes ambiguous once two exist. Fix: rename the new sum
+  to a unique tail (authz-result). Lesson: pick distinct tails for new public sums,
+  and prefer qualified `PKG:family` in signatures across boundaries.

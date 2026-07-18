@@ -679,6 +679,12 @@ that source is explicitly certified; they are not stale-checked by the default
 | ACTION-ID>RAW | `CAD-KIND:action-id -- n` | Private action identity projection used only by bounds validation, name-table access, `ACTION:EQUAL?`, `DISPATCH` resolution, and the `ENUM-AT` / `DIGEST` canonical enumeration; no public raw conversion is exported. | `maki/db/action-test.f` | maki/db/action.f | 2026-07-17 |
 | RAW>GRANT | `n -- CAPTOK:grant` | Private capability-grant refinement over an append-only authority-slot allocation (the maki/db/action.f `RAW>ACTION-ID` pattern; a package-local `CAPTOK:grant` nominal, not a CAD-KIND identity); the only public producers are `CAPTOK:ROOT` (the trusted authority-origin mint) and `CAPTOK:ATTENUATE` (a subset-checked child derivation), so a raw n cannot forge a capability grant and no nested attenuation can exceed its parent's authority (dot habu-v2-capability-and-0970a96d). | `maki/db/capability-test.f` | maki/db/capability.f | 2026-07-18 |
 | GRANT>RAW | `CAPTOK:grant -- n` | Private grant identity projection used only by bounds validation and pooled authority-slot access (`CAP-MASK@` / `BUDGET@` / `AUTHORIZES?` / `ATTENUATE`); no public raw conversion is exported. | `maki/db/capability-test.f` | maki/db/capability.f | 2026-07-18 |
+| MINT-CAND-PROOF | `-- cand-proof` | Private promotion-typestate mint: the class-private Candidate proof token, minted only by `PROMOTE:CANDIDATE`; its existence downstream of the seed is the seal, so a raw n cannot forge a `PROMOTE:candidate` (dot habu-v2-evidence-promotion-f8312ebe). | `maki/db/promotion-test.f` | maki/db/promotion.f | 2026-07-18 |
+| MINT-VER-PROOF | `-- ver-proof` | Private promotion-typestate mint: the Verified proof token, minted only by `PROMOTE:VERIFY` AFTER the obligation is APPLICABLE (compose `APPLIC:VERDICT`), so a Verified is unconstructible without applicable evidence and a raw n cannot forge one (dot habu-v2-evidence-promotion-f8312ebe). | `maki/db/promotion-test.f` | maki/db/promotion.f | 2026-07-18 |
+| MINT-MEAS-PROOF | `-- meas-proof` | Private promotion-typestate mint: the Measured proof token, minted only by `PROMOTE:MEASURE` after the measurement obligation is APPLICABLE, so a raw n cannot forge a `PROMOTE:measured` (dot habu-v2-evidence-promotion-f8312ebe). | `maki/db/promotion-test.f` | maki/db/promotion.f | 2026-07-18 |
+| MINT-SAT-PROOF | `-- sat-proof` | Private promotion-typestate mint: the PolicySatisfied proof token, minted only by `PROMOTE:SATISFY` after the policy binds the candidate model, is unexpired, and its digest is bound, so a raw n cannot forge a `PROMOTE:satisfied` (dot habu-v2-evidence-promotion-f8312ebe). | `maki/db/promotion-test.f` | maki/db/promotion.f | 2026-07-18 |
+| MINT-PROM-PROOF | `-- prom-proof` | Private promotion-typestate mint: the Promoted proof token, minted only by `PROMOTE:PROMOTE` after the obligation closure is journaled, so a raw n cannot forge a `PROMOTE:promoted` (dot habu-v2-evidence-promotion-f8312ebe). | `maki/db/promotion-test.f` | maki/db/promotion.f | 2026-07-18 |
+| MINT-AUTH-PROOF | `-- auth-proof` | Private discharge-authority mint: the sealed authority token, minted only by `DAUTH:SEAL`, so a forged authority cannot silently widen who may discharge an obligation (the `CAPTOK:grant` discipline; dot habu-v2-evidence-promotion-f8312ebe). | `maki/db/promotion-authority-test.f` | maki/db/promotion-authority.f | 2026-07-18 |
 | DIM-REFINE | `n -- CAD-KIND:dim` | Private validated nominal representation boundary for tensor dimensions; tracked by `habu-v2-r3-type-9f89d1e9`. | `maki/tensor-test.f` | maki/tensor.f | 2026-07-12 |
 | DIM-RAW | `CAD-KIND:dim -- n` | Private dimension projection used only by checked shape algebra and numeric execution boundaries. | `maki/tensor-test.f` | maki/tensor.f | 2026-07-12 |
 | ROWS-REFINE | `n -- CAD-KIND:rows` | Private validated row-role refinement; public construction goes through `SHAPE`. | `maki/tensor-test.f` | maki/tensor.f | 2026-07-12 |
@@ -1421,6 +1427,12 @@ maki/db/action.f:RAW>ACTION-ID prim-axiom habu-epic-model-cad-70b629a9
 maki/db/action.f:ACTION-ID>RAW prim-axiom habu-epic-model-cad-70b629a9
 maki/db/capability.f:RAW>GRANT prim-axiom habu-epic-model-cad-70b629a9
 maki/db/capability.f:GRANT>RAW prim-axiom habu-epic-model-cad-70b629a9
+maki/db/promotion.f:MINT-CAND-PROOF prim-axiom habu-epic-model-cad-70b629a9
+maki/db/promotion.f:MINT-VER-PROOF prim-axiom habu-epic-model-cad-70b629a9
+maki/db/promotion.f:MINT-MEAS-PROOF prim-axiom habu-epic-model-cad-70b629a9
+maki/db/promotion.f:MINT-SAT-PROOF prim-axiom habu-epic-model-cad-70b629a9
+maki/db/promotion.f:MINT-PROM-PROOF prim-axiom habu-epic-model-cad-70b629a9
+maki/db/promotion-authority.f:MINT-AUTH-PROOF prim-axiom habu-epic-model-cad-70b629a9
 maki/tensor-value.f:RAW>TENSOR prim-axiom habu-epic-model-cad-70b629a9
 maki/tensor-value.f:TENSOR>RAW prim-axiom habu-epic-model-cad-70b629a9
 maki/tensor-value.f:TYPED-LINEAR stdlib-boundary habu-epic-model-cad-70b629a9

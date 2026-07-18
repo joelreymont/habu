@@ -948,6 +948,48 @@ points stay listed.
   verifier-identity flips the verdict to exactly the affected result), the two structural
   refusals (static-vs-device, performance-vs-equivalence, each with a discharging positive
   control), and the minimal invalidation set per change-set with cache-equals-uncached proven.
+- `maki/db/promotion-policy.f` — the promotion POLICY value + content digest (dot
+  habu-v2-evidence-promotion-f8312ebe). Package PPOLICY: the immutable `spec` product BINDS
+  ten typed fields over the landed § 23.9 identities — model, weights (`CAD-KIND:artifact-id`),
+  target (`target-id`), numeric policy (`numeric-policy-id`), populations (`config-id`,
+  conservative reading), verifier identity (`producer-id`) + version, threshold, expiry, and
+  rollback artifact. `DIGEST-WORDS` is SHA-256 over the canonical serialization (each identity
+  as its owner `KEY>WIRE` content key, each scalar LE64) as four words — the digest a promoted
+  value carries, so any changed bound field digests differently; `DIGEST-EQ?` and `BIND` (the
+  single-cell model/expiry/digest projection `PROMOTE:SATISFY` consumes) round it out. Owns -5606.
+- `maki/db/promotion-policy-test.f` — policy acceptance: field-identical policies share a
+  digest; a changed threshold / expiry / verifier-version each digests differently; `BIND`
+  yields the model, expiry, and the digest words matching `DIGEST-WORDS`.
+- `maki/db/promotion-authority.f` — the folded obligation-discharge AUTHORITY gate (dot
+  habu-v2-evidence-promotion-f8312ebe, the discharge-authority leg). Package DAUTH: a sealed
+  `authority` (an allowlist of authorized verifier `producer-id`s, minted via NEW/AUTHORIZE+/
+  SEAL, the CAPTOK:ROOT discipline) and `AUTHORIZED-DISCHARGE` — the typed `authz-result`
+  (ok / not-discharged / unauthorized) that FOLDS the three authorization legs: verifier CLASS
+  and INDEPENDENCE via the landed `OBLIG:DISCHARGE`, plus verifier IDENTITY via the allowlist.
+  The reusable third leg `CSTORE:COMMIT-AUTHORIZED` needs (wiring it there is a separate change:
+  the transaction carries no obligation/evidence discharge context yet). Owns -5607..-5608.
+- `maki/db/promotion-authority-test.f` — authority acceptance: discharges + authorized -> ok;
+  discharges but verifier off the allowlist -> unauthorized; wrong subject / wrong verifier
+  class / independence-violation (even for an authorized producer) -> not-discharged (the
+  discharge refusal wins over authorization).
+- `maki/db/promotion.f` — the immutable evidence-promotion TYPESTATE (MODEL-CAD-V2-PLAN.md
+  § R7 artifact<promoted> + § 23.9; dot habu-v2-evidence-promotion-f8312ebe). Package PROMOTE:
+  Candidate -> Verified -> Measured -> PolicySatisfied -> Promoted, each a distinct sealed
+  product DERIVED (never mutated) from the prior — every stage carries a class-private proof
+  token whose PRIVATE mint makes a raw n / wrong-stage value unable to forge it (the static
+  unconstructibility leg). `VERIFY` / `MEASURE` mint the next stage ONLY when the obligation is
+  APPLICABLE over the session working set (compose `APPLIC:VERDICT`); missing / stale /
+  wrong-target evidence makes the verdict non-applicable and the transition refuses
+  (`E-PROMO-UNAPPLICABLE`), so the stage is unconstructible without applicable evidence.
+  `SATISFY` binds the policy digest (and enforces model + expiry), threaded into `PROMOTE`,
+  whose `REVALIDATE` fails a changed policy (digest-bound). `PROMOTE` records the EXACT
+  obligation closure (content keys + verdicts) to the journal; `REPLAY-DESC$` (recorded) equals
+  `CLOSURE-DESC$` (recomputed). Owns -5609..-5613.
+- `maki/db/promotion-test.f` — typestate acceptance: the typed reject (APPLIC verdict for
+  present/changed/wrong-target/wrong-domain evidence), the constructor refusal (VERIFY/MEASURE
+  throw), the static leg (raw-n / wrong-stage rejected verdict 0, private mint unresolvable
+  verdict 1 / search-wl), identity threading unchanged Candidate->Promoted, policy-change
+  invalidation both directions, and recorded-equals-recomputed audit closure.
 - `maki/db/action.f` — the machine-facing action-schema registry (MODEL-CAD-V2-PLAN.md
   § 23.9 "Machine-facing action registry", plan:3825; dot habu-v2-machine-action-a7357409).
   Package ACTION owns `CAD-KIND:action-id` and interns each callable protocol action by
