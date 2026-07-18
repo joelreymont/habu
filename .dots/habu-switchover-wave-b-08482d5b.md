@@ -1,9 +1,9 @@
 ---
 title: "Switchover wave B: option<tuple> + result<T,errno> process family"
-status: open
+status: active
 priority: 2
 issue-type: task
-created-at: "\"\\\"2026-07-04T22:18:57.005375+02:00\\\"\""
+created-at: "\"\\\"\\\\\\\"2026-07-04T22:18:57.005375+02:00\\\\\\\"\\\"\""
 ---
 
 docs/census-switchover.md section 5 wave B. The 25 multi-value+flag words (SPLIT-NEXT string.f:180, NEXT-LINE object.f:274 r8, RX-FIND* regex.f:454/464, LOAD object-index.f:116, JSONLF-*/JSONL-PARSE-ROW, PROC-ENV-DEFAULT0, FL-STRIP-SIGN, tool row parsers) to option<tuple>; the 34-site process rc family (PROC-WAIT-RC r17, PROC-RUN-RC r11, RUN-CAPTURE/PROC-CAPTURE-RC@ len-len-rc + process-env/cwd/argv mirrors) to result<T,errno> over E-PROC-*. Raw habu1.f emitters (BRUNRC/BPIPE/BPOLL/...) stay rc-sentinel at the trusted boundary; only checked wrappers migrate. DEPENDS: wave A patterns proven, item 12 multi-cell.
@@ -209,7 +209,7 @@ down to PROC-WAIT-RC. Remaining rc-adjacent: PROC-STATUS>RC / PROC-OUTCOME>RC /
 PROC-STATUS>OUTCOME are the raw kind/code producers = Wave C outcome-sum territory
 (migrate there, not as result). Wave B scalar-rc half is COMPLETE.
 
-Claim: agent=waveb workspace=.jj-ws/fable-waveb (wave-B caller files per the census section-5 list)
+Claim (RELEASED 2026-07-17): agent=waveb workspace=.jj-ws/fable-waveb (wave-B caller files per the census section-5 list)
 
 SURVEY RESOLVED 2026-07-17 (waveb lane, no commit - correct): the
 unblocked wave-B scope is COMPLETE (all 6 scalar-rc process words landed
@@ -240,7 +240,7 @@ named payload PRODUCTs per the DoR amendment (option<str-slice> etc.);
 the layout dot stays open only for nested/linear (slice 5) and raw-run
 sugar (slice 6), neither needed here.
 
-Claim: agent=waveb2 workspace=.jj-ws/fable-waveb2 (the unblocked remainder: 25 option<tuple> words + the capture cluster via named payload products)
+Claim (RELEASED 2026-07-18, batch 1 merged 9beca7a0): agent=waveb2 workspace=.jj-ws/fable-waveb2 (the unblocked remainder: 25 option<tuple> words + the capture cluster via named payload products)
 
 BATCH 1 LANDED 2026-07-18 (waveb2 lane, commits 24ba55f3 + d92a700b,
 gated green: regex/object-index/object-resolve suites, stdlib-manifest,
@@ -271,3 +271,5 @@ REMAINDER RECLASSIFIED (waveb2 survey, recorded verbatim):
 
 Claim released 2026-07-18: batch 1 merged; workspace .jj-ws/fable-waveb2
 retired. Next claimant starts with the SPLIT-NEXT/NEXT-LINE prelude batch.
+
+Claim: agent=waveb3 workspace=.jj-ws/fable-waveb3 (batch 2: SPLIT-NEXT/NEXT-LINE prelude cluster via 3-field named payload product; engine battery owed — string.f is in the fixpoint prefix)
