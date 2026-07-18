@@ -36,7 +36,8 @@ create ERR CAP allot
    s" 1 data-base TXN-STATE-OFF 1- + +!" REJECTS
    s" 0 data-base TXN-STATE-OFF 1- + atomic!" REJECTS
    s" 0 data-base TXN-STATE-OFF 1- + patch32" REJECTS
-   s" 0 -4 !" REJECTS ;
+   s" 0 -4 !" REJECTS
+   s" variable PST-A 7 PST-A atomic! 7 9 PST-A atomic-cas 7 <> if 1 throw then PST-A atomic@ 9 <> if 1 throw then" ACCEPTS ;
 
 : TEST-CODE ( -- )
    s" data-base TXN-STATE-OFF 1- + cp!" REJECTS

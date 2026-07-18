@@ -304,12 +304,12 @@ public
       7 done CBNZ,                           \ _IOC_WRITE: kernel reads only
       trap B,
       legacy LBL,
-      7 36 MOVZ,  2 7 GUARD-SPAN
+      7 36 MOVZ,  2 7 PROT-GUARD:CALL
       done B,
       write LBL,
       7 1 16 LSRI,  8 $3FFF LIT64,  7 7 8 AND,
       7 done CBZ,
-      2 7 GUARD-SPAN
+      2 7 PROT-GUARD:CALL
    ELSE
       8 $40000000 LIT64,  7 1 8 AND,         \ IOC_OUT: kernel writes
       7 write CBNZ,
@@ -319,7 +319,7 @@ public
       write LBL,
       7 1 16 LSRI,  8 $1FFF LIT64,  7 7 8 AND,
       7 done CBZ,
-      2 7 GUARD-SPAN
+      2 7 PROT-GUARD:CALL
    THEN
    done B,
    trap LBL,  0 ENGINE-ERROR:SEAL-VIOLATION MOVZ,  NR-EXIT-GROUP SYS,
@@ -761,7 +761,7 @@ variable NUM-FPOS
    6 1 61 LSRI,  6 plen CBZ,                  \ nfds*8 overflow becomes an all-address span
       6 0 MOVN,  pguard B,
    plen LBL,  6 1 3 LSLI,
-   pguard LBL,  0 6 GUARD-SPAN                 \ pollfd array: nfds * 8 bytes
+   pguard LBL,  0 6 PROT-GUARD:CALL             \ pollfd array: nfds * 8 bytes
    LBL LNX-OK !
    LBL LNX-DONE !
    LBL LNX-PNEG !
@@ -1174,7 +1174,7 @@ variable SZA-I
 \ offset is never inside a data-base band, so the latch-gated guard leaves them intact.
 : BCPSET ( -- ) B-TASK-LIVE-GUARD  A G-POP  A GUARD-CODE-WORD  CP A 0 ADDI, ;   \ ( addr -- ) set CP — forget code back to a mark
 : BNDSET ( -- ) B-TASK-LIVE-GUARD  A G-POP                                 \ ( n -- ) set NDICT — forget dict entries past a mark
-   C DREC MOVZ,  B A C MUL,  B DBASE B ADD,  7 DREC MOVZ,  B 7 GUARD-SPAN
+   C DREC MOVZ,  B A C MUL,  B DBASE B ADD,  7 DREC MOVZ,  B 7 PROT-GUARD:CALL
    NDICT A 0 ADDI, ;
 
 : BEPOCHSECONDS ( -- )
@@ -1412,23 +1412,25 @@ variable SZA-I
    B G-POP  A G-POP  B B 3 LSLI,  A A B ADD,  A G-PUSH ;
 
 : BPLUSSTORE ( -- )
-   B G-POP A G-POP  7 8 MOVZ,  B 7 GUARD-SPAN  C B 0 LDR,  C C A ADD,  C B 0 STR, ;
+   B G-POP A G-POP  7 8 MOVZ,  B 7 PROT-GUARD:CALL  C B 0 LDR,  C C A ADD,  C B 0 STR, ;
 
 : BCFETCH ( -- )
    A G-POP  A A 0 LDRB, A G-PUSH ;
 
 : BCSTORE ( -- )
-   B G-POP A G-POP  7 1 MOVZ,  B 7 GUARD-SPAN  A B 0 STRB, ;
+   B G-POP A G-POP  7 1 MOVZ,  B 7 PROT-GUARD:CALL  A B 0 STRB, ;
 
 \ Atomic primitives (ARMv8.1 LSE; Orin is ARMv8.2). A=x9 B=x10 C=x11.
 : BATFETCH ( -- )   \ atomic@ ( ptr a -- a ) : LDAR x9,[x9]
    A G-POP  $C8DFFD29 EMITW  A G-PUSH ;
 : BATSTORE ( -- )   \ atomic! ( a ptr a -- ) : STLR x9,[x10]
-   B G-POP A G-POP  7 8 MOVZ,  B 7 GUARD-SPAN  $C89FFD49 EMITW ;
+   B G-POP A G-POP  7 8 MOVZ,  B 7 PROT-GUARD:CALL  $C89FFD49 EMITW ;
 : BATADD ( -- )     \ atomic-add ( delta addr -- old ) : LDADDAL x9,x9,[x10]
-   B G-POP A G-POP  7 8 MOVZ,  B 7 GUARD-SPAN  $F8E90149 EMITW  A G-PUSH ;
+   B G-POP A G-POP  7 8 MOVZ,  B 7 PROT-GUARD:CALL  $F8E90149 EMITW  A G-PUSH ;
 : BATCAS ( -- )     \ atomic-cas ( expected new addr -- actual ) : CASAL x9,x10,[x11]
-   C G-POP B G-POP A G-POP  7 8 MOVZ,  C 7 GUARD-SPAN  $C8E9FD6A EMITW  A G-PUSH ;
+   C G-POP B G-POP A G-POP  14 B 0 ADDI,  7 8 MOVZ,
+   C 7 PROT-GUARD:CALL  C B 0 ADDI,  B 14 0 ADDI,
+   $C8E9FD6A EMITW  A G-PUSH ;
 : BFENCE ( -- )     \ fence ( -- ) : DMB ISH
    $D5033BBF EMITW ;
 
@@ -1538,7 +1540,7 @@ variable SZA-I
    2 G-POP  1 G-POP  0 G-POP  NR-WRITE SYS,  SYS-PUSH ;
 
 : BREAD ( -- )
-   2 G-POP  1 G-POP  0 G-POP  1 2 GUARD-SPAN  NR-READ SYS,  SYS-PUSH ;
+   2 G-POP  1 G-POP  0 G-POP  1 2 PROT-GUARD:CALL  NR-READ SYS,  SYS-PUSH ;
 
 : BIOCTL ( -- )
    2 G-POP  1 G-POP  0 G-POP  GUARD-IOCTL  NR-IOCTL SYS,  SYS-PUSH ;
@@ -1547,7 +1549,7 @@ variable SZA-I
    5 G-POP  4 G-POP  3 G-POP  2 G-POP  1 G-POP  0 G-POP
    LBL {: notfixed:label :}
    6 3 $10 ANDI,  6 notfixed CBZ,            \ only MAP_FIXED replaces an existing mapping
-      0 1 GUARD-SPAN                          \ x0 = address, x1 = mapping length
+      0 1 PROT-GUARD:CALL                      \ x0 = address, x1 = mapping length
    notfixed LBL,
    HB-TARGET-LINUX? IF OS-MMAP-FLAGS THEN
    NR-MMAP SYS,  SYS-PUSH ; \ ( addr len prot flags fd off -- addr|-1 )
@@ -1648,18 +1650,36 @@ variable SZA-I
 \ Scalars and read-only pointers use zero; writable pointers are guarded as
 \ complete spans before the BLR. Preconditions: x14=nargs, x15=argbuf,
 \ x17=writable-length buffer, x20=DATA.
-: BFFI-GUARD-BOUNDS ( -- )
-   LBL LBL {: loop:label done:label :}
-   10 0 MOVZ,                                          \ x10 = i = 0
+package FFI-GUARD
+
+variable TARGET
+
+public
+
+: INIT ( -- )
+   LBL TARGET ! ;
+
+: CALL ( -- )
+   TARGET LABEL@ BL, ;
+
+: EMIT ( -- )
+   TARGET LABEL@ {: start:label :}
+   LBL LBL LBL {: loop:label done:label end:label :}
+   s" (FFI-GUARD)" start LABEL>N end LABEL>N ENGINE-HELPER:REGISTER
+   start LBL,
+   SP SP 16 SUBI,  30 SP 0 STR,
+   5 0 MOVZ,                                           \ x5 = i = 0
    loop LBL,
-      10 14 CMP,  C-GE done BCOND,                     \ i >= nargs -> done
-      11 10 3 LSLI,  11 15 11 ADD,                     \ x11 = argbuf + i*8
-      9 11 0 LDR,                                      \ x9 = argbuf[i]
-      11 10 3 LSLI,  11 17 11 ADD,
-      6 11 0 LDR,                                      \ x6 = writable extent
-      9 6 GUARD-SPAN
-      10 10 1 ADDI,  loop B,
-   done LBL, ;
+      5 14 CMP,  C-GE done BCOND,                      \ i >= nargs -> done
+      6 5 3 LSLI,  6 15 6 ADD,  10 6 0 LDR,           \ x10 = argbuf[i]
+      6 5 3 LSLI,  6 17 6 ADD,  11 6 0 LDR,           \ x11 = writable extent
+      LPROTSPAN LABEL@ BL,
+      5 5 1 ADDI,  loop B,
+   done LBL,
+   30 SP 0 LDR,  SP SP 16 ADDI,  RET,
+   end LBL, ;
+
+;package
 
 \ ---- FFI: general AAPCS64 trampoline, any integer/pointer arity ----
 \ ( argbuf nargs fn -- ret ) : x0-x7 from argbuf[0..7]; args 9..nargs spilled to
@@ -1706,7 +1726,7 @@ variable SZA-I
    14 G-POP                                            \ x14 = nargs
    17 G-POP                                            \ x17 = writable lengths
    15 G-POP                                            \ x15 = argbuf
-   BFFI-GUARD-BOUNDS
+   FFI-GUARD:CALL
    BFFI-CALL-N-CORE ;
 
 \ Mixed-ABI bounded calls guard every integer register slot (x0..x8) and
@@ -1724,9 +1744,9 @@ variable SZA-I
    15 SP 0 STR,  17 SP $8 STR,  13 SP $10 STR,  11 SP $18 STR,
    12 SP $20 STR,  14 SP $28 STR,  16 SP $30 STR,
    17 11 0 ADDI,  14 9 MOVZ,                          \ guard x0..x8
-   BFFI-GUARD-BOUNDS
+   FFI-GUARD:CALL
    15 SP $10 LDR,  17 SP $20 LDR,  14 SP $28 LDR,     \ guard stack slots
-   BFFI-GUARD-BOUNDS
+   FFI-GUARD:CALL
    15 SP 0 LDR,  15 G-PUSH
    17 SP $8 LDR,  17 G-PUSH
    13 SP $10 LDR,  13 G-PUSH
@@ -1782,7 +1802,7 @@ variable SZA-I
 
 : BREADLINK ( -- )
    3 G-POP  2 G-POP  1 G-POP
-   2 3 GUARD-SPAN                             \ x2 = kernel-written link buffer, x3 = length
+   2 3 PROT-GUARD:CALL                         \ x2 = kernel-written link buffer, x3 = length
    HB-TARGET-LINUX? IF 0 99 MOVN, ELSE 0 1 MOVN, THEN
    4 0 MOVZ,  5 0 MOVZ,
    NR-READLINKAT SYS,  SYS-PUSH ;
@@ -1811,7 +1831,7 @@ variable SZA-I
 
 : BSTAT64 ( -- )
    1 G-POP  0 G-POP
-   7 $90 MOVZ,  1 7 GUARD-SPAN               \ x1 = kernel-written 144-byte statbuf
+   7 $90 MOVZ,  1 7 PROT-GUARD:CALL           \ x1 = kernel-written 144-byte statbuf
    LBL STAT-OK !
    LBL STAT-DONE !
    HB-TARGET-LINUX? IF
@@ -1829,7 +1849,7 @@ variable SZA-I
 
 : BLSTAT64 ( -- )
    1 G-POP  0 G-POP  2 0 MOVZ,  3 0 MOVZ,  4 0 MOVZ,  5 0 MOVZ,
-   7 $90 MOVZ,  1 7 GUARD-SPAN               \ x1 = kernel-written 144-byte statbuf
+   7 $90 MOVZ,  1 7 PROT-GUARD:CALL           \ x1 = kernel-written 144-byte statbuf
    LBL STAT-OK !
    LBL STAT-DONE !
    HB-TARGET-LINUX? IF
@@ -1847,7 +1867,7 @@ variable SZA-I
 
 : BGETDIRENTRIES64 ( -- )
    3 G-POP  2 G-POP  1 G-POP  0 G-POP
-   1 2 GUARD-SPAN  7 8 MOVZ,  3 7 GUARD-SPAN
+   1 2 PROT-GUARD:CALL  7 8 MOVZ,  3 7 PROT-GUARD:CALL
    NR-GETDIRENTRIES64 SYS,  SYS-PUSH ;
 
 : C-FLUSH-X9-LINE ( -- )
@@ -1855,9 +1875,9 @@ variable SZA-I
 
 : BPATCH32 ( -- )                \ ( w addr -- ): RW-flip, store, RX, cache-sync —
    A G-POP  B G-POP              \ all inside ENGINE text (a JIT-resident caller
-   7 4 MOVZ,  A 7 GUARD-SPAN      \ x9 is the target; protect its exact 4-byte write
    SP SP 32 SUBI,                \ flipping the region would unmap ITSELF)
    A SP 8 STR,  B SP 16 STR,
+   7 4 MOVZ,  A 7 PROT-GUARD:CALL \ x9 is the target; protect its exact 4-byte write
    2 3 MOVZ,  LPROT LABEL@ BL,
    9 SP 8 LDR,  10 SP 16 LDR,  10 9 0 STRW,
    2 5 MOVZ,  LPROT LABEL@ BL,
@@ -2258,10 +2278,10 @@ SOURCE-INIT
 
 : EMIT-MEMORY-PRIMS ( -- )
    s" @"    ['] BFETCH 1 GDEREF-L   s" !"    ['] BSTORE 2 GDEREF-F   s" ptr-field" ['] BPTRFIELD FPRIM-L
-   s" +!" ['] BPLUSSTORE 2 GDEREF-L
-   s" c@"   ['] BCFETCH 1 GDEREF-L  s" c!"   ['] BCSTORE 2 GDEREF-L
-   s" atomic@" ['] BATFETCH 1 GDEREF-L  s" atomic!" ['] BATSTORE 2 GDEREF-L
-   s" atomic-add" ['] BATADD 2 GDEREF-L  s" atomic-cas" ['] BATCAS 3 GDEREF-L  s" fence" ['] BFENCE FPRIM-L
+   s" +!" ['] BPLUSSTORE 2 GDEREF-F
+   s" c@"   ['] BCFETCH 1 GDEREF-L  s" c!"   ['] BCSTORE 2 GDEREF-F
+   s" atomic@" ['] BATFETCH 1 GDEREF-L  s" atomic!" ['] BATSTORE 2 GDEREF-F
+   s" atomic-add" ['] BATADD 2 GDEREF-F  s" atomic-cas" ['] BATCAS 3 GDEREF-F  s" fence" ['] BFENCE FPRIM-L
    s" cells" ['] BCELLS FPRIM-L  s" cell+" ['] BCELLPLUS FPRIM-L
    s" chars" ['] BCHARS FPRIM-L  s" char+" ['] BCHARPLUS FPRIM-L  s" count" ['] BCOUNT 1 GDEREF-L ;
 
@@ -2284,7 +2304,7 @@ SOURCE-INIT
 : EMIT-PROCESS-PRIMS ( -- )
    s" run-rc" ['] BRUNRC FPRIM-L
    s" pipe" ['] BPIPE FPRIM-L   s" dup2" ['] BDUP2 FPRIM-L
-   s" fcntl" ['] BFCNTL FPRIM-L   s" poll" ['] BPOLL FPRIM-L
+   s" fcntl" ['] BFCNTL FPRIM-L   s" poll" ['] BPOLL FPRIM
    s" kill" ['] BKILL FPRIM-L
    s" setpgid" ['] BSETPGID FPRIM-L
    s" spawn-io" ['] BSPAWNIO FPRIM-L
@@ -2299,7 +2319,7 @@ SOURCE-INIT
    s" cp@" ['] BCPFETCH FPRIM-L   s" dbase@" ['] BDBASEFETCH FPRIM-L
    s" data-base" ['] BDATAFETCH FPRIM-L
    s" ndict@" ['] BNDICTFETCH FPRIM-L
-   s" cp!" ['] BCPSET 1 GDEREF-L   s" ndict!" ['] BNDSET 1 GDEREF-L
+   s" cp!" ['] BCPSET 1 GDEREF-L   s" ndict!" ['] BNDSET 1 GDEREF-F
    s" SEAL-CAPTURE" ['] BSEALCAP FPRIM-L
    s" SEAL-FRIEND" ['] BSEALFRIEND FPRIM-L
    s" wide-mark" ['] BWIDEMARK FPRIM
@@ -2311,8 +2331,8 @@ SOURCE-INIT
    s" die"  ['] BDIE   FPRIM-L ;
 
 : EMIT-FS-PRIMS ( -- )
-   s" open" ['] BOPEN FPRIM-L   s" write" ['] BWRITE FPRIM-L   s" read" ['] BREAD FPRIM-L   s" ioctl" ['] BIOCTL FPRIM-L
-   s" mmap" ['] BMMAP FPRIM-L
+   s" open" ['] BOPEN FPRIM-L   s" write" ['] BWRITE FPRIM-L   s" read" ['] BREAD FPRIM   s" ioctl" ['] BIOCTL FPRIM
+   s" mmap" ['] BMMAP FPRIM
    s" ffi-call" ['] BFFI-CALL 2 GDEREF-F
    s" ffi-call-n" ['] BFFI-CALL-N 3 GDEREF-F
    s" ffi-call-bounded" ['] BFFI-CALL-BOUNDED 4 GDEREF-F
@@ -2323,10 +2343,10 @@ SOURCE-INIT
    s" open-rd" ['] BOPENRD FPRIM-L
    s" access" ['] BACCESS FPRIM-L
    s" unlink" ['] BUNLINK FPRIM-L   s" rename" ['] BRENAME FPRIM-L   s" chmod" ['] BCHMOD FPRIM-L
-   s" symlink" ['] BSYMLINK FPRIM-L   s" readlink" ['] BREADLINK FPRIM-L
+   s" symlink" ['] BSYMLINK FPRIM-L   s" readlink" ['] BREADLINK FPRIM
    s" mkdir" ['] BMKDIR FPRIM-L     s" rmdir" ['] BRMDIR FPRIM-L
-   s" stat64" ['] BSTAT64 FPRIM-L   s" lstat64" ['] BLSTAT64 FPRIM-L
-   s" getdirentries64" ['] BGETDIRENTRIES64 FPRIM-L
+   s" stat64" ['] BSTAT64 FPRIM   s" lstat64" ['] BLSTAT64 FPRIM
+   s" getdirentries64" ['] BGETDIRENTRIES64 FPRIM
    s" patch32" ['] BPATCH32 2 GDEREF-F
    s" close" ['] BCLOSE FPRIM-L
    s" rbase" ['] BRBASE FPRIM-L ;
@@ -2505,7 +2525,8 @@ SOURCE-INIT
    LPROT LABEL@ LBL,
    0 DBASE 0 ADDI,  1 REGION LIT64,  NR-MPROTECT SYS,  RET,
    \ Runtime lowering guard: x10=address, x11=byte length.
-   EMIT-PROT-SPAN ;
+   EMIT-PROT-SPAN
+   FFI-GUARD:EMIT ;
 
 \ Protected-WID membership (TFAM 2b-v). BL routine: x9 = wid on entry, x13 = 1 if
 \ wid is recorded in the protected-WID registry (PROT-WID-N-CELL entries of the

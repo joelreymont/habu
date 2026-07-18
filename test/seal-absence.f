@@ -7,7 +7,7 @@
 \ no readlink/stat64/lstat64/getdirentries64/poll/ffi-call syscalls and no
 \ CHECKER-* registry mutators except the reviewed checker-defer registration
 \ bridge, whose exact sites are presence-pinned below (SAB-REAL-CHKDEFER).
-\ 2b-i already mirrored GUARD-SPAN onto the sinks stage0 DOES
+\ 2b-i already mirrored the shared span guard onto the sinks stage0 DOES
 \ have (BSTORE/BPLUSSTORE/BCSTORE, read/ioctl/mmap buffers, patch32) plus
 \ EMIT-SEAL-FRIEND-TOKEN on both cold-prefix entry paths, and test/seal.f runtime-proves
 \ those traps against the sealed candidate.
@@ -16,10 +16,10 @@
 \ nothing to guard. Parity is proving the absence STAYS absent: a guard-bypass
 \ surface must not silently appear in the stage0 mirror unguarded. This fixture
 \ pins today's absence list (a named table, SAB-ABSENT-*) and scans the mirror
-\ source; any pinned surface that appears on a code line without a GUARD-SPAN on
+\ source; any pinned surface that appears on a code line without a shared guard on
 \ that line fails the gate closed, forcing a conscious decision (wire the guard +
 \ a seal trap fixture + re-pin) when someone extends stage0. It also pins the
-\ PRESENT seal machinery (the GUARD-SPAN sink guards and the EMIT-SEAL-FRIEND
+\ PRESENT seal machinery (the shared span sink guards and the EMIT-SEAL-FRIEND
 \ entry seals) so a mirrored guard cannot be silently deleted.
 \
 \ Wordlist-creation (BWORDLIST/BSETCUR/BSETCHECK) and the execute/compile sinks
@@ -72,7 +72,8 @@ public
 $40000 constant SAB-CAP                 \ mirror scan buffer (forth.fs ~137 KB + headroom)
 $800 constant SAB-NAMES-CAP             \ packed absent-name table capacity (bytes)
 92 constant SAB-BSLASH                  \ ASCII '\' — the line-comment introducer
-10 constant SAB-GUARD-PINS              \ GUARD-SPAN definition + bounded/runtime sink lines
+2 constant SAB-GUARD-SPAN-PINS          \ GUARD-SPAN definition + LPROTSPAN helper body
+8 constant SAB-GUARD-CALL-PINS          \ stage0 sinks routed through the shared helper
 3 constant SAB-SEAL-PINS                \ EMIT-SEAL-FRIEND code sites: 1 def + 2 entry seals
 2 constant SAB-CHKDEFER-PINS            \ CHECKER-DEFER code sites: C-CALL-CHECKER-DEFER def + C-DEFER call
 
@@ -146,10 +147,14 @@ variable SAB-NAMES-LEN
    s" seal-absence: bootstrap/cg/forth.fs:" type line .
    s" gained unguarded stage0 surface " type np nu type cr ;
 
+: SAB-GUARDED? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   a u s" GUARD-SPAN" CONTAINS? if -1 exit then
+   a u s" PROT-GUARD ] CALL" CONTAINS? ;
+
 : SAB-SCAN-LINE ( ptr u8 n n -- ) {: a:ptr u:n line:n :}
    a u SAB-CODE-LEN {: codeu:n :}
    codeu 0 = if exit then
-   a codeu s" GUARD-SPAN" CONTAINS? if exit then   \ guarded line: consciously allowed
+   a codeu SAB-GUARDED? if exit then
    0 begin dup SAB-NAMES-LEN @ < while
       SAB-NAME-AT
       2dup a codeu 2swap CONTAINS? if
@@ -238,9 +243,9 @@ variable SAB-READY
    SAB-VIOL# @ 0 > TTRUE ;
 
 : SAB-SELF-GUARD-OK ( -- )
-   s" absent name on a GUARD-SPAN line is an allowed guarded add" T-LABEL
+   s" absent name on a shared-guard line is an allowed guarded add" T-LABEL
    0 SAB-VIOL# !
-   s" : BX ( -- ) B G-POP A G-POP B 7 GUARD-SPAN atomic-add A B 0 STR, ;" SAB-SCAN-BUF
+   s" : BX ( -- ) B G-POP A G-POP B 7 [ also PROT-GUARD ] CALL [ previous ] atomic-add A B 0 STR, ;" SAB-SCAN-BUF
    SAB-VIOL# @ 0 T= ;
 
 : SAB-SELF-COMMENT-OK ( -- )
@@ -267,8 +272,10 @@ variable SAB-READY
    SAB-VIOL# @ 0 T= ;
 
 : SAB-REAL-GUARDS ( -- )
-   s" stage0 raw-store/syscall GUARD-SPAN sinks stay present" T-LABEL
-   SAB-FORTH$ s" GUARD-SPAN" SAB-COUNT-CODE SAB-GUARD-PINS T=
+   s" stage0 shared span helper stays singular" T-LABEL
+   SAB-FORTH$ s" GUARD-SPAN" SAB-COUNT-CODE SAB-GUARD-SPAN-PINS T=
+   s" stage0 raw-store/syscall helper calls stay present" T-LABEL
+   SAB-FORTH$ s" PROT-GUARD ] CALL" SAB-COUNT-CODE SAB-GUARD-CALL-PINS T=
    s" stage0 seal is emitted on both cold-prefix entry paths" T-LABEL
    SAB-FORTH$ s" EMIT-SEAL-FRIEND" SAB-COUNT-CODE SAB-SEAL-PINS T= ;
 

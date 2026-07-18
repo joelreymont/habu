@@ -67,14 +67,15 @@ package ENGINE-SUITE
 1 constant OWNER-PUBLIC-WID
 2 constant OWNER-PRIVATE-WID
 
-: PROT-SPAN-WID-HIDDEN? ( n -- bool )
-   s" (PROT-SPAN)" rot search-wl 0= ;
+: HELPER-HIDDEN? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   a u OWNER-PUBLIC-WID search-wl 0=
+   a u OWNER-PRIVATE-WID search-wl 0= and ;
 
 public
 
-: PROT-SPAN-HIDDEN? ( -- bool )
-   OWNER-PUBLIC-WID PROT-SPAN-WID-HIDDEN?
-   OWNER-PRIVATE-WID PROT-SPAN-WID-HIDDEN? and ;
+: HELPERS-HIDDEN? ( -- bool )
+   s" (PROT-SPAN)" HELPER-HIDDEN?
+   s" (FFI-GUARD)" HELPER-HIDDEN? and ;
 
 ;package
 
@@ -95,7 +96,8 @@ s" E-CATCH-STACK" 0 search-wl 0 T=
 s" E-CODE-CERT" 0 search-wl 0 T=
 s" private engine helpers absent from the public wordlist" T-LABEL
 s" (PROT-SPAN)" 0 search-wl 0 T=
-ENGINE-SUITE:PROT-SPAN-HIDDEN? -1 T=
+s" (FFI-GUARD)" 0 search-wl 0 T=
+ENGINE-SUITE:HELPERS-HIDDEN? -1 T=
 
 5 dup * 25 T=
 1 2 3 rot + + 6 T=

@@ -170,7 +170,8 @@ $800 constant GAP-DATA-TEXT-MAX
    s" ;package" GE-SRC-LINE
    s" create TABLE 10 , 20 , 30 ," GE-SRC-LINE
    s" variable SUM" GE-SRC-LINE
-   s" : MAIN ( -- ) 0 SUM ! 3 0 ?do TABLE i 8 * + @ SUM +! loop SUM @ . ;" GE-SRC-LINE ;
+   s" TRUSTED: AOT-FFI-CLOSURE ( n -- n ) dup 0 < if 0 0 0 0 ffi-call-bounded drop then ;" GE-SRC-LINE
+   s" : MAIN ( -- ) 0 SUM ! 3 0 ?do TABLE i 8 * + @ SUM +! loop SUM @ AOT-FFI-CLOSURE . ;" GE-SRC-LINE ;
 
 : GAP-DATA-EXPECT ( -- ptr u8 n )
    SB-RESET
@@ -185,9 +186,9 @@ $800 constant GAP-DATA-TEXT-MAX
       s" hb-build AOT direct private-helper text" GE-FAIL
    then
    GAP-DATA-EXPECT s" hb-build AOT data region output" GB-RUN-EXPECT
-   s" hb-build AOT direct private-helper call report" GB-AOT-REPORT
-   s" aot-stripped" s" AOT direct private-helper stripped report" GAP-AOT-ASSERT
-   s" aot-compact" s" AOT direct private-helper compact report" GAP-AOT-ASSERT
+   s" hb-build AOT transitive private-helper call report" GB-AOT-REPORT
+   s" aot-stripped" s" AOT transitive private-helper stripped report" GAP-AOT-ASSERT
+   s" aot-compact" s" AOT transitive private-helper compact report" GAP-AOT-ASSERT
    s" PASS: hb-build AOT persistent data region (create/,/variable/@/!/+!/loop)" type cr ;
 
 \ item 10 slice 5: a preseeded bad-tag object/AOT test entry. A source declaring a

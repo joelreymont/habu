@@ -508,6 +508,27 @@ previous definitions
    trap LBL,  0 ENGINE-ERROR:SEAL-VIOLATION MOVZ,  NR-EXIT-GROUP SYS,
    ok LBL, ;
 
+\ Gforth recovery-host mirror of Habu's PROT-GUARD package. CALL lowers a
+\ runtime span check through the single LPROTSPAN target helper.
+vocabulary PROT-GUARD
+also PROT-GUARD definitions
+
+: CALL ( n n -- )
+   {: addr len :} \ typed-local-lint: allow-bare-local
+   len 10 = if
+      addr 11 = if
+         12 11 0 ADDI,  11 10 0 ADDI,  10 12 0 ADDI,
+      else
+         11 10 0 ADDI,  10 addr 0 ADDI,
+      then
+   else
+      addr 10 <> if 10 addr 0 ADDI, then
+      len 11 <> if 11 len 0 ADDI, then
+   then
+   LPROTSPAN @ BL, ;
+
+previous definitions
+
 : PROT-GUARD ( n -- )
    {: addr :} \ typed-local-lint: allow-bare-local
    LBL LBL {: ok trap :} \ typed-local-lint: allow-bare-local
@@ -587,9 +608,10 @@ previous definitions
 \ value landing in either sealed band fails closed at the sink. Legit FORGET
 \ marks are DBASE/CP-region addresses, never a DATA-region band, so the
 \ latch-gated guard leaves them intact.
-: BCPSET ( -- )      A G-POP  7 4 MOVZ,  A 7 GUARD-SPAN  CP A 0 ADDI, ;   \ ( addr -- ) set CP
+: BCPSET ( -- )      A G-POP  7 4 MOVZ,  A 7 [ also PROT-GUARD ] CALL [ previous ]  CP A 0 ADDI, ;   \ ( addr -- ) set CP
 : BNDSET ( -- )      A G-POP                                 \ ( n -- ) set NDICT
-   C DREC MOVZ,  B A C MUL,  B DBASE B ADD,  7 DREC MOVZ,  B 7 GUARD-SPAN
+   C DREC MOVZ,  B A C MUL,  B DBASE B ADD,  7 DREC MOVZ,
+   B 7 [ also PROT-GUARD ] CALL [ previous ]
    NDICT A 0 ADDI, ;
 
 \ ( a u -- ) re-entrant interpret of the string a/u in this process: save the
@@ -784,15 +806,15 @@ previous definitions
 \ PROT-GUARD (the two-band write guard) is defined with the register constants
 \ near the top of this file -- before the earliest guarded sink (cp!/ndict!).
 
-: BSTORE ( -- )  B G-POP A G-POP  7 8 MOVZ,  B 7 GUARD-SPAN  A B 0 STR, ;  \ ( val addr -- )
+: BSTORE ( -- )  B G-POP A G-POP  7 8 MOVZ,  B 7 [ also PROT-GUARD ] CALL [ previous ]  A B 0 STR, ;  \ ( val addr -- )
 
 : BPTRFIELD ( -- )  B G-POP  A G-POP  B B 3 LSLI,  A A B ADD,  A G-PUSH ;
 
-: BPLUSSTORE ( -- ) B G-POP A G-POP  7 8 MOVZ,  B 7 GUARD-SPAN  C B 0 LDR,  C C A ADD,  C B 0 STR, ;
+: BPLUSSTORE ( -- ) B G-POP A G-POP  7 8 MOVZ,  B 7 [ also PROT-GUARD ] CALL [ previous ]  C B 0 LDR,  C C A ADD,  C B 0 STR, ;
 
 : BCFETCH ( -- ) A G-POP  A A 0 LDRB, A G-PUSH ;
 
-: BCSTORE ( -- ) B G-POP A G-POP  7 1 MOVZ,  B 7 GUARD-SPAN  A B 0 STRB, ;
+: BCSTORE ( -- ) B G-POP A G-POP  7 1 MOVZ,  B 7 [ also PROT-GUARD ] CALL [ previous ]  A B 0 STRB, ;
 
 : BCELLS ( -- )  A G-POP  A A 3 LSLI, A G-PUSH ;             \ n*8
 
@@ -879,7 +901,7 @@ previous definitions
 
 : BWRITE ( -- )  2 G-POP  1 G-POP  0 G-POP  NR-WRITE SYS,  0 G-PUSH ;   \ ( fd buf len -- n )
 
-: BREAD ( -- )   2 G-POP  1 G-POP  0 G-POP  1 2 GUARD-SPAN  NR-READ SYS,  0 G-PUSH ;  \ ( fd buf len -- n )
+: BREAD ( -- )   2 G-POP  1 G-POP  0 G-POP  1 2 [ also PROT-GUARD ] CALL [ previous ]  NR-READ SYS,  0 G-PUSH ;  \ ( fd buf len -- n )
 
 : BIOCTL ( -- )  2 G-POP  1 G-POP  0 G-POP  2 PROT-GUARD  NR-IOCTL SYS,  0 G-PUSH ;
 
@@ -887,7 +909,7 @@ previous definitions
    5 G-POP  4 G-POP  3 G-POP  2 G-POP  1 G-POP  0 G-POP
    LBL {: notfixed :} \ typed-local-lint: allow-bare-local
    6 3 $10 ANDI,  6 notfixed CBZ,
-      0 1 GUARD-SPAN
+      0 1 [ also PROT-GUARD ] CALL [ previous ]
    notfixed LBL,
    HB-TARGET-LINUX? IF OS-MMAP-FLAGS THEN
    NR-MMAP SYS,  SYS-PUSH ; \ ( addr len prot flags fd off -- addr|-1 )
@@ -897,9 +919,9 @@ previous definitions
 
 : BPATCH32 ( -- )                       \ ( w addr -- ): RW-flip, store, RX, cache-sync —
    A G-POP  B G-POP              \ all inside ENGINE text (a JIT-resident caller
-   7 4 MOVZ,  A 7 GUARD-SPAN      \ x9 is the target; protect its exact 4-byte write
    SP SP 32 SUBI,                \ flipping the region would unmap ITSELF)
    A SP 8 STR,  B SP 16 STR,
+   7 4 MOVZ,  A 7 [ also PROT-GUARD ] CALL [ previous ]
    2 3 MOVZ,  LPROT @ BL,
    9 SP 8 LDR,  10 SP 16 LDR,  10 9 0 STRW,
    2 5 MOVZ,  LPROT @ BL,
@@ -1135,9 +1157,9 @@ previous definitions
    s" 2swap" ['] B2SWAP FPRIM-L  s" 2over" ['] B2OVER FPRIM-L  s" ?dup" ['] BQDUP FPRIM-L ;
 
 : EMIT-MEMORY-PRIMS ( -- )
-   s" @"    ['] BFETCH FPRIM-L   s" !"    ['] BSTORE FPRIM-L   s" ptr-field" ['] BPTRFIELD FPRIM-L
-   s" +!" ['] BPLUSSTORE FPRIM-L
-   s" c@"   ['] BCFETCH FPRIM-L  s" c!"   ['] BCSTORE FPRIM-L
+   s" @"    ['] BFETCH FPRIM-L   s" !"    ['] BSTORE FPRIM   s" ptr-field" ['] BPTRFIELD FPRIM-L
+   s" +!" ['] BPLUSSTORE FPRIM
+   s" c@"   ['] BCFETCH FPRIM-L  s" c!"   ['] BCSTORE FPRIM
    s" cells" ['] BCELLS FPRIM-L  s" cell+" ['] BCELLPLUS FPRIM-L
    s" chars" ['] BCHARS FPRIM-L  s" char+" ['] BCHARPLUS FPRIM-L  s" count" ['] BCOUNT FPRIM-L ;
 
@@ -1164,7 +1186,7 @@ previous definitions
    s" cp@" ['] BCPFETCH FPRIM-L   s" dbase@" ['] BDBASEFETCH FPRIM-L
    s" data-base" ['] BDATAFETCH FPRIM-L
    s" ndict@" ['] BNDICTFETCH FPRIM-L
-   s" cp!" ['] BCPSET FPRIM-L   s" ndict!" ['] BNDSET FPRIM-L
+   s" cp!" ['] BCPSET FPRIM   s" ndict!" ['] BNDSET FPRIM
    s" SEAL-CAPTURE" ['] BSEALCAP FPRIM-L
    s" SEAL-FRIEND" ['] BSEALFRIEND FPRIM-L
    s" wide-mark" ['] BWIDEMARK FPRIM
@@ -1173,8 +1195,8 @@ previous definitions
 
 : EMIT-FS-PRIMS ( -- )
    s" open" ['] BOPEN FPRIM-L   s" open-rd" ['] BOPENRD FPRIM-L
-   s" write" ['] BWRITE FPRIM-L   s" read" ['] BREAD FPRIM-L   s" ioctl" ['] BIOCTL FPRIM-L
-   s" mmap" ['] BMMAP FPRIM-L   s" patch32" ['] BPATCH32 FPRIM
+   s" write" ['] BWRITE FPRIM-L   s" read" ['] BREAD FPRIM   s" ioctl" ['] BIOCTL FPRIM-L
+   s" mmap" ['] BMMAP FPRIM   s" patch32" ['] BPATCH32 FPRIM
    s" close" ['] BCLOSE FPRIM-L
    s" rbase" ['] BRBASE FPRIM-L ;
 
@@ -1320,7 +1342,7 @@ previous definitions
    LPROT @ LBL,
    0 DBASE 0 ADDI,  1 REGION LIT64,  NR-MPROTECT SYS,  RET,
    \ Runtime lowering guard: x10=address, x11=byte length.
-   LBL dup LPROTSPAN ! LBL,
+   LPROTSPAN @ LBL,
    10 11 GUARD-SPAN
    RET, ;
 
@@ -6046,7 +6068,7 @@ variable P2SK
 
 : EMIT-LABEL-CORE ( -- )
    LBL LANCHOR !  LBL LFIND !  LBL LNUM !  LBL LDICT !  LBL LSRC !
-   LBL LCEMIT !  LBL LTOK !  LBL LPROT !  LBL LPROTWIDQ !  LBL LFLUSH !  LBL LNCOUNT !
+   LBL LCEMIT !  LBL LTOK !  LBL LPROT !  LBL LPROTSPAN !  LBL LPROTWIDQ !  LBL LFLUSH !  LBL LNCOUNT !
    LBL LBCAP !  LBL LBCS !  LBL LESCDEC !  LBL LESCHEX !  LBL LESCSCAN !  LBL LESCCOPY !
    LBL LCFPUSH !  LBL LCFPOP !  LBL LPAT !  LBL LKWCMP ! ;
 
