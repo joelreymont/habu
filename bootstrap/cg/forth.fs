@@ -382,7 +382,7 @@ create PNPOOL PRIM-NAME-CAP chars allot   variable PNP   variable #PL
 
 \ shared label ids (forward refs)
 variable LANCHOR  variable LFIND  variable LNUM  variable LDICT  variable LSRC  variable SRCN  variable SRCA
-variable LCEMIT   variable LTOK   variable LPROT  variable LPROTSPAN  variable LPROTWIDQ  variable LFLUSH variable LNCOUNT
+variable LCEMIT   variable LTOK   variable LPROT  variable LPROTSPAN  variable LPROTREC  variable LPROTWIDQ  variable LFLUSH variable LNCOUNT
 \ control-flow JIT helpers + keyword data labels (self-host 1b)
 variable LCFPUSH  variable LCFPOP  variable LPAT   variable LKWCMP  variable LBCAP  variable LBCS
 \ escape decoder/scan/copy routines, emitted once, BL-called (mirrors src/habu/habu2.f)
@@ -1040,10 +1040,10 @@ previous definitions
 \ wide-mark ( -- ): set DNAME-WIDE on the newest dict record (interpret-mode
 \ wide-effect gate; mirrors src/habu/habu1.f BWIDEMARK incl. the LPROT bracket).
 : BWIDEMARK ( -- )
-   2 3 MOVZ,  LPROT @ BL,
-   9 NDICT 0 ADDI,  9 9 1 SUBI,  10 DREC MOVZ,  9 9 10 MUL,  9 DBASE 9 ADD,
+   9 NDICT 0 ADDI,  9 9 1 SUBI,  10 DREC MOVZ,  9 9 10 MUL,  9 DBASE 9 ADD,   \ x9 = &record[NDICT-1]
+   2 3 MOVZ,  LPROTREC @ BL,
    10 9 16 LDR,  10 10 DNAME-WIDE ORRI,  10 9 16 STR,
-   2 5 MOVZ,  LPROT @ BL, ;
+   2 5 MOVZ,  LPROTREC @ BL, ;
 \ Recovery and native use the same protected-WID registry contract.
 : BPROTWIDADD ( -- )
    LBL LBL LBL {: room done msg :} \ typed-local-lint: allow-bare-local
@@ -1318,6 +1318,12 @@ previous definitions
 : EMIT-PROT ( -- )
    LPROT @ LBL,
    0 DBASE 0 ADDI,  1 REGION LIT64,  NR-MPROTECT SYS,  RET,
+   \ Narrow record-page flip ( x9 = target dict-record address, x2 = prot ): mirrors
+   \ src/habu/habu1.f EMIT-PROT's LPROTREC. mprotect only the two pages covering the
+   \ record's flags cell; the dict-record flag pokes hold x9 fixed across their
+   \ RW->poke->RX bracket, so open and close flip the identical page window (W^X-symmetric).
+   LPROTREC @ LBL,
+   0 9 14 LSRI,  0 0 14 LSLI,  1 $8000 MOVZ,  NR-MPROTECT SYS,  RET,
    \ Runtime lowering guard: x10=address, x11=byte length.
    LBL dup LPROTSPAN ! LBL,
    10 11 GUARD-SPAN
@@ -6074,7 +6080,7 @@ variable P2SK
 
 : EMIT-LABEL-CORE ( -- )
    LBL LANCHOR !  LBL LFIND !  LBL LNUM !  LBL LDICT !  LBL LSRC !
-   LBL LCEMIT !  LBL LTOK !  LBL LPROT !  LBL LPROTWIDQ !  LBL LFLUSH !  LBL LNCOUNT !
+   LBL LCEMIT !  LBL LTOK !  LBL LPROT !  LBL LPROTREC !  LBL LPROTWIDQ !  LBL LFLUSH !  LBL LNCOUNT !
    LBL LBCAP !  LBL LBCS !  LBL LESCDEC !  LBL LESCHEX !  LBL LESCSCAN !  LBL LESCCOPY !
    LBL LCFPUSH !  LBL LCFPOP !  LBL LPAT !  LBL LKWCMP ! ;
 

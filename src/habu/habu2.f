@@ -1665,11 +1665,11 @@ s" c-call-checker-defer" s" --" TRUST
    C-CALL-X11-SAVED
    10 G-POP                                            \ x10 = latched min-in cells (0 = none)
    10 nomark CBZ,
-      2 3 MOVZ,  LPROT LABEL@ BL,
-      9 NDICT 0 ADDI,  9 9 1 SUBI,  12 DREC MOVZ,  9 9 12 MUL,  9 DBASE 9 ADD,
+      9 NDICT 0 ADDI,  9 9 1 SUBI,  12 DREC MOVZ,  9 9 12 MUL,  9 DBASE 9 ADD,   \ x9 = &record[NDICT-1] (x10 latch survives via kernel x2-x15)
+      2 3 MOVZ,  LPROTREC LABEL@ BL,
       10 10 $FF ANDI,  10 10 52 LSLI,                  \ min-in byte -> DNAME-MIN-IN bits 52-59
       12 9 16 LDR,  12 12 10 ORR,  12 9 16 STR,
-      2 5 MOVZ,  LPROT LABEL@ BL,
+      2 5 MOVZ,  LPROTREC LABEL@ BL,
    nomark LBL,
    nohook LBL, ;
 
@@ -6404,7 +6404,7 @@ s" SRCA@" s" -- ptr u8" TRUST
 
 : EMIT-LABEL-CORE ( -- )
    LBL LANCHOR !  LBL LFIND !  LBL LNUM !  LBL LDICT !  LBL LSRC !
-   LBL LCEMIT !  LBL LTOK !  LBL LPROT !  LBL LFLUSH !  LBL LNCOUNT !
+   LBL LCEMIT !  LBL LTOK !  LBL LPROT !  LBL LPROTREC !  LBL LFLUSH !  LBL LNCOUNT !
    LBL LAOTCODE !  LBL LAOTDICT !  LBL LAOTCODELEN !
    LBL LAOTNREC !  LBL LAOTNSITE !  LBL LAOTSITES !  LBL LAOTNAMES !  LBL LAOTNAMESLEN !
    LBL LAOTNDSITE !  LBL LAOTDSITES !  LBL LAOTDATAD0 !  LBL LAOTDATASIZE !

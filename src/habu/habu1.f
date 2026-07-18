@@ -129,7 +129,7 @@ variable GD-MIN
    GD-MIN !  FPRIM  GD-RECORD ;
 \ shared label ids (forward refs)
 variable LANCHOR  variable LFIND  variable LNUM  variable LDICT  variable LSRC  variable SRCN
-variable LCEMIT   variable LTOK   variable LPROT  variable LPROTSPAN  variable LFLUSH variable LNCOUNT
+variable LCEMIT   variable LTOK   variable LPROT  variable LPROTSPAN  variable LPROTREC  variable LFLUSH variable LNCOUNT
 variable LAOTCODE  variable LAOTDICT  variable LAOTCODELEN
 variable LAOTNREC  variable LAOTNSITE  variable LAOTSITES  variable LAOTNAMES  variable LAOTNAMESLEN
 variable LAOTNDSITE  variable LAOTDSITES  variable LAOTDATAD0  variable LAOTDATASIZE
@@ -2095,10 +2095,10 @@ SOURCE-INIT
 \ read-only at runtime, so a raw store SIGBUSes. Engine-half marking surface;
 \ the sequenced checker half calls it at signature-record time.
 : BWIDEMARK ( -- )
-   2 3 MOVZ,  LPROT LABEL@ BL,
-   9 NDICT 0 ADDI,  9 9 1 SUBI,  10 DREC MOVZ,  9 9 10 MUL,  9 DBASE 9 ADD,
+   9 NDICT 0 ADDI,  9 9 1 SUBI,  10 DREC MOVZ,  9 9 10 MUL,  9 DBASE 9 ADD,   \ x9 = &record[NDICT-1]
+   2 3 MOVZ,  LPROTREC LABEL@ BL,
    10 9 16 LDR,  10 10 DNAME-WIDE ORRI,  10 9 16 STR,
-   2 5 MOVZ,  LPROT LABEL@ BL, ;
+   2 5 MOVZ,  LPROTREC LABEL@ BL, ;
 
 \ int-mark ( n -- ): set DNAME-INT on dictionary record n. Engine half of the
 \ seal-time internal-word marking pass (src/core/internal-mark.f, dot
@@ -2109,11 +2109,11 @@ SOURCE-INIT
 \ prim exists) and the pass marks int-mark's own record last, so user source
 \ cannot reach it.
 : BINTMARK ( -- )
-   2 3 MOVZ,  LPROT LABEL@ BL,
    A G-POP
-   C DREC MOVZ,  A A C MUL,  A DBASE A ADD,
+   C DREC MOVZ,  A A C MUL,  A DBASE A ADD,   \ x9 = &record[n]
+   2 3 MOVZ,  LPROTREC LABEL@ BL,
    C A 16 LDR,  C C DNAME-INT ORRI,  C A 16 STR,
-   2 5 MOVZ,  LPROT LABEL@ BL, ;
+   2 5 MOVZ,  LPROTREC LABEL@ BL, ;
 
 \ min-in-mark ( n n -- ): OR the certified minimum input arity ( rec-idx min )
 \ into DNAME-MIN-IN (flags bits 52-59) of dict record rec-idx. Engine half of
@@ -2125,13 +2125,13 @@ SOURCE-INIT
 \ prim) and the seal pass marks this prim's own record internal alongside
 \ int-mark, so user source cannot re-drive it.
 : BMININMARK ( -- )
-   2 3 MOVZ,  LPROT LABEL@ BL,
    B G-POP                               \ x10 = min-in cells
    A G-POP                               \ x9  = record index
-   C DREC MOVZ,  A A C MUL,  A DBASE A ADD,
+   C DREC MOVZ,  A A C MUL,  A DBASE A ADD,   \ x9 = &record[n] (x10 min-in survives via kernel x2-x15)
+   2 3 MOVZ,  LPROTREC LABEL@ BL,
    B B $FF ANDI,  B B 52 LSLI,
    C A 16 LDR,  C C B ORR,  C A 16 STR,
-   2 5 MOVZ,  LPROT LABEL@ BL, ;
+   2 5 MOVZ,  LPROTREC LABEL@ BL, ;
 
 : BPROTWIDADD ( -- )
    LBL LBL LBL {: room:label done:label msg:label :}
@@ -2459,6 +2459,18 @@ SOURCE-INIT
 : EMIT-PROT ( -- )
    LPROT LABEL@ LBL,
    0 DBASE 0 ADDI,  1 REGION LIT64,  NR-MPROTECT SYS,  RET,
+   \ Narrow record-page flip ( x9 = target dict-record address, x2 = prot ):
+   \ mprotect only the two pages ($8000 = 2 * 16 KB) covering the record's flags
+   \ cell, instead of the whole 4/8 MB REGION. The dict-record flag pokes
+   \ (int/wide/min-in marks) hold x9 and every surrounding record cell fixed
+   \ across their own RW->poke->RX bracket, so open and close flip the IDENTICAL
+   \ page window -- W^X-symmetric, never orphaning a RW page (a stateless flip is
+   \ sound ONLY where the target address is stable across the bracket; the
+   \ CP-tracking emission/checker-call windows move CP between open and close and
+   \ stay full-region). x9 rides in the kernel-preserved x2-x15 band, so it
+   \ survives the syscall for the caller's poke and closing flip.
+   LPROTREC LABEL@ LBL,
+   0 9 14 LSRI,  0 0 14 LSLI,  1 $8000 MOVZ,  NR-MPROTECT SYS,  RET,
    \ Runtime lowering guard: x10=address, x11=byte length.
    LBL dup LPROTSPAN ! LBL,
    10 11 GUARD-SPAN
