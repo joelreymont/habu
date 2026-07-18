@@ -355,3 +355,74 @@ GJA-SUGGEST-ROW are census misclassifications for Wave C. The raw-kernel SPLIT-N
 retirement is TVK-RAW territory, not wave B.
 
 Claim: agent=waveb4 workspace=.jj-ws/fable-waveb4 (batch 3: JSONLF-* json-file cluster — package the module, line/row named products, option<pkg:prod> per the batch-1/2 pattern; tools/json-file.f is NOT in the fixpoint prefix)
+
+BATCH 3 LANDED 2026-07-18 (waveb4 lane, gated green — NO engine battery owed,
+tools/json-file.f is on-demand, not in the fixpoint prefix): the JSONLF-* json-file
+cluster migrated to option<named-product>/option<u8> and the whole module packaged.
+
+PACKAGE + PRODUCTS:
+- tools/json-file.f now opens `package JSONF` (was raw global JSONLF-* stems with
+  NO package — the package-first violation is fixed; the WHOLE module migrated, not
+  half-packaged). Public API: JSONF:OPEN, JSONF:NEXT-ROW, JSONF:LINE#, JSONF:LINE-CAP,
+  JSONF:LINE-BOOT-CAP; every other word/var/const private.
+- PRODUCT line 0 (public): FIELD ptr ptr u8, FIELD len n — follows OBJ:line (batch 2).
+- PRODUCT row 0 (public): FIELD node n, FIELD kind n, FIELD code n — the three cells of
+  JSONL-NEXT-ROW ( -- i64 i64 i64 bool ): node = JSON parse root (-1 for non-JSON rows),
+  kind = the JSONL-ROW-* code (JSON/BLANK/ERROR), code = the caught throw code for ERROR
+  rows (0 otherwise). Honest same-cell scalars with no nominal role in json.f -> plain n.
+
+MIGRATED WORDS (semantics preserved):
+- Line cursor JSONLF-LINE-DONE/-EOF/-NEXT-LINE -> LINE-DONE / EOF-LINE / NEXT-LINE ->
+  option<JSONF:line>. NONE = end of stream (former ptr,0,false + the already-done guard);
+  a pending PARTIAL line at EOF (no trailing LF) still yields SOME (EOF-LINE checks
+  LINE-U>0 -> LINE-DONE). NEXT-LINE is now a begin..again loop driven by NEXT-BYTE's
+  option with early `exit`s.
+- Row reader JSONLF-PARSE-LINE/-NEXT-ROW -> PARSE-LINE / NEXT-ROW -> option<JSONF:row>.
+  NONE = end of stream (former JSONL-ROW-EOF sentinel); SOME(row) covers data AND blank
+  (kind distinguishes) AND error. The inner JSONL-* machinery in tools/json.f is
+  UNCHANGED (Wave-C reclass) — JSONF is the checked wrapper boundary. ROW>OPTION wraps
+  JSONL-NEXT-ROW's ( n n n bool ) at the seam.
+- JSONLF-NEXT-BYTE -> NEXT-BYTE -> option<u8> (single-payload, no product; c@ yields u8,
+  so option<u8> is the exact zero-friction type — wave-A MAP-GET pattern).
+- JSONLF-TRUE / JSONLF-FALSE deleted (dead after migration).
+
+CALLER SWEEP: the ONLY external consumer of the public API is tools/json-file-test.f
+(swept rg per public word). All JSONLF-NEXT-ROW call sites -> exhaustive MATCH; JSONLF-OPEN
+/-LINE#/-LINE-CAP/-LINE-BOOT-CAP -> JSONF:*. No flag-testing call site remains. The test
+was ALSO packaged (package JSONF-TEST, batch-2 object-test model): EXPECT-ROW / EXPECT-EOF
+helpers + direct Some/None assertions for every public arm — data row, blank line, error
+row, partial-line-at-EOF (JSON row with no trailing LF -> SOME), true EOF (NONE), and
+long-line growth. Dropped dead `variable JFT-ROOT`. The private byte/line/parse helpers
+are covered indirectly through NEXT-ROW.
+
+CHECKER LESSONS (for wave-B/C authors):
+- Checked def signatures take TYPE TOKENS ONLY, never role names: ROW>OPTION's sig is
+  ( n n n bool -- option<row> ); node/kind/code roles live in a comment + the FIELD names,
+  not the ( -- ) signature (a role name in the sig throws "unknown type 'node'", exit 70).
+- Construct-inline-then-MATCH in the SAME word FAILS (spills "undefined word OPTION:SOME").
+  The established pattern always MATCHes the RESULT OF A WORD CALL (NEXT-LINE MATCH ...,
+  JSONF:NEXT-ROW MATCH ...). Construct-inline-then-EXIT (a word returning the option) is fine.
+- option<u8> from c@ round-trips; a u8 some-payload binds to {: c:n :} (u8 widens to n);
+  node:n flows into JSON-GET's i64 (n == i64).
+- <PKG>-<PROD>:MAKE/UNMAKE (JSONF-ROW:UNMAKE) are globally-qualified generated words
+  callable from OUTSIDE the package (the test uses them) — like RX-HIT:MAKE in batch 1.
+
+GATES (all in .jj-ws/fable-waveb4, HB_TMP=/tmp/hbtmp-waveb4, exit/rc shown):
+- FOCUSED: tools/json-file-test.f rc 0; tools/json-test.f rc 0; tools/stdlib-manifest-test.f
+  rc 0 ("ok"); maki/test.f rc 0 ("test: ok", device leg skipped off-device);
+  test/gate-stdlib.f rc 0 ("PASS: native lint/stdlib test phase", json-file-cursor PASS 474ms).
+- LINTS (rc 0, "0 finding(s)"): dot-dep (459 dot), stale-status, host, filemap (916 path),
+  error-code (485 claim), trust (689 site), refine (59 mint); trusted-inventory -- strict
+  rc 0 (separable fold 2/baseline 2).
+- COMMIT GATE: jj diff --git through typed-local-diff-lint.f rc 0, no findings; no new error
+  codes (reused E-FS-OPEN / E-FS-IO / E-JSON-SYNTAX); only two files touched
+  (tools/json-file.f, tools/json-file-test.f) — no fixpoint-prefix lib / src/*.
+- MANIFEST/FILEMAP: no lib/std.manifest rows for json-file (verified — tools module, out of
+  stdlib-manifest scope); both files already in FILEMAP; census rows left as-is per
+  batch-1/2 precedent (completion tracked here, not in the census survey).
+
+REMAINS (wave B): the CAPTURE CLUSTER (RUN-CAPTURE / PROC-CAPTURE-RC@ + PROC-CMD-RUN-RC and
+the OUTCOME sibling) is the final wave-B batch — needs prelude placement + engine battery +
+spawn-suite proof. Wave-C reclass (NOT wave B): FL-STRIP-SIGN / JSONL-PARSE-ROW (the inner
+json.f row producer) / IMGD-HEX-BODY / GJA-SUGGEST-ROW census misclassifications; the
+raw-kernel SPLIT-NEXT retirement is TVK-RAW territory. The JSONLF-* json-file cluster is DONE.

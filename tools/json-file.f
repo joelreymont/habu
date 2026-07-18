@@ -1,133 +1,172 @@
-\ json-file.f - dynamic JSONL file cursor.
+\ json-file.f - dynamic JSONL file cursor, package JSONF.
 \
 \ Load after lib/errors.f, lib/memory.f, lib/fs.f, and tools/json.f.
+\
+\ Switchover wave B (dot habu-switchover-wave-b-08482d5b, batch 3): the line
+\ cursor and row reader return option<JSONF:line> / option<JSONF:row> and
+\ option<u8> instead of value+flag sentinels, so every caller MATCHes presence
+\ at the checker boundary. The inner JSONL-* machinery in tools/json.f is the
+\ trusted wrapped layer and is unchanged; JSONF is the checked wrapper.
 
-$1000 constant JSONLF-READ-CAP
-$1000 constant JSONLF-LINE-BOOT-CAP
-10 constant JSONLF-LF
+require lib/adt/option.f
 
-create JSONLF-READ-BUF JSONLF-READ-CAP allot
-create JSONLF-LINE-BOOT JSONLF-LINE-BOOT-CAP allot
+package JSONF
 
-variable JSONLF-FD
-variable JSONLF-RD
-variable JSONLF-BUF-U
-variable JSONLF-BUF-I
-variable JSONLF-LINE-U
-variable JSONLF-LINE-CAP-U
-variable JSONLF-LINE-P
-variable JSONLF-LINE-N
-variable JSONLF-DONE
+public
+$1000 constant LINE-BOOT-CAP
 
-: JSONLF-TRUE ( -- bool )
-   0 0= ;
+private
+$1000 constant READ-CAP
+10 constant LF
 
-: JSONLF-FALSE ( -- bool )
-   JSONLF-TRUE 0= ;
+create READ-BUF READ-CAP allot
+create LINE-BOOT LINE-BOOT-CAP allot
 
-: JSONLF-LINE-PTR ( -- ptr u8 )
-   JSONLF-LINE-P JSON-PTR-U8@ ;
+variable FD
+variable RD
+variable BUF-U
+variable BUF-I
+variable LINE-U
+variable LINE-CAP-U
+variable LINE-P
+variable LINE-N
+variable DONE
 
-: JSONLF-LINE-P! ( ptr u8 -- )
-   JSONLF-LINE-P JSON-PTR-U8! ;
+: LINE-PTR ( -- ptr u8 )
+   LINE-P JSON-PTR-U8@ ;
 
-JSONLF-LINE-BOOT JSONLF-LINE-P!
-JSONLF-LINE-BOOT-CAP JSONLF-LINE-CAP-U !
--1 JSONLF-FD !
+: LINE-P! ( ptr u8 -- )
+   LINE-P JSON-PTR-U8! ;
 
-: JSONLF-LINE-CAP ( -- n )
-   JSONLF-LINE-CAP-U @ ;
+LINE-BOOT LINE-P!
+LINE-BOOT-CAP LINE-CAP-U !
+-1 FD !
 
-: JSONLF-LINE# ( -- n )
-   JSONLF-LINE-N @ ;
+public
+: LINE-CAP ( -- n )
+   LINE-CAP-U @ ;
 
-: JSONLF-RESET ( -- )
-   0 JSONLF-RD !
-   0 JSONLF-BUF-U !
-   0 JSONLF-BUF-I !
-   0 JSONLF-LINE-U !
-   0 JSONLF-LINE-N !
-   0 JSONLF-DONE ! ;
+: LINE# ( -- n )
+   LINE-N @ ;
 
-: JSONLF-CLOSE ( -- )
-   JSONLF-FD @ dup 0 >= if close else drop then
-   -1 JSONLF-FD ! ;
+\ A read line is the next LF-delimited (or trailing-EOF) slice of the file. The
+\ line cursor returns option<JSONF:line>: SOME(slice) while a line remains, NONE
+\ at end of stream. A pending partial line at EOF (no trailing LF) still yields
+\ SOME. Public so the generated JSONF-LINE:MAKE/UNMAKE exist (products emit
+\ constructors only in a public context); the cursor words stay package-private.
+PRODUCT line 0
+  FIELD ptr ptr u8
+  FIELD len n
+;PRODUCT
 
-: JSONLF-THROW ( n -- )
-   JSONLF-CLOSE
-   throw ;
+\ A parsed row mirrors JSONL-NEXT-ROW's three cells: node = the JSON parse root
+\ (-1 for non-JSON rows), kind = the JSONL-ROW-* code (JSON / BLANK / ERROR),
+\ code = the caught throw code for ERROR rows (0 otherwise). The row reader
+\ returns option<JSONF:row>: SOME(row) for data AND blank rows (kind
+\ distinguishes), NONE only at end of stream (the former JSONL-ROW-EOF sentinel).
+PRODUCT row 0
+  FIELD node n
+  FIELD kind n
+  FIELD code n
+;PRODUCT
 
-: JSONLF-OPEN ( ptr u8 n -- )
-   JSONLF-CLOSE
-   JSONLF-RESET
-   FS-PATHZ open-rd JSONLF-FD !
-   JSONLF-FD @ 0 < if E-FS-OPEN JSONLF-THROW then ;
+private
+: RESET ( -- )
+   0 RD !
+   0 BUF-U !
+   0 BUF-I !
+   0 LINE-U !
+   0 LINE-N !
+   0 DONE ! ;
 
-: JSONLF-GROW-LINE ( n -- ) {: need :}
-   need MEM-ALLOC-64K-SPAN {: dst:ptr cap :}
-   JSONLF-LINE-PTR JSONLF-LINE-U @ dst JSON-COPY
-   dst JSONLF-LINE-P!
-   cap JSONLF-LINE-CAP-U ! ;
+: CLOSE-FD ( -- )
+   FD @ dup 0 >= if close else drop then
+   -1 FD ! ;
 
-: JSONLF-ENSURE-LINE ( n -- ) {: need :}
-   need JSONLF-LINE-CAP <= if exit then
-   need JSONLF-GROW-LINE ;
+: FAIL ( n -- )
+   CLOSE-FD throw ;
 
-: JSONLF-APPEND-C ( n -- ) {: c :}
-   JSONLF-LINE-U @ 1+ JSONLF-ENSURE-LINE
-   c JSONLF-LINE-PTR JSONLF-LINE-U @ + c!
-   JSONLF-LINE-U @ 1+ JSONLF-LINE-U ! ;
+public
+: OPEN ( ptr u8 n -- )
+   CLOSE-FD
+   RESET
+   FS-PATHZ open-rd FD !
+   FD @ 0 < if E-FS-OPEN FAIL then ;
 
-: JSONLF-READ-MORE ( -- bool )
-   JSONLF-FD @ JSONLF-READ-BUF JSONLF-READ-CAP read JSONLF-RD !
-   JSONLF-RD @ 0 < if E-FS-IO JSONLF-THROW then
-   0 JSONLF-BUF-I !
-   JSONLF-RD @ JSONLF-BUF-U !
-   JSONLF-RD @ 0 > ;
+private
+: GROW-LINE ( n -- ) {: need:n :}
+   need MEM-ALLOC-64K-SPAN {: dst:ptr cap:n :}
+   LINE-PTR LINE-U @ dst JSON-COPY
+   dst LINE-P!
+   cap LINE-CAP-U ! ;
 
-: JSONLF-NEXT-BYTE ( -- n bool )
-   JSONLF-BUF-I @ JSONLF-BUF-U @ >= if
-      JSONLF-READ-MORE 0= if 0 JSONLF-FALSE exit then
+: ENSURE-LINE ( n -- ) {: need:n :}
+   need LINE-CAP <= if exit then
+   need GROW-LINE ;
+
+: APPEND-C ( n -- ) {: c:n :}
+   LINE-U @ 1+ ENSURE-LINE
+   c LINE-PTR LINE-U @ + c!
+   LINE-U @ 1+ LINE-U ! ;
+
+: READ-MORE ( -- bool )
+   FD @ READ-BUF READ-CAP read RD !
+   RD @ 0 < if E-FS-IO FAIL then
+   0 BUF-I !
+   RD @ BUF-U !
+   RD @ 0 > ;
+
+: NEXT-BYTE ( -- option<u8> )               \ SOME next input byte, NONE at EOF
+   BUF-I @ BUF-U @ >= if
+      READ-MORE 0= if OPTION:NONE exit then
    then
-   JSONLF-READ-BUF JSONLF-BUF-I @ + c@
-   JSONLF-BUF-I @ 1+ JSONLF-BUF-I !
-   JSONLF-TRUE ;
+   READ-BUF BUF-I @ + c@
+   BUF-I @ 1+ BUF-I !
+   OPTION:SOME ;
 
-: JSONLF-LINE-DONE ( -- ptr u8 n bool )
-   JSONLF-LINE-N @ 1+ JSONLF-LINE-N !
-   JSONLF-LINE-PTR JSONLF-LINE-U @ JSONLF-TRUE
-   0 JSONLF-LINE-U ! ;
+: LINE-DONE ( -- option<line> )             \ finalize buffered line as SOME(slice), reset buffer
+   LINE-N @ 1+ LINE-N !
+   LINE-PTR LINE-U @
+   0 LINE-U !
+   JSONF-LINE:MAKE OPTION:SOME ;
 
-: JSONLF-EOF ( -- ptr u8 n bool )
-   JSONLF-CLOSE
-   -1 JSONLF-DONE !
-   JSONLF-LINE-U @ 0 > if JSONLF-LINE-DONE exit then
-   JSONLF-LINE-PTR 0 JSONLF-FALSE ;
+: EOF-LINE ( -- option<line> )              \ close + mark done; SOME pending partial line, else NONE
+   CLOSE-FD
+   -1 DONE !
+   LINE-U @ 0 > if LINE-DONE exit then
+   OPTION:NONE ;
 
-: JSONLF-NEXT-LINE ( -- ptr u8 n bool )
-   JSONLF-DONE @ 0 <> if JSONLF-LINE-PTR 0 JSONLF-FALSE exit then
-   begin JSONLF-NEXT-BYTE while
-      dup JSONLF-LF = if drop JSONLF-LINE-DONE exit then
-      JSONLF-APPEND-C
-   repeat drop
-   JSONLF-EOF ;
+: NEXT-LINE ( -- option<line> )             \ SOME next LF/EOF line slice, NONE once the stream is done
+   DONE @ 0 <> if OPTION:NONE exit then
+   begin
+      NEXT-BYTE MATCH option
+        none OF EOF-LINE exit ENDOF
+        some OF {: c:n :} c LF = if LINE-DONE exit then c APPEND-C ENDOF
+      ;MATCH
+   again ;
 
-: JSONLF-SET-JSONL-LINE ( ptr u8 n -- ptr u8 n ) {: a:ptr u :}
+: SET-JSONL-LINE ( ptr u8 n -- ptr u8 n ) {: a:ptr u:n :}
    a JSONL-LA!
    u JSONL-LU !
    a u ;
 
-: JSONLF-PARSE-LINE ( ptr u8 n -- n n n bool )
-   JSONLF-SET-JSONL-LINE
+: ROW>OPTION ( n n n bool -- option<row> )   \ wrap JSONL-NEXT-ROW's ( node kind code present )
+   if JSONF-ROW:MAKE OPTION:SOME else drop 2drop OPTION:NONE then ;
+
+: PARSE-LINE ( ptr u8 n -- option<row> )
+   SET-JSONL-LINE
    dup 0= if
-      2drop -1 JSONL-ROW-BLANK 0 JSONLF-TRUE exit
+      2drop -1 JSONL-ROW-BLANK 0 JSONF-ROW:MAKE OPTION:SOME exit
    then
    JSONL-START-STRICT
-   JSONL-NEXT-ROW ;
+   JSONL-NEXT-ROW ROW>OPTION ;
 
-: JSONLF-NEXT-ROW ( -- n n n bool )
-   JSONLF-NEXT-LINE if
-      JSONLF-PARSE-LINE
-      exit
-   then
-   2drop -1 JSONL-ROW-EOF 0 JSONLF-FALSE ;
+public
+: NEXT-ROW ( -- option<row> )               \ SOME next row (json/blank/error), NONE at end of stream
+   NEXT-LINE MATCH option
+     none OF OPTION:NONE ENDOF
+     some OF JSONF-LINE:UNMAKE PARSE-LINE ENDOF
+   ;MATCH ;
+
+private
+;package

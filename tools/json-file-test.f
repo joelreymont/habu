@@ -1,4 +1,4 @@
-\ json-file-test.f - focused tests for dynamic JSONL file cursor.
+\ json-file-test.f - focused tests for the dynamic JSONL file cursor (package JSONF).
 \ Run: bin/hb --load lib/errors.f lib/string.f lib/test.f lib/memory.f lib/fs.f lib/fs-mutate.f tools/json.f tools/json-file.f tools/json-file-test.f
 
 require lib/errors.f
@@ -10,153 +10,172 @@ require lib/fs-mutate.f
 require tools/json.f
 require tools/json-file.f
 
-5000 constant JFT-LONG-N
-5120 constant JFT-LONG-CAP
+package JSONF-TEST
 
-variable JFT-ROOT-U
-variable JFT-IN-U
-variable JFT-LONG-U
-variable JFT-ROOT
+5000 constant LONG-N
+5120 constant LONG-CAP
 
-create JFT-ROOT-BUF FS-PATH-CAP allot
-create JFT-IN-BUF FS-PATH-CAP allot
-create JFT-LONG-BUF JFT-LONG-CAP allot
+variable ROOT-U
+variable IN-U
+variable LONG-U
 
-: JFT-COPY! ( ptr u8 n ptr u8 ptr n -- ) {: a:ptr u dst:ptr lenp:ptr :}
+create ROOT-BUF FS-PATH-CAP allot
+create IN-BUF FS-PATH-CAP allot
+create LONG-BUF LONG-CAP allot
+
+: COPY! ( ptr u8 n ptr u8 ptr n -- ) {: a:ptr u:n dst:ptr lenp:ptr :}
    a dst u BYTE-COPY
    u lenp ! ;
 
-: JFT-ROOT$ ( -- ptr u8 n )
-   JFT-ROOT-BUF JFT-ROOT-U @ ;
+: ROOT$ ( -- ptr u8 n )
+   ROOT-BUF ROOT-U @ ;
 
-: JFT-IN$ ( -- ptr u8 n )
-   JFT-IN-BUF JFT-IN-U @ ;
+: IN$ ( -- ptr u8 n )
+   IN-BUF IN-U @ ;
 
-: JFT-PREPARE ( -- )
+: PREPARE ( -- )
    CLEANUP-RESET
-   s" habu-json-file" TMPDIR-MKDIR {: a:ptr u :}
-   a u JFT-ROOT-BUF JFT-ROOT-U JFT-COPY!
-   JFT-ROOT$ CLEANUP-TREE+
-   JFT-ROOT$ s" rows.jsonl" JFT-IN-BUF JOIN-PATH JFT-IN-U !
-   JFT-IN$ CLEANUP+ ;
+   s" habu-json-file" TMPDIR-MKDIR {: a:ptr u:n :}
+   a u ROOT-BUF ROOT-U COPY!
+   ROOT$ CLEANUP-TREE+
+   ROOT$ s" rows.jsonl" IN-BUF JOIN-PATH IN-U !
+   IN$ CLEANUP+ ;
 
-: JFT-DQ ( -- )
+: DQ ( -- )
    34 SB-APPEND-C ;
 
-: JFT-LF ( -- )
+: NL ( -- )
    10 SB-APPEND-C ;
 
-: JFT-OBJ-A ( -- )
+: OBJ-A ( -- )
    123 SB-APPEND-C
-   JFT-DQ s" a" SB-APPEND JFT-DQ
+   DQ s" a" SB-APPEND DQ
    s" :1}" SB-APPEND ;
 
-: JFT-OBJ-B ( -- )
+: OBJ-B ( -- )
    123 SB-APPEND-C
-   JFT-DQ s" b" SB-APPEND JFT-DQ
+   DQ s" b" SB-APPEND DQ
    s" :true}" SB-APPEND ;
 
-: JFT-MIXED$ ( -- ptr u8 n )
+: MIXED$ ( -- ptr u8 n )
    SB-RESET
-   JFT-OBJ-A JFT-LF
-   JFT-LF
-   s" bad" SB-APPEND JFT-LF
-   JFT-OBJ-B
+   OBJ-A NL
+   NL
+   s" bad" SB-APPEND NL
+   OBJ-B
    SB$ ;
 
-: JFT-LONG+C ( n -- ) {: c :}
-   JFT-LONG-U @ 1+ JFT-LONG-CAP > IF s" json-file-test: long buffer full" 1 die THEN
-   c JFT-LONG-BUF JFT-LONG-U @ + c!
-   JFT-LONG-U @ 1+ JFT-LONG-U ! ;
+: LONG+C ( n -- ) {: c:n :}
+   LONG-U @ 1+ LONG-CAP > IF s" json-file-test: long buffer full" 1 die THEN
+   c LONG-BUF LONG-U @ + c!
+   LONG-U @ 1+ LONG-U ! ;
 
-: JFT-LONG+ ( ptr u8 n -- ) {: a:ptr u :}
-   JFT-LONG-U @ u + JFT-LONG-CAP > IF s" json-file-test: long buffer full" 1 die THEN
-   a JFT-LONG-BUF JFT-LONG-U @ + u BYTE-COPY
-   JFT-LONG-U @ u + JFT-LONG-U ! ;
+: LONG+ ( ptr u8 n -- ) {: a:ptr u:n :}
+   LONG-U @ u + LONG-CAP > IF s" json-file-test: long buffer full" 1 die THEN
+   a LONG-BUF LONG-U @ + u BYTE-COPY
+   LONG-U @ u + LONG-U ! ;
 
-: JFT-LONG$ ( -- ptr u8 n )
-   JFT-LONG-BUF JFT-LONG-U @ ;
+: LONG$ ( -- ptr u8 n )
+   LONG-BUF LONG-U @ ;
 
-: JFT-LONG-DQ ( -- )
-   34 JFT-LONG+C ;
+: LONG-DQ ( -- )
+   34 LONG+C ;
 
-: JFT-BUILD-LONG ( -- ptr u8 n )
-   0 JFT-LONG-U !
-   123 JFT-LONG+C
-   JFT-LONG-DQ s" big" JFT-LONG+ JFT-LONG-DQ
-   58 JFT-LONG+C
-   JFT-LONG-DQ
-   0 begin dup JFT-LONG-N < while
-      97 JFT-LONG+C
+: BUILD-LONG ( -- ptr u8 n )
+   0 LONG-U !
+   123 LONG+C
+   LONG-DQ s" big" LONG+ LONG-DQ
+   58 LONG+C
+   LONG-DQ
+   0 begin dup LONG-N < while
+      97 LONG+C
       1+
    repeat drop
-   JFT-LONG-DQ
-   125 JFT-LONG+C
-   JFT-LONG$ ;
+   LONG-DQ
+   125 LONG+C
+   LONG$ ;
 
-: JFT-WRITE-MIXED ( -- )
-   JFT-IN$ JFT-MIXED$ WRITE-ALL ;
+: WRITE-MIXED ( -- )
+   IN$ MIXED$ WRITE-ALL ;
 
-: JFT-WRITE-LONG ( -- )
-   JFT-IN$ JFT-BUILD-LONG WRITE-ALL ;
+: WRITE-LONG ( -- )
+   IN$ BUILD-LONG WRITE-ALL ;
 
-: JFT-OPEN ( -- )
-   JFT-IN$ JSONLF-OPEN ;
+: OPEN-IN ( -- )
+   IN$ JSONF:OPEN ;
 
-: JFT-ASSERT-EOF ( -- )
-   JSONLF-NEXT-ROW 0= TTRUE
-   0 T=
-   JSONL-ROW-EOF T=
-   -1 T= ;
+\ EXPECT-ROW: the next row MUST be present; leaves ( node kind code ). A NONE here
+\ is a test failure and dummy cells keep the two MATCH arms stack-balanced.
+: EXPECT-ROW ( -- n n n )
+   JSONF:NEXT-ROW MATCH option
+     none OF 0 0= 0= TTRUE   -1 -1 -1 ENDOF
+     some OF JSONF-ROW:UNMAKE ENDOF
+   ;MATCH ;
 
-: TEST-JSONLF-MIXED ( -- )
-   JFT-WRITE-MIXED
-   JFT-OPEN
-   JSONLF-NEXT-ROW TTRUE
-   0 T=
-   JSONL-ROW-JSON T=
-   dup s" a" JSON-GET JSON-NUMBER$ s" 1" T$=
+\ EXPECT-EOF: the next row MUST be NONE (end of stream). A SOME here fails.
+: EXPECT-EOF ( -- )
+   JSONF:NEXT-ROW MATCH option
+     none OF ENDOF
+     some OF JSONF-ROW:UNMAKE 2drop drop   0 0= 0= TTRUE ENDOF
+   ;MATCH ;
+
+: CHECK-JSON-A ( -- )                            \ data row {"a":1}
+   EXPECT-ROW {: node:n kind:n code:n :}
+   code 0 T=
+   kind JSONL-ROW-JSON T=
+   node s" a" JSON-GET JSON-NUMBER$ s" 1" T$= ;
+
+: CHECK-BLANK ( -- )                             \ blank row
+   EXPECT-ROW {: node:n kind:n code:n :}
+   code 0 T=
+   kind JSONL-ROW-BLANK T=
+   node -1 T= ;
+
+: CHECK-ERROR ( -- )                             \ malformed row "bad"
+   EXPECT-ROW {: node:n kind:n code:n :}
+   code E-JSON-SYNTAX T=
+   kind JSONL-ROW-ERROR T=
+   node -1 T=
+   JSONL-LINE$ s" bad" T$= ;
+
+: CHECK-JSON-B ( -- )                            \ partial line at EOF {"b":true}
+   EXPECT-ROW {: node:n kind:n code:n :}
+   code 0 T=
+   kind JSONL-ROW-JSON T=
+   node s" b" JSON-GET JSON-BOOL@ TTRUE ;
+
+: TEST-MIXED ( -- )
+   WRITE-MIXED
+   OPEN-IN
+   CHECK-JSON-A   JSONF:LINE# 1 T=
+   CHECK-BLANK    JSONF:LINE# 2 T=
+   CHECK-ERROR    JSONF:LINE# 3 T=
+   CHECK-JSON-B   JSONF:LINE# 4 T=
+   EXPECT-EOF ;
+
+: TEST-LONG ( -- )
+   WRITE-LONG
+   OPEN-IN
+   EXPECT-ROW {: node:n kind:n code:n :}
+   code 0 T=
+   kind JSONL-ROW-JSON T=
+   node s" big" JSON-GET JSON-STRING$ LONG-N T=
    drop
-   JSONLF-LINE# 1 T=
-   JSONLF-NEXT-ROW TTRUE
-   0 T=
-   JSONL-ROW-BLANK T=
-   -1 T=
-   JSONLF-LINE# 2 T=
-   JSONLF-NEXT-ROW TTRUE
-   E-JSON-SYNTAX T=
-   JSONL-ROW-ERROR T=
-   -1 T=
-   JSONL-LINE$ s" bad" T$=
-   JSONLF-LINE# 3 T=
-   JSONLF-NEXT-ROW TTRUE
-   0 T=
-   JSONL-ROW-JSON T=
-   dup s" b" JSON-GET JSON-BOOL@ TTRUE
-   drop
-   JSONLF-LINE# 4 T=
-   JFT-ASSERT-EOF ;
+   JSONF:LINE-CAP JSONF:LINE-BOOT-CAP > TTRUE
+   JSONF:LINE# 1 T=
+   EXPECT-EOF ;
 
-: TEST-JSONLF-LONG ( -- )
-   JFT-WRITE-LONG
-   JFT-OPEN
-   JSONLF-NEXT-ROW TTRUE
-   0 T=
-   JSONL-ROW-JSON T=
-   s" big" JSON-GET JSON-STRING$ JFT-LONG-N T=
-   drop
-   JSONLF-LINE-CAP JSONLF-LINE-BOOT-CAP > TTRUE
-   JSONLF-LINE# 1 T=
-   JFT-ASSERT-EOF ;
-
-: JSON-FILE-TEST ( -- )
+public
+: MAIN ( -- )
    T-RESET
-   JFT-PREPARE
-   TEST-JSONLF-MIXED
-   TEST-JSONLF-LONG
+   PREPARE
+   TEST-MIXED
+   TEST-LONG
    CLEANUP-RUN
-   JFT-ROOT$ EXISTS? TFALSE
+   ROOT$ EXISTS? TFALSE
    T-REPORT
    s" json-file-test: ok" type cr ;
 
-JSON-FILE-TEST
+;package
+
+JSONF-TEST:MAIN
