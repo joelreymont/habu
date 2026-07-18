@@ -49,3 +49,5 @@ OPEN residual (this dot stays open pinned to deployment):
   zig 0.16 needs the repo+deps Io/API migration - ohsnap dep chain still
   0.15-only). Migrate the dots repo to 0.16, tag, bump the tap, brew
   upgrade, then rerun the scratch add/off repro and close this dot.
+
+Claim 2026-07-18: agent=dotscli-opus (external repo ~/Work/dots; no habu workspace - the habu tree is untouched by this lane). Scope: migrate the dots repo (and its ohsnap dependency chain as needed) to zig 0.16, land the existing fix-frontmatter-requote branch (commit 1c6109d) on top, tag a release, bump the brew tap, upgrade the installed CLI, rerun the scratch add/off reproduction to prove the deployed binary no longer re-quotes, then close this dot.
