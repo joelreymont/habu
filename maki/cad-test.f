@@ -86,6 +86,10 @@ create RPL-OUT $4000 allot   create RPL-ERR $1000 allot
    s" --load"           >LEN PROC-ARGV+
    MAKI-GRADE:DRIVER$   >LEN PROC-ARGV+
    s" bin/hb" >LEN  RPL-OUT $4000 >LEN  RPL-ERR $1000 >LEN  30000 >MS  RUN-ARGV-CAPTURE
+   MATCH result
+     ok  OF PCAP-CAPTURED:UNMAKE 0 >RC ENDOF          \ clean child exit -> rc 0
+     err OF PCAP-FAILED:UNMAKE ENDOF                  \ nonzero child: (out err code) on stack
+   ;MATCH
    {: outu:len erru:len rc:rc :}
    rc RC>N 0 <> if RPL-ERR erru LEN>N type cr then   \ surface child stderr on failure
    rc RC>N 0 T=

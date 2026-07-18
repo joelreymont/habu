@@ -428,3 +428,81 @@ json.f row producer) / IMGD-HEX-BODY / GJA-SUGGEST-ROW census misclassifications
 raw-kernel SPLIT-NEXT retirement is TVK-RAW territory. The JSONLF-* json-file cluster is DONE.
 
 Claim: agent=waveb5 workspace=.jj-ws/fable-waveb5 (final batch: capture cluster RUN-CAPTURE / PROC-CAPTURE-RC@ len-len-rc + PROC-CMD-RUN-RC + OUTCOME sibling to result<T,errno>; prelude placement + engine battery + spawn-suite proof)
+
+BATCH 4 (FINAL) LANDED 2026-07-18 (waveb5 lane, gated green — engine battery + full
+spawn-suite proof below): the process capture/rc cluster migrated to result. WAVE B IS
+NOW COMPLETE — after this batch the ONLY remaining content is the Wave-C census-
+misclassification notes (see REMAINS at the bottom); there is no unblocked wave-B scope left.
+
+PRODUCTS (package PCAP, declared public in lib/process.f — the base prefix file, so all
+process*.f consumers + external callers reach the qualified PCAP-CAPTURED:MAKE/UNMAKE and
+PCAP-FAILED:MAKE/UNMAKE and the `pcap:*` types):
+- PRODUCT captured 0: FIELD out len, FIELD err len — the ok arm (a CLEAN exit): the two
+  captured byte-lengths.
+- PRODUCT failed 0: FIELD out len, FIELD err len, FIELD code rc — the err arm (a nonzero
+  completion): the SAME two lengths PLUS the completion code (nonzero exit, or 128+signal).
+
+ADT DECISION (corrects the census twice — recorded for Wave C/D authors): the census's
+`result<(outlen,errlen),errno>` is wrong on BOTH halves. (1) There is NO errno at this
+boundary — OS spawn/wait failures THROW (E-PROC-SPAWN / E-PROC-WAIT); the returned code is
+the child's own completion code, never an errno (slice-1 finding, re-confirmed). (2) The
+captured lengths are valid on BOTH arms — tools/check-core.f CHK-HANDLE-HB emits the child's
+captured stdout/stderr on the rc!=0 path (linters/compilers-under-test exit nonzero with
+findings ON their streams). So the honest shape is `result<pcap:captured, pcap:failed>`:
+BOTH products carry the lengths, only `failed` adds the `code` field, and the ok/err TAG (not
+a sentinel) is the success/failure discriminant. Proven the shared result family instantiates
+with two distinct products (CHECK-QUIET-CANDIDATE!: cap/fail construct certify -1, the swaps
++ a MATCH leaking a mismatched payload reject 0). PROC-CMD-RUN-RC/PROC-CMD-RC@ store output in
+module buffers, not the return, so they migrate to plain `result<n,n>` (ok=0, err=code) like
+the slice-1..3 scalar words — no capture product there.
+
+MIGRATED WORDS + NEW EFFECTS:
+- lib/process.f: RUN-CAPTURE, PROC-CAPTURE-RC@, PROC-CAPTURE-FINISH-RC -> result<pcap:captured,
+  pcap:failed>; new boundary PROC-CAPTURE>RESULT ( len len rc -- result<...> ).
+- lib/process-argv.f: RUN-ARGV-CAPTURE, RUN-ARGV-STDIN-CAPTURE -> the pcap result.
+- lib/process-env.f: RUN-ARGV-ENV-CAPTURE, RUN-ARGV-ENV-STDIN-CAPTURE -> the pcap result.
+- lib/process-cwd.f: RUN-ARGV-ENV-CWD-CAPTURE, RUN-ARGV-ENV-CWD-STDIN-CAPTURE -> the pcap result.
+- lib/process-command.f: PROC-CMD-RUN-RC, PROC-CMD-RC@ -> result<n,n>; new PROC-CMD-RC>RESULT.
+  (The sibling PROC-CMD-RUN-OUTCOME already returns the `outcome` sum — Wave-C-correct, untouched.)
+All 7 RUN-*-CAPTURE words forward the shared PROC-CAPTURE-FINISH-RC, so the boundary construction
+is one place. The `*-OUTCOME` siblings + PROC-RUN-CAPTURE-*-LOOP stay unchanged. Raw habu1.f
+emitters (BRUNRC/BPIPE/...) stay rc-sentinel at the trusted boundary — untouched.
+
+CALLER SWEEP (repo-wide, every RC-form caller -> exhaustive MATCH; ~90 sites across 60 files;
+74 files changed total incl. 5 owning suites + manifest/docs/lessons):
+- 17 tools/ptx/* (device/launcher emit+ptxas), 17 maki/* (eval/lower/deploy/db xproc), 15
+  tools/* (check-core, ddc-verify, hb-build-lib/-test, seed, zed-run-lib, adapters, ...), 11
+  test/+lib/* (codesign, ptx/toolchain, build-cache-test, gate-pool*, gate-stats, boot-pin,
+  pre-trust-defer, catch-frame, engine-error-package, owner-wid-internal).
+- Chokepoint: per-file `X-CAPTURE>N ( result -- n n n )` adapters migrated once, their callers
+  unchanged. Non-adapter callers MATCH inline; the arm payload UNMAKEs to typed field locals
+  (`{: o:len e:len :}` / `{: o:len e:len c:rc :}`) — proven inline. owner-wid-child.f's LOCAL
+  RUN-CAPTURE wraps the -OUTCOME globals (not the migrated word) — untouched.
+- SPAWN-SUITE PROOF (every migrated word gets ok+err arm coverage with a REAL spawned child):
+  direct both-arm MATCH tests added — RUN-CAPTURE (/bin/pwd ok, /usr/bin/false err(1)),
+  RUN-ARGV-CAPTURE (printf ok, false err), RUN-ARGV-ENV-CAPTURE + RUN-ARGV-ENV-CWD-CAPTURE
+  (true ok, false err), PROC-CMD-RUN-RC (true ok(0), false err(1)); PROC-CMD-RC@ err(137) on the
+  SIGKILL-reaped timeout; stdin variants covered via the adapter ok/err suite cases; a negative
+  checked regression (TEST-RUN-CAPTURE-RESULT-TYPES) pins the effect (old `len len rc` rejects).
+
+GATES (all green in .jj-ws/fable-waveb5, HB_TMP=/tmp/hbtmp-waveb5):
+| Gate | Result |
+|---|---|
+| ENGINE BATTERY fixpoint x2 (17-file install --force, scratch engine, isolated cache) | fxp1 sha256 = fxp2 sha256 = BASE = b4d951cb9ec9aec557aa46e17bd4e5989767ef8888bbe04f71d08f3c190068a7 (byte-identical; migration is codegen-neutral, build-fixpoint never calls RC-form words) |
+| old-binary boot | base b4d951cb bin/hb drove every gate + both installs of the new tree |
+| test/run.f | perf-verdict: performance=pass correctness=t attempts=1 (exit 0) |
+| process-test / process-argv-test / process-env-test / process-cwd-test / process-command-test | test: ok (each) — incl. new both-arm + spawned-child coverage |
+| codesign-test / object-image-test / imgdump-test / gate-pool* / gate-stats / boot-pin / pre-trust-defer / catch-frame / engine-error-package / owner-wid-internal / build-cache-test | test: ok |
+| maki/test.f | ok (device leg skipped off-device) |
+| test/gate-stdlib.f | PASS: native lint/stdlib test phase |
+| stdlib-manifest-test.f | stdlib-manifest-test: ok (10 manifest rows updated + 2 new helper rows; docs/stdlib.md sigs + SMT doc-row updated) |
+| 7 lints (dot-dep/stale-status/host/filemap/error-code/trust/refine) | 0 finding(s) each |
+| trusted-inventory -- strict | separable folds 2 (baseline 2) — 0 new trust rows |
+| typed-local-diff-lint (jj diff --git) | 0 findings (all new locals typed) |
+
+REMAINS (this is now the ENTIRE remaining dot content — Wave-C reclass only, NOT wave B): the
+census misclassifications FL-STRIP-SIGN / JSONL-PARSE-ROW (the inner json.f row producer) /
+IMGD-HEX-BODY / GJA-SUGGEST-ROW belong to Wave-C sum migrations or need no change — correct the
+census rows when Wave C opens. The raw-kernel SPLIT-NEXT retirement is TVK-RAW
+(habu-nominal-storage-raw-a3430ef2) territory. WAVE B (option<tuple> + result<T,E> process
+family) IS COMPLETE.

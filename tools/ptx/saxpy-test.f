@@ -22,8 +22,11 @@ variable PTXT-ERR-SAVE
 1 constant PTXT-STDOUT-FD
 2 constant PTXT-STDERR-FD
 
-: PTXT-CAPTURE>N ( len len rc -- n n n ) {: outu erru rc :}
-   outu LEN>N erru LEN>N rc RC>N ;
+: PTXT-CAPTURE>N ( result<pcap:captured,pcap:failed> -- n n n )   \ outn errn code (0 on clean exit)
+   MATCH result
+     ok  OF PCAP-CAPTURED:UNMAKE {: o:len e:len :} o LEN>N e LEN>N 0 ENDOF
+     err OF PCAP-FAILED:UNMAKE  {: o:len e:len c:rc :} o LEN>N e LEN>N c RC>N ENDOF
+   ;MATCH ;
 
 : PTXT-DUP-FD ( n -- n ) {: fd:n :}
    fd PTXT-F-DUPFD PTXT-FD-SAVE-MIN fcntl dup 0 < if E-PROC-OUTPUT throw then ;

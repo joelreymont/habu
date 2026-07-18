@@ -19,8 +19,11 @@ create PCMDT-ENTRY-OUT 101 c, 110 c, 116 c, 114 c, 121 c, 10 c, 10 c, 10 c,
 1000 constant PCMDT-CMD-TIMEOUT-MS
 50 constant PCMDT-SHORT-TIMEOUT-MS
 
+: PCMDT-RC>N ( result<n,n> -- n )   \ 0 on clean exit, else the completion code
+   MATCH result ok OF ENDOF err OF ENDOF ;MATCH ;
+
 : PCMDT-PROC-RUN-RC ( ptr u8 n n -- n ) {: path:ptr pathu timeout :}
-   path pathu >LEN timeout >MS PROC-CMD-RUN-RC RC>N ;
+   path pathu >LEN timeout >MS PROC-CMD-RUN-RC PCMDT-RC>N ;
 
 : PCMDT-RUN-OUTCOME ( ptr u8 n n -- outcome ) {: path:ptr pathu:n timeout:n :}
    path pathu >LEN timeout >MS PROC-CMD-RUN-OUTCOME ;
@@ -98,7 +101,8 @@ create PCMDT-ENTRY-OUT 101 c, 110 c, 116 c, 114 c, 121 c, 10 c, 10 c, 10 c,
    s" 5" >LEN PROC-CMD-ARG+
    s" /bin/sleep" PCMDT-SHORT-TIMEOUT-MS PCMDT-RUN-OUTCOME
    T-OUTCOME-TIMEOUT
-   PROC-CMD-RC@ RC>N 137 T=
+   PROC-CMD-RC@ MATCH result ok OF drop 1 0 T= ENDOF err OF 137 T= ENDOF ;MATCH   \ timeout reaped as SIGKILL -> err(137)
+
    PCMDT-OUT-LEN 0 T=
    PCMDT-ERR-LEN 0 T= ;
 
@@ -122,6 +126,18 @@ create PCMDT-ENTRY-OUT 101 c, 110 c, 116 c, 114 c, 121 c, 10 c, 10 c, 10 c,
    PROC-CMD-RESET
    s" MISSING_EQUALS" PCMDT-ENV-ENTRY+ ;
 
+\ Direct both-arm coverage for the migrated result<n,n>: a clean exit MATCHes the
+\ ok arm carrying 0; a nonzero exit MATCHes the err arm carrying the code.
+: PCMDT-RUN-RC-OK ( -- )
+   PROC-CMD-RESET
+   s" /usr/bin/true" >LEN PCMDT-CMD-TIMEOUT-MS >MS PROC-CMD-RUN-RC
+   MATCH result ok OF 0 T= ENDOF err OF drop 1 0 T= ENDOF ;MATCH ;
+
+: PCMDT-RUN-RC-ERR ( -- )
+   PROC-CMD-RESET
+   s" /usr/bin/false" >LEN PCMDT-CMD-TIMEOUT-MS >MS PROC-CMD-RUN-RC
+   MATCH result ok OF drop 1 0 T= ENDOF err OF 1 T= ENDOF ;MATCH ;
+
 : PROCESS-COMMAND-TEST-MAIN ( -- )
    T-RESET
    PCMDT-RUN-PRINTF
@@ -129,6 +145,8 @@ create PCMDT-ENTRY-OUT 101 c, 110 c, 116 c, 114 c, 121 c, 10 c, 10 c, 10 c,
    PCMDT-RUN-HERMETIC-ENV
    PCMDT-RUN-ENTRY-ENV
    PCMDT-RUN-INHERITED-ENV
+   PCMDT-RUN-RC-OK
+   PCMDT-RUN-RC-ERR
    PCMDT-RUN-TIMEOUT-OUTCOME
    [: PCMDT-RUN-YES-TRUNCATED ;] E-PROC-TRUNCATED TTHROWSQ
    [: PCMDT-TOO-MANY-ARGS ;] E-PROC-OUTPUT TTHROWSQ

@@ -130,6 +130,10 @@ create GP-OUT $4000 allot  create GP-ERR $1000 allot
    s" lib/ptx/header.f"     >LEN PROC-ARGV+  s" lib/ptx/tile.f" >LEN PROC-ARGV+
    MAKI-GRADE:DRIVER$       >LEN PROC-ARGV+
    s" bin/hb" >LEN  GP-OUT $4000 >LEN  GP-ERR $1000 >LEN  20000 >MS  RUN-ARGV-CAPTURE
+   MATCH result
+     ok  OF PCAP-CAPTURED:UNMAKE 0 >RC ENDOF          \ clean exit -> rc 0
+     err OF PCAP-FAILED:UNMAKE ENDOF                  \ nonzero FFI exit is expected; PTX on stdout is the signal
+   ;MATCH
    {: outu erru rc :}
    \ the emit process exits with the FFI-file convention code, not 0; the real
    \ signal is the captured PTX on stdout. Write it regardless; ptxas validates it.
@@ -144,7 +148,10 @@ create GQ-OUT $1000 allot  create GQ-ERR $1000 allot
    s" -o"                   >LEN PROC-ARGV+
    MAKI-GRADE:CUBIN$        >LEN PROC-ARGV+
    MAKI-GRADE:PTXAS$        >LEN  GQ-OUT $1000 >LEN  GQ-ERR $1000 >LEN  10000 >MS  RUN-ARGV-CAPTURE
-   {: outu erru rc :}  rc RC>N ;
+   MATCH result
+     ok  OF PCAP-CAPTURED:UNMAKE 2drop 0 ENDOF                    \ ptxas clean -> rc 0
+     err OF PCAP-FAILED:UNMAKE {: o:len e:len c:rc :} c RC>N ENDOF
+   ;MATCH ;
 
 \ ---- device launch, ISOLATED in a spawned child process --------------------
 \ A ptxas-clean candidate can still fault the GPU: a type-buggy no-check

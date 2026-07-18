@@ -150,15 +150,19 @@ variable SET-FAIL-SCRIPT-U
    s" tools/seed.f"  >LEN PROC-ARGV+
    SET-FAIL-SCRIPT$  >LEN PROC-ARGV+ ;
 
+: SET-CHECK-BUILD-FAIL ( len len rc -- ) {: outu:len erru:len rc:rc :}
+   rc RC>N 0 T<>
+   SET-ERR erru LEN>N s" illegal option" CONTAINS? TTRUE
+   SET-ERR erru LEN>N s" seed: build-fixpoint failed" CONTAINS? TTRUE ;
+
 : SET-TEST-BUILD-FAIL-REPLAYS-ERR ( -- )
    SET-FAIL-SCRIPT$ SET-FAIL-SOURCE$ WRITE-ALL
    SET-FAIL-ARGV
    s" bin/hb" >LEN SET-OUT SET-CAP >LEN SET-ERR SET-CAP >LEN
-   10000 >MS RUN-ARGV-CAPTURE
-   {: outu erru rc :}
-   rc RC>N 0 T<>
-   SET-ERR erru LEN>N s" illegal option" CONTAINS? TTRUE
-   SET-ERR erru LEN>N s" seed: build-fixpoint failed" CONTAINS? TTRUE ;
+   10000 >MS RUN-ARGV-CAPTURE MATCH result
+     ok  OF PCAP-CAPTURED:UNMAKE 0 >RC SET-CHECK-BUILD-FAIL ENDOF
+     err OF PCAP-FAILED:UNMAKE  SET-CHECK-BUILD-FAIL ENDOF
+   ;MATCH ;
 
 : SET-INSTALL-MISSING ( -- )
    SET-BAD$ SET-HB$ SEED-INSTALL ;

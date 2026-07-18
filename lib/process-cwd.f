@@ -49,7 +49,7 @@ create PROC-CWDZ-BUF PROC-PATHZ-CAP allot
    PROC-OUT-W PROC-CLOSE-CELL
    PROC-ERR-W PROC-CLOSE-CELL ;
 
-: RUN-ARGV-ENV-CWD-CAPTURE ( ptr u8 len ptr u8 len ptr u8 len ptr u8 len ms -- len len rc )
+: RUN-ARGV-ENV-CWD-CAPTURE ( ptr u8 len ptr u8 len ptr u8 len ptr u8 len ms -- result<pcap:captured,pcap:failed> )
    {: path:ptr pathu cwd:ptr cwdu out:ptr outcap err:ptr errcap timeout :}
    path pathu PROC-ARGV-CHECK-PATH
    cwdu LEN>N 0 <= if E-PROC-OUTPUT throw then
@@ -62,7 +62,7 @@ create PROC-CWDZ-BUF PROC-PATHZ-CAP allot
    out outcap err errcap PROC-RUN-CAPTURE-LOOP
    PROC-CAPTURE-FINISH-RC ;
 
-: RUN-ARGV-ENV-CWD-STDIN-CAPTURE ( ptr u8 len ptr u8 len ptr u8 len ptr u8 len ptr u8 len ms -- len len rc )
+: RUN-ARGV-ENV-CWD-STDIN-CAPTURE ( ptr u8 len ptr u8 len ptr u8 len ptr u8 len ptr u8 len ms -- result<pcap:captured,pcap:failed> )
    {: path:ptr pathu cwd:ptr cwdu in:ptr inu out:ptr outcap err:ptr errcap timeout :}
    path pathu PROC-ARGV-CHECK-PATH
    cwdu LEN>N 0 <= if E-PROC-OUTPUT throw then

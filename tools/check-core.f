@@ -988,10 +988,16 @@ variable CHK-TFAM-NAME-I
 : CHK-RUN-CAPTURE ( -- )
    s" bin/hb" >LEN CHK-OUT-BUF CHK-OUT-CAP >LEN
    CHK-ERR-BUF CHK-ERR-CAP >LEN CHK-TIMEOUT-MS >MS
-   RUN-ARGV-CAPTURE {: outu:len erru:len rc:rc :}
-   rc RC>N CHK-RC !
-   erru LEN>N CHK-ERR-U !
-   outu LEN>N CHK-OUT-U ! ;
+   RUN-ARGV-CAPTURE MATCH result
+     ok  OF PCAP-CAPTURED:UNMAKE {: outu:len erru:len :}
+             0 CHK-RC !
+             erru LEN>N CHK-ERR-U !
+             outu LEN>N CHK-OUT-U ! ENDOF
+     err OF PCAP-FAILED:UNMAKE  {: outu:len erru:len rc:rc :}
+             rc RC>N CHK-RC !
+             erru LEN>N CHK-ERR-U !
+             outu LEN>N CHK-OUT-U ! ENDOF
+   ;MATCH ;
 
 : CHK-REPLAY ( -- )
    CHK-OUT-BUF CHK-OUT-U @ CHK-OUT

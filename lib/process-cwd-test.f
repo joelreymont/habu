@@ -37,8 +37,11 @@ variable PCT-I
    PROC-ARGV-RESET
    PROC-ENV-RESET ;
 
-: PCT-CAPTURE>N ( len len rc -- n n n ) {: outu erru rc :}
-   outu LEN>N erru LEN>N rc RC>N ;
+: PCT-CAPTURE>N ( result<pcap:captured,pcap:failed> -- n n n )   \ outn errn code (0 on clean exit)
+   MATCH result
+     ok  OF PCAP-CAPTURED:UNMAKE {: o:len e:len :} o LEN>N e LEN>N 0 ENDOF
+     err OF PCAP-FAILED:UNMAKE  {: o:len e:len c:rc :} o LEN>N e LEN>N c RC>N ENDOF
+   ;MATCH ;
 
 : PCT-CAPTURE ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n n -- n n n )
    {: path:ptr pathu cwd:ptr cwdu out:ptr outcap err:ptr errcap timeout :}
@@ -100,9 +103,26 @@ variable PCT-I
    PCT-LONG!
    PCT-LONG PCT-LONG-U >LEN PROC-CWDZ drop ;
 
+\ Direct both-arm coverage for RUN-ARGV-ENV-CWD-CAPTURE: true -> ok(captured),
+\ false -> err(failed) carrying lengths + the completion code (cwd = ".").
+: PCT-RUN-ARGV-ENV-CWD-CAPTURE-RESULT ( -- )
+   PCT-RESET
+   s" /usr/bin/true" >LEN s" ." >LEN PCT-OUT PCT-CAP >LEN PCT-ERR PCT-CAP >LEN 1000 >MS RUN-ARGV-ENV-CWD-CAPTURE
+   MATCH result
+     ok  OF PCAP-CAPTURED:UNMAKE {: o:len e:len :} o LEN>N 0 T=  e LEN>N 0 T= ENDOF
+     err OF PCAP-FAILED:UNMAKE 2drop drop 1 0 T= ENDOF
+   ;MATCH
+   PCT-RESET
+   s" /usr/bin/false" >LEN s" ." >LEN PCT-OUT PCT-CAP >LEN PCT-ERR PCT-CAP >LEN 1000 >MS RUN-ARGV-ENV-CWD-CAPTURE
+   MATCH result
+     ok  OF PCAP-CAPTURED:UNMAKE 2drop 1 0 T= ENDOF
+     err OF PCAP-FAILED:UNMAKE {: o:len e:len c:rc :} o LEN>N 0 T=  e LEN>N 0 T=  c RC>N 1 T= ENDOF
+   ;MATCH ;
+
 : PROCESS-CWD-TEST-MAIN ( -- )
    T-RESET
    PCT-RUN-CAT-CWD
+   PCT-RUN-ARGV-ENV-CWD-CAPTURE-RESULT
    PCT-RUN-STDIN-CAPTURE
    PCT-RUN-MISSING-CWD
    [: PCT-CWD-TOO-LONG ;] E-PROC-OUTPUT TTHROWSQ

@@ -136,16 +136,20 @@ variable SEED-LAST
    SEED-BUILD-OUT outu SEED-OUT
    SEED-BUILD-ERR erru SEED-ERR ;
 
+: SEED-SMOKE-CHECK ( len len rc -- ) {: outu:len erru:len rc:rc :}
+   rc RC>N SEED-RC0
+   erru LEN>N SEED-EXPECT-NO-STDERR
+   SEED-SMOKE-OUT outu LEN>N SEED-SMOKE-OUT-OK? 0= if E-BUILD-STATUS throw then ;
+
 : SEED-SMOKE ( ptr u8 n -- ) {: hb:ptr hbu :}
    PROC-ARGV-RESET
    hb hbu >LEN SEED-SMOKE-IN SEED-SMOKE-IN-U >LEN
    SEED-SMOKE-OUT SEED-SMOKE-OUT-CAP >LEN
    SEED-SMOKE-ERR SEED-SMOKE-ERR-CAP >LEN
-   SEED-SMOKE-TIMEOUT-MS >MS RUN-ARGV-STDIN-CAPTURE
-   {: outu erru rc :}
-   rc RC>N SEED-RC0
-   erru LEN>N SEED-EXPECT-NO-STDERR
-   SEED-SMOKE-OUT outu LEN>N SEED-SMOKE-OUT-OK? 0= if E-BUILD-STATUS throw then ;
+   SEED-SMOKE-TIMEOUT-MS >MS RUN-ARGV-STDIN-CAPTURE MATCH result
+     ok  OF PCAP-CAPTURED:UNMAKE 0 >RC SEED-SMOKE-CHECK ENDOF
+     err OF PCAP-FAILED:UNMAKE  SEED-SMOKE-CHECK ENDOF
+   ;MATCH ;
 
 : SEED-ARGV+ ( ptr u8 n -- )
    >LEN PROC-ARGV+ ;
@@ -173,13 +177,14 @@ variable SEED-LAST
    hb hbu >LEN
    SEED-BUILD-OUT SEED-BUILD-OUT-CAP >LEN
    SEED-BUILD-ERR SEED-BUILD-ERR-CAP >LEN
-   SEED-BUILD-TIMEOUT-MS >MS RUN-ARGV-CAPTURE
-   {: outu erru rc :}
-   rc RC>N 0= if exit then
-   outu LEN>N erru LEN>N SEED-REPLAY-BUILD-OUTPUT
-   s" seed: build-fixpoint failed" SEED-ERR
-   SEED-LF 1 SEED-ERR
-   E-BUILD-STATUS throw ;
+   SEED-BUILD-TIMEOUT-MS >MS RUN-ARGV-CAPTURE MATCH result
+     ok  OF PCAP-CAPTURED:UNMAKE 2drop ENDOF
+     err OF PCAP-FAILED:UNMAKE  drop {: outu:len erru:len :}
+             outu LEN>N erru LEN>N SEED-REPLAY-BUILD-OUTPUT
+             s" seed: build-fixpoint failed" SEED-ERR
+             SEED-LF 1 SEED-ERR
+             E-BUILD-STATUS throw ENDOF
+   ;MATCH ;
 
 : SEED-INSTALL-SMOKE-BUILD ( ptr u8 n ptr u8 n -- ) {: src:ptr srcu dst:ptr dstu :}
    src srcu SEED-VERIFY-OPTIONAL-SHA256

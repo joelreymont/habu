@@ -153,8 +153,11 @@ variable DDC-FXP-U
    PROC-ENV-INHERIT-MISSING
    s" tools/bootstrap.sh" >LEN
    DDC-OUT DDC-CAP-OUT >LEN  DDC-ERR DDC-CAP-OUT >LEN
-   DDC-CHAIN-TIMEOUT-MS >MS RUN-ARGV-ENV-CAPTURE {: outl:len errl:len rc:rc :}
-   rc RC>N 0 <> if s" gforth CHECK_ONLY" errl rc DDC-CHAIN-FAIL then ;
+   DDC-CHAIN-TIMEOUT-MS >MS RUN-ARGV-ENV-CAPTURE MATCH result
+     ok  OF PCAP-CAPTURED:UNMAKE 2drop ENDOF
+     err OF PCAP-FAILED:UNMAKE {: outl:len errl:len rc:rc :}
+             s" gforth CHECK_ONLY" errl rc DDC-CHAIN-FAIL ENDOF
+   ;MATCH ;
 
 : DDC-ARG ( ptr u8 n -- ) >LEN PROC-ARGV+ ;
 
@@ -185,8 +188,11 @@ variable DDC-FXP-U
    PROC-ENV-INHERIT-MISSING
    DDC-STDIN$ >LEN
    DDC-OUT DDC-CAP-OUT >LEN  DDC-ERR DDC-CAP-OUT >LEN
-   DDC-CHAIN-TIMEOUT-MS >MS RUN-ARGV-ENV-CAPTURE {: outl:len errl:len rc:rc :}
-   rc RC>N 0 <> if s" native fixpoint refresh" errl rc DDC-CHAIN-FAIL then ;
+   DDC-CHAIN-TIMEOUT-MS >MS RUN-ARGV-ENV-CAPTURE MATCH result
+     ok  OF PCAP-CAPTURED:UNMAKE 2drop ENDOF
+     err OF PCAP-FAILED:UNMAKE {: outl:len errl:len rc:rc :}
+             s" native fixpoint refresh" errl rc DDC-CHAIN-FAIL ENDOF
+   ;MATCH ;
 
 : DDC-VERIFY ( -- n )
    DDC-REQUIRE-BOOTSTRAP

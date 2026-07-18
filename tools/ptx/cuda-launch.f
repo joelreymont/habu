@@ -38,6 +38,11 @@ create LL-QO  $1000 allot  create LL-QE  $1000 allot   \ ptxas capture
 variable LL-DEV  variable LL-CTX  variable LL-MOD  variable LL-FUNC
 variable LL-DX variable LL-DY variable LL-ABITS variable LL-NV variable LL-RBUF
 
+\ missing producer / nonzero emit rc -> surface child stderr + throw; else write PTX, return bytes
+: LL-EMIT-WRITE ( len len rc -- n ) {: o:len e:len c:rc :}
+   LL-ERR e LEN>N  c RC>N  PTXTC:EMIT-GUARD
+   PTXTC:PTX$ LL-OUT o LEN>N WRITE-ALL  o LEN>N ;
+
 \ spawn bin/hb to emit the checked scalar SAXPY kernel to the private PTX
 : LL-EMIT ( -- n )
    PROC-ARGV-RESET
@@ -48,9 +53,10 @@ variable LL-DX variable LL-DY variable LL-ABITS variable LL-NV variable LL-RBUF
    s" lib/ptx/header.f"     >LEN PROC-ARGV+  s" lib/ptx/tile.f" >LEN PROC-ARGV+
    s" tools/ptx/saxpy-cg.f" >LEN PROC-ARGV+
    s" bin/hb" >LEN  LL-OUT $8000 >LEN  LL-ERR $1000 >LEN  20000 >MS  RUN-ARGV-CAPTURE
-   {: outu:len erru:len rc:rc :}
-   LL-ERR erru LEN>N  rc RC>N  PTXTC:EMIT-GUARD           \ missing producer / nonzero emit rc -> stderr + throw
-   PTXTC:PTX$ LL-OUT outu LEN>N WRITE-ALL  outu LEN>N ;
+   MATCH result
+     ok  OF PCAP-CAPTURED:UNMAKE 0 >RC LL-EMIT-WRITE ENDOF
+     err OF PCAP-FAILED:UNMAKE LL-EMIT-WRITE ENDOF
+   ;MATCH ;
 
 : LL-PTXAS ( -- n )
    LL-QO $1000 >LEN LL-QE $1000 >LEN PTXTC:ASSEMBLE ;

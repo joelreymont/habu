@@ -32,10 +32,14 @@ create GC-QOUT $1000 allot create GC-QERR $1000 allot
    s" lib/ptx/header.f"     >LEN PROC-ARGV+  s" lib/ptx/cg-collective.f" >LEN PROC-ARGV+
    s" lib/ptx/tile.f"       >LEN PROC-ARGV+
    s" lib/ptx/collective.f" >LEN PROC-ARGV+ ;
+: GC-WRITE-PTX ( len len -- n )  drop {: o:len :}       \ err-len unused, rc ignored (Shape C)
+   PTXTC:PTX$ GC-OUT o LEN>N WRITE-ALL  o LEN>N ;
 : GC-RUN-EMIT ( -- n )
    s" bin/hb" >LEN  GC-OUT $4000 >LEN  GC-ERR $1000 >LEN  20000 >MS  RUN-ARGV-CAPTURE
-   {: outu erru rc :}
-   PTXTC:PTX$ GC-OUT outu LEN>N WRITE-ALL  outu LEN>N ;
+   MATCH result
+     ok  OF PCAP-CAPTURED:UNMAKE GC-WRITE-PTX ENDOF
+     err OF PCAP-FAILED:UNMAKE drop GC-WRITE-PTX ENDOF
+   ;MATCH ;
 : GC-EMIT-SAXPY ( -- n )  GC-PRELUDE  s" tools/ptx/saxpy-cg.f" >LEN PROC-ARGV+  GC-RUN-EMIT ;
 : GC-EMIT-RELU  ( -- n )  GC-PRELUDE  s" tools/ptx/relu-cg.f"  >LEN PROC-ARGV+  GC-RUN-EMIT ;
 : GC-EMIT-EXP   ( -- n )  GC-PRELUDE  s" tools/ptx/exp-cg.f"   >LEN PROC-ARGV+  GC-RUN-EMIT ;

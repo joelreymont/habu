@@ -39,6 +39,10 @@ create LMD-QO  $1000 allot  create LMD-QE  $2000 allot
    s" --load"           >LEN PROC-ARGV+
    MAKI-GRADE:DRIVER$   >LEN PROC-ARGV+
    s" bin/hb" >LEN  LMD-OUT $10000 >LEN  LMD-ERR $1000 >LEN  30000 >MS  RUN-ARGV-CAPTURE
+   MATCH result
+     ok  OF PCAP-CAPTURED:UNMAKE 0 >RC ENDOF          \ clean exit -> rc 0
+     err OF PCAP-FAILED:UNMAKE ENDOF                  \ nonzero child: (out err code) on stack
+   ;MATCH
    {: outu:len erru:len rc:rc :}
    LMD-ERR erru LEN>N  rc RC>N  PTXTC:EMIT-GUARD           \ surface stderr + throw on a nonzero child
    PTXTC:PTX$ LMD-OUT outu LEN>N WRITE-ALL ;

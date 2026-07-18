@@ -153,18 +153,20 @@ variable LAST-ERR-U
 : SPAWN-RC ( -- n )                                    \ boot the engine under test with CWD = ROOT; capture out/err
    PROC-ARGV-RESET
    HB$ >LEN  ROOT$ >LEN  OUT CAP >LEN  ERR CAP >LEN  TIMEOUT-MS >MS
-   RUN-ARGV-ENV-CWD-CAPTURE {: outu erru rc :}   \ typed-local-lint: allow-bare-local
-   outu LEN>N LAST-OUT-U !
-   erru LEN>N LAST-ERR-U !
-   rc RC>N ;
+   RUN-ARGV-ENV-CWD-CAPTURE
+   MATCH result
+     ok  OF PCAP-CAPTURED:UNMAKE {: o:len e:len :} o LEN>N LAST-OUT-U !  e LEN>N LAST-ERR-U !  0 ENDOF
+     err OF PCAP-FAILED:UNMAKE {: o:len e:len c:rc :} o LEN>N LAST-OUT-U !  e LEN>N LAST-ERR-U !  c RC>N ENDOF
+   ;MATCH ;
 
 : SPAWN-STDIN-RC ( ptr u8 n -- n ) {: in:ptr inu:n :}  \ same, piping a stdin program
    PROC-ARGV-RESET
    HB$ >LEN  ROOT$ >LEN  in inu >LEN  OUT CAP >LEN  ERR CAP >LEN  TIMEOUT-MS >MS
-   RUN-ARGV-ENV-CWD-STDIN-CAPTURE {: outu erru rc :}   \ typed-local-lint: allow-bare-local
-   outu LEN>N LAST-OUT-U !
-   erru LEN>N LAST-ERR-U !
-   rc RC>N ;
+   RUN-ARGV-ENV-CWD-STDIN-CAPTURE
+   MATCH result
+     ok  OF PCAP-CAPTURED:UNMAKE {: o:len e:len :} o LEN>N LAST-OUT-U !  e LEN>N LAST-ERR-U !  0 ENDOF
+     err OF PCAP-FAILED:UNMAKE {: o:len e:len c:rc :} o LEN>N LAST-OUT-U !  e LEN>N LAST-ERR-U !  c RC>N ENDOF
+   ;MATCH ;
 
 : OUT$ ( -- ptr u8 n )  OUT LAST-OUT-U @ ;
 : ERR$ ( -- ptr u8 n )  ERR LAST-ERR-U @ ;

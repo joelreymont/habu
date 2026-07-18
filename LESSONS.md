@@ -4,6 +4,39 @@
 
 Last updated: 2026-07-18
 
+- **The shared `result<a,b>` family instantiates with TWO DISTINCT nominal products
+  (`result<pcap:captured,pcap:failed>`), and the checker enforces the payload types.**
+  (2026-07-18, switchover wave B capture cluster, dot habu-switchover-wave-b-08482d5b.)
+  Probed via CHECK-QUIET-CANDIDATE!: OK-with-cap and ERR-with-fail certify (-1); the
+  swaps (OK given the fail type, ERR given the cap type) fail-closed (0); a MATCH whose
+  arms leak mismatched product payloads rejects (0). The err payload being a nominal
+  PRODUCT works because the signature DECLARES it concretely — the old "free err var
+  won't unify with a nominal" limit only bites a TOTAL ok-only construction, not a
+  declared two-product effect. The LESSONS note that a multi-field PRODUCT can't be a
+  sum payload is STALE post-flat-multi-cell (commit 13f8a504); option/result carry
+  products fine now.
+- **A "capture" primitive's rc is a COMPLETION CODE, never an errno, and the captured
+  lengths are valid on BOTH the ok and err arm.** (same dot.) OS spawn/wait failures
+  THROW (E-PROC-SPAWN/E-PROC-WAIT) — no negative errno is ever returned; the returned rc
+  is the child's own completion code (nonzero exit, or 128+signal). And callers read the
+  captured stdout/stderr on the FAILURE path (tools/check-core.f CHK-HANDLE-HB emits the
+  child's output when rc!=0 — linters/compilers-under-test exit nonzero with findings on
+  their streams). So the census's `result<(outlen,errlen),errno>` model is wrong twice:
+  the correct shape is `result<captured(out,err), failed(out,err,code)>` — both products
+  carry the lengths, only the failure adds the code, nothing is a sentinel. Do NOT put the
+  lengths in the ok arm only.
+- **Inline `PKG-PROD:UNMAKE {: f:role ... :}` INSIDE a MATCH arm certifies** (same dot) —
+  the "arm payload binds to a word param, not an in-arm local" rule is only about binding
+  the PRODUCT ITSELF to a local; UNMAKE-then-bind-the-unpacked-FIELDS is fine inline. A
+  result value also survives an intervening store op below it, so you can stash a constant
+  buffer ptr (`err ERR-P !`) before MATCHing the result on the stack.
+- **Per-file `X-CAPTURE>N ( len len rc -- n n n )` adapters are the migration chokepoint.**
+  (same dot.) Dozens of downstream spawn tests funnel every call site through one such
+  adapter; migrate the adapter to `( result<...> -- n n n )` (MATCH -> outn errn code, 0
+  on clean exit) and its callers stay byte-for-byte unchanged. lib/process.f /
+  process-argv.f / process-env.f are in the fixpoint INSTALL prefix but the migration is
+  codegen-neutral (build-fixpoint never calls the RC-form words) so the fixpoint stays
+  byte-identical; process-cwd.f / process-command.f are on-demand.
 - **A new content-addressed CAD-KIND owner with a `TRUSTED: RAW>X`/`X>RAW` pair needs
   FOUR coordinated edits or a gate goes red — trusted-inventory strict and refine-lint
   each read a DIFFERENT registry.** (2026-07-18, maki/experiment/run.f run-id owner, dot

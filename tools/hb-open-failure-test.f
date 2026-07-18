@@ -47,8 +47,11 @@ variable HOF-EXE-U
    s" bin/hb" HOF-EXE$ COPY-FILE-STREAM
    HOF-EXE$ CHMOD-X ;
 
-: HOF-CAPTURE>N ( len len rc -- n n n ) {: outu:len erru:len rc:rc :}
-   outu LEN>N erru LEN>N rc RC>N ;
+: HOF-CAPTURE>N ( result<pcap:captured,pcap:failed> -- n n n )   \ outn errn code (0 on clean exit)
+   MATCH result
+     ok  OF PCAP-CAPTURED:UNMAKE {: o:len e:len :} o LEN>N e LEN>N 0 ENDOF
+     err OF PCAP-FAILED:UNMAKE  {: o:len e:len c:rc :} o LEN>N e LEN>N c RC>N ENDOF
+   ;MATCH ;
 
 \ Run the copied engine with the empty temp dir as cwd; capture stdout/stderr/rc.
 : HOF-RUN ( -- n n n )

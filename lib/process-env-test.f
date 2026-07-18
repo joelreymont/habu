@@ -42,8 +42,11 @@ variable PET-START-NS
    n 10 >= if n 10 / RECURSE then
    n 10 mod STR-ZERO + emit ;
 
-: PET-CAPTURE>N ( len len rc -- n n n ) {: outu erru rc :}
-   outu LEN>N erru LEN>N rc RC>N ;
+: PET-CAPTURE>N ( result<pcap:captured,pcap:failed> -- n n n )   \ outn errn code (0 on clean exit)
+   MATCH result
+     ok  OF PCAP-CAPTURED:UNMAKE {: o:len e:len :} o LEN>N e LEN>N 0 ENDOF
+     err OF PCAP-FAILED:UNMAKE  {: o:len e:len c:rc :} o LEN>N e LEN>N c RC>N ENDOF
+   ;MATCH ;
 
 : PET-FIND>N ( option<len> -- n bool )                 \ flatten for the test asserts
    MATCH option
@@ -198,6 +201,22 @@ variable PET-START-NS
    s" /usr/bin/false" PET-OUT PET-CAP PET-ERR PET-CAP PET-CMD-TIMEOUT-MS PET-OUTCOME
    1 T-OUTCOME-EXITED= LEN>N 0 T= LEN>N 0 T= ;
 
+\ Direct both-arm coverage for RUN-ARGV-ENV-CAPTURE: true -> ok(captured),
+\ false -> err(failed) carrying lengths + the completion code.
+: PET-RUN-ARGV-ENV-CAPTURE-RESULT ( -- )
+   PET-RESET
+   s" /usr/bin/true" >LEN PET-OUT PET-CAP >LEN PET-ERR PET-CAP >LEN PET-CMD-TIMEOUT-MS >MS RUN-ARGV-ENV-CAPTURE
+   MATCH result
+     ok  OF PCAP-CAPTURED:UNMAKE {: o:len e:len :} o LEN>N 0 T=  e LEN>N 0 T= ENDOF
+     err OF PCAP-FAILED:UNMAKE 2drop drop 1 0 T= ENDOF
+   ;MATCH
+   PET-RESET
+   s" /usr/bin/false" >LEN PET-OUT PET-CAP >LEN PET-ERR PET-CAP >LEN PET-CMD-TIMEOUT-MS >MS RUN-ARGV-ENV-CAPTURE
+   MATCH result
+     ok  OF PCAP-CAPTURED:UNMAKE 2drop 1 0 T= ENDOF
+     err OF PCAP-FAILED:UNMAKE {: o:len e:len c:rc :} o LEN>N 0 T=  e LEN>N 0 T=  c RC>N 1 T= ENDOF
+   ;MATCH ;
+
 : PET-RUN-ENV-OUTCOME-TIMEOUT ( -- )
    PET-RESET
    s" 5"  >LEN PROC-ARGV+
@@ -319,6 +338,7 @@ variable PET-START-NS
    s" set-replaces" [: PET-SET-REPLACES ;] PET-CASE
    s" set-appends-new" [: PET-SET-APPENDS-NEW ;] PET-CASE
    s" append-keeps-dup" [: PET-APPEND-KEEPS-DUP ;] PET-CASE
+   s" argv-env-capture-result" [: PET-RUN-ARGV-ENV-CAPTURE-RESULT ;] PET-CASE
    s" env-outcome-false" [: PET-RUN-ENV-OUTCOME-FALSE ;] PET-CASE
    s" env-outcome-timeout" [: PET-RUN-ENV-OUTCOME-TIMEOUT ;] PET-CASE
    s" env-stdin-outcome" [: PET-RUN-ENV-STDIN-OUTCOME ;] PET-CASE

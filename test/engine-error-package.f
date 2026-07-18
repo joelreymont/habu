@@ -61,7 +61,11 @@ create PATCHED-BUF FS-PATH-CAP allot
 : RUN-SOURCE ( ptr u8 n ptr u8 n -- n ) {: exe:ptr exeu:n src:ptr srcu:n :}
    PROC-ARGV-RESET
    exe exeu >LEN src srcu >LEN OUT CAP >LEN ERR CAP >LEN TIMEOUT-MS >MS
-   RUN-ARGV-STDIN-CAPTURE RC>N nip nip ;
+   RUN-ARGV-STDIN-CAPTURE
+   MATCH result
+     ok  OF PCAP-CAPTURED:UNMAKE 2drop 0 ENDOF
+     err OF PCAP-FAILED:UNMAKE {: o:len e:len c:rc :} c RC>N ENDOF
+   ;MATCH ;
 
 : CHILD-RC ( ptr u8 n -- n )
    SOURCE$ {: src:ptr u:n :}

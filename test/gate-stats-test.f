@@ -343,8 +343,11 @@ create GST-GUARD-ERR GST-GUARD-CAP allot
 : GST-GUARD-RUN ( -- n )
    GST-GUARD-ARGV
    s" bin/hb" >LEN GST-GUARD-OUT GST-GUARD-CAP >LEN GST-GUARD-ERR GST-GUARD-CAP >LEN
-   GST-GUARD-NOMINAL-MS T-BUDGET-MS >MS RUN-ARGV-CAPTURE {: ou:len eu:len rc:rc :}
-   rc RC>N ;
+   GST-GUARD-NOMINAL-MS T-BUDGET-MS >MS RUN-ARGV-CAPTURE
+   MATCH result
+     ok  OF PCAP-CAPTURED:UNMAKE 2drop 0 ENDOF
+     err OF PCAP-FAILED:UNMAKE {: o:len e:len c:rc :} c RC>N ENDOF
+   ;MATCH ;
 
 : GST-TEST-DUP-GUARD ( -- )
    s" 1 GS-LABEL-DUP !  GS-LABEL-DUP-GUARD" GST-GUARD-FIXTURE!
@@ -364,8 +367,11 @@ create GST-GUARD-ERR GST-GUARD-CAP allot
    s" HABU_GATE_GEN" >LEN val valu >LEN PROC-ENV+
    PROC-ENV-INHERIT-MISSING
    s" bin/hb" >LEN GST-GUARD-OUT GST-GUARD-CAP >LEN GST-GUARD-ERR GST-GUARD-CAP >LEN
-   GST-GUARD-NOMINAL-MS T-BUDGET-MS >MS RUN-ARGV-ENV-CAPTURE {: ou:len eu:len rc:rc :}
-   eu LEN>N rc RC>N ;
+   GST-GUARD-NOMINAL-MS T-BUDGET-MS >MS RUN-ARGV-ENV-CAPTURE
+   MATCH result
+     ok  OF PCAP-CAPTURED:UNMAKE {: o:len e:len :} e LEN>N 0 ENDOF
+     err OF PCAP-FAILED:UNMAKE {: o:len e:len c:rc :} e LEN>N c RC>N ENDOF
+   ;MATCH ;
 
 : GST-TEST-GEN-ENV ( -- )
    s" 3-4" GST-GEN-ENV-RUN 0 T= drop
@@ -436,10 +442,10 @@ variable UNOWNED-AFTER
    s" /bin/cat" >LEN s" x" >LEN
    GST-GUARD-OUT GST-GUARD-CAP >LEN GST-GUARD-ERR GST-GUARD-CAP >LEN
    GST-GUARD-NOMINAL-MS T-BUDGET-MS >MS RUN-ARGV-STDIN-CAPTURE
-   {: outu:len erru:len rc:rc :}
-   rc RC>N 0 T=
-   erru LEN>N 0 T=
-   outu LEN>N 1 T=
+   MATCH result
+     ok  OF PCAP-CAPTURED:UNMAKE {: o:len e:len :} e LEN>N 0 T= o LEN>N 1 T= ENDOF
+     err OF PCAP-FAILED:UNMAKE 2drop drop 1 0 T= ENDOF          \ expected a clean exit
+   ;MATCH
    GST-GUARD-OUT 1 s" x" T$= ;
 
 : CAND-EXEC ( -- )
@@ -557,10 +563,10 @@ variable UNOWNED-AFTER
    GST-GUARD-OUT GST-GUARD-CAP >LEN
    GST-GUARD-ERR GST-GUARD-CAP >LEN
    GST-GUARD-NOMINAL-MS T-BUDGET-MS >MS RUN-ARGV-ENV-CAPTURE
-   {: outu:len erru:len rc:rc :}
-   rc RC>N 0 T=
-   outu LEN>N 0 T=
-   erru LEN>N 0 T= ;
+   MATCH result
+     ok  OF PCAP-CAPTURED:UNMAKE {: o:len e:len :} o LEN>N 0 T= e LEN>N 0 T= ENDOF
+     err OF PCAP-FAILED:UNMAKE 2drop drop 1 0 T= ENDOF          \ expected a clean exit
+   ;MATCH ;
 
 : TEST-NESTED ( -- )
    GST-ROOT$ GS-ROOT!

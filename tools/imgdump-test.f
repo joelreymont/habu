@@ -85,8 +85,11 @@ variable IDT-DIFF-U
    s" tools/imgdump.f" IDT-ARG+
    s" --" IDT-ARG+ ;
 
-: IDT-CAPTURE>N ( len len rc -- n n n ) {: outu erru rc :}
-   outu LEN>N erru LEN>N rc RC>N ;
+: IDT-CAPTURE>N ( result<pcap:captured,pcap:failed> -- n n n )   \ outn errn code (0 on clean exit)
+   MATCH result
+     ok  OF PCAP-CAPTURED:UNMAKE {: o:len e:len :} o LEN>N e LEN>N 0 ENDOF
+     err OF PCAP-FAILED:UNMAKE  {: o:len e:len c:rc :} o LEN>N e LEN>N c RC>N ENDOF
+   ;MATCH ;
 
 : IDT-RUN-1 ( ptr u8 n -- n n n ) {: a:ptr u :}
    IDT-ARGV-BASE

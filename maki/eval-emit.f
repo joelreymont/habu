@@ -115,6 +115,10 @@ EE-DRIVER-LIVE!
    EE-OUT EE-OUT-CAP >LEN
    EE-ERR EE-ERR-CAP >LEN
    EE-TIMEOUT-MS >MS RUN-ARGV-CAPTURE
+   MATCH result
+     ok  OF PCAP-CAPTURED:UNMAKE 0 >RC ENDOF          \ clean exit -> rc 0
+     err OF PCAP-FAILED:UNMAKE ENDOF                  \ nonzero child: (out err code) on stack
+   ;MATCH
    {: outu:len erru:len rc:rc :}
    erru LEN>N EE-ERR-U !
    rc RC>N 0 <> outu LEN>N 0= or if erru LEN>N EE-EMIT-FAIL then

@@ -15,13 +15,18 @@ variable RA-DEV variable RA-CTX variable RA-MOD variable RA-FUNC
 variable RA-OUT variable RA-NV variable RA-RBUF
 create RA-O $4000 allot  create RA-E $1000 allot  create RA-QO $1000 allot create RA-QE $1000 allot
 
+: RA-WRITE-PTX ( len len -- n )  drop {: o:len :}        \ err-len unused, rc ignored (Shape C)
+   PTXTC:PTX$ RA-O o LEN>N WRITE-ALL  o LEN>N ;
 : RA-EMIT ( -- n )
    PROC-ARGV-RESET
    s" --load"  >LEN PROC-ARGV+
    s" lib/errors.f" >LEN PROC-ARGV+  s" lib/string.f" >LEN PROC-ARGV+
    s" src/arch/ptx/emit.f" >LEN PROC-ARGV+  s" tools/ptx/redadd-cg.f" >LEN PROC-ARGV+
    s" bin/hb" >LEN  RA-O $4000 >LEN  RA-E $1000 >LEN  20000 >MS  RUN-ARGV-CAPTURE
-   {: ou:len eu:len rc:rc :}  PTXTC:PTX$ RA-O ou LEN>N WRITE-ALL  ou LEN>N ;
+   MATCH result
+     ok  OF PCAP-CAPTURED:UNMAKE RA-WRITE-PTX ENDOF
+     err OF PCAP-FAILED:UNMAKE drop RA-WRITE-PTX ENDOF
+   ;MATCH ;
 
 : RA-PTXAS ( -- n )
    RA-QO $1000 >LEN RA-QE $1000 >LEN PTXTC:ASSEMBLE ;

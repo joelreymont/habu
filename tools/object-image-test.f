@@ -64,8 +64,11 @@ variable EXE-U
    EXE$ OBJIMG:WRITE
    EXE$ FILE? TTRUE ;
 
-: CAPTURE>N ( len len rc -- n n n ) {: outu:len erru:len rc:rc :}
-   outu LEN>N erru LEN>N rc RC>N ;
+: CAPTURE>N ( result<pcap:captured,pcap:failed> -- n n n )   \ outn errn code (0 on clean exit)
+   MATCH result
+     ok  OF PCAP-CAPTURED:UNMAKE {: o:len e:len :} o LEN>N e LEN>N 0 ENDOF
+     err OF PCAP-FAILED:UNMAKE  {: o:len e:len c:rc :} o LEN>N e LEN>N c RC>N ENDOF
+   ;MATCH ;
 
 : RUN-EXE ( ptr u8 n ptr u8 n ptr u8 n n -- n n n )
    {: path:ptr pathu:n out:ptr outcap:n err:ptr errcap:n timeout:n :}

@@ -157,6 +157,10 @@ create PA-OUT PA-OUT-CAP allot  create PA-ERR PA-ERR-CAP allot
 \ spawn bin/hb over the built argv; capture the emitted PTX to MAKI-GRADE:PTX$
 : EMIT-CHILD ( -- )
    s" bin/hb" >LEN  CH-OUT CH-OUT-CAP >LEN  CH-ERR CH-ERR-CAP >LEN  EMIT-TIMEOUT-MS >MS  RUN-ARGV-CAPTURE
+   MATCH result
+     ok  OF PCAP-CAPTURED:UNMAKE 0 >RC ENDOF          \ clean exit -> rc 0
+     err OF PCAP-FAILED:UNMAKE ENDOF                  \ nonzero child: (out err code) on stack
+   ;MATCH
    {: outu:len erru:len rc:rc :}
    rc RC>N 0 <> outu LEN>N 0= or if E-EVAL-EMIT throw then
    MAKI-GRADE:PTX$ CH-OUT outu LEN>N WRITE-ALL ;
@@ -170,7 +174,10 @@ create PA-OUT PA-OUT-CAP allot  create PA-ERR PA-ERR-CAP allot
    s" -o"             >LEN PROC-ARGV+
    MAKI-GRADE:CUBIN$  >LEN PROC-ARGV+
    MAKI-GRADE:PTXAS$  >LEN  PA-OUT PA-OUT-CAP >LEN  PA-ERR PA-ERR-CAP >LEN  PTXAS-TIMEOUT-MS >MS  RUN-ARGV-CAPTURE
-   {: outu:len erru:len rc:rc :}  rc RC>N ;
+   MATCH result
+     ok  OF PCAP-CAPTURED:UNMAKE 2drop 0 ENDOF                    \ ptxas clean -> rc 0
+     err OF PCAP-FAILED:UNMAKE {: o:len e:len c:rc :} c RC>N ENDOF
+   ;MATCH ;
 
 : SN-BUILD ( ptr u8 n -- n ) {: a:ptr u:n :}
    s" habu-evnd-sumnorm" MAKI-GRADE:PREPARE

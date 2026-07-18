@@ -34,10 +34,11 @@ variable ERR-U
    s" test/owner-wid-child.f" >LEN PROC-ARGV+
    HB$ >LEN
    OUT CAP >LEN ERR CAP >LEN TIMEOUT-MS >MS
-   RUN-ARGV-ENV-CAPTURE {: outu:len erru:len code:rc :}
-   outu LEN>N OUT-U !
-   erru LEN>N ERR-U !
-   code RC>N ;
+   RUN-ARGV-ENV-CAPTURE
+   MATCH result
+     ok  OF PCAP-CAPTURED:UNMAKE {: o:len e:len :} o LEN>N OUT-U !  e LEN>N ERR-U !  0 ENDOF
+     err OF PCAP-FAILED:UNMAKE {: o:len e:len c:rc :} o LEN>N OUT-U !  e LEN>N ERR-U !  c RC>N ENDOF
+   ;MATCH ;
 
 : OUT$ ( -- ptr u8 n )
    OUT OUT-U @ ;

@@ -127,12 +127,16 @@ create SP-X SP-BYTES allot    create SP-Y SP-BYTES allot
 : ARGV-V4+ ( -- )                                \ v4 tile vocab for the SAXPY-family producers
    s" lib/ptx/cg-collective.f" >LEN PROC-ARGV+  s" lib/ptx/cg-vec.f" >LEN PROC-ARGV+
    s" lib/ptx/tile.f" >LEN PROC-ARGV+  s" lib/ptx/tile-v4.f" >LEN PROC-ARGV+ ;
+: SPAWN-EMIT-STORE ( len len rc -- ) {: o:len e:len c:rc :}   \ missing producer / nonzero rc -> stderr + throw
+   CAP-ERR e LEN>N  c RC>N  PTXTC:EMIT-GUARD
+   o LEN>N dup 0= if E-PTX-EMIT throw then EMIT-BYTES !       \ empty PTX -> fail closed
+   PTXTC:PTX$ CAP-OUT EMIT-BYTES @ WRITE-ALL ;
 : SPAWN-EMIT ( -- )                              \ argv built (entry last) -> capture PTX to PTXTC:PTX$
    s" bin/hb" >LEN  CAP-OUT CAP-OUT-CAP >LEN  CAP-ERR CAP-ERR-CAP >LEN  EMIT-TIMEOUT-MS >MS  RUN-ARGV-CAPTURE
-   {: outu:len erru:len rc:rc :}
-   CAP-ERR erru LEN>N  rc RC>N  PTXTC:EMIT-GUARD          \ missing producer / nonzero rc -> stderr + throw
-   outu LEN>N dup 0= if E-PTX-EMIT throw then EMIT-BYTES !  \ empty PTX -> fail closed
-   PTXTC:PTX$ CAP-OUT EMIT-BYTES @ WRITE-ALL ;
+   MATCH result
+     ok  OF PCAP-CAPTURED:UNMAKE 0 >RC SPAWN-EMIT-STORE ENDOF
+     err OF PCAP-FAILED:UNMAKE SPAWN-EMIT-STORE ENDOF
+   ;MATCH ;
 : EMIT-GEMM ( -- )   ARGV-BASE  s" tools/ptx/matmul-cg.f"    >LEN PROC-ARGV+  SPAWN-EMIT ;
 : EMIT-ATTN ( -- )   ARGV-BASE  s" tools/ptx/attention-cg.f" >LEN PROC-ARGV+  SPAWN-EMIT ;
 : EMIT-FUSED ( -- )  ARGV-BASE ARGV-V4+  s" tools/ptx/fused-relu-cg.f" >LEN PROC-ARGV+  SPAWN-EMIT ;

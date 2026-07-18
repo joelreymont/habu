@@ -42,6 +42,13 @@ private
    s" lib/ptx/cg-vec.f" >LEN PROC-ARGV+  s" lib/ptx/tile.f" >LEN PROC-ARGV+
    s" lib/ptx/tile-v4.f" >LEN PROC-ARGV+ ;
 
+\ missing producer / nonzero emit rc -> surface child stderr + throw; else write PTX, return bytes
+: EMIT-KERNEL-WRITE ( len len rc -- n ) {: o:len e:len c:rc :}
+   EMIT-ERR e LEN>N  c RC>N  PTXTC:EMIT-GUARD
+   o LEN>N PTX-U !
+   PTXTC:PTX$ PTX-OUT PTX-U @ WRITE-ALL
+   PTX-U @ ;
+
 public
 
 : EMIT-KERNEL ( ptr u8 n -- n )          \ producer path -> emit checked PTX to private PTX; return bytes
@@ -49,11 +56,10 @@ public
    EMIT-PRELUDE
    prod produ >LEN PROC-ARGV+
    s" bin/hb" >LEN  PTX-OUT PTX-CAP >LEN  EMIT-ERR MSG-CAP >LEN  EMIT-TIMEOUT-MS >MS  RUN-ARGV-CAPTURE
-   {: outu:len erru:len rc:rc :}
-   EMIT-ERR erru LEN>N  rc RC>N  PTXTC:EMIT-GUARD         \ missing producer / nonzero emit rc -> stderr + throw
-   outu LEN>N PTX-U !
-   PTXTC:PTX$ PTX-OUT PTX-U @ WRITE-ALL
-   PTX-U @ ;
+   MATCH result
+     ok  OF PCAP-CAPTURED:UNMAKE 0 >RC EMIT-KERNEL-WRITE ENDOF
+     err OF PCAP-FAILED:UNMAKE EMIT-KERNEL-WRITE ENDOF
+   ;MATCH ;
 
 : EMITTED$ ( -- ptr u8 n )               \ the last emitted PTX bytes (for the host emit proof)
    PTX-OUT PTX-U @ ;

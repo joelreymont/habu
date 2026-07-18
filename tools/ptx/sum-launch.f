@@ -37,6 +37,9 @@ variable RS-DIN variable RS-DOUT variable RS-KV
    RS-HOUT o 2 + + c@ 16 lshift or  RS-HOUT o 3 + + c@ 24 lshift or ;
 
 \ spawn bin/hb to emit the checked SUM-ROWS kernel to the private PTX
+: RS-EMIT-WRITE ( len len rc -- n ) {: o:len e:len c:rc :}   \ nonzero emit rc -> surface stderr, throw
+   RS-ERR e LEN>N  c RC>N  PTXTC:EMIT-GUARD
+   PTXTC:PTX$ RS-OUT o LEN>N WRITE-ALL  o LEN>N ;
 : RS-EMIT ( -- n )
    PROC-ARGV-RESET
    s" --load"               >LEN PROC-ARGV+
@@ -46,9 +49,10 @@ variable RS-DIN variable RS-DOUT variable RS-KV
    s" lib/ptx/header.f"     >LEN PROC-ARGV+  s" lib/ptx/cg-collective.f" >LEN PROC-ARGV+
    s" lib/ptx/collective.f" >LEN PROC-ARGV+  s" tools/ptx/sum-cg.f" >LEN PROC-ARGV+
    s" bin/hb" >LEN  RS-OUT $4000 >LEN  RS-ERR $1000 >LEN  20000 >MS  RUN-ARGV-CAPTURE
-   {: outu:len erru:len rc:rc :}
-   RS-ERR erru LEN>N  rc RC>N  PTXTC:EMIT-GUARD           \ nonzero emit rc -> surface stderr, throw
-   PTXTC:PTX$ RS-OUT outu LEN>N WRITE-ALL  outu LEN>N ;
+   MATCH result
+     ok  OF PCAP-CAPTURED:UNMAKE 0 >RC RS-EMIT-WRITE ENDOF
+     err OF PCAP-FAILED:UNMAKE RS-EMIT-WRITE ENDOF
+   ;MATCH ;
 
 : RS-PTXAS ( -- n )
    RS-QO $1000 >LEN RS-QE $1000 >LEN PTXTC:ASSEMBLE ;

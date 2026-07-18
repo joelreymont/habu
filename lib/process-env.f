@@ -311,7 +311,7 @@ public
    PROC-OUT-W PROC-CLOSE-CELL
    PROC-ERR-W PROC-CLOSE-CELL ;
 
-: RUN-ARGV-ENV-CAPTURE ( ptr u8 len ptr u8 len ptr u8 len ms -- len len rc )
+: RUN-ARGV-ENV-CAPTURE ( ptr u8 len ptr u8 len ptr u8 len ms -- result<pcap:captured,pcap:failed> )
    {: path:ptr pathu out:ptr outcap err:ptr errcap timeout :}
    path pathu PROC-ARGV-CHECK-PATH
    outcap errcap PROC-CAPTURE-CHECK-CAPS
@@ -333,7 +333,7 @@ public
    out outcap err errcap PROC-RUN-CAPTURE-OUTCOME-LOOP
    PROC-CAPTURE-FINISH-OUTCOME ;
 
-: RUN-ARGV-ENV-STDIN-CAPTURE ( ptr u8 len ptr u8 len ptr u8 len ptr u8 len ms -- len len rc )
+: RUN-ARGV-ENV-STDIN-CAPTURE ( ptr u8 len ptr u8 len ptr u8 len ptr u8 len ms -- result<pcap:captured,pcap:failed> )
    {: path:ptr pathu in:ptr inu out:ptr outcap err:ptr errcap timeout :}
    path pathu PROC-ARGV-CHECK-PATH
    inu PROC-CAPTURE-CHECK-STDIN

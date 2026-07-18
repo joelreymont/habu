@@ -15,6 +15,31 @@ SUMTYPE outcome 0
   VARIANT timeout ;VARIANT
 ;SUMTYPE
 
+\ pcap - the byte-length pair a bounded capture always produces, split by how the
+\ child completed (switchover wave B). A clean exit carries just the two captured
+\ lengths (captured); a nonzero completion carries the SAME two lengths PLUS its
+\ completion code — a nonzero exit code, or 128+signal (failed). The lengths are
+\ valid on BOTH arms: captured output is real whether or not the child exited
+\ clean, and callers replay it either way, so both products keep the lengths and
+\ only the failure adds the code. The rc sentinel this replaces buried the
+\ clean-vs-failed distinction in one signed cell; the result forces every caller
+\ to MATCH both arms. (No errno is returned here — OS spawn/wait failures THROW
+\ E-PROC-SPAWN/E-PROC-WAIT inside the spawn path; the code is the child's own
+\ completion code, never an errno.)
+package PCAP
+public
+PRODUCT captured 0
+  FIELD out len
+  FIELD err len
+;PRODUCT
+PRODUCT failed 0
+  FIELD out len
+  FIELD err len
+  FIELD code rc
+;PRODUCT
+private
+;package
+
 1024 constant PROC-PATHZ-CAP
 1000000 constant PROC-NS-PER-MS
 1 constant POLLIN
@@ -585,8 +610,19 @@ PROC-REAP-ARM-DEFAULT
    timeout PROC-CAPTURE-BEGIN
    PROC-SETUP-STDIN-FDS ;
 
-: PROC-CAPTURE-RC@ ( -- len len rc )
-   PROC-OUT-LEN @ PROC-ERR-LEN @ PROC-RC @ ;
+\ Wrap a captured (out-len, err-len) plus the stored completion rc into a result:
+\ a clean exit (rc 0) is ok(captured); any nonzero completion is err(failed)
+\ carrying the code. Neither arm drops the lengths.
+: PROC-CAPTURE>RESULT ( len len rc -- result<pcap:captured,pcap:failed> )
+   {: o:len e:len r:rc :}
+   r RC>N 0 = if
+      o e PCAP-CAPTURED:MAKE RESULT:OK
+   else
+      o e r PCAP-FAILED:MAKE RESULT:ERR
+   then ;
+
+: PROC-CAPTURE-RC@ ( -- result<pcap:captured,pcap:failed> )
+   PROC-OUT-LEN @ PROC-ERR-LEN @ PROC-RC @ PROC-CAPTURE>RESULT ;
 
 \ The capture outcome is DERIVED, never stored: the machine keeps only the
 \ raw wait status plus the timed-out flag (both one cell), so no (kind code)
@@ -599,7 +635,7 @@ PROC-REAP-ARM-DEFAULT
    PROC-OUT-LEN @ PROC-ERR-LEN @
    PROC-CAPTURE-OUTCOME ;
 
-: PROC-CAPTURE-FINISH-RC ( -- len len rc )
+: PROC-CAPTURE-FINISH-RC ( -- result<pcap:captured,pcap:failed> )
    PROC-CLOSE-ALL-CAPTURE-FDS
    PROC-REAP-CAPTURE
    PROC-CAPTURE-RC@ ;
@@ -615,7 +651,7 @@ PROC-REAP-ARM-DEFAULT
    PROC-OUT-W PROC-CLOSE-CELL
    PROC-ERR-W PROC-CLOSE-CELL ;
 
-: RUN-CAPTURE ( ptr u8 len ptr u8 len ptr u8 len ms -- len len rc )
+: RUN-CAPTURE ( ptr u8 len ptr u8 len ptr u8 len ms -- result<pcap:captured,pcap:failed> )
    {: path:ptr pathu out:ptr outcap err:ptr errcap timeout :}
    pathu LEN>N 0 < if E-PROC-OUTPUT throw then
    outcap errcap PROC-CAPTURE-CHECK-CAPS

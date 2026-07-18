@@ -150,8 +150,11 @@ variable GPT-KR-LOG-U
    SCRIPT-ARGC 0 > if 0 SCRIPT-ARGV$ a u STR= exit then
    0 0= 0= ;
 
-: GPT-CAPTURE>N ( len len rc -- n n n ) {: outu:len erru:len rc:rc :}
-   outu LEN>N erru LEN>N rc RC>N ;
+: GPT-CAPTURE>N ( result<pcap:captured,pcap:failed> -- n n n )   \ outn errn code (0 on clean exit)
+   MATCH result
+     ok  OF PCAP-CAPTURED:UNMAKE {: o:len e:len :} o LEN>N e LEN>N 0 ENDOF
+     err OF PCAP-FAILED:UNMAKE  {: o:len e:len c:rc :} o LEN>N e LEN>N c RC>N ENDOF
+   ;MATCH ;
 
 : GPT-MODE-CAPTURE ( ptr u8 n -- n n n ) {: mode:ptr modeu:n :}
    PROC-ARGV-RESET

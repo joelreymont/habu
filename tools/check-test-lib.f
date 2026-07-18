@@ -207,8 +207,11 @@ variable CKT-PAR-U
    CKT-DIRECT-START
    [: s" --bad-flag" CHK-PARSE-ONE ;] catch CKT-DIRECT-END ;
 
-: CKT-CAPTURE>N ( len len rc -- n n n ) {: outu:len erru:len rc:rc :}
-   outu LEN>N erru LEN>N rc RC>N ;
+: CKT-CAPTURE>N ( result<pcap:captured,pcap:failed> -- n n n )   \ outn errn code (0 on clean exit)
+   MATCH result
+     ok  OF PCAP-CAPTURED:UNMAKE {: o:len e:len :} o LEN>N e LEN>N 0 ENDOF
+     err OF PCAP-FAILED:UNMAKE  {: o:len e:len c:rc :} o LEN>N e LEN>N c RC>N ENDOF
+   ;MATCH ;
 
 : CKT-GOOD$ ( -- ptr u8 n )
    s" : CKT-OK ( i64 -- i64 ) dup * ;" ;

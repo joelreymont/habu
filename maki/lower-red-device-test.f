@@ -60,6 +60,10 @@ create LRD-CS $800 allot  variable LRD-CS-U
    s" --load"           >LEN PROC-ARGV+
    MAKI-GRADE:DRIVER$   >LEN PROC-ARGV+
    s" bin/hb" >LEN  LRD-OUT $4000 >LEN  LRD-ERR $1000 >LEN  30000 >MS  RUN-ARGV-CAPTURE
+   MATCH result
+     ok  OF PCAP-CAPTURED:UNMAKE 0 >RC ENDOF          \ clean exit -> rc 0
+     err OF PCAP-FAILED:UNMAKE ENDOF                  \ nonzero child: (out err code) on stack
+   ;MATCH
    {: outu:len erru:len rc:rc :}
    LRD-ERR erru LEN>N  rc RC>N  PTXTC:EMIT-GUARD           \ surface stderr + throw on a nonzero child
    PTXTC:PTX$ LRD-OUT outu LEN>N WRITE-ALL ;

@@ -202,8 +202,10 @@ $7E constant ROOT-C
 
 : RUN ( -- n n n )
    s" bin/hb" >LEN OUT CAP >LEN ERR CAP >LEN TIMEOUT-MS >MS RUN-ARGV-ENV-CAPTURE
-   {: outu:len erru:len rc:rc :}
-   outu LEN>N erru LEN>N rc RC>N ;
+   MATCH result
+     ok  OF PCAP-CAPTURED:UNMAKE {: o:len e:len :} o LEN>N e LEN>N 0 ENDOF
+     err OF PCAP-FAILED:UNMAKE {: o:len e:len c:rc :} o LEN>N e LEN>N c RC>N ENDOF
+   ;MATCH ;
 
 : CHECK-PATH-ERROR ( ptr u8 n ptr u8 n ptr u8 n -- )
    {: source:ptr sourceu:n root:ptr rootu:n cause:ptr causeu:n :}

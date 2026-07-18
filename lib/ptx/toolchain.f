@@ -67,9 +67,11 @@ public
    s" -o" >LEN PROC-ARGV+
    CUBIN$ >LEN PROC-ARGV+
    PTXAS$ >LEN out outcap err errcap ASM-TIMEOUT-MS >MS RUN-ARGV-CAPTURE
-   {: outu:len erru:len rc:rc :}
-   err ERR-P !  erru LEN>N ERR-U !
-   rc RC>N ;
+   err ERR-P !                                      \ stderr buffer ptr is constant; store before MATCH
+   MATCH result
+     ok  OF PCAP-CAPTURED:UNMAKE {: o:len e:len :} e LEN>N ERR-U !  0 ENDOF
+     err OF PCAP-FAILED:UNMAKE {: o:len e:len c:rc :} e LEN>N ERR-U !  c RC>N ENDOF
+   ;MATCH ;
 
 \ stderr from the last ASSEMBLE, so a failing assemble can be diagnosed not masked
 : ERR$ ( -- ptr u8 n )  ERR-P @  ERR-U @ ;

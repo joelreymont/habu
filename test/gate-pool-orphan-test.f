@@ -318,20 +318,26 @@ variable GCR-SAVED-FD
    dw-wr FD>N close
    PROC-REAP-PID @ PID>N 0 < ;
 
+: GCR-CODE ( result<pcap:captured,pcap:failed> -- n )   \ completion code: 0 on a clean exit, else nonzero
+   MATCH result
+     ok  OF PCAP-CAPTURED:UNMAKE 2drop 0 ENDOF
+     err OF PCAP-FAILED:UNMAKE {: o:len e:len c:rc :} c RC>N ENDOF
+   ;MATCH ;
+
 : GCR-DONE-DISARMED? ( -- bool bool )   \ completion terminator disarms, twice
    PROC-REAP-WATCH-FD @ GCR-SAVED-FD !
    PIPE-PAIR {: dw-rd:fd dw-wr:fd :}
    dw-rd FD>N PROC-REAP-WATCH-FD !
    GCR-NOOP-ARGV
    s" /bin/sh" >LEN GCR-OUT-BUF GCR-CAP >LEN GCR-ERR-BUF GCR-CAP >LEN
-   GCR-LONG-MS >MS RUN-ARGV-CAPTURE {: o1:len e1:len r1:rc :}
+   GCR-LONG-MS >MS RUN-ARGV-CAPTURE GCR-CODE {: r1:n :}
    GCR-NOOP-ARGV
    s" /bin/sh" >LEN GCR-OUT-BUF GCR-CAP >LEN GCR-ERR-BUF GCR-CAP >LEN
-   GCR-LONG-MS >MS RUN-ARGV-CAPTURE {: o2:len e2:len r2:rc :}
+   GCR-LONG-MS >MS RUN-ARGV-CAPTURE GCR-CODE {: r2:n :}
    GCR-SAVED-FD @ PROC-REAP-WATCH-FD !
    dw-rd FD>N close
    dw-wr FD>N close
-   r1 RC>N 0 = r2 RC>N 0 = and
+   r1 0 = r2 0 = and
    PROC-REAP-PID @ PID>N 0 < ;
 
 : GPO-MAIN ( -- )

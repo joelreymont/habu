@@ -104,7 +104,10 @@ DEFAULT-TIMEOUT-MS TIMEOUT-MS !
    BATCH-OPTS
    HOST$ >LEN PROC-CMD-ARG+
    a u >LEN PROC-CMD-ARG+
-   SSH$ >LEN TIMEOUT-MS @ >MS PROC-CMD-RUN-RC ;
+   SSH$ >LEN TIMEOUT-MS @ >MS PROC-CMD-RUN-RC MATCH result
+     ok  OF >RC ENDOF
+     err OF >RC ENDOF
+   ;MATCH ;
 
 : TIMED-OUT? ( -- bool )
    PROC-CMD-OUTCOME@ MATCH outcome
@@ -177,7 +180,10 @@ public
    PROC-CMD-ERR$ ;
 
 : RC@ ( -- rc )
-   PROC-CMD-RC@ ;
+   PROC-CMD-RC@ MATCH result
+     ok  OF >RC ENDOF
+     err OF >RC ENDOF
+   ;MATCH ;
 
 \ ---- remote command execution ------------------------------------------------
 
@@ -213,8 +219,10 @@ public
    s" -rlt" >LEN PROC-CMD-ARG+
    a u >LEN PROC-CMD-ARG+
    DEST$ >LEN PROC-CMD-ARG+
-   RSYNC$ >LEN TIMEOUT-MS @ >MS PROC-CMD-RUN-RC
-   RC>N 0= if exit then E-ZED-PUT throw ;
+   RSYNC$ >LEN TIMEOUT-MS @ >MS PROC-CMD-RUN-RC MATCH result
+     ok  OF drop ENDOF
+     err OF drop E-ZED-PUT throw ENDOF
+   ;MATCH ;
 
 : PUT-FILE ( ptr u8 n -- ) {: a:ptr u:n :}   \ scp local file into scratch/
    DEST-BUILD
@@ -222,8 +230,10 @@ public
    s" -o" >LEN PROC-CMD-ARG+  s" BatchMode=yes" >LEN PROC-CMD-ARG+
    a u >LEN PROC-CMD-ARG+
    DEST$ >LEN PROC-CMD-ARG+
-   SCP$ >LEN TIMEOUT-MS @ >MS PROC-CMD-RUN-RC
-   RC>N 0= if exit then E-ZED-PUT throw ;
+   SCP$ >LEN TIMEOUT-MS @ >MS PROC-CMD-RUN-RC MATCH result
+     ok  OF drop ENDOF
+     err OF drop E-ZED-PUT throw ENDOF
+   ;MATCH ;
 
 : HAVE-TOOL? ( ptr u8 n -- bool ) {: a:ptr u:n :}   \ remote `command -v <tool>`
    CMD-RESET

@@ -19,6 +19,10 @@ variable AD-DX variable AD-DY variable AD-AB variable AD-NV variable AD-RBUF
 create AD-OUT $4000 allot  create AD-ERR $1000 allot
 create AD-QOUT $1000 allot create AD-QERR $1000 allot
 
+\ write the captured PTX; err-len unused, rc ignored (Shape C)
+: AD-WRITE-PTX ( len len -- n )  drop {: o:len :}
+   PTXTC:PTX$ AD-OUT o LEN>N WRITE-ALL  o LEN>N ;
+
 \ spawn bin/hb to emit AXPY-ACC; return captured bytes
 : AD-EMIT ( -- n )
    PROC-ARGV-RESET
@@ -29,8 +33,10 @@ create AD-QOUT $1000 allot create AD-QERR $1000 allot
    s" lib/ptx/header.f"     >LEN PROC-ARGV+  s" lib/ptx/tile.f" >LEN PROC-ARGV+
    s" lib/ptx/tile-acc.f"   >LEN PROC-ARGV+  s" tools/ptx/acc-cg.f" >LEN PROC-ARGV+
    s" bin/hb" >LEN  AD-OUT $4000 >LEN  AD-ERR $1000 >LEN  20000 >MS  RUN-ARGV-CAPTURE
-   {: outu erru rc :}
-   PTXTC:PTX$ AD-OUT outu LEN>N WRITE-ALL  outu LEN>N ;
+   MATCH result
+     ok  OF PCAP-CAPTURED:UNMAKE AD-WRITE-PTX ENDOF
+     err OF PCAP-FAILED:UNMAKE drop AD-WRITE-PTX ENDOF
+   ;MATCH ;
 
 : AD-PTXAS ( -- n )
    AD-QOUT $1000 >LEN AD-QERR $1000 >LEN PTXTC:ASSEMBLE ;

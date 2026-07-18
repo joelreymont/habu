@@ -40,8 +40,11 @@ variable PAT-I
 : PAT-READ ( -- n )
    PAT-OUT-R @ PAT-BUF 64 read ;
 
-: PAT-CAPTURE>N ( len len rc -- n n n ) {: outu erru rc :}
-   outu LEN>N erru LEN>N rc RC>N ;
+: PAT-CAPTURE>N ( result<pcap:captured,pcap:failed> -- n n n )   \ outn errn code (0 on clean exit)
+   MATCH result
+     ok  OF PCAP-CAPTURED:UNMAKE {: o:len e:len :} o LEN>N e LEN>N 0 ENDOF
+     err OF PCAP-FAILED:UNMAKE  {: o:len e:len c:rc :} o LEN>N e LEN>N c RC>N ENDOF
+   ;MATCH ;
 
 : PAT-LTRIM-SPACES ( ptr u8 n -- ptr u8 n ) {: a:ptr u :}
    0 begin dup u < while
@@ -203,6 +206,23 @@ variable PAT-I
    PAT-STDIN-CAPTURE-OUTCOME
    1 T-OUTCOME-EXITED= LEN>N 0 T= LEN>N 0 T= ;
 
+\ Direct both-arm coverage for RUN-ARGV-CAPTURE: printf exits clean -> ok(captured)
+\ carrying the two lengths; false exits 1 -> err(failed) carrying lengths + code.
+: PAT-RUN-ARGV-CAPTURE-RESULT ( -- )
+   PROC-ARGV-RESET
+   s" %s" >LEN PROC-ARGV+  s" hi" >LEN PROC-ARGV+
+   s" /usr/bin/printf" >LEN PAT-CAP-OUT 64 >LEN PAT-CAP-ERR 32 >LEN 1000 >MS RUN-ARGV-CAPTURE
+   MATCH result
+     ok  OF PCAP-CAPTURED:UNMAKE {: o:len e:len :} o LEN>N 2 T=  e LEN>N 0 T= ENDOF
+     err OF PCAP-FAILED:UNMAKE 2drop drop 1 0 T= ENDOF
+   ;MATCH
+   PROC-ARGV-RESET
+   s" /usr/bin/false" >LEN PAT-CAP-OUT 64 >LEN PAT-CAP-ERR 32 >LEN 1000 >MS RUN-ARGV-CAPTURE
+   MATCH result
+     ok  OF PCAP-CAPTURED:UNMAKE 2drop 1 0 T= ENDOF
+     err OF PCAP-FAILED:UNMAKE {: o:len e:len c:rc :} o LEN>N 0 T=  e LEN>N 0 T=  c RC>N 1 T= ENDOF
+   ;MATCH ;
+
 : PAT-READ-NEG-LEN ( -- )
    -1 PAT-I !
    PAT-IN-R PAT-CAP-OUT 64 >LEN PAT-I PROC-READ-STREAM ;
@@ -219,6 +239,7 @@ variable PAT-I
    [: PAT-TOO-MANY-ARGS ;] E-PROC-OUTPUT TTHROWSQ
    [: PAT-LONG-ARG ;] E-PROC-OUTPUT TTHROWSQ
    PAT-RUN-ARGV-CAPTURE
+   PAT-RUN-ARGV-CAPTURE-RESULT
    PAT-RUN-ARGV-CAPTURE-EXACT
    [: PAT-RUN-ARGV-CAPTURE-TRUNCATED ;] E-PROC-TRUNCATED TTHROWSQ
    PAT-RUN-ARGV-STDIN-CAPTURE-CAT

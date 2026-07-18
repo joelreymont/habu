@@ -1205,7 +1205,7 @@ PROC-CAPTURE-DONE?       ( -- bool )
 PROC-RUN-CAPTURE-LOOP    ( ptr u8 len ptr u8 len -- )
 PROC-RUN-CAPTURE-OUTCOME-LOOP ( ptr u8 len ptr u8 len -- )
 PROC-SPAWN-CAPTURE       ( ptr u8 -- )
-RUN-CAPTURE  ( ptr u8 len ptr u8 len ptr u8 len ms -- len len rc )
+RUN-CAPTURE  ( ptr u8 len ptr u8 len ptr u8 len ms -- result<pcap:captured,pcap:failed> )
 RUN-CAPTURE-OUTCOME  ( ptr u8 len ptr u8 len ptr u8 len ms -- len len outcome )
 ```
 
@@ -1320,9 +1320,9 @@ PROC-SPAWN-ARGV-IO         ( ptr u8 len fd fd fd -- pid )
 PROC-RUN-ARGV-IO-RC        ( ptr u8 len fd fd fd -- rc )
 PROC-ARGV-CHECK-PATH  ( ptr u8 len -- )
 PROC-SPAWN-ARGV-CAPTURE ( ptr u8 ptr a -- )
-RUN-ARGV-CAPTURE      ( ptr u8 len ptr u8 len ptr u8 len ms -- len len rc )
+RUN-ARGV-CAPTURE      ( ptr u8 len ptr u8 len ptr u8 len ms -- result<pcap:captured,pcap:failed> )
 RUN-ARGV-CAPTURE-OUTCOME ( ptr u8 len ptr u8 len ptr u8 len ms -- len len outcome )
-RUN-ARGV-STDIN-CAPTURE ( ptr u8 len ptr u8 len ptr u8 len ptr u8 len ms -- len len rc )
+RUN-ARGV-STDIN-CAPTURE ( ptr u8 len ptr u8 len ptr u8 len ptr u8 len ms -- result<pcap:captured,pcap:failed> )
 RUN-ARGV-STDIN-CAPTURE-OUTCOME ( ptr u8 len ptr u8 len ptr u8 len ptr u8 len ms -- len len outcome )
 ```
 
@@ -1338,8 +1338,12 @@ the same fd inheritance rules as `PROC-SPAWN-IO`.
 `RUN-CAPTURE` and `RUN-ARGV-CAPTURE` take stdout buffer/capacity, stderr
 buffer/capacity, and timeout `ms`. `RUN-CAPTURE` runs a counted
 executable path with no extra args; `RUN-ARGV-CAPTURE` runs the current prepared
-argv vector and then resets argv state. Both return stdout length, stderr length,
-and rc in that order. Captures are bounded by the caller capacities; if either
+argv vector and then resets argv state. Both return a
+`result<pcap:captured,pcap:failed>`: a clean exit is `ok(captured)` carrying the
+stdout and stderr byte lengths; a nonzero completion is `err(failed)` carrying
+the same two lengths PLUS the completion code (a nonzero exit code, or
+128+signal) — the captured output is valid on both arms, and rc in that order is
+retired in favor of the exhaustive `MATCH`. Captures are bounded by the caller capacities; if either
 stream would exceed its capacity, the word throws `E-PROC-TRUNCATED` rather than
 truncating silently. Exact-capacity output is accepted when the next read
 observes EOF. On timeout, it sends `SIGKILL` through the checked
@@ -1376,9 +1380,9 @@ PROC-ENV-PREPARE          ( -- ptr a )
 PROC-ENV-INHERIT-MISSING  ( -- )
 PROC-SPAWN-ARGV-ENV-IO         ( ptr u8 len fd fd fd -- pid )
 PROC-RUN-ARGV-ENV-IO-RC        ( ptr u8 len fd fd fd -- rc )
-RUN-ARGV-ENV-CAPTURE      ( ptr u8 len ptr u8 len ptr u8 len ms -- len len rc )
+RUN-ARGV-ENV-CAPTURE      ( ptr u8 len ptr u8 len ptr u8 len ms -- result<pcap:captured,pcap:failed> )
 RUN-ARGV-ENV-CAPTURE-OUTCOME ( ptr u8 len ptr u8 len ptr u8 len ms -- len len outcome )
-RUN-ARGV-ENV-STDIN-CAPTURE ( ptr u8 len ptr u8 len ptr u8 len ptr u8 len ms -- len len rc )
+RUN-ARGV-ENV-STDIN-CAPTURE ( ptr u8 len ptr u8 len ptr u8 len ptr u8 len ms -- result<pcap:captured,pcap:failed> )
 RUN-ARGV-ENV-STDIN-CAPTURE-OUTCOME ( ptr u8 len ptr u8 len ptr u8 len ptr u8 len ms -- len len outcome )
 FIND-EXECUTABLE-IN-PATH   ( ptr u8 len ptr u8 len ptr u8 -- option<len> )
 FIND-EXECUTABLE           ( ptr u8 len ptr u8 -- option<len> )
@@ -1419,11 +1423,11 @@ PROC-CMD-ENV-HERMETIC ( -- )
 PROC-CMD-IN-RESET    ( -- )
 PROC-CMD-IN!         ( ptr u8 len -- )
 PROC-CMD-RUN-OUTCOME ( ptr u8 len ms -- n n )
-PROC-CMD-RUN-RC      ( ptr u8 len ms -- rc )
+PROC-CMD-RUN-RC      ( ptr u8 len ms -- result<n,n> )
 PROC-CMD-OUT$        ( -- ptr u8 n )
 PROC-CMD-ERR$        ( -- ptr u8 n )
 PROC-CMD-OUTCOME@    ( -- n n )
-PROC-CMD-RC@         ( -- rc )
+PROC-CMD-RC@         ( -- result<n,n> )
 ```
 
 Call `PROC-CMD-RESET`, append extra args with `PROC-CMD-ARG+`, append explicit
@@ -1432,8 +1436,9 @@ replace the default inherited environment with `PROC-CMD-ENV-HERMETIC`, and set
 bounded stdin with `PROC-CMD-IN!`. `PROC-CMD-RUN-OUTCOME` validates the path and
 timeout before transferring state into the lower-level argv/env buffers, captures
 bounded stdout/stderr into command-owned buffers, stores the decomposed outcome, and returns
-that same outcome pair. `PROC-CMD-RUN-RC` returns `PROC-OUTCOME>RC` conversion
-for callers that still need rc semantics. `PROC-CMD-OUT$`, `PROC-CMD-ERR$`,
+that same outcome pair. `PROC-CMD-RUN-RC` wraps the `PROC-OUTCOME>RC` completion
+in a `result<n,n>` (ok on a clean exit, err carrying the nonzero code) for
+callers that branch on success/failure. `PROC-CMD-OUT$`, `PROC-CMD-ERR$`,
 `PROC-CMD-OUTCOME@`, and `PROC-CMD-RC@` expose the stored result after the run.
 
 `lib/process-cwd.f` is a post-env layer for running prepared argv/envp children
@@ -1449,8 +1454,8 @@ PROC-SPAWN-ARGV-ENV-CWD-IO      ( ptr u8 len ptr u8 len fd fd fd -- pid )
 PROC-RUN-ARGV-ENV-CWD-IO-RC     ( ptr u8 len ptr u8 len fd fd fd -- rc )
 PROC-SPAWN-ARGV-ENV-CWD-CAPTURE ( ptr u8 ptr a ptr a ptr u8 -- )
 PROC-SPAWN-ARGV-ENV-CWD-STDIN-CAPTURE ( ptr u8 ptr a ptr a ptr u8 -- )
-RUN-ARGV-ENV-CWD-CAPTURE   ( ptr u8 len ptr u8 len ptr u8 len ptr u8 len ms -- len len rc )
-RUN-ARGV-ENV-CWD-STDIN-CAPTURE ( ptr u8 len ptr u8 len ptr u8 len ptr u8 len ptr u8 len ms -- len len rc )
+RUN-ARGV-ENV-CWD-CAPTURE   ( ptr u8 len ptr u8 len ptr u8 len ptr u8 len ms -- result<pcap:captured,pcap:failed> )
+RUN-ARGV-ENV-CWD-STDIN-CAPTURE ( ptr u8 len ptr u8 len ptr u8 len ptr u8 len ptr u8 len ms -- result<pcap:captured,pcap:failed> )
 ```
 
 Call `PROC-ARGV-RESET`/`PROC-ENV-RESET`, append prepared args/env entries, then

@@ -44,6 +44,9 @@ variable SL-DIN variable SL-DOUT variable SL-KV
    SL-HOUT o 2 + + c@ 16 lshift or  SL-HOUT o 3 + + c@ 24 lshift or ;
 
 \ spawn bin/hb to emit the checked SOFTMAX-ROWS kernel to the private PTX
+: SL-EMIT-WRITE ( len len rc -- n ) {: o:len e:len c:rc :}   \ nonzero emit rc -> surface stderr, throw
+   SL-ERR e LEN>N  c RC>N  PTXTC:EMIT-GUARD
+   PTXTC:PTX$ SL-OUT o LEN>N WRITE-ALL  o LEN>N ;
 : SL-EMIT ( -- n )
    PROC-ARGV-RESET
    s" --load"               >LEN PROC-ARGV+
@@ -53,9 +56,10 @@ variable SL-DIN variable SL-DOUT variable SL-KV
    s" lib/ptx/header.f"     >LEN PROC-ARGV+  s" lib/ptx/cg-collective.f" >LEN PROC-ARGV+
    s" lib/ptx/collective.f" >LEN PROC-ARGV+  s" tools/ptx/softmax-cg.f" >LEN PROC-ARGV+
    s" bin/hb" >LEN  SL-OUT $8000 >LEN  SL-ERR $1000 >LEN  20000 >MS  RUN-ARGV-CAPTURE
-   {: outu:len erru:len rc:rc :}
-   SL-ERR erru LEN>N  rc RC>N  PTXTC:EMIT-GUARD           \ nonzero emit rc -> surface stderr, throw
-   PTXTC:PTX$ SL-OUT outu LEN>N WRITE-ALL  outu LEN>N ;
+   MATCH result
+     ok  OF PCAP-CAPTURED:UNMAKE 0 >RC SL-EMIT-WRITE ENDOF
+     err OF PCAP-FAILED:UNMAKE SL-EMIT-WRITE ENDOF
+   ;MATCH ;
 
 : SL-PTXAS ( -- n )
    SL-QO $1000 >LEN SL-QE $1000 >LEN PTXTC:ASSEMBLE ;

@@ -46,12 +46,13 @@ variable DIR-B-U
    s" SAXPY" >LEN PROC-ARGV+
    oa ou >LEN PROC-ARGV+
    s" bin/hb" >LEN SPAWN-OUT CAP-CAP >LEN SPAWN-ERR CAP-CAP >LEN SPAWN-MS >MS RUN-ARGV-CAPTURE
-   {: outu:len erru:len rc:rc :}
-   rc RC>N 0 <> if
-      s" kernel-export-test: CLI spawn failed, stderr:" type cr
-      SPAWN-ERR erru LEN>N type cr
-   then
-   rc RC>N 0 T= ;
+   MATCH result
+     ok  OF PCAP-CAPTURED:UNMAKE 2drop 0 0 T= ENDOF               \ clean exit -> rc 0 passes
+     err OF PCAP-FAILED:UNMAKE {: o:len e:len c:rc :}
+        s" kernel-export-test: CLI spawn failed, stderr:" type cr
+        SPAWN-ERR e LEN>N type cr
+        c RC>N 0 T= ENDOF                                         \ nonzero completion -> assert fails
+   ;MATCH ;
 
 : ART-READ ( ptr u8 n ptr u8 n ptr u8 -- ptr u8 n )   \ dir file dst -> artifact bytes
    {: oa:ptr ou:n fa:ptr fu:n dst:ptr :}

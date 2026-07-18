@@ -53,14 +53,18 @@ variable GC-FWD variable GC-BWD variable GC-dX variable GC-dDY variable GC-dO va
    CUDA:OPEN? ;
 
 \ spawn bin/hb to emit the combined fwd+bwd module (softmax-fb-cg.f) to the private PTX
+: GC-EMIT-WRITE ( len len rc -- n ) {: o:len e:len c:rc :}   \ nonzero emit rc -> surface stderr, throw
+   GC-EERR e LEN>N  c RC>N  PTXTC:EMIT-GUARD
+   PTXTC:PTX$ GC-EOUT o LEN>N WRITE-ALL  o LEN>N ;
 : GC-EMIT ( -- n )
    PROC-ARGV-RESET
    s" --load"                    >LEN PROC-ARGV+
    s" tools/ptx/softmax-fb-cg.f" >LEN PROC-ARGV+
    s" bin/hb" >LEN  GC-EOUT $8000 >LEN  GC-EERR $1000 >LEN  20000 >MS  RUN-ARGV-CAPTURE
-   {: outu:len erru:len rc:rc :}
-   GC-EERR erru LEN>N  rc RC>N  PTXTC:EMIT-GUARD           \ nonzero emit rc -> surface stderr, throw
-   PTXTC:PTX$ GC-EOUT outu LEN>N WRITE-ALL  outu LEN>N ;
+   MATCH result
+     ok  OF PCAP-CAPTURED:UNMAKE 0 >RC GC-EMIT-WRITE ENDOF
+     err OF PCAP-FAILED:UNMAKE GC-EMIT-WRITE ENDOF
+   ;MATCH ;
 
 : GC-PTXAS ( -- n )
    GC-QO $1000 >LEN GC-QE $1000 >LEN PTXTC:ASSEMBLE ;

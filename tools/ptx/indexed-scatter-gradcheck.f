@@ -61,18 +61,22 @@ variable NDATA
    s" lib/ptx/header.f" >LEN PROC-ARGV+
    s" lib/ptx/tile.f" >LEN PROC-ARGV+ ;
 
-: RUN-EMIT ( -- len len rc )
+: RUN-EMIT ( -- result<pcap:captured,pcap:failed> )
    s" bin/hb" >LEN
    EMIT-OUT OUT-CAP >LEN
    EMIT-ERR ERR-CAP >LEN
    30000 >MS RUN-ARGV-CAPTURE ;
 
+: EMIT-WRITE ( len len rc -- n n ) {: o:len e:len c:rc :}   \ err-len unused; write PTX, return out-bytes + code
+   PTXTC:PTX$ EMIT-OUT o LEN>N WRITE-ALL
+   o LEN>N c RC>N ;
 : EMIT-INDEXED ( -- n n )
    EMIT-PRELUDE
    s" tools/ptx/indexed-scatter-cg.f" >LEN PROC-ARGV+
-   RUN-EMIT {: outu:len erru:len rc:rc :}
-   PTXTC:PTX$ EMIT-OUT outu LEN>N WRITE-ALL
-   outu LEN>N rc RC>N ;
+   RUN-EMIT MATCH result
+     ok  OF PCAP-CAPTURED:UNMAKE 0 >RC EMIT-WRITE ENDOF
+     err OF PCAP-FAILED:UNMAKE EMIT-WRITE ENDOF
+   ;MATCH ;
 
 : RUN-PTXAS ( -- n )
    PTXAS-OUT ERR-CAP >LEN PTXAS-ERR ERR-CAP >LEN PTXTC:ASSEMBLE ;

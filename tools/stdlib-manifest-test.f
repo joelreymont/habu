@@ -437,7 +437,7 @@ variable SMT-J
 
 : SMT-DOC-PROC-CAPTURE-ROWS ( -- )
    s" ## Processes" SMT-CHECK-DOC-ROW
-   s" RUN-CAPTURE  ( ptr u8 len ptr u8 len ptr u8 len ms -- len len rc )" SMT-CHECK-DOC-ROW
+   s" RUN-CAPTURE  ( ptr u8 len ptr u8 len ptr u8 len ms -- result<pcap:captured,pcap:failed> )" SMT-CHECK-DOC-ROW
    s" counted paths/commands" SMT-CHECK-DOC-ROW
    s" FD_CLOEXEC" SMT-CHECK-DOC-ROW ;
 
@@ -722,13 +722,18 @@ variable SMT-J
       1+
    repeat drop ;
 
+: SMT-PUBLIC-STORE ( len len -- ) {: outu:len erru:len :}   \ record out len, flag unexpected stderr
+   outu LEN>N SMT-PUB-U !
+   erru LEN>N 0 <> IF s" public-signatures wrote stderr" SMT-FINDING THEN ;
+
 : SMT-RUN-PUBLIC ( -- )
    SMT-ARGV-LOAD-PUBLIC
    s" bin/hb" >LEN SMT-PUB-BUF SMT-PUB-CAP >LEN SMT-ERR-BUF SMT-ERR-CAP >LEN SMT-TIMEOUT-MS >MS RUN-ARGV-CAPTURE
-   {: outu erru rc :}
-   outu LEN>N SMT-PUB-U !
-   rc RC>N 0 <> IF s" public-signatures run failed" SMT-FINDING THEN
-   erru LEN>N 0 <> IF s" public-signatures wrote stderr" SMT-FINDING THEN ;
+   MATCH result
+     ok  OF PCAP-CAPTURED:UNMAKE SMT-PUBLIC-STORE ENDOF
+     err OF PCAP-FAILED:UNMAKE drop SMT-PUBLIC-STORE
+        s" public-signatures run failed" SMT-FINDING ENDOF
+   ;MATCH ;
 
 : SMT-FIND-FROM ( ptr u8 n ptr u8 n n -- option<n> )
    {: a:ptr u needle:ptr nu start :}

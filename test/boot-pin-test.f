@@ -143,8 +143,10 @@ variable BPT-OFF
 : BPT-RUN ( -- n n n )                                    \ -> outu erru rc
    BPT-ARGV
    s" bin/hb" >LEN BPT-OUT BPT-CAP >LEN BPT-ERR BPT-CAP >LEN BPT-TIMEOUT-MS >MS RUN-ARGV-CAPTURE
-   {: outu:len erru:len rc:rc :}
-   outu LEN>N erru LEN>N rc RC>N ;
+   MATCH result
+     ok  OF PCAP-CAPTURED:UNMAKE {: o:len e:len :} o LEN>N e LEN>N 0 ENDOF
+     err OF PCAP-FAILED:UNMAKE {: o:len e:len c:rc :} o LEN>N e LEN>N c RC>N ENDOF
+   ;MATCH ;
 
 : BPT-CLI-DRIFT ( -- )                                    \ drifted sandbox -> rc 70 + named diag
    BPT-RUN {: outu:n erru:n rc:n :}

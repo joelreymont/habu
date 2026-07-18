@@ -190,8 +190,17 @@ variable PROC-CMD-INHERIT
    RUN-ARGV-ENV-STDIN-CAPTURE-OUTCOME PROC-CMD-STORE-RUN
    PROC-CMD-OUTCOME@ dup PROC-OUTCOME>RC PROC-CMD-RC ! ;
 
-: PROC-CMD-RUN-RC ( ptr u8 len ms -- rc )
-   PROC-CMD-RUN-OUTCOME drop PROC-CMD-RC @ ;
+\ Wrap the stored completion rc into a result<n,n> (switchover wave B): ok =
+\ clean exit (0), err = the nonzero completion code (a nonzero exit code, or
+\ 128+signal). The captured output stays in the module PROC-CMD-OUT/ERR buffers
+\ (read via PROC-CMD-OUT$/PROC-CMD-ERR$), so the return carries only the code —
+\ no capture product here, unlike the RUN-*-CAPTURE words that return the lengths.
+: PROC-CMD-RC>RESULT ( rc -- result<n,n> )
+   RC>N {: rc:n :}
+   rc 0 = if rc RESULT:OK else rc RESULT:ERR then ;
+
+: PROC-CMD-RUN-RC ( ptr u8 len ms -- result<n,n> )
+   PROC-CMD-RUN-OUTCOME drop PROC-CMD-RC @ PROC-CMD-RC>RESULT ;
 
 : PROC-CMD-OUT$ ( -- ptr u8 n )
    PROC-CMD-OUT PROC-CMD-OUT-LEN @ LEN>N ;
@@ -199,5 +208,5 @@ variable PROC-CMD-INHERIT
 : PROC-CMD-ERR$ ( -- ptr u8 n )
    PROC-CMD-ERR PROC-CMD-ERR-LEN @ LEN>N ;
 
-: PROC-CMD-RC@ ( -- rc )
-   PROC-CMD-RC @ ;
+: PROC-CMD-RC@ ( -- result<n,n> )
+   PROC-CMD-RC @ PROC-CMD-RC>RESULT ;

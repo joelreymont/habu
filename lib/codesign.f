@@ -57,8 +57,10 @@ variable CODESIGN-ERR-A
    CODESIGN-OUT CODESIGN-OUT-CAP >LEN
    CODESIGN-ERR CODESIGN-ERR-CAP >LEN
    CODESIGN-TIMEOUT-MS >MS RUN-ARGV-CAPTURE
-   {: outu erru rc :}
-   outu drop erru drop rc RC>N ;
+   MATCH result
+     ok  OF PCAP-CAPTURED:UNMAKE 2drop 0 ENDOF                        \ clean exit -> rc 0
+     err OF PCAP-FAILED:UNMAKE {: o:len e:len c:rc :} c RC>N ENDOF    \ nonzero completion code
+   ;MATCH ;
 
 : CODESIGN-TARGET-UNKNOWN ( -- )
    E-BUILD-SOURCE throw ;

@@ -98,9 +98,11 @@ variable ERRLEN
    {: src:ptr srcu:n :}
    PROC-ARGV-RESET
    HB$ >LEN src srcu >LEN OUT CAP >LEN ERR CAP >LEN TIMEOUT-MS >MS
-   RUN-ARGV-STDIN-CAPTURE RC>N {: rc:n :}   \ ( outlen errlen ) rc bound
-   nip ERRLEN !                             \ record captured stderr length
-   rc ;
+   RUN-ARGV-STDIN-CAPTURE                   \ record captured stderr length, return rc
+   MATCH result
+     ok  OF PCAP-CAPTURED:UNMAKE {: o:len e:len :} e LEN>N ERRLEN !  0 ENDOF
+     err OF PCAP-FAILED:UNMAKE {: o:len e:len c:rc :} e LEN>N ERRLEN !  c RC>N ENDOF
+   ;MATCH ;
 
 : FORGE-FAILS-CLOSED ( ptr u8 n ptr u8 n -- )   \ ( label forge-src -- ): rc 87 + exact diagnostic
    {: lbl:ptr lblu:n src:ptr srcu:n :}

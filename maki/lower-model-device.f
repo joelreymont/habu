@@ -74,6 +74,10 @@ create LMDM-RP   FS-PATH-CAP allot  variable LMDM-RP-U
    s" --load"           >LEN PROC-ARGV+
    MAKI-GRADE:DRIVER$   >LEN PROC-ARGV+
    s" bin/hb" >LEN  LMDM-OUT $4000 >LEN  LMDM-ERR $1000 >LEN  30000 >MS  RUN-ARGV-CAPTURE
+   MATCH result
+     ok  OF PCAP-CAPTURED:UNMAKE 0 >RC ENDOF          \ clean exit -> rc 0
+     err OF PCAP-FAILED:UNMAKE ENDOF                  \ nonzero child: (out err code) on stack
+   ;MATCH
    {: outu:len erru:len rc:rc :}
    LMDM-ERR erru LEN>N  rc RC>N  PTXTC:EMIT-GUARD          \ surface child stderr + throw on nonzero
    PTXTC:PTX$ LMDM-OUT outu LEN>N WRITE-ALL ;

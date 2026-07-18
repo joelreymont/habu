@@ -95,8 +95,11 @@ variable HBT-PUBLIC-BAD
    HBT-MULTI-B$ HBT-MULTI-B$SRC WRITE-ALL
    HBT-MULTI-MAIN$ HBT-MULTI-MAIN$SRC WRITE-ALL ;
 
-: HBT-CAPTURE>N ( len len rc -- n n n ) {: outu erru rc :}
-   outu LEN>N erru LEN>N rc RC>N ;
+: HBT-CAPTURE>N ( result<pcap:captured,pcap:failed> -- n n n )   \ outn errn code (0 on clean exit)
+   MATCH result
+     ok  OF PCAP-CAPTURED:UNMAKE {: o:len e:len :} o LEN>N e LEN>N 0 ENDOF
+     err OF PCAP-FAILED:UNMAKE  {: o:len e:len c:rc :} o LEN>N e LEN>N c RC>N ENDOF
+   ;MATCH ;
 
 : HBT-RUN-STDIN ( ptr u8 n -- n n n ) {: input:ptr inputu :}
    s" bin/hb" >LEN input inputu >LEN HBT-OUT HBT-CAP >LEN

@@ -79,8 +79,11 @@ create PT-CAPTURE-HB-BUF FS-PATH-CAP allot
 : PT-CAPTURE-HB ( -- ptr u8 n )
    PT-CAPTURE-HB-BUF PT-CAPTURE-HB-U @ ;
 
-: PT-CAPTURE>N ( len len rc -- n n n ) {: outu erru rc :}
-   outu LEN>N erru LEN>N rc RC>N ;
+: PT-CAPTURE>N ( result<pcap:captured,pcap:failed> -- n n n )   \ outn errn code (0 on clean exit)
+   MATCH result
+     ok  OF PCAP-CAPTURED:UNMAKE {: o:len e:len :} o LEN>N e LEN>N 0 ENDOF
+     err OF PCAP-FAILED:UNMAKE  {: o:len e:len c:rc :} o LEN>N e LEN>N c RC>N ENDOF
+   ;MATCH ;
 
 : PT-ROOT! ( -- )
    s" habu-process" TMPDIR-MKDIR {: a:ptr u :}
@@ -388,6 +391,30 @@ create PT-CAPTURE-HB-BUF FS-PATH-CAP allot
      err OF 1 T= ENDOF                             \ false exits 1 -> err(1)
    ;MATCH ;
 
+\ Direct both-arm coverage for the migrated capture result (a REAL spawned
+\ child, per arm): a clean exit MATCHes ok(captured) carrying the two lengths;
+\ a nonzero exit MATCHes err(failed) carrying the SAME lengths PLUS the code.
+: TEST-RUN-CAPTURE-RESULT-OK ( -- )                 \ /bin/pwd exits clean -> ok(captured)
+   s" /bin/pwd" >LEN PT-PWD-OUT 256 >LEN PT-ERR 32 >LEN PT-CMD-TIMEOUT-MS >MS RUN-CAPTURE
+   MATCH result
+     ok  OF PCAP-CAPTURED:UNMAKE {: o:len e:len :} o LEN>N 0 > TTRUE  e LEN>N 0 T= ENDOF
+     err OF PCAP-FAILED:UNMAKE 2drop drop 1 0 T= ENDOF                \ pwd must exit clean
+   ;MATCH ;
+
+: TEST-RUN-CAPTURE-RESULT-ERR ( -- )                \ /usr/bin/false exits 1 -> err(failed,code=1)
+   s" /usr/bin/false" >LEN PT-OUT 32 >LEN PT-ERR 32 >LEN PT-CMD-TIMEOUT-MS >MS RUN-CAPTURE
+   MATCH result
+     ok  OF PCAP-CAPTURED:UNMAKE 2drop 1 0 T= ENDOF                  \ false must not exit clean
+     err OF PCAP-FAILED:UNMAKE {: o:len e:len c:rc :} o LEN>N 0 T=  e LEN>N 0 T=  c RC>N 1 T= ENDOF
+   ;MATCH ;
+
+\ Negative checked regression: the migrated return is the pcap result, not the
+\ retired (len len rc) triple, and the ok arm cannot leak the failed payload.
+: TEST-RUN-CAPTURE-RESULT-TYPES ( -- )
+   s" PTC1 ( ptr u8 len ptr u8 len ptr u8 len ms -- result<pcap:captured,pcap:failed> ) RUN-CAPTURE" CHECK-QUIET-CANDIDATE! -1 T=
+   s" PTC2 ( ptr u8 len ptr u8 len ptr u8 len ms -- len len rc ) RUN-CAPTURE" CHECK-QUIET-CANDIDATE! 0 T=
+   s" PTC3 ( result<pcap:captured,pcap:failed> -- pcap:captured ) MATCH result ok OF ENDOF err OF ENDOF ;MATCH" CHECK-QUIET-CANDIDATE! 0 T= ;
+
 : TEST-PROC-READ-NEG-LEN ( -- )
    -1 PT-CAPTURE-OK-U !
    PT-R PT-OUT 32 >LEN PT-CAPTURE-OK-U PROC-READ-STREAM ;
@@ -431,6 +458,9 @@ create PT-CAPTURE-HB-BUF FS-PATH-CAP allot
    TEST-RUN-CAPTURE-FD-CLEANUP
    TEST-RUN-IO-CAT
    TEST-RUN-IO-FALSE
+   TEST-RUN-CAPTURE-RESULT-OK
+   TEST-RUN-CAPTURE-RESULT-ERR
+   TEST-RUN-CAPTURE-RESULT-TYPES
    [: TEST-PROC-READ-NEG-LEN ;] E-PROC-TRUNCATED TTHROWSQ
    [: TEST-PROC-READ-HIGH-LEN ;] E-PROC-TRUNCATED TTHROWSQ
    PT-CLEANUP

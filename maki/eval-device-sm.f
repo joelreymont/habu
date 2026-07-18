@@ -108,6 +108,10 @@ create GSP-OUT $8000 allot  create GSP-ERR $1000 allot
    s" lib/ptx/header.f" >LEN PROC-ARGV+  s" lib/ptx/cg-collective.f" >LEN PROC-ARGV+
    s" lib/ptx/collective.f" >LEN PROC-ARGV+  MAKI-GRADE:DRIVER$ >LEN PROC-ARGV+
    s" bin/hb" >LEN  GSP-OUT $8000 >LEN  GSP-ERR $1000 >LEN  20000 >MS  RUN-ARGV-CAPTURE
+   MATCH result
+     ok  OF PCAP-CAPTURED:UNMAKE 0 >RC ENDOF          \ clean exit -> rc 0
+     err OF PCAP-FAILED:UNMAKE ENDOF                  \ emit child exits nonzero by FFI convention; PTX on stdout is the signal
+   ;MATCH
    {: outu erru rc :}
    MAKI-GRADE:PTX$ GSP-OUT outu LEN>N WRITE-ALL  outu LEN>N ;
 
@@ -119,7 +123,10 @@ create GSQ-OUT $1000 allot  create GSQ-ERR $1000 allot
    s" -o"               >LEN PROC-ARGV+
    MAKI-GRADE:CUBIN$    >LEN PROC-ARGV+
    MAKI-GRADE:PTXAS$    >LEN  GSQ-OUT $1000 >LEN  GSQ-ERR $1000 >LEN  10000 >MS  RUN-ARGV-CAPTURE
-   {: outu erru rc :}  rc RC>N ;
+   MATCH result
+     ok  OF PCAP-CAPTURED:UNMAKE 2drop 0 ENDOF                    \ ptxas clean -> rc 0
+     err OF PCAP-FAILED:UNMAKE {: o:len e:len c:rc :} c RC>N ENDOF
+   ;MATCH ;
 
 : GRADE-SM-DEVICE-VERDICT ( -- n )
    MAKI-GRADE:CUBIN$ DEVICE-CORRECT-SM? if 2 else 1 then ;

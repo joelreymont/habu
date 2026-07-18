@@ -100,7 +100,7 @@ variable PROC-ARGV-BUF-A
    PROC-OUT-W PROC-CLOSE-CELL
    PROC-ERR-W PROC-CLOSE-CELL ;
 
-: RUN-ARGV-CAPTURE ( ptr u8 len ptr u8 len ptr u8 len ms -- len len rc )
+: RUN-ARGV-CAPTURE ( ptr u8 len ptr u8 len ptr u8 len ms -- result<pcap:captured,pcap:failed> )
    {: path:ptr pathu out:ptr outcap err:ptr errcap timeout :}
    path pathu PROC-ARGV-CHECK-PATH
    outcap errcap PROC-CAPTURE-CHECK-CAPS
@@ -120,7 +120,7 @@ variable PROC-ARGV-BUF-A
    out outcap err errcap PROC-RUN-CAPTURE-OUTCOME-LOOP
    PROC-CAPTURE-FINISH-OUTCOME ;
 
-: RUN-ARGV-STDIN-CAPTURE ( ptr u8 len ptr u8 len ptr u8 len ptr u8 len ms -- len len rc )
+: RUN-ARGV-STDIN-CAPTURE ( ptr u8 len ptr u8 len ptr u8 len ptr u8 len ms -- result<pcap:captured,pcap:failed> )
    {: path:ptr pathu in:ptr inu out:ptr outcap err:ptr errcap timeout :}
    path pathu PROC-ARGV-CHECK-PATH
    inu PROC-CAPTURE-CHECK-STDIN
