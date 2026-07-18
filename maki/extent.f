@@ -68,7 +68,7 @@ private
 \ ---- generated-source codegen buffer (build the ": ... ;" / "TRUSTED: ... ;"
 \ text each definer evaluates). Shared by EXTENT: and the tensor accessor definers
 \ (maki/extent-tensor.f, same package). ----------------------------------------
-$400 constant XG-CAP
+$1000 constant XG-CAP                              \ headroom for SPEC:-generated word bodies
 create XG-BUF XG-CAP allot
 variable XG-U
 

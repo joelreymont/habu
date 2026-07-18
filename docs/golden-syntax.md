@@ -126,3 +126,42 @@ checked; nothing readable-but-unverified ships as an idiom). The gathered
 GEMM lands as the first `SPEC:` golden and becomes the `docs/tma-gather.md`
 regression; attention/matmul migrate to `SPEC:` lines opportunistically, not
 as a rewrite campaign.
+
+### Status: SPEC: shipped (what it expresses, what still needs hand-written B)
+
+`SPEC:` shipped as `maki/spec.f`. Surface (one design choice per line; alternatives
+in the dot report): a token before `[` is a `TENSOR:`/`ITENSOR:` name matched exactly
+(SPEC: appends `@`/`!`); a bare token inside `[...]` is a lower-case index variable
+whose extent is `#` + its upper-case (`m` → `#M`, crossing `>#M`); a gather is
+`NAME[var]` nested in a factor bracket; the product combiner is `*` and the reduction
+is `+SUM <index>` (the ASCII spelling of `+Σ` — the multi-byte Σ was rejected as
+fragile and hard to type). From one parse SPEC: derives three things: (1) the checked
+candidate-B golden — two words `NAME-EL` (the contraction element) and `NAME` (the
+free loops + store), certified through the same `XG-EVAL` boundary the accessors use,
+so it is checked, not trusted; (2) a dataflow record (free vs contraction index
+variables, per-factor index structure including gathers) exposed as `SPEC-*` query
+words; (3) the PROMOTE shape obligations (output-shape extents + contraction extents)
+exposed as `SPEC-*-EXTENT@`.
+
+**What SPEC: expresses:** the gathered-GEMM family — a multiply-then-sum contraction
+with up to two free (output) indices and up to two contraction indices (the habu
+`i`/`j` loop-counter limit), any number of product factors, and a gather on any
+factor index. `SPEC: GGEMM O[m n] = A[ IX[m] k ] B[n k] * +SUM k ;` reproduces the
+gathered GEMM golden and is proven numerically equal to a plain-buffer reference
+(`maki/spec-test.f`).
+
+**What still needs hand-written candidate-B bodies:** any op the multiply-then-sum
+schematic cannot state — nonlinearities, softmax, normalization, movement (reshape /
+transpose / concat / scatter), pure elementwise with no reduction, and outputs or
+contractions beyond two indices. Those stay hand-written `NAME@`/`NAME!` accessor
+bodies (candidate B is the escape hatch, exactly as this Decision intends).
+
+**Two honest limits carried forward:** the generated loop counter is still not
+extent-typed, so generated bodies use the explicit `i >#EXT` crossing exactly as the
+hand-written GGEMM does (tracked by `habu-extent-bound-loop-a70a49b3`); an
+extent-transposed spec is therefore caught by the checker on the generated accessor
+call (a load-time reject), not by the loop. And the dataflow / shape-obligation
+records (2)+(3) are self-contained: no live maki-planner or PROMOTE consumer reads
+them yet (the planner drops the contraction axis and PROMOTE consumes gate verdicts,
+not shapes), so the integration boundary is a future gate in `maki/cad.f` that reads
+these records.

@@ -62,6 +62,40 @@ variable TG-NR
    TG-NR @ TG-RANK-CAP >= if E-EXT-CAP throw then
    s TG-NR @ cells TG-SLOT-A + !  TG-NR @ 1 + TG-NR ! ;
 
+\ ---- tensor registry: accessor NAME -> (rank, kind). SPEC: (maki/spec.f) reads it
+\ to give named throws for an undeclared tensor or a factor whose index count does
+\ not match the tensor's rank, instead of an undefined-word crash inside the
+\ generated evaluate. Rank of a gather is 1 (the single domain index a gather call
+\ IX[m] consumes). ------------------------------------------------------------
+0 constant TR-TENSOR                               \ data tensor: NAME@ / NAME!
+1 constant TR-GATHER                               \ gather index tensor: NAME@ only
+32 constant TR-NAME-CAP
+64 constant TR-CAP
+create TR-NAMES  TR-CAP TR-NAME-CAP * allot
+create TR-NLEN   TR-CAP cells allot
+create TR-RANK-A TR-CAP cells allot
+create TR-KIND-A TR-CAP cells allot
+variable TR-N
+: TR-SLOT ( n -- ptr a )  TR-NAME-CAP *  TR-NAMES + ;
+: TR-ADD ( ptr u8 n n n -- ) {: a:ptr u:n rank:n kind:n :}
+   TR-N @ TR-CAP >= if E-EXT-CAP throw then
+   u TR-NAME-CAP > if E-EXT-CAP throw then
+   TR-N @ {: i:n :}
+   a i TR-SLOT u BYTE-COPY  u i cells TR-NLEN + !
+   rank i cells TR-RANK-A + !  kind i cells TR-KIND-A + !
+   TR-N @ 1 + TR-N ! ;
+
+public
+
+: TR-FIND ( ptr u8 n -- n bool ) {: a:ptr u:n :}
+   TR-N @ 0 ?do
+      a u  i TR-SLOT  i cells TR-NLEN + @  STR= if  i true  unloop exit  then
+   loop  0 false ;
+: TR-RANK@ ( n -- n )  cells TR-RANK-A + @ ;
+: TR-KIND@ ( n -- n )  cells TR-KIND-A + @ ;
+
+private
+
 \ read `( #E0 #E1 ... )` off the input stream, recording each extent's registry
 \ slot; an undeclared extent fails closed (XR-REQUIRE -> E-EXT-UNDECL).
 : TG-PARSE-EXTS ( -- )
@@ -110,6 +144,7 @@ public
 : TENSOR: ( -- )
    parse-name TG-NAME!
    TG-PARSE-EXTS
+   TG-NAME$ TG-NR @ TR-TENSOR TR-ADD              \ record NAME -> (rank, data tensor) for SPEC:
    XG-RESET
    TG-EMIT-BASE
    s" : " XG+  TG-NAME$ XG+  s" @ ( " XG+  TG-SIG-ARGS  s" -- r ) " XG+
@@ -126,6 +161,7 @@ public
    parse-name TG-NAME!
    TG-PARSE-EXTS
    TG-NR @ 2 <> if E-EXT-NAME throw then           \ exactly domain + codomain
+   TG-NAME$ 1 TR-GATHER TR-ADD                      \ record NAME -> (rank 1, gather) for SPEC:
    XG-RESET
    TG-EMIT-BASE
    s" : " XG+  TG-NAME$ XG+  s" @ ( ix<" XG+  0 TG-SLOT@ XR-TAIL@ XG+  s" > -- ix<" XG+

@@ -1,0 +1,92 @@
+\ maki/spec-test.f - checked tests for SPEC: (maki/spec.f).
+\
+\ The acceptance vehicle is the gathered GEMM golden, now written as ONE SPEC: line:
+\   O[p q] = sum_r A[ix[p],r] * B[q,r]   (A: PxR, B: QxR, ix: P)
+\ SPEC: derives the checked candidate-B golden (SGEMM-EL + SGEMM), which is run and
+\ proven numerically equal to a plain-buffer reference. The other derivations are
+\ asserted directly: (2) the dataflow record (free / contraction indices, per-factor
+\ index structure incl. gather) via the SPEC-* query words, and (3) the PROMOTE shape
+\ obligations (output-shape extents + contraction extents) via SPEC-*-EXTENT@. The
+\ negatives are the point: every malformed spec is a NAMED throw (SPEC-CHECK$), and a
+\ valid-but-transposed spec is a CHECKER reject of the derived accessor loop
+\ (SPEC-CAND$). Uses #P/#Q/#R (own extents; no other suite declares them).
+
+require lib/test.f
+require test/checker-assert.f
+require maki/spec.f
+
+T-RESET
+
+package MAKI
+
+4 EXTENT: #P   3 EXTENT: #Q   2 EXTENT: #R
+TENSOR:  A ( #P #R )         \ A : P x R
+TENSOR:  B ( #Q #R )         \ B : Q x R
+TENSOR:  O ( #P #Q )         \ O : P x Q
+ITENSOR: IX ( #P #P )        \ ix : gather P positions into A's P-row space
+
+SPEC: SGEMM  O[p q] = A[ IX[p] r ] B[q r] * +SUM r ;
+
+\ --- derivation (2): the dataflow record parsed from the schematic ---------------
+SPEC-NAME$ s" SGEMM" STR= -1 T=
+SPEC-OUT$  s" O" STR= -1 T=
+SPEC-FREE-N 2 T=   0 SPEC-FREE@ s" p" STR= -1 T=   1 SPEC-FREE@ s" q" STR= -1 T=
+SPEC-CT-N   1 T=   0 SPEC-CT@   s" r" STR= -1 T=
+SPEC-FAC-N  2 T=
+0 SPEC-FAC-NAME@ s" A" STR= -1 T=   1 SPEC-FAC-NAME@ s" B" STR= -1 T=
+0 SPEC-FAC-RANK@ 2 T=                                 \ A[ix[p] r] has two indices
+0 0 SPEC-FAC-IDX@ s" p" STR= -1 T=                    \ A's row index var is p ...
+0 0 SPEC-FAC-GATHER@ s" IX" STR= -1 T=                \ ... gathered through IX
+0 1 SPEC-FAC-IDX@ s" r" STR= -1 T=                    \ A's col index is a plain r
+0 1 SPEC-FAC-GATHER@ nip 0= -1 T=
+1 0 SPEC-FAC-IDX@ s" q" STR= -1 T=   1 1 SPEC-FAC-IDX@ s" r" STR= -1 T=
+
+\ --- derivation (3): the PROMOTE shape obligations (extent magnitudes) ------------
+0 SPEC-FREE-EXTENT@ 4 T=   1 SPEC-FREE-EXTENT@ 3 T=    \ output shape 4 x 3
+0 SPEC-CT-EXTENT@ 2 T=                                 \ contraction span 2
+
+\ --- derivation (1): the generated golden matches the plain-buffer reference -----
+create QA #P #R * cells allot
+create QB #Q #R * cells allot
+create QO #P #Q * cells allot
+create QR #P #Q * cells allot
+create QI #P cells allot
+: SGFILL ( -- )
+   #P 0 ?do #R 0 ?do  i j 10 * + s>f  QA j #R * i + T-SET  loop loop
+   #Q 0 ?do #R 0 ?do  i j + s>f       QB j #R * i + T-SET  loop loop
+   3 QI 0 T-AT !  0 QI 1 T-AT !  2 QI 2 T-AT !  1 QI 3 T-AT ! ;
+: SGREFEL ( n n -- r ) {: p:n qq:n :}
+   0.0 #R 0 ?do  QA QI p T-AT @ #R * i + T-GET  QB qq #R * i + T-GET  f* f+  loop ;
+: SGREF ( -- ) #P 0 ?do #Q 0 ?do  j i SGREFEL  QR j #Q * i + T-SET  loop loop ;
+SGFILL  QA A-BIND  QB B-BIND  QO O-BIND  QI IX-BIND
+SGEMM  SGREF
+QO QR #P #Q * T-DIST2  1000.0 f* 0.5 f+ f>s  0 T=      \ exact numeric equality
+
+\ --- negatives: every malformed spec is a named throw (no code generated) ---------
+: T-UNKEXT  ( -- ) s" O[z q] = A[ IX[z] r ] B[q r] * +SUM r" SPEC-CHECK$ ;   \ z -> #Z undeclared
+: T-TENSOR  ( -- ) s" O[p q] = Z[ IX[p] r ] B[q r] * +SUM r" SPEC-CHECK$ ;   \ tensor Z undeclared
+: T-ARITY   ( -- ) s" O[p q] = A[ IX[p] ] B[q r] * +SUM r" SPEC-CHECK$ ;      \ A rank 2, one index
+: T-SYNTAX  ( -- ) s" O[p q] A[ IX[p] r ] B[q r] * +SUM r" SPEC-CHECK$ ;      \ missing =
+: T-OK      ( -- ) s" O[p q] = A[ IX[p] r ] B[q r] * +SUM r" SPEC-CHECK$ ;     \ valid: no throw
+' T-UNKEXT  E-SPEC-EXTENT  TTHROWS
+' T-TENSOR  E-SPEC-TENSOR  TTHROWS
+' T-ARITY   E-SPEC-ARITY   TTHROWS
+' T-SYNTAX  E-SPEC-SYNTAX  TTHROWS
+' T-OK      0              TTHROWS
+
+\ unbound index needs a DECLARED extent that is neither free nor contracted, so the
+\ extent check passes and the bound check fires. Declare #S and index it in a factor.
+2 EXTENT: #S
+: T-UNBOUND2 ( -- ) s" O[p q] = A[ IX[p] s ] B[q r] * +SUM r" SPEC-CHECK$ ;   \ s: #S declared, not free/contracted
+' T-UNBOUND2 E-SPEC-UNBOUND TTHROWS
+
+\ --- a valid-but-transposed spec: the derived accessor loop flips extents, so the
+\ checker rejects it (CHECK-QUIET-CANDIDATE! = 0); the correct order is accepted (-1).
+SPEC-CAND: GGOK  O[p q] = A[ IX[p] r ] B[q r] * +SUM r ;
+SPEC-CAND$ CHECK-QUIET-CANDIDATE! -1 T=
+SPEC-CAND: GGBAD O[p q] = A[ r IX[p] ] B[q r] * +SUM r ;      \ A[r ix[p]]: ix<extr> in A's row slot
+SPEC-CAND$ CHECK-QUIET-CANDIDATE!  0 T=
+
+;package
+
+T-REPORT
