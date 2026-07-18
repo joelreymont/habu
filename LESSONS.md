@@ -4,6 +4,31 @@
 
 Last updated: 2026-07-18
 
+- **A spawn-isolated subject signals SUCCESS by natural load completion (exit 0),
+  never `bye`.** (diff-runner, dot habu-v2-differential-runner-13359019.) `bin/hb
+  --load driver.f` that ENDS with `bye` exits **70** (the FFI-file convention code
+  eval-device.f documents: it ignores the emit rc and reads captured stdout); a
+  driver that just prints its result and lets `--load` finish exits **0**. Any
+  spawn taxonomy where the exit code IS the fault signal (produced iff exit 0)
+  must have its subject driver complete naturally; `die`/`throw`/hang still fault.
+- **`WRITE-ALL ( path-ptr path-len data-ptr data-len -- )` is PATH first, DATA
+  second** (verified via `FS-WRITE-BY-FLAGS ( pa pu src u flags )`). Reversing the
+  pairs opens the DATA bytes as a path -> `E-FS-OPEN` (-2102). `MAKI-GRADE`'s
+  `GRADE-WRITE-DRIVER`/`GRADE-EMIT` are the correct-order precedents.
+- **Copy a shared-builder (`SB`) span to a stable buffer before calling anything
+  that may reuse `SB`.** `MAKI-GRADE:PREPARE` (via JOIN-PATH) reuses the shared
+  builder, so a source word that returns `SB$` and then hands it across `PREPARE`
+  reads clobbered bytes. Copy `SB$` into an owned buffer first (the spawn adapter
+  copies its source into `SP-SRC` before `PREPARE`/`WRITE-ALL`).
+- **A MATCH-arm payload binds to a WORD PARAMETER of its type, not to an in-arm
+  typed LOCAL.** `ok OF {: d:PKG:product :} ... ENDOF` fails to certify (`expected:
+  pkg:product<> actual: pkg:product<>`), but `ok OF SOME-WORD ENDOF` where
+  `SOME-WORD ( PKG:product -- ... )` certifies (the diagnostic-test `ok OF DIAG>`
+  precedent, and a declared word param with the SAME product type works). Factor
+  the arm body into a word taking the payload as a parameter.
+- **The maki suite table `ITEM-MAX` is now 256 (was 128).** `lib/test/suite.f`
+  was bumped, so a couple of extra `TEST:SUITE` lines in `maki/test.f` (131 live)
+  no longer risk `E-TBL-BOUNDS`; the earlier "aggregate to dodge 128" note is stale.
 - **An unforgeable value that CARRIES data uses the refined-nominal-HANDLE
   pattern, not a PRODUCT.** (capbud, dot habu-v2-capability-and-0970a96d.) Probed:
   a `private` PRODUCT has NO construction surface even for its owner

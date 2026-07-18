@@ -997,6 +997,42 @@ points stay listed.
   (same suite/any order -> identical case-id sequence, different seed -> different); the
   canonical envelope round-trips byte-identically and carries the DIGEST-INTO tail; and the
   static leg (nominal id families are checker-guarded).
+- `maki/db/diff-runner.f` — the differential runner CORE (MODEL-CAD-V2-PLAN.md § "Automatic
+  differential verification", plan:3787-3796; dot habu-v2-differential-runner-13359019).
+  Package DIFFRUN: over a sealed `DIFFSUITE:suite`, executes cases deterministically through
+  typed defer adapters (`SUBJECT-RUN ( n -- run-result )` / `REFERENCE-RUN ( n -- ref-result )`,
+  installed with `SUBJECT!` / `REFERENCE!`), compares subject vs reference under the suite's
+  declared `NPOL:dom` + tolerance (`CLOSE?`), and classifies each case into a `case-verdict`
+  (agree / mismatch / subject-fault / reference-skip) where a fault DOMINATES so a hung/dying
+  subject is never a wrong value. `CLASSIFY-OUTCOME` is the spawn-taxonomy boundary (a
+  `lib/process.f` `outcome`: only exit(0) is produced-eligible). `RUN` loops cases into a
+  content-addressed run-log and returns a `run-verdict` by first-failure order; `MINIMIZE`
+  shrinks a discrepancy to its minimal counterexample (pure function; original preserved as a
+  distinct `CASE-ID`); `EMIT-EVIDENCE` interns success evidence keyed by subject-key ||
+  suite-digest || environment-key (each flip distinct, via `EVIDENCE:REGISTER`);
+  `EMIT-COUNTEREXAMPLE` lowers a discrepancy to a lossless `DIAG:diagnostic`. Consumes
+  DIFFSUITE / EVIDENCE / DIAG, never forks them. Owns -5395..-5398.
+- `maki/db/diff-runner-test.f` — runner CORE acceptance (scalar checker suite, exact domain):
+  (a) an injected mismatch MINIMIZES to its minimal counterexample and replays deterministically
+  (minimizer is a pure function, minimized case is a distinct content-addressed artifact, the
+  original is untouched); (b) `CLASSIFY-OUTCOME` maps timeout/signal/nonzero-exit to fault and
+  only exit(0) to produced, and a scripted fault at an otherwise-agreeing case grades
+  subject-fault DISTINCT from a genuine mismatch; (c) a reference-unavailable leg records a
+  reference-skip, not a mismatch; (d) success evidence is subject/suite/environment keyed (each
+  flip distinct, equal triple = one id); and the counterexample DIAG round-trips losslessly.
+- `maki/db/diff-runner-spawn.f` — the SPAWN-ISOLATED subject adapter + external-process PyTorch
+  reference adapter (reopens package DIFFRUN). `SPAWN-SRC` / `SPAWN-CASE` run each case in a
+  FRESH spawned `bin/hb` child (the grader pattern, `maki/eval-device.f`): the child prints its
+  scalar and completes naturally (exit 0 = success, not `bye`); the parent captures the outcome
+  and classifies through `CLASSIFY-OUTCOME`, so a crashing/hanging subject is a graded fault,
+  never a grader casualty. `TORCH-REFERENCE` is the external torch reference INTERFACE
+  (`ort-ref` pattern): off-device / without `DIFFRUN_TORCH` it records a SKIP, keeping the
+  reference outside Habu semantics.
+- `maki/db/diff-runner-spawn-test.f` — REAL spawn-isolation acceptance (b): actual `bin/hb`
+  children that produce a scalar (produced), HANG (timeout, SIGKILL-reaped -> faulted), and DIE
+  nonzero (faulted); the shipped `SPAWN-CASE` adapter produces the case scalar in an isolated
+  child; and (c) the off-device torch reference records a skip. The real-process complement to
+  the deterministic classifier proof in `maki/db/diff-runner-test.f`.
 - `maki/db/budget-dim.f` — the closed budget-dimension vocabulary (MODEL-CAD-V2-PLAN.md § 23
   autonomy resource budgets, plan:3205-3211; dot habu-v2-capability-and-0970a96d). Package
   BUDGET owns ONE variant-exhaustive `dim` ENUM (compute-time, device-time, storage,

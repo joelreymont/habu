@@ -194,6 +194,10 @@ TEST:SUITE maki/db/action-test.f
 TEST:;SUITE
 TEST:SUITE maki/db/diff-suite-test.f
 TEST:;SUITE
+TEST:SUITE maki/db/diff-runner-test.f
+TEST:;SUITE
+TEST:SUITE maki/db/diff-runner-spawn-test.f
+TEST:;SUITE
 TEST:SUITE maki/db/capbud-test.f
 TEST:;SUITE
 TEST:SUITE maki/db/agent-loop-test.f
