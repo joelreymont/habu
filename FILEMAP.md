@@ -34,6 +34,7 @@ points stay listed.
 - `docs/case-tma-stride.md` — Triton #10927 case: silent TMA stride-misalignment corruption; the motivating design-rule case.
 - `docs/tma-gather.md` — gathered GEMM + TMA movement-plan design: planner-owned gather lowerings, emitter surface, legality rules, sm_121a target.
 - `docs/golden-syntax.md` — golden-authoring syntax exploration: extent-typed tensor accessors and the spec word.
+- `docs/extent-substrate.md` — decision record: EXTENT:/idx<#M> mints on TFAM families (not CT roles or extent-atoms); criterion matrix, rejected-substrate costs, A1b/extent-tensor re-scope drafts.
 - `docs/seed.md` — native seed trust root and no-binary recovery.
 - `docs/typed-top-level.md` — checker-modeled typed top level design (top-row
   tracker, xt<effect> typing, adoption tiers) plus the parametric-cell V2
@@ -2044,6 +2045,7 @@ points stay listed.
 - `test/prop-test-core.f` — reusable property-based checker-soundness runner.
 - `test/prop-test.f` — CLI entry for property-based checker-soundness test.
 - `test/engine-suite.f` — native engine behavior suite.
+- `test/extent-substrate-probe.f` — standalone decision-record demo (habu-choose-extent-nominal): TFAM parametric families type idx<#M> with two extents distinct and host BTC-7's #B*#T product structure; run over stdin, see docs/extent-substrate.md.
 - `test/type-decl-suite.f` — behavior suite for the TYPEFAMILY/SUMTYPE declaration grammar (positives, negatives, rollback, multi-error, diagnostics).
 - `test/type-nominal-suite.f` — behavior contract for declarable nominal integer types (DEFTYPE roles): same-role accept, other-role/generic-int reject, explicit converters, rollback transactionality, snapshot persistence.
 - `test/type-nominal-dup-bad.f` — child-process negative fixture: a duplicate nominal declaration is refused fail-closed (exit 70, "bad or duplicate signature type").
