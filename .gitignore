@@ -3,6 +3,9 @@
 *.o
 /tmp/
 
+# regenerable paper PDF (build locally: `tectonic habu.tex` in docs/paper/)
+docs/paper/*.pdf
+
 # archived task state
 .dots/archive/
 bin/

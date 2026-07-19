@@ -127,15 +127,16 @@ count barely moves, the design missed.
 
 ### The current state
 
-Locals are introduced with `{: name :}` and today behave as a **flat,
-function-scoped namespace** with no defined precedence against the dictionary.
-Three separately-filed problems are all symptoms of that single gap.
+Locals are introduced with `{: name :}`. They are now **block-scoped** (see the
+`TLOC-*` fixtures in `test/engine-suite.f`); what remains is that they have **no
+defined precedence against the dictionary**, the gap behind the two shadowing
+problems below.
 
 - **A local that shadows a builtin word** does not produce a clear, located
   error; the failure is cryptic.
-- **There are no block-scoped locals** — a local lives for the whole definition
-  body, so you cannot introduce a temporary inside a control region and have it
-  end with the region, and you cannot reuse the name or its slot.
+- **Block-scoped locals — landed.** A `{:` group may appear on any live control
+  path and its names end with that region; slots free at the block close and are
+  reused (`TLOC-IF`/`-DO`/`-CASE`/`-LEAVE`, `test/engine-suite.f`).
 - **Locals cannot cleanly shadow ordinary words in the body** — natural names
   like `i`, `j`, `k`, `code`, `dup` are either reserved or collide, forcing
   awkward renames (this is why the port carries names like `IX`/`JX`).
@@ -274,7 +275,7 @@ Parent: `habu-habu-quirk-fixes-5a0d1f1e`.
 | Unknown-signature-token error at offending site | `habu-b1-unknown-signature-0ffd951c` | done |
 | Clear error when a local shadows a builtin | `habu-b2-local-shadows-ae2492da` | open |
 | Bare-pointer signature error at offending site (the template) | `habu-b3-bare-ptr-4939e141` | implemented, pending gate-green merge |
-| Block-scoped locals (mid-control + after-exit) | `habu-c1-block-scoped-fa472987` | open |
+| Block-scoped locals (mid-control + after-exit) | `habu-c1-block-scoped-fa472987` | done |
 | Declarable/extensible nominal integer types | `habu-c2-extensible-nominal-25afdeae` | open |
 | Narrow→wide integer widening (`u8`/`u16`/`u32` → `n`/`i64`) | `habu-checker-int-lattice-ed8f99ab` | implemented, pending gate-green merge |
 | Locals may shadow ordinary words (`i`/`j`/`k`/`code`/`dup`) | `habu-c4-locals-shadow-3c7310cb` | open |

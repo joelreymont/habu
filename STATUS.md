@@ -94,9 +94,12 @@ compiles. Two entry points: `CHECK ( a u -- flag )` infers a body's effect
 - **Row unification** — full row polymorphism over both the data and return rows.
 - **Return-stack ops** — `>R R> R@ 2>R 2R> 2R@` typed; balance enforced.
 - **`execute`** — `xt ≡ quot<E>`; all four of the quotation's rows are threaded.
-- **Locals** — typed `{: a:n :}` scope; locals introduced inside active control
-  flow, inside quotations, or after a dead `exit` path reject with
-  `E-BAD-LOCAL-SHAPE`.
+- **Locals** — typed `{: a:n :}` scope, block-scoped: a `{:` group may appear on
+  any live path (both `if`/`else` arms, `case` arms, loop bodies), visible until
+  that arm closes, then the prior scope is restored. A `{:` group on a dead path
+  (immediately after an unconditional `exit`/`leave`/`throw`/`die`/`again`)
+  rejects with `E-BAD-LOCAL-SHAPE`; a quotation cannot introduce or reference an
+  enclosing local.
 - **Control flow** — `IF/ELSE/THEN`, `BEGIN…UNTIL/WHILE…REPEAT/AGAIN`,
   `?DO…LOOP/+LOOP`, `I J UNLOOP RECURSE`; branch states unified at the joins.
 - **Leave** — `leave` must carry the loop-exit row (= the post-`?DO` row of a

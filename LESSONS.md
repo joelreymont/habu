@@ -619,10 +619,11 @@ fits.
   `include`, or a resident worker re-evaluates and hits duplicate definition. Core byte
   helpers used across unrelated libs belong in a narrow `src/core/*.f` prelude, not
   `lib/string.f`.
-- **Repo-scale source lints must STREAM, not vectorize.** `lib/vector.f` element access is
-  O(index) (`VEC-CELL-FIELD` does `0 ?do cell+ loop`), so `LEX-SOURCE` (8 pushes/token) took
-  9.2s on one file and a 141k fill is 63.9s; the checked idiom is `off cells +`
-  (constant-time, 0.39s). A streaming scanner over the source buffer cut a repo scan 33s→0.9s
+- **Repo-scale source lints must STREAM, not vectorize.** Building a per-token vector costs 8
+  `VEC-PUSH`es/token plus growth copies, so `LEX-SOURCE` took 9.2s on one file and a 141k fill
+  63.9s; `lib/vector.f` element access is itself constant-time (`VEC-CELL-FIELD` is
+  `base off cells +`), so the cost is push/grow churn, not indexing. A streaming scanner over
+  the source buffer cut a repo scan 33s→0.9s
   / a 400KB stage2 file 40s→2s, byte-identical output; use raw `parse-name` for definer
   payloads so `(CMP)` isn't mistaken for a comment.
 - **Token equality is not site classification.** Source-lex records kill comment/string

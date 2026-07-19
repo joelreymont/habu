@@ -49,7 +49,8 @@ are this era's industrial suites: capable, enormous, and opaque end to end.
 Habu is the personal CAD system: the engine, checker, ARM64 assembler and
 JIT, PTX backend, and CUDA driver interface are self-hosted checked Forth,
 and `bin/hb` — the native binary that type-checks, compiles, and rebuilds
-itself to a byte-for-byte fixpoint — is under 128 KB. No Python, no LLVM; the
+itself to a byte-for-byte fixpoint — is under a quarter-megabyte (165 KB on
+macOS, 144 KB on Linux). No Python, no LLVM; the
 external surface is `ptxas`, `libcuda`, and the OS. The system is small
 enough to be read whole — by a person, or by an agent in one context window.
 
@@ -366,7 +367,6 @@ skills/           operational recipes for agents and humans
 - [`docs/debugging.md`](docs/debugging.md) — stepper, debugger, breakpoints,
   watchpoints, image dumpers, JIT dumpers, and native fallback boundaries.
 - [`maki/README.md`](maki/README.md) — the Maki framework layer.
-- [`PLAN.md`](PLAN.md) — the Maki + Habu-PTX build plan.
 - [`STATUS.md`](STATUS.md) — current gate status.
 - [`LESSONS.md`](LESSONS.md) — concise project memory.
 - `.dots/` — active implementation tasks.
