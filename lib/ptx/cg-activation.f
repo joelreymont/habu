@@ -38,7 +38,7 @@
    r ;
 
 \ ---- sigmoid / tanh (host maki/fmath.f, f32) ----
-\ sigmoid(x) = 1/(exp(-x)+1)   (SIGMOID-F: x fnegate FEXP 1.0 f+ 1.0 swap f/)
+\ sigmoid(x) = 1/(exp(-x)+1)   (SIGMOID-F: x fnegate FMATH:FEXP 1.0 f+ 1.0 swap f/)
 : EMIT-SIGMOID ( n -- n ) {: x:n :}
    x EMIT-NEG EMIT-EXP {: e:n :}            \ e = exp(-x)
    e 1.0 EMIT-ADDC {: d:n :}                \ d = e + 1
