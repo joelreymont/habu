@@ -1631,3 +1631,16 @@ fits.
   for surface removals (words, primitives, renamed files) before gating, and
   send affected lanes back for migration rather than patching their diffs in
   the gate workspace.
+- Never chain gate commands through a pipe inside an `&&` guard: `bin/hb --load
+  gate.f | tail -1 && jj git push` pushes on TAIL's exit code, not the gate's.
+  This exact pattern pushed a red master (maki spec-test + trusted-inventory
+  both failing) because two red gates printed their tails and the push ran
+  anyway. Run gates bare and check `$?`, or `set -o pipefail` before any
+  gate-then-push chain; the merge command must be structurally unable to run
+  when a gate is red.
+- Overwriting a signed running binary in place (`cp new bin/hb` onto the
+  existing file) gets the next execution SIGKILLed on macOS arm64: the kernel
+  caches the old code signature by inode. Remove the target first (`rm bin/hb
+  && cp`), or use the engine's own install path, which signs via
+  lib/codesign.f. An orchestrator refreshing a worktree's engine from another
+  workspace's proven fixpoint binary must rm-then-copy, never overwrite.
