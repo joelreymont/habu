@@ -1451,10 +1451,11 @@ variable SS-I  variable SS-J  variable SS-BAD
 \ AXR 306 0 0 1 prim - variable - pe-ptr-a pe-out
 \ AXR 307 0 0 1 prim - constant - pe-a pe-out
 \ AXR 308 0 0 1 prim - getpid - pe-n pe-out
-\ AXR 309 0 0 0 prim - typefamily - -
-\ AXR 310 0 0 0 prim - sumtype - -
-\ AXR 311 0 0 0 prim - enum - -
-\ AXR 312 0 0 0 prim - product - -
-\ AXR 313 0 1 0 prim - layout-buffer - pe-n pe-in
-\ AXR 314 0 1 0 prim - typed-buffer - pe-n pe-in
-\ AXR 315 0 0 0 prim - typed-variable - -
+\ AXR 309 0 1 1 prim - proc-watch-open - pe-n pe-in pe-n pe-out
+\ AXR 310 0 0 0 prim - typefamily - -
+\ AXR 311 0 0 0 prim - sumtype - -
+\ AXR 312 0 0 0 prim - enum - -
+\ AXR 313 0 0 0 prim - product - -
+\ AXR 314 0 1 0 prim - layout-buffer - pe-n pe-in
+\ AXR 315 0 1 0 prim - typed-buffer - pe-n pe-in
+\ AXR 316 0 0 0 prim - typed-variable - -

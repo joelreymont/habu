@@ -4987,7 +4987,8 @@ PRIM: u.     PE-N PE-IN PRIM;
 PRIM: create   PE-PTR-A PE-OUT PRIM;
 PRIM: variable PE-PTR-A PE-OUT PRIM;
 PRIM: constant PE-A PE-OUT PRIM;
-PRIM: getpid   PE-N PE-OUT PRIM;   \ ( -- pid ) process-identity syscall; last checker.f axiom
+PRIM: getpid   PE-N PE-OUT PRIM;   \ ( -- pid ) process-identity syscall
+PRIM: proc-watch-open PE-N PE-IN PE-N PE-OUT PRIM;   \ ( pid -- fd|-1 ) process-lifetime watch; last checker.f axiom
 
 PTABLE-END
 

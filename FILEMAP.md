@@ -125,6 +125,9 @@ points stay listed.
 - `src/os/script-argv.f` — `bin/hb` source-list script argument convention.
 - `src/os/linux/sys.f` / `src/os/macos/sys.f` — per-target OS seams: syscall
   numbers plus the SVC emitter.
+- `src/os/linux/proc-watch.f` / `src/os/macos/proc-watch.f` — per-target
+  process-lifetime watch primitive emitter (`proc-watch-open`): Linux
+  `pidfd_open`, macOS `kqueue` + `EVFILT_PROC`/`NOTE_EXIT`.
 - `src/os/linux/target.f` / `src/os/macos/target.f` — runtime/build-script
   target flag words.
 
@@ -1901,6 +1904,10 @@ points stay listed.
   smoke tests for atomics and the in-stack runner.
 - `test/getpid-smoke.f` — focused proof of the `getpid` process-identity
   primitive: positive, stable across two calls, and distinct in a forked child.
+- `test/proc-watch-smoke.f` — focused proof of the `proc-watch-open`
+  process-lifetime watch: the descriptor signals readiness when the watched
+  child exits (live-then-exit fast path and already-dead race), and a
+  non-existent pid fails closed.
 - `test/internal-word-gate.f` — engine-internal execution-gate regressions, including sealed field mutation and checked read-only field reflection.
   (dot habu-hb-crash-bare-c5be6634): bare/ticked internal checker colon words
   fail closed with `hb: internal engine word:` + rc 70 on both cold-prefix

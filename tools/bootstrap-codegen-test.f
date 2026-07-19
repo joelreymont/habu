@@ -540,6 +540,7 @@ create LF $0A c,
    s" src/os/image-bytes.f" EXPECT-FILE
    s" $OS_IMAGE" EXPECT-FILE
    s" $OS_SIGN" EXPECT-FILE
+   s" $OS_PROCWATCH" EXPECT-FILE
    s" src/habu/habu1.f" EXPECT-FILE
    s" src/habu/prof.f" EXPECT-FILE
    s" src/habu/regalloc.f" EXPECT-FILE
@@ -573,6 +574,7 @@ create LF $0A c,
    s" src/habu/crash.f" EXPECT-FILE
    s" BF-APPEND-IMAGE-BYTES" EXPECT-FILE
    s" BF-APPEND-TARGET-IMAGE" EXPECT-FILE
+   s" BF-APPEND-TARGET-PROC-WATCH" EXPECT-FILE
    s" src/habu/habu1.f" EXPECT-FILE
    s" BUILD-EXT:APPEND" EXPECT-FILE
    s" src/habu/prof.f" EXPECT-FILE
@@ -706,13 +708,15 @@ variable COUNT-N
       s" PFX-PROVIDE-FILES" CALL-CHAIN ;
 
 : RECOVERY-TARGETS ( -- )
-   S\" case \"$HABU_TARGET\" in" s" PROBE=" s" OS_" SCOPE-N 10 T=
+   S\" case \"$HABU_TARGET\" in" s" PROBE=" s" OS_" SCOPE-N 12 T=
    S\" case \"$HABU_TARGET\" in" s" PROBE="
       s" OS_TARGET=src/os/macos/target.f" SCOPE-ONE
    S\" case \"$HABU_TARGET\" in" s" PROBE="
       s" OS_LAYOUT=src/os/macos/layout.f" SCOPE-ONE
    S\" case \"$HABU_TARGET\" in" s" PROBE="
       s" OS_SYS=src/os/macos/sys.f" SCOPE-ONE
+   S\" case \"$HABU_TARGET\" in" s" PROBE="
+      s" OS_PROCWATCH=src/os/macos/proc-watch.f" SCOPE-ONE
    S\" case \"$HABU_TARGET\" in" s" PROBE="
       s" OS_IMAGE=src/os/macos/macho.f" SCOPE-ONE
    S\" case \"$HABU_TARGET\" in" s" PROBE="
@@ -724,6 +728,8 @@ variable COUNT-N
    S\" case \"$HABU_TARGET\" in" s" PROBE="
       s" OS_SYS=src/os/linux/sys.f" SCOPE-ONE
    S\" case \"$HABU_TARGET\" in" s" PROBE="
+      s" OS_PROCWATCH=src/os/linux/proc-watch.f" SCOPE-ONE
+   S\" case \"$HABU_TARGET\" in" s" PROBE="
       s" OS_IMAGE=src/os/linux/elf.f" SCOPE-ONE
    S\" case \"$HABU_TARGET\" in" s" PROBE="
       s" OS_SIGN=src/os/linux/sign.f" SCOPE-ONE
@@ -734,6 +740,8 @@ variable COUNT-N
    S\" case \"$HABU_TARGET\" in" s" PROBE=" s" macos-aarch64)"
       s" OS_SYS=src/os/macos/sys.f" s" linux-aarch64)" SCOPE-BETWEEN
    S\" case \"$HABU_TARGET\" in" s" PROBE=" s" macos-aarch64)"
+      s" OS_PROCWATCH=src/os/macos/proc-watch.f" s" linux-aarch64)" SCOPE-BETWEEN
+   S\" case \"$HABU_TARGET\" in" s" PROBE=" s" macos-aarch64)"
       s" OS_IMAGE=src/os/macos/macho.f" s" linux-aarch64)" SCOPE-BETWEEN
    S\" case \"$HABU_TARGET\" in" s" PROBE=" s" macos-aarch64)"
       s" OS_SIGN=src/os/macos/sign2.f" s" linux-aarch64)" SCOPE-BETWEEN
@@ -743,6 +751,8 @@ variable COUNT-N
       s" OS_LAYOUT=src/os/linux/layout.f" s" *)" SCOPE-BETWEEN
    S\" case \"$HABU_TARGET\" in" s" PROBE=" s" linux-aarch64)"
       s" OS_SYS=src/os/linux/sys.f" s" *)" SCOPE-BETWEEN
+   S\" case \"$HABU_TARGET\" in" s" PROBE=" s" linux-aarch64)"
+      s" OS_PROCWATCH=src/os/linux/proc-watch.f" s" *)" SCOPE-BETWEEN
    S\" case \"$HABU_TARGET\" in" s" PROBE=" s" linux-aarch64)"
       s" OS_IMAGE=src/os/linux/elf.f" s" *)" SCOPE-BETWEEN
    S\" case \"$HABU_TARGET\" in" s" PROBE=" s" linux-aarch64)"
@@ -761,18 +771,30 @@ variable COUNT-N
       s" src/os/linux/layout.f" s" HB-TARGET-MACOS?" SCOPE-BEFORE
    s" : BF-APPEND-TARGET-LAYOUT" s" : BF-APPEND-TARGET-SYS"
       s" HB-TARGET-MACOS?" s" src/os/macos/layout.f" SCOPE-BEFORE
-   s" : BF-APPEND-TARGET-SYS" s" : BF-APPEND-TARGET-FLAG"
+   s" : BF-APPEND-TARGET-SYS" s" : BF-APPEND-TARGET-PROC-WATCH"
       s" src/os/" SCOPE-N 2 T=
-   s" : BF-APPEND-TARGET-SYS" s" : BF-APPEND-TARGET-FLAG"
+   s" : BF-APPEND-TARGET-SYS" s" : BF-APPEND-TARGET-PROC-WATCH"
       s" src/os/linux/sys.f" SCOPE-ONE
-   s" : BF-APPEND-TARGET-SYS" s" : BF-APPEND-TARGET-FLAG"
+   s" : BF-APPEND-TARGET-SYS" s" : BF-APPEND-TARGET-PROC-WATCH"
       s" src/os/macos/sys.f" SCOPE-ONE
-   s" : BF-APPEND-TARGET-SYS" s" : BF-APPEND-TARGET-FLAG"
+   s" : BF-APPEND-TARGET-SYS" s" : BF-APPEND-TARGET-PROC-WATCH"
       s" HB-TARGET-LINUX?" s" src/os/linux/sys.f" SCOPE-BEFORE
-   s" : BF-APPEND-TARGET-SYS" s" : BF-APPEND-TARGET-FLAG"
+   s" : BF-APPEND-TARGET-SYS" s" : BF-APPEND-TARGET-PROC-WATCH"
       s" src/os/linux/sys.f" s" HB-TARGET-MACOS?" SCOPE-BEFORE
-   s" : BF-APPEND-TARGET-SYS" s" : BF-APPEND-TARGET-FLAG"
+   s" : BF-APPEND-TARGET-SYS" s" : BF-APPEND-TARGET-PROC-WATCH"
       s" HB-TARGET-MACOS?" s" src/os/macos/sys.f" SCOPE-BEFORE
+   s" : BF-APPEND-TARGET-PROC-WATCH" s" : BF-APPEND-TARGET-FLAG"
+      s" src/os/" SCOPE-N 2 T=
+   s" : BF-APPEND-TARGET-PROC-WATCH" s" : BF-APPEND-TARGET-FLAG"
+      s" src/os/linux/proc-watch.f" SCOPE-ONE
+   s" : BF-APPEND-TARGET-PROC-WATCH" s" : BF-APPEND-TARGET-FLAG"
+      s" src/os/macos/proc-watch.f" SCOPE-ONE
+   s" : BF-APPEND-TARGET-PROC-WATCH" s" : BF-APPEND-TARGET-FLAG"
+      s" HB-TARGET-LINUX?" s" src/os/linux/proc-watch.f" SCOPE-BEFORE
+   s" : BF-APPEND-TARGET-PROC-WATCH" s" : BF-APPEND-TARGET-FLAG"
+      s" src/os/linux/proc-watch.f" s" HB-TARGET-MACOS?" SCOPE-BEFORE
+   s" : BF-APPEND-TARGET-PROC-WATCH" s" : BF-APPEND-TARGET-FLAG"
+      s" HB-TARGET-MACOS?" s" src/os/macos/proc-watch.f" SCOPE-BEFORE
    s" : BF-APPEND-TARGET-FLAG" s" : BF-APPEND-IMAGE-BYTES"
       s" src/os/" SCOPE-N 2 T=
    s" : BF-APPEND-TARGET-FLAG" s" : BF-APPEND-IMAGE-BYTES"
@@ -836,10 +858,10 @@ public
       s" src/core/structures.f" s" LOWER-CERT-HOOK:INSTALL" SCOPE-BEFORE
    0 RECOVERY-U !
    s" SRC_COMMON=(" s" emit_boot_hide() {" MODE-ARRAY s" "
-      [: RECOVERY+ ;] CAPTURE 30 T=
+      [: RECOVERY+ ;] CAPTURE 31 T=
    EXPECT-RECOVERY-COMMON
    RECOVERY$ EXPECT$ T$=
-   RECOVERY$ 30 ASSERT-UNIQUE
+   RECOVERY$ 31 ASSERT-UNIQUE
    RECOVERY-TARGETS ;
 
 : FIXPOINT ( -- )
@@ -867,10 +889,10 @@ public
       s" BF-APPEND-CORE-FILES" s" LOWER-CERT-HOOK:INSTALL" SCOPE-BEFORE
    0 FIXPOINT-U !
    s" : BF-APPEND-COMMON" s" : BF-APPEND-DRIVER-IO" MODE-COMMON s" "
-      [: FIXPOINT+ ;] CAPTURE 31 T=
+      [: FIXPOINT+ ;] CAPTURE 32 T=
    EXPECT-FIXPOINT-COMMON
    FIXPOINT$ EXPECT$ T$=
-   FIXPOINT$ 31 ASSERT-UNIQUE
+   FIXPOINT$ 32 ASSERT-UNIQUE
    FIXPOINT-TARGETS ;
 
 ;package

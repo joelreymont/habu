@@ -19,6 +19,11 @@ $6   constant NR-CLOSE
 $25  constant NR-KILL
 $52  constant NR-SETPGID
 $14  constant NR-GETPID
+$16A constant NR-KQUEUE
+$171 constant NR-KEVENT64
+$FFFB constant EVFILT-PROC-U16     \ EVFILT_PROC as an unsigned 16-bit filter (-5)
+$15  constant EV-PROC-FLAGS        \ EV_ADD | EV_ONESHOT
+$80000000 constant NOTE-EXIT       \ fflags: signal on process exit
 $2A  constant NR-PIPE
 $2E  constant NR-SIGACTION
 $4A  constant NR-MPROTECT

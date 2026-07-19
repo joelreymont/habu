@@ -44,11 +44,11 @@ variable SL-DRIVER-U
 
 : SL-TARGET-LAYOUT-SYS ( -- )
    HB-TARGET-LINUX? if
-      s" src/os/linux/layout.f src/os/linux/sys.f " type
+      s" src/os/linux/layout.f src/os/linux/sys.f src/os/linux/proc-watch.f " type
       exit
    then
    HB-TARGET-MACOS? if
-      s" src/os/macos/layout.f src/os/macos/sys.f " type
+      s" src/os/macos/layout.f src/os/macos/sys.f src/os/macos/proc-watch.f " type
       exit
    then
    SL-TARGET-UNKNOWN ;
