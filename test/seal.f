@@ -482,6 +482,28 @@ ENGINE-ERROR:SEAL-PACKAGE constant SLV-PWID-RC       \ protected-WID table full
    s" : foo:BOGUS ; into a protected WID -> labeled exit 84" T-LABEL
    SLV-PUBLISH-FORGE$ SLV-EXEC:SUBJECT SLV-ASSERT-PROT-PUBLISH ;
 
+\ The two engine-reserved OWNER-API wordlists are permanently protected, so a
+\ checked program cannot forge a record into them with set-current. Without this,
+\ `2 set-current : X ;` would stamp X with OWNER-API-PRI-WID -- the marker the
+\ ahead-of-time closure walker (src/habu/aot-closure.f FINDPTR) treats as a
+\ registered engine helper -- and a crafted image could reach that forged code
+\ by a direct branch.
+: SLV-OWNER-PRI-FORGE$ ( -- ptr u8 n )       \ publish into the private engine-API wordlist (helper marker)
+   SB-RESET
+   s" 2 set-current : OWNERFORGE ( -- ) ;" SB-APPEND SLV-LF
+   SB$ ;
+
+: SLV-OWNER-PUB-FORGE$ ( -- ptr u8 n )       \ publish into the public engine-API wordlist
+   SB-RESET
+   s" 1 set-current : OWNERFORGE ( -- ) ;" SB-APPEND SLV-LF
+   SB$ ;
+
+: SLV-OWNER-FORGE ( -- )
+   s" : X ; via 2 set-current into OWNER-API-PRI-WID -> labeled exit 84" T-LABEL
+   SLV-OWNER-PRI-FORGE$ SLV-EXEC:SUBJECT SLV-ASSERT-PROT-PUBLISH
+   s" : X ; via 1 set-current into OWNER-API-PUB-WID -> labeled exit 84" T-LABEL
+   SLV-OWNER-PUB-FORGE$ SLV-EXEC:SUBJECT SLV-ASSERT-PROT-PUBLISH ;
+
 package OWNER-WID-TEST
 
 $4000 constant CAP
@@ -650,7 +672,7 @@ public
 package SLV-PARITY
 
 7 constant DIRECT-N
-51 constant SUBJECT-N
+53 constant SUBJECT-N
 : RESULT ( -- ptr u8 n ptr u8 n n )
    SLV-OUT SLV-OUT-U @ SLV-ERR SLV-ERR-U @ SLV-RC @ ;
 
@@ -802,6 +824,7 @@ public
    SLV-POSITIVES
    SLV-PWID-CAP
    SLV-PROT-PUBLISH
+   SLV-OWNER-FORGE
    OWNER-WID-TEST:RUN
    SLV-PARITY:CHECK
    SLV-CLEANUP

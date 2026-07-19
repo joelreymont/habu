@@ -2536,24 +2536,34 @@ SOURCE-INIT
    EMIT-PROT-SPAN ;
 
 \ Protected-WID membership (TFAM 2b-v). BL routine: x9 = wid on entry, x13 = 1 if
-\ wid is recorded in the protected-WID registry (PROT-WID-N-CELL entries of the
-\ u32 PROT-WID-OFF table, both inside the sealed friend arena), else 0. Linear
-\ scan — the registry is tiny (sealed system + generated constructor package WIDs
-\ only). Preserves x5 x6 x7 x9 x14; x13 is the result. Called by the sealed-WID guards
-\ (record publish, AOT relocation/bootrun, snap-rebase) and the AOT registry
-\ restore's dedup.
+\ wid is a protected wordlist, else 0. The two engine-reserved OWNER-API
+\ wordlists (public=1, private=2) are ALWAYS protected: they are the sealed
+\ engine API and the registered-helper marker (OWNER-API-PRI-WID stamps the AOT
+\ direct-branch helpers), so no post-seal publish may forge a record into them.
+\ They are pinned here rather than seeded as registry data because every engine
+\ boots with a protected-WID table populated by a different path (fresh cold
+\ init, AOT-REPL restore, snapshot restore); a single membership rule protects
+\ them uniformly and unforgeably. Dynamic package wordlists start at
+\ FIRST-DYNAMIC-WID (3), so the reserved pins never shadow a real allocation.
+\ Beyond the two pins, the sealed system + generated constructor package WIDs are
+\ found by a linear scan of the PROT-WID-N-CELL entries of the u32 PROT-WID-OFF
+\ table (both inside the sealed friend arena). Preserves x5 x6 x7 x9 x14; x13 is
+\ the result. Called by the sealed-WID guards (record publish, AOT
+\ relocation/bootrun, snap-rebase) and the AOT registry restore's dedup.
 : EMIT-PROTWID ( -- )
-   LBL LBL LBL {: qloop:label qnext:label qdone:label :}
+   LBL LBL LBL LBL {: qloop:label qnext:label qdone:label qhit:label :}
    LPROTWIDQ LABEL@ LBL,
    SP SP 32 SUBI,
    5 SP 0 STR,  6 SP 8 STR,  7 SP 16 STR,  14 SP 24 STR,
    13 0 MOVZ,                                   \ result = 0 (not protected)
+   9 OWNER-API-PUB-WID CMPI,  C-EQ qhit BCOND,  \ engine-reserved public API wordlist
+   9 OWNER-API-PRI-WID CMPI,  C-EQ qhit BCOND,  \ engine-reserved private wordlist (helper marker)
    6 DATA PROT-WID-N-CELL LDR,                  \ x6 = registry count
    7 0 MOVZ,                                    \ x7 = i
    5 PROT-WID-OFF MOVZ,  5 DATA 5 ADD,          \ x5 = &table[0] (offset > imm12: materialize + add)
    qloop LBL,  7 6 CMP,  C-GE qdone BCOND,
       14 5 0 LDRW,  14 9 CMP,  C-NE qnext BCOND, \ table[i] == wid?
-         13 1 MOVZ,  qdone B,                    \ found -> protected
+      qhit LBL,  13 1 MOVZ,  qdone B,            \ reserved pin or table hit -> protected
       qnext LBL,  5 5 4 ADDI,  7 7 1 ADDI,  qloop B,
    qdone LBL,
    5 SP 0 LDR,  6 SP 8 LDR,  7 SP 16 LDR,  14 SP 24 LDR,
