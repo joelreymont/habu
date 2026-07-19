@@ -4,12 +4,20 @@
 \ percentile and median (which require the array pre-sorted ascending — use
 \ lib/sort.f SORT:FSORT! first). All over a float cell array `ptr r len`; len >= 1 for
 \ the reductions.
+\
+\ The module lives in `package STATS`. External callers use the qualified public
+\ API (STATS:FSUM, STATS:FMEAN, STATS:FMIN, STATS:FMAX, STATS:FVAR, STATS:FSTDDEV,
+\ STATS:FPERCENTILE, STATS:FMEDIAN, plus the STATS:FMIN2/FMAX2/IMIN comparators).
 
 require lib/errors.f
 require lib/float.f
 require lib/sort.f                            \ SORT:FX@ float-cell read
 
-variable STAT-I
+package STATS
+
+variable STAT-I                              \ reduction loop index (private)
+
+public
 
 : FMIN2 ( r r -- r ) {: a b :} a b f< if a else b then ;
 : FMAX2 ( r r -- r ) {: a b :} a b f> if a else b then ;
@@ -60,3 +68,5 @@ variable STAT-I
    alo  ahi alo f-  frac f*  f+ ;
 : FMEDIAN ( ptr r n -- r ) {: a:ptr len :}     \ array must be sorted ascending
    a len 0.5 FPERCENTILE ;
+
+;package
