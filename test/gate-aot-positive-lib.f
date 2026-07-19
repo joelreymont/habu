@@ -193,6 +193,41 @@ $10000 constant GAP-STRIPPED-TEXT-MAX
    GAP-DATA-EXPECT s" hb-build AOT data region output" GB-RUN-EXPECT
    s" PASS: hb-build AOT persistent data region (create/,/variable/@/!/+!/loop)" type cr ;
 
+\ Layout-bundle store: a program whose MAIN stores a wide (multi-cell) layout
+\ value through `!`. The pass-2 wide-store lowering (LP2STORE) emits a runtime
+\ call to the engine-resident (PROT-SPAN) span guard before the mutation. In a
+\ stripped AOT image that runtime call is an absolute movz/movk+blr whose target
+\ is the (PROT-SPAN) helper; unless the linker rewrites it to a PC-relative
+\ branch into the copied helper, the built-time engine address ships and the
+\ store SIGSEGVs at load (dot habu-relocate-absolute-helper-dbb53aef). Because
+\ (PROT-SPAN) is a registered engine helper, the closure walk resolves the call
+\ by record address and collapses it to an in-image branch, so this MAIN runs.
+\ Reaching the trailing `42 .` proves the guarded store completed.
+: GAP-LAYOUT-STORE-SOURCE ( -- )
+   GE-SRC-RESET
+   s" package AOT-LAYOUT-STORE" GE-SRC-LINE
+   s" SUMTYPE res 2" GE-SRC-LINE
+   s"   VARIANT ok a ;VARIANT" GE-SRC-LINE
+   s"   VARIANT err b ;VARIANT" GE-SRC-LINE
+   s" ;SUMTYPE" GE-SRC-LINE
+   s" 1 LAYOUT-BUFFER MEM res<n,n>" GE-SRC-LINE
+   s" public" GE-SRC-LINE
+   s" : STORE-IT ( -- ) 37 construct res ok 0 MEM ! ;" GE-SRC-LINE
+   s" ;package" GE-SRC-LINE
+   s" : MAIN ( -- ) AOT-LAYOUT-STORE:STORE-IT 42 . ;" GE-SRC-LINE ;
+
+: GAP-LAYOUT-STORE-EXPECT ( -- ptr u8 n )
+   SB-RESET
+   s" 42" GE-OUT-LINE
+   SB$ ;
+
+: GAP-LAYOUT-STORE ( -- )
+   s" hb-aot-layout-store.f" s" hb-aot-layout-store" s" hb-aot-layout-store-report.json" GAP-PATHS
+   GAP-LAYOUT-STORE-SOURCE
+   s" hb-build AOT layout-bundle store build" GAP-BUILD-STRICT
+   GAP-LAYOUT-STORE-EXPECT s" hb-build AOT layout-bundle store output" GB-RUN-EXPECT
+   s" PASS: hb-build AOT layout-bundle store (LP2STORE reaches (PROT-SPAN) via a relocated call)" type cr ;
+
 \ item 10 slice 5: a preseeded bad-tag object/AOT test entry. A source declaring a
 \ matched family + helper is AOT-built with a SELECTED non-MAIN entry (the helper)
 \ and a forged value-stack seed (payload slots + an out-of-range tag), so the
@@ -263,6 +298,7 @@ $10000 constant GAP-STRIPPED-TEXT-MAX
    s" hb-gate-aot-bundle-data" GT-START
    GAP-BUNDLE
    GAP-DATA
+   GAP-LAYOUT-STORE
    GT-CLEANUP ;
 
 : GAP-RUN-PRESEED ( -- )
