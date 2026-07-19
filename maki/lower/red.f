@@ -130,6 +130,7 @@ variable LRED-NIN                              \ region input count
       layernorm-bwd OF false ENDOF  rmsnorm-bwd OF false ENDOF  softmax-row-bwd OF false ENDOF
       rope-bwd OF false ENDOF  rowsum-bwd OF false ENDOF  fullsum-dot-bwd OF false ENDOF
       pad-scatter OF false ENDOF  scatter-add OF false ENDOF  gelu-bwd2 OF false ENDOF
+      seg-attn OF false ENDOF  seg-attn-bwd OF false ENDOF
    ;MATCH ;
 : LRED-EW-OP? ( opkind -- bool )                 \ a v1 elementwise prologue / epilogue op
    MATCH opkind
@@ -143,6 +144,7 @@ variable LRED-NIN                              \ region input count
       layernorm-bwd OF false ENDOF  rmsnorm-bwd OF false ENDOF  softmax-row-bwd OF false ENDOF
       rope-bwd OF false ENDOF  rowsum-bwd OF false ENDOF  fullsum-dot-bwd OF false ENDOF
       pad-scatter OF false ENDOF  scatter-add OF false ENDOF  gelu-bwd2 OF false ENDOF
+      seg-attn OF false ENDOF  seg-attn-bwd OF false ENDOF
    ;MATCH ;
 
 : LRED-RED-COUNT ( CAD-KIND:region -- n ) {: rid:CAD-KIND:region :}   \ reduction nodes in the region
@@ -329,6 +331,7 @@ private
       rowsum-bwd OF E-LRED-OP throw ENDOF  fullsum-dot-bwd OF E-LRED-OP throw ENDOF
       pad-scatter OF E-LRED-OP throw ENDOF  scatter-add OF E-LRED-OP throw ENDOF
       gelu-bwd2 OF E-LRED-OP throw ENDOF
+      seg-attn OF E-LRED-OP throw ENDOF  seg-attn-bwd OF E-LRED-OP throw ENDOF
    ;MATCH
    nd LRED-NR! ;
 : LRED-CHAIN ( -- )                              \ movement members emit no compute (folded)

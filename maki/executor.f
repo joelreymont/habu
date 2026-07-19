@@ -50,6 +50,7 @@ require maki/linear.f
 require maki/move.f
 require maki/reduce-bwd.f
 require maki/scatter.f
+require maki/segment.f
 
 \ ---- audited count projection (MIR typed item-count -> raw loop/compare cell) ---
 \ Reopen the unsealed CAD-NUM package for one checked bridge over its private
@@ -134,6 +135,7 @@ private
       rowsum-bwd OF E-EX-UNSUP throw ENDOF  fullsum-dot-bwd OF E-EX-UNSUP throw ENDOF
       pad-scatter OF E-EX-UNSUP throw ENDOF  scatter-add OF E-EX-UNSUP throw ENDOF
       gelu-bwd2 OF E-EX-UNSUP throw ENDOF
+      seg-attn OF E-EX-UNSUP throw ENDOF  seg-attn-bwd OF E-EX-UNSUP throw ENDOF
    ;MATCH ;
 
 : EX-U ( CAD-KIND:node-id -- ) {: nd:CAD-KIND:node-id :}
@@ -165,6 +167,7 @@ private
       rope-bwd OF E-EX-UNSUP throw ENDOF  rowsum-bwd OF E-EX-UNSUP throw ENDOF
       fullsum-dot-bwd OF E-EX-UNSUP throw ENDOF  pad-scatter OF E-EX-UNSUP throw ENDOF
       scatter-add OF E-EX-UNSUP throw ENDOF
+      seg-attn OF E-EX-UNSUP throw ENDOF  seg-attn-bwd OF E-EX-UNSUP throw ENDOF
    ;MATCH ;
 
 : EX-EW2 ( CAD-KIND:node-id -- ) {: nd:CAD-KIND:node-id :}
@@ -195,6 +198,7 @@ private
       rowsum-bwd OF E-EX-UNSUP throw ENDOF  fullsum-dot-bwd OF E-EX-UNSUP throw ENDOF
       pad-scatter OF E-EX-UNSUP throw ENDOF  scatter-add OF E-EX-UNSUP throw ENDOF
       gelu-bwd2 OF E-EX-UNSUP throw ENDOF
+      seg-attn OF E-EX-UNSUP throw ENDOF  seg-attn-bwd OF E-EX-UNSUP throw ENDOF
    ;MATCH ;
 
 : EX-ROW-FWD ( CAD-KIND:node-id -- ) {: nd:CAD-KIND:node-id :}
@@ -221,6 +225,7 @@ private
       rowsum-bwd OF E-EX-UNSUP throw ENDOF  fullsum-dot-bwd OF E-EX-UNSUP throw ENDOF
       pad-scatter OF E-EX-UNSUP throw ENDOF  scatter-add OF E-EX-UNSUP throw ENDOF
       gelu-bwd2 OF E-EX-UNSUP throw ENDOF
+      seg-attn OF E-EX-UNSUP throw ENDOF  seg-attn-bwd OF E-EX-UNSUP throw ENDOF
    ;MATCH ;
 
 \ p0 = cotangent row ; p1 = saved input (norms) or saved output (softmax) row.
@@ -339,6 +344,28 @@ private
    nd EX-NODE-NROWS {: R:n :}  nd EX-NODE-NCOLS {: C:n :}
    R 0 ?do  dp i C * T-AT  cp i C * T-AT  sp i C * T-AT  ob i C * T-AT  C  EX-ROPE-ROW-BWD  loop ;
 
+\ ---- segment causal attention (dot BTC-1): a fused per-block token-mixer -----
+\ Forward reads Q,K,V (operands 0,1,2), block width T + causal flag from the attrs
+\ cell, and writes O (B*T x d). rows = the node's output rows (B*T); d = Q's cols.
+: EX-SEG-ATTN ( CAD-KIND:node-id -- ) {: nd:CAD-KIND:node-id :}
+   nd 0 MIR-INPUT-IDX MIR-IN@ {: qr:MIR:operand-ref :}
+   nd 1 MIR-INPUT-IDX MIR-IN@ {: kr:MIR:operand-ref :}
+   nd 2 MIR-INPUT-IDX MIR-IN@ {: vr:MIR:operand-ref :}
+   nd MIR-ATTR@ {: attr:n :}
+   qr EX-REF-PTR  kr EX-REF-PTR  vr EX-REF-PTR  nd EX-NODE-PTR
+   nd EX-NODE-NROWS  attr SEG-T@  qr EX-REF-NCOLS  attr SEG-CAUSAL@  SEG-ATTN-FWD ;
+
+\ Backward reads Q,K,V and the cotangent dO (operands 0,1,2,3) and writes the
+\ combined [dQ;dK;dV] (3*B*T x d). rows = Q's rows (B*T), NOT the node's 3*B*T rows.
+: EX-SEG-ATTN-BWD ( CAD-KIND:node-id -- ) {: nd:CAD-KIND:node-id :}
+   nd 0 MIR-INPUT-IDX MIR-IN@ {: qr:MIR:operand-ref :}
+   nd 1 MIR-INPUT-IDX MIR-IN@ {: kr:MIR:operand-ref :}
+   nd 2 MIR-INPUT-IDX MIR-IN@ {: vr:MIR:operand-ref :}
+   nd 3 MIR-INPUT-IDX MIR-IN@ {: dor:MIR:operand-ref :}
+   nd MIR-ATTR@ {: attr:n :}
+   qr EX-REF-PTR  kr EX-REF-PTR  vr EX-REF-PTR  dor EX-REF-PTR  nd EX-NODE-PTR
+   qr EX-REF-NROWS  attr SEG-T@  qr EX-REF-NCOLS  attr SEG-CAUSAL@  SEG-ATTN-BWD ;
+
 \ ---- per-node dispatch (fail closed on a non-executable op) -----------------
 : EX-NODE ( CAD-KIND:node-id -- ) {: nd:CAD-KIND:node-id :}
    nd MIR-OP@ MATCH opkind
@@ -373,6 +400,8 @@ private
       scatter-add     OF nd EX-SCATTER-ADD  ENDOF
       rope            OF nd EX-ROPE-FWD     ENDOF
       rope-bwd        OF nd EX-ROPE-BWD     ENDOF
+      seg-attn        OF nd EX-SEG-ATTN     ENDOF
+      seg-attn-bwd    OF nd EX-SEG-ATTN-BWD ENDOF
       cast            OF E-EX-UNSUP throw   ENDOF
    ;MATCH ;
 
@@ -405,6 +434,7 @@ public
       layernorm-bwd OF true ENDOF  rmsnorm-bwd OF true ENDOF  softmax-row-bwd OF true ENDOF
       rope-bwd OF true ENDOF  rowsum-bwd OF true ENDOF  fullsum-dot-bwd OF true ENDOF
       pad-scatter OF true ENDOF  scatter-add OF true ENDOF  gelu-bwd2 OF true ENDOF
+      seg-attn OF true ENDOF  seg-attn-bwd OF true ENDOF
    ;MATCH ;
 
 \ ---- input binding + lifecycle ---------------------------------------------

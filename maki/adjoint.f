@@ -64,7 +64,8 @@ public
 17 constant ADJ-BIAS          \ dx = cotangent copy ; d-bias = OP-ROWSUM-BWD (row reduce)
 18 constant ADJ-SCALE         \ dx = ct*s (mul/scale) ; d-scale = OP-FULLSUM-DOT-BWD
 19 constant ADJ-GELU-BWD      \ second order: d-dz = OP-GELU-BWD, d-x = OP-GELU-BWD2
-20 constant ADJ-N             \ range bound
+20 constant ADJ-SEG-ATTN      \ per-block dQ/dK/dV via OP-SEG-ATTN-BWD + slices
+21 constant ADJ-N             \ range bound
 
 \ ---- what the adjoint must read from the forward pass ------------------------
 0 constant SAVE-NONE          \ needs only static shape / operand refs (add/reshape/rope)
@@ -175,6 +176,8 @@ public
       pad-scatter     OF E-ADJ-UNSUP throw ENDOF
       scatter-add     OF E-ADJ-UNSUP throw ENDOF
       gelu-bwd2       OF E-ADJ-UNSUP throw ENDOF
+      seg-attn        OF E-ADJ-UNSUP throw ENDOF
+      seg-attn-bwd    OF E-ADJ-UNSUP throw ENDOF
    ;MATCH ;
 
 private
@@ -223,7 +226,12 @@ private
    \ again), d-x = ct*dz*gelu''(x) (OP-GELU-BWD2). Its operands ARE the tensors the
    \ adjoint reads -> SAVE-INPUT; gelu-bwd2 itself stays ADJ-NONE (third order is
    \ fail-closed E-BW-NOADJ).
-   ADJ-GELU-BWD SAVE-INPUT 3 1 OP-GELU-BWD2 OP-GELU-BWD ADJ! ;
+   ADJ-GELU-BWD SAVE-INPUT 3 1 OP-GELU-BWD2 OP-GELU-BWD ADJ!
+   \ ---- segment causal attention (dot BTC-1): a dedicated emitter (like matmul)
+   \ builds the fused per-block backward + slices, so bop = -1. Q,K,V all receive a
+   \ gradient (mask 7); the adjoint recomputes A from the saved forward inputs Q,K,V
+   \ -> SAVE-INPUT. seg-attn-bwd itself stays ADJ-NONE (second order fail-closed). ---
+   ADJ-SEG-ATTN SAVE-INPUT 7 1 -1 OP-SEG-ATTN ADJ! ;
 
 \ ---- wire the op-registry vjp field to the adjoint id (cad-9 requirement) ----
 \ pure private-table wiring over the code index space: copy A-ID[i] -> registry

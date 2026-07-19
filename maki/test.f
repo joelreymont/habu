@@ -156,6 +156,8 @@ TEST:SUITE maki/embedding-test.f
 TEST:;SUITE
 TEST:SUITE maki/attention-test.f
 TEST:;SUITE
+TEST:SUITE maki/segment-test.f
+TEST:;SUITE
 TEST:SUITE maki/mlp-test.f
 TEST:;SUITE
 TEST:SUITE maki/train-test.f

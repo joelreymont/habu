@@ -59,7 +59,13 @@ public
 \ Synthesized by maki/backward.f when a SECOND BW-BUILD differentiates a backward
 \ region; never MODEL:-parseable. gelu-bwd's x-gradient needs the second derivative.
 31 constant OP-GELU-BWD2         \ dz * gelu''(x)                   (ref: GELU-BWD2)
-32 constant OP-N               \ op-kind range bound (private op-registry / adjoint table dimension + wire code range)
+\ ---- segment (block-diagonal) causal attention (dot BTC-1) -------------------
+\ A fused token-mixer over rows = B*T, block width T (attrs cell). The forward is
+\ MODEL:-typed-in-spirit but SYNTHESIZED here (no MODEL: token map entry); the
+\ backward op-kind is synthesized by maki/backward.f like the other *-BWD kinds.
+32 constant OP-SEG-ATTN          \ per-block causal attention               (ref: SEG-ATTN-FWD)
+33 constant OP-SEG-ATTN-BWD      \ its per-block VJP -> [dQ;dK;dV] combined  (ref: SEG-ATTN-BWD)
+34 constant OP-N               \ op-kind range bound (private op-registry / adjoint table dimension + wire code range)
 
 \ ---- the op-kind family (dot habu-cad-adt-swap, corrected plan) -------------
 \ `opkind` is the semantic type carried from construction (MIR-OP-BEGIN /
@@ -67,7 +73,7 @@ public
 \ OP-* codes above remain ONLY as the wire/hash/private-table-index vocabulary
 \ crossed at the named boundaries below (OPKIND>N, the op-registry / adjoint
 \ private table indexes, sched-key's hash fold, test assertions). No internal API
-\ takes or returns a raw op code. Declaration order == OP-ADD(0)..OP-GELU-BWD2(31),
+\ takes or returns a raw op code. Declaration order == OP-ADD(0)..OP-SEG-ATTN-BWD(33),
 \ so OPKIND>N below is the single source that ties a variant to its code.
 \ NB variant tails are the wire spellings with hyphens; inline `\` comments inside
 \ the ENUM block are a parse error, so per-variant notes stay in this header.
@@ -78,6 +84,7 @@ ENUM opkind DERIVE eq
   residual-add cast silu rope reshape transpose slice concat gather
   relu-bwd gelu-bwd silu-bwd layernorm-bwd rmsnorm-bwd softmax-row-bwd rope-bwd
   rowsum-bwd fullsum-dot-bwd pad-scatter scatter-add gelu-bwd2
+  seg-attn seg-attn-bwd
 ;ENUM
 
 \ named render boundary: opkind -> wire/table code (exhaustive MATCH; a bad tag
@@ -117,6 +124,8 @@ ENUM opkind DERIVE eq
       pad-scatter     OF OP-PAD-SCATTER     ENDOF
       scatter-add     OF OP-SCATTER-ADD     ENDOF
       gelu-bwd2       OF OP-GELU-BWD2       ENDOF
+      seg-attn        OF OP-SEG-ATTN        ENDOF
+      seg-attn-bwd    OF OP-SEG-ATTN-BWD    ENDOF
    ;MATCH ;
 
 ;package

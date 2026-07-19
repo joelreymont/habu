@@ -29,6 +29,7 @@ require maki/reduce-bwd.f
 require maki/scatter.f
 require maki/matmul.f
 require maki/linear.f
+require maki/segment.f
 
 -5050 constant E-OPR-KIND        \ op-kind out of range
 -5051 constant E-OPR-INCOMPLETE  \ reference requested from an op with no scalar oracle
@@ -165,6 +166,8 @@ public
       pad-scatter     OF s" pad-scatter"     ENDOF
       scatter-add     OF s" scatter-add"     ENDOF
       gelu-bwd2       OF s" gelu-bwd2"       ENDOF
+      seg-attn        OF s" seg-attn"        ENDOF
+      seg-attn-bwd    OF s" seg-attn-bwd"    ENDOF
    ;MATCH ;
 
 : OPR-CLASS-NAME ( n -- ptr u8 n )
@@ -238,7 +241,13 @@ private
    CLASS-MOVEMENT   0 ACC-SAME NUM-EXACT  1 OP-PAD-SCATTER     OPR!
    CLASS-MOVEMENT   0 ACC-F32  NUM-RELTOL 2 OP-SCATTER-ADD     OPR!
    \ second-order backward op-kind (gelu-bwd adjoint): dz * gelu''(x), (dz, x).
-   CLASS-EW        12 ACC-SAME NUM-RELTOL 2 OP-GELU-BWD2       OPR! ;
+   CLASS-EW        12 ACC-SAME NUM-RELTOL 2 OP-GELU-BWD2       OPR!
+   \ segment causal attention (dot BTC-1): a fused per-block contraction, so
+   \ CLASS-MATMUL / f32 accumulate / rel-tol. Forward arity = Q,K,V (3); the backward
+   \ reads Q,K,V and the cotangent dO (4). flops-per-element are nominal (never
+   \ lowered in v1 - BTC-6 owns the GB10 tiling); the class drives the bytes model.
+   CLASS-MATMUL     4 ACC-F32  NUM-RELTOL 3 OP-SEG-ATTN        OPR!
+   CLASS-MATMUL     6 ACC-F32  NUM-RELTOL 4 OP-SEG-ATTN-BWD    OPR! ;
 
 OPR-BUILD
 
@@ -287,5 +296,10 @@ OPR-BUILD
 ' SCATTER-ADD     OP-SCATTER-ADD      cells R-REF + !
 \ second-order backward reference (maki/gelu.f GELU-BWD2 = dz * gelu''(x)).
 ' GELU-BWD2       OP-GELU-BWD2        cells R-REF + !
+\ segment attention buffer references (maki/segment.f): the fused per-block forward
+\ and its VJP - the golden oracle the device flash-attention must reproduce. Binding
+\ completes their op rows so cast stays the only incomplete op.
+' SEG-ATTN-FWD    OP-SEG-ATTN         cells R-REF + !
+' SEG-ATTN-BWD    OP-SEG-ATTN-BWD     cells R-REF + !
 
 ;package

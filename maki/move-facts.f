@@ -94,6 +94,8 @@ $FFFFF constant MV-PMASK     \ 20-bit param mask (max 1048575)
       pad-scatter     OF E-MV-NOTMOVE throw ENDOF
       scatter-add     OF E-MV-NOTMOVE throw ENDOF
       gelu-bwd2       OF E-MV-NOTMOVE throw ENDOF
+      seg-attn        OF E-MV-NOTMOVE throw ENDOF
+      seg-attn-bwd    OF E-MV-NOTMOVE throw ENDOF
    ;MATCH ;
 : OP-OF-MV ( n -- opkind )                     \ transform tag -> movement op-kind
    MV-TF-CK
@@ -200,6 +202,8 @@ $FFFFF constant MV-PMASK     \ 20-bit param mask (max 1048575)
       rowsum-bwd      OF E-MV-TF throw ENDOF
       fullsum-dot-bwd OF E-MV-TF throw ENDOF
       gelu-bwd2       OF E-MV-TF throw ENDOF
+      seg-attn        OF E-MV-TF throw ENDOF
+      seg-attn-bwd    OF E-MV-TF throw ENDOF
    ;MATCH ;
 
 ;package

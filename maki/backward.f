@@ -328,6 +328,28 @@ variable BW-BUILT?
    ct dz MAKI-OPKIND:MUL x BW-OP2
    x MAKI-OPKIND:GELU-BWD2 x BW-OP2  x BW-ACCUM ;
 
+\ segment causal attention adjoint (dot BTC-1): one fused OP-SEG-ATTN-BWD node reads
+\ Q,K,V and the cotangent dO and emits the combined [dQ;dK;dV] as 3*(B*T) rows (the
+\ block width / causal flag ride through the attrs cell unchanged, like the slice
+\ adjoint reads its forward attrs). Three slices split it back into dQ,dK,dV, one per
+\ input. Masked positions carry zero grad structurally inside the fused op, so there
+\ is no separate mask adjoint.
+: BW-STEP-SEGMENT-ATTN ( CAD-KIND:node-id MIR:operand-ref -- )
+   {: fn:CAD-KIND:node-id ct:MIR:operand-ref :}
+   fn 0 MIR-INPUT-IDX MIR-IN@ {: q:MIR:operand-ref :}
+   fn 1 MIR-INPUT-IDX MIR-IN@ {: k:MIR:operand-ref :}
+   fn 2 MIR-INPUT-IDX MIR-IN@ {: v:MIR:operand-ref :}
+   fn MIR-ATTR@ {: attr:n :}
+   q REF-ROWS {: bt:CAD-KIND:rows :}        \ B*T (one input's rows)
+   bt bt ROWS+ {: bt2:CAD-KIND:rows :}       \ 2*B*T
+   bt2 bt ROWS+ {: bt3:CAD-KIND:rows :}      \ 3*B*T (combined [dQ;dK;dV] rows)
+   MAKI-OPKIND:SEG-ATTN-BWD MIR-OP-BEGIN
+   q MIR-IN+  k MIR-IN+  v MIR-IN+  ct MIR-IN+
+   bt3 q REF-COLS q REF-DT q REF-LAY  attr  1  MIR-OP+ MIR-NODE-REF {: g:MIR:operand-ref :}
+   g ZERO-ROWS bt  q BW-SL  q BW-ACCUM       \ dQ = combined rows [0,   B*T)
+   g bt  bt2       k BW-SL  k BW-ACCUM        \ dK = combined rows [B*T, 2*B*T)
+   g bt2 bt3       v BW-SL  v BW-ACCUM ;      \ dV = combined rows [2*B*T,3*B*T)
+
 \ ---- one forward node's reverse step ---------------------------------------
 : BW-STEP ( CAD-KIND:node-id -- ) {: fn:CAD-KIND:node-id :}
    fn MIR-NODE-REF {: out:MIR:operand-ref :}
@@ -369,6 +391,8 @@ variable BW-BUILT?
       fullsum-dot-bwd OF E-BW-UNSUP throw  ENDOF
       pad-scatter     OF E-BW-UNSUP throw  ENDOF
       scatter-add     OF E-BW-UNSUP throw  ENDOF
+      seg-attn        OF BW-STEP-SEGMENT-ATTN ENDOF
+      seg-attn-bwd    OF E-BW-UNSUP throw  ENDOF
    ;MATCH ;
 
 \ ---- supported-op gate (usable BEFORE build to classify not-run) -------------
