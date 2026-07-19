@@ -25,17 +25,26 @@ $1000 constant LINUX-PAGE        \ text segment page (4 KiB)
 $4000 constant MACOS-DATA-CONST  \ __DATA_CONST page (__got + zero fill)
 104 constant MACOS-LINKEDIT      \ __LINKEDIT chained fixups (MACHO-FIXUPS-SIZE)
 
-\ macOS committed attribution, re-measured at the byte-fixpoint on 2026-07-19
-\ after registering LP2VEXEC as the (LP2VEXEC) engine helper and inlining its
-\ invalid-tag diagnostic (dot habu-relocate-lp2vexec-fetch-b5472dc1). The added
-\ registration record and inlined message minus the dropped second diagnostic
-\ write net +28 bytes of engine text: CODELEN 127392 -> 127420 (floor 416 -> 444).
-\ Header+code still fits nine 16 KiB __TEXT pages, so the padded __TEXT segment,
-\ code signature, and whole-file total are unchanged. Keep MACOS-TOTAL equal to
-\ GB-SIZE-BASELINE-MACOS in test/gate-build-size.f.
-127420 constant MACOS-CODE-TEXT   \ CODELEN: every emitter-phase row (baked-source incl.)
+\ macOS committed attribution, re-measured live at the byte-fixpoint on
+\ 2026-07-19 for the MATCH dispatch B.cond slimming (dot
+\ habu-slim-match-emitted-66941fb5). Reductions 1-3 shrink the EMITTED per-arm
+\ match dispatch (movz+ldur+cmp+cset+cbz per arm -> one shared ldur + cmp #tag +
+\ b.ne), but the ENGINE emitter grows by three small additions: the imm12 range
+\ check + immediate-cmp path in EM-ADT-MATCH-OF, the class-based imm26/imm19
+\ selector in LPAT, and J-MATCH's single tag-peek emit. That change alone is +28
+\ bytes of engine text (matching spark's independent linux-arm64 measurement,
+\ 136540 -> 136568). Re-measuring the live macOS byte-fixpoint on this tree gives
+\ CODELEN 127860 (floor 884). The previous row (127420, floor 444) had drifted
+\ BELOW the true feae4380 fixpoint (127832): page-absorbed engine growth from the
+\ merges since the row was last set, invisible to the whole-file GB-SIZE ratchet
+\ (exactly the drift the exact-CODELEN ratchet exists to close). So this row jumps
+\ 127420 -> 127860 = +412 stale-drift correction + my +28. Header+code still fits
+\ nine 16 KiB __TEXT pages, so the code signature and whole-file total are
+\ unchanged. Keep MACOS-TOTAL equal to GB-SIZE-BASELINE-MACOS in
+\ test/gate-build-size.f.
+127860 constant MACOS-CODE-TEXT   \ CODELEN: every emitter-phase row (baked-source incl.)
 1423 constant MACOS-SIGNATURE     \ ad-hoc code signature SuperBlob (grows with CODELEN)
-444 constant MACOS-FLOOR-DIST     \ code above the 16 KiB floor: the page-recovery shave
+884 constant MACOS-FLOOR-DIST     \ code above the 16 KiB floor: the page-recovery shave
 165367 constant MACOS-TOTAL       \ = FILE-SIZE bin/hb = GB-SIZE-BASELINE-MACOS
 
 \ Linux committed attribution, measured at the byte-fixpoint on 2026-07-19 (DGX
@@ -47,6 +56,15 @@ $4000 constant MACOS-DATA-CONST  \ __DATA_CONST page (__got + zero fill)
 \ prediction; all 432 bytes since the fold fit inside the same 4 KiB page
 \ padding (LINUX-TOTAL unchanged). Keep LINUX-TOTAL equal to
 \ GB-SIZE-BASELINE-LINUX in test/gate-build-size.f.
+\ 2026-07-19 MATCH dispatch B.cond slimming (dot habu-slim-match-emitted-66941fb5)
+\ was landed and byte-measured on macOS only; the LINUX-CODE-TEXT row below is NOT
+\ re-measured on this tree and must be re-measured live at the next linux-arm64
+\ fixpoint (the STALE/GROWN ratchet fails closed with the value to commit). The
+\ change's engine-text delta is +28 (spark measured exactly this on linux-arm64,
+\ 136540 -> 136568, at its base 3909bbac); but this parent (feae4380) is several
+\ merges ahead of 3909bbac and the macOS row above proved a committed row can
+\ silently drift across those merges, so the absolute Linux value is left for a
+\ live measurement rather than bumped to 136568 from a stale base.
 136540 constant LINUX-CODE-TEXT   \ CODELEN: every emitter-phase row (baked-source incl.)
 192 constant LINUX-RW             \ ELF read-write segment tail: DYNAMIC + GOT (ELF-RW-SZ)
 1372 constant LINUX-FLOOR-DIST    \ code above the 4 KiB floor: the page-recovery shave

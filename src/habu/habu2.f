@@ -1181,8 +1181,13 @@ s" c-emit-drop-x12" s" --" TRUST
       30 SP 0 LDR,  SP SP 16 ADDI,  RET,
    LPAT LABEL@ LBL,
       11 9 0 LDRW,  10 CP 9 SUB,  10 10 2 ASRI,
-      5 $80000000 LIT64,  13 11 5 AND,
-      13 pisb CBZ,
+      \ Select the immediate field by branch CLASS, not by bit 31: an
+      \ unconditional B ($14000000, opcode bits[31:26]=000101) carries imm26
+      \ (bits 0..25); every other forward placeholder patched through here —
+      \ CBZ/CBNZ ($B4/$B5, bit31=1) AND B.cond ($54000000, bit31=0, the MATCH-arm
+      \ mismatch-skip b.ne) — carries imm19 (bits 5..23). Bit 31 alone would
+      \ misfile a B.cond as imm26 and corrupt its cond+opcode fields.
+      5 $FC000000 LIT64,  13 11 5 AND,  5 $14000000 LIT64,  13 5 CMP,  C-EQ pisb BCOND,
          5 $7FFFF LIT64,  10 10 5 AND,  10 10 5 LSLI,  pdone B,
       pisb LBL,  5 $3FFFFFF LIT64,  10 10 5 AND,
       pdone LBL,  11 11 10 ORR,  11 9 0 STRW,  RET,
@@ -1361,12 +1366,15 @@ here RESTAB-BUF - constant RESTAB-LEN
 \ scrutinee bundle to the physical stack first, then J-MATCH pushes a CF sentinel
 \ (x9=0, J-CASE shape, so ;MATCH's J-ENDCASE-style join loop stops at it), opens a
 \ match-frame nesting level (the family id is filled at the family token), and
-\ arms CMM=3 (want family). No emission — the bundle is already spilled and each
-\ OF peeks the tag in place.
+\ arms CMM=3 (want family). Emission (reduction 2): the bundle is already spilled,
+\ so peek the tag ONCE here (ldur x9,[x19,#-8]) — no token emits code between this
+\ point and the first arm's compare, and the mismatch-skip chain never touches x19
+\ or x9 before the next compare, so every arm's cmp reuses this one load.
 : J-MATCH ( -- )
    9 0 MOVZ,  LCFPUSH LABEL@ BL,
    9 DATA CMFRD-CELL LDR,  9 9 1 ADDI,  9 DATA CMFRD-CELL STR,
-   12 3 MOVZ,  12 DATA CMM-CELL STR, ;
+   12 3 MOVZ,  12 DATA CMM-CELL STR,
+   $F85F8269 C-EMITW ;                  \ ldur x9,[x19,#-8]: single per-dispatch tag peek
 
 \ J-OF pushes a CASE-arm marker (bit 0) onto the CMBK branch-kind bitstack so the
 \ shared J-ENDOF can tell a CASE arm from a MATCH variant branch (which pushes a 1
@@ -6184,7 +6192,8 @@ s" em-adt-con-var" s" --" TRUST
 \ consumed operand so the checker body sees it (the keyword-phase LBCAP only sees
 \ `match`/`endof`); resolution failure dies fail-closed at ITS token, exit 70.
 \ The scrutinee is the width-expanded bundle spilled to the physical stack by
-\ J-MATCH's CF-ENTRY; each variant peeks the tag at [x19,#-8] in place.
+\ J-MATCH's CF-ENTRY; J-MATCH peeks the tag at [x19,#-8] once into x9 and every
+\ variant compares that live x9 (reduction 2).
 
 \ C-DIE-BAD-TAG ( x11=family-name-addr  x12=family-name-len -- )
 \   Emit the invalid-tag die INLINE into the user word with no normal
@@ -6300,7 +6309,7 @@ s" em-adt-match-fam" s" --" TRUST
 s" em-adt-match-var" s" --" TRUST
 
 : EM-ADT-MATCH-OF ( -- )                \ CMM=5: require `of`, emit compare + prologue
-   LBL LBL LBL {: emsg:label eok:label noxm:label :}
+   LBL LBL LBL LBL LBL {: emsg:label eok:label noxm:label bigtag:label tagdone:label :}
    LBCAP LABEL@ BL,
    0 LKWOF LABEL@ ADR,  1 2 MOVZ,  LKWCMP LABEL@ BL,
    0 eok CBNZ,
@@ -6314,13 +6323,21 @@ s" em-adt-match-var" s" --" TRUST
       11 noxm CBZ,
          14 DATA CMPADS-CELL LDR,  14 14 10 ADD,  14 DATA CMPADS-CELL STR,
    noxm LBL,
+   \ Dispatch compare+skip (reductions 1/2/3). The tag is already live in x9
+   \ (loaded once by J-MATCH). Compare it with an immediate cmp #tag when the tag
+   \ fits AArch64's 12-bit unsigned cmp field ($F100013F | tag<<10), else fall
+   \ back to movz x16,#tag + cmp x9,x16. Then a b.ne placeholder ($54000001,
+   \ imm19) skips to the next variant, patched by J-ENDOF->LPAT — replacing the
+   \ former movz+ldur+cmp+cset+cbz (7 arm words down to 2 + one shared ldur).
    14 DATA CMTAG-CELL LDR,
-   9 C-CALL-MOVZ-X16 LIT64,  14 14 5 LSLI,  9 9 14 ORR,  LCEMIT LABEL@ BL,   \ movz x16, #tag
-   $F85F8269 C-EMITW                    \ ldur x9,[x19,#-8]  peek tag
-   $EB10013F C-EMITW                    \ cmp x9,x16
-   $9A9F17E9 C-EMITW                    \ cset x9,eq
+   14 $FFF CMPI,  C-HI bigtag BCOND,    \ tag > 2^12-1: outside cmp's imm12 field
+      9 $F100013F LIT64,  14 14 10 LSLI,  9 9 14 ORR,  LCEMIT LABEL@ BL,  tagdone B,   \ cmp x9,#tag
+   bigtag LBL,
+      9 C-CALL-MOVZ-X16 LIT64,  14 14 5 LSLI,  9 9 14 ORR,  LCEMIT LABEL@ BL,   \ movz x16,#tag
+      $EB10013F C-EMITW                 \ cmp x9,x16
+   tagdone LBL,
    C-PUSHCP
-   $B4000009 C-EMITW                    \ cbz x9,+0  (skip to next variant if no match)
+   $54000001 C-EMITW                    \ b.ne +0  (skip to next variant on tag mismatch)
    14 DATA CMPADS-CELL LDR,  14 14 1 ADDI,  14 14 3 LSLI,
    9 $D1000273 LIT64,  14 14 10 LSLI,  9 9 14 ORR,  LCEMIT LABEL@ BL,   \ sub x19,x19,#(8*(1+pads))
    14 DATA CMBK-CELL LDR,  14 14 1 LSLI,  14 14 1 ORRI,  14 DATA CMBK-CELL STR,   \ push match-branch marker (1)

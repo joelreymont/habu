@@ -40,6 +40,12 @@
 \ - the merged engine adds the TFAM slice-3a/3b lowering, the type-family checker
 \ + tok-imm? immediate model, and the certified-word underdepth gate; fixpoint x2
 \ byte-identical on the Orin.
+\ 2026-07-19 macOS 165367 -> 165367: MATCH dispatch B.cond slimming (dot
+\ habu-slim-match-emitted-66941fb5) nets +28 bytes of engine text (CODELEN
+\ 127832 -> 127860); it fits inside the same nine 16 KiB __TEXT pages, so the
+\ page-rounded whole-file total is unchanged. See the exact CODE-TEXT/floor rows
+\ in test/gate-size-attribution-test.f (macOS re-measured live; Linux pending a
+\ next-fixpoint re-measurement).
 165367 constant GB-SIZE-BASELINE-MACOS
 143552 constant GB-SIZE-BASELINE-LINUX   \ fable re-measure 2026-07-19 (DGX Spark linux-arm64) after the
                                          \ shared PROT-GUARD:CALL span-guard fold shrank CODELEN
