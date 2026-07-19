@@ -163,7 +163,7 @@ variable GB-BLKY                       \ block Y dim: 16 (256 thr, 8-warp) / 8 (
 \ B-side fragment feed (each B fragment reused across MFRAGS M-frags). Restores MFRAGS=1.
 : GB-MMM-CFGW ( n n n n n n -- ) {: bk:n pad:n stages:n dyn:n mode:n mfrags:n :}
    bk MMA-BK !  pad MMA-PAD !  stages MMA-STAGES !  dyn MMA-DYNSMEM !  mode MMA-LMODE !  mfrags MMA-MFRAGS !
-   MMA-DYNSMEM @ if MMA-SMEM else 0 then GB-SMEM-DYN !
+   MMA-DYNSMEM @ if MMA-SH-BYTES else 0 then GB-SMEM-DYN !   \ MMA-SH-BYTES = MMA-SMEM off, epilogue-grown on
    s" == MMM-WIDE MFRAGS=" type mfrags GB-INT. s"  BK=" type bk GB-INT. s"  pad=" type pad GB-INT.
    s"  stages=" type stages GB-INT. s"  dyn=" type dyn GB-INT. s"  frag=" type mode GB-INT.
    s"  block=" type MMA-BROWS GB-INT. s" x64  smem=" type MMA-SMEM GB-INT. s" B  ==" type cr
@@ -182,7 +182,7 @@ variable GB-BLKY                       \ block Y dim: 16 (256 thr, 8-warp) / 8 (
 : GB-MMM-CFGW-B ( n n n n n n -- ) {: bk:n pad:n stages:n dyn:n mfrags:n bpad:n :}
    bk MMA-BK !  pad MMA-PAD !  stages MMA-STAGES !  dyn MMA-DYNSMEM !  2 MMA-LMODE !  mfrags MMA-MFRAGS !
    1 MMA-BLDM !  bpad MMA-BPAD !
-   MMA-DYNSMEM @ if MMA-SMEM else 0 then GB-SMEM-DYN !
+   MMA-DYNSMEM @ if MMA-SH-BYTES else 0 then GB-SMEM-DYN !   \ MMA-SH-BYTES = MMA-SMEM off, epilogue-grown on
    s" == MMM-WIDE-B MFRAGS=" type mfrags GB-INT. s"  BK=" type bk GB-INT. s"  pad=" type pad GB-INT.
    s"  bpad=" type bpad GB-INT. s"  stages=" type stages GB-INT. s"  dyn=" type dyn GB-INT.
    s"  block=" type MMA-BROWS GB-INT. s" x64  smem=" type MMA-SMEM GB-INT. s" B  ==" type cr
@@ -206,6 +206,17 @@ variable GB-BLKY                       \ block Y dim: 16 (256 thr, 8-warp) / 8 (
 : GB-MMM-CFGW4-B ( n n n n n n -- )                    \ bk pad stages dyn mfrags bpad, 4-warp B-ldmatrix
    4 MMA-WARPS !  8 GB-BLKY !  s" -- 4-WARP: " type
    GB-MMM-CFGW-B  8 MMA-WARPS !  16 GB-BLKY ! ;
+
+\ SHARED-MEMORY EPILOGUE bench wrappers (dot habu-shared-mem-epilogue): the SAME tile with MMA-EPILOG=1,
+\ so the coalesced smem C store replaces the scattered per-lane global store. SH is sized to MMA-SH-BYTES
+\ (staging may exceed the pipeline buffer, e.g. the 4-warp M4 static tile grows 28672->32768 B). Every
+\ config is element-exact first (tools/ptx/mma-gemm-check.f MGC-CFG-*-EPI). Restore MMA-EPILOG=0.
+: GB-MMM-CFGW4-EPI ( n n n n n n -- )                  \ bk pad stages dyn mode mfrags, 4-warp + epilogue
+   1 MMA-EPILOG !  4 MMA-WARPS !  8 GB-BLKY !  s" -- 4-WARP EPILOGUE: " type
+   GB-MMM-CFGW  8 MMA-WARPS !  16 GB-BLKY !  0 MMA-EPILOG ! ;
+: GB-MMM-CFGW-B-EPI ( n n n n n n -- )                 \ bk pad stages dyn mfrags bpad, 8-warp B-ldmatrix + epilogue
+   1 MMA-EPILOG !  s" -- EPILOGUE: " type
+   GB-MMM-CFGW-B  0 MMA-EPILOG ! ;
 
 \ the raised-BK / bank-swizzled configuration space (all element-exact per tools/ptx/mma-gemm-check.f)
 : GB-MMM-SWEEP ( -- )
@@ -297,6 +308,21 @@ public
    32 8 4 1 2 2 GB-MMM-CFGW4            \ 4-warp MFRAGS=2 stages=4 DYN ldmatrix-A (64x64, 73728 B)
    32 8 5 1 2 2 GB-MMM-CFGW4            \ 4-warp MFRAGS=2 stages=5 DYN ldmatrix-A (64x64, 92160 B)
    32 8 3 1 4 4 GB-MMM-CFGW4-B ;        \ 4-warp MFRAGS=4 bpad=4 stages=3 DYN B-ldmatrix (128x64, 89088 B)
+
+\ SHARED-MEMORY EPILOGUE sweep (dot habu-shared-mem-epilogue): each round-2 per-shape winning tile, epilogue
+\ OFF then ON, same session so the A/B pair isolates the store change. Expect the largest lift at 512^3 (the
+\ compute-light launch where the store fraction is largest). Winners: 512^3 = 4-warp M4 stages=2 dyn; 1024^3/
+\ 2048^3 = 4-warp M4 stages=1 static; 4096^3 = 8-warp M4 B-ldmatrix stages=1 dyn. Element-exact first
+\ (tools/ptx/mma-gemm-check.f MGC-CFG-*-EPI). Runs all four shapes per tile; read the winner row per shape.
+: GB-EPI-SWEEP ( -- )
+   CUDA:OPEN? 0= if s" gemm-bench: libcuda unavailable -> SKIPPED (off-device)" type cr exit then
+   GB-MM                                \ FP32 CUDA-core roof reference (same session)
+   32 8 2 1 2 4 GB-MMM-CFGW4            \ 512^3 winner 4-warp M4 stages=2 dyn ldmatrix-A (128x64) - epilogue OFF
+   32 8 2 1 2 4 GB-MMM-CFGW4-EPI        \ same tile + EPILOGUE
+   32 8 1 0 2 4 GB-MMM-CFGW4            \ 1024^3/2048^3 winner 4-warp M4 stages=1 static ldmatrix-A - epilogue OFF
+   32 8 1 0 2 4 GB-MMM-CFGW4-EPI        \ same tile + EPILOGUE
+   32 8 1 1 4 4 GB-MMM-CFGW-B           \ 4096^3 winner 8-warp M4 bpad=4 stages=1 dyn B-ldmatrix (256x64) - epilogue OFF
+   32 8 1 1 4 4 GB-MMM-CFGW-B-EPI ;     \ same tile + EPILOGUE
 
 ;package
 

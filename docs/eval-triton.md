@@ -1252,3 +1252,99 @@ if __name__ == '__main__':
                   f"best[BM{cfg['BM']}xBN{cfg['BN']}xBK{cfg['BK']} st{cfg['stages']} "
                   f"w{cfg['warps']}] cfgs_ok={ok} cfgs_failed={fail}")
 ```
+
+## Round 3 — the shared-memory C epilogue (dot habu-shared-mem-epilogue): built and measured (2026-07-19)
+
+Round 2 named a **shared-memory C epilogue** as the highest-payoff remaining lever
+(lever 1 of its "Next lever" list): Habu stored each lane's D fragments straight to
+global with four scattered `st.global.f32` per n-tile (uncoalesced 4-byte writes),
+while Triton stages the accumulator tile back through smem and writes C coalesced.
+This round builds it. `lib/ptx/cg-mma.f` gains a selectable `MMA-EPILOG` knob (off by
+default, like every other tile option). When on, after the K-loop each lane writes its
+`16·MFRAGS` D-fragment accumulators into a block-local `[BROWS][BN]` staging tile in
+shared memory — the **same `SH` region the `cp.async` pipeline used**, dead after the
+last compute — then the whole block re-reads the tile and writes C in coalesced 128-byte
+lines (element `e = tid_lin + m·NTHREADS` → row `e/BN`, col `e%BN`, so a warp's 32 lanes
+hit 32 contiguous C columns). It trades the store's uncoalesced 4-byte global writes for
+one strided smem write + one coalesced global write, paying two block barriers. The
+lane→element map is the D-fragment map already proven exact, so **no new mapping** is
+introduced — only staging-address arithmetic and a coalesced drain.
+
+**Correctness first.** Every existing config stays **byte-identical** with the epilogue
+off (proven by an emit diff of 33 configs spanning default / SWZ / dyn / wide MFRAGS
+2&4 / wide-B / 4-warp / deep-stage: empty). The epilogue is proven **element-exact**
+before any timing (`tools/ptx/mma-gemm-check.f`: 5 `MGC-CFG-*-EPI` rows at 128³/256³ on
+**both** the 8-warp and 4-warp grids, plus a B-`ldmatrix`+epilogue row at 256³/512³ — 0
+mismatches on the GB10, scalar+cvt and `ldmatrix` cross-checked). Because the staging
+tile is `BROWS·BN·4` bytes and `SH` is sized to the larger of the pipeline and the
+staging tile, a tile whose staging busts the `.shared` budget fails closed at emit time
+with a named `E-MMA-EPI` throw (new negative regression: the 8-warp MFRAGS=4 **static**
+tile stages 64 KB > the 48 KB static cap → throws; the 4-warp MFRAGS=4 static tile stages
+32 KB, grows `SH` 28672→32768 B, emits).
+
+### Result — the epilogue wins the compute-light shapes, exactly as predicted
+
+| TFLOP/s (tf32, C=A·B)          |  512³ | 1024³ | 2048³ | 4096³ |
+|--------------------------------|------:|------:|------:|------:|
+| round-2 best                   |  14.5 |  27.7 |  31.5 |  28.2 |
+| **round-3 best (+epilogue)**   |**16.3**|**29.1**|**31.7**| 28.2 |
+| winning tile                   | 4w M4 s2 **+epi** | 4w M4 s1 **+epi** | 4w M4 s1 **+epi** | 8w M4-Bldm s1 (no epi) |
+| Triton 3.8 `tl.dot`            |  21.7 |  33.5 |  37.8 |  45.3 |
+| **Habu / Triton**              |**0.75×**|**0.87×**|**0.84×**| 0.62× |
+
+The epilogue lifts 512³ (14.5 → **16.3**, **+12.5 %**, 0.67→**0.75×**) and 1024³ (27.7 →
+**29.1**, **+4.9 %**, 0.83→**0.87×**), is flat at 2048³ (31.6 → 31.7, +0.3 %), and the
+**peak head-to-head ratio rises 0.83 → 0.87×** at 1024³. The size ordering of the effect
+is the whole story and it matches the round-2 prediction: **the biggest lift is at 512³,
+the compute-light launch where the store is the largest fraction of the kernel**; as the
+shape grows the store hides behind more compute and the gain shrinks to zero. The
+epilogue-off baselines reproduced the round-2 winners within best-of-3 noise this session
+(4w M4 s2 512³ 14.5, 4w M4 s1 1024³/2048³ 27.7/31.6, 8w wide-B 4096³ 28.1), so the
+same-session A/B isolates the store change.
+
+### The honest negative — the epilogue *hurts* the 256-row 8-warp tile
+
+The 4096³ round-2 winner is the 8-warp MFRAGS=4 256×64 B-`ldmatrix` tile, and turning the
+epilogue **on** there is a large **regression** at every shape but 512³:
+
+| TFLOP/s (tf32) 8w M4 B-ldmatrix s1 |  512³ | 1024³ | 2048³ | 4096³ | SH bytes |
+|------------------------------------|------:|------:|------:|------:|---------:|
+| epilogue **off** (round-2 winner)  |   6.9 |  22.0 |  26.5 |**28.1**|   50176  |
+| epilogue **on**                    |   8.2 |  17.4 |  20.5 |  17.4 |   65536  |
+
+The mechanism is **occupancy**: this tile's C staging tile is 256·64·4 = **65536 B**,
+larger than its 50176 B pipeline buffer, so `SH` grows to 64 KB and the block's
+shared-memory footprint jumps 30 %. On the shapes where enough blocks launch to be
+occupancy-bound (1024³ and up) that drop in blocks/SM costs more than the coalesced store
+saves — a −20 to −38 % swing. So **4096³ keeps the epilogue-off winner** (28.1 TF, 0.62×
+unchanged) and the table's 4096³ column is deliberately not lifted. The epilogue is a win
+only where the store fraction is large *and* the staging tile does not evict a block; the
+narrow 4-warp 128×64 tiles (staging ≤ 32 KB) satisfy both at 512³/1024³, the 256-row tile
+satisfies neither past 512³. This is consistent with the round-2/Orin finding that the
+tile is **mma-issue-bound, not store-bound** on the big shapes.
+
+### Next lever
+
+The residual gap (0.75–0.87× on the small/mid shapes, 0.62× at 4096³) is now, in
+likely-payoff order: **(1)** a wider/denser HMMA schedule (more FLOPs per mma issue — the
+mma-issue bound the ablation points at, still lever 2 from round 2); **(2)** an epilogue
+that stages *without* growing `SH` on the 256-row tile (e.g. staging a half-tile at a time
+so occupancy is preserved), which would let 4096³ take the coalesced store too. Both are
+kernel-engineering changes of the same class as this round, to be proven element-exact and
+measured before any number is claimed.
+
+### Reproduction (exact)
+
+```
+# element-exact correctness first (arch auto-probed sm_121a), then throughput:
+bin/hb --load tools/ptx/mma-gemm-check.f   # MGC-ALL: PASS element-exact incl. 5 MGC-CFG-*-EPI + B-ldmatrix epilogue rows; E-MMA-EPI negative
+# swap the file's bottom entry to GEMMBENCH:GB-EPI-SWEEP (as with GB-W4-SWEEP), then:
+bin/hb --load tools/ptx/gemm-bench.f       # GB-EPI-SWEEP: each round-2 winner, epilogue OFF then ON, all four shapes
+```
+
+Protocol identical to the GB10 head-to-head above: `GB-EPI-SWEEP`, per shape 1 warmup +
+ITERS (400, 200, 80, 40) CUDA-event-timed launches, **best of 3 full passes**, run **solo**;
+the GB10 held **2411 MHz** sustained during the timed kernels (tight-loop `nvidia-smi`
+sample: p50 = p95 = max = 2411 MHz, ≤ 47 °C / ≤ 35 W, not throttled). A = B = 1.0, C = 0
+(values immaterial to timing). The Triton column is the same `/tmp/gemm-triton-gb10.py`
+referee measured above.

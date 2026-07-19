@@ -65,9 +65,11 @@ require lib/ptx/cpp-slot.f
 64 constant MMA-BN                              \ output tile cols (= MM-BN)
 8  constant MMA-MK                              \ mma.sync K per substep (m16n8k8)
 49152 constant MMA-SMEM-STATIC-CAP              \ sm_87 static .shared per-block ceiling (48 KiB)
+101376 constant MMA-SMEM-DYN-CAP                \ GB10 opt-in dynamic .shared per-block ceiling (99 KB)
 -6100 constant E-MMA-SMEM                        \ derived shared tile exceeds the legal budget
 -6102 constant E-MMA-BLDM                        \ B-ldmatrix config illegal (non-16B BT row, or MFRAGS=1)
 -6103 constant E-MMA-WARPS                        \ illegal warp grid (WARPS not 4/8, or WARPS=4 without the wide MFRAGS>1 staging)
+-6104 constant E-MMA-EPI                          \ smem epilogue staging tile exceeds the per-block .shared budget
 
 variable MMA-BK      32 MMA-BK !               \ staged K-tile depth
 variable MMA-PAD      0 MMA-PAD !              \ As row pad floats
@@ -110,6 +112,19 @@ variable MMA-MFRAGS   1 MMA-MFRAGS !          \ M-fragments (16-row units) per w
 \ count is unchanged, so all pinned 8-warp configs stay byte-identical.
 variable MMA-WARPS    8 MMA-WARPS !           \ warps/block: 8 = 4x2 grid (WROWS=4), 4 = 2x2 grid (WROWS=2)
 
+\ SHARED-MEMORY C EPILOGUE (dot habu-shared-mem-epilogue). Default OFF keeps the scattered
+\ st.global.f32 store (MMA-STORE / MMA-STORE-WIDE) BYTE-IDENTICAL. When ON, after the K-loop each
+\ lane writes its 16*MFRAGS D-fragment accumulators into a block-local [BROWS][BN] staging tile in
+\ shared memory (the SAME SH region the cp.async pipeline used - dead after the last compute), then
+\ the whole block re-reads the tile and writes C in coalesced 128-byte lines (element e = tid_lin +
+\ m*NTHREADS -> row e/BN col e%BN, so a warp's 32 lanes hit 32 contiguous C columns). This trades the
+\ store's uncoalesced 4-byte global writes for one strided smem write + one coalesced global write,
+\ paying two block barriers. The staging tile is BROWS*BN*4 bytes; SH is sized to the LARGER of the
+\ pipeline and the staging tile (MMA-SH-BYTES), so a tile whose staging busts the .shared budget
+\ throws E-MMA-EPI at emit time (MMA-CHECK-EPI). The lane->element map is the D-fragment map already
+\ proven element-exact by mma-gemm-check, so no new mapping is introduced.
+variable MMA-EPILOG   0 MMA-EPILOG !          \ 1 = shared-memory coalesced C epilogue (off by default)
+
 \ ABLATION knob (dot habu-mma-amortize-the; productizes the attribution-lane timing decomposition).
 \ DCE-SAFE variants of the WIDE kernel that keep every mma + store live (so ptxas cannot delete the
 \ ablated work) but drop part of the FEED, isolating each cost by same-session timing delta. Wide-path
@@ -146,7 +161,9 @@ variable MMA-BPAD   0 MMA-BPAD !              \ BT row pad floats (n-major row s
 : MMA-BSB    ( -- n )  MMA-BLDM @ if MMA-BN MMA-BTROW-F * 4 * else MMA-BK @ MMA-BN * 4 * then ;  \ B tile bytes (BT if BLDM)
 : MMA-BTCPN  ( -- n )  MMA-BN MMA-BK @ * MMA-NTHREADS / ;   \ transposed-B scalar chunk-sets/thread (64*BK/NTHREADS)
 : MMA-BUFB   ( -- n )  MMA-ASB MMA-BSB + ;            \ one cp.async buffer (default 16384)
-: MMA-SMEM   ( -- n )  MMA-BUFB MMA-STAGES @ * ;      \ total shared bytes (default 32768)
+: MMA-SMEM   ( -- n )  MMA-BUFB MMA-STAGES @ * ;      \ total pipeline shared bytes (default 32768)
+: MMA-EPI-BYTES ( -- n )  MMA-EPILOG @ if MMA-BROWS MMA-BN 4 * * else 0 then ;  \ epilogue staging tile bytes (BROWS*BN*4), 0 when off
+: MMA-SH-BYTES  ( -- n )  MMA-SMEM MMA-EPI-BYTES max ; \ actual SH allocation = larger of pipeline / staging (= MMA-SMEM when epilogue off)
 : MMA-KSUBS  ( -- n )  MMA-BK @ MMA-MK / ;            \ mma.sync K substeps per tile (default 4)
 : MMA-ACPR   ( -- n )  MMA-BK @ 4 / ;                 \ As cp.async chunks per row (default 8)
 : MMA-CPN    ( -- n )  MMA-BM MMA-BK @ * 4 / MMA-NTHREADS / ;  \ MFRAGS=1 cp.async chunk-sets/thread per array (default 2)
@@ -200,6 +217,18 @@ variable MMA-BPAD   0 MMA-BPAD !              \ BT row pad floats (n-major row s
 : MMA-CHECK-WARPS ( -- )
    MMA-WARPS @ 8 =  MMA-WARPS @ 4 =  or  0= if E-MMA-WARPS throw then   \ only 4x2 / 2x2 grids
    MMA-WARPS @ 4 =  MMA-MFRAGS @ 1 =  and  if E-MMA-WARPS throw then ;  \ 4-warp needs the wide staging
+
+\ fail closed on an epilogue whose staging tile busts the .shared budget (dot habu-shared-mem-epilogue).
+\ The epilogue sizes SH to the larger of the pipeline and the BROWS*BN*4 staging tile (MMA-SH-BYTES); if
+\ that exceeds the static 48 KiB cap (static tile) or the GB10 99 KB opt-in cap (dynamic tile) the launch
+\ would be illegal, so reject at EMIT time instead of faulting the GPU. Off when the epilogue is disabled.
+: MMA-CHECK-EPI ( -- )
+   MMA-EPILOG @ 0= if exit then
+   MMA-DYNSMEM @ if
+      MMA-SH-BYTES MMA-SMEM-DYN-CAP > if E-MMA-EPI throw then
+   else
+      MMA-SH-BYTES MMA-SMEM-STATIC-CAP > if E-MMA-EPI throw then
+   then ;
 
 \ FRAGMENT-LOAD MODE (dot habu-mma-ldmatrix-fragment). The 16x8 A fragment and 8x8 B fragment
 \ can be fed to the tensor cores three ways; mode is fixed at emit time:
@@ -528,6 +557,67 @@ variable MMA-LMODE   0 MMA-LMODE !
       4 0 do  f i MMA-STORE-TILE-WIDE  loop
    loop ;
 
+\ ============ SHARED-MEMORY C EPILOGUE (MMA-EPILOG=1; unified over the MFRAGS/WARPS family) ====
+\ Replaces the scattered per-lane global store with: (1) each lane writes its D-fragment accumulators
+\ into a block-local [BROWS][BN] tile at SH (byte offset (r*BN + c)*4, matching C's row-major layout),
+\ (2) a block barrier, (3) the block re-reads the tile and writes C coalesced. Uses only scratch regs
+\ %r40..46 / %f26 / %rd10,%rd12 and the invariants set by MMA-SETUP(-WIDE) + the thread setup: %r8
+\ tid_lin, %r9 rowBase, %r10 colBase, %r11 SH, %r2 N, %rd3 C, %r26 warp_row, %r27 warp_col, %r28 gid,
+\ %r29 t. Works for MFRAGS=1 (f=0) and the wide path identically (the row base carries the +f*16 offset).
+
+\ %r45 = this lane's staging base = SH + (warp_row*16*MFRAGS + gid)*(BN*4) + warp_col*32*4 + t*2*4
+\   (the M-frag-0, n-tile-0, d0 element; BN*4 = 256, warp_col*32*4 = warp_col*128, t*2*4 = t*8).
+: MMA-EPI-SETUP ( -- )
+   40 26 16 MMA-MFRAGS @ * MMA-SCALE            \ %r40 = warp_row * (16*MFRAGS)
+   s" add.u32 %r40,%r40,%r28;" PTX-L            \ + gid = local row0
+   s" shl.b32 %r40,%r40,8;" PTX-L               \ * 256 (= BN*4, staging row byte stride)
+   s" shl.b32 %r41,%r27,7;" PTX-L               \ warp_col * 128 (col byte base of the 32-col half)
+   s" shl.b32 %r42,%r29,3;" PTX-L               \ t * 8 (2 cols/lane * 4 B)
+   s" add.u32 %r41,%r41,%r42;" PTX-L
+   s" add.u32 %r45,%r11,%r40;" PTX-L            \ SH + row0*256
+   s" add.u32 %r45,%r45,%r41;" PTX-L ;          \ + col bytes -> lane staging base
+
+\ write M-frag f, n-tile j: d0->[row0][c0] d1->[row0][c0+1] d2->[row0+8][c0] d3->[row0+8][c0+1]
+\ (the D-fragment map). Row offset f*16 rows = f*16*256 B; n-tile col offset j*8 cols = j*32 B; the
+\ +8-row (d2/d3) offset is 8*256 = 2048 B. All three are emit-time constants.
+: MMA-EPI-STORE-TILE ( n n -- ) {: f:n j:n :}
+   f 16 * 256 *  j 8 * 4 * +  {: off:n :}       \ (f*16 rows)*256 + (j*8 cols)*4
+   10 f 16 * + j 4 * + {: a0:n :}                \ accumulator base %f(10+16f+4j)
+   SB-RESET s" add.u32 %r46,%r45," SB-APPEND off SB-U s" ;" SB-APPEND SB$ PTX-L
+   SB-RESET s" st.shared.f32 [%r46],%f" SB-APPEND a0 SB-U s" ;" SB-APPEND SB$ PTX-L
+   SB-RESET s" st.shared.f32 [%r46+4],%f" SB-APPEND a0 1+ SB-U s" ;" SB-APPEND SB$ PTX-L
+   SB-RESET s" st.shared.f32 [%r46+2048],%f" SB-APPEND a0 2 + SB-U s" ;" SB-APPEND SB$ PTX-L
+   SB-RESET s" st.shared.f32 [%r46+2052],%f" SB-APPEND a0 3 + SB-U s" ;" SB-APPEND SB$ PTX-L ;
+
+: MMA-EPI-FILL ( -- )                            \ every lane writes its 16*MFRAGS accumulators into the tile
+   MMA-MFRAGS @ 0 do  i {: f:n :}
+      4 0 do  f i MMA-EPI-STORE-TILE  loop
+   loop ;
+
+\ coalesced drain: element e = tid_lin + m*NTHREADS -> tile row e/BN, col e%BN; the block sweeps all
+\ BROWS*BN elements in 16*MFRAGS rounds (BROWS*BN / NTHREADS = 16*MFRAGS). Consecutive lanes read
+\ consecutive tile elements (SH + e*4) and write consecutive C columns (rowBase+row, colBase+col).
+: MMA-EPI-DRAIN ( -- )
+   16 MMA-MFRAGS @ *  0 do  i {: m:n :}
+      SB-RESET s" add.u32 %r40,%r8," SB-APPEND m MMA-NTHREADS * SB-U s" ;" SB-APPEND SB$ PTX-L   \ e = tid_lin + m*NTHREADS
+      s" shr.u32 %r41,%r40,6;" PTX-L               \ row = e >> 6 (BN=64)
+      s" and.b32 %r42,%r40,63;" PTX-L              \ col = e & 63
+      s" add.u32 %r41,%r9,%r41;" PTX-L             \ gRow = rowBase + row
+      s" add.u32 %r42,%r10,%r42;" PTX-L            \ gCol = colBase + col
+      s" mad.lo.u32 %r43,%r41,%r2,%r42;" PTX-L     \ gRow*N + gCol
+      s" mul.wide.u32 %rd10,%r43,4;" PTX-L  s" add.u64 %rd12,%rd3,%rd10;" PTX-L   \ &C[gRow][gCol]
+      s" shl.b32 %r44,%r40,2;" PTX-L  s" add.u32 %r44,%r11,%r44;" PTX-L           \ SH + e*4
+      s" ld.shared.f32 %f26,[%r44];" PTX-L
+      s" st.global.f32 [%rd12],%f26;" PTX-L
+   loop ;
+
+\ the full epilogue. The leading barrier is the WAR fence: the staging tile aliases the pipeline's SH
+\ buffers, so every warp must finish reading its A/B fragments before any thread overwrites SH. The
+\ middle barrier is the RAW fence: the tile must be fully written before any thread reads a foreign lane's
+\ element back for the coalesced global store.
+: MMA-EPI-STORE ( -- )
+   CPP-SYNC  MMA-EPI-SETUP  MMA-EPI-FILL  CPP-SYNC  MMA-EPI-DRAIN ;
+
 \ ============ MMA-owned cp.async staging + K-loop (NON-default BK/pad/stages) =========
 \ Generalizes cg-matmul MM-CP-CHUNK/MM-PIPE-KLOOP-WITH to As[64][BK] with a padded row
 \ stride (MMA-AROW-B) and Bs[BK][64], parameterized by MMA-BK/MMA-PAD/MMA-STAGES. The
@@ -751,16 +841,17 @@ TRUSTED: MMA-STAGE-ISSUE ( n n -- cpp-pending<p> )   MMA-CP-STAGE 0 ;
    MMA-CHECK-SMEM
    MMA-CHECK-BLDM
    MMA-CHECK-WARPS
+   MMA-CHECK-EPI
    MMA-MFRAGS @ 1 > if
       MMA-THREAD-SETUP-WIDE  MMA-ACC-ZERO-WIDE  MMA-SETUP-WIDE
       MMA-STAGES @ 2 > if MMA-PIPE-KLOOP-MULTI else [: MMA-KTILE-WIDE ;] MMA-KLOOP then
-      MMA-STORE-WIDE  exit
+      MMA-EPILOG @ if MMA-EPI-STORE else MMA-STORE-WIDE then  exit
    then
    MM-THREAD-SETUP
    MM-ACC-ZERO-EMIT
    MMA-SETUP
    MMA-STAGES @ 2 > if MMA-PIPE-KLOOP-MULTI else [: MMA-KTILE ;] MMA-KLOOP then
-   MMA-STORE ;
+   MMA-EPILOG @ if MMA-EPI-STORE else MMA-STORE then ;
 
 : EMIT-MATMUL-MMA ( -- )
    PTX-HEADER  PTX-NL
@@ -774,7 +865,7 @@ TRUSTED: MMA-STAGE-ISSUE ( n n -- cpp-pending<p> )   MMA-CP-STAGE 0 ;
    SB-RESET s" .reg .b32 %r<" SB-APPEND MMA-RREGS SB-U s" >;" SB-APPEND SB$ PTX-L   \ 64 at MFRAGS<=2 (byte-identical)
    s" .reg .b64 %rd<48>;" PTX-L
    MMA-DYNSMEM @ 0= if
-      SB-RESET s" .shared .align 16 .b8 SH[" SB-APPEND MMA-SMEM SB-U s" ];" SB-APPEND SB$ PTX-L
+      SB-RESET s" .shared .align 16 .b8 SH[" SB-APPEND MMA-SH-BYTES SB-U s" ];" SB-APPEND SB$ PTX-L
    then
    MM-PARAMS
    MMA-BODY

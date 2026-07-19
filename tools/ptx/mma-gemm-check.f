@@ -89,7 +89,7 @@ create MGC-MAXERR 1 cells allot
    16 PTXBENCH:BLOCK!  MMA-NTHREADS 16 / PTXBENCH:BLOCKY!   \ 16x16=256 thr (8 warps) or 16x8=128 thr (4 warps)
    n 64 / PTXBENCH:GRID!  n MMA-BROWS / PTXBENCH:GRIDY!   \ gridY = M/block-rows (BROWS=WROWS*16*MFRAGS)
    36 PTXBENCH:PARAM-BYTES!
-   MMA-DYNSMEM @ if MMA-SMEM PTXBENCH:SHARED! else 0 PTXBENCH:SHARED! then   \ dynamic .shared tile
+   MMA-DYNSMEM @ if MMA-SH-BYTES PTXBENCH:SHARED! else 0 PTXBENCH:SHARED! then   \ dynamic .shared (epilogue may grow SH past MMA-SMEM)
    PTXBENCH:PREPARE-LAUNCH
    0  MGC-DA PTXBENCH:PARAM-PTR!
    8  MGC-DB PTXBENCH:PARAM-PTR!
@@ -247,6 +247,21 @@ variable MGC-TN
    4 MMA-WARPS !  s" -- 4-WARP (2x2 grid, 128 thr) B-ldmatrix:" type cr
    MGC-CFG-WIDE-B  8 MMA-WARPS ! ;
 
+\ SHARED-MEMORY EPILOGUE configs (dot habu-shared-mem-epilogue). Same wide-config machinery (block-M-aware
+\ edges from BROWS -> 128^3/256^3 at MFRAGS=2 on 8 warps and at MFRAGS=4 on 4 warps), but with MMA-EPILOG=1
+\ so the coalesced smem C store runs. The store's lane->element map is the D-fragment map already proven
+\ exact, so element-exactness here proves the epilogue's staging address arithmetic + coalesced drain agree
+\ with the host reference on both warp grids. Restores MMA-EPILOG=0 (and, for W4, the 8-warp default).
+: MGC-CFG-EPI ( n n n n n n -- )                       \ bk pad stages dyn mode mfrags, 8-warp epilogue
+   1 MMA-EPILOG !  s" -- EPILOGUE (smem coalesced C store, 8-warp):" type cr
+   MGC-CFG-WIDE  0 MMA-EPILOG ! ;
+: MGC-CFG-W4-EPI ( n n n n n n -- )                    \ bk pad stages dyn mode mfrags, 4-warp epilogue
+   1 MMA-EPILOG !  4 MMA-WARPS !  s" -- 4-WARP EPILOGUE (smem coalesced C store, 128 thr):" type cr
+   MGC-CFG-WIDE  8 MMA-WARPS !  0 MMA-EPILOG ! ;
+: MGC-CFG-WB-EPI ( n n n n n n -- )                    \ bk pad stages dyn mfrags bpad, 8-warp B-ldmatrix + epilogue
+   1 MMA-EPILOG !  s" -- EPILOGUE (smem coalesced C store) + B-ldmatrix transposed-Bs:" type cr
+   MGC-CFG-WIDE-B  0 MMA-EPILOG ! ;
+
 \ DEEP-STAGE 4-warp configs (dot habu-4-warp-mma step 3). N>=3 uses the N-stage ring pipeline
 \ (lib/ptx/cg-mma.f MMA-PIPE-KLOOP-MULTI), whose steady wait_group(N-1) and draining epilogue
 \ wait_group(N-2..0) are only exact when T=ceil(K/BK) >= N-1. The BROWS-derived edges (down to 64
@@ -285,12 +300,28 @@ variable MGC-TN
    if s" -- warp-grid legality: fail-closed on bad warp count + non-wide 4-warp, emits on legal grids (PASS)" type cr
    else s" mma-gemm-check: warp-grid legality regression FAILED" 1 die then ;
 
+\ negative+positive regression (dot habu-shared-mem-epilogue): the epilogue sizes SH to the BROWS*BN*4 staging
+\ tile; a STATIC tile whose staging busts the 48 KiB static cap must fail closed in the EMITTER with E-MMA-EPI,
+\ not emit an over-budget .shared. The 8-warp MFRAGS=4 tile stages 256x64x4 = 65536 B > 48 KiB (throws); the
+\ 4-warp MFRAGS=4 tile stages 128x64x4 = 32768 B <= 48 KiB (SH grows 28672->32768, emits). Device-independent.
+: MGC-EPI-NEG ( -- )
+   1 MMA-EPILOG !
+   8 MMA-WARPS !  32 MMA-BK !  8 MMA-PAD !  1 MMA-STAGES !  0 MMA-DYNSMEM !  2 MMA-LMODE !  4 MMA-MFRAGS !
+   MGC-TRY-EMIT {: r8s:n :}                              \ 8-warp MFRAGS=4 static -> staging 65536 > 48 KiB -> must throw E-MMA-EPI
+   4 MMA-WARPS !  MGC-TRY-EMIT {: r4s:n :}               \ 4-warp MFRAGS=4 static -> staging 32768 <= 48 KiB -> must emit (0)
+   8 MMA-WARPS !  1 MMA-MFRAGS !  32 MMA-BK !  0 MMA-PAD !  2 MMA-STAGES !  0 MMA-DYNSMEM !  0 MMA-LMODE !  0 MMA-EPILOG !
+   s" -- epilogue smem legality: 8w-M4-static->" type r8s . s"  4w-M4-static->" type r4s . cr
+   r8s E-MMA-EPI =  r4s 0=  and
+   if s" -- epilogue smem legality: fail-closed when staging busts the static cap, emits when it fits (PASS)" type cr
+   else s" mma-gemm-check: epilogue smem legality regression FAILED" 1 die then ;
+
 public
 : MGC-ALL ( -- )
    MGC-SMEM-NEG                                        \ emitter fail-closed check (device-independent)
    MGC-ZEROBLK-NEG                                     \ zero-block/ragged-M launch guard (device-independent)
    MGC-BLDM-NEG                                        \ B-ldmatrix misaligned/MFRAGS=1 fail-closed (device-independent)
    MGC-WARPS-NEG                                       \ warp-grid legality fail-closed (device-independent)
+   MGC-EPI-NEG                                         \ epilogue smem legality fail-closed (device-independent)
    CUDA:OPEN? 0= if s" mma-gemm-check: libcuda unavailable -> SKIPPED (off-device)" type cr exit then
    s" == TF32 mma.sync GEMM device-correctness (element-exact vs host) ==" type cr
    0 MGC-MODE  1 MGC-MODE  2 MGC-MODE
@@ -330,6 +361,13 @@ public
    32 8 4 1 2 2 MGC-CFG-W4S                            \ 4-warp MFRAGS=2 stages=4 DYN ldmatrix-A (BM64xBN64, 73728 B)
    32 8 5 1 2 2 MGC-CFG-W4S                            \ 4-warp MFRAGS=2 stages=5 DYN ldmatrix-A (BM64xBN64, 92160 B)
    32 8 3 1 4 4 MGC-CFG-W4S-B                          \ 4-warp MFRAGS=4 bpad=4 stages=3 DYN B-ldmatrix (BM128xBN64, 89088 B)
+   s" == shared-memory epilogue configs (dot habu-shared-mem-epilogue, coalesced C store) ==" type cr
+   32 8 2 1 2 2 MGC-CFG-EPI                            \ 8-warp MFRAGS=2 stages=2 DYN ldmatrix-A + EPILOGUE (128^3/256^3)
+   32 8 2 1 0 2 MGC-CFG-EPI                            \ 8-warp MFRAGS=2 stages=2 DYN scalar+cvt + EPILOGUE (exact-RNE cross-check)
+   32 8 1 0 2 4 MGC-CFG-W4-EPI                         \ 4-warp MFRAGS=4 stages=1 STATIC ldmatrix-A + EPILOGUE (128^3/256^3; SH grows 28672->32768)
+   32 8 2 1 2 4 MGC-CFG-W4-EPI                         \ 4-warp MFRAGS=4 stages=2 DYN ldmatrix-A + EPILOGUE (512^3-winner tile shape)
+   32 8 2 1 0 4 MGC-CFG-W4-EPI                         \ 4-warp MFRAGS=4 stages=2 DYN scalar+cvt + EPILOGUE (exact-RNE cross-check)
+   32 8 1 1 4 4 MGC-CFG-WB-EPI                         \ 8-warp MFRAGS=4 bpad=4 stages=1 DYN B-ldmatrix + EPILOGUE (4096^3-winner tile; SH grows to 65536)
    0 MMA-LMODE ! ;                                     \ restore the committed default (baseline scalar+cvt)
 
 ;package
