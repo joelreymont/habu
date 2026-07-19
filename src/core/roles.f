@@ -11,7 +11,7 @@
 \ the boundary and the checker never collapses a nominal to n. The builder takes
 \ the UPPER-CASE surface name (the converter word spelling) and the lowercase
 \ family tail (the signature type) separately; the checker's source recorder
-\ (verify-source.f RECORD-NOMINAL) registers their trust signatures.
+\ (verify-source.f RECORD-DEFTYPE) registers their trust signatures.
 $200 constant DTC-CAP
 create DTC-BUF DTC-CAP allot
 variable DTC-U

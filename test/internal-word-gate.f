@@ -33,7 +33,7 @@ require lib/process-argv.f
 require lib/process-env.f
 require lib/test/subject.f
 require test/tail-ratchet.f
-require lib/type/value-nominal.f   \ NOMINAL: - the declared-nominal exemplar used at top level
+require lib/type/deftype.f         \ DEFTYPE - the declared-nominal exemplar used at top level
 
 2048 constant IWG-CAP
 70 constant IWG-REJECT-RC           \ interpret-level reject exit (RC-REJECT)
@@ -276,14 +276,14 @@ public
 : IWG-PF-RAW-FORGE$ ( -- ptr u8 n )      \ raw implementation names are not checked/public
    s" : IWG-PF-RAW ( n n ptr u8 n -- n bool ) PF-FIND ;" ;
 
-\ The NOMINAL: nominal surface and the roles.f DEFLINEAR/VALUE-RECORD definers
+\ The DEFTYPE nominal surface and the roles.f DEFLINEAR/VALUE-RECORD definers
 \ are the same hazard class as the openers but admitted via certified usigs, not
 \ PRIM: axioms (dot habu-checker-deftype-deflinear-8e9d1dc5): declare + use each
 \ at top level.
 
-: IWG-ROLES-TOP-FORGE$ ( -- ptr u8 n )   \ NOMINAL:/DEFLINEAR/VALUE-RECORD at top level
+: IWG-ROLES-TOP-FORGE$ ( -- ptr u8 n )   \ DEFTYPE/DEFLINEAR/VALUE-RECORD at top level
    SB-RESET
-   s" NOMINAL: iwgid" SB-APPEND IWG-LF
+   s" DEFTYPE iwgid" SB-APPEND IWG-LF
    s" : IWG-ID-RT ( n -- n ) >iwgid iwgid>N ;" SB-APPEND IWG-LF
    s" 7 IWG-ID-RT . cr" SB-APPEND IWG-LF
    s" DEFLINEAR iwgown" SB-APPEND IWG-LF
@@ -371,7 +371,7 @@ public
    s" ENUM" IWG-NEG-OPENER
    s" PRODUCT in a checked body is rejected unsafe" T-LABEL
    s" PRODUCT" IWG-NEG-OPENER
-   s" NOMINAL:/DEFLINEAR/VALUE-RECORD still work at top level" T-LABEL
+   s" DEFTYPE/DEFLINEAR/VALUE-RECORD still work at top level" T-LABEL
    IWG-ROLES-TOP-FORGE$ IWG-EXEC:SUBJECT IWG-ASSERT-OK
    s" DEFLINEAR in a checked body is rejected unsafe" T-LABEL
    s" DEFLINEAR" IWG-NEG-OPENER

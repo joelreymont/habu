@@ -2,7 +2,7 @@
 \
 \ Several definers in the tree build a "( ... ) ;" / "TRUSTED: ... ;" text and
 \ hand it to an audited `evaluate`: EXTENT:/TENSOR:/SPEC: in maki (the XG-* buffer)
-\ and NOMINAL: in lib/type/value-nominal.f (the NG-* buffer). Each grew its own
+\ and DEFTYPE in lib/type/deftype.f (the NG-* buffer). Each grew its own
 \ near-identical private byte-append buffer (reset / append-byte / append-string /
 \ append-decimal / contents) plus a capacity guard. Package CODEGEN factors that
 \ mechanism out once so each definer keeps only its own audited `evaluate` wrapper
@@ -20,7 +20,7 @@
 \ dictionary storage, so nothing here is trusted: cells are read with `@`, and the
 \ byte storage is read/written through the core `BYTE-VIEW` byte pointer.
 \
-\ The definer has no trailing colon (unlike EXTENT:/NOMINAL:) because a package word
+\ The definer has no trailing colon (unlike EXTENT:) because a package word
 \ ending in `:` cannot be resolved through a `CODEGEN:` qualifier - the trailing colon
 \ is read as a name edge, not a package separator. It reads like `create`/`variable`:
 \ `256 CODEGEN:BUFFER NAME` defines NAME as the descriptor word.

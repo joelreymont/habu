@@ -1,35 +1,35 @@
-\ value-nominal.f - the ergonomic declaration surface for value-nominal integer
+\ deftype.f - the ergonomic declaration surface for value-nominal integer
 \ types: application code names a distinct checked integer type in one readable
 \ line and the checker keeps it apart from a plain int and from every other
 \ nominal.
 \
 \     package CAMERA
-\     NOMINAL: SERIAL          \ a camera serial is its own type, not a bare n
-\     NOMINAL: FRAME-INDEX     \ so is a frame index, distinct from a serial
-\     NOMINAL: EXPOSURE-US     \ and an exposure time in microseconds
+\     DEFTYPE SERIAL           \ a camera serial is its own type, not a bare n
+\     DEFTYPE FRAME-INDEX      \ so is a frame index, distinct from a serial
+\     DEFTYPE EXPOSURE-US      \ and an exposure time in microseconds
 \     ;package
 \
-\ Each `NOMINAL: NAME` mints a fresh checker type and derives its explicit
+\ Each `DEFTYPE NAME` mints a fresh checker type and derives its explicit
 \ converter pair `>NAME ( n -- NAME )` and `NAME>N ( NAME -- n )`. The converters
 \ are the ONLY way across the boundary: the checker never lets a plain `n` stand
 \ in for a nominal, and never collapses a nominal back to `n` on its own. That is
 \ the whole point - the conversion is visible in the source (MISSING.md Foundation
-\ A1's non-negotiable invariant, locked by test/value-nominal-suite.f).
+\ A1's non-negotiable invariant, locked by test/deftype-suite.f).
 \
 \ SUBSTRATE (decision record: docs/value-nominal-substrate.md). A value nominal is
 \ a package-scoped arity-0 type-family cell (a TFAM nominal scalar), exactly the
 \ substrate maki/extent.f uses for a flat extent. This was chosen over extending
-\ the CT-role table (DEFTYPE, src/core/roles.f) because type families are ALREADY
-\ package-scoped: `NOMINAL: SERIAL` in package CAMERA and `NOMINAL: SERIAL` in
-\ package FRAME are two distinct types with no engine change, whereas the CT-role
-\ table is global and a second same-named DEFTYPE dies (exit 70). Choosing TFAM
+\ the CT-role table (roles.f's since-retired DEFTYPE) because type families are
+\ ALREADY package-scoped: `DEFTYPE SERIAL` in package CAMERA and `DEFTYPE SERIAL`
+\ in package FRAME are two distinct types with no engine change, whereas the CT-role
+\ table was global and a second same-named declaration collided. Choosing TFAM
 \ obviates the CON-OF/CT-FIND package-scoping restructure (dot
 \ habu-foundation-a1b-pkg-6692f4e3) for value nominals. Both substrates give the
 \ same strictness (probed: distinct from n both directions, distinct nominals,
 \ explicit-converter-only); TFAM adds package scoping for free.
 \
 \ MANGLING (surface NAME -> family tail). A TFAM tail is lowercase
-\ (E-TFAM-CASE); the surface name is UPPER-CASE by project convention. `NOMINAL:`
+\ (E-TFAM-CASE); the surface name is UPPER-CASE by project convention. `DEFTYPE`
 \ folds the surface name to lowercase to form the tail (SERIAL -> serial,
 \ FRAME-INDEX -> frame-index); internal hyphens survive (TF-CANON? allows them).
 \ The upper-case surface spelling is what the generated converter WORD names use
@@ -46,7 +46,7 @@
 \ the retire-TRUSTED epic habu-epic-type-habu-a34713f0). Each generated body is a
 \ no-op identity cast, correct by construction and built from string literals, so
 \ no static trust site is added per declaration and every generated pair is
-\ certified through the check hook by NG-EVAL. Tested by test/value-nominal-suite.f.
+\ certified through the check hook by NG-EVAL. Tested by test/deftype-suite.f.
 
 require lib/string.f                 \ ASCII-LOWER: fold the surface name to the family tail
 require lib/codegen.f                \ CODEGEN:BUFFER-E: the shared generated-source byte buffer
@@ -55,7 +55,7 @@ package VNOM
 
 private
 
--6001 constant E-VNOM-NAME     \ NOMINAL: given an empty name
+-6001 constant E-VNOM-NAME     \ DEFTYPE given an empty name
 -6002 constant E-VNOM-CAP      \ generated-source or mangle buffer capacity exceeded
 
 \ ---- generated-source codegen buffer (build the "TRUSTED: ... ;" converter text
@@ -100,7 +100,7 @@ NM-CAP E-VNOM-CAP E-VNOM-CAP CODEGEN:BUFFER-E NM-BUFFER
 public
 
 \ MINT: register the arity-0 family + its converter pair in the ACTIVE package
-\ (the package that called NOMINAL:, or the global scope at top level). The
+\ (the package that called DEFTYPE, or the global scope at top level). The
 \ surface name doubles as the converter word spelling; its lowercase fold is the
 \ family tail. Fails closed on an empty name (E-VNOM-NAME) or a reserved / already
 \ declared tail (CHECKER-DEFFAMILY: reserved-name / E-TFAM-DUP).
@@ -113,13 +113,13 @@ public
 
 ;package
 
-\ NOMINAL: - the value-nominal declaration keyword. Core language surface: a
-\ single global declarer word (sibling to DEFTYPE / ENUM / SUMTYPE / TYPEFAMILY)
+\ DEFTYPE - the value-nominal declaration keyword. Core language surface: a
+\ single global declarer word (sibling to ENUM / SUMTYPE / TYPEFAMILY)
 \ so it reads bare from any application package while the family lands in that
 \ package's scope. Top-level-interpret-only, like the other type-declaration
 \ openers: it parses the next name off the input stream and mutates the type
 \ registry (through the checked VNOM:MINT boundary) - side effects its ( -- ) row
 \ does not model. All machinery lives in package VNOM; this is the only new global
 \ word.
-: NOMINAL: ( -- )
+: DEFTYPE ( -- )
    parse-name VNOM:MINT ;

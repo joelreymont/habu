@@ -374,16 +374,16 @@ variable GDX-TRUST-MAN-U
 : GDX-BAD-NOMINAL-DECL ( -- )
    GE-HB-RESET
    GE-SRC-RESET
-   s" NOMINAL: PTR" GE-SRC-LINE
+   s" DEFTYPE PTR" GE-SRC-LINE
    s" tools/check.f --json-errors accepted bad nominal declaration" GDX-CHECK-JSON
    s" code" s" E-BAD-NOMINAL-TYPE" s" bad nominal type code" GDX-EXPECT-ERR-JSTR
    s" token" s" PTR" s" bad nominal token" GDX-EXPECT-ERR-JSTR
    s" repair_class" s" fix_nominal_type" s" bad nominal repair class" GDX-EXPECT-ERR-JSTR
    s" suggestion" s" Choose a unique non-reserved nominal type name." s" bad nominal suggestion" GDX-EXPECT-ERR-JSTR
    s" line" s" 1" s" bad nominal line" GDX-EXPECT-ERR-JRAW
-   s" column" s" 10" s" bad nominal column" GDX-EXPECT-ERR-JRAW
-   s" byte_start" s" 9" s" bad nominal byte_start" GDX-EXPECT-ERR-JRAW
-   s" byte_end" s" 12" s" bad nominal byte_end" GDX-EXPECT-ERR-JRAW ;
+   s" column" s" 9" s" bad nominal column" GDX-EXPECT-ERR-JRAW
+   s" byte_start" s" 8" s" bad nominal byte_start" GDX-EXPECT-ERR-JRAW
+   s" byte_end" s" 11" s" bad nominal byte_end" GDX-EXPECT-ERR-JRAW ;
 
 \ The check CLI accepts a source that declares a nominal locally and uses it in
 \ a signature. The declarer is DEFLINEAR, whose interpret word survives and runs

@@ -1,6 +1,6 @@
 \ cast-suite.f - positive behavior contract for the CAST: checked retype declarer
 \ (src/core/roles.f plus the checker.f CAST-PEND certification window). Run BY THE
-\ ENGINE over stdin, like test/value-nominal-suite.f:
+\ ENGINE over stdin, like test/deftype-suite.f:
 \     bin/hb < test/cast-suite.f
 \ Registered as a positive gate case in test/candidate-validation.f.
 \

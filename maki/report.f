@@ -7,7 +7,7 @@
 \ artifact/cache key, and warnings/split reasons. It is the single structured
 \ artifact behind every command (docs/archive/model-cad.md Phase 0).
 \
-\ Representation hiding: a report is an opaque `report` handle (a NOMINAL: family). Every
+\ Representation hiding: a report is an opaque `report` handle (a DEFTYPE family). Every
 \ public constructor/accessor takes or returns `report` plus primitive field
 \ values; no signature leaks the record layout. The checker guarantees only a
 \ real `report` (from REPORT:NEW) reaches an accessor, so the internals can swap
@@ -32,7 +32,7 @@ require lib/prelude.f
 require lib/string.f
 require lib/float.f
 require lib/fmt.f
-require lib/type/value-nominal.f   \ NOMINAL: - the REPORT handle family
+require lib/type/deftype.f         \ DEFTYPE - the REPORT handle family
 
 -5010 constant E-RPT-HANDLE    \ report handle unusable (reserved; see REPORT:NEW)
 -5011 constant E-RPT-FULL      \ arena or list capacity exceeded
@@ -127,9 +127,9 @@ ENUM gate
 \ (global scope), NOT inside package REPORT: the family tail `report` is carried
 \ in ~19 consumer modules' signatures, so it must resolve globally the way the
 \ retired global CT-role table did. A package-scoped family would only resolve
-\ inside package REPORT and break every cross-module signature. NOMINAL: derives
+\ inside package REPORT and break every cross-module signature. DEFTYPE derives
 \ the converter pair >REPORT / REPORT>N; internals swap to an ADT in cad-adt-swap.
-NOMINAL: REPORT
+DEFTYPE REPORT
 
 package REPORT
 

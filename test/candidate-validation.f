@@ -189,9 +189,9 @@ variable FAILS
    s" test/type-family-suite.f" construct case-kind positive 0 s" " s" " RUN-CASE
    s" test/type-family-rollback-suite.f" construct case-kind positive 0 s" " s" " RUN-CASE
    s" test/type-decl-suite.f" construct case-kind positive 0 s" " s" " RUN-CASE
-   s" test/value-nominal-suite.f" construct case-kind positive 0 s" " s" " RUN-CASE
-   s" test/value-nominal-dup-bad.f" construct case-kind negative 67
-      s" VALUE-NOMINAL-DUP-ARMED" s" duplicate family" RUN-CASE
+   s" test/deftype-suite.f" construct case-kind positive 0 s" " s" " RUN-CASE
+   s" test/deftype-dup-bad.f" construct case-kind negative 67
+      s" DEFTYPE-DUP-ARMED" s" duplicate family" RUN-CASE
    s" test/cast-suite.f" construct case-kind positive 0 s" " s" " RUN-CASE
    s" test/cast-negative-suite.f" construct case-kind positive 0 s" " s" " RUN-CASE
    s" test/type-linear-suite.f" construct case-kind positive 0 s" " s" " RUN-CASE

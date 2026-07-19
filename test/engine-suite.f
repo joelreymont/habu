@@ -2,7 +2,7 @@
 \ gforth. A failure prints F<index>, assertion detail, and exits 1 via report.
 
 require test/checker-assert.f
-require lib/type/value-nominal.f   \ NOMINAL: - the declared-nominal integer surface
+require lib/type/deftype.f         \ DEFTYPE - the declared-nominal integer surface
 
 variable #FAIL
 variable #CASE
@@ -1068,12 +1068,12 @@ s" multi-err origin BAD2 file-relative position matches golden" T-LABEL
 DIAG-BUFFER$ s\" \"line\":4,\"column\":26,\"byte_start\":131,\"byte_end\":133" MEO-CONTAINS? -1 T=
 DIAG-BUFFER-OFF  0 DIAG-JSON!
 \ --- user-declarable nominal integer types (dot habu-declarable-nominal-int).
-\ `NOMINAL: NAME` registers a fresh nominal AND auto-derives its explicit no-op
+\ `DEFTYPE NAME` registers a fresh nominal AND auto-derives its explicit no-op
 \ converter pair >NAME ( n -- NAME ) / NAME>N ( NAME -- n ). The nominal is
 \ distinct from n and from every other nominal (no widening); the only way across
 \ the boundary is the generated cast.
-NOMINAL: frame-idx
-NOMINAL: exposure-us
+DEFTYPE frame-idx
+DEFTYPE exposure-us
 s" DNI-MK ( n -- frame-idx ) >frame-idx" T-CHECK-PASSES
 s" DNI-UN ( frame-idx -- n ) frame-idx>N" T-CHECK-PASSES
 s" DNI-RT ( n -- n ) >frame-idx frame-idx>N" T-CHECK-PASSES
@@ -1220,7 +1220,7 @@ s" COK-U16-WIDEN-OUT ( -- u32 ) T-GIVE-U16" T-CHECK-PASSES
 s" CBAD-I64-NARROW-IN ( i64 -- ) T-NEED-U8" T-CHECK-REJECTS
 s" CBAD-I64-NARROW-OUT ( -- u8 ) T-GIVE-I64" T-CHECK-REJECTS
 s" CBAD-U32-NARROW-IN ( u32 -- ) T-NEED-U16" T-CHECK-REJECTS
-NOMINAL: node
+DEFTYPE node
 s" T->NODE" s" n -- node" TRUST
 s" T-NODE>N" s" node -- n" TRUST
 s" T-NEED-NODE" s" node --" TRUST

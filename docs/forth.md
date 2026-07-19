@@ -521,20 +521,17 @@ address arithmetic at the public boundary.
   representation but different contracts (`reg`, `label`, `va`, `symidx`, `fd`,
   `count`, `asm`, `img`, `snap`) get distinct type tokens and negative checker
   fixtures. A raw `( n n -- )` signature hides swaps the checker should reject.
-- **Declare new nominal roles explicitly.** Use top-level `DEFTYPE name` before a
-  signature mentions a project-specific same-cell role. Unknown type tokens
-  remain errors, so misspellings do not become fresh types. `DEFTYPE` mints a
-  global CT-role; two packages cannot both declare the same name.
-- **Declare application value nominals with `NOMINAL:`.** For a package's own
-  distinct integer type — a camera serial, a frame index, an exposure time — use
-  `NOMINAL: NAME` (`require lib/type/value-nominal.f`). One readable line mints a
-  package-scoped type and derives its explicit converter pair `>NAME ( n -- name )`
-  / `NAME>N ( name -- n )`; the checker keeps it apart from a plain `n` and from
-  every other nominal, and the converters are the only crossing. The type tail is
-  the lowercase fold of the name (`SERIAL` → `serial`), so a signature reads
-  `( serial -- n )`. Unlike `DEFTYPE`, it is package-scoped: `NOMINAL: SERIAL` in
-  package CAMERA and in package FRAME are distinct types. Substrate and the
-  rejected CT-role alternative: `docs/value-nominal-substrate.md`.
+- **Declare application value nominals with `DEFTYPE`.** For a package's own
+  distinct integer type — a camera serial, a frame index, an exposure time, or any
+  project-specific same-cell role — use top-level `DEFTYPE NAME`
+  (`require lib/type/deftype.f`). One readable line mints a package-scoped type and
+  derives its explicit converter pair `>NAME ( n -- name )` / `NAME>N ( name -- n )`;
+  the checker keeps it apart from a plain `n` and from every other nominal, and the
+  converters are the only crossing. Unknown type tokens stay errors, so a misspelling
+  never becomes a fresh type. The type tail is the lowercase fold of the name
+  (`SERIAL` → `serial`), so a signature reads `( serial -- n )`. It is package-scoped:
+  `DEFTYPE SERIAL` in package CAMERA and in package FRAME are distinct types.
+  Substrate and the rejected global-table alternative: `docs/value-nominal-substrate.md`.
 - **Use `DEFLINEAR` for owner/lifetime tokens.** A linear token is nominal and
   noncopyable: generic `dup`/`over`/`2dup`, `drop`, `@`, `!`, and by-value record
   duplication reject when they would duplicate, discard, load, or store it. Only

@@ -637,14 +637,14 @@ variable CHK-ALL-RC
    CHK-E-CHECK CHK-THROW ;
 
 : CHK-NOM-FAIL ( n n -- )
-   s" nominal:" CHK-TYPE-FAIL ;
+   s" deftype" CHK-TYPE-FAIL ;
 
 : CHK-LIN-FAIL ( n n -- )
    s" deflinear" CHK-TYPE-FAIL ;
 
-\ NOMINAL: NAME folds the UPPER-CASE surface name to the lowercase family tail
+\ DEFTYPE NAME folds the UPPER-CASE surface name to the lowercase family tail
 \ (SERIAL -> serial), so the reserved-name check and the CHECKER-DEFFAMILY mint
-\ both run on the tail, matching lib/type/value-nominal.f. The bad-name
+\ both run on the tail, matching lib/type/deftype.f. The bad-name
 \ diagnostic still reports the surface token the user wrote.
 128 constant CHK-NOM-TAIL-CAP
 create CHK-NOM-TAIL-BUF CHK-NOM-TAIL-CAP allot
@@ -869,7 +869,7 @@ variable CHK-TFAM-NAME-I
 : CHK-NOM-STEP ( n -- n ) {: k:n :}
    k CHK-DEF-OPENER? if k 1+ CHK-SKIP-DEF exit then
    k CHK-PKG-STEP if exit then drop
-   k s" nominal:" CHK-TOK=CI if
+   k s" deftype" CHK-TOK=CI if
       k k 1+ CHK-NOM-REGISTER
       k 2 + exit
    then

@@ -565,7 +565,7 @@ create CAE-LF-BYTE 10 c,
    CAE-ERR lerru CAE-WORD-LARGE$ CONTAINS? TTRUE ;
 
 \ ---- TFAM 5: all-errors support-parity fixtures (census gap4) ----------------
-\ verify-source's full re-drive replays nominal:/deflinear/value-record before
+\ verify-source's full re-drive replays deftype/deflinear/value-record before
 \ later definitions; per-def all-errors redrive must collect the same support
 \ or a good definition whose signature references the declared type is spuriously
 \ rejected. Each fixture pairs a good type-using def with a genuinely-bad def:
@@ -573,7 +573,7 @@ create CAE-LF-BYTE 10 c,
 
 : CAE-NOMINAL-SOURCE$ ( -- ptr u8 n )
    SB-RESET
-   s" NOMINAL: CAE-DT" SB-APPEND CAE-LF
+   s" DEFTYPE CAE-DT" SB-APPEND CAE-LF
    s" : CAE-DT-USE ( cae-dt -- cae-dt ) ;" SB-APPEND CAE-LF
    s" : CAE-DT-BAD ( i64 -- i64 ) dup ;" SB-APPEND CAE-LF
    SB$ ;
@@ -585,7 +585,7 @@ private
 : SOURCE$ ( -- ptr u8 n )
    SB-RESET
    s" package CAE-DTP" SB-APPEND CAE-LF
-   s" NOMINAL: CAE-PKG-ID" SB-APPEND CAE-LF
+   s" DEFTYPE CAE-PKG-ID" SB-APPEND CAE-LF
    s" : CAE-PKG-GOOD ( n -- n ) >CAE-PKG-ID CAE-PKG-ID>N ;" SB-APPEND CAE-LF
    s" : CAE-PKG-BAD ( i64 -- i64 ) dup ;" SB-APPEND CAE-LF
    s" ;package" SB-APPEND CAE-LF
@@ -797,7 +797,7 @@ public
 \ rejects. This is the hook the check source-list redrive drives per file.
 : CAE-XSUP-SUP$ ( -- ptr u8 n )
    SB-RESET
-   s" NOMINAL: CAE-XT" SB-APPEND CAE-LF
+   s" DEFTYPE CAE-XT" SB-APPEND CAE-LF
    s" : CAE-XT-ID ( cae-xt -- cae-xt ) ;" SB-APPEND CAE-LF
    SB$ ;
 

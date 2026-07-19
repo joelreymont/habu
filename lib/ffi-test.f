@@ -4,7 +4,7 @@
 require lib/test.f
 require lib/ffi.f
 require test/checker-assert.f
-require lib/type/value-nominal.f   \ NOMINAL: - the ffi-dev / ffi-ctx test nominals
+require lib/type/deftype.f         \ DEFTYPE - the ffi-dev / ffi-ctx test nominals
 
 create FFI-T-LIBC   108 c, 105 c, 98 c, 99 c, 46 c, 115 c, 111 c, 46 c, 54 c, 0 c, \ "libc.so.6"
 create FFI-T-LIBM   108 c, 105 c, 98 c, 109 c, 46 c, 115 c, 111 c, 46 c, 54 c, 0 c, \ "libm.so.6"
@@ -40,8 +40,8 @@ variable FFI-T-MATH
 : FFI-T-OPEN-MATH ( -- n )  FFI-T-MATH-PATH FFI:NOW FFI:DLOPEN ;
 : FFI-T-MSYM ( ptr u8 -- n ) {: name:ptr :}  FFI-T-MATH @ name FFI:DLSYM ;
 
-NOMINAL: FFI-DEV
-NOMINAL: FFI-CTX
+DEFTYPE FFI-DEV
+DEFTYPE FFI-CTX
 
 TRUSTED: FFI-T-STRLEN$ ( ptr u8 -- n ) {: str:ptr :}
    s" strlen" FFI-T-SYM$ {: fn:n :}

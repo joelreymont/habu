@@ -41,7 +41,7 @@
 
 require maki/extent.f
 require lib/adt/option.f             \ option<tr-slot>: TR-FIND returns a present/absent slot
-require lib/type/value-nominal.f     \ NOMINAL:: the tensor-registry slot index is its own type
+require lib/type/deftype.f           \ DEFTYPE: the tensor-registry slot index is its own type
 
 package MAKI
 
@@ -83,7 +83,7 @@ SUMTYPE tensor-kind 0
 
 \ tr-slot is the tensor-registry row index, its own type: a rank or an extent slot
 \ cannot address a tensor row without the explicit `>TR-SLOT` crossing.
-NOMINAL: TR-SLOT
+DEFTYPE TR-SLOT
 
 \ kind predicates SPEC: (maki/spec.f) uses to demand a data tensor or a gather.
 : TR-KIND-DATA?   ( tensor-kind -- bool )  MATCH tensor-kind  data OF true  ENDOF  gather OF false ENDOF ;MATCH ;

@@ -15,18 +15,18 @@
 \ 11 args; the real driver memory entry points are the _v2 symbols.
 
 require lib/ffi.f
-require lib/type/value-nominal.f   \ NOMINAL: - the CUDA handle families
+require lib/type/deftype.f         \ DEFTYPE - the CUDA handle families
 
 -5002 constant E-CUDA          \ CUDA Driver call failed: null handle or nonzero CUresult
 
 \ Nominal handle roles - one cell each at runtime, distinct nominal types to the
 \ checker. Defined at top level so the >CUDA-* / CUDA-*>N casts stay global.
-NOMINAL: CUDA-DEV
-NOMINAL: CUDA-CTX
-NOMINAL: CUDA-MOD
-NOMINAL: CUDA-FN
-NOMINAL: CUDA-DEVPTR
-NOMINAL: CUDA-EVENT
+DEFTYPE CUDA-DEV
+DEFTYPE CUDA-CTX
+DEFTYPE CUDA-MOD
+DEFTYPE CUDA-FN
+DEFTYPE CUDA-DEVPTR
+DEFTYPE CUDA-EVENT
 
 \ Fail-closed guards, global so historical maki call sites (CUDA-HANDLE0 /
 \ CUDA-RC0) resolve unqualified.

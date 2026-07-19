@@ -45,7 +45,7 @@ require maki/array.f                 \ T-AT: the ptr+offset address word the acc
 require lib/string.f                 \ STR=, BYTE-COPY, ASCII-LOWER: registry name storage + tail fold
 require lib/codegen.f                \ CODEGEN:BUFFER-E: the shared generated-source byte buffer
 require lib/adt/option.f             \ option<xr-slot>: XR-FIND returns a present/absent slot
-require lib/type/value-nominal.f     \ NOMINAL:: the registry slot index + length columns are their own types
+require lib/type/deftype.f           \ DEFTYPE: the registry slot index + length columns are their own types
 
 -5031 constant E-EXT-NAME     \ EXTENT: surface name missing, empty, or not '#'-prefixed
 -5032 constant E-EXT-UNDECL   \ TENSOR:/ITENSOR: referenced an extent no EXTENT: declared
@@ -66,16 +66,16 @@ TYPEFAMILY ix 1
 \ the target extent is pinned, never inferred.
 TRUSTED: IX>N ( ix<e> -- n ) ;
 
-\ Registry data-layer nominals (value-nominal.f). The extent registry is a set of
+\ Registry data-layer nominals (deftype.f). The extent registry is a set of
 \ parallel arrays; making its slot index and its two string-length columns their
 \ own checker types stops the swaps a raw `n` hides. `xr-slot` is the row index: a
 \ rank, a loop counter, or a tensor-registry slot can no longer pose as an extent
 \ slot without the explicit `>XR-SLOT` crossing. `xr-surf-len` and `xr-tail-len`
 \ are the surface-name and tail lengths as DISTINCT types, so a name accessor that
 \ reads the wrong length column is an author-time reject, not a silent bug.
-NOMINAL: XR-SLOT
-NOMINAL: XR-SURF-LEN
-NOMINAL: XR-TAIL-LEN
+DEFTYPE XR-SLOT
+DEFTYPE XR-SURF-LEN
+DEFTYPE XR-TAIL-LEN
 
 private
 
@@ -94,7 +94,7 @@ XG-CAP E-EXT-CAP E-EXT-VALUE CODEGEN:BUFFER-E XG-BUFFER
 
 \ the one metaprogramming boundary: `evaluate` cannot be checker-typed, so the
 \ audited TRUSTED wrapper compiles the constructed text with the check hook active
-\ (lib/type/value-nominal.f NG-EVAL / maki/cad.f CAP-COMPILE-RUN pattern). Every generated body is
+\ (lib/type/deftype.f NG-EVAL / maki/cad.f CAP-COMPILE-RUN pattern). Every generated body is
 \ certified by that hook; the definer itself adds no unchecked code.
 TRUSTED: XG-EVAL ( -- )  XG$ evaluate ;
 
@@ -171,7 +171,7 @@ public
 
 \ EXTENT: - `value EXTENT: #NAME`. Mints the extent family, binds the runtime
 \ extent value word `#NAME ( -- n )`, and derives the injector `>#NAME
-\ ( n -- ix<tail> )`. Top-level-interpret-only, like SUMTYPE / NOMINAL: (it parses
+\ ( n -- ix<tail> )`. Top-level-interpret-only, like SUMTYPE / DEFTYPE (it parses
 \ the input stream and mutates the type registry - side effects a ( n -- ) row
 \ does not model). The generated constant + injector text is certified by the
 \ check hook through XG-EVAL.

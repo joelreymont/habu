@@ -422,19 +422,19 @@ TRUSTED: SIG-RAW-MODE! ( n -- ) SIG-RAW-DEFINER! ;
 : RECORD-END-PACKAGE ( -- )
    CHECKER-END-PACKAGE ;
 
-\ NOMINAL: NAME declares a value nominal (lib/type/value-nominal.f): a
+\ DEFTYPE NAME declares a value nominal (lib/type/deftype.f): a
 \ package-scoped arity-0 type family whose lowercase tail is the surface name
 \ folded (SERIAL -> serial) and whose converter pair >NAME ( n -- tail ) /
 \ NAME>N ( tail -- n ) keeps a plain n from standing in for the nominal. The
 \ static recorder mirrors the runtime mint: register the family, then trust the
 \ two derived converter signatures so later definitions that use the tail and
-\ the converters verify without loading value-nominal.f.
+\ the converters verify without loading deftype.f.
 $40 constant NOM-TAIL-CAP
 create NOM-TAIL-BUF NOM-TAIL-CAP allot
 variable NOM-TAIL-U
 
 \ MANGLE ( ptr u8 n -- ptr u8 n ) folds the UPPER-CASE surface name to the
-\ lowercase family tail, matching value-nominal.f's ASCII-LOWER fold.
+\ lowercase family tail, matching deftype.f's ASCII-LOWER fold.
 : MANGLE ( ptr u8 n -- ptr u8 n ) {: a:ptr u:n :}
    u NOM-TAIL-CAP > IF s" verify-source: nominal name too long" 74 die THEN
    0 NOM-TAIL-U !
@@ -444,7 +444,7 @@ variable NOM-TAIL-U
    REPEAT drop
    NOM-TAIL-BUF NOM-TAIL-U @ ;
 
-: RECORD-NOMINAL ( -- )
+: RECORD-DEFTYPE ( -- )
    NEXT-SCAN {: name:ptr nameu:n :}
    nameu 0= IF s" verify-source: missing nominal name" 74 die THEN
    name nameu MANGLE {: tail:ptr tailu:n :}
@@ -672,7 +672,7 @@ variable STG-START
    a u s" public" STR=CI IF RECORD-PUBLIC 0 0= EXIT THEN
    a u s" private" STR=CI IF RECORD-PRIVATE 0 0= EXIT THEN
    a u s" ;package" STR=CI IF RECORD-END-PACKAGE 0 0= EXIT THEN
-   a u s" nominal:" STR=CI IF RECORD-NOMINAL 0 0= EXIT THEN
+   a u s" deftype" STR=CI IF RECORD-DEFTYPE 0 0= EXIT THEN
    a u s" deflinear" STR=CI IF RECORD-DEFLINEAR 0 0= EXIT THEN
    a u s" value-record" STR=CI IF RECORD-VALUE-RECORD 0 0= EXIT THEN
    a u s" begin-structure" STR=CI IF RECORD-STRUCTURE 0 0= EXIT THEN

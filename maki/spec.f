@@ -50,7 +50,7 @@
 require maki/extent-tensor.f
 require lib/string.f                 \ STR=, ASCII-UPPER: token compares + index-var -> extent-name fold
 require lib/adt/option.f             \ option<>: index-variable and tensor lookups return present/absent
-require lib/type/value-nominal.f     \ NOMINAL:: the factor-index (SP-FI) table index is its own type
+require lib/type/deftype.f           \ DEFTYPE: the factor-index (SP-FI) table index is its own type
 
 -5036 constant E-SPEC-SYNTAX    \ malformed spec grammar (brackets, =, keywords, terminator)
 -5037 constant E-SPEC-EXTENT    \ an index variable's extent #<UPPER> is not declared
@@ -121,7 +121,7 @@ variable SP-FI-N
 \ type, so a factor number or a raw counter cannot index the table without the
 \ explicit `>SP-FI` crossing. The SP-FAC offset column is the base row of a factor.
 public
-NOMINAL: SP-FI
+DEFTYPE SP-FI
 private
 
 : SP-FAC-T-SLOT   ( n -- ptr a )      SP-TNAME *  SP-FAC-T + ;   \ n = factor number

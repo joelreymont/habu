@@ -398,23 +398,23 @@ variable CKT-PAR-U
 
 : CKT-NOM-SCAN-BODY$ ( -- ptr u8 n )
    SB-RESET
-   s" : NOMINAL: ( -- ) ;" SB-APPEND
+   s" : DEFTYPE ( -- ) ;" SB-APPEND
    $0a SB-APPEND-C
-   s" : CKT-NOM-BODY ( -- ) NOMINAL: ( -- ) ;" SB-APPEND
+   s" : CKT-NOM-BODY ( -- ) DEFTYPE ( -- ) ;" SB-APPEND
    $0a SB-APPEND-C
    s" TRUSTED: CKT-NOM-TRUSTED ( -- ) DEFLINEAR ( -- ) ;" SB-APPEND
    SB$ ;
 
-\ A source that DECLARES a value nominal with NOMINAL: and USES both its type
+\ A source that DECLARES a value nominal with DEFTYPE and USES both its type
 \ (in signatures) and its derived converters >NAME / NAME>N (in bodies). The
-\ preverify pass statically verifies it: verify-source's RECORD-NOMINAL folds
+\ preverify pass statically verifies it: verify-source's RECORD-DEFTYPE folds
 \ CKT-WIDGET to the family tail ckt-widget, registers the arity-0 family, and
 \ trusts the converter pair, so every definition resolves without loading
-\ lib/type/value-nominal.f. This is the static-scan capability stage B moved
+\ lib/type/deftype.f. This is the static-scan capability stage B moved
 \ off the retired CHECKER-DEFTYPE path onto the family surface.
 : CKT-NOM-PREVERIFY$ ( -- ptr u8 n )
    SB-RESET
-   s" NOMINAL: CKT-WIDGET" SB-APPEND $0a SB-APPEND-C
+   s" DEFTYPE CKT-WIDGET" SB-APPEND $0a SB-APPEND-C
    s" : CKT-WIDGET-RT ( ckt-widget -- ckt-widget ) ;" SB-APPEND $0a SB-APPEND-C
    s" : CKT-WIDGET-MK ( n -- ckt-widget ) >CKT-WIDGET ;" SB-APPEND $0a SB-APPEND-C
    s" : CKT-WIDGET-UN ( ckt-widget -- n ) CKT-WIDGET>N ;" SB-APPEND
@@ -423,10 +423,10 @@ variable CKT-PAR-U
 \ Nominal-declarer sources for the check CLI's package-scoping contract. These
 \ feed a live child engine (CHK-RUN-HB) and are checked end to end, so they use
 \ DEFLINEAR: its interpret word is baked into the engine, so it runs in the
-\ child with no require, while a NOMINAL: source would need
-\ `require lib/type/value-nominal.f` for the child to define the declarer. The
+\ child with no require, while a DEFTYPE source would need
+\ `require lib/type/deftype.f` for the child to define the declarer. The
 \ check tool's static scanner and preverify path understand both DEFLINEAR and
-\ (since stage B) the NOMINAL: family surface. A DEFLINEAR type is one linear
+\ (since stage B) the DEFTYPE family surface. A DEFLINEAR type is one linear
 \ cell whose value moves exactly once, so bodies pass it through by identity
 \ rather than dropping or binding it.
 package CKT-PKG-LINEAR
@@ -809,13 +809,13 @@ public
    CKT-ERR erru 10 COUNT-CHAR 1 T= ;
 
 \ Regression habu-fix-all-errors-67f4bdf9: the full check CLI --all-errors path
-\ let a NOMINAL: family registration leak out of preverify into the redrive.
+\ let a DEFTYPE family registration leak out of preverify into the redrive.
 \ CHK-RUN-PREVERIFY drives VERIFY:SOURCE-BUF-IN-SCOPE, which registers the
 \ source's family + derived casts but leaves rollback to the caller; the caller
 \ never opened a scope, so those registrations survived into CHK-HANDLE-HB. When
 \ the child load fails the JSON branch re-runs the all-errors redrive, whose own
 \ re-registration then hit the leaked family and rejected with a spurious
-\ E-DUPLICATE-DEFINITION. A NOMINAL: declarer needs `require value-nominal.f`
+\ E-DUPLICATE-DEFINITION. A DEFTYPE declarer needs `require deftype.f`
 \ for the child to define it, so a bare source is statically clean yet its child
 \ load fails E-UNDEFINED -- the honest verdict, and the only family surface that
 \ reaches the JSON redrive re-run. SUMTYPE/TYPEFAMILY/DEFLINEAR declarers are
@@ -823,7 +823,7 @@ public
 \ fires, and they were never affected (probed: all report 0 through --all-errors).
 : CKT-NOM-ALL-BARE$ ( -- ptr u8 n )   \ statically clean; bare child load is E-UNDEFINED
    SB-RESET
-   s" NOMINAL: CKT-AEW" SB-APPEND $0a SB-APPEND-C
+   s" DEFTYPE CKT-AEW" SB-APPEND $0a SB-APPEND-C
    s" : CKT-AEW-RT ( ckt-aew -- ckt-aew ) ;" SB-APPEND
    SB$ ;
 
@@ -835,14 +835,14 @@ public
    outu 0 T=
    CKT-ERR erru s" E-DUPLICATE-DEFINITION" CONTAINS? TFALSE ;
 
-: CKT-NOM-ALL-CLEAN$ ( -- ptr u8 n )   \ require lets the child define NOMINAL:; zero errors
+: CKT-NOM-ALL-CLEAN$ ( -- ptr u8 n )   \ require lets the child define DEFTYPE; zero errors
    SB-RESET
-   s" require lib/type/value-nominal.f" SB-APPEND $0a SB-APPEND-C
-   s" NOMINAL: CKT-AEOK" SB-APPEND $0a SB-APPEND-C
+   s" require lib/type/deftype.f" SB-APPEND $0a SB-APPEND-C
+   s" DEFTYPE CKT-AEOK" SB-APPEND $0a SB-APPEND-C
    s" : CKT-AEOK-RT ( ckt-aeok -- ckt-aeok ) ;" SB-APPEND
    SB$ ;
 
-\ Green coverage: a NOMINAL: declaration through --all-errors reports zero errors
+\ Green coverage: a DEFTYPE declaration through --all-errors reports zero errors
 \ end to end when the child can load the declarer.
 : CKT-TEST-NOMINAL-ALL-CLEAN ( -- )
    CKT-NOM-ALL-CLEAN$ CKT-DIRECT-ALL-JSON-STDIN 0 T=

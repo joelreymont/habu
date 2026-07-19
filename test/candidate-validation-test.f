@@ -15,8 +15,8 @@ package CANDIDATE-VALIDATION-TEST
    s" test/type-family-suite.f" PATH-PIN
    s" test/type-family-rollback-suite.f" PATH-PIN
    s" test/type-decl-suite.f" PATH-PIN
-   s" test/value-nominal-suite.f" PATH-PIN
-   s" test/value-nominal-dup-bad.f" PATH-PIN
+   s" test/deftype-suite.f" PATH-PIN
+   s" test/deftype-dup-bad.f" PATH-PIN
    s" test/cast-suite.f" PATH-PIN
    s" test/cast-negative-suite.f" PATH-PIN
    s" test/type-ctor-suite.f" PATH-PIN
@@ -73,8 +73,8 @@ package CANDIDATE-VALIDATION-TEST
    S\" s\q test/type-family-suite.f\q construct case-kind positive 0 s\q \q s\q \q RUN-CASE" DIRECT-PIN
    S\" s\q test/type-family-rollback-suite.f\q construct case-kind positive 0 s\q \q s\q \q RUN-CASE" DIRECT-PIN
    S\" s\q test/type-decl-suite.f\q construct case-kind positive 0 s\q \q s\q \q RUN-CASE" DIRECT-PIN
-   S\" s\q test/value-nominal-suite.f\q construct case-kind positive 0 s\q \q s\q \q RUN-CASE" DIRECT-PIN
-   S\" s\q test/value-nominal-dup-bad.f\q construct case-kind negative 67\n      s\q VALUE-NOMINAL-DUP-ARMED\q s\q duplicate family\q RUN-CASE" DIRECT-PIN
+   S\" s\q test/deftype-suite.f\q construct case-kind positive 0 s\q \q s\q \q RUN-CASE" DIRECT-PIN
+   S\" s\q test/deftype-dup-bad.f\q construct case-kind negative 67\n      s\q DEFTYPE-DUP-ARMED\q s\q duplicate family\q RUN-CASE" DIRECT-PIN
    S\" s\q test/cast-suite.f\q construct case-kind positive 0 s\q \q s\q \q RUN-CASE" DIRECT-PIN
    S\" s\q test/cast-negative-suite.f\q construct case-kind positive 0 s\q \q s\q \q RUN-CASE" DIRECT-PIN
    S\" s\q test/type-linear-suite.f\q construct case-kind positive 0 s\q \q s\q \q RUN-CASE" DIRECT-PIN
