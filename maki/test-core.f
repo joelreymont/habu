@@ -1,15 +1,16 @@
-\ maki/test.f - Maki's own checked test-suite entry point.
-\ Run: bin/hb --load maki/test.f
+\ maki/test-core.f - a parallel slice of the maki checked suite.
+\ Split from the monolithic maki/test.f (dot habu-split-monolithic-maki-fccca4ea):
+\ core compute, autograd, executor, lowering, model-IR, cad, store framing,
+\ onnx, competitive, experiment, evidence and target checks - everything that is
+\ not the eval harness or the provenance database.
+\ Measured self-time on GB10 (idle, 2026-07-19): ~9041 ms across 120 suites.
+\ Run standalone: bin/hb --load maki/test-core.f
 
-\ The per-file timed RUN-FILE harness lives in maki/test-harness.f, shared with
-\ the parallel gate slices (maki/test-<slice>.f). This file is the full standalone
-\ run-all inventory and the coverage-lint master: every suite below must land in
-\ exactly one slice (tools/suite-coverage-lint-core.f enforces the partition).
 require maki/test-harness.f
 
 TEST:RESET
 
-TEST:GROUP SEQ maki
+TEST:GROUP SEQ maki-core
 TEST:SUITE maki/array-test.f
 TEST:;SUITE
 TEST:SUITE maki/tensor-test.f
@@ -146,8 +147,6 @@ TEST:SUITE maki/onnx/deploy-test.f
 TEST:;SUITE
 TEST:SUITE maki/onnx/ort-ref-test.f
 TEST:;SUITE
-TEST:SUITE maki/eval/eval-test.f
-TEST:;SUITE
 TEST:SUITE maki/fusion-test.f
 TEST:;SUITE
 TEST:SUITE maki/ablate-fusion-test.f
@@ -159,54 +158,6 @@ TEST:;SUITE
 TEST:SUITE maki/target/target-test.f
 TEST:;SUITE
 TEST:SUITE maki/artifact-test.f
-TEST:;SUITE
-TEST:SUITE maki/db/artifact-test.f
-TEST:;SUITE
-TEST:SUITE maki/db/transaction-test.f
-TEST:;SUITE
-TEST:SUITE maki/db/commit-store-test.f
-TEST:;SUITE
-TEST:SUITE maki/db/commit-store-crash-test.f
-TEST:;SUITE
-TEST:SUITE maki/db/diagnostic-test.f
-TEST:;SUITE
-TEST:SUITE maki/db/obligation-test.f
-TEST:;SUITE
-TEST:SUITE maki/db/evidence-test.f
-TEST:;SUITE
-TEST:SUITE maki/db/evidence-applicability-test.f
-TEST:;SUITE
-TEST:SUITE maki/db/promotion-policy-test.f
-TEST:;SUITE
-TEST:SUITE maki/db/promotion-authority-test.f
-TEST:;SUITE
-TEST:SUITE maki/db/promotion-test.f
-TEST:;SUITE
-TEST:SUITE maki/db/action-test.f
-TEST:;SUITE
-TEST:SUITE maki/db/diff-suite-test.f
-TEST:;SUITE
-TEST:SUITE maki/db/diff-suite-id-test.f
-TEST:;SUITE
-TEST:SUITE maki/db/diff-runner-test.f
-TEST:;SUITE
-TEST:SUITE maki/db/diff-runner-tensor-test.f
-TEST:;SUITE
-TEST:SUITE maki/db/diff-runner-spawn-test.f
-TEST:;SUITE
-TEST:SUITE maki/db/diff-runner-inject-test.f
-TEST:;SUITE
-TEST:SUITE maki/db/diff-case-store-test.f
-TEST:;SUITE
-TEST:SUITE maki/db/diff-case-store-xproc-test.f
-TEST:;SUITE
-TEST:SUITE maki/db/capbud-test.f
-TEST:;SUITE
-TEST:SUITE maki/db/agent-loop-test.f
-TEST:;SUITE
-TEST:SUITE maki/db/audit-log-test.f
-TEST:;SUITE
-TEST:SUITE maki/db/commit-store-discharge-test.f
 TEST:;SUITE
 TEST:SUITE maki/experiment/run-test.f
 TEST:;SUITE
@@ -270,12 +221,6 @@ TEST:SUITE maki/journal-test.f
 TEST:;SUITE
 TEST:SUITE maki/rev-test.f
 TEST:;SUITE
-TEST:SUITE maki/db/keywire-xproc-test.f
-TEST:;SUITE
-TEST:SUITE maki/db/keywire-xproc-env-test.f
-TEST:;SUITE
-TEST:SUITE maki/db/audit-log-xproc-test.f
-TEST:;SUITE
 TEST:SUITE maki/evidence/schema-test.f
 TEST:;SUITE
 TEST:SUITE maki/evidence/policy-test.f
@@ -299,36 +244,6 @@ TEST:;SUITE
 TEST:SUITE maki/cuda-driver-test.f
 TEST:;SUITE
 TEST:SUITE maki/device-artifacts-test.f
-TEST:;SUITE
-TEST:SUITE maki/eval/fixture.f
-TEST:;SUITE
-TEST:SUITE maki/eval/repair.f
-TEST:;SUITE
-TEST:SUITE maki/eval/repair-ab-test.f
-TEST:;SUITE
-TEST:SUITE maki/eval/repair-mech-test.f
-TEST:;SUITE
-TEST:SUITE maki/eval/passk-test.f
-TEST:;SUITE
-TEST:SUITE maki/eval/transcript-test.f
-TEST:;SUITE
-TEST:SUITE maki/eval/matrix-test.f
-TEST:;SUITE
-TEST:SUITE maki/eval/matrix-main.f
-TEST:;SUITE
-TEST:SUITE maki/eval/live-test.f
-TEST:;SUITE
-TEST:SUITE maki/eval/tokest-test.f
-TEST:;SUITE
-TEST:SUITE maki/eval/emit-test.f
-TEST:;SUITE
-TEST:SUITE maki/eval/live-author-test.f
-TEST:;SUITE
-TEST:SUITE maki/eval/emit-device-test.f
-TEST:;SUITE
-TEST:SUITE maki/eval/device-fault-test.f
-TEST:;SUITE
-TEST:SUITE maki/eval/train.f
 TEST:;SUITE
 TEST:SUITE maki/maki-test.f
 TEST:;SUITE

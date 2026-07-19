@@ -61,19 +61,21 @@ public
 \ proportionally, and must be re-measured on macOS to confirm - the committed
 \ 39.336s / 41.64s macOS cold-fill reference is a 2026-07-01 pre-heal number that no
 \ longer bounds the budget.
-\ 2026-07-19 re-derived after the day's suite growth: the maki checked suite (the
-\ cold long pole) grew 27.7s -> 30.8s from four landed test suites (authenticated
-\ store framing, cad replay-engine, affine-LN op gradcheck+training, equation
-\ adjoints fd-checks), pushing idle cold elapsed to a worst-of-six 36.8s at cal
-\ ~100% (three attempts each of two idle spark cold runs). 46000 = ~36.8s + 25%;
-\ 51000 keeps the same ~11% wall headroom. macOS mirrors spark as before and
-\ still must be re-measured on macOS. The monolithic maki child is the long pole
-\ and the proper fix is splitting it into parallel slices (see dot
-\ habu-split-maki-suite); until then the budget tracks the honest suite cost.
-46000 constant SPARK-COLD-MS
-51000 constant SPARK-COLD-WALL-MS
-46000 constant MACOS-COLD-MS
-51000 constant MACOS-COLD-WALL-MS
+\ 2026-07-19 re-derived DOWN after the monolithic maki suite was split into four
+\ parallel gate slices (dot habu-split-monolithic-maki-fccca4ea). The single ~31s
+\ maki child that had forced the 46000/51000 bump is gone: the four slices
+\ (core ~9.4s, db ~8.6s, eval-emit ~7.6s, eval ~6.3s) run concurrently in the pool
+\ after the candidate barrier, so the maki long pole dropped 30.995s -> 9.371s and
+\ the whole cold attempt elapsed dropped from a worst-of-six 36.8s to a worst-of-
+\ three 15.141s at cal ~100% (three idle fresh-XDG_CACHE_HOME spark cold runs:
+\ 15.060 / 15.141 / 14.944). 19000 = ~15.1s + 25%; 21000 keeps the same ~11% wall
+\ headroom over the elapsed budget. macOS mirrors spark as before and still must be
+\ re-measured on macOS - the split cuts macOS maki cost proportionally, but no macOS
+\ box is available here to confirm the new pair.
+19000 constant SPARK-COLD-MS
+21000 constant SPARK-COLD-WALL-MS
+19000 constant MACOS-COLD-MS
+21000 constant MACOS-COLD-WALL-MS
 
 ;package
 
@@ -1774,23 +1776,46 @@ public
    s" --rerun-failed: " type TR-RERUN-N @ TR-NUM$ type
    s"  phase(s) from " type TR-RED-LIST$ type cr ;
 
-\ The maki suite as a standalone child against the CANDIDATE engine
-\ (dots habu-route-the-maki-e61d8a1b, habu-gate-must-test-cd70ef4e). Before the
-\ candidate routing the gate ran maki on the baseline bin/hb, so a broken
-\ candidate engine could still show maki GREEN - a gate-soundness hole. maki/test.f
-\ is a self-contained ~20s suite (<engine> --load maki/test.f) that sits at the
-\ DICT-CAP word wall, so it must run STANDALONE - never with the gate base libs
-\ prepended, which would overflow its image. It runs the freshly built candidate
-\ (TR-UNDER$) with HABU_UNDER_TEST set, so it can only start once the candidate is
-\ proven ready; TR-DRAIN-UNTIL-UNDER kicks it (via TR-MAKI-KICK) at that barrier so
-\ its wall overlaps the remaining candidate-work phases. It holds one top pool slot
-\ and a nonzero rc fails the gate closed through the normal red-phase path
-\ (GT-POOL-RED# in TR-COMPLETE).
-: TR-MAKI-LABEL ( -- ptr u8 n )
-   s" native maki checked suite" ;
+\ The maki suite as parallel standalone children against the CANDIDATE engine
+\ (dots habu-route-the-maki-e61d8a1b, habu-gate-must-test-cd70ef4e,
+\ habu-split-monolithic-maki-fccca4ea). Before the candidate routing the gate ran
+\ maki on the baseline bin/hb, so a broken candidate engine could still show maki
+\ GREEN - a gate-soundness hole. The maki suite was one monolithic ~31s child (the
+\ cold long pole); it is now split into four parallel slice loaders
+\ (maki/test-<slice>.f) that each sit at the DICT-CAP word wall, so each must run
+\ STANDALONE - never with the gate base libs prepended, which would overflow its
+\ image. Each runs the freshly built candidate (TR-UNDER$) with HABU_UNDER_TEST set,
+\ so they can only start once the candidate is proven ready; TR-DRAIN-UNTIL-UNDER
+\ kicks them (via TR-MAKI-KICK) at that barrier so their walls overlap the remaining
+\ candidate-work phases. Each holds one top pool slot and a nonzero rc fails the gate
+\ closed through the normal red-phase path (GT-POOL-RED# in TR-COMPLETE).
+\
+\ Slice metadata, ordered heaviest-first (measured GB10 idle walls: core ~9.2s,
+\ db ~9.0s, eval-emit ~7.7s, eval ~5.8s) so the long slice grabs a pool slot first
+\ and its wall overlaps the rest. Each slice gets its own HB_TMP subdir and a UNIQUE
+\ label (a duplicate label dies the gate: gate-stats GS-LABEL-DUP).
+4 constant TR-MAKI-SLICES
 
-: TR-MAKI-TMP! ( -- )
-   GT-ROOT s" gate-maki" TR-PATH-BUF JOIN-PATH TR-PATH-U !
+: TR-MAKI-SLICE-LOAD ( i -- ptr u8 n )
+   dup 0 = if drop s" maki/test-core.f" exit then
+   dup 1 = if drop s" maki/test-db.f" exit then
+   dup 2 = if drop s" maki/test-eval-emit.f" exit then
+   drop s" maki/test-eval.f" ;
+
+: TR-MAKI-SLICE-LABEL ( i -- ptr u8 n )
+   dup 0 = if drop s" native maki core suite" exit then
+   dup 1 = if drop s" native maki db suite" exit then
+   dup 2 = if drop s" native maki eval-emit suite" exit then
+   drop s" native maki eval suite" ;
+
+: TR-MAKI-SLICE-TMP ( i -- ptr u8 n )
+   dup 0 = if drop s" gate-maki-core" exit then
+   dup 1 = if drop s" gate-maki-db" exit then
+   dup 2 = if drop s" gate-maki-eval-emit" exit then
+   drop s" gate-maki-eval" ;
+
+: TR-MAKI-TMP! ( ptr u8 n -- ) {: nm:ptr nu:n :}
+   GT-ROOT nm nu TR-PATH-BUF JOIN-PATH TR-PATH-U !
    TR-PATH$ MAKE-DIRS ;
 
 \ Export the gate's measured load/calibration factors so maki's own per-suite
@@ -1801,17 +1826,17 @@ public
    s" HB_LOAD_PCT" >LEN TR-LOAD-PCT-EXPORT TR-PCT$ >LEN PROC-ENV+
    s" HB_CAL_PCT" >LEN TR-CAL-PCT TR-PCT$ >LEN PROC-ENV+ ;
 
-: TR-MAKI-BASE ( -- )
+: TR-MAKI-BASE ( i -- ) {: i:n :}
    PROC-ARGV-RESET
    PROC-ENV-RESET
-   TR-MAKI-TMP!
+   i TR-MAKI-SLICE-TMP TR-MAKI-TMP!
    s" HB_TMP" >LEN TR-PATH$ >LEN PROC-ENV+
    TR-BUILD-CACHE-ENV
    TR-MAKI-PCT-ENV+
    TR-UNDER-ENV+
    PROC-ENV-INHERIT-MISSING
    s" --load"  >LEN PROC-ARGV+
-   s" maki/test.f"  >LEN PROC-ARGV+ ;
+   i TR-MAKI-SLICE-LOAD  >LEN PROC-ARGV+ ;
 
 \ Candidate sha for stats attribution, mirroring TR-PHASE-SHA: maki now runs the
 \ candidate, so its phase reports the candidate binary hash (populated by the time
@@ -1823,20 +1848,25 @@ public
 \ host-source subject (maki checks the working-tree source), under runner-kind
 \ (the candidate engine), unique label so the pool-pass span attributes cleanly
 \ and no duplicate-label guard trips.
-: TR-MAKI-TEST ( -- )
-   TR-MAKI-LABEL
+: TR-MAKI-TEST ( ptr u8 n -- )                 \ ( slice-label -- )
    s" host-source"
    s" under"
    s" process"
    TR-MAKI-SHA
    GS-TEST ;
 
-: TR-MAKI-START ( -- )
-   TR-MAKI-BASE
+: TR-MAKI-START-ONE ( i -- ) {: i:n :}
+   i TR-MAKI-BASE
    s" top-phase-spawn" GS-EVENT
    s" under-phase-spawn" GS-EVENT
-   TR-MAKI-TEST
-   TR-UNDER$ TR-MAKI-LABEL TR-TIMEOUT-MS GT-POOL-START ;
+   i TR-MAKI-SLICE-LABEL TR-MAKI-TEST
+   TR-UNDER$ i TR-MAKI-SLICE-LABEL TR-TIMEOUT-MS GT-POOL-START ;
+
+: TR-MAKI-START ( -- )
+   0 begin dup TR-MAKI-SLICES < while
+      dup TR-MAKI-START-ONE
+      1+
+   repeat drop ;
 
 \ Install the deferred readiness kick (declared before TR-DRAIN-UNTIL-UNDER, which
 \ launches maki only after the candidate binary is proven ready).

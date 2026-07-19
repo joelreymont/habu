@@ -463,16 +463,105 @@ variable SC-NUM-L
    [: SC-MANUAL-STALE-CHECK ;] SC-MANUAL-TABLE
    [: SC-SPAWN-STALE-CHECK ;] SC-SPAWN-ONLY-TABLE ;
 
+\ ============================================================================
+\ maki slice partition (dot habu-split-monolithic-maki-fccca4ea)
+\ ----------------------------------------------------------------------------
+\ The monolithic maki/test.f was split into four parallel gate slices
+\ (maki/test-<slice>.f, spawned by test/run-lib.f). maki/test.f stays as the full
+\ run-all inventory / master; each of its `TEST:SUITE <file>` members must run in
+\ EXACTLY ONE slice loader. An unaccounted member (0 slices) would silently stop
+\ running under the gate; a double-accounted member (>=2 slices) runs twice and
+\ breaks the one-file-per-image guarantee; a slice member with no master entry is an
+\ extra. All three feed the same SC-FIND+ tally, so any break exits the lint red.
+\ maki files use `TEST:SUITE <file>` (the file is the token AFTER the header), unlike
+\ the gate-stdlib cases format (label on the header, member on its own BOL line).
+$8000 constant SC-MAKI-CAP
+create SC-MAKI-BUF SC-MAKI-CAP allot        \ maki/test.f master source (pointers held)
+create SC-MK-A SC-CASE-MAX cells allot      \ master file ptr
+create SC-MK-U SC-CASE-MAX cells allot      \ master file len
+create SC-MK-CNT SC-CASE-MAX cells allot    \ per-file slice occurrence count
+variable SC-MK#
+variable SC-MK-MODE                          \ 0 collect master, nonzero bump slice
+variable SC-MK-AFTER-SUITE                   \ previous token was TEST:SUITE
+
+: SC-MK-A-FIELD ( n -- ptr ptr u8 ) cells SC-MK-A + 0 ptr-field ;
+: SC-MK$ ( n -- ptr u8 n ) {: k:n :} k SC-MK-A-FIELD @  k cells SC-MK-U + @ ;
+
+: SC-MK-FIND ( ptr u8 n -- n ) {: a:ptr u:n :}
+   0 begin dup SC-MK# @ < while
+      dup SC-MK$ a u LINT-STR= if exit then
+      1+
+   repeat drop -1 ;
+
+: SC-MK+ ( ptr u8 n -- ) {: a:ptr u:n :}
+   SC-MK# @ SC-CASE-MAX >= if E-TBL-BOUNDS throw then
+   a  SC-MK# @ SC-MK-A-FIELD !
+   u  SC-MK# @ cells SC-MK-U + !
+   0  SC-MK# @ cells SC-MK-CNT + !
+   SC-MK# @ 1+ SC-MK# ! ;
+
+: SC-MK-UNACCOUNTED ( ptr u8 n -- ) {: fp:ptr fu:n :}
+   SC-REPORT? @ if
+      s" suite-coverage: MAKI-UNACCOUNTED " type fp fu type
+      s"  is a maki/test.f suite member that runs in no maki/test-<slice>.f loader" type SC-NL
+   then SC-FIND+ ;
+
+: SC-MK-DOUBLE ( ptr u8 n n -- ) {: fp:ptr fu:n c:n :}
+   SC-REPORT? @ if
+      s" suite-coverage: MAKI-DOUBLE " type fp fu type
+      s"  is accounted to " type c SC-U. s"  maki slices (must be exactly one)" type SC-NL
+   then SC-FIND+ ;
+
+: SC-MK-EXTRA ( ptr u8 n -- ) {: fp:ptr fu:n :}
+   SC-REPORT? @ if
+      s" suite-coverage: MAKI-EXTRA " type fp fu type
+      s"  is a maki slice member with no maki/test.f master entry" type SC-NL
+   then SC-FIND+ ;
+
+: SC-MK-BUMP ( ptr u8 n -- ) {: a:ptr u:n :}
+   a u SC-MK-FIND dup 0< if drop a u SC-MK-EXTRA exit then
+   cells SC-MK-CNT + 1 swap +! ;
+
+: SC-MK-APPLY ( ptr u8 n -- )
+   SC-MK-MODE @ 0= if SC-MK+ else SC-MK-BUMP then ;
+
+\ pick the token right after each TEST:SUITE header (the maki suite/member file)
+: SC-MK-TOK ( n -- ) {: k:n :}
+   SC-MK-AFTER-SUITE @ if
+      0 SC-MK-AFTER-SUITE !
+      k TOK SC-STRIP-Q SC-MK-APPLY exit
+   then
+   k TOK s" TEST:SUITE" LINT-STR= if -1 SC-MK-AFTER-SUITE ! then ;
+
+: SC-MK-SCAN$ ( ptr u8 n -- )
+   LINT-TRUE PARENS? ! TOKENIZE
+   0 SC-MK-AFTER-SUITE !
+   0 begin dup TN# @ < while
+      dup SC-MK-TOK
+      1+
+   repeat drop ;
+
+: SC-CHECK-MAKI-I ( n -- ) {: k:n :}
+   k cells SC-MK-CNT + @ {: c:n :}
+   c 1 = if exit then
+   c 0= if k SC-MK$ SC-MK-UNACCOUNTED exit then
+   k SC-MK$ c SC-MK-DOUBLE ;
+
+: SC-CHECK-MAKI ( -- )
+   0 begin dup SC-MK# @ < while dup SC-CHECK-MAKI-I 1+ repeat drop ;
+
 \ ---- state + report --------------------------------------------------------
 : SC-RESET ( -- )
    0 SC-CASE# !  0 SC-SUITE# !  0 SC-PTX# !  0 SC-PTX-USED !
    0 SC-FIND !  0 SC-INBLOCK !  0 SC-INDEF !
+   0 SC-MK# !  0 SC-MK-MODE !  0 SC-MK-AFTER-SUITE !
    INTERN-RESET ;
 
 : SC-CHECK-ALL ( -- )
    SC-CHECK-ORPHANS
    SC-CHECK-PTX
-   SC-CHECK-TABLES ;
+   SC-CHECK-TABLES
+   SC-CHECK-MAKI ;
 
 : SC-SUMMARY ( -- )
    s" suite-coverage-lint: " type SC-SUITE# @ SC-U.
@@ -500,11 +589,31 @@ variable SC-NUM-L
 : SC-LOAD-PTX ( -- )
    s" test/gate-stdlib-inline-lib.f" SC-SCAN-BUF SC-SCAN-CAP SC-READ SC-PTX-INPROC-SCAN$ ;
 
+: SC-LOAD-MAKI-MASTER ( -- )
+   0 SC-MK-MODE !
+   s" maki/test.f" SC-MAKI-BUF SC-MAKI-CAP SC-READ SC-MK-SCAN$ ;
+
+: SC-BUMP-SLICE ( ptr u8 n -- )
+   SC-SCAN-BUF SC-SCAN-CAP SC-READ SC-MK-SCAN$ ;
+
+\ The one checked list of maki slice loaders: adding a slice means adding a row.
+: SC-LOAD-MAKI-SLICES ( -- )
+   1 SC-MK-MODE !
+   s" maki/test-core.f"      SC-BUMP-SLICE
+   s" maki/test-db.f"        SC-BUMP-SLICE
+   s" maki/test-eval-emit.f" SC-BUMP-SLICE
+   s" maki/test-eval.f"      SC-BUMP-SLICE ;
+
+: SC-LOAD-MAKI ( -- )
+   SC-LOAD-MAKI-MASTER
+   SC-LOAD-MAKI-SLICES ;
+
 : SC-LOAD ( -- )
    SC-RESET
    SC-LOAD-CASES
    SC-LOAD-SCHED
-   SC-LOAD-PTX ;
+   SC-LOAD-PTX
+   SC-LOAD-MAKI ;
 
 : SUITE-COVERAGE-LINT ( -- )
    LINT-TRUE SC-REPORT? !

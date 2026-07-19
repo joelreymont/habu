@@ -86,17 +86,22 @@ variable MDL-REPORT?
    MDL-BAD+ ;
 
 \ The sole sanctioned habu->maki reference: test/run-lib.f names the maki suite
-\ entry maki/test.f to SPAWN it (dot habu-route-the-maki-e61d8a1b). Allow exactly
-\ that token - the bare load path maki/test.f or its s" body maki/test.f" (the
-\ closing quote rides on the token) - in exactly that file. A longer near-miss
-\ (maki/test.fs) or the token in any other file is still a finding.
+\ entries to SPAWN them (dots habu-route-the-maki-e61d8a1b,
+\ habu-split-monolithic-maki-fccca4ea). Allowed in exactly that file are the
+\ full-suite entry maki/test.f and its parallel slice loaders maki/test-<slice>.f
+\ (each ending .f), as a bare token or an s" body (the closing quote rides on the
+\ token). A near-miss (maki/test.fs, maki/test-core.fs) or the token in any other
+\ file is still a finding.
+: MDL-GATE-EFFECTIVE ( ptr u8 n -- ptr u8 n ) {: t:ptr tu :}
+   tu 0 > if t tu 1- + c@ MDL-DQUOTE = if t tu 1- exit then then
+   t tu ;
+
 : MDL-GATE-ROUTE? ( ptr u8 n -- bool ) {: t:ptr tu :}
    MDL-PATH MDL-PATHU @ s" test/run-lib.f" LINT-STR= 0= if MDL-FALSE exit then
-   t tu s" maki/test.f" LINT-STARTS-WITH? 0= if MDL-FALSE exit then
-   s" maki/test.f" nip {: pu :}
-   tu pu = if MDL-TRUE exit then
-   tu pu 1+ = if t tu 1- + c@ MDL-DQUOTE = exit then
-   MDL-FALSE ;
+   t tu MDL-GATE-EFFECTIVE {: e:ptr eu :}
+   e eu s" maki/test.f" LINT-STR= if MDL-TRUE exit then
+   e eu s" maki/test-" LINT-STARTS-WITH?
+   e eu s" .f" LINT-ENDS-WITH? and ;
 
 : MDL-SCAN-TOKENS ( -- )
    0 begin dup TN# @ < while
