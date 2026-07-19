@@ -1,11 +1,19 @@
 \ codesign.f - checked executable promotion and ad-hoc signing helpers.
 \
+\ The module lives in `package CODESIGN`. External callers use the qualified public
+\ API (CODESIGN:VERIFY, CODESIGN:VERIFY-RC, CODESIGN:FORCE, CODESIGN:ENSURE,
+\ CODESIGN:TOOL, CODESIGN:PROMOTE-EXECUTABLE, CODESIGN:PROMOTE-SIGNED-EXECUTABLE);
+\ the per-target signing/verify helpers and capture buffers are package-private.
 require lib/errors.f
 require lib/memory.f
 require lib/fs.f
 require lib/fs-mutate.f
 require lib/process.f
 require lib/process-argv.f
+
+package CODESIGN
+
+private
 
 4096 constant CODESIGN-OUT-CAP
 4096 constant CODESIGN-ERR-CAP
@@ -38,14 +46,18 @@ variable CODESIGN-ERR-A
 : CODESIGN-ERR ( -- ptr u8 )
    CODESIGN-ERR-A CODESIGN-ERR-CAP CODESIGN-BUF ;
 
-: CODESIGN-TOOL ( -- ptr u8 n )
+public
+
+: TOOL ( -- ptr u8 n )
    s" /usr/bin/codesign" ;
+
+private
 
 : CODESIGN-RC0 ( n -- )
    0 <> if E-BUILD-STATUS throw then ;
 
 : CODESIGN-EXPECT-TOOL ( -- )
-   CODESIGN-TOOL FILE? 0= if E-BUILD-COMMAND throw then ;
+   TOOL FILE? 0= if E-BUILD-COMMAND throw then ;
 
 : CODESIGN-EXPECT-FILE ( ptr u8 n -- ) {: a:ptr u :}
    u 0 <= if E-BUILD-PATH throw then
@@ -57,7 +69,7 @@ variable CODESIGN-ERR-A
 
 : CODESIGN-RUN ( -- n )
    CODESIGN-EXPECT-TOOL
-   CODESIGN-TOOL >LEN
+   TOOL >LEN
    CODESIGN-OUT CODESIGN-OUT-CAP >LEN
    CODESIGN-ERR CODESIGN-ERR-CAP >LEN
    CODESIGN-TIMEOUT-MS >MS RUN-ARGV-CAPTURE
@@ -93,37 +105,39 @@ variable CODESIGN-ERR-A
    2dup CODESIGN-EXPECT-FILE
    CHMOD-X ;
 
-: CODESIGN-VERIFY-RC ( ptr u8 n -- n ) {: a:ptr u :}
+public
+
+: VERIFY-RC ( ptr u8 n -- n ) {: a:ptr u:n :}
    HB-TARGET-LINUX? if a u CODESIGN-LINUX-VERIFY-RC exit then
    HB-TARGET-MACOS? if a u CODESIGN-MACOS-VERIFY-RC exit then
    CODESIGN-TARGET-UNKNOWN ;
 
-: CODESIGN-VERIFY ( ptr u8 n -- ) {: a:ptr u :}
+: VERIFY ( ptr u8 n -- ) {: a:ptr u:n :}
    HB-TARGET-LINUX? if
       a u CODESIGN-EXPECT-EXECUTABLE
       exit
    then
    HB-TARGET-MACOS? if
-      a u CODESIGN-VERIFY-RC CODESIGN-RC0
+      a u VERIFY-RC CODESIGN-RC0
       exit
    then
    CODESIGN-TARGET-UNKNOWN ;
 
-: CODESIGN-FORCE ( ptr u8 n -- ) {: a:ptr u :}
+: FORCE ( ptr u8 n -- ) {: a:ptr u:n :}
    HB-TARGET-LINUX? if a u CODESIGN-LINUX-FORCE exit then
    HB-TARGET-MACOS? if a u CODESIGN-MACOS-FORCE exit then
    CODESIGN-TARGET-UNKNOWN ;
 
-: CODESIGN-ENSURE ( ptr u8 n -- ) {: a:ptr u :}
+: ENSURE ( ptr u8 n -- ) {: a:ptr u:n :}
    HB-TARGET-LINUX? if
-      a u CODESIGN-FORCE
-      a u CODESIGN-VERIFY
+      a u FORCE
+      a u VERIFY
       exit
    then
    HB-TARGET-MACOS? if
-      a u CODESIGN-VERIFY-RC 0= if exit then
-      a u CODESIGN-FORCE
-      a u CODESIGN-VERIFY
+      a u VERIFY-RC 0= if exit then
+      a u FORCE
+      a u VERIFY
       exit
    then
    CODESIGN-TARGET-UNKNOWN ;
@@ -136,6 +150,8 @@ variable CODESIGN-ERR-A
    dst dstu CODESIGN-EXPECT-FILE ;
 
 : PROMOTE-SIGNED-EXECUTABLE ( ptr u8 n ptr u8 n -- ) {: src:ptr srcu dst:ptr dstu :}
-   src srcu CODESIGN-FORCE
+   src srcu FORCE
    src srcu dst dstu PROMOTE-EXECUTABLE
-   dst dstu CODESIGN-VERIFY ;
+   dst dstu VERIFY ;
+
+;package
