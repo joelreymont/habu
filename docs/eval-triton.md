@@ -1914,3 +1914,110 @@ bin/hb --load tools/ptx/mma-emit-diff.f    # base vs branch -> diff isolated to 
 bin/hb --load tools/ptx/gemm-bench.f       # GB-W4-SWEEP: deep-ring stages 3/4/5 + the stages<=2 anchors (flat after the WITH revert)
 bin/hb --load tools/ptx/gemm-bench.f       # GB-BN-SWEEP: the stages=2 wide-BN tiles (the WITH-reorder regression that reverts it)
 ```
+
+## Round 10 — grouped-raster CTA ordering (dot `habu-grouped-raster-cta`): the 4096³ L2-locality lever — a new record, 0.65× → 0.75× Triton (2026-07-19)
+
+Every round so far launched the GEMM grid **naive row-major**: `ctaid.x` = tile-N,
+`ctaid.y` = tile-M, and the hardware sweeps a full row of N-blocks before the next
+M-block. Triton's `tl.dot` instead launches a **`GROUP_M` swizzle** so that the
+CTAs that are *concurrently resident* on the SMs compute a compact block of tiles
+that **share `A`-row / `B`-col operands in L2** rather than streaming the whole
+`B` panel between reuses. Round 8 named the residual 4096³ gap as pipeline-depth
+bound under the 99 KB cap; this round tests the **other** structural difference —
+launch order — and it is the bigger lever at 4096³.
+
+`MMA-GROUP` is an **emit-time knob**: `0` = OFF (byte-identical, no remap emitted);
+a positive value = the group height in M-blocks. When on, the prologue remaps the
+two id registers only — `linear = ctaid.y·gridN + ctaid.x`, `group =
+linear/(GROUP·gridN)`, within a group **column-major** (`tile_m` fastest) — so
+`rowBase`/`colBase` derive from the remapped ids and **nothing else changes** (no
+smem, no register, no schedule cost; only two `%r` regs and a handful of prologue
+`div`/`rem`). The **last group's height is clamped** to `min(gridM − first_m,
+GROUP)`: without the clamp a partial last group folds `tile_n` short of `gridN`
+and runs `tile_m` past `gridM−1`, computing some tiles twice and others never — a
+silent wrong/zero `C`. The clamp derivation is a constraint comment in
+`MMA-GRID-REMAP`, and it is **proven, not asserted**: `mma-gemm-check.f` checks the
+remap element-exact on a **non-square grid** (`gridM ≠ gridN`) and a **partial last
+group** — no rectangular *matrix* is needed because the remap operates on the launch
+*grid* (`gridM = M/BROWS`, `gridN = N/BN`), so a square matrix on a tile with
+`BN ≠ BROWS` already gives `gridM ≠ gridN`, keeping the integer-fill zero-tolerance
+argument verbatim.
+
+**Correctness, exhaustively, before any timing.** `mma-gemm-check.f` is
+**element-exact** with grouped-raster: **188 PASS** (every prior dtype/grid/wide-BN/
+±epi/stages-1–5 config, plus 9 grouped-raster configs) and **12** fail-closed
+negative guards, zero mismatches. The grouped configs span `GROUP ∈ {1,2,3,4,8}`
+on the `BN=256 M2` tile (`512³` grid **4×2**, non-square; `GROUP=3` → partial last
+group, the clamp catcher), the `BN=128 M2 4-warp` deep-ring tile (`512³` grid
+**8×4**, partial at `gridM=8`), the `BK=16 BN=256 M2` stages-3 tile, and a `BN=64
+M4` tile (`512³` grid **2×8**, the `gridN>gridM` asymmetry). `E-MMA-GROUP`
+fail-closes a **negative** height at emit time (the remap uses general
+`div.u32`/`rem.u32`, so any *positive* height is legal — no power-of-two
+constraint). Byte-identity holds at `MMA-GROUP=0` for **every** committed config
+(`mma-emit-diff.f`, empty diff base-vs-branch).
+
+### Result — a new 4096³ record; 2048³ and 512³ do not move
+
+Best-of-3, solo, pinned 13.3 ptxas (`PTXAS-STALE-SM121` absent), same-session FP32
+`MM` roof reproduces **8.2 / 13.2 / 15.0 / 13.8** (the 2411 MHz band). Swizzle OFF
+(`GROUP=0`) vs `GROUP ∈ {4,8}`; **bold = the grouped mover**:
+
+| TFLOP/s (tf32, best-of-3)                              |  512³ | 1024³ | 2048³ |  4096³ |
+|-------------------------------------------------------|------:|------:|------:|-------:|
+| `BN=256 M2` s2 (128×256, cmt 4096 winner) — OFF       |  4.18 | 18.89 | 26.44 |  30.41 |
+| `BN=256 M2` s2 — `GROUP=8`                             |  4.19 | 19.06 | 26.63 | **31.72** |
+| `BN=256 M2` **`BK=16` s3** (128×256, 24 KB/stage) — OFF |  4.51 | 20.94 | 28.72 |  27.21 |
+| `BN=256 M2` `BK=16` s3 — **`GROUP=8`**                 |  4.47 | 20.94 | 28.58 | **33.82** |
+| `BN=128 M2` 4-warp s4 (64×128) — OFF                   | 11.87 | 18.33 | 21.88 |  11.59 |
+| `BN=128 M2` 4-warp s4 — `GROUP=8`                      | 11.63 | 18.02 | 21.63 | **22.87** |
+| `BN=64 M4` 4-warp s2 (128×64, 512 winner) — OFF        | **14.04** | 24.33 | 29.35 | 13.77 |
+| `BN=64 M4` 4-warp s2 — `GROUP=4`                       | 13.07 | 21.17 | 25.57 |  26.82 |
+| Triton 3.8 `tl.dot` referee                            | 21.7  |  33.5 |  37.8 |  45.3  |
+
+**The headline (4096³).** The **new record is `BK=16 BN=256 M2` stages-3 with
+`GROUP=8` = 33.82 TF** (all three passes 33.69 / 33.70 / 33.82 — rock-solid),
+**+24.3 % over the same tile un-grouped (27.21)** and **+14.3 % over the Round-8
+committed 4096 winner (29.6, `BN=256 M2` s2)**, lifting the head-to-head
+**0.65× → 0.747× Triton 3.8** at 4096³. Grouped-raster is the lever, and it is a
+lever *specifically on the deeper pipeline*: at `GROUP=0` the `BK=16` stages-3 tile
+is only **27.21** — *worse* than the s2 tile's 30.41, so the deeper/smaller-`BK`
+ring alone does **not** pay — but grouped-raster restores the `B`-panel L2 reuse
+the deep ring was thrashing, and the two **combine** to clear everything. The
+committed 4096 winner tile itself (`BN=256 M2` s2) also moves, **30.41 → 31.72
+(+4.3 %)** — a real, smaller gain on the shallower tile.
+
+**Honest negatives.** **2048³ does not move**: the best grouped wide-N number is
+28.7 (`BK=16` s3, `GROUP=0`) and grouping is flat-to-slightly-down there (`BK=16`
+s3 `GROUP=8` = 28.58); all trail the committed 2048 winners (Round 9's 4-warp
+`M4` s1 static **32.6**, `BN=64 M4` s2 **30.2**), so **2048³ keeps its `BN=64`
+tile**. **512³ is neutral-to-slightly-negative** — the 512 winner (`BN=64 M4` s2)
+goes **14.04 → 13.07 (−7 %)** with grouping: at 512³ the grid is 8 CTAs (`gridN=8,
+gridM=2`), too few co-resident CTAs to reuse and the whole `B` fits L2 anyway, so
+the remap's `div`/`rem` head is a tiny *exposed* cost with no locality to earn —
+exactly the occupancy/launch-bound regime the dot predicted would be neutral. The
+`BN=128 M2` 4-warp deep tile (b) is **not** competitive: grouping *rescues* a
+pathological 4096³ `GROUP=0` number (10.5 → ~23 — the deep ring L2-thrashes the
+`128`-col `B` panel without grouping) but leaves the tile at ~23 TF, far below the
+winner, and it is slightly negative on 512–2048³.
+
+**Why 4096 and not 2048/512, structurally.** Grouped-raster earns L2 `B`-panel
+reuse only when (1) there are **enough co-resident CTAs** to fill a group's column
+and (2) the naive row-major working set actually **busts L2**. At 4096³ with
+`BN=256` the `B` panel is large and the row-major sweep evicts each `B`-column tile
+before it is reused; grouping walks `GROUP` M-blocks down a shared column first, so
+each `B[:,n]` tile is reused `GROUP` times in L2. At 2048³ the win is marginal (the
+panel is half the linear size) and at 512³ there is nothing to earn (`B` fits L2,
+8 CTAs). This is the **compute/L2-bound** regime the campaign has been climbing
+toward: the value earned is a **new 4096³ record and a 0.75× ratio** (from 0.65×);
+the value **not** earned is any 2048³/512³ movement.
+
+### Reproduction (exact)
+
+```
+# element-exact first (arch auto-probed sm_121a) — 188 PASS + 12 fail-closed, incl. 9 grouped configs (non-square grid + partial group):
+bin/hb --load tools/ptx/mma-gemm-check.f   # MGC-CFG-GROUP + MGC-GROUP-NEG rows
+# byte-identity: MMA-GROUP=0 must not move any committed config
+bin/hb --load tools/ptx/mma-emit-diff.f    # base vs branch -> empty diff (all configs)
+# throughput, best-of-3, solo, 13.3 pinned (swap the file's bottom entry to GEMMBENCH:GB-GROUP-SWEEP):
+bin/hb --load tools/ptx/gemm-bench.f       # GB-GROUP-SWEEP: OFF vs GROUP {4,8} x (a) BN=256 s2, (b) BN=128 4-warp s3/s4, (c) BK=16 BN=256 s3, + 512 retime
+```

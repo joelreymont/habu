@@ -74,6 +74,7 @@ require lib/ptx/cpp-slot.f
 -6106 constant E-MMA-BTF16                         \ transposed-Bs feed illegal (requested on a tf32 tile, or a non-4B BT row)
 -6107 constant E-MMA-BN                            \ output-tile width BN illegal (not a power of two, or below the legacy 64)
 -6108 constant E-MMA-REGS                          \ per-lane accumulators bust the 255-register file ceiling for this (BN,MFRAGS)
+-6109 constant E-MMA-GROUP                          \ grouped-raster group height illegal (negative M-block group height)
 
 255 constant MMA-REG-CEIL                       \ usable per-thread hardware register file (sm_121 255-register ceiling)
 32  constant MMA-REG-WORKSET                    \ non-accumulator live working set (measured 30 at BN256/MFRAGS2/128 accs -> 158 regs, rounded up)
@@ -212,6 +213,17 @@ variable MMA-DTYPE   0 MMA-DTYPE !            \ 0 = tf32 (default), 1 = fp16, 2 
 \ MMA-CHECK-BTF16 fails closed on a tf32 tile or a non-4B BT row) - the 2-byte half is transposed the same
 \ way for either; works on both warp grids, all MFRAGS, with/without the epilogue.
 variable MMA-BTF16   0 MMA-BTF16 !            \ 1 = fp16/bf16 transposed-Bs B feed (one b32 load per B register)
+
+\ GROUPED-RASTER CTA ORDERING (dot habu-grouped-raster-cta). Emit-time knob: 0 = OFF, byte-identical
+\ (naive row-major launch, no remap emitted); a POSITIVE value = the group height in M-blocks. When on,
+\ the prologue remaps the natural launch ids (ctaid.x = tile_n, ctaid.y = tile_m) Triton GROUP_M-style so
+\ CONCURRENTLY RESIDENT CTAs share A-row / B-col tiles in L2 - only the two id registers change (rowBase /
+\ colBase derive from them), no smem / register / schedule cost. linear = ctaid.y*gridN + ctaid.x; group =
+\ linear/(GROUP*gridN); within a group COLUMN-MAJOR (tile_m varies fastest); the last group clamps its
+\ height (MMA-GRID-REMAP, whose constraint comment proves the clamp). The remap arithmetic is general
+\ div.u32 / rem.u32 (NOT shift/mask), so GROUP is unrestricted to any positive integer - a power of two is
+\ not required. Only a NEGATIVE height is illegal (MMA-CHECK-GROUP throws E-MMA-GROUP); 0 is the OFF sentinel.
+variable MMA-GROUP   0 MMA-GROUP !            \ 0 = OFF (byte-identical); positive = grouped-raster group height in M-blocks
 : MMA-ESZ  ( -- n )  MMA-HALF? if 2 else 4 then ;    \ A/B element bytes (fp16/bf16 half vs tf32 f32 word)
 : MMA-EPC  ( -- n )  16 MMA-ESZ / ;                  \ A/B elements per 16-byte cp.async chunk (8 half / 4 f32)
 : MMA-MKD  ( -- n )  MMA-HALF? if 16 else MMA-MK then ;  \ mma.sync K/substep (m16n8k16 half / m16n8k8 tf32)
@@ -335,6 +347,16 @@ variable MMA-BTF16   0 MMA-BTF16 !            \ 1 = fp16/bf16 transposed-Bs B fe
 \ (BN=64 max is MFRAGS=4 -> 64 accs -> 96 est).
 : MMA-CHECK-REGS ( -- )
    MMA-ACCS MMA-REG-WORKSET +  MMA-REG-CEIL >  if E-MMA-REGS throw then ;
+
+\ fail closed on an illegal grouped-raster group height (dot habu-grouped-raster-cta). A group height is a
+\ COUNT of M-blocks, so it must be a positive integer; 0 is the OFF sentinel (no remap, byte-identical). A
+\ NEGATIVE height is meaningless and, since MMA-GRID-REMAP feeds GROUP into u32 device arithmetic
+\ (GROUP*gridN, min(.,GROUP)), a negative value reinterprets as a huge u32 that silently remaps every CTA to
+\ garbage tiles - so reject it at EMIT time. No power-of-two / divisibility constraint: the remap uses general
+\ div.u32 / rem.u32 (runtime divisors GROUP*gridN and the clamped group size, both proven >= 1), never
+\ shift/mask, so any positive GROUP is legal arithmetic.
+: MMA-CHECK-GROUP ( -- )
+   MMA-GROUP @ 0 < if E-MMA-GROUP throw then ;
 
 \ FRAGMENT-LOAD MODE (dot habu-mma-ldmatrix-fragment). The 16x8 A fragment and 8x8 B fragment
 \ can be fed to the tensor cores three ways; mode is fixed at emit time:
@@ -479,10 +501,55 @@ variable MMA-LMODE   0 MMA-LMODE !
 \ warp's row-block base is warp_row*(16*MFRAGS) (vs warp_row*16 at MFRAGS=1). rowBase is
 \ ctaid.y*BROWS, so MM-THREAD-SETUP (fixed *64) is replaced by MMA-THREAD-SETUP-WIDE.
 
+\ GROUPED-RASTER CTA remap (dot habu-grouped-raster-cta). Triton GROUP_M-style launch swizzle so
+\ CONCURRENTLY RESIDENT CTAs share A-row / B-col tiles in L2. In: %r6 = ctaid.x (natural tile_n),
+\ %r7 = ctaid.y (natural tile_m). Out: %r6 = tile_n, %r7 = tile_m - ONLY the two id regs change
+\ (rowBase/colBase derive from them downstream). Scratch %r12,%r13,%r20,%r21,%r22, all dead here
+\ (MMA-SETUP(-WIDE) re-loads %r24..r34 / %r40.. and the cp.async pipeline re-derives %r20..r23 each
+\ iteration, so nothing live crosses this remap). linear = ctaid.y*gridN + ctaid.x; group =
+\ linear/(GROUP*gridN); within a group COLUMN-MAJOR: tile_m varies fastest (down a column), tile_n slowest.
+\ CLAMP (constraint - an off-by-one here computes the WRONG TILE silently): the last group may be PARTIAL.
+\ first_m = group*GROUP can leave fewer than GROUP M-blocks in the group (gridM - first_m < GROUP). The
+\ within-group divisor/modulus MUST be that clamped height gsize = min(gridM - first_m, GROUP), NOT the raw
+\ GROUP: with the un-clamped GROUP the column index tile_n = local/GROUP folds SHORT of gridN and the row
+\ index tile_m = first_m + local%GROUP runs PAST gridM-1, so some (tile_m,tile_n) are computed twice and
+\ others never - a silent wrong/zero C the element-exact runs at a PARTIAL-group shape (mma-gemm-check)
+\ catch. gsize is proven >= 1: a launched CTA has linear < gridM*gridN, so group < gridM/GROUP, so
+\ first_m = group*GROUP < gridM, so gridM - first_m >= 1 - hence the runtime div.u32/rem.u32 by gsize (and
+\ by GROUP*gridN >= 1) never divide by zero. General div/rem, so GROUP need not be a power of two.
+: MMA-GRID-REMAP ( -- )
+   s" mov.u32 %r12,%nctaid.x;" PTX-L             \ gridN = gridDim.x (count of N-block columns)
+   s" mov.u32 %r13,%nctaid.y;" PTX-L             \ gridM = gridDim.y (count of M-block rows)
+   s" mad.lo.u32 %r20,%r7,%r12,%r6;" PTX-L       \ linear = ctaid.y*gridN + ctaid.x (row-major CTA index)
+   21 12 MMA-GROUP @ MMA-SCALE                    \ ipg = gridN*GROUP (CTAs per full group)
+   s" div.u32 %r22,%r20,%r21;" PTX-L             \ group = linear / ipg
+   22 22 MMA-GROUP @ MMA-SCALE                    \ first_m = group*GROUP (group's first M-block)
+   s" sub.u32 %r13,%r13,%r22;" PTX-L             \ gridM - first_m (M-blocks remaining in this group)
+   SB-RESET s" min.u32 %r13,%r13," SB-APPEND MMA-GROUP @ SB-U s" ;" SB-APPEND SB$ PTX-L   \ gsize = min(that, GROUP): the partial-group clamp
+   s" rem.u32 %r20,%r20,%r21;" PTX-L             \ local = linear % ipg (index within the group)
+   s" div.u32 %r6,%r20,%r13;" PTX-L              \ tile_n = local / gsize (column-major: n slowest)
+   s" rem.u32 %r21,%r20,%r13;" PTX-L             \ local % gsize (M-block within the group)
+   s" add.u32 %r7,%r22,%r21;" PTX-L ;            \ tile_m = first_m + (local % gsize)
+
+\ non-wide (BN=64 MFRAGS=1) prologue WITH the grouped-raster remap (dot habu-grouped-raster-cta). Mirrors
+\ MM-THREAD-SETUP but inserts MMA-GRID-REMAP between reading the natural ids and deriving the *64 bases, so
+\ the block computes the REMAPPED tile. The shared MM-THREAD-SETUP is monolithic (ids + bases in one word)
+\ and frozen (it feeds the FP32 MM / lower-mm goldens), so the non-wide grouped path emits its own prologue;
+\ MMA-BODY only reaches it when MMA-GROUP is on, and MM-THREAD-SETUP stays the byte-identical GROUP=0 path.
+: MMA-THREAD-SETUP-GROUP ( -- )
+   s" mov.u32 %r4,%tid.x;" PTX-L  s" mov.u32 %r5,%tid.y;" PTX-L
+   s" mov.u32 %r6,%ctaid.x;" PTX-L  s" mov.u32 %r7,%ctaid.y;" PTX-L
+   s" mad.lo.u32 %r8,%r5,16,%r4;" PTX-L
+   MMA-GRID-REMAP                               \ %r6 <- tile_n, %r7 <- tile_m
+   s" mul.lo.u32 %r9,%r7,64;" PTX-L             \ rowBase = tile_m * 64 (BROWS at MFRAGS=1)
+   s" mul.lo.u32 %r10,%r6,64;" PTX-L            \ colBase = tile_n * 64 (BN in the non-wide path)
+   s" mov.u32 %r11,SH;" PTX-L ;
+
 : MMA-THREAD-SETUP-WIDE ( -- )                 \ like MM-THREAD-SETUP but rowBase = ctaid.y*BROWS
    s" mov.u32 %r4,%tid.x;" PTX-L  s" mov.u32 %r5,%tid.y;" PTX-L
    s" mov.u32 %r6,%ctaid.x;" PTX-L  s" mov.u32 %r7,%ctaid.y;" PTX-L
    s" mad.lo.u32 %r8,%r5,16,%r4;" PTX-L
+   MMA-GROUP @ if MMA-GRID-REMAP then           \ grouped-raster: %r6 <- tile_n, %r7 <- tile_m (OFF = byte-identical)
    9 7 MMA-BROWS MMA-SCALE                      \ rowBase = ctaid.y * BROWS
    SB-RESET s" mul.lo.u32 %r10,%r6," SB-APPEND MMA-BN @ SB-U s" ;" SB-APPEND SB$ PTX-L   \ colBase = ctaid.x * BN (64 default)
    s" mov.u32 %r11,SH;" PTX-L ;
@@ -1201,12 +1268,13 @@ TRUSTED: MMA-STAGE-ISSUE ( n n -- cpp-pending<p> )   MMA-CP-STAGE 0 ;
    MMA-CHECK-WARPS
    MMA-CHECK-EPI
    MMA-CHECK-REGS                                                   \ per-lane accumulators under the 255-register ceiling
+   MMA-CHECK-GROUP                                                  \ grouped-raster group height positive (0 = off)
    MMA-WIDE? if                                                     \ WIDE path (MFRAGS>1 or BN>64); MMA-KTILE-DISPATCH picks wide + dtype
       MMA-THREAD-SETUP-WIDE  MMA-ACC-ZERO-WIDE  MMA-SETUP-WIDE
       MMA-STAGES @ 2 > if MMA-PIPE-KLOOP-MULTI else [: MMA-KTILE-DISPATCH ;] MMA-KLOOP then
       MMA-EPILOG @ if MMA-EPI-STORE else MMA-STORE-WIDE then  exit
    then
-   MM-THREAD-SETUP
+   MMA-GROUP @ if MMA-THREAD-SETUP-GROUP else MM-THREAD-SETUP then  \ grouped-raster non-wide prologue (OFF = byte-identical MM-THREAD-SETUP)
    MM-ACC-ZERO-EMIT
    MMA-SETUP
    MMA-STAGES @ 2 > if MMA-PIPE-KLOOP-MULTI else [: MMA-KTILE-DISPATCH ;] MMA-KLOOP then

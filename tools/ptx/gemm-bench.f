@@ -250,6 +250,22 @@ variable GB-BLKY                       \ block Y dim: 16 (256 thr, 8-warp) / 8 (
    4 MMA-WARPS !  8 GB-BLKY !  s" -- 4-WARP: " type
    GB-MMM-CFG-BN  8 MMA-WARPS !  16 GB-BLKY ! ;
 
+\ GROUPED-RASTER bench wrappers (dot habu-grouped-raster-cta): set MMA-GROUP (the CTA-order swizzle),
+\ delegate to the wide-BN / 4-warp bench config, restore GROUP=0. GROUP=0 emits byte-identically (no remap),
+\ so the OFF row of each crossing is the committed tile; a positive height re-emits with the prologue remap.
+: GB-MMM-CFG-BN-G ( n n n n n n n n -- ) {: bk pad stages dyn mode mfrags bn group :}    \ 8-warp wide-BN + grouped-raster
+   group MMA-GROUP !  s" -- GROUP=" type group GB-INT. s" : " type
+   bk pad stages dyn mode mfrags bn GB-MMM-CFG-BN
+   0 MMA-GROUP ! ;
+: GB-MMM-CFG-BN4-G ( n n n n n n n n -- ) {: bk pad stages dyn mode mfrags bn group :}   \ 4-warp wide-BN + grouped-raster
+   group MMA-GROUP !  s" -- GROUP=" type group GB-INT. s" : " type
+   bk pad stages dyn mode mfrags bn GB-MMM-CFG-BN4
+   0 MMA-GROUP ! ;
+: GB-MMM-CFGW4-G ( n n n n n n n -- ) {: bk pad stages dyn mode mfrags group :}          \ 4-warp BN=64 wide + grouped-raster (512^3 retime)
+   group MMA-GROUP !  s" -- GROUP=" type group GB-INT. s" : " type
+   bk pad stages dyn mode mfrags GB-MMM-CFGW4
+   0 MMA-GROUP ! ;
+
 \ the raised-BK / bank-swizzled configuration space (all element-exact per tools/ptx/mma-gemm-check.f)
 : GB-MMM-SWEEP ( -- )
    32 0 2 0 0 GB-MMM-CFG               \ committed default baseline (BK=32, stages=2, scalar+cvt) - A/B reference
@@ -413,6 +429,37 @@ public
    32 0 1 1 2 4 128 GB-MMM-CFG-BN       \ BN=128 MFRAGS=4 8-warp stages=1 dyn ldmA (BM256xBN128, 128 accs)
    32 0 2 1 2 1 256 GB-MMM-CFG-BN       \ BN=256 MFRAGS=1 8-warp stages=2 dyn ldmA (BM64xBN256, 64 accs)
    32 0 2 1 2 2 256 GB-MMM-CFG-BN ;     \ BN=256 MFRAGS=2 8-warp stages=2 dyn ldmA (BM128xBN256; Triton 4096-winner geometry, 128 accs, 96 KB)
+
+\ GROUPED-RASTER schedule sweep (dot habu-grouped-raster-cta, Round 10): the FP32 CUDA-core roof reference,
+\ then swizzle OFF (GROUP=0, byte-identical committed tile) vs GROUP {4,8} crossed with (a) the BN=256 M2
+\ 8-warp stages=2 tile (the current 4096 winner), (b) the BN=128 M2 4-warp DEEP stages 3/4 tile (24 KB/stage,
+\ the N-stage ring makes depth pay), (c) the BK=16 BN=256 M2 8-warp stages-3 tile (24 KB/stage), and the
+\ 512^3-winner 4-warp M4 stages=2 tile (expected neutral - occupancy-bound). Every tile is element-exact first
+\ (tools/ptx/mma-gemm-check.f MGC-CFG-GROUP, incl. a non-square grid + partial group). Best-of-3 at the
+\ sustained clock, run SOLO under the pinned 13.3 ptxas; MEASUREMENT decides the 4096/2048 winner. All four
+\ shapes run per config (so the 512^3 neutrality is read directly). Referee = Triton 3.8 tf32 45.3 at 4096^3.
+: GB-GROUP-SWEEP ( -- )
+   CUDA:OPEN? 0= if s" gemm-bench: libcuda unavailable -> SKIPPED (off-device)" type cr exit then
+   GB-MM                                \ FP32 CUDA-core roof reference (same-session clock anchor)
+   s" == (a) BN=256 M2 8-warp stages=2 dyn (128x256, current 4096 winner): swizzle OFF vs GROUP {4,8} ==" type cr
+   32 0 2 1 2 2 256 0 GB-MMM-CFG-BN-G   \ GROUP=0 OFF (byte-identical committed tile)
+   32 0 2 1 2 2 256 4 GB-MMM-CFG-BN-G   \ GROUP=4
+   32 0 2 1 2 2 256 8 GB-MMM-CFG-BN-G   \ GROUP=8
+   s" == (b) BN=128 M2 4-warp DEEP stages 3 & 4 (64x128, 24KB/stage): swizzle OFF vs GROUP {4,8} ==" type cr
+   32 0 3 1 2 2 128 0 GB-MMM-CFG-BN4-G  \ stages=3 OFF
+   32 0 3 1 2 2 128 4 GB-MMM-CFG-BN4-G  \ stages=3 GROUP=4
+   32 0 3 1 2 2 128 8 GB-MMM-CFG-BN4-G  \ stages=3 GROUP=8
+   32 0 4 1 2 2 128 0 GB-MMM-CFG-BN4-G  \ stages=4 OFF
+   32 0 4 1 2 2 128 4 GB-MMM-CFG-BN4-G  \ stages=4 GROUP=4
+   32 0 4 1 2 2 128 8 GB-MMM-CFG-BN4-G  \ stages=4 GROUP=8
+   s" == (c) BK=16 BN=256 M2 8-warp stages=3 dyn (128x256, 24KB/stage): swizzle OFF vs GROUP {4,8} ==" type cr
+   16 0 3 1 2 2 256 0 GB-MMM-CFG-BN-G   \ BK=16 stages=3 OFF
+   16 0 3 1 2 2 256 4 GB-MMM-CFG-BN-G   \ BK=16 stages=3 GROUP=4
+   16 0 3 1 2 2 256 8 GB-MMM-CFG-BN-G   \ BK=16 stages=3 GROUP=8
+   s" == 512^3-winner re-time: 4-warp M4 stages=2 dyn (128x64): swizzle OFF vs GROUP {4,8} (expected neutral) ==" type cr
+   32 8 2 1 2 4 0 GB-MMM-CFGW4-G        \ OFF
+   32 8 2 1 2 4 4 GB-MMM-CFGW4-G        \ GROUP=4
+   32 8 2 1 2 4 8 GB-MMM-CFGW4-G ;      \ GROUP=8
 
 
 : GB-ALL ( -- )

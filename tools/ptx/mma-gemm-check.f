@@ -495,6 +495,29 @@ variable MGC-TN
    0 MGC-MODE
    0 MMA-EPILOG !  32 MMA-BK !  0 MMA-PAD !  2 MMA-STAGES !  0 MMA-DYNSMEM !  1 MMA-MFRAGS !  8 MMA-WARPS !  0 MMA-DTYPE !  64 MMA-BN !  64 MGC-SA !  128 MGC-SB ! ;
 
+\ ============ GROUPED-RASTER config (dot habu-grouped-raster-cta): the CTA-order swizzle ============
+\ MMA-GROUP remaps (ctaid.x,ctaid.y) -> (tile_n,tile_m) Triton GROUP_M-style. The remap is a pure PERMUTATION
+\ of the output tiles, so element-exactness vs the host reference proves every CTA lands EXACTLY its tile -
+\ the fill / reference / compare and their integer zero-tolerance argument are the tf32 ones VERBATIM (the
+\ remap never touches matrix VALUES, only which CTA computes which tile). The bug it catches needs a NON-SQUARE
+\ grid (gridM != gridN) and a PARTIAL last group (gridM not a multiple of GROUP). NO rectangular MATRIX is
+\ required: the remap operates on the launch GRID (gridM = M/BROWS, gridN = N/BN), so a SQUARE matrix on a tile
+\ whose BN != BROWS ALREADY yields a non-square grid - which keeps the square fill/ref/compare and its
+\ zero-tolerance argument unchanged (a rectangular matrix would add M!=N to the fill but ZERO extra remap
+\ coverage, since the remap sees only gridM/gridN). The BN=256 MFRAGS=2 8-warp tile has BROWS=128, BN=256, so
+\ gridM = 2*gridN for any square n: n=256 -> grid 2x1, n=512 -> grid 4x2 (NON-SQUARE). Crossed with GROUP=3 the
+\ last group is PARTIAL (gridM=4: group0 rows 0-2 gsize 3, group1 row 3 gsize 1); the un-clamped divisor would
+\ map a CTA to tile_m=4 (out of range) and never compute tile (3,1), a wrong/zero C the 512^3 compare catches.
+\ Each GROUP re-emits (GROUP is a PTX literal). Restores GROUP=0 + the tf32 8-warp BN=64 default.
+: MGC-CFG-GROUP ( n n n n n n -- ) {: bk:n stages:n mfrags:n warps:n bn:n group:n :}   \ ldmatrix-A dyn tile + grouped-raster
+   bk MMA-BK !  0 MMA-PAD !  stages MMA-STAGES !  1 MMA-DYNSMEM !  mfrags MMA-MFRAGS !  warps MMA-WARPS !  bn MMA-BN !
+   group MMA-GROUP !
+   256 MGC-SA !  512 MGC-SB !                          \ 512^3 -> non-square grid (gridM=512/BROWS != gridN=512/BN); GROUP=3 -> partial last group
+   s" -- GROUPED-RASTER BN=" type bn .  s"  M" type mfrags .  s"  " type warps .  s" -warp BK=" type bk .  s"  stages=" type stages .  s"  GROUP=" type group .
+   s"  (512^3 grid gridM=" type 512 MMA-BROWS / .  s" x gridN=" type 512 bn / .  s" ):" type cr
+   2 MGC-MODE                                          \ ldmatrix-A; re-emits at this MMA-GROUP (GROUP is a PTX literal)
+   0 MMA-GROUP !  0 MMA-LMODE !  64 MMA-BN !  1 MMA-MFRAGS !  32 MMA-BK !  0 MMA-PAD !  2 MMA-STAGES !  0 MMA-DYNSMEM !  8 MMA-WARPS !  64 MGC-SA !  128 MGC-SB ! ;
+
 \ negative regression (dot habu-widen-bn-past): the BN geometry guard MMA-CHECK-BN must fail closed with
 \ E-MMA-BN on a non-power-of-two BN (drain/chunk shift+mask are exact only for a power of two) and on BN<64
 \ (the non-wide path is BN=64-hardwired), and emit cleanly for the legal wide widths 128/256. The transposed
@@ -539,6 +562,23 @@ variable MGC-TN
    if s" -- wide-BN epilogue smem legality: fail-closed when the BROWS*BN*4 staging busts 99 KB, emits when it fits (PASS)" type cr
    else s" mma-gemm-check: wide-BN epilogue smem legality regression FAILED" 1 die then ;
 
+\ negative+positive regression (dot habu-grouped-raster-cta): the grouped-raster guard MMA-CHECK-GROUP must
+\ fail closed with E-MMA-GROUP on a NEGATIVE group height (a meaningless count that reinterprets as a huge u32
+\ and silently remaps every CTA to garbage tiles), emit cleanly at GROUP=0 (the OFF sentinel), and emit cleanly
+\ for a positive height (any positive integer - the remap uses general div.u32/rem.u32, no power-of-two
+\ constraint). Device-independent (pure emit). Keeps a bad group height from ever reaching a launch.
+: MGC-GROUP-NEG ( -- )
+   -1 MMA-GROUP !  32 MMA-BK !  0 MMA-PAD !  2 MMA-STAGES !  0 MMA-DYNSMEM !  1 MMA-MFRAGS !  8 MMA-WARPS !  64 MMA-BN !  0 MMA-LMODE !
+   MGC-TRY-EMIT {: rneg:n :}                             \ negative height -> must throw E-MMA-GROUP
+   0 MMA-GROUP !  MGC-TRY-EMIT {: roff:n :}              \ 0 = OFF -> must emit (0)
+   4 MMA-GROUP !  256 MMA-BN !  2 MMA-MFRAGS !  1 MMA-DYNSMEM !  2 MMA-LMODE !
+   MGC-TRY-EMIT {: ron:n :}                              \ positive height on a wide tile -> must emit (0)
+   0 MMA-GROUP !  64 MMA-BN !  1 MMA-MFRAGS !  0 MMA-DYNSMEM !  0 MMA-LMODE !
+   s" -- grouped-raster legality: GROUP=-1->" type rneg . s"  GROUP=0->" type roff . s"  GROUP=4->" type ron . cr
+   rneg E-MMA-GROUP =  roff 0=  and  ron 0=  and
+   if s" -- grouped-raster legality: fail-closed on a negative group height, emits when off / positive (PASS)" type cr
+   else s" mma-gemm-check: grouped-raster legality regression FAILED" 1 die then ;
+
 public
 : MGC-ALL ( -- )
    MGC-SMEM-NEG                                        \ emitter fail-closed check (device-independent)
@@ -552,6 +592,7 @@ public
    MGC-BN-NEG                                          \ wide-BN geometry legality fail-closed (device-independent)
    MGC-REGS-NEG                                        \ register-budget legality fail-closed (device-independent)
    MGC-BN-EPI-NEG                                      \ wide-BN epilogue smem legality fail-closed (device-independent)
+   MGC-GROUP-NEG                                       \ grouped-raster group-height legality fail-closed (device-independent)
    CUDA:OPEN? 0= if s" mma-gemm-check: libcuda unavailable -> SKIPPED (off-device)" type cr exit then
    s" == TF32 mma.sync GEMM device-correctness (element-exact vs host) ==" type cr
    0 MGC-MODE  1 MGC-MODE  2 MGC-MODE
@@ -650,7 +691,24 @@ public
    32 0 2 1 2 8 1 1 128 MGC-CFG-BN-H                   \ fp16 BN=128 MFRAGS=2 8-warp stages=2 dyn + EPILOGUE (128^3/256^3)
    32 0 2 1 2 8 0 2 128 MGC-CFG-BN-H                   \ bf16 BN=128 MFRAGS=2 8-warp stages=2 dyn (128^3/256^3)
    32 0 2 1 2 8 0 2 256 MGC-CFG-BN-H                   \ bf16 BN=256 MFRAGS=2 8-warp stages=2 dyn (256^3/512^3)
-   0 MMA-LMODE !  0 MMA-DTYPE !  0 MMA-BTF16 !  64 MMA-BN ! ;   \ restore the committed defaults (tf32 scalar+cvt, BN=64)
+   s" == GROUPED-RASTER CTA order (dot habu-grouped-raster-cta, non-square grid + partial group, element-exact) ==" type cr
+   \ (a) BN=256 M2 8-warp stages=2 (the 4096-winner geometry + Round-10 timing tile a); 512^3 grid 4x2 (non-square).
+   \ GROUP spans the arithmetic: 1 identity, 2 full groups, 3 PARTIAL last group (the clamp catcher), 4 single full, 8 clamped.
+   32 2 2 8 256 1 MGC-CFG-GROUP
+   32 2 2 8 256 2 MGC-CFG-GROUP
+   32 2 2 8 256 3 MGC-CFG-GROUP                        \ 512^3 grid 4x2, GROUP=3: group1 (row 3) PARTIAL gsize=1 - un-clamped would map tile_m=4 (OOB) + skip (3,1)
+   32 2 2 8 256 4 MGC-CFG-GROUP
+   32 2 2 8 256 8 MGC-CFG-GROUP
+   \ (b) BN=128 M2 4-warp DEEP stages 3 & 4 (Round-10 timing tile b; wide-BN + 4-warp + N-stage ring): 512^3 grid 8x4.
+   32 3 2 4 128 3 MGC-CFG-GROUP                        \ GROUP=3, gridM=8: groups 0-2 / 3-5 full, 6-7 PARTIAL gsize=2
+   32 4 2 4 128 4 MGC-CFG-GROUP
+   \ (c) BK=16 BN=256 M2 8-warp stages 3 (Round-10 timing tile c; BK=16 knob + wide-BN deep ring): 512^3 grid 4x2.
+   \ GROUP=8 is the Round-10 4096^3 WINNER, so both heights it is timed at are proven element-exact here.
+   16 3 2 8 256 4 MGC-CFG-GROUP
+   16 3 2 8 256 8 MGC-CFG-GROUP
+   \ 512^3-retime tile: BN=64 M4 8-warp stages=2 (wide, gridN>gridM asymmetry): 512^3 grid 2x8, GROUP=3 partial at gridM=2.
+   32 2 4 8 64 3 MGC-CFG-GROUP
+   0 MMA-LMODE !  0 MMA-DTYPE !  0 MMA-BTF16 !  0 MMA-GROUP !  64 MMA-BN ! ;   \ restore the committed defaults (tf32 scalar+cvt, BN=64)
 
 ;package
 
