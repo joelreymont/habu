@@ -750,7 +750,6 @@ that source is explicitly certified; they are not stale-checked by the default
 | CPR-HOOK | `ptr u8 n -- n` | Bootstrap recovery fixture installs a test-only certifying hook while deliberately leaving compile preflight unarmed; dynamic hook installation is not expressible in checked source. | `tools/bootstrap.sh` | test/compile-preflight-recovery.f | 2026-07-17 | test-metaprog | cap:checker-hook-identity |
 | CHECK! | `ptr u8 n -- n` | Check driver models the engine checker entrypoint so its fail-closed source hook compiles checked. | `tools/check-test.f`, `test/run.f` | tools/check-core.f | 2026-07-12 | prim-axiom | habu-primitive-effect-axiom-1119f176 |
 | TYPE-RESERVED? | `ptr u8 n -- bool` | Check driver models the checker-owned reserved-type predicate used while validating generated source dependencies. | `tools/check-test.f`, `test/run.f` | tools/check-core.f | 2026-07-12 | prim-axiom | habu-primitive-effect-axiom-1119f176 |
-| CHECKER-DEFTYPE | `ptr u8 n --` | Check driver models the checker primitive that publishes a parsed nominal type in the child validation scope. | `tools/check-test.f`, `test/run.f` | tools/check-core.f | 2026-07-12 | prim-axiom | habu-primitive-effect-axiom-1119f176 |
 | CHECKER-DEFLINEAR | `ptr u8 n --` | Check driver models the checker primitive that publishes parsed linearity metadata in the child validation scope. | `tools/check-test.f`, `test/run.f` | tools/check-core.f | 2026-07-12 | prim-axiom | habu-primitive-effect-axiom-1119f176 |
 | CHECKER-DEFRECORD | `ptr u8 n ptr u8 n --` | Check driver models the checker primitive that publishes one parsed record definition and its source descriptor. | `tools/check-test.f`, `test/run.f` | tools/check-core.f | 2026-07-12 | prim-axiom | habu-primitive-effect-axiom-1119f176 |
 | CHECKER-SCOPE-START | `--` | Check driver opens the checker transaction that isolates generated dependency effects from the parent session. | `tools/check-test.f`, `test/run.f` | tools/check-core.f | 2026-07-12 | prim-axiom | habu-primitive-effect-axiom-1119f176 |
@@ -1482,7 +1481,6 @@ prim - checker-undefine - pe-ptr-u8 pe-in pe-n pe-in
 prim - checker-undefine-guard - pe-ptr-u8 pe-in pe-n pe-in
 prim - checker-export - pe-ptr-u8 pe-in pe-n pe-in
 prim - checker-package-active? - pe-f pe-out
-prim - checker-deftype - pe-ptr-u8 pe-in pe-n pe-in
 prim - checker-deflinear - pe-ptr-u8 pe-in pe-n pe-in
 prim - checker-defrecord - pe-ptr-u8 pe-in pe-n pe-in pe-ptr-u8 pe-in pe-n pe-in
 prim - checker-deffamily - pe-ptr-u8 pe-in pe-n pe-in pe-ptr-u8 pe-in pe-n pe-in

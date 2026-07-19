@@ -8,9 +8,10 @@
 \ >NAME ( n -- NAME ) and NAME>N ( NAME -- n ), matching the built-in role
 \ pattern (>IDX / IDX>N). A nominal is one cell wide, distinct from n and from
 \ every other nominal, with no widening; the converters are the only way across
-\ the boundary and the checker never collapses a nominal to n. The builder emits
-\ each converter's name and signature; the checker's source recorder
-\ (verify-source.f RECORD-DEFTYPE) registers their trust signatures.
+\ the boundary and the checker never collapses a nominal to n. The builder takes
+\ the UPPER-CASE surface name (the converter word spelling) and the lowercase
+\ family tail (the signature type) separately; the checker's source recorder
+\ (verify-source.f RECORD-NOMINAL) registers their trust signatures.
 $200 constant DTC-CAP
 create DTC-BUF DTC-CAP allot
 variable DTC-U
@@ -22,7 +23,7 @@ variable DTC-SIG-U
 : DTC-CLEAR ( -- ) 0 DTC-U ! ;
 
 : DTC+ ( ptr u8 n -- ) {: a:ptr u:n :}
-   DTC-U @ u + DTC-CAP > IF s" deftype: converter text too long" 70 die THEN
+   DTC-U @ u + DTC-CAP > IF s" nominal: converter text too long" 70 die THEN
    0 BEGIN dup u < WHILE
       dup a + c@  DTC-BUF DTC-U @ + c!
       DTC-U @ 1 + DTC-U !  1+
@@ -48,15 +49,15 @@ variable DTC-SIG-U
    DTC-U @ DTC-SIG-OFF @ - DTC-SIG-U !
    s"  ) ;" DTC+ ;
 
-: DTC-BUILD-IN ( ptr u8 n -- ) {: name:ptr nameu:n :}
+: DTC-BUILD-IN ( ptr u8 n ptr u8 n -- ) {: sa:ptr su:n ta:ptr tu:n :}
    DTC-BEGIN
-   s" >" DTC+ name nameu DTC+ DTC-NAME-END
-   s" n -- " DTC+ name nameu DTC+ DTC-SIG-END ;
+   s" >" DTC+ sa su DTC+ DTC-NAME-END
+   s" n -- " DTC+ ta tu DTC+ DTC-SIG-END ;
 
-: DTC-BUILD-OUT ( ptr u8 n -- ) {: name:ptr nameu:n :}
+: DTC-BUILD-OUT ( ptr u8 n ptr u8 n -- ) {: sa:ptr su:n ta:ptr tu:n :}
    DTC-BEGIN
-   name nameu DTC+ s" >N" DTC+ DTC-NAME-END
-   name nameu DTC+ s"  -- n" DTC+ DTC-SIG-END ;
+   sa su DTC+ s" >N" DTC+ DTC-NAME-END
+   ta tu DTC+ s"  -- n" DTC+ DTC-SIG-END ;
 
 \ DEFLINEAR / VALUE-RECORD are top-level-interpret-only, like the sumtype.f
 \ block openers: executing one parses the live input stream and mutates the

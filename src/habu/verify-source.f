@@ -338,11 +338,11 @@ TRUSTED: TRUST-SIGNATURE ( ptr u8 n ptr u8 n -- )
 : CAST-TRUST ( -- )
    DTC-NAME$ DTC-SIG$ TRUST-SIGNATURE ;
 
-: RECORD-CAST-IN ( ptr u8 n -- )
+: RECORD-CAST-IN ( ptr u8 n ptr u8 n -- )
    DTC-BUILD-IN
    CAST-TRUST ;
 
-: RECORD-CAST-OUT ( ptr u8 n -- )
+: RECORD-CAST-OUT ( ptr u8 n ptr u8 n -- )
    DTC-BUILD-OUT
    CAST-TRUST ;
 
@@ -422,12 +422,35 @@ TRUSTED: SIG-RAW-MODE! ( n -- ) SIG-RAW-DEFINER! ;
 : RECORD-END-PACKAGE ( -- )
    CHECKER-END-PACKAGE ;
 
-: RECORD-DEFTYPE ( -- )
+\ NOMINAL: NAME declares a value nominal (lib/type/value-nominal.f): a
+\ package-scoped arity-0 type family whose lowercase tail is the surface name
+\ folded (SERIAL -> serial) and whose converter pair >NAME ( n -- tail ) /
+\ NAME>N ( tail -- n ) keeps a plain n from standing in for the nominal. The
+\ static recorder mirrors the runtime mint: register the family, then trust the
+\ two derived converter signatures so later definitions that use the tail and
+\ the converters verify without loading value-nominal.f.
+$40 constant NOM-TAIL-CAP
+create NOM-TAIL-BUF NOM-TAIL-CAP allot
+variable NOM-TAIL-U
+
+\ MANGLE ( ptr u8 n -- ptr u8 n ) folds the UPPER-CASE surface name to the
+\ lowercase family tail, matching value-nominal.f's ASCII-LOWER fold.
+: MANGLE ( ptr u8 n -- ptr u8 n ) {: a:ptr u:n :}
+   u NOM-TAIL-CAP > IF s" verify-source: nominal name too long" 74 die THEN
+   0 NOM-TAIL-U !
+   0 BEGIN dup u < WHILE
+      dup a + c@ FOLD-C  NOM-TAIL-BUF NOM-TAIL-U @ + c!
+      NOM-TAIL-U @ 1 + NOM-TAIL-U !  1+
+   REPEAT drop
+   NOM-TAIL-BUF NOM-TAIL-U @ ;
+
+: RECORD-NOMINAL ( -- )
    NEXT-SCAN {: name:ptr nameu:n :}
-   nameu 0= IF s" verify-source: missing deftype name" 74 die THEN
-   name nameu CHECKER-DEFTYPE
-   name nameu RECORD-CAST-IN
-   name nameu RECORD-CAST-OUT ;
+   nameu 0= IF s" verify-source: missing nominal name" 74 die THEN
+   name nameu MANGLE {: tail:ptr tailu:n :}
+   tail tailu s" 0" CHECKER-DEFFAMILY
+   name nameu tail tailu RECORD-CAST-IN
+   name nameu tail tailu RECORD-CAST-OUT ;
 
 : RECORD-DEFLINEAR ( -- )
    NEXT-SCAN {: name:ptr nameu:n :}
@@ -649,7 +672,7 @@ variable STG-START
    a u s" public" STR=CI IF RECORD-PUBLIC 0 0= EXIT THEN
    a u s" private" STR=CI IF RECORD-PRIVATE 0 0= EXIT THEN
    a u s" ;package" STR=CI IF RECORD-END-PACKAGE 0 0= EXIT THEN
-   a u s" deftype" STR=CI IF RECORD-DEFTYPE 0 0= EXIT THEN
+   a u s" nominal:" STR=CI IF RECORD-NOMINAL 0 0= EXIT THEN
    a u s" deflinear" STR=CI IF RECORD-DEFLINEAR 0 0= EXIT THEN
    a u s" value-record" STR=CI IF RECORD-VALUE-RECORD 0 0= EXIT THEN
    a u s" begin-structure" STR=CI IF RECORD-STRUCTURE 0 0= EXIT THEN

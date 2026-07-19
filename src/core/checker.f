@@ -1367,7 +1367,7 @@ variable LBUF-PEND-U   0 LBUF-PEND-U !
 \ value (a T-PARAM) and a LINEAR con, and ADMITS a plain scalar/role con, a plain
 \ pointer, and an atom/xt: the engine's own codegen legitimately raw-stores role
 \ cons (`LBL RT-LPOS !`) and xts (defer/hook cells like `cold-hook!`). Fencing
-\ nominal ROLE atoms (idx/len/DEFTYPE) out of raw storage too needs that role/xt
+\ nominal ROLE atoms (idx/len) out of raw storage too needs that role/xt
 \ scratch migrated to typed cells first, so it is a documented follow-on; this
 \ dot closes the arity-0 nominal-family / layout mint, the epic's forgery target.
 : RAW-OK? ( n -- bool )   \ may a RAW cell absorb resolved `term`? (meets var/pointee RAW)
@@ -2554,9 +2554,6 @@ variable SIG-RAW-MODE   0 SIG-RAW-MODE !
    a u FRESH-ATOM-TOK? IF RES-TRUE EXIT THEN
    a u TYPE-VAR-TOK? IF RES-TRUE EXIT THEN
    a u TYPE-BAD-CHAR? ;
-: CT-ADD-NOMINAL ( ptr u8 n -- ) {: a:ptr u:n :}
-   a u TYPE-RESERVED? IF s" checker: bad or duplicate signature type" 70 die THEN
-   a u CTN @ CT-ROLE 64 CS-NONE CT-SET ;
 
 : CT-ADD-LINEAR ( ptr u8 n -- ) {: a:ptr u:n :}
    a u TYPE-RESERVED? IF s" checker: bad or duplicate signature type" 70 die THEN
@@ -4809,7 +4806,6 @@ PRIM: CHECKER-UNDEFINE PE-PTR-U8 PE-IN PE-N PE-IN PRIM;
 PRIM: CHECKER-UNDEFINE-GUARD PE-PTR-U8 PE-IN PE-N PE-IN PRIM;
 PRIM: CHECKER-EXPORT PE-PTR-U8 PE-IN PE-N PE-IN PRIM;
 PRIM: CHECKER-PACKAGE-ACTIVE? PE-F PE-OUT PRIM;
-PRIM: CHECKER-DEFTYPE PE-PTR-U8 PE-IN PE-N PE-IN PRIM;
 PRIM: CHECKER-DEFLINEAR PE-PTR-U8 PE-IN PE-N PE-IN PRIM;
 PRIM: CHECKER-DEFRECORD PE-PTR-U8 PE-IN PE-N PE-IN PE-PTR-U8 PE-IN PE-N PE-IN PRIM;
 PRIM: CHECKER-DEFFAMILY PE-PTR-U8 PE-IN PE-N PE-IN PE-PTR-U8 PE-IN PE-N PE-IN PRIM;
@@ -5818,9 +5814,6 @@ REG-EXT-DEFAULTS
    name nameu USIG-DELETE
    name nameu DFER-DELETE
    name nameu 0 NORET-ADD ;
-
-: CHECKER-DEFTYPE ( ptr u8 n -- )
-   CT-ADD-NOMINAL ;
 
 : CHECKER-DEFLINEAR ( ptr u8 n -- )
    CT-ADD-LINEAR ;

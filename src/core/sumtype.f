@@ -159,7 +159,7 @@ variable TDECL-FAM-REG   \ family id registered by the LAST successful sum (-1 =
    u 1 = IF RES-TRUE EXIT THEN                    \ a..z incl n/f/r type letters
    a u VREC-FIND IF drop RES-TRUE EXIT THEN drop
    a u s" field" CORE-STR= IF RES-TRUE EXIT THEN
-   a u CON-OF 0 <> IF RES-TRUE EXIT THEN          \ builtin + deftype CT names
+   a u CON-OF 0 <> IF RES-TRUE EXIT THEN          \ builtin + declared CT names
    a u ATOM-TOK? IF RES-TRUE EXIT THEN
    a u FRESH-ATOM-TOK? IF RES-TRUE EXIT THEN
    a u TDECL-CONTROL? IF RES-TRUE EXIT THEN

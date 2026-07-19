@@ -565,28 +565,28 @@ create CAE-LF-BYTE 10 c,
    CAE-ERR lerru CAE-WORD-LARGE$ CONTAINS? TTRUE ;
 
 \ ---- TFAM 5: all-errors support-parity fixtures (census gap4) ----------------
-\ verify-source's full re-drive replays deftype/deflinear/value-record before
+\ verify-source's full re-drive replays nominal:/deflinear/value-record before
 \ later definitions; per-def all-errors redrive must collect the same support
 \ or a good definition whose signature references the declared type is spuriously
 \ rejected. Each fixture pairs a good type-using def with a genuinely-bad def:
 \ the bad def forces per-def mode; before the fix the good def is ALSO reported.
 
-: CAE-DEFTYPE-SOURCE$ ( -- ptr u8 n )
+: CAE-NOMINAL-SOURCE$ ( -- ptr u8 n )
    SB-RESET
-   s" deftype cae-dt" SB-APPEND CAE-LF
+   s" NOMINAL: CAE-DT" SB-APPEND CAE-LF
    s" : CAE-DT-USE ( cae-dt -- cae-dt ) ;" SB-APPEND CAE-LF
    s" : CAE-DT-BAD ( i64 -- i64 ) dup ;" SB-APPEND CAE-LF
    SB$ ;
 
-package CAE-PKG-DEFTYPE
+package CAE-PKG-NOMINAL
 
 private
 
 : SOURCE$ ( -- ptr u8 n )
    SB-RESET
    s" package CAE-DTP" SB-APPEND CAE-LF
-   s" deftype cae-pkg-id" SB-APPEND CAE-LF
-   s" : CAE-PKG-GOOD ( n -- n ) >cae-pkg-id cae-pkg-id>N ;" SB-APPEND CAE-LF
+   s" NOMINAL: CAE-PKG-ID" SB-APPEND CAE-LF
+   s" : CAE-PKG-GOOD ( n -- n ) >CAE-PKG-ID CAE-PKG-ID>N ;" SB-APPEND CAE-LF
    s" : CAE-PKG-BAD ( i64 -- i64 ) dup ;" SB-APPEND CAE-LF
    s" ;package" SB-APPEND CAE-LF
    SB$ ;
@@ -658,16 +658,16 @@ private
    CAE-CASE$ T-LABEL
    CAE-ERR erru 10 COUNT-CHAR 1 T= ;
 
-: CAE-TEST-DEFTYPE-SUPPORT ( -- )
-   s" deftype-support" CAE-CASE!
-   CAE-DEFTYPE-SOURCE$ s" cae-dt-use" s" cae-dt-bad" CAE-CHECK-SUPPORT-PARITY ;
+: CAE-TEST-NOMINAL-SUPPORT ( -- )
+   s" nominal-support" CAE-CASE!
+   CAE-NOMINAL-SOURCE$ s" cae-dt-use" s" cae-dt-bad" CAE-CHECK-SUPPORT-PARITY ;
 
-package CAE-PKG-DEFTYPE
+package CAE-PKG-NOMINAL
 
 public
 
 : TEST ( -- )
-   s" package-deftype-support" CAE-CASE!
+   s" package-nominal-support" CAE-CASE!
    SOURCE$
    s" cae-pkg-good" s" cae-pkg-bad" CAE-CHECK-SUPPORT-PARITY ;
 
@@ -797,7 +797,7 @@ public
 \ rejects. This is the hook the check source-list redrive drives per file.
 : CAE-XSUP-SUP$ ( -- ptr u8 n )
    SB-RESET
-   s" deftype cae-xt" SB-APPEND CAE-LF
+   s" NOMINAL: CAE-XT" SB-APPEND CAE-LF
    s" : CAE-XT-ID ( cae-xt -- cae-xt ) ;" SB-APPEND CAE-LF
    SB$ ;
 
@@ -827,8 +827,8 @@ public
    s" base-two-errors" [: CAE-TEST-BASE ;] CAE-CASE-RUN
    s" cascade-no-phantom" [: CAE-TEST-CASCADE ;] CAE-CASE-RUN
    s" all-uncheckable" [: CAE-TEST-UNCHECKABLE-FAILS ;] CAE-CASE-RUN
-   s" deftype-support" [: CAE-TEST-DEFTYPE-SUPPORT ;] CAE-CASE-RUN
-   s" package-deftype-support" [: CAE-PKG-DEFTYPE:TEST ;] CAE-CASE-RUN
+   s" nominal-support" [: CAE-TEST-NOMINAL-SUPPORT ;] CAE-CASE-RUN
+   s" package-nominal-support" [: CAE-PKG-NOMINAL:TEST ;] CAE-CASE-RUN
    s" deflinear-support" [: CAE-TEST-DEFLINEAR-SUPPORT ;] CAE-CASE-RUN
    s" value-record-support" [: CAE-TEST-VREC-SUPPORT ;] CAE-CASE-RUN
    s" const-layout-narrow" [: CAE-TEST-CONST-LAYOUT ;] CAE-CASE-RUN

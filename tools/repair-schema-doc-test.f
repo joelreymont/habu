@@ -124,7 +124,7 @@ create RSD-CHK-BUF RSD-EMIT-CAP allot
    s" LLM.md" RSD-LLM-BUF RSD-DOC-CAP READ-ALL RSD-LLM-U ! ;
 
 \ Emitter sources: render.f owns REPAIR-CLASS (data-stack/return/signature/dead
-\ classes), check-core.f owns CHK-TYPE-JSON (fix_nominal_type, the deftype path).
+\ classes), check-core.f owns CHK-TYPE-JSON (fix_nominal_type, the nominal: path).
 : RSD-LOAD-EMITTERS ( -- )
    s" src/core/render.f" RSD-REND-BUF RSD-EMIT-CAP READ-ALL RSD-REND-U !
    s" tools/check-core.f" RSD-CHK-BUF RSD-EMIT-CAP READ-ALL RSD-CHK-U ! ;

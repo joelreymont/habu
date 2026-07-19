@@ -398,22 +398,37 @@ variable CKT-PAR-U
 
 : CKT-NOM-SCAN-BODY$ ( -- ptr u8 n )
    SB-RESET
-   s" : DEFTYPE ( -- ) ;" SB-APPEND
+   s" : NOMINAL: ( -- ) ;" SB-APPEND
    $0a SB-APPEND-C
-   s" : CKT-NOM-BODY ( -- ) DEFTYPE ( -- ) ;" SB-APPEND
+   s" : CKT-NOM-BODY ( -- ) NOMINAL: ( -- ) ;" SB-APPEND
    $0a SB-APPEND-C
    s" TRUSTED: CKT-NOM-TRUSTED ( -- ) DEFLINEAR ( -- ) ;" SB-APPEND
    SB$ ;
 
+\ A source that DECLARES a value nominal with NOMINAL: and USES both its type
+\ (in signatures) and its derived converters >NAME / NAME>N (in bodies). The
+\ preverify pass statically verifies it: verify-source's RECORD-NOMINAL folds
+\ CKT-WIDGET to the family tail ckt-widget, registers the arity-0 family, and
+\ trusts the converter pair, so every definition resolves without loading
+\ lib/type/value-nominal.f. This is the static-scan capability stage B moved
+\ off the retired CHECKER-DEFTYPE path onto the family surface.
+: CKT-NOM-PREVERIFY$ ( -- ptr u8 n )
+   SB-RESET
+   s" NOMINAL: CKT-WIDGET" SB-APPEND $0a SB-APPEND-C
+   s" : CKT-WIDGET-RT ( ckt-widget -- ckt-widget ) ;" SB-APPEND $0a SB-APPEND-C
+   s" : CKT-WIDGET-MK ( n -- ckt-widget ) >CKT-WIDGET ;" SB-APPEND $0a SB-APPEND-C
+   s" : CKT-WIDGET-UN ( ckt-widget -- n ) CKT-WIDGET>N ;" SB-APPEND
+   SB$ ;
+
 \ Nominal-declarer sources for the check CLI's package-scoping contract. These
 \ feed a live child engine (CHK-RUN-HB) and are checked end to end, so they use
-\ DEFLINEAR, the nominal declarer whose interpret word survives and which the
-\ check tool's static scanner and preverify path both understand. (The retired
-\ DEFTYPE word can no longer run in the child; the NOMINAL: surface cannot yet
-\ traverse the check tool's static/preverify path — that lands in stage B, when
-\ the family substrate is taught to check-core.f/verify-source.f.) A DEFLINEAR
-\ type is one linear cell whose value moves exactly once, so bodies pass it
-\ through by identity rather than dropping or binding it.
+\ DEFLINEAR: its interpret word is baked into the engine, so it runs in the
+\ child with no require, while a NOMINAL: source would need
+\ `require lib/type/value-nominal.f` for the child to define the declarer. The
+\ check tool's static scanner and preverify path understand both DEFLINEAR and
+\ (since stage B) the NOMINAL: family surface. A DEFLINEAR type is one linear
+\ cell whose value moves exactly once, so bodies pass it through by identity
+\ rather than dropping or binding it.
 package CKT-PKG-LINEAR
 
 private
@@ -936,6 +951,13 @@ create CKT-BIG $2000 allot   variable CKT-BIG-U
    CKT-LIST$ CKT-NOM-SCAN-BODY$ WRITE-ALL
    CKT-SCAN-NOMINAL 0 T= ;
 
+: CKT-TEST-NOMINAL-PREVERIFY ( -- )
+   CKT-BAD$ CKT-NOM-PREVERIFY$ WRITE-ALL
+   CKT-BAD$ CKT-DIRECT-PREVERIFY-PATH 0 T=
+   {: outu:n erru:n :}
+   outu 0 T=
+   erru 0 T= ;
+
 package CKT-PKG-LINEAR
 
 public
@@ -1265,6 +1287,7 @@ variable CKTP-DOC-U
    s" check/value-record-noend" [: CKT-TEST-VREC-NOEND ;] CKT-RUN
    s" check/enum-noend-cli" [: CKT-TEST-ENUM-NOEND-CLI ;] CKT-RUN
    s" check/nominal-scan-top-level" [: CKT-TEST-NOMINAL-SCAN-TOP-LEVEL ;] CKT-RUN
+   s" check/nominal-preverify" [: CKT-TEST-NOMINAL-PREVERIFY ;] CKT-RUN
    s" check/package-linear-good" [: CKT-PKG-LINEAR:GOOD ;] CKT-RUN
    s" check/package-linear-cross" [: CKT-PKG-LINEAR:CROSS ;] CKT-RUN
    s" check/package-linear-global" [: CKT-PKG-LINEAR:GLOBAL ;] CKT-RUN

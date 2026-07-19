@@ -24,7 +24,6 @@ s" CHECK!" s" ptr u8 n -- n" TRUST
 LOWER-CERT-HOOK:INSTALL
 ' CHK-CHECK-HOOK set-check
 s" TYPE-RESERVED?" s" ptr u8 n -- bool" TRUST
-s" CHECKER-DEFTYPE" s" ptr u8 n --" TRUST
 s" CHECKER-DEFLINEAR" s" ptr u8 n --" TRUST
 s" CHECKER-DEFRECORD" s" ptr u8 n ptr u8 n --" TRUST
 s" CHECKER-SCOPE-START" s" --" TRUST
@@ -638,18 +637,31 @@ variable CHK-ALL-RC
    CHK-E-CHECK CHK-THROW ;
 
 : CHK-NOM-FAIL ( n n -- )
-   s" deftype" CHK-TYPE-FAIL ;
+   s" nominal:" CHK-TYPE-FAIL ;
 
 : CHK-LIN-FAIL ( n n -- )
    s" deflinear" CHK-TYPE-FAIL ;
 
+\ NOMINAL: NAME folds the UPPER-CASE surface name to the lowercase family tail
+\ (SERIAL -> serial), so the reserved-name check and the CHECKER-DEFFAMILY mint
+\ both run on the tail, matching lib/type/value-nominal.f. The bad-name
+\ diagnostic still reports the surface token the user wrote.
+128 constant CHK-NOM-TAIL-CAP
+create CHK-NOM-TAIL-BUF CHK-NOM-TAIL-CAP allot
+
+: CHK-NOM-TAIL$ ( n -- ptr u8 n ) {: name:n :}
+   name LEX-TOK {: a:ptr u:n :}
+   u CHK-NOM-TAIL-CAP > IF E-FS-CAPACITY throw THEN
+   a u CHK-NOM-TAIL-BUF FOLD-TO
+   CHK-NOM-TAIL-BUF u ;
+
 : CHK-NOM-NAME-BAD? ( n -- bool ) {: name:n :}
    name CHK-WORD-TOK? 0= IF LINT-TRUE exit THEN
-   name LEX-TOK TYPE-RESERVED? ;
+   name CHK-NOM-TAIL$ TYPE-RESERVED? ;
 
 : CHK-NOM-REGISTER ( n n -- ) {: def:n name:n :}
    name CHK-NOM-NAME-BAD? IF def name CHK-NOM-FAIL THEN
-   name LEX-TOK CHECKER-DEFTYPE ;
+   name CHK-NOM-TAIL$ s" 0" CHECKER-DEFFAMILY ;
 
 : CHK-LIN-REGISTER ( n n -- ) {: def:n name:n :}
    name CHK-NOM-NAME-BAD? IF def name CHK-LIN-FAIL THEN
@@ -857,7 +869,7 @@ variable CHK-TFAM-NAME-I
 : CHK-NOM-STEP ( n -- n ) {: k:n :}
    k CHK-DEF-OPENER? if k 1+ CHK-SKIP-DEF exit then
    k CHK-PKG-STEP if exit then drop
-   k s" deftype" CHK-TOK=CI if
+   k s" nominal:" CHK-TOK=CI if
       k k 1+ CHK-NOM-REGISTER
       k 2 + exit
    then

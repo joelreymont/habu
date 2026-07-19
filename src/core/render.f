@@ -119,7 +119,7 @@ REG-SCRATCH-SNAP-INSTALL
 
 : CON-OUT ( n -- ) {: p:n :}
    p 2 = IF 102 EMIT1 ELSE
-   p 0 > p CTN @ < and IF                 \ any registered type (built-in OR user deftype)
+   p 0 > p CTN @ < and IF                 \ any registered type (built-in OR user-declared CT type)
       p CT-NAME$ dup 0 <> IF RSTR ELSE 2drop 63 EMIT1 THEN
    ELSE 63 EMIT1 THEN THEN ;
 
