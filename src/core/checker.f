@@ -8038,28 +8038,28 @@ s" <input>" DIAG-FILE!
 \ Pre-trust defer capability (dot habu-engine-pre-trust-77410827): `trust` (above)
 \ and `checker-defer` (5208) are both defined now — the earliest safe point — so
 \ drain the pending table, replaying trust+checker-defer for every defer declared
-\ before this line. The engine backstop (BSEALCAP) dies fail-closed (exit 73,
-\ named) if the table is non-empty and the drain never ran; the DRAIN-PRETRUST
-\ prim is baked into the engine (native habu2.f + stage0 mirror forth.fs).
-\ TRANSITION SHIM (bounded, documented; owner: habu-checker-exec-of-5923c543):
-\ this file is the BOOT PREFIX re-read by every existing bin/hb, and the
-\ DRAIN-PRETRUST prim exists only in engines built from this tree — a bare
-\ DRAIN-PRETRUST token kills the previous master fixpoint at startup
-\ (E-UNDEFINED, exit 70). Resolve the prim by RUNTIME name lookup instead: old
-\ engines miss (drop; nothing to drain — this tree declares no pre-trust
-\ defers), new engines find + execute it. TRUSTED: because `search-wl` yields a
-\ plain n and the checker soundly rejects execute-of-plain-n (RSEXEC) — exactly
-\ the stored-xt gap the owning dot tracks. REMOVAL CONDITION: revert to the bare
-\ token once the ecosystem fixpoint >= this commit — concretely: the first
-\ stage-2b pre-7687 conversion landing does the revert (that landing inherently
-\ requires the new engine anyway).
-\ The shim sits between the two unique PTD-REGRESSION-BLANK sentinels so the
+\ before this line. DRAIN-PRETRUST is a baked engine primitive (native habu2.f
+\ + stage0 mirror forth.fs); it is called here by its bare token at exactly the
+\ boot-prefix point where the pending table must be flushed. The engine backstop
+\ (BSEALCAP, src/habu/habu1.f) dies fail-closed at SEAL-CAPTURE (exit 73, naming
+\ each undrained defer) if the table is non-empty because the drain never ran, so
+\ a removed or botched drain can never boot silently.
+\ The earlier runtime-lookup transition shim (TRUSTED: DRAIN-PRETRUST-COMPAT,
+\ owner habu-checker-exec-of-5923c543, which resolved the prim by `search-wl` so a
+\ previous-fixpoint engine lacking the prim could still load this boot prefix) was
+\ removed once this tree began declaring real pre-trust defers of its own — the
+\ TFAM query hooks TFAM-RESOLVE-XT.. above, before `: TRUST`, captured into the
+\ pending table. With those present, an engine without DRAIN-PRETRUST cannot load
+\ this prefix regardless of the shim: the bare token is E-UNDEFINED (exit 70) on
+\ it, and even the shim's lookup-miss branch would leave the table undrained and
+\ hit the exit-73 backstop. The shim therefore protected no engine and only
+\ carried a trusted execute-of-plain-n boundary (RSEXEC), so it is gone.
+\ The bare token sits between the two unique PTD-REGRESSION-BLANK sentinels so the
 \ negative regression (test/pre-trust-defer.f) can blank exactly this region and
-\ prove the exit-73 undrained backstop; keep the sentinels contiguous with it.
+\ prove the exit-73 undrained backstop still fires, naming a real prefix defer;
+\ keep the sentinels contiguous with it.
 \ PTD-REGRESSION-BLANK-BEGIN
-TRUSTED: DRAIN-PRETRUST-COMPAT ( -- )
-   s" DRAIN-PRETRUST" 0 search-wl dup 0 <> if execute else drop then ;
-DRAIN-PRETRUST-COMPAT
+DRAIN-PRETRUST
 \ PTD-REGRESSION-BLANK-END
 
 \ UNSAFE-TOK? lives above the EXPORT block (it also gates alias minting there).
