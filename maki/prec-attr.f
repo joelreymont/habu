@@ -134,6 +134,26 @@ public
 : CPREC-DEFAULT-RESET ( -- )         CPREC-TF32 CPREC-REQ ! ;
 CPREC-DEFAULT-RESET
 
+\ ---- per-op precision override (the MODEL: grammar's MATMUL:FP16 source) ---------------
+\ A `<OP>:<PREC>` grammar token (maki/cad.f) declares ONE GEMM node's compute precision
+\ explicitly, overriding the workload default for that node ALONE. The parser threads it
+\ positionally: it emits a CPREC-NEXT! before each tagged composer in the compiled body, and
+\ every GEMM composer (plan-ops.f) resolves its precision through CPREC-NEXT@ - the override
+\ when set (CONSUMED, so it binds exactly one node), else CPREC-DEFAULT@. So two differently
+\ tagged ops in one body each get their own tag and an untagged sibling keeps the default.
+\ CPREC-NEXT-RESET clears a pending override at each capture (cad.f CAP-BEGIN) so a mid-parse
+\ throw never leaks it into the next MODEL:.
+private
+-1 constant CPREC-OVR-NONE           \ "no pending override" (outside the 0..CPREC-N tag range)
+variable CPREC-OVR
+public
+: CPREC-NEXT! ( n -- )        CPREC-CK CPREC-OVR ! ;     \ bind the next GEMM node's precision
+: CPREC-NEXT-RESET ( -- )     CPREC-OVR-NONE CPREC-OVR ! ;
+: CPREC-NEXT@ ( -- n )        \ pending override (consumed) else the workload default
+   CPREC-OVR @ dup CPREC-OVR-NONE = if drop CPREC-DEFAULT@ exit then
+   CPREC-NEXT-RESET ;
+CPREC-NEXT-RESET
+
 \ ---- reduced-precision GOLDEN tolerance contract (docs/model-unified.md) --------------
 \ The host executor is f32/f64 EXACT, so a reduced-precision GEMM golden is compared to
 \ the exact reference under a tolerance DERIVED from the compute dtype's mantissa - never

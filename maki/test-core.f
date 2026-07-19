@@ -95,6 +95,8 @@ TEST:SUITE maki/precision-test.f
 TEST:;SUITE
 TEST:SUITE maki/prec-attr-test.f
 TEST:;SUITE
+TEST:SUITE maki/prec-grammar-test.f
+TEST:;SUITE
 TEST:SUITE maki/backward-test.f
 TEST:;SUITE
 TEST:SUITE maki/mlp-bwd-test.f

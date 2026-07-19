@@ -81,6 +81,7 @@ require maki/move-facts.f
 require maki/tensor-value.f
 require maki/plan-ops.f
 require maki/plan-vocab.f            \ the package-scoped, descriptor-typed model vocabulary MODEL: compiles over
+require maki/prec-attr.f             \ per-op compute precision: the <OP>:<PREC> grammar override (CPREC-NEXT!)
 require maki/spec.f                  \ the equation registry (EQ-*): a SPEC: einsum referenced as a body op
 require maki/model-ir.f
 require maki/fusion-plan.f
@@ -259,7 +260,7 @@ $5E constant TR-C                                  \ '^' - the reserved transpos
 : CAP-BEGIN ( -- )
    TENSOR:TV-RESET  TENSOR:PLAN-RESET  MIR-RESET     \ MIR-RESET clears provenance to none
    0 CAP-IN-N !  1 CAP-IP !  0 CAP-OPS !
-   NT-RESET  CAP-PEND-RESET  MSRC-RESET ;
+   NT-RESET  CAP-PEND-RESET  MSRC-RESET  CPREC-NEXT-RESET ;   \ drop any pending <OP>:<PREC> override
 
 \ fresh throwaway capture-word name -> CAPNAME-BUF (redefinition is fatal, so mint per MODEL:)
 : CAP-GEN-NAME ( -- )
@@ -558,6 +559,47 @@ $5E constant TR-C                                  \ '^' - the reserved transpos
    s" PLAN:EQUATION " MSRC+
    1 CAP-OPS +! ;
 
+\ ---- "<OP>:<PREC>" per-op compute-precision grammar (GEMM-class only) -----------------
+\ A colon-suffixed body token is EITHER a GEMM op tagged with an explicit compute precision
+\ (MATMUL:FP16, LINEAR:BF16, <EQ>:TF32) or a movement op with scalar params (RESHAPE:RxC,
+\ SLICE:R0..R1). CPREC-SUFFIX? recognizes the precision spelling; the base op decides which
+\ reading applies. The tag overrides the workload default for THAT node alone: the emitted
+\ CPREC-NEXT! binds the next composer, which resolves it through CPREC-NEXT@ (maki/prec-attr.f).
+\ Fail closed: a precision suffix on a non-GEMM op is E-CPREC-OP (via CPREC-GEMM?); an
+\ unrecognized suffix on a GEMM op is E-CPREC-TAG (matmul/linear/equation carry no ":params").
+: CPREC-SUFFIX? ( ptr u8 n -- n bool )                             \ tag valid only when true
+   2dup s" FP16" STR= if 2drop CPREC-FP16 true exit then
+   2dup s" BF16" STR= if 2drop CPREC-BF16 true exit then
+   2dup s" TF32" STR= if 2drop CPREC-TF32 true exit then
+   2drop 0 false ;
+
+\ emit the source that binds the next GEMM composer's precision (consumed by CPREC-NEXT@).
+: EMIT-CPREC-SET ( n -- )  MSRC-INT MSRC-SP  s" MAKI:CPREC-NEXT! " MSRC+ ;
+
+\ tagged regular GEMM op (matmul/linear): bind the precision, then emit like the bare token.
+: EMIT-GEMM-PREC ( n ptr u8 n opkind -- ) {: tag:n a:ptr u:n op:opkind :}
+   tag EMIT-CPREC-SET
+   op OPR-ARITY 1- CAP-EMIT-PARAMS
+   a u CAP-EMIT-OP ;
+
+\ tagged equation op (<EQ>:<PREC>): bind the precision, then emit the equation node.
+: EMIT-EQ-PREC ( eq-slot n -- )  EMIT-CPREC-SET EMIT-EQ-TOKEN ;
+
+\ "BASE:SUFFIX": precision-tag a GEMM op, else translate a movement "OP:params" token.
+: EMIT-COLON-TOKEN ( ptr u8 n ptr u8 n -- ) {: ba:ptr bu:n sa:ptr su:n :}
+   ba bu EQ-FIND MATCH option                                      \ base is a registered equation?
+     some OF                                                       \ <EQ>:<PREC>: the suffix must be a precision
+        sa su CPREC-SUFFIX? 0= if E-CPREC-TAG throw then
+        EMIT-EQ-PREC exit ENDOF
+     none OF ENDOF
+   ;MATCH
+   ba bu OP-KIND {: op:opkind :}                                   \ base op (E-CAD-OP on unknown)
+   op CPREC-GEMM? if                                               \ GEMM op: the suffix must be a precision
+      sa su CPREC-SUFFIX? 0= if E-CPREC-TAG throw then
+      ba bu op EMIT-GEMM-PREC exit then
+   sa su CPREC-SUFFIX? nip if E-CPREC-OP throw then                \ precision suffix on a non-GEMM op
+   ba bu sa su EMIT-MOVE-PARAM ;                                   \ RESHAPE:RxC | SLICE:R0..R1 (else E-CAD-SYNTAX)
+
 \ one body op token (not a ">V" and not a bare reference): translate to explicit stack form.
 \ A registered equation composes as an op (EMIT-EQ-TOKEN); otherwise the op table resolves it.
 : EMIT-OP-TOKEN ( ptr u8 n -- ) {: a:ptr u:n :}
@@ -575,7 +617,7 @@ $5E constant TR-C                                  \ '^' - the reserved transpos
      ENDOF
      some OF CAD-NUM:CAD-IX>N ENDOF
    ;MATCH {: ci:n :}
-   a ci  a ci 1+ +  u ci 1+ -  EMIT-MOVE-PARAM ;                   \ "OP:params"
+   a ci  a ci 1+ +  u ci 1+ -  EMIT-COLON-TOKEN ;                  \ "OP:SUFFIX" (precision tag or move params)
 
 \ "NAME^T": a transposed reference. The marker must be exactly "T" (a malformed
 \ marker fails closed, E-CAD-SYNTAX); the base must be a bound value name (an

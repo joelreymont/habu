@@ -58,13 +58,14 @@ public
 \ the contraction descriptor (PLAN-MM-DESC) can throw on an inner-dim mismatch, so
 \ it runs BEFORE PLAN-OP-BEGIN opens a record; the op family rides the stack under
 \ the operands (-rot / swap move it clear of the tensors that bind). The attrs cell
-\ carries the workload-default compute precision (payload 0; maki/prec-attr.f).
+\ carries the resolved compute precision - per-op override (CPREC-NEXT@) else the workload
+\ default - over payload 0 (maki/prec-attr.f).
 : PLAN-MATMUL ( tensor tensor opkind -- tensor )
    -rot {: x:tensor w:tensor :}                 \ ( op )
    x w PLAN-MM-DESC                              \ ( op y ) -- throws before any record opens
    swap TENSOR:PLAN-OP-BEGIN {: y:tensor :}
    x TENSOR:PLAN-IN+  w TENSOR:PLAN-IN+
-   0 CPREC-DEFAULT@ MAKI-OPKIND:MATMUL CPREC-TAG TENSOR:PLAN-ATTR!
+   0 CPREC-NEXT@ MAKI-OPKIND:MATMUL CPREC-TAG TENSOR:PLAN-ATTR!
    y TENSOR:PLAN-OP+  y ;
 
 : PLAN-LINEAR ( tensor tensor tensor opkind -- tensor )
@@ -73,7 +74,7 @@ public
    x w PLAN-MM-DESC                              \ ( op y )
    swap TENSOR:PLAN-OP-BEGIN {: y:tensor :}
    x TENSOR:PLAN-IN+  w TENSOR:PLAN-IN+  b TENSOR:PLAN-IN+
-   0 CPREC-DEFAULT@ MAKI-OPKIND:LINEAR CPREC-TAG TENSOR:PLAN-ATTR!
+   0 CPREC-NEXT@ MAKI-OPKIND:LINEAR CPREC-TAG TENSOR:PLAN-ATTR!
    y TENSOR:PLAN-OP+  y ;
 
 \ ---- movement appenders (append IR facts + packed attrs; verdict per 6.3) ----
@@ -134,8 +135,9 @@ public
 \ word. Operand order is factor order. Stage 1 composes two-factor equations (Q Kᵀ);
 \ a one- or three-factor equation underflows / overflows the fixed arity and is a
 \ fail-closed checker reject of the composition. The registry slot is the attrs cell's
-\ LOW payload; the workload-default compute precision packs into the HIGH field
-\ (maki/prec-attr.f), so the slot survives an fp16/bf16 tag.
+\ LOW payload; the resolved compute precision (CPREC-NEXT@: per-op override else the
+\ workload default) packs into the HIGH field (maki/prec-attr.f), so the slot survives
+\ an fp16/bf16 tag.
 : EQ-OPERAND-CK ( tensor eq-slot n -- ) {: x:tensor s:eq-slot k:n :}
    x TENSOR:TV-ROWS@ ROWS-RAW  s k EQ-FROW@ <> if E-TV-SHAPE throw then
    x TENSOR:TV-COLS@ COLS-RAW  s k EQ-FCOL@ <> if E-TV-SHAPE throw then ;
@@ -144,6 +146,6 @@ public
    s EQ-ROWS@ s EQ-COLS@ SHAPE  q TENSOR:TV-DTYPE@ MAKI-LAYOUT:ROW q TENSOR:TV-SPACE@ TENSOR:TV-DESC {: y:tensor :}
    MAKI-OPKIND:EQUATION TENSOR:PLAN-OP-BEGIN
    q TENSOR:PLAN-IN+  k TENSOR:PLAN-IN+
-   s EQ-SLOT>N CPREC-DEFAULT@ MAKI-OPKIND:EQUATION CPREC-TAG TENSOR:PLAN-ATTR!  y TENSOR:PLAN-OP+  y ;
+   s EQ-SLOT>N CPREC-NEXT@ MAKI-OPKIND:EQUATION CPREC-TAG TENSOR:PLAN-ATTR!  y TENSOR:PLAN-OP+  y ;
 
 ;package
