@@ -25,6 +25,7 @@ require lib/ptx/cg-matmul.f
 require lib/ptx/cg-matmul-naive.f
 require lib/ptx/cg-mma.f
 require lib/ptx/toolchain.f
+require maki/eval/active-target.f
 require tools/ptx/profile.f
 require tools/ptx/bench.f
 
@@ -44,6 +45,7 @@ variable GB-SMEM-DYN                    \ dynamic .shared bytes for the launch (
 : GB-INT. ( n -- )  SB-RESET SB-INT SB$ type ;
 
 : GB-ASSEMBLE ( -- )                   \ captured PTX -> kernel.ptx -> ptxas cubin (die on rc<>0)
+   ATGT:LABEL$ PTXTC:TC-ARCH!          \ assembler arch from the probed active target (sm_87 Orin / sm_121a GB10)
    PTXTC:PTX$ PTX-CAPTURE$ WRITE-ALL
    GB-QO $1000 >LEN GB-QE $1000 >LEN PTXTC:ASSEMBLE PTXTC:ASM-REPORT {: rc:n :}
    rc 0= 0= if s" gemm-bench: ptxas failed" 1 die then ;
@@ -91,9 +93,10 @@ variable GB-SMEM-DYN                    \ dynamic .shared bytes for the launch (
    GB-FREE ;
 
 : GB-SHAPES ( -- )
-   512  200 GB-SHAPE
-   1024 80  GB-SHAPE
-   2048 30  GB-SHAPE ;
+   512  400 GB-SHAPE
+   1024 200 GB-SHAPE
+   2048 80  GB-SHAPE
+   4096 40  GB-SHAPE ;
 
 : GB-KERNEL ( ptr u8 n -- ) {: ka:ptr ku:n :}   \ load the named kernel from PTXTC:CUBIN$, bench
    PTXBENCH:RESET
@@ -238,6 +241,16 @@ public
    GB-MM
    GB-MMM-WIDE-B-SWEEP ;
 
+\ GB10 head-to-head campaign (dot habu-gb10-gemm-head): FP32 CUDA-core roof reference, then the full
+\ wider-M B-feed-amortization schedule sweep (scalar-B MFRAGS=2/4 and the B-ldmatrix transposed-Bs
+\ configs incl. the mmm-wide-b-m4-s1 flagship) across 512/1024/2048/4096. tf32 tensor-core throughput
+\ vs the source-built Triton 3.8 referee (docs/eval-triton.md GB10 section).
+: GB-GB10 ( -- )
+   CUDA:OPEN? 0= if s" gemm-bench: libcuda unavailable -> SKIPPED (off-device)" type cr exit then
+   GB-MM
+   GB-MMM-WIDE-SWEEP
+   GB-MMM-WIDE-B-SWEEP ;
+
 
 : GB-ALL ( -- )
    CUDA:OPEN? 0= if s" gemm-bench: libcuda unavailable -> SKIPPED (off-device)" type cr exit then
@@ -248,4 +261,4 @@ public
 
 ;package
 
-GEMMBENCH:GB-ALL
+GEMMBENCH:GB-GB10

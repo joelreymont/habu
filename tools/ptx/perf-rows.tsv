@@ -82,3 +82,17 @@ MMM-WIDE-B-M4-S1	32	8	16	16	30	4194304	GFLOPS	3026577	orin-nx-25w-918mhz	2026-07
 MMM-WIDE-B-M4-S1-BPAD0	32	8	16	16	30	4194304	GFLOPS	1318473	orin-nx-25w-918mhz	2026-07-17	REFUTED: MFRAGS=4 bpad=0 (BT stride 32 words) B-ldmatrix 256x64, 2048^3; 918 MHz; (1320832 on 2nd run) the 8 ldmatrix tile rows alias one 4-bank window -> serialized read, -56% vs bpad=4 3026577 and below scalar-B 2707287; measure the ldmatrix at the layout it needs; element-exact
 MMM-WIDE-B-M4	32	8	16	16	30	4194304	GFLOPS	1754391	orin-nx-25w-918mhz	2026-07-17	REFUTED: MFRAGS=4 bpad=4 stages=2 DOUBLE-buffer dynamic (100352 B, 1 block/SM) B-ldmatrix 256x64, 2048^3; 918 MHz; (1757000 on 2nd run) -42% vs single-buffer 3026577; 100 KB double buffer caps occupancy at 1 block/SM (occupancy beats overlap once feed amortized); element-exact
 MMM-WIDE-B-M2	32	16	16	16	30	4194304	GFLOPS	1637650	orin-nx-25w-918mhz	2026-07-17	REFUTED: MFRAGS=2 bpad=4 stages=2 dynamic (59392 B) B-ldmatrix 128x64, 2048^3; 918 MHz; (1635263 on 2nd run) -46% vs MFRAGS=4 single-buffer 3026577; MFRAGS=2 halves B-fragment reuse so the ldmatrix win is smaller; element-exact
+MM	8	8	16	16	400	262144	GFLOPS	8196862	dgx-spark-gb10	2026-07-19	FP32 blocked cp.async tile (lib/ptx/cg-matmul.f) 512^3; sm_121a @ 2411 MHz (docs/eval-triton.md GB10 head-to-head)
+MM	16	16	16	16	200	1048576	GFLOPS	13203337	dgx-spark-gb10	2026-07-19	FP32 blocked cp.async tile 1024^3; sm_121a @ 2411 MHz
+MM	32	32	16	16	80	4194304	GFLOPS	14891126	dgx-spark-gb10	2026-07-19	FP32 blocked cp.async tile 2048^3; sm_121a @ 2411 MHz
+MM	64	64	16	16	40	16777216	GFLOPS	12998662	dgx-spark-gb10	2026-07-19	FP32 blocked cp.async tile 4096^3; sm_121a @ 2411 MHz
+MM	32	32	16	16	80	4194304	PCT-ROOF	503	dgx-spark-gb10	2026-07-19	vs 29.6 TFLOP/s FP32 CUDA roof (48 SM @ 2411 MHz), 2048^3
+MMM-TF32	8	8	16	16	400	262144	GFLOPS	7573081	dgx-spark-gb10	2026-07-19	TF32 mma.sync default MFRAGS=1 BK=32 stages=2 scalar+cvt, 512^3; sm_121a @ 2411 MHz
+MMM-TF32	16	16	16	16	200	1048576	GFLOPS	11649792	dgx-spark-gb10	2026-07-19	TF32 mma.sync default MFRAGS=1, 1024^3; sm_121a @ 2411 MHz
+MMM-TF32	32	32	16	16	80	4194304	GFLOPS	13183647	dgx-spark-gb10	2026-07-19	TF32 mma.sync default MFRAGS=1, 2048^3; sm_121a @ 2411 MHz
+MMM-TF32	64	64	16	16	40	16777216	GFLOPS	11614006	dgx-spark-gb10	2026-07-19	TF32 mma.sync default MFRAGS=1, 4096^3; sm_121a @ 2411 MHz
+MMM-WIDE	8	4	16	16	400	262144	GFLOPS	12911062	dgx-spark-gb10	2026-07-19	tuned TF32 winner MFRAGS=2 stages=2 dyn ldmatrix-A (128x64), 512^3; 0.59x Triton 3.8 tf32
+MMM-WIDE	16	8	16	16	200	1048576	GFLOPS	23186562	dgx-spark-gb10	2026-07-19	tuned TF32 winner MFRAGS=2 stages=1 static ldmatrix-A (128x64), 1024^3; 0.69x Triton 3.8 tf32
+MMM-WIDE	32	8	16	16	80	4194304	GFLOPS	30256115	dgx-spark-gb10	2026-07-19	tuned TF32 winner MFRAGS=4 stages=2 dyn ldmatrix-A (256x64), 2048^3; 0.80x Triton 3.8 tf32 (peak ratio)
+MMM-WIDE-B	64	16	16	16	40	16777216	GFLOPS	27960553	dgx-spark-gb10	2026-07-19	tuned TF32 winner flagship mmm-wide-b-m4-s1 (MFRAGS=4 bpad=4 stages=1 dyn B-ldmatrix, 256x64), 4096^3; 0.62x Triton 3.8 tf32
+MMM-WIDE	32	8	16	16	80	4194304	PCT-ROOF	605	dgx-spark-gb10	2026-07-19	vs ~50 TFLOP/s tf32 tensor roof (est, docs/codegen-verdict.md), 2048^3 tuned winner

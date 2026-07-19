@@ -820,3 +820,247 @@ bin/hb --load maki/eval/matrix-main.f -- maki/transcripts/live-habu-ptx-2026-07-
 - Durability: `maki/eval/live-author-test.f` (in the maki suite) re-replays the
   transcript, pins every cell of this table, and re-grades each distinct live
   candidate through the emit-structural autograder.
+
+## GEMM on the DGX Spark GB10 (sm_121a) — the north-star head-to-head (2026-07-19)
+
+The compute-bound GEMM column re-measured on the **GB10** (dot
+`habu-gb10-gemm-head`), the first head-to-head against the **source-built Triton
+3.8.0** (`~/Work/ml/.venv`: torch 2.9.1a0+cu130, triton 3.8.0) on the real
+sm_121a device. This extends the Orin GEMM steps above; the roofline it is
+scored against is `docs/codegen-verdict.md` (GB10: 48 SM, sustained **2411 MHz**
+under GEMM — verified `nvidia-smi`, ≤49 °C / ≤48.5 W, **not** throttled — so
+fp32 CUDA roof = 48·128·2·2.411e9 = **29.6 TFLOP/s**; tf32 tensor roof
+**≈50 TFLOP/s**, marketing-derived estimate, flagged).
+
+**Headline (honest, and it reverses the Orin result): on the GB10, Habu's tuned
+TF32 tensor-core tile reaches 0.59–0.80× of Triton 3.8's TF32 `tl.dot` — peak
+0.80× at 2048³. Triton wins on this device.** On the 8-SM Orin the same wide
+tile family measured **1.60×** Triton (3026 vs 1890 at 2048³, §22.10); on the
+48-SM GB10 that inverts. Triton wins **even though** the GB10's 99 KB
+shared-memory-per-block cap prunes **31 of its 45** tf32 autotune configs
+(`OutOfResources: shared memory, Required: … Hardware limit: 101376` — the #8182
+consumer-Blackwell smem-geometry family): its surviving small-tile kernel still
+out-throughputs Habu's hand-tuned wide tile and reaches **~91 %** of the tf32
+roof at 4096³, where Habu's tile plateaus at **~56 %**.
+
+### Protocol (identical timing on both sides)
+
+- **Habu column:** `tools/ptx/gemm-bench.f` `GB-GB10` (in-tree, checked;
+  `bin/hb --load tools/ptx/gemm-bench.f` on the GB10). Assembler arch flows from
+  the probed active target (`maki/eval/active-target.f` → `sm_121a`, no literal).
+  Per shape: 1 warmup launch, then ITERS launches timed with **CUDA events**
+  (`PTXBENCH:BENCH-GPU-NS`), GFLOP/s = 2·S³·ITERS / elapsed. ITERS 400, 200, 80,
+  40 at 512, 1024, 2048, 4096; **best of 3 full passes** (steady-state peak; per-cell
+  run-to-run spread 0–6 % on the tuned tf32 configs). A = B = 1.0, C = 0 (values
+  immaterial to timing).
+- **Triton column:** `/tmp/gemm-triton-gb10.py` (verbatim below, out-of-tree per
+  this doc's convention — the repo's host-lint rejects committed `.py`), the
+  standard grouped-ordering `tl.dot` matmul, **manual max-autotune** (a 45-config grid
+  timed with CUDA events, best kept; failing configs caught and counted, so the
+  referee's ceiling is honest not flattered). No `torch.compile`/inductor, so the
+  inductor `is_big_gpu` 68-SM gate never applies — this is the raw-`triton.jit`
+  fair referee. Same shapes, CUDA-event warm timing, **best of 3 passes**;
+  `torch.matmul` same-dtype reference (tf32 `rel_err ~8e-4`, fp16 exact).
+- **Clock-matched:** both columns sampled at the same 2385–2411 MHz band in the
+  same session; the GB10 holds its 2418 MHz application clock (no boost to the
+  3003 MHz ceiling) under sustained GEMM, so neither side has a clock advantage.
+
+### Results — TF32 (like-for-like: Habu f32-in / tf32-mma / f32-acc vs Triton tf32)
+
+| TFLOP/s (tf32, C=A·B)        |  512³ | 1024³ | 2048³ | 4096³ |
+|------------------------------|------:|------:|------:|------:|
+| Habu tuned MMA tile          |  12.9 |  23.2 |  30.3 |  28.0 |
+| Triton 3.8 `tl.dot` (autotd) |  21.7 |  33.5 |  37.8 |  45.3 |
+| **Habu / Triton**            | 0.59× | 0.69× |**0.80×**| 0.62× |
+| Habu %-of-tf32-roof (~50 TF) |   26% |   46% |   61% |   56% |
+| Triton %-of-tf32-roof        |   43% |   67% |   76% |   91% |
+
+Both sides are TF32 (relative numeric policy), so this is a like-for-like
+competitive pairing (unlike the FP32-vs-TF32 rows above): `rel_err ~8e-4` on both
+against a same-dtype `torch.matmul` reference. FP32 CUDA-core reference (Habu
+`MM`, `lib/ptx/cg-matmul.f`) for the roof anchor: 8.2 / 13.2 / **14.9** / 13.0
+TFLOP/s = **50 %** of the 29.6 TF fp32 roof at 2048³ — the same roof-fraction
+Orin's blocked tile hit (`docs/codegen-verdict.md`), reproduced on the higher
+roof. The tuned tf32 tile beats that fp32 tile ~2× (30.3 vs 14.9 at 2048³), so
+the tensor-core path is real; it just does not out-run Triton on this device.
+
+### The GB10 schedule sweep (dot phase 2 — tune, keep best per shape)
+
+Every row is a config the correctness harness proves **element-exact** first
+(`tools/ptx/mma-gemm-check.f` `MGC-ALL`, 64³…512³, 0 mismatches on the GB10 — the
+throughput below is only ever reported for a verified-exact kernel). The sweep
+walks the axes the tile exposes — MFRAGS (16-row M-frags/warp), BK, As pad,
+`cp.async` stages, static/dynamic smem, A-`ldmatrix`, and the transposed-Bs
+B-`ldmatrix` (bpad). Best-of-3 GFLOP/s; **bold = per-shape winner**:
+
+| config (frag-mode 2 = ldmatrix-A unless noted)                    |  512³ | 1024³ | 2048³ | 4096³ |
+|-------------------------------------------------------------------|------:|------:|------:|------:|
+| MMM default (MFRAGS=1 BK=32 stages=2 scalar+cvt)                  |  7573 | 11650 | 13184 | 11614 |
+| MFRAGS=1 BK=32 pad=8 stages=2 (swizzled, ldmA)                    | 10082 | 16716 | 18909 | 10625 |
+| MFRAGS=2 BK=32 pad=8 stages=2 dyn                                 |**12911**| 20667 | 25184 | 13053 |
+| MFRAGS=2 BK=32 pad=8 stages=1 static                              | 10043 |**23187**| 27294 | 23744 |
+| MFRAGS=4 BK=32 pad=8 stages=2 dyn (98 KB)                         |  8744 | 21382 |**30256**| 22461 |
+| MFRAGS=4 BK=32 pad=8 stages=1 static (49 KB)                      |  7082 | 15914 | 20388 | 17133 |
+| MFRAGS=4 bpad=4 stages=1 dyn B-ldmatrix (`mmm-wide-b-m4-s1`)      |  6845 | 22009 | 27688 |**27961**|
+| MFRAGS=4 bpad=0 stages=1 dyn B-ldmatrix                           |  4744 | 12585 | 17647 | 19331 |
+| MFRAGS=4 bpad=4 stages=2 dyn B-ldmatrix (100 KB)                  |  6884 | 14501 | 18226 | 17533 |
+
+The per-shape optimum **moves with the shape** — the small-M wide tile
+(MFRAGS=2, double-buffered) wins at 512³ where only 16 blocks launch; the
+MFRAGS=4 double-buffered scalar-B tile wins at 2048³ (30.3 TF); and the
+Orin flagship `mmm-wide-b-m4-s1` (MFRAGS=4 B-ldmatrix, single-buffer) only takes
+the crown at 4096³ (28.0 TF), where its 2-blocks/SM occupancy pays off. No single
+committed config is best everywhere, which is exactly what the shape-keyed
+autotuner (`habu-feed-mma-config`) is for.
+
+### fp16 — context only (Habu's MMA tile is TF32-only)
+
+Habu's `cg-mma.f` tile emits **only** `mma.sync.aligned.m16n8k8…f32.tf32.tf32.f32`
+— there is **no fp16 or bf16 MMA path** (that needs a different `m16n8k16
+.f16.f16.f32` tile, not implemented). So fp16 is a Triton-only reference, not a
+head-to-head:
+
+| TFLOP/s |  512³ | 1024³ | 2048³ | 4096³ |
+|---------|------:|------:|------:|------:|
+| Triton 3.8 fp16 `tl.dot` |  27.4 |  73.8 |  85.8 |  89.1 |
+
+Triton's fp16 peaks at ~89 TF (4096³) — ~2× its own tf32, ~89 % of the ~100 TF
+fp16 roof (the tf32:fp16 = 1:2 Blackwell ladder, `docs/codegen-verdict.md`) — the
+second tensor precision Habu does not yet contest. Fewer of its fp16 configs bust
+the smem cap (13 of 45 fail) than the wider tf32 tiles (31 of 45), since fp16
+halves the per-tile smem.
+
+### What the data earns (and what it does not)
+
+- **Earned, honest, unflattering:** on the GB10 the checked Habu TF32 tile is
+  device-correct (element-exact, native `HMMA` SASS per `docs/codegen-verdict.md`)
+  and on the tensor-core path, but its **throughput is 0.59–0.80× Triton 3.8**,
+  reversing the Orin's 1.60×. The "notoriety number" goes to Triton on this box.
+- **Why it reverses (the roofline story, not a codegen regression):** Triton's
+  `tl.dot` lowers to the same `HMMA` and its autotuner — even with 31/45 configs
+  pruned by the smem cap — finds a pipelined small tile that scales cleanly to 48
+  SMs and nearly saturates the tf32 roof (91 % at 4096³). Habu's wide tile, tuned
+  to amortize the B-feed on the 8-SM Orin, plateaus at 56–61 % of roof on the
+  bigger part. The emitter is clean (`docs/codegen-verdict.md`: 0 spills, native
+  `LDGSTS`/`HMMA`, `LDS.128`); the gap is the **tiling/feed lever at 48-SM
+  scale** — the `docs/compute-campaign.md` work reproduced on a higher roof, not a
+  Blackwell codegen defect.
+- **Not earned:** any "Habu beats Triton" claim on the GB10 (it does not on
+  tf32), and any fp16 head-to-head (Habu has no fp16 tile). The 0.80× peak is the
+  honest floor-vs-ceiling gap for the current committed tile family; closing it is
+  tensor-feed tuning at scale (larger warp tiles / higher B-reuse / occupancy),
+  the open `habu-feed-mma-config` / `habu-mma-*` levers.
+
+### Reproduction (exact)
+
+```
+# Habu column — element-exact correctness, then throughput (arch auto-probed sm_121a):
+bin/hb --load tools/ptx/mma-gemm-check.f      # MGC-ALL: PASS element-exact 64³…512³
+bin/hb --load tools/ptx/gemm-bench.f          # GB-GB10: FP32 roof ref + tf32 schedule sweep, 512…4096
+# Triton referee (source-built 3.8 in the ml venv):
+~/Work/ml/.venv/bin/python /tmp/gemm-triton-gb10.py
+```
+
+### Triton referee script (`/tmp/gemm-triton-gb10.py`, verbatim)
+
+Out-of-tree per this doc's convention (the repo's `tools/host-lint.f` rejects a
+committed `.py`), the same way the Orin step-1 `/tmp/triton_matmul.py` is quoted
+verbatim above.
+
+```python
+import torch, triton, triton.language as tl
+DEV = 'cuda'
+
+# broad autotune grid (max-autotune scope): (BM, BN, BK, warps) x stages {3,4,5}
+def configs():
+    base = [
+        (128, 256, 64, 8), (256, 128, 64, 8), (128, 128, 64, 8), (128, 128, 32, 8),
+        (128, 64, 64, 4), (64, 128, 64, 4), (128, 256, 32, 8), (256, 128, 32, 8),
+        (128, 64, 32, 4), (64, 128, 32, 4), (128, 128, 128, 8), (64, 64, 64, 4),
+        (256, 64, 64, 4), (64, 256, 64, 4), (128, 128, 64, 4),
+    ]
+    return [dict(BM=bm, BN=bn, BK=bk, GROUP=8, stages=st, warps=w)
+            for bm, bn, bk, w in base for st in (3, 4, 5)]
+
+@triton.jit
+def matmul_kernel(a_ptr, b_ptr, c_ptr, M, N, K,
+                  stride_am, stride_ak, stride_bk, stride_bn, stride_cm, stride_cn,
+                  BM: tl.constexpr, BN: tl.constexpr, BK: tl.constexpr, GROUP: tl.constexpr,
+                  TF32: tl.constexpr):
+    pid = tl.program_id(0)
+    num_pid_m = tl.cdiv(M, BM); num_pid_n = tl.cdiv(N, BN)
+    num_pid_in_group = GROUP * num_pid_n
+    group_id = pid // num_pid_in_group
+    first_pid_m = group_id * GROUP
+    group_size_m = min(num_pid_m - first_pid_m, GROUP)
+    pid_m = first_pid_m + ((pid % num_pid_in_group) % group_size_m)
+    pid_n = (pid % num_pid_in_group) // group_size_m
+    offs_am = (pid_m * BM + tl.arange(0, BM)) % M
+    offs_bn = (pid_n * BN + tl.arange(0, BN)) % N
+    offs_k = tl.arange(0, BK)
+    a_ptrs = a_ptr + (offs_am[:, None] * stride_am + offs_k[None, :] * stride_ak)
+    b_ptrs = b_ptr + (offs_k[:, None] * stride_bk + offs_bn[None, :] * stride_bn)
+    acc = tl.zeros((BM, BN), dtype=tl.float32)
+    for k in range(0, tl.cdiv(K, BK)):
+        a = tl.load(a_ptrs, mask=offs_k[None, :] < K - k * BK, other=0.0)
+        b = tl.load(b_ptrs, mask=offs_k[:, None] < K - k * BK, other=0.0)
+        acc = tl.dot(a, b, acc, input_precision=('tf32' if TF32 else 'ieee'))
+        a_ptrs += BK * stride_ak
+        b_ptrs += BK * stride_bk
+    offs_cm = pid_m * BM + tl.arange(0, BM)
+    offs_cn = pid_n * BN + tl.arange(0, BN)
+    c_ptrs = c_ptr + stride_cm * offs_cm[:, None] + stride_cn * offs_cn[None, :]
+    c_mask = (offs_cm[:, None] < M) & (offs_cn[None, :] < N)
+    tl.store(c_ptrs, acc.to(c_ptr.dtype.element_ty), mask=c_mask)
+
+def run_cfg(a, b, c, cfg, tf32):
+    M, K = a.shape; _, N = b.shape
+    grid = (triton.cdiv(M, cfg['BM']) * triton.cdiv(N, cfg['BN']),)
+    matmul_kernel[grid](a, b, c, M, N, K, a.stride(0), a.stride(1), b.stride(0),
+                        b.stride(1), c.stride(0), c.stride(1),
+                        BM=cfg['BM'], BN=cfg['BN'], BK=cfg['BK'], GROUP=cfg['GROUP'],
+                        TF32=tf32, num_stages=cfg['stages'], num_warps=cfg['warps'])
+
+def event_time(fn, warmup=25, reps=100):
+    for _ in range(warmup): fn()
+    torch.cuda.synchronize()
+    s = torch.cuda.Event(enable_timing=True); e = torch.cuda.Event(enable_timing=True)
+    s.record()
+    for _ in range(reps): fn()
+    e.record(); torch.cuda.synchronize()
+    return s.elapsed_time(e) / reps
+
+def bench(S, dtype, tf32, iters):
+    torch.manual_seed(0)
+    a = torch.randn(S, S, device=DEV, dtype=dtype)
+    b = torch.randn(S, S, device=DEV, dtype=dtype)
+    cdt = torch.float16 if dtype == torch.float16 else torch.float32
+    c = torch.empty(S, S, device=DEV, dtype=cdt)
+    ref = torch.matmul(a, b)                 # same-dtype torch reference
+    best_ms, best_cfg, ok, fail = 1e30, None, 0, 0
+    for cfg in configs():
+        try:                                  # a config that busts the smem cap is caught + counted
+            run_cfg(a, b, c, cfg, tf32); torch.cuda.synchronize()
+            ms = event_time(lambda: run_cfg(a, b, c, cfg, tf32), warmup=10, reps=max(20, iters))
+            ok += 1
+            if ms < best_ms: best_ms, best_cfg = ms, cfg
+        except Exception:
+            fail += 1
+    run_cfg(a, b, c, best_cfg, tf32); torch.cuda.synchronize()
+    rel = (c.float() - ref.float()).abs().max().item() / ref.float().abs().max().item()
+    ms = event_time(lambda: run_cfg(a, b, c, best_cfg, tf32), warmup=25, reps=iters)
+    return (2 * S ** 3) / (ms * 1e-3) / 1e9, best_cfg, rel, ok, fail
+
+if __name__ == '__main__':
+    print(f"torch {torch.__version__} | triton {triton.__version__} | "
+          f"dev {torch.cuda.get_device_capability()} {torch.cuda.get_device_name()}")
+    torch.backends.cuda.matmul.allow_tf32 = True
+    shapes = [(512, 200), (1024, 120), (2048, 60), (4096, 40)]
+    for label, dtype, tf32 in [("tf32", torch.float32, True), ("fp16", torch.float16, False)]:
+        print(f"\n== Triton 3.8 {label} (manual max-autotune, CUDA-event warm timing) ==")
+        for S, iters in shapes:
+            g, cfg, rel, ok, fail = bench(S, dtype, tf32, iters)
+            print(f"Triton {label} GEMM {S}x{S}x{S} GFLOP/s={g:.1f} rel_err={rel:.2e} "
+                  f"best[BM{cfg['BM']}xBN{cfg['BN']}xBK{cfg['BK']} st{cfg['stages']} "
+                  f"w{cfg['warps']}] cfgs_ok={ok} cfgs_failed={fail}")
+```

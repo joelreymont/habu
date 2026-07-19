@@ -26,6 +26,7 @@ require lib/ptx/cg.f
 require lib/ptx/cg-matmul.f
 require lib/ptx/cg-mma.f
 require lib/ptx/toolchain.f
+require maki/eval/active-target.f
 require tools/ptx/bench.f
 
 package MMAGEMMCHECK
@@ -71,6 +72,7 @@ create MGC-MAXERR 1 cells allot
    loop ;
 
 : MGC-ASSEMBLE ( -- )
+   ATGT:LABEL$ PTXTC:TC-ARCH!          \ assembler arch from the probed active target (sm_87 Orin / sm_121a GB10)
    PTXTC:PTX$ PTX-CAPTURE$ WRITE-ALL
    MGC-QO $1000 >LEN MGC-QE $1000 >LEN PTXTC:ASSEMBLE PTXTC:ASM-REPORT {: rc:n :}
    rc 0= 0= if s" mma-gemm-check: ptxas failed" 1 die then ;
