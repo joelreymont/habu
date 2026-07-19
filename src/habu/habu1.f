@@ -176,6 +176,7 @@ variable LAOTNCSITE  variable LAOTCSITES  variable LAOTCODEB0
 variable LAOTBOOTRUN
 variable LAOTNPWID   variable LAOTPWID   \ protected-WID registry: count + u32 table (TFAM 2b-v)
 variable LPROTWIDQ
+variable LDPBAD   \ DP-CHECK out-of-range die target (defined in habu2.f EM-COMPILE-DIE; dot habu-dictionary-allot-past-4e5c3c2b)
 variable LCFPUSH  variable LCFPOP  variable LPAT   variable LKWCMP  variable LBCAP  variable LBCS
 variable LBCHAIN  variable LCREATE  variable LDOESPATCH
 variable LKWIF    variable LKWTHEN variable LKWELSE variable LKWBEGIN
@@ -1509,17 +1510,24 @@ variable SZA-I
 : BHERE ( -- )
    7 DATA 0 LDR,  7 G-PUSH ;
 
+\ Bound the DP heap ( [DATA-START, DATA-SIZE] within the DATA region ) before any
+\ allot/,/c,/definer advance stores the new DP. Out of range routes to LDPBAD
+\ (habu2.f EM-COMPILE-DIE): named "hb: data space out of range" fd-2 diagnostic,
+\ then rc 76 via LCOMPILEDIE -- a catchable throw inside evaluate (DP rolled back,
+\ nothing written past the region since this check precedes every DP store), a
+\ fail-closed exit 76 at top level. Was a bare silent exit_group(76) with no
+\ diagnostic (dot habu-dictionary-allot-past-4e5c3c2b).
 : DP-CHECK ( n -- )
    DP-REG !
    LBL DP-LOW !
    LBL DP-HIGH !
    5 DATA-START LIT64,  5 DATA 5 ADD,
    DP-REG @ 5 CMP,  C-GE DP-LOW LABEL@ BCOND,
-      0 76 MOVZ,  NR-EXIT-GROUP SYS,
+      LDPBAD LABEL@ B,
    DP-LOW LABEL@ LBL,
    5 DATA-SIZE LIT64,  5 DATA 5 ADD,
    DP-REG @ 5 CMP,  C-LE DP-HIGH LABEL@ BCOND,
-      0 76 MOVZ,  NR-EXIT-GROUP SYS,
+      LDPBAD LABEL@ B,
    DP-HIGH LABEL@ LBL, ;
 
 : BALLOT ( -- )

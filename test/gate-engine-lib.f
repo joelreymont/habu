@@ -1001,6 +1001,24 @@ variable GE-DFULL-I                 \ copy/definition loop index
    s" hb: dictionary full at: " s" dict-capacity exit diagnostic" GE-EXPECT-ERR-HAS
    s" PASS: dictionary-capacity exit is labeled" type cr ;
 
+\ DP heap (allot/,/c,/definer) past its DATA-region capacity. The bound (habu1.f
+\ DP-CHECK) always fired, but as a bare silent exit_group(76) with NO diagnostic —
+\ the split-K lane hit it with ~28 MB of host buffers and read the messageless kill
+\ as corruption (dot habu-dictionary-allot-past-4e5c3c2b). Fail-closed is now NAMED:
+\ "hb: data space out of range" on fd 2 (catchable rc-76 throw inside evaluate, exit
+\ 76 at top level). The err-HAS probe is the RED discriminator: on the unfixed base
+\ the same exit 76 carries NO message. `data-base`/`DATA-SIZE`/`here` are runtime
+\ words, so the over/exact offsets are computed against the live region top.
+: GE-DATA-FULL ( -- )
+   s" data-base DATA-SIZE + here - 1+ allot"
+      76 s" data-space over-bound exit rc" RUNTIME-RUNNER:LINE-RC
+   s" hb: data space out of range" s" data-space over-bound diagnostic" GE-EXPECT-ERR-HAS
+   \ off-by-one boundary: allot to EXACTLY the top (DP == DATA+DATA-SIZE, the max the
+   \ <= bound admits) must SUCCEED and exit clean.
+   s" data-base DATA-SIZE + here - allot"
+      0 s" data-space exact-top allot succeeds" RUNTIME-RUNNER:LINE-RC
+   s" PASS: data-space capacity exit is labeled + off-by-one boundary holds" type cr ;
+
 : GE-DIV-TRAP ( ptr u8 n ptr u8 n -- )
    {: src:ptr srcu:n label:ptr labelu:n :}
    GE-HB-RESET GE-SRC-RESET src srcu GE-SRC-LINE
@@ -1805,6 +1823,7 @@ public
    GE-INTERP-LAYOUT
    GE-MATCH-EXEC
    GE-DICT-FULL
+   GE-DATA-FULL
    GE-DIV-MOD
    GE-PROCESS-PTY
    GE-TRUST-RUN

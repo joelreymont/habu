@@ -56,18 +56,15 @@ $4000 constant MACOS-DATA-CONST  \ __DATA_CONST page (__got + zero fill)
 \ prediction; all 432 bytes since the fold fit inside the same 4 KiB page
 \ padding (LINUX-TOTAL unchanged). Keep LINUX-TOTAL equal to
 \ GB-SIZE-BASELINE-LINUX in test/gate-build-size.f.
-\ 2026-07-19 MATCH dispatch B.cond slimming (dot habu-slim-match-emitted-66941fb5)
-\ was landed and byte-measured on macOS only; the LINUX-CODE-TEXT row below is NOT
-\ re-measured on this tree and must be re-measured live at the next linux-arm64
-\ fixpoint (the STALE/GROWN ratchet fails closed with the value to commit). The
-\ change's engine-text delta is +28 (spark measured exactly this on linux-arm64,
-\ 136540 -> 136568, at its base 3909bbac); but this parent (feae4380) is several
-\ merges ahead of 3909bbac and the macOS row above proved a committed row can
-\ silently drift across those merges, so the absolute Linux value is left for a
-\ live measurement rather than bumped to 136568 from a stale base.
-136540 constant LINUX-CODE-TEXT   \ CODELEN: every emitter-phase row (baked-source incl.)
+\ 2026-07-19 re-measured live at the merged linux-arm64 fixpoint (spark): MATCH
+\ dispatch B.cond slimming adds +28 of compiler text (136540 -> 136568, matching
+\ the macOS-measured delta) and the DP out-of-range named-die fix shaves -256
+\ (two 8-byte silent exit stubs per DP-CHECK site fold to one 4-byte B LDPBAD),
+\ composing to 136312 (floor 1372 -> 1144); the whole file stays inside the same
+\ 4 KiB page (LINUX-TOTAL unchanged).
+136312 constant LINUX-CODE-TEXT   \ CODELEN: every emitter-phase row (baked-source incl.)
 192 constant LINUX-RW             \ ELF read-write segment tail: DYNAMIC + GOT (ELF-RW-SZ)
-1372 constant LINUX-FLOOR-DIST    \ code above the 4 KiB floor: the page-recovery shave
+1144 constant LINUX-FLOOR-DIST    \ code above the 4 KiB floor: the page-recovery shave
 143552 constant LINUX-TOTAL       \ = FILE-SIZE bin/hb = GB-SIZE-BASELINE-LINUX
 
 : PAGE-UP ( n n -- n ) {: v:n page:n :}

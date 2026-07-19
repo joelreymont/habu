@@ -138,6 +138,8 @@ variable LCFCAP   variable LCFCAPMSG   \ control-flow stack overflow reject (LCF
 35 constant CFCAPMSG-LEN   \ byte length of "hb: control-flow nesting too deep: " (LCFCAPMSG)
 variable LCSTR   variable LCSTRMSG   \ counted-string >255 reject (C-ICQ/C-EICQ/C-CQ/C-ECQ) + its fd-2 message (dot habu-recovery-pkg-scope-e0bd98e2)
 37 constant CSTRMSG-LEN    \ byte length of "hb: counted string too long (max 255)" (LCSTRMSG); previously a bare silent 76 shared with C-SIG-BAD
+variable LDPBADMSG   \ DP-heap bound reject (habu1.f DP-CHECK, allot/,/c,/definer sinks) fd-2 message (dot habu-dictionary-allot-past-4e5c3c2b); label LDPBAD declared in habu1.f forward-ref block
+27 constant DPBADMSG-LEN    \ byte length of "hb: data space out of range" (LDPBADMSG); LDPBAD appends a newline. Was a bare silent exit_group(76)
 variable LCOMPILEDIE   \ shared recoverable compile-error tail (dot habu-raw-exit-compile): a die site that already wrote its diagnostic branches here with x0 = its sysexits exit code. Inside evaluate (EVALD>0) the aborted compile unwinds as a catchable throw of that SAME code via LEVALREC (RSP/CP/NDICT/XDS/DP + compile-state rollback, HIDX tolerates the stale records); at top level (EVALD==0) it exit_group(x0) byte-identically to the old raw exit.
 31 constant CONFMSG-LEN   \ byte length of "hb: construct: unknown family: " (EM-COMPILE-ADT-MODE)
 32 constant CONVMSG-LEN   \ byte length of "hb: construct: unknown variant: " (EM-COMPILE-ADT-MODE)
@@ -355,6 +357,7 @@ s" c-bp-watch-dump" s" label label --" TRUST
    LORPHANMSG LABEL@ LBL, s" hb: control-flow closer without opener: " BYTES,   \ ORPHANMSG-LEN bytes; LORPHAN appends the closer token + newline
    LCFCAPMSG LABEL@ LBL, s" hb: control-flow nesting too deep: " BYTES,          \ CFCAPMSG-LEN bytes; LCFCAP appends the opener token + newline
    LCSTRMSG LABEL@ LBL, s" hb: counted string too long (max 255)" BYTES,        \ CSTRMSG-LEN bytes; LCSTR appends a newline (fixed label: names the constraint at a glance)
+   LDPBADMSG LABEL@ LBL, s" hb: data space out of range" BYTES,                 \ DPBADMSG-LEN bytes; LDPBAD appends a newline (DP-heap allot bound)
    LDICTFULL LABEL@ LBL, s" hb: dictionary full at: " BYTES,             \ CAPMSG-LEN bytes; capacity arms append the token + newline
    LCODEFULL LABEL@ LBL, s" hb: code space full at: " BYTES,             \ CAPMSG-LEN bytes
    LSNAPBAD LABEL@ LBL, s" hb: snapshot trailer corrupt" BYTES,  NL-KW 1 BYTES,               \ SNAPBAD-MSG-LEN bytes incl. newline
@@ -6020,6 +6023,18 @@ s" em-compile-undef" s" --" TRUST
    LCSTR LABEL@ LBL,
    0 2 MOVZ,  1 LCSTRMSG LABEL@ ADR,  2 CSTRMSG-LEN MOVZ,  NR-WRITE SYS,
    0 2 MOVZ,  1 LQNL LABEL@ ADR,  1 1 1 ADDI,  2 1 MOVZ,  NR-WRITE SYS,   \ LQNL[1] = newline
+   0 76 MOVZ,  LCOMPILEDIE LABEL@ B,
+   \ DP-heap out-of-range diagnostic (dot habu-dictionary-allot-past-4e5c3c2b). Every
+   \ allot/,/c,/definer DP advance runs habu1.f DP-CHECK, which used a bare silent
+   \ `0 76 MOVZ, NR-EXIT-GROUP SYS,` when the new DP left [DATA-START, DATA-SIZE] — a
+   \ capacity kill with NO diagnostic (the split-K lane's "silent corruption": ~28 MB of
+   \ host buffers exit_group'd with no message). This target writes a named fd-2 label
+   \ then routes through the SAME LCOMPILEDIE tail with x0=76: a catchable throw inside
+   \ evaluate (DP rolled back, no partial write — DP-CHECK precedes the DP store), a
+   \ fail-closed exit 76 at top level. No new exit code (76 is the pre-existing raw code).
+   LDPBAD LABEL@ LBL,
+   0 2 MOVZ,  1 LDPBADMSG LABEL@ ADR,  2 DPBADMSG-LEN MOVZ,  NR-WRITE SYS,
+   0 2 MOVZ,  1 LQNL LABEL@ ADR,  1 1 1 ADDI,  2 1 MOVZ,  NR-WRITE SYS,   \ LQNL[1] = newline
    0 76 MOVZ,  LCOMPILEDIE LABEL@ B, ;
 
 : EM-EVAL-CLEAN-EXIT ( -- )
@@ -6486,6 +6501,7 @@ s" SRCA@" s" -- ptr u8" TRUST
    LBL LORPHAN !  LBL LORPHANMSG !
    LBL LCFCAP !  LBL LCFCAPMSG !
    LBL LCSTR !  LBL LCSTRMSG !
+   LBL LDPBAD !  LBL LDPBADMSG !
    LBL LCOMPILEDIE !
    LBL LDICTFULL !  LBL LCODEFULL !
    LBL LSNAPBAD !  LBL LSNAPVER !
