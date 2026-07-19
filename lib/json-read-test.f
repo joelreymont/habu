@@ -13,6 +13,17 @@ require lib/json-write.f
 256 constant JRT-CAP
 create JRT-BUF JRT-CAP allot
 
+\ Test-local byte constants for building JSON fixtures. json-read's own byte
+\ constants are package-private, so the test spells the ASCII codes itself.
+34 constant JRT-DQ
+32 constant JRT-SP
+58 constant JRT-COLON
+44 constant JRT-COMMA
+123 constant JRT-LBRACE
+125 constant JRT-RBRACE
+91 constant JRT-LBRACK
+93 constant JRT-RBRACK
+
 : JRT-NEAR ( r r -- bool )
    f- fabs 0.000001 f< ;
 
@@ -62,74 +73,74 @@ create JRT-NAME 65 c, 34 c, 66 c,
 
 \ ---- assertion helpers ----------------------------------------------------
 : JRT-STR= ( ptr u8 n -- ) {: ea:ptr eu:n :}     \ current string/key decodes to bytes
-   JRT-BUF JRT-CAP JR-STR {: got:n :}
+   JRT-BUF JRT-CAP JR:STR {: got:n :}
    JRT-BUF got ea eu T$= ;
 
 \ ---- structural / SB-built fixtures ---------------------------------------
 : JRT-QKEY ( ptr u8 n -- )                       \ "key":  onto the builder
-   JR-DQ SB-APPEND-C SB-APPEND JR-DQ SB-APPEND-C JR-COLON SB-APPEND-C ;
+   JRT-DQ SB-APPEND-C SB-APPEND JRT-DQ SB-APPEND-C JRT-COLON SB-APPEND-C ;
 
 : JRT-QSTR ( ptr u8 n -- )                       \ "str"  onto the builder
-   JR-DQ SB-APPEND-C SB-APPEND JR-DQ SB-APPEND-C ;
+   JRT-DQ SB-APPEND-C SB-APPEND JRT-DQ SB-APPEND-C ;
 
 : JRT-NESTED$ ( -- ptr u8 n )
    SB-RESET
-   JR-LBRACE SB-APPEND-C
+   JRT-LBRACE SB-APPEND-C
    s" a" JRT-QKEY
-   JR-LBRACK SB-APPEND-C
-   s" 1" SB-APPEND JR-COMMA SB-APPEND-C
-   s" 2" SB-APPEND JR-COMMA SB-APPEND-C
-   JR-LBRACE SB-APPEND-C s" b" JRT-QKEY s" true" SB-APPEND JR-RBRACE SB-APPEND-C
-   JR-RBRACK SB-APPEND-C
-   JR-COMMA SB-APPEND-C
+   JRT-LBRACK SB-APPEND-C
+   s" 1" SB-APPEND JRT-COMMA SB-APPEND-C
+   s" 2" SB-APPEND JRT-COMMA SB-APPEND-C
+   JRT-LBRACE SB-APPEND-C s" b" JRT-QKEY s" true" SB-APPEND JRT-RBRACE SB-APPEND-C
+   JRT-RBRACK SB-APPEND-C
+   JRT-COMMA SB-APPEND-C
    s" c" JRT-QKEY s" x" JRT-QSTR
-   JR-RBRACE SB-APPEND-C
+   JRT-RBRACE SB-APPEND-C
    SB$ ;
 
 : JRT-FIND$ ( -- ptr u8 n )
    SB-RESET
-   JR-LBRACE SB-APPEND-C
-   s" a" JRT-QKEY s" 1" SB-APPEND JR-COMMA SB-APPEND-C
+   JRT-LBRACE SB-APPEND-C
+   s" a" JRT-QKEY s" 1" SB-APPEND JRT-COMMA SB-APPEND-C
    s" b" JRT-QKEY
-   JR-LBRACE SB-APPEND-C s" x" JRT-QKEY s" 9" SB-APPEND JR-RBRACE SB-APPEND-C
-   JR-COMMA SB-APPEND-C
+   JRT-LBRACE SB-APPEND-C s" x" JRT-QKEY s" 9" SB-APPEND JRT-RBRACE SB-APPEND-C
+   JRT-COMMA SB-APPEND-C
    s" c" JRT-QKEY s" 3" SB-APPEND
-   JR-RBRACE SB-APPEND-C
+   JRT-RBRACE SB-APPEND-C
    SB$ ;
 
 : JRT-WS$ ( -- ptr u8 n )                         \ "  {  \"a\" : 1 }  "
    SB-RESET
-   JR-SP SB-APPEND-C JR-SP SB-APPEND-C
-   JR-LBRACE SB-APPEND-C JR-SP SB-APPEND-C JR-SP SB-APPEND-C
-   JR-DQ SB-APPEND-C s" a" SB-APPEND JR-DQ SB-APPEND-C
-   JR-SP SB-APPEND-C JR-COLON SB-APPEND-C JR-SP SB-APPEND-C
-   s" 1" SB-APPEND JR-SP SB-APPEND-C
-   JR-RBRACE SB-APPEND-C JR-SP SB-APPEND-C JR-SP SB-APPEND-C
+   JRT-SP SB-APPEND-C JRT-SP SB-APPEND-C
+   JRT-LBRACE SB-APPEND-C JRT-SP SB-APPEND-C JRT-SP SB-APPEND-C
+   JRT-DQ SB-APPEND-C s" a" SB-APPEND JRT-DQ SB-APPEND-C
+   JRT-SP SB-APPEND-C JRT-COLON SB-APPEND-C JRT-SP SB-APPEND-C
+   s" 1" SB-APPEND JRT-SP SB-APPEND-C
+   JRT-RBRACE SB-APPEND-C JRT-SP SB-APPEND-C JRT-SP SB-APPEND-C
    SB$ ;
 
 : JRT-DEEP$ ( n -- ptr u8 n ) {: depth:n :}       \ depth '[' then depth ']'
    SB-RESET
-   depth 0 ?do JR-LBRACK SB-APPEND-C loop
-   depth 0 ?do JR-RBRACK SB-APPEND-C loop
+   depth 0 ?do JRT-LBRACK SB-APPEND-C loop
+   depth 0 ?do JRT-RBRACK SB-APPEND-C loop
    SB$ ;
 
 : JRT-OPENS$ ( n -- ptr u8 n ) {: depth:n :}      \ depth '[' only (overflow probe)
    SB-RESET
-   depth 0 ?do JR-LBRACK SB-APPEND-C loop
+   depth 0 ?do JRT-LBRACK SB-APPEND-C loop
    SB$ ;
 
 \ ---- positive: scalars ----------------------------------------------------
 : JRT-SCALAR-INT ( ptr u8 n n -- ) {: want:n :}
-   JR-INIT
-   JR-NEXT JT-INT T=
-   JR-INT want T=
-   JR-NEXT JT-END T= ;
+   JR:INIT
+   JR:NEXT JR:T-INT T=
+   JR:INT want T=
+   JR:NEXT JR:T-END T= ;
 
 : JRT-SCALAR-FLOAT ( ptr u8 n r -- ) {: want:r :}
-   JR-INIT
-   JR-NEXT JT-FLOAT T=
-   JR-FLOAT want JRT-NEAR TTRUE
-   JR-NEXT JT-END T= ;
+   JR:INIT
+   JR:NEXT JR:T-FLOAT T=
+   JR:FLOAT want JRT-NEAR TTRUE
+   JR:NEXT JR:T-END T= ;
 
 : JRT-TEST-INTS ( -- )
    s" 0" 0 JRT-SCALAR-INT
@@ -144,73 +155,73 @@ create JRT-NAME 65 c, 34 c, 66 c,
    s" 0.5" 0.5 JRT-SCALAR-FLOAT ;
 
 : JRT-TEST-LITERALS ( -- )
-   s" true" JR-INIT JR-NEXT JT-TRUE T= JR-NEXT JT-END T=
-   s" false" JR-INIT JR-NEXT JT-FALSE T= JR-NEXT JT-END T=
-   s" null" JR-INIT JR-NEXT JT-NULL T= JR-NEXT JT-END T= ;
+   s" true" JR:INIT JR:NEXT JR:T-TRUE T= JR:NEXT JR:T-END T=
+   s" false" JR:INIT JR:NEXT JR:T-FALSE T= JR:NEXT JR:T-END T=
+   s" null" JR:INIT JR:NEXT JR:T-NULL T= JR:NEXT JR:T-END T= ;
 
 \ ---- positive: strings / escapes ------------------------------------------
 : JRT-TEST-STRING ( -- )
-   JRT-HI-SRC$ JR-INIT
-   JR-NEXT JT-STR T=
-   JR-SPAN$ s" hi" T$=                              \ raw span excludes quotes
+   JRT-HI-SRC$ JR:INIT
+   JR:NEXT JR:T-STR T=
+   JR:SPAN$ s" hi" T$=                              \ raw span excludes quotes
    s" hi" JRT-STR=
-   JR-NEXT JT-END T= ;
+   JR:NEXT JR:T-END T= ;
 
 : JRT-TEST-ESCAPES ( -- )
-   JRT-ESC-SRC$ JR-INIT
-   JR-NEXT JT-STR T=
+   JRT-ESC-SRC$ JR:INIT
+   JR:NEXT JR:T-STR T=
    JRT-ESC-WANT$ JRT-STR=
-   JR-NEXT JT-END T= ;
+   JR:NEXT JR:T-END T= ;
 
 : JRT-TEST-UESCAPE ( -- )
-   JRT-U-SRC$ JR-INIT
-   JR-NEXT JT-STR T=
+   JRT-U-SRC$ JR:INIT
+   JR:NEXT JR:T-STR T=
    JRT-U-WANT$ JRT-STR= ;
 
 : JRT-TEST-SURROGATE ( -- )
-   JRT-SUR-SRC$ JR-INIT
-   JR-NEXT JT-STR T=
+   JRT-SUR-SRC$ JR:INIT
+   JR:NEXT JR:T-STR T=
    JRT-SUR-WANT$ JRT-STR= ;
 
 \ ---- positive: structure --------------------------------------------------
 : JRT-TEST-EMPTY ( -- )
-   s" {}" JR-INIT
-   JR-NEXT JT-OBJ T= JR-NEXT JT-OBJ-END T= JR-NEXT JT-END T=
-   s" []" JR-INIT
-   JR-NEXT JT-ARR T= JR-NEXT JT-ARR-END T= JR-NEXT JT-END T= ;
+   s" {}" JR:INIT
+   JR:NEXT JR:T-OBJ T= JR:NEXT JR:T-OBJ-END T= JR:NEXT JR:T-END T=
+   s" []" JR:INIT
+   JR:NEXT JR:T-ARR T= JR:NEXT JR:T-ARR-END T= JR:NEXT JR:T-END T= ;
 
 : JRT-TEST-NESTED ( -- )
-   JRT-NESTED$ JR-INIT
-   JR-NEXT JT-OBJ T=
-   JR-NEXT JT-KEY T= s" a" JRT-STR=
-   JR-NEXT JT-ARR T=
-   JR-NEXT JT-INT T= JR-INT 1 T=
-   JR-NEXT JT-INT T= JR-INT 2 T=
-   JR-NEXT JT-OBJ T=
-   JR-NEXT JT-KEY T= s" b" JRT-STR=
-   JR-NEXT JT-TRUE T=
-   JR-NEXT JT-OBJ-END T=
-   JR-NEXT JT-ARR-END T=
-   JR-NEXT JT-KEY T= s" c" JRT-STR=
-   JR-NEXT JT-STR T= s" x" JRT-STR=
-   JR-NEXT JT-OBJ-END T=
-   JR-NEXT JT-END T= ;
+   JRT-NESTED$ JR:INIT
+   JR:NEXT JR:T-OBJ T=
+   JR:NEXT JR:T-KEY T= s" a" JRT-STR=
+   JR:NEXT JR:T-ARR T=
+   JR:NEXT JR:T-INT T= JR:INT 1 T=
+   JR:NEXT JR:T-INT T= JR:INT 2 T=
+   JR:NEXT JR:T-OBJ T=
+   JR:NEXT JR:T-KEY T= s" b" JRT-STR=
+   JR:NEXT JR:T-TRUE T=
+   JR:NEXT JR:T-OBJ-END T=
+   JR:NEXT JR:T-ARR-END T=
+   JR:NEXT JR:T-KEY T= s" c" JRT-STR=
+   JR:NEXT JR:T-STR T= s" x" JRT-STR=
+   JR:NEXT JR:T-OBJ-END T=
+   JR:NEXT JR:T-END T= ;
 
 : JRT-TEST-WS ( -- )
-   JRT-WS$ JR-INIT
-   JR-NEXT JT-OBJ T=
-   JR-NEXT JT-KEY T= s" a" JRT-STR=
-   JR-NEXT JT-INT T= JR-INT 1 T=
-   JR-NEXT JT-OBJ-END T=
-   JR-NEXT JT-END T= ;
+   JRT-WS$ JR:INIT
+   JR:NEXT JR:T-OBJ T=
+   JR:NEXT JR:T-KEY T= s" a" JRT-STR=
+   JR:NEXT JR:T-INT T= JR:INT 1 T=
+   JR:NEXT JR:T-OBJ-END T=
+   JR:NEXT JR:T-END T= ;
 
 : JRT-DRAIN-ARR ( n -- ) {: depth:n :}
-   depth 0 ?do JR-NEXT JT-ARR T= loop
-   depth 0 ?do JR-NEXT JT-ARR-END T= loop
-   JR-NEXT JT-END T= ;
+   depth 0 ?do JR:NEXT JR:T-ARR T= loop
+   depth 0 ?do JR:NEXT JR:T-ARR-END T= loop
+   JR:NEXT JR:T-END T= ;
 
 : JRT-TEST-DEEP ( -- )
-   60 JRT-DEEP$ JR-INIT
+   60 JRT-DEEP$ JR:INIT
    60 JRT-DRAIN-ARR ;
 
 \ ---- round-trip against lib/json-write.f ----------------------------------
@@ -228,82 +239,82 @@ create JRT-NAME 65 c, 34 c, 66 c,
    JW$ ;
 
 : JRT-TEST-ROUNDTRIP ( -- )
-   JRT-RT-BUILD JR-INIT
-   JR-NEXT JT-OBJ T=
-   JR-NEXT JT-KEY T= s" name" JRT-STR=
-   JR-NEXT JT-STR T= JRT-NAME$ JRT-STR=
-   JR-NEXT JT-KEY T= s" count" JRT-STR=
-   JR-NEXT JT-INT T= JR-INT 42 T=
-   JR-NEXT JT-KEY T= s" ok" JRT-STR=
-   JR-NEXT JT-TRUE T=
-   JR-NEXT JT-KEY T= s" none" JRT-STR=
-   JR-NEXT JT-NULL T=
-   JR-NEXT JT-OBJ-END T=
-   JR-NEXT JT-END T= ;
+   JRT-RT-BUILD JR:INIT
+   JR:NEXT JR:T-OBJ T=
+   JR:NEXT JR:T-KEY T= s" name" JRT-STR=
+   JR:NEXT JR:T-STR T= JRT-NAME$ JRT-STR=
+   JR:NEXT JR:T-KEY T= s" count" JRT-STR=
+   JR:NEXT JR:T-INT T= JR:INT 42 T=
+   JR:NEXT JR:T-KEY T= s" ok" JRT-STR=
+   JR:NEXT JR:T-TRUE T=
+   JR:NEXT JR:T-KEY T= s" none" JRT-STR=
+   JR:NEXT JR:T-NULL T=
+   JR:NEXT JR:T-OBJ-END T=
+   JR:NEXT JR:T-END T= ;
 
-\ ---- JR-FIND-KEY ----------------------------------------------------------
+\ ---- JR:FIND-KEY ----------------------------------------------------------
 : JRT-TEST-FIND-HIT ( -- )
-   JRT-FIND$ JR-INIT
-   JR-NEXT JT-OBJ T=
-   s" a" JR-FIND-KEY TTRUE
-   JR-TOKEN JT-INT T=
-   JR-INT 1 T= ;
+   JRT-FIND$ JR:INIT
+   JR:NEXT JR:T-OBJ T=
+   s" a" JR:FIND-KEY TTRUE
+   JR:TOKEN JR:T-INT T=
+   JR:INT 1 T= ;
 
 : JRT-TEST-FIND-SKIP ( -- )
-   JRT-FIND$ JR-INIT
-   JR-NEXT JT-OBJ T=
-   s" b" JR-FIND-KEY TTRUE
-   JR-TOKEN JT-OBJ T=
-   JR-SKIP-VALUE
-   s" c" JR-FIND-KEY TTRUE
-   JR-TOKEN JT-INT T=
-   JR-INT 3 T= ;
+   JRT-FIND$ JR:INIT
+   JR:NEXT JR:T-OBJ T=
+   s" b" JR:FIND-KEY TTRUE
+   JR:TOKEN JR:T-OBJ T=
+   JR:SKIP-VALUE
+   s" c" JR:FIND-KEY TTRUE
+   JR:TOKEN JR:T-INT T=
+   JR:INT 3 T= ;
 
 : JRT-TEST-FIND-MISS ( -- )
-   JRT-FIND$ JR-INIT
-   JR-NEXT JT-OBJ T=
-   s" zzz" JR-FIND-KEY TFALSE ;
+   JRT-FIND$ JR:INIT
+   JR:NEXT JR:T-OBJ T=
+   s" zzz" JR:FIND-KEY TFALSE ;
 
 : JRT-TEST-FIND-NOLEAK ( -- )                     \ "x" only inside nested "b"
-   JRT-FIND$ JR-INIT
-   JR-NEXT JT-OBJ T=
-   s" x" JR-FIND-KEY TFALSE ;
+   JRT-FIND$ JR:INIT
+   JR:NEXT JR:T-OBJ T=
+   s" x" JR:FIND-KEY TFALSE ;
 
 \ ---- negative fixtures (each forces one named throw) ----------------------
 : JRT-BAD-TRAILING ( -- )
-   s" 1 2" JR-INIT JR-NEXT drop JR-NEXT drop ;
+   s" 1 2" JR:INIT JR:NEXT drop JR:NEXT drop ;
 
 : JRT-BAD-UNTERM ( -- )
-   JRT-UNTERM-SRC$ JR-INIT JR-NEXT drop ;
+   JRT-UNTERM-SRC$ JR:INIT JR:NEXT drop ;
 
 : JRT-BAD-ESCAPE ( -- )
-   JRT-BADESC-SRC$ JR-INIT JR-NEXT drop JRT-BUF JRT-CAP JR-STR drop ;
+   JRT-BADESC-SRC$ JR:INIT JR:NEXT drop JRT-BUF JRT-CAP JR:STR drop ;
 
 : JRT-BAD-SURROGATE ( -- )
-   JRT-LONE-SRC$ JR-INIT JR-NEXT drop JRT-BUF JRT-CAP JR-STR drop ;
+   JRT-LONE-SRC$ JR:INIT JR:NEXT drop JRT-BUF JRT-CAP JR:STR drop ;
 
 : JRT-BAD-DEPTH ( -- )
-   70 JRT-OPENS$ JR-INIT
-   100 0 ?do JR-NEXT drop loop ;
+   70 JRT-OPENS$ JR:INIT
+   100 0 ?do JR:NEXT drop loop ;
 
 : JRT-BAD-BAREWORD ( -- )
-   s" nul" JR-INIT JR-NEXT drop ;
+   s" nul" JR:INIT JR:NEXT drop ;
 
 : JRT-BAD-TRAILING-COMMA ( -- )
-   s" [1,]" JR-INIT JR-NEXT drop JR-NEXT drop JR-NEXT drop ;
+   s" [1,]" JR:INIT JR:NEXT drop JR:NEXT drop JR:NEXT drop ;
 
 : JRT-BAD-COLON ( -- )
    SB-RESET
-   JR-LBRACE SB-APPEND-C JR-DQ SB-APPEND-C s" a" SB-APPEND JR-DQ SB-APPEND-C
-   JR-SP SB-APPEND-C s" 1" SB-APPEND JR-RBRACE SB-APPEND-C
-   SB$ JR-INIT
-   JR-NEXT drop JR-NEXT drop ;
+   JRT-LBRACE SB-APPEND-C JRT-DQ SB-APPEND-C s" a" SB-APPEND JRT-DQ SB-APPEND-C
+   JRT-SP SB-APPEND-C s" 1" SB-APPEND JRT-RBRACE SB-APPEND-C
+   SB$ JR:INIT
+   JR:NEXT drop JR:NEXT drop ;
 
 : JRT-BAD-OVERFLOW ( -- )
-   s" 999999999999999999999999" JR-INIT JR-NEXT drop JR-INT drop ;
+   s" 999999999999999999999999" JR:INIT JR:NEXT drop JR:INT drop ;
 
 : JRT-BAD-STATE ( -- )
-   JRT-HI-SRC$ JR-INIT JR-NEXT drop JR-INT drop ;
+   JRT-HI-SRC$ JR:INIT JR:NEXT drop JR:INT drop ;
 
 : JRT-TEST-NEGATIVE ( -- )
    [: JRT-BAD-TRAILING ;] E-JR-TRAILING TTHROWSQ
@@ -317,8 +328,7 @@ create JRT-NAME 65 c, 34 c, 66 c,
    [: JRT-BAD-OVERFLOW ;] E-JR-NUMBER TTHROWSQ
    [: JRT-BAD-STATE ;] E-JR-STATE TTHROWSQ ;
 
-: JRT-MAIN ( -- )
-   T-RESET
+: JRT-CORE ( -- )
    JRT-TEST-INTS
    JRT-TEST-FLOATS
    JRT-TEST-LITERALS
@@ -335,8 +345,21 @@ create JRT-NAME 65 c, 34 c, 66 c,
    JRT-TEST-FIND-SKIP
    JRT-TEST-FIND-MISS
    JRT-TEST-FIND-NOLEAK
-   JRT-TEST-NEGATIVE
-   T-REPORT
-   s" json-read-test: ok" type cr ;
+   JRT-TEST-NEGATIVE ;
 
-JRT-MAIN
+\ ---- bounds regression: JR-AT is private, so probe it inside package JR ----
+\ Guards the fail-closed source-cursor read: an index below zero or at/after the
+\ source length must throw E-JR-BOUNDS, never read past the caller's buffer.
+package JR
+: JRT-BOUNDS ( -- )
+   s" abc" INIT
+   s" JR-AT reads a valid index" T-LABEL   0 JR-AT 97 T=
+   s" JR-AT rejects the length index" T-LABEL  [: 3 JR-AT drop ;] E-JR-BOUNDS TTHROWSQ
+   s" JR-AT rejects a negative index" T-LABEL  [: -1 JR-AT drop ;] E-JR-BOUNDS TTHROWSQ ;
+;package
+
+T-RESET
+JRT-CORE
+package JR JRT-BOUNDS ;package
+T-REPORT
+s" json-read-test: ok" type cr

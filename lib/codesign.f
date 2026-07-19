@@ -1,7 +1,11 @@
 \ codesign.f - checked executable promotion and ad-hoc signing helpers.
 \
-\ Load after lib/errors.f, lib/memory.f, lib/fs.f, lib/fs-mutate.f,
-\ lib/process.f, and lib/process-argv.f.
+require lib/errors.f
+require lib/memory.f
+require lib/fs.f
+require lib/fs-mutate.f
+require lib/process.f
+require lib/process-argv.f
 
 4096 constant CODESIGN-OUT-CAP
 4096 constant CODESIGN-ERR-CAP

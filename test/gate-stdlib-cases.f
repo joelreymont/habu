@@ -512,6 +512,10 @@ TEST:SUITE owner-wid-snapshot
    test/owner-wid-snapshot.f
 TEST:;SUITE
 
+TEST:SUITE stdlib-standalone-load
+   test/stdlib-standalone-load.f
+TEST:;SUITE
+
 TEST:SUITE aot-wid-restore
    test/aot-wid-suite.f
 TEST:;SUITE

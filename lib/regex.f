@@ -1,5 +1,7 @@
 \ regex.f - bounded capture-free regex scanner/tokenizer.
 
+require lib/errors.f
+require lib/string.f
 require lib/adt/option.f                     \ option<n>/option<len> for RX-META-TOKEN / RX-PREFIX-LEN (switchover wave A)
 
 $2E constant RX-C-DOT

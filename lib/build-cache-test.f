@@ -356,11 +356,11 @@ $7E constant ROOT-C
    HB-BUILD:MAKER-BUILT? TTRUE
    HB-BUILD:MAKER-RAN? TFALSE
    HB-BUILD:ELAPSED-NS 42 T=
-   a u JR-INIT
-   JR-NEXT JT-OBJ T=
-   s" cache_root" JR-FIND-KEY TTRUE
-   JR-TOKEN JT-STR T=
-   REPORT-OUT FS-PATH-CAP JR-STR {: rootu:n :}
+   a u JR:INIT
+   JR:NEXT JR:T-OBJ T=
+   s" cache_root" JR:FIND-KEY TTRUE
+   JR:TOKEN JR:T-STR T=
+   REPORT-OUT FS-PATH-CAP JR:STR {: rootu:n :}
    REPORT-OUT rootu F$ T$= ;
 
 : CHECK-ERROR-REPORT ( -- )

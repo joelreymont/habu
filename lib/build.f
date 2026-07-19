@@ -1,6 +1,9 @@
 \ build.f - checked helpers for Habu build scripts.
 \
-\ Load after lib/errors.f, lib/string.f, lib/fs.f, and lib/process.f.
+require lib/errors.f
+require lib/string.f
+require lib/fs.f
+require lib/process.f
 
 65536 constant BUILD-SOURCE-CAP
 10 constant BUILD-LF

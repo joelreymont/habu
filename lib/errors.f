@@ -180,6 +180,7 @@
 -3908 constant E-JR-COLON       \ missing ':' after an object key
 -3909 constant E-JR-COMMA       \ expected ',' or the matching container close
 -3910 constant E-JR-STATE       \ accessor called on the wrong token kind or dst buffer too small
+-3911 constant E-JR-BOUNDS      \ source-cursor read past the input buffer (internal invariant)
 
 \ Remote device harness (ssh zed): -4000..-4099
 -4000 constant E-ZED-FIRST

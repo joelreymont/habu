@@ -2,6 +2,8 @@
 \
 \ Load after lib/errors.f and lib/string.f.
 
+require lib/errors.f
+require lib/string.f
 require lib/adt/option.f                        \ option<n> for FS-TRY-*STAT-MODE (switchover wave A)
 
 1024 constant FS-PATH-CAP

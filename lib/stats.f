@@ -3,7 +3,11 @@
 \ Sum / mean / min / max / population variance / stddev, plus linear-interpolated
 \ percentile and median (which require the array pre-sorted ascending — use
 \ lib/sort.f FSORT! first). All over a float cell array `ptr r len`; len >= 1 for
-\ the reductions. Depends on lib/sort.f (FX@ cell read).
+\ the reductions.
+
+require lib/errors.f
+require lib/float.f
+require lib/sort.f                            \ FX@ float-cell read
 
 variable STAT-I
 

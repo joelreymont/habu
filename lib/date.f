@@ -1,5 +1,6 @@
 \ date.f - checked Gregorian UTC date helpers.
 
+require lib/errors.f
 require lib/adt/option.f                      \ option<n> for DATE-N (switchover wave A)
 
 10 constant DATE-LEN

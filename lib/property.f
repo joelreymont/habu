@@ -1,5 +1,7 @@
 \ property.f - checked helpers for property-based tests.
 
+require lib/errors.f
+
 1 constant PROP-DEFAULT-SEED
 250 constant PROP-DEFAULT-COUNT
 50000 constant PROP-MAX-COUNT

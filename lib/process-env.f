@@ -1,9 +1,14 @@
 \ process-env.f - checked argv/env process helpers and PATH lookup.
 \
-\ Load after lib/errors.f, lib/string.f, lib/memory.f, lib/fs.f, lib/process.f,
-\ and lib/process-argv.f. Kept separate from process-argv so old native seeds can
-\ still run the build-fixpoint installer before this newer primitive exists.
+\ Kept separate from process-argv so old native seeds can still run the
+\ build-fixpoint installer before this newer primitive exists.
 
+require lib/errors.f
+require lib/string.f
+require lib/memory.f
+require lib/fs.f
+require lib/process.f
+require lib/process-argv.f
 require lib/adt/option.f                 \ option<len> for the FIND-EXECUTABLE cluster (switchover wave A)
 
 256 constant PROC-ENV-MAX

@@ -1,6 +1,9 @@
 \ source.f - checked source materialization helpers.
 \
-\ Load after lib/errors.f, lib/string.f, lib/memory.f, and lib/fs.f.
+require lib/errors.f
+require lib/string.f
+require lib/memory.f
+require lib/fs.f
 
 $20000 constant SOURCE-CAP
 1 constant SOURCE-PROBE-CAP

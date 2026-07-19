@@ -1,7 +1,10 @@
 \ process-command.f - checked command-owned process runner.
 \
-\ Load after lib/errors.f, lib/fs.f, lib/process.f, lib/process-argv.f,
-\ and lib/process-env.f.
+require lib/errors.f
+require lib/fs.f
+require lib/process.f
+require lib/process-argv.f
+require lib/process-env.f
 
 PROC-ARGV-MAX 1- constant PROC-CMD-ARG-MAX
 PROC-ARGV-BUF-CAP constant PROC-CMD-ARG-BUF-CAP

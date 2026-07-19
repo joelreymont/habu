@@ -203,6 +203,11 @@ variable SC-NUM-L
    \ processes (return-stack zeroing + fail-closed on a failed close), too
    \ costly for the resident fast tier - runs in the standalone stdlib gate.
    s" test/owner-wid-snapshot.f" q execute
+   \ flat-lib standalone-load gate: spawns ~50 child engines to bare-load every
+   \ flat lib/<module>.f (dot habu-pkg-stdlib-modules-3197dbbc). ~20s of process
+   \ spawns, too costly for the resident fast tier - runs in the standalone
+   \ stdlib gate like the snapshot suite above.
+   s" test/stdlib-standalone-load.f" q execute
    \ protected-WID boot-integration suite: spawns test/aot-wid-build.f to build a
    \ full variant engine (~12s), too costly for the fast tail-process fork tier
    \ (its 11.1s pool ratchet) - runs in the standalone stdlib gate like the

@@ -1,7 +1,11 @@
 \ process-cwd.f - checked argv/env/cwd process helpers.
 \
-\ Load after lib/errors.f, lib/string.f, lib/fs.f, lib/process.f,
-\ lib/process-argv.f, and lib/process-env.f.
+require lib/errors.f
+require lib/string.f
+require lib/fs.f
+require lib/process.f
+require lib/process-argv.f
+require lib/process-env.f
 
 create PROC-CWDZ-BUF PROC-PATHZ-CAP allot
 

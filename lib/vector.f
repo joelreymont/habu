@@ -1,6 +1,7 @@
 \ vector.f - checked growable cell-vector helpers.
 \
-\ Load after lib/errors.f and lib/memory.f.
+require lib/errors.f
+require lib/memory.f
 
 BEGIN-STRUCTURE VEC-HEADER-BYTES
    PTR-FIELD: VEC.DATA

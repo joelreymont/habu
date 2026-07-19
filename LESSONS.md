@@ -619,6 +619,24 @@ fits.
   `include`, or a resident worker re-evaluates and hits duplicate definition. Core byte
   helpers used across unrelated libs belong in a narrow `src/core/*.f` prelude, not
   `lib/string.f`.
+- **Adding a `require` to a stdlib module breaks `tools/bundle-lib.f` unless the
+  bundle marks bundled paths `provided`.** The bundler source-CONCATENATES each module
+  (`BL-COPY-FILE`), so a `require lib/errors.f` line inside a bundled module re-reads
+  errors.f from disk at bundle-run time and dies `duplicate definition: E-A-FIRST`
+  (rc 78) — require/include do not know the inline copy exists. Fix at the bundler, not
+  by dropping the require: emit `s" lib/<mod>.f" provided` for every bundled module
+  before its source (`BL-EMIT-PROVIDED-ALL`), mirroring how the native engine marks
+  baked prefix files provided so a later `require` short-circuits.
+- **Packaging a stdlib module for the manifest: put the public API in a `public`
+  SECTION, not `EXPORT`-from-private.** `tools/public-signatures.f` `PS-PUBLIC?` checks
+  `PS-IN-PKG` BEFORE `PS-EXPORTED?`, so a word defined in a package's `private` section
+  and later `EXPORT`ed emits NO manifest row (the code still runs and resolves as
+  `PKG:WORD`, but the stdlib-manifest gate never sees it). When definition order forbids
+  one trailing public section (a public accessor is used by an earlier private word,
+  e.g. `JR:SPAN$` used by `JR-READ-NUMBER`), use several `public`/`private` toggles so
+  each public word is declared in a `public` section at its natural position. Constants
+  get no manifest row even when public, so exported token-kind constants
+  (`JR:T-OBJ` ..) never appear in `lib/std.manifest`.
 - **Repo-scale source lints must STREAM, not vectorize.** Building a per-token vector costs 8
   `VEC-PUSH`es/token plus growth copies, so `LEX-SOURCE` took 9.2s on one file and a 141k fill
   63.9s; `lib/vector.f` element access is itself constant-time (`VEC-CELL-FIELD` is

@@ -1,5 +1,6 @@
 \ array.f - checked cell-array helpers.
 
+require lib/errors.f
 require lib/adt/option.f                        \ option<idx> for A-FIND-INDEX / A-FIND-INDEXI (switchover wave A)
 
 : A-LEN ( n -- len )

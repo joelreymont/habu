@@ -1,6 +1,8 @@
 \ json-write.f - checked emit-only JSON writer.
 \
-\ Load after lib/errors.f, lib/string.f, and lib/memory.f.
+require lib/errors.f
+require lib/string.f
+require lib/memory.f
 
 1 constant JW-MIN-CAP
 32 constant JW-NUM-CAP

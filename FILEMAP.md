@@ -1989,6 +1989,10 @@ points stay listed.
 - `test/owner-wid-snapshot-poison.f` / `test/owner-wid-snapshot-close-fail.f` —
   builder-only fixtures injected into the snap source that plant return-stack
   canaries and arm the test-only `SNAP-CLOSE-SEAM` before `SNAPGO`.
+- `test/stdlib-standalone-load.f` — standalone-load gate: walks the lib directory
+  for the flat production modules and spawns a fresh child engine to bare-load
+  each one, failing closed if any module cannot load its own dependency closure
+  (guards against hidden load-order coupling).
 - `test/wide-store-seal.f` — generated checked W=2 ADT store forges proving
   ordinary storage and first/later-cell protected-band intersections: zero-valued
   payload/tag attempts against the seal latch must trap `ENGINE-ERROR:SEAL-VIOLATION`

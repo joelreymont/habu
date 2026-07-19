@@ -1,5 +1,7 @@
 \ table.f - checked fixed-capacity cell table helpers.
 
+require lib/errors.f
+
 2 constant TBL-PAIR-CELLS
 $7FFFFFFFFFFFFFFF constant TBL-MAX-CELLS
 

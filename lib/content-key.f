@@ -1,10 +1,13 @@
 \ content-key.f - manifest-hashed content cache keys.
 \
 \ Requires SHA256 words; native bin/hb already carries src/core/sha256.f.
-\ Load after lib/errors.f, lib/string.f, lib/memory.f, and lib/fs.f.
 \ Needs SORT! for the path-ordered lookup index and RENAME-FILE for the
 \ atomic compacting writer, so both modules are pulled in explicitly.
 
+require lib/errors.f
+require lib/string.f
+require lib/memory.f
+require lib/fs.f
 require lib/sort.f
 require lib/fs-mutate.f
 

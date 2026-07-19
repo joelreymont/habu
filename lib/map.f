@@ -1,5 +1,7 @@
 \ map.f - fixed-capacity open-addressed string-key map layout.
 
+require lib/errors.f
+require lib/string.f
 require lib/adt/option.f                      \ option<n> for MAP-GET (switchover wave A)
 
 \ slot-state - the per-slot lifecycle tag (switchover wave C). An ENUM instead

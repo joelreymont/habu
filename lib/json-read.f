@@ -1,13 +1,18 @@
 \ json-read.f - checked zero-allocation JSON pull/cursor parser.
 \
-\ Load after lib/errors.f, lib/string.f, and lib/float.f. The parser is a cursor
-\ over the caller's source buffer (no allocation): JR-INIT ( ptr u8 n -- ) points
-\ it at the bytes, JR-NEXT ( -- kind ) advances to and returns the next typed
-\ token, and the span/value accessors read the current token in place. Structural
-\ well-formedness (RFC 8259: strict, no comments, no trailing commas, no single
-\ quotes) is validated as the cursor advances; number/string decode is validated
-\ on demand by JR-INT/JR-FLOAT/JR-STR. Every failure is a named throw in the
-\ -3900..-3999 block from lib/errors.f.
+\ The parser is a cursor over the caller's source buffer (no allocation):
+\ JR:INIT ( ptr u8 n -- ) points it at the bytes, JR:NEXT ( -- kind ) advances to
+\ and returns the next typed token, and the span/value accessors read the current
+\ token in place. Structural well-formedness (RFC 8259: strict, no comments, no
+\ trailing commas, no single quotes) is validated as the cursor advances;
+\ number/string decode is validated on demand by JR:INT / JR:FLOAT / JR:STR. Every
+\ failure is a named throw in the -3900..-3999 block from lib/errors.f.
+\
+\ The parser lives in `package JR`. External callers use the qualified public API
+\ (JR:INIT, JR:NEXT, JR:TOKEN, JR:SPAN$, JR:INT, JR:FLOAT, JR:STR, JR:SKIP-VALUE,
+\ JR:FIND-KEY) and the qualified token kinds (JR:T-OBJ .. JR:T-END). The byte
+\ constants, cursor state, and the scan/decode helpers - including the raw
+\ bounds-checked source reader JR-AT - are private and unreachable by bare name.
 \
 \ Cursor state machine (JR-STATE): a value token drives one transition each.
 \   ST-VALUE   value required (doc start / after ':' / after ',' in an array)
@@ -15,11 +20,16 @@
 \   ST-KEY     object just opened: a key string or '}'
 \   ST-MEMBER  after ',' in an object: a key string (no '}': trailing comma)
 \   ST-SEP     value complete inside a container: ',' or the matching close
-\   ST-DONE    top-level value complete: only whitespace then JT-END
-\ A ',' in ST-SEP is consumed silently (JR-STEP returns JR-RETRY and JR-NEXT
-\ loops); container closes are emitted as JT-OBJ-END / JT-ARR-END.
+\   ST-DONE    top-level value complete: only whitespace then JR:T-END
+\ A ',' in ST-SEP is consumed silently (JR-STEP returns JR-RETRY and NEXT loops);
+\ container closes are emitted as T-OBJ-END / T-ARR-END.
 
+require lib/errors.f
+require lib/string.f
+require lib/float.f
 require lib/adt/option.f                 \ option<CAD-NUM:index> for STR:INDEX-OF (switchover wave A)
+
+package JR
 
 \ ---- byte constants -------------------------------------------------------
 8 constant JR-BS
@@ -72,19 +82,24 @@ $E000 constant JR-SUR-END
 $10000 constant JR-SUR-BASE
 10 constant JR-SUR-SHIFT
 
-\ ---- token kinds ----------------------------------------------------------
-0 constant JT-OBJ
-1 constant JT-OBJ-END
-2 constant JT-ARR
-3 constant JT-ARR-END
-4 constant JT-KEY
-5 constant JT-STR
-6 constant JT-INT
-7 constant JT-FLOAT
-8 constant JT-TRUE
-9 constant JT-FALSE
-10 constant JT-NULL
-11 constant JT-END
+\ ---- token kinds (public: JR:T-*) -----------------------------------------
+public
+
+0 constant T-OBJ
+1 constant T-OBJ-END
+2 constant T-ARR
+3 constant T-ARR-END
+4 constant T-KEY
+5 constant T-STR
+6 constant T-INT
+7 constant T-FLOAT
+8 constant T-TRUE
+9 constant T-FALSE
+10 constant T-NULL
+11 constant T-END
+
+private
+
 99 constant JR-RETRY
 
 \ ---- parser state ---------------------------------------------------------
@@ -109,12 +124,12 @@ variable JR-KIND                             \ current token kind
 variable JR-TOK-OFF                          \ current token span start (source offset)
 variable JR-TOK-LEN                          \ current token span length
 create JR-CTX JR-MAX-DEPTH allot             \ per-level container byte
-create JR-KEY-BUF JR-KEY-CAP allot           \ JR-FIND-KEY unescape scratch
+create JR-KEY-BUF JR-KEY-CAP allot           \ FIND-KEY unescape scratch
 
-variable JR-UP                               \ JR-STR dst-pointer field holder
-variable JR-UCAP                             \ JR-STR dst capacity
-variable JR-UO                               \ JR-STR output count
-variable JR-UI                               \ JR-STR input cursor (span-relative)
+variable JR-UP                               \ JR:STR dst-pointer field holder
+variable JR-UCAP                             \ JR:STR dst capacity
+variable JR-UO                               \ JR:STR output count
+variable JR-UI                               \ JR:STR input cursor (span-relative)
 variable JR-UE                               \ current escape char
 variable JR-HI                               \ surrogate high half
 variable JR-LO                               \ surrogate low half
@@ -136,7 +151,11 @@ variable JR-NI                               \ number-validator cursor
 : JR-SRC! ( ptr u8 -- )
    JR-SRC-FIELD ! ;
 
-: JR-AT ( n -- n )
+: JR-IN-BOUNDS? ( n -- bool )                \ is an absolute index inside the source?
+   dup 0 >= swap JR-SRC-U @ < and ;
+
+: JR-AT ( n -- n )                           \ fail-closed source-byte fetch
+   dup JR-IN-BOUNDS? 0= if E-JR-BOUNDS throw then
    JR-SRC@ + c@ ;
 
 : JR-EOF? ( -- bool )
@@ -148,21 +167,25 @@ variable JR-NI                               \ number-validator cursor
 : JR-ADVANCE ( -- )
    JR-POS @ 1+ JR-POS ! ;
 
-: JR-INIT ( ptr u8 n -- ) {: a:ptr u:n :}
+public
+
+: INIT ( ptr u8 n -- ) {: a:ptr u:n :}
    a JR-SRC!
    u JR-SRC-U !
    0 JR-POS !
    0 JR-DEPTH !
    ST-VALUE JR-STATE !
-   JT-END JR-KIND !
+   T-END JR-KIND !
    0 JR-TOK-OFF !
    0 JR-TOK-LEN ! ;
 
-: JR-TOKEN ( -- n )
+: TOKEN ( -- n )
    JR-KIND @ ;
 
-: JR-SPAN$ ( -- ptr u8 n )
+: SPAN$ ( -- ptr u8 n )
    JR-SRC@ JR-TOK-OFF @ + JR-TOK-LEN @ ;
+
+private
 
 \ ---- whitespace -----------------------------------------------------------
 : JR-WS? ( n -- bool )
@@ -275,7 +298,7 @@ variable JR-NI                               \ number-validator cursor
    JR-NI @ u = ;
 
 : JR-SPAN-HAS? ( n -- bool ) {: c:n :}
-   JR-SPAN$ STR:LENGTH c STR:INDEX-OF MATCH option
+   SPAN$ STR:LENGTH c STR:INDEX-OF MATCH option
      none OF JR-FALSE ENDOF
      some OF drop JR-TRUE ENDOF
    ;MATCH ;
@@ -303,63 +326,63 @@ variable JR-NI                               \ number-validator cursor
    kind ;
 
 : JR-READ-TRUE ( -- n )
-   s" true" JT-TRUE JR-READ-LIT ;
+   s" true" T-TRUE JR-READ-LIT ;
 
 : JR-READ-FALSE ( -- n )
-   s" false" JT-FALSE JR-READ-LIT ;
+   s" false" T-FALSE JR-READ-LIT ;
 
 : JR-READ-NULL ( -- n )
-   s" null" JT-NULL JR-READ-LIT ;
+   s" null" T-NULL JR-READ-LIT ;
 
 \ ---- value readers --------------------------------------------------------
 : JR-OPEN-OBJ ( -- n )
-   JR-POS @ JR-TOK-OFF ! 1 JR-TOK-LEN ! JT-OBJ JR-KIND !
+   JR-POS @ JR-TOK-OFF ! 1 JR-TOK-LEN ! T-OBJ JR-KIND !
    JR-ADVANCE
    JR-CTX-OBJ JR-PUSH
    ST-KEY JR-STATE !
-   JT-OBJ ;
+   T-OBJ ;
 
 : JR-OPEN-ARR ( -- n )
-   JR-POS @ JR-TOK-OFF ! 1 JR-TOK-LEN ! JT-ARR JR-KIND !
+   JR-POS @ JR-TOK-OFF ! 1 JR-TOK-LEN ! T-ARR JR-KIND !
    JR-ADVANCE
    JR-CTX-ARR JR-PUSH
    ST-ELEM JR-STATE !
-   JT-ARR ;
+   T-ARR ;
 
 : JR-CLOSE-OBJ ( -- n )
-   JR-POS @ JR-TOK-OFF ! 1 JR-TOK-LEN ! JT-OBJ-END JR-KIND !
+   JR-POS @ JR-TOK-OFF ! 1 JR-TOK-LEN ! T-OBJ-END JR-KIND !
    JR-ADVANCE
    JR-POP
    JR-AFTER-VALUE
-   JT-OBJ-END ;
+   T-OBJ-END ;
 
 : JR-CLOSE-ARR ( -- n )
-   JR-POS @ JR-TOK-OFF ! 1 JR-TOK-LEN ! JT-ARR-END JR-KIND !
+   JR-POS @ JR-TOK-OFF ! 1 JR-TOK-LEN ! T-ARR-END JR-KIND !
    JR-ADVANCE
    JR-POP
    JR-AFTER-VALUE
-   JT-ARR-END ;
+   T-ARR-END ;
 
 : JR-READ-STRING ( -- n )
    JR-SCAN-STRING
-   JT-STR JR-KIND !
+   T-STR JR-KIND !
    JR-AFTER-VALUE
-   JT-STR ;
+   T-STR ;
 
 : JR-READ-KEY ( -- n )
    JR-SCAN-STRING
-   JT-KEY JR-KIND !
+   T-KEY JR-KIND !
    JR-SKIP-WS
    JR-EOF? if E-JR-COLON throw then
    JR-PEEK JR-COLON <> if E-JR-COLON throw then
    JR-ADVANCE
    ST-VALUE JR-STATE !
-   JT-KEY ;
+   T-KEY ;
 
 : JR-READ-NUMBER ( -- n )
    JR-SCAN-NUMBER
-   JR-SPAN$ JR-JSON-NUMBER? 0= if E-JR-NUMBER throw then
-   JR-NUM-FLOATY? if JT-FLOAT else JT-INT then JR-KIND !
+   SPAN$ JR-JSON-NUMBER? 0= if E-JR-NUMBER throw then
+   JR-NUM-FLOATY? if T-FLOAT else T-INT then JR-KIND !
    JR-AFTER-VALUE
    JR-KIND @ ;
 
@@ -404,7 +427,7 @@ variable JR-NI                               \ number-validator cursor
 : JR-STEP ( -- n )
    JR-SKIP-WS
    JR-EOF? if
-      JR-STATE @ ST-DONE = if JT-END exit then
+      JR-STATE @ ST-DONE = if T-END exit then
       E-JR-EOF throw
    then
    JR-STATE @ ST-DONE = if E-JR-TRAILING throw then
@@ -414,23 +437,27 @@ variable JR-NI                               \ number-validator cursor
    JR-STATE @ ST-MEMBER = if JR-DO-MEMBER exit then
    JR-DO-SEP ;
 
-: JR-NEXT ( -- n )
+public
+
+: NEXT ( -- n )
    begin JR-STEP dup JR-RETRY = while drop repeat ;
 
 \ ---- number value decode --------------------------------------------------
-: JR-INT ( -- n )
-   JR-KIND @ JT-INT <> if E-JR-STATE throw then
-   JR-SPAN$ STR>NUMBER? MATCH option
+: INT ( -- n )
+   JR-KIND @ T-INT <> if E-JR-STATE throw then
+   SPAN$ STR>NUMBER? MATCH option
      none OF E-JR-NUMBER throw ENDOF
      some OF ENDOF
    ;MATCH ;
 
-: JR-FLOAT ( -- r )
-   JR-KIND @ dup JT-INT = swap JT-FLOAT = or 0= if E-JR-STATE throw then
-   JR-SPAN$ STR>FLOAT MATCH option
+: FLOAT ( -- r )
+   JR-KIND @ dup T-INT = swap T-FLOAT = or 0= if E-JR-STATE throw then
+   SPAN$ STR>FLOAT MATCH option
      none OF E-JR-NUMBER throw ENDOF
      some OF ENDOF
    ;MATCH ;
+
+private
 
 \ ---- string value decode (unescape into caller buffer) --------------------
 : JR-UDST-FIELD ( -- ptr ptr u8 )
@@ -520,8 +547,10 @@ variable JR-NI                               \ number-validator cursor
    JR-UE @ JR-CH-U = if JR-UNI exit then
    JR-UE @ JR-ESC-BYTE ;
 
-: JR-STR ( ptr u8 n -- n ) {: dst:ptr cap:n :}
-   JR-KIND @ dup JT-STR = swap JT-KEY = or 0= if E-JR-STATE throw then
+public
+
+: STR ( ptr u8 n -- n ) {: dst:ptr cap:n :}
+   JR-KIND @ dup T-STR = swap T-KEY = or 0= if E-JR-STATE throw then
    dst JR-UDST!
    cap JR-UCAP !
    0 JR-UI !
@@ -531,40 +560,46 @@ variable JR-NI                               \ number-validator cursor
    repeat
    JR-UO @ ;
 
+private
+
 \ ---- skip / find ----------------------------------------------------------
 : JR-SCALAR? ( n -- bool )
-   dup JT-STR = over JT-INT = or over JT-FLOAT = or
-   over JT-TRUE = or over JT-FALSE = or swap JT-NULL = or ;
+   dup T-STR = over T-INT = or over T-FLOAT = or
+   over T-TRUE = or over T-FALSE = or swap T-NULL = or ;
 
 : JR-OPENER? ( n -- bool )
-   dup JT-OBJ = swap JT-ARR = or ;
+   dup T-OBJ = swap T-ARR = or ;
 
 : JR-CLOSER? ( n -- bool )
-   dup JT-OBJ-END = swap JT-ARR-END = or ;
+   dup T-OBJ-END = swap T-ARR-END = or ;
 
-: JR-SKIP-VALUE ( -- )
+public
+
+: SKIP-VALUE ( -- )
    JR-KIND @ JR-SCALAR? if exit then
    JR-KIND @ JR-OPENER? 0= if E-JR-STATE throw then
    1 begin dup 0 > while
-      JR-NEXT
+      NEXT
       dup JR-OPENER? if drop 1+ else
       dup JR-CLOSER? if drop 1- else
-      dup JT-END = if E-JR-EOF throw else drop then then then
+      dup T-END = if E-JR-EOF throw else drop then then then
    repeat drop ;
 
-: JR-FIND-KEY ( ptr u8 n -- bool ) {: ka:ptr ku:n :}
+: FIND-KEY ( ptr u8 n -- bool ) {: ka:ptr ku:n :}
    begin
-      JR-NEXT
-      dup JT-OBJ-END = if drop JR-FALSE exit then
-      dup JT-KEY = if
+      NEXT
+      dup T-OBJ-END = if drop JR-FALSE exit then
+      dup T-KEY = if
          drop
-         JR-KEY-BUF JR-KEY-CAP JR-STR
+         JR-KEY-BUF JR-KEY-CAP STR
          JR-KEY-BUF swap ka ku STR= if
-            JR-NEXT drop JR-TRUE exit
+            NEXT drop JR-TRUE exit
          then
-         JR-NEXT drop
-         JR-SKIP-VALUE
+         NEXT drop
+         SKIP-VALUE
       else
-         JT-END = if E-JR-EOF throw then
+         T-END = if E-JR-EOF throw then
       then
    again ;
+
+;package
