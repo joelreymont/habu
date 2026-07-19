@@ -1412,13 +1412,13 @@ variable SS-I  variable SS-J  variable SS-BAD
 \ AXR 267 0 0 0 prim - checker-public - -
 \ AXR 268 0 0 0 prim - checker-private - -
 \ AXR 269 0 0 0 prim - checker-end-package - -
-\ AXR 270 0 2 1 prim - ffi-call - pe-ptr-a pe-in pe-n pe-in pe-n pe-out
+\ AXR 270 0 2 1 prim - ffi-call trusted-only pe-ptr-a pe-in pe-n pe-in pe-n pe-out
 \ AXR 271 0 3 1 prim - ffi-call-n trusted-only pe-ptr-a pe-in pe-n pe-in pe-n pe-in pe-n pe-out
 \ AXR 272 0 4 1 prim - ffi-call-bounded trusted-only pe-ptr-a pe-in pe-ptr-b pe-in pe-n pe-in pe-n pe-in pe-n pe-out
 \ AXR 273 0 7 1 prim - ffi-call-abi-bounded trusted-only pe-ptr-a pe-in pe-ptr-b pe-in pe-ptr-c pe-in pe-ptr-d pe-in pe-ptr-e pe-in pe-n pe-in pe-n pe-in pe-n pe-out
 \ AXR 274 0 7 1 prim - ffi-call-abi-r-bounded trusted-only pe-ptr-a pe-in pe-ptr-b pe-in pe-ptr-c pe-in pe-ptr-d pe-in pe-ptr-e pe-in pe-n pe-in pe-n pe-in pe-r pe-out
-\ AXR 275 0 5 1 prim - ffi-call-abi - pe-ptr-a pe-in pe-ptr-b pe-in pe-ptr-c pe-in pe-n pe-in pe-n pe-in pe-n pe-out
-\ AXR 276 0 5 1 prim - ffi-call-abi-r - pe-ptr-a pe-in pe-ptr-b pe-in pe-ptr-c pe-in pe-n pe-in pe-n pe-in pe-r pe-out
+\ AXR 275 0 5 1 prim - ffi-call-abi trusted-only pe-ptr-a pe-in pe-ptr-b pe-in pe-ptr-c pe-in pe-n pe-in pe-n pe-in pe-n pe-out
+\ AXR 276 0 5 1 prim - ffi-call-abi-r trusted-only pe-ptr-a pe-in pe-ptr-b pe-in pe-ptr-c pe-in pe-n pe-in pe-n pe-in pe-r pe-out
 \ AXR 277 3 2 1 prim - f+ - pe-r pe-in pe-r pe-in pe-r pe-out
 \ AXR 278 3 2 1 prim - f- - pe-r pe-in pe-r pe-in pe-r pe-out
 \ AXR 279 3 2 1 prim - f* - pe-r pe-in pe-r pe-in pe-r pe-out

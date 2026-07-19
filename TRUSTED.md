@@ -1045,6 +1045,7 @@ test/engine-suite.f:TP test-metaprog habu-primitive-effect-axiom-1119f176
 test/engine-suite.f:TPN2 test-metaprog habu-primitive-effect-axiom-1119f176
 test/immediate-model-test.f:IMT-PASSES test-metaprog habu-primitive-effect-axiom-1119f176
 test/engine-suite.f:ES-PATCH32 test-metaprog habu-checker-capability-gate-14022ba9
+test/engine-suite.f:ES-FFI-CALL test-metaprog habu-checker-capability-gate-14022ba9
 test/engine-suite.f:set-check test-metaprog cap:checker-hook-identity
 test/engine-suite.f test-metaprog habu-seal-set-check-b3676b33 7
 test/engine-suite.f:ES-REND-SIG$ test-metaprog habu-seal-set-check-b3676b33
@@ -1583,13 +1584,13 @@ prim - checker-package - pe-ptr-u8 pe-in pe-n pe-in
 prim - checker-public - -
 prim - checker-private - -
 prim - checker-end-package - -
-prim - ffi-call - pe-ptr-a pe-in pe-n pe-in pe-n pe-out
+prim - ffi-call trusted-only pe-ptr-a pe-in pe-n pe-in pe-n pe-out
 prim - ffi-call-n trusted-only pe-ptr-a pe-in pe-n pe-in pe-n pe-in pe-n pe-out
 prim - ffi-call-bounded trusted-only pe-ptr-a pe-in pe-ptr-b pe-in pe-n pe-in pe-n pe-in pe-n pe-out
 prim - ffi-call-abi-bounded trusted-only pe-ptr-a pe-in pe-ptr-b pe-in pe-ptr-c pe-in pe-ptr-d pe-in pe-ptr-e pe-in pe-n pe-in pe-n pe-in pe-n pe-out
 prim - ffi-call-abi-r-bounded trusted-only pe-ptr-a pe-in pe-ptr-b pe-in pe-ptr-c pe-in pe-ptr-d pe-in pe-ptr-e pe-in pe-n pe-in pe-n pe-in pe-r pe-out
-prim - ffi-call-abi - pe-ptr-a pe-in pe-ptr-b pe-in pe-ptr-c pe-in pe-n pe-in pe-n pe-in pe-n pe-out
-prim - ffi-call-abi-r - pe-ptr-a pe-in pe-ptr-b pe-in pe-ptr-c pe-in pe-n pe-in pe-n pe-in pe-r pe-out
+prim - ffi-call-abi trusted-only pe-ptr-a pe-in pe-ptr-b pe-in pe-ptr-c pe-in pe-n pe-in pe-n pe-in pe-n pe-out
+prim - ffi-call-abi-r trusted-only pe-ptr-a pe-in pe-ptr-b pe-in pe-ptr-c pe-in pe-n pe-in pe-n pe-in pe-r pe-out
 prim - f+ - pe-r pe-in pe-r pe-in pe-r pe-out
 prim - f- - pe-r pe-in pe-r pe-in pe-r pe-out
 prim - f* - pe-r pe-in pe-r pe-in pe-r pe-out

@@ -501,6 +501,26 @@ variable GDX-TRUST-MAN-U
    s" habu-cap-trusted.err" s" capability diagnostic contract" GDX-DIAG-CONTRACT
    s" diag-repair-class" s" habu-cap-trusted.err" s" trusted_boundary_required" s" capability repair class" GDX-GJA2S ;
 
+\ F3-FFI: the raw AAPCS64 trampolines ffi-call / ffi-call-abi / ffi-call-abi-r
+\ are TRUSTED-only foreign-call boundaries (a checked caller could otherwise
+\ resolve any C symbol and hand it raw pointers). Each must be rejected from a
+\ CHECKED body with the named E-CAP-TRUSTED code, naming the offending prim.
+: GDX-FFI-RAW-REJECT ( ptr u8 n ptr u8 n -- ) {: src:ptr srcu:n tok:ptr toku:n :}
+   GE-HB-RESET
+   GE-SRC-RESET
+   src srcu GE-SRC-LINE
+   s" tools/check.f accepted checked raw ffi-call" GDX-CHECK-JSON
+   s" code" s" E-CAP-TRUSTED" s" raw ffi checker E-CAP-TRUSTED" GDX-EXPECT-ERR-JSTR
+   s" token" tok toku s" raw ffi checker token" GDX-EXPECT-ERR-JSTR ;
+
+: GDX-CAP-TRUSTED-FFI ( -- )
+   s" : GDX-FF ( ptr a n -- n ) ffi-call ;"
+   s" ffi-call" GDX-FFI-RAW-REJECT
+   s" : GDX-FFA ( ptr a ptr b ptr c n n -- n ) ffi-call-abi ;"
+   s" ffi-call-abi" GDX-FFI-RAW-REJECT
+   s" : GDX-FFAR ( ptr a ptr b ptr c n n -- r ) ffi-call-abi-r ;"
+   s" ffi-call-abi-r" GDX-FFI-RAW-REJECT ;
+
 : GDX-LOCAL-IN-LOOP ( -- )
    GE-HB-RESET
    GE-SRC-RESET
@@ -811,6 +831,7 @@ variable GDX-TRUST-MAN-U
    GDX-FILE-ORIGIN
    GDX-UNSAFE-CHECKS
    GDX-CAP-TRUSTED
+   GDX-CAP-TRUSTED-FFI
    GDX-LOCAL-IN-LOOP
    GT-CLEANUP
    s" PASS: native checker diagnostics file-unsafe slice" type cr ;
