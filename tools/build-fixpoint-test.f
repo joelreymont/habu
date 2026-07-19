@@ -219,7 +219,7 @@ create BFT-ERR BFT-CAPTURE-CAP allot
    BFT-ROOT s" cert-source.f" BFT-CERT-BUF BFT-CERT-U BFT-PATH!
    BFT-NOTDIR s" plain file, not a directory" WRITE-ALL ;
 
-: BFT-ARGV-LOAD-FILES ( -- )
+: BFT-ARGV-LOAD-LIBS ( -- )   \ the --load prefix through build-fixpoint.f, WITHOUT the CLI entry companion
    s" --load"  >LEN PROC-ARGV+
    s" lib/errors.f" BFT-ARG+
    s" lib/string.f" BFT-ARG+
@@ -231,16 +231,27 @@ create BFT-ERR BFT-CAPTURE-CAP allot
    s" lib/process-env.f" BFT-ARG+
    s" lib/build.f" BFT-ARG+
    s" lib/codesign.f" BFT-ARG+
-   s" tools/build-fixpoint.f" BFT-ARG+
+   s" tools/build-fixpoint.f" BFT-ARG+ ;
+
+: BFT-ARGV-LOAD-FILES ( -- )
+   BFT-ARGV-LOAD-LIBS
    s" tools/build-fixpoint-main.f" BFT-ARG+ ;
 
-: BFT-ARGV-FIXPOINT ( ptr u8 n ptr u8 n -- n ) {: tmp:ptr tmpu:n stamp:ptr stampu:n :}
+: BFT-ARGV-ENV+ ( ptr u8 n ptr u8 n -- ) {: tmp:ptr tmpu:n stamp:ptr stampu:n :}
    PROC-ARGV-RESET
    PROC-ENV-RESET
    s" HB_TMP" >LEN tmp tmpu >LEN PROC-ENV+
    s" HABU_FIXPOINT_STAMP" >LEN stamp stampu >LEN PROC-ENV+
-   s" HABU_FIXPOINT_ENGINE" >LEN BFT-HB >LEN PROC-ENV+
+   s" HABU_FIXPOINT_ENGINE" >LEN BFT-HB >LEN PROC-ENV+ ;
+
+: BFT-ARGV-FIXPOINT ( ptr u8 n ptr u8 n -- n )
+   BFT-ARGV-ENV+
    BFT-ARGV-LOAD-FILES
+   PROC-ARGV-N @ COUNT>N ;
+
+: BFT-ARGV-FIXPOINT-NO-MAIN ( ptr u8 n ptr u8 n -- n )   \ BFT-ARGV-FIXPOINT minus the -main companion: reproduces the recovery footgun
+   BFT-ARGV-ENV+
+   BFT-ARGV-LOAD-LIBS
    PROC-ARGV-N @ COUNT>N ;
 
 : BFT-ARGV-BUILD ( -- n )
@@ -263,6 +274,11 @@ create BFT-ERR BFT-CAPTURE-CAP allot
 : BFT-ARGV-ALL ( -- )
    s" --" BFT-ARG+
    s" all" BFT-ARG+ ;
+
+: BFT-ARGV-INSTALL-FORCE ( -- )
+   s" --" BFT-ARG+
+   s" install" BFT-ARG+
+   s" --force" BFT-ARG+ ;
 
 : BFT-SPAWN-FIXPOINT ( -- n n n )
    s" bin/hb" >LEN PROC-ARGV-CHECK-PATH
@@ -343,6 +359,22 @@ create BFT-ERR BFT-CAPTURE-CAP allot
 : BFT-TEST-BUILD-FAIL-NO-STAMP ( -- )
    BFT-ARGV-FAIL BFT-BUILD-ARGV# T=
    BFT-ARGV-ALL-FORCE
+   BFT-SPAWN-FIXPOINT {: outu:n erru:n rcn:n :}
+   rcn BF-BUILD-RC T=
+   BFT-ERR erru s" build-fixpoint: failed" CONTAINS? TTRUE
+   BFT-STAMP2 FILE? TFALSE ;
+
+\ Recovery footgun (dot habu-stale-bin-hb): build-fixpoint.f loaded WITHOUT its
+\ tools/build-fixpoint-main.f companion but handed an explicit `install` verb.
+\ Pre-fix BF-CLI was never called, so the verb was silently dropped - the loaded
+\ stdin engine read its program from the closed stdin, hit EOF, and exited 0
+\ having built nothing (rc 0, empty output). The tail self-dispatch must now run
+\ the verb; a non-directory HB_TMP makes the install fail fast and die loudly,
+\ so a build verb can no longer exit 0 having done nothing. Base (unfixed
+\ source): rc 0, empty stderr -> both direction assertions fail.
+: BFT-TEST-NO-MAIN-DISPATCHES ( -- )
+   BFT-NOTDIR BFT-STAMP2 BFT-ARGV-FIXPOINT-NO-MAIN BFT-BUILD-ARGV# 1 - T=
+   BFT-ARGV-INSTALL-FORCE
    BFT-SPAWN-FIXPOINT {: outu:n erru:n rcn:n :}
    rcn BF-BUILD-RC T=
    BFT-ERR erru s" build-fixpoint: failed" CONTAINS? TTRUE
@@ -1379,6 +1411,7 @@ public
    s" build" [: BFT-TEST-BUILD ;] BFT-STEP
    s" cached skip" [: BFT-TEST-CACHED-SKIP ;] BFT-STEP
    s" build fail no stamp" [: BFT-TEST-BUILD-FAIL-NO-STAMP ;] BFT-STEP
+   s" no-main self dispatch" [: BFT-TEST-NO-MAIN-DISPATCHES ;] BFT-STEP
    s" stale seed install" [: BFT-TEST-STALE-INSTALL ;] BFT-STEP
    s" cert inject install" [: BFT-TEST-CERT-INJECT-INSTALL ;] BFT-STEP
    s" stamp source key" [: BFT-TEST-STAMP-SOURCE-KEY ;] BFT-STEP

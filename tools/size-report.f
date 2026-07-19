@@ -10,8 +10,10 @@
 \ a named row, so the rows sum to the exact engine file size.
 \
 \   HABU_ENGINE_SIZE_MAP=1 <stdin-metabuild-host> > MAP 2>&1
-\   bin/hb --load lib/errors.f lib/string.f lib/memory.f lib/fs.f \
-\     lib/adt/option.f tools/size-report.f tools/size-report-main.f -- MAP [ENGINE]
+\   bin/hb --load tools/size-report.f tools/size-report-main.f -- MAP [ENGINE]
+\ size-report.f already `require`s its libs (lib/adt/option.f among them), so
+\ naming the lib prefix on the load line re-declares the `option` sumtype family
+\ and the load dies with E-TFAM-DUP (throw 7102); name only the two tool files.
 \
 \ The map's final block wins (LOAD keeps the last block); ENGINE defaults to bin/hb.
 
