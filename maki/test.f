@@ -338,6 +338,10 @@ TEST:SUITE maki/gpu-emit-test.f
 TEST:;SUITE
 TEST:SUITE maki/device-smoke.f
 TEST:;SUITE
+TEST:SUITE maki/tokenizer-test.f
+TEST:;SUITE
+TEST:SUITE maki/data-loader-test.f
+TEST:;SUITE
 TEST:;GROUP
 
 TEST:RUN
