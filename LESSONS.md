@@ -1563,3 +1563,12 @@ fits.
   directly (set `status: active` in frontmatter) and verify with `dot list`
   plus dot-dep-lint after every mutation; never trust a dot-CLI rewrite
   without re-reading the file.
+- A concurrently-pushing session can retire a language word out from under an
+  in-flight lane: between a worker's green commit and its merge, the other
+  session deleted `deftype` (retired onto `NOMINAL:`), which a new test fixture
+  used. The merge train caught it only because every fetch is followed by
+  re-reading what the moved base actually changed and re-reviewing worker
+  commits against it. After any fetch that moves master, diff the new commits
+  for surface removals (words, primitives, renamed files) before gating, and
+  send affected lanes back for migration rather than patching their diffs in
+  the gate workspace.
