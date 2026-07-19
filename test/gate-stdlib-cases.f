@@ -511,6 +511,10 @@ TEST:SUITE owner-wid-snapshot
    test/owner-wid-snapshot.f
 TEST:;SUITE
 
+TEST:SUITE aot-wid-restore
+   test/aot-wid-suite.f
+TEST:;SUITE
+
 TEST:SUITE friend-arena-absence
    test/seal-absence.f
 TEST:;SUITE

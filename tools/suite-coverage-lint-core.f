@@ -202,7 +202,12 @@ variable SC-NUM-L
    \ snapshot-writer adversarial suite: builds two full snapshots in child
    \ processes (return-stack zeroing + fail-closed on a failed close), too
    \ costly for the resident fast tier - runs in the standalone stdlib gate.
-   s" test/owner-wid-snapshot.f" q execute ;
+   s" test/owner-wid-snapshot.f" q execute
+   \ protected-WID boot-integration suite: spawns test/aot-wid-build.f to build a
+   \ full variant engine (~12s), too costly for the fast tail-process fork tier
+   \ (its 11.1s pool ratchet) - runs in the standalone stdlib gate like the
+   \ snapshot suite above.
+   s" test/aot-wid-suite.f" q execute ;
 
 \ SPAWN-ONLY: ptx-toolchain cases members that must run only in a fresh spawned
 \ image, never in the resident full-runner image. Two reasons appear here: tools

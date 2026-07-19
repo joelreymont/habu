@@ -1941,6 +1941,19 @@ points stay listed.
   post-seal language features still update protected cells via engine primitives.
   `patch32`/`snap-rebase` are compiler-internal and hand-review only (noted in
   the file).
+- `test/aot-wid-suite.f` — protected-WID boot-integration regression (TFAM
+  2b-v(f)): spawns `test/aot-wid-build.f` to build a throwaway engine with two
+  baked protected word-list ids (300 and 70000), then proves those ids are
+  restored at startup before batch input — read back from `PROT-WID-OFF`, `WIDN`
+  advanced past them, publishing into either exits 84 on both stdin and `--load`,
+  an ordinary define still exits 0, and the shipped engine protects neither id.
+  Locks the load-bearing startup-restore hook `EM-AOT-RESTORE-HOOK-INIT` in
+  `src/habu/habu2.f`.
+- `test/aot-wid-build.f` — builder helper for the suite above: reads
+  `src/habu/stdin.f`, fails closed if it no longer ends with the trailing top-level
+  `GO` call, drops that call, and appends a `PWID-GO` that bakes the two protected
+  word-list ids into the AOT registry via `aot-capture.f ACAP-PWID-PUT`; the rest
+  reuses `tools/build-fixpoint.f`. No production source is touched.
 - `test/owner-wid-emitter.f` — test-image-only cold emitter hook that drives the
   unpublished owner-pair mutator through exact capacity and atomic rejection.
 - `test/owner-wid-source.f` — canonical owner package source shared by the AOT
