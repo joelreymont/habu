@@ -12,6 +12,28 @@ fits.
 
 ## Checker Soundness
 
+- **The registry-cell seal (`REG-PROTECT` + `IMK-SEAL-REGISTRY`, DNAME-INT bit 63)
+  only fail-closes INTERPRET dispatch and interpret `'` — compile-mode references
+  are untouched (layout.f:62-64), and the checker's own word resolution never
+  consults DNAME-INT.** So sealing a cold-prefix registry cell newly breaks ONLY
+  top-level interpret-mode `<cell> @`/`<cell> !`/`' <cell>`; a raw cell inside a
+  `:` body already resolves through compile-mode (unchanged) and a raw cell in a
+  CHECKED body was already `E-UNDEFINED` before any seal (cold-prefix data records
+  load before the auto-trust hook, so the checker never knew them). Migrate the
+  handful of top-level raw reads to the certified accessor (`TF-STR-U@`, `TFAM-N@`,
+  `SCHEMA-N@`, …) — the accessors carry `PRIM:` axioms so they stay top-level
+  executable and checker-known. To seal siblings visible from `type-schema.f`
+  (loads before `type-family.f`), the `REG-PROTECT` list must live in `util.f`
+  (first prefix file); `internal-mark.f` reads it last. Because the whole seal is
+  cold-prefix SOURCE, the current `bin/hb` recompiles it every launch — test seal
+  behaviour immediately, the x2 byte-identical fixpoint is only the seed gate.
+  Beware same-tail collisions: maki's `package SCHEMA` defines its OWN `SCH-N`
+  (maki/schema.f:87), a different cell from core `type-schema.f` `SCH-N` — grep
+  before assuming a bare read targets the core registry. The `internal-word-gate`
+  subject-count ratchet (`SUBJECT-N`) must be bumped by exactly the number of new
+  `IWG-EXEC:SUBJECT` fork cases, or `TAIL-RATCHET:CHECK` reds "exact subject
+  child-process count".
+
 - **`checker.f` (and `type-family.f`/`sumtype.f`/…) is a boot-time SOURCE prefix,
   not baked engine bytes.** `bin/hb` recompiles `src/core/*.f` from the working
   tree at every launch (`EMIT-COLD-PREFIX`/`PFX-LOAD-BASE-FILES`), so a
