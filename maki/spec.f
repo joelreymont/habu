@@ -49,7 +49,7 @@
 \ tensor's rank or an unsupported free/contraction arity (E-SPEC-ARITY), and any
 \ grammar violation (E-SPEC-SYNTAX). An extent-flipping spec is caught one layer
 \ deeper: the generated accessor call is rejected by the checker at XG-EVAL time
-\ (the candidate-B flip protection). maki -> habu only; maki owns -5019, -5036..-5039.
+\ (the candidate-B flip protection). maki -> habu only; maki owns -5018..-5019, -5036..-5039.
 
 require maki/extent-tensor.f
 require lib/string.f                 \ STR=, ASCII-UPPER: token compares + index-var -> extent-name fold
@@ -61,6 +61,7 @@ require lib/type/deftype.f           \ DEFTYPE: the factor-index (SP-FI) table i
 -5038 constant E-SPEC-UNBOUND   \ a factor index is neither a free (output) nor a contraction index
 -5039 constant E-SPEC-TENSOR    \ a tensor/gather name is not declared, or has the wrong kind
 -5019 constant E-SPEC-ARITY     \ factor index count != tensor rank, or free/contraction arity > 2
+-5018 constant E-CAD-GRAD       \ training requested for a forward-only equation (gather adjoint = scatter-add, not expressible)
 
 package MAKI
 
@@ -524,7 +525,7 @@ public
 DEFTYPE EQ-SLOT                       \ registry row index: its own type
 
 private
-32 constant EQ-CAP                     \ max registered equations
+128 constant EQ-CAP                    \ max registered equations (a composable one also registers its 1..K derived adjoints)
 8  constant EQ-FCAP                    \ max factors per equation (matches SP-FAC-CAP)
 32 constant EQ-NAME-CAP
 create EQ-NAMES  EQ-CAP EQ-NAME-CAP * allot
@@ -535,7 +536,16 @@ create EQ-COLS-A EQ-CAP cells allot          \ output cols (free-index-1 extent,
 create EQ-FROW-A EQ-CAP EQ-FCAP * cells allot \ per-factor rows (slot-major)
 create EQ-FCOL-A EQ-CAP EQ-FCAP * cells allot \ per-factor cols (slot-major)
 create EQ-XT-A   EQ-CAP cells allot           \ generated RUN word xt (raw)
+\ ---- stage-2 adjoint records (docs/model-unified.md "Derived adjoints"). Per forward
+\ slot: the eq-slot of each factor's derived adjoint equation (EQ-ADJ-A, slot-major) and
+\ a differentiability flag (EQ-DIFF-A: 1 = adjoints derived and trainable, 0 = forward-only,
+\ e.g. a gather whose scatter-add adjoint the multiply-then-sum grammar cannot state). ----
+create EQ-ADJ-A  EQ-CAP EQ-FCAP * cells allot \ [fwd-slot][k] -> adjoint eq-slot raw (-1 = none)
+create EQ-DIFF-A EQ-CAP cells allot           \ per forward slot: 1 = trainable, 0 = forward-only
 variable EQ-N
+
+: EQ-ADJ! ( n eq-slot n -- ) {: v:n s:eq-slot k:n :}  v  s EQ-SLOT>N EQ-FCAP * k + cells EQ-ADJ-A + ! ;
+: EQ-DIFF-SET! ( n eq-slot -- ) {: v:n s:eq-slot :}  v  s EQ-SLOT>N cells EQ-DIFF-A + ! ;
 
 : EQ-NAME-PTR ( eq-slot -- ptr a )  EQ-SLOT>N EQ-NAME-CAP *  EQ-NAMES + ;
 
@@ -546,6 +556,10 @@ public
 : EQ-COLS@ ( eq-slot -- n )  EQ-SLOT>N cells EQ-COLS-A + @ ;
 : EQ-FROW@ ( eq-slot n -- n ) {: s:eq-slot k:n :}  s EQ-SLOT>N EQ-FCAP * k + cells EQ-FROW-A + @ ;
 : EQ-FCOL@ ( eq-slot n -- n ) {: s:eq-slot k:n :}  s EQ-SLOT>N EQ-FCAP * k + cells EQ-FCOL-A + @ ;
+\ stage-2 adjoint queries (the reverse transform, maki/backward.f, reads them).
+: EQ-ADJ@ ( eq-slot n -- eq-slot ) {: s:eq-slot k:n :}   \ factor k's derived adjoint equation
+   s EQ-SLOT>N EQ-FCAP * k + cells EQ-ADJ-A + @ >EQ-SLOT ;
+: EQ-DIFF? ( eq-slot -- bool )       EQ-SLOT>N cells EQ-DIFF-A + @ 0<> ;  \ trainable (not forward-only)
 
 \ NAME -> registry slot; absent = option<eq-slot> none, so a caller must handle it.
 : EQ-FIND ( ptr u8 n -- option<eq-slot> ) {: a:ptr u:n :}
@@ -622,6 +636,8 @@ private
    EQ-N @ EQ-CAP >= if E-EXT-CAP throw then
    EQ-N @ >EQ-SLOT {: s:eq-slot :}
    SPEC-NAME$ s EQ-NAME!
+   0 s EQ-DIFF-SET!                              \ forward-only until EQ-ADJ-DERIVE attaches adjoints
+   EQ-FCAP 0 ?do  -1 s i EQ-ADJ!  loop
    SP-FAC-N @ s EQ-SLOT>N cells EQ-K-A + !
    EQ-OUT-DIMS {: rows:n cols:n :}
    rows s EQ-SLOT>N cells EQ-ROWS-A + !
@@ -629,6 +645,114 @@ private
    SP-FAC-N @ 0 ?do  s i EQ-FAC-DIMS!  loop
    EQ-N @ EQ-GEN-RUN
    EQ-N @ 1+ EQ-N ! ;
+
+\ ---- derived adjoints (docs/model-unified.md stage 2) ------------------------------
+\ The adjoint of an einsum is ANOTHER einsum: for O[free] = F0 F1 ... * +SUM ct, the
+\ gradient w.r.t. factor Fj is the equation whose OUTPUT indices are Fj's indices, whose
+\ FACTORS are dO (the forward output tensor, carrying the free indices) plus every OTHER
+\ Fi, and whose CONTRACTION indices are every forward index NOT among Fj's indices. Those
+\ adjoint equations are built as ORDINARY equation SOURCE and run through the SAME parser +
+\ emitter + registry (SP-PARSE / SP-VALIDATE / SP-EMIT-EL / SP-EMIT-OUTER / EQ-REGISTER) -
+\ no second einsum interpreter. The forward output tensor and each factor tensor are reused
+\ by NAME (dQ has Q's extents, dO has O's extents), so no new TENSOR: declaration is needed:
+\ the generated RUN word rebinds them per execution from the executor transfer cells.
+\
+\ A gather factor's adjoint is a scatter-add the multiply-then-sum grammar cannot state, so
+\ a gather equation stays forward-only (EQ-DIFF? = 0) and asking for its adjoint is the named
+\ E-CAD-GRAD reject - never a wrong gradient. The scatter-add primitive is a follow-up dot.
+128 constant ADJ-SRC-CAP
+create ADJB-BUF   ADJ-SRC-CAP allot  variable ADJB-U
+create EQ-ADJ-SRC  EQ-FCAP ADJ-SRC-CAP * allot   \ per factor, the built adjoint BODY string
+create EQ-ADJ-SRCL EQ-FCAP cells allot
+create EQ-FWD-NM  40 allot  variable EQ-FWD-NM-U   \ forward name (SP-PARSE clobbers SP-NAME)
+create EQ-FWD-SRC SP-SRC-CAP allot  variable EQ-FWD-SRC-U   \ forward body, to restore the queryable state
+
+: ADJB-RESET ( -- )  0 ADJB-U ! ;
+: ADJB-C ( n -- ) {: c:n :}
+   ADJB-U @ ADJ-SRC-CAP >= if E-SPEC-SYNTAX throw then
+   c ADJB-BUF ADJB-U @ + c!  ADJB-U @ 1 + ADJB-U ! ;
+: ADJB+ ( ptr u8 n -- ) {: a:ptr u:n :}  u 0 ?do  a i + c@ ADJB-C  loop ;
+
+\ a factor's index-variable list (space separated) and the whole factor `NAME[ i i ]`.
+: ADJB-IDXS ( n -- ) {: f:n :}  f SPEC-FAC-RANK@ 0 ?do  f i SPEC-FAC-IDX@ ADJB+  s"  " ADJB+  loop ;
+: ADJB-FAC  ( n -- ) {: f:n :}  f SPEC-FAC-NAME@ ADJB+  s" [ " ADJB+  f ADJB-IDXS  s" ] " ADJB+ ;
+
+\ is index var (a,u) one of factor f's indices?
+: IDX-IN-FAC? ( ptr u8 n n -- bool ) {: a:ptr u:n f:n :}
+   f SPEC-FAC-RANK@ 0 ?do  a u  f i SPEC-FAC-IDX@ STR= if true unloop exit then  loop  false ;
+\ append one contraction index for the adjoint of factor j: every forward index NOT in Fj.
+: ADJB-CT-IDX ( ptr u8 n n -- ) {: a:ptr u:n j:n :}
+   a u j IDX-IN-FAC? 0= if  a u ADJB+  s"  " ADJB+  then ;
+: ADJB-CT ( n -- ) {: j:n :}
+   s" +SUM " ADJB+
+   SP-FREE-N @ 0 ?do  i SPEC-FREE@ j ADJB-CT-IDX  loop
+   SP-CT-N   @ 0 ?do  i SPEC-CT@   j ADJB-CT-IDX  loop ;
+
+\ build the adjoint BODY for factor j into EQ-ADJ-SRC[j]: Fj[ Fj-idx ] = O[ free ] * Fi... +SUM ct
+: EQ-ADJ-BODY ( n -- ) {: j:n :}
+   ADJB-RESET
+   j SPEC-FAC-NAME@ ADJB+  s" [ " ADJB+  j ADJB-IDXS  s" ] = " ADJB+
+   SPEC-OUT$ ADJB+  s" [ " ADJB+
+   SP-FREE-N @ 0 ?do  i SPEC-FREE@ ADJB+  s"  " ADJB+  loop
+   s" ] " ADJB+
+   SP-FAC-N @ 0 ?do  i j <> if  s" * " ADJB+  i ADJB-FAC  then  loop
+   j ADJB-CT
+   ADJB-U @ {: u:n :}
+   ADJB-BUF  EQ-ADJ-SRC j ADJ-SRC-CAP * +  u  BYTE-COPY
+   u EQ-ADJ-SRCL j cells + ! ;
+: EQ-ADJ-SRC-BUILD ( -- )  SP-FAC-N @ 0 ?do  i EQ-ADJ-BODY  loop ;
+
+\ does any factor carry a gather index? (its adjoint is a scatter-add, not expressible)
+: FAC-HAS-GATHER? ( n -- bool ) {: f:n :}
+   f SPEC-FAC-RANK@ 0 ?do  f i SPEC-FAC-GATHER@ nip 0 > if true unloop exit then  loop  false ;
+: EQ-HAS-GATHER? ( -- bool )
+   SP-FAC-N @ 0 ?do  i FAC-HAS-GATHER? if true unloop exit then  loop  false ;
+
+\ every factor's adjoint lands within the grammar: free = Fj's rank (1..2), contraction =
+\ (all forward indices) - Fj's rank, which must be 1..2 for the derived einsum to be legal.
+: EQ-ADJ-DERIVABLE? ( -- bool )
+   SP-FREE-N @ SP-CT-N @ +  {: total:n :}
+   SP-FAC-N @ 0 ?do
+      i SPEC-FAC-RANK@  {: rk:n :}
+      rk 1 < rk 2 > or if false unloop exit then
+      total rk -  {: ct:n :}
+      ct 1 < ct 2 > or if false unloop exit then
+   loop  true ;
+
+: EQ-FWD-NM! ( -- )  SPEC-NAME$ {: a:ptr u:n :}  a EQ-FWD-NM u BYTE-COPY  u EQ-FWD-NM-U ! ;
+\ set SP-NAME to <fwd>-ADJ<j> for the derived adjoint equation (reuses ADJB as scratch).
+: EQ-ADJ-NAME! ( n -- ) {: j:n :}
+   ADJB-RESET
+   EQ-FWD-NM EQ-FWD-NM-U @ ADJB+  s" -ADJ" ADJB+  [char] 0 j + ADJB-C
+   ADJB-BUF ADJB-U @ SP-NAME! ;
+
+\ derive + register the adjoint equations for the equation SPEC: just registered. Composable
+\ equations are gather-free (EQ-COMPOSABLE?); a non-composable, gather, or out-of-grammar
+\ adjoint leaves the equation forward-only (EQ-DIFF? = 0). Runs AFTER EQ-REGISTER: the forward
+\ parse state is still intact for the source build; each adjoint's SP-PARSE then reuses it.
+: EQ-ADJ-DERIVE ( -- )
+   EQ-COMPOSABLE? 0= if exit then                 \ not registered: no slot to attach adjoints to
+   EQ-N @ 1- >EQ-SLOT {: fwd:eq-slot :}
+   EQ-HAS-GATHER? if exit then                     \ scatter-add adjoint: forward-only
+   EQ-ADJ-DERIVABLE? 0= if exit then               \ adjoint outside the grammar: forward-only
+   EQ-FWD-NM!
+   SP-SRC EQ-FWD-SRC SP-SRC-U @ BYTE-COPY  SP-SRC-U @ EQ-FWD-SRC-U !   \ save the forward body
+   SP-FAC-N @ {: kk:n :}
+   EQ-ADJ-SRC-BUILD                                \ build ALL bodies before the first SP-PARSE clobbers state
+   kk 0 ?do
+      i EQ-ADJ-NAME!
+      EQ-ADJ-SRC i ADJ-SRC-CAP * +  EQ-ADJ-SRCL i cells + @  SP-LOAD$
+      SP-PARSE  SP-VALIDATE  SP-EMIT-EL  SP-EMIT-OUTER
+      EQ-N @ {: before:n :}
+      EQ-REGISTER
+      EQ-N @ before = if E-SPEC-ARITY throw then   \ derived adjoint failed to register (grammar bug)
+      EQ-N @ 1-  fwd i EQ-ADJ!
+   loop
+   -1 fwd EQ-DIFF-SET!
+   \ the adjoint SP-PARSEs clobbered the forward's queryable dataflow (SPEC-* readers), so
+   \ restore it by re-parsing the saved forward body + name.
+   EQ-FWD-NM EQ-FWD-NM-U @ SP-NAME!
+   EQ-FWD-SRC EQ-FWD-SRC-U @ SP-LOAD$  SP-PARSE ;
 
 public
 
@@ -644,7 +768,8 @@ public
    SP-VALIDATE
    SP-EMIT-EL
    SP-EMIT-OUTER
-   EQ-REGISTER ;
+   EQ-REGISTER
+   EQ-ADJ-DERIVE ;
 
 \ ---- testing / dry-run seams (SPEC: parses the live stream, so it cannot be
 \ wrapped for a catch; these string/candidate entries make the derivation testable
@@ -660,6 +785,21 @@ public
    parse-name SP-NAME!  SP-COLLECT  SP-PARSE  SP-VALIDATE
    XG-RESET  SP-EL-CORE ;
 : SPEC-CAND$ ( -- ptr u8 n )  XG$ ;
+
+\ SPEC-ADJ-CHECK$: the training gate as a string seam. Parse + validate a spec BODY, then
+\ attempt to derive its adjoints: a gather equation is the named E-CAD-GRAD reject (its
+\ scatter-add adjoint is not expressible), an out-of-grammar adjoint is E-SPEC-ARITY, and a
+\ differentiable equation validates every derived adjoint through the same pipeline (no code
+\ generated). This proves "never a wrong gradient" without needing a captured graph.
+: SPEC-ADJ-CHECK$ ( ptr u8 n -- )
+   s" cand" SP-NAME!  SP-LOAD$  SP-PARSE  SP-VALIDATE
+   EQ-HAS-GATHER? if E-CAD-GRAD throw then
+   EQ-ADJ-DERIVABLE? 0= if E-SPEC-ARITY throw then
+   SP-FAC-N @ {: kk:n :}
+   EQ-ADJ-SRC-BUILD
+   kk 0 ?do
+      EQ-ADJ-SRC i ADJ-SRC-CAP * +  EQ-ADJ-SRCL i cells + @  SP-LOAD$  SP-PARSE  SP-VALIDATE
+   loop ;
 
 \ ---- derivation (3): PROMOTE shape obligations - the extent MAGNITUDES the output
 \ shape and the contraction span impose. Integration boundary: a PROMOTE gate in

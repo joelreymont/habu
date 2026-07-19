@@ -45,6 +45,8 @@ require maki/op-registry.f
 require maki/move-facts.f
 require maki/model-ir.f
 require maki/adjoint.f
+require maki/spec.f                   \ the equation registry (EQ-DIFF?/EQ-ADJ@): pre-derived adjoints
+require maki/prec-attr.f              \ CPREC-PAYLOAD@/CPREC@/CPREC-PACK: the equation node's attrs cell
 require maki/report.f
 
 \ ---- audited count projection (MIR typed item-count -> raw loop/compare cell) ---
@@ -350,6 +352,31 @@ variable BW-BUILT?
    g bt  bt2       k BW-SL  k BW-ACCUM        \ dK = combined rows [B*T, 2*B*T)
    g bt2 bt3       v BW-SL  v BW-ACCUM ;      \ dV = combined rows [2*B*T,3*B*T)
 
+\ equation adjoint (docs/model-unified.md stage 2): the forward node's attrs cell carries
+\ the equation's spec-registry slot; each factor's gradient is a PRE-DERIVED adjoint equation
+\ (maki/spec.f EQ-ADJ@) run as an ordinary `equation` node whose operands are dO (the
+\ cotangent) plus every OTHER forward factor, in the adjoint's factor order. A forward-only
+\ equation (a gather, whose scatter-add adjoint the grammar cannot state) is the named
+\ E-CAD-GRAD reject - never a wrong gradient. The compute-precision tag rides through
+\ unchanged (host executor is exact; the tag selects the device MMA dtype at lowering only).
+: BW-STEP-EQUATION ( CAD-KIND:node-id MIR:operand-ref -- )
+   {: fn:CAD-KIND:node-id ct:MIR:operand-ref :}
+   fn MIR-ATTR@ {: attr:n :}
+   attr CPREC-PAYLOAD@ >EQ-SLOT {: s:eq-slot :}
+   s EQ-DIFF? 0= if E-CAD-GRAD throw then
+   attr CPREC@ {: cp:n :}
+   fn MIR-IN-COUNT@ {: kk:n :}
+   kk 0 ?do
+      i {: gi:n :}                              \ factor gi receives this gradient
+      fn gi MIR-INPUT-IDX MIR-IN@ {: dref:MIR:operand-ref :}
+      s gi EQ-ADJ@ EQ-SLOT>N  cp CPREC-PACK {: eattr:n :}
+      MAKI-OPKIND:EQUATION MIR-OP-BEGIN
+      ct MIR-IN+                                \ operand 0 = dO (the cotangent)
+      kk 0 ?do  i gi <> if  fn i MIR-INPUT-IDX MIR-IN@ MIR-IN+  then  loop   \ + every other factor
+      dref REF-ROWS dref REF-COLS dref REF-DT dref REF-LAY  eattr  1  MIR-OP+ MIR-NODE-REF
+      dref BW-ACCUM
+   loop ;
+
 \ ---- one forward node's reverse step ---------------------------------------
 : BW-STEP ( CAD-KIND:node-id -- ) {: fn:CAD-KIND:node-id :}
    fn MIR-NODE-REF {: out:MIR:operand-ref :}
@@ -393,7 +420,7 @@ variable BW-BUILT?
       scatter-add     OF E-BW-UNSUP throw  ENDOF
       seg-attn        OF BW-STEP-SEGMENT-ATTN ENDOF
       seg-attn-bwd    OF E-BW-UNSUP throw  ENDOF
-      equation        OF E-BW-UNSUP throw  ENDOF
+      equation        OF BW-STEP-EQUATION  ENDOF
    ;MATCH ;
 
 \ ---- supported-op gate (usable BEFORE build to classify not-run) -------------

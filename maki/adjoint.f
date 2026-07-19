@@ -65,7 +65,8 @@ public
 18 constant ADJ-SCALE         \ dx = ct*s (mul/scale) ; d-scale = OP-FULLSUM-DOT-BWD
 19 constant ADJ-GELU-BWD      \ second order: d-dz = OP-GELU-BWD, d-x = OP-GELU-BWD2
 20 constant ADJ-SEG-ATTN      \ per-block dQ/dK/dV via OP-SEG-ATTN-BWD + slices
-21 constant ADJ-N             \ range bound
+21 constant ADJ-EQUATION      \ derived einsum adjoints (maki/spec.f EQ-ADJ@); reverse transform runs them
+22 constant ADJ-N             \ range bound
 
 \ ---- what the adjoint must read from the forward pass ------------------------
 0 constant SAVE-NONE          \ needs only static shape / operand refs (add/reshape/rope)
@@ -232,7 +233,13 @@ private
    \ builds the fused per-block backward + slices, so bop = -1. Q,K,V all receive a
    \ gradient (mask 7); the adjoint recomputes A from the saved forward inputs Q,K,V
    \ -> SAVE-INPUT. seg-attn-bwd itself stays ADJ-NONE (second order fail-closed). ---
-   ADJ-SEG-ATTN SAVE-INPUT 7 1 -1 OP-SEG-ATTN ADJ! ;
+   ADJ-SEG-ATTN SAVE-INPUT 7 1 -1 OP-SEG-ATTN ADJ!
+   \ ---- equation (docs/model-unified.md stage 2): differentiable via PRE-DERIVED adjoint
+   \ equations (maki/spec.f), so the reverse transform runs them directly - one `equation`
+   \ arm, no dedicated *-BWD op (bop = -1). A composed equation is 2-factor (mask 3) and each
+   \ factor receives a gradient; the adjoint reads the OTHER forward factors -> SAVE-INPUT. A
+   \ gather equation is forward-only and rejects under training (E-CAD-GRAD, maki/backward.f).
+   ADJ-EQUATION SAVE-INPUT 3 1 -1 OP-EQUATION ADJ! ;
 
 \ ---- wire the op-registry vjp field to the adjoint id (cad-9 requirement) ----
 \ pure private-table wiring over the code index space: copy A-ID[i] -> registry

@@ -21,7 +21,10 @@
 \ comparison is independent of the reverse pass exactly as a gradcheck is, but pinned
 \ to the LIVE trained parameters at each Adam step instead of one synthetic point.
 \
-\ Two parts:
+\ Parts A/B pin the matmul op-kind fixture; part C re-runs the SAME checks after swapping the
+\ first matmul for a SPEC: equation GEMM (docs/model-unified.md stage 2), proving the derived
+\ einsum adjoints finite-difference-check AND train bit-identically to the matmul op-kind.
+\
 \  A. 3 Adam steps with full FD gradient parity per parameter (dQ/dKt/ds/dV) and
 \     per-step forward-loss parity (independent AG-LOSS vs the executor's ATN-GRADS
 \     loss), then ATN-APPLY so the next step checks freshly-updated parameters.
@@ -164,6 +167,43 @@ MODEL: ADAM-ATTN ( q:4x3 kt:3x4 s:1x1 v:4x3 -- o ) MATMUL SCALE SOFTMAX-ROW MATM
 ATN-SETUP
 ATN-GRADS drop
 AG-DETECT AG-GRAD-TOL f< TFALSE
+
+\ ---- C: derived equation-op adjoints (docs/model-unified.md stage 2) -----------------
+\ Replace the fixture's first MATMUL (S = Q@Kt) with a SPEC: equation GEMM. Its adjoints
+\ dEAQ/dEAKT are DERIVED at declaration time (maki/spec.f EQ-ADJ-DERIVE) and run by the ONE
+\ equation arm of the reverse transform (maki/backward.f BW-STEP-EQUATION). The extents and
+\ signature match the committed ADAM-ATTN fixture, so the AG central-FD oracle above (which
+\ reads ATN-Q/ATN-KT, model-agnostic) validates the derived adjoints unchanged.
+4 EXTENT: #EAM   3 EXTENT: #EAK   4 EXTENT: #EAN
+TENSOR: EAQ ( #EAM #EAK )   TENSOR: EAKT ( #EAK #EAN )   TENSOR: EAS ( #EAM #EAN )
+SPEC: EAGEMM  EAS[eam ean] = EAQ[eam eak] EAKT[eak ean] * +SUM eak ;   \ S = Q@Kt
+
+\ C1: the derived adjoints match central finite differences (3 Adam steps, live params) -
+MODEL: EQ-ATTN ( q:4x3 kt:3x4 s:1x1 v:4x3 -- o ) EAGEMM SCALE SOFTMAX-ROW MATMUL ;
+ATN-SETUP
+AG-STEP-FD
+AG-STEP-FD
+AG-STEP-FD
+
+\ C2: acceptance - the equation-op GEMM trains IDENTICALLY to the matmul op-kind on the
+\ maki/adam-train.f:224 fixture: the forward score and both derived adjoints are bit-identical
+\ to matmul's (IEEE product commutes exactly; same contraction order), so the per-step loss
+\ trajectory is EQUAL, not merely close. Asserted element-wise over the committed 40 steps.
+40 constant EQX-N
+create EQX-EQ EQX-N cells allot   create EQX-MM EQX-N cells allot
+variable EQX-BAD
+: EQX-RUN ( ptr a -- ) {: dst:ptr :}  ATN-SETUP  EQX-N 0 ?do  ATN-STEP  dst i T-SET  loop ;
+: EQX-CMP ( -- n )
+   0 EQX-BAD !
+   EQX-N 0 ?do  EQX-EQ i T-GET  EQX-MM i T-GET  f= 0= if EQX-BAD @ 1+ EQX-BAD ! then  loop
+   EQX-BAD @ ;
+MODEL: EQ-ATTN ( q:4x3 kt:3x4 s:1x1 v:4x3 -- o ) EAGEMM SCALE SOFTMAX-ROW MATMUL ;
+EQX-EQ EQX-RUN
+MODEL: ADAM-ATTN ( q:4x3 kt:3x4 s:1x1 v:4x3 -- o ) MATMUL SCALE SOFTMAX-ROW MATMUL ;
+EQX-MM EQX-RUN
+EQX-CMP 0 T=                                     \ every step's loss bit-identical to matmul
+EQX-EQ 0      T-GET SC-MILLI 155 T=              \ same committed initial mean-MSE
+EQX-EQ EQX-N 1- T-GET SC-MILLI 9 T=              \ same committed final mean-MSE
 
 T-REPORT
 

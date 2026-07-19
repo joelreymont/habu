@@ -36,6 +36,7 @@ package MAKI
 TENSOR: EQO-Q ( #EQA #EQK )    \ Q : L x d
 TENSOR: EQO-K ( #EQB #EQK )    \ K : L x d  (the transposed operand: shares the trailing d index)
 TENSOR: EQO-S ( #EQA #EQB )    \ S : L x L  (attention scores)
+ITENSOR: EQO-IX ( #EQA #EQA )  \ a gather witness (rows of Q), for the forward-only reject
 
 SPEC: EQO-QK  EQO-S[eqa eqb] = EQO-Q[eqa eqk] EQO-K[eqb eqk] * +SUM eqk ;   \ S = Q.Kᵀ
 
@@ -62,11 +63,27 @@ EQO-BQ EQO-BK EQO-REF #EQA #EQB #EQK MM-NT                          \ golden sco
 EX-RESET  EQO-BQ 0 MIR-SLOT-ID EX-BIND  EQO-BK 1 MIR-SLOT-ID EX-BIND  EX-RUN
 0 MIR-NODE-ID EX-OUT@ EQO-REF #EQA #EQB * T-DIST2  1000000.0 f* 0.5 f+ f>s  0 T=
 
-\ ---- training reject: an equation has no adjoint in stage 1 (E-BW-NOADJ) -----------
-\ Building the backward pass over the captured EQO-ATTN graph (one equation node) is a
-\ named reject: the equation op-kind carries no adjoint until stage 2 derives it.
-: EQO-TRAIN ( -- )  BW-BUILD ;
-' EQO-TRAIN  E-BW-NOADJ  TTHROWS
+\ ---- stage 2: the equation is now differentiable via derived adjoints --------------
+\ The gather-free GEMM equation carries pre-derived adjoint equations (maki/spec.f
+\ EQ-ADJ-DERIVE), so it is trainable (EQ-DIFF?) - and building the backward pass over the
+\ captured EQO-ATTN graph now SUCCEEDS (was the E-BW-NOADJ reject in stage 1), emitting the
+\ derived adjoints as ordinary equation nodes (maki/backward.f BW-STEP-EQUATION).
+: EQO-DIFF? ( -- bool )
+   s" EQO-QK" EQ-FIND MATCH option  none OF false ENDOF  some OF EQ-DIFF? ENDOF ;MATCH ;
+EQO-DIFF? TTRUE
+MODEL: EQO-ATTN ( q:4x3 k:4x3 -- s ) EQO-QK ;
+BW-BUILD
+BW-BWD-COUNT 0 > TTRUE                                              \ a backward region was emitted
+
+\ ---- gather reject: a gather adjoint is scatter-add, not expressible (E-CAD-GRAD) ---
+\ A gather equation registers forward-only; requesting its training adjoint is the named
+\ E-CAD-GRAD reject - never a wrong gradient. The gather-free GEMM body validates cleanly.
+: EQO-GATHER-ADJ ( -- )
+   s" EQO-S[eqa eqb] = EQO-Q[ EQO-IX[eqa] eqk ] EQO-K[eqb eqk] * +SUM eqk" SPEC-ADJ-CHECK$ ;
+' EQO-GATHER-ADJ  E-CAD-GRAD  TTHROWS
+: EQO-GEMM-ADJ ( -- )
+   s" EQO-S[eqa eqb] = EQO-Q[eqa eqk] EQO-K[eqb eqk] * +SUM eqk" SPEC-ADJ-CHECK$ ;
+' EQO-GEMM-ADJ catch 0 T=                                          \ differentiable body: no reject
 
 \ ---- composition-time extent-check negative (drive the composer directly) ----------
 \ An operand whose contraction span (cols 5) differs from the equation's #EQK = 3 is the
