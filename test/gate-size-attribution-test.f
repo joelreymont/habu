@@ -7,9 +7,10 @@
 \ residue, tools/size-report.f renders and reconciles a captured map, and this file
 \ pins the committed per-region totals plus the distance-to-page-floor per target.
 \
-\ macOS is measured at the byte-fixpoint (2026-07-18); Linux at the byte-fixpoint
-\ (2026-07-19, DGX Spark linux-arm64). Both targets' whole-file totals are coupled
-\ to the live engine and both per-region splits are committed below.
+\ macOS is measured at the byte-fixpoint (2026-07-19, shared PROT-GUARD:CALL
+\ span-guard fold); Linux at the byte-fixpoint (2026-07-19, DGX Spark linux-arm64).
+\ Both targets' whole-file totals are coupled to the live engine and both
+\ per-region splits are committed below.
 
 require lib/test.f
 require tools/size-report.f
@@ -24,11 +25,16 @@ $1000 constant LINUX-PAGE        \ text segment page (4 KiB)
 $4000 constant MACOS-DATA-CONST  \ __DATA_CONST page (__got + zero fill)
 104 constant MACOS-LINKEDIT      \ __LINKEDIT chained fixups (MACHO-FIXUPS-SIZE)
 
-\ macOS committed attribution, measured at the byte-fixpoint on 2026-07-18. Keep
-\ MACOS-TOTAL equal to GB-SIZE-BASELINE-MACOS in test/gate-build-size.f.
-132840 constant MACOS-CODE-TEXT   \ CODELEN: every emitter-phase row (baked-source incl.)
+\ macOS committed attribution, measured at the byte-fixpoint on 2026-07-19 after
+\ the shared PROT-GUARD:CALL span-guard fold (the inline GUARD-SPAN at every
+\ emitter sink now branch-with-links to the single engine-resident (PROT-SPAN)
+\ body). CODELEN dropped 132840 -> 127392, but header+code stays inside nine
+\ 16 KiB __TEXT pages (floor 5864 -> 416), so the padded __TEXT segment, code
+\ signature, and whole-file total are unchanged. Keep MACOS-TOTAL equal to
+\ GB-SIZE-BASELINE-MACOS in test/gate-build-size.f.
+127392 constant MACOS-CODE-TEXT   \ CODELEN: every emitter-phase row (baked-source incl.)
 1423 constant MACOS-SIGNATURE     \ ad-hoc code signature SuperBlob (grows with CODELEN)
-5864 constant MACOS-FLOOR-DIST    \ code above the 16 KiB floor: the page-recovery shave
+416 constant MACOS-FLOOR-DIST     \ code above the 16 KiB floor: the page-recovery shave
 165367 constant MACOS-TOTAL       \ = FILE-SIZE bin/hb = GB-SIZE-BASELINE-MACOS
 
 \ Linux committed attribution, measured at the byte-fixpoint on 2026-07-19 (DGX

@@ -3911,7 +3911,7 @@ TRUSTED: EM-DATA-VA>N ( -- n ) DATA-VA ;
    \ to the retained package records before the DATA copy becomes authoritative.
    OWNER-WID-EMIT:OWNER-LABEL@ BL,
    25 G-POP  22 G-POP  21 G-POP  15 G-POP  16 G-POP  8 G-POP
-   11 16 8 SUB,  8 11 GUARD-SPAN
+   11 16 8 SUB,  8 11 PROT-GUARD:CALL
    LSNAPRBD LABEL@ BL,
    LSNAPRBC LABEL@ BL, ;
 
