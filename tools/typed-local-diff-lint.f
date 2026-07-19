@@ -13,15 +13,20 @@ require tools/lint/source-lex.f
 require tools/typed-local-diff-lint-core.f
 require tools/argv.f
 
-: TYPED-LOCAL-DIFF-LINT ( -- )
+package TYPED-LOCAL-DIFF-CLI
+private
+
+: RUN ( -- )
    s" tools/typed-local-diff-lint.f diff.patch ..." ARGV-USAGE!
    ARGV-PARSE
    1 -1 ARGV-EXPECT-POS
-   TYPED-LOCAL-DIFF-LINT-RESET
+   TYPED-LOCAL-DIFF:RESET
    0 begin dup ARGV-POS# < while
-      dup ARGV-POS$ TYPED-LOCAL-DIFF-LINT-FILE
+      dup ARGV-POS$ TYPED-LOCAL-DIFF:FILE
       1+
    repeat drop
-   TYPED-LOCAL-DIFF-LINT-FINISH ;
+   TYPED-LOCAL-DIFF:FINISH ;
 
-TYPED-LOCAL-DIFF-LINT
+RUN
+
+;package

@@ -1583,6 +1583,9 @@ points stay listed.
 - `tools/boot-pin.f` — boot-prefix content-pin tool: print/verify the digest of the checker/core source the engine re-reads at boot.
 - `tools/boot-pin-main.f` — CLI entrypoint for the boot-prefix pin tool.
 - `tools/lint/json-writer.f` — compact JSON writer for native lint diagnostics.
+- `tools/lint/diff-error.f` — shared unified-diff tooling error codes (block -7400..-7499); single home consumed by the parser and the framed-artifact codecs.
+- `tools/lint/diff.f` — checked shared parser for `jj diff --git`: emits file/hunk/add/context/delete events with fail-closed malformed-input handling; consumed by the typed-local and kernel-perf diff lints.
+- `tools/lint/diff-test.f` — checked event and fail-closed coverage for the shared diff parser.
 - `tools/lint/source-lex.f` — checked vector-backed source lexer for native lints.
 - `tools/lint/text.f` / `tools/lint/token.f` / `tools/lint/intern.f` /
   `tools/lint/lib.f` — shared native lint foundation: checked text/file
