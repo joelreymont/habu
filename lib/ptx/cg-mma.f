@@ -1053,6 +1053,15 @@ TRUSTED: MMA-STAGE-ISSUE ( n n -- cpp-pending<p> )   MMA-CP-STAGE 0 ;
 \ The compute quotation sits on the data stack from entry to its `execute` slot (as in MM-PIPE).
 \ Composed from the shared CPP-* protocol steps (cg-matmul-emit.f); MMA-CP-STAGE is the As/Bs
 \ (or transposed-Bs) stage-issue, MMA-BUFB / MMA-BK @ carry the BK/pad/stage-parameterized bytes.
+\
+\ ISSUE-BEFORE-COMPUTE is REQUIRED here, NOT the deferred cp.async issue of the N>=3 ring (dot
+\ habu-reorder-cp-async, MMA-PIPE-KLOOP-MULTI). The double buffer has only ONE buffer of slack: the
+\ next-tile prefetch MUST be in flight DURING the compute it overlaps, so it is issued at the loop top
+\ and kept in flight by wait_group(1). Deferring the issue to after the compute burst would force
+\ wait_group(0) at the next loop top (at N=2 only one group can be in flight), fully EXPOSING the
+\ cp.async load latency and collapsing the overlap - measured a -12%..-34% regression across every
+\ stages=2 tf32 config (docs/eval-triton.md Round 9, in-session base-vs-branch best-of-3). The deferral
+\ only pays when N-2>=1 groups stay in flight (N>=3), so it lives in MMA-PIPE-KLOOP-MULTI alone.
 : MMA-PIPE-KLOOP-WITH ( [ -- ] -- )
    CPP-KT-INIT  CPP-PARITY-INIT
    11 14 MMA-CP-STAGE  CPP-COMMIT
@@ -1093,14 +1102,26 @@ TRUSTED: MMA-STAGE-ISSUE ( n n -- cpp-pending<p> )   MMA-CP-STAGE 0 ;
 \ keeping >=2 blocks/SM. This is the standard multistage GEMM pipeline over a RING of N smem buffers
 \ (base = SH + stage*BUFB, stage cycled as a byte pointer that wraps at SH+N*BUFB back to SH):
 \   prologue : issue tiles 0..N-2 (N-1 groups), one commit_group each (guarded by kt<K for a short K).
-\   steady   : while a tile remains to PREFETCH (kt_pf<K), prefetch tile kt_pf into the write buffer,
-\              commit, then wait_group(N-1) - this keeps the N-1 most-recent groups in flight and so
-\              GUARANTEES the oldest (the tile about to be computed) has landed - then bar.sync, compute
-\              from the read buffer, bar.sync (buffer-reuse fence: the read buffer is overwritten N-1
-\              iterations later), advance both ring bases and kt.
+\   steady   : while a tile remains to PREFETCH (kt_pf<K): wait_group(N-2), bar.sync, compute from the
+\              read buffer, bar.sync (buffer-reuse fence), THEN issue the prefetch of tile kt_pf into the
+\              write buffer + commit, then advance both ring bases and kt. DEFERRED cp.async issue (dot
+\              habu-reorder-cp-async): the prefetch fires AFTER the mma burst, not before, so ptxas
+\              hoists the LDGSTS into the tensor-core stall shadow (the scout's 3.44 -> 1.28 cyc/HMMA
+\              exposed-head verdict; docs/eval-triton.md Round 9). Accounting for the deferred issue:
+\              at the loop top the prefetch of THIS iteration's tile has not fired yet, so only N-2
+\              groups are in flight (one fewer than the issue-first form's N-1); the sum of committed
+\              groups at the wait is C=(N-1)+kt_cmp_index, and cp.async.wait_group(n) guarantees the
+\              oldest C-n complete, so requiring the compute tile (index kt_cmp_index) landed needs
+\              n <= N-2 - hence wait_group(N-2), the largest n that still guarantees it.
 \   epilogue : the last N-1 tiles have no more prefetch, so the in-flight group count must be drained
-\              one at a time: compute tile j with wait_group(N-2-j) for j=0..N-2 (so N-2,N-3,...,0 - the
-\              last tile drains fully). The compute is guarded by kt_cmp<K so a K with fewer than N-1
+\              one at a time. DERIVATION for the deferred issue (re-derived, literals UNCHANGED vs the
+\              issue-first form): the final steady iteration issues+commits the last tile BEFORE the
+\              ring exits, so ALL T tiles are committed at epilogue entry (C=T) in either ordering; for
+\              epilogue index j (j=0..N-2) the tile computed is (T-N+1)+j, and wait_group(n) guarantees
+\              the oldest C-n=T-n complete, so tile (T-N+1)+j landed needs T-n >= (T-N+1)+j+1, i.e.
+\              n <= N-2-j; the largest such n is wait_group(N-2-j) (N-2,N-3,...,0 - the last tile drains
+\              fully). Because C=T is fixed by epilogue entry, the drain literals do not depend on where
+\              the steady issue sits. The compute is guarded by kt_cmp<K so a K with fewer than N-1
 \              tiles (T<N-1) simply computes the tiles that exist. Requires the CHECKED/timed K to give
 \              T=ceil(K/BK) >= N-1 for the wait_group literals to be exact (the deep-stage harness rows
 \              check at K big enough); a too-small K is proven wrong by mma-gemm-check, never reported.
@@ -1137,9 +1158,9 @@ TRUSTED: MMA-STAGE-ISSUE ( n n -- cpp-pending<p> )   MMA-CP-STAGE 0 ;
    loop
    s" $MSTEADY:" PTX-L                                           \ steady loop: while kt_pf < K
    s" setp.ge.u32 %p1,%r14,%r3;" PTX-L  s" @%p1 bra $MSEND;" PTX-L
-   18 14 MMA-CP-STAGE  CPP-COMMIT                                \ prefetch tile kt_pf -> write buffer
-   MMA-STAGES @ 1- CPP-WAIT                                      \ wait_group(N-1): oldest (compute tile) has landed
+   MMA-STAGES @ 2 - CPP-WAIT                                     \ wait_group(N-2): deferred issue -> one fewer in flight at loop top
    CPP-SYNC  MMA-KTILE-DISPATCH  CPP-SYNC                        \ compute from read buffer, then reuse fence
+   18 14 MMA-CP-STAGE  CPP-COMMIT                                \ deferred: prefetch tile kt_pf AFTER the compute burst
    16 MMA-RING-ADV  18 MMA-RING-ADV                             \ advance read + write bases
    14 MMA-KT-ADD  17 MMA-KT-ADD                                 \ kt_pf += BK ; kt_cmp += BK
    s" bra $MSTEADY;" PTX-L  s" $MSEND:" PTX-L

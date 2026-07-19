@@ -1815,3 +1815,102 @@ bin/hb --load tools/ptx/mma-emit-diff.f    # base vs branch -> empty diff (47 tf
 # throughput (swap the file's bottom entry to GEMMBENCH:GB-BN-SWEEP), best-of-3, solo, 13.3 pinned:
 bin/hb --load tools/ptx/gemm-bench.f       # GB-BN-SWEEP: FP32 roof + BN=64 anchors + the BN=128/256 tiles
 ```
+
+## Round 9 — deferring the `cp.async` issue: a deep-ring (stages≥3) lever, falsified for the double buffer (dot `habu-reorder-cp-async`) (2026-07-19)
+
+The ring scout (`habu-scout-triton-s-c62d1230`) adjudicated Triton's 5-stage loop
+against Habu's N-stage ring in SASS and named one structural difference: Triton
+issues the **next** tile's `cp.async` **after** the current tile's HMMA burst, so
+`ptxas` hoists the `LDGSTS` into the tensor-core stall shadow; Habu issued it
+**before** the burst, exposing the load-address generation as a **head** ahead of
+the mma (measured **3.44 vs 1.28 cyc/HMMA** in the steady window). This round moves
+the issue after the burst in `cg-mma.f`'s two `cp.async` K-loops and measures the
+result honestly — and the two loops split.
+
+**Correctness first, exhaustively, before any timing.** `mma-gemm-check.f` is
+**element-exact** with the reorder: **168 PASS** (every dtype tf32/fp16/bf16, both
+warp grids, wide-`BN`, ±epilogue, stages **1–5**) plus **11** fail-closed negative
+guards, zero mismatches. Byte-identity is **not** expected for the reordered
+configs and the `mma-emit-diff.f` notes say so: base-vs-branch, exactly the **5
+deep-ring (stages 3/4/5) configs differ** and all **42** stages≤2 configs stay
+byte-identical (the double buffer is unchanged — see below). The new deep-ring wait
+accounting was **re-derived** and written as a constraint comment: with the issue
+deferred, the steady drain drops `wait_group(N-1) → wait_group(N-2)` (one fewer
+group in flight at the loop top), and the epilogue drain literals stay
+`wait_group(N-2-j)` — re-derived and **unchanged**, because all `T` tiles are
+committed at epilogue entry in either ordering, so the drain depends only on `C=T`,
+not on where the steady issue sits.
+
+### Result — the deferral is a deep-ring lever, and a double-buffer regression
+
+Best-of-3, run **solo**, pinned **13.3** `ptxas` (`PTXAS-STALE-SM121` absent), **in
+one session** so the same-session FP32 `MM` roof reproduces the committed
+8.2 / 13.2 / 15.0 band; base = the issue-first `cg-mma.f`, branch = the reorder,
+same harness, same clock (`tools/ptx/gemm-bench.f` `GB-W4-SWEEP` / `GB-BN-SWEEP`).
+
+**(a) `MMA-PIPE-KLOOP-MULTI` (N≥3 ring) — SHIPS.** The widest deep tile
+(4-warp `MFRAGS=4` stages=3, `BM128×BN64`, 86 KB) is the win:
+
+| TFLOP/s (tf32, deep-ring 4-warp M4 stages=3) | 512³ | 1024³ | 2048³ | 4096³ |
+|----------------------------------------------|-----:|------:|------:|------:|
+| issue-first (base)                           | 13.1 |  21.8 |  26.7 |  13.8 |
+| **deferred issue (branch)**                  |**14.5**|**25.6**|**30.7**| 13.4 |
+| Δ                                            |**+11.0 %**|**+17.3 %**|**+15.1 %**| −3.1 %* |
+
+*the 4096³ roof itself dipped 5.6 % this session (13.4→12.6), so the −3.1 % is
+within the session clock, not a codegen loss. The narrower deep tiles
+(`MFRAGS=2` stages 3/4/5, and the `MFRAGS=4` stages=3 B-`ldmatrix` tile) are
+**flat to −5 %**: their binding cost is not the exposed head, so hiding it does not
+help and the reorder's later reuse-fence costs a hair.
+
+This **closes Round 2's deep-stage negative for the widest tile** — that round
+measured every stages≥3 config uniformly slower than stages 1/2 and shelved depth;
+the reorder now lifts the stages=3 `MFRAGS=4` tile to **14.5 / 25.6 / 30.7**, so
+**depth is productive again** exactly as the scout predicted. What it does **not**
+do is set a new per-shape record: the standing stages≤2 winners are untouched and
+still lead — 1024³ 4-warp M4 stages=1 static **28.6**, 2048³ the same tile **32.6**
+(and 8-warp M4 stages=2 dyn **31.0**), 512³ 4-warp M4 stages=2 dyn **14.5** (which
+the reordered stages=3 now merely **ties**). So the head-to-head vs the Triton 3.8
+tf32 referee (**21.7 / 33.5 / 37.8 / 45.3**) is **unchanged at the committed
+winners** — Triton still wins every shape; the value earned is a productive deep
+ring, not a closed gap.
+
+**(b) `MMA-PIPE-KLOOP-WITH` (N=2 double buffer) — FALSIFIED, reverted.** The dot
+predicted the "s1/s2 winners gain"; measurement refutes it decisively. Deferring
+the issue in a 2-stage pipe is a **−12 % … −34 %** regression on **every** stages=2
+tf32 config:
+
+| TFLOP/s (tf32, base → reordered-WITH branch) | 512³ | 1024³ | 2048³ | 4096³ |
+|----------------------------------------------|-----:|------:|------:|------:|
+| 8-warp M4 stages=2 dyn (256×64, cmt 2048 win) | 9.1→7.4 | 21.6→16.9 | **30.5→21.0** | 23.3→17.7 |
+| 4-warp M4 stages=2 dyn (128×64)               | 14.5→11.9 | 24.4→18.4 | **30.0→19.7** | 13.3→10.4 |
+| BN=256 M2 stages=2 dyn (128×256, Triton geom) | 4.2→3.6 | 19.0→16.1 | 26.0→21.0 | **29.9→21.3** |
+
+**Root cause (mechanical, not tuning):** a double buffer has **one** buffer of
+slack, so the next-tile prefetch **must be in flight during the compute it
+overlaps** — which requires issue-*before*-compute (`wait_group(1)` keeps it in
+flight). Deferring the issue forces `wait_group(0)` at the next loop top (at N=2
+only one group can ever be in flight), which **fully exposes the `cp.async` load
+latency** and collapses the overlap. There is no N=2 deferral that keeps the
+overlap; the deferral pays only when `N-2≥1` groups stay in flight (N≥3). So
+`MMA-PIPE-KLOOP-WITH` keeps issue-before-compute (reverted to byte-identical; the
+stages≤2 flat column above, re-run with the shipping code, confirms the revert),
+and the reorder ships in `MMA-PIPE-KLOOP-MULTI` alone.
+
+The honest headline: **the campaign's "512-class main lever" is real but narrow** —
+it makes the deep ring productive (widest deep tile +11 … +17 % at 512³/1024³/2048³,
+Round 2's negative closed) without beating the stages-1/2 winners or moving any
+Habu/Triton ratio; and the double-buffer half of the plan was a **measured
+regression**, reverted with the mechanism recorded so it is not re-attempted.
+
+### Reproduction (exact)
+
+```
+# element-exact first (arch auto-probed sm_121a) — 168 PASS + 11 fail-closed, all dtypes/grids/wide-BN/±epi/stages 1-5:
+bin/hb --load tools/ptx/mma-gemm-check.f
+# byte-identity: only the 5 deep-ring (stages 3/4/5) configs differ; all 42 stages<=2 configs unchanged:
+bin/hb --load tools/ptx/mma-emit-diff.f    # base vs branch -> diff isolated to the stages 3/4/5 rows
+# throughput, best-of-3, solo, 13.3 pinned; in-session base(issue-first) vs branch(reorder), FP32 MM roof anchors the clock:
+bin/hb --load tools/ptx/gemm-bench.f       # GB-W4-SWEEP: deep-ring stages 3/4/5 + the stages<=2 anchors (flat after the WITH revert)
+bin/hb --load tools/ptx/gemm-bench.f       # GB-BN-SWEEP: the stages=2 wide-BN tiles (the WITH-reorder regression that reverts it)
+```

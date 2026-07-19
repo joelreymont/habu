@@ -7,6 +7,16 @@
 \ tile family adds a DTYPE dispatch; with MMA-DTYPE=0 (default) this stream must not
 \ move. Device-independent (pure emit); no libcuda needed. Run:
 \   bin/hb --load tools/ptx/mma-emit-diff.f > /tmp/emit.txt   (base vs branch, then diff)
+\
+\ BYTE-IDENTITY IS NOT EXPECTED for the DEEP-RING (stages 3-5) configs after the deferred cp.async
+\ reorder (dot habu-reorder-cp-async, docs/eval-triton.md Round 9). That change moves the next-tile
+\ prefetch to AFTER the compute burst in MMA-PIPE-KLOOP-MULTI only (N>=3) and drops its steady
+\ wait_group literal N-1 -> N-2, so every stages 3/4/5 config here (the "deep-stage ring pipeline" rows)
+\ intentionally DIFFERS base-vs-branch. The stages 1/2 pipes are UNCHANGED (MMA-PIPE-KLOOP-SINGLE and
+\ MMA-PIPE-KLOOP-WITH keep issue-before-compute - the N=2 deferral was measured a -12%..-34% regression
+\ and reverted), so every stages<=2 config stays byte-identical. Correctness of the reordered deep-ring
+\ configs is proven ELEMENT-EXACT by tools/ptx/mma-gemm-check.f (stages 3/4/5, both warp grids), NOT by
+\ an empty diff here.
 
 require lib/errors.f
 require lib/string.f
