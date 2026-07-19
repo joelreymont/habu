@@ -1362,9 +1362,9 @@ schema_version	module	file	kind	word	effect	test	doc	owner	status	notes
 1	sort	lib/sort.f	word	SORT!	(ptr a n [ a a -- bool ] --)	lib/sort-test.f	docs/stdlib.md	stdlib-sort	published	in-place heapsort with a less-than comparator quotation
 1	sort	lib/sort.f	word	FSORT!	(ptr r n --)	lib/sort-test.f	docs/stdlib.md	stdlib-sort	published	sort float cells ascending in place
 1	hashmap	lib/hashmap.f	module			lib/hashmap-test.f	docs/stdlib.md	stdlib-hashmap	active	open-addressing integer-key hash probe over caller arrays
-1	hashmap	lib/hashmap.f	word	HASH64	(n -- n)	lib/hashmap-test.f	docs/stdlib.md	stdlib-hashmap	published	integer-key mix hash (identity for small keys)
-1	hashmap	lib/hashmap.f	word	HM-PROBE	(ptr a ptr a n n -- n)	lib/hashmap-test.f	docs/stdlib.md	stdlib-hashmap	published	slot for a key: where it lives or first empty slot
-1	hashmap	lib/hashmap.f	word	HM-CLEAR	(ptr a n --)	lib/hashmap-test.f	docs/stdlib.md	stdlib-hashmap	published	mark all slots empty (zero the used array)
+1	hashmap	lib/hashmap.f	word	HM:HASH64	(n -- n)	lib/hashmap-test.f	docs/stdlib.md	stdlib-hashmap	published	integer-key mix hash (identity for small keys)
+1	hashmap	lib/hashmap.f	word	HM:PROBE	(ptr a ptr a n n -- n)	lib/hashmap-test.f	docs/stdlib.md	stdlib-hashmap	published	slot for a key: where it lives or first empty slot
+1	hashmap	lib/hashmap.f	word	HM:CLEAR	(ptr a n --)	lib/hashmap-test.f	docs/stdlib.md	stdlib-hashmap	published	mark all slots empty (zero the used array)
 1	prelude	lib/prelude.f	module			lib/prelude-test.f	docs/stdlib.md	stdlib-prelude	active	checked boolean/flag and float-stack conveniences core omits
 1	prelude	lib/prelude.f	word	TRUE	(-- bool)	lib/prelude-test.f	docs/stdlib.md	stdlib-prelude	published	canonical true flag
 1	prelude	lib/prelude.f	word	FALSE	(-- bool)	lib/prelude-test.f	docs/stdlib.md	stdlib-prelude	published	canonical false flag
