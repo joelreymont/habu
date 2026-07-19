@@ -13,3 +13,12 @@ ADJUDICATION 2026-07-19 (read-only forensic pass, verdict accepted by orchestrat
 Claim: agent=sizeguard-opus workspace=.jj-ws/habu-recover-size-guard-31d26b61
 
 RE-SEQUENCED 2026-07-19 (orchestrator, after the slice-1 worker proved a dependency inversion): the PROT-GUARD:CALL shared span-call CANNOT land first. The worker built the full rollout and measured it green (code-total 132840 -> 127076, 100 bytes under the 126976 page boundary, file size 165367 unchanged), but the ahead-of-time closure walker follows only absolute-indirect CALL? sites, not direct BL branches, so the refactor's `BL LPROTSPAN` breaks AOT relocation - the AOT-helper-closure extension is a hard prerequisite, and the package-aware shadow lint must also come first (the span-call helper trips the current lint). Corrected slice order: (1) AOT-helper-closure foundation (from the held cf9fab59: ENGINE-HELPER package, SCAN-DIRECT/FINDPTR/AOT-BRANCH, LPROTSPAN registration, the aot-lib MAP-IN-BLOB fix, gate tests; security boundary - needs destruction review), (2) package-aware shadow lint (fold with habu-teach-shadow-lint-a46b0026's string-skip fix), (3) the PROT-GUARD:CALL rollout itself. The finished rollout is preserved as working-copy commit 687a469a in .jj-ws/habu-recover-size-guard-31d26b61 (its bin/hb is that rollout's own fixpoint, 2e8fa8d1); slice 3 re-applies it on top of the landed foundations instead of rebuilding from scratch. Ratchet numbers above updated by measurement: MACOS-CODE-TEXT 127076 / MACOS-FLOOR-DIST 100 in the preserved manifest.
+
+PROGRESS 2026-07-19: three of the four content slices are merged and verified on
+master — AOT-helper-closure (registered engine helpers + direct-branch follow),
+the shared PROT-GUARD:CALL span-guard fold (226de5aa; engine __text 132840 ->
+127392, fixpoint 7f1a7660 x2) with the GAP-LAYOUT-STORE AOT regression
+(101e629c), and the package-aware + string-aware shadow lint (2a1638e3).
+Remaining from the adjudication: the wrapped-call clobber-lint extension
+(+84/+30, isolated as size-guard-rebase's top commit) and the retirement of the
+four empty claim tips plus the prototype workspace once it lands.

@@ -1644,3 +1644,12 @@ fits.
   && cp`), or use the engine's own install path, which signs via
   lib/codesign.f. An orchestrator refreshing a worktree's engine from another
   workspace's proven fixpoint binary must rm-then-copy, never overwrite.
+- A jj working copy can go stale silently mid-sequence when other workspaces
+  create operations: `jj new <rev>` may report success while the on-disk files
+  still hold the previous tree, and an expensive step then runs against the
+  wrong sources. This produced a fixpoint "proof" that exactly reproduced the
+  PREVIOUS engine hash (the giveaway) and a gate run whose filemap path count
+  matched the old tree. Before any expensive gate or install, verify the tree
+  by CONTENT — a sentinel search for a string the change introduces (e.g.
+  `rg -c PROT-GUARD:CALL src/habu/habu1.f`) — not just by `jj log` position,
+  and rerun `jj workspace update-stale` after any cross-workspace activity.
