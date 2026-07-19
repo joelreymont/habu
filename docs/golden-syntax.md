@@ -133,9 +133,9 @@ as a rewrite campaign.
 in the dot report): a token before `[` is a `TENSOR:`/`ITENSOR:` name matched exactly
 (SPEC: appends `@`/`!`); a bare token inside `[...]` is a lower-case index variable
 whose extent is `#` + its upper-case (`m` → `#M`, crossing `>#M`); a gather is
-`NAME[var]` nested in a factor bracket; the product combiner is `*` and the reduction
-is `+SUM <index>` (the ASCII spelling of `+Σ` — the multi-byte Σ was rejected as
-fragile and hard to type). From one parse SPEC: derives three things: (1) the checked
+`NAME[var]` nested in a factor bracket; the product combiner is `*` or `·` and the
+reduction is the trailing `+SUM <index>` or the prefix `Σ<index>` (see "Unicode math
+spellings" below). From one parse SPEC: derives three things: (1) the checked
 candidate-B golden — two words `NAME-EL` (the contraction element) and `NAME` (the
 free loops + store), certified through the same `XG-EVAL` boundary the accessors use,
 so it is checked, not trusted; (2) a dataflow record (free vs contraction index
@@ -165,3 +165,37 @@ records (2)+(3) are self-contained: no live maki-planner or PROMOTE consumer rea
 them yet (the planner drops the contraction axis and PROMOTE consumes gate verdicts,
 not shapes), so the integration boundary is a future gate in `maki/cad.f` that reads
 these records.
+
+### Status: Unicode math spellings (the equation surface reads like the math)
+
+The ASCII-only retreat is reversed (dot `habu-unicode-math-spellings`). The equation
+lexer normalizes the small confusable set so identical-looking codepoints are ONE
+token — no silent lookalike soup:
+
+| meaning        | ASCII                | Unicode (both lex to the ASCII token)                 |
+|----------------|----------------------|--------------------------------------------------------|
+| summation      | `+SUM <index>`       | `Σ<index>` — U+03A3 GREEK CAPITAL SIGMA · U+2211 N-ARY SUMMATION |
+| product        | `*`                  | `·` — U+00B7 MIDDLE DOT · U+22C5 DOT OPERATOR           |
+
+The summation is accepted in **two grammatical positions**: the **prefix** form
+`Σ<contraction indices> <factors>` (as the pitch writes it) and the **trailing** form
+`<factors> +SUM <contraction indices>`. Both parse to the identical equation. The
+product token is accepted **infix** between factors (`A · B`) or as the **trailing**
+combiner (`A B *`); either sets the "multiply all factors" flag.
+
+**Canonical pretty form** (one, fixed here): prefix summation, infix product, real
+Unicode glyphs —
+
+    O[m n] = Σk A[ix[m] k] · B[n k]
+
+The ASCII spelling `O[m n] = A[ ix[m] k ] B[n k] * +SUM k` stays legal forever
+(terminals, greps, diffs) and is the only form used inside byte-oriented Forth tests
+that must not carry multi-byte bytes.
+
+**Fail closed on everything else:** any OTHER non-ASCII byte in an equation is the
+named `E-SPEC-SYNTAX` reject, and the diagnostic (`SPEC-REJECT$`) names the offending
+codepoint as `U+<hex>` (e.g. a stray U+2212 MINUS SIGN reports `U+2212`). Only the four
+confusable codepoints above are decoded — no general Unicode machinery, no tables.
+`maki/spec-test.f` proves both members of each pair produce byte-identical kernel
+output, the pitch line runs as written, and the stray-codepoint reject fires with the
+codepoint named.

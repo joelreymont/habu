@@ -86,6 +86,34 @@ QA 0 EQ-ARG-SET!   QB 1 EQ-ARG-SET!   QPO EQ-OUT-SET!  \ stage operand + output 
 PGEMM-EXEC                                             \ EQ-EXEC runs the generated RUN xt
 QPO QPR #P #Q * T-DIST2  1000.0 f* 0.5 f+ f>s  0 T=    \ EQ-EXEC output == plain GEMM
 
+\ --- Unicode math spellings: each confusable pair normalizes to ONE token, so every
+\ spelling registers an equation whose EQ-EXEC output equals the ASCII PGEMM golden.
+\ Summation Σ (U+03A3) / ∑ (U+2211) both lex to +SUM; product · (U+00B7) / ⋅ (U+22C5)
+\ both lex to *. PGU1 is the docs/golden-syntax.md pitch line written gather-free with
+\ real Σ and · bytes (prefix Σ + infix ·); PGU3 shows the ASCII prefix +SUM the
+\ normalization implies. All must reproduce the plain-buffer GEMM (QPR from PGREF). ----
+create QU1 #P #Q * cells allot
+create QU2 #P #Q * cells allot
+create QU3 #P #Q * cells allot
+: UEQ-EXEC ( ptr u8 n -- )   \ find an equation by name and run it through the registry
+   EQ-FIND MATCH option  none OF E-SPEC-SYNTAX throw ENDOF  some OF EQ-EXEC ENDOF ;MATCH ;
+SPEC: PGU1  O[p q] = Σr A[p r] · B[q r] ;      \ prefix Σ U+03A3, infix · U+00B7 (the pitch line)
+SPEC: PGU2  O[p q] = ∑r A[p r] ⋅ B[q r] ;      \ prefix ∑ U+2211, infix ⋅ U+22C5
+SPEC: PGU3  O[p q] = +SUM r A[p r] * B[q r] ;  \ ASCII prefix +SUM (Σ normalizes to +SUM)
+QA 0 EQ-ARG-SET!  QB 1 EQ-ARG-SET!  QU1 EQ-OUT-SET!  s" PGU1" UEQ-EXEC
+QA 0 EQ-ARG-SET!  QB 1 EQ-ARG-SET!  QU2 EQ-OUT-SET!  s" PGU2" UEQ-EXEC
+QA 0 EQ-ARG-SET!  QB 1 EQ-ARG-SET!  QU3 EQ-OUT-SET!  s" PGU3" UEQ-EXEC
+QU1 QPR #P #Q * T-DIST2  1000.0 f* 0.5 f+ f>s  0 T=    \ U+03A3 / U+00B7 == plain GEMM
+QU2 QPR #P #Q * T-DIST2  1000.0 f* 0.5 f+ f>s  0 T=    \ U+2211 / U+22C5 == plain GEMM
+QU3 QPR #P #Q * T-DIST2  1000.0 f* 0.5 f+ f>s  0 T=    \ ASCII prefix +SUM == plain GEMM
+QU1 QU2 #P #Q * T-DIST2  1000.0 f* 0.5 f+ f>s  0 T=    \ the two spellings of each pair are identical
+
+\ a stray OTHER non-ASCII byte is the named E-SPEC-SYNTAX reject whose diagnostic names
+\ the offending codepoint (− is U+2212 MINUS SIGN, a lookalike outside the confusable set).
+: T-UNICP ( -- ) s" O[p q] = Σr A[p r] − B[q r]" SPEC-CHECK$ ;
+' T-UNICP  E-SPEC-SYNTAX  TTHROWS
+s" U+2212" SPEC-REJECT$ 2swap CONTAINS? -1 T=
+
 \ --- negatives: every malformed spec is a named throw (no code generated) ---------
 : T-UNKEXT  ( -- ) s" O[z q] = A[ IX[z] r ] B[q r] * +SUM r" SPEC-CHECK$ ;   \ z -> #Z undeclared
 : T-TENSOR  ( -- ) s" O[p q] = Z[ IX[p] r ] B[q r] * +SUM r" SPEC-CHECK$ ;   \ tensor Z undeclared
@@ -103,6 +131,35 @@ QPO QPR #P #Q * T-DIST2  1000.0 f* 0.5 f+ f>s  0 T=    \ EQ-EXEC output == plain
 2 EXTENT: #S
 : T-UNBOUND2 ( -- ) s" O[p q] = A[ IX[p] s ] B[q r] * +SUM r" SPEC-CHECK$ ;   \ s: #S declared, not free/contracted
 ' T-UNBOUND2 E-SPEC-UNBOUND TTHROWS
+
+\ --- two-index prefix contraction (the surface's max): the prefix Σ index list carries
+\ BOTH contraction indices (Σr s). Such an equation must register and EQ-EXEC identically
+\ to its ASCII trailing "+SUM r s" spelling. Reuse A (#P #R) for the p-side and add TWC
+\ (#Q #S) for the q-side so the two contraction indices r,s are DISTINCT declared extents.
+\ The einsum O[p q] = Σr,s A[p r]·TWC[q s] is the outer product of A's and TWC's row-sums;
+\ both spellings must reproduce that plain-buffer reference (Q2R) and each other. --------
+TENSOR: TWC ( #Q #S )                  \ TWC : Q x S, the q-side operand
+create QC  #Q #S * cells allot
+create Q2P #P #Q * cells allot         \ prefix-Σ output
+create Q2T #P #Q * cells allot         \ trailing-+SUM output
+create Q2R #P #Q * cells allot         \ plain-buffer reference
+: TW2FILL ( -- ) #Q 0 ?do #S 0 ?do  i j 2 * + 1+ s>f  QC j #S * i + T-SET  loop loop ;
+: TW2A ( n -- r ) {: p:n :}   0.0 #R 0 ?do  QA p  #R * i + T-GET  f+  loop ;   \ Σ_r A[p r]
+: TW2C ( n -- r ) {: qq:n :}  0.0 #S 0 ?do  QC qq #S * i + T-GET  f+  loop ;   \ Σ_s TWC[q s]
+: TW2REF ( -- ) #P 0 ?do #Q 0 ?do  j TW2A  i TW2C  f*  Q2R j #Q * i + T-SET  loop loop ;
+TW2FILL  QA A-BIND  QC TWC-BIND  TW2REF
+SPEC: TW2P  O[p q] = Σr s A[p r] · TWC[q s] ;      \ prefix Σ carries BOTH contraction indices
+SPEC: TW2T  O[p q] = A[p r] TWC[q s] * +SUM r s ;  \ ASCII trailing +SUM r s (same einsum)
+QA 0 EQ-ARG-SET!  QC 1 EQ-ARG-SET!  Q2P EQ-OUT-SET!  s" TW2P" UEQ-EXEC
+QA 0 EQ-ARG-SET!  QC 1 EQ-ARG-SET!  Q2T EQ-OUT-SET!  s" TW2T" UEQ-EXEC
+Q2P Q2R #P #Q * T-DIST2  1000.0 f* 0.5 f+ f>s  0 T=   \ prefix Σr s == outer product of row-sums
+Q2T Q2R #P #Q * T-DIST2  1000.0 f* 0.5 f+ f>s  0 T=   \ trailing +SUM r s == same reference
+Q2P Q2T #P #Q * T-DIST2  1000.0 f* 0.5 f+ f>s  0 T=   \ the two 2-index spellings are identical
+
+\ mixed reduction with the 2-index form: a prefix Σ AND a trailing +SUM double-specify the
+\ reduction, which SP-PARSE-REDUCTION rejects (named E-SPEC-SYNTAX) before any codegen.
+: T-MIX2 ( -- ) s" O[p q] = Σr s A[p r] TWC[q s] * +SUM r s" SPEC-CHECK$ ;
+' T-MIX2  E-SPEC-SYNTAX  TTHROWS
 
 \ --- a valid-but-transposed spec: the derived accessor loop flips extents, so the
 \ checker rejects it (CHECK-QUIET-CANDIDATE! = 0); the correct order is accepted (-1).

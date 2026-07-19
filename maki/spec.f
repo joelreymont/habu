@@ -23,10 +23,14 @@
 \     its extent is `#` + the upper-cased variable (`m` -> `#M`), and its crossing
 \     is `>#M`. This mirrors the math: index `m` lives in dimension `M`.
 \   - A gather is `NAME[var]` nested inside a factor's bracket (`A[ IX[m] k ]`).
-\   - The product combiner is `*` (multiply all factors) and the reduction is
-\     `+SUM <index>` (sum-contract over the index). `+SUM` is the ASCII spelling
-\     of the schematic `+Σ` (rejected: the multi-byte Σ is fragile in byte-oriented
-\     Forth source and hard to type).
+\   - The product combiner (multiply all factors) and the reduction (sum-contract over
+\     the index list) each have an ASCII spelling that stays legal forever plus a
+\     normalized Unicode spelling. Product: `*` or `·` (U+00B7 MIDDLE DOT / U+22C5 DOT
+\     OPERATOR). Summation: the trailing `+SUM <index>` or the prefix `Σ<index>` (U+03A3
+\     GREEK CAPITAL SIGMA / U+2211 N-ARY SUMMATION). The two lookalikes in each pair lex
+\     to ONE token, so identical-looking source is identical to the lexer; any OTHER
+\     non-ASCII byte is a named E-SPEC-SYNTAX reject that prints the offending codepoint.
+\     docs/golden-syntax.md fixes the canonical pretty form.
 \
 \ WHAT SPEC: EXPRESSES vs WHAT STILL NEEDS HAND-WRITTEN BODIES: SPEC: covers the
 \ gathered-GEMM family - up to 2 free (output) indices and up to 2 contraction
@@ -166,6 +170,74 @@ variable SP-SRC-U
 variable SP-POS
 variable SP-PB-A  variable SP-PB-U  variable SP-PB?
 
+\ ---- Unicode math spellings (dot habu-unicode-math-spellings): the confusable set is
+\ normalized so identical-looking codepoints lex to ONE token. U+03A3 GREEK CAPITAL
+\ SIGMA and U+2211 N-ARY SUMMATION both lex to the summation token `+SUM`; U+00B7 MIDDLE
+\ DOT and U+22C5 DOT OPERATOR both lex to the product token `*`. The ASCII spellings stay
+\ legal forever. Any OTHER non-ASCII byte is a named E-SPEC-SYNTAX reject whose diagnostic
+\ prints the offending codepoint. Only these four codepoints are decoded - no general
+\ Unicode tables. ---------------------------------------------------------------------
+$03A3 constant CP-SIGMA        \ GREEK CAPITAL SIGMA
+$2211 constant CP-NARY-SUM     \ N-ARY SUMMATION
+$00B7 constant CP-MIDDLE-DOT   \ MIDDLE DOT
+$22C5 constant CP-DOT-OP       \ DOT OPERATOR
+create SP-SUM-TOK  43 c, 83 c, 85 c, 77 c,   \ canonical summation token bytes "+SUM"
+create SP-STAR-TOK 42 c,                     \ canonical product token byte "*"
+: SP-SUM$  ( -- ptr u8 n )  SP-SUM-TOK  4 ;
+: SP-STAR$ ( -- ptr u8 n )  SP-STAR-TOK 1 ;
+: SP-HI? ( n -- bool )  127 > ;   \ a byte with the high bit set starts a non-ASCII (UTF-8) sequence
+
+\ the low 6 bits of the continuation byte at SP-POS+off (caller ensured the offset is in-bounds).
+: SP-U8@ ( n -- n ) {: off:n :}  SP-SRC SP-POS @ + off + c@  $3F and ;
+\ byte-length of a UTF-8 sequence from its lead byte; 1 for a byte that is not a multi-byte lead.
+: SP-LEAD-LEN ( n -- n )
+   dup $E0 and $C0 = if drop 2 exit then
+   dup $F0 and $E0 = if drop 3 exit then
+   dup $F8 and $F0 = if drop 4 exit then
+   drop 1 ;
+\ decode the UTF-8 sequence at SP-POS to ( codepoint byte-length ). A byte that is not a
+\ valid lead, or a sequence truncated by the buffer end, yields ( lead-byte 1 ) so the
+\ reject path can still name the offending byte.
+: SP-DECODE ( -- n n )
+   SP-SRC SP-POS @ + c@  dup SP-LEAD-LEN  {: b0:n len:n :}
+   len 1 = if b0 1 exit then
+   SP-POS @ len + SP-SRC-U @ > if b0 1 exit then
+   len 2 = if  b0 $1F and 6 lshift   1 SP-U8@ or                             2 exit then
+   len 3 = if  b0 $0F and 12 lshift  1 SP-U8@ 6 lshift or   2 SP-U8@ or      3 exit then
+   b0 $07 and 18 lshift  1 SP-U8@ 12 lshift or  2 SP-U8@ 6 lshift or  3 SP-U8@ or  4 ;
+
+\ the reject diagnostic: a spec-owned buffer holding the message for the most recent
+\ non-ASCII reject, so it is queryable in-process (SPEC-REJECT$) with no dependence on
+\ the checker's engine-internal sink. Populated just before the E-SPEC-SYNTAX throw.
+public
+256 constant SP-RJ-CAP
+create SP-RJ-BUF SP-RJ-CAP allot
+variable SP-RJ-U
+: SPEC-REJECT$ ( -- ptr u8 n )  SP-RJ-BUF SP-RJ-U @ ;
+private
+: SP-RJ-C ( n -- ) {: c:n :}
+   SP-RJ-U @ SP-RJ-CAP >= if E-SPEC-SYNTAX throw then
+   c SP-RJ-BUF SP-RJ-U @ + c!  SP-RJ-U @ 1 + SP-RJ-U ! ;
+: SP-RJ+ ( ptr u8 n -- ) {: a:ptr u:n :}  0 begin dup u < while dup a + c@ SP-RJ-C 1 + repeat drop ;
+: SP-HEX-NIB ( n -- )   \ append one uppercase hex digit to the reject diagnostic
+   dup 10 < if [char] 0 + else 10 - [char] A + then  SP-RJ-C ;
+: SP-HEX ( n n -- ) {: cp:n w:n :}   \ append cp in hex, at least width (w) digits, high-to-low
+   cp 16 >= w 1 > or if  cp 16 /  w 1 -  RECURSE  then
+   cp 15 and SP-HEX-NIB ;
+: SP-DIAG-CP ( n -- ) {: cp:n :}   \ record "...U+<hex>..." naming the offending codepoint (no throw)
+   0 SP-RJ-U !
+   s" spec: non-ASCII codepoint U+" SP-RJ+
+   cp 4 SP-HEX
+   s"  is not a legal equation token" SP-RJ+ ;
+\ decode the non-ASCII sequence at SP-POS: a confusable-set member returns its canonical
+\ token; anything else names its codepoint and rejects the equation.
+: SP-UNI-TOK ( -- ptr u8 n )
+   SP-DECODE {: cp:n len:n :}
+   SP-POS @ len + SP-POS !
+   cp CP-SIGMA = cp CP-NARY-SUM = or if SP-SUM$ exit then
+   cp CP-MIDDLE-DOT = cp CP-DOT-OP = or if SP-STAR$ exit then
+   cp SP-DIAG-CP  E-SPEC-SYNTAX throw ;
+
 : SP-DELIM? ( n -- bool ) {: c:n :}  c 91 = c 93 = or c 61 = or c 42 = or ;   \ [ ] = *
 : SP-WS?    ( n -- bool ) {: c:n :}  c 32 = c 9 = or c 10 = or c 13 = or ;
 : SP-SRC-C ( n -- ) {: c:n :}
@@ -189,7 +261,7 @@ variable SP-PB-A  variable SP-PB-U  variable SP-PB?
 
 : SP-AT-WORD? ( -- bool )
    SP-POS @ SP-SRC-U @ >= if false exit then
-   SP-SRC SP-POS @ + c@ {: c:n :}  c SP-WS? 0=  c SP-DELIM? 0= and ;
+   SP-SRC SP-POS @ + c@ {: c:n :}  c SP-WS? 0=  c SP-DELIM? 0= and  c SP-HI? 0= and ;
 : SP-SKIP-WS ( -- )
    begin
       SP-POS @ SP-SRC-U @ >= if exit then
@@ -200,6 +272,7 @@ variable SP-PB-A  variable SP-PB-U  variable SP-PB?
    SP-PB? @ if 0 SP-PB? ! SP-PB-A @ SP-PB-U @ exit then
    SP-SKIP-WS
    SP-POS @ SP-SRC-U @ >= if SP-SRC 0 exit then
+   SP-SRC SP-POS @ + c@ SP-HI? if SP-UNI-TOK exit then   \ non-ASCII: normalize the math operator or reject
    SP-SRC SP-POS @ + {: a:ptr :}
    a c@ SP-DELIM? if SP-POS @ 1 + SP-POS ! a 1 exit then
    SP-POS @ {: start:n :}
@@ -232,8 +305,8 @@ variable SP-PB-A  variable SP-PB-U  variable SP-PB?
    else
       wa wu  SP-EMPTY  SP-FI+             \ plain var, no gather
    then ;
-: SP-PARSE-FACTOR ( -- )   \ NAME [ index... ]
-   SP-WORD {: na:ptr nu:n :}
+: SP-PARSE-FACTOR-NAMED ( ptr u8 n -- )   \ [ index... ] for a factor whose NAME is already read
+   {: na:ptr nu:n :}
    s" [" SP-EXPECT
    SP-FI-N @ {: off:n :}
    begin
@@ -244,36 +317,48 @@ variable SP-PB-A  variable SP-PB-U  variable SP-PB?
       then
       SP-PARSE-FACTOR-INDEX
    again ;
-: SP-PARSE-FACTORS ( -- )   \ factors until * or +SUM
+: SP-PARSE-FACTOR ( -- )   \ NAME [ index... ]
+   SP-WORD SP-PARSE-FACTOR-NAMED ;
+variable SP-STAR?     \ a product token (* or ·) appeared among/after the factors
+variable SP-PREFIX?   \ the summation was written as a prefix Σ, not a trailing +SUM
+: SP-PARSE-FACTORS ( -- )   \ factors, separated/terminated by optional product tokens; stops at +SUM or end
    begin
+      SP-PEEK s" *" STR= if SP-NEXT 2drop  -1 SP-STAR? ! then
       SP-PEEK dup 0= if 2drop exit then
-      2dup s" *" STR= if 2drop exit then
       2dup s" +SUM" STR= if 2drop exit then
       2drop  SP-PARSE-FACTOR
    again ;
-variable SP-STAR?
 : SP-PARSE-SUM ( -- )   \ '+SUM' peeked; consume it + contraction vars to end
    SP-NEXT 2drop
    begin
       SP-PEEK dup 0= if 2drop exit then
       2drop  SP-WORD SP-CT+
    again ;
-: SP-PARSE-REDUCTION ( -- )
-   0 SP-STAR? !
-   SP-PEEK dup 0= if 2drop exit then
-   2dup s" *" STR= if 2drop  SP-NEXT 2drop  -1 SP-STAR? !
-      SP-PEEK dup 0= if 2drop exit then
-      2dup s" +SUM" STR= if 2drop SP-PARSE-SUM exit then
-      2drop E-SPEC-SYNTAX throw
+\ prefix summation: after the Σ token, the contraction index list runs until the first
+\ factor (a word followed by `[`). That first factor is parsed here; SP-PARSE-FACTORS
+\ parses any that follow.
+: SP-PARSE-PREFIX-CT ( -- )
+   begin
+      SP-WORD {: wa:ptr wu:n :}
+      SP-PEEK s" [" STR= if wa wu SP-PARSE-FACTOR-NAMED exit then
+      wa wu SP-CT+
+   again ;
+: SP-PARSE-REDUCTION ( -- )   \ exactly one reduction: a trailing +SUM, unless a prefix Σ already gave it
+   SP-PEEK s" +SUM" STR= if
+      SP-PREFIX? @ if E-SPEC-SYNTAX throw then
+      SP-PARSE-SUM exit
    then
-   2dup s" +SUM" STR= if 2drop SP-PARSE-SUM exit then
-   2drop E-SPEC-SYNTAX throw ;
+   SP-PREFIX? @ 0= if E-SPEC-SYNTAX throw then ;
 : SP-PARSE ( -- )
    0 SP-FREE-N !  0 SP-CT-N !  0 SP-FAC-N !  0 SP-FI-N !
+   0 SP-STAR? !  0 SP-PREFIX? !
    0 SP-POS !  0 SP-PB? !
    SP-WORD SP-OUT!
    s" [" SP-EXPECT   SP-PARSE-FREE   s" ]" SP-EXPECT
    s" =" SP-EXPECT
+   SP-PEEK s" +SUM" STR= if
+      SP-NEXT 2drop  -1 SP-PREFIX? !  SP-PARSE-PREFIX-CT
+   then
    SP-PARSE-FACTORS
    SP-PARSE-REDUCTION
    SP-NEXT dup 0= 0= if 2drop E-SPEC-SYNTAX throw then 2drop ;
