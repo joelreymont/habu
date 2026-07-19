@@ -7,6 +7,8 @@ require lib/string.f
 require lib/fs.f
 require lib/process.f
 require lib/process-argv.f          \ RUN-ARGV-CAPTURE: the fresh-process replay child
+require lib/process-env.f           \ PROC-ENV-DEFAULT$?: read the gate's HABU_UNDER_TEST default for the replay child
+require lib/engine-id.f             \ ENGINE-PATH$: this engine's own executable, so a standalone replay child runs THIS engine
 require lib/fs-mutate.f             \ WRITE-ALL: the replay child driver file
 require maki/device-artifacts.f     \ MAKI-GRADE: private tmp driver path (PREPARE/DRIVER$/CLEAN)
 require maki/report.f
@@ -64,9 +66,10 @@ variable CT-VA  variable CT-VU
    s" " MAKI-VERDICT:PASS MAKI-GATE:PROFILE    REPORT:VERDICT! ;
 
 \ ---- fresh-process replay child (durable loop: PROMOTE here, TILE there) -----
-\ The child is a fresh bin/hb that defines the SAME model (identical region facts
-\ -> identical section 7.4 key: same engine binary, same target facts, inherited
-\ cwd -> same store root) and renders TILE to stdout; the parent asserts the
+\ The child is a fresh instance of THIS engine (RPL-ENGINE$, never a hardcoded
+\ bin/hb) that defines the SAME model (identical region facts -> identical section
+\ 7.4 key: same engine binary, same target facts, inherited cwd -> same store root)
+\ and renders TILE to stdout; the parent asserts the
 \ render replays the selection this process PROMOTEd - the rehydration path
 \ through the production TILE entry, in a genuinely fresh process.
 create RPL-OUT $4000 allot   create RPL-ERR $1000 allot
@@ -81,11 +84,25 @@ create RPL-OUT $4000 allot   create RPL-ERR $1000 allot
    s" ;package" SB-APPEND RPL-NL
    MAKI-GRADE:DRIVER$ SB$ WRITE-ALL ;
 
+\ Resolve the engine the replay child must run: the SAME one running this parent,
+\ never a hardcoded bin/hb. The section-7.4 store key hashes the running engine
+\ binary (lib/engine-id.f), so a candidate engine has to replay through ITSELF or
+\ the child computes a different key and misses this parent's store (F100/F101).
+\ Resolution order: the gate exports HABU_UNDER_TEST to the maki child, so honour
+\ it first (the child-env default table, then the live environment); a standalone
+\ run resolves this engine's own executable path via lib/engine-id.f. One edit
+\ site for any future engine-path convention change.
+: RPL-ENGINE$ ( -- ptr u8 n )
+   s" HABU_UNDER_TEST" >LEN PROC-ENV-DEFAULT$? if LEN>N exit then
+   2drop
+   s" HABU_UNDER_TEST" GETENV dup 0 > if exit then
+   2drop ENGINE-PATH$ ;
+
 : RPL-CHILD-TILE$ ( -- ptr u8 n )               \ spawn the child; return its stdout
    PROC-ARGV-RESET
    s" --load"           >LEN PROC-ARGV+
    MAKI-GRADE:DRIVER$   >LEN PROC-ARGV+
-   s" bin/hb" >LEN  RPL-OUT $4000 >LEN  RPL-ERR $1000 >LEN  30000 >MS  RUN-ARGV-CAPTURE
+   RPL-ENGINE$ >LEN  RPL-OUT $4000 >LEN  RPL-ERR $1000 >LEN  30000 >MS  RUN-ARGV-CAPTURE
    MATCH result
      ok  OF PCAP-CAPTURED:UNMAKE 0 >RC ENDOF          \ clean child exit -> rc 0
      err OF PCAP-FAILED:UNMAKE ENDOF                  \ nonzero child: (out err code) on stack

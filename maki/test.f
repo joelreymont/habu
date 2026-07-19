@@ -254,6 +254,8 @@ TEST:SUITE maki/experiment/run-lineage-test.f
 TEST:;SUITE
 TEST:SUITE maki/cad-test.f
 TEST:;SUITE
+TEST:SUITE maki/cad-replay-test.f
+TEST:;SUITE
 TEST:SUITE maki/cad-bind-test.f
 TEST:;SUITE
 TEST:SUITE maki/cad-ref-test.f
