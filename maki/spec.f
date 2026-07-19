@@ -507,7 +507,7 @@ private
    true ;
 
 \ output (rows,cols) from the free extents; a single free index is a rows x 1 column.
-: EQ-OUT-DIMS ( -- rows cols )
+: EQ-OUT-DIMS ( -- n n )
    0 EQ-FREE-EXT   SP-FREE-N @ 2 = if 1 EQ-FREE-EXT else 1 then ;
 \ store factor f's (rows,cols) into the registry row; a rank-1 factor is rows x 1.
 : EQ-FAC-DIMS! ( eq-slot n -- ) {: s:eq-slot f:n :}

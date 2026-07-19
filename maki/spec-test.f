@@ -62,6 +62,30 @@ SGFILL  QA A-BIND  QB B-BIND  QO O-BIND  QI IX-BIND
 SGEMM  SGREF
 QO QR #P #Q * T-DIST2  1000.0 f* 0.5 f+ f>s  0 T=      \ exact numeric equality
 
+\ --- the equation registry executor path (docs/model-unified.md stage 1) ----------
+\ A COMPOSABLE (gather-free) einsum joins the registry, so SPEC: also generates its
+\ <NAME>-RUN word and captures its xt. Running it through EQ-EXEC (fetch the RUN xt by
+\ registry slot and execute it) must reproduce the plain-buffer GEMM. This is the named
+\ test for the EQ-EXEC TRUSTED boundary (dot habu-typed-xt-cell-4c8ecc4c) and the only
+\ path that exercises EQ-GEN-RUN / EQ-ARG-SET! / EQ-OUT-SET! / EQ-FIND / EQ-EXEC (SGEMM
+\ above carries a gather, so it is not composable and never registers). PGEMM reuses the
+\ A/B/O tensors and the QA/QB buffers SGFILL already filled; the reference is ungathered.
+create QPO #P #Q * cells allot
+create QPR #P #Q * cells allot
+: PGREFEL ( n n -- r ) {: p:n qq:n :}
+   0.0 #R 0 ?do  QA p #R * i + T-GET  QB qq #R * i + T-GET  f* f+  loop ;
+: PGREF ( -- ) #P 0 ?do #Q 0 ?do  j i PGREFEL  QPR j #Q * i + T-SET  loop loop ;
+: PGEMM-OK? ( -- bool )   \ the equation registered as a composable op
+   s" PGEMM" EQ-FIND MATCH option  none OF false ENDOF  some OF drop true ENDOF ;MATCH ;
+: PGEMM-EXEC ( -- )       \ look the equation up by name and run it through the registry
+   s" PGEMM" EQ-FIND MATCH option  none OF E-SPEC-SYNTAX throw ENDOF  some OF EQ-EXEC ENDOF ;MATCH ;
+SPEC: PGEMM  O[p q] = A[p r] B[q r] * +SUM r ;
+PGREF
+PGEMM-OK? -1 T=                                       \ composable: it joined the registry
+QA 0 EQ-ARG-SET!   QB 1 EQ-ARG-SET!   QPO EQ-OUT-SET!  \ stage operand + output buffers
+PGEMM-EXEC                                             \ EQ-EXEC runs the generated RUN xt
+QPO QPR #P #Q * T-DIST2  1000.0 f* 0.5 f+ f>s  0 T=    \ EQ-EXEC output == plain GEMM
+
 \ --- negatives: every malformed spec is a named throw (no code generated) ---------
 : T-UNKEXT  ( -- ) s" O[z q] = A[ IX[z] r ] B[q r] * +SUM r" SPEC-CHECK$ ;   \ z -> #Z undeclared
 : T-TENSOR  ( -- ) s" O[p q] = Z[ IX[p] r ] B[q r] * +SUM r" SPEC-CHECK$ ;   \ tensor Z undeclared
