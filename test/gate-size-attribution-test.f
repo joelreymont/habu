@@ -48,9 +48,15 @@ $4000 constant MACOS-DATA-CONST  \ __DATA_CONST page (__got + zero fill)
 \ ratchet (STALE-BASELINE, candidate 127764 vs row 127860) forces this host's
 \ honest lowering: CODELEN 127860 -> 127764, floor 884 -> 788. Page count,
 \ signature, and whole-file total are unchanged.
-127764 constant MACOS-CODE-TEXT   \ CODELEN: every emitter-phase row (baked-source incl.)
+\ 2026-07-19 re-measured live at the merged macOS fixpoint: the MATCH stencil
+\ factoring (habu-factor-repeated-match, measured -408 on linux-arm64 by its
+\ author) shaves macOS compiler text too, and the new getpid process-identity
+\ primitive adds its emitter + registration; the exact-CODELEN ratchet measured
+\ the composed candidate at 127536 (STALE-BASELINE, was 127764), floor 788 ->
+\ 560. Page count, signature, and whole-file total are unchanged.
+127536 constant MACOS-CODE-TEXT   \ CODELEN: every emitter-phase row (baked-source incl.)
 1423 constant MACOS-SIGNATURE     \ ad-hoc code signature SuperBlob (grows with CODELEN)
-788 constant MACOS-FLOOR-DIST     \ code above the 16 KiB floor: the page-recovery shave
+560 constant MACOS-FLOOR-DIST     \ code above the 16 KiB floor: the page-recovery shave
 165367 constant MACOS-TOTAL       \ = FILE-SIZE bin/hb = GB-SIZE-BASELINE-MACOS
 
 \ Linux committed attribution, measured at the byte-fixpoint on 2026-07-19 (DGX
