@@ -6,7 +6,6 @@ issue-type: task
 created-at: "2026-07-13T15:25:24.043839+02:00"
 blocks:
   - habu-seal-syscall-full-f388a698
-  - habu-sound-seal-guard-d0b99483
   - habu-snap-rebase-straddling-f0e97b92
 ---
 
