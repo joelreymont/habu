@@ -1402,12 +1402,10 @@ schema_version	module	file	kind	word	effect	test	doc	owner	status	notes
 1	render	lib/render.f	word	CVN	(ptr u8 n n --)	lib/render-test.f	docs/stdlib.md	stdlib-render	published	render helper
 1	render	lib/render.f	word	CVR	(ptr u8 n n n --)	lib/render-test.f	docs/stdlib.md	stdlib-render	published	render helper
 1	report	lib/report.f	module			lib/report-test.f	docs/stdlib.md	stdlib-report	active	declarative table reporting engine (columns -> CSV/Markdown)
-1	report	lib/report.f	word	TBL-RESET	(--)	lib/report-test.f	docs/stdlib.md	stdlib-report	published	report engine word
-1	report	lib/report.f	word	COL+	(ptr u8 n n [ n -- ] --)	lib/report-test.f	docs/stdlib.md	stdlib-report	published	report engine word
-1	report	lib/report.f	word	COL-HDR@	(n -- ptr u8 n)	lib/report-test.f	docs/stdlib.md	stdlib-report	published	report engine word
-1	report	lib/report.f	word	COL-CELL	(n n --)	lib/report-test.f	docs/stdlib.md	stdlib-report	published	report engine word
-1	report	lib/report.f	word	TBL-CSV	(n --)	lib/report-test.f	docs/stdlib.md	stdlib-report	published	report engine word
-1	report	lib/report.f	word	TBL-MD	(n --)	lib/report-test.f	docs/stdlib.md	stdlib-report	published	report engine word
+1	report	lib/report.f	word	REPORT:RESET	(--)	lib/report-test.f	docs/stdlib.md	stdlib-report	published	reset the column set before declaring a new table
+1	report	lib/report.f	word	REPORT:COL+	(ptr u8 n n [ n -- ] --)	lib/report-test.f	docs/stdlib.md	stdlib-report	published	declare a column: header text, alignment, cell quotation
+1	report	lib/report.f	word	REPORT:CSV	(n --)	lib/report-test.f	docs/stdlib.md	stdlib-report	published	render the declared columns as CSV rows
+1	report	lib/report.f	word	REPORT:MD	(n --)	lib/report-test.f	docs/stdlib.md	stdlib-report	published	render the declared columns as a Markdown table
 1	task	lib/task.f	module			lib/task-test.f	docs/threads.md	stdlib-task	active	checked pthread-backed CPU tasking and per-task user storage
 1	task	lib/task.f	word	TASK:TASK	(n --)	lib/task-test.f	docs/threads.md	stdlib-task	published	define a TASK package task control block
 1	task	lib/task.f	word	TASK:PREPARE	(ptr a --)	lib/task-test.f	docs/threads.md	stdlib-task	published	allocate and initialize a task without starting it
