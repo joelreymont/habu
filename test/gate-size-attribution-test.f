@@ -7,10 +7,9 @@
 \ residue, tools/size-report.f renders and reconciles a captured map, and this file
 \ pins the committed per-region totals plus the distance-to-page-floor per target.
 \
-\ macOS is measured at the byte-fixpoint (2026-07-18). Linux's whole-file total is
-\ measured on the Orin (test/gate-build-size.f) and coupled here to the live
-\ engine, but its per-region split needs a Linux-host capture and is tracked by
-\ habu-measure-linux-size-84afd5db.
+\ macOS is measured at the byte-fixpoint (2026-07-18); Linux at the byte-fixpoint
+\ (2026-07-19, DGX Spark linux-arm64). Both targets' whole-file totals are coupled
+\ to the live engine and both per-region splits are committed below.
 
 require lib/test.f
 require tools/size-report.f
@@ -32,9 +31,13 @@ $4000 constant MACOS-DATA-CONST  \ __DATA_CONST page (__got + zero fill)
 5864 constant MACOS-FLOOR-DIST    \ code above the 16 KiB floor: the page-recovery shave
 165367 constant MACOS-TOTAL       \ = FILE-SIZE bin/hb = GB-SIZE-BASELINE-MACOS
 
-\ Linux whole-file total (Orin, test/gate-build-size.f). Per-region split pending
-\ a Linux-host capture (habu-measure-linux-size-84afd5db).
-147648 constant LINUX-TOTAL
+\ Linux committed attribution, measured at the byte-fixpoint on 2026-07-19 (DGX
+\ Spark, linux-arm64). Keep LINUX-TOTAL equal to GB-SIZE-BASELINE-LINUX in
+\ test/gate-build-size.f.
+142092 constant LINUX-CODE-TEXT   \ CODELEN: every emitter-phase row (baked-source incl.)
+192 constant LINUX-RW             \ ELF read-write segment tail: DYNAMIC + GOT (ELF-RW-SZ)
+2828 constant LINUX-FLOOR-DIST    \ code above the 4 KiB floor: the page-recovery shave
+147648 constant LINUX-TOTAL       \ = FILE-SIZE bin/hb = GB-SIZE-BASELINE-LINUX
 
 : PAGE-UP ( n n -- n ) {: v:n page:n :}
    v page 1- + page 1- invert and ;
@@ -52,6 +55,19 @@ $4000 constant MACOS-DATA-CONST  \ __DATA_CONST page (__got + zero fill)
 : MACOS-MODEL-FLOOR ( -- n )
    CODE-OFF MACOS-CODE-TEXT + MACOS-PAGE mod ;
 
+\ text-pad = the zero fill from the end of (header + code) up to the text page.
+: LINUX-TEXT-PAD ( -- n )
+   CODE-OFF LINUX-CODE-TEXT + LINUX-PAGE PAGE-UP
+   CODE-OFF - LINUX-CODE-TEXT - ;
+
+\ Reconstruct the whole file from the committed Linux regions.
+: LINUX-MODEL-SUM ( -- n )
+   CODE-OFF LINUX-CODE-TEXT + LINUX-TEXT-PAD +
+   LINUX-RW + ;
+
+: LINUX-MODEL-FLOOR ( -- n )
+   CODE-OFF LINUX-CODE-TEXT + LINUX-PAGE mod ;
+
 \ The committed total for whichever target is running (0 = unmeasured -> the live
 \ coupling below fails closed against the nonzero engine file).
 : HOST-TOTAL ( -- n )
@@ -64,20 +80,22 @@ $4000 constant MACOS-DATA-CONST  \ __DATA_CONST page (__got + zero fill)
 
 public
 
-\ Pure self-check (no build): the committed macOS decomposition reconstructs the
-\ whole file and the page-floor shave, and the running target's committed total
+\ Pure self-check (no build): each target's committed decomposition reconstructs
+\ its whole file and page-floor shave, and the running target's committed total
 \ equals the live installed engine. Any drift - a bigger engine, a stale row -
 \ fails one of these, so the manifest cannot silently fall behind reality.
 : RUN ( -- )
    T-RESET
    MACOS-MODEL-SUM MACOS-TOTAL T=
    MACOS-MODEL-FLOOR MACOS-FLOOR-DIST T=
+   LINUX-MODEL-SUM LINUX-TOTAL T=
+   LINUX-MODEL-FLOOR LINUX-FLOOR-DIST T=
    HOST-TOTAL LIVE-ENGINE T=
    T-REPORT ;
 
 \ Live drift check against a captured map + its engine (for a build-and-capture
 \ gate or a maintainer refresh). Reconciles every byte, then holds the measured
-\ macOS regions to the committed rows.
+\ per-target regions to the committed rows.
 : VALIDATE ( ptr u8 n ptr u8 n -- ) {: ma:ptr mu:n ea:ptr eu:n :}
    T-RESET
    ma mu SIZE-REPORT:LOAD
@@ -90,6 +108,12 @@ public
       s" container/data-const" SIZE-REPORT:FIND MATCH option none OF -1 ENDOF some OF ENDOF ;MATCH MACOS-DATA-CONST T=
       s" container/linkedit" SIZE-REPORT:FIND MATCH option none OF -1 ENDOF some OF ENDOF ;MATCH MACOS-LINKEDIT T=
       s" container/signature" SIZE-REPORT:FIND MATCH option none OF -1 ENDOF some OF ENDOF ;MATCH MACOS-SIGNATURE T=
+   then
+   HB-TARGET-LINUX? if
+      SIZE-REPORT:HEADER-BYTES CODE-OFF T=
+      SIZE-REPORT:SUM-TEXT LINUX-CODE-TEXT T=
+      SIZE-REPORT:FLOOR-DIST LINUX-FLOOR-DIST T=
+      s" container/rw-segment" SIZE-REPORT:FIND MATCH option none OF -1 ENDOF some OF ENDOF ;MATCH LINUX-RW T=
    then
    T-REPORT ;
 
