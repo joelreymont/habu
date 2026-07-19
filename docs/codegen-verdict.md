@@ -266,9 +266,11 @@ natively); driver 580.159.03; `cuobjdump` `/usr/local/cuda/bin/cuobjdump`.
    committed `PTXBENCH` launch + CUDA-event timing on the sm_121a cubin (the only
    difference from `gemm-bench.f`/`bandwidth-v4.f` is the assembler arch), sweeping
    N to 128 M for the DRAM ceiling and sampling `nvidia-smi clocks.sm` for the
-   sustained-clock roof. `bandwidth-lib.f`'s N=2²⁰ is L2-resident on GB10 — the
-   committed bandwidth harness must sweep to N≥64 M to report the true DRAM roof
-   on this box (a real gap in the committed harness for Blackwell-class L2).
+   sustained-clock roof. `bandwidth-lib.f` now derives its working set from the
+   device's L2 cache size (CUDA attribute 38): N = max(64 M elems, 8·L2/4),
+   computed from the live device before each probe — no hand-swept constant. On
+   this GB10 the floor governs (L2 < 32 MB), so the committed probe self-sizes to
+   N=64 M and measures ~246 GB/s DRAM directly, escaping the old N=2²⁰ L2 residency.
 
 ## Residual / bounded
 

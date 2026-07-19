@@ -48,11 +48,11 @@ package PTXBW
 
 : REPORT-UNFUSED ( n n -- )
    {: sax:n relu:n :}
-   BW-N BW-ITERS * 20 * {: by:n :}
-   BW-N BW-ITERS * 3 * {: fl:n :}
+   BW-N @ BW-ITERS * 20 * {: by:n :}
+   BW-N @ BW-ITERS * 3 * {: fl:n :}
    sax relu + {: ns:n :}
    s" kernel=UNFUSED-SAXPY-V4+RELU-V4" type
-   s"  work_items=" type BW-N .U
+   s"  work_items=" type BW-N @ .U
    s"  kernels=2" type
    s"  iters=" type BW-ITERS .U cr
    s" gpu_elapsed_ns_sum=" type ns .U cr
