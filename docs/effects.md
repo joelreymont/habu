@@ -389,17 +389,30 @@ variant.
 
 The axiom set is audited two ways:
 
-- **Differential census** — `test/prop-test-core.f` (`AX-CENSUS`, run by the
-  prop/debug gate phase) walks the live `PES` table and classifies every row.
-  For each *executable* axiom — stack shuffles, integer/bitwise/comparison
+- **Per-row proof recipes** — `test/prop-test-core.f` (`AX-CENSUS`, run by the
+  prop/debug gate phase) carries an audited recipe ledger at the end of the file,
+  with exactly one `\ AXR …` line per live `PES` slot. Each recipe restates the
+  row's identity — defining package, primitive name, declared arity, and the
+  per-slot typed operands — and one proof kind: executable generic, owned-memory,
+  floating-point, or fail-closed `noexec`. At census time the `AXR` package parses
+  the ledger from this source, binds each recipe to its live row by slot index,
+  and cross-checks package, name, and both arities against the live table. A
+  missing, duplicate, or stale recipe, or an identity/arity mutation, fails the
+  census naming the exact row, so a new axiom cannot land or drift without an
+  audited recipe. A self-test with teeth proves those rejections fire by mutating
+  a slot, an arity, and a `noexec` row's identity in turn.
+  For each *executable* row — stack shuffles, integer/bitwise/comparison
   arithmetic, cell/char pointer stepping, non-atomic memory access on an owned
-  buffer, engine-state reads, and floating point — it builds a runner that
-  pushes dummy operands, executes the primitive in-process, and asserts the
-  measured out-arity equals the arity the axiom *declares*. A lying axiom
-  (declared arity ≠ runtime behavior) fails the census; a self-test proves the
-  comparison has teeth by fabricating a wrong declaration. Every `PES` row must
-  be classified — an unclassified primitive name fails the census, so a new
-  axiom cannot land without a difftest classification.
+  buffer, engine-state reads, and floating point — the census first compiles a
+  checked candidate from the recipe's exact typed operands and result types (so
+  the recipe's declared types must agree with the axiom the checker enforces),
+  then executes the primitive in-process. A distinctive value-provenance canary is
+  planted below the operand row; the runner reports a trap if the primitive
+  reaches below its declared inputs and clobbers the canary. The census asserts
+  the measured out-arity equals the arity the axiom *declares*, so a lying axiom
+  (declared arity ≠ runtime behaviour) or a primitive that consumes an undeclared
+  cell fails even when the final depth happens to match; the `AX-SELFTEST`
+  fabricated-declaration check proves the arity comparison has teeth.
 - **Non-executable axioms** — syscalls, process/control words (`throw`, `die`,
   `fork`, `spawn-*`), parser literals (`s"`, `char`, `[']`), defining words
   (`create`, `variable`, `constant`), engine/checker introspection (`checker-*`,
@@ -410,8 +423,12 @@ The axiom set is audited two ways:
   image/FFI, and atomic RMW ops cannot be run in-process with dummy operands.
   Their declared arity is pinned instead by the native self-rebuild fixpoint
   (the engine is rebuilt from source through these primitives) and the
-  behavioral gate (the rebuilt engine runs real programs). The census records
-  them as `noexec`. The substrate's zero-arg high-water readers (`wf-n@`,
+  behavioral gate (the rebuilt engine runs real programs). Their recipe is an
+  explicit fail-closed `noexec` row bound to that exact slot rather than a
+  name/prefix allowlist, so an identity change must update that row and a stale
+  classification cannot be inherited by an adjacent or same-spelled overload;
+  exact source/live identity stays independently ratcheted by `PEINV` below. The
+  substrate's zero-arg high-water readers (`wf-n@`,
   `tfam-n@`, `sumv-n@`, `tf-str-u@`, `tf-pk-n@`, `schema-n@`,
   `schema-root-n@`) are pure variable reads and ARE difftested, matching
   `ndict@`/`cp@`.
