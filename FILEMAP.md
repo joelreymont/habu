@@ -697,7 +697,14 @@ points stay listed.
   nearest-class geometric bucketing, `E-AT-NEWCLASS`/`E-AT-DTYPE` fail-closed).
 - `tools/ptx/autotune-test.f` — menu/record, per-axis, winners-legal, documented-
   illegal rejection (specific `E-MMA-*`), bucketing, dtype-keying, selector-error,
-  and non-mutating-probe fixtures for `tools/ptx/autotune.f`.
+  non-mutating-probe, and STOPWATCH pure-logic (clock classifier, exclusion
+  bookkeeping, row formatting, menu-iteration prune) fixtures for `tools/ptx/autotune.f`.
+- `tools/ptx/autotune-sweep.f` — (3) STOPWATCH: the GB sweep harness (`AT-SWEEP` in
+  package AUTOTUNE). Per candidate config: element-exact precondition at the sweep
+  shape, fail-closed solo-GPU wait (nvidia-smi compute-app count), sustained-clock
+  verification (SM clock before/after each burst), best-of-3, then a perf-rows.tsv
+  candidate row it never commits. Device/manual (self-runs a 512-class smoke at
+  load), NOT in the resident gate image.
 - `tools/ptx/perf-compare.f` — perf-regression compare over registry rows:
   latest same-key pair per kernel+config+device+metric vs `PERF:TOL-MILLI`.
 - `tools/ptx/perf-compare-test.f` — improve/regress/tolerance-edge/missing-row

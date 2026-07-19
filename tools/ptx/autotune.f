@@ -29,6 +29,8 @@ require lib/ptx/cg-mma.f
 
 -7310 constant E-AT-NEWCLASS   \ shape is a genuinely new class outside every committed bucket (needs an OFFLINE sweep + review)
 -7311 constant E-AT-DTYPE      \ tensor dtype key is not one of tf32(0)/fp16(1)/bf16(2)
+-7312 constant E-AT-CONTENDED  \ (3) STOPWATCH: the GPU never freed within the solo-wait timeout - never time under contention
+-7314 constant E-AT-XCLFULL    \ (3) STOPWATCH: more excluded candidates than the exclusion table holds (sweep misconfigured)
 
 package AUTOTUNE
 public
@@ -217,5 +219,63 @@ public
 \ consult the table and APPLY the winner to the emitter's knobs (the callable
 \ selector surface a config-less GEMM lowering uses).
 : AT-AUTOTUNE ( n n n n -- )  AT-SELECT AT-APPLY ;
+
+\ ============ (3) STOPWATCH - the sweep harness's device-free decision logic ===
+\ The GB sweep harness lives in tools/ptx/autotune-sweep.f (it drives the GPU, so
+\ it stays out of the resident gate image). The pure decisions it makes - is a
+\ clock sample stable, which candidates were excluded and why, how a measured row
+\ is laid out - live HERE so they are UNIT-TESTED in the gate's ptx-toolchain slice
+\ (tools/ptx/autotune-test.f), not only proven by the device smoke run. Integer +
+\ string logic only; no libcuda, no emit.
+
+\ ---- (3a) clock-tolerance classifier -----------------------------------------
+\ A best-of-3 sample is honest only if the SM clock HELD across the burst. Given
+\ the SM clock (MHz) read just before and just after the timed burst, the sample
+\ is STABLE iff the drop from the higher to the lower reading is within tol PERMILLE
+\ of the higher: (hi-lo)*1000 <= tol*hi. Integer-exact, no divide. A zero reading
+\ (clock query failed) is never stable - fail closed so a bad probe cannot pass.
+: AT-CLK-STABLE? ( n n n -- bool ) {: before:n after:n tol:n :}
+   before after min {: lo:n :}
+   before after max {: hi:n :}
+   hi 0= if STR-FALSE exit then
+   tol hi *   hi lo - 1000 *   >= ;
+
+\ ---- (3b) exclusion bookkeeping ----------------------------------------------
+\ Every candidate the sweep does NOT time is recorded with its reason, so the
+\ report LISTS the excluded configs - never a silent skip. Row = (cfg-id, reason).
+0 constant AT-XR-TIMED          \ not excluded: timed and reported
+1 constant AT-XR-PRUNED         \ AT-LEGAL? rejected it (emitter guard) - never emitted
+2 constant AT-XR-INEXACT        \ element-exact precondition failed - emitted+checked, never timed
+3 constant AT-XR-UNSTABLE       \ no clock-stable best-of-3 within the retry budget - never reported
+64 constant AT-XCL-CAP          \ recorded-exclusion capacity
+private
+create AT-XCL-TAB AT-XCL-CAP 2 * cells allot
+variable AT-XCL-CNT
+public
+: AT-XCL-RESET ( -- )  0 AT-XCL-CNT ! ;
+: AT-XCL-N ( -- n )  AT-XCL-CNT @ ;
+: AT-XCL-ADD ( n n -- ) {: id:n r:n :}
+   AT-XCL-CNT @ {: k:n :}
+   k AT-XCL-CAP >= if E-AT-XCLFULL throw then
+   id  AT-XCL-TAB k 2 * cells + !
+   r   AT-XCL-TAB k 2 * 1+ cells + !
+   k 1+ AT-XCL-CNT ! ;
+: AT-XCL-ID@ ( n -- n )         2 * cells AT-XCL-TAB + @ ;
+: AT-XCL-REASON@ ( n -- n )        2 * 1+ cells AT-XCL-TAB + @ ;
+: AT-XR$ ( n -- ptr u8 n )                      \ report label for a reason code
+   dup AT-XR-PRUNED   = if drop s" pruned"   exit then
+   dup AT-XR-INEXACT  = if drop s" inexact"  exit then
+   dup AT-XR-UNSTABLE = if drop s" unstable" exit then
+   drop s" timed" ;
+
+\ ---- (3c) candidate-report row formatting ------------------------------------
+\ The harness emits a candidate report in the perf-rows.tsv 12-field layout (kernel
+\ grid gridy block blocky iters work metric value_x1000 device date note) for the
+\ maintainer to review; it NEVER writes perf-rows.tsv itself (committed winners are
+\ reviewed data). These append one tab-separated field into SB; the harness composes
+\ a row from them and reads it back with SB$.
+: AT-TAB ( -- )  9 SB-APPEND-C ;                     \ ASCII tab field separator
+: AT-FLD-N ( n -- )  SB-INT AT-TAB ;                 \ integer field + tab
+: AT-FLD$ ( ptr u8 n -- )  SB-APPEND AT-TAB ;        \ string field + tab
 
 ;package

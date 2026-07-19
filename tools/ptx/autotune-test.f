@@ -21,6 +21,15 @@ package AT-RT
 : WROW ( n -- ptr a )     AUTOTUNE:AT-WIN-ROW ;
 : RCFG ( ptr a -- ptr a ) AUTOTUNE:AT-ROW-CFG ;
 : RDIM ( ptr a -- n )     AUTOTUNE:AT-ROW-DIM@ ;
+\ (3) STOPWATCH pure-logic aliases
+: CLKSTABLE? ( n n n -- bool ) AUTOTUNE:AT-CLK-STABLE? ;
+: XRESET ( -- )           AUTOTUNE:AT-XCL-RESET ;
+: XADD ( n n -- )        AUTOTUNE:AT-XCL-ADD ;
+: XN ( -- n )             AUTOTUNE:AT-XCL-N ;
+: XID ( n -- n )       AUTOTUNE:AT-XCL-ID@ ;
+: XREASON ( n -- n )    AUTOTUNE:AT-XCL-REASON@ ;
+: XR$ ( n -- ptr u8 n )   AUTOTUNE:AT-XR$ ;
+variable SW-CAND          \ candidate counter for the menu-iteration test
 
 AUTOTUNE:AT-WARPS  constant kW    AUTOTUNE:AT-MFRAGS constant kMF
 AUTOTUNE:AT-BK     constant kBK   AUTOTUNE:AT-PAD    constant kPAD
@@ -150,6 +159,48 @@ create TC AUTOTUNE:AT-CFG-N cells allot     \ scratch config record for building
    MMA-WARPS @ 4 T=   MMA-MFRAGS @ 4 T=  MMA-EPILOG @ 1 T=  MMA-BN @ 64 T=  MMA-STAGES @ 2 T=
    MMA-BN @ 128 <> TTRUE ;                        \ table selection overrode the sentinel
 
+\ ---- (3a) STOPWATCH: clock-tolerance classifier -----------------------------
+: CLK-TESTS ( -- )
+   2400 2400 5 CLKSTABLE? TTRUE          \ no change -> stable
+   2400 2388 5 CLKSTABLE? TTRUE          \ exactly 5 permille drop -> stable (boundary)
+   2400 2387 5 CLKSTABLE? TFALSE         \ just past 5 permille -> unstable
+   2280 2400 5 CLKSTABLE? TFALSE         \ order-independent: a 5% swing is rejected
+   0 0 5 CLKSTABLE? TFALSE ;             \ a failed clock probe (0) is never stable
+
+\ ---- (3b) STOPWATCH: exclusion bookkeeping + reason labels -------------------
+: XCL-TESTS ( -- )
+   XRESET  XN 0 T=
+   7 AUTOTUNE:AT-XR-PRUNED XADD
+   9 AUTOTUNE:AT-XR-INEXACT XADD
+   XN 2 T=
+   0 XID 7 T=   0 XREASON AUTOTUNE:AT-XR-PRUNED T=
+   1 XID 9 T=   1 XREASON AUTOTUNE:AT-XR-INEXACT T=
+   AUTOTUNE:AT-XR-PRUNED   XR$ s" pruned"   T$=
+   AUTOTUNE:AT-XR-INEXACT  XR$ s" inexact"  T$=
+   AUTOTUNE:AT-XR-UNSTABLE XR$ s" unstable" T$=
+   AUTOTUNE:AT-XR-TIMED    XR$ s" timed"    T$= ;
+
+\ ---- (3c) STOPWATCH: candidate-report row field formatting ------------------
+: TSV-TESTS ( -- )
+   SB-RESET
+   s" a" AUTOTUNE:AT-FLD$   1 AUTOTUNE:AT-FLD-N   s" b" SB-APPEND
+   SB$ S\" a\t1\tb" T$= ;
+
+\ ---- (3) STOPWATCH: menu iteration + legality PRUNE partition ----------------
+\ iterate the candidate set (the committed winners, all legal) plus one injected
+\ illegal config; legal ones are timing candidates, the illegal one is recorded
+\ PRUNED. Pure - AT-LEGAL? probes the emitter guards with no GPU.
+: SWEEP-ITER-TESTS ( -- )
+   XRESET  0 SW-CAND !
+   AUTOTUNE:AT-WIN# 0 ?do
+      i WROW RCFG LEGAL? if 1 SW-CAND +! else i AUTOTUNE:AT-XR-PRUNED XADD then
+   loop
+   TC DEF!  16 TC kW CFG!                          \ W=16 -> E-MMA-WARPS (illegal)
+   TC LEGAL? if 999 SW-CAND +! else 999 AUTOTUNE:AT-XR-PRUNED XADD then
+   SW-CAND @ AUTOTUNE:AT-WIN# T=                   \ all 12 winners are legal candidates
+   XN 1 T=                                         \ exactly the injected illegal config was pruned
+   0 XID 999 T=   0 XREASON AUTOTUNE:AT-XR-PRUNED T= ;
+
 \ restore the byte-identical cg-mma baseline so a shared resident image sees defaults
 : RESTORE-DEFAULTS ( -- )  TC DEF!  TC APPLY ;
 
@@ -163,6 +214,10 @@ BUCKET-TESTS
 DTYPE-KEY-TESTS
 SEL-ERROR-TESTS
 PROBE-TESTS
+CLK-TESTS
+XCL-TESTS
+TSV-TESTS
+SWEEP-ITER-TESTS
 RESTORE-DEFAULTS
 T-REPORT
 
