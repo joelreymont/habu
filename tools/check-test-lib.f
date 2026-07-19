@@ -808,6 +808,48 @@ public
    CKT-ERR erru s" duplicate family" CONTAINS? TFALSE
    CKT-ERR erru 10 COUNT-CHAR 1 T= ;
 
+\ Regression habu-fix-all-errors-67f4bdf9: the full check CLI --all-errors path
+\ let a NOMINAL: family registration leak out of preverify into the redrive.
+\ CHK-RUN-PREVERIFY drives VERIFY:SOURCE-BUF-IN-SCOPE, which registers the
+\ source's family + derived casts but leaves rollback to the caller; the caller
+\ never opened a scope, so those registrations survived into CHK-HANDLE-HB. When
+\ the child load fails the JSON branch re-runs the all-errors redrive, whose own
+\ re-registration then hit the leaked family and rejected with a spurious
+\ E-DUPLICATE-DEFINITION. A NOMINAL: declarer needs `require value-nominal.f`
+\ for the child to define it, so a bare source is statically clean yet its child
+\ load fails E-UNDEFINED -- the honest verdict, and the only family surface that
+\ reaches the JSON redrive re-run. SUMTYPE/TYPEFAMILY/DEFLINEAR declarers are
+\ baked into the engine, so their child loads succeed, the redrive re-run never
+\ fires, and they were never affected (probed: all report 0 through --all-errors).
+: CKT-NOM-ALL-BARE$ ( -- ptr u8 n )   \ statically clean; bare child load is E-UNDEFINED
+   SB-RESET
+   s" NOMINAL: CKT-AEW" SB-APPEND $0a SB-APPEND-C
+   s" : CKT-AEW-RT ( ckt-aew -- ckt-aew ) ;" SB-APPEND
+   SB$ ;
+
+\ Pin: the JSON redrive re-run reports the honest child E-UNDEFINED (70), never
+\ a spurious E-DUPLICATE-DEFINITION from re-registering the preverified family.
+: CKT-TEST-NOMINAL-ALL-REDRIVE ( -- )
+   CKT-NOM-ALL-BARE$ CKT-DIRECT-ALL-JSON-STDIN 70 T=
+   {: outu:n erru:n :}
+   outu 0 T=
+   CKT-ERR erru s" E-DUPLICATE-DEFINITION" CONTAINS? TFALSE ;
+
+: CKT-NOM-ALL-CLEAN$ ( -- ptr u8 n )   \ require lets the child define NOMINAL:; zero errors
+   SB-RESET
+   s" require lib/type/value-nominal.f" SB-APPEND $0a SB-APPEND-C
+   s" NOMINAL: CKT-AEOK" SB-APPEND $0a SB-APPEND-C
+   s" : CKT-AEOK-RT ( ckt-aeok -- ckt-aeok ) ;" SB-APPEND
+   SB$ ;
+
+\ Green coverage: a NOMINAL: declaration through --all-errors reports zero errors
+\ end to end when the child can load the declarer.
+: CKT-TEST-NOMINAL-ALL-CLEAN ( -- )
+   CKT-NOM-ALL-CLEAN$ CKT-DIRECT-ALL-JSON-STDIN 0 T=
+   {: outu:n erru:n :}
+   outu 0 T=
+   erru 0 T= ;
+
 : CKT-TEST-TFAM-NOARITY ( -- )   \ S2 parity: missing arity -> declaration packet
    CKT-TFAM-NOARITY$ CKT-DIRECT-JSON-STDIN 70 T=
    {: outu:n erru:n :}
@@ -1271,6 +1313,8 @@ variable CKTP-DOC-U
    s" check/typefamily-all-errors" [: CKT-TEST-TYPEFAMILY-ALL ;] CKT-RUN
    s" check/sumtype-bad" [: CKT-TEST-SUMTYPE-BAD ;] CKT-RUN
    s" check/sumtype-all-redrive" [: CKT-TEST-SUMTYPE-ALL-REDRIVE ;] CKT-RUN
+   s" check/nominal-all-redrive" [: CKT-TEST-NOMINAL-ALL-REDRIVE ;] CKT-RUN
+   s" check/nominal-all-clean" [: CKT-TEST-NOMINAL-ALL-CLEAN ;] CKT-RUN
    s" check/tfam-noarity" [: CKT-TEST-TFAM-NOARITY ;] CKT-RUN
    s" check/sum-noend" [: CKT-TEST-SUM-NOEND ;] CKT-RUN
    s" check/sum-noend-all" [: CKT-TEST-SUM-NOEND-ALL ;] CKT-RUN

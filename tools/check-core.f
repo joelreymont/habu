@@ -1185,7 +1185,9 @@ variable CHK-TFAM-NAME-I
    CHK-JSON @ {: old-json:n :}
    CHK-PREVERIFY-DIAG-START
    -1 CHK-JSON !
+   CHECKER-SCOPE-START
    [: CHK-RUN-PREVERIFY-ACT ;] catch {: rc:n :}
+   CHECKER-SCOPE-DONE
    old-json CHK-JSON !
    rc 0= if DIAG-BUFFER-OFF exit then
    rc CHK-PREVERIFY-FAIL ;
