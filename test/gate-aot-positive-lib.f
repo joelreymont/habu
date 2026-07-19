@@ -157,6 +157,10 @@ $10000 constant GAP-STRIPPED-TEXT-MAX
 \ adjacent target to the next record's new offset. Runs while the AOT program is
 \ compiled (not reachable from MAIN), so it validates the linker without bloating
 \ the built image.
+\ Safe to scribble on the live CLO/NEWOFF/NCLO here: this runs at program
+\ load/compile time, before this program's own closure walk, and the real build
+\ recomputes the closure from scratch (aot-closure.f CLOSURE resets NCLO to 0 and
+\ refills CLO/NEWOFF), so the synthetic values cannot leak into the shipped image.
 : GAP-DATA-SOURCE ( -- )
    GE-SRC-RESET
    s" package AOT-MAP-TEST" GE-SRC-LINE

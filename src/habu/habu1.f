@@ -2209,7 +2209,12 @@ SOURCE-INIT
    LBL SWL-INL !
    2 G-POP  1 G-POP  0 G-POP
    11 0 MOVZ,                                              \ result defaults to absent
-   2 OWNER-API-PRI-WID CMPI,  C-EQ SWL-END LABEL@ BCOND,   \ sealed helper WID is never raw-searchable
+   \ search-wl short-circuits WID OWNER-API-PRI-WID to absent: WID 2 is the
+   \ reserved OWNER-API-private wordlist that carries the registered engine-helper
+   \ records ((PROT-SPAN)); nothing legitimate raw-searches it (dynamic wordlists
+   \ start at FIRST-DYNAMIC-WID), and test/engine-suite.f pins that (PROT-SPAN)
+   \ stays hidden from every wordlist.
+   2 OWNER-API-PRI-WID CMPI,  C-EQ SWL-END LABEL@ BCOND,   \ reserved OWNER-API-private WID is never raw-searchable
    3 $20 MOVZ,  5 DBASE 0 ADDI,  6 NDICT 0 ADDI,
    SWL-LOOP LABEL@ LBL,  6 SWL-END LABEL@ CBZ,
       9 5 40 LDR,  9 2 CMP,  C-NE SWL-NEXT LABEL@ BCOND,
