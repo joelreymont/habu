@@ -712,7 +712,7 @@ public
 \   codesign blob follow it, so the fixture SCANS for the LAST SNAP-MAGIC
 \   occurrence (the trailer is written after both payloads; nothing after it
 \   contains the magic).
-\ - A patched image must be re-signed (CODESIGN-FORCE) or macOS SIGKILLs it
+\ - A patched image must be re-signed (CODESIGN:FORCE) or macOS SIGKILLs it
 \   before the loader runs.
 \ - Corrupting the magic itself is NOT a rejection: both trailer probes miss
 \   and the engine falls through to a COLD boot (rc 0) by design, so there is

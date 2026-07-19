@@ -1026,29 +1026,13 @@ schema_version	module	file	kind	word	effect	test	doc	owner	status	notes
 1	build	lib/build.f	word	BUILD-TRUE	(-- bool)	lib/build-test.f	docs/stdlib.md	stdlib-build	published	return a true flag for build helpers
 1	build	lib/build.f	word	BUILD-WHITE?	(n -- bool)	lib/build-test.f	docs/stdlib.md	stdlib-build	published	test whether a byte is build-source whitespace
 1	codesign	lib/codesign.f	module			lib/codesign-test.f	docs/stdlib.md	stdlib-codesign	active	checked executable promotion and target signing policy helpers for build artifacts
-1	codesign	lib/codesign.f	word	CODESIGN-PTR-U8-FIELD	(ptr a -- ptr ptr u8)	lib/codesign-test.f	docs/stdlib.md	stdlib-codesign	active	return a typed byte-pointer field address for codesign buffers
-1	codesign	lib/codesign.f	word	CODESIGN-PTR-U8@	(ptr a -- ptr u8)	lib/codesign-test.f	docs/stdlib.md	stdlib-codesign	active	read a codesign byte-buffer pointer through a typed pointer field
-1	codesign	lib/codesign.f	word	CODESIGN-PTR-U8!	(ptr u8 ptr a --)	lib/codesign-test.f	docs/stdlib.md	stdlib-codesign	active	write a codesign byte-buffer pointer through a typed pointer field
-1	codesign	lib/codesign.f	word	CODESIGN-BUF	(ptr a n -- ptr u8)	lib/codesign-test.f	docs/stdlib.md	stdlib-codesign	active	return a lazily allocated bounded codesign capture buffer
-1	codesign	lib/codesign.f	word	CODESIGN-OUT	(-- ptr u8)	lib/codesign-test.f	docs/stdlib.md	stdlib-codesign	active	return the codesign stdout capture buffer
-1	codesign	lib/codesign.f	word	CODESIGN-ERR	(-- ptr u8)	lib/codesign-test.f	docs/stdlib.md	stdlib-codesign	active	return the codesign stderr capture buffer
-1	codesign	lib/codesign.f	word	CODESIGN-TOOL	(-- ptr u8 n)	lib/codesign-test.f	docs/stdlib.md	stdlib-codesign	active	return the absolute macOS codesign executable path
-1	codesign	lib/codesign.f	word	CODESIGN-RC0	(n --)	lib/codesign-test.f	docs/stdlib.md	stdlib-codesign	active	throw E-BUILD-STATUS for nonzero codesign rc
-1	codesign	lib/codesign.f	word	CODESIGN-EXPECT-TOOL	(--)	lib/codesign-test.f	docs/stdlib.md	stdlib-codesign	active	require the codesign tool to exist
-1	codesign	lib/codesign.f	word	CODESIGN-EXPECT-FILE	(ptr u8 n --)	lib/codesign-test.f	docs/stdlib.md	stdlib-codesign	active	require a nonempty counted path naming a file
-1	codesign	lib/codesign.f	word	CODESIGN-EXPECT-EXECUTABLE	(ptr u8 n --)	lib/codesign-test.f	docs/stdlib.md	stdlib-codesign	active	require a nonempty counted path naming an executable file
-1	codesign	lib/codesign.f	word	CODESIGN-RUN	(-- n)	lib/codesign-test.f	docs/stdlib.md	stdlib-codesign	active	run codesign with prepared argv and return rc
-1	codesign	lib/codesign.f	word	CODESIGN-TARGET-UNKNOWN	(--)	lib/codesign-test.f	docs/stdlib.md	stdlib-codesign	active	throw when codesign target selection finds no supported host target
-1	codesign	lib/codesign.f	word	CODESIGN-MACOS-VERIFY-RC	(ptr u8 n -- n)	lib/codesign-test.f	docs/stdlib.md	stdlib-codesign	active	run macOS codesign verification for one executable path
-1	codesign	lib/codesign.f	word	CODESIGN-MACOS-FORCE	(ptr u8 n --)	lib/codesign-test.f	docs/stdlib.md	stdlib-codesign	active	force macOS ad-hoc signing for one executable path
-1	codesign	lib/codesign.f	word	CODESIGN-LINUX-VERIFY-RC	(ptr u8 n -- n)	lib/codesign-test.f	docs/stdlib.md	stdlib-codesign	active	verify Linux executable policy for one path
-1	codesign	lib/codesign.f	word	CODESIGN-LINUX-FORCE	(ptr u8 n --)	lib/codesign-test.f	docs/stdlib.md	stdlib-codesign	active	apply Linux executable policy for one path
-1	codesign	lib/codesign.f	word	CODESIGN-VERIFY-RC	(ptr u8 n -- n)	lib/codesign-test.f	docs/stdlib.md	stdlib-codesign	active	return target verification status for one executable path
-1	codesign	lib/codesign.f	word	CODESIGN-VERIFY	(ptr u8 n --)	lib/codesign-test.f	docs/stdlib.md	stdlib-codesign	published	verify one counted executable path with target signing policy
-1	codesign	lib/codesign.f	word	CODESIGN-FORCE	(ptr u8 n --)	lib/codesign-test.f	docs/stdlib.md	stdlib-codesign	published	apply target signing policy to one counted executable path
-1	codesign	lib/codesign.f	word	CODESIGN-ENSURE	(ptr u8 n --)	lib/codesign-test.f	docs/stdlib.md	stdlib-codesign	published	verify an executable path or apply target signing policy and verify it
-1	codesign	lib/codesign.f	word	PROMOTE-EXECUTABLE	(ptr u8 n ptr u8 n --)	lib/codesign-test.f	docs/stdlib.md	stdlib-codesign	published	chmod executable and rename a source artifact to a destination
-1	codesign	lib/codesign.f	word	PROMOTE-SIGNED-EXECUTABLE	(ptr u8 n ptr u8 n --)	lib/codesign-test.f	docs/stdlib.md	stdlib-codesign	published	apply target signing policy chmod promote and verify an executable artifact
+1	codesign	lib/codesign.f	word	CODESIGN:TOOL	(-- ptr u8 n)	lib/codesign-test.f	docs/stdlib.md	stdlib-codesign	published	return the absolute macOS codesign executable path
+1	codesign	lib/codesign.f	word	CODESIGN:VERIFY-RC	(ptr u8 n -- n)	lib/codesign-test.f	docs/stdlib.md	stdlib-codesign	published	return target verification status for one executable path
+1	codesign	lib/codesign.f	word	CODESIGN:VERIFY	(ptr u8 n --)	lib/codesign-test.f	docs/stdlib.md	stdlib-codesign	published	verify one counted executable path with target signing policy
+1	codesign	lib/codesign.f	word	CODESIGN:FORCE	(ptr u8 n --)	lib/codesign-test.f	docs/stdlib.md	stdlib-codesign	published	apply target signing policy to one counted executable path
+1	codesign	lib/codesign.f	word	CODESIGN:ENSURE	(ptr u8 n --)	lib/codesign-test.f	docs/stdlib.md	stdlib-codesign	published	verify an executable path or apply target signing policy and verify it
+1	codesign	lib/codesign.f	word	CODESIGN:PROMOTE-EXECUTABLE	(ptr u8 n ptr u8 n --)	lib/codesign-test.f	docs/stdlib.md	stdlib-codesign	published	chmod executable and rename a source artifact to a destination
+1	codesign	lib/codesign.f	word	CODESIGN:PROMOTE-SIGNED-EXECUTABLE	(ptr u8 n ptr u8 n --)	lib/codesign-test.f	docs/stdlib.md	stdlib-codesign	published	apply target signing policy chmod promote and verify an executable artifact
 1	content-key	lib/content-key.f	module			lib/content-key-test.f	docs/stdlib.md	stdlib-content-key	active	checked manifest-hash builder for sound content-addressed caches
 1	content-key	lib/content-key.f	word	CK-TRUE	(-- bool)	lib/content-key-test.f	docs/stdlib.md	stdlib-content-key	active	return true for content-key helpers
 1	content-key	lib/content-key.f	word	CK-FALSE	(-- bool)	lib/content-key-test.f	docs/stdlib.md	stdlib-content-key	active	return false for content-key helpers

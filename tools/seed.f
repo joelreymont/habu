@@ -110,8 +110,8 @@ variable SEED-LAST
    tmp tmpu EXISTS? if tmp tmpu REMOVE-FILE then
    src srcu tmp tmpu COPY-FILE-STREAM
    tmp tmpu CHMOD-X
-   tmp tmpu dst dstu PROMOTE-EXECUTABLE
-   dst dstu CODESIGN-ENSURE ;
+   tmp tmpu dst dstu CODESIGN:PROMOTE-EXECUTABLE
+   dst dstu CODESIGN:ENSURE ;
 
 : SEED-SMOKE-OUT-OK? ( ptr u8 n -- bool ) {: a:ptr u :}
    u 4 <> if SEED-FALSE exit then

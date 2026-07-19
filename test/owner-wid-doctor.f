@@ -101,7 +101,7 @@ variable SCAN-LAST
 : WRITE-IMAGE ( ptr u8 n -- ) {: path:ptr pathu:n :}
    path pathu IMG IMG-U @ WRITE-ALL
    path pathu CHMOD-X
-   path pathu CODESIGN-FORCE ;
+   path pathu CODESIGN:FORCE ;
 
 : AOT-MAGIC$ ( -- ptr u8 n )
    s" RIAPDIWO" ;

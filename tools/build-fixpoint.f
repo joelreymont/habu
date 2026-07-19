@@ -300,10 +300,10 @@ variable BF-AUD-N
    exe exeu BF-A$ src srcu BF-B$ BF-OPEN-INPUT BF-RUN-ENV-INFD ;
 
 : BF-CODESIGN-VERIFY-TMP ( ptr u8 n -- ) {: a:ptr u :}
-   a u BF-A$ CODESIGN-VERIFY ;
+   a u BF-A$ CODESIGN:VERIFY ;
 
 : BF-CODESIGN-FORCE-TMP ( ptr u8 n -- ) {: a:ptr u :}
-   a u BF-A$ CODESIGN-FORCE ;
+   a u BF-A$ CODESIGN:FORCE ;
 
 : BF-RESET-OUT ( ptr u8 n -- )
    BF-OUT$ BF-SOURCE-BUF 0 WRITE-ALL ;
