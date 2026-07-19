@@ -81,6 +81,7 @@ require maki/move-facts.f
 require maki/tensor-value.f
 require maki/plan-ops.f
 require maki/plan-vocab.f            \ the package-scoped, descriptor-typed model vocabulary MODEL: compiles over
+require maki/spec.f                  \ the equation registry (EQ-*): a SPEC: einsum referenced as a body op
 require maki/model-ir.f
 require maki/fusion-plan.f
 require maki/traffic.f
@@ -534,8 +535,22 @@ $5E constant TR-C                                  \ '^' - the reserved transpos
       op opu CAP-EMIT-OP  exit  then
    E-CAD-SYNTAX throw ;                              \ only reshape/slice carry ':' params
 
+\ an equation body token (a registered SPEC: einsum, maki/spec.f): emit its (K-1)
+\ parameter operands (the running value is factor 0), then the registry slot literal and
+\ the composer word PLAN:EQUATION (maki/plan-vocab.f). K is the equation's factor count.
+: EMIT-EQ-TOKEN ( eq-slot -- ) {: s:eq-slot :}
+   s EQ-K@ 1- CAP-EMIT-PARAMS
+   s EQ-SLOT>N MSRC-INT MSRC-SP
+   s" PLAN:EQUATION " MSRC+
+   1 CAP-OPS +! ;
+
 \ one body op token (not a ">V" and not a bare reference): translate to explicit stack form.
+\ A registered equation composes as an op (EMIT-EQ-TOKEN); otherwise the op table resolves it.
 : EMIT-OP-TOKEN ( ptr u8 n -- ) {: a:ptr u:n :}
+   a u EQ-FIND MATCH option
+     some OF EMIT-EQ-TOKEN exit ENDOF
+     none OF ENDOF
+   ;MATCH
    a u STR:LENGTH $3A STR:INDEX-OF MATCH option
      none OF
       a u OP-KIND                                                  \ ( op )  family stays on the stack

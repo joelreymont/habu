@@ -267,6 +267,7 @@ EX-RESET  XB 0 MIR-SLOT-ID EX-BIND  WB 1 MIR-SLOT-ID EX-BIND
 \ ---- membership predicate --------------------------------------------------
 OP-GELU   EX-OP-OK? TTRUE
 OP-MATMUL EX-OP-OK? TTRUE
+OP-EQUATION EX-OP-OK? TTRUE          \ equation dispatches to its generated RUN word (EX-EQUATION)
 OP-CAST   EX-OP-OK? TFALSE
 
 \ ---- fail closed -----------------------------------------------------------

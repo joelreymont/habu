@@ -16,6 +16,7 @@
 require maki/tensor-value.f
 require maki/op-kind.f
 require maki/move-facts.f
+require maki/spec.f                   \ the equation registry (EQ-*) the composer reads
 
 package MAKI
 public
@@ -116,5 +117,24 @@ public
    x TENSOR:TV-DTYPE@ x TENSOR:TV-LAYOUT@ x TENSOR:TV-SPACE@ TENSOR:TV-DESC {: y:tensor :}
    MV-GATHER  MV-GATHER-VERDICT  0 0 MV-PACK {: attr:n :}
    MAKI-OPKIND:GATHER TENSOR:PLAN-OP-BEGIN  x TENSOR:PLAN-IN+  idx TENSOR:PLAN-IN+  attr TENSOR:PLAN-ATTR!  y TENSOR:PLAN-OP+  y ;
+
+\ ---- equation composer (docs/model-unified.md stage 1) ----------------------
+\ Compose a SPEC:-declared einsum (the equation registry, maki/spec.f) as a node. The
+\ composition-time extent check requires each operand's (rows,cols) to equal the
+\ equation's declared per-factor (rows,cols) per the 2D BTC convention (docs/batch-
+\ sequence-design.md section 4); a mismatch is E-TV-SHAPE, like the matmul inner-dim
+\ check. Output extents are the equation's (rows,cols); the node carries the registry
+\ slot in its attrs so the executor (maki/executor.f) dispatches to the generated RUN
+\ word. Operand order is factor order. Stage 1 composes two-factor equations (Q Kᵀ);
+\ a one- or three-factor equation underflows / overflows the fixed arity and is a
+\ fail-closed checker reject of the composition.
+: EQ-OPERAND-CK ( tensor eq-slot n -- ) {: x:tensor s:eq-slot k:n :}
+   x TENSOR:TV-ROWS@ ROWS-RAW  s k EQ-FROW@ <> if E-TV-SHAPE throw then
+   x TENSOR:TV-COLS@ COLS-RAW  s k EQ-FCOL@ <> if E-TV-SHAPE throw then ;
+: PLAN-EQUATION ( tensor tensor eq-slot -- tensor ) {: q:tensor k:tensor s:eq-slot :}
+   q s 0 EQ-OPERAND-CK   k s 1 EQ-OPERAND-CK
+   s EQ-ROWS@ s EQ-COLS@ SHAPE  q TENSOR:TV-DTYPE@ MAKI-LAYOUT:ROW q TENSOR:TV-SPACE@ TENSOR:TV-DESC {: y:tensor :}
+   MAKI-OPKIND:EQUATION TENSOR:PLAN-OP-BEGIN
+   q TENSOR:PLAN-IN+  k TENSOR:PLAN-IN+  s EQ-SLOT>N TENSOR:PLAN-ATTR!  y TENSOR:PLAN-OP+  y ;
 
 ;package

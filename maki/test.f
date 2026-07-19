@@ -136,6 +136,8 @@ TEST:SUITE maki/mlp-bwd-test.f
 TEST:;SUITE
 TEST:SUITE maki/executor-test.f
 TEST:;SUITE
+TEST:SUITE maki/equation-op-test.f
+TEST:;SUITE
 TEST:SUITE maki/saved-test.f
 TEST:;SUITE
 TEST:SUITE maki/traffic-test.f

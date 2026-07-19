@@ -61,4 +61,10 @@ public
 : CONCAT    ( tensor tensor -- tensor )   MAKI:PLAN-CONCAT ;
 : GATHER    ( tensor tensor -- tensor )   MAKI:PLAN-GATHER ;
 
+\ ---- equation op (docs/model-unified.md stage 1) ----------------------------
+\ A SPEC:-declared einsum referenced in a composition. MODEL: emits the registry slot
+\ as a literal (maki/cad.f), so this crosses the raw slot to its EQ-SLOT type and
+\ re-exports the composer (extent check + node append) in maki/plan-ops.f.
+: EQUATION ( tensor tensor n -- tensor )  MAKI:>EQ-SLOT MAKI:PLAN-EQUATION ;
+
 ;package

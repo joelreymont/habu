@@ -51,6 +51,7 @@ require maki/move.f
 require maki/reduce-bwd.f
 require maki/scatter.f
 require maki/segment.f
+require maki/spec.f
 
 \ ---- audited count projection (MIR typed item-count -> raw loop/compare cell) ---
 \ Reopen the unsealed CAD-NUM package for one checked bridge over its private
@@ -370,6 +371,20 @@ private
    qr EX-REF-PTR  kr EX-REF-PTR  vr EX-REF-PTR  dor EX-REF-PTR  nd EX-NODE-PTR
    qr EX-REF-NROWS  attr SEG-T@  qr EX-REF-NCOLS  attr SEG-CAUSAL@  SEG-ATTN-BWD ;
 
+\ ---- equation (docs/model-unified.md stage 1) ------------------------------
+\ A SPEC:-declared einsum node: its attrs cell is the equation's spec-registry slot
+\ (maki/spec.f). The executor writes each operand buffer and the output buffer into the
+\ registry transfer cells, then runs the equation's generated host RUN word (EQ-EXEC),
+\ which binds those buffers to the equation's tensors and executes the checked kernel.
+\ Operand order matches factor order (the RUN word EQ-GEN-RUN emits).
+: EX-EQUATION ( CAD-KIND:node-id -- ) {: nd:CAD-KIND:node-id :}
+   nd MIR-ATTR@ >EQ-SLOT {: s:eq-slot :}
+   s EQ-K@ 0 ?do
+      nd i MIR-INPUT-IDX MIR-IN@ EX-REF-PTR  i EQ-ARG-SET!
+   loop
+   nd EX-NODE-PTR EQ-OUT-SET!
+   s EQ-EXEC ;
+
 \ ---- per-node dispatch (fail closed on a non-executable op) -----------------
 : EX-NODE ( CAD-KIND:node-id -- ) {: nd:CAD-KIND:node-id :}
    nd MIR-OP@ MATCH opkind
@@ -407,7 +422,7 @@ private
       seg-attn        OF nd EX-SEG-ATTN     ENDOF
       seg-attn-bwd    OF nd EX-SEG-ATTN-BWD ENDOF
       cast            OF E-EX-UNSUP throw   ENDOF
-      equation        OF E-EX-UNSUP throw   ENDOF
+      equation        OF nd EX-EQUATION     ENDOF
    ;MATCH ;
 
 \ ---- buffer plan + execute over a node prefix ------------------------------
@@ -426,13 +441,13 @@ public
 
 \ ---- membership: is an op-kind host-executable? (cast / decode are not) -----
 \ the op-kind family makes the old OP-N range check unrepresentable; every op is
-\ host-executable except cast and equation (exhaustive MATCH predicate). equation's
-\ host dispatch is queued stage-1 work (docs/model-unified.md), so it is not host-
-\ executable yet - EX-NODE throws E-EX-UNSUP for it, exactly like cast.
+\ host-executable except cast (exhaustive MATCH predicate). equation dispatches to its
+\ generated host RUN word (EX-EQUATION, docs/model-unified.md stage 1), so it IS host-
+\ executable; only cast (a non-executable decode) stays not host-executable.
 : EX-OP-OK? ( opkind -- bool )
    MATCH opkind
       cast OF false ENDOF
-      equation OF false ENDOF
+      equation OF true ENDOF
       add OF true ENDOF  mul OF true ENDOF  scale OF true ENDOF  bias OF true ENDOF
       relu OF true ENDOF  gelu OF true ENDOF  layernorm OF true ENDOF  rmsnorm OF true ENDOF
       softmax-row OF true ENDOF  matmul OF true ENDOF  linear OF true ENDOF
