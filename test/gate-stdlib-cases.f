@@ -201,6 +201,10 @@ TEST:SUITE tasking-primitive-smoke
    test/run-in-stack-smoke.f
 TEST:;SUITE
 
+TEST:SUITE getpid-primitive-smoke
+   test/getpid-smoke.f
+TEST:;SUITE
+
 TEST:SUITE tasking-threads
    lib/task-test.f
 TEST:;SUITE

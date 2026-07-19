@@ -18,6 +18,7 @@ $5   constant NR-OPEN
 $6   constant NR-CLOSE
 $25  constant NR-KILL
 $52  constant NR-SETPGID
+$14  constant NR-GETPID
 $2A  constant NR-PIPE
 $2E  constant NR-SIGACTION
 $4A  constant NR-MPROTECT

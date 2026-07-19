@@ -1889,6 +1889,8 @@ points stay listed.
   run or be ticked from interpretation state.
 - `test/atomics-smoke.f` / `test/run-in-stack-smoke.f` — tasking primitive
   smoke tests for atomics and the in-stack runner.
+- `test/getpid-smoke.f` — focused proof of the `getpid` process-identity
+  primitive: positive, stable across two calls, and distinct in a forked child.
 - `test/internal-word-gate.f` — engine-internal execution-gate regressions, including sealed field mutation and checked read-only field reflection.
   (dot habu-hb-crash-bare-c5be6634): bare/ticked internal checker colon words
   fail closed with `hb: internal engine word:` + rc 70 on both cold-prefix
