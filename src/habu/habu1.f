@@ -1848,6 +1848,12 @@ variable SZA-I
 : BCLOSE ( -- )
    0 G-POP  NR-CLOSE SYS, ;
 
+\ close returning the normalized host status: SYS-PUSH publishes x0 on success
+\ (0) or -1 when the syscall carry is set, so a caller can fail closed on a
+\ close that the kernel rejected (e.g. a descriptor already closed).
+: BCLOSE-RC ( -- )
+   0 G-POP  NR-CLOSE SYS,  SYS-PUSH ;
+
 : BRBASE ( -- )
    9 DATA RBASE-CELL LDR,  9 G-PUSH ;
 
@@ -2308,6 +2314,7 @@ SOURCE-INIT
    s" getdirentries64" ['] BGETDIRENTRIES64 FPRIM-L
    s" patch32" ['] BPATCH32 2 GDEREF-F
    s" close" ['] BCLOSE FPRIM-L
+   s" close-rc" ['] BCLOSE-RC FPRIM-L
    s" rbase" ['] BRBASE FPRIM-L ;
 
 : EMIT-CHECKER-PRIMS ( -- )

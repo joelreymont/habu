@@ -198,7 +198,11 @@ variable SC-NUM-L
    s" tools/lint/shadow-lint-test.f" q execute
    \ misc test/-tree suites not mirrored into resident groups
    s" test/load-reject-diag-test.f" q execute
-   s" test/owner-wid-internal.f" q execute ;
+   s" test/owner-wid-internal.f" q execute
+   \ snapshot-writer adversarial suite: builds two full snapshots in child
+   \ processes (return-stack zeroing + fail-closed on a failed close), too
+   \ costly for the resident fast tier - runs in the standalone stdlib gate.
+   s" test/owner-wid-snapshot.f" q execute ;
 
 \ SPAWN-ONLY: ptx-toolchain cases members that must run only in a fresh spawned
 \ image, never in the resident full-runner image. Two reasons appear here: tools

@@ -919,6 +919,25 @@ public
    out outu BF-APPEND-SNAP-PRESEAL
    out outu driver driveru BF-APPEND-SNAP-SEALED ;
 
+\ Snapshot source with one extra test source appended after the builder tail
+\ (snap-lib.f and the target image words are live by then) and just before the
+\ driver, so an owner-WID snapshot fixture can plant return-stack canaries or arm
+\ the test-only close seam before SNAPGO runs. Builder-only: the injected source
+\ sits above the SNAP-TAIL-MARK, so SNAP-RETIRE-GO forgets it before the image is
+\ written and nothing reaches a shipped snapshot.
+: BF-APPEND-SNAP-SEALED-WITH ( ptr u8 n ptr u8 n ptr u8 n -- )
+   {: out:ptr outu:n inject:ptr injectu:n driver:ptr driveru:n :}
+   out outu COMPILER-BUILD:SEAL
+   out outu BF-APPEND-SNAP-BUILD
+   out outu inject injectu BF-APPEND-SOURCE
+   out outu driver driveru BF-APPEND-SOURCE ;
+
+: BF-EMIT-SNAP-RUN-SOURCE-WITH ( ptr u8 n ptr u8 n ptr u8 n -- )
+   {: out:ptr outu:n inject:ptr injectu:n driver:ptr driveru:n :}
+   out outu BF-RESET-OUT
+   out outu BF-APPEND-SNAP-PRESEAL
+   out outu inject injectu driver driveru BF-APPEND-SNAP-SEALED-WITH ;
+
 : BF-CLOSE-CMP ( -- )
    BF-FDA @ dup 0 >= if close else drop then
    BF-FDB @ dup 0 >= if close else drop then

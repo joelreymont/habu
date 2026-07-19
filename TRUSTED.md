@@ -1431,6 +1431,7 @@ prim - patch32 trusted-only pe-n pe-in pe-n pe-in
 prim - snap-rebase - pe-n pe-in pe-n pe-in pe-n pe-in pe-n pe-in pe-n pe-in pe-n pe-in
 prim - write - pe-n pe-in pe-ptr-u8 pe-in pe-n pe-in pe-n pe-out
 prim - close - pe-n pe-in
+prim - close-rc - pe-n pe-in pe-n pe-out
 prim - epoch-seconds - pe-n pe-out
 prim - mono-ns - pe-n pe-out
 prim - prof-on - pe-n pe-in

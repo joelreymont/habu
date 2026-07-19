@@ -214,6 +214,36 @@ TRUSTED: SND-QUARANTINE@ ( n -- n ) cells SND-QUARANTINE + @ ;
    SNC-COPY
    SNC-CANON ;
 
+\ ---- test-only final-close fault seam ----
+\ snap-lib.f is builder-only: SNAP-RETIRE-GO forgets this whole tail before the
+\ snapshot header is written, so nothing here reaches a shipped image. The seam
+\ lets the owner-WID snapshot suite force the final close to fail and prove
+\ SNAP-WRITE-BYTES fails closed (rc 74) instead of accepting a half-written
+\ image. BEFORE defaults to a no-op; only a test source injected ahead of the
+\ snap driver can arm it through INSTALL-TEST, and snap.f undefines that entry on
+\ every build so no normal or shipping path can reach it.
+package SNAP-CLOSE-SEAM
+
+defer BEFORE ( n -- )
+
+: NOOP ( n -- )
+   drop ;
+
+: RESET ( -- )
+   [: NOOP ;] is BEFORE ;
+
+RESET
+
+public
+
+: INSTALL-TEST ( [ n -- ] -- )
+   is BEFORE ;
+
+: RUN ( n -- )
+   BEFORE ;
+
+;package
+
 : SNAP-WRITE-BYTES ( -- )
    \ trailer (48 bytes): magic, CANONICAL text base (0), dict count, region
    \ length, data length, format version - the region stream below is the
@@ -233,7 +263,8 @@ TRUSTED: SND-QUARANTINE@ ( n -- n ) cells SND-QUARANTINE + @ ;
    SFD @ SND-PTR SDL @ DRV-WALL
    SFD @ TRL 48 DRV-WALL
    SFD @ extra SNAP-EXTRA-SIZE DRV-WALL
-   SFD @ close ;
+   SFD @ SNAP-CLOSE-SEAM:RUN
+   SFD @ close-rc 0 <> IF s" snap: output close failed" 74 die THEN ;
 
 : SNAP-WRITE ( snap -- )
    SNAP-DROP

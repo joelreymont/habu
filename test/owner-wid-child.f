@@ -155,6 +155,11 @@ variable RUN-CODE
    engine engineu s" test/owner-wid-private-call.f" RUN-FILE 70 T=
    ERR$ s" OWNER-WID-COLD-TEST:PRIVATE-PROOF" CONTAINS? TTRUE ;
 
+: ASSERT-ROLE-SWAP ( ptr u8 n -- ) {: engine:ptr engineu:n :}
+   engine engineu s" test/owner-wid-role-swap.f" RUN-FILE 70 T=
+   ERR$ s" owner-row-idx" CONTAINS? TTRUE
+   ERR$ s" prot-row-idx" CONTAINS? TTRUE ;
+
 : ASSERT-BAD ( ptr u8 n n ptr u8 n -- )
    {: engine:ptr engineu:n code:n msg:ptr msgu:n :}
    engine engineu s" test/owner-wid-state.f" RUN-FILE code T=
@@ -170,6 +175,8 @@ variable RUN-CODE
    OWNER-WID-IMAGE:SNAP-HB$ ASSERT-HIDDEN
    OWNER-WID-IMAGE:AOT-HB$ ASSERT-PRIVATE-HIDDEN
    OWNER-WID-IMAGE:SNAP-HB$ ASSERT-PRIVATE-HIDDEN
+   OWNER-WID-IMAGE:AOT-HB$ ASSERT-ROLE-SWAP
+   OWNER-WID-IMAGE:SNAP-HB$ ASSERT-ROLE-SWAP
    OWNER-WID-DOCTOR:AOT-BAD$ 82 s" hb: AOT owner frame corrupt" ASSERT-BAD
    OWNER-WID-DOCTOR:AOT-MAL$ 82 s" hb: AOT owner frame corrupt" ASSERT-BAD
    OWNER-WID-DOCTOR:SNAP-OLD$ 80 s" hb: snapshot format version unsupported" ASSERT-BAD

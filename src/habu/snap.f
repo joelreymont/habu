@@ -26,6 +26,16 @@
 
 require src/habu/snap-lib.f
 
+\ Seal the test-only final-close fault seam: a snapshot suite arms it by
+\ injecting its source ahead of this driver, so the arm has already happened by
+\ the time this line runs. Undefine the install entry here so no normal or
+\ shipping build can reach it; the default BEFORE no-op is what SNAP-WRITE-BYTES
+\ then runs.
+package SNAP-CLOSE-SEAM
+public
+undefine INSTALL-TEST
+;package
+
 $4A constant E-SNAP-HOOK
 
 TRUSTED: SNAP-RETIRE-GO ( -- )

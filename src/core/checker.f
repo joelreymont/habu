@@ -4751,6 +4751,7 @@ PRIM-TRUSTED-ONLY!                       \ code injection: only a TRUSTED: bound
 PRIM: snap-rebase PE-N PE-IN PE-N PE-IN PE-N PE-IN PE-N PE-IN PE-N PE-IN PE-N PE-IN PRIM;
 PRIM: write         PE-N PE-IN PE-PTR-U8 PE-IN PE-N PE-IN  PE-N PE-OUT PRIM;
 PRIM: close         PE-N PE-IN PRIM;
+PRIM: close-rc      PE-N PE-IN  PE-N PE-OUT PRIM;   \ close returning host status (0 ok, <0 fail)
 PRIM: epoch-seconds PE-N PE-OUT PRIM;
 PRIM: mono-ns       PE-N PE-OUT PRIM;
 PRIM: prof-on       PE-N PE-IN PRIM;

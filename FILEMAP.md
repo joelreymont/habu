@@ -1931,6 +1931,15 @@ points stay listed.
 - `test/owner-wid-guard.f` — load-head guard the owner-wid suites require so a
   standalone engine invocation dies fast with a named message and rc instead of
   misleading missing-build-context failures.
+- `test/owner-wid-role-swap.f` — negative checker fixture: a sibling nominal
+  locator-index fed where another is expected must reject, driven against the
+  built AOT and snapshot engines by `test/owner-wid-child.f`.
+- `test/owner-wid-snapshot.f` — snapshot-writer adversarial suite: builds a
+  poisoned snapshot and proves the persisted return-stack window is zeroed, and
+  builds a close-failing snapshot and proves the writer fails closed.
+- `test/owner-wid-snapshot-poison.f` / `test/owner-wid-snapshot-close-fail.f` —
+  builder-only fixtures injected into the snap source that plant return-stack
+  canaries and arm the test-only `SNAP-CLOSE-SEAM` before `SNAPGO`.
 - `test/wide-store-seal.f` — generated checked W=2 ADT store forges proving
   ordinary storage and first/later-cell protected-band intersections: zero-valued
   payload/tag attempts against the seal latch must trap `ENGINE-ERROR:SEAL-VIOLATION`
