@@ -49,6 +49,8 @@
 -2504 constant E-PROC-TRUNCATED
 -2505 constant E-PROC-ENV
 -2506 constant E-PROC-PATH
+-2507 constant E-PROC-PTY-CAPACITY
+-2508 constant E-PROC-PTY-HANDLE
 
 \ Time/date: -2600..-2699
 -2600 constant E-TIME-FIRST

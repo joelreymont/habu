@@ -521,6 +521,7 @@ schema_version	module	file	kind	word	effect	test	doc	owner	status	notes
 1	source	lib/source.f	word	SOURCE-LS-DRAIN	(ptr u8 n [ ptr u8 n n -- ] --)	lib/source-test.f	docs/stdlib.md	stdlib-source	active	stream all lines from the active file descriptor
 1	source	lib/source.f	word	SOURCE-FILE-LINES	(ptr u8 n ptr u8 n [ ptr u8 n n -- ] --)	lib/source-test.f	docs/stdlib.md	stdlib-source	published	stream a counted file path line by line through a callback
 1	process	lib/process.f	module			lib/process-test.f	docs/stdlib.md	stdlib-process	active	counted pathz process wrappers RUN-CAPTURE buffers timeout FD_CLOEXEC cleanup and successful exec/fork observation hooks
+1	process-pty-handle	lib/process-pty-handle.f	module			lib/process-pty-handle-test.f	docs/stdlib.md	stdlib-process-pty	active	linear PTY supervisor authority registry with reserve/commit/take/teardown lifecycle owner-PID guards and generation-versioned slot handles
 1	process	lib/process.f	word	PROCESS-TRACE:EXEC-HOOK!	([ ptr u8 n -- ] --)	test/gate-stats-test.f	docs/stdlib.md	stdlib-process	active	install the successful-exec observation hook
 1	process	lib/process.f	word	PROCESS-TRACE:FORK-HOOK!	([ ptr u8 n -- ] --)	test/gate-stats-test.f	docs/stdlib.md	stdlib-process	active	install the successful-parent-fork observation hook
 1	process	lib/process.f	word	PROCESS-TRACE:CLEAR-HOOK!	([ -- ] --)	test/gate-stats-test.f	docs/stdlib.md	stdlib-process	active	install the failed-process outcome cleanup hook

@@ -1859,6 +1859,9 @@ points stay listed.
   helpers and their coverage.
 - `lib/process-command.f` / `lib/process-command-test.f` — checked
   command-owned process runner and its coverage.
+- `lib/process-pty-handle.f` / `lib/process-pty-handle-test.f` — linear PTY
+  supervisor authority registry (reserve/commit/take/teardown lifecycle,
+  owner-PID guards, generation-versioned slot handles) and its coverage.
 - `lib/property.f` / `lib/property-test.f` — checked property-based test
   helpers and their coverage.
 - `lib/regex.f` / `lib/regex-test.f` — bounded capture-free regex
