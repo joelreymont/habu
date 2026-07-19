@@ -130,6 +130,8 @@ TEST:SUITE maki/lower/model-test.f
 TEST:;SUITE
 TEST:SUITE maki/precision-test.f
 TEST:;SUITE
+TEST:SUITE maki/prec-attr-test.f
+TEST:;SUITE
 TEST:SUITE maki/backward-test.f
 TEST:;SUITE
 TEST:SUITE maki/mlp-bwd-test.f

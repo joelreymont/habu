@@ -52,6 +52,7 @@ require maki/reduce-bwd.f
 require maki/scatter.f
 require maki/segment.f
 require maki/spec.f
+require maki/prec-attr.f              \ CPREC-PAYLOAD@: read the equation slot past the precision field
 
 \ ---- audited count projection (MIR typed item-count -> raw loop/compare cell) ---
 \ Reopen the unsealed CAD-NUM package for one checked bridge over its private
@@ -372,13 +373,15 @@ private
    qr EX-REF-NROWS  attr SEG-T@  qr EX-REF-NCOLS  attr SEG-CAUSAL@  SEG-ATTN-BWD ;
 
 \ ---- equation (docs/model-unified.md stage 1) ------------------------------
-\ A SPEC:-declared einsum node: its attrs cell is the equation's spec-registry slot
-\ (maki/spec.f). The executor writes each operand buffer and the output buffer into the
-\ registry transfer cells, then runs the equation's generated host RUN word (EQ-EXEC),
-\ which binds those buffers to the equation's tensors and executes the checked kernel.
-\ Operand order matches factor order (the RUN word EQ-GEN-RUN emits).
+\ A SPEC:-declared einsum node: its attrs cell's LOW payload is the equation's spec-
+\ registry slot (maki/spec.f), the HIGH field its compute precision (maki/prec-attr.f);
+\ CPREC-PAYLOAD@ recovers the slot past that field. The precision selects the device MMA
+\ dtype at lowering only - the host executor is f32/f64 EXACT and ignores it. The executor
+\ writes each operand buffer and the output buffer into the registry transfer cells, then
+\ runs the equation's generated host RUN word (EQ-EXEC), which binds those buffers to the
+\ equation's tensors and executes the checked kernel. Operand order matches factor order.
 : EX-EQUATION ( CAD-KIND:node-id -- ) {: nd:CAD-KIND:node-id :}
-   nd MIR-ATTR@ >EQ-SLOT {: s:eq-slot :}
+   nd MIR-ATTR@ CPREC-PAYLOAD@ >EQ-SLOT {: s:eq-slot :}
    s EQ-K@ 0 ?do
       nd i MIR-INPUT-IDX MIR-IN@ EX-REF-PTR  i EQ-ARG-SET!
    loop
