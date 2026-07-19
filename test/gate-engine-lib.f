@@ -5,6 +5,7 @@
 
 require test/gate-build-size.f
 require test/gate-validation-worker.f
+require lib/test/budget.f                 \ TEST-BUDGET:PERF-MS - runtime-slice ratchet calibration
 require lib/adt/option.f                 \ option<CAD-NUM:index> STR:FIND-SUB consumer (switchover wave A)
 require lib/type/deftype.f               \ DEFTYPE - declared-nominal role exemplar in the runtime role source
 
@@ -1791,7 +1792,54 @@ public
 package RUNTIME-WORKER
 private
 
-10000 constant MAX-MS
+\ Runtime-slice time ratchet budget.
+\
+\ This slice times two candidate-engine process spawns - the executable-identity
+\ negative plus one candidate-runtime worker fork, and the worker itself forks a
+\ nested SUBJECT tree. Until now it was pinned to a naked 10000 ms wall-clock
+\ constant while every other process-spawning ratchet in the gate - the
+\ stdlib tail ratchet (test/tail-ratchet.f TAIL-BUDGET:PROCESS-MS =
+\ 10000 TEST-BUDGET:PERF-MS) and the whole-gate stop-lines (test/run-lib.f
+\ TR-CAL-SCALED) - already scales its nominal by the measured host-calibration
+\ factor. That factor (lib/test/budget.f: a fixed-work integer spin measured
+\ against an idle-box reference, clamped to [100..300]% and exported by the gate
+\ as the host-calibration percentage) is the repo's canonical load signal. The
+\ runtime slice being the LONE exception is the bug: on a box running several
+\ gate lanes plus unrelated user work the fixed 10000 ms bar false-reds on
+\ engines byte-identical to ones that passed it quiet (measured 2026-07-19:
+\ 10047..11919 ms, rc 0, zero correctness failures), because the child process
+\ tree contends for CPU while the bar does not move. Putting this slice on the
+\ SAME calibration is the root-cause fix, not a workaround.
+\
+\ Why calibration scaling is load-aware yet still catches a regression, and why
+\ this is a measured/bounded budget rather than a "pass under load" exemption:
+\   - a slow BOX widens the fixed-work calibration spin, so BUDGET-MS widens
+\     proportionally and the load-contention false red disappears;
+\   - a slow ENGINE does NOT move the fixed-work spin, so the scaled budget stays
+\     tight and OVER? still fires - at ANY load, because the [100..300]% clamp
+\     bounds compensation to 3x, so an engine slower than 3x nominal reds even on
+\     a fully saturated box (proven by RATCHET-SELFTEST case 3);
+\   - the decision stays a hard `elapsed > BUDGET-MS` FAIL; calibration only sets
+\     the budget, it never short-circuits the comparison.
+\
+\ NOMINAL-MS derivation (macOS arm64, measured 2026-07-19 on this host; the box
+\ carried an ambient loadavg of ~5-6 from an Unreal cook and a zig test, so none
+\ of these are truly idle):
+\   - standalone timed body, near-baseline: 5693..5860 ms at calibration 111..120%;
+\   - standalone under three competing fixpoint-build lanes (loadavg 18-19):
+\     7636..8529 ms at calibration 114..131%;
+\   - FULL native gate, normal operating load (loadavg 6-7): 10987 ms at
+\     calibration 115% (matches the orchestrator's measured 10986 ms red);
+\   - FULL native gate, heavy load (loadavg 16): 14621 ms at calibration 120%.
+\ The full gate adds intra-gate phase concurrency the standalone harness cannot
+\ reproduce, so its numbers are the ones that matter. The worst calibration-
+\ normalized elapsed (budget must exceed elapsed*100/calibration for the scaled
+\ budget to clear it) is 14621/1.20 = 12184 ms. Applying the spark cold-budget
+\ precedent's +25% safety margin (commit 9d91057e / 76f5e652) gives 15230 ms,
+\ rounded up to a clean 16000 ms stop-line. At the measured normal load this
+\ leaves budget 16000*1.15 = 18400 ms against 10987 ms elapsed (1.67x margin);
+\ at the heavy-load worst case 16000*1.20 = 19200 ms against 14621 ms (1.31x).
+16000 constant NOMINAL-MS
 
 variable START-NS
 
@@ -1802,13 +1850,36 @@ variable START-NS
    RUNTIME-DIRECT:RESET
    mono-ns START-NS ! ;
 
+: BUDGET-MS ( -- n )                     \ nominal scaled by the measured host calibration
+   NOMINAL-MS TEST-BUDGET:PERF-MS ;
+
+: CAL-PCT ( -- n )                       \ live host-calibration factor, as a percentage
+   100 TEST-BUDGET:PERF-MS ;
+
+: SATURATED? ( -- bool )                 \ calibration pinned at the clamp: box slower than 3x
+   CAL-PCT T-BUDGET-MAX-PCT >= ;
+
+: OVER? ( n -- bool )                    \ hard ratchet decision against the live calibrated budget
+   BUDGET-MS > ;
+
+: REPORT ( n n -- ) {: elapsed:n budget:n :}
+   s" runtime elapsed-ms=" type elapsed GT-U-TYPE
+   s"  max-ms=" type budget GT-U-TYPE
+   s"  cal-pct=" type CAL-PCT GT-U-TYPE
+   SATURATED? if s"  (saturated)" type then cr ;
+
 : CHECK-TIME ( -- )
    mono-ns START-NS @ - PROC-NS-PER-MS / {: elapsed:n :}
-   elapsed MAX-MS > if
-      s" runtime elapsed-ms=" type elapsed .
-      s" max-ms=" type MAX-MS . cr
+   elapsed BUDGET-MS REPORT
+   elapsed OVER? if
       s" runtime time ratchet exceeded" GE-FAIL
    then ;
+
+: EXPECT-OVER ( n ptr u8 n -- ) {: elapsed:n label:ptr labelu:n :}
+   elapsed OVER? 0= if label labelu GE-FAIL then ;
+
+: EXPECT-WITHIN ( n ptr u8 n -- ) {: elapsed:n label:ptr labelu:n :}
+   elapsed OVER? if label labelu GE-FAIL then ;
 
 : CHECK-EXEC ( -- )
    RUNTIME-DIRECT:EXEC# {: count:n :}
@@ -1841,12 +1912,41 @@ variable START-NS
 
 public
 
+\ Negative/property proof for the load-conditioned ratchet (dot
+\ habu-derive-runtime-budget-81b2f538). Pins the calibration with PERF-SET so the
+\ four cases are deterministic, then restores it. GE-FAIL dies (exit 1), so a
+\ mismatch fails the slice closed exactly like a real ratchet breach. The cases
+\ prove, together, that the ratchet still catches a genuinely slower engine at
+\ ANY load while tolerating pure load inflation:
+\   1. at calibration 100% (quiet box) an elapsed just over nominal reds;
+\   2. at calibration 100% an elapsed just under nominal passes (no false red);
+\   3. at calibration 300% (fully saturated, clamped) an elapsed over 3x nominal
+\      STILL reds - the clamp bounds compensation so a >3x-nominal engine cannot
+\      hide behind load;
+\   4. at calibration 300% an elapsed of 2x nominal - which would red on a quiet
+\      box - passes, i.e. measured load widens the budget and kills the false red.
+: RATCHET-SELFTEST ( -- )
+   100 TEST-BUDGET:PERF-MS {: saved:n :}       \ snapshot the live calibration
+   100 TEST-BUDGET:PERF-SET
+   NOMINAL-MS 1000 +
+      s" runtime ratchet catches over-budget slice at calibration 100%" EXPECT-OVER
+   NOMINAL-MS 1000 -
+      s" runtime ratchet passes within-budget slice at calibration 100%" EXPECT-WITHIN
+   300 TEST-BUDGET:PERF-SET
+   NOMINAL-MS 3 * 1000 +
+      s" runtime ratchet catches slower engine even at max calibration" EXPECT-OVER
+   NOMINAL-MS 2 *
+      s" runtime ratchet tolerates load-inflated elapsed at max calibration" EXPECT-WITHIN
+   saved TEST-BUDGET:PERF-SET                   \ restore the live calibration
+   s" PASS: runtime ratchet load-conditioned decision (regression caught at any load)" type cr ;
+
 : SUBJECT ( -- )
    START
    IDENTITY-NEG
    s" " RUN
    CHECK-TIME
    CHECK-EXEC
+   RATCHET-SELFTEST
    s" PASS: runtime process/time ratchet" type cr ;
 
 : PARITY ( -- )
