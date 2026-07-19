@@ -795,6 +795,9 @@ fits.
   the engine-build closure — `test/run.f -- --cold-cache` exercises the native build slice
   (merge-gate runs cold); when a change adds a transitive `require` to any gate file, run cold
   before claiming green.
+- **In zsh, `path` is the array tied to `PATH`; never use it as a loop or scratch
+  variable.** Assigning it can make the next command disappear. Use a purpose-specific
+  name such as `dot_file`, especially in verification scripts that must fail closed.
 
 ## Gate Harness, Scheduling & Caching
 
