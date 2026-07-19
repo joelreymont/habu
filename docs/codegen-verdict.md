@@ -238,6 +238,46 @@ is no "the codegen sucks" evidence in the instruction stream.
 
 ---
 
+## Pinned ptxas toolchain (sm_121 scheduler) — dot `habu-pin-blackwell-grade-8ec5ee0a`
+
+The SASS above is *correct* on either assembler, but not equally *fast*. System
+CUDA 13.0's `ptxas` (V13.0.88) ships an immature sm_121 scheduler: it issues
+every `HMMA.1688.F32.TF32` at a fixed 16-cycle yield-set interval and pads the
+steady K-loop with ~40 stall NOP per 64 HMMA (the 40-NOP body `docs/eval-triton.md`
+Round 4 found and mis-attributed to a B-register hazard). `ptxas` **13.3.33**
+schedules the *same, unmodified* PTX into the resident-warp schedule with **zero
+NOP** and ~28% fewer steady-window stall cycles — same 128 registers, zero spills,
+all `mma-gemm-check` rows element-exact. The discriminator for the Round-4 40-NOP
+steady-window schedule was the assembler binary, not the emitter or the PTX (the
+end-to-end wall-clock gain at the current tiles is small — `docs/eval-triton.md`
+corrected-verdict round).
+
+So Habu pins 13.3 into **its own** user-local tool store (not another project's
+cache dir, which can vanish), sha256-verified, and `lib/ptx/toolchain.f` resolves
+it ahead of system CUDA. Provisioning a fresh GB10:
+
+```sh
+# canonical source: NVIDIA's cuda_nvcc-linux-sbsa-13.3.33 archive — the same one
+# Triton's build cache fetches to ~/.triton/nvidia/nvcc-blackwell/. ptxas is the
+# only binary Habu needs from it.
+mkdir -p ~/.habu/toolchain
+cp cuda_nvcc-linux-sbsa-13.3.33-archive/bin/ptxas ~/.habu/toolchain/ptxas-13.3.33
+chmod 755 ~/.habu/toolchain/ptxas-13.3.33
+sha256sum ~/.habu/toolchain/ptxas-13.3.33
+# f9a0a7f1f7f03b402ca222168a8ae4870fdb312354356b444941fbba7754326e
+~/.habu/toolchain/ptxas-13.3.33 --version   # → release 13.3, V13.3.33
+```
+
+`toolchain.f` probes in order **`PTXAS` env override → `~/.habu/toolchain/
+ptxas-13.3.33` → system CUDA (`/usr/local/cuda`) → legacy 12.6**, reads the
+resolved binary's `--version`, and for an sm_121 target with only a pre-13.3
+assembler prints a loud named `PTXAS-STALE-SM121` diagnostic (naming this dot and
+the ~27% penalty) — it does **not** die: the 13.0 assembler still produces
+element-exact kernels, so the degradation must be visible, never silent. With the
+store provisioned, no `PTXAS` override is needed and the diagnostic stays quiet.
+
+---
+
 ## Reproduction (exact)
 
 Toolchain: `PTXAS=/usr/local/cuda/bin/ptxas` (CUDA 13.0.88, knows sm_121a

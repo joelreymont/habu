@@ -1659,3 +1659,77 @@ bin/hb --load tools/ptx/mma-emit-diff.f    # 35 tf32 + 6 fp16 configs; diff base
 # Triton bf16 referee (source-built 3.8 in the ml venv), bf16 row added to the label loop:
 ~/Work/ml/.venv/bin/python /tmp/gemm-triton-gb10.py
 ```
+
+## Corrected verdict — the assembler was the discriminator (dot `habu-pin-blackwell-grade-8ec5ee0a`): rounds 4–7 mechanism stands, remedy was ptxas 13.3 (2026-07-19)
+
+Every GB10 number above was assembled by **system CUDA 13.0.88 `ptxas`**. That
+build ships an **immature sm_121 scheduler**: it issues each
+`HMMA.1688.F32.TF32` at a fixed yield-set interval and pads the steady K-loop
+with the **~40 NOP per 64 HMMA** Round 4 found (its stall-field-overflow
+encoding). **`ptxas` 13.3.33** — the `cuda_nvcc-linux-sbsa-13.3.33` archive
+Triton's build cache fetched, now pinned into Habu's own tool store
+(`~/.habu/toolchain/ptxas-13.3.33`, sha256
+`f9a0a7f1…4326e`; provisioning recipe in `docs/codegen-verdict.md` "Pinned ptxas
+toolchain") — schedules the **same, unmodified PTX** into the resident-warp
+schedule with **zero NOP**, ~28 % fewer steady-window stall cycles, the same 128
+registers, zero spills, and all `mma-gemm-check` rows still element-exact. The
+discriminator for the whole steady-window story was the **assembler binary**, not
+the emitter or the PTX.
+
+**What this amends, and what it does not.** Rounds 4–7's *mechanism* work all
+**stands** and every falsification was correct: renaming the B registers is inert
+at the machine level (Round 4), the tile is mma-issue-bound not fragment-feed-
+bound on the big shapes (Rounds 2–5), and the denser `m16n8k16` HMMA is the real
+FLOP-per-issue lever (Rounds 5–7). What is corrected is Round 4's *attribution* of
+the 40-NOP body to intrinsic tensor-core issue latency — it was the 13.0
+assembler's stall encoding, and 13.3 removes it from identical PTX. The campaign's
+"compiler-scheduling-class" ceiling was a **toolchain** class, closable by an
+assembler upgrade, not a codegen limit.
+
+**The honest wall-clock, because the two numbers must be reconciled.** The ~28 %
+is a **steady-window stall-cycle** reduction; it is **not** a 28 % end-to-end GEMM
+speed-up, because at the current tiles/shapes the kernel is occupancy-, feed-, and
+launch-bound (the very finding of Rounds 2–3), so the steady-HMMA window is only
+one term of the roofline. Re-measuring the committed winners under the pinned 13.3
+(`tools/ptx/gemm-bench.f` `GB-GB10` and, via the documented `GB-EPI-SWEEP` swap,
+the epilogue winners; best-of-3, run solo, and the same-session FP32 CUDA-core
+`MM` roof reproduces the committed 8.2 / 13.2 / 15.0 TFLOP/s within < 1 %, so the
+clock matches the 2411 MHz the head-to-head was taken at) gives the tf32 numbers
+of record:
+
+| TFLOP/s (tf32, C=A·B), best-of-3 winner tile | 512³ | 1024³ | 2048³ | 4096³ |
+|----------------------------------------------|-----:|------:|------:|------:|
+| 13.0-era committed winner                    | 16.3 |  29.1 |  31.7 |  28.0 |
+| **pinned 13.3 winner**                       | 16.3 |**29.9**|**32.6**| 27.7 |
+| Δ wall-clock                                 | flat | +2.9 % | +2.8 % | noise |
+| **Habu / Triton 3.8 tf32**                   |0.75× |**0.89×**|**0.86×**|0.61× |
+
+The 1024³ epilogue winner (4-warp MFRAGS=4 stages=1 static + smem C epilogue,
+128×64) lifts 29.1 → **29.9 TF** and the head-to-head **peak rises 0.87 → 0.89×**;
+2048³ lifts 31.7 → **32.6 TF** (0.84 → 0.86×). 512³ moves within best-of-3 noise
+and 4096³ reads a hair lower than its 13.0-era committed best (also within noise),
+so both keep their committed rows. **fp16 and bf16 are ~0 %**: those tiles retire
+twice the K per HMMA, so the steady window carries even fewer of the 13.0 NOPs and
+there is almost nothing for 13.3 to reclaim. **Triton still wins every shape** —
+the residual gap is its 4-warp, 3–5-stage pipelined tile, exactly as before; the
+pin closes the *toolchain* gap the mechanism rounds had folded into that number,
+not the pipeline-depth gap.
+
+`perf-rows.tsv` keeps the 13.0-era `dgx-spark-gb10` rows as history and adds the
+two moved winners under `dgx-spark-gb10-ptxas133`. With the store provisioned the
+resolver picks 13.3 automatically (no `PTXAS` override) and the `PTXAS-STALE-SM121`
+diagnostic stays quiet; on a machine with only the 13.0 assembler it fires once,
+loudly, and the kernels stay element-exact.
+
+### Reproduction (exact)
+
+```
+# The pinned 13.3 resolves automatically (lib/ptx/toolchain.f: PTXAS env -> Habu
+# tool store -> system CUDA); no override needed once ~/.habu/toolchain is provisioned.
+bin/hb --load tools/ptx/mma-gemm-check.f   # MGC-ALL: element-exact under 13.3 (unchanged from 13.0)
+bin/hb --load tools/ptx/gemm-bench.f       # GB-GB10: tf32 sweep, best-of-3, solo; FP32 MM anchors the clock
+# swap the file's bottom entry to GEMMBENCH:GB-EPI-SWEEP, then re-run for the epilogue winners:
+bin/hb --load tools/ptx/gemm-bench.f       # GB-EPI-SWEEP: each per-shape winner, epilogue OFF then ON
+# a stale toolchain is visible, never silent — force the 13.0 assembler to see the diagnostic:
+PTXAS=/usr/local/cuda/bin/ptxas bin/hb --load tools/ptx/gemm-bench.f   # prints hb: PTXAS-STALE-SM121: ...
+```
