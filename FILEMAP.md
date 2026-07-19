@@ -1575,8 +1575,10 @@ points stay listed.
   scanner core.
 - `tools/lint/text-foundation-test.f` / `tools/lint/set-test.f` — focused
   coverage for the lint text helpers and interner.
-- `tools/lint/shadow-lint.f` / `tools/lint/shadow-lint-test.f` — rejects toolchain definitions that shadow
-  engine PRIM names.
+- `tools/lint/shadow-lint.f` / `tools/lint/shadow-lint-test.f` — rejects GLOBAL-scope
+  toolchain definitions that shadow engine PRIM names; string-literal bodies and
+  package-scoped tails are ignored. Its `tools/lint/shadow-string-fixture.f`
+  string-literal regression input is a committed filemap-lint exclusion.
 - `tools/lint/clobber-lint.f` / `tools/lint/clobber-lint-test.f` —
   register-clobber analysis for BL-able emitter routines and its regressions;
   its negative syscall-scratch fixture file is a committed filemap-lint
