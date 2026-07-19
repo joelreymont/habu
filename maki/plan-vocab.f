@@ -34,6 +34,9 @@ public
 : GELU        ( tensor -- tensor )  MAKI-OPKIND:GELU        MAKI:PLAN-UNARY ;
 : SILU        ( tensor -- tensor )  MAKI-OPKIND:SILU        MAKI:PLAN-UNARY ;
 : LAYERNORM   ( tensor -- tensor )  MAKI-OPKIND:LAYERNORM   MAKI:PLAN-UNARY ;
+\ affine LayerNorm (GPT-2): y = gamma*xhat + beta. Same op-kind OP-LAYERNORM, arity 3
+\ (x, gamma, beta); the 3-input node IS the affine form (dot habu-affine-layernorm-gamma).
+: LAYERNORM-AFFINE ( tensor tensor tensor -- tensor )  MAKI-OPKIND:LAYERNORM MAKI:PLAN-TERN-EW ;
 : RMSNORM     ( tensor -- tensor )  MAKI-OPKIND:RMSNORM     MAKI:PLAN-UNARY ;
 : SOFTMAX-ROW ( tensor -- tensor )  MAKI-OPKIND:SOFTMAX-ROW MAKI:PLAN-UNARY ;
 : CAST        ( tensor -- tensor )  MAKI-OPKIND:CAST        MAKI:PLAN-UNARY ;

@@ -294,6 +294,13 @@ $5E constant TR-C                                  \ '^' - the reserved transpos
 : CAP-EMIT-OP ( ptr u8 n -- ) {: a:ptr u:n :}
    s" PLAN:" MSRC+  a u MSRC+  MSRC-SP  1 CAP-OPS +! ;
 
+\ affine LayerNorm: same OP-LAYERNORM, arity 3. Two pending references before a LAYERNORM
+\ token ARE gamma/beta -> drain both (FIFO) and emit the arity-3 vocab word. 0 refs is the
+\ no-affine unary path (unchanged); 1 or 3+ refs fall through to the generic path where
+\ CAP-EMIT-PARAMS(0) fails closed (E-CAD-REF). dot habu-affine-layernorm-gamma.
+: CAP-LN-AFFINE-EMIT ( -- )
+   2 CAP-EMIT-PARAMS  s" PLAN:LAYERNORM-AFFINE " MSRC+  1 CAP-OPS +! ;
+
 \ ">V NAME": name the current running value, keep it running -> compile `dup {: NAME:tensor :}`
 : NT-BIND-CUR ( ptr u8 n -- ) {: a:ptr u:n :}
    CAP-HAS-VALUE? 0= if E-CAD-NOVALUE throw then
@@ -345,7 +352,7 @@ $5E constant TR-C                                  \ '^' - the reserved transpos
       residual-add    OF SHP-SAME-OK?  ENDOF
       relu            OF 2drop 2drop true ENDOF
       gelu            OF 2drop 2drop true ENDOF
-      layernorm       OF 2drop 2drop true ENDOF
+      layernorm       OF SHP-ROW-OK?   ENDOF   \ affine gamma/beta are 1xC (row broadcast)
       rmsnorm         OF 2drop 2drop true ENDOF
       softmax-row     OF 2drop 2drop true ENDOF
       matmul          OF 2drop 2drop true ENDOF
@@ -397,7 +404,12 @@ $5E constant TR-C                                  \ '^' - the reserved transpos
       j 0 TENSOR:PLAN-IN@  j 1 TENSOR:PLAN-IN@  j TENSOR:PLAN-OP@ EW-SHAPE-CHECK  exit then
    cls CLASS-MATMUL = if
       j TENSOR:PLAN-IN-COUNT@ 3 < if exit then                       \ matmul (no bias operand): skip
-      j 0 TENSOR:PLAN-IN@  j 1 TENSOR:PLAN-IN@  j 2 TENSOR:PLAN-IN@  LIN-BIAS-CHECK then ;
+      j 0 TENSOR:PLAN-IN@  j 1 TENSOR:PLAN-IN@  j 2 TENSOR:PLAN-IN@  LIN-BIAS-CHECK exit then
+   cls CLASS-ROW-REDUCE = if                                         \ affine layernorm: gamma/beta each 1xC vs x
+      j TENSOR:PLAN-OP@ MAKI-OPKIND:LAYERNORM MAKI-OPKIND:EQ  j TENSOR:PLAN-IN-COUNT@ 3 =  and if
+         j 0 TENSOR:PLAN-IN@  j 1 TENSOR:PLAN-IN@  j TENSOR:PLAN-OP@ EW-SHAPE-CHECK
+         j 0 TENSOR:PLAN-IN@  j 2 TENSOR:PLAN-IN@  j TENSOR:PLAN-OP@ EW-SHAPE-CHECK
+      then then ;
 : PLAN-SHP-ALL ( -- )  TENSOR:PLAN-N@ 0 ?do  i PLAN-SHP-NODE  loop ;
 
 \ ---- bridge the captured plan into the model-IR node table -----------------
@@ -555,6 +567,7 @@ $5E constant TR-C                                  \ '^' - the reserved transpos
      none OF
       a u OP-KIND                                                  \ ( op )  family stays on the stack
       dup MAKI-OPKIND:RESHAPE MAKI-OPKIND:EQ over MAKI-OPKIND:SLICE MAKI-OPKIND:EQ or if E-CAD-SYNTAX throw then \ reshape/slice need ":params"
+      dup MAKI-OPKIND:LAYERNORM MAKI-OPKIND:EQ  CAP-PEND-CNT 2 =  and if  drop  CAP-LN-AFFINE-EMIT  exit  then \ 2 refs = gamma/beta
       OPR-ARITY 1- CAP-EMIT-PARAMS                                 \ tensor params = arity-1
       a u CAP-EMIT-OP  exit
      ENDOF

@@ -206,7 +206,17 @@ private
       equation OF E-EX-UNSUP throw ENDOF
    ;MATCH ;
 
+\ affine LayerNorm (arity 3): y = gamma*xhat + beta with gamma/beta (1xC) shared per row.
+: EX-ROW-FWD-AFFINE ( CAD-KIND:node-id -- ) {: nd:CAD-KIND:node-id :}
+   nd 0 MIR-INPUT-IDX MIR-IN@ EX-REF-PTR {: xb:ptr :}
+   nd 1 MIR-INPUT-IDX MIR-IN@ EX-REF-PTR {: gb:ptr :}
+   nd 2 MIR-INPUT-IDX MIR-IN@ EX-REF-PTR {: bb:ptr :}
+   nd EX-NODE-PTR {: ob:ptr :}
+   nd EX-NODE-NROWS {: R:n :}  nd EX-NODE-NCOLS {: C:n :}
+   R 0 ?do  xb i C * T-AT   ob i C * T-AT   gb  bb  C   LN-AFFINE-FWD  loop ;
+
 : EX-ROW-FWD ( CAD-KIND:node-id -- ) {: nd:CAD-KIND:node-id :}
+   nd MIR-OP@ MAKI-OPKIND:LAYERNORM MAKI-OPKIND:EQ  nd MIR-IN-COUNT@ 3 =  and if  nd EX-ROW-FWD-AFFINE exit  then
    nd 0 MIR-INPUT-IDX MIR-IN@ EX-REF-PTR {: xb:ptr :}
    nd EX-NODE-PTR {: ob:ptr :}
    nd EX-NODE-NROWS {: R:n :}  nd EX-NODE-NCOLS {: C:n :}

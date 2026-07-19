@@ -320,7 +320,7 @@ private
       bias            OF nd LRED-BINREGS EMIT-ADD      ENDOF
       mul             OF nd LRED-BINREGS EMIT-MUL      ENDOF
       scale           OF nd LRED-BINREGS EMIT-MUL      ENDOF
-      layernorm       OF nd 0 MIR-INPUT-IDX LRED-OPREG LRED-EMIT-LN  ENDOF
+      layernorm       OF nd MIR-IN-COUNT@ 1 > if E-LRED-OP throw then  nd 0 MIR-INPUT-IDX LRED-OPREG LRED-EMIT-LN  ENDOF
       rmsnorm         OF nd 0 MIR-INPUT-IDX LRED-OPREG LRED-EMIT-RMS ENDOF
       softmax-row     OF nd 0 MIR-INPUT-IDX LRED-OPREG LRED-EMIT-SM  ENDOF
       matmul OF E-LRED-OP throw ENDOF  linear OF E-LRED-OP throw ENDOF

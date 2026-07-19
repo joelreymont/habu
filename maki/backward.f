@@ -224,6 +224,29 @@ variable BW-BUILT?
    fn 0 MIR-INPUT-IDX MIR-IN@ {: x:MIR:operand-ref :}
    ct x  fn MIR-OP@ ADJ-BWD-KIND  x BW-OP2  x BW-ACCUM ;
 
+\ emit a no-affine LAYERNORM node over x (recompute xhat in the backward pass; SAVE-INPUT).
+: BW-LN-FWD ( MIR:operand-ref -- MIR:operand-ref ) {: x:MIR:operand-ref :}
+   MAKI-OPKIND:LAYERNORM MIR-OP-BEGIN  x MIR-IN+
+   x REF-ROWS x REF-COLS x REF-DT x REF-LAY  0  1  MIR-OP+ MIR-NODE-REF ;
+
+\ LAYERNORM adjoint. Arity 1 (no-affine): dx = LN-BWD(dy, x). Arity 3 (affine y =
+\ gamma*xhat+beta): dgamma = rowsum(dy*xhat), dbeta = rowsum(dy), dx = LN-BWD(dy*gamma, x)
+\ - the stage-1 golden math (maki/layernorm.f LN-AFFINE-BWD), xhat recomputed from the
+\ saved x via BW-LN-FWD, dy*gamma an OP-MUL with gamma (1xC) row-broadcast by the executor.
+: BW-STEP-LAYERNORM ( CAD-KIND:node-id MIR:operand-ref -- )
+   {: fn:CAD-KIND:node-id ct:MIR:operand-ref :}
+   fn 0 MIR-INPUT-IDX MIR-IN@ {: x:MIR:operand-ref :}
+   fn MIR-IN-COUNT@ 3 < if
+      ct x MAKI-OPKIND:LAYERNORM-BWD x BW-OP2  x BW-ACCUM  exit
+   then
+   fn 1 MIR-INPUT-IDX MIR-IN@ {: g:MIR:operand-ref :}
+   fn 2 MIR-INPUT-IDX MIR-IN@ {: b:MIR:operand-ref :}
+   x BW-LN-FWD {: xh:MIR:operand-ref :}                      \ xhat = layernorm(x)
+   ct xh MAKI-OPKIND:MUL x BW-OP2  g BW-ROWSUM  g BW-ACCUM   \ dgamma = rowsum(dy*xhat) -> 1xC
+   ct b BW-ROWSUM  b BW-ACCUM                                \ dbeta  = rowsum(dy)       -> 1xC
+   ct g MAKI-OPKIND:MUL x BW-OP2                             \ dxhat = dy*gamma           (RxC)
+   x MAKI-OPKIND:LAYERNORM-BWD x BW-OP2  x BW-ACCUM ;        \ dx = LN-BWD(dxhat, x)
+
 \ softmax adjoint reads the saved OUTPUT row (the forward node itself)
 : BW-STEP-SOFTMAX ( CAD-KIND:node-id MIR:operand-ref -- )
    {: fn:CAD-KIND:node-id ct:MIR:operand-ref :}
@@ -392,7 +415,7 @@ variable BW-BUILT?
       relu            OF BW-STEP-UNARY     ENDOF
       gelu            OF BW-STEP-UNARY     ENDOF
       silu            OF BW-STEP-UNARY     ENDOF
-      layernorm       OF BW-STEP-UNARY     ENDOF
+      layernorm       OF BW-STEP-LAYERNORM ENDOF
       rmsnorm         OF BW-STEP-UNARY     ENDOF
       softmax-row     OF BW-STEP-SOFTMAX   ENDOF
       rope            OF BW-STEP-ROPE      ENDOF

@@ -270,6 +270,8 @@ TEST:SUITE maki/golden-artifact-test.f
 TEST:;SUITE
 TEST:SUITE maki/gradcheck-test.f
 TEST:;SUITE
+TEST:SUITE maki/layernorm-affine-op-test.f
+TEST:;SUITE
 TEST:SUITE maki/demo-ffn-test.f
 TEST:;SUITE
 TEST:SUITE maki/from-scratch-model-test.f
