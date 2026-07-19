@@ -62,20 +62,24 @@ SCH-REC-PTR-MASK 0 SCH-LAYOUT=
 4 constant SCH-CAP-INIT         \ small seed; grows geometrically (doubles) on demand
 4 constant SCH-ROOT-INIT        \ small seed schema-root pool cells; grows on demand
 
-variable SCH-CAP-V   SCH-CAP-INIT SCH-CAP-V !
+\ Registry control cells are sealed DNAME-INT by REG-PROTECT / IMK-SEAL-REGISTRY
+\ (src/core/util.f, src/core/internal-mark.f): a bare `<cell> @`/`<cell> !` or
+\ `' <cell>` fails closed rc 70. Read the schema registry through the certified
+\ SCHEMA-N@ / SCHEMA-ROOT-N@ accessors, never the raw cell.
+variable SCH-CAP-V   SCH-CAP-INIT SCH-CAP-V !   REG-PROTECT
 : SCH-CAP ( -- n ) SCH-CAP-V @ ;
-create SCH-A-BOOT   SCH-CAP-INIT SCH-REC * allot
-variable SCH-A-P    SCH-A-BOOT SCH-A-P !
+create SCH-A-BOOT   SCH-CAP-INIT SCH-REC * allot   REG-PROTECT
+variable SCH-A-P    SCH-A-BOOT SCH-A-P !   REG-PROTECT
 : SCH-BASE ( -- ptr a ) SCH-A-P @ ;
 
-variable SCH-ROOT-CAP-V   SCH-ROOT-INIT SCH-ROOT-CAP-V !
+variable SCH-ROOT-CAP-V   SCH-ROOT-INIT SCH-ROOT-CAP-V !   REG-PROTECT
 : SCH-ROOT-CAP ( -- n ) SCH-ROOT-CAP-V @ ;
-create SCH-ROOT-BOOT   SCH-ROOT-INIT cells allot
-variable SCH-ROOT-P   SCH-ROOT-BOOT SCH-ROOT-P !
+create SCH-ROOT-BOOT   SCH-ROOT-INIT cells allot   REG-PROTECT
+variable SCH-ROOT-P   SCH-ROOT-BOOT SCH-ROOT-P !   REG-PROTECT
 : SCH-ROOT-BASE ( -- ptr a ) SCH-ROOT-P @ ;
 
-variable SCH-N        \ next node id; 1 leaves node 0 as the nil sentinel
-variable SCH-ROOT-N   \ next schema-root index
+variable SCH-N   REG-PROTECT        \ next node id; 1 leaves node 0 as the nil sentinel
+variable SCH-ROOT-N   REG-PROTECT   \ next schema-root index
 variable SCH-I        \ private scan index
 
 : SCHEMA-RESET ( -- )           \ base state (item 3 will add high-water rollback)

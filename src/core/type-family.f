@@ -61,12 +61,12 @@ variable TF-PUB               \ private first-public-match accumulator (-1 = non
 \ across a pool grow, so no stored offset ever needs rebasing.
 \ ---------------------------------------------------------------------------
 32 constant TF-STR-INIT          \ small seed byte pool; grows (doubles) on demand
-variable TF-STR-CAP-V   TF-STR-INIT TF-STR-CAP-V !
+variable TF-STR-CAP-V   TF-STR-INIT TF-STR-CAP-V !   REG-PROTECT
 : TF-STR-CAP ( -- n ) TF-STR-CAP-V @ ;
-create TF-STR-BOOT   TF-STR-INIT allot
-variable TF-STR-P   TF-STR-BOOT TF-STR-P !
+create TF-STR-BOOT   TF-STR-INIT allot   REG-PROTECT
+variable TF-STR-P   TF-STR-BOOT TF-STR-P !   REG-PROTECT
 : TF-STR ( -- ptr u8 ) TF-STR-P @ ;
-variable TF-STR-U   0 TF-STR-U !
+variable TF-STR-U   0 TF-STR-U !   REG-PROTECT
 
 : TF-STR-GROW ( n -- ) {: need:n :}
    need TF-STR-CAP-V @ 2 * max {: nc:n :}
@@ -129,12 +129,12 @@ variable TF-STR-U   0 TF-STR-U !
 \ param-kind pool (one PK-* cell per parameter of every family, contiguous).
 \ ---------------------------------------------------------------------------
 4 constant TF-PK-INIT            \ small seed param-kind pool; grows on demand
-variable TF-PK-CAP-V   TF-PK-INIT TF-PK-CAP-V !
+variable TF-PK-CAP-V   TF-PK-INIT TF-PK-CAP-V !   REG-PROTECT
 : TF-PK-CAP ( -- n ) TF-PK-CAP-V @ ;
-create TF-PK-BOOT   TF-PK-INIT cells allot
-variable TF-PK-P   TF-PK-BOOT TF-PK-P !
+create TF-PK-BOOT   TF-PK-INIT cells allot   REG-PROTECT
+variable TF-PK-P   TF-PK-BOOT TF-PK-P !   REG-PROTECT
 : TF-PK-BASE ( -- ptr a ) TF-PK-P @ ;
-variable TF-PK-N   0 TF-PK-N !
+variable TF-PK-N   0 TF-PK-N !   REG-PROTECT
 
 : TF-PK-GROW ( n -- ) {: need:n :}
    need TF-PK-CAP-V @ 2 * max {: nc:n :}
@@ -243,12 +243,12 @@ TF-REC-PTR-MASK 0 TF-LAYOUT=
 0 TF.DERIVE TF.DERIVE-OFF TF-LAYOUT=
 
 4 constant TF-CAP-INIT
-variable TF-CAP-V   TF-CAP-INIT TF-CAP-V !
+variable TF-CAP-V   TF-CAP-INIT TF-CAP-V !   REG-PROTECT
 : TF-CAP ( -- n ) TF-CAP-V @ ;
-create TF-A-BOOT   TF-CAP-INIT TF-REC * allot
-variable TF-A-P   TF-A-BOOT TF-A-P !
+create TF-A-BOOT   TF-CAP-INIT TF-REC * allot   REG-PROTECT
+variable TF-A-P   TF-A-BOOT TF-A-P !   REG-PROTECT
 : TF-BASE ( -- ptr a ) TF-A-P @ ;
-variable TFAM-N   0 TFAM-N !
+variable TFAM-N   0 TFAM-N !   REG-PROTECT
 
 : TF-GROW ( n -- ) {: need:n :}
    need TF-CAP-V @ 2 * max {: nc:n :}
@@ -484,12 +484,12 @@ SUMV-REC-PTR-MASK 0 TF-LAYOUT=
 0 SV.CTOR-PKG-U SV.CTOR-PKG-U-OFF TF-LAYOUT=
 
 4 constant SUMV-CAP-INIT
-variable SUMV-CAP-V   SUMV-CAP-INIT SUMV-CAP-V !
+variable SUMV-CAP-V   SUMV-CAP-INIT SUMV-CAP-V !   REG-PROTECT
 : SUMV-CAP ( -- n ) SUMV-CAP-V @ ;
-create SUMV-A-BOOT   SUMV-CAP-INIT SUMV-REC * allot
-variable SUMV-A-P   SUMV-A-BOOT SUMV-A-P !
+create SUMV-A-BOOT   SUMV-CAP-INIT SUMV-REC * allot   REG-PROTECT
+variable SUMV-A-P   SUMV-A-BOOT SUMV-A-P !   REG-PROTECT
 : SUMV-BASE ( -- ptr a ) SUMV-A-P @ ;
-variable SUMV-N   0 SUMV-N !
+variable SUMV-N   0 SUMV-N !   REG-PROTECT
 
 : SUMV-GROW ( n -- ) {: need:n :}
    need SUMV-CAP-V @ 2 * max {: nc:n :}
@@ -777,25 +777,14 @@ PF-REC-PTR-MASK 0 TF-LAYOUT=
 0 PF.ALIGN PF.ALIGN-OFF TF-LAYOUT=
 0 PF.FLAGS PF.FLAGS-OFF TF-LAYOUT=
 
-\ --- Registry cell write-protection (dot habu-protect-type-field-04d91409;
-\ docs/registry-band.md § Layer 1). A registry control cell is a din=0 data
-\ record, so the seal-time internal-word pass (internal-mark.f) EXEMPTS it and its
-\ bare name stays executable at top level — a bare `<cell> !` mutates the registry
-\ (confirmed exploit: `99 PF-COMMIT-N !` corrupts TYPE-FIELD:COUNT). REG-PROTECT
-\ tags the most-recently-defined record; IMK-SEAL-REGISTRY (internal-mark.f) sets
-\ DNAME-INT on each after the cold prefix loads, so a bare `<cell> @`/`<cell> !`
-\ or `' <cell>` fails closed (`hb: internal engine word`, rc 70) on --load and
-\ stdin. Core compiled callers resolved before that pass are unaffected; checked
-\ user code already rejects the non-certified name (E-UNDEFINED). Read the registry
-\ through the certified public API (TYPE-FIELD:COUNT/FIND/…), never the raw cell.
-64 constant REG-PROT-CAP
-create REG-PROT-IDX  REG-PROT-CAP cells allot
-variable REG-PROT-N   0 REG-PROT-N !
-: REG-PROTECT ( -- )   \ tag the just-defined data record for seal-time internal-marking
-   REG-PROT-N @ REG-PROT-CAP >= IF s" tfam: registry protect overflow" 76 die THEN
-   ndict@ 1 -  REG-PROT-IDX REG-PROT-N @ cells + !
-   1 REG-PROT-N +! ;
-
+\ --- Registry cell write-protection. REG-PROTECT / IMK-SEAL-REGISTRY (defined in
+\ src/core/util.f and src/core/internal-mark.f; see the util.f header) seal each
+\ registry control cell DNAME-INT so a bare `<cell> @`/`<cell> !` or `' <cell>`
+\ fails closed (`hb: internal engine word`, rc 70). The product-field arena is the
+\ first-sealed set (confirmed exploit `99 PF-COMMIT-N !` corrupted
+\ TYPE-FIELD:COUNT); the sibling family/variant/string/param/layout registries in
+\ this file and the schema registries in type-schema.f are sealed the same way at
+\ their own definition sites.
 4 constant PF-CAP-INIT
 variable PF-CAP-V   PF-CAP-INIT PF-CAP-V !   REG-PROTECT
 : PF-CAP ( -- n ) PF-CAP-V @ ;
@@ -1271,12 +1260,12 @@ LAY-REC-PTR-MASK 0 TF-LAYOUT=
 0 LAY.TAGW LAY.TAGW-OFF TF-LAYOUT=
 
 4 constant LAY-CAP-INIT
-variable LAY-CAP-V   LAY-CAP-INIT LAY-CAP-V !
+variable LAY-CAP-V   LAY-CAP-INIT LAY-CAP-V !   REG-PROTECT
 : LAY-CAP ( -- n ) LAY-CAP-V @ ;
-create LAY-A-BOOT   LAY-CAP-INIT LAY-REC * allot
-variable LAY-A-P   LAY-A-BOOT LAY-A-P !
+create LAY-A-BOOT   LAY-CAP-INIT LAY-REC * allot   REG-PROTECT
+variable LAY-A-P   LAY-A-BOOT LAY-A-P !   REG-PROTECT
 : LAY-BASE ( -- ptr a ) LAY-A-P @ ;
-variable LAY-N   0 LAY-N !
+variable LAY-N   0 LAY-N !   REG-PROTECT
 
 : LAY-GROW ( n -- ) {: need:n :}
    need LAY-CAP-V @ 2 * max {: nc:n :}

@@ -12,6 +12,30 @@ ndict@ IMK-NDICT0 !
 
 variable SEQ
 
+\ --- checker registry write-protection (dots habu-protect-type-field-04d91409,
+\ habu-protect-sibling-type-44eec932). A registry control cell (variable/create)
+\ is a din=0 data record, so the seal-time internal-word pass
+\ (src/core/internal-mark.f) EXEMPTS it and its bare name would stay executable at
+\ top level — a bare `<cell> !` then mutates the registry past the public API
+\ (confirmed exploit: `99 PF-COMMIT-N !` corrupts TYPE-FIELD:COUNT). REG-PROTECT
+\ records the most-recently-defined data record's dictionary index; the pass word
+\ IMK-SEAL-REGISTRY (internal-mark.f) sets DNAME-INT on each after the whole cold
+\ prefix loads, so a bare `<cell> @`/`<cell> !` or `' <cell>` fails closed
+\ (`hb: internal engine word`, rc 70) on both --load and stdin. Core compiled
+\ callers resolved before that pass keep working, and checked user code already
+\ rejects the non-certified raw name (E-UNDEFINED). Read a registry through its
+\ certified accessor (TYPE-FIELD:COUNT, TFAM-N@, TF-STR-U@, SCHEMA-N@, …), never
+\ the raw cell. Defined here in the first prefix source so every later prefix file
+\ (type-schema.f and type-family.f both load before internal-mark.f) can tag its
+\ cells at their definition site with a single REG-PROTECT.
+64 constant REG-PROT-CAP
+create REG-PROT-IDX  REG-PROT-CAP cells allot
+variable REG-PROT-N   0 REG-PROT-N !
+: REG-PROTECT ( -- )   \ tag the just-defined data record for seal-time internal-marking
+   REG-PROT-N @ REG-PROT-CAP >= IF s" registry protect overflow" 76 die THEN
+   ndict@ 1 -  REG-PROT-IDX REG-PROT-N @ cells + !
+   1 REG-PROT-N +! ;
+
 : CORE-STR= {: a:ptr u:n b:ptr v:n :}   \ ( ptr u8 n ptr u8 n -- bool ) byte-wise string equality
    u v = IF
      -1 SEQ !
