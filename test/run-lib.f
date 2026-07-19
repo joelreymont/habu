@@ -1534,13 +1534,19 @@ TR-INSTALL-POOL-HOOKS
    s" missing Habu-under-test after build pool drained: " type TR-UNDER$ type cr
    s" Habu-under-test build artifact missing" TR-FAIL ;
 
+\ Launch the standalone maki candidate suite. Forward-declared here so the
+\ readiness barrier below can start it; installed to TR-MAKI-START once that word
+\ is defined later in the file.
+defer TR-MAKI-KICK ( -- )
+
 : TR-DRAIN-UNTIL-UNDER ( -- )
    begin TR-UNDER-DONE? 0= while
       GT-POOL-LIVE @ 0= if TR-UNDER-MISSING-FAIL then
       GT-POOL-STEP
    repeat
    TR-EXPECT-UNDER
-   TR-UNDER-CACHE-INSTALL ;
+   TR-UNDER-CACHE-INSTALL
+   TR-MAKI-KICK ;
 
 : TR-CANDIDATE-HOST-ORDER@ ( idx -- idx ) {: idx:idx :}
    idx IDX>N cells TR-CANDIDATE-HOST-ORDER + @ >IDX ;
@@ -1813,14 +1819,18 @@ public
    s" --rerun-failed: " type TR-RERUN-N @ TR-NUM$ type
    s"  phase(s) from " type TR-RED-LIST$ type cr ;
 
-\ The maki suite as an early external child (dot habu-route-the-maki-e61d8a1b).
-\ Before this the gate proved NOTHING about maki: deleting a word maki/report.f
-\ load-bears on gated GREEN while breaking the Model CAD pipeline. maki/test.f is
-\ a self-contained ~20s suite (bin/hb --load maki/test.f) that sits at the DICT-CAP
-\ word wall, so it must run STANDALONE - never with the gate base libs prepended,
-\ which would overflow its image. It starts here so its wall overlaps the whole
-\ DAG, holds one top pool slot, and a nonzero rc fails the gate closed through the
-\ normal red-phase path (GT-POOL-RED# in TR-COMPLETE).
+\ The maki suite as a standalone child against the CANDIDATE engine
+\ (dots habu-route-the-maki-e61d8a1b, habu-gate-must-test-cd70ef4e). Before the
+\ candidate routing the gate ran maki on the baseline bin/hb, so a broken
+\ candidate engine could still show maki GREEN - a gate-soundness hole. maki/test.f
+\ is a self-contained ~20s suite (<engine> --load maki/test.f) that sits at the
+\ DICT-CAP word wall, so it must run STANDALONE - never with the gate base libs
+\ prepended, which would overflow its image. It runs the freshly built candidate
+\ (TR-UNDER$) with HABU_UNDER_TEST set, so it can only start once the candidate is
+\ proven ready; TR-DRAIN-UNTIL-UNDER kicks it (via TR-MAKI-KICK) at that barrier so
+\ its wall overlaps the remaining candidate-work phases. It holds one top pool slot
+\ and a nonzero rc fails the gate closed through the normal red-phase path
+\ (GT-POOL-RED# in TR-COMPLETE).
 : TR-MAKI-LABEL ( -- ptr u8 n )
    s" native maki checked suite" ;
 
@@ -1843,31 +1853,46 @@ public
    s" HB_TMP" >LEN TR-PATH$ >LEN PROC-ENV+
    TR-BUILD-CACHE-ENV
    TR-MAKI-PCT-ENV+
+   TR-UNDER-ENV+
    PROC-ENV-INHERIT-MISSING
    s" --load"  >LEN PROC-ARGV+
    s" maki/test.f"  >LEN PROC-ARGV+ ;
 
-\ host-source subject (maki checks the working-tree source), unique label so the
-\ pool-pass span attributes cleanly and no duplicate-label guard trips.
+\ Candidate sha for stats attribution, mirroring TR-PHASE-SHA: maki now runs the
+\ candidate, so its phase reports the candidate binary hash (populated by the time
+\ TR-DRAIN-UNTIL-UNDER kicks maki, since TR-EXPECT-UNDER ran TR-UNDER-SHA! first).
+: TR-MAKI-SHA ( -- ptr u8 n )
+   TR-UNDER-READY @ 0= if s" -" exit then
+   TR-UNDER-HEX 64 ;
+
+\ host-source subject (maki checks the working-tree source), under runner-kind
+\ (the candidate engine), unique label so the pool-pass span attributes cleanly
+\ and no duplicate-label guard trips.
 : TR-MAKI-TEST ( -- )
    TR-MAKI-LABEL
    s" host-source"
-   s" bin"
+   s" under"
    s" process"
-   s" -"
+   TR-MAKI-SHA
    GS-TEST ;
 
 : TR-MAKI-START ( -- )
    TR-MAKI-BASE
    s" top-phase-spawn" GS-EVENT
+   s" under-phase-spawn" GS-EVENT
    TR-MAKI-TEST
-   s" bin/hb" TR-MAKI-LABEL TR-TIMEOUT-MS GT-POOL-START ;
+   TR-UNDER$ TR-MAKI-LABEL TR-TIMEOUT-MS GT-POOL-START ;
+
+\ Install the deferred readiness kick (declared before TR-DRAIN-UNTIL-UNDER, which
+\ launches maki only after the candidate binary is proven ready).
+: TR-MAKI-KICK-INSTALL ( -- )
+   [: TR-MAKI-START ;] is TR-MAKI-KICK ;
+TR-MAKI-KICK-INSTALL
 
 : TR-EARLY-EXTERNAL-START ( -- )
    GT-POOL-RESET
    TR-PRE-TOOLS-START
    TR-PRE-CANDIDATE-START
-   TR-MAKI-START
    TR-UNDER-READY @ 0= if
       15 >IDX TR-PHASE-START
    else
