@@ -1,6 +1,6 @@
 ---
 title: Reject fork with linear state
-status: active
+status: open
 priority: 1
 issue-type: task
 created-at: "\"2026-07-16T04:45:09.084233+02:00\""
@@ -11,3 +11,4 @@ Context: src/core/checker.f models fork as an ordinary zero-input primitive. Run
 Expanded soundness scope: persist nonlinear type-variable and row-tail constraints in certified effects so wrappers cannot launder live data-stack state; persist and propagate a may-fork effect through wrappers, recursion, aliases/EXPORT, and nested/returned quotations so every actual application constrains caller-live return-row state and locals. Certification must preserve the exact verified constraints rather than reparse them away. Cover direct and two-level wrappers, open data/return tails, late-bound generic and layout arguments, concrete/late locals, direct/returned/generic quotation execution, alias/export, failed-overload rollback, owner-PID defense, and a positive wrapper that consumes its linear input before fork without over-rejecting it.
 
 Claim: agent=checker_loader_fix workspace=.jj-ws/habu-checker-reject-loader-body.
+Release 2026-07-19: claim agent workspace was destroyed in the .jj-ws loss incident (see LESSONS.md); lane returned to open for re-dispatch.
