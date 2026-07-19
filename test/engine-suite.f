@@ -156,6 +156,19 @@ TPLOOP 5 T=
 TJ 12 T=
 : TLEAVE ( -- n ) 0 10 0 do 1 + dup 4 = if leave then loop ;
 TLEAVE 4 T=
+\ CASE OF arm dispatch, branch-directly-on-flags (dot
+\ habu-branch-directly-on-4624d193). Each arm's J-OF used to materialize a boolean
+\ only to test it: ldur x9,[x19,#-8]; cmp x9,x16; cset x9,eq; cbz x9,next; drop.
+\ It now branches straight off the compare flags:
+\   ldur x9,[x19,#-8]; cmp x9,x16; b.ne next; sub x19,#8 (drop scrutinee on match)
+\ Byte-exact per-arm hex (measured via tools/jitdump.f xt->RET walk):
+\   before arm: F85F8269 EB10013F 9A9F17E9 B4000009 D1002273  (cset+cbz, 5 words)
+\   after  arm: F85F8269 EB10013F 54000001 D1002273           (b.ne,     4 words)
+\ (B4000009/54000001 shown with imm=0; the real placeholder carries the imm19
+\ skip offset that LPAT patches — e.g. cbz x9,+6 = B40000C9 becomes b.ne +6 =
+\ 540000C1 in the one-arm fixture below.) Controlled fixtures lose exactly 4 bytes
+\ and one executed instruction per arm: one-arm CASE 124 -> 120, two-arm 180 ->
+\ 172. TCASE below is the two-arm shape (arms 1 and 2 + a default).
 : TCASE ( n -- n )
    case
       1 of 10 endof

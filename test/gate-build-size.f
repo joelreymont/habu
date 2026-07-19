@@ -46,6 +46,13 @@
 \ page-rounded whole-file total is unchanged. See the exact CODE-TEXT/floor rows
 \ in test/gate-size-attribution-test.f (macOS re-measured live; Linux pending a
 \ next-fixpoint re-measurement).
+\ 2026-07-19 macOS 165367 -> 165367: CASE OF dispatch B.cond slimming (dot
+\ habu-branch-directly-on-4624d193) nets -12 bytes of engine text (CODELEN
+\ 127536 -> 127524) by dropping the per-arm cset boolean in J-OF; it stays inside
+\ the same nine 16 KiB __TEXT pages, so the page-rounded whole-file total is
+\ unchanged. See the exact CODE-TEXT/floor rows in
+\ test/gate-size-attribution-test.f (macOS re-measured live; Linux pending a
+\ next-fixpoint re-measurement).
 165367 constant GB-SIZE-BASELINE-MACOS
 143552 constant GB-SIZE-BASELINE-LINUX   \ fable re-measure 2026-07-19 (DGX Spark linux-arm64) after the
                                          \ shared PROT-GUARD:CALL span-guard fold shrank CODELEN

@@ -1381,16 +1381,22 @@ here RESTAB-BUF - constant RESTAB-LEN
 
 \ J-OF pushes a CASE-arm marker (bit 0) onto the CMBK branch-kind bitstack so the
 \ shared J-ENDOF can tell a CASE arm from a MATCH variant branch (which pushes a 1
-\ in EM-ADT-MATCH-OF). The emitted CASE compare/branch code is unchanged.
+\ in EM-ADT-MATCH-OF). Dispatch (mirroring the MATCH slimming): compare the peeked
+\ scrutinee against the popped arm value and skip straight to the next arm on a
+\ b.ne, instead of materializing a cset boolean only to test it with a cbz. The
+\ cmp sets NZ and the very next emitted word is the branch (C-PUSHCP is
+\ compile-time and emits nothing), so the flags reach the b.ne untouched. LPAT
+\ already patches the b.ne placeholder via its imm19 branch-class path, exactly
+\ like the shared exit->join B and the former cbz. Saves one word (4 bytes) and
+\ one executed instruction per arm.
 : J-OF ( -- )
    14 DATA CMBK-CELL LDR,  14 14 1 LSLI,  14 DATA CMBK-CELL STR,
-   C-POP-X16
-   $F85F8269 C-EMITW
-   $EB10013F C-EMITW
-   $9A9F17E9 C-EMITW
+   C-POP-X16                             \ pop arm value into x16
+   $F85F8269 C-EMITW                     \ ldur x9,[x19,#-8]  peek scrutinee
+   $EB10013F C-EMITW                     \ cmp x9,x16
    C-PUSHCP
-   $B4000009 C-EMITW
-   $D1002273 C-EMITW ;
+   $54000001 C-EMITW                     \ b.ne +0  (skip to next arm on mismatch)
+   $D1002273 C-EMITW ;                   \ sub x19,x19,#8  drop scrutinee on match
 
 \ J-ENDOF: identical branch-placeholder codegen for CASE and MATCH (= J-ELSE);
 \ then pop the CMBK branch-kind bit — a MATCH variant branch (1) re-arms the token

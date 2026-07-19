@@ -54,9 +54,19 @@ $4000 constant MACOS-DATA-CONST  \ __DATA_CONST page (__got + zero fill)
 \ primitive adds its emitter + registration; the exact-CODELEN ratchet measured
 \ the composed candidate at 127536 (STALE-BASELINE, was 127764), floor 788 ->
 \ 560. Page count, signature, and whole-file total are unchanged.
-127536 constant MACOS-CODE-TEXT   \ CODELEN: every emitter-phase row (baked-source incl.)
+\ 2026-07-19 re-measured live at the macOS byte-fixpoint for the CASE OF dispatch
+\ B.cond slimming (dot habu-branch-directly-on-4624d193). J-OF now emits
+\ cmp; b.ne next; drop instead of cmp; cset x9,eq; cbz x9,next; drop, so the
+\ engine's J-OF drops exactly one C-EMITW call site (the cset word), shrinking
+\ macOS __text by 12 bytes; the class-based imm26/imm19 LPAT selector needed to
+\ patch the b.ne placeholder already landed with the MATCH slimming. The
+\ exact-CODELEN ratchet measured the candidate at 127524 (STALE-BASELINE, was
+\ 127536), floor 560 -> 548. Page count, signature, and whole-file total are
+\ unchanged. (Controlled fixtures: one-arm CASE 124 -> 120, two-arm 180 -> 172,
+\ exactly 4 bytes and one executed instruction per arm.)
+127524 constant MACOS-CODE-TEXT   \ CODELEN: every emitter-phase row (baked-source incl.)
 1423 constant MACOS-SIGNATURE     \ ad-hoc code signature SuperBlob (grows with CODELEN)
-560 constant MACOS-FLOOR-DIST     \ code above the 16 KiB floor: the page-recovery shave
+548 constant MACOS-FLOOR-DIST     \ code above the 16 KiB floor: the page-recovery shave
 165367 constant MACOS-TOTAL       \ = FILE-SIZE bin/hb = GB-SIZE-BASELINE-MACOS
 
 \ Linux committed attribution, measured at the byte-fixpoint on 2026-07-19 (DGX
@@ -85,6 +95,14 @@ $4000 constant MACOS-DATA-CONST  \ __DATA_CONST page (__got + zero fill)
 \ (macOS row above was re-measured by that landing; Linux left for this next
 \ fixpoint): +92 of engine text, composing to 135996 (floor 736 -> 828); the
 \ whole file stays inside the same 4 KiB page (LINUX-TOTAL unchanged).
+\ 2026-07-19 CASE OF dispatch B.cond slimming (dot
+\ habu-branch-directly-on-4624d193) was landed and byte-measured on macOS only;
+\ this LINUX-CODE-TEXT row is NOT re-measured on this tree and must be re-measured
+\ live at the next linux-arm64 fixpoint (the exact-CODELEN ratchet fails closed
+\ with the value to commit). The change drops one C-EMITW call site in the
+\ engine's J-OF, so the predicted Linux delta is the same -12 bytes measured on
+\ macOS (135996 -> 135984 predicted); the absolute value is left for a live Linux
+\ measurement rather than bumped from this host.
 135996 constant LINUX-CODE-TEXT   \ CODELEN: every emitter-phase row (baked-source incl.)
 192 constant LINUX-RW             \ ELF read-write segment tail: DYNAMIC + GOT (ELF-RW-SZ)
 828 constant LINUX-FLOOR-DIST     \ code above the 4 KiB floor: the page-recovery shave
