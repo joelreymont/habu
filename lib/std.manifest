@@ -1120,17 +1120,25 @@ schema_version	module	file	kind	word	effect	test	doc	owner	status	notes
 1	content-key	lib/content-key.f	word	CK-FRAG+	(n ptr u8 n --)	lib/content-key-test.f	docs/stdlib.md	stdlib-content-key	published	append one tagged counted manifest fragment
 1	content-key	lib/content-key.f	word	CK-TEXT+	(ptr u8 n --)	lib/content-key-test.f	docs/stdlib.md	stdlib-content-key	published	append a cache version or mode string
 1	content-key	lib/content-key.f	word	CK-DIGEST+	(ptr u8 --)	lib/content-key-test.f	docs/stdlib.md	stdlib-content-key	published	append one 32-byte digest fragment
+1	content-key	lib/content-key.f	word	CK-STDERR-LINE	(ptr u8 n --)	lib/content-key-test.f	docs/stdlib.md	stdlib-content-key	active	write one plain-English line to stderr
 1	content-key	lib/content-key.f	word	CK-CACHE-CLEAR!	(--)	lib/content-key-test.f	docs/stdlib.md	stdlib-content-key	published	clear the explicit content-key cache path
 1	content-key	lib/content-key.f	word	CK-CACHE-BUF-FIELD	(-- ptr ptr u8)	lib/content-key-test.f	docs/stdlib.md	stdlib-content-key	active	return the typed content-key cache buffer pointer field
 1	content-key	lib/content-key.f	word	CK-CACHE-BUF@	(-- ptr u8)	lib/content-key-test.f	docs/stdlib.md	stdlib-content-key	active	read the content-key cache buffer pointer
 1	content-key	lib/content-key.f	word	CK-CACHE-BUF!	(ptr u8 --)	lib/content-key-test.f	docs/stdlib.md	stdlib-content-key	active	write the content-key cache buffer pointer
 1	content-key	lib/content-key.f	word	CK-CACHE-BUF	(-- ptr u8)	lib/content-key-test.f	docs/stdlib.md	stdlib-content-key	active	return the allocated content-key cache buffer
+1	content-key	lib/content-key.f	word	CK-CACHE-OUT-FIELD	(-- ptr ptr u8)	lib/content-key-test.f	docs/stdlib.md	stdlib-content-key	active	return the typed compaction output buffer pointer field
+1	content-key	lib/content-key.f	word	CK-CACHE-OUT@	(-- ptr u8)	lib/content-key-test.f	docs/stdlib.md	stdlib-content-key	active	read the compaction output buffer pointer
+1	content-key	lib/content-key.f	word	CK-CACHE-OUT!	(ptr u8 --)	lib/content-key-test.f	docs/stdlib.md	stdlib-content-key	active	write the compaction output buffer pointer
+1	content-key	lib/content-key.f	word	CK-CACHE-OUT	(-- ptr u8)	lib/content-key-test.f	docs/stdlib.md	stdlib-content-key	active	return the allocated compaction output buffer
+1	content-key	lib/content-key.f	word	CK-IDX-FIELD	(-- ptr ptr a)	lib/content-key-test.f	docs/stdlib.md	stdlib-content-key	active	return the typed path index base pointer field
+1	content-key	lib/content-key.f	word	CK-IDX	(-- ptr a)	lib/content-key-test.f	docs/stdlib.md	stdlib-content-key	active	return the allocated path index offset array
+1	content-key	lib/content-key.f	word	CK-IDX-AT@	(n -- n)	lib/content-key-test.f	docs/stdlib.md	stdlib-content-key	active	read one path index offset entry
+1	content-key	lib/content-key.f	word	CK-IDX-AT!	(n n --)	lib/content-key-test.f	docs/stdlib.md	stdlib-content-key	active	write one path index offset entry
 1	content-key	lib/content-key.f	word	CK-CACHE-PATH$	(-- ptr u8 n)	lib/content-key-test.f	docs/stdlib.md	stdlib-content-key	published	return the active content-key cache path
 1	content-key	lib/content-key.f	word	CK-CACHE-PATH?	(-- bool)	lib/content-key-test.f	docs/stdlib.md	stdlib-content-key	published	report whether an explicit content-key cache path is set
 1	content-key	lib/content-key.f	word	CK-CACHE-PATH!	(ptr u8 n --)	lib/content-key-test.f	docs/stdlib.md	stdlib-content-key	published	set an explicit content-key cache file path
 1	content-key	lib/content-key.f	word	CK-CACHE-ROOT!	(ptr u8 n --)	lib/content-key-test.f	docs/stdlib.md	stdlib-content-key	published	set the content-key cache file under a root directory
 1	content-key	lib/content-key.f	word	CK-CACHE-AUTO?	(-- bool)	lib/content-key-test.f	docs/stdlib.md	stdlib-content-key	active	report whether an explicit content-key cache path is configured
-1	content-key	lib/content-key.f	word	CK-CACHE-LOAD?	(-- bool)	lib/content-key-test.f	docs/stdlib.md	stdlib-content-key	active	load the content-key digest cache when configured and present
 1	content-key	lib/content-key.f	word	CK-ROW-RESET	(--)	lib/content-key-test.f	docs/stdlib.md	stdlib-content-key	active	clear the current content-key cache row
 1	content-key	lib/content-key.f	word	CK-ROW-CHECK	(n --)	lib/content-key-test.f	docs/stdlib.md	stdlib-content-key	active	validate content-key cache row append capacity
 1	content-key	lib/content-key.f	word	CK-ROW-C+	(n --)	lib/content-key-test.f	docs/stdlib.md	stdlib-content-key	active	append one byte to the current content-key cache row
@@ -1142,7 +1150,39 @@ schema_version	module	file	kind	word	effect	test	doc	owner	status	notes
 1	content-key	lib/content-key.f	word	CK-HEX>DIGEST	(ptr u8 --)	lib/content-key-test.f	docs/stdlib.md	stdlib-content-key	active	decode a cached hex digest into the file digest buffer
 1	content-key	lib/content-key.f	word	CK-LINE-END	(n -- n)	lib/content-key-test.f	docs/stdlib.md	stdlib-content-key	active	find the end offset of a cached digest row
 1	content-key	lib/content-key.f	word	CK-CACHE-LINE?	(n -- bool)	lib/content-key-test.f	docs/stdlib.md	stdlib-content-key	active	test whether one cached digest row matches the current prefix
+1	content-key	lib/content-key.f	word	CK-ROW-PATH-END	(n -- n)	lib/content-key-test.f	docs/stdlib.md	stdlib-content-key	active	find the path field end offset of a cache row
+1	content-key	lib/content-key.f	word	CK-ROW-PATH$	(n -- ptr u8 n)	lib/content-key-test.f	docs/stdlib.md	stdlib-content-key	active	return the path field slice of a cache row
+1	content-key	lib/content-key.f	word	CK-QUERY-PATH-END	(-- n)	lib/content-key-test.f	docs/stdlib.md	stdlib-content-key	active	find the path length of the current query row prefix
+1	content-key	lib/content-key.f	word	CK-QUERY-PATH$	(-- ptr u8 n)	lib/content-key-test.f	docs/stdlib.md	stdlib-content-key	active	return the path field of the current query row prefix
+1	content-key	lib/content-key.f	word	CK-PATH<?	(ptr u8 n ptr u8 n -- bool)	lib/content-key-test.f	docs/stdlib.md	stdlib-content-key	active	report whether the first path sorts before the second
+1	content-key	lib/content-key.f	word	CK-OFF-LESS?	(n n -- bool)	lib/content-key-test.f	docs/stdlib.md	stdlib-content-key	active	order two row offsets by path then buffer position
+1	content-key	lib/content-key.f	word	CK-CACHE-INDEX-REGION	(n n --)	lib/content-key-test.f	docs/stdlib.md	stdlib-content-key	active	index the row offsets in one buffer byte region
+1	content-key	lib/content-key.f	word	CK-CACHE-BUILD-IDX	(--)	lib/content-key-test.f	docs/stdlib.md	stdlib-content-key	active	build the path-sorted lookup index over the loaded rows
+1	content-key	lib/content-key.f	word	CK-CACHE-HAS-DUPS?	(-- bool)	lib/content-key-test.f	docs/stdlib.md	stdlib-content-key	active	report whether the sorted index holds duplicate paths
+1	content-key	lib/content-key.f	word	CK-ROW-BYTES	(n -- n)	lib/content-key-test.f	docs/stdlib.md	stdlib-content-key	active	return the byte length of a cache row including its newline
+1	content-key	lib/content-key.f	word	CK-IDX-LAST-OF-RUN?	(n -- bool)	lib/content-key-test.f	docs/stdlib.md	stdlib-content-key	active	report whether an index entry ends its path run
+1	content-key	lib/content-key.f	word	CK-KEEP+	(n --)	lib/content-key-test.f	docs/stdlib.md	stdlib-content-key	active	append one kept offset to the compaction front of the index
+1	content-key	lib/content-key.f	word	CK-CACHE-KEEP-NEWEST	(--)	lib/content-key-test.f	docs/stdlib.md	stdlib-content-key	active	keep the newest index offset per path
+1	content-key	lib/content-key.f	word	CK-CACHE-TOTAL-BYTES	(-- n)	lib/content-key-test.f	docs/stdlib.md	stdlib-content-key	active	sum the byte length of the kept compaction rows
+1	content-key	lib/content-key.f	word	CK-CACHE-EVICT-START	(-- n)	lib/content-key-test.f	docs/stdlib.md	stdlib-content-key	active	first kept row index that fits the compacted image under the cap
+1	content-key	lib/content-key.f	word	CK-CACHE-EMIT	(--)	lib/content-key-test.f	docs/stdlib.md	stdlib-content-key	active	assemble the compacted rows into the output buffer
+1	content-key	lib/content-key.f	word	CK-CACHE-COMPACT	(--)	lib/content-key-test.f	docs/stdlib.md	stdlib-content-key	active	build the newest-per-path compacted image
+1	content-key	lib/content-key.f	word	CK-TMP-C+	(n --)	lib/content-key-test.f	docs/stdlib.md	stdlib-content-key	active	append one byte to the temp path buffer
+1	content-key	lib/content-key.f	word	CK-TMP-BYTES+	(ptr u8 n --)	lib/content-key-test.f	docs/stdlib.md	stdlib-content-key	active	append counted bytes to the temp path buffer
+1	content-key	lib/content-key.f	word	CK-TMP-N+	(n --)	lib/content-key-test.f	docs/stdlib.md	stdlib-content-key	active	append a nonnegative decimal to the temp path buffer
+1	content-key	lib/content-key.f	word	CK-CACHE-BUILD-TMP	(-- ptr u8 n)	lib/content-key-test.f	docs/stdlib.md	stdlib-content-key	active	build one unique sibling temp path candidate
+1	content-key	lib/content-key.f	word	CK-CACHE-UNIQUE-TMP	(-- ptr u8 n)	lib/content-key-test.f	docs/stdlib.md	stdlib-content-key	active	build a collision-free sibling temp path
+1	content-key	lib/content-key.f	word	CK-CACHE-WRITE	(--)	lib/content-key-test.f	docs/stdlib.md	stdlib-content-key	active	write the compacted image to a temp file then rename over the cache
+1	content-key	lib/content-key.f	word	CK-CACHE-CLEAN-TMP	(--)	lib/content-key-test.f	docs/stdlib.md	stdlib-content-key	active	best-effort remove a leftover temp after a failed write
+1	content-key	lib/content-key.f	word	CK-CACHE-PERSIST	(--)	lib/content-key-test.f	docs/stdlib.md	stdlib-content-key	active	persist the compacted image, degrading visibly on write failure
+1	content-key	lib/content-key.f	word	CK-CACHE-OVERCAP	(--)	lib/content-key-test.f	docs/stdlib.md	stdlib-content-key	active	announce an over-capacity cache on stderr
+1	content-key	lib/content-key.f	word	CK-CACHE-INIT	(--)	lib/content-key-test.f	docs/stdlib.md	stdlib-content-key	active	load the cache file, build the index, and mark stale duplicates dirty
+1	content-key	lib/content-key.f	word	CK-CACHE-LOAD?	(-- bool)	lib/content-key-test.f	docs/stdlib.md	stdlib-content-key	active	load the content-key digest cache when configured and present
+1	content-key	lib/content-key.f	word	CK-IDX-LOWER	(-- n)	lib/content-key-test.f	docs/stdlib.md	stdlib-content-key	active	binary-search the index lower bound for the query path
+1	content-key	lib/content-key.f	word	CK-IDX-FIND?	(-- bool)	lib/content-key-test.f	docs/stdlib.md	stdlib-content-key	active	find the current row via the path-sorted index
+1	content-key	lib/content-key.f	word	CK-CACHE-TAIL-FIND?	(-- bool)	lib/content-key-test.f	docs/stdlib.md	stdlib-content-key	active	scan rows appended after the index for the current row
 1	content-key	lib/content-key.f	word	CK-CACHE-FIND?	(-- bool)	lib/content-key-test.f	docs/stdlib.md	stdlib-content-key	active	find a cached digest for the current content-key row prefix
+1	content-key	lib/content-key.f	word	CK-CACHE-SAVE	(--)	lib/content-key-test.f	docs/stdlib.md	stdlib-content-key	active	compact and atomically persist the cache when dirty
 1	content-key	lib/content-key.f	word	CK-ROW-DIGEST+	(--)	lib/content-key-test.f	docs/stdlib.md	stdlib-content-key	active	append the current file digest to the cache row
 1	content-key	lib/content-key.f	word	CK-CACHE-APPEND	(--)	lib/content-key-test.f	docs/stdlib.md	stdlib-content-key	active	append a newly computed digest row to the cache file
 1	content-key	lib/content-key.f	word	CK-FILE-DIGEST!	(ptr u8 n --)	lib/content-key-test.f	docs/stdlib.md	stdlib-content-key	active	hash one file into the content-key file digest buffer

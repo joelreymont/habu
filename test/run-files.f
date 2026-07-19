@@ -40,7 +40,7 @@ require lib/string.f
 TR-FILES: TR-AOT-RUNNER-SUPPORT-FILES
    lib/errors.f lib/string.f lib/memory.f lib/cad-num-arithmetic.f lib/cad-num-types.f lib/vector.f lib/fs.f lib/fs-mutate.f
    lib/process.f lib/process-argv.f lib/process-env.f lib/process-fork.f lib/test/record.f lib/test/runner.f
-   lib/source.f lib/build.f lib/codesign.f lib/content-key.f tools/build-fixpoint.f
+   lib/source.f lib/build.f lib/codesign.f lib/sort.f lib/content-key.f tools/build-fixpoint.f
    tools/stdin-closure-lib.f
    lib/object.f lib/object-cache.f lib/object-index.f lib/object-resolve.f
    lib/object-link.f tools/cli-run.f tools/object-image.f tools/hb-build-lib.f
@@ -69,7 +69,7 @@ TR-FILES: TR-GATE-HARNESS-FILES
    lib/adt/result.f lib/fs.f
    lib/fs-mutate.f lib/process.f lib/process-argv.f lib/process-env.f
    lib/process-fork.f lib/test/record.f lib/test/runner.f lib/test/budget.f
-   lib/content-key.f tools/cli-run.f
+   lib/sort.f lib/content-key.f tools/cli-run.f
    test/gate-pool.f test/gate-stats.f tools/why-threw.f
 ;TR-FILES
 

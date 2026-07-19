@@ -482,6 +482,7 @@ HBB-INSTALL-CHILD-LINTS
    s" lib/source.f" HBB-KEY-FILE+
    s" lib/build.f" HBB-KEY-FILE+
    s" lib/codesign.f" HBB-KEY-FILE+
+   s" lib/sort.f" HBB-KEY-FILE+
    s" lib/content-key.f" HBB-KEY-FILE+
    s" lib/build-cache.f" HBB-KEY-FILE+
    s" lib/json-write.f" HBB-KEY-FILE+
