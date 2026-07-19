@@ -1610,6 +1610,9 @@ points stay listed.
 - `tools/kernel-perf-lint-core.f` — reusable diff scanner requiring kernel codegen changes to carry a profile/waiver row in `tools/ptx/perf-rows.tsv`.
 - `tools/kernel-perf-lint.f` — CLI wrapper for the kernel profile-row diff lint.
 - `tools/kernel-perf-lint-test.f` — checked fixture coverage for the kernel profile-row diff lint.
+- `tools/diff-side-content.f` — deterministic framed side-content artifact encoder (`package DIFF-CONTENT`): ordered rows/sides with SHA-256 digests, byte size, binary classification, and a metadata-bound header/trailer.
+- `tools/diff-side-content-read.f` — strict reader and validator for the framed side-content artifact with cursor-based row selection.
+- `tools/diff-side-content-test.f` — checked round-trip and rejection coverage for the side-content codec and reader.
 - `tools/aot-lint-core.f` — reusable stripped-AOT unsupported-word scanner.
 - `tools/aot-lint.f` — CLI wrapper for stripped-AOT unsupported-word lint.
 - `tools/aot-lint-test-lib.f` — load-only stripped-AOT lint fixture library for resident runner tests.
