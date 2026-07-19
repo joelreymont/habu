@@ -51,15 +51,20 @@ public
 \ does a real candidate build + cache install + AOT maker build and runs a heavier
 \ maki child, so the native AOT-positive phase becomes the long pole. The startup
 \ spin probe runs before that load ramps up, so the calibration factor never scales
-\ for it; the cold stop-line carries static headroom instead. Spark cold measured
-\ ~44.6s wall under loadavg 1.45 (repeated by another lane; ~27s idle floor measured
-\ here from a fresh workspace), so 56000 = ~44.6s + 25%. macOS reuses the spark cold
-\ pair - same warm base, same 10x2 shape, unmeasured here but corroborated by the
-\ committed macOS reference cold-fill of 39.336s internal / 41.64s wall (STATUS.md).
-56000 constant SPARK-COLD-MS
-62000 constant SPARK-COLD-WALL-MS
-56000 constant MACOS-COLD-MS
-62000 constant MACOS-COLD-WALL-MS
+\ for it; the cold stop-line carries static headroom instead. Spark cold was
+\ re-measured on the healed content-key cache (dot habu-re-derive-spark-4487e129,
+\ heal 5d6edc8e): the worst of four idle fresh-XDG_CACHE_HOME cold runs was 26.812s
+\ elapsed at cal ~100%, so 34000 = ~26.8s + 25% and the 38000 wall keeps the same
+\ ~11% headroom over the elapsed budget that the old pair carried. The pre-heal
+\ 44.6s worst case is retired. macOS is still unmeasurable on this box: it mirrors
+\ the healed spark cold pair on the assumption the shared cache heal cut macOS cold
+\ proportionally, and must be re-measured on macOS to confirm - the committed
+\ 39.336s / 41.64s macOS cold-fill reference is a 2026-07-01 pre-heal number that no
+\ longer bounds the budget.
+34000 constant SPARK-COLD-MS
+38000 constant SPARK-COLD-WALL-MS
+34000 constant MACOS-COLD-MS
+38000 constant MACOS-COLD-WALL-MS
 
 ;package
 
