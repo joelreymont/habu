@@ -1681,7 +1681,7 @@ points stay listed.
 - `tools/trust-lint.f` — CLI wrapper for `TRUSTED.md` drift lint.
 - `tools/trust-lint-test.f` — checked fixture coverage for `TRUSTED.md` drift lint.
 - `tools/trusted-inventory.f` — TRUSTED ratchet: lexer-backed TSV inventory of `TRUSTED:`/`TRUST`/`0 set-check` sites plus baseline compare against `TRUSTED.md`.
-- `tools/trusted-inventory-test.f` — checked fixture coverage for the trusted-inventory ratchet.
+- `tools/trusted-inventory-test.f` — checked fixture coverage for the trusted-inventory ratchet, plus a live child run of the production `strict` trust-gate command.
 - `tools/primitive-effect-inventory.f` — PEINV ratchet: independent identity inventory of the `PRIM:`/`PPRIM:` axiom rows (canonical kind/package/spelling/effect/flags tuple), cross-checked against the live `#PE` registry and baselined against the `primitive-effect-inventory-manifest` block in `TRUSTED.md`.
 - `tools/primitive-effect-inventory-test.f` — checked fixture coverage for the primitive-effect inventory ratchet: identity round-trip, formatting stability, and the add/delete/duplicate/reorder/mutation tamper matrix.
 - `tools/refine-lint-core.f` — inventory-driven confinement lint for TRUSTED refinement mints (rows shaped `n -- <nominal family>`): references outside the owning file are findings unless cited by the row's Tests cell or an explicit allowlist; a seed list cross-checked against `TRUSTED.md` plus a mint-shape scan keeps the set from rotting. Interim until the TVK-RAW checker capability lands.

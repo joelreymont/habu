@@ -12,6 +12,9 @@ require lib/memory.f
 require lib/fs.f
 require lib/fs-mutate.f
 require lib/sort.f
+require lib/process.f
+require lib/process-argv.f
+require lib/test/outcome.f
 require tools/lint/text.f
 require tools/argv.f
 
@@ -90,6 +93,54 @@ variable SORT-I
 : LIVE-CLASSES ( -- )
    TINV:CLASSES# 0 > TTRUE
    TINV:UNCLASSIFIED# 0 T= ;
+
+\ ---- live production strict command (child process) ------------------------
+\ Review finding 13: the counts/parsed-manifest/in-memory fixtures above never
+\ ran the production trust gate command, so the gate slice could stay green while
+\ `bin/hb --load tools/trusted-inventory.f -- strict` was red (it reported one
+\ invalid owner until the DRAIN-PRETRUST shim removal landed). This runs that
+\ exact command as a child and certifies it exits 0 with the expected summary, so
+\ the slice fails closed whenever the production strict run does.
+$80000 constant TLS-OUT-CAP                  \ strict stdout is ~118 KB and grows with trust sites; ~4x headroom
+$4000 constant TLS-ERR-CAP
+30000 constant TLS-TIMEOUT-MS
+create TLS-OUT TLS-OUT-CAP allot
+create TLS-ERR TLS-ERR-CAP allot
+
+\ Stable prefix of the strict summary line ("... separable fold(s) N (baseline M)");
+\ the drifting counts are excluded so the assertion survives legitimate churn.
+: TLS-SUMMARY$ ( -- ptr u8 n )
+   s" trusted-inventory: separable fold(s) " ;
+
+\ Resolve the child engine: the gate default env HABU_UNDER_TEST names the
+\ candidate binary; a standalone run falls back to the installed bin/hb.
+: TLS-HB$ ( -- ptr u8 n )
+   s" HABU_UNDER_TEST" GETENV dup 0= if 2drop s" bin/hb" exit then ;
+
+: TLS-ARG+ ( ptr u8 n -- )
+   >LEN PROC-ARGV+ ;
+
+\ Spawn `<hb> --load tools/trusted-inventory.f -- strict`, capturing stdout/stderr.
+: TLS-RUN ( -- len len outcome )
+   PROC-ARGV-RESET
+   s" --load" TLS-ARG+
+   s" tools/trusted-inventory.f" TLS-ARG+
+   s" --" TLS-ARG+
+   s" strict" TLS-ARG+
+   TLS-HB$ >LEN
+   TLS-OUT TLS-OUT-CAP >LEN
+   TLS-ERR TLS-ERR-CAP >LEN TLS-TIMEOUT-MS >MS
+   RUN-ARGV-CAPTURE-OUTCOME ;
+
+\ The production trust gate itself: strict must exit 0, print nothing to stderr,
+\ and emit its summary line. A spawn failure, nonzero exit, signal, timeout, or
+\ missing summary fails closed here (T-OUTCOME-EXITED= rejects non-exit outcomes).
+: LIVE-STRICT ( -- )
+   TLS-RUN
+   0 T-OUTCOME-EXITED=
+   LEN>N {: erru:n :} LEN>N {: outu:n :}
+   TLS-ERR erru s" " T$=
+   TLS-OUT outu TLS-SUMMARY$ CONTAINS? TTRUE ;
 
 \ ---- in-memory classifier fixtures ------------------------------------------
 : FIX-SCAN ( ptr u8 n -- ) {: a:ptr u:n :}
@@ -595,6 +646,7 @@ variable DF-FILE-U
    LIVE-OUTPUT
    LIVE-BASELINE
    LIVE-CLASSES
+   LIVE-STRICT
    FIX-SKIP-PATHS
    FIX-TRUSTED
    FIX-TRUSTED-CASE
