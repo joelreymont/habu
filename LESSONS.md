@@ -831,6 +831,21 @@ fits.
   child-count delta (e.g. 10099/10000) is machine-load noise, not your change —
   the counts prove your work isn't in that timed group; re-run to confirm it
   clears.
+- **Every process-spawning time ratchet must scale its nominal by the host
+  calibration (`TEST-BUDGET:PERF-MS`), never a naked wall-clock constant.** The
+  engine gate's runtime slice was the lone exception (`10000 constant MAX-MS`,
+  test/gate-engine-lib.f) and false-redded 10047–11919 ms on byte-identical
+  engines whenever other lanes or user workloads loaded the box; fixed 2026-07-19
+  by dot habu-derive-runtime-budget-81b2f538 (derived `NOMINAL-MS`, cal-scaled
+  budget, `cal-pct=`/`(saturated)` attribution on every run, RATCHET-SELFTEST
+  proving a >3×-nominal engine reds even at the 300% clamp). Two measurement
+  rules from the derivation: (1) the calibration spin (cal-pct) tracks a short
+  phase's ACTUAL contention better than 1-minute loadavg — a loadavg-3 sample
+  showed elapsed 2× the loadavg-6 steady state while cal-pct 151 tracked it;
+  attribute with cal-pct, not `uptime`. (2) In-gate elapsed far exceeds the same
+  slice standalone because of intra-gate phase concurrency — derive budgets from
+  the REAL gate's numbers (extract from `$HB_TMP/pool-*-out.log`), never from a
+  standalone harness run.
 - **Full-DAG timing beats isolated wins; every focused optimization must survive the whole
   command under contention.** Splitting suites, per-phase forks, higher nested pools, and
   preloading shared setup all passed focused probes but regressed the full gate — record reverted
