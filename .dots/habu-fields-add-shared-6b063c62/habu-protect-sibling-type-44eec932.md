@@ -1,9 +1,11 @@
 ---
 title: Protect sibling type-registry states via seal
-status: active
+status: closed
 priority: 2
 issue-type: task
-created-at: "2026-07-18T18:12:28.426954+02:00"
+created-at: "\"2026-07-18T18:12:28.426954+02:00\""
+closed-at: "2026-07-19T10:15:15.200075+02:00"
+close-reason: "Merged: registry seal for sibling type registries landed at master 837b1377 (REG-PROTECT in src/core/util.f, 28 cells tagged across type-family/type-schema, IMK-SEAL-REGISTRY marking, internal-word-gate cases SUBJECT-N 99). Verified at master@origin including the interpret-only-scope note commit."
 ---
 
 Protect the six sibling type registries that are as exposed as PF-COMMIT-N was before the TYPE-FIELD seal landed: TFAM-N and SUMV-N (type-family.f:1342 TFAM-RESET writes; arenas), TF-STR-U / TF-PK-N (string + param pools), LAY-N (type-family.f:1257-1260 LAY-A-P/LAY-A-BOOT), SCH-N / SCH-ROOT-N (src/core/type-schema.f). Each has the same live bare-write vector as the confirmed `99 PF-COMMIT-N !` exploit and the same cross-file consumer pins (TDECL-MARK/RESTORE snapshots all of them at sumtype.f:62-70; checker.f rollback frames).
