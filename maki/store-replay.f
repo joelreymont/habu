@@ -69,23 +69,45 @@ public
    [: SK-PUT ;] SCHED-LOAD ;
 
 private
-variable SRP-READY                   \ nonzero once this process merged schedules.rows
+\ ---- recovery lifecycle: cold -> ready (fully loaded) | failed(error) ---------
+\ The merge attempt has three explicit states. COLD is the initial / post-reset
+\ state (not yet attempted). READY means the WHOLE file merged successfully.
+\ FAILED means an attempt threw; SRP-ERR carries the original throw code. The old
+\ code kept a single "ready" latch and set it BEFORE loading, so a load that threw
+\ partway left the latch READY over a HALF-loaded table and returned success on
+\ retry - a partial, failed recovery published as success. The lifecycle below is
+\ transactional instead: READY is reached only after a fully successful load, a
+\ throwing load transitions to FAILED (publishing no partial state - SCHED-LOAD
+\ authenticates every row before applying any), and a FAILED store STAYS failed -
+\ every retry re-raises the original error rather than silently succeeding, so a
+\ corrupt durable store must be repaired (STORE-RESET; it is regenerable) before
+\ any replay lookup or durable write proceeds.
+0 constant RPS-COLD                  \ not yet attempted (initial / after REPLAY-RESET)
+1 constant RPS-READY                 \ merged the whole file successfully
+2 constant RPS-FAILED                \ a merge attempt threw; SRP-ERR holds its code
+variable SRP-STATE                   \ RPS-COLD | RPS-READY | RPS-FAILED
+variable SRP-ERR                     \ the original throw code while SRP-STATE = RPS-FAILED
 public
 
-: REPLAY-READY? ( -- bool )  SRP-READY @ 0<> ;
-: REPLAY-RESET  ( -- )  0 SRP-READY ! ;
+: REPLAY-READY?  ( -- bool )  SRP-STATE @ RPS-READY  = ;
+: REPLAY-FAILED? ( -- bool )  SRP-STATE @ RPS-FAILED = ;
+: REPLAY-ERROR   ( -- n )     SRP-ERR @ ;
+: REPLAY-RESET   ( -- )  RPS-COLD SRP-STATE !  0 SRP-ERR ! ;
 
-\ merge schedules.rows into the live table once per process. The latch is set
-\ BEFORE the load: one attempt per session, so a throwing load (IO, E-STORE-*)
-\ surfaces loudly to its first caller instead of re-merging on every lookup.
-\ No SK-TAB-RESET: rows already live in memory keep their entries; a same-key
-\ file row updates in place, which is safe on every production path because
-\ both production entries (TILE/TUNE lookup, SK-PUT-DURABLE write) ensure
-\ BEFORE touching the table - see the load-before-first-write header note.
+\ merge schedules.rows into the live table once per process. No SK-TAB-RESET: rows
+\ already live in memory keep their entries; a same-key file row updates in place,
+\ which is safe on every production path because both production entries (TILE/TUNE
+\ lookup, SK-PUT-DURABLE write) ensure BEFORE touching the table - see the
+\ load-before-first-write header note. The load is wrapped so its outcome, not just
+\ its first attempt, drives the state: success advances to READY; a throw records
+\ the error, transitions to FAILED, and re-raises; a later call over a FAILED store
+\ re-raises the recorded error without a second load attempt.
 : REPLAY-ENSURE ( -- )
-   REPLAY-READY? if exit then
-   -1 SRP-READY !
-   STORE-REPLAY-LOAD ;
+   REPLAY-READY?  if exit then
+   REPLAY-FAILED? if SRP-ERR @ throw then
+   [: STORE-REPLAY-LOAD ;] catch {: rc:n :}
+   rc 0<> if  rc SRP-ERR !  RPS-FAILED SRP-STATE !  rc throw  then
+   RPS-READY SRP-STATE ! ;
 
 \ record a schedule selection in the hot table AND durably in schedules.rows.
 \ THE production write path: it rehydrates first (load-before-first-write), so

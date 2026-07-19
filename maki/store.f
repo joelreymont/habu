@@ -49,9 +49,12 @@
 \
 \ Fail closed: IO errors from lib/fs / lib/fs-mutate propagate (never swallowed); an
 \ empty key or a newline in the key/any field is a named throw; an oversized row or
-\ store file is a named throw; a bad class id or verdict tag is a named throw. A
-\ read of a store that does not exist yet is legitimately "no rows" (not an error).
-\ maki -> habu only; store owns -5090..-5099.
+\ store file is a named throw; a bad class id or verdict tag is a named throw; a
+\ TORN record (a class file whose last byte is not the newline terminator - a crash
+\ truncated the appended tail) is a named throw, never scanned as committed. A read
+\ of a store that does not exist yet is legitimately "no rows" (not an error).
+\ maki -> habu only; store owns -5090..-5099 for its record errors (that block is
+\ full: evidence-policy claimed -5098..-5099), plus -5083 for the torn-frame reject.
 
 require lib/prelude.f
 require lib/errors.f
@@ -78,6 +81,7 @@ package CAD-NUM public
 -5095 constant E-STORE-ROW      \ malformed stored row on parse (non-numeric / missing pipe)
 -5096 constant E-STORE-ROOT     \ resolved store root path empty or over the path cap
 -5097 constant E-STORE-PREC     \ precision tag out of range for a device golden leg
+-5083 constant E-STORE-TORN     \ torn record: a class file whose last byte is not the newline terminator
 
 package MAKI
 public
@@ -220,12 +224,30 @@ variable STORE-Q-FOUND                                                   \ -1 on
    STORE-ENSURE
    cls STORE-CLASS-PATH  STORE-ROW STORE-ROW-U @  APPEND-FILE ;
 
+\ ---- record framing: the trailing newline is the commit marker --------------
+\ Every committed record ends in exactly one newline, and STORE-CK-KEY /
+\ STORE-ROW-VALIDATE forbid a newline inside any key or field, so the terminator is
+\ a collision-free frame: each newline in a class file is unambiguously a record
+\ boundary. The store is append-only, so only the LAST record can be torn, and a
+\ crash mid-append truncates that tail and loses its terminating newline. A torn
+\ record is therefore any nonempty class file whose last byte is not a newline; it
+\ is a NAMED reject (E-STORE-TORN), authenticated here at the single point where a
+\ class file's bytes enter the program, so both the query and the replay scans see
+\ only fully-committed rows. (The old reader treated end-of-file as a record
+\ boundary and silently replayed the partial tail.) The on-disk format is unchanged,
+\ so a well-formed old store loads byte-identically; only a previously-torn store,
+\ which the old reader silently committed, now rejects loudly with a diagnostic.
+: STORE-CK-FRAME ( ptr u8 n -- ) {: a:ptr u:n :}
+   u 0= if exit then
+   a u 1- + c@ STORE-NL <> if E-STORE-TORN throw then ;
+
 \ ---- read a whole class file (missing file -> empty, not an error) ----------
 : STORE-READ-CLASS ( n -- ptr u8 n ) {: cls:n :}
    cls STORE-CLASS-PATH {: pa:ptr pu:n :}
    pa pu FILE? 0= if STORE-READ 0 exit then
    pa pu FILE-SIZE STORE-READ-CAP > if E-STORE-FULL throw then
    pa pu STORE-READ STORE-READ-CAP READ-ALL {: got:n :}
+   STORE-READ got STORE-CK-FRAME
    STORE-READ got ;
 
 \ ---- line scan + whole-key-prefix match (latest row wins) -------------------
@@ -318,25 +340,37 @@ public
    STORE-PARSE-INT true ;
 
 \ SCHED-LOAD replays every schedules row (in file order, latest wins) to a caller
-\ quotation - the last "|" splits <key> from <selected-candidate>. Used by the
-\ replay-table backing (maki/store-replay.f) to rehydrate the hot in-memory table.
-: SCHED-LINE ( ptr u8 n n [ ptr u8 n n -- ] -- n ) {: ba:ptr bu:n off:n q :} \ typed-local-lint: allow-bare-local - q is the schedule-row callback quotation
+\ quotation. STORE-READ-CLASS has already authenticated the framing (a torn tail is
+\ E-STORE-TORN before we get here), so the load's remaining job is to stay
+\ TRANSACTIONAL: parse every row in a validate pass BEFORE the apply pass touches
+\ the callback, so a framed-but-malformed row (missing pipe / non-numeric selection)
+\ rejects with E-STORE-ROW while NO partial rows have been published. A failed load
+\ therefore leaves the caller's table exactly as it was.
+
+\ split a schedules row on its LAST "|": <key> | <selected-candidate>.
+: SCHED-ROW ( ptr u8 n -- ptr u8 n n ) {: la:ptr lu:n :}
+   la lu STORE-LAST-PIPE {: pi:n :}
+   pi 0 < if E-STORE-ROW throw then
+   la pi
+   la pi 1+ +  lu pi 1+ -  STORE-PARSE-INT ;
+
+\ advance over one line; the VALIDATE pass parses each row fail-closed but applies
+\ nothing, so a corrupt row anywhere throws before any row reaches the table.
+: SCHED-VALIDATE-AT ( ptr u8 n n -- n ) {: ba:ptr bu:n off:n :}
    ba bu off STORE-LINE-END {: ed:n :}
-   ed off > if
-      ba off +  ed off -  {: la:ptr lu:n :}
-      la lu STORE-LAST-PIPE {: pi:n :}
-      pi 0 < if E-STORE-ROW throw then
-      la pi
-      la pi 1+ +  lu pi 1+ -  STORE-PARSE-INT
-      q execute
-   then
+   ed off > if  ba off +  ed off -  SCHED-ROW  2drop drop  then
+   ed 1+ ;
+
+\ advance over one line; the APPLY pass re-parses and hands <key> <selection> to q.
+: SCHED-APPLY-AT ( ptr u8 n n [ ptr u8 n n -- ] -- n ) {: ba:ptr bu:n off:n q :} \ typed-local-lint: allow-bare-local - q is the schedule-row callback quotation
+   ba bu off STORE-LINE-END {: ed:n :}
+   ed off > if  ba off +  ed off -  SCHED-ROW  q execute  then
    ed 1+ ;
 
 : SCHED-LOAD ( [ ptr u8 n n -- ] -- ) {: q :} \ typed-local-lint: allow-bare-local - q is the schedule-row callback quotation
    CLS-SCHED STORE-READ-CLASS {: ba:ptr bu:n :}
-   0 begin dup bu < while
-      >r ba bu r> q SCHED-LINE
-   repeat drop ;
+   0 begin dup bu < while  >r ba bu r> SCHED-VALIDATE-AT  repeat drop   \ pass 1: authenticate every row
+   0 begin dup bu < while  >r ba bu r> q SCHED-APPLY-AT   repeat drop ; \ pass 2: apply every row
 
 \ ---- measurement history ---------------------------------------------------
 : MEAS-PUT ( ptr u8 n n n -- ) {: ka:ptr ku:n cand:n med:n :}
