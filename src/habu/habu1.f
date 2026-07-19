@@ -68,6 +68,30 @@ variable FP-A  variable FP-U  variable FP-XT
    PNPOOL PNP @ + RPD !  RPD@ #PL @ cells PNAM + !
    PR-COPY-NAME
    PNP @ PR-U @ + PNP !  #PL @ 1 + #PL ! ;
+
+\ An engine helper is an engine-resident routine that guarded primitives reach
+\ by a direct branch (a shared span guard, a bounds loop). REGISTER records it as
+\ a sealed, system-private dictionary record spanning [start-addr, end-addr) and
+\ stamps it with OWNER-API-PRI-WID. That stamp is the closed registration marker:
+\ it hides the helper from raw word searches (BSWL) and is the ONLY thing the
+\ ahead-of-time closure walker will follow a direct branch into (aot-closure.f
+\ FINDPTR). No unmarked address is ever followed, so the AOT image can never pull
+\ in unintended code. DNAME folds the same marker into a record's baked name/flags
+\ cell so the seed dictionary carries the internal bit for helper records.
+package ENGINE-HELPER
+
+public
+
+: REGISTER ( ptr u8 n n n -- )
+   REG-PRIM
+   OWNER-API-PRI-WID #PL @ 1- cells PWID + ! ;
+
+: DNAME ( n -- n ) {: idx:n :}
+   idx cells PLEN + @
+   idx cells PWID + @ OWNER-API-PRI-WID = if DNAME-INT or then ;
+
+;package
+
 variable FPL  variable FPE
 
 : FP-ARGS ( ptr u8 n n -- )
@@ -2184,7 +2208,9 @@ SOURCE-INIT
    LBL SWL-F2 !
    LBL SWL-INL !
    2 G-POP  1 G-POP  0 G-POP
-   3 $20 MOVZ,  5 DBASE 0 ADDI,  6 NDICT 0 ADDI,  11 0 MOVZ,
+   11 0 MOVZ,                                              \ result defaults to absent
+   2 OWNER-API-PRI-WID CMPI,  C-EQ SWL-END LABEL@ BCOND,   \ sealed helper WID is never raw-searchable
+   3 $20 MOVZ,  5 DBASE 0 ADDI,  6 NDICT 0 ADDI,
    SWL-LOOP LABEL@ LBL,  6 SWL-END LABEL@ CBZ,
       9 5 40 LDR,  9 2 CMP,  C-NE SWL-NEXT LABEL@ BCOND,
       9 5 16 LDR,  9 9 12 LSLI,  9 9 12 LSRI,  9 1 CMP,  C-NE SWL-NEXT LABEL@ BCOND,
@@ -2478,6 +2504,20 @@ SOURCE-INIT
       11 DATA INP-CELL STR,  0 1 MOVZ,  RET,
    TOK-NONE LABEL@ LBL,  11 DATA INP-CELL STR,  0 0 MOVZ,  RET, ;
 
+\ The shared runtime lowering guard body ( x10=address, x11=byte length ). It is
+\ registered as the sealed (PROT-SPAN) engine helper so a guarded primitive that
+\ reaches it by a direct branch is carried into an ahead-of-time image and
+\ relocated. The label is reserved in EMIT-LABEL-CORE so the record spans exactly
+\ [start, end).
+: EMIT-PROT-SPAN ( -- )
+   LPROTSPAN LABEL@ {: start:label :}
+   LBL {: end:label :}
+   s" (PROT-SPAN)" start LABEL>N end LABEL>N ENGINE-HELPER:REGISTER
+   start LBL,
+   10 11 GUARD-SPAN
+   RET,
+   end LBL, ;
+
 : EMIT-PROT ( -- )
    LPROT LABEL@ LBL,
    0 DBASE 0 ADDI,  1 REGION LIT64,  NR-MPROTECT SYS,  RET,
@@ -2493,10 +2533,7 @@ SOURCE-INIT
    \ survives the syscall for the caller's poke and closing flip.
    LPROTREC LABEL@ LBL,
    0 9 14 LSRI,  0 0 14 LSLI,  1 $8000 MOVZ,  NR-MPROTECT SYS,  RET,
-   \ Runtime lowering guard: x10=address, x11=byte length.
-   LBL dup LPROTSPAN ! LBL,
-   10 11 GUARD-SPAN
-   RET, ;
+   EMIT-PROT-SPAN ;
 
 \ Protected-WID membership (TFAM 2b-v). BL routine: x9 = wid on entry, x13 = 1 if
 \ wid is recorded in the protected-WID registry (PROT-WID-N-CELL entries of the
@@ -2941,11 +2978,11 @@ variable FIND-HMATCH
       dup cells PLBL + LABEL@ DLBL,
       dup cells PEL  + LABEL@ DLBL,
       dup cells PLEN + @ DNAME-INL > IF
-         dup cells PLEN + @ DNAME-EXT or DCQ,
+         dup ENGINE-HELPER:DNAME DNAME-EXT or DCQ,
          dup cells PNLBL + LABEL@ DLBL,
          0 DCQ,
       ELSE
-         dup cells PLEN + @ DCQ,
+         dup ENGINE-HELPER:DNAME DCQ,
          dup cells PNAM + @  over cells PLEN + @  BYTES,
          16  over cells PLEN + @  3 + -4 and  -  dup 0 > IF PNPOOL swap BYTES, ELSE drop THEN
       THEN
