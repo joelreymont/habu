@@ -68,6 +68,8 @@ TEST:SUITE maki/fmath-test.f
 TEST:;SUITE
 TEST:SUITE maki/softmax-test.f
 TEST:;SUITE
+TEST:SUITE maki/causal-test.f
+TEST:;SUITE
 TEST:SUITE maki/celoss-test.f
 TEST:;SUITE
 TEST:SUITE maki/matmul-test.f
