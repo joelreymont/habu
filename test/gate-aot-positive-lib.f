@@ -7,6 +7,24 @@ require test/gate-pool.f
 46 constant GAP-DOT
 99 constant GAP-C-LOWER
 $10000 constant GAP-STRIPPED-TEXT-MAX
+$D63F0200 constant GAP-BLR-X16     \ arm64 `blr x16`: the tail of an un-collapsed absolute movz/movk+blr call
+
+variable GAP-BLR-CNT
+\ Count `blr x16` words in the built image's executable text region. A correctly
+\ linked stripped image has none: every in-closure absolute call is collapsed to a
+\ PC-relative branch (aot-lib.f COPY-COMPACT-BLOB / RELOCATE), so a surviving
+\ blr x16 is an un-relocated build-time engine address that would crash at load.
+: GAP-COUNT-BLR-X16 ( n n -- n ) {: foff:n fsize:n :}      \ text-file-offset text-size -- count
+   0 GAP-BLR-CNT !
+   foff begin dup foff fsize + < while
+      dup GB-U32-OFF GAP-BLR-X16 = if 1 GAP-BLR-CNT +! then
+      4 +
+   repeat drop
+   GAP-BLR-CNT @ ;
+
+: GAP-ASSERT-NO-BLR-X16 ( ptr u8 n -- ) {: label:ptr labelu:n :}
+   GB-OUT$ GB-EXEC-TEXT-RANGE GAP-COUNT-BLR-X16
+   0 <> if label labelu GE-FAIL then ;
 
 : GAP-N= ( n n ptr u8 n -- ) {: got:n want:n label:ptr labelu:n :}
    got want <> if label labelu GE-FAIL then ;
@@ -228,6 +246,44 @@ $10000 constant GAP-STRIPPED-TEXT-MAX
    GAP-LAYOUT-STORE-EXPECT s" hb-build AOT layout-bundle store output" GB-RUN-EXPECT
    s" PASS: hb-build AOT layout-bundle store (LP2STORE reaches (PROT-SPAN) via a relocated call)" type cr ;
 
+\ Layout-bundle fetch: a program whose MAIN constructs a wide (multi-cell) layout
+\ value, stores it through `!`, then reads it back through `@` and destructures it
+\ with MATCH, printing the recovered payload. The pass-2 wide-fetch lowering
+\ (LP2VEMIT) emits a runtime call to the engine-resident LP2VEXEC tag validator
+\ before the value is used. In a stripped AOT image that call is an absolute
+\ movz/movk+blr whose target is LP2VEXEC; unless the linker rewrites it to a
+\ PC-relative branch into the copied helper, the build-time engine address ships
+\ and the fetch SIGSEGVs at load (dot habu-relocate-lp2vexec-fetch-b5472dc1).
+\ Because LP2VEXEC is now a registered engine helper the closure walk resolves the
+\ call by record address and collapses it in-image, so this MAIN runs and prints
+\ the stored payload (37). GAP-ASSERT-NO-BLR-X16 then proves the collapse by
+\ construction: the stripped __text contains zero un-collapsed blr x16.
+: GAP-LAYOUT-FETCH-SOURCE ( -- )
+   GE-SRC-RESET
+   s" package AOT-LAYOUT-FETCH" GE-SRC-LINE
+   s" SUMTYPE res 2" GE-SRC-LINE
+   s"   VARIANT ok a ;VARIANT" GE-SRC-LINE
+   s"   VARIANT err b ;VARIANT" GE-SRC-LINE
+   s" ;SUMTYPE" GE-SRC-LINE
+   s" 1 LAYOUT-BUFFER MEM res<n,n>" GE-SRC-LINE
+   s" public" GE-SRC-LINE
+   s" : ROUND-TRIP ( -- n ) 37 construct res ok 0 MEM ! 0 MEM @ MATCH res ok OF ENDOF err OF ENDOF ;MATCH ;" GE-SRC-LINE
+   s" ;package" GE-SRC-LINE
+   s" : MAIN ( -- ) AOT-LAYOUT-FETCH:ROUND-TRIP . ;" GE-SRC-LINE ;
+
+: GAP-LAYOUT-FETCH-EXPECT ( -- ptr u8 n )
+   SB-RESET
+   s" 37" GE-OUT-LINE
+   SB$ ;
+
+: GAP-LAYOUT-FETCH ( -- )
+   s" hb-aot-layout-fetch.f" s" hb-aot-layout-fetch" s" hb-aot-layout-fetch-report.json" GAP-PATHS
+   GAP-LAYOUT-FETCH-SOURCE
+   s" hb-build AOT layout-bundle fetch build" GAP-BUILD-STRICT
+   GAP-LAYOUT-FETCH-EXPECT s" hb-build AOT layout-bundle fetch output" GB-RUN-EXPECT
+   s" hb-build AOT layout-bundle fetch zero un-collapsed blr x16" GAP-ASSERT-NO-BLR-X16
+   s" PASS: hb-build AOT layout-bundle fetch (LP2VEXEC reaches via a relocated call; zero blr x16)" type cr ;
+
 \ item 10 slice 5: a preseeded bad-tag object/AOT test entry. A source declaring a
 \ matched family + helper is AOT-built with a SELECTED non-MAIN entry (the helper)
 \ and a forged value-stack seed (payload slots + an out-of-range tag), so the
@@ -294,16 +350,71 @@ $10000 constant GAP-STRIPPED-TEXT-MAX
    s" hb-build AOT preseed normal-MAIN still exits 0" GB-RUN-OUT
    s" PASS: hb-build AOT preseeded bad-tag entry (rc 85 hb: bad gemt tag; three-key lockstep; object relink)" type cr ;
 
+\ Preseeded bad-tag FETCH: proves LP2VEXEC's own invalid-tag diagnostic fires
+\ correctly in a stripped image after the relocation fix. HLP stores a preseeded
+\ layout value then reads it back through `@`; the forged seed carries an
+\ out-of-range tag (res tags are 0..1, seed tag 5), so the wide fetch reaches
+\ LP2VEXEC's invalid path, which writes "hb: bad layout tag\n" and exits
+\ ENGINE-ERROR:BAD-TAG (85). Because the message is inlined inside the registered
+\ LP2VEXEC record, its ADR is relocated with the copied helper and the diagnostic
+\ is byte-identical to the engine's in the stripped image. The SAME source built
+\ normally (entry MAIN) exits 0.
+: GAP-PRESEED-FETCH-SRC ( -- )                 \ matched family + fetch helper + trivial MAIN
+   GE-SRC-RESET
+   s" package AOT-LAYOUT-FETCH-BAD" GE-SRC-LINE
+   s" SUMTYPE res 2" GE-SRC-LINE
+   s"   VARIANT ok a ;VARIANT" GE-SRC-LINE
+   s"   VARIANT err b ;VARIANT" GE-SRC-LINE
+   s" ;SUMTYPE" GE-SRC-LINE
+   s" 1 LAYOUT-BUFFER MEM res<n,n>" GE-SRC-LINE
+   s" public" GE-SRC-LINE
+   s" : HLP ( res<n,n> -- n ) 0 MEM ! 0 MEM @ MATCH res ok OF ENDOF err OF ENDOF ;MATCH ;" GE-SRC-LINE
+   s" ;package" GE-SRC-LINE
+   s" : MAIN ( -- ) ;" GE-SRC-LINE ;
+
+\ Bundle width M+1 = 2 cells for res<n,n> (one payload + tag), each a big-endian
+\ u64, bottom-of-stack first / tag last. Forge tag 5 (res tags 0..1 valid).
+: GAP-PRESEED-FETCH-SEED$ ( -- ptr u8 n )
+   s" 00000000000000000000000000000005" ;
+
+: GAP-PRESEED-FETCH-ARM ( -- )                 \ select the fetch helper entry + forged seed
+   s" HLP" HBB-PRESEED-ENTRY!
+   GAP-PRESEED-FETCH-SEED$ HBB-PRESEED-SEED! ;
+
+: GAP-PRESEED-FETCH-BUILD ( -- )
+   GB-WRITE-SRC
+   GB-HBB-PREPARE
+   GAP-PRESEED-FETCH-ARM
+   s" hb-build AOT preseed bad-tag fetch build" GB-HBB-BUILD-OUT ;
+
+: GAP-PRESEED-FETCH-RUN-BAD ( ptr u8 n -- ) {: label:ptr labelu:n :}
+   GE-HB-RESET
+   GB-OUT$ GE-TIMEOUT-MS GE-RUN-ENV
+   85 label labelu GE-EXPECT-RC
+   s" hb: bad layout tag" label labelu GE-EXPECT-ERR-HAS ;
+
+: GAP-PRESEED-FETCH ( -- )
+   s" hb-aot-preseed-fetch.f" s" hb-aot-preseed-fetch" s" hb-aot-preseed-fetch-report.json" GAP-PATHS
+   GAP-PRESEED-FETCH-SRC
+   s" hb-build AOT preseed fetch normal-MAIN control" GB-HBB-BUILD
+   s" hb-build AOT preseed fetch normal-MAIN exits 0" GB-RUN-OUT
+   GAP-PRESEED-FETCH-BUILD
+   s" hb-build AOT preseed bad-tag fetch run" GAP-PRESEED-FETCH-RUN-BAD
+   s" hb-build AOT preseed bad-tag fetch zero un-collapsed blr x16" GAP-ASSERT-NO-BLR-X16
+   s" PASS: hb-build AOT preseeded bad-tag fetch (rc 85 hb: bad layout tag via LP2VEXEC in a stripped image)" type cr ;
+
 : GAP-RUN-BUNDLE-DATA ( -- )
    s" hb-gate-aot-bundle-data" GT-START
    GAP-BUNDLE
    GAP-DATA
    GAP-LAYOUT-STORE
+   GAP-LAYOUT-FETCH
    GT-CLEANUP ;
 
 : GAP-RUN-PRESEED ( -- )
    s" hb-gate-aot-preseed" GT-START
    GAP-PRESEED
+   GAP-PRESEED-FETCH
    GT-CLEANUP ;
 
 : GAP-START-BUNDLE-DATA ( -- )

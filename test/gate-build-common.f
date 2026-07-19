@@ -10,6 +10,7 @@ $19 constant GB-LC-SEGMENT-64
 64 constant GB-SEG-NSECTS-OFF
 72 constant GB-SEG-SECTIONS-OFF
 40 constant GB-SECT-SIZE-OFF
+48 constant GB-SECT-FILEOFF-OFF   \ mach-o section_64 file-offset field (u32)
 80 constant GB-SECT-SIZE
 $464C457F constant GB-ELF-MAGIC
 $B7 constant GB-ELF-MACHINE-AARCH64
@@ -53,6 +54,7 @@ variable GB-EXEC-A
 variable GB-EXEC-CAP-U
 variable GB-EXEC-U
 variable GB-TEXT-SIZE-V
+variable GB-TEXT-OFF-V
 variable GB-TEXT-FOUND
 variable GB-LC-OFF
 
@@ -269,6 +271,7 @@ variable GB-LC-OFF
 : GB-SCAN-SECTION ( n -- ) {: off :}
    off GB-SECTION-TEXT? if
       off GB-SECT-SIZE-OFF + GB-U64-OFF GB-TEXT-SIZE-V !
+      off GB-SECT-FILEOFF-OFF + GB-U32-OFF GB-TEXT-OFF-V !
       -1 GB-TEXT-FOUND !
    then ;
 
@@ -319,6 +322,7 @@ variable GB-LC-OFF
    idx GB-ELF-PH-OFF {: off :}
    off GB-ELF-RX-LOAD? if
       off GB-ELF-PH-FILESZ-OFF + GB-U64-OFF GB-TEXT-SIZE-V !
+      off GB-ELF-PH-FILE-OFF + GB-U64-OFF GB-TEXT-OFF-V !
       -1 GB-TEXT-FOUND !
    then ;
 
@@ -351,6 +355,14 @@ variable GB-LC-OFF
       exit
    then
    GB-TARGET-UNKNOWN ;
+
+\ File offset and size of the executable text region (mach-o __text section /
+\ ELF read-execute PT_LOAD). Leaves GB-EXEC-BUF loaded so the caller can read
+\ the bytes back with GB-U32-OFF. The size loaders set both GB-TEXT-SIZE-V and
+\ GB-TEXT-OFF-V and fail closed if the region is absent.
+: GB-EXEC-TEXT-RANGE ( ptr u8 n -- n n )        \ -- text-file-offset text-size
+   GB-EXEC-TEXT-SIZE {: fsize:n :}
+   GB-TEXT-OFF-V @ fsize ;
 
 : GB-U. ( n -- ) {: n :}
    n 0 < if [char] - emit n negate recurse exit then
