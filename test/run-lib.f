@@ -61,10 +61,19 @@ public
 \ proportionally, and must be re-measured on macOS to confirm - the committed
 \ 39.336s / 41.64s macOS cold-fill reference is a 2026-07-01 pre-heal number that no
 \ longer bounds the budget.
-34000 constant SPARK-COLD-MS
-38000 constant SPARK-COLD-WALL-MS
-34000 constant MACOS-COLD-MS
-38000 constant MACOS-COLD-WALL-MS
+\ 2026-07-19 re-derived after the day's suite growth: the maki checked suite (the
+\ cold long pole) grew 27.7s -> 30.8s from four landed test suites (authenticated
+\ store framing, cad replay-engine, affine-LN op gradcheck+training, equation
+\ adjoints fd-checks), pushing idle cold elapsed to a worst-of-six 36.8s at cal
+\ ~100% (three attempts each of two idle spark cold runs). 46000 = ~36.8s + 25%;
+\ 51000 keeps the same ~11% wall headroom. macOS mirrors spark as before and
+\ still must be re-measured on macOS. The monolithic maki child is the long pole
+\ and the proper fix is splitting it into parallel slices (see dot
+\ habu-split-maki-suite); until then the budget tracks the honest suite cost.
+46000 constant SPARK-COLD-MS
+51000 constant SPARK-COLD-WALL-MS
+46000 constant MACOS-COLD-MS
+51000 constant MACOS-COLD-WALL-MS
 
 ;package
 
