@@ -387,7 +387,9 @@ own row in **`tools/ptx/perf-rows.tsv`** — kernel id, launch config
 (grid/gridy/block/blocky/iters/work-items), metric kind (`GBS`, `GFLOPS`,
 `PCT-ROOF`, all value×1000), value, device, date, note. The checked owner is
 `tools/ptx/perf-registry.f` (package `PERF`); rows fail closed under
-`PERF:LOAD`/`PERF:LINE-OK?`.
+`PERF:LOAD`/`PERF:LINE-OK?`. Measurement rows are exactly 12 fields; a `WAIVER`
+row appends **two more** (`emitter waiver_version`) so an off-device waiver is
+accountable — non-measurement rows are never rewritten by the extension.
 
 - **Changing kernel codegen requires a row.** `tools/kernel-perf-lint.f` scans a
   `jj diff --git` artifact and fails when the diff touches a kernel emitter
@@ -395,10 +397,29 @@ own row in **`tools/ptx/perf-rows.tsv`** — kernel id, launch config
   without adding a registry row. Run it alongside `tools/typed-local-diff-lint.f`
   in the pre-commit Forth gate:
   `bin/hb --load tools/kernel-perf-lint.f -- diff.patch`.
-- **Off-device sessions add a WAIVER row instead.** When the Orin is
-  unavailable, add a `WAIVER` row (value 0) whose note documents the
-  device-gated reason and the owed measurement; the lint accepts it and the row
-  stays as the visible debt until the next device pass replaces it.
+- **Off-device sessions add an owned WAIVER row instead — and it ratchets.**
+  When the device is unavailable, add a `WAIVER` row (value 0) whose note
+  documents the device-gated reason and whose two extra fields name the
+  `emitter` it owns (a canonical kernel emitter — `PERF:EMITTER?`) and a
+  monotonic `waiver_version` (≥ 1). The waiver is **not** a standing pass: it is
+  valid only while its emitter is untouched. The **lifecycle is deterministic,
+  driven by diff content, never wall-clock**:
+  - *Untouched → valid.* A committed waiver whose emitter the change does not
+    touch stays valid.
+  - *Touched → expired.* The moment the change touches that emitter, the standing
+    waiver expires and the **same change** must supply a replacement: either a
+    measurement row for the kernel, or a **newly-versioned** waiver for the same
+    emitter (`waiver_version` strictly greater than every standing sibling).
+    Touching the emitter with no replacement fails (`E-PERF-ROW-MISSING`).
+  - *Ownership is enforced.* A waiver for another emitter cannot satisfy the touch
+    (`E-PERF-ROW-MISSING`); an added waiver naming an emitter the change does not
+    touch is rejected (`E-PERF-WAIVER-CROSS`); a version not newer than the
+    standing waiver is stale (`E-PERF-WAIVER-STALE`); two waivers sharing
+    `kernel+emitter+version` are a duplicate live waiver (`E-PERF-WAIVER-DUP`);
+    an unknown emitter or a forged/reordered identity fails the parser
+    (`E-PERF-BAD-ROW`). The lint resolves added waivers against the standing
+    registry it loads from disk, so re-pasting an old waiver cannot re-satisfy a
+    fresh touch.
 - **Re-measurements are appended, never edited**, so the latest same-key pair is
   comparable. `tools/ptx/perf-compare.f` flags a new value more than
   `PERF:TOL-MILLI` (50 permille = 5%) below its baseline as a regression;

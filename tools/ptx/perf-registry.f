@@ -1,8 +1,14 @@
 \ perf-registry.f - checked kernel profile-row registry (tools/ptx/perf-rows.tsv).
 \ Row format: 12 tab-separated fields per data line, `#`/blank lines ignored:
 \   kernel grid gridy block blocky iters work metric value_x1000 device date note
-\ metric is GBS, GFLOPS, PCT-ROOF, or WAIVER; WAIVER rows carry value 0 and a
-\ mandatory note documenting the device-gated reason.
+\ metric is GBS, GFLOPS, PCT-ROOF, or WAIVER. A WAIVER row carries value 0, a
+\ mandatory note, and TWO additional trailing fields naming the emitter/kernel it
+\ owns and a monotonic waiver version, so a waiver is accountable and expires on
+\ the next diff touch of its emitter (kernel-perf-lint enforces the lifecycle):
+\   ... WAIVER 0 device date note emitter waiver_version
+\ Non-waiver rows stay exactly 12 fields (the extra fields are waiver-only, so no
+\ committed measurement row is rewritten). `emitter` must be a canonical kernel
+\ emitter (EMITTER?); `waiver_version` is an integer >= 1.
 
 require lib/errors.f
 require lib/string.f
@@ -26,7 +32,7 @@ package PERF
 
 $10000 constant BUF-CAP
 512 constant ROW-MAX
-16 constant ROW-CELLS
+19 constant ROW-CELLS
 9 constant TAB-C
 13 constant CR-C
 10 constant LF-C
@@ -40,6 +46,8 @@ $10000 constant BUF-CAP
 10 constant F-DOFF   11 constant F-DU
 12 constant F-DATEOFF 13 constant F-DATEU
 14 constant F-NOFF   15 constant F-NU
+16 constant F-EMOFF  17 constant F-EMU    \ waiver-only: owning emitter span
+18 constant F-WVID                        \ waiver-only: monotonic version
 
 create BUF BUF-CAP allot
 create ROWS ROW-MAX ROW-CELLS * cells allot
@@ -60,6 +68,13 @@ variable LOK-U
 
 : PERF-FALSE ( -- bool )
    PERF-TRUE 0= ;
+
+public
+: EMITTER? ( ptr u8 n -- bool ) {: a:ptr u:n :}   \ canonical kernel-emitter path
+   a u s" src/arch/ptx/emit.f" STR= if PERF-TRUE exit then
+   a u s" lib/ptx/cg" STARTS-WITH? a u s" .f" ENDS-WITH? and if PERF-TRUE exit then
+   a u s" tools/ptx/" STARTS-WITH? a u s" -cg.f" ENDS-WITH? and ;
+private
 
 : LOK-A-FIELD ( -- ptr ptr u8 )
    LOK-A 0 ptr-field ;
@@ -170,7 +185,9 @@ private
 
 : WAIVER-CHECK ( -- )
    F-VALUE CUR@ 0 <> if E-PERF-ROW throw then
-   F-NOFF F-NU CUR-SPAN$ nip 0= if E-PERF-ROW throw then ;
+   F-NOFF F-NU CUR-SPAN$ nip 0= if E-PERF-ROW throw then
+   F-EMOFF F-EMU CUR-SPAN$ EMITTER? 0= if E-PERF-ROW throw then
+   F-WVID CUR@ 1 < if E-PERF-ROW throw then ;
 
 : METRIC-CHECK ( -- )
    F-METRIC CUR@ M-WAIVER = if WAIVER-CHECK exit then
@@ -197,6 +214,10 @@ private
    F-DOFF F-DU FIELD-SPAN
    F-DATEOFF F-DATEU FIELD-SPAN
    F-NOFF F-NU FIELD-SPAN
+   F-METRIC CUR@ M-WAIVER = if
+      F-EMOFF F-EMU FIELD-SPAN
+      F-WVID FIELD-INT
+   then
    FIELDS-END-CHECK
    ROW-CHECK
    ROW-N @ 1+ ROW-N ! ;
@@ -301,6 +322,12 @@ public
 : NOTE$ ( n -- ptr u8 n )
    F-NOFF F-NU ROW-SPAN$ ;
 
+: EMITTER$ ( n -- ptr u8 n )   \ waiver-only: the owning emitter path
+   F-EMOFF F-EMU ROW-SPAN$ ;
+
+: WVID@ ( n -- n )             \ waiver-only: the waiver version
+   F-WVID ROW@ ;
+
 : GRID@ ( n -- n )
    F-GRID ROW@ ;
 
@@ -344,5 +371,23 @@ public
    i WORK@ j WORK@ <> if PERF-FALSE exit then
    i METRIC@ j METRIC@ <> if PERF-FALSE exit then
    i DEVICE$ j DEVICE$ STR= ;
+
+: WAIVER-ID= ( n n -- bool ) {: i:n j:n :}   \ two waivers share kernel+emitter+version
+   i KERNEL$ j KERNEL$ STR= 0= if PERF-FALSE exit then
+   i EMITTER$ j EMITTER$ STR= 0= if PERF-FALSE exit then
+   i WVID@ j WVID@ = ;
+
+: WAIVER-DUP? ( -- bool )   \ any two waiver rows carry an identical (kernel,emitter,version)
+   0 begin dup ROW-N @ < while
+      dup WAIVER? if
+         dup 1+ begin dup ROW-N @ < while
+            dup WAIVER? if
+               over over WAIVER-ID= if 2drop PERF-TRUE exit then
+            then
+            1+
+         repeat drop
+      then
+      1+
+   repeat drop PERF-FALSE ;
 
 ;package

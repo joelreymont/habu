@@ -29,11 +29,23 @@ package PERF-RT
    ROW-TAIL+
    SB$ ;
 
+: WAIVER-TAIL+ ( ptr u8 n ptr u8 n -- ) {: ea:ptr eu va:ptr vu :}   \ + emitter + version
+   TAB+ ea eu SB-APPEND TAB+ va vu SB-APPEND ;
+
 : WAIVER-ROW$ ( -- ptr u8 n )
    SB-RESET
    s" ATT-T" ROW-HEAD+
    s" WAIVER" SB-APPEND TAB+ s" 0" SB-APPEND
    ROW-TAIL+
+   s" lib/ptx/cg-mma.f" s" 1" WAIVER-TAIL+
+   SB$ ;
+
+: WAIVER-V2$ ( -- ptr u8 n )   \ same kernel+emitter, next version
+   SB-RESET
+   s" ATT-T" ROW-HEAD+
+   s" WAIVER" SB-APPEND TAB+ s" 0" SB-APPEND
+   ROW-TAIL+
+   s" lib/ptx/cg-mma.f" s" 2" WAIVER-TAIL+
    SB$ ;
 
 : WAIVER-BAD-NOTE$ ( -- ptr u8 n )   \ waiver without a documenting note
@@ -41,6 +53,7 @@ package PERF-RT
    s" ATT-T" ROW-HEAD+
    s" WAIVER" SB-APPEND TAB+ s" 0" SB-APPEND
    TAB+ s" test-dev" SB-APPEND TAB+ s" 2026-07-13" SB-APPEND TAB+
+   s" lib/ptx/cg-mma.f" s" 1" WAIVER-TAIL+
    SB$ ;
 
 : WAIVER-BAD-VALUE$ ( -- ptr u8 n )   \ waiver with a nonzero value
@@ -48,6 +61,38 @@ package PERF-RT
    s" ATT-T" ROW-HEAD+
    s" WAIVER" SB-APPEND TAB+ s" 7" SB-APPEND
    ROW-TAIL+
+   s" lib/ptx/cg-mma.f" s" 1" WAIVER-TAIL+
+   SB$ ;
+
+: WAIVER-BAD-EMITTER$ ( -- ptr u8 n )   \ waiver naming a non-emitter path
+   SB-RESET
+   s" ATT-T" ROW-HEAD+
+   s" WAIVER" SB-APPEND TAB+ s" 0" SB-APPEND
+   ROW-TAIL+
+   s" lib/foo.f" s" 1" WAIVER-TAIL+
+   SB$ ;
+
+: WAIVER-BAD-WVID$ ( -- ptr u8 n )   \ waiver with version below 1
+   SB-RESET
+   s" ATT-T" ROW-HEAD+
+   s" WAIVER" SB-APPEND TAB+ s" 0" SB-APPEND
+   ROW-TAIL+
+   s" lib/ptx/cg-mma.f" s" 0" WAIVER-TAIL+
+   SB$ ;
+
+: WAIVER-SHORT$ ( -- ptr u8 n )   \ waiver missing the emitter/version identity
+   SB-RESET
+   s" ATT-T" ROW-HEAD+
+   s" WAIVER" SB-APPEND TAB+ s" 0" SB-APPEND
+   ROW-TAIL+
+   SB$ ;
+
+: WAIVER-REORDER$ ( -- ptr u8 n )   \ version and emitter transposed (forged identity)
+   SB-RESET
+   s" ATT-T" ROW-HEAD+
+   s" WAIVER" SB-APPEND TAB+ s" 0" SB-APPEND
+   ROW-TAIL+
+   s" 1" s" lib/ptx/cg-mma.f" WAIVER-TAIL+
    SB$ ;
 
 : BAD-METRIC$ ( -- ptr u8 n )
@@ -120,6 +165,18 @@ package PERF-RT
 : PRT-WAIVER-VALUE ( -- )
    WAIVER-BAD-VALUE$ PERF:ADD-LINE ;
 
+: PRT-WAIVER-EMITTER ( -- )
+   WAIVER-BAD-EMITTER$ PERF:ADD-LINE ;
+
+: PRT-WAIVER-WVID ( -- )
+   WAIVER-BAD-WVID$ PERF:ADD-LINE ;
+
+: PRT-WAIVER-SHORT ( -- )
+   WAIVER-SHORT$ PERF:ADD-LINE ;
+
+: PRT-WAIVER-REORDER ( -- )
+   WAIVER-REORDER$ PERF:ADD-LINE ;
+
 : FIND-ROW ( ptr u8 n n -- n ) {: ka:ptr ku:n m:n :}   \ first row idx by kernel+metric, -1 if absent
    0 begin dup PERF:ROW# < while
       dup PERF:KERNEL$ ka ku STR=
@@ -150,7 +207,9 @@ package PERF-RT
    WAIVER-ROW$ PERF:ADD-LINE
    PERF:ROW# 2 T=
    1 PERF:WAIVER? TTRUE
-   1 PERF:VALUE@ 0 T= ;
+   1 PERF:VALUE@ 0 T=
+   1 PERF:EMITTER$ s" lib/ptx/cg-mma.f" T$=
+   1 PERF:WVID@ 1 T= ;
 
 : PRT-KEY-TESTS ( -- )
    PERF:RESET
@@ -179,7 +238,20 @@ package PERF-RT
    [: PRT-LONG ;] E-PERF-ROW TTHROWSQ
    [: PRT-WAIVER-NOTE ;] E-PERF-ROW TTHROWSQ
    [: PRT-WAIVER-VALUE ;] E-PERF-ROW TTHROWSQ
+   [: PRT-WAIVER-EMITTER ;] E-PERF-ROW TTHROWSQ
+   [: PRT-WAIVER-WVID ;] E-PERF-ROW TTHROWSQ
+   [: PRT-WAIVER-SHORT ;] E-PERF-ROW TTHROWSQ
+   [: PRT-WAIVER-REORDER ;] E-PERF-ROW TTHROWSQ
    PERF:ROW# 0 T= ;
+
+: PRT-WAIVER-DUP-TESTS ( -- )   \ duplicate live waiver detection over the row set
+   PERF:RESET
+   WAIVER-ROW$ PERF:ADD-LINE
+   PERF:WAIVER-DUP? TFALSE
+   WAIVER-V2$ PERF:ADD-LINE            \ same kernel+emitter, distinct version: not a dup
+   PERF:WAIVER-DUP? TFALSE
+   WAIVER-ROW$ PERF:ADD-LINE           \ re-added identical identity: duplicate live waiver
+   PERF:WAIVER-DUP? TTRUE ;
 
 : PRT-BOUNDS-TESTS ( -- )   \ ROW@ rejects reads past the committed frontier
    PERF:RESET
@@ -201,6 +273,7 @@ package PERF-RT
    at PERF:VALUE@ 20529 T=
    at PERF:DEVICE$ s" orin-nx-25w" T$=
    s" ATTENTION" PERF:M-WAIVER FIND-ROW 0 < TTRUE    \ and no ATTENTION WAIVER row remains
+   PERF:WAIVER-DUP? TFALSE             \ the committed registry carries no duplicate waiver
    PERF:LINE@ 0 > TTRUE                \ diagnostic accessors report the last parsed line
    PERF:LAST-LINE$ nip 0 > TTRUE ;
 
@@ -209,6 +282,7 @@ PRT-PARSE-TESTS
 PRT-KEY-TESTS
 PRT-LINE-TESTS
 PRT-REJECT-TESTS
+PRT-WAIVER-DUP-TESTS
 PRT-BOUNDS-TESTS
 PRT-COMMITTED-TESTS
 T-REPORT

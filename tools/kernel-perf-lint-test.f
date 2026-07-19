@@ -51,14 +51,15 @@ variable FILE2-U
    s" test-dev" SB-APPEND TAB+ s" 2026-07-13" SB-APPEND TAB+
    s" lint fixture" SB-APPEND LF+ ;
 
-: KLT-WAIVER+ ( -- )   \ one valid added WAIVER registry row
+: KLT-WAIVER+ ( -- )   \ one valid added WAIVER row owning the touched cg-matmul emitter
    s" +KLT-KERNEL" SB-APPEND TAB+
    s" 0" SB-APPEND TAB+ s" 0" SB-APPEND TAB+
    s" 0" SB-APPEND TAB+ s" 0" SB-APPEND TAB+
    s" 0" SB-APPEND TAB+ s" 0" SB-APPEND TAB+
    s" WAIVER" SB-APPEND TAB+ s" 0" SB-APPEND TAB+
    s" test-dev" SB-APPEND TAB+ s" 2026-07-13" SB-APPEND TAB+
-   s" device-gated: fixture waiver" SB-APPEND LF+ ;
+   s" device-gated: fixture waiver" SB-APPEND TAB+
+   s" lib/ptx/cg-matmul.f" SB-APPEND TAB+ s" 1" SB-APPEND LF+ ;
 
 : WATCHED-NOROW$ ( -- ptr u8 n )
    SB-RESET
@@ -239,11 +240,94 @@ variable FILE2-U
    [: SPOOF ;] E-DIFF-SYNTAX TTHROWSQ
    [: CONTROL ;] E-DIFF-SYNTAX TTHROWSQ ;
 
+\ ---- waiver-lifecycle ratchet ------------------------------------------------
+\ The standing registry is a fixture file (REG-LOAD!); the diff drives the touch.
+
+create REGFILE-BUF FS-PATH-CAP allot
+variable REGFILE-U
+
+: REGFILE$ ( -- ptr u8 n )
+   REGFILE-BUF REGFILE-U @ ;
+
+: DWAIVER+ ( ptr u8 n ptr u8 n -- ) {: ea:ptr eu va:ptr vu :}   \ diff-added waiver for KLT-KERNEL
+   s" +KLT-KERNEL" SB-APPEND TAB+ s" 0" SB-APPEND TAB+ s" 0" SB-APPEND TAB+
+   s" 0" SB-APPEND TAB+ s" 0" SB-APPEND TAB+ s" 0" SB-APPEND TAB+ s" 0" SB-APPEND TAB+
+   s" WAIVER" SB-APPEND TAB+ s" 0" SB-APPEND TAB+
+   s" test-dev" SB-APPEND TAB+ s" 2026-07-13" SB-APPEND TAB+ s" fixture" SB-APPEND TAB+
+   ea eu SB-APPEND TAB+ va vu SB-APPEND LF+ ;
+
+: FWAIVER+ ( ptr u8 n ptr u8 n -- ) {: ea:ptr eu va:ptr vu :}   \ committed registry waiver line
+   s" KLT-KERNEL" SB-APPEND TAB+ s" 0" SB-APPEND TAB+ s" 0" SB-APPEND TAB+
+   s" 0" SB-APPEND TAB+ s" 0" SB-APPEND TAB+ s" 0" SB-APPEND TAB+ s" 0" SB-APPEND TAB+
+   s" WAIVER" SB-APPEND TAB+ s" 0" SB-APPEND TAB+
+   s" test-dev" SB-APPEND TAB+ s" 2026-07-13" SB-APPEND TAB+ s" fixture" SB-APPEND TAB+
+   ea eu SB-APPEND TAB+ va vu SB-APPEND LF+ ;
+
+: TOUCH-MMA+ ( -- )
+   s" lib/ptx/cg-mma.f" KLT-HEAD+
+   s" +\ tweak the mma inner loop" SB-APPEND LF+ ;
+
+: REG-HEAD+ ( -- )
+   s" tools/ptx/perf-rows.tsv" KLT-HEAD+ ;
+
+: R-NOROW$ ( -- ptr u8 n )        SB-RESET TOUCH-MMA+ SB$ ;
+: R-WAIVER-V1$ ( -- ptr u8 n )    SB-RESET TOUCH-MMA+ REG-HEAD+ s" lib/ptx/cg-mma.f" s" 1" DWAIVER+ SB$ ;
+: R-WAIVER-V2$ ( -- ptr u8 n )    SB-RESET TOUCH-MMA+ REG-HEAD+ s" lib/ptx/cg-mma.f" s" 2" DWAIVER+ SB$ ;
+: R-WAIVER-OTHER$ ( -- ptr u8 n ) SB-RESET TOUCH-MMA+ REG-HEAD+ s" lib/ptx/cg-matmul.f" s" 1" DWAIVER+ SB$ ;
+: R-MEAS$ ( -- ptr u8 n )         SB-RESET TOUCH-MMA+ REG-HEAD+ KLT-ROW+ SB$ ;
+: R-UNKNOWN$ ( -- ptr u8 n )      SB-RESET TOUCH-MMA+ REG-HEAD+ s" lib/nope.f" s" 1" DWAIVER+ SB$ ;
+: R-MATMUL-MEAS$ ( -- ptr u8 n )
+   SB-RESET
+   s" lib/ptx/cg-matmul.f" KLT-HEAD+ s" +\ tweak" SB-APPEND LF+
+   REG-HEAD+ KLT-ROW+ SB$ ;
+
+: RF-V1$ ( -- ptr u8 n )    SB-RESET s" lib/ptx/cg-mma.f" s" 1" FWAIVER+ SB$ ;
+: RF-V2V1$ ( -- ptr u8 n )  SB-RESET s" lib/ptx/cg-mma.f" s" 2" FWAIVER+ s" lib/ptx/cg-mma.f" s" 1" FWAIVER+ SB$ ;
+: RF-DUP$ ( -- ptr u8 n )   SB-RESET s" lib/ptx/cg-mma.f" s" 1" FWAIVER+ s" lib/ptx/cg-mma.f" s" 1" FWAIVER+ SB$ ;
+: RF-EMPTY$ ( -- ptr u8 n ) SB-RESET s" # empty registry" SB-APPEND LF+ SB$ ;
+
+: R-WRITE ( ptr u8 n -- )   \ write a registry fixture to REGFILE$
+   REGFILE$ 2swap WRITE-ALL ;
+
+: R-RUN ( ptr u8 n -- n n ) {: a:ptr u:n :}   \ diff text -- out-len rc, against REGFILE$
+   KERNEL-PERF-LINT:RESET
+   REGFILE$ KERNEL-PERF-LINT:REG-LOAD!
+   KLT-OUT KLT-CAP LINT-OUT-BUFFER!
+   a u KERNEL-PERF-LINT:SOURCE
+   [: KERNEL-PERF-LINT:FINISH ;] catch {: rc:n :}
+   LINT-OUT$ nip LINT-OUT-BUFFER-OFF
+   rc ;
+
+: RATCHET-TESTS ( -- )
+   CLEANUP-RESET
+   s" habu-kernel-perf-ratchet" TMPDIR-MKDIR {: ra:ptr ru:n :}
+   ra ru CLEANUP-DIR+
+   ra ru s" reg.tsv" REGFILE-BUF JOIN-PATH REGFILE-U !
+   REGFILE$ CLEANUP+
+   \ (1) unchanged historical waiver stays valid when its emitter is not touched
+   RF-V1$ R-WRITE   R-MATMUL-MEAS$ R-RUN KLT-CLEAN
+   \ (2) touching its emitter with no replacement fails
+   RF-V1$ R-WRITE   R-NOROW$ R-RUN KLT-MISSING$ KLT-EXPECT
+   \ (3) another emitter's waiver cannot satisfy the touch
+   RF-V1$ R-WRITE   R-WAIVER-OTHER$ R-RUN KLT-MISSING$ KLT-EXPECT
+   \ (4) a same-change newly-versioned waiver passes
+   RF-V1$ R-WRITE   R-WAIVER-V2$ R-RUN KLT-CLEAN
+   \ (4b) a same-change measurement passes
+   RF-V1$ R-WRITE   R-MEAS$ R-RUN KLT-CLEAN
+   \ reject: a waiver not newer than the standing one is stale
+   RF-V2V1$ R-WRITE   R-WAIVER-V1$ R-RUN s" E-PERF-WAIVER-STALE" KLT-EXPECT
+   \ reject: a duplicate live waiver in the registry
+   RF-DUP$ R-WRITE   R-WAIVER-V1$ R-RUN s" E-PERF-WAIVER-DUP" KLT-EXPECT
+   \ reject: an added waiver naming an unknown emitter
+   RF-EMPTY$ R-WRITE   R-UNKNOWN$ R-RUN s" E-PERF-BAD-ROW" KLT-EXPECT
+   CLEANUP-RUN ;
+
 T-RESET
 KLT-SOURCE-TESTS
 KLT-FILE-TESTS
 MULTI-FILE-TESTS
 MALFORMED-TESTS
+RATCHET-TESTS
 T-REPORT
 
 ;package

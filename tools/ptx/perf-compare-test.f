@@ -43,7 +43,8 @@ package PERF-CT
    s" 0" SB-APPEND TAB+ s" 0" SB-APPEND TAB+
    s" WAIVER" SB-APPEND TAB+ s" 0" SB-APPEND TAB+
    s" test-dev" SB-APPEND TAB+ s" 2026-07-13" SB-APPEND TAB+
-   s" device-gated waiver fixture" SB-APPEND
+   s" device-gated waiver fixture" SB-APPEND TAB+
+   s" lib/ptx/cg-mma.f" SB-APPEND TAB+ s" 1" SB-APPEND
    SB$ PERF:ADD-LINE ;
 
 : CT-VERDICT-TESTS ( -- )   \ value-level verdicts around the 5% band
