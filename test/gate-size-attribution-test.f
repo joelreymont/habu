@@ -80,9 +80,14 @@ $4000 constant MACOS-DATA-CONST  \ __DATA_CONST page (__got + zero fill)
 \ compiler text, all inside compile/adt (2548 -> 2140), composing to 135904
 \ (floor 1144 -> 736); the whole file stays inside the same 4 KiB page
 \ (LINUX-TOTAL unchanged).
-135904 constant LINUX-CODE-TEXT   \ CODELEN: every emitter-phase row (baked-source incl.)
+\ 2026-07-19 re-measured live at the merged linux-arm64 fixpoint (spark) after
+\ the getpid process-identity primitive + checked PTY authority registry landed
+\ (macOS row above was re-measured by that landing; Linux left for this next
+\ fixpoint): +92 of engine text, composing to 135996 (floor 736 -> 828); the
+\ whole file stays inside the same 4 KiB page (LINUX-TOTAL unchanged).
+135996 constant LINUX-CODE-TEXT   \ CODELEN: every emitter-phase row (baked-source incl.)
 192 constant LINUX-RW             \ ELF read-write segment tail: DYNAMIC + GOT (ELF-RW-SZ)
-736 constant LINUX-FLOOR-DIST     \ code above the 4 KiB floor: the page-recovery shave
+828 constant LINUX-FLOOR-DIST     \ code above the 4 KiB floor: the page-recovery shave
 143552 constant LINUX-TOTAL       \ = FILE-SIZE bin/hb = GB-SIZE-BASELINE-LINUX
 
 : PAGE-UP ( n n -- n ) {: v:n page:n :}
