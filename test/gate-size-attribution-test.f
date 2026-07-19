@@ -42,9 +42,15 @@ $4000 constant MACOS-DATA-CONST  \ __DATA_CONST page (__got + zero fill)
 \ nine 16 KiB __TEXT pages, so the code signature and whole-file total are
 \ unchanged. Keep MACOS-TOTAL equal to GB-SIZE-BASELINE-MACOS in
 \ test/gate-build-size.f.
-127860 constant MACOS-CODE-TEXT   \ CODELEN: every emitter-phase row (baked-source incl.)
+\ Lowered again on 2026-07-19 after the DP out-of-range die rework landed from
+\ the Linux side (commit cffe4d44): that engine change shrinks macOS __text by
+\ 96 bytes, the Linux rows were re-measured by its author, and the exact-CODELEN
+\ ratchet (STALE-BASELINE, candidate 127764 vs row 127860) forces this host's
+\ honest lowering: CODELEN 127860 -> 127764, floor 884 -> 788. Page count,
+\ signature, and whole-file total are unchanged.
+127764 constant MACOS-CODE-TEXT   \ CODELEN: every emitter-phase row (baked-source incl.)
 1423 constant MACOS-SIGNATURE     \ ad-hoc code signature SuperBlob (grows with CODELEN)
-884 constant MACOS-FLOOR-DIST     \ code above the 16 KiB floor: the page-recovery shave
+788 constant MACOS-FLOOR-DIST     \ code above the 16 KiB floor: the page-recovery shave
 165367 constant MACOS-TOTAL       \ = FILE-SIZE bin/hb = GB-SIZE-BASELINE-MACOS
 
 \ Linux committed attribution, measured at the byte-fixpoint on 2026-07-19 (DGX
