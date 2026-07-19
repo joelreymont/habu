@@ -1,9 +1,0 @@
----
-title: Gate-enforce exact CODELEN ratchet via VALIDATE
-status: open
-priority: 1
-issue-type: task
-created-at: "2026-07-19T19:04:05.128816+02:00"
----
-
-Mac verdict 2026-07-19 (exact fixpoint rebuilds): the size ratchet measures the page-rounded container, so up to one page of code growth accumulates INVISIBLY (macOS 16 KiB, Linux 4 KiB). Proof: TFAM transport +11164 B, native MATCH +1728 B, underdepth +1440 B of real __text, yet intervening commits smuggled +19304 B under page cover; the 16512-byte file jumps are 16384 (one __TEXT page, rounding at src/os/macos/macho.f:55) + 128 (four 4-KiB SHA-256 signature hashes, sign2.f:23). Live re-proof same day: seal-guard lane added 404 B code, gate reported no size drift (file unchanged 143552). The machinery exists and is unwired: HABU_ENGINE_SIZE_MAP=1 prints the attribution map at build; SIZE-ATTR:VALIDATE (test/gate-size-attribution-test.f:106) reconciles a captured map + engine byte-for-byte and holds SUM-TEXT/FLOOR-DIST/region rows to the committed constants - but no gate slice calls it; RUN only cross-checks committed rows against each other and the whole file. Fix: the candidate build slice (test/gate-engine-lib.f) builds with HABU_ENGINE_SIZE_MAP=1, captures the map, and runs VALIDATE against the committed rows, making LINUX-CODE-TEXT/MACOS-CODE-TEXT exact per-commit ratchets: any code growth then requires a deliberate same-commit row bump (mirroring GB-SIZE ratchet semantics incl. STALE-BASELINE on shrink), and invisible accumulation becomes structurally impossible. Each target validates its own rows (macOS rows on Mac). Tests: a both-direction regression - stale CODE-TEXT row + grown candidate must fail the slice; matching rows pass. SERIALIZE: test/gate-engine-lib.f is inside the Mac-claimed habu-gate-must-test-cd70ef4e footprint - land after (or coordinate with) that lane.
