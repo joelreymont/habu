@@ -182,6 +182,31 @@ create FORGE-BUF FS-PATH-CAP allot    variable FORGE-U
    s" shipped engine registry does not begin with the baked ids (control)" T-LABEL
    PLAIN$ PROBE-E0$ READ-N  WID-A <>  TTRUE ;
 
+\ AOT DATA-reserve span guard (dot habu-guard-aot-data-49de2ee6): the sibling
+\ seed-pass forge test/aot-data-span-forge.f builds an oversized-span variant and
+\ PTY-boots it (the reserve+guard only run on interactive REPL entry), proving a
+\ forged span dies named/exit-82 while the legal span still boots. It is a
+\ spawn-only helper; run it as a child here and gate on its exit code.
+: PROBE-DATA-SPAN ( -- )
+   PROC-ENV-RESET
+   PROC-ENV-INHERIT-MISSING
+   PROC-ARGV-RESET
+   s" --load" >LEN PROC-ARGV+
+   s" test/aot-data-span-forge.f" >LEN PROC-ARGV+
+   PLAIN$ >LEN  OUT CAP >LEN  ERR CAP >LEN  BUILD-TIMEOUT-MS >MS
+   RUN-ARGV-ENV-CAPTURE
+   s" AOT data-span guard: forged span dies named, legal span boots" T-LABEL
+   MATCH result
+     ok  OF PCAP-CAPTURED:UNMAKE {: o:len e:len :}
+            o LEN>N OUT-U !  e LEN>N ERR-U !  0 0= TTRUE ENDOF
+     err OF PCAP-FAILED:UNMAKE {: o:len e:len c:rc :}
+            o LEN>N OUT-U !  e LEN>N ERR-U !
+            s" aot-wid-suite: data-span child failed rc " type  c RC>N .  cr
+            s" aot-wid-suite: data-span child stdout:" type cr  OUT OUT-U @ type cr
+            s" aot-wid-suite: data-span child stderr:" type cr  ERR$ type cr
+            0 0= 0= TTRUE ENDOF
+   ;MATCH ;
+
 : BODY ( -- )
    SETUP
    BUILD-VARIANT
@@ -191,7 +216,8 @@ create FORGE-BUF FS-PATH-CAP allot    variable FORGE-U
    s" hb-pwid variant exists after build" T-LABEL
    HBPWID$ EXISTS? TTRUE
    PROBE-VARIANT
-   PROBE-CONTROL ;
+   PROBE-CONTROL
+   PROBE-DATA-SPAN ;
 
 public
 

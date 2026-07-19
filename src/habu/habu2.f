@@ -3681,13 +3681,29 @@ EM-AOT-RESTORE-HOOK-INIT
 \ to a source-compiled all-allot/variable region), then rebase every captured DATA
 \ address literal (movz/movk x9 chain) by delta = seedDP - captureD0, so create/
 \ variable buffer refs point at the seeded DATA. No name lookup; single delta.
+\ The span is the only DP-advancing sink not routed through DP-CHECK -- it is read
+\ straight from the AOT image -- so bound it BEFORE it advances DP: the new DP must
+\ satisfy seedDP + span <= data-base + DATA-SIZE (the DATA region top), i.e. span
+\ must fit the headroom top - seedDP. A legitimate REPL span is a few KB, well
+\ within headroom; a forged/oversized span (image tampered past its sha / codesign
+\ cover) fails closed with a named boot diagnostic. No eval frame exists at seed
+\ time, so this uses the boot-path die idiom (named fd-2 message + exit
+\ AOT-OWNER-RC=82, the AOT seed-pass boot-integrity code), not LCOMPILEDIE. The die
+\ is inlined between the check and the reserve; the pass path branches over it (ok)
+\ so this word still falls through to EM-AOT-RELOC-CODE (it is inlined, not a call).
 : EM-AOT-RELOC-DATA ( -- )
-   LBL LBL {: dloop:label drdone:label :}
+   LBL LBL LBL LBL {: dloop:label drdone:label ok:label msg:label :}
    3 DATA DP-CELL LDR,                              \ x3 = seed DP (abs) = REPL DATA base at boot
    5 LAOTDATAD0 LABEL@ ADR,  5 5 0 LDR,             \ x5 = capture-time REPL DATA base
    6 3 5 SUB,                                       \ x6 = delta (survives the loop)
    5 LAOTDATASIZE LABEL@ ADR,  5 5 0 LDR,           \ x5 = REPL DATA span
-   3 3 5 ADD,  3 DATA DP-CELL STR,                  \ reserve: DP += span (zeroed by anon mmap)
+   7 DATA-SIZE LIT64,  7 DATA 7 ADD,  7 7 3 SUB,    \ x7 = headroom = (data-base + DATA-SIZE) - seed DP
+   5 7 CMP,  C-LS ok BCOND,                         \ span <= headroom -> ok; else fall into the boot die
+      1 msg ADR,  0 2 MOVZ,  2 31 MOVZ,  NR-WRITE SYS,
+      0 AOT-OWNER-RC MOVZ,  NR-EXIT-GROUP SYS,
+   msg LBL,  s" hb: AOT data span out of range" BYTES,  NL-KW 1 BYTES,
+   ok LBL,
+   3 3 5 ADD,  3 DATA DP-CELL STR,                  \ reserve: DP += span (bounded; zeroed by anon mmap)
    21 LAOTDSITES LABEL@ ADR,                        \ x21 = DATA-site cursor (u16 offsets)
    23 LAOTNDSITE LABEL@ ADR,  23 23 0 LDR,          \ x23 = DATA-site count
    22 0 MOVZ,

@@ -94,6 +94,19 @@ create DRV-PATH-BUF FS-PATH-CAP allot   variable DRV-PATH-U
    10 DRV-BUF DRV-U @ + c!
    DRV-U @ 1+ DRV-U ! ;
 
+\ Optional AOT DATA-span forge (dot habu-guard-aot-data-49de2ee6). The reserve in
+\ EM-AOT-RELOC-DATA advances DP by the baked LAOTDATASIZE span read straight from
+\ the image; test/aot-data-span-forge.f probes that guard by baking a forged span.
+\ When HABU_AOT_SPAN is set to a decimal, that value overwrites the captured span
+\ AFTER CAPTURE-REPL and BEFORE EMIT-FORTH, so LAOTDATASIZE carries the forged value
+\ (the forge test passes 2*DATA-SIZE, unambiguously past the seed headroom). No env
+\ leaves the real capture untouched (the plain protected-WID build path).
+: SPAN-FORGE-LINE ( -- )
+   s" HABU_AOT_SPAN" GETENV {: v:ptr vu:n :}
+   vu 0 > if
+      s"    " DRV+  v vu DRV+  s"  AOT-DATA-SIZE !" DRV+ DRV-NL
+   then ;
+
 \ Append PWID-GO: mirror stdin.f GO, injecting two protected word-list ids
 \ (300, one slot for WID > 255; and 70000, one slot for WID > 65535) into the
 \ capture buffer after CAPTURE-REPL. These two literal ids are the fixture
@@ -103,6 +116,7 @@ create DRV-PATH-BUF FS-PATH-CAP allot   variable DRV-PATH-U
    s" : PWID-GO ( -- )" DRV+ DRV-NL
    s"    CAPTURE-REPL" DRV+ DRV-NL
    s"    300 0 ACAP-PWID-PUT   70000 1 ACAP-PWID-PUT   2 AOT-PWID-N !" DRV+ DRV-NL
+   SPAN-FORGE-LINE
    s"    0 0= STDIN? !" DRV+ DRV-NL
    s"    HB@ 0 EMIT-FORTH" DRV+ DRV-NL
    S\"    s\" hb\" STDIN-OUT DRV-EMIT-IMAGE" DRV+ DRV-NL

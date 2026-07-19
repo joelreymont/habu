@@ -1983,7 +1983,17 @@ points stay listed.
   `src/habu/stdin.f`, fails closed if it no longer ends with the trailing top-level
   `GO` call, drops that call, and appends a `PWID-GO` that bakes the two protected
   word-list ids into the AOT registry via `aot-capture.f ACAP-PWID-PUT`; the rest
-  reuses `tools/build-fixpoint.f`. No production source is touched.
+  reuses `tools/build-fixpoint.f`. No production source is touched. Also honours
+  `HABU_AOT_SPAN` (SPAN-FORGE-LINE) to bake a forged `LAOTDATASIZE` for the
+  data-span guard regression below.
+- `test/aot-data-span-forge.f` — AOT DATA-reserve span-guard boot regression (dot
+  `habu-guard-aot-data-49de2ee6`): spawn-only helper run by `test/aot-wid-suite.f`.
+  The reserve+guard in `EM-AOT-RELOC-DATA` (`src/habu/habu2.f`) runs only on
+  interactive REPL entry, so it PTY-boots a forged oversized-span image (built via
+  `test/aot-wid-build.f` + `HABU_AOT_SPAN=2*DATA-SIZE`) and asserts the named boot die
+  `hb: AOT data span out of range` + exit 82, and PTY-boots the unforged engine to
+  prove the legal span still reaches the REPL and exits 0. PTY primitives mirror
+  `test/proc-pty.f`.
 - `test/owner-wid-emitter.f` — test-image-only cold emitter hook that drives the
   unpublished owner-pair mutator through exact capacity and atomic rejection.
 - `test/owner-wid-source.f` — canonical owner package source shared by the AOT
