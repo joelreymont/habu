@@ -292,6 +292,22 @@ variable MGC-TN
    0 MMA-DTYPE !  0 MMA-EPILOG !  32 MMA-BK !  0 MMA-PAD !  2 MMA-STAGES !  0 MMA-DYNSMEM !
    1 MMA-MFRAGS !  8 MMA-WARPS !  64 MGC-SA !  128 MGC-SB ! ;
 
+\ TRANSPOSED-Bs fp16 config (dot habu-fp16-transposed-bs): MMA-DTYPE=1 + MMA-BTF16=1 - the n-major BT
+\ staging + one-b32-per-register B feed. Same fill/reference/compare and JUSTIFIED zero tolerance as
+\ MGC-CFG-F16 (the transpose is a pure permutation of the same integer values, so the integer-exactness
+\ argument is unchanged). Checked at the block-M-aware edges (BROWS, 2*BROWS) so BOTH warp grids are
+\ covered. Args: bk pad stages dyn mfrags warps epilog bpad. Restores the tf32 8-warp default.
+: MGC-CFG-F16-T ( n n n n n n n n -- )
+   MMA-BPAD !  MMA-EPILOG !  MMA-WARPS !  MMA-MFRAGS !  MMA-DYNSMEM !  MMA-STAGES !  MMA-PAD !  MMA-BK !
+   1 MMA-DTYPE !  0 MMA-LMODE !  0 MMA-BLDM !  1 MMA-BTF16 !
+   MMA-BROWS MGC-SA !  MMA-BROWS 2 * MGC-SB !
+   s" -- FP16-T (transposed-Bs feed) MFRAGS=" type MMA-MFRAGS @ .  s"  warps=" type MMA-WARPS @ .  s"  BK=" type MMA-BK @ .
+   s"  bpad=" type MMA-BPAD @ .  s"  stages=" type MMA-STAGES @ .  s"  dyn=" type MMA-DYNSMEM @ .  s"  epi=" type MMA-EPILOG @ .
+   s"  (" type MGC-SA @ . s" ^3," type MGC-SB @ . s" ^3):" type cr
+   0 MGC-MODE
+   0 MMA-DTYPE !  0 MMA-BTF16 !  0 MMA-EPILOG !  32 MMA-BK !  0 MMA-PAD !  2 MMA-STAGES !  0 MMA-DYNSMEM !
+   1 MMA-MFRAGS !  8 MMA-WARPS !  0 MMA-BPAD !  64 MGC-SA !  128 MGC-SB ! ;
+
 \ DEEP-STAGE 4-warp configs (dot habu-4-warp-mma step 3). N>=3 uses the N-stage ring pipeline
 \ (lib/ptx/cg-mma.f MMA-PIPE-KLOOP-MULTI), whose steady wait_group(N-1) and draining epilogue
 \ wait_group(N-2..0) are only exact when T=ceil(K/BK) >= N-1. The BROWS-derived edges (down to 64
@@ -365,6 +381,23 @@ variable MGC-TN
    if s" -- fp16 dtype legality: fail-closed on un-wired feed knobs, emits scalar packed (PASS)" type cr
    else s" mma-gemm-check: fp16 dtype legality regression FAILED" 1 die then ;
 
+\ negative+positive regression (dot habu-fp16-transposed-bs): the transposed-Bs fp16 feed guard
+\ MMA-CHECK-BTF16 must fail closed with E-MMA-BTF16 when MMA-BTF16 is set on a TF32 tile (the one-b32-per-
+\ register load is fp16-only) or with a BT row stride that is not a 4 B multiple (BK+BPAD odd -> misaligned
+\ b32 B load), and emit cleanly for a legal fp16 transposed tile. Device-independent (pure emit). Keeps a
+\ bad transposed-Bs knob combination from emitting a wrong kernel or faulting the launch.
+: MGC-BTF16-NEG ( -- )
+   0 MMA-DTYPE !  32 MMA-BK !  0 MMA-PAD !  2 MMA-STAGES !  0 MMA-DYNSMEM !  1 MMA-MFRAGS !  8 MMA-WARPS !  1 MMA-BTF16 !
+   MGC-TRY-EMIT {: rtf:n :}                              \ BTF16 on a tf32 tile -> fp16-only -> must throw E-MMA-BTF16
+   1 MMA-DTYPE !  0 MMA-LMODE !  1 MMA-BPAD !
+   MGC-TRY-EMIT {: rodd:n :}                             \ fp16 BTF16 + BPAD=1 -> BTROW=(32+1)*2=66 B (not 4B) -> must throw
+   0 MMA-BPAD !  MGC-TRY-EMIT {: rok:n :}                \ fp16 BTF16 + BPAD=0 -> BTROW=64 B (4B-aligned) -> must emit (0)
+   0 MMA-DTYPE !  0 MMA-BTF16 !  0 MMA-BPAD !  32 MMA-BK !  0 MMA-PAD !  2 MMA-STAGES !  0 MMA-DYNSMEM !  1 MMA-MFRAGS !  8 MMA-WARPS !
+   s" -- fp16 transposed-Bs legality: tf32+BTF16->" type rtf . s"  bpad=1->" type rodd . s"  bpad=0->" type rok . cr
+   rtf E-MMA-BTF16 =  rodd E-MMA-BTF16 =  and  rok 0=  and
+   if s" -- fp16 transposed-Bs legality: fail-closed on tf32-tile + non-4B BT row, emits when legal (PASS)" type cr
+   else s" mma-gemm-check: fp16 transposed-Bs legality regression FAILED" 1 die then ;
+
 public
 : MGC-ALL ( -- )
    MGC-SMEM-NEG                                        \ emitter fail-closed check (device-independent)
@@ -373,6 +406,7 @@ public
    MGC-WARPS-NEG                                       \ warp-grid legality fail-closed (device-independent)
    MGC-EPI-NEG                                         \ epilogue smem legality fail-closed (device-independent)
    MGC-DTYPE-NEG                                       \ fp16 dtype legality fail-closed (device-independent)
+   MGC-BTF16-NEG                                       \ fp16 transposed-Bs feed legality fail-closed (device-independent)
    CUDA:OPEN? 0= if s" mma-gemm-check: libcuda unavailable -> SKIPPED (off-device)" type cr exit then
    s" == TF32 mma.sync GEMM device-correctness (element-exact vs host) ==" type cr
    0 MGC-MODE  1 MGC-MODE  2 MGC-MODE
@@ -428,7 +462,15 @@ public
    32 0 2 0 2 8 1 MGC-CFG-F16                          \ wide MFRAGS=2 8-warp + EPILOGUE (128^3/256^3)
    32 0 1 0 4 4 1 MGC-CFG-F16                          \ 4-warp MFRAGS=4 stages=1 + EPILOGUE (128^3/256^3)
    32 0 2 0 4 8 0 MGC-CFG-F16                          \ wide MFRAGS=4 8-warp static (256^3/512^3)
-   0 MMA-LMODE !  0 MMA-DTYPE ! ;                      \ restore the committed defaults (tf32 scalar+cvt)
+   s" == FP16 transposed-Bs feed (dot habu-fp16-transposed-bs, one b32 load/B register, element-exact) ==" type cr
+   32 0 2 0 1 8 0 0 MGC-CFG-F16-T                      \ non-wide MFRAGS=1 8-warp static bpad=0 (64^3/128^3)
+   32 0 2 0 1 8 0 8 MGC-CFG-F16-T                      \ non-wide MFRAGS=1 8-warp static bpad=8 conflict-free (64^3/128^3)
+   32 0 2 1 2 8 0 8 MGC-CFG-F16-T                      \ wide MFRAGS=2 8-warp stages=2 dyn bpad=8 (128^3/256^3)
+   32 0 1 0 4 4 0 0 MGC-CFG-F16-T                      \ 4-warp MFRAGS=4 stages=1 static bpad=0 (128^3/256^3)
+   32 0 2 1 4 4 0 8 MGC-CFG-F16-T                      \ 4-warp MFRAGS=4 stages=2 dyn bpad=8 (128^3/256^3)
+   32 0 2 0 2 8 1 8 MGC-CFG-F16-T                      \ wide MFRAGS=2 8-warp + EPILOGUE bpad=8 (128^3/256^3)
+   32 0 1 0 4 4 1 8 MGC-CFG-F16-T                      \ 4-warp MFRAGS=4 stages=1 + EPILOGUE bpad=8 (128^3/256^3)
+   0 MMA-LMODE !  0 MMA-DTYPE !  0 MMA-BTF16 ! ;       \ restore the committed defaults (tf32 scalar+cvt)
 
 ;package
 

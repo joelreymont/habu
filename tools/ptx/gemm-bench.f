@@ -277,6 +277,28 @@ variable GB-BLKY                       \ block Y dim: 16 (256 thr, 8-warp) / 8 (
    0 MMA-DTYPE !  0 MMA-EPILOG !  32 MMA-BK !  0 MMA-PAD !  2 MMA-STAGES !  0 MMA-DYNSMEM !  1 MMA-MFRAGS !  8 MMA-WARPS !
    0 GB-SMEM-DYN !  64 GB-OTY !  16 GB-BLKY ! ;
 
+\ FP16 TRANSPOSED-Bs feed bench config (dot habu-fp16-transposed-bs): MMA-DTYPE=1 + MMA-BTF16=1 - the
+\ n-major BT staging + one-b32-per-register B feed. Same fill/timing as GB-MMM-CFG-F16 (A=B=1.0, values
+\ immaterial). Element-exact first (tools/ptx/mma-gemm-check.f MGC-CFG-F16-T). Args: bk pad stages dyn
+\ mfrags warps epilog bpad. Restores the tf32 8-warp default.
+: GB-MMM-CFG-F16-T ( n n n n n n n n -- )
+   MMA-BPAD !  MMA-EPILOG !  MMA-WARPS !  MMA-MFRAGS !  MMA-DYNSMEM !  MMA-STAGES !  MMA-PAD !  MMA-BK !
+   1 MMA-DTYPE !  0 MMA-LMODE !  0 MMA-BLDM !  1 MMA-BTF16 !
+   MMA-DYNSMEM @ if MMA-SH-BYTES else 0 then GB-SMEM-DYN !
+   MMA-NTHREADS 16 / GB-BLKY !
+   s" == FP16-T MMM MFRAGS=" type MMA-MFRAGS @ GB-INT.  s"  warps=" type MMA-WARPS @ GB-INT.
+   s"  BK=" type MMA-BK @ GB-INT.  s"  bpad=" type MMA-BPAD @ GB-INT.  s"  stages=" type MMA-STAGES @ GB-INT.
+   s"  dyn=" type MMA-DYNSMEM @ GB-INT.  s"  epi=" type MMA-EPILOG @ GB-INT.
+   s"  block=" type MMA-BROWS GB-INT. s" x64  smem=" type MMA-SMEM GB-INT. s" B ==" type cr
+   s" habu-gemm-bench" PTXTC:PREPARE
+   PTX-CAPTURE-ON  EMIT-MATMUL-MMA  PTX-CAPTURE-OFF
+   GB-ASSEMBLE
+   64 GB-OT !  MMA-BROWS GB-OTY !
+   s" MMM" GB-KERNEL
+   PTXTC:CLEAN
+   0 MMA-DTYPE !  0 MMA-BTF16 !  0 MMA-EPILOG !  32 MMA-BK !  0 MMA-PAD !  2 MMA-STAGES !  0 MMA-DYNSMEM !  1 MMA-MFRAGS !  8 MMA-WARPS !
+   0 MMA-BPAD !  0 GB-SMEM-DYN !  64 GB-OTY !  16 GB-BLKY ! ;
+
 public
 
 : GB-MMM-BENCH ( -- )                  \ FP32 roof reference + the larger-BK/swizzle sweep (focused)
@@ -371,7 +393,15 @@ public
    32 0 2 1 4 4 0 GB-MMM-CFG-F16        \ 4-warp MFRAGS=4 stages=2 dyn (128x64)
    32 0 1 0 2 4 0 GB-MMM-CFG-F16        \ 4-warp MFRAGS=2 stages=1 static (64x64)
    32 0 1 0 4 4 1 GB-MMM-CFG-F16        \ 4-warp MFRAGS=4 stages=1 static + EPILOGUE (128x64)
-   32 0 2 1 2 8 1 GB-MMM-CFG-F16 ;      \ MFRAGS=2 8-warp stages=2 dyn + EPILOGUE (128x64)
+   32 0 2 1 2 8 1 GB-MMM-CFG-F16        \ MFRAGS=2 8-warp stages=2 dyn + EPILOGUE (128x64)
+   \ transposed-Bs feed (dot habu-fp16-transposed-bs): one b32 load per B register vs 2 u16 + shift/or.
+   \ Same winning tiles as above (4-warp MFRAGS=4 sweeps every shape), bpad {0,8} (8 = conflict-free b32 read).
+   32 0 2 1 4 4 0 0 GB-MMM-CFG-F16-T    \ 4-warp MFRAGS=4 stages=2 dyn bpad=0 (128x64; 512-2048 baseline winner shape)
+   32 0 2 1 4 4 0 8 GB-MMM-CFG-F16-T    \ 4-warp MFRAGS=4 stages=2 dyn bpad=8 (conflict-free BT read)
+   32 0 1 0 4 4 0 0 GB-MMM-CFG-F16-T    \ 4-warp MFRAGS=4 stages=1 static bpad=0 (128x64; 4096 baseline winner shape)
+   32 0 1 0 4 4 0 8 GB-MMM-CFG-F16-T    \ 4-warp MFRAGS=4 stages=1 static bpad=8
+   32 0 2 1 2 8 0 8 GB-MMM-CFG-F16-T    \ 8-warp MFRAGS=2 stages=2 dyn bpad=8 (128x64)
+   32 0 2 0 1 8 0 8 GB-MMM-CFG-F16-T ;  \ non-wide MFRAGS=1 8-warp static bpad=8 (64x64; small-shape check)
 
 ;package
 

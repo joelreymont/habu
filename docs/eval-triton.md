@@ -1505,3 +1505,69 @@ Protocol identical to the head-to-head above: per shape 1 warmup + ITERS (400, 2
 CUDA-event-timed launches, **best of 3 full passes**, run **solo**. A = B = 1.0, C = 0
 (values immaterial to timing). The Triton fp16 column is the same `/tmp/gemm-triton-gb10.py`
 referee measured in the fp16 table above.
+
+## Round 6 — the fp16 transposed-`Bs` B feed (dot `habu-fp16-transposed-bs`): a compute-bound-only win (2026-07-19)
+
+Round 5 named the next fp16 lever precisely: the un-transposed B fragment builds each of its two `b32`
+registers from two `ld.shared.u16` + a shift/or, because the register's two K-adjacent halves are one
+`BN`-row apart in the k-major `Bs`. This round stores `Bs` **transposed** (n-major `BT[n][k]`, K
+contiguous) so each register's K-adjacent pair is contiguous and loads as **one `ld.shared.b32`**,
+dropping the shift/or — the fp16 analogue of the tf32 wave-3 B-`ldmatrix` transposed-`Bs` feed. `cg-mma.f`
+gains a selectable `MMA-BTF16` knob (off by default, like every other tile option). `cp.async` cannot
+gather the transpose (a contiguous chunk would scatter across BT rows), so the BT tile is staged by a
+scalar transposed `u16` copy (coalesced global read `B[k][n]`, strided shared write `BT[n][k]`) while As
+stays a `cp.async` copy — the same split staging the tf32 BLDM path uses. The n-major BT row stride is
+`BK+BPAD` halves; `BPAD=8` (stride 40 halves = b32-load start-bank stride 20) is **conflict-free** and is
+the load-bearing knob: at `BPAD=0` the 8 `gid` tiles alias a 4-bank window and the tile runs
+bank-conflict-bound (the `BPAD=0` row below).
+
+**Correctness first, tf32 and the fp16 default untouched.** With `MMA-BTF16=0` every tf32 config *and*
+the fp16 default B feed stay **byte-identical** (`tools/ptx/mma-emit-diff.f`, 35 tf32 + 6 fp16 configs:
+empty diff base vs branch). The transposed feed is proven **element-exact** before any timing
+(`tools/ptx/mma-gemm-check.f` `MGC-CFG-F16-T`: seven configs on **both** warp grids at the block-M-aware
+edges (64³/128³/256³), with and without the epilogue, `BPAD` ∈ {0,8}, device-verified, zero mismatches;
+the transpose is a pure permutation of the same integer values, so the justified-zero-tolerance argument
+is unchanged). A fail-closed guard (`E-MMA-BTF16`, negative-tested) rejects the transposed feed on a tf32
+tile or with a non-4-byte BT row.
+
+### Result — the transposed feed wins only the most compute-bound shape, and loses the small ones
+
+Best-of-3, run solo, sustained 2411 MHz (the same-session FP32 `MM` CUDA-core roof reproduced the tf32
+baseline clock). **Bold = per-shape fp16 winner across both B feeds:**
+
+| TFLOP/s (fp16, C=A·B)              |  512³ | 1024³ | 2048³ | 4096³ |
+|------------------------------------|------:|------:|------:|------:|
+| Habu fp16 k-major B (Round 5)      |**16.3**|**36.1**| 46.1 | 44.6 |
+| Habu fp16 transposed-`Bs` (BPAD=8) |  13.1 |  32.3 |**45.2**|**47.2**|
+| — same config at BPAD=0            |  10.9 |  22.9 |  27.5 |  29.1 |
+| Triton 3.8 fp16 `tl.dot`           |  27.4 |  73.8 |  85.8 |  89.1 |
+| **Habu / Triton (fp16, best)**     | 0.59× | 0.49× | 0.53× |**0.53×**|
+| **fp16 / own tf32**                | 1.00× | 1.24× | 1.45× |**1.67×**|
+
+The transposed feed is a **regime-split** result, not a strict win, so it ships as a knob (default off),
+**not** the fp16 default. It **wins the 4096³ shape** — the most compute-bound, where Round 5 measured
+the largest fp16-over-tf32 multiplier — lifting it 44.6 → **47.2 (+5.8 %)**, 0.50× → **0.53×** Triton and
+the own-tf32 multiplier 1.58× → **1.67×**; the feed savings (one `b32` load vs two `u16` + shift/or per
+register, per K-substep) dominate there and the extra scalar-transpose staging is hidden behind compute.
+It is **flat at 2048³** (45.2 vs 46.1) and **regresses the launch/occupancy-bound small shapes** — 1024³
+36.1 → 32.3 (−11 %) and 512³ 16.3 → 13.1 (−20 %) — where the added staging (8–16 scalar `u16` transposed
+copies/thread per K-tile, vs one `cp.async` 8-half chunk on the k-major B) is exposed rather than hidden.
+The `BPAD=0` row is the honest floor: without the pad the b32 loads are 4-way bank-conflicted and the
+whole tile runs ~27–29 TFLOP/s, below even the k-major baseline — the conflict-free `BPAD=8` stride is
+what makes the feed change pay at all.
+
+So the lever does **not** move the small–mid shapes toward Triton's numbers as Round 5 predicted — that
+prediction was wrong for 512³–2048³: the transpose is a staging-vs-feed trade, and only 4096³ is
+feed-bound enough to bank it. The honest headline is a **~6 % gain on one shape**, still 0.53× Triton
+(the same Triton-wins shape as every prior round), by cutting the fp16 B feed to one `b32` load per
+register on the tile where the feed is the binding cost.
+
+### Reproduction (exact)
+
+```
+bin/hb --load tools/ptx/mma-gemm-check.f   # MGC-CFG-F16-T rows PASS element-exact (both warp grids, ±epilogue,
+                                           # BPAD 0/8); E-MMA-BTF16 negative fail-closed; tf32 + fp16-default rows unchanged
+# swap the file's bottom entry to GEMMBENCH:GB-F16-SWEEP (as with GB-F16), then:
+bin/hb --load tools/ptx/gemm-bench.f       # GB-F16-SWEEP: k-major + transposed-Bs fp16 configs, all four shapes; best of 3, solo
+bin/hb --load tools/ptx/mma-emit-diff.f    # 35 tf32 + 6 fp16-default configs; diff base vs branch = empty
+```

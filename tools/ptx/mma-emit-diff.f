@@ -26,6 +26,19 @@ package MMAEMITDIFF
 \ set every knob (stack top = bpad, bottom = bk), print a header naming the config,
 \ emit the MMM PTX to stdout, restore the defaults.
 : ED#  ( n -- )  SB-INT s"  " SB-APPEND ;               \ append "n " to the header string builder
+\ fp16 tile (MMA-DTYPE=1) with the transposed-Bs feed OFF (MMA-BTF16 defaults 0): proves the fp16
+\ DEFAULT B-feed path stays BYTE-IDENTICAL across this change. Does NOT touch MMA-BTF16, so this harness
+\ still loads against the pre-change (base) cg-mma.f for the base-vs-branch diff. Restores MMA-DTYPE=0.
+: ED-ONE-F16 ( n n n n n n n -- )   \ bk pad stages dyn mfrags warps epilog
+   MMA-EPILOG !  MMA-WARPS !  MMA-MFRAGS !  MMA-DYNSMEM !  MMA-STAGES !  MMA-PAD !  MMA-BK !
+   1 MMA-DTYPE !
+   SB-RESET s" === F16 bk " SB-APPEND MMA-BK @ ED#  s" pad " SB-APPEND MMA-PAD @ ED#
+   s" stages " SB-APPEND MMA-STAGES @ ED#  s" dyn " SB-APPEND MMA-DYNSMEM @ ED#
+   s" mfrags " SB-APPEND MMA-MFRAGS @ ED#  s" warps " SB-APPEND MMA-WARPS @ ED#
+   s" epi " SB-APPEND MMA-EPILOG @ ED#  s" ===" SB-APPEND SB$ type cr
+   PTX-CAPTURE-ON  EMIT-MATMUL-MMA  PTX-CAPTURE-OFF
+   PTX-CAPTURE$ type
+   0 MMA-DTYPE !  ED-RESET ;
 : ED-ONE ( n n n n n n n n n n -- )   \ bk pad stages dyn mode mfrags warps epilog bldm bpad
    MMA-BPAD !  MMA-BLDM !  MMA-EPILOG !  MMA-WARPS !  MMA-MFRAGS !
    MMA-LMODE !  MMA-DYNSMEM !  MMA-STAGES !  MMA-PAD !  MMA-BK !
@@ -82,7 +95,14 @@ public
    \ shared-memory epilogue (8-warp and 4-warp)
    32 8 2 1 2 2 8 1 0 0 ED-ONE
    32 8 1 0 2 4 4 1 0 0 ED-ONE
-   32 8 1 1 2 4 8 1 1 4 ED-ONE ;
+   32 8 1 1 2 4 8 1 1 4 ED-ONE
+   \ fp16 tile, transposed-Bs feed OFF (byte-identical to the pre-change fp16 default path)
+   32 0 2 0 1 8 0 ED-ONE-F16
+   32 0 2 1 2 8 0 ED-ONE-F16
+   32 0 1 0 4 8 0 ED-ONE-F16
+   32 0 2 1 4 4 0 ED-ONE-F16
+   32 0 1 0 2 4 0 ED-ONE-F16
+   32 0 2 1 2 8 1 ED-ONE-F16 ;
 
 ;package
 
