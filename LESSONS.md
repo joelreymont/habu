@@ -958,6 +958,18 @@ fits.
 
 ## VCS, Dots & Parallel Agents
 
+- **One workspace name must map to exactly one directory — a nested duplicate
+  checkout silently destroys work.** A `jj workspace add` (or a worker's stray
+  checkout) whose path resolves INSIDE another workspace's directory leaves two
+  directories fighting over one working-copy commit: snapshots from the stale
+  directory silently reset the other's edits, and no-description divergent
+  copies of commits appear (this lost a .gitignore edit and caused a
+  "won't push commit ... has no description" rejection). Create lanes only from
+  the repo root as `.jj-ws/<dot-id>`, check `jj workspace list` output maps each
+  name to one directory, and treat an unexpected working-copy reset or a
+  divergent change id as the tell: stop and hunt for the second directory before
+  continuing.
+
 - **A destruction review is not integrated until every unfixed finding has a
   detailed dot.** Reconcile each finding against existing dots, extend a matching
   dot when its acceptance misses part of the finding, and add a new dot for every
