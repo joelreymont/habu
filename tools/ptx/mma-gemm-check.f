@@ -86,8 +86,8 @@ create MGC-MAXERR 1 cells allot
    MGC-HB e MGC-PB F32-PACK
    MGC-DA @ MGC-PA e 4 * PTXBENCH:HTOD
    MGC-DB @ MGC-PB e 4 * PTXBENCH:HTOD
-   16 PTXBENCH:BLOCK!  16 PTXBENCH:BLOCKY!
-   n 64 / PTXBENCH:GRID!  n MMA-BROWS / PTXBENCH:GRIDY!   \ gridY = M/block-rows (BROWS=64*MFRAGS)
+   16 PTXBENCH:BLOCK!  MMA-NTHREADS 16 / PTXBENCH:BLOCKY!   \ 16x16=256 thr (8 warps) or 16x8=128 thr (4 warps)
+   n 64 / PTXBENCH:GRID!  n MMA-BROWS / PTXBENCH:GRIDY!   \ gridY = M/block-rows (BROWS=WROWS*16*MFRAGS)
    36 PTXBENCH:PARAM-BYTES!
    MMA-DYNSMEM @ if MMA-SMEM PTXBENCH:SHARED! else 0 PTXBENCH:SHARED! then   \ dynamic .shared tile
    PTXBENCH:PREPARE-LAUNCH
@@ -234,11 +234,63 @@ variable MGC-TN
    32 MMA-BK !  0 MMA-PAD !  2 MMA-STAGES !  0 MMA-DYNSMEM !  1 MMA-MFRAGS !
    0 MMA-BLDM !  0 MMA-BPAD !  64 MGC-SA !  128 MGC-SB ! ;
 
+\ 4-WARP (2x2 warp grid, 128 threads) configs (dot habu-4-warp-mma). The narrower grid halves the
+\ per-block threads and smem while keeping the SAME per-warp fragment/accumulator/store maps, so the
+\ only new thing to prove element-exact is the WARPS=4 thread-count staging partition (MMA-NTHREADS=128).
+\ These wrappers set MMA-WARPS=4, delegate to the shared wide-config machinery (which computes the
+\ block-M-aware check edges from BROWS = WROWS*16*MFRAGS, e.g. 128^3/256^3 at MFRAGS=4), then restore
+\ the 8-warp default. Mirrors Triton's per-shape tf32 winner blocking (BM128xBN64, docs/eval-triton.md GB10).
+: MGC-CFG-W4 ( n n n n n n -- )                        \ bk pad stages dyn mode mfrags, 4-warp scalar/A-ldmatrix
+   4 MMA-WARPS !  s" -- 4-WARP (2x2 grid, 128 thr):" type cr
+   MGC-CFG-WIDE  8 MMA-WARPS ! ;
+: MGC-CFG-W4-B ( n n n n n n -- )                      \ bk pad stages dyn mfrags bpad, 4-warp B-ldmatrix
+   4 MMA-WARPS !  s" -- 4-WARP (2x2 grid, 128 thr) B-ldmatrix:" type cr
+   MGC-CFG-WIDE-B  8 MMA-WARPS ! ;
+
+\ DEEP-STAGE 4-warp configs (dot habu-4-warp-mma step 3). N>=3 uses the N-stage ring pipeline
+\ (lib/ptx/cg-mma.f MMA-PIPE-KLOOP-MULTI), whose steady wait_group(N-1) and draining epilogue
+\ wait_group(N-2..0) are only exact when T=ceil(K/BK) >= N-1. The BROWS-derived edges (down to 64
+\ at MFRAGS=2) can give T<N-1 for N>3, so these check at fixed 256^3/512^3 (T=8/16 at BK=32, >= N-1
+\ for every N swept) - both exact multiples of the 64/128 M-blocks. The narrower 4-warp footprint is
+\ what lets 3-5 full smem buffers fit under the 99 KB cap. Restores the 8-warp default + 64/128 edges.
+: MGC-CFG-W4S ( n n n n n n -- ) {: bk:n pad:n stages:n dyn:n mode:n mfrags:n :}   \ deep-stage A-ldmatrix/scalar
+   4 MMA-WARPS !
+   bk MMA-BK !  pad MMA-PAD !  stages MMA-STAGES !  dyn MMA-DYNSMEM !  mfrags MMA-MFRAGS !
+   256 MGC-SA !  512 MGC-SB !
+   s" -- 4-WARP deep-stage stages=" type stages .  s"  MFRAGS=" type mfrags .  s"  (256^3,512^3):" type cr
+   mode MGC-MODE
+   32 MMA-BK !  0 MMA-PAD !  2 MMA-STAGES !  0 MMA-DYNSMEM !  1 MMA-MFRAGS !  64 MGC-SA !  128 MGC-SB !  8 MMA-WARPS ! ;
+: MGC-CFG-W4S-B ( n n n n n n -- ) {: bk:n pad:n stages:n dyn:n mfrags:n bpad:n :}   \ deep-stage B-ldmatrix
+   4 MMA-WARPS !
+   bk MMA-BK !  pad MMA-PAD !  stages MMA-STAGES !  dyn MMA-DYNSMEM !  mfrags MMA-MFRAGS !
+   1 MMA-BLDM !  bpad MMA-BPAD !
+   256 MGC-SA !  512 MGC-SB !
+   s" -- 4-WARP deep-stage B-ldmatrix stages=" type stages .  s"  MFRAGS=" type mfrags .  s"  bpad=" type bpad .  s"  (256^3,512^3):" type cr
+   2 MGC-MODE
+   32 MMA-BK !  0 MMA-PAD !  2 MMA-STAGES !  0 MMA-DYNSMEM !  1 MMA-MFRAGS !  0 MMA-BLDM !  0 MMA-BPAD !  64 MGC-SA !  128 MGC-SB !  8 MMA-WARPS ! ;
+
+\ negative regression (dot habu-4-warp-mma): the warp-grid guard must fail closed with E-MMA-WARPS on an
+\ unsupported warp count and on WARPS=4 without the wide (MFRAGS>1) staging, and emit cleanly on the two
+\ legal grids. Device-independent (pure emit). Keeps a bad warp knob from ever reaching a launch.
+: MGC-WARPS-NEG ( -- )
+   6 MMA-WARPS !  32 MMA-BK !  8 MMA-PAD !  2 MMA-STAGES !  1 MMA-DYNSMEM !  2 MMA-LMODE !  4 MMA-MFRAGS !
+   MGC-TRY-EMIT {: r6:n :}                               \ WARPS=6 -> unsupported grid -> must throw E-MMA-WARPS
+   4 MMA-WARPS !  1 MMA-MFRAGS !  0 MMA-PAD !  2 MMA-STAGES !  0 MMA-DYNSMEM !  0 MMA-LMODE !
+   MGC-TRY-EMIT {: r4m1:n :}                             \ WARPS=4 + MFRAGS=1 -> non-wide staging -> must throw
+   4 MMA-WARPS !  4 MMA-MFRAGS !  8 MMA-PAD !  1 MMA-STAGES !  1 MMA-DYNSMEM !  2 MMA-LMODE !
+   MGC-TRY-EMIT {: r4m4:n :}                             \ WARPS=4 + MFRAGS=4 wide -> must emit (0)
+   8 MMA-WARPS !  1 MMA-MFRAGS !  32 MMA-BK !  0 MMA-PAD !  2 MMA-STAGES !  0 MMA-DYNSMEM !  0 MMA-LMODE !
+   s" -- warp-grid legality: WARPS=6->" type r6 . s"  WARPS=4+MFRAGS=1->" type r4m1 . s"  WARPS=4+MFRAGS=4->" type r4m4 . cr
+   r6 E-MMA-WARPS =  r4m1 E-MMA-WARPS =  and  r4m4 0=  and
+   if s" -- warp-grid legality: fail-closed on bad warp count + non-wide 4-warp, emits on legal grids (PASS)" type cr
+   else s" mma-gemm-check: warp-grid legality regression FAILED" 1 die then ;
+
 public
 : MGC-ALL ( -- )
    MGC-SMEM-NEG                                        \ emitter fail-closed check (device-independent)
    MGC-ZEROBLK-NEG                                     \ zero-block/ragged-M launch guard (device-independent)
    MGC-BLDM-NEG                                        \ B-ldmatrix misaligned/MFRAGS=1 fail-closed (device-independent)
+   MGC-WARPS-NEG                                       \ warp-grid legality fail-closed (device-independent)
    CUDA:OPEN? 0= if s" mma-gemm-check: libcuda unavailable -> SKIPPED (off-device)" type cr exit then
    s" == TF32 mma.sync GEMM device-correctness (element-exact vs host) ==" type cr
    0 MGC-MODE  1 MGC-MODE  2 MGC-MODE
@@ -264,6 +316,20 @@ public
    32 8 2 1 2 4 MGC-CFG-WIDE-B                         \ MFRAGS=2 bpad=4 double-buffer DYN B-ldmatrix (128x64)
    32 8 1 1 2 4 MGC-CFG-WIDE-B                         \ MFRAGS=2 bpad=4 SINGLE-buffer DYN B-ldmatrix (128x64; GB10 1024^3 winner)
    32 8 1 0 2 4 MGC-CFG-WIDE-B                         \ MFRAGS=2 bpad=4 SINGLE-buffer STATIC B-ldmatrix (128x64, 29696 B; GB10 1024^3 winner static)
+   s" == 4-warp (2x2 grid, 128-thread) tile configs (dot habu-4-warp-mma) ==" type cr
+   32 8 1 0 2 4 MGC-CFG-W4                             \ 4-warp MFRAGS=4 BK=32 pad=8 stages=1 STATIC ldmatrix-A (BM128xBN64, 28672 B)
+   32 8 2 1 2 4 MGC-CFG-W4                             \ 4-warp MFRAGS=4 BK=32 pad=8 stages=2 DYN ldmatrix-A (BM128xBN64, 57344 B)
+   32 8 2 1 0 4 MGC-CFG-W4                             \ 4-warp MFRAGS=4 scalar+cvt (exact-RNE cross-check of the same tile)
+   32 8 1 1 4 4 MGC-CFG-W4-B                           \ 4-warp MFRAGS=4 bpad=4 stages=1 DYN B-ldmatrix (BM128xBN64, 29696 B)
+   32 8 2 1 4 4 MGC-CFG-W4-B                           \ 4-warp MFRAGS=4 bpad=4 stages=2 DYN B-ldmatrix (BM128xBN64, 59392 B)
+   32 8 1 0 2 2 MGC-CFG-W4                             \ 4-warp MFRAGS=2 BK=32 pad=8 stages=1 STATIC ldmatrix-A (BM64xBN64, 18432 B)
+   s" == 4-warp DEEP-STAGE (N-stage ring pipeline) configs (dot habu-4-warp-mma step 3) ==" type cr
+   32 8 3 1 2 4 MGC-CFG-W4S                            \ 4-warp MFRAGS=4 stages=3 DYN ldmatrix-A (BM128xBN64, 86016 B)
+   32 8 3 1 2 2 MGC-CFG-W4S                            \ 4-warp MFRAGS=2 stages=3 DYN ldmatrix-A (BM64xBN64, 55296 B)
+   32 8 3 1 0 2 MGC-CFG-W4S                            \ 4-warp MFRAGS=2 stages=3 scalar+cvt (exact-RNE cross-check of the ring pipeline)
+   32 8 4 1 2 2 MGC-CFG-W4S                            \ 4-warp MFRAGS=2 stages=4 DYN ldmatrix-A (BM64xBN64, 73728 B)
+   32 8 5 1 2 2 MGC-CFG-W4S                            \ 4-warp MFRAGS=2 stages=5 DYN ldmatrix-A (BM64xBN64, 92160 B)
+   32 8 3 1 4 4 MGC-CFG-W4S-B                          \ 4-warp MFRAGS=4 bpad=4 stages=3 DYN B-ldmatrix (BM128xBN64, 89088 B)
    0 MMA-LMODE ! ;                                     \ restore the committed default (baseline scalar+cvt)
 
 ;package

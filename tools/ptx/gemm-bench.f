@@ -40,7 +40,8 @@ variable GB-NV                         \ M=N=K (square) as the u32 kernel param
 variable GB-OT                         \ output-tile edge (grid X / N cols): 64 (MM/MMM blocked) / 16 (MMN naive)
 variable GB-OTY                        \ output-tile M edge (grid Y): = GB-OT, except 64*MFRAGS for the wider-M MMM tile
 variable GB-SMEM-DYN                    \ dynamic .shared bytes for the launch (0 = static)
-64 GB-OTY !
+variable GB-BLKY                       \ block Y dim: 16 (256 thr, 8-warp) / 8 (128 thr, 4-warp MMM tile)
+64 GB-OTY !  16 GB-BLKY !
 
 : GB-INT. ( n -- )  SB-RESET SB-INT SB$ type ;
 
@@ -61,8 +62,8 @@ variable GB-SMEM-DYN                    \ dynamic .shared bytes for the launch (
 
 : GB-PARAMS ( n -- ) {: s:n :}         \ 2D grid = (s/tile)^2 output tiles, 16x16 block
    s GB-NV !
-   GB-BLK PTXBENCH:BLOCK!        GB-BLK PTXBENCH:BLOCKY!
-   s GB-OT @ / PTXBENCH:GRID!    s GB-OTY @ / PTXBENCH:GRIDY!   \ gridY = M/block-rows (GB-OTY = 64*MFRAGS for wide)
+   GB-BLK PTXBENCH:BLOCK!        GB-BLKY @ PTXBENCH:BLOCKY!   \ blockY = 16 (256 thr) / 8 (128 thr, 4-warp)
+   s GB-OT @ / PTXBENCH:GRID!    s GB-OTY @ / PTXBENCH:GRIDY!   \ gridY = M/block-rows (GB-OTY = WROWS*16*MFRAGS for wide)
    36 PTXBENCH:PARAM-BYTES!
    GB-SMEM-DYN @ PTXBENCH:SHARED!         \ dynamic .shared tile (0 = static)
    PTXBENCH:PREPARE-LAUNCH
@@ -194,6 +195,18 @@ variable GB-SMEM-DYN                    \ dynamic .shared bytes for the launch (
    32 MMA-BK !  0 MMA-PAD !  2 MMA-STAGES !  0 MMA-DYNSMEM !  0 MMA-LMODE !  1 MMA-MFRAGS !
    0 MMA-BLDM !  0 MMA-BPAD !  0 GB-SMEM-DYN !  64 GB-OTY ! ;
 
+\ 4-WARP (2x2 warp grid, 128-thread) bench configs (dot habu-4-warp-mma). The narrower grid halves the
+\ per-block threads and smem at the SAME per-warp fragment/accumulator/store maps, so more blocks co-reside
+\ per SM under the 99 KB cap (Triton's per-shape tf32 winners run this BM128xBN64 4-warp blocking,
+\ docs/eval-triton.md GB10). Set MMA-WARPS=4 + block Y = 8 (128 threads), delegate to the shared wide-config
+\ machinery, then restore the 8-warp default. Every config is element-exact first (tools/ptx/mma-gemm-check.f).
+: GB-MMM-CFGW4 ( n n n n n n -- )                      \ bk pad stages dyn mode mfrags, 4-warp A-ldmatrix/scalar
+   4 MMA-WARPS !  8 GB-BLKY !  s" -- 4-WARP: " type
+   GB-MMM-CFGW  8 MMA-WARPS !  16 GB-BLKY ! ;
+: GB-MMM-CFGW4-B ( n n n n n n -- )                    \ bk pad stages dyn mfrags bpad, 4-warp B-ldmatrix
+   4 MMA-WARPS !  8 GB-BLKY !  s" -- 4-WARP: " type
+   GB-MMM-CFGW-B  8 MMA-WARPS !  16 GB-BLKY ! ;
+
 \ the raised-BK / bank-swizzled configuration space (all element-exact per tools/ptx/mma-gemm-check.f)
 : GB-MMM-SWEEP ( -- )
    32 0 2 0 0 GB-MMM-CFG               \ committed default baseline (BK=32, stages=2, scalar+cvt) - A/B reference
@@ -250,7 +263,9 @@ public
    CUDA:OPEN? 0= if s" gemm-bench: libcuda unavailable -> SKIPPED (off-device)" type cr exit then
    GB-MM
    GB-MMM-WIDE-SWEEP
-   GB-MMM-WIDE-B-SWEEP ;
+   GB-MMM-WIDE-B-SWEEP
+   32 8 1 0 2 4 GB-MMM-CFGW4            \ 4-warp MFRAGS=4 stages=1 static ldmatrix-A (128x64) - 1024^3/2048^3 winner
+   32 8 2 1 2 4 GB-MMM-CFGW4 ;          \ 4-warp MFRAGS=4 stages=2 dyn ldmatrix-A (128x64) - 512^3 winner
 
 
 : GB-ALL ( -- )
@@ -259,6 +274,29 @@ public
    GB-MM
    GB-MMM
    GB-MMM-SWEEP ;
+
+\ 4-WARP tile schedule sweep (dot habu-4-warp-mma): the FP32 roof reference, the two best 8-warp tf32
+\ tiles as same-session A/B anchors, then the 4-warp (2x2 grid, 128-thread) candidates at MFRAGS 2/4,
+\ stages 1/2, A-ldmatrix and transposed-Bs B-ldmatrix. Every config is element-exact first
+\ (tools/ptx/mma-gemm-check.f). Compared vs Triton 3.8's per-shape tf32 winners (docs/eval-triton.md GB10).
+: GB-W4-SWEEP ( -- )
+   CUDA:OPEN? 0= if s" gemm-bench: libcuda unavailable -> SKIPPED (off-device)" type cr exit then
+   GB-MM                                \ FP32 CUDA-core roof reference (same session)
+   32 8 2 1 2 4 GB-MMM-CFGW             \ 8-warp MFRAGS=4 stages=2 dyn ldmatrix-A (256x64) - 2048 anchor
+   32 8 1 1 4 4 GB-MMM-CFGW-B           \ 8-warp mmm-wide-b-m4-s1 flagship (256x64) - 4096 anchor
+   32 8 1 0 2 4 GB-MMM-CFGW4            \ 4-warp MFRAGS=4 stages=1 STATIC ldmatrix-A (128x64, 28672 B)
+   32 8 2 1 2 4 GB-MMM-CFGW4            \ 4-warp MFRAGS=4 stages=2 DYN ldmatrix-A (128x64, 57344 B)
+   32 8 1 1 4 4 GB-MMM-CFGW4-B          \ 4-warp MFRAGS=4 bpad=4 stages=1 DYN B-ldmatrix (128x64, 29696 B)
+   32 8 2 1 4 4 GB-MMM-CFGW4-B          \ 4-warp MFRAGS=4 bpad=4 stages=2 DYN B-ldmatrix (128x64, 59392 B)
+   32 8 1 0 2 2 GB-MMM-CFGW4            \ 4-warp MFRAGS=2 stages=1 STATIC ldmatrix-A (64x64, 18432 B)
+   32 8 2 1 2 2 GB-MMM-CFGW4            \ 4-warp MFRAGS=2 stages=2 DYN ldmatrix-A (64x64, 36864 B)
+   32 8 1 1 2 4 GB-MMM-CFGW4-B          \ 4-warp MFRAGS=2 bpad=4 stages=1 DYN B-ldmatrix (64x64)
+   32 8 2 1 2 4 GB-MMM-CFGW4-B          \ 4-warp MFRAGS=2 bpad=4 stages=2 DYN B-ldmatrix (64x64)
+   32 8 3 1 2 4 GB-MMM-CFGW4            \ 4-warp MFRAGS=4 stages=3 DYN ldmatrix-A (128x64, 86016 B) - N-stage ring pipeline
+   32 8 3 1 2 2 GB-MMM-CFGW4            \ 4-warp MFRAGS=2 stages=3 DYN ldmatrix-A (64x64, 55296 B)
+   32 8 4 1 2 2 GB-MMM-CFGW4            \ 4-warp MFRAGS=2 stages=4 DYN ldmatrix-A (64x64, 73728 B)
+   32 8 5 1 2 2 GB-MMM-CFGW4            \ 4-warp MFRAGS=2 stages=5 DYN ldmatrix-A (64x64, 92160 B)
+   32 8 3 1 4 4 GB-MMM-CFGW4-B ;        \ 4-warp MFRAGS=4 bpad=4 stages=3 DYN B-ldmatrix (128x64, 89088 B)
 
 ;package
 

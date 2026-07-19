@@ -67,6 +67,7 @@ require lib/ptx/cpp-slot.f
 49152 constant MMA-SMEM-STATIC-CAP              \ sm_87 static .shared per-block ceiling (48 KiB)
 -6100 constant E-MMA-SMEM                        \ derived shared tile exceeds the legal budget
 -6102 constant E-MMA-BLDM                        \ B-ldmatrix config illegal (non-16B BT row, or MFRAGS=1)
+-6103 constant E-MMA-WARPS                        \ illegal warp grid (WARPS not 4/8, or WARPS=4 without the wide MFRAGS>1 staging)
 
 variable MMA-BK      32 MMA-BK !               \ staged K-tile depth
 variable MMA-PAD      0 MMA-PAD !              \ As row pad floats
@@ -95,6 +96,20 @@ variable MMA-DYNSMEM  0 MMA-DYNSMEM !         \ 1 = .extern dynamic .shared
 \   already hidden. B fragment feed HALVED, global B staging HALVED.
 variable MMA-MFRAGS   1 MMA-MFRAGS !          \ M-fragments (16-row units) per warp
 
+\ WARP-GRID SHAPE (dot habu-4-warp-mma). The block's warps tile the output as WROWS x WCOLS, with
+\ WCOLS FIXED at 2 (warp_col = warpid&1 selects one of the two 32-col halves of BN=64) and
+\ WROWS = MMA-WARPS/2 (warp_row = warpid>>1 selects one of the WROWS row-blocks). So MMA-WARPS=8 is
+\ the legacy 4x2 grid (256 threads, WROWS=4) and MMA-WARPS=4 is the 2x2 grid (128 threads, WROWS=2).
+\ The per-warp geometry is IDENTICAL for any WARPS: gid=lane>>2, t=lane&3, one 16-row M-frag per
+\ (warp_row, f) at row-block base warp_row*(16*MFRAGS)+f*16 - only the NUMBER of warp-rows and the
+\ thread count change, so the fragment->lane map, the 16*MFRAGS accumulator layout, and the
+\ D-fragment store map are shared verbatim with the 8-warp family (Triton's per-shape tf32 winners
+\ run this narrower 4-warp / BM128xBN64 blocking, docs/eval-triton.md GB10). The 4-warp grid needs
+\ the WIDE (MFRAGS>1) staging: its per-block M is WROWS*16*MFRAGS = 32*MFRAGS, and the cp.async
+\ chunk partition divides by MMA-NTHREADS = WARPS*32 (128 here, not 256). At WARPS=8 every derived
+\ count is unchanged, so all pinned 8-warp configs stay byte-identical.
+variable MMA-WARPS    8 MMA-WARPS !           \ warps/block: 8 = 4x2 grid (WROWS=4), 4 = 2x2 grid (WROWS=2)
+
 \ ABLATION knob (dot habu-mma-amortize-the; productizes the attribution-lane timing decomposition).
 \ DCE-SAFE variants of the WIDE kernel that keep every mma + store live (so ptxas cannot delete the
 \ ablated work) but drop part of the FEED, isolating each cost by same-session timing delta. Wide-path
@@ -120,21 +135,23 @@ variable MMA-ABLATE   0 MMA-ABLATE !
 variable MMA-BLDM   0 MMA-BLDM !              \ 1 = B-fragment ldmatrix over transposed Bs (wide path)
 variable MMA-BPAD   0 MMA-BPAD !              \ BT row pad floats (n-major row stride = BK+BPAD)
 
-: MMA-BROWS  ( -- n )  MMA-BM MMA-MFRAGS @ * ;        \ output block rows = 64*MFRAGS (default 64)
+: MMA-WROWS  ( -- n )  MMA-WARPS @ 2 / ;              \ warp-rows (WCOLS fixed 2); 4 at WARPS=8, 2 at WARPS=4
+: MMA-NTHREADS ( -- n )  MMA-WARPS @ 32 * ;           \ threads/block; 256 at WARPS=8, 128 at WARPS=4
+: MMA-BROWS  ( -- n )  MMA-WROWS 16 * MMA-MFRAGS @ * ;  \ output block rows = WROWS*16*MFRAGS (64*MFRAGS at WARPS=8)
 : MMA-AROW-F ( -- n )  MMA-BK @ MMA-PAD @ + ;         \ As row stride, floats
 : MMA-AROW-B ( -- n )  MMA-AROW-F 4 * ;               \ As row stride, bytes (default 128)
 : MMA-ASB    ( -- n )  MMA-BROWS MMA-AROW-B * ;       \ As tile bytes / Bs byte offset (default 8192)
 : MMA-BTROW-F ( -- n )  MMA-BK @ MMA-BPAD @ + ;       \ transposed-Bs (BT) row stride, floats (n-major over k)
 : MMA-BTROW-B ( -- n )  MMA-BTROW-F 4 * ;             \ BT row stride, bytes (multiple of 16 for ldmatrix rows)
 : MMA-BSB    ( -- n )  MMA-BLDM @ if MMA-BN MMA-BTROW-F * 4 * else MMA-BK @ MMA-BN * 4 * then ;  \ B tile bytes (BT if BLDM)
-: MMA-BTCPN  ( -- n )  MMA-BN MMA-BK @ * 256 / ;      \ transposed-B scalar chunk-sets/thread (64*BK/256)
+: MMA-BTCPN  ( -- n )  MMA-BN MMA-BK @ * MMA-NTHREADS / ;   \ transposed-B scalar chunk-sets/thread (64*BK/NTHREADS)
 : MMA-BUFB   ( -- n )  MMA-ASB MMA-BSB + ;            \ one cp.async buffer (default 16384)
 : MMA-SMEM   ( -- n )  MMA-BUFB MMA-STAGES @ * ;      \ total shared bytes (default 32768)
 : MMA-KSUBS  ( -- n )  MMA-BK @ MMA-MK / ;            \ mma.sync K substeps per tile (default 4)
 : MMA-ACPR   ( -- n )  MMA-BK @ 4 / ;                 \ As cp.async chunks per row (default 8)
-: MMA-CPN    ( -- n )  MMA-BM MMA-BK @ * 4 / 256 / ;  \ MFRAGS=1 cp.async chunk-sets/thread per array (default 2)
-: MMA-ACPN   ( -- n )  MMA-BROWS MMA-BK @ * 4 / 256 / ; \ wide As cp.async chunk-sets/thread (BROWS!=BN)
-: MMA-BCPN   ( -- n )  MMA-BK @ MMA-BN * 4 / 256 / ;  \ wide Bs cp.async chunk-sets/thread
+: MMA-CPN    ( -- n )  MMA-BM MMA-BK @ * 4 / MMA-NTHREADS / ;  \ MFRAGS=1 cp.async chunk-sets/thread per array (default 2)
+: MMA-ACPN   ( -- n )  MMA-BROWS MMA-BK @ * 4 / MMA-NTHREADS / ; \ wide As cp.async chunk-sets/thread (BROWS!=BN)
+: MMA-BCPN   ( -- n )  MMA-BK @ MMA-BN * 4 / MMA-NTHREADS / ;  \ wide Bs cp.async chunk-sets/thread
 : MMA-AREG   ( n -- n )  6 * 50 + ;                   \ tf32 A-fragment reg group base for M-frag f
 \ Register-pool sizing (dot habu-mma-wave-2). The mode-0 wide cvt temps and the header
 \ .reg .f32/.b32 counts must grow past the 16*MFRAGS accumulators for a wider M tile, but MUST
@@ -144,9 +161,9 @@ variable MMA-BPAD   0 MMA-BPAD !              \ BT row pad floats (n-major row s
 : MMA-FTEMP  ( -- n )  16 MMA-MFRAGS @ * 10 + ;       \ wide cvt temp base (just past the accumulators)
 : MMA-FREGS  ( -- n )  MMA-MFRAGS @ 2 > if 16 MMA-MFRAGS @ * 16 + else 48 then ;   \ .reg .f32 pool
 : MMA-RREGS  ( -- n )  MMA-MFRAGS @ 2 > if 6 MMA-MFRAGS @ * 48 + else 64 then ;    \ .reg .b32 pool
-: MMA-DEFAULT? ( -- bool )                             \ the byte-identical baseline config
+: MMA-DEFAULT? ( -- bool )                             \ the byte-identical baseline config (8-warp only)
    MMA-BK @ 32 =  MMA-PAD @ 0=  and  MMA-STAGES @ 2 =  and  MMA-DYNSMEM @ 0=  and
-   MMA-MFRAGS @ 1 =  and ;
+   MMA-MFRAGS @ 1 =  and  MMA-WARPS @ 8 =  and ;
 
 : MMA-LOG2 ( n -- n )                                  \ floor log2 (n a power of two, > 0)
    0 swap  begin dup 1 > while  2 /  swap 1+ swap  repeat  drop ;
@@ -174,6 +191,15 @@ variable MMA-BPAD   0 MMA-BPAD !              \ BT row pad floats (n-major row s
    MMA-BLDM @ 0= if exit then
    MMA-MFRAGS @ 2 < if E-MMA-BLDM throw then            \ B-ldmatrix is defined only on the wide (MFRAGS>1) path
    MMA-BTROW-B 15 and 0= 0= if E-MMA-BLDM throw then ;  \ BT row stride not a multiple of 16 B -> misaligned ldmatrix rows
+
+\ fail closed on an illegal warp grid (dot habu-4-warp-mma). Only the 4x2 (WARPS=8) and 2x2 (WARPS=4)
+\ grids are implemented (WCOLS fixed 2). The narrower 4-warp grid stages its As over MMA-BROWS rows
+\ (WROWS*16*MFRAGS), so it needs the WIDE (MFRAGS>1) cp.async path; the non-wide MFRAGS=1 staging is
+\ hardwired to the 64-row 8-warp tile (MMA-CPN uses MMA-BM), so WARPS=4 + MFRAGS=1 would emit a kernel
+\ whose 128 threads stage a 64-row As but compute only 32 rows. Reject both at emit time.
+: MMA-CHECK-WARPS ( -- )
+   MMA-WARPS @ 8 =  MMA-WARPS @ 4 =  or  0= if E-MMA-WARPS throw then   \ only 4x2 / 2x2 grids
+   MMA-WARPS @ 4 =  MMA-MFRAGS @ 1 =  and  if E-MMA-WARPS throw then ;  \ 4-warp needs the wide staging
 
 \ FRAGMENT-LOAD MODE (dot habu-mma-ldmatrix-fragment). The 16x8 A fragment and 8x8 B fragment
 \ can be fed to the tensor cores three ways; mode is fixed at emit time:
@@ -512,7 +538,7 @@ variable MMA-LMODE   0 MMA-LMODE !
 \ Prefetch scratch %r20..23 / %rd10..11 (invariants live in %r24..34, so they survive).
 : MMA-CP-CHUNK ( n n n -- ) {: m:n bufr:n ktr:n :}
    MMA-ACPR MMA-LOG2 {: acl:n :}
-   SB-RESET s" add.u32 %r20,%r8," SB-APPEND m 256 * SB-U s" ;" SB-APPEND SB$ PTX-L      \ c = tid_lin + m*256
+   SB-RESET s" add.u32 %r20,%r8," SB-APPEND m MMA-NTHREADS * SB-U s" ;" SB-APPEND SB$ PTX-L      \ c = tid_lin + m*NTHREADS
    \ --- As: row=c>>acl, k=(c&(ACPR-1))*4 ; src A[rowBase+row][kt+k] ; dst buf + row*AROW-B + kchunk*16 ---
    SB-RESET s" shr.u32 %r21,%r20," SB-APPEND acl SB-U s" ;" SB-APPEND SB$ PTX-L         \ row
    SB-RESET s" and.b32 %r22,%r20," SB-APPEND MMA-ACPR 1- SB-U s" ;" SB-APPEND SB$ PTX-L \ kchunk
@@ -543,7 +569,7 @@ variable MMA-LMODE   0 MMA-LMODE !
 \ stays byte-identical for the pinned configs). Same chunk geometry as MMA-CP-CHUNK, split.
 : MMA-CPW-CHUNK-A ( n n n -- ) {: m:n bufr:n ktr:n :}   \ one As 16B chunk, chunk-set m
    MMA-ACPR MMA-LOG2 {: acl:n :}
-   SB-RESET s" add.u32 %r20,%r8," SB-APPEND m 256 * SB-U s" ;" SB-APPEND SB$ PTX-L      \ c = tid_lin + m*256
+   SB-RESET s" add.u32 %r20,%r8," SB-APPEND m MMA-NTHREADS * SB-U s" ;" SB-APPEND SB$ PTX-L      \ c = tid_lin + m*NTHREADS
    SB-RESET s" shr.u32 %r21,%r20," SB-APPEND acl SB-U s" ;" SB-APPEND SB$ PTX-L         \ row = c>>acl
    SB-RESET s" and.b32 %r22,%r20," SB-APPEND MMA-ACPR 1- SB-U s" ;" SB-APPEND SB$ PTX-L \ kchunk = c & (ACPR-1)
    s" shl.b32 %r22,%r22,2;" PTX-L                                                       \ k = kchunk*4
@@ -557,7 +583,7 @@ variable MMA-LMODE   0 MMA-LMODE !
    SB-RESET s" add.u32 %r23,%r" SB-APPEND bufr SB-U s" ,%r23;" SB-APPEND SB$ PTX-L
    s" cp.async.cg.shared.global [%r23],[%rd11],16;" PTX-L ;
 : MMA-CPW-CHUNK-B ( n n n -- ) {: m:n bufr:n ktr:n :}   \ one Bs 16B chunk, chunk-set m
-   SB-RESET s" add.u32 %r20,%r8," SB-APPEND m 256 * SB-U s" ;" SB-APPEND SB$ PTX-L      \ c = tid_lin + m*256
+   SB-RESET s" add.u32 %r20,%r8," SB-APPEND m MMA-NTHREADS * SB-U s" ;" SB-APPEND SB$ PTX-L      \ c = tid_lin + m*NTHREADS
    s" shr.u32 %r21,%r20,4;" PTX-L                                                       \ k = c>>4
    s" and.b32 %r22,%r20,15;" PTX-L  s" shl.b32 %r22,%r22,2;" PTX-L                      \ col = (c&15)*4
    SB-RESET s" add.u32 %r23,%r" SB-APPEND ktr SB-U s" ,%r21;" SB-APPEND SB$ PTX-L
@@ -577,7 +603,7 @@ variable MMA-LMODE   0 MMA-LMODE !
 \ only prefetch scratch %r20..23 / %rd10..11 (invariants %r24..34 survive; the loaded value rides %r20
 \ after c is dead).
 : MMA-CPW-CHUNK-BT ( n n n -- ) {: m:n bufr:n ktr:n :}
-   SB-RESET s" add.u32 %r20,%r8," SB-APPEND m 256 * SB-U s" ;" SB-APPEND SB$ PTX-L      \ c = tid_lin + m*256
+   SB-RESET s" add.u32 %r20,%r8," SB-APPEND m MMA-NTHREADS * SB-U s" ;" SB-APPEND SB$ PTX-L      \ c = tid_lin + m*NTHREADS
    s" and.b32 %r21,%r20,63;" PTX-L                                                      \ n = c & 63
    s" shr.u32 %r22,%r20,6;" PTX-L                                                       \ k = c >> 6
    SB-RESET s" add.u32 %r23,%r" SB-APPEND ktr SB-U s" ,%r22;" SB-APPEND SB$ PTX-L        \ ktr + k
@@ -651,21 +677,89 @@ TRUSTED: MMA-STAGE-ISSUE ( n n -- cpp-pending<p> )   MMA-CP-STAGE 0 ;
    MMA-BK @ CPP-KT-ADVANCE
    CPP-KTAIL ;
 
-: MMA-KLOOP ( [ -- ] -- )                                          \ pick the pipeline for the active config
+\ ============ N-stage cp.async software pipeline (MMA-STAGES=N, N>=3) =================
+\ dot habu-4-warp-mma step 3. The double-buffer above overlaps ONE prefetch with compute; deeper
+\ staging (Triton's per-shape winners run 3-5) hides more of the cp.async latency, and the narrower
+\ 4-warp tile's halved smem footprint is what makes 3+ full buffers fit under the GB10 99 KB cap while
+\ keeping >=2 blocks/SM. This is the standard multistage GEMM pipeline over a RING of N smem buffers
+\ (base = SH + stage*BUFB, stage cycled as a byte pointer that wraps at SH+N*BUFB back to SH):
+\   prologue : issue tiles 0..N-2 (N-1 groups), one commit_group each (guarded by kt<K for a short K).
+\   steady   : while a tile remains to PREFETCH (kt_pf<K), prefetch tile kt_pf into the write buffer,
+\              commit, then wait_group(N-1) - this keeps the N-1 most-recent groups in flight and so
+\              GUARANTEES the oldest (the tile about to be computed) has landed - then bar.sync, compute
+\              from the read buffer, bar.sync (buffer-reuse fence: the read buffer is overwritten N-1
+\              iterations later), advance both ring bases and kt.
+\   epilogue : the last N-1 tiles have no more prefetch, so the in-flight group count must be drained
+\              one at a time: compute tile j with wait_group(N-2-j) for j=0..N-2 (so N-2,N-3,...,0 - the
+\              last tile drains fully). The compute is guarded by kt_cmp<K so a K with fewer than N-1
+\              tiles (T<N-1) simply computes the tiles that exist. Requires the CHECKED/timed K to give
+\              T=ceil(K/BK) >= N-1 for the wait_group literals to be exact (the deep-stage harness rows
+\              check at K big enough); a too-small K is proven wrong by mma-gemm-check, never reported.
+\ At N=2 these literals reduce to the double-buffer's wait_group(1)/(0), so MMA-KLOOP keeps the pinned
+\ stages=1/2 configs on the byte-identical SINGLE/WITH scaffolds and routes only N>=3 here.
+\ cyclically advance ring base %rR by one buffer (BUFB bytes), wrapping at %r15 (=SH+N*BUFB) back to SH.
+: MMA-RING-ADV ( n -- ) {: r:n :}
+   SB-RESET s" add.u32 %r" SB-APPEND r SB-U s" ,%r" SB-APPEND r SB-U s" ," SB-APPEND MMA-BUFB SB-U s" ;" SB-APPEND SB$ PTX-L
+   SB-RESET s" setp.eq.u32 %p3,%r" SB-APPEND r SB-U s" ,%r15;" SB-APPEND SB$ PTX-L
+   SB-RESET s" @%p3 mov.u32 %r" SB-APPEND r SB-U s" ,%r11;" SB-APPEND SB$ PTX-L ;
+: MMA-KT-ADD ( n -- )                                            \ %rR += BK  (R on stack as reg number)
+   {: r:n :}  SB-RESET s" add.u32 %r" SB-APPEND r SB-U s" ,%r" SB-APPEND r SB-U s" ," SB-APPEND MMA-BK @ SB-U s" ;" SB-APPEND SB$ PTX-L ;
+
+\ Compute for one staged K-tile from read-buffer base %r16 (same as the quotation the double-buffer runs):
+\ the wide (MFRAGS>1) or non-wide K-tile. Called by name (not a quotation) so the multistage can emit it
+\ N times - once in the runtime steady body and once per unrolled epilogue tile.
+: MMA-KTILE-DISPATCH ( -- )  MMA-MFRAGS @ 1 > if MMA-KTILE-WIDE else MMA-KTILE then ;
+
+: MMA-PIPE-KLOOP-MULTI ( -- )
+   s" mov.u32 %r14,0;" PTX-L  s" mov.u32 %r17,0;" PTX-L           \ kt_pf = kt_cmp = 0
+   s" mov.u32 %r16,%r11;" PTX-L  s" mov.u32 %r18,%r11;" PTX-L     \ read base = write base = SH
+   s" mov.u32 %r15,%r11;" PTX-L                                   \ ring wrap bound = SH + N*BUFB
+   SB-RESET s" add.u32 %r15,%r15," SB-APPEND MMA-SMEM SB-U s" ;" SB-APPEND SB$ PTX-L
+   MMA-STAGES @ 1- 0 do                                          \ prologue: issue tiles 0..N-2 into buffers 0..N-2
+      s" setp.ge.u32 %p1,%r14,%r3;" PTX-L
+      SB-RESET s" @%p1 bra $PLSKIP" SB-APPEND i SB-U s" ;" SB-APPEND SB$ PTX-L
+      18 14 MMA-CP-STAGE
+      SB-RESET s" $PLSKIP" SB-APPEND i SB-U s" :" SB-APPEND SB$ PTX-L
+      CPP-COMMIT
+      18 MMA-RING-ADV                                            \ next write buffer
+      14 MMA-KT-ADD                                              \ kt_pf += BK
+   loop
+   s" $MSTEADY:" PTX-L                                           \ steady loop: while kt_pf < K
+   s" setp.ge.u32 %p1,%r14,%r3;" PTX-L  s" @%p1 bra $MSEND;" PTX-L
+   18 14 MMA-CP-STAGE  CPP-COMMIT                                \ prefetch tile kt_pf -> write buffer
+   MMA-STAGES @ 1- CPP-WAIT                                      \ wait_group(N-1): oldest (compute tile) has landed
+   CPP-SYNC  MMA-KTILE-DISPATCH  CPP-SYNC                        \ compute from read buffer, then reuse fence
+   16 MMA-RING-ADV  18 MMA-RING-ADV                             \ advance read + write bases
+   14 MMA-KT-ADD  17 MMA-KT-ADD                                 \ kt_pf += BK ; kt_cmp += BK
+   s" bra $MSTEADY;" PTX-L  s" $MSEND:" PTX-L
+   MMA-STAGES @ 1- 0 do                                          \ epilogue: last N-1 tiles, draining wait_group(N-2..0)
+      MMA-STAGES @ 2 - i - CPP-WAIT                              \ wait_group(N-2-i)
+      CPP-SYNC
+      s" setp.ge.u32 %p1,%r17,%r3;" PTX-L                        \ guard: compute only tiles that exist (T<N-1 short K)
+      SB-RESET s" @%p1 bra $EPSKIP" SB-APPEND i SB-U s" ;" SB-APPEND SB$ PTX-L
+      MMA-KTILE-DISPATCH
+      SB-RESET s" $EPSKIP" SB-APPEND i SB-U s" :" SB-APPEND SB$ PTX-L
+      CPP-SYNC
+      16 MMA-RING-ADV  17 MMA-KT-ADD
+   loop ;
+
+: MMA-KLOOP ( [ -- ] -- )                                          \ stages 1/2 pipeline (quotation-based); N>=3 via MMA-BODY
    MMA-DEFAULT? if MM-PIPE-KLOOP-WITH exit then
    MMA-STAGES @ 1 = if MMA-PIPE-KLOOP-SINGLE else MMA-PIPE-KLOOP-WITH then ;
 
 : MMA-BODY ( -- )
    MMA-CHECK-SMEM
    MMA-CHECK-BLDM
+   MMA-CHECK-WARPS
    MMA-MFRAGS @ 1 > if
       MMA-THREAD-SETUP-WIDE  MMA-ACC-ZERO-WIDE  MMA-SETUP-WIDE
-      [: MMA-KTILE-WIDE ;] MMA-KLOOP  MMA-STORE-WIDE  exit
+      MMA-STAGES @ 2 > if MMA-PIPE-KLOOP-MULTI else [: MMA-KTILE-WIDE ;] MMA-KLOOP then
+      MMA-STORE-WIDE  exit
    then
    MM-THREAD-SETUP
    MM-ACC-ZERO-EMIT
    MMA-SETUP
-   [: MMA-KTILE ;] MMA-KLOOP
+   MMA-STAGES @ 2 > if MMA-PIPE-KLOOP-MULTI else [: MMA-KTILE ;] MMA-KLOOP then
    MMA-STORE ;
 
 : EMIT-MATMUL-MMA ( -- )

@@ -843,6 +843,16 @@ consumer-Blackwell smem-geometry family): its surviving small-tile kernel still
 out-throughputs Habu's hand-tuned wide tile and reaches **~91 %** of the tf32
 roof at 4096³, where Habu's tile plateaus at **~56 %**.
 
+**Round-2 update (2026-07-19, dot `habu-4-warp-mma`): the 4-warp tile lifts the
+peak to 0.83×.** The `habu-mma-warp-shape` 4-warp / `BM128×BN64` tile that round-1
+named as the next lever is now built and measured. It wins 512³ (0.59→**0.67×**),
+1024³ (0.75→**0.83×**), and 2048³ (0.80→**0.83×**); 4096³ stays with the 8-warp
+tile (0.62×). Triton still wins every shape, but the gap narrows. The coupled
+`num_stages≥3` half of the round-1 hypothesis was **falsified** on this device: a
+built-and-proven N-stage pipeline is uniformly *slower* than 2 stages, because 3+
+buffers exceed half the 100 KB smem/SM and force 1 block/SM. See "Round 2 — the
+4-warp tile" below.
+
 ### Protocol (identical timing on both sides)
 
 - **Habu column:** `tools/ptx/gemm-bench.f` `GB-GB10` (in-tree, checked;
@@ -1023,13 +1033,118 @@ halves the per-tile smem.
   space was swept to exhaustion this session; closing it needs the
   `habu-mma-warp-shape` 4-warp tile then deeper `num_stages` (the recorded next
   lever), not another knob turn — see "Occupancy is NOT the 512³ lever" above.
+  **Round 2 below builds that 4-warp tile (peak 0.80→0.83×) and falsifies the
+  "deeper `num_stages`" half of the prediction.**
+
+## Round 2 — the 4-warp tile (dot habu-4-warp-mma): the structural lever, built and measured (2026-07-19)
+
+Round 1 named the `habu-mma-warp-shape` 4-warp tile as the prerequisite next
+lever and deferred it as "a from-scratch second tile whose element-exactness must
+be re-proven from the lane map up." This round builds it. `lib/ptx/cg-mma.f` now
+parameterizes the warp grid with `MMA-WARPS`: the legacy tile is the 4×2 grid
+(WROWS=4, 256 threads) and the new tile is the 2×2 grid (WROWS=2, 128 threads),
+with WCOLS fixed at 2 (`warp_col = warpid&1` selects one of the two 32-col halves
+of BN=64; `warp_row = warpid>>1` selects one of WROWS row-blocks). The key finding
+that made this a surgical parameterization rather than a rewrite: **the per-warp
+fragment→lane map, the 16·MFRAGS accumulator layout, and the D-fragment store map
+are independent of the warp count** — only the number of warp-rows and the
+`cp.async` thread-count partition (`MMA-NTHREADS = WARPS·32 = 128`) change. So the
+4-warp `BM128×BN64` tile is exactly MFRAGS=4 on the 2×2 grid: each of 128 threads
+owns the same **64 accumulators/lane** as the 8-warp MFRAGS=4 tile, over **half**
+the block rows and **half** the per-block smem — which is the whole point (more
+blocks per SM at the same per-thread tile; Triton's per-shape tf32 winners run
+this exact 4-warp / `BM128×BN64` blocking, see the referee table above).
+
+**Correctness first.** Every 8-warp config stays **byte-identical** (proven by an
+emit diff of default + SWZ + wide + wide-B kernels: empty). The 4-warp tiles are
+proven **element-exact** before any timing (`tools/ptx/mma-gemm-check.f`: 6 new
+`MGC-CFG-W4*` rows at 128³/256³ and 6 deep-stage rows at 256³/512³, 0 mismatches
+on the GB10), and a new `E-MMA-WARPS` emit guard fails closed on an illegal warp
+grid (WARPS∉{4,8}, or WARPS=4 without the wide MFRAGS>1 staging) — a new negative
+regression pins it.
+
+### Result — the 4-warp geometry wins the small/mid shapes (best-of-3, 2411 MHz, ldmatrix-A)
+
+| TFLOP/s (tf32, C=A·B)          |  512³ | 1024³ | 2048³ | 4096³ |
+|--------------------------------|------:|------:|------:|------:|
+| round-1 8-warp best            |  12.9 |  25.2 |  30.3 |  28.0 |
+| **round-2 best**               |**14.5**|**27.7**|**31.5**| 28.2 |
+| winning tile                   | 4w M4 s2 | 4w M4 s1 | 4w M4 s1 | 8w M4-Bldm s1 |
+| Triton 3.8 `tl.dot`            |  21.7 |  33.5 |  37.8 |  45.3 |
+| **Habu / Triton**              |**0.67×**|**0.83×**|**0.83×**| 0.62× |
+
+The 4-warp `BM128×BN64` tile takes 512³ (14.5, **+12 %**, 0.59→0.67×), 1024³
+(27.7, **+10 %**, 0.75→0.83×), and 2048³ (31.5, **+4 %**, 0.80→0.83×). At 4096³
+the 8-warp 256-row B-`ldmatrix` tile still wins (28.2 vs the best 4-warp 25.5):
+with 512 blocks occupancy no longer binds, so the wider tile's larger per-block
+B-reuse is more efficient. The **peak head-to-head ratio rises 0.80→0.83×**;
+Triton still wins every shape. Two 4-warp tiles split the wins by occupancy regime
+(GB10 caps from `cudaDeviceGetAttribute`: **100 KB smem/SM**, 65536 reg/SM, 48 SM;
+ptxas, 0 spills):
+
+- **stages=1 static** — 128 reg/thread, 28672 B → **3 blocks/SM** (12 warps) —
+  wins 1024³/2048³, where enough blocks launch (128, 512) to fill the SMs and
+  occupancy is the constraint;
+- **stages=2 dynamic** — 96 reg/thread, 57344 B → **1 block/SM** — wins 512³,
+  where only 32 blocks launch (< 48 SMs) so occupancy never binds and the
+  double-buffer's cp.async/compute overlap is the lever (the same 32-block regime
+  the round-1 referee analysis flagged).
+
+### Deeper staging (3–5) does NOT help — a measured negative
+
+Round 1 hypothesized that the 4-warp tile's smaller footprint would let
+`num_stages≥3` fit "while keeping ≥2 blocks/SM," mirroring Triton's 3–5-stage
+winners. That was **built** — `MMA-PIPE-KLOOP-MULTI`, a general N-stage `cp.async`
+ring pipeline (prologue issues N-1 stages; steady `wait_group(N-1)`; a draining
+`wait_group(N-2…0)` epilogue for the last N-1 tiles), proven element-exact at
+stages 3/4/5 — and **measured uniformly slower** than stages 1/2 (single run):
+
+| TFLOP/s (tf32) config      |  512³ | 1024³ | 2048³ | 4096³ | smem/block | blocks/SM |
+|----------------------------|------:|------:|------:|------:|-----------:|:---------:|
+| 4w M4 s3 ldmA (128×64)     |  13.1 |  21.4 |  25.6 |  13.6 |   86016 B  |     1     |
+| 4w M2 s3 ldmA (64×64)      |  10.5 |  18.5 |  21.6 |   7.2 |   55296 B  |     1     |
+| 4w M2 s4 ldmA (64×64)      |  10.9 |  18.3 |  22.1 |   7.4 |   73728 B  |     1     |
+| 4w M2 s5 ldmA (64×64)      |  10.9 |  18.3 |  20.8 |   7.1 |   92160 B  |     1     |
+
+The mechanism is the GB10's **100 KB smem/SM**: the 99 KB per-block cap lets one
+big buffer fit, but 3+ full buffers (≥55 KB even on the 64-row MFRAGS=2 tile)
+exceed half the SM and force **1 block/SM** — so deeper staging *loses* exactly the
+occupancy the 4-warp tile was supposed to buy. Only stages≤2 keep ≥2 blocks/SM on
+these tiles. This **falsifies the "deeper `num_stages` after the 4-warp shrink"**
+half of the round-1 prediction on this device: the 4-warp *geometry* is the lever;
+pipeline *depth* is not. It is consistent with the Orin step-3c result that this
+tile is **mma-issue-bound, not `cp.async`-feed-bound** — extra pipeline depth hides
+a latency that was never the bottleneck, at an occupancy cost that is. (The
+pipeline is kept, proven, and selectable; it is simply not a win on this device.)
+
+### Next lever (the honest why we still trail 0.62–0.83×)
+
+The residual gap is now neither warp count nor stage depth (both swept to
+exhaustion) nor occupancy (the static 4-warp tile matches Triton's block count AND
+gets 3 blocks/SM). Triton's tf32 `tl.dot` still out-throughputs Habu per block.
+The remaining structural differences in `cg-mma.f`, in likely-payoff order and each
+a kernel-engineering change of the same class as this round's warp-grid rework
+(to be proven element-exact and measured before any number is claimed):
+
+1. **A shared-memory epilogue.** Habu stores each lane's D fragments straight to
+   global with 4 scattered `st.global.f32` per n-tile (uncoalesced 4-byte writes);
+   Triton stages the accumulator tile back through smem and writes C coalesced.
+   The store is a measurable fraction of a compute-light small-shape launch.
+2. **A wider tensor op / higher mma-issue density.** Habu issues
+   `mma.sync.m16n8k8`; the Blackwell `tl.dot` path uses a wider/denser HMMA
+   schedule, so more FLOPs retire per issue slot — the mma-issue bound the
+   ablation points at.
+3. **Register-tile scheduling headroom.** The static 4-warp tile is at 128
+   reg/thread with 0 spills — near the point where a larger tile would spill, so
+   further M/N widening needs a scheduling change, not just a knob.
 
 ### Reproduction (exact)
 
 ```
 # Habu column — element-exact correctness, then throughput (arch auto-probed sm_121a):
-bin/hb --load tools/ptx/mma-gemm-check.f      # MGC-ALL: PASS element-exact 64³…512³
-bin/hb --load tools/ptx/gemm-bench.f          # GB-GB10: FP32 roof ref + tf32 schedule sweep, 512…4096
+bin/hb --load tools/ptx/mma-gemm-check.f      # MGC-ALL: PASS element-exact 64³…512³ (incl. 4-warp + N-stage rows)
+bin/hb --load tools/ptx/gemm-bench.f          # GB-GB10: FP32 roof + 8-warp sweep + 4-warp winners, 512…4096
+# GB-W4-SWEEP (in the same file) reproduces the full 4-warp exploration incl. the deep-stage negative.
 # Triton referee (source-built 3.8 in the ml venv):
 ~/Work/ml/.venv/bin/python /tmp/gemm-triton-gb10.py
 ```

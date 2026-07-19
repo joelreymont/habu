@@ -7,9 +7,11 @@
 \ an in-process buffer instead, so a host-side test can inspect the generated PTX
 \ text without spawning a child or shelling out to a file (fail closed on overflow).
 
-$10000 constant PTX-CAP-CAP     \ 64 KB: bk=32 register-blocked kernels with a fused epilogue
-                                \ (e.g. LINEAR->GELU 64x64) emit ~40 KB of PTX; matches the
-                                \ device-side LMD-OUT capture used for the same kernels.
+$20000 constant PTX-CAP-CAP     \ 128 KB: bk=32 register-blocked kernels with a fused epilogue
+                                \ (e.g. LINEAR->GELU 64x64) emit ~40 KB; the N-stage wide MMA tiles
+                                \ (lib/ptx/cg-mma.f MMA-PIPE-KLOOP-MULTI: steady body + N-1 unrolled
+                                \ epilogue tiles, MFRAGS=4 scalar/B-ldmatrix) emit up to ~90 KB, so
+                                \ the capture buffer is sized past the deepest committed sweep config.
 create PTX-CAP-BUF PTX-CAP-CAP allot
 variable PTX-CAP-U
 variable PTX-CAPTURE?                       \ 0 = stdout ; nonzero = append into PTX-CAP-BUF
