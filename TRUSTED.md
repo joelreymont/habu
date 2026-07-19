@@ -1622,6 +1622,7 @@ prim - u. - pe-n pe-in
 prim - create - pe-ptr-a pe-out
 prim - variable - pe-ptr-a pe-out
 prim - constant - pe-a pe-out
+prim - getpid - pe-n pe-out
 prim - typefamily - -
 prim - sumtype - -
 prim - enum - -

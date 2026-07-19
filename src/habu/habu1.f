@@ -1605,6 +1605,9 @@ variable SZA-I
    done LBL,
    0 G-PUSH ;
 
+: BGETPID ( -- )                   \ ( -- pid ) never fails; x0 holds the caller's pid
+   NR-GETPID SYS,  SYS-PUSH ;
+
 \ ---- FFI: AAPCS64 trampolines ----
 \ `ffi-call` keeps the old fast path: load 8 cells from argbuf into x0-x7,
 \ BLR fn, push x0. `ffi-call-abi`/`ffi-call-abi-r` add x8, d0-d7, caller-packed
@@ -2363,6 +2366,7 @@ SOURCE-INIT
    s" fcntl" ['] BFCNTL FPRIM-L   s" poll" ['] BPOLL FPRIM
    s" kill" ['] BKILL FPRIM-L
    s" setpgid" ['] BSETPGID FPRIM-L
+   s" getpid" ['] BGETPID FPRIM-L
    s" spawn-io" ['] BSPAWNIO FPRIM-L
    s" spawn-argv-io" ['] BSPAWNARGVIO FPRIM-L
    s" spawn-argv-env-io" ['] BSPAWNARGVENVIO FPRIM-L
