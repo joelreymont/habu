@@ -18,6 +18,7 @@ require lib/ffi.f
 require lib/type/deftype.f         \ DEFTYPE - the CUDA handle families
 
 -5002 constant E-CUDA          \ CUDA Driver call failed: null handle or nonzero CUresult
+-5007 constant E-CUDA-WS       \ split-K partials workspace exceeds free device memory (fail-closed, never a silent split=1 fallback)
 
 \ Nominal handle roles - one cell each at runtime, distinct nominal types to the
 \ checker. Defined at top level so the >CUDA-* / CUDA-*>N casts stay global.
@@ -41,6 +42,7 @@ package CUDA
 
 create CD-LIB 16 allot
 create CD-SYM 64 allot
+create CD-MEMINFO 16 allot            \ [free|total] scratch for CU-MEM-GET-INFO (split-K workspace sizing)
 variable CD-H
 
 : OUT ( -- ptr a )
@@ -129,6 +131,12 @@ TRUSTED: CU-MEM-FREE ( cuda-devptr -- rc ) {: p:cuda-devptr :}
    s" cuMemFree_v2" SYMBOL {: call:n :}
    FFI:RESET  p 0 FFI:VALUE!
    FFI:ARGS FFI:REG-LENS 1 call ffi-call-bounded ;
+
+\ free/total device memory (bytes) into two 8-byte slots; used to fail-close the split-K workspace sizing.
+TRUSTED: CU-MEM-GET-INFO ( ptr a ptr a -- rc ) {: free:ptr total:ptr :}
+   s" cuMemGetInfo_v2" SYMBOL {: call:n :}
+   FFI:RESET  free 8 0 FFI:WRITABLE!  total 8 1 FFI:WRITABLE!
+   FFI:ARGS FFI:REG-LENS 2 call ffi-call-bounded ;
 
 TRUSTED: CU-MEMSET-D32 ( cuda-devptr n count -- rc )
    {: dst:cuda-devptr value:n count:count :}
@@ -261,6 +269,17 @@ TRUSTED: CU-EVENT-ELAPSED-TIME ( ptr a cuda-event cuda-event -- rc )
 : DEVICE-ALLOC ( len -- cuda-devptr )             \ allocate len device bytes
    OUT swap CU-MEM-ALLOC RC0
    OUT @ HANDLE0 >CUDA-DEVPTR ;
+
+\ split-K partials workspace: m*n*s f32 elements. FAIL-CLOSED against free device memory with the named
+\ E-CUDA-WS - the dot forbids a silent fallback to split=1, so an over-budget request throws here instead
+\ of the caller quietly shrinking S. Returns the device pointer to a fresh m*n*s*4-byte buffer.
+: SPLIT-WS-ALLOC ( m n s -- cuda-devptr )
+   {: m:n n:n s:n :}
+   m n * s * 4 * {: bytes:n :}
+   CD-MEMINFO CD-MEMINFO 8 + CU-MEM-GET-INFO RC0
+   CD-MEMINFO @ {: free:n :}
+   bytes free > if E-CUDA-WS throw then
+   bytes >LEN DEVICE-ALLOC ;
 
 : HTOD ( cuda-devptr ptr u8 len -- )              \ copy host bytes -> device
    CU-MEMCPY-HTOD RC0 ;

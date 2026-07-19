@@ -2093,3 +2093,109 @@ bin/hb --load tools/ptx/mma-emit-diff.f    # base vs branch -> empty diff (all c
 # throughput, best-of-3, solo, 13.3 pinned (swap the file's bottom entry to the half-ldmatrix sweeps):
 bin/hb --load tools/ptx/gemm-bench.f       # GB-F16-LDM-SWEEP / GB-BF16-LDM-SWEEP: k-major vs transposed-Bs vs ldmatrix + BK=32/64
 ```
+
+## Round 12 — split-K for the 512-class occupancy hole (dot `habu-split-k-for-8c3ee0fb`): built, element-exact, and MEASURED A NEGATIVE (2026-07-19)
+
+Parity-plan phase 3a. At 512³ the committed winners launch only ~32 output
+blocks on the GB10's 48 SMs — a third of the machine idles and no tile geometry
+fixes it. **Split-K** partitions the K dimension into `S` contiguous slices, one
+CTA-column per slice (grid `gridY = (M/BROWS)·S`), so `S·`(output blocks) launch
+(64–128 at 512³). Each slice computes a **partial C in f32** into a per-split
+workspace; a separate deterministic **reduce kernel `MMR`** then sums the `S`
+partials per element into C. The hypothesis: fill the idle SMs, lift 512-class
+from 0.56–0.75× toward 0.9×. **The data falsifies it — split-K is slower here.**
+
+### What was built (`lib/ptx/cg-mma.f` `MMA-SPLITK`, default 1 = off)
+
+The split path **reuses the committed tile verbatim** — same cp.async staging,
+fragment loads, `mma.sync`, and store words — and changes only three things:
+(1) the K-loop runs over the CTA's slice `[s·Kslice, (s+1)·Kslice)` instead of
+`[0,K)` (`MMA-PIPE-KLOOP-{WITH,SINGLE}-SPLIT`: only the `kt` init and the loop/
+prefetch bound differ, everything else byte-for-byte the committed loop); (2) the
+thread setup derives `s = ctaid.y/gm`, `tile_m = ctaid.y%gm` (`gm = M/BROWS`) and
+`Kslice = K/S`; (3) the C base register is **redirected** to the split's
+workspace slice `pWS + s·(M·N)·4`, so `MMA-STORE(-WIDE)` writes partials with **no
+store-word change**. `MMR` is emitted into the same module and sums the partials
+in **fixed ascending `s` order — no atomics**, so the reduction is bit-for-bit
+reproducible run-to-run.
+
+**Determinism + exactness argument.** Under the integer fill every full-K partial
+sum stays `< 2^24` (`K·143 ≤ 512·143 = 73216` at 512³; a K-*slice* sum is smaller
+still), so each split's f32 accumulate is exact, and `MMR` sums `S` exact integers
+whose total (the full dot) is also `< 2^24` — the ascending f32 adds never round,
+so the split result is **bit-identical** to the un-split kernel. Composes with
+dtype / MFRAGS / WARPS / BN / BK / PAD / LMODE and stages 1–2; **fail-closed**
+(`E-MMA-SPLITK`) on stages>2 (the deep ring bounds on `%r3`, not adapted),
+`MMA-GROUP` (the grid fold conflicts with the raster remap), `MMA-EPILOG`
+(untested with the redirected base), and `S<1`. The workspace is sized
+**fail-closed against free device memory** (`CUDA:SPLIT-WS-ALLOC`, `E-CUDA-WS`) —
+never a silent fallback to `S=1`.
+
+### Proof order
+
+1. **Byte-identity at `S=1`** — `tools/ptx/mma-emit-diff.f` base-vs-branch **EMPTY
+   diff**, all committed configs (the whole split path is gated behind `S>1`).
+2. **Element-exact at `S=2` and `S=4`, 512³ AND 1024³, tf32/fp16/bf16** —
+   `tools/ptx/mma-gemm-check.f` `MGC-CFG-SPLIT`: **16/16 PASS, 0 mismatches**,
+   zero tolerance. `C[0][0] = 21335` (512³) / `42723` (1024³) is **identical
+   across `S=1/2/4` and every dtype** — the split factor never changes a bit.
+   Legality fail-closed negative-tested (`MGC-SPLIT-NEG`: stages>2 / grouped-
+   raster / epilogue / `S<1` all throw `E-MMA-SPLITK`; a legal split emits).
+
+### Results (GB10, best-of-3 solo, ptxas 13.3.33 pinned, `PTXAS-STALE-SM121` absent)
+
+FP32 `MM` roof reproduces 8.2/13.2/15.0/14.0 (the 2411 MHz band). GFLOP/s for the
+split rows is `2·S³ / (MMM + MMR wall time)` — the honest throughput **including**
+the reduce pass. Referee = Triton 3.8 tf32 `tl.dot` 21.7 (512³) / 33.5 (1024³).
+
+| TFLOP/s (tf32 C=A·B)                    | 512³  | 1024³ | ×Triton 512 | ×Triton 1024 |
+|-----------------------------------------|------:|------:|------------:|-------------:|
+| **`S=1` committed winner** (4-warp M4 s2, 128×64) | **14.5** | **24.1** | 0.67× | 0.72× |
+| split `S=2` (4-warp M4)                 |   8.6 |  15.7 | 0.40× | 0.47× |
+| split `S=4` (4-warp M4)                 |   7.5 |  11.7 | 0.34× | 0.35× |
+| split `S=2` (8-warp M2)                 |   8.7 |  15.9 | 0.40× | 0.47× |
+| split `S=4` (8-warp M2)                 |   7.4 |  11.8 | 0.34× | 0.35× |
+
+**Split-K REGRESSES the 512-class, monotonically in `S`.** At 512³ it drops
+0.67× → 0.40× (S=2) → 0.34× (S=4) Triton; at 1024³ 0.72× → 0.47× → 0.35×. The
+occupancy hypothesis is **falsified**: the extra resident blocks do not pay.
+
+### Why the occupancy gain is dominated — the memory-traffic cost
+
+The 512-class tiles are already **occupancy/launch-gated, not compute-starved for
+lack of blocks** — and split-K pays for the extra blocks in global-memory traffic
+that scales with `S`:
+
+- **`S×` the C-write volume.** Each of the `S` slices writes a *full* `M×N` f32
+  partial to the workspace via the **scattered** (uncoalesced) `st.global`
+  epilogue — `S×` the global writes of the single-kernel store.
+- **A whole extra memory-bound pass.** `MMR` reads `S·M·N` f32 and writes `M·N` —
+  at 512³/`S=2` that is a 3 MB round-trip added to a GEMM that itself runs in
+  ~18 µs. The reduce alone is a large fraction of the compute.
+- The FLOPs are unchanged (each slice does `1/S` of the K work), so splitting only
+  **adds** the partial-write + reduce traffic; the SM-occupancy it buys back is
+  worth less than that traffic on these shapes. Monotonic decrease in `S` is the
+  signature: more splits = more overhead, no compute win.
+
+**Honest verdict.** Split-K is **correct, deterministic, and element-exact**, and
+the mechanism is the right one for a genuinely *K-bound, block-starved* regime
+(very large K, tiny M·N) — but the 512/1024-class GB10 GEMM is not that regime.
+Here it is a measured **negative**, shipped **off by default** (`MMA-SPLITK=1`,
+byte-identical) behind the fail-closed guards. The 512-class occupancy hole is
+**not** closed by K-partitioning at this granularity; the lever remains the
+HMMA-issue schedule (Rounds 4/11's standing bound), not more resident blocks. A
+future re-test worth doing: compose split-K with the **coalesced smem epilogue**
+(currently fail-closed) to cut the `S×` scattered-write cost, and a
+**single-pass atomic-free reduce fused into a wider MMR** — but neither removes the
+`S×` write volume, so the expected ceiling is *approaching* `S=1`, not beating it.
+
+### Reproduction (exact)
+
+```
+# byte-identity: the whole split path is gated behind S>1, so S=1 is untouched:
+bin/hb --load tools/ptx/mma-emit-diff.f    # base vs branch -> empty diff (all committed configs)
+# element-exact first (arch auto-probed sm_121a) -- split 2/4 at 512^3/1024^3, tf32/fp16/bf16, 0 mismatches:
+bin/hb --load tools/ptx/mma-gemm-check.f   # MGC-CFG-SPLIT + MGC-SPLIT-NEG (unwired combos fail-closed E-MMA-SPLITK)
+# throughput, best-of-3, solo, 13.3 pinned (swap the file's bottom entry to GEMMBENCH:GB-SPLIT-SWEEP):
+bin/hb --load tools/ptx/gemm-bench.f       # S=1 baseline vs split S=2/4 at 512^3/1024^3, GFLOP/s = 2S^3/(MMM+MMR)
+```

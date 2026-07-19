@@ -40,6 +40,7 @@ require lib/errors.f
 require lib/string.f
 require lib/float.f
 require lib/fmt.f
+require lib/memory.f
 require maki/array.f
 require lib/fs.f
 require lib/fs-mutate.f
@@ -53,18 +54,34 @@ require tools/ptx/bench.f
 
 package MMAGEMMCHECK
 
-512 constant MGC-MAX                       \ largest square edge (buffers sized for this; 512 for the wide 256-row MFRAGS=4 block)
-MGC-MAX MGC-MAX * constant MGC-CAP         \ 262144 elems
+1024 constant MGC-MAX                      \ largest square edge (buffers sized for this; 1024 for the split-K 1024^3 element-exact proof)
+MGC-MAX MGC-MAX * constant MGC-CAP         \ 1048576 elems at 1024^2
 
-create MGC-HA MGC-CAP cells allot          \ host A (f64)
-create MGC-HB MGC-CAP cells allot          \ host B
-create MGC-HREF MGC-CAP cells allot        \ host reference (f64)
-create MGC-HC MGC-CAP cells allot          \ device C read back (f64)
-create MGC-PA MGC-CAP 4 * allot            \ packed f32
-create MGC-PB MGC-CAP 4 * allot
-create MGC-PC MGC-CAP 4 * allot
+\ Large host/packed buffers are HEAP-allocated (mmap), not `allot`ed: at MGC-MAX=1024 the seven arrays total
+\ ~44 MB, and cumulative dictionary `allot` past ~32 MB silently corrupts the engine's data space (measured).
+\ Each name is a word pushing its heap base, so every T-GET/T-SET/pack call site is unchanged. Allocated once.
+variable MGC-HA-P  variable MGC-HB-P  variable MGC-HREF-P  variable MGC-HC-P
+variable MGC-PA-P  variable MGC-PB-P  variable MGC-PC-P
+: MGC-HA   ( -- ptr a )  MGC-HA-P @ ;
+: MGC-HB   ( -- ptr a )  MGC-HB-P @ ;
+: MGC-HREF ( -- ptr a )  MGC-HREF-P @ ;
+: MGC-HC   ( -- ptr a )  MGC-HC-P @ ;
+: MGC-PA   ( -- ptr a )  MGC-PA-P @ ;
+: MGC-PB   ( -- ptr a )  MGC-PB-P @ ;
+: MGC-PC   ( -- ptr a )  MGC-PC-P @ ;
+: MGC-BUF-INIT ( -- )                      \ heap-allocate the seven large buffers once (idempotent)
+   MGC-HA-P @ if exit then
+   MGC-CAP MEM:CELLS-ALLOC-COUNT MEM:ALLOC-CELLS MGC-HA-P !
+   MGC-CAP MEM:CELLS-ALLOC-COUNT MEM:ALLOC-CELLS MGC-HB-P !
+   MGC-CAP MEM:CELLS-ALLOC-COUNT MEM:ALLOC-CELLS MGC-HREF-P !
+   MGC-CAP MEM:CELLS-ALLOC-COUNT MEM:ALLOC-CELLS MGC-HC-P !
+   MGC-CAP 4 * MEM:BYTES-ALLOC-LEN MEM:ALLOC-BYTES drop MGC-PA-P !
+   MGC-CAP 4 * MEM:BYTES-ALLOC-LEN MEM:ALLOC-BYTES drop MGC-PB-P !
+   MGC-CAP 4 * MEM:BYTES-ALLOC-LEN MEM:ALLOC-BYTES drop MGC-PC-P ! ;
 create MGC-QO $1000 allot  create MGC-QE $1000 allot
 variable MGC-DA  variable MGC-DB  variable MGC-DC
+variable MGC-DWS                            \ split-K partials workspace (M*N*S f32)
+variable MGC-S                              \ split-K split count S (1 = off)
 variable MGC-N   variable MGC-BADI
 variable MGC-SA  variable MGC-SB            \ the two square edges each config is checked at (default 64/128)
 create MGC-MAXERR 1 cells allot
@@ -127,6 +144,52 @@ create MGC-MAXERR 1 cells allot
    MGC-PC MGC-DC @ e 4 * PTXBENCH:DTOH
    MGC-PC e MGC-HC F32-UNPACK
    MGC-DA @ PTXBENCH:DEVICE-FREE  MGC-DB @ PTXBENCH:DEVICE-FREE  MGC-DC @ PTXBENCH:DEVICE-FREE ;
+
+\ SPLIT-K launch (dot habu-split-k-for-8c3ee0fb): alloc A/B/C + the M*N*S partials workspace (fail-closed
+\ sizing via CUDA:SPLIT-WS-ALLOC), launch MMM with the split-K ABI (gridY = (M/BROWS)*S, each CTA-column a
+\ K-slice writing f32 partials into its workspace slice), then launch the deterministic MMR reduce (one
+\ thread per output element, summing the S partials in fixed order into C), then read C back. Two launches,
+\ one module (MMM + MMR emitted together at S>1).
+: MGC-LAUNCH-SPLIT ( -- )
+   MGC-N @ {: n:n :}  n n * {: e:n :}
+   MMA-ESZ {: esz:n :}
+   e esz * MGC-DA PTXBENCH:DEVICE-ALLOC
+   e esz * MGC-DB PTXBENCH:DEVICE-ALLOC
+   e 4 * MGC-DC PTXBENCH:DEVICE-ALLOC
+   n n MGC-S @ CUDA:SPLIT-WS-ALLOC CUDA-DEVPTR>N MGC-DWS !
+   MMA-BF16? if
+      MGC-HA e MGC-PA BF16-PACK  MGC-HB e MGC-PB BF16-PACK
+   else MMA-F16? if
+      MGC-HA e MGC-PA F16-PACK  MGC-HB e MGC-PB F16-PACK
+   else
+      MGC-HA e MGC-PA F32-PACK  MGC-HB e MGC-PB F32-PACK
+   then then
+   MGC-DA @ MGC-PA e esz * PTXBENCH:HTOD
+   MGC-DB @ MGC-PB e esz * PTXBENCH:HTOD
+   \ ---- MMM: each split writes its K-slice partial into the workspace slice ----
+   s" MMM" PTXBENCH:FUNC-BY-NAME!             \ re-select MMM (a prior split run left FUNC on MMR)
+   16 PTXBENCH:BLOCK!  MMA-NTHREADS 16 / PTXBENCH:BLOCKY!
+   n MMA-BN @ / PTXBENCH:GRID!  n MMA-BROWS / MGC-S @ * PTXBENCH:GRIDY!   \ gridY = (M/BROWS)*S (split folds into gridY)
+   48 PTXBENCH:PARAM-BYTES!
+   MMA-DYNSMEM @ if MMA-SH-BYTES PTXBENCH:SHARED! else 0 PTXBENCH:SHARED! then
+   PTXBENCH:PREPARE-LAUNCH
+   0  MGC-DA PTXBENCH:PARAM-PTR!  8  MGC-DB PTXBENCH:PARAM-PTR!  16 MGC-DC PTXBENCH:PARAM-PTR!
+   24 MGC-N PTXBENCH:PARAM-U32!  28 MGC-N PTXBENCH:PARAM-U32!  32 MGC-N PTXBENCH:PARAM-U32!
+   36 MGC-S PTXBENCH:PARAM-U32!  40 MGC-DWS PTXBENCH:PARAM-PTR!   \ pS (u32) at 36, pWS (u64) at the 8-aligned 40
+   PTXBENCH:LAUNCH  PTXBENCH:SYNC
+   \ ---- MMR: deterministic reduce of the S partials -> C ----
+   s" MMR" PTXBENCH:FUNC-BY-NAME!
+   256 PTXBENCH:BLOCK!  1 PTXBENCH:BLOCKY!
+   e 255 + 256 / PTXBENCH:GRID!  1 PTXBENCH:GRIDY!
+   28 PTXBENCH:PARAM-BYTES!  0 PTXBENCH:SHARED!
+   PTXBENCH:PREPARE-LAUNCH
+   0 MGC-DC PTXBENCH:PARAM-PTR!  8 MGC-DWS PTXBENCH:PARAM-PTR!
+   16 MGC-N PTXBENCH:PARAM-U32!  20 MGC-N PTXBENCH:PARAM-U32!  24 MGC-S PTXBENCH:PARAM-U32!
+   PTXBENCH:LAUNCH  PTXBENCH:SYNC
+   MGC-PC MGC-DC @ e 4 * PTXBENCH:DTOH
+   MGC-PC e MGC-HC F32-UNPACK
+   MGC-DA @ PTXBENCH:DEVICE-FREE  MGC-DB @ PTXBENCH:DEVICE-FREE  MGC-DC @ PTXBENCH:DEVICE-FREE
+   MGC-DWS @ PTXBENCH:DEVICE-FREE ;
 
 : MGC-COMPARE ( -- n )                     \ mismatch count over n*n; sets MGC-BADI, MGC-MAXERR
    -1 MGC-BADI !  0.0 MGC-MAXERR !  0
@@ -614,8 +677,66 @@ variable MGC-TN
    if s" -- grouped-raster legality: fail-closed on a negative group height, emits when off / positive (PASS)" type cr
    else s" mma-gemm-check: grouped-raster legality regression FAILED" 1 die then ;
 
+\ ============ SPLIT-K element-exact + legality (dot habu-split-k-for-8c3ee0fb) ============
+\ Same integer fill / host reference / zero-tolerance compare as the un-split kernel (the split regroups the
+\ SAME exact integer additions; every partial and the reduce total stay < 2^24, so no f32 add rounds). Proves
+\ MMM-partials + MMR-reduce reproduce the host matmul BIT-EXACT at split 2/4, 512^3 and 1024^3, tf32 and fp16.
+: MGC-SPLIT-SHAPE-OK? ( n -- bool ) {: n:n :}   \ K=n must split S ways into whole BK-multiple slices
+   n MGC-S @ mod 0=
+   n MGC-S @ / MMA-BK @ mod 0=  and ;
+: MGC-CHECK-SPLIT-SHAPE ( n -- )
+   MGC-SPLIT-SHAPE-OK? 0= if MGC-E-ZEROBLK throw then ;
+: MGC-ONE-SPLIT ( n -- ) {: n:n :}
+   n MGC-N !
+   n MGC-CHECK-SHAPE  n MGC-CHECK-SPLIT-SHAPE
+   MGC-FILL  MGC-REF  MGC-LAUNCH-SPLIT  MGC-COMPARE {: bad:n :}
+   s" MMM+MMR split=" type MGC-S @ .  n . s" x" type n . s" x" type n . s"  : " type
+   bad 0= if
+      s" PASS element-exact (" type n n * . s"  cells, C[0][0]=" type MGC-HC 0 T-GET f>s . s" )" type cr
+   else
+      s" FAIL mismatches=" type bad . s"  first=" type MGC-BADI @ . s"  maxerr=" type MGC-MAXERR @ f>s . cr
+   then ;
+: MGC-MODE-SPLIT ( n -- ) {: mode:n :}          \ set LMODE, emit MMM+MMR, assemble, load MMM, run 512^3 + 1024^3 split
+   mode MMA-LMODE !
+   s" habu-mma-gemm-check" PTXTC:PREPARE
+   PTX-CAPTURE-ON  EMIT-MATMUL-MMA  PTX-CAPTURE-OFF
+   MGC-ASSEMBLE
+   PTXBENCH:RESET
+   PTXTC:CUBIN$ PTXBENCH:CUBIN!
+   s" MMM" PTXBENCH:KERNEL!  s" MMM" PTXBENCH:LABEL!
+   PTXBENCH:OPEN  PTXBENCH:LOAD
+   MGC-SA @ MGC-ONE-SPLIT
+   MGC-SB @ MGC-ONE-SPLIT
+   PTXBENCH:UNLOAD  PTXBENCH:CLOSE
+   PTXTC:CLEAN ;
+: MGC-CFG-SPLIT ( n n n n n n n n n n -- ) {: bk:n pad:n stages:n dyn:n mode:n mfrags:n warps:n bn:n dtype:n split:n :}
+   bk MMA-BK !  pad MMA-PAD !  stages MMA-STAGES !  dyn MMA-DYNSMEM !  mfrags MMA-MFRAGS !  warps MMA-WARPS !  bn MMA-BN !  dtype MMA-DTYPE !  split MMA-SPLITK !
+   split MGC-S !
+   512 MGC-SA !  1024 MGC-SB !
+   s" -- SPLIT-K S=" type split .  s"  dtype=" type dtype .  s"  BN=" type bn .  s"  MFRAGS=" type mfrags .  s"  warps=" type warps .
+   s"  BK=" type bk .  s"  stages=" type stages .  s"  dyn=" type dyn .  s"  mode=" type mode . s"  (512^3,1024^3):" type cr
+   mode MGC-MODE-SPLIT
+   32 MMA-BK !  0 MMA-PAD !  2 MMA-STAGES !  0 MMA-DYNSMEM !  1 MMA-MFRAGS !  8 MMA-WARPS !  64 MMA-BN !  0 MMA-DTYPE !  1 MMA-SPLITK !  0 MMA-LMODE !  1 MGC-S !  64 MGC-SA !  128 MGC-SB ! ;
+
+\ negative+positive regression (dot habu-split-k-for-8c3ee0fb): MMA-CHECK-SPLIT must fail closed with
+\ E-MMA-SPLITK when S>1 is combined with a knob the split path does not compose with (stages>2 deep ring,
+\ grouped-raster, smem epilogue) and on S<1, and emit cleanly for a legal split tile. Device-independent.
+: MGC-SPLIT-NEG ( -- )
+   2 MMA-SPLITK !  32 MMA-BK !  8 MMA-PAD !  3 MMA-STAGES !  1 MMA-DYNSMEM !  2 MMA-MFRAGS !  8 MMA-WARPS !  2 MMA-LMODE !
+   MGC-TRY-EMIT {: rst:n :}                              \ S>1 + stages>2 -> E-MMA-SPLITK
+   2 MMA-STAGES !  4 MMA-GROUP !  MGC-TRY-EMIT {: rgr:n :}   \ S>1 + grouped-raster -> E-MMA-SPLITK
+   0 MMA-GROUP !  1 MMA-EPILOG !  MGC-TRY-EMIT {: rep:n :}   \ S>1 + smem epilogue -> E-MMA-SPLITK
+   0 MMA-EPILOG !  0 MMA-SPLITK !  MGC-TRY-EMIT {: rz:n :}   \ S<1 -> E-MMA-SPLITK
+   2 MMA-SPLITK !  MGC-TRY-EMIT {: rok:n :}                  \ legal split-2 wide tile -> emits (0)
+   1 MMA-SPLITK !  32 MMA-BK !  0 MMA-PAD !  2 MMA-STAGES !  0 MMA-DYNSMEM !  1 MMA-MFRAGS !  8 MMA-WARPS !  0 MMA-LMODE !  0 MMA-GROUP !  0 MMA-EPILOG !
+   s" -- split-K legality: stages3->" type rst . s"  group->" type rgr . s"  epi->" type rep . s"  S0->" type rz . s"  split2->" type rok . cr
+   rst E-MMA-SPLITK =  rgr E-MMA-SPLITK =  and  rep E-MMA-SPLITK =  and  rz E-MMA-SPLITK =  and  rok 0=  and
+   if s" -- split-K legality: fail-closed on stages>2 / grouped-raster / epilogue / S<1, emits legal split (PASS)" type cr
+   else s" mma-gemm-check: split-K legality regression FAILED" 1 die then ;
+
 public
 : MGC-ALL ( -- )
+   MGC-BUF-INIT                                        \ heap-allocate the large host/packed buffers (1024^2 exceeds the dictionary)
    MGC-SMEM-NEG                                        \ emitter fail-closed check (device-independent)
    MGC-ZEROBLK-NEG                                     \ zero-block/ragged-M launch guard (device-independent)
    MGC-BLDM-NEG                                        \ B-ldmatrix misaligned/MFRAGS=1 fail-closed (device-independent)
@@ -628,6 +749,7 @@ public
    MGC-REGS-NEG                                        \ register-budget legality fail-closed (device-independent)
    MGC-BN-EPI-NEG                                      \ wide-BN epilogue smem legality fail-closed (device-independent)
    MGC-GROUP-NEG                                       \ grouped-raster group-height legality fail-closed (device-independent)
+   MGC-SPLIT-NEG                                       \ split-K legality fail-closed (device-independent)
    CUDA:OPEN? 0= if s" mma-gemm-check: libcuda unavailable -> SKIPPED (off-device)" type cr exit then
    s" == TF32 mma.sync GEMM device-correctness (element-exact vs host) ==" type cr
    0 MGC-MODE  1 MGC-MODE  2 MGC-MODE
@@ -757,7 +879,17 @@ public
    16 3 2 8 256 8 MGC-CFG-GROUP
    \ 512^3-retime tile: BN=64 M4 8-warp stages=2 (wide, gridN>gridM asymmetry): 512^3 grid 2x8, GROUP=3 partial at gridM=2.
    32 2 4 8 64 3 MGC-CFG-GROUP
-   0 MMA-LMODE !  0 MMA-DTYPE !  0 MMA-BTF16 !  0 MMA-GROUP !  64 MMA-BN ! ;   \ restore the committed defaults (tf32 scalar+cvt, BN=64)
+   s" == SPLIT-K over the K dimension (dot habu-split-k-for-8c3ee0fb, MMM partials + MMR reduce, element-exact vs host) ==" type cr
+   \                bk pad st dyn md mf wp  bn dt spl
+   32 0 2 1 0 2 8  64 0 2 MGC-CFG-SPLIT    \ tf32 BN=64 M2 8-warp scalar+cvt  split=2 (RNE-exact cross-check)
+   32 8 2 1 2 2 8  64 0 2 MGC-CFG-SPLIT    \ tf32 BN=64 M2 8-warp ldmatrix    split=2
+   32 8 2 1 2 4 8  64 0 4 MGC-CFG-SPLIT    \ tf32 BN=64 M4 8-warp ldmatrix    split=4
+   32 8 2 1 2 4 4  64 0 2 MGC-CFG-SPLIT    \ tf32 4-warp M4 ldmatrix          split=2 (512^3-winner tile shape)
+   32 0 2 1 2 2 8 128 0 2 MGC-CFG-SPLIT    \ tf32 BN=128 M2 8-warp ldmatrix   split=2 (wide-BN + split)
+   32 0 2 1 0 2 8  64 1 2 MGC-CFG-SPLIT    \ fp16 BN=64 M2 8-warp scalar      split=2
+   32 0 2 1 0 4 4  64 1 4 MGC-CFG-SPLIT    \ fp16 4-warp M4 scalar            split=4
+   32 0 2 1 0 2 8  64 2 2 MGC-CFG-SPLIT    \ bf16 BN=64 M2 8-warp scalar      split=2 (cheap dtype cross-check)
+   0 MMA-LMODE !  0 MMA-DTYPE !  0 MMA-BTF16 !  0 MMA-GROUP !  1 MMA-SPLITK !  64 MMA-BN ! ;   \ restore the committed defaults (tf32 scalar+cvt, BN=64)
 
 ;package
 
