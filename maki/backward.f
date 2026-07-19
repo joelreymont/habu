@@ -315,6 +315,17 @@ variable BW-BUILT?
    ct s MAKI-OPKIND:SCALE x BW-OP2  x BW-ACCUM         \ dx = scale(ct, s) (broadcast-by-1x1)
    ct x s BW-FULLSUM  s BW-ACCUM ;            \ d-scale = fullsum-dot(ct, x) -> 1x1
 
+\ 1xC broadcast-multiply adjoint: y = x * g with g a 1xC row vector (dot habu-add-1xc-broadcast).
+\ dx = ct * g (a 1xC-broadcast multiply, OP-BCAST-MUL again - the exact per-column analog of
+\ scale's OP-SCALE dx); d-g = rowsum over rows of (ct .* x) -> 1xC (OP-MUL then OP-ROWSUM-BWD,
+\ mirroring the layernorm dgamma path), so no new backward op is needed.
+: BW-STEP-BCAST-MUL ( CAD-KIND:node-id MIR:operand-ref -- )
+   {: fn:CAD-KIND:node-id ct:MIR:operand-ref :}
+   fn 0 MIR-INPUT-IDX MIR-IN@ {: x:MIR:operand-ref :}
+   fn 1 MIR-INPUT-IDX MIR-IN@ {: g:MIR:operand-ref :}
+   ct g MAKI-OPKIND:BCAST-MUL x BW-OP2  x BW-ACCUM        \ dx = ct * g (1xC broadcast)
+   ct x MAKI-OPKIND:MUL x BW-OP2  g BW-ROWSUM  g BW-ACCUM ; \ d-g = rowsum(ct .* x) -> 1xC
+
 \ linear adjoint: the matmul adjoints for x and w plus the bias row-reduce.
 \ dX = ct @ Wt, dW = Xt @ ct, dB = rowsum(ct)
 : BW-STEP-LINEAR ( CAD-KIND:node-id MIR:operand-ref -- )
@@ -444,6 +455,7 @@ variable BW-BUILT?
       seg-attn        OF BW-STEP-SEGMENT-ATTN ENDOF
       seg-attn-bwd    OF E-BW-UNSUP throw  ENDOF
       equation        OF BW-STEP-EQUATION  ENDOF
+      bcast-mul       OF BW-STEP-BCAST-MUL ENDOF
    ;MATCH ;
 
 \ ---- supported-op gate (usable BEFORE build to classify not-run) -------------

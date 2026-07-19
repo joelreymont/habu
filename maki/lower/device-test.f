@@ -104,5 +104,11 @@ s" == SCALE 4x8 + 1x1 (1x1 scalar-broadcast) ==" type cr
 MODEL: MS ( x:4x8 s:1x1 -- y ) SCALE ;  FP-BUILD
 s" MODEL: MS ( x:4x8 s:1x1 -- y ) SCALE ;" LD-GOLD1
 
+\ BCAST-MUL 4x8 * 1x8: a 1xC row-broadcast multiply; the device kernel loads [e mod C]
+\ (rem.u32) and multiplies (mul.rn), the host executor reads EX-BC@ 1xC, so the two match.
+s" == BCAST-MUL 4x8 * 1x8 (1xC row-broadcast) ==" type cr
+MODEL: MBM ( x:4x8 g:1x8 -- y ) BCAST-MUL ;  FP-BUILD
+s" MODEL: MBM ( x:4x8 g:1x8 -- y ) BCAST-MUL ;" LD-GOLD1
+
 LD-END
 ;package

@@ -104,13 +104,13 @@ variable LEW-NIN                            \ region input count
    mix  1 CLASS-EW lshift  1 CLASS-MOVEMENT lshift or  invert and 0= ;
 
 \ ---- supported op set (v1 elementwise chain) -------------------------------
-\ BIAS/SCALE join the set as broadcast binary ops (their param operand is a 1xC / 1x1
-\ broadcast); they lower to the same add.rn / mul.rn the executor uses (EX-EW2-EL).
+\ BIAS/SCALE/BCAST-MUL join the set as broadcast binary ops (their param operand is a
+\ 1xC / 1x1 broadcast); they lower to the same add.rn / mul.rn the executor uses (EX-EW2-EL).
 : LEW-OP-OK? ( opkind -- bool )
    MATCH opkind
       relu OF true ENDOF  gelu OF true ENDOF  silu OF true ENDOF
       add OF true ENDOF  mul OF true ENDOF  residual-add OF true ENDOF
-      bias OF true ENDOF  scale OF true ENDOF
+      bias OF true ENDOF  scale OF true ENDOF  bcast-mul OF true ENDOF
       layernorm OF false ENDOF  rmsnorm OF false ENDOF  softmax-row OF false ENDOF
       matmul OF false ENDOF  linear OF false ENDOF  cast OF false ENDOF  rope OF false ENDOF
       reshape OF false ENDOF  transpose OF false ENDOF  slice OF false ENDOF  concat OF false ENDOF
@@ -308,6 +308,7 @@ private
       bias            OF nd LEW-BINREGS EMIT-ADD   ENDOF
       mul             OF nd LEW-BINREGS EMIT-MUL   ENDOF
       scale           OF nd LEW-BINREGS EMIT-MUL   ENDOF
+      bcast-mul       OF nd LEW-BINREGS EMIT-MUL   ENDOF
       layernorm OF E-LEW-OP throw ENDOF  rmsnorm OF E-LEW-OP throw ENDOF
       softmax-row OF E-LEW-OP throw ENDOF  matmul OF E-LEW-OP throw ENDOF
       linear OF E-LEW-OP throw ENDOF  cast OF E-LEW-OP throw ENDOF  rope OF E-LEW-OP throw ENDOF

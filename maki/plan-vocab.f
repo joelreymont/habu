@@ -47,6 +47,7 @@ public
 : MUL          ( tensor tensor -- tensor )  MAKI-OPKIND:MUL          MAKI:PLAN-BIN-EW ;
 : SCALE        ( tensor tensor -- tensor )  MAKI-OPKIND:SCALE        MAKI:PLAN-BIN-EW ;
 : BIAS         ( tensor tensor -- tensor )  MAKI-OPKIND:BIAS         MAKI:PLAN-BIN-EW ;
+: BCAST-MUL    ( tensor tensor -- tensor )  MAKI-OPKIND:BCAST-MUL    MAKI:PLAN-BIN-EW ;
 : RESIDUAL-ADD ( tensor tensor -- tensor )  MAKI-OPKIND:RESIDUAL-ADD MAKI:PLAN-BIN-EW ;
 
 \ ---- ternary elementwise ( tensor tensor tensor -- tensor ) : data then two params --

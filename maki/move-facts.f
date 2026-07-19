@@ -97,6 +97,7 @@ $FFFFF constant MV-PMASK     \ 20-bit param mask (max 1048575)
       seg-attn        OF E-MV-NOTMOVE throw ENDOF
       seg-attn-bwd    OF E-MV-NOTMOVE throw ENDOF
       equation        OF E-MV-NOTMOVE throw ENDOF
+      bcast-mul       OF E-MV-NOTMOVE throw ENDOF
    ;MATCH ;
 : OP-OF-MV ( n -- opkind )                     \ transform tag -> movement op-kind
    MV-TF-CK
@@ -206,6 +207,7 @@ $FFFFF constant MV-PMASK     \ 20-bit param mask (max 1048575)
       seg-attn        OF E-MV-TF throw ENDOF
       seg-attn-bwd    OF E-MV-TF throw ENDOF
       equation        OF E-MV-TF throw ENDOF
+      bcast-mul       OF E-MV-TF throw ENDOF
    ;MATCH ;
 
 ;package

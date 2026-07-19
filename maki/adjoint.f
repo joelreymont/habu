@@ -66,7 +66,8 @@ public
 19 constant ADJ-GELU-BWD      \ second order: d-dz = OP-GELU-BWD, d-x = OP-GELU-BWD2
 20 constant ADJ-SEG-ATTN      \ per-block dQ/dK/dV via OP-SEG-ATTN-BWD + slices
 21 constant ADJ-EQUATION      \ derived einsum adjoints (maki/spec.f EQ-ADJ@); reverse transform runs them
-22 constant ADJ-N             \ range bound
+22 constant ADJ-BCAST-MUL     \ dx = ct*g (1xC bcast) ; d-g = OP-ROWSUM-BWD(ct*x) -> 1xC
+23 constant ADJ-N             \ range bound
 
 \ ---- what the adjoint must read from the forward pass ------------------------
 0 constant SAVE-NONE          \ needs only static shape / operand refs (add/reshape/rope)
@@ -180,6 +181,7 @@ public
       seg-attn        OF E-ADJ-UNSUP throw ENDOF
       seg-attn-bwd    OF E-ADJ-UNSUP throw ENDOF
       equation        OF E-ADJ-UNSUP throw ENDOF
+      bcast-mul       OF E-ADJ-UNSUP throw ENDOF
    ;MATCH ;
 
 private
@@ -239,7 +241,13 @@ private
    \ arm, no dedicated *-BWD op (bop = -1). A composed equation is 2-factor (mask 3) and each
    \ factor receives a gradient; the adjoint reads the OTHER forward factors -> SAVE-INPUT. A
    \ gather equation is forward-only and rejects under training (E-CAD-GRAD, maki/backward.f).
-   ADJ-EQUATION SAVE-INPUT 3 1 -1 OP-EQUATION ADJ! ;
+   ADJ-EQUATION SAVE-INPUT 3 1 -1 OP-EQUATION ADJ!
+   \ ---- 1xC broadcast multiply (dot habu-add-1xc-broadcast): y = x * g (g is 1xC).
+   \ Both operands receive a gradient (mask 3): dx = ct*g (a 1xC-broadcast multiply,
+   \ OP-BCAST-MUL again, like scale's dx reuses OP-SCALE), d-g = rowsum(ct*x) -> 1xC
+   \ (OP-MUL then OP-ROWSUM-BWD, both already complete). A dedicated emitter builds it
+   \ (BW-STEP-BCAST-MUL), so bop = -1; it reads the forward inputs x and g -> SAVE-INPUT.
+   ADJ-BCAST-MUL SAVE-INPUT 3 1 -1 OP-BCAST-MUL ADJ! ;
 
 \ ---- wire the op-registry vjp field to the adjoint id (cad-9 requirement) ----
 \ pure private-table wiring over the code index space: copy A-ID[i] -> registry

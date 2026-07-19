@@ -138,7 +138,7 @@ private
       pad-scatter OF E-EX-UNSUP throw ENDOF  scatter-add OF E-EX-UNSUP throw ENDOF
       gelu-bwd2 OF E-EX-UNSUP throw ENDOF
       seg-attn OF E-EX-UNSUP throw ENDOF  seg-attn-bwd OF E-EX-UNSUP throw ENDOF
-      equation OF E-EX-UNSUP throw ENDOF
+      equation OF E-EX-UNSUP throw ENDOF  bcast-mul OF E-EX-UNSUP throw ENDOF
    ;MATCH ;
 
 : EX-U ( CAD-KIND:node-id -- ) {: nd:CAD-KIND:node-id :}
@@ -155,7 +155,7 @@ private
 : EX-EW2-EL ( r r opkind -- r )
    MATCH opkind
       add OF ADD-F ENDOF  residual-add OF ADD-F ENDOF  bias OF ADD-F ENDOF
-      mul OF MUL-F ENDOF  scale OF MUL-F ENDOF
+      mul OF MUL-F ENDOF  scale OF MUL-F ENDOF  bcast-mul OF MUL-F ENDOF
       relu-bwd OF RELU-BWD ENDOF  gelu-bwd OF GELU-BWD ENDOF  silu-bwd OF SILU-BWD ENDOF
       gelu-bwd2 OF GELU-BWD2 ENDOF
       relu OF E-EX-UNSUP throw ENDOF  gelu OF E-EX-UNSUP throw ENDOF
@@ -203,7 +203,7 @@ private
       pad-scatter OF E-EX-UNSUP throw ENDOF  scatter-add OF E-EX-UNSUP throw ENDOF
       gelu-bwd2 OF E-EX-UNSUP throw ENDOF
       seg-attn OF E-EX-UNSUP throw ENDOF  seg-attn-bwd OF E-EX-UNSUP throw ENDOF
-      equation OF E-EX-UNSUP throw ENDOF
+      equation OF E-EX-UNSUP throw ENDOF  bcast-mul OF E-EX-UNSUP throw ENDOF
    ;MATCH ;
 
 \ affine LayerNorm (arity 3): y = gamma*xhat + beta with gamma/beta (1xC) shared per row.
@@ -241,7 +241,7 @@ private
       pad-scatter OF E-EX-UNSUP throw ENDOF  scatter-add OF E-EX-UNSUP throw ENDOF
       gelu-bwd2 OF E-EX-UNSUP throw ENDOF
       seg-attn OF E-EX-UNSUP throw ENDOF  seg-attn-bwd OF E-EX-UNSUP throw ENDOF
-      equation OF E-EX-UNSUP throw ENDOF
+      equation OF E-EX-UNSUP throw ENDOF  bcast-mul OF E-EX-UNSUP throw ENDOF
    ;MATCH ;
 
 \ p0 = cotangent row ; p1 = saved input (norms) or saved output (softmax) row.
@@ -408,6 +408,7 @@ private
       mul             OF nd EX-EW2          ENDOF
       scale           OF nd EX-EW2          ENDOF
       bias            OF nd EX-EW2          ENDOF
+      bcast-mul       OF nd EX-EW2          ENDOF
       residual-add    OF nd EX-EW2          ENDOF
       relu-bwd        OF nd EX-EW2          ENDOF
       gelu-bwd        OF nd EX-EW2          ENDOF
@@ -462,6 +463,7 @@ public
       cast OF false ENDOF
       equation OF true ENDOF
       add OF true ENDOF  mul OF true ENDOF  scale OF true ENDOF  bias OF true ENDOF
+      bcast-mul OF true ENDOF
       relu OF true ENDOF  gelu OF true ENDOF  layernorm OF true ENDOF  rmsnorm OF true ENDOF
       softmax-row OF true ENDOF  matmul OF true ENDOF  linear OF true ENDOF
       residual-add OF true ENDOF  silu OF true ENDOF  rope OF true ENDOF

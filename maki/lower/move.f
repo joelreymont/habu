@@ -97,7 +97,7 @@ variable LMV-BUILT?
       rope-bwd OF false ENDOF  rowsum-bwd OF false ENDOF  fullsum-dot-bwd OF false ENDOF
       pad-scatter OF false ENDOF  scatter-add OF false ENDOF  gelu-bwd2 OF false ENDOF
       seg-attn OF false ENDOF  seg-attn-bwd OF false ENDOF
-      equation OF false ENDOF
+      equation OF false ENDOF  bcast-mul OF false ENDOF
    ;MATCH ;
 
 \ ---- operand-ref shape: a model input slot, or a MATERIALIZED producer node in another region
@@ -177,7 +177,7 @@ variable LMV-BUILT?
       fullsum-dot-bwd OF E-LMV-OP throw ENDOF  pad-scatter OF E-LMV-OP throw ENDOF
       scatter-add OF E-LMV-OP throw ENDOF  gelu-bwd2 OF E-LMV-OP throw ENDOF
       seg-attn OF E-LMV-OP throw ENDOF  seg-attn-bwd OF E-LMV-OP throw ENDOF
-      equation OF E-LMV-OP throw ENDOF
+      equation OF E-LMV-OP throw ENDOF  bcast-mul OF E-LMV-OP throw ENDOF
    ;MATCH ;
 
 : LMV-CHECK-DIMS ( -- )
@@ -313,7 +313,7 @@ private
       fullsum-dot-bwd OF E-LMV-OP throw ENDOF  pad-scatter OF E-LMV-OP throw ENDOF
       scatter-add OF E-LMV-OP throw ENDOF  gelu-bwd2 OF E-LMV-OP throw ENDOF
       seg-attn OF E-LMV-OP throw ENDOF  seg-attn-bwd OF E-LMV-OP throw ENDOF
-      equation OF E-LMV-OP throw ENDOF
+      equation OF E-LMV-OP throw ENDOF  bcast-mul OF E-LMV-OP throw ENDOF
    ;MATCH
    LMV-STORE ;
 

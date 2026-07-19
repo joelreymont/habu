@@ -71,7 +71,12 @@ public
 \ equation's generated host word, and it has no adjoint in stage 1 (an equation in a
 \ graph under training is the E-BW-NOADJ reject; stage 2 owns derived adjoints).
 34 constant OP-EQUATION          \ SPEC:-declared einsum op                 (ref: spec-registry RUN word)
-35 constant OP-N               \ op-kind range bound (private op-registry / adjoint table dimension + wire code range)
+\ ---- per-feature (1xC) broadcast multiply (dot habu-add-1xc-broadcast) --------
+\ AxC data times a 1xC row vector, broadcast over rows - the multiplicative twin of
+\ OP-BIAS's 1xC add. A general per-channel scale (attention scaling, SwiGLU gating);
+\ MODEL:-typed, CLASS-EW. Reference is scalar MUL-F; the executor supplies the 1xC read.
+35 constant OP-BCAST-MUL         \ AxC * 1xC -> AxC row-broadcast multiply    (ref: MUL-F)
+36 constant OP-N               \ op-kind range bound (private op-registry / adjoint table dimension + wire code range)
 
 \ ---- the op-kind family (dot habu-cad-adt-swap, corrected plan) -------------
 \ `opkind` is the semantic type carried from construction (MIR-OP-BEGIN /
@@ -92,6 +97,7 @@ ENUM opkind DERIVE eq
   rowsum-bwd fullsum-dot-bwd pad-scatter scatter-add gelu-bwd2
   seg-attn seg-attn-bwd
   equation
+  bcast-mul
 ;ENUM
 
 \ named render boundary: opkind -> wire/table code (exhaustive MATCH; a bad tag
@@ -134,6 +140,7 @@ ENUM opkind DERIVE eq
       seg-attn        OF OP-SEG-ATTN        ENDOF
       seg-attn-bwd    OF OP-SEG-ATTN-BWD    ENDOF
       equation        OF OP-EQUATION        ENDOF
+      bcast-mul       OF OP-BCAST-MUL       ENDOF
    ;MATCH ;
 
 ;package

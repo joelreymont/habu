@@ -194,6 +194,7 @@ public
    2dup s" SLICE"        STR= if 2drop MAKI-OPKIND:SLICE        true exit then
    2dup s" CONCAT"       STR= if 2drop MAKI-OPKIND:CONCAT       true exit then
    2dup s" GATHER"       STR= if 2drop MAKI-OPKIND:GATHER       true exit then
+   2dup s" BCAST-MUL"    STR= if 2drop MAKI-OPKIND:BCAST-MUL    true exit then
    2drop MAKI-OPKIND:ADD false ;                       \ placeholder value (bool false; callers ignore it)
 
 : OP-KIND ( ptr u8 n -- opkind )
@@ -380,6 +381,7 @@ $5E constant TR-C                                  \ '^' - the reserved transpos
       seg-attn        OF 2drop 2drop true ENDOF
       seg-attn-bwd    OF 2drop 2drop true ENDOF
       equation        OF 2drop 2drop true ENDOF
+      bcast-mul       OF SHP-ROW-OK?   ENDOF   \ 1xC param row-broadcasts over AxC data
    ;MATCH ;
 : SHP-CHECK ( CAD-KIND:rows CAD-KIND:cols CAD-KIND:rows CAD-KIND:cols opkind -- )
    SHP-LEGAL? 0= if E-CAD-PARAM-SHAPE throw then ;
@@ -747,6 +749,7 @@ private
       seg-attn        OF E-CAD-BIND-SHAPE throw ENDOF
       seg-attn-bwd    OF E-CAD-BIND-SHAPE throw ENDOF
       equation        OF E-CAD-BIND-SHAPE throw ENDOF
+      bcast-mul       OF E-CAD-BIND-SHAPE throw ENDOF
    ;MATCH ;
 
 \ movement dissolution verdict re-derived from the new extents (slice re-checks its
@@ -795,6 +798,7 @@ private
       seg-attn        OF E-CAD-BIND-SHAPE throw ENDOF
       seg-attn-bwd    OF E-CAD-BIND-SHAPE throw ENDOF
       equation        OF E-CAD-BIND-SHAPE throw ENDOF
+      bcast-mul       OF E-CAD-BIND-SHAPE throw ENDOF
    ;MATCH ;
 
 : REPROP-MOVE ( CAD-KIND:node-id -- ) {: nd:CAD-KIND:node-id :}

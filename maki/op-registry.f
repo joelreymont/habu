@@ -169,6 +169,7 @@ public
       seg-attn        OF s" seg-attn"        ENDOF
       seg-attn-bwd    OF s" seg-attn-bwd"    ENDOF
       equation        OF s" equation"        ENDOF
+      bcast-mul       OF s" bcast-mul"       ENDOF
    ;MATCH ;
 
 : OPR-CLASS-NAME ( n -- ptr u8 n )
@@ -254,7 +255,10 @@ private
    \ count lives in the spec registry, maki/spec.f), never read from this row, so the
    \ arity field is 0. The row stays R-REF-incomplete: an equation has no single
    \ scalar oracle; its host reference is the generated RUN word the executor runs.
-   CLASS-MATMUL     2 ACC-F32  NUM-RELTOL 0 OP-EQUATION        OPR! ;
+   CLASS-MATMUL     2 ACC-F32  NUM-RELTOL 0 OP-EQUATION        OPR!
+   \ 1xC broadcast multiply (dot habu-add-1xc-broadcast): AxC data * 1xC row vector,
+   \ CLASS-EW like OP-BIAS/OP-MUL; arity 2 (data + 1xC param), ulp-exact scalar multiply.
+   CLASS-EW         1 ACC-SAME NUM-ULP    2 OP-BCAST-MUL       OPR! ;
 
 OPR-BUILD
 
@@ -308,5 +312,8 @@ OPR-BUILD
 \ completes their op rows so cast stays the only incomplete op.
 ' SEG-ATTN-FWD    OP-SEG-ATTN         cells R-REF + !
 ' SEG-ATTN-BWD    OP-SEG-ATTN-BWD     cells R-REF + !
+\ 1xC broadcast multiply reuses the scalar multiply reference; the executor's EX-BC@
+\ supplies the 1xC row broadcast on operand 1 (like OP-BIAS reuses ADD-F).
+' MUL-F          OP-BCAST-MUL        cells R-REF + !
 
 ;package

@@ -108,6 +108,7 @@ public
       gelu-bwd2       OF false ENDOF
       seg-attn        OF false ENDOF
       seg-attn-bwd    OF false ENDOF
+      bcast-mul       OF false ENDOF
    ;MATCH ;
 
 : CPREC-GEMM-CK ( opkind -- )  CPREC-GEMM? 0= if E-CPREC-OP throw then ;

@@ -112,6 +112,19 @@ s" mul.rn.f32"                LEWT-IN       \ SCALE lowers as mul
 s" rem.u32"                   LEWT-ABSENT   \ scalar load is mod-free
 s" div.u32"                   LEWT-ABSENT   \ scalar load is div-free
 
+\ ---- BCAST-MUL 4x8 * 1x8: a 1xC row-broadcast param loads [e mod C] (rem.u32), mul.rn ----
+\ The multiplicative twin of BIAS: the 1xC operand's flat load index is remapped to (e mod C=8),
+\ mirroring EX-BC@; BCAST-MUL lowers as mul.rn.f32. No div (a 1xC row-broadcast is not Rx1).
+MODEL: MBM ( x:4x8 g:1x8 -- y ) BCAST-MUL ;
+FP-BUILD
+LEWT-CAP0
+s" .visible .entry REGION_0"  LEWT-ONCE
+s" .param .u64 p_in1"         LEWT-IN
+s" rem.u32"                   LEWT-IN       \ 1xC remap: flat e mod C
+s" , 8;"                      LEWT-IN       \ ...by the C=8 immediate
+s" mul.rn.f32"                LEWT-IN       \ BCAST-MUL lowers as mul
+s" div.u32"                   LEWT-ABSENT   \ a 1xC row-broadcast is not a col-broadcast
+
 \ ---- fail closed: a row-reduction region is not elementwise -----------------
 MODEL: LN ( x:4x8 -- y ) LAYERNORM ;
 FP-BUILD
