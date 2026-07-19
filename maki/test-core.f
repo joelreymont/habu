@@ -199,6 +199,8 @@ TEST:SUITE maki/from-scratch-test.f
 TEST:;SUITE
 TEST:SUITE maki/adam-train-test.f
 TEST:;SUITE
+TEST:SUITE maki/pos-embed-test.f
+TEST:;SUITE
 TEST:SUITE maki/adam-torch-ref-test.f
 TEST:;SUITE
 TEST:SUITE maki/adam-attn-grad-test.f
