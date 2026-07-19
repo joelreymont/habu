@@ -1,9 +1,10 @@
 ---
 title: Compact and index the content-key cache
-status: open
+status: closed
 priority: 1
 issue-type: task
-created-at: "2026-07-19T04:09:44.837664+02:00"
+created-at: "\"2026-07-19T04:09:44.837664+02:00\""
+closed-at: "2026-07-19T05:21:08.019795+02:00"
 ---
 
 The gate's 2x warm-attempt regression (27s -> 50-55s over one night) is the persistent content-key cache degrading, proven by same-tree A/B: shared cache e=55324 rc=65 vs fresh cache e=26912 rc=0. Three defects in lib/content-key.f: (1) CK-CACHE-FIND? linearly scans the entire loaded cache buffer for EVERY query, so cost is rows x queries - quadratic across a build's many file keys (7001 rows / 1.0 MB after one night, ~3.5x stale for a ~2K-file tree); (2) rows are append-only - a file edit appends a fresh (path,size,mtime)-keyed row and the stale row lives forever, so the file grows without bound; (3) at CK-CACHE-CAP (1 MB) CK-CACHE-LOAD? silently returns false and the system runs uncached - a silent fallback, the exact forbidden pattern. Fix design: (a) build an in-memory sorted index (path-ordered offsets) once at load and binary-search per query - load is once per process, queries are thousands; (b) compact at save: newest row per path only, written atomically (tmp+rename) so concurrent gate children cannot interleave; (c) cap handling fail-visible: compact first, evict-oldest if still over, and never silently disable - if the cache cannot operate, say so on stderr once. Tests: a bloated-fixture case proving compaction (N stale rows for one path -> 1 after save), a cap-overflow case proving eviction not disablement, and lookup correctness against the old format (the on-disk row format itself is fine and stays). Proof: the A/B above re-run on the fixed tree - shared degraded cache must self-heal on first save and the warm attempt return to the ~27s band; then re-derive SPARK-COLD-MS/SPARK-COLD-WALL-MS (56000/62000 were sized from degraded-cache measurements) and the warm budget stays 35000. Consumers to sanity-check: tools/build-fixpoint.f, tools/hb-build-lib.f, tools/ddc-scheduled.f (CK-FILE+ path), test/run-result-cache.f.
