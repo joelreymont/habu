@@ -1,4 +1,4 @@
-\ sort-test.f - checked SORT! / FSORT! coverage.
+\ sort-test.f - checked SORT:SORT! / SORT:FSORT! coverage.
 \ Run: cat lib/errors.f lib/test.f lib/sort.f lib/sort-test.f | bin/hb
 
 require lib/errors.f
@@ -8,39 +8,39 @@ require lib/sort.f
 create ST-A 8 cells allot
 create IT-A 8 cells allot
 
-: ST! ( r n -- ) {: idx :} ST-A idx 8 * + ! ;     \ store float at slot
-: ST@ ( n -- r ) {: idx :} ST-A idx FX@ ;
-: IT! ( n n -- ) {: idx :} IT-A idx 8 * + ! ;     \ store int at slot
-: IT@ ( n -- n ) {: idx :} IT-A idx FX@ ;
+: ST! ( r n -- ) {: idx:n :} ST-A idx 8 * + ! ;     \ store float at slot
+: ST@ ( n -- r ) {: idx:n :} ST-A idx SORT:FX@ ;
+: IT! ( n n -- ) {: idx:n :} IT-A idx 8 * + ! ;     \ store int at slot
+: IT@ ( n -- n ) {: idx:n :} IT-A idx SORT:FX@ ;
 : ST-ASC? ( n -- bool ) {: len :}                 \ a[i] <= a[i+1] for all i?
    0 0= len 1 - 0 ?do
-      ST-A i FX@  ST-A i 1 + FX@  f> if drop 0 0= 0= then
+      ST-A i SORT:FX@  ST-A i 1 + SORT:FX@  f> if drop 0 0= 0= then
    loop ;
 
 : SORT-RUN ( -- )
    T-RESET
    \ [3,1,4,1,5] -> [1,1,3,4,5]
    3.0 0 ST!  1.0 1 ST!  4.0 2 ST!  1.0 3 ST!  5.0 4 ST!
-   ST-A 5 FSORT!
+   ST-A 5 SORT:FSORT!
    0 ST@ 1.0 f= T-ASSERT   1 ST@ 1.0 f= T-ASSERT   2 ST@ 3.0 f= T-ASSERT
    3 ST@ 4.0 f= T-ASSERT   4 ST@ 5.0 f= T-ASSERT
    5 ST-ASC? T-ASSERT
    \ reverse-sorted -> ascending
    8.0 0 ST!  6.0 1 ST!  4.0 2 ST!  2.0 3 ST!  0.0 4 ST!
-   ST-A 5 FSORT!  5 ST-ASC? T-ASSERT  0 ST@ 0.0 f= T-ASSERT  4 ST@ 8.0 f= T-ASSERT
+   ST-A 5 SORT:FSORT!  5 ST-ASC? T-ASSERT  0 ST@ 0.0 f= T-ASSERT  4 ST@ 8.0 f= T-ASSERT
    \ negatives + duplicates
    -1.0 0 ST!  -3.0 1 ST!  -1.0 2 ST!  2.0 3 ST!
-   ST-A 4 FSORT!  4 ST-ASC? T-ASSERT  0 ST@ -3.0 f= T-ASSERT  3 ST@ 2.0 f= T-ASSERT
+   ST-A 4 SORT:FSORT!  4 ST-ASC? T-ASSERT  0 ST@ -3.0 f= T-ASSERT  3 ST@ 2.0 f= T-ASSERT
    \ len 1 and len 0 are no-ops (no crash)
-   7.0 0 ST!  ST-A 1 FSORT!  0 ST@ 7.0 f= T-ASSERT
-   ST-A 0 FSORT!  0 ST@ 7.0 f= T-ASSERT
-   \ generic SORT! with an integer ascending comparator
+   7.0 0 ST!  ST-A 1 SORT:FSORT!  0 ST@ 7.0 f= T-ASSERT
+   ST-A 0 SORT:FSORT!  0 ST@ 7.0 f= T-ASSERT
+   \ generic SORT:SORT! with an integer ascending comparator
    5 0 IT!  2 1 IT!  9 2 IT!  1 3 IT!  7 4 IT!
-   IT-A 5 [: < ;] SORT!
+   IT-A 5 [: < ;] SORT:SORT!
    0 IT@ 1 T=  1 IT@ 2 T=  2 IT@ 5 T=  3 IT@ 7 T=  4 IT@ 9 T=
-   \ generic SORT! with a float DESCENDING comparator
+   \ generic SORT:SORT! with a float DESCENDING comparator
    1.0 0 ST!  4.0 1 ST!  2.0 2 ST!  5.0 3 ST!  3.0 4 ST!
-   ST-A 5 [: f> ;] SORT!
+   ST-A 5 [: f> ;] SORT:SORT!
    0 ST@ 5.0 f= T-ASSERT  4 ST@ 1.0 f= T-ASSERT ;
 
 SORT-RUN

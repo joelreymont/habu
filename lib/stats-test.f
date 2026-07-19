@@ -30,7 +30,7 @@ create SA 8 cells allot
    SA 5 0.9 FPERCENTILE  4.6 TF        \ pos=3.6 -> a[3]+0.6*(a[4]-a[3])
    \ unsorted input: sort first, then median
    5.0 0 SA!  3.0 1 SA!  1.0 2 SA!  4.0 3 SA!  2.0 4 SA!
-   SA 5 FSORT!  SA 5 FMEDIAN  3.0 TF
+   SA 5 SORT:FSORT!  SA 5 FMEDIAN  3.0 TF
    \ single element
    9.0 0 SA!  SA 1 FMEAN 9.0 TF  SA 1 FMIN 9.0 TF  SA 1 FMAX 9.0 TF ;
 
