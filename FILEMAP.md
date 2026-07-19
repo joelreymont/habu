@@ -25,6 +25,7 @@ points stay listed.
 - `docs/census-switchover.md` — site-level inventory for the post-TFAM switchover: sentinel-return conventions to migrate to option/result, legacy enum clusters, value-record/PTX-IR products, ADT-dischargeable trust rows, and the wave-ordered migration plan.
 - `docs/gate.md` — native gate architecture, proof subjects, metrics, and
   process-boundary rules.
+- `docs/habu-pitch.md` — the research pitch: eliminate silently-wrong GPU kernels (the Triton #10927 K=511 class) by writing the math (`O[m,n] = Σk A[ix[m],k] · B[n,k]`) and letting the compiler derive tiling, fusion, data movement, precision, and the backward pass, or refuse to compile.
 - `docs/kernel-principles.md` — roofline, the 3 bounds, the device's compute/memory roofs, and where each Habu kernel sits (apply before optimizing any kernel).
 - `docs/parallel-agents.md` — map-reduce protocol for parallel dot execution.
 - `docs/ptx.md` — Habu→PTX GPU DSL strategy and scope.
