@@ -25,25 +25,30 @@ $1000 constant LINUX-PAGE        \ text segment page (4 KiB)
 $4000 constant MACOS-DATA-CONST  \ __DATA_CONST page (__got + zero fill)
 104 constant MACOS-LINKEDIT      \ __LINKEDIT chained fixups (MACHO-FIXUPS-SIZE)
 
-\ macOS committed attribution, measured at the byte-fixpoint on 2026-07-19 after
-\ the shared PROT-GUARD:CALL span-guard fold (the inline GUARD-SPAN at every
-\ emitter sink now branch-with-links to the single engine-resident (PROT-SPAN)
-\ body). CODELEN dropped 132840 -> 127392, but header+code stays inside nine
-\ 16 KiB __TEXT pages (floor 5864 -> 416), so the padded __TEXT segment, code
-\ signature, and whole-file total are unchanged. Keep MACOS-TOTAL equal to
+\ macOS committed attribution, re-measured at the byte-fixpoint on 2026-07-19
+\ after registering LP2VEXEC as the (LP2VEXEC) engine helper and inlining its
+\ invalid-tag diagnostic (dot habu-relocate-lp2vexec-fetch-b5472dc1). The added
+\ registration record and inlined message minus the dropped second diagnostic
+\ write net +28 bytes of engine text: CODELEN 127392 -> 127420 (floor 416 -> 444).
+\ Header+code still fits nine 16 KiB __TEXT pages, so the padded __TEXT segment,
+\ code signature, and whole-file total are unchanged. Keep MACOS-TOTAL equal to
 \ GB-SIZE-BASELINE-MACOS in test/gate-build-size.f.
-127392 constant MACOS-CODE-TEXT   \ CODELEN: every emitter-phase row (baked-source incl.)
+127420 constant MACOS-CODE-TEXT   \ CODELEN: every emitter-phase row (baked-source incl.)
 1423 constant MACOS-SIGNATURE     \ ad-hoc code signature SuperBlob (grows with CODELEN)
-416 constant MACOS-FLOOR-DIST     \ code above the 16 KiB floor: the page-recovery shave
+444 constant MACOS-FLOOR-DIST     \ code above the 16 KiB floor: the page-recovery shave
 165367 constant MACOS-TOTAL       \ = FILE-SIZE bin/hb = GB-SIZE-BASELINE-MACOS
 
 \ Linux committed attribution, measured at the byte-fixpoint on 2026-07-19 (DGX
 \ Spark, linux-arm64) after the shared PROT-GUARD:CALL span-guard fold (CODELEN
-\ 142092 -> 136108). Keep LINUX-TOTAL equal to GB-SIZE-BASELINE-LINUX in
-\ test/gate-build-size.f.
-136108 constant LINUX-CODE-TEXT   \ CODELEN: every emitter-phase row (baked-source incl.)
+\ 142092 -> 136108), then advanced by the same +28-byte shared-engine-text delta
+\ as macOS above: the LP2VEXEC registration record and inlined message are
+\ target-independent bytes, so CODELEN 136108 -> 136136 (floor 940 -> 968) and
+\ the whole file stays inside the same 4 KiB page (LINUX-TOTAL unchanged). To be
+\ re-confirmed at the next Linux byte-fixpoint. Keep LINUX-TOTAL equal to
+\ GB-SIZE-BASELINE-LINUX in test/gate-build-size.f.
+136136 constant LINUX-CODE-TEXT   \ CODELEN: every emitter-phase row (baked-source incl.)
 192 constant LINUX-RW             \ ELF read-write segment tail: DYNAMIC + GOT (ELF-RW-SZ)
-940 constant LINUX-FLOOR-DIST     \ code above the 4 KiB floor: the page-recovery shave
+968 constant LINUX-FLOOR-DIST     \ code above the 4 KiB floor: the page-recovery shave
 143552 constant LINUX-TOTAL       \ = FILE-SIZE bin/hb = GB-SIZE-BASELINE-LINUX
 
 : PAGE-UP ( n n -- n ) {: v:n page:n :}

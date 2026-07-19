@@ -2823,7 +2823,7 @@ variable LKW2TOR3  variable LKW2RFROM3  variable LKW2RFET3
 variable LKWAT2  variable LKWSTORE2
 variable LP2COPY  variable LP2DROPN  variable LP2REV  variable LP2ROT  variable LP2RS
 variable LP2FETCH  variable LP2STORE  variable LP2VEXEC  variable LP2VEMIT
-variable LVPBADMSG  variable LP2NEST
+variable LP2NEST
 package LOWER-TXN-CODE
 public
 variable BAD  variable MEM  variable FULL  variable DRIFT
@@ -4769,9 +4769,21 @@ s" em-compile-ret" s" --" TRUST
 \ LR points at the B-over-descriptor instruction, so the descriptor begins at
 \ LR+4. Every active CHECK validates an unsigned declaration-order tag domain;
 \ guard mismatches skip that nested CHECK while still consuming its rows.
+\ Registered as the sealed (LP2VEXEC) engine helper, exactly like (PROT-SPAN):
+\ the absolute movz/movk+blr that LP2VEMIT plants in a compiled fetch then
+\ resolves by record address in an ahead-of-time image (aot-closure.f FINDADDR)
+\ and collapses to an in-image branch, instead of shipping the build-time engine
+\ address and crashing a stripped image. The invalid-tag diagnostic is inlined
+\ inside the record so its ADR stays record-relative and is relocated with the
+\ body when the closure copies it (no reference to engine message data that a
+\ stripped image does not carry).
+19 constant LVP-BADTAG-LEN   \ "hb: bad layout tag\n" (18-byte message + newline)
 : EMIT-P2-VALID-EXEC ( -- )
    LBL LBL LBL LBL LBL LBL {: outer:label guard:label active:label inactive:label invalid:label done:label :}
-   LP2VEXEC LABEL@ LBL,
+   LBL LBL {: badmsg:label end:label :}
+   LP2VEXEC LABEL@ {: start:label :}
+   s" (LP2VEXEC)" start LABEL>N end LABEL>N ENGINE-HELPER:REGISTER
+   start LBL,
    15 30 4 ADDI,                                      \ descriptor follows return-site B
    9 15 0 LDR,  15 15 8 ADDI,
    19 19 8 SUBI,  10 19 0 LDR,  19 19 8 ADDI,        \ typed base; stack unchanged
@@ -4805,11 +4817,12 @@ s" em-compile-ret" s" --" TRUST
       outer B,
    invalid LBL,
    0 2 MOVZ,
-   1 LVPBADMSG LABEL@ ADR,  2 18 MOVZ,  NR-WRITE SYS,
-   0 2 MOVZ,  1 LOPENNL LABEL@ ADR,  2 1 MOVZ,  NR-WRITE SYS,
+   1 badmsg ADR,  2 LVP-BADTAG-LEN MOVZ,  NR-WRITE SYS,            \ write(2,"hb: bad layout tag\n",19)
    0 ENGINE-ERROR:BAD-TAG MOVZ,  NR-EXIT-GROUP SYS,
    done LBL,
-   RET, ;
+   RET,
+   badmsg LBL,  S\" hb: bad layout tag\n" BYTES,                   \ inline data (msg+newline, contiguous): relocation-safe within the registered record
+   end LBL, ;
 
 \ LP2VEMIT reads the current fetch descriptor from the frozen lowering
 \ certificate, copies its cell stream inline after a B-over-data instruction,
@@ -4930,7 +4943,6 @@ public
 \ keyword names reuse the jit.f/loop-keyword labels).
 : EMIT-P2KW ( -- )
    LCERTBYTES LABEL@ LBL, s" lower-cert:bytes" BYTES,
-   LVPBADMSG LABEL@ LBL, s" hb: bad layout tag" BYTES,
    LP2NEST LABEL@ LBL, s" hb: nested definition in pass 2: " BYTES,
    LOWER-TXN-CODE:BAD LABEL@ LBL, s" hb: malformed lowering certificate" BYTES,
    LOWER-TXN-CODE:MEM LABEL@ LBL, s" hb: lowering transaction memory failed" BYTES,
@@ -6507,7 +6519,7 @@ s" SRCA@" s" -- ptr u8" TRUST
    LBL LKW2TOR3 !  LBL LKW2RFROM3 !  LBL LKW2RFET3 !
    LBL LKWAT2 !  LBL LKWSTORE2 !
    LBL LP2COPY !  LBL LP2DROPN !  LBL LP2REV !  LBL LP2ROT !  LBL LP2RS !
-   LBL LP2FETCH !  LBL LP2STORE !  LBL LP2VEXEC !  LBL LP2VEMIT !  LBL LVPBADMSG !  LBL LP2NEST !
+   LBL LP2FETCH !  LBL LP2STORE !  LBL LP2VEXEC !  LBL LP2VEMIT !  LBL LP2NEST !
    LBL LOWER-TXN-CODE:BAD !  LBL LOWER-TXN-CODE:MEM !
    LBL LOWER-TXN-CODE:FULL !  LBL LOWER-TXN-CODE:DRIFT !
    LBL LOWER-TXN-CODE:VDESC !  LBL LOWER-TXN-CODE:DRIFT-FAIL ! ;
