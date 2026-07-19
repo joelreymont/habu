@@ -1,0 +1,14 @@
+---
+title: Make corpus load transactional
+status: open
+priority: 1
+issue-type: task
+blocks:
+  - habu-bound-tokenizer-api-111a9a88
+  - habu-own-tokenizer-state-d5db1943
+created-at: "2026-07-19T22:43:46.224873+02:00"
+---
+
+Current master state-publication defect in new maki/data-loader.f: DL-LOAD-CORPUS reads the file, then publishes a new global tokenizer through TOK-BUILD, and only afterward calls TOK-ENCODE, whose destination-capacity check can throw. An ids buffer smaller than the corpus therefore returns E-TOK-CAP after replacing the process-wide vocabulary while producing no token corpus; callers that catch the error continue under unrelated tokenizer state. The module also defines global E-DL-EMPTY before opening broad package MAKI, then recreates scope with DL-* names. Preflight text and id capacities plus checked token-byte/cell arithmetic before constructing or publishing vocabulary state. Build the vocabulary and encoded corpus as one staged owned result, then return/publish both exactly once; any file, empty, capacity, construction, or encoding error leaves prior tokenizer state and caller-visible token length unchanged, with the raw text buffer mutation documented as input capture rather than successful dataset publication. Put the loader and its error in package DATA-LOADER with a short LOAD API and no MAKI:DL-* aliases. After habu-own-tokenizer-state-d5db1943 lands, return a STRUCTURE corpus containing the immutable vocabulary, text/token spans, and count rather than relying on ambient state.
+
+Current memory bloat: tokenizer.f:73-90 expands every byte-sized token id into one 8-byte Habu float cell, so the roughly 1.1 MiB Tiny Shakespeare corpus requires roughly 8.8 MiB of ids and roughly 9.9 MiB while the raw text is retained. batch-loader.f:58-85 ultimately samples at most 128 rows. Keep corpus ids in their canonical compact byte representation and convert only sampled ids to float cells at the embedding boundary; do not run whole-corpus s>f/T-SET. Treat raw text as construction scratch that is released or reused after vocabulary construction and encoding; the durable corpus owns vocabulary plus compact token span/count, with source text retained only when a named consumer proves the need. Prove exact token and batch equivalence while measuring peak/resident bytes, conversion count, corpus-load time, batch time, source/JIT/DATA/CODELEN, and copies. Add injected read/capacity/build/encode failures, prior-vocabulary preservation, retry, two independent corpora, zero/one/exact/over capacity, arithmetic boundaries, and byte-exact successful corpus+batch integration. Files: maki/data-loader.f, maki/tokenizer.f, maki/batch-loader.f, tests, training callers, FILEMAP. Depends on habu-bound-tokenizer-api-111a9a88 and habu-own-tokenizer-state-d5db1943; unified structure use waits for habu-lowering-hash-unified-586f7881. Safe fixture ownership is separately owned by habu-isolate-corpus-test-53cd5094.

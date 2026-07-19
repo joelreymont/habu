@@ -1,0 +1,13 @@
+---
+title: Structure performance registry rows
+status: open
+priority: 2
+issue-type: task
+blocks:
+  - habu-lowering-hash-unified-586f7881
+created-at: "2026-07-19T21:36:00.011935+02:00"
+---
+
+Evidence: tools/ptx/perf-registry.f stores each profile/waiver row as a 19-cell positional record selected by raw F-* offsets; ROW@ and CUR! accept any field number. Kernel, device, date, note, and waiver emitter are untyped offset/length pairs; six configuration values, metric, value, and waiver version share n; METRIC-CODE? returns -1. Swapping grid/gridy, block/blocky, work/value/version, or any span pair is checker-valid and can ratchet the wrong kernel/device configuration. The landed waiver extension widened all 512 row slots from 16 to 19 cells, adding exactly 12,288 resident DATA bytes although the registry contains zero waiver rows. kernel-perf-lint-core.f additionally reserves two 32x1024-byte path matrices for usually short added-waiver identities: 65,536 bytes for paths and roughly 67 KiB total fixed waiver state. Fresh identical-dependency probes measure the waiver feature at +2,468 JIT bytes, +12,303 DATA bytes and +8 definitions in perf-registry plus +7,316 JIT bytes, +67,395 DATA bytes and +29 definitions in kernel-perf-lint-core: +9,784 JIT bytes, +79,698 DATA bytes and +37 definitions total.
+
+Replace storage with checked STRUCTURE profile-row containing named spans and nominal configuration fields, a metric ENUM, option decode, and typed storage. Represent canonical row order with a compact payload-bearing ENUM/reference measurement(profile-id) | waiver(profile-id,waiver-id), but keep waiver-only emitter/version payloads in a separate typed buffer or packed arena sized to the actual waiver count; a flat widest-variant layout would merely preserve the per-measurement waste. Use one compact span arena or canonical emitter IDs rather than per-entry 1 KiB slabs. Keep TSV conversion in one exhaustive codec. Preserve exact canonical TSV, waiver semantics, comparisons, and ratchet decisions. Prove compile-negative cross-field writes, every metric and waiver invariant, malformed/extra/missing fields leave row count unchanged, exact TSV round-trip, capacity/canaries, zero-waiver allocated bytes, and existing ratchet goldens. Measure parser definitions, JIT/DATA bytes, row and waiver-watch storage, and runtime before and after; require a substantial reduction from the measured +9,784 JIT-byte, +79,698 DATA-byte, 37-definition waiver baseline and removal of the fixed waste. Ownership: representation only; evidence binding and waiver policy remain with habu-bind-performance-evidence-e454f629 and habu-reject-stale-single-32fc51ff.

@@ -1,0 +1,9 @@
+---
+title: Fuse training forward/backward pass
+status: open
+priority: 2
+issue-type: task
+created-at: "2026-07-19T23:06:46.683331+02:00"
+---
+
+maki/xent-train.f CET-LOSS-SEED calls TT-XENT-SEED, which computes softmax/exponentials, then TT-XENT independently recomputes max/logsumexp/exponentials over the same logits. CET-STEP first runs BW-FWD-N@ EX-RUN-N, then calls EX-RUN, which recomputes the complete forward region before running backward. The new positional trainer repeats the same double-forward sequence for every one of 30 steps at pos-embed-test.f:91-93, proving this is a missing executor contract rather than a cross-entropy-local mistake. Every affected training step performs two model forwards; cross-entropy additionally performs two stable-exponential passes although the first outputs/intermediates already contain everything needed. Factor one stable cross-entropy operation that validates once and produces both mean loss and y-onehot seed from one max/exp/sum pass. Add a general executor/backward entry that resumes the backward suffix from already-materialized forward outputs and bound seed without recomputing forward; migrate every trainer and prove saved activations remain valid and no stateful/random op can be skipped unsafely. Preserve exact loss, gradients, parameter updates, determinism, and failure identity. Add per-step forward-node and exp-operation counters plus timing; require one forward for every trainer and one CE exponentiation pass where applicable, with a measured improvement and no JIT/DATA/CODELEN regression. Use the measured combined cross-entropy/trainer baseline of 8,316 JIT bytes, 1,196 DATA bytes and 55 production definitions to prove the factoring does not replace execution waste with more code. Files: maki/loss-tensor.f, xent/positional/other trainers, executor/backward resume owner and focused tests.

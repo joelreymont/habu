@@ -1,0 +1,11 @@
+---
+title: Bound autotune sweep inputs
+status: open
+priority: 1
+issue-type: task
+blocks:
+  - habu-lowering-hash-unified-586f7881
+created-at: "2026-07-19T22:17:04.182473+02:00"
+---
+
+Current master memory-safety/ABI defect in new tools/ptx/autotune-sweep.f: host buffers are fixed at SW-MAX=512 and candidate storage at SW-CANDS-CAP=32, but public SW-CAND-ROW at 321 and AT-SWEEP at 329 accept unchecked signed cells. A caller can stage index -1/32/huge or pass count>32, causing out-of-bounds config reads/writes; a positive tileable n>512 passes SW-SHAPE-OK?, then SW-FILL/SW-REF/SW-COMPARE index beyond the seven host buffers while device-size and FLOP arithmetic multiply unchecked. Negative count behavior is delegated to raw ?do rather than rejected. The config surface also permits S>1, yet the sweep binds only the 36-byte single-pass A/B/C ABI and never allocates split workspace or launches reduction; such a candidate is not testable by this harness. Define refined sweep-edge bounded 1..SW-MAX, candidate-count bounded 0..capacity, and nominal candidate-id/index; keep candidates as a LAYOUT-BUFFER of the canonical mma-config STRUCTURE from habu-structure-mma-autotune-e02d3197. Validate shape, count, config legality, checked n*n/n*n*n/byte arithmetic, all launch divisibility, and split=1 before allocation, emission, or CUDA open; make row access package-private and bounds-checked. Do not add split support for the measured-losing experiment: habu-remove-losing-split-5639823d removes that field/path. Return a payload-bearing ENUM result for unsupported shape/capacity rather than indexing raw storage. Add -1/0/1/511/512/513/max-cell edge tests, candidate index/count -1/0/31/32/33/huge, split 0/1/2/4, canaries around every host/candidate buffer, arithmetic-overflow properties, and mocks proving every rejection performs zero allocation, emit, assembler, context, or launch calls. Preserve valid 512 split=1 smoke output and exact configs. Measure guard CODELEN/latency and require no unexplained growth. Serialize config storage edits with habu-structure-mma-autotune-e02d3197; host allocation ownership remains habu-unify-mma-checker-dbdb122b and CUDA unwind remains habu-migrate-ptx-tool-f57679ef.

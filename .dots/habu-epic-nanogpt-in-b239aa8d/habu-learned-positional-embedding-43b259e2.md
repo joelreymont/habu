@@ -10,4 +10,6 @@ close-reason: "Landed 762165df-era: WPE-SLICE buffer golden (slice of MaxTxC, pa
 
 GPT-2 does wte[idx]+wpe[pos]. GATHER op exists (op-kind.f:40, cad.f OP-LOOKUP GATHER, lower-mv-test MODEL: GA) with SCATTER-ADD adjoint; embedding.f is the buffer golden (EMB-GATHER/EMB-SCATTER-ADD). MISSING: the wpe piece (positions 0..T-1: a SLICE of a TxC pos table, or a pos GATHER) and the token+pos elementwise ADD composition producing the block input. Prototype golden now; final form is a SPEC:/MODEL: composition. Dep: GATHER op + embedding.f exist; composition rides SPEC: chain.
 
+Destruction review 2026-07-19: the buffer helper and trained MODEL prove only B=1 or a pre-expanded B*T x C positional parameter. They do not compose one shared MaxT x C GPT-2 table across a batch, accumulate its gradient by position, or feed that operation through model lowering. Corrective optimization owner: habu-complete-batched-pos-99332bf6. Treat the close reason as prototype history, not proof that batched GPT-2 positional embedding is complete.
+
 Claim: agent=posembed workspace=.jj-ws/posembed machine=spark
