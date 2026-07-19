@@ -4,6 +4,7 @@
 \ and tools/build-fixpoint.f.
 
 require test/gate-build-size.f
+require test/gate-size-attribution-test.f \ SIZE-ATTR:VALIDATE + HOST-CODE-TEXT exact CODELEN ratchet
 require test/gate-validation-worker.f
 require lib/test/budget.f                 \ TEST-BUDGET:PERF-MS - runtime-slice ratchet calibration
 require lib/adt/option.f                 \ option<CAD-NUM:index> STR:FIND-SUB consumer (switchover wave A)
@@ -34,10 +35,12 @@ $40000 constant GE-MAX-CANDIDATE-BYTES
 create GE-SCRIPT-PATH FS-PATH-CAP allot
 create GE-CAND-PATH FS-PATH-CAP allot
 create GE-SRC-CAND-PATH FS-PATH-CAP allot
+create GE-SZMAP-PATH FS-PATH-CAP allot
 
 variable GE-SCRIPT-U
 variable GE-CAND-U
 variable GE-SRC-CAND-U
+variable GE-SZMAP-U
 variable GENG-SLICE
 variable GE-PROF-I
 variable GE-REG-I
@@ -330,6 +333,77 @@ GE-FILES: GE-REPAIR-HINTS-RUN-FILES
    GE-STAGE2-ORDER-SHAPE
    GE-STAGE2-IMAGE-SHAPE ;
 
+\ --- Exact CODELEN ratchet (dot habu-gate-enforce-exact-6effb905) -----------
+\ The whole-file ratchet (GB-SIZE-*) measures the page-rounded container, so up to
+\ one page of __text growth (Linux 4 KiB, macOS 16 KiB) accumulates INVISIBLY
+\ between commits. This closes it: re-run the freshly built metabuild host
+\ (hb-stdin-mk, the stdin engine's emitter) with HABU_ENGINE_SIZE_MAP=1, capture
+\ its byte-attribution map (one block, byte-identical to the candidate at the
+\ fixpoint), and hold the candidate's measured SUM-TEXT to the committed CODE-TEXT
+\ row for the running target - so any code growth needs a deliberate same-commit
+\ row bump in test/gate-size-attribution-test.f, mirroring the GB-SIZE
+\ grown/STALE-BASELINE semantics. SIZE-ATTR:VALIDATE then reconciles every
+\ remaining byte (floor-dist, region rows, residue). A missing or unparseable map
+\ fails closed (SIZE-REPORT:LOAD dies).
+
+: GE-SZMAP$ ( -- ptr u8 n )                \ capture-root path for the candidate size map
+   GT-ROOT s" hb-size-map" GE-SZMAP-PATH JOIN-PATH GE-SZMAP-U !
+   GE-SZMAP-PATH GE-SZMAP-U @ ;
+
+: GE-CODELEN-CAPTURE ( -- )
+   s" candidate-size-map" GS-EVENT
+   GE-HB-RESET
+   s" HABU_ENGINE_SIZE_MAP" >LEN s" 1" >LEN PROC-ENV+
+   s" HB_TMP" >LEN GT-ROOT >LEN PROC-ENV+
+   s" hb-stdin-mk" BF-A$ GE-TIMEOUT-MS GE-RUN-ENV
+   s" candidate size-map capture" GE-EXPECT-OK
+   GE-SZMAP$ GT-OUT$ WRITE-ALL ;
+
+\ Directional failures mirror test/gate-build-size.f's GB-SIZE-*-FAIL, retargeted
+\ at the CODE-TEXT (__text) row. The pure class->action map is GB-SIZE's, already
+\ self-checked by GB-SIZE-SELF-CHECK.
+: GE-CODELEN-GROWN-FAIL ( n n -- )
+   GB-SIZE-PAIR. cr
+   s" candidate CODELEN ratchet: __text grew past the CODE-TEXT row - bump it in test/gate-size-attribution-test.f in this commit" GE-FAIL ;
+
+: GE-CODELEN-STALE-FAIL ( n n -- )
+   s" STALE-BASELINE " type GB-SIZE-PAIR. cr
+   s" candidate CODELEN ratchet: __text shrank below the CODE-TEXT row - lower it in test/gate-size-attribution-test.f in this commit" GE-FAIL ;
+
+: GE-CODELEN-MISSING-FAIL ( n n -- )
+   GB-SIZE-PAIR. cr
+   s" candidate CODELEN ratchet: no CODE-TEXT row for this target - commit the measured __text to test/gate-size-attribution-test.f" GE-FAIL ;
+
+: GE-CODELEN-ENFORCE ( n n -- ) {: sz:n base:n :}   \ measured-SUM-TEXT committed-row
+   sz base GB-SIZE-CLASS GB-SIZE-ACTION
+   case
+      GB-SIZE-GROWN of sz base GE-CODELEN-GROWN-FAIL endof
+      GB-SIZE-SHRUNK of sz base GE-CODELEN-STALE-FAIL endof
+      GB-SIZE-MISSING of sz base GE-CODELEN-MISSING-FAIL endof
+   endcase ;
+
+: GE-CODELEN-SYNTH$ ( -- ptr u8 n )        \ synthetic map: SUM-TEXT = 300 + 8 = 308
+   s\" main/startup 300\nbaked-source 8\ncontainer/header 100\n" ;
+
+\ Both-direction wiring proof: parse a synthetic map, then classify its SUM-TEXT
+\ against a matching row (OK), a lower row (GROWN), a higher row (SHRUNK), and no
+\ row (MISSING) - reds off-baseline, greens on baseline, without a fake engine.
+: GE-CODELEN-SELF-CHECK ( -- )
+   GE-CODELEN-SYNTH$ SIZE-REPORT:LOAD-BYTES
+   SIZE-REPORT:SUM-TEXT {: st:n :}
+   st st    GB-SIZE-OK      GB-SIZE-CLASS-EXPECT
+   st st 1- GB-SIZE-GROWN   GB-SIZE-CLASS-EXPECT
+   st st 1+ GB-SIZE-SHRUNK  GB-SIZE-CLASS-EXPECT
+   st 0     GB-SIZE-MISSING GB-SIZE-CLASS-EXPECT ;
+
+: GE-CODELEN-RATCHET ( -- )
+   GE-CODELEN-SELF-CHECK
+   GE-CODELEN-CAPTURE
+   GE-SZMAP$ SIZE-REPORT:LOAD
+   SIZE-REPORT:SUM-TEXT SIZE-ATTR:HOST-CODE-TEXT GE-CODELEN-ENFORCE
+   GE-SZMAP$ GE-CANDIDATE$ SIZE-ATTR:VALIDATE
+   s" PASS: exact CODELEN ratchet (SUM-TEXT held to committed CODE-TEXT row)" type cr ;
+
 : GE-BUILD-FIXPOINT ( -- )
    s" candidate-build" GS-EVENT
    s" hb-gate-engine" GT-START
@@ -341,6 +415,7 @@ GE-FILES: GE-REPAIR-HINTS-RUN-FILES
    BF-BUILD-STDIN-FROM-STAGE
    GE-BUILD-SOURCE-SHAPE
    GE-PROMOTE-CANDIDATE
+   GE-CODELEN-RATCHET
    BF-TMP-RESET
    GE-EXPECT-CANDIDATE
    GE-CANDIDATE-SIZE-CHECK

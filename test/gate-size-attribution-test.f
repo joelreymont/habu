@@ -93,6 +93,13 @@ $4000 constant MACOS-DATA-CONST  \ __DATA_CONST page (__got + zero fill)
 
 public
 
+\ Committed CODE-TEXT (__text) row for whichever target is running (0 = unmeasured).
+\ The gate's exact-CODELEN ratchet holds the candidate's measured SUM-TEXT to this.
+: HOST-CODE-TEXT ( -- n )
+   HB-TARGET-MACOS? if MACOS-CODE-TEXT exit then
+   HB-TARGET-LINUX? if LINUX-CODE-TEXT exit then
+   0 ;
+
 \ Pure self-check (no build): each target's committed decomposition reconstructs
 \ its whole file and page-floor shave, and the running target's committed total
 \ equals the live installed engine. Any drift - a bigger engine, a stale row -
