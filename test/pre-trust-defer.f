@@ -13,18 +13,34 @@
 \               `is`-installs [: 42 ;] and round-trips it: boots exit 0 and the
 \               piped call prints 42. Proves capture -> drain -> trust row ->
 \               checker-defer row -> checked `is` fit -> runtime dispatch.
-\   compat    - the shim's looked-up prim name is patched to a miss: boots exit 0.
-\               Pins the old-engine tolerance property (an engine without the
-\               DRAIN-PRETRUST prim takes exactly this search-wl-miss branch); the
-\               gate cannot depend on a historical fixpoint binary, so the miss
-\               branch is pinned on the current engine instead -- the one-off
-\               previous-fixpoint boot proof is recorded in the landing report.
+\   compat    - the shim's looked-up prim name is patched to a guaranteed miss
+\               (search-wl finds nothing, the drain call is skipped) with the
+\               shim code otherwise intact -- exactly the branch an engine that
+\               LACKS the DRAIN-PRETRUST prim takes. With the prefix's real
+\               pre-trust defers present, boot FAILS CLOSED: exit 73, the
+\               "undrained pre-trust defer" backstop naming TFAM-RESOLVE-XT.
+\               This case once asserted the miss branch BOOTS exit 0 -- the
+\               "old-engine tolerance" property -- which held only while the
+\               prefix declared zero real pre-trust defers. It was retired
+\               2026-07-18 when commit 563b2540 landed the first real prefix
+\               defers (the five TFAM checker hooks TFAM-RESOLVE-XT..
+\               TFAM-WIDTH-XT, since joined by more): an engine that cannot drain
+\               the table now refuses to run rather than boot silently with
+\               un-installed checker hooks, which is the correct recovery
+\               behavior. The gate still cannot depend on a historical fixpoint
+\               binary, so the miss branch is pinned on the current engine; the
+\               one-off previous-fixpoint boot proof is in the landing report.
 \   overflow  - PD-CAP+headroom pre-trust defers (appended to exec-vector.f, the
 \               earliest file where a defer is legal) overflow the table ->
 \               C-PD-DIE-FULL, exit 72, table-full message.
-\   undrained - one pre-trust defer + the shim region blanked leaves the table
-\               non-empty at SEAL-CAPTURE -> BSEALCAP backstop, exit 73,
-\               undrained message naming the defer.
+\   undrained - one synthetic pre-trust defer injected + the WHOLE shim region
+\               blanked (drain call removed outright) leaves the table non-empty
+\               at SEAL-CAPTURE -> BSEALCAP backstop, exit 73, undrained message
+\               naming the injected defer. Complements compat: compat proves the
+\               LOOKUP-miss branch alone (shim present, search-wl misses) is
+\               fail-closed against the real prefix defers; undrained proves the
+\               backstop still fires when the shim code is gone, using a
+\               controlled synthetic defer.
 
 require lib/errors.f
 require lib/string.f
@@ -194,10 +210,23 @@ variable LAST-ERR-U
    OUT$ s" 42" CONTAINS? TTRUE
    RESTORE-FILES ;
 
+\ Patch only the shim's looked-up prim name to a guaranteed miss (search-wl finds
+\ nothing, drain skipped) with the shim code otherwise intact -- the exact branch
+\ an engine that LACKS the DRAIN-PRETRUST prim takes. With the prefix's real
+\ pre-trust defers present, that branch MUST fail closed at seal (exit 73) naming
+\ an undrained defer; booting exit 0 here would mean running with un-installed
+\ checker hooks. The old "old-engine tolerance" exit-0 assertion was retired
+\ 2026-07-18 (commit 563b2540 landed the first real prefix defers). TFAM-RESOLVE-XT
+\ is asserted by name so this case fails loudly for re-audit if that specific
+\ prefix hook is ever removed, instead of silently passing on a different defer.
 : COMPAT-MISS-CASE ( -- )
    PATCH-SHIM-MISS
-   s" shim lookup miss boots (old-engine tolerance)" T-LABEL
-   SPAWN-RC 0 T=
+   s" shim lookup miss fails closed with named undrained defer" T-LABEL
+   SPAWN-RC 73 T=
+   s" shim-miss boot names the undrained-defer backstop diagnostic" T-LABEL
+   ERR$ s" undrained pre-trust defer" CONTAINS? TTRUE
+   s" shim-miss boot names the real prefix defer TFAM-RESOLVE-XT" T-LABEL
+   ERR$ s" TFAM-RESOLVE-XT" CONTAINS? TTRUE
    RESTORE-FILES ;
 
 : OVERFLOW-CASE ( -- )
@@ -208,6 +237,12 @@ variable LAST-ERR-U
    ERR$ s" pre-trust defer table full" CONTAINS? TTRUE
    RESTORE-FILES ;
 
+\ Complements COMPAT-MISS-CASE: that case proves the LOOKUP-miss branch alone
+\ (shim present, search-wl misses) is fail-closed against the prefix's real
+\ pre-trust defers. This case removes the shim code outright (BLANK-DRAIN blanks
+\ the whole region) and injects a controlled synthetic defer, proving the
+\ BSEALCAP backstop still fires and names the defer even when the drain call is
+\ gone entirely -- a distinct fault from the lookup miss.
 : UNDRAINED-CASE ( -- )
    1 APPEND-DEFERS
    BLANK-DRAIN

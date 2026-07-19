@@ -1,6 +1,6 @@
 # Lessons
 
-Last updated: 2026-07-18
+Last updated: 2026-07-19
 
 Durable, transferable rules only — "when X, do/never Y because Z", with the
 specific word / path / constant / error kept. Coding standards live in
@@ -813,6 +813,19 @@ fits.
   rows. (4) Any walked-root `.f` (src/tools/test/lib/bootstrap) needs a
   `FILEMAP.md` row (`filemap-lint`). Run `test/run.f` before claiming green; a
   clean focused suite hides all four.
+- **A property test pinning a TRANSITIONAL invariant must be revisited the moment
+  the capability it anticipates starts being used for real.** `test/pre-trust-defer.f`
+  COMPAT-MISS-CASE asserted that an engine lacking the DRAIN-PRETRUST prim BOOTS
+  exit 0 (the "old-engine tolerance" property) — sound only while the boot prefix
+  declared ZERO real pre-trust defers. Commit 563b2540 landed the first real prefix
+  defers (the five TFAM checker hooks) and the property inverted: a shim-miss engine
+  now correctly FAILS CLOSED at seal (exit 73, "undrained pre-trust defer"). That
+  merged without the manual/heavy pre-trust-defer suite being rerun on the Mac
+  battery, so master carried a red manual-tier suite for a day. Rule: a merge that
+  touches `src/core/checker.f` (or any file a manual/heavy suite OWNS but the fast
+  tier never forks) must run that owning suite at merge time — a green fast `run.f`
+  tier is not proof for suites documented as manual/slow members
+  (`tools/suite-coverage-lint-core.f` SC-MANUAL-TABLE, run via `test/gate-stdlib.f`).
 - **The tail-ratchet asserts EXACT child-process counts AND elapsed ≤ budget
   (`PROCESS-NOMINAL-MS` 10000 × PERF-MS).** An elapsed-only overshoot with no
   child-count delta (e.g. 10099/10000) is machine-load noise, not your change —
