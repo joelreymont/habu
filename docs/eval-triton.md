@@ -1737,3 +1737,81 @@ bin/hb --load tools/ptx/gemm-bench.f       # GB-EPI-SWEEP: each per-shape winner
 # a stale toolchain is visible, never silent — force the 13.0 assembler to see the diagnostic:
 PTXAS=/usr/local/cuda/bin/ptxas bin/hb --load tools/ptx/gemm-bench.f   # prints hb: PTXAS-STALE-SM121: ...
 ```
+
+## Round 8 — widening `BN` past 64: the 4096-class tile (dot `habu-widen-bn-past`): built and measured (2026-07-19)
+
+Every round through the pin left the tile's **N span hardwired at 64** (`warp_col`
+selects one of two 32-col halves; 4 n-tiles/warp). The GB10 sweep's own referee
+named this as structural: Triton's per-shape tf32 winners are **`BM64×BN128` at
+2048³ and `BM128×BN256` at 4096³** ("Occupancy is NOT the 512³ lever", §above) —
+wider-N tiles Habu's `cg-mma.f` could not emit. This round makes `BN` a knob
+(64/128/256) so a warp owns `NTILES = BN/(WCOLS·8)` n-tiles per col-half; the
+accumulator count (`MFRAGS·NTILES·4`), the fragment→lane store map, the
+`cp.async` Bs chunk partition, and the smem-epilogue staging tile all derive from
+`BN`. `WCOLS` stays 2 and the `BN=64` non-wide path is untouched, so **every one
+of the 47 committed tf32/fp16/bf16 configs is byte-identical** (`mma-emit-diff.f`,
+empty diff base-vs-branch under the same assembler).
+
+**Correctness, exhaustively, before any timing.** `mma-gemm-check.f` proves the
+wide-`BN` geometry element-exact on the GB10 with zero tolerance (small-integer
+fill, f32 accumulate `< 2^24`): `BN=128` and `BN=256` at both warp grids, `MFRAGS`
+1/2/4, with and without the smem epilogue, tf32 (scalar-`cvt` **and** `ldmatrix`-A,
+which must agree) plus fp16 and bf16 — checked at the two square edges that are
+exact multiples of both the M block and the N block, and every wide-`BN` `C[0][0]`
+matches the `BN=64` golden at the same edge (10749 at 256³, 21335 at 512³). The
+register budget is a **hard, fail-closed gate**: per-lane accumulators
+`= MFRAGS·NTILES·4`, and `MMA-CHECK-REGS` throws `E-MMA-REGS` when they plus the
+measured working set bust the 255-register file — so the `BN=256 MFRAGS=4` corner
+(256 accumulators, cannot even hold them) is rejected at emit time, negative-tested
+alongside the `BN` power-of-two/`≥64` gate (`E-MMA-BN`) and the wide-`BN` epilogue
+cap (`E-MMA-EPI`, `BROWS·BN·4 = 131072 > 99 KB`). The transposed-`Bs` feeds
+(`BLDM`/`BTF16`, whose staging is `n = c&63`) fail closed above `BN=64`.
+
+### Result — `BN=256` lifts 4096³, but 2048³ stays with the `BN=64` tile
+
+Best-of-3, solo, pinned 13.3 ptxas (same-session FP32 `MM` roof reproduces
+8.2/13.3/15.0/13.1 — the 2411 MHz band). **Bold = the wide-`BN` mover vs its
+committed `BN=64` anchor:**
+
+| TFLOP/s (tf32, best-of-3)                          |  512³ | 1024³ | 2048³ |  4096³ |
+|----------------------------------------------------|------:|------:|------:|-------:|
+| `BN=64` M4 stages2 dyn (256×64) — committed 2048 winner |  9.2 |  21.5 | **30.2** |  22.9 |
+| `BN=64` M4 B-`ldmatrix` s1 (256×64) — committed 4096 winner |  6.9 |  20.9 | 27.1 |   27.4 |
+| `BN=128` M2 4-warp (64×128, Triton 2048 geometry)  |   9.3 |  20.1 | 24.2 |   15.4 |
+| `BN=128` M2 8-warp s2 dyn (128×128)                |   6.5 |  14.6 | 20.9 |   17.8 |
+| `BN=256` M2 8-warp s2 dyn (128×256, Triton 4096 geometry) |  4.2 |  19.0 | 26.3 | **29.6** |
+| Triton 3.8 `tl.dot` referee                        |  21.7 |  33.5 |  37.8 |   45.3 |
+
+**The honest split.** The `BN=256` `128×256` tile — the exact geometry Triton's
+autotuner picks at 4096³ — reaches **29.6 TF at 4096³, +5.8 % over the committed
+`BN=64` 4096 winner (27.4/28.0 TF) and lifting the head-to-head 0.62× → 0.65×
+Triton 3.8.** That is a real, reproducible gain on the most compute-bound column
+(the +5.8 % holds across all three passes: 29.6/29.6/29.4). **2048³ does not move:
+no wide-`BN` tile in the sweep beats the `BN=64` `MFRAGS=4` `256×64` tile (30.2 TF);
+the best wide-N 2048³ is `BN=256` M2 at 26.3.** So the dot's "expect 2048 and 4096
+to move" is **half confirmed** — 4096 moves up, 2048 stays. The small shapes
+(512³/1024³) are worse on the wide tiles, as expected: fewer, larger blocks
+under-fill the 48 SMs and the launch/occupancy floor dominates there.
+
+**Why 4096 and not 2048, structurally.** `BN=256` grows the Bs tile to `BK·256·4`
+bytes, so a double-buffered `128×256` tile is already 96 KB — and **stages≥3 busts
+the 99 KB cap for every `BN=256` shape** (even the 64-row `MFRAGS=1` variant:
+`40960·3 > 99 KB`). The wide-N tile therefore inherits the **same 2-stage smem
+ceiling** the pin round named, now bounded by the *B* tile rather than the *A*
+tile. Closing the residual 0.65× at 4096³ needs the pipeline-depth lever the
+99 KB cap forecloses for `BN=256`, not another `BN` widening — the same wall,
+one tile wider. The value earned here is the *tile family* (Habu can now emit the
+`BM×BN256` geometry element-exact, the register gate keeps it honest) and a
+measured 4096³ gain; the value **not** earned is any 2048³ improvement or a
+narrowing of the pipeline-depth gap.
+
+### Reproduction (exact)
+
+```
+# element-exact first (arch auto-probed sm_121a), then throughput:
+bin/hb --load tools/ptx/mma-gemm-check.f   # MGC-ALL incl. the MGC-CFG-BN / MGC-BN-NEG / MGC-REGS-NEG rows
+# byte-identity: BN=64 must not move any committed config
+bin/hb --load tools/ptx/mma-emit-diff.f    # base vs branch -> empty diff (47 tf32/fp16/bf16 configs)
+# throughput (swap the file's bottom entry to GEMMBENCH:GB-BN-SWEEP), best-of-3, solo, 13.3 pinned:
+bin/hb --load tools/ptx/gemm-bench.f       # GB-BN-SWEEP: FP32 roof + BN=64 anchors + the BN=128/256 tiles
+```

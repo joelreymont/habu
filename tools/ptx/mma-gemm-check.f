@@ -115,7 +115,7 @@ create MGC-MAXERR 1 cells allot
    MGC-DA @ MGC-PA e esz * PTXBENCH:HTOD
    MGC-DB @ MGC-PB e esz * PTXBENCH:HTOD
    16 PTXBENCH:BLOCK!  MMA-NTHREADS 16 / PTXBENCH:BLOCKY!   \ 16x16=256 thr (8 warps) or 16x8=128 thr (4 warps)
-   n 64 / PTXBENCH:GRID!  n MMA-BROWS / PTXBENCH:GRIDY!   \ gridY = M/block-rows (BROWS=WROWS*16*MFRAGS)
+   n MMA-BN @ / PTXBENCH:GRID!  n MMA-BROWS / PTXBENCH:GRIDY!   \ gridX = N/BN (N-block cols); gridY = M/BROWS
    36 PTXBENCH:PARAM-BYTES!
    MMA-DYNSMEM @ if MMA-SH-BYTES PTXBENCH:SHARED! else 0 PTXBENCH:SHARED! then   \ dynamic .shared (epilogue may grow SH past MMA-SMEM)
    PTXBENCH:PREPARE-LAUNCH
@@ -143,9 +143,10 @@ create MGC-MAXERR 1 cells allot
 \ is read back unchanged (all-zero at a zeroed C), which a naive check could mistake for a correct
 \ small GEMM; at a non-multiple M the tail rows are silently never computed. Both are meaningless
 \ measurements, so require M to be a positive exact multiple of the M block rows before any launch.
-: MGC-SHAPE-OK? ( n -- bool ) {: n:n :}    \ n is a positive exact multiple of the M block rows
+: MGC-SHAPE-OK? ( n -- bool ) {: n:n :}    \ n is a positive exact multiple of BOTH the M block (BROWS) and the N block (BN)
    n MMA-BROWS <  0=                        \ n >= BROWS  (else gridY = n/BROWS = 0, kernel never runs)
-   n MMA-BROWS mod 0=  and ;                \ exact multiple (else the tail M rows are never computed)
+   n MMA-BROWS mod 0=  and                  \ exact multiple of BROWS (else the tail M rows are never computed)
+   n MMA-BN @ mod 0=  and ;                 \ exact multiple of BN (else the tail N cols are never computed); redundant at BN=64
 : MGC-CHECK-SHAPE ( n -- )                  \ throw the named code on a zero-block / ragged-M launch shape
    MGC-SHAPE-OK? 0= if MGC-E-ZEROBLK throw then ;
 
@@ -468,6 +469,76 @@ variable MGC-TN
    if s" -- bf16 dtype legality: fail-closed on un-wired feed knobs, emits scalar packed + transposed-Bs (PASS)" type cr
    else s" mma-gemm-check: bf16 dtype legality regression FAILED" 1 die then ;
 
+\ ============ WIDE-BN configs (dot habu-widen-bn-past): the 4096-class BN=128/256 tile ============
+\ BN>64 grows each warp to NTILES = BN/(WCOLS*8) 8-column n-tiles per warp-col half, so the accumulator
+\ count, the fragment->lane store map, the smem-epilogue staging tile, and the Bs cp.async chunk partition
+\ all scale with BN (element-exactness re-proven here). The two square check edges are exact multiples of BOTH
+\ the M block (BROWS) and the N block (BN): max(BROWS,BN) and 2x (both powers of two, so the larger divides).
+\ gridX = n/BN (MGC-LAUNCH). The fill/reference/compare and the zero-tolerance argument are the tf32/half
+\ integer-exact ones VERBATIM (the wide N tile is the same integer matmul, only more n-tiles per warp).
+: MGC-BN-EDGE ( -- n )  MMA-BROWS MMA-BN @ max ;      \ square edge = larger of the M block (BROWS) and the N block (BN)
+: MGC-CFG-BN ( n n n n n n n n -- ) {: bk:n pad:n stages:n dyn:n mode:n mfrags:n warps:n bn:n :}   \ tf32 wide-BN
+   bk MMA-BK !  pad MMA-PAD !  stages MMA-STAGES !  dyn MMA-DYNSMEM !  mfrags MMA-MFRAGS !  warps MMA-WARPS !  bn MMA-BN !
+   MGC-BN-EDGE MGC-SA !  MGC-BN-EDGE 2 * MGC-SB !
+   s" -- WIDE-BN tf32 BN=" type bn .  s"  MFRAGS=" type mfrags .  s"  warps=" type warps .  s"  BK=" type bk .
+   s"  pad=" type pad .  s"  stages=" type stages .  s"  dyn=" type dyn .  s"  (" type MGC-SA @ . s" ^3," type MGC-SB @ . s" ^3):" type cr
+   mode MGC-MODE
+   32 MMA-BK !  0 MMA-PAD !  2 MMA-STAGES !  0 MMA-DYNSMEM !  1 MMA-MFRAGS !  8 MMA-WARPS !  64 MMA-BN !  64 MGC-SA !  128 MGC-SB ! ;
+: MGC-CFG-BN-EPI ( n n n n n n n n -- )               \ tf32 wide-BN + smem coalesced C epilogue
+   1 MMA-EPILOG !  s" -- WIDE-BN EPILOGUE:" type cr  MGC-CFG-BN  0 MMA-EPILOG ! ;
+: MGC-CFG-BN-H ( n n n n n n n n n -- ) {: bk:n pad:n stages:n dyn:n mfrags:n warps:n epilog:n dtype:n bn:n :}   \ fp16/bf16 wide-BN
+   bk MMA-BK !  pad MMA-PAD !  stages MMA-STAGES !  dyn MMA-DYNSMEM !  mfrags MMA-MFRAGS !  warps MMA-WARPS !  epilog MMA-EPILOG !
+   dtype MMA-DTYPE !  bn MMA-BN !  0 MMA-LMODE !  0 MMA-BLDM !  0 MMA-BTF16 !
+   MGC-BN-EDGE MGC-SA !  MGC-BN-EDGE 2 * MGC-SB !
+   s" -- WIDE-BN dtype=" type dtype .  s"  BN=" type bn .  s"  MFRAGS=" type mfrags .  s"  warps=" type warps .
+   s"  stages=" type stages .  s"  dyn=" type dyn .  s"  epi=" type epilog .  s"  (" type MGC-SA @ . s" ^3," type MGC-SB @ . s" ^3):" type cr
+   0 MGC-MODE
+   0 MMA-EPILOG !  32 MMA-BK !  0 MMA-PAD !  2 MMA-STAGES !  0 MMA-DYNSMEM !  1 MMA-MFRAGS !  8 MMA-WARPS !  0 MMA-DTYPE !  64 MMA-BN !  64 MGC-SA !  128 MGC-SB ! ;
+
+\ negative regression (dot habu-widen-bn-past): the BN geometry guard MMA-CHECK-BN must fail closed with
+\ E-MMA-BN on a non-power-of-two BN (drain/chunk shift+mask are exact only for a power of two) and on BN<64
+\ (the non-wide path is BN=64-hardwired), and emit cleanly for the legal wide widths 128/256. The transposed
+\ feeds (BLDM tf32 / BTF16 half) stage n=c&63 (BN=64-hardwired) so they must throw at BN>64. Device-independent.
+: MGC-BN-NEG ( -- )
+   96 MMA-BN !  2 MMA-MFRAGS !  8 MMA-PAD !  1 MMA-STAGES !  1 MMA-DYNSMEM !  MGC-TRY-EMIT {: r96:n :}     \ non-pow2 -> E-MMA-BN
+   32 MMA-BN !  MGC-TRY-EMIT {: r32:n :}                                                                  \ below 64 -> E-MMA-BN
+   128 MMA-BN !  MGC-TRY-EMIT {: r128:n :}                                                                \ legal wide -> emits (0)
+   256 MMA-BN !  MGC-TRY-EMIT {: r256:n :}                                                                \ legal wide -> emits (0)
+   128 MMA-BN !  4 MMA-MFRAGS !  2 MMA-LMODE !  1 MMA-BLDM !  4 MMA-BPAD !  MGC-TRY-EMIT {: rbldm:n :}     \ tf32 BLDM at BN>64 -> E-MMA-BLDM
+   0 MMA-BLDM !  0 MMA-BPAD !  0 MMA-LMODE !  2 MMA-MFRAGS !  1 MMA-DTYPE !  1 MMA-BTF16 !  8 MMA-BPAD !  MGC-TRY-EMIT {: rbtf:n :}   \ half BTF16 at BN>64 -> E-MMA-BTF16
+   0 MMA-BTF16 !  0 MMA-BPAD !  0 MMA-DTYPE !  64 MMA-BN !  1 MMA-MFRAGS !  32 MMA-BK !  0 MMA-PAD !  2 MMA-STAGES !  0 MMA-DYNSMEM !
+   s" -- BN geometry legality: 96->" type r96 . s"  32->" type r32 . s"  128->" type r128 . s"  256->" type r256 .
+   s"  BN128+BLDM->" type rbldm . s"  BN128+BTF16->" type rbtf . cr
+   r96 E-MMA-BN =  r32 E-MMA-BN =  and  r128 0=  and  r256 0=  and  rbldm E-MMA-BLDM =  and  rbtf E-MMA-BTF16 =  and
+   if s" -- BN geometry legality: fail-closed on non-pow2 / <64 / wide-BN transposed feed, emits 128 & 256 (PASS)" type cr
+   else s" mma-gemm-check: BN geometry legality regression FAILED" 1 die then ;
+
+\ negative regression (dot habu-widen-bn-past): the register-budget guard MMA-CHECK-REGS must fail closed with
+\ E-MMA-REGS when the per-lane accumulators (MFRAGS*NTILES*4) bust the 255-register ceiling, and emit cleanly
+\ for the feasible Triton BN256 winner (8-warp MFRAGS=2 = 128 accs). BN=256 MFRAGS=4 = 256 accs cannot even
+\ hold its accumulators (256 > 255), so it must throw. Device-independent (pure emit).
+: MGC-REGS-NEG ( -- )
+   256 MMA-BN !  4 MMA-MFRAGS !  8 MMA-PAD !  1 MMA-STAGES !  1 MMA-DYNSMEM !  2 MMA-LMODE !  MGC-TRY-EMIT {: rm4:n :}   \ 256 accs -> E-MMA-REGS
+   2 MMA-MFRAGS !  0 MMA-PAD !  MGC-TRY-EMIT {: rm2:n :}                                                                 \ 128 accs -> emits (0)
+   64 MMA-BN !  1 MMA-MFRAGS !  32 MMA-BK !  0 MMA-PAD !  2 MMA-STAGES !  0 MMA-DYNSMEM !  0 MMA-LMODE !
+   s" -- register budget legality: BN256 MFRAGS=4->" type rm4 . s"  BN256 MFRAGS=2->" type rm2 . cr
+   rm4 E-MMA-REGS =  rm2 0=  and
+   if s" -- register budget legality: fail-closed on the 256-accumulator corner, emits the 128-acc winner (PASS)" type cr
+   else s" mma-gemm-check: register budget legality regression FAILED" 1 die then ;
+
+\ negative+positive regression (dot habu-widen-bn-past): a wide-BN epilogue whose BROWS*BN*4 staging tile busts
+\ the 99 KB GB10 dynamic cap must fail closed with E-MMA-EPI. BN=256 MFRAGS=2 8-warp stages 128x256x4 = 131072
+\ > 101376 (throws); BN=128 MFRAGS=2 8-warp stages 128x128x4 = 65536 <= 101376 (emits). Device-independent.
+: MGC-BN-EPI-NEG ( -- )
+   1 MMA-EPILOG !  1 MMA-DYNSMEM !  1 MMA-STAGES !  2 MMA-LMODE !  0 MMA-PAD !
+   256 MMA-BN !  2 MMA-MFRAGS !  MGC-TRY-EMIT {: r256:n :}      \ staging 131072 > 99 KB -> E-MMA-EPI
+   128 MMA-BN !  2 MMA-MFRAGS !  MGC-TRY-EMIT {: r128:n :}      \ staging 65536 <= 99 KB -> emits (0)
+   0 MMA-EPILOG !  0 MMA-DYNSMEM !  2 MMA-STAGES !  0 MMA-LMODE !  64 MMA-BN !  1 MMA-MFRAGS !
+   s" -- wide-BN epilogue smem legality: BN256->" type r256 . s"  BN128->" type r128 . cr
+   r256 E-MMA-EPI =  r128 0=  and
+   if s" -- wide-BN epilogue smem legality: fail-closed when the BROWS*BN*4 staging busts 99 KB, emits when it fits (PASS)" type cr
+   else s" mma-gemm-check: wide-BN epilogue smem legality regression FAILED" 1 die then ;
+
 public
 : MGC-ALL ( -- )
    MGC-SMEM-NEG                                        \ emitter fail-closed check (device-independent)
@@ -478,6 +549,9 @@ public
    MGC-DTYPE-NEG                                       \ fp16 dtype legality fail-closed (device-independent)
    MGC-BTF16-NEG                                       \ fp16 transposed-Bs feed legality fail-closed (device-independent)
    MGC-BF16-NEG                                        \ bf16 dtype + transposed-Bs legality fail-closed (device-independent)
+   MGC-BN-NEG                                          \ wide-BN geometry legality fail-closed (device-independent)
+   MGC-REGS-NEG                                        \ register-budget legality fail-closed (device-independent)
+   MGC-BN-EPI-NEG                                      \ wide-BN epilogue smem legality fail-closed (device-independent)
    CUDA:OPEN? 0= if s" mma-gemm-check: libcuda unavailable -> SKIPPED (off-device)" type cr exit then
    s" == TF32 mma.sync GEMM device-correctness (element-exact vs host) ==" type cr
    0 MGC-MODE  1 MGC-MODE  2 MGC-MODE
@@ -558,7 +632,25 @@ public
    32 0 2 1 4 4 0 8 MGC-CFG-BF16-T                     \ 4-warp MFRAGS=4 stages=2 dyn bpad=8 (128^3/256^3)
    32 0 2 0 2 8 1 8 MGC-CFG-BF16-T                     \ wide MFRAGS=2 8-warp + EPILOGUE bpad=8 (128^3/256^3)
    32 0 1 0 4 4 1 8 MGC-CFG-BF16-T                     \ 4-warp MFRAGS=4 stages=1 + EPILOGUE bpad=8 (128^3/256^3)
-   0 MMA-LMODE !  0 MMA-DTYPE !  0 MMA-BTF16 ! ;       \ restore the committed defaults (tf32 scalar+cvt)
+   s" == WIDE-BN tf32 tile (dot habu-widen-bn-past, BN=128/256, element-exact vs host) ==" type cr
+   32 0 1 0 2 2 8 128 MGC-CFG-BN                       \ BN=128 MFRAGS=2 8-warp stages=1 static ldmatrix-A (128^3/256^3, 32 KB)
+   32 0 2 1 0 2 8 128 MGC-CFG-BN                       \ BN=128 MFRAGS=2 8-warp stages=2 dyn scalar+cvt (exact-RNE cross-check)
+   32 0 2 1 2 2 8 256 MGC-CFG-BN                       \ BN=256 MFRAGS=2 8-warp stages=2 dyn ldmatrix-A (Triton 4096-winner geometry, 128 accs, 96 KB) (256^3/512^3)
+   32 0 2 1 0 2 8 256 MGC-CFG-BN                       \ BN=256 MFRAGS=2 8-warp stages=2 dyn scalar+cvt (exact-RNE cross-check)
+   32 0 2 1 2 1 8 256 MGC-CFG-BN                       \ BN=256 MFRAGS=1 8-warp stages=2 dyn ldmatrix-A (64 accs) (256^3/512^3)
+   32 0 1 1 2 4 8 128 MGC-CFG-BN                       \ BN=128 MFRAGS=4 8-warp stages=1 dyn ldmatrix-A (128 accs feasibility edge) (256^3/512^3)
+   32 0 1 0 2 2 4 128 MGC-CFG-BN                       \ BN=128 MFRAGS=2 4-warp stages=1 static ldmatrix-A (2x2 grid, wide BN) (128^3/256^3)
+   s" == WIDE-BN tf32 + smem coalesced C epilogue (dot habu-widen-bn-past) ==" type cr
+   32 0 2 1 2 2 8 128 MGC-CFG-BN-EPI                   \ BN=128 MFRAGS=2 8-warp stages=2 dyn ldmatrix-A + EPILOGUE (staging 65536 < 99 KB) (128^3/256^3)
+   32 0 2 1 2 1 8 256 MGC-CFG-BN-EPI                   \ BN=256 MFRAGS=1 8-warp stages=2 dyn ldmatrix-A + EPILOGUE (staging 65536 < 99 KB) (256^3/512^3)
+   s" == WIDE-BN fp16/bf16 tile (dot habu-widen-bn-past, element-exact vs host) ==" type cr
+   32 0 2 1 2 8 0 1 128 MGC-CFG-BN-H                   \ fp16 BN=128 MFRAGS=2 8-warp stages=2 dyn (128^3/256^3)
+   32 0 2 1 2 8 0 1 256 MGC-CFG-BN-H                   \ fp16 BN=256 MFRAGS=2 8-warp stages=2 dyn (256^3/512^3)
+   32 0 2 1 1 8 0 1 256 MGC-CFG-BN-H                   \ fp16 BN=256 MFRAGS=1 8-warp stages=2 dyn (256^3/512^3)
+   32 0 2 1 2 8 1 1 128 MGC-CFG-BN-H                   \ fp16 BN=128 MFRAGS=2 8-warp stages=2 dyn + EPILOGUE (128^3/256^3)
+   32 0 2 1 2 8 0 2 128 MGC-CFG-BN-H                   \ bf16 BN=128 MFRAGS=2 8-warp stages=2 dyn (128^3/256^3)
+   32 0 2 1 2 8 0 2 256 MGC-CFG-BN-H                   \ bf16 BN=256 MFRAGS=2 8-warp stages=2 dyn (256^3/512^3)
+   0 MMA-LMODE !  0 MMA-DTYPE !  0 MMA-BTF16 !  64 MMA-BN ! ;   \ restore the committed defaults (tf32 scalar+cvt, BN=64)
 
 ;package
 

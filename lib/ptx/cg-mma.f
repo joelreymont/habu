@@ -62,7 +62,7 @@ require lib/ptx/cpp-slot.f
 \   MMA-STAGES- cp.async pipeline buffers (2 = double-buffered overlap; 1 = single-buffer).
 \   MMA-DYNSMEM - 1 emits .extern dynamic .shared for a tile past the 48 KiB static cap.
 64 constant MMA-BM                              \ output tile rows (fixed by the 8-warp layout, = MM-BM)
-64 constant MMA-BN                              \ output tile cols (= MM-BN)
+2  constant MMA-WCOLS                           \ warp columns per block (FIXED: warp_col selects one of two BN/WCOLS-col halves)
 8  constant MMA-MK                              \ mma.sync K per substep (m16n8k8)
 49152 constant MMA-SMEM-STATIC-CAP              \ sm_87 static .shared per-block ceiling (48 KiB)
 101376 constant MMA-SMEM-DYN-CAP                \ GB10 opt-in dynamic .shared per-block ceiling (99 KB)
@@ -72,6 +72,32 @@ require lib/ptx/cpp-slot.f
 -6104 constant E-MMA-EPI                          \ smem epilogue staging tile exceeds the per-block .shared budget
 -6105 constant E-MMA-DTYPE                         \ half dtype (fp16/bf16) requested with an un-wired feed knob (ldmatrix / B-ldmatrix / ablate)
 -6106 constant E-MMA-BTF16                         \ transposed-Bs feed illegal (requested on a tf32 tile, or a non-4B BT row)
+-6107 constant E-MMA-BN                            \ output-tile width BN illegal (not a power of two, or below the legacy 64)
+-6108 constant E-MMA-REGS                          \ per-lane accumulators bust the 255-register file ceiling for this (BN,MFRAGS)
+
+255 constant MMA-REG-CEIL                       \ usable per-thread hardware register file (sm_121 255-register ceiling)
+32  constant MMA-REG-WORKSET                    \ non-accumulator live working set (measured 30 at BN256/MFRAGS2/128 accs -> 158 regs, rounded up)
+
+\ OUTPUT-TILE WIDTH BN (dot habu-widen-bn-past). The tile's N span. Legacy 64; widened to 128/256 so a warp
+\ owns MMA-NTILES = BN/(WCOLS*8) 8-column n-tiles per warp-col half (BN/2 cols), giving B-fragment reuse per
+\ load. A power of two >= 64 (the epilogue-drain row/col and the Bs cp.async chunk partition use shift/mask,
+\ so BN must be a power of two; below 64 the legacy non-wide path is BN=64-hardwired). BN>64 routes through
+\ the WIDE compute + split-staging path (MMA-WIDE?); BN=64 stays byte-identical. Every non-BN knob (MFRAGS,
+\ WARPS, BK, PAD, stages, dyn, epilogue, dtype) works across BN; the transposed-Bs feeds (BLDM/BTF16) stage
+\ n = c&63 (BN=64-hardwired) so they fail closed above 64.
+\
+\ REGISTER BUDGET (per-lane f32 accumulators = MFRAGS*NTILES*4; est regs = accs + MMA-REG-WORKSET; the
+\ feasibility gate MMA-CHECK-REGS throws E-MMA-REGS when est > MMA-REG-CEIL). WARPS-independent: each lane
+\ owns MFRAGS M-frags x NTILES n-tiles regardless of the warp count (WARPS tiles M, not per-lane work).
+\   BN   NTILES | MFRAGS=1  MFRAGS=2  MFRAGS=4
+\   ---- ------ | -------   --------  --------------
+\    64    4    |  16 acc   32 acc    64 acc          all feasible (legacy family)
+\   128    8    |  32 acc   64 acc    128 acc (~160)  all feasible
+\   256   16    |  64 acc   128 acc   256 acc (~288)  MFRAGS=4 INFEASIBLE -> E-MMA-REGS
+\ Triton's BN256 winner is 8-warp MFRAGS=2 NTILES=16 = 128 acc ~158 regs, 0 spills (docs/eval-triton.md GB10
+\ sweep: 2048 winner BM64xBN128, 4096 winner BM128xBN256); the MFRAGS=4 BN=256 corner (256 acc) cannot even
+\ hold its accumulators under the 255 ceiling, so it fails closed at emit time (MGC-REGS-NEG).
+variable MMA-BN      64 MMA-BN !               \ output tile cols KNOB (64 default / 128 / 256; power of two, >= 64)
 
 variable MMA-BK      32 MMA-BK !               \ staged K-tile depth
 variable MMA-PAD      0 MMA-PAD !              \ As row pad floats
@@ -199,29 +225,36 @@ variable MMA-BTF16   0 MMA-BTF16 !            \ 1 = fp16/bf16 transposed-Bs B fe
 : MMA-BTROW-F ( -- n )  MMA-BK @ MMA-BPAD @ + ;       \ transposed-Bs (BT) row stride, elements (n-major over k)
 : MMA-BTROW-B ( -- n )  MMA-BTROW-F MMA-ESZ * ;       \ BT row stride, bytes (tf32 *4: mult of 16 for ldmatrix rows; fp16 *2)
 : MMA-BT?    ( -- bool )  MMA-BLDM @ 0= 0=  MMA-BTF16 @ 0= 0=  or ; \ Bs stored TRANSPOSED (tf32 B-ldmatrix or fp16 transposed feed)
-: MMA-BSB    ( -- n )  MMA-BT? if MMA-BN MMA-BTROW-F * MMA-ESZ * else MMA-BK @ MMA-BN * MMA-ESZ * then ;  \ B tile bytes (BT if transposed; else dtype-sized)
-: MMA-BTCPN  ( -- n )  MMA-BN MMA-BK @ * MMA-NTHREADS / ;   \ transposed-B scalar chunk-sets/thread (64*BK/NTHREADS)
+: MMA-BSB    ( -- n )  MMA-BT? if MMA-BN @ MMA-BTROW-F * MMA-ESZ * else MMA-BK @ MMA-BN @ * MMA-ESZ * then ;  \ B tile bytes (BT if transposed; else dtype-sized)
+: MMA-BTCPN  ( -- n )  MMA-BN @ MMA-BK @ * MMA-NTHREADS / ;   \ transposed-B scalar chunk-sets/thread (64*BK/NTHREADS; BLDM is BN=64)
 : MMA-BUFB   ( -- n )  MMA-ASB MMA-BSB + ;            \ one cp.async buffer (default 16384)
 : MMA-SMEM   ( -- n )  MMA-BUFB MMA-STAGES @ * ;      \ total pipeline shared bytes (default 32768)
-: MMA-EPI-BYTES ( -- n )  MMA-EPILOG @ if MMA-BROWS MMA-BN 4 * * else 0 then ;  \ epilogue staging tile bytes (BROWS*BN*4), 0 when off
+: MMA-EPI-BYTES ( -- n )  MMA-EPILOG @ if MMA-BROWS MMA-BN @ 4 * * else 0 then ;  \ epilogue staging tile bytes (BROWS*BN*4), 0 when off
 : MMA-SH-BYTES  ( -- n )  MMA-SMEM MMA-EPI-BYTES max ; \ actual SH allocation = larger of pipeline / staging (= MMA-SMEM when epilogue off)
 : MMA-KSUBS  ( -- n )  MMA-BK @ MMA-MKD / ;           \ mma.sync K substeps per tile (tf32 4, fp16 2 at BK=32)
 : MMA-ACPR   ( -- n )  MMA-BK @ MMA-EPC / ;           \ As cp.async chunks per row (tf32 8, fp16 4 at BK=32)
 : MMA-CPN    ( -- n )  MMA-BM MMA-BK @ * MMA-EPC / MMA-NTHREADS / ;  \ MFRAGS=1 cp.async chunk-sets/thread per array (default 2)
 : MMA-ACPN   ( -- n )  MMA-BROWS MMA-BK @ * MMA-EPC / MMA-NTHREADS / ; \ wide As cp.async chunk-sets/thread (BROWS!=BN)
-: MMA-BCPN   ( -- n )  MMA-BK @ MMA-BN * MMA-EPC / MMA-NTHREADS / ;  \ wide Bs cp.async chunk-sets/thread
+: MMA-BCPN   ( -- n )  MMA-BK @ MMA-BN @ * MMA-EPC / MMA-NTHREADS / ;  \ wide Bs cp.async chunk-sets/thread
+: MMA-BCPR   ( -- n )  MMA-BN @ MMA-EPC / ;           \ Bs cp.async 16B chunks per Bs row (BN/EPC: tf32 16, fp16 8 at BN=64)
+: MMA-NTILES ( -- n )  MMA-BN @ MMA-WCOLS 8 * / ;     \ 8-col n-tiles per warp-col half = BN/(WCOLS*8); 4 at BN=64
+: MMA-ACCS   ( -- n )  MMA-MFRAGS @ MMA-NTILES 4 * * ; \ per-lane f32 accumulators = MFRAGS*NTILES*4; 16*MFRAGS at BN=64
 : MMA-AREG   ( n -- n )  6 * 50 + ;                   \ tf32 A-fragment reg group base for M-frag f
-\ Register-pool sizing (dot habu-mma-wave-2). The mode-0 wide cvt temps and the header
-\ .reg .f32/.b32 counts must grow past the 16*MFRAGS accumulators for a wider M tile, but MUST
-\ stay BYTE-IDENTICAL at MFRAGS<=2 (all shipped/pinned configs). MMA-FTEMP=42 at MFRAGS=2 (= the
-\ current hardcoded %f42..47), MMA-FREGS/MMA-RREGS = 48/64 at MFRAGS<=2 (= the current header),
-\ and only MFRAGS>2 (the new 256-row MFRAGS=4 tile) enlarges them.
-: MMA-FTEMP  ( -- n )  16 MMA-MFRAGS @ * 10 + ;       \ wide cvt temp base (just past the accumulators)
-: MMA-FREGS  ( -- n )  MMA-MFRAGS @ 2 > if 16 MMA-MFRAGS @ * 16 + else 48 then ;   \ .reg .f32 pool
-: MMA-RREGS  ( -- n )  MMA-MFRAGS @ 2 > if 6 MMA-MFRAGS @ * 48 + else 64 then ;    \ .reg .b32 pool
-: MMA-DEFAULT? ( -- bool )                             \ the byte-identical baseline config (8-warp tf32 only)
+\ Register-pool sizing (dot habu-mma-wave-2, generalized for wide BN by dot habu-widen-bn-past). The mode-0
+\ wide cvt temps and the header .reg .f32 count must grow past the MMA-ACCS accumulators (MFRAGS*NTILES*4)
+\ for a wider M OR N tile, but MUST stay BYTE-IDENTICAL at the legacy BN=64 family. At BN=64 MMA-ACCS =
+\ 16*MFRAGS, so MMA-FTEMP = 16*MFRAGS+10 (=42 at MFRAGS=2, the former %f42..47) and MMA-FREGS = max(48,
+\ 16*MFRAGS+16) reproduces the former MFRAGS<=2 -> 48, MFRAGS>2 -> 16*MFRAGS+16 exactly. The 6 f-temps
+\ (4 A-cvt + 2 B-cvt) live at FTEMP..FTEMP+5 = ACCS+10..ACCS+15, so FREGS = ACCS+16 always covers them.
+\ MMA-RREGS is BN-INDEPENDENT: the A groups (6*MFRAGS b32) reuse across n-tiles and the B fragment reloads
+\ into the same %r54,55 per n-tile, so no b32 register scales with NTILES; the former MFRAGS-only form stands.
+: MMA-FTEMP  ( -- n )  MMA-ACCS 10 + ;                \ wide cvt temp base (just past the accumulators)
+: MMA-FREGS  ( -- n )  MMA-ACCS 16 + 48 max ;         \ .reg .f32 pool = accumulators + 6 temps, clamped to the legacy 48
+: MMA-RREGS  ( -- n )  MMA-MFRAGS @ 2 > if 6 MMA-MFRAGS @ * 48 + else 64 then ;    \ .reg .b32 pool (BN-independent)
+: MMA-DEFAULT? ( -- bool )                             \ the byte-identical baseline config (8-warp tf32 BN=64 only)
    MMA-BK @ 32 =  MMA-PAD @ 0=  and  MMA-STAGES @ 2 =  and  MMA-DYNSMEM @ 0=  and
-   MMA-MFRAGS @ 1 =  and  MMA-WARPS @ 8 =  and  MMA-DTYPE @ 0=  and ;   \ fp16 never uses the shared f32 MM-PIPE scaffold
+   MMA-MFRAGS @ 1 =  and  MMA-WARPS @ 8 =  and  MMA-DTYPE @ 0=  and  MMA-BN @ 64 =  and ;   \ BN>64 uses the MMA-owned pipe, not the shared MM-PIPE scaffold
+: MMA-WIDE?  ( -- bool )  MMA-MFRAGS @ 1 >  MMA-BN @ 64 >  or ;   \ WIDE compute + split-staging path (MFRAGS>1 or BN>64); BN=64 MFRAGS=1 stays the byte-identical non-wide path
 
 : MMA-LOG2 ( n -- n )                                  \ floor log2 (n a power of two, > 0)
    0 swap  begin dup 1 > while  2 /  swap 1+ swap  repeat  drop ;
@@ -248,6 +281,7 @@ variable MMA-BTF16   0 MMA-BTF16 !            \ 1 = fp16/bf16 transposed-Bs B fe
 : MMA-CHECK-BLDM ( -- )
    MMA-BLDM @ 0= if exit then
    MMA-MFRAGS @ 2 < if E-MMA-BLDM throw then            \ B-ldmatrix is defined only on the wide (MFRAGS>1) path
+   MMA-BN @ 64 > if E-MMA-BLDM throw then               \ transposed-Bs staging stages n = c&63 (BN=64-hardwired); not wired for wide BN
    MMA-BTROW-B 15 and 0= 0= if E-MMA-BLDM throw then ;  \ BT row stride not a multiple of 16 B -> misaligned ldmatrix rows
 
 \ fail closed on an illegal transposed-Bs half-dtype feed (dot habu-fp16-transposed-bs / habu-bf16-m16n8k16-
@@ -259,6 +293,7 @@ variable MMA-BTF16   0 MMA-BTF16 !            \ 1 = fp16/bf16 transposed-Bs B fe
 : MMA-CHECK-BTF16 ( -- )
    MMA-BTF16 @ 0= if exit then
    MMA-HALF? 0= if E-MMA-BTF16 throw then              \ transposed-Bs feed is the fp16/bf16 half B path only
+   MMA-BN @ 64 > if E-MMA-BTF16 throw then             \ transposed-Bs staging stages n = c&63 (BN=64-hardwired); not wired for wide BN
    MMA-BTROW-B 3 and 0= 0= if E-MMA-BTF16 throw then ; \ BT row stride not a multiple of 4 B -> misaligned b32 B load
 
 \ fail closed on an illegal warp grid (dot habu-4-warp-mma). Only the 4x2 (WARPS=8) and 2x2 (WARPS=4)
@@ -281,6 +316,25 @@ variable MMA-BTF16   0 MMA-BTF16 !            \ 1 = fp16/bf16 transposed-Bs B fe
    else
       MMA-SH-BYTES MMA-SMEM-STATIC-CAP > if E-MMA-EPI throw then
    then ;
+
+\ fail closed on an illegal output-tile width BN (dot habu-widen-bn-past). BN must be a power of two (the
+\ epilogue-drain row=e>>log2(BN) / col=e&(BN-1) and the Bs cp.async chunk partition c/(BN/EPC) all use
+\ shift/mask, exact only for a power-of-two BN) and >= 64 (below 64 the legacy non-wide path is BN=64-
+\ hardwired; only BN=64 and the wide 128/256 are supported). Reject at EMIT time so a bad BN throws instead
+\ of emitting a kernel whose shift/mask arithmetic disagrees with the tile geometry.
+: MMA-CHECK-BN ( -- )
+   MMA-BN @ 64 < if E-MMA-BN throw then                         \ below the legacy width -> non-wide path is BN=64-hardwired
+   MMA-BN @ MMA-POW2? 0= if E-MMA-BN throw then ;               \ not a power of two -> drain/chunk shift+mask are wrong
+
+\ fail closed on a (BN,MFRAGS) whose per-lane accumulators bust the register file (dot habu-widen-bn-past).
+\ The MMA-ACCS f32 accumulators (MFRAGS*NTILES*4) are ALL live across the K-loop, so they set a hard floor on
+\ physical registers; with the fixed non-accumulator working set (MMA-REG-WORKSET, measured 30 at the BN256
+\ MFRAGS2 128-acc point -> 158 regs) the kernel must fit MMA-REG-CEIL (255). The BN=256 MFRAGS=4 corner is
+\ 256 accumulators - it cannot even hold them under 255 - so it fails closed here instead of spilling under
+\ ptxas at launch. WARPS-independent (accs do not depend on the warp count). No legacy config is rejected
+\ (BN=64 max is MFRAGS=4 -> 64 accs -> 96 est).
+: MMA-CHECK-REGS ( -- )
+   MMA-ACCS MMA-REG-WORKSET +  MMA-REG-CEIL >  if E-MMA-REGS throw then ;
 
 \ FRAGMENT-LOAD MODE (dot habu-mma-ldmatrix-fragment). The 16x8 A fragment and 8x8 B fragment
 \ can be fed to the tensor cores three ways; mode is fixed at emit time:
@@ -374,9 +428,9 @@ variable MMA-LMODE   0 MMA-LMODE !
    SB-RESET s" ld.shared.f32 %f30,[%r44+" SB-APPEND j 32 * SB-U s" ];" SB-APPEND SB$ PTX-L
    SB-RESET s" ld.shared.f32 %f31,[%r44+" SB-APPEND j 32 * 1024 + SB-U s" ];" SB-APPEND SB$ PTX-L
    s" cvt.rna.tf32.f32 %r54,%f30;" PTX-L  s" cvt.rna.tf32.f32 %r55,%f31;" PTX-L ;
-: MMA-B-RAW ( n -- ) {: j:n :}                  \ mode 1/2: raw ld.shared.b32 (mma truncates)
+: MMA-B-RAW ( n -- ) {: j:n :}                  \ mode 1/2: raw ld.shared.b32 (mma truncates); b1 is +4 K rows = 16*BN B (1024 at BN=64)
    SB-RESET s" ld.shared.b32 %r54,[%r44+" SB-APPEND j 32 * SB-U s" ];" SB-APPEND SB$ PTX-L
-   SB-RESET s" ld.shared.b32 %r55,[%r44+" SB-APPEND j 32 * 1024 + SB-U s" ];" SB-APPEND SB$ PTX-L ;
+   SB-RESET s" ld.shared.b32 %r55,[%r44+" SB-APPEND j 32 * 16 MMA-BN @ * + SB-U s" ];" SB-APPEND SB$ PTX-L ;
 : MMA-B-LOAD ( n -- )  MMA-LMODE @ 0= if MMA-B-CVT else MMA-B-RAW then ;
 
 \ one n-tile j (0..3): load its 8x8 B fragment from Bs at col warp_col*32 + j*8, then MMA it
@@ -430,11 +484,11 @@ variable MMA-LMODE   0 MMA-LMODE !
    s" mov.u32 %r6,%ctaid.x;" PTX-L  s" mov.u32 %r7,%ctaid.y;" PTX-L
    s" mad.lo.u32 %r8,%r5,16,%r4;" PTX-L
    9 7 MMA-BROWS MMA-SCALE                      \ rowBase = ctaid.y * BROWS
-   s" mul.lo.u32 %r10,%r6,64;" PTX-L            \ colBase = ctaid.x * 64
+   SB-RESET s" mul.lo.u32 %r10,%r6," SB-APPEND MMA-BN @ SB-U s" ;" SB-APPEND SB$ PTX-L   \ colBase = ctaid.x * BN (64 default)
    s" mov.u32 %r11,SH;" PTX-L ;
 
-: MMA-ACC-ZERO-WIDE ( -- )                      \ zero 16*MFRAGS accumulators %f10..
-   16 MMA-MFRAGS @ *  0 do
+: MMA-ACC-ZERO-WIDE ( -- )                      \ zero MMA-ACCS (= MFRAGS*NTILES*4) accumulators %f10..
+   MMA-ACCS  0 do
       SB-RESET s" mov.f32 %f" SB-APPEND 10 i + SB-U s" ,0f00000000;" SB-APPEND SB$ PTX-L
    loop ;
 
@@ -473,14 +527,14 @@ variable MMA-LMODE   0 MMA-LMODE !
    30 26 16 MMA-MFRAGS @ * MMA-SCALE            \ A shared row byte base (M-frag 0) = (warp_row*16*MFRAGS + gid)*AROW-B
    s" add.u32 %r30,%r30,%r28;" PTX-L
    30 30 MMA-AROW-B MMA-SCALE
-   s" shl.b32 %r31,%r27,5;" PTX-L               \ B shared col byte base = ((warp_col*32)+gid)*4
+   31 27 MMA-BN @ MMA-WCOLS / MMA-SCALE         \ B shared col byte base = ((warp_col*(BN/WCOLS))+gid)*4; warp_col*32 at BN=64
    s" add.u32 %r31,%r31,%r28;" PTX-L
    s" shl.b32 %r31,%r31,2;" PTX-L
    32 26 16 MMA-MFRAGS @ * MMA-SCALE            \ gRow0 (M-frag 0) = rowBase + warp_row*16*MFRAGS + gid
    s" add.u32 %r32,%r9,%r32;" PTX-L
    s" add.u32 %r32,%r32,%r28;" PTX-L
    s" add.u32 %r33,%r32,8;" PTX-L               \ gRow1 = gRow0 + 8
-   s" shl.b32 %r34,%r27,5;" PTX-L               \ gCol0 = colBase + warp_col*32 + 2t
+   34 27 MMA-BN @ MMA-WCOLS / MMA-SCALE         \ gCol0 = colBase + warp_col*(BN/WCOLS) + 2t; warp_col*32 at BN=64
    s" add.u32 %r34,%r10,%r34;" PTX-L
    s" shl.b32 %r40,%r29,1;" PTX-L
    s" add.u32 %r34,%r34,%r40;" PTX-L
@@ -530,7 +584,7 @@ variable MMA-LMODE   0 MMA-LMODE !
 : MMA-B-CVT-WIDE ( n -- ) {: j:n :}             \ mode 0: f32 load + cvt.rna, temps past the wide accumulators
    MMA-FTEMP 4 + {: bt:n :}                      \ = 46 at MFRAGS=2 (byte-identical); higher for MFRAGS=4
    SB-RESET s" ld.shared.f32 %f" SB-APPEND bt SB-U s" ,[%r44+" SB-APPEND j 32 * SB-U s" ];" SB-APPEND SB$ PTX-L
-   SB-RESET s" ld.shared.f32 %f" SB-APPEND bt 1+ SB-U s" ,[%r44+" SB-APPEND j 32 * 1024 + SB-U s" ];" SB-APPEND SB$ PTX-L
+   SB-RESET s" ld.shared.f32 %f" SB-APPEND bt 1+ SB-U s" ,[%r44+" SB-APPEND j 32 * 16 MMA-BN @ * + SB-U s" ];" SB-APPEND SB$ PTX-L   \ b1 = +4 K rows = 16*BN B (1024 at BN=64)
    SB-RESET s" cvt.rna.tf32.f32 %r54,%f" SB-APPEND bt SB-U s" ;" SB-APPEND SB$ PTX-L
    SB-RESET s" cvt.rna.tf32.f32 %r55,%f" SB-APPEND bt 1+ SB-U s" ;" SB-APPEND SB$ PTX-L ;
 : MMA-B-LOAD-WIDE ( n -- )  MMA-LMODE @ 0= if MMA-B-CVT-WIDE else MMA-B-RAW then ;
@@ -545,8 +599,8 @@ variable MMA-LMODE   0 MMA-LMODE !
    s" add.u32 %r48,%r16,%r48;" PTX-L
    s" ldmatrix.sync.aligned.m8n8.x2.shared.b16 {%r54,%r55},[%r48];" PTX-L ;
 
-: MMA-MMA-WIDE ( n n -- ) {: f:n j:n :}         \ mma for M-frag f, n-tile j: D(=%f(10+16f+4j)..) = A(group f).B(%r54,55) + D
-   10 f 16 * + j 4 * + {: d:n :}
+: MMA-MMA-WIDE ( n n -- ) {: f:n j:n :}         \ mma for M-frag f, n-tile j: D(=%f(10+f*NTILES*4+4j)..) = A(group f).B(%r54,55) + D
+   10 f MMA-NTILES 4 * * + j 4 * + {: d:n :}     \ accs/M-frag = NTILES*4 (16 at BN=64)
    f MMA-AREG {: g:n :}
    SB-RESET s" mma.sync.aligned.m16n8k8.row.col.f32.tf32.tf32.f32 {%f" SB-APPEND d SB-U
       s" ,%f" SB-APPEND d 1+ SB-U s" ,%f" SB-APPEND d 2 + SB-U s" ,%f" SB-APPEND d 3 + SB-U
@@ -579,19 +633,19 @@ variable MMA-LMODE   0 MMA-LMODE !
    MMA-MFRAGS @ 0 do  ks i MMA-LOAD-A-WIDE  loop
    MMA-BLDM @ 0= if
       SB-RESET s" add.u32 %r42,%r29," SB-APPEND ks SB-U s" ;" SB-APPEND SB$ PTX-L
-      s" shl.b32 %r42,%r42,8;" PTX-L
+      42 42 MMA-BN @ 4 * MMA-SCALE                                                 \ (ks+t) * Bs row stride BN*4 (shl 8 at BN=64)
       SB-RESET s" add.u32 %r44,%r16," SB-APPEND MMA-ASB SB-U s" ;" SB-APPEND SB$ PTX-L
       s" add.u32 %r44,%r44,%r42;" PTX-L
       s" add.u32 %r44,%r44,%r31;" PTX-L
    then
-   4 0 do  ks i MMA-NTILE-WIDE  loop ;
+   MMA-NTILES 0 do  ks i MMA-NTILE-WIDE  loop ;
 
 : MMA-KTILE-WIDE ( -- )  MMA-KSUBS 0 do  i MMA-MK * MMA-KSTEP-WIDE  loop ;
 
 \ store M-frag f, n-tile j: global rows gRow{0,1}+f*16, col gCol0+j*8 (D-fragment mapping)
 : MMA-STORE-TILE-WIDE ( n n -- ) {: f:n j:n :}
    SB-RESET s" add.u32 %r40,%r34," SB-APPEND j 8 * SB-U s" ;" SB-APPEND SB$ PTX-L   \ %r40 = col0 = gCol0 + j*8
-   10 f 16 * + j 4 * + {: a0:n :}
+   10 f MMA-NTILES 4 * * + j 4 * + {: a0:n :}                                      \ accs/M-frag = NTILES*4 (16 at BN=64)
    f 0 > if SB-RESET s" add.u32 %r41,%r32," SB-APPEND f 16 * SB-U s" ;" SB-APPEND SB$ PTX-L
    else s" mov.u32 %r41,%r32;" PTX-L then                                          \ %r41 = gRow0 + f*16
    s" mad.lo.u32 %r41,%r41,%r2,%r40;" PTX-L
@@ -606,7 +660,7 @@ variable MMA-LMODE   0 MMA-LMODE !
    SB-RESET s" st.global.f32 [%rd13+4],%f" SB-APPEND a0 3 + SB-U s" ;" SB-APPEND SB$ PTX-L ;   \ d3
 : MMA-STORE-WIDE ( -- )
    MMA-MFRAGS @ 0 do  i {: f:n :}
-      4 0 do  f i MMA-STORE-TILE-WIDE  loop
+      MMA-NTILES 0 do  f i MMA-STORE-TILE-WIDE  loop
    loop ;
 
 \ ============ HALF (fp16/bf16) compute path (MMA-DTYPE=1/2; dot habu-fp16-mma-tile + habu-bf16-m16n8k16-tile) ==
@@ -644,20 +698,22 @@ variable MMA-LMODE   0 MMA-LMODE !
 \ BN*2 = 128 B): the two halves of each register are adjacent in K (one 128 B row apart), so build
 \ each b32 from two u16 loads + shift/or. col = warp_col*32 + j*8 + gid. Scratch %r40,%r42,%r43,%r44.
 : MMA-B-F16 ( n n -- ) {: ks:n j:n :}
-   s" shl.b32 %r40,%r27,5;" PTX-L                                                    \ warp_col*32
+   40 27 MMA-BN @ MMA-WCOLS / MMA-SCALE                                              \ warp_col*(BN/WCOLS); warp_col*32 at BN=64
    s" add.u32 %r40,%r40,%r28;" PTX-L                                                 \ + gid = col
    j 0 > if SB-RESET s" add.u32 %r40,%r40," SB-APPEND j 8 * SB-U s" ;" SB-APPEND SB$ PTX-L then  \ + j*8
    s" shl.b32 %r40,%r40,1;" PTX-L                                                    \ col*2 (byte)
    s" shl.b32 %r42,%r29,1;" PTX-L                                                    \ 2t
    SB-RESET s" add.u32 %r42,%r42," SB-APPEND ks SB-U s" ;" SB-APPEND SB$ PTX-L        \ + ks (K row)
-   s" shl.b32 %r42,%r42,7;" PTX-L                                                    \ *128 (Bs f16 row stride = BN*2)
+   42 42 MMA-BN @ 2 * MMA-SCALE                                                      \ * Bs f16 row stride BN*2 (shl 7 at BN=64)
    SB-RESET s" add.u32 %r44,%r16," SB-APPEND MMA-ASB SB-U s" ;" SB-APPEND SB$ PTX-L   \ + Bs byte offset
    s" add.u32 %r44,%r44,%r42;" PTX-L
    s" add.u32 %r44,%r44,%r40;" PTX-L                                                 \ &Bs[ks+2t][col] (b0)
    s" ld.shared.u16 %r54,[%r44];" PTX-L                                             \ b0
-   s" ld.shared.u16 %r43,[%r44+128];" PTX-L  s" shl.b32 %r43,%r43,16;" PTX-L  s" or.b32 %r54,%r54,%r43;" PTX-L  \ b1 (+1 K)
-   s" ld.shared.u16 %r55,[%r44+1024];" PTX-L                                        \ b2 (+8 K)
-   s" ld.shared.u16 %r43,[%r44+1152];" PTX-L  s" shl.b32 %r43,%r43,16;" PTX-L  s" or.b32 %r55,%r55,%r43;" PTX-L ;  \ b3 (+9 K)
+   SB-RESET s" ld.shared.u16 %r43,[%r44+" SB-APPEND MMA-BN @ 2 * SB-U s" ];" SB-APPEND SB$ PTX-L   \ b1 (+1 K = BN*2 B; 128 at BN=64)
+   s" shl.b32 %r43,%r43,16;" PTX-L  s" or.b32 %r54,%r54,%r43;" PTX-L
+   SB-RESET s" ld.shared.u16 %r55,[%r44+" SB-APPEND 16 MMA-BN @ * SB-U s" ];" SB-APPEND SB$ PTX-L  \ b2 (+8 K = 16*BN B; 1024 at BN=64)
+   SB-RESET s" ld.shared.u16 %r43,[%r44+" SB-APPEND 18 MMA-BN @ * SB-U s" ];" SB-APPEND SB$ PTX-L  \ b3 (+9 K = 18*BN B; 1152 at BN=64)
+   s" shl.b32 %r43,%r43,16;" PTX-L  s" or.b32 %r55,%r55,%r43;" PTX-L ;
 
 \ TRANSPOSED B fragment (dot habu-fp16-transposed-bs): the SAME {%r54,%r55}={b0,b1},{b2,b3} operand as
 \ MMA-B-F16, read from the n-major BT[n][k] staging where each register's K-adjacent halves are contiguous
@@ -708,8 +764,8 @@ variable MMA-LMODE   0 MMA-LMODE !
    SB-RESET s" ld.shared.b32 %r" SB-APPEND g 1+ SB-U s" ,[%r40+" SB-APPEND a1o SB-U s" ];" SB-APPEND SB$ PTX-L
    SB-RESET s" ld.shared.b32 %r" SB-APPEND g 2 + SB-U s" ,[%r40+16];" SB-APPEND SB$ PTX-L
    SB-RESET s" ld.shared.b32 %r" SB-APPEND g 3 + SB-U s" ,[%r40+" SB-APPEND a1o 16 + SB-U s" ];" SB-APPEND SB$ PTX-L ;
-: MMA-MMA-F16-WIDE ( n n -- ) {: f:n j:n :}    \ D(=%f(10+16f+4j)..) = A(group f).B(%r54,55) + D
-   10 f 16 * + j 4 * + {: d:n :}
+: MMA-MMA-F16-WIDE ( n n -- ) {: f:n j:n :}    \ D(=%f(10+f*NTILES*4+4j)..) = A(group f).B(%r54,55) + D
+   10 f MMA-NTILES 4 * * + j 4 * + {: d:n :}    \ accs/M-frag = NTILES*4 (16 at BN=64)
    f MMA-AREG {: g:n :}
    SB-RESET s" mma.sync.aligned.m16n8k16.row.col.f32." SB-APPEND MMA-ABT SB-APPEND s" ." SB-APPEND MMA-ABT SB-APPEND s" .f32 {%f" SB-APPEND d SB-U
       s" ,%f" SB-APPEND d 1+ SB-U s" ,%f" SB-APPEND d 2 + SB-U s" ,%f" SB-APPEND d 3 + SB-U
@@ -721,7 +777,7 @@ variable MMA-LMODE   0 MMA-LMODE !
    MMA-MFRAGS @ 0 do  i j MMA-MMA-F16-WIDE  loop ;
 : MMA-KSTEP-F16-WIDE ( n -- ) {: ks:n :}
    MMA-MFRAGS @ 0 do  ks i MMA-A-F16-WIDE  loop
-   4 0 do  ks i MMA-NTILE-F16-WIDE  loop ;
+   MMA-NTILES 0 do  ks i MMA-NTILE-F16-WIDE  loop ;
 : MMA-KTILE-F16-WIDE ( -- )  MMA-KSUBS 0 do  i MMA-MKD * MMA-KSTEP-F16-WIDE  loop ;
 
 \ ============ SHARED-MEMORY C EPILOGUE (MMA-EPILOG=1; unified over the MFRAGS/WARPS family) ====
@@ -732,43 +788,44 @@ variable MMA-LMODE   0 MMA-LMODE !
 \ tid_lin, %r9 rowBase, %r10 colBase, %r11 SH, %r2 N, %rd3 C, %r26 warp_row, %r27 warp_col, %r28 gid,
 \ %r29 t. Works for MFRAGS=1 (f=0) and the wide path identically (the row base carries the +f*16 offset).
 
-\ %r45 = this lane's staging base = SH + (warp_row*16*MFRAGS + gid)*(BN*4) + warp_col*32*4 + t*2*4
-\   (the M-frag-0, n-tile-0, d0 element; BN*4 = 256, warp_col*32*4 = warp_col*128, t*2*4 = t*8).
+\ %r45 = this lane's staging base = SH + (warp_row*16*MFRAGS + gid)*(BN*4) + warp_col*(BN/WCOLS)*4 + t*2*4
+\   (the M-frag-0, n-tile-0, d0 element; at BN=64: BN*4 = 256, warp_col*(BN/WCOLS)*4 = warp_col*128, t*2*4 = t*8).
 : MMA-EPI-SETUP ( -- )
    40 26 16 MMA-MFRAGS @ * MMA-SCALE            \ %r40 = warp_row * (16*MFRAGS)
    s" add.u32 %r40,%r40,%r28;" PTX-L            \ + gid = local row0
-   s" shl.b32 %r40,%r40,8;" PTX-L               \ * 256 (= BN*4, staging row byte stride)
-   s" shl.b32 %r41,%r27,7;" PTX-L               \ warp_col * 128 (col byte base of the 32-col half)
+   40 40 MMA-BN @ 4 * MMA-SCALE                 \ * staging row byte stride BN*4 (shl 8 at BN=64)
+   41 27 MMA-BN @ MMA-WCOLS / 4 * MMA-SCALE     \ warp_col * (BN/WCOLS)*4 (col byte base of the BN/WCOLS-col half; shl 7 at BN=64)
    s" shl.b32 %r42,%r29,3;" PTX-L               \ t * 8 (2 cols/lane * 4 B)
    s" add.u32 %r41,%r41,%r42;" PTX-L
-   s" add.u32 %r45,%r11,%r40;" PTX-L            \ SH + row0*256
+   s" add.u32 %r45,%r11,%r40;" PTX-L            \ SH + row0*(BN*4)
    s" add.u32 %r45,%r45,%r41;" PTX-L ;          \ + col bytes -> lane staging base
 
 \ write M-frag f, n-tile j: d0->[row0][c0] d1->[row0][c0+1] d2->[row0+8][c0] d3->[row0+8][c0+1]
-\ (the D-fragment map). Row offset f*16 rows = f*16*256 B; n-tile col offset j*8 cols = j*32 B; the
-\ +8-row (d2/d3) offset is 8*256 = 2048 B. All three are emit-time constants.
+\ (the D-fragment map). Row offset f*16 rows = f*16*(BN*4) B; n-tile col offset j*8 cols = j*32 B; the
+\ +8-row (d2/d3) offset is 8*(BN*4) B (2048 at BN=64). All three are emit-time constants.
 : MMA-EPI-STORE-TILE ( n n -- ) {: f:n j:n :}
-   f 16 * 256 *  j 8 * 4 * +  {: off:n :}       \ (f*16 rows)*256 + (j*8 cols)*4
-   10 f 16 * + j 4 * + {: a0:n :}                \ accumulator base %f(10+16f+4j)
+   f 16 * MMA-BN @ 4 * *  j 8 * 4 * +  {: off:n :}   \ (f*16 rows)*(BN*4) + (j*8 cols)*4
+   10 f MMA-NTILES 4 * * + j 4 * + {: a0:n :}     \ accumulator base %f(10+f*NTILES*4+4j)
+   8 MMA-BN @ 4 * *  {: r8:n :}                   \ +8-row (d2/d3) byte offset = 8*(BN*4) (2048 at BN=64)
    SB-RESET s" add.u32 %r46,%r45," SB-APPEND off SB-U s" ;" SB-APPEND SB$ PTX-L
    SB-RESET s" st.shared.f32 [%r46],%f" SB-APPEND a0 SB-U s" ;" SB-APPEND SB$ PTX-L
    SB-RESET s" st.shared.f32 [%r46+4],%f" SB-APPEND a0 1+ SB-U s" ;" SB-APPEND SB$ PTX-L
-   SB-RESET s" st.shared.f32 [%r46+2048],%f" SB-APPEND a0 2 + SB-U s" ;" SB-APPEND SB$ PTX-L
-   SB-RESET s" st.shared.f32 [%r46+2052],%f" SB-APPEND a0 3 + SB-U s" ;" SB-APPEND SB$ PTX-L ;
+   SB-RESET s" st.shared.f32 [%r46+" SB-APPEND r8 SB-U s" ],%f" SB-APPEND a0 2 + SB-U s" ;" SB-APPEND SB$ PTX-L
+   SB-RESET s" st.shared.f32 [%r46+" SB-APPEND r8 4 + SB-U s" ],%f" SB-APPEND a0 3 + SB-U s" ;" SB-APPEND SB$ PTX-L ;
 
-: MMA-EPI-FILL ( -- )                            \ every lane writes its 16*MFRAGS accumulators into the tile
+: MMA-EPI-FILL ( -- )                            \ every lane writes its MMA-ACCS accumulators into the tile
    MMA-MFRAGS @ 0 do  i {: f:n :}
-      4 0 do  f i MMA-EPI-STORE-TILE  loop
+      MMA-NTILES 0 do  f i MMA-EPI-STORE-TILE  loop
    loop ;
 
 \ coalesced drain: element e = tid_lin + m*NTHREADS -> tile row e/BN, col e%BN; the block sweeps all
-\ BROWS*BN elements in 16*MFRAGS rounds (BROWS*BN / NTHREADS = 16*MFRAGS). Consecutive lanes read
-\ consecutive tile elements (SH + e*4) and write consecutive C columns (rowBase+row, colBase+col).
+\ BROWS*BN elements in MMA-ACCS rounds (BROWS*BN / NTHREADS = MFRAGS*NTILES*4 = the per-lane accumulator
+\ count). Consecutive lanes read consecutive tile elements (SH + e*4) and write consecutive C columns.
 : MMA-EPI-DRAIN ( -- )
-   16 MMA-MFRAGS @ *  0 do  i {: m:n :}
+   MMA-ACCS  0 do  i {: m:n :}
       SB-RESET s" add.u32 %r40,%r8," SB-APPEND m MMA-NTHREADS * SB-U s" ;" SB-APPEND SB$ PTX-L   \ e = tid_lin + m*NTHREADS
-      s" shr.u32 %r41,%r40,6;" PTX-L               \ row = e >> 6 (BN=64)
-      s" and.b32 %r42,%r40,63;" PTX-L              \ col = e & 63
+      SB-RESET s" shr.u32 %r41,%r40," SB-APPEND MMA-BN @ MMA-LOG2 SB-U s" ;" SB-APPEND SB$ PTX-L  \ row = e >> log2(BN) (6 at BN=64)
+      SB-RESET s" and.b32 %r42,%r40," SB-APPEND MMA-BN @ 1- SB-U s" ;" SB-APPEND SB$ PTX-L          \ col = e & (BN-1) (63 at BN=64)
       s" add.u32 %r41,%r9,%r41;" PTX-L             \ gRow = rowBase + row
       s" add.u32 %r42,%r10,%r42;" PTX-L            \ gCol = colBase + col
       s" mad.lo.u32 %r43,%r41,%r2,%r42;" PTX-L     \ gRow*N + gCol
@@ -839,10 +896,11 @@ variable MMA-LMODE   0 MMA-LMODE !
    s" add.u32 %r23,%r23,%r22;" PTX-L
    SB-RESET s" add.u32 %r23,%r" SB-APPEND bufr SB-U s" ,%r23;" SB-APPEND SB$ PTX-L
    s" cp.async.cg.shared.global [%r23],[%rd11],16;" PTX-L ;
-: MMA-CPW-CHUNK-B ( n n n -- ) {: m:n bufr:n ktr:n :}   \ one Bs 16B chunk, chunk-set m
+: MMA-CPW-CHUNK-B ( n n n -- ) {: m:n bufr:n ktr:n :}   \ one Bs 16B chunk, chunk-set m (BCPR = BN/4 chunks/Bs row)
    SB-RESET s" add.u32 %r20,%r8," SB-APPEND m MMA-NTHREADS * SB-U s" ;" SB-APPEND SB$ PTX-L      \ c = tid_lin + m*NTHREADS
-   s" shr.u32 %r21,%r20,4;" PTX-L                                                       \ k = c>>4
-   s" and.b32 %r22,%r20,15;" PTX-L  s" shl.b32 %r22,%r22,2;" PTX-L                      \ col = (c&15)*4
+   SB-RESET s" shr.u32 %r21,%r20," SB-APPEND MMA-BCPR MMA-LOG2 SB-U s" ;" SB-APPEND SB$ PTX-L     \ k = c / (BN/4) (c>>4 at BN=64)
+   SB-RESET s" and.b32 %r22,%r20," SB-APPEND MMA-BCPR 1- SB-U s" ;" SB-APPEND SB$ PTX-L            \ chunk = c & (BN/4-1) (c&15 at BN=64)
+   s" shl.b32 %r22,%r22,2;" PTX-L                                                       \ col = chunk*4 (EPC=4 tf32)
    SB-RESET s" add.u32 %r23,%r" SB-APPEND ktr SB-U s" ,%r21;" SB-APPEND SB$ PTX-L
    s" mad.lo.u32 %r23,%r23,%r2,%r10;" PTX-L
    s" add.u32 %r23,%r23,%r22;" PTX-L
@@ -930,10 +988,11 @@ variable MMA-LMODE   0 MMA-LMODE !
    s" add.u32 %r23,%r23,%r22;" PTX-L
    SB-RESET s" add.u32 %r23,%r" SB-APPEND bufr SB-U s" ,%r23;" SB-APPEND SB$ PTX-L
    s" cp.async.cg.shared.global [%r23],[%rd11],16;" PTX-L ;
-: MMA-CPW-CHUNK-B-F16 ( n n n -- ) {: m:n bufr:n ktr:n :}   \ one wide Bs 8-half chunk, chunk-set m
+: MMA-CPW-CHUNK-B-F16 ( n n n -- ) {: m:n bufr:n ktr:n :}   \ one wide Bs 8-half chunk, chunk-set m (BCPR = BN/8 chunks/Bs row)
    SB-RESET s" add.u32 %r20,%r8," SB-APPEND m MMA-NTHREADS * SB-U s" ;" SB-APPEND SB$ PTX-L
-   s" shr.u32 %r21,%r20,3;" PTX-L                                                       \ k = c>>3
-   s" and.b32 %r22,%r20,7;" PTX-L  s" shl.b32 %r22,%r22,3;" PTX-L                       \ col = (c&7)*8
+   SB-RESET s" shr.u32 %r21,%r20," SB-APPEND MMA-BCPR MMA-LOG2 SB-U s" ;" SB-APPEND SB$ PTX-L      \ k = c / (BN/8) (c>>3 at BN=64)
+   SB-RESET s" and.b32 %r22,%r20," SB-APPEND MMA-BCPR 1- SB-U s" ;" SB-APPEND SB$ PTX-L             \ chunk = c & (BN/8-1) (c&7 at BN=64)
+   s" shl.b32 %r22,%r22,3;" PTX-L                                                       \ col = chunk*8 (EPC=8 fp16)
    SB-RESET s" add.u32 %r23,%r" SB-APPEND ktr SB-U s" ,%r21;" SB-APPEND SB$ PTX-L
    s" mad.lo.u32 %r23,%r23,%r2,%r10;" PTX-L
    s" add.u32 %r23,%r23,%r22;" PTX-L
@@ -974,11 +1033,11 @@ variable MMA-LMODE   0 MMA-LMODE !
 : MMA-CP-STAGE ( n n -- ) {: bufr:n ktr:n :}   \ stage one K-tile (As+Bs) into buffer bufr from column ktr
    MMA-HALF? if                                             \ fp16/bf16 share the half (2-byte element) staging
       MMA-BTF16 @ if bufr ktr MMA-CPW-STAGE-BTF16 exit then   \ transposed BT: split As cp.async + BT scalar copy (any MFRAGS)
-      MMA-MFRAGS @ 1 > if bufr ktr MMA-CPW-STAGE-F16 exit then
-      MMA-CPN 0 do  i bufr ktr MMA-CP-CHUNK-F16  loop  exit
+      MMA-WIDE? if bufr ktr MMA-CPW-STAGE-F16 exit then       \ split As/Bs (BROWS!=BN): MFRAGS>1 or wide BN
+      MMA-CPN 0 do  i bufr ktr MMA-CP-CHUNK-F16  loop  exit   \ interleaved (BM=BN=64, MFRAGS=1)
    then
-   MMA-MFRAGS @ 1 > if bufr ktr MMA-CPW-STAGE exit then
-   MMA-CPN 0 do  i bufr ktr MMA-CP-CHUNK  loop ;
+   MMA-WIDE? if bufr ktr MMA-CPW-STAGE exit then              \ split As/Bs: MFRAGS>1 or wide BN
+   MMA-CPN 0 do  i bufr ktr MMA-CP-CHUNK  loop ;              \ interleaved (BM=BN=64, MFRAGS=1)
 
 \ single-buffer cp.async ISSUE, the audited mint core (dot habu-wire-cppslot-typestate-
 \ ce2463df): emits the As/Bs stage for this iteration's ONE slot (MMA-CP-STAGE verbatim)
@@ -1059,8 +1118,8 @@ TRUSTED: MMA-STAGE-ISSUE ( n n -- cpp-pending<p> )   MMA-CP-STAGE 0 ;
 \ the wide (MFRAGS>1) or non-wide K-tile. Called by name (not a quotation) so the multistage can emit it
 \ N times - once in the runtime steady body and once per unrolled epilogue tile.
 : MMA-KTILE-DISPATCH ( -- )
-   MMA-HALF? if MMA-MFRAGS @ 1 > if MMA-KTILE-F16-WIDE else MMA-KTILE-F16 then exit then   \ half path; mma token = MMA-ABT
-   MMA-MFRAGS @ 1 > if MMA-KTILE-WIDE else MMA-KTILE then ;
+   MMA-HALF? if MMA-WIDE? if MMA-KTILE-F16-WIDE else MMA-KTILE-F16 then exit then   \ half path; mma token = MMA-ABT
+   MMA-WIDE? if MMA-KTILE-WIDE else MMA-KTILE then ;
 
 : MMA-PIPE-KLOOP-MULTI ( -- )
    s" mov.u32 %r14,0;" PTX-L  s" mov.u32 %r17,0;" PTX-L           \ kt_pf = kt_cmp = 0
@@ -1113,13 +1172,15 @@ TRUSTED: MMA-STAGE-ISSUE ( n n -- cpp-pending<p> )   MMA-CP-STAGE 0 ;
    MMA-ABLATE @ if E-MMA-DTYPE throw then ;             \ ablation variants are the tf32 wide path only
 
 : MMA-BODY ( -- )
-   MMA-CHECK-DTYPE                                                  \ half semantic gate first: reject tf32-only feed knobs (BLDM/LMODE/ablate)
+   MMA-CHECK-BN                                                     \ BN geometry gate first: NTILES-derived checks below assume a legal BN
+   MMA-CHECK-DTYPE                                                  \ half semantic gate: reject tf32-only feed knobs (BLDM/LMODE/ablate)
    MMA-CHECK-BTF16                                                  \ before MMA-CHECK-BLDM, whose dtype-aware BTROW-B assumes a legal dtype
    MMA-CHECK-SMEM
    MMA-CHECK-BLDM
    MMA-CHECK-WARPS
    MMA-CHECK-EPI
-   MMA-MFRAGS @ 1 > if                                              \ MMA-KTILE-DISPATCH picks wide + dtype (byte-identical for tf32)
+   MMA-CHECK-REGS                                                   \ per-lane accumulators under the 255-register ceiling
+   MMA-WIDE? if                                                     \ WIDE path (MFRAGS>1 or BN>64); MMA-KTILE-DISPATCH picks wide + dtype
       MMA-THREAD-SETUP-WIDE  MMA-ACC-ZERO-WIDE  MMA-SETUP-WIDE
       MMA-STAGES @ 2 > if MMA-PIPE-KLOOP-MULTI else [: MMA-KTILE-DISPATCH ;] MMA-KLOOP then
       MMA-EPILOG @ if MMA-EPI-STORE else MMA-STORE-WIDE then  exit

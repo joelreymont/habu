@@ -227,6 +227,29 @@ variable GB-BLKY                       \ block Y dim: 16 (256 thr, 8-warp) / 8 (
    1 MMA-EPILOG !  s" -- EPILOGUE: " type
    GB-MMM-CFGW-B  0 MMA-EPILOG ! ;
 
+\ WIDE-BN bench config (dot habu-widen-bn-past): the BN=128/256 tile - the 4096-class geometry Triton's
+\ per-shape winners use (2048 = BM64xBN128, 4096 = BM128xBN256, docs/eval-triton.md GB10 sweep). Sets BN +
+\ warp grid + wide knobs and the N-tile grid edge (GB-OT = BN, so gridX = s/BN). Element-exact first
+\ (tools/ptx/mma-gemm-check.f MGC-CFG-BN, 0 mismatches). Restores the tf32 8-warp BN=64 default.
+: GB-MMM-CFG-BN ( n n n n n n n -- ) {: bk:n pad:n stages:n dyn:n mode:n mfrags:n bn:n :}
+   bk MMA-BK !  pad MMA-PAD !  stages MMA-STAGES !  dyn MMA-DYNSMEM !  mode MMA-LMODE !  mfrags MMA-MFRAGS !  bn MMA-BN !
+   MMA-DYNSMEM @ if MMA-SH-BYTES else 0 then GB-SMEM-DYN !
+   MMA-NTHREADS 16 / GB-BLKY !
+   s" == WIDE-BN MMM BN=" type bn GB-INT.  s"  MFRAGS=" type mfrags GB-INT.  s"  warps=" type MMA-WARPS @ GB-INT.
+   s"  BK=" type bk GB-INT.  s"  pad=" type pad GB-INT.  s"  stages=" type stages GB-INT.  s"  dyn=" type dyn GB-INT.
+   s"  frag=" type mode GB-INT.  s"  block=" type MMA-BROWS GB-INT. s" x" type bn GB-INT.  s"  smem=" type MMA-SMEM GB-INT. s" B ==" type cr
+   s" habu-gemm-bench" PTXTC:PREPARE
+   PTX-CAPTURE-ON  EMIT-MATMUL-MMA  PTX-CAPTURE-OFF
+   GB-ASSEMBLE
+   bn GB-OT !  MMA-BROWS GB-OTY !
+   s" MMM" GB-KERNEL
+   PTXTC:CLEAN
+   32 MMA-BK !  0 MMA-PAD !  2 MMA-STAGES !  0 MMA-DYNSMEM !  0 MMA-LMODE !  1 MMA-MFRAGS !  8 MMA-WARPS !  64 MMA-BN !
+   0 GB-SMEM-DYN !  64 GB-OT !  64 GB-OTY !  16 GB-BLKY ! ;
+: GB-MMM-CFG-BN4 ( n n n n n n n -- )                  \ 4-warp (2x2 grid) wide-BN
+   4 MMA-WARPS !  8 GB-BLKY !  s" -- 4-WARP: " type
+   GB-MMM-CFG-BN  8 MMA-WARPS !  16 GB-BLKY ! ;
+
 \ the raised-BK / bank-swizzled configuration space (all element-exact per tools/ptx/mma-gemm-check.f)
 : GB-MMM-SWEEP ( -- )
    32 0 2 0 0 GB-MMM-CFG               \ committed default baseline (BK=32, stages=2, scalar+cvt) - A/B reference
@@ -371,6 +394,25 @@ public
    GB-MMM-WIDE-B-SWEEP
    32 8 1 0 2 4 GB-MMM-CFGW4            \ 4-warp MFRAGS=4 stages=1 static ldmatrix-A (128x64) - 1024^3/2048^3 winner
    32 8 2 1 2 4 GB-MMM-CFGW4 ;          \ 4-warp MFRAGS=4 stages=2 dyn ldmatrix-A (128x64) - 512^3 winner
+
+\ WIDE-BN schedule sweep (dot habu-widen-bn-past): the FP32 CUDA-core roof reference, the committed BN=64
+\ 2048/4096 tf32 winners as same-session anchors, then the BN=128/256 tiles - the wide-N geometry Triton's
+\ per-shape winners use (2048 = BM64xBN128, 4096 = BM128xBN256, docs/eval-triton.md GB10 sweep). Every config
+\ is element-exact first (tools/ptx/mma-gemm-check.f MGC-CFG-BN, 0 mismatches). Best-of-3 at the sustained
+\ GEMM clock, run SOLO under the pinned 13.3 ptxas. Read the per-shape winner; the wide-N movers are expected
+\ on the compute-bound 2048/4096 columns (512/1024 stay occupancy/launch-gated). Referee = Triton 3.8 tf32
+\ tl.dot (docs/eval-triton.md GB10: 21.7 / 33.5 / 37.8 / 45.3 TFLOP/s).
+: GB-BN-SWEEP ( -- )
+   CUDA:OPEN? 0= if s" gemm-bench: libcuda unavailable -> SKIPPED (off-device)" type cr exit then
+   GB-MM                                \ FP32 CUDA-core roof reference (same-session clock anchor)
+   32 8 2 1 2 4 GB-MMM-CFGW             \ BN=64 8-warp MFRAGS=4 stages=2 dyn (256x64) - committed 2048 winner anchor
+   32 8 1 1 4 4 GB-MMM-CFGW-B           \ BN=64 8-warp MFRAGS=4 bpad=4 stages=1 dyn B-ldmatrix (256x64) - committed 4096 winner anchor
+   32 0 1 0 2 2 128 GB-MMM-CFG-BN4      \ BN=128 MFRAGS=2 4-warp stages=1 static ldmA (BM64xBN128; Triton 2048-winner geometry, 24 KB)
+   32 0 1 0 2 2 128 GB-MMM-CFG-BN       \ BN=128 MFRAGS=2 8-warp stages=1 static ldmA (BM128xBN128, 32 KB)
+   32 0 2 1 2 2 128 GB-MMM-CFG-BN       \ BN=128 MFRAGS=2 8-warp stages=2 dyn ldmA (BM128xBN128, 64 KB)
+   32 0 1 1 2 4 128 GB-MMM-CFG-BN       \ BN=128 MFRAGS=4 8-warp stages=1 dyn ldmA (BM256xBN128, 128 accs)
+   32 0 2 1 2 1 256 GB-MMM-CFG-BN       \ BN=256 MFRAGS=1 8-warp stages=2 dyn ldmA (BM64xBN256, 64 accs)
+   32 0 2 1 2 2 256 GB-MMM-CFG-BN ;     \ BN=256 MFRAGS=2 8-warp stages=2 dyn ldmA (BM128xBN256; Triton 4096-winner geometry, 128 accs, 96 KB)
 
 
 : GB-ALL ( -- )
