@@ -81,8 +81,8 @@ TYPE-FIELD:COUNT P-PF !
 TWX-LAY-N@        P-LAY !
 SCHEMA-N@     P-SCHN !
 SCHEMA-ROOT-N@ P-SCHR !
-TF-STR-U @    P-STRU !
-TF-PK-N @     P-PKN !
+TF-STR-U@    P-STRU !
+TF-PK-N@     P-PKN !
 
 TWX-CAND-START
    s" rbc" CHECKER-PACKAGE-PRIVATE s" cand" 2 TK-PRODUCT TWX-TFAM-DECL drop
@@ -108,8 +108,8 @@ TYPE-FIELD:COUNT P-PF @ T=
 TWX-LAY-N@         P-LAY @ T=
 SCHEMA-N@      P-SCHN @ T=
 SCHEMA-ROOT-N@ P-SCHR @ T=
-TF-STR-U @     P-STRU @ T=
-TF-PK-N @      P-PKN @ T=
+TF-STR-U@     P-STRU @ T=
+TF-PK-N@      P-PKN @ T=
 \ the candidate family cannot be found post-rollback.
 s" rbc" s" cand" TWX-TFAM-FIND-IN FOUNDF ! drop  FOUNDF @ 0 T=
 \ re-adding the exact same (package,tail) after rollback succeeds (no leaked dup).
