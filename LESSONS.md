@@ -1667,3 +1667,22 @@ fits.
   demand; a rescue engine copy lives outside the repo; and any workspace whose
   directory disappears gets its registration forgotten promptly so stale wc
   pointers cannot confuse later operations.
+- Clobber-lint was structurally blind to wrapped emitter calls: a `PKG:CALL`
+  macro (PROT-GUARD:CALL) is neither a bare mnemonic nor a `LABEL@ BL,` triple,
+  so its emitted branch-with-link was never counted, its register-move plus
+  guard-body clobbers were never modeled, and the link register was never
+  poisoned. The lint now models the guard contract, folds it into the
+  transitive-closure pass, and fails closed (named negative code) on any
+  `:CALL`-shaped token it does not model, so a future wrapped call cannot be
+  silently skipped. When a new emission *shape* is introduced, audit every
+  text-scanning lint for that shape the same day it lands.
+- A perf-band verdict on a contended machine measures the environment, not the
+  tree. With an external process (UnrealEditor) holding two to three cores, the
+  identical suite that passed in-band at load 4 failed marginal-fail with
+  correctness green at load 8+ on BOTH the merge candidate and the unmodified
+  baseline clone; the verdict's own empty=f/admissible=f fields flagged the
+  contention. Before treating a band failure as a regression (or stalling a
+  merge indefinitely), rerun the same suite on the last in-band-passing tree as
+  an A/B control: merge only when correctness is green on the exact candidate
+  tree, every owning gate passes, and the control proves the band failure
+  environmental. Re-verify the band on the next quiet-machine cold run.
