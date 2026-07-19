@@ -744,6 +744,21 @@ points stay listed.
   are numerically WRONG on purpose (correctness owned by `tools/ptx/mma-gemm-check.f`).
 - `maki/README.md` / `maki/STATUS.md` — Maki framework overview and current
   verification status outside the Habu trust root.
+- `maki/mha.f` — multi-head causal self-attention sublayer forward (single
+  sequence T, channels C, H heads, head dim hd), authored as `SPEC:` contraction
+  lines (QKV projections, per-head scores, A.V, and a head-merge output
+  projection over the composite head/head-dim index) composed by plain checked
+  colon words with named row ops: the inverse-sqrt-head-dim scale (`maki/attention.f`
+  ATTN-SCALE!) and the causal-masked row softmax (`maki/causal.f`
+  CAUSAL-SOFTMAX-ROWS), plus a named bias add and residual add. Toy fixed extents;
+  real shapes/batch arrive via PROMOTE + the extent-role product capability.
+- `maki/mha-test.f` — exact numeric parity of `MHA-FWD` against a reference
+  composed from the existing goldens (MATMUL/MM-NT/ATTN-SCALE!/
+  CAUSAL-SOFTMAX-ROWS), per-head slicing proof (head-major output blocks match the
+  per-head reference and stay isolated when one head's weights move), causal-mask
+  proof (a perturbed future position cannot change an earlier query's output),
+  named-throw negatives for malformed specs, and checker rejects of swapped-operand
+  candidates on both the transposed Q.K^T and the rank-3 head-merge contraction.
 - `maki/cad-kinds.f` — package-scoped nominal identities for Model CAD handles,
   indexes, shape/layout domains, effects, regions, the canonical artifact
   envelope provenance roles (artifact-kind, producer/config/numeric-policy/

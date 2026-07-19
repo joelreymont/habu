@@ -539,6 +539,15 @@ fits.
   dominates every downstream consumer — gate production, not each definer). Internal
   checker effects (literals, cell fetch/store, control words) build their rows directly
   and never parse signature strings.
+- **`SPEC:` (maki/spec.f) caps a contraction at 2 free + 2 contraction indices, so
+  compose multi-head attention accordingly (maki/mha.f).** The head MERGE folds into
+  ONE output-projection SPEC over a composite (head, head-dim) index —
+  `Y[hq hc] = O[hh hq hd] WO[hh hd hc] * +SUM hh hd` (2 free, 2 contraction, rank-3
+  factors) — no concat buffer, no per-head accumulation. The head SPLIT cannot: a
+  per-head projection output `O[hh hq hd]` is 3 free indices → `E-SPEC-ARITY`, so
+  loop heads at the host level and bind each head's weight/activation block before a
+  2-free SPEC projection. Rank-3 `TENSOR:` factors and the 2-contraction `+SUM a b`
+  form both work; a swapped operand in either is still an author-time reject.
 
 ## Tool & Infra
 
