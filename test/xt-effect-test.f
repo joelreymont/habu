@@ -10,7 +10,7 @@
 \ spawned child and read its printed verdict:
 \   fit    `['] A execute`  (A's ( n -- n n ) fits the row)         -> CERT (-1)
 \   misfit `['] A execute`  on ( -- n ) (A needs an input, none)    -> REJ  (0)
-\   catch/is fit + misfit, and an unsafe-definer tick (`['] deftype`) -> REJ.
+\   catch/is fit + misfit, and an unsafe-definer tick (`['] deflinear`) -> REJ.
 \ Tier interop with the top-row tracker (src/core/top-row.f): the child tier is
 \ staged by HABU_TOP_TIER (XE-RUN = tier-1 warn, XE-RUN2 = tier-2 reject). XE-TIER1
 \ pins the tier-1 warn contract (`' FOO2 execute` warns once, rc 0). XE-TIER2 pins
@@ -151,7 +151,7 @@ variable XE-CNT
    s" v5:" s" I ( n -- n n ) ['] A catch"       XE-CASE-LINE
    s" v6:" s" J ( -- ) ['] SP is ACT"           XE-CASE-LINE
    s" v7:" s" K ( -- ) ['] A is ACT"            XE-CASE-LINE
-   s" v8:" s" F ( -- ) ['] deftype execute"     XE-CASE-LINE
+   s" v8:" s" F ( -- ) ['] deflinear execute"     XE-CASE-LINE
    s" v9:" s" E ( n -- n ) ['] A +"             XE-CASE-LINE
    SB$ ;
 
@@ -180,7 +180,7 @@ variable XE-CNT
    s" v6:<<CERT>>" XE-HAS
    s" ['] A is ACT (effect misfits the defer) rejects" T-LABEL
    s" v7:<<REJ>>" XE-HAS
-   s" ['] deftype execute (unsafe definer tick) rejects" T-LABEL
+   s" ['] deflinear execute (unsafe definer tick) rejects" T-LABEL
    s" v8:<<REJ>>" XE-HAS
    s" ['] A + (non-xt-consumer sink) stays a plain n and certifies" T-LABEL
    s" v9:<<CERT>>" XE-HAS ;

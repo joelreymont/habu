@@ -286,7 +286,6 @@ that source is explicitly certified; they are not stale-checked by the default
 | PTR-VARIABLE | `--` | Pointer variables are created through `CREATE`/`DOES>` with a pointer-valued runtime effect that the checker cannot infer from the definer body. | `test/pointer-storage-test.f` (stdlib/tail-pure, test/run.f) | src/core/pointer-storage-effects.f | 2026-07-13 | prim-axiom | habu-primitive-effect-axiom-1119f176 |
 | CFIELD: | `ptr a n -- ptr a n` | Byte field definer preserves the layout cursor while creating a byte-pointer accessor; `CREATE`/`DOES>` keeps this as a trusted defining boundary. | `test/gate-dictionary.f`, `lib/vector-test.f`, `test/run.f` | src/core/structures-effects.f | 2026-06-30 | prim-axiom | habu-primitive-effect-axiom-1119f176 |
 | END-STRUCTURE | `ptr a n --` | Sealing a structure consumes the layout cursor and writes the final byte size into the created size word. | `test/gate-dictionary.f`, `lib/vector-test.f`, `test/run.f` | src/core/structures-effects.f | 2026-06-30 | prim-axiom | habu-primitive-effect-axiom-1119f176 |
-| DTC-EVAL | `--` | Audited `evaluate` wrapper for `deftype`: compiles the constructed `TRUSTED: >NAME ( n -- NAME ) ;` / `NAME>N` converter shapes so a user-declared nominal integer gets its explicit no-op identity casts. `evaluate` cannot be checker-typed; each generated converter is a proven identity, so this single boundary covers every deftype-derived pair. | `test/engine-suite.f`, `test/run.f` | src/core/roles.f | 2026-07-03 | prim-axiom | habu-typed-defining-words-aa224eb5 |
 | NG-EVAL | `--` | Audited `evaluate` wrapper for `NOMINAL:`: compiles each generated `TRUSTED: >NAME ( n -- tail ) ;` / `NAME>N` value-nominal converter so the check hook certifies it. `evaluate` cannot be checker-typed; each generated body is a proven no-op identity cast, so this single boundary covers every declaration-derived converter pair (the src/core/roles.f DTC-EVAL / maki/extent.f XG-EVAL pattern). | `test/value-nominal-suite.f`, `test/run.f` | lib/type/value-nominal.f | 2026-07-18 | prim-axiom | habu-primitive-effect-axiom-1119f176 |
 | >IDX | `n -- idx` | Runtime identity cast from a generic cell to the nominal index role; the checker cannot infer nominal role refinement from an empty body. | `test/gate-engine.f`, `test/run.f` | src/core/roles.f | 2026-06-26 | prim-axiom | habu-primitive-effect-axiom-1119f176 |
 | IDX>N | `idx -- n` | Runtime identity cast from the nominal index role back to a generic cell; the checker cannot infer nominal role erasure from an empty body. | `test/gate-engine.f`, `test/run.f` | src/core/roles.f | 2026-06-26 | prim-axiom | habu-primitive-effect-axiom-1119f176 |
@@ -1160,14 +1159,7 @@ test/type-decl-suite.f:TWX-TFAM-SLOTS@ test-metaprog habu-seal-set-check-b3676b3
 test/type-decl-suite.f:TWX-TFAM-SUM? test-metaprog habu-seal-set-check-b3676b33
 test/type-decl-suite.f:TWX-TFAM-VIS@ test-metaprog habu-seal-set-check-b3676b33
 test/type-decl-suite.f:TWX-UNIFY test-metaprog habu-seal-set-check-b3676b33
-test/type-nominal-suite.f:TWX-CTN@ test-metaprog habu-seal-set-check-b3676b33
-test/type-nominal-suite.f:TWX-CT-FIND test-metaprog habu-seal-set-check-b3676b33
-test/type-nominal-suite.f:TWX-CT-ADD-NOMINAL test-metaprog habu-seal-set-check-b3676b33
-test/type-nominal-suite.f:TWX-RBF-PUSH test-metaprog habu-seal-set-check-b3676b33
-test/type-nominal-suite.f:TWX-RBF-POP test-metaprog habu-seal-set-check-b3676b33
-test/type-nominal-suite.f:TWX-SNAP-PREP test-metaprog habu-seal-set-check-b3676b33
-test/type-nominal-suite.f:TN-NEED-IDX test-metaprog habu-primitive-effect-axiom-1119f176
-test/type-nominal-suite.f:TN-NEED-N test-metaprog habu-primitive-effect-axiom-1119f176
+test/value-nominal-suite.f:TWX-SNAP-PREP test-metaprog habu-seal-set-check-b3676b33
 test/type-family-suite.f:TWX-CHECKER-SNAPSHOT-PREPARE test-metaprog habu-seal-set-check-b3676b33
 test/type-family-suite.f:TWX-T-WIDTH test-metaprog habu-epic-type-system-b88c9ecc
 test/type-family-suite.f:TWX-MK-NULLARY test-metaprog habu-epic-type-system-b88c9ecc

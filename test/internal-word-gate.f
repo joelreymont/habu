@@ -33,6 +33,7 @@ require lib/process-argv.f
 require lib/process-env.f
 require lib/test/subject.f
 require test/tail-ratchet.f
+require lib/type/value-nominal.f   \ NOMINAL: - the declared-nominal exemplar used at top level
 
 2048 constant IWG-CAP
 70 constant IWG-REJECT-RC           \ interpret-level reject exit (RC-REJECT)
@@ -275,13 +276,14 @@ public
 : IWG-PF-RAW-FORGE$ ( -- ptr u8 n )      \ raw implementation names are not checked/public
    s" : IWG-PF-RAW ( n n ptr u8 n -- n bool ) PF-FIND ;" ;
 
-\ The roles.f nominal definers are the same hazard class as the openers but
-\ admitted via certified usigs, not PRIM: axioms (dot
-\ habu-checker-deftype-deflinear-8e9d1dc5): declare + use each at top level.
+\ The NOMINAL: nominal surface and the roles.f DEFLINEAR/VALUE-RECORD definers
+\ are the same hazard class as the openers but admitted via certified usigs, not
+\ PRIM: axioms (dot habu-checker-deftype-deflinear-8e9d1dc5): declare + use each
+\ at top level.
 
-: IWG-ROLES-TOP-FORGE$ ( -- ptr u8 n )   \ DEFTYPE/DEFLINEAR/VALUE-RECORD at top level
+: IWG-ROLES-TOP-FORGE$ ( -- ptr u8 n )   \ NOMINAL:/DEFLINEAR/VALUE-RECORD at top level
    SB-RESET
-   s" DEFTYPE iwgid" SB-APPEND IWG-LF
+   s" NOMINAL: iwgid" SB-APPEND IWG-LF
    s" : IWG-ID-RT ( n -- n ) >iwgid iwgid>N ;" SB-APPEND IWG-LF
    s" 7 IWG-ID-RT . cr" SB-APPEND IWG-LF
    s" DEFLINEAR iwgown" SB-APPEND IWG-LF
@@ -316,9 +318,9 @@ public
    SB-RESET
    s" package IWGXP" SB-APPEND IWG-LF
    s" public" SB-APPEND IWG-LF
-   s" EXPORT DEFTYPE" SB-APPEND IWG-LF
+   s" EXPORT DEFLINEAR" SB-APPEND IWG-LF
    s" ;package" SB-APPEND IWG-LF
-   s" : IWG-XBAD ( -- ) IWGXP:DEFTYPE ;" SB-APPEND IWG-LF
+   s" : IWG-XBAD ( -- ) IWGXP:DEFLINEAR ;" SB-APPEND IWG-LF
    SB$ ;
 
 : IWG-EXPORT-OK-FORGE$ ( -- ptr u8 n )   \ EXPORT of a normal checked word still works
@@ -369,10 +371,8 @@ public
    s" ENUM" IWG-NEG-OPENER
    s" PRODUCT in a checked body is rejected unsafe" T-LABEL
    s" PRODUCT" IWG-NEG-OPENER
-   s" DEFTYPE/DEFLINEAR/VALUE-RECORD still work at top level" T-LABEL
+   s" NOMINAL:/DEFLINEAR/VALUE-RECORD still work at top level" T-LABEL
    IWG-ROLES-TOP-FORGE$ IWG-EXEC:SUBJECT IWG-ASSERT-OK
-   s" DEFTYPE in a checked body is rejected unsafe" T-LABEL
-   s" DEFTYPE" IWG-NEG-OPENER
    s" DEFLINEAR in a checked body is rejected unsafe" T-LABEL
    s" DEFLINEAR" IWG-NEG-OPENER
    s" VALUE-RECORD in a checked body is rejected unsafe" T-LABEL
@@ -381,8 +381,6 @@ public
    s" cast:" IWG-NEG-OPENER
    s" EXPORT of a checked word still works" T-LABEL
    IWG-EXPORT-OK-FORGE$ IWG-EXEC:SUBJECT IWG-ASSERT-OK
-   s" EXPORT DEFTYPE rejects E-EXPORT-UNSAFE" T-LABEL
-   s" DEFTYPE" IWG-NEG-EXPORT
    s" EXPORT DEFLINEAR rejects E-EXPORT-UNSAFE" T-LABEL
    s" DEFLINEAR" IWG-NEG-EXPORT
    s" EXPORT VALUE-RECORD rejects E-EXPORT-UNSAFE" T-LABEL
@@ -411,22 +409,22 @@ public
 : IWG-DEFER-TICK-FORGE$ ( -- ptr u8 n )  \ ['] <unsafe> is X : rejects at 'is'
    SB-RESET
    s" defer IWG-DACT ( -- )" SB-APPEND IWG-LF
-   s" : IWG-DSET ( -- ) ['] deftype is IWG-DACT ;" SB-APPEND IWG-LF
+   s" : IWG-DSET ( -- ) ['] deflinear is IWG-DACT ;" SB-APPEND IWG-LF
    SB$ ;
 
-: IWG-DEFER-QUOT-FORGE$ ( -- ptr u8 n )  \ [: <unsafe> ;] is X : rejects at 'deftype'
+: IWG-DEFER-QUOT-FORGE$ ( -- ptr u8 n )  \ [: <unsafe> ;] is X : rejects at 'deflinear'
    SB-RESET
    s" defer IWG-DACT2 ( -- )" SB-APPEND IWG-LF
-   s" : IWG-DSET2 ( -- ) [: deftype ;] is IWG-DACT2 ;" SB-APPEND IWG-LF
+   s" : IWG-DSET2 ( -- ) [: deflinear ;] is IWG-DACT2 ;" SB-APPEND IWG-LF
    SB$ ;
 
 : IWG-DEFER-CASES ( -- )
    s" ['] <unsafe> is X (tick laundering) rejects at 'is'" T-LABEL
    IWG-DEFER-TICK-FORGE$ IWG-EXEC:SUBJECT
    s" at 'is'" IWG-ASSERT-DIAG
-   s" [: <unsafe> ;] is X (quotation laundering) rejects at 'deftype'" T-LABEL
+   s" [: <unsafe> ;] is X (quotation laundering) rejects at 'deflinear'" T-LABEL
    IWG-DEFER-QUOT-FORGE$ IWG-EXEC:SUBJECT
-   s" at 'deftype'" IWG-ASSERT-DIAG ;
+   s" at 'deflinear'" IWG-ASSERT-DIAG ;
 
 \ --- laundered-execute closure (dot habu-checker-exec-of-5923c543). Executing an
 \ xt fetched from an untyped variable is now rejected at CHECK time as
@@ -472,8 +470,8 @@ public
    IWG-ERR$ s" opaque xt of unknown provenance" CONTAINS? TTRUE ;
 
 : IWG-LAUNDER-CASES ( -- )
-   s" deftype laundered through a variable rejects at CHECK (E-EXEC-OPAQUE-XT)" T-LABEL
-   s" deftype" IWG-LAUNDER-DEFINER$ IWG-EXEC:SUBJECT
+   s" deflinear laundered through a variable rejects at CHECK (E-EXEC-OPAQUE-XT)" T-LABEL
+   s" deflinear" IWG-LAUNDER-DEFINER$ IWG-EXEC:SUBJECT
    IWG-ASSERT-OPAQUE
    s" value-record laundered through a variable rejects at CHECK" T-LABEL
    s" VALUE-RECORD" IWG-LAUNDER-DEFINER$ IWG-EXEC:SUBJECT
@@ -484,8 +482,8 @@ public
    s" PF registry-cell write laundered through a variable rejects at CHECK, not runtime" T-LABEL
    IWG-PF-LAUNDER-FORGE$ IWG-EXEC:SUBJECT
    IWG-ASSERT-OPAQUE
-   s" deftype laundered through a variable + catch also rejects at CHECK" T-LABEL
-   s" deftype" IWG-CATCH-DEFINER$ IWG-EXEC:SUBJECT
+   s" deflinear laundered through a variable + catch also rejects at CHECK" T-LABEL
+   s" deflinear" IWG-CATCH-DEFINER$ IWG-EXEC:SUBJECT
    IWG-ASSERT-OPAQUE-CATCH ;
 
 : IWG-POSITIVES ( -- )
@@ -556,7 +554,7 @@ public
 package IWG-PARITY
 
 7 constant DIRECT-N
-59 constant SUBJECT-N
+57 constant SUBJECT-N
 : RESULT ( -- ptr u8 n ptr u8 n n )
    IWG-OUT IWG-OUT-U @ IWG-ERR IWG-ERR-U @ IWG-RC @ ;
 

@@ -5920,7 +5920,6 @@ variable CURSYM
    a u s" sumtype" CORE-STR=CI IF RES-TRUE EXIT THEN
    a u s" enum" CORE-STR=CI IF RES-TRUE EXIT THEN
    a u s" product" CORE-STR=CI IF RES-TRUE EXIT THEN
-   a u s" deftype" CORE-STR=CI IF RES-TRUE EXIT THEN
    a u s" deflinear" CORE-STR=CI IF RES-TRUE EXIT THEN
    a u s" value-record" CORE-STR=CI IF RES-TRUE EXIT THEN
    a u s" cast:" CORE-STR=CI IF RES-TRUE EXIT THEN
@@ -5938,13 +5937,13 @@ variable CURSYM
 \ the canonical name list for the DO-TOK1 body reject and for the symbol-less
 \ engine/syntax tokens ([, ], postpone, immediate, compile,, evaluate, trust,
 \ set-check, set-preflight) that never intern a checker symbol. The
-\ definers/openers (deftype,
-\ deflinear, value-record, sumtype, enum, product, typefamily, layout-buffer)
+\ definers/openers (deflinear, value-record, sumtype, enum, product,
+\ typefamily, layout-buffer)
 \ DO intern a symbol, and those are exactly the words that carry a checked
 \ signature or a prim axiom — so they are the only ones an EXPORT alias could
 \ mint. UNSAFE-SET-SEAL interns their symbol IDs here at seal time; the EXPORT
 \ gate (EXPORT-RESOLVE) then refuses to re-export any of them BY IDENTITY: a
-\ qualified reference (PKG:DEFTYPE), a differently-spelled reference, or any
+\ qualified reference (PKG:DEFLINEAR), a differently-spelled reference, or any
 \ future rename that still resolves to the same symbol is rejected, not just the
 \ bare canonical spelling the tail-name check catches. Storing IDs (not
 \ pointers) keeps the set snapshot-stable; it is monotonic and never rolled back
@@ -5980,7 +5979,6 @@ variable UNSAFE-SYM-N
 \ definer/opener is interned (end of roles.f). Idempotent: UNSAFE-SYM-ADD dedups,
 \ and an unresolved name (symbol 0) is skipped.
 : UNSAFE-SET-SEAL ( -- )
-   s" deftype"       UNSAFE-NAME-ADD
    s" deflinear"     UNSAFE-NAME-ADD
    s" value-record"  UNSAFE-NAME-ADD
    s" cast:"         UNSAFE-NAME-ADD

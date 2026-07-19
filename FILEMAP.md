@@ -1887,7 +1887,7 @@ points stay listed.
 - `test/xt-effect-test.f` — xt<effect> value regressions (dot
   habu-typed-top-xt-096a8f1b): child candidate probes assert `['] W` retypes to
   xt<effect(W)> so `['] A execute`/`['] SP catch`/`['] SP is ACT` fit-certify and
-  their misfits reject, an unsafe-definer tick (`['] deftype`) rejects, and a
+  their misfits reject, an unsafe-definer tick (`['] deflinear`) rejects, and a
   non-xt-consumer sink (`['] A +`) keeps the plain xt cell; plus the tier-1
   `' FOO2 execute` underflow warning stays and the pre-armed tier-2 `0 0 catch`
   warning is pinned.
@@ -2057,9 +2057,7 @@ points stay listed.
 - `test/engine-suite.f` — native engine behavior suite.
 - `test/extent-substrate-probe.f` — standalone decision-record demo (habu-choose-extent-nominal): TFAM parametric families type idx<#M> with two extents distinct and host BTC-7's #B*#T product structure; run over stdin, see docs/extent-substrate.md.
 - `test/type-decl-suite.f` — behavior suite for the TYPEFAMILY/SUMTYPE declaration grammar (positives, negatives, rollback, multi-error, diagnostics).
-- `test/type-nominal-suite.f` — behavior contract for declarable nominal integer types (DEFTYPE roles): same-role accept, other-role/generic-int reject, explicit converters, rollback transactionality, snapshot persistence.
-- `test/type-nominal-dup-bad.f` — child-process negative fixture: a duplicate nominal declaration is refused fail-closed (exit 70, "bad or duplicate signature type").
-- `test/value-nominal-suite.f` — behavior contract for the `NOMINAL:` surface (lib/type/value-nominal.f): same-nominal accept, other-nominal/generic-int reject, explicit converters, converter no-launder, demanded-input direction, and package scoping (same name in two packages stays distinct).
+- `test/value-nominal-suite.f` — behavior contract for the `NOMINAL:` surface (lib/type/value-nominal.f): same-nominal accept, other-nominal/generic-int reject, explicit converters, converter no-launder, demanded-input direction, package scoping (same name in two packages stays distinct), and snapshot-persist survival.
 - `test/value-nominal-dup-bad.f` — child-process negative fixture: a duplicate `NOMINAL:` in one package is refused fail-closed (exit 67, "duplicate family").
 - `test/cast-suite.f` — positive behavior contract for the `CAST:` checked retype declarer (src/core/roles.f + checker.f CAST-PEND window): empty-body and guarded nominal casts, runtime value pass-through, guard throw, parametric round-trip and generic projection, and checked-caller certification against the published row.
 - `test/cast-negative-suite.f` — reject contract for `CAST:`: E-CAST-ARITY/E-CAST-CLASS/E-CAST-FAM named rejects, identity-certification failures (net-stack and input-consuming bodies), and the unsafe-token reject of `cast:` inside a checked body.

@@ -385,11 +385,15 @@ variable GDX-TRUST-MAN-U
    s" byte_start" s" 8" s" bad nominal byte_start" GDX-EXPECT-ERR-JRAW
    s" byte_end" s" 11" s" bad nominal byte_end" GDX-EXPECT-ERR-JRAW ;
 
+\ The check CLI accepts a source that declares a nominal locally and uses it in
+\ a signature. The declarer is DEFLINEAR, whose interpret word survives and runs
+\ in the child engine; a DEFLINEAR value moves exactly once, so JWIDGET passes it
+\ through by identity rather than dropping it.
 : GDX-SOURCE-LOCAL-NOMINAL ( -- )
    GE-HB-RESET
    GE-SRC-RESET
-   s" deftype widget" GE-SRC-LINE
-   s" : JWIDGET ( widget -- ) drop ;" GE-SRC-LINE
+   s" DEFLINEAR widget" GE-SRC-LINE
+   s" : JWIDGET ( widget -- widget ) ;" GE-SRC-LINE
    s" tools/check.f --json-errors rejected source-local nominal declaration" GDX-CHECK-JSON-OK ;
 
 : GDX-REPAIR-CLASSES ( -- )

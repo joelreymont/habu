@@ -39,8 +39,8 @@
 \ (E-TFAM-DUP / reserved-name throw), so no silent shadowing or rename.
 \
 \ TRUSTED BOUNDARY. The single static trusted site is NG-EVAL, the audited
-\ `evaluate` that compiles each generated converter (the roles.f DTC-EVAL /
-\ maki/extent.f XG-EVAL pattern): `evaluate` cannot be checker-typed, and the
+\ `evaluate` that compiles each generated converter (the maki/extent.f XG-EVAL /
+\ maki/cad.f CAP-COMPILE-RUN pattern): `evaluate` cannot be checker-typed, and the
 \ per-nominal `n <-> family-scalar` retype is the sanctioned nominal-cast the
 \ checker cannot yet express (the roles.f role-cast gap, tracked project-wide by
 \ the retire-TRUSTED epic habu-epic-type-habu-a34713f0). Each generated body is a

@@ -29,7 +29,6 @@ require tools/namespace-lint-core.f
    s" variable V"         NL-COUNT 1 T=
    s" create BUF 4 allot" NL-COUNT 1 T=
    s" 2 LAYOUT-BUFFER BUF sample" NL-COUNT 1 T=
-   s" DEFTYPE handle"     NL-COUNT 1 T=
    s" KERNEL: K dup ;"    NL-COUNT 1 T= ;
 
 : MNLT-CASE ( -- )

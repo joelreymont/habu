@@ -405,53 +405,68 @@ variable CKT-PAR-U
    s" TRUSTED: CKT-NOM-TRUSTED ( -- ) DEFLINEAR ( -- ) ;" SB-APPEND
    SB$ ;
 
-package CKT-PKG-DEFTYPE
+\ Nominal-declarer sources for the check CLI's package-scoping contract. These
+\ feed a live child engine (CHK-RUN-HB) and are checked end to end, so they use
+\ DEFLINEAR, the nominal declarer whose interpret word survives and which the
+\ check tool's static scanner and preverify path both understand. (The retired
+\ DEFTYPE word can no longer run in the child; the NOMINAL: surface cannot yet
+\ traverse the check tool's static/preverify path — that lands in stage B, when
+\ the family substrate is taught to check-core.f/verify-source.f.) A DEFLINEAR
+\ type is one linear cell whose value moves exactly once, so bodies pass it
+\ through by identity rather than dropping or binding it.
+package CKT-PKG-LINEAR
 
 private
 
 : GOOD$ ( -- ptr u8 n )
    SB-RESET
-   s" package CKT-DTP-PRIV" SB-APPEND $0a SB-APPEND-C
-   s" deftype ckt-row-id" SB-APPEND $0a SB-APPEND-C
-   s" : PRIVATE-CAST ( n -- ckt-row-id ) >ckt-row-id ;" SB-APPEND $0a SB-APPEND-C
+   s" package CKL-PRIV" SB-APPEND $0a SB-APPEND-C
+   s" DEFLINEAR ckl-id" SB-APPEND $0a SB-APPEND-C
+   s" private" SB-APPEND $0a SB-APPEND-C
+   s" : CKL-PRIV-PASS ( ckl-id -- ckl-id ) ;" SB-APPEND $0a SB-APPEND-C
    s" public" SB-APPEND $0a SB-APPEND-C
-   s" : ROUNDTRIP ( n -- n ) >ckt-row-id ckt-row-id>N ;" SB-APPEND $0a SB-APPEND-C
-   s" : HOLD ( ckt-row-id -- ckt-row-id ) {: x:ckt-row-id :} x ;" SB-APPEND $0a SB-APPEND-C
+   s" : CKL-ROUNDTRIP ( ckl-id -- ckl-id ) CKL-PRIV-PASS ;" SB-APPEND $0a SB-APPEND-C
    s" ;package" SB-APPEND $0a SB-APPEND-C
-   s" package CKT-DTP-PRIV" SB-APPEND $0a SB-APPEND-C
-   s" : REOPEN ( n -- ckt-row-id ) PRIVATE-CAST ;" SB-APPEND $0a SB-APPEND-C
+   s" package CKL-PRIV" SB-APPEND $0a SB-APPEND-C
+   s" : CKL-REOPEN ( ckl-id -- ckl-id ) CKL-PRIV-PASS ;" SB-APPEND $0a SB-APPEND-C
    s" ;package" SB-APPEND $0a SB-APPEND-C
-   s" package CKT-DTP-PUB" SB-APPEND $0a SB-APPEND-C
-   s" public" SB-APPEND $0a SB-APPEND-C
-   s" deftype ckt-pub-id" SB-APPEND $0a SB-APPEND-C
-   s" ;package" SB-APPEND $0a SB-APPEND-C
-   s" : CKT-PUB-ROUNDTRIP ( n -- n ) CKT-DTP-PUB:>ckt-pub-id CKT-DTP-PUB:ckt-pub-id>N ;" SB-APPEND
+   s" : CKL-USE ( ckl-id -- ckl-id ) CKL-PRIV:CKL-ROUNDTRIP ;" SB-APPEND
    SB$ ;
 
+\ A package-private word is not visible unqualified in another package: the
+\ child engine hard-dies E-UNDEFINED and the check CLI reports it faithfully.
 : CROSS$ ( -- ptr u8 n )
    SB-RESET
-   s" package CKT-DTP-A" SB-APPEND $0a SB-APPEND-C
-   s" deftype ckt-a-id" SB-APPEND $0a SB-APPEND-C
+   s" package CKL-A" SB-APPEND $0a SB-APPEND-C
+   s" DEFLINEAR ckl-a-id" SB-APPEND $0a SB-APPEND-C
+   s" private" SB-APPEND $0a SB-APPEND-C
+   s" : CKL-A-PRIV ( ckl-a-id -- ckl-a-id ) ;" SB-APPEND $0a SB-APPEND-C
    s" ;package" SB-APPEND $0a SB-APPEND-C
-   s" package CKT-DTP-B" SB-APPEND $0a SB-APPEND-C
-   s" : CROSS ( n -- ckt-a-id ) >ckt-a-id ;" SB-APPEND $0a SB-APPEND-C
+   s" package CKL-B" SB-APPEND $0a SB-APPEND-C
+   s" : CROSS ( ckl-a-id -- ckl-a-id ) CKL-A-PRIV ;" SB-APPEND $0a SB-APPEND-C
    s" ;package" SB-APPEND
    SB$ ;
 
+\ Same encapsulation seen from global scope: the package-private word does not
+\ leak out, so the leaking reference is E-UNDEFINED.
 : GLOBAL$ ( -- ptr u8 n )
    SB-RESET
-   s" package CKT-DTP-HIDDEN" SB-APPEND $0a SB-APPEND-C
-   s" deftype ckt-hidden-id" SB-APPEND $0a SB-APPEND-C
+   s" package CKL-HIDDEN" SB-APPEND $0a SB-APPEND-C
+   s" DEFLINEAR ckl-hidden-id" SB-APPEND $0a SB-APPEND-C
+   s" private" SB-APPEND $0a SB-APPEND-C
+   s" : CKL-HIDDEN-PRIV ( ckl-hidden-id -- ckl-hidden-id ) ;" SB-APPEND $0a SB-APPEND-C
    s" ;package" SB-APPEND $0a SB-APPEND-C
-   s" : GLOBAL-LEAK ( n -- ckt-hidden-id ) >ckt-hidden-id ;" SB-APPEND
+   s" : GLOBAL-LEAK ( ckl-hidden-id -- ckl-hidden-id ) CKL-HIDDEN-PRIV ;" SB-APPEND
    SB$ ;
 
+\ Two nominals declared in one package are distinct types: producing the left
+\ one where the signature demands the right one is an E-MISMATCH.
 : DISTINCT$ ( -- ptr u8 n )
    SB-RESET
-   s" package CKT-DTP-DIST" SB-APPEND $0a SB-APPEND-C
-   s" deftype ckt-left-id" SB-APPEND $0a SB-APPEND-C
-   s" deftype ckt-right-id" SB-APPEND $0a SB-APPEND-C
-   s" : WRONG-ROLE ( n -- ckt-right-id ) >ckt-left-id ;" SB-APPEND $0a SB-APPEND-C
+   s" package CKL-DIST" SB-APPEND $0a SB-APPEND-C
+   s" DEFLINEAR ckl-left-id" SB-APPEND $0a SB-APPEND-C
+   s" DEFLINEAR ckl-right-id" SB-APPEND $0a SB-APPEND-C
+   s" : WRONG ( ckl-left-id -- ckl-right-id ) ;" SB-APPEND $0a SB-APPEND-C
    s" ;package" SB-APPEND
    SB$ ;
 
@@ -921,7 +936,7 @@ create CKT-BIG $2000 allot   variable CKT-BIG-U
    CKT-LIST$ CKT-NOM-SCAN-BODY$ WRITE-ALL
    CKT-SCAN-NOMINAL 0 T= ;
 
-package CKT-PKG-DEFTYPE
+package CKT-PKG-LINEAR
 
 public
 
@@ -936,22 +951,22 @@ public
    {: outu:n erru:n :}
    outu 0 T=
    CKT-ERR erru s" E-UNDEFINED" CONTAINS? TTRUE
-   CKT-ERR erru s" >ckt-a-id" CONTAINS? TTRUE ;
+   CKT-ERR erru s" CKL-A-PRIV" CONTAINS? TTRUE ;
 
 : GLOBAL ( -- )
    GLOBAL$ CKT-DIRECT-JSON-STDIN 70 T=
    {: outu:n erru:n :}
    outu 0 T=
    CKT-ERR erru s" E-UNDEFINED" CONTAINS? TTRUE
-   CKT-ERR erru s" >ckt-hidden-id" CONTAINS? TTRUE ;
+   CKT-ERR erru s" CKL-HIDDEN-PRIV" CONTAINS? TTRUE ;
 
 : DISTINCT ( -- )
    DISTINCT$ CKT-DIRECT-JSON-STDIN 70 T=
    {: outu:n erru:n :}
    outu 0 T=
    CKT-ERR erru s" E-MISMATCH" CONTAINS? TTRUE
-   CKT-ERR erru s" ckt-right-id" CONTAINS? TTRUE
-   CKT-ERR erru s" ckt-left-id" CONTAINS? TTRUE ;
+   CKT-ERR erru s" ckl-right-id" CONTAINS? TTRUE
+   CKT-ERR erru s" ckl-left-id" CONTAINS? TTRUE ;
 
 ;package
 
@@ -1250,10 +1265,10 @@ variable CKTP-DOC-U
    s" check/value-record-noend" [: CKT-TEST-VREC-NOEND ;] CKT-RUN
    s" check/enum-noend-cli" [: CKT-TEST-ENUM-NOEND-CLI ;] CKT-RUN
    s" check/nominal-scan-top-level" [: CKT-TEST-NOMINAL-SCAN-TOP-LEVEL ;] CKT-RUN
-   s" check/package-deftype-good" [: CKT-PKG-DEFTYPE:GOOD ;] CKT-RUN
-   s" check/package-deftype-cross" [: CKT-PKG-DEFTYPE:CROSS ;] CKT-RUN
-   s" check/package-deftype-global" [: CKT-PKG-DEFTYPE:GLOBAL ;] CKT-RUN
-   s" check/package-deftype-distinct" [: CKT-PKG-DEFTYPE:DISTINCT ;] CKT-RUN
+   s" check/package-linear-good" [: CKT-PKG-LINEAR:GOOD ;] CKT-RUN
+   s" check/package-linear-cross" [: CKT-PKG-LINEAR:CROSS ;] CKT-RUN
+   s" check/package-linear-global" [: CKT-PKG-LINEAR:GLOBAL ;] CKT-RUN
+   s" check/package-linear-distinct" [: CKT-PKG-LINEAR:DISTINCT ;] CKT-RUN
    s" check/package-family-good" [: CKT-PKG-FAM:GOOD ;] CKT-RUN
    s" check/package-family-two" [: CKT-PKG-FAM:TWO ;] CKT-RUN
    s" check/package-family-bogus" [: CKT-PKG-FAM:BOGUS ;] CKT-RUN

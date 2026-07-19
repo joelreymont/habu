@@ -1,6 +1,6 @@
 \ value-nominal-suite.f - behavior contract for the NOMINAL: declaration surface
 \ (lib/type/value-nominal.f: package-scoped arity-0 type-family nominals + generated
-\ converters). Run BY THE ENGINE over stdin, like test/type-nominal-suite.f:
+\ converters). Run BY THE ENGINE over stdin, like test/type-family-suite.f:
 \     bin/hb < test/value-nominal-suite.f
 \ Registered as a positive gate case in test/candidate-validation.f.
 \
@@ -39,6 +39,10 @@ variable #CASE
 \ silence expected rejection diagnostics (verdicts are asserted, not printed).
 create VNDIAG-BUF 8192 allot
 VNDIAG-BUF 8192 DIAG-BUFFER!
+
+\ whitebox shim (dot habu-hb-crash-bare pattern): the checker-internal snapshot
+\ bake reached through a named trusted shim, exactly like test/type-family-suite.f.
+TRUSTED: TWX-SNAP-PREP ( -- ) CHECKER-SNAPSHOT-PREPARE ;
 
 \ ---------------------------------------------------------------------------
 \ 1. a declared value nominal, checked inside its own package.
@@ -94,6 +98,23 @@ s" VN-C-SAME ( serial -- serial )"          CHECK-QUIET-CANDIDATE! -1 T=
 \ 3. an undeclared nominal name is rejected as an unknown signature type.
 \ ---------------------------------------------------------------------------
 s" VN-UNDECL ( never-declared -- never-declared )" CHECK-QUIET-CANDIDATE! 0 T=
+
+\ ---------------------------------------------------------------------------
+\ 4. persistence: a declared nominal survives a snapshot-persist of the growable
+\    type-family store. CHECKER-SNAPSHOT-PREPARE bakes the grown store and rebases
+\    its pointers, so the family - and thus the nominal's checked contract - must
+\    read back identically. (Ported from the retired test/type-nominal-suite.f,
+\    re-expressed for the value-nominal family substrate.)
+\ ---------------------------------------------------------------------------
+package PERSISTPKG
+NOMINAL: PSERIAL
+\ the nominal checks before the snapshot bake.
+s" VN-PP-PRE ( pserial -- pserial )" CHECK-QUIET-CANDIDATE! -1 T=
+TWX-SNAP-PREP
+\ the same contract survives the persist: identity accepts, projection to n rejects.
+s" VN-PP-ID ( pserial -- pserial )"  CHECK-QUIET-CANDIDATE! -1 T=
+s" VN-PP-N ( pserial -- n )"         CHECK-QUIET-CANDIDATE!  0 T=
+;package
 
 : REPORT ( -- )
    #FAIL @ 0 = if s" ok" type cr exit then

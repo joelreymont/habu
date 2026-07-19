@@ -94,7 +94,7 @@ XG-CAP E-EXT-CAP E-EXT-VALUE CODEGEN:BUFFER-E XG-BUFFER
 
 \ the one metaprogramming boundary: `evaluate` cannot be checker-typed, so the
 \ audited TRUSTED wrapper compiles the constructed text with the check hook active
-\ (roles.f DTC-EVAL / maki/cad.f CAP-COMPILE-RUN pattern). Every generated body is
+\ (lib/type/value-nominal.f NG-EVAL / maki/cad.f CAP-COMPILE-RUN pattern). Every generated body is
 \ certified by that hook; the definer itself adds no unchecked code.
 TRUSTED: XG-EVAL ( -- )  XG$ evaluate ;
 
@@ -171,7 +171,7 @@ public
 
 \ EXTENT: - `value EXTENT: #NAME`. Mints the extent family, binds the runtime
 \ extent value word `#NAME ( -- n )`, and derives the injector `>#NAME
-\ ( n -- ix<tail> )`. Top-level-interpret-only, like SUMTYPE / DEFTYPE (it parses
+\ ( n -- ix<tail> )`. Top-level-interpret-only, like SUMTYPE / NOMINAL: (it parses
 \ the input stream and mutates the type registry - side effects a ( n -- ) row
 \ does not model). The generated constant + injector text is certified by the
 \ check hook through XG-EVAL.

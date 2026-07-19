@@ -6,6 +6,7 @@
 require test/gate-build-size.f
 require test/gate-validation-worker.f
 require lib/adt/option.f                 \ option<CAD-NUM:index> STR:FIND-SUB consumer (switchover wave A)
+require lib/type/value-nominal.f         \ NOMINAL: - declared-nominal role exemplar in the runtime role source
 
 \ White-box CAD-NUM role reader (precedent: lib/string-test.f STR-T-IX>RAW):
 \ reopen the unsealed CAD-NUM package to project the typed STR:FIND-SUB index
@@ -1053,7 +1054,7 @@ variable GE-DFULL-I                 \ copy/definition loop index
 : GE-ROLE-SOURCE ( -- )
    GE-SRC-RESET
    s" -1 JSON-DIAGS !" GE-SRC-LINE
-   s" DEFTYPE size" GE-SRC-LINE
+   s" NOMINAL: size" GE-SRC-LINE
    s" NEED-IDX" s" idx --" GE-SRC-TRUST
    s" NEED-LEN" s" len --" GE-SRC-TRUST
    s" NEED-SIZE" s" size --" GE-SRC-TRUST

@@ -9,7 +9,7 @@
 \ Scan: each maki/*.f source is TOKENIZEd (PARENS? on, so `\` line comments and
 \ `( )` stack comments are stripped and `s"` bodies stay single tokens), then the
 \ token stream is walked while tracking `package`/`;package` depth. Every
-\ defining word (`:`, `constant`, `variable`, `create`, `DEFTYPE`, `KERNEL:`, ...)
+\ defining word (`:`, `constant`, `variable`, `create`, `KERNEL:`, ...)
 \ seen at depth 0 names a global maki def; its name token is a finding unless
 \ whitelisted. Definer and package tokens match case-INSENSITIVELY: the dictionary
 \ is case-insensitive (docs/forth.md § Naming), so `CREATE BUF` defines a global
@@ -88,7 +88,6 @@ variable NL-QI
    a u s" fvariable" LINT-STR=CI if LINT-TRUE exit then
    a u s" create"    LINT-STR=CI if LINT-TRUE exit then
    a u s" LAYOUT-BUFFER" LINT-STR=CI if LINT-TRUE exit then
-   a u s" DEFTYPE"   LINT-STR=CI if LINT-TRUE exit then
    a u s" value"     LINT-STR=CI if LINT-TRUE exit then
    a u s" defer"     LINT-STR=CI if LINT-TRUE exit then
    a u s" CHECKED:"  LINT-STR=CI if LINT-TRUE exit then
