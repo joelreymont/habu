@@ -961,6 +961,16 @@ fits.
 
 ## VCS, Dots & Parallel Agents
 
+- **A gate and its push must never share one unconditional command chain.** A
+  dot-graph lint threw during a closure batch, but the same shell block carried
+  on through seal, bookmark move, and `jj git push`, publishing a red master
+  that then needed an immediate fix-forward. Run the gate, READ its exit code,
+  and only then issue the push as its own command. The same event carried the
+  second half of the lesson: **before closing a dot, search .dots/ for
+  references to its id** — a dependent minted meanwhile (here by a parallel
+  session) makes the closure a dangling-blocker lint failure; discharge or
+  rewrite the dependent's edge in the same closure batch.
+
 - **One workspace name must map to exactly one directory — a nested duplicate
   checkout silently destroys work.** A `jj workspace add` (or a worker's stray
   checkout) whose path resolves INSIDE another workspace's directory leaves two
