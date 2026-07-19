@@ -220,6 +220,7 @@ variable FM-EXC#
 \ Every row must still exist on disk; stale rows fail the lint.
 : FM-EXCLUSIONS! ( -- )
    s" tools/lint/clobber-sys-x8-fixture.f" FM-EXC
+   s" tools/lint/clobber-wrap-fixture.f" FM-EXC
    s" tools/ptx/saxpy-wrong-cg.f" FM-EXC
    s" tools/lint/shadow-string-fixture.f" FM-EXC ;
 

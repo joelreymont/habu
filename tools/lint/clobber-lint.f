@@ -10,10 +10,18 @@ require tools/lint/lib.f
 
 : NL  ( -- )  10 emit ;
 
+\ Fail-closed code for a wrapped emitter call (a `PKG:CALL` macro that emits a
+\ branch-with-link) whose clobber contract is not modeled, or whose register
+\ operands cannot be resolved. Negative so error-code-lint keeps it globally
+\ unique; -4801 sits right after shadow-lint's -4800 in the unclaimed gap above
+\ lib/codegen's E-CG codes (-4700/-4701) and below the -5000 cluster. It claims
+\ no reserved range.
+-4801 constant E-CLOBBER-WRAP-UNRESOLVED
+
 package CLOBBER-CENSUS
 
 301 constant MIN-ROUTINES   \ observed production floor; lower counts need review
-447 constant MIN-CALLS      \ observed production floor; lower counts need review
+470 constant MIN-CALLS      \ direct BL + wrapped emitter calls; lower counts need review
 
 variable ROUTINE-N
 variable CALL-N
@@ -148,6 +156,49 @@ variable RX  variable RACC
         14 CL-ADD 15 CL-ADD 16 CL-ADD 17 CL-ADD exit
    then
    0 ;
+
+\ ---- wrapped emitter calls ------------------------------------------------
+\ A wrapped emitter call is an UPPER-CASE `PKG:CALL` word that expands, at emit
+\ time, to a register-move prelude plus a branch-with-link to a shared engine
+\ helper. It is neither a bare mnemonic nor a `LABEL@ BL,` triple, so the plain
+\ scan would miss its emitted clobbers. The only modeled member today is
+\ PROT-GUARD:CALL (src/habu/habu1.f): it moves the caller's (addr,len) register
+\ pair into the x10/x11 ABI the resident LPROTSPAN span guard reads, then
+\ branches to it. The guard body reads x10/x11 and touches only x12/x13, so the
+\ addr/len registers survive as x10=addr, x11=len; the branch additionally
+\ clobbers x30. Any other `:CALL` shape, or a call whose operands do not resolve
+\ to registers, fails closed via E-CLOBBER-WRAP-UNRESOLVED.
+package CLOBBER-WRAP
+
+0 12 CL-ADD 13 CL-ADD constant GUARD-BODY   \ registers the LPROTSPAN body clobbers
+0 10 CL-ADD 11 CL-ADD constant GUARD-ABI    \ x10=addr, x11=len on return
+
+: PROT?  ( ptr u8 n -- bool )  s" PROT-GUARD:CALL" LINT-STR= ;
+
+public
+
+: WRAP?  ( ptr u8 n -- bool ) {: a:ptr u:n :}   \ shape of a wrapped emitter call
+   u 6 < if LINT-FALSE exit then
+   a u s" :CALL" LINT-SUFFIX? ;
+
+: MASK  ( ptr u8 n n n -- n ) {: a:ptr u:n addr:n len:n :}   \ clobbered registers
+   a u PROT? if
+      GUARD-BODY
+      addr 10 <> if 10 CL-ADD then
+      len 11 <> if 11 CL-ADD then
+      exit
+   then
+   E-CLOBBER-WRAP-UNRESOLVED throw ;
+
+: READS  ( ptr u8 n n n -- n ) {: a:ptr u:n addr:n len:n :}   \ input registers read
+   a u PROT? if 0 addr CL-ADD len CL-ADD exit then
+   E-CLOBBER-WRAP-UNRESOLVED throw ;
+
+: RETURNS  ( ptr u8 n -- n ) {: a:ptr u:n :}   \ registers the call redefines
+   a u PROT? if GUARD-ABI exit then
+   E-CLOBBER-WRAP-UNRESOLVED throw ;
+
+;package
 
 : PSEUDO?  ( ptr u8 n -- bool ) {: a:ptr u :}
    a u s" g-push" LINT-STR=CI if LINT-TRUE exit then
@@ -317,6 +368,19 @@ create OPENINGS OMAX cells allot   variable ON#
 variable DI  variable OX  variable OPLO  variable CALA  variable CALU
 variable RNEXT  variable LASTSTOP  variable RDONE  variable CUR
 
+\ The current wrapped call sits at token DI; its two register operands are the
+\ immediately preceding tokens (`<addr> <len> PKG:CALL`), inside the operand run
+\ starting at OPLO. Resolve them, failing closed if they are missing or are not
+\ registers, so the modeled contract never runs on an operand it cannot read.
+: WRAP-REGS  ( -- n n )   \ addr len
+   DI @ OPLO @ - 2 < if E-CLOBBER-WRAP-UNRESOLVED throw then
+   DI @ 2 - TOK REG-OF  DI @ 1 - TOK REG-OF
+   2dup 0 < swap 0 < or if E-CLOBBER-WRAP-UNRESOLVED throw then ;
+: WRAP-MASK  ( -- n )   \ registers the wrapped call at DI clobbers
+   WRAP-REGS  DI @ TOK 2swap CLOBBER-WRAP:MASK ;
+: WRAP-READS  ( -- n )  \ registers the wrapped call at DI reads
+   WRAP-REGS  DI @ TOK 2swap CLOBBER-WRAP:READS ;
+
 : DEF-END  {: lo :}  ( -- hi )
    lo 2 + DI !
    begin DI @ TN# @ < while
@@ -340,6 +404,7 @@ variable RNEXT  variable LASTSTOP  variable RDONE  variable CUR
    begin OX @ hi < while
       OX @ hi LABEL-OPEN? if OX @ OPEN+ CLOBBER-CENSUS:ROUTINE+ then
       OX @ hi BL-CALL-SITE? if CLOBBER-CENSUS:CALL+ then
+      OX @ TOK CLOBBER-WRAP:WRAP? if CLOBBER-CENSUS:CALL+ then
       OX @ 1+ OX !
    repeat ;
 : CALLEE? ( n n -- bool ) {: lo:n hi:n :}
@@ -387,11 +452,21 @@ variable RNEXT  variable LASTSTOP  variable RDONE  variable CUR
    DI @ TOK STOP-MN? LASTSTOP !
    DI @ 1+ OPLO ! ;
 
+\ A routine that wraps a guard call gains that call's clobbers directly, so the
+\ transitive closure carries them into every caller of this routine.
+: ROUTINE-WRAP ( n -- ) {: cidx:n :}
+   cidx WRAP-MASK C-WOR
+   DI @ 1+ OPLO ! ;
+
 : ROUTINE-STEP ( n -- ) {: cidx :}
    ROUTINE-NEXT-OPEN? if
       ROUTINE-ADVANCE-OPEN
    else
-      DI @ TOK INSTR? if cidx ROUTINE-INSTR then
+      DI @ TOK CLOBBER-WRAP:WRAP? if
+         cidx ROUTINE-WRAP
+      else
+         DI @ TOK INSTR? if cidx ROUTINE-INSTR then
+      then
       DI @ 1+ DI !
    then ;
 
@@ -531,27 +606,48 @@ variable TRACK-LR
    repeat
    LINT-FALSE ;
 
+\ Resolved BL to a modeled callee (CALA/CALU were set by CALLEE?): the callee's
+\ transitive clobbers, minus its returns and the contract-preserved registers,
+\ poison any live caller value; its returns become freshly defined.
+: APPLY-CALL  ( -- )
+   CALA @ CALU @ RETURNS-MASK RETS !
+   CALA @ CALU @ C-FIND CALIDX !
+   CALIDX @ 0 >= if CALIDX @ CWS@ else 0 then
+   CONTRACT-MASK invert and  RETS @ invert and CW !
+   CW @ CALIDX @ POISON-DIRTY
+   CALIDX @ POISON-LINK-REGISTER
+   RETS @ APPLY-RETURNS ;
+
+\ Modeled wrapped emitter call at token DI: its argument registers are read
+\ first, then its move+guard clobbers poison any live value, its emitted branch
+\ poisons the link register, and its ABI-return registers (x10/x11) are redefined.
+: APPLY-WRAP  ( ptr u8 n -- ) {: fa:ptr fu:n :}
+   fa fu WRAP-READS NOTE-READS
+   DI @ TOK C-ENSURE CALIDX !
+   WRAP-MASK CALIDX @ POISON-DIRTY
+   CALIDX @ POISON-LINK-REGISTER
+   DI @ TOK CLOBBER-WRAP:RETURNS APPLY-RETURNS ;
+
 : PASS2-DEF  {: fa fu lo hi :}  ( -- )
    lo hi RET-IN-RANGE? TRACK-LR !
    TRACK-LR @ if 0 30 CL-ADD else 0 then DIRTY !  POIS-CLEAR  lo OPLO !  lo DI !
    begin DI @ hi < while
-      DI @ TOK INSTR? if
-         OPLO @ DI @ CALLEE?  DI @ TOK s" BL," LINT-STR= and if
-            CALA @ CALU @ RETURNS-MASK RETS !
-            CALA @ CALU @ C-FIND CALIDX !
-            CALIDX @ 0 >= if CALIDX @ CWS@ else 0 then
-            CONTRACT-MASK invert and  RETS @ invert and CW !
-            CW @ CALIDX @ POISON-DIRTY
-            CALIDX @ POISON-LINK-REGISTER
-            RETS @ APPLY-RETURNS
-         else
-            DI @ TOK  OPLO @ DI @ EFFECTS
-            fa fu RMSK @ NOTE-READS
-            WMSK @ APPLY-WRITES
-            DI @ TOK SYS? OPLO @ DI @ SYS-EXIT? 0= and if POISON-SYS-SCRATCH then
-            DI @ TOK BLR? if s" blr" C-ENSURE POISON-LINK-REGISTER then
-         then
+      DI @ TOK CLOBBER-WRAP:WRAP? if
+         fa fu APPLY-WRAP
          DI @ 1+ OPLO !
+      else
+         DI @ TOK INSTR? if
+            OPLO @ DI @ CALLEE?  DI @ TOK s" BL," LINT-STR= and if
+               APPLY-CALL
+            else
+               DI @ TOK  OPLO @ DI @ EFFECTS
+               fa fu RMSK @ NOTE-READS
+               WMSK @ APPLY-WRITES
+               DI @ TOK SYS? OPLO @ DI @ SYS-EXIT? 0= and if POISON-SYS-SCRATCH then
+               DI @ TOK BLR? if s" blr" C-ENSURE POISON-LINK-REGISTER then
+            then
+            DI @ 1+ OPLO !
+         then
       then
       DI @ 1+ DI !
    repeat ;

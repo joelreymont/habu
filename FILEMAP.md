@@ -1580,9 +1580,10 @@ points stay listed.
   package-scoped tails are ignored. Its `tools/lint/shadow-string-fixture.f`
   string-literal regression input is a committed filemap-lint exclusion.
 - `tools/lint/clobber-lint.f` / `tools/lint/clobber-lint-test.f` —
-  register-clobber analysis for BL-able emitter routines and its regressions;
-  its negative syscall-scratch fixture file is a committed filemap-lint
-  exclusion.
+  register-clobber analysis for BL-able emitter routines and its regressions,
+  including wrapped emitter calls (a `PKG:CALL` macro that emits a
+  branch-with-link, e.g. `PROT-GUARD:CALL`); its negative syscall-scratch and
+  wrapped-call fixture files are committed filemap-lint exclusions.
 - `tools/signature-lint-core.f` — reusable strict typed-signature lint core.
 - `tools/signature-lint.f` — CLI wrapper for strict typed-signature lint.
 - `tools/signature-lint-test-lib.f` — load-only strict typed-signature lint fixture library for resident runner tests.
