@@ -548,6 +548,7 @@ variable GSI-TL-FILE-A
    s" tools/ptx/saxpy-test.f" GSI-INCLUDE \ ( -- )
    s" tools/ptx/kernel-export-test.f" GSI-INCLUDE \ ( -- )
    s" tools/ptx/perf-registry-test.f" GSI-INCLUDE \ ( -- )
+   s" tools/ptx/autotune-test.f" GSI-INCLUDE \ ( -- )
    s" tools/ptx/perf-compare-test.f" GSI-INCLUDE \ ( -- )
    s" tools/ptx/perf-regress-test.f" GSI-INCLUDE \ ( -- )
    s" tools/kernel-perf-lint-test.f" GSI-INCLUDE \ ( -- )

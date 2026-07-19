@@ -357,6 +357,7 @@ TEST:SUITE ptx-toolchain
    tools/ptx/saxpy-test.f
    tools/ptx/kernel-export-test.f
    tools/ptx/perf-registry-test.f
+   tools/ptx/autotune-test.f
    tools/ptx/perf-compare-test.f
    tools/ptx/perf-regress-test.f
    tools/ptx/perf-regress.f

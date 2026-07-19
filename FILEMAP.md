@@ -690,6 +690,14 @@ points stay listed.
   registry (package PERF): row model, TSV parse, fail-closed row validation.
 - `tools/ptx/perf-registry-test.f` — registry fixtures plus validation of the
   committed `tools/ptx/perf-rows.tsv`.
+- `tools/ptx/autotune.f` — committed autotune (package AUTOTUNE): the config-record
+  MENU over the `lib/ptx/cg-mma.f` knobs, the PRUNE that calls the emitter's own
+  fail-closed guards (`MMA-CHECK-*`) for mechanical legality, and the WINNERS table
+  keyed (shape-class, dtype) with the plan-time `AT-SELECT` selector (exact class,
+  nearest-class geometric bucketing, `E-AT-NEWCLASS`/`E-AT-DTYPE` fail-closed).
+- `tools/ptx/autotune-test.f` — menu/record, per-axis, winners-legal, documented-
+  illegal rejection (specific `E-MMA-*`), bucketing, dtype-keying, selector-error,
+  and non-mutating-probe fixtures for `tools/ptx/autotune.f`.
 - `tools/ptx/perf-compare.f` — perf-regression compare over registry rows:
   latest same-key pair per kernel+config+device+metric vs `PERF:TOL-MILLI`.
 - `tools/ptx/perf-compare-test.f` — improve/regress/tolerance-edge/missing-row
