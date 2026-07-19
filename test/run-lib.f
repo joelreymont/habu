@@ -756,25 +756,6 @@ TR-INSTALL-POOL-HOOKS
    s" lib/process-env.f"  >LEN PROC-ARGV+
    s" lib/test/runner.f"  >LEN PROC-ARGV+ ;
 
-: TR-SPAWN-CAPTURE ( -- )
-   s" top-capture-spawn" GS-EVENT
-   s" bin/hb" >LEN PROC-ARGV-CHECK-PATH
-   PROC-CAPTURE-RESET
-   TR-TIMEOUT-MS >MS PROC-CAPTURE-DEADLINE!
-   PROC-SETUP-CAPTURE-FDS
-   s" bin/hb" >LEN PROC-ARGV-PREPARE PROC-ENV-PREPARE PROC-SPAWN-ARGV-ENV-CAPTURE ;
-
-: TR-PHASE-OK? ( -- bool )
-   GT-RC@ 0= ;
-
-: TR-RUN ( ptr u8 n -- ) {: label:ptr labelu:n :}
-   label labelu GT-PROGRESS-RUN
-   TR-SPAWN-CAPTURE
-   label labelu GT-PROGRESS-CAPTURE-FLUSH
-   PROC-CLOSE-CAPTURE-FDS
-   TR-PHASE-OK? 0= if label labelu TR-FAIL then
-   label labelu GT-PROGRESS-PASS ;
-
 : TR-COMMON ( -- )
    s" test/gate-common.f"  >LEN PROC-ARGV+ ;
 
@@ -1104,43 +1085,8 @@ TR-INSTALL-POOL-HOOKS
    TR-BUILD-LIB-COMMON
    s" test/gate-aot-negative.f"  >LEN PROC-ARGV+ ;
 
-: TR-STDLIB ( -- )
-   TR-BASE
-   TR-STDLIB-ARGS
-   s" native lint/stdlib gate phase" TR-RUN ;
-
-: TR-ENGINE ( -- )
-   TR-BASE
-   TR-ENGINE-ARGS
-   s" native engine gate phase" TR-RUN ;
-
 : TR-EXPECT-HB ( -- )
    s" bin/hb" EXECUTABLE? 0= if s" bin/hb not produced executable" TR-FAIL then ;
-
-: TR-DICTIONARY ( -- )
-   TR-BASE
-   TR-DICTIONARY-ARGS
-   s" native dictionary/checker gate phase" TR-RUN ;
-
-: TR-DIAGNOSTICS ( -- )
-   TR-BASE
-   TR-DIAGNOSTICS-ARGS
-   s" native checker diagnostics gate phase" TR-RUN ;
-
-: TR-DEBUG ( -- )
-   TR-BASE
-   TR-DEBUG-ARGS
-   s" native prop/debug gate phase" TR-RUN ;
-
-: TR-AOT-POSITIVE ( -- )
-   TR-BASE
-   TR-AOT-POSITIVE-ARGS
-   s" native hb-build AOT positive gate phase" TR-RUN ;
-
-: TR-AOT-NEGATIVE ( -- )
-   TR-BASE
-   TR-AOT-NEGATIVE-ARGS
-   s" native hb-build AOT negative gate phase" TR-RUN ;
 
 : TR-UNSCHEDULED-PHASE ( -- )
    E-TBL-BOUNDS throw ;
