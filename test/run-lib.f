@@ -46,6 +46,21 @@ public
 35000 constant SPARK-MS
 40000 constant SPARK-WALL-MS
 
+\ Cold-cache stop-lines for the 10x2 profiles, separate from the warm pair above
+\ (which assume the candidate is served from the persistent cache). A cold cache
+\ does a real candidate build + cache install + AOT maker build and runs a heavier
+\ maki child, so the native AOT-positive phase becomes the long pole. The startup
+\ spin probe runs before that load ramps up, so the calibration factor never scales
+\ for it; the cold stop-line carries static headroom instead. Spark cold measured
+\ ~44.6s wall under loadavg 1.45 (repeated by another lane; ~27s idle floor measured
+\ here from a fresh workspace), so 56000 = ~44.6s + 25%. macOS reuses the spark cold
+\ pair - same warm base, same 10x2 shape, unmeasured here but corroborated by the
+\ committed macOS reference cold-fill of 39.336s internal / 41.64s wall (STATUS.md).
+56000 constant SPARK-COLD-MS
+62000 constant SPARK-COLD-WALL-MS
+56000 constant MACOS-COLD-MS
+62000 constant MACOS-COLD-WALL-MS
+
 ;package
 
 \ Budget calibration: profile budget tables were tuned green on a reference
@@ -380,19 +395,19 @@ variable TR-PRE-DIAG-FILE
 
 : TR-COLD-BUDGET-MS ( -- n )
    TR-PROFILE-ID @ case
-      TR-PROFILE-MACOS-ARM64-10X2 of RUN-BUDGET:MACOS-MS TR-CAL-SCALED endof
+      TR-PROFILE-MACOS-ARM64-10X2 of RUN-BUDGET:MACOS-COLD-MS TR-CAL-SCALED endof
       TR-PROFILE-JETSON-ORIN-CLOCKS-4X2 of 175000 TR-CAL-SCALED endof
       TR-PROFILE-LINUX-ARM64-4X2 of 150000 TR-CAL-SCALED endof
-      TR-PROFILE-DGX-SPARK-10X2 of RUN-BUDGET:SPARK-MS TR-CAL-SCALED endof
+      TR-PROFILE-DGX-SPARK-10X2 of RUN-BUDGET:SPARK-COLD-MS TR-CAL-SCALED endof
       TR-BUDGET @ swap
    endcase ;
 
 : TR-COLD-WALL-BUDGET-MS ( -- n )
    TR-PROFILE-ID @ case
-      TR-PROFILE-MACOS-ARM64-10X2 of RUN-BUDGET:MACOS-WALL-MS TR-CAL-SCALED endof
+      TR-PROFILE-MACOS-ARM64-10X2 of RUN-BUDGET:MACOS-COLD-WALL-MS TR-CAL-SCALED endof
       TR-PROFILE-JETSON-ORIN-CLOCKS-4X2 of 187000 TR-CAL-SCALED endof
       TR-PROFILE-LINUX-ARM64-4X2 of 0 endof
-      TR-PROFILE-DGX-SPARK-10X2 of RUN-BUDGET:SPARK-WALL-MS TR-CAL-SCALED endof
+      TR-PROFILE-DGX-SPARK-10X2 of RUN-BUDGET:SPARK-COLD-WALL-MS TR-CAL-SCALED endof
       TR-WALL-BUDGET @ swap
    endcase ;
 
