@@ -205,6 +205,10 @@ TEST:SUITE getpid-primitive-smoke
    test/getpid-smoke.f
 TEST:;SUITE
 
+TEST:SUITE proc-watch-primitive-smoke
+   test/proc-watch-smoke.f
+TEST:;SUITE
+
 TEST:SUITE tasking-threads
    lib/task-test.f
 TEST:;SUITE

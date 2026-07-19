@@ -19,6 +19,7 @@ $32 constant MAP-ANON-PRIVATE-FIXED
 129 constant NR-KILL
 154 constant NR-SETPGID
 172 constant NR-GETPID
+434 constant NR-PIDFD-OPEN
 59  constant NR-PIPE
 134 constant NR-SIGACTION
 226 constant NR-MPROTECT

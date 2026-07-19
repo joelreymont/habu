@@ -27,6 +27,7 @@ case "$HABU_TARGET" in
     OS_TARGET=src/os/macos/target.f
     OS_LAYOUT=src/os/macos/layout.f
     OS_SYS=src/os/macos/sys.f
+    OS_PROCWATCH=src/os/macos/proc-watch.f
     OS_IMAGE=src/os/macos/macho.f
     OS_SIGN=src/os/macos/sign2.f
     ;;
@@ -34,6 +35,7 @@ case "$HABU_TARGET" in
     OS_TARGET=src/os/linux/target.f
     OS_LAYOUT=src/os/linux/layout.f
     OS_SYS=src/os/linux/sys.f
+    OS_PROCWATCH=src/os/linux/proc-watch.f
     OS_IMAGE=src/os/linux/elf.f
     OS_SIGN=src/os/linux/sign.f
     ;;
@@ -83,6 +85,7 @@ SRC_COMMON=(
   src/os/image-bytes.f
   "$OS_IMAGE"
   "$OS_SIGN"
+  "$OS_PROCWATCH"
   src/habu/habu1.f
   src/habu/prof.f
   src/habu/regalloc.f
