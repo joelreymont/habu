@@ -90,6 +90,8 @@ TEST:SUITE maki/loss-tensor-test.f
 TEST:;SUITE
 TEST:SUITE maki/layernorm-test.f
 TEST:;SUITE
+TEST:SUITE maki/layernorm-affine-test.f
+TEST:;SUITE
 TEST:SUITE maki/gelu-test.f
 TEST:;SUITE
 TEST:SUITE maki/silu-test.f

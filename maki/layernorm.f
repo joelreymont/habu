@@ -8,6 +8,9 @@
 
 require maki/array.f
 
+\ layernorm owns -5432 (the affine golden's fail-closed feature-length guard).
+-5432 constant E-LN-DIM   \ affine forward/VJP given a non-positive feature length
+
 package MAKI
 
 : LN-EPS ( -- r )  0.00001 ;
@@ -58,5 +61,35 @@ public
    dyb n T-SUM  n s>f f/
    dyb xb n  xb n LN-MEAN  LN-MEAN-DYC   xb n  xb n LN-MEAN  LN-STD  f/
    LN-DX! ;
+
+\ ---- affine LayerNorm (GPT-2 style): y = gamma*xhat + beta ------------------
+\ gamma/beta are per-feature (length n), SHARED across rows; xhat is the existing
+\ no-affine normalized value. Golden operates one ROW at a time; a multi-row caller
+\ loops the rows and the VJP accumulates the per-row parameter gradients (dot
+\ habu-affine-layernorm-gamma). Non-positive n is a fail-closed error (the no-affine
+\ LN-FWD/LN-BWD stay byte-for-byte, so existing callers are unchanged).
+
+\ forward: write xhat with LN-FWD, then scale-and-shift in place.
+: LN-AFFINE-FWD ( ptr a ptr a ptr a ptr a n -- )
+   {: xb:ptr yb:ptr gb:ptr bb:ptr n:n :}
+   n 1 < if E-LN-DIM throw then
+   xb yb n LN-FWD
+   n 0 ?do  gb i T-GET  yb i T-GET f*  bb i T-GET f+  yb i T-SET  loop ;
+
+\ VJP for one row: ACCUMULATE dgamma += dy*xhat and dbeta += dy (the row-sum the
+\ affine params see), and write dx = LN-BWD(dy*gamma, x) - the upstream cotangent
+\ into xhat is dy*gamma, threaded through the existing normalization backward. xhb
+\ is caller scratch (length n): it first holds xhat (for dgamma), then is reused as
+\ dxhat (= dy*gamma) fed to LN-BWD. The caller zeros dgb/dbb before the row loop.
+: LN-AFFINE-BWD ( ptr a ptr a ptr a ptr a ptr a ptr a ptr a n -- )
+   {: dyb:ptr xb:ptr gb:ptr dxb:ptr dgb:ptr dbb:ptr xhb:ptr n:n :}
+   n 1 < if E-LN-DIM throw then
+   xb xhb n LN-FWD
+   n 0 ?do
+      dgb i T-GET  dyb i T-GET  xhb i T-GET f*  f+  dgb i T-SET   \ dgamma += dy*xhat
+      dbb i T-GET  dyb i T-GET  f+  dbb i T-SET                   \ dbeta  += dy
+      dyb i T-GET  gb i T-GET f*  xhb i T-SET                     \ xhb := dxhat = dy*gamma
+   loop
+   xhb xb dxb n LN-BWD ;                                          \ dx = LN-BWD(dxhat, x)
 
 ;package
