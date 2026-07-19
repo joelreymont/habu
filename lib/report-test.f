@@ -4,9 +4,9 @@
 require lib/test.f
 require lib/report.f
 
-: RT-COLS ( -- ) TBL-RESET
-   s" id" AL-R [: RB# ;] COL+
-   s" sq" AL-R [: dup * RB# ;] COL+ ;
+: RT-COLS ( -- ) REPORT:RESET
+   s" id" REPORT:AL-R [: RB# ;] REPORT:COL+
+   s" sq" REPORT:AL-R [: dup * RB# ;] REPORT:COL+ ;
 
 \ expected outputs built in the SB builder (separate from the RB render buffer)
 : EXP-CSV ( -- ptr u8 n )
@@ -21,8 +21,8 @@ require lib/report.f
 
 : RPT-RUN ( -- )
    T-RESET
-   RT-COLS  RB-RESET 3 TBL-CSV  RB$ EXP-CSV STR= T-ASSERT
-   RT-COLS  RB-RESET 3 TBL-MD   RB$ EXP-MD  STR= T-ASSERT ;
+   RT-COLS  RB-RESET 3 REPORT:CSV  RB$ EXP-CSV STR= T-ASSERT
+   RT-COLS  RB-RESET 3 REPORT:MD   RB$ EXP-MD  STR= T-ASSERT ;
 
 RPT-RUN
 T-REPORT
