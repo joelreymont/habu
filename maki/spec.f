@@ -420,6 +420,131 @@ variable SP-EXT-U
    SP-CT-N @ 0 ?do  i SPEC-CT@ SP-CHK-VAR-EXT  loop
    SP-FAC-N @ 0 ?do  i SP-CHK-FACTOR  loop ;
 
+\ ---- equation registry (docs/model-unified.md stage 1: "How an equation joins the
+\ trainable graph"). A SPEC:-declared einsum becomes ONE `equation` op-kind
+\ (maki/op-kind.f) referenceable inside a MODEL: composition. The registry maps the
+\ equation NAME -> (operand/factor count, the output (rows,cols) and per-factor
+\ (rows,cols) the composition extent-check verifies against the operands, and the xt
+\ of a generated RUN word the executor calls). It extends the state SPEC: already
+\ keeps (the generated NAME kernel + the SP-* dataflow) rather than a parallel store.
+\
+\ STAGE-1 COMPOSABILITY: an equation joins a composition only when its factors map
+\ cleanly to the 2D rows x cols IR (docs/batch-sequence-design.md section 4): 1..2
+\ free indices, 1..3 gather-free factors, every factor rank 1..2. A gather factor or
+\ a rank-3 composite index (the batch/head extent-role product) is stage-2 work, so
+\ such an equation is simply not registered as a composable op (using it in a MODEL:
+\ body is the unknown-op reject E-CAD-OP, never a wrong run). The generated kernel +
+\ SP-* dataflow are unaffected: SPEC: still derives them for every valid equation.
+public
+DEFTYPE EQ-SLOT                       \ registry row index: its own type
+
+private
+32 constant EQ-CAP                     \ max registered equations
+8  constant EQ-FCAP                    \ max factors per equation (matches SP-FAC-CAP)
+32 constant EQ-NAME-CAP
+create EQ-NAMES  EQ-CAP EQ-NAME-CAP * allot
+create EQ-NLEN   EQ-CAP cells allot
+create EQ-K-A    EQ-CAP cells allot          \ operand/factor count
+create EQ-ROWS-A EQ-CAP cells allot          \ output rows (free-index-0 extent)
+create EQ-COLS-A EQ-CAP cells allot          \ output cols (free-index-1 extent, or 1)
+create EQ-FROW-A EQ-CAP EQ-FCAP * cells allot \ per-factor rows (slot-major)
+create EQ-FCOL-A EQ-CAP EQ-FCAP * cells allot \ per-factor cols (slot-major)
+create EQ-XT-A   EQ-CAP cells allot           \ generated RUN word xt (raw)
+variable EQ-N
+
+: EQ-NAME-PTR ( eq-slot -- ptr a )  EQ-SLOT>N EQ-NAME-CAP *  EQ-NAMES + ;
+
+public
+: EQ-NAME@ ( eq-slot -- ptr u8 n ) {: s:eq-slot :}  s EQ-NAME-PTR  s EQ-SLOT>N cells EQ-NLEN + @ ;
+: EQ-K@    ( eq-slot -- n )  EQ-SLOT>N cells EQ-K-A    + @ ;
+: EQ-ROWS@ ( eq-slot -- n )  EQ-SLOT>N cells EQ-ROWS-A + @ ;
+: EQ-COLS@ ( eq-slot -- n )  EQ-SLOT>N cells EQ-COLS-A + @ ;
+: EQ-FROW@ ( eq-slot n -- n ) {: s:eq-slot k:n :}  s EQ-SLOT>N EQ-FCAP * k + cells EQ-FROW-A + @ ;
+: EQ-FCOL@ ( eq-slot n -- n ) {: s:eq-slot k:n :}  s EQ-SLOT>N EQ-FCAP * k + cells EQ-FCOL-A + @ ;
+
+\ NAME -> registry slot; absent = option<eq-slot> none, so a caller must handle it.
+: EQ-FIND ( ptr u8 n -- option<eq-slot> ) {: a:ptr u:n :}
+   EQ-N @ 0 ?do
+      a u  i >EQ-SLOT EQ-NAME@  STR= if  i >EQ-SLOT OPTION:SOME  unloop exit  then
+   loop  OPTION:NONE ;
+
+\ ---- executor transfer cells: the executor writes each operand buffer + the output
+\ buffer here, then calls EQ-EXEC; the generated RUN word binds the equation's tensors
+\ from these cells and runs the kernel. Single node runs at a time, so one set serves.
+create EQ-ARG EQ-FCAP cells allot   \ per-operand buffer pointer
+variable EQ-OUT                      \ output buffer pointer
+: EQ-ARG-SET! ( ptr a n -- ) {: p:ptr k:n :}
+   k 0 < k EQ-FCAP >= or if E-SPEC-ARITY throw then  p EQ-ARG k cells + ! ;
+: EQ-OUT-SET! ( ptr a -- )  EQ-OUT ! ;
+
+\ EQ-EXEC runs the equation's RUN word (raw xt from the registry). TRUSTED: the xt is
+\ a spec-registry cell whose provenance is a word this file generated + captured, but
+\ execute of a fetched cell is not checker-expressible; this is the audited boundary.
+TRUSTED: EQ-EXEC ( eq-slot -- )  EQ-SLOT>N cells EQ-XT-A + @ execute ;
+
+private
+: EQ-NAME! ( ptr u8 n eq-slot -- ) {: a:ptr u:n s:eq-slot :}
+   u EQ-NAME-CAP > if E-SPEC-SYNTAX throw then
+   a s EQ-NAME-PTR u BYTE-COPY  u s EQ-SLOT>N cells EQ-NLEN + ! ;
+\ EQ-XT! is referenced from the generated RUN source (interpret level inside XG-EVAL),
+\ so the tick-captured xt is stored into its row without crossing the XG-EVAL effect.
+: EQ-XT! ( n n -- ) {: x:n s:n :}  x EQ-XT-A s cells + ! ;
+
+\ ---- extent magnitudes off the parsed spec (SP-EXT-SLOT resolves an index variable's
+\ #<UPPER> extent to its registry value). Free index i and factor f's index j. -------
+: EQ-FREE-EXT ( n -- n ) {: i:n :}  i SPEC-FREE@ SP-EXT-SLOT XR-VAL@ ;
+: EQ-FAC-EXT  ( n n -- n ) {: f:n j:n :}  f j SPEC-FAC-IDX@ SP-EXT-SLOT XR-VAL@ ;
+
+\ a factor is stage-1 plain when it is rank 1..2 and carries no gather index.
+: EQ-FAC-PLAIN? ( n -- bool ) {: f:n :}
+   f SPEC-FAC-RANK@ dup 1 < swap 2 > or if false exit then
+   f SPEC-FAC-RANK@ 0 ?do  f i SPEC-FAC-GATHER@ nip 0 > if false unloop exit then  loop
+   true ;
+: EQ-COMPOSABLE? ( -- bool )
+   SP-FREE-N @ dup 1 < swap 2 > or if false exit then
+   SP-FAC-N @  dup 1 < swap 3 > or if false exit then
+   SP-FAC-N @ 0 ?do  i EQ-FAC-PLAIN? 0= if false unloop exit then  loop
+   true ;
+
+\ output (rows,cols) from the free extents; a single free index is a rows x 1 column.
+: EQ-OUT-DIMS ( -- rows cols )
+   0 EQ-FREE-EXT   SP-FREE-N @ 2 = if 1 EQ-FREE-EXT else 1 then ;
+\ store factor f's (rows,cols) into the registry row; a rank-1 factor is rows x 1.
+: EQ-FAC-DIMS! ( eq-slot n -- ) {: s:eq-slot f:n :}
+   f 0 EQ-FAC-EXT   s EQ-SLOT>N EQ-FCAP * f + cells EQ-FROW-A + !
+   f SPEC-FAC-RANK@ 2 = if f 1 EQ-FAC-EXT else 1 then
+      s EQ-SLOT>N EQ-FCAP * f + cells EQ-FCOL-A + ! ;
+
+\ generate `: <NAME>-RUN ( -- ) <bind each factor from EQ-ARG> <bind out from EQ-OUT>
+\ <NAME> ;` (one checked XG-EVAL), then capture its xt into registry row sl (a SECOND
+\ XG-EVAL: a `:`-definition and an interpret-level tick must not share one evaluate).
+: EQ-GEN-RUN ( n -- ) {: sl:n :}
+   XG-RESET
+   s" : " XG+  SPEC-NAME$ XG+  s" -RUN ( -- ) " XG+
+   SP-FAC-N @ 0 ?do
+      s" EQ-ARG " XG+  i XG-INT  s"  cells + @ " XG+  i SPEC-FAC-NAME@ XG+  s" -BIND " XG+
+   loop
+   s" EQ-OUT @ " XG+  SPEC-OUT$ XG+  s" -BIND " XG+
+   SPEC-NAME$ XG+  s"  ; " XG+
+   XG-EVAL
+   XG-RESET
+   s" ' " XG+  SPEC-NAME$ XG+  s" -RUN " XG+  sl XG-INT  s"  EQ-XT! " XG+
+   XG-EVAL ;
+
+\ register the just-parsed equation as a composable op (no-op for a non-composable one).
+: EQ-REGISTER ( -- )
+   EQ-COMPOSABLE? 0= if exit then
+   EQ-N @ EQ-CAP >= if E-EXT-CAP throw then
+   EQ-N @ >EQ-SLOT {: s:eq-slot :}
+   SPEC-NAME$ s EQ-NAME!
+   SP-FAC-N @ s EQ-SLOT>N cells EQ-K-A + !
+   EQ-OUT-DIMS {: rows:n cols:n :}
+   rows s EQ-SLOT>N cells EQ-ROWS-A + !
+   cols s EQ-SLOT>N cells EQ-COLS-A + !
+   SP-FAC-N @ 0 ?do  s i EQ-FAC-DIMS!  loop
+   EQ-N @ EQ-GEN-RUN
+   EQ-N @ 1+ EQ-N ! ;
+
 public
 
 \ SPEC: NAME <output>[<free>] = <factors> [*] +SUM <contraction> ;  - see file head.
@@ -433,7 +558,8 @@ public
    SP-PARSE
    SP-VALIDATE
    SP-EMIT-EL
-   SP-EMIT-OUTER ;
+   SP-EMIT-OUTER
+   EQ-REGISTER ;
 
 \ ---- testing / dry-run seams (SPEC: parses the live stream, so it cannot be
 \ wrapped for a catch; these string/candidate entries make the derivation testable
