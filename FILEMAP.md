@@ -716,7 +716,14 @@ points stay listed.
   any tiling (the course's #1 "correct in NumPy, garbage on device" guard).
 - `tools/ptx/mma-gemm-check.f` — device-correctness of the full K-looping TF32
   mma.sync GEMM kernel (MMM) element-exact vs a host matmul at 64^3 and 128^3
-  (staging + accumulation + the warp/D-fragment store mapping).
+  (staging + accumulation + the warp/D-fragment store mapping), plus the fp16
+  `m16n8k16` tile (`MGC-CFG-F16`, both warp grids + epilogue) and the emit
+  fail-closed guards (SMEM / BLDM / WARPS / EPI / DTYPE negatives).
+- `tools/ptx/mma-emit-diff.f` — byte-identity harness for the mma.sync GEMM
+  emitter: emits `EMIT-MATMUL-MMA` for 35 TF32 configs (default / SWZ / dyn / wide
+  / wide-B / 4-warp / deep-stage / epilogue) with a per-config header so the stream
+  can be diffed before vs after a change; with `MMA-DTYPE=0` the fp16 tile addition
+  leaves it empty. Device-independent (pure emit).
 - `tools/ptx/mma-profile.f` — profile-first harness for `lib/ptx/cg-mma.f`: emits
   ONE tile config (BK / pad / stages / dyn-smem / fragment mode, config-driven via
   `-- BK PAD STAGES DYN MODE SHAPE`, defaulting to the swizzled ldmatrix best) and

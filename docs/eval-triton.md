@@ -991,22 +991,22 @@ structural ceiling** of the tile. Closing it requires the `habu-mma-warp-shape`
 4-warp tile (then deeper `num_stages`), which is the recorded next lever, not another
 knob turn.
 
-### fp16 — context only (Habu's MMA tile is TF32-only)
+### fp16 — the Triton reference (Habu's fp16 tile is built in Round 5 below)
 
-Habu's `cg-mma.f` tile emits **only** `mma.sync.aligned.m16n8k8…f32.tf32.tf32.f32`
-— there is **no fp16 or bf16 MMA path** (that needs a different `m16n8k16
-.f16.f16.f32` tile, not implemented). So fp16 is a Triton-only reference, not a
-head-to-head:
+When this section was first written Habu's `cg-mma.f` emitted **only**
+`mma.sync.aligned.m16n8k8…f32.tf32.tf32.f32` and fp16 was a Triton-only reference.
+**Round 5 (below) builds the `m16n8k16.f16.f16.f32` tile and makes this a
+head-to-head**; the Triton fp16 column here is the referee it is scored against:
 
 | TFLOP/s |  512³ | 1024³ | 2048³ | 4096³ |
 |---------|------:|------:|------:|------:|
 | Triton 3.8 fp16 `tl.dot` |  27.4 |  73.8 |  85.8 |  89.1 |
 
 Triton's fp16 peaks at ~89 TF (4096³) — ~2× its own tf32, ~89 % of the ~100 TF
-fp16 roof (the tf32:fp16 = 1:2 Blackwell ladder, `docs/codegen-verdict.md`) — the
-second tensor precision Habu does not yet contest. Fewer of its fp16 configs bust
-the smem cap (13 of 45 fail) than the wider tf32 tiles (31 of 45), since fp16
-halves the per-tile smem.
+fp16 roof (the tf32:fp16 = 1:2 Blackwell ladder, `docs/codegen-verdict.md`). Fewer
+of its fp16 configs bust the smem cap (13 of 45 fail) than the wider tf32 tiles (31
+of 45), since fp16 halves the per-tile smem — the same halving that lets Habu's
+Round-5 fp16 MFRAGS=4 8-warp tile fit the static cap.
 
 ### What the data earns (and what it does not)
 
@@ -1414,3 +1414,94 @@ cuobjdump -sass k.cubin        # count NOP between the 64 HMMA.1688.F32.TF32 of 
 # Element-exact device cross-check of the restructured emitter (all wide configs):
 bin/hb --load tools/ptx/mma-gemm-check.f   # MGC-ALL: 0 mismatches; legality guards fail-closed
 ```
+
+## Round 5 — the fp16 `m16n8k16` tile (dot `habu-fp16-mma-tile`): built and measured (2026-07-19)
+
+Round 4 falsified the register-scheduling levers and named the *real* remaining lever
+precisely: **"a genuinely wider or denser tensor op — more FLOPs retired per issue
+slot — which is a different HMMA shape."** This round builds exactly that. `cg-mma.f`
+gains a selectable `MMA-DTYPE` knob (off by default, like every other tile option):
+`0` = the existing TF32 `mma.sync.aligned.m16n8k8…f32.tf32.tf32.f32`; `1` = a **new
+fp16 `mma.sync.aligned.m16n8k16.row.col.f32.f16.f16.f32`** tile — A/B stored as `f16`
+halves in both global and shared (the host packs `f32→f16` on the fill path,
+`lib/ptx/cg.f` `F64>F16`/`F16-PACK`), accumulate stays `f32`, C stays `f32`. The
+`m16n8k16` shape retires **twice the K per HMMA** (8 A-halves + 4 B-halves per lane in
+the *same* 4+2 `.b32` register budget as tf32's 4+2), so it issues **half** the mmas per
+K-tile — the denser tensor op Round 4 pointed at.
+
+**Correctness first, and the tf32 path is untouched.** With `MMA-DTYPE=0` every existing
+config stays **byte-identical** (an emit diff of 35 configs spanning default / SWZ / dyn
+/ wide MFRAGS 2&4 / wide-B / 4-warp / deep-stage / epilogue: empty). The fp16 tile is
+proven **element-exact** before any timing (`tools/ptx/mma-gemm-check.f` `MGC-CFG-F16`:
+eight configs at the block-M-aware edges — **both** warp grids at 128³/256³, the non-wide
+64³/128³, a 256³/512³ MFRAGS=4 tile, and two epilogue combos — device-verified on the
+GB10, zero mismatches). The tolerance is a **justified zero**: the fill's small integers
+(1..13, 1..11) are exact in f16's 11-bit significand, each product is ≤ 143, and the f32
+K-accumulation never exceeds 512·143 = 73 216 < 2²⁴, so no add rounds and the device `f32`
+C equals the `f64` reference exactly (the compare requires `err = 0.0`, no epsilon; the
+argument is in the check-file header). The C/D fragment map is identical to the tf32 tile,
+so the scattered store *and* the smem C epilogue are reused verbatim; only the A/B fragment
+loads, the mma opcode, and the `f16`-sized staging are new. A fail-closed guard
+(`E-MMA-DTYPE`, negative-tested) rejects fp16 combined with a feed knob wired only for the
+tf32 fragment format (A-`ldmatrix`, transposed-Bs B-`ldmatrix`, wide ablation).
+
+### Result — fp16 is ~1.5× Habu's own tf32 on the compute-bound shapes, but still trails Triton
+
+Best-of-3, run solo; the same-session FP32 CUDA-core reference (`MM`) reproduced the
+committed head-to-head values within ~1 % (8.2 / 13.1 / 15.1 / 12.9 vs 8.2 / 13.2 / 14.9 /
+13.0 TFLOP/s), so the session clock matches the tf32 head-to-head baseline (tight-loop
+`nvidia-smi` p50 read 2340 MHz, ≤ 43 °C / ≤ 43 W, not throttled). **Bold = fp16 per-shape
+winner** (the 4-warp MFRAGS=4 `BM128×BN64` tile sweeps every shape — stages=2 dyn at
+512³–2048³, stages=1 static at 4096³):
+
+| TFLOP/s (fp16, C=A·B)          |  512³ | 1024³ | 2048³ | 4096³ |
+|--------------------------------|------:|------:|------:|------:|
+| **Habu fp16 tile (best)**      |**16.3**|**36.1**|**46.1**|**44.6**|
+| Triton 3.8 fp16 `tl.dot`       |  27.4 |  73.8 |  85.8 |  89.1 |
+| **Habu / Triton (fp16)**       | 0.59× | 0.49× | 0.54× | 0.50× |
+| Habu %-of-fp16-roof (~100 TF)  |   16% |   36% |   46% |   45% |
+| (ref) Habu tf32 tile (round 3) |  16.3 |  29.1 |  31.7 |  28.2 |
+| **fp16 / own tf32**            | 1.00× | 1.24× |**1.45×**|**1.58×**|
+
+The **fp16-over-own-tf32 multiplier is the finding, and it confirms Round 4's thesis**: the
+denser HMMA does nothing at 512³ (1.00×, the occupancy/launch-bound small shape where the
+tile is not mma-issue-bound) and grows monotonically to **1.58× at 4096³**, the most
+compute-bound shape — exactly where "more FLOPs per issue slot" is the binding lever. So the
+tile family *is* mma-issue-bound on the big shapes, as rounds 2–4 argued, and doubling the K
+per issue buys a real ~1.5×. It does **not** reach the naive 2× because the fp16 B fragment
+is un-transposed: its two K-adjacent halves are one `BN`-row apart in the k-major `Bs`, so
+each B register is built from two `ld.shared.u16` + a shift/or rather than one `b32` load —
+the per-K B-feed instruction count is unchanged from tf32 while the mma count halved, so the
+feed re-weights toward the residual.
+
+**Honest, unflattering headline: on the GB10 the checked Habu fp16 tile reaches 0.49–0.59×
+of Triton 3.8's fp16 `tl.dot`** — the same shape of result as the tf32 head-to-head (Triton
+wins), and for the same reason (Triton's autotuner finds a 4-warp, 3–5-stage pipelined small
+tile that nearly saturates the roof; Habu's 2-stage tile does not). fp16 halving the per-tile
+smem does lift occupancy — the MFRAGS=4 **8-warp** 256×64 tile now fits the 48 KB static cap
+(20 480 B, vs the tf32 tile's 98 304 B that forced dynamic smem) — but the narrower 4-warp
+128×64 tile still wins every shape, and the epilogue helps only 512³ (it ties the winner
+there and loses elsewhere), both consistent with the tf32 rounds. The next fp16 lever is the
+B feed: a transposed-`Bs` staging (one `b32` load per B register, as the tf32 wave-3 path
+does for its B-`ldmatrix`) or an fp16 `ldmatrix.x4`/`ldmatrix.x2` fragment load, either of
+which would cut the feed toward the 2× ceiling — a kernel-engineering change of the same
+class as the tf32 wave-3 work, to be proven element-exact and measured before any number is
+claimed.
+
+### Reproduction (exact)
+
+```
+# Element-exact correctness first (arch auto-probed sm_121a), then throughput:
+bin/hb --load tools/ptx/mma-gemm-check.f   # MGC-ALL: 8 MGC-CFG-F16 rows PASS element-exact (both warp grids
+                                           # 128^3/256^3 + epilogue); E-MMA-DTYPE negative fail-closed; tf32 rows unchanged
+# swap the file's bottom entry to GEMMBENCH:GB-F16-SWEEP (as with GB-W4-SWEEP), then:
+bin/hb --load tools/ptx/gemm-bench.f       # GB-F16-SWEEP: FP32 roof reference + the fp16 tile across warp grids /
+                                           # MFRAGS / stages / epilogue, all four shapes; best of 3 full passes, solo
+# tf32 byte-identity (MMA-DTYPE=0 must not move any config):
+bin/hb --load tools/ptx/mma-emit-diff.f    # 35-config MMM emit stream; diff base vs branch = empty
+```
+
+Protocol identical to the head-to-head above: per shape 1 warmup + ITERS (400, 200, 80, 40)
+CUDA-event-timed launches, **best of 3 full passes**, run **solo**. A = B = 1.0, C = 0
+(values immaterial to timing). The Triton fp16 column is the same `/tmp/gemm-triton-gb10.py`
+referee measured in the fp16 table above.

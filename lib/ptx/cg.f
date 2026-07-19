@@ -184,6 +184,40 @@ TRUSTED: BITS>R ( n -- r ) ;
 : F32-UNPACK ( ptr u8 n ptr a -- ) {: src:ptr cnt:n dst:ptr :} \ f32 -> n f64 cells
    cnt 0 ?do  src i 4 * +  SF-LD  F32>F64  dst i cells + !  loop ;
 
+\ --- f16 (IEEE half) narrowing for the fp16 mma tile (dot habu-fp16-mma-tile). F64>F16 mirrors
+\ F64>F32 (round-to-nearest-even; +/-0, subnormal, overflow->inf, NaN handled); the subnormal
+\ rounding reuses the generic RNE-shift SUBN>F32 (it rounds the 53-bit f64 significand right by an
+\ arbitrary shift and applies the sign, independent of the target width). f16 fields: sign bit15,
+\ 5-bit exp (bias 15), 10-bit mantissa. SF-ST16 stores the low 16 bits little-endian; F16-PACK
+\ narrows each f64 host cell to a packed f16 device buffer. Device C stays f32 (F32-UNPACK reads it
+\ back), so no F16-UNPACK is needed. ---
+: F64>F16 ( r -- n ) {: fr:r :}
+   fr R>BITS {: b :}
+   b 63 rshift 1 and 15 lshift {: s :}               \ sign in f16 bit 15
+   b 52 rshift $7FF and {: e :}                       \ f64 biased exponent
+   b $FFFFFFFFFFFFF and {: m :}                        \ 52-bit mantissa
+   e 1008 - {: x :}                                    \ target f16 biased exponent
+   e $7FF = if                                         \ inf / NaN
+      m 0= if s $7C00 or exit then                     \ +/-inf
+      s $7C00 or  m 42 rshift or  $200 or exit         \ quiet NaN (payload kept)
+   then
+   e 0= if s exit then                                 \ +/-0 / f64-subnormal -> signed 0
+   x 1 < if  1 52 lshift m or  43 x -  s  SUBN>F32  exit  then   \ f16 subnormal (sig>>(43-x) RNE)
+   x 30 > if s $7C00 or exit then                      \ overflow -> +/-inf
+   m 42 rshift {: mt :}                                \ top 10 mantissa bits
+   m $3FFFFFFFFFF and {: rem :}                         \ the 42 dropped bits
+   rem $20000000000 > if 1 else
+      rem $20000000000 = if mt 1 and else 0 then
+   then {: inc :}                                      \ round-to-nearest-even increment
+   x 10 lshift mt or inc + {: v :}                     \ carry from mantissa bumps exponent
+   v $7BFF > if s $7C00 or exit then                   \ carry overflowed to inf
+   s v or ;
+: SF-ST16 ( n ptr u8 -- ) {: v:n p:ptr :}          \ store low 16 bits of v LE at p
+   v          $FF and  p     c!
+   v 8 rshift $FF and  p 1 + c! ;
+: F16-PACK ( ptr a n ptr u8 -- ) {: src:ptr cnt:n dst:ptr :}   \ n f64 cells -> f16
+   cnt 0 ?do  src i cells + @ F64>F16  dst i 2 * +  SF-ST16  loop ;
+
 \ --- per-op emitters (operate on register numbers) ---
 \ GRID-CTX: global flat index + bounds predicate; returns the byte-offset rd reg.
 : EMIT-GRID-CTX ( n -- n ) {: spanrd :}    \ span base unused (index is from tid)

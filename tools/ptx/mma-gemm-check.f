@@ -11,6 +11,16 @@
 \ mis-mapping (transposed tile, swapped warp row/col) mismatches instead of hiding behind a
 \ symmetric all-ones tile. This is the committed correctness proof for the BENCH kernel.
 \
+\ FP16 tile (MMA-DTYPE=1, dot habu-fp16-mma-tile): the SAME fill + reference + compare prove the
+\ m16n8k16 f16.f16.f32 tile EXACT with a JUSTIFIED zero tolerance. The fp16 significand is 11 bits
+\ (10 stored + implicit), representing every integer in [0,2048] exactly; the fill's 1..13 (A) and
+\ 1..11 (B) are all < 2048, so F16-PACK narrows them with ZERO error. Each product is an integer
+\ <= 143, and the K-accumulation runs in f32, whose every partial sum is an integer <= K*143 <=
+\ 512*143 = 73216 < 2^24 - exactly representable in f32, so no add rounds. Hence the device f32 C
+\ equals the exact integer dot product, which equals the f64 host reference EXACTLY: MGC-COMPARE
+\ requires err = 0.0 (bitwise-exact within f32), no epsilon. The fp16 tile stores A/B as f16 in
+\ BOTH global and shared; C stays f32 (F32-UNPACK on readback), the accumulate is f32.
+\
 \ Device-only: off the Orin (no libcuda) MGC-ALL SKIPS so this file still check-loads. Run
 \ on the device (ISOLATED-COPY): bin/hb --load tools/ptx/mma-gemm-check.f
 
@@ -79,13 +89,17 @@ create MGC-MAXERR 1 cells allot
 
 : MGC-LAUNCH ( -- )                        \ alloc + htod + launch (block 16x16, grid (n/64)^2) + dtoh
    MGC-N @ {: n:n :}  n n * {: e:n :}
-   e 4 * MGC-DA PTXBENCH:DEVICE-ALLOC
-   e 4 * MGC-DB PTXBENCH:DEVICE-ALLOC
+   MMA-ESZ {: esz:n :}                     \ A/B device element bytes: 4 tf32 / 2 fp16 (C stays f32)
+   e esz * MGC-DA PTXBENCH:DEVICE-ALLOC
+   e esz * MGC-DB PTXBENCH:DEVICE-ALLOC
    e 4 * MGC-DC PTXBENCH:DEVICE-ALLOC
-   MGC-HA e MGC-PA F32-PACK
-   MGC-HB e MGC-PB F32-PACK
-   MGC-DA @ MGC-PA e 4 * PTXBENCH:HTOD
-   MGC-DB @ MGC-PB e 4 * PTXBENCH:HTOD
+   MMA-F16? if
+      MGC-HA e MGC-PA F16-PACK  MGC-HB e MGC-PB F16-PACK   \ f64 host -> packed f16 device buffers
+   else
+      MGC-HA e MGC-PA F32-PACK  MGC-HB e MGC-PB F32-PACK
+   then
+   MGC-DA @ MGC-PA e esz * PTXBENCH:HTOD
+   MGC-DB @ MGC-PB e esz * PTXBENCH:HTOD
    16 PTXBENCH:BLOCK!  MMA-NTHREADS 16 / PTXBENCH:BLOCKY!   \ 16x16=256 thr (8 warps) or 16x8=128 thr (4 warps)
    n 64 / PTXBENCH:GRID!  n MMA-BROWS / PTXBENCH:GRIDY!   \ gridY = M/block-rows (BROWS=WROWS*16*MFRAGS)
    36 PTXBENCH:PARAM-BYTES!
@@ -262,6 +276,22 @@ variable MGC-TN
    1 MMA-EPILOG !  s" -- EPILOGUE (smem coalesced C store) + B-ldmatrix transposed-Bs:" type cr
    MGC-CFG-WIDE-B  0 MMA-EPILOG ! ;
 
+\ FP16 tile config (dot habu-fp16-mma-tile): MMA-DTYPE=1, scalar packed-b32 feed (mode 0). Checks at
+\ the block-M-aware edges (BROWS, 2*BROWS) so BOTH warp grids are covered - WARPS=8 MFRAGS=2 -> 128^3/
+\ 256^3, WARPS=4 MFRAGS=4 -> 128^3/256^3, WARPS=8 MFRAGS=1 -> 64^3/128^3. The fill/reference/compare are
+\ the tf32 ones EXACT with zero tolerance (small integers exact in f16, f32 accumulate < 2^24; argument
+\ in the header). Args: bk pad stages dyn mfrags warps epilog. Restores the tf32 8-warp default.
+: MGC-CFG-F16 ( n n n n n n n -- )
+   MMA-EPILOG !  MMA-WARPS !  MMA-MFRAGS !  MMA-DYNSMEM !  MMA-STAGES !  MMA-PAD !  MMA-BK !
+   1 MMA-DTYPE !  0 MMA-LMODE !  0 MMA-BLDM !  0 MMA-BPAD !
+   MMA-BROWS MGC-SA !  MMA-BROWS 2 * MGC-SB !
+   s" -- FP16 tile MFRAGS=" type MMA-MFRAGS @ .  s"  warps=" type MMA-WARPS @ .  s"  BK=" type MMA-BK @ .
+   s"  stages=" type MMA-STAGES @ .  s"  dyn=" type MMA-DYNSMEM @ .  s"  epi=" type MMA-EPILOG @ .
+   s"  (" type MGC-SA @ . s" ^3," type MGC-SB @ . s" ^3):" type cr
+   0 MGC-MODE
+   0 MMA-DTYPE !  0 MMA-EPILOG !  32 MMA-BK !  0 MMA-PAD !  2 MMA-STAGES !  0 MMA-DYNSMEM !
+   1 MMA-MFRAGS !  8 MMA-WARPS !  64 MGC-SA !  128 MGC-SB ! ;
+
 \ DEEP-STAGE 4-warp configs (dot habu-4-warp-mma step 3). N>=3 uses the N-stage ring pipeline
 \ (lib/ptx/cg-mma.f MMA-PIPE-KLOOP-MULTI), whose steady wait_group(N-1) and draining epilogue
 \ wait_group(N-2..0) are only exact when T=ceil(K/BK) >= N-1. The BROWS-derived edges (down to 64
@@ -315,6 +345,26 @@ variable MGC-TN
    if s" -- epilogue smem legality: fail-closed when staging busts the static cap, emits when it fits (PASS)" type cr
    else s" mma-gemm-check: epilogue smem legality regression FAILED" 1 die then ;
 
+\ negative+positive regression (dot habu-fp16-mma-tile): the fp16 dtype guard MMA-CHECK-DTYPE must fail
+\ closed with E-MMA-DTYPE when fp16 is combined with a feed knob wired only for the tf32 fragment format
+\ (A-ldmatrix LMODE 1/2, transposed-Bs B-ldmatrix, or the wide ablation), and emit cleanly with the
+\ scalar packed-b32 feed (LMODE=0). Device-independent (pure emit). Keeps a bad fp16 knob combination
+\ from emitting a kernel whose fragment loads disagree with the m16n8k16 mma operand layout.
+: MGC-DTYPE-NEG ( -- )
+   1 MMA-DTYPE !  32 MMA-BK !  0 MMA-PAD !  2 MMA-STAGES !  0 MMA-DYNSMEM !  1 MMA-MFRAGS !  8 MMA-WARPS !
+   2 MMA-LMODE !  MGC-TRY-EMIT {: rlm:n :}               \ fp16 + A-ldmatrix -> not wired -> must throw E-MMA-DTYPE
+   0 MMA-LMODE !  4 MMA-MFRAGS !  1 MMA-STAGES !  1 MMA-DYNSMEM !  1 MMA-BLDM !  4 MMA-BPAD !
+   MGC-TRY-EMIT {: rbl:n :}                              \ fp16 + B-ldmatrix -> not wired -> must throw E-MMA-DTYPE
+   0 MMA-BLDM !  0 MMA-BPAD !  1 MMA-ABLATE !
+   MGC-TRY-EMIT {: rab:n :}                              \ fp16 + wide ablation -> tf32-only -> must throw E-MMA-DTYPE
+   0 MMA-ABLATE !  1 MMA-MFRAGS !  2 MMA-STAGES !  0 MMA-DYNSMEM !
+   MGC-TRY-EMIT {: rok:n :}                              \ fp16 + scalar packed (LMODE=0) -> must emit (0)
+   0 MMA-DTYPE !  32 MMA-BK !  0 MMA-PAD !  2 MMA-STAGES !  0 MMA-DYNSMEM !  1 MMA-MFRAGS !  8 MMA-WARPS !  0 MMA-LMODE !
+   s" -- fp16 dtype legality: +ldmA->" type rlm . s"  +Bldm->" type rbl . s"  +ablate->" type rab . s"  scalar->" type rok . cr
+   rlm E-MMA-DTYPE =  rbl E-MMA-DTYPE =  and  rab E-MMA-DTYPE =  and  rok 0=  and
+   if s" -- fp16 dtype legality: fail-closed on un-wired feed knobs, emits scalar packed (PASS)" type cr
+   else s" mma-gemm-check: fp16 dtype legality regression FAILED" 1 die then ;
+
 public
 : MGC-ALL ( -- )
    MGC-SMEM-NEG                                        \ emitter fail-closed check (device-independent)
@@ -322,6 +372,7 @@ public
    MGC-BLDM-NEG                                        \ B-ldmatrix misaligned/MFRAGS=1 fail-closed (device-independent)
    MGC-WARPS-NEG                                       \ warp-grid legality fail-closed (device-independent)
    MGC-EPI-NEG                                         \ epilogue smem legality fail-closed (device-independent)
+   MGC-DTYPE-NEG                                       \ fp16 dtype legality fail-closed (device-independent)
    CUDA:OPEN? 0= if s" mma-gemm-check: libcuda unavailable -> SKIPPED (off-device)" type cr exit then
    s" == TF32 mma.sync GEMM device-correctness (element-exact vs host) ==" type cr
    0 MGC-MODE  1 MGC-MODE  2 MGC-MODE
@@ -368,7 +419,16 @@ public
    32 8 2 1 2 4 MGC-CFG-W4-EPI                         \ 4-warp MFRAGS=4 stages=2 DYN ldmatrix-A + EPILOGUE (512^3-winner tile shape)
    32 8 2 1 0 4 MGC-CFG-W4-EPI                         \ 4-warp MFRAGS=4 stages=2 DYN scalar+cvt + EPILOGUE (exact-RNE cross-check)
    32 8 1 1 4 4 MGC-CFG-WB-EPI                         \ 8-warp MFRAGS=4 bpad=4 stages=1 DYN B-ldmatrix + EPILOGUE (4096^3-winner tile; SH grows to 65536)
-   0 MMA-LMODE ! ;                                     \ restore the committed default (baseline scalar+cvt)
+   s" == FP16 mma.sync m16n8k16 tile (dot habu-fp16-mma-tile, element-exact vs host) ==" type cr
+   32 0 2 0 1 8 0 MGC-CFG-F16                          \ non-wide MFRAGS=1 8-warp static (64^3/128^3)
+   32 0 2 0 2 8 0 MGC-CFG-F16                          \ wide MFRAGS=2 8-warp static (128^3/256^3)
+   32 0 2 1 2 8 0 MGC-CFG-F16                          \ wide MFRAGS=2 8-warp DYNAMIC smem (128^3/256^3)
+   32 0 1 0 4 4 0 MGC-CFG-F16                          \ 4-warp MFRAGS=4 stages=1 static (128^3/256^3)
+   32 0 2 1 4 4 0 MGC-CFG-F16                          \ 4-warp MFRAGS=4 stages=2 DYNAMIC (128^3/256^3)
+   32 0 2 0 2 8 1 MGC-CFG-F16                          \ wide MFRAGS=2 8-warp + EPILOGUE (128^3/256^3)
+   32 0 1 0 4 4 1 MGC-CFG-F16                          \ 4-warp MFRAGS=4 stages=1 + EPILOGUE (128^3/256^3)
+   32 0 2 0 4 8 0 MGC-CFG-F16                          \ wide MFRAGS=4 8-warp static (256^3/512^3)
+   0 MMA-LMODE !  0 MMA-DTYPE ! ;                      \ restore the committed defaults (tf32 scalar+cvt)
 
 ;package
 

@@ -33,6 +33,7 @@ package GEMMBENCH
 
 16 constant GB-BLK                     \ block = 16x16 = 256 threads (both kernels)
 $3F800000 constant GB-ONE             \ 1.0f bit pattern (A/B fill)
+$3C003C00 constant GB-HALF-ONE        \ two packed 1.0h (f16) bit patterns (fp16 A/B fill; values immaterial to timing)
 
 create GB-QO $1000 allot  create GB-QE $1000 allot
 variable GB-DA  variable GB-DB  variable GB-DC
@@ -53,11 +54,17 @@ variable GB-BLKY                       \ block Y dim: 16 (256 thr, 8-warp) / 8 (
 
 : GB-ALLOC ( n -- ) {: s:n :}          \ alloc + fill A=B=1.0, C=0 for an s x s GEMM
    s s * {: e:n :}
-   e 4 * GB-DA PTXBENCH:DEVICE-ALLOC
-   e 4 * GB-DB PTXBENCH:DEVICE-ALLOC
+   MMA-ESZ {: esz:n :}                  \ A/B element bytes: 4 tf32 / 2 fp16 (C stays f32)
+   e esz * GB-DA PTXBENCH:DEVICE-ALLOC
+   e esz * GB-DB PTXBENCH:DEVICE-ALLOC
    e 4 * GB-DC PTXBENCH:DEVICE-ALLOC
-   GB-DA @ GB-ONE e PTXBENCH:DEVICE-MEMSET32
-   GB-DB @ GB-ONE e PTXBENCH:DEVICE-MEMSET32
+   MMA-F16? if                          \ fp16: fill halves via a packed-pair 32-bit memset (e/2 words = e halves)
+      GB-DA @ GB-HALF-ONE e 2 / PTXBENCH:DEVICE-MEMSET32
+      GB-DB @ GB-HALF-ONE e 2 / PTXBENCH:DEVICE-MEMSET32
+   else
+      GB-DA @ GB-ONE e PTXBENCH:DEVICE-MEMSET32
+      GB-DB @ GB-ONE e PTXBENCH:DEVICE-MEMSET32
+   then
    GB-DC @ 0     e PTXBENCH:DEVICE-MEMSET32 ;
 
 : GB-PARAMS ( n -- ) {: s:n :}         \ 2D grid = (s/tile)^2 output tiles, 16x16 block
@@ -81,7 +88,7 @@ variable GB-BLKY                       \ block Y dim: 16 (256 thr, 8-warp) / 8 (
    0 GB-DA !  0 GB-DB !  0 GB-DC ! ;
 
 : GB-FLOPS ( n n -- n ) {: s:n it:n :}  s s * s * 2 * it * ;   \ 2 s^3 per matmul
-: GB-BYTES ( n n -- n ) {: s:n it:n :}  s s * 12 * it * ;      \ A+B read + C write, 4 B each
+: GB-BYTES ( n n -- n ) {: s:n it:n :}  s s * MMA-ESZ 2 * 4 + * it * ;   \ A+B read (esz B each) + C write (4 B); 12 tf32 / 8 fp16
 
 : GB-SHAPE ( n n -- ) {: s:n it:n :}
    it PTXBENCH:ITERS!
@@ -249,6 +256,27 @@ variable GB-BLKY                       \ block Y dim: 16 (256 thr, 8-warp) / 8 (
    32 8 2 1 2 4 GB-MMM-CFGW-B          \ MFRAGS=2 bpad=4 stages=2 DYN B-ldmatrix (128x64)
    32 8 1 1 2 4 GB-MMM-CFGW-B ;        \ MFRAGS=2 bpad=4 stages=1 DYN single-buffer B-ldmatrix (128x64; GB10 1024^3 winner)
 
+\ FP16 tile bench config (dot habu-fp16-mma-tile): MMA-DTYPE=1, m16n8k16 f16.f16.f32, scalar packed-b32
+\ feed (mode 0). A/B fill as f16 (GB-ALLOC), C f32; GFLOP/s = 2 s^3 as for tf32. Every config is
+\ element-exact first (tools/ptx/mma-gemm-check.f MGC-CFG-F16). Args: bk pad stages dyn mfrags warps
+\ epilog. Sets block Y from the warp count and the dynamic .shared size, then restores the tf32 default.
+: GB-MMM-CFG-F16 ( n n n n n n n -- )
+   MMA-EPILOG !  MMA-WARPS !  MMA-MFRAGS !  MMA-DYNSMEM !  MMA-STAGES !  MMA-PAD !  MMA-BK !
+   1 MMA-DTYPE !  0 MMA-LMODE !  0 MMA-BLDM !  0 MMA-BPAD !
+   MMA-DYNSMEM @ if MMA-SH-BYTES else 0 then GB-SMEM-DYN !
+   MMA-NTHREADS 16 / GB-BLKY !          \ 16 (256 thr, 8-warp) / 8 (128 thr, 4-warp)
+   s" == FP16 MMM MFRAGS=" type MMA-MFRAGS @ GB-INT.  s"  warps=" type MMA-WARPS @ GB-INT.
+   s"  BK=" type MMA-BK @ GB-INT.  s"  stages=" type MMA-STAGES @ GB-INT.  s"  dyn=" type MMA-DYNSMEM @ GB-INT.
+   s"  epi=" type MMA-EPILOG @ GB-INT.  s"  block=" type MMA-BROWS GB-INT. s" x64  smem=" type MMA-SMEM GB-INT. s" B ==" type cr
+   s" habu-gemm-bench" PTXTC:PREPARE
+   PTX-CAPTURE-ON  EMIT-MATMUL-MMA  PTX-CAPTURE-OFF
+   GB-ASSEMBLE
+   64 GB-OT !  MMA-BROWS GB-OTY !
+   s" MMM" GB-KERNEL
+   PTXTC:CLEAN
+   0 MMA-DTYPE !  0 MMA-EPILOG !  32 MMA-BK !  0 MMA-PAD !  2 MMA-STAGES !  0 MMA-DYNSMEM !  1 MMA-MFRAGS !  8 MMA-WARPS !
+   0 GB-SMEM-DYN !  64 GB-OTY !  16 GB-BLKY ! ;
+
 public
 
 : GB-MMM-BENCH ( -- )                  \ FP32 roof reference + the larger-BK/swizzle sweep (focused)
@@ -323,6 +351,27 @@ public
    32 8 1 0 2 4 GB-MMM-CFGW4-EPI        \ same tile + EPILOGUE
    32 8 1 1 4 4 GB-MMM-CFGW-B           \ 4096^3 winner 8-warp M4 bpad=4 stages=1 dyn B-ldmatrix (256x64) - epilogue OFF
    32 8 1 1 4 4 GB-MMM-CFGW-B-EPI ;     \ same tile + EPILOGUE
+
+\ FP16 tile schedule sweep (dot habu-fp16-mma-tile): the FP32 CUDA-core roof reference, then the
+\ m16n8k16 f16.f16.f32 tile across warp grids (8/4), MFRAGS (1/2/4), stages (1/2), and the smem C
+\ epilogue. fp16 HALVES the per-tile smem vs tf32, so the wide MFRAGS=4 8-warp tile now fits the 48 KB
+\ static cap. Every config is element-exact first (tools/ptx/mma-gemm-check.f MGC-CFG-F16, 0 mismatches);
+\ best-of-3 at the sustained GEMM clock, run SOLO. Compared vs Triton 3.8's fp16 tl.dot per-shape
+\ numbers (docs/eval-triton.md GB10 fp16 table: 27.4 / 73.8 / 85.8 / 89.1 TFLOP/s). Read the winner row
+\ per shape (the per-shape optimum moves with occupancy, as for tf32).
+: GB-F16-SWEEP ( -- )
+   CUDA:OPEN? 0= if s" gemm-bench: libcuda unavailable -> SKIPPED (off-device)" type cr exit then
+   GB-MM                                \ FP32 CUDA-core roof reference (same session)
+   32 0 2 0 1 8 0 GB-MMM-CFG-F16        \ non-wide MFRAGS=1 8-warp static (64x64)
+   32 0 2 1 2 8 0 GB-MMM-CFG-F16        \ MFRAGS=2 8-warp stages=2 dyn (128x64)
+   32 0 1 0 2 8 0 GB-MMM-CFG-F16        \ MFRAGS=2 8-warp stages=1 static (128x64)
+   32 0 1 0 4 8 0 GB-MMM-CFG-F16        \ MFRAGS=4 8-warp stages=1 static (256x64; fp16 fits the 48 KB cap)
+   32 0 2 1 4 8 0 GB-MMM-CFG-F16        \ MFRAGS=4 8-warp stages=2 dyn (256x64)
+   32 0 1 0 4 4 0 GB-MMM-CFG-F16        \ 4-warp MFRAGS=4 stages=1 static (128x64)
+   32 0 2 1 4 4 0 GB-MMM-CFG-F16        \ 4-warp MFRAGS=4 stages=2 dyn (128x64)
+   32 0 1 0 2 4 0 GB-MMM-CFG-F16        \ 4-warp MFRAGS=2 stages=1 static (64x64)
+   32 0 1 0 4 4 1 GB-MMM-CFG-F16        \ 4-warp MFRAGS=4 stages=1 static + EPILOGUE (128x64)
+   32 0 2 1 2 8 1 GB-MMM-CFG-F16 ;      \ MFRAGS=2 8-warp stages=2 dyn + EPILOGUE (128x64)
 
 ;package
 
