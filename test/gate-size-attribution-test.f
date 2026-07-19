@@ -95,17 +95,14 @@ $4000 constant MACOS-DATA-CONST  \ __DATA_CONST page (__got + zero fill)
 \ (macOS row above was re-measured by that landing; Linux left for this next
 \ fixpoint): +92 of engine text, composing to 135996 (floor 736 -> 828); the
 \ whole file stays inside the same 4 KiB page (LINUX-TOTAL unchanged).
-\ 2026-07-19 CASE OF dispatch B.cond slimming (dot
-\ habu-branch-directly-on-4624d193) was landed and byte-measured on macOS only;
-\ this LINUX-CODE-TEXT row is NOT re-measured on this tree and must be re-measured
-\ live at the next linux-arm64 fixpoint (the exact-CODELEN ratchet fails closed
-\ with the value to commit). The change drops one C-EMITW call site in the
-\ engine's J-OF, so the predicted Linux delta is the same -12 bytes measured on
-\ macOS (135996 -> 135984 predicted); the absolute value is left for a live Linux
-\ measurement rather than bumped from this host.
-135996 constant LINUX-CODE-TEXT   \ CODELEN: every emitter-phase row (baked-source incl.)
+\ 2026-07-19 re-measured live at the linux-arm64 fixpoint (spark) after the CASE
+\ OF dispatch B.cond slimming (dot habu-branch-directly-on-4624d193): exactly the
+\ macOS-predicted -12 (one C-EMITW call site dropped from J-OF), CODELEN 135996
+\ -> 135984 (floor 828 -> 816); the whole file stays inside the same 4 KiB page
+\ (LINUX-TOTAL unchanged).
+135984 constant LINUX-CODE-TEXT   \ CODELEN: every emitter-phase row (baked-source incl.)
 192 constant LINUX-RW             \ ELF read-write segment tail: DYNAMIC + GOT (ELF-RW-SZ)
-828 constant LINUX-FLOOR-DIST     \ code above the 4 KiB floor: the page-recovery shave
+816 constant LINUX-FLOOR-DIST     \ code above the 4 KiB floor: the page-recovery shave
 143552 constant LINUX-TOTAL       \ = FILE-SIZE bin/hb = GB-SIZE-BASELINE-LINUX
 
 : PAGE-UP ( n n -- n ) {: v:n page:n :}
