@@ -551,10 +551,88 @@ public
    IWG-PF-EXPLOIT-FORGE$ IWG-RUN-STDIN
    s" PF-COMMIT-N" IWG-ASSERT-INTERNAL ;
 
+\ --- sibling type-registry write-protection (dot habu-protect-sibling-type-44eec932).
+\ The family (TFAM), sum-variant (SUMV), interned-string, param-kind, logical-layout
+\ (src/core/type-family.f) and schema/schema-root (src/core/type-schema.f) registries
+\ are as exposed as PF-COMMIT-N was: each control cell is a din=0 data record the
+\ internal-word pass would leave executable. REG-PROTECT + IMK-SEAL-REGISTRY now seal
+\ every cell DNAME-INT, so a bare cell name, a bare `99 <cell> !` write, and a bare
+\ `' <cell>` tick all fail closed (rc 70, internal engine word) exactly like the PF
+\ cells. Compiled cold-prefix writers and the certified accessors (TFAM-N@, SUMV-N@,
+\ TF-STR-U@, TF-PK-N@, SCHEMA-N@, SCHEMA-ROOT-N@) are unaffected. ----
+: IWG-WRITE-FORGE$ ( ptr u8 n -- ptr u8 n ) {: a:ptr u:n :}   \ program "99 <cell> !"
+   SB-RESET
+   s" 99 " SB-APPEND  a u SB-APPEND  s"  !" SB-APPEND IWG-LF
+   SB$ ;
+
+: IWG-TICK-CELL-FORGE$ ( ptr u8 n -- ptr u8 n ) {: a:ptr u:n :}   \ program "' <cell>"
+   SB-RESET
+   s" ' " SB-APPEND  a u SB-APPEND IWG-LF
+   SB$ ;
+
+: IWG-CELL-WT ( ptr u8 n -- ) {: a:ptr u:n :}   \ bare write AND bare tick both fail closed naming the cell
+   a u IWG-WRITE-FORGE$ IWG-EXEC:SUBJECT      a u IWG-ASSERT-INTERNAL
+   a u IWG-TICK-CELL-FORGE$ IWG-EXEC:SUBJECT   a u IWG-ASSERT-INTERNAL ;
+
+: IWG-TFAM-CASES ( -- )
+   s" bare TF-CAP-V family-registry capacity cell fails closed" T-LABEL   s" TF-CAP-V" IWG-NEG
+   s" bare TF-A-BOOT family arena fails closed" T-LABEL                    s" TF-A-BOOT" IWG-NEG
+   s" bare TF-A-P family arena base fails closed" T-LABEL                  s" TF-A-P" IWG-NEG
+   s" bare TFAM-N family high-water fails closed" T-LABEL                  s" TFAM-N" IWG-NEG
+   s" TFAM-N high-water write + tick fail closed" T-LABEL                  s" TFAM-N" IWG-CELL-WT ;
+
+: IWG-SUMV-CASES ( -- )
+   s" bare SUMV-CAP-V variant-registry capacity cell fails closed" T-LABEL  s" SUMV-CAP-V" IWG-NEG
+   s" bare SUMV-A-BOOT variant arena fails closed" T-LABEL                  s" SUMV-A-BOOT" IWG-NEG
+   s" bare SUMV-A-P variant arena base fails closed" T-LABEL                s" SUMV-A-P" IWG-NEG
+   s" bare SUMV-N variant high-water fails closed" T-LABEL                  s" SUMV-N" IWG-NEG
+   s" SUMV-N high-water write + tick fail closed" T-LABEL                   s" SUMV-N" IWG-CELL-WT ;
+
+: IWG-STR-CASES ( -- )
+   s" bare TF-STR-CAP-V string-pool capacity cell fails closed" T-LABEL   s" TF-STR-CAP-V" IWG-NEG
+   s" bare TF-STR-BOOT string pool fails closed" T-LABEL                  s" TF-STR-BOOT" IWG-NEG
+   s" bare TF-STR-P string-pool base fails closed" T-LABEL               s" TF-STR-P" IWG-NEG
+   s" bare TF-STR-U string-pool high-water fails closed" T-LABEL         s" TF-STR-U" IWG-NEG
+   s" TF-STR-U high-water write + tick fail closed" T-LABEL              s" TF-STR-U" IWG-CELL-WT ;
+
+: IWG-PK-CASES ( -- )
+   s" bare TF-PK-CAP-V param-pool capacity cell fails closed" T-LABEL   s" TF-PK-CAP-V" IWG-NEG
+   s" bare TF-PK-BOOT param pool fails closed" T-LABEL                  s" TF-PK-BOOT" IWG-NEG
+   s" bare TF-PK-P param-pool base fails closed" T-LABEL               s" TF-PK-P" IWG-NEG
+   s" bare TF-PK-N param-pool high-water fails closed" T-LABEL         s" TF-PK-N" IWG-NEG
+   s" TF-PK-N high-water write + tick fail closed" T-LABEL             s" TF-PK-N" IWG-CELL-WT ;
+
+: IWG-LAY-CASES ( -- )
+   s" bare LAY-CAP-V layout-registry capacity cell fails closed" T-LABEL   s" LAY-CAP-V" IWG-NEG
+   s" bare LAY-A-BOOT layout arena fails closed" T-LABEL                   s" LAY-A-BOOT" IWG-NEG
+   s" bare LAY-A-P layout arena base fails closed" T-LABEL                 s" LAY-A-P" IWG-NEG
+   s" bare LAY-N layout high-water fails closed" T-LABEL                   s" LAY-N" IWG-NEG
+   s" LAY-N high-water write + tick fail closed" T-LABEL                   s" LAY-N" IWG-CELL-WT ;
+
+: IWG-SCH-CASES ( -- )
+   s" bare SCH-CAP-V schema-registry capacity cell fails closed" T-LABEL     s" SCH-CAP-V" IWG-NEG
+   s" bare SCH-A-BOOT schema arena fails closed" T-LABEL                     s" SCH-A-BOOT" IWG-NEG
+   s" bare SCH-A-P schema arena base fails closed" T-LABEL                   s" SCH-A-P" IWG-NEG
+   s" bare SCH-N schema node high-water fails closed" T-LABEL                s" SCH-N" IWG-NEG
+   s" SCH-N node high-water write + tick fail closed" T-LABEL                s" SCH-N" IWG-CELL-WT
+   s" bare SCH-ROOT-CAP-V schema-root capacity cell fails closed" T-LABEL    s" SCH-ROOT-CAP-V" IWG-NEG
+   s" bare SCH-ROOT-BOOT schema-root pool fails closed" T-LABEL              s" SCH-ROOT-BOOT" IWG-NEG
+   s" bare SCH-ROOT-P schema-root base fails closed" T-LABEL                 s" SCH-ROOT-P" IWG-NEG
+   s" bare SCH-ROOT-N schema-root high-water fails closed" T-LABEL           s" SCH-ROOT-N" IWG-NEG
+   s" SCH-ROOT-N high-water write + tick fail closed" T-LABEL                s" SCH-ROOT-N" IWG-CELL-WT ;
+
+: IWG-SIBLING-CASES ( -- )
+   IWG-TFAM-CASES
+   IWG-SUMV-CASES
+   IWG-STR-CASES
+   IWG-PK-CASES
+   IWG-LAY-CASES
+   IWG-SCH-CASES ;
+
 package IWG-PARITY
 
 7 constant DIRECT-N
-57 constant SUBJECT-N
+99 constant SUBJECT-N
 : RESULT ( -- ptr u8 n ptr u8 n n )
    IWG-OUT IWG-OUT-U @ IWG-ERR IWG-ERR-U @ IWG-RC @ ;
 
@@ -613,6 +691,7 @@ public
    IWG-PARITY:TEST
    IWG-NEG-BARE
    IWG-REGISTRY-CASES
+   IWG-SIBLING-CASES
    IWG-NEG-SHAPES
    IWG-POSITIVES
    IWG-OPENER-CASES
