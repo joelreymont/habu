@@ -70,7 +70,7 @@ require lib/ptx/cpp-slot.f
 -6102 constant E-MMA-BLDM                        \ B-ldmatrix config illegal (non-16B BT row, or MFRAGS=1)
 -6103 constant E-MMA-WARPS                        \ illegal warp grid (WARPS not 4/8, or WARPS=4 without the wide MFRAGS>1 staging)
 -6104 constant E-MMA-EPI                          \ smem epilogue staging tile exceeds the per-block .shared budget
--6105 constant E-MMA-DTYPE                         \ half dtype (fp16/bf16) requested with an un-wired feed knob (ldmatrix / B-ldmatrix / ablate)
+-6105 constant E-MMA-DTYPE                         \ half dtype (fp16/bf16) with an un-wired feed knob (LMODE=1 / tf32 B-ldmatrix / ablate / LMODE=2+BTF16 / LMODE=2 BN>64)
 -6106 constant E-MMA-BTF16                         \ transposed-Bs feed illegal (requested on a tf32 tile, or a non-4B BT row)
 -6107 constant E-MMA-BN                            \ output-tile width BN illegal (not a power of two, or below the legacy 64)
 -6108 constant E-MMA-REGS                          \ per-lane accumulators bust the 255-register file ceiling for this (BN,MFRAGS)
@@ -188,10 +188,13 @@ variable MMA-BPAD   0 MMA-BPAD !              \ BT row pad floats (n-major row s
 \ the SAME m16n8k16 shape, fragment maps, staging and half-precision (2-byte element) geometry as fp16 -
 \ a bf16 half is 2 bytes exactly like an f16 half, so every load/stage is a pure bit-move and only the mma
 \ dtype token (MMA-ABT) and the host pack differ (F64>BF16 round-to-nearest-even, lib/ptx/cg.f). fp16 AND
-\ bf16 (jointly MMA-HALF?) feed A with the scalar packed-b32 path only; the B fragment is fed either from
-\ the k-major Bs (default, two ld.shared.u16 + shift/or per register) or from a TRANSPOSED n-major Bs
-\ (MMA-BTF16, one ld.shared.b32 per register). The tf32-format feed knobs - A-ldmatrix (LMODE 1/2), tf32
-\ B-ldmatrix (BLDM), ablation - are NOT wired for either half dtype and MMA-CHECK-DTYPE fails closed on
+\ bf16 (jointly MMA-HALF?) feed A/B two ways (dot habu-half-precision-ldmatrix): LMODE=0 scalar packed-b32
+\ (default) - A four ld.shared.b32, B either k-major (two ld.shared.u16 + shift/or per register) or transposed
+\ n-major MMA-BTF16 (one ld.shared.b32); or LMODE=2 LDMATRIX - ONE ldmatrix.sync.aligned.m8n8.x4.b16 fills the
+\ four A registers and ONE ldmatrix.x2.trans.b16 fills the two B registers straight from the k-major As/Bs in
+\ the mma-native layout (.trans is legal for a half because the element IS a b16, unlike tf32). The half
+\ ldmatrix is wired at BN=64 (the mid/large MFRAGS tiles); LMODE=1 (tf32 cvt-drop), tf32 B-ldmatrix (BLDM),
+\ ablation, LMODE=2+MMA-BTF16, and LMODE=2 at BN>64 are NOT half paths and MMA-CHECK-DTYPE fails closed on
 \ them. Every non-dtype knob (MFRAGS, WARPS, BK, PAD, stages, dyn, epilogue) works for all three dtypes.
 variable MMA-DTYPE   0 MMA-DTYPE !            \ 0 = tf32 (default), 1 = fp16, 2 = bf16
 : MMA-F16? ( -- bool )  MMA-DTYPE @ 1 = ;
@@ -390,6 +393,21 @@ variable MMA-LMODE   0 MMA-LMODE !
    47 47 MMA-AROW-B MMA-SCALE            \ * As row byte stride = A row byte base (invariant)
    s" shr.u32 %r49,%r46,1;" PTX-L  s" shl.b32 %r49,%r49,4;" PTX-L ;      \ (tsel>>1)*16 = kcol hi bytes (tile2/3 = +4 K)
 
+\ half (fp16/bf16) B-ldmatrix.trans loop-invariant lane base %r35 (dot habu-half-precision-ldmatrix). ONE
+\ ldmatrix.sync.aligned.m8n8.x2.trans loads the 8x8 B fragment straight from the DEFAULT k-major Bs (no
+\ transposed staging): with .trans the loaded k-major tile B[k][n] is returned transposed, so lane (gid,t)
+\ receives {b0,b1}={Bs[ks+2t][col+gid],Bs[ks+2t+1][col+gid]} - EXACTLY the MMA-B-F16 operand (element-exact
+\ by mma-gemm-check; .trans is legal here because the half element IS a b16, unlike tf32 where .trans splits a
+\ tf32). Each lane addresses source K-row k=ks+(lane&15) at N-col base warp_col*(BN/WCOLS)+j*8; the invariant
+\ part is %r35 = ASB + (lane&15)*(BN*2) + warp_col*(BN/WCOLS)*2, then per (ks,j) add ks*(BN*2)+j*16. Works for
+\ both warp grids and all MFRAGS (B does not stack over M-frags). Scratch %r36,%r37; %r35 invariant.
+: MMA-SETUP-BLDM-F16 ( -- )
+   s" and.b32 %r36,%r25,15;" PTX-L              \ lane & 15 = source K-row within the substep
+   36 36 MMA-BN @ 2 * MMA-SCALE                 \ * Bs f16 row byte stride (BN*2)
+   37 27 MMA-BN @ MMA-WCOLS / 2 * MMA-SCALE     \ warp_col * (BN/WCOLS) * 2 = N-col byte base
+   s" add.u32 %r36,%r36,%r37;" PTX-L
+   SB-RESET s" add.u32 %r35,%r36," SB-APPEND MMA-ASB SB-U s" ;" SB-APPEND SB$ PTX-L ;   \ + Bs byte offset (k-major base)
+
 \ loop-invariant lane geometry + the A/B shared byte bases and global C row/col bases.
 : MMA-SETUP ( -- )
    s" shr.u32 %r24,%r8,5;" PTX-L         \ warpid  = tid_lin>>5
@@ -412,7 +430,8 @@ variable MMA-LMODE   0 MMA-LMODE !
    s" add.u32 %r34,%r10,%r34;" PTX-L
    s" shl.b32 %r40,%r29,1;" PTX-L
    s" add.u32 %r34,%r34,%r40;" PTX-L
-   MMA-LMODE @ 2 = if MMA-SETUP-LDM then ;   \ mode-2-only geometry; modes 0/1 stay byte-identical to rung 1
+   MMA-LMODE @ 2 = if MMA-SETUP-LDM then   \ mode-2-only A geometry; modes 0/1 stay byte-identical to rung 1
+   MMA-HALF? MMA-LMODE @ 2 = and if MMA-SETUP-BLDM-F16 then ;   \ half ldmatrix B (trans, k-major) invariant base
 
 \ --- A fragment (16x8, reused across the 4 n-tiles) -> tf32 regs %r50..%r53, mode-switched ---
 : MMA-A-BASE ( n -- ) {: ks:n :}                \ %r40 = As base_lo = %r16 + %r30 + (ks+t)*4 (scalar A)
@@ -437,7 +456,7 @@ variable MMA-LMODE   0 MMA-LMODE !
    s" ld.shared.b32 %r52,[%r40+16];" PTX-L
    SB-RESET s" ld.shared.b32 %r53,[%r40+" SB-APPEND a1o 16 + SB-U s" ];" SB-APPEND SB$ PTX-L ;
 : MMA-A-LDM ( n -- ) {: ks:n :}                 \ mode 2: ONE ldmatrix.x4 (row base %r47, kcol-hi %r49 from MMA-SETUP)
-   SB-RESET s" add.u32 %r48,%r49," SB-APPEND ks 4 * SB-U s" ;" SB-APPEND SB$ PTX-L   \ kcol bytes = (tsel>>1)*16 + ks*4
+   SB-RESET s" add.u32 %r48,%r49," SB-APPEND ks MMA-ESZ * SB-U s" ;" SB-APPEND SB$ PTX-L   \ kcol bytes = (tsel>>1)*16 + ks*ESZ (tf32 *4 / half *2)
    s" add.u32 %r48,%r48,%r47;" PTX-L                                                 \ + A row byte base
    s" add.u32 %r48,%r16,%r48;" PTX-L                                                 \ + buffer base = shared addr
    s" ldmatrix.sync.aligned.m8n8.x4.shared.b16 {%r50,%r51,%r52,%r53},[%r48];" PTX-L ;
@@ -606,7 +625,8 @@ variable MMA-LMODE   0 MMA-LMODE !
    s" shl.b32 %r40,%r29,1;" PTX-L
    s" add.u32 %r34,%r34,%r40;" PTX-L
    MMA-LMODE @ 2 = if MMA-SETUP-LDM-WIDE then
-   MMA-BLDM @ if MMA-SETUP-BLDM-WIDE then ;
+   MMA-BLDM @ if MMA-SETUP-BLDM-WIDE then
+   MMA-HALF? MMA-LMODE @ 2 = and if MMA-SETUP-BLDM-F16 then ;   \ half ldmatrix B (trans, k-major) invariant base
 
 \ --- wide A fragment for M-frag f -> tf32 group %r(50+6f), +f*16 rows past the M-frag-0 base ---
 : MMA-A-BASE-WIDE ( n n -- ) {: ks:n f:n :}     \ %r40 = As base = %r16 + %r30 + f*16*AROW-B + (ks+t)*4
@@ -638,7 +658,7 @@ variable MMA-LMODE   0 MMA-LMODE !
    SB-RESET s" ld.shared.b32 %r" SB-APPEND g 3 + SB-U s" ,[%r40+" SB-APPEND a1o 16 + SB-U s" ];" SB-APPEND SB$ PTX-L ;
 : MMA-A-LDM-WIDE ( n n -- ) {: ks:n f:n :}      \ mode 2: ONE ldmatrix.x4 -> group f (row base %r47 + f*16 rows)
    f MMA-AREG {: g:n :}
-   SB-RESET s" add.u32 %r48,%r49," SB-APPEND ks 4 * SB-U s" ;" SB-APPEND SB$ PTX-L   \ kcol bytes
+   SB-RESET s" add.u32 %r48,%r49," SB-APPEND ks MMA-ESZ * SB-U s" ;" SB-APPEND SB$ PTX-L   \ kcol bytes = (tsel>>1)*16 + ks*ESZ (tf32 *4 / half *2)
    s" add.u32 %r48,%r48,%r47;" PTX-L                                                 \ + A row byte base (M-frag 0)
    f 0 > if SB-RESET s" add.u32 %r48,%r48," SB-APPEND f 16 * MMA-AROW-B * SB-U s" ;" SB-APPEND SB$ PTX-L then
    s" add.u32 %r48,%r16,%r48;" PTX-L                                                 \ + buffer base
@@ -799,7 +819,20 @@ variable MMA-LMODE   0 MMA-LMODE !
    s" add.u32 %r44,%r44,%r40;" PTX-L                                                 \ &BT[col][ks+2t] (b0/b1)
    s" ld.shared.b32 %r54,[%r44];" PTX-L                                             \ {b0,b1} (K-adjacent pair, contiguous)
    s" ld.shared.b32 %r55,[%r44+16];" PTX-L ;                                        \ {b2,b3} (+8 K halves = +16 B)
-: MMA-B-F16-LOAD ( n n -- )  MMA-BTF16 @ if MMA-B-F16-T else MMA-B-F16 then ;         \ ks j ; dispatch by MMA-BTF16
+\ half B fragment via ONE ldmatrix.x2.trans over the DEFAULT k-major Bs (dot habu-half-precision-ldmatrix):
+\ {%r54,%r55}={b0,b1},{b2,b3}. Address = %r16 + %r35 (invariant lane base) + ks*(BN*2) + j*16, where each
+\ lane's source K-row = ks + lane&15 and the tile's 8 N-cols are contiguous in the k-major row - so .trans
+\ returns the mma B operand directly (no shift/or, no transposed staging). Replaces the two ld.shared.u16 +
+\ shift/or (MMA-B-F16) per register. Scratch %r48.
+: MMA-B-LDM-F16 ( n n -- ) {: ks:n j:n :}
+   ks MMA-BN @ 2 * *  j 16 * +  {: off:n :}     \ ks*(BN*2) + j*16 byte offset from the lane base
+   SB-RESET s" add.u32 %r48,%r35," SB-APPEND off SB-U s" ;" SB-APPEND SB$ PTX-L
+   s" add.u32 %r48,%r16,%r48;" PTX-L
+   s" ldmatrix.sync.aligned.m8n8.x2.trans.shared.b16 {%r54,%r55},[%r48];" PTX-L ;
+: MMA-B-F16-LOAD ( n n -- )                                                           \ ks j ; dispatch: ldmatrix / transposed BT / k-major scalar
+   MMA-LMODE @ 2 = if MMA-B-LDM-F16 exit then
+   MMA-BTF16 @ if MMA-B-F16-T else MMA-B-F16 then ;
+: MMA-LOAD-A-F16 ( n -- )  MMA-LMODE @ 2 = if MMA-A-LDM else MMA-A-F16 then ;         \ ks ; ldmatrix.x4 A or scalar packed-b32
 
 \ non-wide n-tile j (0..3): load its 8x8 B fragment, mma into %f(10+4j)..%f(13+4j) (A reused from MMA-KSTEP-F16).
 : MMA-NTILE-F16 ( n n -- ) {: ks:n j:n :}
@@ -813,7 +846,7 @@ variable MMA-LMODE   0 MMA-LMODE !
 
 \ one MMA-K substep ks: load the 16x16 A fragment (reused across 4 n-tiles), then mma the 4 n-tiles.
 : MMA-KSTEP-F16 ( n -- ) {: ks:n :}
-   ks MMA-A-F16
+   ks MMA-LOAD-A-F16
    4 0 do  ks i MMA-NTILE-F16  loop ;
 : MMA-KTILE-F16 ( -- )  MMA-KSUBS 0 do  i MMA-MKD * MMA-KSTEP-F16  loop ;   \ BK/16 substeps over the staged tile
 
@@ -831,6 +864,7 @@ variable MMA-LMODE   0 MMA-LMODE !
    SB-RESET s" ld.shared.b32 %r" SB-APPEND g 1+ SB-U s" ,[%r40+" SB-APPEND a1o SB-U s" ];" SB-APPEND SB$ PTX-L
    SB-RESET s" ld.shared.b32 %r" SB-APPEND g 2 + SB-U s" ,[%r40+16];" SB-APPEND SB$ PTX-L
    SB-RESET s" ld.shared.b32 %r" SB-APPEND g 3 + SB-U s" ,[%r40+" SB-APPEND a1o 16 + SB-U s" ];" SB-APPEND SB$ PTX-L ;
+: MMA-LOAD-A-F16-WIDE ( n n -- )  MMA-LMODE @ 2 = if MMA-A-LDM-WIDE else MMA-A-F16-WIDE then ;   \ ks f ; ldmatrix.x4 A or scalar
 : MMA-MMA-F16-WIDE ( n n -- ) {: f:n j:n :}    \ D(=%f(10+f*NTILES*4+4j)..) = A(group f).B(%r54,55) + D
    10 f MMA-NTILES 4 * * + j 4 * + {: d:n :}    \ accs/M-frag = NTILES*4 (16 at BN=64)
    f MMA-AREG {: g:n :}
@@ -843,7 +877,7 @@ variable MMA-LMODE   0 MMA-LMODE !
    ks j MMA-B-F16-LOAD
    MMA-MFRAGS @ 0 do  i j MMA-MMA-F16-WIDE  loop ;
 : MMA-KSTEP-F16-WIDE ( n -- ) {: ks:n :}
-   MMA-MFRAGS @ 0 do  ks i MMA-A-F16-WIDE  loop
+   MMA-MFRAGS @ 0 do  ks i MMA-LOAD-A-F16-WIDE  loop
    MMA-NTILES 0 do  ks i MMA-NTILE-F16-WIDE  loop ;
 : MMA-KTILE-F16-WIDE ( -- )  MMA-KSUBS 0 do  i MMA-MKD * MMA-KSTEP-F16-WIDE  loop ;
 
@@ -1246,17 +1280,24 @@ TRUSTED: MMA-STAGE-ISSUE ( n n -- cpp-pending<p> )   MMA-CP-STAGE 0 ;
    MMA-DEFAULT? if MM-PIPE-KLOOP-WITH exit then
    MMA-STAGES @ 1 = if MMA-PIPE-KLOOP-SINGLE else MMA-PIPE-KLOOP-WITH then ;
 
-\ fail closed on a half (fp16/bf16) tile combined with a feed knob wired ONLY for the tf32 fragment format
-\ (dot habu-fp16-mma-tile / habu-bf16-m16n8k16-tile), mirroring MMA-CHECK-WARPS. A half tile feeds A/B with
-\ the scalar packed-b32 path only; the A-ldmatrix (LMODE 1/2 truncate/ldmatrix.x4 assume tf32's one-word-
-\ per-element layout), the transposed-Bs B-ldmatrix (BLDM), and the DCE-safe wide ablation (ABLATE, tf32
-\ wide-path only) are NOT wired for the m16n8k16 half fragment. Reject at EMIT time so a bad knob throws
-\ instead of emitting a kernel whose fragment loads disagree with the mma operand layout (silent wrong
-\ result). Dtype-token-independent: fp16 and bf16 share the same fragment layout, so both gate identically.
+\ fail closed on a half (fp16/bf16) tile combined with a feed knob NOT wired for the m16n8k16 half fragment
+\ (dot habu-fp16-mma-tile / habu-bf16-m16n8k16-tile / habu-half-precision-ldmatrix). A half tile feeds A/B two
+\ ways: LMODE=0 scalar packed-b32 (default), or LMODE=2 ldmatrix (A ldmatrix.x4.b16 + B ldmatrix.x2.trans.b16
+\ over the k-major Bs). LMODE=1 (the tf32 cvt-DROP ablation) has no meaning for a half (already raw, no cvt),
+\ so it is rejected. The half ldmatrix B is k-major, so it CONFLICTS with the transposed-BT feed (MMA-BTF16) -
+\ reject the combination. The half ldmatrix is wired at BN=64 (the mid/large MFRAGS tiles the parity plan
+\ targets); BN>64 half stays on the scalar feed, so LMODE=2 + BN>64 is rejected. The tf32 transposed-Bs
+\ B-ldmatrix (BLDM) and the DCE-safe wide ablation (ABLATE, tf32 wide-path only) are NOT half paths. Reject at
+\ EMIT time so a bad knob throws instead of emitting a kernel whose fragment loads disagree with the mma
+\ operand layout. Dtype-token-independent: fp16 and bf16 share the same fragment layout, so both gate identically.
 : MMA-CHECK-DTYPE ( -- )
    MMA-HALF? 0= if exit then
-   MMA-LMODE @ 0= 0= if E-MMA-DTYPE throw then          \ half A/B feed is scalar packed-b32 only (LMODE must be 0)
-   MMA-BLDM @ if E-MMA-DTYPE throw then                 \ no transposed-Bs B-ldmatrix for a half tile (use MMA-BTF16)
+   MMA-LMODE @ 1 = if E-MMA-DTYPE throw then            \ no cvt-drop (raw) variant for a half (only 0 scalar / 2 ldmatrix)
+   MMA-LMODE @ 2 = if
+      MMA-BTF16 @ if E-MMA-DTYPE throw then             \ half ldmatrix B is k-major -> conflicts with the transposed BT feed
+      MMA-BN @ 64 > if E-MMA-DTYPE throw then           \ half A/B ldmatrix wired at BN=64 only (BN>64 half uses the scalar feed)
+   then
+   MMA-BLDM @ if E-MMA-DTYPE throw then                 \ tf32 transposed-Bs B-ldmatrix is not a half path (use MMA-BTF16)
    MMA-ABLATE @ if E-MMA-DTYPE throw then ;             \ ablation variants are the tf32 wide path only
 
 : MMA-BODY ( -- )

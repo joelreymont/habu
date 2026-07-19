@@ -382,6 +382,43 @@ variable GB-BLKY                       \ block Y dim: 16 (256 thr, 8-warp) / 8 (
    0 MMA-DTYPE !  0 MMA-BTF16 !  0 MMA-EPILOG !  32 MMA-BK !  0 MMA-PAD !  2 MMA-STAGES !  0 MMA-DYNSMEM !  1 MMA-MFRAGS !  8 MMA-WARPS !
    0 MMA-BPAD !  0 GB-SMEM-DYN !  64 GB-OTY !  16 GB-BLKY ! ;
 
+\ HALF ldmatrix feed bench config (dot habu-half-precision-ldmatrix): MMA-DTYPE=1/2 + MMA-LMODE=2 - ONE
+\ ldmatrix.m8n8.x4.b16 fills A and ONE ldmatrix.x2.trans.b16 fills B from the k-major As/Bs. Mirror of
+\ GB-MMM-CFG-F16/BF16 (same fill/timing, A=B=1.0), only LMODE=2. Element-exact first (MGC-CFG-F16-LDM /
+\ MGC-CFG-BF16-LDM). Args: bk pad stages dyn mfrags warps epilog. Restores the tf32 8-warp default.
+: GB-MMM-CFG-F16-LDM ( n n n n n n n -- )
+   MMA-EPILOG !  MMA-WARPS !  MMA-MFRAGS !  MMA-DYNSMEM !  MMA-STAGES !  MMA-PAD !  MMA-BK !
+   1 MMA-DTYPE !  2 MMA-LMODE !  0 MMA-BLDM !  0 MMA-BTF16 !  0 MMA-BPAD !
+   MMA-DYNSMEM @ if MMA-SH-BYTES else 0 then GB-SMEM-DYN !
+   MMA-NTHREADS 16 / GB-BLKY !
+   s" == FP16-LDM MMM MFRAGS=" type MMA-MFRAGS @ GB-INT.  s"  warps=" type MMA-WARPS @ GB-INT.
+   s"  BK=" type MMA-BK @ GB-INT.  s"  stages=" type MMA-STAGES @ GB-INT.  s"  dyn=" type MMA-DYNSMEM @ GB-INT.
+   s"  epi=" type MMA-EPILOG @ GB-INT.  s"  block=" type MMA-BROWS GB-INT. s" x64  smem=" type MMA-SMEM GB-INT. s" B ==" type cr
+   s" habu-gemm-bench" PTXTC:PREPARE
+   PTX-CAPTURE-ON  EMIT-MATMUL-MMA  PTX-CAPTURE-OFF
+   GB-ASSEMBLE
+   64 GB-OT !  MMA-BROWS GB-OTY !
+   s" MMM" GB-KERNEL
+   PTXTC:CLEAN
+   0 MMA-DTYPE !  0 MMA-LMODE !  0 MMA-EPILOG !  32 MMA-BK !  0 MMA-PAD !  2 MMA-STAGES !  0 MMA-DYNSMEM !  1 MMA-MFRAGS !  8 MMA-WARPS !
+   0 GB-SMEM-DYN !  64 GB-OTY !  16 GB-BLKY ! ;
+: GB-MMM-CFG-BF16-LDM ( n n n n n n n -- )   \ bf16 mirror (MMA-DTYPE=2)
+   MMA-EPILOG !  MMA-WARPS !  MMA-MFRAGS !  MMA-DYNSMEM !  MMA-STAGES !  MMA-PAD !  MMA-BK !
+   2 MMA-DTYPE !  2 MMA-LMODE !  0 MMA-BLDM !  0 MMA-BTF16 !  0 MMA-BPAD !
+   MMA-DYNSMEM @ if MMA-SH-BYTES else 0 then GB-SMEM-DYN !
+   MMA-NTHREADS 16 / GB-BLKY !
+   s" == BF16-LDM MMM MFRAGS=" type MMA-MFRAGS @ GB-INT.  s"  warps=" type MMA-WARPS @ GB-INT.
+   s"  BK=" type MMA-BK @ GB-INT.  s"  stages=" type MMA-STAGES @ GB-INT.  s"  dyn=" type MMA-DYNSMEM @ GB-INT.
+   s"  epi=" type MMA-EPILOG @ GB-INT.  s"  block=" type MMA-BROWS GB-INT. s" x64  smem=" type MMA-SMEM GB-INT. s" B ==" type cr
+   s" habu-gemm-bench" PTXTC:PREPARE
+   PTX-CAPTURE-ON  EMIT-MATMUL-MMA  PTX-CAPTURE-OFF
+   GB-ASSEMBLE
+   64 GB-OT !  MMA-BROWS GB-OTY !
+   s" MMM" GB-KERNEL
+   PTXTC:CLEAN
+   0 MMA-DTYPE !  0 MMA-LMODE !  0 MMA-EPILOG !  32 MMA-BK !  0 MMA-PAD !  2 MMA-STAGES !  0 MMA-DYNSMEM !  1 MMA-MFRAGS !  8 MMA-WARPS !
+   0 GB-SMEM-DYN !  64 GB-OTY !  16 GB-BLKY ! ;
+
 public
 
 : GB-MMM-BENCH ( -- )                  \ FP32 roof reference + the larger-BK/swizzle sweep (focused)
@@ -563,6 +600,36 @@ public
    32 0 1 0 4 4 0 8 GB-MMM-CFG-BF16-T   \ 4-warp MFRAGS=4 stages=1 static bpad=8
    32 0 2 1 2 8 0 8 GB-MMM-CFG-BF16-T   \ 8-warp MFRAGS=2 stages=2 dyn bpad=8 (128x64)
    32 0 2 0 1 8 0 8 GB-MMM-CFG-BF16-T ; \ non-wide MFRAGS=1 8-warp static bpad=8 (64x64; small-shape check)
+
+\ HALF ldmatrix feed schedule sweep (dot habu-half-precision-ldmatrix): the FP32 CUDA-core roof reference
+\ (same-session clock anchor), then a HEAD-TO-HEAD of the three B feeds on the winning 4-warp MFRAGS=4 128x64
+\ tile - k-major scalar (GB-MMM-CFG-F16, the 512-2048 baseline winner), transposed-Bs (GB-MMM-CFG-F16-T bpad=8),
+\ and the new ldmatrix (GB-MMM-CFG-F16-LDM) - at stages=2 dyn and stages=1 static, so the feed delta is read
+\ directly per shape. Then the BK=64 "more K per stage" lever on the ldmatrix feed (8-warp MFRAGS=2 static, BK=32
+\ vs BK=64; the half element size fits BK=64 stages=2 under the 48 KB static cap). Every config is element-exact
+\ first (tools/ptx/mma-gemm-check.f MGC-CFG-F16-LDM). Best-of-3 at the sustained GEMM clock, run SOLO under the
+\ pinned 13.3 ptxas. Referee = Triton 3.8 fp16 tl.dot (docs/eval-triton.md GB10: 27.4/73.8/85.8/89.1 TFLOP/s).
+: GB-F16-LDM-SWEEP ( -- )
+   CUDA:OPEN? 0= if s" gemm-bench: libcuda unavailable -> SKIPPED (off-device)" type cr exit then
+   GB-MM                                \ FP32 CUDA-core roof reference (same session)
+   32 0 2 1 4 4 0 GB-MMM-CFG-F16        \ k-major scalar s2 dyn (512-2048 baseline winner)
+   32 0 2 1 4 4 0 8 GB-MMM-CFG-F16-T    \ transposed-Bs s2 dyn bpad=8
+   32 0 2 1 4 4 0 GB-MMM-CFG-F16-LDM    \ ldmatrix s2 dyn
+   32 0 1 0 4 4 0 GB-MMM-CFG-F16        \ k-major scalar s1 static (4096 baseline)
+   32 0 1 0 4 4 0 GB-MMM-CFG-F16-LDM    \ ldmatrix s1 static
+   32 0 2 0 2 8 0 GB-MMM-CFG-F16-LDM    \ BK=32 8-warp M2 static ldmatrix (BK sweep base)
+   64 0 2 0 2 8 0 GB-MMM-CFG-F16-LDM ;  \ BK=64 8-warp M2 static ldmatrix (more K per stage, half-size smem fits)
+
+\ BF16 ldmatrix feed schedule sweep (dot habu-half-precision-ldmatrix): the bf16 mirror of GB-F16-LDM-SWEEP.
+\ bf16 tracks fp16 throughput bit-for-bit (same HMMA ladder), so a lighter head-to-head - k-major vs ldmatrix on
+\ the 4-warp MFRAGS=4 s2 dyn tile + the BK=64 ldmatrix lever - confirms the feed delta carries. Element-exact
+\ first (MGC-CFG-BF16-LDM). Referee = Triton 3.8 bf16 tl.dot (docs/eval-triton.md GB10: 27.4/67.3/77.6/80.8).
+: GB-BF16-LDM-SWEEP ( -- )
+   CUDA:OPEN? 0= if s" gemm-bench: libcuda unavailable -> SKIPPED (off-device)" type cr exit then
+   GB-MM                                \ FP32 CUDA-core roof reference (same session)
+   32 0 2 1 4 4 0 GB-MMM-CFG-BF16       \ k-major scalar s2 dyn
+   32 0 2 1 4 4 0 GB-MMM-CFG-BF16-LDM   \ ldmatrix s2 dyn
+   64 0 2 0 2 8 0 GB-MMM-CFG-BF16-LDM ; \ BK=64 8-warp M2 static ldmatrix (more K per stage)
 
 ;package
 

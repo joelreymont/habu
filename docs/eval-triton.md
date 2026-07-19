@@ -2021,3 +2021,75 @@ bin/hb --load tools/ptx/mma-emit-diff.f    # base vs branch -> empty diff (all c
 # throughput, best-of-3, solo, 13.3 pinned (swap the file's bottom entry to GEMMBENCH:GB-GROUP-SWEEP):
 bin/hb --load tools/ptx/gemm-bench.f       # GB-GROUP-SWEEP: OFF vs GROUP {4,8} x (a) BN=256 s2, (b) BN=128 4-warp s3/s4, (c) BK=16 BN=256 s3, + 512 retime
 ```
+
+## Round 11 — the fp16/bf16 `ldmatrix` half fragment feed (dot `habu-half-precision-ldmatrix`): a cleaner feed at parity, mma-issue-bound so no ratio move (2026-07-19)
+
+Rounds 5–7 fed the `m16n8k16` half `A`/`B` fragments from **scalar** shared loads:
+`A` from four `ld.shared.b32`, `B` from either the k-major `Bs` (two `ld.shared.u16`
+\+ shift/or per register) or a **transposed** `BT` staging (one `ld.shared.b32`,
+Round 6). `ldmatrix.m8n8.x4.b16` is *designed* for exactly this fragment: ONE
+instruction fills the four `A` registers straight from shared in the mma-native
+layout, and — because a half element **is** a `b16` (unlike a tf32, which `.trans`
+would split) — ONE `ldmatrix.x2.**trans**.b16` fills the two `B` registers straight
+from the **default k-major `Bs`**, no transposed staging. So the half `ldmatrix`
+feed drops both the scalar `A` loads and the `B` shift/or *without* the Round-6
+scalar-transpose staging cost. Wired at `MMA-LMODE=2` for both halves (`A` reuses
+the tf32 `ldmatrix.x4` geometry — element size is the only difference, `ks*ESZ`;
+`B` is a new `.trans` load), retiring `E-MMA-DTYPE`'s half `ldmatrix` rejection.
+Element-exact first (zero tolerance, same integer-fill argument — `ldmatrix` is a
+pure layout permutation): `tools/ptx/mma-gemm-check.f` `MGC-CFG-F16-LDM` /
+`MGC-CFG-BF16-LDM`, both warp grids, MFRAGS 1/2/4, BK 32/64, ±epilogue, **0
+mismatches**; `MMA-CHECK-DTYPE` fail-closed on the un-wired combos (`LMODE=1`, tf32
+`BLDM`, ablation, `LMODE=2`+`BTF16`, `LMODE=2` at `BN>64`), negative-tested.
+Byte-identity holds: `MMA-LMODE=2` half is a previously-rejected combo, and the
+shared `ldmatrix.x4` word stays byte-identical at tf32 (`ESZ=4`) —
+`tools/ptx/mma-emit-diff.f` empty diff.
+
+### Result — `ldmatrix` **ties** the k-major scalar feed, **beats** the transposed-`Bs` feed, and does **not** move the Triton ratio
+
+Best-of-3 solo, ptxas 13.3.33 pinned (`PTXAS-STALE-SM121` absent); FP32 MM roof
+reproduces the committed 8.2/13.2/15.0/13.8 band. Winning 4-warp MFRAGS=4 128×64
+tile, three `B` feeds head-to-head (TFLOP/s):
+
+| fp16 feed, 4-warp M4 stages=2 dyn | 512³ | 1024³ | 2048³ | 4096³ |
+|-----------------------------------|------|-------|-------|-------|
+| k-major scalar (Round 5)          | 16.3 | 36.1  | **46.8** | **46.1** |
+| transposed-`Bs` (Round 6, bpad=8) | 13.1 | 32.9  | 41.7  | 33.6  |
+| **`ldmatrix` (this round)**       | 15.8 | **37.4** | 46.6 | 45.6 |
+| (ref) Triton 3.8 fp16             | 27.4 | 73.8  | 85.8  | 89.1  |
+
+The half `ldmatrix` feed is **throughput-neutral vs the k-major scalar feed**
+(+3.7% at 1024³, within best-of-3 noise elsewhere: −0.4% 2048³, −1.0% 4096³) and
+**cleanly beats the transposed-`Bs` feed** everywhere in this regime (that feed only
+won 4096³ single-buffer, Round 6). bf16 **tracks fp16** (16.3/37.4/46.6/44.8, same
+HMMA ladder). The best fp16 `ldmatrix` number is **0.54× Triton** at 2048³ —
+**essentially unchanged** from the k-major 0.55×, **far short of the parity plan's
+0.8–1.0× hope**.
+
+**Why the feed does not move the ratio — the mma-issue bound.** This is the same
+verdict the tf32 `ldmatrix` earned (step-3c, ~1% slower/flat) and the corrected
+verdict pinned mechanically: the `m16n8k16` half tile is **mma-issue-bound, not
+fragment-feed-bound**. Halving the feed-instruction count (the `ldmatrix` win)
+leaves the HMMA-issue bottleneck untouched, so throughput does not rise — it only
+makes the feed *cleaner* (one instruction, no shift/or, no staging) at parity, with
+a marginal mid-shape gain where the feed is least hidden. The honest reading: the
+half `ldmatrix` is the **correct feed to ship** (single-instruction, mma-native, no
+staging, beats or ties every prior half feed), but it is **not** the lever that
+closes the Triton gap — that remains the HMMA-issue schedule.
+
+**`BK=64` half sweep — a clear negative.** The half element halves the smem, so
+`BK=64` stages=2 fits the 48 KB static cap; but more K per stage **loses** (8-warp
+M2 static `ldmatrix`: `BK=32` 14.2/26.5/32.7/34.5 → `BK=64` 11.7/21.3/26.4/27.7,
+−18% to −25%). The doubled smem/stage drops resident blocks; the occupancy loss
+dominates any bar.sync saving on these occupancy-bound tiles.
+
+### Reproduction (exact)
+
+```
+# element-exact first (arch auto-probed sm_121a) — 0 mismatches, incl. fp16/bf16 ldmatrix A+B, BK=32/64, both warp grids:
+bin/hb --load tools/ptx/mma-gemm-check.f   # MGC-CFG-F16-LDM / MGC-CFG-BF16-LDM + MGC-DTYPE-NEG / MGC-BF16-NEG (LMODE=2 wired, unwired combos fail-closed)
+# byte-identity: MMA-LMODE=2 half is a new combo; tf32 ldmatrix.x4 stays byte-identical (ESZ=4):
+bin/hb --load tools/ptx/mma-emit-diff.f    # base vs branch -> empty diff (all committed configs)
+# throughput, best-of-3, solo, 13.3 pinned (swap the file's bottom entry to the half-ldmatrix sweeps):
+bin/hb --load tools/ptx/gemm-bench.f       # GB-F16-LDM-SWEEP / GB-BF16-LDM-SWEEP: k-major vs transposed-Bs vs ldmatrix + BK=32/64
+```

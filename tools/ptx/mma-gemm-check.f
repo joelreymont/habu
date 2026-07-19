@@ -354,6 +354,34 @@ variable MGC-TN
    0 MMA-DTYPE !  0 MMA-BTF16 !  0 MMA-EPILOG !  32 MMA-BK !  0 MMA-PAD !  2 MMA-STAGES !  0 MMA-DYNSMEM !
    1 MMA-MFRAGS !  8 MMA-WARPS !  0 MMA-BPAD !  64 MGC-SA !  128 MGC-SB ! ;
 
+\ HALF ldmatrix config (dot habu-half-precision-ldmatrix): MMA-DTYPE=1/2 + MMA-LMODE=2 - ONE
+\ ldmatrix.m8n8.x4.b16 fills the A fragment and ONE ldmatrix.x2.trans.b16 fills the B fragment, both from the
+\ DEFAULT k-major As/Bs (no transposed staging). Same fill/reference/compare and JUSTIFIED zero tolerance as
+\ MGC-CFG-F16/BF16 (ldmatrix is a pure layout permutation of the same integer values, so the integer-exactness
+\ argument is unchanged); agreeing element-exact vs the host ref proves the ldmatrix lane->fragment map. Checked
+\ at the block-M-aware edges (BROWS, 2*BROWS) so BOTH warp grids are covered. Args: bk pad stages dyn mfrags
+\ warps epilog. Restores the tf32 8-warp default (LMODE=0).
+: MGC-CFG-F16-LDM ( n n n n n n n -- )
+   MMA-EPILOG !  MMA-WARPS !  MMA-MFRAGS !  MMA-DYNSMEM !  MMA-STAGES !  MMA-PAD !  MMA-BK !
+   1 MMA-DTYPE !  0 MMA-BLDM !  0 MMA-BTF16 !  0 MMA-BPAD !
+   MMA-BROWS MGC-SA !  MMA-BROWS 2 * MGC-SB !
+   s" -- FP16 LDMATRIX (x4 A + x2.trans B, k-major) MFRAGS=" type MMA-MFRAGS @ .  s"  warps=" type MMA-WARPS @ .  s"  BK=" type MMA-BK @ .
+   s"  stages=" type MMA-STAGES @ .  s"  dyn=" type MMA-DYNSMEM @ .  s"  epi=" type MMA-EPILOG @ .
+   s"  (" type MGC-SA @ . s" ^3," type MGC-SB @ . s" ^3):" type cr
+   2 MGC-MODE
+   0 MMA-DTYPE !  0 MMA-EPILOG !  32 MMA-BK !  0 MMA-PAD !  2 MMA-STAGES !  0 MMA-DYNSMEM !
+   1 MMA-MFRAGS !  8 MMA-WARPS !  0 MMA-LMODE !  64 MGC-SA !  128 MGC-SB ! ;
+: MGC-CFG-BF16-LDM ( n n n n n n n -- )   \ the bf16 mirror (MMA-DTYPE=2); only the mma token + host pack differ
+   MMA-EPILOG !  MMA-WARPS !  MMA-MFRAGS !  MMA-DYNSMEM !  MMA-STAGES !  MMA-PAD !  MMA-BK !
+   2 MMA-DTYPE !  0 MMA-BLDM !  0 MMA-BTF16 !  0 MMA-BPAD !
+   MMA-BROWS MGC-SA !  MMA-BROWS 2 * MGC-SB !
+   s" -- BF16 LDMATRIX (x4 A + x2.trans B, k-major) MFRAGS=" type MMA-MFRAGS @ .  s"  warps=" type MMA-WARPS @ .  s"  BK=" type MMA-BK @ .
+   s"  stages=" type MMA-STAGES @ .  s"  dyn=" type MMA-DYNSMEM @ .  s"  epi=" type MMA-EPILOG @ .
+   s"  (" type MGC-SA @ . s" ^3," type MGC-SB @ . s" ^3):" type cr
+   2 MGC-MODE
+   0 MMA-DTYPE !  0 MMA-EPILOG !  32 MMA-BK !  0 MMA-PAD !  2 MMA-STAGES !  0 MMA-DYNSMEM !
+   1 MMA-MFRAGS !  8 MMA-WARPS !  0 MMA-LMODE !  64 MGC-SA !  128 MGC-SB ! ;
+
 \ DEEP-STAGE 4-warp configs (dot habu-4-warp-mma step 3). N>=3 uses the N-stage ring pipeline
 \ (lib/ptx/cg-mma.f MMA-PIPE-KLOOP-MULTI), whose steady wait_group(N-1) and draining epilogue
 \ wait_group(N-2..0) are only exact when T=ceil(K/BK) >= N-1. The BROWS-derived edges (down to 64
@@ -414,17 +442,23 @@ variable MGC-TN
 \ from emitting a kernel whose fragment loads disagree with the m16n8k16 mma operand layout.
 : MGC-DTYPE-NEG ( -- )
    1 MMA-DTYPE !  32 MMA-BK !  0 MMA-PAD !  2 MMA-STAGES !  0 MMA-DYNSMEM !  1 MMA-MFRAGS !  8 MMA-WARPS !
-   2 MMA-LMODE !  MGC-TRY-EMIT {: rlm:n :}               \ fp16 + A-ldmatrix -> not wired -> must throw E-MMA-DTYPE
+   1 MMA-LMODE !  MGC-TRY-EMIT {: rraw:n :}              \ fp16 + LMODE=1 (tf32 cvt-drop) -> no meaning for a half -> must throw E-MMA-DTYPE
    0 MMA-LMODE !  4 MMA-MFRAGS !  1 MMA-STAGES !  1 MMA-DYNSMEM !  1 MMA-BLDM !  4 MMA-BPAD !
-   MGC-TRY-EMIT {: rbl:n :}                              \ fp16 + B-ldmatrix -> not wired -> must throw E-MMA-DTYPE
+   MGC-TRY-EMIT {: rbl:n :}                              \ fp16 + tf32 transposed-Bs B-ldmatrix -> not a half path -> must throw E-MMA-DTYPE
    0 MMA-BLDM !  0 MMA-BPAD !  1 MMA-ABLATE !
    MGC-TRY-EMIT {: rab:n :}                              \ fp16 + wide ablation -> tf32-only -> must throw E-MMA-DTYPE
-   0 MMA-ABLATE !  1 MMA-MFRAGS !  2 MMA-STAGES !  0 MMA-DYNSMEM !
-   MGC-TRY-EMIT {: rok:n :}                              \ fp16 + scalar packed (LMODE=0) -> must emit (0)
-   0 MMA-DTYPE !  32 MMA-BK !  0 MMA-PAD !  2 MMA-STAGES !  0 MMA-DYNSMEM !  1 MMA-MFRAGS !  8 MMA-WARPS !  0 MMA-LMODE !
-   s" -- fp16 dtype legality: +ldmA->" type rlm . s"  +Bldm->" type rbl . s"  +ablate->" type rab . s"  scalar->" type rok . cr
-   rlm E-MMA-DTYPE =  rbl E-MMA-DTYPE =  and  rab E-MMA-DTYPE =  and  rok 0=  and
-   if s" -- fp16 dtype legality: fail-closed on un-wired feed knobs, emits scalar packed (PASS)" type cr
+   0 MMA-ABLATE !  1 MMA-MFRAGS !  2 MMA-STAGES !  0 MMA-DYNSMEM !  2 MMA-LMODE !  1 MMA-BTF16 !
+   MGC-TRY-EMIT {: rlbt:n :}                             \ fp16 + LMODE=2 ldmatrix + transposed BT -> k-major/BT conflict -> must throw E-MMA-DTYPE
+   0 MMA-BTF16 !  256 MMA-BN !  2 MMA-MFRAGS !  1 MMA-DYNSMEM !
+   MGC-TRY-EMIT {: rlbn:n :}                             \ fp16 + LMODE=2 ldmatrix at BN>64 -> not wired -> must throw E-MMA-DTYPE
+   64 MMA-BN !  1 MMA-MFRAGS !  2 MMA-STAGES !  0 MMA-DYNSMEM !
+   MGC-TRY-EMIT {: rldm:n :}                             \ fp16 + LMODE=2 ldmatrix BN=64 -> WIRED -> must emit (0)
+   0 MMA-LMODE !  MGC-TRY-EMIT {: rok:n :}               \ fp16 + scalar packed (LMODE=0) -> must emit (0)
+   0 MMA-DTYPE !  32 MMA-BK !  0 MMA-PAD !  2 MMA-STAGES !  0 MMA-DYNSMEM !  1 MMA-MFRAGS !  8 MMA-WARPS !  0 MMA-LMODE !  64 MMA-BN !
+   s" -- fp16 dtype legality: LMODE1->" type rraw . s"  +Bldm->" type rbl . s"  +ablate->" type rab .
+   s"  LMODE2+BT->" type rlbt . s"  LMODE2 BN256->" type rlbn . s"  LMODE2 ldm->" type rldm . s"  scalar->" type rok . cr
+   rraw E-MMA-DTYPE =  rbl E-MMA-DTYPE =  and  rab E-MMA-DTYPE =  and  rlbt E-MMA-DTYPE =  and  rlbn E-MMA-DTYPE =  and  rldm 0=  and  rok 0=  and
+   if s" -- fp16 dtype legality: fail-closed on LMODE1 / tf32-Bldm / ablate / LMODE2+BT / LMODE2-BN>64, emits ldmatrix + scalar (PASS)" type cr
    else s" mma-gemm-check: fp16 dtype legality regression FAILED" 1 die then ;
 
 \ negative+positive regression (dot habu-fp16-transposed-bs): the transposed-Bs fp16 feed guard
@@ -452,21 +486,22 @@ variable MGC-TN
 \ to bf16 rather than assumed. Restores the tf32 8-warp default.
 : MGC-BF16-NEG ( -- )
    2 MMA-DTYPE !  32 MMA-BK !  0 MMA-PAD !  2 MMA-STAGES !  0 MMA-DYNSMEM !  1 MMA-MFRAGS !  8 MMA-WARPS !
-   2 MMA-LMODE !  MGC-TRY-EMIT {: rlm:n :}               \ bf16 + A-ldmatrix -> not wired -> must throw E-MMA-DTYPE
+   1 MMA-LMODE !  MGC-TRY-EMIT {: rraw:n :}              \ bf16 + LMODE=1 (tf32 cvt-drop) -> no meaning for a half -> must throw E-MMA-DTYPE
    0 MMA-LMODE !  4 MMA-MFRAGS !  1 MMA-STAGES !  1 MMA-DYNSMEM !  1 MMA-BLDM !  4 MMA-BPAD !
-   MGC-TRY-EMIT {: rbl:n :}                              \ bf16 + tf32 B-ldmatrix -> not wired -> must throw E-MMA-DTYPE
+   MGC-TRY-EMIT {: rbl:n :}                              \ bf16 + tf32 transposed-Bs B-ldmatrix -> not a half path -> must throw E-MMA-DTYPE
    0 MMA-BLDM !  0 MMA-BPAD !  1 MMA-ABLATE !
    MGC-TRY-EMIT {: rab:n :}                              \ bf16 + wide ablation -> tf32-only -> must throw E-MMA-DTYPE
    0 MMA-ABLATE !  1 MMA-MFRAGS !  2 MMA-STAGES !  0 MMA-DYNSMEM !
    MGC-TRY-EMIT {: rok:n :}                              \ bf16 + scalar packed (LMODE=0) -> must emit (0)
-   1 MMA-BTF16 !  0 MMA-BPAD !  MGC-TRY-EMIT {: rbt:n :}  \ bf16 + transposed-Bs BPAD=0 -> BTROW=64 B (4B) -> must emit (0)
+   2 MMA-LMODE !  MGC-TRY-EMIT {: rldm:n :}              \ bf16 + LMODE=2 ldmatrix BN=64 -> WIRED -> must emit (0)
+   0 MMA-LMODE !  1 MMA-BTF16 !  0 MMA-BPAD !  MGC-TRY-EMIT {: rbt:n :}  \ bf16 + transposed-Bs BPAD=0 -> BTROW=64 B (4B) -> must emit (0)
    1 MMA-BPAD !  MGC-TRY-EMIT {: rbto:n :}               \ bf16 + transposed-Bs BPAD=1 -> BTROW=66 B (not 4B) -> must throw E-MMA-BTF16
    0 MMA-BTF16 !  0 MMA-BPAD !
    0 MMA-DTYPE !  32 MMA-BK !  0 MMA-PAD !  2 MMA-STAGES !  0 MMA-DYNSMEM !  1 MMA-MFRAGS !  8 MMA-WARPS !  0 MMA-LMODE !
-   s" -- bf16 dtype legality: +ldmA->" type rlm . s"  +Bldm->" type rbl . s"  +ablate->" type rab .
-   s"  scalar->" type rok . s"  +BTF16->" type rbt . s"  +BTF16 bpad1->" type rbto . cr
-   rlm E-MMA-DTYPE =  rbl E-MMA-DTYPE =  and  rab E-MMA-DTYPE =  and  rok 0=  and  rbt 0=  and  rbto E-MMA-BTF16 =  and
-   if s" -- bf16 dtype legality: fail-closed on un-wired feed knobs, emits scalar packed + transposed-Bs (PASS)" type cr
+   s" -- bf16 dtype legality: LMODE1->" type rraw . s"  +Bldm->" type rbl . s"  +ablate->" type rab .
+   s"  scalar->" type rok . s"  LMODE2 ldm->" type rldm . s"  +BTF16->" type rbt . s"  +BTF16 bpad1->" type rbto . cr
+   rraw E-MMA-DTYPE =  rbl E-MMA-DTYPE =  and  rab E-MMA-DTYPE =  and  rok 0=  and  rldm 0=  and  rbt 0=  and  rbto E-MMA-BTF16 =  and
+   if s" -- bf16 dtype legality: fail-closed on un-wired feed knobs, emits scalar + ldmatrix + transposed-Bs (PASS)" type cr
    else s" mma-gemm-check: bf16 dtype legality regression FAILED" 1 die then ;
 
 \ ============ WIDE-BN configs (dot habu-widen-bn-past): the 4096-class BN=128/256 tile ============
@@ -673,6 +708,20 @@ public
    32 0 2 1 4 4 0 8 MGC-CFG-BF16-T                     \ 4-warp MFRAGS=4 stages=2 dyn bpad=8 (128^3/256^3)
    32 0 2 0 2 8 1 8 MGC-CFG-BF16-T                     \ wide MFRAGS=2 8-warp + EPILOGUE bpad=8 (128^3/256^3)
    32 0 1 0 4 4 1 8 MGC-CFG-BF16-T                     \ 4-warp MFRAGS=4 stages=1 + EPILOGUE bpad=8 (128^3/256^3)
+   s" == HALF ldmatrix feed (dot habu-half-precision-ldmatrix, x4 A + x2.trans B, k-major, element-exact) ==" type cr
+   32 0 2 0 1 8 0 MGC-CFG-F16-LDM                      \ fp16 non-wide MFRAGS=1 8-warp static (64^3/128^3)
+   32 0 2 0 2 8 0 MGC-CFG-F16-LDM                      \ fp16 wide MFRAGS=2 8-warp static (128^3/256^3)
+   32 0 2 1 2 8 0 MGC-CFG-F16-LDM                      \ fp16 wide MFRAGS=2 8-warp DYNAMIC smem (128^3/256^3)
+   32 0 1 0 4 4 0 MGC-CFG-F16-LDM                      \ fp16 4-warp MFRAGS=4 stages=1 static (128^3/256^3; the parity-plan winner tile shape)
+   32 0 2 1 4 4 0 MGC-CFG-F16-LDM                      \ fp16 4-warp MFRAGS=4 stages=2 DYNAMIC (128^3/256^3)
+   64 0 1 0 1 8 0 MGC-CFG-F16-LDM                      \ fp16 BK=64 half sweep MFRAGS=1 8-warp single-buffer static (64^3/128^3; more K/stage)
+   64 0 2 0 2 8 0 MGC-CFG-F16-LDM                      \ fp16 BK=64 half sweep MFRAGS=2 8-warp double-buffer static (128^3/256^3; 49152 B = static cap)
+   32 0 2 0 2 8 1 MGC-CFG-F16-LDM                      \ fp16 wide MFRAGS=2 8-warp + EPILOGUE (128^3/256^3)
+   32 0 2 0 1 8 0 MGC-CFG-BF16-LDM                     \ bf16 non-wide MFRAGS=1 8-warp static (64^3/128^3)
+   32 0 2 1 2 8 0 MGC-CFG-BF16-LDM                     \ bf16 wide MFRAGS=2 8-warp DYNAMIC smem (128^3/256^3)
+   32 0 2 1 4 4 0 MGC-CFG-BF16-LDM                     \ bf16 4-warp MFRAGS=4 stages=2 DYNAMIC (128^3/256^3)
+   64 0 2 0 2 8 0 MGC-CFG-BF16-LDM                     \ bf16 BK=64 half sweep MFRAGS=2 8-warp double-buffer static (128^3/256^3)
+   32 0 2 0 2 8 1 MGC-CFG-BF16-LDM                     \ bf16 wide MFRAGS=2 8-warp + EPILOGUE (128^3/256^3)
    s" == WIDE-BN tf32 tile (dot habu-widen-bn-past, BN=128/256, element-exact vs host) ==" type cr
    32 0 1 0 2 2 8 128 MGC-CFG-BN                       \ BN=128 MFRAGS=2 8-warp stages=1 static ldmatrix-A (128^3/256^3, 32 KB)
    32 0 2 1 0 2 8 128 MGC-CFG-BN                       \ BN=128 MFRAGS=2 8-warp stages=2 dyn scalar+cvt (exact-RNE cross-check)
