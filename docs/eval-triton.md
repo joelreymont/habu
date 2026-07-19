@@ -1571,3 +1571,91 @@ bin/hb --load tools/ptx/mma-gemm-check.f   # MGC-CFG-F16-T rows PASS element-exa
 bin/hb --load tools/ptx/gemm-bench.f       # GB-F16-SWEEP: k-major + transposed-Bs fp16 configs, all four shapes; best of 3, solo
 bin/hb --load tools/ptx/mma-emit-diff.f    # 35 tf32 + 6 fp16-default configs; diff base vs branch = empty
 ```
+
+## Round 7 — the bf16 `m16n8k16` tile (dot `habu-bf16-m16n8k16-tile`): fp16-class throughput with f32 range (2026-07-19)
+
+Rounds 5–6 built the fp16 `m16n8k16` tile. This round adds **bf16** — the conventional
+mixed-precision training dtype (8-bit exponent = full f32 range, so no loss-scaling
+gymnastics), wanted for the nanoGPT training path and unblocked by the ratified numerics
+policy (reduced precision where the accuracy budget allows). `cg-mma.f`'s `MMA-DTYPE` knob
+gains value `2` = a **`mma.sync.aligned.m16n8k16.row.col.f32.bf16.bf16.f32`** tile. bf16
+shares the fp16 tile **verbatim**: a bf16 half is 2 bytes exactly like an f16 half, so every
+fragment load, cp.async stage, transposed-`Bs` copy, epilogue and store is a pure bit-move —
+the *only* differences are the mma operand dtype token (a new `MMA-ABT` word emits `bf16` vs
+`f16`) and the host pack. A `bf16`-vs-`f16` emit diff of the same tile config is exactly the 8
+mma lines, nothing else.
+
+**Host pack (the one real numeric addition): `F64>BF16`, round-to-nearest-even** (`lib/ptx/cg.f`),
+**not truncation.** bf16's exponent field is identical to f32's (8 bits, bias 127), so bf16 is an
+f32 with the low 16 mantissa bits removed; `F64>BF16` therefore mirrors `F64>F32` (target exponent
+`e−896`, f32's overflow/subnormal bounds) — **not** `F64>F16` (whose `e−1008` bias and tiny range
+would be wrong for bf16). The rounding is done in **one** step directly on the 52-bit f64 mantissa
+(keep 7 bits, RNE the 45 dropped), the correctly-rounded nearest bf16; it is deliberately **not**
+`f64→f32→bf16`, whose double rounding can mis-round a value sitting on an f32 boundary.
+
+**Correctness first, tf32 and the fp16 tile untouched.** With `MMA-DTYPE≠2` every tf32 config
+*and* every fp16 config stay **byte-identical** (`tools/ptx/mma-emit-diff.f`, 35 tf32 + 6 fp16
+configs: empty diff base vs branch; the 6 bf16 rows are appended after). The bf16 tile is proven
+**element-exact** before any timing (`tools/ptx/mma-gemm-check.f`: 8 `MGC-CFG-BF16` + 7
+`MGC-CFG-BF16-T` rows — **both** warp grids at the block-M-aware edges (64³/128³/256³/512³), with
+and without the epilogue, **both** B feeds (k-major and the `MMA-BTF16` transposed n-major BT),
+`BPAD` ∈ {0,8} — device-verified on the GB10, **zero mismatches**). The tolerance is a **justified
+zero**, argument adapted to bf16's narrower significand: bf16's significand is 8 bits (7 + implicit),
+so the fill's integers (1..13 A, 1..11 B, all ≤ 256) are exact and `BF16-PACK` narrows them with no
+error; each product is an integer ≤ 143 and the K-accumulation runs in **f32** (never bf16), whose
+every partial ≤ 512·143 = 73 216 < 2²⁴, so no add rounds and the device `f32` C equals the `f64`
+reference exactly. Fail-closed guards (`E-MMA-DTYPE`, `E-MMA-BTF16`) reject bf16 combined with a
+tf32-only feed knob and gate the transposed-`Bs` BT-row alignment — **extended to bf16 and
+negative-tested** (`MGC-BF16-NEG`), not assumed.
+
+### Result — bf16 matches Habu's own fp16, so it is the training dtype at no throughput cost
+
+Best-of-3, run solo, sustained ~2405 MHz (the same-session FP32 `MM` CUDA-core roof reproduced the
+tf32/fp16 baseline clock — 8.2 / 13.2 / 15.0 / 13.0 TFLOP/s). **Bold = per-shape bf16 winner across
+both B feeds** (the 4-warp MFRAGS=4 `BM128×BN64` tile sweeps every shape — stages=2 dyn k-major at
+512³/1024³, transposed-`Bs` `BPAD=8` stages=1 static at 2048³/4096³):
+
+| TFLOP/s (bf16, C=A·B)          |  512³ | 1024³ | 2048³ | 4096³ |
+|--------------------------------|------:|------:|------:|------:|
+| **Habu bf16 tile (best)**      |**16.4**|**36.1**|**46.3**|**46.9**|
+| Triton 3.8 bf16 `tl.dot`       |  27.4 |  67.3 |  77.6 |  80.8 |
+| **Habu / Triton (bf16)**       | 0.60× | 0.54× | 0.60× | 0.58× |
+| (ref) Habu fp16 tile (Round 6) |  16.3 |  36.1 |  46.1 |  47.2 |
+| (ref) Habu tf32 tile (Round 3) |  16.3 |  29.1 |  31.7 |  28.2 |
+| **bf16 / own tf32**            | 1.00× | 1.24× | 1.46× | 1.66× |
+
+The **finding is that bf16 tracks Habu's own fp16 within best-of-3 noise** (16.4/36.1/46.3/46.9 vs
+16.3/36.1/46.1/47.2) — expected, because the two tiles are bit-identical but for the mma dtype token
+and the GB10's bf16 and fp16 HMMA sit on the same throughput ladder. So bf16 buys the **same
+1.0×→1.66× over-own-tf32 curve** as fp16 (flat at the launch-bound 512³, rising monotonically to the
+compute-bound 4096³ where the denser HMMA binds), and the transposed-`Bs` feed wins the same
+compute-bound 2048³/4096³ shapes for the same reason (one `b32` B load vs two `u16` + shift/or). The
+**practical** value is not speed over fp16 but that this throughput now comes with **f32 dynamic
+range**: bf16 is the dtype nanoGPT trains in without loss-scaling, and Habu now has a checked,
+element-exact bf16 GEMM at fp16-class speed.
+
+**Honest, unflattering headline: on the GB10 the checked Habu bf16 tile reaches 0.54–0.60× of Triton
+3.8's bf16 `tl.dot`** — the same shape of result as every prior round (Triton's autotuner finds a
+4-warp, 3–5-stage pipelined tile that Habu's 2-stage / single-buffer tiles do not match). Triton's
+bf16 referee (27.4 / 67.3 / 77.6 / 80.8) is itself a touch below its fp16 (27.4 / 73.8 / 85.8 / 89.1),
+so the bf16 ratio reads slightly higher than fp16's at 1024³ despite the near-identical Habu numbers.
+
+### Triton bf16 referee
+
+The same `/tmp/gemm-triton-gb10.py` referee, run with a `bf16` row added to its label loop
+(`("bf16", torch.bfloat16, False)`; C dtype stays f32, matching Habu); manual max-autotune, CUDA-event
+warm timing, best of 3. Measured on the GB10 (torch 2.9.1 / triton 3.8, `rel_err ~3e-3` vs the
+`torch.matmul` bf16 reference, relative policy): **27.4 / 67.3 / 77.6 / 80.8 TFLOP/s**
+(512³/1024³/2048³/4096³), 32 of 45 configs fit the smem cap.
+
+### Reproduction (exact)
+
+```
+bin/hb --load tools/ptx/mma-gemm-check.f   # MGC-CFG-BF16 + MGC-CFG-BF16-T rows PASS element-exact (both warp grids,
+                                           # ±epilogue, both B feeds, BPAD 0/8); MGC-BF16-NEG fail-closed; tf32+fp16 rows unchanged
+# swap the file's bottom entry to GEMMBENCH:GB-BF16-SWEEP (as with GB-F16-SWEEP), then:
+bin/hb --load tools/ptx/gemm-bench.f       # GB-BF16-SWEEP: k-major + transposed-Bs bf16 configs, all four shapes; best of 3, solo
+bin/hb --load tools/ptx/mma-emit-diff.f    # 35 tf32 + 6 fp16 configs; diff base vs branch = empty (6 bf16 rows appended)
+# Triton bf16 referee (source-built 3.8 in the ml venv), bf16 row added to the label loop:
+~/Work/ml/.venv/bin/python /tmp/gemm-triton-gb10.py
+```

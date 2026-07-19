@@ -218,6 +218,46 @@ TRUSTED: BITS>R ( n -- r ) ;
 : F16-PACK ( ptr a n ptr u8 -- ) {: src:ptr cnt:n dst:ptr :}   \ n f64 cells -> f16
    cnt 0 ?do  src i cells + @ F64>F16  dst i 2 * +  SF-ST16  loop ;
 
+\ --- bf16 (brain float) narrowing for the bf16 mma tile (dot habu-bf16-m16n8k16-tile). bf16 is
+\ sign(1) + exp(8, bias 127) + mantissa(7): its exponent field is IDENTICAL to f32's (same bias and
+\ range), so a bf16 is exactly an f32 with the low 16 mantissa bits removed. F64>BF16 therefore
+\ mirrors F64>F32, NOT F64>F16: the target exponent is x = e-896 (the f32/f64 offset, NOT f16's
+\ e-1008), and the overflow bound (x>254) and subnormal boundary (x<1) are f32's, not f16's much
+\ smaller range - only the stored mantissa width (7 vs 23) and the 16-bit store differ. This is what
+\ "round via the f32-representable value" means: bf16 inherits f32's exponent field, so its range
+\ handling is F64>F32's. Rounding is round-to-nearest-even done in ONE step directly on the 52-bit
+\ f64 mantissa (keep the top 7 bits, RNE the 45 dropped bits) = the correctly-rounded nearest bf16.
+\ It is deliberately NOT f64->f32->bf16 (drop 29 then 16 bits): that double rounding can mis-round a
+\ value sitting exactly on an f32 rounding boundary, so a single rounding to the final 7-bit width is
+\ the correct pack. Truncation is NOT used. The subnormal shift 46-x = 53-7-x reuses the width-agnostic
+\ RNE-shift SUBN>F32 (a carry out of the 7 mantissa bits lands on 0x0080, the smallest bf16 normal).
+\ SF-ST16 stores the low 16 bits little-endian; device C stays f32 (F32-UNPACK on readback), so no
+\ BF16-UNPACK is needed. For the mma-gemm-check integer fills (<=256, exact in bf16's 8-bit
+\ significand) no rounding fires and the pack returns the exact integer. ---
+: F64>BF16 ( r -- n ) {: fr:r :}
+   fr R>BITS {: b:n :}
+   b 63 rshift 1 and 15 lshift {: s:n :}               \ sign in bf16 bit 15
+   b 52 rshift $7FF and {: e:n :}                        \ f64 biased exponent
+   b $FFFFFFFFFFFFF and {: m:n :}                         \ 52-bit mantissa
+   e 896 - {: x:n :}                                      \ target bf16 biased exponent (f32 bias-127 field)
+   e $7FF = if                                            \ inf / NaN
+      m 0= if s $7F80 or exit then                        \ +/-inf
+      s $7F80 or  m 45 rshift or  $40 or exit             \ quiet NaN (payload kept)
+   then
+   e 0= if s exit then                                    \ +/-0 / f64-subnormal -> signed 0
+   x 1 < if  1 52 lshift m or  46 x -  s  SUBN>F32  exit  then   \ bf16 subnormal (sig>>(46-x) RNE)
+   x 254 > if s $7F80 or exit then                        \ overflow -> +/-inf
+   m 45 rshift {: mt:n :}                                 \ top 7 mantissa bits
+   m $1FFFFFFFFFFF and {: rem:n :}                         \ the 45 dropped bits
+   rem $100000000000 > if 1 else
+      rem $100000000000 = if mt 1 and else 0 then
+   then {: inc:n :}                                       \ round-to-nearest-even increment
+   x 7 lshift mt or inc + {: v:n :}                       \ carry from mantissa bumps exponent
+   v $7F7F > if s $7F80 or exit then                      \ carry overflowed to inf
+   s v or ;
+: BF16-PACK ( ptr a n ptr u8 -- ) {: src:ptr cnt:n dst:ptr :}   \ n f64 cells -> bf16
+   cnt 0 ?do  src i cells + @ F64>BF16  dst i 2 * +  SF-ST16  loop ;
+
 \ --- per-op emitters (operate on register numbers) ---
 \ GRID-CTX: global flat index + bounds predicate; returns the byte-offset rd reg.
 : EMIT-GRID-CTX ( n -- n ) {: spanrd :}    \ span base unused (index is from tid)

@@ -34,6 +34,7 @@ package GEMMBENCH
 16 constant GB-BLK                     \ block = 16x16 = 256 threads (both kernels)
 $3F800000 constant GB-ONE             \ 1.0f bit pattern (A/B fill)
 $3C003C00 constant GB-HALF-ONE        \ two packed 1.0h (f16) bit patterns (fp16 A/B fill; values immaterial to timing)
+$3F803F80 constant GB-BF16-ONE        \ two packed 1.0 bf16 bit patterns (bf16 A/B fill; values immaterial to timing)
 
 create GB-QO $1000 allot  create GB-QE $1000 allot
 variable GB-DA  variable GB-DB  variable GB-DC
@@ -45,6 +46,7 @@ variable GB-BLKY                       \ block Y dim: 16 (256 thr, 8-warp) / 8 (
 64 GB-OTY !  16 GB-BLKY !
 
 : GB-INT. ( n -- )  SB-RESET SB-INT SB$ type ;
+: GB-HALF-PAT ( -- n )  MMA-BF16? if GB-BF16-ONE else GB-HALF-ONE then ;   \ packed 1.0 half pair for the dtype (fp16/bf16)
 
 : GB-ASSEMBLE ( -- )                   \ captured PTX -> kernel.ptx -> ptxas cubin (die on rc<>0)
    ATGT:LABEL$ PTXTC:TC-ARCH!          \ assembler arch from the probed active target (sm_87 Orin / sm_121a GB10)
@@ -58,9 +60,9 @@ variable GB-BLKY                       \ block Y dim: 16 (256 thr, 8-warp) / 8 (
    e esz * GB-DA PTXBENCH:DEVICE-ALLOC
    e esz * GB-DB PTXBENCH:DEVICE-ALLOC
    e 4 * GB-DC PTXBENCH:DEVICE-ALLOC
-   MMA-F16? if                          \ fp16: fill halves via a packed-pair 32-bit memset (e/2 words = e halves)
-      GB-DA @ GB-HALF-ONE e 2 / PTXBENCH:DEVICE-MEMSET32
-      GB-DB @ GB-HALF-ONE e 2 / PTXBENCH:DEVICE-MEMSET32
+   MMA-HALF? if                         \ fp16/bf16: fill halves via a packed-pair 32-bit memset (e/2 words = e halves)
+      GB-DA @ GB-HALF-PAT e 2 / PTXBENCH:DEVICE-MEMSET32
+      GB-DB @ GB-HALF-PAT e 2 / PTXBENCH:DEVICE-MEMSET32
    else
       GB-DA @ GB-ONE e PTXBENCH:DEVICE-MEMSET32
       GB-DB @ GB-ONE e PTXBENCH:DEVICE-MEMSET32
@@ -299,6 +301,48 @@ variable GB-BLKY                       \ block Y dim: 16 (256 thr, 8-warp) / 8 (
    0 MMA-DTYPE !  0 MMA-BTF16 !  0 MMA-EPILOG !  32 MMA-BK !  0 MMA-PAD !  2 MMA-STAGES !  0 MMA-DYNSMEM !  1 MMA-MFRAGS !  8 MMA-WARPS !
    0 MMA-BPAD !  0 GB-SMEM-DYN !  64 GB-OTY !  16 GB-BLKY ! ;
 
+\ BF16 tile bench config (dot habu-bf16-m16n8k16-tile): MMA-DTYPE=2, m16n8k16 f32.bf16.bf16.f32, scalar
+\ packed-b32 feed. The bf16 mirror of GB-MMM-CFG-F16 - identical geometry/timing, only the mma dtype token
+\ and the A/B fill (bf16 1.0 pair, values immaterial to timing) differ. Element-exact first
+\ (tools/ptx/mma-gemm-check.f MGC-CFG-BF16). Args: bk pad stages dyn mfrags warps epilog. Restores the tf32 default.
+: GB-MMM-CFG-BF16 ( n n n n n n n -- )
+   MMA-EPILOG !  MMA-WARPS !  MMA-MFRAGS !  MMA-DYNSMEM !  MMA-STAGES !  MMA-PAD !  MMA-BK !
+   2 MMA-DTYPE !  0 MMA-LMODE !  0 MMA-BLDM !  0 MMA-BPAD !
+   MMA-DYNSMEM @ if MMA-SH-BYTES else 0 then GB-SMEM-DYN !
+   MMA-NTHREADS 16 / GB-BLKY !          \ 16 (256 thr, 8-warp) / 8 (128 thr, 4-warp)
+   s" == BF16 MMM MFRAGS=" type MMA-MFRAGS @ GB-INT.  s"  warps=" type MMA-WARPS @ GB-INT.
+   s"  BK=" type MMA-BK @ GB-INT.  s"  stages=" type MMA-STAGES @ GB-INT.  s"  dyn=" type MMA-DYNSMEM @ GB-INT.
+   s"  epi=" type MMA-EPILOG @ GB-INT.  s"  block=" type MMA-BROWS GB-INT. s" x64  smem=" type MMA-SMEM GB-INT. s" B ==" type cr
+   s" habu-gemm-bench" PTXTC:PREPARE
+   PTX-CAPTURE-ON  EMIT-MATMUL-MMA  PTX-CAPTURE-OFF
+   GB-ASSEMBLE
+   64 GB-OT !  MMA-BROWS GB-OTY !
+   s" MMM" GB-KERNEL
+   PTXTC:CLEAN
+   0 MMA-DTYPE !  0 MMA-EPILOG !  32 MMA-BK !  0 MMA-PAD !  2 MMA-STAGES !  0 MMA-DYNSMEM !  1 MMA-MFRAGS !  8 MMA-WARPS !
+   0 GB-SMEM-DYN !  64 GB-OTY !  16 GB-BLKY ! ;
+
+\ BF16 TRANSPOSED-Bs feed bench config (dot habu-bf16-m16n8k16-tile): MMA-DTYPE=2 + MMA-BTF16=1 - the bf16
+\ mirror of GB-MMM-CFG-F16-T. Same fill/timing (A=B=1.0, values immaterial). Element-exact first
+\ (tools/ptx/mma-gemm-check.f MGC-CFG-BF16-T). Args: bk pad stages dyn mfrags warps epilog bpad. Restores default.
+: GB-MMM-CFG-BF16-T ( n n n n n n n n -- )
+   MMA-BPAD !  MMA-EPILOG !  MMA-WARPS !  MMA-MFRAGS !  MMA-DYNSMEM !  MMA-STAGES !  MMA-PAD !  MMA-BK !
+   2 MMA-DTYPE !  0 MMA-LMODE !  0 MMA-BLDM !  1 MMA-BTF16 !
+   MMA-DYNSMEM @ if MMA-SH-BYTES else 0 then GB-SMEM-DYN !
+   MMA-NTHREADS 16 / GB-BLKY !
+   s" == BF16-T MMM MFRAGS=" type MMA-MFRAGS @ GB-INT.  s"  warps=" type MMA-WARPS @ GB-INT.
+   s"  BK=" type MMA-BK @ GB-INT.  s"  bpad=" type MMA-BPAD @ GB-INT.  s"  stages=" type MMA-STAGES @ GB-INT.
+   s"  dyn=" type MMA-DYNSMEM @ GB-INT.  s"  epi=" type MMA-EPILOG @ GB-INT.
+   s"  block=" type MMA-BROWS GB-INT. s" x64  smem=" type MMA-SMEM GB-INT. s" B ==" type cr
+   s" habu-gemm-bench" PTXTC:PREPARE
+   PTX-CAPTURE-ON  EMIT-MATMUL-MMA  PTX-CAPTURE-OFF
+   GB-ASSEMBLE
+   64 GB-OT !  MMA-BROWS GB-OTY !
+   s" MMM" GB-KERNEL
+   PTXTC:CLEAN
+   0 MMA-DTYPE !  0 MMA-BTF16 !  0 MMA-EPILOG !  32 MMA-BK !  0 MMA-PAD !  2 MMA-STAGES !  0 MMA-DYNSMEM !  1 MMA-MFRAGS !  8 MMA-WARPS !
+   0 MMA-BPAD !  0 GB-SMEM-DYN !  64 GB-OTY !  16 GB-BLKY ! ;
+
 public
 
 : GB-MMM-BENCH ( -- )                  \ FP32 roof reference + the larger-BK/swizzle sweep (focused)
@@ -402,6 +446,34 @@ public
    32 0 1 0 4 4 0 8 GB-MMM-CFG-F16-T    \ 4-warp MFRAGS=4 stages=1 static bpad=8
    32 0 2 1 2 8 0 8 GB-MMM-CFG-F16-T    \ 8-warp MFRAGS=2 stages=2 dyn bpad=8 (128x64)
    32 0 2 0 1 8 0 8 GB-MMM-CFG-F16-T ;  \ non-wide MFRAGS=1 8-warp static bpad=8 (64x64; small-shape check)
+
+\ BF16 tile schedule sweep (dot habu-bf16-m16n8k16-tile): the bf16 mirror of GB-F16-SWEEP - the FP32
+\ CUDA-core roof reference (same session), then the m16n8k16 f32.bf16.bf16.f32 tile across warp grids (8/4),
+\ MFRAGS (1/2/4), stages (1/2), the smem C epilogue, and the transposed-Bs B feed at bpad {0,8}. Same tile
+\ geometry and smem as fp16 (a bf16 half is 2 bytes too), so the same tiles are swept. Every config is
+\ element-exact first (tools/ptx/mma-gemm-check.f MGC-CFG-BF16 / MGC-CFG-BF16-T, 0 mismatches); best-of-3 at
+\ the sustained GEMM clock, run SOLO. Referee = Triton 3.8 bf16 tl.dot (torch.bfloat16) if the venv exposes
+\ it, else the same-session Habu fp16 tile (docs/eval-triton.md bf16 round). Read the winner row per shape.
+: GB-BF16-SWEEP ( -- )
+   CUDA:OPEN? 0= if s" gemm-bench: libcuda unavailable -> SKIPPED (off-device)" type cr exit then
+   GB-MM                                \ FP32 CUDA-core roof reference (same session)
+   32 0 2 0 1 8 0 GB-MMM-CFG-BF16       \ non-wide MFRAGS=1 8-warp static (64x64)
+   32 0 2 1 2 8 0 GB-MMM-CFG-BF16       \ MFRAGS=2 8-warp stages=2 dyn (128x64)
+   32 0 1 0 2 8 0 GB-MMM-CFG-BF16       \ MFRAGS=2 8-warp stages=1 static (128x64)
+   32 0 1 0 4 8 0 GB-MMM-CFG-BF16       \ MFRAGS=4 8-warp stages=1 static (256x64; bf16 fits the 48 KB cap)
+   32 0 2 1 4 8 0 GB-MMM-CFG-BF16       \ MFRAGS=4 8-warp stages=2 dyn (256x64)
+   32 0 1 0 4 4 0 GB-MMM-CFG-BF16       \ 4-warp MFRAGS=4 stages=1 static (128x64)
+   32 0 2 1 4 4 0 GB-MMM-CFG-BF16       \ 4-warp MFRAGS=4 stages=2 dyn (128x64)
+   32 0 1 0 2 4 0 GB-MMM-CFG-BF16       \ 4-warp MFRAGS=2 stages=1 static (64x64)
+   32 0 1 0 4 4 1 GB-MMM-CFG-BF16       \ 4-warp MFRAGS=4 stages=1 static + EPILOGUE (128x64)
+   32 0 2 1 2 8 1 GB-MMM-CFG-BF16       \ MFRAGS=2 8-warp stages=2 dyn + EPILOGUE (128x64)
+   \ transposed-Bs feed: one b32 load per B register vs 2 u16 + shift/or. Same winning tiles, bpad {0,8}.
+   32 0 2 1 4 4 0 0 GB-MMM-CFG-BF16-T   \ 4-warp MFRAGS=4 stages=2 dyn bpad=0 (128x64)
+   32 0 2 1 4 4 0 8 GB-MMM-CFG-BF16-T   \ 4-warp MFRAGS=4 stages=2 dyn bpad=8 (conflict-free BT read)
+   32 0 1 0 4 4 0 0 GB-MMM-CFG-BF16-T   \ 4-warp MFRAGS=4 stages=1 static bpad=0 (128x64)
+   32 0 1 0 4 4 0 8 GB-MMM-CFG-BF16-T   \ 4-warp MFRAGS=4 stages=1 static bpad=8
+   32 0 2 1 2 8 0 8 GB-MMM-CFG-BF16-T   \ 8-warp MFRAGS=2 stages=2 dyn bpad=8 (128x64)
+   32 0 2 0 1 8 0 8 GB-MMM-CFG-BF16-T ; \ non-wide MFRAGS=1 8-warp static bpad=8 (64x64; small-shape check)
 
 ;package
 

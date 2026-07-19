@@ -21,6 +21,18 @@
 \ requires err = 0.0 (bitwise-exact within f32), no epsilon. The fp16 tile stores A/B as f16 in
 \ BOTH global and shared; C stays f32 (F32-UNPACK on readback), the accumulate is f32.
 \
+\ BF16 tile (MMA-DTYPE=2, dot habu-bf16-m16n8k16-tile): the SAME m16n8k16 shape and fragment maps as
+\ fp16, SAME fill + reference + compare, with the integer-exact argument ADAPTED to bf16's narrower
+\ significand. bf16's significand is 8 bits (7 stored + implicit), representing every integer in [0,256]
+\ exactly; the fill's 1..13 (A) and 1..11 (B) are all <= 256, so BF16-PACK (F64>BF16, round-to-nearest-
+\ even) narrows them with ZERO error - and since they are exact, the RNE never fires and the pack returns
+\ the exact integer regardless. Each product is an integer <= 143, and the K-accumulation runs in f32
+\ (NOT bf16): every partial sum is an integer <= K*143 <= 512*143 = 73216 < 2^24, exactly representable in
+\ f32, so no add rounds - the product's 8-bit range is irrelevant, only the f32 accumulate width bounds it.
+\ Hence the device f32 C equals the exact integer dot product = the f64 host reference EXACTLY: zero
+\ tolerance, no epsilon. Both B feeds (k-major and the MMA-BTF16 transposed n-major BT) are checked for
+\ bf16 - the transpose is a pure permutation of the same integer values, so the argument is unchanged.
+\
 \ Device-only: off the Orin (no libcuda) MGC-ALL SKIPS so this file still check-loads. Run
 \ on the device (ISOLATED-COPY): bin/hb --load tools/ptx/mma-gemm-check.f
 
@@ -93,11 +105,13 @@ create MGC-MAXERR 1 cells allot
    e esz * MGC-DA PTXBENCH:DEVICE-ALLOC
    e esz * MGC-DB PTXBENCH:DEVICE-ALLOC
    e 4 * MGC-DC PTXBENCH:DEVICE-ALLOC
-   MMA-F16? if
+   MMA-BF16? if
+      MGC-HA e MGC-PA BF16-PACK  MGC-HB e MGC-PB BF16-PACK   \ f64 host -> packed bf16 device buffers (F64>BF16 RNE)
+   else MMA-F16? if
       MGC-HA e MGC-PA F16-PACK  MGC-HB e MGC-PB F16-PACK   \ f64 host -> packed f16 device buffers
    else
       MGC-HA e MGC-PA F32-PACK  MGC-HB e MGC-PB F32-PACK
-   then
+   then then
    MGC-DA @ MGC-PA e esz * PTXBENCH:HTOD
    MGC-DB @ MGC-PB e esz * PTXBENCH:HTOD
    16 PTXBENCH:BLOCK!  MMA-NTHREADS 16 / PTXBENCH:BLOCKY!   \ 16x16=256 thr (8 warps) or 16x8=128 thr (4 warps)
@@ -308,6 +322,37 @@ variable MGC-TN
    0 MMA-DTYPE !  0 MMA-BTF16 !  0 MMA-EPILOG !  32 MMA-BK !  0 MMA-PAD !  2 MMA-STAGES !  0 MMA-DYNSMEM !
    1 MMA-MFRAGS !  8 MMA-WARPS !  0 MMA-BPAD !  64 MGC-SA !  128 MGC-SB ! ;
 
+\ BF16 tile config (dot habu-bf16-m16n8k16-tile): MMA-DTYPE=2, scalar packed-b32 feed (mode 0) - the exact
+\ mirror of MGC-CFG-F16 with the bf16 dtype token and the F64>BF16 host pack. Same block-M-aware edges so
+\ BOTH warp grids are covered. Zero tolerance justified for bf16 (integers 1..13/1..11 exact in bf16's 8-bit
+\ significand, f32 accumulate < 2^24; adapted argument in the header). Args: bk pad stages dyn mfrags warps
+\ epilog. Restores the tf32 8-warp default.
+: MGC-CFG-BF16 ( n n n n n n n -- )
+   MMA-EPILOG !  MMA-WARPS !  MMA-MFRAGS !  MMA-DYNSMEM !  MMA-STAGES !  MMA-PAD !  MMA-BK !
+   2 MMA-DTYPE !  0 MMA-LMODE !  0 MMA-BLDM !  0 MMA-BPAD !
+   MMA-BROWS MGC-SA !  MMA-BROWS 2 * MGC-SB !
+   s" -- BF16 tile MFRAGS=" type MMA-MFRAGS @ .  s"  warps=" type MMA-WARPS @ .  s"  BK=" type MMA-BK @ .
+   s"  stages=" type MMA-STAGES @ .  s"  dyn=" type MMA-DYNSMEM @ .  s"  epi=" type MMA-EPILOG @ .
+   s"  (" type MGC-SA @ . s" ^3," type MGC-SB @ . s" ^3):" type cr
+   0 MGC-MODE
+   0 MMA-DTYPE !  0 MMA-EPILOG !  32 MMA-BK !  0 MMA-PAD !  2 MMA-STAGES !  0 MMA-DYNSMEM !
+   1 MMA-MFRAGS !  8 MMA-WARPS !  64 MGC-SA !  128 MGC-SB ! ;
+
+\ TRANSPOSED-Bs bf16 config (dot habu-bf16-m16n8k16-tile): MMA-DTYPE=2 + MMA-BTF16=1 - the n-major BT staging
+\ + one-b32-per-register B feed, the bf16 mirror of MGC-CFG-F16-T. The transpose is a pure permutation of the
+\ same integer values, so the justified-zero-tolerance argument is unchanged. Both warp grids covered at the
+\ block-M-aware edges. Args: bk pad stages dyn mfrags warps epilog bpad. Restores the tf32 8-warp default.
+: MGC-CFG-BF16-T ( n n n n n n n n -- )
+   MMA-BPAD !  MMA-EPILOG !  MMA-WARPS !  MMA-MFRAGS !  MMA-DYNSMEM !  MMA-STAGES !  MMA-PAD !  MMA-BK !
+   2 MMA-DTYPE !  0 MMA-LMODE !  0 MMA-BLDM !  1 MMA-BTF16 !
+   MMA-BROWS MGC-SA !  MMA-BROWS 2 * MGC-SB !
+   s" -- BF16-T (transposed-Bs feed) MFRAGS=" type MMA-MFRAGS @ .  s"  warps=" type MMA-WARPS @ .  s"  BK=" type MMA-BK @ .
+   s"  bpad=" type MMA-BPAD @ .  s"  stages=" type MMA-STAGES @ .  s"  dyn=" type MMA-DYNSMEM @ .  s"  epi=" type MMA-EPILOG @ .
+   s"  (" type MGC-SA @ . s" ^3," type MGC-SB @ . s" ^3):" type cr
+   0 MGC-MODE
+   0 MMA-DTYPE !  0 MMA-BTF16 !  0 MMA-EPILOG !  32 MMA-BK !  0 MMA-PAD !  2 MMA-STAGES !  0 MMA-DYNSMEM !
+   1 MMA-MFRAGS !  8 MMA-WARPS !  0 MMA-BPAD !  64 MGC-SA !  128 MGC-SB ! ;
+
 \ DEEP-STAGE 4-warp configs (dot habu-4-warp-mma step 3). N>=3 uses the N-stage ring pipeline
 \ (lib/ptx/cg-mma.f MMA-PIPE-KLOOP-MULTI), whose steady wait_group(N-1) and draining epilogue
 \ wait_group(N-2..0) are only exact when T=ceil(K/BK) >= N-1. The BROWS-derived edges (down to 64
@@ -398,6 +443,31 @@ variable MGC-TN
    if s" -- fp16 transposed-Bs legality: fail-closed on tf32-tile + non-4B BT row, emits when legal (PASS)" type cr
    else s" mma-gemm-check: fp16 transposed-Bs legality regression FAILED" 1 die then ;
 
+\ negative+positive regression (dot habu-bf16-m16n8k16-tile): the SAME dtype guards gate bf16 (MMA-HALF?),
+\ so MMA-CHECK-DTYPE must fail closed with E-MMA-DTYPE when bf16 is combined with a tf32-only feed knob
+\ (A-ldmatrix, tf32 transposed-Bs B-ldmatrix, wide ablation) and emit cleanly with the scalar packed-b32
+\ feed; and the transposed-Bs half feed IS legal for bf16 (MMA-BTF16), so it must emit at a 4B-aligned BT
+\ row and throw E-MMA-BTF16 at a non-4B row. Device-independent (pure emit). Proves the guard was extended
+\ to bf16 rather than assumed. Restores the tf32 8-warp default.
+: MGC-BF16-NEG ( -- )
+   2 MMA-DTYPE !  32 MMA-BK !  0 MMA-PAD !  2 MMA-STAGES !  0 MMA-DYNSMEM !  1 MMA-MFRAGS !  8 MMA-WARPS !
+   2 MMA-LMODE !  MGC-TRY-EMIT {: rlm:n :}               \ bf16 + A-ldmatrix -> not wired -> must throw E-MMA-DTYPE
+   0 MMA-LMODE !  4 MMA-MFRAGS !  1 MMA-STAGES !  1 MMA-DYNSMEM !  1 MMA-BLDM !  4 MMA-BPAD !
+   MGC-TRY-EMIT {: rbl:n :}                              \ bf16 + tf32 B-ldmatrix -> not wired -> must throw E-MMA-DTYPE
+   0 MMA-BLDM !  0 MMA-BPAD !  1 MMA-ABLATE !
+   MGC-TRY-EMIT {: rab:n :}                              \ bf16 + wide ablation -> tf32-only -> must throw E-MMA-DTYPE
+   0 MMA-ABLATE !  1 MMA-MFRAGS !  2 MMA-STAGES !  0 MMA-DYNSMEM !
+   MGC-TRY-EMIT {: rok:n :}                              \ bf16 + scalar packed (LMODE=0) -> must emit (0)
+   1 MMA-BTF16 !  0 MMA-BPAD !  MGC-TRY-EMIT {: rbt:n :}  \ bf16 + transposed-Bs BPAD=0 -> BTROW=64 B (4B) -> must emit (0)
+   1 MMA-BPAD !  MGC-TRY-EMIT {: rbto:n :}               \ bf16 + transposed-Bs BPAD=1 -> BTROW=66 B (not 4B) -> must throw E-MMA-BTF16
+   0 MMA-BTF16 !  0 MMA-BPAD !
+   0 MMA-DTYPE !  32 MMA-BK !  0 MMA-PAD !  2 MMA-STAGES !  0 MMA-DYNSMEM !  1 MMA-MFRAGS !  8 MMA-WARPS !  0 MMA-LMODE !
+   s" -- bf16 dtype legality: +ldmA->" type rlm . s"  +Bldm->" type rbl . s"  +ablate->" type rab .
+   s"  scalar->" type rok . s"  +BTF16->" type rbt . s"  +BTF16 bpad1->" type rbto . cr
+   rlm E-MMA-DTYPE =  rbl E-MMA-DTYPE =  and  rab E-MMA-DTYPE =  and  rok 0=  and  rbt 0=  and  rbto E-MMA-BTF16 =  and
+   if s" -- bf16 dtype legality: fail-closed on un-wired feed knobs, emits scalar packed + transposed-Bs (PASS)" type cr
+   else s" mma-gemm-check: bf16 dtype legality regression FAILED" 1 die then ;
+
 public
 : MGC-ALL ( -- )
    MGC-SMEM-NEG                                        \ emitter fail-closed check (device-independent)
@@ -407,6 +477,7 @@ public
    MGC-EPI-NEG                                         \ epilogue smem legality fail-closed (device-independent)
    MGC-DTYPE-NEG                                       \ fp16 dtype legality fail-closed (device-independent)
    MGC-BTF16-NEG                                       \ fp16 transposed-Bs feed legality fail-closed (device-independent)
+   MGC-BF16-NEG                                        \ bf16 dtype + transposed-Bs legality fail-closed (device-independent)
    CUDA:OPEN? 0= if s" mma-gemm-check: libcuda unavailable -> SKIPPED (off-device)" type cr exit then
    s" == TF32 mma.sync GEMM device-correctness (element-exact vs host) ==" type cr
    0 MGC-MODE  1 MGC-MODE  2 MGC-MODE
@@ -470,6 +541,23 @@ public
    32 0 2 1 4 4 0 8 MGC-CFG-F16-T                      \ 4-warp MFRAGS=4 stages=2 dyn bpad=8 (128^3/256^3)
    32 0 2 0 2 8 1 8 MGC-CFG-F16-T                      \ wide MFRAGS=2 8-warp + EPILOGUE bpad=8 (128^3/256^3)
    32 0 1 0 4 4 1 8 MGC-CFG-F16-T                      \ 4-warp MFRAGS=4 stages=1 + EPILOGUE bpad=8 (128^3/256^3)
+   s" == BF16 mma.sync m16n8k16 tile (dot habu-bf16-m16n8k16-tile, element-exact vs host) ==" type cr
+   32 0 2 0 1 8 0 MGC-CFG-BF16                         \ non-wide MFRAGS=1 8-warp static (64^3/128^3)
+   32 0 2 0 2 8 0 MGC-CFG-BF16                         \ wide MFRAGS=2 8-warp static (128^3/256^3)
+   32 0 2 1 2 8 0 MGC-CFG-BF16                         \ wide MFRAGS=2 8-warp DYNAMIC smem (128^3/256^3)
+   32 0 1 0 4 4 0 MGC-CFG-BF16                         \ 4-warp MFRAGS=4 stages=1 static (128^3/256^3)
+   32 0 2 1 4 4 0 MGC-CFG-BF16                         \ 4-warp MFRAGS=4 stages=2 DYNAMIC (128^3/256^3)
+   32 0 2 0 2 8 1 MGC-CFG-BF16                         \ wide MFRAGS=2 8-warp + EPILOGUE (128^3/256^3)
+   32 0 1 0 4 4 1 MGC-CFG-BF16                         \ 4-warp MFRAGS=4 stages=1 + EPILOGUE (128^3/256^3)
+   32 0 2 0 4 8 0 MGC-CFG-BF16                         \ wide MFRAGS=4 8-warp static (256^3/512^3)
+   s" == BF16 transposed-Bs feed (dot habu-bf16-m16n8k16-tile, one b32 load/B register, element-exact) ==" type cr
+   32 0 2 0 1 8 0 0 MGC-CFG-BF16-T                     \ non-wide MFRAGS=1 8-warp static bpad=0 (64^3/128^3)
+   32 0 2 0 1 8 0 8 MGC-CFG-BF16-T                     \ non-wide MFRAGS=1 8-warp static bpad=8 conflict-free (64^3/128^3)
+   32 0 2 1 2 8 0 8 MGC-CFG-BF16-T                     \ wide MFRAGS=2 8-warp stages=2 dyn bpad=8 (128^3/256^3)
+   32 0 1 0 4 4 0 0 MGC-CFG-BF16-T                     \ 4-warp MFRAGS=4 stages=1 static bpad=0 (128^3/256^3)
+   32 0 2 1 4 4 0 8 MGC-CFG-BF16-T                     \ 4-warp MFRAGS=4 stages=2 dyn bpad=8 (128^3/256^3)
+   32 0 2 0 2 8 1 8 MGC-CFG-BF16-T                     \ wide MFRAGS=2 8-warp + EPILOGUE bpad=8 (128^3/256^3)
+   32 0 1 0 4 4 1 8 MGC-CFG-BF16-T                     \ 4-warp MFRAGS=4 stages=1 + EPILOGUE bpad=8 (128^3/256^3)
    0 MMA-LMODE !  0 MMA-DTYPE !  0 MMA-BTF16 ! ;       \ restore the committed defaults (tf32 scalar+cvt)
 
 ;package

@@ -39,6 +39,20 @@ package MMAEMITDIFF
    PTX-CAPTURE-ON  EMIT-MATMUL-MMA  PTX-CAPTURE-OFF
    PTX-CAPTURE$ type
    0 MMA-DTYPE !  ED-RESET ;
+\ bf16 tile (MMA-DTYPE=2, dot habu-bf16-m16n8k16-tile), transposed-Bs feed OFF: the bf16 mirror of
+\ ED-ONE-F16. Emits the bf16 DEFAULT B-feed path so a later bf16 change can be regression-diffed; the
+\ bf16 rows are APPENDED after the fp16 rows so the tf32(35)+fp16(6) prefix stays a byte-identical
+\ base-vs-branch diff. Restores MMA-DTYPE=0.
+: ED-ONE-BF16 ( n n n n n n n -- )   \ bk pad stages dyn mfrags warps epilog
+   MMA-EPILOG !  MMA-WARPS !  MMA-MFRAGS !  MMA-DYNSMEM !  MMA-STAGES !  MMA-PAD !  MMA-BK !
+   2 MMA-DTYPE !
+   SB-RESET s" === BF16 bk " SB-APPEND MMA-BK @ ED#  s" pad " SB-APPEND MMA-PAD @ ED#
+   s" stages " SB-APPEND MMA-STAGES @ ED#  s" dyn " SB-APPEND MMA-DYNSMEM @ ED#
+   s" mfrags " SB-APPEND MMA-MFRAGS @ ED#  s" warps " SB-APPEND MMA-WARPS @ ED#
+   s" epi " SB-APPEND MMA-EPILOG @ ED#  s" ===" SB-APPEND SB$ type cr
+   PTX-CAPTURE-ON  EMIT-MATMUL-MMA  PTX-CAPTURE-OFF
+   PTX-CAPTURE$ type
+   0 MMA-DTYPE !  ED-RESET ;
 : ED-ONE ( n n n n n n n n n n -- )   \ bk pad stages dyn mode mfrags warps epilog bldm bpad
    MMA-BPAD !  MMA-BLDM !  MMA-EPILOG !  MMA-WARPS !  MMA-MFRAGS !
    MMA-LMODE !  MMA-DYNSMEM !  MMA-STAGES !  MMA-PAD !  MMA-BK !
@@ -102,7 +116,15 @@ public
    32 0 1 0 4 8 0 ED-ONE-F16
    32 0 2 1 4 4 0 ED-ONE-F16
    32 0 1 0 2 4 0 ED-ONE-F16
-   32 0 2 1 2 8 1 ED-ONE-F16 ;
+   32 0 2 1 2 8 1 ED-ONE-F16
+   \ bf16 tile (dot habu-bf16-m16n8k16-tile), APPENDED after the tf32+fp16 stream so their prefix stays a
+   \ byte-identical base-vs-branch diff; mirrors the six fp16 rows (only the mma dtype token differs)
+   32 0 2 0 1 8 0 ED-ONE-BF16
+   32 0 2 1 2 8 0 ED-ONE-BF16
+   32 0 1 0 4 8 0 ED-ONE-BF16
+   32 0 2 1 4 4 0 ED-ONE-BF16
+   32 0 1 0 2 4 0 ED-ONE-BF16
+   32 0 2 1 2 8 1 ED-ONE-BF16 ;
 
 ;package
 

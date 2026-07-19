@@ -70,8 +70,8 @@ require lib/ptx/cpp-slot.f
 -6102 constant E-MMA-BLDM                        \ B-ldmatrix config illegal (non-16B BT row, or MFRAGS=1)
 -6103 constant E-MMA-WARPS                        \ illegal warp grid (WARPS not 4/8, or WARPS=4 without the wide MFRAGS>1 staging)
 -6104 constant E-MMA-EPI                          \ smem epilogue staging tile exceeds the per-block .shared budget
--6105 constant E-MMA-DTYPE                         \ fp16 dtype requested with an un-wired feed knob (ldmatrix / B-ldmatrix / ablate)
--6106 constant E-MMA-BTF16                         \ fp16 transposed-Bs feed illegal (requested on a tf32 tile, or a non-4B BT row)
+-6105 constant E-MMA-DTYPE                         \ half dtype (fp16/bf16) requested with an un-wired feed knob (ldmatrix / B-ldmatrix / ablate)
+-6106 constant E-MMA-BTF16                         \ transposed-Bs feed illegal (requested on a tf32 tile, or a non-4B BT row)
 
 variable MMA-BK      32 MMA-BK !               \ staged K-tile depth
 variable MMA-PAD      0 MMA-PAD !              \ As row pad floats
@@ -152,19 +152,25 @@ variable MMA-ABLATE   0 MMA-ABLATE !
 variable MMA-BLDM   0 MMA-BLDM !              \ 1 = B-fragment ldmatrix over transposed Bs (wide path)
 variable MMA-BPAD   0 MMA-BPAD !              \ BT row pad floats (n-major row stride = BK+BPAD)
 
-\ TENSOR DTYPE (dot habu-fp16-mma-tile). 0 = TF32 (m16n8k8 f32.tf32.tf32.f32; f32-in, tf32-mma,
-\ f32-acc) - the DEFAULT, BYTE-IDENTICAL to every pinned config. 1 = FP16 (m16n8k16
+\ TENSOR DTYPE (dot habu-fp16-mma-tile / habu-bf16-m16n8k16-tile). 0 = TF32 (m16n8k8 f32.tf32.tf32.f32;
+\ f32-in, tf32-mma, f32-acc) - the DEFAULT, BYTE-IDENTICAL to every pinned config. 1 = FP16 (m16n8k16
 \ f32.f16.f16.f32): A/B are f16 halves in BOTH global and shared (host packs f32->f16 on the fill
 \ path), accumulate stays f32, C stays f32. The m16n8k16 shape retires TWICE the K per mma - each
 \ lane holds 8 A-halves (4 packed .f16x2 b32 regs) and 4 B-halves (2 b32 regs), the SAME 4+2 b32
-\ register budget as tf32's 4+2 - so MMA-KSUBS halves (MMA-MKD=16). fp16 feeds A with the scalar
-\ packed-b32 path only; its B fragment is fed either from the k-major Bs (default, two ld.shared.u16 +
-\ shift/or per register) or from a TRANSPOSED n-major Bs (MMA-BTF16, one ld.shared.b32 per register).
-\ The tf32-format feed knobs - A-ldmatrix (LMODE 1/2), tf32 B-ldmatrix (BLDM), ablation - are NOT wired
-\ for fp16 and MMA-CHECK-DTYPE fails closed on them. Every non-dtype knob (MFRAGS, WARPS, BK, PAD,
-\ stages, dyn, epilogue) works for both dtypes.
-variable MMA-DTYPE   0 MMA-DTYPE !            \ 0 = tf32 (default), 1 = fp16
+\ register budget as tf32's 4+2 - so MMA-KSUBS halves (MMA-MKD=16). 2 = BF16 (m16n8k16 f32.bf16.bf16.f32):
+\ the SAME m16n8k16 shape, fragment maps, staging and half-precision (2-byte element) geometry as fp16 -
+\ a bf16 half is 2 bytes exactly like an f16 half, so every load/stage is a pure bit-move and only the mma
+\ dtype token (MMA-ABT) and the host pack differ (F64>BF16 round-to-nearest-even, lib/ptx/cg.f). fp16 AND
+\ bf16 (jointly MMA-HALF?) feed A with the scalar packed-b32 path only; the B fragment is fed either from
+\ the k-major Bs (default, two ld.shared.u16 + shift/or per register) or from a TRANSPOSED n-major Bs
+\ (MMA-BTF16, one ld.shared.b32 per register). The tf32-format feed knobs - A-ldmatrix (LMODE 1/2), tf32
+\ B-ldmatrix (BLDM), ablation - are NOT wired for either half dtype and MMA-CHECK-DTYPE fails closed on
+\ them. Every non-dtype knob (MFRAGS, WARPS, BK, PAD, stages, dyn, epilogue) works for all three dtypes.
+variable MMA-DTYPE   0 MMA-DTYPE !            \ 0 = tf32 (default), 1 = fp16, 2 = bf16
 : MMA-F16? ( -- bool )  MMA-DTYPE @ 1 = ;
+: MMA-BF16? ( -- bool )  MMA-DTYPE @ 2 = ;
+: MMA-HALF? ( -- bool )  MMA-F16? MMA-BF16? or ;      \ 16-bit half dtype (fp16 or bf16): shared geometry/staging/feed
+: MMA-ABT  ( -- ptr u8 n )  MMA-BF16? if s" bf16" else s" f16" then ;   \ mma A/B operand dtype token
 
 \ TRANSPOSED-Bs fp16 B feed (dot habu-fp16-transposed-bs). The default fp16 B fragment builds each of
 \ its two b32 registers from two ld.shared.u16 + shift/or, because the register's two K-adjacent halves
@@ -176,12 +182,13 @@ variable MMA-DTYPE   0 MMA-DTYPE !            \ 0 = tf32 (default), 1 = fp16
 \ B[k][n], strided shared write BT[n][k]), the As tile staying a cp.async copy - exactly the split staging
 \ the tf32 BLDM path uses. The n-major BT row stride is BK+MMA-BPAD halves (MMA-BTROW-B), a NEW bank
 \ geometry, so MMA-BPAD is a measured knob (BPAD=8 -> stride 40 halves = 80 B -> b32-load start-bank stride
-\ 20, conflict-free 8-gid tiles; BPAD=0 fits tightest but aliases banks). fp16-only (MMA-CHECK-BTF16 fails
-\ closed on a tf32 tile or a non-4B BT row); works on both warp grids, all MFRAGS, with/without the epilogue.
-variable MMA-BTF16   0 MMA-BTF16 !            \ 1 = fp16 transposed-Bs B feed (one b32 load per B register)
-: MMA-ESZ  ( -- n )  MMA-F16? if 2 else 4 then ;     \ A/B element bytes (fp16 half vs tf32 f32 word)
-: MMA-EPC  ( -- n )  16 MMA-ESZ / ;                  \ A/B elements per 16-byte cp.async chunk (8 fp16 / 4 f32)
-: MMA-MKD  ( -- n )  MMA-F16? if 16 else MMA-MK then ;  \ mma.sync K/substep (m16n8k16 fp16 / m16n8k8 tf32)
+\ 20, conflict-free 8-gid tiles; BPAD=0 fits tightest but aliases banks). Half-dtype-only (fp16 or bf16;
+\ MMA-CHECK-BTF16 fails closed on a tf32 tile or a non-4B BT row) - the 2-byte half is transposed the same
+\ way for either; works on both warp grids, all MFRAGS, with/without the epilogue.
+variable MMA-BTF16   0 MMA-BTF16 !            \ 1 = fp16/bf16 transposed-Bs B feed (one b32 load per B register)
+: MMA-ESZ  ( -- n )  MMA-HALF? if 2 else 4 then ;    \ A/B element bytes (fp16/bf16 half vs tf32 f32 word)
+: MMA-EPC  ( -- n )  16 MMA-ESZ / ;                  \ A/B elements per 16-byte cp.async chunk (8 half / 4 f32)
+: MMA-MKD  ( -- n )  MMA-HALF? if 16 else MMA-MK then ;  \ mma.sync K/substep (m16n8k16 half / m16n8k8 tf32)
 
 : MMA-WROWS  ( -- n )  MMA-WARPS @ 2 / ;              \ warp-rows (WCOLS fixed 2); 4 at WARPS=8, 2 at WARPS=4
 : MMA-NTHREADS ( -- n )  MMA-WARPS @ 32 * ;           \ threads/block; 256 at WARPS=8, 128 at WARPS=4
@@ -243,14 +250,15 @@ variable MMA-BTF16   0 MMA-BTF16 !            \ 1 = fp16 transposed-Bs B feed (o
    MMA-MFRAGS @ 2 < if E-MMA-BLDM throw then            \ B-ldmatrix is defined only on the wide (MFRAGS>1) path
    MMA-BTROW-B 15 and 0= 0= if E-MMA-BLDM throw then ;  \ BT row stride not a multiple of 16 B -> misaligned ldmatrix rows
 
-\ fail closed on an illegal fp16 transposed-Bs feed (dot habu-fp16-transposed-bs). The n-major BT feed
-\ loads each B register with ONE ld.shared.b32 over two K-adjacent halves, so it is defined ONLY for the
-\ fp16 tile (the tf32 element is a whole f32 word, not a K-pair) and the BT row stride MMA-BTROW-B =
-\ (BK+BPAD)*2 MUST be a multiple of 4 B (else the b32 load start is mis-aligned). Reject both at EMIT time
-\ so a bad knob combination throws instead of silently emitting the wrong kernel or faulting the GPU.
+\ fail closed on an illegal transposed-Bs half-dtype feed (dot habu-fp16-transposed-bs / habu-bf16-m16n8k16-
+\ tile). The n-major BT feed loads each B register with ONE ld.shared.b32 over two K-adjacent halves, so it
+\ is defined ONLY for a half dtype (fp16 or bf16; the tf32 element is a whole f32 word, not a K-pair) and the
+\ BT row stride MMA-BTROW-B = (BK+BPAD)*2 MUST be a multiple of 4 B (else the b32 load start is mis-aligned).
+\ Reject both at EMIT time so a bad knob combination throws instead of silently emitting the wrong kernel or
+\ faulting the GPU.
 : MMA-CHECK-BTF16 ( -- )
    MMA-BTF16 @ 0= if exit then
-   MMA-F16? 0= if E-MMA-BTF16 throw then               \ transposed-Bs feed is the fp16 B path only
+   MMA-HALF? 0= if E-MMA-BTF16 throw then              \ transposed-Bs feed is the fp16/bf16 half B path only
    MMA-BTROW-B 3 and 0= 0= if E-MMA-BTF16 throw then ; \ BT row stride not a multiple of 4 B -> misaligned b32 B load
 
 \ fail closed on an illegal warp grid (dot habu-4-warp-mma). Only the 4x2 (WARPS=8) and 2x2 (WARPS=4)
@@ -601,8 +609,12 @@ variable MMA-LMODE   0 MMA-LMODE !
       4 0 do  f i MMA-STORE-TILE-WIDE  loop
    loop ;
 
-\ ============ FP16 compute path (MMA-DTYPE=1; dot habu-fp16-mma-tile) ========================
-\ mma.sync.aligned.m16n8k16.row.col.f32.f16.f16.f32 over f16 As/Bs (host-packed), f32 accumulate.
+\ ============ HALF (fp16/bf16) compute path (MMA-DTYPE=1/2; dot habu-fp16-mma-tile + habu-bf16-m16n8k16-tile) ==
+\ mma.sync.aligned.m16n8k16.row.col.f32.<t>.<t>.f32 over half As/Bs (host-packed), f32 accumulate, where the
+\ operand dtype token <t> = MMA-ABT (f16 at MMA-DTYPE=1, bf16 at 2). fp16 and bf16 share this path VERBATIM:
+\ a half is 2 bytes either way so every fragment load/store below is a pure bit-move (ld.shared.b32 /
+\ ld.shared.u16 - format-agnostic), and ONLY the mma dtype token differs. These words carry the -F16 name
+\ from the fp16 lane; they are the shared half path. (The word names are kept to preserve byte-identity.)
 \ The C/D fragment map is IDENTICAL to the tf32 m16n8k8 tile (d0=D[gid][2t] d1=D[gid][2t+1]
 \ d2=D[gid+8][2t] d3=D[gid+8][2t+1]), so the scattered store (MMA-STORE/-WIDE) and the smem epilogue
 \ (MMA-EPI-*, which stage f32 accumulators) are reused VERBATIM. The A/B fragment maps are the PTX ISA
@@ -670,7 +682,7 @@ variable MMA-LMODE   0 MMA-LMODE !
 : MMA-NTILE-F16 ( n n -- ) {: ks:n j:n :}
    ks j MMA-B-F16-LOAD
    10 j 4 * + {: a0:n :}
-   SB-RESET s" mma.sync.aligned.m16n8k16.row.col.f32.f16.f16.f32 {%f" SB-APPEND a0 SB-U
+   SB-RESET s" mma.sync.aligned.m16n8k16.row.col.f32." SB-APPEND MMA-ABT SB-APPEND s" ." SB-APPEND MMA-ABT SB-APPEND s" .f32 {%f" SB-APPEND a0 SB-U
       s" ,%f" SB-APPEND a0 1+ SB-U s" ,%f" SB-APPEND a0 2 + SB-U s" ,%f" SB-APPEND a0 3 + SB-U
       s" }, {%r50,%r51,%r52,%r53}, {%r54,%r55}, {%f" SB-APPEND a0 SB-U
       s" ,%f" SB-APPEND a0 1+ SB-U s" ,%f" SB-APPEND a0 2 + SB-U s" ,%f" SB-APPEND a0 3 + SB-U
@@ -699,7 +711,7 @@ variable MMA-LMODE   0 MMA-LMODE !
 : MMA-MMA-F16-WIDE ( n n -- ) {: f:n j:n :}    \ D(=%f(10+16f+4j)..) = A(group f).B(%r54,55) + D
    10 f 16 * + j 4 * + {: d:n :}
    f MMA-AREG {: g:n :}
-   SB-RESET s" mma.sync.aligned.m16n8k16.row.col.f32.f16.f16.f32 {%f" SB-APPEND d SB-U
+   SB-RESET s" mma.sync.aligned.m16n8k16.row.col.f32." SB-APPEND MMA-ABT SB-APPEND s" ." SB-APPEND MMA-ABT SB-APPEND s" .f32 {%f" SB-APPEND d SB-U
       s" ,%f" SB-APPEND d 1+ SB-U s" ,%f" SB-APPEND d 2 + SB-U s" ,%f" SB-APPEND d 3 + SB-U
       s" }, {%r" SB-APPEND g SB-U s" ,%r" SB-APPEND g 1+ SB-U s" ,%r" SB-APPEND g 2 + SB-U s" ,%r" SB-APPEND g 3 + SB-U
       s" }, {%r54,%r55}, {%f" SB-APPEND d SB-U
@@ -960,7 +972,7 @@ variable MMA-LMODE   0 MMA-LMODE !
    MMA-BTCPN 0 do  i bufr ktr MMA-CPW-CHUNK-BTF16  loop ;
 
 : MMA-CP-STAGE ( n n -- ) {: bufr:n ktr:n :}   \ stage one K-tile (As+Bs) into buffer bufr from column ktr
-   MMA-F16? if
+   MMA-HALF? if                                             \ fp16/bf16 share the half (2-byte element) staging
       MMA-BTF16 @ if bufr ktr MMA-CPW-STAGE-BTF16 exit then   \ transposed BT: split As cp.async + BT scalar copy (any MFRAGS)
       MMA-MFRAGS @ 1 > if bufr ktr MMA-CPW-STAGE-F16 exit then
       MMA-CPN 0 do  i bufr ktr MMA-CP-CHUNK-F16  loop  exit
@@ -1047,7 +1059,7 @@ TRUSTED: MMA-STAGE-ISSUE ( n n -- cpp-pending<p> )   MMA-CP-STAGE 0 ;
 \ the wide (MFRAGS>1) or non-wide K-tile. Called by name (not a quotation) so the multistage can emit it
 \ N times - once in the runtime steady body and once per unrolled epilogue tile.
 : MMA-KTILE-DISPATCH ( -- )
-   MMA-F16? if MMA-MFRAGS @ 1 > if MMA-KTILE-F16-WIDE else MMA-KTILE-F16 then exit then
+   MMA-HALF? if MMA-MFRAGS @ 1 > if MMA-KTILE-F16-WIDE else MMA-KTILE-F16 then exit then   \ half path; mma token = MMA-ABT
    MMA-MFRAGS @ 1 > if MMA-KTILE-WIDE else MMA-KTILE then ;
 
 : MMA-PIPE-KLOOP-MULTI ( -- )
@@ -1087,20 +1099,21 @@ TRUSTED: MMA-STAGE-ISSUE ( n n -- cpp-pending<p> )   MMA-CP-STAGE 0 ;
    MMA-DEFAULT? if MM-PIPE-KLOOP-WITH exit then
    MMA-STAGES @ 1 = if MMA-PIPE-KLOOP-SINGLE else MMA-PIPE-KLOOP-WITH then ;
 
-\ fail closed on an fp16 tile combined with a feed knob wired ONLY for the tf32 fragment format (dot
-\ habu-fp16-mma-tile), mirroring MMA-CHECK-WARPS. fp16 feeds A/B with the scalar packed-b32 path only;
-\ the A-ldmatrix (LMODE 1/2 truncate/ldmatrix.x4 assume tf32's one-word-per-element layout), the
-\ transposed-Bs B-ldmatrix (BLDM), and the DCE-safe wide ablation (ABLATE, tf32 wide-path only) are NOT
-\ wired for the m16n8k16 f16 fragment. Reject at EMIT time so a bad knob throws instead of emitting a
-\ kernel whose fragment loads disagree with the mma operand layout (silent wrong result).
+\ fail closed on a half (fp16/bf16) tile combined with a feed knob wired ONLY for the tf32 fragment format
+\ (dot habu-fp16-mma-tile / habu-bf16-m16n8k16-tile), mirroring MMA-CHECK-WARPS. A half tile feeds A/B with
+\ the scalar packed-b32 path only; the A-ldmatrix (LMODE 1/2 truncate/ldmatrix.x4 assume tf32's one-word-
+\ per-element layout), the transposed-Bs B-ldmatrix (BLDM), and the DCE-safe wide ablation (ABLATE, tf32
+\ wide-path only) are NOT wired for the m16n8k16 half fragment. Reject at EMIT time so a bad knob throws
+\ instead of emitting a kernel whose fragment loads disagree with the mma operand layout (silent wrong
+\ result). Dtype-token-independent: fp16 and bf16 share the same fragment layout, so both gate identically.
 : MMA-CHECK-DTYPE ( -- )
-   MMA-F16? 0= if exit then
-   MMA-LMODE @ 0= 0= if E-MMA-DTYPE throw then          \ fp16 A/B feed is scalar packed-b32 only (LMODE must be 0)
-   MMA-BLDM @ if E-MMA-DTYPE throw then                 \ no transposed-Bs B-ldmatrix for fp16
+   MMA-HALF? 0= if exit then
+   MMA-LMODE @ 0= 0= if E-MMA-DTYPE throw then          \ half A/B feed is scalar packed-b32 only (LMODE must be 0)
+   MMA-BLDM @ if E-MMA-DTYPE throw then                 \ no transposed-Bs B-ldmatrix for a half tile (use MMA-BTF16)
    MMA-ABLATE @ if E-MMA-DTYPE throw then ;             \ ablation variants are the tf32 wide path only
 
 : MMA-BODY ( -- )
-   MMA-CHECK-DTYPE                                                  \ fp16 semantic gate first: reject tf32-only feed knobs (BLDM/LMODE/ablate)
+   MMA-CHECK-DTYPE                                                  \ half semantic gate first: reject tf32-only feed knobs (BLDM/LMODE/ablate)
    MMA-CHECK-BTF16                                                  \ before MMA-CHECK-BLDM, whose dtype-aware BTROW-B assumes a legal dtype
    MMA-CHECK-SMEM
    MMA-CHECK-BLDM
