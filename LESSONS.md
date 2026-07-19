@@ -979,6 +979,18 @@ fits.
 
 ## VCS, Dots & Parallel Agents
 
+- **A worker's edits exist only after a jj snapshot — hours of validated work
+  can vanish without one.** A lane implementing a seed primitive ran every
+  query with `--ignore-working-copy` and every build through bash, so no jj
+  command ever snapshotted its file edits; when concurrent merge-gate
+  operations forked the operation log, its working copy was rebuilt and the
+  fully validated, uncommitted slice was discarded. Worker briefs must demand
+  an immediate `jj describe -m "wip: ..."` plus a plain `jj st` (which
+  snapshots) after each meaningful edit, and the orchestrator should hold
+  repo-global operations (rebases, bookmark moves, workspace forgets) to the
+  minimum while a lane is mid-implementation. The report-everything discipline
+  saved the day: the worker documented every edit, so re-landing is cheap.
+
 - **A gate and its push must never share one unconditional command chain.** A
   dot-graph lint threw during a closure batch, but the same shell block carried
   on through seal, bookmark move, and `jj git push`, publishing a red master
