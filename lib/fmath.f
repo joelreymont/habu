@@ -1,8 +1,15 @@
 \ fmath.f - transcendental floats by in-Habu range reduction (no libm, no engine
-\ prim): FEXP = 2^k * poly(r) with k = round(x/ln2), r = x - k*ln2. Needs only core
-\ float prims. Shared exp core: maki/fmath.f re-uses it for the activation suite,
-\ and lib/ptx/ad-dag-eval.f re-uses it for the host reverse-mode AD gradcheck (both
-\ are downstream, so the core lives at the lib layer to keep the one-way dep).
+\ prim): FMATH:FEXP = 2^k * poly(r) with k = round(x/ln2), r = x - k*ln2. Needs only
+\ core float prims. Shared exp core: maki/fmath.f re-uses it for the activation
+\ suite, and lib/ptx/ad-dag-eval.f re-uses it for the host reverse-mode AD gradcheck
+\ (both are downstream, so the core lives at the lib layer to keep the one-way dep).
+\
+\ The module lives in `package FMATH`. External callers use the qualified public API
+\ (FMATH:FEXP); the range-reduction helpers are package-private.
+
+package FMATH
+
+private
 
 \ round-to-nearest signed int (f>s truncates toward zero, so bias by the sign)
 : FROUND ( r -- n )  dup f0< if 0.5 f- else 0.5 f+ then f>s ;
@@ -25,5 +32,9 @@
 : FEXP-K ( r n -- r ) {: x:r k:n :}            \ exp(x) given k = round(x/ln2)
    x  k s>f 0.6931471805599453 f*  f-  FEXP-POLY  k F2^N  f* ;
 
+public
+
 : FEXP ( r -- r ) {: x:r :}
    x  x 1.4426950408889634 f* FROUND  FEXP-K ;
+
+;package

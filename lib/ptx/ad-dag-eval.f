@@ -9,7 +9,7 @@
 \ EXP/NEG are per-lane, and MUL/ADD are row-row. The reverse pass runs the SAME
 \ VJP rules as AD-VJP with +. accumulation at fan-out, DRIVEN OFF THE SAME BUILT
 \ TABLES (AD-OP/AD-A/AD-B/AD-N/AD-OUT) so the routing gradchecked here is the
-\ routing that emits PTX. Load after lib/ptx/ad-dag.f; FEXP is the shared exp core
+\ routing that emits PTX. Load after lib/ptx/ad-dag.f; FMATH:FEXP is the shared exp core
 \ from lib/fmath.f. Checked Habu. Test support (host gradcheck) - not on any device
 \ path.
 
@@ -65,7 +65,7 @@ create ADE-CBUF ADE-CELLS cells allot        \ per-node,per-lane accumulated cot
 : ADE-FWD-BSUM ( n -- ) {: nd:n :}               \ uniform sum(A)
    nd AD-A@ ADE-RSUM  nd ADE-WRITE-UNIFORM ;
 : ADE-FWD-EXP ( n -- ) {: nd:n :}                \ per-lane exp
-   ADE-W @ 0 ?do  nd AD-A@ i ADE-F@ FEXP  nd i ADE-F!  loop ;
+   ADE-W @ 0 ?do  nd AD-A@ i ADE-F@ FMATH:FEXP  nd i ADE-F!  loop ;
 : ADE-FWD-BSUB ( n -- ) {: nd:n :}               \ A - B (B uniform, replicated)
    ADE-W @ 0 ?do  nd AD-A@ i ADE-F@  nd AD-B@ i ADE-F@ f-  nd i ADE-F!  loop ;
 : ADE-FWD-BDIV ( n -- ) {: nd:n :}               \ A / B (B uniform, replicated)
