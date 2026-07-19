@@ -136,6 +136,7 @@ private
       pad-scatter OF E-EX-UNSUP throw ENDOF  scatter-add OF E-EX-UNSUP throw ENDOF
       gelu-bwd2 OF E-EX-UNSUP throw ENDOF
       seg-attn OF E-EX-UNSUP throw ENDOF  seg-attn-bwd OF E-EX-UNSUP throw ENDOF
+      equation OF E-EX-UNSUP throw ENDOF
    ;MATCH ;
 
 : EX-U ( CAD-KIND:node-id -- ) {: nd:CAD-KIND:node-id :}
@@ -168,6 +169,7 @@ private
       fullsum-dot-bwd OF E-EX-UNSUP throw ENDOF  pad-scatter OF E-EX-UNSUP throw ENDOF
       scatter-add OF E-EX-UNSUP throw ENDOF
       seg-attn OF E-EX-UNSUP throw ENDOF  seg-attn-bwd OF E-EX-UNSUP throw ENDOF
+      equation OF E-EX-UNSUP throw ENDOF
    ;MATCH ;
 
 : EX-EW2 ( CAD-KIND:node-id -- ) {: nd:CAD-KIND:node-id :}
@@ -199,6 +201,7 @@ private
       pad-scatter OF E-EX-UNSUP throw ENDOF  scatter-add OF E-EX-UNSUP throw ENDOF
       gelu-bwd2 OF E-EX-UNSUP throw ENDOF
       seg-attn OF E-EX-UNSUP throw ENDOF  seg-attn-bwd OF E-EX-UNSUP throw ENDOF
+      equation OF E-EX-UNSUP throw ENDOF
    ;MATCH ;
 
 : EX-ROW-FWD ( CAD-KIND:node-id -- ) {: nd:CAD-KIND:node-id :}
@@ -226,6 +229,7 @@ private
       pad-scatter OF E-EX-UNSUP throw ENDOF  scatter-add OF E-EX-UNSUP throw ENDOF
       gelu-bwd2 OF E-EX-UNSUP throw ENDOF
       seg-attn OF E-EX-UNSUP throw ENDOF  seg-attn-bwd OF E-EX-UNSUP throw ENDOF
+      equation OF E-EX-UNSUP throw ENDOF
    ;MATCH ;
 
 \ p0 = cotangent row ; p1 = saved input (norms) or saved output (softmax) row.
@@ -403,6 +407,7 @@ private
       seg-attn        OF nd EX-SEG-ATTN     ENDOF
       seg-attn-bwd    OF nd EX-SEG-ATTN-BWD ENDOF
       cast            OF E-EX-UNSUP throw   ENDOF
+      equation        OF E-EX-UNSUP throw   ENDOF
    ;MATCH ;
 
 \ ---- buffer plan + execute over a node prefix ------------------------------
@@ -421,10 +426,13 @@ public
 
 \ ---- membership: is an op-kind host-executable? (cast / decode are not) -----
 \ the op-kind family makes the old OP-N range check unrepresentable; every op is
-\ host-executable except cast (exhaustive MATCH predicate).
+\ host-executable except cast and equation (exhaustive MATCH predicate). equation's
+\ host dispatch is queued stage-1 work (docs/model-unified.md), so it is not host-
+\ executable yet - EX-NODE throws E-EX-UNSUP for it, exactly like cast.
 : EX-OP-OK? ( opkind -- bool )
    MATCH opkind
       cast OF false ENDOF
+      equation OF false ENDOF
       add OF true ENDOF  mul OF true ENDOF  scale OF true ENDOF  bias OF true ENDOF
       relu OF true ENDOF  gelu OF true ENDOF  layernorm OF true ENDOF  rmsnorm OF true ENDOF
       softmax-row OF true ENDOF  matmul OF true ENDOF  linear OF true ENDOF

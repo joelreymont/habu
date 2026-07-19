@@ -119,6 +119,7 @@ variable LEW-NIN                            \ region input count
       rope-bwd OF false ENDOF  rowsum-bwd OF false ENDOF  fullsum-dot-bwd OF false ENDOF
       pad-scatter OF false ENDOF  scatter-add OF false ENDOF  gelu-bwd2 OF false ENDOF
       seg-attn OF false ENDOF  seg-attn-bwd OF false ENDOF
+      equation OF false ENDOF
    ;MATCH ;
 \ compute members must be v1 EW ops; movement members must be EW-foldable dissolved
 \ movements (MVW-CHECK-EW folds a FREE offset OR a STAGED transpose, and fails closed on a
@@ -319,6 +320,7 @@ private
       pad-scatter OF E-LEW-OP throw ENDOF  scatter-add OF E-LEW-OP throw ENDOF
       gelu-bwd2 OF E-LEW-OP throw ENDOF
       seg-attn OF E-LEW-OP throw ENDOF  seg-attn-bwd OF E-LEW-OP throw ENDOF
+      equation OF E-LEW-OP throw ENDOF
    ;MATCH
    nd LEW-NR! ;
 : LEW-CHAIN ( -- )                               \ movement members emit no compute (folded)

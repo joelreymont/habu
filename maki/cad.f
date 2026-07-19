@@ -371,6 +371,7 @@ $5E constant TR-C                                  \ '^' - the reserved transpos
       gelu-bwd2       OF 2drop 2drop true ENDOF
       seg-attn        OF 2drop 2drop true ENDOF
       seg-attn-bwd    OF 2drop 2drop true ENDOF
+      equation        OF 2drop 2drop true ENDOF
    ;MATCH ;
 : SHP-CHECK ( CAD-KIND:rows CAD-KIND:cols CAD-KIND:rows CAD-KIND:cols opkind -- )
    SHP-LEGAL? 0= if E-CAD-PARAM-SHAPE throw then ;
@@ -717,6 +718,7 @@ private
       gelu-bwd2       OF E-CAD-BIND-SHAPE throw ENDOF
       seg-attn        OF E-CAD-BIND-SHAPE throw ENDOF
       seg-attn-bwd    OF E-CAD-BIND-SHAPE throw ENDOF
+      equation        OF E-CAD-BIND-SHAPE throw ENDOF
    ;MATCH ;
 
 \ movement dissolution verdict re-derived from the new extents (slice re-checks its
@@ -764,6 +766,7 @@ private
       gelu-bwd2       OF E-CAD-BIND-SHAPE throw ENDOF
       seg-attn        OF E-CAD-BIND-SHAPE throw ENDOF
       seg-attn-bwd    OF E-CAD-BIND-SHAPE throw ENDOF
+      equation        OF E-CAD-BIND-SHAPE throw ENDOF
    ;MATCH ;
 
 : REPROP-MOVE ( CAD-KIND:node-id -- ) {: nd:CAD-KIND:node-id :}
