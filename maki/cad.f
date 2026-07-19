@@ -148,12 +148,21 @@ create NT-NAMES NT-CAP NT-NAME-CAP * allot \ fixed-width name text slots
 create NT-LENS  NT-CAP cells allot         \ name lengths
 variable NT-N
 
-\ pending reference queue: NT slot indices drained (FIFO) into the next op's parameter slots
-4 constant CAP-PEND-CAP                    \ max pending references before one op
-create CAP-PEND CAP-PEND-CAP cells allot   \ pending reference NT slot indices
-create CAP-PEND-TR CAP-PEND-CAP cells allot \ per-reference "^T" transpose flags (0/1)
-variable CAP-PEND-N                        \ tail (push index)
-variable CAP-PEND-HD                       \ head (dequeue index)
+\ pending reference queue: NT slot indices drained (FIFO) into the next op's parameter slots.
+\ A ring: PUSH/DEQ index the physical slot MOD CAP-PEND-CAP and the cap bounds OUTSTANDING
+\ refs (CAP-PEND-CNT), not the total a body emits. Refs ARE consumed at emit (CAP-EMIT-PEND
+\ drains via CAP-PEND-DEQ, freeing the slot), so a whole GPT-2 block's many named refs (pre-LN
+\ gamma/beta, residual skip, final-LN gamma/beta) coexist across the body as long as no single
+\ op has more than CAP-PEND-CAP outstanding before it. CAP-PEND-CAP = the widest single-op
+\ parameter fan-in: an equation (maki/spec.f) takes up to EQ-FCAP factors with factor 0 the
+\ running value, so EQ-FCAP-1 named refs can be outstanding before it; every fixed-arity op
+\ needs at most 2 (LINEAR/ROPE arity 3). The precise per-op reject stays CAP-EMIT-PARAMS'
+\ arity guard (a ref a narrower op cannot accept).
+EQ-FCAP 1- constant CAP-PEND-CAP           \ max OUTSTANDING refs before one op (widest = an equation)
+create CAP-PEND CAP-PEND-CAP cells allot   \ ring of pending reference NT slot indices
+create CAP-PEND-TR CAP-PEND-CAP cells allot \ ring of per-reference "^T" transpose flags (0/1)
+variable CAP-PEND-N                        \ monotonic tail counter (physical slot = N mod cap)
+variable CAP-PEND-HD                       \ monotonic head counter (physical slot = HD mod cap)
 
 \ compiled-body source buffer: MODEL: emits a checked ": ... ;" over package PLAN here, then
 \ one nested `evaluate` compiles it (the checker certifies the whole composition) and runs it
@@ -220,13 +229,13 @@ private
 : CAP-PEND-RESET ( -- )  0 CAP-PEND-N !  0 CAP-PEND-HD ! ;
 : CAP-PEND-CNT ( -- n )  CAP-PEND-N @ CAP-PEND-HD @ - ;      \ remaining pending refs
 : CAP-PEND-PUSH ( n n -- ) {: sl:n tr:n :}      \ NT slot index + "^T" transpose flag
-   CAP-PEND-N @ CAP-PEND-CAP >= if E-CAD-REF throw then
-   sl CAP-PEND-N @ cells CAP-PEND + !
-   tr CAP-PEND-N @ cells CAP-PEND-TR + !
+   CAP-PEND-CNT CAP-PEND-CAP >= if E-CAD-REF throw then    \ outstanding refs would exceed the ring
+   sl CAP-PEND-N @ CAP-PEND-CAP mod cells CAP-PEND + !
+   tr CAP-PEND-N @ CAP-PEND-CAP mod cells CAP-PEND-TR + !
    CAP-PEND-N @ 1+ CAP-PEND-N ! ;
 : CAP-PEND-DEQ ( -- n n )                       \ NT slot index + "^T" transpose flag
-   CAP-PEND-HD @ cells CAP-PEND + @
-   CAP-PEND-HD @ cells CAP-PEND-TR + @
+   CAP-PEND-HD @ CAP-PEND-CAP mod cells CAP-PEND + @
+   CAP-PEND-HD @ CAP-PEND-CAP mod cells CAP-PEND-TR + @
    CAP-PEND-HD @ 1+ CAP-PEND-HD ! ;
 
 \ ---- name set (input names slots 0..N-1, then ">V" names; slot index is the ref handle) --

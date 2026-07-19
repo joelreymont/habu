@@ -33,6 +33,10 @@ variable CR-VA  variable CR-VU
    CAP-BEGIN 0 0 CAP-PEND-PUSH  0 CAP-EMIT-PARAMS ;                   \ 1 pending ref, unary op takes 0
 : CR-TRY-REF-DANGLE ( -- )                                            \ a ref left unconsumed at ";"
    CAP-BEGIN 0 0 CAP-PEND-PUSH  CAP-FINISH ;
+: CR-TRY-REF-OVERCAP ( -- )                                          \ one more than the ring holds
+   CAP-BEGIN  CAP-PEND-CAP 1+ 0 ?do  0 0 CAP-PEND-PUSH  loop ;        \ CAP-PEND-CAP OK, the next overflows
+: CR-FILL-CAP ( -- n )                                              \ exactly CAP-PEND-CAP outstanding, no throw
+   CAP-BEGIN  CAP-PEND-CAP 0 ?do  0 0 CAP-PEND-PUSH  loop  CAP-PEND-CNT ;
 : CR-TRY-UNBOUND   ( -- )  s" H9" OP-KIND drop ;                      \ unbound reference = unknown token
 : CR-TRY-TR-MARK   ( -- )                                            \ malformed marker: "K^X"
    CAP-BEGIN s" K" NT-BIND drop  s" K^X" CAP-TOKEN ;
@@ -53,6 +57,7 @@ T-RESET
 ' CR-TRY-OPSHADOW   E-CAD-NAME    TTHROWS
 ' CR-TRY-REF-UNARY  E-CAD-REF     TTHROWS
 ' CR-TRY-REF-DANGLE E-CAD-REF     TTHROWS
+' CR-TRY-REF-OVERCAP E-CAD-REF    TTHROWS
 ' CR-TRY-UNBOUND    E-CAD-OP      TTHROWS
 ' CR-TRY-REF-BADSHAPE E-CAD-PARAM-SHAPE TTHROWS
 ' CR-TRY-TR-MARK    E-CAD-SYNTAX  TTHROWS
@@ -139,6 +144,26 @@ EX-RESET  RQ 0 MIR-SLOT-ID EX-BIND  RK 1 MIR-SLOT-ID EX-BIND  EX-RUN
 1 MIR-NODE-ID EX-OUT@ 1 T-GET f>s  68 T=
 1 MIR-NODE-ID EX-OUT@ 2 T-GET f>s 122 T=
 1 MIR-NODE-ID EX-OUT@ 3 T-GET f>s 167 T=
+
+\ ---- named-ref queue cap: the ring bounds OUTSTANDING refs, not total per body ----
+\ dot habu-raise-model-named-e5412b7e. A GPT-2 block body names 5 refs across it - pre-LN
+\ affine gamma/beta (2), a residual skip (1), final-LN affine gamma/beta (2). The old queue
+\ bounded TOTAL refs at 4, so the 5th push threw E-CAD-REF; the ring drains each ref at emit,
+\ so only OUTSTANDING refs (<=2 here) count and the whole block captures.
+MODEL: CR-BLK5 ( x:2x4 g1:1x4 b1:1x4 g2:1x4 b2:1x4 -- y ) g1 b1 LAYERNORM x RESIDUAL-ADD g2 b2 LAYERNORM ;
+MODEL-K 3 T=
+MIR-RENDER CR-SAVE
+s" ir.inputs: 5"            CR-IN
+s" node.0.op: layernorm"    CR-IN
+s" node.0.in: i0 i1 i2"     CR-IN
+s" node.1.op: residual-add" CR-IN
+s" node.1.in: n0 i0"        CR-IN
+s" node.2.op: layernorm"    CR-IN
+s" node.2.in: n1 i3 i4"     CR-IN
+
+\ the ring accepts exactly CAP-PEND-CAP outstanding refs (the widest single-op fan-in); one
+\ past that overflows -> E-CAD-REF (probe CR-TRY-REF-OVERCAP above).
+CR-FILL-CAP  CAP-PEND-CAP T=
 
 T-REPORT
 
