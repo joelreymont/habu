@@ -869,11 +869,21 @@ roof at 4096³, where Habu's tile plateaus at **~56 %**.
 
 | TFLOP/s (tf32, C=A·B)        |  512³ | 1024³ | 2048³ | 4096³ |
 |------------------------------|------:|------:|------:|------:|
-| Habu tuned MMA tile          |  12.9 |  23.2 |  30.3 |  28.0 |
+| Habu tuned MMA tile          |  12.9 |  25.2 |  30.3 |  28.0 |
 | Triton 3.8 `tl.dot` (autotd) |  21.7 |  33.5 |  37.8 |  45.3 |
-| **Habu / Triton**            | 0.59× | 0.69× |**0.80×**| 0.62× |
-| Habu %-of-tf32-roof (~50 TF) |   26% |   46% |   61% |   56% |
+| **Habu / Triton**            | 0.59× | 0.75× |**0.80×**| 0.62× |
+| Habu %-of-tf32-roof (~50 TF) |   26% |   50% |   61% |   56% |
 | Triton %-of-tf32-roof        |   43% |   67% |   76% |   91% |
+
+The **1024³** cell was lifted 23.2 → **25.2 TF** (0.69× → **0.75×**) this session by a
+newly-swept config — the MFRAGS=2 128×64 tile fed by the **transposed-Bs B-`ldmatrix`
+at single-buffer** (`32 8 1 1 2 4 GB-MMM-CFGW-B`), which was not in the prior wide-B
+sweep (that ran MFRAGS=2 B-`ldmatrix` only double-buffered, which is occupancy-bound).
+Element-exact first (`mma-gemm-check.f`, 128³/256³, added rows), then best-of-3 over
+three full committed `GB-GB10` passes at 2411 MHz. The other three shapes re-measured
+within best-of-3 noise of the committed values this session (512³ 13.0, 2048³ 29.1–30.0,
+4096³ 27.6–28.4), so they are left at their committed best; the peak ratio is still
+**0.80× at 2048³** and 512³/4096³ are unmoved. The full extended sweep is below.
 
 Both sides are TF32 (relative numeric policy), so this is a like-for-like
 competitive pairing (unlike the FP32-vs-TF32 rows above): `rel_err ~8e-4` on both
@@ -904,14 +914,72 @@ B-`ldmatrix` (bpad). Best-of-3 GFLOP/s; **bold = per-shape winner**:
 | MFRAGS=4 bpad=4 stages=1 dyn B-ldmatrix (`mmm-wide-b-m4-s1`)      |  6845 | 22009 | 27688 |**27961**|
 | MFRAGS=4 bpad=0 stages=1 dyn B-ldmatrix                           |  4744 | 12585 | 17647 | 19331 |
 | MFRAGS=4 bpad=4 stages=2 dyn B-ldmatrix (100 KB)                  |  6884 | 14501 | 18226 | 17533 |
+| MFRAGS=2 bpad=4 stages=1 dyn B-ldmatrix (30 KB) — **new**         |  9346 |**25155**| 22215 | 22732 |
 
 The per-shape optimum **moves with the shape** — the small-M wide tile
-(MFRAGS=2, double-buffered) wins at 512³ where only 16 blocks launch; the
-MFRAGS=4 double-buffered scalar-B tile wins at 2048³ (30.3 TF); and the
-Orin flagship `mmm-wide-b-m4-s1` (MFRAGS=4 B-ldmatrix, single-buffer) only takes
-the crown at 4096³ (28.0 TF), where its 2-blocks/SM occupancy pays off. No single
-committed config is best everywhere, which is exactly what the shape-keyed
-autotuner (`habu-feed-mma-config`) is for.
+(MFRAGS=2, double-buffered scalar-B) wins at 512³ (32 blocks); the newly-swept
+MFRAGS=2 **single-buffer B-`ldmatrix`** tile wins at 1024³ (25.2 TF), where its
+30 KB tile fits ~5 blocks/SM and the B-`ldmatrix` cuts the B-feed the double-buffer
+variant could not afford; the MFRAGS=4 double-buffered scalar-B tile wins at 2048³
+(30.3 TF); and the Orin flagship `mmm-wide-b-m4-s1` (MFRAGS=4 B-`ldmatrix`,
+single-buffer) takes the crown at 4096³ (28.0 TF), where its 2-blocks/SM occupancy
+pays off. No single committed config is best everywhere, which is exactly what the
+shape-keyed autotuner (`habu-feed-mma-config`) is for. BK=64 on the wide tiles was
+also swept this session and **loses at every shape** (128×64 BK=64 s1 dyn:
+10.1/17.2/19.4/11.6 TF — the doubled staged smem cuts occupancy more than the halved
+`bar.sync` count saves), so it is not tabled.
+
+### Occupancy is NOT the 512³ lever — the referee refutes it (measured)
+
+The campaign opened on the hypothesis that the loud 512³ gap (12.9 vs 21.7) is raw
+under-occupancy: too few blocks for 48 SMs. The Triton referee's **own winning
+config refutes it**. Triton's tf32 autotune winners (from the referee's printed
+`best[…]`, this session on the GB10):
+
+| shape | Triton winner        | grid (blocks) | num_warps | num_stages |
+|-------|----------------------|--------------:|----------:|-----------:|
+| 512³  | BM128 BN64 BK32      | 4×8 = **32**  |     **4** |      **5** |
+| 1024³ | BM128 BN64 BK32      | 8×16 = 128    |     **4** |      **4** |
+| 2048³ | BM64  BN128 BK32     | 32×16 = 512   |     **4** |      **3** |
+| 4096³ | BM128 BN256 BK32     | 32×16 = 512   |       8   |      **3** |
+
+At 512³ Triton's winner is a **128×64 tile launching 32 blocks — the identical
+block count as Habu's winning MFRAGS=2 128×64 tile** (512/128 · 512/64 = 4·8 = 32).
+Both leave 16 of 48 SMs idle; both are equally "under-occupied". Yet Triton reaches
+21.7 and Habu 13.0. The 512³ gap is therefore **not** block count / occupancy — it is
+**per-block tensor throughput**, and the referee names the two levers Habu's tile
+family structurally lacks:
+
+1. **num_warps = 4, not 8.** Triton's tf32 winner runs the 128×64 tile with **4
+   warps** (128 threads) at 512³/1024³/2048³; Habu's `cg-mma.f` is hardwired to **8
+   warps** (256 threads, the 4×2 warp grid, `warp_row = warpid>>1`, `warp_col =
+   warpid&1`, `BN` fixed at 64). Halving the warps doubles the per-thread register
+   tile and MMA-issue density and lets **2 blocks co-reside per SM** at the same tile,
+   which is where Triton's per-block edge comes from at the small shapes. This is a
+   *different kernel*, not a knob: the fragment→lane map, the 16·MFRAGS accumulator
+   layout, and the D-fragment store map all assume the 8-warp partition. It is the
+   `habu-mma-warp-shape` lever (a 4-warp / narrower-`BN` tile variant), deliberately
+   **not** attempted this session because it is a from-scratch second tile whose
+   element-exactness must be re-proven from the lane map up (the course's #1
+   "correct-in-NumPy, garbage-on-device" trap), and the schedule-knob sweep — the
+   implementable lever — was exhausted first per the campaign's time-box.
+2. **num_stages = 3–5, not 2.** Triton pipelines the K-loop **3–5 deep**; Habu's
+   `MMA-PIPE-KLOOP-WITH` maxes at **2** (double-buffer). Deeper staging hides the
+   `cp.async` latency Triton's small tiles ride on. On the 99 KB-capped GB10, Habu's
+   *wide* tiles (57–100 KB at stages=2) cannot afford 3+ full smem buffers without
+   dropping to 1 block/SM — so num_stages≥3 is only reachable **after** the narrower
+   4-warp tile of lever 1 shrinks the per-stage footprint. The two levers are coupled;
+   lever 1 is the prerequisite.
+
+**Why we (still) lose, stated plainly:** the schedule-knob space the current tile
+family exposes (MFRAGS, BK, pad, stages∈{1,2}, static/dynamic smem, A-/B-`ldmatrix`,
+bpad) has now been swept to exhaustion on the GB10; the best honest tf32 numbers are
+**0.59× / 0.75× / 0.80× / 0.62×** of Triton 3.8 across 512³…4096³. The residual gap is
+not a codegen defect (the SASS is native `HMMA`/`LDGSTS`, 0 spills, `docs/codegen-
+verdict.md`) and not occupancy (refuted above) — it is the **8-warp / 2-stage
+structural ceiling** of the tile. Closing it requires the `habu-mma-warp-shape`
+4-warp tile (then deeper `num_stages`), which is the recorded next lever, not another
+knob turn.
 
 ### fp16 — context only (Habu's MMA tile is TF32-only)
 
@@ -936,20 +1004,25 @@ halves the per-tile smem.
   device-correct (element-exact, native `HMMA` SASS per `docs/codegen-verdict.md`)
   and on the tensor-core path, but its **throughput is 0.59–0.80× Triton 3.8**,
   reversing the Orin's 1.60×. The "notoriety number" goes to Triton on this box.
+  This session's tuning lifted 1024³ from 0.69× to **0.75×** (the MFRAGS=2
+  single-buffer B-`ldmatrix` tile); 512³/2048³/4096³ were unmoved and the peak is
+  still 0.80× at 2048³.
 - **Why it reverses (the roofline story, not a codegen regression):** Triton's
   `tl.dot` lowers to the same `HMMA` and its autotuner — even with 31/45 configs
-  pruned by the smem cap — finds a pipelined small tile that scales cleanly to 48
-  SMs and nearly saturates the tf32 roof (91 % at 4096³). Habu's wide tile, tuned
-  to amortize the B-feed on the 8-SM Orin, plateaus at 56–61 % of roof on the
-  bigger part. The emitter is clean (`docs/codegen-verdict.md`: 0 spills, native
-  `LDGSTS`/`HMMA`, `LDS.128`); the gap is the **tiling/feed lever at 48-SM
-  scale** — the `docs/compute-campaign.md` work reproduced on a higher roof, not a
-  Blackwell codegen defect.
+  pruned by the smem cap — finds a **4-warp, 3–5-stage** pipelined small tile that
+  nearly saturates the tf32 roof (91 % at 4096³). Habu's wide tile, tuned to
+  amortize the B-feed on the 8-SM Orin, plateaus at 56–61 % of roof on the bigger
+  part. The emitter is clean (`docs/codegen-verdict.md`: 0 spills, native
+  `LDGSTS`/`HMMA`, `LDS.128`); the gap is **not** occupancy (the referee refutes it,
+  above — Triton's 512³ winner launches the same 32 blocks) but the **8-warp /
+  2-stage structural ceiling** of the tile, the `docs/compute-campaign.md` work
+  reproduced on a higher roof, not a Blackwell codegen defect.
 - **Not earned:** any "Habu beats Triton" claim on the GB10 (it does not on
   tf32), and any fp16 head-to-head (Habu has no fp16 tile). The 0.80× peak is the
-  honest floor-vs-ceiling gap for the current committed tile family; closing it is
-  tensor-feed tuning at scale (larger warp tiles / higher B-reuse / occupancy),
-  the open `habu-feed-mma-config` / `habu-mma-*` levers.
+  honest floor-vs-ceiling gap for the current tile family after the schedule-knob
+  space was swept to exhaustion this session; closing it needs the
+  `habu-mma-warp-shape` 4-warp tile then deeper `num_stages` (the recorded next
+  lever), not another knob turn — see "Occupancy is NOT the 512³ lever" above.
 
 ### Reproduction (exact)
 

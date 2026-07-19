@@ -222,7 +222,8 @@ variable GB-SMEM-DYN                    \ dynamic .shared bytes for the launch (
    32 8 1 1 4 0 GB-MMM-CFGW-B          \ MFRAGS=4 bpad=0 stages=1 DYN B-ldmatrix (256x64; bank-aliased read, budget test)
    32 8 1 1 4 4 GB-MMM-CFGW-B          \ MFRAGS=4 bpad=4 stages=1 DYN B-ldmatrix (256x64; conflict-free read stride 36)
    32 8 2 1 4 4 GB-MMM-CFGW-B          \ MFRAGS=4 bpad=4 stages=2 DYN double-buffer B-ldmatrix (256x64)
-   32 8 2 1 2 4 GB-MMM-CFGW-B ;        \ MFRAGS=2 bpad=4 stages=2 DYN B-ldmatrix (128x64)
+   32 8 2 1 2 4 GB-MMM-CFGW-B          \ MFRAGS=2 bpad=4 stages=2 DYN B-ldmatrix (128x64)
+   32 8 1 1 2 4 GB-MMM-CFGW-B ;        \ MFRAGS=2 bpad=4 stages=1 DYN single-buffer B-ldmatrix (128x64; GB10 1024^3 winner)
 
 public
 

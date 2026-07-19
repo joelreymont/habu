@@ -262,6 +262,8 @@ public
    32 8 1 1 4 4 MGC-CFG-WIDE-B                         \ MFRAGS=4 bpad=4 single-buffer DYN B-ldmatrix (256x64; conflict-free read stride 36)
    32 8 2 1 4 4 MGC-CFG-WIDE-B                         \ MFRAGS=4 bpad=4 double-buffer DYN B-ldmatrix (256x64)
    32 8 2 1 2 4 MGC-CFG-WIDE-B                         \ MFRAGS=2 bpad=4 double-buffer DYN B-ldmatrix (128x64)
+   32 8 1 1 2 4 MGC-CFG-WIDE-B                         \ MFRAGS=2 bpad=4 SINGLE-buffer DYN B-ldmatrix (128x64; GB10 1024^3 winner)
+   32 8 1 0 2 4 MGC-CFG-WIDE-B                         \ MFRAGS=2 bpad=4 SINGLE-buffer STATIC B-ldmatrix (128x64, 29696 B; GB10 1024^3 winner static)
    0 MMA-LMODE ! ;                                     \ restore the committed default (baseline scalar+cvt)
 
 ;package
