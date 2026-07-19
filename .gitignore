@@ -7,6 +7,9 @@
 .dots/archive/
 bin/
 
+# jj workspace checkouts (never snapshot or track these)
+.jj-ws/
+
 # python bytecode cache
 __pycache__/
 *.pyc
