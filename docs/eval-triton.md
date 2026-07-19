@@ -1348,3 +1348,69 @@ the GB10 held **2411 MHz** sustained during the timed kernels (tight-loop `nvidi
 sample: p50 = p95 = max = 2411 MHz, ≤ 47 °C / ≤ 35 W, not throttled). A = B = 1.0, C = 0
 (values immaterial to timing). The Triton column is the same `/tmp/gemm-triton-gb10.py`
 referee measured above.
+
+## Round 4 — distinct B registers + burst HMMA (dot habu-distinct-b-registers): built, falsified at the compiler (2026-07-19)
+
+Round 3's residual-gap list named **a wider/denser HMMA schedule** as lever 1 (still the
+mma-issue bound rounds 2 and 3 pointed at). The SASS forensic (dot `habu-read-triton-s`)
+made that concrete: Habu's wide K-substep reuses ONE B-register pair (`%r54,%r55`) for every
+n-tile, so each n-tile's B load is WAR-blocked behind the previous n-tile's four mmas
+(load-to-use ~2 instructions), and ptxas inserts ~40 stall NOP per 64 HMMA in the steady
+K-loop where Triton's SASS has none. This round tests that mechanism: give each n-tile its own
+B register pair (eight regs for four n-tiles, placed just past the A groups at
+`%r(6·MFRAGS+48+2j)`) and restructure the substep to load **all** A fragments and **all** B
+fragments — each into a distinct register — **before** the mma burst, so no load is WAR-blocked
+and ptxas can hoist the shared loads.
+
+**The lever was built and proven element-exact, then falsified by the NOP count.** The scout's
+caveat was explicit ("ptxas already allocated distinct physical regs yet still stalled, so the
+win must be proven by the NOP count then the clock, not assumed"), so the protocol was: emit the
+round-3 winner tiles, `ptxas -arch=sm_121a`, `cuobjdump -sass`, count NOP between HMMA in the
+steady body — **before** touching the emitter and **after**. The three round-3 winning tiles
+(the 512³ tile 4-warp M4 stages=2 dyn +epi; the 1024³ and 2048³ tile 4-warp M4 stages=1 static
++epi; the 4096³ tile 8-warp M4 B-ldmatrix stages=1 dyn) were measured both ways:
+
+| round-3 winning tile (shape)          | regs | NOP/HMMA steady, before | NOP/HMMA steady, after |
+|---------------------------------------|-----:|:-----------------------:|:----------------------:|
+| 4-warp M4 s1 static +epi (1024³,2048³)|  128 |       40 / 64           |       40 / 64          |
+| 4-warp M4 s2 dyn +epi (512³)          |   96 |       41 / 64           |       41 / 64          |
+| 8-warp M4 B-ldmatrix s1 dyn (4096³)   |   96 |       40 / 64           |       40 / 64          |
+
+**The NOP count did not move at all**, and the reason is airtight: with SASS register numbers
+and addresses normalized, the emitted opcode streams are **byte-identical** before and after
+(diff = 0 lines, over 898, 1017 and 519 opcodes respectively). ptxas already renames the single
+virtual `%r54,%r55` B pair into distinct **physical** registers per n-tile (the pre-change SASS
+shows the four n-tile B operands as four different physical registers within a substep) and
+schedules identically whether the PTX hands it one shared virtual pair or four distinct pairs
+with the loads hoisted. Handing ptxas distinct virtual registers changes only the register
+*names* it assigns, not the machine code. Register pressure was unchanged (128 and 96 reg, zero
+spills, same occupancy). The restructured emitter was cross-checked element-exact on the GB10
+(`tools/ptx/mma-gemm-check.f`: every affected wide config — both warp grids, MFRAGS 2 and 4,
+ldmatrix and scalar modes, with and without the epilogue — 0 mismatches, and all five emit
+legality guards still fail-closed), so it is a *correct* transform; it is simply a no-op at the
+machine level.
+
+**Conclusion: the ~40-NOP steady body is the `HMMA.1688.F32.TF32` tensor-core issue latency, not
+a B-register WAR hazard.** The tensor core accepts a new HMMA roughly every other cycle; ptxas
+fills the mandatory gap with a fragment load where one is available and a NOP where none is, and
+the number of NOP is invariant to how the loads are named or ordered. This falsifies the
+distinct-B-register lever at the compiler level — no device timing is warranted (the protocol
+stops before the clock when the NOP count does not move), and there is no regime where the change
+could help or hurt, because it is the same emitted schedule. It is fully consistent with the
+rounds 2 and 3 finding that this tile is **mma-issue-bound, not fragment-feed-bound**: the real
+lever 1 remains a genuinely *wider or denser* tensor op (more FLOPs retired per issue slot), which
+is a different HMMA shape, not a register-allocation or load-scheduling change. The inert emitter
+restructure was therefore **not landed** (it would add substep complexity and grow the wide `.reg
+.b32` header for zero machine-level effect); this section is the record of the falsified lever.
+
+### Reproduction (exact)
+
+```
+# Emit each round-3 winner tile's MMM PTX at its knobs (BK=32 pad=8; the tiles above), capture via
+# PTX-CAPTURE-ON EMIT-MATMUL-MMA (the tools/ptx/gemm-bench.f GB-MMM-CFGW4-EPI / GB-MMM-CFGW-B config
+# setters select these exact tiles), then on the GB10:
+ptxas -arch=sm_121a -o k.cubin k.ptx
+cuobjdump -sass k.cubin        # count NOP between the 64 HMMA.1688.F32.TF32 of the steady K-loop body
+# Element-exact device cross-check of the restructured emitter (all wide configs):
+bin/hb --load tools/ptx/mma-gemm-check.f   # MGC-ALL: 0 mismatches; legality guards fail-closed
+```
