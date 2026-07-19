@@ -45,11 +45,17 @@ $4000 constant MACOS-DATA-CONST  \ __DATA_CONST page (__got + zero fill)
 \ live at the 2026-07-19 seal-guard fixpoint: the raw ffi-call nargs guard adds
 \ 404 bytes, CODELEN 136136 -> 136540 (floor 968 -> 1372), confirming the +28
 \ prediction; all 432 bytes since the fold fit inside the same 4 KiB page
-\ padding (LINUX-TOTAL unchanged). Keep LINUX-TOTAL equal to
+\ padding (LINUX-TOTAL unchanged), then advanced 2026-07-19 by the MATCH
+\ dispatch B.cond slimming (dot habu-slim-match-emitted-66941fb5): reductions
+\ 1-3 shrink the EMITTED per-arm dispatch (movz+ldur+cmp+cset+cbz -> one shared
+\ ldur + cmp #tag + b.ne) but the emitter grows by the imm12 range check, the
+\ class-based LPAT immediate-field selector, and J-MATCH's single tag-peek emit:
+\ CODELEN 136540 -> 136568 (floor 1372 -> 1400), net +28 bytes still inside the
+\ same 4 KiB page padding (LINUX-TOTAL unchanged). Keep LINUX-TOTAL equal to
 \ GB-SIZE-BASELINE-LINUX in test/gate-build-size.f.
-136540 constant LINUX-CODE-TEXT   \ CODELEN: every emitter-phase row (baked-source incl.)
+136568 constant LINUX-CODE-TEXT   \ CODELEN: every emitter-phase row (baked-source incl.)
 192 constant LINUX-RW             \ ELF read-write segment tail: DYNAMIC + GOT (ELF-RW-SZ)
-1372 constant LINUX-FLOOR-DIST    \ code above the 4 KiB floor: the page-recovery shave
+1400 constant LINUX-FLOOR-DIST    \ code above the 4 KiB floor: the page-recovery shave
 143552 constant LINUX-TOTAL       \ = FILE-SIZE bin/hb = GB-SIZE-BASELINE-LINUX
 
 : PAGE-UP ( n n -- n ) {: v:n page:n :}
