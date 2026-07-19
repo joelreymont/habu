@@ -1,19 +1,29 @@
 \ sort.f - in-place, fully checked heapsort of cell arrays with a comparator.
 \
-\ SORT! ( ptr a n [ a a -- bool ] -- ) sorts any cell array using a "less-than"
+\ SORT:SORT! ( ptr a n [ a a -- bool ] -- ) sorts any cell array using a "less-than"
 \ comparator quotation (true if the first element should precede the second):
 \ floats with [: f< ;], ints with [: < ;], descending with the reversed test.
-\ Binary heapsort: O(n log n), in place, no scratch buffer. FSORT! is the
+\ Binary heapsort: O(n log n), in place, no scratch buffer. SORT:FSORT! is the
 \ float-ascending convenience. The comparator is threaded as an ordinary checked
 \ higher-order parameter — the checker verifies quotation effects through the
 \ call chain and the sift-down loop, so no unchecked boundary is needed (unlike
 \ the older src/core/combinators.f). Raw indexed access (array.f's A-SUM idiom);
 \ the algorithm keeps indices in bounds; len <= 1 is a no-op. Core + float deps.
+\
+\ The module lives in `package SORT`. External callers use the qualified public
+\ API (SORT:SORT!, SORT:FSORT!, and SORT:FX@ for the float-cell read that
+\ lib/stats.f shares); the heap cursor and sift-down helpers are package-private.
+
+package SORT
 
 variable HS-NODE                           \ sift-down cursor
 variable HS-I                              \ build / extract loop index
 
+public
+
 : FX@ ( ptr a n -- a ) {: a:ptr idx :}  a idx cells + @ ;
+
+private
 : FX-SWAP ( ptr a n n -- ) {: a:ptr ix jx :}
    a ix FX@  a jx FX@  {: vi vj :}
    vj a ix cells + !   vi a jx cells + ! ;
@@ -40,6 +50,8 @@ variable HS-I                              \ build / extract loop index
    root HS-NODE !
    begin a size q HS-STEP while repeat ;
 
+public
+
 : SORT! ( ptr a n [ a a -- bool ] -- ) {: a:ptr len q :}
    len 2 / 1 - HS-I !                       \ build the heap from the last parent down
    begin HS-I @ 0 >= while  a len HS-I @ q HS-SIFT  HS-I @ 1 - HS-I !  repeat
@@ -48,3 +60,5 @@ variable HS-I                              \ build / extract loop index
 
 \ Float-ascending convenience (the percentile/median path in lib/stats.f).
 : FSORT! ( ptr r n -- )  [: f< ;] SORT! ;
+
+;package

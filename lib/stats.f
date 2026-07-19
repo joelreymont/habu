@@ -2,12 +2,12 @@
 \
 \ Sum / mean / min / max / population variance / stddev, plus linear-interpolated
 \ percentile and median (which require the array pre-sorted ascending — use
-\ lib/sort.f FSORT! first). All over a float cell array `ptr r len`; len >= 1 for
+\ lib/sort.f SORT:FSORT! first). All over a float cell array `ptr r len`; len >= 1 for
 \ the reductions.
 
 require lib/errors.f
 require lib/float.f
-require lib/sort.f                            \ FX@ float-cell read
+require lib/sort.f                            \ SORT:FX@ float-cell read
 
 variable STAT-I
 
@@ -18,22 +18,22 @@ variable STAT-I
 : FSUM ( ptr r n -- r ) {: a:ptr len :}
    0.0  0 STAT-I !
    begin STAT-I @ len < while
-      a STAT-I @ FX@ f+
+      a STAT-I @ SORT:FX@ f+
       STAT-I @ 1 + STAT-I !
    repeat ;
 : FMEAN ( ptr r n -- r ) {: a:ptr len :}
    a len FSUM  len s>f f/ ;
 
 : FMIN ( ptr r n -- r ) {: a:ptr len :}
-   a 0 FX@  1 STAT-I !
+   a 0 SORT:FX@  1 STAT-I !
    begin STAT-I @ len < while
-      a STAT-I @ FX@ FMIN2
+      a STAT-I @ SORT:FX@ FMIN2
       STAT-I @ 1 + STAT-I !
    repeat ;
 : FMAX ( ptr r n -- r ) {: a:ptr len :}
-   a 0 FX@  1 STAT-I !
+   a 0 SORT:FX@  1 STAT-I !
    begin STAT-I @ len < while
-      a STAT-I @ FX@ FMAX2
+      a STAT-I @ SORT:FX@ FMAX2
       STAT-I @ 1 + STAT-I !
    repeat ;
 
@@ -41,7 +41,7 @@ variable STAT-I
    a len FMEAN {: m :}
    0.0  0 STAT-I !
    begin STAT-I @ len < while
-      a STAT-I @ FX@ m f-  dup f*  f+
+      a STAT-I @ SORT:FX@ m f-  dup f*  f+
       STAT-I @ 1 + STAT-I !
    repeat
    len s>f f/ ;
@@ -54,8 +54,8 @@ variable STAT-I
    pc len 1 - s>f f* {: pos :}
    pos f>s {: lo :}
    lo 1 +  len 1 -  IMIN {: hi :}
-   a lo FX@ {: alo :}
-   a hi FX@ {: ahi :}
+   a lo SORT:FX@ {: alo:r :}
+   a hi SORT:FX@ {: ahi:r :}
    pos lo s>f f- {: frac :}
    alo  ahi alo f-  frac f*  f+ ;
 : FMEDIAN ( ptr r n -- r ) {: a:ptr len :}     \ array must be sorted ascending

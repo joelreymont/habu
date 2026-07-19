@@ -1,7 +1,7 @@
 \ content-key.f - manifest-hashed content cache keys.
 \
 \ Requires SHA256 words; native bin/hb already carries src/core/sha256.f.
-\ Needs SORT! for the path-ordered lookup index and RENAME-FILE for the
+\ Needs SORT:SORT! for the path-ordered lookup index and RENAME-FILE for the
 \ atomic compacting writer, so both modules are pulled in explicitly.
 
 require lib/errors.f
@@ -286,7 +286,7 @@ variable CK-TMP-TRY
       dup a + c@ over b + c@ 2dup <> if < nip exit then 2drop 1+
    repeat drop au bu < ;
 
-\ SORT! comparator: order rows by path, then by buffer offset so equal-path rows
+\ SORT:SORT! comparator: order rows by path, then by buffer offset so equal-path rows
 \ stay in append (chronological) order and the last of each run is the newest.
 : CK-OFF-LESS? ( n n -- bool ) {: oa:n ob:n :}
    oa CK-ROW-PATH$ ob CK-ROW-PATH$ STR= if oa ob < exit then
@@ -305,7 +305,7 @@ variable CK-TMP-TRY
 
 : CK-CACHE-BUILD-IDX ( -- )
    0 CK-CACHE-U @ CK-CACHE-INDEX-REGION
-   CK-IDX CK-IDX-N @ [: CK-OFF-LESS? ;] SORT!
+   CK-IDX CK-IDX-N @ [: CK-OFF-LESS? ;] SORT:SORT!
    CK-CACHE-U @ CK-IDX-END ! ;
 
 : CK-CACHE-HAS-DUPS? ( -- bool )
@@ -372,9 +372,9 @@ variable CK-TMP-TRY
 : CK-CACHE-COMPACT ( -- )
    CK-CACHE-OUT drop
    0 CK-CACHE-U @ CK-CACHE-INDEX-REGION
-   CK-IDX CK-IDX-N @ [: CK-OFF-LESS? ;] SORT!
+   CK-IDX CK-IDX-N @ [: CK-OFF-LESS? ;] SORT:SORT!
    CK-CACHE-KEEP-NEWEST
-   CK-IDX CK-KEEP-N @ [: < ;] SORT!
+   CK-IDX CK-KEEP-N @ [: < ;] SORT:SORT!
    CK-CACHE-EMIT ;
 
 \ ---- atomic writer: unique sibling temp then rename (last-writer-wins) --------

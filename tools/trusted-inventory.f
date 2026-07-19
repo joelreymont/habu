@@ -774,7 +774,7 @@ public
       SR-I @ R-IX SR-I @ TAB!
       SR-I @ 1+ SR-I !
    repeat
-   R-IX ROW# @ [: ROW-BEFORE? ;] SORT! ;
+   R-IX ROW# @ [: ROW-BEFORE? ;] SORT:SORT! ;
 
 \ ---- committed classification mapping (class + owner per site) -------------
 private

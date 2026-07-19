@@ -57,7 +57,7 @@ TRUSTED: BUILDER-DROP ( nom-builder -- )   drop ;   \ audited linear-token consu
    start  CHUNK-USED start - ;
 
 : FREEZE-CORE ( -- )
-   NOM-SCR AR-BASE@ NOM-SCR AR-USED@ [: BIND-LESS? ;] SORT!
+   NOM-SCR AR-BASE@ NOM-SCR AR-USED@ [: BIND-LESS? ;] SORT:SORT!
    COMMIT-SORTED PUBLISH-CHUNK ROW-IDX FRZ-ROW ! ;
 
 : FREEZE-BUILD ( -- row )

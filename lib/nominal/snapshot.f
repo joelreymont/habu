@@ -54,7 +54,7 @@ PTR-VARIABLE DEC-PBUF variable DEC-LEN  variable DEC-ROW
 : SNAP-FILL-SORTED ( -- )
    NOM-SNAP-AR AR-RESET
    ROW-RECORDS 0 ?do  i NOM-SNAP-AR AR-PUSH drop  loop
-   NOM-SNAP-AR AR-BASE@ NOM-SNAP-AR AR-USED@ [: ROW-DIG-LESS? ;] SORT! ;
+   NOM-SNAP-AR AR-BASE@ NOM-SNAP-AR AR-USED@ [: ROW-DIG-LESS? ;] SORT:SORT! ;
 
 : SNAP-ROW ( n -- ) {: r:n :}               \ append one length-framed canonical row
    SNAP-U @ 8 + {: dataoff:n :}
