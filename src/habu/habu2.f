@@ -6134,19 +6134,29 @@ s" em-interpret-underflow" s" --" TRUST
 \ call and returns to RW (LPROT 3) before any emission resumes; DATA stores
 \ (CMFAM/CMM) are outside the flipped region and legal in either state, and
 \ the die legs exit the process, so their protection state is irrelevant.
+\ Shared ADT-dispatch stencils (dot habu-factor-repeated-match). The CMM=1/2/3/4/5
+\ legs repeat three byte-identical engine sequences; factored into BL/B-shared
+\ engine routines (bodies + labels both placed inline in EM-COMPILE-ADT-MODE).
+\ Emitted USER code is untouched — none of these touch
+\ C-EMITW/LCEMIT — so only the compiler's own __text shrinks.
+\   LADTPUSHTOK: push captured token addr+len as checker-bridge args (x9/XDS;
+\                preserves x11=XT). Leaf, RET.
+\   LMFRTOP:     x15 = &top match-frame family-id slot (x14 scratch). Leaf, RET.
+\   LADTDIE:     operand-resolution die tail entered with x1=msg x2=len live:
+\                write(2) then C-DIE-TOKEN-NL(70). Never returns (B, not BL).
+variable LADTPUSHTOK  variable LMFRTOP  variable LADTDIE
+
 : EM-ADT-CON-FAM ( -- )                 \ CMM=1 leg: resolve family, arm state 2
    LBL LBL {: fmsg:label fok:label :}
    LBCAP LABEL@ BL,                     \ operand reaches the checker's body too
    2 5 MOVZ,  LPROT LABEL@ BL,          \ region -> RX: checker-call window
    LTFLCONFAM 12 C-FIND-GLOBAL
-   9 DATA TKA-CELL LDR,  9 G-PUSH
-   9 DATA TKL-CELL LDR,  9 G-PUSH
+   LADTPUSHTOK LABEL@ BL,
    C-CALL-X11-SAVED
    10 G-POP                             \ ok flag (top)
    9 G-POP                              \ family id
    10 fok CBNZ,
-      0 2 MOVZ,  1 fmsg ADR,  2 CONFMSG-LEN MOVZ,  NR-WRITE SYS,
-      70 C-DIE-TOKEN-NL
+      1 fmsg ADR,  2 CONFMSG-LEN MOVZ,  LADTDIE LABEL@ B,
    fmsg LBL,  s" hb: construct: unknown family: " BYTES,
    fok LBL,
    9 DATA CMFAM-CELL STR,
@@ -6173,16 +6183,14 @@ s" em-adt-con-pushes" s" --" TRUST
    LBCAP LABEL@ BL,                     \ operand reaches the checker's body too
    2 5 MOVZ,  LPROT LABEL@ BL,          \ region -> RX: checker-call window
    LTFLCVAR 9 C-FIND-GLOBAL
-   9 DATA TKA-CELL LDR,  9 G-PUSH
-   9 DATA TKL-CELL LDR,  9 G-PUSH
+   LADTPUSHTOK LABEL@ BL,
    9 DATA CMFAM-CELL LDR,  9 G-PUSH
    C-CALL-X11-SAVED
    10 G-POP                             \ ok flag (top)
    12 G-POP                             \ pads
    13 G-POP                             \ tag
    10 vok CBNZ,
-      0 2 MOVZ,  1 vmsg ADR,  2 CONVMSG-LEN MOVZ,  NR-WRITE SYS,
-      70 C-DIE-TOKEN-NL
+      1 vmsg ADR,  2 CONVMSG-LEN MOVZ,  LADTDIE LABEL@ B,
    vmsg LBL,  s" hb: construct: unknown variant: " BYTES,
    vok LBL,
    9 DATA P2-CELL LDR,  9 nox CBZ,      \ layout-cap slice 4: pass-2 wide construct adds extra pads
@@ -6254,7 +6262,7 @@ s" c-die-bad-tag" s" --" TRUST
    LBL LBL {: jl:label jd:label :}
    2 5 MOVZ,  LPROT LABEL@ BL,          \ region -> RX: checker-friend call window
    LTFLNAME 10 C-FIND-GLOBAL
-   14 DATA CMFRD-CELL LDR,  14 14 1 SUBI,  14 14 3 LSLI,  14 14 CMFR-OFF ADDI,  15 DATA 14 ADD,  9 15 0 LDR,
+   LMFRTOP LABEL@ BL,  9 15 0 LDR,
    9 G-PUSH                             \ top match-frame family id
    C-CALL-X11-SAVED
    12 G-POP                             \ family name length
@@ -6279,17 +6287,15 @@ s" em-match-semi" s" --" TRUST
    LBCAP LABEL@ BL,
    2 5 MOVZ,  LPROT LABEL@ BL,
    LTFLMATCHFAM 14 C-FIND-GLOBAL
-   9 DATA TKA-CELL LDR,  9 G-PUSH
-   9 DATA TKL-CELL LDR,  9 G-PUSH
+   LADTPUSHTOK LABEL@ BL,
    C-CALL-X11-SAVED
    10 G-POP                             \ ok flag
    9 G-POP                              \ family id
    10 fok CBNZ,
-      0 2 MOVZ,  1 fmsg ADR,  2 MFAMMSG-LEN MOVZ,  NR-WRITE SYS,
-      70 C-DIE-TOKEN-NL
+      1 fmsg ADR,  2 MFAMMSG-LEN MOVZ,  LADTDIE LABEL@ B,
    fmsg LBL,  s" hb: match: unknown family: " BYTES,
    fok LBL,
-   14 DATA CMFRD-CELL LDR,  14 14 1 SUBI,  14 14 3 LSLI,  14 14 CMFR-OFF ADDI,  15 DATA 14 ADD,  9 15 0 STR,
+   LMFRTOP LABEL@ BL,  9 15 0 STR,
    12 4 MOVZ,  12 DATA CMM-CELL STR,
    2 3 MOVZ,  LPROT LABEL@ BL,
    LMAIN LABEL@ B, ;
@@ -6304,16 +6310,14 @@ s" em-adt-match-fam" s" --" TRUST
    notsemi LBL,
    2 5 MOVZ,  LPROT LABEL@ BL,
    LTFLCVAR 9 C-FIND-GLOBAL
-   9 DATA TKA-CELL LDR,  9 G-PUSH
-   9 DATA TKL-CELL LDR,  9 G-PUSH
-   14 DATA CMFRD-CELL LDR,  14 14 1 SUBI,  14 14 3 LSLI,  14 14 CMFR-OFF ADDI,  15 DATA 14 ADD,  9 15 0 LDR,  9 G-PUSH
+   LADTPUSHTOK LABEL@ BL,
+   LMFRTOP LABEL@ BL,  9 15 0 LDR,  9 G-PUSH
    C-CALL-X11-SAVED
    10 G-POP                             \ ok flag
    12 G-POP                             \ pads (M-p)
    13 G-POP                             \ tag
    10 vok CBNZ,
-      0 2 MOVZ,  1 vmsg ADR,  2 MVARMSG-LEN MOVZ,  NR-WRITE SYS,
-      70 C-DIE-TOKEN-NL
+      1 vmsg ADR,  2 MVARMSG-LEN MOVZ,  LADTDIE LABEL@ B,
    vmsg LBL,  s" hb: match: unknown variant: " BYTES,
    vok LBL,
    13 DATA CMTAG-CELL STR,
@@ -6328,8 +6332,7 @@ s" em-adt-match-var" s" --" TRUST
    LBCAP LABEL@ BL,
    0 LKWOF LABEL@ ADR,  1 2 MOVZ,  LKWCMP LABEL@ BL,
    0 eok CBNZ,
-      0 2 MOVZ,  1 emsg ADR,  2 MOFMSG-LEN MOVZ,  NR-WRITE SYS,
-      70 C-DIE-TOKEN-NL
+      1 emsg ADR,  2 MOFMSG-LEN MOVZ,  LADTDIE LABEL@ B,
    emsg LBL,  s" hb: match: expected of: " BYTES,
    eok LBL,
    9 DATA P2-CELL LDR,  9 noxm CBZ,     \ layout-cap slice 4: pass-2 wide match arm adds extra pads to CMPADS
@@ -6368,12 +6371,23 @@ s" em-adt-match-of" s" --" TRUST
 \ match; each leg branches to LMAIN so the legs never fall into one another.
 : EM-COMPILE-ADT-MODE ( -- )
    LBL LBL LBL LBL LBL {: s2:label s3:label s4:label s5:label off:label :}
+   LBL LADTPUSHTOK !  LBL LMFRTOP !  LBL LADTDIE !   \ allocate shared-routine labels
    9 DATA CMM-CELL LDR,  9 off CBZ,
    9 2 CMPI,  C-EQ s2 BCOND,
    9 3 CMPI,  C-EQ s3 BCOND,
    9 4 CMPI,  C-EQ s4 BCOND,
    9 5 CMPI,  C-EQ s5 BCOND,
    EM-ADT-CON-FAM
+   \ Shared routine bodies, emitted after CON-FAM's unconditional LMAIN B, and
+   \ before the s2 dispatch label: reached only via BL/B, never by fall-through,
+   \ and each is self-terminating (RET, or C-DIE-TOKEN-NL's tail branch).
+   LADTPUSHTOK LABEL@ LBL,              \ push captured token addr+len as checker-bridge args
+      9 DATA TKA-CELL LDR,  9 G-PUSH
+      9 DATA TKL-CELL LDR,  9 G-PUSH  RET,
+   LMFRTOP LABEL@ LBL,                  \ x15 = &top match-frame family-id slot (x14 scratch)
+      14 DATA CMFRD-CELL LDR,  14 14 1 SUBI,  14 14 3 LSLI,  14 14 CMFR-OFF ADDI,  15 DATA 14 ADD,  RET,
+   LADTDIE LABEL@ LBL,                  \ x1=msg x2=len live: write(2) diagnostic then fail-closed exit 70
+      0 2 MOVZ,  NR-WRITE SYS,  70 C-DIE-TOKEN-NL
    s2 LBL,  EM-ADT-CON-VAR
    s3 LBL,  EM-ADT-MATCH-FAM
    s4 LBL,  EM-ADT-MATCH-VAR
