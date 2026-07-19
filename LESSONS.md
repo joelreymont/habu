@@ -1059,6 +1059,9 @@ fits.
 
 ## Code Quality
 
+- **No repository caller does not make a public REPL word dead.** The operator is the caller for
+  interactive facilities such as `prof-on` and `prof-report`; remove or unbundle one only after a
+  product decision, not from an internal call-site census.
 - **Split multi-pass work into cursor/pass/row/render helpers; giant words hide effects even
   with correct signatures.** Put the word effect on the definition line; add body-line effects only
   where they prevent real stack-state reconstruction (empty/no-op line comments are noise — factor
