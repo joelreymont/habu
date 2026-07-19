@@ -42,3 +42,12 @@ lane): two follow-ons belong to this autotuner dot:
 2. Add a focused regression for the existing lib-local MMA-CHECK-SMEM /
    E-MMA-SMEM guard (currently untested); cp-async-legal-test.f is the
    fixture pattern to copy (raw-descriptor pos/neg + interned-id path).
+
+RETRACTION 2026-07-19 (dot habu-retract-or-re-698be8b3): the
+MMM-WIDE-B-M4-S1 "3026.6 = 1.60x Triton" flagship (and the 1.13x and 1.43x
+rungs) cited in the UPDATE notes above are Orin-only measurements. The Orin
+has been retired as a measurement platform (Joel, 2026-07-19) and that
+Triton head-to-head is unverified and likely mistaken - do not treat the
+"measured best per shape" targets above as verified until they are
+re-measured on the sole benchmark platform, the GB10 spark. GB10
+conclusions stand on their own referee runs.

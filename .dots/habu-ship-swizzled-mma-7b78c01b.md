@@ -32,3 +32,12 @@ coupling RETURNS for the best config; the flip decision should weigh
 MMM-WIDE-M4-S1 (2707.3, static 49152B, no coupling) vs the extra +11.9%.
 B-ldmatrix also adds the transposed-Bs scalar staging emitters to the
 surface the flip must carry.
+
+RETRACTION 2026-07-19 (dot habu-retract-or-re-698be8b3): the
+MMM-WIDE-B-M4-S1 "3026.6 = 1.60x Triton" flip target (and the 1.13x and
+1.43x rungs) cited in the UPDATE notes above are Orin-only measurements.
+The Orin has been retired as a measurement platform (Joel, 2026-07-19) and
+that Triton head-to-head is unverified and likely mistaken - the
+default-flip decision must not rest on it until the config is re-measured
+on the sole benchmark platform, the GB10 spark. GB10 conclusions stand on
+their own referee runs.

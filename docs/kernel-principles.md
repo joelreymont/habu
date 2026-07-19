@@ -79,6 +79,8 @@ above), and current absolute numbers live in the `orin-nx-25w` registry rows.
 
 ## TF32 tensor-core MMA — validated fragment layout (Orin sm_87)
 
+> **RETRACTED — Orin TF32 GEMM vs-Triton results in this section (2026-07-19, dot `habu-retract-or-re-698be8b3`).** The Orin was retired as a measurement platform (Joel, 2026-07-19); the ×-Triton head-to-head figures below — the 1.13× → 1.43× → 1.60× ladder capped by "3026.6 GFLOP/s = 1.60× Triton" — are unverified, likely mistaken, and retired until a clean referee measurement exists. The GB10 spark is now the sole benchmark platform, and every GB10 conclusion stands on its own referee runs. Original text kept unchanged for history.
+
 The compute beat-Triton lever. `mma.sync.aligned.m16n8k8.row.col.f32.tf32.tf32.f32`
 computes D[16×8] = A[16×8]·B[8×8] + C across one warp. **Device-validated** lane→
 element layout (gid = lane>>2, t = lane&3) — getting this wrong is the course's #1
@@ -194,6 +196,8 @@ n-tiles, A fragment reused 4×). Landed **375.6 / 393.5 / 398.5 GFLOP/s** at
   lesson as wave-2). Next lever is the mma-issue floor (tensor-core throughput).
 
 ## TF32 tensor-core ROOFLINE VERDICT (wave-4) — the mma.sync GEMM program is on the tf32 issue floor
+
+> **RETRACTED — Orin 1.60× Triton claim in this roofline verdict (2026-07-19, dot `habu-retract-or-re-698be8b3`).** The Orin was retired as a measurement platform (Joel, 2026-07-19); the "vs Triton 1890.5" ladder, the 1.60× headline, and the 40.2%-of-roof verdict below all rest on that unverified, likely-mistaken Orin head-to-head and are retired until a clean referee measurement exists. The GB10 spark is now the sole benchmark platform, and every GB10 conclusion stands on its own referee runs. Original text kept unchanged for history.
 
 Waves 1-3 took the TF32 `mma.sync` GEMM from 884.9 to **3026.6 GFLOP/s** (2048³, 918 MHz).
 Wave-4 is the desk verdict: derive the sm_87 Orin NX TF32 tensor-core theoretical peak from

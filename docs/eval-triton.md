@@ -401,6 +401,8 @@ The regressions in `tools/eval-triton-test.f` pin all three: the two comparable 
 persist, report, and replay byte-stably, and the FP32-vs-TF32 pair can never load as a
 competitive result.
 
+> **RETRACTED — Orin 1.60× Triton claim (2026-07-19, dot `habu-retract-or-re-698be8b3`).** The Orin was retired as a measurement platform (Joel, 2026-07-19), so its "3026.6 GFLOP/s = 1.60× Triton" flagship GEMM head-to-head cited below is unverified, likely mistaken, and retired until a clean referee measurement exists. The GB10 spark is now the sole benchmark platform, and every GB10 conclusion in this doc stands on its own referee runs. The original text below is kept unchanged for history.
+
 **Richer per-side evidence rows (schema-backed).** The bench/v1 comparison above is
 throughput-only. The § 22.10 matrix's full per-side evidence schema —
 `maki/competitive-evidence.f` (package `CEVID`) — now also carries these rows as versioned
@@ -822,6 +824,8 @@ bin/hb --load maki/eval/matrix-main.f -- maki/transcripts/live-habu-ptx-2026-07-
   candidate through the emit-structural autograder.
 
 ## GEMM on the DGX Spark GB10 (sm_121a) — the north-star head-to-head (2026-07-19)
+
+> **RETRACTED foil — the Orin 1.60× Triton figure referenced in this section (2026-07-19, dot `habu-retract-or-re-698be8b3`).** The Orin was retired as a measurement platform (Joel, 2026-07-19); the "on the 8-SM Orin the same wide tile family measured 1.60× Triton" / "reversing the Orin's 1.60×" baseline is unverified and likely mistaken, so read those only as an unverified prior, not a confirmed result. The GB10 measurements in this section are the sole benchmark platform and stand on their own referee runs. Original text kept unchanged for history.
 
 The compute-bound GEMM column re-measured on the **GB10** (dot
 `habu-gb10-gemm-head`), the first head-to-head against the **source-built Triton

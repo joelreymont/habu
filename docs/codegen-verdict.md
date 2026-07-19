@@ -5,6 +5,8 @@ Settles the question *"does the code generator suck?"* with measured numbers on
 Method per `docs/kernel-principles.md`; the Orin baseline it extends is
 `docs/eval-triton.md` / `docs/compute-campaign.md`.
 
+> **RETRACTED — the Orin baseline this doc extends (2026-07-19, dot `habu-retract-or-re-698be8b3`).** The Orin was retired as a measurement platform (Joel, 2026-07-19); the "3026 = 1.6× Triton" Orin flagship figure cited below (Item 3 reading, and the Residual section) is unverified, likely mistaken, and retired until a clean referee measurement exists. This does not affect any GB10 number here — the GB10 spark is the sole benchmark platform and every GB10 verdict stands on its own referee runs. Original text kept unchanged for history.
+
 **One-line verdict: the code generator does NOT suck.** It emits spill-free SASS
 that lowers `cp.async`→`LDGSTS` and `mma.sync`→`HMMA` natively on Blackwell,
 vectorizes shared loads to `LDS.128`, and attains the **same fraction of roof on
