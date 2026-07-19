@@ -4,3 +4,4 @@
 \ names so a single home keeps the codes collision-free.
 
 -7400 constant E-DIFF-SYNTAX
+-7401 constant E-DIFF-FRAME-CAP

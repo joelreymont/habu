@@ -1586,6 +1586,10 @@ points stay listed.
 - `tools/lint/diff-error.f` — shared unified-diff tooling error codes (block -7400..-7499); single home consumed by the parser and the framed-artifact codecs.
 - `tools/lint/diff.f` — checked shared parser for `jj diff --git`: emits file/hunk/add/context/delete events with fail-closed malformed-input handling; consumed by the typed-local and kernel-perf diff lints.
 - `tools/lint/diff-test.f` — checked event and fail-closed coverage for the shared diff parser.
+- `tools/lint/diff-path.f` — checked repository-path validation (non-empty, NUL-free) for framed diff sides.
+- `tools/lint/diff-frame.f` — framed unified-diff artifact reader (`package DIFF-FRAME`): validates each section's raw body through the shared `DIFF:LINE` parser, derives the frame form, and streams per-line events.
+- `tools/lint/diff-frame-write.f` — framed unified-diff artifact encoder; derives form/body/mode from the raw body via the shared parser so stored tags cannot drift.
+- `tools/lint/diff-frame-test.f` — checked round-trip, framing-reject, and memory-ownership coverage for the framed diff codec.
 - `tools/lint/source-lex.f` — checked vector-backed source lexer for native lints.
 - `tools/lint/text.f` / `tools/lint/token.f` / `tools/lint/intern.f` /
   `tools/lint/lib.f` — shared native lint foundation: checked text/file
