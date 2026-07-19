@@ -168,6 +168,7 @@ public
       gelu-bwd2       OF s" gelu-bwd2"       ENDOF
       seg-attn        OF s" seg-attn"        ENDOF
       seg-attn-bwd    OF s" seg-attn-bwd"    ENDOF
+      equation        OF s" equation"        ENDOF
    ;MATCH ;
 
 : OPR-CLASS-NAME ( n -- ptr u8 n )
@@ -247,7 +248,13 @@ private
    \ reads Q,K,V and the cotangent dO (4). flops-per-element are nominal (never
    \ lowered in v1 - BTC-6 owns the GB10 tiling); the class drives the bytes model.
    CLASS-MATMUL     4 ACC-F32  NUM-RELTOL 3 OP-SEG-ATTN        OPR!
-   CLASS-MATMUL     6 ACC-F32  NUM-RELTOL 4 OP-SEG-ATTN-BWD    OPR! ;
+   CLASS-MATMUL     6 ACC-F32  NUM-RELTOL 4 OP-SEG-ATTN-BWD    OPR!
+   \ equation (docs/model-unified.md stage 1): a SPEC:-declared einsum contraction,
+   \ so CLASS-MATMUL / f32 accumulate / rel-tol. Arity is PER-EQUATION (the factor
+   \ count lives in the spec registry, maki/spec.f), never read from this row, so the
+   \ arity field is 0. The row stays R-REF-incomplete: an equation has no single
+   \ scalar oracle; its host reference is the generated RUN word the executor runs.
+   CLASS-MATMUL     2 ACC-F32  NUM-RELTOL 0 OP-EQUATION        OPR! ;
 
 OPR-BUILD
 

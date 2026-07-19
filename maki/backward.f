@@ -393,6 +393,7 @@ variable BW-BUILT?
       scatter-add     OF E-BW-UNSUP throw  ENDOF
       seg-attn        OF BW-STEP-SEGMENT-ATTN ENDOF
       seg-attn-bwd    OF E-BW-UNSUP throw  ENDOF
+      equation        OF E-BW-UNSUP throw  ENDOF
    ;MATCH ;
 
 \ ---- supported-op gate (usable BEFORE build to classify not-run) -------------

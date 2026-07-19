@@ -178,6 +178,7 @@ public
       gelu-bwd2       OF E-ADJ-UNSUP throw ENDOF
       seg-attn        OF E-ADJ-UNSUP throw ENDOF
       seg-attn-bwd    OF E-ADJ-UNSUP throw ENDOF
+      equation        OF E-ADJ-UNSUP throw ENDOF
    ;MATCH ;
 
 private

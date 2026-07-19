@@ -65,7 +65,13 @@ public
 \ backward op-kind is synthesized by maki/backward.f like the other *-BWD kinds.
 32 constant OP-SEG-ATTN          \ per-block causal attention               (ref: SEG-ATTN-FWD)
 33 constant OP-SEG-ATTN-BWD      \ its per-block VJP -> [dQ;dK;dV] combined  (ref: SEG-ATTN-BWD)
-34 constant OP-N               \ op-kind range bound (private op-registry / adjoint table dimension + wire code range)
+\ ---- equation op-kind (docs/model-unified.md stage 1) ------------------------
+\ ONE op-kind for every SPEC:-declared einsum equation: its attrs cell carries the
+\ equation's spec-registry slot (maki/spec.f), the executor dispatches to that
+\ equation's generated host word, and it has no adjoint in stage 1 (an equation in a
+\ graph under training is the E-BW-NOADJ reject; stage 2 owns derived adjoints).
+34 constant OP-EQUATION          \ SPEC:-declared einsum op                 (ref: spec-registry RUN word)
+35 constant OP-N               \ op-kind range bound (private op-registry / adjoint table dimension + wire code range)
 
 \ ---- the op-kind family (dot habu-cad-adt-swap, corrected plan) -------------
 \ `opkind` is the semantic type carried from construction (MIR-OP-BEGIN /
@@ -85,6 +91,7 @@ ENUM opkind DERIVE eq
   relu-bwd gelu-bwd silu-bwd layernorm-bwd rmsnorm-bwd softmax-row-bwd rope-bwd
   rowsum-bwd fullsum-dot-bwd pad-scatter scatter-add gelu-bwd2
   seg-attn seg-attn-bwd
+  equation
 ;ENUM
 
 \ named render boundary: opkind -> wire/table code (exhaustive MATCH; a bad tag
@@ -126,6 +133,7 @@ ENUM opkind DERIVE eq
       gelu-bwd2       OF OP-GELU-BWD2       ENDOF
       seg-attn        OF OP-SEG-ATTN        ENDOF
       seg-attn-bwd    OF OP-SEG-ATTN-BWD    ENDOF
+      equation        OF OP-EQUATION        ENDOF
    ;MATCH ;
 
 ;package
