@@ -324,6 +324,30 @@ create SLV-EMPTY 1 allot            \ zero-length stdin
    s" data-base $3CB8 + SLF-WRITE drop" SB-APPEND SLV-LF
    SB$ ;
 
+\ Raw abi trampoline (no schema extents): the nargs-threaded guard must trap a
+\ sealed-band pointer packed as the x8 indirect-result register before the
+\ foreign BLR, else the callee writes the result through it into a sealed cell.
+\ has-sret=1, int-nargs=0 -> only x8 is checked.
+: SLV-FFI-SRET-FORGE$ ( -- ptr u8 n )       \ sealed-band pointer as the x8 sret out-param
+   SB-RESET
+   s" require lib/ffi.f" SB-APPEND SLV-LF
+   s" TRUSTED: SLF-RET ( -- n ) cp@ {: fn:n :} $D65F03C0 fn patch32 fn ;" SB-APPEND SLV-LF
+   s" TRUSTED: SLF-SRET ( ptr a -- n ) {: p:ptr :} FFI:RESET p FFI:X8-READABLE! FFI:ARGS FFI:FLOATS FFI:STACK 0 0 1 SLF-RET ffi-call-abi ;" SB-APPEND SLV-LF
+   s" data-base $28 + SLF-SRET drop" SB-APPEND SLV-LF
+   SB$ ;
+
+\ Raw abi trampoline: a sealed-band pointer packed as a HIGH integer register
+\ arg (x6, live only at int-nargs=7) must trap -- the guard sweeps every live
+\ slot [0..int-nargs), not just the low registers. Slots 0..5 hold benign
+\ scalars so the trap is precisely attributable to arg[6].
+: SLV-FFI-A6-FORGE$ ( -- ptr u8 n )         \ sealed-band pointer as the arg[6] register arg
+   SB-RESET
+   s" require lib/ffi.f" SB-APPEND SLV-LF
+   s" TRUSTED: SLF-RET ( -- n ) cp@ {: fn:n :} $D65F03C0 fn patch32 fn ;" SB-APPEND SLV-LF
+   s" TRUSTED: SLF-A6 ( ptr a -- n ) {: p:ptr :} FFI:RESET 6 0 ?do 1 i FFI:VALUE! loop p FFI:>CELL 6 FFI:VALUE! FFI:ARGS FFI:FLOATS FFI:STACK 0 7 0 SLF-RET ffi-call-abi ;" SB-APPEND SLV-LF
+   s" data-base $28 + SLF-A6 drop" SB-APPEND SLV-LF
+   SB$ ;
+
 \ Post-seal language exercise: define words, a package + qualified word, a
 \ TRUSTED: word, and a DEFER + IS target, then use them. Each updates a protected
 \ cell (CUR/WIDN/DEF-WL/TSIG/PKG-*/DEFER-*) through engine primitives, not raw
@@ -672,7 +696,7 @@ public
 package SLV-PARITY
 
 7 constant DIRECT-N
-53 constant SUBJECT-N
+55 constant SUBJECT-N
 : RESULT ( -- ptr u8 n ptr u8 n n )
    SLV-OUT SLV-OUT-U @ SLV-ERR SLV-ERR-U @ SLV-RC @ ;
 
@@ -779,6 +803,10 @@ public
    SLV-FFI-B1-FORGE$ SLV-EXEC:SUBJECT SLV-ASSERT-SEAL
    s" FFI live pointer arg into band 2 traps before the call" T-LABEL
    SLV-FFI-B2-FORGE$ SLV-EXEC:SUBJECT SLV-ASSERT-SEAL
+   s" raw abi FFI x8 sret out-param into band traps before the call" T-LABEL
+   SLV-FFI-SRET-FORGE$ SLV-EXEC:SUBJECT SLV-ASSERT-SEAL
+   s" raw abi FFI high arg[6] register into band traps before the call" T-LABEL
+   SLV-FFI-A6-FORGE$ SLV-EXEC:SUBJECT SLV-ASSERT-SEAL
    s" FFI live pointer arg crossing owner-WID band traps before the call" T-LABEL
    OWNER-WID-TEST:FFI-FORGE$ SLV-EXEC:SUBJECT SLV-ASSERT-SEAL ;
 

@@ -514,11 +514,11 @@ variable GDX-TRUST-MAN-U
    s" token" tok toku s" raw ffi checker token" GDX-EXPECT-ERR-JSTR ;
 
 : GDX-CAP-TRUSTED-FFI ( -- )
-   s" : GDX-FF ( ptr a n -- n ) ffi-call ;"
+   s" : GDX-FF ( ptr a n n -- n ) ffi-call ;"
    s" ffi-call" GDX-FFI-RAW-REJECT
-   s" : GDX-FFA ( ptr a ptr b ptr c n n -- n ) ffi-call-abi ;"
+   s" : GDX-FFA ( ptr a ptr b ptr c n n n n -- n ) ffi-call-abi ;"
    s" ffi-call-abi" GDX-FFI-RAW-REJECT
-   s" : GDX-FFAR ( ptr a ptr b ptr c n n -- r ) ffi-call-abi-r ;"
+   s" : GDX-FFAR ( ptr a ptr b ptr c n n n n -- r ) ffi-call-abi-r ;"
    s" ffi-call-abi-r" GDX-FFI-RAW-REJECT ;
 
 : GDX-LOCAL-IN-LOOP ( -- )

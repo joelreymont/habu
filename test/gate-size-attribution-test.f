@@ -41,14 +41,15 @@ $4000 constant MACOS-DATA-CONST  \ __DATA_CONST page (__got + zero fill)
 \ Linux committed attribution, measured at the byte-fixpoint on 2026-07-19 (DGX
 \ Spark, linux-arm64) after the shared PROT-GUARD:CALL span-guard fold (CODELEN
 \ 142092 -> 136108), then advanced by the same +28-byte shared-engine-text delta
-\ as macOS above: the LP2VEXEC registration record and inlined message are
-\ target-independent bytes, so CODELEN 136108 -> 136136 (floor 940 -> 968) and
-\ the whole file stays inside the same 4 KiB page (LINUX-TOTAL unchanged). To be
-\ re-confirmed at the next Linux byte-fixpoint. Keep LINUX-TOTAL equal to
+\ as macOS above (LP2VEXEC record, predicted 136108 -> 136136), then re-measured
+\ live at the 2026-07-19 seal-guard fixpoint: the raw ffi-call nargs guard adds
+\ 404 bytes, CODELEN 136136 -> 136540 (floor 968 -> 1372), confirming the +28
+\ prediction; all 432 bytes since the fold fit inside the same 4 KiB page
+\ padding (LINUX-TOTAL unchanged). Keep LINUX-TOTAL equal to
 \ GB-SIZE-BASELINE-LINUX in test/gate-build-size.f.
-136136 constant LINUX-CODE-TEXT   \ CODELEN: every emitter-phase row (baked-source incl.)
+136540 constant LINUX-CODE-TEXT   \ CODELEN: every emitter-phase row (baked-source incl.)
 192 constant LINUX-RW             \ ELF read-write segment tail: DYNAMIC + GOT (ELF-RW-SZ)
-968 constant LINUX-FLOOR-DIST     \ code above the 4 KiB floor: the page-recovery shave
+1372 constant LINUX-FLOOR-DIST    \ code above the 4 KiB floor: the page-recovery shave
 143552 constant LINUX-TOTAL       \ = FILE-SIZE bin/hb = GB-SIZE-BASELINE-LINUX
 
 : PAGE-UP ( n n -- n ) {: v:n page:n :}

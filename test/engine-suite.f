@@ -1661,14 +1661,14 @@ TFG -1 T=
 create FFI-ARGS 8 cells allot
 TRUSTED: ES-PATCH32 ( n n -- ) patch32 ;   \ code-emission boundary (F3 gate):
                                            \ patch32 is TRUSTED-ONLY; TFFI stays checked.
-TRUSTED: ES-FFI-CALL ( ptr a n -- n ) ffi-call ;  \ foreign-call boundary:
+TRUSTED: ES-FFI-CALL ( ptr a n n -- n ) ffi-call ;  \ foreign-call boundary:
                                            \ ffi-call is TRUSTED-ONLY; TFFI stays checked.
 : TFFI ( -- n )
    3 FFI-ARGS !  4 FFI-ARGS 8 + !
    cp@ {: fn:n :}
    $8B010000 fn ES-PATCH32         \ add x0, x0, x1   at fn
    $D65F03C0 fn 4 + ES-PATCH32     \ ret             at fn+4
-   FFI-ARGS fn ES-FFI-CALL ;
+   FFI-ARGS 2 fn ES-FFI-CALL ;
 TFFI 7 T=
 
 \ rejected definitions must not leak code space: the hooked publish path rolls

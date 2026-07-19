@@ -1621,9 +1621,31 @@ variable SZA-I
    0 15 0  LDR,   1 15 8  LDR,   2 15 16 LDR,   3 15 24 LDR,
    4 15 32 LDR,   5 15 40 LDR,   6 15 48 LDR,   7 15 56 LDR, ;
 
+\ Sound seal guard for the raw (unbounded) trampolines: the argbuf carries no
+\ per-arg writable extents, so every LIVE integer/pointer arg is checked as a
+\ band pointer -- a one-byte span-guard at the arg value. x14 = live arg count,
+\ x15 = integer argbuf, x9 = sret flag (guard x8 = argbuf[8] when nonzero).
+\ Stale slots [nargs..8) are skipped, so a low-arity call never trips on the
+\ garbage cells above its args. x5/x6 are the only scratch; x14/x15/x9 stay live
+\ across the shared LPROTSPAN body (it touches only x10-x13,x30).
+: BFFI-GUARD-ARGS ( -- )
+   LBL LBL LBL {: loop:label done:label nosret:label :}
+   5 0 MOVZ,                                           \ x5 = i = 0
+   loop LBL,
+      5 14 CMP,  C-GE done BCOND,                      \ i >= nargs -> done
+      6 5 3 LSLI,  6 15 6 ADD,  10 6 0 LDR,            \ x10 = argbuf[i]
+      11 1 MOVZ,  LPROTSPAN LABEL@ BL,                 \ one-byte band guard on the arg value
+      5 5 1 ADDI,  loop B,
+   done LBL,
+      9 nosret CBZ,                                    \ sret flag == 0 -> no x8 guard
+      10 15 $40 LDR,  11 1 MOVZ,  LPROTSPAN LABEL@ BL, \ guard x8 = argbuf[8] indirect result
+   nosret LBL, ;
+
 : BFFI-CALL ( -- )
    16 G-POP                                            \ x16 = fn
+   14 G-POP                                            \ x14 = nargs
    15 G-POP                                            \ x15 = argbuf
+   9 0 MOVZ,  BFFI-GUARD-ARGS                          \ no sret: guard the live x0..x7 args
    BFFI-LOAD-X0-X7
    16 BLR,
    0 G-PUSH ;
@@ -1658,10 +1680,14 @@ variable SZA-I
 
 : BFFI-CALL-ABI-CORE ( -- )
    16 G-POP                                            \ x16 = fn
-   14 G-POP                                            \ x14 = stack cell count
+   9 G-POP                                             \ x9  = sret-present flag
+   14 G-POP                                            \ x14 = int-nargs (live x0..x7 count)
+   1 G-POP                                             \ x1  = stack cell count (parked past the guard)
    13 G-POP                                            \ x13 = prepacked stack cells
    17 G-POP                                            \ x17 = FP argbuf
    15 G-POP                                            \ x15 = integer argbuf
+   BFFI-GUARD-ARGS                                     \ band-guard live int args + x8 sret before any load
+   14 1 0 ADDI,                                        \ x14 = stack cell count (restore for the spill copy)
    20 SP $8 STR,                                       \ park caller x20 in frame slot
    20 SP 0 ADDI,                                       \ x20 = frame sp
    BFFI-COPY-ABI-STACK
@@ -1769,6 +1795,7 @@ variable SZA-I
    17 SP $8 LDR,  17 G-PUSH
    13 SP $10 LDR,  13 G-PUSH
    14 SP $28 LDR,  14 G-PUSH
+   9 0 MOVZ,  9 G-PUSH  9 G-PUSH                       \ int-nargs=0, sret=0: BFFI-GUARD-BOUNDS already guarded x0..x8
    16 SP $30 LDR,  16 G-PUSH
    SP SP $40 ADDI,
    BFFI-CALL-ABI-CORE ;
@@ -2362,13 +2389,13 @@ SOURCE-INIT
 : EMIT-FS-PRIMS ( -- )
    s" open" ['] BOPEN FPRIM-L   s" write" ['] BWRITE FPRIM-L   s" read" ['] BREAD FPRIM   s" ioctl" ['] BIOCTL FPRIM
    s" mmap" ['] BMMAP FPRIM
-   s" ffi-call" ['] BFFI-CALL 2 GDEREF-F
+   s" ffi-call" ['] BFFI-CALL 3 GDEREF-F
    s" ffi-call-n" ['] BFFI-CALL-N 3 GDEREF-F
    s" ffi-call-bounded" ['] BFFI-CALL-BOUNDED 4 GDEREF-F
    s" ffi-call-abi-bounded" ['] BFFI-CALL-ABI-BOUNDED 7 GDEREF-F
    s" ffi-call-abi-r-bounded" ['] BFFI-CALL-ABI-R-BOUNDED 7 GDEREF-F
-   s" ffi-call-abi" ['] BFFI-CALL-ABI 5 GDEREF-F
-   s" ffi-call-abi-r" ['] BFFI-CALL-ABI-R 5 GDEREF-F
+   s" ffi-call-abi" ['] BFFI-CALL-ABI 7 GDEREF-F
+   s" ffi-call-abi-r" ['] BFFI-CALL-ABI-R 7 GDEREF-F
    s" open-rd" ['] BOPENRD FPRIM-L
    s" access" ['] BACCESS FPRIM-L
    s" unlink" ['] BUNLINK FPRIM-L   s" rename" ['] BRENAME FPRIM-L   s" chmod" ['] BCHMOD FPRIM-L
