@@ -257,6 +257,10 @@ TEST:SUITE maki/tokenizer-test.f
 TEST:;SUITE
 TEST:SUITE maki/data-loader-test.f
 TEST:;SUITE
+TEST:SUITE maki/xent-loss-test.f
+TEST:;SUITE
+TEST:SUITE maki/xent-train-test.f
+TEST:;SUITE
 TEST:;GROUP
 
 TEST:RUN
