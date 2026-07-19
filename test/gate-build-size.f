@@ -41,10 +41,10 @@
 \ + tok-imm? immediate model, and the certified-word underdepth gate; fixpoint x2
 \ byte-identical on the Orin.
 165367 constant GB-SIZE-BASELINE-MACOS
-147648 constant GB-SIZE-BASELINE-LINUX   \ fable re-measure 2026-07-14 (Orin, habu-re-measure-linux);
-                                         \ merged engine with the TFAM slice-3a/3b lowering, the type-
-                                         \ family checker + tok-imm? immediate model, and the certified-
-                                         \ word underdepth gate; fixpoint x2 byte-identical on the Orin.
+143552 constant GB-SIZE-BASELINE-LINUX   \ fable re-measure 2026-07-19 (DGX Spark linux-arm64) after the
+                                         \ shared PROT-GUARD:CALL span-guard fold shrank CODELEN
+                                         \ 142092 -> 136108 (147648 -> 143552 whole-file; the ratchet's
+                                         \ shrank-below-baseline arm demanded this row lowered).
 
 0 constant GB-SIZE-OK
 1 constant GB-SIZE-GROWN

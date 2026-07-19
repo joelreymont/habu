@@ -38,12 +38,13 @@ $4000 constant MACOS-DATA-CONST  \ __DATA_CONST page (__got + zero fill)
 165367 constant MACOS-TOTAL       \ = FILE-SIZE bin/hb = GB-SIZE-BASELINE-MACOS
 
 \ Linux committed attribution, measured at the byte-fixpoint on 2026-07-19 (DGX
-\ Spark, linux-arm64). Keep LINUX-TOTAL equal to GB-SIZE-BASELINE-LINUX in
+\ Spark, linux-arm64) after the shared PROT-GUARD:CALL span-guard fold (CODELEN
+\ 142092 -> 136108). Keep LINUX-TOTAL equal to GB-SIZE-BASELINE-LINUX in
 \ test/gate-build-size.f.
-142092 constant LINUX-CODE-TEXT   \ CODELEN: every emitter-phase row (baked-source incl.)
+136108 constant LINUX-CODE-TEXT   \ CODELEN: every emitter-phase row (baked-source incl.)
 192 constant LINUX-RW             \ ELF read-write segment tail: DYNAMIC + GOT (ELF-RW-SZ)
-2828 constant LINUX-FLOOR-DIST    \ code above the 4 KiB floor: the page-recovery shave
-147648 constant LINUX-TOTAL       \ = FILE-SIZE bin/hb = GB-SIZE-BASELINE-LINUX
+940 constant LINUX-FLOOR-DIST     \ code above the 4 KiB floor: the page-recovery shave
+143552 constant LINUX-TOTAL       \ = FILE-SIZE bin/hb = GB-SIZE-BASELINE-LINUX
 
 : PAGE-UP ( n n -- n ) {: v:n page:n :}
    v page 1- + page 1- invert and ;
