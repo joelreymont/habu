@@ -63,6 +63,24 @@ variable T-LABEL-U
    repeat drop
    T-LABEL-CLEAR ;
 
+\ A registered engine helper is sealed system-private: search-wl must never
+\ surface (PROT-SPAN) in any wordlist, so no checked program can name or call it.
+package ENGINE-SUITE
+
+1 constant OWNER-PUBLIC-WID
+2 constant OWNER-PRIVATE-WID
+
+: PROT-SPAN-WID-HIDDEN? ( n -- bool )
+   s" (PROT-SPAN)" rot search-wl 0= ;
+
+public
+
+: PROT-SPAN-HIDDEN? ( -- bool )
+   OWNER-PUBLIC-WID PROT-SPAN-WID-HIDDEN?
+   OWNER-PRIVATE-WID PROT-SPAN-WID-HIDDEN? and ;
+
+;package
+
 \ arithmetic, stack, comparisons
 s" package-scoped engine error ABI" T-LABEL
 ENGINE-ERROR:SEAL-VIOLATION 83 T=
@@ -78,6 +96,9 @@ s" E-BAD-TAG" 0 search-wl 0 T=
 s" E-CALLABLE-ABI" 0 search-wl 0 T=
 s" E-CATCH-STACK" 0 search-wl 0 T=
 s" E-CODE-CERT" 0 search-wl 0 T=
+s" private engine helpers absent from the public wordlist" T-LABEL
+s" (PROT-SPAN)" 0 search-wl 0 T=
+ENGINE-SUITE:PROT-SPAN-HIDDEN? -1 T=
 
 5 dup * 25 T=
 1 2 3 rot + + 6 T=

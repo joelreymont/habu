@@ -7,6 +7,49 @@ require src/habu/aot-closure.f
 
 LOWER-CERT-HOOK:INSTALL
 
+\ Unit + registry coverage for the direct-branch closure capability: the decoder
+\ recognizes B/BL and excludes conditional/compare branches, and the closed
+\ helper allowlist (FINDPTR) resolves ONLY a registered engine helper's exact
+\ code entry - never a raw address, a non-entry offset, or an ordinary
+\ (non-helper) record's entry. Those negatives are the security boundary: an
+\ unregistered direct-branch target is not followed and still fails closed.
+package AOT-BRANCH-TEST
+
+create CODE 4 allot
+variable BT-FX
+
+: EXPECT ( bool ptr u8 n -- ) {: ok:bool label:ptr labelu:n :}
+   ok 0= if label labelu GE-FAIL then ;
+
+: TARGET= ( n ptr u8 ptr u8 n -- ) {: instr:n want:ptr label:ptr labelu:n :}
+   CODE instr AOT-BRANCH:TARGET want = label labelu EXPECT ;
+
+: HELPER-REC ( -- ptr a )                 \ first registered engine helper in the dict
+   0 BT-FX !
+   BEGIN BT-FX @ ndict@ < WHILE
+      BT-FX @ REC dup REC-WID@ OWNER-API-PRI-WID = IF exit THEN drop
+      BT-FX @ 1+ BT-FX !
+   REPEAT XREF-NULL ;
+
+public
+
+: RUN ( -- )
+   $14000002 AOT-BRANCH:DIRECT? s" AOT direct B decode" EXPECT
+   $94000003 AOT-BRANCH:DIRECT? s" AOT direct BL decode" EXPECT
+   $54000000 AOT-BRANCH:DIRECT? 0= s" AOT conditional branch exclusion" EXPECT
+   $34000000 AOT-BRANCH:DIRECT? 0= s" AOT compare branch exclusion" EXPECT
+   $14000002 CODE 8 + s" AOT forward B target" TARGET=
+   $94000003 CODE 12 + s" AOT forward BL target" TARGET=
+   $17FFFFFF CODE 4 - s" AOT backward B target" TARGET=
+   $97FFFFFE CODE 8 - s" AOT backward BL target" TARGET=
+   HELPER-REC XREF-FOUND? s" AOT registered helper present" EXPECT
+   HELPER-REC dup REC-CODE-PTR@ FINDPTR = s" AOT registered helper resolved by direct target" EXPECT
+   HELPER-REC REC-CODE-PTR@ 4 + FINDPTR XREF-FOUND? 0= s" AOT non-entry address excluded" EXPECT
+   CODE FINDPTR XREF-FOUND? 0= s" AOT unregistered address excluded" EXPECT
+   0 REC REC-CODE-PTR@ FINDPTR XREF-FOUND? 0= s" AOT non-helper record entry excluded" EXPECT ;
+
+;package
+
 34 constant GAN-DQ
 
 create GAN-REPORT-PATH FS-PATH-CAP allot
@@ -113,6 +156,7 @@ variable GAN-REPORT-U
 
 : GAN-RUN ( -- )
    s" hb-gate-aot-negative" GT-START
+   AOT-BRANCH-TEST:RUN
    GAN-CLOSURE-LIMIT
    GAN-PATCH32
    GT-CLEANUP
