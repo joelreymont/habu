@@ -185,6 +185,15 @@ variable FAILS
      negative OF path pathu rc marker markeru needle needleu NEGATIVE ENDOF
    ;MATCH ;
 
+\ Expected case tally by kind, kept beside the case list so adding or removing a
+\ case is a single-file edit: change the row below and bump the matching count
+\ here. The whitebox test reads these back out of this source and checks them
+\ against the enumerated rows, so a case dropped without adjusting its count
+\ trips loudly. The lone top-row case is a positive, counted here too.
+20 constant N-POSITIVE
+3 constant N-DIAGNOSTIC
+9 constant N-NEGATIVE
+
 : SHARED-CASES ( -- )
    s" test/type-family-suite.f" construct case-kind positive 0 s" " s" " RUN-CASE
    s" test/type-family-rollback-suite.f" construct case-kind positive 0 s" " s" " RUN-CASE

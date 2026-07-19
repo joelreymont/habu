@@ -5,44 +5,48 @@ require lib/test/src-shape.f
 
 package CANDIDATE-VALIDATION-TEST
 
-: PATH-PIN ( ptr u8 n -- )
-   1 SHAPE:COUNT= ;
+34 constant CV-DQ                    \ ASCII double-quote closing an s" ..." path
 
+variable CV-CUR                      \ byte cursor while scanning the loaded source
+variable CV-N                        \ enumerated case-path count
+variable CV-PA                       \ current path slice pointer
+variable CV-PU                       \ current path slice length
+
+: CV-PATH$ ( -- ptr u8 n )
+   CV-PA @ CV-PU @ ;
+
+\ Advance to the next s" test/..." case path in the loaded source, setting CV-PATH$
+\ to the text between the quotes; false once none remain. An unterminated path is a
+\ broken source and dies loudly rather than yielding a truncated slice.
+: CV-NEXT? ( -- bool )
+   SHAPE:TEXT {: a:ptr u:n :}
+   a CV-CUR @ + u CV-CUR @ - S\" s\q test/" FIND-SUB MATCH option
+     none OF STR-FALSE exit ENDOF
+     some OF IDX>N ENDOF
+   ;MATCH {: rel:n :}
+   CV-CUR @ rel + 3 + {: ps:n :}
+   a ps + u ps - CV-DQ INDEX-OF MATCH option
+     none OF s" candidate-validation-test: unterminated case path" 1 die ENDOF
+     some OF IDX>N ENDOF
+   ;MATCH {: rc:n :}
+   a ps + CV-PA !  rc CV-PU !  ps rc + 1+ CV-CUR !  STR-TRUE ;
+
+\ Whitebox contract for the case list: every declared case path resolves to a file
+\ on disk and appears exactly once, and the path count equals the enumerated
+\ `construct case-kind` rows, so a path with no kind (or a kind with no path) fails.
 : CASES ( -- )
    s" test/candidate-validation.f" SHAPE:LOAD
-   S\" s\q test/" 32 SHAPE:COUNT=
-   s" test/engine-suite.f" PATH-PIN
-   s" test/type-family-suite.f" PATH-PIN
-   s" test/type-family-rollback-suite.f" PATH-PIN
-   s" test/type-decl-suite.f" PATH-PIN
-   s" test/deftype-suite.f" PATH-PIN
-   s" test/deftype-dup-bad.f" PATH-PIN
-   s" test/cast-suite.f" PATH-PIN
-   s" test/cast-negative-suite.f" PATH-PIN
-   s" test/type-ctor-suite.f" PATH-PIN
-   s" test/type-linear-suite.f" PATH-PIN
-   s" test/type-match-suite.f" PATH-PIN
-   s" test/type-layout-lower-pending.f" PATH-PIN
-   s" test/layout-buffer.f" PATH-PIN
-   s" test/layout-buffer-forge.f" PATH-PIN
-   s" test/layout-buffer-depth.f" PATH-PIN
-   s" test/layout-valid-w1-bad.f" PATH-PIN
-   s" test/layout-valid-product-bad.f" PATH-PIN
-   s" test/layout-valid-guards.f" PATH-PIN
-   s" test/layout-valid-growth.f" PATH-PIN
-   s" test/layout-valid-active-bad.f" PATH-PIN
-   s" test/layout-valid-root-bad.f" PATH-PIN
-   s" test/layout-valid-hook-forge.f" PATH-PIN
-   s" test/layout-valid-walk-forge.f" PATH-PIN
-   s" test/layout-valid-desc-forge.f" PATH-PIN
-   s" test/wide-store-seal.f" PATH-PIN
-   s" test/protection-span.f" PATH-PIN
-   s" test/top-row-hook-test.f" PATH-PIN
-   s" test/lower-txn-protection.f" PATH-PIN
-   s" test/lower-txn-large.f" PATH-PIN
-   s" test/type-export-suite.f" PATH-PIN
-   s" test/bootstrap-wide-memory-src.f" PATH-PIN
-   s" test/candidate-validation-test.f" PATH-PIN ;
+   0 CV-CUR ! 0 CV-N !
+   begin CV-NEXT? while
+      CV-PATH$ FILE? TTRUE
+      CV-PATH$ 1 SHAPE:COUNT=
+      CV-N @ 1+ CV-N !
+   repeat
+   CV-N @
+   s" construct case-kind positive"   SHAPE:COUNT
+   s" construct case-kind diagnostic" SHAPE:COUNT +
+   s" construct case-kind negative"   SHAPE:COUNT +
+   T= ;
 
 : WORKER ( -- )
    s" $40000 constant SRC-CAP" SHAPE:MUST-HAVE
@@ -66,41 +70,23 @@ package CANDIDATE-VALIDATION-TEST
 : DIRECT-PIN ( ptr u8 n -- )
    1 SHAPE:COUNT= ;
 
+: SB-N ( n -- ) {: n:n :}
+   n 10 >= if n 10 / RECURSE then
+   n 10 mod STR-ZERO + SB-APPEND-C ;
+
+\ Assert the count declared beside the cases equals the live occurrences: require
+\ the source to hold the LF-anchored line `<enumerated> constant NAME`. A row
+\ deleted without adjusting its count changes the number, so the line vanishes.
+: DECLARED= ( ptr u8 n ptr u8 n -- ) {: kind:ptr kindu:n name:ptr nameu:n :}
+   kind kindu SHAPE:COUNT {: got:n :}
+   SB-RESET STR-LF SB-APPEND-C got SB-N STR-SPACE SB-APPEND-C
+   s" constant " SB-APPEND name nameu SB-APPEND
+   SB$ SHAPE:MUST-HAVE ;
+
 : MANIFESTS ( -- )
-   s" construct case-kind positive" 20 SHAPE:COUNT=
-   s" construct case-kind diagnostic" 3 SHAPE:COUNT=
-   s" construct case-kind negative" 9 SHAPE:COUNT=
-   S\" s\q test/type-family-suite.f\q construct case-kind positive 0 s\q \q s\q \q RUN-CASE" DIRECT-PIN
-   S\" s\q test/type-family-rollback-suite.f\q construct case-kind positive 0 s\q \q s\q \q RUN-CASE" DIRECT-PIN
-   S\" s\q test/type-decl-suite.f\q construct case-kind positive 0 s\q \q s\q \q RUN-CASE" DIRECT-PIN
-   S\" s\q test/deftype-suite.f\q construct case-kind positive 0 s\q \q s\q \q RUN-CASE" DIRECT-PIN
-   S\" s\q test/deftype-dup-bad.f\q construct case-kind negative 67\n      s\q DEFTYPE-DUP-ARMED\q s\q duplicate family\q RUN-CASE" DIRECT-PIN
-   S\" s\q test/cast-suite.f\q construct case-kind positive 0 s\q \q s\q \q RUN-CASE" DIRECT-PIN
-   S\" s\q test/cast-negative-suite.f\q construct case-kind positive 0 s\q \q s\q \q RUN-CASE" DIRECT-PIN
-   S\" s\q test/type-linear-suite.f\q construct case-kind positive 0 s\q \q s\q \q RUN-CASE" DIRECT-PIN
-   S\" s\q test/type-match-suite.f\q construct case-kind positive 0 s\q \q s\q \q RUN-CASE" DIRECT-PIN
-   S\" s\q test/type-layout-lower-pending.f\q construct case-kind positive 0 s\q \q s\q \q RUN-CASE" DIRECT-PIN
-   S\" s\q test/layout-buffer.f\q construct case-kind positive 0 s\q \q s\q \q RUN-CASE" DIRECT-PIN
-   S\" s\q test/engine-suite.f\q construct case-kind diagnostic 0 s\q \q s\q habu: in mea1:\q RUN-CASE" DIRECT-PIN
-   S\" s\q test/type-ctor-suite.f\q construct case-kind diagnostic 0 s\q \q s\q duplicate family\q RUN-CASE" DIRECT-PIN
-   S\" s\q test/type-export-suite.f\q construct case-kind diagnostic 0 s\q \q s\q habu: in xpu3:\q RUN-CASE" DIRECT-PIN
-   S\" s\q test/layout-buffer-forge.f\q construct case-kind negative 70\n      s\q LAYOUT-BUFFER-FORGE-ARMED\q s\q E-UNDEFINED: LBUF-PEND!\q RUN-CASE" DIRECT-PIN
-   S\" s\q test/layout-valid-w1-bad.f\q construct case-kind negative 85\n      s\q LAYOUT-VALID-ARMED\q s\q hb: bad layout tag\q RUN-CASE" DIRECT-PIN
-   S\" s\q test/layout-valid-product-bad.f\q construct case-kind negative 85\n      s\q LAYOUT-VALID-ARMED\q s\q hb: bad layout tag\q RUN-CASE" DIRECT-PIN
-   S\" s\q test/layout-valid-active-bad.f\q construct case-kind negative 85\n      s\q LAYOUT-VALID-ACTIVE-ARMED\q s\q hb: bad layout tag\q RUN-CASE" DIRECT-PIN
-   S\" s\q test/layout-valid-root-bad.f\q construct case-kind negative 85\n      s\q LAYOUT-VALID-ROOT-ARMED\q s\q hb: bad layout tag\q RUN-CASE" DIRECT-PIN
-   S\" s\q test/layout-valid-hook-forge.f\q construct case-kind negative 70\n      s\q LAYOUT-VALID-FORGE-ARMED\q s\q E-UNDEFINED: LAYOUT-VALID-RECORD-XT\q RUN-CASE" DIRECT-PIN
-   S\" s\q test/layout-valid-walk-forge.f\q construct case-kind negative 70\n      s\q LAYOUT-VALID-FORGE-ARMED\q s\q E-UNDEFINED: VP-TERM-WALK-XT\q RUN-CASE" DIRECT-PIN
-   S\" s\q test/layout-valid-desc-forge.f\q construct case-kind negative 70\n      s\q LAYOUT-VALID-FORGE-ARMED\q s\q E-UNDEFINED: LAYOUT-VALID-DESC-XT\q RUN-CASE" DIRECT-PIN
-   S\" s\q test/layout-buffer-depth.f\q construct case-kind positive 0 s\q \q s\q \q RUN-CASE" DIRECT-PIN
-   S\" s\q test/layout-valid-guards.f\q construct case-kind positive 0 s\q \q s\q \q RUN-CASE" DIRECT-PIN
-   S\" s\q test/layout-valid-growth.f\q construct case-kind positive 0 s\q \q s\q \q RUN-CASE" DIRECT-PIN
-   S\" s\q test/wide-store-seal.f\q construct case-kind positive 0 s\q \q s\q \q RUN-CASE" DIRECT-PIN
-   S\" s\q test/protection-span.f\q construct case-kind positive 0 s\q \q s\q \q RUN-CASE" DIRECT-PIN
-   S\" s\q test/lower-txn-protection.f\q construct case-kind positive 0 s\q \q s\q \q RUN-CASE" DIRECT-PIN
-   S\" s\q test/lower-txn-large.f\q construct case-kind positive 0 s\q \q s\q \q RUN-CASE" DIRECT-PIN
-   S\" s\q test/bootstrap-wide-memory-src.f\q construct case-kind positive 0 s\q \q s\q \q RUN-CASE" DIRECT-PIN
-   S\" s\q test/candidate-validation-test.f\q construct case-kind positive 0 s\q \q s\q \q RUN-CASE" DIRECT-PIN
+   s" construct case-kind positive"   s" N-POSITIVE"   DECLARED=
+   s" construct case-kind diagnostic" s" N-DIAGNOSTIC" DECLARED=
+   s" construct case-kind negative"   s" N-NEGATIVE"   DECLARED=
    S\" s\q shared\q MANIFEST\n   SHARED-CASES" SHAPE:MUST-HAVE
    S\" s\q top-row\q MANIFEST\n   TOP-ROW-CASE" SHAPE:MUST-HAVE ;
 
