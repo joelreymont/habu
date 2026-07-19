@@ -1653,3 +1653,17 @@ fits.
   by CONTENT — a sentinel search for a string the change introduces (e.g.
   `rg -c PROT-GUARD:CALL src/habu/habu1.f`) — not just by `jj log` position,
   and rerun `jj workspace update-stale` after any cross-workspace activity.
+- The .jj-ws/ workspace-checkout root vanished from disk mid-session (2026-07-19),
+  taking every workspace checkout and seeded engine binary with it. RCA facts:
+  no session command or worker command ran a matching rm (transcripts searched);
+  no commit anywhere tracked .jj-ws paths (verified per-commit), so a jj checkout
+  could not have deleted it; cause remains unproven — treat unexplained
+  filesystem loss as possible on this shared machine. NO durable loss: all held
+  tips and recover-* bookmarks live in the jj store and on origin, and the
+  engine byte-fixpoint rebuilt identically from a rescued gate-pool binary.
+  Countermeasures now standing: .jj-ws/ is gitignored (it was untracked-but-not-
+  ignored — one bad snapshot away from being swallowed into a commit);
+  workspace checkouts are treated as disposable and recreated from the store on
+  demand; a rescue engine copy lives outside the repo; and any workspace whose
+  directory disappears gets its registration forgotten promptly so stale wc
+  pointers cannot confuse later operations.
