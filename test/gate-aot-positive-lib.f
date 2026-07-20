@@ -211,6 +211,39 @@ variable GAP-BLR-CNT
    GAP-DATA-EXPECT s" hb-build AOT data region output" GB-RUN-EXPECT
    s" PASS: hb-build AOT persistent data region (create/,/variable/@/!/+!/loop)" type cr ;
 
+\ Persistent-data code-window regression (dot habu-identify-code-pointers-b973e6cc,
+\ red-first). A datum whose VALUE lands in the former [RBASE-VA, RBASE-VA+REGION)
+\ magnitude window -- here RBASE-VA+REGION-8, the top cell of the JIT region, free
+\ space far above the code high-water -- is NOT a pointer. The old CELL-TEXTPTR?
+\ magnitude window MISclassified it and hb-build rejected the program (exit 70); the
+\ live-extents test correctly classifies it as data, so the program builds and its
+\ MAIN reads the datum back unchanged. The embedded AOT-TEXTPTR-TEST self-test runs in
+\ the maker (where CELL-TEXTPTR? lives, not reachable from MAIN so it never bloats the
+\ image) and pins BOTH directions: the free-region value is data, a live dict-record
+\ address and a live code entry (MAIN's) are pointers. The RBASE-VA/REGION expression is
+\ evaluated by the maker, so the case tracks the constants if a later dot moves the region.
+: GAP-DATA-WINDOW-SOURCE ( -- )
+   GE-SRC-RESET
+   s" create X RBASE-VA REGION + 8 - ," GE-SRC-LINE
+   s\" : MAIN ( -- ) X @ RBASE-VA REGION + 8 - = IF s\" ok\" ELSE s\" bad\" THEN type cr ;" GE-SRC-LINE
+   s" package AOT-TEXTPTR-TEST" GE-SRC-LINE
+   s" : XPECT ( bool ptr u8 n -- ) {: ok:bool label:ptr labelu:n :} ok 0= if label labelu 74 die then ;" GE-SRC-LINE
+   s\" : RUN ( -- ) RBASE-VA REGION + 8 - CELL-TEXTPTR? 0= s\" free-region value is data\" XPECT 0 XREF-REC-ADDR CELL-TEXTPTR? s\" live dict-record is a pointer\" XPECT FINDMAIN XREF-START CELL-TEXTPTR? s\" live code entry is a pointer\" XPECT ;" GE-SRC-LINE
+   s" RUN" GE-SRC-LINE
+   s" ;package" GE-SRC-LINE ;
+
+: GAP-DATA-WINDOW-EXPECT ( -- ptr u8 n )
+   SB-RESET
+   s" ok" GE-OUT-LINE
+   SB$ ;
+
+: GAP-DATA-WINDOW ( -- )
+   s" hb-aot-window.f" s" hb-aot-window" s" hb-aot-window-report.json" GAP-PATHS
+   GAP-DATA-WINDOW-SOURCE
+   s" hb-build AOT code-window datum build" GAP-BUILD-STRICT
+   GAP-DATA-WINDOW-EXPECT s" hb-build AOT code-window datum output" GB-RUN-EXPECT
+   s" PASS: hb-build AOT code-window datum (metadata classification, not magnitude)" type cr ;
+
 \ Layout-bundle store: a program whose MAIN stores a wide (multi-cell) layout
 \ value through `!`. The pass-2 wide-store lowering (LP2STORE) emits a runtime
 \ call to the engine-resident (PROT-SPAN) span guard before the mutation. In a
@@ -407,6 +440,7 @@ variable GAP-BLR-CNT
    s" hb-gate-aot-bundle-data" GT-START
    GAP-BUNDLE
    GAP-DATA
+   GAP-DATA-WINDOW
    GAP-LAYOUT-STORE
    GAP-LAYOUT-FETCH
    GT-CLEANUP ;

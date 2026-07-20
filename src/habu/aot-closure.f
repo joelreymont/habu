@@ -13,6 +13,12 @@ s" CHECK!" s" ptr u8 n -- n" TRUST
 
 : AOT-DBASE@ dbase@ ;
 s" AOT-DBASE@" s" -- ptr a" TRUST
+\ Live-extent bounds as integers, for value-domain range tests (CELL-TEXTPTR?):
+\ the dict-record region base and the emitted-code high-water.
+: AOT-DBASE-N dbase@ ;
+s" AOT-DBASE-N" s" -- n" TRUST
+: AOT-CP-N cp@ ;
+s" AOT-CP-N" s" -- n" TRUST
 : AOT-PTR@ {: a:ptr :} ( ptr a -- ptr a )
    a @ ;
 s" AOT-PTR@" s" ptr a -- ptr a" TRUST

@@ -96,8 +96,16 @@ $F0000 constant AOT-DATA-BLOB-MAX          \ keep the blob within ADR ±1MB rang
    here  BLOB-END !
    BLOB-END @ BLOB-SRC @ - dup 0 < IF s" aot: negative data span" 74 die THEN BLOB-LEN ! ;
 
-: CELL-TEXTPTR? ( n -- bool )               \ true if a code/dict pointer (RBASE-VA window)
-   dup RBASE-VA >=  swap RBASE-VA REGION + < and ;
+\ A cell holds a code/dict pointer iff its value lands in a LIVE engine extent the
+\ dictionary records: the dict-record array [AOT-DBASE@, +ndict@*DREC) or the emitted
+\ code span [AOT-DBASE@+DICT-SIZE, AOT-CP@). Both bounds are recorded live extents, so a
+\ plain datum in free space (above the code high-water, or a free dict slot) is data and
+\ the classification survives the code region moving near ordinary integer magnitudes. The
+\ former [RBASE-VA, RBASE-VA+REGION) window was a MAGNITUDE HEURISTIC that misclassified any
+\ datum in the 8 MiB window as a pointer (dot habu-identify-code-pointers-b973e6cc).
+: CELL-TEXTPTR? ( n -- bool ) {: v:n :}     \ code/dict pointer, by live extents (not magnitude)
+   v AOT-DBASE-N >=  v AOT-DBASE-N ndict@ DREC * + < and IF 0 0= EXIT THEN   \ in live dict records
+   v AOT-DBASE-N DICT-SIZE + >=  v AOT-CP-N < and ;                          \ in emitted code
 : AOT-DATA-TEXTPTR? ( -- bool )
    BLOB-SRC @ DSCAN !
    BEGIN DSCAN @ 8 + BLOB-END @ <= WHILE
