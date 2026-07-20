@@ -715,7 +715,12 @@ points stay listed.
   verification (SM clock before/after each burst), best-of-3, then a perf-rows.tsv
   candidate row it never commits. The element-exact precondition reuses the shared
   import-safe `tools/ptx/mma-exact-lib.f` (package MMA-EXACT) instead of a private copy.
-  Device/manual (self-runs a 512-class smoke at load), NOT in the resident gate image.
+  Import-safe at load (defines the words, opens no libcuda, allocates nothing, runs no
+  sweep): `AT-SWEEP-VALIDATE` bounds the candidate count 0..`SW-CANDS-CAP` (`E-SW-COUNT`)
+  and the square edge 1..`MX-MAX` (`MX-E-CAP`) before any allocation, emit, solo-wait, or
+  CUDA open, and the candidate rows are staged only through a package-private bounds-checked
+  `SW-CAND-ROW` (`E-SW-CAND`). `AT-SWEEP-SMOKE` is the explicit device entry (self-skips
+  off-device via `CUDA:OPEN?`), NOT in the resident gate image.
 - `tools/ptx/perf-compare.f` — perf-regression compare over registry rows:
   latest same-key pair per kernel+config+device+metric vs `PERF:TOL-MILLI`.
 - `tools/ptx/perf-compare-test.f` — improve/regress/tolerance-edge/missing-row
@@ -745,12 +750,22 @@ points stay listed.
   (package MMA-EXACT): typed seven-buffer ownership, integer fill, f64 host matmul
   reference, zero-tolerance compare, dtype (tf32/fp16/bf16) pack, device
   alloc/free/params/htod/dtoh, and the ptxas assemble + zero-block launch-shape guard.
-  Loading it allocates nothing, opens no device, and runs no campaign (the seven
-  buffers are heap-allocated only by `MX-BUF-INIT`); shared by
-  `tools/ptx/mma-gemm-check.f` and `tools/ptx/autotune-sweep.f`.
+  Every buffer-indexing word guards its own domain via the edge-capacity check
+  (`MX-EDGE-OK?`/`MX-CHECK-EDGE`/`MX-CHECK-E`, `MX-E-CAP`) so a square edge outside
+  1..`MX-MAX` dies named instead of over-running the buffers, with seeded overflow-tripwire
+  canary cells (`MX-CANARY-SEED`/`MX-CANARY-INTACT?`). Loading it allocates nothing, opens
+  no device, and runs no campaign (the seven buffers are heap-allocated only by
+  `MX-BUF-INIT`); shared by `tools/ptx/mma-gemm-check.f` and `tools/ptx/autotune-sweep.f`.
 - `tools/ptx/mma-exact-lib-test.f` — host-side coverage: the import-safety invariant
-  (no host/device allocation at load) plus the launch-independent exactness math
-  (fill / f64 reference / zero-tolerance compare), device-free.
+  (no host/device allocation at load), the launch-independent exactness math (fill / f64
+  reference / zero-tolerance compare), and the edge-capacity bounds (edge predicate over the
+  edges -1, 0, 1, 511, 512, 513 and a max cell; overflow-unreachability; max-edge canary intact;
+  and a bad-edge `MX-DEV-ALLOC` allocating no device handle), device-free.
+- `tools/ptx/autotune-sweep-test.f` — host-side coverage for the GB sweep bounds
+  (package AUTOTUNE): candidate index -1/0/31/32/33/huge (`E-SW-CAND`), candidate count
+  0..`SW-CANDS-CAP` and negative (`E-SW-COUNT`), square edge 1..`MX-MAX` (`MX-E-CAP`),
+  the arena canary, and the zero-side-effect rejection witness (a bad-parameter `AT-SWEEP`
+  throws the validator's code with the host arena still unallocated), device-free.
 - `tools/ptx/mma-gemm-check.f` — device-correctness of the full K-looping TF32
   mma.sync GEMM kernel (MMM) element-exact vs a host matmul at 64^3 and 128^3
   (staging + accumulation + the warp/D-fragment store mapping), plus the fp16 and

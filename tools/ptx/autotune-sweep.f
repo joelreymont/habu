@@ -20,9 +20,12 @@
 \ formatting) live in tools/ptx/autotune.f (package AUTOTUNE) and are unit-tested
 \ in the gate's ptx-toolchain slice (tools/ptx/autotune-test.f). This file adds the
 \ GPU-driving orchestration to the SAME package, so the entry point AT-SWEEP is a
-\ named AUTOTUNE word. Like tools/ptx/gemm-bench.f and tools/ptx/mma-gemm-check.f it
-\ is a device/manual tool (it self-runs a tiny smoke at load), NOT wired into the
-\ resident gate image - loading it there would open libcuda and SIGBUS.
+\ named AUTOTUNE word. IMPORT-SAFE by construction: loading this file defines the
+\ words but opens no libcuda, allocates nothing, assembles nothing, and runs no
+\ sweep - the candidate staging + bounds validation are host-side and unit-tested
+\ off-device (tools/ptx/autotune-sweep-test.f). AT-SWEEP-SMOKE is the explicit
+\ device entry (it opens a CUDA context and drives the GB10); a human or a device
+\ suite invokes it, and it self-skips off-device via CUDA:OPEN?.
 \
 \ ELEMENT-EXACT: the integer fill / f64 host reference / zero-tolerance compare / dtype
 \ pack / device alloc-htod-params-dtoh / ptxas assemble are the import-safe library
@@ -50,6 +53,9 @@ require tools/ptx/bench.f
 require tools/ptx/mma-exact-lib.f
 require tools/ptx/profile.f
 require tools/ptx/autotune.f
+
+-7315 constant E-SW-COUNT      \ sweep candidate count outside 0..SW-CANDS-CAP (would read config rows past SW-CANDS)
+-7316 constant E-SW-CAND       \ staged candidate index outside 0..SW-CANDS-CAP-1 (would read/write a config row past SW-CANDS)
 
 package AUTOTUNE
 public
@@ -226,21 +232,48 @@ variable SW-BEST-NS  variable SW-CLK-MIN  variable SW-CLK-MAX  variable SW-VALID
 \ Candidates are prebuilt in SW-CANDS (row = AT-CFG-N cells); SW-CAND-ROW mirrors
 \ AT-WIN-ROW's create-base + offset so each row types as ptr a. The caller stages a
 \ menu subset here (copy a winner, set defaults, tweak a knob), then calls AT-SWEEP.
-32 constant SW-CANDS-CAP                     \ max staged candidates
-create SW-CANDS SW-CANDS-CAP AT-CFG-N * cells allot
 public
-: SW-CAND-ROW ( n -- ptr a )  AT-CFG-N * cells SW-CANDS + ;
+32 constant SW-CANDS-CAP                     \ max staged candidates (public: the candidate count/index bound)
+private
+1 constant SW-CAND-GUARD                     \ canary cell past the candidate arena (overflow tripwire)
+create SW-CANDS SW-CANDS-CAP AT-CFG-N * cells  SW-CAND-GUARD cells  allot
+$5A5A5A5A5A5A5A5A constant SW-CAND-CANARY-VAL
+public
+: SW-CAND-OK? ( n -- bool )  dup 0 >=  swap SW-CANDS-CAP <  and ;        \ valid candidate INDEX 0..SW-CANDS-CAP-1
+: SW-COUNT-OK? ( n -- bool )  dup 0 >=  swap SW-CANDS-CAP <=  and ;       \ valid candidate COUNT 0..SW-CANDS-CAP
+: SW-CAND-CANARY-SEED ( -- )    SW-CAND-CANARY-VAL  SW-CANDS SW-CANDS-CAP AT-CFG-N * cells +  ! ;
+: SW-CAND-CANARY-INTACT? ( -- bool )  SW-CANDS SW-CANDS-CAP AT-CFG-N * cells +  @ SW-CAND-CANARY-VAL = ;
+\ The candidate arena holds SW-CANDS-CAP config rows (AT-CFG-N cells each). Row access is the
+\ owning boundary: SW-CAND-ROW is package-private and bounds-checked, so no external caller can
+\ obtain a raw base+offset pointer and stage index -1 / SW-CANDS-CAP / huge into config storage.
+private
+: SW-CAND-ROW ( n -- ptr a )                                    \ bounds-checked row pointer (0..SW-CANDS-CAP-1)
+   dup SW-CAND-OK? 0= if E-SW-CAND throw then
+   AT-CFG-N * cells SW-CANDS + ;
+public
 : SW-CAND-DEF ( n -- )  SW-CAND-ROW AT-DEFAULTS ;               \ row = the cg-mma baseline record
 : SW-CAND-COPY ( ptr a n -- ) {: src:ptr idx:n :}              \ row idx = a copy of the config at src
    idx SW-CAND-ROW {: dst:ptr :}
    AT-CFG-N 0 ?do  src i AT-CFG@  dst i AT-CFG!  loop ;
+: SW-CAND-SET ( n n n -- ) {: field:n :}                       \ ( value idx field -- ) set one knob of a staged row, bounds-checked
+   SW-CAND-ROW field AT-CFG! ;
 
 \ AT-SWEEP - the entry point. Sweeps `count` config records prestaged in SW-CANDS
 \ at square shape n. Each legal config is element-exact-gated then timed solo,
 \ best-of-3, at the sustained clock; illegal configs are pruned via the emitter's
 \ own guards (AT-LEGAL?) and listed. Rows go to stdout as a candidate report;
 \ committing them into perf-rows.tsv is the maintainer's reviewed step.
+\ Reject the sweep parameters BEFORE any allocation, emission, solo-wait, or CUDA open: a bad
+\ candidate count would read config rows past SW-CANDS; a square edge outside 1..MX-MAX would
+\ index the MMA-EXACT host/packed buffers out of bounds (a positive tileable n>512 otherwise
+\ passes the per-config shape check and then over-runs fill/ref/compare). Both die named here,
+\ so a rejected sweep does zero allocation, emit, assembler, context, or launch work.
+: AT-SWEEP-VALIDATE ( n n -- ) {: count:n n:n :}
+   count SW-COUNT-OK? 0= if E-SW-COUNT throw then
+   n MMA-EXACT:MX-EDGE-OK? 0= if MMA-EXACT:MX-E-CAP throw then ;
+
 : AT-SWEEP ( n n -- ) {: count:n n:n :}
+   count n AT-SWEEP-VALIDATE                   \ validate count + edge before any side effect
    MMA-EXACT:MX-BUF-INIT
    AT-XCL-RESET
    s" # AT-SWEEP candidate report - perf-rows.tsv 12-field layout; NOT written to perf-rows.tsv (review before committing)" type cr
@@ -264,9 +297,7 @@ public
    CUDA:OPEN? 0= if s" at-sweep: libcuda unavailable -> SKIPPED (off-device)" type cr exit then
    512 512 512 0 AT-SELECT 0 SW-CAND-COPY                  \ row0 = tf32 512 committed winner (legal -> exact -> timed)
    1 SW-CAND-DEF                                           \ row1 = tf32 8-warp baseline (legal -> exact -> timed)
-   2 SW-CAND-DEF  16 2 SW-CAND-ROW AT-WARPS AT-CFG!        \ row2 = defaults + W=16 -> E-MMA-WARPS (pruned)
+   2 SW-CAND-DEF  16 2 AT-WARPS SW-CAND-SET               \ row2 = defaults + W=16 -> E-MMA-WARPS (pruned)
    3 512 AT-SWEEP ;
 
 ;package
-
-AUTOTUNE:AT-SWEEP-SMOKE

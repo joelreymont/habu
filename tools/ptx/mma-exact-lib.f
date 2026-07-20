@@ -42,6 +42,8 @@ public
 512 constant MX-MAX                        \ largest square edge (buffers sized for this; 512 = grouped-raster / XSWIZ 512^3 checks)
 MX-MAX MX-MAX * constant MX-CAP            \ 262144 elems at 512^2
 -6101 constant MX-E-ZEROBLK                \ launch M < the block rows (BROWS) or a ragged multiple -> silent zero/partial C
+-6110 constant MX-E-CAP                    \ square edge outside 1..MX-MAX -> the host/packed buffers (MX-CAP) would be indexed out of bounds
+1 constant MX-GUARD                        \ canary cells allocated past each buffer's used region (an overflow tripwire, seeded by MX-CANARY-SEED)
 
 \ ---- typed host/packed buffer ownership (heap-allocated once, LAZILY) --------
 \ Large host/packed buffers are HEAP-allocated (mmap), not `allot`ed: at MX-MAX=512 the seven
@@ -62,21 +64,52 @@ public
 : MX-BUF-READY? ( -- bool )  MX-HA-P @ 0 <> ;   \ import-safety probe: false until MX-BUF-INIT
 : MX-BUF-INIT ( -- )                       \ heap-allocate the seven large buffers once (idempotent)
    MX-HA-P @ if exit then
-   MX-CAP MEM:CELLS-ALLOC-COUNT MEM:ALLOC-CELLS MX-HA-P !
-   MX-CAP MEM:CELLS-ALLOC-COUNT MEM:ALLOC-CELLS MX-HB-P !
-   MX-CAP MEM:CELLS-ALLOC-COUNT MEM:ALLOC-CELLS MX-HREF-P !
-   MX-CAP MEM:CELLS-ALLOC-COUNT MEM:ALLOC-CELLS MX-HC-P !
-   MX-CAP 4 * MEM:BYTES-ALLOC-LEN MEM:ALLOC-BYTES drop MX-PA-P !
-   MX-CAP 4 * MEM:BYTES-ALLOC-LEN MEM:ALLOC-BYTES drop MX-PB-P !
-   MX-CAP 4 * MEM:BYTES-ALLOC-LEN MEM:ALLOC-BYTES drop MX-PC-P ! ;
+   MX-CAP MX-GUARD + MEM:CELLS-ALLOC-COUNT MEM:ALLOC-CELLS MX-HA-P !     \ +MX-GUARD canary cell past index MX-CAP-1
+   MX-CAP MX-GUARD + MEM:CELLS-ALLOC-COUNT MEM:ALLOC-CELLS MX-HB-P !
+   MX-CAP MX-GUARD + MEM:CELLS-ALLOC-COUNT MEM:ALLOC-CELLS MX-HREF-P !
+   MX-CAP MX-GUARD + MEM:CELLS-ALLOC-COUNT MEM:ALLOC-CELLS MX-HC-P !
+   MX-CAP 4 * MX-GUARD cells + MEM:BYTES-ALLOC-LEN MEM:ALLOC-BYTES drop MX-PA-P !   \ +MX-GUARD canary cell past byte MX-CAP*4-1
+   MX-CAP 4 * MX-GUARD cells + MEM:BYTES-ALLOC-LEN MEM:ALLOC-BYTES drop MX-PB-P !
+   MX-CAP 4 * MX-GUARD cells + MEM:BYTES-ALLOC-LEN MEM:ALLOC-BYTES drop MX-PC-P ! ;
+
+\ ---- overflow tripwires: a seeded sentinel just past each buffer's used region --
+\ MX-CANARY-SEED stamps the sentinel into the guard cell of all seven buffers; after a
+\ max-edge (n=MX-MAX) pass over the buffer-indexing words, MX-CANARY-INTACT? must still
+\ hold - a single perturbed sentinel is an overflow past the used [0,MX-CAP) region.
+private
+$5A5A5A5A5A5A5A5A constant MX-CANARY-VAL
+public
+: MX-CANARY-SEED ( -- )
+   MX-CANARY-VAL MX-HA   MX-CAP cells + !   MX-CANARY-VAL MX-HB   MX-CAP cells + !
+   MX-CANARY-VAL MX-HREF MX-CAP cells + !   MX-CANARY-VAL MX-HC   MX-CAP cells + !
+   MX-CANARY-VAL MX-PA   MX-CAP 4 * + !     MX-CANARY-VAL MX-PB   MX-CAP 4 * + !
+   MX-CANARY-VAL MX-PC   MX-CAP 4 * + ! ;
+: MX-CANARY-INTACT? ( -- bool )
+   MX-HA   MX-CAP cells + @ MX-CANARY-VAL =   MX-HB   MX-CAP cells + @ MX-CANARY-VAL = and
+   MX-HREF MX-CAP cells + @ MX-CANARY-VAL = and   MX-HC MX-CAP cells + @ MX-CANARY-VAL = and
+   MX-PA   MX-CAP 4 * + @ MX-CANARY-VAL = and   MX-PB   MX-CAP 4 * + @ MX-CANARY-VAL = and
+   MX-PC   MX-CAP 4 * + @ MX-CANARY-VAL = and ;
 
 \ ---- state: current square edge + compare evidence --------------------------
 variable MX-N                              \ current square edge (M=N=K)
 variable MX-BADI                           \ first mismatching index (-1 = none)
 create MX-MAXERR 1 cells allot             \ f64 max abs error over the compare
 
+\ ---- edge-capacity guard: every buffer-indexing word validates its own domain --
+\ The seven host/packed buffers hold MX-CAP = MX-MAX^2 elements; a square edge n indexes
+\ them at [0, n*n), so only 1 <= n <= MX-MAX stays in bounds. Each MX-* word that indexes a
+\ buffer guards its own domain (MX-CHECK-EDGE on MX-N, MX-CHECK-E on an explicit extent) so a
+\ future consumer inherits the safety: a bare n>MX-MAX (tileable or not) dies named as MX-E-CAP
+\ here, never OOB-writing. With n <= MX-MAX the products n*n (<=262144) and n*n*n (<=1.3e8) and
+\ the byte size n*n*4 (<=1.05e6) all sit far below the 63-bit ceiling, so the domain guard makes
+\ every downstream multiply overflow-UNREACHABLE (no wrap possible once the edge check passes).
+: MX-EDGE-OK? ( n -- bool )  dup 0 >  swap MX-MAX <=  and ;    \ 1..MX-MAX
+: MX-CHECK-EDGE ( -- )  MX-N @ MX-EDGE-OK? 0= if MX-E-CAP throw then ;   \ guard MX-N before any host/device index
+: MX-CHECK-E ( e -- e )  dup 0 <  over MX-CAP >  or if MX-E-CAP throw then ;   \ guard an explicit extent against the buffer capacity
+
 \ ---- element-exact fill / host reference / compare (integer, bit-exact) ------
 : MX-FILL ( -- )                           \ deterministic varied small integers (1..13 / 1..11)
+   MX-CHECK-EDGE
    MX-N @ {: n:n :}
    n 0 ?do  i {: r:n :}
       n 0 ?do
@@ -93,11 +126,13 @@ private
    loop ;
 public
 : MX-REF ( -- )
+   MX-CHECK-EDGE
    MX-N @ {: n:n :}
    n 0 ?do  i {: m:n :}
       n 0 ?do  m i MX-DOT  MX-HREF m n * i + T-SET  loop
    loop ;
 : MX-COMPARE ( -- n )                      \ mismatch count over n*n; sets MX-BADI, MX-MAXERR (zero tolerance)
+   MX-CHECK-EDGE
    -1 MX-BADI !  0.0 MX-MAXERR !  0
    MX-N @ MX-N @ * 0 ?do
       MX-HC i T-GET  MX-HREF i T-GET  f-  fabs {: err:r :}
@@ -108,7 +143,7 @@ public
    loop ;
 
 \ ---- dtype-dispatched host -> packed A,B (F64 host -> tf32/fp16/bf16 device) --
-: MX-PACK-AB ( e -- ) {: e:n :}
+: MX-PACK-AB ( e -- )  MX-CHECK-E {: e:n :}
    MMA-BF16? if      MX-HA e MX-PA BF16-PACK  MX-HB e MX-PB BF16-PACK   \ F64>BF16 RNE
    else MMA-F16? if  MX-HA e MX-PA F16-PACK   MX-HB e MX-PB F16-PACK    \ F64->fp16
    else              MX-HA e MX-PA F32-PACK   MX-HB e MX-PB F32-PACK    \ F64->tf32
@@ -117,6 +152,7 @@ public
 \ ---- device buffers + host<->device movement --------------------------------
 variable MX-DA  variable MX-DB  variable MX-DC
 : MX-DEV-ALLOC ( -- )                      \ A/B sized by dtype elem bytes (MMA-ESZ), C f32; from MX-N
+   MX-CHECK-EDGE
    MX-N @ dup * {: e:n :}
    e MMA-ESZ * MX-DA PTXBENCH:DEVICE-ALLOC
    e MMA-ESZ * MX-DB PTXBENCH:DEVICE-ALLOC
@@ -126,10 +162,10 @@ variable MX-DA  variable MX-DB  variable MX-DC
    MX-DB @ 0 <> if MX-DB @ PTXBENCH:DEVICE-FREE then
    MX-DC @ 0 <> if MX-DC @ PTXBENCH:DEVICE-FREE then
    0 MX-DA !  0 MX-DB !  0 MX-DC ! ;
-: MX-HTOD-AB ( e -- ) {: e:n :}            \ upload the packed A,B to the device buffers
+: MX-HTOD-AB ( e -- )  MX-CHECK-E {: e:n :}   \ upload the packed A,B to the device buffers
    MX-DA @ MX-PA e MMA-ESZ * PTXBENCH:HTOD
    MX-DB @ MX-PB e MMA-ESZ * PTXBENCH:HTOD ;
-: MX-DTOH-C ( e -- ) {: e:n :}             \ read C back to the host and unpack f32 -> host f64
+: MX-DTOH-C ( e -- )  MX-CHECK-E {: e:n :}    \ read C back to the host and unpack f32 -> host f64
    MX-PC MX-DC @ e 4 * PTXBENCH:DTOH
    MX-PC e MX-HC F32-UNPACK ;
 
