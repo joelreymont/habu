@@ -60,3 +60,5 @@ REMAINING (the dedicated ENGINE lane, exact scope):
    file's bound; persistent tables from counted nodes.
 3. Model arena mark/release + the two-different-sizes regression + pointer-rebind
    and snapshot/replay audits + the 12-block acceptance with pinned accounting.
+
+Claim: agent=lbufdefer workspace=.jj-ws/fable-lbufdefer machine=spark (THE ENGINE LANE for stage 2: owns src/core/layout-buffer.f deferred-offset definer + the typed-column rewires in maki/model-ir.f tensor-value.f backward.f cad.f + gptblock-attn stack tests + both gate size files; CODELEN rows same-commit, fixpoint x2)
