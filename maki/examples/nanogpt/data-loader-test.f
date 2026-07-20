@@ -26,6 +26,8 @@ require maki/examples/nanogpt/batch-loader.f
 
 package MAKI
 
+using DATA-LOADER      \ consumer-import of the loader's LOAD / E-DL-EMPTY surface
+
 : DLT-TEXT ( -- ptr u8 n )  s" To be, or not to be, that is the question:" ;
 
 \ ---- per-run private fixture root + child paths (all built at setup time) -----
@@ -60,6 +62,25 @@ create DLT-IDS0 DLT-ROWS cells allot      \ determinism snapshot: ids
 create DLT-TGT0 DLT-ROWS cells allot      \ determinism snapshot: targets
 variable DLT-N                            \ corpus token count
 
+\ ---- transactional-publication fixtures (dot habu-make-corpus-load-d6ce6c05) --
+\ Two INDEPENDENT corpora with distinct alphabets so a mis-timed publish is
+\ visible: A = {a,b,c} (vocab size 3), B = {w,x,y,z} (vocab size 4). Proving a
+\ failed reload of B leaves A's vocabulary AND A's already-loaded corpus
+\ bit-identical is the mechanical proof that publication is transactional. B is
+\ larger than A on purpose, so A's ids (0..2) stay in range under B's vocab and a
+\ swap shows up as a wrong-but-non-throwing decode rather than an E-TOK-RANGE.
+create DLT-A-BUF FS-PATH-CAP allot  variable DLT-A-U    \ corpus-A fixture path
+create DLT-B-BUF FS-PATH-CAP allot  variable DLT-B-U    \ corpus-B fixture path
+: DLT-A-PATH ( -- ptr u8 n )  DLT-A-BUF DLT-A-U @ ;
+: DLT-B-PATH ( -- ptr u8 n )  DLT-B-BUF DLT-B-U @ ;
+: DLT-TEXT-A ( -- ptr u8 n )  s" abcabc" ;
+: DLT-TEXT-B ( -- ptr u8 n )  s" wxyzwxyz" ;
+create DLT-A-IDS  DLT-TCAP cells allot   \ corpus-A ids, retained across failing reloads
+create DLT-DEC    DLT-TCAP allot         \ decode scratch for the round-trip proof
+create DLT-VOCAB0 256 allot              \ prior id->byte snapshot (TOK-SIZE <= 256)
+variable DLT-SIZE0                        \ prior vocab size
+variable DLT-NA                           \ corpus-A token count
+
 : DLT-SENT-TEXT ( -- ptr u8 n )  s" SENTINEL-KEEP-ME" ;
 
 \ WRITE-ALL opens O_CREAT|O_TRUNC and FOLLOWS symlinks, so a link planted at the
@@ -78,12 +99,14 @@ variable DLT-N                            \ corpus token count
    DLT-ROOT$ s" absent.txt"   DLT-MISS-BUF    JOIN-PATH DLT-MISS-U !
    DLT-ROOT$ s" sentinel.txt" DLT-SENT-BUF    JOIN-PATH DLT-SENT-U !
    DLT-ROOT$ s" linked.txt"   DLT-LINK-BUF    JOIN-PATH DLT-LINK-U !
-   DLT-ROOT$ s" scratch.txt"  DLT-SCRATCH-BUF JOIN-PATH DLT-SCRATCH-U ! ;
+   DLT-ROOT$ s" scratch.txt"  DLT-SCRATCH-BUF JOIN-PATH DLT-SCRATCH-U !
+   DLT-ROOT$ s" corpus-a.txt" DLT-A-BUF       JOIN-PATH DLT-A-U !
+   DLT-ROOT$ s" corpus-b.txt" DLT-B-BUF       JOIN-PATH DLT-B-U ! ;
 
 : DLT-WRITE-FIXTURE ( -- )  DLT-PATH       DLT-TEXT    DLT-SAFE-WRITE ;
 : DLT-WRITE-EMPTY   ( -- )  DLT-EMPTY-PATH DLT-TEXTBUF 0 DLT-SAFE-WRITE ;
 : DLT-LOAD ( -- )
-   DLT-PATH DLT-TEXTBUF DLT-TCAP DLT-CORPUS DLT-TCAP DL-LOAD-CORPUS DLT-N ! ;
+   DLT-PATH DLT-TEXTBUF DLT-TCAP DLT-CORPUS DLT-TCAP LOAD DLT-N ! ;
 : DLT-BATCH ( n -- ) {: seed:n :}         \ draw a batch at the given seed
    DLT-CORPUS DLT-N @ DLT-B DLT-T DLT-DIM seed BL-LOAD ;
 
@@ -117,10 +140,41 @@ variable DLT-N                            \ corpus token count
    BL-IDS DLT-IDS0 DLT-ROWS DLT-EQ? 0= ;
 
 : DLT-TRY-MISSING ( -- )
-   DLT-MISSING-PATH DLT-TEXTBUF DLT-TCAP DLT-CORPUS DLT-TCAP DL-LOAD-CORPUS drop ;
+   DLT-MISSING-PATH DLT-TEXTBUF DLT-TCAP DLT-CORPUS DLT-TCAP LOAD drop ;
 : DLT-TRY-EMPTY ( -- )
    DLT-WRITE-EMPTY
-   DLT-EMPTY-PATH DLT-TEXTBUF DLT-TCAP DLT-CORPUS DLT-TCAP DL-LOAD-CORPUS drop ;
+   DLT-EMPTY-PATH DLT-TEXTBUF DLT-TCAP DLT-CORPUS DLT-TCAP LOAD drop ;
+
+\ ---- transactional-publication probes + snapshots ----------------------------
+: DLT-WRITE-A ( -- )  DLT-A-PATH DLT-TEXT-A DLT-SAFE-WRITE ;
+: DLT-WRITE-B ( -- )  DLT-B-PATH DLT-TEXT-B DLT-SAFE-WRITE ;
+
+: DLT-SNAP-VOCAB ( -- )                      \ capture the published id->byte table
+   TOK-SIZE DLT-SIZE0 !
+   DLT-SIZE0 @ 0 ?do  i TOK-CHAR DLT-VOCAB0 i + c!  loop ;
+
+: DLT-VOCAB-SAME? ( -- bool )                \ vocab bit-identical to the snapshot
+   TOK-SIZE DLT-SIZE0 @ = 0= if false exit then
+   DLT-SIZE0 @ 0 ?do
+      i TOK-CHAR  DLT-VOCAB0 i + c@  <> if false unloop exit then
+   loop true ;
+
+: DLT-DECODES? ( ptr a n ptr u8 n -- bool )  \ ids[0,n) decode byte-exactly to txt
+   {: ids:ptr n:n txt:ptr txtu:n :}
+   ids n DLT-DEC DLT-TCAP TOK-DECODE {: nb:n :}
+   DLT-DEC nb txt txtu T-STR= ;
+
+: DLT-CORPUS-A-OK? ( -- bool )               \ prior corpus still decodes to A under the vocab in force
+   DLT-A-IDS DLT-NA @ DLT-TEXT-A DLT-DECODES? ;
+
+: DLT-LOAD-A ( -- )                          \ publish A's vocab + corpus, snapshot the vocab
+   DLT-A-PATH DLT-TEXTBUF DLT-TCAP DLT-A-IDS DLT-TCAP LOAD DLT-NA !
+   DLT-SNAP-VOCAB ;
+
+: DLT-TRY-CAP ( -- )                         \ corpus B into an undersized ids buffer -> E-TOK-CAP
+   DLT-B-PATH DLT-TEXTBUF DLT-TCAP DLT-CORPUS 3 LOAD drop ;
+: DLT-TRY-CAP0 ( -- )                        \ zero id capacity -> E-TOK-CAP
+   DLT-B-PATH DLT-TEXTBUF DLT-TCAP DLT-CORPUS 0 LOAD drop ;
 
 \ ---- checked assertion groups ------------------------------------------------
 : DLT-COUNT-OK? ( -- )                      \ corpus token count == fixture bytes
@@ -139,6 +193,38 @@ variable DLT-N                            \ corpus token count
 : DLT-REJECTS-OK? ( -- )                    \ file rejects (fail closed)
    [: DLT-TRY-MISSING ;] E-FS-OPEN  TTHROWSQ
    [: DLT-TRY-EMPTY   ;] E-DL-EMPTY TTHROWSQ ;
+
+\ Transactional publication: publishing the process-wide tokenizer is the single
+\ commit point, and every fallible check runs before it, so any file / empty /
+\ capacity error leaves the prior vocabulary and the caller's already-loaded corpus
+\ bit-identical. The capacity case is the red-first defect: the pre-fix loader built
+\ (published) B's vocab and only then hit E-TOK-CAP, swapping the process-wide vocab
+\ while producing no corpus.
+: DLT-TXN-OK? ( -- )
+   DLT-WRITE-A DLT-WRITE-B
+   DLT-LOAD-A                                            \ known prior vocab {a,b,c} + corpus A
+   [: DLT-TRY-MISSING ;] E-FS-OPEN  TTHROWSQ             \ file error, thrown before publish
+   DLT-VOCAB-SAME? TTRUE  DLT-CORPUS-A-OK? TTRUE
+   [: DLT-TRY-EMPTY   ;] E-DL-EMPTY TTHROWSQ             \ empty error, thrown before publish
+   DLT-VOCAB-SAME? TTRUE  DLT-CORPUS-A-OK? TTRUE
+   [: DLT-TRY-CAP     ;] E-TOK-CAP  TTHROWSQ             \ the defect: undersized ids buffer for corpus B
+   DLT-VOCAB-SAME? TTRUE  DLT-CORPUS-A-OK? TTRUE
+   [: DLT-TRY-CAP0    ;] E-TOK-CAP  TTHROWSQ             \ zero-capacity boundary
+   DLT-VOCAB-SAME? TTRUE  DLT-CORPUS-A-OK? TTRUE
+   DLT-LOAD-A  DLT-CORPUS-A-OK? TTRUE ;                  \ success reload: byte-identical round-trip
+
+: DLT-TWO-CORPORA-OK? ( -- )                \ sequential independent loads each publish their own vocab
+   DLT-A-PATH DLT-TEXTBUF DLT-TCAP DLT-A-IDS DLT-TCAP LOAD {: na:n :}
+   TOK-SIZE 3 T=                                         \ A: distinct {a,b,c}
+   DLT-A-IDS na DLT-TEXT-A DLT-DECODES? TTRUE
+   DLT-B-PATH DLT-TEXTBUF DLT-TCAP DLT-CORPUS DLT-TCAP LOAD {: nb:n :}
+   TOK-SIZE 4 T=                                         \ B replaces A: distinct {w,x,y,z}
+   DLT-CORPUS nb DLT-TEXT-B DLT-DECODES? TTRUE ;
+
+: DLT-CAP-EXACT-OK? ( -- )                  \ exact id capacity (icap == token count) loads and round-trips
+   DLT-TEXT-A nip {: n:n :}
+   DLT-A-PATH DLT-TEXTBUF DLT-TCAP DLT-CORPUS n LOAD n T=
+   DLT-CORPUS n DLT-TEXT-A DLT-DECODES? TTRUE ;
 
 : DLT-STALE-OK? ( -- )                      \ anti-stale invariant
    \ the missing name lives in a freshly-minted unique root, so it cannot be a
@@ -185,6 +271,9 @@ variable DLT-N                            \ corpus token count
    DLT-STALE-OK?
    DLT-SYMLINK-REJECT-OK?
    DLT-REJECTS-OK?
+   DLT-TXN-OK?
+   DLT-TWO-CORPORA-OK?
+   DLT-CAP-EXACT-OK?
    DLT-ISOLATION-OK?
    DLT-THROW-CLEANUP ;
 
