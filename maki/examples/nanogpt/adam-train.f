@@ -28,17 +28,17 @@
 \ Preconditions mirror the from-scratch trainer: AMT-SETUP needs a fresh
 \ MODEL: SCRATCH-MLP capture, ATN-SETUP a fresh MODEL: ADAM-ATTN capture
 \ (MODEL: is a top-level parsing word; each consumer re-issues the exact line).
-\ maki -> habu only; adam-train defines E-ADAM-RUN (-5144), E-ADAMW-POLICY (-5157),
-\ E-INIT-ROLE (-5158).
+\ maki -> habu only; adam-train defines E-ADAM-RUN (-5144). The AdamW param-group
+\ policy + per-role init policy (E-ADAMW-POLICY / E-INIT-ROLE) live in maki/train-core.f.
 
 require maki/examples/nanogpt/from-scratch-train.f
 require maki/optim-tensor.f
 require maki/loss-tensor.f
 require maki/array.f
 require maki/train-state.f
+require maki/train-core.f     \ AdamW param-group policy + per-role init policy
 
 -5144 constant E-ADAM-RUN   \ a trainer accessor was used before its training run
--5157 constant E-ADAMW-POLICY   \ a parameter's decay attribute is not a valid WD flag
 
 package MAKI
 public
@@ -48,54 +48,12 @@ public
 : ADAM-B2  ( -- r )  0.999 ;        \ second-moment decay
 : ADAM-EPS ( -- r )  0.00000001 ;   \ denominator epsilon (1e-8)
 
-\ ---- AdamW decoupled-decay param-group policy -------------------------------
-\ Every trained parameter carries an EXPLICIT decay attribute set where the
-\ trainer registers its slots (below): 2D weight matrices decay (WD-DECAY);
-\ biases and LayerNorm gamma/beta do not (WD-NONE) - the standard GPT-2/nanoGPT
-\ grouping. The trainer owns the decay coefficient; the per-parameter flag only
-\ GATES it. ADAMW-WD-FOR is the checked resolver: an attribute outside the two
-\ named flags is a registration bug, not a silent default -> throw.
-0  constant WD-NONE      \ excluded from weight decay (bias, LN gamma/beta)
--1 constant WD-DECAY     \ decoupled decay applies (2D weight matrix)
-
-: ADAMW-WD-FOR ( r n -- r ) {: wd:r flag:n :}
-   flag WD-DECAY = if wd exit then
-   flag WD-NONE  = if 0.0 exit then
-   E-ADAMW-POLICY throw ;
-
-\ ---- per-parameter-role init policy (GPT-2 / nanoGPT initialisation) ---------
-\ Every parameter carries an EXPLICIT init role, mirroring the WD flags above:
-\ the fill is chosen by role, never by sniffing a buffer name. Weight matrices
-\ draw normal(0, 0.02); residual-projection weights draw
-\ normal(0, 0.02/sqrt(2*n_layer)) (nanoGPT's per-block output-projection scaling,
-\ n_layer supplied at fill time); LayerNorm gamma=1, LayerNorm beta=0 and
-\ biases=0 are constant fills. INIT-FILL is the checked applicator - a role
-\ outside the five named flags is a registration bug, not a silent default ->
-\ throw. NEW surface: no existing fill is rewired here, so the committed AMT/ATN
-\ trajectories keep their uniform init.
--5158 constant E-INIT-ROLE   \ a parameter's init role is not a valid init policy flag
-
-1 constant IR-NORMAL         \ weight ~ normal(0, 0.02)
-2 constant IR-RESID          \ residual-projection weight ~ normal(0, 0.02/sqrt(2*n_layer))
-3 constant IR-LN-GAMMA       \ LayerNorm scale = 1
-4 constant IR-LN-BETA        \ LayerNorm shift = 0
-5 constant IR-BIAS           \ bias = 0
-
-: INIT-STD ( -- r )  0.02 ;                       \ GPT-2 base weight standard deviation
-
-: INIT-RESID-STD ( n -- r ) {: nlayer:n :}        \ 0.02 / sqrt(2 * n_layer)
-   INIT-STD  2 nlayer * s>f fsqrt  f/ ;
-
-: INIT-GFILL ( ptr a n r -- ) {: base:ptr len:n std:r :}   \ fill base with N(0,std^2)
-   len 0 ?do  SC-GAUSS std f*  base i T-SET  loop ;
-
-: INIT-FILL ( ptr a n n n -- ) {: base:ptr len:n nlayer:n role:n :}
-   role IR-NORMAL   = if  base len INIT-STD              INIT-GFILL  exit then
-   role IR-RESID    = if  base len nlayer INIT-RESID-STD INIT-GFILL  exit then
-   role IR-LN-GAMMA = if  1.0 base len T-FILL  exit then
-   role IR-LN-BETA  = if  0.0 base len T-FILL  exit then
-   role IR-BIAS     = if  0.0 base len T-FILL  exit then
-   E-INIT-ROLE throw ;
+\ ---- AdamW param-group policy + per-role init policy ------------------------
+\ WD-NONE / WD-DECAY / ADAMW-WD-FOR (the checked decay-attribute resolver) and
+\ the per-role init policy (IR-* / INIT-STD / INIT-RESID-STD / INIT-FILL) are
+\ generic framework facilities and live in maki/train-core.f; AMT-APPLY below
+\ routes each parameter's committed WD flag through ADAMW-WD-FOR. The init
+\ surface is not on the committed AMT/ATN path (their uniform init is untouched).
 
 private
 

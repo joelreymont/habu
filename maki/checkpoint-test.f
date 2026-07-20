@@ -1,8 +1,9 @@
 \ maki/checkpoint-test.f - segment-boundary checkpointing vs the full-
 \ materialization executor path (docs/maki/train.md "Gradient checkpointing" -
 \ the spec this asserts). Proves, deterministically: BIT-IDENTICAL (exact f=)
-\ losses, every input gradient, and the rematerialized interior on the
-\ committed MLP + attention models AND a 3-linear MLP whose interiors span two
+\ losses, every input gradient, and the rematerialized interior on library-owned
+\ fixtures - a 2-segment MLP (LINEAR GELU LINEAR) and a 3-segment attention block
+\ (MATMUL SCALE SOFTMAX-ROW MATMUL) AND a 3-linear MLP whose interiors span two
 \ segments (there the scratch overlay really destroys n0 during CK-FWD and
 \ CK-BWD recomputes it - remats=1); the committed live-buffer accounting
 \ (saved-across-the-cut strictly lower on every multi-segment model, peak live
@@ -28,12 +29,10 @@ require maki/executor.f
 require maki/report.f
 require maki/plan-vocab.f
 require maki/cad.f
-require maki/examples/nanogpt/from-scratch-model.f
 require maki/loss.f
-require maki/examples/nanogpt/from-scratch-train.f
 require maki/optim-tensor.f
 require maki/loss-tensor.f
-require maki/examples/nanogpt/adam-train.f
+require maki/train-core.f            \ SC-GRAD-AT (backward-node grad reader)
 require maki/checkpoint.f
 
 package MAKI
@@ -48,71 +47,131 @@ package MAKI
 \ ---- fail closed: run / accessor before any CK-SETUP -------------------------
 : CKT-THROW-SEG ( -- )  CK-SEG-N@ drop ;
 
-\ ---- MLP: baseline grads under EX-RUN, then the checkpointed re-run ----------
-create MGX  SC-XN  cells allot
-create MGW1 SC-W1N cells allot
-create MGB1 SC-B1N cells allot
-create MGW2 SC-W2N cells allot
-create MGB2 SC-B2N cells allot
-create MN0  SC-BATCH SC-HID * cells allot     \ interior node 0 (8x16)
+\ ---- MLP fixture: x:8x6 -LINEAR-> 8x16 -GELU-> -LINEAR-> 8x2 (2 segments) ------
+\ Library-owned vehicle: deterministic fills + a fixed target, mean-MSE loss +
+\ seed cotangent (LOSS:TT-MSE / LOSS:TT-MSE-DY). Baseline grads under EX-RUN, then
+\ the checkpointed re-run, both bit-identical.
+48 constant MF-XN   96 constant MF-W1N   16 constant MF-B1N
+32 constant MF-W2N   2  constant MF-B2N
+16 constant MF-ON                             \ 8x2 output elements
+128 constant MF-N0N                           \ 8x16 interior node 0
+
+create MF-X  MF-XN  cells allot   create MF-W1 MF-W1N cells allot
+create MF-B1 MF-B1N cells allot   create MF-W2 MF-W2N cells allot
+create MF-B2 MF-B2N cells allot
+create MF-TGT MF-ON cells allot   create MF-SEED MF-ON cells allot
+
+create MGX  MF-XN  cells allot
+create MGW1 MF-W1N cells allot
+create MGB1 MF-B1N cells allot
+create MGW2 MF-W2N cells allot
+create MGB2 MF-B2N cells allot
+create MN0  MF-N0N cells allot                \ interior node 0 (8x16)
 variable CKM-L
 
-: CKT-MLP-BASE ( -- )                \ precondition: fresh SCRATCH-MLP capture
-   SC-SETUP
-   BW-FWD-N@ EX-RUN-N
-   SC-LOSS-SEED CKM-L !
-   EX-RUN
-   SC-X-SLOT  SC-GRAD-AT MGX  SC-XN  CKT-COPY
-   SC-W1-SLOT SC-GRAD-AT MGW1 SC-W1N CKT-COPY
-   SC-B1-SLOT SC-GRAD-AT MGB1 SC-B1N CKT-COPY
-   SC-W2-SLOT SC-GRAD-AT MGW2 SC-W2N CKT-COPY
-   SC-B2-SLOT SC-GRAD-AT MGB2 SC-B2N CKT-COPY
-   0 MIR-NODE-ID EX-OUT@ MN0 SC-BATCH SC-HID * CKT-COPY ;
+\ deterministic varied fill, distinct stream per buffer (k)
+: MF-FILL ( ptr a n n -- ) {: p:ptr n:n k:n :}
+   n 0 ?do  k i 3 * + 17 mod s>f 0.07 f* 0.15 f+  p i T-SET  loop ;
 
-: CKT-MLP-CKPT ( -- r )              \ precondition: fresh SCRATCH-MLP capture
-   SC-INIT-PARAMS
-   SC-GEN-DATA
-   CK-SETUP
+: MF-FILLS ( -- )                    \ params/input + a non-uniform target
+   MF-X  MF-XN  1 MF-FILL   MF-W1 MF-W1N 2 MF-FILL   MF-B1 MF-B1N 3 MF-FILL
+   MF-W2 MF-W2N 4 MF-FILL   MF-B2 MF-B2N 5 MF-FILL
+   MF-ON 0 ?do  i 5 mod s>f 0.11 f* 0.4 f+  MF-TGT i T-SET  loop ;
+
+: MF-BIND ( -- )                     \ slots 0..4 in signature order + the seed
    EX-RESET
-   SC-X  SC-X-SLOT  MIR-SLOT-ID EX-BIND
-   SC-W1 SC-W1-SLOT MIR-SLOT-ID EX-BIND
-   SC-B1 SC-B1-SLOT MIR-SLOT-ID EX-BIND
-   SC-W2 SC-W2-SLOT MIR-SLOT-ID EX-BIND
-   SC-B2 SC-B2-SLOT MIR-SLOT-ID EX-BIND
-   SC-SEED BW-SEED-SLOT@ EX-BIND
+   MF-X  0 MIR-SLOT-ID EX-BIND   MF-W1 1 MIR-SLOT-ID EX-BIND   MF-B1 2 MIR-SLOT-ID EX-BIND
+   MF-W2 3 MIR-SLOT-ID EX-BIND   MF-B2 4 MIR-SLOT-ID EX-BIND
+   MF-SEED BW-SEED-SLOT@ EX-BIND ;
+
+: MF-OUT ( -- ptr a )  BW-FWD-N@ 1- MIR-NODE-ID EX-OUT@ ;   \ last forward node = 8x2 output
+: MF-INVN ( -- r )  1.0 MF-ON s>f f/ ;
+
+\ write the mean-scaled seed cotangent (2*(o-t)/N); return the mean MSE
+: MF-LOSS-SEED ( -- r )
+   MF-OUT {: ob:ptr :}
+   ob MF-TGT MF-SEED MF-ON LOSS:TT-MSE-DY
+   MF-ON 0 ?do  MF-SEED i T-GET MF-INVN f*  MF-SEED i T-SET  loop
+   ob MF-TGT MF-ON LOSS:TT-MSE  MF-INVN f* ;
+
+: CKT-MLP-BASE ( -- )                \ precondition: fresh MF-MLP capture
+   MF-FILLS  BW-BUILD  MF-BIND
+   BW-FWD-N@ EX-RUN-N
+   MF-LOSS-SEED CKM-L !
+   EX-RUN
+   0 SC-GRAD-AT MGX  MF-XN  CKT-COPY
+   1 SC-GRAD-AT MGW1 MF-W1N CKT-COPY
+   2 SC-GRAD-AT MGB1 MF-B1N CKT-COPY
+   3 SC-GRAD-AT MGW2 MF-W2N CKT-COPY
+   4 SC-GRAD-AT MGB2 MF-B2N CKT-COPY
+   0 MIR-NODE-ID EX-OUT@ MN0 MF-N0N CKT-COPY ;
+
+: CKT-MLP-CKPT ( -- r )              \ precondition: fresh MF-MLP capture
+   MF-FILLS
+   CK-SETUP
+   MF-BIND
    CK-FWD
-   SC-LOSS-SEED {: loss:r :}
+   MF-LOSS-SEED {: loss:r :}
    CK-BWD
    loss ;
 
-\ ---- attention: same shape as the Adam trainer's committed model -------------
-create AGQ ATN-EN cells allot
-create AGK ATN-EN cells allot
-create AGS ATN-SN cells allot
-create AGV ATN-EN cells allot
-create AN0 16 cells allot                     \ interior node 0 = q@kt (4x4)
+\ ---- attention fixture: O = softmax(Q@Kt*s)@V, q:4x3 kt:3x4 s:1x1 v:4x3 -------
+\ Library-owned vehicle (3 segments {matmul,scale}{softmax}{matmul}); deterministic
+\ fills + fixed target, mean-MSE loss + seed cotangent. All four inputs are slots.
+12 constant AF-EN    1 constant AF-SN
+12 constant AF-ON                             \ 4x3 output elements
+16 constant AF-N0N                            \ 4x4 interior node 0 = q@kt
+
+create AF-Q  AF-EN cells allot   create AF-KT AF-EN cells allot
+create AF-S  AF-SN cells allot   create AF-V  AF-EN cells allot
+create AF-TGT AF-ON cells allot  create AF-SEED AF-ON cells allot
+
+create AGQ AF-EN cells allot
+create AGK AF-EN cells allot
+create AGS AF-SN cells allot
+create AGV AF-EN cells allot
+create AN0 AF-N0N cells allot                 \ interior node 0 = q@kt (4x4)
 variable CKA-L
 
-: CKT-ATN-BASE ( -- )                \ precondition: fresh ADAM-ATTN capture
-   ATN-SETUP
-   ATN-GRADS CKA-L !
-   ATN-Q-SLOT  SC-GRAD-AT AGQ ATN-EN CKT-COPY
-   ATN-KT-SLOT SC-GRAD-AT AGK ATN-EN CKT-COPY
-   ATN-S-SLOT  SC-GRAD-AT AGS ATN-SN CKT-COPY
-   ATN-V-SLOT  SC-GRAD-AT AGV ATN-EN CKT-COPY
-   0 MIR-NODE-ID EX-OUT@ AN0 16 CKT-COPY ;
+: AF-FILL ( ptr a n n -- ) {: p:ptr n:n k:n :}
+   n 0 ?do  k i 3 * + 17 mod s>f 0.07 f* 0.15 f+  p i T-SET  loop ;
 
-: CKT-ATN-CKPT ( -- r )              \ precondition: fresh ADAM-ATTN capture
-   ATN-INIT
-   CK-SETUP
+: AF-FILLS ( -- )
+   AF-Q AF-EN 1 AF-FILL   AF-KT AF-EN 2 AF-FILL   AF-S AF-SN 3 AF-FILL   AF-V AF-EN 4 AF-FILL
+   AF-ON 0 ?do  i 5 mod s>f 0.11 f* 0.4 f+  AF-TGT i T-SET  loop ;
+
+: AF-BIND ( -- )
    EX-RESET
-   ATN-Q   ATN-Q-SLOT  MIR-SLOT-ID EX-BIND
-   ATN-KT  ATN-KT-SLOT MIR-SLOT-ID EX-BIND
-   ATN-S   ATN-S-SLOT  MIR-SLOT-ID EX-BIND
-   ATN-V   ATN-V-SLOT  MIR-SLOT-ID EX-BIND
-   ATN-SEED BW-SEED-SLOT@ EX-BIND
+   AF-Q 0 MIR-SLOT-ID EX-BIND   AF-KT 1 MIR-SLOT-ID EX-BIND
+   AF-S 2 MIR-SLOT-ID EX-BIND   AF-V 3 MIR-SLOT-ID EX-BIND
+   AF-SEED BW-SEED-SLOT@ EX-BIND ;
+
+: AF-OUT ( -- ptr a )  BW-FWD-N@ 1- MIR-NODE-ID EX-OUT@ ;   \ last forward node = 4x3 output
+: AF-INVN ( -- r )  1.0 AF-ON s>f f/ ;
+
+: AF-LOSS-SEED ( -- r )
+   AF-OUT {: ob:ptr :}
+   ob AF-TGT AF-SEED AF-ON LOSS:TT-MSE-DY
+   AF-ON 0 ?do  AF-SEED i T-GET AF-INVN f*  AF-SEED i T-SET  loop
+   ob AF-TGT AF-ON LOSS:TT-MSE  AF-INVN f* ;
+
+: CKT-ATN-BASE ( -- )                \ precondition: fresh AF-ATN capture
+   AF-FILLS  BW-BUILD  AF-BIND
+   BW-FWD-N@ EX-RUN-N
+   AF-LOSS-SEED CKA-L !
+   EX-RUN
+   0 SC-GRAD-AT AGQ AF-EN CKT-COPY
+   1 SC-GRAD-AT AGK AF-EN CKT-COPY
+   2 SC-GRAD-AT AGS AF-SN CKT-COPY
+   3 SC-GRAD-AT AGV AF-EN CKT-COPY
+   0 MIR-NODE-ID EX-OUT@ AN0 AF-N0N CKT-COPY ;
+
+: CKT-ATN-CKPT ( -- r )              \ precondition: fresh AF-ATN capture
+   AF-FILLS
+   CK-SETUP
+   AF-BIND
    CK-FWD
-   ATN-LOSS-SEED {: loss:r :}
+   AF-LOSS-SEED {: loss:r :}
    CK-BWD
    loss ;
 
@@ -228,16 +287,16 @@ T-RESET
 ' CK-BWD        E-CK-STATE TTHROWS
 
 \ ---- MLP: bit-identical loss, every gradient, and the interior ---------------
-MODEL: SCRATCH-MLP ( x:8x6 w1:6x16 b1:1x16 w2:16x2 b2:1x2 -- y ) LINEAR GELU LINEAR ;
+MODEL: MF-MLP ( x:8x6 w1:6x16 b1:1x16 w2:16x2 b2:1x2 -- y ) LINEAR GELU LINEAR ;
 CKT-MLP-BASE
-MODEL: SCRATCH-MLP ( x:8x6 w1:6x16 b1:1x16 w2:16x2 b2:1x2 -- y ) LINEAR GELU LINEAR ;
+MODEL: MF-MLP ( x:8x6 w1:6x16 b1:1x16 w2:16x2 b2:1x2 -- y ) LINEAR GELU LINEAR ;
 CKT-MLP-CKPT CKM-L @ f= TTRUE
-SC-X-SLOT  SC-GRAD-AT MGX  SC-XN  CKT-EQ? TTRUE
-SC-W1-SLOT SC-GRAD-AT MGW1 SC-W1N CKT-EQ? TTRUE
-SC-B1-SLOT SC-GRAD-AT MGB1 SC-B1N CKT-EQ? TTRUE
-SC-W2-SLOT SC-GRAD-AT MGW2 SC-W2N CKT-EQ? TTRUE
-SC-B2-SLOT SC-GRAD-AT MGB2 SC-B2N CKT-EQ? TTRUE
-0 MIR-NODE-ID EX-OUT@ MN0 SC-BATCH SC-HID * CKT-EQ? TTRUE
+0 SC-GRAD-AT MGX  MF-XN  CKT-EQ? TTRUE
+1 SC-GRAD-AT MGW1 MF-W1N CKT-EQ? TTRUE
+2 SC-GRAD-AT MGB1 MF-B1N CKT-EQ? TTRUE
+3 SC-GRAD-AT MGW2 MF-W2N CKT-EQ? TTRUE
+4 SC-GRAD-AT MGB2 MF-B2N CKT-EQ? TTRUE
+0 MIR-NODE-ID EX-OUT@ MN0 MF-N0N CKT-EQ? TTRUE
 
 \ committed plan facts: 2 segments {linear,gelu}{linear}, n0 the one interior;
 \ one interior segment -> the scratch still holds it after CK-FWD -> ZERO remats
@@ -251,15 +310,15 @@ CK-SAVED@ CK-SAVED-FULL@ < TTRUE               \ strictly fewer saved buffers
 CK-LIVE@ CK-LIVE-FULL@ <= TTRUE                \ peak equal here (one interior total)
 
 \ ---- attention: bit-identical loss, every gradient, and the interior ----------
-MODEL: ADAM-ATTN ( q:4x3 kt:3x4 s:1x1 v:4x3 -- o ) MATMUL SCALE SOFTMAX-ROW MATMUL ;
+MODEL: AF-ATN ( q:4x3 kt:3x4 s:1x1 v:4x3 -- o ) MATMUL SCALE SOFTMAX-ROW MATMUL ;
 CKT-ATN-BASE
-MODEL: ADAM-ATTN ( q:4x3 kt:3x4 s:1x1 v:4x3 -- o ) MATMUL SCALE SOFTMAX-ROW MATMUL ;
+MODEL: AF-ATN ( q:4x3 kt:3x4 s:1x1 v:4x3 -- o ) MATMUL SCALE SOFTMAX-ROW MATMUL ;
 CKT-ATN-CKPT CKA-L @ f= TTRUE
-ATN-Q-SLOT  SC-GRAD-AT AGQ ATN-EN CKT-EQ? TTRUE
-ATN-KT-SLOT SC-GRAD-AT AGK ATN-EN CKT-EQ? TTRUE
-ATN-S-SLOT  SC-GRAD-AT AGS ATN-SN CKT-EQ? TTRUE
-ATN-V-SLOT  SC-GRAD-AT AGV ATN-EN CKT-EQ? TTRUE
-0 MIR-NODE-ID EX-OUT@ AN0 16 CKT-EQ? TTRUE
+0 SC-GRAD-AT AGQ AF-EN CKT-EQ? TTRUE
+1 SC-GRAD-AT AGK AF-EN CKT-EQ? TTRUE
+2 SC-GRAD-AT AGS AF-SN CKT-EQ? TTRUE
+3 SC-GRAD-AT AGV AF-EN CKT-EQ? TTRUE
+0 MIR-NODE-ID EX-OUT@ AN0 AF-N0N CKT-EQ? TTRUE
 
 \ committed plan facts: 3 segments {matmul,scale}{softmax}{matmul}; the interior
 \ q@kt matmul sits in seg0 alone -> still zero remats (spec: recompute begins

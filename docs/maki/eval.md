@@ -92,9 +92,12 @@ green first try; the softmax misses repair green in one and two rounds, so its
 pass@k column climbs to full pass by the third attempt — the replayed table
 itself is the pinned source for the exact per-mille numbers),
 which is also how the maki suite exercises the exact durable command. The maki model
-train/eval leg is `maki/eval/train.f`: it runs the committed Adam MLP + attention
-trainers end-to-end and reports steps, milli-loss initial/final, and the committed
-convergence verdict.
+train/eval leg is `maki/eval/train.f`: it drives `maki/train.f`'s library training
+loop (forward -> MSE -> SGD) to convergence on two library-owned reference
+regressions (scalar `y = w*x` and per-element tensor `y[i] = w[i]*x[i]`) and reports
+steps, milli-loss initial/final, and the convergence verdict (loss at least halved).
+The concrete Adam MLP + attention trainers and their exact per-step loss regression
+locks live in the nanoGPT example (`maki/examples/nanogpt/adam-train-test.f`).
 
 ## Off-device authoring tasks (collective / 2D-GEMM / attention)
 `maki/eval/emit.f` extends the autograder past the device-golden tasks with three

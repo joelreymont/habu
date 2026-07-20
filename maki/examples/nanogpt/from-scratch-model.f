@@ -20,6 +20,7 @@
 require maki/cad.f
 require maki/array.f
 require maki/fmath.f
+require maki/train-core.f     \ LCG + Gaussian sampler (SC-SEED! / SC-UNIT / SC-GAUSS)
 
 package MAKI
 public
@@ -53,51 +54,10 @@ create SC-B1 SC-B1N cells allot
 create SC-W2 SC-W2N cells allot
 create SC-B2 SC-B2N cells allot
 
-private
-
-\ ---- deterministic 32-bit LCG (Numerical Recipes constants) -----------------
-1664525    constant SC-LCG-A
-1013904223 constant SC-LCG-C
-$FFFFFFFF  constant SC-LCG-MASK       \ mod 2^32
-variable SC-RNG
-
-: SC-LCG-M ( -- r )  4294967296.0 ;   \ 2^32 as a float divisor
-
-: SC-NEXT ( -- r )                    \ advance the LCG; return a float in [0,1)
-   SC-RNG @ SC-LCG-A *  SC-LCG-C +  SC-LCG-MASK and  {: s:n :}
-   s SC-RNG !
-   s s>f SC-LCG-M f/ ;
-
-: SC-UNIT ( -- r )  SC-NEXT 2.0 f*  1.0 f- ;   \ float in [-1,1)
-
-\ ---- Gaussian RNG: polar (Marsaglia) form of Box-Muller over the LCG --------
-\ Draw u,v uniform in [-1,1); accept the pair when s=u^2+v^2 lies in (0,1) (the
-\ unit disk minus its centre) and map to z0 = u*sqrt(-2 ln s / s). The rejection
-\ is the "die" that PROVES the value handed to FLN is nonzero: SC-POLAR-OK? gates
-\ s>0, so FLN(0)=-inf is unreachable. This stateless generator returns z0 and
-\ redraws on the next call (the paired z1 is not cached). No trig word exists in
-\ tree, so the polar form is used in place of the sin/cos Box-Muller.
-variable SC-GU               \ accepted u of the current polar pair
-
-: SC-GDRAW ( -- r )          \ redraw a pair; stash u; return s = u^2 + v^2
-   SC-UNIT SC-GU !
-   SC-UNIT dup f*  SC-GU @ dup f* f+ ;
-
-public
-
-\ committed seeds: data and parameters draw from independent LCG streams
+\ committed seeds: data and parameters draw independent streams of the shared
+\ LCG (SC-SEED! / SC-UNIT / SC-GAUSS live in maki/train-core.f)
 $12345678 constant SC-DATA-SEED       \ 305419896
 $9E3779B9 constant SC-PARAM-SEED      \ 2654435769 (golden-ratio constant)
-
-: SC-SEED! ( u -- )  SC-RNG ! ;       \ reseed the shared LCG stream deterministically
-
-: SC-POLAR-OK? ( r -- bool ) {: s:r :}   \ accept 0 < s < 1 (s=0 would feed FLN(0))
-   0.0 s f<  s 1.0 f<  and ;
-
-: SC-GAUSS ( -- r )          \ one N(0,1): polar Box-Muller; the guard proves s>0
-   SC-GDRAW
-   begin dup SC-POLAR-OK? 0= while  drop SC-GDRAW  repeat
-   dup FLN -2.0 f*  swap f/  fsqrt  SC-GU @ f* ;
 
 private
 

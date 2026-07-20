@@ -11,7 +11,7 @@
 \  (c) PARAM-GROUP POLICY - the trainer's checked decay attribute (ADAMW-WD-FOR)
 \      routes wd only to WD-DECAY params; a WD-NONE param is bit-identical to
 \      plain Adam (untouched by wd), a WD-DECAY param is not.
-\  (d) INIT POLICY - the per-role init (adam-train.f INIT-FILL) draws a Gaussian
+\  (d) INIT POLICY - the per-role init (train-core.f INIT-FILL) draws a Gaussian
 \      RNG (polar Box-Muller over the LCG) whose fixed-seed sample mean/variance
 \      match a deterministic golden AND land within tolerance of (0, 0.02^2);
 \      constant roles fill LN gamma=1 / beta=0 / bias=0.
@@ -22,7 +22,9 @@
 
 require lib/test.f
 require lib/float.f
-require maki/examples/nanogpt/adam-train.f
+require maki/train-core.f          \ AdamW param-group + per-role init policy, Gaussian RNG
+require maki/optim-tensor.f        \ OPTIM:TT-ADAMW! / OPTIM:TT-ADAM! / E-ADAMW-WD
+require maki/optim.f               \ OPTIM:WEIGHT-DECAY
 
 package MAKI
 

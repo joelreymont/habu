@@ -126,7 +126,6 @@ create SC-SEED SC-BATCH SC-OUT * cells allot
 
 \ ---- forward output access (mu = col 0, logvar = col 1, per row) ------------
 : SC-OUT-NODE ( -- CAD-KIND:node-id )  BW-FWD-N@ 1- MIR-NODE-ID ;
-: SC-SLOT ( n -- MIR:input-slot )  MIR-SLOT-ID ;
 : SC-OUT-MU ( ptr a n -- r ) {: ob:ptr r:n :}  ob r SC-OUT *    T-GET ;
 : SC-OUT-LV ( ptr a n -- r ) {: ob:ptr r:n :}  ob r SC-OUT * 1+ T-GET ;
 
@@ -145,11 +144,7 @@ create SC-SEED SC-BATCH SC-OUT * cells allot
    0.0  SC-BATCH 0 ?do  ob i SC-SEED-ROW  f+  loop
    SC-INV-BATCH f* ;
 
-\ parameter gradient buffer: its backward node's output. EX-OUT@ fails closed
-\ (E-EX-NODE) if a slot ever carried no gradient node (never, for this model).
-: SC-GRAD-AT ( n -- ptr a )  SC-SLOT BW-SLOT-GRAD@ MIR-REF-NODE EX-OUT@ ;
-
-\ running-sum extension of SC-GRAD-AT: add a slot's live gradient node into a
+\ running-sum extension of SC-GRAD-AT (maki/train-core.f): add a slot's live gradient node into a
 \ per-slot running buffer. The accumulation primitive for the INTERIM host
 \ batch-loop trainer (docs/batch-sequence-design.md section 5 BTC-3, Option C
 \ under Option D's layout) - the segment op (BTC-1) replaces the host loop, not
