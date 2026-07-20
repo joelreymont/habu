@@ -67,6 +67,14 @@ create SB 8 cells allot   create CB 8 cells allot   create IB 4 cells allot
 : TRY-STALE-STEP ( -- )  EXH-STALE-NODE EX-STEP ;
 : TRY-STALE-BIND ( -- )  EXH-STALE-SLOT XB swap EX-BIND ;
 
+\ absurd model: a 1000x1000 node = 1e6 float cells exceeds the EX-ARENA-MAX ceiling, so the
+\ model-proportional arena refuses to size to it and dies NAMED (E-EX-CAP) at plan time, before
+\ any node runs - nothing is executed, the prior arena is intact (the transactional boundary).
+: TRY-ARENA-CEIL ( -- )
+   MIR-RESET  1000 1000 SHAPE MAKI-DTYPE:DF32 MAKI-LAYOUT:ROW MIR-INPUT+ drop
+   MAKI-OPKIND:GELU MIR-OP-BEGIN 0 MIR-SLOT-ID MIR-IN-REF MIR-IN+ 1000 1000 SHAPE MAKI-DTYPE:DF32 MAKI-LAYOUT:ROW 0 1 MIR-OP+ drop
+   EX-RESET  1 EX-PLAN-N ;
+
 T-RESET
 
 \ ---- MATMUL: X=[[1,2],[3,4]] W=[[5,6],[7,8]] -> Y=[[19,22],[43,50]] ----------
@@ -279,10 +287,26 @@ OP-CAST   EX-OP-OK? TFALSE
 ' TRY-STEP-ND  E-MIR-IDX    TTHROWS
 ' TRY-OFF-NEG  E-EX-CAP     TTHROWS
 ' TRY-OFF-CAP  E-EX-CAP     TTHROWS
+' TRY-ARENA-CEIL E-EX-CAP   TTHROWS       \ absurd model past the arena ceiling dies NAMED
 ' TRY-STALE-OUT  E-EX-NODE  TTHROWS
 ' TRY-STALE-OFF  E-EX-NODE  TTHROWS
 ' TRY-STALE-STEP E-EX-NODE  TTHROWS
 ' TRY-STALE-BIND E-EX-SLOT  TTHROWS
+
+\ ---- model-proportional arena grow path (dot habu-size-model-proportional) ----------------
+\ A single node bigger than the $8000 seed (185x185 = 34225 > 32768 cells) once died E-EX-CAP;
+\ the arena now derives its working size from the model and grows past the seed, so the whole
+\ over-seed buffer is planned, written, and read back. (Runs LAST: it grows EX-ARENA-N, which
+\ the seed-boundary EX-OFF! test above relies on staying at the seed.)
+create GBUF 185 185 * cells allot
+: GFILL1 ( ptr a n -- ) {: p:ptr n:n :}  n 0 ?do  1.0 p i T-SET  loop ;
+MIR-RESET
+185 185 SHAPE MAKI-DTYPE:DF32 MAKI-LAYOUT:ROW MIR-INPUT+ drop
+MAKI-OPKIND:GELU MIR-OP-BEGIN 0 MIR-SLOT-ID MIR-IN-REF MIR-IN+ 185 185 SHAPE MAKI-DTYPE:DF32 MAKI-LAYOUT:ROW 0 1 MIR-OP+ drop
+GBUF 185 185 * GFILL1
+EX-RESET  GBUF 0 MIR-SLOT-ID EX-BIND  EX-RUN
+0 MIR-NODE-ID EX-OUT@ 0     >M 841 T=          \ gelu(1) first cell (arena grew past the seed)
+0 MIR-NODE-ID EX-OUT@ 34224 >M 841 T=          \ ...and the last cell of the >seed buffer
 
 T-REPORT
 

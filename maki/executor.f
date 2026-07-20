@@ -75,15 +75,27 @@ private
 \ node / slot caps mirror model-ir.f (MIR-CAP / MIR-IN-CAP, private there).
 1024  constant EX-NCAP        \ max nodes (mirrors MIR-CAP)
 64    constant EX-IN-CAP      \ max model-input slots (mirrors MIR-IN-CAP)
-$8000 constant EX-ARENA-CELLS \ node-buffer arena (float cells); overflow -> E-EX-CAP
+$8000  constant EX-ARENA-CELLS \ node-buffer arena SEED (float cells); the arena derives its
+                               \ working size from the model at plan time and grows past this seed
+$80000 constant EX-ARENA-MAX   \ generous sanity ceiling (float cells): a plan needing more is an
+                               \ absurd model and dies E-EX-CAP before any node runs (transactional)
 $400  constant EX-IDX-CAP     \ gather/scatter index scratch (rows)
 
-create EX-ARENA  EX-ARENA-CELLS cells allot   \ contiguous node-buffer pool
+create EX-ARENA  EX-ARENA-CELLS cells allot   \ seed node-buffer pool (EX-ARENA-P starts here)
 create EX-OFF    EX-NCAP cells allot           \ per-node arena offset (in cells)
 variable EX-BUMP                                \ arena high-water (cells) during a plan
+variable EX-ARENA-P                             \ current node-buffer base ptr (seed, or a grown region)
+variable EX-ARENA-N                             \ current node-buffer capacity (float cells)
 create EX-IN-PTR EX-IN-CAP cells allot          \ per-slot bound buffer pointer
 create EX-IN-SET EX-IN-CAP cells allot          \ per-slot bound flag (0 = unbound)
 create EX-IDX    EX-IDX-CAP cells allot          \ int index scratch (gather/scatter)
+
+\ The node-buffer arena is model-proportional: EX-PLAN sizes it to the exact node-buffer need of
+\ the model being run (design dot habu-size-model-proportional). It grows past the seed on demand
+\ and reuses the largest region across models (grow-to-largest; a grown region abandons its
+\ predecessor, so the leak is bounded by the largest model, and the common case - every model that
+\ fits the seed - never allots). EX-ARENA-P/EX-ARENA-N start at the seed region.
+EX-ARENA EX-ARENA-P !   EX-ARENA-CELLS EX-ARENA-N !
 
 \ ---- slot / node addressing ------------------------------------------------
 : EX-IN-CK ( n -- n )                   \ validate a raw model-input slot index
@@ -95,7 +107,7 @@ create EX-IDX    EX-IDX-CAP cells allot          \ int index scratch (gather/sca
    EX-IN-PTR raw cells + @ ;
 
 : EX-OFF@ ( CAD-KIND:node-id -- n )  NODE>RAW cells EX-OFF + @ ;
-: EX-NODE-PTR ( CAD-KIND:node-id -- ptr a )  EX-OFF@ {: off:n :}  EX-ARENA off T-AT ;
+: EX-NODE-PTR ( CAD-KIND:node-id -- ptr a )  EX-OFF@ {: off:n :}  EX-ARENA-P @ off T-AT ;
 
 \ ---- operand-ref descriptor (input slot or producer node) -------------------
 : EX-REF-PTR ( MIR:operand-ref -- ptr a ) {: r:MIR:operand-ref :}
@@ -440,14 +452,26 @@ private
    ;MATCH ;
 
 \ ---- buffer plan + execute over a node prefix ------------------------------
-: EX-PLAN ( n -- ) {: n:n :}            \ assign each node an arena offset by shape
+\ grow the node-buffer arena to hold `need` float cells (derived from the model's node shapes):
+\ reuse the current region when it already fits; else allot a fresh larger region (grow-to-largest,
+\ abandoning the predecessor - leak bounded by the largest model). A need past the generous ceiling
+\ is an absurd model and dies NAMED here, before any node executes, so a failed plan leaves the
+\ prior arena (and the prior model's outputs) intact - the transactional boundary.
+: EX-ARENA-ENSURE ( n -- ) {: need:n :}
+   need EX-ARENA-N @ <= if exit then
+   need EX-ARENA-MAX > if E-EX-CAP throw then
+   here {: base:ptr :}
+   need cells allot
+   base EX-ARENA-P !
+   need EX-ARENA-N ! ;
+
+: EX-PLAN ( n -- ) {: n:n :}            \ assign each node an arena offset by shape, size the arena
    0 EX-BUMP !
    n 0 ?do
       EX-BUMP @  i cells EX-OFF + !
-      EX-BUMP @  i MIR-NODE-ID EX-NODE-ELEMS +  {: nb:n :}
-      nb EX-ARENA-CELLS > if E-EX-CAP throw then
-      nb EX-BUMP !
-   loop ;
+      EX-BUMP @  i MIR-NODE-ID EX-NODE-ELEMS +  EX-BUMP !
+   loop
+   EX-BUMP @ EX-ARENA-ENSURE ;
 
 : EX-EXEC ( n -- )  0 ?do  i MIR-NODE-ID EX-NODE  loop ;
 
@@ -502,7 +526,7 @@ public
 : EX-OFF! ( n CAD-KIND:node-id -- ) {: off:n nd:CAD-KIND:node-id :}   \ arena offset (cells), node
    nd NODE>RAW {: raw:n :}
    raw 0 < raw NODE-COUNT@ CAD-NUM:EX-IC>N >= or if E-EX-NODE throw then
-   off 0 <  off nd EX-NODE-ELEMS + EX-ARENA-CELLS >  or if E-EX-CAP throw then
+   off 0 <  off nd EX-NODE-ELEMS + EX-ARENA-N @ >  or if E-EX-CAP throw then
    off raw cells EX-OFF + ! ;
 
 : EX-STEP ( CAD-KIND:node-id -- ) {: nd:CAD-KIND:node-id :}   \ execute one node under the current plan
