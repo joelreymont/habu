@@ -127,7 +127,7 @@ ENUM lnform DERIVE eq
 
 private
 
-128 constant MIR-CAP          \ max nodes
+1024 constant MIR-CAP         \ max nodes
 384 constant MIR-INCAP        \ max operand refs across the table
 64  constant MIR-IN-CAP       \ max model-input slots
 

@@ -358,16 +358,55 @@ GB-INIT GB-ARESET  12 GB-RUN  GB-FL @ GB-MILLI 64 T=
 GB-CAUSAL? TTRUE                               \ every future-key softmax weight ~ 0
 GB-Q0-PRESENT? TTRUE                           \ query 0 attends only to key 0 (weight ~ 1)
 
-\ ================= (Nx) two stacked blocks: forward composes, backward hits the IR cap ==
-\ The ref ring HOSTS two blocks forward - the capture is a clean 32-node graph and no op
-\ ever has more than 2 outstanding named refs (the affine LN gamma/beta pairs), well under
-\ the EQ-FCAP-1 = 7 ring. But the DIFFERENTIABLE 2-block graph cannot be built: one block's
-\ full forward+backward IR is 74 nodes (18 forward + 56 adjoint), so a second block's
-\ adjoints push past MIR-CAP = 128 (maki/model-ir.f) and BW-BUILD throws E-MIR-CAP at node
-\ 128. The wall is the IR node-table capacity (core), NOT the named-ref ring - recorded
-\ mechanically, not faked. Raising MIR-CAP is a separate core-capacity change out of this
-\ composition lane's scope. THE FULL DIFFERENTIABLE MILESTONE IS THE SINGLE BLOCK ABOVE.
-: NX-BUILD ( -- )  BW-BUILD ;
+\ ================= (Nx) two stacked blocks are now DIFFERENTIABLE (MIR-CAP raise) ======
+\ The MIR node-table cap raise (maki/model-ir.f: MIR-CAP 128 -> 1024; executor EX-NCAP
+\ raised in lockstep) unblocks the differentiable 2-block stack that once died E-MIR-CAP at
+\ node 128 during BW-BUILD. The node table holds forward + adjoint; measured accounting:
+\   1 block : 74  = 18 fwd + 56  adjoint  (the single-block milestone above)
+\   2 blocks: 133 = 32 fwd + 101 adjoint  (pinned below)
+\ marginal 59 nodes/block -> 12 GPT-2-small blocks ~ 74 + 59*11 = 723 (1024 = 1.4x headroom).
+\ Forward still composes (ref ring <= 2 outstanding of EQ-FCAP-1 = 7); the wall was the core
+\ node-table capacity, now raised. gradcheck proves the backward is correct across BOTH
+\ attention blocks; a 3-Adam-step run locks run-twice bit-identical training.
+
+\ ---- generic per-slot 2-block train harness: loops over GBLK2's 34 model inputs, reusing
+\ the single-block LCG + Adam machinery above (GB-RNG/GB-UNIT/GB-TICK/GB-C*/GB-OUT/GB-GRAD).
+\ slot 1 = ids (integer copy task, no gradient); slot 23 = mask (causal, frozen). ----------
+48 constant GB2MAX   34 constant GB2NIN   1 constant GB2IDS   23 constant GB2MASK
+create GB2-W GB2NIN GB2MAX * cells allot   create GB2-M GB2NIN GB2MAX * cells allot   create GB2-V GB2NIN GB2MAX * cells allot
+create GB2-SEED GBON cells allot   create GB2-TGT GBT cells allot
+: GB2-WP ( n -- ptr a )  GB2MAX * cells GB2-W + ;
+: GB2-MP ( n -- ptr a )  GB2MAX * cells GB2-M + ;
+: GB2-VP ( n -- ptr a )  GB2MAX * cells GB2-V + ;
+: GB2-SEL ( n -- n )  dup MIR-SLOT-ID MIR-SLOT-ROWS@ ROWS-RAW swap MIR-SLOT-ID MIR-SLOT-COLS@ COLS-RAW * ;
+: GB2-PARAM? ( n -- bool )  dup GB2IDS <> swap GB2MASK <> and ;
+: GB2-INIT ( -- )
+   $C0FFEE GB-RNG !
+   GB2NIN 0 ?do
+      i GB2-PARAM? if  i GB2-SEL 0 ?do  GB-UNIT 0.1 f*  j GB2-WP i T-SET  loop  then
+      0.0 i GB2-MP GB2MAX T-FILL  0.0 i GB2-VP GB2MAX T-FILL
+   loop
+   GBT 0 ?do  i GBV mod s>f  GB2IDS GB2-WP i T-SET  i GBV mod s>f  GB2-TGT i T-SET  loop
+   GB2MASK GB2-WP A-MASK-FILL ;
+: GB2-BIND ( -- )  EX-RESET  GB2NIN 0 ?do  i GB2-WP  i MIR-SLOT-ID EX-BIND  loop  GB2-SEED BW-SEED-SLOT@ EX-BIND ;
+: GB2-LOSS-SEED ( -- r )
+   GB-OUT {: ob:ptr :}
+   ob GB2-TGT GB2-SEED GBT GBV GBT LOSS:TT-XENT-SEED
+   GBON 0 ?do  GB2-SEED i T-GET GB-INVR f*  GB2-SEED i T-SET  loop
+   ob GBT GBV GB2-TGT GBT LOSS:TT-XENT  GB-INVR f* ;
+: GB2-ARESET ( -- )  0 GB-T !  1.0 GB-B1T !  1.0 GB-B2T ! ;
+: GB2-STEP ( -- r )
+   BW-FWD-N@ EX-RUN-N  GB2-LOSS-SEED {: loss:r :}  EX-RUN  GB-TICK
+   GB2NIN 0 ?do
+      i GB2-PARAM? if
+         GB-LR GB-BET1 GB-BET2 GB-EPS GB-C1 GB-C2
+         i GB2-WP  i GB-GRAD  i GB2-MP i GB2-VP  i GB2-SEL  OPTIM:TT-ADAM!
+      then
+   loop  loss ;
+variable GB2-IL  variable GB2-FL
+: GB2-RUN ( n -- ) {: n:n :}  n 0 ?do  GB2-STEP {: l:r :}  i 0= if l GB2-IL ! then  i n 1- = if l GB2-FL ! then  loop ;
+: GB2-SETUP ( -- )  BW-BUILD  GB2-INIT  GB2-ARESET  GB2-BIND ;
+
 MODEL: GBLK2 ( wte:6x6 ids:4x1 wpe:4x6 wqa:6x3 wka:6x3 sca:1x1 wva:6x3 woa:3x6 w1a:6x8 b1a:1x8 w2a:8x6 b2a:1x6 wqb:6x3 wkb:6x3 scb:1x1 wvb:6x3 wob:3x6 w1b:6x8 b1b:1x8 w2b:8x6 b2b:1x6 wlm:6x6 blm:1x6 mask:4x4 ln1ga:1x6 ln1ba:1x6 ln2ga:1x6 ln2ba:1x6 ln1gb:1x6 ln1bb:1x6 ln2gb:1x6 ln2bb:1x6 gfin:1x6 bfin:1x6 -- logits )
    GATHER  ADD  >V X0A
    ln1ga ln1ba LAYERNORM  >V LN1A
@@ -385,7 +424,23 @@ MODEL: GBLK2 ( wte:6x6 ids:4x1 wpe:4x6 wqa:6x3 wka:6x3 sca:1x1 wva:6x3 woa:3x6 w
    gfin bfin LAYERNORM
    LINEAR ;
 MODEL-K 32 T=                                  \ forward composes: 32 nodes, ref ring satisfied
-' NX-BUILD E-MIR-CAP TTHROWS                    \ backward exceeds the 128-node IR cap (E-MIR-CAP)
+
+\ (Nx-A) gradcheck across BOTH attention blocks: every trained input's analytic grad = FD
+GC-RUN V-PASS T=                               \ self-restores the forward IR (MIR-MARK/RELEASE)
+GC-RE$ s" input(s) gradchecked" CONTAINS? TTRUE
+
+\ (Nx-B) the differentiable backward now BUILDS (was the E-MIR-CAP wall) - node accounting pinned
+GB2-SETUP                                      \ BW-BUILD + init + bind
+MIR-N@ 133 T=                                  \ fwd+bwd node count (future IR growth stays visible)
+BW-FWD-N@ 32 T=                                \ forward slice
+MIR-N@ BW-FWD-N@ - 101 T=                       \ adjoint node count
+
+\ (Nx-C) deterministic training lock: 3 Adam steps, loss falls, run-twice bit-identical
+3 GB2-RUN
+GB2-IL @ GB-MILLI 1783 T=                       \ committed initial mean CE (determinism lock)
+GB2-FL @ GB-MILLI 1661 T=                       \ committed final mean CE (determinism lock)
+GB2-FL @ GB2-IL @ f< TTRUE                      \ 2-block stack trains: loss decreased
+GB2-INIT GB2-ARESET  3 GB2-RUN  GB2-FL @ GB-MILLI 1661 T=   \ run-twice bit-identical
 
 T-REPORT
 

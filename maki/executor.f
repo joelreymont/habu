@@ -73,7 +73,7 @@ package MAKI
 private
 
 \ node / slot caps mirror model-ir.f (MIR-CAP / MIR-IN-CAP, private there).
-128   constant EX-NCAP        \ max nodes (mirrors MIR-CAP)
+1024  constant EX-NCAP        \ max nodes (mirrors MIR-CAP)
 64    constant EX-IN-CAP      \ max model-input slots (mirrors MIR-IN-CAP)
 $8000 constant EX-ARENA-CELLS \ node-buffer arena (float cells); overflow -> E-EX-CAP
 $400  constant EX-IDX-CAP     \ gather/scatter index scratch (rows)

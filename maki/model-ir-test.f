@@ -255,6 +255,11 @@ SLOT-COUNT@        CAD-NUM:MT-IC>RAW 0 T=
 OPERAND-COUNT@     CAD-NUM:MT-IC>RAW 0 T=
 MATERIALIZED-COUNT CAD-NUM:MT-IC>RAW 0 T=
 
+\ the raised node-table cap (dot habu-raise-mir-node): 128 -> 1024 gives Nx headroom - a
+\ differentiable 12-block GPT-2 stack is ~723 fwd+bwd nodes (59/block). TRY-MIR-CAP above
+\ pins cap+1 -> E-MIR-CAP, so this value is the boundary the fail-closed die guards.
+MIR-CAP 1024 T=
+
 \ max: NODE-COUNT@ tracks the node column up to the table capacity; each node
 \ opens with zero operands and mat=0, so the other counts stay zero at the max.
 : MT-FILL-MAX ( -- )
