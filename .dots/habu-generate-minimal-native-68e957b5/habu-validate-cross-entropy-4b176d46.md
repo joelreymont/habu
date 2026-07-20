@@ -1,9 +1,11 @@
 ---
 title: Validate cross-entropy targets
-status: active
+status: closed
 priority: 1
 issue-type: task
-created-at: "\"2026-07-19T23:04:30.200375+02:00\""
+created-at: "\"\\\"2026-07-19T23:04:30.200375+02:00\\\"\""
+closed-at: "2026-07-20T23:24:28.743176+02:00"
+close-reason: "Merged b28379c6: composed parameter-gradient check proves every weight and bias against central finite differences of the real TT-XENT (worst residual 6.1e-8 abs with a detection fixture proving teeth), target/dimension guards with transactional preflight landed additively in loss-tensor, both test modules in real packages, and the false LINEAR-adjoint-as-CE-proof prose corrected; deferred typed-span and nominal class-id capabilities recorded"
 ---
 
 maki/loss-tensor.f TT-XENT/TT-XENT-SEED accepts raw ptr plus r/v/tn cells and documents integer-valued float targets, but XENT-TGT immediately applies f>s and only range-checks the truncated result. Fractional, NaN, and infinite targets can become plausible class ids; negative r and v <= 0 with a nonempty batch reach invalid T-GET or pathological loop behavior; r=0 currently returns an empty-batch zero rather than faulting. No logit/gradient capacity accompanies r*v. TT-XENT-SEED validates targets row-by-row while writing, so a later invalid target leaves earlier gradient rows mutated despite throwing. E-MK-TGT and E-MK-SHAPE are also defined globally before package LOSS instead of belonging to the module. Define and test the deliberate empty-batch policy, validate dimensions and overflow-safe r*v plus every finite exactly integral target before any output write, model class-id as a bounded nominal value, and pass typed spans/shape rather than interchangeable pointers/counts. Stage or preflight the complete seed so failure leaves db byte-identical. Move the errors under LOSS with short qualified names and no global aliases. Preserve stable logsumexp and exact valid numerics.
