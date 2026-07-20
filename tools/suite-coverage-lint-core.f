@@ -186,6 +186,7 @@ variable SC-USE-TEST#                         \ count of currently-open usings t
    s" lib/ptx/autograd-neg-test.f" q execute
    s" lib/ptx/uniform-barrier-test.f" q execute
    s" lib/ptx/cuda-driver-test.f" q execute
+   s" lib/ptx/cuda-scope-test.f" q execute
    s" lib/ptx/sentinel-test.f" q execute
    s" src/arch/ptx/vjp-test.f" q execute
    \ heavy build/image suites too costly for the run.f fast-tier budget

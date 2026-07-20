@@ -339,6 +339,7 @@ SUITE ptx-stdlib
    lib/ptx/ad-saved-test.f
    lib/ptx/sentinel-test.f
    lib/ptx/cuda-driver-test.f
+   lib/ptx/cuda-scope-test.f
    lib/ptx/ad-gen-test.f
    src/arch/ptx/vjp-test.f
 ;SUITE

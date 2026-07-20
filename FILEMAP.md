@@ -244,6 +244,16 @@ points stay listed.
   `DEVICE-ALLOC`, `HTOD`, `DTOH`). maki and tools/ptx share this one resolver.
 - `lib/ptx/cuda-driver-test.f` — portable CUDA Driver binding and fail-closed
   guard regressions (null handle and nonzero CUresult throw `E-CUDA`).
+- `lib/ptx/cuda-scope.f` — exception-safe CUDA resource scope (package
+  CUDA-SCOPE): an ownership ledger (`OWN-PRIMARY-CTX`/`OWN-MODULE`/`OWN-EVENT`/
+  `OWN-DEVPTR`) that the `SCOPE` boundary unwinds in reverse on both return and
+  throw, consuming each row so repeated cleanup is a no-op; primary error wins,
+  cleanup errors are retained (`CLEANUP-ERRORS`/`CLEANUP-FIRST`) and reported.
+  Release ops are injectable defers (`REL-*!`) for host-only tests.
+- `lib/ptx/cuda-scope-test.f` — host-only injection-matrix proof of the CUDA
+  scope (reverse-order, exactly-once, transfer, repeated no-op, failure after
+  every acquisition, partial allocation, each/simultaneous cleanup failures,
+  primary-wins, cleanup-only propagation) via a recording fake driver.
 - `lib/ptx/neg-test-lib.f` — require-only in-process helper for PTX semantic
   rejection tests that call the checker directly and capture diagnostics.
 - `lib/ptx/launch.f` — checked PTX launch-contract helpers for row kernels
