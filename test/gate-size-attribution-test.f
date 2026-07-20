@@ -89,9 +89,20 @@ $4000 constant MACOS-DATA-CONST  \ __DATA_CONST page (__got + zero fill)
 \ text, CODELEN 127776 -> 129728 (floor 800 -> 2752); the whole file stays inside
 \ the same 16 KiB page (SIGNATURE and MACOS-TOTAL unchanged, the __TEXT pad absorbs
 \ the delta).
-129728 constant MACOS-CODE-TEXT   \ CODELEN: every emitter-phase row (baked-source incl.)
+\ 2026-07-20 re-measured live at the macOS-aarch64 byte fixpoint after the JIT
+\ region moved within BL range of __text (dot habu-map-the-code-5268af94, landed
+\ 80636de2): that commit grew engine text on both targets but only bumped the Linux
+\ row (its author measured linux-arm64), leaving this macOS row stale. The same
+\ hint-and-verify mmap + boot BL-range assertion, snapshot-restore/BSNAPREBASE
+\ region-sentinel passes, saved-DBASE crash test, and LBLRANGE diagnostic add +160
+\ of engine text here, CODELEN 129728 -> 129888 (floor 2752 -> 2912); the whole file
+\ stays inside the same 16 KiB page (SIGNATURE and MACOS-TOTAL unchanged, the __TEXT
+\ pad absorbs the delta). The deterministic-AOT-region-baking fix in this commit is
+\ host build-time only (src/habu/aot-capture.f is not baked into bin/hb), so it does
+\ not move CODELEN; this row reflects only the region-move's owed macOS re-measure.
+129888 constant MACOS-CODE-TEXT   \ CODELEN: every emitter-phase row (baked-source incl.)
 1423 constant MACOS-SIGNATURE     \ ad-hoc code signature SuperBlob (grows with CODELEN)
-2752 constant MACOS-FLOOR-DIST     \ code above the 16 KiB floor: the page-recovery shave
+2912 constant MACOS-FLOOR-DIST     \ code above the 16 KiB floor: the page-recovery shave
 165367 constant MACOS-TOTAL       \ = FILE-SIZE bin/hb = GB-SIZE-BASELINE-MACOS
 
 \ Linux committed attribution, measured at the byte-fixpoint on 2026-07-19 (DGX

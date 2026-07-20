@@ -73,6 +73,15 @@ s" AOT-CELL@" s" ptr a -- n" TRUST
    p 4 + ACAP-W32@ 5 rshift $FFFF and 16 lshift or
    p 8 + ACAP-W32@ 5 rshift $FFFF and 32 lshift or
    p 12 + ACAP-W32@ 5 rshift $FFFF and 48 lshift or ;
+\ Re-encode a full 64-bit value into an existing movz/movk x9 chain (the four imm16
+\ lanes), keeping each instruction's opcode + Rd. Inverse of ACAP-LIT9V; used to
+\ canonicalize the code-address literals so the baked blob is builder-independent.
+: ACAP-SET-LIT9 ( ptr u8 n -- ) {: p:ptr val:n :}
+   4 0 ?do
+      p i 4 * + ACAP-W32@ $FFE0001F and                \ keep opcode + Rd (x9), clear the imm16 bits
+      val i 16 * rshift $FFFF and 5 lshift or           \ this lane's imm16 into bits 20-5
+      p i 4 * + ACAP-W32!
+   loop ;
 
 \ --- reverse lookup: absolute call target (host xt) -> its dict record index ---
 : ACAP-TGT>REC ( n -- n ) {: tgt:n :}
@@ -253,20 +262,33 @@ variable ACAP-P
    repeat ;
 
 \ --- scan the blob for CODE-address literals (movz/movk x9, value in the captured
-\ code range [b0,b1)) -- anonymous quotation entry addresses -- and record their blob
-\ offsets for the boot CODE-reloc pass (rebased by the code delta) ---
+\ code range [b0,b1)) -- anonymous quotation entry addresses -- record their blob
+\ offsets for the boot CODE-reloc pass, and canonicalize each into a b0-relative
+\ offset. The boot pass rebases every recorded literal (and LAOTCODEB0) by the code
+\ delta (seedCP - captureB0), so the ONLY invariant the stored value must preserve is
+\ (value - b0). Before the JIT region moved it mapped at a fixed VA, so the raw
+\ captured absolute (region base + offset) was builder-invariant and the seed reached
+\ a byte fixpoint. Since the move the region base is the runtime __text-relative base
+\ (ASLR-varying on macOS, fixed VMBASE on Linux), so a raw absolute makes the baked
+\ blob depend on the builder's live region and the seed never fixes. Store the offset
+\ (value - b0) with captureB0 = 0: the baked bytes are then independent of the
+\ builder's live region, and the boot delta (seedCP - 0 = seedCP, giving seedCP +
+\ offset) reproduces the old raw-absolute relocation result byte-for-byte. ---
 : ACAP-ADD-CSITE ( n -- ) {: boff:n :}   \ append (as u16) after the DATA offsets in the DSITE buffer
    AOT-DSITE-N @ AOT-CSITE-N @ + AOT-DSITE-MAX >= if s" aot-capture: too many reloc sites" 74 die then
    boff $FFFF > if s" aot-capture: CODE site offset exceeds u16" 74 die then
    boff  AOT-DSITE-N @ AOT-CSITE-N @ + 2 * AOT-DSITE-BUF@ +  AOT-P16!
    AOT-CSITE-N @ 1+ AOT-CSITE-N ! ;
 : ACAP-SCAN-CODE ( n n -- ) {: b0:n b1:n :}
-   b0 AOT-CODE-B0 !
+   0 AOT-CODE-B0 !                                      \ canonical code base 0: literals stored b0-relative
    0 ACAP-P !
    begin ACAP-P @ 16 + AOT-BLOB-LEN @ <= while
       AOT-BLOB-BUF@ ACAP-P @ + ACAP-LIT9? if
          AOT-BLOB-BUF@ ACAP-P @ + ACAP-LIT9V {: v:n :}
-         v b0 >= v b1 < and if ACAP-P @ ACAP-ADD-CSITE then
+         v b0 >= v b1 < and if
+            ACAP-P @ ACAP-ADD-CSITE
+            AOT-BLOB-BUF@ ACAP-P @ +  v b0 -  ACAP-SET-LIT9   \ bake the builder-independent b0-relative offset
+         then
          ACAP-P @ 16 + ACAP-P !
       else
          ACAP-P @ 4 + ACAP-P !
