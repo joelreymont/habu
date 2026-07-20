@@ -1,9 +1,11 @@
 ---
 title: BPE real-vocab loading and tiktoken parity
-status: active
+status: closed
 priority: 1
 issue-type: task
-created-at: "\"2026-07-20T22:29:35.792619+02:00\""
+created-at: "\"\\\"2026-07-20T22:29:35.792619+02:00\\\"\""
+closed-at: "2026-07-20T23:03:34.670615+02:00"
+close-reason: "Landed 808d6c99: real GPT-2 vocab BPE, 4 files additive (+485). bpe-real.f extends the landed engine with a validated real-vocab loader and internal-id to encoder.json-id translation - full pre-mutation validation proving the id map a bijection onto its image, 4 named E-codes, ready-gating, fail-closed. Artifacts fetched and hash-pinned (encoder.json + vocab.bpe, canonical URLs, tiktoken 0.13.0 in the ml venv); full 50257 vocab is runtime-loaded via a pinned-hash fetch script, with a committed hermetic subset (256 byte ids + the closed 79-merge fired-set + 16 parity fixtures). Parity proven beyond ASCII with exact tiktoken id vectors; the measured honest boundary: divergence occurs exactly when a multi-byte letter/number codepoint abuts an ASCII letter/digit, pinned from both sides as a fixture. Round-trips of real multi-byte samples in real-id space; red-first guards; clean-room reference reproduces tiktoken byte-for-byte over the full artifacts. Full cold gate green at the merged tip. Follow-ups dotted: full 50k-merge engine load, unicode pre-split closure"
 ---
 
 Follow-up named by the BPE close reason (habu-bpe-tokenizer-gpt-37d7f243, landed 815f6437): parity was proven only against a clean-room Python reference with a synthetic vocab because tiktoken and the real GPT-2 vocab files were absent from the box. Deliverables: (1) obtain the real GPT-2 artifacts (encoder.json + vocab.bpe, 50257 tokens = 256 bytes + 50000 merges + <|endoftext|>) with recorded provenance/hashes; decide committed vs runtime-loaded per the recorded DATA-budget rule (full vocab likely runtime-loaded from a checked file) and measure the budget either way. (2) A validated loader for the real vocab+merges (bounds, bijection where required, named E-codes, ready-state gating - the landed tokenizer discipline). (3) Parity fixtures with exact token-id sequences from the reference encoder on known strings, extended beyond ASCII: the landed pre-split matcher is exact for pure ASCII and diverges on bytes >= 0x80 - close that divergence class by implementing the GPT-2 pattern's unicode letter/number classes over UTF-8 bytes honestly, or record a measured, principled boundary with fixtures proving where behavior differs; NO silent approximation. (4) Round-trip and exact-id proofs red-first; encode/decode of a real multi-byte corpus sample. Territory: maki/examples/nanogpt/bpe*.f + fixtures + tests. Independent of the type chain and capacity/attention work.
