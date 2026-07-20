@@ -1,13 +1,15 @@
 ---
 title: Prove autotune GPU exclusivity
-status: open
+status: active
 priority: 1
 issue-type: task
+created-at: "\"2026-07-19T22:16:38.252235+02:00\""
 blocks:
   - habu-lowering-hash-unified-586f7881
-created-at: "2026-07-19T22:16:38.252235+02:00"
 ---
 
 Current master measurement-integrity defect in new tools/ptx/autotune-sweep.f: SW-SOLO-OK? at 186-188 proves only that nvidia-smi returned at most a caller-supplied count, not that the sole PID is this process. After opening its context, one unrelated compute process can satisfy limit=1 if this context is absent from the snapshot; a competing process can also start and finish during BENCH-GPU-NS. The claimed fallback is false: SW-BEST3 samples only SM clock before and after a burst, so contention at unchanged clock or a mid-burst disturbance that recovers before the second sample passes. The clock evidence itself can false-pass: AT-CLK-STABLE? multiplies unchecked signed cells, and max-cell to zero with tol=1 wraps the drop product negative; SW-PARSE-MHZ accepts/overflows arbitrary digit runs. Thus rows labeled solo/best-of-3/stable can be contaminated or built from malformed evidence and committed as winners. Acquire and verify a real exclusive device lease before opening CUDA: require exclusive-process compute mode or an equivalent system-wide owner enforced for every compute client in the measurement environment, bind the selected device and current PID into the lease, and fail closed when exclusivity cannot be proven. Independently census exact compute PIDs/device before and after every timed burst and reject any foreign or changing process set; parse bounded exact clock rows for that device and compare without overflow; record lease mode, device identity, owner PID, process sets, clocks, and timing interval in each candidate report. Do not infer ownership from a count or infer absence of contention from clock stability. Add injected nvidia-smi/NVML fixtures for own PID absent, foreign-only count one, own+foreign, PID churn during a burst, truncated/duplicate/malformed output, probe timeout, device mismatch, long/overflowing clock values, max-cell-to-zero, lease collision/stale owner, and loss of exclusivity after open; all must produce no timing row. A cooperative competing CUDA process must make the live smoke fail before reporting, while an exclusive run reproduces the winner. Preserve exact numeric precondition and best-of-three policy. Measure probe/lease overhead outside the timed interval. Coordinate with habu-structure-mma-autotune-e02d3197 for typed report/state and PTX resource-scope dots for unwind.
 
 SW-COMPUTE-COUNT currently maps every RUN-ARGV-CAPTURE failure to raw -1; SW-SOLO-OK? erases that to false, retries, and SW-WAIT-SOLO finally reports E-AT-CONTENDED. Missing nvidia-smi, timeout, truncation, permission denial, and child failure are therefore falsely diagnosed as GPU contention. SW-SM-CLK similarly maps every probe failure to zero, later reported as ordinary clock instability. Preserve the process error payload and distinguish payload-bearing ENUM outcomes probe-failed(error,evidence), contended(process-set), and clock-unstable(sample). Infrastructure failures must propagate immediately, never retry or relabel. Add exact diagnostics for every capture failure class.
+
+Claim: agent=gpulease workspace=.jj-ws/fable-gpulease machine=spark (owns tools/ptx/autotune-sweep.f solo/lease machinery + injected fixtures; GPU for the live smoke; sweep bounds landed 6d6faba6 - build on them)
