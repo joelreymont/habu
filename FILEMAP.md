@@ -128,6 +128,12 @@ points stay listed.
 - `src/os/linux/proc-watch.f` / `src/os/macos/proc-watch.f` — per-target
   process-lifetime watch primitive emitter (`proc-watch-open`): Linux
   `pidfd_open`, macOS `kqueue` + `EVFILT_PROC`/`NOTE_EXIT`.
+- `src/os/linux/proc-control.f` / `src/os/macos/proc-control.f` — per-target
+  process-control primitive emitters: `kill-errno` (signal a pid, reporting
+  failure as a negated errno) and `execve` (child-side image replacement, which
+  only returns on failure). Both normalize the OS error convention (Linux's
+  direct `-errno`, macOS's carry flag plus positive errno) to `0` on success or
+  `-errno` on failure.
 - `src/os/linux/target.f` / `src/os/macos/target.f` — runtime/build-script
   target flag words.
 
@@ -1908,6 +1914,10 @@ points stay listed.
   process-lifetime watch: the descriptor signals readiness when the watched
   child exits (live-then-exit fast path and already-dead race), and a
   non-existent pid fails closed.
+- `test/proc-signal-smoke.f` — focused proof of the `kill-errno` and `execve`
+  process-control primitives: a signal-0 probe to self returns 0, a signal to a
+  non-existent pid reports `-ESRCH`, and `execve` on a missing path reports
+  `-ENOENT` (its failure-only return path).
 - `test/internal-word-gate.f` — engine-internal execution-gate regressions, including sealed field mutation and checked read-only field reflection.
   (dot habu-hb-crash-bare-c5be6634): bare/ticked internal checker colon words
   fail closed with `hb: internal engine word:` + rc 70 on both cold-prefix

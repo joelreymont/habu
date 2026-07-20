@@ -44,7 +44,7 @@ $158 constant NR-GETDIRENTRIES64
 $1D9 constant NR-READLINKAT
 $1DA constant NR-SYMLINKAT
 $7   constant NR-WAIT4     \ wait4(pid, &status, 0, 0)
-0    constant NR-EXECVE
+$3B  constant NR-EXECVE    \ execve(path, argv, envp) — BSD syscall 59
 0    constant NR-CHDIR
 $1   constant NR-EXIT-GROUP
 

@@ -4988,7 +4988,9 @@ PRIM: create   PE-PTR-A PE-OUT PRIM;
 PRIM: variable PE-PTR-A PE-OUT PRIM;
 PRIM: constant PE-A PE-OUT PRIM;
 PRIM: getpid   PE-N PE-OUT PRIM;   \ ( -- pid ) process-identity syscall
-PRIM: proc-watch-open PE-N PE-IN PE-N PE-OUT PRIM;   \ ( pid -- fd|-1 ) process-lifetime watch; last checker.f axiom
+PRIM: proc-watch-open PE-N PE-IN PE-N PE-OUT PRIM;   \ ( pid -- fd|-1 ) process-lifetime watch
+PRIM: kill-errno PE-N PE-IN PE-N PE-IN  PE-N PE-OUT PRIM;   \ ( pid sig -- 0|-errno ) signal with errno detail
+PRIM: execve   PE-PTR-U8 PE-IN PE-PTR-A PE-IN PE-PTR-A PE-IN  PE-N PE-OUT PRIM;   \ ( pathz argv envp -- -errno ) child-side exec; only returns on failure; last checker.f axiom
 
 PTABLE-END
 

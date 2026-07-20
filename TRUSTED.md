@@ -1643,6 +1643,8 @@ prim - variable - pe-ptr-a pe-out
 prim - constant - pe-a pe-out
 prim - getpid - pe-n pe-out
 prim - proc-watch-open - pe-n pe-in pe-n pe-out
+prim - kill-errno - pe-n pe-in pe-n pe-in pe-n pe-out
+prim - execve - pe-ptr-u8 pe-in pe-ptr-a pe-in pe-ptr-a pe-in pe-n pe-out
 prim - typefamily - -
 prim - sumtype - -
 prim - enum - -

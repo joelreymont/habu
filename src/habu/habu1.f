@@ -2376,6 +2376,8 @@ SOURCE-INIT
    s" setpgid" ['] BSETPGID FPRIM-L
    s" getpid" ['] BGETPID FPRIM-L
    s" proc-watch-open" ['] BPROCWATCHOPEN FPRIM-L
+   s" kill-errno" ['] BKILLERRNO FPRIM-L
+   s" execve" ['] BEXECVE FPRIM-L
    s" spawn-io" ['] BSPAWNIO FPRIM-L
    s" spawn-argv-io" ['] BSPAWNARGVIO FPRIM-L
    s" spawn-argv-env-io" ['] BSPAWNARGVENVIO FPRIM-L

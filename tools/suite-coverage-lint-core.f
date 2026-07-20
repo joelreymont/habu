@@ -169,6 +169,7 @@ variable SC-NUM-L
    s" test/run-in-stack-smoke.f" q execute
    s" test/getpid-smoke.f" q execute
    s" test/proc-watch-smoke.f" q execute
+   s" test/proc-signal-smoke.f" q execute
    \ device/codegen-weight PTX suites excluded from the resident inprocess groups
    s" lib/ptx/ad-gen-test.f" q execute
    s" lib/ptx/autograd-neg-test.f" q execute

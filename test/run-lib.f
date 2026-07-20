@@ -820,6 +820,7 @@ TR-INSTALL-POOL-HOOKS
    s" src/os/linux/layout.f" TR-KEY-FILE+
    s" src/os/linux/sys.f" TR-KEY-FILE+
    s" src/os/linux/proc-watch.f" TR-KEY-FILE+
+   s" src/os/linux/proc-control.f" TR-KEY-FILE+
    s" src/os/linux/elf.f" TR-KEY-FILE+
    s" src/os/linux/sign.f" TR-KEY-FILE+
    s" src/os/linux/repl-term.f" TR-KEY-FILE+ ;
@@ -830,6 +831,7 @@ TR-INSTALL-POOL-HOOKS
    s" src/os/macos/layout.f" TR-KEY-FILE+
    s" src/os/macos/sys.f" TR-KEY-FILE+
    s" src/os/macos/proc-watch.f" TR-KEY-FILE+
+   s" src/os/macos/proc-control.f" TR-KEY-FILE+
    s" src/os/macos/macho.f" TR-KEY-FILE+
    s" src/os/macos/sign2.f" TR-KEY-FILE+
    s" src/os/macos/repl-term.f" TR-KEY-FILE+ ;

@@ -557,6 +557,7 @@ HBB-INSTALL-CHILD-LINTS
    s" src/os/linux/layout.f" HBB-KEY-FILE+
    s" src/os/linux/sys.f" HBB-KEY-FILE+
    s" src/os/linux/proc-watch.f" HBB-KEY-FILE+
+   s" src/os/linux/proc-control.f" HBB-KEY-FILE+
    s" src/os/linux/elf.f" HBB-KEY-FILE+
    s" src/os/linux/sign.f" HBB-KEY-FILE+ ;
 
@@ -566,6 +567,7 @@ HBB-INSTALL-CHILD-LINTS
    s" src/os/macos/layout.f" HBB-KEY-FILE+
    s" src/os/macos/sys.f" HBB-KEY-FILE+
    s" src/os/macos/proc-watch.f" HBB-KEY-FILE+
+   s" src/os/macos/proc-control.f" HBB-KEY-FILE+
    s" src/os/macos/macho.f" HBB-KEY-FILE+
    s" src/os/macos/sign2.f" HBB-KEY-FILE+ ;
 

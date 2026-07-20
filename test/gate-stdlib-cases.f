@@ -209,6 +209,10 @@ TEST:SUITE proc-watch-primitive-smoke
    test/proc-watch-smoke.f
 TEST:;SUITE
 
+TEST:SUITE proc-signal-primitive-smoke
+   test/proc-signal-smoke.f
+TEST:;SUITE
+
 TEST:SUITE tasking-threads
    lib/task-test.f
 TEST:;SUITE

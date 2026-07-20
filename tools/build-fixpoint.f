@@ -700,6 +700,17 @@ public
    then
    BF-TARGET-UNKNOWN ;
 
+: BF-APPEND-TARGET-PROC-CONTROL ( ptr u8 n -- ) {: out:ptr outu:n :}
+   HB-TARGET-LINUX? if
+      out outu s" src/os/linux/proc-control.f" BF-APPEND-SOURCE
+      exit
+   then
+   HB-TARGET-MACOS? if
+      out outu s" src/os/macos/proc-control.f" BF-APPEND-SOURCE
+      exit
+   then
+   BF-TARGET-UNKNOWN ;
+
 : BF-APPEND-TARGET-FLAG ( ptr u8 n -- ) {: out:ptr outu :}
    HB-TARGET-LINUX? if
       out outu s" src/os/linux/target.f" BF-APPEND-SOURCE
@@ -799,6 +810,7 @@ public
    out outu BF-APPEND-IMAGE-BYTES
    out outu BF-APPEND-TARGET-IMAGE
    out outu BF-APPEND-TARGET-PROC-WATCH
+   out outu BF-APPEND-TARGET-PROC-CONTROL
    out outu s" src/habu/habu1.f" BF-APPEND-SOURCE
    out outu BUILD-EXT:APPEND
    out outu s" src/habu/prof.f" BF-APPEND-SOURCE
@@ -907,6 +919,7 @@ public
    out outu BF-APPEND-IMAGE-BYTES
    out outu BF-APPEND-TARGET-IMAGE
    out outu BF-APPEND-TARGET-PROC-WATCH
+   out outu BF-APPEND-TARGET-PROC-CONTROL
    out outu s" src/habu/habu1.f" BF-APPEND-SOURCE
    out outu s" src/habu/prof.f" BF-APPEND-SOURCE
    out outu s" src/habu/regalloc.f" BF-APPEND-SOURCE

@@ -64,9 +64,17 @@ $4000 constant MACOS-DATA-CONST  \ __DATA_CONST page (__got + zero fill)
 \ 127536), floor 560 -> 548. Page count, signature, and whole-file total are
 \ unchanged. (Controlled fixtures: one-arm CASE 124 -> 120, two-arm 180 -> 172,
 \ exactly 4 bytes and one executed instruction per arm.)
-127524 constant MACOS-CODE-TEXT   \ CODELEN: every emitter-phase row (baked-source incl.)
+\ 2026-07-20 re-measured live at the macOS byte-fixpoint for the checked PTY
+\ lifecycle campaign's process primitives: proc-watch-open (kqueue +
+\ EVFILT_PROC/NOTE_EXIT emitter with its carry-checked failure path) plus
+\ kill-errno and execve (carry-flag errno negation each), with their FPRIM
+\ registrations and checker axioms. The exact-CODELEN ratchet measured the
+\ composed candidate at 127960 (STALE-BASELINE, was 127524), floor 548 -> 984.
+\ Page count, signature, and whole-file total are unchanged (the __TEXT pad
+\ absorbs the growth).
+127960 constant MACOS-CODE-TEXT   \ CODELEN: every emitter-phase row (baked-source incl.)
 1423 constant MACOS-SIGNATURE     \ ad-hoc code signature SuperBlob (grows with CODELEN)
-548 constant MACOS-FLOOR-DIST     \ code above the 16 KiB floor: the page-recovery shave
+984 constant MACOS-FLOOR-DIST     \ code above the 16 KiB floor: the page-recovery shave
 165367 constant MACOS-TOTAL       \ = FILE-SIZE bin/hb = GB-SIZE-BASELINE-MACOS
 
 \ Linux committed attribution, measured at the byte-fixpoint on 2026-07-19 (DGX
