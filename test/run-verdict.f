@@ -67,7 +67,14 @@ private
    {: a :}
    s" perf-verdict: performance=" type name nameu type
    s"  correctness=" type a PERF-VERDICT:CORRECT? TF$ type
-   s"  attempts=" type ATTEMPTS @ FMT:.U cr ;
+   s"  attempts=" type ATTEMPTS @ FMT:.U
+   \ Name the deciding attempt's budget provenance so a "halved" budget is never
+   \ silent: which budget the verdict was judged against, its base, and whether
+   \ it came from the cold (scratch-cache) or warm (persistent-cache) world.
+   a PERF-VERDICT:ATT>PROV {: b:n ba:n cd:bool :}
+   s"  budget=" type b FMT:.U
+   s"  base=" type ba FMT:.U
+   s"  cold=" type cd TF$ type cr ;
 
 \ ---- the retry driver ------------------------------------------------------
 \ Marginal-but-admissible attempt 1: run exactly two more fresh attempts and
@@ -117,9 +124,12 @@ private
 public
 
 \ Build the deterministic machine attempt line (worker emits, parent parses).
-\ PA-EMIT and PA-PARSE share this exact format.
-: PA-LINE$ ( n n n n n bool bool bool -- ptr u8 n )   \ elapsed budget pre post sha correct control cache
-   {: e:n b:n pr:n po:n sh:n co:bool ct:bool ca:bool :}
+\ PA-EMIT and PA-PARSE share this exact format. base/pct/cold carry the budget
+\ PROVENANCE across the process boundary so the parent can render and reproduce
+\ (budget = base*pct/100) a cold-cache worker's budget instead of trusting a bare
+\ number - a cold subprocess attempt is then visibly base=<cold constant> cold=1.
+: PA-LINE$ ( n n n n n bool bool bool n n bool -- ptr u8 n )   \ elapsed budget pre post sha correct control cache base pct cold
+   {: e:n b:n pr:n po:n sh:n co:bool ct:bool ca:bool ba:n pc:n cd:bool :}
    SB-RESET
    s" perf-attempt" SB-APPEND
    s" elapsed" e SB-FLD
@@ -130,9 +140,12 @@ public
    s" correct" co SB-BOOL-FLD
    s" control" ct SB-BOOL-FLD
    s" cache" ca SB-BOOL-FLD
+   s" base" ba SB-FLD
+   s" pct" pc SB-FLD
+   s" cold" cd SB-BOOL-FLD
    SB$ ;
 
-: PA-EMIT ( n n n n n bool bool bool -- )
+: PA-EMIT ( n n n n n bool bool bool n n bool -- )
    PA-LINE$ type cr ;
 
 private
@@ -141,6 +154,7 @@ private
 \ when a worker produced no parseable evidence.
 : PA-INVALID ( bool -- PERF-VERDICT:att ) {: em:bool :}
    TRV-BAD-MS 1 1 1 0 FALSE-BOOL FALSE-BOOL FALSE-BOOL em FALSE-BOOL
+   TRV-BAD-MS 100 FALSE-BOOL             \ base=budget pct=100 -> reproducible; sha=0 already inadmissible
    PERF-VERDICT:ATTEMPT ;
 
 : NEXT-TAB ( ptr u8 n n -- n ) {: a:ptr u:n start:n :}   \ index of next TAB at/after start, else u
@@ -204,9 +218,14 @@ public
    la lu s" correct" PA-VAL 0= if drop em PA-INVALID exit then 0<> {: co:bool :}
    la lu s" control" PA-VAL 0= if drop em PA-INVALID exit then 0<> {: ct:bool :}
    la lu s" cache"   PA-VAL 0= if drop em PA-INVALID exit then 0<> {: ca:bool :}
+   la lu s" base"    PA-VAL 0= if drop em PA-INVALID exit then {: ba:n :}
+   la lu s" pct"     PA-VAL 0= if drop em PA-INVALID exit then {: pc:n :}
+   la lu s" cold"    PA-VAL 0= if drop em PA-INVALID exit then 0<> {: cd:bool :}
    b 0 <= if em PA-INVALID exit then
    pr 0 <= if em PA-INVALID exit then
    po 0 <= if em PA-INVALID exit then
-   e b pr po sh co ct TRUE-BOOL em ca PERF-VERDICT:ATTEMPT ;
+   ba 0 <= if em PA-INVALID exit then
+   pc 0 <= if em PA-INVALID exit then
+   e b pr po sh co ct TRUE-BOOL em ca ba pc cd PERF-VERDICT:ATTEMPT ;
 
 ;package

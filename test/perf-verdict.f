@@ -48,6 +48,8 @@ require lib/fmt.f
 -4599 constant E-PV-LAST
 -4500 constant E-PV-BUDGET   \ calibrated budget must be positive
 -4501 constant E-PV-RANGE    \ a measurement (elapsed/pre/post/sha) is out of range
+-4502 constant E-PV-BASE     \ the unscaled base budget must be positive
+-4503 constant E-PV-PCT      \ the applied calibration factor must be positive
 
 package PERF-VERDICT
 
@@ -65,6 +67,13 @@ public
 \ generate PERF--VERDICT-ATT:MAKE / PERF--VERDICT-ATT:UNMAKE (a private product
 \ generates nothing); external callers use the PERF-VERDICT:* API below, never
 \ the raw layout. Fields are in MAKE/UNMAKE slot order (elapsed deepest).
+\ base/pct/cold are the per-attempt budget PROVENANCE: the unscaled base budget
+\ constant, the calibration factor applied to it (percent), and the cache-root
+\ world it was derived under (cold = a scratch/fresh-cache run, warm = the
+\ persistent cache). A correct budget always reproduces as base*pct/100, so a
+\ "halved" budget is never silent - it is either the cold base made visible
+\ (base=<cold constant> cold=t), or an inconsistent derivation the admissibility
+\ reproducibility check (BUDGET-OK?) fails closed on.
 PRODUCT att 0
    FIELD elapsed n
    FIELD budget n
@@ -76,6 +85,9 @@ PRODUCT att 0
    FIELD fresh bool
    FIELD empty bool
    FIELD cache bool
+   FIELD base n
+   FIELD pct n
+   FIELD cold bool
 ;PRODUCT
 
 private
@@ -113,6 +125,14 @@ private
    {: sh:n co:bool ct:bool fr:bool em:bool ca:bool :}
    sh 0 <>  co and  ct and  fr and  em and  ca and ;
 
+\ Budget reproducibility: an admissible attempt's budget MUST reproduce exactly
+\ from its recorded provenance (base scaled by the calibration factor, integer
+\ floor - the same op the integration used). A budget that cannot be reproduced
+\ from its declared base+factor is an inconsistent derivation and fails closed.
+: BUDGET-OK? ( n n n -- bool ) {: b:n ba:n pc:n :}       \ budget base pct -> reproducible?
+   ba 0 > pc 0 > and
+   ba pc * PV-HUNDRED / b = and ;
+
 : ADMIT? ( n n n bool bool bool bool bool -- bool )     \ pre post sha correct control fresh empty cache
    {: pr:n po:n sh:n co:bool ct:bool fr:bool em:bool ca:bool :}
    pr po DRIFT-OK?
@@ -132,12 +152,15 @@ private
 \ ---- one-consume reducers over the att bundle ------------------------------
 \ Peel every field once; return band + calibration + evidence + sha as narrow
 \ cells so the public predicates never destructure the layout value twice.
+\ The admissibility component (3rd result) is EVIDENCE-OK? AND BUDGET-OK?: a
+\ clean-calibration attempt whose budget does not reproduce from its recorded
+\ base+factor is NOT admissible, even if every evidence flag is set.
 : ATT>SUM ( att -- band bool bool n )
    PERF--VERDICT-ATT:UNMAKE
-   {: e:n b:n pr:n po:n sh:n co:bool ct:bool fr:bool em:bool ca:bool :}
+   {: e:n b:n pr:n po:n sh:n co:bool ct:bool fr:bool em:bool ca:bool ba:n pc:n cd:bool :}
    e b BAND-OF
    pr po DRIFT-OK?
-   sh co ct fr em ca EVIDENCE-OK?
+   sh co ct fr em ca EVIDENCE-OK?  b ba pc BUDGET-OK? and
    sh ;
 
 \ pass? hard? admissible? sha - the per-attempt shape the 2-of-3 aggregate folds.
@@ -150,14 +173,16 @@ public
 \ Build a validated attempt record. Malformed CONSTRUCTION (nonpositive budget,
 \ negative measurement) is a caller bug and throws a named code; the verdict
 \ PREDICATES below never throw, they fail closed.
-: ATTEMPT ( n n n n n bool bool bool bool bool -- att )
-   {: e:n b:n pr:n po:n sh:n co:bool ct:bool fr:bool em:bool ca:bool :}
+: ATTEMPT ( n n n n n bool bool bool bool bool n n bool -- att )
+   {: e:n b:n pr:n po:n sh:n co:bool ct:bool fr:bool em:bool ca:bool ba:n pc:n cd:bool :}
    b 0 <= if E-PV-BUDGET throw then
    e 0 < if E-PV-RANGE throw then
    pr 0 <= if E-PV-RANGE throw then
    po 0 <= if E-PV-RANGE throw then
    sh 0 < if E-PV-RANGE throw then
-   e b pr po sh co ct fr em ca PERF--VERDICT-ATT:MAKE ;
+   ba 0 <= if E-PV-BASE throw then
+   pc 0 <= if E-PV-PCT throw then
+   e b pr po sh co ct fr em ca ba pc cd PERF--VERDICT-ATT:MAKE ;
 
 : PASS? ( att -- bool )                          \ pure pass-band predicate
    ATT>SUM {: bd:band st:bool ev:bool sh:n :} bd IS-PASS? ;
@@ -176,8 +201,14 @@ public
 
 : CORRECT? ( att -- bool )                       \ correctness field, SEPARATE from perf
    PERF--VERDICT-ATT:UNMAKE
-   {: e:n b:n pr:n po:n sh:n co:bool ct:bool fr:bool em:bool ca:bool :}
+   {: e:n b:n pr:n po:n sh:n co:bool ct:bool fr:bool em:bool ca:bool ba:n pc:n cd:bool :}
    co ct and ;
+
+\ Budget provenance for the verdict/summary lines: budget, unscaled base, cold?
+: ATT>PROV ( att -- n n bool )                   \ budget base cold
+   PERF--VERDICT-ATT:UNMAKE
+   {: e:n b:n pr:n po:n sh:n co:bool ct:bool fr:bool em:bool ca:bool ba:n pc:n cd:bool :}
+   b ba cd ;
 
 : INITIAL-PASS? ( att -- bool )                  \ initial pass needs no retry
    ATT>SUM {: bd:band st:bool ev:bool sh:n :} bd IS-PASS? st and ev and ;
@@ -198,10 +229,13 @@ public
 \ compare or copy before the next SB use).
 : ATTEMPT-LINE ( att -- ptr u8 n )
    PERF--VERDICT-ATT:UNMAKE
-   {: e:n b:n pr:n po:n sh:n co:bool ct:bool fr:bool em:bool ca:bool :}
+   {: e:n b:n pr:n po:n sh:n co:bool ct:bool fr:bool em:bool ca:bool ba:n pc:n cd:bool :}
    SB-RESET
    s" attempt e=" e SB-U+
    s"  b=" b SB-U+
+   s"  base=" ba SB-U+
+   s"  pct=" pc SB-U+
+   s"  cold=" cd SB-TF+
    s"  band=" SB-APPEND e b BAND-OF BAND-NAME$ SB-APPEND
    s"  pre=" pr SB-U+
    s"  post=" po SB-U+
@@ -212,7 +246,7 @@ public
    s"  fresh=" fr SB-TF+
    s"  empty=" em SB-TF+
    s"  cache=" ca SB-TF+
-   s"  admissible=" pr po sh co ct fr em ca ADMIT? SB-TF+
+   s"  admissible=" pr po sh co ct fr em ca ADMIT?  b ba pc BUDGET-OK? and  SB-TF+
    SB$ ;
 
 ;package

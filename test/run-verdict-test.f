@@ -47,12 +47,15 @@ variable CNT
    em base 8 CELL!   ca base 9 CELL! ;
 
 \ The fake seam: build attempt n from its injected row.
+\ Provenance is injected consistent (base=budget, pct=100, cold=false) so the
+\ reproducibility gate is neutral and the injected timings drive the verdict.
 : FAKE-MEASURE ( n -- PERF-VERDICT:att ) {: n:n :}
    n ROW
    \ typed-local-lint: allow-bare-local - base is a raw ptr a cell buffer.
    {: base :}
    base 0 CELL@  base 1 CELL@  base 2 CELL@  base 3 CELL@  base 4 CELL@
    base 5 CELL@ 0<>  base 6 CELL@ 0<>  base 7 CELL@ 0<>  base 8 CELL@ 0<>  base 9 CELL@ 0<>
+   base 1 CELL@ 100 false
    PERF-VERDICT:ATTEMPT ;
 
 : INSTALL ( -- )
@@ -77,7 +80,7 @@ variable CNT
 
 \ ---- machine-line round trip (PA-LINE$ builder <-> PA-PARSE) ----------------
 : GOOD-LINE ( -- ptr u8 n )                        \ built by the shared emit formatter
-   900 1000 1000 1000 42 true true true TR-VERDICT:PA-LINE$ ;
+   900 1000 1000 1000 42 true true true 1000 100 false TR-VERDICT:PA-LINE$ ;
 
 : LINE-MISSING ( -- ptr u8 n )                     \ budget field absent, plus surrounding noise
    S\" noise line\nperf-attempt\telapsed=900\tpre=1000\tpost=1000\tsha=42\tcorrect=1\tcontrol=1\tcache=1\ntail\n" ;

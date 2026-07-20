@@ -170,6 +170,17 @@ variable TR-BUDGET
 variable TR-WALL-BUDGET
 variable TR-BUDGET-USER
 variable TR-WALL-BUDGET-USER
+variable TR-BUDGET-BASE      \ unscaled per-attempt budget constant that produced TR-BUDGET
+variable TR-BUDGET-FACTOR    \ calibration factor (percent) applied to TR-BUDGET-BASE
+
+\ Set the per-attempt budget AND record its provenance together, so the verdict
+\ can reproduce budget = base*factor/100 and name which base/factor produced it.
+\ EVERY TR-BUDGET write goes through here; a bare `TR-BUDGET !` would leave the
+\ recorded provenance stale and the derivation invisible again.
+: TR-BUDGET-SET! ( n n -- ) {: base:n factor:n :}    \ base factor
+   base TR-BUDGET-BASE !
+   factor TR-BUDGET-FACTOR !
+   base factor * 100 / TR-BUDGET ! ;
 variable TR-NESTED-POOL
 variable TR-TIMINGS
 variable TR-COLD-CACHE
@@ -261,7 +272,7 @@ variable TR-PRE-DIAG-FILE
    2 TR-ADVANCE ;
 
 : TR-BUDGET-OPT ( -- )
-   TR-ARG-VALUE$ TR-POS-NUM TR-BUDGET !
+   TR-ARG-VALUE$ TR-POS-NUM 100 TR-BUDGET-SET!   \ user override is unscaled: base=value, factor=100
    -1 TR-BUDGET-USER !
    2 TR-ADVANCE ;
 
@@ -363,7 +374,7 @@ variable TR-PRE-DIAG-FILE
          10 TR-TOP-POOL-SLOTS!
          2 TR-NESTED-POOL !
          TR-BUDGET-USER @ 0= if
-            RUN-BUDGET:MACOS-MS TR-CAL-SCALED TR-BUDGET !
+            RUN-BUDGET:MACOS-MS TR-CAL-PCT TR-BUDGET-SET!
          then
          TR-WALL-BUDGET-USER @ 0= if
             RUN-BUDGET:MACOS-WALL-MS TR-CAL-SCALED TR-WALL-BUDGET !
@@ -376,7 +387,7 @@ variable TR-PRE-DIAG-FILE
          \ applied unmeasured (no Jetson here) because the Orin runs maki's CUDA legs
          \ and has fewer pool slots, so its maki wall scales with its ~3.3x budget.
          TR-BUDGET-USER @ 0= if
-            117000 TR-CAL-SCALED TR-BUDGET !
+            117000 TR-CAL-PCT TR-BUDGET-SET!
          then
          TR-WALL-BUDGET-USER @ 0= if
             128000 TR-CAL-SCALED TR-WALL-BUDGET !
@@ -386,7 +397,7 @@ variable TR-PRE-DIAG-FILE
          4 GT-POOL-SLOTS!
          2 TR-NESTED-POOL !
          TR-BUDGET-USER @ 0= if
-            120000 TR-CAL-SCALED TR-BUDGET !
+            120000 TR-CAL-PCT TR-BUDGET-SET!
          then
          TR-WALL-BUDGET-USER @ 0= if
             0 TR-WALL-BUDGET !
@@ -396,7 +407,7 @@ variable TR-PRE-DIAG-FILE
          10 TR-TOP-POOL-SLOTS!
          2 TR-NESTED-POOL !
          TR-BUDGET-USER @ 0= if
-            RUN-BUDGET:SPARK-MS TR-CAL-SCALED TR-BUDGET !
+            RUN-BUDGET:SPARK-MS TR-CAL-PCT TR-BUDGET-SET!
          then
          TR-WALL-BUDGET-USER @ 0= if
             RUN-BUDGET:SPARK-WALL-MS TR-CAL-SCALED TR-WALL-BUDGET !
@@ -405,7 +416,7 @@ variable TR-PRE-DIAG-FILE
    endcase ;
 
 : TR-ARGS-DEFAULTS ( -- )
-   TR-DEFAULT-BUDGET-MS TR-BUDGET !
+   TR-DEFAULT-BUDGET-MS 100 TR-BUDGET-SET!    \ default is unscaled; TR-PROFILE-APPLY below overwrites it
    0 TR-WALL-BUDGET !
    0 TR-BUDGET-USER !
    0 TR-WALL-BUDGET-USER !
@@ -418,14 +429,19 @@ variable TR-PRE-DIAG-FILE
    0 TR-UNDER-ARG-U !
    TR-DETECT-PROFILE TR-PROFILE-APPLY ;
 
-: TR-COLD-BUDGET-MS ( -- n )
+\ The UNSCALED cold-cache base per profile (the cold sibling of the warm
+\ per-profile table); TR-COLD-BUDGET-MS scales it by the live calibration.
+: TR-COLD-BASE ( -- n )
    TR-PROFILE-ID @ case
-      TR-PROFILE-MACOS-ARM64-10X2 of RUN-BUDGET:MACOS-COLD-MS TR-CAL-SCALED endof
-      TR-PROFILE-JETSON-ORIN-CLOCKS-4X2 of 175000 TR-CAL-SCALED endof
-      TR-PROFILE-LINUX-ARM64-4X2 of 150000 TR-CAL-SCALED endof
-      TR-PROFILE-DGX-SPARK-10X2 of RUN-BUDGET:SPARK-COLD-MS TR-CAL-SCALED endof
-      TR-BUDGET @ swap
+      TR-PROFILE-MACOS-ARM64-10X2 of RUN-BUDGET:MACOS-COLD-MS endof
+      TR-PROFILE-JETSON-ORIN-CLOCKS-4X2 of 175000 endof
+      TR-PROFILE-LINUX-ARM64-4X2 of 150000 endof
+      TR-PROFILE-DGX-SPARK-10X2 of RUN-BUDGET:SPARK-COLD-MS endof
+      TR-BUDGET-BASE @ swap
    endcase ;
+
+: TR-COLD-BUDGET-MS ( -- n )
+   TR-COLD-BASE TR-CAL-SCALED ;
 
 : TR-COLD-WALL-BUDGET-MS ( -- n )
    TR-PROFILE-ID @ case
@@ -438,7 +454,7 @@ variable TR-PRE-DIAG-FILE
 
 : TR-COLD-BUDGETS ( -- )
    TR-COLD-CACHE @ 0 = if exit then
-   TR-BUDGET-USER @ 0= if TR-COLD-BUDGET-MS TR-BUDGET ! then
+   TR-BUDGET-USER @ 0= if TR-COLD-BASE TR-CAL-PCT TR-BUDGET-SET! then
    TR-WALL-BUDGET-USER @ 0= if TR-COLD-WALL-BUDGET-MS TR-WALL-BUDGET ! then ;
 
 : TR-MARK-COLD ( -- )
@@ -596,6 +612,8 @@ variable TR-PRE-DIAG-FILE
    s"  nested=" type TR-NESTED-POOL @ GT-U-TYPE
    s"  cal-ms=" type TR-CAL-MEASURED-MS @ GT-U-TYPE
    s"  cal-factor=" type TR-CAL-PCT GT-U-TYPE s" %" type
+   s"  budget-base=" type TR-BUDGET-BASE @ GT-U-TYPE
+   s"  budget-ms=" type TR-BUDGET-MS GT-U-TYPE
    TR-WALL-BUDGET? if
       s"  wall-budget-ms=" type TR-WALL-BUDGET-MS GT-U-TYPE
    then
@@ -2010,6 +2028,16 @@ create TR-CAL-ERR-BUF TR-CAL-CAP allot
 : TR-A-POST ( -- n )                         \ post-calibration spin ms, clamped >=1
    TR-POST-CAL-MS @ dup 1 < if drop 1 then ;
 
+\ ---- per-attempt budget provenance (base, factor, cache-root world) ---------
+\ These make the budget's derivation an explicit, reproducible part of every
+\ attempt line: budget = base*factor/100, cold=true when this attempt ran in the
+\ scratch-cache world (a cold retry subprocess, or a mid-run candidate-cache-miss
+\ fallback via TR-MARK-COLD). base/factor clamp to >=1 so a value-less profile
+\ never emits a zero the verdict would reject.
+: TR-A-BASE ( -- n )    TR-BUDGET-BASE @ dup 1 < if drop 1 then ;
+: TR-A-FACTOR ( -- n )  TR-BUDGET-FACTOR @ dup 1 < if drop 1 then ;
+: TR-A-COLD ( -- bool ) TR-COLD-CACHE @ 0 <> ;
+
 \ Fold the 64-hex under-test digest into one non-negative identity cell (the
 \ policy's sha token). No candidate -> 0 -> fails closed.
 : TR-UNDER-SHA-CELL ( -- n )
@@ -2047,7 +2075,8 @@ create TR-CAL-ERR-BUF TR-CAL-CAP allot
 \ Attempt 1 is in-process: fresh=true, empty=true (it is the first attempt, so no
 \ prior-attempt artifact can exist); cache is the within-attempt counter contract.
 : TR-ATTEMPT-1 ( -- PERF-VERDICT:att )
-   TR-A-CORE TR-TRUE TR-TRUE GS-ATTEMPT-CACHE-OK? PERF-VERDICT:ATTEMPT ;
+   TR-A-CORE TR-TRUE TR-TRUE GS-ATTEMPT-CACHE-OK?
+   TR-A-BASE TR-A-FACTOR TR-A-COLD PERF-VERDICT:ATTEMPT ;
 
 \ ---- distinct fresh roots per retry attempt --------------------------------
 : TR-VA-BASE$ ( -- ptr u8 n )    TR-VA-BASE-BUF TR-VA-BASE-U @ ;
@@ -2138,7 +2167,7 @@ create TR-CAL-ERR-BUF TR-CAL-CAP allot
 : TR-VERDICT-WORKER ( -- )                   \ --gate-attempt: one attempt, one line, no retry
    TR-POST-CAL!
    TR-PERF-LINE
-   TR-VERDICT-FIELDS TR-VERDICT:PA-EMIT ;
+   TR-VERDICT-FIELDS TR-A-BASE TR-A-FACTOR TR-A-COLD TR-VERDICT:PA-EMIT ;
 
 : TR-VERDICT-DRIVER ( -- )                   \ retry rule: pass returns, any fail dies TR-BUDGET-RC
    TR-POST-CAL!

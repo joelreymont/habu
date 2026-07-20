@@ -16,71 +16,79 @@ require test/perf-verdict.f
 
 package PERF-VERDICT-TEST
 
+\ Every fixture injects a CONSISTENT budget provenance (base=budget, pct=100,
+\ cold=false) so budget=base*100/100 reproduces and the reproducibility gate is
+\ neutral; band/evidence/drift are what these fixtures exercise.
 \ ---- band fixtures (only elapsed/budget matter; evidence is fixed-good) -----
 : BP ( n n -- bool ) {: e:n b:n :}                       \ pass-band predicate at (e,b)
-   e b 1000 1000 42 true true true true true PERF-VERDICT:ATTEMPT PERF-VERDICT:PASS? ;
+   e b 1000 1000 42 true true true true true b 100 false PERF-VERDICT:ATTEMPT PERF-VERDICT:PASS? ;
 
 : BM ( n n -- bool ) {: e:n b:n :}                       \ marginal-band predicate at (e,b)
-   e b 1000 1000 42 true true true true true PERF-VERDICT:ATTEMPT PERF-VERDICT:MARGINAL? ;
+   e b 1000 1000 42 true true true true true b 100 false PERF-VERDICT:ATTEMPT PERF-VERDICT:MARGINAL? ;
 
 : BH ( n n -- bool ) {: e:n b:n :}                       \ hard-fail-band predicate at (e,b)
-   e b 1000 1000 42 true true true true true PERF-VERDICT:ATTEMPT PERF-VERDICT:HARD-FAIL? ;
+   e b 1000 1000 42 true true true true true b 100 false PERF-VERDICT:ATTEMPT PERF-VERDICT:HARD-FAIL? ;
 
 \ ---- calibration-stability fixture (only pre/post matter) -------------------
 : CS ( n n -- bool ) {: pr:n po:n :}                     \ CAL-STABLE? at (pre,post)
-   900 1000 pr po 42 true true true true true PERF-VERDICT:ATTEMPT PERF-VERDICT:CAL-STABLE? ;
+   900 1000 pr po 42 true true true true true 1000 100 false PERF-VERDICT:ATTEMPT PERF-VERDICT:CAL-STABLE? ;
 
 \ ---- full-attempt fixtures over every field --------------------------------
 : ADM ( n n n n n bool bool bool bool bool -- bool )
-   PERF-VERDICT:ATTEMPT PERF-VERDICT:ADMISSIBLE? ;
+   {: e:n b:n pr:n po:n sh:n co:bool ct:bool fr:bool em:bool ca:bool :}
+   e b pr po sh co ct fr em ca b 100 false PERF-VERDICT:ATTEMPT PERF-VERDICT:ADMISSIBLE? ;
 
 : CORR ( n n n n n bool bool bool bool bool -- bool )
-   PERF-VERDICT:ATTEMPT PERF-VERDICT:CORRECT? ;
+   {: e:n b:n pr:n po:n sh:n co:bool ct:bool fr:bool em:bool ca:bool :}
+   e b pr po sh co ct fr em ca b 100 false PERF-VERDICT:ATTEMPT PERF-VERDICT:CORRECT? ;
 
 : INIT ( n n n n n bool bool bool bool bool -- bool )
-   PERF-VERDICT:ATTEMPT PERF-VERDICT:INITIAL-PASS? ;
+   {: e:n b:n pr:n po:n sh:n co:bool ct:bool fr:bool em:bool ca:bool :}
+   e b pr po sh co ct fr em ca b 100 false PERF-VERDICT:ATTEMPT PERF-VERDICT:INITIAL-PASS? ;
 
 : HF ( n n n n n bool bool bool bool bool -- bool )
-   PERF-VERDICT:ATTEMPT PERF-VERDICT:HARD-FAIL? ;
+   {: e:n b:n pr:n po:n sh:n co:bool ct:bool fr:bool em:bool ca:bool :}
+   e b pr po sh co ct fr em ca b 100 false PERF-VERDICT:ATTEMPT PERF-VERDICT:HARD-FAIL? ;
 
 \ ---- 2-of-3 aggregate fixtures ---------------------------------------------
 \ three attempts with fixed-good evidence and one shared SHA, varying elapsed.
 : TRI ( n n n -- bool ) {: e1:n e2:n e3:n :}
-   e1 1000 1000 1000 42 true true true true true PERF-VERDICT:ATTEMPT
-   e2 1000 1000 1000 42 true true true true true PERF-VERDICT:ATTEMPT
-   e3 1000 1000 1000 42 true true true true true PERF-VERDICT:ATTEMPT
+   e1 1000 1000 1000 42 true true true true true 1000 100 false PERF-VERDICT:ATTEMPT
+   e2 1000 1000 1000 42 true true true true true 1000 100 false PERF-VERDICT:ATTEMPT
+   e3 1000 1000 1000 42 true true true true true 1000 100 false PERF-VERDICT:ATTEMPT
    PERF-VERDICT:TWO-OF-THREE? ;
 
 \ three pass-band attempts, but the middle one carries a different SHA.
 : TRI-SHA ( -- bool )
-   900 1000 1000 1000 42 true true true true true PERF-VERDICT:ATTEMPT
-   900 1000 1000 1000 99 true true true true true PERF-VERDICT:ATTEMPT
-   900 1000 1000 1000 42 true true true true true PERF-VERDICT:ATTEMPT
+   900 1000 1000 1000 42 true true true true true 1000 100 false PERF-VERDICT:ATTEMPT
+   900 1000 1000 1000 99 true true true true true 1000 100 false PERF-VERDICT:ATTEMPT
+   900 1000 1000 1000 42 true true true true true 1000 100 false PERF-VERDICT:ATTEMPT
    PERF-VERDICT:TWO-OF-THREE? ;
 
 \ three pass-band attempts, but the middle one has a nonempty (reused) root.
 : TRI-INADM ( -- bool )
-   900 1000 1000 1000 42 true true true true true PERF-VERDICT:ATTEMPT
-   900 1000 1000 1000 42 true true true false true PERF-VERDICT:ATTEMPT
-   900 1000 1000 1000 42 true true true true true PERF-VERDICT:ATTEMPT
+   900 1000 1000 1000 42 true true true true true 1000 100 false PERF-VERDICT:ATTEMPT
+   900 1000 1000 1000 42 true true true false true 1000 100 false PERF-VERDICT:ATTEMPT
+   900 1000 1000 1000 42 true true true true true 1000 100 false PERF-VERDICT:ATTEMPT
    PERF-VERDICT:TWO-OF-THREE? ;
 
 \ ---- named-throw construction fixtures (fail loud on malformed inputs) ------
+\ base=1 pct=100 keep the provenance valid so the guarded field throws first.
 : BUDGET-CODE ( -- n )
-   [: 1000 0 1000 1000 42 true true true true true PERF-VERDICT:ATTEMPT PERF-VERDICT:PASS? drop ;] catch ;
+   [: 1000 0 1000 1000 42 true true true true true 1 100 false PERF-VERDICT:ATTEMPT PERF-VERDICT:PASS? drop ;] catch ;
 
 : ELAPSED-CODE ( -- n )
-   [: -1 1000 1000 1000 42 true true true true true PERF-VERDICT:ATTEMPT PERF-VERDICT:PASS? drop ;] catch ;
+   [: -1 1000 1000 1000 42 true true true true true 1000 100 false PERF-VERDICT:ATTEMPT PERF-VERDICT:PASS? drop ;] catch ;
 
 : PRE-CODE ( -- n )
-   [: 900 1000 0 1000 42 true true true true true PERF-VERDICT:ATTEMPT PERF-VERDICT:PASS? drop ;] catch ;
+   [: 900 1000 0 1000 42 true true true true true 1000 100 false PERF-VERDICT:ATTEMPT PERF-VERDICT:PASS? drop ;] catch ;
 
 \ ---- deterministic ATTEMPT-LINE rows ---------------------------------------
 : LINE-PASS ( -- ptr u8 n )
-   900 1000 1000 1000 42 true true true true true PERF-VERDICT:ATTEMPT PERF-VERDICT:ATTEMPT-LINE ;
+   900 1000 1000 1000 42 true true true true true 1000 100 false PERF-VERDICT:ATTEMPT PERF-VERDICT:ATTEMPT-LINE ;
 
 : LINE-FAIL ( -- ptr u8 n )
-   1200 1000 1000 1300 0 false true true false true PERF-VERDICT:ATTEMPT PERF-VERDICT:ATTEMPT-LINE ;
+   1200 1000 1000 1300 0 false true true false true 1000 100 false PERF-VERDICT:ATTEMPT PERF-VERDICT:ATTEMPT-LINE ;
 
 \ ===========================================================================
 T-RESET
@@ -150,8 +158,8 @@ TRI-SHA TFALSE
 TRI-INADM TFALSE             \ one reused root in the trio also fails closed
 
 \ (11) deterministic ATTEMPT-LINE rows (byte-exact).
-LINE-PASS s" attempt e=900 b=1000 band=pass pre=1000 post=1000 stable=t sha=42 correct=t control=t fresh=t empty=t cache=t admissible=t" T$=
-LINE-FAIL s" attempt e=1200 b=1000 band=hard pre=1000 post=1300 stable=f sha=0 correct=f control=t fresh=t empty=f cache=t admissible=f" T$=
+LINE-PASS s" attempt e=900 b=1000 base=1000 pct=100 cold=f band=pass pre=1000 post=1000 stable=t sha=42 correct=t control=t fresh=t empty=t cache=t admissible=t" T$=
+LINE-FAIL s" attempt e=1200 b=1000 base=1000 pct=100 cold=f band=hard pre=1000 post=1300 stable=f sha=0 correct=f control=t fresh=t empty=f cache=t admissible=f" T$=
 
 \ named-throw construction guards.
 BUDGET-CODE E-PV-BUDGET T=
