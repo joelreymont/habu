@@ -296,6 +296,22 @@ variable GB-SV                         \ split-K split count S
    1 MMA-EPILOG !  s" -- EPILOGUE: " type
    GB-MMM-CFGW-B  0 MMA-EPILOG ! ;
 
+\ XOR-SWIZZLE bench wrappers (dot habu-xor-swizzle-mma): the pad-free XSWIZ variant of each committed
+\ ldmatrix-A tile - pad forced 0, MMA-XSWIZ=1, mode=2 (the swizzle's wired A feed). GB-SMEM-DYN follows
+\ MMA-SH-BYTES, which shrinks (As row 160B->128B, no pad) so a dynamic tile launches with LESS shared - the
+\ whole point. Delegates to the existing wide machinery, then restores XSWIZ=0. Element-exact first
+\ (tools/ptx/mma-gemm-check.f MGC-CFG-XSWIZ*, 0 mismatches).
+: GB-MMM-CFGW-X ( n n n -- ) {: stages:n dyn:n mfrags:n :}         \ 8-warp XSWIZ ldmatrix-A (pad-free)
+   1 MMA-XSWIZ !  s" -- XSWIZ: " type  32 0 stages dyn 2 mfrags GB-MMM-CFGW  0 MMA-XSWIZ ! ;
+: GB-MMM-CFGW4-X ( n n n -- ) {: stages:n dyn:n mfrags:n :}        \ 4-warp XSWIZ ldmatrix-A
+   1 MMA-XSWIZ !  s" -- XSWIZ " type  32 0 stages dyn 2 mfrags GB-MMM-CFGW4  0 MMA-XSWIZ ! ;
+: GB-MMM-CFGW4-EPI-X ( n n n -- ) {: stages:n dyn:n mfrags:n :}    \ 4-warp XSWIZ + epilogue
+   1 MMA-XSWIZ !  s" -- XSWIZ " type  32 0 stages dyn 2 mfrags GB-MMM-CFGW4-EPI  0 MMA-XSWIZ ! ;
+: GB-MMM-CFGW-B-X ( n n n n -- ) {: stages:n dyn:n mfrags:n bpad:n :}      \ 8-warp XSWIZ + B-ldmatrix
+   1 MMA-XSWIZ !  s" -- XSWIZ: " type  32 0 stages dyn mfrags bpad GB-MMM-CFGW-B  0 MMA-XSWIZ ! ;
+: GB-MMM-CFGW-B-EPI-X ( n n n n -- ) {: stages:n dyn:n mfrags:n bpad:n :}  \ 8-warp XSWIZ + B-ldmatrix + epilogue
+   1 MMA-XSWIZ !  s" -- XSWIZ: " type  32 0 stages dyn mfrags bpad GB-MMM-CFGW-B-EPI  0 MMA-XSWIZ ! ;
+
 \ WIDE-BN bench config (dot habu-widen-bn-past): the BN=128/256 tile - the 4096-class geometry Triton's
 \ per-shape winners use (2048 = BM64xBN128, 4096 = BM128xBN256, docs/eval-triton.md GB10 sweep). Sets BN +
 \ warp grid + wide knobs and the N-tile grid edge (GB-OT = BN, so gridX = s/BN). Element-exact first
@@ -630,6 +646,33 @@ public
    32 8 1 0 2 4 GB-MMM-CFGW4-EPI        \ same tile + EPILOGUE
    32 8 1 1 4 4 GB-MMM-CFGW-B           \ 4096^3 winner 8-warp M4 bpad=4 stages=1 dyn B-ldmatrix (256x64) - epilogue OFF
    32 8 1 1 4 4 GB-MMM-CFGW-B-EPI ;     \ same tile + EPILOGUE
+
+\ XOR-SWIZZLE A/B sweep (dot habu-xor-swizzle-mma): each committed pad winner tile, PAD (pad=8) then the
+\ pad-free XSWIZ variant, SAME session so the pair isolates the layout change; plus the two levers the pad
+\ smem cost foreclosed - a stages=3 deep ring (round-2 negative) and epilogue-on the 256-row B-ldmatrix tile
+\ (round-3 eviction negative) - re-tested with the freed budget. Every config is element-exact first
+\ (tools/ptx/mma-gemm-check.f MGC-CFG-XSWIZ*). Best-of-3, run SOLO, pinned 13.3 ptxas. Read the PAD vs XSWIZ
+\ pair per shape: a tie means the swizzle frees 4 KB/tile at no throughput cost; a win means the freed budget
+\ took a lever the pad could not afford.
+: GB-XSWIZ-SWEEP ( -- )
+   CUDA:OPEN? 0= if s" gemm-bench: libcuda unavailable -> SKIPPED (off-device)" type cr exit then
+   GB-MM                                \ FP32 CUDA-core roof reference (same session)
+   32 8 2 1 2 4 GB-MMM-CFGW4-EPI        \ 512^3 winner 4-warp M4 stages=2 dyn +epi - PAD baseline
+   2 1 4 GB-MMM-CFGW4-EPI-X             \ 512^3 winner - XSWIZ (pad-free)
+   32 8 1 0 2 4 GB-MMM-CFGW4-EPI        \ 1024^3/2048^3 winner 4-warp M4 stages=1 static +epi - PAD baseline
+   1 0 4 GB-MMM-CFGW4-EPI-X             \ 1024^3/2048^3 winner - XSWIZ
+   32 8 1 1 4 4 GB-MMM-CFGW-B           \ 4096^3 winner 8-warp M4 bpad=4 stages=1 dyn B-ldmatrix - PAD baseline
+   1 1 4 4 GB-MMM-CFGW-B-X              \ 4096^3 winner - XSWIZ
+   32 8 1 0 2 4 GB-MMM-CFGW4            \ bare ldmatrix-A 4-warp M4 s1 static (direct As-conflict A/B) - PAD baseline
+   1 0 4 GB-MMM-CFGW4-X                 \ bare ldmatrix-A 4-warp M4 s1 static - XSWIZ
+   32 8 2 1 2 4 GB-MMM-CFGW             \ bare ldmatrix-A 8-warp M4 s2 dyn (2048 anchor) - PAD baseline
+   2 1 4 GB-MMM-CFGW-X                  \ bare ldmatrix-A 8-warp M4 s2 dyn - XSWIZ
+   32 8 3 1 2 4 GB-MMM-CFGW4            \ RE-OPENED lever 1a: 4-warp M4 stages=3 deep ring (round-2 negative) - PAD (SH 86016, 1 blk/SM)
+   3 1 4 GB-MMM-CFGW4-X                 \ lever 1a - XSWIZ (SH 73728, STILL 1 blk/SM - the freed 12 KB does not cross the line)
+   32 8 3 1 2 2 GB-MMM-CFGW4            \ RE-OPENED lever 1b: 4-warp M2 stages=3 deep ring - PAD (SH 55296, 1 blk/SM)
+   3 1 2 GB-MMM-CFGW4-X                 \ lever 1b - XSWIZ (SH 49152 <= 50 KB: CROSSES to 2 blk/SM - the sharpest re-open test)
+   32 8 1 1 4 4 GB-MMM-CFGW-B-EPI       \ RE-OPENED lever 2: 8-warp M4 B-ldmatrix + epilogue (round-3 256-row eviction) - PAD
+   1 1 4 4 GB-MMM-CFGW-B-EPI-X ;        \ lever 2 - XSWIZ (does the freed budget stop the SH-grow eviction?)
 
 \ FP16 tile schedule sweep (dot habu-fp16-mma-tile): the FP32 CUDA-core roof reference, then the
 \ m16n8k16 f16.f16.f32 tile across warp grids (8/4), MFRAGS (1/2/4), stages (1/2), and the smem C

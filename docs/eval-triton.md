@@ -2199,3 +2199,187 @@ bin/hb --load tools/ptx/mma-gemm-check.f   # MGC-CFG-SPLIT + MGC-SPLIT-NEG (unwi
 # throughput, best-of-3, solo, 13.3 pinned (swap the file's bottom entry to GEMMBENCH:GB-SPLIT-SWEEP):
 bin/hb --load tools/ptx/gemm-bench.f       # S=1 baseline vs split S=2/4 at 512^3/1024^3, GFLOP/s = 2S^3/(MMM+MMR)
 ```
+
+## Round 13 — the pad-free XOR-swizzled `As` layout (dot `habu-xor-swizzle-mma`): a real win on the 4-warp family, 2048³ 0.84× → 0.95× Triton (2026-07-20)
+
+Every round since round 1 has carried `MMA-PAD=8`. The `As` row stride is padded `BK`→`BK+8`
+words so the eight `ldmatrix.x4` A-fragment rows land on eight *distinct* 4-bank windows (a
+160 B row stride is 40 words, so each successive row starts +8 banks) instead of colliding on one
+— it is the committed bank-conflict remedy and the reason every tuned row above says `pad=8`. It
+costs `8 words · BROWS · 4 B` of dead shared per buffer: **4 KiB** on the 128-row 4-warp tiles,
+**8 KiB** on the 256-row 8-warp tile. This round replaces it with the textbook alternative — a
+**true XOR swizzle**, bank-free at **zero** padding cost — and asks the question the campaign
+cares about: do the freed bytes re-open either lever that rounds 2 and 3 falsified *for
+shared-memory-occupancy reasons* (deeper `num_stages`; epilogue-on the wide tile)?
+
+### What was built (`lib/ptx/cg-mma.f` `MMA-XSWIZ`, default 0 = off)
+
+Keep the `As` row stride at exactly `BK` words (pad-free) and instead permute the **16-byte
+K-chunk position within each row**:
+
+```
+chunk' = chunk XOR (row & (ACPR-1))        i.e.   addr ^= (row & (ACPR-1)) << 4
+```
+
+`ACPR = BK/EPC` is the number of `As` `cp.async` chunks per row (8 at BK=32). The eight rows of an
+`ldmatrix` matrix read the *same* K-column at eight *consecutive* `As` rows, so their swizzled
+chunks are eight distinct chunks → eight distinct 4-bank windows → conflict-free, exactly what the
+pad buys, with no padding.
+
+It is applied **identically on both sides**, which is the whole correctness argument:
+
+- **store** — the `cp.async` `As` destination (`MMA-CP-CHUNK` for the interleaved MFRAGS=1 stage,
+  `MMA-CPW-CHUNK-A` for the wide stage): three instructions reusing `%r21` (the row, dead once
+  `row*AROW-B` has been captured into `%r23`), so no new register.
+- **load** — the `ldmatrix.x4` A address (`MMA-A-LDM`, `MMA-A-LDM-WIDE`): **one** `xor` against
+  `%r38`, a loop-invariant term `(ldm_row & (ACPR-1))<<4` computed once in `MMA-SETUP-LDM(-WIDE)`.
+  For `32 ≤ BK ≤ 64` the M-frag stride (16 rows) and the warp-row block are multiples of `ACPR`, so
+  `row & (ACPR-1)` is unchanged by them — the term is invariant across the K-loop *and* every
+  M-fragment: one register, one XOR per fragment load.
+
+Because store and load apply the same bijection, the swizzle is a **pure permutation of `As`
+storage**: correctness is a relabeling of *where* each element sits, not a new lane→element map.
+The XOR only ever toggles bits inside the row's own chunk field (with the pad at zero the row base
+`row·AROW-B` is a multiple of the swizzle span `ACPR·16 = BK·4`), so it can never walk into a
+neighbouring row.
+
+**Fail-closed** (`E-MMA-XSWIZ`, `MMA-CHECK-XSWIZ`) on every combination whose store side is not
+swizzled or whose mask math breaks: a non-zero `MMA-PAD` (the swizzle *is* the pad-free remedy),
+`MMA-LMODE≠2` (the scalar A reads address the row differently and are not swizzled), a half dtype
+(fp16/bf16 stage `As` through the un-swizzled F16 chunk word), `BK` outside `[32,64]` (below 32 the
+row has too few chunks to separate all eight `ldmatrix` rows; above 64 the M-frag stride stops
+preserving `row & mask`), the wide ablation, and split-K (which reuses `%r38`). It **composes** with
+MFRAGS / WARPS / BN / stages / dyn / the transposed-Bs B-`ldmatrix` / grouped-raster / the smem C
+epilogue — none of which touch the `As` feed.
+
+### Proof order
+
+1. **Byte-identity OFF** — `tools/ptx/mma-emit-diff.f` base-vs-branch is an **EMPTY diff** across
+   all 47 committed configs (tf32 default / SWZ / dyn / wide MFRAGS 2&4 / wide-B / 4-warp /
+   deep-stage / epilogue, plus the fp16 and bf16 rows). `MMA-DEFAULT?` gained `MMA-XSWIZ @ 0=` so a
+   swizzled default-*shape* tile routes to the swizzle-aware MMA-owned staging instead of the shared
+   `MM-PIPE` scaffold (which has no swizzle); at `XSWIZ=0` the predicate is unchanged, which is what
+   the empty diff proves.
+2. **Element-exact ON, before any timing** — `tools/ptx/mma-gemm-check.f` `MGC-CFG-XSWIZ*`:
+   **16 configs, 32/32 PASS, 0 mismatches**, zero tolerance, on **both** warp grids — MFRAGS 1/2/4,
+   stages 1/2/3, static and dynamic smem, composed with the transposed-Bs B-`ldmatrix`, with the smem
+   C epilogue, and with **both together**. `C[0][0]` is identical to the un-swizzled tiles at every
+   edge (2520 at 64³, 5426 at 128³, 10749 at 256³) — the permutation never moves a bit. The whole
+   suite stays green (262 element-exact rows, 0 failures). Legality negative-tested
+   (`MGC-XSWIZ-NEG`: pad / scalar-A / fp16 / BK=16 / BK=128 / ablate / split-K each throw
+   `E-MMA-XSWIZ`; a legal swizzle emits). tf32 only by construction — the swizzle is fail-closed on
+   the half dtypes, so it does not touch their shared feeds and no fp16/bf16 rows are owed.
+3. **Mechanism — exactly which shared bytes the swizzle frees.** Both remedies are conflict-free for
+   the same reason (eight fragment rows → eight distinct 4-bank windows); the swizzle simply stops
+   paying for it in bytes. `SH` per block and the smem-bound residency `⌊101376 / SH⌋` (the GB10
+   smem-per-SM bound; true residency also answers to registers/warps):
+
+| tile (tf32, BK=32)                        | pad `SH` | blk/SM | swiz `SH` | blk/SM | Δ`As`/buf |
+|-------------------------------------------|---------:|:------:|----------:|:------:|----------:|
+| 4-warp M4 stages=1 (1024³/2048³ base)     |   28672  |   3    |    24576  | **4**  |    4096 B |
+| 4-warp M4 stages=2 (512³ base)            |   57344  |   1    |    49152  | **2**  |    4096 B |
+| 4-warp M4 stages=3 (deep ring)            |   86016  |   1    |    73728  |   1    |    4096 B |
+| 4-warp M2 stages=3 (deep ring)            |   55296  |   1    |    49152  | **2**  |    2048 B |
+| 8-warp M4 stages=2 (2048³ anchor)         |   98304  |   1    |    81920  |   1    |    8192 B |
+| 8-warp M4 s1 B-`ldmatrix` (4096³ winner)  |   50176  |   2    |    41984  |   2    |    8192 B |
+| 4-warp M4 s1 + epilogue                   |   32768  |   3    |    32768  |   3    |    4096 B |
+| 4-warp M4 s2 + epilogue (512³ winner)     |   57344  |   1    |    49152  | **2**  |    4096 B |
+| 8-warp M4 s1 B-`ldm` + epi (round-3 evict)|   65536  |   1    |    65536  |   1    |    8192 B |
+
+Two structural facts fall out, and they **predict** the entire result below:
+
+- The swizzle **does** cross the 2-blocks/SM line (`SH ≤ ~50 KB`) on the 4-warp M4 stages=2 tile
+  (57344→49152) and on the 4-warp M2 stages=3 deep ring (55296→49152), and lifts 4-warp M4 stages=1
+  from 3 to **4** blocks/SM. These are the configs where a win is arithmetically available.
+- It **cannot** re-open the round-3 epilogue negative: that eviction was caused by the epilogue's
+  **own** `BROWS·BN·4` staging tile (65536 B on the 256-row 8-warp tile), which stays **larger than
+  the pipeline buffer even after the swizzle** (41984 B), so `SH = max(pipeline, staging) = 65536`
+  with pad and swizzle alike. The `As` swizzle shrinks the `cp.async` buffer; it does not touch the
+  epilogue staging tile that binds `SH` there.
+
+No bank-conflict *counts* are claimed — none were measured. The claim is the layout math above plus
+the byte-exact `SH` deltas, read straight out of the emitter's own geometry words.
+
+### Results — same-session A/B, best-of-3, solo (GB10, ptxas 13.3.33 pinned)
+
+Each committed tile timed with `pad=8` and then pad-free `XSWIZ`, back to back in the same session,
+so the pair isolates the layout change. Per-pass spread was ≤3 % on every cell, so the deltas below
+are well outside noise. The FP32 `MM` roof reproduced 8.2 / 13.2 / 14.9 / 13.7 and the pad baselines
+reproduced their committed values (512³ 16.3, 1024³ 29.9, 2048³ 33.2), which validates the session.
+
+| tile (tf32)                          | layout |  512³ | 1024³ | 2048³ | 4096³ |
+|--------------------------------------|--------|------:|------:|------:|------:|
+| 4-warp M4 s2 dyn **+epi** (512³ win) | pad    | 16.34 | 27.43 | 29.64 | 13.65 |
+|                                      |**swiz**|**16.59**|**28.34**|**35.97**|**20.52**|
+| 4-warp M4 s1 static **+epi**         | pad    | 12.28 | 29.91 | 32.73 |**26.05**|
+|                                      |**swiz**|**13.06**|**30.89**|**34.98**| 24.85 |
+| 4-warp M4 s1 static (bare ldm-A)     | pad    | 10.92 | **28.44** | 33.17 | 25.69 |
+|                                      |**swiz**| 10.92 | 26.54 |**34.77**|**30.47**|
+| 8-warp M4 s2 dyn (2048³ anchor)      |**pad** |**9.20**|**21.73**|**30.74**|**23.62**|
+|                                      | swiz   |  8.73 | 20.72 | 29.21 | 22.38 |
+| 8-warp M4 s1 dyn B-`ldm` (4096³ win) |**pad** |**6.90**|**20.82**|**27.18**|**28.49**|
+|                                      | swiz   |  6.57 | 18.79 | 25.11 | 27.06 |
+| 4-warp M4 s3 dyn (deep ring)         | pad    | 14.54 | 25.46 | 30.44 |**13.64**|
+|                                      |**swiz**|**16.33**|**28.23**|**34.29**| 13.24 |
+| 4-warp M2 s3 dyn (deep ring)         | pad    | 10.90 | 18.38 | 21.06 |  7.29 |
+|                                      |**swiz**|**16.06**|**26.18**|**29.38**|**11.05**|
+| 8-warp M4 s1 B-`ldm` **+epi**        |**pad** |**8.18**|**17.60**|**21.24**|**18.60**|
+|                                      | swiz   |  7.70 | 15.01 | 18.48 | 18.21 |
+
+**The swizzle is a per-shape win on the 4-warp family and a per-shape loss on the 256-row 8-warp
+family, and the `SH` table says why.** Where the freed bytes cross a blocks/SM line the win is large
+(4-warp M4 s2 +epi: 2048³ **+21 %**, 4096³ **+50 %**; 4-warp M4 s1 bare at 4096³ **+19 %**); where
+`SH` shrinks but residency does not change (8-warp M4 s2 dyn 98304→81920, still 1 block/SM; 8-warp
+B-`ldmatrix` 50176→41984, still 2) the extra XOR in the A path is pure cost and the tile loses 5–10 %.
+
+Best per shape **within this sweep**, against the Triton 3.8 tf32 referee (21.7 / 33.5 / 37.8 / 45.3):
+
+| TFLOP/s (tf32)          |  512³ | 1024³ | 2048³ | 4096³ |
+|-------------------------|------:|------:|------:|------:|
+| best **pad** this sweep | 16.34 | 29.91 | 33.17 | 28.49 |
+| best **swiz** this sweep|**16.59**|**30.89**|**35.97**|**30.47**|
+| winning swizzled tile   | 4w M4 s2 +epi | 4w M4 s1 +epi | 4w M4 s2 +epi | 4w M4 s1 bare |
+| **Habu / Triton**       |**0.76×**|**0.92×**|**0.95×**| 0.67× |
+| standing before round 13| 0.75× | 0.87× | 0.84× | **0.75×** |
+
+**2048³ is the headline: 0.84× → 0.95× Triton**, and 1024³ rises 0.87× → 0.92×. **4096³ is NOT
+improved**: the standing 4096³ record (0.75×, 34.0 TF) belongs to the Round-10 grouped-raster tile,
+which this sweep did not include — within this sweep the swizzle lifts 4096³ from 28.49 to 30.47,
+but that is still below the standing record, so the 4096³ column is deliberately left at 0.75×.
+Composing `XSWIZ` with the Round-10 grouped raster is the obvious next measurement and is *not*
+claimed here.
+
+### The two re-opened levers — one genuinely re-opened, one confirmed shut
+
+- **Deeper `num_stages` (round 2's negative): substantially re-opened, but it still does not win.**
+  The 4-warp **M2 stages=3** ring is the config whose `SH` crosses 55296→49152 (1→2 blocks/SM), and
+  it gains **+40–52 % at every shape** (10.90→16.06, 18.38→26.18, 21.06→29.38, 7.29→11.05) — the
+  sharpest confirmation in this round that the mechanism is smem-occupancy, exactly as predicted
+  from the table *before* the run. The M4 stages=3 ring, whose `SH` does **not** cross the line
+  (86016→73728, still 1 block/SM), gains a milder +11–13 %. But even fully re-opened, the best
+  stages=3 tile (16.33 / 28.23 / 34.29) still does **not** beat the best stages≤2 tile
+  (16.59 / 30.89 / 35.97). So **round 2's verdict stands qualitatively** — pipeline depth is not the
+  lever on this device — while its *magnitude* shrinks a lot once the pad stops taxing the budget.
+- **Epilogue-on the 256-row tile (round 3's negative): confirmed shut, for the reason the arithmetic
+  gave.** `SH` is 65536 with pad and with swizzle (the epilogue's own staging tile binds it), so the
+  eviction is untouched and the tile still regresses (17.60→15.01 at 1024³). Round 3's own proposal —
+  stage the C tile in halves so the staging stops growing `SH` — remains the lever for that, and this
+  round does not address it.
+
+**Honest verdict.** The XOR swizzle is correct, byte-identical when off, fail-closed, and **frees
+4–8 KiB per buffer at no correctness cost**. It is **not** a universal replacement for `MMA-PAD`: it
+wins decisively where the freed bytes buy a block of occupancy (the whole 4-warp winner family) and
+loses 5–10 % where they do not (the 256-row 8-warp family, which keeps `pad=8`). It ships **off by
+default**; the per-shape autotuner (`habu-feed-mma-config`) should now select it for the 4-warp tiles
+at 512³/1024³/2048³ and keep the pad for the 8-warp B-`ldmatrix` tiles.
+
+### Reproduction (exact)
+
+```
+# byte-identity: the whole swizzle is gated behind MMA-XSWIZ=1, so every committed config is untouched:
+bin/hb --load tools/ptx/mma-emit-diff.f    # base vs branch -> EMPTY diff (all committed configs)
+# element-exact first (arch auto-probed sm_121a) -- 16 swizzled configs, both warp grids, 0 mismatches:
+bin/hb --load tools/ptx/mma-gemm-check.f   # MGC-CFG-XSWIZ / -B / -EPI / -B-EPI + MGC-XSWIZ-NEG (E-MMA-XSWIZ)
+# throughput, best-of-3, solo, 13.3 pinned (swap the file's bottom entry to GEMMBENCH:GB-XSWIZ-SWEEP):
+bin/hb --load tools/ptx/gemm-bench.f       # each committed tile: PAD then XSWIZ, all four shapes
+```

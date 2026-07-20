@@ -76,6 +76,7 @@ require lib/ptx/cpp-slot.f
 -6108 constant E-MMA-REGS                          \ per-lane accumulators bust the 255-register file ceiling for this (BN,MFRAGS)
 -6109 constant E-MMA-GROUP                          \ grouped-raster group height illegal (negative M-block group height)
 -6110 constant E-MMA-SPLITK                         \ split-K config illegal (S<1, or S>1 with stages>2 / grouped-raster / smem epilogue)
+-6111 constant E-MMA-XSWIZ                          \ XOR-swizzle config illegal (non-zero pad, non-ldmatrix A feed, half dtype, BK out of [32,64], ablate, or split-K)
 
 255 constant MMA-REG-CEIL                       \ usable per-thread hardware register file (sm_121 255-register ceiling)
 32  constant MMA-REG-WORKSET                    \ non-accumulator live working set (measured 30 at BN256/MFRAGS2/128 accs -> 158 regs, rounded up)
@@ -154,6 +155,23 @@ variable MMA-WARPS    8 MMA-WARPS !           \ warps/block: 8 = 4x2 grid (WROWS
 \ throws E-MMA-EPI at emit time (MMA-CHECK-EPI). The lane->element map is the D-fragment map already
 \ proven element-exact by mma-gemm-check, so no new mapping is introduced.
 variable MMA-EPILOG   0 MMA-EPILOG !          \ 1 = shared-memory coalesced C epilogue (off by default)
+
+\ XOR-SWIZZLE As shared layout (dot habu-xor-swizzle-mma). A TRUE address-bit swizzle that replaces the
+\ MMA-PAD row-stride padding as the ldmatrix-A bank-conflict remedy at ZERO extra shared bytes. MMA-PAD=8
+\ pads each As row BK->BK+8 words so the 8 ldmatrix.x4 fragment rows land on 8 distinct 4-bank windows (160B
+\ stride, +8 banks/row) - conflict-free, but 8 words/row * BROWS rows * 4 B of dead shared. MMA-XSWIZ keeps
+\ the row stride at BK (pad-free) and instead permutes the 16-byte K-chunk position WITHIN each row by
+\ chunk' = chunk XOR (row & (ACPR-1)), i.e. address ^= (row & (ACPR-1))<<4 (ACPR = BK/EPC chunks/row). The 8
+\ rows of an ldmatrix matrix (same K-column, consecutive As rows) then map to 8 distinct chunks -> 8 distinct
+\ 4-bank windows -> conflict-free, same as the pad but with NO padding. Applied IDENTICALLY on the cp.async
+\ store (MMA-CP-CHUNK / MMA-CPW-CHUNK-A) and the ldmatrix-A load (MMA-A-LDM / -WIDE), so it is a pure
+\ permutation of As storage: correctness is a relabeling of where each element sits and is proven element-
+\ exact by mma-gemm-check. Bank-freedom needs the full row available (ACPR>=8, i.e. BK>=32) and the m-frag
+\ stride not to disturb the mask (ACPR|16, i.e. BK<=64); MMA-CHECK-XSWIZ fails closed outside [32,64] and on
+\ every combo whose store side is not swizzled (non-zero pad, non-ldmatrix A feed LMODE!=2, half dtype whose
+\ As store is the F16 word, wide ablation, split-K which reuses the %r38 term register). Composes with
+\ MFRAGS / WARPS / BN / stages / dyn / B-ldmatrix / grouped-raster / epilogue (all leave the As feed alone).
+variable MMA-XSWIZ    0 MMA-XSWIZ !           \ 1 = pad-free XOR-swizzled As shared layout (off by default)
 
 \ ABLATION knob (dot habu-mma-amortize-the; productizes the attribution-lane timing decomposition).
 \ DCE-SAFE variants of the WIDE kernel that keep every mma + store live (so ptxas cannot delete the
@@ -270,6 +288,7 @@ variable MMA-SPLITK   1 MMA-SPLITK !          \ 1 = OFF (byte-identical); S>1 = 
 : MMA-SH-BYTES  ( -- n )  MMA-SMEM MMA-EPI-BYTES max ; \ actual SH allocation = larger of pipeline / staging (= MMA-SMEM when epilogue off)
 : MMA-KSUBS  ( -- n )  MMA-BK @ MMA-MKD / ;           \ mma.sync K substeps per tile (tf32 4, fp16 2 at BK=32)
 : MMA-ACPR   ( -- n )  MMA-BK @ MMA-EPC / ;           \ As cp.async chunks per row (tf32 8, fp16 4 at BK=32)
+: MMA-XMASK  ( -- n )  MMA-ACPR 1- ;                  \ XOR-swizzle chunk mask: row & (ACPR-1) permutes chunks within a row (7 at BK=32)
 : MMA-CPN    ( -- n )  MMA-BM MMA-BK @ * MMA-EPC / MMA-NTHREADS / ;  \ MFRAGS=1 cp.async chunk-sets/thread per array (default 2)
 : MMA-ACPN   ( -- n )  MMA-BROWS MMA-BK @ * MMA-EPC / MMA-NTHREADS / ; \ wide As cp.async chunk-sets/thread (BROWS!=BN)
 : MMA-BCPN   ( -- n )  MMA-BK @ MMA-BN @ * MMA-EPC / MMA-NTHREADS / ;  \ wide Bs cp.async chunk-sets/thread
@@ -291,7 +310,7 @@ variable MMA-SPLITK   1 MMA-SPLITK !          \ 1 = OFF (byte-identical); S>1 = 
 : MMA-DEFAULT? ( -- bool )                             \ the byte-identical baseline config (8-warp tf32 BN=64 only)
    MMA-BK @ 32 =  MMA-PAD @ 0=  and  MMA-STAGES @ 2 =  and  MMA-DYNSMEM @ 0=  and
    MMA-MFRAGS @ 1 =  and  MMA-WARPS @ 8 =  and  MMA-DTYPE @ 0=  and  MMA-BN @ 64 =  and
-   MMA-SPLITK @ 1 =  and ;   \ BN>64 uses the MMA-owned pipe, not the shared MM-PIPE scaffold; S>1 routes to the split loop
+   MMA-SPLITK @ 1 =  and  MMA-XSWIZ @ 0=  and ;   \ BN>64 uses the MMA-owned pipe, not the shared MM-PIPE scaffold; S>1 routes to the split loop; XSWIZ needs the swizzle-aware MMA-owned staging (MM-PIPE has no swizzle)
 : MMA-WIDE?  ( -- bool )  MMA-MFRAGS @ 1 >  MMA-BN @ 64 >  or ;   \ WIDE compute + split-staging path (MFRAGS>1 or BN>64); BN=64 MFRAGS=1 stays the byte-identical non-wide path
 
 : MMA-LOG2 ( n -- n )                                  \ floor log2 (n a power of two, > 0)
@@ -405,6 +424,27 @@ variable MMA-SPLITK   1 MMA-SPLITK !          \ 1 = OFF (byte-identical); S>1 = 
 \ A fragment is reused 8x so ldmatrix's warp-level cost amortizes and B-ldmatrix becomes clean.
 variable MMA-LMODE   0 MMA-LMODE !
 
+\ XOR-swizzle emit helpers (dot habu-xor-swizzle-mma). Guarded by MMA-XSWIZ; emit ZERO bytes when off, so
+\ every OFF config stays byte-identical. See the MMA-XSWIZ knob header for the layout law.
+\ SETUP: capture the loop-invariant swizzle term (ldm_row & (ACPR-1))<<4 into %r38, from the pre-scale ldm A
+\ row in %r47. For 32<=BK<=64 the m-frag stride (16 rows) and the warp_row block are multiples of ACPR, so
+\ row&(ACPR-1) is unchanged by them -> the term is invariant across the K-loop and every M-frag. %r38 is free
+\ off the split path (MMA-CHECK-XSWIZ rejects XSWIZ+split, the only other %r38 user).
+: MMA-XSWIZ-SETUP ( -- )   MMA-XSWIZ @ 0= if exit then
+   SB-RESET s" and.b32 %r38,%r47," SB-APPEND MMA-XMASK SB-U s" ;" SB-APPEND SB$ PTX-L
+   s" shl.b32 %r38,%r38,4;" PTX-L ;
+\ LOAD: XOR the swizzle term into the ldmatrix-A chunk field while %r48 still holds the 16B-aligned kcol byte
+\ offset (before the row base / buffer base add); the row base is a multiple of the swizzle span so the XOR
+\ stays within the row's chunk field.
+: MMA-XSWIZ-LOAD ( -- )    MMA-XSWIZ @ 0= if exit then
+   s" xor.b32 %r48,%r48,%r38;" PTX-L ;
+\ STORE: permute the cp.async destination chunk. In: %r21 = As row (dead after row*AROW-B is captured in
+\ %r23), %r22 = chunk*16 byte offset. Out: %r22 ^= (row & (ACPR-1))<<4. Reuses %r21 as the term scratch.
+: MMA-XSWIZ-STORE ( -- )   MMA-XSWIZ @ 0= if exit then
+   SB-RESET s" and.b32 %r21,%r21," SB-APPEND MMA-XMASK SB-U s" ;" SB-APPEND SB$ PTX-L
+   s" shl.b32 %r21,%r21,4;" PTX-L
+   s" xor.b32 %r22,%r22,%r21;" PTX-L ;
+
 \ mode-2 loop-invariant ldmatrix.x4 A geometry: rt=lane&7, tsel=lane>>3 select the 4 8x8 b16
 \ tiles; %r47 = A row byte base (row = (tsel&1)*8 + rt + warp_row*16), %r49 = kcol hi bytes.
 : MMA-SETUP-LDM ( -- )
@@ -413,6 +453,7 @@ variable MMA-LMODE   0 MMA-LMODE !
    s" and.b32 %r40,%r46,1;" PTX-L  s" shl.b32 %r40,%r40,3;" PTX-L        \ (tsel&1)*8  (tile1/3 = +8 rows)
    s" add.u32 %r47,%r40,%r45;" PTX-L
    s" shl.b32 %r40,%r26,4;" PTX-L  s" add.u32 %r47,%r47,%r40;" PTX-L     \ + warp_row*16 = ldm A row
+   MMA-XSWIZ-SETUP                       \ capture (ldm_row & (ACPR-1))<<4 into %r38 from the pre-scale row
    47 47 MMA-AROW-B MMA-SCALE            \ * As row byte stride = A row byte base (invariant)
    s" shr.u32 %r49,%r46,1;" PTX-L  s" shl.b32 %r49,%r49,4;" PTX-L ;      \ (tsel>>1)*16 = kcol hi bytes (tile2/3 = +4 K)
 
@@ -480,6 +521,7 @@ variable MMA-LMODE   0 MMA-LMODE !
    SB-RESET s" ld.shared.b32 %r53,[%r40+" SB-APPEND a1o 16 + SB-U s" ];" SB-APPEND SB$ PTX-L ;
 : MMA-A-LDM ( n -- ) {: ks:n :}                 \ mode 2: ONE ldmatrix.x4 (row base %r47, kcol-hi %r49 from MMA-SETUP)
    SB-RESET s" add.u32 %r48,%r49," SB-APPEND ks MMA-ESZ * SB-U s" ;" SB-APPEND SB$ PTX-L   \ kcol bytes = (tsel>>1)*16 + ks*ESZ (tf32 *4 / half *2)
+   MMA-XSWIZ-LOAD                                                                    \ chunk ^= (ldm_row & mask)<<4 (pad-free bank swizzle)
    s" add.u32 %r48,%r48,%r47;" PTX-L                                                 \ + A row byte base
    s" add.u32 %r48,%r16,%r48;" PTX-L                                                 \ + buffer base = shared addr
    s" ldmatrix.sync.aligned.m8n8.x4.shared.b16 {%r50,%r51,%r52,%r53},[%r48];" PTX-L ;
@@ -608,6 +650,7 @@ variable MMA-LMODE   0 MMA-LMODE !
    s" add.u32 %r47,%r40,%r45;" PTX-L
    40 26 16 MMA-MFRAGS @ * MMA-SCALE            \ %r40 = warp_row*(16*MFRAGS)
    s" add.u32 %r47,%r47,%r40;" PTX-L            \ ldm A row (M-frag 0)
+   MMA-XSWIZ-SETUP                              \ capture (ldm_row & (ACPR-1))<<4 into %r38 (m-frag-invariant for 32<=BK<=64)
    47 47 MMA-AROW-B MMA-SCALE                   \ * As row byte stride
    s" shr.u32 %r49,%r46,1;" PTX-L  s" shl.b32 %r49,%r49,4;" PTX-L ; \ (tsel>>1)*16 = kcol hi bytes
 
@@ -682,6 +725,7 @@ variable MMA-LMODE   0 MMA-LMODE !
 : MMA-A-LDM-WIDE ( n n -- ) {: ks:n f:n :}      \ mode 2: ONE ldmatrix.x4 -> group f (row base %r47 + f*16 rows)
    f MMA-AREG {: g:n :}
    SB-RESET s" add.u32 %r48,%r49," SB-APPEND ks MMA-ESZ * SB-U s" ;" SB-APPEND SB$ PTX-L   \ kcol bytes = (tsel>>1)*16 + ks*ESZ (tf32 *4 / half *2)
+   MMA-XSWIZ-LOAD                                                                    \ chunk ^= (ldm_row & mask)<<4 (m-frag-invariant term %r38)
    s" add.u32 %r48,%r48,%r47;" PTX-L                                                 \ + A row byte base (M-frag 0)
    f 0 > if SB-RESET s" add.u32 %r48,%r48," SB-APPEND f 16 * MMA-AROW-B * SB-U s" ;" SB-APPEND SB$ PTX-L then
    s" add.u32 %r48,%r16,%r48;" PTX-L                                                 \ + buffer base
@@ -987,6 +1031,7 @@ variable MMA-LMODE   0 MMA-LMODE !
    s" mul.wide.u32 %rd10,%r23,4;" PTX-L  s" add.u64 %rd11,%rd1,%rd10;" PTX-L
    23 21 MMA-AROW-B MMA-SCALE                                                           \ %r23 = row*AROW-B
    s" shl.b32 %r22,%r22,2;" PTX-L                                                       \ kchunk*16 = k*4
+   MMA-XSWIZ-STORE                                                                      \ chunk ^= (row & mask)<<4 (pad-free bank swizzle; clobbers %r21=row, re-derived for Bs)
    s" add.u32 %r23,%r23,%r22;" PTX-L
    SB-RESET s" add.u32 %r23,%r" SB-APPEND bufr SB-U s" ,%r23;" SB-APPEND SB$ PTX-L
    s" cp.async.cg.shared.global [%r23],[%rd11],16;" PTX-L
@@ -1017,6 +1062,7 @@ variable MMA-LMODE   0 MMA-LMODE !
    s" mul.wide.u32 %rd10,%r23,4;" PTX-L  s" add.u64 %rd11,%rd1,%rd10;" PTX-L
    23 21 MMA-AROW-B MMA-SCALE                                                           \ %r23 = row*AROW-B
    s" shl.b32 %r22,%r22,2;" PTX-L                                                       \ kchunk*16
+   MMA-XSWIZ-STORE                                                                      \ chunk ^= (row & mask)<<4 (pad-free bank swizzle; %r21=row dead after this)
    s" add.u32 %r23,%r23,%r22;" PTX-L
    SB-RESET s" add.u32 %r23,%r" SB-APPEND bufr SB-U s" ,%r23;" SB-APPEND SB$ PTX-L
    s" cp.async.cg.shared.global [%r23],[%rd11],16;" PTX-L ;
@@ -1441,6 +1487,26 @@ TRUSTED: MMA-STAGE-ISSUE ( n n -- cpp-pending<p> )   MMA-CP-STAGE 0 ;
    MMA-GROUP @ if E-MMA-SPLITK throw then               \ grid fold conflicts with grouped-raster
    MMA-EPILOG @ if E-MMA-SPLITK throw then ;            \ smem epilogue untested with the redirected base
 
+\ fail closed on an illegal XOR-swizzle config (dot habu-xor-swizzle-mma). The swizzle permutes As 16-byte
+\ K-chunks by chunk ^= (row & (ACPR-1)) on BOTH the cp.async store and the ldmatrix-A load, so it is legal
+\ ONLY where every store site is swizzled and the mask math holds: (1) MMA-PAD must be 0 - the swizzle IS the
+\ pad-free remedy, combining the two is contradictory and untested; (2) MMA-LMODE must be 2 - the swizzle is
+\ wired on the ldmatrix-A read (%r48 chunk field), not the scalar reads whose +8-row/+4-K offsets are a
+\ different address form; (3) tf32 only - a half (fp16/bf16) tile stores As through the F16 word (MMA-CP-CHUNK
+\ -F16), NOT swizzled, so the half load would read a mis-permuted As; (4) 32<=BK<=64 - BK<32 (ACPR<8) cannot
+\ separate all 8 ldmatrix rows, BK>64 (ACPR>16) breaks the "m-frag stride 16 leaves row&mask unchanged"
+\ invariant the loop-invariant swizzle term relies on; (5) no wide ablation (numerically-wrong feed); (6) no
+\ split-K - it reuses %r38, the register the swizzle term lives in. Reject at EMIT time so a bad knob throws
+\ instead of emitting a kernel whose swizzled load disagrees with an un-swizzled store.
+: MMA-CHECK-XSWIZ ( -- )
+   MMA-XSWIZ @ 0= if exit then
+   MMA-PAD @ 0= 0= if E-MMA-XSWIZ throw then                    \ swizzle is pad-free: MMA-PAD must be 0
+   MMA-LMODE @ 2 = 0= if E-MMA-XSWIZ throw then                 \ ldmatrix-A read only (scalar reads are not swizzled)
+   MMA-HALF? if E-MMA-XSWIZ throw then                          \ tf32 only (half As store is the un-swizzled F16 word)
+   MMA-BK @ 32 <  MMA-BK @ 64 >  or if E-MMA-XSWIZ throw then   \ 32<=BK<=64: ACPR in [8,16] for full 8-row separation + mask invariance
+   MMA-ABLATE @ if E-MMA-XSWIZ throw then                       \ ablation is the numerically-wrong tf32 feed
+   MMA-SPLIT? if E-MMA-XSWIZ throw then ;                       \ split-K reuses %r38 (the swizzle-term register)
+
 : MMA-BODY ( -- )
    MMA-CHECK-BN                                                     \ BN geometry gate first: NTILES-derived checks below assume a legal BN
    MMA-CHECK-DTYPE                                                  \ half semantic gate: reject tf32-only feed knobs (BLDM/LMODE/ablate)
@@ -1452,6 +1518,7 @@ TRUSTED: MMA-STAGE-ISSUE ( n n -- cpp-pending<p> )   MMA-CP-STAGE 0 ;
    MMA-CHECK-REGS                                                   \ per-lane accumulators under the 255-register ceiling
    MMA-CHECK-GROUP                                                  \ grouped-raster group height positive (0 = off)
    MMA-CHECK-SPLIT                                                  \ split-K legality: S>=1; S>1 rejects stages>2 / grouped-raster / epilogue
+   MMA-CHECK-XSWIZ                                                  \ XOR-swizzle legality: pad=0 + ldmatrix-A + tf32 + 32<=BK<=64, no ablate/split
    MMA-SPLIT? if                                                    \ SPLIT-K: K-slice loop + workspace partials (store words reused via the redirected %rd3)
       MMA-THREAD-SETUP-SPLIT
       MMA-WIDE? if MMA-ACC-ZERO-WIDE MMA-SETUP-WIDE else MM-ACC-ZERO-EMIT MMA-SETUP then

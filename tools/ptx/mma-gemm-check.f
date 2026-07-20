@@ -734,6 +734,69 @@ variable MGC-TN
    if s" -- split-K legality: fail-closed on stages>2 / grouped-raster / epilogue / S<1, emits legal split (PASS)" type cr
    else s" mma-gemm-check: split-K legality regression FAILED" 1 die then ;
 
+\ ============ XOR-SWIZZLE As shared layout (dot habu-xor-swizzle-mma) ============
+\ MMA-XSWIZ replaces the MMA-PAD row-stride padding with a pad-free chunk^= (row & (ACPR-1)) swizzle applied
+\ IDENTICALLY on the cp.async store and the ldmatrix-A load, so it is a pure PERMUTATION of As storage - the
+\ same integer element lands at a bank-swizzled address and is read back from it. Element-exactness vs the host
+\ reference (the SAME integer fill / f64 reference / zero-tolerance compare as every tf32 tile above) therefore
+\ proves the store and load swizzles agree bit-for-bit. Checked at the block-M-aware edges (BROWS, 2*BROWS) so
+\ BOTH warp grids are covered, on the ldmatrix-A feed (LMODE=2, the swizzle's only wired A read). Composes with
+\ MFRAGS / WARPS / stages / dyn (MGC-CFG-XSWIZ), the transposed-Bs B-ldmatrix (MGC-CFG-XSWIZ-B), and the smem
+\ coalesced C epilogue (MGC-CFG-XSWIZ-EPI). Restores the tf32 8-warp default (LMODE=0, XSWIZ=0).
+: MGC-CFG-XSWIZ ( n n n n -- ) {: stages:n dyn:n mfrags:n warps:n :}   \ tf32 pad-free XOR-swizzle, ldmatrix-A
+   32 MMA-BK !  0 MMA-PAD !  stages MMA-STAGES !  dyn MMA-DYNSMEM !  mfrags MMA-MFRAGS !  warps MMA-WARPS !  1 MMA-XSWIZ !
+   MMA-BROWS MGC-SA !  MMA-BROWS 2 * MGC-SB !
+   s" -- XSWIZ (pad-free) MFRAGS=" type mfrags .  s"  warps=" type warps .  s"  stages=" type stages .  s"  dyn=" type dyn .
+   s"  (" type MGC-SA @ . s" ^3," type MGC-SB @ . s" ^3):" type cr
+   2 MGC-MODE
+   0 MMA-XSWIZ !  0 MMA-LMODE !  32 MMA-BK !  0 MMA-PAD !  2 MMA-STAGES !  0 MMA-DYNSMEM !  1 MMA-MFRAGS !  8 MMA-WARPS !  64 MGC-SA !  128 MGC-SB ! ;
+: MGC-CFG-XSWIZ-B ( n n n n n -- ) {: stages:n dyn:n mfrags:n bpad:n warps:n :}   \ XSWIZ composed with transposed-Bs B-ldmatrix
+   32 MMA-BK !  0 MMA-PAD !  stages MMA-STAGES !  dyn MMA-DYNSMEM !  mfrags MMA-MFRAGS !  warps MMA-WARPS !  1 MMA-XSWIZ !  1 MMA-BLDM !  bpad MMA-BPAD !
+   MMA-BROWS MGC-SA !  MMA-BROWS 2 * MGC-SB !
+   s" -- XSWIZ+B-ldmatrix MFRAGS=" type mfrags .  s"  warps=" type warps .  s"  bpad=" type bpad .  s"  stages=" type stages .  s"  dyn=" type dyn .
+   s"  (" type MGC-SA @ . s" ^3," type MGC-SB @ . s" ^3):" type cr
+   2 MGC-MODE
+   0 MMA-XSWIZ !  0 MMA-BLDM !  0 MMA-BPAD !  0 MMA-LMODE !  32 MMA-BK !  0 MMA-PAD !  2 MMA-STAGES !  0 MMA-DYNSMEM !  1 MMA-MFRAGS !  8 MMA-WARPS !  64 MGC-SA !  128 MGC-SB ! ;
+: MGC-CFG-XSWIZ-EPI ( n n n n -- ) {: stages:n dyn:n mfrags:n warps:n :}   \ XSWIZ composed with the smem coalesced C epilogue
+   1 MMA-EPILOG !
+   32 MMA-BK !  0 MMA-PAD !  stages MMA-STAGES !  dyn MMA-DYNSMEM !  mfrags MMA-MFRAGS !  warps MMA-WARPS !  1 MMA-XSWIZ !
+   MMA-BROWS MGC-SA !  MMA-BROWS 2 * MGC-SB !
+   s" -- XSWIZ+EPILOGUE MFRAGS=" type mfrags .  s"  warps=" type warps .  s"  stages=" type stages .  s"  dyn=" type dyn .
+   s"  (" type MGC-SA @ . s" ^3," type MGC-SB @ . s" ^3):" type cr
+   2 MGC-MODE
+   0 MMA-EPILOG !  0 MMA-XSWIZ !  0 MMA-LMODE !  32 MMA-BK !  0 MMA-PAD !  2 MMA-STAGES !  0 MMA-DYNSMEM !  1 MMA-MFRAGS !  8 MMA-WARPS !  64 MGC-SA !  128 MGC-SB ! ;
+: MGC-CFG-XSWIZ-B-EPI ( n n n n n -- ) {: stages:n dyn:n mfrags:n bpad:n warps:n :}   \ XSWIZ + B-ldmatrix + epilogue (round-3 eviction re-test tile)
+   1 MMA-EPILOG !
+   32 MMA-BK !  0 MMA-PAD !  stages MMA-STAGES !  dyn MMA-DYNSMEM !  mfrags MMA-MFRAGS !  warps MMA-WARPS !  1 MMA-XSWIZ !  1 MMA-BLDM !  bpad MMA-BPAD !
+   MMA-BROWS MGC-SA !  MMA-BROWS 2 * MGC-SB !
+   s" -- XSWIZ+B-ldmatrix+EPILOGUE MFRAGS=" type mfrags .  s"  warps=" type warps .  s"  bpad=" type bpad .  s"  stages=" type stages .  s"  dyn=" type dyn .
+   s"  (" type MGC-SA @ . s" ^3," type MGC-SB @ . s" ^3):" type cr
+   2 MGC-MODE
+   0 MMA-EPILOG !  0 MMA-XSWIZ !  0 MMA-BLDM !  0 MMA-BPAD !  0 MMA-LMODE !  32 MMA-BK !  0 MMA-PAD !  2 MMA-STAGES !  0 MMA-DYNSMEM !  1 MMA-MFRAGS !  8 MMA-WARPS !  64 MGC-SA !  128 MGC-SB ! ;
+
+\ negative+positive regression (dot habu-xor-swizzle-mma): MMA-CHECK-XSWIZ must fail closed with E-MMA-XSWIZ
+\ on every combo whose As store side is not swizzled or whose mask math breaks - a non-zero pad, the scalar A
+\ feed (LMODE!=2), a half dtype (F16 store word), BK outside [32,64], the numerically-wrong wide ablation, and
+\ split-K (which reuses the %r38 term register) - and emit cleanly for a legal tf32 ldmatrix-A swizzle. Each
+\ rejected config is otherwise legal, so the throw isolates the XSWIZ guard (which runs last in MMA-BODY).
+\ Device-independent (pure emit). Keeps a bad swizzle knob from emitting a load that disagrees with its store.
+: MGC-XSWIZ-NEG ( -- )
+   1 MMA-XSWIZ !  32 MMA-BK !  8 MMA-PAD !  2 MMA-STAGES !  0 MMA-DYNSMEM !  2 MMA-LMODE !  1 MMA-MFRAGS !  8 MMA-WARPS !
+   MGC-TRY-EMIT {: rpad:n :}                             \ XSWIZ + pad!=0 -> E-MMA-XSWIZ (swizzle is pad-free)
+   0 MMA-PAD !  0 MMA-LMODE !  MGC-TRY-EMIT {: rsc:n :}   \ XSWIZ + scalar A feed (LMODE=0) -> E-MMA-XSWIZ
+   2 MMA-LMODE !  1 MMA-DTYPE !  MGC-TRY-EMIT {: rhf:n :} \ XSWIZ + fp16 (un-swizzled F16 store) -> E-MMA-XSWIZ
+   0 MMA-DTYPE !  16 MMA-BK !  MGC-TRY-EMIT {: rbk16:n :} \ XSWIZ + BK=16 (ACPR<8, cannot separate 8 rows) -> E-MMA-XSWIZ
+   128 MMA-BK !  1 MMA-DYNSMEM !  MGC-TRY-EMIT {: rbk128:n :}   \ XSWIZ + BK=128 (ACPR>16, breaks mask invariance; dyn avoids the SMEM gate) -> E-MMA-XSWIZ
+   32 MMA-BK !  0 MMA-DYNSMEM !  2 MMA-MFRAGS !  1 MMA-DYNSMEM !  1 MMA-ABLATE !  MGC-TRY-EMIT {: rab:n :}   \ XSWIZ + wide ablation -> E-MMA-XSWIZ
+   0 MMA-ABLATE !  1 MMA-MFRAGS !  0 MMA-DYNSMEM !  2 MMA-SPLITK !  MGC-TRY-EMIT {: rsp:n :}   \ XSWIZ + split-K (reuses %r38) -> E-MMA-XSWIZ
+   1 MMA-SPLITK !  MGC-TRY-EMIT {: rok:n :}              \ legal tf32 ldmatrix-A pad=0 BK=32 XSWIZ -> emits (0)
+   0 MMA-XSWIZ !  0 MMA-LMODE !  0 MMA-DTYPE !  0 MMA-ABLATE !  1 MMA-SPLITK !  32 MMA-BK !  0 MMA-PAD !  2 MMA-STAGES !  0 MMA-DYNSMEM !  1 MMA-MFRAGS !  8 MMA-WARPS !
+   s" -- XSWIZ legality: pad->" type rpad . s"  scalar->" type rsc . s"  fp16->" type rhf . s"  BK16->" type rbk16 .
+   s"  BK128->" type rbk128 . s"  ablate->" type rab . s"  split->" type rsp . s"  legal->" type rok . cr
+   rpad E-MMA-XSWIZ =  rsc E-MMA-XSWIZ =  and  rhf E-MMA-XSWIZ =  and  rbk16 E-MMA-XSWIZ =  and  rbk128 E-MMA-XSWIZ =  and  rab E-MMA-XSWIZ =  and  rsp E-MMA-XSWIZ =  and  rok 0=  and
+   if s" -- XSWIZ legality: fail-closed on pad / scalar / half / BK out of [32,64] / ablate / split, emits legal swizzle (PASS)" type cr
+   else s" mma-gemm-check: XSWIZ legality regression FAILED" 1 die then ;
+
 public
 : MGC-ALL ( -- )
    MGC-BUF-INIT                                        \ heap-allocate the large host/packed buffers (1024^2 exceeds the dictionary)
@@ -750,6 +813,7 @@ public
    MGC-BN-EPI-NEG                                      \ wide-BN epilogue smem legality fail-closed (device-independent)
    MGC-GROUP-NEG                                       \ grouped-raster group-height legality fail-closed (device-independent)
    MGC-SPLIT-NEG                                       \ split-K legality fail-closed (device-independent)
+   MGC-XSWIZ-NEG                                       \ XOR-swizzle legality fail-closed (device-independent)
    CUDA:OPEN? 0= if s" mma-gemm-check: libcuda unavailable -> SKIPPED (off-device)" type cr exit then
    s" == TF32 mma.sync GEMM device-correctness (element-exact vs host) ==" type cr
    0 MGC-MODE  1 MGC-MODE  2 MGC-MODE
@@ -889,7 +953,27 @@ public
    32 0 2 1 0 2 8  64 1 2 MGC-CFG-SPLIT    \ fp16 BN=64 M2 8-warp scalar      split=2
    32 0 2 1 0 4 4  64 1 4 MGC-CFG-SPLIT    \ fp16 4-warp M4 scalar            split=4
    32 0 2 1 0 2 8  64 2 2 MGC-CFG-SPLIT    \ bf16 BN=64 M2 8-warp scalar      split=2 (cheap dtype cross-check)
-   0 MMA-LMODE !  0 MMA-DTYPE !  0 MMA-BTF16 !  0 MMA-GROUP !  1 MMA-SPLITK !  64 MMA-BN ! ;   \ restore the committed defaults (tf32 scalar+cvt, BN=64)
+   s" == XOR-SWIZZLE As shared layout (dot habu-xor-swizzle-mma, pad-free, element-exact vs host) ==" type cr
+   \            st dyn mf wp
+   2 0 1 8 MGC-CFG-XSWIZ                    \ MFRAGS=1 8-warp stages=2 static ldmatrix-A (64^3/128^3)
+   2 1 1 8 MGC-CFG-XSWIZ                    \ MFRAGS=1 8-warp stages=2 DYN
+   1 0 2 8 MGC-CFG-XSWIZ                    \ MFRAGS=2 8-warp stages=1 static (128^3/256^3)
+   2 1 2 8 MGC-CFG-XSWIZ                    \ MFRAGS=2 8-warp stages=2 DYN
+   2 1 4 8 MGC-CFG-XSWIZ                    \ MFRAGS=4 8-warp stages=2 DYN (256^3/512^3)
+   1 0 4 4 MGC-CFG-XSWIZ                    \ 4-warp MFRAGS=4 stages=1 static (128^3/256^3; 512^3/1024^3-winner tile shape)
+   2 1 4 4 MGC-CFG-XSWIZ                    \ 4-warp MFRAGS=4 stages=2 DYN
+   1 0 2 4 MGC-CFG-XSWIZ                    \ 4-warp MFRAGS=2 stages=1 static (64^3/128^3)
+   3 1 4 4 MGC-CFG-XSWIZ                    \ 4-warp MFRAGS=4 stages=3 DYN (deep ring, swizzled; SH 86016->73728, still 1 block/SM)
+   3 1 2 4 MGC-CFG-XSWIZ                    \ 4-warp MFRAGS=2 stages=3 DYN (deep ring; SH 55296->49152 CROSSES the 2-blocks/SM line - the re-opened lever)
+   \            st dyn mf bpad wp
+   1 1 4 4 8 MGC-CFG-XSWIZ-B                \ XSWIZ + B-ldmatrix 8-warp MFRAGS=4 bpad=4 stages=1 DYN (4096^3-winner tile shape)
+   1 1 2 4 8 MGC-CFG-XSWIZ-B                \ XSWIZ + B-ldmatrix 8-warp MFRAGS=2 bpad=4 stages=1 DYN
+   \            st dyn mf wp
+   1 0 4 4 MGC-CFG-XSWIZ-EPI                \ XSWIZ + EPILOGUE 4-warp MFRAGS=4 stages=1 static (1024^3/2048^3-winner + epilogue)
+   2 1 4 4 MGC-CFG-XSWIZ-EPI                \ XSWIZ + EPILOGUE 4-warp MFRAGS=4 stages=2 DYN (512^3-winner tile; SH 57344->49152 crosses 2 blk/SM)
+   2 1 2 8 MGC-CFG-XSWIZ-EPI                \ XSWIZ + EPILOGUE 8-warp MFRAGS=2 stages=2 DYN
+   1 1 4 4 8 MGC-CFG-XSWIZ-B-EPI            \ XSWIZ + B-ldmatrix + EPILOGUE 8-warp MFRAGS=4 bpad=4 stages=1 DYN (round-3 256-row eviction re-test)
+   0 MMA-LMODE !  0 MMA-DTYPE !  0 MMA-BTF16 !  0 MMA-GROUP !  1 MMA-SPLITK !  0 MMA-XSWIZ !  0 MMA-EPILOG !  0 MMA-BLDM !  0 MMA-BPAD !  64 MMA-BN ! ;   \ restore the committed defaults (tf32 scalar+cvt, BN=64)
 
 ;package
 
