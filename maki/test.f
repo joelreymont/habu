@@ -364,6 +364,8 @@ TEST:SUITE maki/xent-loss-test.f
 TEST:;SUITE
 TEST:SUITE maki/examples/nanogpt/xent-train-test.f
 TEST:;SUITE
+TEST:SUITE maki/examples/nanogpt/generate-test.f
+TEST:;SUITE
 TEST:;GROUP
 
 TEST:RUN
