@@ -1,6 +1,6 @@
 ---
 title: "STRUCTURE: parse typed declarations"
-status: active
+status: open
 priority: 1
 issue-type: task
 created-at: "\"2026-07-13T17:13:20.867544+02:00\""
