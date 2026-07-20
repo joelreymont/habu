@@ -70,7 +70,7 @@ variable FAILS
 
 : CHECK-TARGET ( -- )
    TARGET$ TARGET-HEX SHA256-FILE-HEX 0 <> if E-ENGINE-KEY throw then
-   ENGINE-KEY$ TARGET-HEX HEX-LEN STR= 0= if
+   ENGINE-ID:KEY$ TARGET-HEX HEX-LEN STR= 0= if
       s" candidate-validation: HABU_UNDER_TEST does not name this worker" 1 die
    then ;
 

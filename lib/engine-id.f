@@ -1,8 +1,13 @@
 \ engine-id.f - the running engine's own resolved executable path + content key.
 \
-\ One concern: engine self-identity. The path is an ENGINE-SIDE fact taken from
-\ the kernel-provided process image, not a script guess and not the
-\ caller-controlled argv[0]:
+\ One concern: engine self-identity. The module lives in `package ENGINE-ID`.
+\ External callers use the qualified public API `ENGINE-ID:PATH$` (the running
+\ engine's own executable path) and `ENGINE-ID:KEY$` (the SHA-256 hex content key
+\ over that binary); the raw self-path readers and the path buffers are
+\ package-private.
+\
+\ The path is an ENGINE-SIDE fact taken from the kernel-provided process image,
+\ not a script guess and not the caller-controlled argv[0]:
 \   macOS  - the apple[] array (contiguous after envp on the entry stack) carries
 \            `executable_path=<exec-path>`, the same source _NSGetExecutablePath
 \            reads. ENVP-CELL is captured at engine startup (src/habu EM-DATA-INIT),
@@ -24,6 +29,8 @@ require lib/string.f
 
 \ ENVP-BASE / ENVP / ZLEN (src/os/env-base.f), HB-TARGET-* (src/os/<t>/target.f),
 \ readlink + SHA256-FILE-HEX + BYTE-COPY are engine-provided (startup prefix / baked).
+
+package ENGINE-ID
 
 1024 constant EID-PATH-CAP      \ max self-exe path bytes (matches lib/fs.f FS-PATH-CAP)
 64 constant EID-KEY-LEN         \ SHA-256 hex digest length
@@ -65,16 +72,20 @@ TRUSTED: ENGINE-SELF-LINUX ( -- n )      \ /proc/self/exe -> EID-PATH; bytes or 
    0 ;
 
 \ ---- checked public surface ------------------------------------------------
-: ENGINE-PATH$ ( -- ptr u8 n )           \ absolute/exec path of the running bin/hb
+public
+
+: PATH$ ( -- ptr u8 n )                  \ absolute/exec path of the running bin/hb
    EID-PATH-DONE @ 0= if
       ENGINE-SELF-PATH dup 0 <= if drop E-ENGINE-PATH throw then
       EID-PATH-U !  -1 EID-PATH-DONE !
    then
    EID-PATH EID-PATH-U @ ;
 
-: ENGINE-KEY$ ( -- ptr u8 n )            \ SHA-256 hex content key over the binary
+: KEY$ ( -- ptr u8 n )                   \ SHA-256 hex content key over the binary
    EID-KEY-DONE @ 0= if
-      ENGINE-PATH$ EID-KEY SHA256-FILE-HEX 0 <> if E-ENGINE-KEY throw then
+      PATH$ EID-KEY SHA256-FILE-HEX 0 <> if E-ENGINE-KEY throw then
       -1 EID-KEY-DONE !
    then
    EID-KEY EID-KEY-LEN ;
+
+;package

@@ -27,7 +27,7 @@ create FILE-KEY KEY-U allot
    GE-HB$ FILE-KEY SHA256-FILE-HEX 0 <> if
       s" candidate runtime: executable hash failed" GE-IDENTITY-RC die
    then
-   FILE-KEY KEY-U ENGINE-KEY$ STR= 0= if
+   FILE-KEY KEY-U ENGINE-ID:KEY$ STR= 0= if
       s" candidate runtime: executable identity mismatch" GE-IDENTITY-RC die
    then
    s" candidate-executable-sha256" FILE-KEY KEY-U GS-EVENT-FIELD ;

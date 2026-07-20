@@ -8,7 +8,7 @@ require lib/fs.f
 require lib/process.f
 require lib/process-argv.f          \ RUN-ARGV-CAPTURE: the fresh-process replay child
 require lib/process-env.f           \ PROC-ENV-DEFAULT$?: read the gate's HABU_UNDER_TEST default for the replay child
-require lib/engine-id.f             \ ENGINE-PATH$: this engine's own executable, so a standalone replay child runs THIS engine
+require lib/engine-id.f             \ ENGINE-ID:PATH$: this engine's own executable, so a standalone replay child runs THIS engine
 require lib/fs-mutate.f             \ WRITE-ALL: the replay child driver file
 require maki/device-artifacts.f     \ MAKI-GRADE: private tmp driver path (PREPARE/DRIVER$/CLEAN)
 require maki/report.f
@@ -96,7 +96,7 @@ create RPL-OUT $4000 allot   create RPL-ERR $1000 allot
    s" HABU_UNDER_TEST" >LEN PROC-ENV-DEFAULT$? if LEN>N exit then
    2drop
    s" HABU_UNDER_TEST" GETENV dup 0 > if exit then
-   2drop ENGINE-PATH$ ;
+   2drop ENGINE-ID:PATH$ ;
 
 : RPL-CHILD-TILE$ ( -- ptr u8 n )               \ spawn the child; return its stdout
    PROC-ARGV-RESET
@@ -230,7 +230,7 @@ dup 0 REPORT:CAND@ s" gemm-tf32-v1 bm=64 bn=64 bk=32 warps=4 stages=1" T$=
 \ expected key in SB with the binary-dependent engine field spliced in, then compare.
 dup REPORT:CACHE$
 SB-RESET s" CDFF1E0D197DD30A|2x4|f32|row|al?|rel|isa=1,arch=87,warp=32,threads=1024,shared=49152,caps=127|" SB-APPEND
-ENGINE-KEY$ SB-APPEND  s" |unprobed" SB-APPEND  SB$
+ENGINE-ID:KEY$ SB-APPEND  s" |unprobed" SB-APPEND  SB$
 STR= TTRUE
 dup REPORT:RENDER CT-SAVE
 s" schedule.candidate.0: gemm-tf32-v1 bm=64 bn=64 bk=32 warps=4 stages=1"    CT-IN

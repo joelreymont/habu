@@ -272,7 +272,7 @@ public
 \ (lib/engine-id.f). It distinguishes schedules produced by different engine builds
 \ so a schedules.rows written by one engine is never replayed under another; the
 \ lazy+cached hash keeps it off the interactive key-render hot path.
-: SK-ENGINE$ ( -- ptr u8 n )  ENGINE-KEY$ ;
+: SK-ENGINE$ ( -- ptr u8 n )  ENGINE-ID:KEY$ ;
 : SK-PTXAS$  ( -- ptr u8 n )  s" unprobed" ;       \ no ptxas probed off-device
 
 \ representative (output) node of a region - the default-context source (rowlen/dtype)

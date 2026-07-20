@@ -132,7 +132,7 @@ dup 31 REPORT:CAND@ s" gemm-tf32-v1 bm=128 bn=128 bk=64 warps=8 stages=2" T$=
 \ expected key in SB with the binary-dependent engine field spliced in, then compare.
 dup REPORT:CACHE$
 SB-RESET s" 3C09A0D86344114A|4x16|f32|row|al?|rel|isa=1,arch=87,warp=32,threads=1024,shared=49152,caps=127|" SB-APPEND
-ENGINE-KEY$ SB-APPEND  s" |unprobed" SB-APPEND  SB$
+ENGINE-ID:KEY$ SB-APPEND  s" |unprobed" SB-APPEND  SB$
 STR= TTRUE
 drop
 

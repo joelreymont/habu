@@ -26,7 +26,7 @@ require lib/fs-mutate.f              \ COPY-FILE-STREAM / APPEND-FILE / CHMOD-X 
 require lib/process.f
 require lib/process-argv.f
 require lib/process-env.f            \ RUN-ARGV-ENV-CAPTURE + PROC-ENV+ + PROC-ENV-INHERIT-MISSING
-require lib/engine-id.f              \ ENGINE-PATH$: the engine this test clones
+require lib/engine-id.f              \ ENGINE-ID:PATH$: the engine this test clones
 
 package MAKI-CAD-REPLAY-TEST
 
@@ -51,7 +51,7 @@ create CLONE-PATH FS-PATH-CAP allot   variable CLONE-PATH-U
 : CLONE-BUILD ( -- )                 \ clone THIS engine, perturb its hash, keep it runnable
    CLONE-MKDIR
    CLONE-DIR$ s" hb-clone" CLONE-PATH JOIN-PATH CLONE-PATH-U !
-   ENGINE-PATH$ CLONE-PATH$ COPY-FILE-STREAM
+   ENGINE-ID:PATH$ CLONE-PATH$ COPY-FILE-STREAM
    CLONE-PATH$ MARKER$      APPEND-FILE
    CLONE-PATH$ CHMOD-X ;
 

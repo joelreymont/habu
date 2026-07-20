@@ -47,7 +47,7 @@
 \ keys by real engine identity. The two properties that once forced the
 \ "engine-unbound" placeholder now hold:
 \   - Robust self-path: an engine-side fact from the process image, resolved once and
-\     cached; ENGINE-KEY$ fails closed with a named throw if it cannot be resolved or
+\     cached; ENGINE-ID:KEY$ fails closed with a named throw if it cannot be resolved or
 \     hashed, never a silent degrade to a placeholder (which would fragment the store,
 \     one engine -> two keys).
 \   - No hot-path weight: the SHA-256 is lazy + cached, run only when a durable key is

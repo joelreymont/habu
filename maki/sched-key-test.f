@@ -94,7 +94,7 @@ T-RESET
 \ ---- key fields: facts-based target identity + the real engine content key ---
 SB-RESET TARGET:SM87 SK-TARGET+ SB$ s" isa=1,arch=87,warp=32,threads=1024,shared=49152,caps=127" T$=
 TARGET:SM87 TARGET:LABEL$ s" sm_87" T$=  \ the label is presentation only; it never enters the durable key
-SK-ENGINE$ ENGINE-KEY$  T$=              \ engine field is the real bin/hb content key
+SK-ENGINE$ ENGINE-ID:KEY$  T$=           \ engine field is the real bin/hb content key
 SK-ENGINE$ nip 64       T=              \ a 64-char SHA-256 hex digest, not a placeholder
 SK-PTXAS$  s" unprobed"  T$=
 
@@ -106,7 +106,7 @@ SK-PTXAS$  s" unprobed"  T$=
 0 FP-REGION-ID TARGET:SM87 SK-KEY$ KT-COPY
 SB-RESET
 s" 431E24867468A764|2xp128+t|f32|row|al16|rel|isa=1,arch=87,warp=32,threads=1024,shared=49152,caps=127|" SB-APPEND
-ENGINE-KEY$ SB-APPEND  s" |unprobed" SB-APPEND
+ENGINE-ID:KEY$ SB-APPEND  s" |unprobed" SB-APPEND
 KT-BUF$ SB$ STR= TTRUE
 0 FP-REGION-ID KT-ALT-TARGET SK-KEY$ KT-BUF$ STR= TFALSE   \ different facts (caps) -> different durable key
 \ label collision negative: same label, different facts -> DIFFERENT key. This is
