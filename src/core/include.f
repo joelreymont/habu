@@ -6,7 +6,7 @@
 $400 constant INCLUDE-PATH-CAP
 $80000 constant INCLUDE-BUF-CAP
 $10 constant INCLUDE-MAX-DEPTH  \ typed-lib require chains outgrew 8 (2026-07-15)
-$100 constant REQUIRE-MAX
+$200 constant REQUIRE-MAX  \ composed maki+stdlib require closure crossed 256 (2026-07-20)
 $1002 constant INCLUDE-MAP-PRIVATE-ANON
 $1 constant INCLUDE-PROBE-CAP
 $4A constant INCLUDE-IO-RC
