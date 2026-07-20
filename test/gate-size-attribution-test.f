@@ -146,9 +146,14 @@ $4000 constant MACOS-DATA-CONST  \ __DATA_CONST page (__got + zero fill)
 \ owed this measurement): +296 of engine text, CODELEN 135816 -> 136112
 \ (floor 648 -> 944); the whole file stays inside the same 4 KiB page
 \ (LINUX-TOTAL unchanged).
-136112 constant LINUX-CODE-TEXT   \ CODELEN: every emitter-phase row (baked-source incl.)
+\ 2026-07-20 re-measured live at the linux-arm64 fixpoint (spark) after the Mac's
+\ `using NAME … ;using` consumer-import landed (dot habu-using-import-pkg-a07dd7ba;
+\ macOS measured +1952 on that side, Linux owed this measurement): +2128 of engine
+\ text, CODELEN 136112 -> 138240 (floor 944 -> 3072); the whole file stays inside
+\ the same 4 KiB page (LINUX-TOTAL unchanged).
+138240 constant LINUX-CODE-TEXT   \ CODELEN: every emitter-phase row (baked-source incl.)
 192 constant LINUX-RW             \ ELF read-write segment tail: DYNAMIC + GOT (ELF-RW-SZ)
-944 constant LINUX-FLOOR-DIST     \ code above the 4 KiB floor: the page-recovery shave
+3072 constant LINUX-FLOOR-DIST     \ code above the 4 KiB floor: the page-recovery shave
 143552 constant LINUX-TOTAL       \ = FILE-SIZE bin/hb = GB-SIZE-BASELINE-LINUX
 
 : PAGE-UP ( n n -- n ) {: v:n page:n :}
