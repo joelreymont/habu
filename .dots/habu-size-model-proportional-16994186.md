@@ -1,11 +1,10 @@
 ---
 title: Size model-proportional tables from the model, not constants
-status: open
+status: active
 priority: 1
 issue-type: task
-created-at: "2026-07-20T16:01:34.666729+02:00"
+created-at: "\"2026-07-20T16:01:34.666729+02:00\""
 ---
-
 
 Joel-directed 2026-07-20, design settled after two rounds of his review (first correction: not runtime - load time; second: is declaration-first really best? No). FINAL HIERARCHY:
 (1) library constants (today) - worst: recompile the framework to scale;
@@ -22,3 +21,5 @@ PRIMARY DESIGN - derive-from-model, all at load time:
 7. Work items: span/base-variable variant of LAYOUT-BUFFER definition with the pointer-rebind audit (everything caching column bases re-derives per build); count-then-allot wiring in capture/build; the arena mark/release; red-first too-big-model die; a regression proving two models of different sizes get exactly-sized tables in one image; snapshot/replay audit (nothing persists raw column addresses).
 
 INTERIM unchanged: the coordinated constant raise (habu-coordinated-capacity-raise-0b4e8a84, in flight) lands first as the labeled interim; this dot is the recorded correct long-term fix. Sequence after that landing.
+
+Claim: agent=derive workspace=.jj-ws/fable-derive machine=spark (owns maki/model-ir.f cad.f backward.f executor.f capture/build surfaces + src/core/layout-buffer.f ONLY if the mechanism decision forces it + maki/examples/nanogpt/gptblock-attn-test.f stack tests + capacity regressions; the BPE lane owns maki/examples/nanogpt/bpe* - disjoint)
