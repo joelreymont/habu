@@ -148,6 +148,22 @@ variable GB-T  variable GB-B1T  variable GB-B2T
 : GB-UPD ( ptr a n ptr a ptr a n -- ) {: p:ptr slot:n mp:ptr vp:ptr n:n :}
    GB-LR GB-BET1 GB-BET2 GB-EPS GB-C1 GB-C2  p  slot GB-GRAD  mp vp n  OPTIM:TT-ADAM! ;
 
+\ Adam-update every trained param EXCEPT the tied pair wte(slot 0) / wlm(slot 12), shared by
+\ the untied GB-STEP (which then updates wte and wlm independently) and the tied GB-TIE-STEP
+\ (which instead applies ONE summed-gradient update to the shared storage). Per-parameter Adam
+\ is order-independent, so factoring these out is bit-identical to the original inline list.
+: GB-UPD-REST ( -- )
+   GB-WPE 2 GB-WPEM GB-WPEV GBT GBC * GB-UPD
+   GB-WQ 3 GB-WQM GB-WQV GBC GBD * GB-UPD       GB-WK 4 GB-WKM GB-WKV GBC GBD * GB-UPD
+   GB-SC 5 GB-SCM GB-SCV 1 GB-UPD             GB-WV 6 GB-WVM GB-WVV GBC GBD * GB-UPD
+   GB-WO 7 GB-WOM GB-WOV GBD GBC * GB-UPD
+   GB-W1 8 GB-W1M GB-W1V GBC GBH * GB-UPD       GB-B1 9 GB-B1M GB-B1V GBH GB-UPD
+   GB-W2 10 GB-W2M GB-W2V GBH GBC * GB-UPD      GB-B2 11 GB-B2M GB-B2V GBC GB-UPD
+   GB-BLM 13 GB-BLMM GB-BLMV GBV GB-UPD
+   GB-LG1 15 GB-LG1M GB-LG1V GBC GB-UPD        GB-LB1 16 GB-LB1M GB-LB1V GBC GB-UPD
+   GB-LG2 17 GB-LG2M GB-LG2V GBC GB-UPD        GB-LB2 18 GB-LB2M GB-LB2V GBC GB-UPD
+   GB-GF 19 GB-GFM GB-GFV GBC GB-UPD           GB-BF 20 GB-BFM GB-BFV GBC GB-UPD ;
+
 \ bind every host buffer to its input slot (params + integer ids + frozen mask + seed)
 : GB-BIND ( -- )
    GB-WTE 0 MIR-SLOT-ID EX-BIND   GB-IDS 1 MIR-SLOT-ID EX-BIND   GB-WPE 2 MIR-SLOT-ID EX-BIND
@@ -169,16 +185,9 @@ variable GB-T  variable GB-B1T  variable GB-B2T
    GB-LOSS-SEED {: loss:r :}
    EX-RUN
    GB-TICK
-   GB-WTE 0 GB-WTEM GB-WTEV GBV GBC * GB-UPD    GB-WPE 2 GB-WPEM GB-WPEV GBT GBC * GB-UPD
-   GB-WQ 3 GB-WQM GB-WQV GBC GBD * GB-UPD       GB-WK 4 GB-WKM GB-WKV GBC GBD * GB-UPD
-   GB-SC 5 GB-SCM GB-SCV 1 GB-UPD             GB-WV 6 GB-WVM GB-WVV GBC GBD * GB-UPD
-   GB-WO 7 GB-WOM GB-WOV GBD GBC * GB-UPD
-   GB-W1 8 GB-W1M GB-W1V GBC GBH * GB-UPD       GB-B1 9 GB-B1M GB-B1V GBH GB-UPD
-   GB-W2 10 GB-W2M GB-W2V GBH GBC * GB-UPD      GB-B2 11 GB-B2M GB-B2V GBC GB-UPD
-   GB-WLM 12 GB-WLMM GB-WLMV GBC GBV * GB-UPD   GB-BLM 13 GB-BLMM GB-BLMV GBV GB-UPD
-   GB-LG1 15 GB-LG1M GB-LG1V GBC GB-UPD        GB-LB1 16 GB-LB1M GB-LB1V GBC GB-UPD
-   GB-LG2 17 GB-LG2M GB-LG2V GBC GB-UPD        GB-LB2 18 GB-LB2M GB-LB2V GBC GB-UPD
-   GB-GF 19 GB-GFM GB-GFV GBC GB-UPD           GB-BF 20 GB-BFM GB-BFV GBC GB-UPD
+   GB-UPD-REST
+   GB-WTE 0 GB-WTEM GB-WTEV GBV GBC * GB-UPD
+   GB-WLM 12 GB-WLMM GB-WLMV GBC GBV * GB-UPD
    loss ;
 
 : GB-MILLI ( r -- n )  1000.0 f* 0.5 f+ f>s ;
@@ -189,6 +198,87 @@ variable GB-IL   variable GB-FL
       i 0=     if l GB-IL ! then
       i n 1- = if l GB-FL ! then
    loop ;
+
+\ ================= tied wte/LM-head: ONE storage, summed-gradient Adam (dot tiewte) =====
+\ ORIENTATION (stated because V==C==6 hides it): the token embedding wte is (V,C), read
+\ ROW-WISE by GATHER (X0[t]=wte[ids[t]]); the LM head reads its weight as (C,V), MATMUL
+\ logits[t][v]=sum_c F[t][c]*wlm[c][v]. GPT-2 sets logits = F @ wte^T, so the tie is
+\ wlm[c][v]=wte[v][c], i.e. wlm = wte^T - a TRANSPOSED role, not a shared buffer. The
+\ executor binds one host pointer per slot (no aliasing across the two shapes), so GB-WTE:(V,C)
+\ is the ONE stored tied parameter and GB-WLM:(C,V) is its transpose mirror, refreshed from
+\ GB-WTE after every step and asserted bit-identical to wte^T. Backward emits a separate grad
+\ per slot; the tied grad accumulates both: dL/dP[v][c] = Gwte[v][c] + Gwlm[c][v].
+create GB-TIEG   GBV GBC * cells allot        \ summed tied grad (V,C) = Gwte + Gwlm^T
+create GB-TIE-GE GBV GBC * cells allot         \ embedding-path grad only (Gwte)
+create GB-TIE-GH GBV GBC * cells allot         \ head-path grad only, transposed (Gwlm^T)
+
+: GB-XPOSE ( ptr a ptr a -- ) {: src:ptr dst:ptr :}   \ dst(C,V)[c][v]=src(V,C)[v][c] (outer j=c, inner i=v)
+   GBC 0 ?do  GBV 0 ?do  src i GBC * j +  T-GET   dst j GBV * i +  T-SET  loop loop ;
+: GB-TIE-MIRROR ( -- )  GB-WTE GB-WLM GB-XPOSE ;      \ refresh head mirror WLM = WTE^T
+
+: GB-TIE-MISMATCH ( -- n )                            \ WLM[c][v] != WTE[v][c] count (0 = tie holds)
+   0  GBC 0 ?do  GBV 0 ?do
+      GB-WLM j GBV * i +  T-GET   GB-WTE i GBC * j +  T-GET  f= 0= if 1+ then
+   loop loop ;
+
+: GB-TIE-ACCUM ( -- )                                 \ GB-TIEG[v][c] = Gwte[v][c] + Gwlm[c][v]
+   GBV 0 ?do  GBC 0 ?do
+      0  GB-GRAD  j GBC * i +  T-GET
+      12 GB-GRAD  i GBV * j +  T-GET  f+
+      GB-TIEG  j GBC * i +  T-SET
+   loop loop ;
+
+: GB-TIE-CONTRIB ( -- )                               \ split the two role grads for proof (b)
+   GBV 0 ?do  GBC 0 ?do
+      0  GB-GRAD  j GBC * i +  T-GET  {: ge:r :}
+      12 GB-GRAD  i GBV * j +  T-GET  {: gh:r :}
+      ge        GB-TIE-GE  j GBC * i +  T-SET
+      gh        GB-TIE-GH  j GBC * i +  T-SET
+      ge gh f+  GB-TIEG    j GBC * i +  T-SET
+   loop loop ;
+
+variable GB-TIE-BAD                                    \ per-run tie-holds violations summed
+: GB-TIE-STEP ( -- r )                                 \ one Adam step: wte tied+summed, wlm mirrored
+   BW-FWD-N@ EX-RUN-N
+   GB-LOSS-SEED {: loss:r :}
+   EX-RUN
+   GB-TICK
+   GB-UPD-REST
+   GB-TIE-ACCUM
+   GB-LR GB-BET1 GB-BET2 GB-EPS GB-C1 GB-C2  GB-WTE GB-TIEG GB-WTEM GB-WTEV  GBV GBC *  OPTIM:TT-ADAM!
+   GB-TIE-MIRROR
+   GB-TIE-MISMATCH GB-TIE-BAD +!
+   loss ;
+
+: GB-TIE-SETUP ( -- )  GB-INIT  GB-TIE-MIRROR  GB-ARESET  BW-BUILD  EX-RESET  GB-BIND ;
+
+variable GB-TIE-IL   variable GB-TIE-FL   variable GB-TIE-FL1
+: GB-TIE-RUN ( n -- ) {: n:n :}
+   0 GB-TIE-BAD !
+   n 0 ?do
+      GB-TIE-STEP {: l:r :}
+      i 0=     if l GB-TIE-IL ! then
+      i n 1- = if l GB-TIE-FL ! then
+   loop ;
+
+\ ---- tied-parameter gradcheck: central FD of the SHARED buffer P == Gwte + Gwlm^T -------
+: GB-TIE-GC-SEED ( -- )  GBON 0 ?do  i 7 mod s>f 0.13 f* 0.6 f+  GB-SEED i T-SET  loop ;
+: GB-TIE-GC-H ( -- r )  0.001 ;
+: GB-TIE-GC-L ( -- r )                                \ forward-slice loss L = sum_k seed_k*logits_k
+   BW-FWD-N@ EX-RUN-N
+   0.0  GBON 0 ?do  GB-OUT i T-GET  GB-SEED i T-GET  f*  f+  loop ;
+: GB-TIE-AN ( n n -- r ) {: v:n c:n :}                \ analytic summed grad (fresh run refreshes grads)
+   GB-TIE-MIRROR  EX-RUN
+   0  GB-GRAD  v GBC * c +  T-GET
+   12 GB-GRAD  c GBV * v +  T-GET  f+ ;
+: GB-TIE-FD ( n n -- r ) {: v:n c:n :}                \ central FD of shared P[v][c], re-mirror each eval
+   v GBC * c +  {: idx:n :}
+   GB-WTE idx T-GET  {: base:r :}
+   base GB-TIE-GC-H f+  GB-WTE idx T-SET  GB-TIE-MIRROR  GB-TIE-GC-L  {: yp:r :}
+   base GB-TIE-GC-H f-  GB-WTE idx T-SET  GB-TIE-MIRROR  GB-TIE-GC-L  {: ym:r :}
+   base GB-WTE idx T-SET  GB-TIE-MIRROR
+   yp ym f-  GB-TIE-GC-H 2.0 f* f/ ;
+: GB-TIE-GC-OK? ( n n -- bool ) {: v:n c:n :}  v c GB-TIE-AN  v c GB-TIE-FD  GC-CLOSE? ;
 
 \ ---- independent layer-by-layer forward reference (forward golden) --------------------
 \ Every buffer below is the executor node's materialized output. The two attention
@@ -523,6 +613,60 @@ GC-RE$ s" input(s) gradchecked" CONTAINS? TTRUE
 BW-BUILD                                             \ backward builds over the 172-node forward IR
 BW-FWD-N@ 172 T=                                     \ forward slice exact
 MIR-N@ 723 T=                                        \ 172 fwd + 551 adjoint (measured; predicted ~723 total)
+
+\ ================= (F) tied wte/LM head INSIDE the block: one storage, summed grads =====
+\ Same GBLK composition as (A); wte(slot 0) and the LM head(slot 12) are now ONE storage:
+\ GB-WTE is the tied parameter, GB-WLM is its transpose mirror (see ORIENTATION note above).
+MODEL: GBLK ( wte:6x6 ids:4x1 wpe:4x6 wq:6x3 wk:6x3 sc:1x1 wv:6x3 wo:3x6 w1:6x8 b1:1x8 w2:8x6 b2:1x6 wlm:6x6 blm:1x6 mask:4x4 ln1g:1x6 ln1b:1x6 ln2g:1x6 ln2b:1x6 gfin:1x6 bfin:1x6 -- logits )
+   GATHER  ADD  >V X0
+   ln1g ln1b LAYERNORM  >V LN1
+   MATMUL  LN1 A-SCORES  SCALE  mask ADD  SOFTMAX-ROW  LN1 A-CTX  MATMUL
+   X0 RESIDUAL-ADD  >V X1
+   ln2g ln2b LAYERNORM
+   LINEAR  GELU  LINEAR
+   X1 RESIDUAL-ADD
+   gfin bfin LAYERNORM
+   LINEAR ;
+
+\ BW-BUILD is non-idempotent (a second build differentiates the combined fwd+bwd region), so
+\ the backward IR is built ONCE here via GB-TIE-SETUP and reused; each sub-proof only re-inits
+\ params/moments (GB-INIT GB-TIE-MIRROR GB-ARESET) and, where needed, the loss cotangent seed.
+GB-TIE-SETUP
+
+\ (F-a) ONE STORAGE: a write to the tied buffer P is visible (transposed) in the head role
+7.5  GB-WTE 2 GBC * 3 +  T-SET                    \ P[v=2][c=3] := 7.5
+GB-TIE-MIRROR
+GB-WLM 3 GBV * 2 +  T-GET  7.5 f=  TTRUE           \ head role WLM[c=3][v=2] reads the same storage
+GB-INIT GB-TIE-MIRROR                             \ restore the clean tied init (undo the probe write)
+GB-TIE-MISMATCH 0 T=                              \ WLM == P^T bit-identical (one storage, two roles)
+
+\ (F-b) BOTH gradient contributions accumulate into the one tied grad (single fwd+bwd)
+BW-FWD-N@ EX-RUN-N  GB-LOSS-SEED drop  EX-RUN
+GB-TIE-CONTRIB
+0.0  GB-TIEG GB-TIE-GE GBV GBC * T-DIST2  f< TTRUE   \ G_full != embed-only  -> the head path contributes
+0.0  GB-TIEG GB-TIE-GH GBV GBC * T-DIST2  f< TTRUE   \ G_full != head-only   -> the embed path contributes
+
+\ (F-c) tied-parameter gradcheck: central FD of the SHARED buffer P equals Gwte + Gwlm^T
+GB-INIT GB-TIE-MIRROR GB-TIE-GC-SEED              \ reuse the built+bound IR; fix the varied cotangent
+0 0 GB-TIE-GC-OK? TTRUE                            \ corner (gathered row 0)
+3 2 GB-TIE-GC-OK? TTRUE                            \ interior (gathered row 3)
+5 3 GB-TIE-GC-OK? TTRUE                            \ never-gathered row 5: head-path grad is the whole signal
+2 2 GB-TIE-GC-OK? TTRUE                            \ gathered diagonal: both roles couple
+0 0 GB-TIE-FD  0 0 GB-TIE-AN 0.5 f+  GC-CLOSE? TFALSE   \ teeth: a corrupted analytic must NOT match FD
+
+\ (F-d) training reduces loss, deterministic, run-twice bit-identical, tie holds every step
+GB-INIT GB-TIE-MIRROR GB-ARESET
+12 GB-TIE-RUN
+GB-TIE-FL @ GB-TIE-IL @ f< TTRUE                   \ loss decreased
+GB-TIE-FL @ GB-TIE-IL @ 0.5 f* f< TTRUE            \ at least halved
+GB-TIE-BAD @ 0 T=                                  \ tie held after EVERY step
+GB-TIE-MISMATCH 0 T=                               \ and at the final state
+GB-TIE-IL @ GB-MILLI 1665 T=                       \ committed initial mean CE (determinism lock)
+GB-TIE-FL @ GB-MILLI 27 T=                          \ committed final mean CE (determinism lock)
+GB-TIE-FL @ GB-TIE-FL1 !
+GB-INIT GB-TIE-MIRROR GB-ARESET  12 GB-TIE-RUN
+GB-TIE-FL @ GB-TIE-FL1 @ f= TTRUE                  \ run-twice bit-identical final (raw float)
+GB-TIE-FL @ GB-MILLI 27 T=                          \ run-twice final mean CE lock
 
 T-REPORT
 
