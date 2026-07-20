@@ -979,6 +979,76 @@ IWT @ TWX-T-WIDTH 4 T=                            \ opt<pt3>: max(0, width(pt3)=
 IWOPT @ TFAM-WIDTH@ 2 T=                          \ family-only width unchanged (still 2) — arg-aware differs
 
 \ ---------------------------------------------------------------------------
+\ 20. field-id hardening (dot habu-harden-field-tokens): every public indexed
+\ reflection accessor rejects an out-of-band id with a catchable E-PF-ID throw
+\ instead of a process-killing `die`; TFAM-RESET refuses to discard a live
+\ field-transaction frame; and the transaction-token generation stays monotonic
+\ across reset, so a completed token can never alias a transaction begun later.
+\ ---------------------------------------------------------------------------
+variable PROVID   variable STOK   variable NTOK   variable RTOK   variable RCNT
+
+\ net-neutral ( -- ) probes over each public indexed accessor, reading the
+\ candidate id from PROVID so a top-level `catch` reports only the throw code.
+: PRB-FAM    ( -- ) PROVID @ TYPE-FIELD:FAMILY@   drop ;
+: PRB-VAR    ( -- ) PROVID @ TYPE-FIELD:VARIANT@  drop ;
+: PRB-NAME   ( -- ) PROVID @ TYPE-FIELD:NAME$     2drop ;
+: PRB-SCH    ( -- ) PROVID @ TYPE-FIELD:SCHEMA@   drop ;
+: PRB-SLOT   ( -- ) PROVID @ TYPE-FIELD:SLOT@     drop ;
+: PRB-CELLS  ( -- ) PROVID @ TYPE-FIELD:CELLS@    drop ;
+: PRB-BOFF   ( -- ) PROVID @ TYPE-FIELD:BYTE-OFF@ drop ;
+: PRB-BYTES  ( -- ) PROVID @ TYPE-FIELD:BYTES@    drop ;
+: PRB-ALIGN  ( -- ) PROVID @ TYPE-FIELD:ALIGN@    drop ;
+: PRB-FLAGS  ( -- ) PROVID @ TYPE-FIELD:FLAGS@    drop ;
+
+\ a provisional row: added inside an open transaction, so its id sits at exactly
+\ the committed high-water and is NOT yet reflected. Every indexed accessor must
+\ reject that guessed id with E-PF-ID rather than read the uncommitted row.
+TWX-PF-BEGIN PFTX !
+PFTX @ PTID @ PF-NO-VARIANT s" prov" 1 31 1 31 cells CELL CELL PF-FLAGS-NONE TWX-PF-ADD PFTX !
+TYPE-FIELD:COUNT PROVID !
+' PRB-FAM   catch TC ! TC @ E-PF-ID T=
+' PRB-VAR   catch TC ! TC @ E-PF-ID T=
+' PRB-NAME  catch TC ! TC @ E-PF-ID T=
+' PRB-SCH   catch TC ! TC @ E-PF-ID T=
+' PRB-SLOT  catch TC ! TC @ E-PF-ID T=
+' PRB-CELLS catch TC ! TC @ E-PF-ID T=
+' PRB-BOFF  catch TC ! TC @ E-PF-ID T=
+' PRB-BYTES catch TC ! TC @ E-PF-ID T=
+' PRB-ALIGN catch TC ! TC @ E-PF-ID T=
+' PRB-FLAGS catch TC ! TC @ E-PF-ID T=
+PFTX @ TWX-PF-ROLLBACK
+
+\ negative and out-of-range committed ids reject the same way (no open tx, so
+\ TYPE-FIELD:COUNT is exactly one past the last valid committed id).
+-1 PROVID !                ' PRB-FAM catch TC ! TC @ E-PF-ID T=
+TYPE-FIELD:COUNT PROVID !  ' PRB-FAM catch TC ! TC @ E-PF-ID T=
+999999 PROVID !            ' PRB-FAM catch TC ! TC @ E-PF-ID T=
+
+\ active-reset reject preserves the frame: with a transaction open, TFAM-RESET
+\ throws E-PF-TX and changes nothing — the registry survives and the same token
+\ still commits cleanly, proving the frame was never discarded.
+TYPE-FIELD:COUNT RCNT !
+TWX-PF-BEGIN RTOK !
+' TWX-TFAM-RESET catch TC ! TC @ E-PF-TX T=
+PTID @ TFAM-ARITY@ 0 T=              \ registry NOT wiped: PTID is still a valid family
+TYPE-FIELD:COUNT RCNT @ T=           \ committed high-water unchanged
+RTOK @ TWX-PF-COMMIT                 \ frame intact: the token still matches the live top frame
+TYPE-FIELD:COUNT RCNT @ T=           \ empty commit publishes nothing
+
+\ completed token stays stale across reset + new begin: mint a token, commit it,
+\ run a legal reset (depth 0), then begin afresh. The new token is strictly
+\ greater — the serial did not rewind across reset — so the completed pre-reset
+\ token no longer matches the top frame and committing it rejects E-PF-TX.
+TWX-PF-BEGIN STOK !
+STOK @ TWX-PF-COMMIT
+TWX-TFAM-RESET
+TWX-PF-BEGIN NTOK !
+NTOK @ STOK @ > -1 T=                \ token generation did not rewind across reset
+NTOK @ STOK @ = 0 T=                 \ so a completed token can never be reissued
+STOK @ ' TWX-PF-COMMIT catch TC ! drop  TC @ E-PF-TX T=   \ stale token never aliases the new frame
+NTOK @ TWX-PF-ROLLBACK
+
+\ ---------------------------------------------------------------------------
 \ report: "ok" on success, nonzero exit on any failure.
 \ ---------------------------------------------------------------------------
 : REPORT ( -- )

@@ -46,7 +46,8 @@ CELL constant TAGW-CELL     \ default tag width: one stack cell
 7106 constant E-TFAM-AMBIG    \ two other-package public families tie on a tail (7103 = E-SCHEMA-BAD)
 7104 constant E-TFAM-ARITY    \ negative arity
 7105 constant E-TFAM-KIND     \ unknown kind
-7123 constant E-PF-TX         \ stale or non-LIFO field transaction
+7122 constant E-PF-ID         \ invalid or provisional (uncommitted) product-field id
+7123 constant E-PF-TX         \ stale or non-LIFO field transaction, or reset while a field transaction is open
 7124 constant E-PF-OWNER      \ invalid family / optional-variant ownership
 7125 constant E-PF-NAME       \ reserved field tail
 7126 constant E-PF-SCHEMA     \ malformed or owner-incompatible schema
@@ -801,13 +802,19 @@ variable PF-COMMIT-N   0 PF-COMMIT-N !   REG-PROTECT
 : PF-ENSURE ( -- )
    PF-N @ PF-CAP-V @ < IF exit THEN
    PF-N @ 1 + PF-GROW ;
+\ Field-id readers reject an out-of-band id with a catchable E-PF-ID throw, never
+\ a process-killing `die`: the id is public reflection input (an `n` any checked
+\ caller can guess), so a bad id is a caller error to surface under `catch`, not
+\ an engine assert. PF-ROW admits provisional rows (bound PF-N) for in-transaction
+\ machinery; PF-REC@ is the committed reflection reader (bound PF-COMMIT-N), so a
+\ guessed provisional id (>= PF-COMMIT-N) rejects here before it can be read.
 : PF-ROW ( n -- ptr a ) {: id:n :}
-   id 0 < IF s" tfam: bad field id" 76 die THEN
-   id PF-N @ >= IF s" tfam: bad field id" 76 die THEN
+   id 0 < IF E-PF-ID throw THEN
+   id PF-N @ >= IF E-PF-ID throw THEN
    id PF-REC * PF-BASE + ;
 : PF-REC@ ( n -- ptr a ) {: id:n :}
-   id 0 < IF s" tfam: bad committed field id" 76 die THEN
-   id PF-COMMIT-N @ >= IF s" tfam: bad committed field id" 76 die THEN
+   id 0 < IF E-PF-ID throw THEN
+   id PF-COMMIT-N @ >= IF E-PF-ID throw THEN
    id PF-REC * PF-BASE + ;
 
 : PF-FAM@ ( n -- n ) PF-REC@ PF.FAM @ ;
@@ -1343,12 +1350,17 @@ variable LAY-N   0 LAY-N !   REG-PROTECT
    pay tw + al PACKED-ALIGN-UP  al  tw ;
 
 \ ---------------------------------------------------------------------------
-\ base-state reset.
+\ base-state reset. Refuses to run while a field transaction is live (depth > 0)
+\ so an in-flight frame is never discarded out from under its token holder, and
+\ deliberately does NOT rewind PF-TX-SERIAL: the transaction-token generation
+\ counter stays monotonic for the whole process, so a token minted before a reset
+\ can never equal — and therefore never alias — a transaction begun after it.
+\ Depth is provably 0 past the guard, so it is not re-cleared here.
 \ ---------------------------------------------------------------------------
 : TFAM-RESET ( -- )
+   PF-TX-DEPTH @ IF E-PF-TX throw THEN   \ live field transaction: reset would discard its frame
    0 TFAM-N !   0 TF-STR-U !   0 TF-PK-N !
    0 SUMV-N !   0 PF-N !   0 PF-COMMIT-N !   0 LAY-N !
-   0 PF-TX-DEPTH !   0 PF-TX-SERIAL !
    -1 FIELD-FAM !     \ field family is de-registered until re-declared, so its id can't dangle
    EXT-FREE-CLEAR ;   \ BTC-7: drop free-extent marks with the families they name
 TFAM-RESET

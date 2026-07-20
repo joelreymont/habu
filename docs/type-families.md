@@ -1043,10 +1043,23 @@ PF mutation is a strict-LIFO nested transaction. `PF-N` includes provisional
 rows, while `PF-COMMIT-N` is the only reflection high-water. `ADD` returns the
 transaction token, never a field id; nested commit remains provisional and only
 the outer commit publishes ids. Rollback restores both the PF row mark and the
-shared interned-string mark. `TFAM-RESET` clears both high-waters and transient
-transaction state. Checker rollback requires no open field transaction and
-restores `PF-N`/`PF-COMMIT-N` together. Snapshot persistence retains committed
-PF rows/high-waters while resetting the process-local transaction arena.
+shared interned-string mark. Every transaction token comes from a single
+monotonic serial that only ever increases within a process: `PF-BEGIN` is its
+sole mutator, it fails closed before the counter would wrap, and no other
+operation rewinds it. `TFAM-RESET` clears the registry high-waters and transient
+transaction state, but it refuses (`E-PF-TX`) while any field transaction is
+still open — so a live frame is never discarded out from under its token holder
+— and it deliberately does not rewind the transaction serial. Because the serial
+survives reset, a token minted before a reset is strictly less than every token
+minted after it and can never alias a later transaction; committing a completed
+or pre-reset token rejects `E-PF-TX` at the strict-LIFO token check. The indexed
+reflection readers (`PF-REC@` and the `TYPE-FIELD:*` accessors it backs) reject a
+negative, out-of-range, or still-provisional field id with a catchable `E-PF-ID`
+throw rather than a process-killing `die`, so a guessed id is a recoverable
+caller error, not an engine exit. Checker rollback requires no open field
+transaction and restores `PF-N`/`PF-COMMIT-N` together. Snapshot persistence
+retains committed PF rows/high-waters while resetting the process-local
+transaction arena.
 
 Checked consumers use the sealed package surface:
 
