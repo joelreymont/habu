@@ -7,7 +7,7 @@ package PROCESS-LINT-TEST
 
 : GOOD ( -- )
    s" test/good.f"
-   S\" \\ fork in comment\n: RUN ( -- ) s\q spawn-io\q 2drop PROC-FORK drop ;\n"
+   S\" \\ fork in comment\n: RUN ( -- ) s\q spawn-io\q 2drop PROC-FORK:CHECKED drop ;\n"
    PROCESS-LINT:SOURCE 0 T= ;
 
 : BAD-SPAWN ( -- )

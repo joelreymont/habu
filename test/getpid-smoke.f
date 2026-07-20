@@ -23,7 +23,7 @@ variable PARENT-PID
    getpid PARENT-PID @ <> if 0 else 1 then CHILD-DIE ;
 
 : FORK-CHILD ( -- pid )
-   PROC-FORK dup PID>N 0= if
+   PROC-FORK:CHECKED dup PID>N 0= if
       drop CHILD-RUN
    then ;
 

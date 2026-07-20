@@ -225,6 +225,10 @@ TEST:SUITE proc-signal-primitive-smoke
    test/proc-signal-smoke.f
 TEST:;SUITE
 
+TEST:SUITE process-fork-wrappers
+   lib/process-fork-test.f
+TEST:;SUITE
+
 TEST:SUITE proc-pty-io-supervisor-smoke
    test/process-pty-io-smoke.f
 TEST:;SUITE

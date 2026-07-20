@@ -183,7 +183,7 @@ create PT-CAPTURE-HB-BUF FS-PATH-CAP allot
 
 : TEST-PROC-FORK-WAIT ( -- )
    PIPE-PAIR PT-W ! PT-R !
-   PROC-FORK PID>N {: pid:n :}
+   PROC-FORK:CHECKED PID>N {: pid:n :}
    pid 0= if
       PT-R @ close
       PT-W @ s" f" write 1 <> if 2 PT-FORK-EXIT then
@@ -199,7 +199,7 @@ create PT-CAPTURE-HB-BUF FS-PATH-CAP allot
 
 : TEST-PROC-FORK-COW ( -- )
    7 PT-FORK-CELL !
-   PROC-FORK PID>N {: pid:n :}
+   PROC-FORK:CHECKED PID>N {: pid:n :}
    pid 0= if
       9 PT-FORK-CELL !
       0 PT-FORK-EXIT

@@ -1848,6 +1848,7 @@ points stay listed.
 - `lib/process-env.f` — checked child envp builder and PATH lookup helpers.
 - `lib/process-env-test.f` — focused coverage for child envp and executable lookup.
 - `lib/process-fork.f` — checked fork wrappers for resident copy-on-write workers.
+- `lib/process-fork-test.f` — focused coverage for the checked fork wrappers (fork returns 0 in child / pid in parent, SET-PGID group leader).
 - `lib/process-cwd.f` — checked child cwd process helpers layered on prepared argv/envp.
 - `lib/process-cwd-test.f` — focused coverage for child cwd spawn, capture, cleanup, and validation.
 - `lib/source.f` — checked source materialization and source-list transforms.

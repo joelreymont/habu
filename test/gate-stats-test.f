@@ -456,7 +456,7 @@ variable UNOWNED-AFTER
 
 : DIRECT-FORK ( -- )
    s" direct-fork" GS-HELPER-EVENT
-   PROC-FORK {: pid:pid :}
+   PROC-FORK:CHECKED {: pid:pid :}
    pid PID>N 0= if
       GATE-PROCESS:LIVE-EXEC# 0 <> if 8 FORK-EXIT then
       GATE-PROCESS:LIVE-FORK# 0 <> if 9 FORK-EXIT then
@@ -467,18 +467,18 @@ variable UNOWNED-AFTER
 : REAPER-FORKS ( -- )
    s" reaper-forks" GS-HELPER-EVENT
    PROCESS-TRACE:REAPER
-   PROC-FORK-RAW {: p1:pid :}
+   PROC-FORK:RAW {: p1:pid :}
    p1 PID>N 0= if 0 FORK-EXIT then
    p1 WAIT-CLEAN
    s" reaper-forks" GS-HELPER-EVENT
    PROCESS-TRACE:REAPER
-   PROC-FORK-RAW {: p2:pid :}
+   PROC-FORK:RAW {: p2:pid :}
    p2 PID>N 0= if 0 FORK-EXIT then
    p2 WAIT-CLEAN ;
 
 : EXPECTED-LIVE-FORK# ( -- n )
    3
-   PROC-REAP-WATCH-FD @ 0 >= if 1+ then ;
+   PROC-FORK:REAP-WATCH-FD @ 0 >= if 1+ then ;
 
 : EXPECTED-UNOWNED$ ( -- ptr u8 n )
    GS-CHILD-U @ 0 > if
@@ -542,7 +542,7 @@ variable UNOWNED-AFTER
    -1 >FD -1 >FD -1 >FD PROC-SPAWN-RAW drop ;
 
 : HOOK-FAIL-FORK ( -- )
-   PROC-FORK-RAW {: pid:pid :}
+   PROC-FORK:RAW {: pid:pid :}
    pid PID>N 0= if 0 FORK-EXIT then ;
 
 : TEST-HOOK-FAIL ( -- )

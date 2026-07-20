@@ -77,7 +77,7 @@ TRUSTED: STACK-ARM ( -- )
    0 CHILD-EXIT ;
 
 : SPAWN ( -- )
-   PROC-FORK-RAW {: pid:pid :}
+   PROC-FORK:RAW {: pid:pid :}
    pid PID>N 0 < if E-PROC-SPAWN PROC-THROW-CAPTURE then
    pid PID>N 0= if CHILD then
    pid PROC-CAPTURE-PID!

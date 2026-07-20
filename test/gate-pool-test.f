@@ -593,7 +593,7 @@ variable GPT-GK-SENTINEL-U
    s" " 0 die ;
 
 : GPT-GK-CHILD ( -- )
-   PROC-FORK {: pid:pid :}
+   PROC-FORK:CHECKED {: pid:pid :}
    pid PID>N 0= if GPT-GK-GRANDCHILD then
    s" gate-pool group-kill child" type cr
    begin 0 0= 0= until ;

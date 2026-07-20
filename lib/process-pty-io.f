@@ -123,12 +123,12 @@ variable IO-AH-R     variable IO-MH-R     variable IO-GO-R       \ child-side he
 \ is killed, then exits. It holds no other pipe end open, so it can never wedge a
 \ downstream EOF.
 : IO-HELPER-CHILD ( fd -- ) {: hr:fd :}
-   hr hr PROC-CLOSE-EXCEPT2
+   hr hr PROC-FORK:CLOSE-EXCEPT2
    hr FD>N IO-GOBYTE 1 read drop
    s" " 0 die ;
 
 : IO-CLOSE-HIGH ( -- )
-   3 begin dup PROC-MAXFD < while
+   3 begin dup PROC-FORK:MAXFD < while
       dup close
       1+
    repeat drop ;
@@ -169,7 +169,7 @@ variable IO-AH-R     variable IO-MH-R     variable IO-GO-R       \ child-side he
    PIPE-PAIR IO-GO-W ! IO-GO-R ! ;        \ release gate: owner write, target read
 
 : IO-FORK-HELPER ( fd -- pid ) {: hr:fd :}
-   PROC-FORK dup PID>N 0= if drop hr IO-HELPER-CHILD then ;
+   PROC-FORK:CHECKED dup PID>N 0= if drop hr IO-HELPER-CHILD then ;
 
 : IO-FORK-ANCHOR ( -- )
    IO-AH-R @ >FD IO-FORK-HELPER IO-A-PID ! ;
@@ -178,7 +178,7 @@ variable IO-AH-R     variable IO-MH-R     variable IO-GO-R       \ child-side he
    IO-MH-R @ >FD IO-FORK-HELPER IO-M-PID ! ;
 
 : IO-FORK-TARGET ( -- )
-   PROC-FORK dup PID>N 0= if drop IO-TARGET-CHILD then IO-T-PID ! ;
+   PROC-FORK:CHECKED dup PID>N 0= if drop IO-TARGET-CHILD then IO-T-PID ! ;
 
 : IO-WATCH ( pid -- fd )
    PID>N proc-watch-open dup 0 < if drop E-PROC-OUTPUT throw then >FD ;

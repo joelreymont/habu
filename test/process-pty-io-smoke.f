@@ -90,7 +90,7 @@ variable ALIVE-R   variable ALIVE-W       \ alive-pipe: child holds write end, c
    s" " 0 die ;                        \ exit closes the write end -> parent read EOFs
 
 : FORK-DEAD ( -- pid )
-   PROC-FORK dup PID>N 0= if drop DEAD-CHILD then ;
+   PROC-FORK:CHECKED dup PID>N 0= if drop DEAD-CHILD then ;
 
 : DEAD-WATCH ( -- )
    PIPE-PAIR ALIVE-W ! ALIVE-R !

@@ -545,7 +545,7 @@ TRUSTED: GE-EVAL-SOURCE ( -- )
    rc GE-EVAL-FORK-EXIT ;
 
 : GE-EVAL-FORK-SPAWN ( -- )
-   PROC-FORK-RAW {: pid:pid :}
+   PROC-FORK:RAW {: pid:pid :}
    pid PID>N 0 < if E-PROC-SPAWN throw then
    pid PID>N 0= if GE-EVAL-FORK-CHILD then
    pid PROC-PID !

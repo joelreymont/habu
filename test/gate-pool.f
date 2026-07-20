@@ -375,7 +375,7 @@ GT-POOL-ABORT-BARE!
 
 : GT-POOL-KILL-SLOT ( idx -- ) {: idx :}
    idx GT-POOL-PID@ PID>N 0 >= if
-      idx GT-POOL-PID@ SIGKILL PROC-KILL-GROUP drop
+      idx GT-POOL-PID@ SIGKILL PROC-FORK:KILL-GROUP drop
       idx GT-POOL-PID@ SIGKILL PROC-KILL-RAW drop
       idx GT-POOL-PID@ PROC-WAIT-STATUS drop
       -1 >PID idx GT-POOL-PID-PTR !
@@ -465,7 +465,7 @@ GT-POOL-ABORT-KILL!
 \ forked worker's reaper keeps RD.
 : GT-POOL-DEATH-MAKE ( -- )
    GT-POOL-DEATH-MADE @ 0 <> if exit then
-   PROC-DEATH-PIPE {: rd:fd wr:fd :}
+   PROC-FORK:DEATH-PIPE {: rd:fd wr:fd :}
    rd FD>N GT-POOL-DEATH-RD !
    wr FD>N GT-POOL-DEATH-WR !
    -1 GT-POOL-DEATH-MADE ! ;
@@ -557,7 +557,7 @@ GT-POOL-ABORT-KILL!
 \ also fail-closed; otherwise a spawned subtree could survive a killed pool.
 : GT-POOL-ARM-SPAWN-REAPER ( idx -- ) {: idx:idx :}
    idx GT-POOL-LABEL$ GATE-PROCESS:OWNER!
-   GT-POOL-DEATH-RD@ idx GT-POOL-PID@ PROC-SPAWN-REAPER {: rpid:pid :}
+   GT-POOL-DEATH-RD@ idx GT-POOL-PID@ PROC-FORK:SPAWN-REAPER {: rpid:pid :}
    rpid PID>N 0 < if E-PROC-SPAWN GT-POOL-THROW then
    rpid idx GT-POOL-REAPER-PID-PTR ! ;
 
@@ -624,27 +624,27 @@ GT-POOL-ABORT-KILL!
 \ (GT-POOL-KILL-SLOT signalling -pid) reaches this worker's whole subtree --
 \ nested pools and spawned hb -- instead of orphaning grandchildren.
 : GT-POOL-SETPGID-SELF ( -- )
-   0 >PID 0 >PID PROC-SETPGID RC>N 0 < if GT-POOL-FORK-SETUP-FAIL then ;
+   0 >PID 0 >PID PROC-FORK:SET-PGID RC>N 0 < if GT-POOL-FORK-SETUP-FAIL then ;
 
 \ Worker side: open a worker-alive pipe, arm the parent-death reaper watching
 \ both the pool parent's death pipe (RD) and this worker-alive pipe, then drop
 \ every copy the worker no longer needs: the inherited parent death-pipe RD/WR.
 \ The worker keeps the worker-alive WR open (an untracked fd, close-on-exec) so
 \ it closes exactly at this worker's exit and the reaper self-exits with no
-\ orphan -- and it keeps the worker-alive RD published as PROC-REAP-WATCH-FD,
+\ orphan -- and it keeps the worker-alive RD published as PROC-FORK:REAP-WATCH-FD,
 \ so every capture child this worker spawns (PROC-RUN-CAPTURE family) gets its
 \ own co-located reaper watching this worker's life. Extra RD copies never
 \ delay the EOF (only write ends count) and both ends are close-on-exec. The
 \ made-flag is cleared so a nested pool this worker later drives builds its own
-\ death pipe. The reaper is a reparented grandchild (see PROC-FORK-REAPER),
+\ death pipe. The reaper is a reparented grandchild (see PROC-FORK:FORK-REAPER),
 \ never a child of this worker, so the worker body's wait(-1) still sees no
 \ children.
 : GT-POOL-ARM-REAPER ( -- )
-   PROC-DEATH-PIPE {: wa-rd:fd wa-wr:fd :}
-   GT-POOL-DEATH-RD@ wa-rd PROC-FORK-REAPER
+   PROC-FORK:DEATH-PIPE {: wa-rd:fd wa-wr:fd :}
+   GT-POOL-DEATH-RD@ wa-rd PROC-FORK:FORK-REAPER
    GT-POOL-DEATH-RD@ FD>N close
    GT-POOL-DEATH-WR@ FD>N close
-   wa-rd FD>N PROC-REAP-WATCH-FD !
+   wa-rd FD>N PROC-FORK:REAP-WATCH-FD !
    0 GT-POOL-DEATH-MADE ! ;
 
 \ typed-local-lint: allow-bare-local - q keeps the forked worker quotation effect.
@@ -666,7 +666,7 @@ GT-POOL-ABORT-KILL!
 \ typed-local-lint: allow-bare-local - q keeps the forked worker quotation effect.
 : GT-POOL-FORK ( idx [ -- ] -- ) {: idx:idx q :}
    idx GT-POOL-LABEL$ GATE-PROCESS:OWNER!
-   PROC-FORK-RAW {: pid:pid :}
+   PROC-FORK:RAW {: pid:pid :}
    pid PID>N 0 < if E-PROC-SPAWN GT-POOL-THROW then
    pid PID>N 0= if idx q GT-POOL-FORK-CHILD then
    pid idx GT-POOL-PID-PTR !

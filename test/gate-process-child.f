@@ -26,7 +26,7 @@ private
 
 : RUN-FORK ( -- )
    s" nested-fork" GATE-PROCESS:OWNER!
-   PROC-FORK-RAW {: pid:pid :}
+   PROC-FORK:RAW {: pid:pid :}
    pid PID>N 0 < if E-PROC-SPAWN throw then
    pid PID>N 0= if s" " 0 die then
    pid WAIT-CLEAN ;

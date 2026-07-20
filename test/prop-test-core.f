@@ -997,7 +997,7 @@ variable SHARD-FAULT
    NMETA 0 > IF s" prop-test: METAMORPHIC-INCONSISTENCY" SHARD-FAIL THEN
    s" " 0 die ;
 : SHARD-FORK ( n -- ) {: i:n :}
-   PROC-FORK-RAW {: p:pid :}
+   PROC-FORK:RAW {: p:pid :}
    p PID>N 0= IF i SHARD-CHILD THEN   \ child diverges (dies), only the parent falls through
    p i SHARD-PID! ;
 : SHARD-JOIN ( n -- ) {: i:n :}
@@ -1046,7 +1046,7 @@ variable SS-I  variable SS-J  variable SS-BAD
    7 SWEEP
    s" " 0 die ;
 : SELFTEST-SWEEP-RED ( -- )
-   PROC-FORK-RAW {: p:pid :}
+   PROC-FORK:RAW {: p:pid :}
    p PID>N 0= IF SWEEP-RED-CHILD THEN
    p PROC-WAIT-RC MATCH result ok OF ENDOF err OF ENDOF ;MATCH 1 <> IF   \ completion code; a red shard must exit 1
       s" prop-test: sweep-red self-test FAILED (a red shard did not fail the sweep)" 1 die THEN

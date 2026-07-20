@@ -66,10 +66,10 @@ variable ALIVE-R variable ALIVE-W  \ alive-pipe: child holds write end, closes o
    s" " 0 die ;
 
 : FORK-FAST ( -- pid )
-   PROC-FORK dup PID>N 0= if drop FAST-CHILD then ;
+   PROC-FORK:CHECKED dup PID>N 0= if drop FAST-CHILD then ;
 
 : FORK-DEAD ( -- pid )
-   PROC-FORK dup PID>N 0= if drop DEAD-CHILD then ;
+   PROC-FORK:CHECKED dup PID>N 0= if drop DEAD-CHILD then ;
 
 \ ---- checks ------------------------------------------------------------------
 \ Fast path: watch a LIVE child, then release it to exit; the descriptor must

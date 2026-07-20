@@ -42,7 +42,7 @@ variable BAD-SUP-GUARD
    1 CHILD-DIE ;
 
 : SPAWN-WAITER ( -- pid )
-   PROC-FORK dup PID>N 0= if
+   PROC-FORK:CHECKED dup PID>N 0= if
       drop WAITER-CHILD
    then ;
 
@@ -184,7 +184,7 @@ variable BAD-SUP-GUARD
    CHILD-DIE ;
 
 : FORK-OWNER ( -- pid )
-   PROC-FORK dup PID>N 0= if
+   PROC-FORK:CHECKED dup PID>N 0= if
       drop OWNER-CHILD
    then ;
 
