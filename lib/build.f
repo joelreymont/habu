@@ -1,9 +1,24 @@
 \ build.f - checked helpers for Habu build scripts.
 \
+\ The module lives in `package BUILD`. A build script drives it through the
+\ qualified public API: BUILD:CHECK certifies every checked definition in a
+\ counted source file, BUILD:ARTIFACT builds a bounded artifact path under a
+\ root, BUILD:RUN runs a counted command and requires its expected artifact, and
+\ BUILD:STEP runs one checked step quotation and throws on a nonzero result code.
+\ A build-step record is assembled and executed through BUILD:STEP-CLEAR, the
+\ BUILD:STEP-NAME! / STEP-COMMAND! / STEP-ARGV! / STEP-TMP! / STEP-ARTIFACT!
+\ setters, the matching STEP-NAME$ / STEP-COMMAND$ / STEP-ARGV$ / STEP-TMP$ /
+\ STEP-ARTIFACT$ readers, STEP-RC@ / STEP-RC!, BUILD:STEP-VALIDATE, and
+\ BUILD:STEP-RUN. The source scanner, the record cell plumbing, the CHECK! trust
+\ boundary (BUILD-CHECK-RAW), and every buffer and state variable are
+\ package-private.
+\
 require lib/errors.f
 require lib/string.f
 require lib/fs.f
 require lib/process.f
+
+package BUILD
 
 65536 constant BUILD-SOURCE-CAP
 10 constant BUILD-LF
@@ -77,7 +92,14 @@ variable BUILD-END
 : BUILD-STEP-EMPTY! ( ptr a n -- ) {: rec:ptr off :}
    BUILD-SOURCE-BUF 0 rec off BUILD-STEP-PAIR! ;
 
-: BUILD-STEP-CLEAR ( ptr a -- ) {: rec:ptr :}
+public
+
+\ Cell count of a caller-owned build-step record, so external callers can size
+\ their own `create ... cells allot` storage before STEP-CLEAR.
+: STEP-CELLS ( -- n )
+   BUILD-STEP-CELLS ;
+
+: STEP-CLEAR ( ptr a -- ) {: rec:ptr :}
    rec BUILD-STEP-NAME-A BUILD-STEP-EMPTY!
    rec BUILD-STEP-CMD-A BUILD-STEP-EMPTY!
    rec BUILD-STEP-ARGV-A BUILD-STEP-EMPTY!
@@ -85,45 +107,47 @@ variable BUILD-END
    rec BUILD-STEP-ART-A BUILD-STEP-EMPTY!
    -1 rec BUILD-STEP-RC-OFF BUILD-STEP-FIELD ! ;
 
-: BUILD-STEP-NAME! ( ptr u8 n ptr a -- ) {: a:ptr u rec:ptr :}
+: STEP-NAME! ( ptr u8 n ptr a -- ) {: a:ptr u:n rec:ptr :}
    u 0 <= if E-BUILD-COMMAND throw then
    a u rec BUILD-STEP-NAME-A BUILD-STEP-PAIR! ;
 
-: BUILD-STEP-COMMAND! ( ptr u8 n ptr a -- ) {: a:ptr u rec:ptr :}
+: STEP-COMMAND! ( ptr u8 n ptr a -- ) {: a:ptr u:n rec:ptr :}
    u 0 <= if E-BUILD-COMMAND throw then
    a u rec BUILD-STEP-CMD-A BUILD-STEP-PAIR! ;
 
-: BUILD-STEP-ARGV! ( ptr u8 n ptr a -- ) {: a:ptr u rec:ptr :}
+: STEP-ARGV! ( ptr u8 n ptr a -- ) {: a:ptr u:n rec:ptr :}
    a u rec BUILD-STEP-ARGV-A BUILD-STEP-PAIR! ;
 
-: BUILD-STEP-TMP! ( ptr u8 n ptr a -- ) {: a:ptr u rec:ptr :}
+: STEP-TMP! ( ptr u8 n ptr a -- ) {: a:ptr u:n rec:ptr :}
    u 0 <= if E-BUILD-PATH throw then
    a u rec BUILD-STEP-TMP-A BUILD-STEP-PAIR! ;
 
-: BUILD-STEP-ARTIFACT! ( ptr u8 n ptr a -- ) {: a:ptr u rec:ptr :}
+: STEP-ARTIFACT! ( ptr u8 n ptr a -- ) {: a:ptr u:n rec:ptr :}
    u 0 <= if E-BUILD-PATH throw then
    a u rec BUILD-STEP-ART-A BUILD-STEP-PAIR! ;
 
-: BUILD-STEP-NAME$ ( ptr a -- ptr u8 n )
+: STEP-NAME$ ( ptr a -- ptr u8 n )
    BUILD-STEP-NAME-A BUILD-STEP-PAIR$ ;
 
-: BUILD-STEP-COMMAND$ ( ptr a -- ptr u8 n )
+: STEP-COMMAND$ ( ptr a -- ptr u8 n )
    BUILD-STEP-CMD-A BUILD-STEP-PAIR$ ;
 
-: BUILD-STEP-ARGV$ ( ptr a -- ptr u8 n )
+: STEP-ARGV$ ( ptr a -- ptr u8 n )
    BUILD-STEP-ARGV-A BUILD-STEP-PAIR$ ;
 
-: BUILD-STEP-TMP$ ( ptr a -- ptr u8 n )
+: STEP-TMP$ ( ptr a -- ptr u8 n )
    BUILD-STEP-TMP-A BUILD-STEP-PAIR$ ;
 
-: BUILD-STEP-ARTIFACT$ ( ptr a -- ptr u8 n )
+: STEP-ARTIFACT$ ( ptr a -- ptr u8 n )
    BUILD-STEP-ART-A BUILD-STEP-PAIR$ ;
 
-: BUILD-STEP-RC@ ( ptr a -- n )
+: STEP-RC@ ( ptr a -- n )
    BUILD-STEP-RC-OFF BUILD-STEP-FIELD @ ;
 
-: BUILD-STEP-RC! ( n ptr a -- ) {: rc rec:ptr :}
+: STEP-RC! ( n ptr a -- ) {: rc:n rec:ptr :}
    rc rec BUILD-STEP-RC-OFF BUILD-STEP-N! ;
+
+private
 
 : BUILD-FIND-CHAR ( n n -- n ) {: start ch :}
    start begin dup BUILD-SOURCE-LEN @ < while
@@ -165,7 +189,9 @@ TRUSTED: BUILD-CHECK-RAW ( ptr u8 n -- n )
    BUILD-DEFS @ 1+ BUILD-DEFS !
    BUILD-END @ 1+ ;
 
-: BUILD-CHECK ( ptr u8 n -- )
+public
+
+: CHECK ( ptr u8 n -- )
    BUILD-READ-SOURCE
    0 BUILD-DEFS !
    0 BUILD-I !
@@ -178,21 +204,28 @@ TRUSTED: BUILD-CHECK-RAW ( ptr u8 n -- n )
    repeat
    BUILD-DEFS @ 0= if E-BUILD-SOURCE throw then ;
 
+private
+
 : BUILD-EXPECT ( ptr u8 n -- ) {: a:ptr u :}
    u 0 <= if E-BUILD-PATH throw then
    a u FILE? 0= if E-BUILD-PATH throw then ;
 
-: BUILD-ARTIFACT ( ptr u8 n ptr u8 n -- ptr u8 n ) {: root:ptr rootu name:ptr nameu :}
+public
+
+: ARTIFACT ( ptr u8 n ptr u8 n -- ptr u8 n ) {: root:ptr rootu:n name:ptr nameu:n :}
    rootu 0 <= if E-BUILD-PATH throw then
    nameu 0 <= if E-BUILD-PATH throw then
    rootu 1 + nameu + FS-PATH-CAP > if E-BUILD-PATH throw then
    root rootu name nameu BUILD-PATH-BUF JOIN-PATH
    BUILD-PATH-BUF swap ;
 
-: BUILD-STEP ( ptr u8 n [ -- n ] -- ) {: name:ptr nameu q :}
+\ typed-local-lint: allow-bare-local - q is the step's checked action quotation.
+: STEP ( ptr u8 n [ -- n ] -- ) {: name:ptr nameu:n q :}
    nameu 0 <= if E-BUILD-COMMAND throw then
-   q execute {: rc :}
+   q execute {: rc:n :}
    rc 0 <> if E-BUILD-STATUS throw then ;
+
+private
 
 \ A build command is an artifact producer; it must never inherit the caller's
 \ stdin. If it did (e.g. a gate pool worker's open, never-EOF pipe), a `bin/hb`
@@ -201,7 +234,9 @@ TRUSTED: BUILD-CHECK-RAW ( ptr u8 n -- n )
 : BUILD-DEV-NULL-RD ( -- fd )
    s" /dev/null" FS-PATHZ open-rd dup 0 < if drop E-FS-OPEN throw then >FD ;
 
-: BUILD-RUN ( ptr u8 n ptr u8 n -- n ) {: cmd:ptr cmdu artifact:ptr artifactu :}
+public
+
+: RUN ( ptr u8 n ptr u8 n -- n ) {: cmd:ptr cmdu:n artifact:ptr artifactu:n :}
    cmdu 0 <= if E-BUILD-COMMAND throw then
    cmd cmdu FILE? 0= if E-BUILD-COMMAND throw then
    BUILD-DEV-NULL-RD {: nullfd:fd :}
@@ -214,14 +249,16 @@ TRUSTED: BUILD-CHECK-RAW ( ptr u8 n -- n )
    artifact artifactu BUILD-EXPECT
    rc ;
 
-: BUILD-STEP-VALIDATE ( ptr a -- ) {: rec:ptr :}
-   rec BUILD-STEP-NAME$ nip 0 <= if E-BUILD-COMMAND throw then
-   rec BUILD-STEP-COMMAND$ FILE? 0= if E-BUILD-COMMAND throw then
-   rec BUILD-STEP-TMP$ DIR? 0= if E-BUILD-PATH throw then
-   rec BUILD-STEP-ARTIFACT$ nip 0 <= if E-BUILD-PATH throw then ;
+: STEP-VALIDATE ( ptr a -- ) {: rec:ptr :}
+   rec STEP-NAME$ nip 0 <= if E-BUILD-COMMAND throw then
+   rec STEP-COMMAND$ FILE? 0= if E-BUILD-COMMAND throw then
+   rec STEP-TMP$ DIR? 0= if E-BUILD-PATH throw then
+   rec STEP-ARTIFACT$ nip 0 <= if E-BUILD-PATH throw then ;
 
-: BUILD-STEP-RUN ( ptr a -- n ) {: rec:ptr :}
-   rec BUILD-STEP-VALIDATE
-   rec BUILD-STEP-COMMAND$ rec BUILD-STEP-ARTIFACT$ BUILD-RUN {: rc :}
-   rc rec BUILD-STEP-RC!
+: STEP-RUN ( ptr a -- n ) {: rec:ptr :}
+   rec STEP-VALIDATE
+   rec STEP-COMMAND$ rec STEP-ARTIFACT$ RUN {: rc:n :}
+   rc rec STEP-RC!
    rc ;
+
+;package

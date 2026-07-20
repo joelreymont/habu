@@ -481,7 +481,7 @@ variable SMT-J
 : SMT-DOC-BUILD-ROWS ( -- )
    s" PROP:RUN-RESET  ( n n -- )" SMT-CHECK-DOC-ROW
    s" PROP:SHRINK     ( [ -- bool ] -- )" SMT-CHECK-DOC-ROW
-   s" BUILD-STEP      ( ptr u8 n [ -- n ] -- )" SMT-CHECK-DOC-ROW
+   s" BUILD:STEP           ( ptr u8 n [ -- n ] -- )" SMT-CHECK-DOC-ROW
    s" `evaluate`" SMT-CHECK-DOC-ROW
    s" source-string generation" SMT-CHECK-DOC-ROW ;
 

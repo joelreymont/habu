@@ -1664,44 +1664,26 @@ PROP:GEN-START  ( n -- )
 PROP:GEN-STEP   ( ptr u8 n n n -- )
 PROP:DROP-LAST  ( -- bool )
 PROP:SHRINK     ( [ -- bool ] -- )
-BUILD-FALSE       ( -- bool )
-BUILD-TRUE        ( -- bool )
-BUILD-WHITE?      ( n -- bool )
-BUILD-FIND-CHAR   ( n n -- n )
-BUILD-SKIP-WHITE  ( n -- n )
-BUILD-CHECK-ONE   ( n n -- )
-BUILD-READ-SOURCE ( ptr u8 n -- )
-BUILD-CHECK-NEXT  ( n -- n )
-BUILD-CHECK       ( ptr u8 n -- )
-BUILD-EXPECT      ( ptr u8 n -- )
-BUILD-ARTIFACT    ( ptr u8 n ptr u8 n -- ptr u8 n )
-BUILD-STEP      ( ptr u8 n [ -- n ] -- )
-BUILD-DEV-NULL-RD ( -- fd )
-BUILD-RUN       ( ptr u8 n ptr u8 n -- n )
-BUILD-STEP-CHECK-OFF ( n -- )
-BUILD-STEP-FIELD     ( ptr a n -- ptr a )
-BUILD-STEP-A!        ( ptr u8 ptr a n -- )
-BUILD-STEP-A@        ( ptr a n -- ptr u8 )
-BUILD-STEP-N!        ( n ptr a n -- )
-BUILD-STEP-N@        ( ptr a n -- n )
-BUILD-STEP-PAIR!     ( ptr u8 n ptr a n -- )
-BUILD-STEP-PAIR$     ( ptr a n -- ptr u8 n )
-BUILD-STEP-EMPTY!    ( ptr a n -- )
-BUILD-STEP-CLEAR     ( ptr a -- )
-BUILD-STEP-NAME!     ( ptr u8 n ptr a -- )
-BUILD-STEP-COMMAND!  ( ptr u8 n ptr a -- )
-BUILD-STEP-ARGV!     ( ptr u8 n ptr a -- )
-BUILD-STEP-TMP!      ( ptr u8 n ptr a -- )
-BUILD-STEP-ARTIFACT! ( ptr u8 n ptr a -- )
-BUILD-STEP-NAME$     ( ptr a -- ptr u8 n )
-BUILD-STEP-COMMAND$  ( ptr a -- ptr u8 n )
-BUILD-STEP-ARGV$     ( ptr a -- ptr u8 n )
-BUILD-STEP-TMP$      ( ptr a -- ptr u8 n )
-BUILD-STEP-ARTIFACT$ ( ptr a -- ptr u8 n )
-BUILD-STEP-RC@       ( ptr a -- n )
-BUILD-STEP-RC!       ( n ptr a -- )
-BUILD-STEP-VALIDATE  ( ptr a -- )
-BUILD-STEP-RUN       ( ptr a -- n )
+BUILD:CHECK          ( ptr u8 n -- )
+BUILD:ARTIFACT       ( ptr u8 n ptr u8 n -- ptr u8 n )
+BUILD:STEP           ( ptr u8 n [ -- n ] -- )
+BUILD:RUN            ( ptr u8 n ptr u8 n -- n )
+BUILD:STEP-CELLS     ( -- n )
+BUILD:STEP-CLEAR     ( ptr a -- )
+BUILD:STEP-NAME!     ( ptr u8 n ptr a -- )
+BUILD:STEP-COMMAND!  ( ptr u8 n ptr a -- )
+BUILD:STEP-ARGV!     ( ptr u8 n ptr a -- )
+BUILD:STEP-TMP!      ( ptr u8 n ptr a -- )
+BUILD:STEP-ARTIFACT! ( ptr u8 n ptr a -- )
+BUILD:STEP-NAME$     ( ptr a -- ptr u8 n )
+BUILD:STEP-COMMAND$  ( ptr a -- ptr u8 n )
+BUILD:STEP-ARGV$     ( ptr a -- ptr u8 n )
+BUILD:STEP-TMP$      ( ptr a -- ptr u8 n )
+BUILD:STEP-ARTIFACT$ ( ptr a -- ptr u8 n )
+BUILD:STEP-RC@       ( ptr a -- n )
+BUILD:STEP-RC!       ( n ptr a -- )
+BUILD:STEP-VALIDATE  ( ptr a -- )
+BUILD:STEP-RUN       ( ptr a -- n )
 ```
 
 `lib/test.f` is the public checked test framework interface. It loads assertion
@@ -1820,25 +1802,26 @@ replace the owning `E-BUILD-PATH` failure with a string-capacity error.
 Text mode JSON-quotes the root, escaping control characters so one failure is
 always exactly one labelled output line.
 
-`lib/build.f` owns build step modeling, checked source certification, artifact
-path construction, and fail-closed status reporting. `BUILD-CHECK` requires a
-counted source path that names a file, scans colon definitions in bounded module
-storage, and certifies each definition with `CHECK!`; missing, malformed, or
-uncheckable source throws `E-BUILD-SOURCE`. `BUILD-EXPECT` requires a counted
-artifact path that names a file. `BUILD-ARTIFACT` joins a build root and artifact
-name into the module-owned bounded path buffer, throwing `E-BUILD-PATH` for empty
-or too-long components. `BUILD-STEP` runs a checked quotation returning an rc and
-throws `E-BUILD-STATUS` on nonzero status. `BUILD-RUN` runs a counted command
-path, throws `E-BUILD-COMMAND` if the command is not a file, throws
-`E-BUILD-STATUS` on nonzero rc, and throws `E-BUILD-PATH` if the expected artifact
-file is absent after a successful command. Raw process exits are only allowed at
-the final CLI/script boundary.
+`lib/build.f` lives in `package BUILD` and owns build step modeling, checked
+source certification, artifact path construction, and fail-closed status
+reporting. `BUILD:CHECK` requires a counted source path that names a file, scans
+colon definitions in bounded module storage, and certifies each definition with
+`CHECK!`; missing, malformed, or uncheckable source throws `E-BUILD-SOURCE`.
+`BUILD:ARTIFACT` joins a build root and artifact name into the module-owned
+bounded path buffer, throwing `E-BUILD-PATH` for empty or too-long components.
+`BUILD:STEP` runs a checked quotation returning an rc and throws
+`E-BUILD-STATUS` on nonzero status. `BUILD:RUN` runs a counted command path,
+throws `E-BUILD-COMMAND` if the command is not a file, throws `E-BUILD-STATUS`
+on nonzero rc, and throws `E-BUILD-PATH` if the expected artifact file is absent
+after a successful command. The artifact-existence check, the source scanner,
+the `CHECK!` trust boundary, and every buffer and state cell are package-private.
+Raw process exits are only allowed at the final CLI/script boundary.
 
-Build step records are `BUILD-STEP-CELLS cells` caller-owned storage with counted
+Build step records are `BUILD:STEP-CELLS cells` caller-owned storage with counted
 fields for name, executable command path, argv metadata, private temp path,
-required artifact path, and last rc. `BUILD-STEP-VALIDATE` rejects missing command
+required artifact path, and last rc. `BUILD:STEP-VALIDATE` rejects missing command
 files, missing temp directories, and empty artifact paths before execution.
-`BUILD-STEP-RUN` validates the record, runs the command path through `BUILD-RUN`,
+`BUILD:STEP-RUN` validates the record, runs the command path through `BUILD:RUN`,
 requires the artifact, stores the rc, and returns it. Argv is modeled as metadata
 until the process layer grows argv-vector spawning; it is still part of the
 checked build contract so drivers can preserve intended command arguments.
