@@ -32,7 +32,8 @@ variable CT-VA  variable CT-VU
 \ load-time exit-70 diagnostic, uncatchable because the MODEL: driver crosses an evaluate).
 : MODEL-CAND: ( -- )
    CAP-BEGIN
-   parse-name dup 0= if 2drop E-CAD-EMPTY throw then  MSRC+
+   CAP-CAPTURE                                          \ mirror MODEL:'s capture-then-retokenize
+   NEXT-TOK dup 0= if 2drop E-CAD-EMPTY throw then  MSRC+
    PARSE-SIG  CAP-EMIT-SIG  PARSE-BODY ;
 : MODEL-CAND$ ( -- ptr u8 n )  MSRC$ ;
 
@@ -49,6 +50,17 @@ variable CT-VA  variable CT-VU
 : TRY-INPUTS  ( -- )  CAP-BEGIN CAP-CAP 1+ 0 ?do s" 1x1" SIG-INPUT loop ;
 : TRY-SHAPE   ( -- )  s" 2y3" PARSE-SHAPE 2drop ;
 : TRY-PARSE-INT ( -- )  s" nope" PARSE-INT drop ;            \ non-numeric MODEL: int field
+\ ---- definition-capture buffer probes (stage-3ii parser refactor) -----------------------
+\ A definition that would overflow CAPSRC-BUF dies NAMED (E-CAD-SYNTAX), never corrupts: fill
+\ past the cap one small token at a time (CAPSRC-CAP iterations * 2 bytes each overflows well
+\ before the loop ends). Red-first: with the CAPSRC+ bound check removed, this writes past the
+\ buffer instead of throwing.
+: TRY-CAPTURE-OVERFLOW ( -- )
+   CAPSRC-RESET  CAPSRC-CAP 0 ?do  s" X" CAPSRC+  loop ;
+\ hand-fill CAPSRC with three normalized tokens so NEXT-TOK's round-trip + two-pass rewind can
+\ be asserted top-level (the real capture is driven off the input stream by CAP-CAPTURE).
+: CAP-FIDELITY-FILL ( -- )
+   CAPSRC-RESET  s" ABC" CAPSRC+  s" (" CAPSRC+  s" x:4x8" CAPSRC+  0 CAPSRC-CUR ! ;
 \ ---- capture-time param-shape legality probes (data then param on the plan store) --------
 : TRY-EW-MISMATCH ( -- )                              \ residual param shape != data shape
    TENSOR:TV-RESET  4 8 SHAPE MAKI-DTYPE:DF32 MAKI-LAYOUT:ROW SPACE-HOST TENSOR:TV-DESC  2 3 SHAPE MAKI-DTYPE:DF32 MAKI-LAYOUT:ROW SPACE-HOST TENSOR:TV-DESC  MAKI-OPKIND:RESIDUAL-ADD EW-SHAPE-CHECK ;
@@ -133,6 +145,16 @@ s" SOFTMAX-ROW" OP-KIND OPKIND>N OP-SOFTMAX-ROW T=
 ' TRY-INPUTS  E-CAD-INPUTS TTHROWS
 ' TRY-SHAPE   E-CAD-SYNTAX TTHROWS
 ' TRY-PARSE-INT E-CAD-SYNTAX TTHROWS
+
+\ ---- definition-capture buffer: overflow dies named, NEXT-TOK round-trips + rewinds ------
+' TRY-CAPTURE-OVERFLOW E-CAD-SYNTAX TTHROWS               \ oversized definition fails closed
+CAP-FIDELITY-FILL                                         \ pass 1: NEXT-TOK yields the exact captured tokens in order
+NEXT-TOK s" ABC"   T$=
+NEXT-TOK s" ("     T$=
+NEXT-TOK s" x:4x8" T$=
+NEXT-TOK nip 0 T=                                         \ end of buffer -> empty token
+0 CAPSRC-CUR !                                            \ pass 2: rewind proves the stream is walkable AGAIN (the two-pass capability)
+NEXT-TOK s" ABC" T$=
 
 \ ---- param-operand shape legality: broadcast classes pass, mismatches fail closed -
 \ residual/add/mul need same-shape; bias is 1xC; scale is 1x1 or same-shape. Legal

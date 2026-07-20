@@ -62,6 +62,24 @@
 \ passes, and GRADCHECK did not FAIL (not-run clears it); PROFILE is mandatory-to-run
 \ but never blocks. maki -> habu only; cad owns -5020..-5029 and -5164.
 \
+\ Definition capture (dot habu-size-model-proportional-16994186 stage-3ii): MODEL: does
+\ NOT parse the input stream directly. The frozen engine exposes only parse-name
+\ (destructive) and evaluate - no >IN / source / save-input - so a table the signature
+\ parse fills (input handles, value names) cannot be sized from a count DERIVED from those
+\ same tokens without first consuming them. So MODEL: first CAPTURES the whole definition -
+\ every token from NAME through the terminating ';' - into CAPSRC-BUF via the ONE parse-name
+\ loop (CAP-CAPTURE, whitespace-normalized, token per token); then every later parse
+\ (PARSE-SIG / PARSE-BODY / the named-ref forms) re-tokenizes CAPSRC-BUF maki-side with
+\ NEXT-TOK, a plain cursor over the buffer - no engine input redirection. Two consequences
+\ the later derived-sizing lanes rely on: (1) the captured token stream can be walked TWICE
+\ (rewind CAPSRC-CUR to 0, re-run NEXT-TOK) so a counting pass can precede a filling pass
+\ (stage 3iv); (2) the capture length bounds MSRC sizing naturally (raw <= translated for
+\ op-heavy bodies). MODEL: bodies are plain whitespace-delimited tokens only - no s"
+\ strings, no nesting - so the round-trip is byte-faithful and the FIRST ';' terminates
+\ (identical to the old streaming parser); a token that would overflow CAPSRC-BUF dies
+\ named (E-CAD-SYNTAX) rather than corrupting. This lane lands the capture mechanics
+\ behavior-neutral; the counting pass and the table conversions are later lanes.
+\
 \ Model adoption (dot habu-cad-f-imported): the IR records its PROVENANCE in the
 \ shared substrate (maki/model-ir.f `prov` cell) - none / captured (MODEL:) /
 \ imported (ONNX:IMPORT). Every command gates on it explicitly: the report/plan
@@ -225,6 +243,44 @@ private
 : MSRC-INT ( n -- )  SB-RESET FMT:SB-INT SB$ MSRC+ ;   \ decimal text via the shared SB, copied stable
 : MSRC$ ( -- ptr u8 n )  MSRC-BUF MSRC-N @ ;
 
+\ ---- raw definition capture buffer + maki-side re-tokenizer (dot ...proportional 3ii) ----
+\ MODEL: captures the whole "NAME ( sig ) body ;" token stream here BEFORE any parsing, then
+\ NEXT-TOK re-walks it. See the header note for WHY (no engine input redirection; two-pass
+\ counting for derived sizing; capture length bounds MSRC). CAPSRC-CAP is a fixed interim
+\ scratch: the largest in-tree MODEL: definition is 105 bytes, so 1024 is ~10x headroom; it
+\ becomes model-derived with the rest of stage 3. Overflow dies named (E-CAD-SYNTAX, the same
+\ code the translated MSRC overflow throws - a body this large overflows the translation too).
+1024 constant CAPSRC-CAP
+create CAPSRC-BUF CAPSRC-CAP allot
+variable CAPSRC-N                                   \ bytes captured
+variable CAPSRC-CUR                                 \ re-tokenization cursor (rewind to 0 for a second pass)
+: CAPSRC-RESET ( -- )  0 CAPSRC-N !  0 CAPSRC-CUR ! ;
+\ append one token followed by a single normalizing space; overflow fails closed
+: CAPSRC+ ( ptr u8 n -- ) {: a:ptr u:n :}
+   CAPSRC-N @ u + 1+ CAPSRC-CAP > if E-CAD-SYNTAX throw then
+   a  CAPSRC-BUF CAPSRC-N @ +  u  BYTE-COPY
+   CAPSRC-N @ u +  CAPSRC-N !
+   $20  CAPSRC-BUF CAPSRC-N @ +  c!  CAPSRC-N @ 1+ CAPSRC-N ! ;
+\ next whitespace-delimited token from the captured buffer (n=0 at end), matching parse-name's
+\ ( ptr u8 n ) so the signature/body parsers re-tokenize CAPSRC-BUF with no call-site change.
+\ The buffer is single-space normalized, so every token (incl. ';') is trailed by one space;
+\ the inner scan therefore always meets a space before CAPSRC-N and never reads past it.
+: NEXT-TOK ( -- ptr u8 n )
+   CAPSRC-CUR @ CAPSRC-N @ >= if  CAPSRC-BUF CAPSRC-CUR @ +  0  exit  then
+   CAPSRC-CUR @ {: s:n :}
+   begin  CAPSRC-BUF CAPSRC-CUR @ + c@ $20 <>  while  CAPSRC-CUR @ 1+ CAPSRC-CUR !  repeat
+   CAPSRC-BUF s +  CAPSRC-CUR @ s -                 \ ( ptr u8 n ) the token span
+   CAPSRC-CUR @ 1+ CAPSRC-CUR ! ;                   \ step past its trailing space
+\ the ONE input-stream consumer: capture NAME through the terminating ';' (the ';' is captured,
+\ then the loop stops - anything after ';' on the line is left for normal interpretation, as
+\ the old streaming parser did). A definition with no ';' runs the line out -> E-CAD-SYNTAX.
+: CAP-CAPTURE ( -- )
+   begin
+      parse-name dup 0= if 2drop E-CAD-SYNTAX throw then
+      2dup s" ;" STR= if  CAPSRC+  exit  then
+      CAPSRC+
+   again ;
+
 \ ---- pending reference queue (FIFO NT slot indices; the next op drains them into params) --
 : CAP-PEND-RESET ( -- )  0 CAP-PEND-N !  0 CAP-PEND-HD ! ;
 : CAP-PEND-CNT ( -- n )  CAP-PEND-N @ CAP-PEND-HD @ - ;      \ remaining pending refs
@@ -269,7 +325,7 @@ $5E constant TR-C                                  \ '^' - the reserved transpos
 : CAP-BEGIN ( -- )
    TENSOR:TV-RESET  TENSOR:PLAN-RESET  MIR-RESET     \ MIR-RESET clears provenance to none
    0 CAP-IN-N !  1 CAP-IP !  0 CAP-OPS !
-   NT-RESET  CAP-PEND-RESET  MSRC-RESET  CPREC-NEXT-RESET ;   \ drop any pending <OP>:<PREC> override
+   NT-RESET  CAP-PEND-RESET  MSRC-RESET  CAPSRC-RESET  CPREC-NEXT-RESET ;   \ drop any pending <OP>:<PREC> override
 
 \ fresh throwaway capture-word name -> CAPNAME-BUF (redefinition is fatal, so mint per MODEL:)
 : CAP-GEN-NAME ( -- )
@@ -503,7 +559,7 @@ $5E constant TR-C                                  \ '^' - the reserved transpos
 
 : SKIP-TO-RPAREN ( -- )                         \ swallow output names up to ')'
    begin
-      parse-name dup 0= if 2drop E-CAD-SYNTAX throw then
+      NEXT-TOK dup 0= if 2drop E-CAD-SYNTAX throw then
       s" )" STR= if exit then
    again ;
 
@@ -529,10 +585,10 @@ $5E constant TR-C                                  \ '^' - the reserved transpos
    CAP-IN-N @ 1+ CAP-IN-N ! ;
 
 : PARSE-SIG ( -- )                              \ '(' input-specs [ -- names ] ')'
-   parse-name dup 0= if 2drop E-CAD-SYNTAX throw then
+   NEXT-TOK dup 0= if 2drop E-CAD-SYNTAX throw then
    s" (" STR= 0= if E-CAD-SYNTAX throw then
    begin
-      parse-name dup 0= if 2drop E-CAD-SYNTAX throw then
+      NEXT-TOK dup 0= if 2drop E-CAD-SYNTAX throw then
       2dup s" --" STR= if 2drop SKIP-TO-RPAREN exit then
       2dup s" )"  STR= if 2drop exit then
       SIG-INPUT
@@ -652,11 +708,11 @@ $5E constant TR-C                                  \ '^' - the reserved transpos
 
 \ ">V NAME": name the current value (read the name token from the body)
 : PARSE-NAMED ( -- )
-   parse-name dup 0= if 2drop E-CAD-SYNTAX throw then  NT-BIND-CUR ;
+   NEXT-TOK dup 0= if 2drop E-CAD-SYNTAX throw then  NT-BIND-CUR ;
 
 : PARSE-BODY ( -- )                             \ op / ">V NAME" / reference tokens up to ';'
    begin
-      parse-name dup 0= if 2drop E-CAD-SYNTAX throw then
+      NEXT-TOK dup 0= if 2drop E-CAD-SYNTAX throw then
       2dup s" ;"  STR= if 2drop exit then
       2dup s" >V" STR= if 2drop PARSE-NAMED else CAP-TOKEN then
    again ;
@@ -695,7 +751,8 @@ public
 \ certifies the whole composition), runs it once to capture the plan, then bridges to the IR.
 : MODEL: ( -- )
    CAP-BEGIN  CAP-GEN-NAME
-   parse-name dup 0= if 2drop E-CAD-EMPTY throw then MIR-NAME!
+   CAP-CAPTURE                                               \ whole definition -> CAPSRC-BUF (the one parse-name loop)
+   NEXT-TOK dup 0= if 2drop E-CAD-EMPTY throw then MIR-NAME!
    PARSE-SIG
    CAP-EMIT-PREFIX
    PARSE-BODY
