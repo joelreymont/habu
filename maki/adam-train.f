@@ -28,7 +28,7 @@
 \ Preconditions mirror the from-scratch trainer: AMT-SETUP needs a fresh
 \ MODEL: SCRATCH-MLP capture, ATN-SETUP a fresh MODEL: ADAM-ATTN capture
 \ (MODEL: is a top-level parsing word; each consumer re-issues the exact line).
-\ maki -> habu only; adam-train owns -5144..-5146.
+\ maki -> habu only; adam-train defines E-ADAM-RUN (-5144), E-ADAMW-POLICY (-5157).
 
 require maki/from-scratch-train.f
 require maki/optim-tensor.f
@@ -36,6 +36,7 @@ require maki/loss-tensor.f
 require maki/array.f
 
 -5144 constant E-ADAM-RUN   \ a trainer accessor was used before its training run
+-5157 constant E-ADAMW-POLICY   \ a parameter's decay attribute is not a valid WD flag
 
 package MAKI
 public
@@ -44,6 +45,21 @@ public
 : ADAM-B1  ( -- r )  0.9 ;          \ first-moment decay
 : ADAM-B2  ( -- r )  0.999 ;        \ second-moment decay
 : ADAM-EPS ( -- r )  0.00000001 ;   \ denominator epsilon (1e-8)
+
+\ ---- AdamW decoupled-decay param-group policy -------------------------------
+\ Every trained parameter carries an EXPLICIT decay attribute set where the
+\ trainer registers its slots (below): 2D weight matrices decay (WD-DECAY);
+\ biases and LayerNorm gamma/beta do not (WD-NONE) - the standard GPT-2/nanoGPT
+\ grouping. The trainer owns the decay coefficient; the per-parameter flag only
+\ GATES it. ADAMW-WD-FOR is the checked resolver: an attribute outside the two
+\ named flags is a registration bug, not a silent default -> throw.
+0  constant WD-NONE      \ excluded from weight decay (bias, LN gamma/beta)
+-1 constant WD-DECAY     \ decoupled decay applies (2D weight matrix)
+
+: ADAMW-WD-FOR ( r n -- r ) {: wd:r flag:n :}
+   flag WD-DECAY = if wd exit then
+   flag WD-NONE  = if 0.0 exit then
+   E-ADAMW-POLICY throw ;
 
 private
 
@@ -69,6 +85,15 @@ variable ADAM-B2T           \ running b2^t
    lr ADAM-B1 ADAM-B2 ADAM-EPS ADAM-C1 ADAM-C2
    wp  slot SC-GRAD-AT  mp vp len  OPTIM:TT-ADAM! ;
 
+\ AdamW-update one bound parameter buffer in place: the param's decay attribute
+\ (WD-DECAY / WD-NONE) gates the trainer's decoupled decay coefficient wd. wd=0
+\ makes this bit-identical to ADAM-UPD.
+: ADAMW-UPD ( r ptr a n ptr a ptr a n r n -- )
+   {: lr:r wp:ptr slot:n mp:ptr vp:ptr len:n wd:r flag:n :}
+   wd flag ADAMW-WD-FOR {: wd2:r :}
+   lr ADAM-B1 ADAM-B2 ADAM-EPS ADAM-C1 ADAM-C2 wd2
+   wp  slot SC-GRAD-AT  mp vp len  OPTIM:TT-ADAMW! ;
+
 \ ---- Adam MLP trainer: first/second-moment buffers per parameter ------------
 create AMT-W1M SC-W1N cells allot   create AMT-W1V SC-W1N cells allot
 create AMT-B1M SC-B1N cells allot   create AMT-B1V SC-B1N cells allot
@@ -84,6 +109,13 @@ create AMT-B2M SC-B2N cells allot   create AMT-B2V SC-B2N cells allot
 public
 
 : AMT-LR ( -- r )  0.02 ;   \ Adam step size for the MLP trainer
+
+\ MLP-trainer decoupled decay coefficient. 0 by design: the committed AMT
+\ convergence gate + regression lock (maki/adam-train-test.f) predate AdamW and
+\ pin the wd=0 trajectory, so the trainer stays bit-identical while carrying the
+\ real param-group policy (W1/W2 = WD-DECAY, B1/B2 = WD-NONE, wired in AMT-APPLY).
+\ The decoupled-decay math with wd>0 is proven by maki/adamw-test.f.
+: AMT-WD ( -- r )  0.0 ;
 
 \ fresh Adam-MLP run: the from-scratch setup (init params, gen data, BW-BUILD,
 \ bind every buffer) plus zeroed Adam state.
@@ -101,13 +133,14 @@ public
    EX-RUN
    loss ;
 
-\ Adam-update every MLP parameter from its gradient node
+\ AdamW-update every MLP parameter from its gradient node under the param-group
+\ policy: the 2D weight matrices (W1, W2) decay, the biases (B1, B2) do not.
 : AMT-APPLY ( -- )
    ADAM-TICK
-   AMT-LR SC-W1 SC-W1-SLOT AMT-W1M AMT-W1V SC-W1N ADAM-UPD
-   AMT-LR SC-B1 SC-B1-SLOT AMT-B1M AMT-B1V SC-B1N ADAM-UPD
-   AMT-LR SC-W2 SC-W2-SLOT AMT-W2M AMT-W2V SC-W2N ADAM-UPD
-   AMT-LR SC-B2 SC-B2-SLOT AMT-B2M AMT-B2V SC-B2N ADAM-UPD ;
+   AMT-LR SC-W1 SC-W1-SLOT AMT-W1M AMT-W1V SC-W1N AMT-WD WD-DECAY ADAMW-UPD
+   AMT-LR SC-B1 SC-B1-SLOT AMT-B1M AMT-B1V SC-B1N AMT-WD WD-NONE  ADAMW-UPD
+   AMT-LR SC-W2 SC-W2-SLOT AMT-W2M AMT-W2V SC-W2N AMT-WD WD-DECAY ADAMW-UPD
+   AMT-LR SC-B2 SC-B2-SLOT AMT-B2M AMT-B2V SC-B2N AMT-WD WD-NONE  ADAMW-UPD ;
 
 \ one Adam training step; returns the pre-update batch mean NLL
 : AMT-STEP ( -- r )

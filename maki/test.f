@@ -248,6 +248,8 @@ TEST:SUITE maki/from-scratch-test.f
 TEST:;SUITE
 TEST:SUITE maki/adam-train-test.f
 TEST:;SUITE
+TEST:SUITE maki/adamw-test.f
+TEST:;SUITE
 TEST:SUITE maki/pos-embed-test.f
 TEST:;SUITE
 TEST:SUITE maki/gptblock-test.f

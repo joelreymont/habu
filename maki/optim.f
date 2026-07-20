@@ -40,4 +40,19 @@ public
    w m2 v2 lr eps bc1 bc2 ADAM-W
    m2 v2 ;
 
+\ AdamW: decoupled weight decay. The decay term hits the weight DIRECTLY - it
+\ never flows through the moments (m, v see the raw gradient), which is what
+\ separates AdamW from coupled L2 (WEIGHT-DECAY folds wd*w into g). Semantics
+\ match the AdamW paper / nanoGPT: w' = w - lr*wd*w - lr*adam_step.
+\ decoupled weight step: apply the decay to w, then the plain Adam step
+: ADAMW-W ( r r r r r r r r -- r ) {: w m2 v2 lr eps bc1 bc2 wd :}
+   w  lr wd f*  w f*  f-  {: w1 :}       \ w1 = w - (lr*wd)*w  (decoupled decay)
+   w1 m2 v2 lr eps bc1 bc2 ADAM-W ;      \ then the raw-gradient Adam step
+\ full AdamW step -> ( w' m' v' ); moments read the RAW gradient (no wd in m,v)
+: ADAMW ( r r r r r r r r r r r -- r r r ) {: w g m v lr b1 b2 eps bc1 bc2 wd :}
+   m g b1 ADAM-M {: m2 :}
+   v g b2 ADAM-V {: v2 :}
+   w m2 v2 lr eps bc1 bc2 wd ADAMW-W
+   m2 v2 ;
+
 ;package
