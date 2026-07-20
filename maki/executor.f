@@ -72,9 +72,13 @@ package CAD-NUM public
 package MAKI
 private
 
-\ node / slot caps mirror model-ir.f (MIR-CAP / MIR-IN-CAP, private there).
-1024  constant EX-NCAP        \ max nodes (mirrors MIR-CAP)
-64    constant EX-IN-CAP      \ max model-input slots (mirrors MIR-IN-CAP)
+\ Model-proportional table sizing (dot habu-size-model-proportional): the per-node offset table and
+\ the per-slot input tables derive their size from the model at plan / reset time and grow past these
+\ seeds, reusing the largest region across models (grow-to-largest). The old fixed caps become generous
+\ sanity CEILINGS: an absurd model dies E-EX-CAP before any state change (transactional).
+1024  constant EX-OFF-SEED    \ per-node offset table SEED (nodes); grows past this, ceiling = EX-ARENA-MAX
+64    constant EX-IN-SEED     \ per-slot input table SEED (slots); grows past this
+$8000 constant EX-IN-CEIL     \ generous input-slot sanity ceiling: a model past it dies E-EX-CAP
 $8000  constant EX-ARENA-CELLS \ node-buffer arena SEED (float cells); the arena derives its
                                \ working size from the model at plan time and grows past this seed
 $80000 constant EX-ARENA-MAX   \ generous sanity ceiling (float cells): a plan needing more is an
@@ -82,20 +86,45 @@ $80000 constant EX-ARENA-MAX   \ generous sanity ceiling (float cells): a plan n
 $400  constant EX-IDX-CAP     \ gather/scatter index scratch (rows)
 
 create EX-ARENA  EX-ARENA-CELLS cells allot   \ seed node-buffer pool (EX-ARENA-P starts here)
-create EX-OFF    EX-NCAP cells allot           \ per-node arena offset (in cells)
+create EX-OFF    EX-OFF-SEED cells allot        \ per-node arena-offset table SEED (cells); EX-OFF-P starts here
 variable EX-BUMP                                \ arena high-water (cells) during a plan
 variable EX-ARENA-P                             \ current node-buffer base ptr (seed, or a grown region)
 variable EX-ARENA-N                             \ current node-buffer capacity (float cells)
-create EX-IN-PTR EX-IN-CAP cells allot          \ per-slot bound buffer pointer
-create EX-IN-SET EX-IN-CAP cells allot          \ per-slot bound flag (0 = unbound)
+variable EX-OFF-P                               \ current offset-table base ptr (seed, or a grown region)
+variable EX-OFF-CAP                             \ current offset-table capacity (nodes); grow-to-largest
+variable EX-OFF-N                               \ live node count of the last bind (exact)
+create EX-IN-PTR EX-IN-SEED cells allot         \ per-slot bound buffer pointer SEED; EX-IN-PP starts here
+create EX-IN-SET EX-IN-SEED cells allot         \ per-slot bound flag SEED (0 = unbound); EX-IN-SP starts here
+variable EX-IN-PP                               \ current ptr-table base ptr
+variable EX-IN-SP                               \ current set-table base ptr
+variable EX-IN-CAP                              \ current input-table capacity (slots); grow-to-largest
+variable EX-IN-N                                \ live slot count of the last bind (exact)
 create EX-IDX    EX-IDX-CAP cells allot          \ int index scratch (gather/scatter)
 
-\ The node-buffer arena is model-proportional: EX-PLAN sizes it to the exact node-buffer need of
-\ the model being run (design dot habu-size-model-proportional). It grows past the seed on demand
-\ and reuses the largest region across models (grow-to-largest; a grown region abandons its
-\ predecessor, so the leak is bounded by the largest model, and the common case - every model that
-\ fits the seed - never allots). EX-ARENA-P/EX-ARENA-N start at the seed region.
-EX-ARENA EX-ARENA-P !   EX-ARENA-CELLS EX-ARENA-N !
+\ The node-buffer arena, the per-node offset table, and the per-slot input tables are all model-
+\ proportional (design dot habu-size-model-proportional): each derives its working size from the model
+\ and grows past its seed, reusing the largest region across models (grow-to-largest; a grown region
+\ abandons its predecessor, so the leak is bounded by the largest model, and the common case - every
+\ model that fits the seed - never allots). The *-P base ptrs start at the seed regions.
+EX-ARENA  EX-ARENA-P ! EX-ARENA-CELLS EX-ARENA-N !
+EX-OFF    EX-OFF-P   ! EX-OFF-SEED    EX-OFF-CAP !
+EX-IN-PTR EX-IN-PP   ! EX-IN-SET EX-IN-SP !  EX-IN-SEED EX-IN-CAP !
+
+\ Grow a derived-size table to hold `n` items: reuse the current region when it already fits; else
+\ allot a fresh larger region (grow-to-largest). A bind past the generous ceiling dies E-EX-CAP BEFORE
+\ any allot or live-count store, so a failed bind leaves the prior table intact (transactional).
+: EX-OFF-ENSURE ( n -- ) {: n:n :}              \ size the per-node offset table (bind at EX-PLAN / EX-OFF!)
+   n EX-ARENA-MAX > if E-EX-CAP throw then       \ node count can't exceed arena cells: shares the absurd bound
+   n EX-OFF-CAP @ > if
+      here {: base:ptr :}  n cells allot  base EX-OFF-P !  n EX-OFF-CAP ! then
+   n EX-OFF-N ! ;
+: EX-IN-ENSURE ( n -- ) {: n:n :}               \ size the per-slot input + flag tables (bind at EX-RESET)
+   n EX-IN-CEIL > if E-EX-CAP throw then
+   n EX-IN-CAP @ > if
+      here {: pb:ptr :}  n cells allot  pb EX-IN-PP !
+      here {: sb:ptr :}  n cells allot  sb EX-IN-SP !
+      n EX-IN-CAP ! then
+   n EX-IN-N ! ;
 
 \ ---- slot / node addressing ------------------------------------------------
 : EX-IN-CK ( n -- n )                   \ validate a raw model-input slot index
@@ -103,10 +132,10 @@ EX-ARENA EX-ARENA-P !   EX-ARENA-CELLS EX-ARENA-N !
 
 : EX-SLOT-PTR ( MIR:input-slot -- ptr a ) {: s:MIR:input-slot :}   \ bound buffer (fail closed)
    s SLOT>RAW EX-IN-CK {: raw:n :}
-   raw cells EX-IN-SET + @ 0= if E-EX-UNBOUND throw then
-   EX-IN-PTR raw cells + @ ;
+   EX-IN-SP @ raw T-AT @ 0= if E-EX-UNBOUND throw then
+   EX-IN-PP @ raw T-AT @ ;
 
-: EX-OFF@ ( CAD-KIND:node-id -- n )  NODE>RAW cells EX-OFF + @ ;
+: EX-OFF@ ( CAD-KIND:node-id -- n )  NODE>RAW EX-OFF-P @ swap T-AT @ ;
 : EX-NODE-PTR ( CAD-KIND:node-id -- ptr a )  EX-OFF@ {: off:n :}  EX-ARENA-P @ off T-AT ;
 
 \ ---- operand-ref descriptor (input slot or producer node) -------------------
@@ -465,10 +494,11 @@ private
    base EX-ARENA-P !
    need EX-ARENA-N ! ;
 
-: EX-PLAN ( n -- ) {: n:n :}            \ assign each node an arena offset by shape, size the arena
+: EX-PLAN ( n -- ) {: n:n :}            \ size the offset table + arena, assign each node an arena offset by shape
+   n EX-OFF-ENSURE
    0 EX-BUMP !
    n 0 ?do
-      EX-BUMP @  i cells EX-OFF + !
+      EX-BUMP @  EX-OFF-P @ i T-AT !
       EX-BUMP @  i MIR-NODE-ID EX-NODE-ELEMS +  EX-BUMP !
    loop
    EX-BUMP @ EX-ARENA-ENSURE ;
@@ -500,12 +530,14 @@ public
    ;MATCH ;
 
 \ ---- input binding + lifecycle ---------------------------------------------
-: EX-RESET ( -- )  EX-IN-CAP 0 ?do  0 i cells EX-IN-SET + !  loop ;
+: EX-RESET ( -- )                       \ size the input tables to the model's slot count, clear the flags
+   SLOT-COUNT@ CAD-NUM:EX-IC>N {: n:n :}  n EX-IN-ENSURE
+   n 0 ?do  0 EX-IN-SP @ i T-AT !  loop ;
 
 : EX-BIND ( ptr a MIR:input-slot -- ) {: p:ptr s:MIR:input-slot :}   \ bind a model-input slot's host buffer
    s SLOT>RAW EX-IN-CK {: raw:n :}
-   p  EX-IN-PTR raw cells +  !
-   1  EX-IN-SET raw cells +  ! ;
+   p  EX-IN-PP @ raw T-AT  !
+   1  EX-IN-SP @ raw T-AT  ! ;
 
 \ ---- run a node prefix (forward slice) or the whole IR ---------------------
 : EX-RUN-N ( n -- )  dup EX-PLAN  EX-EXEC ;
@@ -526,8 +558,9 @@ public
 : EX-OFF! ( n CAD-KIND:node-id -- ) {: off:n nd:CAD-KIND:node-id :}   \ arena offset (cells), node
    nd NODE>RAW {: raw:n :}
    raw 0 < raw NODE-COUNT@ CAD-NUM:EX-IC>N >= or if E-EX-NODE throw then
-   off 0 <  off nd EX-NODE-ELEMS + EX-ARENA-N @ >  or if E-EX-CAP throw then
-   off raw cells EX-OFF + ! ;
+   off 0 <  off nd EX-NODE-ELEMS + EX-ARENA-N @ >  or if E-EX-CAP throw then   \ validate off before any grow
+   NODE-COUNT@ CAD-NUM:EX-IC>N EX-OFF-ENSURE                                   \ checkpoint path sizes the table (no EX-PLAN)
+   off EX-OFF-P @ raw T-AT ! ;
 
 : EX-STEP ( CAD-KIND:node-id -- ) {: nd:CAD-KIND:node-id :}   \ execute one node under the current plan
    nd NODE>RAW {: raw:n :}

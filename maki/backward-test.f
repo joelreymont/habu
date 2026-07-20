@@ -261,6 +261,35 @@ BW-BUILD                                       \ 2nd build succeeds (pilot above
 ' BT-TRY-EMPTY    E-BW-EMPTY     TTHROWS
 ' BT-TRY-SCALE-BC E-BW-BROADCAST TTHROWS
 
+\ ---- model-proportional cotangent tables: derived sizes, ceilings, transactional ----------
+\ (dot habu-size-model-proportional) Both-size regression: two different-sized models in one image
+\ get EXACTLY-sized bindings, read back from the live-count cells (BW-CT-N = forward-node count,
+\ BW-ISG-N = input-slot count + 1 for the seed slot).
+MODEL: BSA ( x:4x8 -- y ) GELU GELU ;                  \ 1 slot, 2 forward nodes
+BW-BUILD
+BW-CT-N  @ 2 T=                                          \ exactly 2 forward-node cotangent cells
+BW-ISG-N @ 2 T=                                          \ 1 input slot + 1 seed slot
+BW-BWD-COUNT 2 T=
+MODEL: BSB ( x:2x3 w:3x4 -- y ) MATMUL ;                \ 2 slots, 1 forward node
+BW-BUILD
+BW-CT-N  @ 1 T=                                          \ re-bound to the exact smaller node count
+BW-ISG-N @ 3 T=                                          \ 2 input slots + 1 seed slot
+BW-BWD-COUNT 4 T=
+
+\ Ceiling-pins: an oversized bind dies NAMED (E-BW-CAP) before any bind/allot or live-count store.
+\ Direct BIND calls pin the generous ceilings without building an absurd model.
+: BT-TRY-NCEIL ( -- )  BW-NCAP 1+ BW-CT-BIND ;          \ n+1 > BW-NCAP
+: BT-TRY-SCEIL ( -- )  BW-SCAP BW-ISG-BIND ;            \ binds BW-SCAP+1 > BW-SCAP
+' BT-TRY-NCEIL E-BW-CAP TTHROWS
+' BT-TRY-SCEIL E-BW-CAP TTHROWS
+
+\ Transactional: the oversized binds tripped their ceilings BEFORE mutating, so BSB's live counts are
+\ intact and a fresh model still builds correctly (re-captured to avoid a higher-order build over BSB).
+BW-CT-N  @ 1 T=                                          \ untouched by the failed BT-TRY-NCEIL
+BW-ISG-N @ 3 T=                                          \ untouched by the failed BT-TRY-SCEIL
+MODEL: BSC ( x:2x3 w:3x4 -- y ) MATMUL ;
+BW-BUILD  BW-BWD-COUNT 4 T=                              \ a fresh build still succeeds after the failed oversized binds
+
 T-REPORT
 
 ;package

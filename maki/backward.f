@@ -68,16 +68,43 @@ package CAD-NUM public
 package MAKI
 private
 
-128 constant BW-NCAP        \ cotangent slots per node (mirrors model-ir MIR-CAP)
-64  constant BW-SCAP        \ cotangent slots per input (mirrors model-ir MIR-IN-CAP)
+\ Model-proportional cotangent tables (dot habu-size-model-proportional): the per-node output-cotangent
+\ column, the per-slot gradient column, and their presence-flag siblings all derive their size from the
+\ model at BW-BUILD entry (single-phase: written only within the build, after the bind) and grow past
+\ their seeds, reusing the largest region across models. The old caps become generous sanity CEILINGS:
+\ a model past them dies E-BW-CAP before any bind, prior tables intact (transactional).
+$80000 constant BW-NCAP     \ generous per-node cotangent-table ceiling (nodes; was 128)
+$8000  constant BW-SCAP     \ generous per-slot gradient-table ceiling (slots; was 64)
+64     constant BW-CT-SEED  \ per-node presence-flag table SEED (nodes); grows past this
+32     constant BW-SCT-SEED \ per-slot presence-flag table SEED (slots); grows past this
 
-BW-NCAP TYPED-BUFFER BW-CT-AT  MIR:operand-ref \ per forward-node output cotangent ref ( n -- ptr MIR:operand-ref )
-BW-SCAP TYPED-BUFFER BW-ISG-AT MIR:operand-ref \ per input-slot accumulated gradient ref ( n -- ptr MIR:operand-ref )
-create BW-CT-SET  BW-NCAP cells allot \ per-node cotangent presence
-create BW-ISG-SET BW-SCAP cells allot \ per-slot gradient presence
+DEFER-LAYOUT-BUFFER BW-CT-AT  MIR:operand-ref \ per forward-node output cotangent ref ( n -- ptr MIR:operand-ref )
+DEFER-LAYOUT-BUFFER BW-ISG-AT MIR:operand-ref \ per input-slot accumulated gradient ref ( n -- ptr MIR:operand-ref )
+create BW-CT-SET  BW-CT-SEED  cells allot \ per-node cotangent presence SEED; BW-CT-SET-P starts here
+create BW-ISG-SET BW-SCT-SEED cells allot \ per-slot gradient presence SEED; BW-ISG-SET-P starts here
+variable BW-CT-SET-P    BW-CT-SET  BW-CT-SET-P !    \ presence-table base ptrs (grow-to-largest)
+variable BW-ISG-SET-P   BW-ISG-SET BW-ISG-SET-P !
+variable BW-CT-SET-CAP  BW-CT-SEED  BW-CT-SET-CAP !  \ presence-table capacities (grow-to-largest)
+variable BW-ISG-SET-CAP BW-SCT-SEED BW-ISG-SET-CAP !
+variable BW-CT-N                       \ live per-node cotangent-table size of the current build (exact)
+variable BW-ISG-N                      \ live per-slot gradient-table size of the current build (exact)
 variable BW-FWD-N                      \ forward node count snapshot (backward appends past it)
 TYPED-VARIABLE BW-SEED MIR:input-slot  \ seed cotangent input slot ( -- ptr MIR:input-slot )
 variable BW-BUILT?
+
+\ Bind the cotangent tables from the model's counts at BW-BUILD entry. Each carries the generous
+\ sanity ceiling (E-BW-CAP, transactional: die before any bind/allot) and records the live count.
+: BW-CT-BIND ( n -- ) {: n:n :}          \ per-node output-cotangent tables sized to n forward nodes
+   n BW-NCAP > if E-BW-CAP throw then
+   n BW-CT-AT-BIND                                \ DEFER typed column
+   n BW-CT-SET-CAP @ > if here {: b:ptr :}  n cells allot  b BW-CT-SET-P !  n BW-CT-SET-CAP ! then
+   n BW-CT-N ! ;
+: BW-ISG-BIND ( n -- ) {: n:n :}         \ per-slot gradient tables sized to n+1 slots (room for the seed slot)
+   n 1+ {: m:n :}
+   m BW-SCAP > if E-BW-CAP throw then
+   m BW-ISG-AT-BIND
+   m BW-ISG-SET-CAP @ > if here {: b:ptr :}  m cells allot  b BW-ISG-SET-P !  m BW-ISG-SET-CAP ! then
+   m BW-ISG-N ! ;
 
 : BW-CK ( -- )  BW-BUILT? @ 0= if E-BW-STATE throw then ;
 
@@ -104,15 +131,15 @@ variable BW-BUILT?
    ref MIR-REF-INPUT?
    if
       ref MIR-REF-SLOT SLOT>RAW {: raw:n :}
-      ct raw BW-ISG-AT !  1 raw cells BW-ISG-SET + !
+      ct raw BW-ISG-AT !  1 BW-ISG-SET-P @ raw T-AT !
    else
       ref MIR-REF-NODE NODE>RAW {: raw:n :}
-      ct raw BW-CT-AT !  1 raw cells BW-CT-SET + !
+      ct raw BW-CT-AT !  1 BW-CT-SET-P @ raw T-AT !
    then ;
 : BW-HAS? ( MIR:operand-ref -- bool ) {: ref:MIR:operand-ref :}
    ref MIR-REF-INPUT?
-   if ref MIR-REF-SLOT SLOT>RAW cells BW-ISG-SET + @ 0<>
-   else ref MIR-REF-NODE NODE>RAW cells BW-CT-SET + @ 0<> then ;
+   if ref MIR-REF-SLOT SLOT>RAW BW-ISG-SET-P @ swap T-AT @ 0<>
+   else ref MIR-REF-NODE NODE>RAW BW-CT-SET-P @ swap T-AT @ 0<> then ;
 
 \ ---- node emitters (append one backward node; mat flag is a placeholder FP-BUILD
 \ overwrites via FP-MARK, so 1 = conservative "materialize" here) --------------
@@ -475,9 +502,9 @@ public
 
 private
 
-: BW-RESET-TABLES ( -- )
-   BW-NCAP 0 ?do  0 i cells BW-CT-SET + !  loop
-   BW-SCAP 0 ?do  0 i cells BW-ISG-SET + !  loop ;
+: BW-RESET-TABLES ( -- )                       \ clear presence flags over the live (bound) ranges
+   BW-CT-N @ 0 ?do  0 BW-CT-SET-P @ i T-AT !  loop
+   BW-ISG-N @ 0 ?do  0 BW-ISG-SET-P @ i T-AT !  loop ;
 
 \ seed the output node (last forward node) with a fresh cotangent input slot
 : BW-SEED-OUTPUT ( -- )
@@ -493,11 +520,12 @@ public
 : BW-BUILD ( -- )
    0 BW-BUILT? !
    NODE-COUNT@ CAD-NUM:BW-IC>N 0= if E-BW-EMPTY throw then
-   NODE-COUNT@ CAD-NUM:BW-IC>N BW-NCAP > SLOT-COUNT@ CAD-NUM:BW-IC>N BW-SCAP >= or if E-BW-CAP throw then
    BW-CAN? 0= if
       BW-FIRST-BAD {: bad:n :}
       bad MIR-NODE-ID MIR-OP@ ADJ-HAS? if E-BW-UNSUP else E-BW-NOADJ then throw
    then
+   NODE-COUNT@ CAD-NUM:BW-IC>N BW-CT-BIND         \ size the cotangent tables from the model (ceiling + bind)
+   SLOT-COUNT@ CAD-NUM:BW-IC>N BW-ISG-BIND
    NODE-COUNT@ CAD-NUM:BW-IC>N BW-FWD-N !
    BW-RESET-TABLES
    BW-SEED-OUTPUT

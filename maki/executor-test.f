@@ -308,6 +308,45 @@ EX-RESET  GBUF 0 MIR-SLOT-ID EX-BIND  EX-RUN
 0 MIR-NODE-ID EX-OUT@ 0     >M 841 T=          \ gelu(1) first cell (arena grew past the seed)
 0 MIR-NODE-ID EX-OUT@ 34224 >M 841 T=          \ ...and the last cell of the >seed buffer
 
+\ ---- model-proportional binding: derived sizes, ceilings, transactional (dot habu-size-model-proportional) ----
+\ Both-size regression: two different-sized models in one image get EXACTLY-sized bindings, read back
+\ from the live-count cells (EX-IN-N = bound slot count, EX-OFF-N = planned node count of the last run).
+\ model A: 2 inputs (x,w), 2 nodes (matmul -> gelu)
+MIR-RESET
+2 2 SHAPE MAKI-DTYPE:DF32 MAKI-LAYOUT:ROW MIR-INPUT+ drop
+2 2 SHAPE MAKI-DTYPE:DF32 MAKI-LAYOUT:ROW MIR-INPUT+ drop
+MAKI-OPKIND:MATMUL MIR-OP-BEGIN 0 MIR-SLOT-ID MIR-IN-REF MIR-IN+ 1 MIR-SLOT-ID MIR-IN-REF MIR-IN+ 2 2 SHAPE MAKI-DTYPE:DF32 MAKI-LAYOUT:ROW 0 1 MIR-OP+ drop
+MAKI-OPKIND:GELU MIR-OP-BEGIN 0 MIR-NODE-ID MIR-NODE-REF MIR-IN+ 2 2 SHAPE MAKI-DTYPE:DF32 MAKI-LAYOUT:ROW 0 1 MIR-OP+ drop
+1.0 XB 0 T-SET 0.0 XB 1 T-SET 0.0 XB 2 T-SET 1.0 XB 3 T-SET
+1.0 WB 0 T-SET 2.0 WB 1 T-SET 3.0 WB 2 T-SET 4.0 WB 3 T-SET
+EX-RESET  XB 0 MIR-SLOT-ID EX-BIND  WB 1 MIR-SLOT-ID EX-BIND  EX-RUN
+EX-IN-N @ 2 T=                                 \ exactly 2 input slots bound
+EX-OFF-N @ 2 T=                                \ exactly 2 nodes planned
+1 MIR-NODE-ID EX-OUT@ 0 >M 841 T=              \ A's output = gelu(1)
+
+\ model B: 1 input, 1 node (gelu) - smaller; the tables re-bind to the exact smaller size
+MIR-RESET
+2 2 SHAPE MAKI-DTYPE:DF32 MAKI-LAYOUT:ROW MIR-INPUT+ drop
+MAKI-OPKIND:GELU MIR-OP-BEGIN 0 MIR-SLOT-ID MIR-IN-REF MIR-IN+ 2 2 SHAPE MAKI-DTYPE:DF32 MAKI-LAYOUT:ROW 0 1 MIR-OP+ drop
+1.0 XB 0 T-SET 2.0 XB 1 T-SET -1.0 XB 2 T-SET 0.0 XB 3 T-SET
+EX-RESET  XB 0 MIR-SLOT-ID EX-BIND  EX-RUN
+EX-IN-N @ 1 T=                                 \ exactly 1 input slot
+EX-OFF-N @ 1 T=                                \ exactly 1 node
+0 MIR-NODE-ID EX-OUT@ 0 >M 841 T=
+
+\ Ceiling-pins: an oversized bind dies NAMED (E-EX-CAP) before any allot or live-count store. Direct
+\ ENSURE calls pin the generous ceilings without building an absurd model.
+: TRY-IN-CEIL  ( -- )  EX-IN-CEIL 1+  EX-IN-ENSURE ;
+: TRY-OFF-CEIL ( -- )  EX-ARENA-MAX 1+ EX-OFF-ENSURE ;
+' TRY-IN-CEIL  E-EX-CAP TTHROWS
+' TRY-OFF-CEIL E-EX-CAP TTHROWS
+
+\ Transactional: the oversized binds tripped their ceilings BEFORE mutating, so B's live counts are
+\ intact and B still executes.
+EX-IN-N @ 1 T=                                 \ untouched by the failed TRY-IN-CEIL
+EX-OFF-N @ 1 T=                                \ untouched by the failed TRY-OFF-CEIL
+EX-RUN  0 MIR-NODE-ID EX-OUT@ 0 >M 841 T=      \ B re-executes correctly after the failed oversized binds
+
 T-REPORT
 
 ;package
