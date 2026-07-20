@@ -44,6 +44,8 @@ TEST:SUITE maki/spec-attention-test.f
 TEST:;SUITE
 TEST:SUITE maki/spec-batched-test.f
 TEST:;SUITE
+TEST:SUITE maki/cross-seq-contraction-test.f
+TEST:;SUITE
 TEST:SUITE maki/linear-test.f
 TEST:;SUITE
 TEST:SUITE maki/autograd-tensor-test.f
