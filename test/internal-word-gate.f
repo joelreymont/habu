@@ -160,7 +160,9 @@ public
    s" bare E-INST fails closed" T-LABEL
    s" E-INST" IWG-NEG
    s" bare PF-BEGIN mutation fails closed" T-LABEL
-   s" PF-BEGIN" IWG-NEG ;
+   s" PF-BEGIN" IWG-NEG
+   s" bare CT-LIVE? field-liveness query fails closed" T-LABEL
+   s" CT-LIVE?" IWG-NEG ;
 
 : IWG-ARGS-FORGE$ ( -- ptr u8 n )        \ args present: the gate is not depth-keyed
    SB-RESET
@@ -633,10 +635,27 @@ public
    IWG-LAY-CASES
    IWG-SCH-CASES ;
 
+\ --- field-liveness internalization (dot habu-internalize-field-liveness).
+\ src/core/checker.f used to publish a global CT-LIVE? primitive-effect axiom
+\ solely so the field-schema validator (type-family.f PF-NODE-KIND?) could ask
+\ whether a SCHEMA-CON's concrete-type code is live. That axiom left the
+\ checker-internal concrete-type registry query top-level executable and callable
+\ from checked user code. The axiom is gone, so CT-LIVE? now carries DNAME-INT
+\ like its sibling CT-LINEAR? — a bare call fails closed on BOTH cold-prefix
+\ paths (--load file and piped stdin) while the compiled field-validation caller
+\ is unaffected. ----
+: IWG-CTLIVE-CASES ( -- )
+   s" CT-LIVE? field-liveness query fails closed on --load" T-LABEL
+   s" CT-LIVE?" IWG-TOKEN$ IWG-RUN-LOAD
+   s" CT-LIVE?" IWG-ASSERT-INTERNAL
+   s" CT-LIVE? field-liveness query fails closed on stdin" T-LABEL
+   s" CT-LIVE?" IWG-TOKEN$ IWG-RUN-STDIN
+   s" CT-LIVE?" IWG-ASSERT-INTERNAL ;
+
 package IWG-PARITY
 
-7 constant DIRECT-N
-101 constant SUBJECT-N
+9 constant DIRECT-N
+102 constant SUBJECT-N
 : RESULT ( -- ptr u8 n ptr u8 n n )
    IWG-OUT IWG-OUT-U @ IWG-ERR IWG-ERR-U @ IWG-RC @ ;
 
@@ -696,6 +715,7 @@ public
    IWG-NEG-BARE
    IWG-REGISTRY-CASES
    IWG-SIBLING-CASES
+   IWG-CTLIVE-CASES
    IWG-NEG-SHAPES
    IWG-POSITIVES
    IWG-OPENER-CASES

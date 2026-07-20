@@ -1544,7 +1544,6 @@ prim - tfam-var-start@ - pe-n pe-in pe-n pe-out
 prim - tfam-var-count@ - pe-n pe-in pe-n pe-out
 prim - sumv-name$ - pe-n pe-in pe-ptr-u8 pe-out pe-n pe-out
 prim - sumv-ctor-pkg$ - pe-n pe-in pe-ptr-u8 pe-out pe-n pe-out
-prim - ct-live? - pe-n pe-in pe-f pe-out
 pprim type-field count - pe-n pe-out
 pprim type-field no-variant - pe-n pe-out
 pprim type-field find - pe-n pe-in pe-n pe-in pe-ptr-u8 pe-in pe-n pe-in pe-n pe-out pe-f pe-out

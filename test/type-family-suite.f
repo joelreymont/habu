@@ -466,6 +466,17 @@ PFTX @ FID @ VOK @ s" cell-param" PFBAD @ 1 1 CELL CELL CELL PF-FLAGS-NONE
 PFTX @ TWX-PF-ROLLBACK
 FID @ 0 PK-TYPE TWX-TFAM-PK!
 
+\ Concrete-type liveness (backed by the now internal-marked checker word
+\ CT-LIVE?, dot habu-internalize-field-liveness): a field whose schema is a
+\ SCHEMA-CON over a LIVE concrete type validates and adds; a SCHEMA-CON over a
+\ dead concrete-type code (99999) is rejected E-PF-SCHEMA. Removing the global
+\ CT-LIVE? axiom must leave both outcomes unchanged.
+1 TWX-SCHEMA-CON TWX-SCHEMA-ROOT+ PFBAD !
+TWX-PF-BEGIN PFTX !
+PFTX @ PTID @ PF-NO-VARIANT s" live-con" PFBAD @ 20 1 20 cells CELL CELL PF-FLAGS-NONE
+   TWX-PF-ADD PFTX !
+PFTX @ TWX-PF-ROLLBACK
+
 99999 TWX-SCHEMA-CON TWX-SCHEMA-ROOT+ PFBAD !
 TWX-PF-BEGIN PFTX !
 PFTX @ PTID @ PF-NO-VARIANT s" bad-con" PFBAD @ 20 1 20 cells CELL CELL PF-FLAGS-NONE
