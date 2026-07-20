@@ -10,7 +10,8 @@ require lib/fs-mutate.f
 require lib/content-key.f
 
 \ White-box test: reopen the module's package so the fixtures reach content-key's
-\ private capacity/flag/length cells (CK-CACHE-CAP, CK-CACHE-DISABLED, CK-HEX-LEN)
+\ private capacity/length cells (CK-CACHE-CAP, CK-HEX-LEN), the persist fault seam
+\ (CK-FAULT-ARM, CK-CLEAN-FAULT, CK-CLEAN-N) and the dirty flag (CK-CACHE-DIRTY),
 \ and call the public builders by their bare package-local names.
 package CONTENT-KEY
 
@@ -19,12 +20,21 @@ $8000 constant CKT-READ-CAP
 $8000 constant CKT-BUILD-CAP
 CK-CACHE-CAP 4096 + constant CKT-BIG-CAP
 
+\ Distinctive throw codes for the persist fault seam: positive test sentinels that
+\ cannot collide with a real (negative) filesystem error code, so an assertion on
+\ the exact code proves it is the injected one that surfaced. A and B differ so a
+\ swallowed cleanup failure (B) can be told apart from the primary error (A).
+$7F01 constant CKT-FAULT-A
+$7F02 constant CKT-FAULT-B
+
 variable CKT-ROOT-U
 variable CKT-SRC-U
 variable CKT-CACHE-U
 variable CKT-BUILD-U
 variable CKT-BIG-A
 variable CKT-TMP-COUNT
+variable CKT-OLD-U
+variable CKT-BADCACHE-U
 
 create CKT-ROOT FS-PATH-CAP allot
 create CKT-SRC FS-PATH-CAP allot
@@ -35,6 +45,8 @@ create CKT-READ CKT-READ-CAP allot
 create CKT-DG 40 allot
 create CKT-DGHEX 80 allot
 create CKT-BUILD CKT-BUILD-CAP allot
+create CKT-OLD CKT-READ-CAP allot
+create CKT-BADCACHE FS-PATH-CAP allot
 
 : CKT-COPY! ( ptr u8 n ptr u8 ptr n -- ) {: a:ptr u:n dst:ptr lenp:ptr :}
    a dst u BYTE-COPY
@@ -200,14 +212,13 @@ create CKT-BUILD CKT-BUILD-CAP allot
    CKT-KEY2 CKT-KEY-LEN CKT-KEY1 CKT-KEY-LEN T$= ;
 
 \ Over-cap cache: announced on stderr (not captured by this harness) and rebuilt
-\ compacted rather than disabled. We assert the post-condition: still enabled,
-\ file back under the cap, and lookups work.
+\ compacted rather than abandoned. We assert the post-condition: the file is back
+\ under the cap and lookups work.
 : CKT-CACHE-OVERCAP-REBUILDS ( -- )
    CKT-SRC$ s" epsilon" WRITE-ALL
    CKT-CACHE$ CKT-BIG CKT-BIG-CAP WRITE-ALL
    CKT-REPOINT
    CKT-KEY1 CKT-KEY!
-   CK-CACHE-DISABLED @ 0 T=
    CKT-CACHE$ FILE-SIZE CK-CACHE-CAP > 0= TTRUE
    CKT-CACHE-ROWS 1 T=
    CKT-KEY2 CKT-KEY!
@@ -232,6 +243,128 @@ create CKT-BUILD CKT-BUILD-CAP allot
    CKT-KEY2 CKT-KEY-LEN CKT-KEY1 CKT-KEY-LEN T$=
    CKT-CACHE-ROWS 1 T= ;
 
+\ ---- persist failure propagation ---------------------------------------------
+\ These prove the atomic writer never reports success for a failed save: the
+\ original throw code reaches the caller, the loaded cache and its dirty flag are
+\ untouched, no partial/new file replaces the old one, cleanup runs exactly once,
+\ a cleanup failure cannot mask the primary error, and a later retry persists.
+\ Real filesystem states drive one case (a write into a missing directory); the
+\ others arm content-key's fault seam because a real filesystem cannot produce
+\ the needed combinations (a temp written yet forced to fail removal, or a rename
+\ that fails over an intact file).
+
+: CKT-OLD$ ( -- ptr u8 n )
+   CKT-OLD CKT-OLD-U @ ;
+
+: CKT-BADCACHE$ ( -- ptr u8 n )
+   CKT-BADCACHE CKT-BADCACHE-U @ ;
+
+\ Snapshot the on-disk cache bytes for later "old file unchanged" comparisons.
+: CKT-SNAPSHOT ( -- )
+   CKT-CACHE$ CKT-OLD CKT-READ-CAP READ-ALL CKT-OLD-U ! ;
+
+\ Current on-disk cache bytes.
+: CKT-CUR$ ( -- ptr u8 n )
+   CKT-CACHE$ CKT-READ CKT-READ-CAP READ-ALL {: got:n :}
+   CKT-READ got ;
+
+: CKT-TMP-LEFT ( -- n )
+   0 CKT-TMP-COUNT !
+   CKT-ROOT$ [: CKT-COUNT-TMP ;] WALK-FILES
+   CKT-TMP-COUNT @ ;
+
+: CKT-RM-TMP-ONE ( ptr u8 n -- ) {: a:ptr u:n :}
+   a u BASENAME CKT-ENDS-TMP? if a u REMOVE-FILE then ;
+
+: CKT-CLEAN-TMPS ( -- )
+   CKT-ROOT$ [: CKT-RM-TMP-ONE ;] WALK-FILES ;
+
+\ Fresh state for a persist-failure case: no stale temps, no old cache file, then
+\ one successful save (the "old" file we snapshot) and an edit to src so the next
+\ key build appends a new row and marks the cache dirty.
+: CKT-PERSIST-PREP ( -- )
+   CKT-CLEAN-TMPS
+   CKT-CACHE$ EXISTS? if CKT-CACHE$ REMOVE-FILE then
+   CKT-REPOINT
+   CK-FAULT-RESET
+   CKT-SRC$ s" persist-base" WRITE-ALL
+   CKT-KEY1 CKT-KEY!
+   CKT-SNAPSHOT
+   CKT-SRC$ s" persist-edited" WRITE-ALL ;
+
+\ Building the unique temp fails: nothing is written, so the old file and dirty
+\ flag are intact and cleanup runs once (finding no temp).
+: CKT-PERSIST-TEMP-FAULT ( -- )
+   CKT-PERSIST-PREP
+   CKT-FAULT-A CK-FAULT-TEMP CK-FAULT-ARM
+   [: CKT-KEY2 CKT-KEY! ;] CKT-FAULT-A TTHROWSQ
+   CK-CACHE-DIRTY @ 0 T<>
+   CKT-CUR$ CKT-OLD$ T$=
+   CK-CLEAN-N @ 1 T=
+   CKT-TMP-LEFT 0 T= ;
+
+\ The write step fails before any temp is created: old file and dirty flag intact.
+: CKT-PERSIST-WRITE-FAULT ( -- )
+   CKT-PERSIST-PREP
+   CKT-FAULT-A CK-FAULT-WRITE CK-FAULT-ARM
+   [: CKT-KEY2 CKT-KEY! ;] CKT-FAULT-A TTHROWSQ
+   CK-CACHE-DIRTY @ 0 T<>
+   CKT-CUR$ CKT-OLD$ T$=
+   CK-CLEAN-N @ 1 T=
+   CKT-TMP-LEFT 0 T= ;
+
+\ The rename fails after the temp is written: the old file is never replaced and
+\ the temp is cleaned up exactly once, so no partial cache survives.
+: CKT-PERSIST-RENAME-FAULT ( -- )
+   CKT-PERSIST-PREP
+   CKT-FAULT-A CK-FAULT-RENAME CK-FAULT-ARM
+   [: CKT-KEY2 CKT-KEY! ;] CKT-FAULT-A TTHROWSQ
+   CK-CACHE-DIRTY @ 0 T<>
+   CKT-CUR$ CKT-OLD$ T$=
+   CK-CLEAN-N @ 1 T=
+   CKT-TMP-LEFT 0 T= ;
+
+\ Rename fails (code A) AND the cleanup removal fails (code B, swallowed): the
+\ caller must still see A, proving cleanup failure never masks the primary error.
+\ The temp is left behind because its removal failed.
+: CKT-PERSIST-NOMASK ( -- )
+   CKT-PERSIST-PREP
+   CKT-FAULT-A CK-FAULT-RENAME CK-FAULT-ARM
+   CKT-FAULT-B CK-CLEAN-FAULT !
+   [: CKT-KEY2 CKT-KEY! ;] CKT-FAULT-A TTHROWSQ
+   CK-CACHE-DIRTY @ 0 T<>
+   CKT-CUR$ CKT-OLD$ T$=
+   CK-CLEAN-N @ 1 T=
+   CKT-TMP-LEFT 1 T= ;
+
+\ After a failed save, clearing the fault and retrying persists cleanly: dirty is
+\ cleared, the file is compacted to one row, and it now differs from the old one.
+: CKT-PERSIST-RETRY ( -- )
+   CKT-PERSIST-PREP
+   CKT-FAULT-A CK-FAULT-RENAME CK-FAULT-ARM
+   [: CKT-KEY2 CKT-KEY! ;] CKT-FAULT-A TTHROWSQ
+   CK-CACHE-DIRTY @ 0 T<>
+   CK-FAULT-RESET
+   CKT-KEY2 CKT-KEY!
+   CK-CACHE-DIRTY @ 0 T=
+   CKT-CACHE-ROWS 1 T=
+   CKT-CUR$ CKT-OLD$ T$<>
+   CKT-TMP-LEFT 0 T= ;
+
+\ A genuine filesystem write failure (target directory absent) throws E-FS-OPEN
+\ and that real error identity reaches the caller; dirty stays set, no file made.
+: CKT-PERSIST-REAL-MISSING-DIR ( -- )
+   CKT-CLEAN-TMPS
+   CACHE-CLEAR!
+   CKT-ROOT$ s" nodir/content-key.cache" CKT-BADCACHE CKT-BADCACHE-U CKT-PATH!
+   CKT-BADCACHE$ CACHE-PATH!
+   CK-FAULT-RESET
+   CKT-SRC$ s" real-miss" WRITE-ALL
+   [: CKT-KEY1 CKT-KEY! ;] E-FS-OPEN TTHROWSQ
+   CK-CACHE-DIRTY @ 0 T<>
+   CKT-BADCACHE$ EXISTS? TFALSE
+   CKT-REPOINT ;
+
 : CKT-CLEANUP ( -- )
    CACHE-CLEAR!
    CLEANUP-RUN
@@ -246,6 +379,12 @@ create CKT-BUILD CKT-BUILD-CAP allot
    CKT-CACHE-BACKCOMPAT
    CKT-CACHE-OVERCAP-REBUILDS
    CKT-CACHE-ATOMIC-POSTCOND
+   CKT-PERSIST-TEMP-FAULT
+   CKT-PERSIST-WRITE-FAULT
+   CKT-PERSIST-RENAME-FAULT
+   CKT-PERSIST-NOMASK
+   CKT-PERSIST-RETRY
+   CKT-PERSIST-REAL-MISSING-DIR
    CKT-CLEANUP
    T-REPORT ;
 

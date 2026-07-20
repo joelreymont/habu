@@ -38,6 +38,17 @@ $67 constant CK-HEX-LOW-G
 $2E constant CK-DOT
 2 constant CK-STDERR-FD
 
+\ Fault-injection sites for the atomic writer. CK-FAULT-NONE is the only value a
+\ production run ever holds, so the writer behaves exactly as if the seam were
+\ absent; the white-box persist tests arm one site to force a chosen throw where
+\ a real filesystem cannot reproduce the required combination (for instance a
+\ temp that was written yet must fail to be removed). See the seam words defined
+\ with the atomic writer below.
+0 constant CK-FAULT-NONE
+1 constant CK-FAULT-TEMP
+2 constant CK-FAULT-WRITE
+3 constant CK-FAULT-RENAME
+
 \ A cache row is never shorter than one path byte, five tab-separated decimal
 \ metadata fields (>=1 digit each), a tab, the 64-hex digest, and a newline.
 \ CK-CACHE-MAX-ROWS bounds the offset index from the buffer capacity: no row can
@@ -65,7 +76,6 @@ variable CK-ROW-U
 variable CK-PREFIX-U
 variable CK-CACHE-LOADED
 variable CK-CACHE-DIRTY
-variable CK-CACHE-DISABLED
 variable CK-IDX-N
 variable CK-IDX-END
 variable CK-KEEP-N
@@ -78,6 +88,17 @@ variable CK-EVICT-TOTAL
 variable CK-EMIT-OFF
 variable CK-EMIT-LEN
 variable CK-TMP-TRY
+
+\ Atomic-writer fault seam state (test-only; see the constants above and the seam
+\ words with the atomic writer). CK-FAULT-AT selects the primary site to fail and
+\ CK-FAULT-CODE is the throw it raises there. CK-CLEAN-FAULT independently makes
+\ the temp-cleanup removal step fail (standing in for a REMOVE-FILE failure) so a
+\ test can drive a primary error and a cleanup failure at once. CK-CLEAN-N counts
+\ cleanup attempts so a test can prove cleanup runs exactly once.
+variable CK-FAULT-AT
+variable CK-FAULT-CODE
+variable CK-CLEAN-FAULT
+variable CK-CLEAN-N
 
 : CK-TRUE ( -- bool )
    0 0= ;
@@ -127,8 +148,8 @@ public
 
 private
 
-\ One plain-English line to stderr; the visible-degradation channel the cache
-\ uses instead of silently disabling itself.
+\ One plain-English diagnostic line to stderr, used for the over-capacity notice.
+\ It only reports; it never alters control flow or the cache's success/failure.
 : CK-STDERR-LINE ( ptr u8 n -- ) {: a:ptr u:n :}
    CK-STDERR-FD a u write drop
    CK-STDERR-FD S\" \n" write drop ;
@@ -138,8 +159,7 @@ public
 : CACHE-CLEAR! ( -- )
    0 CK-CACHE-PATH-U !
    0 CK-CACHE-LOADED !
-   0 CK-CACHE-DIRTY !
-   0 CK-CACHE-DISABLED ! ;
+   0 CK-CACHE-DIRTY ! ;
 
 private
 
@@ -217,9 +237,7 @@ public
 private
 
 : CK-CACHE-AUTO? ( -- bool )
-   CK-CACHE-DISABLED @ 0 <> if CK-FALSE exit then
-   CK-CACHE-PATH? if CK-TRUE exit then
-   CK-FALSE ;
+   CK-CACHE-PATH? ;
 
 : CK-ROW-RESET ( -- )
    0 CK-ROW-U ! ;
@@ -412,6 +430,23 @@ private
 
 \ ---- atomic writer: unique sibling temp then rename (last-writer-wins) --------
 
+\ Fault seam (test-only). Arming a site or clearing all arming; firing a site
+\ throws its armed code so the writer's error handling can be exercised. Every
+\ production run leaves CK-FAULT-AT at CK-FAULT-NONE and CK-CLEAN-FAULT at 0, so
+\ the fires below are inert and the writer runs the plain filesystem path.
+: CK-FAULT-ARM ( n n -- ) {: code:n site:n :}
+   site CK-FAULT-AT !
+   code CK-FAULT-CODE ! ;
+
+: CK-FAULT-RESET ( -- )
+   CK-FAULT-NONE CK-FAULT-AT !
+   0 CK-FAULT-CODE !
+   0 CK-CLEAN-FAULT !
+   0 CK-CLEAN-N ! ;
+
+: CK-FAULT-FIRE ( n -- ) {: site:n :}
+   CK-FAULT-AT @ site = if CK-FAULT-CODE @ throw then ;
+
 : CK-TMP-C+ ( n -- ) {: c:n :}
    CK-CACHE-TMP-U @ FS-PATH-CAP >= if E-FS-CAPACITY throw then
    c CK-CACHE-TMP-BUF CK-CACHE-TMP-U @ + c!
@@ -436,6 +471,7 @@ private
    CK-CACHE-TMP-BUF CK-CACHE-TMP-U @ ;
 
 : CK-CACHE-UNIQUE-TMP ( -- ptr u8 n )
+   CK-FAULT-TEMP CK-FAULT-FIRE
    0 CK-TMP-TRY !
    begin
       CK-CACHE-BUILD-TMP 2drop
@@ -445,23 +481,34 @@ private
    CK-CACHE-TMP-BUF CK-CACHE-TMP-U @ ;
 
 : CK-CACHE-WRITE ( -- )
-   CK-CACHE-UNIQUE-TMP CK-CACHE-OUT CK-CACHE-OUT-U @ WRITE-ALL
+   CK-CACHE-UNIQUE-TMP
+   CK-FAULT-WRITE CK-FAULT-FIRE
+   CK-CACHE-OUT CK-CACHE-OUT-U @ WRITE-ALL
+   CK-FAULT-RENAME CK-FAULT-FIRE
    CK-CACHE-TMP-BUF CK-CACHE-TMP-U @ CK-CACHE-PATH$ RENAME-FILE ;
 
-\ Best-effort temp removal after a failed write; there is nowhere left to report
-\ a cleanup failure during error handling, so it is intentionally swallowed.
+\ Best-effort removal of the temp left by a failed write. During error handling
+\ there is nowhere left to report a removal failure, so the REMOVE-FILE result is
+\ the one and only error intentionally swallowed here; the EXISTS? guard never
+\ throws, so a swallowed removal cannot mask the primary error being unwound. The
+\ CK-CLEAN-FAULT branch simulates that REMOVE-FILE failure for the persist tests,
+\ and CK-CLEAN-N records that cleanup ran (counted once per persist failure).
 : CK-CACHE-CLEAN-TMP ( -- )
+   1 CK-CLEAN-N +!
    CK-CACHE-TMP-BUF CK-CACHE-TMP-U @ EXISTS? if
-      [: CK-CACHE-TMP-BUF CK-CACHE-TMP-U @ REMOVE-FILE ;] catch drop
+      [: CK-CLEAN-FAULT @ dup 0 <> if throw then drop
+         CK-CACHE-TMP-BUF CK-CACHE-TMP-U @ REMOVE-FILE ;] catch drop
    then ;
 
-\ A cache the process cannot persist is announced once on stderr and then left
-\ disabled so the build continues uncached (visible degradation, never silent).
+\ Persist the compacted image atomically. A write/rename failure is a real error:
+\ clean up the temp (best effort) and rethrow the original throw code unchanged so
+\ callers, and ultimately the top-level command, see the failure. The cache is
+\ never silently disabled and success is never reported for a failed write.
 : CK-CACHE-PERSIST ( -- )
-   [: CK-CACHE-WRITE ;] catch 0 <> if
+   [: CK-CACHE-WRITE ;] catch {: rc:n :}
+   rc 0 <> if
       CK-CACHE-CLEAN-TMP
-      s" hb: content-key cache write failed; continuing without cache" CK-STDERR-LINE
-      -1 CK-CACHE-DISABLED !
+      rc throw
    then ;
 
 : CK-CACHE-OVERCAP ( -- )
@@ -522,16 +569,17 @@ private
 
 \ ---- save: compact the newest-per-path image and persist it atomically -------
 
+\ CK-CACHE-PERSIST throws on a write/rename failure, so the in-memory buffer sync
+\ and the dirty clear below run only after the file is fully persisted: a failed
+\ save leaves CK-CACHE-DIRTY set and the loaded buffer untouched, ready to retry.
 : CK-CACHE-SAVE ( -- )
    CK-CACHE-AUTO? 0= if exit then
    CK-CACHE-DIRTY @ 0= if exit then
    CK-CACHE-COMPACT
    CK-CACHE-PERSIST
-   CK-CACHE-DISABLED @ 0= if
-      CK-CACHE-OUT CK-CACHE-BUF CK-CACHE-OUT-U @ BYTE-COPY
-      CK-CACHE-OUT-U @ CK-CACHE-U !
-      CK-CACHE-BUILD-IDX
-   then
+   CK-CACHE-OUT CK-CACHE-BUF CK-CACHE-OUT-U @ BYTE-COPY
+   CK-CACHE-OUT-U @ CK-CACHE-U !
+   CK-CACHE-BUILD-IDX
    0 CK-CACHE-DIRTY ! ;
 
 : CK-ROW-DIGEST+ ( -- )
