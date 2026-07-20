@@ -21,7 +21,7 @@
 \ BL-IDS/BL-TGT buffers with the target shifted one token (y = x >> 1), B outermost
 \ (the RxC = B x T row layout the model consumes). This file supplies the TEXT->ids
 \ half that BL-LOAD reads; it does not re-implement the window draw (which would
-\ duplicate the seeded LCG windowing). After LOAD, the training loop draws a batch
+\ duplicate the seeded LCG windowing). After LOAD-CORPUS, the training loop draws a batch
 \ with  <ids-buffer> <ntok> B T dim seed BL-LOAD .
 \
 \ Buffers are CALLER-owned (like BL-LOAD's corpus argument): the module keeps no
@@ -61,7 +61,15 @@ public
 \ prior tokenizer state unchanged: missing/unreadable file -> E-FS-OPEN, file over
 \ tcap -> E-FS-CAPACITY (lib/fs), empty file -> E-DL-EMPTY, ids buffer smaller than
 \ the corpus -> E-TOK-CAP - every one raised before TOK-BUILD.
-: LOAD ( ptr u8 n ptr u8 n ptr a n -- n ) {: pa:ptr pu:n tb:ptr tcap:n ib:ptr icap:n :}
+\
+\ Named LOAD-CORPUS, not a bare LOAD. A consumer imports this package public with
+\ "using DATA-LOADER" and then calls it as a bareword, but a bare LOAD collides with
+\ the global PTX kernel-DSL word LOAD (lib/ptx/tile.f, effect span gridctx -- tile).
+\ Globals resolve before "using" publics (docs/forth.md Packages), so once any
+\ GPU/eval suite has loaded the kernel DSL into the shared image a bare LOAD would
+\ silently bind the kernel word and be rejected by the checker. A distinctive public
+\ tail keeps the import unambiguous in every co-loaded image; do not shorten it back.
+: LOAD-CORPUS ( ptr u8 n ptr u8 n ptr a n -- n ) {: pa:ptr pu:n tb:ptr tcap:n ib:ptr icap:n :}
    pa pu tb tcap READ-ALL {: nbytes:n :}   \ input capture into tb (not a published dataset)
    nbytes 0 <= if E-DL-EMPTY throw then
    nbytes icap DL-FIT                       \ preflight ids capacity before any publish

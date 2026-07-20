@@ -1815,3 +1815,23 @@ fits.
   then drop` trips the checker ("expected bool n actual bool") where
   `dup 0 <> if throw then drop` certifies - the comparison makes the consumed
   boolean explicit instead of reusing the numeric value as a flag.
+
+- **A package public whose bareword equals a global is unreachable via `using`.**
+  data-loader-test.f passed standalone but failed rc 70 (E-UNDEFINED class) only
+  inside maki/test.f. It was NOT an env/argv or child-spawn leak (the loaders
+  spawn nothing): DATA-LOADER exported a public word literally named `LOAD`, and
+  the test reached it with `using DATA-LOADER` + bareword `LOAD`. Resolution
+  order (docs/forth.md Packages) is current-scope + GLOBAL first, then `using`
+  publics - `using` is purely additive, so it only resolves a name that is
+  otherwise unresolved. lib/ptx/tile.f defines a *global* `LOAD`
+  (`span gridctx -- tile`, the LLM-facing kernel DSL). Standalone the kernel DSL
+  is never loaded, so the import resolved; in-suite an earlier GPU/eval suite
+  (maki/eval/live-test.f -> lib/ptx/test-prelude.f -> lib/ptx/tile.f) had defined
+  the global `LOAD`, which shadowed the import, so `DLT-LOAD` bound the kernel
+  word and the checker rejected it (fail-closed, clear diagnostic). Fix is
+  owner-side: rename the collision-prone public to a distinctive `LOAD-CORPUS`,
+  not qualify in the consumer (that leaves the landmine for the next importer).
+  Lesson: a package's PUBLIC surface must be uniquely named because `using`
+  re-exposes it to bareword collision with globals; a generic public name like
+  `LOAD` is a latent "passes alone, fails co-loaded" trap. Gap for a dot: the
+  compiler should warn when a `using` import is dead because a global shadows it.

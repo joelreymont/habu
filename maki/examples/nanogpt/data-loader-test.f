@@ -26,7 +26,7 @@ require maki/examples/nanogpt/batch-loader.f
 
 package MAKI
 
-using DATA-LOADER      \ consumer-import of the loader's LOAD / E-DL-EMPTY surface
+using DATA-LOADER      \ consumer-import of the loader's LOAD-CORPUS / E-DL-EMPTY surface
 
 : DLT-TEXT ( -- ptr u8 n )  s" To be, or not to be, that is the question:" ;
 
@@ -106,7 +106,7 @@ variable DLT-NA                           \ corpus-A token count
 : DLT-WRITE-FIXTURE ( -- )  DLT-PATH       DLT-TEXT    DLT-SAFE-WRITE ;
 : DLT-WRITE-EMPTY   ( -- )  DLT-EMPTY-PATH DLT-TEXTBUF 0 DLT-SAFE-WRITE ;
 : DLT-LOAD ( -- )
-   DLT-PATH DLT-TEXTBUF DLT-TCAP DLT-CORPUS DLT-TCAP LOAD DLT-N ! ;
+   DLT-PATH DLT-TEXTBUF DLT-TCAP DLT-CORPUS DLT-TCAP LOAD-CORPUS DLT-N ! ;
 : DLT-BATCH ( n -- ) {: seed:n :}         \ draw a batch at the given seed
    DLT-CORPUS DLT-N @ DLT-B DLT-T DLT-DIM seed BL-LOAD ;
 
@@ -140,10 +140,10 @@ variable DLT-NA                           \ corpus-A token count
    BL-IDS DLT-IDS0 DLT-ROWS DLT-EQ? 0= ;
 
 : DLT-TRY-MISSING ( -- )
-   DLT-MISSING-PATH DLT-TEXTBUF DLT-TCAP DLT-CORPUS DLT-TCAP LOAD drop ;
+   DLT-MISSING-PATH DLT-TEXTBUF DLT-TCAP DLT-CORPUS DLT-TCAP LOAD-CORPUS drop ;
 : DLT-TRY-EMPTY ( -- )
    DLT-WRITE-EMPTY
-   DLT-EMPTY-PATH DLT-TEXTBUF DLT-TCAP DLT-CORPUS DLT-TCAP LOAD drop ;
+   DLT-EMPTY-PATH DLT-TEXTBUF DLT-TCAP DLT-CORPUS DLT-TCAP LOAD-CORPUS drop ;
 
 \ ---- transactional-publication probes + snapshots ----------------------------
 : DLT-WRITE-A ( -- )  DLT-A-PATH DLT-TEXT-A DLT-SAFE-WRITE ;
@@ -168,13 +168,13 @@ variable DLT-NA                           \ corpus-A token count
    DLT-A-IDS DLT-NA @ DLT-TEXT-A DLT-DECODES? ;
 
 : DLT-LOAD-A ( -- )                          \ publish A's vocab + corpus, snapshot the vocab
-   DLT-A-PATH DLT-TEXTBUF DLT-TCAP DLT-A-IDS DLT-TCAP LOAD DLT-NA !
+   DLT-A-PATH DLT-TEXTBUF DLT-TCAP DLT-A-IDS DLT-TCAP LOAD-CORPUS DLT-NA !
    DLT-SNAP-VOCAB ;
 
 : DLT-TRY-CAP ( -- )                         \ corpus B into an undersized ids buffer -> E-TOK-CAP
-   DLT-B-PATH DLT-TEXTBUF DLT-TCAP DLT-CORPUS 3 LOAD drop ;
+   DLT-B-PATH DLT-TEXTBUF DLT-TCAP DLT-CORPUS 3 LOAD-CORPUS drop ;
 : DLT-TRY-CAP0 ( -- )                        \ zero id capacity -> E-TOK-CAP
-   DLT-B-PATH DLT-TEXTBUF DLT-TCAP DLT-CORPUS 0 LOAD drop ;
+   DLT-B-PATH DLT-TEXTBUF DLT-TCAP DLT-CORPUS 0 LOAD-CORPUS drop ;
 
 \ ---- checked assertion groups ------------------------------------------------
 : DLT-COUNT-OK? ( -- )                      \ corpus token count == fixture bytes
@@ -214,16 +214,16 @@ variable DLT-NA                           \ corpus-A token count
    DLT-LOAD-A  DLT-CORPUS-A-OK? TTRUE ;                  \ success reload: byte-identical round-trip
 
 : DLT-TWO-CORPORA-OK? ( -- )                \ sequential independent loads each publish their own vocab
-   DLT-A-PATH DLT-TEXTBUF DLT-TCAP DLT-A-IDS DLT-TCAP LOAD {: na:n :}
+   DLT-A-PATH DLT-TEXTBUF DLT-TCAP DLT-A-IDS DLT-TCAP LOAD-CORPUS {: na:n :}
    TOK-SIZE 3 T=                                         \ A: distinct {a,b,c}
    DLT-A-IDS na DLT-TEXT-A DLT-DECODES? TTRUE
-   DLT-B-PATH DLT-TEXTBUF DLT-TCAP DLT-CORPUS DLT-TCAP LOAD {: nb:n :}
+   DLT-B-PATH DLT-TEXTBUF DLT-TCAP DLT-CORPUS DLT-TCAP LOAD-CORPUS {: nb:n :}
    TOK-SIZE 4 T=                                         \ B replaces A: distinct {w,x,y,z}
    DLT-CORPUS nb DLT-TEXT-B DLT-DECODES? TTRUE ;
 
 : DLT-CAP-EXACT-OK? ( -- )                  \ exact id capacity (icap == token count) loads and round-trips
    DLT-TEXT-A nip {: n:n :}
-   DLT-A-PATH DLT-TEXTBUF DLT-TCAP DLT-CORPUS n LOAD n T=
+   DLT-A-PATH DLT-TEXTBUF DLT-TCAP DLT-CORPUS n LOAD-CORPUS n T=
    DLT-CORPUS n DLT-TEXT-A DLT-DECODES? TTRUE ;
 
 : DLT-STALE-OK? ( -- )                      \ anti-stale invariant
