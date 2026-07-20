@@ -88,4 +88,56 @@ CAP-PEND) - partial conversion is a broken intermediate. Binding seams:
 - raw siblings convert to the same deferral (parallel bind) or accessor-routed reads;
 - the old caps become the deferred sanity ceiling.
 
-Stage-3 claim: agent=derive3 workspace=.jj-ws/fable-derive3 machine=spark (owns maki/cad.f model-ir.f tensor-value.f backward.f executor.f + gptblock-attn-test.f + capacity regressions; traincore2 lane owns train-core/from-scratch-train/adam-train/eval-train - disjoint; census owns tools+STATUS - disjoint)
+Stage-3 monolithic claim released (agent=derive3 stopped with evidence, no edits - the mapped seams failed against source; findings and the re-plan below).
+
+2026-07-20 STAGE-3 REPLAN (derive3 lane's Dig-Protocol findings + orchestrator decision):
+
+TWO SEAM FAILURES, both structural:
+(1) NO INPUT-REDIRECTION PRIMITIVE: the frozen engine exposes only parse-name
+    (destructive) and evaluate - no >IN/source/save-input. Tables filled DURING
+    PARSE-SIG (CAP-IN-AT, MI-IS-*, NT names) cannot bind to a derived count
+    without first consuming the tokens. The mapped "signature pre-scan" requires
+    a parser refactor: capture the whole MODEL:...; line into a scratch buffer
+    via a parse-name loop, then re-tokenize maki-side (~6 parse-name call sites
+    move off the input stream). This also gives MSRC sizing from the captured
+    line for free.
+(2) THE MIR TABLE IS TWO-PHASE: backward.f appends adjoint nodes via 14 MIR-OP+
+    sites AFTER CAP-FINISH (2-block: 32 fwd -> 133 total), and LDEFER-BIND's
+    grow ABANDONS the predecessor region - growing at BW-BUILD would discard the
+    forward nodes. The stage-2 mapping overlooked backward-phase growth.
+
+DECIDED (orchestrator, long-term-best): (a) COPY-ON-GROW in the engine definer -
+a grow variant that preserves live cells (memmove to the fresh region before
+abandoning). Rationale: it is the GENERAL mechanism (any two-phase table gets it
+free), needs no adjoint fan-out estimate table coupled to every BW-STEP emitter
+(option b's drift risk), no fwd/bwd region id-split arithmetic (option c), and
+mid-build base motion is SAFE BY CONSTRUCTION because deferred accessors read
+the offset cell per call - the audit is only that no raw accessor-derived
+pointer is held across an append. With copy-on-grow, MI-* binds at CAP-FINISH
+to the forward count and grows incrementally during BW-BUILD - no exact adjoint
+pre-count needed anywhere.
+
+CLEAN FAMILIES (verified single-phase, convertible now): executor EX-OFF at
+EX-PLAN (the stage-1 pattern) + EX-IN-PTR/EX-IN-SET at EX-RESET from
+SLOT-COUNT@; backward BW-CT-*/BW-ISG-* at BW-BUILD entry from
+NODE-COUNT@/SLOT-COUNT@; tensor-value P-*/TV-* by count-during-parse (CAP-OPS +
+a transpose counter; P-INS by per-op-arity accumulation, under-count loud-fails
+on the DEFER bounds check) - the TV part waits on the parser refactor only if
+the counter needs the captured buffer (verify; CAP-OPS may suffice pre-refactor).
+
+12-BLOCK MATH CONFIRMED ALL-OR-NOTHING: every cap blocks at 12 blocks (172 fwd /
+723 total / 164 inputs vs CAP-CAP 64, NT-CAP 96, MIR-IN-CAP 64, PLAN-CAP 64,
+PLAN-INCAP 256, TV-CAP 256, BW-NCAP 128, BW-SCAP 64, EX-IN-CAP 64, MSRC 2048);
+only MIR-CAP/EX-NCAP 1024 have headroom.
+
+DECOMPOSITION (each lands gate-green independently):
+  (i)  engine: LDEFER copy-on-grow variant + red-first + CODELEN rows;
+  (ii) parser: MODEL: line buffer-capture + maki tokenizer (cad.f refactor);
+  (iii) clean families: executor + backward conversions (disjoint files);
+  (iv) capture-side: CAP/NT/MSRC/TV/P conversions (after ii);
+  (v)  model-ir MI-* via copy-on-grow (after i, iv) + the 12-block acceptance +
+       ceiling-pin conversions.
+
+Stage-3i claim: agent=ldgrow workspace=.jj-ws/fable-ldgrow machine=spark (engine lane: src/core/layout-buffer.f copy-on-grow + test/layout-defer.f + gate size files)
+Stage-3ii claim: agent=capbuf workspace=.jj-ws/fable-capbuf machine=spark (owns maki/cad.f parser buffer-capture refactor + cad tests)
+Stage-3iii claim: agent=cleanfam workspace=.jj-ws/fable-cleanfam machine=spark (owns maki/executor.f + maki/backward.f single-phase family conversions + their tests; NOT cad.f, NOT model-ir.f, NOT tensor-value.f)
