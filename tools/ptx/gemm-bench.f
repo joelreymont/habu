@@ -43,8 +43,6 @@ variable GB-OT                         \ output-tile edge (grid X / N cols): 64 
 variable GB-OTY                        \ output-tile M edge (grid Y): = GB-OT, except 64*MFRAGS for the wider-M MMM tile
 variable GB-SMEM-DYN                    \ dynamic .shared bytes for the launch (0 = static)
 variable GB-BLKY                       \ block Y dim: 16 (256 thr, 8-warp) / 8 (128 thr, 4-warp MMM tile)
-variable GB-DWS                        \ split-K partials workspace (M*N*S f32)
-variable GB-SV                         \ split-K split count S
 64 GB-OTY !  16 GB-BLKY !
 
 : GB-INT. ( n -- )  SB-RESET SB-INT SB$ type ;
@@ -110,45 +108,6 @@ variable GB-SV                         \ split-K split count S
    2048 80  GB-SHAPE
    4096 40  GB-SHAPE ;
 
-\ ---- SPLIT-K timing (dot habu-split-k-for-8c3ee0fb): the full split GEMM cost = MMM (partials) + MMR
-\ (reduce), both timed per iter via PTXBENCH:BENCH-GPU-NS-2. GFLOP/s = 2*S^3 / (MMM+MMR time) - the useful
-\ matmul flops over the honest wall time INCLUDING the reduce overhead. A=B=1 (values immaterial to timing).
-\ Workspace M*N*S*4 is fail-closed sized via CUDA:SPLIT-WS-ALLOC. Both funcs' params are pre-set on their
-\ handles so the timed loop only issues the two cuLaunchGrid calls. ----
-: GB-SHAPE-SPLIT ( n n -- ) {: n:n it:n :}
-   it PTXBENCH:ITERS!
-   n GB-ALLOC                                     \ DA,DB,DC + fill A=B=1 (f32/half per dtype)
-   n n GB-SV @ CUDA:SPLIT-WS-ALLOC CUDA-DEVPTR>N GB-DWS !
-   n GB-NV !
-   \ --- pre-set MMR (reduce) params on the MMR handle ---
-   s" MMR" PTXBENCH:FUNC-BY-NAME!
-   256 PTXBENCH:BLOCK!  1 PTXBENCH:BLOCKY!
-   n n * 255 + 256 / PTXBENCH:GRID!  1 PTXBENCH:GRIDY!  28 PTXBENCH:PARAM-BYTES!  0 PTXBENCH:SHARED!
-   PTXBENCH:PREPARE-LAUNCH
-   0 GB-DC PTXBENCH:PARAM-PTR!  8 GB-DWS PTXBENCH:PARAM-PTR!
-   16 GB-NV PTXBENCH:PARAM-U32!  20 GB-NV PTXBENCH:PARAM-U32!  24 GB-SV PTXBENCH:PARAM-U32!
-   s" MMR" PTXBENCH:FUNC2-BY-NAME!                \ FUNC2 = MMR (params now set)
-   n n * 255 + 256 / PTXBENCH:GRID2!  1 PTXBENCH:GRIDY2!
-   \ --- pre-set MMM (partials) params on the MMM handle ---
-   s" MMM" PTXBENCH:FUNC-BY-NAME!
-   GB-BLK PTXBENCH:BLOCK!  GB-BLKY @ PTXBENCH:BLOCKY!
-   n MMA-BN @ / PTXBENCH:GRID!  n MMA-BROWS / GB-SV @ * PTXBENCH:GRIDY!   \ gridY = (M/BROWS)*S
-   48 PTXBENCH:PARAM-BYTES!  GB-SMEM-DYN @ PTXBENCH:SHARED!
-   PTXBENCH:PREPARE-LAUNCH
-   0 GB-DA PTXBENCH:PARAM-PTR!  8 GB-DB PTXBENCH:PARAM-PTR!  16 GB-DC PTXBENCH:PARAM-PTR!
-   24 GB-NV PTXBENCH:PARAM-U32!  28 GB-NV PTXBENCH:PARAM-U32!  32 GB-NV PTXBENCH:PARAM-U32!
-   36 GB-SV PTXBENCH:PARAM-U32!  40 GB-DWS PTXBENCH:PARAM-PTR!
-   PTXBENCH:BENCH-GPU-NS-2 {: ns:n :}
-   s" GEMM(split=" type GB-SV @ GB-INT. s" ) " type n GB-INT. s" x" type n GB-INT. s" x" type n GB-INT.
-   s"  iters=" type it GB-INT. cr
-   n n * PTXBENCH:WORK!
-   n it GB-BYTES  n it GB-FLOPS  ns PTXBENCH:REPORT-GPU
-   GB-DWS @ PTXBENCH:DEVICE-FREE  GB-FREE ;
-
-: GB-SPLIT-SHAPES ( -- )                          \ the occupancy-hole shapes the split targets
-   512  400 GB-SHAPE-SPLIT
-   1024 200 GB-SHAPE-SPLIT ;
-
 : GB-KERNEL ( ptr u8 n -- ) {: ka:ptr ku:n :}   \ load the named kernel from PTXTC:CUBIN$, bench
    PTXBENCH:RESET
    PTXTC:CUBIN$ PTXBENCH:CUBIN!
@@ -156,34 +115,6 @@ variable GB-SV                         \ split-K split count S
    PTXBENCH:OPEN  PTXBENCH:LOAD
    GB-SHAPES
    PTXBENCH:UNLOAD  PTXBENCH:CLOSE ;
-
-: GB-KERNEL-SPLIT ( -- )               \ load MMM (+ MMR in the same module), time the split shapes
-   PTXBENCH:RESET
-   PTXTC:CUBIN$ PTXBENCH:CUBIN!
-   s" MMM" PTXBENCH:KERNEL!  s" MMM" PTXBENCH:LABEL!
-   PTXBENCH:OPEN  PTXBENCH:LOAD
-   GB-SPLIT-SHAPES
-   PTXBENCH:UNLOAD  PTXBENCH:CLOSE ;
-
-\ SPLIT-K bench config (dot habu-split-k-for-8c3ee0fb): emit the split MMM+MMR module, time MMM+MMR per iter
-\ at 512/1024. Element-exact first (tools/ptx/mma-gemm-check.f MGC-CFG-SPLIT). Args: bk pad stages dyn mode
-\ mfrags warps bn split. Restores the tf32 8-warp BN=64 S=1 default.
-: GB-MMM-CFG-SPLIT ( n n n n n n n n n -- ) {: bk:n pad:n stages:n dyn:n mode:n mfrags:n warps:n bn:n split:n :}
-   bk MMA-BK !  pad MMA-PAD !  stages MMA-STAGES !  dyn MMA-DYNSMEM !  mode MMA-LMODE !  mfrags MMA-MFRAGS !  warps MMA-WARPS !  bn MMA-BN !  split MMA-SPLITK !
-   split GB-SV !
-   MMA-DYNSMEM @ if MMA-SH-BYTES else 0 then GB-SMEM-DYN !
-   MMA-NTHREADS 16 / GB-BLKY !
-   s" == SPLIT-K S=" type split GB-INT.  s"  BN=" type bn GB-INT.  s"  MFRAGS=" type mfrags GB-INT.  s"  warps=" type warps GB-INT.
-   s"  BK=" type bk GB-INT.  s"  stages=" type stages GB-INT.  s"  dyn=" type dyn GB-INT.  s"  mode=" type mode GB-INT.
-   s"  block=" type MMA-BROWS GB-INT. s" x" type bn GB-INT.  s"  smem=" type MMA-SMEM GB-INT. s" B ==" type cr
-   s" habu-gemm-bench" PTXTC:PREPARE
-   PTX-CAPTURE-ON  EMIT-MATMUL-MMA  PTX-CAPTURE-OFF
-   GB-ASSEMBLE
-   bn GB-OT !  MMA-BROWS GB-OTY !
-   GB-KERNEL-SPLIT
-   PTXTC:CLEAN
-   32 MMA-BK !  0 MMA-PAD !  2 MMA-STAGES !  0 MMA-DYNSMEM !  0 MMA-LMODE !  1 MMA-MFRAGS !  8 MMA-WARPS !  64 MMA-BN !  1 MMA-SPLITK !
-   0 GB-SMEM-DYN !  64 GB-OT !  64 GB-OTY !  16 GB-BLKY !  1 GB-SV ! ;
 
 : GB-MMN ( -- )                        \ naive baseline column
    s" == MMN naive (1 elem/thread, global K-loop) ==" type cr
@@ -538,24 +469,6 @@ public
    CUDA:OPEN? 0= if s" gemm-bench: libcuda unavailable -> SKIPPED (off-device)" type cr exit then
    GB-MM
    GB-MMM-WIDE-B-SWEEP ;
-
-\ SPLIT-K schedule sweep (dot habu-split-k-for-8c3ee0fb, phase 3a): the FP32 CUDA-core roof anchor, the
-\ committed 512-class S=1 tiles as same-session baselines (GB-SHAPES 512/1024/2048/4096), then split S=2/4 on
-\ those tiles at 512/1024 - where only 32/128 output blocks launch on 48 SMs and split multiplies the resident
-\ block count. GFLOP/s = 2*S^3 / (MMM+MMR wall time), the honest throughput including the reduce pass. Every
-\ split tile is element-exact first (tools/ptx/mma-gemm-check.f MGC-CFG-SPLIT). Best-of-3, run SOLO under the
-\ pinned 13.3 ptxas (PTXAS-STALE-SM121 absent). Referee = Triton 3.8 tf32 tl.dot (docs/eval-triton.md GB10:
-\ 21.7 / 33.5 at 512 / 1024).
-: GB-SPLIT-SWEEP ( -- )
-   CUDA:OPEN? 0= if s" gemm-bench: libcuda unavailable -> SKIPPED (off-device)" type cr exit then
-   GB-MM                                \ FP32 CUDA-core roof reference (same-session clock anchor)
-   s" == S=1 baselines (committed 512-class winners, same session) ==" type cr
-   32 8 2 1 2 4 GB-MMM-CFGW4            \ 4-warp M4 s2 dyn ldmatrix-A (128x64) - committed 512 winner S=1
-   s" == split-K S=2/4 on the 4-warp M4 (128x64) and 8-warp M2 (128x64) tiles ==" type cr
-   32 8 2 1 2 4 4 64 2 GB-MMM-CFG-SPLIT   \ 4-warp M4 s2 dyn ldmatrix split=2
-   32 8 2 1 2 4 4 64 4 GB-MMM-CFG-SPLIT   \ 4-warp M4 s2 dyn ldmatrix split=4
-   32 8 2 1 2 2 8 64 2 GB-MMM-CFG-SPLIT   \ 8-warp M2 s2 dyn ldmatrix split=2
-   32 8 2 1 2 2 8 64 4 GB-MMM-CFG-SPLIT ; \ 8-warp M2 s2 dyn ldmatrix split=4
 
 \ GB10 head-to-head campaign (dot habu-gb10-gemm-head): FP32 CUDA-core roof reference, then the full
 \ wider-M B-feed-amortization schedule sweep (scalar-B MFRAGS=2/4 and the B-ldmatrix transposed-Bs

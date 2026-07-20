@@ -22,8 +22,6 @@ variable DEV
 variable CTX
 variable MOD
 variable FUNC
-variable FUNC2                          \ second kernel handle (split-K reduce MMR), timed after FUNC each iter
-variable GRID2   variable GRIDY2        \ second kernel launch grid
 variable START-EVT
 variable STOP-EVT
 variable EVENT-MS
@@ -168,10 +166,6 @@ public
    KERNEL-BUF KERNEL-U @ KERNEL-BUF >CSTR
    FUNC MOD @ >CUDA-MOD KERNEL-BUF CUDA:CU-MODULE-GET-FUNCTION CUDA:RC0 ;
 
-: FUNC-BY-NAME! ( ptr u8 n -- )       \ re-resolve FUNC from the already-loaded module by name (2nd kernel: split-K reduce MMR)
-   KERNEL-BUF >CSTR
-   FUNC MOD @ >CUDA-MOD KERNEL-BUF CUDA:CU-MODULE-GET-FUNCTION CUDA:RC0 ;
-
 : UNLOAD ( -- )
    MOD @ 0 <> if MOD @ >CUDA-MOD CUDA:CU-MODULE-UNLOAD CUDA:RC0 then
    0 MOD ! 0 FUNC ! ;
@@ -238,27 +232,6 @@ public
    LAUNCH SYNC
    RECORD-START
    ITERS-N @ 0 ?do LAUNCH loop
-   RECORD-STOP
-   STOP-EVENT-SYNC
-   EVENT-ELAPSED-NS {: ns:n :}
-   EVENTS-DESTROY
-   ns ;
-
-\ split-K two-kernel timing: FUNC2/GRID2 hold the reduce (MMR) launch. Params for BOTH funcs are
-\ pre-set on their handles (deprecated cuParamSetv persists per-func), so the timed loop only issues
-\ the two cuLaunchGrid calls - MMM (partials) then MMR (reduce) - matching the full split-K GEMM cost.
-: FUNC2-BY-NAME! ( ptr u8 n -- )        \ resolve the 2nd kernel from the loaded module into FUNC2
-   KERNEL-BUF >CSTR
-   FUNC2 MOD @ >CUDA-MOD KERNEL-BUF CUDA:CU-MODULE-GET-FUNCTION CUDA:RC0 ;
-: GRID2! ( n -- )  GRID2 ! ;
-: GRIDY2! ( n -- )  GRIDY2 ! ;
-: LAUNCH2 ( -- )
-   FUNC2 @ >CUDA-FN GRID2 @ GRIDY2 @ CUDA:CU-LAUNCH-GRID CUDA:RC0 ;
-: BENCH-GPU-NS-2 ( -- n )               \ time ITERS of (FUNC then FUNC2), both grids per iter
-   EVENTS-CREATE
-   LAUNCH LAUNCH2 SYNC
-   RECORD-START
-   ITERS-N @ 0 ?do LAUNCH LAUNCH2 loop
    RECORD-STOP
    STOP-EVENT-SYNC
    EVENT-ELAPSED-NS {: ns:n :}

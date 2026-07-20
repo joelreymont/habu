@@ -36,7 +36,7 @@ AUTOTUNE:AT-BK     constant kBK   AUTOTUNE:AT-PAD    constant kPAD
 AUTOTUNE:AT-STAGES constant kST   AUTOTUNE:AT-DYN    constant kDYN
 AUTOTUNE:AT-EPILOG constant kEPI  AUTOTUNE:AT-DTYPE  constant kDT
 AUTOTUNE:AT-LMODE  constant kLM   AUTOTUNE:AT-BN     constant kBN
-AUTOTUNE:AT-GROUP  constant kGRP  AUTOTUNE:AT-SPLITK constant kSK
+AUTOTUNE:AT-GROUP  constant kGRP
 AUTOTUNE:AT-BLDM   constant kBLDM AUTOTUNE:AT-BTF16  constant kBTF
 AUTOTUNE:AT-BPAD   constant kBPAD
 
@@ -45,10 +45,10 @@ create TC AUTOTUNE:AT-CFG-N cells allot     \ scratch config record for building
 
 \ ---- (1) MENU: the config record + accessors ---------------------------------
 : MENU-TESTS ( -- )
-   AUTOTUNE:AT-CFG-N 15 T=
+   AUTOTUNE:AT-CFG-N 14 T=
    TC DEF!                                   \ the byte-identical baseline record
    kW   TC@ 8 T=   kMF TC@ 1 T=   kBK TC@ 32 T=   kST TC@ 2 T=
-   kDYN TC@ 0 T=   kDT TC@ 0 T=   kBN TC@ 64 T=   kSK TC@ 1 T=
+   kDYN TC@ 0 T=   kDT TC@ 0 T=   kBN TC@ 64 T=
    4 TC kW CFG!   256 TC kBN CFG!            \ field writes read back
    kW TC@ 4 T=    kBN TC@ 256 T= ;
 
@@ -90,8 +90,6 @@ create TC AUTOTUNE:AT-CFG-N cells allot     \ scratch config record for building
 : BAD-BN96 ( -- )   TC DEF!  96 TC kBN CFG!   TC CHECKCFG ;
 : BAD-BN32 ( -- )   TC DEF!  32 TC kBN CFG!   TC CHECKCFG ;
 : BAD-GROUP ( -- )  TC DEF!  -1 TC kGRP CFG!  TC CHECKCFG ;
-: BAD-SPLIT3 ( -- ) TC DEF!  2 TC kSK CFG!  3 TC kST CFG!  1 TC kDYN CFG!  TC CHECKCFG ;
-: BAD-SPLIT0 ( -- ) TC DEF!  0 TC kSK CFG!  TC CHECKCFG ;
 : BAD-DT-LM1 ( -- ) TC DEF!  1 TC kDT CFG!  1 TC kLM CFG!  TC CHECKCFG ;
 : BAD-DT-BLDM ( -- ) TC DEF! 1 TC kDT CFG!  4 TC kMF CFG!  1 TC kBLDM CFG!  1 TC kDYN CFG!  TC CHECKCFG ;
 : BAD-SMEM ( -- )   TC DEF!  2 TC kMF CFG!  256 TC kBN CFG!  0 TC kDYN CFG!  TC CHECKCFG ;
@@ -106,8 +104,6 @@ create TC AUTOTUNE:AT-CFG-N cells allot     \ scratch config record for building
    [: BAD-BN96 ;]    E-MMA-BN     TTHROWSQ
    [: BAD-BN32 ;]    E-MMA-BN     TTHROWSQ
    [: BAD-GROUP ;]   E-MMA-GROUP  TTHROWSQ
-   [: BAD-SPLIT3 ;]  E-MMA-SPLITK TTHROWSQ
-   [: BAD-SPLIT0 ;]  E-MMA-SPLITK TTHROWSQ
    [: BAD-DT-LM1 ;]  E-MMA-DTYPE  TTHROWSQ
    [: BAD-DT-BLDM ;] E-MMA-DTYPE  TTHROWSQ
    [: BAD-SMEM ;]    E-MMA-SMEM   TTHROWSQ

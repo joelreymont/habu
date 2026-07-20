@@ -6,7 +6,7 @@
 \ Habu's answer to @triton.autotune, each mechanic upgraded to Habu discipline:
 \   (1) MENU   - the candidate space is DATA, not decorator args: a fixed config
 \                record over cg-mma.f's emit-time knobs (warps, MFRAGS, BK, pad,
-\                stages, dyn, epilogue, dtype, LMODE/B-feed, BN, GROUP, SPLITK,
+\                stages, dyn, epilogue, dtype, LMODE/B-feed, BN, GROUP,
 \                BLDM, BPAD), plus the per-axis candidate value lists.
 \   (2) PRUNE  - the legal set is the menu run against the emitter's EXISTING
 \                fail-closed guards (cg-mma.f MMA-CHECK-*). We do NOT weaken or
@@ -38,7 +38,7 @@ public
 \ ============ (1) MENU - the config record over the cg-mma knobs ==============
 \ A config is a flat 15-cell record; the field order is fixed and shared by the
 \ winners table's config sub-record. DATA layout only - no logic here.
-15 constant AT-CFG-N          \ cells per config record
+14 constant AT-CFG-N          \ cells per config record
 0  constant AT-WARPS          \ warps/block (4 or 8)
 1  constant AT-MFRAGS         \ M-fragments per warp (1/2/4)
 2  constant AT-BK             \ staged K-tile depth
@@ -50,10 +50,9 @@ public
 8  constant AT-LMODE          \ fragment-load mode (0 scalar+cvt / 1 raw / 2 ldmatrix)
 9  constant AT-BN             \ output-tile width (64/128/256)
 10 constant AT-GROUP          \ grouped-raster group height (0 = off)
-11 constant AT-SPLITK         \ split-K count (1 = off)
-12 constant AT-BLDM           \ tf32 transposed-Bs B-ldmatrix (wide path)
-13 constant AT-BTF16          \ fp16/bf16 transposed-Bs B feed
-14 constant AT-BPAD           \ transposed-Bs (BT) row pad
+11 constant AT-BLDM           \ tf32 transposed-Bs B-ldmatrix (wide path)
+12 constant AT-BTF16          \ fp16/bf16 transposed-Bs B feed
+13 constant AT-BPAD           \ transposed-Bs (BT) row pad
 
 public
 : AT-CFG@ ( ptr a n -- n )  cells + @ ;
@@ -63,7 +62,7 @@ public
 : AT-DEFAULTS ( ptr a -- ) {: c:ptr :}
    8 c AT-WARPS AT-CFG!   1 c AT-MFRAGS AT-CFG!  32 c AT-BK AT-CFG!   0 c AT-PAD AT-CFG!
    2 c AT-STAGES AT-CFG!  0 c AT-DYN AT-CFG!      0 c AT-EPILOG AT-CFG! 0 c AT-DTYPE AT-CFG!
-   0 c AT-LMODE AT-CFG!  64 c AT-BN AT-CFG!       0 c AT-GROUP AT-CFG!  1 c AT-SPLITK AT-CFG!
+   0 c AT-LMODE AT-CFG!  64 c AT-BN AT-CFG!       0 c AT-GROUP AT-CFG!
    0 c AT-BLDM AT-CFG!    0 c AT-BTF16 AT-CFG!    0 c AT-BPAD AT-CFG! ;
 
 \ per-axis candidate value lists (the MENU's search space, as DATA). These are the
@@ -101,7 +100,7 @@ public
    c AT-STAGES AT-CFG@ MMA-STAGES !    c AT-DYN    AT-CFG@ MMA-DYNSMEM !
    c AT-EPILOG AT-CFG@ MMA-EPILOG !    c AT-DTYPE  AT-CFG@ MMA-DTYPE !
    c AT-LMODE  AT-CFG@ MMA-LMODE !     c AT-BN     AT-CFG@ MMA-BN !
-   c AT-GROUP  AT-CFG@ MMA-GROUP !     c AT-SPLITK AT-CFG@ MMA-SPLITK !
+   c AT-GROUP  AT-CFG@ MMA-GROUP !
    c AT-BLDM   AT-CFG@ MMA-BLDM !      c AT-BTF16  AT-CFG@ MMA-BTF16 !
    c AT-BPAD   AT-CFG@ MMA-BPAD ! ;
 
@@ -112,7 +111,7 @@ private
    MMA-STAGES @ AT-SNAP AT-STAGES AT-CFG!   MMA-DYNSMEM @ AT-SNAP AT-DYN   AT-CFG!
    MMA-EPILOG @ AT-SNAP AT-EPILOG AT-CFG!   MMA-DTYPE @  AT-SNAP AT-DTYPE  AT-CFG!
    MMA-LMODE @  AT-SNAP AT-LMODE  AT-CFG!   MMA-BN @     AT-SNAP AT-BN     AT-CFG!
-   MMA-GROUP @  AT-SNAP AT-GROUP  AT-CFG!   MMA-SPLITK @ AT-SNAP AT-SPLITK AT-CFG!
+   MMA-GROUP @  AT-SNAP AT-GROUP  AT-CFG!
    MMA-BLDM @   AT-SNAP AT-BLDM   AT-CFG!   MMA-BTF16 @  AT-SNAP AT-BTF16  AT-CFG!
    MMA-BPAD @   AT-SNAP AT-BPAD   AT-CFG! ;
 : AT-RESTORE ( -- )  AT-SNAP AT-APPLY ;               \ restore the snapshotted knobs
@@ -123,7 +122,7 @@ public
 : AT-CHECK ( -- )
    MMA-CHECK-BN  MMA-CHECK-DTYPE  MMA-CHECK-BTF16  MMA-CHECK-SMEM
    MMA-CHECK-BLDM  MMA-CHECK-WARPS  MMA-CHECK-EPI  MMA-CHECK-REGS
-   MMA-CHECK-GROUP  MMA-CHECK-SPLIT ;
+   MMA-CHECK-GROUP ;
 
 \ apply + check a config; throws the specific E-MMA-* if the config is illegal.
 : AT-CHECK-CFG ( ptr a -- )  AT-APPLY AT-CHECK ;
@@ -138,35 +137,35 @@ public
 
 \ ============ (4) WINNERS - the committed table keyed (shape-class, dtype) =====
 \ Reviewed data next to perf-rows.tsv. One row per (shape-class dim, dtype). Row =
-\ 1 class-dim cell + a 15-cell config sub-record (field order = the AT-* menu). Each
+\ 1 class-dim cell + a 14-cell config sub-record (field order = the AT-* menu). Each
 \ row's note cites its tools/ptx/perf-rows.tsv source measurement (all GB10, sm_121a,
 \ element-exact via tools/ptx/mma-gemm-check.f). Winners are the reviewed per-shape
 \ bold configs of docs/eval-triton.md Rounds 3/6/7/10.
 private
-\ fields:      dim   W  MF  BK PAD ST DYN EPI DT LM  BN GRP SK BLDM BTF BPAD
+\ fields:      dim   W  MF  BK PAD ST DYN EPI DT LM  BN GRP BLDM BTF BPAD
 create AT-WINNERS
 \ --- tf32 (dtype 0) ---
-   512 ,   4 , 4 , 32 , 8 , 2 , 1 , 1 , 0 , 2 ,  64 , 0 , 1 , 0 , 0 , 0 ,  \ MMM-W4-M4-S2-EPI 262144 16338128 (Round 3, 512 WINNER)
-  1024 ,   4 , 4 , 32 , 8 , 1 , 0 , 1 , 0 , 2 ,  64 , 0 , 1 , 0 , 0 , 0 ,  \ MMM-W4-M4-S1-EPI 1048576 29922312 ptxas133 (Round 3, 1024 WINNER)
-  2048 ,   4 , 4 , 32 , 8 , 1 , 0 , 1 , 0 , 2 ,  64 , 0 , 1 , 0 , 0 , 0 ,  \ MMM-W4-M4-S1-EPI 4194304 32560225 ptxas133 (Round 3, 2048)
-  4096 ,   8 , 2 , 16 , 8 , 3 , 1 , 0 , 0 , 2 , 256 , 8 , 1 , 0 , 0 , 0 ,  \ MMM-BN256-BK16-S3-G8 16777216 33821967 ptxas133 (Round 10, 4096 WINNER)
+   512 ,   4 , 4 , 32 , 8 , 2 , 1 , 1 , 0 , 2 ,  64 , 0 , 0 , 0 , 0 ,  \ MMM-W4-M4-S2-EPI 262144 16338128 (Round 3, 512 WINNER)
+  1024 ,   4 , 4 , 32 , 8 , 1 , 0 , 1 , 0 , 2 ,  64 , 0 , 0 , 0 , 0 ,  \ MMM-W4-M4-S1-EPI 1048576 29922312 ptxas133 (Round 3, 1024 WINNER)
+  2048 ,   4 , 4 , 32 , 8 , 1 , 0 , 1 , 0 , 2 ,  64 , 0 , 0 , 0 , 0 ,  \ MMM-W4-M4-S1-EPI 4194304 32560225 ptxas133 (Round 3, 2048)
+  4096 ,   8 , 2 , 16 , 8 , 3 , 1 , 0 , 0 , 2 , 256 , 8 , 0 , 0 , 0 ,  \ MMM-BN256-BK16-S3-G8 16777216 33821967 ptxas133 (Round 10, 4096 WINNER)
 \ --- fp16 (dtype 1) ---
-   512 ,   4 , 4 , 32 , 8 , 2 , 1 , 0 , 1 , 0 ,  64 , 0 , 1 , 0 , 0 , 0 ,  \ MMM-F16-W4-M4-S2 262144 16326442 (Round 6, 512 WINNER k-major)
-  1024 ,   4 , 4 , 32 , 8 , 2 , 1 , 0 , 1 , 0 ,  64 , 0 , 1 , 0 , 0 , 0 ,  \ MMM-F16-W4-M4-S2 1048576 36108183 (Round 6, 1024 WINNER k-major)
-  2048 ,   4 , 4 , 32 , 8 , 2 , 1 , 0 , 1 , 0 ,  64 , 0 , 1 , 0 , 0 , 0 ,  \ MMM-F16-W4-M4-S2 4194304 46063324 (Round 6, 2048 k-major 46.1 > transposed 45.2)
-  4096 ,   4 , 4 , 32 , 8 , 1 , 0 , 0 , 1 , 0 ,  64 , 0 , 1 , 0 , 1 , 8 ,  \ MMM-F16T-W4-M4-S1 16777216 47227116 (Round 6, 4096 WINNER transposed-Bs)
+   512 ,   4 , 4 , 32 , 8 , 2 , 1 , 0 , 1 , 0 ,  64 , 0 , 0 , 0 , 0 ,  \ MMM-F16-W4-M4-S2 262144 16326442 (Round 6, 512 WINNER k-major)
+  1024 ,   4 , 4 , 32 , 8 , 2 , 1 , 0 , 1 , 0 ,  64 , 0 , 0 , 0 , 0 ,  \ MMM-F16-W4-M4-S2 1048576 36108183 (Round 6, 1024 WINNER k-major)
+  2048 ,   4 , 4 , 32 , 8 , 2 , 1 , 0 , 1 , 0 ,  64 , 0 , 0 , 0 , 0 ,  \ MMM-F16-W4-M4-S2 4194304 46063324 (Round 6, 2048 k-major 46.1 > transposed 45.2)
+  4096 ,   4 , 4 , 32 , 8 , 1 , 0 , 0 , 1 , 0 ,  64 , 0 , 0 , 1 , 8 ,  \ MMM-F16T-W4-M4-S1 16777216 47227116 (Round 6, 4096 WINNER transposed-Bs)
 \ --- bf16 (dtype 2) ---
-   512 ,   4 , 4 , 32 , 8 , 2 , 1 , 0 , 2 , 0 ,  64 , 0 , 1 , 0 , 0 , 0 ,  \ MMM-BF16-W4-M4-S2 262144 16346647 (Round 7, 512 WINNER k-major)
-  1024 ,   4 , 4 , 32 , 8 , 2 , 1 , 0 , 2 , 0 ,  64 , 0 , 1 , 0 , 0 , 0 ,  \ MMM-BF16-W4-M4-S2 1048576 36111780 (Round 7, 1024 WINNER k-major)
-  2048 ,   4 , 4 , 32 , 8 , 1 , 0 , 0 , 2 , 0 ,  64 , 0 , 1 , 0 , 1 , 8 ,  \ MMM-BF16T-W4-M4-S1 4194304 46344051 (Round 7, 2048 WINNER transposed-Bs)
-  4096 ,   4 , 4 , 32 , 8 , 1 , 0 , 0 , 2 , 0 ,  64 , 0 , 1 , 0 , 1 , 8 ,  \ MMM-BF16T-W4-M4-S1 16777216 46899720 (Round 7, 4096 WINNER transposed-Bs)
+   512 ,   4 , 4 , 32 , 8 , 2 , 1 , 0 , 2 , 0 ,  64 , 0 , 0 , 0 , 0 ,  \ MMM-BF16-W4-M4-S2 262144 16346647 (Round 7, 512 WINNER k-major)
+  1024 ,   4 , 4 , 32 , 8 , 2 , 1 , 0 , 2 , 0 ,  64 , 0 , 0 , 0 , 0 ,  \ MMM-BF16-W4-M4-S2 1048576 36111780 (Round 7, 1024 WINNER k-major)
+  2048 ,   4 , 4 , 32 , 8 , 1 , 0 , 0 , 2 , 0 ,  64 , 0 , 0 , 1 , 8 ,  \ MMM-BF16T-W4-M4-S1 4194304 46344051 (Round 7, 2048 WINNER transposed-Bs)
+  4096 ,   4 , 4 , 32 , 8 , 1 , 0 , 0 , 2 , 0 ,  64 , 0 , 0 , 1 , 8 ,  \ MMM-BF16T-W4-M4-S1 16777216 46899720 (Round 7, 4096 WINNER transposed-Bs)
 
 public
 12 constant AT-WIN#            \ committed rows
-16 constant AT-ROW-N           \ cells per row (1 class-dim + AT-CFG-N config)
+15 constant AT-ROW-N           \ cells per row (1 class-dim + AT-CFG-N config)
 : AT-WIN-ROW ( n -- ptr a )  AT-ROW-N * cells AT-WINNERS + ;   \ row index 0..AT-WIN#-1
 : AT-ROW-DIM@ ( ptr a -- n )   @ ;
-: AT-ROW-CFG ( ptr a -- ptr a )  1 cells + ;                   \ 15-cell config sub-record
+: AT-ROW-CFG ( ptr a -- ptr a )  1 cells + ;                   \ 14-cell config sub-record
 
 \ ---- bucketing rule (documented, integer-only, no overflow) -----------------
 \ The shape's work W = M*N*K (the GEMM FLOP proxy). Each committed class is a cube

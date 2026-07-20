@@ -75,8 +75,7 @@ require lib/ptx/cpp-slot.f
 -6107 constant E-MMA-BN                            \ output-tile width BN illegal (not a power of two, or below the legacy 64)
 -6108 constant E-MMA-REGS                          \ per-lane accumulators bust the 255-register file ceiling for this (BN,MFRAGS)
 -6109 constant E-MMA-GROUP                          \ grouped-raster group height illegal (negative M-block group height)
--6110 constant E-MMA-SPLITK                         \ split-K config illegal (S<1, or S>1 with stages>2 / grouped-raster / smem epilogue)
--6111 constant E-MMA-XSWIZ                          \ XOR-swizzle config illegal (non-zero pad, non-ldmatrix A feed, half dtype, BK out of [32,64], ablate, or split-K)
+-6111 constant E-MMA-XSWIZ                          \ XOR-swizzle config illegal (non-zero pad, non-ldmatrix A feed, half dtype, BK out of [32,64], or ablate)
 
 255 constant MMA-REG-CEIL                       \ usable per-thread hardware register file (sm_121 255-register ceiling)
 32  constant MMA-REG-WORKSET                    \ non-accumulator live working set (measured 30 at BN256/MFRAGS2/128 accs -> 158 regs, rounded up)
@@ -169,7 +168,7 @@ variable MMA-EPILOG   0 MMA-EPILOG !          \ 1 = shared-memory coalesced C ep
 \ exact by mma-gemm-check. Bank-freedom needs the full row available (ACPR>=8, i.e. BK>=32) and the m-frag
 \ stride not to disturb the mask (ACPR|16, i.e. BK<=64); MMA-CHECK-XSWIZ fails closed outside [32,64] and on
 \ every combo whose store side is not swizzled (non-zero pad, non-ldmatrix A feed LMODE!=2, half dtype whose
-\ As store is the F16 word, wide ablation, split-K which reuses the %r38 term register). Composes with
+\ As store is the F16 word, and wide ablation). Composes with
 \ MFRAGS / WARPS / BN / stages / dyn / B-ldmatrix / grouped-raster / epilogue (all leave the As feed alone).
 variable MMA-XSWIZ    0 MMA-XSWIZ !           \ 1 = pad-free XOR-swizzled As shared layout (off by default)
 
@@ -247,26 +246,6 @@ variable MMA-BTF16   0 MMA-BTF16 !            \ 1 = fp16/bf16 transposed-Bs B fe
 \ not required. Only a NEGATIVE height is illegal (MMA-CHECK-GROUP throws E-MMA-GROUP); 0 is the OFF sentinel.
 variable MMA-GROUP   0 MMA-GROUP !            \ 0 = OFF (byte-identical); positive = grouped-raster group height in M-blocks
 
-\ SPLIT-K over the K dimension (dot habu-split-k-for-8c3ee0fb). Emit-time knob: 1 = OFF, BYTE-IDENTICAL
-\ (single block per output tile spans all of K, writes C directly); S>1 = partition K into S contiguous
-\ slices, one CTA-column per slice, each computing a PARTIAL C over its K-slice in f32 into a per-split
-\ workspace, then a deterministic two-pass REDUCE kernel (MMR) sums the S partials into C (NO atomics,
-\ fixed ascending slice order, so element-exactness and run-to-run determinism hold). At 512^3 only 32
-\ output blocks launch on 48 SMs; S=2..4 multiplies the resident-block count (64-128) to fill the idle SMs.
-\ GEOMETRY: the split index folds into gridY (launch gridY = gm*S, gm = M/BROWS); a CTA derives
-\ s = ctaid.y/gm, tile_m = ctaid.y%gm, then loops K over [s*Kslice, (s+1)*Kslice) with Kslice = K/S. The
-\ A-row stride stays the full K (pK), so ONLY the K-loop init (kt=k0) and bound (kt<k1) change; the staging
-\ and mma fragments are the committed tile VERBATIM. The epilogue redirects the C base (%rd3) to the split's
-\ workspace slice pWS + s*(M*N)*4, so MMA-STORE(-WIDE) writes partials with no store-word change.
-\ EXACTNESS: with the integer fill (mma-gemm-check), every full-K partial sum stays < 2^24 (K*143 <= 512*143
-\ = 73216 at 512^3; a K-SLICE sum is even smaller), so each split's f32 accumulate is exact; the reduce sums
-\ S exact integers whose total (the full dot) is also < 2^24, so the ascending-order f32 adds never round -
-\ the split result is BIT-IDENTICAL to the un-split kernel. Composes with dtype/MFRAGS/WARPS/BN/BK/PAD/LMODE
-\ and stages 1-2; fail-closed (E-MMA-SPLITK) on stages>2 (MMA-PIPE-KLOOP-MULTI not adapted), MMA-GROUP
-\ (grid fold conflicts with the raster remap), MMA-EPILOG (untested with the redirected base), and S<1.
-variable MMA-SPLITK   1 MMA-SPLITK !          \ 1 = OFF (byte-identical); S>1 = K partitioned into S slices + MMR reduce
-: MMA-SPLIT? ( -- bool )  MMA-SPLITK @ 1 > ;
-
 : MMA-ESZ  ( -- n )  MMA-HALF? if 2 else 4 then ;    \ A/B element bytes (fp16/bf16 half vs tf32 f32 word)
 : MMA-EPC  ( -- n )  16 MMA-ESZ / ;                  \ A/B elements per 16-byte cp.async chunk (8 half / 4 f32)
 : MMA-MKD  ( -- n )  MMA-HALF? if 16 else MMA-MK then ;  \ mma.sync K/substep (m16n8k16 half / m16n8k8 tf32)
@@ -310,7 +289,7 @@ variable MMA-SPLITK   1 MMA-SPLITK !          \ 1 = OFF (byte-identical); S>1 = 
 : MMA-DEFAULT? ( -- bool )                             \ the byte-identical baseline config (8-warp tf32 BN=64 only)
    MMA-BK @ 32 =  MMA-PAD @ 0=  and  MMA-STAGES @ 2 =  and  MMA-DYNSMEM @ 0=  and
    MMA-MFRAGS @ 1 =  and  MMA-WARPS @ 8 =  and  MMA-DTYPE @ 0=  and  MMA-BN @ 64 =  and
-   MMA-SPLITK @ 1 =  and  MMA-XSWIZ @ 0=  and ;   \ BN>64 uses the MMA-owned pipe, not the shared MM-PIPE scaffold; S>1 routes to the split loop; XSWIZ needs the swizzle-aware MMA-owned staging (MM-PIPE has no swizzle)
+   MMA-XSWIZ @ 0=  and ;   \ BN>64 uses the MMA-owned pipe, not the shared MM-PIPE scaffold; XSWIZ needs the swizzle-aware MMA-owned staging (MM-PIPE has no swizzle)
 : MMA-WIDE?  ( -- bool )  MMA-MFRAGS @ 1 >  MMA-BN @ 64 >  or ;   \ WIDE compute + split-staging path (MFRAGS>1 or BN>64); BN=64 MFRAGS=1 stays the byte-identical non-wide path
 
 : MMA-LOG2 ( n -- n )                                  \ floor log2 (n a power of two, > 0)
@@ -428,8 +407,8 @@ variable MMA-LMODE   0 MMA-LMODE !
 \ every OFF config stays byte-identical. See the MMA-XSWIZ knob header for the layout law.
 \ SETUP: capture the loop-invariant swizzle term (ldm_row & (ACPR-1))<<4 into %r38, from the pre-scale ldm A
 \ row in %r47. For 32<=BK<=64 the m-frag stride (16 rows) and the warp_row block are multiples of ACPR, so
-\ row&(ACPR-1) is unchanged by them -> the term is invariant across the K-loop and every M-frag. %r38 is free
-\ off the split path (MMA-CHECK-XSWIZ rejects XSWIZ+split, the only other %r38 user).
+\ row&(ACPR-1) is unchanged by them -> the term is invariant across the K-loop and every M-frag. %r38 has no
+\ other user in the emitted kernel.
 : MMA-XSWIZ-SETUP ( -- )   MMA-XSWIZ @ 0= if exit then
    SB-RESET s" and.b32 %r38,%r47," SB-APPEND MMA-XMASK SB-U s" ;" SB-APPEND SB$ PTX-L
    s" shl.b32 %r38,%r38,4;" PTX-L ;
@@ -1369,124 +1348,6 @@ TRUSTED: MMA-STAGE-ISSUE ( n n -- cpp-pending<p> )   MMA-CP-STAGE 0 ;
    MMA-BLDM @ if E-MMA-DTYPE throw then                 \ tf32 transposed-Bs B-ldmatrix is not a half path (use MMA-BTF16)
    MMA-ABLATE @ if E-MMA-DTYPE throw then ;             \ ablation variants are the tf32 wide path only
 
-\ ============ SPLIT-K over the K dimension (dot habu-split-k-for-8c3ee0fb) ====================
-\ The split path reuses the committed tile VERBATIM - same staging, fragments, mma, and store words -
-\ and changes only three things: (1) the K-loop starts at k0 and stops at k1 (the CTA's K-slice) instead
-\ of [0,K); (2) the thread setup derives (s, tile_m) from the folded gridY and the slice bounds; (3) the
-\ C base %rd3 is redirected to this split's workspace slice, so MMA-STORE(-WIDE) writes partials with no
-\ store-word change. A separate MMR kernel then sums the S partials into C. S=1 emits none of this.
-
-\ split-aware K-loop control (the ONLY delta vs CPP-KT-INIT / CPP-KGUARD / CPP-PF-TEST): kt starts at
-\ k0=%r38 and the loop / prefetch tests compare against k1=%r19 (the K-slice bound), not %r3=K (which stays
-\ the full A-row stride). Same $KLOOP/$KEND/$NOPF labels - only one loop is emitted per kernel.
-: CPP-KT-INIT-SPLIT ( -- )  s" mov.u32 %r14,%r38;" PTX-L ;                    \ kt = k0
-: CPP-KGUARD-SPLIT ( -- )
-   s" $KLOOP:" PTX-L  s" setp.ge.u32 %p1,%r14,%r19;" PTX-L  s" @%p1 bra $KEND;" PTX-L ;
-: CPP-PF-TEST-SPLIT ( -- )
-   s" setp.lt.u32 %p2,%r17,%r19;" PTX-L  s" @!%p2 bra $NOPF;" PTX-L ;
-
-\ split thread setup + slice/workspace derivation (serves both the wide and non-wide paths - it only sets
-\ %r8 tid_lin, %r9 rowBase, %r10 colBase, %r11 SH, %r38 k0, %r19 k1, %rd3 WS-slice; MMA-SETUP(-WIDE) reads
-\ %r9/%r10 downstream). gridY = gm*S (gm = M/BROWS), so s = ctaid.y/gm, tile_m = ctaid.y%gm. BROWS/BN are
-\ powers of two (shift), gm/s/tile_m and Kslice use general div/rem. Scratch %r12,%r13,%r20,%r21,%r22 (all
-\ dead before the K-loop, which re-derives %r20..23; MMA-SETUP re-derives %r24..34). k0=%r38, k1=%r19 survive.
-: MMA-THREAD-SETUP-SPLIT ( -- )
-   s" ld.param.u64 %rd4,[pWS];" PTX-L  s" cvta.to.global.u64 %rd4,%rd4;" PTX-L   \ workspace base (partials)
-   s" ld.param.u32 %r39,[pS];" PTX-L                                             \ S = split count
-   s" mov.u32 %r4,%tid.x;" PTX-L  s" mov.u32 %r5,%tid.y;" PTX-L
-   s" mov.u32 %r6,%ctaid.x;" PTX-L  s" mov.u32 %r7,%ctaid.y;" PTX-L
-   s" mad.lo.u32 %r8,%r5,16,%r4;" PTX-L                                          \ tid_lin
-   SB-RESET s" shr.u32 %r20,%r1," SB-APPEND MMA-BROWS MMA-LOG2 SB-U s" ;" SB-APPEND SB$ PTX-L   \ gm = M / BROWS
-   s" div.u32 %r12,%r7,%r20;" PTX-L                                              \ s = ctaid.y / gm
-   s" rem.u32 %r21,%r7,%r20;" PTX-L                                              \ tile_m = ctaid.y % gm
-   9 21 MMA-BROWS MMA-SCALE                                                      \ rowBase = tile_m * BROWS
-   10 6 MMA-BN @ MMA-SCALE                                                       \ colBase = ctaid.x * BN
-   s" mov.u32 %r11,SH;" PTX-L
-   s" div.u32 %r13,%r3,%r39;" PTX-L                                              \ Kslice = K / S
-   s" mul.lo.u32 %r38,%r12,%r13;" PTX-L                                          \ k0 = s * Kslice
-   s" add.u32 %r19,%r38,%r13;" PTX-L                                             \ k1 = k0 + Kslice
-   s" mul.lo.u32 %r22,%r1,%r2;" PTX-L                                            \ mn = M*N
-   s" mul.lo.u32 %r22,%r12,%r22;" PTX-L                                          \ s*mn (element offset of this split's slice)
-   s" mul.wide.u32 %rd10,%r22,4;" PTX-L                                          \ *4 -> byte offset
-   s" add.u64 %rd3,%rd4,%rd10;" PTX-L ;                                          \ C base -> WS + s*(M*N)*4 (partials slice)
-
-\ split double-buffer / single-buffer K-loops: byte-for-byte the committed MMA-PIPE-KLOOP-WITH / -SINGLE
-\ with CPP-KT-INIT/CPP-KGUARD/CPP-PF-TEST swapped for the -SPLIT variants (k0 init, k1 bound). Stages>2 is
-\ fail-closed at MMA-CHECK-SPLIT (the MMA-PIPE-KLOOP-MULTI ring uses %r3 in several compares, not adapted).
-: MMA-PIPE-KLOOP-WITH-SPLIT ( [ -- ] -- )
-   CPP-KT-INIT-SPLIT  CPP-PARITY-INIT
-   11 14 MMA-CP-STAGE  CPP-COMMIT
-   CPP-KGUARD-SPLIT
-   MMA-BUFB CPP-CUR-WINDOW
-   MMA-BK @ CPP-KT-NEXT  CPP-PF-TEST-SPLIT
-   MMA-BUFB CPP-NEXT-WINDOW  18 17 MMA-CP-STAGE
-   CPP-COMMIT  1 CPP-WAIT
-   CPP-PF-ELSE
-   0 CPP-WAIT
-   CPP-PF-END
-   CPP-SYNC  execute  CPP-SYNC
-   MMA-BK @ CPP-KT-ADVANCE  CPP-FLIP
-   CPP-KTAIL ;
-: MMA-PIPE-KLOOP-SINGLE-SPLIT ( [ -- ] -- )
-   CPP-KT-INIT-SPLIT
-   CPP-SINGLE-WINDOW
-   CPP-KGUARD-SPLIT
-   11 14 MMA-STAGE-ISSUE  CPPSLOT:COMMIT  CPPSLOT:WAIT  CPPSLOT:READ
-   execute  CPP-SYNC
-   MMA-BK @ CPP-KT-ADVANCE
-   CPP-KTAIL ;
-: MMA-KLOOP-SPLIT ( [ -- ] -- )
-   MMA-STAGES @ 1 = if MMA-PIPE-KLOOP-SINGLE-SPLIT else MMA-PIPE-KLOOP-WITH-SPLIT then ;
-
-\ MMR - the deterministic two-pass REDUCE kernel. One thread per output element e = ctaid.x*ntid.x + tid.x;
-\ it sums the S f32 partials WS[s*M*N + e] in FIXED ascending s order (s=0..S-1) into C[e]. No atomics, so
-\ the reduction is bit-for-bit reproducible run-to-run; and because every partial and the running total stay
-\ < 2^24 under the integer fill, the f32 adds never round and C equals the un-split dot EXACTLY. Its own tiny
-\ register file, independent labels ($RLOOP/$REND/$RDONE). Emitted into the same module as MMM at S>1.
-: EMIT-REDUCE-MMR ( -- )
-   s" .visible .entry MMR(.param .u64 pC,.param .u64 pWS,.param .u32 pM,.param .u32 pN,.param .u32 pS)" PTX-L
-   s" {" PTX-L
-   s" .reg .pred %p<2>;" PTX-L
-   s" .reg .f32 %f<3>;" PTX-L
-   s" .reg .b32 %r<10>;" PTX-L
-   s" .reg .b64 %rd<8>;" PTX-L
-   s" ld.param.u64 %rd1,[pC];" PTX-L  s" ld.param.u64 %rd2,[pWS];" PTX-L
-   s" ld.param.u32 %r1,[pM];" PTX-L   s" ld.param.u32 %r2,[pN];" PTX-L   s" ld.param.u32 %r3,[pS];" PTX-L
-   s" cvta.to.global.u64 %rd1,%rd1;" PTX-L  s" cvta.to.global.u64 %rd2,%rd2;" PTX-L
-   s" mov.u32 %r4,%ctaid.x;" PTX-L  s" mov.u32 %r5,%ntid.x;" PTX-L  s" mov.u32 %r6,%tid.x;" PTX-L
-   s" mad.lo.u32 %r7,%r4,%r5,%r6;" PTX-L                            \ e = ctaid.x*ntid.x + tid.x
-   s" mul.lo.u32 %r8,%r1,%r2;" PTX-L                                \ mn = M*N
-   s" setp.ge.u32 %p1,%r7,%r8;" PTX-L  s" @%p1 bra $RDONE;" PTX-L   \ guard the ragged tail thread
-   s" mul.wide.u32 %rd3,%r7,4;" PTX-L                               \ e*4
-   s" add.u64 %rd4,%rd2,%rd3;" PTX-L                                \ &WS[0][e]
-   s" mul.wide.u32 %rd5,%r8,4;" PTX-L                               \ mn*4 = slice byte stride
-   s" mov.f32 %f1,0f00000000;" PTX-L
-   s" mov.u32 %r9,0;" PTX-L                                         \ s = 0
-   s" $RLOOP:" PTX-L
-   s" setp.ge.u32 %p1,%r9,%r3;" PTX-L  s" @%p1 bra $REND;" PTX-L
-   s" ld.global.f32 %f2,[%rd4];" PTX-L
-   s" add.f32 %f1,%f1,%f2;" PTX-L                                   \ fixed ascending order -> deterministic, exact under the < 2^24 bound
-   s" add.u64 %rd4,%rd4,%rd5;" PTX-L                                \ advance to the next split's slice
-   s" add.u32 %r9,%r9,1;" PTX-L
-   s" bra $RLOOP;" PTX-L
-   s" $REND:" PTX-L
-   s" add.u64 %rd6,%rd1,%rd3;" PTX-L  s" st.global.f32 [%rd6],%f1;" PTX-L
-   s" $RDONE:" PTX-L
-   s" ret;" PTX-L  s" }" PTX-L ;
-
-\ fail closed on an illegal split-K config (dot habu-split-k-for-8c3ee0fb). S<1 is meaningless (1 = off).
-\ At S>1 the split path is wired for stages 1/2 (MMA-PIPE-KLOOP-WITH/-SINGLE); the deep ring
-\ (MMA-PIPE-KLOOP-MULTI, stages>2) still bounds on %r3 and is not adapted; the grid fold (gridY = gm*S)
-\ conflicts with the grouped-raster remap (which also reinterprets ctaid.y); and the smem epilogue is
-\ untested with the redirected C base. Reject those at EMIT time so a bad combination throws instead of
-\ silently emitting a wrong kernel.
-: MMA-CHECK-SPLIT ( -- )
-   MMA-SPLITK @ 1 < if E-MMA-SPLITK throw then          \ S must be >= 1
-   MMA-SPLIT? 0= if exit then
-   MMA-STAGES @ 2 > if E-MMA-SPLITK throw then          \ deep ring pipeline not adapted for split
-   MMA-GROUP @ if E-MMA-SPLITK throw then               \ grid fold conflicts with grouped-raster
-   MMA-EPILOG @ if E-MMA-SPLITK throw then ;            \ smem epilogue untested with the redirected base
-
 \ fail closed on an illegal XOR-swizzle config (dot habu-xor-swizzle-mma). The swizzle permutes As 16-byte
 \ K-chunks by chunk ^= (row & (ACPR-1)) on BOTH the cp.async store and the ldmatrix-A load, so it is legal
 \ ONLY where every store site is swizzled and the mask math holds: (1) MMA-PAD must be 0 - the swizzle IS the
@@ -1495,17 +1356,15 @@ TRUSTED: MMA-STAGE-ISSUE ( n n -- cpp-pending<p> )   MMA-CP-STAGE 0 ;
 \ different address form; (3) tf32 only - a half (fp16/bf16) tile stores As through the F16 word (MMA-CP-CHUNK
 \ -F16), NOT swizzled, so the half load would read a mis-permuted As; (4) 32<=BK<=64 - BK<32 (ACPR<8) cannot
 \ separate all 8 ldmatrix rows, BK>64 (ACPR>16) breaks the "m-frag stride 16 leaves row&mask unchanged"
-\ invariant the loop-invariant swizzle term relies on; (5) no wide ablation (numerically-wrong feed); (6) no
-\ split-K - it reuses %r38, the register the swizzle term lives in. Reject at EMIT time so a bad knob throws
-\ instead of emitting a kernel whose swizzled load disagrees with an un-swizzled store.
+\ invariant the loop-invariant swizzle term relies on; (5) no wide ablation (numerically-wrong feed). Reject at
+\ EMIT time so a bad knob throws instead of emitting a kernel whose swizzled load disagrees with an un-swizzled store.
 : MMA-CHECK-XSWIZ ( -- )
    MMA-XSWIZ @ 0= if exit then
    MMA-PAD @ 0= 0= if E-MMA-XSWIZ throw then                    \ swizzle is pad-free: MMA-PAD must be 0
    MMA-LMODE @ 2 = 0= if E-MMA-XSWIZ throw then                 \ ldmatrix-A read only (scalar reads are not swizzled)
    MMA-HALF? if E-MMA-XSWIZ throw then                          \ tf32 only (half As store is the un-swizzled F16 word)
    MMA-BK @ 32 <  MMA-BK @ 64 >  or if E-MMA-XSWIZ throw then   \ 32<=BK<=64: ACPR in [8,16] for full 8-row separation + mask invariance
-   MMA-ABLATE @ if E-MMA-XSWIZ throw then                       \ ablation is the numerically-wrong tf32 feed
-   MMA-SPLIT? if E-MMA-XSWIZ throw then ;                       \ split-K reuses %r38 (the swizzle-term register)
+   MMA-ABLATE @ if E-MMA-XSWIZ throw then ;                     \ ablation is the numerically-wrong tf32 feed
 
 : MMA-BODY ( -- )
    MMA-CHECK-BN                                                     \ BN geometry gate first: NTILES-derived checks below assume a legal BN
@@ -1517,14 +1376,7 @@ TRUSTED: MMA-STAGE-ISSUE ( n n -- cpp-pending<p> )   MMA-CP-STAGE 0 ;
    MMA-CHECK-EPI
    MMA-CHECK-REGS                                                   \ per-lane accumulators under the 255-register ceiling
    MMA-CHECK-GROUP                                                  \ grouped-raster group height positive (0 = off)
-   MMA-CHECK-SPLIT                                                  \ split-K legality: S>=1; S>1 rejects stages>2 / grouped-raster / epilogue
-   MMA-CHECK-XSWIZ                                                  \ XOR-swizzle legality: pad=0 + ldmatrix-A + tf32 + 32<=BK<=64, no ablate/split
-   MMA-SPLIT? if                                                    \ SPLIT-K: K-slice loop + workspace partials (store words reused via the redirected %rd3)
-      MMA-THREAD-SETUP-SPLIT
-      MMA-WIDE? if MMA-ACC-ZERO-WIDE MMA-SETUP-WIDE else MM-ACC-ZERO-EMIT MMA-SETUP then
-      [: MMA-KTILE-DISPATCH ;] MMA-KLOOP-SPLIT
-      MMA-WIDE? if MMA-STORE-WIDE else MMA-STORE then  exit
-   then
+   MMA-CHECK-XSWIZ                                                  \ XOR-swizzle legality: pad=0 + ldmatrix-A + tf32 + 32<=BK<=64, no ablate
    MMA-WIDE? if                                                     \ WIDE path (MFRAGS>1 or BN>64); MMA-KTILE-DISPATCH picks wide + dtype
       MMA-THREAD-SETUP-WIDE  MMA-ACC-ZERO-WIDE  MMA-SETUP-WIDE
       MMA-STAGES @ 2 > if MMA-PIPE-KLOOP-MULTI else [: MMA-KTILE-DISPATCH ;] MMA-KLOOP then
@@ -1542,7 +1394,6 @@ TRUSTED: MMA-STAGE-ISSUE ( n n -- cpp-pending<p> )   MMA-CP-STAGE 0 ;
       s" .extern .shared .align 16 .b8 SH[];" PTX-L        \ module-scope dynamic .shared (sized at launch)
    then
    SB-RESET s" .visible .entry MMM(.param .u64 pA,.param .u64 pB,.param .u64 pC,.param .u32 pM,.param .u32 pN,.param .u32 pK" SB-APPEND
-   MMA-SPLIT? if s" ,.param .u32 pS,.param .u64 pWS" SB-APPEND then   \ split-K: pS (u32) at 36, pWS (u64) at the natural 8-aligned 40 (pWS at 36 would mis-align vs the host param block)
    s" )" SB-APPEND SB$ PTX-L
    s" {" PTX-L
    s" .reg .pred %p<4>;" PTX-L
@@ -1554,5 +1405,4 @@ TRUSTED: MMA-STAGE-ISSUE ( n n -- cpp-pending<p> )   MMA-CP-STAGE 0 ;
    then
    MM-PARAMS
    MMA-BODY
-   s" ret;" PTX-L  s" }" PTX-L
-   MMA-SPLIT? if PTX-NL EMIT-REDUCE-MMR then ;   \ split-K: emit the reduce kernel (MMR) into the same module
+   s" ret;" PTX-L  s" }" PTX-L ;
