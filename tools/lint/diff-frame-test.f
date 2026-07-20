@@ -30,6 +30,7 @@ create COPY ART-CAP allot
 create DIGEST DIGEST-U allot
 create PATH-BUF $200 allot
 create GROW-RAW $2000 allot
+create CTRL-BUF $10 allot
 
 variable ART-U
 variable PATH-U
@@ -92,6 +93,73 @@ variable GROW-U
    s" rename from " SB-APPEND old oldu SB-APPEND LF
    s" rename to " SB-APPEND new newu SB-APPEND LF
    SB$ ;
+
+: COPY-PURE-RAW ( ptr u8 n ptr u8 n -- ptr u8 n ) {: old:ptr oldu:n new:ptr newu:n :}
+   SB-RESET
+   s" diff --git a/" SB-APPEND old oldu SB-APPEND s"  b/" SB-APPEND new newu SB-APPEND LF
+   s" similarity index 100%" SB-APPEND LF
+   s" copy from " SB-APPEND old oldu SB-APPEND LF
+   s" copy to " SB-APPEND new newu SB-APPEND LF
+   SB$ ;
+
+\ A text-modify body for an arbitrary literal path, decoupled from PATH$ so a
+\ test can declare a different (mismatched) side path over a known raw body.
+: TEXT-RAW-FOR ( ptr u8 n -- ptr u8 n ) {: p:ptr pu:n :}
+   SB-RESET
+   s" diff --git a/" SB-APPEND p pu SB-APPEND s"  b/" SB-APPEND p pu SB-APPEND LF
+   s" index 1111111111..2222222222 100644" SB-APPEND LF
+   s" --- a/" SB-APPEND p pu SB-APPEND LF
+   s" +++ b/" SB-APPEND p pu SB-APPEND LF
+   s" @@ -1,1 +1,1 @@" SB-APPEND LF
+   s" -old" SB-APPEND LF
+   s" +new" SB-APPEND LF
+   SB$ ;
+
+: ADD-BODY-RAW ( -- ptr u8 n )
+   SB-RESET
+   s" diff --git a/" SB-APPEND PATH$ SB-APPEND s"  b/" SB-APPEND PATH$ SB-APPEND LF
+   s" new file mode 100644" SB-APPEND LF
+   s" index 0000000000..2222222222" SB-APPEND LF
+   s" --- /dev/null" SB-APPEND LF
+   s" +++ b/" SB-APPEND PATH$ SB-APPEND LF
+   s" @@ -0,0 +1,1 @@" SB-APPEND LF
+   s" +new" SB-APPEND LF
+   SB$ ;
+
+: DELETE-RAW ( -- ptr u8 n )
+   SB-RESET
+   s" diff --git a/" SB-APPEND PATH$ SB-APPEND s"  b/" SB-APPEND PATH$ SB-APPEND LF
+   s" deleted file mode 100644" SB-APPEND LF
+   s" index 2222222222..0000000000" SB-APPEND LF
+   s" --- a/" SB-APPEND PATH$ SB-APPEND LF
+   s" +++ /dev/null" SB-APPEND LF
+   s" @@ -1,1 +0,0 @@" SB-APPEND LF
+   s" -gone" SB-APPEND LF
+   SB$ ;
+
+\ Two complete single-file diffs concatenated: the shared parser emits two
+\ section events, which the framed section contract must reject.
+: TWO-FILE-RAW ( -- ptr u8 n )
+   SB-RESET
+   s" diff --git a/a.f b/a.f" SB-APPEND LF
+   s" index 1111111111..2222222222 100644" SB-APPEND LF
+   s" --- a/a.f" SB-APPEND LF s" +++ b/a.f" SB-APPEND LF
+   s" @@ -1,1 +1,1 @@" SB-APPEND LF
+   s" -old" SB-APPEND LF s" +new" SB-APPEND LF
+   s" diff --git a/b.f b/b.f" SB-APPEND LF
+   s" index 3333333333..4444444444 100644" SB-APPEND LF
+   s" --- a/b.f" SB-APPEND LF s" +++ b/b.f" SB-APPEND LF
+   s" @@ -1,1 +1,1 @@" SB-APPEND LF
+   s" -x" SB-APPEND LF s" +y" SB-APPEND LF
+   SB$ ;
+
+\ "a" c "f": a 3-byte path whose middle byte is arbitrary (used to smuggle a
+\ raw control byte the string builders cannot express).
+: CTRL-PATH ( n -- ptr u8 n ) {: c:n :}
+   $61 CTRL-BUF c!
+   c   CTRL-BUF 1+ c!
+   $66 CTRL-BUF 2 + c!
+   CTRL-BUF 3 ;
 
 \ ---- writing helpers ------------------------------------------------------
 
@@ -351,13 +419,151 @@ variable GROW-U
    3 EXPECT-NEXT
    0 EXPECT-NEXT ;
 
+\ ---- identity-binding round trips (one file per section) ------------------
+
+: BUILD-ADD-BODY ( -- )
+   s" added.f" PATH!
+   START
+   DIFF-FRAME:STATUS-ADDED false s" " true PATH$ ADD-BODY-RAW DIFF-FRAME-WRITE:SECTION
+   DIFF-FRAME-WRITE:FINISH SAVE ;
+
+: TEST-ADD-BODY ( -- )
+   BUILD-ADD-BODY
+   ART ART-U @ DIFF-FRAME:OPEN
+   DIFF-FRAME:SECTION-COUNT 1 T=
+   1 EXPECT-NEXT
+   DIFF-FRAME:SECTION-STATUS STATUS# 1 T=
+   DIFF-FRAME:SECTION-FORM FORM# 0 T=
+   DIFF-FRAME:SECTION-OLD? TFALSE
+   DIFF-FRAME:SECTION-NEW? TTRUE
+   DIFF-FRAME:SECTION-NEW$ PATH$ T$=
+   2 EXPECT-NEXT
+   3 EXPECT-NEXT
+   0 EXPECT-NEXT ;
+
+: BUILD-DELETE ( -- )
+   s" gone.f" PATH!
+   START
+   DIFF-FRAME:STATUS-REMOVED true PATH$ false s" " DELETE-RAW DIFF-FRAME-WRITE:SECTION
+   DIFF-FRAME-WRITE:FINISH SAVE ;
+
+: TEST-DELETE ( -- )
+   BUILD-DELETE
+   ART ART-U @ DIFF-FRAME:OPEN
+   DIFF-FRAME:SECTION-COUNT 1 T=
+   1 EXPECT-NEXT
+   DIFF-FRAME:SECTION-STATUS STATUS# 2 T=
+   DIFF-FRAME:SECTION-FORM FORM# 0 T=
+   DIFF-FRAME:SECTION-OLD? TTRUE
+   DIFF-FRAME:SECTION-NEW? TFALSE
+   DIFF-FRAME:SECTION-OLD$ PATH$ T$=
+   2 EXPECT-NEXT
+   5 EXPECT-NEXT
+   0 EXPECT-NEXT ;
+
+: BUILD-COPY ( -- )
+   START
+   DIFF-FRAME:STATUS-COPIED true s" src.f" true s" dst.f"
+   s" src.f" s" dst.f" COPY-PURE-RAW DIFF-FRAME-WRITE:SECTION
+   DIFF-FRAME-WRITE:FINISH SAVE ;
+
+: TEST-COPY ( -- )
+   BUILD-COPY
+   ART ART-U @ DIFF-FRAME:OPEN
+   DIFF-FRAME:SECTION-COUNT 1 T=
+   1 EXPECT-NEXT
+   DIFF-FRAME:SECTION-STATUS STATUS# 4 T=
+   DIFF-FRAME:SECTION-FORM FORM# 3 T=
+   DIFF-FRAME:SECTION-OLD? TTRUE
+   DIFF-FRAME:SECTION-NEW? TTRUE
+   DIFF-FRAME:SECTION-OLD$ s" src.f" T$=
+   DIFF-FRAME:SECTION-NEW$ s" dst.f" T$=
+   0 EXPECT-NEXT ;
+
+\ ---- the three proven holes (commit 04034c04) -----------------------------
+\
+\ Each was accepted before the section identity was bound to the parser event;
+\ each must now be rejected at the write boundary that calls VALIDATE-SECTION.
+
+\ Hole 1: a raw a.f diff framed under a foreign declared path.
+: HOLE-CROSS-PATH ( -- )
+   START
+   DIFF-FRAME:STATUS-MODIFIED true s" declared.f" true s" declared.f"
+   s" a.f" TEXT-RAW-FOR DIFF-FRAME-WRITE:SECTION ;
+
+\ Hole 2: two complete file diffs packed under one declared section.
+: HOLE-DUP-SECTION ( -- )
+   START
+   DIFF-FRAME:STATUS-MODIFIED true s" a.f" true s" a.f"
+   TWO-FILE-RAW DIFF-FRAME-WRITE:SECTION ;
+
+\ Hole 3: a modify body declared old-absent/new-present.
+: HOLE-SIDE-PRESENCE ( -- )
+   START
+   DIFF-FRAME:STATUS-MODIFIED false s" " true s" a.f"
+   s" a.f" TEXT-RAW-FOR DIFF-FRAME-WRITE:SECTION ;
+
+: TEST-HOLES ( -- )
+   [: HOLE-CROSS-PATH ;] E-DIFF-FRAME-IDENTITY TTHROWSQ
+   [: HOLE-DUP-SECTION ;] E-DIFF-FRAME-SECTIONS TTHROWSQ
+   [: HOLE-SIDE-PRESENCE ;] E-DIFF-FRAME-IDENTITY TTHROWSQ ;
+
+\ ---- further binding rejects ----------------------------------------------
+
+\ An empty raw body carries no parser section at all.
+: ZERO-SECTION ( -- )
+   START
+   DIFF-FRAME:STATUS-MODIFIED true s" a.f" true s" a.f"
+   s" " DIFF-FRAME-WRITE:SECTION ;
+
+\ A rename whose declared old/new paths are swapped against the raw body.
+: CROSS-SWAP-RENAME ( -- )
+   START
+   DIFF-FRAME:STATUS-RENAMED true s" new" true s" old"
+   s" old" s" new" PURE-RAW DIFF-FRAME-WRITE:SECTION ;
+
+\ Declaring "added" over a rename body: status disagrees with the parser form.
+: STATUS-MISLABEL ( -- )
+   START
+   DIFF-FRAME:STATUS-ADDED false s" " true s" new"
+   s" old" s" new" PURE-RAW DIFF-FRAME-WRITE:SECTION ;
+
+: TEST-BINDING-REJECTS ( -- )
+   [: ZERO-SECTION ;] E-DIFF-FRAME-SECTIONS TTHROWSQ
+   [: CROSS-SWAP-RENAME ;] E-DIFF-FRAME-IDENTITY TTHROWSQ
+   [: STATUS-MISLABEL ;] E-DIFF-FRAME-IDENTITY TTHROWSQ ;
+
+\ ---- M5 arbitrary path bytes (tab/LF/CR): fail closed --------------------
+\
+\ The unified-diff raw body is the sole authority for a section's path bytes,
+\ and the shared parser admits only printable non-DEL bytes in a path. Tab, LF,
+\ and CR cannot appear in any parser-extracted path, so a declared path holding
+\ one cannot bind to the body: the framing does not narrow the M5 byte contract
+\ silently, it rejects it with a named error (E-DIFF-FRAME-IDENTITY).
+: DECL-CTRL ( n -- ) {: c:n :}
+   c CTRL-PATH {: pa:ptr pu:n :}
+   START
+   s" a.f" TEXT-RAW-FOR {: raw:ptr rawu:n :}
+   DIFF-FRAME:STATUS-MODIFIED true pa pu true pa pu raw rawu DIFF-FRAME-WRITE:SECTION ;
+
+: TEST-ARBITRARY-PATH-BYTES ( -- )
+   [: $09 DECL-CTRL ;] E-DIFF-FRAME-IDENTITY TTHROWSQ
+   [: $0A DECL-CTRL ;] E-DIFF-FRAME-IDENTITY TTHROWSQ
+   [: $0D DECL-CTRL ;] E-DIFF-FRAME-IDENTITY TTHROWSQ ;
+
 public
 
 : RUN ( -- )
    T-RESET
    [: TEST-ROUNDTRIP ;] catch s" roundtrip" T-LABEL 0 T=
    [: TEST-FORMS ;] catch s" forms" T-LABEL 0 T=
+   [: TEST-ADD-BODY ;] catch s" add-body" T-LABEL 0 T=
+   [: TEST-DELETE ;] catch s" delete" T-LABEL 0 T=
+   [: TEST-COPY ;] catch s" copy" T-LABEL 0 T=
    [: TEST-PATH-MATRIX ;] catch s" path-matrix" T-LABEL 0 T=
+   TEST-HOLES
+   TEST-BINDING-REJECTS
+   TEST-ARBITRARY-PATH-BYTES
    TEST-NUL-PATH
    TEST-SHORT-ID
    [: TEST-TRUNCATION ;] catch s" truncation" T-LABEL 0 T=

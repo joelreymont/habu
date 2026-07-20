@@ -215,7 +215,11 @@ variable SC-NUM-L
    \ full variant engine (~12s), too costly for the fast tail-process fork tier
    \ (its 11.1s pool ratchet) - runs in the standalone stdlib gate like the
    \ snapshot suite above.
-   s" test/aot-wid-suite.f" q execute ;
+   s" test/aot-wid-suite.f" q execute
+   \ framed-diff codec fixtures: a self-contained in-memory round-trip/reject
+   \ suite (diff-frame-codec). It runs spawned in the standalone stdlib gate via
+   \ the SUITE-ALL selection, and is not mirrored into the resident fast tier.
+   s" tools/lint/diff-frame-test.f" q execute ;
 
 \ SPAWN-ONLY: ptx-toolchain cases members that must run only in a fresh spawned
 \ image, never in the resident full-runner image. Two reasons appear here: tools

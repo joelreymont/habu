@@ -95,6 +95,10 @@ TEST:SUITE text-foundation-fixtures
    tools/lint/text-foundation-test.f
 TEST:;SUITE
 
+TEST:SUITE diff-frame-codec
+   tools/lint/diff-frame-test.f
+TEST:;SUITE
+
 TEST:SUITE stdlib-manifest
    tools/stdlib-manifest-test.f
 TEST:;SUITE

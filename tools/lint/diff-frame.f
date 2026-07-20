@@ -73,10 +73,14 @@ private
 \ ---- section scan: replay a raw body through the shared parser -----------
 
 variable SC-OFF          \ cursor into the raw body
-variable SC-SAW          \ a section event was seen
+variable SC-SAW          \ count of parser section events (the body must carry one)
 variable SC-PFORM        \ parser form captured at the section event (see PF#)
 variable SC-BODY         \ parser body flag captured at the section event
 variable SC-MODE         \ an "old mode" meta line was accepted
+variable SC-OLD-P        \ parser section: old side present (nonzero)
+variable SC-NEW-P        \ parser section: new side present (nonzero)
+PTR-VARIABLE SC-OLD-A  variable SC-OLD-U   \ parser section: old path span
+PTR-VARIABLE SC-NEW-A  variable SC-NEW-U   \ parser section: new path span
 
 : PF# ( DIFF:form -- n )
    MATCH DIFF:form
@@ -107,10 +111,17 @@ variable SC-MODE         \ an "old mode" meta line was accepted
       delete  OF false ENDOF
    ;MATCH ;
 
+\ Snapshot the parser section's form, body flag, and the old/new side identity
+\ (presence plus the exact path bytes it extracted), and count the event. The
+\ spans borrow the raw body, which stays live for the whole validation.
 : CAPTURE-SECTION ( -- )
    DIFF:SECTION-FORM PF# SC-PFORM !
    DIFF:SECTION-BODY? if 1 else 0 then SC-BODY !
-   1 SC-SAW ! ;
+   DIFF:SECTION-OLD$ SC-OLD-U ! SC-OLD-A !
+   DIFF:SECTION-NEW$ SC-NEW-U ! SC-NEW-A !
+   SC-OLD-U @ 0<> if 1 else 0 then SC-OLD-P !
+   SC-NEW-U @ 0<> if 1 else 0 then SC-NEW-P !
+   SC-SAW @ 1+ SC-SAW ! ;
 
 : MODE-LINE? ( ptr u8 n -- bool )
    s" old mode " STARTS-WITH? ;
@@ -132,15 +143,17 @@ variable SC-MODE         \ an "old mode" meta line was accepted
 : SC-FINISH ( -- )
    DIFF:FINISH SECTION-EVENT? if CAPTURE-SECTION then ;
 
-\ Replay one section's raw body through the shared parser. Rejects a body
-\ that is not a single well-formed file diff, or that carries no section.
+\ Replay one section's raw body through the shared parser. The body must be a
+\ single well-formed file diff: zero or duplicate parser section events (e.g. a
+\ raw stream that packs several files under one declared section) are rejected.
 : SCAN-RAW ( ptr u8 n -- ) {: a:ptr u:n :}
    DIFF:RESET
    0 SC-SAW ! 0 SC-PFORM ! 0 SC-BODY ! 0 SC-MODE !
+   0 SC-OLD-P ! 0 SC-NEW-P ! 0 SC-OLD-U ! 0 SC-NEW-U !
    a u DIFF:SOURCE-VALIDATE
    a u SC-FEED-LINES
    SC-FINISH
-   SC-SAW @ 0= if E-DIFF-SYNTAX throw then ;
+   SC-SAW @ 1 <> if E-DIFF-FRAME-SECTIONS throw then ;
 
 \ ---- frame-form mapping table --------------------------------------------
 \
@@ -198,16 +211,45 @@ variable SC-MODE         \ an "old mode" meta line was accepted
       copied   OF pf PF-COPY = ENDOF
    ;MATCH ;
 
+\ ---- declared identity binding --------------------------------------------
+\
+\ Each declared side must match the single parser section's own side: presence
+\ agrees, and when present the path bytes are byte-for-byte identical. The
+\ parser is the only authority for a section's paths, so a declared path can
+\ hold exactly the bytes the parser can extract from the raw body.
+
+: SIDE-MATCH? ( bool ptr u8 n n ptr u8 n -- bool )
+   {: decl?:bool da:ptr du:n scan?:n pa:ptr pu:n :}
+   decl? if 1 else 0 then  scan? 0= if 0 else 1 then  <> if false exit then
+   decl? if da du pa pu STR= exit then
+   true ;
+
+\ The declared status also fixes which sides a section must carry: an added file
+\ has no old side, a removed file has no new side, everything else has both.
+
+: PRESENCE-OK? ( status bool bool -- bool ) {: change:status old?:bool new?:bool :}
+   change MATCH status
+      modified OF old? if new? else false then ENDOF
+      added    OF old? if false else new? then ENDOF
+      removed  OF new? if false else old? then ENDOF
+      renamed  OF old? if new? else false then ENDOF
+      copied   OF old? if new? else false then ENDOF
+   ;MATCH ;
+
 public
 
-\ VALIDATE-SECTION replays the raw body through the shared parser, cross-checks
-\ the declared status, and returns the derived (form, body, mode).
+\ VALIDATE-SECTION replays the raw body through the shared parser, binds the
+\ declared status, side presence, and side path bytes to that one parser
+\ section, and returns the derived (form, body, mode).
 : VALIDATE-SECTION ( status bool ptr u8 n bool ptr u8 n ptr u8 n -- form bool bool )
    {: change:status old?:bool oa:ptr ou:n new?:bool na:ptr nu:n raw:ptr rawu:n :}
    old? oa ou DIFF-PATH:VALIDATE-SIDE
    new? na nu DIFF-PATH:VALIDATE-SIDE
    raw rawu SCAN-RAW
-   change SC-PFORM @ STATUS-OK? 0= if E-DIFF-SYNTAX throw then
+   old? oa ou SC-OLD-P @ SC-OLD-A @ SC-OLD-U @ SIDE-MATCH? 0= if E-DIFF-FRAME-IDENTITY throw then
+   new? na nu SC-NEW-P @ SC-NEW-A @ SC-NEW-U @ SIDE-MATCH? 0= if E-DIFF-FRAME-IDENTITY throw then
+   change SC-PFORM @ STATUS-OK? 0= if E-DIFF-FRAME-STATUS throw then
+   change old? new? PRESENCE-OK? 0= if E-DIFF-FRAME-STATUS throw then
    SC-PFORM @ SC-BODY @ 0<> SC-MODE @ 0<> MAP-FORM
    SC-PFORM @ SC-BODY @ 0<> MAP-BODY
    SC-MODE @ 0<> ;
