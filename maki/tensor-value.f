@@ -5,7 +5,10 @@
 \ shape and dtype travel apart), so they cannot be re-typed onto descriptors. A
 \ `tensor` is instead ONE stack slot: an opaque nominal handle indexing a
 \ module-owned record table that carries data pointer, 2D shape (rows cols),
-\ dtype, layout, address space, and the alignment class recorded from the pointer.
+\ dtype, layout, address space, the alignment class recorded from the pointer, and
+\ the view descriptor (storage-ref + offset + row/col strides; docs/strided-views.md
+\ SV-1 - a contiguous tensor is the DEGENERATE view: storage-ref = self, offset 0,
+\ natural strides, so the layout enum survives as a DERIVED contiguity classification).
 \
 \ Representation hiding follows maki/report.f: a `tensor` is an opaque handle;
 \ every constructor/accessor takes or returns `tensor` plus typed field
@@ -44,8 +47,9 @@ require lib/ffi-abi.f
 -5045 constant E-TV-PLAN-FULL   \ plan op or input-pool capacity exceeded
 -5046 constant E-TV-PLAN-IDX    \ plan index out of range
 -5047 constant E-TV-PLAN-STATE  \ plan builder used out of order
-\ -5048 (E-TV-OPKIND) retired: PLAN-OP-BEGIN takes an `opkind` family, so an
-\ out-of-range op-kind is a checker reject; the code stays reserved to tensor-value.
+\ -5048 was E-TV-OPKIND (retired: PLAN-OP-BEGIN takes an `opkind` family, so an
+\ out-of-range op-kind is a checker reject); the reserved slot is re-owned below.
+-5048 constant E-TV-VIEW        \ view used where owning/contiguous storage required (docs/strided-views.md §2/§3); remedy = COPY
 -5049 constant E-TV-ALIGN       \ AL-* code out of the align domain (>ALIGN parse boundary)
 
 package MAKI
@@ -157,6 +161,61 @@ ENUM align DERIVE eq
    data-base ov @ + BYTE-VIEW  nb BYTE-VIEW  live BYTE-COPY   \ carry the live prefix forward
    nb data-base -  ov !  newcap cv ! ;              \ store the fresh region's offset
 
+\ ---- strided-view math (docs/strided-views.md) ----------------------------------
+\ A view reads storage at element (base + off + i*rstr + j*cstr); a contiguous
+\ tensor is the DEGENERATE view (off 0, natural strides). These helpers take the
+\ view's raw offset/strides plus its TYPED extents (so the raw extent extraction
+\ stays inside package MAKI, off the nominal surface) and never touch the tensor
+\ store, so they load here with the value vocabulary. T-GET/T-SET (maki/array.f)
+\ carry the T-AT typed-access law; ROWS-RAW/COLS-RAW/DIM-RAW + MUL-DIM/SUM-DIM are
+\ the private dim algebra above.
+
+\ natural strides of a contiguous layout: row-major (cols,1), col-major (1,rows).
+: VIEW-NAT ( CAD-KIND:rows CAD-KIND:cols layout -- n n ) {: r:CAD-KIND:rows c:CAD-KIND:cols lay:layout :}
+   lay LAYOUT-ROW? if  c COLS-RAW  1  else  1  r ROWS-RAW  then ;
+
+\ highest storage element a rows x cols view at (off,rstr,cstr) reads:
+\ off + (rows-1)*rstr + (cols-1)*cstr, via the overflow-checked dim algebra.
+: VIEW-MAXIDX ( n n n CAD-KIND:rows CAD-KIND:cols -- n ) {: off:n rstr:n cstr:n r:CAD-KIND:rows c:CAD-KIND:cols :}
+   r ROWS-RAW 1- rstr MUL-DIM   c COLS-RAW 1- cstr MUL-DIM   SUM-DIM   off SUM-DIM ;
+
+\ view construction bounds proof (SV-2/§3): offset/strides non-negative (v2 forbids
+\ negative strides), extents positive, footprint within the storage's element count.
+\ Fail-closed NAMED via E-MK-DIM - the dimension-overflow law ROWS-WINDOW already
+\ throws - so nothing is constructed on an out-of-range view.
+: VIEW-BOUNDS-CK ( n n n CAD-KIND:rows CAD-KIND:cols CAD-KIND:dim -- ) {: off:n rstr:n cstr:n r:CAD-KIND:rows c:CAD-KIND:cols elems:CAD-KIND:dim :}
+   off NONNEG drop  rstr NONNEG drop  cstr NONNEG drop
+   r ROWS-RAW 1 < c COLS-RAW 1 < or if E-MK-DIM throw then
+   off rstr cstr r c VIEW-MAXIDX  elems DIM-RAW >= if E-MK-DIM throw then ;
+
+\ derived contiguity classification (SV-1): is the (off,strides) the degenerate
+\ row-major / col-major access for these extents? "strided" is neither.
+: VIEW-CONTIG-ROW? ( n n n CAD-KIND:rows CAD-KIND:cols -- bool ) {: off:n rstr:n cstr:n r:CAD-KIND:rows c:CAD-KIND:cols :}
+   off 0=  rstr c COLS-RAW =  and  cstr 1 =  and ;
+: VIEW-CONTIG-COL? ( n n n CAD-KIND:rows CAD-KIND:cols -- bool ) {: off:n rstr:n cstr:n r:CAD-KIND:rows c:CAD-KIND:cols :}
+   off 0=  rstr 1 =  and  cstr r ROWS-RAW =  and ;
+
+\ materialize a rows x cols view into a contiguous row-major dst (the §3 COPY body).
+: VIEW-MAT ( ptr a n n n CAD-KIND:rows CAD-KIND:cols ptr a -- ) {: p:ptr off:n rstr:n cstr:n r:CAD-KIND:rows c:CAD-KIND:cols dst:ptr :}
+   r ROWS-RAW c COLS-RAW {: R:n C:n :}
+   R C * 0 ?do
+      i C / {: row:n :}   i C mod {: col:n :}
+      p  off row rstr * + col cstr * +  T-GET   dst i T-SET
+   loop ;
+
+\ scatter-ADD the view's cotangent g (rows x cols, row-major) into the storage
+\ adjoint adj at (off,rstr,cstr). ACCUMULATES (never zeroes): two views of one
+\ storage sum their scatter-adds (fan-out), the calculus of a read that fans out
+\ (docs/strided-views.md §4). Every index off+row*rstr+col*cstr < storage-elems was
+\ PROVEN at construction (VIEW-BOUNDS-CK), so no per-element bound is re-checked.
+: VIEW-SCATTER+ ( ptr a n n n CAD-KIND:rows CAD-KIND:cols ptr a -- ) {: g:ptr off:n rstr:n cstr:n r:CAD-KIND:rows c:CAD-KIND:cols adj:ptr :}
+   r ROWS-RAW c COLS-RAW {: R:n C:n :}
+   R C * 0 ?do
+      i C / {: row:n :}   i C mod {: col:n :}
+      off row rstr * + col cstr * + {: a:n :}
+      adj a T-GET   g i T-GET  f+   adj a T-SET
+   loop ;
+
 ;package
 
 \ ---------------------------------------------------------------------------
@@ -197,20 +256,29 @@ TRUSTED: TENSOR>RAW ( tensor -- n ) ;
 \ never enter or leave a descriptor cell either way. A fresh column reads as
 \ id 0 of its family (LAYOUT-BUFFER zero image); TV-U guards liveness.
 \ The typed columns are DEFER-LAYOUT-BUFFER (deferred-offset: bound at load to
-\ TV-SEED, grown per model); the two family-less siblings (data pointer, has-flag)
-\ hand-defer via base+cap vars and RAW-ENSURE. All eight grow in LOCKSTEP off TV-BOUND
-\ (the live column extent) so a single TV-ENSURE keeps them parallel. A fresh column
-\ reads as id 0 of its family (DEFER zero image); TV-U guards liveness.
+\ TV-SEED, grown per model); the family-less siblings (data pointer, has-flag, and
+\ the view offset + row/col strides - all raw n) hand-defer via base+cap vars and
+\ RAW-ENSURE. TV-STORE-AT (the storage-ref handle) is a typed DEFER column. All grow
+\ in LOCKSTEP off TV-BOUND (the live column extent) so a single TV-ENSURE keeps them
+\ parallel. A fresh column reads as id 0 of its family (DEFER zero image); TV-U
+\ guards liveness. The view columns realize docs/strided-views.md SV-1.
 DEFER-LAYOUT-BUFFER TV-ROWS-AT  CAD-KIND:rows           \ rows column ( n -- ptr CAD-KIND:rows )
 DEFER-LAYOUT-BUFFER TV-COLS-AT  CAD-KIND:cols           \ cols column ( n -- ptr CAD-KIND:cols )
 DEFER-LAYOUT-BUFFER TV-SPACE-AT CAD-KIND:address-space  \ address-space column ( n -- ptr CAD-KIND:address-space )
 DEFER-LAYOUT-BUFFER TV-DT-AT  dtype   \ dtype column ( n -- ptr dtype )
 DEFER-LAYOUT-BUFFER TV-LAY-AT layout  \ layout column ( n -- ptr layout )
 DEFER-LAYOUT-BUFFER TV-AL-AT  align   \ align column ( n -- ptr align )
+DEFER-LAYOUT-BUFFER TV-STORE-AT tensor \ storage-ref column ( n -- ptr tensor ): self = degenerate, other = view
 create TV-DATA TV-SEED cells allot   variable TV-DATA-P  TV-DATA data-base - TV-DATA-P !   variable TV-DATA-CAP  TV-SEED cells TV-DATA-CAP !  \ data ptr sibling (offset)
 create TV-HAS  TV-SEED cells allot   variable TV-HAS-P   TV-HAS  data-base - TV-HAS-P  !   variable TV-HAS-CAP   TV-SEED cells TV-HAS-CAP  !  \ has-flag sibling (offset)
+create TV-OFF  TV-SEED cells allot   variable TV-OFF-P   TV-OFF  data-base - TV-OFF-P  !   variable TV-OFF-CAP   TV-SEED cells TV-OFF-CAP  !  \ view offset (elements) sibling
+create TV-RSTR TV-SEED cells allot   variable TV-RSTR-P  TV-RSTR data-base - TV-RSTR-P !   variable TV-RSTR-CAP  TV-SEED cells TV-RSTR-CAP !  \ view row stride (elements) sibling
+create TV-CSTR TV-SEED cells allot   variable TV-CSTR-P  TV-CSTR data-base - TV-CSTR-P !   variable TV-CSTR-CAP  TV-SEED cells TV-CSTR-CAP !  \ view col stride (elements) sibling
 : TV-DATA-BASE ( -- ptr a )  data-base TV-DATA-P @ + ;   \ reconstruct the live base
 : TV-HAS-BASE  ( -- ptr a )  data-base TV-HAS-P  @ + ;
+: TV-OFF-BASE  ( -- ptr a )  data-base TV-OFF-P  @ + ;
+: TV-RSTR-BASE ( -- ptr a )  data-base TV-RSTR-P @ + ;
+: TV-CSTR-BASE ( -- ptr a )  data-base TV-CSTR-P @ + ;
 variable TV-U                          \ free counter / live count
 variable TV-GEN                        \ store generation encoded into every handle
 variable TV-BOUND                      \ live column extent (grow-to-largest high-water)
@@ -218,6 +286,7 @@ variable TV-BOUND                      \ live column extent (grow-to-largest hig
 \ bind the typed columns + prime the bound to TV-SEED (grow-to-largest from here)
 TV-SEED TV-ROWS-AT-BIND  TV-SEED TV-COLS-AT-BIND  TV-SEED TV-SPACE-AT-BIND
 TV-SEED TV-DT-AT-BIND    TV-SEED TV-LAY-AT-BIND   TV-SEED TV-AL-AT-BIND
+TV-SEED TV-STORE-AT-BIND
 TV-SEED TV-BOUND !
 
 \ grow every TV column to hold slot index n (doubling; copy-on-grow preserves live cells)
@@ -226,9 +295,12 @@ TV-SEED TV-BOUND !
    TV-BOUND @ {: old:n :}
    old 2 * n 1+ max {: nb:n :}
    nb TV-ROWS-AT-GROW  nb TV-COLS-AT-GROW  nb TV-SPACE-AT-GROW
-   nb TV-DT-AT-GROW    nb TV-LAY-AT-GROW   nb TV-AL-AT-GROW
+   nb TV-DT-AT-GROW    nb TV-LAY-AT-GROW   nb TV-AL-AT-GROW   nb TV-STORE-AT-GROW
    nb cells old cells TV-DATA-P TV-DATA-CAP MAKI:RAW-ENSURE
    nb cells old cells TV-HAS-P  TV-HAS-CAP  MAKI:RAW-ENSURE
+   nb cells old cells TV-OFF-P  TV-OFF-CAP  MAKI:RAW-ENSURE
+   nb cells old cells TV-RSTR-P TV-RSTR-CAP MAKI:RAW-ENSURE
+   nb cells old cells TV-CSTR-P TV-CSTR-CAP MAKI:RAW-ENSURE
    nb TV-BOUND ! ;
 
 $FFFFFFFFFF constant TV-GEN-MAX   \ lowered so TV-GEN-MAX * TV-CAP fits a signed cell
@@ -255,6 +327,17 @@ $FFFFFFFFFF constant TV-GEN-MAX   \ lowered so TV-GEN-MAX * TV-CAP fits a signed
    rows  idx TV-ROWS-AT !
    cols  idx TV-COLS-AT !
    has   TV-HAS-BASE  idx cells + ! ;
+
+\ ---- view fields (docs/strided-views.md SV-1): storage-ref + offset + strides ---
+\ Every tensor carries a view descriptor; a contiguous tensor is the DEGENERATE
+\ view (storage-ref = its own handle, offset 0, natural strides). off/rstr/cstr are
+\ raw element counts (family-less siblings); storage-ref is a typed handle.
+: TV-VFIELDS! ( tensor n n n n -- )   \ storage off rstr cstr idx
+   {: store:tensor off:n rstr:n cstr:n idx:n :}
+   store  idx TV-STORE-AT !
+   off    TV-OFF-BASE  idx cells + !
+   rstr   TV-RSTR-BASE idx cells + !
+   cstr   TV-CSTR-BASE idx cells + ! ;
 
 \ ---- slot index -> generation-carrying handle ------------------------------
 : TV-HANDLE ( n -- tensor )
@@ -294,7 +377,10 @@ public
    {: base:ptr rows:CAD-KIND:rows cols:CAD-KIND:cols :}
    base TV-ALIGN-CLASS idx TV-AL-AT !
    base rows cols 1 idx TV-FIELDS!
-   idx TV-HANDLE ;
+   idx TV-HANDLE {: self:tensor :}                 \ degenerate view: storage-ref = self,
+   rows cols  idx TV-LAY-AT @  MAKI:VIEW-NAT {: rstr:n cstr:n :}   \ offset 0, natural strides
+   self 0 rstr cstr idx TV-VFIELDS!
+   self ;
 
 \ TV-NEW defaults dtype f32 + row-major (the eager host-array convention).
 : TV-NEW ( ptr a CAD-KIND:rows CAD-KIND:cols -- tensor )
@@ -311,7 +397,10 @@ public
    MAKI-ALIGN:UNKNOWN idx TV-AL-AT !
    {: rows:CAD-KIND:rows cols:CAD-KIND:cols :}
    data-base rows cols 0 idx TV-FIELDS!
-   idx TV-HANDLE ;
+   idx TV-HANDLE {: self:tensor :}                 \ degenerate view (bufferless, never read
+   rows cols  idx TV-LAY-AT @  MAKI:VIEW-NAT {: rstr:n cstr:n :}   \ as storage; keeps the class contiguous)
+   self 0 rstr cstr idx TV-VFIELDS!
+   self ;
 
 \ ---- accessors (one per recorded fact; each returns its family) -------------
 : TV-ROWS@   ( tensor -- CAD-KIND:rows )  TV-IX TV-ROWS-AT @ ;
@@ -321,18 +410,136 @@ public
 : TV-LAYOUT@ ( tensor -- layout )  TV-IX TV-LAY-AT @ ;
 : TV-ALIGN@  ( tensor -- align )   TV-IX TV-AL-AT  @ ;
 
+\ ---- view descriptor reads (docs/strided-views.md SV-1): raw offset/strides + storage-ref
+: TV-OFF@   ( tensor -- n ) {: t:tensor :}  TV-OFF-BASE  t TV-IX cells + @ ;
+: TV-RSTR@  ( tensor -- n ) {: t:tensor :}  TV-RSTR-BASE t TV-IX cells + @ ;
+: TV-CSTR@  ( tensor -- n ) {: t:tensor :}  TV-CSTR-BASE t TV-IX cells + @ ;
+: TV-STORE@ ( tensor -- tensor ) {: t:tensor :}  t TV-IX TV-STORE-AT @ dup TV-IX drop ;   \ stored handle re-validates
+\ storage-ref = SELF for the degenerate view; a view names OTHER storage. This is
+\ the read-only predicate (SV-3): a view is a READ descriptor, no write-through.
+: TV-VIEW? ( tensor -- bool ) {: t:tensor :}  t TV-STORE@ TENSOR>RAW  t TENSOR>RAW  <> ;
+
 : TV-ELEMS ( tensor -- CAD-KIND:dim )
    {: t:tensor :}
    t TV-ROWS@ t TV-COLS@ MAKI:SHAPE-ELEMS ;
 : TV-HAS-DATA? ( tensor -- bool )  TV-HAS-BASE TV-N@ 0= 0= ;
 
+\ TV-DATA@ hands out the FLAT contiguous buffer, so it fails closed on a view (a
+\ view has no flat buffer of its own extents; §3 - remedy = the COPY op / TV-MATERIALIZE).
+\ The degenerate (non-view) path is unchanged - bit-identical to before SV-1.
 : TV-DATA@ ( tensor -- ptr a ) {: t:tensor :}
    t TV-HAS-DATA? 0= if E-TV-NODATA throw then
+   t TV-VIEW? if E-TV-VIEW throw then
    TV-DATA-BASE t TV-IX cells + @ ;
 
 \ ---- handle identity (no raw-n public conversion exists) -------------------
 : TV-EQUAL? ( tensor tensor -- bool )
    TENSOR>RAW swap TENSOR>RAW swap = ;
+
+private
+\ raw storage data pointer, UNGUARDED (= the storage base for a view). Internal to
+\ the strided read/write/scatter seam; TV-DATA@ is the guarded public flat accessor.
+: TV-STORE-PTR@ ( tensor -- ptr a ) {: t:tensor :}  TV-DATA-BASE t TV-IX cells + @ ;
+
+\ install a view slot: data = storage ptr, extents/dtype/layout/space recorded, and
+\ the view descriptor (storage-ref, offset, strides) set. The high-level
+\ constructors prove the bounds BEFORE calling this, so it does not re-check.
+: TV-NEW-VIEW ( ptr a tensor CAD-KIND:rows CAD-KIND:cols dtype layout CAD-KIND:address-space n n n -- tensor )
+   {: base:ptr store:tensor rows:CAD-KIND:rows cols:CAD-KIND:cols dt:dtype lay:layout sp:CAD-KIND:address-space off:n rstr:n cstr:n :}
+   TV-SLOT+ {: idx:n :}
+   sp  idx TV-SPACE-AT !
+   lay idx TV-LAY-AT !
+   dt  idx TV-DT-AT !
+   base TV-ALIGN-CLASS idx TV-AL-AT !
+   base rows cols 1 idx TV-FIELDS!
+   store off rstr cstr idx TV-VFIELDS!
+   idx TV-HANDLE ;
+
+public
+
+\ ---- derived contiguity classification (SV-1: the layout enum's role) -------
+: TV-CONTIG-ROW? ( tensor -- bool ) {: t:tensor :}
+   t TV-OFF@ t TV-RSTR@ t TV-CSTR@ t TV-ROWS@ t TV-COLS@ MAKI:VIEW-CONTIG-ROW? ;
+: TV-CONTIG-COL? ( tensor -- bool ) {: t:tensor :}
+   t TV-OFF@ t TV-RSTR@ t TV-CSTR@ t TV-ROWS@ t TV-COLS@ MAKI:VIEW-CONTIG-COL? ;
+: TV-STRIDED? ( tensor -- bool ) {: t:tensor :}
+   t TV-CONTIG-ROW? t TV-CONTIG-COL? or 0= ;
+
+\ ---- element seam: strided read (SV-4/§5) + guarded write (SV-3 immutability) ---
+: TV-AT@ ( tensor n n -- r ) {: t:tensor i:n j:n :}
+   t TV-STORE-PTR@  t TV-OFF@  i t TV-RSTR@ *  +  j t TV-CSTR@ *  +  T-GET ;
+
+\ TV-AT! writes storage the caller OWNS (the degenerate view) and FAILS CLOSED
+\ (E-TV-VIEW) on any view: there is NO write-through-view op and none may be added
+\ (docs/strided-views.md §2). A future write-view proposal reopens §2's review bar -
+\ it cannot slip in silently, because this write seam rejects it red-first.
+: TV-AT! ( r tensor n n -- ) {: v:r t:tensor i:n j:n :}
+   t TV-VIEW? if E-TV-VIEW throw then
+   t TV-HAS-DATA? 0= if E-TV-NODATA throw then
+   v  t TV-STORE-PTR@  t TV-OFF@  i t TV-RSTR@ *  +  j t TV-CSTR@ *  +  T-SET ;
+
+\ ---- view constructors (SV-2): each bounds-proved at construction, fail-closed ---
+\ WINDOW: a contiguous row slice [r0,r1) - the EX-BIND generalization. Inherits the
+\ base strides; the offset advances by r0 base-row-steps. ROWS-WINDOW proves
+\ 0<=r0<=r1<=rows (E-MK-DIM); VIEW-BOUNDS-CK proves the footprint fits the storage.
+: TV-WINDOW ( tensor n n -- tensor ) {: base:tensor r0:n r1:n :}
+   base TV-HAS-DATA? 0= if E-TV-NODATA throw then
+   base TV-STORE@ {: store:tensor :}
+   base TV-RSTR@ {: brstr:n :}  base TV-CSTR@ {: bcstr:n :}
+   base TV-OFF@  r0 brstr *  +  {: soff:n :}
+   r0 r1 base TV-ROWS@ MAKI:ROWS-WINDOW {: vrows:CAD-KIND:rows :}
+   base TV-COLS@ {: vcols:CAD-KIND:cols :}
+   soff brstr bcstr vrows vcols  store TV-ELEMS  MAKI:VIEW-BOUNDS-CK
+   store TV-STORE-PTR@ store vrows vcols base TV-DTYPE@ base TV-LAYOUT@ base TV-SPACE@ soff brstr bcstr TV-NEW-VIEW ;
+
+\ TRANSPOSE-VIEW: swap extents AND strides (no copy); the contiguity class flips.
+: TV-TRANSPOSE-VIEW ( tensor -- tensor ) {: base:tensor :}
+   base TV-HAS-DATA? 0= if E-TV-NODATA throw then
+   base TV-STORE@ {: store:tensor :}
+   base TV-RSTR@ {: brstr:n :}  base TV-CSTR@ {: bcstr:n :}
+   base TV-ROWS@ base TV-COLS@ MAKI:TRANSPOSE-SHAPE {: vrows:CAD-KIND:rows vcols:CAD-KIND:cols :}
+   base TV-OFF@ {: soff:n :}
+   base TV-LAYOUT@ MAKI:LAYOUT-ROW? if MAKI-LAYOUT:COL else MAKI-LAYOUT:ROW then {: vlay:layout :}
+   soff bcstr brstr vrows vcols  store TV-ELEMS  MAKI:VIEW-BOUNDS-CK
+   store TV-STORE-PTR@ store vrows vcols base TV-DTYPE@ vlay base TV-SPACE@ soff bcstr brstr TV-NEW-VIEW ;
+
+\ HEAD-SPLIT (SV-6 form): head h of a (rows x C) buffer with C = H*hd. Over a
+\ CONTIGUOUS base this is the doc's "offset h*hd, row stride H*hd (=C), col stride 1";
+\ written in the base's own strides so it composes over any base (reducing to that
+\ formula for a contiguous row-major base).
+: TV-HEAD-SPLIT ( tensor n n n -- tensor ) {: base:tensor h:n H:n hd:n :}
+   base TV-HAS-DATA? 0= if E-TV-NODATA throw then
+   H 1 < hd 1 < or  h 0 < or  h H >= or if E-MK-DIM throw then
+   base TV-COLS@ H hd * MAKI:COLS-IS? 0= if E-MK-DIM throw then   \ C = H*hd
+   base TV-STORE@ {: store:tensor :}
+   base TV-RSTR@ {: brstr:n :}  base TV-CSTR@ {: bcstr:n :}
+   base TV-OFF@  h hd * bcstr *  +  {: soff:n :}
+   base TV-ROWS@ {: vrows:CAD-KIND:rows :}
+   1 hd MAKI:SHAPE nip {: vcols:CAD-KIND:cols :}
+   soff brstr bcstr vrows vcols  store TV-ELEMS  MAKI:VIEW-BOUNDS-CK
+   store TV-STORE-PTR@ store vrows vcols base TV-DTYPE@ base TV-LAYOUT@ base TV-SPACE@ soff brstr bcstr TV-NEW-VIEW ;
+
+\ general VIEW: explicit offset (relative to the base's storage origin) + extents +
+\ strides. WINDOW / TRANSPOSE-VIEW / HEAD-SPLIT are conveniences over this.
+: TV-VIEW ( tensor n n n n n -- tensor ) {: base:tensor off:n vr:n vc:n rstr:n cstr:n :}
+   base TV-HAS-DATA? 0= if E-TV-NODATA throw then
+   base TV-STORE@ {: store:tensor :}
+   base TV-OFF@ off + {: soff:n :}
+   vr vc MAKI:SHAPE {: vrows:CAD-KIND:rows vcols:CAD-KIND:cols :}
+   soff rstr cstr vrows vcols  store TV-ELEMS  MAKI:VIEW-BOUNDS-CK
+   store TV-STORE-PTR@ store vrows vcols base TV-DTYPE@ base TV-LAYOUT@ base TV-SPACE@ soff rstr cstr TV-NEW-VIEW ;
+
+\ ---- materialize (§3 COPY remedy) + scatter-add adjoint (SV-4) --------------
+\ TV-MATERIALIZE strided-reads the view into a caller-owned contiguous row-major dst.
+: TV-MATERIALIZE ( tensor ptr a -- ) {: t:tensor dst:ptr :}
+   t TV-STORE-PTR@ t TV-OFF@ t TV-RSTR@ t TV-CSTR@ t TV-ROWS@ t TV-COLS@ dst MAKI:VIEW-MAT ;
+
+\ TV-VIEW-ADJOINT+ scatter-ADDS the view's cotangent g (contiguous, the view's
+\ extents) into the storage adjoint adj at the view's (offset,strides). ACCUMULATES
+\ (fan-out: multiple views of one storage sum); the out-of-view contribution is
+\ structurally zero (only footprint indices are touched). docs/strided-views.md §4.
+: TV-VIEW-ADJOINT+ ( tensor ptr a ptr a -- ) {: t:tensor g:ptr adj:ptr :}
+   g t TV-OFF@ t TV-RSTR@ t TV-CSTR@ t TV-ROWS@ t TV-COLS@ adj MAKI:VIEW-SCATTER+ ;
 
 \ ---- store lifecycle -------------------------------------------------------
 : TV-RESET ( -- )  TV-NEXT-GEN 0 TV-U ! ;      \ clears store; stale handles reject

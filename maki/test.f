@@ -18,6 +18,8 @@ SUITE maki/tensor-test.f
 ;SUITE
 SUITE maki/tensor-value-test.f
 ;SUITE
+SUITE maki/view-test.f
+;SUITE
 SUITE maki/optim-test.f
 ;SUITE
 SUITE maki/optim-tensor-test.f
