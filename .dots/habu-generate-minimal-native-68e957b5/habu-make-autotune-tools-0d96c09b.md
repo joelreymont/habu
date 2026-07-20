@@ -1,11 +1,13 @@
 ---
 title: Make autotune tools import safe
-status: open
+status: active
 priority: 1
 issue-type: task
-created-at: "2026-07-19T22:18:59.754347+02:00"
+created-at: "\"2026-07-19T22:18:59.754347+02:00\""
 ---
 
 Current master bloat and module-boundary defect: tools/ptx/autotune-sweep.f:27-33 admits it copied the seven-buffer integer-fill/reference/compare proof because mma-gemm-check.f runs its device campaign at load and cannot be imported. The sweep repeats the same mistake at 347-357: merely loading the file invokes a nominally tiny smoke that computes a 512^3 f64 reference, assembles and loads PTX for two legal configs, performs element-exact CUDA work, runs up to 9x50 timed launches per config, and spawns repeated nvidia-smi probes. Library import is therefore a heavyweight device action, making reuse unsafe and forcing duplicated proof code. Extract one package-owned, import-safe MMA exactness library containing typed buffer ownership plus fill/pack/reference/compare/launch-independent validation; make mma-gemm-check and autotune sweep thin explicit command/manual entries that call it. Loading any library/core file must allocate no host/device memory, open no CUDA context, assemble nothing, spawn nothing, print nothing, and run no campaign. Keep explicit CLI/manual smoke words in separate one-concern entry files. Preserve all exactness methods, dtypes, fixtures, device results, and report output when invoked explicitly. Prove import-only zero side effects through injected counters and off-device loading; both commands still execute their complete campaigns; source/JIT/DATA duplication and load time fall materially; no compatibility auto-run remains. Coordinate host-arena work with habu-unify-mma-checker-dbdb122b, device unwind with habu-migrate-ptx-tool-f57679ef, suite discovery/FILEMAP, and the active stopwatch parent.
 
 The explicit sweep also repeats invariant work for every candidate: SW-CANDIDATE calls SW-EXACT-LAUNCH, which reruns SW-FILL and the O(n^3) f64 SW-REF although shape and input values are fixed across the sweep. The three-config smoke already computes the identical 512^3 reference twice; a 32-candidate sweep can compute it 32 times. The shared exactness library must prepare fill/reference once per validated shape, cache packed inputs once per dtype, and make each candidate only upload, launch, and compare. Prove identical mismatch verdicts and the exact expected reference-call reduction; measure end-to-end sweep time before and after.
+
+Claim: agent=atimport workspace=.jj-ws/fable-atimport machine=spark (owns tools/ptx/autotune-sweep.f mma-gemm-check.f + the new shared exactness library + FILEMAP; GPU for explicit-command verification runs only)
