@@ -33,6 +33,8 @@ package CAD-NUM public
 
 package ONNX-ORT-TEST
 
+using ONNX
+
 : ORF-TOL ( -- r )  0.00001 ;   \ see header: f32-vs-f64 rounding floor is 1.24e-7
 
 : ORF-CLOSE? ( r r -- bool )  f- fabs  ORF-TOL f< ;
@@ -43,7 +45,7 @@ T-RESET
 
 \ ---- byte identity: the DSL fixture IS the exported artifact -------------------
 ORF-MODEL
-ONNX:ENC$ ORF-REF$ STR= TTRUE
+ENC$ ORF-REF$ STR= TTRUE
 
 \ ---- import the REAL exported bytes; structure facts ---------------------------
 ORF-REF$ ONNX:IMPORT
@@ -68,5 +70,7 @@ MAKI:EX-RUN
 3 ORF-OUT@  ORF-Y 3 T-GET  ORF-CLOSE? TTRUE
 
 T-REPORT
+
+;using
 
 ;package

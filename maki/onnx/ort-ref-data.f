@@ -29,6 +29,8 @@ require maki/array.f
 
 package ONNX-ORT-TEST
 
+using ONNX
+
 \ ---- shapes (the fixture's committed dimensions) ------------------------------
 2 constant ORF-BATCH
 4 constant ORF-IN
@@ -83,102 +85,102 @@ variable ORF-REF-U
 
 \ ---- the same ModelProto through the encode.f DSL (proved byte-identical) ------
 : ORF-DIM+ ( n -- ) {: d:n :}                  \ one TensorShapeProto.Dimension
-   1 ONNX:ENC-SUB  d 1 ONNX:ENC-INT  ONNX:;ENC-SUB ;
+   1 ENC-SUB  d 1 ENC-INT  ;ENC-SUB ;
 
 : ORF-VI+ ( ptr u8 n n n n -- ) {: a:ptr u:n fld:n rows:n cols:n :}   \ 2D f32 ValueInfo
-   fld ONNX:ENC-SUB
-      a u 1 ONNX:ENC-STR
-      2 ONNX:ENC-SUB  1 ONNX:ENC-SUB
-         1 1 ONNX:ENC-INT
-         2 ONNX:ENC-SUB  rows ORF-DIM+  cols ORF-DIM+  ONNX:;ENC-SUB
-      ONNX:;ENC-SUB  ONNX:;ENC-SUB
-   ONNX:;ENC-SUB ;
+   fld ENC-SUB
+      a u 1 ENC-STR
+      2 ENC-SUB  1 ENC-SUB
+         1 1 ENC-INT
+         2 ENC-SUB  rows ORF-DIM+  cols ORF-DIM+  ;ENC-SUB
+      ;ENC-SUB  ;ENC-SUB
+   ;ENC-SUB ;
 
 : ORF-GEMM+ ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n -- )   \ Gemm x w b -> out
    {: xa:ptr xu:n wa:ptr wu:n ba:ptr bu:n oa:ptr ou:n :}
-   1 ONNX:ENC-SUB
-      xa xu 1 ONNX:ENC-STR  wa wu 1 ONNX:ENC-STR  ba bu 1 ONNX:ENC-STR
-      oa ou 2 ONNX:ENC-STR  s" Gemm" 4 ONNX:ENC-STR
-   ONNX:;ENC-SUB ;
+   1 ENC-SUB
+      xa xu 1 ENC-STR  wa wu 1 ENC-STR  ba bu 1 ENC-STR
+      oa ou 2 ENC-STR  s" Gemm" 4 ENC-STR
+   ;ENC-SUB ;
 
 : ORF-RELU+ ( ptr u8 n ptr u8 n -- ) {: ia:ptr iu:n oa:ptr ou:n :}   \ Relu in -> out
-   1 ONNX:ENC-SUB
-      ia iu 1 ONNX:ENC-STR  oa ou 2 ONNX:ENC-STR  s" Relu" 4 ONNX:ENC-STR
-   ONNX:;ENC-SUB ;
+   1 ENC-SUB
+      ia iu 1 ENC-STR  oa ou 2 ENC-STR  s" Relu" 4 ENC-STR
+   ;ENC-SUB ;
 
 \ open a 2D f32 initializer (dims r c, raw_data payload follows; )ORF-INIT closes)
 : ORF-INIT2( ( ptr u8 n n n -- ) {: a:ptr u:n r:n c:n :}
-   5 ONNX:ENC-SUB
-      r 1 ONNX:ENC-INT  c 1 ONNX:ENC-INT  1 2 ONNX:ENC-INT  a u 8 ONNX:ENC-STR
-      9 ONNX:ENC-SUB ;
+   5 ENC-SUB
+      r 1 ENC-INT  c 1 ENC-INT  1 2 ENC-INT  a u 8 ENC-STR
+      9 ENC-SUB ;
 
 : ORF-INIT1( ( ptr u8 n n -- ) {: a:ptr u:n d:n :}   \ rank-1 f32 initializer (dims [d])
-   5 ONNX:ENC-SUB
-      d 1 ONNX:ENC-INT  1 2 ONNX:ENC-INT  a u 8 ONNX:ENC-STR
-      9 ONNX:ENC-SUB ;
+   5 ENC-SUB
+      d 1 ENC-INT  1 2 ENC-INT  a u 8 ENC-STR
+      9 ENC-SUB ;
 
-: )ORF-INIT ( -- )  ONNX:;ENC-SUB  ONNX:;ENC-SUB ;
+: )ORF-INIT ( -- )  ;ENC-SUB  ;ENC-SUB ;
 
 \ opset_import { domain:"" version:13 } - onnx emits the EXPLICIT empty domain
 : ORF-OPSET+ ( -- )
-   8 ONNX:ENC-SUB
-      1 ONNX:WT-LEN ONNX:ENC-TAG  0 ONNX:ENC-VARINT
-      13 2 ONNX:ENC-INT
-   ONNX:;ENC-SUB ;
+   8 ENC-SUB
+      1 WT-LEN ENC-TAG  0 ENC-VARINT
+      13 2 ENC-INT
+   ;ENC-SUB ;
 
 : ORF-W1-DATA ( -- )                           \ w1 4x8 row-major raw_data
-   -0.25341796875 ONNX:ENC-F32   0.28857421875 ONNX:ENC-F32
-   -0.221923828125 ONNX:ENC-F32  -0.027099609375 ONNX:ENC-F32
-   -0.71484375 ONNX:ENC-F32      0.5537109375 ONNX:ENC-F32
-   0.018310546875 ONNX:ENC-F32   -0.123046875 ONNX:ENC-F32
-   -0.199951171875 ONNX:ENC-F32  -0.699462890625 ONNX:ENC-F32
-   -0.26513671875 ONNX:ENC-F32   -0.519287109375 ONNX:ENC-F32
-   -0.240966796875 ONNX:ENC-F32  0.66064453125 ONNX:ENC-F32
-   0.28125 ONNX:ENC-F32          0.6181640625 ONNX:ENC-F32
-   -0.465087890625 ONNX:ENC-F32  -0.479736328125 ONNX:ENC-F32
-   -0.689208984375 ONNX:ENC-F32  -0.009521484375 ONNX:ENC-F32
-   -0.19921875 ONNX:ENC-F32      -0.3076171875 ONNX:ENC-F32
-   -0.739013671875 ONNX:ENC-F32  -0.17578125 ONNX:ENC-F32
-   0.25927734375 ONNX:ENC-F32    -0.72802734375 ONNX:ENC-F32
-   -0.29150390625 ONNX:ENC-F32   0.684814453125 ONNX:ENC-F32
-   -0.441650390625 ONNX:ENC-F32  -0.36181640625 ONNX:ENC-F32
-   -0.277587890625 ONNX:ENC-F32  0.23291015625 ONNX:ENC-F32 ;
+   -0.25341796875 ENC-F32   0.28857421875 ENC-F32
+   -0.221923828125 ENC-F32  -0.027099609375 ENC-F32
+   -0.71484375 ENC-F32      0.5537109375 ENC-F32
+   0.018310546875 ENC-F32   -0.123046875 ENC-F32
+   -0.199951171875 ENC-F32  -0.699462890625 ENC-F32
+   -0.26513671875 ENC-F32   -0.519287109375 ENC-F32
+   -0.240966796875 ENC-F32  0.66064453125 ENC-F32
+   0.28125 ENC-F32          0.6181640625 ENC-F32
+   -0.465087890625 ENC-F32  -0.479736328125 ENC-F32
+   -0.689208984375 ENC-F32  -0.009521484375 ENC-F32
+   -0.19921875 ENC-F32      -0.3076171875 ENC-F32
+   -0.739013671875 ENC-F32  -0.17578125 ENC-F32
+   0.25927734375 ENC-F32    -0.72802734375 ENC-F32
+   -0.29150390625 ENC-F32   0.684814453125 ENC-F32
+   -0.441650390625 ENC-F32  -0.36181640625 ENC-F32
+   -0.277587890625 ENC-F32  0.23291015625 ENC-F32 ;
 
 : ORF-B1-DATA ( -- )                           \ b1 [8] raw_data
-   0.2021484375 ONNX:ENC-F32     -0.08447265625 ONNX:ENC-F32
-   -0.07275390625 ONNX:ENC-F32   -0.4208984375 ONNX:ENC-F32
-   0.3662109375 ONNX:ENC-F32     0.4375 ONNX:ENC-F32
-   0.20947265625 ONNX:ENC-F32    0.3564453125 ONNX:ENC-F32 ;
+   0.2021484375 ENC-F32     -0.08447265625 ENC-F32
+   -0.07275390625 ENC-F32   -0.4208984375 ENC-F32
+   0.3662109375 ENC-F32     0.4375 ENC-F32
+   0.20947265625 ENC-F32    0.3564453125 ENC-F32 ;
 
 : ORF-W2-DATA ( -- )                           \ w2 8x2 row-major raw_data
-   0.4921875 ONNX:ENC-F32        -0.030029296875 ONNX:ENC-F32
-   -0.402099609375 ONNX:ENC-F32  0.210205078125 ONNX:ENC-F32
-   0.52294921875 ONNX:ENC-F32    0.37939453125 ONNX:ENC-F32
-   0.053466796875 ONNX:ENC-F32   -0.229248046875 ONNX:ENC-F32
-   0.248291015625 ONNX:ENC-F32   0.46728515625 ONNX:ENC-F32
-   0.630615234375 ONNX:ENC-F32   0.183837890625 ONNX:ENC-F32
-   0.189697265625 ONNX:ENC-F32   0.249755859375 ONNX:ENC-F32
-   0.428466796875 ONNX:ENC-F32   -0.16259765625 ONNX:ENC-F32 ;
+   0.4921875 ENC-F32        -0.030029296875 ENC-F32
+   -0.402099609375 ENC-F32  0.210205078125 ENC-F32
+   0.52294921875 ENC-F32    0.37939453125 ENC-F32
+   0.053466796875 ENC-F32   -0.229248046875 ENC-F32
+   0.248291015625 ENC-F32   0.46728515625 ENC-F32
+   0.630615234375 ENC-F32   0.183837890625 ENC-F32
+   0.189697265625 ENC-F32   0.249755859375 ENC-F32
+   0.428466796875 ENC-F32   -0.16259765625 ENC-F32 ;
 
 : ORF-B2-DATA ( -- )                           \ b2 [2] raw_data
-   -0.13134765625 ONNX:ENC-F32   0.3017578125 ONNX:ENC-F32 ;
+   -0.13134765625 ENC-F32   0.3017578125 ENC-F32 ;
 
 \ the whole exported ModelProto, field-for-field in onnx's serialization order
 : ORF-MODEL ( -- )
-   ONNX:ENC-RESET
-   8 1 ONNX:ENC-INT                            \ ir_version 8
-   7 ONNX:ENC-SUB                              \ graph
+   ENC-RESET
+   8 1 ENC-INT                            \ ir_version 8
+   7 ENC-SUB                              \ graph
       s" x" s" w1" s" b1" s" h" ORF-GEMM+
       s" h" s" a" ORF-RELU+
       s" a" s" w2" s" b2" s" y" ORF-GEMM+
-      s" EXTMLP" 2 ONNX:ENC-STR
+      s" EXTMLP" 2 ENC-STR
       s" w1" 4 8 ORF-INIT2(  ORF-W1-DATA  )ORF-INIT
       s" b1" 8   ORF-INIT1(  ORF-B1-DATA  )ORF-INIT
       s" w2" 8 2 ORF-INIT2(  ORF-W2-DATA  )ORF-INIT
       s" b2" 2   ORF-INIT1(  ORF-B2-DATA  )ORF-INIT
       s" x" 11 ORF-BATCH ORF-IN  ORF-VI+
       s" y" 12 ORF-BATCH ORF-OUT ORF-VI+
-   ONNX:;ENC-SUB
+   ;ENC-SUB
    ORF-OPSET+ ;
 
 \ ---- committed input (the tensor onnxruntime consumed, exact in f32 and f64) ---
@@ -194,5 +196,7 @@ create ORF-Y ORF-YN cells allot
 
 1.1908855438232422  ORF-Y 0 T-SET   0.5643671751022339  ORF-Y 1 T-SET
 0.16488242149353027 ORF-Y 2 T-SET   0.13253964483737946 ORF-Y 3 T-SET
+
+;using
 
 ;package

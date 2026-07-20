@@ -39,6 +39,8 @@ require maki/array.f
 
 package ONNX-CMP-TEST
 
+using ONNX
+
 \ ---- shapes (the fixture's committed dimensions) ------------------------------
 2 constant CRF-BATCH
 4 constant CRF-IN
@@ -49,104 +51,104 @@ package ONNX-CMP-TEST
 
 \ ---- encode helpers (fixture builder; mirror ort-ref-data.f's private DSL) -----
 : CRF-DIM+ ( n -- ) {: d:n :}                  \ one TensorShapeProto.Dimension
-   1 ONNX:ENC-SUB  d 1 ONNX:ENC-INT  ONNX:;ENC-SUB ;
+   1 ENC-SUB  d 1 ENC-INT  ;ENC-SUB ;
 
 : CRF-VI+ ( ptr u8 n n n n -- ) {: a:ptr u:n fld:n rows:n cols:n :}   \ 2D f32 ValueInfo
-   fld ONNX:ENC-SUB
-      a u 1 ONNX:ENC-STR
-      2 ONNX:ENC-SUB  1 ONNX:ENC-SUB
-         1 1 ONNX:ENC-INT
-         2 ONNX:ENC-SUB  rows CRF-DIM+  cols CRF-DIM+  ONNX:;ENC-SUB
-      ONNX:;ENC-SUB  ONNX:;ENC-SUB
-   ONNX:;ENC-SUB ;
+   fld ENC-SUB
+      a u 1 ENC-STR
+      2 ENC-SUB  1 ENC-SUB
+         1 1 ENC-INT
+         2 ENC-SUB  rows CRF-DIM+  cols CRF-DIM+  ;ENC-SUB
+      ;ENC-SUB  ;ENC-SUB
+   ;ENC-SUB ;
 
 \ open a 2D f32 initializer (dims r c, raw_data payload follows; )CRF-INIT closes)
 : CRF-INIT2( ( ptr u8 n n n -- ) {: a:ptr u:n r:n c:n :}
-   5 ONNX:ENC-SUB
-      r 1 ONNX:ENC-INT  c 1 ONNX:ENC-INT  1 2 ONNX:ENC-INT  a u 8 ONNX:ENC-STR
-      9 ONNX:ENC-SUB ;
-: )CRF-INIT ( -- )  ONNX:;ENC-SUB  ONNX:;ENC-SUB ;
+   5 ENC-SUB
+      r 1 ENC-INT  c 1 ENC-INT  1 2 ENC-INT  a u 8 ENC-STR
+      9 ENC-SUB ;
+: )CRF-INIT ( -- )  ;ENC-SUB  ;ENC-SUB ;
 
 \ opset_import { domain:"" version:13 }
 : CRF-OPSET+ ( -- )
-   8 ONNX:ENC-SUB
-      1 ONNX:WT-LEN ONNX:ENC-TAG  0 ONNX:ENC-VARINT
-      13 2 ONNX:ENC-INT
-   ONNX:;ENC-SUB ;
+   8 ENC-SUB
+      1 WT-LEN ENC-TAG  0 ENC-VARINT
+      13 2 ENC-INT
+   ;ENC-SUB ;
 
 : CRF-GEMM-TB+ ( ptr u8 n ptr u8 n ptr u8 n -- )   \ Gemm x w -> out, transB=1 (2-input, composed)
    {: xa:ptr xu:n wa:ptr wu:n oa:ptr ou:n :}
-   1 ONNX:ENC-SUB
-      xa xu 1 ONNX:ENC-STR  wa wu 1 ONNX:ENC-STR  oa ou 2 ONNX:ENC-STR
-      s" Gemm" 4 ONNX:ENC-STR
-      5 ONNX:ENC-SUB  s" transB" 1 ONNX:ENC-STR  1 3 ONNX:ENC-INT  ONNX:;ENC-SUB
-   ONNX:;ENC-SUB ;
+   1 ENC-SUB
+      xa xu 1 ENC-STR  wa wu 1 ENC-STR  oa ou 2 ENC-STR
+      s" Gemm" 4 ENC-STR
+      5 ENC-SUB  s" transB" 1 ENC-STR  1 3 ENC-INT  ;ENC-SUB
+   ;ENC-SUB ;
 
 : CRF-GEMM+ ( ptr u8 n ptr u8 n ptr u8 n -- )   \ Gemm x w -> out (2-input, default affine)
    {: xa:ptr xu:n wa:ptr wu:n oa:ptr ou:n :}
-   1 ONNX:ENC-SUB
-      xa xu 1 ONNX:ENC-STR  wa wu 1 ONNX:ENC-STR  oa ou 2 ONNX:ENC-STR
-      s" Gemm" 4 ONNX:ENC-STR
-   ONNX:;ENC-SUB ;
+   1 ENC-SUB
+      xa xu 1 ENC-STR  wa wu 1 ENC-STR  oa ou 2 ENC-STR
+      s" Gemm" 4 ENC-STR
+   ;ENC-SUB ;
 
 : CRF-RELU+ ( ptr u8 n ptr u8 n -- ) {: ia:ptr iu:n oa:ptr ou:n :}   \ Relu in -> out
-   1 ONNX:ENC-SUB
-      ia iu 1 ONNX:ENC-STR  oa ou 2 ONNX:ENC-STR  s" Relu" 4 ONNX:ENC-STR
-   ONNX:;ENC-SUB ;
+   1 ENC-SUB
+      ia iu 1 ENC-STR  oa ou 2 ENC-STR  s" Relu" 4 ENC-STR
+   ;ENC-SUB ;
 
 : CRF-W1-DATA ( -- )                           \ w1t 8x4 row-major raw_data (transB weight)
-   0.5 ONNX:ENC-F32     0.0 ONNX:ENC-F32     0.25 ONNX:ENC-F32   -0.25 ONNX:ENC-F32
-   -0.5 ONNX:ENC-F32    0.25 ONNX:ENC-F32    0.0 ONNX:ENC-F32     0.5 ONNX:ENC-F32
-   0.25 ONNX:ENC-F32    0.25 ONNX:ENC-F32   -0.5 ONNX:ENC-F32     0.0 ONNX:ENC-F32
-   0.0 ONNX:ENC-F32    -0.5 ONNX:ENC-F32     0.25 ONNX:ENC-F32    0.25 ONNX:ENC-F32
-   0.75 ONNX:ENC-F32   -0.25 ONNX:ENC-F32   -0.25 ONNX:ENC-F32    0.5 ONNX:ENC-F32
-   -0.25 ONNX:ENC-F32   0.5 ONNX:ENC-F32     0.5 ONNX:ENC-F32    -0.5 ONNX:ENC-F32
-   0.5 ONNX:ENC-F32     0.5 ONNX:ENC-F32     0.0 ONNX:ENC-F32     0.25 ONNX:ENC-F32
-   -0.75 ONNX:ENC-F32   0.0 ONNX:ENC-F32     0.25 ONNX:ENC-F32   -0.25 ONNX:ENC-F32 ;
+   0.5 ENC-F32     0.0 ENC-F32     0.25 ENC-F32   -0.25 ENC-F32
+   -0.5 ENC-F32    0.25 ENC-F32    0.0 ENC-F32     0.5 ENC-F32
+   0.25 ENC-F32    0.25 ENC-F32   -0.5 ENC-F32     0.0 ENC-F32
+   0.0 ENC-F32    -0.5 ENC-F32     0.25 ENC-F32    0.25 ENC-F32
+   0.75 ENC-F32   -0.25 ENC-F32   -0.25 ENC-F32    0.5 ENC-F32
+   -0.25 ENC-F32   0.5 ENC-F32     0.5 ENC-F32    -0.5 ENC-F32
+   0.5 ENC-F32     0.5 ENC-F32     0.0 ENC-F32     0.25 ENC-F32
+   -0.75 ENC-F32   0.0 ENC-F32     0.25 ENC-F32   -0.25 ENC-F32 ;
 
 : CRF-W2-DATA ( -- )                           \ w2 8x2 row-major raw_data
-   0.5 ONNX:ENC-F32    -0.25 ONNX:ENC-F32
-   0.25 ONNX:ENC-F32    0.5 ONNX:ENC-F32
-   -0.5 ONNX:ENC-F32    0.25 ONNX:ENC-F32
-   0.0 ONNX:ENC-F32     0.5 ONNX:ENC-F32
-   0.25 ONNX:ENC-F32   -0.5 ONNX:ENC-F32
-   0.5 ONNX:ENC-F32     0.0 ONNX:ENC-F32
-   -0.25 ONNX:ENC-F32   0.25 ONNX:ENC-F32
-   0.25 ONNX:ENC-F32    0.5 ONNX:ENC-F32 ;
+   0.5 ENC-F32    -0.25 ENC-F32
+   0.25 ENC-F32    0.5 ENC-F32
+   -0.5 ENC-F32    0.25 ENC-F32
+   0.0 ENC-F32     0.5 ENC-F32
+   0.25 ENC-F32   -0.5 ENC-F32
+   0.5 ENC-F32     0.0 ENC-F32
+   -0.25 ENC-F32   0.25 ENC-F32
+   0.25 ENC-F32    0.5 ENC-F32 ;
 
 public
 
 \ build the composed ModelProto into the encode builder; CRF-MODEL$ returns the finished bytes
 : CRF-MODEL ( -- )
-   ONNX:ENC-RESET
-   8 1 ONNX:ENC-INT                            \ ir_version 8
-   7 ONNX:ENC-SUB                              \ graph
+   ENC-RESET
+   8 1 ENC-INT                            \ ir_version 8
+   7 ENC-SUB                              \ graph
       s" x" s" w1t" s" h" CRF-GEMM-TB+         \ layer 1: composed transB Gemm
       s" h" s" a" CRF-RELU+                    \ relu
       s" a" s" w2" s" y" CRF-GEMM+             \ layer 2: plain Gemm
-      s" CMLP" 2 ONNX:ENC-STR
+      s" CMLP" 2 ENC-STR
       s" w1t" CRF-HID CRF-IN  CRF-INIT2(  CRF-W1-DATA  )CRF-INIT
       s" w2"  CRF-HID CRF-OUT CRF-INIT2(  CRF-W2-DATA  )CRF-INIT
       s" x" 11 CRF-BATCH CRF-IN  CRF-VI+
       s" y" 12 CRF-BATCH CRF-OUT CRF-VI+
-   ONNX:;ENC-SUB
+   ;ENC-SUB
    CRF-OPSET+ ;
 
-: CRF-MODEL$ ( -- ptr u8 n )  CRF-MODEL  ONNX:ENC$ ;   \ the composed ModelProto bytes
+: CRF-MODEL$ ( -- ptr u8 n )  CRF-MODEL  ENC$ ;   \ the composed ModelProto bytes
 
 private
 : CRF-WA-DATA ( -- )                           \ w 4x2 row-major raw_data (alpha probe)
-   0.5 ONNX:ENC-F32    -0.25 ONNX:ENC-F32
-   0.25 ONNX:ENC-F32    0.5 ONNX:ENC-F32
-   -0.5 ONNX:ENC-F32    0.25 ONNX:ENC-F32
-   0.0 ONNX:ENC-F32     0.5 ONNX:ENC-F32 ;
+   0.5 ENC-F32    -0.25 ENC-F32
+   0.25 ENC-F32    0.5 ENC-F32
+   -0.5 ENC-F32    0.25 ENC-F32
+   0.0 ENC-F32     0.5 ENC-F32 ;
 : CRF-GEMM-ALPHA+ ( ptr u8 n ptr u8 n ptr u8 n -- )   \ Gemm x w -> out, alpha=2 (composed scale)
    {: xa:ptr xu:n wa:ptr wu:n oa:ptr ou:n :}
-   1 ONNX:ENC-SUB
-      xa xu 1 ONNX:ENC-STR  wa wu 1 ONNX:ENC-STR  oa ou 2 ONNX:ENC-STR
-      s" Gemm" 4 ONNX:ENC-STR
-      5 ONNX:ENC-SUB  s" alpha" 1 ONNX:ENC-STR  2.0 2 ONNX:ENC-F32A  ONNX:;ENC-SUB
-   ONNX:;ENC-SUB ;
+   1 ENC-SUB
+      xa xu 1 ENC-STR  wa wu 1 ENC-STR  oa ou 2 ENC-STR
+      s" Gemm" 4 ENC-STR
+      5 ENC-SUB  s" alpha" 1 ENC-STR  2.0 2 ENC-F32A  ;ENC-SUB
+   ;ENC-SUB ;
 public
 
 \ NEGATIVE fixture: a composed alpha<>1 Gemm (MATMUL + inserted OP-SCALE). OP-SCALE is NOT a v1
@@ -154,18 +156,18 @@ public
 \ region is NOT device-lowerable and the device matmul route rejects it FAIL-CLOSED (E-LMM-OP).
 \ The sibling test proves that fail-closed rejection; this is the documented alpha/bias residual.
 : CRF-ALPHA-MODEL ( -- )
-   ONNX:ENC-RESET
-   8 1 ONNX:ENC-INT
-   7 ONNX:ENC-SUB
+   ENC-RESET
+   8 1 ENC-INT
+   7 ENC-SUB
       s" x" s" wa" s" y" CRF-GEMM-ALPHA+
-      s" QAB" 2 ONNX:ENC-STR
+      s" QAB" 2 ENC-STR
       s" wa" CRF-IN CRF-OUT CRF-INIT2(  CRF-WA-DATA  )CRF-INIT
       s" x" 11 CRF-BATCH CRF-IN  CRF-VI+
       s" y" 12 CRF-BATCH CRF-OUT CRF-VI+
-   ONNX:;ENC-SUB
+   ;ENC-SUB
    CRF-OPSET+ ;
 
-: CRF-ALPHA-MODEL$ ( -- ptr u8 n )  CRF-ALPHA-MODEL  ONNX:ENC$ ;   \ composed alpha ModelProto bytes
+: CRF-ALPHA-MODEL$ ( -- ptr u8 n )  CRF-ALPHA-MODEL  ENC$ ;   \ composed alpha ModelProto bytes
 
 \ ---- committed runtime input (exact 2^-2-grid f32, so host f64 == device f32) ---
 create CRF-X CRF-XN cells allot
@@ -181,5 +183,7 @@ create CRF-Y CRF-YN cells allot
 
 -0.0625     CRF-Y 0 T-SET   -0.046875   CRF-Y 1 T-SET
 0.59375     CRF-Y 2 T-SET   -0.1875     CRF-Y 3 T-SET
+
+;using
 
 ;package

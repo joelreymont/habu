@@ -46,84 +46,86 @@ package CAD-NUM public
 
 package ONNX-DEPLOY-TEST
 
+using ONNX
+
 \ ---- fixture encoders (the import-test.f ModelProto DSL) -----------------------
 : DIM+ ( n -- ) {: d:n :}                      \ one TensorShapeProto.Dimension
-   1 ONNX:ENC-SUB  d 1 ONNX:ENC-INT  ONNX:;ENC-SUB ;
+   1 ENC-SUB  d 1 ENC-INT  ;ENC-SUB ;
 
 : VI+ ( ptr u8 n n n n -- ) {: a:ptr u:n fld:n rows:n cols:n :}   \ 2D f32 ValueInfo
-   fld ONNX:ENC-SUB
-      a u 1 ONNX:ENC-STR
-      2 ONNX:ENC-SUB  1 ONNX:ENC-SUB
-         1 1 ONNX:ENC-INT
-         2 ONNX:ENC-SUB  rows DIM+  cols DIM+  ONNX:;ENC-SUB
-      ONNX:;ENC-SUB  ONNX:;ENC-SUB
-   ONNX:;ENC-SUB ;
+   fld ENC-SUB
+      a u 1 ENC-STR
+      2 ENC-SUB  1 ENC-SUB
+         1 1 ENC-INT
+         2 ENC-SUB  rows DIM+  cols DIM+  ;ENC-SUB
+      ;ENC-SUB  ;ENC-SUB
+   ;ENC-SUB ;
 
-: MDL ( -- )  ONNX:ENC-RESET  8 1 ONNX:ENC-INT  7 ONNX:ENC-SUB ;  \ ir_version + open graph
+: MDL ( -- )  ENC-RESET  8 1 ENC-INT  7 ENC-SUB ;  \ ir_version + open graph
 : ;MDL ( -- )                                  \ close graph + a skipped opset_import
-   ONNX:;ENC-SUB
-   8 ONNX:ENC-SUB  13 2 ONNX:ENC-INT  ONNX:;ENC-SUB ;
+   ;ENC-SUB
+   8 ENC-SUB  13 2 ENC-INT  ;ENC-SUB ;
 
 : NODE1 ( ptr u8 n ptr u8 n ptr u8 n -- )      \ one-input node: op in out
    {: opa:ptr opu:n ia:ptr iu:n oa:ptr ou:n :}
-   1 ONNX:ENC-SUB
-      ia iu 1 ONNX:ENC-STR  oa ou 2 ONNX:ENC-STR  opa opu 4 ONNX:ENC-STR
-   ONNX:;ENC-SUB ;
+   1 ENC-SUB
+      ia iu 1 ENC-STR  oa ou 2 ENC-STR  opa opu 4 ENC-STR
+   ;ENC-SUB ;
 
 : NODE2 ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n -- )   \ two-input node: op in0 in1 out
    {: opa:ptr opu:n ia:ptr iu:n ja:ptr ju:n oa:ptr ou:n :}
-   1 ONNX:ENC-SUB
-      ia iu 1 ONNX:ENC-STR  ja ju 1 ONNX:ENC-STR
-      oa ou 2 ONNX:ENC-STR  opa opu 4 ONNX:ENC-STR
-   ONNX:;ENC-SUB ;
+   1 ENC-SUB
+      ia iu 1 ENC-STR  ja ju 1 ENC-STR
+      oa ou 2 ENC-STR  opa opu 4 ENC-STR
+   ;ENC-SUB ;
 
 : GEMM-NODE ( -- )                             \ Gemm x w b -> t
-   1 ONNX:ENC-SUB
-      s" x" 1 ONNX:ENC-STR  s" w" 1 ONNX:ENC-STR  s" b" 1 ONNX:ENC-STR
-      s" t" 2 ONNX:ENC-STR  s" Gemm" 4 ONNX:ENC-STR
-   ONNX:;ENC-SUB ;
+   1 ENC-SUB
+      s" x" 1 ENC-STR  s" w" 1 ENC-STR  s" b" 1 ENC-STR
+      s" t" 2 ENC-STR  s" Gemm" 4 ENC-STR
+   ;ENC-SUB ;
 
 : INIT-HDR ( ptr u8 n -- ) {: a:ptr u:n :}     \ dims [2,2] f32 + name (payload follows)
-   2 1 ONNX:ENC-INT  2 1 ONNX:ENC-INT  1 2 ONNX:ENC-INT  a u 8 ONNX:ENC-STR ;
+   2 1 ENC-INT  2 1 ENC-INT  1 2 ENC-INT  a u 8 ENC-STR ;
 
 : INIT-W ( -- )                                \ w 2x2 = [[5,6],[7,8]] via raw_data
-   5 ONNX:ENC-SUB
+   5 ENC-SUB
       s" w" INIT-HDR
-      9 ONNX:ENC-SUB
-         5.0 ONNX:ENC-F32  6.0 ONNX:ENC-F32  7.0 ONNX:ENC-F32  8.0 ONNX:ENC-F32
-      ONNX:;ENC-SUB
-   ONNX:;ENC-SUB ;
+      9 ENC-SUB
+         5.0 ENC-F32  6.0 ENC-F32  7.0 ENC-F32  8.0 ENC-F32
+      ;ENC-SUB
+   ;ENC-SUB ;
 
 : INIT-B ( -- )                                \ b [2] = [-30,20] rank-1 via raw_data
-   5 ONNX:ENC-SUB
-      2 1 ONNX:ENC-INT  1 2 ONNX:ENC-INT  s" b" 8 ONNX:ENC-STR
-      9 ONNX:ENC-SUB  -30.0 ONNX:ENC-F32  20.0 ONNX:ENC-F32  ONNX:;ENC-SUB
-   ONNX:;ENC-SUB ;
+   5 ENC-SUB
+      2 1 ENC-INT  1 2 ENC-INT  s" b" 8 ENC-STR
+      9 ENC-SUB  -30.0 ENC-F32  20.0 ENC-F32  ;ENC-SUB
+   ;ENC-SUB ;
 
 : INIT-C ( -- )                                \ c 2x2 = [[1,2],[3,4]] via packed float_data
-   5 ONNX:ENC-SUB
+   5 ENC-SUB
       s" c" INIT-HDR
-      4 ONNX:ENC-SUB
-         1.0 ONNX:ENC-F32  2.0 ONNX:ENC-F32  3.0 ONNX:ENC-F32  4.0 ONNX:ENC-F32
-      ONNX:;ENC-SUB
-   ONNX:;ENC-SUB ;
+      4 ENC-SUB
+         1.0 ENC-F32  2.0 ENC-F32  3.0 ENC-F32  4.0 ENC-F32
+      ;ENC-SUB
+   ;ENC-SUB ;
 
 : INIT-CC ( -- )                               \ cc 1x2 = [10,20] (concat second operand)
-   5 ONNX:ENC-SUB
-      1 1 ONNX:ENC-INT  2 1 ONNX:ENC-INT  1 2 ONNX:ENC-INT  s" cc" 8 ONNX:ENC-STR
-      9 ONNX:ENC-SUB  10.0 ONNX:ENC-F32  20.0 ONNX:ENC-F32  ONNX:;ENC-SUB
-   ONNX:;ENC-SUB ;
+   5 ENC-SUB
+      1 1 ENC-INT  2 1 ENC-INT  1 2 ENC-INT  s" cc" 8 ENC-STR
+      9 ENC-SUB  10.0 ENC-F32  20.0 ENC-F32  ;ENC-SUB
+   ;ENC-SUB ;
 
 : CONCAT-NODE ( -- )                           \ Concat x cc -> y, axis 0
-   1 ONNX:ENC-SUB
-      s" x" 1 ONNX:ENC-STR  s" cc" 1 ONNX:ENC-STR
-      s" y" 2 ONNX:ENC-STR  s" Concat" 4 ONNX:ENC-STR
-      5 ONNX:ENC-SUB  s" axis" 1 ONNX:ENC-STR  0 3 ONNX:ENC-INT  ONNX:;ENC-SUB
-   ONNX:;ENC-SUB ;
+   1 ENC-SUB
+      s" x" 1 ENC-STR  s" cc" 1 ENC-STR
+      s" y" 2 ENC-STR  s" Concat" 4 ENC-STR
+      5 ENC-SUB  s" axis" 1 ENC-STR  0 3 ENC-INT  ;ENC-SUB
+   ;ENC-SUB ;
 
 : MODEL-A ( -- )                               \ Gemm(x,w,b) -> Relu : one matmul region
    MDL
-   s" GR2" 2 ONNX:ENC-STR
+   s" GR2" 2 ENC-STR
    GEMM-NODE
    s" Relu" s" t" s" y" NODE1
    INIT-W  INIT-B
@@ -132,7 +134,7 @@ package ONNX-DEPLOY-TEST
 
 : MODEL-B ( -- )                               \ Add(x,c) : one elementwise region
    MDL
-   s" ADD1" 2 ONNX:ENC-STR
+   s" ADD1" 2 ENC-STR
    s" Add" s" x" s" c" s" y" NODE2
    INIT-C
    s" x" 11 2 2 VI+  s" c" 11 2 2 VI+  s" y" 12 2 2 VI+
@@ -140,23 +142,23 @@ package ONNX-DEPLOY-TEST
 
 : MODEL-C ( -- )                               \ Mul -> Softmax(axis=-1) : one row-reduce region
    MDL
-   s" MS" 2 ONNX:ENC-STR
+   s" MS" 2 ENC-STR
    s" Mul" s" x" s" x2" s" m" NODE2
-   1 ONNX:ENC-SUB
-      s" m" 1 ONNX:ENC-STR  s" y" 2 ONNX:ENC-STR  s" Softmax" 4 ONNX:ENC-STR
-      5 ONNX:ENC-SUB  s" axis" 1 ONNX:ENC-STR  -1 3 ONNX:ENC-INT  ONNX:;ENC-SUB
-   ONNX:;ENC-SUB
+   1 ENC-SUB
+      s" m" 1 ENC-STR  s" y" 2 ENC-STR  s" Softmax" 4 ENC-STR
+      5 ENC-SUB  s" axis" 1 ENC-STR  -1 3 ENC-INT  ;ENC-SUB
+   ;ENC-SUB
    s" x" 11 1 2 VI+  s" x2" 11 1 2 VI+  s" y" 12 1 2 VI+
    ;MDL ;
 
 : MODEL-CC ( -- )                              \ Concat(x 2x2, cc 1x2) axis 0 : one movement region
    MDL
-   s" CC" 2 ONNX:ENC-STR
+   s" CC" 2 ENC-STR
    CONCAT-NODE  INIT-CC
    s" x" 11 2 2 VI+  s" y" 12 3 2 VI+
    ;MDL ;
 
-: IMP! ( -- )  ONNX:ENC$ ONNX:IMPORT  MAKI:FP-BUILD ;   \ import the encoded model + plan regions
+: IMP! ( -- )  ENC$ ONNX:IMPORT  MAKI:FP-BUILD ;   \ import the encoded model + plan regions
 
 \ ---- captured-PTX assertions (ODT- prefix: shares the dictionary with siblings) --
 variable ODT-VA  variable ODT-VU
@@ -206,13 +208,19 @@ MAKI:MODEL-DEFINED? TFALSE
 \ Arm a captured model, then import: adoption must replace the provenance atomically,
 \ so LOWER reports the IMPORTED model (name + provenance row), never the stale capture.
 \ (MODEL: is a parsing definer, unreachable as a qualified name - reopen MAKI for it.)
+
+;using
+
 ;package
 package MAKI
 MODEL: ODT-STALE ( x:2x4 -- y ) GELU ;
 ;package
 package ONNX-DEPLOY-TEST
+
+using ONNX
+
 MAKI:MODEL-CAPTURED? TTRUE
-MODEL-A  ONNX:ENC$ ONNX:IMPORT
+MODEL-A  ENC$ ONNX:IMPORT
 MAKI:MODEL-DEFINED? TTRUE
 MAKI:MODEL-CAPTURED? TFALSE
 MAKI:MODEL-IMPORTED? TTRUE
@@ -302,5 +310,7 @@ s" st.global.f32"               ODT-IN
 ODT-OFFDEV-NOTRUN
 
 T-REPORT
+
+;using
 
 ;package
