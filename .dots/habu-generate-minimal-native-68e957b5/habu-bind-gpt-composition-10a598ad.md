@@ -1,11 +1,13 @@
 ---
 title: Bind GPT composition prerequisites
-status: active
+status: closed
 priority: 1
 issue-type: task
-created-at: "\"2026-07-19T23:37:52.728072+02:00\""
+created-at: "\"\\\"2026-07-19T23:37:52.728072+02:00\\\"\""
+closed-at: "2026-07-20T22:41:46.509005+02:00"
+close-reason: "Mandate fulfilled via the 2026-07-20 destruction audit (read-only, all four block suites test: ok at master 6d306744). Verdict: the closed habu-gpt-2-block-a9039501 composition is a B=1 untied single-head host-only block proven against an internal golden - the exact 'untied B=1 forward toy presented as GPT-2' this dot existed to stop; its close reason overstates on shared-wte/B>1/device/external-golden/dependency-honesty, with N-block-training and cross-batch isolation as recorded boundaries. Actions taken: the orphaned weight-tying landing (done-but-unmerged commit) was recovered, gated green, and merged as 482af1a6; the real composition owner habu-gpt-2-composition-a90e901e now carries this dot's full acceptance gate verbatim plus the audit record, with six corrective sub-dots (tie-in-block f276dc6a, real-B 3bdedf46 blocked on batched-pos, batched-MHA-composition d3166a09, external golden b7693e44, device parity 9f9270bb blocked on GB10 batched attention, N-block training 25fb2316). The audited dot's narrowed status (composition oracle, not milestone) is recorded in the owner dot since archive files are untracked"
 ---
 
 The active habu-gpt-2-block-a9039501 claims GPT-2-small Nx full-model composition but lists only the closed toy MHA dot as a blocker. Current MHA is fixed-shape forward-only, positional embedding is B=1/pre-expanded, affine LayerNorm still has representation/device defects, batch extent products and SPEC broadcasts remain open, and habu-weight-tying-wte-ab4145da is not a dependency although GPT-2 shares wte storage with the LM head and must accumulate both gradients. Stop the active composition from presenting an untied B=1 forward toy as GPT-2. Amend its dependency/acceptance graph to require habu-complete-trainable-multi-39e26b3d, habu-complete-batched-pos-99332bf6, habu-make-affine-layernorm-ddb6d70d, habu-extent-role-product-8e364885, habu-spec-broadcast-forms-ad851424 and habu-weight-tying-wte-ab4145da, or explicitly narrow the dot/title to a non-GPT toy and create the real composition owner. Acceptance for the real owner: one shared wte/LM-head parameter, B>1/T>1, N repeated blocks, every parameter/input gradient, causal sequence isolation, host/device lowering, external deterministic golden, training loss reduction, exact dependency gate and no closed prototype used as completion proof. Files: GPT/nanoGPT dots, composition/tests and dependency lint; no feature implementation under this correction dot.
 
-Claim: agent=gptaudit workspace=.jj-ws/fable-gptaudit machine=spark (READ-ONLY destruction audit of the closed GPT-2 composition against this dot's acceptance list; report only, orchestrator applies dot mutations)
+Claim: RELEASED 2026-07-20 (destruction audit complete, verdicts applied).
