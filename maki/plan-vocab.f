@@ -25,6 +25,7 @@
 require maki/op-kind.f
 require maki/plan-ops.f
 require maki/model-ir.f              \ MAKI:LN-FORM>ATTR + MAKI-LNFORM:AFFINE (explicit affine payload)
+require maki/dropout.f               \ MAKI:DO-CFG>ATTR: the workload dropout mode/p resolved into the attr
 
 package PLAN
 public
@@ -48,6 +49,16 @@ public
 : RMSNORM     ( tensor -- tensor )  MAKI-OPKIND:RMSNORM     MAKI:PLAN-UNARY ;
 : SOFTMAX-ROW ( tensor -- tensor )  MAKI-OPKIND:SOFTMAX-ROW MAKI:PLAN-UNARY ;
 : CAST        ( tensor -- tensor )  MAKI-OPKIND:CAST        MAKI:PLAN-UNARY ;
+\ dropout (dot habu-dropout-op-train): arity 1 (x); mode (train/eval) and p are ATTRS, not
+\ operands. The workload config (MAKI:DROPOUT-MODE!/DROPOUT-P!) resolves into each node's attr
+\ at capture (MAKI:DO-CFG>ATTR, which guards p) - the CPREC-DEFAULT precedent, so a train/eval
+\ switch is a re-capture, never an arity change. Mirrors PLAN-UNARY plus the config-attr stamp.
+: DROPOUT ( tensor -- tensor )
+   MAKI-OPKIND:DROPOUT TENSOR:PLAN-OP-BEGIN {: x:tensor :}
+   x MAKI:PLAN-LIKE {: y:tensor :}
+   x TENSOR:PLAN-IN+
+   MAKI:DO-CFG>ATTR TENSOR:PLAN-ATTR!
+   y TENSOR:PLAN-OP+  y ;
 
 \ ---- binary elementwise ops ( tensor tensor -- tensor ) : data then param ----
 \ Re-export MAKI:PLAN-BIN-EW; broadcast legality of the param is cad.f's SHP-CHECK.

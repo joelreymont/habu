@@ -498,6 +498,15 @@ public
    dup MIR-OP@ MAKI-OPKIND:LAYERNORM MAKI-OPKIND:EQ
    if LN-FORM MAKI-LNFORM:AFFINE MAKI-LNFORM:EQ else drop false then ;
 
+\ ---- dropout mode decode boundary (dot habu-dropout-op-train) ----------------
+\ DO-FORM decodes a dropout node's stored mode (train/eval); DO-EVAL? is the guarded
+\ predicate (false for every non-dropout op), the single question the consumers ask -
+\ the OP-DROPOUT twin of LN-AFFINE?. Mode/p ride the attr (maki/dropout.f codec).
+: DO-FORM ( CAD-KIND:node-id -- domode )  MIR-ATTR@ DO-MODE ;
+: DO-EVAL? ( CAD-KIND:node-id -- bool )
+   dup MIR-OP@ MAKI-OPKIND:DROPOUT MAKI-OPKIND:EQ
+   if DO-FORM MAKI-DOMODE:EVAL MAKI-DOMODE:EQ else drop false then ;
+
 \ re-propagated node output extents + rewritten attrs (OPTIMIZE-time re-inference)
 : MIR-SHAPE! ( CAD-KIND:rows CAD-KIND:cols CAD-KIND:node-id -- )
    {: rows:CAD-KIND:rows cols:CAD-KIND:cols node:CAD-KIND:node-id :}

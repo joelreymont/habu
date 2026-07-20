@@ -76,7 +76,13 @@ public
 \ OP-BIAS's 1xC add. A general per-channel scale (attention scaling, SwiGLU gating);
 \ MODEL:-typed, CLASS-EW. Reference is scalar MUL-F; the executor supplies the 1xC read.
 35 constant OP-BCAST-MUL         \ AxC * 1xC -> AxC row-broadcast multiply    (ref: MUL-F)
-36 constant OP-N               \ op-kind range bound (private op-registry / adjoint table dimension + wire code range)
+\ ---- dropout (train/eval) + its VJP (dot habu-dropout-op-train) ---------------
+\ Bernoulli mask + 1/(1-p) scale in train mode, identity in eval; mode/p are attrs.
+\ MODEL:-typed, CLASS-EW. Reference is DO-APPLY (maki/dropout.f); the VJP re-derives the
+\ same mask (OP-DROPOUT-BWD reads the forward node for its seed index).
+36 constant OP-DROPOUT           \ x -> mask*scale*x (train) / x (eval)       (ref: DO-APPLY)
+37 constant OP-DROPOUT-BWD       \ dy -> mask*scale*dy (same mask as forward)  (ref: DO-APPLY)
+38 constant OP-N               \ op-kind range bound (private op-registry / adjoint table dimension + wire code range)
 
 \ ---- the op-kind family (dot habu-cad-adt-swap, corrected plan) -------------
 \ `opkind` is the semantic type carried from construction (MIR-OP-BEGIN /
@@ -98,6 +104,7 @@ ENUM opkind DERIVE eq
   seg-attn seg-attn-bwd
   equation
   bcast-mul
+  dropout dropout-bwd
 ;ENUM
 
 \ named render boundary: opkind -> wire/table code (exhaustive MATCH; a bad tag
@@ -141,6 +148,8 @@ ENUM opkind DERIVE eq
       seg-attn-bwd    OF OP-SEG-ATTN-BWD    ENDOF
       equation        OF OP-EQUATION        ENDOF
       bcast-mul       OF OP-BCAST-MUL       ENDOF
+      dropout         OF OP-DROPOUT         ENDOF
+      dropout-bwd     OF OP-DROPOUT-BWD     ENDOF
    ;MATCH ;
 
 ;package

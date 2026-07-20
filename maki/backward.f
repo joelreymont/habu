@@ -355,6 +355,21 @@ variable BW-BUILT?
    ct g MAKI-OPKIND:BCAST-MUL x BW-OP2  x BW-ACCUM        \ dx = ct * g (1xC broadcast)
    ct x MAKI-OPKIND:MUL x BW-OP2  g BW-ROWSUM  g BW-ACCUM ; \ d-g = rowsum(ct .* x) -> 1xC
 
+\ dropout adjoint (dot habu-dropout-op-train): dx = mask*scale*ct - the SAME masked scale the
+\ forward node applied. One OP-DROPOUT-BWD node reads dy (operand 0) and the FORWARD node
+\ (operand 1, like softmax reads its saved output): the executor recovers the forward node's
+\ table index from that ref and reseeds the mask stream, so the mask matches bit-for-bit and
+\ dropped elements get zero gradient. The forward mode/pfix attr rides through unchanged (eval
+\ makes the VJP the identity dy->dx). Only the data input receives a gradient.
+: BW-STEP-DROPOUT ( CAD-KIND:node-id MIR:operand-ref -- )
+   {: fn:CAD-KIND:node-id ct:MIR:operand-ref :}
+   fn 0 MIR-INPUT-IDX MIR-IN@ {: x:MIR:operand-ref :}
+   fn MIR-ATTR@ {: attr:n :}                                 \ copy mode/pfix onto the VJP node
+   MAKI-OPKIND:DROPOUT-BWD MIR-OP-BEGIN
+   ct MIR-IN+  fn MIR-NODE-REF MIR-IN+                        \ dy + the forward node (for its seed index)
+   x REF-ROWS x REF-COLS x REF-DT x REF-LAY  attr  1  MIR-OP+ MIR-NODE-REF {: dx:MIR:operand-ref :}
+   dx x BW-ACCUM ;
+
 \ linear adjoint: the matmul adjoints for x and w plus the bias row-reduce.
 \ dX = ct @ Wt, dW = Xt @ ct, dB = rowsum(ct)
 : BW-STEP-LINEAR ( CAD-KIND:node-id MIR:operand-ref -- )
@@ -485,6 +500,8 @@ variable BW-BUILT?
       seg-attn-bwd    OF E-BW-UNSUP throw  ENDOF
       equation        OF BW-STEP-EQUATION  ENDOF
       bcast-mul       OF BW-STEP-BCAST-MUL ENDOF
+      dropout         OF BW-STEP-DROPOUT   ENDOF
+      dropout-bwd     OF E-BW-UNSUP throw  ENDOF
    ;MATCH ;
 
 \ ---- supported-op gate (usable BEFORE build to classify not-run) -------------

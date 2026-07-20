@@ -132,6 +132,7 @@ variable LRED-NIN                              \ region input count
       pad-scatter OF false ENDOF  scatter-add OF false ENDOF  gelu-bwd2 OF false ENDOF
       seg-attn OF false ENDOF  seg-attn-bwd OF false ENDOF
       equation OF false ENDOF  bcast-mul OF false ENDOF
+      dropout OF false ENDOF  dropout-bwd OF false ENDOF
    ;MATCH ;
 : LRED-EW-OP? ( opkind -- bool )                 \ a v1 elementwise prologue / epilogue op
    MATCH opkind
@@ -147,6 +148,7 @@ variable LRED-NIN                              \ region input count
       pad-scatter OF false ENDOF  scatter-add OF false ENDOF  gelu-bwd2 OF false ENDOF
       seg-attn OF false ENDOF  seg-attn-bwd OF false ENDOF
       equation OF false ENDOF  bcast-mul OF true ENDOF   \ 1xC broadcast multiply: EW epilogue like bias
+      dropout OF false ENDOF  dropout-bwd OF false ENDOF   \ host-only: not a fusible device EW op
    ;MATCH ;
 
 : LRED-RED-COUNT ( CAD-KIND:region -- n ) {: rid:CAD-KIND:region :}   \ reduction nodes in the region
@@ -344,6 +346,7 @@ private
       seg-attn OF E-LRED-OP throw ENDOF  seg-attn-bwd OF E-LRED-OP throw ENDOF
       equation OF E-LRED-OP throw ENDOF
       bcast-mul OF nd LRED-BINREGS EMIT-MUL ENDOF
+      dropout OF E-LRED-OP throw ENDOF  dropout-bwd OF E-LRED-OP throw ENDOF
    ;MATCH
    nd LRED-NR! ;
 : LRED-CHAIN ( -- )                              \ movement members emit no compute (folded)

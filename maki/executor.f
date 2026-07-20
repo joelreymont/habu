@@ -53,6 +53,7 @@ require maki/scatter.f
 require maki/segment.f
 require maki/spec.f
 require maki/prec-attr.f              \ CPREC-PAYLOAD@: read the equation slot past the precision field
+require maki/dropout.f                \ DO-APPLY / DO-PFIX / DO-ATTR-EVAL? / DO-NODE-SEED
 
 \ ---- audited count projection (MIR typed item-count -> raw loop/compare cell) ---
 \ Reopen the unsealed CAD-NUM package for one checked bridge over its private
@@ -180,6 +181,7 @@ private
       gelu-bwd2 OF E-EX-UNSUP throw ENDOF
       seg-attn OF E-EX-UNSUP throw ENDOF  seg-attn-bwd OF E-EX-UNSUP throw ENDOF
       equation OF E-EX-UNSUP throw ENDOF  bcast-mul OF E-EX-UNSUP throw ENDOF
+      dropout OF E-EX-UNSUP throw ENDOF  dropout-bwd OF E-EX-UNSUP throw ENDOF
    ;MATCH ;
 
 : EX-U ( CAD-KIND:node-id -- ) {: nd:CAD-KIND:node-id :}
@@ -213,6 +215,7 @@ private
       scatter-add OF E-EX-UNSUP throw ENDOF
       seg-attn OF E-EX-UNSUP throw ENDOF  seg-attn-bwd OF E-EX-UNSUP throw ENDOF
       equation OF E-EX-UNSUP throw ENDOF
+      dropout OF E-EX-UNSUP throw ENDOF  dropout-bwd OF E-EX-UNSUP throw ENDOF
    ;MATCH ;
 
 : EX-EW2 ( CAD-KIND:node-id -- ) {: nd:CAD-KIND:node-id :}
@@ -245,6 +248,7 @@ private
       gelu-bwd2 OF E-EX-UNSUP throw ENDOF
       seg-attn OF E-EX-UNSUP throw ENDOF  seg-attn-bwd OF E-EX-UNSUP throw ENDOF
       equation OF E-EX-UNSUP throw ENDOF  bcast-mul OF E-EX-UNSUP throw ENDOF
+      dropout OF E-EX-UNSUP throw ENDOF  dropout-bwd OF E-EX-UNSUP throw ENDOF
    ;MATCH ;
 
 \ affine LayerNorm (arity 3): y = gamma*xhat + beta with gamma/beta (1xC) shared per row.
@@ -283,6 +287,7 @@ private
       gelu-bwd2 OF E-EX-UNSUP throw ENDOF
       seg-attn OF E-EX-UNSUP throw ENDOF  seg-attn-bwd OF E-EX-UNSUP throw ENDOF
       equation OF E-EX-UNSUP throw ENDOF  bcast-mul OF E-EX-UNSUP throw ENDOF
+      dropout OF E-EX-UNSUP throw ENDOF  dropout-bwd OF E-EX-UNSUP throw ENDOF
    ;MATCH ;
 
 \ p0 = cotangent row ; p1 = saved input (norms) or saved output (softmax) row.
@@ -439,6 +444,26 @@ private
    nd EX-NODE-PTR EQ-OUT-SET!
    s EQ-EXEC ;
 
+\ ---- dropout (dot habu-dropout-op-train): masked 1/(1-p) scale over one buffer ------
+\ Forward reads x (operand 0); the mask stream is seeded from THIS node's table index +
+\ the run seed (DO-NODE-SEED), so a run is bit-reproducible and the VJP redraws the same
+\ mask. mode/pfix decode from the attr. eval mode copies (identity).
+: EX-DROPOUT ( CAD-KIND:node-id -- ) {: nd:CAD-KIND:node-id :}
+   nd 0 MIR-INPUT-IDX MIR-IN@ EX-REF-PTR {: xb:ptr :}
+   nd EX-NODE-PTR {: ob:ptr :}
+   nd MIR-ATTR@ {: attr:n :}
+   xb ob nd EX-NODE-ELEMS  attr DO-PFIX  attr DO-ATTR-EVAL?  nd NODE>RAW DO-NODE-SEED  DO-APPLY ;
+
+\ Backward reads dy (operand 0) and the FORWARD node (operand 1) - only for ITS table
+\ index, which reseeds the identical mask stream. Same mode/pfix attr, so dropped elements
+\ get exactly zero gradient and eval passes dy through unchanged.
+: EX-DROPOUT-BWD ( CAD-KIND:node-id -- ) {: nd:CAD-KIND:node-id :}
+   nd 0 MIR-INPUT-IDX MIR-IN@ EX-REF-PTR {: cb:ptr :}
+   nd 1 MIR-INPUT-IDX MIR-IN@ MIR-REF-NODE NODE>RAW {: fwdraw:n :}
+   nd EX-NODE-PTR {: ob:ptr :}
+   nd MIR-ATTR@ {: attr:n :}
+   cb ob nd EX-NODE-ELEMS  attr DO-PFIX  attr DO-ATTR-EVAL?  fwdraw DO-NODE-SEED  DO-APPLY ;
+
 \ ---- per-node dispatch (fail closed on a non-executable op) -----------------
 : EX-NODE ( CAD-KIND:node-id -- ) {: nd:CAD-KIND:node-id :}
    nd MIR-OP@ MATCH opkind
@@ -478,6 +503,8 @@ private
       seg-attn-bwd    OF nd EX-SEG-ATTN-BWD ENDOF
       cast            OF E-EX-UNSUP throw   ENDOF
       equation        OF nd EX-EQUATION     ENDOF
+      dropout         OF nd EX-DROPOUT      ENDOF
+      dropout-bwd     OF nd EX-DROPOUT-BWD  ENDOF
    ;MATCH ;
 
 \ ---- buffer plan + execute over a node prefix ------------------------------
@@ -527,6 +554,7 @@ public
       rope-bwd OF true ENDOF  rowsum-bwd OF true ENDOF  fullsum-dot-bwd OF true ENDOF
       pad-scatter OF true ENDOF  scatter-add OF true ENDOF  gelu-bwd2 OF true ENDOF
       seg-attn OF true ENDOF  seg-attn-bwd OF true ENDOF
+      dropout OF true ENDOF  dropout-bwd OF true ENDOF
    ;MATCH ;
 
 \ ---- input binding + lifecycle ---------------------------------------------

@@ -30,6 +30,7 @@ require maki/scatter.f
 require maki/matmul.f
 require maki/linear.f
 require maki/segment.f
+require maki/dropout.f                \ DO-APPLY: the dropout forward/VJP buffer reference
 
 -5050 constant E-OPR-KIND        \ op-kind out of range
 -5051 constant E-OPR-INCOMPLETE  \ reference requested from an op with no scalar oracle
@@ -170,6 +171,8 @@ public
       seg-attn-bwd    OF s" seg-attn-bwd"    ENDOF
       equation        OF s" equation"        ENDOF
       bcast-mul       OF s" bcast-mul"       ENDOF
+      dropout         OF s" dropout"         ENDOF
+      dropout-bwd     OF s" dropout-bwd"     ENDOF
    ;MATCH ;
 
 : OPR-CLASS-NAME ( n -- ptr u8 n )
@@ -258,7 +261,12 @@ private
    CLASS-MATMUL     2 ACC-F32  NUM-RELTOL 0 OP-EQUATION        OPR!
    \ 1xC broadcast multiply (dot habu-add-1xc-broadcast): AxC data * 1xC row vector,
    \ CLASS-EW like OP-BIAS/OP-MUL; arity 2 (data + 1xC param), ulp-exact scalar multiply.
-   CLASS-EW         1 ACC-SAME NUM-ULP    2 OP-BCAST-MUL       OPR! ;
+   CLASS-EW         1 ACC-SAME NUM-ULP    2 OP-BCAST-MUL       OPR!
+   \ dropout (dot habu-dropout-op-train): CLASS-EW like a masked scale; the forward is
+   \ arity 1 (x; mode/p ride the attr), the VJP arity 2 (dy + the forward node, read for
+   \ its seed index). ulp-exact (a single survivor multiply). Reference: DO-APPLY.
+   CLASS-EW         1 ACC-SAME NUM-ULP    1 OP-DROPOUT         OPR!
+   CLASS-EW         1 ACC-SAME NUM-ULP    2 OP-DROPOUT-BWD     OPR! ;
 
 OPR-BUILD
 
@@ -315,5 +323,9 @@ OPR-BUILD
 \ 1xC broadcast multiply reuses the scalar multiply reference; the executor's EX-BC@
 \ supplies the 1xC row broadcast on operand 1 (like OP-BIAS reuses ADD-F).
 ' MUL-F          OP-BCAST-MUL        cells R-REF + !
+\ dropout: one buffer reference runs the forward (x->y) and the VJP (dy->dx) - eval copies,
+\ train masks-and-scales under the seeded stream. Binding completes both op rows.
+' DO-APPLY       OP-DROPOUT          cells R-REF + !
+' DO-APPLY       OP-DROPOUT-BWD      cells R-REF + !
 
 ;package

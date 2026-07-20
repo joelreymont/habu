@@ -67,7 +67,8 @@ public
 20 constant ADJ-SEG-ATTN      \ per-block dQ/dK/dV via OP-SEG-ATTN-BWD + slices
 21 constant ADJ-EQUATION      \ derived einsum adjoints (maki/spec.f EQ-ADJ@); reverse transform runs them
 22 constant ADJ-BCAST-MUL     \ dx = ct*g (1xC bcast) ; d-g = OP-ROWSUM-BWD(ct*x) -> 1xC
-23 constant ADJ-N             \ range bound
+23 constant ADJ-DROPOUT       \ dx = mask*scale*ct (OP-DROPOUT-BWD, same mask as forward)
+24 constant ADJ-N             \ range bound
 
 \ ---- what the adjoint must read from the forward pass ------------------------
 0 constant SAVE-NONE          \ needs only static shape / operand refs (add/reshape/rope)
@@ -182,6 +183,8 @@ public
       seg-attn-bwd    OF E-ADJ-UNSUP throw ENDOF
       equation        OF E-ADJ-UNSUP throw ENDOF
       bcast-mul       OF E-ADJ-UNSUP throw ENDOF
+      dropout         OF E-ADJ-UNSUP throw ENDOF
+      dropout-bwd     OF E-ADJ-UNSUP throw ENDOF
    ;MATCH ;
 
 private
@@ -247,7 +250,14 @@ private
    \ OP-BCAST-MUL again, like scale's dx reuses OP-SCALE), d-g = rowsum(ct*x) -> 1xC
    \ (OP-MUL then OP-ROWSUM-BWD, both already complete). A dedicated emitter builds it
    \ (BW-STEP-BCAST-MUL), so bop = -1; it reads the forward inputs x and g -> SAVE-INPUT.
-   ADJ-BCAST-MUL SAVE-INPUT 3 1 -1 OP-BCAST-MUL ADJ! ;
+   ADJ-BCAST-MUL SAVE-INPUT 3 1 -1 OP-BCAST-MUL ADJ!
+   \ ---- dropout (dot habu-dropout-op-train): y = mask*scale*x (train) / x (eval). Only the
+   \ data input receives a gradient (mask 1): dx = mask*scale*ct = the SAME masked scale the
+   \ forward applied (OP-DROPOUT-BWD, whose executor reseeds the mask stream from the forward
+   \ node's index). A dedicated emitter builds it (BW-STEP-DROPOUT), so bop = -1; it reads the
+   \ forward node (for that seed index) -> SAVE-OUTPUT. dropout-bwd stays ADJ-NONE (second
+   \ order is fail-closed E-BW-NOADJ). ---
+   ADJ-DROPOUT SAVE-OUTPUT 1 1 -1 OP-DROPOUT ADJ! ;
 
 \ ---- wire the op-registry vjp field to the adjoint id (cad-9 requirement) ----
 \ pure private-table wiring over the code index space: copy A-ID[i] -> registry
