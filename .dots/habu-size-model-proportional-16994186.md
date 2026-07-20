@@ -22,4 +22,41 @@ PRIMARY DESIGN - derive-from-model, all at load time:
 
 INTERIM unchanged: the coordinated constant raise (habu-coordinated-capacity-raise-0b4e8a84, in flight) lands first as the labeled interim; this dot is the recorded correct long-term fix. Sequence after that landing.
 
-Claim: agent=derive workspace=.jj-ws/fable-derive machine=spark (owns maki/model-ir.f cad.f backward.f executor.f capture/build surfaces + src/core/layout-buffer.f ONLY if the mechanism decision forces it + maki/examples/nanogpt/gptblock-attn-test.f stack tests + capacity regressions; the BPE lane owns maki/examples/nanogpt/bpe* - disjoint)
+Claim released (agent=derive landed the maki-side maximum 1758ac9d and stopped at the engine boundary per the escape hatch).
+
+2026-07-20 STAGE 1 LANDED (1758ac9d) + MECHANISM VALIDATED + BOUNDARY MAPPED (derive lane):
+
+LANDED: the executor node-buffer arena is now model-proportional - EX-PLAN sizes it
+to the exact need via EX-ARENA-ENSURE (executor.f:455-470), grow-to-largest reuse
+past the $8000 seed, EX-ARENA-MAX $80000 sanity ceiling with a transactional named
+E-EX-CAP die before any node runs, base read through EX-ARENA-P. Cost: ONE variable
+fetch per node-buffer resolution (not per element) - perf leg unchanged. Both
+directions proven (34225-cell model dies uncaught on base / runs on branch; ceiling
+dies named; state intact after the die).
+
+MECHANISM VALIDATED (the decisive checker finding): the typed-column accessor mint
+is authorized by the armed LAYOUT-INTRO window keyed on the pending accessor NAME
+and declared signature (checker.f:9004-9007, :1362-1374, :8983-8985), NOT by the
+body's arithmetic form - so a rebindable-OFFSET accessor body (data-base <off-cell>
+@ + i width* +) type-checks IDENTICALLY to the immediate form. Candidate A
+(deferred-offset LAYOUT-BUFFER sibling definer in src/core/layout-buffer.f) is
+checker-transparent and the confirmed route; B (maki-side minting) is
+forward-reference-unsound; C is the rejected interim.
+
+FULL CAPACITY CASCADE root-caused with minimal repros (12-block = 164 inputs,
+~172 fwd / ~723 total nodes): -5024 E-CAD-SYNTAX IS MSRC-CAP 2048 (VERIFIED:
+605 B/block marginal, N=3 = 2088 B dies); -5026 E-CAD-INPUTS at CAP-CAP 64
+(N>=5); -5045 E-TV-PLAN-FULL is PLAN-CAP 64 op-count (65-op GELU chain repro).
+ARCHITECTURAL FINDING: data-space allot ceilings out near 4M cells - production-
+scale arenas (GB tensors) eventually need heap allocation, not data-region allot;
+the tiny-shape acceptance (~36K cells) is comfortably inside.
+
+REMAINING (the dedicated ENGINE lane, exact scope):
+1. src/core/layout-buffer.f: deferred-offset definer (off-cell + count-cell init 0,
+   armed accessor reading them, deferred allot, NAME-BIND ( count -- )). CODELEN
+   rows same-commit, fixpoint x2 (current rows 136112/944).
+2. Rewire typed columns (model-ir.f MI-*, tensor-value.f TV-*/P-*, backward.f BW-*,
+   cad.f CAP-*) to the deferred definer; capture scratch sized from the loading
+   file's bound; persistent tables from counted nodes.
+3. Model arena mark/release + the two-different-sizes regression + pointer-rebind
+   and snapshot/replay audits + the 12-block acceptance with pinned accounting.
