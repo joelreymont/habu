@@ -154,44 +154,24 @@ schema_version	module	file	kind	word	effect	test	doc	owner	status	notes
 1	string	lib/string.f	word	STR:BUF-APPEND	(ptr u8 CAD-NUM:byte-len ptr u8 CAD-NUM:byte-len ptr len --)	lib/string-test.f	docs/stdlib.md	stdlib-string	active	append typed-length bytes into a caller-owned bounded byte buffer
 1	string	lib/string.f	word	STR:BUF-APPEND-C	(n ptr u8 CAD-NUM:byte-len ptr len --)	lib/string-test.f	docs/stdlib.md	stdlib-string	active	append one typed byte into a caller-owned bounded byte buffer
 1	json-write	lib/json-write.f	module			lib/json-write-test.f	docs/stdlib.md	stdlib-json-write	active	checked growable emit-only JSON writer for fixtures and native tools
-1	json-write	lib/json-write.f	word	JW-BUF-FIELD	(-- ptr ptr u8)	lib/json-write-test.f	docs/stdlib.md	stdlib-json-write	active	return the typed pointer field for JSON writer output storage
-1	json-write	lib/json-write.f	word	JW-BUF@	(-- ptr u8)	lib/json-write-test.f	docs/stdlib.md	stdlib-json-write	active	read the JSON writer output storage pointer
-1	json-write	lib/json-write.f	word	JW-BUF!	(ptr u8 --)	lib/json-write-test.f	docs/stdlib.md	stdlib-json-write	active	write the JSON writer output storage pointer
-1	json-write	lib/json-write.f	word	JW-BUF	(-- ptr u8)	lib/json-write-test.f	docs/stdlib.md	stdlib-json-write	active	return the JSON writer output storage pointer
-1	json-write	lib/json-write.f	word	JW-LEN	(n -- len)	lib/json-write-test.f	docs/stdlib.md	stdlib-json-write	published	refine a bounded raw integer into a JSON writer append length role
-1	json-write	lib/json-write.f	word	JW-CAP	(-- n)	lib/json-write-test.f	docs/stdlib.md	stdlib-json-write	published	return current JSON writer output capacity
-1	json-write	lib/json-write.f	word	JW-STORE-SPAN	(ptr u8 n --)	lib/json-write-test.f	docs/stdlib.md	stdlib-json-write	published	install a newly allocated JSON writer output span
-1	json-write	lib/json-write.f	word	JW-MIN-ONE	(n -- n)	lib/json-write-test.f	docs/stdlib.md	stdlib-json-write	published	clamp a byte need to at least one byte
-1	json-write	lib/json-write.f	word	JW-NEED-CAP-LEN	(len -- n)	lib/json-write-test.f	docs/stdlib.md	stdlib-json-write	published	compute required JSON writer length from a refined append length
-1	json-write	lib/json-write.f	word	JW-NEED-CAP	(n -- n)	lib/json-write-test.f	docs/stdlib.md	stdlib-json-write	published	compute required JSON writer length for an append
-1	json-write	lib/json-write.f	word	JW-COPY-OLD	(ptr u8 --)	lib/json-write-test.f	docs/stdlib.md	stdlib-json-write	published	copy existing JSON output into a new span
-1	json-write	lib/json-write.f	word	JW-GROW	(n --)	lib/json-write-test.f	docs/stdlib.md	stdlib-json-write	published	grow JSON writer output storage for a required length
-1	json-write	lib/json-write.f	word	JW-CHECK-LEN-ROOM	(len --)	lib/json-write-test.f	docs/stdlib.md	stdlib-json-write	published	ensure JSON writer capacity for an already refined append length
-1	json-write	lib/json-write.f	word	JW-CHECK-ROOM	(n --)	lib/json-write-test.f	docs/stdlib.md	stdlib-json-write	published	ensure JSON writer output capacity for an append
-1	json-write	lib/json-write.f	word	JW-ENSURE-INITIAL	(--)	lib/json-write-test.f	docs/stdlib.md	stdlib-json-write	published	allocate the initial JSON writer output span
-1	json-write	lib/json-write.f	word	JW-RESET	(--)	lib/json-write-test.f	docs/stdlib.md	stdlib-json-write	published	clear the JSON writer output buffer
-1	json-write	lib/json-write.f	word	JW-C	(n --)	lib/json-write-test.f	docs/stdlib.md	stdlib-json-write	published	append one checked JSON output byte
-1	json-write	lib/json-write.f	word	JW-RAW-LEN	(ptr u8 len --)	lib/json-write-test.f	docs/stdlib.md	stdlib-json-write	published	append raw JSON token bytes using a refined length role
-1	json-write	lib/json-write.f	word	JW-RAW	(ptr u8 n --)	lib/json-write-test.f	docs/stdlib.md	stdlib-json-write	published	append raw JSON token bytes
-1	json-write	lib/json-write.f	word	JW-HEX	(n -- n)	lib/json-write-test.f	docs/stdlib.md	stdlib-json-write	published	convert a low hex digit to uppercase ASCII
-1	json-write	lib/json-write.f	word	JW-U00	(n --)	lib/json-write-test.f	docs/stdlib.md	stdlib-json-write	published	emit a JSON u00xx escape for one control byte
-1	json-write	lib/json-write.f	word	JW-ESC-C	(n --)	lib/json-write-test.f	docs/stdlib.md	stdlib-json-write	published	emit one byte with JSON string escaping
-1	json-write	lib/json-write.f	word	JW-STRING	(ptr u8 n --)	lib/json-write-test.f	docs/stdlib.md	stdlib-json-write	published	emit one escaped JSON string value
-1	json-write	lib/json-write.f	word	JW-KEY	(ptr u8 n --)	lib/json-write-test.f	docs/stdlib.md	stdlib-json-write	published	emit one escaped object key and colon
-1	json-write	lib/json-write.f	word	JW-OBJECT-START	(--)	lib/json-write-test.f	docs/stdlib.md	stdlib-json-write	published	emit an object start delimiter
-1	json-write	lib/json-write.f	word	JW-OBJECT-END	(--)	lib/json-write-test.f	docs/stdlib.md	stdlib-json-write	published	emit an object end delimiter
-1	json-write	lib/json-write.f	word	JW-ARRAY-START	(--)	lib/json-write-test.f	docs/stdlib.md	stdlib-json-write	published	emit an array start delimiter
-1	json-write	lib/json-write.f	word	JW-ARRAY-END	(--)	lib/json-write-test.f	docs/stdlib.md	stdlib-json-write	published	emit an array end delimiter
-1	json-write	lib/json-write.f	word	JW-COMMA	(--)	lib/json-write-test.f	docs/stdlib.md	stdlib-json-write	published	emit a comma delimiter
-1	json-write	lib/json-write.f	word	JW-NULL	(--)	lib/json-write-test.f	docs/stdlib.md	stdlib-json-write	published	emit a JSON null value
-1	json-write	lib/json-write.f	word	JW-BOOL	(bool --)	lib/json-write-test.f	docs/stdlib.md	stdlib-json-write	published	emit a JSON true or false value
-1	json-write	lib/json-write.f	word	JW-U	(n --)	lib/json-write-test.f	docs/stdlib.md	stdlib-json-write	published	emit a nonnegative integer value
-1	json-write	lib/json-write.f	word	JW-FIELD-RAW	(ptr u8 n ptr u8 n --)	lib/json-write-test.f	docs/stdlib.md	stdlib-json-write	published	emit an object field with raw JSON value bytes
-1	json-write	lib/json-write.f	word	JW-FIELD-S	(ptr u8 n ptr u8 n --)	lib/json-write-test.f	docs/stdlib.md	stdlib-json-write	published	emit an object field with escaped string value
-1	json-write	lib/json-write.f	word	JW-FIELD-U	(ptr u8 n n --)	lib/json-write-test.f	docs/stdlib.md	stdlib-json-write	published	emit an object field with nonnegative integer value
-1	json-write	lib/json-write.f	word	JW-FIELD-BOOL	(ptr u8 n bool --)	lib/json-write-test.f	docs/stdlib.md	stdlib-json-write	published	emit an object field with boolean value
-1	json-write	lib/json-write.f	word	JW-FIELD-NULL	(ptr u8 n --)	lib/json-write-test.f	docs/stdlib.md	stdlib-json-write	published	emit an object field with null value
-1	json-write	lib/json-write.f	word	JW$	(-- ptr u8 n)	lib/json-write-test.f	docs/stdlib.md	stdlib-json-write	published	return JSON writer output bytes
+1	json-write	lib/json-write.f	word	JSON-WRITE:RESET	(--)	lib/json-write-test.f	docs/stdlib.md	stdlib-json-write	published	clear the JSON writer output buffer
+1	json-write	lib/json-write.f	word	JSON-WRITE:RAW	(ptr u8 n --)	lib/json-write-test.f	docs/stdlib.md	stdlib-json-write	published	append raw JSON token bytes
+1	json-write	lib/json-write.f	word	JSON-WRITE:STRING	(ptr u8 n --)	lib/json-write-test.f	docs/stdlib.md	stdlib-json-write	published	emit one escaped JSON string value
+1	json-write	lib/json-write.f	word	JSON-WRITE:KEY	(ptr u8 n --)	lib/json-write-test.f	docs/stdlib.md	stdlib-json-write	published	emit one escaped object key and colon
+1	json-write	lib/json-write.f	word	JSON-WRITE:OBJECT-START	(--)	lib/json-write-test.f	docs/stdlib.md	stdlib-json-write	published	emit an object start delimiter
+1	json-write	lib/json-write.f	word	JSON-WRITE:OBJECT-END	(--)	lib/json-write-test.f	docs/stdlib.md	stdlib-json-write	published	emit an object end delimiter
+1	json-write	lib/json-write.f	word	JSON-WRITE:ARRAY-START	(--)	lib/json-write-test.f	docs/stdlib.md	stdlib-json-write	published	emit an array start delimiter
+1	json-write	lib/json-write.f	word	JSON-WRITE:ARRAY-END	(--)	lib/json-write-test.f	docs/stdlib.md	stdlib-json-write	published	emit an array end delimiter
+1	json-write	lib/json-write.f	word	JSON-WRITE:COMMA	(--)	lib/json-write-test.f	docs/stdlib.md	stdlib-json-write	published	emit a comma delimiter
+1	json-write	lib/json-write.f	word	JSON-WRITE:NULL	(--)	lib/json-write-test.f	docs/stdlib.md	stdlib-json-write	published	emit a JSON null value
+1	json-write	lib/json-write.f	word	JSON-WRITE:BOOL	(bool --)	lib/json-write-test.f	docs/stdlib.md	stdlib-json-write	published	emit a JSON true or false value
+1	json-write	lib/json-write.f	word	JSON-WRITE:U	(n --)	lib/json-write-test.f	docs/stdlib.md	stdlib-json-write	published	emit a nonnegative integer value
+1	json-write	lib/json-write.f	word	JSON-WRITE:FIELD-RAW	(ptr u8 n ptr u8 n --)	lib/json-write-test.f	docs/stdlib.md	stdlib-json-write	published	emit an object field with raw JSON value bytes
+1	json-write	lib/json-write.f	word	JSON-WRITE:FIELD-S	(ptr u8 n ptr u8 n --)	lib/json-write-test.f	docs/stdlib.md	stdlib-json-write	published	emit an object field with escaped string value
+1	json-write	lib/json-write.f	word	JSON-WRITE:FIELD-U	(ptr u8 n n --)	lib/json-write-test.f	docs/stdlib.md	stdlib-json-write	published	emit an object field with nonnegative integer value
+1	json-write	lib/json-write.f	word	JSON-WRITE:FIELD-BOOL	(ptr u8 n bool --)	lib/json-write-test.f	docs/stdlib.md	stdlib-json-write	published	emit an object field with boolean value
+1	json-write	lib/json-write.f	word	JSON-WRITE:FIELD-NULL	(ptr u8 n --)	lib/json-write-test.f	docs/stdlib.md	stdlib-json-write	published	emit an object field with null value
+1	json-write	lib/json-write.f	word	JSON-WRITE:$	(-- ptr u8 n)	lib/json-write-test.f	docs/stdlib.md	stdlib-json-write	published	return JSON writer output bytes
 1	json-read	lib/json-read.f	module			lib/json-read-test.f	docs/stdlib.md	stdlib-json-read	active	checked zero-allocation JSON pull/cursor parser complementing json-write
 1	json-read	lib/json-read.f	word	JR:INIT	(ptr u8 n --)	lib/json-read-test.f	docs/stdlib.md	stdlib-json-read	published	point the parser at a source buffer and reset state
 1	json-read	lib/json-read.f	word	JR:TOKEN	(-- n)	lib/json-read-test.f	docs/stdlib.md	stdlib-json-read	published	return the current token kind

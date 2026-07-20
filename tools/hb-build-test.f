@@ -357,7 +357,7 @@ public
 : HBT-PATH-ERROR-TEXT$ ( -- ptr u8 n )
    SB-RESET
    s" hb-build: schema=hb-build-error version=1 code=E-BUILD-PATH cache_selected=true cache_root=" SB-APPEND
-   JW-RESET HBT-BAD-OUT JW-STRING JW$ SB-APPEND
+   JSON-WRITE:RESET HBT-BAD-OUT JSON-WRITE:STRING JSON-WRITE:$ SB-APPEND
    s"  cache_source=explicit cause=E-FS-DIR" SB-APPEND
    HBB-LF SB-APPEND-C
    SB$ ;

@@ -50,9 +50,9 @@ variable RB-LEN
    dup 0 < if 45 TB-C negate then TB-U ;
 : TB$ ( -- ptr u8 n )   RB RB-LEN @ ;
 
-\ ---- signed JSON number (lib/json-write.f JW-U rejects negatives) --------------
+\ ---- signed JSON number (lib/json-write.f JSON-WRITE:U rejects negatives) --------------
 : JW-INT ( n -- )
-   dup 0 < if s" -" JW-RAW negate then JW-U ;
+   dup 0 < if s" -" JSON-WRITE:RAW negate then JSON-WRITE:U ;
 
 \ ---- human-text field helpers -------------------------------------------------
 : TB-LABEL ( ptr u8 n -- )   TB-S s" : " TB-S ;         \ "label: "
@@ -101,50 +101,50 @@ variable RB-LEN
 
 \ ---- JSON field helpers -------------------------------------------------------
 : JSON-STRLIST ( diagnostic n -- ) {: d:diagnostic list:n :}
-   JW-ARRAY-START
+   JSON-WRITE:ARRAY-START
    d DIAG> list SL-N@ {: cnt:n :}
    0 begin dup cnt < while
       dup {: k:n :}
-      k 0 > if JW-COMMA then
-      d DIAG> list k SL-GET JW-STRING
+      k 0 > if JSON-WRITE:COMMA then
+      d DIAG> list k SL-GET JSON-WRITE:STRING
       1+
    repeat drop
-   JW-ARRAY-END ;
+   JSON-WRITE:ARRAY-END ;
 
 : JSON-CONE ( diagnostic -- ) {: d:diagnostic :}
-   JW-ARRAY-START
+   JSON-WRITE:ARRAY-START
    d CONE-COUNT {: cnt:n :}
    0 begin dup cnt < while
       dup {: k:n :}
-      k 0 > if JW-COMMA then
-      d k CONE@ ARTIFACT:KEY$ JW-STRING
+      k 0 > if JSON-WRITE:COMMA then
+      d k CONE@ ARTIFACT:KEY$ JSON-WRITE:STRING
       1+
    repeat drop
-   JW-ARRAY-END ;
+   JSON-WRITE:ARRAY-END ;
 
 : JSON-REPAIRS ( diagnostic -- ) {: d:diagnostic :}
-   JW-ARRAY-START
+   JSON-WRITE:ARRAY-START
    d REPAIR-COUNT {: cnt:n :}
    0 begin dup cnt < while
       dup {: k:n :}
-      k 0 > if JW-COMMA then
-      d k REPAIR@ REPAIR-NAME JW-STRING
+      k 0 > if JSON-WRITE:COMMA then
+      d k REPAIR@ REPAIR-NAME JSON-WRITE:STRING
       1+
    repeat drop
-   JW-ARRAY-END ;
+   JSON-WRITE:ARRAY-END ;
 
 : JSON-SUBJECT ( diagnostic -- ) {: d:diagnostic :}
-   d HAS-SUBJECT? if d SUBJECT@ ARTIFACT:KEY$ JW-STRING else JW-NULL then ;
+   d HAS-SUBJECT? if d SUBJECT@ ARTIFACT:KEY$ JSON-WRITE:STRING else JSON-WRITE:NULL then ;
 : JSON-CX ( diagnostic -- ) {: d:diagnostic :}
-   d HAS-COUNTEREXAMPLE? if d COUNTEREXAMPLE@ ARTIFACT:KEY$ JW-STRING else JW-NULL then ;
+   d HAS-COUNTEREXAMPLE? if d COUNTEREXAMPLE@ ARTIFACT:KEY$ JSON-WRITE:STRING else JSON-WRITE:NULL then ;
 : JSON-REV ( diagnostic -- ) {: d:diagnostic :}
-   d HAS-REVISION? if d REVISION@ REV:CONTENT$ JW-STRING else JW-NULL then ;
+   d HAS-REVISION? if d REVISION@ REV:CONTENT$ JSON-WRITE:STRING else JSON-WRITE:NULL then ;
 : JSON-ENV ( diagnostic -- ) {: d:diagnostic :}
-   d HAS-ENVIRONMENT? if d ENVIRONMENT@ CONFIG:FACTS$ JW-STRING else JW-NULL then ;
+   d HAS-ENVIRONMENT? if d ENVIRONMENT@ CONFIG:FACTS$ JSON-WRITE:STRING else JSON-WRITE:NULL then ;
 : JSON-PARENT ( diagnostic -- ) {: d:diagnostic :}
-   d HAS-PARENT? if d PARENT@ JW-INT else JW-NULL then ;
+   d HAS-PARENT? if d PARENT@ JW-INT else JSON-WRITE:NULL then ;
 : JSON-PROGRESS ( diagnostic -- ) {: d:diagnostic :}
-   d HAS-PROGRESS? if d PROGRESS@ JW-INT else JW-NULL then ;
+   d HAS-PROGRESS? if d PROGRESS@ JW-INT else JSON-WRITE:NULL then ;
 
 public
 
@@ -173,27 +173,27 @@ public
 
 \ ---- canonical JSON renderer --------------------------------------------------
 : RENDER-JSON ( diagnostic -- ptr u8 n ) {: d:diagnostic :}
-   JW-RESET
-   JW-OBJECT-START
-   s" code" JW-KEY  d CODE@ JW-INT
-   JW-COMMA s" class"    JW-KEY  d CLASS@ CLASS-NAME       JW-STRING
-   JW-COMMA s" severity" JW-KEY  d SEVERITY@ SEVERITY-NAME JW-STRING
-   JW-COMMA s" phase"    JW-KEY  d PHASE@ PHASE-NAME       JW-STRING
-   JW-COMMA s" owner"    JW-KEY  d OWNER@ PRODUCER:NAME$   JW-STRING
-   JW-COMMA s" subject"  JW-KEY  d JSON-SUBJECT
-   JW-COMMA s" revision" JW-KEY  d JSON-REV
-   JW-COMMA s" location" JW-KEY  d LOCATION@ JW-STRING
-   JW-COMMA s" environment" JW-KEY  d JSON-ENV
-   JW-COMMA s" expected" JW-KEY  d SL-EXP JSON-STRLIST
-   JW-COMMA s" observed" JW-KEY  d SL-OBS JSON-STRLIST
-   JW-COMMA s" invalidated_evidence" JW-KEY  d SL-INVAL JSON-STRLIST
-   JW-COMMA s" dependency_cone" JW-KEY  d JSON-CONE
-   JW-COMMA s" legal_repairs"   JW-KEY  d JSON-REPAIRS
-   JW-COMMA s" counterexample"  JW-KEY  d JSON-CX
-   JW-COMMA s" parent"   JW-KEY  d JSON-PARENT
-   JW-COMMA s" progress" JW-KEY  d JSON-PROGRESS
-   JW-COMMA s" reproduction" JW-KEY  d REPRODUCTION@ JW-STRING
-   JW-OBJECT-END
-   JW$ ;
+   JSON-WRITE:RESET
+   JSON-WRITE:OBJECT-START
+   s" code" JSON-WRITE:KEY  d CODE@ JW-INT
+   JSON-WRITE:COMMA s" class"    JSON-WRITE:KEY  d CLASS@ CLASS-NAME       JSON-WRITE:STRING
+   JSON-WRITE:COMMA s" severity" JSON-WRITE:KEY  d SEVERITY@ SEVERITY-NAME JSON-WRITE:STRING
+   JSON-WRITE:COMMA s" phase"    JSON-WRITE:KEY  d PHASE@ PHASE-NAME       JSON-WRITE:STRING
+   JSON-WRITE:COMMA s" owner"    JSON-WRITE:KEY  d OWNER@ PRODUCER:NAME$   JSON-WRITE:STRING
+   JSON-WRITE:COMMA s" subject"  JSON-WRITE:KEY  d JSON-SUBJECT
+   JSON-WRITE:COMMA s" revision" JSON-WRITE:KEY  d JSON-REV
+   JSON-WRITE:COMMA s" location" JSON-WRITE:KEY  d LOCATION@ JSON-WRITE:STRING
+   JSON-WRITE:COMMA s" environment" JSON-WRITE:KEY  d JSON-ENV
+   JSON-WRITE:COMMA s" expected" JSON-WRITE:KEY  d SL-EXP JSON-STRLIST
+   JSON-WRITE:COMMA s" observed" JSON-WRITE:KEY  d SL-OBS JSON-STRLIST
+   JSON-WRITE:COMMA s" invalidated_evidence" JSON-WRITE:KEY  d SL-INVAL JSON-STRLIST
+   JSON-WRITE:COMMA s" dependency_cone" JSON-WRITE:KEY  d JSON-CONE
+   JSON-WRITE:COMMA s" legal_repairs"   JSON-WRITE:KEY  d JSON-REPAIRS
+   JSON-WRITE:COMMA s" counterexample"  JSON-WRITE:KEY  d JSON-CX
+   JSON-WRITE:COMMA s" parent"   JSON-WRITE:KEY  d JSON-PARENT
+   JSON-WRITE:COMMA s" progress" JSON-WRITE:KEY  d JSON-PROGRESS
+   JSON-WRITE:COMMA s" reproduction" JSON-WRITE:KEY  d REPRODUCTION@ JSON-WRITE:STRING
+   JSON-WRITE:OBJECT-END
+   JSON-WRITE:$ ;
 
 ;package

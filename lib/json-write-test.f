@@ -9,6 +9,12 @@ require lib/memory.f
 require lib/json-write.f
 require test/checker-assert.f
 
+\ White-box test: reopen the module's package so the fixtures reach json-write's
+\ private byte/buffer plumbing (JW-C, JW-BUF/-BUF@/-BUF!/-BUF-FIELD, JW-CAP,
+\ JW-LEN, JW-CHECK-ROOM, JW-RAW-LEN) and its private byte constants, and call the
+\ public emitters by their bare package-local tails.
+package JSON-WRITE
+
 create JWT-ESC-IN
    65 c, JW-DQ c, JW-BACKSLASH c, JW-LF c, 1 c, 66 c,
 
@@ -70,43 +76,43 @@ MEM-64K 17 + constant JWT-LARGE-N
    SB$ ;
 
 : JWT-BUILD-OBJECT ( -- )
-   JW-RESET
-   JW-OBJECT-START
-   s" name" JWT-NAME$ JW-FIELD-S
-   JW-COMMA
-   s" count" 42 JW-FIELD-U
-   JW-COMMA
-   s" ok" JWT-TRUE JW-FIELD-BOOL
-   JW-COMMA
-   s" none" JW-FIELD-NULL
-   JW-OBJECT-END ;
+   RESET
+   OBJECT-START
+   s" name" JWT-NAME$ FIELD-S
+   COMMA
+   s" count" 42 FIELD-U
+   COMMA
+   s" ok" JWT-TRUE FIELD-BOOL
+   COMMA
+   s" none" FIELD-NULL
+   OBJECT-END ;
 
 : JWT-BUILD-ARRAY ( -- )
-   JW-RESET
-   JW-ARRAY-START
-   1 JW-U
-   JW-COMMA
-   s" x" JW-STRING
-   JW-COMMA
-   JWT-FALSE JW-BOOL
-   JW-ARRAY-END ;
+   RESET
+   ARRAY-START
+   1 U
+   COMMA
+   s" x" STRING
+   COMMA
+   JWT-FALSE BOOL
+   ARRAY-END ;
 
 : JWT-TEST-STRING-ESCAPE ( -- )
-   JW-RESET
-   JWT-ESC-IN$ JW-STRING
-   JW$ JWT-ESC-WANT$ T$= ;
+   RESET
+   JWT-ESC-IN$ STRING
+   $ JWT-ESC-WANT$ T$= ;
 
 : JWT-TEST-OBJECT ( -- )
    JWT-BUILD-OBJECT
-   JW$ JWT-EXPECTED-OBJECT$ T$= ;
+   $ JWT-EXPECTED-OBJECT$ T$= ;
 
 : JWT-TEST-ARRAY ( -- )
    JWT-BUILD-ARRAY
-   JW$ JWT-EXPECTED-ARRAY$ T$= ;
+   $ JWT-EXPECTED-ARRAY$ T$= ;
 
 : JWT-TEST-BUF-ACCESSORS ( -- )
-   JW-RESET
-   s" a" JW-RAW
+   RESET
+   s" a" RAW
    JW-BUF-FIELD @ c@ 97 T=
    JW-BUF@ c@ 97 T=
    JW-BUF c@ 97 T=
@@ -114,7 +120,7 @@ MEM-64K 17 + constant JWT-LARGE-N
    JW-BUF@ c@ 97 T= ;
 
 : JWT-RAW-NEG ( -- )
-   s" x" drop -1 JW-RAW ;
+   s" x" drop -1 RAW ;
 
 : JWT-LEN-NEG ( -- )
    -1 JW-LEN drop ;
@@ -129,20 +135,20 @@ MEM-64K 17 + constant JWT-LARGE-N
    256 JW-C ;
 
 : JWT-U-NEG ( -- )
-   -1 JW-U ;
+   -1 U ;
 
 : JWT-HUGE-ROOM ( -- )
-   JW-RESET
+   RESET
    MEM-MAX-N JW-CHECK-ROOM ;
 
 : JWT-BUILD-LARGE ( -- )
-   JW-RESET
+   RESET
    JWT-LARGE-N 0 ?do 65 JW-C loop ;
 
 : JWT-TEST-GROWTH ( -- )
    JWT-BUILD-LARGE
    JW-CAP JWT-LARGE-N < TFALSE
-   JW$ {: a:ptr u :}
+   $ {: a:ptr u:n :}
    u JWT-LARGE-N T=
    a c@ 65 T=
    a u 1 - + c@ 65 T= ;
@@ -169,3 +175,5 @@ MEM-64K 17 + constant JWT-LARGE-N
    s" json-write-test: ok" type cr ;
 
 JWT-MAIN
+
+;package

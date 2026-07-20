@@ -401,8 +401,8 @@ $7E constant ROOT-C
    text textu STR-LF COUNT-CHAR 0 T=
    text textu STR-TAB COUNT-CHAR 0 T=
    text textu s" cache_selected=true" CONTAINS? TTRUE
-   JW-RESET F$ JW-STRING
-   text textu JW$ CONTAINS? TTRUE
+   JSON-WRITE:RESET F$ JSON-WRITE:STRING
+   text textu JSON-WRITE:$ CONTAINS? TTRUE
    F$ MODE-0700 CHMOD-MODE ;
 
 : CHECK-OVER-ROOT-EVIDENCE ( -- )

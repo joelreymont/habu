@@ -226,17 +226,17 @@ create JRT-NAME 65 c, 34 c, 66 c,
 
 \ ---- round-trip against lib/json-write.f ----------------------------------
 : JRT-RT-BUILD ( -- ptr u8 n )
-   JW-RESET
-   JW-OBJECT-START
-   s" name" JRT-NAME$ JW-FIELD-S
-   JW-COMMA
-   s" count" 42 JW-FIELD-U
-   JW-COMMA
-   s" ok" JRT-TRUE JW-FIELD-BOOL
-   JW-COMMA
-   s" none" JW-FIELD-NULL
-   JW-OBJECT-END
-   JW$ ;
+   JSON-WRITE:RESET
+   JSON-WRITE:OBJECT-START
+   s" name" JRT-NAME$ JSON-WRITE:FIELD-S
+   JSON-WRITE:COMMA
+   s" count" 42 JSON-WRITE:FIELD-U
+   JSON-WRITE:COMMA
+   s" ok" JRT-TRUE JSON-WRITE:FIELD-BOOL
+   JSON-WRITE:COMMA
+   s" none" JSON-WRITE:FIELD-NULL
+   JSON-WRITE:OBJECT-END
+   JSON-WRITE:$ ;
 
 : JRT-TEST-ROUNDTRIP ( -- )
    JRT-RT-BUILD JR:INIT
