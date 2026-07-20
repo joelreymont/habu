@@ -72,10 +72,19 @@ public
 \ headroom over the elapsed budget. macOS mirrors spark as before and still must be
 \ re-measured on macOS - the split cuts macOS maki cost proportionally, but no macOS
 \ box is available here to confirm the new pair.
-19000 constant SPARK-COLD-MS
-21000 constant SPARK-COLD-WALL-MS
-19000 constant MACOS-COLD-MS
-21000 constant MACOS-COLD-WALL-MS
+\ 2026-07-20 re-derived UP after the day's coverage wave: ~15 new suites landed
+\ (12-block stack acceptance + gradcheck conversion, strided-view core, MHA
+\ rework + block + fusion, weight tying, generation, BPE, cross-seq reject,
+\ capacity regressions), growing the maki core slice 9.4s -> 14.8s and the
+\ measured cold attempt 15.1s -> 20.2s worst-of-three at cal ~101%
+\ (20.057 / 20.183 / 20.469 quiet-box attempts, sha-stable, correctness=t).
+\ 25000 = ~20.2s + 25% (the derivation idiom above); 27500 keeps the same ~10%
+\ wall headroom. macOS mirrors spark as before and still must be re-measured on
+\ a macOS box.
+25000 constant SPARK-COLD-MS
+27500 constant SPARK-COLD-WALL-MS
+25000 constant MACOS-COLD-MS
+27500 constant MACOS-COLD-WALL-MS
 
 ;package
 
