@@ -110,11 +110,17 @@ public
 
 : AMT-LR ( -- r )  0.02 ;   \ Adam step size for the MLP trainer
 
-\ MLP-trainer decoupled decay coefficient. 0 by design: the committed AMT
-\ convergence gate + regression lock (maki/adam-train-test.f) predate AdamW and
-\ pin the wd=0 trajectory, so the trainer stays bit-identical while carrying the
-\ real param-group policy (W1/W2 = WD-DECAY, B1/B2 = WD-NONE, wired in AMT-APPLY).
-\ The decoupled-decay math with wd>0 is proven by maki/adamw-test.f.
+\ MLP-trainer decoupled decay coefficient. Kept 0 on a MEASURED basis (dot
+\ habu-adopt-nanogpt-weight-fe6dc7e0): adopting nanoGPT's wd=0.1 on the decaying
+\ groups (W1/W2 = WD-DECAY, B1/B2 = WD-NONE, wired in AMT-APPLY) was run over the
+\ committed 60-step seed/fixture and measurably HURTS the fit - final mean-NLL
+\ -2.241 (mNLL -2241) at wd=0.1 vs -2.749 (mNLL -2749) at wd=0, both deterministic
+\ (run twice, bit-identical). wd=0.1 still converges but to a strictly worse
+\ training-batch NLL: weight decay only regularizes generalization, and this
+\ fixture scores solely the training-batch objective, so decay can only trade it
+\ away. 0.0 therefore stays - not to preserve the old lock, but because the
+\ re-derived wd>0 trajectory is a recorded negative here. The decoupled-decay math
+\ with wd>0 is proven in isolation by maki/adamw-test.f.
 : AMT-WD ( -- r )  0.0 ;
 
 \ fresh Adam-MLP run: the from-scratch setup (init params, gen data, BW-BUILD,
