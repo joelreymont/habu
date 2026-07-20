@@ -1,12 +1,25 @@
 \ process-command.f - checked command-owned process runner.
 \
+\ The module lives in `package PROC-CMD`. External callers use the qualified public
+\ command-builder API (PROC-CMD:RESET, PROC-CMD:ARG+, PROC-CMD:ENV+,
+\ PROC-CMD:ENV-ENTRY+, PROC-CMD:ENV-HERMETIC, PROC-CMD:IN!, PROC-CMD:RUN-OUTCOME,
+\ PROC-CMD:RUN-RC, PROC-CMD:OUT$, PROC-CMD:ERR$, PROC-CMD:OUTCOME@, PROC-CMD:RC@);
+\ the argument/environment tables, capture buffers, and staging helpers are
+\ package-private.
 require lib/errors.f
 require lib/fs.f
 require lib/process.f
 require lib/process-argv.f
 require lib/process-env.f
 
-PROC-ARGV-MAX 1- constant PROC-CMD-ARG-MAX
+package PROC-CMD
+
+public
+
+PROC-ARGV-MAX 1- constant ARG-MAX        \ public: max positional argv slots a command may carry
+
+private
+
 PROC-ARGV-BUF-CAP constant PROC-CMD-ARG-BUF-CAP
 PROC-ENV-MAX constant PROC-CMD-ENV-MAX
 PROC-ENV-BUF-CAP constant PROC-CMD-ENV-BUF-CAP
@@ -14,7 +27,7 @@ PROC-ENV-BUF-CAP constant PROC-CMD-ENV-BUF-CAP
 32768 constant PROC-CMD-OUT-CAP
 32768 constant PROC-CMD-ERR-CAP
 
-create PROC-CMD-ARG-TABLE PROC-CMD-ARG-MAX cells allot
+create PROC-CMD-ARG-TABLE ARG-MAX cells allot
 create PROC-CMD-ARG-BUF PROC-CMD-ARG-BUF-CAP allot
 create PROC-CMD-ENV-TABLE PROC-CMD-ENV-MAX cells allot
 create PROC-CMD-ENV-BUF PROC-CMD-ENV-BUF-CAP allot
@@ -43,7 +56,9 @@ variable PROC-CMD-INHERIT
    0 PROC-CMD-CODE !
    0 >RC PROC-CMD-RC ! ;
 
-: PROC-CMD-RESET ( -- )
+public
+
+: RESET ( -- )
    0 >COUNT PROC-CMD-ARG-N !
    0 >OFF PROC-CMD-ARG-OFF !
    0 >COUNT PROC-CMD-ENV-N !
@@ -54,13 +69,15 @@ variable PROC-CMD-INHERIT
    PROC-ARGV-RESET
    PROC-ENV-RESET ;
 
+private
+
 : PROC-CMD-ARG-SLOT ( idx -- ptr a ) {: idx :}
    idx IDX>N 0 < if E-PROC-OUTPUT throw then
-   idx IDX>N PROC-CMD-ARG-MAX >= if E-PROC-OUTPUT throw then
+   idx IDX>N ARG-MAX >= if E-PROC-OUTPUT throw then
    idx IDX>N cells PROC-CMD-ARG-TABLE + ;
 
 : PROC-CMD-CHECK-ARG-EXTRA ( -- )
-   PROC-CMD-ARG-N @ COUNT>N PROC-CMD-ARG-MAX >= if E-PROC-OUTPUT throw then ;
+   PROC-CMD-ARG-N @ COUNT>N ARG-MAX >= if E-PROC-OUTPUT throw then ;
 
 : PROC-CMD-ARG-ZCOPY ( ptr u8 len -- ptr u8 ) {: a:ptr u :}
    u LEN>N 0 < if E-PROC-OUTPUT throw then
@@ -75,9 +92,13 @@ variable PROC-CMD-INHERIT
    PROC-CMD-ARG-N @ COUNT>N >IDX PROC-CMD-ARG-SLOT !
    PROC-CMD-ARG-N @ COUNT>N 1+ >COUNT PROC-CMD-ARG-N ! ;
 
-: PROC-CMD-ARG+ ( ptr u8 len -- ) {: a:ptr u :}
+public
+
+: ARG+ ( ptr u8 len -- ) {: a:ptr u:len :}
    PROC-CMD-CHECK-ARG-EXTRA
    a u PROC-CMD-ARG-ZCOPY PROC-CMD-ARG-INSTALL-Z ;
+
+private
 
 : PROC-CMD-ENV-SLOT ( idx -- ptr a ) {: idx :}
    idx IDX>N 0 < if E-PROC-ENV throw then
@@ -100,12 +121,14 @@ variable PROC-CMD-INHERIT
    PROC-CMD-ENV-N @ COUNT>N >IDX PROC-CMD-ENV-SLOT !
    PROC-CMD-ENV-N @ COUNT>N 1+ >COUNT PROC-CMD-ENV-N ! ;
 
-: PROC-CMD-ENV-ENTRY+ ( ptr u8 len -- ) {: a:ptr u :}
+public
+
+: ENV-ENTRY+ ( ptr u8 len -- ) {: a:ptr u:len :}
    a u PROC-ENV-CHECK-ENTRY
    PROC-CMD-CHECK-ENV-EXTRA
    a u PROC-CMD-ENV-STORE-Z PROC-CMD-ENV-INSTALL-Z ;
 
-: PROC-CMD-ENV+ ( ptr u8 len ptr u8 len -- ) {: name:ptr nameu val:ptr valu :}
+: ENV+ ( ptr u8 len ptr u8 len -- ) {: name:ptr nameu:len val:ptr valu:len :}
    name nameu PROC-ENV-CHECK-NAME
    valu LEN>N 0 < if E-PROC-ENV throw then
    PROC-CMD-CHECK-ENV-EXTRA
@@ -120,20 +143,30 @@ variable PROC-CMD-INHERIT
    PROC-CMD-ENV-BUF off OFF>N + PROC-CMD-ENV-INSTALL-Z
    off OFF>N nameu LEN>N valu LEN>N + 2 + + >OFF PROC-CMD-ENV-OFF ! ;
 
+private
+
 : PROC-CMD-ENV-INHERIT ( -- )
    1 PROC-CMD-INHERIT ! ;
 
-: PROC-CMD-ENV-HERMETIC ( -- )
+public
+
+: ENV-HERMETIC ( -- )
    0 PROC-CMD-INHERIT ! ;
+
+private
 
 : PROC-CMD-IN-RESET ( -- )
    0 >LEN PROC-CMD-IN-LEN ! ;
 
-: PROC-CMD-IN! ( ptr u8 len -- ) {: a:ptr u :}
+public
+
+: IN! ( ptr u8 len -- ) {: a:ptr u:len :}
    u LEN>N 0 < if E-PROC-OUTPUT throw then
    u LEN>N PROC-CMD-IN-CAP > if E-PROC-OUTPUT throw then
    a PROC-CMD-IN u LEN>N BYTE-COPY
    u PROC-CMD-IN-LEN ! ;
+
+private
 
 : PROC-CMD-LOAD-ARG ( idx -- ) {: idx :}
    idx PROC-CMD-ARG-SLOT @ {: z:ptr :}
@@ -178,12 +211,14 @@ variable PROC-CMD-INHERIT
    PROC-CMD-ERR-LEN !
    PROC-CMD-OUT-LEN ! ;
 
-: PROC-CMD-OUTCOME@ ( -- outcome )
+public
+
+: OUTCOME@ ( -- outcome )
    PROC-CMD-TIMED-OUT @ if OUTCOME:TIMEOUT exit then
    PROC-CMD-EXITED @ if PROC-CMD-CODE @ OUTCOME:EXITED exit then
    PROC-CMD-CODE @ OUTCOME:SIGNALED ;
 
-: PROC-CMD-RUN-OUTCOME ( ptr u8 len ms -- outcome ) {: path:ptr pathu:len timeout:ms :}
+: RUN-OUTCOME ( ptr u8 len ms -- outcome ) {: path:ptr pathu:len timeout:ms :}
    path pathu timeout PROC-CMD-CHECK-RUN
    PROC-CMD-CAPTURE-RESET
    PROC-CMD-PREPARE
@@ -191,25 +226,31 @@ variable PROC-CMD-INHERIT
    PROC-CMD-OUT PROC-CMD-OUT-CAP >LEN
    PROC-CMD-ERR PROC-CMD-ERR-CAP >LEN timeout
    RUN-ARGV-ENV-STDIN-CAPTURE-OUTCOME PROC-CMD-STORE-RUN
-   PROC-CMD-OUTCOME@ dup PROC-OUTCOME>RC PROC-CMD-RC ! ;
+   OUTCOME@ dup PROC-OUTCOME>RC PROC-CMD-RC ! ;
 
 \ Wrap the stored completion rc into a result<n,n> (switchover wave B): ok =
 \ clean exit (0), err = the nonzero completion code (a nonzero exit code, or
 \ 128+signal). The captured output stays in the module PROC-CMD-OUT/ERR buffers
-\ (read via PROC-CMD-OUT$/PROC-CMD-ERR$), so the return carries only the code —
+\ (read via PROC-CMD:OUT$/PROC-CMD:ERR$), so the return carries only the code —
 \ no capture product here, unlike the RUN-*-CAPTURE words that return the lengths.
+private
+
 : PROC-CMD-RC>RESULT ( rc -- result<n,n> )
    RC>N {: rc:n :}
    rc 0 = if rc RESULT:OK else rc RESULT:ERR then ;
 
-: PROC-CMD-RUN-RC ( ptr u8 len ms -- result<n,n> )
-   PROC-CMD-RUN-OUTCOME drop PROC-CMD-RC @ PROC-CMD-RC>RESULT ;
+public
 
-: PROC-CMD-OUT$ ( -- ptr u8 n )
+: RUN-RC ( ptr u8 len ms -- result<n,n> )
+   RUN-OUTCOME drop PROC-CMD-RC @ PROC-CMD-RC>RESULT ;
+
+: OUT$ ( -- ptr u8 n )
    PROC-CMD-OUT PROC-CMD-OUT-LEN @ LEN>N ;
 
-: PROC-CMD-ERR$ ( -- ptr u8 n )
+: ERR$ ( -- ptr u8 n )
    PROC-CMD-ERR PROC-CMD-ERR-LEN @ LEN>N ;
 
-: PROC-CMD-RC@ ( -- result<n,n> )
+: RC@ ( -- result<n,n> )
    PROC-CMD-RC @ PROC-CMD-RC>RESULT ;
+
+;package

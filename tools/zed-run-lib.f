@@ -96,21 +96,21 @@ DEFAULT-TIMEOUT-MS TIMEOUT-MS !
 \ ---- ssh/scp/rsync argv runners (capture stdout/stderr/rc) -------------------
 
 : BATCH-OPTS ( -- )
-   s" -o" >LEN PROC-CMD-ARG+  s" BatchMode=yes" >LEN PROC-CMD-ARG+
-   s" -o" >LEN PROC-CMD-ARG+  s" ConnectTimeout=10" >LEN PROC-CMD-ARG+ ;
+   s" -o" >LEN PROC-CMD:ARG+  s" BatchMode=yes" >LEN PROC-CMD:ARG+
+   s" -o" >LEN PROC-CMD:ARG+  s" ConnectTimeout=10" >LEN PROC-CMD:ARG+ ;
 
 : SSH-EXEC ( ptr u8 n -- rc ) {: a:ptr u:n :}   \ run one remote command string
-   PROC-CMD-RESET
+   PROC-CMD:RESET
    BATCH-OPTS
-   HOST$ >LEN PROC-CMD-ARG+
-   a u >LEN PROC-CMD-ARG+
-   SSH$ >LEN TIMEOUT-MS @ >MS PROC-CMD-RUN-RC MATCH result
+   HOST$ >LEN PROC-CMD:ARG+
+   a u >LEN PROC-CMD:ARG+
+   SSH$ >LEN TIMEOUT-MS @ >MS PROC-CMD:RUN-RC MATCH result
      ok  OF >RC ENDOF
      err OF >RC ENDOF
    ;MATCH ;
 
 : TIMED-OUT? ( -- bool )
-   PROC-CMD-OUTCOME@ MATCH outcome
+   PROC-CMD:OUTCOME@ MATCH outcome
      exited OF drop 0 0= 0= ENDOF
      signaled OF drop 0 0= 0= ENDOF
      timeout OF 0 0= ENDOF
@@ -174,13 +174,13 @@ public
    RC>N 0 <> if E-ZED-RC throw then ;
 
 : OUT$ ( -- ptr u8 n )
-   PROC-CMD-OUT$ ;
+   PROC-CMD:OUT$ ;
 
 : ERR$ ( -- ptr u8 n )
-   PROC-CMD-ERR$ ;
+   PROC-CMD:ERR$ ;
 
 : RC@ ( -- rc )
-   PROC-CMD-RC@ MATCH result
+   PROC-CMD:RC@ MATCH result
      ok  OF >RC ENDOF
      err OF >RC ENDOF
    ;MATCH ;
@@ -215,22 +215,22 @@ public
 
 : PUT-DIR ( ptr u8 n -- ) {: a:ptr u:n :}   \ rsync local dir into scratch/
    DEST-BUILD
-   PROC-CMD-RESET
-   s" -rlt" >LEN PROC-CMD-ARG+
-   a u >LEN PROC-CMD-ARG+
-   DEST$ >LEN PROC-CMD-ARG+
-   RSYNC$ >LEN TIMEOUT-MS @ >MS PROC-CMD-RUN-RC MATCH result
+   PROC-CMD:RESET
+   s" -rlt" >LEN PROC-CMD:ARG+
+   a u >LEN PROC-CMD:ARG+
+   DEST$ >LEN PROC-CMD:ARG+
+   RSYNC$ >LEN TIMEOUT-MS @ >MS PROC-CMD:RUN-RC MATCH result
      ok  OF drop ENDOF
      err OF drop E-ZED-PUT throw ENDOF
    ;MATCH ;
 
 : PUT-FILE ( ptr u8 n -- ) {: a:ptr u:n :}   \ scp local file into scratch/
    DEST-BUILD
-   PROC-CMD-RESET
-   s" -o" >LEN PROC-CMD-ARG+  s" BatchMode=yes" >LEN PROC-CMD-ARG+
-   a u >LEN PROC-CMD-ARG+
-   DEST$ >LEN PROC-CMD-ARG+
-   SCP$ >LEN TIMEOUT-MS @ >MS PROC-CMD-RUN-RC MATCH result
+   PROC-CMD:RESET
+   s" -o" >LEN PROC-CMD:ARG+  s" BatchMode=yes" >LEN PROC-CMD:ARG+
+   a u >LEN PROC-CMD:ARG+
+   DEST$ >LEN PROC-CMD:ARG+
+   SCP$ >LEN TIMEOUT-MS @ >MS PROC-CMD:RUN-RC MATCH result
      ok  OF drop ENDOF
      err OF drop E-ZED-PUT throw ENDOF
    ;MATCH ;

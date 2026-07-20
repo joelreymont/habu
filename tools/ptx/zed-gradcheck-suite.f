@@ -60,16 +60,16 @@ variable AGS-PTX-U
    AGS-ROOT$ SB$ AGS-PTX-BUF JOIN-PATH AGS-PTX-U ! ;
 
 : AGS-EMIT ( -- )   \ spawn the branch engine on the current driver, write PTX
-   PROC-CMD-RESET
-   s" --load" >LEN PROC-CMD-ARG+
-   s" tools/ptx/ad-entry-lib.f" >LEN PROC-CMD-ARG+
-   AGS-DRV$ >LEN PROC-CMD-ARG+
-   s" bin/hb" >LEN AGS-TIMEOUT-MS >MS PROC-CMD-RUN-RC
+   PROC-CMD:RESET
+   s" --load" >LEN PROC-CMD:ARG+
+   s" tools/ptx/ad-entry-lib.f" >LEN PROC-CMD:ARG+
+   AGS-DRV$ >LEN PROC-CMD:ARG+
+   s" bin/hb" >LEN AGS-TIMEOUT-MS >MS PROC-CMD:RUN-RC
    MATCH result
      ok  OF drop ENDOF                        \ clean exit -> proceed
      err OF drop E-ZED-EMIT throw ENDOF       \ nonzero completion -> surface as E-ZED-EMIT
    ;MATCH
-   AGS-PTX$ PROC-CMD-OUT$ WRITE-ALL ;
+   AGS-PTX$ PROC-CMD:OUT$ WRITE-ALL ;
 
 : AGS-ASSEMBLE ( ptr u8 n -- ) {: key:ptr keyu:n :}   \ remote ptxas <key>.ptx -> <key>.cubin
    SB-RESET
@@ -86,15 +86,15 @@ variable AGS-PTX-U
    key keyu AGS-ASSEMBLE ;
 
 : AGS-EMIT-FILE ( ptr u8 n -- ) {: file:ptr fileu:n :}   \ standalone self-emitting driver
-   PROC-CMD-RESET
-   s" --load" >LEN PROC-CMD-ARG+
-   file fileu >LEN PROC-CMD-ARG+
-   s" bin/hb" >LEN AGS-TIMEOUT-MS >MS PROC-CMD-RUN-RC
+   PROC-CMD:RESET
+   s" --load" >LEN PROC-CMD:ARG+
+   file fileu >LEN PROC-CMD:ARG+
+   s" bin/hb" >LEN AGS-TIMEOUT-MS >MS PROC-CMD:RUN-RC
    MATCH result
      ok  OF drop ENDOF                        \ clean exit -> proceed
      err OF drop E-ZED-EMIT throw ENDOF       \ nonzero completion -> surface as E-ZED-EMIT
    ;MATCH
-   AGS-PTX$ PROC-CMD-OUT$ WRITE-ALL ;
+   AGS-PTX$ PROC-CMD:OUT$ WRITE-ALL ;
 
 : AGS-KERNEL-FILE ( ptr u8 n ptr u8 n -- )   \ emit via a standalone cg file
    {: key:ptr keyu:n file:ptr fileu:n :}
