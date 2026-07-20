@@ -222,3 +222,8 @@
 -4400 constant E-TEST-FIRST
 -4499 constant E-TEST-LAST
 -4400 constant E-TEST-CAPACITY
+
+\ Report tables: -4900..-4999 (-4500..-4899 are owned by non-stdlib test/tool blocks)
+-4900 constant E-REPORT-FIRST
+-4999 constant E-REPORT-LAST
+-4900 constant E-REPORT-CAPACITY   \ column set is full (more than 64 columns declared)
