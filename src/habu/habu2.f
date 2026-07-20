@@ -36,10 +36,8 @@ $D63F0000 constant C-CALL-BLR
 $D61F0000 constant C-CALL-BR
 $1F000000 constant C-CALL-ADR-MASK
 $10000000 constant C-CALL-ADR
-$D2800010 constant C-CALL-MOVZ-X16
-$F2A00010 constant C-CALL-MOVK-X16-16
-$F2C00010 constant C-CALL-MOVK-X16-32
-$D63F0200 constant C-CALL-BLR-X16
+$D2800010 constant C-CALL-MOVZ-X16    \ movz x16 scaffold: ADT-match tag compare (not a call)
+$D63F0200 constant C-CALL-BLR-X16     \ blr x16: kept for the deferred-word indirect call (C-DEFER-EMIT-CODE)
 
 : C-CALL-BRANCH-NO-PROLOGUE ( label -- ) {: lnopro:label :}
    9 11 0 LDRW,  8 C-CALL-PROLOGUE-INSTR LIT64,
@@ -88,21 +86,6 @@ $D63F0200 constant C-CALL-BLR-X16
    linl LBL,  15 14 CMP,  C-GE ldone BCOND,
       9 15 0 LDRW,  15 15 4 ADDI,  LCEMIT LABEL@ BL,  linl B, ;
 
-: C-CALL-EMIT-MOVZ-X16 ( -- )
-   5 $FFFF MOVZ,
-   7 11 5 AND,  7 7 5 LSLI,
-   8 C-CALL-MOVZ-X16 LIT64,  9 8 7 ORR,  LCEMIT LABEL@ BL, ;
-
-: C-CALL-EMIT-MOVK-X16 ( n n -- ) {: sh op :}
-   7 11 sh LSRI,  7 7 5 AND,  7 7 5 LSLI,
-   8 op LIT64,  9 8 7 ORR,  LCEMIT LABEL@ BL, ;
-
-: C-CALL-EMIT-ABSOLUTE ( -- )
-   C-CALL-EMIT-MOVZ-X16
-   16 C-CALL-MOVK-X16-16 C-CALL-EMIT-MOVK-X16
-   32 C-CALL-MOVK-X16-32 C-CALL-EMIT-MOVK-X16
-   9 C-CALL-BLR-X16 LIT64,  LCEMIT LABEL@ BL, ;
-
 : C-CALL ( -- )
    LBL LBL LBL LBL LBL LBL LBL {: lcall lcopy lscan lsbody lnopro linl ldone :}
    lnopro C-CALL-BRANCH-NO-PROLOGUE
@@ -115,7 +98,7 @@ $D63F0200 constant C-CALL-BLR-X16
    lcopy LBL,
       linl ldone C-CALL-COPY-INLINE
    lcall LBL,
-      C-CALL-EMIT-ABSOLUTE
+      LCEMITBL LABEL@ BL,       \ one direct BL imm26 to the statically known target in x11
    ldone LBL, ;
 
 \ ---- source setup: baked LSRC or stdin ----
@@ -372,6 +355,28 @@ s" c-bp-watch-dump" s" label label --" TRUST
    LMMAPCODE LABEL@ LBL, s" hb: cannot map fixed code region" BYTES,  NL-KW 1 BYTES,            \ MMAPCODE-MSG-LEN bytes incl. newline
    LMMAPDATA LABEL@ LBL, s" hb: cannot map fixed data region" BYTES,  NL-KW 1 BYTES,            \ MMAPDATA-MSG-LEN bytes incl. newline
    LBLRANGE LABEL@ LBL, s" hb: code region out of BL range" BYTES,  NL-KW 1 BYTES, ;            \ BLRANGE-MSG-LEN bytes incl. newline
+
+\ LCEMITBL ( x11 = absolute target ) : emit ONE direct BL imm26 to x11 at CP, then CP += 4.
+\ The single call-emit primitive for every statically known native call — dictionary words
+\ (C-CALL), the runtime compiler (compile,/BCOMPILE), and the registered engine helpers
+\ (LP2VEXEC/(PROT-SPAN)) alike. disp = target - CP; the region maps at __text + REGION-OFF
+\ so every call site and callee sit within BL's +/-128 MiB reach, and the boot assertion
+\ (EM-MMAP-CODE-REGION, exit BL-RANGE-RC) guarantees the whole region stays in range. Each
+\ emission still fails closed on that window: a future layout that broke it would otherwise
+\ encode a wild displacement into live code. Builds x9 = BL opcode | imm26, then tails into
+\ LCEMIT (CP guard + word store + CP += 4).
+: EMIT-CEMITBL ( -- )
+   LBL {: rok:label :}
+   LCEMITBL LABEL@ LBL,
+   10 11 CP SUB,                                       \ x10 = disp = target - CP (signed byte distance)
+   5 BL-REACH LIT64,  6 10 5 ADD,  5 5 1 LSLI,  6 5 CMP,    \ (disp + BL-REACH) vs 2*BL-REACH (unsigned window)
+   C-CC rok BCOND,                                     \ disp in [-BL-REACH, BL-REACH) -> encode; else fail closed
+      1 LBLRANGE LABEL@ ADR,  0 2 MOVZ,  2 BLRANGE-MSG-LEN MOVZ,  NR-WRITE SYS,
+      0 BL-RANGE-RC MOVZ,  NR-EXIT-GROUP SYS,
+   rok LBL,
+   10 10 2 ASRI,  5 $03FFFFFF LIT64,  10 10 5 AND,      \ imm26 = (disp >> 2) & 0x03FFFFFF (sign-preserving)
+   9 $94000000 LIT64,  9 9 10 ORR,                     \ x9 = BL opcode | imm26
+   LCEMIT LABEL@ B, ;                                  \ tail: LCEMIT guards CP, stores x9, advances CP += 4, RET
 
 \ override SIGTRAP(5) to the resuming handler (G-INSTALL-CRASH pointed all four
 \ at the dumper; this repoints just TRAP once LTRAPH is bound).
@@ -3674,9 +3679,10 @@ EM-AOT-RESTORE-HOOK-INIT
 \ For each baked call site (packed 4B row = blob-off u16 | name-off u16<<16 into the
 \ deduped [len][bytes] name pool at LAOTNAMES) resolve the callee by NAME in THIS
 \ engine (LFIND over primitives, cold-prefix words, and the just-registered
-\ siblings) and re-encode the three movz/movk x16 immediates at CP+blob-offset to
-\ that address. A missing name is a build/seed inconsistency: fail closed. Rows are
-\ 4B-aligned so each loads with a single LDRW.
+\ siblings) and re-encode ONLY the BL imm26 at CP+blob-offset to that address
+\ (disp = callee - site, in BL range by the boot region assertion); the BL opcode
+\ (the callee is named, not embedded) is preserved. A missing name is a build/seed
+\ inconsistency: fail closed. Rows are 4B-aligned so each loads with a single LDRW.
 : EM-AOT-PATCH-SITES ( -- )
    LBL LBL LBL {: ploop:label pdone:label pnf:label :}
    21 LAOTSITES LABEL@ ADR,                          \ x21 = row cursor (4B rows)
@@ -3693,12 +3699,8 @@ EM-AOT-RESTORE-HOOK-INIT
       13 pnf CBZ,
       LAOTWIDGATE LABEL@ BL,                         \ TFAM 2b-v: reject reloc into a protected WID (x24 survives)
       9 CP 24 ADD,                                   \ x9 = site addr = CP + blob offset
-      10 9 0 LDRW,  5 $FFE0001F LIT64,  10 10 5 AND,
-        14 11 0 ADDI,  5 $FFFF LIT64,  14 14 5 AND,  14 14 5 LSLI,  10 10 14 ORR,  10 9 0 STRW,
-      10 9 4 LDRW,  5 $FFE0001F LIT64,  10 10 5 AND,
-        14 11 16 LSRI,  5 $FFFF LIT64,  14 14 5 AND,  14 14 5 LSLI,  10 10 14 ORR,  10 9 4 STRW,
-      10 9 8 LDRW,  5 $FFE0001F LIT64,  10 10 5 AND,
-        14 11 32 LSRI,  5 $FFFF LIT64,  14 14 5 AND,  14 14 5 LSLI,  10 10 14 ORR,  10 9 8 STRW,
+      10 11 9 SUB,  10 10 2 ASRI,  5 $3FFFFFF LIT64,  10 10 5 AND,   \ x10 = imm26 = (callee - site) >> 2, masked
+      14 9 0 LDRW,  5 $FC000000 LIT64,  14 14 5 AND,  14 14 10 ORR,  14 9 0 STRW,   \ keep BL opcode, write imm26
       21 21 4 ADDI,  22 22 1 ADDI,  ploop B,
    pnf LBL,  0 $51 MOVZ,  NR-EXIT-GROUP SYS,
    pdone LBL, ;
@@ -5096,7 +5098,7 @@ s" em-compile-ret" s" --" TRUST
    11 SP 8 STR,  12 SP 16 STR,
    12 done CBZ,
    11 LP2VEXEC LABEL@ ADR,
-   C-CALL-EMIT-ABSOLUTE
+   LCEMITBL LABEL@ BL,                                \ direct BL to the registered (LP2VEXEC) helper
    14 CP 0 ADDI,  14 SP 24 STR,
    $14000000 C-EMITW
    11 SP 8 LDR,  12 SP 16 LDR,
@@ -5123,7 +5125,7 @@ s" em-compile-ret" s" --" TRUST
    8 $D2800009 LIT64,  7 5 5 LSLI,  9 8 7 ORR,  LCEMIT LABEL@ BL,
    8 $D280000B LIT64,  7 5 8 LSLI,  9 8 7 ORR,  LCEMIT LABEL@ BL,    \ mov x11,#W*8
    11 LPROTSPAN LABEL@ ADR,
-   C-CALL-EMIT-ABSOLUTE
+   LCEMITBL LABEL@ BL,                                \ direct BL to the registered (PROT-SPAN) helper
    $F94001CF C-EMITW                                  \ ldr x15,[x14]
    $F900014F C-EMITW                                  \ str x15,[x10]
    $910021CE C-EMITW                                  \ add x14,x14,#8
@@ -6726,7 +6728,7 @@ s" SRCA@" s" -- ptr u8" TRUST
 
 : EMIT-LABEL-CORE ( -- )
    LBL LANCHOR !  LBL LFIND !  LBL LNUM !  LBL LDICT !  LBL LSRC !
-   LBL LCEMIT !  LBL LTOK !  LBL LPROT !  LBL LPROTREC !  LBL LPROTSPAN !  LBL LFLUSH !  LBL LNCOUNT !
+   LBL LCEMIT !  LBL LCEMITBL !  LBL LTOK !  LBL LPROT !  LBL LPROTREC !  LBL LPROTSPAN !  LBL LFLUSH !  LBL LNCOUNT !
    LBL LAOTCODE !  LBL LAOTDICT !  LBL LAOTCODELEN !
    LBL LAOTNREC !  LBL LAOTNSITE !  LBL LAOTSITES !  LBL LAOTNAMES !  LBL LAOTNAMESLEN !
    LBL LAOTNDSITE !  LBL LAOTDSITES !  LBL LAOTDATAD0 !  LBL LAOTDATASIZE !
@@ -7017,6 +7019,7 @@ s" AOT-PWID-BUF@" s" -- ptr u8" TRUST
    EMIT-PROF-PRIMS            s" primitives/prof" ENGINE-SIZE:MARK
    EMIT-FP-PRIMS              s" primitives/float" ENGINE-SIZE:MARK
    EMIT-CEMIT                 s" primitives/cemit" ENGINE-SIZE:MARK
+   EMIT-CEMITBL               s" primitives/cemitbl" ENGINE-SIZE:MARK
    EMIT-BCAP                  s" primitives/capture" ENGINE-SIZE:MARK
    EMIT-TOK                   s" primitives/token" ENGINE-SIZE:MARK
    EMIT-PROT                  s" primitives/protect" ENGINE-SIZE:MARK

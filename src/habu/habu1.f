@@ -168,7 +168,7 @@ variable GD-MIN
    GD-MIN !  FPRIM  GD-RECORD ;
 \ shared label ids (forward refs)
 variable LANCHOR  variable LFIND  variable LNUM  variable LDICT  variable LSRC  variable SRCN
-variable LCEMIT   variable LTOK   variable LPROT  variable LPROTSPAN  variable LPROTREC  variable LFLUSH variable LNCOUNT
+variable LCEMIT   variable LCEMITBL  variable LTOK   variable LPROT  variable LPROTSPAN  variable LPROTREC  variable LFLUSH variable LNCOUNT
 variable LAOTCODE  variable LAOTDICT  variable LAOTCODELEN
 variable LAOTNREC  variable LAOTNSITE  variable LAOTSITES  variable LAOTNAMES  variable LAOTNAMESLEN
 variable LAOTNDSITE  variable LAOTDSITES  variable LAOTDATAD0  variable LAOTDATASIZE
@@ -1298,11 +1298,7 @@ variable SZA-I
    SP SP 16 SUBI,  11 SP 8 STR,
    2 3 MOVZ,  LPROT LABEL@ BL,
    11 SP 8 LDR,
-   5 $FFFF MOVZ,
-   7 11 5 AND,    7 7 5 LSLI,  8 $D2800010 LIT64,  9 8 7 ORR,  LCEMIT LABEL@ BL,
-   7 11 16 LSRI,  7 7 5 AND,   7 7 5 LSLI,  8 $F2A00010 LIT64,  9 8 7 ORR,  LCEMIT LABEL@ BL,
-   7 11 32 LSRI,  7 7 5 AND,   7 7 5 LSLI,  8 $F2C00010 LIT64,  9 8 7 ORR,  LCEMIT LABEL@ BL,
-   9 $D63F0200 LIT64,  LCEMIT LABEL@ BL,
+   LCEMITBL LABEL@ BL,                         \ one direct BL to the popped xt (x11)
    2 5 MOVZ,  LPROT LABEL@ BL,
    SP SP 16 ADDI, ;
 

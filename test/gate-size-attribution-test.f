@@ -168,10 +168,15 @@ $4000 constant MACOS-DATA-CONST  \ __DATA_CONST page (__got + zero fill)
 \ region test, and the LBLRANGE diagnostic add +176 of engine text, CODELEN 138240 ->
 \ 138416 (floor 3072 -> 3248); the whole file stays inside the same 4 KiB page
 \ (LINUX-TOTAL unchanged).
-138416 constant LINUX-CODE-TEXT   \ CODELEN: every emitter-phase row (baked-source incl.)
+\ 2026-07-20 re-measured after every statically known native call became one direct BL
+\ (dot habu-aot-repl-bl): the absolute movz/movk/movk x16 + blr x16 call emitter collapses
+\ to the shared LCEMITBL primitive and the captured AOT-REPL blob loses 12 bytes per call
+\ site, shrinking engine text by 3344, CODELEN 138416 -> 135072 (floor 3248 -> 4000); the
+\ whole file drops one 4 KiB page (LINUX-TOTAL 143552 -> 139456).
+135072 constant LINUX-CODE-TEXT   \ CODELEN: every emitter-phase row (baked-source incl.)
 192 constant LINUX-RW             \ ELF read-write segment tail: DYNAMIC + GOT (ELF-RW-SZ)
-3248 constant LINUX-FLOOR-DIST     \ code above the 4 KiB floor: the page-recovery shave
-143552 constant LINUX-TOTAL       \ = FILE-SIZE bin/hb = GB-SIZE-BASELINE-LINUX
+4000 constant LINUX-FLOOR-DIST     \ code above the 4 KiB floor: the page-recovery shave
+139456 constant LINUX-TOTAL       \ = FILE-SIZE bin/hb = GB-SIZE-BASELINE-LINUX
 
 : PAGE-UP ( n n -- n ) {: v:n page:n :}
    v page 1- + page 1- invert and ;

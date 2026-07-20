@@ -60,10 +60,10 @@
 \ the same 4 KiB text page, so the page-rounded whole-file total is unchanged. See
 \ the exact CODE-TEXT/floor rows in test/gate-size-attribution-test.f.
 165367 constant GB-SIZE-BASELINE-MACOS
-143552 constant GB-SIZE-BASELINE-LINUX   \ fable re-measure 2026-07-19 (DGX Spark linux-arm64) after the
-                                         \ shared PROT-GUARD:CALL span-guard fold shrank CODELEN
-                                         \ 142092 -> 136108 (147648 -> 143552 whole-file; the ratchet's
-                                         \ shrank-below-baseline arm demanded this row lowered).
+139456 constant GB-SIZE-BASELINE-LINUX   \ fable re-measure 2026-07-20 (DGX Spark linux-arm64) after the
+                                         \ direct-BL call conversion (dot habu-aot-repl-bl) collapsed the
+                                         \ absolute call emitter and shrank the AOT-REPL blob: CODELEN
+                                         \ 138416 -> 135072 (143552 -> 139456 whole-file, one 4 KiB page).
 
 0 constant GB-SIZE-OK
 1 constant GB-SIZE-GROWN

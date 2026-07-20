@@ -20,7 +20,7 @@ require lib/test/src-shape.f
    s" : C-CALL-REJECT-UNSAFE ( label -- )" SHAPE:MUST-HAVE
    s" : C-CALL-SCAN-SAFE ( label label label -- )" SHAPE:MUST-HAVE
    s" : C-CALL-COPY-INLINE ( label label -- )" SHAPE:MUST-HAVE
-   s" : C-CALL-EMIT-ABSOLUTE ( -- )" SHAPE:MUST-HAVE ;
+   s" : EMIT-CEMITBL ( -- )" SHAPE:MUST-HAVE ;          \ the shared direct-BL call primitive (LCEMITBL)
 
 : CCET-TEST-HELPER-USES ( -- )
    s" C-CALL-BRANCH-NO-PROLOGUE" 2 SHAPE:COUNT=
@@ -29,7 +29,7 @@ require lib/test/src-shape.f
    s" C-CALL-REJECT-UNSAFE" 2 SHAPE:COUNT=
    s" C-CALL-SCAN-SAFE" 2 SHAPE:COUNT=
    s" C-CALL-COPY-INLINE" 2 SHAPE:COUNT=
-   s" C-CALL-EMIT-ABSOLUTE" 4 SHAPE:COUNT= ;
+   s" LCEMITBL LABEL@ BL," 3 SHAPE:COUNT= ;             \ C-CALL + LP2VEMIT + LP2STORE each emit one direct BL
 
 : CCET-TEST-CALL-BODY ( -- )
    s" lnopro C-CALL-BRANCH-NO-PROLOGUE" SHAPE:MUST-HAVE
@@ -37,12 +37,12 @@ require lib/test/src-shape.f
    s" lcall C-CALL-PLAIN-SPAN" SHAPE:MUST-HAVE
    s" lcopy lcall lsbody C-CALL-SCAN-SAFE" SHAPE:MUST-HAVE
    s" linl ldone C-CALL-COPY-INLINE" SHAPE:MUST-HAVE
-   s" C-CALL-EMIT-ABSOLUTE" 4 SHAPE:COUNT= ;
+   s" 9 $94000000 LIT64,  9 9 10 ORR," SHAPE:MUST-HAVE ;   \ EMIT-CEMITBL builds x9 = BL opcode | imm26
 
 : CCET-TEST-REMOVED-DUPLICATION ( -- )
-   s" 8 $FC000000 LIT64,  10 9 8 AND,  8 $94000000 LIT64" SHAPE:MUST-LACK
-   s" 8 $D65F03C0 LIT64,  9 8 CMP,  C-NE lcall BCOND" SHAPE:MUST-LACK
-   s" 7 11 16 LSRI,  7 7 5 AND,   7 7 5 LSLI,  8 $F2A00010 LIT64" SHAPE:MUST-LACK ;
+   s" : C-CALL-EMIT-ABSOLUTE" SHAPE:MUST-LACK           \ absolute movz/movk/movk x16 + blr x16 call emitter is gone
+   s" : C-CALL-EMIT-MOVZ-X16" SHAPE:MUST-LACK
+   s" : C-CALL-EMIT-MOVK-X16" SHAPE:MUST-LACK ;
 
 : CCET-MAIN ( -- )
    T-RESET

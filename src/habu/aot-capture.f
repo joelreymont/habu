@@ -1,17 +1,17 @@
 \ aot-capture.f — host-only AOT-REPL capture (metabuild build step).
 \
 \ Scans the metabuild host's freshly-compiled words for inter-word call sites
-\ (movz/movk/movk x16 ; blr x16 absolute chains), reverse-looks-up each callee's
+\ (one direct `BL imm26` each, habu2.f LCEMITBL), reverse-looks-up each callee's
 \ dict NAME, and builds the four AOT buffers (habu2.f) that EMIT-AOT-SEED bakes
 \ into bin/hb: a code blob, N dict records (xt/end blob-relative, inline name),
 \ a call-site relocation table (blob-offset -> callee name-pool ref), and a name
 \ pool. At boot EM-SEED-AOT copies the blob, registers the records, and re-encodes
-\ each call site's immediates to the callee's address in THAT engine (via LFIND) —
+\ each call site's imm26 to the callee's address in THAT engine (via LFIND) —
 \ so the captured code needs no address to match host vs bin/hb.
 \
-\ Canonicalization: after recording a call site the three movz/movk immediates in
-\ the blob are ZEROED, so the baked blob is deterministic across builds (the host
-\ addresses are ASLR-varying and are re-patched at boot anyway).
+\ Canonicalization: after recording a call site the BL's imm26 in the blob is ZEROED
+\ (bare `bl #0`), so the baked blob is deterministic across builds (the host address
+\ delta is ASLR-varying and is re-patched at boot anyway).
 \
 \ Loaded ONLY in the stdin metabuild (after habu2.f, before stdin.f). NOT baked
 \ into bin/hb — host build-time meta-words over the host dictionary. Raw dict/code
@@ -45,22 +45,22 @@ s" AOT-CELL@" s" ptr a -- n" TRUST
    dup AOT-REXT? if 24 + AOT-CELL@ AOT-N>U8 else AOT-A>U8 24 + then ;
 : AOT-RWID ( ptr a -- n ) 40 + AOT-CELL@ ;                    \ [40] wordlist or -1 package sentinel
 
-\ --- 32-bit little-endian code word; movz/movk/movk x16 ; blr x16 recognise+decode
+\ --- 32-bit little-endian code word; direct `BL imm26` call recognise + decode.
+\ Every statically known native call is now one BL (habu2.f LCEMITBL); the callee's
+\ absolute host address = the site's original code address + sign-extended(imm26)*4.
+\ The site sits in the copied blob buffer, so its original address is AOT-CODE-B0
+\ (the capture-time code base) + the byte offset of the site within the blob.
 : ACAP-W32@ ( ptr u8 -- n ) {: p:ptr :}
    p c@  p 1+ c@ 8 lshift or  p 2 + c@ 16 lshift or  p 3 + c@ 24 lshift or ;
 : ACAP-W32! ( n ptr u8 -- ) {: w:n p:ptr :}
    w p c!  w 8 rshift p 1+ c!  w 16 rshift p 2 + c!  w 24 rshift p 3 + c! ;
-: ACAP-TGT ( ptr u8 -- n ) {: p:ptr :}
-   p ACAP-W32@ 5 rshift $FFFF and
-   p 4 + ACAP-W32@ 5 rshift $FFFF and 16 lshift or
-   p 8 + ACAP-W32@ 5 rshift $FFFF and 32 lshift or ;
+: ACAP-TGT ( ptr u8 -- n ) {: p:ptr :}            \ absolute callee address of the BL at p
+   p ACAP-W32@ $3FFFFFF and  $2000000 xor $2000000 -  2 lshift    \ sign-extended imm26 * 4
+   AOT-CODE-B0 @  p AOT-BLOB-BUF@ -  +  + ;                       \ + (B0 + site blob offset)
 : ACAP-CALL? ( ptr u8 -- bool ) {: p:ptr :}
-   p ACAP-W32@ $FFE0001F and $D2800010 =
-   p 4 + ACAP-W32@ $FFE0001F and $F2A00010 = and
-   p 8 + ACAP-W32@ $FFE0001F and $F2C00010 = and
-   p 12 + ACAP-W32@ $D63F0200 = and ;
-: ACAP-ZERO-IMM ( ptr u8 -- ) {: p:ptr :}         \ zero the imm16, for build determinism
-   p ACAP-W32@ $FFE0001F and  p ACAP-W32! ;
+   p ACAP-W32@ $FC000000 and $94000000 = ;
+: ACAP-ZERO-IMM ( ptr u8 -- ) {: p:ptr :}         \ zero the imm26 -> bare `bl #0`, for build determinism
+   p ACAP-W32@ $FC000000 and  p ACAP-W32! ;
 
 \ movz/movk x9 4-instruction literal chain (C-LIT) recognise + decode (DATA-addr refs)
 : ACAP-LIT9? ( ptr u8 -- bool ) {: p:ptr :}
@@ -215,6 +215,7 @@ variable ACAP-RECMM                                           \ record-proof mis
 
 \ --- blob copy ---
 : ACAP-COPY-BLOB ( n n -- ) {: bstart:n bend:n :}
+   bstart AOT-CODE-B0 !                          \ capture-time code base: ACAP-TGT decodes BL sites against it
    bend bstart - {: len:n :}
    len 0 < if s" aot-capture: negative blob span" 74 die then
    len AOT-BLOB-CAP > if s" aot-capture: blob exceeds buffer" 74 die then
@@ -227,18 +228,12 @@ variable ACAP-P
    AOT-BLOB-BUF@ ACAP-P @ + ACAP-TGT ACAP-TGT>REC {: k:n :}
    k 0 < if 1 AOT-UNRES-N +! exit then                \ call to no dict word -> word kept-source (counted)
    ACAP-P @  k AOT-REC AOT-RNPTR  k AOT-REC AOT-RNLEN  ACAP-ADD-SITE
-   AOT-BLOB-BUF@ ACAP-P @ +        ACAP-ZERO-IMM
-   AOT-BLOB-BUF@ ACAP-P @ + 4 +    ACAP-ZERO-IMM
-   AOT-BLOB-BUF@ ACAP-P @ + 8 +    ACAP-ZERO-IMM ;
+   AOT-BLOB-BUF@ ACAP-P @ +        ACAP-ZERO-IMM ;     \ one 4-byte BL site
 : ACAP-SCAN-CALLS ( -- )
    0 ACAP-P !
-   begin ACAP-P @ 16 + AOT-BLOB-LEN @ <= while
-      AOT-BLOB-BUF@ ACAP-P @ + ACAP-CALL? if
-         ACAP-SITE-HERE
-         ACAP-P @ 16 + ACAP-P !
-      else
-         ACAP-P @ 4 + ACAP-P !
-      then
+   begin ACAP-P @ 4 + AOT-BLOB-LEN @ <= while
+      AOT-BLOB-BUF@ ACAP-P @ + ACAP-CALL? if ACAP-SITE-HERE then
+      ACAP-P @ 4 + ACAP-P !
    repeat ;
 
 \ --- scan the blob for DATA-address literals (movz/movk x9, value in the REPL DATA

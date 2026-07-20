@@ -184,6 +184,21 @@ variable GXT
 : GM ( n n n -- ) {: ix:n mask:n want:n :}   \ masked golden instruction
    GXT @ ix 4 * TLP-W32 mask and  want T= ;
 
+\ The engine helper call is one direct `BL imm26` when the JIT region maps within BL
+\ range of __text (native bin/hb, dot habu-aot-repl-bl), and the absolute movz/movk/movk
+\ x16 + blr x16 chain when the region is far (the Gforth stage0 seed). Verify whichever
+\ form is present and leave GN = the instruction index right after the call.
+variable GN
+: GCALL ( n -- ) {: ix:n :}
+   GXT @ ix 4 * TLP-W32 $FC000000 and $94000000 = if
+      ix $FC000000 $94000000 GM  ix 1 + GN !  exit
+   then
+   ix     $FFE0001F $D2800010 GM
+   ix 1 + $FFE0001F $F2A00010 GM
+   ix 2 + $FFE0001F $F2C00010 GM
+   ix 3 + $FFFFFFFF $D63F0200 GM
+   ix 4 + GN ! ;
+
 : TLP-EXIT-W32 ( -- n )
    HB-TARGET-LINUX? if $D2800BC8 exit then
    HB-TARGET-MACOS? if $D2800030 exit then
@@ -250,28 +265,26 @@ s" TLP-STORE2-G" TLP-XT GXT !
 2 $D1002273 GG  3 $F940026A GG
 4 $D100426E GG  5 $D2800049 GG
 6 $D280020B GG
-7 $FFE0001F $D2800010 GM  8 $FFE0001F $F2A00010 GM
-9 $FFE0001F $F2C00010 GM  10 $FFFFFFFF $D63F0200 GM
-11 $F94001CF GG  12 $F900014F GG  13 $910021CE GG  14 $9100214A GG
-15 $F1000529 GG  16 $54FFFF61 GG  17 $D1004273 GG
-18 $F94003FE GG  19 $910043FF GG  20 $D65F03C0 GG
+7 GCALL                                                \ whole-span LPROTSPAN call (BL or chain)
+GN @    $F94001CF GG  GN @ 1 + $F900014F GG  GN @ 2 + $910021CE GG  GN @ 3 + $9100214A GG
+GN @ 4 + $F1000529 GG  GN @ 5 + $54FFFF61 GG  GN @ 6 + $D1004273 GG
+GN @ 7 + $F94003FE GG  GN @ 8 + $910043FF GG  GN @ 9 + $D65F03C0 GG
 
 \ TLP-FETCH2-G: validate the inline descriptor before the typed address is
 \ popped, then read slot0 and tag in canonical bundle order. The absolute call
 \ target changes under ASLR, so its four-instruction opcode shape is masked.
 s" TLP-FETCH2-G" TLP-XT GXT !
 0 $D10043FF GG  1 $F90003FE GG
-2 $FFE0001F $D2800010 GM  3 $FFE0001F $F2A00010 GM
-4 $FFE0001F $F2C00010 GM  5 $FFFFFFFF $D63F0200 GM
-6 $14000009 GG                                          \ branch over 8 descriptor u32s
-7 1 GG  8 0 GG                                           \ one check (u64 cell)
-9 1 GG  10 0 GG                                          \ tag at cell offset 1
-11 2 GG  12 0 GG                                         \ two declaration-order tags
-13 0 GG  14 0 GG                                         \ no ancestor guards
-15 $D1002273 GG  16 $F940026A GG  17 $D2800049 GG
-18 $F940014B GG  19 $9100214A GG  20 $F900026B GG  21 $91002273 GG
-22 $F1000529 GG  23 $54FFFF61 GG
-24 $F94003FE GG  25 $910043FF GG  26 $D65F03C0 GG
+2 GCALL                                                 \ inline-descriptor LP2VEXEC call (BL or chain)
+GN @ $14000009 GG                                       \ branch over 8 descriptor u32s
+GN @ 1 + 1 GG  GN @ 2 + 0 GG                             \ one check (u64 cell)
+GN @ 3 + 1 GG  GN @ 4 + 0 GG                             \ tag at cell offset 1
+GN @ 5 + 2 GG  GN @ 6 + 0 GG                             \ two declaration-order tags
+GN @ 7 + 0 GG  GN @ 8 + 0 GG                             \ no ancestor guards
+GN @ 9 + $D1002273 GG  GN @ 10 + $F940026A GG  GN @ 11 + $D2800049 GG
+GN @ 12 + $F940014B GG  GN @ 13 + $9100214A GG  GN @ 14 + $F900026B GG  GN @ 15 + $91002273 GG
+GN @ 16 + $F1000529 GG  GN @ 17 + $54FFFF61 GG
+GN @ 18 + $F94003FE GG  GN @ 19 + $910043FF GG  GN @ 20 + $D65F03C0 GG
 
 \ ---------------------------------------------------------------------------
 \ execution rows: whole-bundle transports at RUNTIME. The seeds are the REAL

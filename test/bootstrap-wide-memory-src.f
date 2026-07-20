@@ -136,6 +136,22 @@ variable BWM-GXT
 : BWM-MASK-GOLD ( n n n -- ) {: idx:n mask:n want:n :}
    BWM-GXT @ idx 4 * BWM-W32 mask and want BWM= ;
 
+\ The engine helper call is one direct `BL imm26` when the JIT region maps within
+\ BL's +/-128 MiB of __text (native bin/hb, dot habu-map-the-code + habu-aot-repl-bl),
+\ and the absolute `movz/movk/movk x16 ; blr x16` chain when the region is far (the
+\ Gforth stage0 seed still maps at RBASE-VA). Both are the correct call for their
+\ region, so the goldens detect the form at the call site and continue at the
+\ instruction after it (index + 1 for BL, index + 4 for the chain).
+: BWM-CALL-GOLD ( n -- n ) {: idx:n :}
+   BWM-GXT @ idx 4 * BWM-W32 $FC000000 and $94000000 = if
+      idx $FC000000 $94000000 BWM-MASK-GOLD  idx 1 + exit
+   then
+   idx     $FFE0001F $D2800010 BWM-MASK-GOLD
+   idx 1 + $FFE0001F $F2A00010 BWM-MASK-GOLD
+   idx 2 + $FFE0001F $F2C00010 BWM-MASK-GOLD
+   idx 3 + $FFFFFFFF $D63F0200 BWM-MASK-GOLD
+   idx 4 + ;
+
 : BWM-STORE-GOLD ( ptr u8 n n n n -- )
    {: name:ptr nameu:n width:n sub:n pop:n :}
    name nameu BWM-XT BWM-GXT !
@@ -143,37 +159,31 @@ variable BWM-GXT
    2 $D1002273 BWM-GOLD  3 $F940026A BWM-GOLD
    4 sub BWM-GOLD        5 width BWM-GOLD
    6 $FFE0001F $D280000B BWM-MASK-GOLD
-   7 $FFE0001F $D2800010 BWM-MASK-GOLD
-   8 $FFE0001F $F2A00010 BWM-MASK-GOLD
-   9 $FFE0001F $F2C00010 BWM-MASK-GOLD
-   10 $FFFFFFFF $D63F0200 BWM-MASK-GOLD
-   11 $F94001CF BWM-GOLD 12 $F900014F BWM-GOLD
-   13 $910021CE BWM-GOLD 14 $9100214A BWM-GOLD
-   15 $F1000529 BWM-GOLD 16 $54FFFF61 BWM-GOLD
-   17 pop BWM-GOLD
-   18 $F94003FE BWM-GOLD 19 $910043FF BWM-GOLD
-   20 $D65F03C0 BWM-GOLD ;
+   7 BWM-CALL-GOLD {: n:n :}                  \ index after the LPROTSPAN call
+   n     $F94001CF BWM-GOLD  n 1 + $F900014F BWM-GOLD
+   n 2 + $910021CE BWM-GOLD  n 3 + $9100214A BWM-GOLD
+   n 4 + $F1000529 BWM-GOLD  n 5 + $54FFFF61 BWM-GOLD
+   n 6 + pop BWM-GOLD
+   n 7 + $F94003FE BWM-GOLD  n 8 + $910043FF BWM-GOLD
+   n 9 + $D65F03C0 BWM-GOLD ;
 
 : BWM-FETCH-GOLD ( ptr u8 n n n n -- )
    {: name:ptr nameu:n wop:n tag:n lim:n :}
    name nameu BWM-XT BWM-GXT !
    0 $D10043FF BWM-GOLD  1 $F90003FE BWM-GOLD
-   2 $FFE0001F $D2800010 BWM-MASK-GOLD
-   3 $FFE0001F $F2A00010 BWM-MASK-GOLD
-   4 $FFE0001F $F2C00010 BWM-MASK-GOLD
-   5 $FFFFFFFF $D63F0200 BWM-MASK-GOLD
-   6 $14000009 BWM-GOLD
-   7 1 BWM-GOLD  8 0 BWM-GOLD
-   9 tag BWM-GOLD  10 0 BWM-GOLD
-   11 lim BWM-GOLD  12 0 BWM-GOLD
-   13 0 BWM-GOLD  14 0 BWM-GOLD
-   15 $D1002273 BWM-GOLD  16 $F940026A BWM-GOLD
-   17 wop BWM-GOLD        18 $F940014B BWM-GOLD
-   19 $9100214A BWM-GOLD  20 $F900026B BWM-GOLD
-   21 $91002273 BWM-GOLD  22 $F1000529 BWM-GOLD
-   23 $54FFFF61 BWM-GOLD
-   24 $F94003FE BWM-GOLD  25 $910043FF BWM-GOLD
-   26 $D65F03C0 BWM-GOLD ;
+   2 BWM-CALL-GOLD {: n:n :}                  \ index after the LP2VEXEC call
+   n $14000009 BWM-GOLD
+   n 1 + 1 BWM-GOLD    n 2 + 0 BWM-GOLD
+   n 3 + tag BWM-GOLD  n 4 + 0 BWM-GOLD
+   n 5 + lim BWM-GOLD  n 6 + 0 BWM-GOLD
+   n 7 + 0 BWM-GOLD    n 8 + 0 BWM-GOLD
+   n 9 + $D1002273 BWM-GOLD  n 10 + $F940026A BWM-GOLD
+   n 11 + wop BWM-GOLD       n 12 + $F940014B BWM-GOLD
+   n 13 + $9100214A BWM-GOLD n 14 + $F900026B BWM-GOLD
+   n 15 + $91002273 BWM-GOLD n 16 + $F1000529 BWM-GOLD
+   n 17 + $54FFFF61 BWM-GOLD
+   n 18 + $F94003FE BWM-GOLD n 19 + $910043FF BWM-GOLD
+   n 20 + $D65F03C0 BWM-GOLD ;
 
 : BWM-TEST-GOLDENS ( -- )
    s" BWM-STORE2-G" $D2800049 $D100426E $D1004273 BWM-STORE-GOLD

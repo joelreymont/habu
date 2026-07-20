@@ -46,12 +46,17 @@ $7C000000 constant MASK
 $14000000 constant OPCODE
 $3FFFFFF constant DELTA-MASK
 $2000000 constant SIGN
+$FC000000 constant CALL-MASK
+$94000000 constant CALL-OP
 
 : SIGNED ( n -- n ) SIGN xor SIGN - ;
 
 public
 
 : DIRECT? ( n -- bool ) MASK and OPCODE = ;
+\ A `BL imm26` — the one native call form (habu2.f LCEMITBL). Distinguished from a
+\ plain `B` (same opcode minus the link bit) so intra-record control flow is skipped.
+: CALL? ( n -- bool ) CALL-MASK and CALL-OP = ;
 
 : TARGET ( ptr u8 n -- ptr u8 ) {: p:ptr w:n :}
    p w DELTA-MASK and SIGNED 4 * + ;
@@ -161,14 +166,12 @@ variable FX
 : REC-CODE-PTR@ ( ptr a -- ptr u8 )  REC-CODE-PTR @ ;
 : REC-WID@ ( ptr a -- n ) {: r:ptr :}  r 40 + @ ;
 
-\ The closed helper allowlist. A direct branch is followed into a record ONLY
-\ when that record is an explicitly registered engine helper - WID
-\ OWNER-API-PRI-WID, stamped by ENGINE-HELPER:REGISTER - whose code entry equals
-\ the branch target. Every other direct-branch target (a raw address, an
-\ intra-record label, or an ordinary word's entry) is not a registered helper
-\ and is not matched, so the closure can never pull in unintended code and an
-\ unregistered target still fails closed at relocation, exactly as before this
-\ capability existed.
+\ Resolve a registered engine helper by its EXACT code entry: a record whose WID
+\ is OWNER-API-PRI-WID (stamped by ENGINE-HELPER:REGISTER) and whose code entry
+\ equals the target. A raw address, a non-entry offset, or an ordinary word's
+\ entry is not matched. (Under universal direct-BL the closure walk itself follows
+\ every call by exact entry via FINDADDR/SCAN-DIRECT; this narrower helper-only
+\ predicate is exercised by the AOT registry security test.)
 : FINDPTR ( ptr u8 -- ptr a ) {: t:ptr :}  0 FX !
    BEGIN FX @ ndict@ < WHILE
       FX @ REC dup REC-WID@ OWNER-API-PRI-WID = IF
@@ -228,19 +231,23 @@ variable SP2  variable SEND
    callee dup AOT-UNSAFE? if caller swap AOT-UNSAFE-DIE then
    ADD-CLO ;
 
-\ An absolute (movz/movk/blr) call resolves the callee by its record address.
+\ A native call resolves the callee by its exact record code entry (FINDADDR):
+\ ordinary words and registered engine helpers alike, since both carry a record.
 : SCAN-TARGET ( ptr a n -- ) {: caller:ptr target:n :}
    caller target FINDADDR SCAN-CALLEE ;
 
-\ A direct branch resolves the callee only through the closed helper allowlist.
-: SCAN-PTR-TARGET ( ptr a ptr u8 -- ) {: caller:ptr target:ptr :}
-   caller target FINDPTR SCAN-CALLEE ;
+\ Resolve a call target (a code address) to its record by EXACT code entry, like
+\ FINDADDR but comparing the entry pointer directly (REC-CODE-PTR@) so a direct-BL
+\ target needs no address-to-cell cast. Ordinary words and registered engine helpers
+\ both carry a record; a non-entry address matches nothing (fails closed later).
+: FINDADDR-PTR ( ptr u8 -- ptr a ) {: t:ptr :}  0 FX !
+   BEGIN FX @ ndict@ < WHILE  FX @ REC REC-CODE-PTR@ t = IF FX @ REC exit THEN  FX @ 1+ FX ! REPEAT  XREF-NULL ;
 
-\ Follow a direct B/BL to a registered engine helper; leave everything else
-\ (conditional branches, intra-record jumps, unregistered targets) untouched.
+\ Follow a direct BL (the one native call form) to its callee; leave everything
+\ else (a plain B, conditional/compare branches, intra-record jumps) untouched.
 : SCAN-DIRECT ( ptr a ptr u8 -- ) {: caller:ptr p:ptr :}
-   p AOT-W32@ dup AOT-BRANCH:DIRECT? if
-      p swap AOT-BRANCH:TARGET caller swap SCAN-PTR-TARGET
+   p AOT-W32@ dup AOT-BRANCH:CALL? if
+      p swap AOT-BRANCH:TARGET FINDADDR-PTR caller swap SCAN-CALLEE
    else
       drop
    then ;
