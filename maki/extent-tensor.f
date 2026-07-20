@@ -100,7 +100,7 @@ private
 : TAG>KIND ( n -- tensor-kind )  0 = if KIND-DATA else KIND-GATHER then ;
 
 32 constant TR-NAME-CAP
-64 constant TR-CAP
+256 constant TR-CAP                   \ registry rows: measured peak 64/64 (full test-core image, saturated); 4x headroom for batched-attention + vision suites. +192 rows * 56 B/row = +10.5 KiB DATA. Fixed cap + named E-EXT-CAP die; raise the value when outgrown (dot habu-raise-or-right-6ee33f69).
 create TR-NAMES  TR-CAP TR-NAME-CAP * allot
 create TR-NLEN   TR-CAP cells allot
 create TR-RANK-A TR-CAP cells allot

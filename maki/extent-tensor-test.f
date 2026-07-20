@@ -108,6 +108,16 @@ PS0 0 T-GET f>s 42 T=              \ landed at the 1-element span's offset 0 ...
 SC0@ f>s 42 T=                     \ ... and reads back through the accessor
 -3.0 SC0!  SC0@ f>s -3 T=          \ overwrite round-trips
 
+\ --- (e) tensor-registry capacity (dot habu-raise-or-right-6ee33f69): the registry
+\ is a fixed-cap, library-load-time table; a registration past TR-CAP fails closed
+\ with the named E-EXT-CAP die. TR-OVERFILL registers TR-CAP+1 rows to cross the
+\ boundary, symbolic in TR-CAP so it tracks the value (like model-ir's TRY-MIR-CAP).
+\ TR-N is saved/restored around the probe: the registry has no reset and this is the
+\ shared cold-gate image, so the rows the probe burns must not starve later suites.
+: TR-OVERFILL ( -- )  TR-CAP 1+ 0 ?do  s" TRCAPX" 2 KIND-DATA TR-ADD  loop ;
+TR-N @  ' TR-OVERFILL E-EXT-CAP TTHROWS  TR-N !
+TR-CAP 256 T=                       \ the raised cap this regression pins
+
 ;package
 
 T-REPORT
