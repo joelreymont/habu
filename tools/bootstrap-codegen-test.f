@@ -406,6 +406,9 @@ create LF $0A c,
    s" PFX-COMMON" s" LPCELLEFF" s" src/core/cell-effects.f" EXPECT-ROW
    s" PFX-COMMON" s" LPPTRSTORAGEEFF" s" src/core/pointer-storage-effects.f" EXPECT-ROW ;
 
+: EXPECT-DECL ( -- )
+   s" PFX-COMMON" s" LPDECLEVENT" s" src/core/decl-event.f" EXPECT-ROW ;
+
 : EXPECT-CORE ( -- )
    s" PFX-COMMON" s" LPSTRUCTURES" s" src/core/structures.f" EXPECT-ROW
    s" PFX-COMMON" s" LPROLES" s" src/core/roles.f" EXPECT-ROW
@@ -427,6 +430,7 @@ create LF $0A c,
 : EXPECT-NATIVE ( -- )
    0 EXPECT-U !
    EXPECT-CHECKER
+   EXPECT-DECL
    EXPECT-CORE
    s" PFX-COMMON" s" LPLOWERCERTSEAL" s" src/core/lower-cert-seal.f" EXPECT-ROW
    s" PFX-COMMON" s" LPSCRIPTARGV" s" src/os/script-argv.f" EXPECT-ROW
@@ -436,6 +440,7 @@ create LF $0A c,
 : EXPECT-GFORTH ( -- )
    0 EXPECT-U !
    EXPECT-CHECKER
+   EXPECT-DECL
    EXPECT-CORE
    s" PFX-COMMON" s" LPSCRIPTARGV" s" src/os/script-argv.f" EXPECT-ROW ;
 
@@ -483,21 +488,21 @@ create LF $0A c,
 : NATIVE-ROWS ( -- )
    CAPTURE-PREFIX
    EXPECT-NATIVE
-   37 ASSERT-EQUAL
+   38 ASSERT-EQUAL
    s" src/core/structures-effects.f" BCG-MUST-LACK
    s" LPSTRUCTEFF" BCG-MUST-LACK ;
 
 : GFORTH-ROWS ( -- )
    CAPTURE-PREFIX
    EXPECT-GFORTH
-   34 ASSERT-EQUAL
+   35 ASSERT-EQUAL
    s" src/core/structures-effects.f" BCG-MUST-LACK
    s" LPSTRUCTEFF" BCG-MUST-LACK ;
 
 : EXPECT-FILE ( ptr u8 n -- )
    EXPECT+  LF 1 EXPECT+ ;
 
-: EXPECT-RECOVERY ( -- )
+: EXPECT-RECOVERY-CHECKER ( -- )
    0 EXPECT-U !
    s" src/core/util.f" EXPECT-FILE
    s" src/core/cell.f" EXPECT-FILE
@@ -515,7 +520,19 @@ create LF $0A c,
    s" src/core/layout-valid.f" EXPECT-FILE
    s" src/core/check-hook.f" EXPECT-FILE
    s" src/core/cell-effects.f" EXPECT-FILE
-   s" src/core/pointer-storage-effects.f" EXPECT-FILE
+   s" src/core/pointer-storage-effects.f" EXPECT-FILE ;
+
+\ RECOVERY emit_src() cats only the checker-boot span + structures; the DECL
+\ files ride the separate emit_decl_src() helper (asserted below).
+: EXPECT-RECOVERY ( -- )
+   EXPECT-RECOVERY-CHECKER
+   s" src/core/structures.f" EXPECT-FILE ;
+
+\ FIXPOINT's BF-APPEND-SOURCE span spans BF-APPEND-CHECKER-BOOT .. -CORE-FILES,
+\ so BF-APPEND-DECL-FILES's decl-event.f is inline in the captured range.
+: EXPECT-FIXPOINT-SRC ( -- )
+   EXPECT-RECOVERY-CHECKER
+   s" src/core/decl-event.f" EXPECT-FILE
    s" src/core/structures.f" EXPECT-FILE ;
 
 : EXPECT-RECOVERY-COMMON ( -- )
@@ -869,7 +886,7 @@ public
    EXPECT-RECOVERY
    RECOVERY$ EXPECT$ T$=
    RECOVERY$ 18 ASSERT-UNIQUE
-   s" emit_decl_src() {" s" emit_src() {" s" cat src/" SCOPE-N 0 T=
+   s" emit_decl_src() {" s" emit_src() {" s" cat src/" SCOPE-N 1 T=
    s" emit_src() {" s"   local f" S\" emit_decl_src \"$out\"" SCOPE-N 1 T=
    s" emit_src() {" s"   local f" s" LOWER-CERT-HOOK:INSTALL" SCOPE-N 1 T=
    s" emit_src() {" s"   local f"
@@ -889,12 +906,12 @@ public
 : FIXPOINT ( -- )
    0 FIXPOINT-U !
    s" : BF-APPEND-CHECKER-BOOT" s" : BF-APPEND-CORE-BYTES"
-   MODE-SOURCE s" BF-APPEND-SOURCE" [: FIXPOINT+ ;] CAPTURE 18 T=
-   EXPECT-RECOVERY
+   MODE-SOURCE s" BF-APPEND-SOURCE" [: FIXPOINT+ ;] CAPTURE 19 T=
+   EXPECT-FIXPOINT-SRC
    FIXPOINT$ EXPECT$ T$=
-   FIXPOINT$ 18 ASSERT-UNIQUE
+   FIXPOINT$ 19 ASSERT-UNIQUE
    s" : BF-APPEND-DECL-FILES" s" : BF-APPEND-CORE-FILES"
-   s" BF-APPEND-SOURCE" SCOPE-N 0 T=
+   s" BF-APPEND-SOURCE" SCOPE-N 1 T=
    s" : BF-APPEND-RUN-PRELUDE" s" : BF-APPEND-STDIN-RUN-PRELUDE"
    s" BF-APPEND-CHECKER-BOOT" SCOPE-N 1 T=
    s" : BF-APPEND-RUN-PRELUDE" s" : BF-APPEND-STDIN-RUN-PRELUDE"

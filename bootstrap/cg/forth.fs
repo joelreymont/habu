@@ -1628,6 +1628,7 @@ variable LPTYPESCHEMA   variable LPTYPEFAM      variable LPSUMTYPE      variable
 variable LPHOOK         variable LPCELLEFF      variable LPPTRSTORAGEEFF
 variable LPHABULAYOUT   variable LPENVBASE      variable LPINCLUDE
 variable LPSCRIPTARGV   variable LPROLES
+variable LPDECLEVENT
 variable LPENUMS        variable LPEXECVECTOR   variable LPSHA256       variable LPTFAMSHA
 variable LPCOMBINATORS  variable LPXREF  variable LPLAYOUTSEAL
 create BPH-KW 104 c, 97 c, 98 c, 117 c, 45 c, 98 c, 112 c, 58 c, 10 c,   \ habu-bp:\n
@@ -1806,8 +1807,9 @@ create ZBYTE 0 c,
    PFX-COMMON LPPTRSTORAGEEFF s" src/core/pointer-storage-effects.f" PFX-LOAD-ROW ;
 
 : PFX-LOAD-DECL-FILES ( -- )
-   \ Unified STRUCTURE and ENUM declarers load here after the checker hook.
-   ;
+   \ The shared declaration-event transaction loads first; the unified STRUCTURE
+   \ and ENUM declarers (later dots) load after it, still after the checker hook.
+   PFX-COMMON LPDECLEVENT    s" src/core/decl-event.f" PFX-LOAD-ROW ;
 
 : PFX-LOAD-CORE-FILES ( -- )
    PFX-COMMON LPSTRUCTURES   s" src/core/structures.f"  PFX-LOAD-ROW
@@ -1883,8 +1885,7 @@ create ZBYTE 0 c,
    PFX-COMMON LPPTRSTORAGEEFF s" src/core/pointer-storage-effects.f" PFX-PATH-ROW ;
 
 : PFX-PATH-DECL-FILES ( -- )
-   \ Unified STRUCTURE and ENUM declarer paths emit here.
-   ;
+   PFX-COMMON LPDECLEVENT    s" src/core/decl-event.f" PFX-PATH-ROW ;
 
 : PFX-PATH-CORE-FILES ( -- )
    PFX-COMMON LPSTRUCTURES   s" src/core/structures.f"  PFX-PATH-ROW
@@ -2120,8 +2121,7 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
    PFX-COMMON LPPTRSTORAGEEFF s" src/core/pointer-storage-effects.f" PFX-PROVIDE-ROW ;
 
 : PFX-PROVIDE-DECL-FILES ( -- )
-   \ Unified STRUCTURE and ENUM declarer provide rows emit here.
-   ;
+   PFX-COMMON LPDECLEVENT    s" src/core/decl-event.f" PFX-PROVIDE-ROW ;
 
 : PFX-PROVIDE-CORE-FILES ( -- )
    PFX-COMMON LPSTRUCTURES   s" src/core/structures.f"  PFX-PROVIDE-ROW
@@ -6132,6 +6132,7 @@ variable P2SK
    LBL LPTYPESCHEMA !  LBL LPTYPEFAM !  LBL LPSUMTYPE !  LBL LPLAYOUTBUF !  LBL LPLAYOUTVALID !
    LBL LPHABULAYOUT !
    LBL LPENVBASE !  LBL LPINCLUDE !  LBL LPSCRIPTARGV !  LBL LPROLES !
+   LBL LPDECLEVENT !
    LBL LPENUMS !  LBL LPEXECVECTOR !  LBL LPSHA256 !  LBL LPTFAMSHA !
    LBL LPCOMBINATORS !  LBL LPXREF !  LBL LPLAYOUTSEAL ! ;
 

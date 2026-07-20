@@ -155,7 +155,7 @@ status-mismatch (a closed dot cited as a live owner, or the reverse), a prose
 
 ```owners
 open   habu-epic-nanogpt-in-b239aa8d
-open   habu-refresh-nanogpt-inventory-40906c61
+closed habu-refresh-nanogpt-inventory-40906c61
 open   habu-gpt-2-composition-a90e901e
 closed habu-compose-tied-wte-f276dc6a
 open   habu-give-the-block-3bdedf46

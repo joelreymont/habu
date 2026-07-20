@@ -42,7 +42,7 @@ Latest hot counters: `inner-hb=1`, `inner-hb-stdin=4`, `boundary=5`,
 post-candidate is 11.161s, dictionary/checker is 7.815s, `check-cli` is 3.162s,
 tail/lint groups are under 7.7s, and AOT negative is 7.837s with no AOT maker
 run.
-Certified (linux-arm64): 3548  Uncheckable: 0  Rejected: 0
+Certified (linux-arm64): 3626  Uncheckable: 0  Rejected: 0
 Certified (macos-arm64): 3557
 Host-script workflow hooks: retired and gated
 

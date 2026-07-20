@@ -773,9 +773,10 @@ public
    out outu s" src/core/cell-effects.f" BF-APPEND-SOURCE
    out outu s" src/core/pointer-storage-effects.f" BF-APPEND-SOURCE ;
 
-: BF-APPEND-DECL-FILES ( ptr u8 n -- )
-   \ Unified STRUCTURE and ENUM declarers append here after the checker hook.
-   2drop ;
+: BF-APPEND-DECL-FILES ( ptr u8 n -- ) {: out:ptr outu:n :}
+   \ The shared declaration-event transaction, then (later dots) the unified
+   \ STRUCTURE and ENUM declarers — all after the checker hook.
+   out outu s" src/core/decl-event.f" BF-APPEND-SOURCE ;
 
 : BF-APPEND-CORE-FILES ( ptr u8 n -- ) {: out:ptr outu:n :}
    out outu s" src/core/structures.f" BF-APPEND-SOURCE ;

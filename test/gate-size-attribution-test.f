@@ -180,9 +180,13 @@ $4000 constant MACOS-DATA-CONST  \ __DATA_CONST page (__got + zero fill)
 \ The BL landing left only 96 bytes above the 4 KiB floor (floor-dist 4000), so the
 \ +136 crosses the page boundary: the file regains the page the BL landing dropped
 \ (floor-dist 4000 -> 40, LINUX-TOTAL 139456 -> 143552).
-135208 constant LINUX-CODE-TEXT   \ CODELEN: every emitter-phase row (baked-source incl.)
+\ 2026-07-20 re-measured at the merged fixpoint after the shared declaration-event
+\ transaction landed (src/core/decl-event.f, dot habu-type-declarations-shared-14ab0e48):
+\ +44 of engine text on the direct-BL+munmap base, CODELEN 135208 -> 135252 (floor
+\ 40 -> 84); the whole file stays inside the same 4 KiB page (LINUX-TOTAL unchanged).
+135252 constant LINUX-CODE-TEXT   \ CODELEN: every emitter-phase row (baked-source incl.)
 192 constant LINUX-RW             \ ELF read-write segment tail: DYNAMIC + GOT (ELF-RW-SZ)
-40 constant LINUX-FLOOR-DIST     \ code above the 4 KiB floor: the page-recovery shave
+84 constant LINUX-FLOOR-DIST     \ code above the 4 KiB floor: the page-recovery shave
 143552 constant LINUX-TOTAL       \ = FILE-SIZE bin/hb = GB-SIZE-BASELINE-LINUX
 
 : PAGE-UP ( n n -- n ) {: v:n page:n :}
