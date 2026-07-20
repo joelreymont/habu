@@ -26,6 +26,7 @@ require lib/ptx/cg-collective.f
 require lib/ptx/launch.f
 require lib/ptx/collective.f
 require maki/cuda-driver.f
+require maki/cuda-run.f
 require maki/device-artifacts.f
 require lib/ptx/sentinel.f
 
@@ -51,21 +52,23 @@ variable SM-DI variable SM-DO variable SM-KV
    1023627234 SMG 0 cells + !  1035106489 SMG 1 cells + !
    1047695721 SMG 2 cells + !  1059379089 SMG 3 cells + ! ;
 
-: SM-RUN ( ptr u8 n -- ) {: pa pu :}               \ run softmax cubin, fill SM-OUT
-   SM-OUT 16 PTXSENT:FILL                          \ poison readback: a dropped copy-back fails closed
-   1 4 256 PTX-ROW-LAUNCH-CHECK
-   CUDA:OPEN
-   0 CUDA:CUINIT CUDA:RC0
-   SM-DEV 0 >IDX CUDA:CUDEVICEGET CUDA:RC0
-   SM-CTX SM-DEV @ >CUDA-DEV CUDA:CUDEVICEPRIMARYCTXRETAIN CUDA:RC0
-   SM-CTX @ >CUDA-CTX CUDA:CUCTXSETCURRENT CUDA:RC0
-   pa pu SM-PATH >CSTR
-   SM-MOD SM-PATH CUDA:CUMODULELOAD CUDA:RC0
+\ SM-RUN-CORE acquires ctx, module, and the in/out device buffers into one
+\ CUDA-SCOPE frame and fills SM-OUT; the scope (SM-RUN) unwinds buffers, module,
+\ and primary context in reverse on both return and throw.
+: SM-RUN-CORE ( -- )                               \ SM-PATH preset; readback -> SM-OUT
+   MKD:OPEN
+   0 MKD:CUINIT CUDA:RC0
+   SM-DEV 0 >IDX MKD:CUDEVICEGET CUDA:RC0
+   SM-CTX SM-DEV @ >CUDA-DEV MKD:CUDEVICEPRIMARYCTXRETAIN CUDA:RC0
+   SM-DEV @ >CUDA-DEV CUDA-SCOPE:OWN-PRIMARY-CTX
+   SM-CTX @ >CUDA-CTX MKD:CUCTXSETCURRENT CUDA:RC0
+   SM-MOD SM-PATH MKD:CUMODULELOAD CUDA:RC0
+   SM-MOD @ >CUDA-MOD CUDA-SCOPE:OWN-MODULE
    s" SOFTMAX_ROWS" SM-KN >CSTR
-   SM-FUNC SM-MOD @ >CUDA-MOD SM-KN CUDA:CUMODULEGETFUNCTION CUDA:RC0
-   SM-DI 16 >LEN CUDA:CUMEMALLOC CUDA:RC0
-   SM-DO 16 >LEN CUDA:CUMEMALLOC CUDA:RC0
-   SM-DI @ >CUDA-DEVPTR SM-IN 16 >LEN CUDA:CUMEMCPYHTOD CUDA:RC0
+   SM-FUNC SM-MOD @ >CUDA-MOD SM-KN MKD:CUMODULEGETFUNCTION CUDA:RC0
+   SM-DI 16 >LEN MKD:CUMEMALLOC CUDA:RC0  SM-DI @ >CUDA-DEVPTR CUDA-SCOPE:OWN-DEVPTR
+   SM-DO 16 >LEN MKD:CUMEMALLOC CUDA:RC0  SM-DO @ >CUDA-DEVPTR CUDA-SCOPE:OWN-DEVPTR
+   SM-DI @ >CUDA-DEVPTR SM-IN 16 >LEN MKD:CUMEMCPYHTOD CUDA:RC0
    4 SM-KV !
    SM-FUNC @ >CUDA-FN 256 1 1 CUDA:CUFUNCSETBLOCKSHAPE CUDA:RC0
    SM-FUNC @ >CUDA-FN 20 >LEN CUDA:CUPARAMSETSIZE CUDA:RC0
@@ -74,11 +77,13 @@ variable SM-DI variable SM-DO variable SM-KV
    SM-FUNC @ >CUDA-FN 16 >IDX SM-KV 4 >LEN CUDA:CUPARAMSETV CUDA:RC0
    SM-FUNC @ >CUDA-FN 1 1 CUDA:CULAUNCHGRID CUDA:RC0
    CUDA:CUCTXSYNCHRONIZE CUDA:RC0
-   SM-OUT SM-DO @ >CUDA-DEVPTR 16 >LEN CUDA:CUMEMCPYDTOH CUDA:RC0
-   SM-DI @ >CUDA-DEVPTR CUDA:CUMEMFREE CUDA:RC0
-   SM-DO @ >CUDA-DEVPTR CUDA:CUMEMFREE CUDA:RC0
-   SM-MOD @ >CUDA-MOD CUDA:CUMODULEUNLOAD CUDA:RC0
-   SM-DEV @ >CUDA-DEV CUDA:CUDEVICEPRIMARYCTXRELEASE CUDA:RC0 ;
+   SM-OUT SM-DO @ >CUDA-DEVPTR 16 >LEN MKD:CUMEMCPYDTOH CUDA:RC0 ;
+
+: SM-RUN ( ptr u8 n -- ) {: pa pu :}               \ run softmax cubin, fill SM-OUT
+   SM-OUT 16 PTXSENT:FILL                          \ poison readback: a dropped copy-back fails closed
+   1 4 256 PTX-ROW-LAUNCH-CHECK
+   pa pu SM-PATH >CSTR
+   [: SM-RUN-CORE ;] CUDA-SCOPE:SCOPE ;
 
 : SM-NEAR? ( n n -- bool )  - abs 8 <= ;            \ within 8 ULP (ex2.approx)
 : DEVICE-CORRECT-SM? ( ptr u8 n -- bool )

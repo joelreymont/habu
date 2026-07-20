@@ -9,6 +9,7 @@
 \ cubin - no shared /tmp/saxpy.cubin that could be stale/missing/wrong.
 
 require maki/cuda-driver.f
+require maki/cuda-run.f
 require lib/float.f
 require lib/fmt.f
 require src/arch/ptx/emit.f
@@ -84,32 +85,32 @@ create GQ-ERR $1000 allot
    EMIT-PTX drop
    ASSEMBLE-PTX ;
 
-public
-
-: SETUP ( -- )
-   BUILD-CUBIN                                             \ self-emit -> private per-run cubin
-   CUDA:OPEN
-   0 CUDA:CUINIT CUDA:RC0
-   GDEV 0 >IDX CUDA:CUDEVICEGET CUDA:RC0
-   GCTX GDEV @ >CUDA-DEV CUDA:CUDEVICEPRIMARYCTXRETAIN CUDA:RC0
-   GCTX @ >CUDA-CTX CUDA:CUCTXSETCURRENT CUDA:RC0
+\ acquire ctx + module into the module-level CUDA-SCOPE ledger (the open half of the
+\ SETUP..RELEASE owner boundary). Every driver call goes through the injectable MKD
+\ seam; ctx and module are transferred to the ledger the instant they are retained/
+\ loaded, so a throw at any later acquisition unwinds the owned prefix (SETUP wraps).
+: SETUP-CU ( -- )
+   MKD:OPEN
+   0 MKD:CUINIT CUDA:RC0
+   GDEV 0 >IDX MKD:CUDEVICEGET CUDA:RC0
+   GCTX GDEV @ >CUDA-DEV MKD:CUDEVICEPRIMARYCTXRETAIN CUDA:RC0
+   GDEV @ >CUDA-DEV CUDA-SCOPE:OWN-PRIMARY-CTX
+   GCTX @ >CUDA-CTX MKD:CUCTXSETCURRENT CUDA:RC0
    PTXTC:CUBIN$ GPATH >CSTR
-   GMOD GPATH CUDA:CUMODULELOAD CUDA:RC0
+   GMOD GPATH MKD:CUMODULELOAD CUDA:RC0
+   GMOD @ >CUDA-MOD CUDA-SCOPE:OWN-MODULE
    s" SAXPY" GKN >CSTR
-   GFUNC GMOD @ >CUDA-MOD GKN CUDA:CUMODULEGETFUNCTION CUDA:RC0 ;
+   GFUNC GMOD @ >CUDA-MOD GKN MKD:CUMODULEGETFUNCTION CUDA:RC0 ;
 
-\ load element i of x and y from Habu floats into the host f32 buffers
-: PUT ( r r n -- ) {: xv:r yv:r ix:n :}
-   xv F64>F32 GHX ix F32!
-   yv F64>F32 GHY ix F32! ;
-
-: LAUNCH ( r -- )  {: a:r :}                        \ a = scalar; x,y already in GHX/GHY
+\ one launch's device buffers live in a per-call SCOPE frame: GDX/GDY are freed on
+\ both return and throw, so repeated launches (gpu-train's epochs) never leak the
+\ previous pair and a mid-launch throw releases them without touching ctx/module.
+: LAUNCH-CORE ( -- )
    GN 4 *  {: bytes :}
-   GDX bytes >LEN CUDA:CUMEMALLOC CUDA:RC0
-   GDY bytes >LEN CUDA:CUMEMALLOC CUDA:RC0
-   GDX @ >CUDA-DEVPTR GHX bytes >LEN CUDA:CUMEMCPYHTOD CUDA:RC0
-   GDY @ >CUDA-DEVPTR GHY bytes >LEN CUDA:CUMEMCPYHTOD CUDA:RC0
-   a F64>F32 GABITS !  GN GNVAR !
+   GDX bytes >LEN MKD:CUMEMALLOC CUDA:RC0  GDX @ >CUDA-DEVPTR CUDA-SCOPE:OWN-DEVPTR
+   GDY bytes >LEN MKD:CUMEMALLOC CUDA:RC0  GDY @ >CUDA-DEVPTR CUDA-SCOPE:OWN-DEVPTR
+   GDX @ >CUDA-DEVPTR GHX bytes >LEN MKD:CUMEMCPYHTOD CUDA:RC0
+   GDY @ >CUDA-DEVPTR GHY bytes >LEN MKD:CUMEMCPYHTOD CUDA:RC0
    GFUNC @ >CUDA-FN 256 1 1 CUDA:CUFUNCSETBLOCKSHAPE CUDA:RC0
    GFUNC @ >CUDA-FN 24 >LEN CUDA:CUPARAMSETSIZE CUDA:RC0
    GFUNC @ >CUDA-FN 0 >IDX  GDX 8 >LEN CUDA:CUPARAMSETV CUDA:RC0
@@ -118,14 +119,34 @@ public
    GFUNC @ >CUDA-FN 20 >IDX GNVAR 4 >LEN CUDA:CUPARAMSETV CUDA:RC0
    GFUNC @ >CUDA-FN 1 1 CUDA:CULAUNCHGRID CUDA:RC0
    CUDA:CUCTXSYNCHRONIZE CUDA:RC0
-   GHY bytes PTXSENT:FILL                                \ poison before copy-back (y already on device)
-   GHY GDY @ >CUDA-DEVPTR bytes >LEN CUDA:CUMEMCPYDTOH CUDA:RC0 ;
+   GHY bytes PTXSENT:FILL                                  \ poison before copy-back (y already on device)
+   GHY GDY @ >CUDA-DEVPTR bytes >LEN MKD:CUMEMCPYDTOH CUDA:RC0 ;
+
+\ atomic ctx+module acquire: a throw mid-acquisition unwinds the owned prefix
+\ (primary error wins, cleanup retained) so the owner boundary is all-or-nothing.
+: SETUP-OPEN ( -- )
+   [: SETUP-CU ;] catch
+   dup 0<> if [: CUDA-SCOPE:UNWIND ;] catch drop throw then
+   drop ;
+
+public
+
+\ SETUP opens the ctx+module owner boundary (released by RELEASE = single UNWIND).
+: SETUP ( -- )
+   BUILD-CUBIN                                             \ self-emit -> private per-run cubin
+   SETUP-OPEN ;
+
+\ load element i of x and y from Habu floats into the host f32 buffers
+: PUT ( r r n -- ) {: xv:r yv:r ix:n :}
+   xv F64>F32 GHX ix F32!
+   yv F64>F32 GHY ix F32! ;
+
+: LAUNCH ( r -- )  {: a:r :}                        \ a = scalar; x,y already in GHX/GHY
+   a F64>F32 GABITS !  GN GNVAR !                          \ stash into globals for the scope body
+   [: LAUNCH-CORE ;] CUDA-SCOPE:SCOPE ;                    \ GDX/GDY owned + freed within this launch
 
 : RELEASE ( -- )
-   GDX @ >CUDA-DEVPTR CUDA:CUMEMFREE CUDA:RC0
-   GDY @ >CUDA-DEVPTR CUDA:CUMEMFREE CUDA:RC0
-   GMOD @ >CUDA-MOD CUDA:CUMODULEUNLOAD CUDA:RC0
-   GDEV @ >CUDA-DEV CUDA:CUDEVICEPRIMARYCTXRELEASE CUDA:RC0
+   CUDA-SCOPE:UNWIND                                       \ release module then primary context (reverse of SETUP)
    PTXTC:CLEAN ;                                           \ remove the private per-run root
 
 \ result element i (f32 bits) after the launch

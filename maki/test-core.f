@@ -99,6 +99,8 @@ SUITE maki/lower/mv-test.f
 ;SUITE
 SUITE maki/lower/model-test.f
 ;SUITE
+SUITE maki/lower/launch-leak-test.f
+;SUITE
 SUITE maki/precision-test.f
 ;SUITE
 SUITE maki/prec-attr-test.f
@@ -274,6 +276,8 @@ SUITE maki/device-artifacts-test.f
 SUITE maki/maki-test.f
 ;SUITE
 SUITE maki/gpu-emit-test.f
+;SUITE
+SUITE maki/gpu-leak-test.f
 ;SUITE
 SUITE maki/device-smoke.f
 ;SUITE

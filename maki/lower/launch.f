@@ -47,6 +47,7 @@ require lib/ptx/cg.f
 require lib/ptx/sentinel.f
 require maki/array.f
 require maki/cuda-driver.f
+require maki/cuda-run.f
 require maki/golden-artifact.f
 require maki/move-view.f
 require maki/lower/ew.f
@@ -146,30 +147,41 @@ private
 : LLA-FNAME ( CAD-KIND:region -- ) {: rid:CAD-KIND:region :}   \ build the REGION_<rid> cstring
    SB-RESET s" REGION_" SB-APPEND rid RGN>RAW FMT:SB-INT  SB$ LLA-FN >CSTR ;
 
+\ launch args staged into globals so the SCOPE body words (LLA-EXEC-*-BODY,
+\ MDL-EXEC-REGION-INNER) close over no locals; obytes is re-derived from LLA-ELEMS.
+variable LLA-GX  variable LLA-GY                    \ single-region launch grid (x, and y for matmul)
+1 LAYOUT-BUFFER LLA-CUR-RID CAD-KIND:region         \ region carried into the per-region scope body
+: LLA-CUR-RID! ( CAD-KIND:region -- )  0 LLA-CUR-RID ! ;
+: LLA-CUR-RID@ ( -- CAD-KIND:region )  0 LLA-CUR-RID @ ;
+
 \ context lifecycle is split from module lifecycle: the whole-model run (LOWER-MODEL-RUN)
-\ opens the context ONCE and loads/unloads a module PER region (device buffers are
-\ context-scoped, so they persist across module loads); the single-region path composes both.
+\ opens the context ONCE (owned by its OUTER scope) and loads/unloads a module PER region
+\ (each in a per-region scope, so device buffers stay context-scoped across module loads);
+\ the single-region path composes both under one scope. Acquire goes through the injectable
+\ MKD seam; each resource is transferred to CUDA-SCOPE the instant it is acquired, so the
+\ owning scope releases module, primary context, and every allocation in reverse on throw.
 : LLA-CTX-OPEN ( -- )
-   CUDA:OPEN
-   0 CUDA:CUINIT CUDA:RC0
-   LLA-DEV 0 >IDX CUDA:CUDEVICEGET CUDA:RC0
-   LLA-CTX LLA-DEV @ >CUDA-DEV CUDA:CUDEVICEPRIMARYCTXRETAIN CUDA:RC0
-   LLA-CTX @ >CUDA-CTX CUDA:CUCTXSETCURRENT CUDA:RC0 ;
-: LLA-MOD-OPEN ( ptr u8 n -- )   \ load a cubin at the path; get the REGION_<...> fn (LLA-FN preset)
+   MKD:OPEN
+   0 MKD:CUINIT CUDA:RC0
+   LLA-DEV 0 >IDX MKD:CUDEVICEGET CUDA:RC0
+   LLA-CTX LLA-DEV @ >CUDA-DEV MKD:CUDEVICEPRIMARYCTXRETAIN CUDA:RC0
+   LLA-DEV @ >CUDA-DEV CUDA-SCOPE:OWN-PRIMARY-CTX
+   LLA-CTX @ >CUDA-CTX MKD:CUCTXSETCURRENT CUDA:RC0 ;
+: LLA-MOD-OPEN ( ptr u8 n -- )   \ load a cubin at the path (owned); get the REGION_<...> fn (LLA-FN preset)
    LLA-PATH >CSTR
-   LLA-MOD LLA-PATH CUDA:CUMODULELOAD CUDA:RC0
-   LLA-FUNC LLA-MOD @ >CUDA-MOD LLA-FN CUDA:CUMODULEGETFUNCTION CUDA:RC0 ;
-: LLA-MOD-CLOSE ( -- )  LLA-MOD @ >CUDA-MOD CUDA:CUMODULEUNLOAD CUDA:RC0 ;
-: LLA-CTX-CLOSE ( -- )  LLA-DEV @ >CUDA-DEV CUDA:CUDEVICEPRIMARYCTXRELEASE CUDA:RC0 ;
+   LLA-MOD LLA-PATH MKD:CUMODULELOAD CUDA:RC0
+   LLA-MOD @ >CUDA-MOD CUDA-SCOPE:OWN-MODULE
+   LLA-FUNC LLA-MOD @ >CUDA-MOD LLA-FN MKD:CUMODULEGETFUNCTION CUDA:RC0 ;
 : LLA-SETUP ( -- )  LLA-CTX-OPEN  LLA-CUBIN$ LLA-MOD-OPEN ;
 
-: LLA-ALLOC-UPLOAD ( n -- ) {: obytes:n :}       \ per-input alloc + copy, then output alloc
+: LLA-ALLOC-UPLOAD ( n -- ) {: obytes:n :}       \ per-input alloc (owned) + copy, then output alloc (owned)
    LLA-NIN @ 0 ?do
       i LLA-IN-ELEMS-I 4 * {: ib:n :}
-      i LLA-DBUF-I ib >LEN CUDA:CUMEMALLOC CUDA:RC0
-      i LLA-DBUF-I @ >CUDA-DEVPTR  i LLA-HIN-I  ib >LEN CUDA:CUMEMCPYHTOD CUDA:RC0
+      i LLA-DBUF-I ib >LEN MKD:CUMEMALLOC CUDA:RC0  i LLA-DBUF-I @ >CUDA-DEVPTR CUDA-SCOPE:OWN-DEVPTR
+      i LLA-DBUF-I @ >CUDA-DEVPTR  i LLA-HIN-I  ib >LEN MKD:CUMEMCPYHTOD CUDA:RC0
    loop
-   LLA-NIN @ LLA-DBUF-I obytes >LEN CUDA:CUMEMALLOC CUDA:RC0 ;
+   LLA-NIN @ LLA-DBUF-I obytes >LEN MKD:CUMEMALLOC CUDA:RC0
+   LLA-NIN @ LLA-DBUF-I @ >CUDA-DEVPTR CUDA-SCOPE:OWN-DEVPTR ;
 
 : LLA-BIND-PARAMS ( -- )                          \ K input ptrs, output ptr, then the u32 param
    LLA-FUNC @ >CUDA-FN LLA-BLOCK 1 1 CUDA:CUFUNCSETBLOCKSHAPE CUDA:RC0
@@ -193,22 +205,19 @@ private
    CUDA:CUCTXSYNCHRONIZE CUDA:RC0
    obytes LLA-READBACK ;
 
-: LLA-RELEASE ( -- )
-   LLA-NIN @ 0 ?do  i LLA-DBUF-I @ >CUDA-DEVPTR CUDA:CUMEMFREE CUDA:RC0  loop
-   LLA-NIN @ LLA-DBUF-I @ >CUDA-DEVPTR CUDA:CUMEMFREE CUDA:RC0
-   LLA-MOD-CLOSE  LLA-CTX-CLOSE ;
-
 \ ---- shared execute over the staged region (upload + launch grid + readback) ----
+\ each single-region exec runs setup+upload+launch under ONE scope, so the module,
+\ primary context, and all input/output buffers unwind in reverse on return and throw
+\ (replacing the open-coded LLA-RELEASE list). Grid staged in LLA-GX/LLA-GY; obytes
+\ re-derived from LLA-ELEMS so the body word closes over no locals.
+: LLA-EXEC-BODY ( -- )
+   LLA-SETUP  LLA-ELEMS @ 4 * LLA-ALLOC-UPLOAD  LLA-GX @ LLA-ELEMS @ 4 * LLA-LAUNCH ;
 : LLA-EXEC ( CAD-KIND:region n -- ) {: rid:CAD-KIND:region grid:n :}
    LLA-ELEMS @ LLA-NCAP > if E-LLA-CAP throw then
    LLA-NIN @ 0 ?do  i LLA-IN-ELEMS-I LLA-NCAP > if E-LLA-CAP throw then  loop
-   LLA-ELEMS @ 4 * {: obytes:n :}
    LLA-NIN @ 0 ?do i LLA-PACK-INPUT loop
-   rid LLA-FNAME
-   LLA-SETUP
-   obytes LLA-ALLOC-UPLOAD
-   grid obytes LLA-LAUNCH
-   LLA-RELEASE ;
+   rid LLA-FNAME  grid LLA-GX !
+   [: LLA-EXEC-BODY ;] CUDA-SCOPE:SCOPE ;
 
 \ ---- per-shape staging (copy the analyzer's facts into launch-local state) ----
 \ each staging resolves per-input (a dissolved movement operand folds to its source slot +
@@ -267,16 +276,14 @@ private
    CUDA:CUCTXSYNCHRONIZE CUDA:RC0
    obytes LLA-READBACK ;
 
+: LLA-EXEC-MM-BODY ( -- )
+   LLA-SETUP  LLA-ELEMS @ 4 * LLA-ALLOC-UPLOAD  LLA-GX @ LLA-GY @ LLA-ELEMS @ 4 * LLA-LAUNCH-MM ;
 : LLA-EXEC-MM ( CAD-KIND:region n n -- ) {: rid:CAD-KIND:region gx:n gy:n :}
    LLA-ELEMS @ LLA-NCAP > if E-LLA-CAP throw then
    LLA-NIN @ 0 ?do  i LLA-IN-ELEMS-I LLA-NCAP > if E-LLA-CAP throw then  loop
-   LLA-ELEMS @ 4 * {: obytes:n :}
    LLA-NIN @ 0 ?do i LLA-PACK-INPUT loop
-   rid LLA-FNAME
-   LLA-SETUP
-   obytes LLA-ALLOC-UPLOAD
-   gx gy obytes LLA-LAUNCH-MM
-   LLA-RELEASE ;
+   rid LLA-FNAME  gx LLA-GX !  gy LLA-GY !
+   [: LLA-EXEC-MM-BODY ;] CUDA-SCOPE:SCOPE ;
 
 \ ---- movement copy-kernel launch (1-2 buffers + p_a/p_b/p_n u32 + 1D grid) ------
 : LLA-BIND-PARAMS-MV ( -- )                       \ K input ptrs, output ptr, then a,b,n as u32
@@ -296,14 +303,14 @@ private
    CUDA:CUCTXSYNCHRONIZE CUDA:RC0
    obytes LLA-READBACK ;
 
+: LLA-EXEC-MV-BODY ( -- )
+   LLA-SETUP  LLA-ELEMS @ 4 * LLA-ALLOC-UPLOAD  LLA-GX @ LLA-ELEMS @ 4 * LLA-LAUNCH-MV ;
 : LLA-EXEC-MV ( CAD-KIND:region n -- ) {: rid:CAD-KIND:region grid:n :}
    LLA-ELEMS @ LLA-NCAP > if E-LLA-CAP throw then
    LLA-NIN @ 0 ?do  i LLA-IN-ELEMS-I LLA-NCAP > if E-LLA-CAP throw then  loop
-   LLA-ELEMS @ 4 * {: obytes:n :}
    LLA-NIN @ 0 ?do i LLA-PACK-INPUT loop
-   rid LLA-FNAME  LLA-SETUP  obytes LLA-ALLOC-UPLOAD
-   grid obytes LLA-LAUNCH-MV
-   LLA-RELEASE ;
+   rid LLA-FNAME  grid LLA-GX !
+   [: LLA-EXEC-MV-BODY ;] CUDA-SCOPE:SCOPE ;
 
 \ ---- grid + u32 kernel-param computation per shape (staging already ran) --------
 \ each sets the shape's u32 param (LLA-NVAR = p_n or p_k; matmul uses LLA-PM/PN/PK) and
@@ -363,7 +370,6 @@ private
 create MDL-CUBINS    MDL-CAP FS-PATH-CAP * allot   \ per-region REGION_<rid> cubin path text
 create MDL-CUBIN-LEN MDL-CAP cells allot            \ per-region cubin path length (0 = unset)
 create MDL-BUF       MDL-CAP cells allot            \ per-node device buffer (devptr int; 0 = none)
-create MDL-OWN       LLA-MAX-IN cells allot         \ per-input "uploaded (owned)" flag, current region
 variable MDL-NEW  variable MDL-NRED  variable MDL-NMM  variable MDL-NMV  variable MDL-NR
 1 LAYOUT-BUFFER MDL-PROBE-RID CAD-KIND:region      \ typed region cell carried into the lowerability probe (catch wants a ( -- ) body)
 
@@ -383,31 +389,28 @@ variable MDL-NEW  variable MDL-NRED  variable MDL-NMM  variable MDL-NMV  variabl
    dp node NODE>RAW cells MDL-BUF + ! ;
 : MDL-BUF-RESET ( -- )  MDL-CAP 0 ?do  0 i cells MDL-BUF + !  loop ;
 
-\ per-input buffer provision: upload a model slot, or bind an already-produced node buffer
+\ per-input buffer provision: upload a model slot (owned by the per-region scope, so it
+\ is freed at region end), or BIND an already-produced node buffer (a borrow of a buffer
+\ the OUTER scope owns - not transferred here, so it survives to feed later regions).
 : MDL-UP-SLOT ( n -- ) {: i:n :}
    i LLA-PACK-INPUT                                 \ pack slot synthetic into LLA-HIN[i]
    i LLA-IN-ELEMS-I 4 * {: ib:n :}
-   i LLA-DBUF-I ib >LEN CUDA:CUMEMALLOC CUDA:RC0
-   i LLA-DBUF-I @ >CUDA-DEVPTR  i LLA-HIN-I  ib >LEN CUDA:CUMEMCPYHTOD CUDA:RC0
-   1 i cells MDL-OWN + ! ;
+   i LLA-DBUF-I ib >LEN MKD:CUMEMALLOC CUDA:RC0  i LLA-DBUF-I @ >CUDA-DEVPTR CUDA-SCOPE:OWN-DEVPTR
+   i LLA-DBUF-I @ >CUDA-DEVPTR  i LLA-HIN-I  ib >LEN MKD:CUMEMCPYHTOD CUDA:RC0 ;
 : MDL-BIND-NODE ( n -- ) {: i:n :}
    i LLA-IN-REF@ MIR-REF-NODE {: node:CAD-KIND:node-id :}
    node MDL-DEVPTR@ {: dp:n :}
    dp 0= if E-MDL-UNRESOLVED throw then             \ topo order must have produced it
-   dp i LLA-DBUF-I !                                \ reuse the producer's device buffer
-   0 i cells MDL-OWN + ! ;
+   dp i LLA-DBUF-I ! ;                              \ reuse the producer's device buffer (borrow, not owned)
 : MDL-PROVIDE-INPUTS ( -- )
    LLA-NIN @ 0 ?do
       i LLA-IN-REF@ MIR-REF-INPUT? if i MDL-UP-SLOT else i MDL-BIND-NODE then
    loop ;
-: MDL-ALLOC-OUT ( -- )                             \ region output buffer; record it under its node
+: MDL-ALLOC-OUT ( -- )                             \ region output buffer; owned by the OUTER (model) scope
    LLA-ELEMS @ 4 * {: ob:n :}
-   LLA-NIN @ LLA-DBUF-I ob >LEN CUDA:CUMEMALLOC CUDA:RC0
+   LLA-NIN @ LLA-DBUF-I ob >LEN MKD:CUMEMALLOC CUDA:RC0
+   LLA-NIN @ LLA-DBUF-I @ >CUDA-DEVPTR CUDA-SCOPE:OWN-DEVPTR
    LLA-NIN @ LLA-DBUF-I @ LLA-STAGED-NODE@ MDL-DEVPTR! ;
-: MDL-FREE-OWNED ( -- )                            \ free only the per-region uploaded inputs
-   LLA-NIN @ 0 ?do
-      i cells MDL-OWN + @ if  i LLA-DBUF-I @ >CUDA-DEVPTR CUDA:CUMEMFREE CUDA:RC0  then
-   loop ;
 : MDL-CHECK-CAPS ( -- )
    LLA-ELEMS @ LLA-NCAP > if E-LLA-CAP throw then
    LLA-NIN @ 0 ?do  i LLA-IN-ELEMS-I LLA-NCAP > if E-LLA-CAP throw then  loop ;
@@ -436,16 +439,21 @@ variable MDL-NEW  variable MDL-NRED  variable MDL-NMM  variable MDL-NMV  variabl
       LLA-GRID-RED {: g1:n :}  LLA-BIND-PARAMS  g1 MDL-LAUNCH-1D  exit then
    LLA-GRID-EW {: g2:n :}  LLA-BIND-PARAMS  g2 MDL-LAUNCH-1D ;
 
+\ the module and the region's uploaded input buffers live one region long; they are
+\ owned by a per-region SCOPE (MDL-EXEC-REGION-INNER) that unwinds them at region end.
+\ The region's OUTPUT buffer (MDL-ALLOC-OUT) is allocated BEFORE that scope opens, so it
+\ is owned by the enclosing model scope and survives to feed downstream regions.
+: MDL-EXEC-REGION-INNER ( -- )
+   LLA-CUR-RID@ MDL-CUBIN$ LLA-MOD-OPEN            \ own module (this region)
+   MDL-PROVIDE-INPUTS                              \ own uploaded inputs; borrow producer node buffers
+   LLA-CUR-RID@ MDL-DISPATCH ;
 : MDL-EXEC-REGION ( CAD-KIND:region -- ) {: rid:CAD-KIND:region :}
    rid MDL-STAGE
    MDL-CHECK-CAPS
    rid LLA-FNAME                                   \ LLA-FN = REGION_<rid>
-   rid MDL-CUBIN$ LLA-MOD-OPEN
-   MDL-PROVIDE-INPUTS
-   MDL-ALLOC-OUT
-   rid MDL-DISPATCH
-   MDL-FREE-OWNED
-   LLA-MOD-CLOSE ;
+   rid LLA-CUR-RID!                                \ carry rid into the per-region scope body
+   MDL-ALLOC-OUT                                   \ output buffer owned by the OUTER (model) scope
+   [: MDL-EXEC-REGION-INNER ;] CUDA-SCOPE:SCOPE ;  \ frees module + uploaded inputs at region end
 
 \ read the final model output node's device buffer back into LLA-HOUT (guarded), and point
 \ the golden accessors (LLA-OUT-NODE / LLA-ELEMS) at it so LG-COMPARE-LIN reads the model output.
@@ -459,11 +467,6 @@ variable MDL-NEW  variable MDL-NRED  variable MDL-NMM  variable MDL-NMV  variabl
    LLA-HRB  dp >CUDA-DEVPTR  ob >LEN CUDA:CUMEMCPYDTOH CUDA:RC0
    e 0 ?do  LLA-HRB i 4 * + SF-LD PTXSENT:GUARD F32>F64  LLA-HOUT i T-SET  loop
    out LLA-OUT-NODE! e LLA-ELEMS ! ;
-: MDL-FREE-ALL ( -- )
-   NODE-COUNT@ CAD-NUM:LLA-IC>N 0 ?do
-      i MIR-NODE-ID {: node:CAD-KIND:node-id :} node MDL-DEVPTR@ {: dp:n :}
-      dp 0= 0= if dp >CUDA-DEVPTR CUDA:CUMEMFREE CUDA:RC0 0 node MDL-DEVPTR! then
-   loop ;
 
 public
 
@@ -524,16 +527,19 @@ public
 \ fusion plan built (FP-BUILD), synthetic inputs bound (GA-BIND-SYNTH), and each region's
 \ cubin registered (MDL-CUBIN!). Leaves LLA-HOUT = the final model output (f64), LLA-OUT-NODE
 \ / LLA-ELEMS pointing at it for the golden compare.
-: LOWER-MODEL-RUN ( -- )
+\ the model scope owns the primary context and every region's OUTPUT buffer (the
+\ persistent MDL-BUF entries); it unwinds them in reverse - every node buffer then the
+\ context - on both normal completion and any throw from a region, so a failure part way
+\ through the model leaks neither the context nor the buffers produced so far.
+: LOWER-MODEL-RUN-BODY ( -- )
    LLA-CTX-OPEN
    MDL-BUF-RESET
    NODE-COUNT@ CAD-NUM:LLA-IC>N 0 ?do
       i MIR-NODE-ID {: node:CAD-KIND:node-id :}
       node MIR-MAT@ if node FP-RID@ MDL-EXEC-REGION then
    loop
-   MDL-READBACK
-   MDL-FREE-ALL
-   LLA-CTX-CLOSE ;
+   MDL-READBACK ;
+: LOWER-MODEL-RUN ( -- )  [: LOWER-MODEL-RUN-BODY ;] CUDA-SCOPE:SCOPE ;
 
 public
 

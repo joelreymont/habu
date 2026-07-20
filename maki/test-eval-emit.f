@@ -16,6 +16,8 @@ SUITE maki/eval/emit-test.f
 ;SUITE
 SUITE maki/eval/emit-device-test.f
 ;SUITE
+SUITE maki/eval/emit-device-leak-test.f
+;SUITE
 ;GROUP
 
 RUN

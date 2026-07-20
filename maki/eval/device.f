@@ -25,6 +25,7 @@ require lib/ptx/header.f
 require lib/ptx/tile.f
 require maki/eval/eval.f
 require maki/cuda-driver.f
+require maki/cuda-run.f
 require maki/device-artifacts.f
 require maki/eval/active-target.f
 require lib/ptx/sentinel.f
@@ -63,21 +64,25 @@ $21 constant ED-EXIT-GREEN     \ device output == golden
 $22 constant ED-EXIT-WRONG     \ device ran, output != golden
 $23 constant ED-EXIT-FAULT     \ launch threw (E-CUDA etc.) / crashed
 
-: ED-RUN ( ptr u8 n -- n ) {: pa pu :}          \ cubin path -> f32 result bits
-   ED-RBUF 4 PTXSENT:FILL                        \ poison readback: a dropped copy-back fails closed
-   CUDA:OPEN
-   0 CUDA:CUINIT CUDA:RC0
-   ED-DEV 0 >IDX CUDA:CUDEVICEGET CUDA:RC0
-   ED-CTX ED-DEV @ >CUDA-DEV CUDA:CUDEVICEPRIMARYCTXRETAIN CUDA:RC0
-   ED-CTX @ >CUDA-CTX CUDA:CUCTXSETCURRENT CUDA:RC0
-   pa pu ED-PATH >CSTR
-   ED-MOD ED-PATH CUDA:CUMODULELOAD CUDA:RC0
+\ ED-RUN-CORE acquires ctx, module, and the x/y device buffers into one CUDA-SCOPE
+\ frame and leaves the SAXPY result in ED-RBUF; the scope (ED-RUN) unwinds buffers,
+\ module, and primary context in reverse on both return and throw - so a launch
+\ FAULT (the isolated-child grading case) frees everything instead of leaking it.
+: ED-RUN-CORE ( -- )                            \ ED-PATH preset; readback -> ED-RBUF
+   MKD:OPEN
+   0 MKD:CUINIT CUDA:RC0
+   ED-DEV 0 >IDX MKD:CUDEVICEGET CUDA:RC0
+   ED-CTX ED-DEV @ >CUDA-DEV MKD:CUDEVICEPRIMARYCTXRETAIN CUDA:RC0
+   ED-DEV @ >CUDA-DEV CUDA-SCOPE:OWN-PRIMARY-CTX
+   ED-CTX @ >CUDA-CTX MKD:CUCTXSETCURRENT CUDA:RC0
+   ED-MOD ED-PATH MKD:CUMODULELOAD CUDA:RC0
+   ED-MOD @ >CUDA-MOD CUDA-SCOPE:OWN-MODULE
    s" SAXPY" ED-KN >CSTR
-   ED-FUNC ED-MOD @ >CUDA-MOD ED-KN CUDA:CUMODULEGETFUNCTION CUDA:RC0
-   ED-DX 16 >LEN CUDA:CUMEMALLOC CUDA:RC0
-   ED-DY 16 >LEN CUDA:CUMEMALLOC CUDA:RC0
-   ED-DX @ >CUDA-DEVPTR $40000000 4 >COUNT CUDA:CUMEMSETD32 CUDA:RC0     \ x = 2.0
-   ED-DY @ >CUDA-DEVPTR 0 4 >COUNT CUDA:CUMEMSETD32 CUDA:RC0             \ y = 0
+   ED-FUNC ED-MOD @ >CUDA-MOD ED-KN MKD:CUMODULEGETFUNCTION CUDA:RC0
+   ED-DX 16 >LEN MKD:CUMEMALLOC CUDA:RC0  ED-DX @ >CUDA-DEVPTR CUDA-SCOPE:OWN-DEVPTR
+   ED-DY 16 >LEN MKD:CUMEMALLOC CUDA:RC0  ED-DY @ >CUDA-DEVPTR CUDA-SCOPE:OWN-DEVPTR
+   ED-DX @ >CUDA-DEVPTR $40000000 4 >COUNT MKD:CUMEMSETD32 CUDA:RC0     \ x = 2.0
+   ED-DY @ >CUDA-DEVPTR 0 4 >COUNT MKD:CUMEMSETD32 CUDA:RC0             \ y = 0
    $40400000 ED-AB !  4 ED-NV !                                      \ a = 3.0, n = 4
    ED-FUNC @ >CUDA-FN 256 1 1 CUDA:CUFUNCSETBLOCKSHAPE CUDA:RC0
    ED-FUNC @ >CUDA-FN 24 >LEN CUDA:CUPARAMSETSIZE CUDA:RC0
@@ -87,11 +92,12 @@ $23 constant ED-EXIT-FAULT     \ launch threw (E-CUDA etc.) / crashed
    ED-FUNC @ >CUDA-FN 20 >IDX ED-NV 4 >LEN CUDA:CUPARAMSETV CUDA:RC0
    ED-FUNC @ >CUDA-FN 1 1 CUDA:CULAUNCHGRID CUDA:RC0
    CUDA:CUCTXSYNCHRONIZE CUDA:RC0
-   ED-RBUF ED-DY @ >CUDA-DEVPTR 4 >LEN CUDA:CUMEMCPYDTOH CUDA:RC0
-   ED-DX @ >CUDA-DEVPTR CUDA:CUMEMFREE CUDA:RC0
-   ED-DY @ >CUDA-DEVPTR CUDA:CUMEMFREE CUDA:RC0
-   ED-MOD @ >CUDA-MOD CUDA:CUMODULEUNLOAD CUDA:RC0
-   ED-DEV @ >CUDA-DEV CUDA:CUDEVICEPRIMARYCTXRELEASE CUDA:RC0
+   ED-RBUF ED-DY @ >CUDA-DEVPTR 4 >LEN MKD:CUMEMCPYDTOH CUDA:RC0 ;
+
+: ED-RUN ( ptr u8 n -- n ) {: pa pu :}          \ cubin path -> f32 result bits
+   ED-RBUF 4 PTXSENT:FILL                        \ poison readback: a dropped copy-back fails closed
+   pa pu ED-PATH >CSTR
+   [: ED-RUN-CORE ;] CUDA-SCOPE:SCOPE
    ED-RBUF @ $FFFFFFFF and PTXSENT:GUARD ;
 : DEVICE-CORRECT? ( ptr u8 n -- bool )  ED-RUN $40C00000 = ;   \ golden a*x+y = 6.0
 
