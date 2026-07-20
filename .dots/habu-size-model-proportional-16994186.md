@@ -140,7 +140,7 @@ DECOMPOSITION (each lands gate-green independently):
 
 Stage-3i LANDED (ldgrow lane, f0bbf055): see below.
 Stage-3ii LANDED (capbuf lane): see below.
-Stage-3iii claim: agent=cleanfam workspace=.jj-ws/fable-cleanfam machine=spark (owns maki/executor.f + maki/backward.f single-phase family conversions + their tests; NOT cad.f, NOT model-ir.f, NOT tensor-value.f)
+Stage-3iii LANDED (cleanfam lane, aeef6895): see below.
 
 2026-07-20 STAGE 3(ii) LANDED (Buffer-capture MODEL: definition before parsing):
 MODEL: now captures the entire definition token-stream into CAPSRC-BUF via ONE
@@ -171,3 +171,23 @@ REMAINING: stage 3(iii) in flight (executor/backward clean families); then
 3(iv) capture-side counting (the two-pass NEXT-TOK walk over CAPSRC) + CAP/NT/
 MSRC/TV/P conversions; then 3(v) MI-* onto BIND-at-CAP-FINISH + GROW-during-
 BW-BUILD + the 12-block acceptance + ceiling-pin conversions.
+
+2026-07-20 STAGE 3(iii) LANDED (aeef6895): executor + backward families derive-
+sized. Executor EX-OFF bound at EX-PLAN from the run's node count AND at EX-OFF!
+from NODE-COUNT@ for the checkpoint path (which never calls EX-PLAN - a seam the
+mapping missed, found by the lane); EX-IN-PTR/EX-IN-SET bound at EX-RESET from
+SLOT-COUNT@. Backward typed columns BW-CT-AT/BW-ISG-AT converted to
+DEFER-LAYOUT-BUFFER (operand-ref verified arity-0 nominal - the class stage-2
+proved); raw flag siblings hand-deferred in lockstep; BW-ISG binds
+SLOT-COUNT@+1 preserving the seed-slot slack. Old caps became generous ceilings
+(E-EX-CAP/E-BW-CAP named, transactional - prior live counts intact, fresh build
+succeeds after a die). Both-size regression asserts exact live counts for two
+models in one image. Implementation law recorded: variable-fetched bases lose
+the ptr element type - all indexed access goes through typed T-AT (base-first),
+never bare +. Training locks bit-identical; timing flat (1.38/1.53s suites).
+
+REMAINING: 3(iv) capture-side counting + CAP/NT/MSRC/TV/P conversions (the
+two-pass NEXT-TOK walk is landed and waiting); 3(v) MI-* via BIND-at-CAP-FINISH
++ GROW-during-BW-BUILD (both landed and waiting) + the 12-block acceptance +
+ceiling-pin conversions. All prerequisites are now in - 3(iv)+3(v) can be ONE
+lane owning cad.f/model-ir.f/tensor-value.f end to end.
