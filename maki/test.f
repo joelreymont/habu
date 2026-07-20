@@ -374,6 +374,8 @@ SUITE maki/examples/nanogpt/xent-train-test.f
 ;SUITE
 SUITE maki/examples/nanogpt/generate-test.f
 ;SUITE
+SUITE maki/examples/nanogpt/wtie-train-test.f
+;SUITE
 ;GROUP
 
 RUN
