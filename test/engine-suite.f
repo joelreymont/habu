@@ -1602,6 +1602,39 @@ TRP 105 T=
    + + + + + + + + + + + ;
 TLR 78 T=
 
+\ JIT constant-push / binary-prep sharing (dot habu-share-duplicated-jit): the
+\ shared LVPUSHT body (LVPUSHC falls in, LVPUSHF branches in) and the LVBINIPREP
+\ probe that tail-branches into the single LVBINPREP base must reproduce every
+\ mode. Fold path (both operands constant), imm12 mode 3 (live deep + small const
+\ top), the imm12 in-range boundary, and out-of-range / negative tops where the
+\ probe delegates to the shared base:
+: TJF ( -- n ) 2 3 +  10 4 -  +  6 7 *  + ;   \ fold: 5 + 6 + 42
+TJF 53 T=
+: TJB ( -- n ) 12 10 and  12 10 or  12 10 xor  +  + ;   \ fold: 8 + 14 + 6
+TJB 28 T=
+: TJI ( n -- n ) 100 + ;        \ imm12 mode 3: add rd, rn, #100
+5 TJI 105 T=
+: TJIHI ( n -- n ) 4095 + ;     \ imm12 mode 3, top of the imm12 range
+1 TJIHI 4096 T=
+: TJIOVER ( n -- n ) 4096 + ;   \ out of range -> probe tail-branches to base
+1 TJIOVER 4097 T=
+: TJINEG ( n -- n ) -1 + ;      \ negative top -> probe tail-branches to base
+5 TJINEG 4 T=
+\ spill-on-full through the shared push body: 33 pending constants overflow the
+\ 32-slot VS so the 33rd push takes the LVSPILL path. First with the integer tag,
+\ then with the float tag (which must survive the spill call in the frame - the
+\ tag save/restore the shared body adds):
+: TJSI ( -- n )
+   1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1
+   + + + + + + + + + + + + + + + + + + + + + + + + + + + + + + + + ;
+TJSI 33 T=
+: TJSF ( -- bool )
+   1.0 1.0 1.0 1.0 1.0 1.0 1.0 1.0 1.0 1.0 1.0 1.0 1.0 1.0 1.0 1.0 1.0
+   1.0 1.0 1.0 1.0 1.0 1.0 1.0 1.0 1.0 1.0 1.0 1.0 1.0 1.0 1.0 1.0
+   f+ f+ f+ f+ f+ f+ f+ f+ f+ f+ f+ f+ f+ f+ f+ f+
+   f+ f+ f+ f+ f+ f+ f+ f+ f+ f+ f+ f+ f+ f+ f+ f+  33.0 f= ;
+TJSF -1 T=
+
 \ locals register cache: repeat refs reuse the cached reg (one ldr total)...
 : KL ( n -- n ) {: a:n :} a a + a + ;
 5 KL 15 T=

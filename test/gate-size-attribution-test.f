@@ -105,9 +105,19 @@ $4000 constant MACOS-DATA-CONST  \ __DATA_CONST page (__got + zero fill)
 \ text in aot-seed (headroom check + inline boot die), CODELEN 135984 -> 136088
 \ (floor 816 -> 920); the whole file stays inside the same 4 KiB page
 \ (LINUX-TOTAL unchanged).
-136088 constant LINUX-CODE-TEXT   \ CODELEN: every emitter-phase row (baked-source incl.)
+\ 2026-07-20 re-measured live at the linux-arm64 fixpoint (spark): the JIT
+\ constant-push / binary-prep de-duplication (dot habu-share-duplicated-jit) folds
+\ two structural copies in src/habu/jit.f into one body each. LVPUSHF's 84-byte
+\ tag-only copy of the constant-push body (label-span pushf 88 -> 8) collapses to a
+\ movz+b wrapper into the shared LVPUSHT body, and LVBINIPREP's full 232-byte copy
+\ of the LVBINPREP base (label-span biniprep 360 -> 160) collapses to a probe that
+\ tail-branches into the single LVBINPREP body; the shared push body's frame widen
+\ (16 -> 32, to carry the tag across LVSPILL) adds back 8, netting -272 of engine
+\ text, CODELEN 136088 -> 135816 (floor 920 -> 648); the whole file stays inside
+\ the same 4 KiB page (LINUX-TOTAL unchanged).
+135816 constant LINUX-CODE-TEXT   \ CODELEN: every emitter-phase row (baked-source incl.)
 192 constant LINUX-RW             \ ELF read-write segment tail: DYNAMIC + GOT (ELF-RW-SZ)
-920 constant LINUX-FLOOR-DIST     \ code above the 4 KiB floor: the page-recovery shave
+648 constant LINUX-FLOOR-DIST     \ code above the 4 KiB floor: the page-recovery shave
 143552 constant LINUX-TOTAL       \ = FILE-SIZE bin/hb = GB-SIZE-BASELINE-LINUX
 
 : PAGE-UP ( n n -- n ) {: v:n page:n :}

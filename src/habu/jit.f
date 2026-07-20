@@ -47,18 +47,27 @@ $9E670200 constant W-FMOVD16    \ fmov dR, x16  (or with R)
    6 FRALL MOVZ,  6 DATA FRFREE-CELL STR,
    30 SP 0 LDR,  SP SP 16 ADDI,  RET, ;
 
+\ LVPUSHT ( x8=tag x11=val ) : THE constant-push body — record one unmaterialized
+\ VS entry, spilling first if the stack is full. Only the tag byte differs between
+\ an integer and a float constant, so both entries share this one body: LVPUSHC
+\ (below) sets tag 1 and falls straight in, LVPUSHF (with the float ops) sets
+\ tag 3 and branches back here. x8 outlives the spill call in the frame.
+variable LVPUSHT
+
 : EMIT-VPUSHC ( -- )
    LVPUSHC LABEL@ LBL,
+   8 1 MOVZ,                                   \ tag 1 = integer constant, then fall in
+   LBL LVPUSHT !  LVPUSHT LABEL@ LBL,
    LBL {: room :}
-   SP SP 16 SUBI,  30 SP 0 STR,  11 SP 8 STR,
+   SP SP 32 SUBI,  30 SP 0 STR,  11 SP 8 STR,
    6 DATA VSP-CELL LDR,  6 VSMAX CMPI,  C-LT room BCOND,
-      LVSPILL LABEL@ BL,  6 0 MOVZ,
+      8 SP 16 STR,  LVSPILL LABEL@ BL,  8 SP 16 LDR,  6 0 MOVZ,
    room LBL,
    11 SP 8 LDR,
-   7 6 VTAG-OFF ADDI,  7 DATA 7 ADD,  8 1 MOVZ,  8 7 0 STRB,
+   7 6 VTAG-OFF ADDI,  7 DATA 7 ADD,  8 7 0 STRB,
    8 6 3 LSLI,  8 8 VVAL-OFF ADDI,  8 DATA 8 ADD,  11 8 0 STR,
    6 6 1 ADDI,  6 DATA VSP-CELL STR,
-   30 SP 0 LDR,  SP SP 16 ADDI,  RET, ;
+   30 SP 0 LDR,  SP SP 32 ADDI,  RET, ;
 
 \ LVTOP2C ( -- x13=ok x11=a x12=b ) : are the top two VS entries constants? (no pop)
 : EMIT-VTOP2C ( -- )
@@ -286,33 +295,41 @@ variable LKWDUP2  variable LKWDROP2  variable LKWSWAP2  variable LKWOVER2  varia
 
 \ LVBINIPREP ( -- x13=mode ) : LVBINPREP plus mode 3 for top small constant.
 \ mode 3: x14=rd/rn for the deep operand, x15=imm12, VSP already --.
-: C-VBINI-IMM12-PATH ( label label label -- ) {: bno:label b2:label bdone:label :}
-   6 DATA VSP-CELL LDR,
+\ This routine is a PROBE ONLY: it decides mode 3 or nothing. Every other
+\ outcome unwinds this frame and tail-branches into the single LVBINPREP body,
+\ whose RET returns straight to our caller — so modes 0/1/2 have exactly one
+\ implementation instead of a second copy here.
+\ Only tag 0 (a live register) reaches the immediate lowering: tags 1 and 3 make
+\ the pair foldable and tag 2 makes it mode 0, and LVBINPREP already classifies
+\ all three. The probe mutates nothing before it commits (the imm12 goes to this
+\ frame's scratch slot), so an LVFORCEK allocation failure leaves the VS pristine
+\ and falls out as mode 0, exactly as before.
+: C-VBINI-PROBE ( label label label -- ) {: bno:label b2:label bdone:label :}
+   6 DATA VSP-CELL LDR,  6 2 CMPI,  C-LT b2 BCOND,
    5 6 1 SUBI,  7 5 VTAG-OFF ADDI,  7 DATA 7 ADD,  7 7 0 LDRB,
-   8 5 3 LSLI,  8 8 VVAL-OFF ADDI,  8 DATA 8 ADD,  12 8 0 LDR,
    7 1 CMPI,  C-NE b2 BCOND,
+   8 5 3 LSLI,  8 8 VVAL-OFF ADDI,  8 DATA 8 ADD,  12 8 0 LDR,
    12 0 CMPI,  C-LT b2 BCOND,
    12 4095 CMPI,  C-GT b2 BCOND,
    12 SP 8 STR,
    5 6 2 SUBI,  8 5 VTAG-OFF ADDI,  8 DATA 8 ADD,  8 8 0 LDRB,
-   8 2 CMPI,  C-EQ bno BCOND,  8 3 CMPI,  C-EQ bno BCOND,
+   8 b2 CBNZ,
    LVFORCEK LABEL@ BL,  14 bno CBZ,
    15 SP 8 LDR,
    6 DATA VSP-CELL LDR,  6 6 1 SUBI,  6 DATA VSP-CELL STR,
    13 3 MOVZ,  bdone B, ;
 
+: C-VBIN-TAIL ( -- )
+   30 SP 0 LDR,  SP SP 32 ADDI,  LVBINPREP LABEL@ B, ;
+
 : EMIT-VBINIPREP ( -- )
    LVBINIPREP LABEL@ LBL,
-   LBL LBL LBL LBL {: bno bfold b2 bdone :}
+   LBL LBL LBL {: bno b2 bdone :}
    C-VBIN-FRAME
-   bno bfold C-VBIN-TAGS
-   bno b2 bdone C-VBINI-IMM12-PATH
-   b2 LBL,
-   bno bdone C-VBIN-REG-PATH
-   bfold LBL,
-   bdone C-VBIN-FOLD-PATH
+   bno b2 bdone C-VBINI-PROBE
    bno LBL,  13 0 MOVZ,
-   bdone LBL,  C-VBIN-RET ;
+   bdone LBL,  C-VBIN-RET
+   b2 LBL,  C-VBIN-TAIL ;
 
 \ LVPUSHR ( x14=reg ) : push a register entry (spill-on-full keeps x14 claimed)
 : EMIT-VPUSHR ( -- )
@@ -523,18 +540,10 @@ $AA0003E0 constant W-MOVRR        \ orr rd,xzr,rs (| rd | rs<<16)
 \ constant (double bits, unmaterialized — LNUM's x2 flag marks float parses
 \ so the loop snapshot knows to force them into d-regs, not x-regs) ----
 \ LVPUSHF ( x11=bits ) : record a float constant; spill first if full.
+\ Tag-3 entry wrapper for the shared LVPUSHT body (see EMIT-VPUSHC).
 : EMIT-VPUSHF ( -- )
    LVPUSHF LABEL@ LBL,
-   LBL {: room :}
-   SP SP 16 SUBI,  30 SP 0 STR,  11 SP 8 STR,
-   6 DATA VSP-CELL LDR,  6 VSMAX CMPI,  C-LT room BCOND,
-      LVSPILL LABEL@ BL,  6 0 MOVZ,
-   room LBL,
-   11 SP 8 LDR,
-   7 6 VTAG-OFF ADDI,  7 DATA 7 ADD,  8 3 MOVZ,  8 7 0 STRB,
-   8 6 3 LSLI,  8 8 VVAL-OFF ADDI,  8 DATA 8 ADD,  11 8 0 STR,
-   6 6 1 ADDI,  6 DATA VSP-CELL STR,
-   30 SP 0 LDR,  SP SP 16 ADDI,  RET, ;
+   8 3 MOVZ,  LVPUSHT LABEL@ B, ;
 
 \ LFFORCEK ( x5=k -- x14=dreg | 0 ) : force entry k into a d-reg, in place.
 \ tag 2 -> already there; tag 1 (a con holding double BITS) -> materialize via

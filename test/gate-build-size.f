@@ -53,6 +53,12 @@
 \ unchanged. See the exact CODE-TEXT/floor rows in
 \ test/gate-size-attribution-test.f (macOS re-measured live; Linux pending a
 \ next-fixpoint re-measurement).
+\ 2026-07-20 Linux 143552 -> 143552: JIT constant-push / binary-prep
+\ de-duplication (dot habu-share-duplicated-jit) nets -272 bytes of engine text
+\ (CODELEN 136088 -> 135816) by folding LVPUSHF into the shared LVPUSHT body and
+\ tail-branching LVBINIPREP into the single LVBINPREP base; the shave stays inside
+\ the same 4 KiB text page, so the page-rounded whole-file total is unchanged. See
+\ the exact CODE-TEXT/floor rows in test/gate-size-attribution-test.f.
 165367 constant GB-SIZE-BASELINE-MACOS
 143552 constant GB-SIZE-BASELINE-LINUX   \ fable re-measure 2026-07-19 (DGX Spark linux-arm64) after the
                                          \ shared PROT-GUARD:CALL span-guard fold shrank CODELEN
