@@ -158,6 +158,25 @@ public
 \ with wd>0 is proven in isolation by maki/adamw-test.f.
 : AMT-WD ( -- r )  0.0 ;
 
+\ ---- optional LR schedule (opt-in; default OFF keeps the committed trajectory) --
+\ When armed (AMT-SCHED!), each step's step-size is LR-SCHED(warmup,decay,min,max)
+\ at the current 0-based Adam step; disarmed, AMT-LR-EFF is exactly AMT-LR, so the
+\ committed AMT-RUN path (and its -2749 lock) stays bit-identical. LR-SCHED lives
+\ in maki/from-scratch-train.f (required above).
+private
+variable AMT-SCHED?         \ 0 = fixed AMT-LR; nonzero = scheduled
+variable AMT-SCHED-WARM   variable AMT-SCHED-DEC
+variable AMT-SCHED-MIN    variable AMT-SCHED-MAX
+
+: AMT-LR-EFF ( -- r )       \ this step's lr (ADAM-T is 1-based after ADAM-TICK)
+   AMT-SCHED? @ 0= if AMT-LR exit then
+   AMT-SCHED-WARM @ AMT-SCHED-DEC @ AMT-SCHED-MIN @ AMT-SCHED-MAX @  ADAM-T @ 1-  LR-SCHED ;
+public
+
+: AMT-SCHED-OFF ( -- )  0 AMT-SCHED? ! ;
+: AMT-SCHED! ( n n r r -- )   \ arm warmup/decay/min/max for the next run
+   AMT-SCHED-MAX !  AMT-SCHED-MIN !  AMT-SCHED-DEC !  AMT-SCHED-WARM !  -1 AMT-SCHED? ! ;
+
 \ fresh Adam-MLP run: the from-scratch setup (init params, gen data, BW-BUILD,
 \ bind every buffer) plus zeroed Adam state.
 \ Precondition: MODEL: SCRATCH-MLP just captured.
@@ -178,10 +197,11 @@ public
 \ policy: the 2D weight matrices (W1, W2) decay, the biases (B1, B2) do not.
 : AMT-APPLY ( -- )
    ADAM-TICK
-   AMT-LR SC-W1 SC-W1-SLOT AMT-W1M AMT-W1V SC-W1N AMT-WD WD-DECAY ADAMW-UPD
-   AMT-LR SC-B1 SC-B1-SLOT AMT-B1M AMT-B1V SC-B1N AMT-WD WD-NONE  ADAMW-UPD
-   AMT-LR SC-W2 SC-W2-SLOT AMT-W2M AMT-W2V SC-W2N AMT-WD WD-DECAY ADAMW-UPD
-   AMT-LR SC-B2 SC-B2-SLOT AMT-B2M AMT-B2V SC-B2N AMT-WD WD-NONE  ADAMW-UPD ;
+   AMT-LR-EFF {: lr:r :}
+   lr SC-W1 SC-W1-SLOT AMT-W1M AMT-W1V SC-W1N AMT-WD WD-DECAY ADAMW-UPD
+   lr SC-B1 SC-B1-SLOT AMT-B1M AMT-B1V SC-B1N AMT-WD WD-NONE  ADAMW-UPD
+   lr SC-W2 SC-W2-SLOT AMT-W2M AMT-W2V SC-W2N AMT-WD WD-DECAY ADAMW-UPD
+   lr SC-B2 SC-B2-SLOT AMT-B2M AMT-B2V SC-B2N AMT-WD WD-NONE  ADAMW-UPD ;
 
 \ one Adam training step; returns the pre-update batch mean NLL
 : AMT-STEP ( -- r )
@@ -210,6 +230,14 @@ public
       i n 1- = if l AMT-FINAL-L ! then
    loop
    -1 AMT-RAN? ! ;
+
+\ scheduled Adam MLP run: arm the LR schedule, run n steps from a fresh capture,
+\ then disarm so the committed fixed-lr path is untouched. Records init/final loss
+\ like AMT-RUN. Precondition: MODEL: SCRATCH-MLP just captured.
+: AMT-RUN-SCHED ( n n r r n -- ) {: warm:n dec:n lmin:r lmax:r n:n :}
+   warm dec lmin lmax AMT-SCHED!
+   n AMT-RUN
+   AMT-SCHED-OFF ;
 
 : AMT-STEPS@   ( -- n )  AMT-CK AMT-STEPS-V @ ;
 : AMT-INITIAL@ ( -- r )  AMT-CK AMT-INIT-L @ ;

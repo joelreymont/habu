@@ -227,6 +227,31 @@ MODEL: ADAM-ATTN ( q:4x3 kt:3x4 s:1x1 v:4x3 -- o ) MATMUL SCALE SOFTMAX-ROW MATM
 RGT-ATTN-N ATN-RUN
 ATN-FINAL@ RGT-L1 @ f= TTRUE
 
+\ ---- scheduled Adam MLP: opt-in LR schedule (linear warmup + cosine decay) ------
+\ Same SCRATCH-MLP fixture and RGT-MLP-N steps as the fixed-lr run above, but the
+\ step size follows LR-SCHED(warmup=10, decay=50, min=0.002, max=0.02): linear
+\ warmup to 0.02 over steps 0..9, cosine decay to 0.002 over 10..50, then flat
+\ 0.002. It has its own deterministic final-loss lock; the fixed-lr -2749 lock
+\ above is untouched (AMT-RUN-SCHED disarms the schedule on exit).
+MODEL: SCRATCH-MLP ( x:8x6 w1:6x16 b1:1x16 w2:16x2 b2:1x2 -- y ) LINEAR GELU LINEAR ;
+10 50 0.002 0.02 RGT-MLP-N AMT-RUN-SCHED
+AMT-STEPS@ RGT-MLP-N T=
+AMT-INITIAL@ SC-MILLI 130 T=            \ identical init (params equal at step 0)
+AMT-FINAL@ AMT-INITIAL@ f< TTRUE        \ loss decreased
+AMT-CONVERGED? TTRUE                    \ halved and below the NLL floor
+AMT-FINAL@ SC-MILLI -2599 T=           \ scheduled final NLL (new regression lock)
+
+\ determinism: same schedule params + seed -> identical final loss (exact)
+AMT-FINAL@ RGT-L1 !
+MODEL: SCRATCH-MLP ( x:8x6 w1:6x16 b1:1x16 w2:16x2 b2:1x2 -- y ) LINEAR GELU LINEAR ;
+10 50 0.002 0.02 RGT-MLP-N AMT-RUN-SCHED
+AMT-FINAL@ RGT-L1 @ f= TTRUE
+
+\ zero regression: after the scheduled run disarms, the fixed-lr path locks -2749
+MODEL: SCRATCH-MLP ( x:8x6 w1:6x16 b1:1x16 w2:16x2 b2:1x2 -- y ) LINEAR GELU LINEAR ;
+RGT-MLP-N AMT-RUN
+AMT-FINAL@ SC-MILLI -2749 T=
+
 T-REPORT
 
 ;package
