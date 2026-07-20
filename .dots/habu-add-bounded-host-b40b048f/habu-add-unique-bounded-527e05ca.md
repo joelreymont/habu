@@ -15,3 +15,5 @@ Edge note 2026-07-17: blocker habu-tfam-11-linear-99fa9990 closed (core
 complete); edge repointed to its successor habu-tfam-11b-open-ee9c72c6
 (the open-arg lift) conservatively - if this dot only needed the landed
 TFAM-11 core, drop the edge at claim time.
+
+BLOCKER FOUND 2026-07-21 (rigid-domains lane, reproduced on the UNMODIFIED engine): the checker cannot cleanly bind consumer type vars across 3+ co-resident fresh atoms in one family application, and a concrete argument between two fresh atoms breaks binding in some slot arrangements. This dot targets span<r,u8,e,unique,transient,g> = >=3 co-resident rigid identities on one owner, which hits the limit. Either model the owner with <=2 co-resident fresh atoms (early slots) or fix the underlying var-binding limitation first. The rigid-domains fixtures (test/rigid-region-suite.f) deliberately stay at <=2 per family for this reason.
