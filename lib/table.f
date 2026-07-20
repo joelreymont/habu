@@ -1,9 +1,21 @@
 \ table.f - checked fixed-capacity cell table helpers.
+\
+\ The module lives in `package TBL`. External callers use the qualified public API
+\ (TBL:CELL-COUNT, TBL:FIELD, TBL:CELL@/CELL!, TBL:N@/N!, TBL:BOOL@/BOOL!,
+\ TBL:PAIR!/PAIR$ and the TBL:MAX-CELLS / TBL:PAIR-CELLS layout constants); the row
+\ and field index validators and the raw byte-pointer cell accessors are
+\ package-private.
 
 require lib/errors.f
 
-2 constant TBL-PAIR-CELLS
-$7FFFFFFFFFFFFFFF constant TBL-MAX-CELLS
+package TBL
+
+public
+
+2 constant PAIR-CELLS
+$7FFFFFFFFFFFFFFF constant MAX-CELLS
+
+private
 
 : TBL-CHECK-ROW ( count idx -- ) {: rows row :}
    rows COUNT>N 0 < if E-TBL-BOUNDS throw then
@@ -19,50 +31,58 @@ $7FFFFFFFFFFFFFFF constant TBL-MAX-CELLS
    fields field TBL-CHECK-FIELD
    fields field IDX>N 1 + >IDX TBL-CHECK-FIELD ;
 
-: TBL-CELLS ( count count -- count ) {: rows fields :}
+public
+
+: CELL-COUNT ( count count -- count ) {: rows:count fields:count :}
    rows COUNT>N 0 < if E-TBL-BOUNDS throw then
    fields COUNT>N 0 <= if E-TBL-FIELD throw then
-   fields COUNT>N 0 > rows COUNT>N TBL-MAX-CELLS fields COUNT>N / > and if E-TBL-BOUNDS throw then
+   fields COUNT>N 0 > rows COUNT>N MAX-CELLS fields COUNT>N / > and if E-TBL-BOUNDS throw then
    rows COUNT>N fields COUNT>N * >COUNT ;
 
-: TBL-FIELD ( ptr a count count idx idx -- ptr a ) {: tbl:ptr rows fields row field :}
+: FIELD ( ptr a count count idx idx -- ptr a ) {: tbl:ptr rows:count fields:count row:idx field:idx :}
    rows row TBL-CHECK-ROW
    fields field TBL-CHECK-FIELD
    tbl row IDX>N fields COUNT>N * field IDX>N + >OFF OFF>N cells + ;
 
-: TBL-CELL@ ( ptr a count count idx idx -- a )
-   TBL-FIELD @ ;
+: CELL@ ( ptr a count count idx idx -- a )
+   FIELD @ ;
 
-: TBL-CELL! ( a ptr a count count idx idx -- ) {: value tbl:ptr rows fields row field :}
-   value tbl rows fields row field TBL-FIELD ! ;
+: CELL! ( a ptr a count count idx idx -- )
+   FIELD ! ;
 
-: TBL-N@ ( ptr a count count idx idx -- n )
-   TBL-CELL@ ;
+: N@ ( ptr a count count idx idx -- n )
+   CELL@ ;
 
-: TBL-N! ( n ptr a count count idx idx -- )
-   TBL-CELL! ;
+: N! ( n ptr a count count idx idx -- )
+   CELL! ;
 
-: TBL-BOOL@ ( ptr a count count idx idx -- bool )
-   TBL-CELL@ ;
+: BOOL@ ( ptr a count count idx idx -- bool )
+   CELL@ ;
 
-: TBL-BOOL! ( bool ptr a count count idx idx -- )
-   TBL-CELL! ;
+: BOOL! ( bool ptr a count count idx idx -- )
+   CELL! ;
+
+private
 
 : TBL-A@ ( ptr a count count idx idx -- ptr u8 )
-   TBL-CELL@ ;
+   CELL@ ;
 
 : TBL-A! ( ptr u8 ptr a count count idx idx -- )
-   TBL-CELL! ;
+   CELL! ;
 
-: TBL-PAIR! ( ptr u8 len ptr a count count idx idx -- ) {: a:ptr u tbl:ptr rows fields row field :}
+public
+
+: PAIR! ( ptr u8 len ptr a count count idx idx -- ) {: a:ptr u:len tbl:ptr rows:count fields:count row:idx field:idx :}
    u LEN>N 0 < if E-TBL-BOUNDS throw then
    rows row TBL-CHECK-ROW
    fields field TBL-CHECK-PAIR
    a tbl rows fields row field TBL-A!
-   u LEN>N tbl rows fields row field IDX>N 1 + >IDX TBL-N! ;
+   u LEN>N tbl rows fields row field IDX>N 1 + >IDX N! ;
 
-: TBL-PAIR$ ( ptr a count count idx idx -- ptr u8 len ) {: tbl:ptr rows fields row field :}
+: PAIR$ ( ptr a count count idx idx -- ptr u8 len ) {: tbl:ptr rows:count fields:count row:idx field:idx :}
    rows row TBL-CHECK-ROW
    fields field TBL-CHECK-PAIR
    tbl rows fields row field TBL-A@
-   tbl rows fields row field IDX>N 1 + >IDX TBL-N@ >LEN ;
+   tbl rows fields row field IDX>N 1 + >IDX N@ >LEN ;
+
+;package

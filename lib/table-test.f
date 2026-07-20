@@ -18,34 +18,34 @@ create TBLT-TABLE 12 cells allot
    0 0= 0= ;
 
 : TBLT-CELLS ( n n -- n ) {: rows fields :}
-   rows >COUNT fields >COUNT TBL-CELLS COUNT>N ;
+   rows >COUNT fields >COUNT TBL:CELL-COUNT COUNT>N ;
 
 : TBLT-FIELD ( ptr a n n n n -- ptr a ) {: tbl:ptr rows fields row field :}
-   tbl rows >COUNT fields >COUNT row >IDX field >IDX TBL-FIELD ;
+   tbl rows >COUNT fields >COUNT row >IDX field >IDX TBL:FIELD ;
 
 : TBLT-CELL@ ( ptr a n n n n -- a ) {: tbl:ptr rows fields row field :}
-   tbl rows >COUNT fields >COUNT row >IDX field >IDX TBL-CELL@ ;
+   tbl rows >COUNT fields >COUNT row >IDX field >IDX TBL:CELL@ ;
 
 : TBLT-CELL! ( a ptr a n n n n -- ) {: value tbl:ptr rows fields row field :}
-   value tbl rows >COUNT fields >COUNT row >IDX field >IDX TBL-CELL! ;
+   value tbl rows >COUNT fields >COUNT row >IDX field >IDX TBL:CELL! ;
 
 : TBLT-N@ ( ptr a n n n n -- n ) {: tbl:ptr rows fields row field :}
-   tbl rows >COUNT fields >COUNT row >IDX field >IDX TBL-N@ ;
+   tbl rows >COUNT fields >COUNT row >IDX field >IDX TBL:N@ ;
 
 : TBLT-N! ( n ptr a n n n n -- ) {: value tbl:ptr rows fields row field :}
-   value tbl rows >COUNT fields >COUNT row >IDX field >IDX TBL-N! ;
+   value tbl rows >COUNT fields >COUNT row >IDX field >IDX TBL:N! ;
 
 : TBLT-BOOL@ ( ptr a n n n n -- bool ) {: tbl:ptr rows fields row field :}
-   tbl rows >COUNT fields >COUNT row >IDX field >IDX TBL-BOOL@ ;
+   tbl rows >COUNT fields >COUNT row >IDX field >IDX TBL:BOOL@ ;
 
 : TBLT-BOOL! ( bool ptr a n n n n -- ) {: value tbl:ptr rows fields row field :}
-   value tbl rows >COUNT fields >COUNT row >IDX field >IDX TBL-BOOL! ;
+   value tbl rows >COUNT fields >COUNT row >IDX field >IDX TBL:BOOL! ;
 
 : TBLT-PAIR! ( ptr u8 n ptr a n n n n -- ) {: a:ptr u tbl:ptr rows fields row field :}
-   a u >LEN tbl rows >COUNT fields >COUNT row >IDX field >IDX TBL-PAIR! ;
+   a u >LEN tbl rows >COUNT fields >COUNT row >IDX field >IDX TBL:PAIR! ;
 
 : TBLT-PAIR$ ( ptr a n n n n -- ptr u8 n ) {: tbl:ptr rows fields row field :}
-   tbl rows >COUNT fields >COUNT row >IDX field >IDX TBL-PAIR$ LEN>N ;
+   tbl rows >COUNT fields >COUNT row >IDX field >IDX TBL:PAIR$ LEN>N ;
 
 : TBLT-MARK-FIELD ( n n n -- ) {: value row field :}
    value TBLT-TABLE 3 4 row field TBLT-FIELD ! ;
@@ -63,7 +63,7 @@ create TBLT-TABLE 12 cells allot
    TBLT-TABLE 3 4 0 -1 TBLT-CELL@ drop ;
 
 : TBLT-CELLS-OVERFLOW ( -- )
-   TBL-MAX-CELLS 2 / 1 + 2 TBLT-CELLS drop ;
+   TBL:MAX-CELLS 2 / 1 + 2 TBLT-CELLS drop ;
 
 : TBLT-PAIR-HIGH ( -- )
    s" tool" TBLT-TABLE 3 4 0 3 TBLT-PAIR! ;
@@ -73,7 +73,7 @@ create TBLT-TABLE 12 cells allot
    TBLT-CLEAR ;
 
 : TBLT-LAYOUT ( -- )
-   TBL-PAIR-CELLS 2 T=
+   TBL:PAIR-CELLS 2 T=
    3 4 TBLT-CELLS 12 T=
    77 0 0 TBLT-MARK-FIELD
    88 0 3 TBLT-MARK-FIELD
