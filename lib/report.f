@@ -2,7 +2,7 @@
 \ a table's columns once with COL+ (header text, alignment, and a cell quotation
 \ ( row -- ) that appends the formatted cell into the render buffer); then render the
 \ SAME column set as CSV (REPORT:CSV) or a Markdown table (REPORT:MD). This replaces the
-\ open-coded "LBAR cell BAR cell RBAR" / "cell CM cell CM" repetition with one
+\ open-coded "RENDER:LBAR cell RENDER:BAR cell RENDER:RBAR" / "cell RENDER:CM cell RENDER:CM" repetition with one
 \ column declaration per table. Bespoke prose, nested JSON, and per-row sub-strings
 \ compose around these with the render.f words. Quotations are stored as xts and
 \ EXECUTEd per (row, column).
@@ -77,29 +77,29 @@ public
 \ CSV: comma-joined header + one comma-joined line per row
 : CSV ( n -- ) {: nrows:n :}
    0 TBL-C ! begin TBL-C @ COL-N @ < while
-      TBL-C @ 0 > if CM then  TBL-C @ COL-HDR@ RB+  TBL-C @ 1+ TBL-C !
-   repeat RB-NL
+      TBL-C @ 0 > if RENDER:CM then  TBL-C @ COL-HDR@ RENDER:RB+  TBL-C @ 1+ TBL-C !
+   repeat RENDER:NL
    0 TBL-R ! begin TBL-R @ nrows < while
       0 TBL-C ! begin TBL-C @ COL-N @ < while
-         TBL-C @ 0 > if CM then  TBL-R @ TBL-C @ COL-CELL  TBL-C @ 1+ TBL-C !
-      repeat RB-NL
+         TBL-C @ 0 > if RENDER:CM then  TBL-R @ TBL-C @ COL-CELL  TBL-C @ 1+ TBL-C !
+      repeat RENDER:NL
       TBL-R @ 1+ TBL-R !
    repeat ;
 
 \ Markdown: header row, alignment row (---:/---), then one row per record
 : MD ( n -- ) {: nrows:n :}
    0 TBL-C ! begin TBL-C @ COL-N @ < while
-      TBL-C @ 0 = if LBAR else BAR then  TBL-C @ COL-HDR@ RB+  TBL-C @ 1+ TBL-C !
-   repeat RBAR RB-NL
+      TBL-C @ 0 = if RENDER:LBAR else RENDER:BAR then  TBL-C @ COL-HDR@ RENDER:RB+  TBL-C @ 1+ TBL-C !
+   repeat RENDER:RBAR RENDER:NL
    0 TBL-C ! begin TBL-C @ COL-N @ < while
-      TBL-C @ 0 = if LBAR else BAR then
-      TBL-C @ COL-AL@ AL-R = if s" ---:" RB+ else s" ---" RB+ then
+      TBL-C @ 0 = if RENDER:LBAR else RENDER:BAR then
+      TBL-C @ COL-AL@ AL-R = if s" ---:" RENDER:RB+ else s" ---" RENDER:RB+ then
       TBL-C @ 1+ TBL-C !
-   repeat RBAR RB-NL
+   repeat RENDER:RBAR RENDER:NL
    0 TBL-R ! begin TBL-R @ nrows < while
       0 TBL-C ! begin TBL-C @ COL-N @ < while
-         TBL-C @ 0 = if LBAR else BAR then  TBL-R @ TBL-C @ COL-CELL  TBL-C @ 1+ TBL-C !
-      repeat RBAR RB-NL
+         TBL-C @ 0 = if RENDER:LBAR else RENDER:BAR then  TBL-R @ TBL-C @ COL-CELL  TBL-C @ 1+ TBL-C !
+      repeat RENDER:RBAR RENDER:NL
       TBL-R @ 1+ TBL-R !
    repeat ;
 

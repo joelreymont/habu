@@ -3,22 +3,30 @@
 require lib/test.f
 require lib/render.f
 
+\ White-box test: reopen the module's package so the coverage reaches render's
+\ private fixed-decimal formatters (RB-3, RB-MILLI3, RB-FIXED3, RB-RATIO4,
+\ RB-FFIX3), the private RB-BOOL emitter, and the private CSV row builder CVN,
+\ and call the public buffer primitives by their bare package-local tails.
+package RENDER
+
 \ expected "k,3\n" built in the SB builder (separate from the RB render buffer)
 : EXP-CVN ( -- ptr u8 n ) SB-RESET s" k,3" SB-APPEND 10 SB-APPEND-C SB$ ;
 
 : RND-RUN ( -- )
    T-RESET
-   RB-RESET 12345 RB# RB$ s" 12345" STR= T-ASSERT
-   RB-RESET -42 RB# RB$ s" -42" STR= T-ASSERT
-   RB-RESET 7 RB-3 RB$ s" 007" STR= T-ASSERT
-   RB-RESET 16666667 RB-MILLI3 RB$ s" 16666.667" STR= T-ASSERT
-   RB-RESET 1 60 RB-FIXED3 RB$ s" 0.016" STR= T-ASSERT
-   RB-RESET 0 5 RB-FIXED3 RB$ s" 0.000" STR= T-ASSERT
-   RB-RESET 1 2 RB-RATIO4 RB$ s" 0.5000" STR= T-ASSERT
-   RB-RESET 1.25 RB-FFIX3 RB$ s" 1.250" STR= T-ASSERT
-   RB-RESET 0 0= RB-BOOL RB$ s" true" STR= T-ASSERT
-   RB-RESET 0 0= 0= RB-BOOL RB$ s" false" STR= T-ASSERT
-   RB-RESET s" k" 3 CVN RB$ EXP-CVN STR= T-ASSERT ;
+   RESET 12345 RB# RB$ s" 12345" STR= T-ASSERT
+   RESET -42 RB# RB$ s" -42" STR= T-ASSERT
+   RESET 7 RB-3 RB$ s" 007" STR= T-ASSERT
+   RESET 16666667 RB-MILLI3 RB$ s" 16666.667" STR= T-ASSERT
+   RESET 1 60 RB-FIXED3 RB$ s" 0.016" STR= T-ASSERT
+   RESET 0 5 RB-FIXED3 RB$ s" 0.000" STR= T-ASSERT
+   RESET 1 2 RB-RATIO4 RB$ s" 0.5000" STR= T-ASSERT
+   RESET 1.25 RB-FFIX3 RB$ s" 1.250" STR= T-ASSERT
+   RESET 0 0= RB-BOOL RB$ s" true" STR= T-ASSERT
+   RESET 0 0= 0= RB-BOOL RB$ s" false" STR= T-ASSERT
+   RESET s" k" 3 CVN RB$ EXP-CVN STR= T-ASSERT ;
 
 RND-RUN
 T-REPORT
+
+;package
