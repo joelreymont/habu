@@ -253,3 +253,14 @@ codes, never silent; named constants; and a `T{ … -> … }T` test for every wo
   `docs/bootstrap.md` — Habu-native, no gforth. If `bin/hb`
   is missing, recover with `HABU_ALLOW_BOOTSTRAP=1 tools/bootstrap.sh` as
   documented in `docs/bootstrap.md`.
+
+## Fix Review Gate (BLOCKING)
+
+- No fix merges until the reviewer independently answers: "is this the best
+  solution for the long term, or a patch / hack / workaround?" Re-derive the
+  fix's invariant from the code; the implementing agent's own classification
+  ("tolerant shim", "documented pattern", "minimal") is never evidence.
+- A fix resting on a value heuristic (magic range, lucky sentinel, timing)
+  where a structural invariant is possible (existence check, capability probe,
+  sole-writer state, versioned handshake) is a patch: send it back to the lane.
+- Workers answer the same question explicitly in their final reports.

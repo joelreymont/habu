@@ -82,3 +82,10 @@ gate.
   `master`, and verified at `master@origin` before another lane relies on it.
 - The orchestrator never closes a dot until the merged main workspace passes the
   relevant tests.
+
+- **Fix review gate (BLOCKING):** before merging any worker fix, the reviewer
+  independently answers "is this the best long-term solution or a patch/hack/
+  workaround?" by re-deriving the fix invariant from the code. The worker's own
+  classification is never evidence; value heuristics where structural invariants
+  are possible are patches and go back to the lane. Workers must answer the same
+  question in their final reports.

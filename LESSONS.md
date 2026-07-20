@@ -1795,3 +1795,14 @@ fits.
 - **Let one authoritative DATA cell coordinate engine and checker; do not keep two counters.** The `using` depth lives in a single engine DATA cell the machine code owns and the checker reads through `data-base OFFSET +`; every scope boundary (`;using`, `;package`, end-of-file, throw, REPL) just restores that one cell and the checker's parallel name table is automatically bounded by it, so no boundary needs a cross-side resync call and the two views cannot drift.
 - **A used-package search belongs at the token-resolution sites, not in the leaf FIND.** Injecting the used-publics scan into `LFIND` itself would fire on the engine's own internal keyword lookups (`trust`, `checker-does`, …); it must sit only in the interpret/compile/tick user-token resolvers so `using` never captures an engine-internal name.
 - **Adding a `PRIM:`/`TRUST` site or a validation-suite case ripples into committed inventories.** A new prim bumps the prop-test axiom ledger count and its per-index `\ AXR` rows, a new TRUST site bumps `TRUSTED.md` rows and its per-file class ceiling, engine growth trips the exact-CODELEN ratchet, and a new candidate-validation case bumps its declared kind tally — each is a committed ratchet that fails loudly and must move in the same commit.
+
+- **Fix review gate: re-derive the invariant, never accept the fix's own label.**
+  The USING seed-boot repair first shipped as a value-range clamp ("depth 0..16
+  else 0") framed as a documented tolerant shim; review accepted the label and
+  Joel had to ask "best long-term or a patch?" before the invariant was
+  re-derived and found probabilistic (it relied on the old seed's heap base
+  value happening to be out of range). The upgraded fix bounded the scan by the
+  physical mirror capacity with correctness resting on checker-owned,
+  sole-writer state — engine-independent. Every fix review must independently
+  answer the long-term-vs-patch question; a value heuristic where a structural
+  invariant is possible is a patch and goes back.
