@@ -322,9 +322,12 @@ private
    SP-WORD SP-PARSE-FACTOR-NAMED ;
 variable SP-STAR?     \ a product token (* or ·) appeared among/after the factors
 variable SP-PREFIX?   \ the summation was written as a prefix Σ, not a trailing +SUM
-: SP-PARSE-FACTORS ( -- )   \ factors, separated/terminated by optional product tokens; stops at +SUM or end
+variable SP-PLUS?     \ an elementwise-add token (+) appeared between output-shaped terms
+variable SP-EW?       \ elementwise/broadcast mode: output-shaped terms, NO contraction (no +SUM/Σ)
+: SP-PARSE-FACTORS ( -- )   \ terms separated by optional product (*) or elementwise-add (+) tokens; stops at +SUM or end
    begin
       SP-PEEK s" *" STR= if SP-NEXT 2drop  -1 SP-STAR? ! then
+      SP-PEEK s" +" STR= if SP-NEXT 2drop  -1 SP-PLUS? ! then
       SP-PEEK dup 0= if 2drop exit then
       2dup s" +SUM" STR= if 2drop exit then
       2drop  SP-PARSE-FACTOR
@@ -344,15 +347,16 @@ variable SP-PREFIX?   \ the summation was written as a prefix Σ, not a trailing
       SP-PEEK s" [" STR= if wa wu SP-PARSE-FACTOR-NAMED exit then
       wa wu SP-CT+
    again ;
-: SP-PARSE-REDUCTION ( -- )   \ exactly one reduction: a trailing +SUM, unless a prefix Σ already gave it
+: SP-PARSE-REDUCTION ( -- )   \ a trailing +SUM, a prefix Σ already consumed, or (neither) elementwise mode
    SP-PEEK s" +SUM" STR= if
       SP-PREFIX? @ if E-SPEC-SYNTAX throw then
       SP-PARSE-SUM exit
    then
-   SP-PREFIX? @ 0= if E-SPEC-SYNTAX throw then ;
+   SP-PREFIX? @ if exit then     \ prefix Σ already supplied the reduction (contraction mode)
+   -1 SP-EW? ! ;                 \ no reduction at all: elementwise/broadcast mode
 : SP-PARSE ( -- )
    0 SP-FREE-N !  0 SP-CT-N !  0 SP-FAC-N !  0 SP-FI-N !
-   0 SP-STAR? !  0 SP-PREFIX? !
+   0 SP-STAR? !  0 SP-PREFIX? !  0 SP-PLUS? !  0 SP-EW? !
    0 SP-POS !  0 SP-PB? !
    SP-WORD SP-OUT!
    s" [" SP-EXPECT   SP-PARSE-FREE   s" ]" SP-EXPECT
@@ -447,6 +451,20 @@ variable SP-EXT-U
    SP-EMIT-CT-CLOSE ;
 : SP-EMIT-EL ( -- )   \ compile the element word: : NAME-EL ( sig -- r ) body ;
    XG-RESET  s" : " XG+  SP-EL-CORE  s" ; " XG+  XG-EVAL ;
+\ the elementwise/broadcast element (dot habu-spec-broadcast-forms): output-shaped
+\ terms combined by + (elementwise add) or * (elementwise mul), NO contraction loop.
+\ Each term reuses SP-EMIT-FACTOR, so a factor whose index list is a proper suffix of
+\ the output's reads through the SAME extent-typed accessor at its trailing indices - a
+\ row (1xC) or scalar broadcast falls out of the shorter index list, and a wrong-extent
+\ operand is the same generated-accessor checker reject the contraction form produces.
+: SP-EW-COMB ( -- )  SP-PLUS? @ if s" f+ " XG+ else s" f* " XG+ then ;
+: SP-EW-EL-CORE ( -- )
+   SPEC-NAME$ XG+  s" -EL ( " XG+  SP-EMIT-EL-SIG  s" -- r ) " XG+
+   SP-EMIT-PROJ
+   SP-FAC-N @ 0 ?do  i SP-EMIT-FACTOR  loop
+   SP-FAC-N @ 1 - 0 ?do  SP-EW-COMB  loop ;
+: SP-EMIT-EW-EL ( -- )
+   XG-RESET  s" : " XG+  SP-EW-EL-CORE  s" ; " XG+  XG-EVAL ;
 : SP-EMIT-FREE-INJECT ( -- )   \ <counter> >#<free-ext> per free index
    SP-FREE-N @ 0 ?do
       i SP-FREE-N @ SP-EMIT-COUNTER
@@ -463,6 +481,12 @@ variable SP-EXT-U
    SP-FREE-N @ 0 ?do  s" loop " XG+  loop
    s" ; " XG+
    XG-EVAL ;
+
+\ the outer free loops + store (SP-EMIT-OUTER) are shared; only the element differs
+\ between the contraction and elementwise/broadcast forms. SP-EMIT-BODY dispatches the
+\ element and SP-CAND-CORE the checker-candidate text on the parsed mode (SP-EW?).
+: SP-EMIT-BODY ( -- )  SP-EW? @ if SP-EMIT-EW-EL else SP-EMIT-EL then  SP-EMIT-OUTER ;
+: SP-CAND-CORE ( -- )  SP-EW? @ if SP-EW-EL-CORE else SP-EL-CORE then ;
 
 \ ---- semantic validation: every malformed spec is a named throw BEFORE any code
 \ is generated (no partial word definitions on a bad spec). --------------------
@@ -495,7 +519,8 @@ variable SP-EXT-U
 : SP-CHK-FACTOR ( n -- ) {: f:n :}
    f SPEC-FAC-NAME@  f SPEC-FAC-RANK@  SP-CHK-DATA
    f SPEC-FAC-RANK@ 0 ?do  f i SP-CHK-FACTOR-IDX  loop ;
-: SP-VALIDATE ( -- )
+: SP-VALIDATE-CT ( -- )   \ contraction form: OUT[free] = factors [*] +SUM ct
+   SP-PLUS? @ if E-SPEC-SYNTAX throw then                          \ + is elementwise-only, never in a contraction
    SP-FREE-N @ 1 < SP-FREE-N @ 2 > or if E-SPEC-ARITY throw then   \ 1..2 free indices
    SP-CT-N @ 1 < SP-CT-N @ 2 > or if E-SPEC-ARITY throw then       \ 1..2 contraction indices
    SP-FAC-N @ 0= if E-SPEC-SYNTAX throw then
@@ -505,6 +530,42 @@ variable SP-EXT-U
    SP-FREE-N @ 0 ?do  i SPEC-FREE@ SP-CHK-VAR-EXT  loop
    SP-CT-N @ 0 ?do  i SPEC-CT@ SP-CHK-VAR-EXT  loop
    SP-FAC-N @ 0 ?do  i SP-CHK-FACTOR  loop ;
+
+\ ---- elementwise/broadcast validation (dot habu-spec-broadcast-forms). A factor's
+\ index list must be a SUFFIX of the output's free list: same-shape (full suffix),
+\ row broadcast (drop the leading index -> a 1xC bias), scalar (empty -> a 1x1 scale).
+\ The scalar 1x1 case is a rank-0 factor tensor, which the extent-tensor accessor
+\ generator cannot emit (TENSOR: ( ) -> undefined x0); such a factor fails closed here
+\ at SP-CHK-DATA (rank mismatch, E-SPEC-ARITY). The long-term fix is rank-0 accessors
+\ in maki/extent-tensor.f, after which the scalar form falls out of this same suffix
+\ machinery with no grammar change. A NON-suffix index list (a column Rx1 broadcast, or
+\ any leading-index drop) is the named E-SPEC-ARITY reject.
+: SP-CHK-EW-SUFFIX ( n -- ) {: f:n :}   \ factor f's index vars are the trailing free vars, in order
+   SP-FREE-N @ f SPEC-FAC-RANK@ -  {: base:n :}
+   f SPEC-FAC-RANK@ 0 ?do
+      f i SPEC-FAC-IDX@  base i + SPEC-FREE@  STR= 0= if E-SPEC-ARITY throw then
+   loop ;
+: SP-CHK-EW-FACTOR ( n -- ) {: f:n :}
+   f SPEC-FAC-NAME@  f SPEC-FAC-RANK@  SP-CHK-DATA                 \ declared data tensor, rank == index count
+   f SPEC-FAC-RANK@ SP-FREE-N @ > if E-SPEC-ARITY throw then       \ a suffix is no longer than the output
+   f SP-CHK-EW-SUFFIX
+   f SPEC-FAC-RANK@ 0 ?do
+      f i SPEC-FAC-GATHER@ nip 0 > if E-SPEC-TENSOR throw then     \ a broadcast term carries no gather
+   loop ;
+: SP-VALIDATE-EW ( -- )   \ elementwise form: OUT[free] = terms combined by a single + or *
+   SP-FREE-N @ 1 < SP-FREE-N @ 2 > or if E-SPEC-ARITY throw then   \ output 1..2 free indices
+   SP-CT-N @ 0<> if E-SPEC-SYNTAX throw then                       \ elementwise: no contraction indices
+   SP-FAC-N @ 0= if E-SPEC-SYNTAX throw then
+   SP-FAC-N @ 1 > if
+      SP-STAR? @ 0<> SP-PLUS? @ 0<> and if E-SPEC-SYNTAX throw then   \ + and * cannot mix in one expression
+      SP-STAR? @ 0<> SP-PLUS? @ 0<> or 0= if E-SPEC-SYNTAX throw then \ >1 term needs a combiner
+   else
+      SP-STAR? @ 0<> SP-PLUS? @ 0<> or if E-SPEC-SYNTAX throw then    \ a single term takes no combiner
+   then
+   SPEC-OUT$ SP-FREE-N @ SP-CHK-DATA                              \ output: data tensor, rank == free count
+   SP-FREE-N @ 0 ?do  i SPEC-FREE@ SP-CHK-VAR-EXT  loop
+   SP-FAC-N @ 0 ?do  i SP-CHK-EW-FACTOR  loop ;
+: SP-VALIDATE ( -- )  SP-EW? @ if SP-VALIDATE-EW else SP-VALIDATE-CT then ;
 
 \ ---- equation registry (docs/model-unified.md stage 1: "How an equation joins the
 \ trainable graph"). A SPEC:-declared einsum becomes ONE `equation` op-kind
@@ -726,12 +787,68 @@ create EQ-FWD-SRC SP-SRC-CAP allot  variable EQ-FWD-SRC-U   \ forward body, to r
    EQ-FWD-NM EQ-FWD-NM-U @ ADJB+  s" -ADJ" ADJB+  [char] 0 j + ADJB-C
    ADJB-BUF ADJB-U @ SP-NAME! ;
 
+\ ---- elementwise/broadcast adjoints (dot habu-spec-broadcast-forms). The adjoint of an
+\ elementwise form is ANOTHER SPEC equation, so it rides the same parse+emit+register
+\ pipeline as the contraction adjoints. For O[free] = t0 (+|*) t1 ..., factor Tj's gradient:
+\   ADD (+): dTj = dO reduced over Tj's broadcast axes  (same-shape -> a copy; a row-broadcast
+\            1xC bias -> the column-sum contraction dB[n] = O[m n] +SUM m).
+\   MUL (*): dTj = (dO * every OTHER factor) reduced over Tj's broadcast axes  (product rule;
+\            same-shape hadamard -> dA[m n] = O[m n] * B[m n]).
+\ dO is carried by the forward OUTPUT tensor name (reused, as the contraction path does). The
+\ reduced axes are the free vars NOT among Tj's suffix indices, appended as a trailing +SUM.
+: EQ-FAC-SAMESHAPE? ( n -- bool ) {: f:n :}  f SPEC-FAC-RANK@ SP-FREE-N @ = ;
+: EQ-EW-ADJ-CT ( n -- ) {: j:n :}   \ reduce over the free vars NOT in factor j (its broadcast axes)
+   j EQ-FAC-SAMESHAPE? if exit then                 \ same-shape term: no broadcast axis, no reduction
+   s" +SUM " ADJB+
+   SP-FREE-N @ 0 ?do
+      i SPEC-FREE@ j IDX-IN-FAC? 0= if  i SPEC-FREE@ ADJB+  s"  " ADJB+  then
+   loop ;
+: EQ-EW-ADJ-BODY ( n -- ) {: j:n :}   \ build factor j's adjoint BODY into EQ-ADJ-SRC[j]
+   ADJB-RESET
+   j SPEC-FAC-NAME@ ADJB+  s" [ " ADJB+  j ADJB-IDXS  s" ] = " ADJB+   \ Tj[ tj-idx ] =
+   SPEC-OUT$ ADJB+  s" [ " ADJB+                                        \ dO carried by the output tensor
+   SP-FREE-N @ 0 ?do  i SPEC-FREE@ ADJB+  s"  " ADJB+  loop
+   s" ] " ADJB+
+   SP-PLUS? @ 0= if                                                     \ MUL: product rule -> * every OTHER factor
+      SP-FAC-N @ 0 ?do  i j <> if  s" * " ADJB+  i ADJB-FAC  then  loop
+   then
+   j EQ-EW-ADJ-CT
+   ADJB-U @ {: u:n :}
+   ADJB-BUF  EQ-ADJ-SRC j ADJ-SRC-CAP * +  u  BYTE-COPY
+   u EQ-ADJ-SRCL j cells + ! ;
+: EQ-EW-ADJ-SRC-BUILD ( -- )  SP-FAC-N @ 0 ?do  i EQ-EW-ADJ-BODY  loop ;
+\ ADD adjoints are always in-grammar for a 1..2 free output (copy or one column-sum). A MUL
+\ adjoint keeps K factors (dO + the K-1 others), so it stays composable only for K <= 3.
+: EQ-EW-ADJ-DERIVABLE? ( -- bool )
+   SP-PLUS? @ if true exit then
+   SP-FAC-N @ 3 <= ;
+: EQ-EW-ADJ-DERIVE ( -- )
+   EQ-N @ 1- >EQ-SLOT {: fwd:eq-slot :}
+   EQ-EW-ADJ-DERIVABLE? 0= if exit then             \ adjoint out of grammar: leave forward-only (EQ-DIFF 0)
+   EQ-FWD-NM!
+   SP-SRC EQ-FWD-SRC SP-SRC-U @ BYTE-COPY  SP-SRC-U @ EQ-FWD-SRC-U !   \ save the forward body
+   SP-FAC-N @ {: kk:n :}
+   EQ-EW-ADJ-SRC-BUILD                              \ build ALL bodies before the first SP-PARSE clobbers state
+   kk 0 ?do
+      i EQ-ADJ-NAME!
+      EQ-ADJ-SRC i ADJ-SRC-CAP * +  EQ-ADJ-SRCL i cells + @  SP-LOAD$
+      SP-PARSE  SP-VALIDATE  SP-EMIT-BODY
+      EQ-N @ {: before:n :}
+      EQ-REGISTER
+      EQ-N @ before = if E-SPEC-ARITY throw then    \ derived adjoint failed to register (grammar bug)
+      EQ-N @ 1-  fwd i EQ-ADJ!
+   loop
+   -1 fwd EQ-DIFF-SET!
+   EQ-FWD-NM EQ-FWD-NM-U @ SP-NAME!
+   EQ-FWD-SRC EQ-FWD-SRC-U @ SP-LOAD$  SP-PARSE ;   \ restore the forward queryable dataflow
+
 \ derive + register the adjoint equations for the equation SPEC: just registered. Composable
 \ equations are gather-free (EQ-COMPOSABLE?); a non-composable, gather, or out-of-grammar
 \ adjoint leaves the equation forward-only (EQ-DIFF? = 0). Runs AFTER EQ-REGISTER: the forward
 \ parse state is still intact for the source build; each adjoint's SP-PARSE then reuses it.
 : EQ-ADJ-DERIVE ( -- )
    EQ-COMPOSABLE? 0= if exit then                 \ not registered: no slot to attach adjoints to
+   SP-EW? @ if EQ-EW-ADJ-DERIVE exit then          \ elementwise/broadcast form: its own adjoint rule
    EQ-N @ 1- >EQ-SLOT {: fwd:eq-slot :}
    EQ-HAS-GATHER? if exit then                     \ scatter-add adjoint: forward-only
    EQ-ADJ-DERIVABLE? 0= if exit then               \ adjoint outside the grammar: forward-only
@@ -766,8 +883,7 @@ public
    SP-COLLECT
    SP-PARSE
    SP-VALIDATE
-   SP-EMIT-EL
-   SP-EMIT-OUTER
+   SP-EMIT-BODY
    EQ-REGISTER
    EQ-ADJ-DERIVE ;
 
@@ -783,7 +899,7 @@ public
 \ flip a valid-but-transposed spec produces.
 : SPEC-CAND: ( -- )
    parse-name SP-NAME!  SP-COLLECT  SP-PARSE  SP-VALIDATE
-   XG-RESET  SP-EL-CORE ;
+   XG-RESET  SP-CAND-CORE ;
 : SPEC-CAND$ ( -- ptr u8 n )  XG$ ;
 
 \ SPEC-ADJ-CHECK$: the training gate as a string seam. Parse + validate a spec BODY, then
@@ -791,8 +907,19 @@ public
 \ scatter-add adjoint is not expressible), an out-of-grammar adjoint is E-SPEC-ARITY, and a
 \ differentiable equation validates every derived adjoint through the same pipeline (no code
 \ generated). This proves "never a wrong gradient" without needing a captured graph.
+\ elementwise arm of the training gate: an out-of-grammar elementwise adjoint (e.g. a MUL
+\ with too many factors) is the named E-CAD-GRAD reject; otherwise every derived elementwise
+\ adjoint re-parses + re-validates through the same pipeline (no code generated).
+: SP-EW-ADJ-CHECK ( -- )
+   EQ-EW-ADJ-DERIVABLE? 0= if E-CAD-GRAD throw then
+   SP-FAC-N @ {: kk:n :}
+   EQ-EW-ADJ-SRC-BUILD
+   kk 0 ?do
+      EQ-ADJ-SRC i ADJ-SRC-CAP * +  EQ-ADJ-SRCL i cells + @  SP-LOAD$  SP-PARSE  SP-VALIDATE
+   loop ;
 : SPEC-ADJ-CHECK$ ( ptr u8 n -- )
    s" cand" SP-NAME!  SP-LOAD$  SP-PARSE  SP-VALIDATE
+   SP-EW? @ if SP-EW-ADJ-CHECK exit then
    EQ-HAS-GATHER? if E-CAD-GRAD throw then
    EQ-ADJ-DERIVABLE? 0= if E-SPEC-ARITY throw then
    SP-FAC-N @ {: kk:n :}

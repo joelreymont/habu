@@ -199,3 +199,63 @@ confusable codepoints above are decoded — no general Unicode machinery, no tab
 `maki/spec-test.f` proves both members of each pair produce byte-identical kernel
 output, the pitch line runs as written, and the stray-codepoint reject fires with the
 codepoint named.
+
+### Status: broadcast and elementwise forms (the sublayer glue)
+
+The contraction-only grammar (`OUT[free] = factors [*] +Σ ct`) cannot state the
+three broadcast shape classes the Model CAD checker legalizes (`maki/cad.f`
+`SHP-LEGAL?`): row broadcast `1×C` (bias add), scalar `1×1` (scale), and same-shape
+elementwise (residual / add / mul). The multi-head attention sublayer (output-projection
+bias, residual adds) and the GPT-2 block need them. Dot `habu-spec-broadcast-forms`
+adds an **elementwise form** to the same recursive-descent parser:
+
+    OUT[free] = term { (+ | ·) term }          -- NO +Σ / Σ  (that is the contraction form)
+    term      = TENSOR [ index... ]            -- index list is a SUFFIX of `free`
+
+The presence of a reduction (`+Σ` / trailing `+SUM`) selects the contraction form; its
+**absence** selects the elementwise form. A term's index list must be a **suffix** of the
+output's free list, and the missing **leading** axes are the broadcast (replicated) axes —
+so the shape class falls out of the rank difference:
+
+| class                         | `SHP-LEGAL?`     | term rank vs output | example (canonical)          |
+|-------------------------------|------------------|---------------------|------------------------------|
+| same-shape (residual/add/mul) | `SHP-SAME-OK?`   | equal               | `O[m n] = A[m n] + B[m n]`    |
+| row broadcast `1×C` (bias)    | `SHP-ROW-OK?`    | output − 1          | `O[m n] = A[m n] + b[n]`      |
+| scalar `1×1` (scale)          | `SHP-SCALE-OK?`  | 0 (empty)           | *(wall — see below)*          |
+
+**Canonical spelling.** Elementwise product reuses the existing product token: infix `·`
+(U+00B7 MIDDLE DOT, ASCII `*` stays legal). Elementwise **addition** is `+` — **ASCII
+only, no new Unicode codepoint** (mathematical `+` has no blessed confusable; any non-ASCII
+byte remains the named `E-SPEC-SYNTAX` reject naming the codepoint). A single expression
+takes **one** combiner: `+` and `·` cannot mix (avoids precedence), and a reduction with a
+`+` is rejected (`+` is elementwise-only). New authored example lines use the canonical
+form; the ASCII spelling (`*`) stays legal for byte-oriented tests.
+
+**Derived artifacts** are the same three `SPEC:` already derives — the checked
+candidate-B golden (element word + free-loop store, reusing the extent-typed accessors),
+the planner dataflow record (`SPEC-*`, now `SPEC-CT-N = 0` for the elementwise forms), and
+the PROMOTE shape obligations (`SPEC-*-EXTENT@`). A **wrong-extent broadcast** (a `1×C`
+declared over the wrong extent) is the same generated-accessor **checker reject** the
+transposed contraction produces; a **non-suffix** index list (a column `R×1` broadcast) is
+the named `E-SPEC-ARITY` reject.
+
+**Derived adjoints** (gradchecked in `maki/spec-test.f` against a central finite
+difference): the adjoint of an elementwise form is **another `SPEC:` equation** riding the
+same parse+emit+register pipeline. For `O[free] = t0 (+|·) t1 …`, factor `Tj`'s gradient is
+`dO` (carried by the output tensor name) reduced over `Tj`'s broadcast axes — additive:
+same-shape → a copy `dA[m n] = dO[m n]`, row-broadcast bias → the column-sum contraction
+`db[n] = dO[m n] +SUM m`; multiplicative (product rule): same-shape hadamard →
+`dA[m n] = dO[m n] · B[m n]`. Every non-scalar adjoint stays inside the grammar; an
+out-of-grammar one (e.g. a MUL with >3 factors) fails closed at `E-CAD-GRAD`, never a wrong
+gradient.
+
+**The scalar `1×1` wall (interim).** A scalar-broadcast term is a **rank-0** factor tensor
+(`S[]`), and its full-sum adjoint `dS[] = Σ …` is a rank-0 output. `maki/extent-tensor.f`'s
+accessor generator cannot emit a rank-0 accessor (`TENSOR: S ( )` references an undefined
+`x0` in the row-major offset), so the scalar form is **unauthorable** and fails closed as a
+rank mismatch (`E-SPEC-ARITY`). This is an **interim** wall, not the design: the correct
+long-term fix is **rank-0 accessors in `maki/extent-tensor.f`** (emit `0` for the offset and
+an empty projection when the extent list is empty), after which the scalar form — forward
+and its full-sum adjoint — falls out of this same suffix machinery with **no grammar
+change**. Until then, a compile-time scalar stays a plain named op (`ATTN-SCALE!`), exactly
+as the attention temperature already is.

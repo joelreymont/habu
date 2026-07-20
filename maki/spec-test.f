@@ -14,6 +14,7 @@
 require lib/test.f
 require test/checker-assert.f
 require maki/spec.f
+require maki/gradcheck.f              \ GC-CLOSE?: the central-FD closeness idiom the adjoint gradcheck reuses
 
 T-RESET
 
@@ -178,6 +179,143 @@ s" SANE ( option<n> -- ) MATCH option some OF drop ENDOF ;MATCH "               
 \ address the table without the explicit >SP-FI crossing.
 s" SFIOK  ( sp-fi -- ptr u8 n ) SP-FI-VAR@ "  CHECK-QUIET-CANDIDATE! -1 T=
 s" SFIRAW ( n -- ptr u8 n ) SP-FI-VAR@ "      CHECK-QUIET-CANDIDATE!  0 T=
+
+\ ==================================================================================
+\ broadcast / elementwise forms (dot habu-spec-broadcast-forms-ad851424).
+\ An output-shaped expression with elementwise + (add) or · (mul) and NO contraction:
+\ a factor whose index list is a SUFFIX of the output's broadcasts the missing LEADING
+\ axes. The three shape classes maki/cad.f SHP-LEGAL? legalizes map to suffix lengths:
+\   same-shape (residual/add/mul) : rank == output  -> BXA[bm bn]
+\   row broadcast 1xC (bias add)  : rank == output-1 -> BVEC[bn]   (SHP-ROW-OK?)
+\   scalar 1x1 (scale)            : rank 0 (empty)   -> unauthorable (see the wall below)
+\ Canonical spelling: infix · (U+00B7) for mul (ASCII * stays legal); + for elementwise
+\ add (ASCII only - addition has no blessed confusable, so any non-ASCII + is the named
+\ E-SPEC-SYNTAX reject via the existing lexer). Proven like the einsum: (1) generated
+\ golden == plain-buffer reference, (2) the dataflow record (free-only, no contraction;
+\ a suffix factor), (3) PROMOTE extents, named-throw negatives, a checker reject of a
+\ wrong-extent broadcast, and a central-FD gradcheck of the derived adjoints.
+3 EXTENT: #BM   2 EXTENT: #BN
+TENSOR: BXA   ( #BM #BN )      \ same-shape operand
+TENSOR: BXB   ( #BM #BN )      \ same-shape operand
+TENSOR: BVEC  ( #BN )          \ row-broadcast bias vector (1xC): indexed by the trailing free var
+TENSOR: BXO   ( #BM #BN )      \ output
+TENSOR: BCOL  ( #BM )          \ a column vector: [bm] is a PREFIX (Rx1), an illegal broadcast
+TENSOR: BWRONG ( #BM )         \ wrong-extent operand used at the bn slot -> checker extent reject
+
+SPEC: BC-BIAS   BXO[bm bn] = BXA[bm bn] + BVEC[bn] ;        \ row-broadcast bias add (1xC)
+\ --- (2) dataflow record: two free indices, NO contraction axis; the bias is a rank-1 suffix
+SPEC-NAME$ s" BC-BIAS" STR= -1 T=
+SPEC-OUT$  s" BXO" STR= -1 T=
+SPEC-FREE-N 2 T=   0 SPEC-FREE@ s" bm" STR= -1 T=   1 SPEC-FREE@ s" bn" STR= -1 T=
+SPEC-CT-N   0 T=                                       \ elementwise: no contraction index
+SPEC-FAC-N  2 T=
+0 SPEC-FAC-NAME@ s" BXA" STR= -1 T=   1 SPEC-FAC-NAME@ s" BVEC" STR= -1 T=
+0 SPEC-FAC-RANK@ 2 T=   1 SPEC-FAC-RANK@ 1 T=          \ BVEC is rank 1 (a proper suffix)
+1 0 SPEC-FAC-IDX@ s" bn" STR= -1 T=                    \ ...indexed by the trailing free var bn
+\ --- (3) PROMOTE shape obligations (extent magnitudes) ---
+0 SPEC-FREE-EXTENT@ 3 T=   1 SPEC-FREE-EXTENT@ 2 T=
+
+SPEC: BC-RESID  BXO[bm bn] = BXA[bm bn] + BXB[bm bn] ;      \ same-shape add (residual)
+SPEC: BC-HAD    BXO[bm bn] = BXA[bm bn] · BXB[bm bn] ;      \ same-shape mul (hadamard), canonical ·
+SPEC-CT-N 0 T=                                         \ the mul form is also contraction-free
+
+\ --- (1) forward parity: each generated golden == its plain-buffer reference -----
+create BCA  #BM #BN * cells allot
+create BCB  #BM #BN * cells allot
+create BCV  #BN cells allot
+create BCO  #BM #BN * cells allot
+create BCR  #BM #BN * cells allot
+create BCDO #BM #BN * cells allot        \ seed cotangent (varied, non-uniform)
+create BCDA #BM #BN * cells allot         \ analytic dBXA
+create BCDB #BM #BN * cells allot         \ analytic dBXB
+create BCDV #BN cells allot               \ analytic dBVEC (column-sum)
+: BC-FILL ( -- )
+   #BM #BN * 0 ?do  i 1 + s>f 3.0 f/  BCA i T-SET  loop
+   #BM #BN * 0 ?do  i 2 * 1 + s>f 5.0 f/  BCB i T-SET  loop
+   #BN 0 ?do  i 1 + s>f 7.0 f/  BCV i T-SET  loop
+   #BM #BN * 0 ?do  i 7 mod s>f 0.13 f* 0.6 f+  BCDO i T-SET  loop ;
+: BC-BIND-BIAS  ( -- )  BCA BXA-BIND  BCV BVEC-BIND  BCO BXO-BIND ;
+: BC-BIND-RESID ( -- )  BCA BXA-BIND  BCB BXB-BIND   BCO BXO-BIND ;
+: BC-BIND-HAD   ( -- )  BCA BXA-BIND  BCB BXB-BIND   BCO BXO-BIND ;
+: BC-REF-BIAS   ( -- )  #BM 0 ?do #BN 0 ?do  BCA j #BN * i + T-GET  BCV i T-GET  f+  BCR j #BN * i + T-SET  loop loop ;
+: BC-REF-RESID  ( -- )  #BM #BN * 0 ?do  BCA i T-GET  BCB i T-GET  f+  BCR i T-SET  loop ;
+: BC-REF-HAD    ( -- )  #BM #BN * 0 ?do  BCA i T-GET  BCB i T-GET  f*  BCR i T-SET  loop ;
+: BC-DIST0? ( -- bool )  BCO BCR #BM #BN * T-DIST2  1000000.0 f* 0.5 f+ f>s 0= ;
+BC-FILL
+BC-BIND-BIAS   BC-BIAS   BC-REF-BIAS   BC-DIST0? -1 T=      \ bias add == reference
+BC-BIND-RESID  BC-RESID  BC-REF-RESID  BC-DIST0? -1 T=      \ residual add == reference
+BC-BIND-HAD    BC-HAD    BC-REF-HAD    BC-DIST0? -1 T=      \ hadamard mul == reference
+
+\ --- adjoint gradcheck: each derived <NAME>-ADJj word vs a central finite difference of
+\ L = sum(seed * O), compared with maki/gradcheck.f GC-CLOSE?. dBIAS/dRESID copy the
+\ cotangent; the bias's dBVEC is the column-sum; the hadamard applies the product rule.
+: BC-LOSS ( -- r )  0.0 #BM #BN * 0 ?do  BCDO i T-GET  BCO i T-GET  f*  f+  loop ;
+: BC-H ( -- r )  0.001 ;
+: BC-FD-BIAS  ( ptr a n -- r ) {: p:ptr e:n :}
+   p e T-GET {: base:r :}
+   base BC-H f+ p e T-SET  BC-BIND-BIAS BC-BIAS BC-LOSS {: yp:r :}
+   base BC-H f- p e T-SET  BC-BIND-BIAS BC-BIAS BC-LOSS {: ym:r :}
+   base p e T-SET  yp ym f- BC-H 2.0 f* f/ ;
+: BC-FD-RESID ( ptr a n -- r ) {: p:ptr e:n :}
+   p e T-GET {: base:r :}
+   base BC-H f+ p e T-SET  BC-BIND-RESID BC-RESID BC-LOSS {: yp:r :}
+   base BC-H f- p e T-SET  BC-BIND-RESID BC-RESID BC-LOSS {: ym:r :}
+   base p e T-SET  yp ym f- BC-H 2.0 f* f/ ;
+: BC-FD-HAD   ( ptr a n -- r ) {: p:ptr e:n :}
+   p e T-GET {: base:r :}
+   base BC-H f+ p e T-SET  BC-BIND-HAD BC-HAD BC-LOSS {: yp:r :}
+   base BC-H f- p e T-SET  BC-BIND-HAD BC-HAD BC-LOSS {: ym:r :}
+   base p e T-SET  yp ym f- BC-H 2.0 f* f/ ;
+: BC-GC-BIAS ( -- bool )
+   BC-FILL
+   BCDO BXO-BIND BCDA BXA-BIND  BC-BIAS-ADJ0                \ dBXA = dO (copy)
+   BCDO BXO-BIND BCDV BVEC-BIND BC-BIAS-ADJ1                \ dBVEC[bn] = sum_bm dO
+   BC-BIND-BIAS BC-BIAS  true
+   #BM #BN * 0 ?do  BCDA i T-GET  BCA i BC-FD-BIAS  GC-CLOSE? 0= if drop false leave then  loop
+   dup if  #BN 0 ?do  BCDV i T-GET  BCV i BC-FD-BIAS  GC-CLOSE? 0= if drop false leave then  loop  then ;
+: BC-GC-RESID ( -- bool )
+   BC-FILL
+   BCDO BXO-BIND BCDA BXA-BIND  BC-RESID-ADJ0               \ dBXA = dO
+   BCDO BXO-BIND BCDB BXB-BIND  BC-RESID-ADJ1               \ dBXB = dO
+   BC-BIND-RESID BC-RESID  true
+   #BM #BN * 0 ?do  BCDA i T-GET  BCA i BC-FD-RESID  GC-CLOSE? 0= if drop false leave then  loop
+   dup if  #BM #BN * 0 ?do  BCDB i T-GET  BCB i BC-FD-RESID  GC-CLOSE? 0= if drop false leave then  loop  then ;
+: BC-GC-HAD ( -- bool )
+   BC-FILL
+   BCDO BXO-BIND BCB BXB-BIND BCDA BXA-BIND  BC-HAD-ADJ0    \ dBXA = dO * BXB
+   BCDO BXO-BIND BCA BXA-BIND BCDB BXB-BIND  BC-HAD-ADJ1    \ dBXB = dO * BXA
+   BC-BIND-HAD BC-HAD  true
+   #BM #BN * 0 ?do  BCDA i T-GET  BCA i BC-FD-HAD  GC-CLOSE? 0= if drop false leave then  loop
+   dup if  #BM #BN * 0 ?do  BCDB i T-GET  BCB i BC-FD-HAD  GC-CLOSE? 0= if drop false leave then  loop  then ;
+BC-GC-BIAS  -1 T=          \ row-broadcast bias adjoints gradcheck
+BC-GC-RESID -1 T=          \ same-shape add adjoints gradcheck
+BC-GC-HAD   -1 T=          \ same-shape mul (product-rule) adjoints gradcheck
+
+\ --- named-throw negatives (reuse E-SPEC-SYNTAX/ARITY): every malformed form fails closed
+: BC-N-MIX     ( -- ) s" BXO[bm bn] = BXA[bm bn] + BXB[bm bn] * BXA[bm bn]" SPEC-CHECK$ ;  \ + and * mixed
+: BC-N-PLUSSUM ( -- ) s" BXO[bm bn] = BXA[bm bn] + BXB[bm bn] +SUM bn" SPEC-CHECK$ ;        \ + with a reduction
+: BC-N-COL     ( -- ) s" BXO[bm bn] = BXA[bm bn] + BCOL[bm]" SPEC-CHECK$ ;                  \ column (non-suffix) broadcast
+: BC-N-NOCOMB  ( -- ) s" BXO[bm bn] = BXA[bm bn] BXB[bm bn]" SPEC-CHECK$ ;                  \ two terms, no combiner
+: BC-N-SCALAR  ( -- ) s" BXO[bm bn] = BXA[bm bn] * BVEC[]" SPEC-CHECK$ ;                     \ empty index: the 1x1 wall
+: BC-N-OK      ( -- ) s" BXO[bm bn] = BXA[bm bn] + BVEC[bn]" SPEC-CHECK$ ;                  \ valid bias: no throw
+' BC-N-MIX     E-SPEC-SYNTAX  TTHROWS
+' BC-N-PLUSSUM E-SPEC-SYNTAX  TTHROWS
+' BC-N-COL     E-SPEC-ARITY   TTHROWS
+' BC-N-NOCOMB  E-SPEC-SYNTAX  TTHROWS
+' BC-N-SCALAR  E-SPEC-ARITY   TTHROWS       \ scalar 1x1 unauthorable: a rank-0 factor tensor is not emittable
+' BC-N-OK      0              TTHROWS
+
+\ --- a valid-but-wrong-extent broadcast is a CHECKER reject of the generated accessor:
+\ BWRONG is declared ( #BM ) but read at the bn slot, so >#BN feeds an ix<extbn> where
+\ BWRONG@ demands ix<extbm> - the candidate scores 0; the correct BVEC ( #BN ) scores -1.
+SPEC-CAND: BCOK  BXO[bm bn] = BXA[bm bn] + BVEC[bn] ;
+SPEC-CAND$ CHECK-QUIET-CANDIDATE! -1 T=
+SPEC-CAND: BCBAD BXO[bm bn] = BXA[bm bn] + BWRONG[bn] ;
+SPEC-CAND$ CHECK-QUIET-CANDIDATE!  0 T=
+
+\ --- the training gate accepts every in-grammar elementwise adjoint (string seam, no code)
+: BC-ADJ-OK ( -- ) s" BXO[bm bn] = BXA[bm bn] · BXB[bm bn]" SPEC-ADJ-CHECK$ ;
+' BC-ADJ-OK 0 TTHROWS
 
 ;package
 

@@ -118,6 +118,31 @@ SPEC-CAND$ CHECK-QUIET-CANDIDATE! -1 T=
 SPEC-CAND: SPAT-CFLIP SPAT-S[am an] = SPAT-Q[am ak] SPAT-K[ak an] * +SUM ak ;   \ SPAT-K[ak an]: extents swapped
 SPEC-CAND$ CHECK-QUIET-CANDIDATE!  0 T=
 
+\ --- the sublayer glue around the two contractions: the output-projection bias and the
+\ residual add (dot habu-spec-broadcast-forms). The MHA sublayer wraps the O = A.V context
+\ with an output-projection bias (a 1xd row broadcast over the query rows) and a residual
+\ add of the sublayer input - both are elementwise SPEC: forms over the O[am ac] shape, and
+\ both derive here to exact parity with a plain-buffer reference. (Grammar + adjoint gradcheck
+\ live in maki/spec-test.f; here they are shown authored against the attention output.)
+TENSOR: SPAT-BIASV ( #AC )              \ output-projection bias b : 1 x d, broadcast over query rows
+TENSOR: SPAT-RES   ( #AM #AC )          \ the residual (sublayer input)
+TENSOR: SPAT-OUT2  ( #AM #AC )          \ O + bias  /  O + residual
+SPEC: SPAT-OBIAS  SPAT-OUT2[am ac] = SPAT-O[am ac] + SPAT-BIASV[ac] ;   \ output-projection bias (row 1xd)
+SPEC: SPAT-ORES   SPAT-OUT2[am ac] = SPAT-O[am ac] + SPAT-RES[am ac] ;  \ residual add (same shape)
+create SPAT-BBI #AC cells allot
+create SPAT-BRS #AM #AC * cells allot
+create SPAT-BR2 #AM #AC * cells allot
+create SPAT-GR2 #AM #AC * cells allot
+: SPAT-GLUE-FILL ( -- )
+   #AC 0 ?do  i 1 + s>f 9.0 f/  SPAT-BBI i T-SET  loop
+   #AM #AC * 0 ?do  i 3 * 1 + s>f 13.0 f/  SPAT-BRS i T-SET  loop ;
+: SPAT-BIAS-REF ( -- ) #AM 0 ?do #AC 0 ?do  SPAT-BO j #AC * i + T-GET  SPAT-BBI i T-GET  f+  SPAT-GR2 j #AC * i + T-SET  loop loop ;
+: SPAT-RES-REF  ( -- ) #AM #AC * 0 ?do  SPAT-BO i T-GET  SPAT-BRS i T-GET  f+  SPAT-GR2 i T-SET  loop ;
+: SPAT-GLUE-DIST0? ( -- bool )  SPAT-BR2 SPAT-GR2 #AM #AC * T-DIST2  1000000.0 f* 0.5 f+ f>s 0= ;
+SPAT-PARITY  SPAT-GLUE-FILL                                     \ SPAT-BO now holds the attention output O
+SPAT-BO SPAT-O-BIND  SPAT-BBI SPAT-BIASV-BIND  SPAT-BR2 SPAT-OUT2-BIND  SPAT-OBIAS  SPAT-BIAS-REF  SPAT-GLUE-DIST0? -1 T=
+SPAT-BO SPAT-O-BIND  SPAT-BRS SPAT-RES-BIND    SPAT-BR2 SPAT-OUT2-BIND  SPAT-ORES   SPAT-RES-REF   SPAT-GLUE-DIST0? -1 T=
+
 ;package
 
 T-REPORT
