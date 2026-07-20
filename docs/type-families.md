@@ -277,6 +277,20 @@ reserve names, register schema/layout metadata, generate operations, certify
 them, seal the generated package, then publish atomically. Any failure restores
 all family, schema, wordlist, signature, reflection, snapshot, and AOT rows.
 
+Ownership within the transaction (settled 2026-07-20 after the STRUCTURE
+front-end lane stopped on an underspecified seam): the declaration-event
+module owns the transaction events for arity, `POLICY`, and `DERIVE` alongside
+the field event — front ends own only their grammar loops and hold no
+declaration state. Duplicate and reserved field-name rejects are raised by the
+unified field registry (§2.4) and surface unchanged through the field-event
+path; front ends do not re-implement them. Inside a new block a legacy token
+rejects at the exact token with the parse stage's `E-TDECL-SYNTAX` family;
+`E-REMOVED-TYPE-SYNTAX` tombstones cover only the top-level removed definers
+and land with the delete/enforce stage (§2.7). The event module's landed word
+surface is the frozen contract the front ends bind to: `structure-decl.f` and
+`enum-decl.f` land only after the event module and the field registry are in
+the boot, and their post-hook load rows land in that same reconciliation.
+
 ### 2.6 Bootstrap cycle
 
 The bootstrap cycle is removed rather than solved with a second declaration

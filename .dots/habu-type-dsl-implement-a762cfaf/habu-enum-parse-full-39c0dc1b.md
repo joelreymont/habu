@@ -7,6 +7,8 @@ created-at: "\"2026-07-13T17:13:59.138732+02:00\""
 blocks:
   - habu-type-dsl-unify-b65d46c1
   - habu-type-dsl-implement-50f8dc15
+  - habu-type-declarations-shared-14ab0e48
+  - habu-fields-add-shared-6b063c62
 ---
 
 Own src/core/enum-decl.f and declaration tests. Consume shared syntax events for
