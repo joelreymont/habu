@@ -107,7 +107,7 @@ public
    id RUNKEY
    BUCKET-FIND dup 0 < if E-RLINEAGE-CAP throw then
    {: b:n :}
-   k b LK-N@ >= if E-RLINEAGE-CAP throw then
+   k 0 < k b LK-N@ >= or if E-RLINEAGE-CAP throw then   \ reject k<0 (read before the bucket) too
    b k LK-EVT-AT @ ;
 
 private

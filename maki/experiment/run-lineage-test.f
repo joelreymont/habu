@@ -84,6 +84,19 @@ package RUN
    BUILD-RUN-ALT {: b:CAD-KIND:run-id :}
    b RLINEAGE:LINEAGE-COUNT 0= ;
 
+\ ---- ACCEPTANCE: an out-of-range event index rejects fail-closed -----------------
+\ (dot habu-bounds-check-action-39819fc1). LINEAGE-AT guarded only k>=COUNT; a negative k
+\ read before the run's event region in LK-EVT and minted a bogus audit-event-id. Both
+\ bounds now reject with E-RLINEAGE-CAP before the read and the mint.
+: LIN-NEG ( -- )                                   \ k = -1: before the bucket's event region
+   BUILD-RUN {: id:CAD-KIND:run-id :}
+   id s" ev" RLINEAGE:LINEAGE+ drop
+   id -1 RLINEAGE:LINEAGE-AT drop ;
+: LIN-OVER ( -- )                                  \ k = COUNT: past the last recorded event
+   BUILD-RUN {: id:CAD-KIND:run-id :}
+   id s" ev" RLINEAGE:LINEAGE+ drop
+   id id RLINEAGE:LINEAGE-COUNT RLINEAGE:LINEAGE-AT drop ;
+
 T-RESET
 
 LIN-RESUME 2 T=          \ both events accumulate under one resumed lineage
@@ -91,6 +104,10 @@ LIN-RESUME-EQ TTRUE      \ the rebuild is the same interned identity
 LIN-EVENTS-DISTINCT TTRUE
 LIN-AT TTRUE
 LIN-DISTINCT TTRUE
+
+\ event-index bounds (dot habu-bounds-check-action-39819fc1)
+' LIN-NEG  E-RLINEAGE-CAP TTHROWS      \ negative index rejects (was OOB read + bogus event-id mint)
+' LIN-OVER E-RLINEAGE-CAP TTHROWS      \ index == count still rejects (upper bound intact)
 
 T-REPORT
 

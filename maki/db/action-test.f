@@ -34,6 +34,8 @@ create BUF   8192 allot
 create DA-BUF  64 allot
 create DB-BUF  64 allot
 variable ASC
+variable EA-OK                                  \ ENUM-AT bounds property accumulator
+variable EA-K                                   \ bad index handed to a catch xt (xts are not closures)
 
 \ ---- checker verdict wrappers (the maki/cad-kinds-test precedent) ---------------
 : YES ( ptr u8 n -- )   CHECK-QUIET-CANDIDATE! -1 T= ;
@@ -190,6 +192,61 @@ variable ASC
 : AT-EMPTY-NAME ( -- )     DECL-COMPLETE s" " REGISTER drop ;  \ empty name -> E-ACTION-KEY
 : AT-UNKNOWN-NAME ( -- )   s" NOPE:NONE" ID-OF drop ;       \ unknown name -> E-ACTION-ID
 
+\ ---- ENUM-AT bounds (dot habu-bounds-check-action-39819fc1) ---------------------
+\ ENUM-AT builds the canonical order then read ORD[k] and minted it as a nominal action-id
+\ with no k check: k<0 read before ORD, k>=COUNT read stale/OOB cells, and a large k whose
+\ `cells` (k<<3) wraps the pointer back into ORD escaped a forged id. The guard now rejects
+\ every out-of-range k with E-ACTION-ID before ORD-BUILD, the pointer math, and the mint.
+$2000000000000000 constant EA-WRAP              \ EA-WRAP cells = 2^64 -> wraps ORD+0 if unguarded
+$DEAD1D constant EA-POISON                       \ a distinctive raw an OOB read would have minted
+
+: EA-AT-RAW ( -- )   EA-K @ ENUM-AT drop ;       \ bad-index call; caller owns registry + ORD canaries
+
+\ exact out-of-range fixtures (each reseeds so COUNT / ACT-CAP read the live registry)
+: EA-NEG ( -- )      RESEED-A -1 ENUM-AT drop ;          \ k = -1 (before ORD)
+: EA-COUNT ( -- )    RESEED-A COUNT ENUM-AT drop ;       \ k = COUNT (first stale slot)
+: EA-COUNT+1 ( -- )  RESEED-A COUNT 1+ ENUM-AT drop ;    \ k = COUNT+1
+: EA-CAP ( -- )      RESEED-A ACT-CAP ENUM-AT drop ;     \ k = ACT-CAP (one past the ORD allocation)
+: EA-WRAP-AT ( -- )  RESEED-A EA-WRAP ENUM-AT drop ;     \ k whose *cells wraps ORD+0
+
+\ canary: a rejected call runs neither ORD-BUILD nor any read/mint, and writes nothing
+: EA-CANARY ( -- bool )
+   RESEED-A
+   EA-POISON 0 cells ORD + !                     \ ORD[0]: a slot ORD-BUILD WOULD overwrite if it ran
+   EA-POISON COUNT cells ORD + !                 \ ORD[COUNT]: a stale slot a bad read WOULD mint from
+   COUNT EA-K !                                  \ reject index = COUNT
+   [: EA-AT-RAW ;] catch E-ACTION-ID =             \ (a) rejected with the bounds code -> nothing escaped
+   0 cells ORD + @ EA-POISON = and               \ (b) ORD-BUILD did not run (ORD[0] canary intact)
+   COUNT cells ORD + @ EA-POISON = and ;         \ (c) no OOB write; stale cell was never read-then-minted
+
+\ property: every valid index returns a VALIDATE-ID-clean id whose raw is a registered slot
+: EA-INRANGE-OK ( -- bool )
+   RESEED-A  true EA-OK !
+   0 begin dup COUNT < while
+      dup {: k:n :}
+      k ENUM-AT VALIDATE-ID ACTION-ID>RAW {: r:n :}   \ VALIDATE-ID throws on an out-of-range id
+      r 0 < r COUNT >= or if false EA-OK ! then
+      1+
+   repeat drop  EA-OK @ ;
+
+\ property: every k in [COUNT, ACT-CAP] rejects with the bounds code (stale-in-alloc and one-past)
+: EA-OOR-ALL ( -- bool )
+   RESEED-A  true EA-OK !
+   COUNT begin dup ACT-CAP <= while
+      dup EA-K !
+      [: EA-AT-RAW ;] catch E-ACTION-ID <> if false EA-OK ! then
+      1+
+   repeat drop  EA-OK @ ;
+
+\ property: a band of negative indices all reject
+: EA-NEG-ALL ( -- bool )
+   RESEED-A  true EA-OK !
+   -8 begin dup 0 < while
+      dup EA-K !
+      [: EA-AT-RAW ;] catch E-ACTION-ID <> if false EA-OK ! then
+      1+
+   repeat drop  EA-OK @ ;
+
 T-RESET
 
 \ acceptance 2 (STATIC, the cad-kinds verdict pattern): a real art-kind reaches DISPATCH;
@@ -242,6 +299,17 @@ AT-SCHEMA-OUTPUT 1 T=
 ' AT-DIGEST-SMALL E-ACTION-BUF TTHROWS
 ' AT-EMPTY-NAME E-ACTION-KEY TTHROWS
 ' AT-UNKNOWN-NAME E-ACTION-ID TTHROWS
+
+\ ENUM-AT bounds (dot habu-bounds-check-action-39819fc1)
+' EA-NEG     E-ACTION-ID TTHROWS                \ k = -1
+' EA-COUNT   E-ACTION-ID TTHROWS                \ k = COUNT
+' EA-COUNT+1 E-ACTION-ID TTHROWS                \ k = COUNT+1
+' EA-CAP     E-ACTION-ID TTHROWS                \ k = ACT-CAP (one past the ORD allocation)
+' EA-WRAP-AT E-ACTION-ID TTHROWS                \ k whose *cells wraps ORD+0
+EA-CANARY     TTRUE                             \ rejected: no ORD-BUILD, no OOB write, no nominal escape
+EA-INRANGE-OK TTRUE                             \ every 0<=k<COUNT returns a validated, in-range id
+EA-OOR-ALL    TTRUE                             \ every k in [COUNT, ACT-CAP] rejects
+EA-NEG-ALL    TTRUE                             \ every k in [-8, -1] rejects
 
 T-REPORT
 

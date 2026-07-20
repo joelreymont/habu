@@ -550,6 +550,7 @@ public
 \ ENUM-AT returns the k-th action-id in CANONICAL (name-sorted) enumeration order, so the
 \ enumeration is registration-order independent (the replay property, plan:3855).
 : ENUM-AT ( n -- CAD-KIND:action-id ) {: k:n :}
+   k 0 < k ACT-N @ >= or if E-ACTION-ID throw then   \ reject before ORD-BUILD / pointer math / mint
    ORD-BUILD  k cells ORD + @ RAW>ACTION-ID ;
 
 \ DIGEST writes the 32-byte SHA-256 over the canonical (name-sorted) enumeration of every
