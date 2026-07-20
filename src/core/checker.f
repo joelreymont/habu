@@ -6043,6 +6043,7 @@ variable CURSYM
    a u s" trust" CORE-STR=CI IF RES-TRUE EXIT THEN
    a u s" ptx-barrier!" CORE-STR=CI IF RES-TRUE EXIT THEN
    a u s" layout-buffer" CORE-STR=CI IF RES-TRUE EXIT THEN
+   a u s" defer-layout-buffer" CORE-STR=CI IF RES-TRUE EXIT THEN
    a u s" typed-buffer" CORE-STR=CI IF RES-TRUE EXIT THEN
    a u s" typed-variable" CORE-STR=CI IF RES-TRUE EXIT THEN
    a u s" typefamily" CORE-STR=CI IF RES-TRUE EXIT THEN
@@ -6116,6 +6117,7 @@ variable UNSAFE-SYM-N
    s" product"       UNSAFE-NAME-ADD
    s" typefamily"    UNSAFE-NAME-ADD
    s" layout-buffer" UNSAFE-NAME-ADD
+   s" defer-layout-buffer" UNSAFE-NAME-ADD
    s" typed-buffer"  UNSAFE-NAME-ADD
    s" typed-variable" UNSAFE-NAME-ADD ;
 

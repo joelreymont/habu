@@ -379,6 +379,8 @@ public
    s" VALUE-RECORD" IWG-NEG-OPENER
    s" cast: in a checked body is rejected unsafe" T-LABEL
    s" cast:" IWG-NEG-OPENER
+   s" DEFER-LAYOUT-BUFFER in a checked body is rejected unsafe" T-LABEL
+   s" DEFER-LAYOUT-BUFFER" IWG-NEG-OPENER
    s" EXPORT of a checked word still works" T-LABEL
    IWG-EXPORT-OK-FORGE$ IWG-EXEC:SUBJECT IWG-ASSERT-OK
    s" EXPORT DEFLINEAR rejects E-EXPORT-UNSAFE" T-LABEL
@@ -395,6 +397,8 @@ public
    s" PRODUCT" IWG-NEG-EXPORT
    s" EXPORT TYPEFAMILY rejects E-EXPORT-UNSAFE" T-LABEL
    s" TYPEFAMILY" IWG-NEG-EXPORT
+   s" EXPORT DEFER-LAYOUT-BUFFER rejects E-EXPORT-UNSAFE" T-LABEL
+   s" DEFER-LAYOUT-BUFFER" IWG-NEG-EXPORT
    s" qualified unsafe alias for a body cannot be minted" T-LABEL
    IWG-EXPORT-BODY-FORGE$ IWG-EXEC:SUBJECT
    IWG-ASSERT-EXPORT-UNSAFE ;
@@ -632,7 +636,7 @@ public
 package IWG-PARITY
 
 7 constant DIRECT-N
-99 constant SUBJECT-N
+101 constant SUBJECT-N
 : RESULT ( -- ptr u8 n ptr u8 n n )
    IWG-OUT IWG-OUT-U @ IWG-ERR IWG-ERR-U @ IWG-RC @ ;
 
