@@ -120,3 +120,5 @@ ORIGINALLY SPECIFIED once the first two land):
      dictionary and helper alike. Re-baseline the acceptance count to the
      measured site count at implementation time (219 / 2628 B as of 2026-07-20),
      not the stale 156 / 1872.
+
+2026-07-20 PREREQ A LANDED (e5ecd233, dot habu-identify-code-pointers-b973e6cc closed): aot-lib.f CELL-TEXTPTR? now classifies from live dictionary extents, not magnitude. RESIDUAL FOLDED INTO THIS DOT: aot-capture.f ACAP-SCAN-DATA (:248) / ACAP-SCAN-CODE (:269) still classify x9-chain literal VALUES by range against the DATA/code spans - converting them needs an emit-time relocation kind tag threaded through the ~9 C-LIT/C-X9-LIT sites in habu2.f, which is exactly this dot ("record relocation kind and site explicitly when emitting an address"; also the habu-separate-scalar-and-dffe142e acceptance). Sequence stands: B (habu-map-the-code-5268af94, now unblocked) then this dot, which must ALSO retire the capture-side value-range scan.
