@@ -455,6 +455,7 @@ variable GSI-TL-FILE-A
    GSI-FORK-RESET
    s" tools/hb-cli-contracts-test.f" GSI-FORK-INCLUDE
    s" test/seal.f" GSI-FORK-INCLUDE
+   s" test/require-cap-test.f" GSI-FORK-INCLUDE
    s" test/seal-absence.f" GSI-FORK-INCLUDE
    s" test/seal-package.f" GSI-FORK-INCLUDE
    s" test/engine-error-package.f" GSI-FORK-INCLUDE

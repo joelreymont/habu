@@ -1988,6 +1988,12 @@ points stay listed.
   post-seal language features still update protected cells via engine primitives.
   `patch32`/`snap-rebase` are compiler-internal and hand-review only (noted in
   the file).
+- `test/require-cap-test.f` — REQUIRE-MAX inventory-cap regression: forked
+  disposable subjects reset the require registry, flip DISCOVERY so synthetic
+  paths never touch the filesystem, and drive `require` to a target count,
+  proving a full new-cap inventory loads, one past the old 256 cap now loads,
+  and one past the new cap still fails closed with the named `require: too many
+  files` die (`INCLUDE-IO-RC`).
 - `test/aot-wid-suite.f` — protected-WID boot-integration regression (TFAM
   2b-v(f)): spawns `test/aot-wid-build.f` to build a throwaway engine with two
   baked protected word-list ids (300 and 70000), then proves those ids are
