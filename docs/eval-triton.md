@@ -2383,3 +2383,116 @@ bin/hb --load tools/ptx/mma-gemm-check.f   # MGC-CFG-XSWIZ / -B / -EPI / -B-EPI 
 # throughput, best-of-3, solo, 13.3 pinned (swap the file's bottom entry to GEMMBENCH:GB-XSWIZ-SWEEP):
 bin/hb --load tools/ptx/gemm-bench.f       # each committed tile: PAD then XSWIZ, all four shapes
 ```
+
+## Round 14 — composing XOR-swizzle with grouped-raster (dot `habu-compose-xor-swizzle`): the 4096³ record moves, 0.75× → 0.91× Triton (2026-07-20)
+
+Round 10 gave a 4096³ record from **grouped-raster** CTA order (`BK=16 BN=256 M2` stages-3 `GROUP=8`,
+33.82 TF, 0.747×) and Round 13 gave a 2048³ record from the **pad-free XOR swizzle** (`4-warp M4 s2
++epi`, 35.97 TF, 0.95×) — but the two 4096 levers had never met on one kernel: the Round-13 XSWIZ
+sweep did not include the wide `BN=256` grouped tile, and grouped-raster separately lifted the 4-warp
+family +50 %. This round composes them and asks whether 4096 moves and whether the composition disturbs
+the 2048 XSWIZ record. It does move — decisively — and the composition is strongly **super-additive**.
+
+### Legality — raster + swizzle is a legal combination; the record tile's `BK=16` is the one true fence
+
+`MMA-CHECK-XSWIZ` (`lib/ptx/cg-mma.f`) fences the swizzle on `pad≠0`, `LMODE≠2`, a half dtype,
+`BK∉[32,64]`, the wide ablation, and split-K — and it **references `MMA-GROUP` nowhere**. Its split-K
+fence fires only under `MMA-SPLIT?` (`SPLITK>1`) and its ablate fence only under `MMA-ABLATE`; neither
+touches grouped-raster. Symmetrically `MMA-CHECK-SPLIT` rejects `GROUP` only when split is on, and
+`MMA-CHECK-GROUP` only rejects a negative height. So `XSWIZ + GROUP (+ epilogue)` passes every gate —
+which the element-exact PASS of the composed configs confirms *positively* — and all three levers live
+in the one MMA-owned WIDE pipe (`MMA-DEFAULT?` false for `BN>64` or `MFRAGS>1`), where `MMA-GRID-REMAP`,
+the swizzle-aware `As` staging, and the epilogue store compose. The one genuine blocker: the actual
+Round-10 4096 **record tile is `BK=16`**, and `BK<32` gives `ACPR<8` chunks/row — too few to separate
+the eight `ldmatrix` rows — so `E-MMA-XSWIZ` fences it (`MGC-XSWIZ-NEG`: `BK16 → -6111`). That is a
+justified `As`-geometry fence, **not** a wrongful raster fence: the legal composition sits on the
+**`BK=32` sibling** of the record family (the `BN=256 M2` s2 tile Round 10 lifted 30.41 → 31.72).
+
+### Correctness, exhaustively, before any timing
+
+`mma-gemm-check.f` `MGC-CFG-COMPOSE`: **4 composed configs, 8/8 PASS, 0 mismatches** at 256³/512³ on the
+non-square grid (`gridM≠gridN`, `GROUP=8` clamped last group) the remap argument needs — XSWIZ-only and
+XSWIZ+`GROUP=8` on the wide `BN=256 M2` tile, and grouped-raster+epilogue and XSWIZ+grouped-raster+epilogue
+on the `4-warp M4 s2` tile. `C[0][0]` is bit-identical to the committed tiles at every edge (10749 at
+256³, 21335 at 512³): the CTA-order permutation, the `As` storage relabel, and the coalesced C store never
+move a value, so the integer zero-tolerance argument holds verbatim. `pad` is a bank-layout knob the value
+compare never reads, so the `pad=8` raster+epi tile timed below is element-exact iff its proven `pad=0`
+sibling is. Suite total **270 PASS / 0 fail**, 13 legality guards green (the whole prior suite unchanged).
+
+### Result — same-session A/B, best-of-3, solo (GB10, ptxas 13.3.33 pinned)
+
+FP32 `MM` roof reproduced **8.2 / 13.2 / 14.9 / 14.0** and both parents reproduced their committed values
+(`BN=256 M2` OFF 30.6 ≈ Round-10 30.41; `4-warp M4 s2 +epi` XSWIZ 20.6 at 4096³ ≈ Round-13 20.52),
+validating the session. Per-pass spread was ≤2 % on the headline cells (A-composed 4096³ across the three
+passes: 40.7 / 40.5 / 41.2), well outside noise. **Bold = the record-setting composition.**
+
+**Group A — the 4096-record family (wide `BN=256 M2` 8-warp s2, `BK=32`; the record tile's `BK=16` is XSWIZ-fenced):**
+
+| tile (tf32, best-of-3)                 |  512³ | 1024³ | 2048³ |  4096³ |
+|----------------------------------------|------:|------:|------:|-------:|
+| `BN=256 M2` s2 — OFF                    |  4.18 | 18.82 | 26.47 |  30.55 |
+| `BN=256 M2` s2 — raster `GROUP=8`      |  4.23 | 19.06 | 26.73 |  31.73 |
+| `BN=256 M2` s2 — XSWIZ                  |  5.22 | 24.35 | 34.67 |  29.96 |
+| `BN=256 M2` s2 — **XSWIZ + raster `GROUP=8`** |  5.23 | 24.38 | 34.37 | **41.21** |
+
+**Group B — the Round-13 swizzle champion (`4-warp M4 s2 +epi`) crossed 2×2 with grouped-raster:**
+
+| tile (tf32, best-of-3)                  |  512³ | 1024³ | 2048³ | 4096³ |
+|-----------------------------------------|------:|------:|------:|------:|
+| `4w M4 s2 +epi` — pad, `GROUP=0`        | 16.34 | 27.43 | 29.88 | 13.74 |
+| `4w M4 s2 +epi` — XSWIZ, `GROUP=0`      | 16.46 | 28.49 | 36.85 | 20.58 |
+| `4w M4 s2 +epi` — pad + raster `GROUP=8`| 16.35 | 27.49 | 28.51 | 28.71 |
+| `4w M4 s2 +epi` — **XSWIZ + raster `GROUP=8`** | 17.05 | 30.28 | 36.28 | **37.48** |
+
+### The headline (4096³): a new record, 33.82 → 41.21 TF, 0.747× → 0.910× Triton
+
+The **new 4096³ record is `BN=256 M2` s2 with XSWIZ + grouped-raster `GROUP=8` = 41.21 TF**, **+21.9 %
+over the standing Round-10 record (33.82)** and **+34.9 % over the same tile with both levers off (30.55)**,
+lifting the head-to-head **0.747× → 0.910× Triton 3.8** at 4096³. The composition is **super-additive**:
+raster alone moves the tile only 30.55 → 31.73 (+3.9 %) and the swizzle alone is *negative* at 4096³
+(30.55 → 29.96, −1.9 %), but together they reach 41.21 — raster's marginal 4096³ contribution jumps from
++1.18 TF to **+11.25 TF** once the swizzle is also on. The two levers unlock each other: grouped-raster
+restores the `B`-panel L2 reuse the row-major sweep was busting, and only once the tile is no longer
+L2-bound does the conflict-free `ldmatrix-A` feed the swizzle provides become the lever that clears it.
+The 4-warp triple (Group B) confirms the direction from the other family — **37.48 TF at 4096³**, also
+above the old record — but the wide `BN=256` tile is the higher one, so it takes the record.
+
+### Honest negatives — 2048³/1024³/512³ do not move
+
+- **2048³ does not move.** The best 2048³ this session is the **XSWIZ-only** `4w M4 s2 +epi` tile
+  (36.85, the same-session re-run of the Round-13 0.95× champion); adding grouped-raster *lowers* it to
+  36.28, and the wide XSWIZ+raster tile trails at 34.37. This is exactly Round 10's finding that raster
+  is flat-to-negative at 2048³ (the `B` panel is half the linear size, L2 is not busted), now confirmed
+  on top of the swizzle. **2048³ keeps its XSWIZ-only tile at 0.95×.**
+- **1024³ is not improved by the composition.** The best composed 1024³ is 30.28 (the 4-warp triple),
+  below the standing 1024³ record (30.89, the Round-13 `4w M4 **s1** +epi` swizzle tile, which this sweep
+  did not re-emit). **1024³ stays 0.92×.**
+- **512³ is within noise.** `4w M4 s2 +epi` XSWIZ+raster best-of-3 is 17.05 but per-pass it straddles the
+  XSWIZ-only 16.46 (17.05 / 16.27 / 16.06), a ≤6 % spread — no reliable 512³ move. At 8 co-resident CTAs
+  the `B` panel fits L2 and there is no reuse for raster to earn, exactly the occupancy-bound 512³ regime
+  Rounds 10 and 13 both described.
+
+### Two mechanisms, one per group — read straight from the emitter's `smem` words
+
+The swizzle pays for a **different reason** in each group, and the `smem` geometry says which:
+- **Wide `BN=256 M2`:** `pad` was already 0, so the swizzle frees **zero** bytes (`smem=98304 B` in all
+  four A rows) — it only makes the `ldmatrix-A` feed conflict-free at **unchanged** occupancy. That is why
+  it is neutral-to-negative at 4096³ *alone* (the tile is L2-`B`-panel-bound there, so a cleaner feed buys
+  nothing and the extra XOR is a hair of cost) and becomes the lever only after raster removes the L2 wall.
+- **`4-warp M4 s2 +epi`:** the swizzle **does** free bytes (`smem` 57344 → 49152, crossing 1 → 2
+  blocks/SM — Round-13's occupancy mechanism), and grouped-raster separately rescues the 4-warp 4096³ L2
+  thrash (pad 13.74 → pad+raster 28.71); the two stack to 37.48.
+
+No bank-conflict counts are claimed — none were measured. The claim is the byte-exact `smem` deltas plus
+the same-session throughput A/B, and the element-exact proof that every composed kernel is bit-correct.
+
+### Reproduction (exact)
+
+```
+# element-exact first (arch auto-probed sm_121a) — 4 composed configs, 8/8 PASS, 0 mismatches, suite 270 PASS:
+bin/hb --load tools/ptx/mma-gemm-check.f   # MGC-CFG-COMPOSE rows (A: BN=256 XSWIZ ±raster; B: 4-warp raster+epi ±XSWIZ)
+# legality: E-MMA-XSWIZ references MMA-GROUP nowhere; the record tile's BK=16 is the sole (justified) fence:
+bin/hb --load tools/ptx/mma-gemm-check.f   # MGC-XSWIZ-NEG: BK16 -> -6111 (E-MMA-XSWIZ); composed rows emit (legal)
+# throughput, best-of-3, solo, 13.3 pinned (swap the file's bottom entry to GEMMBENCH:GB-XSWZRASTER-SWEEP):
+bin/hb --load tools/ptx/gemm-bench.f       # Group A: BN=256 M2 s2 OFF/raster/XSWIZ/both; Group B: 4-warp M4 s2 +epi 2x2
+```

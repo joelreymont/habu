@@ -351,6 +351,24 @@ variable GB-SV                         \ split-K split count S
    bk pad stages dyn mode mfrags GB-MMM-CFGW4
    0 MMA-GROUP ! ;
 
+\ COMPOSED grouped-raster x XOR-swizzle (+ epilogue) bench wrappers (dot habu-compose-xor-swizzle): layer the
+\ Round-10 CTA-order swizzle (MMA-GROUP) and the Round-13 pad-free XSWIZ (and the smem C epilogue) on ONE tile,
+\ delegating to the committed wide-BN / 4-warp-epilogue machinery, each restoring its knob. Element-exact first
+\ (tools/ptx/mma-gemm-check.f MGC-CFG-COMPOSE). The wide-BN + 4-warp(MFRAGS>1) tiles are all MMA-owned WIDE, so
+\ the grid remap + the swizzle-aware As staging + the epilogue store compose in the one pipe.
+: GB-MMM-CFG-BN-G-X ( n n n n n n n n -- ) {: bk pad stages dyn mode mfrags bn group :}   \ 8-warp wide-BN + grouped-raster + XSWIZ
+   1 MMA-XSWIZ !  s" -- XSWIZ: " type
+   bk pad stages dyn mode mfrags bn group GB-MMM-CFG-BN-G
+   0 MMA-XSWIZ ! ;
+: GB-MMM-CFGW4-EPI-G ( n n n n n n n -- ) {: bk pad stages dyn mode mfrags group :}       \ 4-warp + epilogue + grouped-raster
+   group MMA-GROUP !  s" -- GROUP=" type group GB-INT. s" : " type
+   bk pad stages dyn mode mfrags GB-MMM-CFGW4-EPI
+   0 MMA-GROUP ! ;
+: GB-MMM-CFGW4-EPI-G-X ( n n n n -- ) {: stages dyn mfrags group :}                       \ 4-warp + epilogue + grouped-raster + XSWIZ
+   group MMA-GROUP !  s" -- GROUP=" type group GB-INT. s" : " type
+   stages dyn mfrags GB-MMM-CFGW4-EPI-X
+   0 MMA-GROUP ! ;
+
 \ the raised-BK / bank-swizzled configuration space (all element-exact per tools/ptx/mma-gemm-check.f)
 : GB-MMM-SWEEP ( -- )
    32 0 2 0 0 GB-MMM-CFG               \ committed default baseline (BK=32, stages=2, scalar+cvt) - A/B reference
@@ -673,6 +691,28 @@ public
    3 1 2 GB-MMM-CFGW4-X                 \ lever 1b - XSWIZ (SH 49152 <= 50 KB: CROSSES to 2 blk/SM - the sharpest re-open test)
    32 8 1 1 4 4 GB-MMM-CFGW-B-EPI       \ RE-OPENED lever 2: 8-warp M4 B-ldmatrix + epilogue (round-3 256-row eviction) - PAD
    1 1 4 4 GB-MMM-CFGW-B-EPI-X ;        \ lever 2 - XSWIZ (does the freed budget stop the SH-grow eviction?)
+
+\ COMPOSED grouped-raster x XOR-swizzle A/B sweep (dot habu-compose-xor-swizzle): the two 4096/2048 levers on ONE
+\ tile, each composed config timed same-session against BOTH its parents. GROUP A = the 4096-record FAMILY (wide
+\ BN=256 M2 8-warp s2, BK=32): the actual Round-10 4096 record is BK=16 (33.82, XSWIZ-fenced: ACPR<8 cannot
+\ separate 8 ldmatrix rows - E-MMA-XSWIZ), so the legal composition sits on the BK=32 sibling Round-10 lifted
+\ 30.41->31.72. OFF / raster-only / XSWIZ-only / composed isolate each lever. GROUP B = the Round-13 2048/4096
+\ swizzle champion (4-warp M4 s2 +epi) crossed 2x2 with grouped-raster: does raster lift the swizzled epi tile at
+\ 4096, and does it disturb the 2048 XSWIZ record (35.97, 0.95x)? Every tile is element-exact first (MGC-CFG-COMPOSE,
+\ 0 mismatches). Best-of-3, run SOLO, pinned 13.3 ptxas. Referee = Triton 3.8 tf32 (21.7 / 33.5 / 37.8 / 45.3).
+: GB-XSWZRASTER-SWEEP ( -- )
+   CUDA:OPEN? 0= if s" gemm-bench: libcuda unavailable -> SKIPPED (off-device)" type cr exit then
+   GB-MM                                \ FP32 CUDA-core roof reference (same-session clock anchor)
+   s" == GROUP A: wide BN=256 M2 8-warp s2 (BK=32; the 4096-record family, record tile BK=16 is XSWIZ-fenced) ==" type cr
+   32 0 2 1 2 2 256 0 GB-MMM-CFG-BN-G     \ A0 OFF (byte-identical committed tile)
+   32 0 2 1 2 2 256 8 GB-MMM-CFG-BN-G     \ A1 raster-only GROUP=8 (Round-10 mover 30.41->31.72)
+   32 0 2 1 2 2 256 0 GB-MMM-CFG-BN-G-X   \ A2 XSWIZ-only (GROUP=0)
+   32 0 2 1 2 2 256 8 GB-MMM-CFG-BN-G-X   \ A3 XSWIZ + raster GROUP=8 (composed 4096 candidate)
+   s" == GROUP B: 4-warp M4 s2 +epi (Round-13 2048/4096 swizzle champion) x grouped-raster (2x2) ==" type cr
+   32 8 2 1 2 4 GB-MMM-CFGW4-EPI          \ B0 pad, GROUP=0 (Round-13 pad baseline)
+   2 1 4 GB-MMM-CFGW4-EPI-X               \ B1 XSWIZ, GROUP=0 (Round-13 champion; XSWIZ-only parent)
+   32 8 2 1 2 4 8 GB-MMM-CFGW4-EPI-G      \ B2 pad + raster GROUP=8 (raster-only parent)
+   2 1 4 8 GB-MMM-CFGW4-EPI-G-X ;         \ B3 XSWIZ + raster GROUP=8 (composed triple)
 
 \ FP16 tile schedule sweep (dot habu-fp16-mma-tile): the FP32 CUDA-core roof reference, then the
 \ m16n8k16 f16.f16.f32 tile across warp grids (8/4), MFRAGS (1/2/4), stages (1/2), and the smem C

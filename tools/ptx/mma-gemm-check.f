@@ -774,6 +774,25 @@ variable MGC-TN
    2 MGC-MODE
    0 MMA-EPILOG !  0 MMA-XSWIZ !  0 MMA-BLDM !  0 MMA-BPAD !  0 MMA-LMODE !  32 MMA-BK !  0 MMA-PAD !  2 MMA-STAGES !  0 MMA-DYNSMEM !  1 MMA-MFRAGS !  8 MMA-WARPS !  64 MGC-SA !  128 MGC-SB ! ;
 
+\ ============ COMPOSED grouped-raster x XOR-swizzle (+ epilogue) (dot habu-compose-xor-swizzle) ============
+\ The two Round-10/Round-13 4096/2048 levers layered on ONE kernel: grouped-raster CTA order (MMA-GROUP), the
+\ pad-free XOR swizzle (MMA-XSWIZ, As ldmatrix feed), and optionally the smem C epilogue (MMA-EPILOG). All three
+\ live in the MMA-owned WIDE pipe (MMA-DEFAULT? false for BN>64 or MFRAGS>1), so they compose in the one path.
+\ Correctness reuses the grouped-raster harness geometry (512^3 -> non-square grid gridM!=gridN, the remap's
+\ permutation argument VERBATIM): the swizzle is a pure As-storage relabel and the epilogue a coalesced C store,
+\ neither touching matrix VALUES, so element-exactness still equals the exact integer matmul with zero tolerance.
+\ pad is a bank-layout knob only (never read by the value compare), so a pad=8 raster+epi tile is element-exact
+\ iff its pad=0 sibling is. LMODE=2 (ldmatrix-A) + dyn (the tile all three levers share). Restores defaults.
+: MGC-CFG-COMPOSE ( n n n n n n n n n -- ) {: bk:n pad:n stages:n mfrags:n warps:n bn:n group:n xswiz:n epi:n :}
+   bk MMA-BK !  pad MMA-PAD !  stages MMA-STAGES !  1 MMA-DYNSMEM !  mfrags MMA-MFRAGS !  warps MMA-WARPS !  bn MMA-BN !
+   group MMA-GROUP !  xswiz MMA-XSWIZ !  epi MMA-EPILOG !
+   256 MGC-SA !  512 MGC-SB !
+   s" -- COMPOSE BN=" type bn .  s"  M" type mfrags .  s"  " type warps .  s" -warp BK=" type bk .  s"  pad=" type pad .
+   s"  stages=" type stages .  s"  GROUP=" type group .  s"  XSWIZ=" type xswiz .  s"  EPI=" type epi .
+   s"  (512^3 grid gridM=" type 512 MMA-BROWS / .  s" x gridN=" type 512 bn / .  s" ):" type cr
+   2 MGC-MODE                                          \ ldmatrix-A; re-emits at this GROUP/XSWIZ/EPI (all PTX-literal / emit-time)
+   0 MMA-GROUP !  0 MMA-XSWIZ !  0 MMA-EPILOG !  0 MMA-LMODE !  64 MMA-BN !  1 MMA-MFRAGS !  32 MMA-BK !  0 MMA-PAD !  2 MMA-STAGES !  0 MMA-DYNSMEM !  8 MMA-WARPS !  64 MGC-SA !  128 MGC-SB ! ;
+
 \ negative+positive regression (dot habu-xor-swizzle-mma): MMA-CHECK-XSWIZ must fail closed with E-MMA-XSWIZ
 \ on every combo whose As store side is not swizzled or whose mask math breaks - a non-zero pad, the scalar A
 \ feed (LMODE!=2), a half dtype (F16 store word), BK outside [32,64], the numerically-wrong wide ablation, and
@@ -973,6 +992,12 @@ public
    2 1 4 4 MGC-CFG-XSWIZ-EPI                \ XSWIZ + EPILOGUE 4-warp MFRAGS=4 stages=2 DYN (512^3-winner tile; SH 57344->49152 crosses 2 blk/SM)
    2 1 2 8 MGC-CFG-XSWIZ-EPI                \ XSWIZ + EPILOGUE 8-warp MFRAGS=2 stages=2 DYN
    1 1 4 4 8 MGC-CFG-XSWIZ-B-EPI            \ XSWIZ + B-ldmatrix + EPILOGUE 8-warp MFRAGS=4 bpad=4 stages=1 DYN (round-3 256-row eviction re-test)
+   s" == COMPOSED grouped-raster x XOR-swizzle (+epilogue) (dot habu-compose-xor-swizzle, element-exact vs host) ==" type cr
+   \                bk pad st mf wp  bn grp xsw epi
+   32 0 2 2 8 256 0 1 0 MGC-CFG-COMPOSE     \ A2 XSWIZ-only on the wide BN=256 M2 8-warp s2 (4096-record family; XSWIZ never checked on wide-BN)
+   32 0 2 2 8 256 8 1 0 MGC-CFG-COMPOSE     \ A3 XSWIZ + grouped-raster GROUP=8 on BN=256 M2 s2 (the composed 4096 candidate)
+   32 8 2 4 4  64 8 0 1 MGC-CFG-COMPOSE     \ B2 grouped-raster + epilogue on 4-warp M4 s2 (pad=8; raster+epi never composed)
+   32 0 2 4 4  64 8 1 1 MGC-CFG-COMPOSE     \ B3 XSWIZ + grouped-raster + epilogue on 4-warp M4 s2 (the composed triple)
    0 MMA-LMODE !  0 MMA-DTYPE !  0 MMA-BTF16 !  0 MMA-GROUP !  1 MMA-SPLITK !  0 MMA-XSWIZ !  0 MMA-EPILOG !  0 MMA-BLDM !  0 MMA-BPAD !  64 MMA-BN ! ;   \ restore the committed defaults (tf32 scalar+cvt, BN=64)
 
 ;package
