@@ -1,9 +1,11 @@
 ---
 title: Internalize field liveness check
-status: active
+status: closed
 priority: 1
 issue-type: task
-created-at: "\"2026-07-17T12:11:41.137447+02:00\""
+created-at: "\"\\\"2026-07-17T12:11:41.137447+02:00\\\"\""
+closed-at: "2026-07-20T23:13:18.664230+02:00"
+close-reason: "Merged de78234a: global CT-LIVE? PRIM row removed; the word is internal-marked like its sibling CT-LINEAR? (structural IMK-CLASSIFY enforcement), field validation reaches it only through the protected internal compiled path; negative regressions via --load and stdin; AXR ledger renumbered and census-difftested; fixpoint byte-identical x2"
 blocks:
   - habu-protect-type-field-04d91409
 ---
