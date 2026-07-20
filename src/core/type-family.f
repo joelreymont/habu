@@ -795,6 +795,17 @@ variable PF-A-P   PF-A-BOOT PF-A-P !   REG-PROTECT
 variable PF-N   0 PF-N !   REG-PROTECT
 variable PF-COMMIT-N   0 PF-COMMIT-N !   REG-PROTECT
 
+PF-REC CELL / constant PF-REC-CELLS   \ product-field record stride, in cells
+
+\ PF-SCRUB ( lo hi -- ) : zero the product-field records [lo,hi) back to canonical
+\ zero. Rows are pointer-free (PF-REC-PTR-MASK 0), so a zeroed row is the canonical
+\ "absent" row: retired provisional or rejected rows then leave no observable bytes
+\ in reflection or in snapshot/fixpoint identity. lo>=hi (nothing retired) is a
+\ no-op. Operates on the live arena (PF-BASE).
+: PF-SCRUB ( n n -- ) {: lo:n hi:n :}
+   hi lo <= IF EXIT THEN
+   PF-BASE  lo PF-REC-CELLS *  hi PF-REC-CELLS *  ARENA-CELLS-ZERO ;
+
 : PF-GROW ( n -- ) {: need:n :}
    need PF-CAP-V @ 2 * max {: nc:n :}
    PF-A-P  PF-CAP-V @ PF-REC *  nc PF-REC *  REG-GROW1
@@ -964,7 +975,9 @@ variable PF-TX-SERIAL   0 PF-TX-SERIAL !   REG-PROTECT
 : PF-ROLLBACK ( n -- ) {: tx:n :}
    tx PF-TX-REQUIRE
    PF-TX-TOP {: r:ptr :}
-   r PFTX.PFN @ PF-N !
+   r PFTX.PFN @ {: keep:n :}
+   keep PF-N @ PF-SCRUB              \ scrub the provisional rows this rollback retires
+   keep PF-N !
    r PFTX.STRU @ TF-STR-U !
    PF-TX-DEPTH @ 1 - PF-TX-DEPTH ! ;
 
@@ -1444,6 +1457,7 @@ variable TF-RBF-DEPTH   0 TF-RBF-DEPTH !
    r TFRB.STRU @ TF-STR-U !
    r TFRB.PKN @ TF-PK-N !
    r TFRB.SUMVN @ SUMV-N !
+   r TFRB.PFN @ PF-N @ PF-SCRUB       \ scrub product-field rows this rejected declaration retires
    r TFRB.PFN @ dup PF-N ! PF-COMMIT-N !
    r TFRB.LAYN @ LAY-N ! ;
 
@@ -1473,6 +1487,20 @@ variable TF-RBF-DEPTH   0 TF-RBF-DEPTH !
    [: REG-EXT-ROLLBACK-RESTORE ;] is REG-EXT-RB-RESTORE-XT ;
 REG-EXT-RB-INSTALL
 
+\ PF-PERSIST-CANONICAL ( -- ) : make the product-field capacity byte-canonical
+\ before it is baked, so retired/rejected declarations cannot leak observable bytes
+\ into snapshot/fixpoint identity. Persist runs at depth 0 (PF-TX-SNAP-RESET/
+\ TFAM-RBF-SNAP-RESET assert it), so PF-N == PF-COMMIT-N and everything at or above
+\ the committed high-water is dead capacity. Zero the live arena's unused tail
+\ [PF-COMMIT-N, PF-CAP); if the arena has grown, the boot buffer is now dead DATA
+\ that is still baked verbatim, so zero it whole. Only committed rows [0,PF-COMMIT-N)
+\ then carry information; identical logical registries bake byte-identically.
+: PF-PERSIST-CANONICAL ( -- )
+   PF-COMMIT-N @ PF-CAP-V @ PF-SCRUB
+   PF-BASE PF-A-BOOT <> IF
+      PF-A-BOOT 0 PF-CAP-INIT PF-REC-CELLS * ARENA-CELLS-ZERO
+   THEN ;
+
 \ ---------------------------------------------------------------------------
 \ snapshot persist: bake grown TFAM/SUMV/field/layout/param-kind/string stores
 \ into image DATA. All record fields are integers or interned offsets, so nothing
@@ -1482,6 +1510,7 @@ REG-EXT-RB-INSTALL
    TF-A-P    TF-A-BOOT    TF-CAP-V @ TF-REC *      REG-PERSIST-BUF drop
    TF-PK-P   TF-PK-BOOT   TF-PK-CAP-V @ cells      REG-PERSIST-BUF drop
    SUMV-A-P  SUMV-A-BOOT  SUMV-CAP-V @ SUMV-REC *  REG-PERSIST-BUF drop
+   PF-PERSIST-CANONICAL
    PF-A-P    PF-A-BOOT    PF-CAP-V @ PF-REC *      REG-PERSIST-BUF drop
    LAY-A-P   LAY-A-BOOT   LAY-CAP-V @ LAY-REC *    REG-PERSIST-BUF drop
    TF-STR-P  TF-STR-BOOT  TF-STR-U @               REG-PERSIST-BUF IF

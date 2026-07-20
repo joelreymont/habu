@@ -1146,6 +1146,7 @@ test/type-family-rollback-suite.f:TWX-LAY-ADD test-metaprog habu-seal-set-check-
 test/type-family-rollback-suite.f:TWX-PF-BEGIN test-metaprog habu-seal-set-check-b3676b33
 test/type-family-rollback-suite.f:TWX-PF-ADD test-metaprog habu-seal-set-check-b3676b33
 test/type-family-rollback-suite.f:TWX-PF-COMMIT test-metaprog habu-seal-set-check-b3676b33
+test/type-family-rollback-suite.f:TWX-PF-RAW@ test-metaprog habu-seal-set-check-b3676b33
 test/decl-event-suite.f:TWX-TFAM-RESET test-metaprog habu-seal-set-check-b3676b33
 test/decl-event-suite.f:TWX-SCHEMA-RESET test-metaprog habu-seal-set-check-b3676b33
 test/decl-event-suite.f:TWX-TFAM-DECL test-metaprog habu-seal-set-check-b3676b33
@@ -1305,6 +1306,9 @@ test/type-family-suite.f:TWX-TFL-CVAR? test-metaprog habu-seal-set-check-b3676b3
 test/type-family-suite.f:TWX-TFL-MATCH-FAM? test-metaprog habu-seal-set-check-b3676b33
 test/type-family-suite.f:TWX-TFL-VAR? test-metaprog habu-seal-set-check-b3676b33
 test/type-family-suite.f:TWX-TFL-VPADS test-metaprog habu-seal-set-check-b3676b33
+test/type-family-suite.f:TWX-PF-RAW@ test-metaprog habu-seal-set-check-b3676b33
+test/type-family-suite.f:TWX-PF-RAW! test-metaprog habu-seal-set-check-b3676b33
+test/type-family-suite.f:TWX-PF-CAP test-metaprog habu-seal-set-check-b3676b33
 src/core/internal-mark.f stdlib-boundary habu-seal-set-check-b3676b33 1
 src/core/checker.f:TRUST stdlib-boundary habu-seal-set-check-b3676b33
 test/gate-common-lib.f:UEND test-metaprog habu-primitive-effect-axiom-1119f176

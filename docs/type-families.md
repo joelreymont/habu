@@ -1057,9 +1057,17 @@ reflection readers (`PF-REC@` and the `TYPE-FIELD:*` accessors it backs) reject 
 negative, out-of-range, or still-provisional field id with a catchable `E-PF-ID`
 throw rather than a process-killing `die`, so a guessed id is a recoverable
 caller error, not an engine exit. Checker rollback requires no open field
-transaction and restores `PF-N`/`PF-COMMIT-N` together. Snapshot persistence
-retains committed PF rows/high-waters while resetting the process-local
-transaction arena.
+transaction and restores `PF-N`/`PF-COMMIT-N` together. Rollback also scrubs the
+records it retires back to canonical zero: a rolled-back field transaction
+(`PF-ROLLBACK`) and a rejected declaration (`TFAM-ROLLBACK-RESTORE`) both zero
+the product-field rows above the restored high-water. Rows are pointer-free, so
+a zeroed row is the canonical "absent" row and a retired declaration leaves no
+observable bytes. Snapshot persistence retains committed PF rows/high-waters
+while resetting the process-local transaction arena, and it serializes only
+committed rows: before baking, it zero-fills the unused capacity
+`[PF-COMMIT-N, PF-CAP)` and — when the arena has grown — the now-dead boot
+buffer, so two registries with identical committed rows bake byte-identically
+regardless of how many declarations were rejected or rolled back along the way.
 
 Checked consumers use the sealed package surface:
 

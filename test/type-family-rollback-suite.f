@@ -261,6 +261,32 @@ s" : RBT-OK ( -- n ) 0 ;" CHECK-CANDIDATE! FOUNDF !  FOUNDF @ 1 T=
 RBF-DEPTH @ P-DEPTH @ T=
 
 \ ---------------------------------------------------------------------------
+\ N. rejected declaration scrubs its retired product-field rows to canonical
+\    zero (dot habu-make-field-rollback): a candidate that COMMITS a field row
+\    then rejects must leave no observable bytes in the retired PF record, so
+\    snapshot/fixpoint identity depends only on committed rows. The retired id is
+\    past the committed high-water, so it is read through a raw shim (the public
+\    TYPE-FIELD accessors reject it with E-PF-ID).
+\ ---------------------------------------------------------------------------
+TRUSTED: TWX-PF-RAW@ ( n n -- n ) {: id:n off:n :} id PF-REC * PF-BASE + off cells + @ ;
+TWX-TFAM-RESET TWX-SCHEMA-RESET
+s" fdpre" CHECKER-PACKAGE-PUBLIC s" base" 1 TK-SUM TWX-TFAM-DECL drop   \ nonzero baseline
+TYPE-FIELD:COUNT P-PF !
+TWX-CAND-START
+   s" fdc" CHECKER-PACKAGE-PRIVATE s" prod" 2 TK-PRODUCT TWX-TFAM-DECL PFOWN !
+   0 TWX-SCHEMA-PARAM TWX-SCHEMA-ROOT+ PFSCH !
+   TWX-PF-BEGIN PFTX !
+   PFTX @ PFOWN @ PF-NO-VARIANT s" fld" PFSCH @ 6 1 6 cells CELL CELL PF-FLAGS-NONE TWX-PF-ADD PFTX !
+   PFTX @ TWX-PF-COMMIT
+   TYPE-FIELD:COUNT P-PF @ 1 + T=       \ the field row committed inside the candidate
+   P-PF @ 5 TWX-PF-RAW@ 6 T=            \ SLOT field (cell 5) written = 6 while committed
+0 TWX-CAND-DONE drop                    \ reject -> TFAM-ROLLBACK-RESTORE scrubs the PF row
+TYPE-FIELD:COUNT P-PF @ T=              \ committed high-water restored
+P-PF @ 0 TWX-PF-RAW@ 0 T=              \ FAM scrubbed in the retired row
+P-PF @ 5 TWX-PF-RAW@ 0 T=              \ SLOT scrubbed
+P-PF @ 10 TWX-PF-RAW@ 0 T=             \ FLAGS scrubbed
+
+\ ---------------------------------------------------------------------------
 \ report: "ok" on success, nonzero exit on any failure.
 \ ---------------------------------------------------------------------------
 : REPORT ( -- )

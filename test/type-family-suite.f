@@ -1049,6 +1049,48 @@ STOK @ ' TWX-PF-COMMIT catch TC ! drop  TC @ E-PF-TX T=   \ stale token never al
 NTOK @ TWX-PF-ROLLBACK
 
 \ ---------------------------------------------------------------------------
+\ 21. field rollback zero-scrub (dot habu-make-field-rollback): a rolled-back
+\ provisional row is scrubbed to canonical zero in the live arena, and snapshot
+\ persistence zero-fills the unused product-field capacity, so retired bytes
+\ never enter reflection or snapshot/fixpoint identity. Raw shims read/write PF
+\ records directly (bypassing the committed-id bound) to observe retired slots.
+\ ---------------------------------------------------------------------------
+TRUSTED: TWX-PF-RAW@ ( n n -- n ) {: id:n off:n :} id PF-REC * PF-BASE + off cells + @ ;
+TRUSTED: TWX-PF-RAW! ( n n n -- ) {: v:n id:n off:n :} v id PF-REC * PF-BASE + off cells + ! ;
+TRUSTED: TWX-PF-CAP  ( -- n ) PF-CAP ;
+variable RBPID   variable RBCN   variable RBIDX
+
+\ fresh product with two committed fields (case 20's stale-token check wiped the
+\ registry, so start from a clean slate).
+s" pkr" CHECKER-PACKAGE-PUBLIC s" prod" 0 TK-PRODUCT TWX-TFAM-DECL RBPID !
+TWX-PF-BEGIN PFTX !
+PFTX @ RBPID @ PF-NO-VARIANT s" f0" 1 0 1 0 CELL CELL PF-FLAGS-NONE TWX-PF-ADD PFTX !
+PFTX @ RBPID @ PF-NO-VARIANT s" f1" 1 1 1 CELL CELL CELL PF-FLAGS-NONE TWX-PF-ADD PFTX !
+PFTX @ TWX-PF-COMMIT
+
+\ nested rollback scrubs the retired provisional row to canonical zero.
+TWX-PF-BEGIN PFTX !
+PFTX @ RBPID @ PF-NO-VARIANT s" prov" 1 6 1 6 cells CELL CELL PF-FLAGS-NONE TWX-PF-ADD PFTX !
+TYPE-FIELD:COUNT RBIDX !            \ provisional row index (== committed high-water)
+RBIDX @ 5 TWX-PF-RAW@ 6 T=          \ SLOT field (cell 5) is written = 6 while provisional
+PFTX @ TWX-PF-ROLLBACK
+RBIDX @ 0 TWX-PF-RAW@ 0 T=          \ FAM scrubbed
+RBIDX @ 5 TWX-PF-RAW@ 0 T=          \ SLOT scrubbed
+RBIDX @ 10 TWX-PF-RAW@ 0 T=         \ FLAGS scrubbed
+
+\ persistence zero-fills the unused capacity: plant garbage in the first unused
+\ tail slot, persist, and prove it bakes as canonical zero while committed rows
+\ survive the bake (AOT restore fidelity).
+TYPE-FIELD:COUNT RBCN !
+TWX-PF-CAP RBCN @ > -1 T=           \ there is unused tail capacity to fill
+$5eed RBCN @ 3 TWX-PF-RAW!
+RBCN @ 3 TWX-PF-RAW@ $5eed T=       \ planted garbage in the unused tail
+TWX-TFAM-SNAPSHOT-PERSIST
+RBCN @ 3 TWX-PF-RAW@ 0 T=           \ persist scrubbed the unused capacity to zero
+RBPID @ TYPE-FIELD:NO-VARIANT s" f0" TYPE-FIELD:FIND FOUNDF ! drop FOUNDF @ -1 T=
+RBPID @ TYPE-FIELD:NO-VARIANT s" f1" TYPE-FIELD:FIND FOUNDF ! drop FOUNDF @ -1 T=
+
+\ ---------------------------------------------------------------------------
 \ report: "ok" on success, nonzero exit on any failure.
 \ ---------------------------------------------------------------------------
 : REPORT ( -- )
