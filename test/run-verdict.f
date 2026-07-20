@@ -67,7 +67,7 @@ private
    {: a :}
    s" perf-verdict: performance=" type name nameu type
    s"  correctness=" type a PERF-VERDICT:CORRECT? TF$ type
-   s"  attempts=" type ATTEMPTS @ .U cr ;
+   s"  attempts=" type ATTEMPTS @ FMT:.U cr ;
 
 \ ---- the retry driver ------------------------------------------------------
 \ Marginal-but-admissible attempt 1: run exactly two more fresh attempts and
@@ -109,7 +109,7 @@ public
 private
 
 : SB-FLD ( ptr u8 n n -- ) {: v:n :}          \ append TAB key '=' value into the SB
-   TRV-TAB SB-APPEND-C SB-APPEND TRV-EQ SB-APPEND-C v SB-U ;
+   TRV-TAB SB-APPEND-C SB-APPEND TRV-EQ SB-APPEND-C v FMT:SB-U ;
 
 : SB-BOOL-FLD ( ptr u8 n bool -- )
    if 1 else 0 then SB-FLD ;

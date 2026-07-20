@@ -231,8 +231,8 @@ private
 : GA-T-C ( n -- ) {: c:n :}
    1 GA-T-CK  c GA-TEXT GA-TEXT-U @ + c!  GA-TEXT-U @ 1+ GA-TEXT-U ! ;
 : GA-T-NL ( -- )  $0A GA-T-C ;
-: GA-T-INT ( n -- )  SB-RESET SB-INT SB$ GA-T+ ;
-: GA-T-FLOAT ( r -- )  SB-RESET GA-DECIMALS SB-FIX SB$ GA-T+ ;
+: GA-T-INT ( n -- )  SB-RESET FMT:SB-INT SB$ GA-T+ ;
+: GA-T-FLOAT ( r -- )  SB-RESET GA-DECIMALS FMT:SB-FIX SB$ GA-T+ ;
 : GA-T-KEY ( ptr u8 n -- )  GA-T+ s" : " GA-T+ ;          \ "key: "
 : GA-T-IKEY ( ptr u8 n n -- ) {: idx:n :}  GA-T+ $2E GA-T-C idx GA-T-INT ;   \ "prefix.<idx>"
 : GA-WRITE-SHAPE ( CAD-KIND:rows CAD-KIND:cols -- )
@@ -304,7 +304,7 @@ private
 : GA-KEY+ ( ptr u8 n -- ) {: a:ptr u:n :}
    a GA-KEY GA-KEY-U @ + u BYTE-COPY  GA-KEY-U @ u + GA-KEY-U ! ;
 : GA-KEY-C ( n -- ) {: c:n :}  c GA-KEY GA-KEY-U @ + c!  GA-KEY-U @ 1+ GA-KEY-U ! ;
-: GA-KEY-INT ( n -- )  SB-RESET SB-INT SB$ GA-KEY+ ;
+: GA-KEY-INT ( n -- )  SB-RESET FMT:SB-INT SB$ GA-KEY+ ;
 : GA-IN-KEY$ ( n ptr u8 n -- ptr u8 n ) {: i:n sa:ptr su:n :}   \ i suffix -> "input.<i><suffix>"
    GA-KEY-RESET  s" input" GA-KEY+  $2E GA-KEY-C
    i GA-KEY-INT  sa su GA-KEY+  GA-KEY GA-KEY-U @ ;

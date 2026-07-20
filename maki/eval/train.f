@@ -24,7 +24,7 @@ package MAKI
    if s" yes" type exit then
    s" no" type ;
 
-: ET-INT ( n -- )  SB-RESET SB-INT SB$ type ;
+: ET-INT ( n -- )  SB-RESET FMT:SB-INT SB$ type ;
 
 : ET-CELL ( n -- )  s"  | " type ET-INT ;
 

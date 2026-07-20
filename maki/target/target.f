@@ -101,12 +101,12 @@ $100000001b3 constant TGT-HASH-PRIME
    DESC-UN
    {: isa:n arch:n warp:n threads:n shared:n caps:n :}
    SB-RESET
-   s" isa=" SB-APPEND isa SB-INT
-   s" |arch=" SB-APPEND arch SB-INT
-   s" |warp=" SB-APPEND warp SB-INT
-   s" |threads=" SB-APPEND threads SB-INT
-   s" |shared=" SB-APPEND shared SB-INT
-   s" |caps=" SB-APPEND caps SB-INT
+   s" isa=" SB-APPEND isa FMT:SB-INT
+   s" |arch=" SB-APPEND arch FMT:SB-INT
+   s" |warp=" SB-APPEND warp FMT:SB-INT
+   s" |threads=" SB-APPEND threads FMT:SB-INT
+   s" |shared=" SB-APPEND shared FMT:SB-INT
+   s" |caps=" SB-APPEND caps FMT:SB-INT
    SB$ ;
 
 : CK@ ( n -- ptr u8 )   CK-BYTES * TGT-CK + ;   \ per-id content-key slot base

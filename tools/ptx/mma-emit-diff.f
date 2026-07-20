@@ -35,7 +35,7 @@ package MMAEMITDIFF
 
 \ set every knob (stack top = bpad, bottom = bk), print a header naming the config,
 \ emit the MMM PTX to stdout, restore the defaults.
-: ED#  ( n -- )  SB-INT s"  " SB-APPEND ;               \ append "n " to the header string builder
+: ED#  ( n -- )  FMT:SB-INT s"  " SB-APPEND ;               \ append "n " to the header string builder
 \ fp16 tile (MMA-DTYPE=1) with the transposed-Bs feed OFF (MMA-BTF16 defaults 0): proves the fp16
 \ DEFAULT B-feed path stays BYTE-IDENTICAL across this change. Does NOT touch MMA-BTF16, so this harness
 \ still loads against the pre-change (base) cg-mma.f for the base-vs-branch diff. Restores MMA-DTYPE=0.

@@ -238,7 +238,7 @@ EV-CAP TYPED-BUFFER EENERGY reading
 \ ---- reading helpers -------------------------------------------------------------
 : RD-APPEND ( reading -- )                     \ "<value>:<unit>" or "na:<absence>" onto the live SB
    MATCH reading
-      rd-at OF  swap SB-INT s" :" SB-APPEND U-NAME SB-APPEND ENDOF
+      rd-at OF  swap FMT:SB-INT s" :" SB-APPEND U-NAME SB-APPEND ENDOF
       rd-na OF  s" na:" SB-APPEND ABS$ SB-APPEND ENDOF
    ;MATCH ;
 

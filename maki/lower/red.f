@@ -359,17 +359,17 @@ private
    LRED-NIN @ 0 ?do
       i LRED-REF@ MVW-RESOLVE-OFF {: off:n :}
       off 0 > if
-         SB-RESET s" add.u64 %rd" CG-S i 1+ SB-U s" , %rd" CG-S i 1+ SB-U s" , " CG-S off SB-U s" ;" CG-S CG-LINE
+         SB-RESET s" add.u64 %rd" CG-S i 1+ FMT:SB-U s" , %rd" CG-S i 1+ FMT:SB-U s" , " CG-S off FMT:SB-U s" ;" CG-S CG-LINE
       then
    loop ;
 
 \ ---- entry / regs / params scaffolding (K inputs + output + k) --------------
 \ RGN>RAW is the one kernel-name render boundary (REGION_<rid>)
-: LRED-KNAME ( -- )  s" REGION_" CG-S 0 LRED-RID @ RGN>RAW SB-U ;
+: LRED-KNAME ( -- )  s" REGION_" CG-S 0 LRED-RID @ RGN>RAW FMT:SB-U ;
 : LRED-ENTRY ( -- )
    SB-RESET
    s" .visible .entry " CG-S LRED-KNAME s" (" CG-S
-   LRED-NIN @ 0 ?do  s" .param .u64 p_in" CG-S i SB-U s" , " CG-S  loop
+   LRED-NIN @ 0 ?do  s" .param .u64 p_in" CG-S i FMT:SB-U s" , " CG-S  loop
    s" .param .u64 p_out, .param .u32 p_k)" CG-S
    CG-LINE ;
 : LRED-OPEN ( -- )
@@ -378,12 +378,12 @@ private
    s" .reg .f32 %f<256>;" PTX-L
    s" .reg .b32 %r<128>;" PTX-L
    s" .reg .b64 %rd<64>;" PTX-L
-   SB-RESET s" .shared .align 4 .b8 SMEM[" CG-S LRED-SMEM-BYTES SB-U s" ];" CG-S CG-LINE ;
+   SB-RESET s" .shared .align 4 .b8 SMEM[" CG-S LRED-SMEM-BYTES FMT:SB-U s" ];" CG-S CG-LINE ;
 : LRED-PARAMS ( -- )
    LRED-NIN @ 0 ?do
-      SB-RESET s" ld.param.u64 %rd" CG-S i 1+ SB-U s" , [p_in" CG-S i SB-U s" ];" CG-S CG-LINE
+      SB-RESET s" ld.param.u64 %rd" CG-S i 1+ FMT:SB-U s" , [p_in" CG-S i FMT:SB-U s" ];" CG-S CG-LINE
    loop
-   SB-RESET s" ld.param.u64 %rd" CG-S LRED-NIN @ 1+ SB-U s" , [p_out];" CG-S CG-LINE
+   SB-RESET s" ld.param.u64 %rd" CG-S LRED-NIN @ 1+ FMT:SB-U s" , [p_out];" CG-S CG-LINE
    s" ld.param.u32 %r1, [p_k];" PTX-L ;
 : LRED-RESET-REGS ( -- )                         \ counters after the K+1 param loads (k = %r1)
    1 CG-NF !  LRED-NIN @ 2 + CG-NRD !  2 CG-NR !  1 CG-NP !  0 CG-NL ! ;

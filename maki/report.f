@@ -220,7 +220,7 @@ create G-RL  MAKI:G-N cells allot
    {: a:ptr u:n :}
    0 begin dup u < while  dup a + c@ OUT-C  1+  repeat drop ;
 
-: OUT-INT ( n -- )  SB-RESET SB-INT SB$ OUT+ ; \ SB is number-format scratch
+: OUT-INT ( n -- )  SB-RESET FMT:SB-INT SB$ OUT+ ; \ SB is number-format scratch
 : OUT-NL ( -- )  $0A OUT-C ;
 : OUT$ ( -- ptr u8 n )  RPT-OUT RPT-OUT-U @ ;
 

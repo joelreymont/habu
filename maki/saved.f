@@ -103,8 +103,8 @@ private
 
 \ ---- report row (one decision per needed tensor) ---------------------------
 : SV-REF+ ( MIR:operand-ref -- ) {: r:MIR:operand-ref :}   \ append "n<idx>" or "i<slot>"
-   r MIR-REF-INPUT? if s" i" SB-APPEND r MIR-REF-SLOT SLOT>RAW SB-INT
-   else s" n" SB-APPEND r MIR-REF-NODE NODE>RAW SB-INT then ;
+   r MIR-REF-INPUT? if s" i" SB-APPEND r MIR-REF-SLOT SLOT>RAW FMT:SB-INT
+   else s" n" SB-APPEND r MIR-REF-NODE NODE>RAW FMT:SB-INT then ;
 
 : SV-CMP+ ( n n -- ) {: s:n r:n :}              \ the honest save-vs-recompute operator
    s r < if s" < " else s r = if s" = " else s" > " then then SB-APPEND ;
@@ -117,9 +117,9 @@ private
    floor if s"  (matmul operand; policy floor)" SB-APPEND SB$ exit then
    ref SV-RECOMPUTABLE? 0= if s"  (model input; not recomputable)" SB-APPEND SB$ exit then
    ref SAVED-SAVE-COST {: sc:n :}  ref SAVED-RECOMPUTE-COST {: rc:n :}
-   s"  (save " SB-APPEND sc SB-INT s" B " SB-APPEND
+   s"  (save " SB-APPEND sc FMT:SB-INT s" B " SB-APPEND
    sc rc SV-CMP+
-   s" recompute " SB-APPEND rc SB-INT s" B)" SB-APPEND SB$ ;
+   s" recompute " SB-APPEND rc FMT:SB-INT s" B)" SB-APPEND SB$ ;
 
 \ SAVE-INPUT saves every forward operand the adjoint reads (unary -> operand 0;
 \ mul/matmul -> both). The policy floor rides through as the matmul-class flag.

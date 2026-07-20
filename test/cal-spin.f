@@ -37,4 +37,4 @@ public
 
 ;package
 
-CAL-SPIN:MS .U cr
+CAL-SPIN:MS FMT:.U cr

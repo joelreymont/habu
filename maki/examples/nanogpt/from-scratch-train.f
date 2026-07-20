@@ -233,12 +233,12 @@ public
 : SCRATCH-REPORT ( -- ptr u8 n )
    SC-CK
    SB-RESET
-   s" scratch.seed data=" SB-APPEND SC-DATA-SEED SB-INT
-   s"  param=" SB-APPEND SC-PARAM-SEED SB-INT
-   s"  steps=" SB-APPEND SC-STEPS@ SB-INT
-   s"  init-mNLL=" SB-APPEND SC-INITIAL@ SC-MILLI SB-INT
-   s"  final-mNLL=" SB-APPEND SC-FINAL@ SC-MILLI SB-INT
-   s"  converged=" SB-APPEND SC-CONVERGED? if 1 else 0 then SB-INT
+   s" scratch.seed data=" SB-APPEND SC-DATA-SEED FMT:SB-INT
+   s"  param=" SB-APPEND SC-PARAM-SEED FMT:SB-INT
+   s"  steps=" SB-APPEND SC-STEPS@ FMT:SB-INT
+   s"  init-mNLL=" SB-APPEND SC-INITIAL@ SC-MILLI FMT:SB-INT
+   s"  final-mNLL=" SB-APPEND SC-FINAL@ SC-MILLI FMT:SB-INT
+   s"  converged=" SB-APPEND SC-CONVERGED? if 1 else 0 then FMT:SB-INT
    SB$ ;
 
 ;package

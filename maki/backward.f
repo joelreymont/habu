@@ -520,21 +520,21 @@ public
 
 \ ---- report: the seed, the backward node count, and each model input's gradient --
 : BW-SEED-ROW$ ( -- ptr u8 n )
-   SB-RESET s" backward.seed: input " SB-APPEND BW-SEED @ SLOT>RAW SB-INT
-   s"  (cotangent for node " SB-APPEND BW-FWD-N @ 1- SB-INT s" )" SB-APPEND SB$ ;
+   SB-RESET s" backward.seed: input " SB-APPEND BW-SEED @ SLOT>RAW FMT:SB-INT
+   s"  (cotangent for node " SB-APPEND BW-FWD-N @ 1- FMT:SB-INT s" )" SB-APPEND SB$ ;
 
 : BW-COUNT-ROW$ ( -- ptr u8 n )
-   SB-RESET s" backward.nodes: fwd=" SB-APPEND BW-FWD-N @ SB-INT
-   s"  bwd=" SB-APPEND NODE-COUNT@ CAD-NUM:BW-IC>N BW-FWD-N @ - SB-INT SB$ ;
+   SB-RESET s" backward.nodes: fwd=" SB-APPEND BW-FWD-N @ FMT:SB-INT
+   s"  bwd=" SB-APPEND NODE-COUNT@ CAD-NUM:BW-IC>N BW-FWD-N @ - FMT:SB-INT SB$ ;
 
 : BW-GRAD-ROW$ ( MIR:input-slot -- ptr u8 n ) {: s:MIR:input-slot :}
-   SB-RESET s" backward.grad: input " SB-APPEND s SLOT>RAW SB-INT
+   SB-RESET s" backward.grad: input " SB-APPEND s SLOT>RAW FMT:SB-INT
    s MIR-IN-REF {: ref:MIR:operand-ref :}
    ref BW-HAS? 0= if s"  none" SB-APPEND SB$ exit then
    ref BW-GET {: g:MIR:operand-ref :}
    g MIR-REF-INPUT?
-   if s"  <- input " SB-APPEND g MIR-REF-SLOT SLOT>RAW SB-INT
-   else s"  <- node " SB-APPEND g MIR-REF-NODE NODE>RAW SB-INT then  SB$ ;
+   if s"  <- input " SB-APPEND g MIR-REF-SLOT SLOT>RAW FMT:SB-INT
+   else s"  <- node " SB-APPEND g MIR-REF-NODE NODE>RAW FMT:SB-INT then  SB$ ;
 
 : BW-INTO ( report -- report )
    BW-CK

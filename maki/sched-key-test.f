@@ -228,7 +228,7 @@ SK-TAB-COUNT 1 T=
 \ arena bytes), so the entry vectors double and the key arena reallocates;
 \ every selection - first, boundary, last - must survive the relocations.
 : KT-PAD ( -- )  128 0 ?do $78 SB-APPEND-C loop ;           \ 128 x'es pad the key
-: KT-GROW-KEY$ ( n -- ptr u8 n ) {: k:n :}  SB-RESET KT-PAD k SB-INT SB$ ;
+: KT-GROW-KEY$ ( n -- ptr u8 n ) {: k:n :}  SB-RESET KT-PAD k FMT:SB-INT SB$ ;
 : KT-GROW-PUT ( n -- ) {: k:n :}  k KT-GROW-KEY$ k SK-PUT ;
 : KT-GROW-FILL ( -- )  SK-TAB-RESET 64 0 ?do i KT-GROW-PUT loop ;
 : KT-GROW-GET ( n -- n bool )  KT-GROW-KEY$ SK-GET ;

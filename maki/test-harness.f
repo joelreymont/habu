@@ -24,7 +24,7 @@ variable START-NS
    RUN-A @ RUN-U @ ;
 
 : NUM-TYPE ( n -- )
-   SB-RESET SB-INT SB$ type ;
+   SB-RESET FMT:SB-INT SB$ type ;
 
 : INCLUDE-CURRENT ( -- )
    CURRENT$ included ;

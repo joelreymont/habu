@@ -172,30 +172,30 @@ private
 \ ---- rendered candidate rows (append into the shared string builder) --------
 : EW-CAND+ ( n -- ) {: idx:n :}
    idx EW-DECODE {: block:n vec:n gs:n :}
-   s" elementwise-v1 block=" SB-APPEND block SB-INT
-   s"  vec=" SB-APPEND vec SB-INT
+   s" elementwise-v1 block=" SB-APPEND block FMT:SB-INT
+   s"  vec=" SB-APPEND vec FMT:SB-INT
    s"  grid-stride=" SB-APPEND gs YN+ ;
 
 : RR-CAND+ ( n -- ) {: idx:n :}
    idx RR-DECODE {: lanes:n rows:n vec:n :}
-   s" row-reduce-v1 lanes=" SB-APPEND lanes SB-INT
-   s"  rows=" SB-APPEND rows SB-INT
-   s"  vec=" SB-APPEND vec SB-INT ;
+   s" row-reduce-v1 lanes=" SB-APPEND lanes FMT:SB-INT
+   s"  rows=" SB-APPEND rows FMT:SB-INT
+   s"  vec=" SB-APPEND vec FMT:SB-INT ;
 
 : SM-CAND+ ( n -- ) {: idx:n :}
    idx SM-DECODE {: lanes:n rows:n vec:n online:n :}
-   s" softmax-row-v1 lanes=" SB-APPEND lanes SB-INT
-   s"  rows=" SB-APPEND rows SB-INT
-   s"  vec=" SB-APPEND vec SB-INT
+   s" softmax-row-v1 lanes=" SB-APPEND lanes FMT:SB-INT
+   s"  rows=" SB-APPEND rows FMT:SB-INT
+   s"  vec=" SB-APPEND vec FMT:SB-INT
    s"  online=" SB-APPEND online YN+ ;
 
 : GEMM-CAND+ ( n -- ) {: idx:n :}
    idx GEMM-DECODE {: bm:n bn:n bk:n warps:n stages:n :}
-   s" gemm-tf32-v1 bm=" SB-APPEND bm SB-INT
-   s"  bn=" SB-APPEND bn SB-INT
-   s"  bk=" SB-APPEND bk SB-INT
-   s"  warps=" SB-APPEND warps SB-INT
-   s"  stages=" SB-APPEND stages SB-INT ;
+   s" gemm-tf32-v1 bm=" SB-APPEND bm FMT:SB-INT
+   s"  bn=" SB-APPEND bn FMT:SB-INT
+   s"  bk=" SB-APPEND bk FMT:SB-INT
+   s"  warps=" SB-APPEND warps FMT:SB-INT
+   s"  stages=" SB-APPEND stages FMT:SB-INT ;
 
 : DEC-CAND+ ( n -- ) {: idx:n :}
    idx DEC-DECODE {: br:n ballot:n :}
@@ -255,7 +255,7 @@ public
 
 \ render "region=<r> <candidate row>" for a schedule's fields
 : SCHED-ROW$ ( n n n -- ptr u8 n ) {: region:n fam:n cand:n :}
-   SB-RESET  s" region=" SB-APPEND  region SB-INT  $20 SB-APPEND-C
+   SB-RESET  s" region=" SB-APPEND  region FMT:SB-INT  $20 SB-APPEND-C
    fam cand CAND+  SB$ ;
 
 ;package

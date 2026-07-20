@@ -117,11 +117,11 @@ package MAKI
    FP-REGION-COUNT 0 ?do  i FP-REGION-ID ODV-ASSEMBLE-REGION  loop ;
 
 \ ---- per-element evidence (final device output | onnxruntime reference) ----
-: ODV-FP ( r -- )  SB-RESET 6 SB-FIX SB$ type ;
+: ODV-FP ( r -- )  SB-RESET 6 FMT:SB-FIX SB$ type ;
 : ODV-EVIDENCE ( -- )
    s" elem   device        ort_f32" type cr
    ONNX-ORT-TEST:ODV-YN 0 ?do
-      s"   " type i SB-RESET SB-INT SB$ type s"    " type
+      s"   " type i SB-RESET FMT:SB-INT SB$ type s"    " type
       i LLA-OUT@ ODV-FP  s"    " type  i ODV-Y@ ODV-FP  cr
    loop ;
 
@@ -134,7 +134,7 @@ package MAKI
    LLA-ELEMS@ ONNX-ORT-TEST:ODV-YN T=              \ device output element count == reference count
    MDL-COUNT-REGIONS                               \ tally regions for the composed tolerance
    s" lower-onnx-device-golden: device vs onnxruntime (" type
-      MDL-N-REGIONS@ SB-RESET SB-INT SB$ type s"  regions)" type cr
+      MDL-N-REGIONS@ SB-RESET FMT:SB-INT SB$ type s"  regions)" type cr
    ODV-EVIDENCE
    ODV-DEV-ATOL {: atol:r :}  ODV-DEV-RTOL {: rtol:r :}
    ONNX-ORT-TEST:ODV-YN 0 ?do

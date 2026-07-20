@@ -34,7 +34,7 @@ create MA-QO $1000 allot  create MA-QE $1000 allot
 variable MA-DA  variable MA-DB  variable MA-DC
 variable MA-NV                           \ M=N=K (square) kernel param
 
-: MA-INT. ( n -- )  SB-RESET SB-INT SB$ type ;
+: MA-INT. ( n -- )  SB-RESET FMT:SB-INT SB$ type ;
 
 : MA-ASSEMBLE ( -- )                     \ captured PTX -> ptxas cubin (die on rc<>0)
    PTXTC:PTX$ PTX-CAPTURE$ WRITE-ALL

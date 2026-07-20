@@ -241,11 +241,11 @@ private
 
 \ ---- entry / regs / params scaffolding (K inputs + output + n) --------------
 \ RGN>RAW is the one kernel-name render boundary (REGION_<rid>)
-: LEW-KNAME ( -- )  s" REGION_" CG-S 0 LEW-RID @ RGN>RAW SB-U ;
+: LEW-KNAME ( -- )  s" REGION_" CG-S 0 LEW-RID @ RGN>RAW FMT:SB-U ;
 : LEW-ENTRY ( -- )
    SB-RESET
    s" .visible .entry " CG-S LEW-KNAME s" (" CG-S
-   LEW-NIN @ 0 ?do  s" .param .u64 p_in" CG-S i SB-U s" , " CG-S  loop
+   LEW-NIN @ 0 ?do  s" .param .u64 p_in" CG-S i FMT:SB-U s" , " CG-S  loop
    s" .param .u64 p_out, .param .u32 p_n)" CG-S
    CG-LINE ;
 : LEW-OPEN ( -- )
@@ -256,9 +256,9 @@ private
    s" .reg .b64 %rd<64>;" PTX-L ;
 : LEW-PARAMS ( -- )
    LEW-NIN @ 0 ?do
-      SB-RESET s" ld.param.u64 %rd" CG-S i 1+ SB-U s" , [p_in" CG-S i SB-U s" ];" CG-S CG-LINE
+      SB-RESET s" ld.param.u64 %rd" CG-S i 1+ FMT:SB-U s" , [p_in" CG-S i FMT:SB-U s" ];" CG-S CG-LINE
    loop
-   SB-RESET s" ld.param.u64 %rd" CG-S LEW-NIN @ 1+ SB-U s" , [p_out];" CG-S CG-LINE
+   SB-RESET s" ld.param.u64 %rd" CG-S LEW-NIN @ 1+ FMT:SB-U s" , [p_out];" CG-S CG-LINE
    s" ld.param.u32 %r1, [p_n];" PTX-L ;
 : LEW-RESET-REGS ( -- )                          \ counters after the K+1 param loads (n = %r1)
    1 CG-NF !  LEW-NIN @ 2 + CG-NRD !  2 CG-NR !  1 CG-NP !  0 CG-NL ! ;
@@ -341,7 +341,7 @@ private
       ref MVW-STAGED? 0= if
          ref MVW-RESOLVE-OFF {: off:n :}
          off 0 > if
-            SB-RESET s" add.u64 %rd" CG-S i 1+ SB-U s" , %rd" CG-S i 1+ SB-U s" , " CG-S off SB-U s" ;" CG-S CG-LINE
+            SB-RESET s" add.u64 %rd" CG-S i 1+ FMT:SB-U s" , %rd" CG-S i 1+ FMT:SB-U s" , " CG-S off FMT:SB-U s" ;" CG-S CG-LINE
          then
       then
    loop ;
@@ -379,7 +379,7 @@ create LEW-DRV LEW-DRV-CAP allot  variable LEW-DRV-U
    LEW-DRV-U @ 1+ LEW-DRV-CAP > if E-LEW-CAP throw then
    c LEW-DRV LEW-DRV-U @ + c!  LEW-DRV-U @ 1+ LEW-DRV-U ! ;
 : LEW-D-NL ( -- )  $0A LEW-D-C ;
-: LEW-D-INT ( n -- )  SB-RESET SB-INT SB$ LEW-D+ ;
+: LEW-D-INT ( n -- )  SB-RESET FMT:SB-INT SB$ LEW-D+ ;
 
 public
 \ Write a child driver that requires cad.f + `reqa/requ` (the owning lowering file),

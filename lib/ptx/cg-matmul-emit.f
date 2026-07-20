@@ -86,7 +86,7 @@ MM-ASB 16 / 256 / constant MM-CPN        \ cp.async 16B chunks/thread per array 
 
 : MM-ACC-ZERO-EMIT ( -- )
    16 0 do
-      SB-RESET s" mov.f32 %f" SB-APPEND 10 i + SB-U s" ,0f00000000;" SB-APPEND SB$ PTX-L
+      SB-RESET s" mov.f32 %f" SB-APPEND 10 i + FMT:SB-U s" ,0f00000000;" SB-APPEND SB$ PTX-L
    loop ;
 
 \ As/Bs micro-tile bases WITHIN a given buffer base register (%r16 = SH + parity*MM-BUFB):
@@ -94,34 +94,34 @@ MM-ASB 16 / 256 / constant MM-CPN        \ cp.async 16B chunks/thread per array 
 : MM-CUR-BASES ( -- )
    s" shl.b32 %r12,%r5,9;" PTX-L  s" add.u32 %r12,%r16,%r12;" PTX-L
    s" shl.b32 %r13,%r4,4;" PTX-L  s" add.u32 %r13,%r16,%r13;" PTX-L
-   SB-RESET s" add.u32 %r13,%r13," SB-APPEND MM-ASB SB-U s" ;" SB-APPEND SB$ PTX-L ;
+   SB-RESET s" add.u32 %r13,%r13," SB-APPEND MM-ASB FMT:SB-U s" ;" SB-APPEND SB$ PTX-L ;
 
 \ cp.async staging (step 2B): one 16B (4-float) chunk-pair (As+Bs) for chunk-set m,
 \ copied DIRECTLY global->shared with cp.async.cg (no register round-trip, no st.shared).
 \ chunk c = tid_lin + m*256; As chunk = As[c>>3][(c&7)*4], Bs chunk = Bs[c>>4][(c&15)*4].
 \ `bufr`/`ktr` are the dst-buffer-base and kt register numbers (prologue: 11/14; prefetch: 18/17).
 : MM-CP-CHUNK ( n n n -- ) {: m:n bufr:n ktr:n :}   \ m=chunk-set, bufr=dst-buffer reg#, ktr=kt reg#
-   SB-RESET s" add.u32 %r20,%r8," SB-APPEND m 256 * SB-U s" ;" SB-APPEND SB$ PTX-L   \ c = tid_lin + m*256
+   SB-RESET s" add.u32 %r20,%r8," SB-APPEND m 256 * FMT:SB-U s" ;" SB-APPEND SB$ PTX-L   \ c = tid_lin + m*256
    \ --- As: row=c>>3, k=(c&7)*4 ; src A[rowBase+row][kt+k] ; dst buf + c*16 ---
    s" shr.u32 %r21,%r20,3;" PTX-L
    s" and.b32 %r22,%r20,7;" PTX-L  s" shl.b32 %r22,%r22,2;" PTX-L
    s" add.u32 %r23,%r9,%r21;" PTX-L
-   SB-RESET s" mad.lo.u32 %r23,%r23,%r3,%r" SB-APPEND ktr SB-U s" ;" SB-APPEND SB$ PTX-L
+   SB-RESET s" mad.lo.u32 %r23,%r23,%r3,%r" SB-APPEND ktr FMT:SB-U s" ;" SB-APPEND SB$ PTX-L
    s" add.u32 %r23,%r23,%r22;" PTX-L
    s" mul.wide.u32 %rd10,%r23,4;" PTX-L  s" add.u64 %rd11,%rd1,%rd10;" PTX-L
    s" shl.b32 %r23,%r20,4;" PTX-L
-   SB-RESET s" add.u32 %r23,%r" SB-APPEND bufr SB-U s" ,%r23;" SB-APPEND SB$ PTX-L
+   SB-RESET s" add.u32 %r23,%r" SB-APPEND bufr FMT:SB-U s" ,%r23;" SB-APPEND SB$ PTX-L
    s" cp.async.cg.shared.global [%r23],[%rd11],16;" PTX-L
    \ --- Bs: k=c>>4, col=(c&15)*4 ; src B[kt+k][colBase+col] ; dst buf + MM-ASB + c*16 ---
    s" shr.u32 %r21,%r20,4;" PTX-L
    s" and.b32 %r22,%r20,15;" PTX-L  s" shl.b32 %r22,%r22,2;" PTX-L
-   SB-RESET s" add.u32 %r23,%r" SB-APPEND ktr SB-U s" ,%r21;" SB-APPEND SB$ PTX-L
+   SB-RESET s" add.u32 %r23,%r" SB-APPEND ktr FMT:SB-U s" ,%r21;" SB-APPEND SB$ PTX-L
    s" mad.lo.u32 %r23,%r23,%r2,%r10;" PTX-L
    s" add.u32 %r23,%r23,%r22;" PTX-L
    s" mul.wide.u32 %rd10,%r23,4;" PTX-L  s" add.u64 %rd11,%rd2,%rd10;" PTX-L
    s" shl.b32 %r23,%r20,4;" PTX-L
-   SB-RESET s" add.u32 %r23,%r" SB-APPEND bufr SB-U s" ,%r23;" SB-APPEND SB$ PTX-L
-   SB-RESET s" add.u32 %r23,%r23," SB-APPEND MM-ASB SB-U s" ;" SB-APPEND SB$ PTX-L
+   SB-RESET s" add.u32 %r23,%r" SB-APPEND bufr FMT:SB-U s" ,%r23;" SB-APPEND SB$ PTX-L
+   SB-RESET s" add.u32 %r23,%r23," SB-APPEND MM-ASB FMT:SB-U s" ;" SB-APPEND SB$ PTX-L
    s" cp.async.cg.shared.global [%r23],[%rd11],16;" PTX-L ;
 
 \ stage one whole K-tile (all As+Bs chunks) into buffer `bufr` from column `ktr`
@@ -137,17 +137,17 @@ MM-ASB 16 / 256 / constant MM-CPN        \ cp.async 16B chunks/thread per array 
 \ verbatim; MM-KSTEP's own emission is byte-identical to the pre-split form.
 : MM-KSTEP-A ( n -- ) {: k:n :}            \ 4 strided scalar A loads (%f26..29) for column k
    MM-TM 0 do
-      SB-RESET s" ld.shared.f32 %f" SB-APPEND 26 i + SB-U s" ,[%r12+" SB-APPEND  i 128 * k 4 * +  SB-U s" ];" SB-APPEND SB$ PTX-L
+      SB-RESET s" ld.shared.f32 %f" SB-APPEND 26 i + FMT:SB-U s" ,[%r12+" SB-APPEND  i 128 * k 4 * +  FMT:SB-U s" ];" SB-APPEND SB$ PTX-L
    loop ;
 
 : MM-KSTEP-B ( n -- ) {: k:n :}            \ one contiguous ld.shared.v4 B load (%f30..33)
-   SB-RESET s" ld.shared.v4.f32 {%f30,%f31,%f32,%f33},[%r13+" SB-APPEND  k 256 *  SB-U s" ];" SB-APPEND SB$ PTX-L ;
+   SB-RESET s" ld.shared.v4.f32 {%f30,%f31,%f32,%f33},[%r13+" SB-APPEND  k 256 *  FMT:SB-U s" ];" SB-APPEND SB$ PTX-L ;
 
 : MM-KSTEP-FMA ( -- )                      \ the 4x4 = 16 register-blocked FMAs
    MM-TM 0 do  MM-TM 0 do                     \ j=outer(tile-row), i=inner(tile-col)
-      SB-RESET s" fma.rn.f32 %f" SB-APPEND  10 j 4 * + i +  SB-U
-               s" ,%f" SB-APPEND 26 j + SB-U  s" ,%f" SB-APPEND 30 i + SB-U
-               s" ,%f" SB-APPEND 10 j 4 * + i + SB-U  s" ;" SB-APPEND SB$ PTX-L
+      SB-RESET s" fma.rn.f32 %f" SB-APPEND  10 j 4 * + i +  FMT:SB-U
+               s" ,%f" SB-APPEND 26 j + FMT:SB-U  s" ,%f" SB-APPEND 30 i + FMT:SB-U
+               s" ,%f" SB-APPEND 10 j 4 * + i + FMT:SB-U  s" ;" SB-APPEND SB$ PTX-L
    loop loop ;
 
 : MM-KSTEP ( n -- )
@@ -158,12 +158,12 @@ MM-ASB 16 / 256 / constant MM-CPN        \ cp.async 16B chunks/thread per array 
    s" shl.b32 %r40,%r5,2;" PTX-L  s" add.u32 %r40,%r9,%r40;" PTX-L     \ cRow0 = rowBase+ty*4
    s" shl.b32 %r41,%r4,2;" PTX-L  s" add.u32 %r41,%r10,%r41;" PTX-L    \ cCol0 = colBase+tx*4
    MM-TM 0 do
-      SB-RESET s" add.u32 %r42,%r40," SB-APPEND i SB-U s" ;" SB-APPEND SB$ PTX-L
+      SB-RESET s" add.u32 %r42,%r40," SB-APPEND i FMT:SB-U s" ;" SB-APPEND SB$ PTX-L
       s" mad.lo.u32 %r43,%r42,%r2,%r41;" PTX-L
       MM-TM 0 do
-         SB-RESET s" add.u32 %r44,%r43," SB-APPEND i SB-U s" ;" SB-APPEND SB$ PTX-L
+         SB-RESET s" add.u32 %r44,%r43," SB-APPEND i FMT:SB-U s" ;" SB-APPEND SB$ PTX-L
          s" mul.wide.u32 %rd12,%r44,4;" PTX-L  s" add.u64 %rd12,%rd3,%rd12;" PTX-L
-         SB-RESET s" st.global.f32 [%rd12],%f" SB-APPEND 10 j 4 * + i + SB-U s" ;" SB-APPEND SB$ PTX-L
+         SB-RESET s" st.global.f32 [%rd12],%f" SB-APPEND 10 j 4 * + i + FMT:SB-U s" ;" SB-APPEND SB$ PTX-L
       loop
    loop ;
 
@@ -182,21 +182,21 @@ MM-ASB 16 / 256 / constant MM-CPN        \ cp.async 16B chunks/thread per array 
 : CPP-PARITY-INIT ( -- )   s" mov.u32 %r15,0;" PTX-L ;           \ double-buffer parity = 0
 : CPP-COMMIT ( -- )        s" cp.async.commit_group;" PTX-L ;    \ close the current cp.async issue group
 : CPP-WAIT ( n -- )                                              \ block until <= n committed groups remain in flight
-   SB-RESET s" cp.async.wait_group " SB-APPEND SB-U s" ;" SB-APPEND SB$ PTX-L ;
+   SB-RESET s" cp.async.wait_group " SB-APPEND FMT:SB-U s" ;" SB-APPEND SB$ PTX-L ;
 : CPP-SYNC ( -- )          s" bar.sync 0;" PTX-L ;               \ block barrier: staged tile visible / buffer-reuse fence
 : CPP-FLIP ( -- )          s" xor.b32 %r15,%r15,1;" PTX-L ;      \ rotate double-buffer parity for the next iteration
 : CPP-SINGLE-WINDOW ( -- ) s" mov.u32 %r16,%r11;" PTX-L ;        \ single-buffer read-window base = SH
 : CPP-CUR-WINDOW ( n -- )                                        \ read-window base %r16 = SH + parity*bufb
-   SB-RESET s" mul.lo.u32 %r16,%r15," SB-APPEND SB-U s" ;" SB-APPEND SB$ PTX-L
+   SB-RESET s" mul.lo.u32 %r16,%r15," SB-APPEND FMT:SB-U s" ;" SB-APPEND SB$ PTX-L
    s" add.u32 %r16,%r11,%r16;" PTX-L ;
 : CPP-NEXT-WINDOW ( n -- )                                       \ prefetch(other) window base %r18 = SH + (parity^1)*bufb
    s" xor.b32 %r18,%r15,1;" PTX-L
-   SB-RESET s" mul.lo.u32 %r18,%r18," SB-APPEND SB-U s" ;" SB-APPEND SB$ PTX-L
+   SB-RESET s" mul.lo.u32 %r18,%r18," SB-APPEND FMT:SB-U s" ;" SB-APPEND SB$ PTX-L
    s" add.u32 %r18,%r11,%r18;" PTX-L ;
 : CPP-KT-NEXT ( n -- )                                           \ next tile column %r17 = kt + bk
-   SB-RESET s" add.u32 %r17,%r14," SB-APPEND SB-U s" ;" SB-APPEND SB$ PTX-L ;
+   SB-RESET s" add.u32 %r17,%r14," SB-APPEND FMT:SB-U s" ;" SB-APPEND SB$ PTX-L ;
 : CPP-KT-ADVANCE ( n -- )                                        \ kt += bk
-   SB-RESET s" add.u32 %r14,%r14," SB-APPEND SB-U s" ;" SB-APPEND SB$ PTX-L ;
+   SB-RESET s" add.u32 %r14,%r14," SB-APPEND FMT:SB-U s" ;" SB-APPEND SB$ PTX-L ;
 : CPP-KGUARD ( -- )                                              \ loop head + exit test: $KLOOP: while kt < K
    s" $KLOOP:" PTX-L
    s" setp.ge.u32 %p1,%r14,%r3;" PTX-L  s" @%p1 bra $KEND;" PTX-L ;

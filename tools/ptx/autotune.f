@@ -274,7 +274,7 @@ public
 \ reviewed data). These append one tab-separated field into SB; the harness composes
 \ a row from them and reads it back with SB$.
 : AT-TAB ( -- )  9 SB-APPEND-C ;                     \ ASCII tab field separator
-: AT-FLD-N ( n -- )  SB-INT AT-TAB ;                 \ integer field + tab
+: AT-FLD-N ( n -- )  FMT:SB-INT AT-TAB ;                 \ integer field + tab
 : AT-FLD$ ( ptr u8 n -- )  SB-APPEND AT-TAB ;        \ string field + tab
 
 ;package

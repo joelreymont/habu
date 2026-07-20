@@ -460,7 +460,7 @@ public
    s" ld.param" SB-APPEND
    FD-CLASS k KB@ CLASS-PTX$ SB-APPEND
    FD-CLASS k KB@ CLASS-REG$ SB-APPEND
-   k FIELD-REG SB-U
+   k FIELD-REG FMT:SB-U
    s" , [p_" SB-APPEND
    k FD-NAME$ SB-APPEND
    s" ];" SB-APPEND

@@ -151,24 +151,24 @@ private
 \ ---- warning rows ----------------------------------------------------------
 \ Append shape dims into SB directly: MIR-*-SHAPE-KEY reset the shared SB and would
 \ clobber a row under construction, so we render "RxC" (unbound extent -> "?") here.
-: TRF-DIM+ ( n -- )  dup 0= if drop s" ?" SB-APPEND else SB-INT then ;
+: TRF-DIM+ ( n -- )  dup 0= if drop s" ?" SB-APPEND else FMT:SB-INT then ;
 : TRF-SHAPE+ ( CAD-KIND:rows CAD-KIND:cols -- )
    {: rows:CAD-KIND:rows cols:CAD-KIND:cols :}
    rows ROWS-RAW TRF-DIM+ $78 SB-APPEND-C cols COLS-RAW TRF-DIM+ ;
 
 : TRF-GATHERED-ROW$ ( CAD-KIND:node-id -- ptr u8 n )
    {: nd:CAD-KIND:node-id :}
-   SB-RESET s" traffic.gathered: node " SB-APPEND nd NODE>RAW SB-INT
+   SB-RESET s" traffic.gathered: node " SB-APPEND nd NODE>RAW FMT:SB-INT
    $20 SB-APPEND-C nd MIR-OP@ OPR-NAME SB-APPEND
    s"  indexed read (non-coalesced)" SB-APPEND SB$ ;
 
 : TRF-UNBOUND-SLOT$ ( MIR:input-slot -- ptr u8 n ) {: s:MIR:input-slot :}
-   SB-RESET s" traffic.unbound: input " SB-APPEND s SLOT>RAW SB-INT
+   SB-RESET s" traffic.unbound: input " SB-APPEND s SLOT>RAW FMT:SB-INT
    s"  shape " SB-APPEND s MIR-SLOT-ROWS@ s MIR-SLOT-COLS@ TRF-SHAPE+ SB$ ;
 
 : TRF-UNBOUND-NODE$ ( CAD-KIND:node-id -- ptr u8 n )
    {: nd:CAD-KIND:node-id :}
-   SB-RESET s" traffic.unbound: node " SB-APPEND nd NODE>RAW SB-INT
+   SB-RESET s" traffic.unbound: node " SB-APPEND nd NODE>RAW FMT:SB-INT
    $20 SB-APPEND-C nd MIR-OP@ OPR-NAME SB-APPEND
    s"  shape " SB-APPEND nd MIR-ROWS@ nd MIR-COLS@ TRF-SHAPE+ SB$ ;
 

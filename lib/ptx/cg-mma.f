@@ -298,11 +298,11 @@ variable MMA-GROUP   0 MMA-GROUP !            \ 0 = OFF (byte-identical); positi
 \ emit "%rDST = %rSRC * m": shl.b32 (power of two, byte-identical at m=128 -> shl 7) else mul.lo.u32
 : MMA-SCALE ( n n n -- ) {: dst:n src:n m:n :}
    m MMA-POW2? if
-      SB-RESET s" shl.b32 %r" SB-APPEND dst SB-U s" ,%r" SB-APPEND src SB-U
-         s" ," SB-APPEND m MMA-LOG2 SB-U s" ;" SB-APPEND SB$ PTX-L
+      SB-RESET s" shl.b32 %r" SB-APPEND dst FMT:SB-U s" ,%r" SB-APPEND src FMT:SB-U
+         s" ," SB-APPEND m MMA-LOG2 FMT:SB-U s" ;" SB-APPEND SB$ PTX-L
    else
-      SB-RESET s" mul.lo.u32 %r" SB-APPEND dst SB-U s" ,%r" SB-APPEND src SB-U
-         s" ," SB-APPEND m SB-U s" ;" SB-APPEND SB$ PTX-L
+      SB-RESET s" mul.lo.u32 %r" SB-APPEND dst FMT:SB-U s" ,%r" SB-APPEND src FMT:SB-U
+         s" ," SB-APPEND m FMT:SB-U s" ;" SB-APPEND SB$ PTX-L
    then ;
 : MMA-CHECK-SMEM ( -- )                                \ fail closed on an illegal static tile
    MMA-DYNSMEM @ if exit then
@@ -410,7 +410,7 @@ variable MMA-LMODE   0 MMA-LMODE !
 \ row&(ACPR-1) is unchanged by them -> the term is invariant across the K-loop and every M-frag. %r38 has no
 \ other user in the emitted kernel.
 : MMA-XSWIZ-SETUP ( -- )   MMA-XSWIZ @ 0= if exit then
-   SB-RESET s" and.b32 %r38,%r47," SB-APPEND MMA-XMASK SB-U s" ;" SB-APPEND SB$ PTX-L
+   SB-RESET s" and.b32 %r38,%r47," SB-APPEND MMA-XMASK FMT:SB-U s" ;" SB-APPEND SB$ PTX-L
    s" shl.b32 %r38,%r38,4;" PTX-L ;
 \ LOAD: XOR the swizzle term into the ldmatrix-A chunk field while %r48 still holds the 16B-aligned kcol byte
 \ offset (before the row base / buffer base add); the row base is a multiple of the swizzle span so the XOR
@@ -420,7 +420,7 @@ variable MMA-LMODE   0 MMA-LMODE !
 \ STORE: permute the cp.async destination chunk. In: %r21 = As row (dead after row*AROW-B is captured in
 \ %r23), %r22 = chunk*16 byte offset. Out: %r22 ^= (row & (ACPR-1))<<4. Reuses %r21 as the term scratch.
 : MMA-XSWIZ-STORE ( -- )   MMA-XSWIZ @ 0= if exit then
-   SB-RESET s" and.b32 %r21,%r21," SB-APPEND MMA-XMASK SB-U s" ;" SB-APPEND SB$ PTX-L
+   SB-RESET s" and.b32 %r21,%r21," SB-APPEND MMA-XMASK FMT:SB-U s" ;" SB-APPEND SB$ PTX-L
    s" shl.b32 %r21,%r21,4;" PTX-L
    s" xor.b32 %r22,%r22,%r21;" PTX-L ;
 
@@ -449,7 +449,7 @@ variable MMA-LMODE   0 MMA-LMODE !
    36 36 MMA-BN @ 2 * MMA-SCALE                 \ * Bs f16 row byte stride (BN*2)
    37 27 MMA-BN @ MMA-WCOLS / 2 * MMA-SCALE     \ warp_col * (BN/WCOLS) * 2 = N-col byte base
    s" add.u32 %r36,%r36,%r37;" PTX-L
-   SB-RESET s" add.u32 %r35,%r36," SB-APPEND MMA-ASB SB-U s" ;" SB-APPEND SB$ PTX-L ;   \ + Bs byte offset (k-major base)
+   SB-RESET s" add.u32 %r35,%r36," SB-APPEND MMA-ASB FMT:SB-U s" ;" SB-APPEND SB$ PTX-L ;   \ + Bs byte offset (k-major base)
 
 \ loop-invariant lane geometry + the A/B shared byte bases and global C row/col bases.
 : MMA-SETUP ( -- )
@@ -478,7 +478,7 @@ variable MMA-LMODE   0 MMA-LMODE !
 
 \ --- A fragment (16x8, reused across the 4 n-tiles) -> tf32 regs %r50..%r53, mode-switched ---
 : MMA-A-BASE ( n -- ) {: ks:n :}                \ %r40 = As base_lo = %r16 + %r30 + (ks+t)*4 (scalar A)
-   SB-RESET s" add.u32 %r40,%r29," SB-APPEND ks SB-U s" ;" SB-APPEND SB$ PTX-L
+   SB-RESET s" add.u32 %r40,%r29," SB-APPEND ks FMT:SB-U s" ;" SB-APPEND SB$ PTX-L
    s" shl.b32 %r40,%r40,2;" PTX-L
    s" add.u32 %r41,%r16,%r30;" PTX-L
    s" add.u32 %r40,%r41,%r40;" PTX-L ;
@@ -486,20 +486,20 @@ variable MMA-LMODE   0 MMA-LMODE !
    MMA-A-BASE
    8 MMA-AROW-B * {: a1o:n :}                    \ +8 As rows = a1/a3 byte offset (default 1024)
    s" ld.shared.f32 %f26,[%r40];" PTX-L         \ a0 = A[gid][ks+t]
-   SB-RESET s" ld.shared.f32 %f27,[%r40+" SB-APPEND a1o SB-U s" ];" SB-APPEND SB$ PTX-L    \ a1 = A[gid+8][ks+t]
+   SB-RESET s" ld.shared.f32 %f27,[%r40+" SB-APPEND a1o FMT:SB-U s" ];" SB-APPEND SB$ PTX-L    \ a1 = A[gid+8][ks+t]
    s" ld.shared.f32 %f28,[%r40+16];" PTX-L      \ a2 = A[gid][ks+t+4]
-   SB-RESET s" ld.shared.f32 %f29,[%r40+" SB-APPEND a1o 16 + SB-U s" ];" SB-APPEND SB$ PTX-L  \ a3 = A[gid+8][ks+t+4]
+   SB-RESET s" ld.shared.f32 %f29,[%r40+" SB-APPEND a1o 16 + FMT:SB-U s" ];" SB-APPEND SB$ PTX-L  \ a3 = A[gid+8][ks+t+4]
    s" cvt.rna.tf32.f32 %r50,%f26;" PTX-L  s" cvt.rna.tf32.f32 %r51,%f27;" PTX-L
    s" cvt.rna.tf32.f32 %r52,%f28;" PTX-L  s" cvt.rna.tf32.f32 %r53,%f29;" PTX-L ;
 : MMA-A-RAW ( n -- )                            \ mode 1: 4 scalar ld.shared.b32 (mma truncates f32->tf32)
    MMA-A-BASE
    8 MMA-AROW-B * {: a1o:n :}
    s" ld.shared.b32 %r50,[%r40];" PTX-L
-   SB-RESET s" ld.shared.b32 %r51,[%r40+" SB-APPEND a1o SB-U s" ];" SB-APPEND SB$ PTX-L
+   SB-RESET s" ld.shared.b32 %r51,[%r40+" SB-APPEND a1o FMT:SB-U s" ];" SB-APPEND SB$ PTX-L
    s" ld.shared.b32 %r52,[%r40+16];" PTX-L
-   SB-RESET s" ld.shared.b32 %r53,[%r40+" SB-APPEND a1o 16 + SB-U s" ];" SB-APPEND SB$ PTX-L ;
+   SB-RESET s" ld.shared.b32 %r53,[%r40+" SB-APPEND a1o 16 + FMT:SB-U s" ];" SB-APPEND SB$ PTX-L ;
 : MMA-A-LDM ( n -- ) {: ks:n :}                 \ mode 2: ONE ldmatrix.x4 (row base %r47, kcol-hi %r49 from MMA-SETUP)
-   SB-RESET s" add.u32 %r48,%r49," SB-APPEND ks MMA-ESZ * SB-U s" ;" SB-APPEND SB$ PTX-L   \ kcol bytes = (tsel>>1)*16 + ks*ESZ (tf32 *4 / half *2)
+   SB-RESET s" add.u32 %r48,%r49," SB-APPEND ks MMA-ESZ * FMT:SB-U s" ;" SB-APPEND SB$ PTX-L   \ kcol bytes = (tsel>>1)*16 + ks*ESZ (tf32 *4 / half *2)
    MMA-XSWIZ-LOAD                                                                    \ chunk ^= (ldm_row & mask)<<4 (pad-free bank swizzle)
    s" add.u32 %r48,%r48,%r47;" PTX-L                                                 \ + A row byte base
    s" add.u32 %r48,%r16,%r48;" PTX-L                                                 \ + buffer base = shared addr
@@ -510,12 +510,12 @@ variable MMA-LMODE   0 MMA-LMODE !
 
 \ --- B fragment (8x8) -> tf32 regs %r54,%r55, mode-switched (Bs base for j=0 in %r44) ---
 : MMA-B-CVT ( n -- ) {: j:n :}                  \ mode 0: f32 load + cvt.rna
-   SB-RESET s" ld.shared.f32 %f30,[%r44+" SB-APPEND j 32 * SB-U s" ];" SB-APPEND SB$ PTX-L
-   SB-RESET s" ld.shared.f32 %f31,[%r44+" SB-APPEND j 32 * 1024 + SB-U s" ];" SB-APPEND SB$ PTX-L
+   SB-RESET s" ld.shared.f32 %f30,[%r44+" SB-APPEND j 32 * FMT:SB-U s" ];" SB-APPEND SB$ PTX-L
+   SB-RESET s" ld.shared.f32 %f31,[%r44+" SB-APPEND j 32 * 1024 + FMT:SB-U s" ];" SB-APPEND SB$ PTX-L
    s" cvt.rna.tf32.f32 %r54,%f30;" PTX-L  s" cvt.rna.tf32.f32 %r55,%f31;" PTX-L ;
 : MMA-B-RAW ( n -- ) {: j:n :}                  \ mode 1/2: raw ld.shared.b32 (mma truncates); b1 is +4 K rows = 16*BN B (1024 at BN=64)
-   SB-RESET s" ld.shared.b32 %r54,[%r44+" SB-APPEND j 32 * SB-U s" ];" SB-APPEND SB$ PTX-L
-   SB-RESET s" ld.shared.b32 %r55,[%r44+" SB-APPEND j 32 * 16 MMA-BN @ * + SB-U s" ];" SB-APPEND SB$ PTX-L ;
+   SB-RESET s" ld.shared.b32 %r54,[%r44+" SB-APPEND j 32 * FMT:SB-U s" ];" SB-APPEND SB$ PTX-L
+   SB-RESET s" ld.shared.b32 %r55,[%r44+" SB-APPEND j 32 * 16 MMA-BN @ * + FMT:SB-U s" ];" SB-APPEND SB$ PTX-L ;
 : MMA-B-LOAD ( n -- )  MMA-LMODE @ 0= if MMA-B-CVT else MMA-B-RAW then ;
 
 \ one n-tile j (0..3): load its 8x8 B fragment from Bs at col warp_col*32 + j*8, then MMA it
@@ -523,19 +523,19 @@ variable MMA-LMODE   0 MMA-LMODE !
 : MMA-NTILE ( n -- ) {: j:n :}
    j MMA-B-LOAD
    10 j 4 * + {: a0:n :}
-   SB-RESET s" mma.sync.aligned.m16n8k8.row.col.f32.tf32.tf32.f32 {%f" SB-APPEND a0 SB-U
-      s" ,%f" SB-APPEND a0 1+ SB-U s" ,%f" SB-APPEND a0 2 + SB-U s" ,%f" SB-APPEND a0 3 + SB-U
-      s" }, {%r50,%r51,%r52,%r53}, {%r54,%r55}, {%f" SB-APPEND a0 SB-U
-      s" ,%f" SB-APPEND a0 1+ SB-U s" ,%f" SB-APPEND a0 2 + SB-U s" ,%f" SB-APPEND a0 3 + SB-U
+   SB-RESET s" mma.sync.aligned.m16n8k8.row.col.f32.tf32.tf32.f32 {%f" SB-APPEND a0 FMT:SB-U
+      s" ,%f" SB-APPEND a0 1+ FMT:SB-U s" ,%f" SB-APPEND a0 2 + FMT:SB-U s" ,%f" SB-APPEND a0 3 + FMT:SB-U
+      s" }, {%r50,%r51,%r52,%r53}, {%r54,%r55}, {%f" SB-APPEND a0 FMT:SB-U
+      s" ,%f" SB-APPEND a0 1+ FMT:SB-U s" ,%f" SB-APPEND a0 2 + FMT:SB-U s" ,%f" SB-APPEND a0 3 + FMT:SB-U
       s" };" SB-APPEND SB$ PTX-L ;
 
 \ one MMA-K substep ks (0/8/16/24): load the warp's 16x8 A fragment (reused across n-tiles),
 \ set the Bs base for j=0 into %r44, then MMA the 4 n-tiles. A/B read from cur buffer base %r16.
 : MMA-KSTEP ( n -- ) {: ks:n :}
    ks MMA-LOAD-A                                                                \ A fragment -> %r50..53
-   SB-RESET s" add.u32 %r42,%r29," SB-APPEND ks SB-U s" ;" SB-APPEND SB$ PTX-L   \ (ks+t)
+   SB-RESET s" add.u32 %r42,%r29," SB-APPEND ks FMT:SB-U s" ;" SB-APPEND SB$ PTX-L   \ (ks+t)
    s" shl.b32 %r42,%r42,8;" PTX-L                                                \ *256 (Bs row stride 64f)
-   SB-RESET s" add.u32 %r44,%r16," SB-APPEND MMA-ASB SB-U s" ;" SB-APPEND SB$ PTX-L   \ + Bs byte offset
+   SB-RESET s" add.u32 %r44,%r16," SB-APPEND MMA-ASB FMT:SB-U s" ;" SB-APPEND SB$ PTX-L   \ + Bs byte offset
    s" add.u32 %r44,%r44,%r42;" PTX-L
    s" add.u32 %r44,%r44,%r31;" PTX-L                                             \ Bs base, n-tile 0
    4 0 do  i MMA-NTILE  loop ;
@@ -544,16 +544,16 @@ variable MMA-LMODE   0 MMA-LMODE !
 
 \ store one n-tile j's 4 accumulators to global C with the D-fragment (row,col) mapping
 : MMA-STORE-TILE ( n -- ) {: j:n :}
-   SB-RESET s" add.u32 %r40,%r34," SB-APPEND j 8 * SB-U s" ;" SB-APPEND SB$ PTX-L   \ col0 = gCol0 + j*8
+   SB-RESET s" add.u32 %r40,%r34," SB-APPEND j 8 * FMT:SB-U s" ;" SB-APPEND SB$ PTX-L   \ col0 = gCol0 + j*8
    10 j 4 * + {: a0:n :}
    s" mad.lo.u32 %r41,%r32,%r2,%r40;" PTX-L                                         \ gRow0*N + col0
    s" mul.wide.u32 %rd10,%r41,4;" PTX-L  s" add.u64 %rd12,%rd3,%rd10;" PTX-L
-   SB-RESET s" st.global.f32 [%rd12],%f" SB-APPEND a0 SB-U s" ;" SB-APPEND SB$ PTX-L        \ d0
-   SB-RESET s" st.global.f32 [%rd12+4],%f" SB-APPEND a0 1+ SB-U s" ;" SB-APPEND SB$ PTX-L   \ d1
+   SB-RESET s" st.global.f32 [%rd12],%f" SB-APPEND a0 FMT:SB-U s" ;" SB-APPEND SB$ PTX-L        \ d0
+   SB-RESET s" st.global.f32 [%rd12+4],%f" SB-APPEND a0 1+ FMT:SB-U s" ;" SB-APPEND SB$ PTX-L   \ d1
    s" mad.lo.u32 %r43,%r33,%r2,%r40;" PTX-L                                         \ gRow1*N + col0
    s" mul.wide.u32 %rd11,%r43,4;" PTX-L  s" add.u64 %rd13,%rd3,%rd11;" PTX-L
-   SB-RESET s" st.global.f32 [%rd13],%f" SB-APPEND a0 2 + SB-U s" ;" SB-APPEND SB$ PTX-L    \ d2
-   SB-RESET s" st.global.f32 [%rd13+4],%f" SB-APPEND a0 3 + SB-U s" ;" SB-APPEND SB$ PTX-L ;   \ d3
+   SB-RESET s" st.global.f32 [%rd13],%f" SB-APPEND a0 2 + FMT:SB-U s" ;" SB-APPEND SB$ PTX-L    \ d2
+   SB-RESET s" st.global.f32 [%rd13+4],%f" SB-APPEND a0 3 + FMT:SB-U s" ;" SB-APPEND SB$ PTX-L ;   \ d3
 
 : MMA-STORE ( -- )  4 0 do  i MMA-STORE-TILE  loop ;
 
@@ -588,7 +588,7 @@ variable MMA-LMODE   0 MMA-LMODE !
    s" div.u32 %r22,%r20,%r21;" PTX-L             \ group = linear / ipg
    22 22 MMA-GROUP @ MMA-SCALE                    \ first_m = group*GROUP (group's first M-block)
    s" sub.u32 %r13,%r13,%r22;" PTX-L             \ gridM - first_m (M-blocks remaining in this group)
-   SB-RESET s" min.u32 %r13,%r13," SB-APPEND MMA-GROUP @ SB-U s" ;" SB-APPEND SB$ PTX-L   \ gsize = min(that, GROUP): the partial-group clamp
+   SB-RESET s" min.u32 %r13,%r13," SB-APPEND MMA-GROUP @ FMT:SB-U s" ;" SB-APPEND SB$ PTX-L   \ gsize = min(that, GROUP): the partial-group clamp
    s" rem.u32 %r20,%r20,%r21;" PTX-L             \ local = linear % ipg (index within the group)
    s" div.u32 %r6,%r20,%r13;" PTX-L              \ tile_n = local / gsize (column-major: n slowest)
    s" rem.u32 %r21,%r20,%r13;" PTX-L             \ local % gsize (M-block within the group)
@@ -614,12 +614,12 @@ variable MMA-LMODE   0 MMA-LMODE !
    s" mad.lo.u32 %r8,%r5,16,%r4;" PTX-L
    MMA-GROUP @ if MMA-GRID-REMAP then           \ grouped-raster: %r6 <- tile_n, %r7 <- tile_m (OFF = byte-identical)
    9 7 MMA-BROWS MMA-SCALE                      \ rowBase = ctaid.y * BROWS
-   SB-RESET s" mul.lo.u32 %r10,%r6," SB-APPEND MMA-BN @ SB-U s" ;" SB-APPEND SB$ PTX-L   \ colBase = ctaid.x * BN (64 default)
+   SB-RESET s" mul.lo.u32 %r10,%r6," SB-APPEND MMA-BN @ FMT:SB-U s" ;" SB-APPEND SB$ PTX-L   \ colBase = ctaid.x * BN (64 default)
    s" mov.u32 %r11,SH;" PTX-L ;
 
 : MMA-ACC-ZERO-WIDE ( -- )                      \ zero MMA-ACCS (= MFRAGS*NTILES*4) accumulators %f10..
    MMA-ACCS  0 do
-      SB-RESET s" mov.f32 %f" SB-APPEND 10 i + SB-U s" ,0f00000000;" SB-APPEND SB$ PTX-L
+      SB-RESET s" mov.f32 %f" SB-APPEND 10 i + FMT:SB-U s" ,0f00000000;" SB-APPEND SB$ PTX-L
    loop ;
 
 : MMA-SETUP-LDM-WIDE ( -- )                     \ mode-2 ldmatrix geometry, M-frag-0 row base (invariant)
@@ -646,7 +646,7 @@ variable MMA-LMODE   0 MMA-LMODE !
    s" and.b32 %r37,%r37,1;" PTX-L               \ p = tsel&1
    s" shl.b32 %r37,%r37,4;" PTX-L               \ p*16 (k-hi half byte offset)
    s" add.u32 %r36,%r36,%r37;" PTX-L
-   SB-RESET s" add.u32 %r35,%r36," SB-APPEND MMA-ASB SB-U s" ;" SB-APPEND SB$ PTX-L ;   \ + Bs byte offset (BT base)
+   SB-RESET s" add.u32 %r35,%r36," SB-APPEND MMA-ASB FMT:SB-U s" ;" SB-APPEND SB$ PTX-L ;   \ + Bs byte offset (BT base)
 
 : MMA-SETUP-WIDE ( -- )                         \ loop-invariant lane geometry + M-frag-0 shared/global bases
    s" shr.u32 %r24,%r8,5;" PTX-L                \ warpid
@@ -675,51 +675,51 @@ variable MMA-LMODE   0 MMA-LMODE !
 
 \ --- wide A fragment for M-frag f -> tf32 group %r(50+6f), +f*16 rows past the M-frag-0 base ---
 : MMA-A-BASE-WIDE ( n n -- ) {: ks:n f:n :}     \ %r40 = As base = %r16 + %r30 + f*16*AROW-B + (ks+t)*4
-   SB-RESET s" add.u32 %r40,%r29," SB-APPEND ks SB-U s" ;" SB-APPEND SB$ PTX-L
+   SB-RESET s" add.u32 %r40,%r29," SB-APPEND ks FMT:SB-U s" ;" SB-APPEND SB$ PTX-L
    s" shl.b32 %r40,%r40,2;" PTX-L
    s" add.u32 %r41,%r16,%r30;" PTX-L
-   f 0 > if SB-RESET s" add.u32 %r41,%r41," SB-APPEND f 16 * MMA-AROW-B * SB-U s" ;" SB-APPEND SB$ PTX-L then
+   f 0 > if SB-RESET s" add.u32 %r41,%r41," SB-APPEND f 16 * MMA-AROW-B * FMT:SB-U s" ;" SB-APPEND SB$ PTX-L then
    s" add.u32 %r40,%r41,%r40;" PTX-L ;
 : MMA-A-CVT-WIDE ( n n -- ) {: ks:n f:n :}      \ mode 0: 4 scalar ld.shared.f32 + cvt.rna -> group f
    ks f MMA-A-BASE-WIDE
    8 MMA-AROW-B * {: a1o:n :}
    f MMA-AREG {: g:n :}
    MMA-FTEMP {: ft:n :}                          \ = 42 at MFRAGS=2 (byte-identical); higher for MFRAGS=4
-   SB-RESET s" ld.shared.f32 %f" SB-APPEND ft SB-U s" ,[%r40];" SB-APPEND SB$ PTX-L
-   SB-RESET s" ld.shared.f32 %f" SB-APPEND ft 1+ SB-U s" ,[%r40+" SB-APPEND a1o SB-U s" ];" SB-APPEND SB$ PTX-L
-   SB-RESET s" ld.shared.f32 %f" SB-APPEND ft 2 + SB-U s" ,[%r40+16];" SB-APPEND SB$ PTX-L
-   SB-RESET s" ld.shared.f32 %f" SB-APPEND ft 3 + SB-U s" ,[%r40+" SB-APPEND a1o 16 + SB-U s" ];" SB-APPEND SB$ PTX-L
-   SB-RESET s" cvt.rna.tf32.f32 %r" SB-APPEND g SB-U s" ,%f" SB-APPEND ft SB-U s" ;" SB-APPEND SB$ PTX-L
-   SB-RESET s" cvt.rna.tf32.f32 %r" SB-APPEND g 1+ SB-U s" ,%f" SB-APPEND ft 1+ SB-U s" ;" SB-APPEND SB$ PTX-L
-   SB-RESET s" cvt.rna.tf32.f32 %r" SB-APPEND g 2 + SB-U s" ,%f" SB-APPEND ft 2 + SB-U s" ;" SB-APPEND SB$ PTX-L
-   SB-RESET s" cvt.rna.tf32.f32 %r" SB-APPEND g 3 + SB-U s" ,%f" SB-APPEND ft 3 + SB-U s" ;" SB-APPEND SB$ PTX-L ;
+   SB-RESET s" ld.shared.f32 %f" SB-APPEND ft FMT:SB-U s" ,[%r40];" SB-APPEND SB$ PTX-L
+   SB-RESET s" ld.shared.f32 %f" SB-APPEND ft 1+ FMT:SB-U s" ,[%r40+" SB-APPEND a1o FMT:SB-U s" ];" SB-APPEND SB$ PTX-L
+   SB-RESET s" ld.shared.f32 %f" SB-APPEND ft 2 + FMT:SB-U s" ,[%r40+16];" SB-APPEND SB$ PTX-L
+   SB-RESET s" ld.shared.f32 %f" SB-APPEND ft 3 + FMT:SB-U s" ,[%r40+" SB-APPEND a1o 16 + FMT:SB-U s" ];" SB-APPEND SB$ PTX-L
+   SB-RESET s" cvt.rna.tf32.f32 %r" SB-APPEND g FMT:SB-U s" ,%f" SB-APPEND ft FMT:SB-U s" ;" SB-APPEND SB$ PTX-L
+   SB-RESET s" cvt.rna.tf32.f32 %r" SB-APPEND g 1+ FMT:SB-U s" ,%f" SB-APPEND ft 1+ FMT:SB-U s" ;" SB-APPEND SB$ PTX-L
+   SB-RESET s" cvt.rna.tf32.f32 %r" SB-APPEND g 2 + FMT:SB-U s" ,%f" SB-APPEND ft 2 + FMT:SB-U s" ;" SB-APPEND SB$ PTX-L
+   SB-RESET s" cvt.rna.tf32.f32 %r" SB-APPEND g 3 + FMT:SB-U s" ,%f" SB-APPEND ft 3 + FMT:SB-U s" ;" SB-APPEND SB$ PTX-L ;
 : MMA-A-RAW-WIDE ( n n -- ) {: ks:n f:n :}      \ mode 1: 4 scalar ld.shared.b32 -> group f
    ks f MMA-A-BASE-WIDE
    8 MMA-AROW-B * {: a1o:n :}
    f MMA-AREG {: g:n :}
-   SB-RESET s" ld.shared.b32 %r" SB-APPEND g SB-U s" ,[%r40];" SB-APPEND SB$ PTX-L
-   SB-RESET s" ld.shared.b32 %r" SB-APPEND g 1+ SB-U s" ,[%r40+" SB-APPEND a1o SB-U s" ];" SB-APPEND SB$ PTX-L
-   SB-RESET s" ld.shared.b32 %r" SB-APPEND g 2 + SB-U s" ,[%r40+16];" SB-APPEND SB$ PTX-L
-   SB-RESET s" ld.shared.b32 %r" SB-APPEND g 3 + SB-U s" ,[%r40+" SB-APPEND a1o 16 + SB-U s" ];" SB-APPEND SB$ PTX-L ;
+   SB-RESET s" ld.shared.b32 %r" SB-APPEND g FMT:SB-U s" ,[%r40];" SB-APPEND SB$ PTX-L
+   SB-RESET s" ld.shared.b32 %r" SB-APPEND g 1+ FMT:SB-U s" ,[%r40+" SB-APPEND a1o FMT:SB-U s" ];" SB-APPEND SB$ PTX-L
+   SB-RESET s" ld.shared.b32 %r" SB-APPEND g 2 + FMT:SB-U s" ,[%r40+16];" SB-APPEND SB$ PTX-L
+   SB-RESET s" ld.shared.b32 %r" SB-APPEND g 3 + FMT:SB-U s" ,[%r40+" SB-APPEND a1o 16 + FMT:SB-U s" ];" SB-APPEND SB$ PTX-L ;
 : MMA-A-LDM-WIDE ( n n -- ) {: ks:n f:n :}      \ mode 2: ONE ldmatrix.x4 -> group f (row base %r47 + f*16 rows)
    f MMA-AREG {: g:n :}
-   SB-RESET s" add.u32 %r48,%r49," SB-APPEND ks MMA-ESZ * SB-U s" ;" SB-APPEND SB$ PTX-L   \ kcol bytes = (tsel>>1)*16 + ks*ESZ (tf32 *4 / half *2)
+   SB-RESET s" add.u32 %r48,%r49," SB-APPEND ks MMA-ESZ * FMT:SB-U s" ;" SB-APPEND SB$ PTX-L   \ kcol bytes = (tsel>>1)*16 + ks*ESZ (tf32 *4 / half *2)
    MMA-XSWIZ-LOAD                                                                    \ chunk ^= (ldm_row & mask)<<4 (m-frag-invariant term %r38)
    s" add.u32 %r48,%r48,%r47;" PTX-L                                                 \ + A row byte base (M-frag 0)
-   f 0 > if SB-RESET s" add.u32 %r48,%r48," SB-APPEND f 16 * MMA-AROW-B * SB-U s" ;" SB-APPEND SB$ PTX-L then
+   f 0 > if SB-RESET s" add.u32 %r48,%r48," SB-APPEND f 16 * MMA-AROW-B * FMT:SB-U s" ;" SB-APPEND SB$ PTX-L then
    s" add.u32 %r48,%r16,%r48;" PTX-L                                                 \ + buffer base
-   SB-RESET s" ldmatrix.sync.aligned.m8n8.x4.shared.b16 {%r" SB-APPEND g SB-U s" ,%r" SB-APPEND g 1+ SB-U
-      s" ,%r" SB-APPEND g 2 + SB-U s" ,%r" SB-APPEND g 3 + SB-U s" },[%r48];" SB-APPEND SB$ PTX-L ;
+   SB-RESET s" ldmatrix.sync.aligned.m8n8.x4.shared.b16 {%r" SB-APPEND g FMT:SB-U s" ,%r" SB-APPEND g 1+ FMT:SB-U
+      s" ,%r" SB-APPEND g 2 + FMT:SB-U s" ,%r" SB-APPEND g 3 + FMT:SB-U s" },[%r48];" SB-APPEND SB$ PTX-L ;
 : MMA-LOAD-A-WIDE ( n n -- )                    \ ks f ; dispatch by MMA-LMODE
    MMA-LMODE @ 2 = if MMA-A-LDM-WIDE exit then
    MMA-LMODE @ 0= if MMA-A-CVT-WIDE else MMA-A-RAW-WIDE then ;
 
 : MMA-B-CVT-WIDE ( n -- ) {: j:n :}             \ mode 0: f32 load + cvt.rna, temps past the wide accumulators
    MMA-FTEMP 4 + {: bt:n :}                      \ = 46 at MFRAGS=2 (byte-identical); higher for MFRAGS=4
-   SB-RESET s" ld.shared.f32 %f" SB-APPEND bt SB-U s" ,[%r44+" SB-APPEND j 32 * SB-U s" ];" SB-APPEND SB$ PTX-L
-   SB-RESET s" ld.shared.f32 %f" SB-APPEND bt 1+ SB-U s" ,[%r44+" SB-APPEND j 32 * 16 MMA-BN @ * + SB-U s" ];" SB-APPEND SB$ PTX-L   \ b1 = +4 K rows = 16*BN B (1024 at BN=64)
-   SB-RESET s" cvt.rna.tf32.f32 %r54,%f" SB-APPEND bt SB-U s" ;" SB-APPEND SB$ PTX-L
-   SB-RESET s" cvt.rna.tf32.f32 %r55,%f" SB-APPEND bt 1+ SB-U s" ;" SB-APPEND SB$ PTX-L ;
+   SB-RESET s" ld.shared.f32 %f" SB-APPEND bt FMT:SB-U s" ,[%r44+" SB-APPEND j 32 * FMT:SB-U s" ];" SB-APPEND SB$ PTX-L
+   SB-RESET s" ld.shared.f32 %f" SB-APPEND bt 1+ FMT:SB-U s" ,[%r44+" SB-APPEND j 32 * 16 MMA-BN @ * + FMT:SB-U s" ];" SB-APPEND SB$ PTX-L   \ b1 = +4 K rows = 16*BN B (1024 at BN=64)
+   SB-RESET s" cvt.rna.tf32.f32 %r54,%f" SB-APPEND bt FMT:SB-U s" ;" SB-APPEND SB$ PTX-L
+   SB-RESET s" cvt.rna.tf32.f32 %r55,%f" SB-APPEND bt 1+ FMT:SB-U s" ;" SB-APPEND SB$ PTX-L ;
 : MMA-B-LOAD-WIDE ( n -- )  MMA-LMODE @ 0= if MMA-B-CVT-WIDE else MMA-B-RAW then ;
 
 \ B-side ldmatrix (dot habu-mma-wave-3): ONE ldmatrix.x2 loads the 8x8 B fragment for n-tile j at
@@ -728,18 +728,18 @@ variable MMA-LMODE   0 MMA-LMODE !
 \ ks in {0,8,16,24}). Replaces the 2 ld.shared + 2 cvt (mode 0) / 2 raw loads (mode 1/2) per fragment.
 : MMA-B-LDM-WIDE ( n n -- ) {: ks:n j:n :}
    j 8 * MMA-BTROW-B *  ks 4 * +  {: off:n :}   \ (ks,j) byte offset from the lane base
-   SB-RESET s" add.u32 %r48,%r35," SB-APPEND off SB-U s" ;" SB-APPEND SB$ PTX-L
+   SB-RESET s" add.u32 %r48,%r35," SB-APPEND off FMT:SB-U s" ;" SB-APPEND SB$ PTX-L
    s" add.u32 %r48,%r16,%r48;" PTX-L
    s" ldmatrix.sync.aligned.m8n8.x2.shared.b16 {%r54,%r55},[%r48];" PTX-L ;
 
 : MMA-MMA-WIDE ( n n -- ) {: f:n j:n :}         \ mma for M-frag f, n-tile j: D(=%f(10+f*NTILES*4+4j)..) = A(group f).B(%r54,55) + D
    10 f MMA-NTILES 4 * * + j 4 * + {: d:n :}     \ accs/M-frag = NTILES*4 (16 at BN=64)
    f MMA-AREG {: g:n :}
-   SB-RESET s" mma.sync.aligned.m16n8k8.row.col.f32.tf32.tf32.f32 {%f" SB-APPEND d SB-U
-      s" ,%f" SB-APPEND d 1+ SB-U s" ,%f" SB-APPEND d 2 + SB-U s" ,%f" SB-APPEND d 3 + SB-U
-      s" }, {%r" SB-APPEND g SB-U s" ,%r" SB-APPEND g 1+ SB-U s" ,%r" SB-APPEND g 2 + SB-U s" ,%r" SB-APPEND g 3 + SB-U
-      s" }, {%r54,%r55}, {%f" SB-APPEND d SB-U
-      s" ,%f" SB-APPEND d 1+ SB-U s" ,%f" SB-APPEND d 2 + SB-U s" ,%f" SB-APPEND d 3 + SB-U s" };" SB-APPEND SB$ PTX-L ;
+   SB-RESET s" mma.sync.aligned.m16n8k8.row.col.f32.tf32.tf32.f32 {%f" SB-APPEND d FMT:SB-U
+      s" ,%f" SB-APPEND d 1+ FMT:SB-U s" ,%f" SB-APPEND d 2 + FMT:SB-U s" ,%f" SB-APPEND d 3 + FMT:SB-U
+      s" }, {%r" SB-APPEND g FMT:SB-U s" ,%r" SB-APPEND g 1+ FMT:SB-U s" ,%r" SB-APPEND g 2 + FMT:SB-U s" ,%r" SB-APPEND g 3 + FMT:SB-U
+      s" }, {%r54,%r55}, {%f" SB-APPEND d FMT:SB-U
+      s" ,%f" SB-APPEND d 1+ FMT:SB-U s" ,%f" SB-APPEND d 2 + FMT:SB-U s" ,%f" SB-APPEND d 3 + FMT:SB-U s" };" SB-APPEND SB$ PTX-L ;
 
 \ ablation predicates (emit-time; all true/full at MMA-ABLATE=0 -> byte-identical)
 : MMA-ABL-LOADB? ( n -- bool ) {: j:n :}        \ load B for n-tile j? (pure bool expr, no early exit)
@@ -765,9 +765,9 @@ variable MMA-LMODE   0 MMA-LMODE !
 : MMA-KSTEP-WIDE ( n -- ) {: ks:n :}
    MMA-MFRAGS @ 0 do  ks i MMA-LOAD-A-WIDE  loop
    MMA-BLDM @ 0= if
-      SB-RESET s" add.u32 %r42,%r29," SB-APPEND ks SB-U s" ;" SB-APPEND SB$ PTX-L
+      SB-RESET s" add.u32 %r42,%r29," SB-APPEND ks FMT:SB-U s" ;" SB-APPEND SB$ PTX-L
       42 42 MMA-BN @ 4 * MMA-SCALE                                                 \ (ks+t) * Bs row stride BN*4 (shl 8 at BN=64)
-      SB-RESET s" add.u32 %r44,%r16," SB-APPEND MMA-ASB SB-U s" ;" SB-APPEND SB$ PTX-L
+      SB-RESET s" add.u32 %r44,%r16," SB-APPEND MMA-ASB FMT:SB-U s" ;" SB-APPEND SB$ PTX-L
       s" add.u32 %r44,%r44,%r42;" PTX-L
       s" add.u32 %r44,%r44,%r31;" PTX-L
    then
@@ -777,20 +777,20 @@ variable MMA-LMODE   0 MMA-LMODE !
 
 \ store M-frag f, n-tile j: global rows gRow{0,1}+f*16, col gCol0+j*8 (D-fragment mapping)
 : MMA-STORE-TILE-WIDE ( n n -- ) {: f:n j:n :}
-   SB-RESET s" add.u32 %r40,%r34," SB-APPEND j 8 * SB-U s" ;" SB-APPEND SB$ PTX-L   \ %r40 = col0 = gCol0 + j*8
+   SB-RESET s" add.u32 %r40,%r34," SB-APPEND j 8 * FMT:SB-U s" ;" SB-APPEND SB$ PTX-L   \ %r40 = col0 = gCol0 + j*8
    10 f MMA-NTILES 4 * * + j 4 * + {: a0:n :}                                      \ accs/M-frag = NTILES*4 (16 at BN=64)
-   f 0 > if SB-RESET s" add.u32 %r41,%r32," SB-APPEND f 16 * SB-U s" ;" SB-APPEND SB$ PTX-L
+   f 0 > if SB-RESET s" add.u32 %r41,%r32," SB-APPEND f 16 * FMT:SB-U s" ;" SB-APPEND SB$ PTX-L
    else s" mov.u32 %r41,%r32;" PTX-L then                                          \ %r41 = gRow0 + f*16
    s" mad.lo.u32 %r41,%r41,%r2,%r40;" PTX-L
    s" mul.wide.u32 %rd10,%r41,4;" PTX-L  s" add.u64 %rd12,%rd3,%rd10;" PTX-L
-   SB-RESET s" st.global.f32 [%rd12],%f" SB-APPEND a0 SB-U s" ;" SB-APPEND SB$ PTX-L        \ d0
-   SB-RESET s" st.global.f32 [%rd12+4],%f" SB-APPEND a0 1+ SB-U s" ;" SB-APPEND SB$ PTX-L   \ d1
-   f 0 > if SB-RESET s" add.u32 %r43,%r33," SB-APPEND f 16 * SB-U s" ;" SB-APPEND SB$ PTX-L
+   SB-RESET s" st.global.f32 [%rd12],%f" SB-APPEND a0 FMT:SB-U s" ;" SB-APPEND SB$ PTX-L        \ d0
+   SB-RESET s" st.global.f32 [%rd12+4],%f" SB-APPEND a0 1+ FMT:SB-U s" ;" SB-APPEND SB$ PTX-L   \ d1
+   f 0 > if SB-RESET s" add.u32 %r43,%r33," SB-APPEND f 16 * FMT:SB-U s" ;" SB-APPEND SB$ PTX-L
    else s" mov.u32 %r43,%r33;" PTX-L then                                          \ %r43 = gRow1 + f*16
    s" mad.lo.u32 %r43,%r43,%r2,%r40;" PTX-L
    s" mul.wide.u32 %rd11,%r43,4;" PTX-L  s" add.u64 %rd13,%rd3,%rd11;" PTX-L
-   SB-RESET s" st.global.f32 [%rd13],%f" SB-APPEND a0 2 + SB-U s" ;" SB-APPEND SB$ PTX-L    \ d2
-   SB-RESET s" st.global.f32 [%rd13+4],%f" SB-APPEND a0 3 + SB-U s" ;" SB-APPEND SB$ PTX-L ;   \ d3
+   SB-RESET s" st.global.f32 [%rd13],%f" SB-APPEND a0 2 + FMT:SB-U s" ;" SB-APPEND SB$ PTX-L    \ d2
+   SB-RESET s" st.global.f32 [%rd13+4],%f" SB-APPEND a0 3 + FMT:SB-U s" ;" SB-APPEND SB$ PTX-L ;   \ d3
 : MMA-STORE-WIDE ( -- )
    MMA-MFRAGS @ 0 do  i {: f:n :}
       MMA-NTILES 0 do  f i MMA-STORE-TILE-WIDE  loop
@@ -817,15 +817,15 @@ variable MMA-LMODE   0 MMA-LMODE !
 \ non-wide A fragment (16x16) -> %r50..53. ks = K-substep base (0,16 at BK=32).
 : MMA-A-F16 ( n -- ) {: ks:n :}
    s" shl.b32 %r40,%r29,1;" PTX-L                                                    \ 2t
-   SB-RESET s" add.u32 %r40,%r40," SB-APPEND ks SB-U s" ;" SB-APPEND SB$ PTX-L        \ + ks (K col)
+   SB-RESET s" add.u32 %r40,%r40," SB-APPEND ks FMT:SB-U s" ;" SB-APPEND SB$ PTX-L        \ + ks (K col)
    s" shl.b32 %r40,%r40,1;" PTX-L                                                    \ *2 -> K byte offset within row
    s" add.u32 %r41,%r16,%r30;" PTX-L                                                 \ buffer base + A row byte base
    s" add.u32 %r40,%r41,%r40;" PTX-L
    8 MMA-AROW-B * {: a1o:n :}                                                         \ +8 As rows = r1/r3 offset
    s" ld.shared.b32 %r50,[%r40];" PTX-L                                              \ r0 = As[gid][ks+2t : +1]
-   SB-RESET s" ld.shared.b32 %r51,[%r40+" SB-APPEND a1o SB-U s" ];" SB-APPEND SB$ PTX-L   \ r1 = As[gid+8][ks+2t : +1]
+   SB-RESET s" ld.shared.b32 %r51,[%r40+" SB-APPEND a1o FMT:SB-U s" ];" SB-APPEND SB$ PTX-L   \ r1 = As[gid+8][ks+2t : +1]
    s" ld.shared.b32 %r52,[%r40+16];" PTX-L                                          \ r2 = As[gid][ks+2t+8 : +1]
-   SB-RESET s" ld.shared.b32 %r53,[%r40+" SB-APPEND a1o 16 + SB-U s" ];" SB-APPEND SB$ PTX-L ;  \ r3 = As[gid+8][ks+2t+8 : +1]
+   SB-RESET s" ld.shared.b32 %r53,[%r40+" SB-APPEND a1o 16 + FMT:SB-U s" ];" SB-APPEND SB$ PTX-L ;  \ r3 = As[gid+8][ks+2t+8 : +1]
 
 \ B fragment (16x8) for K-substep ks, n-tile j -> %r54,%r55. Bs k-major flat [BK][BN] (row stride
 \ BN*2 = 128 B): the two halves of each register are adjacent in K (one 128 B row apart), so build
@@ -833,19 +833,19 @@ variable MMA-LMODE   0 MMA-LMODE !
 : MMA-B-F16 ( n n -- ) {: ks:n j:n :}
    40 27 MMA-BN @ MMA-WCOLS / MMA-SCALE                                              \ warp_col*(BN/WCOLS); warp_col*32 at BN=64
    s" add.u32 %r40,%r40,%r28;" PTX-L                                                 \ + gid = col
-   j 0 > if SB-RESET s" add.u32 %r40,%r40," SB-APPEND j 8 * SB-U s" ;" SB-APPEND SB$ PTX-L then  \ + j*8
+   j 0 > if SB-RESET s" add.u32 %r40,%r40," SB-APPEND j 8 * FMT:SB-U s" ;" SB-APPEND SB$ PTX-L then  \ + j*8
    s" shl.b32 %r40,%r40,1;" PTX-L                                                    \ col*2 (byte)
    s" shl.b32 %r42,%r29,1;" PTX-L                                                    \ 2t
-   SB-RESET s" add.u32 %r42,%r42," SB-APPEND ks SB-U s" ;" SB-APPEND SB$ PTX-L        \ + ks (K row)
+   SB-RESET s" add.u32 %r42,%r42," SB-APPEND ks FMT:SB-U s" ;" SB-APPEND SB$ PTX-L        \ + ks (K row)
    42 42 MMA-BN @ 2 * MMA-SCALE                                                      \ * Bs f16 row stride BN*2 (shl 7 at BN=64)
-   SB-RESET s" add.u32 %r44,%r16," SB-APPEND MMA-ASB SB-U s" ;" SB-APPEND SB$ PTX-L   \ + Bs byte offset
+   SB-RESET s" add.u32 %r44,%r16," SB-APPEND MMA-ASB FMT:SB-U s" ;" SB-APPEND SB$ PTX-L   \ + Bs byte offset
    s" add.u32 %r44,%r44,%r42;" PTX-L
    s" add.u32 %r44,%r44,%r40;" PTX-L                                                 \ &Bs[ks+2t][col] (b0)
    s" ld.shared.u16 %r54,[%r44];" PTX-L                                             \ b0
-   SB-RESET s" ld.shared.u16 %r43,[%r44+" SB-APPEND MMA-BN @ 2 * SB-U s" ];" SB-APPEND SB$ PTX-L   \ b1 (+1 K = BN*2 B; 128 at BN=64)
+   SB-RESET s" ld.shared.u16 %r43,[%r44+" SB-APPEND MMA-BN @ 2 * FMT:SB-U s" ];" SB-APPEND SB$ PTX-L   \ b1 (+1 K = BN*2 B; 128 at BN=64)
    s" shl.b32 %r43,%r43,16;" PTX-L  s" or.b32 %r54,%r54,%r43;" PTX-L
-   SB-RESET s" ld.shared.u16 %r55,[%r44+" SB-APPEND 16 MMA-BN @ * SB-U s" ];" SB-APPEND SB$ PTX-L  \ b2 (+8 K = 16*BN B; 1024 at BN=64)
-   SB-RESET s" ld.shared.u16 %r43,[%r44+" SB-APPEND 18 MMA-BN @ * SB-U s" ];" SB-APPEND SB$ PTX-L  \ b3 (+9 K = 18*BN B; 1152 at BN=64)
+   SB-RESET s" ld.shared.u16 %r55,[%r44+" SB-APPEND 16 MMA-BN @ * FMT:SB-U s" ];" SB-APPEND SB$ PTX-L  \ b2 (+8 K = 16*BN B; 1024 at BN=64)
+   SB-RESET s" ld.shared.u16 %r43,[%r44+" SB-APPEND 18 MMA-BN @ * FMT:SB-U s" ];" SB-APPEND SB$ PTX-L  \ b3 (+9 K = 18*BN B; 1152 at BN=64)
    s" shl.b32 %r43,%r43,16;" PTX-L  s" or.b32 %r55,%r55,%r43;" PTX-L ;
 
 \ TRANSPOSED B fragment (dot habu-fp16-transposed-bs): the SAME {%r54,%r55}={b0,b1},{b2,b3} operand as
@@ -855,13 +855,13 @@ variable MMA-LMODE   0 MMA-LMODE !
 : MMA-B-F16-T ( n n -- ) {: ks:n j:n :}
    s" shl.b32 %r40,%r27,5;" PTX-L                                                    \ warp_col*32
    s" add.u32 %r40,%r40,%r28;" PTX-L                                                 \ + gid = col
-   j 0 > if SB-RESET s" add.u32 %r40,%r40," SB-APPEND j 8 * SB-U s" ;" SB-APPEND SB$ PTX-L then  \ + j*8
+   j 0 > if SB-RESET s" add.u32 %r40,%r40," SB-APPEND j 8 * FMT:SB-U s" ;" SB-APPEND SB$ PTX-L then  \ + j*8
    40 40 MMA-BTROW-B MMA-SCALE                                                       \ col * BT row byte stride
    s" shl.b32 %r42,%r29,1;" PTX-L                                                    \ 2t
-   SB-RESET s" add.u32 %r42,%r42," SB-APPEND ks SB-U s" ;" SB-APPEND SB$ PTX-L        \ + ks (K)
+   SB-RESET s" add.u32 %r42,%r42," SB-APPEND ks FMT:SB-U s" ;" SB-APPEND SB$ PTX-L        \ + ks (K)
    s" shl.b32 %r42,%r42,1;" PTX-L                                                    \ (ks+2t)*2 = K byte offset within the BT row
    s" add.u32 %r40,%r40,%r42;" PTX-L
-   SB-RESET s" add.u32 %r44,%r16," SB-APPEND MMA-ASB SB-U s" ;" SB-APPEND SB$ PTX-L   \ + Bs byte offset (BT base)
+   SB-RESET s" add.u32 %r44,%r16," SB-APPEND MMA-ASB FMT:SB-U s" ;" SB-APPEND SB$ PTX-L   \ + Bs byte offset (BT base)
    s" add.u32 %r44,%r44,%r40;" PTX-L                                                 \ &BT[col][ks+2t] (b0/b1)
    s" ld.shared.b32 %r54,[%r44];" PTX-L                                             \ {b0,b1} (K-adjacent pair, contiguous)
    s" ld.shared.b32 %r55,[%r44+16];" PTX-L ;                                        \ {b2,b3} (+8 K halves = +16 B)
@@ -872,7 +872,7 @@ variable MMA-LMODE   0 MMA-LMODE !
 \ shift/or (MMA-B-F16) per register. Scratch %r48.
 : MMA-B-LDM-F16 ( n n -- ) {: ks:n j:n :}
    ks MMA-BN @ 2 * *  j 16 * +  {: off:n :}     \ ks*(BN*2) + j*16 byte offset from the lane base
-   SB-RESET s" add.u32 %r48,%r35," SB-APPEND off SB-U s" ;" SB-APPEND SB$ PTX-L
+   SB-RESET s" add.u32 %r48,%r35," SB-APPEND off FMT:SB-U s" ;" SB-APPEND SB$ PTX-L
    s" add.u32 %r48,%r16,%r48;" PTX-L
    s" ldmatrix.sync.aligned.m8n8.x2.trans.shared.b16 {%r54,%r55},[%r48];" PTX-L ;
 : MMA-B-F16-LOAD ( n n -- )                                                           \ ks j ; dispatch: ldmatrix / transposed BT / k-major scalar
@@ -884,10 +884,10 @@ variable MMA-LMODE   0 MMA-LMODE !
 : MMA-NTILE-F16 ( n n -- ) {: ks:n j:n :}
    ks j MMA-B-F16-LOAD
    10 j 4 * + {: a0:n :}
-   SB-RESET s" mma.sync.aligned.m16n8k16.row.col.f32." SB-APPEND MMA-ABT SB-APPEND s" ." SB-APPEND MMA-ABT SB-APPEND s" .f32 {%f" SB-APPEND a0 SB-U
-      s" ,%f" SB-APPEND a0 1+ SB-U s" ,%f" SB-APPEND a0 2 + SB-U s" ,%f" SB-APPEND a0 3 + SB-U
-      s" }, {%r50,%r51,%r52,%r53}, {%r54,%r55}, {%f" SB-APPEND a0 SB-U
-      s" ,%f" SB-APPEND a0 1+ SB-U s" ,%f" SB-APPEND a0 2 + SB-U s" ,%f" SB-APPEND a0 3 + SB-U
+   SB-RESET s" mma.sync.aligned.m16n8k16.row.col.f32." SB-APPEND MMA-ABT SB-APPEND s" ." SB-APPEND MMA-ABT SB-APPEND s" .f32 {%f" SB-APPEND a0 FMT:SB-U
+      s" ,%f" SB-APPEND a0 1+ FMT:SB-U s" ,%f" SB-APPEND a0 2 + FMT:SB-U s" ,%f" SB-APPEND a0 3 + FMT:SB-U
+      s" }, {%r50,%r51,%r52,%r53}, {%r54,%r55}, {%f" SB-APPEND a0 FMT:SB-U
+      s" ,%f" SB-APPEND a0 1+ FMT:SB-U s" ,%f" SB-APPEND a0 2 + FMT:SB-U s" ,%f" SB-APPEND a0 3 + FMT:SB-U
       s" };" SB-APPEND SB$ PTX-L ;
 
 \ one MMA-K substep ks: load the 16x16 A fragment (reused across 4 n-tiles), then mma the 4 n-tiles.
@@ -900,25 +900,25 @@ variable MMA-LMODE   0 MMA-LMODE !
 : MMA-A-F16-WIDE ( n n -- ) {: ks:n f:n :}
    f MMA-AREG {: g:n :}
    s" shl.b32 %r40,%r29,1;" PTX-L                                                    \ 2t
-   SB-RESET s" add.u32 %r40,%r40," SB-APPEND ks SB-U s" ;" SB-APPEND SB$ PTX-L        \ + ks
+   SB-RESET s" add.u32 %r40,%r40," SB-APPEND ks FMT:SB-U s" ;" SB-APPEND SB$ PTX-L        \ + ks
    s" shl.b32 %r40,%r40,1;" PTX-L                                                    \ *2 -> K byte offset
    s" add.u32 %r41,%r16,%r30;" PTX-L
-   f 0 > if SB-RESET s" add.u32 %r41,%r41," SB-APPEND f 16 * MMA-AROW-B * SB-U s" ;" SB-APPEND SB$ PTX-L then  \ + f*16 rows
+   f 0 > if SB-RESET s" add.u32 %r41,%r41," SB-APPEND f 16 * MMA-AROW-B * FMT:SB-U s" ;" SB-APPEND SB$ PTX-L then  \ + f*16 rows
    s" add.u32 %r40,%r41,%r40;" PTX-L
    8 MMA-AROW-B * {: a1o:n :}
-   SB-RESET s" ld.shared.b32 %r" SB-APPEND g SB-U s" ,[%r40];" SB-APPEND SB$ PTX-L
-   SB-RESET s" ld.shared.b32 %r" SB-APPEND g 1+ SB-U s" ,[%r40+" SB-APPEND a1o SB-U s" ];" SB-APPEND SB$ PTX-L
-   SB-RESET s" ld.shared.b32 %r" SB-APPEND g 2 + SB-U s" ,[%r40+16];" SB-APPEND SB$ PTX-L
-   SB-RESET s" ld.shared.b32 %r" SB-APPEND g 3 + SB-U s" ,[%r40+" SB-APPEND a1o 16 + SB-U s" ];" SB-APPEND SB$ PTX-L ;
+   SB-RESET s" ld.shared.b32 %r" SB-APPEND g FMT:SB-U s" ,[%r40];" SB-APPEND SB$ PTX-L
+   SB-RESET s" ld.shared.b32 %r" SB-APPEND g 1+ FMT:SB-U s" ,[%r40+" SB-APPEND a1o FMT:SB-U s" ];" SB-APPEND SB$ PTX-L
+   SB-RESET s" ld.shared.b32 %r" SB-APPEND g 2 + FMT:SB-U s" ,[%r40+16];" SB-APPEND SB$ PTX-L
+   SB-RESET s" ld.shared.b32 %r" SB-APPEND g 3 + FMT:SB-U s" ,[%r40+" SB-APPEND a1o 16 + FMT:SB-U s" ];" SB-APPEND SB$ PTX-L ;
 : MMA-LOAD-A-F16-WIDE ( n n -- )  MMA-LMODE @ 2 = if MMA-A-LDM-WIDE else MMA-A-F16-WIDE then ;   \ ks f ; ldmatrix.x4 A or scalar
 : MMA-MMA-F16-WIDE ( n n -- ) {: f:n j:n :}    \ D(=%f(10+f*NTILES*4+4j)..) = A(group f).B(%r54,55) + D
    10 f MMA-NTILES 4 * * + j 4 * + {: d:n :}    \ accs/M-frag = NTILES*4 (16 at BN=64)
    f MMA-AREG {: g:n :}
-   SB-RESET s" mma.sync.aligned.m16n8k16.row.col.f32." SB-APPEND MMA-ABT SB-APPEND s" ." SB-APPEND MMA-ABT SB-APPEND s" .f32 {%f" SB-APPEND d SB-U
-      s" ,%f" SB-APPEND d 1+ SB-U s" ,%f" SB-APPEND d 2 + SB-U s" ,%f" SB-APPEND d 3 + SB-U
-      s" }, {%r" SB-APPEND g SB-U s" ,%r" SB-APPEND g 1+ SB-U s" ,%r" SB-APPEND g 2 + SB-U s" ,%r" SB-APPEND g 3 + SB-U
-      s" }, {%r54,%r55}, {%f" SB-APPEND d SB-U
-      s" ,%f" SB-APPEND d 1+ SB-U s" ,%f" SB-APPEND d 2 + SB-U s" ,%f" SB-APPEND d 3 + SB-U s" };" SB-APPEND SB$ PTX-L ;
+   SB-RESET s" mma.sync.aligned.m16n8k16.row.col.f32." SB-APPEND MMA-ABT SB-APPEND s" ." SB-APPEND MMA-ABT SB-APPEND s" .f32 {%f" SB-APPEND d FMT:SB-U
+      s" ,%f" SB-APPEND d 1+ FMT:SB-U s" ,%f" SB-APPEND d 2 + FMT:SB-U s" ,%f" SB-APPEND d 3 + FMT:SB-U
+      s" }, {%r" SB-APPEND g FMT:SB-U s" ,%r" SB-APPEND g 1+ FMT:SB-U s" ,%r" SB-APPEND g 2 + FMT:SB-U s" ,%r" SB-APPEND g 3 + FMT:SB-U
+      s" }, {%r54,%r55}, {%f" SB-APPEND d FMT:SB-U
+      s" ,%f" SB-APPEND d 1+ FMT:SB-U s" ,%f" SB-APPEND d 2 + FMT:SB-U s" ,%f" SB-APPEND d 3 + FMT:SB-U s" };" SB-APPEND SB$ PTX-L ;
 : MMA-NTILE-F16-WIDE ( n n -- ) {: ks:n j:n :}   \ B loaded ONCE, mma'd against every M-frag (B reused MFRAGS times)
    ks j MMA-B-F16-LOAD
    MMA-MFRAGS @ 0 do  i j MMA-MMA-F16-WIDE  loop ;
@@ -954,11 +954,11 @@ variable MMA-LMODE   0 MMA-LMODE !
    f 16 * MMA-BN @ 4 * *  j 8 * 4 * +  {: off:n :}   \ (f*16 rows)*(BN*4) + (j*8 cols)*4
    10 f MMA-NTILES 4 * * + j 4 * + {: a0:n :}     \ accumulator base %f(10+f*NTILES*4+4j)
    8 MMA-BN @ 4 * *  {: r8:n :}                   \ +8-row (d2/d3) byte offset = 8*(BN*4) (2048 at BN=64)
-   SB-RESET s" add.u32 %r46,%r45," SB-APPEND off SB-U s" ;" SB-APPEND SB$ PTX-L
-   SB-RESET s" st.shared.f32 [%r46],%f" SB-APPEND a0 SB-U s" ;" SB-APPEND SB$ PTX-L
-   SB-RESET s" st.shared.f32 [%r46+4],%f" SB-APPEND a0 1+ SB-U s" ;" SB-APPEND SB$ PTX-L
-   SB-RESET s" st.shared.f32 [%r46+" SB-APPEND r8 SB-U s" ],%f" SB-APPEND a0 2 + SB-U s" ;" SB-APPEND SB$ PTX-L
-   SB-RESET s" st.shared.f32 [%r46+" SB-APPEND r8 4 + SB-U s" ],%f" SB-APPEND a0 3 + SB-U s" ;" SB-APPEND SB$ PTX-L ;
+   SB-RESET s" add.u32 %r46,%r45," SB-APPEND off FMT:SB-U s" ;" SB-APPEND SB$ PTX-L
+   SB-RESET s" st.shared.f32 [%r46],%f" SB-APPEND a0 FMT:SB-U s" ;" SB-APPEND SB$ PTX-L
+   SB-RESET s" st.shared.f32 [%r46+4],%f" SB-APPEND a0 1+ FMT:SB-U s" ;" SB-APPEND SB$ PTX-L
+   SB-RESET s" st.shared.f32 [%r46+" SB-APPEND r8 FMT:SB-U s" ],%f" SB-APPEND a0 2 + FMT:SB-U s" ;" SB-APPEND SB$ PTX-L
+   SB-RESET s" st.shared.f32 [%r46+" SB-APPEND r8 4 + FMT:SB-U s" ],%f" SB-APPEND a0 3 + FMT:SB-U s" ;" SB-APPEND SB$ PTX-L ;
 
 : MMA-EPI-FILL ( -- )                            \ every lane writes its MMA-ACCS accumulators into the tile
    MMA-MFRAGS @ 0 do  i {: f:n :}
@@ -970,9 +970,9 @@ variable MMA-LMODE   0 MMA-LMODE !
 \ count). Consecutive lanes read consecutive tile elements (SH + e*4) and write consecutive C columns.
 : MMA-EPI-DRAIN ( -- )
    MMA-ACCS  0 do  i {: m:n :}
-      SB-RESET s" add.u32 %r40,%r8," SB-APPEND m MMA-NTHREADS * SB-U s" ;" SB-APPEND SB$ PTX-L   \ e = tid_lin + m*NTHREADS
-      SB-RESET s" shr.u32 %r41,%r40," SB-APPEND MMA-BN @ MMA-LOG2 SB-U s" ;" SB-APPEND SB$ PTX-L  \ row = e >> log2(BN) (6 at BN=64)
-      SB-RESET s" and.b32 %r42,%r40," SB-APPEND MMA-BN @ 1- SB-U s" ;" SB-APPEND SB$ PTX-L          \ col = e & (BN-1) (63 at BN=64)
+      SB-RESET s" add.u32 %r40,%r8," SB-APPEND m MMA-NTHREADS * FMT:SB-U s" ;" SB-APPEND SB$ PTX-L   \ e = tid_lin + m*NTHREADS
+      SB-RESET s" shr.u32 %r41,%r40," SB-APPEND MMA-BN @ MMA-LOG2 FMT:SB-U s" ;" SB-APPEND SB$ PTX-L  \ row = e >> log2(BN) (6 at BN=64)
+      SB-RESET s" and.b32 %r42,%r40," SB-APPEND MMA-BN @ 1- FMT:SB-U s" ;" SB-APPEND SB$ PTX-L          \ col = e & (BN-1) (63 at BN=64)
       s" add.u32 %r41,%r9,%r41;" PTX-L             \ gRow = rowBase + row
       s" add.u32 %r42,%r10,%r42;" PTX-L            \ gCol = colBase + col
       s" mad.lo.u32 %r43,%r41,%r2,%r42;" PTX-L     \ gRow*N + gCol
@@ -999,31 +999,31 @@ variable MMA-LMODE   0 MMA-LMODE !
 \ Prefetch scratch %r20..23 / %rd10..11 (invariants live in %r24..34, so they survive).
 : MMA-CP-CHUNK ( n n n -- ) {: m:n bufr:n ktr:n :}
    MMA-ACPR MMA-LOG2 {: acl:n :}
-   SB-RESET s" add.u32 %r20,%r8," SB-APPEND m MMA-NTHREADS * SB-U s" ;" SB-APPEND SB$ PTX-L      \ c = tid_lin + m*NTHREADS
+   SB-RESET s" add.u32 %r20,%r8," SB-APPEND m MMA-NTHREADS * FMT:SB-U s" ;" SB-APPEND SB$ PTX-L      \ c = tid_lin + m*NTHREADS
    \ --- As: row=c>>acl, k=(c&(ACPR-1))*4 ; src A[rowBase+row][kt+k] ; dst buf + row*AROW-B + kchunk*16 ---
-   SB-RESET s" shr.u32 %r21,%r20," SB-APPEND acl SB-U s" ;" SB-APPEND SB$ PTX-L         \ row
-   SB-RESET s" and.b32 %r22,%r20," SB-APPEND MMA-ACPR 1- SB-U s" ;" SB-APPEND SB$ PTX-L \ kchunk
+   SB-RESET s" shr.u32 %r21,%r20," SB-APPEND acl FMT:SB-U s" ;" SB-APPEND SB$ PTX-L         \ row
+   SB-RESET s" and.b32 %r22,%r20," SB-APPEND MMA-ACPR 1- FMT:SB-U s" ;" SB-APPEND SB$ PTX-L \ kchunk
    s" shl.b32 %r22,%r22,2;" PTX-L                                                       \ k = kchunk*4
    s" add.u32 %r23,%r9,%r21;" PTX-L
-   SB-RESET s" mad.lo.u32 %r23,%r23,%r3,%r" SB-APPEND ktr SB-U s" ;" SB-APPEND SB$ PTX-L
+   SB-RESET s" mad.lo.u32 %r23,%r23,%r3,%r" SB-APPEND ktr FMT:SB-U s" ;" SB-APPEND SB$ PTX-L
    s" add.u32 %r23,%r23,%r22;" PTX-L
    s" mul.wide.u32 %rd10,%r23,4;" PTX-L  s" add.u64 %rd11,%rd1,%rd10;" PTX-L
    23 21 MMA-AROW-B MMA-SCALE                                                           \ %r23 = row*AROW-B
    s" shl.b32 %r22,%r22,2;" PTX-L                                                       \ kchunk*16 = k*4
    MMA-XSWIZ-STORE                                                                      \ chunk ^= (row & mask)<<4 (pad-free bank swizzle; clobbers %r21=row, re-derived for Bs)
    s" add.u32 %r23,%r23,%r22;" PTX-L
-   SB-RESET s" add.u32 %r23,%r" SB-APPEND bufr SB-U s" ,%r23;" SB-APPEND SB$ PTX-L
+   SB-RESET s" add.u32 %r23,%r" SB-APPEND bufr FMT:SB-U s" ,%r23;" SB-APPEND SB$ PTX-L
    s" cp.async.cg.shared.global [%r23],[%rd11],16;" PTX-L
    \ --- Bs: k=c>>4, col=(c&15)*4 ; src B[kt+k][colBase+col] ; dst buf + ASB + c*16 ---
    s" shr.u32 %r21,%r20,4;" PTX-L
    s" and.b32 %r22,%r20,15;" PTX-L  s" shl.b32 %r22,%r22,2;" PTX-L
-   SB-RESET s" add.u32 %r23,%r" SB-APPEND ktr SB-U s" ,%r21;" SB-APPEND SB$ PTX-L
+   SB-RESET s" add.u32 %r23,%r" SB-APPEND ktr FMT:SB-U s" ,%r21;" SB-APPEND SB$ PTX-L
    s" mad.lo.u32 %r23,%r23,%r2,%r10;" PTX-L
    s" add.u32 %r23,%r23,%r22;" PTX-L
    s" mul.wide.u32 %rd10,%r23,4;" PTX-L  s" add.u64 %rd11,%rd2,%rd10;" PTX-L
    s" shl.b32 %r23,%r20,4;" PTX-L
-   SB-RESET s" add.u32 %r23,%r" SB-APPEND bufr SB-U s" ,%r23;" SB-APPEND SB$ PTX-L
-   SB-RESET s" add.u32 %r23,%r23," SB-APPEND MMA-ASB SB-U s" ;" SB-APPEND SB$ PTX-L
+   SB-RESET s" add.u32 %r23,%r" SB-APPEND bufr FMT:SB-U s" ,%r23;" SB-APPEND SB$ PTX-L
+   SB-RESET s" add.u32 %r23,%r23," SB-APPEND MMA-ASB FMT:SB-U s" ;" SB-APPEND SB$ PTX-L
    s" cp.async.cg.shared.global [%r23],[%rd11],16;" PTX-L ;
 
 \ WIDER-M staging (BROWS != BN): As and Bs have DIFFERENT chunk counts, so stage them in two
@@ -1031,32 +1031,32 @@ variable MMA-LMODE   0 MMA-LMODE !
 \ stays byte-identical for the pinned configs). Same chunk geometry as MMA-CP-CHUNK, split.
 : MMA-CPW-CHUNK-A ( n n n -- ) {: m:n bufr:n ktr:n :}   \ one As 16B chunk, chunk-set m
    MMA-ACPR MMA-LOG2 {: acl:n :}
-   SB-RESET s" add.u32 %r20,%r8," SB-APPEND m MMA-NTHREADS * SB-U s" ;" SB-APPEND SB$ PTX-L      \ c = tid_lin + m*NTHREADS
-   SB-RESET s" shr.u32 %r21,%r20," SB-APPEND acl SB-U s" ;" SB-APPEND SB$ PTX-L         \ row = c>>acl
-   SB-RESET s" and.b32 %r22,%r20," SB-APPEND MMA-ACPR 1- SB-U s" ;" SB-APPEND SB$ PTX-L \ kchunk = c & (ACPR-1)
+   SB-RESET s" add.u32 %r20,%r8," SB-APPEND m MMA-NTHREADS * FMT:SB-U s" ;" SB-APPEND SB$ PTX-L      \ c = tid_lin + m*NTHREADS
+   SB-RESET s" shr.u32 %r21,%r20," SB-APPEND acl FMT:SB-U s" ;" SB-APPEND SB$ PTX-L         \ row = c>>acl
+   SB-RESET s" and.b32 %r22,%r20," SB-APPEND MMA-ACPR 1- FMT:SB-U s" ;" SB-APPEND SB$ PTX-L \ kchunk = c & (ACPR-1)
    s" shl.b32 %r22,%r22,2;" PTX-L                                                       \ k = kchunk*4
    s" add.u32 %r23,%r9,%r21;" PTX-L
-   SB-RESET s" mad.lo.u32 %r23,%r23,%r3,%r" SB-APPEND ktr SB-U s" ;" SB-APPEND SB$ PTX-L
+   SB-RESET s" mad.lo.u32 %r23,%r23,%r3,%r" SB-APPEND ktr FMT:SB-U s" ;" SB-APPEND SB$ PTX-L
    s" add.u32 %r23,%r23,%r22;" PTX-L
    s" mul.wide.u32 %rd10,%r23,4;" PTX-L  s" add.u64 %rd11,%rd1,%rd10;" PTX-L
    23 21 MMA-AROW-B MMA-SCALE                                                           \ %r23 = row*AROW-B
    s" shl.b32 %r22,%r22,2;" PTX-L                                                       \ kchunk*16
    MMA-XSWIZ-STORE                                                                      \ chunk ^= (row & mask)<<4 (pad-free bank swizzle; %r21=row dead after this)
    s" add.u32 %r23,%r23,%r22;" PTX-L
-   SB-RESET s" add.u32 %r23,%r" SB-APPEND bufr SB-U s" ,%r23;" SB-APPEND SB$ PTX-L
+   SB-RESET s" add.u32 %r23,%r" SB-APPEND bufr FMT:SB-U s" ,%r23;" SB-APPEND SB$ PTX-L
    s" cp.async.cg.shared.global [%r23],[%rd11],16;" PTX-L ;
 : MMA-CPW-CHUNK-B ( n n n -- ) {: m:n bufr:n ktr:n :}   \ one Bs 16B chunk, chunk-set m (BCPR = BN/4 chunks/Bs row)
-   SB-RESET s" add.u32 %r20,%r8," SB-APPEND m MMA-NTHREADS * SB-U s" ;" SB-APPEND SB$ PTX-L      \ c = tid_lin + m*NTHREADS
-   SB-RESET s" shr.u32 %r21,%r20," SB-APPEND MMA-BCPR MMA-LOG2 SB-U s" ;" SB-APPEND SB$ PTX-L     \ k = c / (BN/4) (c>>4 at BN=64)
-   SB-RESET s" and.b32 %r22,%r20," SB-APPEND MMA-BCPR 1- SB-U s" ;" SB-APPEND SB$ PTX-L            \ chunk = c & (BN/4-1) (c&15 at BN=64)
+   SB-RESET s" add.u32 %r20,%r8," SB-APPEND m MMA-NTHREADS * FMT:SB-U s" ;" SB-APPEND SB$ PTX-L      \ c = tid_lin + m*NTHREADS
+   SB-RESET s" shr.u32 %r21,%r20," SB-APPEND MMA-BCPR MMA-LOG2 FMT:SB-U s" ;" SB-APPEND SB$ PTX-L     \ k = c / (BN/4) (c>>4 at BN=64)
+   SB-RESET s" and.b32 %r22,%r20," SB-APPEND MMA-BCPR 1- FMT:SB-U s" ;" SB-APPEND SB$ PTX-L            \ chunk = c & (BN/4-1) (c&15 at BN=64)
    s" shl.b32 %r22,%r22,2;" PTX-L                                                       \ col = chunk*4 (EPC=4 tf32)
-   SB-RESET s" add.u32 %r23,%r" SB-APPEND ktr SB-U s" ,%r21;" SB-APPEND SB$ PTX-L
+   SB-RESET s" add.u32 %r23,%r" SB-APPEND ktr FMT:SB-U s" ,%r21;" SB-APPEND SB$ PTX-L
    s" mad.lo.u32 %r23,%r23,%r2,%r10;" PTX-L
    s" add.u32 %r23,%r23,%r22;" PTX-L
    s" mul.wide.u32 %rd10,%r23,4;" PTX-L  s" add.u64 %rd11,%rd2,%rd10;" PTX-L
    s" shl.b32 %r23,%r20,4;" PTX-L
-   SB-RESET s" add.u32 %r23,%r" SB-APPEND bufr SB-U s" ,%r23;" SB-APPEND SB$ PTX-L
-   SB-RESET s" add.u32 %r23,%r23," SB-APPEND MMA-ASB SB-U s" ;" SB-APPEND SB$ PTX-L
+   SB-RESET s" add.u32 %r23,%r" SB-APPEND bufr FMT:SB-U s" ,%r23;" SB-APPEND SB$ PTX-L
+   SB-RESET s" add.u32 %r23,%r23," SB-APPEND MMA-ASB FMT:SB-U s" ;" SB-APPEND SB$ PTX-L
    s" cp.async.cg.shared.global [%r23],[%rd11],16;" PTX-L ;
 
 \ TRANSPOSED-Bs staging (dot habu-mma-wave-3): one scalar element BT[n][k] = B[ktr+k][colBase+n], with
@@ -1067,10 +1067,10 @@ variable MMA-LMODE   0 MMA-LMODE !
 \ only prefetch scratch %r20..23 / %rd10..11 (invariants %r24..34 survive; the loaded value rides %r20
 \ after c is dead).
 : MMA-CPW-CHUNK-BT ( n n n -- ) {: m:n bufr:n ktr:n :}
-   SB-RESET s" add.u32 %r20,%r8," SB-APPEND m MMA-NTHREADS * SB-U s" ;" SB-APPEND SB$ PTX-L      \ c = tid_lin + m*NTHREADS
+   SB-RESET s" add.u32 %r20,%r8," SB-APPEND m MMA-NTHREADS * FMT:SB-U s" ;" SB-APPEND SB$ PTX-L      \ c = tid_lin + m*NTHREADS
    s" and.b32 %r21,%r20,63;" PTX-L                                                      \ n = c & 63
    s" shr.u32 %r22,%r20,6;" PTX-L                                                       \ k = c >> 6
-   SB-RESET s" add.u32 %r23,%r" SB-APPEND ktr SB-U s" ,%r22;" SB-APPEND SB$ PTX-L        \ ktr + k
+   SB-RESET s" add.u32 %r23,%r" SB-APPEND ktr FMT:SB-U s" ,%r22;" SB-APPEND SB$ PTX-L        \ ktr + k
    s" mad.lo.u32 %r23,%r23,%r2,%r10;" PTX-L                                             \ (ktr+k)*N + colBase
    s" add.u32 %r23,%r23,%r21;" PTX-L                                                    \ + n
    s" mul.wide.u32 %rd10,%r23,4;" PTX-L  s" add.u64 %rd11,%rd2,%rd10;" PTX-L
@@ -1078,8 +1078,8 @@ variable MMA-LMODE   0 MMA-LMODE !
    23 21 MMA-BTROW-B MMA-SCALE                                                          \ %r23 = n * BTROW-B
    s" shl.b32 %r22,%r22,2;" PTX-L                                                       \ k*4
    s" add.u32 %r23,%r23,%r22;" PTX-L
-   SB-RESET s" add.u32 %r23,%r23," SB-APPEND MMA-ASB SB-U s" ;" SB-APPEND SB$ PTX-L      \ + Bs byte offset
-   SB-RESET s" add.u32 %r23,%r" SB-APPEND bufr SB-U s" ,%r23;" SB-APPEND SB$ PTX-L       \ + buffer base
+   SB-RESET s" add.u32 %r23,%r23," SB-APPEND MMA-ASB FMT:SB-U s" ;" SB-APPEND SB$ PTX-L      \ + Bs byte offset
+   SB-RESET s" add.u32 %r23,%r" SB-APPEND bufr FMT:SB-U s" ,%r23;" SB-APPEND SB$ PTX-L       \ + buffer base
    s" st.shared.b32 [%r23],%r20;" PTX-L ;
 
 : MMA-CPW-STAGE ( n n -- ) {: bufr:n ktr:n :}
@@ -1097,58 +1097,58 @@ variable MMA-LMODE   0 MMA-LMODE !
 \ the wide path stages them in independent loops (BROWS != BN). ----
 : MMA-CP-CHUNK-F16 ( n n n -- ) {: m:n bufr:n ktr:n :}   \ interleaved As+Bs (MFRAGS=1); 8-half chunks
    MMA-ACPR MMA-LOG2 {: acl:n :}
-   SB-RESET s" add.u32 %r20,%r8," SB-APPEND m MMA-NTHREADS * SB-U s" ;" SB-APPEND SB$ PTX-L      \ c = tid_lin + m*NTHREADS
+   SB-RESET s" add.u32 %r20,%r8," SB-APPEND m MMA-NTHREADS * FMT:SB-U s" ;" SB-APPEND SB$ PTX-L      \ c = tid_lin + m*NTHREADS
    \ --- As: row=c>>acl, k=(c&(ACPR-1))*8 ; src A[rowBase+row][kt+k] f16 ; dst buf + row*AROW-B + kchunk*16 ---
-   SB-RESET s" shr.u32 %r21,%r20," SB-APPEND acl SB-U s" ;" SB-APPEND SB$ PTX-L         \ row
-   SB-RESET s" and.b32 %r22,%r20," SB-APPEND MMA-ACPR 1- SB-U s" ;" SB-APPEND SB$ PTX-L \ kchunk
+   SB-RESET s" shr.u32 %r21,%r20," SB-APPEND acl FMT:SB-U s" ;" SB-APPEND SB$ PTX-L         \ row
+   SB-RESET s" and.b32 %r22,%r20," SB-APPEND MMA-ACPR 1- FMT:SB-U s" ;" SB-APPEND SB$ PTX-L \ kchunk
    s" shl.b32 %r22,%r22,3;" PTX-L                                                       \ k = kchunk*8
    s" add.u32 %r23,%r9,%r21;" PTX-L
-   SB-RESET s" mad.lo.u32 %r23,%r23,%r3,%r" SB-APPEND ktr SB-U s" ;" SB-APPEND SB$ PTX-L
+   SB-RESET s" mad.lo.u32 %r23,%r23,%r3,%r" SB-APPEND ktr FMT:SB-U s" ;" SB-APPEND SB$ PTX-L
    s" add.u32 %r23,%r23,%r22;" PTX-L
    s" mul.wide.u32 %rd10,%r23,2;" PTX-L  s" add.u64 %rd11,%rd1,%rd10;" PTX-L            \ *2 (f16 byte)
    23 21 MMA-AROW-B MMA-SCALE                                                           \ %r23 = row*AROW-B
    s" shl.b32 %r22,%r22,1;" PTX-L                                                       \ kchunk*16 = k*2
    s" add.u32 %r23,%r23,%r22;" PTX-L
-   SB-RESET s" add.u32 %r23,%r" SB-APPEND bufr SB-U s" ,%r23;" SB-APPEND SB$ PTX-L
+   SB-RESET s" add.u32 %r23,%r" SB-APPEND bufr FMT:SB-U s" ,%r23;" SB-APPEND SB$ PTX-L
    s" cp.async.cg.shared.global [%r23],[%rd11],16;" PTX-L
    \ --- Bs: k=c>>3, col=(c&7)*8 ; src B[kt+k][colBase+col] f16 ; dst buf + ASB + c*16 ---
    s" shr.u32 %r21,%r20,3;" PTX-L
    s" and.b32 %r22,%r20,7;" PTX-L  s" shl.b32 %r22,%r22,3;" PTX-L                       \ col = (c&7)*8
-   SB-RESET s" add.u32 %r23,%r" SB-APPEND ktr SB-U s" ,%r21;" SB-APPEND SB$ PTX-L
+   SB-RESET s" add.u32 %r23,%r" SB-APPEND ktr FMT:SB-U s" ,%r21;" SB-APPEND SB$ PTX-L
    s" mad.lo.u32 %r23,%r23,%r2,%r10;" PTX-L
    s" add.u32 %r23,%r23,%r22;" PTX-L
    s" mul.wide.u32 %rd10,%r23,2;" PTX-L  s" add.u64 %rd11,%rd2,%rd10;" PTX-L            \ *2 (f16 byte)
    s" shl.b32 %r23,%r20,4;" PTX-L                                                       \ c*16 (dst chunk stride)
-   SB-RESET s" add.u32 %r23,%r" SB-APPEND bufr SB-U s" ,%r23;" SB-APPEND SB$ PTX-L
-   SB-RESET s" add.u32 %r23,%r23," SB-APPEND MMA-ASB SB-U s" ;" SB-APPEND SB$ PTX-L
+   SB-RESET s" add.u32 %r23,%r" SB-APPEND bufr FMT:SB-U s" ,%r23;" SB-APPEND SB$ PTX-L
+   SB-RESET s" add.u32 %r23,%r23," SB-APPEND MMA-ASB FMT:SB-U s" ;" SB-APPEND SB$ PTX-L
    s" cp.async.cg.shared.global [%r23],[%rd11],16;" PTX-L ;
 : MMA-CPW-CHUNK-A-F16 ( n n n -- ) {: m:n bufr:n ktr:n :}   \ one wide As 8-half chunk, chunk-set m
    MMA-ACPR MMA-LOG2 {: acl:n :}
-   SB-RESET s" add.u32 %r20,%r8," SB-APPEND m MMA-NTHREADS * SB-U s" ;" SB-APPEND SB$ PTX-L
-   SB-RESET s" shr.u32 %r21,%r20," SB-APPEND acl SB-U s" ;" SB-APPEND SB$ PTX-L         \ row = c>>acl
-   SB-RESET s" and.b32 %r22,%r20," SB-APPEND MMA-ACPR 1- SB-U s" ;" SB-APPEND SB$ PTX-L \ kchunk
+   SB-RESET s" add.u32 %r20,%r8," SB-APPEND m MMA-NTHREADS * FMT:SB-U s" ;" SB-APPEND SB$ PTX-L
+   SB-RESET s" shr.u32 %r21,%r20," SB-APPEND acl FMT:SB-U s" ;" SB-APPEND SB$ PTX-L         \ row = c>>acl
+   SB-RESET s" and.b32 %r22,%r20," SB-APPEND MMA-ACPR 1- FMT:SB-U s" ;" SB-APPEND SB$ PTX-L \ kchunk
    s" shl.b32 %r22,%r22,3;" PTX-L                                                       \ k = kchunk*8
    s" add.u32 %r23,%r9,%r21;" PTX-L
-   SB-RESET s" mad.lo.u32 %r23,%r23,%r3,%r" SB-APPEND ktr SB-U s" ;" SB-APPEND SB$ PTX-L
+   SB-RESET s" mad.lo.u32 %r23,%r23,%r3,%r" SB-APPEND ktr FMT:SB-U s" ;" SB-APPEND SB$ PTX-L
    s" add.u32 %r23,%r23,%r22;" PTX-L
    s" mul.wide.u32 %rd10,%r23,2;" PTX-L  s" add.u64 %rd11,%rd1,%rd10;" PTX-L
    23 21 MMA-AROW-B MMA-SCALE
    s" shl.b32 %r22,%r22,1;" PTX-L                                                       \ kchunk*16
    s" add.u32 %r23,%r23,%r22;" PTX-L
-   SB-RESET s" add.u32 %r23,%r" SB-APPEND bufr SB-U s" ,%r23;" SB-APPEND SB$ PTX-L
+   SB-RESET s" add.u32 %r23,%r" SB-APPEND bufr FMT:SB-U s" ,%r23;" SB-APPEND SB$ PTX-L
    s" cp.async.cg.shared.global [%r23],[%rd11],16;" PTX-L ;
 : MMA-CPW-CHUNK-B-F16 ( n n n -- ) {: m:n bufr:n ktr:n :}   \ one wide Bs 8-half chunk, chunk-set m (BCPR = BN/8 chunks/Bs row)
-   SB-RESET s" add.u32 %r20,%r8," SB-APPEND m MMA-NTHREADS * SB-U s" ;" SB-APPEND SB$ PTX-L
-   SB-RESET s" shr.u32 %r21,%r20," SB-APPEND MMA-BCPR MMA-LOG2 SB-U s" ;" SB-APPEND SB$ PTX-L      \ k = c / (BN/8) (c>>3 at BN=64)
-   SB-RESET s" and.b32 %r22,%r20," SB-APPEND MMA-BCPR 1- SB-U s" ;" SB-APPEND SB$ PTX-L             \ chunk = c & (BN/8-1) (c&7 at BN=64)
+   SB-RESET s" add.u32 %r20,%r8," SB-APPEND m MMA-NTHREADS * FMT:SB-U s" ;" SB-APPEND SB$ PTX-L
+   SB-RESET s" shr.u32 %r21,%r20," SB-APPEND MMA-BCPR MMA-LOG2 FMT:SB-U s" ;" SB-APPEND SB$ PTX-L      \ k = c / (BN/8) (c>>3 at BN=64)
+   SB-RESET s" and.b32 %r22,%r20," SB-APPEND MMA-BCPR 1- FMT:SB-U s" ;" SB-APPEND SB$ PTX-L             \ chunk = c & (BN/8-1) (c&7 at BN=64)
    s" shl.b32 %r22,%r22,3;" PTX-L                                                       \ col = chunk*8 (EPC=8 fp16)
-   SB-RESET s" add.u32 %r23,%r" SB-APPEND ktr SB-U s" ,%r21;" SB-APPEND SB$ PTX-L
+   SB-RESET s" add.u32 %r23,%r" SB-APPEND ktr FMT:SB-U s" ,%r21;" SB-APPEND SB$ PTX-L
    s" mad.lo.u32 %r23,%r23,%r2,%r10;" PTX-L
    s" add.u32 %r23,%r23,%r22;" PTX-L
    s" mul.wide.u32 %rd10,%r23,2;" PTX-L  s" add.u64 %rd11,%rd2,%rd10;" PTX-L
    s" shl.b32 %r23,%r20,4;" PTX-L
-   SB-RESET s" add.u32 %r23,%r" SB-APPEND bufr SB-U s" ,%r23;" SB-APPEND SB$ PTX-L
-   SB-RESET s" add.u32 %r23,%r23," SB-APPEND MMA-ASB SB-U s" ;" SB-APPEND SB$ PTX-L
+   SB-RESET s" add.u32 %r23,%r" SB-APPEND bufr FMT:SB-U s" ,%r23;" SB-APPEND SB$ PTX-L
+   SB-RESET s" add.u32 %r23,%r23," SB-APPEND MMA-ASB FMT:SB-U s" ;" SB-APPEND SB$ PTX-L
    s" cp.async.cg.shared.global [%r23],[%rd11],16;" PTX-L ;
 : MMA-CPW-STAGE-F16 ( n n -- ) {: bufr:n ktr:n :}
    MMA-ACPN 0 do  i bufr ktr MMA-CPW-CHUNK-A-F16  loop
@@ -1161,10 +1161,10 @@ variable MMA-LMODE   0 MMA-LMODE !
 \ MMA-CPW-CHUNK-BT (b32). The BT tile is tiny (64*BK halves) and staged once per K-tile, fed KSUBS*4 times.
 \ Uses only prefetch scratch %r20..23 / %rd10..11 (invariants %r24..34 survive; the loaded half rides %r20).
 : MMA-CPW-CHUNK-BTF16 ( n n n -- ) {: m:n bufr:n ktr:n :}
-   SB-RESET s" add.u32 %r20,%r8," SB-APPEND m MMA-NTHREADS * SB-U s" ;" SB-APPEND SB$ PTX-L      \ c = tid_lin + m*NTHREADS
+   SB-RESET s" add.u32 %r20,%r8," SB-APPEND m MMA-NTHREADS * FMT:SB-U s" ;" SB-APPEND SB$ PTX-L      \ c = tid_lin + m*NTHREADS
    s" and.b32 %r21,%r20,63;" PTX-L                                                      \ n = c & 63
    s" shr.u32 %r22,%r20,6;" PTX-L                                                       \ k = c >> 6
-   SB-RESET s" add.u32 %r23,%r" SB-APPEND ktr SB-U s" ,%r22;" SB-APPEND SB$ PTX-L        \ ktr + k
+   SB-RESET s" add.u32 %r23,%r" SB-APPEND ktr FMT:SB-U s" ,%r22;" SB-APPEND SB$ PTX-L        \ ktr + k
    s" mad.lo.u32 %r23,%r23,%r2,%r10;" PTX-L                                             \ (ktr+k)*N + colBase
    s" add.u32 %r23,%r23,%r21;" PTX-L                                                    \ + n
    s" mul.wide.u32 %rd10,%r23,2;" PTX-L  s" add.u64 %rd11,%rd2,%rd10;" PTX-L            \ *2 (f16 byte); &B[ktr+k][colBase+n]
@@ -1172,8 +1172,8 @@ variable MMA-LMODE   0 MMA-LMODE !
    23 21 MMA-BTROW-B MMA-SCALE                                                          \ %r23 = n * BT row byte stride
    s" shl.b32 %r22,%r22,1;" PTX-L                                                       \ k*2 (f16 byte)
    s" add.u32 %r23,%r23,%r22;" PTX-L
-   SB-RESET s" add.u32 %r23,%r23," SB-APPEND MMA-ASB SB-U s" ;" SB-APPEND SB$ PTX-L      \ + Bs byte offset
-   SB-RESET s" add.u32 %r23,%r" SB-APPEND bufr SB-U s" ,%r23;" SB-APPEND SB$ PTX-L       \ + buffer base
+   SB-RESET s" add.u32 %r23,%r23," SB-APPEND MMA-ASB FMT:SB-U s" ;" SB-APPEND SB$ PTX-L      \ + Bs byte offset
+   SB-RESET s" add.u32 %r23,%r" SB-APPEND bufr FMT:SB-U s" ,%r23;" SB-APPEND SB$ PTX-L       \ + buffer base
    s" st.shared.u16 [%r23],%r20;" PTX-L ;
 : MMA-CPW-STAGE-BTF16 ( n n -- ) {: bufr:n ktr:n :}   \ As via cp.async 8-half chunks, BT via scalar transposed u16 copy
    MMA-ACPN 0 do  i bufr ktr MMA-CPW-CHUNK-A-F16  loop
@@ -1278,11 +1278,11 @@ TRUSTED: MMA-STAGE-ISSUE ( n n -- cpp-pending<p> )   MMA-CP-STAGE 0 ;
 \ stages=1/2 configs on the byte-identical SINGLE/WITH scaffolds and routes only N>=3 here.
 \ cyclically advance ring base %rR by one buffer (BUFB bytes), wrapping at %r15 (=SH+N*BUFB) back to SH.
 : MMA-RING-ADV ( n -- ) {: r:n :}
-   SB-RESET s" add.u32 %r" SB-APPEND r SB-U s" ,%r" SB-APPEND r SB-U s" ," SB-APPEND MMA-BUFB SB-U s" ;" SB-APPEND SB$ PTX-L
-   SB-RESET s" setp.eq.u32 %p3,%r" SB-APPEND r SB-U s" ,%r15;" SB-APPEND SB$ PTX-L
-   SB-RESET s" @%p3 mov.u32 %r" SB-APPEND r SB-U s" ,%r11;" SB-APPEND SB$ PTX-L ;
+   SB-RESET s" add.u32 %r" SB-APPEND r FMT:SB-U s" ,%r" SB-APPEND r FMT:SB-U s" ," SB-APPEND MMA-BUFB FMT:SB-U s" ;" SB-APPEND SB$ PTX-L
+   SB-RESET s" setp.eq.u32 %p3,%r" SB-APPEND r FMT:SB-U s" ,%r15;" SB-APPEND SB$ PTX-L
+   SB-RESET s" @%p3 mov.u32 %r" SB-APPEND r FMT:SB-U s" ,%r11;" SB-APPEND SB$ PTX-L ;
 : MMA-KT-ADD ( n -- )                                            \ %rR += BK  (R on stack as reg number)
-   {: r:n :}  SB-RESET s" add.u32 %r" SB-APPEND r SB-U s" ,%r" SB-APPEND r SB-U s" ," SB-APPEND MMA-BK @ SB-U s" ;" SB-APPEND SB$ PTX-L ;
+   {: r:n :}  SB-RESET s" add.u32 %r" SB-APPEND r FMT:SB-U s" ,%r" SB-APPEND r FMT:SB-U s" ," SB-APPEND MMA-BK @ FMT:SB-U s" ;" SB-APPEND SB$ PTX-L ;
 
 \ Compute for one staged K-tile from read-buffer base %r16 (same as the quotation the double-buffer runs):
 \ the wide (MFRAGS>1) or non-wide K-tile. Called by name (not a quotation) so the multistage can emit it
@@ -1295,12 +1295,12 @@ TRUSTED: MMA-STAGE-ISSUE ( n n -- cpp-pending<p> )   MMA-CP-STAGE 0 ;
    s" mov.u32 %r14,0;" PTX-L  s" mov.u32 %r17,0;" PTX-L           \ kt_pf = kt_cmp = 0
    s" mov.u32 %r16,%r11;" PTX-L  s" mov.u32 %r18,%r11;" PTX-L     \ read base = write base = SH
    s" mov.u32 %r15,%r11;" PTX-L                                   \ ring wrap bound = SH + N*BUFB
-   SB-RESET s" add.u32 %r15,%r15," SB-APPEND MMA-SMEM SB-U s" ;" SB-APPEND SB$ PTX-L
+   SB-RESET s" add.u32 %r15,%r15," SB-APPEND MMA-SMEM FMT:SB-U s" ;" SB-APPEND SB$ PTX-L
    MMA-STAGES @ 1- 0 do                                          \ prologue: issue tiles 0..N-2 into buffers 0..N-2
       s" setp.ge.u32 %p1,%r14,%r3;" PTX-L
-      SB-RESET s" @%p1 bra $PLSKIP" SB-APPEND i SB-U s" ;" SB-APPEND SB$ PTX-L
+      SB-RESET s" @%p1 bra $PLSKIP" SB-APPEND i FMT:SB-U s" ;" SB-APPEND SB$ PTX-L
       18 14 MMA-CP-STAGE
-      SB-RESET s" $PLSKIP" SB-APPEND i SB-U s" :" SB-APPEND SB$ PTX-L
+      SB-RESET s" $PLSKIP" SB-APPEND i FMT:SB-U s" :" SB-APPEND SB$ PTX-L
       CPP-COMMIT
       18 MMA-RING-ADV                                            \ next write buffer
       14 MMA-KT-ADD                                              \ kt_pf += BK
@@ -1317,9 +1317,9 @@ TRUSTED: MMA-STAGE-ISSUE ( n n -- cpp-pending<p> )   MMA-CP-STAGE 0 ;
       MMA-STAGES @ 2 - i - CPP-WAIT                              \ wait_group(N-2-i)
       CPP-SYNC
       s" setp.ge.u32 %p1,%r17,%r3;" PTX-L                        \ guard: compute only tiles that exist (T<N-1 short K)
-      SB-RESET s" @%p1 bra $EPSKIP" SB-APPEND i SB-U s" ;" SB-APPEND SB$ PTX-L
+      SB-RESET s" @%p1 bra $EPSKIP" SB-APPEND i FMT:SB-U s" ;" SB-APPEND SB$ PTX-L
       MMA-KTILE-DISPATCH
-      SB-RESET s" $EPSKIP" SB-APPEND i SB-U s" :" SB-APPEND SB$ PTX-L
+      SB-RESET s" $EPSKIP" SB-APPEND i FMT:SB-U s" :" SB-APPEND SB$ PTX-L
       CPP-SYNC
       16 MMA-RING-ADV  17 MMA-KT-ADD
    loop ;
@@ -1397,11 +1397,11 @@ TRUSTED: MMA-STAGE-ISSUE ( n n -- cpp-pending<p> )   MMA-CP-STAGE 0 ;
    s" )" SB-APPEND SB$ PTX-L
    s" {" PTX-L
    s" .reg .pred %p<4>;" PTX-L
-   SB-RESET s" .reg .f32 %f<" SB-APPEND MMA-FREGS SB-U s" >;" SB-APPEND SB$ PTX-L   \ 48 at MFRAGS<=2 (byte-identical)
-   SB-RESET s" .reg .b32 %r<" SB-APPEND MMA-RREGS SB-U s" >;" SB-APPEND SB$ PTX-L   \ 64 at MFRAGS<=2 (byte-identical)
+   SB-RESET s" .reg .f32 %f<" SB-APPEND MMA-FREGS FMT:SB-U s" >;" SB-APPEND SB$ PTX-L   \ 48 at MFRAGS<=2 (byte-identical)
+   SB-RESET s" .reg .b32 %r<" SB-APPEND MMA-RREGS FMT:SB-U s" >;" SB-APPEND SB$ PTX-L   \ 64 at MFRAGS<=2 (byte-identical)
    s" .reg .b64 %rd<48>;" PTX-L
    MMA-DYNSMEM @ 0= if
-      SB-RESET s" .shared .align 16 .b8 SH[" SB-APPEND MMA-SH-BYTES SB-U s" ];" SB-APPEND SB$ PTX-L
+      SB-RESET s" .shared .align 16 .b8 SH[" SB-APPEND MMA-SH-BYTES FMT:SB-U s" ];" SB-APPEND SB$ PTX-L
    then
    MM-PARAMS
    MMA-BODY

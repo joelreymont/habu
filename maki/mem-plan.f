@@ -161,7 +161,7 @@ create MP-NM MP-NM-CAP allot  variable MP-NM-U
    s MIR-SLOT-LAY@        MP-LAY-AT !
    s                      MP-SLOT!
    s MP-SLOT-OVERRIDE     MP-OVR !
-   SB-RESET s" i" SB-APPEND s SLOT>RAW SB-INT SB$ MP-NM! ;
+   SB-RESET s" i" SB-APPEND s SLOT>RAW FMT:SB-INT SB$ MP-NM! ;
 
 : MP-SET-NODE ( CAD-KIND:node-id -- ) {: nd:CAD-KIND:node-id :}
    MAKI-ALIGN:A16         MP-AL-AT !                \ compiler-allocated write: aligned by construction
@@ -175,7 +175,7 @@ create MP-NM MP-NM-CAP allot  variable MP-NM-U
    \ instead of rendering whatever slot was staged last.
    OPTION:NONE            MP-SLOT-AT !
    -1                     MP-OVR !
-   SB-RESET s" n" SB-APPEND nd NODE>RAW SB-INT SB$ MP-NM! ;
+   SB-RESET s" n" SB-APPEND nd NODE>RAW FMT:SB-INT SB$ MP-NM! ;
 
 \ ---- read staged facts ------------------------------------------------------
 : MP-OVERRIDDEN? ( -- bool )  MP-OVR @ 0 >= ;
@@ -199,16 +199,16 @@ create MP-NM MP-NM-CAP allot  variable MP-NM-U
 
 \ ---- warning rows -----------------------------------------------------------
 : MP-ALIGN-WARN$ ( -- ptr u8 n )
-   SB-RESET s" memory.align: input " SB-APPEND MP-SLOT@ SLOT>RAW SB-INT
+   SB-RESET s" memory.align: input " SB-APPEND MP-SLOT@ SLOT>RAW FMT:SB-INT
    MP-AL-AT @ ALIGN-UNKNOWN? if s"  unknown alignment -> scalar"
                              else s"  sub-4B alignment -> scalar" then SB-APPEND
    SB$ ;
 
 : MP-TAIL-WARN$ ( -- ptr u8 n )
    SB-RESET s" memory.tail: " SB-APPEND MP-NAME$ SB-APPEND
-   $20 SB-APPEND-C MP-EXT @ SB-INT
-   s"  mod " SB-APPEND MP-VEC SB-INT
-   s"  = "   SB-APPEND MP-TAIL-K SB-INT SB$ ;
+   $20 SB-APPEND-C MP-EXT @ FMT:SB-INT
+   s"  mod " SB-APPEND MP-VEC FMT:SB-INT
+   s"  = "   SB-APPEND MP-TAIL-K FMT:SB-INT SB$ ;
 
 \ ---- emit one staged access (hot status row + its warnings) -----------------
 : MP-EMIT+ ( report -- report )

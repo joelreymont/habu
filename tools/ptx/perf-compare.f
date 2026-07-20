@@ -73,8 +73,8 @@ private
    s" perf-compare: kernel=" type i KERNEL$ type
    s"  metric=" type i METRIC@ METRIC$ type
    s"  device=" type i DEVICE$ type
-   s"  base=" type b VALUE@ .U
-   s"  new=" type i VALUE@ .U
+   s"  base=" type b VALUE@ FMT:.U
+   s"  new=" type i VALUE@ FMT:.U
    s"  verdict=" type v VERDICT$ type cr ;
 
 : SCAN-ONE ( n -- ) {: i:n :}   \ compare the latest same-key pair ending at row i

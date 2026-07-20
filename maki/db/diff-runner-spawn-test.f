@@ -26,7 +26,7 @@ package DIFFRUN
 
 \ ---- child driver sources -------------------------------------------------------------
 : PRODUCE-SRC ( -- ptr u8 n )   \ prints its scalar and completes naturally (exit 0), no `bye`
-   s\" require lib/string.f\nrequire lib/fmt.f\nSB-RESET 42 SB-INT SB$ type\n" ;
+   s\" require lib/string.f\nrequire lib/fmt.f\nSB-RESET 42 FMT:SB-INT SB$ type\n" ;
 : HANG-SRC ( -- ptr u8 n )
    s\" : DR-HANG ( -- ) begin 0 0 = while repeat ;\nDR-HANG\n" ;
 : CRASH-SRC ( -- ptr u8 n )

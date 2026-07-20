@@ -47,13 +47,13 @@
 : CG-VEC-LANE-ADDR ( n n -- n ) {: base:n lane:n :}
    lane 0= if base exit then
    CG-NEXT-RD {: a:n :}
-   SB-RESET s" add.u64 " CG-S a CG-RD s" , " CG-S base CG-RD s" , " CG-S lane 4 * SB-U s" ;" CG-S CG-LINE
+   SB-RESET s" add.u64 " CG-S a CG-RD s" , " CG-S base CG-RD s" , " CG-S lane 4 * FMT:SB-U s" ;" CG-S CG-LINE
    a ;
 
 : CG-VEC-LANE-INDEX ( n n -- n ) {: ctx:n lane:n :}
    lane 0= if ctx exit then
    CG-NEXT-R {: idx:n :}
-   SB-RESET s" add.u32 " CG-S idx CG-R s" , " CG-S ctx CG-R s" , " CG-S lane SB-U s" ;" CG-S CG-LINE
+   SB-RESET s" add.u32 " CG-S idx CG-R s" , " CG-S ctx CG-R s" , " CG-S lane FMT:SB-U s" ;" CG-S CG-LINE
    idx ;
 
 : CG-VEC-TAIL-BRANCH ( n -- n n ) {: ctxrd:n :}

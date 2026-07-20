@@ -163,13 +163,13 @@ create ROW-BUF   BENCH-ROW-CAP allot    variable ROW-BUF-U
 : GBPS$ ( gbps -- ptr u8 n )
    SB-RESET
    MATCH gbps
-      gbps-at OF SB-INT ENDOF
+      gbps-at OF FMT:SB-INT ENDOF
       gbps-na OF s" na:" SB-APPEND ABSENCE-NAME SB-APPEND ENDOF
    ;MATCH  SB$ ;
 : GFLOPS$ ( gflops -- ptr u8 n )
    SB-RESET
    MATCH gflops
-      gflops-at OF SB-INT ENDOF
+      gflops-at OF FMT:SB-INT ENDOF
       gflops-na OF s" na:" SB-APPEND ABSENCE-NAME SB-APPEND ENDOF
    ;MATCH  SB$ ;
 

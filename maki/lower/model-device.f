@@ -87,7 +87,7 @@ create LMDM-RP   FS-PATH-CAP allot  variable LMDM-RP-U
 \ ---- per-region cubin path under a private model dir -------------------------
 \ RGN>RAW is the one per-region path render boundary (region<rid>.cubin)
 : LMDM-RP$ ( CAD-KIND:region -- ptr u8 n ) {: rid:CAD-KIND:region :}
-   SB-RESET s" region" SB-APPEND rid RGN>RAW SB-INT s" .cubin" SB-APPEND SB$ {: na:ptr nu:n :}
+   SB-RESET s" region" SB-APPEND rid RGN>RAW FMT:SB-INT s" .cubin" SB-APPEND SB$ {: na:ptr nu:n :}
    LMDM-DIR LMDM-DIR-U @  na nu  LMDM-RP JOIN-PATH LMDM-RP-U !
    LMDM-RP LMDM-RP-U @ ;
 
@@ -105,12 +105,12 @@ create LMDM-RP   FS-PATH-CAP allot  variable LMDM-RP-U
    FP-REGION-COUNT 0 ?do  ma mu i FP-REGION-ID LMDM-ASSEMBLE-REGION  loop ;
 
 \ ---- per-element evidence (final model output: device value | host value rounded to f32) -----
-: LMDM-FP ( r -- )  SB-RESET 6 SB-FIX SB$ type ;
+: LMDM-FP ( r -- )  SB-RESET 6 FMT:SB-FIX SB$ type ;
 : LMDM-HOST@ ( n -- r )  LLA-OUT-NODE@ EX-OUT@ swap T-GET  F64>F32 F32>F64 ;
 : LMDM-EVIDENCE ( -- )
    s" elem   device        host_f32" type cr
    LLA-ELEMS@ 0 ?do
-      s"   " type i SB-RESET SB-INT SB$ type s"    " type
+      s"   " type i SB-RESET FMT:SB-INT SB$ type s"    " type
       i LLA-OUT@ LMDM-FP  s"    " type  i LMDM-HOST@ LMDM-FP  cr
    loop ;
 

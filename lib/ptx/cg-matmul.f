@@ -72,7 +72,7 @@ KERNEL: MM-CHECKED ( matrix<space-global,f32,extent-m,extent-k> matrix<space-glo
    s" .visible .entry MM(.param .u64 pA,.param .u64 pB,.param .u64 pC,.param .u32 pM,.param .u32 pN,.param .u32 pK)" PTX-L
    s" {" PTX-L
    s" .reg .pred %p<4>;" PTX-L  s" .reg .f32 %f<48>;" PTX-L  s" .reg .b32 %r<64>;" PTX-L  s" .reg .b64 %rd<48>;" PTX-L
-   SB-RESET s" .shared .align 16 .b8 SH[" SB-APPEND MM-SMEM SB-U s" ];" SB-APPEND SB$ PTX-L
+   SB-RESET s" .shared .align 16 .b8 SH[" SB-APPEND MM-SMEM FMT:SB-U s" ];" SB-APPEND SB$ PTX-L
    MM-PARAMS
    MM-ABI ;
 

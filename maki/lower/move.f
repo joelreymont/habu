@@ -210,12 +210,12 @@ private
 
 \ ---- entry / regs / params (K buffers + out + a,b,n; cvta the pointers) ------
 \ RGN>RAW is the one kernel-name render boundary (REGION_<rid>)
-: LMV-KNAME ( -- )  s" REGION_" CG-S 0 LMV-RID @ RGN>RAW SB-U ;
+: LMV-KNAME ( -- )  s" REGION_" CG-S 0 LMV-RID @ RGN>RAW FMT:SB-U ;
 : LMV-OUT-BASE ( -- n )  LMV-NIN @ 1+ ;                \ rd index of p_out (rd1..rdK buffers)
 : LMV-ENTRY ( -- )
    SB-RESET
    s" .visible .entry " CG-S LMV-KNAME s" (" CG-S
-   LMV-NIN @ 0 ?do  s" .param .u64 p_in" CG-S i SB-U s" , " CG-S  loop
+   LMV-NIN @ 0 ?do  s" .param .u64 p_in" CG-S i FMT:SB-U s" , " CG-S  loop
    s" .param .u64 p_out, .param .u32 p_a, .param .u32 p_b, .param .u32 p_n)" CG-S
    CG-LINE ;
 : LMV-OPEN ( -- )
@@ -226,16 +226,16 @@ private
    s" .reg .b64 %rd<32>;" PTX-L ;
 : LMV-PARAMS ( -- )
    LMV-NIN @ 0 ?do
-      SB-RESET s" ld.param.u64 %rd" CG-S i 1+ SB-U s" , [p_in" CG-S i SB-U s" ];" CG-S CG-LINE
+      SB-RESET s" ld.param.u64 %rd" CG-S i 1+ FMT:SB-U s" , [p_in" CG-S i FMT:SB-U s" ];" CG-S CG-LINE
    loop
-   SB-RESET s" ld.param.u64 %rd" CG-S LMV-OUT-BASE SB-U s" , [p_out];" CG-S CG-LINE
+   SB-RESET s" ld.param.u64 %rd" CG-S LMV-OUT-BASE FMT:SB-U s" , [p_out];" CG-S CG-LINE
    s" ld.param.u32 %r1, [p_a];" PTX-L
    s" ld.param.u32 %r2, [p_b];" PTX-L
    s" ld.param.u32 %r3, [p_n];" PTX-L
    LMV-NIN @ 0 ?do
-      SB-RESET s" cvta.to.global.u64 %rd" CG-S i 1+ SB-U s" , %rd" CG-S i 1+ SB-U s" ;" CG-S CG-LINE
+      SB-RESET s" cvta.to.global.u64 %rd" CG-S i 1+ FMT:SB-U s" , %rd" CG-S i 1+ FMT:SB-U s" ;" CG-S CG-LINE
    loop
-   SB-RESET s" cvta.to.global.u64 %rd" CG-S LMV-OUT-BASE SB-U s" , %rd" CG-S LMV-OUT-BASE SB-U s" ;" CG-S CG-LINE ;
+   SB-RESET s" cvta.to.global.u64 %rd" CG-S LMV-OUT-BASE FMT:SB-U s" , %rd" CG-S LMV-OUT-BASE FMT:SB-U s" ;" CG-S CG-LINE ;
 
 \ ---- flat element index + bounds (e = %r7, masked against p_n = %r3) ---------
 : LMV-COORD ( -- )
@@ -249,7 +249,7 @@ private
 \ store the loaded value (%f1) at out[e]  (out base = rd LMV-OUT-BASE)
 : LMV-STORE ( -- )
    s" mul.wide.u32 %rd12, %r7, 4;" PTX-L
-   SB-RESET s" add.u64 %rd13, %rd" CG-S LMV-OUT-BASE SB-U s" , %rd12;" CG-S CG-LINE
+   SB-RESET s" add.u64 %rd13, %rd" CG-S LMV-OUT-BASE FMT:SB-U s" , %rd12;" CG-S CG-LINE
    s" st.global.f32 [%rd13], %f1;" PTX-L ;
 
 \ ---- per-op bodies (source index remap; load -> %f1) ------------------------

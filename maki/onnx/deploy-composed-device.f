@@ -124,11 +124,11 @@ package MAKI
    FP-REGION-COUNT 0 ?do  i FP-REGION-ID CDV-ASSEMBLE-REGION  loop ;
 
 \ ---- per-element evidence (final device output | host-oracle reference) ----
-: CDV-FP ( r -- )  SB-RESET 6 SB-FIX SB$ type ;
+: CDV-FP ( r -- )  SB-RESET 6 FMT:SB-FIX SB$ type ;
 : CDV-EVIDENCE ( -- )
    s" elem   device        host_oracle" type cr
    ONNX-CMP-TEST:CDV-YN 0 ?do
-      s"   " type i SB-RESET SB-INT SB$ type s"    " type
+      s"   " type i SB-RESET FMT:SB-INT SB$ type s"    " type
       i LLA-OUT@ CDV-FP  s"    " type  i CDV-Y@ CDV-FP  cr
    loop ;
 
@@ -141,9 +141,9 @@ package MAKI
    LLA-ELEMS@ ONNX-CMP-TEST:CDV-YN T=              \ device output element count == reference count
    MDL-COUNT-REGIONS                               \ tally regions for the composed tolerance
    s" deploy-composed-device: device vs host oracle (" type
-      MDL-N-REGIONS@ SB-RESET SB-INT SB$ type s"  regions: " type
-      MDL-N-MV@ SB-RESET SB-INT SB$ type s"  move + " type
-      MDL-N-MM@ SB-RESET SB-INT SB$ type s"  matmul)" type cr
+      MDL-N-REGIONS@ SB-RESET FMT:SB-INT SB$ type s"  regions: " type
+      MDL-N-MV@ SB-RESET FMT:SB-INT SB$ type s"  move + " type
+      MDL-N-MM@ SB-RESET FMT:SB-INT SB$ type s"  matmul)" type cr
    CDV-EVIDENCE
    CDV-DEV-ATOL {: atol:r :}  CDV-DEV-RTOL {: rtol:r :}
    ONNX-CMP-TEST:CDV-YN 0 ?do

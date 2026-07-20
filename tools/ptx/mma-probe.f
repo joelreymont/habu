@@ -138,25 +138,25 @@ MP-M MP-N * constant MP-CE          \ C elems = 128
    s" .reg .f32 %f<32>;" PTX-L
    s" .reg .b32 %r<48>;" PTX-L
    s" .reg .b64 %rd<16>;" PTX-L
-   SB-RESET s" .shared .align 16 .b8 SHM[" SB-APPEND MP-LDM-SHB SB-U s" ];" SB-APPEND SB$ PTX-L ;
+   SB-RESET s" .shared .align 16 .b8 SHM[" SB-APPEND MP-LDM-SHB FMT:SB-U s" ];" SB-APPEND SB$ PTX-L ;
 
 \ cooperative global->shared staging (single warp): A 4 elems/lane, B 2/lane, raw b32 copy.
 : MP-LDM-STAGE ( -- )
    s" mov.u32 %r1, %tid.x;" PTX-L
    s" mov.u32 %r7, SHM;" PTX-L
    4 0 do                                        \ A[c], c = lane + m*32
-      SB-RESET s" add.u32 %r20, %r1, " SB-APPEND i 32 * SB-U s" ;" SB-APPEND SB$ PTX-L
+      SB-RESET s" add.u32 %r20, %r1, " SB-APPEND i 32 * FMT:SB-U s" ;" SB-APPEND SB$ PTX-L
       s" mul.wide.u32 %rd10, %r20, 4;" PTX-L  s" add.u64 %rd11, %rd1, %rd10;" PTX-L
       s" ld.global.b32 %r21, [%rd11];" PTX-L
       s" shl.b32 %r22, %r20, 2;" PTX-L  s" add.u32 %r22, %r7, %r22;" PTX-L
       s" st.shared.b32 [%r22], %r21;" PTX-L
    loop
    2 0 do                                        \ B[c], c = lane + m*32
-      SB-RESET s" add.u32 %r20, %r1, " SB-APPEND i 32 * SB-U s" ;" SB-APPEND SB$ PTX-L
+      SB-RESET s" add.u32 %r20, %r1, " SB-APPEND i 32 * FMT:SB-U s" ;" SB-APPEND SB$ PTX-L
       s" mul.wide.u32 %rd10, %r20, 4;" PTX-L  s" add.u64 %rd11, %rd2, %rd10;" PTX-L
       s" ld.global.b32 %r21, [%rd11];" PTX-L
       s" shl.b32 %r22, %r20, 2;" PTX-L
-      SB-RESET s" add.u32 %r22, %r22, " SB-APPEND MP-LDM-BOFF SB-U s" ;" SB-APPEND SB$ PTX-L
+      SB-RESET s" add.u32 %r22, %r22, " SB-APPEND MP-LDM-BOFF FMT:SB-U s" ;" SB-APPEND SB$ PTX-L
       s" add.u32 %r22, %r7, %r22;" PTX-L
       s" st.shared.b32 [%r22], %r21;" PTX-L
    loop
@@ -184,12 +184,12 @@ MP-M MP-N * constant MP-CE          \ C elems = 128
    s" mov.u32 %r7, SHM;" PTX-L
    s" mul.lo.u32 %r4, %r3, 8;" PTX-L  s" add.u32 %r4, %r4, %r2;" PTX-L  \ t*8+gid
    s" shl.b32 %r4, %r4, 2;" PTX-L
-   SB-RESET s" add.u32 %r4, %r4, " SB-APPEND MP-LDM-BOFF SB-U s" ;" SB-APPEND SB$ PTX-L
+   SB-RESET s" add.u32 %r4, %r4, " SB-APPEND MP-LDM-BOFF FMT:SB-U s" ;" SB-APPEND SB$ PTX-L
    s" add.u32 %r4, %r7, %r4;" PTX-L
    s" ld.shared.b32 %r14, [%r4];" PTX-L
    s" add.u32 %r5, %r3, 4;" PTX-L  s" mul.lo.u32 %r5, %r5, 8;" PTX-L  s" add.u32 %r5, %r5, %r2;" PTX-L  \ (t+4)*8+gid
    s" shl.b32 %r5, %r5, 2;" PTX-L
-   SB-RESET s" add.u32 %r5, %r5, " SB-APPEND MP-LDM-BOFF SB-U s" ;" SB-APPEND SB$ PTX-L
+   SB-RESET s" add.u32 %r5, %r5, " SB-APPEND MP-LDM-BOFF FMT:SB-U s" ;" SB-APPEND SB$ PTX-L
    s" add.u32 %r5, %r7, %r5;" PTX-L
    s" ld.shared.b32 %r15, [%r5];" PTX-L ;
 
@@ -222,14 +222,14 @@ MP-M MP-N * constant MP-CE          \ C elems = 128
    s" .reg .f32 %f<32>;" PTX-L
    s" .reg .b32 %r<48>;" PTX-L
    s" .reg .b64 %rd<16>;" PTX-L
-   SB-RESET s" .shared .align 16 .b8 SHM[" SB-APPEND MP-BLDM-SHB SB-U s" ];" SB-APPEND SB$ PTX-L ;
+   SB-RESET s" .shared .align 16 .b8 SHM[" SB-APPEND MP-BLDM-SHB FMT:SB-U s" ];" SB-APPEND SB$ PTX-L ;
 
 \ cooperative global->shared TRANSPOSED staging (single warp, 2 elems/lane): SHM_BT[n][k] = B[k][n].
 : MP-BLDM-STAGE-BT ( -- )
    s" mov.u32 %r1, %tid.x;" PTX-L
    s" mov.u32 %r7, SHM;" PTX-L
    2 0 do                                        \ e = lane + m*32 ; n = e>>3, k = e&7
-      SB-RESET s" add.u32 %r20, %r1, " SB-APPEND i 32 * SB-U s" ;" SB-APPEND SB$ PTX-L
+      SB-RESET s" add.u32 %r20, %r1, " SB-APPEND i 32 * FMT:SB-U s" ;" SB-APPEND SB$ PTX-L
       s" shr.u32 %r21, %r20, 3;" PTX-L           \ n = e>>3
       s" and.b32 %r22, %r20, 7;" PTX-L           \ k = e&7
       s" shl.b32 %r23, %r22, 3;" PTX-L           \ global src B[k][n] = k*8 + n

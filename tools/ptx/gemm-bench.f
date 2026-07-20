@@ -45,7 +45,7 @@ variable GB-SMEM-DYN                    \ dynamic .shared bytes for the launch (
 variable GB-BLKY                       \ block Y dim: 16 (256 thr, 8-warp) / 8 (128 thr, 4-warp MMM tile)
 64 GB-OTY !  16 GB-BLKY !
 
-: GB-INT. ( n -- )  SB-RESET SB-INT SB$ type ;
+: GB-INT. ( n -- )  SB-RESET FMT:SB-INT SB$ type ;
 : GB-HALF-PAT ( -- n )  MMA-BF16? if GB-BF16-ONE else GB-HALF-ONE then ;   \ packed 1.0 half pair for the dtype (fp16/bf16)
 
 : GB-ASSEMBLE ( -- )                   \ captured PTX -> kernel.ptx -> ptxas cubin (die on rc<>0)

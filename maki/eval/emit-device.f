@@ -378,7 +378,7 @@ variable AT-NV variable AT-DPARAM
 
 \ ---- evidence printing ------------------------------------------------------
 : REPORT-ERR ( ptr u8 n r -- ) {: a:ptr u:n e:r :}
-   s" eval-device " type  a u type  s" : max|err| vs CPU ref = " type  e 6 F.N cr ;
+   s" eval-device " type  a u type  s" : max|err| vs CPU ref = " type  e 6 FMT:F.N cr ;
 : REPORT-RC ( ptr u8 n n -- ) {: a:ptr u:n rc:n :}
    s" eval-device " type  a u type  s" : ptxas rc = " type  rc .  s" (nonzero -> assembly rejected)" type cr ;
 

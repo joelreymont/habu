@@ -114,7 +114,7 @@ create SW-SMI-OUT SW-SMI-CAP allot   create SW-SMI-ERR SW-SMI-ECAP allot
 : SW-WAIT-SOLO ( n -- ) {: limit:n :}
    SW-SOLO-TRIES 0 ?do
       limit SW-SOLO-OK? if unloop exit then
-      s" at-sweep: GPU contended (>" type limit .U s"  compute app) - waiting" type cr
+      s" at-sweep: GPU contended (>" type limit FMT:.U s"  compute app) - waiting" type cr
    loop
    limit SW-SOLO-OK? 0= if E-AT-CONTENDED throw then ;
 
@@ -171,7 +171,7 @@ variable SW-BEST-NS  variable SW-CLK-MIN  variable SW-CLK-MAX  variable SW-VALID
    2 n dup * n * *  SW-ITERS *  {: fl:n :}                  \ 2*n^3*iters (total flops timed)
    fl SW-BEST-NS @ PTXPROF:GFLOPS-X1000 {: val:n :}
    SB-RESET
-   s" AT-SWEEP-c" SB-APPEND  id SB-INT  AT-TAB
+   s" AT-SWEEP-c" SB-APPEND  id FMT:SB-INT  AT-TAB
    MMA-EXACT:MX-N @ MMA-BN @ /   AT-FLD-N
    MMA-EXACT:MX-N @ MMA-BROWS /  AT-FLD-N
    16 AT-FLD-N
@@ -182,10 +182,10 @@ variable SW-BEST-NS  variable SW-CLK-MIN  variable SW-CLK-MAX  variable SW-VALID
    val AT-FLD-N
    s" spark-gb10-sm121a" AT-FLD$
    s" 2026-07-19" AT-FLD$
-   s" BN=" SB-APPEND MMA-BN @ SB-INT  s"  MF=" SB-APPEND MMA-MFRAGS @ SB-INT
-   s"  W=" SB-APPEND MMA-WARPS @ SB-INT  s"  BK=" SB-APPEND MMA-BK @ SB-INT
-   s"  st=" SB-APPEND MMA-STAGES @ SB-INT  s"  clk=" SB-APPEND SW-CLK-MIN @ SB-INT
-   s" -" SB-APPEND SW-CLK-MAX @ SB-INT  s" MHz best-of-3 solo element-exact" SB-APPEND
+   s" BN=" SB-APPEND MMA-BN @ FMT:SB-INT  s"  MF=" SB-APPEND MMA-MFRAGS @ FMT:SB-INT
+   s"  W=" SB-APPEND MMA-WARPS @ FMT:SB-INT  s"  BK=" SB-APPEND MMA-BK @ FMT:SB-INT
+   s"  st=" SB-APPEND MMA-STAGES @ FMT:SB-INT  s"  clk=" SB-APPEND SW-CLK-MIN @ FMT:SB-INT
+   s" -" SB-APPEND SW-CLK-MAX @ FMT:SB-INT  s" MHz best-of-3 solo element-exact" SB-APPEND
    SB$ type cr ;
 
 \ ---- one candidate: element-exact precondition -> solo -> best-of-3 -> row -----
@@ -196,7 +196,7 @@ variable SW-BEST-NS  variable SW-CLK-MIN  variable SW-CLK-MAX  variable SW-VALID
    c AT-APPLY
    n MMA-EXACT:MX-SHAPE-OK? 0= if
       id AT-XR-PRUNED AT-XCL-ADD
-      s" -- cfg " type id .U  s"  EXCLUDED: shape " type n .U  s"  not tileable by this config" type cr
+      s" -- cfg " type id FMT:.U  s"  EXCLUDED: shape " type n FMT:.U  s"  not tileable by this config" type cr
       exit
    then
    n MMA-EXACT:MX-N !
@@ -206,7 +206,7 @@ variable SW-BEST-NS  variable SW-CLK-MIN  variable SW-CLK-MAX  variable SW-VALID
    SW-EXACT-LAUNCH  MMA-EXACT:MX-COMPARE {: bad:n :}
    bad 0 > if
       id AT-XR-INEXACT AT-XCL-ADD
-      s" -- cfg " type id .U  s"  EXCLUDED inexact (mismatches=" type bad .U  s" ) - NOT timed" type cr
+      s" -- cfg " type id FMT:.U  s"  EXCLUDED inexact (mismatches=" type bad FMT:.U  s" ) - NOT timed" type cr
    else
       1 SW-WAIT-SOLO                          \ solo (only this process) before the timing pass
       SW-ITERS PTXBENCH:ITERS!
@@ -214,7 +214,7 @@ variable SW-BEST-NS  variable SW-CLK-MIN  variable SW-CLK-MAX  variable SW-VALID
          id n SW-EMIT-ROW
       else
          id AT-XR-UNSTABLE AT-XCL-ADD
-         s" -- cfg " type id .U  s"  EXCLUDED clock-unstable (no " type SW-NEED .U  s"  stable reps) - NOT reported" type cr
+         s" -- cfg " type id FMT:.U  s"  EXCLUDED clock-unstable (no " type SW-NEED FMT:.U  s"  stable reps) - NOT reported" type cr
       then
    then
    MMA-EXACT:MX-DEV-FREE
@@ -225,7 +225,7 @@ variable SW-BEST-NS  variable SW-CLK-MIN  variable SW-CLK-MAX  variable SW-VALID
    AT-XCL-N 0= if s" -- no candidates excluded" type cr exit then
    s" -- EXCLUDED candidates (never timed; id : reason):" type cr
    AT-XCL-N 0 ?do
-      s"    cfg " type  i AT-XCL-ID@ .U  s"  : " type  i AT-XCL-REASON@ AT-XR$ type cr
+      s"    cfg " type  i AT-XCL-ID@ FMT:.U  s"  : " type  i AT-XCL-REASON@ AT-XR$ type cr
    loop ;
 
 \ ---- candidate staging: contiguous records indexed by arithmetic (ptr a) ------
@@ -286,7 +286,7 @@ public
          c i n SW-CANDIDATE
       else
          i AT-XR-PRUNED AT-XCL-ADD
-         s" -- cfg " type i .U  s"  EXCLUDED pruned (AT-LEGAL? false) - NOT emitted" type cr
+         s" -- cfg " type i FMT:.U  s"  EXCLUDED pruned (AT-LEGAL? false) - NOT emitted" type cr
       then
    loop
    PTXBENCH:CLOSE

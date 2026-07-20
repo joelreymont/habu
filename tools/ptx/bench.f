@@ -240,22 +240,22 @@ public
 
 : REPORT-HEADER ( -- )
    s" kernel=" type LABEL$ type
-   s"  work_items=" type WORK-N @ .U
-   s"  grid=" type GRID-N @ .U
-   s"  block=" type BLOCK-N @ .U
-   s"  iters=" type ITERS-N @ .U cr
-   s" param_bytes=" type PARAM-BYTES-N @ .U ;
+   s"  work_items=" type WORK-N @ FMT:.U
+   s"  grid=" type GRID-N @ FMT:.U
+   s"  block=" type BLOCK-N @ FMT:.U
+   s"  iters=" type ITERS-N @ FMT:.U cr
+   s" param_bytes=" type PARAM-BYTES-N @ FMT:.U ;
 
 : REPORT-GPU ( n n n -- )
    {: by:n fl:n ns:n :}
    REPORT-HEADER
-   s"  gpu_elapsed_ns=" type ns .U cr
+   s"  gpu_elapsed_ns=" type ns FMT:.U cr
    by fl ns PTXPROF:REPORT-METRICS ;
 
 : REPORT-HOST ( n n n -- )
    {: by:n fl:n ns:n :}
    REPORT-HEADER
-   s"  host_elapsed_ns=" type ns .U cr
+   s"  host_elapsed_ns=" type ns FMT:.U cr
    by fl ns PTXPROF:REPORT-METRICS ;
 
 : REPORT ( n n n -- )

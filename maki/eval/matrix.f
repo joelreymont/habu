@@ -104,7 +104,7 @@ variable MX-OUT-U
 : MXO+ ( ptr u8 n -- ) {: a:ptr u:n :}
    0 begin dup u < while  dup a + c@ MXO-C  1+  repeat drop ;
 
-: MXO-INT ( n -- )  SB-RESET SB-INT SB$ MXO+ ;
+: MXO-INT ( n -- )  SB-RESET FMT:SB-INT SB$ MXO+ ;
 : MXO-NL ( -- )  $0A MXO-C ;
 : MXO-SEP ( -- )  s"  | " MXO+ ;
 : MXO$ ( -- ptr u8 n )  MX-OUT MX-OUT-U @ ;

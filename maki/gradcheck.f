@@ -75,7 +75,7 @@ create GC-RE GC-RE-CAP allot  variable GC-RE-U
 : GC-RE+ ( ptr u8 n -- ) {: a:ptr u:n :}
    GC-RE-U @ u + GC-RE-CAP > if exit then         \ reason is advisory; never overflow
    a GC-RE GC-RE-U @ + u BYTE-COPY  GC-RE-U @ u + GC-RE-U ! ;
-: GC-RE-INT ( n -- )  SB-RESET SB-INT SB$ GC-RE+ ;
+: GC-RE-INT ( n -- )  SB-RESET FMT:SB-INT SB$ GC-RE+ ;
 public
 : GC-RE$ ( -- ptr u8 n )  GC-RE GC-RE-U @ ;
 private

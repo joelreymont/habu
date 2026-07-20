@@ -312,10 +312,10 @@ variable SP-DX variable SP-DY variable SP-A variable SP-NV
 
 \ ---- evidence printing ------------------------------------------------------
 : REPORT-ERR ( ptr u8 n r -- ) {: a:ptr u:n e:r :}
-   s" device-gold " type  a u type  s" : max|err| vs golden = " type  e 8 F.N cr ;
+   s" device-gold " type  a u type  s" : max|err| vs golden = " type  e 8 FMT:F.N cr ;
 : REPORT-TOL ( ptr u8 n r r r -- ) {: a:ptr u:n e:r atol:r rtol:r :}
-   s" device-gold " type  a u type  s" : max|err| vs golden = " type  e 8 F.N
-   s"  (atol " type  atol 8 F.N  s"  rtol " type  rtol 8 F.N  s" )" type cr ;
+   s" device-gold " type  a u type  s" : max|err| vs golden = " type  e 8 FMT:F.N
+   s"  (atol " type  atol 8 FMT:F.N  s"  rtol " type  rtol 8 FMT:F.N  s" )" type cr ;
 
 \ ---- per-kernel golden: emit committed producer -> assemble -> run -> compare -
 : GEMM-GOLDEN ( -- )

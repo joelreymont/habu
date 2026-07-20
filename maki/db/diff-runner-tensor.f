@@ -148,7 +148,7 @@ public
 
 \ "prefix<r>" into the shared builder (float rendered at TFIX-DIGITS; r passed UNDER prefix).
 : TFIX$ ( r ptr u8 n -- ptr u8 n ) {: a:ptr u:n :}
-   SB-RESET  a u SB-APPEND  TFIX-DIGITS SB-FIX  SB$ ;
+   SB-RESET  a u SB-APPEND  TFIX-DIGITS FMT:SB-FIX  SB$ ;
 
 \ T-EMIT-COUNTEREXAMPLE lowers a minimized tensor discrepancy at case p (subject SUBJ-T,
 \ reference REF-T, len elements) into a DIAG diagnostic: class numeric, the failing subject

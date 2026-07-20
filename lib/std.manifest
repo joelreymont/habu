@@ -1191,14 +1191,12 @@ schema_version	module	file	kind	word	effect	test	doc	owner	status	notes
 1	float	lib/float.f	word	FL-PARSE-EXP	(ptr u8 n -- n)	lib/float-test.f	docs/stdlib.md	stdlib-float	active	parse any exponent suffix, returning mantissa length
 1	float	lib/float.f	word	STR>FLOAT	(ptr u8 n -- option<r>)	lib/float-test.f	docs/stdlib.md	stdlib-float	published	parse a decimal float string: SOME IEEE double, else NONE
 1	fmt	lib/fmt.f	module			lib/fmt-test.f	docs/stdlib.md	stdlib-fmt	active	checked number formatting into the string builder
-1	fmt	lib/fmt.f	word	SB-U	(n --)	lib/fmt-test.f	docs/stdlib.md	stdlib-fmt	published	append an unsigned integer to the string builder
-1	fmt	lib/fmt.f	word	SB-INT	(n --)	lib/fmt-test.f	docs/stdlib.md	stdlib-fmt	published	append a signed integer to the string builder
-1	fmt	lib/fmt.f	word	POW10I	(n -- n)	lib/fmt-test.f	docs/stdlib.md	stdlib-fmt	active	ten raised to a nonnegative integer power as an integer
-1	fmt	lib/fmt.f	word	SB-FRAC	(n n --)	lib/fmt-test.f	docs/stdlib.md	stdlib-fmt	active	append a fraction as k zero-padded digits
-1	fmt	lib/fmt.f	word	SB-FIX	(r n --)	lib/fmt-test.f	docs/stdlib.md	stdlib-fmt	published	append a float with k decimal places, round half-up
-1	fmt	lib/fmt.f	word	.U	(n --)	lib/fmt-test.f	docs/stdlib.md	stdlib-fmt	published	print an unsigned integer with no trailing space
-1	fmt	lib/fmt.f	word	.INT	(n --)	lib/fmt-test.f	docs/stdlib.md	stdlib-fmt	published	print a signed integer with no trailing space
-1	fmt	lib/fmt.f	word	F.N	(r n --)	lib/fmt-test.f	docs/stdlib.md	stdlib-fmt	published	print a float with k decimal places
+1	fmt	lib/fmt.f	word	FMT:SB-U	(n --)	lib/fmt-test.f	docs/stdlib.md	stdlib-fmt	published	append an unsigned integer to the string builder
+1	fmt	lib/fmt.f	word	FMT:SB-INT	(n --)	lib/fmt-test.f	docs/stdlib.md	stdlib-fmt	published	append a signed integer to the string builder
+1	fmt	lib/fmt.f	word	FMT:SB-FIX	(r n --)	lib/fmt-test.f	docs/stdlib.md	stdlib-fmt	published	append a float with k decimal places, round half-up
+1	fmt	lib/fmt.f	word	FMT:.U	(n --)	lib/fmt-test.f	docs/stdlib.md	stdlib-fmt	published	print an unsigned integer with no trailing space
+1	fmt	lib/fmt.f	word	FMT:.INT	(n --)	lib/fmt-test.f	docs/stdlib.md	stdlib-fmt	published	print a signed integer with no trailing space
+1	fmt	lib/fmt.f	word	FMT:F.N	(r n --)	lib/fmt-test.f	docs/stdlib.md	stdlib-fmt	published	print a float with k decimal places
 1	stats	lib/stats.f	module			lib/stats-test.f	docs/stdlib.md	stdlib-stats	active	float-array summary statistics
 1	stats	lib/stats.f	word	STATS:FMIN2	(r r -- r)	lib/stats-test.f	docs/stdlib.md	stdlib-stats	published	minimum of two floats
 1	stats	lib/stats.f	word	STATS:FMAX2	(r r -- r)	lib/stats-test.f	docs/stdlib.md	stdlib-stats	published	maximum of two floats

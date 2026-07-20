@@ -19,7 +19,7 @@ package PERF-CT
    s" 8" SB-APPEND TAB+ s" 8" SB-APPEND TAB+
    s" 16" SB-APPEND TAB+ s" 16" SB-APPEND TAB+
    s" 10" SB-APPEND TAB+ s" 4096" SB-APPEND TAB+
-   s" GFLOPS" SB-APPEND TAB+ v SB-INT TAB+
+   s" GFLOPS" SB-APPEND TAB+ v FMT:SB-INT TAB+
    s" test-dev" SB-APPEND TAB+ s" 2026-07-13" SB-APPEND TAB+
    s" compare fixture" SB-APPEND
    SB$ PERF:ADD-LINE ;
@@ -30,7 +30,7 @@ package PERF-CT
    s" 8" SB-APPEND TAB+ s" 8" SB-APPEND TAB+
    s" 16" SB-APPEND TAB+ s" 16" SB-APPEND TAB+
    s" 10" SB-APPEND TAB+ s" 4096" SB-APPEND TAB+
-   s" GFLOPS" SB-APPEND TAB+ v SB-INT TAB+
+   s" GFLOPS" SB-APPEND TAB+ v FMT:SB-INT TAB+
    da du SB-APPEND TAB+ s" 2026-07-13" SB-APPEND TAB+
    s" device isolation fixture" SB-APPEND
    SB$ PERF:ADD-LINE ;

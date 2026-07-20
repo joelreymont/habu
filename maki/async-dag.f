@@ -445,7 +445,7 @@ variable AR-U
    c AR-BUF AR-U @ + c!  AR-U @ 1+ AR-U ! ;
 : AR+ ( ptr u8 n -- ) {: a:ptr u:n :}
    0 begin dup u < while  dup a + c@ AR-C  1+  repeat drop ;
-: AR-INT ( n -- )  SB-RESET SB-INT SB$ AR+ ;
+: AR-INT ( n -- )  SB-RESET FMT:SB-INT SB$ AR+ ;
 : AR-NL ( -- )  $0A AR-C ;
 : AR$ ( -- ptr u8 n )  AR-BUF AR-U @ ;
 

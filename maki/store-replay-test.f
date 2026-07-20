@@ -25,7 +25,7 @@ package MAKI
    rows cols SHAPE MAKI-DTYPE:DF32 MAKI-LAYOUT:ROW 0 1 MIR-OP+ drop ;
 
 \ ---- growth fixtures: 33 distinct synthetic keys (> the 32-entry boot table) --
-: SRT-KEY$ ( n -- ptr u8 n ) {: k:n :}  SB-RESET s" sk" SB-APPEND k SB-INT SB$ ;
+: SRT-KEY$ ( n -- ptr u8 n ) {: k:n :}  SB-RESET s" sk" SB-APPEND k FMT:SB-INT SB$ ;
 : SRT-DPUT ( n -- ) {: k:n :}  k SRT-KEY$ k SK-PUT-DURABLE ;
 : SRT-DFILL ( n -- ) {: k:n :}  k 0 ?do i SRT-DPUT loop ;
 : SRT-GET ( n -- n bool )  SRT-KEY$ SK-GET ;

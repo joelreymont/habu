@@ -144,7 +144,7 @@ private
 
 \ RGN>RAW is the one kernel-name render boundary (REGION_<rid>)
 : LLA-FNAME ( CAD-KIND:region -- ) {: rid:CAD-KIND:region :}   \ build the REGION_<rid> cstring
-   SB-RESET s" REGION_" SB-APPEND rid RGN>RAW SB-INT  SB$ LLA-FN >CSTR ;
+   SB-RESET s" REGION_" SB-APPEND rid RGN>RAW FMT:SB-INT  SB$ LLA-FN >CSTR ;
 
 \ context lifecycle is split from module lifecycle: the whole-model run (LOWER-MODEL-RUN)
 \ opens the context ONCE and loads/unloads a module PER region (device buffers are

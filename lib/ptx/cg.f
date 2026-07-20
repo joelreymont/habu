@@ -46,11 +46,11 @@ variable CG-GRID-IDX   \ flat grid index register last emitted by EMIT-GRID-CTX 
 
 \ append operands / literals to the shared string builder, then emit the line
 : CG-S  ( ptr u8 n -- )  SB-APPEND ;
-: CG-F  ( n -- )  s" %f"  SB-APPEND SB-U ;
-: CG-RD ( n -- )  s" %rd" SB-APPEND SB-U ;
-: CG-R  ( n -- )  s" %r"  SB-APPEND SB-U ;
-: CG-P  ( n -- )  s" %p"  SB-APPEND SB-U ;
-: CG-L  ( n -- )  s" $L"  SB-APPEND SB-U ;          \ label operand: $L<n>
+: CG-F  ( n -- )  s" %f"  SB-APPEND FMT:SB-U ;
+: CG-RD ( n -- )  s" %rd" SB-APPEND FMT:SB-U ;
+: CG-R  ( n -- )  s" %r"  SB-APPEND FMT:SB-U ;
+: CG-P  ( n -- )  s" %p"  SB-APPEND FMT:SB-U ;
+: CG-L  ( n -- )  s" $L"  SB-APPEND FMT:SB-U ;          \ label operand: $L<n>
 : CG-LINE ( -- )  SB$ PTX-L ;
 : CG-LDEF ( n -- )
    SB-RESET CG-L s" :" CG-S CG-LINE ;
@@ -284,11 +284,11 @@ TRUSTED: BITS>R ( n -- r ) ;
 \ dstC/srcC are emit-time constants, so they ride as immediates (no extra kernel params).
 : EMIT-XPOSE-OFF ( n n n -- n ) {: flatr:n dstC:n srcC:n :}
    CG-NEXT-R {: rj:n :}
-   SB-RESET s" rem.u32 " CG-S rj CG-R s" , " CG-S flatr CG-R s" , " CG-S dstC SB-U s" ;" CG-S CG-LINE
+   SB-RESET s" rem.u32 " CG-S rj CG-R s" , " CG-S flatr CG-R s" , " CG-S dstC FMT:SB-U s" ;" CG-S CG-LINE
    CG-NEXT-R {: ri:n :}
-   SB-RESET s" div.u32 " CG-S ri CG-R s" , " CG-S flatr CG-R s" , " CG-S dstC SB-U s" ;" CG-S CG-LINE
+   SB-RESET s" div.u32 " CG-S ri CG-R s" , " CG-S flatr CG-R s" , " CG-S dstC FMT:SB-U s" ;" CG-S CG-LINE
    CG-NEXT-R {: rsrc:n :}
-   SB-RESET s" mad.lo.u32 " CG-S rsrc CG-R s" , " CG-S rj CG-R s" , " CG-S srcC SB-U s" , " CG-S ri CG-R s" ;" CG-S CG-LINE
+   SB-RESET s" mad.lo.u32 " CG-S rsrc CG-R s" , " CG-S rj CG-R s" , " CG-S srcC FMT:SB-U s" , " CG-S ri CG-R s" ;" CG-S CG-LINE
    CG-NEXT-RD {: off:n :}
    SB-RESET s" mul.wide.u32 " CG-S off CG-RD s" , " CG-S rsrc CG-R s" , 4;" CG-S CG-LINE
    off ;
@@ -300,14 +300,14 @@ TRUSTED: BITS>R ( n -- r ) ;
 \ MOD-OFF: a 1xC row-broadcast reads element (e mod C) -> byte offset (e mod C)*4.
 : EMIT-MOD-OFF ( n n -- n ) {: flatr:n C:n :}
    CG-NEXT-R {: rj:n :}
-   SB-RESET s" rem.u32 " CG-S rj CG-R s" , " CG-S flatr CG-R s" , " CG-S C SB-U s" ;" CG-S CG-LINE
+   SB-RESET s" rem.u32 " CG-S rj CG-R s" , " CG-S flatr CG-R s" , " CG-S C FMT:SB-U s" ;" CG-S CG-LINE
    CG-NEXT-RD {: off:n :}
    SB-RESET s" mul.wide.u32 " CG-S off CG-RD s" , " CG-S rj CG-R s" , 4;" CG-S CG-LINE
    off ;
 \ DIV-OFF: an Rx1 col-broadcast reads element (e / C) -> byte offset (e / C)*4.
 : EMIT-DIV-OFF ( n n -- n ) {: flatr:n C:n :}
    CG-NEXT-R {: ri:n :}
-   SB-RESET s" div.u32 " CG-S ri CG-R s" , " CG-S flatr CG-R s" , " CG-S C SB-U s" ;" CG-S CG-LINE
+   SB-RESET s" div.u32 " CG-S ri CG-R s" , " CG-S flatr CG-R s" , " CG-S C FMT:SB-U s" ;" CG-S CG-LINE
    CG-NEXT-RD {: off:n :}
    SB-RESET s" mul.wide.u32 " CG-S off CG-RD s" , " CG-S ri CG-R s" , 4;" CG-S CG-LINE
    off ;

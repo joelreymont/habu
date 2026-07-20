@@ -76,7 +76,7 @@ $1000   constant LFB-ROWS      \ 4096 rows (tokens); ROWS x COLS = LFB-N matches
 create LFB-DEV LFB-DEV-CAP cells allot     \ per-buffer device pointer cells (inputs then output)
 variable LFB-NV                             \ the u32 kernel param cell (p_k = COLS for reduce, p_n = N for EW)
 
-: LFB-U ( n -- )  SB-RESET SB-INT SB$ type ;
+: LFB-U ( n -- )  SB-RESET FMT:SB-INT SB$ type ;
 : LFB-TAB ( -- )  9 emit ;
 
 : LFB-GRID ( -- n )  LFB-N LFB-BLOCK + 1 - LFB-BLOCK / ;    \ ceil(N/block), 1 elem/thread (flat LEW)
@@ -121,7 +121,7 @@ variable LFB-NV                             \ the u32 kernel param cell (p_k = C
 \ ---- per region: the REGION_<rid> kernel name + its LMDM cubin path ---------------------
 : LFB-KNAME$ ( CAD-KIND:region -- ptr u8 n )     \ REGION_<raw> (SB span, valid until next SB op)
    RGN>RAW {: raw:n :}
-   SB-RESET s" REGION_" SB-APPEND raw SB-INT SB$ ;
+   SB-RESET s" REGION_" SB-APPEND raw FMT:SB-INT SB$ ;
 
 \ bench a ROW-REDUCE region (LRED block-per-row kernel: grid = ROWS, p_k = COLS).
 : LFB-BENCH-RED ( CAD-KIND:region -- n ) {: rid:CAD-KIND:region :}

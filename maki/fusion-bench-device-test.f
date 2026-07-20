@@ -58,7 +58,7 @@ $100000 constant FBD-N        \ bench work items (1048576, matches the SAXPY-fam
 create FBD-DEV FBD-DEV-CAP cells allot    \ per-buffer device pointer cells (inputs then output)
 variable FBD-NV                            \ the u32 kernel n-param cell (= FBD-N)
 
-: FBD-U ( n -- )  SB-RESET SB-INT SB$ type ;
+: FBD-U ( n -- )  SB-RESET FMT:SB-INT SB$ type ;
 : FBD-TAB ( -- )  9 emit ;
 
 : FBD-GRID ( -- n )  FBD-N FBD-BLOCK + 1 - FBD-BLOCK / ;   \ ceil(N/block), 1 elem/thread
@@ -102,7 +102,7 @@ variable FBD-NV                            \ the u32 kernel n-param cell (= FBD-
 \ ---- per region: the REGION_<rid> kernel name + its LMDM cubin path -------------------
 : FBD-KNAME$ ( CAD-KIND:region -- ptr u8 n )     \ REGION_<raw> (SB span, valid until next SB op)
    RGN>RAW {: raw:n :}
-   SB-RESET s" REGION_" SB-APPEND raw SB-INT SB$ ;
+   SB-RESET s" REGION_" SB-APPEND raw FMT:SB-INT SB$ ;
 
 \ bench region rid's kernel (built by LMDM-BUILD-CUBINS at rid LMDM-RP$), print + return ns.
 : FBD-BENCH-REGION ( CAD-KIND:region -- n ) {: rid:CAD-KIND:region :}

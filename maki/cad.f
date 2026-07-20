@@ -222,7 +222,7 @@ private
    MSRC-N @ 1+ MSRC-CAP > if E-CAD-SYNTAX throw then
    c  MSRC-BUF MSRC-N @ +  c!  MSRC-N @ 1+ MSRC-N ! ;
 : MSRC-SP ( -- )  $20 MSRC-C ;
-: MSRC-INT ( n -- )  SB-RESET SB-INT SB$ MSRC+ ;   \ decimal text via the shared SB, copied stable
+: MSRC-INT ( n -- )  SB-RESET FMT:SB-INT SB$ MSRC+ ;   \ decimal text via the shared SB, copied stable
 : MSRC$ ( -- ptr u8 n )  MSRC-BUF MSRC-N @ ;
 
 \ ---- pending reference queue (FIFO NT slot indices; the next op drains them into params) --
@@ -273,7 +273,7 @@ $5E constant TR-C                                  \ '^' - the reserved transpos
 
 \ fresh throwaway capture-word name -> CAPNAME-BUF (redefinition is fatal, so mint per MODEL:)
 : CAP-GEN-NAME ( -- )
-   SB-RESET  s" %MDLCAP" SB-APPEND  MDL-CTR @ SB-INT  MDL-CTR @ 1+ MDL-CTR !
+   SB-RESET  s" %MDLCAP" SB-APPEND  MDL-CTR @ FMT:SB-INT  MDL-CTR @ 1+ MDL-CTR !
    SB$ {: a:ptr u:n :}  a CAPNAME-BUF u BYTE-COPY  u CAPNAME-N ! ;
 : CAPNAME$ ( -- ptr u8 n )  CAPNAME-BUF CAPNAME-N @ ;
 
@@ -517,7 +517,7 @@ $5E constant TR-C                                  \ '^' - the reserved transpos
 \ one "[name:]RxC" spec: build the input descriptor + IR slot, and intern its local name
 \ (synthesized when the spec is a bare "RxC") into NT slot == input index.
 : CAP-SYNTH-NAME ( -- )                             \ bare RxC input: bind IN<idx>
-   SB-RESET  s" IN" SB-APPEND  CAP-IN-N @ SB-INT  SB$ NT-BIND drop ;
+   SB-RESET  s" IN" SB-APPEND  CAP-IN-N @ FMT:SB-INT  SB$ NT-BIND drop ;
 : SIG-INPUT ( ptr u8 n -- ) {: a:ptr u:n :}
    CAP-IN-N @ CAP-CAP >= if E-CAD-INPUTS throw then
    a u PARSE-SHAPE {: rows:n cols:n :}
@@ -995,7 +995,7 @@ private
 : MOVE-WARN$ ( CAD-KIND:node-id -- ptr u8 n )
    {: node:CAD-KIND:node-id :}                    \ one movement node's traffic-cost row
    SB-RESET
-   s" memory.move: node " SB-APPEND  node NODE>RAW SB-INT
+   s" memory.move: node " SB-APPEND  node NODE>RAW FMT:SB-INT
    $20 SB-APPEND-C  node MIR-OP@ OPR-NAME SB-APPEND
    s"  verdict=" SB-APPEND  node MIR-MOVE-VERDICT@ MV-VD-NAME SB-APPEND
    s"  reason="  SB-APPEND  node MIR-OP@ MV-REASON$ SB-APPEND
@@ -1046,7 +1046,7 @@ private
 \ is valid for the family by construction. A miss keeps the defaults and says so.
 : TILE-HIT+ ( report n -- report ) {: sel:n :}
    sel REPORT:SELECT!
-   SB-RESET  s" schedule: replay hit -> stored selection " SB-APPEND  sel SB-INT
+   SB-RESET  s" schedule: replay hit -> stored selection " SB-APPEND  sel FMT:SB-INT
    SB$ REPORT:WARN+ ;
 
 : TILE-MISS+ ( report -- report )

@@ -170,9 +170,9 @@ private
 
 : DIMCLASS+ ( dimclass n -- ) {: m:n :}         \ append one dim's class text to SB
    MATCH dimclass
-      exact     OF m SB-INT ENDOF
-      pow2      OF $70 SB-APPEND-C m SB-INT ENDOF
-      pow2-tail OF $70 SB-APPEND-C m SB-INT s" +t" SB-APPEND ENDOF
+      exact     OF m FMT:SB-INT ENDOF
+      pow2      OF $70 SB-APPEND-C m FMT:SB-INT ENDOF
+      pow2-tail OF $70 SB-APPEND-C m FMT:SB-INT s" +t" SB-APPEND ENDOF
       unbound   OF s" ?" SB-APPEND ENDOF
    ;MATCH ;
 
@@ -261,12 +261,12 @@ public
 \ AND builds in the same shared SB, so it cannot be spliced into a live key
 \ build; the field is rendered here from the fact accessors instead).
 : SK-TARGET+ ( CAD-KIND:target-id -- ) {: t:CAD-KIND:target-id :}
-   s" isa=" SB-APPEND t TARGET:ISA@ SB-INT
-   s" ,arch=" SB-APPEND t TARGET:ARCH@ SB-INT
-   s" ,warp=" SB-APPEND t TARGET:WARP@ SB-INT
-   s" ,threads=" SB-APPEND t TARGET:THREADS@ SB-INT
-   s" ,shared=" SB-APPEND t TARGET:SHARED@ SB-INT
-   s" ,caps=" SB-APPEND t TARGET:CAPS@ SB-INT ;
+   s" isa=" SB-APPEND t TARGET:ISA@ FMT:SB-INT
+   s" ,arch=" SB-APPEND t TARGET:ARCH@ FMT:SB-INT
+   s" ,warp=" SB-APPEND t TARGET:WARP@ FMT:SB-INT
+   s" ,threads=" SB-APPEND t TARGET:THREADS@ FMT:SB-INT
+   s" ,shared=" SB-APPEND t TARGET:SHARED@ FMT:SB-INT
+   s" ,caps=" SB-APPEND t TARGET:CAPS@ FMT:SB-INT ;
 \ Real engine content key: the SHA-256 of bin/hb, resolved engine-side from the
 \ kernel-provided self-path and hashed once on first request, then cached
 \ (lib/engine-id.f). It distinguishes schedules produced by different engine builds

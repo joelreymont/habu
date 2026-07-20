@@ -49,12 +49,12 @@ create LD-QO  $1000 allot  create LD-QE  $2000 allot
 : LD-PTXAS ( -- n )  LD-QO $1000 >LEN LD-QE $2000 >LEN PTXTC:ASSEMBLE ;
 
 \ ---- per-element evidence (device value | host value rounded to f32) --------
-: LD-FP ( r -- )  SB-RESET 6 SB-FIX SB$ type ;
+: LD-FP ( r -- )  SB-RESET 6 FMT:SB-FIX SB$ type ;
 : LD-HOST@ ( n -- r )  LLA-OUT-NODE@ EX-OUT@ swap T-GET  F64>F32 F32>F64 ;   \ narrowed host elem
 : LD-EVIDENCE ( -- )
    s" elem   device        host_f32" type cr
    LLA-ELEMS@ 0 ?do
-      s"   " type i SB-RESET SB-INT SB$ type s"    " type
+      s"   " type i SB-RESET FMT:SB-INT SB$ type s"    " type
       i LLA-OUT@ LD-FP  s"    " type  i LD-HOST@ LD-FP  cr
    loop ;
 

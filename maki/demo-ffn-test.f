@@ -55,8 +55,8 @@ variable DM-VA  variable DM-VU
    bf 100 * af /  {: r100:n :}
    SB-RESET
    s" demo: traffic " SB-APPEND
-   r100 100 /   SB-INT   $2E SB-APPEND-C
-   r100 100 mod 10 < if $30 SB-APPEND-C then  r100 100 mod SB-INT
+   r100 100 /   FMT:SB-INT   $2E SB-APPEND-C
+   r100 100 mod 10 < if $30 SB-APPEND-C then  r100 100 mod FMT:SB-INT
    s" x reduced" SB-APPEND
    SB$ ;
 

@@ -68,7 +68,7 @@ create SP-SRC SP-SRC-CAP allot      \ stable source copy (a caller may pass a sh
    SB-RESET
    s" require lib/string.f" SB-APPEND  10 SB-APPEND-C
    s" require lib/fmt.f" SB-APPEND     10 SB-APPEND-C
-   s" SB-RESET " SB-APPEND  n SB-INT  s"  SB-INT SB$ type" SB-APPEND  10 SB-APPEND-C
+   s" SB-RESET " SB-APPEND  n FMT:SB-INT  s"  FMT:SB-INT SB$ type" SB-APPEND  10 SB-APPEND-C
    SB$ ;
 
 \ SPAWN-CAPTURE runs source in a fresh bin/hb child under a capture timeout and returns the

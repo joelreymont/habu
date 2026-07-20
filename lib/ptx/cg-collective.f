@@ -43,7 +43,7 @@
    s" .reg .f32 %f<64>;" PTX-L
    s" .reg .b32 %r<64>;" PTX-L
    s" .reg .b64 %rd<32>;" PTX-L
-   SB-RESET s" .shared .align 4 .b8 SMEM[" CG-S SMEM-BYTES SB-U s" ];" CG-S CG-LINE ;
+   SB-RESET s" .shared .align 4 .b8 SMEM[" CG-S SMEM-BYTES FMT:SB-U s" ];" CG-S CG-LINE ;
 : CG-SM-PARAMS ( -- )
    s" ld.param.u64 %rd1, [p_in];" PTX-L
    s" ld.param.u64 %rd2, [p_out];" PTX-L
@@ -151,8 +151,8 @@
 \ one tree step: t = shfl.down(vf, off, full warp); vf = op(vf, t). vf/t are
 \ redefined across steps (non-SSA text; ptxas re-SSAs), so one temp t per reduce.
 : WARP-SHFL-STEP ( n n n n -- ) {: off:n vf:n op:n t:n :}
-   SB-RESET s" shfl.sync.down.b32 " CG-S t CG-F s" , " CG-S vf CG-F s" , " CG-S off SB-U
-      s" , " CG-S PTX-WARP 1 - SB-U s" , -1;" CG-S CG-LINE
+   SB-RESET s" shfl.sync.down.b32 " CG-S t CG-F s" , " CG-S vf CG-F s" , " CG-S off FMT:SB-U
+      s" , " CG-S PTX-WARP 1 - FMT:SB-U s" , -1;" CG-S CG-LINE
    SB-RESET op CG-REDUCE-OP$ CG-S vf CG-F s" , " CG-S vf CG-F s" , " CG-S t CG-F s" ;" CG-S CG-LINE ;
 
 \ 32-lane halving tree (PTX-WARP=32): after it, lane 0 of the warp holds the reduce.
@@ -175,7 +175,7 @@
 \ lane id (tid & 31) and warp id (tid >> 5) for a 1-D block.
 : EMIT-WARP-IDS ( n -- n n ) {: rt:n :}
    CG-NEXT-R {: rlane:n :}
-   SB-RESET s" and.b32 " CG-S rlane CG-R s" , " CG-S rt CG-R s" , " CG-S PTX-WARP 1 - SB-U s" ;" CG-S CG-LINE
+   SB-RESET s" and.b32 " CG-S rlane CG-R s" , " CG-S rt CG-R s" , " CG-S PTX-WARP 1 - FMT:SB-U s" ;" CG-S CG-LINE
    CG-NEXT-R {: rwarp:n :}
    SB-RESET s" shr.u32 " CG-S rwarp CG-R s" , " CG-S rt CG-R s" , 5;" CG-S CG-LINE
    rlane rwarp ;
@@ -202,7 +202,7 @@
    SB-RESET s" setp.ne.u32 " CG-S pne CG-P s" , " CG-S rwarp CG-R s" , 0;" CG-S CG-LINE
    SB-RESET s" @" CG-S pne CG-P s"  bra " CG-S lskip CG-L s" ;" CG-S CG-LINE
    CG-NEXT-P {: plt:n :}
-   SB-RESET s" setp.lt.u32 " CG-S plt CG-P s" , " CG-S rt CG-R s" , " CG-S CG-WARP-COUNT SB-U s" ;" CG-S CG-LINE
+   SB-RESET s" setp.lt.u32 " CG-S plt CG-P s" , " CG-S rt CG-R s" , " CG-S CG-WARP-COUNT FMT:SB-U s" ;" CG-S CG-LINE
    CG-NEXT-F {: v2:n :}
    SB-RESET s" mov.f32 " CG-S v2 CG-F s" , " CG-S op CG-REDUCE-ID$ CG-S s" ;" CG-S CG-LINE
    CG-NEXT-R {: rsm:n :}

@@ -16,11 +16,11 @@ require tools/ptx/perf-compare.f
    [: PERF-REGRESS-PATH$ PERF:LOAD ;] catch {: code:n :}
    code 0= if
       PERF:SCAN {: n:n :}
-      s" perf-regress: rows=" type PERF:ROW# .U
-      s"  regressions=" type n .U cr
+      s" perf-regress: rows=" type PERF:ROW# FMT:.U
+      s"  regressions=" type n FMT:.U cr
       n 0 > if s" perf-regress: regression beyond PERF:TOL-MILLI" 1 die then
    else
-      s" perf-regress: malformed registry row at line " type PERF:LINE@ .U
+      s" perf-regress: malformed registry row at line " type PERF:LINE@ FMT:.U
       s" : " type PERF:LAST-LINE$ type cr
       code throw
    then ;

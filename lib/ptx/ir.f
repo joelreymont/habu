@@ -240,11 +240,11 @@ variable PTXIR-N
    case
       0 of s" y" PTXIR-TOK endof
       1 of s" dy" PTXIR-TOK endof
-      PTXIR-SEP s" i" SB-APPEND dup SB-U
+      PTXIR-SEP s" i" SB-APPEND dup FMT:SB-U
    endcase ;
 
 : PTXIR-APPEND-CONST ( n -- )
-   PTXIR-SEP SB-U ;
+   PTXIR-SEP FMT:SB-U ;
 
 : PTXIR-RENDER-NODE ( n -- ) {: id:n :}
    id PTXIR-OP@

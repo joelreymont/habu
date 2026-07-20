@@ -42,7 +42,7 @@ variable ABL-OFF-R  variable ABL-OFF-B
    TRF-AFTER TRF-BEFORE T= ;                      \ OFF collapses to the unfused per-node total
 
 \ ---- evidence line: ON vs OFF region/byte counts + the ablation deltas ------------------------
-: ABL-N ( n -- )  SB-RESET SB-INT SB$ type ;
+: ABL-N ( n -- )  SB-RESET FMT:SB-INT SB$ type ;
 : ABL-EVIDENCE ( n n n n -- ) {: onr:n onb:n offr:n offb:n :}
    s"   ON regions=" type onr ABL-N s"  bytes=" type onb ABL-N
    s"  | OFF regions=" type offr ABL-N s"  bytes=" type offb ABL-N

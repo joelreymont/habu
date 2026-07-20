@@ -357,18 +357,18 @@ private
    LMM-NIN @ 0 ?do
       i LMM-REF@ MVW-RESOLVE-OFF {: off:n :}
       off 0 > if
-         SB-RESET s" add.u64 %rd" CG-S i 1+ SB-U s" , %rd" CG-S i 1+ SB-U s" , " CG-S off SB-U s" ;" CG-S CG-LINE
+         SB-RESET s" add.u64 %rd" CG-S i 1+ FMT:SB-U s" , %rd" CG-S i 1+ FMT:SB-U s" , " CG-S off FMT:SB-U s" ;" CG-S CG-LINE
       then
    loop ;
 
 \ ---- entry / regs / params (K inputs + output + M,N,K) ----------------------
 \ RGN>RAW is the one kernel-name render boundary (REGION_<rid>)
-: LMM-KNAME ( -- )  s" REGION_" CG-S 0 LMM-RID @ RGN>RAW SB-U ;
+: LMM-KNAME ( -- )  s" REGION_" CG-S 0 LMM-RID @ RGN>RAW FMT:SB-U ;
 : LMM-OUT-BASE ( -- n )  LMM-NIN @ 1+ ;          \ rd index of p_out (rd1..rdK inputs, rd K+1 out)
 : LMM-ENTRY ( -- )
    SB-RESET
    s" .visible .entry " CG-S LMM-KNAME s" (" CG-S
-   LMM-NIN @ 0 ?do  s" .param .u64 p_in" CG-S i SB-U s" , " CG-S  loop
+   LMM-NIN @ 0 ?do  s" .param .u64 p_in" CG-S i FMT:SB-U s" , " CG-S  loop
    s" .param .u64 p_out, .param .u32 p_m, .param .u32 p_n, .param .u32 p_k)" CG-S
    CG-LINE ;
 : LMM-OPEN ( -- )
@@ -379,16 +379,16 @@ private
    s" .reg .b64 %rd<64>;" PTX-L ;
 : LMM-PARAMS ( -- )
    LMM-NIN @ 0 ?do
-      SB-RESET s" ld.param.u64 %rd" CG-S i 1+ SB-U s" , [p_in" CG-S i SB-U s" ];" CG-S CG-LINE
+      SB-RESET s" ld.param.u64 %rd" CG-S i 1+ FMT:SB-U s" , [p_in" CG-S i FMT:SB-U s" ];" CG-S CG-LINE
    loop
-   SB-RESET s" ld.param.u64 %rd" CG-S LMM-OUT-BASE SB-U s" , [p_out];" CG-S CG-LINE
+   SB-RESET s" ld.param.u64 %rd" CG-S LMM-OUT-BASE FMT:SB-U s" , [p_out];" CG-S CG-LINE
    s" ld.param.u32 %r1, [p_m];" PTX-L
    s" ld.param.u32 %r2, [p_n];" PTX-L
    s" ld.param.u32 %r3, [p_k];" PTX-L
    LMM-NIN @ 0 ?do
-      SB-RESET s" cvta.to.global.u64 %rd" CG-S i 1+ SB-U s" , %rd" CG-S i 1+ SB-U s" ;" CG-S CG-LINE
+      SB-RESET s" cvta.to.global.u64 %rd" CG-S i 1+ FMT:SB-U s" , %rd" CG-S i 1+ FMT:SB-U s" ;" CG-S CG-LINE
    loop
-   SB-RESET s" cvta.to.global.u64 %rd" CG-S LMM-OUT-BASE SB-U s" , %rd" CG-S LMM-OUT-BASE SB-U s" ;" CG-S CG-LINE ;
+   SB-RESET s" cvta.to.global.u64 %rd" CG-S LMM-OUT-BASE FMT:SB-U s" , %rd" CG-S LMM-OUT-BASE FMT:SB-U s" ;" CG-S CG-LINE ;
 
 : LMM-RESET-REGS ( -- )                          \ counters past the fixed GEMM regs (acc=%f1)
    4 CG-NF !  20 CG-NRD !  20 CG-NR !  8 CG-NP !  0 CG-NL ! ;
@@ -437,8 +437,8 @@ private
    LMM-OUTNODE@ LMM-NR@ {: outf:n :}
    s" mad.lo.u32 %r13, %r7, %r2, %r11;" PTX-L
    s" mul.wide.u32 %rd10, %r13, 4;" PTX-L
-   SB-RESET s" add.u64 %rd11, %rd" CG-S LMM-OUT-BASE SB-U s" , %rd10;" CG-S CG-LINE
-   SB-RESET s" st.global.f32 [%rd11], %f" CG-S outf SB-U s" ;" CG-S CG-LINE ;
+   SB-RESET s" add.u64 %rd11, %rd" CG-S LMM-OUT-BASE FMT:SB-U s" , %rd10;" CG-S CG-LINE
+   SB-RESET s" st.global.f32 [%rd11], %f" CG-S outf FMT:SB-U s" ;" CG-S CG-LINE ;
 
 : LMM-BODY ( -- )
    LMM-COORDS
@@ -454,7 +454,7 @@ private
 \ MM-PIPE-KLOOP (per-buffer r12/r13 bases + %f26..%f33 loads + 4x4 FMAs) are emitted verbatim; A=%rd1, B=%rd2 match
 \ this ABI. Only the K-loop scaffold and the epilogue write are re-expressed for fusion here.
 : LMM-BLK-SHARED ( -- )                            \ 2x .shared As[64][32]+Bs[32][64] (cp.async double-buffer)
-   SB-RESET s" .shared .align 16 .b8 SH[" CG-S MM-SMEM SB-U s" ];" CG-S CG-LINE ;
+   SB-RESET s" .shared .align 16 .b8 SH[" CG-S MM-SMEM FMT:SB-U s" ];" CG-S CG-LINE ;
 
 \ The cp.async double-buffered K-loop is cg-matmul.f MM-PIPE-KLOOP verbatim (a ( -- ) emitter;
 \ cg-matmul's MM-K-LOOP wraps the same word with the mmctx/mmacc token passthrough this
@@ -470,15 +470,15 @@ private
 \ -> activation chain -> store to out[cRow*N + cCol]. The epilogue reuses LMM-EPI-CHAIN by
 \ pointing the contraction node's register at this element and reading the output node's result.
 : LMM-BLK-ELEM ( n n -- ) {: j:n i:n :}
-   SB-RESET s" add.u32 %r42, %r40, " CG-S j SB-U s" ;" CG-S CG-LINE       \ cRow = cRow0 + j
-   SB-RESET s" add.u32 %r43, %r41, " CG-S i SB-U s" ;" CG-S CG-LINE       \ cCol = cCol0 + i
+   SB-RESET s" add.u32 %r42, %r40, " CG-S j FMT:SB-U s" ;" CG-S CG-LINE       \ cRow = cRow0 + j
+   SB-RESET s" add.u32 %r43, %r41, " CG-S i FMT:SB-U s" ;" CG-S CG-LINE       \ cCol = cCol0 + i
    s" mad.lo.u32 %r44, %r42, %r2, %r43;" PTX-L                            \ gidx = cRow*N + cCol
    10 j 4 * + i + {: accf:n :}                                           \ accumulator %f(10+j*4+i)
    LMM-MMNODE@ MIR-OP@ MAKI-OPKIND:LINEAR MAKI-OPKIND:EQ if                                   \ bias fusion: acc += bias[cCol]
       s" mul.wide.u32 %rd10, %r43, 4;" PTX-L
       s" add.u64 %rd11, %rd3, %rd10;" PTX-L
       s" ld.global.f32 %f4, [%rd11];" PTX-L
-      SB-RESET s" add.rn.f32 %f5, %f" CG-S accf SB-U s" , %f4;" CG-S CG-LINE
+      SB-RESET s" add.rn.f32 %f5, %f" CG-S accf FMT:SB-U s" , %f4;" CG-S CG-LINE
       5
    else accf then {: srcf:n :}
    40 CG-NF !                                                            \ epilogue temps above tile/staging regs
@@ -486,8 +486,8 @@ private
    LMM-EPI-CHAIN
    LMM-OUTNODE@ LMM-NR@ {: outf:n :}
    s" mul.wide.u32 %rd10, %r44, 4;" PTX-L
-   SB-RESET s" add.u64 %rd11, %rd" CG-S LMM-OUT-BASE SB-U s" , %rd10;" CG-S CG-LINE
-   SB-RESET s" st.global.f32 [%rd11], %f" CG-S outf SB-U s" ;" CG-S CG-LINE ;
+   SB-RESET s" add.u64 %rd11, %rd" CG-S LMM-OUT-BASE FMT:SB-U s" , %rd10;" CG-S CG-LINE
+   SB-RESET s" st.global.f32 [%rd11], %f" CG-S outf FMT:SB-U s" ;" CG-S CG-LINE ;
 
 : LMM-BLK-WRITE ( -- )                             \ fused epilogue over the thread's 4x4 micro-tile
    LMM-BLK-CBASE
@@ -511,12 +511,12 @@ private
 \ bias[col] (LINEAR) -> activation chain -> store to out[row*N+col]. Mirrors LMM-BLK-ELEM but
 \ over the mma.sync (gRow0/gRow1, col0/col1) output mapping instead of the contiguous 4x4 tile.
 : LMM-MMA-ELEM ( n n n -- ) {: rr:n cr:n accf:n :}
-   SB-RESET s" mad.lo.u32 %r44, %r" CG-S rr SB-U s" , %r2, %r" CG-S cr SB-U s" ;" CG-S CG-LINE  \ gidx = row*N + col
+   SB-RESET s" mad.lo.u32 %r44, %r" CG-S rr FMT:SB-U s" , %r2, %r" CG-S cr FMT:SB-U s" ;" CG-S CG-LINE  \ gidx = row*N + col
    LMM-MMNODE@ MIR-OP@ MAKI-OPKIND:LINEAR MAKI-OPKIND:EQ if                                   \ bias fusion: acc += bias[col]
-      SB-RESET s" mul.wide.u32 %rd10, %r" CG-S cr SB-U s" , 4;" CG-S CG-LINE
+      SB-RESET s" mul.wide.u32 %rd10, %r" CG-S cr FMT:SB-U s" , 4;" CG-S CG-LINE
       s" add.u64 %rd11, %rd3, %rd10;" PTX-L
       s" ld.global.f32 %f4, [%rd11];" PTX-L
-      SB-RESET s" add.rn.f32 %f5, %f" CG-S accf SB-U s" , %f4;" CG-S CG-LINE
+      SB-RESET s" add.rn.f32 %f5, %f" CG-S accf FMT:SB-U s" , %f4;" CG-S CG-LINE
       5
    else accf then {: srcf:n :}
    40 CG-NF !                                                            \ epilogue temps above tile/staging regs
@@ -524,13 +524,13 @@ private
    LMM-EPI-CHAIN
    LMM-OUTNODE@ LMM-NR@ {: outf:n :}
    s" mul.wide.u32 %rd10, %r44, 4;" PTX-L
-   SB-RESET s" add.u64 %rd11, %rd" CG-S LMM-OUT-BASE SB-U s" , %rd10;" CG-S CG-LINE
-   SB-RESET s" st.global.f32 [%rd11], %f" CG-S outf SB-U s" ;" CG-S CG-LINE ;
+   SB-RESET s" add.u64 %rd11, %rd" CG-S LMM-OUT-BASE FMT:SB-U s" , %rd10;" CG-S CG-LINE
+   SB-RESET s" st.global.f32 [%rd11], %f" CG-S outf FMT:SB-U s" ;" CG-S CG-LINE ;
 
 \ one warp n-tile j (cols warp_col*32 + j*8): compute col0/col1 registers, then the 4 D
 \ elements. %r32=gRow0 %r33=gRow1 %r34=gCol0 come from cg-mma.f MMA-SETUP (survive the K-loop).
 : LMM-MMA-NTILE ( n -- ) {: j:n :}
-   SB-RESET s" add.u32 %r40, %r34, " CG-S j 8 * SB-U s" ;" CG-S CG-LINE   \ col0 = gCol0 + j*8
+   SB-RESET s" add.u32 %r40, %r34, " CG-S j 8 * FMT:SB-U s" ;" CG-S CG-LINE   \ col0 = gCol0 + j*8
    s" add.u32 %r41, %r40, 1;" PTX-L                                       \ col1 = col0 + 1
    10 j 4 * + {: a0:n :}                                                  \ tile-j accumulators %f(10+4j)..
    32 40 a0     LMM-MMA-ELEM                                              \ d0 = D[gRow0][col0]

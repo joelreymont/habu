@@ -72,12 +72,12 @@ create LRD-CS $800 allot  variable LRD-CS-U
 : LRD-PTXAS ( -- n )  LRD-QO $1000 >LEN LRD-QE $2000 >LEN PTXTC:ASSEMBLE ;
 
 \ ---- per-element evidence (device value | host value rounded to f32) --------
-: LRD-FP ( r -- )  SB-RESET 6 SB-FIX SB$ type ;
+: LRD-FP ( r -- )  SB-RESET 6 FMT:SB-FIX SB$ type ;
 : LRD-HOST@ ( n -- r )  LLA-OUT-NODE@ EX-OUT@ swap T-GET  F64>F32 F32>F64 ;   \ narrowed host elem
 : LRD-EVIDENCE ( -- )
    s" elem   device        host_f32" type cr
    LLA-ELEMS@ 0 ?do
-      s"   " type i SB-RESET SB-INT SB$ type s"    " type
+      s"   " type i SB-RESET FMT:SB-INT SB$ type s"    " type
       i LLA-OUT@ LRD-FP  s"    " type  i LRD-HOST@ LRD-FP  cr
    loop ;
 

@@ -32,7 +32,7 @@ create MP-QO $1000 allot  create MP-QE $1000 allot
 variable MP-DA  variable MP-DB  variable MP-DC
 variable MP-NV                          \ M=N=K (square) as the u32 kernel param
 
-: MP-INT. ( n -- )  SB-RESET SB-INT SB$ type ;
+: MP-INT. ( n -- )  SB-RESET FMT:SB-INT SB$ type ;
 
 : MP-ARG ( n n -- n )                   \ ( default index -- value ) SCRIPT-ARGV[i] as int, else default
    {: def:n i:n :}

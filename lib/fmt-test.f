@@ -7,6 +7,10 @@ require lib/test.f
 require lib/float.f
 require lib/fmt.f
 
+\ White-box test: reopen the module's package so the fixtures call FMT's public
+\ builders (SB-U / SB-INT / SB-FIX) by their bare package-local names.
+package FMT
+
 : T-U ( n ptr u8 n -- ) {: a:ptr u :}            \ SB-U n == a/u
    SB-RESET SB-U  SB$ a u T$= ;
 : T-INT ( n ptr u8 n -- ) {: a:ptr u :}
@@ -33,3 +37,5 @@ require lib/fmt.f
 
 FMT-RUN
 T-REPORT
+
+;package

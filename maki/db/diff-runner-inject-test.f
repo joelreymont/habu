@@ -32,8 +32,8 @@ package DIFFRUN
 : INJ-FAULT ( -- ptr u8 n )  s\" : SUBJECT ( n -- n ) drop s\q boom\q 7 die ;" ;
 
 \ ---- injected TENSOR subjects (checked `: SUBJECT ( n -- )` printing a float tensor) ---
-: TINJ-A ( -- ptr u8 n )      s" : SUBJECT ( n -- ) drop 4 0 ?do i s>f 6 F.N 32 emit loop ;" ;
-: TINJ-B ( -- ptr u8 n )      s" : SUBJECT ( n -- ) drop 4 0 ?do i s>f i s>f f* 6 F.N 32 emit loop ;" ;
+: TINJ-A ( -- ptr u8 n )      s" : SUBJECT ( n -- ) drop 4 0 ?do i s>f 6 FMT:F.N 32 emit loop ;" ;
+: TINJ-B ( -- ptr u8 n )      s" : SUBJECT ( n -- ) drop 4 0 ?do i s>f i s>f f* 6 FMT:F.N 32 emit loop ;" ;
 : TINJ-FAULT ( -- ptr u8 n )  s\" : SUBJECT ( n -- ) drop s\q boom\q 7 die ;" ;
 
 \ ---- scalar injection legs -----------------------------------------------------------

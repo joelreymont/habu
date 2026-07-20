@@ -495,9 +495,9 @@ private
 \ An unbound extent (0) renders "?" (shapes bind at OPTIMIZE time); integer
 \ rendering is a wire boundary.
 : ROWS-KEY+ ( CAD-KIND:rows -- )
-   ROWS-RAW dup 0= if drop s" ?" SB-APPEND else SB-INT then ;
+   ROWS-RAW dup 0= if drop s" ?" SB-APPEND else FMT:SB-INT then ;
 : COLS-KEY+ ( CAD-KIND:cols -- )
-   COLS-RAW dup 0= if drop s" ?" SB-APPEND else SB-INT then ;
+   COLS-RAW dup 0= if drop s" ?" SB-APPEND else FMT:SB-INT then ;
 
 : SHAPE-KEY$ ( CAD-KIND:rows CAD-KIND:cols -- ptr u8 n )
    {: rows:CAD-KIND:rows cols:CAD-KIND:cols :}
@@ -529,7 +529,7 @@ variable MO-U
    c MO-BUF MO-U @ + c!  MO-U @ 1+ MO-U ! ;
 : MO+ ( ptr u8 n -- ) {: a:ptr u:n :}
    0 begin dup u < while  dup a + c@ MO-C  1+  repeat drop ;
-: MO-INT ( n -- )  SB-RESET SB-INT SB$ MO+ ;
+: MO-INT ( n -- )  SB-RESET FMT:SB-INT SB$ MO+ ;
 : MO-NL ( -- )  $0A MO-C ;
 : MO$ ( -- ptr u8 n )  MO-BUF MO-U @ ;
 

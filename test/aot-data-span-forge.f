@@ -49,7 +49,7 @@ DATA-SIZE 2 * constant OVERSIZED-SPAN                  \ = 2 * DATA-SIZE (per-ta
 create SPAN-BUF 32 allot   variable SPAN-U             \ decimal text of OVERSIZED-SPAN
 
 : RENDER-SPAN ( -- )                                   \ format OVERSIZED-SPAN into SPAN-BUF
-   SB-RESET  OVERSIZED-SPAN SB-U  SB$ {: a:ptr u:n :}
+   SB-RESET  OVERSIZED-SPAN FMT:SB-U  SB$ {: a:ptr u:n :}
    a SPAN-BUF u BYTE-COPY  u SPAN-U ! ;
 
 : OVERSIZED-SPAN$ ( -- ptr u8 n )   SPAN-BUF SPAN-U @ ;

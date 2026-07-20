@@ -57,7 +57,7 @@ create LG-RE LG-RE-CAP allot  variable LG-RE-U
 : LG-RE+ ( ptr u8 n -- ) {: a:ptr u:n :}
    LG-RE-U @ u + LG-RE-CAP > if exit then
    a LG-RE LG-RE-U @ + u BYTE-COPY  LG-RE-U @ u + LG-RE-U ! ;
-: LG-RE-INT ( n -- )  SB-RESET SB-INT SB$ LG-RE+ ;
+: LG-RE-INT ( n -- )  SB-RESET FMT:SB-INT SB$ LG-RE+ ;
 public
 : LOWER-GOLDEN-REASON$ ( -- ptr u8 n )  LG-RE LG-RE-U @ ;
 private

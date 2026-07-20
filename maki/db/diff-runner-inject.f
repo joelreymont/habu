@@ -77,7 +77,7 @@ public
    s" require lib/string.f" SB-APPEND   10 SB-APPEND-C
    s" require lib/fmt.f" SB-APPEND      10 SB-APPEND-C
    INJ-SRC$ SB-APPEND                   10 SB-APPEND-C
-   s" SB-RESET " SB-APPEND  n SB-INT  s"  SUBJECT SB-INT SB$ type" SB-APPEND  10 SB-APPEND-C
+   s" SB-RESET " SB-APPEND  n FMT:SB-INT  s"  SUBJECT FMT:SB-INT SB$ type" SB-APPEND  10 SB-APPEND-C
    SB$ ;
 
 \ INJECT-TENSOR composes the injected tensor subject with a harness that binds the case index
@@ -88,7 +88,7 @@ public
    s" require lib/fmt.f" SB-APPEND      10 SB-APPEND-C
    s" require lib/float.f" SB-APPEND    10 SB-APPEND-C
    INJ-SRC$ SB-APPEND                   10 SB-APPEND-C
-   n SB-INT  s"  SUBJECT" SB-APPEND     10 SB-APPEND-C
+   n FMT:SB-INT  s"  SUBJECT" SB-APPEND     10 SB-APPEND-C
    SB$ ;
 
 \ PARSE-TENSOR folds a clean child's whitespace-separated float stdout into SUBJ-T.

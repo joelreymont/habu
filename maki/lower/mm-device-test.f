@@ -50,12 +50,12 @@ create LMD-QO  $1000 allot  create LMD-QE  $2000 allot
 : LMD-PTXAS ( -- n )  LMD-QO $1000 >LEN LMD-QE $2000 >LEN PTXTC:ASSEMBLE ;
 
 \ ---- per-element evidence (device value | host value rounded to f32) --------
-: LMD-FP ( r -- )  SB-RESET 6 SB-FIX SB$ type ;
+: LMD-FP ( r -- )  SB-RESET 6 FMT:SB-FIX SB$ type ;
 : LMD-HOST@ ( n -- r )  LLA-OUT-NODE@ EX-OUT@ swap T-GET  F64>F32 F32>F64 ;   \ narrowed host elem
 : LMD-EVIDENCE ( -- )
    s" elem   device        host_f32" type cr
    LLA-ELEMS@ 0 ?do
-      s"   " type i SB-RESET SB-INT SB$ type s"    " type
+      s"   " type i SB-RESET FMT:SB-INT SB$ type s"    " type
       i LLA-OUT@ LMD-FP  s"    " type  i LMD-HOST@ LMD-FP  cr
    loop ;
 
@@ -73,14 +73,14 @@ create LMD-QO  $1000 allot  create LMD-QE  $2000 allot
 
 \ ---- capped evidence (first k + last k) for the large blocked shapes (4096 elems) ----------
 : LMD-EVIDENCE-ROW ( n -- )  {: i:n :}
-   s"   " type i SB-RESET SB-INT SB$ type s"    " type
+   s"   " type i SB-RESET FMT:SB-INT SB$ type s"    " type
    i LLA-OUT@ LMD-FP  s"    " type  i LMD-HOST@ LMD-FP  cr ;
 : LMD-EVIDENCE-CAP ( n -- ) {: k:n :}
    s" elem   device        host_f32" type cr
    LLA-ELEMS@ {: e:n :}
    e 2 k * <= if  e 0 ?do i LMD-EVIDENCE-ROW loop  exit then    \ small enough: full dump
    k 0 ?do i LMD-EVIDENCE-ROW loop
-   s"   ... (" type e 2 k * - SB-RESET SB-INT SB$ type s"  elems elided) ..." type cr
+   s"   ... (" type e 2 k * - SB-RESET FMT:SB-INT SB$ type s"  elems elided) ..." type cr
    e e k - ?do i LMD-EVIDENCE-ROW loop ;
 
 \ like LMD-GOLD1 but with capped per-element evidence (the 64x64 tile has 4096 elements)

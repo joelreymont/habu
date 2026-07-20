@@ -76,7 +76,7 @@ create GO-RE GO-RE-CAP allot  variable GO-RE-U
 : GO-RE+ ( ptr u8 n -- ) {: a:ptr u:n :}
    GO-RE-U @ u + GO-RE-CAP > if exit then
    a GO-RE GO-RE-U @ + u BYTE-COPY  GO-RE-U @ u + GO-RE-U ! ;
-: GO-RE-INT ( n -- )  SB-RESET SB-INT SB$ GO-RE+ ;
+: GO-RE-INT ( n -- )  SB-RESET FMT:SB-INT SB$ GO-RE+ ;
 public
 : GO-RE$ ( -- ptr u8 n )  GO-RE GO-RE-U @ ;
 private

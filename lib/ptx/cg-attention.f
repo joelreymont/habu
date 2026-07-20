@@ -62,7 +62,7 @@ D-MAX 4 *         constant S-OFF     \ byte offset of S[] in shared = 256
 D-MAX N-MAX + 4 * constant L-OFF     \ byte offset of l in shared    = 768
 
 : OFF ( ptr u8 n n -- ) {: ap:ptr au:n v:n :}     \ emit "<a><v>;"
-   SB-RESET  ap au SB-APPEND  v SB-U  s" ;" SB-APPEND  SB$ PTX-L ;
+   SB-RESET  ap au SB-APPEND  v FMT:SB-U  s" ;" SB-APPEND  SB$ PTX-L ;
 
 \ ---- operand-role threading (the ROW-SPAN identity analogue) ----------------
 \ The four Q/K/V/O matrix tokens are SAME-TYPED; what distinguishes them at emit
@@ -186,7 +186,7 @@ KERNEL: CHECKED ( matrix<space-global,f32,extent-q,extent-d> matrix<space-global
    s" .visible .entry ATTN(.param .u64 pQ,.param .u64 pK,.param .u64 pV,.param .u64 pO,.param .u32 pN,.param .u32 pD)" PTX-L
    s" {" PTX-L
    s" .reg .pred %p<4>;" PTX-L  s" .reg .f32 %f<16>;" PTX-L  s" .reg .b32 %r<32>;" PTX-L  s" .reg .b64 %rd<24>;" PTX-L
-   SB-RESET s" .shared .align 4 .b8 SH[" SB-APPEND L-OFF 8 + SB-U s" ];" SB-APPEND SB$ PTX-L
+   SB-RESET s" .shared .align 4 .b8 SH[" SB-APPEND L-OFF 8 + FMT:SB-U s" ];" SB-APPEND SB$ PTX-L
    1 Q-REG  2 K-REG  3 V-REG  4 O-REG ;
 
 : AUTHOR-CLOSE ( -- )

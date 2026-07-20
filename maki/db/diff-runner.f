@@ -311,7 +311,7 @@ private
 
 \ ---- counterexample diagnostic (lossless DIAG lowering) --------------------------------
 : DR-INT$ ( ptr u8 n n -- ptr u8 n ) {: a:ptr u:n v:n :}   \ "prefix<v>" into the shared builder
-   SB-RESET  a u SB-APPEND  v SB-INT  SB$ ;
+   SB-RESET  a u SB-APPEND  v FMT:SB-INT  SB$ ;
 
 public
 \ EMIT-COUNTEREXAMPLE lowers a minimized discrepancy at case p (subject value subj, reference

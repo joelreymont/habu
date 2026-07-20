@@ -40,7 +40,7 @@ variable AB-DQ  variable AB-DK  variable AB-DV  variable AB-DO
 variable AB-NV                         \ N as the u32 kernel param (pN)
 variable AB-DP                         \ D as the u32 kernel param (pD)
 
-: AB-INT. ( n -- )  SB-RESET SB-INT SB$ type ;
+: AB-INT. ( n -- )  SB-RESET FMT:SB-INT SB$ type ;
 
 : AB-FBITS ( n n -- n ) {: seed:n idx:n :}    \ cyclic f32 bit pattern: deterministic, non-uniform, bounded
    seed idx + AB-FILL-N mod cells AB-FILL + @ ;

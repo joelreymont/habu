@@ -406,7 +406,7 @@ public
 : FP-SPLIT-ROW$ ( n -- ptr u8 n ) {: i:n :}
    SB-RESET
    i FP-SPLIT-REASON@ FP-REASON-NAME SB-APPEND
-   s"  at node " SB-APPEND i FP-SPLIT-NODE@ NODE>RAW SB-INT
+   s"  at node " SB-APPEND i FP-SPLIT-NODE@ NODE>RAW FMT:SB-INT
    SB$ ;
 
 : FP-REPORT+ ( report -- report )

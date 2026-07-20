@@ -124,7 +124,7 @@ private
    if s" t" else s" f" then SB-APPEND ;
 
 : SB-U+ ( ptr u8 n n -- ) {: v:n :}              \ append "label" then decimal value
-   SB-APPEND v SB-U ;
+   SB-APPEND v FMT:SB-U ;
 
 : SB-TF+ ( ptr u8 n bool -- ) {: v:bool :}       \ append "label" then t/f
    SB-APPEND v SB-TF ;
