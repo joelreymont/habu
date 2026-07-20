@@ -333,6 +333,7 @@ points stay listed.
 - `lib/content-key-test.f` — checked fixture coverage for content-key stability and invalidation.
 - `lib/engine-id.f` — checked engine self-identity: kernel-resolved own executable path + lazy SHA-256 content key over bin/hb.
 - `lib/engine-id-test.f` — checked fixture coverage for the engine self-path and content-key words.
+- `lib/engine-candidate.f` — the one shared `ENGINE-CANDIDATE:PATH$` resolver for nested tooling: the `HABU_UNDER_TEST` override (child-env default table then live environment) else the running engine's own identity, validated as a real executable (fail-closed `E-FS-OPEN`) before it is spawned.
 - `lib/object.f` — checked OBJ package object-record codec for future linkable builds.
 - `lib/object-test.f` — focused coverage for object-record serialization, loading, and keys.
 - `lib/object-cache.f` — checked OBJSTORE content-addressed file store for
@@ -1946,6 +1947,12 @@ points stay listed.
   and asserts the checker rejects duplicating a handle or teardown token
   (double-teardown is unwritable). The already-dead watch-open divergence is
   expressed gated per-OS, like `test/proc-watch-smoke.f`.
+- `test/engine-candidate-test.f` — focused coverage for the `lib/engine-candidate.f`
+  resolver: a child-env default override resolves and validates, a default naming
+  this engine resolves back to it, a non-executable override fails closed with
+  `E-FS-OPEN`, a child engine with `HABU_UNDER_TEST=""` proves the no-override
+  fallback to its own identity, and `ENGINE-CANDIDATE:PATH$` feeds
+  `PROCESS-PTY:SPAWN` to supervise the resolved engine to exit and teardown.
 - `test/internal-word-gate.f` — engine-internal execution-gate regressions, including sealed field mutation and checked read-only field reflection.
   (dot habu-hb-crash-bare-c5be6634): bare/ticked internal checker colon words
   fail closed with `hb: internal engine word:` + rc 70 on both cold-prefix

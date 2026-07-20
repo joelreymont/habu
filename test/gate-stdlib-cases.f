@@ -221,6 +221,10 @@ TEST:SUITE proc-pty-io-supervisor-smoke
    test/process-pty-io-smoke.f
 TEST:;SUITE
 
+TEST:SUITE engine-candidate-resolver
+   test/engine-candidate-test.f
+TEST:;SUITE
+
 TEST:SUITE tasking-threads
    lib/task-test.f
 TEST:;SUITE

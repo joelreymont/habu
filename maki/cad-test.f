@@ -7,8 +7,8 @@ require lib/string.f
 require lib/fs.f
 require lib/process.f
 require lib/process-argv.f          \ RUN-ARGV-CAPTURE: the fresh-process replay child
-require lib/process-env.f           \ PROC-ENV-DEFAULT$?: read the gate's HABU_UNDER_TEST default for the replay child
-require lib/engine-id.f             \ ENGINE-ID:PATH$: this engine's own executable, so a standalone replay child runs THIS engine
+require lib/engine-candidate.f      \ ENGINE-CANDIDATE:PATH$: the one shared HABU_UNDER_TEST-else-self engine resolver
+require lib/engine-id.f             \ ENGINE-ID:KEY$: content key of the running engine binary for the section-7.4 store key
 require lib/fs-mutate.f             \ WRITE-ALL: the replay child driver file
 require maki/device-artifacts.f     \ MAKI-GRADE: private tmp driver path (PREPARE/DRIVER$/CLEAN)
 require maki/report.f
@@ -88,15 +88,12 @@ create RPL-OUT $4000 allot   create RPL-ERR $1000 allot
 \ never a hardcoded bin/hb. The section-7.4 store key hashes the running engine
 \ binary (lib/engine-id.f), so a candidate engine has to replay through ITSELF or
 \ the child computes a different key and misses this parent's store (F100/F101).
-\ Resolution order: the gate exports HABU_UNDER_TEST to the maki child, so honour
-\ it first (the child-env default table, then the live environment); a standalone
-\ run resolves this engine's own executable path via lib/engine-id.f. One edit
-\ site for any future engine-path convention change.
+\ The one shared resolver (lib/engine-candidate.f) applies the HABU_UNDER_TEST
+\ override (the gate exports it to the maki child, default table then live
+\ environment) else this engine's own path, so the replay child, a PTY-supervised
+\ engine, and this test all agree on one rule and validate the path once.
 : RPL-ENGINE$ ( -- ptr u8 n )
-   s" HABU_UNDER_TEST" >LEN PROC-ENV-DEFAULT$? if LEN>N exit then
-   2drop
-   s" HABU_UNDER_TEST" GETENV dup 0 > if exit then
-   2drop ENGINE-ID:PATH$ ;
+   ENGINE-CANDIDATE:PATH$ ;
 
 : RPL-CHILD-TILE$ ( -- ptr u8 n )               \ spawn the child; return its stdout
    PROC-ARGV-RESET
