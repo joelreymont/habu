@@ -48,4 +48,46 @@ pass; CODELEN and whole-file ratchets are lowered honestly. Compact u16 blob off
 remain fail-closed at 64 KiB. Files: src/habu/habu2.f, src/habu/aot-capture.f,
 src/habu/aot-closure.f tests, bootstrap/cg/forth.fs, AOT tests, and size gates.
 
-Claim: agent=aotbl workspace=.jj-ws/fable-aotbl machine=spark (owns src/habu emitters + aot-capture + AOT tests; CODELEN rows same-commit)
+Claim RELEASED 2026-07-20 (agent=aotbl, spark): no implementation landed - the lane STOPPED on blocking evidence, see below.
+
+2026-07-20 BLOCKED ON A DESIGN DECISION (aotbl lane, spark; evidence independently re-verified by the orchestrator).
+
+STAGE (c) IS PHYSICALLY IMPOSSIBLE AS SPECIFIED. Live JIT code is emitted into
+the REGION at RBASE-VA = $300000000 (src/habu/layout.f:8); the engine __text
+holding the LP2VEXEC/LPROTSPAN helper bodies loads at VMBASE = $400000
+(src/os/linux/elf.f:25). The gap is 12.00 GiB = 12,880,707,584 B, versus BL
+imm26's +/-128 MiB reach: ~96x out of range. Those two emitters use the
+absolute movz/movk/movk x16; blr x16 chain (habu2.f:4874-4875, :4901-4902)
+PRECISELY BECAUSE the callee is 12 GiB away. "One BL to the helper" cannot be
+encoded for a live call; the registered-helper BL contract only closes in the
+STRIPPED/CLOSURE image, where the helper body is copied adjacent to its callers
+(aot-closure.f:166-173 FINDPTR allowlist, aot-lib.f:263-267 PATCH-BL reflow).
+Implementing the dot literally would emit an out-of-range displacement on every
+live typed accessor.
+
+THE PREMISE COUNTS ARE STALE. A fresh capture measured 219 call sites (recs=115,
+blob=21376 B, names=956), 0 unresolved, and 0 helper sites - not 156. So the
+"blob shrinks by exactly 1872 bytes" acceptance is unmeetable; 219 x 12 B =
+2628 B. Every one of the 219 resolves to an ordinary dictionary word.
+
+STAGES (a)+(b) REMAIN SOUND: call site and callee both live inside the 8 MiB
+REGION, so disp = target - CP is always in BL range and a REGION-derived
+fail-closed guard is trivial; the stage2 fixpoint is assembler-emitted and
+C-CALL-independent, so the builder has the BL emitter before any capture runs.
+They cannot be landed in isolation, though, because the ACAP wire format
+(aot-capture.f:57-63,217-233) and boot patch (habu2.f:3653-3677) must decide
+BL-only vs dual-format, and that decision DEPENDS on the helper resolution -
+committing BL-only now pre-commits a design the correct helper handling would
+have to undo (forbidden churn).
+
+PROPOSED RE-SCOPE - NEEDS JOEL'S SIGN-OFF BEFORE ANY IMPLEMENTATION:
+(1) keep stages (a)/(b) as direct BL for statically-known DICTIONARY calls only,
+    range proven from REGION, fail closed; re-baseline acceptance to the measured
+    site count at implementation time, not 156/1872;
+(2) DROP "convert the helper emitters to BL" - live LP2VEXEC/LPROTSPAN calls stay
+    absolute; instead ACAP and the boot patch recognize BOTH formats, and the
+    helper->BL collapse stays confined to the co-located stripped/closure image
+    (which is already what aot-closure.f/aot-lib.f do);
+(3) fold the stripped-AOT closure/reflow rework (aot-lib.f MAP-IN-BLOB/PATCH-BL/
+    OLD>NEW, whose 16->4 compaction premise this changes) into stage (a) as a
+    required ripple, not an optional extra.
