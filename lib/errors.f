@@ -222,3 +222,15 @@
 -4400 constant E-TEST-FIRST
 -4499 constant E-TEST-LAST
 -4400 constant E-TEST-CAPACITY
+
+\ Tokenizer (maki/tokenizer.f): -4900..-4999
+-4900 constant E-TOK-FIRST
+-4999 constant E-TOK-LAST
+-4900 constant E-TOK-EMPTY     \ build a vocabulary from an empty / non-positive-length corpus
+-4901 constant E-TOK-UNBUILT   \ lookup / encode / decode before a successful TOK-BUILD (no vocabulary)
+-4902 constant E-TOK-BYTE      \ byte argument outside 0..255 (would index past the 256-cell table)
+-4903 constant E-TOK-ID        \ token id outside [0, vocab) on decode
+-4904 constant E-TOK-RANGE     \ byte absent from the built vocabulary on encode
+-4905 constant E-TOK-LEN       \ negative element count passed to encode / decode
+-4906 constant E-TOK-CAP       \ destination smaller than the count, or a negative capacity
+-4907 constant E-TOK-VALUE     \ stored id cell is NaN / infinite / not exactly integral

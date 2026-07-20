@@ -12,13 +12,19 @@
 \ the same representation the (B,T) window buffers use (maki/batch-loader.f BL-IDS).
 \ Pure module: no filesystem dependency; the corpus bytes are supplied by the
 \ caller (maki/data-loader.f reads them from a file). maki -> habu only.
-\ tokenizer owns -5152..-5154.
+\
+\ Safety contract: every public word rejects its entire invalid input domain
+\ BEFORE any address arithmetic, loop entry, or output write, so a rejected call
+\ never reads or writes a caller/module buffer. A lookup or (de)code before a
+\ successful TOK-BUILD throws E-TOK-UNBUILT instead of silently mapping every byte
+\ to id 0 through the zero-image TOK-INV. Decode proves each stored cell is finite,
+\ exactly integral, and inside the current vocabulary before it converts or writes,
+\ and validates every id before writing any byte (LESSONS: `f>s` is not validation;
+\ validate every index before a scatter can partially mutate output). Throw codes
+\ live in the shared registry lib/errors.f, block E-TOK-FIRST..E-TOK-LAST.
 
+require lib/errors.f
 require maki/array.f
-
--5152 constant E-TOK-EMPTY   \ build vocab from an empty corpus (no bytes -> no tokens)
--5153 constant E-TOK-RANGE   \ id outside [0,vocab) on decode, or byte absent from vocab on encode
--5154 constant E-TOK-CAP     \ encode/decode destination buffer smaller than the token/byte count
 
 package MAKI
 private
@@ -30,17 +36,43 @@ create TOK-INV   TOK-BYTE-MAX cells allot  \ byte -> id, or -1 when the byte is 
 variable TOK-N                              \ vocab size (distinct bytes in the corpus)
 variable TOK-ID#                            \ scratch: next id to assign during a build
 
+\ Throw unless a vocabulary has been built. A fresh TOK-INV is zero-filled, so
+\ without this guard every byte would look up as id 0 and a caller would "succeed"
+\ against no vocabulary at all.
+: TOK-READY ( -- )  TOK-N @ 0 <= if E-TOK-UNBUILT throw then ;
+
+\ Length / capacity gate shared by encode and decode: reject a negative count, a
+\ negative capacity, and a destination too small for the whole count. Runs before
+\ any loop so a rejected call performs no addressing.
+: TOK-BOUNDS ( n n -- ) {: u:n cap:n :}
+   u   0 < if E-TOK-LEN throw then
+   cap 0 < if E-TOK-CAP throw then
+   u cap > if E-TOK-CAP throw then ;
+
+\ Read one stored id cell as an exact token id: reject NaN, infinity, and any
+\ fractional value. f>s truncates toward zero and s>f is exact, so a value survives
+\ only when it is finite AND already integral (it round-trips bit-for-bit). The
+\ vocab-range check is done by the TOK-CHAR that consumes the returned id.
+: TOK-EXACT-ID ( r -- n ) {: v:r :}
+   v f>s {: k:n :}
+   k s>f v f= 0= if E-TOK-VALUE throw then
+   k ;
+
 public
 
 : TOK-SIZE ( -- n )  TOK-N @ ;
 
-\ id -> byte; rejects an id outside the built vocab
+\ id -> byte; rejects an unbuilt vocab and an id outside the built vocab
 : TOK-CHAR ( n -- n ) {: k:n :}
-   k 0 <  k TOK-N @ >=  or if E-TOK-RANGE throw then
+   TOK-READY
+   k 0 <  k TOK-N @ >=  or if E-TOK-ID throw then
    TOK-VOCAB k + c@ ;
 
-\ byte -> id; rejects a byte that never occurred in the corpus
+\ byte -> id; rejects an out-of-range byte before any addressing, an unbuilt vocab,
+\ and a byte that never occurred in the corpus
 : TOK-ID ( n -- n ) {: b:n :}
+   b 0 <  b TOK-BYTE-MAX >=  or if E-TOK-BYTE throw then
+   TOK-READY
    TOK-INV b cells + @  dup 0 < if E-TOK-RANGE throw then ;
 
 private
@@ -50,6 +82,20 @@ private
 
 : TOK-SEEN-CLEAR ( -- )
    TOK-BYTE-MAX 0 ?do  0 TOK-SEEN i + c!  loop ;
+
+\ Encode is two passes so a rejected call writes nothing: pass 1 proves every
+\ source byte maps to a vocab id (throwing before any write); pass 2 stores the ids.
+: TOK-ENC-CHECK ( ptr u8 n -- ) {: a:ptr u:n :}
+   u 0 ?do  a i + c@ TOK-ID drop  loop ;
+: TOK-ENC-WRITE ( ptr u8 n  ptr a -- ) {: a:ptr u:n d:ptr :}
+   u 0 ?do  a i + c@ TOK-ID s>f  d i T-SET  loop ;
+
+\ Decode is two passes so a rejected call leaves the destination untouched: pass 1
+\ proves every id cell is finite, integral, and in-vocab; pass 2 writes the bytes.
+: TOK-DEC-CHECK ( ptr a n -- ) {: ids:ptr u:n :}
+   u 0 ?do  ids i T-GET TOK-EXACT-ID TOK-CHAR drop  loop ;
+: TOK-DEC-WRITE ( ptr a n  ptr u8 -- ) {: ids:ptr u:n d:ptr :}
+   u 0 ?do  ids i T-GET TOK-EXACT-ID TOK-CHAR  d i + c!  loop ;
 
 public
 
@@ -71,22 +117,26 @@ public
    TOK-ID# @ TOK-N ! ;
 
 \ Encode src bytes into dst as float-cell token ids (one id per cell). Returns the
-\ token count. Rejects a byte absent from the vocab (E-TOK-RANGE) and a dst too
-\ small (E-TOK-CAP).
+\ token count. Requires a built vocab (E-TOK-UNBUILT), rejects a byte absent from
+\ the vocab (E-TOK-RANGE), a negative length (E-TOK-LEN), and a dst too small or a
+\ negative capacity (E-TOK-CAP). No id is written unless every byte validates.
 : TOK-ENCODE ( ptr u8 n ptr a n -- n ) {: a:ptr u:n d:ptr cap:n :}
-   u cap > if E-TOK-CAP throw then
-   u 0 ?do
-      a i + c@ TOK-ID  s>f  d i T-SET
-   loop
+   TOK-READY
+   u cap TOK-BOUNDS
+   a u TOK-ENC-CHECK
+   a u d TOK-ENC-WRITE
    u ;
 
-\ Decode float-cell token ids into dst bytes. Returns the byte count. Rejects an id
-\ outside the vocab (E-TOK-RANGE) and a dst too small (E-TOK-CAP).
+\ Decode float-cell token ids into dst bytes. Returns the byte count. Requires a
+\ built vocab (E-TOK-UNBUILT), rejects a non-finite / non-integral id cell
+\ (E-TOK-VALUE), an id outside the vocab (E-TOK-ID), a negative length (E-TOK-LEN),
+\ and a dst too small or a negative capacity (E-TOK-CAP). No byte is written unless
+\ every id validates.
 : TOK-DECODE ( ptr a n ptr u8 n -- n ) {: ids:ptr u:n d:ptr cap:n :}
-   u cap > if E-TOK-CAP throw then
-   u 0 ?do
-      ids i T-GET f>s TOK-CHAR  d i + c!
-   loop
+   TOK-READY
+   u cap TOK-BOUNDS
+   ids u TOK-DEC-CHECK
+   ids u d TOK-DEC-WRITE
    u ;
 
 ;package
