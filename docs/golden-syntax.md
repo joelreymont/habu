@@ -259,3 +259,49 @@ an empty projection when the extent list is empty), after which the scalar form 
 and its full-sum adjoint — falls out of this same suffix machinery with **no grammar
 change**. Until then, a compile-time scalar stays a plain named op (`ATTN-SCALE!`), exactly
 as the attention temperature already is.
+
+### Status: batched free-extent forms (BTC-2)
+
+The contraction grammar above sums over `+Σ` and outputs 1–2 free axes. Batched attention
+needs a **free (non-contracted) batch/head axis that rides every factor and the output**, so
+the GGEMM is the *same* contraction **replicated** over it (`docs/batch-sequence-design.md`
+§5 BTC-2, §4.3). Dot `habu-extent-roles-b` adds this on the BTC-7 product/factorization
+substrate:
+
+    B FREE-EXTENT: #B      -- an extent ROLE that is free (batch / head / replication)
+    S[b h i j] = Σk Q[b h i k] · K[b h j k]     -- b,h batch; i,j GEMM output; k contracted
+
+**Canonical spelling.** A batch/head axis is declared with **`FREE-EXTENT:`** (identical to
+`EXTENT:` — same size word, same `>#name` injector — but the role is marked *free*). In the
+equation the **batch indices lead** the output index list (`S[b h i j]`, not `S[i j b h]`);
+they must appear in **every** factor. The `Σ`/`·` operators and the `#`-per-index-var
+convention are unchanged. `i` (query) and `j` (key) are distinct extents even at equal
+length — the transposed-operand pattern.
+
+**Free extents type as free.** `FREE-EXTENT:` marks the role free two ways: maki-side (so
+`SPEC:` splits the leading batch indices from the GEMM indices) and in the checker's free
+set. A **contraction over a free extent is then a load-time checker reject** (exit 70
+class): `SPEC:` emits a per-equation witness `<NAME>-RSUM ( ix<ct-ext> -- redx<ct-ext> )`,
+and the BTC-7 rule rejects `redx<free>` at signature parse — the cross-sequence leak is a
+type error, not a runtime bug. An inner (head-dim) contraction extent compiles silently.
+
+**Derived artifacts** are the same three, extended: the checked candidate-B golden is now
+three words — `<NAME>-EL` (unchanged: every free index is a projected arg, loop the
+contraction), `<NAME>-GEMM` (takes the batch indices as `ix` args, loops the GEMM axes) and
+`<NAME>` (loops the batch axes, calls `-GEMM`) — the split keeps each word within habu's two
+loop counters. The dataflow record gains `SPEC-BATCH-N` / `SPEC-BATCH@` (the replication
+axes) and the PROMOTE record `SPEC-BATCH-EXTENT@` (their magnitudes — the free-extent strides
+/ TMA box dims the planner derives under the SMEM budget, `docs/tma-gather.md:90-92`; the live
+planner consumer is BTC-6, not this leg).
+
+**Derived adjoints** (gradchecked in `maki/spec-batched-test.f` against a central finite
+difference, with **batch isolation** proven — a cross-batch perturbation has zero effect on
+another batch's gradient): the adjoint of a batched contraction is the batched **transposed**
+contraction with the **same free extents riding along**. For `S[b h i j] = Σk Q[b h i k] ·
+K[b h j k]`, `dQ[b h i k] = dS[b h i j] · K[b h j k] +Σj` — another batched equation whose
+`b,h` are free on both sides, so they are never summed. It rides the same
+`EQ-ADJ-BODY`+emit pipeline as the contraction adjoints; batched equations are not composable
+2D ops (rank->2 factors), so the `<NAME>-ADJj` words are generated for gradcheck but not
+registered. Mis-formed batched specs fail closed before codegen: a batch axis after a plain
+output index, a factor missing a batch axis, or a free role in an elementwise form are each
+the named `E-SPEC-ARITY` reject.

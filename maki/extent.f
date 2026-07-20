@@ -110,6 +110,7 @@ create XR-SLEN XR-CAP cells allot
 create XR-TAIL XR-CAP XR-NAME-CAP * allot
 create XR-TLEN XR-CAP cells allot
 create XR-VAL  XR-CAP cells allot
+create XR-FREE XR-CAP cells allot                  \ 1 = a free (non-contracted / batch) role, 0 = plain
 variable XR-N
 
 \ column byte-slot bases: the one place raw cells-offset math lives, hidden behind
@@ -124,6 +125,10 @@ public
 : XR-SLEN@ ( xr-slot -- xr-surf-len )  XR-SLOT>N cells XR-SLEN + @ >XR-SURF-LEN ;
 : XR-TLEN@ ( xr-slot -- xr-tail-len )  XR-SLOT>N cells XR-TLEN + @ >XR-TAIL-LEN ;
 : XR-VAL@  ( xr-slot -- n )            XR-SLOT>N cells XR-VAL + @ ;
+\ freeness of an extent ROLE: a free extent is a batch/replication axis a contraction
+\ rejects (BTC-7). FREE-EXTENT: sets it; SPEC: reads it to split batch from GEMM indices.
+: XR-FREE?     ( xr-slot -- bool )     XR-SLOT>N cells XR-FREE + @ 0<> ;
+: XR-FREE-SET! ( xr-slot -- ) {: s:xr-slot :}  1 s XR-SLOT>N cells XR-FREE + ! ;
 : XR-SURF@ ( xr-slot -- ptr u8 n ) {: s:xr-slot :}  s XR-SURF-PTR  s XR-SLEN@ XR-SURF-LEN>N ;
 : XR-TAIL@ ( xr-slot -- ptr u8 n ) {: s:xr-slot :}  s XR-TAIL-PTR  s XR-TLEN@ XR-TAIL-LEN>N ;
 
@@ -150,6 +155,7 @@ private
    sa i XR-SURF-PTR su BYTE-COPY  su i XR-SLOT>N cells XR-SLEN + !
    ta i XR-TAIL-PTR tu BYTE-COPY  tu i XR-SLOT>N cells XR-TLEN + !
    val i XR-SLOT>N cells XR-VAL + !
+   0   i XR-SLOT>N cells XR-FREE + !                \ plain by default; FREE-EXTENT: promotes it
    XR-N @ 1 + XR-N ! ;
 
 \ ---- #name -> lowercase family tail (extm/extk/...) --------------------------
@@ -177,15 +183,18 @@ public
 \ the input stream and mutates the type registry - side effects a ( n -- ) row
 \ does not model). The generated constant + injector text is certified by the
 \ check hook through XG-EVAL.
-: EXTENT: ( n -- )
-   {: val:n :}
-   parse-name {: sa:ptr su:n :}
+\ X-MINT ( n ptr u8 n -- xr-slot ): mint the extent family + value word + injector for
+\ a parsed `#NAME` and return its registry slot. Shared by EXTENT: and FREE-EXTENT:
+\ (the latter additionally marks the slot free), so the family/injector text is written
+\ once. The generated constant + injector are certified by the check hook through XG-EVAL.
+: X-MINT ( n ptr u8 n -- xr-slot ) {: val:n sa:ptr su:n :}
    su 0= if E-EXT-NAME throw then
    \ an extent of size < 1 has no valid index; reject BEFORE minting anything (the
    \ name is already consumed, so the guard leaves no dangling token and no family).
    val 1 < if E-EXT-VALUE throw then
    sa su X-MANGLE {: ta:ptr tu:n :}
    ta tu s" 0" CHECKER-DEFFAMILY                   \ arity-0 family; E-TFAM-DUP on collision
+   XR-N @ >XR-SLOT {: slot:xr-slot :}              \ the row XR-ADD is about to fill
    val sa su ta tu XR-ADD
    XG-RESET
    s" : " XG+  sa su XG+  s"  ( -- n ) " XG+  val XG-INT  s"  ; " XG+
@@ -195,7 +204,20 @@ public
    \ range check is ordinary runtime logic inside that boundary.
    s" TRUSTED: >" XG+  sa su XG+  s"  ( n -- ix<" XG+  ta tu XG+
       s" > ) dup 0 < over " XG+  val XG-INT  s"  >= or if E-EXT-RANGE throw then ;" XG+
-   XG-EVAL ;
+   XG-EVAL
+   slot ;
+
+: EXTENT: ( n -- )  parse-name X-MINT drop ;
+
+\ FREE-EXTENT: - `value FREE-EXTENT: #NAME`. Declares an extent role that is FREE
+\ (a batch / head / replication axis a contraction never sums, docs/batch-sequence-
+\ design.md §4.3, BTC-2). Same mint as EXTENT:, then marks the role free two ways:
+\ XR-FREE (maki-side, so SPEC: splits batch indices from GEMM indices) and the checker
+\ free-set via EXT-MARK-FREE-TAIL (so a redx over this extent is the BTC-7 load reject).
+: FREE-EXTENT: ( n -- )
+   parse-name X-MINT {: slot:xr-slot :}
+   slot XR-FREE-SET!
+   slot XR-TAIL@ EXT-MARK-FREE-TAIL ;
 
 \ ---- BTC-7 extent-role product / factorization (dot habu-extent-role-product-
 \ 8e364885, docs/batch-sequence-design.md §5 BTC-7, docs/extent-substrate.md). The

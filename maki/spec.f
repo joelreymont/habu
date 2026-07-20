@@ -84,6 +84,7 @@ private
 create SP-FREE   SP-IDX-CAP SP-IDX-NAME * allot
 create SP-FREE-L SP-IDX-CAP cells allot
 variable SP-FREE-N
+variable SP-BATCH-N   \ BTC-2: how many LEADING free indices are batch (free-role) axes
 create SP-CT     SP-IDX-CAP SP-IDX-NAME * allot
 create SP-CT-L   SP-IDX-CAP cells allot
 variable SP-CT-N
@@ -389,6 +390,32 @@ variable SP-EXT-U
 : SP-FREE? ( ptr u8 n -- bool )  SP-FREE-POS MATCH option  none OF false ENDOF  some OF drop true ENDOF ;MATCH ;
 : SP-CT?   ( ptr u8 n -- bool )  SP-CT-POS   MATCH option  none OF false ENDOF  some OF drop true ENDOF ;MATCH ;
 
+\ is index var (a,u) one of factor f's indices? (shared by batch validation + adjoints)
+: IDX-IN-FAC? ( ptr u8 n n -- bool ) {: a:ptr u:n f:n :}
+   f SPEC-FAC-RANK@ 0 ?do  a u  f i SPEC-FAC-IDX@ STR= if true unloop exit then  loop  false ;
+
+\ ---- batch (free-role) index classification (BTC-2, docs/batch-sequence-design.md §4.3).
+\ A batch/head index is a FREE-EXTENT: role riding EVERY factor and the output; the GGEMM
+\ is REPLICATED over it. Convention: batch indices are the LEADING free indices, so
+\ `S[b h i j]` splits into batch (b,h) then GEMM (i,j). SP-CLASSIFY-BATCH counts the
+\ leading free indices whose extent is a free role (stops at the first plain one); a free
+\ role AFTER a plain index is a mis-ordering SP-VALIDATE-CT rejects.
+: SP-CLASSIFY-BATCH ( -- )
+   0 SP-BATCH-N !
+   SP-FREE-N @ 0 ?do
+      i SPEC-FREE@ SP-EXT-SLOT XR-FREE? 0= if leave then
+      SP-BATCH-N @ 1+ SP-BATCH-N !
+   loop ;
+
+public
+\ dataflow record (2): the batched-contraction replication axes - the free extents the
+\ contraction is replicated over (docs/tma-gather.md:29-45). SPEC-BATCH@ i (i < SPEC-BATCH-N)
+\ is a leading free index; SPEC-BATCH-EXTENT@ its replication magnitude (PROMOTE leg 3).
+: SPEC-BATCH-N ( -- n )  SP-BATCH-N @ ;
+: SPEC-BATCH@ ( n -- ptr u8 n )  SPEC-FREE@ ;
+: SPEC-BATCH-EXTENT@ ( n -- n ) {: i:n :}  i SPEC-FREE@ SP-EXT-SLOT XR-VAL@ ;
+private
+
 \ ---- code emitters (append candidate-B source into the XG buffer) -------------
 \ a nested loop position (0-outer..count-1-inner) -> the habu loop counter i/j.
 : SP-EMIT-COUNTER ( n n -- ) {: pos:n cnt:n :}
@@ -482,10 +509,77 @@ variable SP-EXT-U
    s" ; " XG+
    XG-EVAL ;
 
-\ the outer free loops + store (SP-EMIT-OUTER) are shared; only the element differs
-\ between the contraction and elementwise/broadcast forms. SP-EMIT-BODY dispatches the
-\ element and SP-CAND-CORE the checker-candidate text on the parsed mode (SP-EW?).
-: SP-EMIT-BODY ( -- )  SP-EW? @ if SP-EMIT-EW-EL else SP-EMIT-EL then  SP-EMIT-OUTER ;
+\ ---- batched free-extent outer (BTC-2). A batch/head (free, non-contracted) index rides
+\ EVERY factor and the output, so the GGEMM is the SAME contraction REPLICATED over it. The
+\ leading SP-BATCH-N free indices are the batch axes; the trailing SP-GEMM-N are the GEMM
+\ output axes. habu has only i/j loop counters, so the outer loops split into two words that
+\ each stay within two counters: NAME-GEMM (takes the batch indices as ix args, loops the
+\ GEMM axes, calls NAME-EL + stores) and NAME (loops the batch axes, calls NAME-GEMM). The
+\ element NAME-EL is UNCHANGED - SP-EMIT-EL already takes every free index as a projected
+\ arg (SP-EMIT-EL-SIG / SP-EMIT-PROJ) and loops the contraction, so it needs no batch case.
+: SP-GEMM-N ( -- n )  SP-FREE-N @ SP-BATCH-N @ - ;   \ GEMM (non-batch) output-index count
+\ open / close ?do loops for free positions [lo,hi), outer..inner in declared order.
+: SP-EMIT-RANGE-LOOPS ( n n -- ) {: lo:n hi:n :}  hi lo ?do  i SPEC-FREE@ SP-EXT$ XG+  s"  0 ?do " XG+  loop ;
+: SP-EMIT-RANGE-CLOSE ( n n -- ) {: lo:n hi:n :}  hi lo ?do  s" loop " XG+  loop ;
+\ inject positions [lo,hi) as ix<ext> from the loop counter at nesting depth (pos-lo).
+: SP-EMIT-RANGE-INJECT ( n n -- ) {: lo:n hi:n :}
+   hi lo ?do  i lo -  hi lo -  SP-EMIT-COUNTER  i SPEC-FREE@ SP-EMIT-INJ  loop ;
+\ inject the batch indices from the plain-cell locals g0..g{B-1} that NAME-GEMM binds.
+: SP-EMIT-BATCH-INJECT ( -- )
+   SP-BATCH-N @ 0 ?do  s" g" XG+  i XG-INT  s"  " XG+  i SPEC-FREE@ SP-EMIT-INJ  loop ;
+\ the full free-index tuple for one NAME-EL call / OUT store inside NAME-GEMM.
+: SP-EMIT-BATCHED-TUPLE ( -- )  SP-EMIT-BATCH-INJECT  SP-BATCH-N @ SP-FREE-N @ SP-EMIT-RANGE-INJECT ;
+\ project NAME-GEMM's batch ix args to plain locals g0..g{B-1} (high->low; stack top is last).
+: SP-EMIT-BATCH-PROJ ( -- )
+   SP-BATCH-N @ 0 ?do  SP-BATCH-N @ 1 - i -  {: k:n :}  s" IX>N {: g" XG+  k XG-INT  s" :n :} " XG+  loop ;
+: SP-EMIT-GEMM-SIG ( -- )   \ the batch ix args NAME-GEMM takes
+   SP-BATCH-N @ 0 ?do  s" ix<" XG+  i SPEC-FREE@ SP-EXT-SLOT XR-TAIL@ XG+  s" > " XG+  loop ;
+: SP-EMIT-BATCHED-OUTER ( -- )
+   XG-RESET
+   s" : " XG+  SPEC-NAME$ XG+  s" -GEMM ( " XG+  SP-EMIT-GEMM-SIG  s" -- ) " XG+
+   SP-EMIT-BATCH-PROJ
+   SP-BATCH-N @ SP-FREE-N @ SP-EMIT-RANGE-LOOPS
+   SP-EMIT-BATCHED-TUPLE  SPEC-NAME$ XG+  s" -EL " XG+
+   SP-EMIT-BATCHED-TUPLE  SPEC-OUT$ XG+   s" ! " XG+
+   SP-BATCH-N @ SP-FREE-N @ SP-EMIT-RANGE-CLOSE
+   s" ; " XG+
+   XG-EVAL
+   XG-RESET
+   s" : " XG+  SPEC-NAME$ XG+  s"  ( -- ) " XG+
+   0 SP-BATCH-N @ SP-EMIT-RANGE-LOOPS
+   0 SP-BATCH-N @ SP-EMIT-RANGE-INJECT  SPEC-NAME$ XG+  s" -GEMM " XG+
+   0 SP-BATCH-N @ SP-EMIT-RANGE-CLOSE
+   s" ; " XG+
+   XG-EVAL ;
+
+\ ---- contraction-legality witness (BTC-2 / BTC-7). SPEC: generates, per contraction
+\ equation, a word whose SIGNATURE marks each contraction axis a reduction axis
+\ (redx<ct-ext>). Compiling it IS the load-time check: a contraction over a FREE (batch)
+\ extent is redx<free>, which the checker rejects at SIG-END-PARAM (exit 70 class), making
+\ the cross-sequence leak a type error - not a runtime bug. A plain (inner) contraction
+\ extent yields redx<inner>, which compiles silently. Body >RED per axis (swap-threaded for
+\ the 2-axis case) so the redx outputs match the declared order.
+: SP-EMIT-RSUM-SIG ( -- )   \ ( ix<ct0-tail> [ix<ct1-tail>] -- redx<ct0-tail> [redx<ct1-tail>] )
+   SP-CT-N @ 0 ?do  s" ix<" XG+  i SPEC-CT@ SP-EXT-SLOT XR-TAIL@ XG+  s" > " XG+  loop
+   s" -- " XG+
+   SP-CT-N @ 0 ?do  s" redx<" XG+  i SPEC-CT@ SP-EXT-SLOT XR-TAIL@ XG+  s" > " XG+  loop ;
+: SP-RSUM-CORE ( -- )
+   SPEC-NAME$ XG+  s" -RSUM ( " XG+  SP-EMIT-RSUM-SIG  s" ) " XG+
+   s" >RED " XG+
+   SP-CT-N @ 2 = if s" swap >RED swap " XG+ then ;
+: SP-EMIT-RSUM ( -- )  XG-RESET  s" : " XG+  SP-RSUM-CORE  s" ; " XG+  XG-EVAL ;
+
+\ SP-EMIT-BODY dispatches the element and outer on the parsed mode; SP-CAND-CORE the
+\ checker-candidate element text. A contraction form additionally emits SP-EMIT-RSUM (the
+\ free-contraction guard) and, when it carries batch axes, the batched outer.
+: SP-EMIT-BODY ( -- )
+   SP-EW? @ if
+      SP-EMIT-EW-EL  SP-EMIT-OUTER
+   else
+      SP-EMIT-EL
+      SP-BATCH-N @ 0 > if SP-EMIT-BATCHED-OUTER else SP-EMIT-OUTER then
+      SP-EMIT-RSUM
+   then ;
 : SP-CAND-CORE ( -- )  SP-EW? @ if SP-EW-EL-CORE else SP-EL-CORE then ;
 
 \ ---- semantic validation: every malformed spec is a named throw BEFORE any code
@@ -519,9 +613,18 @@ variable SP-EXT-U
 : SP-CHK-FACTOR ( n -- ) {: f:n :}
    f SPEC-FAC-NAME@  f SPEC-FAC-RANK@  SP-CHK-DATA
    f SPEC-FAC-RANK@ 0 ?do  f i SP-CHK-FACTOR-IDX  loop ;
-: SP-VALIDATE-CT ( -- )   \ contraction form: OUT[free] = factors [*] +SUM ct
+\ a batch (free-role) index rides EVERY factor (the replication structure the batched
+\ derivation depends on): a factor missing it would broadcast, not replicate.
+: SP-CHK-BATCH-FAC ( n -- ) {: bi:n :}
+   bi SPEC-FREE@ {: va:ptr vu:n :}
+   SP-FAC-N @ 0 ?do  va vu i IDX-IN-FAC? 0= if E-SPEC-ARITY throw then  loop ;
+: SP-VALIDATE-CT ( -- )   \ contraction form: OUT[batch.. gemm..] = factors [*] +SUM ct
    SP-PLUS? @ if E-SPEC-SYNTAX throw then                          \ + is elementwise-only, never in a contraction
-   SP-FREE-N @ 1 < SP-FREE-N @ 2 > or if E-SPEC-ARITY throw then   \ 1..2 free indices
+   SP-GEMM-N 1 < SP-GEMM-N 2 > or if E-SPEC-ARITY throw then       \ 1..2 GEMM (output) axes
+   SP-BATCH-N @ 2 > if E-SPEC-ARITY throw then                     \ 0..2 batch (replication) axes
+   \ a free role after a plain output index is a mis-ordered batch axis (batch must lead).
+   SP-FREE-N @ SP-BATCH-N @ ?do  i SPEC-FREE@ SP-EXT-SLOT XR-FREE? if E-SPEC-ARITY throw then  loop
+   SP-BATCH-N @ 0 ?do  i SP-CHK-BATCH-FAC  loop
    SP-CT-N @ 1 < SP-CT-N @ 2 > or if E-SPEC-ARITY throw then       \ 1..2 contraction indices
    SP-FAC-N @ 0= if E-SPEC-SYNTAX throw then
    SP-FAC-N @ 1 > SP-STAR? @ 0= and if E-SPEC-SYNTAX throw then    \ >1 factor requires *
@@ -553,6 +656,7 @@ variable SP-EXT-U
       f i SPEC-FAC-GATHER@ nip 0 > if E-SPEC-TENSOR throw then     \ a broadcast term carries no gather
    loop ;
 : SP-VALIDATE-EW ( -- )   \ elementwise form: OUT[free] = terms combined by a single + or *
+   SP-BATCH-N @ 0<> if E-SPEC-ARITY throw then                     \ batch/free roles are contraction-only (BTC-2)
    SP-FREE-N @ 1 < SP-FREE-N @ 2 > or if E-SPEC-ARITY throw then   \ output 1..2 free indices
    SP-CT-N @ 0<> if E-SPEC-SYNTAX throw then                       \ elementwise: no contraction indices
    SP-FAC-N @ 0= if E-SPEC-SYNTAX throw then
@@ -565,7 +669,7 @@ variable SP-EXT-U
    SPEC-OUT$ SP-FREE-N @ SP-CHK-DATA                              \ output: data tensor, rank == free count
    SP-FREE-N @ 0 ?do  i SPEC-FREE@ SP-CHK-VAR-EXT  loop
    SP-FAC-N @ 0 ?do  i SP-CHK-EW-FACTOR  loop ;
-: SP-VALIDATE ( -- )  SP-EW? @ if SP-VALIDATE-EW else SP-VALIDATE-CT then ;
+: SP-VALIDATE ( -- )  SP-CLASSIFY-BATCH  SP-EW? @ if SP-VALIDATE-EW else SP-VALIDATE-CT then ;
 
 \ ---- equation registry (docs/model-unified.md stage 1: "How an equation joins the
 \ trainable graph"). A SPEC:-declared einsum becomes ONE `equation` op-kind
@@ -738,9 +842,6 @@ create EQ-FWD-SRC SP-SRC-CAP allot  variable EQ-FWD-SRC-U   \ forward body, to r
 : ADJB-IDXS ( n -- ) {: f:n :}  f SPEC-FAC-RANK@ 0 ?do  f i SPEC-FAC-IDX@ ADJB+  s"  " ADJB+  loop ;
 : ADJB-FAC  ( n -- ) {: f:n :}  f SPEC-FAC-NAME@ ADJB+  s" [ " ADJB+  f ADJB-IDXS  s" ] " ADJB+ ;
 
-\ is index var (a,u) one of factor f's indices?
-: IDX-IN-FAC? ( ptr u8 n n -- bool ) {: a:ptr u:n f:n :}
-   f SPEC-FAC-RANK@ 0 ?do  a u  f i SPEC-FAC-IDX@ STR= if true unloop exit then  loop  false ;
 \ append one contraction index for the adjoint of factor j: every forward index NOT in Fj.
 : ADJB-CT-IDX ( ptr u8 n n -- ) {: a:ptr u:n j:n :}
    a u j IDX-IN-FAC? 0= if  a u ADJB+  s"  " ADJB+  then ;
@@ -769,13 +870,16 @@ create EQ-FWD-SRC SP-SRC-CAP allot  variable EQ-FWD-SRC-U   \ forward body, to r
 : EQ-HAS-GATHER? ( -- bool )
    SP-FAC-N @ 0 ?do  i FAC-HAS-GATHER? if true unloop exit then  loop  false ;
 
-\ every factor's adjoint lands within the grammar: free = Fj's rank (1..2), contraction =
-\ (all forward indices) - Fj's rank, which must be 1..2 for the derived einsum to be legal.
+\ every factor's adjoint lands within the grammar: its GEMM-free axes = Fj's rank minus the
+\ batch axes it also carries (1..2), its contraction = (all forward indices) - Fj's rank
+\ (1..2). Batch axes RIDE ALONG (they appear in Fj and dO, never contracted), so for the
+\ non-batched case (SP-BATCH-N=0) this is exactly the old rk-1..2 / ct-1..2 rule.
 : EQ-ADJ-DERIVABLE? ( -- bool )
    SP-FREE-N @ SP-CT-N @ +  {: total:n :}
    SP-FAC-N @ 0 ?do
       i SPEC-FAC-RANK@  {: rk:n :}
-      rk 1 < rk 2 > or if false unloop exit then
+      rk SP-BATCH-N @ -  {: gf:n :}
+      gf 1 < gf 2 > or if false unloop exit then
       total rk -  {: ct:n :}
       ct 1 < ct 2 > or if false unloop exit then
    loop  true ;
@@ -842,11 +946,38 @@ create EQ-FWD-SRC SP-SRC-CAP allot  variable EQ-FWD-SRC-U   \ forward body, to r
    EQ-FWD-NM EQ-FWD-NM-U @ SP-NAME!
    EQ-FWD-SRC EQ-FWD-SRC-U @ SP-LOAD$  SP-PARSE ;   \ restore the forward queryable dataflow
 
+\ ---- batched adjoint (BTC-2). The adjoint of a batched contraction is the batched
+\ TRANSPOSED contraction with the SAME batch extents riding along: for
+\ S[b h i j] = Σk Q[b h i k] · K[b h j k], factor Q's gradient is
+\ dQ[b h i k] = dS[b h i j] · K[b h j k] +SUM j - another batched equation whose batch
+\ axes (b,h) are free on both sides, so they are NEVER summed (batch isolation is
+\ structural). EQ-ADJ-BODY builds exactly that source (it excludes Fj's own indices from
+\ the contraction, and batch indices are Fj's indices), so the reuse is total; the batched
+\ SP-EMIT-BODY generates the dFj words. Batched equations are not composable (rank>2
+\ factors do not map to the 2D op registry, spec.f EQ-COMPOSABLE?), so this generates the
+\ <fwd>-ADJj words for gradcheck WITHOUT registering them - the same "generate, don't
+\ register" split the design records for stage-2 composite-index work.
+: EQ-BATCHED-ADJ-DERIVE ( -- )
+   EQ-HAS-GATHER? if exit then                     \ gather adjoint = scatter-add: forward-only
+   EQ-ADJ-DERIVABLE? 0= if exit then               \ adjoint outside the grammar: forward-only
+   EQ-FWD-NM!
+   SP-SRC EQ-FWD-SRC SP-SRC-U @ BYTE-COPY  SP-SRC-U @ EQ-FWD-SRC-U !
+   SP-FAC-N @ {: kk:n :}
+   EQ-ADJ-SRC-BUILD                                \ build ALL bodies before the first SP-PARSE clobbers state
+   kk 0 ?do
+      i EQ-ADJ-NAME!
+      EQ-ADJ-SRC i ADJ-SRC-CAP * +  EQ-ADJ-SRCL i cells + @  SP-LOAD$
+      SP-PARSE  SP-VALIDATE  SP-EMIT-BODY
+   loop
+   EQ-FWD-NM EQ-FWD-NM-U @ SP-NAME!
+   EQ-FWD-SRC EQ-FWD-SRC-U @ SP-LOAD$  SP-PARSE  SP-CLASSIFY-BATCH ;   \ restore forward dataflow + batch record
+
 \ derive + register the adjoint equations for the equation SPEC: just registered. Composable
 \ equations are gather-free (EQ-COMPOSABLE?); a non-composable, gather, or out-of-grammar
 \ adjoint leaves the equation forward-only (EQ-DIFF? = 0). Runs AFTER EQ-REGISTER: the forward
 \ parse state is still intact for the source build; each adjoint's SP-PARSE then reuses it.
 : EQ-ADJ-DERIVE ( -- )
+   SP-BATCH-N @ 0 > if EQ-BATCHED-ADJ-DERIVE exit then   \ batched: derive dFj words (not registered)
    EQ-COMPOSABLE? 0= if exit then                 \ not registered: no slot to attach adjoints to
    SP-EW? @ if EQ-EW-ADJ-DERIVE exit then          \ elementwise/broadcast form: its own adjoint rule
    EQ-N @ 1- >EQ-SLOT {: fwd:eq-slot :}
@@ -901,6 +1032,13 @@ public
    parse-name SP-NAME!  SP-COLLECT  SP-PARSE  SP-VALIDATE
    XG-RESET  SP-CAND-CORE ;
 : SPEC-CAND$ ( -- ptr u8 n )  XG$ ;
+\ SPEC-RCAND: NAME <spec> ; - like SPEC-CAND: but leaves the contraction-legality witness
+\ (SP-RSUM-CORE) candidate text, so a test can score the BTC-7 free-contraction reject SPEC:
+\ generates: an inner contraction extent scores -1 (accept), a free (batch) one scores 0.
+: SPEC-RCAND: ( -- )
+   parse-name SP-NAME!  SP-COLLECT  SP-PARSE  SP-VALIDATE
+   XG-RESET  SP-RSUM-CORE ;
+: SPEC-RCAND$ ( -- ptr u8 n )  XG$ ;
 
 \ SPEC-ADJ-CHECK$: the training gate as a string seam. Parse + validate a spec BODY, then
 \ attempt to derive its adjoints: a gather equation is the named E-CAD-GRAD reject (its
