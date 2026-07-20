@@ -107,12 +107,114 @@ create SRC AUTOTUNE:AT-CFG-N cells allot     \ a valid source config to copy
    MMA-EXACT:MX-BUF-INIT-CALLS init0 T=          \ the bad-edge reject never reached MX-BUF-INIT (allocated nothing)
    AUTOTUNE:SW-CAND-CANARY-INTACT? TTRUE ;       \ and wrote nothing into candidate storage
 
+\ ============ (2) DEVICE EXCLUSIVITY: the injected PID-census fixture matrix =====
+\ The census pipeline is device-free at its core: SW-CENSUS-PARSE turns raw nvidia-smi
+\ compute-apps bytes + an expected owner into a typed `census` verdict with NO device.
+\ So every adversarial / malformed nvidia-smi output the dot enumerates is injected here
+\ as a byte string and MUST yield a NON-exclusive verdict (no timing row): a foreign PID,
+\ a missing self, a changed set (contended), or a malformed / failed probe (probe-failed).
+\ The one exclusive control (sole owner) proves the happy path still yields a row. The
+\ clock parser is likewise proven to REJECT the overflowing digit run, so the poison
+\ reading that wrapped AT-CLK-STABLE?'s compare can never reach the classifier.
+4242 constant OWN     \ the expected sole-owner PID in the post-open fixtures (5555 is a foreign PID in the byte fixtures)
+
+: CPARSE ( ptr u8 n n -- census )                AUTOTUNE:SW-CENSUS-PARSE ;
+: CLKPARSE ( ptr u8 n -- result<n,n> )           AUTOTUNE:SW-PARSE-CLK ;
+: SET-UUID ( -- )  s" GPU-test" AUTOTUNE:SW-DEV-UUID-SET ;
+
+\ ---- census verdict inspectors (a census is multi-cell: MATCH it, never dup it) ----
+: CKIND ( census -- n )     MATCH census exclusive OF drop 0 ENDOF contended OF 2drop 1 ENDOF probe-failed OF 2drop 2 ENDOF ;MATCH ;
+: CEXCLN ( census -- n )    MATCH census exclusive OF ENDOF contended OF 2drop -1 ENDOF probe-failed OF 2drop -1 ENDOF ;MATCH ;
+: CFGN ( census -- n )      MATCH census exclusive OF drop -1 ENDOF contended OF drop ENDOF probe-failed OF 2drop -1 ENDOF ;MATCH ;
+: CTOT ( census -- n )      MATCH census exclusive OF drop -1 ENDOF contended OF nip ENDOF probe-failed OF 2drop -1 ENDOF ;MATCH ;
+: CPFCODE ( census -- n )   MATCH census exclusive OF drop -1 ENDOF contended OF 2drop -1 ENDOF probe-failed OF drop ENDOF ;MATCH ;
+: CLKOK? ( result<n,n> -- bool )  MATCH result ok OF drop STR-TRUE ENDOF err OF drop STR-FALSE ENDOF ;MATCH ;
+: CLKVAL ( result<n,n> -- n )     MATCH result ok OF ENDOF err OF drop -1 ENDOF ;MATCH ;
+: MKF ( -- result<pcap:captured,pcap:failed> )  0 >LEN 0 >LEN 1 >RC PCAP-FAILED:MAKE RESULT:ERR ;   \ a nonzero-exit capture
+
+\ ---- verdicts: ownership is a SET IDENTITY, not a count -----------------------
+: CENSUS-VERDICT-TESTS ( -- )
+   SET-UUID
+   s\" 4242, GPU-test\n" OWN CPARSE CKIND 0 T=                       \ sole owner -> EXCLUSIVE (the ONE row-producing case)
+   s\" 4242, GPU-test\n" OWN CPARSE CEXCLN 1 T=                      \ exclusive owner count = 1
+   s" " -1 CPARSE CKIND 0 T=                                         \ pre-open idle: empty -> EXCLUSIVE(0)
+   s" " -1 CPARSE CEXCLN 0 T=
+   s\" 999, GPU-test\n" -1 CPARSE CKIND 1 T=                         \ pre-open: a foreign PID present -> contended
+   s" " OWN CPARSE CKIND 1 T=                                        \ own PID ABSENT (post-open, empty) -> contended, no row
+   s\" 999, GPU-test\n" OWN CPARSE CKIND 1 T=                        \ foreign-only, count 1 -> contended, no row
+   s\" 4242, GPU-test\n5555, GPU-test\n" OWN CPARSE CKIND 1 T=       \ own + foreign -> contended
+   s\" 4242, GPU-test\n5555, GPU-test\n" OWN CPARSE CFGN 1 T=        \ ...foreign count = 1
+   s\" 4242, GPU-test\n5555, GPU-test\n" OWN CPARSE CTOT 2 T= ;      \ ...total = 2
+
+\ ---- probe-failed: malformed / adversarial output is INFRA, never contention --
+: CENSUS-PROBEFAIL-TESTS ( -- )
+   SET-UUID
+   s" 4242" OWN CPARSE CPFCODE AUTOTUNE:SW-PF-BADROW T=              \ truncated: no "pid, uuid" separator
+   s\" 4242 GPU-test\n" OWN CPARSE CPFCODE AUTOTUNE:SW-PF-BADROW T=  \ malformed: space where the comma must be
+   s\" xyz, GPU-test\n" OWN CPARSE CPFCODE AUTOTUNE:SW-PF-BADROW T=  \ malformed: non-numeric pid
+   s\" 4242, \n" OWN CPARSE CPFCODE AUTOTUNE:SW-PF-BADROW T=         \ malformed: empty uuid field
+   s\" 4242, GPU-test\n4242, GPU-test\n" OWN CPARSE CPFCODE AUTOTUNE:SW-PF-DUPPID T=   \ duplicate pid
+   s\" 999999999999999999999, GPU-test\n" OWN CPARSE CPFCODE AUTOTUNE:SW-PF-BADPID T=  \ overflowing pid
+   s\" 4242, GPU-other\n" OWN CPARSE CPFCODE AUTOTUNE:SW-PF-DEVMISS T=                  \ device mismatch (foreign gpu_uuid)
+   MKF OWN AUTOTUNE:SW-CENSUS-OF CPFCODE AUTOTUNE:SW-PF-EXIT T= ;    \ nvidia-smi nonzero exit / timeout-class -> probe-failed, NOT contention
+
+\ ---- churn / loss-of-exclusivity across a burst: after-census catches it ------
+: CENSUS-CHURN-TESTS ( -- )
+   SET-UUID
+   s\" 4242, GPU-test\n" OWN CPARSE CKIND 0 T=                       \ BEFORE the burst: sole owner (exclusive)
+   s\" 4242, GPU-test\n5555, GPU-test\n" OWN CPARSE CKIND 1 T= ;     \ AFTER the burst: a foreign PID joined -> contended -> burst rejected
+
+\ ---- over-cap set fails closed (short uuid keeps the fixture < SB-CAP) ---------
+: CAP-BYTES ( -- ptr u8 n )                       \ SW-PIDS-CAP+1 distinct device rows
+   SB-RESET
+   AUTOTUNE:SW-PIDS-CAP 1+ 0 ?do
+      i 1000 + FMT:SB-INT  s" , GX" SB-APPEND  10 SB-APPEND-C
+   loop
+   SB$ ;
+: CENSUS-CAP-TESTS ( -- )
+   s" GX" AUTOTUNE:SW-DEV-UUID-SET
+   CAP-BYTES OWN CPARSE CPFCODE AUTOTUNE:SW-PF-CAP T= ;
+
+\ ---- (3) bounded exact clock parse: the overflow poison is refused HERE --------
+: CLK-PARSE-TESTS ( -- )
+   s\" 208\n" CLKPARSE CLKOK? TTRUE
+   s\" 208\n" CLKPARSE CLKVAL 208 T=                                 \ normal reading
+   s" 2400" CLKPARSE CLKVAL 2400 T=                                  \ no trailing newline still parses
+   s" " CLKPARSE CLKOK? TFALSE                                       \ empty -> err (never a silent 0)
+   s\" abc\n" CLKPARSE CLKOK? TFALSE                                 \ non-digit -> err
+   s\" 99999999999999\n" CLKPARSE CLKOK? TFALSE ;                    \ overflowing digit run (max-cell class) -> err; poison never reaches AT-CLK-STABLE?
+
+\ ---- fail-closed gate: contended -> E-AT-CONTENDED; probe-failed -> E-SW-PROBE -
+: GATE-EXCL ( -- )  1 CENSUS:EXCLUSIVE AUTOTUNE:SW-CENSUS-GATE ;
+: GATE-CONT ( -- )  1 2 CENSUS:CONTENDED AUTOTUNE:SW-CENSUS-GATE ;
+: GATE-PF ( -- )    AUTOTUNE:SW-PF-EXIT 1 CENSUS:PROBE-FAILED AUTOTUNE:SW-CENSUS-GATE ;
+: GATE-TESTS ( -- )
+   [: GATE-EXCL ;] 0 TTHROWSQ                                        \ exclusive: no throw (a row may be emitted)
+   [: GATE-CONT ;] E-AT-CONTENDED TTHROWSQ                           \ contended: fail closed
+   [: GATE-PF ;]   E-SW-PROBE TTHROWSQ ;                             \ probe-failed: infra propagated, NOT relabeled as contention
+
+\ ---- device identity + compute-mode parse -------------------------------------
+: DEVID-GOOD ( -- )  s\" GPU-xyz, Default\n" AUTOTUNE:SW-PARSE-DEVID ;
+: DEVID-BAD ( -- )   s\" GPU-xyz-no-comma\n" AUTOTUNE:SW-PARSE-DEVID ;
+: DEVID-TESTS ( -- )
+   DEVID-GOOD
+   AUTOTUNE:SW-DEV-UUID$ s" GPU-xyz" T$=                             \ uuid parsed + bound
+   AUTOTUNE:SW-DEV-MODE$ s" Default" T$=                             \ compute mode recorded (detection-only under Default)
+   [: DEVID-BAD ;] E-SW-PROBE TTHROWSQ ;                             \ malformed identity -> fail closed
+
 T-RESET
 CAND-INDEX-TESTS
 COUNT-TESTS
 EDGE-TESTS
 CANARY-TESTS
 ZERO-SIDE-EFFECT-TESTS
+CENSUS-VERDICT-TESTS
+CENSUS-PROBEFAIL-TESTS
+CENSUS-CHURN-TESTS
+CENSUS-CAP-TESTS
+CLK-PARSE-TESTS
+GATE-TESTS
+DEVID-TESTS
 T-REPORT
 
 ;package
