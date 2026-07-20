@@ -167,6 +167,24 @@ variable SCT-GX-U
    \ documented spawn-only but now scheduled -> one SPAWN-ONLY-STALE
    SC-FIND @ 1 T= ;
 
+\ ---- (d) a tools/lint/*-test.f absent from every TEST:SUITE is a finding ------
+: SCT-LINT-UNREGISTERED ( -- )
+   SCT-QUIET SC-RESET
+   SCT-CASE-RESET
+   s" TEST:SUITE demo" SCT-CASE-LINE
+   s" tools/lint/registered-test.f" SCT-CASE-LINE
+   s" TEST:;SUITE" SCT-CASE-LINE
+   SCT-CASE$ SC-CASES-SCAN$
+   \ a non-test source under tools/lint is not a lint test -> ignored
+   s" tools/lint/registered.f" SC-LINT-REG-VISIT
+   SC-FIND @ 0 T=
+   \ a registered lint test is a cases member -> ok
+   s" tools/lint/registered-test.f" SC-LINT-REG-VISIT
+   SC-FIND @ 0 T=
+   \ an unregistered lint test file -> one LINT-UNREGISTERED
+   s" tools/lint/unregistered-test.f" SC-LINT-REG-VISIT
+   SC-FIND @ 1 T= ;
+
 : SCT-MAIN ( -- )
    T-RESET
    SCT-LIVE-GREEN
@@ -179,6 +197,7 @@ variable SCT-GX-U
    SCT-PTX-CLEAN
    SCT-MANUAL-STALE
    SCT-SPAWN-STALE
+   SCT-LINT-UNREGISTERED
    T-REPORT ;
 
 SCT-MAIN

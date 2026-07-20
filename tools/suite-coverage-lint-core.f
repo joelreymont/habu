@@ -221,7 +221,15 @@ variable SC-NUM-L
    \ framed-diff codec fixtures: a self-contained in-memory round-trip/reject
    \ suite (diff-frame-codec). It runs spawned in the standalone stdlib gate via
    \ the SUITE-ALL selection, and is not mirrored into the resident fast tier.
-   s" tools/lint/diff-frame-test.f" q execute ;
+   s" tools/lint/diff-frame-test.f" q execute
+   \ shared unified-diff parser fixtures (diff-parser): a self-contained in-memory
+   \ event/fail-closed suite over tools/lint/diff.f. Runs spawned in the standalone
+   \ stdlib gate via SUITE-ALL; not mirrored into the resident fast tier.
+   s" tools/lint/diff-test.f" q execute
+   \ lint interner set fixtures (lint-intern-set): in-memory coverage of the
+   \ tools/lint/intern.f set helpers and the LINT-MAIN attributed-failure seam.
+   \ Runs spawned in the standalone stdlib gate via SUITE-ALL; not resident.
+   s" tools/lint/set-test.f" q execute ;
 
 \ SPAWN-ONLY: ptx-toolchain cases members that must run only in a fresh spawned
 \ image, never in the resident full-runner image. Two reasons appear here: tools
@@ -473,6 +481,35 @@ variable SC-NUM-L
    [: SC-SPAWN-STALE-CHECK ;] SC-SPAWN-ONLY-TABLE ;
 
 \ ============================================================================
+\ (d) lint-suite registration: fail closed on an unregistered lint test file
+\ ----------------------------------------------------------------------------
+\ Every tools/lint/*-test.f that EXISTS on disk must be a TEST:SUITE member of
+\ test/gate-stdlib-cases.f, otherwise it runs in no gate and regressions land
+\ green (the shared-parser diff-test.f and interner set-test.f both drifted in
+\ unregistered before this rule). A file documented manual-gate or spawn-only is
+\ already a cases member - SC-MANUAL-STALE-CHECK / SC-SPAWN-STALE-CHECK reject a
+\ documented entry that no TEST:SUITE lists - so the cases-membership test also
+\ honours those documented exceptions and no separate exempt list is needed. The
+\ live tools/lint directory is walked each run, so a NEW *-test.f file is a
+\ LINT-UNREGISTERED finding until it is registered.
+: SC-LINT-UNREGISTERED ( ptr u8 n -- ) {: fp:ptr fu:n :}
+   SC-REPORT? @ if
+      s" suite-coverage: LINT-UNREGISTERED " type fp fu type
+      s"  is a tools/lint test file that no TEST:SUITE in test/gate-stdlib-cases.f lists" type SC-NL
+   then SC-FIND+ ;
+
+: SC-LINT-REG-CHECK-FILE ( ptr u8 n -- ) {: fp:ptr fu:n :}
+   fp fu SC-CASE-MEMBER? if exit then
+   fp fu SC-LINT-UNREGISTERED ;
+
+\ Walk callback: only *-test.f files are lint suites; the path is consumed in place.
+: SC-LINT-REG-VISIT ( ptr u8 n -- )
+   2dup s" -test.f" LINT-ENDS-WITH? if SC-LINT-REG-CHECK-FILE else 2drop then ;
+
+: SC-CHECK-LINT-REG ( -- )
+   s" tools/lint" [: SC-LINT-REG-VISIT ;] WALK-FILES ;
+
+\ ============================================================================
 \ maki slice partition (dot habu-split-monolithic-maki-fccca4ea)
 \ ----------------------------------------------------------------------------
 \ The monolithic maki/test.f was split into four parallel gate slices
@@ -570,6 +607,7 @@ variable SC-MK-AFTER-SUITE                   \ previous token was TEST:SUITE
    SC-CHECK-ORPHANS
    SC-CHECK-PTX
    SC-CHECK-TABLES
+   SC-CHECK-LINT-REG
    SC-CHECK-MAKI ;
 
 : SC-SUMMARY ( -- )
