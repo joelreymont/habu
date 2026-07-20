@@ -80,14 +80,43 @@ BL-only vs dual-format, and that decision DEPENDS on the helper resolution -
 committing BL-only now pre-commits a design the correct helper handling would
 have to undo (forbidden churn).
 
-PROPOSED RE-SCOPE - NEEDS JOEL'S SIGN-OFF BEFORE ANY IMPLEMENTATION:
-(1) keep stages (a)/(b) as direct BL for statically-known DICTIONARY calls only,
-    range proven from REGION, fail closed; re-baseline acceptance to the measured
-    site count at implementation time, not 156/1872;
-(2) DROP "convert the helper emitters to BL" - live LP2VEXEC/LPROTSPAN calls stay
-    absolute; instead ACAP and the boot patch recognize BOTH formats, and the
-    helper->BL collapse stays confined to the co-located stripped/closure image
-    (which is already what aot-closure.f/aot-lib.f do);
-(3) fold the stripped-AOT closure/reflow rework (aot-lib.f MAP-IN-BLOB/PATCH-BL/
-    OLD>NEW, whose 16->4 compaction premise this changes) into stage (a) as a
-    required ripple, not an optional extra.
+ROOT CAUSE (orchestrator, 2026-07-20): the 12 GiB gap is a LAYOUT CHOICE, not a
+law. RBASE-VA is a constant (layout.f:9) and the region is mapped MAP_FIXED at
+that constant (habu2.f:3315, fail-closed exit 78). Map the code region within
+BL's +/-128 MiB of the engine __text and EVERY call becomes BL - dictionary
+calls AND the helper calls stage (c) wanted. The dual-format ACAP question
+disappears; the result is ONE call format, simpler than today's, and this dot
+becomes implementable exactly as written. Keeping the helpers absolute is
+designing around the defect instead of removing it - rejected.
+
+Two real costs, both of which are latent defects worth paying off rather than
+reasons to keep the gap:
+
+1. macOS is PIE (macos/macho.f:12, `PIE? -1`), so its __TEXT slides at load and
+   a fixed near-text RBASE-VA cannot work there. The region must be mapped
+   RELATIVE to the runtime-discovered text base: mmap with a hint, verify the
+   returned address is in BL range of __text, and die named if not (never a
+   silent fall back to the absolute chain). Linux is non-PIE at VMBASE $400000
+   so it could use a constant, but the mechanism must be uniform across targets.
+2. CELL-TEXTPTR? (aot-lib.f:99-100) discriminates code/dict pointers from data
+   by testing membership in the RBASE-VA window, and AOT-DATA-TEXTPTR? scans raw
+   data cells with it. That is a MAGNITUDE HEURISTIC that is only safe because
+   12.9 GiB is implausible as user data; move the window down near the text and
+   false positives become likely. It must be replaced by explicit relocation
+   metadata first - the same principle this dot already demands for the census
+   ("classify each site through relocation metadata rather than trusting opcode
+   coincidence"). Fixing it is independently correct: identifying pointers by
+   how big they are is wrong regardless of where the region sits.
+3. RBASE-VA is baked into snapshots, so the move bumps SNAP-FORMAT-VERSION
+   (layout.f:11, currently 3).
+
+SEQUENCE (this dot is now the third step, unblocked and implementable AS
+ORIGINALLY SPECIFIED once the first two land):
+  A. habu-identify-code-pointers-b973e6cc - replace the CELL-TEXTPTR? magnitude
+     heuristic with explicit relocation metadata.
+  B. habu-map-the-code-5268af94 - hint-and-verify region mapping within
+     +/-128 MiB of __text on both targets, fail closed, SNAP version bump.
+  C. THIS DOT - direct BL for every statically known native call, one format,
+     dictionary and helper alike. Re-baseline the acceptance count to the
+     measured site count at implementation time (219 / 2628 B as of 2026-07-20),
+     not the stale 156 / 1872.
