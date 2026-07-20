@@ -60,7 +60,7 @@ variable TL-ARGV-SOURCE-U
    1 throw ;
 
 : TL-ARGV-CONFIG-TODAY ( n -- ) {: idx :}
-   idx ARGV-POS$ 2dup PARSE-YMD MATCH option
+   idx ARGV:POS$ 2dup PARSE-YMD MATCH option
      none OF TL-ARGV-BAD-TODAY ENDOF
      some OF ENDOF
    ;MATCH
@@ -68,15 +68,15 @@ variable TL-ARGV-SOURCE-U
    2drop ;
 
 : TL-ARGV-CONFIG-SOURCE ( -- )
-   ARGV-POS# 2 < if s" wrong number of positional arguments" ARGV-FAIL then
-   ARGV-POS# 4 > if s" wrong number of positional arguments" ARGV-FAIL then
-   1 ARGV-POS$ TL-ARGV-SOURCE-U ! TL-ARGV-SOURCE-A!
-   ARGV-POS# 2 > if 2 ARGV-POS$ TRUST-LINT-ROOT! else s" ." TRUST-LINT-ROOT! then
-   ARGV-POS# 3 > if 3 TL-ARGV-CONFIG-TODAY else TRUST-LINT-TODAY-NOW then ;
+   ARGV:POS# 2 < if s" wrong number of positional arguments" ARGV:FAIL then
+   ARGV:POS# 4 > if s" wrong number of positional arguments" ARGV:FAIL then
+   1 ARGV:POS$ TL-ARGV-SOURCE-U ! TL-ARGV-SOURCE-A!
+   ARGV:POS# 2 > if 2 ARGV:POS$ TRUST-LINT-ROOT! else s" ." TRUST-LINT-ROOT! then
+   ARGV:POS# 3 > if 3 TL-ARGV-CONFIG-TODAY else TRUST-LINT-TODAY-NOW then ;
 
 : TL-ARGV-CONFIG-SOURCE-LIST-TODAY? ( -- bool )
-   ARGV-POS# 4 < if TL-FALSE exit then
-   2 ARGV-POS$ 2dup PARSE-YMD MATCH option
+   ARGV:POS# 4 < if TL-FALSE exit then
+   2 ARGV:POS$ 2dup PARSE-YMD MATCH option
      none OF 2drop TL-FALSE exit ENDOF
      some OF ENDOF
    ;MATCH
@@ -86,29 +86,29 @@ variable TL-ARGV-SOURCE-U
    TL-TRUE ;
 
 : TL-ARGV-CONFIG-SOURCE-LIST ( -- )
-   ARGV-POS# 3 < if s" wrong number of positional arguments" ARGV-FAIL then
-   1 ARGV-POS$ TRUST-LINT-ROOT!
+   ARGV:POS# 3 < if s" wrong number of positional arguments" ARGV:FAIL then
+   1 ARGV:POS$ TRUST-LINT-ROOT!
    2 TL-ARGV-SOURCE-FIRST !
    TL-ARGV-CONFIG-SOURCE-LIST-TODAY? if exit then
    TRUST-LINT-TODAY-NOW ;
 
 : TL-ARGV-CONFIG-ROOT ( -- )
-   0 2 ARGV-EXPECT-POS
-   ARGV-POS# 0 > if 0 ARGV-POS$ TRUST-LINT-ROOT! else s" ." TRUST-LINT-ROOT! then
-   ARGV-POS# 1 > if 1 TL-ARGV-CONFIG-TODAY else TRUST-LINT-TODAY-NOW then ;
+   0 2 ARGV:EXPECT-POS
+   ARGV:POS# 0 > if 0 ARGV:POS$ TRUST-LINT-ROOT! else s" ." TRUST-LINT-ROOT! then
+   ARGV:POS# 1 > if 1 TL-ARGV-CONFIG-TODAY else TRUST-LINT-TODAY-NOW then ;
 
 : TL-ARGV-CONFIG ( -- )
-   s" tools/trust-lint.f [ROOT] [TODAY] | source-only SOURCE [ROOT] [TODAY] | source-list ROOT [TODAY] SOURCE..." ARGV-USAGE!
-   ARGV-PARSE
+   s" tools/trust-lint.f [ROOT] [TODAY] | source-only SOURCE [ROOT] [TODAY] | source-list ROOT [TODAY] SOURCE..." ARGV:USAGE!
+   ARGV:PARSE
    0 TL-ARGV-SOURCE-ONLY !
    0 TL-ARGV-SOURCE-LIST !
-   ARGV-POS# 0 > if
-      0 ARGV-POS$ s" source-only" STR= if
+   ARGV:POS# 0 > if
+      0 ARGV:POS$ s" source-only" STR= if
          -1 TL-ARGV-SOURCE-ONLY !
          TL-ARGV-CONFIG-SOURCE
          exit
       then
-      0 ARGV-POS$ s" source-list" STR= if
+      0 ARGV:POS$ s" source-list" STR= if
          -1 TL-ARGV-SOURCE-LIST !
          TL-ARGV-CONFIG-SOURCE-LIST
          exit
@@ -126,8 +126,8 @@ variable TL-ARGV-SOURCE-U
 
 : TRUST-LINT-SOURCE-LIST ( -- )
    TRUST-LINT-RESET
-   TL-ARGV-SOURCE-FIRST @ begin dup ARGV-POS# < while
-      dup ARGV-POS$ TRUST-LINT-SOURCE+
+   TL-ARGV-SOURCE-FIRST @ begin dup ARGV:POS# < while
+      dup ARGV:POS$ TRUST-LINT-SOURCE+
       1+
    repeat drop
    TRUST-LINT-SOURCES-FINISH ;

@@ -21,11 +21,11 @@ create PIT-BUF PIT-CAP allot
 \ Mock an empty argv around the require so the tool's require-time main runs in
 \ report mode even inside a gate worker carrying script arguments, capturing its
 \ live report through the shared lint sink.
-ARGV-MOCK-CLEAR
+ARGV:MOCK-CLEAR
 PIT-BUF PIT-CAP LINT-OUT-BUFFER!
 require tools/primitive-effect-inventory.f
 LINT-OUT-BUFFER-OFF
-ARGV-USE-SCRIPT
+ARGV:USE-SCRIPT
 
 package PEINV-TEST
 

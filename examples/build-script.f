@@ -2,28 +2,28 @@
 \ Run: bin/hb --load lib/errors.f lib/string.f lib/test.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f tools/examples-test.f
 
 : BS-CONFIGURE ( -- )
-   s" hb build-script.f [--json] -o OUT SOURCE" ARGV-USAGE!
-   s" build/app.hb" ARGV-OUT-DEFAULT! ;
+   s" hb build-script.f [--json] -o OUT SOURCE" ARGV:USAGE!
+   s" build/app.hb" ARGV:OUT-DEFAULT! ;
 
 : BS-VALIDATE-ARGS ( -- )
-   ARGV-PARSE
-   1 ARGV-EXPECT-POS-EXACT
-   ARGV-REQUIRE-OUT ;
+   ARGV:PARSE
+   1 ARGV:EXPECT-POS-EXACT
+   ARGV:REQUIRE-OUT ;
 
 : BS-SOURCE-FILE? ( -- bool )
-   0 ARGV-POS$ FILE? ;
+   0 ARGV:POS$ FILE? ;
 
 : BS-OUT-HAS-SUFFIX? ( -- bool )
-   ARGV-OUT$ s" .hb" ENDS-WITH? ;
+   ARGV:OUT$ s" .hb" ENDS-WITH? ;
 
 : BS-OUT-NAME-OK? ( -- bool )
-   ARGV-OUT$ BASENAME s" app.hb" STR= ;
+   ARGV:OUT$ BASENAME s" app.hb" STR= ;
 
 : BS-MAIN ( -- )
    T-RESET
    BS-CONFIGURE
    BS-VALIDATE-ARGS
-   ARGV-JSON? TTRUE
+   ARGV:JSON? TTRUE
    BS-SOURCE-FILE? TTRUE
    BS-OUT-HAS-SUFFIX? TTRUE
    BS-OUT-NAME-OK? TTRUE

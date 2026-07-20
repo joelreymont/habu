@@ -24,11 +24,11 @@ create TIT-BUF TIT-CAP allot
 \ Mock an empty argv around the require so the tool's require-time main runs
 \ in report mode even inside a gate worker that carries script arguments, and
 \ capture its live report through the shared lint sink.
-ARGV-MOCK-CLEAR
+ARGV:MOCK-CLEAR
 TIT-BUF TIT-CAP LINT-OUT-BUFFER!
 require tools/trusted-inventory.f
 LINT-OUT-BUFFER-OFF
-ARGV-USE-SCRIPT
+ARGV:USE-SCRIPT
 
 package TINV-TEST
 

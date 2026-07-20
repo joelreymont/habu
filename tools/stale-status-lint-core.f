@@ -531,12 +531,12 @@ variable SS-ERR-U
    SS-BAD @ 0 > IF 1 throw THEN ;
 
 : SS-CONFIG ( -- )
-   s" tools/stale-status-lint.f [ROOT] [TODAY]" ARGV-USAGE!
-   ARGV-PARSE
-   0 2 ARGV-EXPECT-POS
-   ARGV-POS# 0 > IF 0 ARGV-POS$ SS-ROOT! ELSE s" ." SS-ROOT! THEN
-   ARGV-POS# 1 > IF
-      1 ARGV-POS$ SS-PARSE-TODAY SS-TODAY-DAYS !
+   s" tools/stale-status-lint.f [ROOT] [TODAY]" ARGV:USAGE!
+   ARGV:PARSE
+   0 2 ARGV:EXPECT-POS
+   ARGV:POS# 0 > IF 0 ARGV:POS$ SS-ROOT! ELSE s" ." SS-ROOT! THEN
+   ARGV:POS# 1 > IF
+      1 ARGV:POS$ SS-PARSE-TODAY SS-TODAY-DAYS !
    ELSE
       epoch-seconds DATE-SECONDS-DAY / SS-TODAY-DAYS !
    THEN ;

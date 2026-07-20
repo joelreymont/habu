@@ -77,8 +77,8 @@ variable RP-NODE
    s" usage: tools/repair-packet.f checker-jsonl.err" RP-E-USAGE RP-FAIL ;
 
 : RP-INPUT$ ( -- ptr u8 n )
-   ARGV-COUNT 1 <> if RP-USAGE then
-   0 ARGV-TOK$ ;
+   ARGV:COUNT 1 <> if RP-USAGE then
+   0 ARGV:TOK$ ;
 
 : RP-COUNT ( ptr u8 n -- n )
    JSONL-START

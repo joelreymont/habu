@@ -346,20 +346,20 @@ create CAE-LF-BYTE 10 c,
    0 CHECK-ALL-ERRORS-OUT$ nip CAE-RC @ ;
 
 : CAE-ARGV-CHECK ( ptr u8 n -- ) {: file:ptr fileu :}
-   ARGV-MOCK-CLEAR
-   s" --json-errors" ARGV-MOCK+
-   s" --label" ARGV-MOCK+
-   file fileu ARGV-MOCK+
-   file fileu ARGV-MOCK+ ;
+   ARGV:MOCK-CLEAR
+   s" --json-errors" ARGV:MOCK+
+   s" --label" ARGV:MOCK+
+   file fileu ARGV:MOCK+
+   file fileu ARGV:MOCK+ ;
 
 : CAE-RUN-ARGV-ACT ( -- )
-   s" tools/check-all-errors.f [--json-errors] --label name source" ARGV-USAGE!
-   ARGV-PARSE
-   ARGV-REQUIRE-LABEL
-   1 ARGV-EXPECT-POS-EXACT
+   s" tools/check-all-errors.f [--json-errors] --label name source" ARGV:USAGE!
+   ARGV:PARSE
+   ARGV:REQUIRE-LABEL
+   1 ARGV:EXPECT-POS-EXACT
    CAE-ERR CAE-BUF-CAP CAE-OUT CAE-BUF-CAP CHECK-ALL-ERRORS-BUFFERS!
-   ARGV-JSON? CHECK-ALL-ERRORS-JSON!
-   ARGV-LABEL$ 0 ARGV-POS$ CHECK-ALL-ERRORS-FILE ;
+   ARGV:JSON? CHECK-ALL-ERRORS-JSON!
+   ARGV:LABEL$ 0 ARGV:POS$ CHECK-ALL-ERRORS-FILE ;
 
 : CAE-RUN ( -- n n n )
    CAE-IN CAE-CORE-CAPTURE ;
@@ -370,8 +370,8 @@ create CAE-LF-BYTE 10 c,
 : CAE-RUN-CLI ( -- n n n )
    CAE-IN CAE-ARGV-CHECK
    [: CAE-RUN-ARGV-ACT ;] catch CAE-RC !
-   ARGV-USE-SCRIPT
-   ARGV-RESET
+   ARGV:USE-SCRIPT
+   ARGV:RESET
    0 CHECK-ALL-ERRORS-OUT$ nip CAE-RC @ ;
 
 : CAE-DUMP-CAPTURE ( n n n n -- )

@@ -17,12 +17,12 @@ package TYPED-LOCAL-DIFF-CLI
 private
 
 : RUN ( -- )
-   s" tools/typed-local-diff-lint.f diff.patch ..." ARGV-USAGE!
-   ARGV-PARSE
-   1 -1 ARGV-EXPECT-POS
+   s" tools/typed-local-diff-lint.f diff.patch ..." ARGV:USAGE!
+   ARGV:PARSE
+   1 -1 ARGV:EXPECT-POS
    TYPED-LOCAL-DIFF:RESET
-   0 begin dup ARGV-POS# < while
-      dup ARGV-POS$ TYPED-LOCAL-DIFF:FILE
+   0 begin dup ARGV:POS# < while
+      dup ARGV:POS$ TYPED-LOCAL-DIFF:FILE
       1+
    repeat drop
    TYPED-LOCAL-DIFF:FINISH ;

@@ -1629,8 +1629,8 @@ public
    then ;
 
 : RATCHET-ARGS? ( -- bool )
-   ARGV-POS# 2 = 0= if LINT-FALSE exit then
-   0 ARGV-POS$ s" baseline" STR= ;
+   ARGV:POS# 2 = 0= if LINT-FALSE exit then
+   0 ARGV:POS$ s" baseline" STR= ;
 
 \ ---- separable-fold ratchet (strict) ----------------------------------------
 \ A file-level row is SEPARABLE when every site it covers is nameable (a
@@ -1691,8 +1691,8 @@ public
    repeat ;
 
 : STRICT-ARGS? ( -- bool )
-   ARGV-POS# 1 = 0= if LINT-FALSE exit then
-   0 ARGV-POS$ s" strict" STR= ;
+   ARGV:POS# 1 = 0= if LINT-FALSE exit then
+   0 ARGV:POS$ s" strict" STR= ;
 
 : MANIFEST$ ( -- ptr u8 n )
    s" TRUSTED.md" ;
@@ -1734,14 +1734,14 @@ public
    then ;
 
 : MAIN ( -- )
-   s" tools/trusted-inventory.f [-- strict | baseline PATH]" ARGV-USAGE!
-   ARGV-PARSE
+   s" tools/trusted-inventory.f [-- strict | baseline PATH]" ARGV:USAGE!
+   ARGV:PARSE
    INIT
-   ARGV-POS# 0= if MAIN-REPORT exit then
+   ARGV:POS# 0= if MAIN-REPORT exit then
    STRICT-ARGS? if MAIN-STRICT exit then
-   RATCHET-ARGS? 0= if s" expected no arguments, strict, or: baseline PATH" ARGV-FAIL then
+   RATCHET-ARGS? 0= if s" expected no arguments, strict, or: baseline PATH" ARGV:FAIL then
    SCAN-REPO SORT-ROWS
-   1 ARGV-POS$ RATCHET-LOAD
+   1 ARGV:POS$ RATCHET-LOAD
    RATCHET-REPORT ;
 
 MAIN

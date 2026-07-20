@@ -1,7 +1,30 @@
 \ argv.f -- checked argv parser for `bin/hb script.f args...` scripts.
+\
+\ The module lives in `package ARGV`; `tools/argv.f` is a symlink to this file, so
+\ the tool CLIs and the stdlib share one packaged module. External callers drive
+\ it through the qualified public API: ARGV:USAGE! / ARGV:QUIET! configure the
+\ usage text and diagnostic writes, ARGV:PARSE reads SCRIPT-ARGC / SCRIPT-ARGV$
+\ (or a mock set installed with ARGV:MOCK-CLEAR / ARGV:MOCK+ / ARGV:USE-SCRIPT),
+\ and the accessors ARGV:POS# / ARGV:POS$ / ARGV:LABEL$ / ARGV:OUT$ / ARGV:JSON?
+\ and the other flag predicates read the parsed result. ARGV:EXPECT-POS /
+\ ARGV:EXPECT-POS-EXACT / ARGV:REQUIRE-OUT / ARGV:REQUIRE-LABEL validate arity and
+\ required options, ARGV:FAIL throws a caller-worded usage failure, ARGV:RESET
+\ clears parser state, and ARGV:POSZ / ARGV:OUTZ / ARGV:PATHZ / ARGV:ZCOPY produce
+\ NUL-terminated path copies in the module path buffer. A usage failure throws the
+\ public code ARGV:E-USAGE after emitting the usage text, and a capacity failure
+\ throws ARGV:E-INTERNAL. Every buffer, parser-state cell, and internal helper
+\ (ARGV-FAIL-DONE, ARGV-PARSE-OPT, ARGV-TAKE-NEXT, the ARGV-PTR-U8* pointer-field
+\ accessors, ...) is package-private.
 
-64 constant ARGV-E-USAGE
-76 constant ARGV-E-INTERNAL
+package ARGV
+
+public
+
+64 constant E-USAGE
+76 constant E-INTERNAL
+
+private
+
 64 constant ARGV-MAX
 1024 constant ARGV-MSG-CAP
 1024 constant ARGV-PATH-CAP
@@ -71,7 +94,7 @@ create ARGV-PATH-BUF ARGV-PATH-CAP allot
       1 +
    repeat drop ARGV-TRUE ;
 
-: ARGV-BUF-FAIL ( -- )  ARGV-E-INTERNAL throw ;
+: ARGV-BUF-FAIL ( -- )  E-INTERNAL throw ;
 
 : ARGV-MSG+ ( ptr u8 n -- ) {: a:ptr u :}
    ARGV-MSG-L @ u + ARGV-MSG-CAP > if ARGV-BUF-FAIL then
@@ -86,10 +109,14 @@ create ARGV-PATH-BUF ARGV-PATH-CAP allot
    c ARGV-MSG ARGV-MSG-L @ + c!
    ARGV-MSG-L @ 1 + ARGV-MSG-L ! ;
 
-: ARGV-USAGE! ( ptr u8 n -- ) {: a:ptr u :}
+public
+
+: USAGE! ( ptr u8 n -- ) {: a:ptr u:n :}
    a ARGV-USAGE-A ARGV-PTR-U8!  u ARGV-USAGE-U ! ;
 
-: ARGV-QUIET! ( n -- )  ARGV-QUIET ! ;
+: QUIET! ( n -- )  ARGV-QUIET ! ;
+
+private
 
 : ARGV-FAIL-DONE ( -- )
    ARGV-CHAR-LF ARGV-MSG-C+
@@ -97,12 +124,16 @@ create ARGV-PATH-BUF ARGV-PATH-CAP allot
    ARGV-USAGE-A ARGV-PTR-U8@ ARGV-USAGE-U @ ARGV-MSG+
    ARGV-CHAR-LF ARGV-MSG-C+
    ARGV-QUIET @ 0 = if 2 ARGV-MSG ARGV-MSG-L @ write drop then
-   ARGV-E-USAGE throw ;
+   E-USAGE throw ;
 
-: ARGV-FAIL ( ptr u8 n -- ) {: a:ptr u :}
+public
+
+: FAIL ( ptr u8 n -- ) {: a:ptr u:n :}
    0 ARGV-MSG-L !
    a u ARGV-MSG+
    ARGV-FAIL-DONE ;
+
+private
 
 : ARGV-UNKNOWN ( ptr u8 n -- ) {: a:ptr u :}
    0 ARGV-MSG-L !
@@ -116,7 +147,9 @@ create ARGV-PATH-BUF ARGV-PATH-CAP allot
    a u ARGV-MSG+
    ARGV-FAIL-DONE ;
 
-: ARGV-RESET ( -- )
+public
+
+: RESET ( -- )
    0 ARGV-I !
    0 ARGV-NPOS !
    0 ARGV-JSON !
@@ -126,22 +159,22 @@ create ARGV-PATH-BUF ARGV-PATH-CAP allot
    NULL$ drop ARGV-LABEL-A ARGV-PTR-U8!  0 ARGV-LABEL-U !  0 ARGV-LABEL-SET !
    NULL$ drop ARGV-OUT-A ARGV-PTR-U8!  0 ARGV-OUT-U !  0 ARGV-OUT-SET ! ;
 
-: ARGV-USE-SCRIPT ( -- )  0 ARGV-USE-MOCK? ! ;
+: USE-SCRIPT ( -- )  0 ARGV-USE-MOCK? ! ;
 
-: ARGV-MOCK-CLEAR ( -- )
+: MOCK-CLEAR ( -- )
    -1 ARGV-USE-MOCK? !
    0 ARGV-MOCK# ! ;
 
-: ARGV-MOCK+ ( ptr u8 n -- ) {: a:ptr u :}
-   ARGV-MOCK# @ ARGV-MAX >= if ARGV-E-INTERNAL throw then
+: MOCK+ ( ptr u8 n -- ) {: a:ptr u:n :}
+   ARGV-MOCK# @ ARGV-MAX >= if E-INTERNAL throw then
    a ARGV-MOCK# @ ARGV-MOCK-A ARGV-PTR-U8-SLOT!
    u ARGV-MOCK-U ARGV-MOCK# @ cells + !
    ARGV-MOCK# @ 1 + ARGV-MOCK# ! ;
 
-: ARGV-COUNT ( -- n )
+: COUNT ( -- n )
    ARGV-USE-MOCK? @ if ARGV-MOCK# @ else SCRIPT-ARGC then ;
 
-: ARGV-TOK$ ( n -- ptr u8 n ) {: idx :}
+: TOK$ ( n -- ptr u8 n ) {: idx:n :}
    ARGV-USE-MOCK? @ if
       idx ARGV-MOCK-A ARGV-PTR-U8-SLOT@
       idx cells ARGV-MOCK-U + @
@@ -149,115 +182,123 @@ create ARGV-PATH-BUF ARGV-PATH-CAP allot
       idx SCRIPT-ARGV$
    then ;
 
-: ARGV-TOK= ( n ptr u8 n -- bool ) {: idx a:ptr u :}
-   idx ARGV-TOK$ a u ARGV-BYTES= ;
+: TOK= ( n ptr u8 n -- bool ) {: idx:n a:ptr u:n :}
+   idx TOK$ a u ARGV-BYTES= ;
+
+private
 
 : ARGV-DASH? ( ptr u8 n -- bool ) {: a:ptr u :}
    u 1 > if a c@ ARGV-CHAR-DASH = else ARGV-FALSE then ;
 
 : ARGV-POS+ ( ptr u8 n -- ) {: a:ptr u :}
-   ARGV-NPOS @ ARGV-MAX >= if s" too many positional arguments" ARGV-FAIL then
+   ARGV-NPOS @ ARGV-MAX >= if s" too many positional arguments" FAIL then
    a ARGV-NPOS @ ARGV-POS-A ARGV-PTR-U8-SLOT!
    u ARGV-POS-U ARGV-NPOS @ cells + !
    ARGV-NPOS @ 1 + ARGV-NPOS ! ;
 
-: ARGV-POS# ( -- n )  ARGV-NPOS @ ;
+public
 
-: ARGV-POS$ ( n -- ptr u8 n ) {: idx :}
-   idx 0 <  idx ARGV-NPOS @ >= or if s" positional index out of range" ARGV-FAIL then
+: POS# ( -- n )  ARGV-NPOS @ ;
+
+: POS$ ( n -- ptr u8 n ) {: idx:n :}
+   idx 0 <  idx ARGV-NPOS @ >= or if s" positional index out of range" FAIL then
    idx ARGV-POS-A ARGV-PTR-U8-SLOT@
    idx cells ARGV-POS-U + @ ;
 
-: ARGV-LABEL! ( ptr u8 n -- ) {: a:ptr u :}
+: LABEL! ( ptr u8 n -- ) {: a:ptr u:n :}
    a ARGV-LABEL-A ARGV-PTR-U8!  u ARGV-LABEL-U !  -1 ARGV-LABEL-SET ! ;
 
-: ARGV-LABEL-DEFAULT! ( ptr u8 n -- ) {: a:ptr u :}
+: LABEL-DEFAULT! ( ptr u8 n -- ) {: a:ptr u:n :}
    a ARGV-LABEL-DEFAULT-A ARGV-PTR-U8!  u ARGV-LABEL-DEFAULT-U ! ;
 
-: ARGV-LABEL? ( -- bool )  ARGV-LABEL-SET @ 0 <> ;
+: LABEL? ( -- bool )  ARGV-LABEL-SET @ 0 <> ;
 
-: ARGV-LABEL$ ( -- ptr u8 n )
-   ARGV-LABEL? if
+: LABEL$ ( -- ptr u8 n )
+   LABEL? if
       ARGV-LABEL-A ARGV-PTR-U8@  ARGV-LABEL-U @
    else
       ARGV-LABEL-DEFAULT-A ARGV-PTR-U8@  ARGV-LABEL-DEFAULT-U @
    then ;
 
-: ARGV-OUT! ( ptr u8 n -- ) {: a:ptr u :}
+: OUT! ( ptr u8 n -- ) {: a:ptr u:n :}
    a ARGV-OUT-A ARGV-PTR-U8!  u ARGV-OUT-U !  -1 ARGV-OUT-SET ! ;
 
-: ARGV-OUT-DEFAULT! ( ptr u8 n -- ) {: a:ptr u :}
+: OUT-DEFAULT! ( ptr u8 n -- ) {: a:ptr u:n :}
    a ARGV-OUT-DEFAULT-A ARGV-PTR-U8!  u ARGV-OUT-DEFAULT-U ! ;
 
-: ARGV-OUT? ( -- bool )  ARGV-OUT-SET @ 0 <> ;
+: OUT? ( -- bool )  ARGV-OUT-SET @ 0 <> ;
 
-: ARGV-OUT$ ( -- ptr u8 n )
-   ARGV-OUT? if
+: OUT$ ( -- ptr u8 n )
+   OUT? if
       ARGV-OUT-A ARGV-PTR-U8@  ARGV-OUT-U @
    else
       ARGV-OUT-DEFAULT-A ARGV-PTR-U8@  ARGV-OUT-DEFAULT-U @
    then ;
 
-: ARGV-JSON? ( -- bool )  ARGV-JSON @ 0 <> ;
+: JSON? ( -- bool )  ARGV-JSON @ 0 <> ;
 
-: ARGV-STRICT-SIGNATURES? ( -- bool )  ARGV-STRICT-SIGNATURES @ 0 <> ;
+: STRICT-SIGNATURES? ( -- bool )  ARGV-STRICT-SIGNATURES @ 0 <> ;
 
-: ARGV-ALL-ERRORS? ( -- bool )  ARGV-ALL-ERRORS @ 0 <> ;
+: ALL-ERRORS? ( -- bool )  ARGV-ALL-ERRORS @ 0 <> ;
 
-: ARGV-STRICT-BOUNDARY? ( -- bool )  ARGV-STRICT-BOUNDARY @ 0 <> ;
+: STRICT-BOUNDARY? ( -- bool )  ARGV-STRICT-BOUNDARY @ 0 <> ;
+
+private
 
 : ARGV-TAKE-NEXT ( ptr u8 n -- ptr u8 n ) {: a:ptr u :}
-   ARGV-I @ 1 + ARGV-COUNT >= if a u ARGV-MISSING then
+   ARGV-I @ 1 + COUNT >= if a u ARGV-MISSING then
    ARGV-I @ 1 + ARGV-I !
-   ARGV-I @ ARGV-TOK$ ;
+   ARGV-I @ TOK$ ;
 
 : ARGV-PARSE-OPT ( ptr u8 n -- ) {: a:ptr u :}
    a u s" --json" ARGV-BYTES= if -1 ARGV-JSON ! exit then
    a u s" --json-errors" ARGV-BYTES= if -1 ARGV-JSON ! exit then
-   a u s" --label" ARGV-BYTES= if a u ARGV-TAKE-NEXT ARGV-LABEL! exit then
+   a u s" --label" ARGV-BYTES= if a u ARGV-TAKE-NEXT LABEL! exit then
    a u s" --strict-signatures" ARGV-BYTES= if -1 ARGV-STRICT-SIGNATURES ! exit then
    a u s" --all-errors" ARGV-BYTES= if -1 ARGV-ALL-ERRORS ! exit then
    a u s" --strict-boundary" ARGV-BYTES= if -1 ARGV-STRICT-BOUNDARY ! exit then
-   a u s" -o" ARGV-BYTES= if a u ARGV-TAKE-NEXT ARGV-OUT! exit then
+   a u s" -o" ARGV-BYTES= if a u ARGV-TAKE-NEXT OUT! exit then
    a u ARGV-DASH? if a u ARGV-UNKNOWN else a u ARGV-POS+ then ;
 
 : ARGV-COLLECT-REST ( -- )
-   begin ARGV-I @ ARGV-COUNT < while
-      ARGV-I @ ARGV-TOK$ ARGV-POS+
+   begin ARGV-I @ COUNT < while
+      ARGV-I @ TOK$ ARGV-POS+
       ARGV-I @ 1 + ARGV-I !
    repeat ;
 
-: ARGV-PARSE ( -- )
-   ARGV-RESET
-   begin ARGV-I @ ARGV-COUNT < while
-      ARGV-I @ s" --" ARGV-TOK= if
+public
+
+: PARSE ( -- )
+   RESET
+   begin ARGV-I @ COUNT < while
+      ARGV-I @ s" --" TOK= if
          ARGV-I @ 1 + ARGV-I !
          ARGV-COLLECT-REST
          exit
       then
-      ARGV-I @ ARGV-TOK$ ARGV-PARSE-OPT
+      ARGV-I @ TOK$ ARGV-PARSE-OPT
       ARGV-I @ 1 + ARGV-I !
    repeat ;
 
-: ARGV-EXPECT-POS ( n n -- ) {: lo hi :}
-   ARGV-NPOS @ lo < if s" wrong number of positional arguments" ARGV-FAIL then
+: EXPECT-POS ( n n -- ) {: lo:n hi:n :}
+   ARGV-NPOS @ lo < if s" wrong number of positional arguments" FAIL then
    hi 0 >= if
-      ARGV-NPOS @ hi > if s" wrong number of positional arguments" ARGV-FAIL then
+      ARGV-NPOS @ hi > if s" wrong number of positional arguments" FAIL then
    then ;
 
-: ARGV-EXPECT-POS-EXACT ( n -- ) {: n :}
-   n n ARGV-EXPECT-POS ;
+: EXPECT-POS-EXACT ( n -- ) {: n:n :}
+   n n EXPECT-POS ;
 
-: ARGV-REQUIRE-OUT ( -- )
-   ARGV-OUT? 0= if s" missing -o OUT" ARGV-FAIL then ;
+: REQUIRE-OUT ( -- )
+   OUT? 0= if s" missing -o OUT" FAIL then ;
 
-: ARGV-REQUIRE-LABEL ( -- )
-   ARGV-LABEL? 0= if s" missing --label NAME" ARGV-FAIL then ;
+: REQUIRE-LABEL ( -- )
+   LABEL? 0= if s" missing --label NAME" FAIL then ;
 
-: ARGV-ZCOPY ( ptr u8 n ptr u8 n -- ptr u8 ) {: a:ptr u dst:ptr cap :}
-   u 0 < if ARGV-E-INTERNAL throw then
-   cap 0 <= if ARGV-E-INTERNAL throw then
-   u cap >= if ARGV-E-INTERNAL throw then
+: ZCOPY ( ptr u8 n ptr u8 n -- ptr u8 ) {: a:ptr u:n dst:ptr cap:n :}
+   u 0 < if E-INTERNAL throw then
+   cap 0 <= if E-INTERNAL throw then
+   u cap >= if E-INTERNAL throw then
    0 begin dup u < while
       dup a + c@  over dst + c!
       1 +
@@ -265,21 +306,25 @@ create ARGV-PATH-BUF ARGV-PATH-CAP allot
    0 dst u + c!
    dst ;
 
-: ARGV-PATHZ ( ptr u8 n -- ptr u8 )
-   ARGV-PATH-BUF ARGV-PATH-CAP ARGV-ZCOPY ;
+: PATHZ ( ptr u8 n -- ptr u8 )
+   ARGV-PATH-BUF ARGV-PATH-CAP ZCOPY ;
 
-: ARGV-POSZ ( n -- ptr u8 )
-   ARGV-POS$ ARGV-PATHZ ;
+: POSZ ( n -- ptr u8 )
+   POS$ PATHZ ;
 
-: ARGV-OUTZ ( -- ptr u8 )
-   ARGV-OUT$ ARGV-PATHZ ;
+: OUTZ ( -- ptr u8 )
+   OUT$ PATHZ ;
+
+private
 
 : ARGV-INIT ( -- )
-   ARGV-USE-SCRIPT
-   ARGV-RESET
-   NULL$ ARGV-LABEL-DEFAULT!
-   NULL$ ARGV-OUT-DEFAULT!
-   0 ARGV-QUIET!
-   s" hb script.f [options] file ..." ARGV-USAGE! ;
+   USE-SCRIPT
+   RESET
+   NULL$ LABEL-DEFAULT!
+   NULL$ OUT-DEFAULT!
+   0 QUIET!
+   s" hb script.f [options] file ..." USAGE! ;
 
 ARGV-INIT
+
+;package

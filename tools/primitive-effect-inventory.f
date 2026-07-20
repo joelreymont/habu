@@ -706,25 +706,25 @@ private
 
 \ ---- CLI ---------------------------------------------------------------------
 : STRICT-ARGS? ( -- bool )
-   ARGV-POS# 1 = 0= if LINT-FALSE exit then
-   0 ARGV-POS$ s" strict" STR= ;
+   ARGV:POS# 1 = 0= if LINT-FALSE exit then
+   0 ARGV:POS$ s" strict" STR= ;
 : MANIFEST-ARGS? ( -- bool )
-   ARGV-POS# 1 = 0= if LINT-FALSE exit then
-   0 ARGV-POS$ s" manifest" STR= ;
+   ARGV:POS# 1 = 0= if LINT-FALSE exit then
+   0 ARGV:POS$ s" manifest" STR= ;
 : BASELINE-ARGS? ( -- bool )
-   ARGV-POS# 2 = 0= if LINT-FALSE exit then
-   0 ARGV-POS$ s" baseline" STR= ;
+   ARGV:POS# 2 = 0= if LINT-FALSE exit then
+   0 ARGV:POS$ s" baseline" STR= ;
 
 : MAIN ( -- )
-   s" tools/primitive-effect-inventory.f [-- strict | baseline PATH | manifest]" ARGV-USAGE!
-   ARGV-PARSE
+   s" tools/primitive-effect-inventory.f [-- strict | baseline PATH | manifest]" ARGV:USAGE!
+   ARGV:PARSE
    INIT
-   ARGV-POS# 0= if SCAN-REPO REPORT exit then
+   ARGV:POS# 0= if SCAN-REPO REPORT exit then
    MANIFEST-ARGS? if SCAN-REPO EMIT-MANIFEST exit then
    STRICT-ARGS? if SCAN-REPO REPORT CROSS-CHECK-REPORT exit then
-   BASELINE-ARGS? 0= if s" expected no arguments, strict, manifest, or: baseline PATH" ARGV-FAIL then
+   BASELINE-ARGS? 0= if s" expected no arguments, strict, manifest, or: baseline PATH" ARGV:FAIL then
    SCAN-REPO
-   1 ARGV-POS$ RATCHET-LOAD
+   1 ARGV:POS$ RATCHET-LOAD
    RATCHET-REPORT ;
 
 MAIN

@@ -84,13 +84,13 @@ public
    oa ou s" .manifest.json" ma mu ARTIFACT! ;
 
 : MAIN ( -- )                                  \ CLI: KERNEL-NAME OUT-DIR
-   s" tools/ptx/kernel-export.f -- KERNEL-NAME OUT-DIR" ARGV-USAGE!
-   ARGV-PARSE
-   2 2 ARGV-EXPECT-POS
-   0 ARGV-POS$ 1 ARGV-POS$ EXPORT
+   s" tools/ptx/kernel-export.f -- KERNEL-NAME OUT-DIR" ARGV:USAGE!
+   ARGV:PARSE
+   2 2 ARGV:EXPECT-POS
+   0 ARGV:POS$ 1 ARGV:POS$ EXPORT
    s" kernel-export: wrote " type
-   0 ARGV-POS$ type
+   0 ARGV:POS$ type
    s" .ptx + .manifest.json under " type
-   1 ARGV-POS$ type cr ;
+   1 ARGV:POS$ type cr ;
 
 ;package

@@ -452,13 +452,13 @@ variable SMT-J
 
 : SMT-DOC-ARGV-CORE-ROWS ( -- )
    s" ## Argv" SMT-CHECK-DOC-ROW
-   s" ARGV-PARSE              ( -- )" SMT-CHECK-DOC-ROW
-   s" ARGV-EXPECT-POS-EXACT   ( n -- )" SMT-CHECK-DOC-ROW
-   s" ARGV-OUT$               ( -- ptr u8 n )" SMT-CHECK-DOC-ROW ;
+   s" ARGV:PARSE              ( -- )" SMT-CHECK-DOC-ROW
+   s" ARGV:EXPECT-POS-EXACT   ( n -- )" SMT-CHECK-DOC-ROW
+   s" ARGV:OUT$               ( -- ptr u8 n )" SMT-CHECK-DOC-ROW ;
 
 : SMT-DOC-ARGV-BOUNDARY-ROWS ( -- )
    s" `--`" SMT-CHECK-DOC-ROW
-   s" ARGV-E-USAGE" SMT-CHECK-DOC-ROW ;
+   s" ARGV:E-USAGE" SMT-CHECK-DOC-ROW ;
 
 : SMT-DOC-ARGV-ROWS ( -- )
    SMT-DOC-ARGV-CORE-ROWS

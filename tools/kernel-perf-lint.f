@@ -18,12 +18,12 @@ package KERNEL-PERF-LINT-CLI
 private
 
 : RUN ( -- )
-   s" tools/kernel-perf-lint.f diff.patch ..." ARGV-USAGE!
-   ARGV-PARSE
-   1 -1 ARGV-EXPECT-POS
+   s" tools/kernel-perf-lint.f diff.patch ..." ARGV:USAGE!
+   ARGV:PARSE
+   1 -1 ARGV:EXPECT-POS
    KERNEL-PERF-LINT:RESET
-   0 begin dup ARGV-POS# < while
-      dup ARGV-POS$ KERNEL-PERF-LINT:FILE
+   0 begin dup ARGV:POS# < while
+      dup ARGV:POS$ KERNEL-PERF-LINT:FILE
       1+
    repeat drop
    KERNEL-PERF-LINT:FINISH ;

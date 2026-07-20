@@ -79,11 +79,11 @@ variable JSON-ONLY-IN-A
 : JSON-ONLY-USAGE ( -- )
    2 s" usage: tools/json-only.f stderr-file" JSON-ONLY-WRITE
    2 JSON-ONLY-LF$ JSON-ONLY-WRITE
-   ARGV-E-USAGE throw ;
+   ARGV:E-USAGE throw ;
 
 : JSON-ONLY-INPUT$ ( -- ptr u8 n )
-   ARGV-COUNT 1 <> IF JSON-ONLY-USAGE THEN
-   0 ARGV-TOK$ ;
+   ARGV:COUNT 1 <> IF JSON-ONLY-USAGE THEN
+   0 ARGV:TOK$ ;
 
 : JSON-ONLY-MAIN ( -- )
    JSON-ONLY-DEFAULT-FDS
