@@ -10,9 +10,10 @@
 \
 \ The module list is DERIVED each run by walking lib/ and keeping the flat
 \ lib/<name>.f modules. Nested lib/<sub>/ research sub-libraries and *-test.f
-\ files are out of scope (their suites cover them); the documented EXCLUDED?
-\ table drops files a live lane owns. A new flat module is covered automatically
-\ and fails closed on any load-order regression.
+\ files are out of scope by structure alone (their suites cover them). There is
+\ no exclusion table: every flat module is covered automatically, so no path
+\ prefix or reserved future name can suppress a production module, and coverage
+\ fails closed on any load-order regression.
 
 require lib/errors.f
 require lib/string.f
@@ -67,28 +68,12 @@ variable EXITED
    a u s" -test.f" SUFFIX? if FALSE exit then
    a u SLASHES 1 = ;
 
-\ ---- documented exclusions -------------------------------------------------
-\ Flat lib/ files a live lane owns (dot deliverable 4) that this lane must not
-\ touch and whose standalone coverage rides with that lane. Skipped on purpose;
-\ a NEW flat module is NOT skipped, it is covered automatically. None exist in
-\ the tree today, so this is a forward guard against those lanes landing a module
-\ that cannot yet bare-load and false-reddening master.
-: PREFIX? ( ptr u8 n ptr u8 n -- bool ) {: a:ptr u:n pa:ptr pu:n :}
-   u pu < if FALSE exit then
-   a pu pa pu STR= ;
-
-: EXCLUDED? ( ptr u8 n -- bool ) {: a:ptr u:n :}
-   a u s" lib/engine-candidate.f" STR= if TRUE exit then   \ live lane: engine-candidate
-   a u s" lib/process-pty" PREFIX? if TRUE exit then        \ live lane: process-pty family
-   FALSE ;
-
 \ ---- collect flat modules during the walk ----------------------------------
 : PATH$ ( n -- ptr u8 n ) {: k:n :}
    PATHS-BUF PATH-OFF k cells + @ +  PATH-LEN k cells + @ ;
 
 : COLLECT ( ptr u8 n -- ) {: a:ptr u:n :}     \ WALK-FILES callback
    a u FLAT-MODULE? 0= if exit then
-   a u EXCLUDED? if exit then
    PATHS-N @ PATHS-MAX >= if E-TBL-BOUNDS throw then
    PATHS-USED @ u + PATHS-CAP > if E-TBL-BOUNDS throw then
    a  PATHS-BUF PATHS-USED @ +  u BYTE-COPY
@@ -127,10 +112,39 @@ variable EXITED
       1+
    repeat drop ;
 
+\ ---- fixture: scheduling is structural, no exclusion table -----------------
+\ Inject synthetic paths straight into COLLECT and assert each verdict without
+\ spawning a load. This proves discovery keeps exactly the flat lib/<name>.f
+\ modules: the two spellings the deleted speculative table reserved
+\ (lib/engine-candidate.f and the lib/process-pty family) are now scheduled like
+\ any other flat module, a brand-new flat name is scheduled the moment it is
+\ discovered, and nested lib/<sub>/<name>.f and *-test.f drop out by FLAT-MODULE?
+\ structure alone. No path prefix or reserved future name can suppress a
+\ production module.
+: SCHEDULES? ( ptr u8 n -- bool ) {: a:ptr u:n :}   \ inject one path; collected?
+   0 PATHS-N !  0 PATHS-USED !
+   a u COLLECT
+   a u COLLECTED? ;
+
+: FIXTURE ( -- )
+   s" lib/engine-candidate.f scheduled" T-LABEL
+      s" lib/engine-candidate.f" SCHEDULES? TTRUE
+   s" lib/process-pty-handle.f scheduled" T-LABEL
+      s" lib/process-pty-handle.f" SCHEDULES? TTRUE
+   s" lib/process-pty-io.f scheduled" T-LABEL
+      s" lib/process-pty-io.f" SCHEDULES? TTRUE
+   s" newly discovered flat module scheduled" T-LABEL
+      s" lib/newly-discovered.f" SCHEDULES? TTRUE
+   s" nested sub-library excluded by scope" T-LABEL
+      s" lib/sub/nested.f" SCHEDULES? TFALSE
+   s" -test.f excluded by scope" T-LABEL
+      s" lib/newly-discovered-test.f" SCHEDULES? TFALSE ;
+
 public
 
 : RUN ( -- )
    T-RESET
+   FIXTURE
    0 PATHS-N !  0 PATHS-USED !
    s" lib" [: COLLECT ;] WALK-FILES
    s" flat lib modules discovered" T-LABEL  PATHS-N @ MODULE-FLOOR >= TTRUE
