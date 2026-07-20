@@ -1721,9 +1721,11 @@ not the pipeline-depth gap.
 
 `perf-rows.tsv` keeps the 13.0-era `dgx-spark-gb10` rows as history and adds the
 two moved winners under `dgx-spark-gb10-ptxas133`. With the store provisioned the
-resolver picks 13.3 automatically (no `PTXAS` override) and the `PTXAS-STALE-SM121`
-diagnostic stays quiet; on a machine with only the 13.0 assembler it fires once,
-loudly, and the kernels stay element-exact.
+resolver picks 13.3 automatically (no `PTXAS` override) and, after
+`habu-enforce-pinned-ptxas-4598a743`, verifies its pinned SHA-256 and ≥ 13.3
+version before assembling; on a machine with only the 13.0 assembler an sm_121
+assemble now **fails closed** with a named `E-PTXTC-STALE` (the earlier
+warn-and-continue is gone) — the ~27% penalty is refused, not just announced.
 
 ### Reproduction (exact)
 
@@ -1734,8 +1736,8 @@ bin/hb --load tools/ptx/mma-gemm-check.f   # MGC-ALL: element-exact under 13.3 (
 bin/hb --load tools/ptx/gemm-bench.f       # GB-GB10: tf32 sweep, best-of-3, solo; FP32 MM anchors the clock
 # swap the file's bottom entry to GEMMBENCH:GB-EPI-SWEEP, then re-run for the epilogue winners:
 bin/hb --load tools/ptx/gemm-bench.f       # GB-EPI-SWEEP: each per-shape winner, epilogue OFF then ON
-# a stale toolchain is visible, never silent — force the 13.0 assembler to see the diagnostic:
-PTXAS=/usr/local/cuda/bin/ptxas bin/hb --load tools/ptx/gemm-bench.f   # prints hb: PTXAS-STALE-SM121: ...
+# a stale toolchain is refused, never silent — forcing the 13.0 assembler now fails closed:
+PTXAS=/usr/local/cuda/bin/ptxas bin/hb --load tools/ptx/gemm-bench.f   # rejects: E-PTXTC-STALE (sm_121 < 13.3)
 ```
 
 ## Round 8 — widening `BN` past 64: the 4096-class tile (dot `habu-widen-bn-past`): built and measured (2026-07-19)

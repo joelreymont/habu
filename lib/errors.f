@@ -138,6 +138,10 @@
 -3422 constant E-KEXPORT-EMPTY     \ kernel-export: producer emitted no PTX
 -3423 constant E-PTXTC-ARCH        \ ASSEMBLE invoked before TC-ARCH! set the assembler target
 -3424 constant E-PTXTC-PTXAS       \ no ptxas executable found on any known path
+-3425 constant E-PTXTC-PROBE       \ resolved ptxas --version probe failed (spawn/timeout/truncated capture)
+-3426 constant E-PTXTC-VERSION     \ ptxas --version produced output but no parseable release line
+-3427 constant E-PTXTC-DIGEST      \ resolved ptxas unreadable or its SHA-256 is not the pinned allowlisted identity
+-3428 constant E-PTXTC-STALE       \ sm_121 target: resolved ptxas is older than the pinned 13.3 floor
 
 \ FFI: -3500..-3599
 -3500 constant E-FFI-FIRST

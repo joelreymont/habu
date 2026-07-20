@@ -14,10 +14,13 @@ artifacts under `HB_TMP`; those artifacts exist only to produce `bin/hb`.
   ioctls must be available to the user running the gate.
 - Gforth with `{:` locals support. Homebrew `gforth` 0.7.3 is too old.
   A current Gforth snapshot such as `0.7.9_20260610` works.
-- GB10 device gates (sm_121a) additionally need the pinned 13.3 `ptxas` in
-  `~/.habu/toolchain/ptxas-13.3.33` — the older system CUDA 13.0 assembler still
-  produces correct kernels but costs ~27% GEMM throughput. Provisioning recipe
-  (archive, sha256, install): `docs/codegen-verdict.md` "Pinned ptxas toolchain".
+- GB10 device gates (sm_121a) **require** the pinned 13.3 `ptxas` in
+  `~/.habu/toolchain/ptxas-13.3.33`: since `habu-enforce-pinned-ptxas-4598a743`,
+  an sm_121 assemble fails closed (`E-PTXTC-STALE`/`E-PTXTC-DIGEST`) unless the
+  resolved assembler hashes to the pinned SHA-256 and reports version ≥ 13.3 — the
+  older system CUDA 13.0 assembler (which costs ~27% GEMM throughput) is refused,
+  not merely warned. Provisioning recipe (archive, sha256, install):
+  `docs/codegen-verdict.md` "Pinned ptxas toolchain".
 
 Verify the Gforth requirement:
 

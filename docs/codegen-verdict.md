@@ -271,12 +271,20 @@ sha256sum ~/.habu/toolchain/ptxas-13.3.33
 ```
 
 `toolchain.f` probes in order **`PTXAS` env override → `~/.habu/toolchain/
-ptxas-13.3.33` → system CUDA (`/usr/local/cuda`) → legacy 12.6**, reads the
-resolved binary's `--version`, and for an sm_121 target with only a pre-13.3
-assembler prints a loud named `PTXAS-STALE-SM121` diagnostic (naming this dot and
-the ~27% penalty) — it does **not** die: the 13.0 assembler still produces
-element-exact kernels, so the degradation must be visible, never silent. With the
-store provisioned, no `PTXAS` override is needed and the diagnostic stays quiet.
+ptxas-13.3.33` → system CUDA (`/usr/local/cuda`) → legacy 12.6**, then — before
+any PTX is consumed — enforces one fail-closed GB10 identity (dot
+`habu-enforce-pinned-ptxas-4598a743`): it hashes the resolved binary's bytes and
+requires the pinned allowlisted SHA-256
+(`f9a0a7f1…4326e`), parses `--version` and requires a release **≥ 13.3**, and
+binds path+digest+version+target. For an sm_121 target a replaced/corrupt binary,
+an unreadable tool, a probe failure or truncated output, a digest that is not the
+pinned one, or a pre-13.3 assembler each **reject** with a named throw
+(`E-PTXTC-DIGEST` / `E-PTXTC-PROBE` / `E-PTXTC-VERSION` / `E-PTXTC-STALE`) — the
+~27% penalty is no longer merely announced, it is refused. An explicit `PTXAS`
+override earns no trust from presence: it is verified against the same allowlist
+and floor. Non-sm_121 targets take an explicit typed compatibility policy (the pin
+guards only the sm_121 scheduler). With the store provisioned, no `PTXAS` override
+is needed and assembly proceeds silently.
 
 ---
 
