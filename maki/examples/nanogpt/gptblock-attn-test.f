@@ -50,6 +50,7 @@ require maki/layernorm.f
 require maki/gelu.f
 require maki/matmul.f
 require maki/attention.f
+require maki/examples/nanogpt/gptblock-torch-ref-data.f
 
 package MAKI
 
@@ -667,6 +668,30 @@ GB-TIE-FL @ GB-TIE-FL1 !
 GB-INIT GB-TIE-MIRROR GB-ARESET  12 GB-TIE-RUN
 GB-TIE-FL @ GB-TIE-FL1 @ f= TTRUE                  \ run-twice bit-identical final (raw float)
 GB-TIE-FL @ GB-MILLI 27 T=                          \ run-twice final mean CE lock
+
+\ ================= (G) EXTERNAL torch golden: TIED forward + tied trace vs PyTorch f64 ==
+\ Section (F) locks the tied training milli (1665 -> 27) and gradchecks the tied summed grad
+\ Gwte+Gwlm^T - all SELF-CONSISTENT (the engine checked against itself). This section GROUNDS
+\ it against an EXTERNAL golden: torch 2.9.1 f64 recomputed the SAME tied composition + tied
+\ Adam trace with true libm transcendentals (maki/examples/nanogpt/gptblock-torch-ref-data.f,
+\ regenerated for the tie: one wte tensor, logits = F @ wte^T, autograd sums both grad paths
+\ into one Adam parameter - exactly GB-TIE-STEP). Both goldens pass; the external one proves the
+\ tie matches real PyTorch, not just itself.
+\
+\ f64 both sides (Habu floats are IEEE doubles), so the only gap is Habu's FEXP/TANH-F polynomial
+\ core (softmax, GELU, logsumexp; lib/fmath.f, rel err ~1e-8) vs torch libm - NOT f32. MEASURED
+\ tied executor-vs-torch deviation: forward rel-L2 2.0e-9 (abs 8.8e-10); loss-trace max rel 3.8e-7
+\ (step 4), otherwise ~1e-8. Tolerances GBTR-FTOL 1e-7 (~49x the forward floor) / GBTR-TTOL 5e-6
+\ (~13x the trace floor) stay >=200x below a structural defect (a wrong LN eps / GELU variant /
+\ softmax order / a broken tie shifts values >=1e-3). Reuses the section-(F) tied backward (built
+\ once by GB-TIE-SETUP; model unchanged) - re-inits params/moments only, no second BW-BUILD.
+: GBTR-FTOL ( -- r )  0.0000001 ;   \ tied forward logits rel-L2 bound (floor 2.0e-9)
+: GBTR-TTOL ( -- r )  0.000005 ;    \ per-step tied loss rel bound (floor 3.8e-7)
+: GBTR-CHECK ( -- )
+   GB-INIT GB-TIE-MIRROR GB-ARESET  BW-FWD-N@ EX-RUN-N          \ tied fresh init (wlm drawn->mirrored)
+   GB-OUT GTR-LOG GBON T-REL-L2  GBTR-FTOL f<  TTRUE            \ tied forward logits vs torch f64
+   GTR-STEPS 0 ?do  GB-TIE-STEP  i GTR-LOSS@  T-REL1  GBTR-TTOL f<  TTRUE  loop ;  \ tied 12-step trace
+GBTR-CHECK
 
 T-REPORT
 
