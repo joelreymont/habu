@@ -4,15 +4,17 @@
 \ These are framework facilities, not model-specific ones: the backward-node
 \ gradient reader (SC-GRAD-AT), the deterministic 32-bit LCG + polar Box-Muller
 \ Gaussian sampler, the per-parameter-role init policy (GPT-2 / nanoGPT
-\ initialisation), and the AdamW decoupled-decay param-group policy. They were
-\ authored inside the nanoGPT example; this file is the library home so the
-\ framework and its tests use them WITHOUT depending on an example (dot
+\ initialisation), the AdamW decoupled-decay param-group policy, the nanoGPT LR
+\ schedule (linear warmup + cosine decay), and the global-norm gradient clip.
+\ They were authored inside the nanoGPT example; this file is the library home so
+\ the framework and its tests use them WITHOUT depending on an example (dot
 \ habu-decouple-the-maki). The example trainers require this file
 \ and keep only their model + committed trainer instances. maki -> habu only.
-\ Owns E-ADAMW-POLICY (-5157) and E-INIT-ROLE (-5158).
+\ Owns E-ADAMW-POLICY (-5157), E-INIT-ROLE (-5158), E-LR-SCHED (-5159) and
+\ E-GRAD-CLIP (-5112).
 
 require maki/fmath.f          \ FLN, fsqrt
-require maki/array.f          \ T-FILL, T-SET
+require maki/array.f          \ T-FILL, T-SET, T-GET
 require maki/backward.f       \ BW-SLOT-GRAD@
 require maki/executor.f       \ EX-OUT@
 require maki/model-ir.f       \ MIR-SLOT-ID, MIR-REF-NODE
@@ -117,5 +119,77 @@ public
    flag WD-DECAY = if wd exit then
    flag WD-NONE  = if 0.0 exit then
    E-ADAMW-POLICY throw ;
+
+\ ---- LR schedule: nanoGPT linear warmup + cosine decay (opt-in facility) ------
+\ nanoGPT's get_lr as a pure, checked function of the step t. No trig word exists
+\ in the tree, so cosine on [0,pi] is a degree-12 Maclaurin series in x^2 over
+\ [0,pi/2] (LR-COS-HALF; the series is alternating with strictly decreasing terms
+\ there, so its truncation error is bounded by the first omitted term
+\ (pi/2)^14/14! ~ 6.4e-9), reflected onto [pi/2,pi] by the exact identity
+\ cos(x) = -cos(pi-x) (LR-COS). LR-SCHED threads warmup/decay/min/max into lr(t).
+\ The trainers keep a fixed lr by default; scheduled use is opt-in surface.
+-5159 constant E-LR-SCHED   \ LR-schedule domain error: t<0, warmup>=decay, min>max, or non-finite lr
+
+: LR-PI ( -- r )  3.141592653589793 ;
+
+private
+: LR-FIN? ( r -- bool )  dup f- 0.0 f= ;   \ finite: NaN/Inf make x-x a NaN (f= 0.0 fails)
+
+\ cos on [0,pi/2]: Horner over u=x^2 with coefficients (-1)^k/(2k)! for k=0..6
+: LR-COS-HALF ( r -- r ) {: x:r :}
+   x x f* {: u:r :}
+   0.0000000020876757   u f*  0.00000027557319224 f-
+   u f*  0.000024801587302 f+
+   u f*  0.0013888888888889 f-
+   u f*  0.041666666666667 f+
+   u f*  0.5 f-
+   u f*  1.0 f+ ;
+public
+
+\ cos on [0,pi]: below pi/2 evaluate directly; above, reflect cos(x) = -cos(pi-x)
+: LR-COS ( r -- r ) {: x:r :}
+   x LR-PI 0.5 f* f>
+   if    LR-PI x f-  LR-COS-HALF  fnegate
+   else  x LR-COS-HALF then ;
+
+\ lr at step t (0-based): t<warmup -> lmax*(t+1)/(warmup+1); t>decay -> lmin; else
+\ the cosine decay lmin + 0.5*(1+cos(pi*ratio))*(lmax-lmin), ratio=(t-warmup)/
+\ (decay-warmup). Checked: t>=0, warmup<decay, lmin<=lmax, lmin/lmax finite.
+: LR-SCHED ( n n r r n -- r )
+   {: warm:n dec:n lmin:r lmax:r t:n :}
+   t 0<           if E-LR-SCHED throw then
+   warm dec >=    if E-LR-SCHED throw then
+   lmin lmax f>   if E-LR-SCHED throw then
+   lmin LR-FIN? 0= if E-LR-SCHED throw then
+   lmax LR-FIN? 0= if E-LR-SCHED throw then
+   t warm < if  lmax  t 1+ s>f f*  warm 1+ s>f f/  exit then
+   t dec  > if  lmin  exit then
+   t warm - s>f  dec warm - s>f  f/
+   LR-PI f*  LR-COS  1.0 f+  0.5 f*
+   lmax lmin f-  f*  lmin f+ ;
+
+\ ---- global-norm gradient clipping (opt-in facility) -------------------------
+\ nanoGPT clips the global L2 grad norm before each optimizer step
+\ (torch.nn.utils.clip_grad_norm_): total_norm = sqrt(sum over ALL param grads of
+\ sum(g^2)); coef = clip/(total_norm+1e-6); when coef<1 every grad is rescaled by
+\ coef, otherwise the grads are left bit-identical (no rescale, no eps perturbation
+\ - torch skips the step when the norm does not exceed clip). GRAD-CLIP-COEF is the
+\ checked coefficient (clip>0 and finite, red-first); GCLIP-SCALE! is the per-buffer
+\ rescale that no-ops unless coef<1, so applying one GLOBAL coef over every buffer
+\ equals a single global rescale. A trainer arms the clip like the LR schedule;
+\ disarmed, the committed trajectories are untouched. Zero-grad is safe: norm 0 ->
+\ coef = clip/eps (finite, >=1) -> no rescale, never divides by the bare norm.
+-5112 constant E-GRAD-CLIP  \ grad-clip domain error: clip <= 0 or non-finite (the -515x block is full)
+
+: CLIP-EPS ( -- r )  0.000001 ;   \ torch clip_grad_norm_ denominator epsilon (1e-6)
+
+: GRAD-CLIP-COEF ( r r -- r ) {: norm:r clip:r :}   \ ( total-norm clip -- coef )
+   clip LR-FIN? 0= if E-GRAD-CLIP throw then   \ non-finite clip
+   clip 0.0 f> 0=  if E-GRAD-CLIP throw then   \ clip <= 0
+   clip  norm CLIP-EPS f+  f/ ;
+
+: GCLIP-SCALE! ( r ptr a n -- ) {: coef:r base:ptr len:n :}   \ in-place rescale by coef when coef<1
+   coef 1.0 f< 0= if exit then                 \ not clipping -> buffer bit-unchanged
+   len 0 ?do  base i T-GET coef f*  base i T-SET  loop ;
 
 ;package

@@ -17,8 +17,9 @@
 \     x RESIDUAL-ADD - an elementwise (same-shape) add + a real skip (x fans out)
 \     g be LAYERNORM - the EXPLICIT affine LayerNorm (gamma/beta named references)
 \   plus the MSE loss (maki/loss-tensor.f) and BOTH opt-in trainer arming words -
-\   the per-step LR schedule (ET-LR) and the global-norm gradient clip (ET-CLIP) -
-\   armed for the whole run (this leg is where the armed path is exercised continuously).
+\   the per-step LR schedule (LR-SCHED) and the global-norm gradient clip
+\   (GRAD-CLIP-COEF / GCLIP-SCALE!) - armed for the whole run (this leg is where the
+\   armed path is exercised continuously).
 \
 \ HONEST CONSTRAINTS + long-term targets (interim state labeled per the prime directive):
 \  - NO SPEC: equation line. A new SPEC: einsum needs TENSOR: rows, and the shared
@@ -29,13 +30,14 @@
 \    (the committed attention trainer uses plain MATMUL). So the model is authored
 \    from the op vocabulary now; a SPEC:-equation line (canonical prefix-Σ infix-·)
 \    joins when TR-CAP lands or that path is committed.
-\  - The armed schedule + clip are eval-leg-local (ET-LR / ET-CLIP over library
-\    math), because the framework's generic LR-SCHED (cosine) + GRAD-CLIP facilities
-\    and the host Adam step/bias-correction bookkeeping still live in the nanoGPT
-\    example (maki/examples/nanogpt/from-scratch-train.f + adam-train.f), not the
-\    library. LONG-TERM: decouple those generic facilities into maki/train-core.f -
-\    mirroring the init-role/AdamW-policy decouple already there - after which this
-\    leg grades the EXACT framework arming words instead of leg-local equivalents.
+\  - The armed schedule + clip ARE the framework words now: LR-SCHED (linear warmup
+\    + cosine decay) and GRAD-CLIP-COEF / GCLIP-SCALE! (torch clip_grad_norm_), both
+\    in maki/train-core.f, armed here every step over the committed
+\    warmup/decay/min/max - the leg grades the exact arming words the nanoGPT
+\    trainers use (dot habu-decouple-schedule-clip extended the init-role/AdamW-policy
+\    decouple to these). The Adam step/bias-correction bookkeeping (ET-TICK / ET-C1 /
+\    ET-C2 over the library OPTIM:TT-ADAM!) stays leg-local by design: it is trainer
+\    step-state woven into each trainer's checkpoint, not a standalone generic facility.
 \
 \ RETIREMENT. This landing REPLACES the two hand-wired reference regressions (the
 \ scalar y=w*x and per-element tensor y[i]=w[i]*x[i] library SGD trainers - the
@@ -50,7 +52,7 @@ require lib/fmt.f
 require maki/cad.f            \ MODEL: capture
 require maki/backward.f       \ BW-BUILD / BW-FWD-N@ / BW-SEED-SLOT@
 require maki/executor.f       \ EX-RESET / EX-BIND / EX-RUN(-N) / EX-OUT@
-require maki/train-core.f     \ SC-SEED! / SC-UNIT / INIT-FILL / SC-GRAD-AT
+require maki/train-core.f     \ SC-SEED! / SC-UNIT / INIT-FILL / SC-GRAD-AT / LR-SCHED / GRAD-CLIP-COEF / GCLIP-SCALE!
 require maki/optim-tensor.f   \ OPTIM:TT-ADAM!
 require maki/loss-tensor.f    \ LOSS:TT-MSE / LOSS:TT-MSE-DY
 require maki/array.f          \ T-GET / T-SET / T-FILL / T-NORM2
@@ -67,7 +69,7 @@ $ABCDEF constant ET-LCG      \ committed LCG seed (params + data stream)
 0.9   constant ET-BETA1      \ Adam first-moment decay
 0.999 constant ET-BETA2      \ Adam second-moment decay
 0.00000001 constant ET-EPS   \ Adam denominator epsilon (1e-8)
-112759 constant ET-LOCK      \ committed final loss in micro-units (deterministic)
+116753 constant ET-LOCK      \ committed final loss micro-units (deterministic; cosine LR-SCHED, was 112759 under the retired linear ET-LR)
 
 \ ---- operand extents: x,y = 4x8 ; w = 8x8 ; bw,g,be = 1x8 ---------------------
 32 constant ET-XN            \ 4x8 input / output / target elements
@@ -136,43 +138,38 @@ variable ET-F1  variable ET-F2   \ run-1 / run-2 final loss (determinism compare
    ET-XN 0 ?do  ET-DY i T-GET ET-INVN f*  ET-DY i T-SET  loop
    ob ET-TGT ET-XN LOSS:TT-MSE ET-INVN f* ;
 
-\ ---- armed LR schedule: linear warmup to LMAX, then linear decay to LMIN -------
-\ Read at the current 1-based step (ET-STEPCT after ET-TICK), so step s is 0-based.
-: ET-LR ( -- r )
-   ET-STEPCT @ 1- {: s:n :}
-   s ET-WARM < if  ET-LMAX  s 1+ s>f f*  ET-WARM 1+ s>f f/  exit then
-   ET-LMAX  ET-LMAX ET-LMIN f-  s ET-WARM - s>f f*  ET-N 1- ET-WARM - s>f f/  f- ;
-
-\ ---- armed global-norm gradient clip over the four trained-param grad buffers --
+\ ---- global-norm gradient clip: the leg's grad norm feeds the framework clip ----
+\ ET-GNORM2 is the sum of squares over the four trained-param grad buffers; the
+\ clip coefficient (GRAD-CLIP-COEF) and per-buffer rescale (GCLIP-SCALE!) are the
+\ framework words (maki/train-core.f), armed every step in ET-STEP over ET-CLIPV,
+\ so this leg grades the exact clip the nanoGPT trainers arm.
 : ET-GNORM2 ( -- r )
    1 SC-GRAD-AT ET-WN T-NORM2
    2 SC-GRAD-AT ET-VN T-NORM2 f+
    3 SC-GRAD-AT ET-VN T-NORM2 f+
    4 SC-GRAD-AT ET-VN T-NORM2 f+ ;
-: ET-GSCALE ( r ptr a n -- ) {: c:r p:ptr len:n :}
-   len 0 ?do  p i T-GET c f*  p i T-SET  loop ;
-\ coef = clip / (norm + 1e-6); rescale every grad only when coef < 1 (nanoGPT's rule)
-: ET-CLIP ( -- )
-   ET-GNORM2 fsqrt 0.000001 f+  ET-CLIPV swap f/  {: coef:r :}
-   coef 1.0 f< if
-      coef 1 SC-GRAD-AT ET-WN ET-GSCALE
-      coef 2 SC-GRAD-AT ET-VN ET-GSCALE
-      coef 3 SC-GRAD-AT ET-VN ET-GSCALE
-      coef 4 SC-GRAD-AT ET-VN ET-GSCALE
-   then ;
 
 \ Adam-update one bound parameter in place from its slot's backward gradient node
 : ET-UPD ( r n ptr a ptr a ptr a n -- ) {: lr:r slot:n wp:ptr mp:ptr vp:ptr len:n :}
    lr ET-BETA1 ET-BETA2 ET-EPS ET-C1 ET-C2
    wp  slot SC-GRAD-AT  mp vp len  OPTIM:TT-ADAM! ;
 
-\ one training step: forward -> loss + seed -> full IR -> clip -> scheduled Adam.
-\ Returns the pre-update mean MSE.
+\ one training step: forward -> loss + seed -> full IR -> framework global-norm
+\ clip -> framework-scheduled Adam. Returns the pre-update mean MSE. The clip
+\ (GRAD-CLIP-COEF / GCLIP-SCALE! over ET-GNORM2) and the cosine LR schedule
+\ (LR-SCHED at the 0-based step) are the exact framework arming words, armed every
+\ step over the committed warmup/decay/min/max.
 : ET-STEP ( -- r )
    BW-FWD-N@ EX-RUN-N
    ET-LOSS-SEED {: loss:r :}
    EX-RUN
-   ET-CLIP  ET-TICK  ET-LR {: lr:r :}
+   ET-GNORM2 fsqrt  ET-CLIPV  GRAD-CLIP-COEF {: coef:r :}
+   coef 1 SC-GRAD-AT ET-WN GCLIP-SCALE!
+   coef 2 SC-GRAD-AT ET-VN GCLIP-SCALE!
+   coef 3 SC-GRAD-AT ET-VN GCLIP-SCALE!
+   coef 4 SC-GRAD-AT ET-VN GCLIP-SCALE!
+   ET-TICK
+   ET-WARM ET-N 1-  ET-LMIN ET-LMAX  ET-STEPCT @ 1-  LR-SCHED {: lr:r :}
    lr 1 ET-W  ET-WM  ET-WV  ET-WN ET-UPD
    lr 2 ET-BW ET-BWM ET-BWV ET-VN ET-UPD
    lr 3 ET-GA ET-GAM ET-GAV ET-VN ET-UPD
