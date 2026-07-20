@@ -132,9 +132,15 @@ $4000 constant MACOS-DATA-CONST  \ __DATA_CONST page (__got + zero fill)
 \ (16 -> 32, to carry the tag across LVSPILL) adds back 8, netting -272 of engine
 \ text, CODELEN 136088 -> 135816 (floor 920 -> 648); the whole file stays inside
 \ the same 4 KiB page (LINUX-TOTAL unchanged).
-135816 constant LINUX-CODE-TEXT   \ CODELEN: every emitter-phase row (baked-source incl.)
+\ 2026-07-20 re-measured live at the linux-arm64 fixpoint (spark) after the Mac's
+\ packaging wave landed (kill-errno/execve primitives, checker/proc-control
+\ changes, REQUIRE-MAX $100 -> $200; macOS rows re-measured on that side, Linux
+\ owed this measurement): +296 of engine text, CODELEN 135816 -> 136112
+\ (floor 648 -> 944); the whole file stays inside the same 4 KiB page
+\ (LINUX-TOTAL unchanged).
+136112 constant LINUX-CODE-TEXT   \ CODELEN: every emitter-phase row (baked-source incl.)
 192 constant LINUX-RW             \ ELF read-write segment tail: DYNAMIC + GOT (ELF-RW-SZ)
-648 constant LINUX-FLOOR-DIST     \ code above the 4 KiB floor: the page-recovery shave
+944 constant LINUX-FLOOR-DIST     \ code above the 4 KiB floor: the page-recovery shave
 143552 constant LINUX-TOTAL       \ = FILE-SIZE bin/hb = GB-SIZE-BASELINE-LINUX
 
 : PAGE-UP ( n n -- n ) {: v:n page:n :}
