@@ -149,6 +149,38 @@ create TKT-CANF TKT-CANN cells allot    \ float-cell destination canary (encode)
    [: TKT-TEXT drop -1 TKT-CANF TKT-CANN TOK-ENCODE drop ;] catch
    E-TOK-CAP = TKT-CANF-CLEAN? and ;
 
+\ ---- mid-buffer atomicity: a reject at a NON-FIRST element writes NO earlier element --
+\ The earlier single-loop encode/decode wrote elements 0..N-1 before throwing at the bad
+\ element N, so a rejected call left partial output in the caller's buffer. The two-pass
+\ split validates every element before any write, so a reject at a middle element must
+\ leave the whole destination byte-identical to its pre-call sentinel fill. Each fixture
+\ places the invalid element at index 3 with three valid elements ahead of it.
+6 constant TKT-MIDN                        \ fixture length; the bad element sits at index 3
+
+\ Encode source: edge-vocab bytes {0,65,255} with byte 1 (absent from that vocab) at index 3.
+create TKT-ENCMID TKT-MIDN allot
+: TKT-ENCMID-FILL ( -- )
+   65 TKT-ENCMID 0 + c!    0 TKT-ENCMID 1 + c!  255 TKT-ENCMID 2 + c!
+    1 TKT-ENCMID 3 + c!   65 TKT-ENCMID 4 + c!    0 TKT-ENCMID 5 + c! ;
+: TKT-CAN-ENC-MID? ( -- bool )
+   TKT-EDGE 3 TOK-BUILD  TKT-ENCMID-FILL  TKT-CANF-FILL
+   [: TKT-ENCMID TKT-MIDN TKT-CANF TKT-CANN TOK-ENCODE drop ;] catch
+   E-TOK-RANGE = TKT-CANF-CLEAN? and ;
+
+\ Decode ids: edge-vocab ids 1,0,2,_,1,0 with index 3 reserved for the caller's bad cell.
+: TKT-DEC-MID-SETUP ( -- )
+   TKT-EDGE 3 TOK-BUILD
+   1 s>f TKT-IDS 0 T-SET   0 s>f TKT-IDS 1 T-SET   2 s>f TKT-IDS 2 T-SET
+   1 s>f TKT-IDS 4 T-SET   0 s>f TKT-IDS 5 T-SET
+   TKT-CANB-FILL ;
+: TKT-DEC-MID-RUN ( r -- bool )            \ plant r at index 3, decode 6 ids, require sentinel-clean
+   TKT-IDS 3 T-SET
+   [: TKT-IDS TKT-MIDN TKT-CANB TKT-CANN TOK-DECODE drop ;] catch
+   E-TOK-RANGE = TKT-CANB-CLEAN? and ;
+: TKT-CAN-DEC-MID-FRAC?  ( -- bool )  TKT-DEC-MID-SETUP 2.5      TKT-DEC-MID-RUN ;   \ fractional
+: TKT-CAN-DEC-MID-NAN?   ( -- bool )  TKT-DEC-MID-SETUP TKT-NANF TKT-DEC-MID-RUN ;   \ NaN
+: TKT-CAN-DEC-MID-RANGE? ( -- bool )  TKT-DEC-MID-SETUP 3.0      TKT-DEC-MID-RUN ;   \ id == vocab size
+
 \ ---- property: random corpora round-trip exactly and every id stays inside [0,vocab) -
 variable TKT-RNG
 create TKT-RSRC 64 allot
@@ -228,6 +260,10 @@ TKT-CAN-DEC-CAP?    TTRUE
 TKT-CAN-DEC-FRAC?   TTRUE
 TKT-CAN-ENC-CAP?    TTRUE
 TKT-CAN-ENC-NEGLEN? TTRUE
+TKT-CAN-ENC-MID?       TTRUE
+TKT-CAN-DEC-MID-FRAC?  TTRUE
+TKT-CAN-DEC-MID-NAN?   TTRUE
+TKT-CAN-DEC-MID-RANGE? TTRUE
 TKT-PROP?           TTRUE
 TKT-INVERSE?        TTRUE
 
