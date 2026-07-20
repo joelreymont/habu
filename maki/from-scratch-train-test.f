@@ -94,6 +94,49 @@ LR-PI 2.0 f/  LR-COS  fabs  0.00000001 f<  TTRUE
 ' LRS-INF-MAX E-LR-SCHED TTHROWS
 ' LRS-NAN-MIN E-LR-SCHED TTHROWS
 
+\ ---- global-norm gradient clip: exact scaled values + post-clip norm ============
+\ Synthetic grad buffers GA=[3,4], GB=[12]: global L2 norm = sqrt(25+144)=13. clip=1
+\ < 13 so coef = 1/(13+1e-6) < 1; every grad scales by coef (torch clip_grad_norm_).
+\ Goldens are the exact scaled values at unit 1e7 (half-away, COS7); the eps shifts
+\ them below the 1e7 rounding boundary, so the integers equal g*clip/norm.
+create GCA 2 cells allot   create GCB 1 cells allot
+variable GCV                               \ stashed clip coefficient
+3.0 GCA 0 T-SET   4.0 GCA 1 T-SET   12.0 GCB 0 T-SET
+GCA 2 T-NORM2  GCB 1 T-NORM2 f+  fsqrt  COS7  130000000 T=      \ global norm = 13.0
+GCA 2 T-NORM2  GCB 1 T-NORM2 f+  fsqrt  1.0 GRAD-CLIP-COEF  GCV !
+GCV @ 1.0 f< TTRUE                          \ coef < 1: clipping engaged
+GCV @ GCA 2 GCLIP-SCALE!   GCV @ GCB 1 GCLIP-SCALE!
+GCA 0 T-GET COS7  2307692 T=               \ 3  / (13+eps)   (x1e7, half-away)
+GCA 1 T-GET COS7  3076923 T=               \ 4  / (13+eps)
+GCB 0 T-GET COS7  9230769 T=               \ 12 / (13+eps)
+\ post-clip global norm equals clip within a tight fp tolerance (deviation ~eps/norm)
+GCA 2 T-NORM2  GCB 1 T-NORM2 f+  fsqrt  1.0 f-  fabs  0.000001 f<  TTRUE
+
+\ ---- below-clip: norm < clip -> coef>=1 -> grads bit-unchanged (no eps perturbation) --
+create GCU 2 cells allot
+0.3 GCU 0 T-SET   0.4 GCU 1 T-SET          \ global norm = 0.5 < clip 1.0
+GCU 2 T-NORM2 fsqrt  1.0 GRAD-CLIP-COEF  GCV !
+GCV @ 1.0 f< TFALSE                         \ coef >= 1: not clipping
+GCV @ GCU 2 GCLIP-SCALE!                    \ no-op when coef >= 1
+GCU 0 T-GET  0.3 f=  TTRUE                  \ bit-identical: no rescale, no eps applied
+GCU 1 T-GET  0.4 f=  TTRUE
+
+\ ---- zero-grad edge: norm 0 -> coef = clip/eps (finite, >=1), never divides by 0 -----
+create GCZ 3 cells allot
+0.0 GCZ 0 T-SET  0.0 GCZ 1 T-SET  0.0 GCZ 2 T-SET
+1.0  GCZ 3 T-NORM2 fsqrt 1.0 GRAD-CLIP-COEF  f<  TTRUE       \ 1.0 < coef: not clipping AND not NaN
+GCZ 3 T-NORM2 fsqrt 1.0 GRAD-CLIP-COEF  2000000.0 f<  TTRUE  \ coef < 2e6: finite (no 0-divide to +inf)
+
+\ ---- red-first domain guards: clip <= 0 or non-finite throw E-GRAD-CLIP ----------
+: GC-CLIP-ZERO ( -- )  1.0 0.0 GRAD-CLIP-COEF drop ;             \ clip = 0
+: GC-CLIP-NEG  ( -- )  1.0 0.5 fnegate GRAD-CLIP-COEF drop ;     \ clip < 0
+: GC-CLIP-INF  ( -- )  1.0 1.0 0.0 f/ GRAD-CLIP-COEF drop ;      \ clip = +inf
+: GC-CLIP-NAN  ( -- )  1.0 0.0 0.0 f/ GRAD-CLIP-COEF drop ;      \ clip = nan
+' GC-CLIP-ZERO E-GRAD-CLIP TTHROWS
+' GC-CLIP-NEG  E-GRAD-CLIP TTHROWS
+' GC-CLIP-INF  E-GRAD-CLIP TTHROWS
+' GC-CLIP-NAN  E-GRAD-CLIP TTHROWS
+
 T-REPORT
 
 ;package

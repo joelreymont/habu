@@ -42,6 +42,7 @@ require lib/fmt.f
 
 -5150 constant E-SC-RUN     \ a report / accessor was used before a training run
 -5159 constant E-LR-SCHED   \ LR-schedule domain error: t<0, warmup>=decay, min>max, or non-finite lr
+-5112 constant E-GRAD-CLIP  \ grad-clip domain error: clip <= 0 or non-finite (the -515x block is full)
 
 package MAKI
 public
@@ -95,6 +96,28 @@ public
    t warm - s>f  dec warm - s>f  f/
    LR-PI f*  LR-COS  1.0 f+  0.5 f*
    lmax lmin f-  f*  lmin f+ ;
+
+\ ---- global-norm gradient clipping (opt-in facility) -------------------------
+\ nanoGPT clips the global L2 grad norm before each optimizer step
+\ (torch.nn.utils.clip_grad_norm_): total_norm = sqrt(sum over ALL param grads of
+\ sum(g^2)); coef = clip/(total_norm+1e-6); when coef<1 every grad is rescaled by
+\ coef, otherwise the grads are left bit-identical (no rescale, no eps perturbation
+\ - torch skips the step when the norm does not exceed clip). GRAD-CLIP-COEF is the
+\ checked coefficient (clip>0 and finite, red-first); GCLIP-SCALE! is the per-buffer
+\ rescale that no-ops unless coef<1, so applying one GLOBAL coef over every buffer
+\ equals a single global rescale. A trainer arms the clip like the LR schedule;
+\ disarmed, the committed trajectories are untouched. Zero-grad is safe: norm 0 ->
+\ coef = clip/eps (finite, >=1) -> no rescale, never divides by the bare norm.
+: CLIP-EPS ( -- r )  0.000001 ;   \ torch clip_grad_norm_ denominator epsilon (1e-6)
+
+: GRAD-CLIP-COEF ( r r -- r ) {: norm:r clip:r :}   \ ( total-norm clip -- coef )
+   clip LR-FIN? 0= if E-GRAD-CLIP throw then   \ non-finite clip
+   clip 0.0 f> 0=  if E-GRAD-CLIP throw then   \ clip <= 0
+   clip  norm CLIP-EPS f+  f/ ;
+
+: GCLIP-SCALE! ( r ptr a n -- ) {: coef:r base:ptr len:n :}   \ in-place rescale by coef when coef<1
+   coef 1.0 f< 0= if exit then                 \ not clipping -> buffer bit-unchanged
+   len 0 ?do  base i T-GET coef f*  base i T-SET  loop ;
 
 private
 

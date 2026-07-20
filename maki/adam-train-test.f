@@ -252,6 +252,30 @@ MODEL: SCRATCH-MLP ( x:8x6 w1:6x16 b1:1x16 w2:16x2 b2:1x2 -- y ) LINEAR GELU LIN
 RGT-MLP-N AMT-RUN
 AMT-FINAL@ SC-MILLI -2749 T=
 
+\ ---- global-norm gradient clipping: armed run with a small clip (real clipping) ----
+\ Same SCRATCH-MLP fixture and RGT-MLP-N steps, but each step clips the global grad
+\ norm to 0.1 (well below the step grad norms) before Adam. Deterministic final-loss
+\ lock, distinct from the unclipped -2749, so clipping demonstrably changed the
+\ trajectory; the fixed-lr -2749 lock is untouched (AMT-RUN-CLIP disarms on exit).
+MODEL: SCRATCH-MLP ( x:8x6 w1:6x16 b1:1x16 w2:16x2 b2:1x2 -- y ) LINEAR GELU LINEAR ;
+0.1 RGT-MLP-N AMT-RUN-CLIP
+AMT-STEPS@ RGT-MLP-N T=
+AMT-INITIAL@ SC-MILLI 130 T=            \ identical init (clip acts on grads, not the step-0 loss)
+AMT-FINAL@ AMT-INITIAL@ f< TTRUE        \ loss decreased
+AMT-FINAL@ SC-MILLI -2505 T=           \ clipped final NLL (new regression lock)
+
+\ determinism: same clip + seed -> identical final loss (exact)
+AMT-FINAL@ RGT-L1 !
+MODEL: SCRATCH-MLP ( x:8x6 w1:6x16 b1:1x16 w2:16x2 b2:1x2 -- y ) LINEAR GELU LINEAR ;
+0.1 RGT-MLP-N AMT-RUN-CLIP
+AMT-FINAL@ RGT-L1 @ f= TTRUE
+
+\ a clip above every step's grad norm never rescales -> bit-identical to the unclipped
+\ -2749 run (integration proof that not clipping applies no eps perturbation)
+MODEL: SCRATCH-MLP ( x:8x6 w1:6x16 b1:1x16 w2:16x2 b2:1x2 -- y ) LINEAR GELU LINEAR ;
+1000000.0 RGT-MLP-N AMT-RUN-CLIP
+AMT-FINAL@ SC-MILLI -2749 T=
+
 T-REPORT
 
 ;package

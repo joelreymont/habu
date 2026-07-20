@@ -177,6 +177,36 @@ public
 : AMT-SCHED! ( n n r r -- )   \ arm warmup/decay/min/max for the next run
    AMT-SCHED-MAX !  AMT-SCHED-MIN !  AMT-SCHED-DEC !  AMT-SCHED-WARM !  -1 AMT-SCHED? ! ;
 
+\ ---- optional global-norm gradient clipping (opt-in; default OFF) -------------
+\ When armed (AMT-CLIP!), each step rescales every MLP param gradient so the global
+\ L2 norm is clipped to AMT-CLIP-V before Adam (nanoGPT's clip_grad_norm_ at 1.0,
+\ generalized to any threshold). Disarmed, AMT-CLIP-MAYBE is a single guarded exit,
+\ so the committed AMT-RUN / AMT-RUN-SCHED trajectories stay bit-identical. The clip
+\ math (GRAD-CLIP-COEF / GCLIP-SCALE!) lives in maki/from-scratch-train.f.
+private
+variable AMT-CLIP?          \ 0 = no clip; nonzero = clip armed
+variable AMT-CLIP-V         \ global-norm clip threshold
+
+\ sum of squares over ALL four MLP param-grad buffers (the BW gradient nodes)
+: AMT-GNORM2 ( -- r )
+   SC-W1-SLOT SC-GRAD-AT SC-W1N T-NORM2
+   SC-B1-SLOT SC-GRAD-AT SC-B1N T-NORM2 f+
+   SC-W2-SLOT SC-GRAD-AT SC-W2N T-NORM2 f+
+   SC-B2-SLOT SC-GRAD-AT SC-B2N T-NORM2 f+ ;
+
+\ clip the global grad norm to AMT-CLIP-V when armed; a no-op when disarmed
+: AMT-CLIP-MAYBE ( -- )
+   AMT-CLIP? @ 0= if exit then
+   AMT-GNORM2 fsqrt  AMT-CLIP-V @  GRAD-CLIP-COEF {: coef:r :}
+   coef SC-W1-SLOT SC-GRAD-AT SC-W1N GCLIP-SCALE!
+   coef SC-B1-SLOT SC-GRAD-AT SC-B1N GCLIP-SCALE!
+   coef SC-W2-SLOT SC-GRAD-AT SC-W2N GCLIP-SCALE!
+   coef SC-B2-SLOT SC-GRAD-AT SC-B2N GCLIP-SCALE! ;
+public
+
+: AMT-CLIP-OFF ( -- )  0 AMT-CLIP? ! ;
+: AMT-CLIP! ( r -- )   AMT-CLIP-V !  -1 AMT-CLIP? ! ;   \ arm the global-norm clip threshold
+
 \ fresh Adam-MLP run: the from-scratch setup (init params, gen data, BW-BUILD,
 \ bind every buffer) plus zeroed Adam state.
 \ Precondition: MODEL: SCRATCH-MLP just captured.
@@ -197,6 +227,7 @@ public
 \ policy: the 2D weight matrices (W1, W2) decay, the biases (B1, B2) do not.
 : AMT-APPLY ( -- )
    ADAM-TICK
+   AMT-CLIP-MAYBE
    AMT-LR-EFF {: lr:r :}
    lr SC-W1 SC-W1-SLOT AMT-W1M AMT-W1V SC-W1N AMT-WD WD-DECAY ADAMW-UPD
    lr SC-B1 SC-B1-SLOT AMT-B1M AMT-B1V SC-B1N AMT-WD WD-NONE  ADAMW-UPD
@@ -238,6 +269,14 @@ public
    warm dec lmin lmax AMT-SCHED!
    n AMT-RUN
    AMT-SCHED-OFF ;
+
+\ clipped Adam MLP run: arm the global-norm clip, run n steps from a fresh capture,
+\ then disarm so the committed unclipped path is untouched. Records init/final loss
+\ like AMT-RUN. Precondition: MODEL: SCRATCH-MLP just captured.
+: AMT-RUN-CLIP ( r n -- ) {: clip:r n:n :}
+   clip AMT-CLIP!
+   n AMT-RUN
+   AMT-CLIP-OFF ;
 
 : AMT-STEPS@   ( -- n )  AMT-CK AMT-STEPS-V @ ;
 : AMT-INITIAL@ ( -- r )  AMT-CK AMT-INIT-L @ ;
