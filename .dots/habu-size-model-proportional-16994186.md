@@ -191,3 +191,5 @@ two-pass NEXT-TOK walk is landed and waiting); 3(v) MI-* via BIND-at-CAP-FINISH
 + GROW-during-BW-BUILD (both landed and waiting) + the 12-block acceptance +
 ceiling-pin conversions. All prerequisites are now in - 3(iv)+3(v) can be ONE
 lane owning cad.f/model-ir.f/tensor-value.f end to end.
+
+Stage-3iv+v claim: agent=derive45 workspace=.jj-ws/fable-derive45 machine=spark (owns maki/cad.f model-ir.f tensor-value.f + gptblock-attn-test.f + capacity regressions - the final conversion wave; all prerequisites landed: NEXT-TOK two-pass c4db8303, DEFER columns 4f45b5d1, NAME-GROW f0bbf055, clean families aeef6895)
