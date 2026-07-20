@@ -1878,6 +1878,14 @@ points stay listed.
 - `lib/process-pty-handle.f` / `lib/process-pty-handle-test.f` — linear PTY
   supervisor authority registry (reserve/commit/take/teardown lifecycle,
   owner-PID guards, generation-versioned slot handles) and its coverage.
+- `lib/process-pty-io.f` — checked process supervisor built on that registry
+  (reopens package `PROCESS-PTY`). Spawns a gated child with pipe I/O plus two
+  lifecycle-helper processes, opens each supervised pid's `proc-watch-open`
+  lifetime descriptor while it is alive, releases the child to exec, delivers
+  signals via `kill-errno` (ESRCH distinguished from EPERM), and tears down in
+  order (each watch descriptor closed before its pid is reaped, every handle
+  field erased once through the registry's linear coercions). Its coverage is
+  `test/process-pty-io-smoke.f`.
 - `lib/property.f` / `lib/property-test.f` — checked property-based test
   helpers and their coverage.
 - `lib/regex.f` / `lib/regex-test.f` — bounded capture-free regex
@@ -1918,6 +1926,13 @@ points stay listed.
   process-control primitives: a signal-0 probe to self returns 0, a signal to a
   non-existent pid reports `-ESRCH`, and `execve` on a missing path reports
   `-ENOENT` (its failure-only return path).
+- `test/process-pty-io-smoke.f` — focused proof of the `lib/process-pty-io.f`
+  supervisor: spawns a real short-lived child, watches it exit, probes signal 0
+  on the live target (0) and on the reaped target (`-ESRCH`), runs more
+  spawn/teardown cycles than the registry has slots to prove teardown balances,
+  and asserts the checker rejects duplicating a handle or teardown token
+  (double-teardown is unwritable). The already-dead watch-open divergence is
+  expressed gated per-OS, like `test/proc-watch-smoke.f`.
 - `test/internal-word-gate.f` — engine-internal execution-gate regressions, including sealed field mutation and checked read-only field reflection.
   (dot habu-hb-crash-bare-c5be6634): bare/ticked internal checker colon words
   fail closed with `hb: internal engine word:` + rc 70 on both cold-prefix
