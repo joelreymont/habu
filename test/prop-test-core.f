@@ -1127,9 +1127,12 @@ variable SS-I  variable SS-J  variable SS-BAD
 \ pointer would be lexed); typefamily/sumtype/enum/product are top-level parser
 \ words that consume their own block tokens up to the ;NAME closer, so a census
 \ runner has no input to feed them; layout-buffer likewise parses its own name +
-\ type tokens after its count operand, and typed-buffer/typed-variable are the
-\ same generative definer class (they parse their own name + type after an
-\ optional count operand; UNSAFE-TOK? bans all three inside checked bodies).
+\ type tokens after its count operand, and typed-buffer/typed-variable/
+\ defer-layout-buffer are the same generative definer class (they parse their own
+\ name + type after an optional count operand; UNSAFE-TOK? bans them inside
+\ checked bodies). ldefer-bind is the deferred column's shared runtime binder: it
+\ allots + writes cells at caller-supplied data-base offsets, so a census run over
+\ random operands would store through arbitrary addresses - not soundly executable.
 \ Their axioms keep them checker-known so the seal-time internal-word marking
 \ pass leaves them top-level executable (dot habu-hb-crash-bare-c5be6634).
 \ ptx-barrier! is the same class as trust: it resolves its string operand to a
@@ -1460,5 +1463,7 @@ variable SS-I  variable SS-J  variable SS-BAD
 \ AXR 315 0 0 0 prim - enum - -
 \ AXR 316 0 0 0 prim - product - -
 \ AXR 317 0 1 0 prim - layout-buffer - pe-n pe-in
-\ AXR 318 0 1 0 prim - typed-buffer - pe-n pe-in
-\ AXR 319 0 0 0 prim - typed-variable - -
+\ AXR 318 0 5 0 prim - ldefer-bind - pe-n pe-in pe-n pe-in pe-n pe-in pe-n pe-in pe-n pe-in
+\ AXR 319 0 0 0 prim - defer-layout-buffer - -
+\ AXR 320 0 1 0 prim - typed-buffer - pe-n pe-in
+\ AXR 321 0 0 0 prim - typed-variable - -

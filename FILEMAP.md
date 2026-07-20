@@ -2236,6 +2236,7 @@ points stay listed.
 - `test/lower-cert.f` — package-scoped canonical lowering-certificate producer regressions covering source binding, width rows, fetch descriptors, and guard-domain evidence.
 - `test/type-layout-lower-pending.f` — width-aware lowering fixtures retained for negative and boundary coverage after the immutable transaction switchover.
 - `test/layout-buffer.f` — generative closed-layout storage, pointer-provenance rejection, bounds, stride, zero-image, and rollback regressions.
+- `test/layout-defer.f` — DEFER-LAYOUT-BUFFER deferred-offset column: checker-transparent accessor, unbound-dies-named, NAME-BIND derive-from-count sizing, grow-to-largest reuse, and transactional sanity-ceiling rejection.
 - `test/typed-storage-test.f` — TYPED-VARIABLE/TYPED-BUFFER convenience definers: nominal/layout/typed-pointer store-fetch round-trips, cross-family/bounds/overflow/duplicate/rollback rejections, and the distinct LAYOUT-BUFFER-positive / raw-variable-negative capability pins.
 - `test/layout-buffer-depth.f` — entry for the executable maximum-include-depth plus generated-accessor evaluation regression.
 - `test/layout-buffer-depth-0.f` — evaluator-depth fixture link 0.
