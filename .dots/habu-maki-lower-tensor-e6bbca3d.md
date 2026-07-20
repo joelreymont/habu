@@ -135,3 +135,5 @@ F64>F32 marshalling, and maki/gpu-train.f runs SGD on device — both device-pro
 GPU). Remaining scope: the GENERAL tensor-op selection/lowering seam (arbitrary
 elementwise ops, softmax, matmul dispatch from maki tensors), which maki/STATUS.md
 itself lists as future work.
+
+2026-07-20 note from the affine-LayerNorm landing (ef4e8233): device BACKWARD for affine LN is bounded by layernorm-bwd/rowsum-bwd having no device lowering (host-only today); the affine forward IS device-lowered (fused block-per-row kernel). When this dot lowers the backward reduction family, the affine dgamma/dbeta reductions ride along - see maki/lower/red.f LRED-EMIT-LN-AFFINE for the forward pattern.
