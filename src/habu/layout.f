@@ -6,9 +6,30 @@
 28 constant CP
 
 $800000 constant REGION
+\ RBASE-VA: snapshot CANONICAL region base (a fixed portability sentinel, NOT the
+\ runtime map address). The live JIT region maps at __text base + REGION-OFF (see
+\ habu2.f EM-MMAP-CODE-REGION) so every call site and callee sit inside BL's
+\ +/-128 MiB reach; snap-rebase canonicalizes region-internal pointers to this
+\ sentinel and the loader rebases them back to the live region base, keeping images
+\ byte-identical across runs and imgdump's region->offset math target-independent.
 $300000000 constant RBASE-VA
+\ REGION-OFF: offset of the live region base past the runtime-discovered __text base
+\ (XREG-RBASE). Clears the loaded image with wide headroom and keeps region_end -
+\ __text (= REGION-OFF + REGION) far below BL-REACH. A multiple of the largest target
+\ page (16 KiB on macOS) so the mmap hint is page-aligned on both targets.
+$1000000 constant REGION-OFF
+\ BL-REACH: AArch64 BL imm26 reach (+/-128 MiB). The boot assertion dies BL-RANGE-RC
+\ if the mapped region falls outside this of __text -- the permanent guarantee stage
+\ C's direct-BL emission relies on.
+$8000000 constant BL-REACH
+81 constant BL-RANGE-RC
 $48425350414E5321 constant SNAP-MAGIC
-3 constant SNAP-FORMAT-VERSION
+\ Version 4: the live JIT region moved from a fixed VA to __text base + REGION-OFF
+\ (BL range); region-internal pointers now canonicalize to the RBASE-VA sentinel and
+\ the loader rebases them to the live region base. A pre-4 engine maps the region at
+\ the old fixed VA and cannot relocate a v4 image's region pointers, so it fails
+\ closed rc 80.
+4 constant SNAP-FORMAT-VERSION
 
 \ DICT-SIZE = CFSTK-OFF (= DICT-CAP * DREC record slots) + $1000 control-flow
 \ stack; the code area follows at DBASE+DICT-SIZE inside the REGION.

@@ -158,9 +158,11 @@ variable LSRCFULL   variable LSRCREAD   variable LBADSTR   \ boot source labeled
 variable LPROTPUB   variable LPROTAOT   \ protected-WID seal labeled rc-84 exits (publish-into-protected / AOT boot-pass gate reject)
 40 constant PROTPUB-MSG-LEN   \ byte length of "hb: cannot publish into protected word: " (LPROTPUB; C-STORE-DEF-NAME appends the def name + newline)
 34 constant PROTAOT-MSG-LEN   \ byte length of "hb: AOT protected-WID gate reject\n" (LPROTAOT; EM-AOTWIDGATE boot-pass reject)
-variable LMMAPCODE   variable LMMAPDATA   \ fixed-VA region mmap-fail labeled rc-78 exits (code region / data region); message bytes live in the loaded __text image, so the write is valid even though the region being mapped does not exist yet
+variable LMMAPCODE   variable LMMAPDATA   \ region mmap-fail/collision labeled rc-78 exits (code region / data region); message bytes live in the loaded __text image, so the write is valid even though the region being mapped does not exist yet
 33 constant MMAPCODE-MSG-LEN   \ byte length of "hb: cannot map fixed code region\n" (LMMAPCODE)
 33 constant MMAPDATA-MSG-LEN   \ byte length of "hb: cannot map fixed data region\n" (LMMAPDATA)
+variable LBLRANGE   \ boot BL-range assertion labeled rc-81 exit: the mapped region fell outside BL's +/-128 MiB of __text
+32 constant BLRANGE-MSG-LEN   \ byte length of "hb: code region out of BL range\n" (LBLRANGE)
 variable LFLAGMATCH  variable LSRCBADFLAG  variable LFLAGTAB
 variable LBADFLAG    variable LUSAGE1      variable LUSAGE2     variable LSPC
 variable LPLINUXTARGET  variable LPMACOSTARGET
@@ -368,7 +370,8 @@ s" c-bp-watch-dump" s" label label --" TRUST
    LPROTPUB LABEL@ LBL, s" hb: cannot publish into protected word: " BYTES,                     \ PROTPUB-MSG-LEN bytes; C-STORE-DEF-NAME appends the def name + newline
    LPROTAOT LABEL@ LBL, s" hb: AOT protected-WID gate reject" BYTES,  NL-KW 1 BYTES,            \ PROTAOT-MSG-LEN bytes incl. newline
    LMMAPCODE LABEL@ LBL, s" hb: cannot map fixed code region" BYTES,  NL-KW 1 BYTES,            \ MMAPCODE-MSG-LEN bytes incl. newline
-   LMMAPDATA LABEL@ LBL, s" hb: cannot map fixed data region" BYTES,  NL-KW 1 BYTES, ;          \ MMAPDATA-MSG-LEN bytes incl. newline
+   LMMAPDATA LABEL@ LBL, s" hb: cannot map fixed data region" BYTES,  NL-KW 1 BYTES,            \ MMAPDATA-MSG-LEN bytes incl. newline
+   LBLRANGE LABEL@ LBL, s" hb: code region out of BL range" BYTES,  NL-KW 1 BYTES, ;            \ BLRANGE-MSG-LEN bytes incl. newline
 
 \ override SIGTRAP(5) to the resuming handler (G-INSTALL-CRASH pointed all four
 \ at the dumper; this repoints just TRAP once LTRAPH is bound).
@@ -3318,13 +3321,30 @@ s" c-local-ref" s" label label --" TRUST
    XDS SP 0 ADDI, ;
 
 : EM-MMAP-CODE-REGION ( -- )
-   LBL {: rvok :}
-   0 RBASE-VA LIT64,  1 REGION LIT64,  2 3 MOVZ,  3 MAP-ANON-PRIVATE-FIXED LIT64,  4 0 MOVN,  5 0 MOVZ,
+   LBL LBL {: rok:label rvok:label :}
+   \ Hint the region at the runtime-discovered __text base (XREG-RBASE/x20) + REGION-OFF,
+   \ rounded UP to PROT-PAGE-MAX (64 KiB) so the base matches the granularity LPROT flips
+   \ protection at (an unaligned base lets a poke's page-align land below the mapping and
+   \ mprotect fault). Then every call site and callee sit inside BL's +/-128 MiB reach.
+   \ NO MAP_FIXED: the kernel never clobbers an existing mapping, so a returned address !=
+   \ hint proves a collision -> fail closed. Uniform across targets; on PIE (macOS) x20 is
+   \ the runtime-slid __text base, on Linux the fixed VMBASE content base -- one code path.
+   6 REGION-OFF LIT64,  6 XREG-RBASE 6 ADD,  9 PROT-PAGE-MAX 1 - MOVZ,  6 6 9 ADD,  6 6 16 LSRI,  6 6 16 LSLI,   \ x6 = 64KB-aligned hint (survives the syscall)
+   0 6 0 ADDI,  1 REGION LIT64,  2 3 MOVZ,  3 MAP-ANON-PRIVATE LIT64,  4 0 MOVN,  5 0 MOVZ,
    NR-MMAP SYS,
-   5 RBASE-VA LIT64,  0 5 CMP,
-   C-EQ rvok BCOND,
-      1 LMMAPCODE LABEL@ ADR,  0 2 MOVZ,  2 MMAPCODE-MSG-LEN MOVZ,  NR-WRITE SYS,   \ name the fault on fd 2 (bytes in loaded __text) before exit; scratch x0/x1/x2 only, argc/argv/envp in x13/x14/x15 untouched
+   0 6 CMP,
+   C-EQ rok BCOND,
+      1 LMMAPCODE LABEL@ ADR,  0 2 MOVZ,  2 MMAPCODE-MSG-LEN MOVZ,  NR-WRITE SYS,   \ collision / mmap fault named on fd 2 (bytes in loaded __text) before exit; argc/argv/envp in x13/x14/x15 untouched
       0 78 MOVZ,  NR-EXIT-GROUP SYS,
+   rok LBL,
+   \ Boot BL-range assertion (permanent guarantee stage C's direct BL relies on): the
+   \ whole region must lie within +/-128 MiB of __text. region_end - __text base is the
+   \ farthest displacement; die named if it reaches BL-REACH. x0 (region base) survives.
+   9 REGION LIT64,  9 0 9 ADD,  9 9 XREG-RBASE SUB,
+   5 BL-REACH LIT64,  9 5 CMP,
+   C-CC rvok BCOND,
+      1 LBLRANGE LABEL@ ADR,  0 2 MOVZ,  2 BLRANGE-MSG-LEN MOVZ,  NR-WRITE SYS,
+      0 BL-RANGE-RC MOVZ,  NR-EXIT-GROUP SYS,
    rvok LBL, ;
 
 \ ---- AOT seed: register the metabuild-compiled words baked in the LAOTCODE
@@ -3939,12 +3959,17 @@ TRUSTED: EM-DATA-VA>N ( -- n ) DATA-VA ;
    srn LBL,  9 9 4 ADDI,  srl B,
    srx LBL,  RET, ;
 
-\ snap-rebase ( base end count dbase dlen newbase -- ): run both relocation
-\ walks over an arbitrary region copy [base,end). Pool registers are spilled before
-\ any prim call, so clobbering x8/x15/x16/x21/x22/x25 is safe here. x8=base,
-\ x16=end are the write-region endpoints. The half-open span guard rejects every
-\ protected-band intersection, including a region that straddles a whole band.
-\ The legitimate snapshot builder uses a high scratch mmap copy outside DATA.
+\ snap-rebase ( base end count dbase dlen newbase -- ): canonicalize a region copy
+\ [base,end) in TWO passes so the image is byte-identical whatever VAs this run got.
+\ Pass 1 uses the caller's (dbase,dlen,newbase) to fold engine-text pointers to their
+\ canonical base (0). Pass 2 folds the live JIT region [DBASE, DBASE+span) -- the only
+\ other absolute address class in the copy -- to the RBASE-VA sentinel; span = end-base
+\ is the region-payload length. Both bands are disjoint (REGION-OFF >> text size), so
+\ the passes never re-touch each other's output. The loader (EM-SNAPSHOT-RESTORE)
+\ inverts both: sentinel -> live region base, 0 -> live text base. Pool registers are
+\ spilled before any prim call, so clobbering x8/x15/x16/x21/x22/x25 is safe here.
+\ x8=base, x16=end are the write-region endpoints. The half-open span guard rejects
+\ every protected-band intersection. The legitimate builder uses a high scratch copy.
 : BSNAPREBASE ( -- )
    \ Snapshot capture crosses a generation boundary after build refresh has
    \ retired the cold dictionary. Rebind the baked canonical owner identities
@@ -3952,6 +3977,9 @@ TRUSTED: EM-DATA-VA>N ( -- n ) DATA-VA ;
    OWNER-WID-EMIT:OWNER-LABEL@ BL,
    25 G-POP  22 G-POP  21 G-POP  15 G-POP  16 G-POP  8 G-POP
    11 16 8 SUB,  8 11 PROT-GUARD:CALL
+   LSNAPRBD LABEL@ BL,
+   LSNAPRBC LABEL@ BL,
+   21 DBASE 0 ADDI,  22 16 8 SUB,  25 RBASE-VA LIT64,   \ pass 2: live region -> RBASE-VA sentinel
    LSNAPRBD LABEL@ BL,
    LSNAPRBC LABEL@ BL, ;
 
@@ -4157,7 +4185,6 @@ TRUSTED: EM-DATA-VA>N ( -- n ) DATA-VA ;
       0 80 MOVZ,  NR-EXIT-GROUP SYS,
    snok LBL,
    9 DATA ARGC-CELL LDR,  10 DATA ARGV-CELL LDR,  0 DATA ENVP-CELL LDR,
-   22 11 6 SUB,  22 22 7 SUB,  22 22 48 SUBI,       \ x22 = engine text len then
    8 12 7 SUB,  8 8 6 SUB,                          \ region payload src
    EM-SNAPSHOT-COPY-CODE
    EM-SNAPSHOT-COPY-DATA
@@ -4167,6 +4194,15 @@ TRUSTED: EM-DATA-VA>N ( -- n ) DATA-VA ;
    NDICT 15 0 ADDI,
    CP DBASE 6 ADD,
    8 DBASE 0 ADDI,  16 CP 0 ADDI,
+   \ region pass FIRST: the RBASE-VA sentinel -> live region base (DBASE). Running it
+   \ before the text pass keeps each pass's live output out of the other's canonical
+   \ detection band, correct on both non-PIE (Linux) and PIE (macOS, where the region
+   \ slides with __text). x6 = region payload len.
+   21 RBASE-VA LIT64,  22 6 0 ADDI,  25 DBASE 0 ADDI,
+   LSNAPRBD LABEL@ BL,
+   LSNAPRBC LABEL@ BL,
+   \ text pass: canonical base 0 -> live text base. x22 = engine text len; x25 reloaded.
+   21 0 MOVZ,  22 11 6 SUB,  22 22 7 SUB,  22 22 48 SUBI,  25 DATA RBASE-CELL LDR,
    LSNAPRBD LABEL@ BL,
    LSNAPRBC LABEL@ BL,
    EM-SNAPSHOT-RX-FLUSH
@@ -6750,7 +6786,7 @@ s" SRCA@" s" -- ptr u8" TRUST
    LBL LSNAPBAD !  LBL LSNAPVER !
    LBL LSRCFULL !  LBL LSRCREAD !  LBL LBADSTR !
    LBL LPROTPUB !  LBL LPROTAOT !
-   LBL LMMAPCODE !  LBL LMMAPDATA !
+   LBL LMMAPCODE !  LBL LMMAPDATA !  LBL LBLRANGE !
    LBL LFLAGMATCH !  LBL LSRCBADFLAG !  LBL LFLAGTAB !
    LBL LBADFLAG !  LBL LUSAGE1 !  LBL LUSAGE2 !  LBL LSPC ! ;
 

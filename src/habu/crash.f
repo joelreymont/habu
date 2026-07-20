@@ -105,8 +105,14 @@ s" c-crash-print-regs" s" --" TRUST
    LBL CR-L1 !  LBL CR-L2 !
    C-CRASH-PC>R9
    CR-OFF @ 0< IF 9 9 CR-OFF @ negate SUBI, ELSE 9 9 CR-OFF @ ADDI, THEN
-   10 RBASE-VA LIT64,  9 10 CMP,  C-LT CR-L1 LABEL@ BCOND,
-   10 RBASE-VA REGION + $4 - LIT64,  9 10 CMP,  C-GT CR-L1 LABEL@ BCOND,
+   \ Region membership uses the live region base = the interrupted engine's DBASE (x26,
+   \ the pinned region register). The handler's own x26 is clobbered by the trampoline,
+   \ so read the SAVED x26 out of the signal mcontext (x21). This tracks the live region
+   \ wherever it mapped -- the BL-range offset from __text, PIE slide and all -- with no
+   \ fixed-VA assumption. x9 holds the PC being classified; x10 = region base then end-4.
+   HB-TARGET-LINUX? IF 10 21 LINUX-MCTX-X0-OFF 26 8 * + LDR, ELSE 10 21 SS-OFF 26 8 * + LDR, THEN
+   9 10 CMP,  C-LT CR-L1 LABEL@ BCOND,
+   11 REGION $4 - LIT64,  10 10 11 ADD,  9 10 CMP,  C-GT CR-L1 LABEL@ BCOND,
    9 9 0 LDRW,  LHEX LABEL@ BL,  CR-L2 LABEL@ B,
    CR-L1 LABEL@ LBL,  9 0 MOVZ,  LHEX LABEL@ BL,
    CR-L2 LABEL@ LBL, ;

@@ -1569,7 +1569,9 @@ $44000000000 constant ES-MACOS-DATA-VA
    HB-TARGET-LINUX? if ES-LINUX-DATA-VA exit then
    HB-TARGET-MACOS? if ES-MACOS-DATA-VA exit then
    ES-TARGET-UNKNOWN ;
-dbase@ $300000000 = -1 T=
+dbase@ rbase > -1 T=                                 \ live JIT region sits above __text (hinted at __text + REGION-OFF)
+dbase@ PROT-PAGE-MAX 1 - and 0= -1 T=                \ region base is PROT-PAGE-MAX-aligned (LPROT protection granularity)
+dbase@ REGION + rbase - BL-REACH < -1 T=             \ whole region within BL's +/-128 MiB of __text
 data-base ES-DATA-VA = -1 T=
 cp@ dbase@ - 0 > -1 T=
 ndict@ 0 > -1 T=
