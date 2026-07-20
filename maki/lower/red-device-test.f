@@ -26,6 +26,7 @@ require lib/ptx/toolchain.f
 require maki/device-artifacts.f
 require maki/cad.f
 require maki/lower/golden.f
+require maki/eval/active-target.f
 
 package MAKI
 
@@ -98,7 +99,8 @@ create LRD-CS $800 allot  variable LRD-CS-U
       s" lower-red-device: libcuda unavailable -> device leg SKIPPED (host build OK)" type cr
       exit then
    s" habu-lred-drv" MAKI-GRADE:PREPARE
-   s" habu-lred-ptx" PTXTC:PREPARE ;
+   s" habu-lred-ptx" PTXTC:PREPARE
+   ATGT:LABEL$ PTXTC:TC-ARCH! ;         \ assembler arch from the probed active target (sm_87 Orin / sm_121a GB10), before any ASSEMBLE
 
 : LRD-END ( -- )
    CUDA:OPEN? 0= if  0 0= TTRUE  T-REPORT exit then
