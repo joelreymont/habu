@@ -77,6 +77,35 @@ s" XSMK  ( n -- n ) >XR-SLOT XR-VAL@ "         CHECK-QUIET-CANDIDATE! -1 T=   \ 
 s" XLOK  ( xr-slot -- xr-surf-len ) XR-SLEN@ " CHECK-QUIET-CANDIDATE! -1 T=   \ right length column
 s" XLBAD ( xr-slot -- xr-surf-len ) XR-TLEN@ " CHECK-QUIET-CANDIDATE!  0 T=   \ tail length where surface length wanted
 
+\ --- BTC-7 extent-role product / factorization surface (EXTPROD: / >RED, dot
+\ habu-extent-role-product-8e364885). The checker half (product former, ordered/
+\ mismatch/split-retype, the free-vs-inner contraction rule) is the routed regression
+\ test/extent-product-test.f; here is the candidate-B SURFACE: the generated
+\ fold/split/join round-trip, the E-EXT-FACTOR value reject, and the contraction rule
+\ wired end to end through the shipped words.
+8   EXTENT: #PB     \ free / batch factor
+16  EXTENT: #PT     \ in-block / sequence factor
+128 EXTENT: #PR     \ folded rows = B*T
+EXTPROD: #PR ( #PB #PT )   \ verify 128 == 8*16, mark #PB free, derive #PR-FOLD/SPLIT/JOIN
+
+\ (b) legal fold / split / join round-trip type-checks (the shipped generated words).
+s" PFO ( n -- ix<extprod<extpb,extpt>> ) #PR-FOLD "                                  CHECK-QUIET-CANDIDATE! -1 T=
+s" PRT ( ix<extprod<extpb,extpt>> -- ix<extprod<extpb,extpt>> ) #PR-SPLIT #PR-JOIN " CHECK-QUIET-CANDIDATE! -1 T=
+s" PSP ( ix<extprod<extpb,extpt>> -- ix<extpb> ix<extpt> ) #PR-SPLIT "               CHECK-QUIET-CANDIDATE! -1 T=
+
+\ (c) end to end: a contraction (>RED) over the in-block extent type-checks; over the
+\ free #B factor or the whole product it is a load-time reject (the cross-sequence leak).
+s" PCI ( ix<extpt> -- redx<extpt> ) >RED "                                CHECK-QUIET-CANDIDATE! -1 T=
+s" PCB ( ix<extpb> -- redx<extpb> ) >RED "                                CHECK-QUIET-CANDIDATE!  0 T=
+s" PCP ( ix<extprod<extpb,extpt>> -- redx<extprod<extpb,extpt>> ) >RED "  CHECK-QUIET-CANDIDATE!  0 T=
+
+\ (e) product-mismatch: a folded-rows extent whose asserted factors' product differs
+\ from its size is an E-EXT-FACTOR load reject (#PRBAD = 20 != 8*16). The inline names
+\ after TTHROWS are consumed by EXTPROD:'s parse at run time.
+20 EXTENT: #PRBAD
+: PR-BAD ( -- ) EXTPROD: ;
+' PR-BAD E-EXT-FACTOR TTHROWS #PRBAD ( #PB #PT )
+
 ;package
 
 T-REPORT

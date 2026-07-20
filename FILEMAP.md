@@ -2208,6 +2208,7 @@ points stay listed.
 - `test/prop-test.f` — CLI entry for property-based checker-soundness test.
 - `test/engine-suite.f` — native engine behavior suite.
 - `test/extent-substrate-probe.f` — standalone decision-record demo (habu-choose-extent-nominal): TFAM parametric families type idx<#M> with two extents distinct and host BTC-7's #B*#T product structure; run over stdin, see docs/extent-substrate.md.
+- `test/extent-product-test.f` — routed BTC-7 regression (habu-extent-role-product): the real extprod/redx families type a folded product row, ordered/mismatch/split rejects, and the free-vs-inner contraction rule (redx over a free extent or whole product rejects). The candidate-B surface half is maki/extent-test.f.
 - `test/type-decl-suite.f` — behavior suite for the TYPEFAMILY/SUMTYPE declaration grammar (positives, negatives, rollback, multi-error, diagnostics).
 - `test/deftype-suite.f` — behavior contract for the `DEFTYPE` surface (lib/type/deftype.f): same-nominal accept, other-nominal/generic-int reject, explicit converters, converter no-launder, demanded-input direction, package scoping (same name in two packages stays distinct), and snapshot-persist survival.
 - `test/deftype-dup-bad.f` — child-process negative fixture: a duplicate `DEFTYPE` in one package is refused fail-closed (exit 67, "duplicate family").

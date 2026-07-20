@@ -560,6 +560,37 @@ SPA-BOOT SPA-P !   MAXPUSH-INIT SPA-CAP !
 : RES-FALSE ( -- bool )
    0 0= 0= ;
 
+\ --- BTC-7 extent-role product/factorization role registry (dot
+\ habu-extent-role-product-8e364885, docs/extent-substrate.md §Decision, BTC-7).
+\ EXT-PROD-FAM / EXT-REDX-FAM are the built-in `extprod`/`redx` family ids,
+\ captured by type-family.f after registration (0 = registry not loaded => no
+\ detection; the engine self-check never uses these families). The free-set records
+\ extent families that are FREE (outer / batch) factors of a product: EXTPROD:
+\ (maki/extent.f) marks a product's factor-0 free at declaration time. The
+\ contraction rule (EXT-REDX-BAD-ARG? at SIG-END-PARAM) rejects `redx<E>` when E is
+\ a free extent or a whole product, so a contraction (+Σ) over the free #B factor of
+\ a folded #B*#T row is a load-time type error — the cross-sequence leak is
+\ unrepresentable. Cleared with the family registry (type-family.f TFAM-RESET) so a
+\ recycled family id can never inherit a stale free mark.
+variable EXT-PROD-FAM   0 EXT-PROD-FAM !
+variable EXT-REDX-FAM   0 EXT-REDX-FAM !
+$40 constant EXT-FREE-CAP
+create EXT-FREE-SET EXT-FREE-CAP cells allot
+variable EXT-FREE-N   0 EXT-FREE-N !
+: EXT-FREE-CLEAR ( -- ) 0 EXT-FREE-N ! ;
+: EXT-FREE? ( n -- bool ) {: f:n :}
+   f 0 <= IF RES-FALSE EXIT THEN
+   0 BEGIN dup EXT-FREE-N @ < WHILE
+      dup cells EXT-FREE-SET + @ f = IF drop RES-TRUE EXIT THEN
+      1 +
+   REPEAT drop RES-FALSE ;
+: EXT-MARK-FREE ( n -- ) {: f:n :}      \ EXTPROD: marks a product's free factor family
+   f 0 <= IF EXIT THEN
+   f EXT-FREE? IF EXIT THEN              \ idempotent
+   EXT-FREE-N @ EXT-FREE-CAP >= IF s" checker: extent free-set overflow" 76 die THEN
+   f EXT-FREE-N @ cells EXT-FREE-SET + !
+   EXT-FREE-N @ 1 + EXT-FREE-N ! ;
+
 \ The `*` query wrappers callers use: each invokes the effect-known defer, so
 \ callers stay unchanged while the fetch/execute of a raw variable is gone.
 : TFAM-RESOLVE* ( ptr u8 n ptr u8 n -- n bool ) TFAM-RESOLVE-XT ;
@@ -2536,6 +2567,12 @@ variable SIG-RAW-MODE   0 SIG-RAW-MODE !
       CHECKER-PACKAGE-NAME CHECKER-PACKAGE-U @ a u TFAM-RESOLVE* EXIT
    THEN
    s" " a u TFAM-RESOLVE* ;
+\ EXT-MARK-FREE-TAIL ( ptr u8 n -- ) : BTC-7 — mark an extent family FREE by its
+\ lowercase tail, resolved through the SAME scope SIG-FAM? uses so the recorded id
+\ is exactly the one SIG-END-PARAM reads off a redx<..> arg. EXTPROD: (maki/extent.f)
+\ calls it for a product's free (outer) factor. An unresolvable tail is a no-op.
+: EXT-MARK-FREE-TAIL ( ptr u8 n -- )
+   SIG-FAM? IF EXT-MARK-FREE ELSE drop THEN ;
 : TYPE-VAR-TOK? ( ptr u8 n -- bool ) {: a:ptr u:n :}
    u 1 = IF a c@ LOWER? EXIT THEN
    RES-FALSE ;
@@ -2671,12 +2708,29 @@ variable PKA  variable PKU  variable PKHAVE          \ one-token push-back
 \ an unset call fails closed via DEFER-UNSET rather than the old execute-of-0.
 defer SIG-QUOT-XT ( -- n )
 
+\ EXT-REDX-BAD-ARG? ( argterm -- bool ) : BTC-7 contraction rule. `redx<E>` marks
+\ extent E as a contraction (+Σ) axis; it is ill-formed when E is a FREE (outer /
+\ batch) extent or a whole product `extprod<..>`, because summing the free factor of
+\ a folded #B*#T row is the cross-sequence leak. A type-var arg (redx<e>, the generic
+\ contraction-entry cast) resolves to no concrete extent, so it is fine.
+: EXT-REDX-BAD-ARG? ( n -- bool ) {: t:n :}
+   t T-RES {: r:n :}
+   r TAG T-PARAM <> IF RES-FALSE EXIT THEN         \ var/con: not a concrete extent
+   r PARAM>FAM {: f:n :}
+   f EXT-PROD-FAM @ = EXT-PROD-FAM @ 0 <> and IF RES-TRUE EXIT THEN   \ contracting a whole product
+   f EXT-FREE? ;                                   \ contracting the free (batch) factor
+
 \ SIG-END-PARAM ( base a u fam -- t ) : close a parsed family application. Reject
 \ (family-specific arity diagnostic) when the arg count differs from the family's
-\ declared arity, then build the T-PARAM (MK-PARAM rewinds scratch to `base`).
+\ declared arity; reject a `redx<..>` over a free/product extent (BTC-7 contraction
+\ rule) before it can name a summable axis; then build the T-PARAM (MK-PARAM rewinds
+\ scratch to `base`).
 : SIG-END-PARAM {: base:n a:ptr u:n fam:n :}
    PARAM-SCR-N @ base - {: got:n :}
    got fam TFAM-ARITY* <> IF a u fam TFAM-ARITY* got SGBAD-ARITY! THEN
+   fam EXT-REDX-FAM @ =  EXT-REDX-FAM @ 0 <> and  got 1 = and IF
+      base cells PARAM-SCR + @ EXT-REDX-BAD-ARG? IF a u SGBAD-SYNTAX! THEN
+   THEN
    base a u fam MK-PARAM ;
 
 \ SIG-TYPE ( ptr u8 n -- n ) : one signature type. A registered family token opens
@@ -4990,7 +5044,12 @@ PRIM: constant PE-A PE-OUT PRIM;
 PRIM: getpid   PE-N PE-OUT PRIM;   \ ( -- pid ) process-identity syscall
 PRIM: proc-watch-open PE-N PE-IN PE-N PE-OUT PRIM;   \ ( pid -- fd|-1 ) process-lifetime watch
 PRIM: kill-errno PE-N PE-IN PE-N PE-IN  PE-N PE-OUT PRIM;   \ ( pid sig -- 0|-errno ) signal with errno detail
-PRIM: execve   PE-PTR-U8 PE-IN PE-PTR-A PE-IN PE-PTR-A PE-IN  PE-N PE-OUT PRIM;   \ ( pathz argv envp -- -errno ) child-side exec; only returns on failure; last checker.f axiom
+PRIM: execve   PE-PTR-U8 PE-IN PE-PTR-A PE-IN PE-PTR-A PE-IN  PE-N PE-OUT PRIM;   \ ( pathz argv envp -- -errno ) child-side exec; only returns on failure
+\ BTC-7: EXTPROD: (maki/extent.f) marks a product's free factor via this axiom. The
+\ effect keeps it checker-known so the seal-time internal-word marking pass leaves it
+\ callable from the candidate-B surface (like CHECKER-DEFFAMILY for EXTENT:). Placed
+\ last in the checker prim table so it appends to the ordered manifests. Last checker.f axiom.
+PRIM: EXT-MARK-FREE-TAIL PE-PTR-U8 PE-IN PE-N PE-IN PRIM;
 
 PTABLE-END
 

@@ -52,6 +52,8 @@ require lib/type/deftype.f           \ DEFTYPE: the registry slot index + length
 -5033 constant E-EXT-CAP      \ extent registry or generated-source buffer capacity exceeded
 -5034 constant E-EXT-RANGE    \ a crossing into an extent's index space is outside [0, extent)
 -5035 constant E-EXT-VALUE    \ extent size below 1, or a negative value handed to the decimal emitter
+-5064 constant E-EXT-FACTOR   \ EXTPROD: a folded-rows extent's size != free x inner factor product
+\ (-5036..-5063 are claimed by other maki files; -5064 is the free slot in maki's fence)
 
 package MAKI
 
@@ -193,6 +195,77 @@ public
    \ range check is ordinary runtime logic inside that boundary.
    s" TRUSTED: >" XG+  sa su XG+  s"  ( n -- ix<" XG+  ta tu XG+
       s" > ) dup 0 < over " XG+  val XG-INT  s"  >= or if E-EXT-RANGE throw then ;" XG+
+   XG-EVAL ;
+
+\ ---- BTC-7 extent-role product / factorization (dot habu-extent-role-product-
+\ 8e364885, docs/batch-sequence-design.md §5 BTC-7, docs/extent-substrate.md). The
+\ product type former is the built-in ORDERED arity-2 family `extprod<free,inner>`
+\ (type-family.f): ix<extprod<extb,extt>> types a folded (B,T) row, and its ordered
+\ args reject a swapped or mismatched factor on the existing parametric unification.
+\ Contraction is the built-in arity-1 `redx` (a summed axis); the checker rejects
+\ redx over a free extent (checker.f SIG-END-PARAM), making the cross-sequence leak
+\ unrepresentable. EXTENT:/idx crossings are TRUSTED casts (the retypes are not
+\ checker-expressible); factorization arithmetic and the free/inner legality are the
+\ new work over that representation. maki -> habu only.
+
+\ >RED ( ix<e> -- redx<e> ): contraction-entry cast — mark an extent index as a
+\ summation (reduction) axis. TRUSTED like IX>N / >#name (the retype is not
+\ checker-expressible). It cannot launder a free factor into a contraction: a word
+\ whose DECLARED signature carries redx<#B> (or redx over a whole product) is a
+\ load-time reject, so a free #B can never name a summable axis.
+TRUSTED: >RED ( ix<e> -- redx<e> ) ;
+
+private
+
+\ append the ordered product index type `ix<extprod<ftail,itail>>` into XG.
+: XP-PTYPE ( xr-slot xr-slot -- ) {: fsl:xr-slot isl:xr-slot :}
+   s" ix<extprod<" XG+  fsl XR-TAIL@ XG+  s" ," XG+  isl XR-TAIL@ XG+  s" >>" XG+ ;
+
+\ parse one `#name` factor off the stream and resolve it to its extent slot.
+: XP-FACTOR ( -- xr-slot )
+   parse-name {: a:ptr u:n :}
+   u 0= if E-EXT-NAME throw then
+   a u XR-REQUIRE ;
+
+public
+
+\ EXTPROD: #ROWS ( #FREE #INNER ) — declare that the folded-rows extent #ROWS
+\ factors as free (outer / batch) #FREE x in-block #INNER, and derive:
+\   #ROWS-FOLD  ( n -- ix<extprod<f,i>> )            raw row index -> folded product
+\   #ROWS-SPLIT ( ix<extprod<f,i>> -- ix<f> ix<i> )  factor: b = r / inner, t = r mod inner
+\   #ROWS-JOIN  ( ix<f> ix<i> -- ix<extprod<f,i>> )  recombine (the inverse: b*inner + t)
+\ Verifies value(#ROWS) == value(#FREE) x value(#INNER) (E-EXT-FACTOR on mismatch,
+\ the "factor product differs from the source extent" reject) and marks #FREE's
+\ family free in the checker role registry so a contraction over it rejects at load.
+\ FOLD is TRUSTED (the n->product retype is not checker-expressible, guarded to
+\ [0,rows)); SPLIT/JOIN are ordinary checked words (IX>N + the factor injectors).
+\ Top-level-interpret-only, like EXTENT:/TENSOR: (parses the stream + mutates the
+\ dictionary through the checked XG-EVAL boundary). #ROWS/#FREE/#INNER must be
+\ EXTENT:-declared first.
+: EXTPROD: ( -- )
+   parse-name {: ra:ptr ru:n :}
+   ru 0= if E-EXT-NAME throw then
+   ra ru XR-REQUIRE {: rslot:xr-slot :}
+   parse-name 2dup s" (" STR= 0= if E-EXT-NAME throw then 2drop
+   XP-FACTOR {: fslot:xr-slot :}                          \ free (outer / batch) factor
+   XP-FACTOR {: islot:xr-slot :}                          \ in-block (inner) factor
+   parse-name 2dup s" )" STR= 0= if E-EXT-NAME throw then 2drop
+   \ #2: the folded-rows extent's size must equal free x inner.
+   rslot XR-VAL@  fslot XR-VAL@ islot XR-VAL@ *  <> if E-EXT-FACTOR throw then
+   \ mark the free (outer) factor so a contraction over it is a checker reject.
+   fslot XR-TAIL@ EXT-MARK-FREE-TAIL
+   XG-RESET
+   s" TRUSTED: " XG+  rslot XR-SURF@ XG+  s" -FOLD ( n -- " XG+  fslot islot XP-PTYPE
+      s"  ) dup 0 < over " XG+  rslot XR-VAL@ XG-INT
+      s"  >= or if E-EXT-RANGE throw then ; " XG+
+   s" : " XG+  rslot XR-SURF@ XG+  s" -SPLIT ( " XG+  fslot islot XP-PTYPE
+      s"  -- ix<" XG+  fslot XR-TAIL@ XG+  s" > ix<" XG+  islot XR-TAIL@ XG+
+      s" > ) IX>N {: r:n :} r " XG+  islot XR-VAL@ XG-INT  s"  / >" XG+  fslot XR-SURF@ XG+
+      s"  r " XG+  islot XR-VAL@ XG-INT  s"  mod >" XG+  islot XR-SURF@ XG+  s"  ; " XG+
+   s" : " XG+  rslot XR-SURF@ XG+  s" -JOIN ( ix<" XG+  fslot XR-TAIL@ XG+  s" > ix<" XG+
+      islot XR-TAIL@ XG+  s" > -- " XG+  fslot islot XP-PTYPE
+      s"  ) IX>N {: t:n :} IX>N {: b:n :} b " XG+  islot XR-VAL@ XG-INT  s"  * t + " XG+
+      rslot XR-SURF@ XG+  s" -FOLD ; " XG+
    XG-EVAL ;
 
 ;package

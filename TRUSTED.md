@@ -741,6 +741,7 @@ that source is explicitly certified; they are not stale-checked by the default
 | CHECK-PASSES? | `ptr u8 n -- bool` | Evaluation harness temporarily suppresses diagnostics, invokes the checker on candidate source, and restores the diagnostic hook; raw checker state mutation is the metaprogramming boundary. | `maki/eval/eval-test.f`, `maki/test.f` | maki/eval/eval.f | 2026-07-12 | test-metaprog | habu-primitive-effect-axiom-1119f176 |
 | IX>N | `ix<e> -- n` | Runtime identity cast projecting an extent-typed index value back to a generic cell; the checker cannot infer nominal parametric-family erasure from an empty body (the src/core/roles.f role-cast pattern extended to the parametric `ix<extent>` family). | `maki/extent-test.f`, `maki/test.f` | maki/extent.f | 2026-07-18 | prim-axiom | habu-primitive-effect-axiom-1119f176 |
 | XG-EVAL | `--` | Audited `evaluate` wrapper for EXTENT:/TENSOR:/ITENSOR: - compiles the generated extent constant, injector, and accessor definitions so the active checker hook certifies each; `evaluate` cannot be checker-typed (the src/core/roles.f DTC-EVAL / maki/cad.f CAP-COMPILE-RUN pattern). | `maki/extent-test.f`, `maki/extent-tensor-test.f`, `maki/test.f` | maki/extent.f | 2026-07-18 | prim-axiom | habu-primitive-effect-axiom-1119f176 |
+| >RED | `ix<e> -- redx<e>` | BTC-7 contraction-entry cast marking an extent-typed index as a summation (reduction) axis; the checker cannot infer the nominal parametric retype from an empty body (the src/core/roles.f role-cast pattern, like IX>N). It cannot launder a free factor into a contraction: the free-vs-inner legality is the checker's SIG-END-PARAM rule (redx over a free extent or a whole product rejects at load). | `maki/extent-test.f`, `maki/test.f` | maki/extent.f | 2026-07-20 | prim-axiom | habu-primitive-effect-axiom-1119f176 |
 | JIT-EVALUATE | `ptr u8 n --` | JIT inspection CLI evaluates user-supplied source before resolving and disassembling the requested word; dynamic evaluation cannot be expressed by the checker. | `test/gate-debug.f` | tools/jitdump-core.f | 2026-07-12 | builder-emit | habu-builder-trust-rows-c5d41af6 |
 | CHECK! | `ptr u8 n -- n` | Shared lint prelude models the engine checker entrypoint so its fail-closed hook can compile checked before lint sources load. | `tools/trust-lint-test.f`, `test/run.f` | tools/lint/text.f | 2026-07-12 | prim-axiom | habu-primitive-effect-axiom-1119f176 |
 | CGR-EVALUATE | `ptr u8 n --` | Code-role transformer evaluates normalized generated definitions only through its checked driver and converts failures into the tool's explicit evaluation error. | `tools/codegen-role-test.f`, `test/run.f` | tools/codegen-role.f | 2026-07-12 | test-metaprog | habu-primitive-effect-axiom-1119f176 |
@@ -1646,6 +1647,7 @@ prim - getpid - pe-n pe-out
 prim - proc-watch-open - pe-n pe-in pe-n pe-out
 prim - kill-errno - pe-n pe-in pe-n pe-in pe-n pe-out
 prim - execve - pe-ptr-u8 pe-in pe-ptr-a pe-in pe-ptr-a pe-in pe-n pe-out
+prim - ext-mark-free-tail - pe-ptr-u8 pe-in pe-n pe-in
 prim - typefamily - -
 prim - sumtype - -
 prim - enum - -

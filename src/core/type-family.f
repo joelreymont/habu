@@ -1349,7 +1349,8 @@ variable LAY-N   0 LAY-N !   REG-PROTECT
    0 TFAM-N !   0 TF-STR-U !   0 TF-PK-N !
    0 SUMV-N !   0 PF-N !   0 PF-COMMIT-N !   0 LAY-N !
    0 PF-TX-DEPTH !   0 PF-TX-SERIAL !
-   -1 FIELD-FAM ! ;   \ field family is de-registered until re-declared, so its id can't dangle
+   -1 FIELD-FAM !     \ field family is de-registered until re-declared, so its id can't dangle
+   EXT-FREE-CLEAR ;   \ BTC-7: drop free-extent marks with the families they name
 TFAM-RESET
 
 \ ---------------------------------------------------------------------------
@@ -1542,6 +1543,17 @@ s" attn-stage-output"  0 TFAM-REG-CELL
 s" attn-stage-done"    0 TFAM-REG-CELL
 s" uniform"    1 TFAM-REG-CELL
 s" rowidx"     1 TFAM-REG-CELL
+\ BTC-7 extent-role product/factorization (docs/batch-sequence-design.md §5,
+\ docs/extent-substrate.md). `extprod<free,inner>` is the product former: an
+\ ORDERED arity-2 cell family so ix<extprod<extb,extt>> types a folded (B,T) row
+\ and its ordered args already reject a swapped or mismatched factor on the
+\ existing parametric unification (probe test/extent-substrate-probe.f). `redx`
+\ is the arity-1 contraction/reduction index: a value of ix<e> re-typed as
+\ redx<e> is an axis marked for summation. The checker's free-vs-inner rule
+\ (checker.f EXT-REDX-BAD-ARG? at SIG-END-PARAM) rejects redx over a free factor,
+\ which is what makes the cross-sequence contraction leak unrepresentable.
+s" extprod"    2 TFAM-REG-CELL
+s" redx"       1 TFAM-REG-CELL
 
 \ M5: capture the tile/uniform family ids into the checker's barrier-uniformity
 \ cells (declared in checker.f). A collective typed ( tile<..> -- uniform<..> )
@@ -1559,6 +1571,11 @@ s" uniform" PTX-FAM-ID PTX-UNIFORM-FAM !
 \ divergent control is not block-uniform and rejects, exactly like BLOCK-MAX.
 s" cpp-committed" PTX-FAM-ID PTX-CPCOMMITTED-FAM !
 s" cpp-ready"     PTX-FAM-ID PTX-CPREADY-FAM !
+\ BTC-7: capture the product/contraction family ids into the checker's role
+\ registry cells (declared in checker.f). SIG-END-PARAM reads EXT-REDX-FAM to gate
+\ redx<..> forming, and EXT-PROD-FAM to reject contracting a whole product.
+s" extprod" PTX-FAM-ID EXT-PROD-FAM !
+s" redx"    PTX-FAM-ID EXT-REDX-FAM !
 
 \ Internal VREC field constructor: arity 3, PRIVATE in reserved package "@" (not a
 \ spellable user package) so it never resolves from user signatures, while every
