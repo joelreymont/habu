@@ -473,6 +473,7 @@ variable GSI-TL-FILE-A
    \ and child spawns.
    s" test/internal-word-gate.f" GSI-FORK-INCLUDE
    s" test/underdepth-gate.f" GSI-FORK-INCLUDE
+   s" test/match-factor-pin.f" GSI-FORK-INCLUDE
    s" test/immediate-model-test.f" GSI-FORK-INCLUDE
    s" test/top-row-warn-test.f" GSI-FORK-INCLUDE
    s" test/xt-effect-test.f" GSI-FORK-INCLUDE

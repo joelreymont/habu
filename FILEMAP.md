@@ -2175,6 +2175,7 @@ points stay listed.
 - `test/type-ctor-suite.f` — behavior suite for generated sum constructors (arity-0 publication, payload rejects, parametric/linear gating, package restore).
 - `test/type-linear-suite.f` — whole-bundle linear accounting suite (linear construction/minting/flow accepts; copy/drop/transport/local/unconsumed rejects).
 - `test/type-match-suite.f` — checked MATCH eliminator suite (exhaustiveness, payload refinement, branch joins, linear consumption, depth fail-closure, scope, CASE-interleave pins).
+- `test/match-factor-pin.f` — persistent pin for the factored native MATCH/construct compiler stencils (dot habu-pin-factored-match-08a85f14): pins exact emitted-user bytes for representative construct/match/wide/enum programs, asserts every factored failure diagnostic (unknown family/variant, expected-of, bad-tag, underdepth) in disposable SUBJECT forks, proves package wordlist restoration and W^X discipline, and ratchets ADT compile throughput; a GSI-TAIL-PROCESS fork include.
 - `test/lower-cert.f` — package-scoped canonical lowering-certificate producer regressions covering source binding, width rows, fetch descriptors, and guard-domain evidence.
 - `test/type-layout-lower-pending.f` — width-aware lowering fixtures retained for negative and boundary coverage after the immutable transaction switchover.
 - `test/layout-buffer.f` — generative closed-layout storage, pointer-provenance rejection, bounds, stride, zero-image, and rollback regressions.
