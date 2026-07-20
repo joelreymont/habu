@@ -4,6 +4,7 @@ require lib/errors.f
 require lib/string.f
 require lib/ffi.f
 require lib/ptx/cuda-driver.f
+require lib/ptx/cuda-scope.f
 require tools/ptx/profile.f
 
 package PTXBENCH
@@ -33,6 +34,7 @@ variable ITERS-N
 variable WORK-N
 variable PARAM-BYTES-N
 variable SHARED-N                       \ dynamic .shared bytes for extern-.shared kernels (0 = static)
+variable BENCH-NS-TMP                   \ BENCH-GPU-NS result held across the event-owning scope's frame exit
 
 8 constant CUDA-ATTR-MAX-DYNSMEM        \ CU_FUNC_ATTRIBUTE_MAX_DYNAMIC_SHARED_SIZE_BYTES
 
@@ -60,15 +62,12 @@ variable SHARED-N                       \ dynamic .shared bytes for extern-.shar
 : F32-MS>NS ( n -- n )
    1000000 F32-MS>SCALED ;
 
-: EVENTS-CREATE ( -- )
+: EVENTS-OWN ( -- )                     \ create both timing events, transferring each to the current scope as acquired
    0 START-EVT ! 0 STOP-EVT !
    START-EVT 0 CUDA:CU-EVENT-CREATE CUDA:RC0
-   STOP-EVT 0 CUDA:CU-EVENT-CREATE CUDA:RC0 ;
-
-: EVENTS-DESTROY ( -- )
-   START-EVT @ 0 <> if START-EVT @ >CUDA-EVENT CUDA:CU-EVENT-DESTROY CUDA:RC0 then
-   STOP-EVT @ 0 <> if STOP-EVT @ >CUDA-EVENT CUDA:CU-EVENT-DESTROY CUDA:RC0 then
-   0 START-EVT ! 0 STOP-EVT ! ;
+   START-EVT @ >CUDA-EVENT CUDA-SCOPE:OWN-EVENT
+   STOP-EVT 0 CUDA:CU-EVENT-CREATE CUDA:RC0
+   STOP-EVT @ >CUDA-EVENT CUDA-SCOPE:OWN-EVENT ;
 
 : RECORD-START ( -- )
    START-EVT @ >CUDA-EVENT 0 CUDA:CU-EVENT-RECORD CUDA:RC0 ;
@@ -174,6 +173,13 @@ public
    DEV @ 0 <> if DEV @ >CUDA-DEV CUDA:CU-DEVICE-PRIMARY-CTX-RELEASE CUDA:RC0 then
    0 DEV ! 0 CTX ! ;
 
+\ ---- scope ownership: transfer PTXBENCH-held handles into the caller's CUDA-SCOPE frame.
+\ A consumer wraps its whole run in a scope and, after OPEN/LOAD/DEVICE-ALLOC, transfers the
+\ handle so the frame unwinds it (freeing the open-coded UNLOAD/CLOSE/DEVICE-FREE list).
+: OWN-CTX ( -- )        DEV @ >CUDA-DEV CUDA-SCOPE:OWN-PRIMARY-CTX ;    \ retained primary context (released via the device handle)
+: OWN-MOD ( -- )        MOD @ >CUDA-MOD CUDA-SCOPE:OWN-MODULE ;         \ loaded module
+: OWN-DEV ( ptr a -- )  @ >CUDA-DEVPTR CUDA-SCOPE:OWN-DEVPTR ;          \ a DEVICE-ALLOC buffer, by its holding variable
+
 : DEVICE-ALLOC ( n ptr a -- )
    {: bytes:n out:ptr :}
    out bytes >LEN CUDA:CU-MEM-ALLOC CUDA:RC0 ;
@@ -227,16 +233,16 @@ public
 : BENCH-NS ( -- n )
    BENCH-HOST-NS ;
 
-: BENCH-GPU-NS ( -- n )
-   EVENTS-CREATE
-   LAUNCH SYNC
-   RECORD-START
-   ITERS-N @ 0 ?do LAUNCH loop
-   RECORD-STOP
-   STOP-EVENT-SYNC
-   EVENT-ELAPSED-NS {: ns:n :}
-   EVENTS-DESTROY
-   ns ;
+: BENCH-GPU-NS ( -- n )                  \ events owned by a per-call scope: a throw mid-burst still destroys them
+   [: EVENTS-OWN
+      LAUNCH SYNC
+      RECORD-START
+      ITERS-N @ 0 ?do LAUNCH loop
+      RECORD-STOP
+      STOP-EVENT-SYNC
+      EVENT-ELAPSED-NS BENCH-NS-TMP ! ;] CUDA-SCOPE:SCOPE
+   0 START-EVT ! 0 STOP-EVT !
+   BENCH-NS-TMP @ ;
 
 : REPORT-HEADER ( -- )
    s" kernel=" type LABEL$ type

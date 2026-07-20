@@ -9,6 +9,7 @@ require lib/test.f
 require lib/ptx/toolchain.f
 require lib/ptx/sentinel.f
 require lib/ptx/cuda-driver.f
+require lib/ptx/cuda-scope.f
 
 create RA-PATH 64 allot  create RA-KN 32 allot
 variable RA-DEV variable RA-CTX variable RA-MOD variable RA-FUNC
@@ -33,16 +34,18 @@ create RA-O $4000 allot  create RA-E $1000 allot  create RA-QO $1000 allot creat
 
 : RA-RUN ( -- n )   \ launch 256 threads, out=0 -> out[0] f32 bits (= 256.0)
    RA-RBUF 4 PTXSENT:FILL                                            \ poison readback: dropped copy-back fails closed
-   CUDA:OPEN
+   [: CUDA:OPEN                                                      \ acquire+own ctx/module/buffer; scope unwinds on return or throw
    0 CUDA:CU-INIT CUDA:RC0
    RA-DEV 0 >IDX CUDA:CU-DEVICE-GET CUDA:RC0
    RA-CTX RA-DEV @ >CUDA-DEV CUDA:CU-DEVICE-PRIMARY-CTX-RETAIN CUDA:RC0
+   RA-DEV @ >CUDA-DEV CUDA-SCOPE:OWN-PRIMARY-CTX
    RA-CTX @ >CUDA-CTX CUDA:CU-CTX-SET-CURRENT CUDA:RC0
    PTXTC:CUBIN$ RA-PATH >CSTR
    RA-MOD RA-PATH CUDA:CU-MODULE-LOAD CUDA:RC0
+   RA-MOD @ >CUDA-MOD CUDA-SCOPE:OWN-MODULE
    s" REDADD" RA-KN >CSTR
    RA-FUNC RA-MOD @ >CUDA-MOD RA-KN CUDA:CU-MODULE-GET-FUNCTION CUDA:RC0
-   RA-OUT 16 >LEN CUDA:CU-MEM-ALLOC CUDA:RC0
+   RA-OUT 16 >LEN CUDA:CU-MEM-ALLOC CUDA:RC0  RA-OUT @ >CUDA-DEVPTR CUDA-SCOPE:OWN-DEVPTR
    RA-OUT @ >CUDA-DEVPTR 0 1 >COUNT CUDA:CU-MEMSET-D32 CUDA:RC0      \ out = 0
    256 RA-NV !
    RA-FUNC @ >CUDA-FN 256 1 1 CUDA:CU-FUNC-SET-BLOCK-SHAPE CUDA:RC0
@@ -52,8 +55,7 @@ create RA-O $4000 allot  create RA-E $1000 allot  create RA-QO $1000 allot creat
    RA-FUNC @ >CUDA-FN 1 1 CUDA:CU-LAUNCH-GRID CUDA:RC0
    CUDA:CU-CTX-SYNCHRONIZE CUDA:RC0
    RA-RBUF RA-OUT @ >CUDA-DEVPTR 4 >LEN CUDA:DTOH
-   RA-MOD @ >CUDA-MOD CUDA:CU-MODULE-UNLOAD CUDA:RC0
-   RA-DEV @ >CUDA-DEV CUDA:CU-DEVICE-PRIMARY-CTX-RELEASE CUDA:RC0    \ release or bin/hb hangs at exit
+   ;] CUDA-SCOPE:SCOPE                                               \ unwind frees buffer, unloads module, releases ctx (or bin/hb hangs at exit)
    RA-RBUF @ $FFFFFFFF and PTXSENT:GUARD ;
 
 : REDADD-MAIN ( -- )

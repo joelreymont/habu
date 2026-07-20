@@ -29,6 +29,7 @@ require lib/ptx/launch.f
 require lib/ptx/toolchain.f
 require lib/ptx/sentinel.f
 require lib/ptx/cuda-driver.f
+require lib/ptx/cuda-scope.f
 require maki/eval/active-target.f
 
 4 constant ROK
@@ -78,17 +79,19 @@ variable RO-FWD variable RO-BWD variable RO-dX variable RO-dCOS variable RO-dSIN
    0 CUDA:CU-INIT CUDA:RC0
    RO-DEV 0 >IDX CUDA:CU-DEVICE-GET CUDA:RC0
    RO-CTX RO-DEV @ >CUDA-DEV CUDA:CU-DEVICE-PRIMARY-CTX-RETAIN CUDA:RC0
+   RO-DEV @ >CUDA-DEV CUDA-SCOPE:OWN-PRIMARY-CTX
    RO-CTX @ >CUDA-CTX CUDA:CU-CTX-SET-CURRENT CUDA:RC0
    PTXTC:CUBIN$ RO-P1 >CSTR
    RO-MF RO-P1 CUDA:CU-MODULE-LOAD CUDA:RC0
+   RO-MF @ >CUDA-MOD CUDA-SCOPE:OWN-MODULE
    s" ROPE_ROWS" RO-KF >CSTR
    RO-FWD RO-MF @ >CUDA-MOD RO-KF CUDA:CU-MODULE-GET-FUNCTION CUDA:RC0
    s" ROPE_BWD_ROWS" RO-KB >CSTR
    RO-BWD RO-MF @ >CUDA-MOD RO-KB CUDA:CU-MODULE-GET-FUNCTION CUDA:RC0
-   RO-dX 16 >LEN CUDA:CU-MEM-ALLOC CUDA:RC0
-   RO-dCOS 16 >LEN CUDA:CU-MEM-ALLOC CUDA:RC0
-   RO-dSIN 16 >LEN CUDA:CU-MEM-ALLOC CUDA:RC0
-   RO-dO 16 >LEN CUDA:CU-MEM-ALLOC CUDA:RC0
+   RO-dX 16 >LEN CUDA:CU-MEM-ALLOC CUDA:RC0    RO-dX @ >CUDA-DEVPTR CUDA-SCOPE:OWN-DEVPTR
+   RO-dCOS 16 >LEN CUDA:CU-MEM-ALLOC CUDA:RC0  RO-dCOS @ >CUDA-DEVPTR CUDA-SCOPE:OWN-DEVPTR
+   RO-dSIN 16 >LEN CUDA:CU-MEM-ALLOC CUDA:RC0  RO-dSIN @ >CUDA-DEVPTR CUDA-SCOPE:OWN-DEVPTR
+   RO-dO 16 >LEN CUDA:CU-MEM-ALLOC CUDA:RC0    RO-dO @ >CUDA-DEVPTR CUDA-SCOPE:OWN-DEVPTR
    HCOS RO-IN PACK4  RO-dCOS @ >CUDA-DEVPTR RO-IN 16 >LEN CUDA:HTOD
    HSIN RO-IN PACK4  RO-dSIN @ >CUDA-DEVPTR RO-IN 16 >LEN CUDA:HTOD
    ROK RO-KV ! ;
@@ -116,10 +119,6 @@ variable RO-FWD variable RO-BWD variable RO-dX variable RO-dCOS variable RO-dSIN
 : RO-FWD-RUN ( ptr a ptr a -- )  RO-FWD RO-LAUNCH ;
 : RO-BWD-RUN ( -- )              HDY HDXA RO-BWD RO-LAUNCH ;
 
-: RO-RELEASE ( -- )
-   RO-MF @ >CUDA-MOD CUDA:CU-MODULE-UNLOAD CUDA:RC0
-   RO-DEV @ >CUDA-DEV CUDA:CU-DEVICE-PRIMARY-CTX-RELEASE CUDA:RC0 ;
-
 : RO-EPS ( -- r )  1.0 1024.0 f/ ;                   \ 2^-10, exact f32
 : RO-NUM-J ( n -- r ) {: jx :}
    HX jx T-GET {: x0 :}
@@ -145,12 +144,12 @@ variable RO-FWD variable RO-BWD variable RO-dX variable RO-dCOS variable RO-dSIN
    0.479425538604203  HSIN 0 T-SET  0.479425538604203  HSIN 1 T-SET
    0.8414709848078965 HSIN 2 T-SET  0.8414709848078965 HSIN 3 T-SET
    RO-REF
-   RO-SETUP
-   HX HYDEV RO-FWD-RUN                                \ device forward golden
-   ROK 0 ?do  HYDEV i T-GET  HYREF i T-GET  RO-NEAR?  TTRUE  loop
-   ROK 0 ?do  i RO-NUM-J  HDXN i T-SET  loop          \ numerical gradient (x only)
-   RO-BWD-RUN                                         \ analytic gradient -> HDXA
-   RO-RELEASE
+   [: RO-SETUP                                        \ acquire+own ctx/module/buffers; scope unwinds on return or throw
+      HX HYDEV RO-FWD-RUN                             \ device forward golden
+      ROK 0 ?do  HYDEV i T-GET  HYREF i T-GET  RO-NEAR?  TTRUE  loop
+      ROK 0 ?do  i RO-NUM-J  HDXN i T-SET  loop       \ numerical gradient (x only)
+      RO-BWD-RUN                                      \ analytic gradient -> HDXA
+   ;] CUDA-SCOPE:SCOPE
    ROK 0 ?do  HDXN i T-GET  HDXA i T-GET  RO-GNEAR?  TTRUE  loop ;
 
 : ROPE-DEVICE-MAIN ( -- )

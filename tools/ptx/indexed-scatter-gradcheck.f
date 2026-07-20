@@ -13,6 +13,7 @@ require lib/fmt.f
 require src/arch/ptx/emit.f
 require lib/ptx/cg.f
 require lib/ptx/toolchain.f
+require lib/ptx/cuda-scope.f
 require tools/ptx/bench.f
 
 package PTXINDEXGRAD
@@ -94,29 +95,12 @@ variable NDATA
    BLOCK-N PTXBENCH:BLOCK!
    PARAM-BYTES PTXBENCH:PARAM-BYTES!
    GRID-N PTXBENCH:GRID!
-   PTXBENCH:OPEN
-   INDEX-N WORD-BYTES * PIDX PTXBENCH:DEVICE-ALLOC
-   WORD-BYTES PX PTXBENCH:DEVICE-ALLOC
-   WORD-BYTES POUT PTXBENCH:DEVICE-ALLOC
-   WORD-BYTES PDX PTXBENCH:DEVICE-ALLOC
-   WORD-BYTES PDZ PTXBENCH:DEVICE-ALLOC ;
-
-: FREE-DEV ( n -- )
-   dup 0 <> if
-      PTXBENCH:DEVICE-FREE
-   else
-      drop
-   then ;
-
-: RELEASE ( -- )
-   PTXBENCH:UNLOAD
-   PIDX @ FREE-DEV
-   PX @ FREE-DEV
-   POUT @ FREE-DEV
-   PDX @ FREE-DEV
-   PDZ @ FREE-DEV
-   0 PIDX ! 0 PX ! 0 POUT ! 0 PDX ! 0 PDZ !
-   PTXBENCH:CLOSE ;
+   PTXBENCH:OPEN  PTXBENCH:OWN-CTX                   \ scope owns the primary context...
+   INDEX-N WORD-BYTES * PIDX PTXBENCH:DEVICE-ALLOC  PIDX PTXBENCH:OWN-DEV   \ ...and each device buffer
+   WORD-BYTES PX PTXBENCH:DEVICE-ALLOC   PX PTXBENCH:OWN-DEV
+   WORD-BYTES POUT PTXBENCH:DEVICE-ALLOC POUT PTXBENCH:OWN-DEV
+   WORD-BYTES PDX PTXBENCH:DEVICE-ALLOC  PDX PTXBENCH:OWN-DEV
+   WORD-BYTES PDZ PTXBENCH:DEVICE-ALLOC  PDZ PTXBENCH:OWN-DEV ;
 
 : LOAD-KERNEL ( ptr u8 n -- )
    PTXBENCH:UNLOAD
@@ -182,6 +166,16 @@ variable NDATA
 : NEAR? ( r r -- bool )
    ABS-DIFF 0.05 f< ;
 
+\ device body under the run scope: SETUP owns ctx + buffers; the module is the mutable
+\ reload slot (PTXBENCH:LOAD/UNLOAD), unloaded here on success. A throw unwinds ctx + buffers.
+: RUN-BODY ( -- )
+   SETUP
+   CENTRAL {: num:r :}
+   RUN-BWD {: analytic:n :}
+   analytic EXPECTED-BITS T=
+   analytic F32>F64 num NEAR? TTRUE
+   PTXBENCH:UNLOAD ;
+
 : MAIN ( -- )
    T-RESET
    s" habu-ptx-indexed" PTXTC:PREPARE
@@ -189,12 +183,7 @@ variable NDATA
    erc 0 T=
    outn 0 > TTRUE
    PTXAS-INDEXED 0 T=
-   SETUP
-   CENTRAL {: num:r :}
-   RUN-BWD {: analytic:n :}
-   analytic EXPECTED-BITS T=
-   analytic F32>F64 num NEAR? TTRUE
-   RELEASE
+   [: RUN-BODY ;] CUDA-SCOPE:SCOPE
    PTXTC:CLEAN
    s" device gradcheck: indexed scatter-add duplicates verified for n=1024" type cr
    T-REPORT ;

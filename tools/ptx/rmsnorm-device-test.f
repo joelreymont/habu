@@ -30,6 +30,7 @@ require lib/ptx/launch.f
 require lib/ptx/toolchain.f
 require lib/ptx/sentinel.f
 require lib/ptx/cuda-driver.f
+require lib/ptx/cuda-scope.f
 require maki/eval/active-target.f
 
 4 constant RNK
@@ -79,16 +80,18 @@ variable RN-FWD variable RN-BWD variable RN-dX variable RN-dDY variable RN-dO va
    0 CUDA:CU-INIT CUDA:RC0
    RN-DEV 0 >IDX CUDA:CU-DEVICE-GET CUDA:RC0
    RN-CTX RN-DEV @ >CUDA-DEV CUDA:CU-DEVICE-PRIMARY-CTX-RETAIN CUDA:RC0
+   RN-DEV @ >CUDA-DEV CUDA-SCOPE:OWN-PRIMARY-CTX
    RN-CTX @ >CUDA-CTX CUDA:CU-CTX-SET-CURRENT CUDA:RC0
    PTXTC:CUBIN$ RN-P1 >CSTR
    RN-MF RN-P1 CUDA:CU-MODULE-LOAD CUDA:RC0
+   RN-MF @ >CUDA-MOD CUDA-SCOPE:OWN-MODULE
    s" RMSNORM_ROWS" RN-KF >CSTR
    RN-FWD RN-MF @ >CUDA-MOD RN-KF CUDA:CU-MODULE-GET-FUNCTION CUDA:RC0
    s" RMSNORM_BWD_ROWS" RN-KB >CSTR
    RN-BWD RN-MF @ >CUDA-MOD RN-KB CUDA:CU-MODULE-GET-FUNCTION CUDA:RC0
-   RN-dX 16 >LEN CUDA:CU-MEM-ALLOC CUDA:RC0
-   RN-dDY 16 >LEN CUDA:CU-MEM-ALLOC CUDA:RC0
-   RN-dO 16 >LEN CUDA:CU-MEM-ALLOC CUDA:RC0
+   RN-dX 16 >LEN CUDA:CU-MEM-ALLOC CUDA:RC0   RN-dX @ >CUDA-DEVPTR CUDA-SCOPE:OWN-DEVPTR
+   RN-dDY 16 >LEN CUDA:CU-MEM-ALLOC CUDA:RC0  RN-dDY @ >CUDA-DEVPTR CUDA-SCOPE:OWN-DEVPTR
+   RN-dO 16 >LEN CUDA:CU-MEM-ALLOC CUDA:RC0   RN-dO @ >CUDA-DEVPTR CUDA-SCOPE:OWN-DEVPTR
    RNK RN-KV ! ;
 
 \ forward RMSNORM_ROWS on f64 input `src`, f64 output to `dst` (in=%rd1 out=%rd2 k=%r1)
@@ -127,10 +130,6 @@ variable RN-FWD variable RN-BWD variable RN-dX variable RN-dDY variable RN-dO va
    RN-OUT-GUARD
    RN-OUT HDXA UNPACK4 ;
 
-: RN-RELEASE ( -- )
-   RN-MF @ >CUDA-MOD CUDA:CU-MODULE-UNLOAD CUDA:RC0
-   RN-DEV @ >CUDA-DEV CUDA:CU-DEVICE-PRIMARY-CTX-RELEASE CUDA:RC0 ;
-
 \ numerical dx[j] = sum_i dy[i]*(y+[i]-y-[i]) / (2 eps)
 : RN-EPS ( -- r )  1.0 4096.0 f/ ;                  \ 2^-12, exact f32
 : RN-NUM-J ( n -- r ) {: jx :}
@@ -148,12 +147,12 @@ variable RN-FWD variable RN-BWD variable RN-dX variable RN-dDY variable RN-dO va
    1.0 HX 0 T-SET  2.0 HX 1 T-SET  0.5 HX 2 T-SET  1.5 HX 3 T-SET
    0.1 HDY 0 T-SET 0.2 HDY 1 T-SET 0.3 HDY 2 T-SET 0.4 HDY 3 T-SET
    HX HYREF RNK MAKI:RMS-FWD                           \ maki CPU reference (f64)
-   RN-SETUP
-   HX HYDEV RN-FWD-RUN                                \ device forward golden
-   RNK 0 ?do  HYDEV i T-GET  HYREF i T-GET  RN-NEAR?  TTRUE  loop
-   RNK 0 ?do  i RN-NUM-J  HDXN i T-SET  loop          \ numerical gradient
-   RN-BWD-RUN                                         \ analytic gradient -> HDXA
-   RN-RELEASE
+   [: RN-SETUP                                         \ acquire+own ctx/module/buffers; scope unwinds on return or throw
+      HX HYDEV RN-FWD-RUN                              \ device forward golden
+      RNK 0 ?do  HYDEV i T-GET  HYREF i T-GET  RN-NEAR?  TTRUE  loop
+      RNK 0 ?do  i RN-NUM-J  HDXN i T-SET  loop        \ numerical gradient
+      RN-BWD-RUN                                       \ analytic gradient -> HDXA
+   ;] CUDA-SCOPE:SCOPE
    RNK 0 ?do  HDXN i T-GET  HDXA i T-GET  RN-NEAR?  TTRUE  loop ;
 
 : RMSNORM-DEVICE-MAIN ( -- )

@@ -9,6 +9,7 @@ require lib/fs.f
 require lib/process-argv.f
 require lib/ptx/toolchain.f
 require lib/ptx/sentinel.f
+require lib/ptx/cuda-scope.f
 require tools/ptx/bench.f
 
 package PTXV4TAIL
@@ -32,6 +33,7 @@ variable DX
 variable DY
 variable A
 variable NVAR
+variable CN-N                                     \ current CHECK-N element count, read by the inner-scope body
 
 : U32@ ( ptr u8 -- n )
    dup c@
@@ -90,30 +92,17 @@ variable NVAR
    s" SAXPY-V4-TAIL" PTXBENCH:LABEL!
    V4-BLOCK PTXBENCH:BLOCK!
    24 PTXBENCH:PARAM-BYTES!
-   PTXBENCH:OPEN
-   PTXBENCH:LOAD ;
-
-: RELEASE ( -- )
-   PTXBENCH:UNLOAD
-   PTXBENCH:CLOSE ;
+   PTXBENCH:OPEN  PTXBENCH:OWN-CTX                   \ run scope owns ctx + module (loaded once, reused)
+   PTXBENCH:LOAD  PTXBENCH:OWN-MOD ;
 
 : ALLOC-N ( n -- )
    {: n:n :}
    n BYTES-FOR {: bytes:n :}
-   bytes DX PTXBENCH:DEVICE-ALLOC
-   bytes DY PTXBENCH:DEVICE-ALLOC
+   bytes DX PTXBENCH:DEVICE-ALLOC  DX PTXBENCH:OWN-DEV   \ owned by the per-CHECK-N inner scope
+   bytes DY PTXBENCH:DEVICE-ALLOC  DY PTXBENCH:OWN-DEV
    DX @ X-BITS n 1+ PTXBENCH:DEVICE-MEMSET32
    DY @ SENTINEL-BITS n 1+ PTXBENCH:DEVICE-MEMSET32
    DY @ 0 n PTXBENCH:DEVICE-MEMSET32 ;
-
-: FREE-N ( -- )
-   DX @ 0 <> if
-      DX @ PTXBENCH:DEVICE-FREE
-   then
-   DY @ 0 <> if
-      DY @ PTXBENCH:DEVICE-FREE
-   then
-   0 DX ! 0 DY ! ;
 
 : PARAMS-N ( n -- )
    {: n:n :}
@@ -132,16 +121,19 @@ variable NVAR
    RB DY @ idx 4 * + 4 PTXBENCH:DTOH
    RB U32@ PTXSENT:GUARD want T= ;
 
-: CHECK-N ( n -- )
-   {: n:n :}
-   n ALLOC-N
-   n PARAMS-N
+\ inner-scope body: per-CHECK-N device buffers are owned by the frame this runs under,
+\ so each check's DX/DY unwind on return or throw (no open-coded FREE-N list).
+: CHECK-N-BODY ( -- )
+   CN-N @ ALLOC-N
+   CN-N @ PARAMS-N
    PTXBENCH:LAUNCH
    PTXBENCH:SYNC
    0 Y-BITS CHECK-ELEM
-   n 1- Y-BITS CHECK-ELEM
-   n SENTINEL-BITS CHECK-ELEM
-   FREE-N ;
+   CN-N @ 1- Y-BITS CHECK-ELEM
+   CN-N @ SENTINEL-BITS CHECK-ELEM ;
+
+: CHECK-N ( n -- )
+   CN-N !  [: CHECK-N-BODY ;] CUDA-SCOPE:SCOPE ;
 
 : MAIN ( -- )
    T-RESET
@@ -154,12 +146,11 @@ variable NVAR
    erc 0 T=
    outn 0 > TTRUE
    PTXAS-V4-SAXPY 0 T=
-   SETUP
-   4 CHECK-N
-   5 CHECK-N
-   7 CHECK-N
-   1000003 CHECK-N
-   RELEASE
+   [: SETUP                            \ run scope owns ctx + module across the four checks
+      4 CHECK-N
+      5 CHECK-N
+      7 CHECK-N
+      1000003 CHECK-N ;] CUDA-SCOPE:SCOPE
    PTXTC:CLEAN
    s" device: SAXPY-V4 scalar residual tail verified for n=4,5,7,1000003" type cr
    T-REPORT ;

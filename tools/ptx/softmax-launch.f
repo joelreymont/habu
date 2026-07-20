@@ -26,6 +26,7 @@ require lib/ptx/launch.f
 require lib/ptx/toolchain.f
 require lib/ptx/sentinel.f
 require lib/ptx/cuda-driver.f
+require lib/ptx/cuda-scope.f
 
 create SL-PATH 64 allot  create SL-KN 32 allot
 create SL-HIN 32 allot  create SL-HOUT 32 allot
@@ -75,17 +76,19 @@ variable SL-DIN variable SL-DOUT variable SL-KV
    0 CUDA:CU-INIT CUDA:RC0
    SL-DEV 0 >IDX CUDA:CU-DEVICE-GET CUDA:RC0
    SL-CTX SL-DEV @ >CUDA-DEV CUDA:CU-DEVICE-PRIMARY-CTX-RETAIN CUDA:RC0
+   SL-DEV @ >CUDA-DEV CUDA-SCOPE:OWN-PRIMARY-CTX
    SL-CTX @ >CUDA-CTX CUDA:CU-CTX-SET-CURRENT CUDA:RC0
    PTXTC:CUBIN$ SL-PATH >CSTR
    SL-MOD SL-PATH CUDA:CU-MODULE-LOAD CUDA:RC0
+   SL-MOD @ >CUDA-MOD CUDA-SCOPE:OWN-MODULE
    s" SOFTMAX_ROWS" SL-KN >CSTR
    SL-FUNC SL-MOD @ >CUDA-MOD SL-KN CUDA:CU-MODULE-GET-FUNCTION CUDA:RC0 ;
 
 : SL-LAUNCH ( -- )                                    \ grid = 2 rows, block = 256
    SL-HOUT 32 PTXSENT:FILL                            \ poison readback: dropped copy-back fails closed
    2 4 256 PTX-ROW-LAUNCH-CHECK
-   SL-DIN 32 >LEN CUDA:CU-MEM-ALLOC CUDA:RC0
-   SL-DOUT 32 >LEN CUDA:CU-MEM-ALLOC CUDA:RC0
+   SL-DIN 32 >LEN CUDA:CU-MEM-ALLOC CUDA:RC0   SL-DIN @ >CUDA-DEVPTR CUDA-SCOPE:OWN-DEVPTR
+   SL-DOUT 32 >LEN CUDA:CU-MEM-ALLOC CUDA:RC0  SL-DOUT @ >CUDA-DEVPTR CUDA-SCOPE:OWN-DEVPTR
    SL-DIN @ >CUDA-DEVPTR SL-HIN 32 >LEN CUDA:HTOD
    4 SL-KV !
    SL-FUNC @ >CUDA-FN 256 1 1 CUDA:CU-FUNC-SET-BLOCK-SHAPE CUDA:RC0
@@ -96,10 +99,6 @@ variable SL-DIN variable SL-DOUT variable SL-KV
    SL-FUNC @ >CUDA-FN 2 1 CUDA:CU-LAUNCH-GRID CUDA:RC0
    CUDA:CU-CTX-SYNCHRONIZE CUDA:RC0
    SL-HOUT SL-DOUT @ >CUDA-DEVPTR 32 >LEN CUDA:DTOH ;
-
-: SL-RELEASE ( -- )
-   SL-MOD @ >CUDA-MOD CUDA:CU-MODULE-UNLOAD CUDA:RC0
-   SL-DEV @ >CUDA-DEV CUDA:CU-DEVICE-PRIMARY-CTX-RELEASE CUDA:RC0 ;
 
 \ within 2 ULP of golden (ex2.approx introduces <= 1 ULP on the exp path)
 : SL-NEAR? ( n n -- bool )  - abs 2 <= ;
@@ -113,7 +112,7 @@ variable SL-DIN variable SL-DOUT variable SL-KV
    s" habu-ptx-softmax" PTXTC:PREPARE
    SL-EMIT drop
    SL-PTXAS PTXTC:ASM-REPORT 0 T=                  \ surface ptxas stderr before the assert
-   SL-PUT SL-SETUP SL-LAUNCH SL-RELEASE
+   SL-PUT  [: SL-SETUP SL-LAUNCH ;] CUDA-SCOPE:SCOPE   \ acquire+own+launch; scope unwinds ctx/module/buffers
    PTXTC:CLEAN
    \ row0 = softmax([1,2,3,4]) within 2 ULP of the CPU golden
    0 SL-F32@ PTXSENT:GUARD 1023627234 SL-NEAR? TTRUE

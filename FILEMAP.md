@@ -434,6 +434,11 @@ points stay listed.
   has the relu max.f32 clamp; bandwidth SAXPY has scale+bias but no clamp), plus a
   fail-closed missing-producer throw. Inprocess ptx-toolchain member; mirrors
   `tools/ptx/fusion-emit-test.f`.
+- `tools/ptx/cuda-scope-leak-proof-test.f` — host-only both-direction leak proof for
+  the tools/ptx CUDA-lifecycle migration onto CUDA-SCOPE: recording fake release ops
+  (REL-*!) show the unfixed-base launcher/bench shapes leak on a mid-pipeline throw
+  (release never called) while the migrated OWN-* frames unwind every resource in
+  reverse acquisition order. No GPU. Inprocess ptx-toolchain member.
 - `tools/ptx/smem-cg.f` — checked shared-memory tile body run through the PTX
   codegen, proving `COOP-CTX`/`STAGE`/`SLOAD`/`SSTORE` emit barriers and shared
   loads/stores.

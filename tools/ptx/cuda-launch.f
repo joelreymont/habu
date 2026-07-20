@@ -29,6 +29,7 @@ require lib/ffi.f
 require lib/ptx/toolchain.f
 require lib/ptx/sentinel.f
 require lib/ptx/cuda-driver.f
+require lib/ptx/cuda-scope.f
 require lib/test.f
 
 create LL-PATH 64 allot
@@ -66,9 +67,11 @@ variable LL-DX variable LL-DY variable LL-ABITS variable LL-NV variable LL-RBUF
    0 CUDA:CU-INIT CUDA:RC0
    LL-DEV 0 >IDX CUDA:CU-DEVICE-GET CUDA:RC0
    LL-CTX LL-DEV @ >CUDA-DEV CUDA:CU-DEVICE-PRIMARY-CTX-RETAIN CUDA:RC0
+   LL-DEV @ >CUDA-DEV CUDA-SCOPE:OWN-PRIMARY-CTX
    LL-CTX @ >CUDA-CTX CUDA:CU-CTX-SET-CURRENT CUDA:RC0
    PTXTC:CUBIN$ LL-PATH >CSTR
    LL-MOD LL-PATH CUDA:CU-MODULE-LOAD CUDA:RC0
+   LL-MOD @ >CUDA-MOD CUDA-SCOPE:OWN-MODULE
    KABI:NAME$ LL-KN >CSTR                         \ kernel entry name from the ABI record
    LL-FUNC LL-MOD @ >CUDA-MOD LL-KN CUDA:CU-MODULE-GET-FUNCTION CUDA:RC0 ;
 
@@ -80,8 +83,8 @@ variable LL-DX variable LL-DY variable LL-ABITS variable LL-NV variable LL-RBUF
 
 : LL-LAUNCH ( r -- )  {: a:r :}                   \ marshal a, alloc, launch, copy back, free
    LL-RBUF 4 PTXSENT:FILL                                                  \ poison readback: dropped copy-back fails closed
-   LL-DX 16 >LEN CUDA:CU-MEM-ALLOC CUDA:RC0
-   LL-DY 16 >LEN CUDA:CU-MEM-ALLOC CUDA:RC0
+   LL-DX 16 >LEN CUDA:CU-MEM-ALLOC CUDA:RC0  LL-DX @ >CUDA-DEVPTR CUDA-SCOPE:OWN-DEVPTR
+   LL-DY 16 >LEN CUDA:CU-MEM-ALLOC CUDA:RC0  LL-DY @ >CUDA-DEVPTR CUDA-SCOPE:OWN-DEVPTR
    LL-DX @ >CUDA-DEVPTR 2.0 F64>F32 4 >COUNT CUDA:CU-MEMSET-D32 CUDA:RC0   \ x = 2.0
    LL-DY @ >CUDA-DEVPTR 0 4 >COUNT CUDA:CU-MEMSET-D32 CUDA:RC0             \ y = 0
    a F64>F32 LL-ABITS !  4 LL-NV !                                        \ arbitrary a, n = 4
@@ -93,13 +96,7 @@ variable LL-DX variable LL-DY variable LL-ABITS variable LL-NV variable LL-RBUF
    LL-FUNC @ >CUDA-FN s" n" LL-POFF LL-NV s" n" LL-PLEN CUDA:CU-PARAM-SET-V CUDA:RC0
    LL-FUNC @ >CUDA-FN 1 1 CUDA:CU-LAUNCH-GRID CUDA:RC0
    CUDA:CU-CTX-SYNCHRONIZE CUDA:RC0
-   LL-RBUF LL-DY @ >CUDA-DEVPTR 4 >LEN CUDA:DTOH
-   LL-DX @ >CUDA-DEVPTR CUDA:CU-MEM-FREE CUDA:RC0
-   LL-DY @ >CUDA-DEVPTR CUDA:CU-MEM-FREE CUDA:RC0 ;
-
-: LL-RELEASE ( -- )
-   LL-MOD @ >CUDA-MOD CUDA:CU-MODULE-UNLOAD CUDA:RC0
-   LL-DEV @ >CUDA-DEV CUDA:CU-DEVICE-PRIMARY-CTX-RELEASE CUDA:RC0 ;
+   LL-RBUF LL-DY @ >CUDA-DEVPTR 4 >LEN CUDA:DTOH ;   \ DX/DY owned by the run scope; freed on unwind
 
 : SAXPY-GPU-BITS ( -- n )  LL-RBUF @ $FFFFFFFF and PTXSENT:GUARD ;   \ read-back f32 bits (fail-closed on dropped copy-back)
 
@@ -139,10 +136,10 @@ variable LL-DX variable LL-DY variable LL-ABITS variable LL-NV variable LL-RBUF
    s" habu-ptx-cuda-launch" PTXTC:PREPARE
    LL-EMIT drop                         \ self-emit the checked scalar SAXPY PTX (fail-closed)
    LL-PTXAS PTXTC:ASM-REPORT 0 T=       \ ptxas rc 0 (stderr surfaced on failure)
-   LL-SETUP
-   3.0 LL-LAUNCH  3.0 SAXPY-CHECK       \ regression: a=3.0 golden 0x40C00000
-   1.7 LL-LAUNCH  1.7 SAXPY-CHECK       \ arbitrary: a=1.7 golden 0x4059999A
-   LL-RELEASE
+   [: LL-SETUP                          \ acquire+own ctx/module; per-launch buffers owned in the same frame
+      3.0 LL-LAUNCH  3.0 SAXPY-CHECK    \ regression: a=3.0 golden 0x40C00000
+      1.7 LL-LAUNCH  1.7 SAXPY-CHECK    \ arbitrary: a=1.7 golden 0x4059999A
+   ;] CUDA-SCOPE:SCOPE
    PTXTC:CLEAN
    T-REPORT ;
 

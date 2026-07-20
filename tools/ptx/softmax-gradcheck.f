@@ -26,6 +26,7 @@ require lib/ptx/launch.f
 require lib/ptx/toolchain.f
 require lib/ptx/sentinel.f
 require lib/ptx/cuda-driver.f
+require lib/ptx/cuda-scope.f
 
 4 constant GCK
 create GC-P1 64 allot
@@ -75,16 +76,18 @@ variable GC-FWD variable GC-BWD variable GC-dX variable GC-dDY variable GC-dO va
    0 CUDA:CU-INIT CUDA:RC0
    GC-DEV 0 >IDX CUDA:CU-DEVICE-GET CUDA:RC0
    GC-CTX GC-DEV @ >CUDA-DEV CUDA:CU-DEVICE-PRIMARY-CTX-RETAIN CUDA:RC0
+   GC-DEV @ >CUDA-DEV CUDA-SCOPE:OWN-PRIMARY-CTX
    GC-CTX @ >CUDA-CTX CUDA:CU-CTX-SET-CURRENT CUDA:RC0
    PTXTC:CUBIN$ GC-P1 >CSTR
    GC-MF GC-P1 CUDA:CU-MODULE-LOAD CUDA:RC0
+   GC-MF @ >CUDA-MOD CUDA-SCOPE:OWN-MODULE
    s" SOFTMAX_ROWS" GC-KF >CSTR
    GC-FWD GC-MF @ >CUDA-MOD GC-KF CUDA:CU-MODULE-GET-FUNCTION CUDA:RC0
    s" SOFTMAX_BWD" GC-KB >CSTR
    GC-BWD GC-MF @ >CUDA-MOD GC-KB CUDA:CU-MODULE-GET-FUNCTION CUDA:RC0      \ same module, second entry
-   GC-dX 16 >LEN CUDA:CU-MEM-ALLOC CUDA:RC0
-   GC-dDY 16 >LEN CUDA:CU-MEM-ALLOC CUDA:RC0
-   GC-dO 16 >LEN CUDA:CU-MEM-ALLOC CUDA:RC0
+   GC-dX 16 >LEN CUDA:CU-MEM-ALLOC CUDA:RC0   GC-dX @ >CUDA-DEVPTR CUDA-SCOPE:OWN-DEVPTR
+   GC-dDY 16 >LEN CUDA:CU-MEM-ALLOC CUDA:RC0  GC-dDY @ >CUDA-DEVPTR CUDA-SCOPE:OWN-DEVPTR
+   GC-dO 16 >LEN CUDA:CU-MEM-ALLOC CUDA:RC0   GC-dO @ >CUDA-DEVPTR CUDA-SCOPE:OWN-DEVPTR
    GCK GC-KV ! ;
 
 \ run the forward softmax on the f64 input array `src`, write the f64 output to `dst`
@@ -123,10 +126,6 @@ variable GC-FWD variable GC-BWD variable GC-dX variable GC-dDY variable GC-dO va
    GC-OUT-GUARD
    GC-OUT HDXA UNPACK4 ;
 
-: GC-RELEASE ( -- )
-   GC-MF @ >CUDA-MOD CUDA:CU-MODULE-UNLOAD CUDA:RC0
-   GC-DEV @ >CUDA-DEV CUDA:CU-DEVICE-PRIMARY-CTX-RELEASE CUDA:RC0 ;
-
 \ numerical dx[j] = sum_i dy[i]*(y+[i]-y-[i]) / (2 eps)
 : GC-EPS ( -- r )  1.0 4096.0 f/ ;                  \ 2^-12, exact f32
 : GC-NUM-J ( n -- r ) {: jx :}
@@ -141,10 +140,10 @@ variable GC-FWD variable GC-BWD variable GC-dX variable GC-dDY variable GC-dO va
 : GC-RUN ( -- )
    1.0 HX 0 T-SET  2.0 HX 1 T-SET  0.5 HX 2 T-SET  1.5 HX 3 T-SET
    0.1 HDY 0 T-SET 0.2 HDY 1 T-SET 0.3 HDY 2 T-SET 0.4 HDY 3 T-SET
-   GC-SETUP
-   GCK 0 ?do  i GC-NUM-J  HDXN i T-SET  loop          \ numerical gradient (forwards)
-   GC-BWD-RUN                                         \ analytic gradient -> HDXA (backward last)
-   GC-RELEASE
+   [: GC-SETUP                                        \ acquire+own ctx/module/buffers; scope unwinds on return or throw
+      GCK 0 ?do  i GC-NUM-J  HDXN i T-SET  loop       \ numerical gradient (forwards)
+      GC-BWD-RUN                                      \ analytic gradient -> HDXA (backward last)
+   ;] CUDA-SCOPE:SCOPE
    GCK 0 ?do  HDXN i T-GET  HDXA i T-GET  f-  fabs  1.0 100.0 f/ f<  TTRUE  loop ;
 
 \ self-emit the combined module, assemble to one private cubin, gradcheck, clean up.

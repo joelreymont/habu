@@ -42,6 +42,7 @@ require lib/ptx/cg.f
 require lib/ptx/toolchain.f
 require lib/ptx/sentinel.f
 require lib/ptx/cuda-driver.f
+require lib/ptx/cuda-scope.f
 
 package DEVGOLD
 
@@ -148,20 +149,22 @@ create SP-X SP-BYTES allot    create SP-Y SP-BYTES allot
 create DG-PATH FS-PATH-CAP allot  create DG-KN 32 allot
 variable DG-DEV variable DG-CTX variable DG-MOD variable DG-FUNC
 
+\ CU-BEGIN / CU-LOAD transfer the retained context + loaded module into the ACTIVE scope
+\ frame (each RUN-* / *-GOLDEN device section opens one); the frame unwinds them on return
+\ or throw - releasing the context (or bin/hb hangs at exit) with no open-coded CU-END list.
 : CU-BEGIN ( -- )
    CUDA:OPEN
    0 CUDA:CU-INIT CUDA:RC0
    DG-DEV 0 >IDX CUDA:CU-DEVICE-GET CUDA:RC0
    DG-CTX DG-DEV @ >CUDA-DEV CUDA:CU-DEVICE-PRIMARY-CTX-RETAIN CUDA:RC0
+   DG-DEV @ >CUDA-DEV CUDA-SCOPE:OWN-PRIMARY-CTX
    DG-CTX @ >CUDA-CTX CUDA:CU-CTX-SET-CURRENT CUDA:RC0 ;
 : CU-LOAD ( ptr u8 n -- ) {: na:ptr nu:n :}      \ load PTXTC:CUBIN$, resolve function <name> into DG-FUNC
    PTXTC:CUBIN$ DG-PATH >CSTR
    DG-MOD DG-PATH CUDA:CU-MODULE-LOAD CUDA:RC0
+   DG-MOD @ >CUDA-MOD CUDA-SCOPE:OWN-MODULE
    na nu DG-KN >CSTR
    DG-FUNC DG-MOD @ >CUDA-MOD DG-KN CUDA:CU-MODULE-GET-FUNCTION CUDA:RC0 ;
-: CU-END ( -- )
-   DG-MOD @ >CUDA-MOD CUDA:CU-MODULE-UNLOAD CUDA:RC0
-   DG-DEV @ >CUDA-DEV CUDA:CU-DEVICE-PRIMARY-CTX-RELEASE CUDA:RC0 ;    \ release or bin/hb hangs at exit
 
 \ ============================ SGEMM (MM) golden ==============================
 \ A[i][k]=1, B[k][j]=((j&3)+1)*0.25 (independent of k), so C[i][j] = 32*B[0][j]
@@ -179,10 +182,10 @@ variable GEMM-OK
 : FILL-GEMM-B ( -- )  GM-B-ELEMS 0 ?do  i GEMM-N mod GEMM-BVAL  GEMM-B i F!  loop ;
 
 : RUN-GEMM ( -- )                                \ launch MM, block 16x16, grid (N/64, M/64); readback -> GEMM-C
-   CU-BEGIN  s" MM" CU-LOAD
-   GM-DA GM-A-BYTES >LEN CUDA:CU-MEM-ALLOC CUDA:RC0
-   GM-DB GM-B-BYTES >LEN CUDA:CU-MEM-ALLOC CUDA:RC0
-   GM-DC GM-C-BYTES >LEN CUDA:CU-MEM-ALLOC CUDA:RC0
+   [: CU-BEGIN  s" MM" CU-LOAD                    \ scope owns ctx/module/buffers; unwinds on return or throw
+   GM-DA GM-A-BYTES >LEN CUDA:CU-MEM-ALLOC CUDA:RC0  GM-DA @ >CUDA-DEVPTR CUDA-SCOPE:OWN-DEVPTR
+   GM-DB GM-B-BYTES >LEN CUDA:CU-MEM-ALLOC CUDA:RC0  GM-DB @ >CUDA-DEVPTR CUDA-SCOPE:OWN-DEVPTR
+   GM-DC GM-C-BYTES >LEN CUDA:CU-MEM-ALLOC CUDA:RC0  GM-DC @ >CUDA-DEVPTR CUDA-SCOPE:OWN-DEVPTR
    GM-DA @ >CUDA-DEVPTR GEMM-A GM-A-BYTES >LEN CUDA:CU-MEMCPY-HTOD CUDA:RC0
    GM-DB @ >CUDA-DEVPTR GEMM-B GM-B-BYTES >LEN CUDA:CU-MEMCPY-HTOD CUDA:RC0
    GM-DC @ >CUDA-DEVPTR PTXSENT:POISON GM-C-ELEMS >COUNT CUDA:CU-MEMSET-D32 CUDA:RC0   \ poison: a dropped write diverges
@@ -198,10 +201,7 @@ variable GEMM-OK
    DG-FUNC @ >CUDA-FN GM-GRID-N GM-GRID-M CUDA:CU-LAUNCH-GRID CUDA:RC0
    CUDA:CU-CTX-SYNCHRONIZE CUDA:RC0
    GEMM-C GM-DC @ >CUDA-DEVPTR GM-C-BYTES >LEN CUDA:CU-MEMCPY-DTOH CUDA:RC0
-   GM-DA @ >CUDA-DEVPTR CUDA:CU-MEM-FREE CUDA:RC0
-   GM-DB @ >CUDA-DEVPTR CUDA:CU-MEM-FREE CUDA:RC0
-   GM-DC @ >CUDA-DEVPTR CUDA:CU-MEM-FREE CUDA:RC0
-   CU-END ;
+   ;] CUDA-SCOPE:SCOPE ;
 
 : GEMM-MAXERR ( -- r )
    0.0  GM-C-ELEMS 0 ?do
@@ -236,11 +236,11 @@ variable AT-NV variable AT-DPARAM
 : FILL-ATTN-V ( -- )  AT-ELEMS 0 ?do  i ATTN-D /mod swap ATTN-VVAL  ATTN-V i F!  loop ;
 
 : RUN-ATTN ( -- )                                \ launch ATTN, block N threads, grid N blocks; readback -> ATTN-O
-   CU-BEGIN  s" ATTN" CU-LOAD
-   AT-DQ AT-BYTES >LEN CUDA:CU-MEM-ALLOC CUDA:RC0
-   AT-DK AT-BYTES >LEN CUDA:CU-MEM-ALLOC CUDA:RC0
-   AT-DV AT-BYTES >LEN CUDA:CU-MEM-ALLOC CUDA:RC0
-   AT-DO AT-BYTES >LEN CUDA:CU-MEM-ALLOC CUDA:RC0
+   [: CU-BEGIN  s" ATTN" CU-LOAD                  \ scope owns ctx/module/buffers; unwinds on return or throw
+   AT-DQ AT-BYTES >LEN CUDA:CU-MEM-ALLOC CUDA:RC0  AT-DQ @ >CUDA-DEVPTR CUDA-SCOPE:OWN-DEVPTR
+   AT-DK AT-BYTES >LEN CUDA:CU-MEM-ALLOC CUDA:RC0  AT-DK @ >CUDA-DEVPTR CUDA-SCOPE:OWN-DEVPTR
+   AT-DV AT-BYTES >LEN CUDA:CU-MEM-ALLOC CUDA:RC0  AT-DV @ >CUDA-DEVPTR CUDA-SCOPE:OWN-DEVPTR
+   AT-DO AT-BYTES >LEN CUDA:CU-MEM-ALLOC CUDA:RC0  AT-DO @ >CUDA-DEVPTR CUDA-SCOPE:OWN-DEVPTR
    AT-DQ @ >CUDA-DEVPTR ATTN-Q AT-BYTES >LEN CUDA:CU-MEMCPY-HTOD CUDA:RC0
    AT-DK @ >CUDA-DEVPTR ATTN-K AT-BYTES >LEN CUDA:CU-MEMCPY-HTOD CUDA:RC0
    AT-DV @ >CUDA-DEVPTR ATTN-V AT-BYTES >LEN CUDA:CU-MEMCPY-HTOD CUDA:RC0
@@ -257,11 +257,7 @@ variable AT-NV variable AT-DPARAM
    DG-FUNC @ >CUDA-FN ATTN-N 1 CUDA:CU-LAUNCH-GRID CUDA:RC0
    CUDA:CU-CTX-SYNCHRONIZE CUDA:RC0
    ATTN-O AT-DO @ >CUDA-DEVPTR AT-BYTES >LEN CUDA:CU-MEMCPY-DTOH CUDA:RC0
-   AT-DQ @ >CUDA-DEVPTR CUDA:CU-MEM-FREE CUDA:RC0
-   AT-DK @ >CUDA-DEVPTR CUDA:CU-MEM-FREE CUDA:RC0
-   AT-DV @ >CUDA-DEVPTR CUDA:CU-MEM-FREE CUDA:RC0
-   AT-DO @ >CUDA-DEVPTR CUDA:CU-MEM-FREE CUDA:RC0
-   CU-END ;
+   ;] CUDA-SCOPE:SCOPE ;
 
 : ATTN-MAXERR ( -- r )
    0.0  AT-ELEMS 0 ?do
@@ -275,8 +271,8 @@ variable AT-NV variable AT-DPARAM
 variable SP-DX variable SP-DY variable SP-A variable SP-NV
 
 : RUN-SAXPY ( n n n n -- ) {: abits:n block:n grid:n cnt:n :}   \ a-bits, block, grid, active count
-   SP-DX SP-BYTES >LEN CUDA:CU-MEM-ALLOC CUDA:RC0
-   SP-DY SP-BYTES >LEN CUDA:CU-MEM-ALLOC CUDA:RC0
+   SP-DX SP-BYTES >LEN CUDA:CU-MEM-ALLOC CUDA:RC0  SP-DX @ >CUDA-DEVPTR CUDA-SCOPE:OWN-DEVPTR   \ owned by the caller's scope
+   SP-DY SP-BYTES >LEN CUDA:CU-MEM-ALLOC CUDA:RC0  SP-DY @ >CUDA-DEVPTR CUDA-SCOPE:OWN-DEVPTR
    SP-DX @ >CUDA-DEVPTR SP-X SP-BYTES >LEN CUDA:CU-MEMCPY-HTOD CUDA:RC0
    SP-DY @ >CUDA-DEVPTR SP-Y SP-BYTES >LEN CUDA:CU-MEMCPY-HTOD CUDA:RC0
    abits SP-A !  cnt SP-NV !
@@ -288,9 +284,7 @@ variable SP-DX variable SP-DY variable SP-A variable SP-NV
    DG-FUNC @ >CUDA-FN 20 >IDX SP-NV 4 >LEN CUDA:CU-PARAM-SET-V CUDA:RC0
    DG-FUNC @ >CUDA-FN grid 1 CUDA:CU-LAUNCH-GRID CUDA:RC0
    CUDA:CU-CTX-SYNCHRONIZE CUDA:RC0
-   SP-Y SP-DY @ >CUDA-DEVPTR SP-BYTES >LEN CUDA:CU-MEMCPY-DTOH CUDA:RC0
-   SP-DX @ >CUDA-DEVPTR CUDA:CU-MEM-FREE CUDA:RC0
-   SP-DY @ >CUDA-DEVPTR CUDA:CU-MEM-FREE CUDA:RC0 ;
+   SP-Y SP-DY @ >CUDA-DEVPTR SP-BYTES >LEN CUDA:CU-MEMCPY-DTOH CUDA:RC0 ;   \ SP-DX/SP-DY owned by the caller's scope
 
 \ fused relu(a*x+y), a=3: even lane x=2,y=-8 -> 3*2-8=-2 -> relu 0 (clamp exercised);
 \ odd lane x=2,y=4 -> 3*2+4=10 -> relu 10 (scale+bias exercised). Dropping RELU makes
@@ -331,13 +325,13 @@ variable SP-DX variable SP-DY variable SP-A variable SP-NV
    s" attention(ATTN) device==committed golden" T-LABEL  e SCALAR-TOL f< TTRUE ;
 : FUSED-GOLDEN ( -- )
    EMIT-FUSED  EMIT-BYTES @ 0 > TTRUE  ASSEMBLE-OK
-   FILL-FUSED  CU-BEGIN  s" SAXPY" CU-LOAD  FU-A-BITS SP-BLOCK FU-GRID SP-N RUN-SAXPY  CU-END
+   FILL-FUSED  [: CU-BEGIN  s" SAXPY" CU-LOAD  FU-A-BITS SP-BLOCK FU-GRID SP-N RUN-SAXPY ;] CUDA-SCOPE:SCOPE
    FUSED-MAXERR {: e:r :}
    s" fused relu(a*x+y) v4 n=1024" e REPORT-ERR
    s" fused-relu(SAXPY) device==committed golden" T-LABEL  e SCALAR-TOL f< TTRUE ;
 : BW-GOLDEN ( -- )
    EMIT-BW  EMIT-BYTES @ 0 > TTRUE  ASSEMBLE-OK
-   FILL-BW  CU-BEGIN  s" SAXPY" CU-LOAD  BW-A-BITS SP-BLOCK BW-GRID SP-N RUN-SAXPY  CU-END
+   FILL-BW  [: CU-BEGIN  s" SAXPY" CU-LOAD  BW-A-BITS SP-BLOCK BW-GRID SP-N RUN-SAXPY ;] CUDA-SCOPE:SCOPE
    BW-MAXERR {: e:r :}
    s" bandwidth SAXPY scale-identity n=1024" e REPORT-ERR
    s" bandwidth(SAXPY) device==committed golden" T-LABEL  e SCALAR-TOL f< TTRUE ;

@@ -10,6 +10,7 @@ require lib/test.f
 require lib/ptx/toolchain.f
 require lib/ptx/sentinel.f
 require lib/ptx/cuda-driver.f
+require lib/ptx/cuda-scope.f
 
 package ACCDEV        \ AD-* names are package-local: avoid colliding with autograd AD-* (lib/ptx/ad-dag.f) in the shared spawned suite image
 
@@ -44,17 +45,19 @@ create AD-QOUT $1000 allot create AD-QERR $1000 allot
 \ launch x=2.0 y=3.0 n=4 -> y[0] f32 bits
 : AD-RUN ( -- n )
    AD-RBUF 4 PTXSENT:FILL                                            \ poison readback: dropped copy-back fails closed
-   CUDA:OPEN
+   [: CUDA:OPEN                                                      \ acquire+own ctx/module/buffers; scope unwinds on return or throw
    0 CUDA:CU-INIT CUDA:RC0
    AD-DEV 0 >IDX CUDA:CU-DEVICE-GET CUDA:RC0
    AD-CTX AD-DEV @ >CUDA-DEV CUDA:CU-DEVICE-PRIMARY-CTX-RETAIN CUDA:RC0
+   AD-DEV @ >CUDA-DEV CUDA-SCOPE:OWN-PRIMARY-CTX
    AD-CTX @ >CUDA-CTX CUDA:CU-CTX-SET-CURRENT CUDA:RC0
    PTXTC:CUBIN$ AD-PATH >CSTR
    AD-MOD AD-PATH CUDA:CU-MODULE-LOAD CUDA:RC0
+   AD-MOD @ >CUDA-MOD CUDA-SCOPE:OWN-MODULE
    s" SAXPY" AD-KN >CSTR
    AD-FUNC AD-MOD @ >CUDA-MOD AD-KN CUDA:CU-MODULE-GET-FUNCTION CUDA:RC0
-   AD-DX 16 >LEN CUDA:CU-MEM-ALLOC CUDA:RC0
-   AD-DY 16 >LEN CUDA:CU-MEM-ALLOC CUDA:RC0
+   AD-DX 16 >LEN CUDA:CU-MEM-ALLOC CUDA:RC0  AD-DX @ >CUDA-DEVPTR CUDA-SCOPE:OWN-DEVPTR
+   AD-DY 16 >LEN CUDA:CU-MEM-ALLOC CUDA:RC0  AD-DY @ >CUDA-DEVPTR CUDA-SCOPE:OWN-DEVPTR
    AD-DX @ >CUDA-DEVPTR $40000000 4 >COUNT CUDA:CU-MEMSET-D32 CUDA:RC0   \ x = 2.0
    AD-DY @ >CUDA-DEVPTR $40400000 4 >COUNT CUDA:CU-MEMSET-D32 CUDA:RC0   \ y = 3.0
    0 AD-AB !  4 AD-NV !                                              \ a unused, n = 4
@@ -67,8 +70,7 @@ create AD-QOUT $1000 allot create AD-QERR $1000 allot
    AD-FUNC @ >CUDA-FN 1 1 CUDA:CU-LAUNCH-GRID CUDA:RC0
    CUDA:CU-CTX-SYNCHRONIZE CUDA:RC0
    AD-RBUF AD-DY @ >CUDA-DEVPTR 4 >LEN CUDA:DTOH
-   AD-MOD @ >CUDA-MOD CUDA:CU-MODULE-UNLOAD CUDA:RC0
-   AD-DEV @ >CUDA-DEV CUDA:CU-DEVICE-PRIMARY-CTX-RELEASE CUDA:RC0
+   ;] CUDA-SCOPE:SCOPE
    AD-RBUF @ $FFFFFFFF and PTXSENT:GUARD ;
 
 : ACC-DEV-MAIN ( -- )

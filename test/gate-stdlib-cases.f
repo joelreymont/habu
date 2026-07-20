@@ -418,6 +418,7 @@ SUITE ptx-toolchain
    tools/ptx/autotune-sweep-test.f
    tools/ptx/fusion-emit-test.f
    tools/ptx/device-gold-test.f
+   tools/ptx/cuda-scope-leak-proof-test.f
    tools/ptx/attention-bench-test.f
    tools/ptx/fusion-compare.f
    tools/ptx/gemm-bench.f
