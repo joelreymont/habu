@@ -138,7 +138,7 @@ DECOMPOSITION (each lands gate-green independently):
   (v)  model-ir MI-* via copy-on-grow (after i, iv) + the 12-block acceptance +
        ceiling-pin conversions.
 
-Stage-3i claim: agent=ldgrow workspace=.jj-ws/fable-ldgrow machine=spark (engine lane: src/core/layout-buffer.f copy-on-grow + test/layout-defer.f + gate size files)
+Stage-3i LANDED (ldgrow lane, f0bbf055): see below.
 Stage-3ii LANDED (capbuf lane): see below.
 Stage-3iii claim: agent=cleanfam workspace=.jj-ws/fable-cleanfam machine=spark (owns maki/executor.f + maki/backward.f single-phase family conversions + their tests; NOT cad.f, NOT model-ir.f, NOT tensor-value.f)
 
@@ -152,3 +152,22 @@ first ; terminates, trailing-token behavior pinned); overflow die red-first
 (CAPSRC-CAP 1024, largest in-tree def 105 B, becomes derived later); timing +13ms
 on cad-test (~0.9%), noise elsewhere. BIND-SHAPES' BS-PARSE is a separate
 command left untouched.
+
+2026-07-20 STAGE 3(i) LANDED (f0bbf055): LDEFER-GROW copy-on-grow binder +
+per-column NAME-GROW word. Settled from source: NEW word beside NAME-BIND
+(preservation is explicit opt-in; BIND semantics untouched, stage-2's 19 cases
+green unmodified); unbound grow dies E-LAYOUT-UNBOUND (grow-before-bind is a
+caller bug, loud); doubling lives in the engine (grow-to-at-least max(2*cap,
+count), clamped at the ceiling so it never over-allots); transactional
+E-LAYOUT-CEIL before any mutation; within-capacity regrow zeroes exposed slots
+(shrink cannot leak dirty cells). USAGE LAW in the header: accessors re-read the
+offset cell per call so base motion between calls is safe - the one hazard is a
+raw accessor-derived pointer held across a grow. Per-guard falsification proofs;
+CODELEN neutral; census rows reconciled at merge (using-import landed between
+base and merge: 3546 -> 3548 with the two new defs; AXR ledger renumbered around
+the checker-using insertion).
+
+REMAINING: stage 3(iii) in flight (executor/backward clean families); then
+3(iv) capture-side counting (the two-pass NEXT-TOK walk over CAPSRC) + CAP/NT/
+MSRC/TV/P conversions; then 3(v) MI-* onto BIND-at-CAP-FINISH + GROW-during-
+BW-BUILD + the 12-block acceptance + ceiling-pin conversions.
