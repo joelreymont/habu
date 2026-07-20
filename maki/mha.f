@@ -80,12 +80,12 @@ TENSOR: MHA-WO ( #HH #HD #HC )   \ head-major output weight (H, hd, C)
 TENSOR: MHA-Y  ( #HQ #HC )       \ sublayer output (T, C)
 
 \ ---- the contraction goldens (each a checked SPEC: line) ---------------------------
-SPEC: MHA-QPROJ   MHA-QH[hq hd] = MHA-X[hq hc]  MHA-WQ[hc hd] * +SUM hc ;        \ Q_h = X . WQ_h
-SPEC: MHA-KPROJ   MHA-KH[hn hd] = MHA-XK[hn hc] MHA-WK[hc hd] * +SUM hc ;        \ K_h = X . WK_h
-SPEC: MHA-VPROJ   MHA-VH[hn hd] = MHA-XK[hn hc] MHA-WV[hc hd] * +SUM hc ;        \ V_h = X . WV_h
-SPEC: MHA-SCORES  MHA-SH[hq hn] = MHA-QH[hq hd] MHA-KH[hn hd] * +SUM hd ;        \ S_h = Q_h . K_h^T
-SPEC: MHA-AV      MHA-OH[hq hd] = MHA-AH[hq hn] MHA-VH[hn hd] * +SUM hn ;        \ O_h = A_h . V_h
-SPEC: MHA-OUTPROJ MHA-Y[hq hc]  = MHA-O[hh hq hd] MHA-WO[hh hd hc] * +SUM hh hd ; \ Y = concat_h(O_h) . Wo
+SPEC: MHA-QPROJ   MHA-QH[hq hd] = Σhc MHA-X[hq hc] · MHA-WQ[hc hd] ;        \ Q_h = X . WQ_h
+SPEC: MHA-KPROJ   MHA-KH[hn hd] = Σhc MHA-XK[hn hc] · MHA-WK[hc hd] ;        \ K_h = X . WK_h
+SPEC: MHA-VPROJ   MHA-VH[hn hd] = Σhc MHA-XK[hn hc] · MHA-WV[hc hd] ;        \ V_h = X . WV_h
+SPEC: MHA-SCORES  MHA-SH[hq hn] = Σhd MHA-QH[hq hd] · MHA-KH[hn hd] ;        \ S_h = Q_h . K_h^T
+SPEC: MHA-AV      MHA-OH[hq hd] = Σhn MHA-AH[hq hn] · MHA-VH[hn hd] ;        \ O_h = A_h . V_h
+SPEC: MHA-OUTPROJ MHA-Y[hq hc]  = Σhh hd MHA-O[hh hq hd] · MHA-WO[hh hd hc] ; \ Y = concat_h(O_h) . Wo
 
 \ ---- internal head-major scratch. Query and key positions share magnitude T
 \ (MHA-CONFIG-CHECK), so one T*hd block stride serves Q/K/V/O; S/A are reused per head.

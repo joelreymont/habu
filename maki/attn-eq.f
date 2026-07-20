@@ -68,8 +68,8 @@ TENSOR: A-O  ( #DAQ #DAD )    \ context O = P·V : query x head dim
 
 \ ---- the two folded contractions. Their adjoints derive at declaration time and are
 \ finite-difference-checked by maki/gradcheck.f when a composition using them is built.
-SPEC: A-SCORES  A-S[daq dak] = A-Q[daq dad] A-XK[dak dac] A-WK[dac dad] * +SUM dad dac ;   \ Q·(X·WK)ᵀ
-SPEC: A-CTX     A-O[daq dad] = A-P[daq dak] A-XK[dak dac] A-WV[dac dad] * +SUM dak dac ;   \ P·(X·WV)
+SPEC: A-SCORES  A-S[daq dak] = Σdad dac A-Q[daq dad] · A-XK[dak dac] · A-WK[dac dad] ;   \ Q·(X·WK)ᵀ
+SPEC: A-CTX     A-O[daq dad] = Σdak dac A-P[daq dak] · A-XK[dak dac] · A-WV[dac dad] ;   \ P·(X·WV)
 
 \ ---- causal mask constant (dot's "a causal mask constant is in scope"): a T x T buffer,
 \ 0 where key <= query (attended) and a finite large-negative elsewhere (future keys).

@@ -38,7 +38,7 @@ TENSOR: EQO-K ( #EQB #EQK )    \ K : L x d  (the transposed operand: shares the 
 TENSOR: EQO-S ( #EQA #EQB )    \ S : L x L  (attention scores)
 ITENSOR: EQO-IX ( #EQA #EQA )  \ a gather witness (rows of Q), for the forward-only reject
 
-SPEC: EQO-QK  EQO-S[eqa eqb] = EQO-Q[eqa eqk] EQO-K[eqb eqk] * +SUM eqk ;   \ S = Q.Kᵀ
+SPEC: EQO-QK  EQO-S[eqa eqb] = Σeqk EQO-Q[eqa eqk] · EQO-K[eqb eqk] ;   \ S = Q.Kᵀ
 
 \ ---- registration: the composable einsum joined the equation registry ------------
 : EQO-REG? ( -- bool )

@@ -41,7 +41,7 @@ TENSOR: SPAT-A ( #AM #AN )   \ A : L x L  (attention weights)
 TENSOR: SPAT-V ( #AN #AC )   \ V : L x d
 TENSOR: SPAT-O ( #AM #AC )   \ O : L x d  (output)
 
-SPEC: SPAT-QK  SPAT-S[am an] = SPAT-Q[am ak] SPAT-K[an ak] * +SUM ak ;   \ S = Q.K^T
+SPEC: SPAT-QK  SPAT-S[am an] = Σak SPAT-Q[am ak] · SPAT-K[an ak] ;   \ S = Q.K^T
 
 \ --- derivation (2): the dataflow record proves the transposed-operand parse -------
 \ Q.K^T: two free output indices (am,an), one contraction (ak) shared by both factors
@@ -60,7 +60,7 @@ SPEC-FAC-N  2 T=
 0 SPEC-FREE-EXTENT@ 4 T=   1 SPEC-FREE-EXTENT@ 4 T=   \ score shape 4 x 4
 0 SPEC-CT-EXTENT@ 3 T=                                \ contraction span d = 3
 
-SPEC: SPAT-AV  SPAT-O[am ac] = SPAT-A[am an] SPAT-V[an ac] * +SUM an ;   \ O = A.V
+SPEC: SPAT-AV  SPAT-O[am ac] = Σan SPAT-A[am an] · SPAT-V[an ac] ;   \ O = A.V
 SPEC-OUT$  s" SPAT-O" STR= -1 T=
 SPEC-CT-N  1 T=   0 SPEC-CT@ s" an" STR= -1 T=        \ A.V contracts the key index an
 

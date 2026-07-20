@@ -176,7 +176,7 @@ AG-DETECT AG-GRAD-TOL f< TFALSE
 \ reads ATN-Q/ATN-KT, model-agnostic) validates the derived adjoints unchanged.
 4 EXTENT: #EAM   3 EXTENT: #EAK   4 EXTENT: #EAN
 TENSOR: EAQ ( #EAM #EAK )   TENSOR: EAKT ( #EAK #EAN )   TENSOR: EAS ( #EAM #EAN )
-SPEC: EAGEMM  EAS[eam ean] = EAQ[eam eak] EAKT[eak ean] * +SUM eak ;   \ S = Q@Kt
+SPEC: EAGEMM  EAS[eam ean] = Σeak EAQ[eam eak] · EAKT[eak ean] ;   \ S = Q@Kt
 
 \ C1: the derived adjoints match central finite differences (3 Adam steps, live params) -
 MODEL: EQ-ATTN ( q:4x3 kt:3x4 s:1x1 v:4x3 -- o ) EAGEMM SCALE SOFTMAX-ROW MATMUL ;

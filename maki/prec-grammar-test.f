@@ -26,7 +26,7 @@ package MAKI
 TENSOR: PG-Q  ( #PGA #PGK )    \ Q : L x d
 TENSOR: PG-KT ( #PGB #PGK )    \ K : L x d (the transposed operand, shares the trailing d index)
 TENSOR: PG-S  ( #PGA #PGB )    \ S : L x L (attention scores)
-SPEC: PG-QK  PG-S[pga pgb] = PG-Q[pga pgk] PG-KT[pgb pgk] * +SUM pgk ;   \ S = Q.Kᵀ
+SPEC: PG-QK  PG-S[pga pgb] = Σpgk PG-Q[pga pgk] · PG-KT[pgb pgk] ;   \ S = Q.Kᵀ
 
 \ the registered slot of PG-QK (image-order dependent, so read it live, not hardcoded)
 : PG-EQ-SLOT ( -- n )
