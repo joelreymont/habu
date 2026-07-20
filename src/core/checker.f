@@ -6504,17 +6504,33 @@ variable WF-I
    t MK-PTR swap MK-PUSH
    rest CHECKER-STEP ;
 
+\ Byte-pointer cell-op reject (dot habu-checker-diag-for-4c443fcf). `!`/`@` need
+\ a cell-width `ptr a`, but ROW-TOP-BYTE-PTR? found a `ptr u8`. STEP-STORE/
+\ STEP-FETCH unify a fresh-var pointee, so a byte pointer clears their unify and
+\ only the width rule rejects — with no captured pair, so the diagnostic named
+\ just the token. Populate the mismatch pair (expected `ptr a`, actual `ptr u8`)
+\ so text and JSON render expected/actual like every other mismatch, unless an
+\ earlier failure already owns the diagnostic (FAILSET). UF-SET is 0 after a
+\ cleared unify, so UF>DIAG clears the ADT family/variant fields.
+: MEM-BYTE-PTR-REJECT ( -- )
+   0 OK !
+   FAILSET @ 0= IF
+      PE-U8 MK-PTR FRESH MK-ROW MK-PUSH DACT !
+      FRESH MK-VAR MK-PTR FRESH MK-ROW MK-PUSH DEXP !
+      UF>DIAG  -1 FAILSET !
+   THEN ;
+
 : CELL-FETCH-TOK ( -- )
    LAYOUT-MEM-INNER IF LAYOUT-FETCH-STEP EXIT THEN drop
    DCUR @ ROW-TOP-BYTE-PTR? {: bad :}
    STEP-FETCH
-   bad IF 0 OK ! THEN ;
+   bad IF MEM-BYTE-PTR-REJECT THEN ;
 
 : CELL-STORE-TOK ( -- )
    LAYOUT-MEM-INNER IF LAYOUT-STORE-STEP EXIT THEN drop
    DCUR @ ROW-TOP-BYTE-PTR? {: bad :}
    STEP-STORE
-   bad IF 0 OK ! THEN ;
+   bad IF MEM-BYTE-PTR-REJECT THEN ;
 
 : CELL-MEMORY-TOK? ( ptr u8 n -- bool ) {: a:ptr u:n :}
    a u s" @" CORE-STR= IF CELL-FETCH-TOK RES-TRUE EXIT THEN

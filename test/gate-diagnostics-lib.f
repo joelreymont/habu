@@ -404,6 +404,9 @@ variable GDX-TRUST-MAN-U
    s" : JRET ( i64 -- ) >r ;" GE-SRC-LINE
    s" : JDEAD ( i64 -- i64 ) dup 0 < if 1 throw 0 then 1 + ;" GE-SRC-LINE
    s" : JDIE ( i64 -- i64 ) dup 0 < if here 0 1 die 0 then 1 + ;" GE-SRC-LINE
+   s" variable JBP" GE-SRC-LINE
+   s" : JBPBASE ( -- ptr u8 ) JBP @ ;" GE-SRC-LINE
+   s" : JBPS ( -- ) 0 JBPBASE ! ;" GE-SRC-LINE
    s" tools/check.f --json-errors --all-errors accepted repair class batch" GDX-CHECK-JSON-ALL
    s" code" s" E-DEAD-CODE" s" dead-code diagnostic code" GDX-EXPECT-ERR-JSTR
    s" dead_owner" s" throw" s" dead-code owner" GDX-EXPECT-ERR-JSTR
@@ -415,7 +418,8 @@ variable GDX-TRUST-MAN-U
    s" habu-json-repair.err" s" jtype" s" fix_type" s" type mismatch class" GDX-DIAG-WORD-CLASS
    s" habu-json-repair.err" s" jret" s" fix_return_stack" s" return stack class" GDX-DIAG-WORD-CLASS
    s" habu-json-repair.err" s" jdead" s" remove_dead_code" s" dead-code class" GDX-DIAG-WORD-CLASS
-   s" habu-json-repair.err" s" jdie" s" remove_dead_code" s" die dead-code class" GDX-DIAG-WORD-CLASS ;
+   s" habu-json-repair.err" s" jdie" s" remove_dead_code" s" die dead-code class" GDX-DIAG-WORD-CLASS
+   s" habu-json-repair.err" s" jbps" s" fix_type" s" byte-ptr store-target class" GDX-DIAG-WORD-CLASS ;
 
 : GDX-FILE-ORIGIN ( -- )
    GE-HB-RESET

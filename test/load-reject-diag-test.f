@@ -52,6 +52,8 @@ create TOP-REQ-P FS-PATH-CAP allot
 create RUNTIME-P FS-PATH-CAP allot
 create MODELED-P FS-PATH-CAP allot
 create TRUSTED-P FS-PATH-CAP allot
+create BPS-P FS-PATH-CAP allot
+create BPF-P FS-PATH-CAP allot
 
 variable BASE-U
 variable UNDEF-U
@@ -67,6 +69,8 @@ variable TOP-REQ-U
 variable RUNTIME-U
 variable MODELED-U
 variable TRUSTED-U
+variable BPS-U
+variable BPF-U
 variable OUT-U
 variable ERR-U
 variable EXITED
@@ -114,6 +118,12 @@ variable RC
 : TRUSTED$ ( -- ptr u8 n )
    TRUSTED-P TRUSTED-U @ ;
 
+: BPS$ ( -- ptr u8 n )
+   BPS-P BPS-U @ ;
+
+: BPF$ ( -- ptr u8 n )
+   BPF-P BPF-U @ ;
+
 : FRAG-FIXTURE! ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n -- )
    {: pre:ptr preu:n frag:ptr fragu:n post:ptr postu:n path:ptr pathu:n :}
    SB-RESET
@@ -154,11 +164,15 @@ variable RC
    s" top-require.f" TOP-REQ-P TOP-REQ-U PATH!
    s" runtime.f" RUNTIME-P RUNTIME-U PATH!
    s" modeled.f" MODELED-P MODELED-U PATH!
-   s" trusted.f" TRUSTED-P TRUSTED-U PATH! ;
+   s" trusted.f" TRUSTED-P TRUSTED-U PATH!
+   s" byte-ptr-store.f" BPS-P BPS-U PATH!
+   s" byte-ptr-fetch.f" BPF-P BPF-U PATH! ;
 
 : REJECT-FIXTURES! ( -- )
    UNDEF$ s" : LRD-X ( -- ) LRD-NO-SUCH-WORD-XYZ ;" WRITE-ALL
    BODY$ s" : LRD-Y ( n -- n ) drop ;" WRITE-ALL
+   BPS$ s" variable LRD-P : LRD-BASE ( -- ptr u8 ) LRD-P @ ; : LRD-BPS ( -- ) 0 LRD-BASE ! ;" WRITE-ALL
+   BPF$ s" variable LRD-Q : LRD-QBASE ( -- ptr u8 ) LRD-Q @ ; : LRD-BPF ( -- n ) LRD-QBASE @ ;" WRITE-ALL
    FRAG$ s" 1 +" WRITE-ALL
    SIDE$ S\" [ s\" LRD-FRAGMENT-EXECUTED\" type ]" WRITE-ALL
    SB-RESET
@@ -288,6 +302,24 @@ LOWER-CERT-HOOK:INSTALL
    s" in lrd-y" ASSERT-NAMED
    ERR$ s" at 'drop'" CONTAINS? TTRUE ;
 
+\ Store/fetch target mismatch (dot habu-checker-diag-for-4c443fcf): `!`/`@` need
+\ a cell-width `ptr a`; a `ptr u8` must name the pair, not just the token.
+: TEST-BYTE-PTR-STORE ( -- )
+   s" cell store into a byte pointer names expected/actual" T-LABEL
+   BPS$ RUN
+   s" in lrd-bps" ASSERT-NAMED
+   ERR$ s" at '!'" CONTAINS? TTRUE
+   ERR$ s" expected: ptr a" CONTAINS? TTRUE
+   ERR$ s" actual: ptr u8" CONTAINS? TTRUE ;
+
+: TEST-BYTE-PTR-FETCH ( -- )
+   s" cell fetch from a byte pointer names expected/actual" T-LABEL
+   BPF$ RUN
+   s" in lrd-bpf" ASSERT-NAMED
+   ERR$ s" at '@'" CONTAINS? TTRUE
+   ERR$ s" expected: ptr a" CONTAINS? TTRUE
+   ERR$ s" actual: ptr u8" CONTAINS? TTRUE ;
+
 : TEST-REQUIRE-CHAIN ( -- )
    s" require-chain reject names the undefined word" T-LABEL
    OUTER$ RUN
@@ -337,6 +369,8 @@ LOWER-CERT-HOOK:INSTALL
    TEST-STORE-TIMEOUT
    TEST-UNDEF
    TEST-BODY
+   TEST-BYTE-PTR-STORE
+   TEST-BYTE-PTR-FETCH
    TEST-REQUIRE-CHAIN
    TEST-IMM-INCLUDE
    TEST-IMM-REQUIRE
