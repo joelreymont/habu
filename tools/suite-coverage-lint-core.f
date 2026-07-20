@@ -236,6 +236,7 @@ variable SC-NUM-L
    \ loading would mis-read the harness argv; the inprocess scan is perf-regress-test.f
    s" tools/ptx/perf-regress.f" q execute
    s" tools/ptx/bandwidth-lib-test.f" q execute
+   s" tools/ptx/mma-exact-lib-test.f" q execute
    s" tools/ptx/fusion-compare.f" q execute
    s" tools/ptx/gemm-bench.f" q execute
    s" tools/ptx/attention-bench.f" q execute

@@ -712,8 +712,9 @@ points stay listed.
   package AUTOTUNE). Per candidate config: element-exact precondition at the sweep
   shape, fail-closed solo-GPU wait (nvidia-smi compute-app count), sustained-clock
   verification (SM clock before/after each burst), best-of-3, then a perf-rows.tsv
-  candidate row it never commits. Device/manual (self-runs a 512-class smoke at
-  load), NOT in the resident gate image.
+  candidate row it never commits. The element-exact precondition reuses the shared
+  import-safe `tools/ptx/mma-exact-lib.f` (package MMA-EXACT) instead of a private copy.
+  Device/manual (self-runs a 512-class smoke at load), NOT in the resident gate image.
 - `tools/ptx/perf-compare.f` — perf-regression compare over registry rows:
   latest same-key pair per kernel+config+device+metric vs `PERF:TOL-MILLI`.
 - `tools/ptx/perf-compare-test.f` — improve/regress/tolerance-edge/missing-row
@@ -739,12 +740,24 @@ points stay listed.
 - `tools/ptx/mma-probe.f` — single-warp TF32 `mma.sync.aligned.m16n8k8` fragment-
   layout isolation proof: verifies ONE MMA element-exact vs a host matmul before
   any tiling (the course's #1 "correct in NumPy, garbage on device" guard).
+- `tools/ptx/mma-exact-lib.f` — import-safe MMA element-exact validation library
+  (package MMA-EXACT): typed seven-buffer ownership, integer fill, f64 host matmul
+  reference, zero-tolerance compare, dtype (tf32/fp16/bf16) pack, device
+  alloc/free/params/htod/dtoh, and the ptxas assemble + zero-block launch-shape guard.
+  Loading it allocates nothing, opens no device, and runs no campaign (the seven
+  buffers are heap-allocated only by `MX-BUF-INIT`); shared by
+  `tools/ptx/mma-gemm-check.f` and `tools/ptx/autotune-sweep.f`.
+- `tools/ptx/mma-exact-lib-test.f` — host-side coverage: the import-safety invariant
+  (no host/device allocation at load) plus the launch-independent exactness math
+  (fill / f64 reference / zero-tolerance compare), device-free.
 - `tools/ptx/mma-gemm-check.f` — device-correctness of the full K-looping TF32
   mma.sync GEMM kernel (MMM) element-exact vs a host matmul at 64^3 and 128^3
   (staging + accumulation + the warp/D-fragment store mapping), plus the fp16 and
   bf16 `m16n8k16` tiles (`MGC-CFG-F16`/`MGC-CFG-BF16` and their transposed-Bs `-T`
   variants, both warp grids + epilogue + both B feeds) and the emit fail-closed
-  guards (SMEM / BLDM / WARPS / EPI / DTYPE / BTF16 / bf16 negatives).
+  guards (SMEM / BLDM / WARPS / EPI / DTYPE / BTF16 / bf16 negatives). The
+  element-exact machinery is the shared `tools/ptx/mma-exact-lib.f`; this file is the
+  explicit device campaign that calls it (auto-runs `MGC-ALL` at load).
 - `tools/ptx/mma-emit-diff.f` — byte-identity harness for the mma.sync GEMM
   emitter: emits `EMIT-MATMUL-MMA` for 35 TF32 configs (default / SWZ / dyn / wide
   / wide-B / 4-warp / deep-stage / epilogue) with a per-config header so the stream

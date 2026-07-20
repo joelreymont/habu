@@ -383,6 +383,7 @@ TEST:SUITE ptx-toolchain
    tools/ptx/perf-regress.f
    tools/kernel-perf-lint-test.f
    tools/ptx/bandwidth-lib-test.f
+   tools/ptx/mma-exact-lib-test.f
    tools/ptx/fusion-emit-test.f
    tools/ptx/device-gold-test.f
    tools/ptx/attention-bench-test.f

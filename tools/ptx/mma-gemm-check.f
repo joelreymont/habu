@@ -17,7 +17,7 @@
 \ 1..11 (B) are all < 2048, so F16-PACK narrows them with ZERO error. Each product is an integer
 \ <= 143, and the K-accumulation runs in f32, whose every partial sum is an integer <= K*143 <=
 \ 512*143 = 73216 < 2^24 - exactly representable in f32, so no add rounds. Hence the device f32 C
-\ equals the exact integer dot product, which equals the f64 host reference EXACTLY: MGC-COMPARE
+\ equals the exact integer dot product, which equals the f64 host reference EXACTLY: MX-COMPARE
 \ requires err = 0.0 (bitwise-exact within f32), no epsilon. The fp16 tile stores A/B as f16 in
 \ BOTH global and shared; C stays f32 (F32-UNPACK on readback), the accumulate is f32.
 \
@@ -51,131 +51,39 @@ require lib/ptx/cg-mma.f
 require lib/ptx/toolchain.f
 require maki/eval/active-target.f
 require tools/ptx/bench.f
+require tools/ptx/mma-exact-lib.f
 
 package MMAGEMMCHECK
 
-512 constant MGC-MAX                       \ largest square edge (buffers sized for this; 512 = the grouped-raster / XSWIZ 512^3 checks)
-MGC-MAX MGC-MAX * constant MGC-CAP         \ 262144 elems at 512^2
+\ The element-exact MMA proof machinery - typed buffer ownership, integer fill, f64 host
+\ reference, zero-tolerance compare, dtype pack, device alloc/htod/params/dtoh, ptxas
+\ assemble, and the zero-block launch-shape guard - is the import-safe library
+\ tools/ptx/mma-exact-lib.f (package MMA-EXACT), shared with tools/ptx/autotune-sweep.f.
 
-\ Large host/packed buffers are HEAP-allocated (mmap), not `allot`ed: at MGC-MAX=512 the seven arrays total
-\ ~11 MB, kept off the dictionary whose cumulative `allot` silently corrupts the engine's data space past ~32 MB (measured).
-\ Each name is a word pushing its heap base, so every T-GET/T-SET/pack call site is unchanged. Allocated once.
-variable MGC-HA-P  variable MGC-HB-P  variable MGC-HREF-P  variable MGC-HC-P
-variable MGC-PA-P  variable MGC-PB-P  variable MGC-PC-P
-: MGC-HA   ( -- ptr a )  MGC-HA-P @ ;
-: MGC-HB   ( -- ptr a )  MGC-HB-P @ ;
-: MGC-HREF ( -- ptr a )  MGC-HREF-P @ ;
-: MGC-HC   ( -- ptr a )  MGC-HC-P @ ;
-: MGC-PA   ( -- ptr a )  MGC-PA-P @ ;
-: MGC-PB   ( -- ptr a )  MGC-PB-P @ ;
-: MGC-PC   ( -- ptr a )  MGC-PC-P @ ;
-: MGC-BUF-INIT ( -- )                      \ heap-allocate the seven large buffers once (idempotent)
-   MGC-HA-P @ if exit then
-   MGC-CAP MEM:CELLS-ALLOC-COUNT MEM:ALLOC-CELLS MGC-HA-P !
-   MGC-CAP MEM:CELLS-ALLOC-COUNT MEM:ALLOC-CELLS MGC-HB-P !
-   MGC-CAP MEM:CELLS-ALLOC-COUNT MEM:ALLOC-CELLS MGC-HREF-P !
-   MGC-CAP MEM:CELLS-ALLOC-COUNT MEM:ALLOC-CELLS MGC-HC-P !
-   MGC-CAP 4 * MEM:BYTES-ALLOC-LEN MEM:ALLOC-BYTES drop MGC-PA-P !
-   MGC-CAP 4 * MEM:BYTES-ALLOC-LEN MEM:ALLOC-BYTES drop MGC-PB-P !
-   MGC-CAP 4 * MEM:BYTES-ALLOC-LEN MEM:ALLOC-BYTES drop MGC-PC-P ! ;
-create MGC-QO $1000 allot  create MGC-QE $1000 allot
-variable MGC-DA  variable MGC-DB  variable MGC-DC
-variable MGC-N   variable MGC-BADI
 variable MGC-SA  variable MGC-SB            \ the two square edges each config is checked at (default 64/128)
-create MGC-MAXERR 1 cells allot
 64 MGC-SA !  128 MGC-SB !
--6101 constant MGC-E-ZEROBLK               \ launch M < the block rows (BROWS) or a ragged multiple -> silent zero/partial C
 
-\ deterministic varied small integers (1..13 / 1..11), distinct enough to catch mis-mapping
-: MGC-FILL ( -- ) {: :}
-   MGC-N @ {: n:n :}
-   n 0 ?do  i {: r:n :}
-      n 0 ?do
-         r 3 * i 7 * + 13 mod 1+ s>f  MGC-HA r n * i + T-SET
-         r 5 * i 2 * + 11 mod 1+ s>f  MGC-HB r n * i + T-SET
-      loop
-   loop ;
-
-: MGC-DOT ( n n -- r ) {: m:n col:n :}     \ sum_k A[m][k]*B[k][col] (exact in f64)
-   0.0  MGC-N @ 0 ?do
-      MGC-HA m MGC-N @ * i + T-GET
-      MGC-HB i MGC-N @ * col + T-GET
-      f* f+
-   loop ;
-: MGC-REF ( -- )
-   MGC-N @ {: n:n :}
-   n 0 ?do  i {: m:n :}
-      n 0 ?do  m i MGC-DOT  MGC-HREF m n * i + T-SET  loop
-   loop ;
-
-: MGC-ASSEMBLE ( -- )
-   ATGT:LABEL$ PTXTC:TC-ARCH!          \ assembler arch from the probed active target (sm_87 Orin / sm_121a GB10)
-   PTXTC:PTX$ PTX-CAPTURE$ WRITE-ALL
-   MGC-QO $1000 >LEN MGC-QE $1000 >LEN PTXTC:ASSEMBLE PTXTC:ASM-REPORT {: rc:n :}
-   rc 0= 0= if s" mma-gemm-check: ptxas failed" 1 die then ;
-
-: MGC-LAUNCH ( -- )                        \ alloc + htod + launch (block 16x16, grid (n/64)^2) + dtoh
-   MGC-N @ {: n:n :}  n n * {: e:n :}
-   MMA-ESZ {: esz:n :}                     \ A/B device element bytes: 4 tf32 / 2 fp16 (C stays f32)
-   e esz * MGC-DA PTXBENCH:DEVICE-ALLOC
-   e esz * MGC-DB PTXBENCH:DEVICE-ALLOC
-   e 4 * MGC-DC PTXBENCH:DEVICE-ALLOC
-   MMA-BF16? if
-      MGC-HA e MGC-PA BF16-PACK  MGC-HB e MGC-PB BF16-PACK   \ f64 host -> packed bf16 device buffers (F64>BF16 RNE)
-   else MMA-F16? if
-      MGC-HA e MGC-PA F16-PACK  MGC-HB e MGC-PB F16-PACK   \ f64 host -> packed f16 device buffers
-   else
-      MGC-HA e MGC-PA F32-PACK  MGC-HB e MGC-PB F32-PACK
-   then then
-   MGC-DA @ MGC-PA e esz * PTXBENCH:HTOD
-   MGC-DB @ MGC-PB e esz * PTXBENCH:HTOD
-   16 PTXBENCH:BLOCK!  MMA-NTHREADS 16 / PTXBENCH:BLOCKY!   \ 16x16=256 thr (8 warps) or 16x8=128 thr (4 warps)
-   n MMA-BN @ / PTXBENCH:GRID!  n MMA-BROWS / PTXBENCH:GRIDY!   \ gridX = N/BN (N-block cols); gridY = M/BROWS
-   36 PTXBENCH:PARAM-BYTES!
-   MMA-DYNSMEM @ if MMA-SH-BYTES PTXBENCH:SHARED! else 0 PTXBENCH:SHARED! then   \ dynamic .shared (epilogue may grow SH past MMA-SMEM)
-   PTXBENCH:PREPARE-LAUNCH
-   0  MGC-DA PTXBENCH:PARAM-PTR!
-   8  MGC-DB PTXBENCH:PARAM-PTR!
-   16 MGC-DC PTXBENCH:PARAM-PTR!
-   24 MGC-N PTXBENCH:PARAM-U32!  28 MGC-N PTXBENCH:PARAM-U32!  32 MGC-N PTXBENCH:PARAM-U32!
+: MGC-LAUNCH ( -- )                        \ alloc + pack + htod + launch (grid (n/BN)x(n/BROWS)) + dtoh + free
+   MMA-EXACT:MX-N @ dup * {: e:n :}
+   MMA-EXACT:MX-DEV-ALLOC
+   e MMA-EXACT:MX-PACK-AB
+   e MMA-EXACT:MX-HTOD-AB
+   MMA-EXACT:MX-PARAMS
    PTXBENCH:LAUNCH  PTXBENCH:SYNC
-   MGC-PC MGC-DC @ e 4 * PTXBENCH:DTOH
-   MGC-PC e MGC-HC F32-UNPACK
-   MGC-DA @ PTXBENCH:DEVICE-FREE  MGC-DB @ PTXBENCH:DEVICE-FREE  MGC-DC @ PTXBENCH:DEVICE-FREE ;
-
-: MGC-COMPARE ( -- n )                     \ mismatch count over n*n; sets MGC-BADI, MGC-MAXERR
-   -1 MGC-BADI !  0.0 MGC-MAXERR !  0
-   MGC-N @ MGC-N @ * 0 ?do
-      MGC-HC i T-GET  MGC-HREF i T-GET  f-  fabs {: err:r :}
-      err 0.0 f> if
-         1+  MGC-BADI @ 0 < if i MGC-BADI ! then
-         err MGC-MAXERR @ f> if err MGC-MAXERR ! then
-      then
-   loop ;
-
-\ HARDENING (dot habu-mma-wave-2): fail closed on a zero-block / ragged-M launch. The launch grid is
-\ gridY = M/BROWS (BROWS = 64*MFRAGS, MMA-BROWS). At M < BROWS gridY=0 so the kernel NEVER runs and C
-\ is read back unchanged (all-zero at a zeroed C), which a naive check could mistake for a correct
-\ small GEMM; at a non-multiple M the tail rows are silently never computed. Both are meaningless
-\ measurements, so require M to be a positive exact multiple of the M block rows before any launch.
-: MGC-SHAPE-OK? ( n -- bool ) {: n:n :}    \ n is a positive exact multiple of BOTH the M block (BROWS) and the N block (BN)
-   n MMA-BROWS <  0=                        \ n >= BROWS  (else gridY = n/BROWS = 0, kernel never runs)
-   n MMA-BROWS mod 0=  and                  \ exact multiple of BROWS (else the tail M rows are never computed)
-   n MMA-BN @ mod 0=  and ;                 \ exact multiple of BN (else the tail N cols are never computed); redundant at BN=64
-: MGC-CHECK-SHAPE ( n -- )                  \ throw the named code on a zero-block / ragged-M launch shape
-   MGC-SHAPE-OK? 0= if MGC-E-ZEROBLK throw then ;
+   e MMA-EXACT:MX-DTOH-C
+   MMA-EXACT:MX-DEV-FREE ;
 
 : MGC-ONE ( n -- ) {: n:n :}               \ one square GEMM correctness run
-   n MGC-N !
-   n MGC-CHECK-SHAPE                        \ refuse a zero-block / ragged-M shape (else the row is meaningless)
-   MGC-FILL  MGC-REF  MGC-LAUNCH  MGC-COMPARE {: bad:n :}
+   n MMA-EXACT:MX-N !
+   n MMA-EXACT:MX-CHECK-SHAPE               \ refuse a zero-block / ragged-M shape (else the row is meaningless)
+   MMA-EXACT:MX-FILL  MMA-EXACT:MX-REF  MGC-LAUNCH  MMA-EXACT:MX-COMPARE {: bad:n :}
    s" MMM " type n . s" x" type n . s" x" type n . s"  : " type
    bad 0= if
       s" PASS element-exact (" type n n * . s"  cells, C[0][0]=" type
-      MGC-HC 0 T-GET f>s . s" )" type cr
+      MMA-EXACT:MX-HC 0 T-GET f>s . s" )" type cr
    else
-      s" FAIL mismatches=" type bad . s"  first=" type MGC-BADI @ .
-      s"  maxerr=" type MGC-MAXERR @ f>s . cr
+      s" FAIL mismatches=" type bad . s"  first=" type MMA-EXACT:MX-BADI @ .
+      s"  maxerr=" type MMA-EXACT:MX-MAXERR @ f>s . cr
    then ;
 
 \ negative regression (dot habu-mma-larger-bk): an over-budget STATIC .shared tile must fail closed
@@ -206,9 +114,9 @@ create MGC-MAXERR 1 cells allot
    else s" mma-gemm-check: B-ldmatrix legality regression FAILED" 1 die then ;
 
 \ negative+positive regression (dot habu-mma-wave-2): the zero-block / ragged-M launch guard must throw
-\ MGC-E-ZEROBLK below BROWS and at a non-multiple, and pass on exact multiples. Device-independent.
+\ MX-E-ZEROBLK below BROWS and at a non-multiple, and pass on exact multiples. Device-independent.
 variable MGC-TN
-: MGC-TRY-SHAPE ( n -- n )  MGC-TN !  [: MGC-TN @ MGC-CHECK-SHAPE ;] catch ;   \ 0 = ok, else throw code
+: MGC-TRY-SHAPE ( n -- n )  MGC-TN !  [: MGC-TN @ MMA-EXACT:MX-CHECK-SHAPE ;] catch ;   \ 0 = ok, else throw code
 : MGC-ZEROBLK-NEG ( -- )
    2 MMA-MFRAGS !                                   \ BROWS = 128
    64  MGC-TRY-SHAPE {: r64:n :}                     \ 64 < 128 -> gridY=0 -> must throw
@@ -218,7 +126,7 @@ variable MGC-TN
    1 MMA-MFRAGS !
    s" -- zero-block guard (MFRAGS=2, BROWS=128): 64->" type r64 . s"  128->" type r128 .
    s"  192->" type r192 . s"  256->" type r256 . cr
-   r64 MGC-E-ZEROBLK =  r192 MGC-E-ZEROBLK =  and  r128 0=  and  r256 0=  and
+   r64 MMA-EXACT:MX-E-ZEROBLK =  r192 MMA-EXACT:MX-E-ZEROBLK =  and  r128 0=  and  r256 0=  and
    if s" -- zero-block guard: fail-closed on <BROWS and ragged, pass on exact multiples (PASS)" type cr
    else s" mma-gemm-check: zero-block guard regression FAILED" 1 die then ;
 
@@ -232,7 +140,7 @@ variable MGC-TN
    cr
    s" habu-mma-gemm-check" PTXTC:PREPARE
    PTX-CAPTURE-ON  EMIT-MATMUL-MMA  PTX-CAPTURE-OFF
-   MGC-ASSEMBLE
+   MMA-EXACT:MX-ASSEMBLE
    PTXBENCH:RESET
    PTXTC:CUBIN$ PTXBENCH:CUBIN!
    s" MMM" PTXBENCH:KERNEL!  s" MMM" PTXBENCH:LABEL!
@@ -254,7 +162,7 @@ variable MGC-TN
 \ WIDER-M config (dot habu-mma-amortize-the, MFRAGS=4 dot habu-mma-wave-2): MFRAGS>1 grows the block to
 \ 64*MFRAGS rows, so it is checked at the two block-M-aware edges BROWS (1 M-block, all N-blocks) and
 \ 2*BROWS (multiple M-blocks) - 128^3/256^3 at MFRAGS=2, 256^3/512^3 at MFRAGS=4. A shape below BROWS
-\ would launch zero M-blocks (now the MGC-CHECK-SHAPE guard throws). Restores MFRAGS=1 and the 64/128 edges.
+\ would launch zero M-blocks (now the MX-CHECK-SHAPE guard throws). Restores MFRAGS=1 and the 64/128 edges.
 : MGC-CFG-WIDE ( n n n n n n -- ) {: bk:n pad:n stages:n dyn:n mode:n mfrags:n :}
    bk MMA-BK !  pad MMA-PAD !  stages MMA-STAGES !  dyn MMA-DYNSMEM !  mfrags MMA-MFRAGS !
    MMA-BROWS MGC-SA !  MMA-BROWS 2 * MGC-SB !          \ block-M-aware edges from BROWS (128/256 at MFRAGS=2, 256/512 at MFRAGS=4)
@@ -712,7 +620,7 @@ variable MGC-TN
 
 public
 : MGC-ALL ( -- )
-   MGC-BUF-INIT                                        \ heap-allocate the large host/packed buffers (512^2 exceeds the dictionary)
+   MMA-EXACT:MX-BUF-INIT                               \ heap-allocate the large host/packed buffers (512^2 exceeds the dictionary)
    MGC-SMEM-NEG                                        \ emitter fail-closed check (device-independent)
    MGC-ZEROBLK-NEG                                     \ zero-block/ragged-M launch guard (device-independent)
    MGC-BLDM-NEG                                        \ B-ldmatrix misaligned/MFRAGS=1 fail-closed (device-independent)
