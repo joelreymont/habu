@@ -697,7 +697,7 @@ TR-INSTALL-POOL-HOOKS
    then
    TR-PERSIST-INIT
    TR-PERSIST-ENSURE
-   TR-PERSIST$ CK-CACHE-ROOT!
+   TR-PERSIST$ CONTENT-KEY:CACHE-ROOT!
    TRC:RESET
    TR-PERSIST$ TRC:ROOT!
    GT-ROOT GS-ROOT!
@@ -809,13 +809,13 @@ TR-INSTALL-POOL-HOOKS
    TR-NUM-ARG+ ;
 
 : TR-KEY-FILE+ ( ptr u8 n -- ) {: a:ptr u:n :}
-   a u CK-FILE+ ;
+   a u CONTENT-KEY:FILE+ ;
 
 : TR-UNDER-SOURCE-KEY ( -- )
    [: TR-KEY-FILE+ ;] TR-UNDER-SOURCE-FILES ;
 
 : TR-UNDER-LINUX-KEY ( -- )
-   s" target:linux-aarch64" CK-TEXT+
+   s" target:linux-aarch64" CONTENT-KEY:TEXT+
    s" src/os/linux/target.f" TR-KEY-FILE+
    s" src/os/linux/layout.f" TR-KEY-FILE+
    s" src/os/linux/sys.f" TR-KEY-FILE+
@@ -826,7 +826,7 @@ TR-INSTALL-POOL-HOOKS
    s" src/os/linux/repl-term.f" TR-KEY-FILE+ ;
 
 : TR-UNDER-MACOS-KEY ( -- )
-   s" target:macos-aarch64" CK-TEXT+
+   s" target:macos-aarch64" CONTENT-KEY:TEXT+
    s" src/os/macos/target.f" TR-KEY-FILE+
    s" src/os/macos/layout.f" TR-KEY-FILE+
    s" src/os/macos/sys.f" TR-KEY-FILE+
@@ -842,12 +842,12 @@ TR-INSTALL-POOL-HOOKS
    s" Habu-under-test cache unknown target" TR-FAIL ;
 
 : TR-UNDER-KEY! ( -- )
-   CK-RESET
-   s" hb-under-test-cache-v3" CK-TEXT+
+   CONTENT-KEY:RESET
+   s" hb-under-test-cache-v3" CONTENT-KEY:TEXT+
    s" bin/hb" TR-KEY-FILE+
    TR-UNDER-SOURCE-KEY
    TR-UNDER-TARGET-KEY
-   TR-UNDER-KEY-HEX CK-FINAL-HEX ;
+   TR-UNDER-KEY-HEX CONTENT-KEY:FINAL-HEX ;
 
 : TR-UNDER-NAME! ( -- )
    s" hb-under-" {: p:ptr pu:n :}
@@ -1543,17 +1543,17 @@ defer TR-MAKI-KICK ( -- )
    idx TR-PHASE-UNDER? 0= if TR-TRUE exit then
    TR-UNDER-READY @ 0= if TR-FALSE exit then
    TR-UNDER-SHA!
-   TR-UNDER-HEX 64 CK-TEXT+
+   TR-UNDER-HEX 64 CONTENT-KEY:TEXT+
    TR-TRUE ;
 
 : TR-RESULT-KEY? ( idx -- bool ) {: idx:idx :}
-   CK-RESET
-   s" gate-phase-pass-v1" CK-TEXT+
-   idx TR-PHASE-LABEL CK-TEXT+
+   CONTENT-KEY:RESET
+   s" gate-phase-pass-v1" CONTENT-KEY:TEXT+
+   idx TR-PHASE-LABEL CONTENT-KEY:TEXT+
    s" bin/hb" TR-KEY-FILE+
    idx TR-RESULT-UNDER-KEY? 0= if TR-FALSE exit then
    idx TR-RESULT-KEY-FILES? 0= if TR-FALSE exit then
-   TR-RESULT-KEY-HEX CK-FINAL-HEX
+   TR-RESULT-KEY-HEX CONTENT-KEY:FINAL-HEX
    TR-TRUE ;
 
 : TR-RESULT-CACHED? ( idx -- bool ) {: idx:idx :}
@@ -2009,7 +2009,7 @@ create TR-CAL-ERR-BUF TR-CAL-CAP allot
    0 TR-SHA-I !
    begin TR-SHA-I @ 64 < while
       TR-SHA-ACC @ 4 lshift
-      TR-UNDER-HEX TR-SHA-I @ + c@ CK-HEX-NIB or
+      TR-UNDER-HEX TR-SHA-I @ + c@ CONTENT-KEY:HEX-NIB or
       TR-SHA-ACC !
       TR-SHA-I @ 1+ TR-SHA-I !
    repeat

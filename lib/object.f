@@ -491,10 +491,10 @@ public
 
 : KEY-HEX ( ptr u8 -- ) {: dst:ptr :}
    BYTES$ DG SHA256
-   CK-RESET
-   s" habu-object-record-key-v1" CK-TEXT+
-   DG CK-DIGEST+
-   dst CK-FINAL-HEX ;
+   CONTENT-KEY:RESET
+   s" habu-object-record-key-v1" CONTENT-KEY:TEXT+
+   DG CONTENT-KEY:DIGEST+
+   dst CONTENT-KEY:FINAL-HEX ;
 
 ;package
 

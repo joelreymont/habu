@@ -885,20 +885,20 @@ Callers append version strings and source files, then hash the accumulated
 manifest into a binary or hex digest:
 
 ```forth
-CK-RESET          ( -- )
-CK-TEXT+          ( ptr u8 n -- )
-CK-DIGEST+        ( ptr u8 -- )
-CK-FILE+          ( ptr u8 n -- )
-CK-FINAL          ( ptr u8 -- )
-CK-FINAL-HEX      ( ptr u8 -- )
+CONTENT-KEY:RESET       ( -- )
+CONTENT-KEY:TEXT+       ( ptr u8 n -- )
+CONTENT-KEY:DIGEST+     ( ptr u8 -- )
+CONTENT-KEY:FILE+       ( ptr u8 n -- )
+CONTENT-KEY:FINAL       ( ptr u8 -- )
+CONTENT-KEY:FINAL-HEX   ( ptr u8 -- )
 ```
 
-`CK-FILE+` records the path in the manifest but hashes file content through a
-metadata-validated per-file digest cache when one is configured. `CK-CACHE-PATH!`
-sets an explicit cache file, `CK-CACHE-ROOT!` uses `content-key.cache` under a
-root directory, and `CK-CACHE-CLEAR!` clears the explicit setting. The test
-suite installs this root in-process; content-key does not read environment
-variables.
+`CONTENT-KEY:FILE+` records the path in the manifest but hashes file content
+through a metadata-validated per-file digest cache when one is configured.
+`CONTENT-KEY:CACHE-PATH!` sets an explicit cache file, `CONTENT-KEY:CACHE-ROOT!`
+uses `content-key.cache` under a root directory, and `CONTENT-KEY:CACHE-CLEAR!`
+clears the explicit setting. The test suite installs this root in-process;
+content-key does not read environment variables.
 
 ## Object Records
 

@@ -82,15 +82,15 @@ variable ECT-I
    s" unrelated.f" ECT-UN ECT-UN-U ECT-MK ;
 
 : ECT-CLOSURE-KEY ( ptr u8 -- ) {: dst:ptr :}
-   CK-RESET
-   s" ect-closure-v1" CK-TEXT+
+   CONTENT-KEY:RESET
+   s" ect-closure-v1" CONTENT-KEY:TEXT+
    ECT-ENTRY$ EC:BUILD
    0 ECT-I !
    begin ECT-I @ EC:COUNT < while
-      ECT-I @ EC:PATH$ CK-FILE+
+      ECT-I @ EC:PATH$ CONTENT-KEY:FILE+
       ECT-I @ 1+ ECT-I !
    repeat
-   dst CK-FINAL-HEX ;
+   dst CONTENT-KEY:FINAL-HEX ;
 
 \ --- ordering / dedup ---------------------------------------------------------
 : ECT-MIXED-ENTRY$ ( -- ptr u8 n )

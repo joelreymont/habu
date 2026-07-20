@@ -1,5 +1,16 @@
 \ content-key.f - manifest-hashed content cache keys.
 \
+\ The module lives in `package CONTENT-KEY`. External callers build a key through
+\ the qualified public API: CONTENT-KEY:RESET starts a fresh preimage,
+\ CONTENT-KEY:TEXT+ / CONTENT-KEY:FILE+ / CONTENT-KEY:DIGEST+ fold in fields, and
+\ CONTENT-KEY:FINAL / CONTENT-KEY:FINAL-HEX close it into a digest. The persistent
+\ file-digest cache is driven by CONTENT-KEY:CACHE-ROOT! / CACHE-PATH! / CACHE-CLEAR!.
+\ CONTENT-KEY:HEX-NIB decodes one hex digit. The read-only diagnostic views
+\ CONTENT-KEY:BUF$ / BUF-CAP / ROW$ / ROW-CAP expose the two shared string buffers
+\ for the gate cache-key participation test and the capacity-throw reporter. Every
+\ other helper, the whole cache/index/compaction machinery, and all buffers are
+\ package-private.
+\
 \ Requires SHA256 words; native bin/hb already carries src/core/sha256.f.
 \ Needs SORT:SORT! for the path-ordered lookup index and RENAME-FILE for the
 \ atomic compacting writer, so both modules are pulled in explicitly.
@@ -10,6 +21,8 @@ require lib/memory.f
 require lib/fs.f
 require lib/sort.f
 require lib/fs-mutate.f
+
+package CONTENT-KEY
 
 $40000 constant CK-CAP
 $100000 constant CK-CACHE-CAP
@@ -72,8 +85,12 @@ variable CK-TMP-TRY
 : CK-FALSE ( -- bool )
    CK-TRUE 0= ;
 
-: CK-RESET ( -- )
+public
+
+: RESET ( -- )
    0 CK-U ! ;
+
+private
 
 : CK-CAP-CHECK ( n -- ) {: n:n :}
    n 0 < if E-STR-BOUNDS throw then
@@ -98,13 +115,17 @@ variable CK-TMP-TRY
    u CK-U8+
    a u CK-BYTES+ ;
 
-: CK-TEXT+ ( ptr u8 n -- )
+public
+
+: TEXT+ ( ptr u8 n -- )
    CK-TEXT-TAG -rot CK-FRAG+ ;
 
-: CK-DIGEST+ ( ptr u8 -- )
+: DIGEST+ ( ptr u8 -- )
    CK-DIGEST-TAG CK-U8+
    32 CK-U8+
    32 CK-BYTES+ ;
+
+private
 
 \ One plain-English line to stderr; the visible-degradation channel the cache
 \ uses instead of silently disabling itself.
@@ -112,11 +133,15 @@ variable CK-TMP-TRY
    CK-STDERR-FD a u write drop
    CK-STDERR-FD S\" \n" write drop ;
 
-: CK-CACHE-CLEAR! ( -- )
+public
+
+: CACHE-CLEAR! ( -- )
    0 CK-CACHE-PATH-U !
    0 CK-CACHE-LOADED !
    0 CK-CACHE-DIRTY !
    0 CK-CACHE-DISABLED ! ;
+
+private
 
 : CK-CACHE-BUF-FIELD ( -- ptr ptr u8 )
    CK-CACHE-BUF-A 0 ptr-field ;
@@ -176,16 +201,20 @@ variable CK-TMP-TRY
 : CK-CACHE-PATH? ( -- bool )
    CK-CACHE-PATH-U @ 0 > ;
 
-: CK-CACHE-PATH! ( ptr u8 n -- ) {: a:ptr u:n :}
+public
+
+: CACHE-PATH! ( ptr u8 n -- ) {: a:ptr u:n :}
    u 0 < if E-FS-PATH throw then
    u FS-PATH-CAP > if E-FS-CAPACITY throw then
    a CK-CACHE-PATH-BUF u BYTE-COPY
    u CK-CACHE-PATH-U !
    0 CK-CACHE-LOADED ! ;
 
-: CK-CACHE-ROOT! ( ptr u8 n -- ) {: a:ptr u:n :}
+: CACHE-ROOT! ( ptr u8 n -- ) {: a:ptr u:n :}
    a u s" content-key.cache" CK-CACHE-PATH-BUF JOIN-PATH CK-CACHE-PATH-U !
    0 CK-CACHE-LOADED ! ;
+
+private
 
 : CK-CACHE-AUTO? ( -- bool )
    CK-CACHE-DISABLED @ 0 <> if CK-FALSE exit then
@@ -233,15 +262,19 @@ variable CK-TMP-TRY
    STR-TAB CK-ROW-C+
    CK-ROW-U @ CK-PREFIX-U ! ;
 
-: CK-HEX-NIB ( n -- n ) {: c:n :}
+public
+
+: HEX-NIB ( n -- n ) {: c:n :}
    c STR-ZERO >= c STR-ZERO 10 + < and if c STR-ZERO - exit then
    c CK-HEX-LOW-A >= c CK-HEX-LOW-G < and if c 87 - exit then
    c CK-HEX-UP-A >= c CK-HEX-UP-G < and if c 55 - exit then
    E-STR-BOUNDS throw ;
 
+private
+
 : CK-HEX-BYTE@ ( ptr u8 -- n ) {: a:ptr :}
-   a c@ CK-HEX-NIB 4 lshift
-   a 1 + c@ CK-HEX-NIB or ;
+   a c@ HEX-NIB 4 lshift
+   a 1 + c@ HEX-NIB or ;
 
 : CK-HEX>DIGEST ( ptr u8 -- ) {: a:ptr :}
    32 0 DO
@@ -519,23 +552,39 @@ variable CK-TMP-TRY
 : CK-FILE-DIGEST! ( ptr u8 n -- ) {: a:ptr u:n :}
    a u CK-FILE-DG SHA256-FILE dup 0 <> if throw then drop ;
 
-: CK-FILE+ ( ptr u8 n -- ) {: a:ptr u:n :}
+public
+
+: FILE+ ( ptr u8 n -- ) {: a:ptr u:n :}
    CK-FILE-TAG a u CK-FRAG+
    a u FILE-META {: sz:n mt:n mn:n ct:n cn:n :}
    a u sz mt mn ct cn CK-ROW-FILE-PREFIX
    CK-CACHE-LOAD? if
-      CK-CACHE-FIND? if CK-FILE-DG CK-DIGEST+ exit then
+      CK-CACHE-FIND? if CK-FILE-DG DIGEST+ exit then
    then
    a u CK-FILE-DIGEST!
-   CK-FILE-DG CK-DIGEST+
+   CK-FILE-DG DIGEST+
    CK-CACHE-APPEND ;
 
 \ Finalizing a key is the batch boundary: flush the accumulated cache rows to
 \ disk once, compacted, so a run against a bloated cache self-heals on save.
-: CK-FINAL ( ptr u8 -- ) {: dst:ptr :}
+: FINAL ( ptr u8 -- ) {: dst:ptr :}
    CK-BUF CK-U @ dst SHA256
    CK-CACHE-SAVE ;
 
-: CK-FINAL-HEX ( ptr u8 -- ) {: hex:ptr :}
-   CK-DG CK-FINAL
+: FINAL-HEX ( ptr u8 -- ) {: hex:ptr :}
+   CK-DG FINAL
    CK-DG hex SHA256>HEX ;
+
+\ Read-only introspection of the two shared string buffers: the key preimage
+\ (BUF$/BUF-CAP) and the cache-row builder (ROW$/ROW-CAP). BUF$ names the exact
+\ bytes FINAL will hash, so the gate proves a manifest path participates in the
+\ key; the fills and caps let the capacity-throw reporter name an overflow.
+: BUF$ ( -- ptr u8 n )   CK-BUF CK-U @ ;
+
+: BUF-CAP ( -- n )   CK-CAP ;
+
+: ROW$ ( -- ptr u8 n )   CK-ROW-BUF CK-ROW-U @ ;
+
+: ROW-CAP ( -- n )   CK-ROW-CAP ;
+
+;package

@@ -97,13 +97,13 @@ public
 : SOURCE-KEY-HEX ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n ptr u8 -- )
    {: src:ptr srcu:n target:ptr targetu:n checker:ptr checkeru:n compiler:ptr compileru:n dst:ptr :}
    src srcu KEY-CHECK
-   CK-RESET
-   s" obj-source-index-v1" CK-TEXT+
-   src srcu CK-TEXT+
-   target targetu CK-TEXT+
-   checker checkeru CK-TEXT+
-   compiler compileru CK-TEXT+
-   dst CK-FINAL-HEX ;
+   CONTENT-KEY:RESET
+   s" obj-source-index-v1" CONTENT-KEY:TEXT+
+   src srcu CONTENT-KEY:TEXT+
+   target targetu CONTENT-KEY:TEXT+
+   checker checkeru CONTENT-KEY:TEXT+
+   compiler compileru CONTENT-KEY:TEXT+
+   dst CONTENT-KEY:FINAL-HEX ;
 
 : EXISTS? ( ptr u8 n -- bool )
    PATH$ FILE? ;

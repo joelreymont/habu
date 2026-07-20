@@ -64,17 +64,17 @@ variable ERR#
    ROOT$ CLEANUP-TREE+
    ROOT$ s" src.f" SRC-BUF JOIN-PATH SRC-LEN !
    ROOT$ s" content-key.cache" CACHE-BUF JOIN-PATH CACHE-LEN !
-   CK-CACHE-CLEAR!
-   CACHE-BUF CACHE-LEN @ CK-CACHE-PATH!
+   CONTENT-KEY:CACHE-CLEAR!
+   CACHE-BUF CACHE-LEN @ CONTENT-KEY:CACHE-PATH!
    FILE-CAP MEM:BYTES-ALLOC-LEN MEM:ALLOC-BYTES drop FILE-A-FIELD !
    TRC:RESET
    ROOT$ TRC:ROOT! ;
 
 : KEY! ( ptr u8 -- ) {: dst:ptr :}
-   CK-RESET
-   s" result-cache-test" CK-TEXT+
-   SRC$ CK-FILE+
-   dst CK-FINAL-HEX ;
+   CONTENT-KEY:RESET
+   s" result-cache-test" CONTENT-KEY:TEXT+
+   SRC$ CONTENT-KEY:FILE+
+   dst CONTENT-KEY:FINAL-HEX ;
 
 : STAMP-MISS-THEN-HIT ( -- )
    SRC$ s" alpha" WRITE-ALL
@@ -274,7 +274,7 @@ variable ERR#
    ERR# @ 0 T= ;
 
 : CLEANUP ( -- )
-   CK-CACHE-CLEAR!
+   CONTENT-KEY:CACHE-CLEAR!
    CLEANUP-RUN
    ROOT$ EXISTS? TFALSE ;
 

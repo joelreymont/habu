@@ -54,12 +54,12 @@ variable MARKER-PATH-U
    loop ;
 
 \ One file: content-key over its path AND bytes -> 32-byte digest, XOR'd in.
-\ CK-FILE+ folds the path plus the SHA256 of the content (never mtime), so the
+\ CONTENT-KEY:FILE+ folds the path plus the SHA256 of the content (never mtime), so the
 \ key tracks a rename, an edit, an add, or a delete of any file.
 : KEY-FILE ( ptr u8 n -- ) {: a:ptr u:n :}
-   CK-RESET
-   a u CK-FILE+
-   FILE-DG CK-FINAL
+   CONTENT-KEY:RESET
+   a u CONTENT-KEY:FILE+
+   FILE-DG CONTENT-KEY:FINAL
    ACC-XOR ;
 
 : KEY-ROOT ( ptr u8 n -- )

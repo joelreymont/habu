@@ -467,7 +467,7 @@ HBB-INSTALL-CHILD-LINTS
    HBB-ARTIFACT-NAME-BUF HBB-ARTIFACT-NAME-U @ ;
 
 : HBB-KEY-FILE+ ( ptr u8 n -- ) {: a:ptr u:n :}
-   a u CK-FILE+ ;
+   a u CONTENT-KEY:FILE+ ;
 
 : HBB-KEY-LOAD-FILES ( -- )
    s" lib/errors.f" HBB-KEY-FILE+
@@ -552,7 +552,7 @@ HBB-INSTALL-CHILD-LINTS
    s" src/habu/maker.f" HBB-KEY-FILE+ ;
 
 : HBB-KEY-LINUX-SOURCES ( -- )
-   s" target:linux-aarch64" CK-TEXT+
+   s" target:linux-aarch64" CONTENT-KEY:TEXT+
    s" src/os/linux/target.f" HBB-KEY-FILE+
    s" src/os/linux/layout.f" HBB-KEY-FILE+
    s" src/os/linux/sys.f" HBB-KEY-FILE+
@@ -562,7 +562,7 @@ HBB-INSTALL-CHILD-LINTS
    s" src/os/linux/sign.f" HBB-KEY-FILE+ ;
 
 : HBB-KEY-MACOS-SOURCES ( -- )
-   s" target:macos-aarch64" CK-TEXT+
+   s" target:macos-aarch64" CONTENT-KEY:TEXT+
    s" src/os/macos/target.f" HBB-KEY-FILE+
    s" src/os/macos/layout.f" HBB-KEY-FILE+
    s" src/os/macos/sys.f" HBB-KEY-FILE+
@@ -578,25 +578,25 @@ HBB-INSTALL-CHILD-LINTS
 
 : HBB-KEY-DRIVER-SOURCES ( -- )
    HBB-REPL @ if
-      s" maker-mode:repl" CK-TEXT+
+      s" maker-mode:repl" CONTENT-KEY:TEXT+
       s" src/habu/verify-source.f" HBB-KEY-FILE+
       s" src/habu/build.f" HBB-KEY-FILE+
       exit
    then
-   s" maker-mode:aot" CK-TEXT+
+   s" maker-mode:aot" CONTENT-KEY:TEXT+
    s" src/habu/aot-closure.f" HBB-KEY-FILE+
    s" src/habu/aot-lib.f" HBB-KEY-FILE+
    s" src/habu/aot.f" HBB-KEY-FILE+ ;
 
 : HBB-MAKER-KEY! ( -- )
-   CK-RESET
-   s" hb-build-maker-cache-v2" CK-TEXT+
+   CONTENT-KEY:RESET
+   s" hb-build-maker-cache-v2" CONTENT-KEY:TEXT+
    BF-ENGINE$ HBB-KEY-FILE+
    HBB-KEY-LOAD-FILES
    HBB-KEY-COMMON-SOURCES
    HBB-KEY-TARGET-SOURCES
    HBB-KEY-DRIVER-SOURCES
-   HBB-MAKER-KEY-HEX CK-FINAL-HEX ;
+   HBB-MAKER-KEY-HEX CONTENT-KEY:FINAL-HEX ;
 
 : HBB-MAKER-NAME! ( -- )
    HBB-MK-NAME$ {: a:ptr u:n :}
@@ -781,7 +781,7 @@ HBB-INSTALL-CHILD-LINTS
    HBB-ARTIFACT-LOCK-PATH HBB-ARTIFACT-LOCK-U @ ;
 
 : HBB-OPTION-TEXT+ ( ptr u8 n bool -- )
-   if CK-TEXT+ else 2drop then ;
+   if CONTENT-KEY:TEXT+ else 2drop then ;
 
 \ The user program's behaviour depends on every file its require/include closure
 \ actually loads, so the cache keys fold the whole ordered closure content, not
@@ -791,7 +791,7 @@ HBB-INSTALL-CHILD-LINTS
    a u EC:BUILD
    0 HBB-KEY-I !
    begin HBB-KEY-I @ EC:COUNT < while
-      HBB-KEY-I @ EC:PATH$ CK-FILE+
+      HBB-KEY-I @ EC:PATH$ CONTENT-KEY:FILE+
       HBB-KEY-I @ 1+ HBB-KEY-I !
    repeat ;
 
@@ -803,21 +803,21 @@ HBB-INSTALL-CHILD-LINTS
 \ (docs/census-tfam-10.md Categories 2-3, insert-axis summary).
 : HBB-PRESEED-CK+ ( -- )
    HBB-PRESEED? 0= if exit then
-   s" preseed-entry-v1" CK-TEXT+
-   HBB-ENTRY-NAME$ CK-TEXT+
-   HBB-SEED-HEX$ CK-TEXT+
-   SB-RESET s" mode:" SB-APPEND HBB-PRESEED-MODE @ FS-MUT-SB-U SB$ CK-TEXT+ ;
+   s" preseed-entry-v1" CONTENT-KEY:TEXT+
+   HBB-ENTRY-NAME$ CONTENT-KEY:TEXT+
+   HBB-SEED-HEX$ CONTENT-KEY:TEXT+
+   SB-RESET s" mode:" SB-APPEND HBB-PRESEED-MODE @ FS-MUT-SB-U SB$ CONTENT-KEY:TEXT+ ;
 
 : HBB-SRC-CLOSURE+ ( -- )
-   s" user-source-closure-v1" CK-TEXT+
+   s" user-source-closure-v1" CONTENT-KEY:TEXT+
    HBB-SRC$ HBB-CLOSURE-CK+ ;
 
 : HBB-CLOSURE-HEX! ( ptr u8 n ptr u8 -- ) {: a:ptr u:n dst:ptr :}
-   CK-RESET
-   s" user-source-closure-v1" CK-TEXT+
+   CONTENT-KEY:RESET
+   s" user-source-closure-v1" CONTENT-KEY:TEXT+
    a u HBB-CLOSURE-CK+
    HBB-PRESEED-CK+
-   dst CK-FINAL-HEX ;
+   dst CONTENT-KEY:FINAL-HEX ;
 
 : HBB-SRC-CLOSURE-HEX! ( -- )
    HBB-SRC$ HBB-SRC-CLOSURE-HEX HBB-CLOSURE-HEX! ;
@@ -845,16 +845,16 @@ HBB-INSTALL-CHILD-LINTS
 
 : HBB-ARTIFACT-KEY! ( -- )
    HBB-MAKER-KEY!
-   CK-RESET
-   s" hb-build-artifact-cache-v2" CK-TEXT+
-   HBB-MAKER-KEY-HEX 64 CK-TEXT+
+   CONTENT-KEY:RESET
+   s" hb-build-artifact-cache-v2" CONTENT-KEY:TEXT+
+   HBB-MAKER-KEY-HEX 64 CONTENT-KEY:TEXT+
    s" strict" HBB-STRICT @ 0 <> HBB-OPTION-TEXT+
    s" json" HBB-JSON @ 0 <> HBB-OPTION-TEXT+
    s" tools/diag-origin-core.f" HBB-KEY-FILE+
    s" tools/diag-origin.f" HBB-KEY-FILE+
    HBB-SRC-CLOSURE+
    HBB-PRESEED-CK+
-   HBB-ARTIFACT-KEY-HEX CK-FINAL-HEX ;
+   HBB-ARTIFACT-KEY-HEX CONTENT-KEY:FINAL-HEX ;
 
 : HBB-ARTIFACT-NAME! ( -- )
    s" hb-build-out" {: a:ptr u:n :}

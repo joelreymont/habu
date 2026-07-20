@@ -9,6 +9,11 @@ require lib/fs.f
 require lib/fs-mutate.f
 require lib/content-key.f
 
+\ White-box test: reopen the module's package so the fixtures reach content-key's
+\ private capacity/flag/length cells (CK-CACHE-CAP, CK-CACHE-DISABLED, CK-HEX-LEN)
+\ and call the public builders by their bare package-local names.
+package CONTENT-KEY
+
 $8000 constant CKT-READ-CAP
 64 constant CKT-KEY-LEN
 $8000 constant CKT-BUILD-CAP
@@ -54,14 +59,14 @@ create CKT-BUILD CKT-BUILD-CAP allot
    CKT-ROOT$ CLEANUP-TREE+
    CKT-ROOT$ s" src.f" CKT-SRC CKT-SRC-U CKT-PATH!
    CKT-ROOT$ s" content-key.cache" CKT-CACHE CKT-CACHE-U CKT-PATH!
-   CK-CACHE-CLEAR!
-   CKT-CACHE$ CK-CACHE-PATH! ;
+   CACHE-CLEAR!
+   CKT-CACHE$ CACHE-PATH! ;
 
 : CKT-KEY! ( ptr u8 -- ) {: dst:ptr :}
-   CK-RESET
-   s" content-key-test" CK-TEXT+
-   CKT-SRC$ CK-FILE+
-   dst CK-FINAL-HEX ;
+   RESET
+   s" content-key-test" TEXT+
+   CKT-SRC$ FILE+
+   dst FINAL-HEX ;
 
 : CKT-LF-COUNT ( ptr u8 n -- n ) {: a:ptr u:n :}
    0 0 begin dup u < while
@@ -75,8 +80,8 @@ create CKT-BUILD CKT-BUILD-CAP allot
 
 \ Force the next cache touch to reload from disk under the current path.
 : CKT-REPOINT ( -- )
-   CK-CACHE-CLEAR!
-   CKT-CACHE$ CK-CACHE-PATH! ;
+   CACHE-CLEAR!
+   CKT-CACHE$ CACHE-PATH! ;
 
 \ ---- raw on-disk row builder (fabricates the unchanged cache format) ----------
 
@@ -228,7 +233,7 @@ create CKT-BUILD CKT-BUILD-CAP allot
    CKT-CACHE-ROWS 1 T= ;
 
 : CKT-CLEANUP ( -- )
-   CK-CACHE-CLEAR!
+   CACHE-CLEAR!
    CLEANUP-RUN
    CKT-ROOT$ EXISTS? TFALSE ;
 
@@ -245,3 +250,5 @@ create CKT-BUILD CKT-BUILD-CAP allot
    T-REPORT ;
 
 CKT-MAIN
+
+;package

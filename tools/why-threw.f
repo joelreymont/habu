@@ -26,10 +26,10 @@ require lib/content-key.f
    s" WHY-THREW: fork-worker throw code=" type rc .
    s" WHY-THREW: SB fill=" type SB-LEN @ .
    s" WHY-THREW: SB cap=" type SB-CAP .
-   s" WHY-THREW: CK fill=" type CK-U @ .
-   s" WHY-THREW: CK cap=" type CK-CAP .
-   s" WHY-THREW: CK-ROW fill=" type CK-ROW-U @ .
-   s" WHY-THREW: CK-ROW cap=" type CK-ROW-CAP . ;
+   s" WHY-THREW: CK fill=" type CONTENT-KEY:BUF$ nip .
+   s" WHY-THREW: CK cap=" type CONTENT-KEY:BUF-CAP .
+   s" WHY-THREW: CK-ROW fill=" type CONTENT-KEY:ROW$ nip .
+   s" WHY-THREW: CK-ROW cap=" type CONTENT-KEY:ROW-CAP . ;
 
 \ typed-local-lint: allow-bare-local - q keeps the suspect quotation effect.
 : WHY-THREW ( [ -- ] -- ) {: q :}
