@@ -12,6 +12,7 @@ require lib/test.f
 require lib/prelude.f
 require maki/examples/nanogpt/bpe.f
 require maki/examples/nanogpt/bpe-data.f
+require maki/examples/nanogpt/bpe-real-data.f
 
 package MAKI
 
@@ -180,6 +181,96 @@ variable BPT-M                    \ id count shared into a catch quotation (no l
    [: BPT-IDS 1 BPT-CANB BPT-CANN BPE-DECODE drop ;] catch
    E-BPE-RANGE =  BPT-CANB-CLEAN?  and ;
 
+\ ==== real GPT-2 vocab (maki/bpe-real.f) ==========================================
+\ Fixtures + the fired-merge subset are committed real-vocab data (maki/bpe-real-data.f);
+\ the id vectors are exact tiktoken-gpt2 sequences (provenance there). Proves BPR-ENCODE
+\ reproduces them, real-id round-trip, the measured pre-split divergence boundary, and
+\ the loader's ready-gating / domain / bijection guards. BPR-prefixed; reuses BPT-CAP.
+create BPR-IDS BPT-CAP cells allot
+create BPR-BK  BPT-CAP allot
+
+: BPR-ENC-EQ? ( ptr a n ptr u8 n -- bool )  {: ea:ptr en:n s:ptr slen:n :}
+   s slen BPR-IDS BPT-CAP BPR-ENCODE {: m:n :}
+   m en <> if false exit then
+   en 0 ?do
+      BPR-IDS i T-GET f>s  ea i cells + @  <> if false unloop exit then
+   loop true ;
+: BPR-PARITY? ( -- bool )    \ every fixture encodes to its exact tiktoken id vector
+   BPR-I1  BPR-N1  BPR-S1  BPR-ENC-EQ?
+   BPR-I2  BPR-N2  BPR-S2  BPR-ENC-EQ? and
+   BPR-I3  BPR-N3  BPR-S3  BPR-ENC-EQ? and
+   BPR-I4  BPR-N4  BPR-S4  BPR-ENC-EQ? and
+   BPR-I5  BPR-N5  BPR-S5  BPR-ENC-EQ? and
+   BPR-I6  BPR-N6  BPR-S6  BPR-ENC-EQ? and
+   BPR-I7  BPR-N7  BPR-S7  BPR-ENC-EQ? and
+   BPR-I8  BPR-N8  BPR-S8  BPR-ENC-EQ? and
+   BPR-I9  BPR-N9  BPR-S9  BPR-ENC-EQ? and
+   BPR-I10 BPR-N10 BPR-S10 BPR-ENC-EQ? and
+   BPR-I11 BPR-N11 BPR-S11 BPR-ENC-EQ? and       \ multi-byte MATCH from here
+   BPR-I12 BPR-N12 BPR-S12 BPR-ENC-EQ? and
+   BPR-I13 BPR-N13 BPR-S13 BPR-ENC-EQ? and
+   BPR-I14 BPR-N14 BPR-S14 BPR-ENC-EQ? and
+   BPR-I15 BPR-N15 BPR-S15 BPR-ENC-EQ? and
+   BPR-I16 BPR-N16 BPR-S16 BPR-ENC-EQ? and ;
+
+: BPR-RT? ( ptr u8 n -- bool )  {: a:ptr u:n :}   \ decode(encode(x))==x in real-id space
+   a u BPR-IDS BPT-CAP BPR-ENCODE {: m:n :}
+   BPR-IDS m BPR-BK BPT-CAP BPR-DECODE {: nb:n :}
+   nb u =  BPR-BK nb a u T-STR=  and ;
+: BPR-RT-SAMPLE? ( -- bool )  BPR-RT-S BPR-RT? ;   \ real multi-byte corpus sample
+: BPR-RT-FIX? ( -- bool )     \ every multi-byte fixture (incl. the divergent one) round-trips
+   BPR-S11 BPR-RT?  BPR-S12 BPR-RT? and  BPR-S13 BPR-RT? and
+   BPR-S14 BPR-RT? and  BPR-S15 BPR-RT? and  BPR-S16 BPR-RT? and
+   BPR-DIV-S BPR-RT? and ;
+
+: BPR-STRUCT? ( -- bool )
+   BPR-VOCAB 50257 =  BPR-EOT 50256 =  and  BPR-MERGES BPR-D-MERGES =  and ;
+
+\ boundary proof: the byte-level matcher output for "naïve" equals the pinned matcher
+\ ids AND differs from the pinned tiktoken (unicode pre-split) ids - measured, not silent.
+: BPR-DIV? ( -- bool )
+   BPR-DIV-HABU BPR-DIV-HABU-N BPR-DIV-S BPR-ENC-EQ?
+   BPR-DIV-TIK  BPR-DIV-TIK-N  BPR-DIV-S BPR-ENC-EQ? 0=  and ;
+
+\ pre-ready: every real-vocab public word rejects before BPR-INSTALL (even though the
+\ engine is already sealed from the synthetic-table tests above)
+: BPR-PRE-ENC ( -- )  BPR-S1 BPR-IDS BPT-CAP BPR-ENCODE drop ;
+: BPR-PRE-DEC ( -- )  BPR-IDS 1 BPR-BK BPT-CAP BPR-DECODE drop ;
+: BPR-PRE-VOC ( -- )  BPR-VOCAB drop ;
+: BPR-PRE-EOT ( -- )  BPR-EOT drop ;
+: BPR-PRE-MRG ( -- )  BPR-MERGES drop ;
+
+\ decode real-id domain validation (finite, exactly integral, in [0,50257), in the map)
+: BPR-DEC-1BAD ( r -- )  BPR-IDS 0 T-SET  BPR-IDS 1 BPR-BK BPT-CAP BPR-DECODE drop ;
+: BPR-DEC-FRAC  ( -- )  2.5      BPR-DEC-1BAD ;
+: BPR-DEC-NEG   ( -- )  -1.0     BPR-DEC-1BAD ;
+: BPR-DEC-HUGE  ( -- )  50257.0  BPR-DEC-1BAD ;   \ >= vocab
+: BPR-DEC-EOT   ( -- )  50256.0  BPR-DEC-1BAD ;   \ the special: in range but carries no bytes / absent from map
+: BPR-DEC-UNMAP ( -- )  49999.0  BPR-DEC-1BAD ;   \ in range but outside the loaded subset map
+: BPR-DEC-NEGLEN ( -- )  BPR-IDS -1 BPR-BK BPT-CAP BPR-DECODE drop ;
+
+\ malformed vocab: a bad byte-id table is rejected BEFORE any mutation (fail-closed), so
+\ the loaded real vocab survives. Scratch byte-id table seeded identity 0..255, then broken.
+create BPR-BADBID 256 cells allot
+: BPR-BADBID-ID ( -- )  256 0 ?do  i BPR-BADBID i cells + !  loop ;
+: BPR-INST-BADRANGE ( -- )        \ entry out of [0,50257)
+   BPR-BADBID-ID  50257 BPR-BADBID 0 cells + !
+   BPR-BADBID BPR-D-MA BPR-D-MB BPR-D-MID BPR-D-MERGES BPR-INSTALL ;
+: BPR-INST-DUP ( -- )             \ duplicate byte id breaks the bijection
+   BPR-BADBID-ID  0 BPR-BADBID 5 cells + !
+   BPR-BADBID BPR-D-MA BPR-D-MB BPR-D-MID BPR-D-MERGES BPR-INSTALL ;
+
+\ canaries: a rejected real-vocab call writes no caller element
+: BPR-CAN-ENC-CAP? ( -- bool )    \ encode overflow leaves the caller cell buffer untouched
+   BPT-CANF-FILL
+   [: BPR-S8 BPT-CANF 2 BPR-ENCODE drop ;] catch
+   E-BPE-CAP =  BPT-CANF-CLEAN?  and ;
+: BPR-CAN-DEC-BAD? ( -- bool )    \ a rejected real id leaves the caller byte buffer untouched
+   BPT-CANB-FILL
+   2.5 BPR-IDS 0 T-SET
+   [: BPR-IDS 1 BPT-CANB BPT-CANN BPR-DECODE drop ;] catch
+   E-BPR-RANGE =  BPT-CANB-CLEAN?  and ;
+
 T-RESET
 
 \ (1) pre-ready + build-state guards MUST hold before any table is built
@@ -236,6 +327,35 @@ BPT-PARITY?      TTRUE       \ the trained table encodes identically to the fixt
 ' BPT-MRG-DUP      E-BPE-MERGE  TTHROWS
 ' BPT-TR-EMPTY     E-BPE-CORPUS TTHROWS
 ' BPT-TR-NEGK      E-BPE-CORPUS TTHROWS
+
+\ (8) real GPT-2 vocab: pre-ready guards, then load the committed real subset and prove
+\ exact tiktoken parity (ASCII + multi-byte), real-id round-trip, the measured pre-split
+\ boundary, and the loader domain / bijection / canary guards. BPR-D-LOAD re-seals the
+\ engine (a fresh BPE-BEGIN..SEAL), recovering the dirty half-build section (7) leaves.
+' BPR-PRE-ENC  E-BPR-EMPTY TTHROWS
+' BPR-PRE-DEC  E-BPR-EMPTY TTHROWS
+' BPR-PRE-VOC  E-BPR-EMPTY TTHROWS
+' BPR-PRE-EOT  E-BPR-EMPTY TTHROWS
+' BPR-PRE-MRG  E-BPR-EMPTY TTHROWS
+
+BPR-D-LOAD
+BPR-STRUCT?      TTRUE
+BPR-PARITY?      TTRUE
+BPR-RT-SAMPLE?   TTRUE
+BPR-RT-FIX?      TTRUE
+BPR-DIV?         TTRUE
+BPR-CAN-ENC-CAP? TTRUE
+BPR-CAN-DEC-BAD? TTRUE
+
+' BPR-DEC-FRAC      E-BPR-RANGE TTHROWS
+' BPR-DEC-NEG       E-BPR-RANGE TTHROWS
+' BPR-DEC-HUGE      E-BPR-RANGE TTHROWS
+' BPR-DEC-EOT       E-BPR-RANGE TTHROWS
+' BPR-DEC-UNMAP     E-BPR-RANGE TTHROWS
+' BPR-DEC-NEGLEN    E-BPR-CAP   TTHROWS
+' BPR-INST-BADRANGE E-BPR-VOCAB TTHROWS
+' BPR-INST-DUP      E-BPR-VOCAB TTHROWS
+BPR-PARITY?      TTRUE        \ malformed-vocab rejections left the loaded real vocab intact
 
 T-REPORT
 
