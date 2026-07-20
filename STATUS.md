@@ -42,7 +42,8 @@ Latest hot counters: `inner-hb=1`, `inner-hb-stdin=4`, `boundary=5`,
 post-candidate is 11.161s, dictionary/checker is 7.815s, `check-cli` is 3.162s,
 tail/lint groups are under 7.7s, and AOT negative is 7.837s with no AOT maker
 run.
-Certified: 987  Uncheckable: 0  Rejected: 0
+Certified (linux-arm64): 3533  Uncheckable: 0  Rejected: 0
+Certified (macos-arm64): owed  (measured at the next macOS fixpoint)
 Host-script workflow hooks: retired and gated
 
 This is the single source of truth for the self-check counts. Other docs
@@ -50,6 +51,20 @@ This is the single source of truth for the self-check counts. Other docs
 `tools/stale-status-lint.f`, which fails the gate if a count-shaped string
 reappears outside this file, `LESSONS.md`, and the archived lesson logs
 (`docs/archive/lessons-*.md`, the relocated historical log).
+
+Metric (recorded verbatim, one row per build target): the count on each
+`Certified (<target>)` row is the scanner-accurate number of top-level colon
+definitions in the assembled stage2 engine source for that target, as counted
+by the VERIFY scanner (`VERIFY:CENSUS-COUNT` in `tools/build-fixpoint.f`) over
+the full source set including the target's `src/os` leg. Every counted
+definition is certified: the stage2 self-check fail-closes (`E-BUILD-CERTIFY`)
+on any uncheckable or rejected definition, so those two counts are structurally
+0 whenever a row exists. The build-fixpoint self-check emits this triple during
+`install`/`stage`, and the `GE-CENSUS-RATCHET` gate slice
+(`test/gate-engine-lib.f`) re-measures the current target and fails closed if
+its row here drifts, skipping the other target's `owed` row until that platform
+fills it — the same per-target asymmetry the CODELEN rows in
+`test/gate-build-size.f` already use.
 
 The native engine type-checks its own toolchain source (`src/`) as it compiles
 it. "Certified" = body inferred and (where a signature is declared) verified
@@ -70,14 +85,23 @@ stdin/TTY engine, not snapshot launchers; the gate rejects an oversized
 `Habu-under-test`. Standalone snapshot-launcher tooling has been removed; snapshot
 coverage belongs to the native build/fixpoint path.
 
-History: 783/0/0 in earlier docs, then 860/0/9 before exit/unloop modeling,
-890/0/0 after that model landed, 979/0/0 after the native primitive,
-combinator, parsing-word, and stage2 utility signature gap closures, and 987/0/0
-after show-inferred local diagnostics. The 9 formerly-uncheckable words
-(`ENV=?`, `GETENV`, `TMP-PATH`, `SHK-TOK=`, `KEEP?`, `FPRIM`, `FPRIM-L`,
-`EM-INTERPRET`, `EM-COMPILE`) all hinged on early `exit`; teaching the checker a
-sound `exit`/`unloop` model certified them and their callers. See `LESSONS.md`
-for the full record.
+History: the earlier curated series (`783/0/0` -> `860/0/9` -> `890/0/0` ->
+`979/0/0` -> `987/0/0`, the exit/unloop and show-inferred-local milestones) is
+RETIRED as unreproducible — it counted a hand-curated word set with no surviving
+live definition and no measuring tool, and no measurement of the live tree
+reproduces `987` (dot `habu-census-assert-the-f3a20b1f` verified this). From
+2026-07-20 the census is the scanner-defined metric above, measured by the
+build-fixpoint self-check and gate-asserted per target; the first measured value
+is `3530/0/0` on linux-arm64 (DGX Spark; re-measured `3533/0/0` at the merge
+after the deferred-column definer landed - the ratchet caught the drift on its
+first run). There is no continuity between the
+retired `987` and this series — it is a different, now-reproducible metric, not
+a delta, so no attribution (including the BTC-7 landing's 5 checker words) is
+carried across the break. The macOS row is owed at the next macOS fixpoint. The
+retired series and its exit/unloop narrative (the 9 formerly-uncheckable words
+`ENV=?`, `GETENV`, `TMP-PATH`, `SHK-TOK=`, `KEEP?`, `FPRIM`, `FPRIM-L`,
+`EM-INTERPRET`, `EM-COMPILE`) remain in `LESSONS.md` and the archived lesson
+logs as history.
 
 ## Native checker surface
 

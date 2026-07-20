@@ -1165,6 +1165,45 @@ public
 : BF-CERTIFY-SNAP ( -- )
    s" hb-snap-src" s" hb-snap-src" BF-A$ BF-CERTIFY-GENERATED ;
 
+\ Self-check certification census (dot habu-census-assert-the-f3a20b1f). The
+\ stage2 certify above fail-closes on any uncheckable/rejected definition, so
+\ reaching this report proves Uncheckable and Rejected are 0. CENSUS-COUNT reopens
+\ VERIFY to reuse its tokenizer (NEXT-SCAN skips strings and `\`/`( )` comments and
+\ each colon body), so the tally is exactly the top-level colon definitions the
+\ certify scanner verified. The count is per target: the assembled stage2 source
+\ includes the target's src/os leg, so linux-arm64 and macos-arm64 measure their
+\ own totals, mirroring the per-target CODELEN rows in test/gate-build-size.f.
+package VERIFY
+variable CENSUS-N
+: CENSUS-SKIP-BODY ( -- )
+   begin NEXT-SCAN dup 0 > while
+      s" ;" CORE-STR= if exit then
+   repeat 2drop ;
+public
+: CENSUS-COUNT ( ptr u8 n -- n )
+   SOURCE! SCAN-RESET
+   0 CENSUS-N !
+   begin NEXT-SCAN dup 0 > while
+      s" :" CORE-STR= if 1 CENSUS-N +! CENSUS-SKIP-BODY then
+   repeat 2drop
+   CENSUS-N @ ;
+;package
+
+: BF-CENSUS-TARGET$ ( -- ptr u8 n )
+   HB-TARGET-LINUX? if s" linux-arm64" exit then
+   HB-TARGET-MACOS? if s" macos-arm64" exit then
+   BF-TARGET-UNKNOWN ;
+
+: BF-CENSUS-COUNT-STAGE2 ( -- n )
+   s" stage2-src" BF-A$ FILE-SIZE MEM-ALLOC-64K-SPAN {: buf:ptr cap:n :}
+   s" stage2-src" BF-A$ buf cap READ-ALL {: u:n :}
+   buf u VERIFY:CENSUS-COUNT ;
+
+: BF-CENSUS-REPORT ( -- )
+   s" self-check census (" type BF-CENSUS-TARGET$ type
+   s" ): 0 uncheckable, 0 rejected, certified = " type
+   BF-CENSUS-COUNT-STAGE2 . ;
+
 : BF-STAGE2-DIGEST ( ptr u8 -- ) {: dg:ptr :}
    s" stage2-src" BF-A$ dg SHA256-FILE dup 0 <> if throw then drop ;
 
@@ -1225,6 +1264,7 @@ public
    BF-PREFLIGHT
    BF-STAGE2-SOURCE
    BF-CERTIFY-STAGE2
+   BF-CENSUS-REPORT
    BF-RECORD-STAGE
    BF-STAGE-FIXPOINT-FROM-SOURCE ;
 
