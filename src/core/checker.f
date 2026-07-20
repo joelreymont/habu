@@ -5122,9 +5122,29 @@ create CK-USE-LENS  CK-USE-MAX cells allot
 7140 constant E-USING-AMBIGUOUS            \ bare tail resolves in more than one used public wordlist
 variable CK-USED-FOUND                     \ interned sym of the first used-public match while resolving
 
-: CK-USE-DEPTH ( -- n )  data-base CK-USE-DEPTH-OFF + @ ;
+: CK-USE-DEPTH ( -- n )  data-base CK-USE-DEPTH-OFF + @ ;   \ engine-owned live using depth (USE-DEPTH-CELL)
 : CK-USE-SLOT ( n -- ptr u8 )  CHECKER-PACKAGE-CAP * CK-USE-NAMES + ;
 : CK-USE-LEN@ ( n -- n )  cells CK-USE-LENS + @ ;
+
+\ Slots the used-scope search may read, bounded by the physical CK-USE-MAX-slot
+\ mirror (CK-USE-NAMES / CK-USE-LENS). This bound is the invariant that keeps the
+\ search safe on EVERY engine, because checker.f is cold-prefix source re-read at
+\ every engine boot: an OLDER bootstrap engine that predates the using band (the
+\ seed that builds the first using-capable fixpoint) has no USE-DEPTH-CELL, so
+\ CK-USE-DEPTH-OFF aliases that engine's DP-heap base and the raw read is
+\ unrelated heap data, not a depth. Capping the scan at CK-USE-MAX makes the loop
+\ terminate and never index past the mirror no matter what that read returns.
+\ Correctness then rests on the mirror's CONTENTS, not on the raw depth value:
+\ CHECKER-USING is the sole writer of the mirror and is only ever driven by the
+\ engine's C-USING for a real `using`, so an engine with no live using-scope
+\ leaves every scanned slot at its zero-initialised length and SYM-FIND matches
+\ nothing. On a using-capable engine the depth is always in [0,CK-USE-MAX] (C-USING
+\ dies on push overflow), so the cap never binds and the scan is exactly the live
+\ usings, unchanged.
+: CK-USE-SCAN-N ( -- n )
+   CK-USE-DEPTH
+   dup 0 < IF drop 0 EXIT THEN
+   dup CK-USE-MAX > IF drop CK-USE-MAX THEN ;
 
 : CHECKER-USING ( ptr u8 n -- ) {: a:ptr u:n :}
    u CHECKER-PACKAGE-CAP >= IF s" checker: using name too long" 76 die THEN
@@ -5142,7 +5162,7 @@ variable CK-USED-FOUND                     \ interned sym of the first used-publ
 \ across the used packages is the ambiguity hard error, matching the engine's used-search.
 : CHECKER-USED-SYM ( ptr u8 n -- n ) {: a:ptr u:n :}
    0 CK-USED-FOUND !
-   CK-USE-DEPTH 0 ?DO
+   CK-USE-SCAN-N 0 ?DO
       i CK-USE-SLOT i CK-USE-LEN@ SYM-PUBLIC a u SYM-FIND IF     ( -- sym )
          CK-USED-FOUND @ 0= IF
             CK-USED-FOUND !
