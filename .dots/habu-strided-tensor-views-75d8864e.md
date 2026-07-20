@@ -1,11 +1,10 @@
 ---
 title: Strided tensor views (layout v2)
-status: open
+status: active
 priority: 2
 issue-type: task
-created-at: "2026-07-20T17:23:52.875598+02:00"
+created-at: "\"2026-07-20T17:23:52.875598+02:00\""
 ---
-
 
 2026-07-20 DESIGNED (Joel: "design and dot this"). The full design is
 docs/strided-views.md - contract items SV-1..SV-8. Summary of the settled
@@ -33,3 +32,6 @@ inside the generation follow-up; SV-6 (head-split) owned by
 habu-complete-trainable-multi-39e26b3d which makes the views-vs-per-head-
 equations choice on evidence; SV-7 (TMA) with BTC-6. Program starts after the
 multi-head attention dot fixes that choice - against this settled design.
+
+2026-07-20 DISPATCHED (Joel: should we avoid the transpose cost? yes - the blocking file ownership dissolved with the sizing program completing). Scope THIS lane = SV-1..4 (the library core) only, per the doc sequencing; SV-5 (KV-cache) stays with generation follow-up, SV-6 (mha conversion, retiring the labeled-interim transpose) lands AFTER the qkvfuse lane frees mha.f, SV-7 (TMA) with BTC-6.
+Claim: agent=svcore workspace=.jj-ws/fable-svcore machine=spark (owns maki/tensor-value.f executor.f backward.f + new view tests + registration; slotref owns cad.f + gptblock-attn-test.f, qkvfuse owns mha.f + mha tests, blrange owns src/habu - touch none)
