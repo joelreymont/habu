@@ -1744,6 +1744,18 @@ variable TFC-I   variable TFC-J   variable TFC-ROW
       node SCHEMA-A@ {: fam:n :}
       base fam TFAM-NAME$ fam MK-PARAM EXIT
    THEN
+   node SCHEMA-QUOT? IF                       \ xt-carrying payload: din/dout share a
+      FRESH MK-ROW {: dbase:n :}              \ data base, rin/rout a return base (row-poly)
+      FRESH MK-ROW {: rbase:n :}
+      node SCHEMA-QUOT-DIN@  RECURSE dbase PUSH-LOGICAL {: din:n :}
+      node SCHEMA-QUOT-DOUT@ RECURSE dbase PUSH-LOGICAL {: dout:n :}
+      node SCHEMA-QUOT-HASR@ 0= 0= IF
+         node SCHEMA-QUOT-RIN@  RECURSE rbase PUSH-LOGICAL {: rin:n :}
+         node SCHEMA-QUOT-ROUT@ RECURSE rbase PUSH-LOGICAL {: rout:n :}
+         din dout rin rout MK-QUOT EXIT
+      THEN
+      din dout rbase rbase MK-QUOT EXIT       \ no return clause: neutral rin = rout
+   THEN
    s" tfam: unsupported construct payload schema" 76 die ;
 
 \ TFC-PUSH-PAY ( term row -- row ) : push one payload term. A genuinely

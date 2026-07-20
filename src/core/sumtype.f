@@ -328,6 +328,136 @@ variable TDECL-FAM-ARITY
    a u TDECL-PAY-FAM? IF 0 0 SCHEMA-APP EXIT THEN drop
    a u s" unknown payload type" E-TDECL-PAYLOAD TDECL-THROW ;
 
+\ --- parametric family applications + quotation payloads as VARIANT payload
+\ elements (dot habu-universal-enum-parametric-ad011c21). A sum variant payload
+\ may now be a closed parametric family application `fam<arg,...>` -- each argument
+\ is itself a payload element (positional letter param, concrete type, `ptr T`,
+\ nested application, or quotation) -- or a quotation type
+\ `[ din -- dout | rin -- rout ]` for an xt-carrying variant. The application's
+\ schema is an SC-APP holding the resolved family id plus the argument schema
+\ roots; construct/MATCH/layout ride the landed nested-layout capability
+\ (type-family.f TFC-*, checker.f LOGHID/xpad), which resolves each argument
+\ against the declaring family's parameters and gates instantiated width and
+\ linearity at the construct/`of` site. A quotation payload is one xt cell whose
+\ SC-QUOT schema records din/dout/rin/rout; the landed SC-QUOT representation
+\ carries one type per effect side, so a multi-type or empty side rejects and the
+\ full-effect-row extension is tracked separately. This grammar is scoped to sum
+\ variants: PRODUCT fields keep the scalar/arity-0 grammar (TDECL-PAY-ELEM),
+\ because arg-aware PF byte layout is a distinct capability.
+
+\ Reentrant scratch for ONE nesting level's argument nodes. Each TDECL-VPAY-ARGS
+\ invocation saves a base, pushes its fully-parsed argument node ids above it,
+\ then copies [base,top) into CONTIGUOUS schema roots (every deeper nested root
+\ already sits below argbase) and rewinds. The nodes cannot accumulate directly on
+\ the schema-root pool because a nested application interleaves its own arg roots
+\ between this level's arguments.
+$100 constant TDV-ARG-CAP
+create TDV-ARG-SCR TDV-ARG-CAP cells allot
+variable TDV-ARG-N
+
+: TDV-ARG+ ( n -- ) {: node:n :}
+   TDV-ARG-N @ TDV-ARG-CAP >= IF
+      TDN-A @ TDN-U @ s" type application nesting too deep" E-TDECL-PAYLOAD TDECL-THROW
+   THEN
+   node TDV-ARG-N @ cells TDV-ARG-SCR + !
+   TDV-ARG-N @ 1 + TDV-ARG-N ! ;
+
+defer TDV-ELEM-XT ( ptr u8 n -- n )   \ forward ref for the ELEM<->ARGS<->QUOT recursion
+
+\ resolve a payload token as a layout/cell family in signature scope (the head of
+\ a parametric application). Mirrors TDECL-PAY-FAM?'s kind gate but keeps arity
+\ open -- the arity match happens in TDV-ARGS-BUILD once the args are counted.
+: TDECL-VPAY-FAM? ( ptr u8 n -- n bool ) {: a:ptr u:n :}
+   TFAM-ACTIVE-PKG$ a u TFAM-SIG-RESOLVE 0= IF drop 0 RES-FALSE EXIT THEN
+   {: id:n :}
+   id TFAM-LAYOUT? id TFAM-CELL? or 0= IF 0 RES-FALSE EXIT THEN
+   id RES-TRUE ;
+
+\ close a `fam<...>`: copy this level's collected argument nodes [base,top) into
+\ contiguous schema roots, arity-check against the family, build the SC-APP, and
+\ rewind the scratch to base.
+: TDV-ARGS-BUILD ( n n -- n ) {: fam:n base:n :}
+   TDV-ARG-N @ base - {: cnt:n :}
+   cnt fam TFAM-ARITY@ <> IF
+      base TDV-ARG-N !
+      TDN-A @ TDN-U @ s" type family applied to wrong number of arguments"
+      E-TDECL-PAYLOAD TDECL-THROW
+   THEN
+   SCHEMA-ROOT-N@ {: argbase:n :}
+   base BEGIN dup TDV-ARG-N @ < WHILE
+      dup cells TDV-ARG-SCR + @ SCHEMA-ROOT+ drop
+      1 +
+   REPEAT drop
+   base TDV-ARG-N !
+   fam argbase cnt SCHEMA-APP ;
+
+\ parse `<arg,...>` (the opening `<` already consumed) after a resolved family
+\ head. A bare self-reference is caught in TDECL-PAY-ELEM; a QUALIFIED or applied
+\ self-reference resolves to the just-registered row, so reject recursion by id.
+: TDECL-VPAY-ARGS ( n -- n ) {: fam:n :}
+   fam TDECL-CUR-FAM @ = IF
+      TDN-A @ TDN-U @ s" invalid layout policy for recursive sum" E-TDECL-RECURSIVE TDECL-THROW
+   THEN
+   TDV-ARG-N @ {: base:n :}
+   BEGIN
+      TDECL-NEXT
+      2dup s" >" CORE-STR= IF 2drop fam base TDV-ARGS-BUILD EXIT THEN
+      2dup DELIM? IF s" bad type application" E-TDECL-SYNTAX TDECL-THROW THEN
+      TDV-ELEM-XT TDV-ARG+
+      TDECL-NEXT
+      2dup s" ," CORE-STR= IF 2drop ELSE
+      2dup s" >" CORE-STR= IF 2drop fam base TDV-ARGS-BUILD EXIT ELSE
+         s" bad type application" E-TDECL-SYNTAX TDECL-THROW
+      THEN THEN
+   AGAIN ;
+
+\ quotation payload `[ din -- dout | rin -- rout ]`, the opening `[` consumed. The
+\ landed SC-QUOT schema carries one node per effect side, so each side is exactly
+\ one payload element; an empty side (a `--`/`]` where a type is expected) is
+\ rejected by TDECL-PAY-ELEM's delimiter guard, and a multi-type side fails the
+\ EXPECT below. No return clause stores hasr 0 with the din/dout nodes reused as
+\ ignored placeholders for rin/rout.
+: TDV-QUOT-SIDE ( -- n ) TDECL-NEXT TDV-ELEM-XT ;
+: TDV-QUOT-EXPECT ( ptr u8 n -- ) {: ea:ptr eu:n :}
+   TDECL-NEXT 2dup ea eu CORE-STR= IF 2drop EXIT THEN
+   s" malformed quotation payload" E-TDECL-SYNTAX TDECL-THROW ;
+: TDECL-VPAY-QUOT ( -- n )
+   TDV-QUOT-SIDE {: din:n :}
+   s" --" TDV-QUOT-EXPECT
+   TDV-QUOT-SIDE {: dout:n :}
+   TDECL-NEXT 2dup s" |" CORE-STR= IF
+      2drop
+      TDV-QUOT-SIDE {: rin:n :}
+      s" --" TDV-QUOT-EXPECT
+      TDV-QUOT-SIDE {: rout:n :}
+      s" ]" TDV-QUOT-EXPECT
+      din dout rin rout -1 SCHEMA-QUOT
+   ELSE
+      2dup s" ]" CORE-STR= 0= IF
+         s" malformed quotation payload" E-TDECL-SYNTAX TDECL-THROW
+      THEN 2drop
+      din dout din dout 0 SCHEMA-QUOT
+   THEN ;
+
+\ a resolved family head followed by `<` is a parametric application; any other
+\ next token is pushed back and reported as not-an-application so the head falls
+\ through to the bare arity-0 grammar (or its reject).
+: TDECL-VPAY-APP? ( ptr u8 n -- n bool ) {: a:ptr u:n :}
+   a u TDECL-VPAY-FAM? 0= IF drop 0 RES-FALSE EXIT THEN
+   {: fam:n :}
+   TDECL-NEXT 2dup s" <" CORE-STR= IF 2drop fam TDECL-VPAY-ARGS RES-TRUE EXIT THEN
+   PK! 0 RES-FALSE ;
+
+\ one variant payload element: quotation, `ptr T`, parametric application, else
+\ the shared scalar/arity-0 grammar (TDECL-PAY-ELEM).
+: TDECL-VPAY-ELEM ( ptr u8 n -- n ) {: a:ptr u:n :}
+   a u s" [" CORE-STR= IF TDECL-VPAY-QUOT EXIT THEN
+   a u s" ptr" CORE-STR= IF TDECL-NEXT RECURSE SCHEMA-PTR EXIT THEN
+   a u TDECL-VPAY-APP? IF EXIT THEN drop
+   a u TDECL-PAY-ELEM ;
+: TDV-ELEM-INSTALL ( -- ) [: TDECL-VPAY-ELEM ;] is TDV-ELEM-XT ;
+TDV-ELEM-INSTALL
+
 \ --- variants: name gate, payload run in the schema-root pool, SUMV row.
 variable TDV-TAG   variable TDV-N    variable TDV-MAX
 variable TDV-SS    variable TDV-PC   variable TDV-PW
@@ -346,16 +476,37 @@ variable TDV-NA    variable TDV-NU
    TDV-TAG @ 1 + TDV-TAG !
    TDV-N @ 1 + TDV-N ! ;
 
+\ A parametric application / quotation payload element pushes its argument /
+\ effect-row roots into the shared schema-root pool WHILE it is parsed, so the
+\ element's own root is not contiguous with earlier elements. Collect the element
+\ NODES here and push them as one contiguous block after every argument root
+\ exists (TDECL-VARIANT-FINISH), so the variant payload range holds the elements,
+\ not their interleaved arguments. (Variants never nest, so one scratch suffices.)
+$100 constant TDV-PAY-CAP
+create TDV-PAY-SCR TDV-PAY-CAP cells allot
+variable TDV-PAY-N
+: TDV-PAY+ ( n -- ) {: node:n :}
+   TDV-PAY-N @ TDV-PAY-CAP >= IF
+      TDN-A @ TDN-U @ s" too many variant payload elements" E-TDECL-PAYLOAD TDECL-THROW THEN
+   node TDV-PAY-N @ cells TDV-PAY-SCR + !
+   TDV-PAY-N @ 1 + TDV-PAY-N ! ;
+: TDECL-VARIANT-FINISH ( n -- ) {: fam:n :}
+   SCHEMA-ROOT-N@ TDV-SS !
+   0 TDV-PC !
+   0 BEGIN dup TDV-PAY-N @ < WHILE
+      dup cells TDV-PAY-SCR + @ SCHEMA-ROOT+ drop
+      TDV-PC @ 1 + TDV-PC !
+      1 +
+   REPEAT drop
+   fam TDECL-VARIANT-CLOSE ;
 : TDECL-VARIANT ( n -- ) {: fam:n :}
    TDECL-VARIANT-NAME
-   SCHEMA-ROOT-N@ TDV-SS !
-   0 TDV-PC !  0 TDV-PW !
+   0 TDV-PW !  0 TDV-ARG-N !  0 TDV-PAY-N !
    BEGIN
       TDECL-NEXT
-      2dup s" ;variant" CORE-STR=CI IF 2drop fam TDECL-VARIANT-CLOSE EXIT THEN
-      TDECL-PAY-ELEM dup TDECL-SCH-WIDTH TDV-PW @ + TDV-PW !
-      SCHEMA-ROOT+ drop
-      TDV-PC @ 1 + TDV-PC !
+      2dup s" ;variant" CORE-STR=CI IF 2drop fam TDECL-VARIANT-FINISH EXIT THEN
+      TDECL-VPAY-ELEM dup TDECL-SCH-WIDTH TDV-PW @ + TDV-PW !
+      TDV-PAY+
    AGAIN ;
 
 : TDECL-SUM-VARIANTS ( n -- ) {: fam:n :}
@@ -797,7 +948,34 @@ variable TDGEN-K    variable TDGEN-M    variable TDGEN-B
    node SCHEMA-PARAM? IF node SCHEMA-A@ TDGEN-LETTER EXIT THEN
    node SCHEMA-CON?   IF node SCHEMA-A@ CT-NAME$ TDGEN-APP EXIT THEN
    node SCHEMA-PTR?   IF s" ptr " TDGEN-APP node SCHEMA-A@ RECURSE EXIT THEN
-   node SCHEMA-APP?   IF node SCHEMA-A@ TDGEN-FAM-REF EXIT THEN
+   node SCHEMA-QUOT? IF               \ "[ din -- dout | rin -- rout ]" (RECURSE per side)
+      s" [ " TDGEN-APP
+      node SCHEMA-QUOT-DIN@ RECURSE
+      s"  -- " TDGEN-APP
+      node SCHEMA-QUOT-DOUT@ RECURSE
+      node SCHEMA-QUOT-HASR@ 0= 0= IF
+         s"  | " TDGEN-APP
+         node SCHEMA-QUOT-RIN@ RECURSE
+         s"  -- " TDGEN-APP
+         node SCHEMA-QUOT-ROUT@ RECURSE
+      THEN
+      s"  ] " TDGEN-APP
+      EXIT
+   THEN
+   node SCHEMA-APP? IF               \ "fam" or "fam<arg,arg,..>" (RECURSE per arg)
+      node SCHEMA-A@ TDGEN-FAM-REF
+      node SCHEMA-C@ {: c:n :}
+      c 0 > IF
+         60 TDGEN-C,
+         0 BEGIN dup c < WHILE
+            dup 0 > IF 44 TDGEN-C, THEN
+            node SCHEMA-B@ over + SCHEMA-ROOT@ RECURSE
+            1 +
+         REPEAT drop
+         62 TDGEN-C,
+      THEN
+      EXIT
+   THEN
    s" sumtype: unsupported constructor payload schema" 76 die ;
 
 : TDGEN-PAYLOAD ( n -- ) {: vid:n :}     \ declared inputs, one per schema root
@@ -1217,3 +1395,4 @@ PRIM: TYPEFAMILY PRIM;
 PRIM: SUMTYPE PRIM;
 PRIM: ENUM PRIM;
 PRIM: PRODUCT PRIM;
+

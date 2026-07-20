@@ -1118,11 +1118,17 @@ s" SUMTYPE tdkw 1 VARIANT variant a ;VARIANT ;SUMTYPE" E-TDECL-NAME TDT-NEG
 s" SUMTYPE tdvcase 1 VARIANT Ok a ;VARIANT ;SUMTYPE" E-TFAM-CASE TDT-NEG
 s" SUMTYPE tdvdup 1 VARIANT ok a ;VARIANT VARIANT ok a ;VARIANT ;SUMTYPE" E-TFAM-DUP TDT-NEG
 s" SUMTYPE tdbadptr 1 VARIANT ok ptr ;VARIANT ;SUMTYPE" E-TDECL-SYNTAX TDT-NEG
-\ unknown payload types (incl. out-of-arity letters and family applications,
-\ which stay rejected until schema instantiation work in items 7/8).
+\ unknown payload types: an out-of-arity letter and a truly-unknown tail still
+\ reject. Parametric family applications and single-effect quotations now RESOLVE
+\ as payloads (dot habu-universal-enum-parametric-ad011c21); the surviving reject
+\ paths are a wrong-arity application, an unbound argument letter, an empty
+\ quotation side, and a multi-type quotation side. tdres has arity 2.
 s" SUMTYPE tdpay1 1 VARIANT ok q ;VARIANT ;SUMTYPE" E-TDECL-PAYLOAD TDT-NEG
 s" SUMTYPE tdpay2 1 VARIANT ok whatnot ;VARIANT ;SUMTYPE" E-TDECL-PAYLOAD TDT-NEG
-s" SUMTYPE tdpay3 1 VARIANT ok tdres<a,a> ;VARIANT ;SUMTYPE" E-TDECL-PAYLOAD TDT-NEG
+s" SUMTYPE tdpay3 1 VARIANT ok tdres<a> ;VARIANT ;SUMTYPE" E-TDECL-PAYLOAD TDT-NEG
+s" SUMTYPE tdpay4 1 VARIANT ok tdres<a,z> ;VARIANT ;SUMTYPE" E-TDECL-PAYLOAD TDT-NEG
+s" SUMTYPE tdpay5 0 VARIANT ok [ -- n ] ;VARIANT ;SUMTYPE" E-TDECL-SYNTAX TDT-NEG
+s" SUMTYPE tdpay6 0 VARIANT ok [ n n -- n ] ;VARIANT ;SUMTYPE" E-TDECL-SYNTAX TDT-NEG
 
 \ malformed enum declarations (item 14): every reject rolls back to baseline via
 \ the shared transactional path (TDT-NEG asserts TDT-BASE=), so no family or

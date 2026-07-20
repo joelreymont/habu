@@ -584,6 +584,26 @@ s" : CN-OPEN ( clfres<n,a> -- clopt<clfres<n,a>> ) CLOPT:SOME ;" TCE-CATCH 70 T=
 s" LOWER-WIDTH-AWARE-ROUNDTRIP" type cr
 
 \ ---------------------------------------------------------------------------
+\ dot habu-universal-enum-parametric-ad011c21: a parametric family APPLICATION
+\ and a single-effect QUOTATION as variant payloads construct and MATCH. The
+\ nested application rides the landed width-aware construct/MATCH lowering; the
+\ quotation payload is one xt cell recovered as its T-QUOT effect in the arm.
+\ ---------------------------------------------------------------------------
+SUMTYPE pqinn 1 VARIANT yes a ;VARIANT VARIANT no ;VARIANT ;SUMTYPE
+SUMTYPE pqhold 0 VARIANT hh pqinn<n> ;VARIANT ;SUMTYPE
+: PQ-MK ( n -- pqhold ) PQINN:YES PQHOLD:HH ;
+: PQ-GET ( pqhold -- n ) MATCH pqhold hh OF MATCH pqinn yes OF ENDOF no OF 0 ENDOF ;MATCH ENDOF ;MATCH ;
+: PQ-RT ( -- n ) 7 PQ-MK PQ-GET ;
+PQ-RT 7 T=
+SUMTYPE pqact 0 VARIANT run [ n -- n ] ;VARIANT VARIANT nop ;VARIANT ;SUMTYPE
+: PQ-APP ( pqact -- n ) MATCH pqact run OF 5 swap execute ENDOF nop OF 0 ENDOF ;MATCH ;
+: PQ-RUN ( -- n ) [: 1 + ;] PQACT:RUN PQ-APP ;
+PQ-RUN 6 T=
+\ a wrong-effect quotation cannot be stored where [ n -- n ] is required (rc 70).
+s" : PQ-BADQ ( -- pqact ) [: 0 0= ;] PQACT:RUN ;" TCE-CATCH 70 T=
+s" PARAMETRIC-QUOT-PAYLOAD" type cr
+
+\ ---------------------------------------------------------------------------
 \ report: "ok" on success, nonzero exit on any failure.
 \ ---------------------------------------------------------------------------
 : REPORT ( -- )
