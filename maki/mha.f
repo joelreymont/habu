@@ -1,172 +1,245 @@
-\ maki/mha.f - multi-head causal self-attention sublayer forward, authored as
-\ SPEC: contraction lines composed by plain checked colon words with named row ops.
+\ maki/mha.f - trainable batched multi-head causal self-attention sublayer, the full
+\ GPT-2 c_attn shape: checked B,T,C,H,hd geometry, three separate Q/K/V projections
+\ each with its own bias, per-head batched scaled-dot-product attention with segment-
+\ causal masking, an output projection with weight+bias, and the residual add. The
+\ sublayer is differentiable end to end: MHA-FWD is paired with MHA-BWD, which produces
+\ the adjoints of X and EVERY weight and bias.
 \
-\ Single sequence (no batch): T positions, C channels, H heads, head dim hd = C/H.
-\ The sublayer is  Y = out_proj( concat_h softmax_causal( Q_h.K_h^T / sqrt(hd) ) . V_h )
-\ where Q_h = X.WQ_h, K_h = X.WK_h, V_h = X.WV_h are the per-head projections. Every
-\ CONTRACTION is one SPEC: line (the checked candidate-B golden, certified through
-\ XG-EVAL); the non-contraction steps stay named ops: the 1/sqrt(hd) scale
-\ (maki/attention.f ATTN-SCALE!) and the causal-masked row softmax (maki/causal.f
-\ CAUSAL-SOFTMAX-ROWS). This mirrors maki/spec-attention-test.f's SPAT-FWD, extended
-\ from one head to H heads and from scores/A.V to the full projections.
+\   Y = residual(X) + ( concat_h softmax_causal( Q_h K_h^T / sqrt(hd) ) V_h ) Wo + bo
+\   Q = X Wq + bq   K = X Wk + bk   V = X Wv + bv   (three biased projections, NOT fused)
 \
-\ HEAD SPLIT / MERGE ARE CONTRACTIONS, NOT COPIES:
-\   - The split is folded into the QKV projection: each head is projected with its
-\     own weight block, so MHA-QPROJ/KPROJ/VPROJ (looped over heads, one weight
-\     block bound per head) write the per-head (T,hd) activation directly - no
-\     strided column view, no movement op. Weights are head-major (H,C,hd); the
-\     activations are head-major (H,T,hd).
-\   - The merge is folded into the output projection: MHA-OUTPROJ is ONE contraction
-\     over the composite (head, head-dim) index -
-\       Y[hq hc] = O[hh hq hd] WO[hh hd hc] * +SUM hh hd
-\     summing every head's contribution into Y with no concat buffer and no
-\     per-head accumulation. This is exactly  Y = concat_h(O_h) . Wo  with Wo
-\     reshaped head-major (H,hd,C).
+\ WHAT IS "IN THE GRAPH" (batched SPEC equations) vs HOST GLUE.
+\   - The per-head scores and context are BATCHED SPEC: equations carrying b,h as FREE
+\     (replication) indices - the landed free-extent + batched-adjoint machinery
+\     (maki/spec.f EQ-BATCHED-ADJ-DERIVE, proven in maki/spec-batched-test.f). Each is
+\     the SAME contraction replicated over every (batch, head):
+\       MHA-SCORE  S[b h i j] = Q[b h i d] K[b h j d] +SUM d       (per-(b,h) Q.K^T)
+\       MHA-CTX    O[b h i d] = A[b h i j] V[b h j d] +SUM j       (per-(b,h) A.V)
+\     SPEC: derives their transposed adjoints (MHA-SCORE-ADJ0/1, MHA-CTX-ADJ0/1) with
+\     the batch extents riding along, so batch AND head isolation are structural: a
+\     cross-batch or cross-head perturbation has zero effect on another block's grad.
+\   - Everything the multiply-then-sum grammar cannot state stays a named HOST op, as in
+\     maki/attention.f / maki/causal.f: the three projections + biases (shared-weight
+\     GEMMs = plain 2D matmul over the flattened B*T rows, maki/matmul.f), the head-major
+\     layout glue, the 1/sqrt(hd) scale, the causal-masked row softmax, the head merge,
+\     the output projection + bias, and the residual add. Each host step has a hand-
+\     composed adjoint in MHA-BWD; the whole forward/backward pair is finite-difference
+\     gradchecked in maki/mha-test.f.
 \
-\ POSITION ROLES: query positions #HQ and key positions #HN are DISTINCT nominal
-\ extents that share the magnitude T (self-attention), so Q.K^T is the transposed-
-\ operand GEMM the checker accepts while a swapped operand is a reject (see the
-\ MHA-COK / MHA-CFLIP candidates in maki/mha-test.f). MHA-CONFIG-CHECK enforces
-\ #HQ = #HN and C = H*hd at load.
+\ SV-6 HEAD HANDLING (this lane OWNS the decision, docs/strided-views.md SV-6). Per-head
+\ BATCHED EQUATIONS win over head-split strided VIEWS, on evidence: the batched-equation
+\ route needs NO new machinery (it is the landed grammar), while head-split views need the
+\ entire unlanded SV-1..4 library core (a tensor-value record grown with storage-ref +
+\ offset + strides, checked view constructors, the write-through-view guard, and the
+\ scatter-add view adjoint) - unavailable here (maki/tensor-value.f is another lane's
+\ surface, and a new value representation reaches into the landed executor/backward). The
+\ only cost of the equation route is a PHYSICAL head-major materialization: the projection
+\ writes flat (B*T,C) and the batched attention reads head-major (B,H,T,hd), so a
+\ (B,T,H,hd)<->(B,H,T,hd) transpose sits between them, done here as host layout glue
+\ (MHA-FLAT>HM / MHA-HM>FLAT) with its inverse-permutation adjoint. That copy is the
+\ labeled INTERIM; the SV-6 view program (which reads H per-head views of one buffer with
+\ no copy) remains the perf-optimal long-term form and stays sequenced behind this outcome.
 \
-\ FIXED EXTENTS: SPEC: bakes the extent magnitudes into the generated accessors, so
-\ this golden runs at one toy shape (T=4, C=6, H=2, hd=3), like every SPEC: golden
-\ and like the toy-scale segment reference (maki/segment.f). Real GPT-2 shapes and
-\ the batch dimension arrive via PROMOTE and the extent-role product capability
-\ (habu-extent-role-product-8e364885); bias/residual become SPEC broadcast forms
-\ under habu-spec-broadcast-forms-ad851424 and stay named ops here meanwhile.
-\ maki -> habu only; mha owns -5151.
+\ FIXED TOY MAGNITUDES ARE AN ORACLE, NOT A COMPLETION PROOF. Every extent magnitude is a
+\ compile-time SPEC: constant, so this runs at ONE toy shape (B=2, T=4, C=6, H=2, hd=3),
+\ like every SPEC: golden. The five roles (B,T,C,H,hd) are all declared and checked
+\ (C = H*hd, query positions = key positions) at load. GPT-2-small magnitudes and the
+\ real batch dimension arrive with the device path (habu-gb10-batched-attention-3055d565,
+\ SV-7 strided TMA transfers); the fixed-shape forward here is an oracle for that work.
+\
+\ DEVICE LEG. The batched score/context are NON-composable equations (rank-4 factors do
+\ not map to the 2D op registry, maki/spec.f EQ-COMPOSABLE?), so they are not MODEL: nodes
+\ and do not enter the device-lowered MODEL graph (the landed lower/red path lowers
+\ composable nodes). This sublayer is HOST-ONLY by construction; the device leg for
+\ batched attention is the named downstream boundary above, not a silent skip.
+\
+\ REENTRANCY. Forward saves its activations (Q/K/V/A/O head-major + the merged O) in
+\ module-private scratch, which MHA-BWD reads - a single-threaded saved-activation tape,
+\ not reentrant. The packaging/owned-workspace hardening is dot habu-own-multi-head-
+\ c863298a, serialized behind this lane. MHA-FWD is alias-safe by construction: all
+\ intermediate compute lands in private scratch and the output buffer is written by one
+\ final copy, so an aliased X/Y output never corrupts the residual. maki -> habu only;
+\ mha owns -5151.
 
-require maki/array.f          \ T-AT / T-GET / T-SET / T-ADD! : buffer + residual add
-require maki/attention.f      \ ATTN-SCALE! : the 1/sqrt(hd) score scale (named row op)
-require maki/causal.f         \ CAUSAL-SOFTMAX-ROWS : the causal-masked row softmax (named row op)
-require maki/spec.f           \ SPEC: / TENSOR: / EXTENT: : the checked contraction goldens
+require maki/array.f          \ T-GET/T-SET/T-ADD! : buffer read/write + residual add
+require maki/matmul.f         \ MATMUL / MATMUL-DX / MATMUL-DW : the projection GEMMs + adjoints
+require maki/attention.f      \ ATTN-SCALE! : the 1/sqrt(hd) score scale (named host op)
+require maki/causal.f         \ CAUSAL-SOFTMAX-ROWS / CAUSAL-SMBWD-ROWS : masked row softmax + VJP
+require maki/spec.f           \ SPEC: / TENSOR: / EXTENT: / FREE-EXTENT: : the batched einsums
 
 -5151 constant E-MHA-SHAPE   \ head geometry inconsistent: C != H*hd, or query/key extents unequal
 
 package MAKI
 
-\ ---- head geometry (single sequence). Query and key positions are distinct roles
-\ that share the magnitude T; channels C = H * hd. ----------------------------------
-4 EXTENT: #HQ    \ query positions (sequence length T)
-4 EXTENT: #HN    \ key positions (= T; a distinct nominal role from the query axis)
-6 EXTENT: #HC    \ channels C
-3 EXTENT: #HD    \ head dim hd = C / H
-2 EXTENT: #HH    \ heads H
+\ ---- the five extent-role magnitudes (B,T,C,H,hd). Batch and head are FREE roles the
+\ per-head contraction is replicated over; query and key positions are DISTINCT nominal
+\ roles that share the magnitude T (so Q.K^T is the transposed-operand GEMM the checker
+\ accepts and a swapped operand is a reject); channels C = H*hd. ---------------------
+2 FREE-EXTENT: #MB    \ batch B
+2 FREE-EXTENT: #MH    \ heads H
+4 EXTENT: #MQ         \ query positions (sequence length T)
+4 EXTENT: #MK         \ key positions (= T; a distinct role from the query axis)
+3 EXTENT: #MD         \ head dim hd
+6 EXTENT: #MC         \ channels C
 
-\ every extent magnitude is a compile-time SPEC: constant, so the geometry law is a
-\ load-time named throw, never a silent wrong-shape run.
+\ every extent magnitude is a compile-time constant, so the geometry law is a load-time
+\ named throw, never a silent wrong-shape run.
 : MHA-CONFIG-CHECK ( -- )
-   #HQ #HN <> if E-MHA-SHAPE throw then           \ self-attention: query positions = key positions
-   #HC #HH #HD * <> if E-MHA-SHAPE throw then ;   \ channels = heads * head-dim
+   #MQ #MK <> if E-MHA-SHAPE throw then           \ self-attention: query positions = key positions
+   #MC #MH #MD * <> if E-MHA-SHAPE throw then ;    \ channels = heads * head-dim
 MHA-CONFIG-CHECK
 
-\ ---- extent-typed tensor accessors. X carries two positional views (query rows for
-\ Q, key rows for K/V) over ONE buffer; activations/weights are head-major so each
-\ head's block is contiguous. --------------------------------------------------------
-TENSOR: MHA-X  ( #HQ #HC )       \ input, query-row view
-TENSOR: MHA-XK ( #HN #HC )       \ input, key-row view (same buffer, key-position role)
-TENSOR: MHA-WQ ( #HC #HD )       \ one head's query weight block (C, hd)
-TENSOR: MHA-WK ( #HC #HD )       \ one head's key weight block
-TENSOR: MHA-WV ( #HC #HD )       \ one head's value weight block
-TENSOR: MHA-QH ( #HQ #HD )       \ one head's Q (T, hd)
-TENSOR: MHA-KH ( #HN #HD )       \ one head's K (T, hd)
-TENSOR: MHA-VH ( #HN #HD )       \ one head's V (T, hd)
-TENSOR: MHA-SH ( #HQ #HN )       \ one head's scores (T, T)
-TENSOR: MHA-AH ( #HQ #HN )       \ one head's attention weights (T, T)
-TENSOR: MHA-OH ( #HQ #HD )       \ one head's attention output (T, hd)
-TENSOR: MHA-O  ( #HH #HQ #HD )   \ head-major attention output (H, T, hd)
-TENSOR: MHA-WO ( #HH #HD #HC )   \ head-major output weight (H, hd, C)
-TENSOR: MHA-Y  ( #HQ #HC )       \ sublayer output (T, C)
+\ ---- derived magnitudes (flat row count, head-major and score buffer sizes) ----------
+: MHA-BT ( -- n )  #MB #MQ * ;                     \ flattened rows B*T
+: MHA-CC ( -- n )  #MC ;                            \ channels C
+: MHA-HM ( -- n )  #MB #MH * #MQ * #MD * ;          \ head-major Q/K/V/O elements = B*T*C
+: MHA-SS ( -- n )  #MB #MH * #MQ * #MK * ;          \ scores/attn elements B*H*T*T
+: MHA-INV ( -- r )  1.0 #MD s>f fsqrt f/ ;          \ 1/sqrt(hd)
 
-\ ---- the contraction goldens (each a checked SPEC: line) ---------------------------
-SPEC: MHA-QPROJ   MHA-QH[hq hd] = Σhc MHA-X[hq hc] · MHA-WQ[hc hd] ;        \ Q_h = X . WQ_h
-SPEC: MHA-KPROJ   MHA-KH[hn hd] = Σhc MHA-XK[hn hc] · MHA-WK[hc hd] ;        \ K_h = X . WK_h
-SPEC: MHA-VPROJ   MHA-VH[hn hd] = Σhc MHA-XK[hn hc] · MHA-WV[hc hd] ;        \ V_h = X . WV_h
-SPEC: MHA-SCORES  MHA-SH[hq hn] = Σhd MHA-QH[hq hd] · MHA-KH[hn hd] ;        \ S_h = Q_h . K_h^T
-SPEC: MHA-AV      MHA-OH[hq hd] = Σhn MHA-AH[hq hn] · MHA-VH[hn hd] ;        \ O_h = A_h . V_h
-SPEC: MHA-OUTPROJ MHA-Y[hq hc]  = Σhh hd MHA-O[hh hq hd] · MHA-WO[hh hd hc] ; \ Y = concat_h(O_h) . Wo
+\ ---- head-major batched tensors (b,h leading = the replication axes) -----------------
+TENSOR: MHA-Q ( #MB #MH #MQ #MD )     \ Q head-major (B,H,T,hd)
+TENSOR: MHA-K ( #MB #MH #MK #MD )     \ K head-major
+TENSOR: MHA-V ( #MB #MH #MK #MD )     \ V head-major
+TENSOR: MHA-S ( #MB #MH #MQ #MK )     \ scores (B,H,T,T)
+TENSOR: MHA-A ( #MB #MH #MQ #MK )     \ attention weights (B,H,T,T)
+TENSOR: MHA-O ( #MB #MH #MQ #MD )     \ context head-major (B,H,T,hd)
 
-\ ---- internal head-major scratch. Query and key positions share magnitude T
-\ (MHA-CONFIG-CHECK), so one T*hd block stride serves Q/K/V/O; S/A are reused per head.
-create MHA-QSCR #HH #HQ * #HD * cells allot
-create MHA-KSCR #HH #HQ * #HD * cells allot
-create MHA-VSCR #HH #HQ * #HD * cells allot
-create MHA-OSCR #HH #HQ * #HD * cells allot
-create MHA-SSCR #HQ #HN * cells allot
-create MHA-ASCR #HQ #HN * cells allot
+\ ---- the two batched contractions (each a checked SPEC: line; SPEC: also derives the
+\ transposed adjoints MHA-SCORE-ADJ0/1 and MHA-CTX-ADJ0/1, batch extents riding along) --
+SPEC: MHA-SCORE  MHA-S[mb mh mq mk] = MHA-Q[mb mh mq md] MHA-K[mb mh mk md] * +SUM md ;   \ S = Q.K^T per (b,h)
+SPEC: MHA-CTX    MHA-O[mb mh mq md] = MHA-A[mb mh mq mk] MHA-V[mb mh mk md] * +SUM mk ;   \ O = A.V  per (b,h)
 
-: MHA-INV-SCALE ( -- r )  1.0 #HD s>f fsqrt f/ ;   \ 1/sqrt(hd)
+private
 
-\ the caller's ORIGINAL weight bases, so each head offsets from the base - never from
-\ a previous head's already-offset binding.
-variable MHA-WQ-ORG  variable MHA-WK-ORG  variable MHA-WV-ORG
+\ ---- private saved-activation scratch (the backward tape) -----------------------------
+create MHA-QF MHA-BT #MC * cells allot   \ flat projections (B*T,C)
+create MHA-KF MHA-BT #MC * cells allot
+create MHA-VF MHA-BT #MC * cells allot
+create MHA-QM MHA-HM cells allot         \ head-major projections (B,H,T,hd)
+create MHA-KM MHA-HM cells allot
+create MHA-VM MHA-HM cells allot
+create MHA-SM MHA-SS cells allot         \ scaled scores
+create MHA-AM MHA-SS cells allot         \ causal-softmax attention (saved for the VJP)
+create MHA-OM MHA-HM cells allot         \ head-major context
+create MHA-OF MHA-BT #MC * cells allot    \ merged context (B*T,C), saved for dWo
+create MHA-YF MHA-BT #MC * cells allot    \ sublayer output staging (alias-safe)
 
-\ one head's forward: project Q/K/V from X with this head's weight block, score,
-\ scale, causal-softmax, then A.V - all into this head's contiguous blocks.
-: MHA-HEAD ( n -- ) {: h:n :}
-   h #HC #HD * *  {: woff:n :}                      \ head weight block base (cells)
-   h #HQ #HD * *  {: boff:n :}                      \ head activation block base (cells)
-   MHA-WQ-ORG @ woff T-AT MHA-WQ-BIND
-   MHA-WK-ORG @ woff T-AT MHA-WK-BIND
-   MHA-WV-ORG @ woff T-AT MHA-WV-BIND
-   MHA-QSCR boff T-AT MHA-QH-BIND
-   MHA-KSCR boff T-AT MHA-KH-BIND
-   MHA-VSCR boff T-AT MHA-VH-BIND
-   MHA-OSCR boff T-AT MHA-OH-BIND
-   MHA-QPROJ  MHA-KPROJ  MHA-VPROJ                  \ Q_h, K_h, V_h = X . W_h
-   MHA-SCORES                                       \ S_h = Q_h . K_h^T
-   MHA-SSCR  #HQ #HN *  MHA-INV-SCALE  ATTN-SCALE!  \ S_h *= 1/sqrt(hd)
-   MHA-SSCR MHA-ASCR #HQ  CAUSAL-SOFTMAX-ROWS       \ A_h = softmax_causal(S_h)
-   MHA-AV ;                                         \ O_h = A_h . V_h
+\ ---- backward scratch ----------------------------------------------------------------
+create MHA-dOF MHA-BT #MC * cells allot
+create MHA-dOM MHA-HM cells allot
+create MHA-dAM MHA-SS cells allot
+create MHA-dSM MHA-SS cells allot
+create MHA-dQM MHA-HM cells allot
+create MHA-dKM MHA-HM cells allot
+create MHA-dVM MHA-HM cells allot
+create MHA-dQF MHA-BT #MC * cells allot
+create MHA-dKF MHA-BT #MC * cells allot
+create MHA-dVF MHA-BT #MC * cells allot
+create MHA-dXT MHA-BT #MC * cells allot   \ per-projection dX contribution accumulator
 
-\ attention over all heads: bind the shared X views and score/attn scratch once, store
-\ the weight bases, run each head, leaving every head's output in head-major MHA-OSCR.
-: MHA-ATTN ( ptr a ptr a ptr a ptr a -- )
-   {: xb:ptr wqb:ptr wkb:ptr wvb:ptr :}
-   xb MHA-X-BIND   xb MHA-XK-BIND
-   wqb MHA-WQ-ORG !  wkb MHA-WK-ORG !  wvb MHA-WV-ORG !
-   MHA-SSCR MHA-SH-BIND   MHA-ASCR MHA-AH-BIND
-   #HH 0 ?do  i MHA-HEAD  loop ;
+\ ---- host glue -----------------------------------------------------------------------
+: MHA-COPY ( ptr a ptr a n -- ) {: s:ptr d:ptr n:n :}  n 0 ?do  s i T-GET  d i T-SET  loop ;
 
-\ the output projection merges the heads: Y = concat_h(O_h) . Wo in one contraction.
-: MHA-OUT ( ptr a ptr a -- ) {: wob:ptr yb:ptr :}
-   MHA-OSCR MHA-O-BIND   wob MHA-WO-BIND   yb MHA-Y-BIND
-   MHA-OUTPROJ ;
+\ yb[r,c] += bb[c] : add a length-C bias to every one of the B*T rows (row broadcast).
+: MHA-ROWBIAS ( ptr a n n ptr a -- ) {: yb:ptr rows:n cols:n bb:ptr :}
+   rows 0 ?do  cols 0 ?do  yb j cols * i + T-GET  bb i T-GET f+  yb j cols * i + T-SET  loop  loop ;
+
+\ db[c] = sum_r sb[r,c] : the bias adjoint (column sum over the B*T rows).
+: MHA-COLSUM ( ptr a n n ptr a -- ) {: sb:ptr rows:n cols:n db:ptr :}
+   cols 0 ?do
+      i {: c:n :}
+      0.0  rows 0 ?do  sb  i cols * c +  T-GET  f+  loop
+      db c T-SET
+   loop ;
+
+\ head-major linear index e -> the corresponding flat (B*T,C) index. e decomposes as
+\ (b,h,t,d) over (B,H,T,hd); the flat position is (b*T+t)*C + h*hd + d. Four nested axes
+\ exceed habu's two loop counters, so both directions iterate ONE linear index and map.
+: MHA-FLATIDX ( n -- n ) {: e:n :}
+   e #MD mod {: d:n :}
+   e #MD / #MQ mod {: t:n :}
+   e #MD #MQ * / #MH mod {: h:n :}
+   e #MD #MQ * #MH * / {: b:n :}
+   b #MQ * t +  #MC *  h #MD * +  d + ;
+: MHA-FLAT>HM ( ptr a ptr a -- ) {: fb:ptr hb:ptr :}   \ hm[e] = flat[flatidx(e)]  (split)
+   MHA-HM 0 ?do  fb i MHA-FLATIDX T-GET  hb i T-SET  loop ;
+: MHA-HM>FLAT ( ptr a ptr a -- ) {: hb:ptr fb:ptr :}   \ flat[flatidx(e)] = hm[e]  (merge; the split's inverse)
+   MHA-HM 0 ?do  hb i T-GET  fb i MHA-FLATIDX T-SET  loop ;
+
+\ per-(b,h) T x T block base (elements) for the causal row softmax + its VJP.
+: MHA-BLK ( n -- n )  #MQ #MK * * ;
+
+\ project X.W into a flat (B*T,C) buffer, add the per-channel bias (row broadcast),
+\ then split to head-major.
+: MHA-PROJ ( ptr a ptr a ptr a ptr a ptr a -- ) {: xb:ptr wb:ptr bb:ptr fb:ptr hb:ptr :}
+   xb wb fb  MHA-BT #MC #MC  MATMUL
+   fb MHA-BT #MC bb MHA-ROWBIAS
+   fb hb MHA-FLAT>HM ;
+
+\ the scaled causal-softmax attention over all (b,h) score blocks: scale S in place,
+\ then the segment-causal row softmax per block into A (saved for the VJP).
+: MHA-ATTEND ( -- )
+   MHA-SM MHA-SS MHA-INV ATTN-SCALE!
+   #MB #MH * 0 ?do
+      i MHA-BLK {: off:n :}
+      MHA-SM off T-AT  MHA-AM off T-AT  #MQ  CAUSAL-SOFTMAX-ROWS
+   loop ;
 
 public
 
-\ MHA-O-SCRATCH - the head-major (H,T,hd) attention-output buffer MHA-FWD fills
-\ before the output projection. Exposed so a test can prove per-head slicing: each
-\ head's block must match its independently-computed reference and stay isolated
-\ from the other heads' weights.
-: MHA-O-SCRATCH ( -- ptr a )  MHA-OSCR ;
+\ MHA-FWD - the full trainable sublayer forward. xb: input X (B*T,C row-major; row b*T+t
+\ is batch b position t). wqb/bqb, wkb/bkb, wvb/bvb: the three projection weights (C,C)
+\ and biases (C). wob/bob: output projection weight (C,C) and bias (C). yb: output Y
+\ (B*T,C) = residual(X) + attention. Saves the activation tape for MHA-BWD.
+: MHA-FWD ( ptr a ptr a ptr a ptr a ptr a ptr a ptr a ptr a ptr a ptr a -- )
+   {: xb:ptr wqb:ptr bqb:ptr wkb:ptr bkb:ptr wvb:ptr bvb:ptr wob:ptr bob:ptr yb:ptr :}
+   xb wqb bqb MHA-QF MHA-QM MHA-PROJ            \ Q = X.Wq + bq -> head-major
+   xb wkb bkb MHA-KF MHA-KM MHA-PROJ            \ K = X.Wk + bk
+   xb wvb bvb MHA-VF MHA-VM MHA-PROJ            \ V = X.Wv + bv
+   MHA-QM MHA-Q-BIND  MHA-KM MHA-K-BIND  MHA-SM MHA-S-BIND  MHA-SCORE   \ S = Q.K^T per (b,h)
+   MHA-ATTEND                                                          \ scale + causal softmax -> A
+   MHA-AM MHA-A-BIND  MHA-VM MHA-V-BIND  MHA-OM MHA-O-BIND  MHA-CTX     \ O = A.V per (b,h)
+   MHA-OM MHA-OF MHA-HM>FLAT                    \ merge heads -> flat (B*T,C)
+   MHA-OF wob MHA-YF  MHA-BT #MC #MC  MATMUL    \ output projection O.Wo
+   MHA-YF MHA-BT #MC bob MHA-ROWBIAS            \ + output bias bo (row broadcast)
+   MHA-YF xb MHA-BT #MC * T-ADD!                \ + residual X (into private staging)
+   MHA-YF yb MHA-BT #MC * MHA-COPY ;            \ single final write (alias-safe)
 
-\ MHA-FWD - the core attention sublayer forward (no bias, no residual): from the
-\ input X and the head-major QKV / output weights, write the attention output Y.
-\ xb: X (T,C) ; wqb/wkb/wvb: head-major QKV weights (H,C,hd) ; wob: head-major output
-\ weight (H,hd,C) ; yb: output Y (T,C).
-: MHA-FWD ( ptr a ptr a ptr a ptr a ptr a ptr a -- )
-   {: xb:ptr wqb:ptr wkb:ptr wvb:ptr wob:ptr yb:ptr :}
-   xb wqb wkb wvb MHA-ATTN
-   wob yb MHA-OUT ;
-
-\ ROW-BIAS-ADD! - add a length-cols bias vector to every row (the named broadcast op
-\ standing in until SPEC broadcast forms land): yb[r,c] += bb[c].
-: ROW-BIAS-ADD! ( ptr a n n ptr a -- ) {: yb:ptr rows:n cols:n bb:ptr :}
-   rows 0 ?do
-      cols 0 ?do
-         yb  j cols * i +  T-GET   bb i T-GET  f+   yb  j cols * i +  T-SET
-      loop
-   loop ;
-
-\ MHA-SUBLAYER-FWD - the full sublayer: core attention, then the output-projection
-\ bias add and the residual add of the sublayer input X (both named ops).
-\ bob: output bias (C) ; the residual adds xb (T,C) to Y.
-: MHA-SUBLAYER-FWD ( ptr a ptr a ptr a ptr a ptr a ptr a ptr a -- )
-   {: xb:ptr wqb:ptr wkb:ptr wvb:ptr wob:ptr bob:ptr yb:ptr :}
-   xb wqb wkb wvb wob yb MHA-FWD
-   yb #HQ #HC bob ROW-BIAS-ADD!            \ + output bias (broadcast over rows)
-   yb xb #HQ #HC * T-ADD! ;               \ + residual (sublayer input X)
+\ MHA-BWD - the sublayer backward: given the output cotangent dyb, produce the adjoints
+\ of X and every weight/bias. Reads the activation tape MHA-FWD saved. xb + the four
+\ weights are the forward inputs the adjoints reference (biases are not needed - their
+\ adjoint is a column sum of the projection-output cotangent). dxb: dX (B*T,C). The nine
+\ grad outputs mirror the forward params: dwqb,dbqb, dwkb,dbkb, dwvb,dbvb, dwob,dbob.
+: MHA-BWD ( ptr a ptr a ptr a ptr a ptr a ptr a ptr a ptr a ptr a ptr a ptr a ptr a ptr a ptr a ptr a -- )
+   {: xb:ptr wqb:ptr wkb:ptr wvb:ptr wob:ptr dyb:ptr dxb:ptr
+      dwqb:ptr dbqb:ptr dwkb:ptr dbkb:ptr dwvb:ptr dbvb:ptr dwob:ptr dbob:ptr :}
+   \ output projection backward (Y = O.Wo + bo + X): dbo, dWo, dO_flat
+   dyb MHA-BT #MC dbob MHA-COLSUM
+   MHA-OF dyb dwob  MHA-BT #MC #MC  MATMUL-DW
+   dyb wob MHA-dOF  MHA-BT #MC #MC  MATMUL-DX
+   MHA-dOF MHA-dOM MHA-FLAT>HM                  \ split dO_flat -> head-major
+   \ context backward (O = A.V): dA, dV
+   MHA-dOM MHA-O-BIND  MHA-VM MHA-V-BIND  MHA-dAM MHA-A-BIND  MHA-CTX-ADJ0
+   MHA-dOM MHA-O-BIND  MHA-AM MHA-A-BIND  MHA-dVM MHA-V-BIND  MHA-CTX-ADJ1
+   \ causal-softmax VJP per (b,h) block (reads the saved A): dA -> dS_scaled
+   #MB #MH * 0 ?do
+      i MHA-BLK {: off:n :}
+      MHA-dAM off T-AT  MHA-AM off T-AT  MHA-dSM off T-AT  #MQ  CAUSAL-SMBWD-ROWS
+   loop
+   MHA-dSM MHA-SS MHA-INV ATTN-SCALE!           \ undo the 1/sqrt(hd) scale
+   \ score backward (S = Q.K^T): dQ, dK
+   MHA-dSM MHA-S-BIND  MHA-KM MHA-K-BIND  MHA-dQM MHA-Q-BIND  MHA-SCORE-ADJ0
+   MHA-dSM MHA-S-BIND  MHA-QM MHA-Q-BIND  MHA-dKM MHA-K-BIND  MHA-SCORE-ADJ1
+   MHA-dQM MHA-dQF MHA-HM>FLAT                  \ merge grads back to flat (B*T,C)
+   MHA-dKM MHA-dKF MHA-HM>FLAT
+   MHA-dVM MHA-dVF MHA-HM>FLAT
+   \ projection backward (Q/K/V = X.W + b): dW = X^T.dProj, db = colsum, dX += dProj.W^T
+   xb MHA-dQF dwqb  MHA-BT #MC #MC  MATMUL-DW   MHA-dQF MHA-BT #MC dbqb MHA-COLSUM
+   xb MHA-dKF dwkb  MHA-BT #MC #MC  MATMUL-DW   MHA-dKF MHA-BT #MC dbkb MHA-COLSUM
+   xb MHA-dVF dwvb  MHA-BT #MC #MC  MATMUL-DW   MHA-dVF MHA-BT #MC dbvb MHA-COLSUM
+   dyb dxb MHA-BT #MC * MHA-COPY                \ dX starts at the residual passthrough
+   MHA-dQF wqb MHA-dXT  MHA-BT #MC #MC  MATMUL-DX   dxb MHA-dXT MHA-BT #MC * T-ADD!
+   MHA-dKF wkb MHA-dXT  MHA-BT #MC #MC  MATMUL-DX   dxb MHA-dXT MHA-BT #MC * T-ADD!
+   MHA-dVF wvb MHA-dXT  MHA-BT #MC #MC  MATMUL-DX   dxb MHA-dXT MHA-BT #MC * T-ADD! ;
 
 ;package

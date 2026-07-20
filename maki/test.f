@@ -138,6 +138,8 @@ SUITE maki/segment-test.f
 ;SUITE
 SUITE maki/mha-test.f
 ;SUITE
+SUITE maki/mha-block-test.f
+;SUITE
 SUITE maki/examples/nanogpt/batch-loader-test.f
 ;SUITE
 SUITE maki/mlp-test.f
