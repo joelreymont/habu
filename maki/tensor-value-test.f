@@ -146,17 +146,13 @@ TENSOR:PLAN-N@ 3 T=
 : TVT-OP-NB     ( -- )
    TENSOR:PLAN-RESET
    2 2 SHAPE MAKI-DTYPE:DF32 MAKI-LAYOUT:ROW SPACE-GLOBAL TENSOR:TV-DESC TENSOR:PLAN-OP+ ;
-: TVT-FULL-TV   ( -- )
-   TENSOR:TV-RESET
-   TENSOR:TV-CAP 1+ 0 ?do
-      2 2 SHAPE MAKI-DTYPE:DF32 MAKI-LAYOUT:ROW SPACE-GLOBAL TENSOR:TV-DESC drop
-   loop ;
-: TVT-FULL-PLAN ( -- )
-   TENSOR:TV-RESET TENSOR:PLAN-RESET
-   TENSOR:PLAN-CAP 1+ 0 ?do
-      MAKI-OPKIND:GELU TENSOR:PLAN-OP-BEGIN
-      2 2 SHAPE MAKI-DTYPE:DF32 MAKI-LAYOUT:ROW SPACE-GLOBAL TENSOR:TV-DESC TENSOR:PLAN-OP+
-   loop ;
+\ ceiling-pins (dot habu-size-model-proportional): the tables now derive their size
+\ from the model and grow-to-largest, so the -5040/-5045 pins are the transactional
+\ generous-ceiling dies (a request one past the ceiling throws NAMED before any allot),
+\ mirroring backward.f's BW-CT-BIND ceiling-pins - no 32768-descriptor model built.
+: TVT-FULL-TV   ( -- )  TENSOR:TV-RESET  TENSOR:TV-CAP 1+ TENSOR:TV-BIND ;
+: TVT-FULL-PLAN ( -- )  TENSOR:PLAN-RESET  TENSOR:PLAN-CAP 1+ TENSOR:PLAN-BIND ;
+: TVT-FULL-INS  ( -- )  TENSOR:PLAN-RESET  TENSOR:PLAN-INCAP 1+ TENSOR:PLAN-IN-BIND ;
 
 \ ---- stale handles fail closed once TV-RESET bumps the generation (R3) ------
 : TVT-STALE ( -- )
@@ -185,6 +181,7 @@ TENSOR:PLAN-N@ 3 T=
 ' TVT-STALE-PLAN E-TV-HANDLE    TTHROWS
 ' TVT-FULL-TV   E-TV-FULL       TTHROWS
 ' TVT-FULL-PLAN E-TV-PLAN-FULL  TTHROWS
+' TVT-FULL-INS  E-TV-PLAN-FULL  TTHROWS
 
 \ ---- swapped-family negatives (dot habu-cad-adt-swap + Model-CAD V2 R3) ------
 \ A bad dtype/layout tag is a CHECKER reject at the constructor boundary, the

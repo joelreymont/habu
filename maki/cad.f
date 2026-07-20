@@ -150,8 +150,20 @@ private
 
 \ model state (name + provenance) lives in the IR (MIR-NAME$ / MIR-PROV@)
 
-64 constant CAP-CAP                        \ max model inputs (matches model-ir slots)
-CAP-CAP LAYOUT-BUFFER CAP-IN-AT tensor     \ declared input tensor handles, order 0..N-1 ( n -- ptr tensor )
+\ Capture-side tables derive their size from the loading model (dot habu-size-model-
+\ proportional 3iv): they start at a SEED and grow-to-largest, reused across captures;
+\ the old caps are the GENEROUS transactional ceilings. CAP-IN-AT is now DEFER-LAYOUT-
+\ BUFFER, bound at load to CAP-IN-SEED and grown (copy-on-grow) as SIG-INPUT interns
+\ inputs, so a bigger signature never drops an earlier input handle.
+$2000 constant CAP-CAP                     \ generous model-input ceiling (was 64 cap)
+16 constant CAP-IN-SEED                    \ initial input-handle allotment; grows past this
+DEFER-LAYOUT-BUFFER CAP-IN-AT tensor       \ declared input tensor handles, order 0..N-1 ( n -- ptr tensor )
+CAP-IN-SEED CAP-IN-AT-BIND
+variable CAP-IN-BOUND  CAP-IN-SEED CAP-IN-BOUND !   \ live input-column extent
+: CAP-IN-ENSURE ( n -- ) {: n:n :}         \ grow the input column to hold index n
+   n CAP-IN-BOUND @ < if exit then
+   CAP-IN-BOUND @ 2 * n 1+ max {: nb:n :}
+   nb CAP-IN-AT-GROW  nb CAP-IN-BOUND ! ;
 variable CAP-IN-N                          \ number of declared inputs
 variable CAP-IP                            \ declared-input cursor: next input a param may drain (starts 1)
 variable CAP-OPS                           \ ops emitted so far (a running value exists once >0)
@@ -160,11 +172,25 @@ variable CAP-OPS                           \ ops emitted so far (a running value
 \ by-name reference and the declared-input cursor resolve to the SAME compiled local); ">V"
 \ intermediates occupy the slots above. A bare body token that hits the set is a value
 \ reference (a parameter for the next op); anything else is an op token.
-96 constant NT-CAP                         \ names: up to CAP-CAP inputs + ">V" intermediates
+$2000 constant NT-CAP                      \ generous name ceiling (was 96 cap)
 16 constant NT-NAME-CAP                    \ max bytes per name
-create NT-NAMES NT-CAP NT-NAME-CAP * allot \ fixed-width name text slots
-create NT-LENS  NT-CAP cells allot         \ name lengths
+32 constant NT-SEED                        \ initial name allotment; grows past this
+\ name text (NT-NAME-CAP bytes/slot) + lengths (1 cell/slot) hand-defer via DATA-BASE-
+\ relative offset vars, growing in lockstep off NT-BOUND (copy-on-grow preserves earlier
+\ names as the signature + ">V" set extends past the seed).
+create NT-NAMES NT-SEED NT-NAME-CAP * allot  variable NT-NAMES-P  NT-NAMES data-base - NT-NAMES-P !  variable NT-NAMES-CAP  NT-SEED NT-NAME-CAP * NT-NAMES-CAP !
+create NT-LENS  NT-SEED cells allot          variable NT-LENS-P   NT-LENS  data-base - NT-LENS-P  !  variable NT-LENS-CAP   NT-SEED cells NT-LENS-CAP !
+: NT-NAMES-BASE ( -- ptr a )  data-base NT-NAMES-P @ + ;
+: NT-LENS-BASE  ( -- ptr a )  data-base NT-LENS-P  @ + ;
 variable NT-N
+variable NT-BOUND  NT-SEED NT-BOUND !       \ live name-column extent
+: NT-ENSURE ( n -- ) {: n:n :}              \ grow both name columns to hold slot index n
+   n NT-BOUND @ < if exit then
+   NT-BOUND @ {: old:n :}
+   old 2 * n 1+ max {: nb:n :}
+   nb NT-NAME-CAP *  old NT-NAME-CAP *  NT-NAMES-P NT-NAMES-CAP MAKI:RAW-ENSURE
+   nb cells         old cells          NT-LENS-P  NT-LENS-CAP  MAKI:RAW-ENSURE
+   nb NT-BOUND ! ;
 
 \ pending reference queue: NT slot indices drained (FIFO) into the next op's parameter slots.
 \ A ring: PUSH/DEQ index the physical slot MOD CAP-PEND-CAP and the cap bounds OUTSTANDING
@@ -176,6 +202,10 @@ variable NT-N
 \ running value, so EQ-FCAP-1 named refs can be outstanding before it; every fixed-arity op
 \ needs at most 2 (LINEAR/ROPE arity 3). The precise per-op reject stays CAP-EMIT-PARAMS'
 \ arity guard (a ref a narrower op cannot accept).
+\ CAP-PEND-CAP is SEMANTIC, NOT model-proportional (dot habu-size-model-proportional 3iv,
+\ verified): it bounds OUTSTANDING refs before ONE op (refs are consumed at each op), whose
+\ widest fan-in is an equation's EQ-FCAP-1 factors - independent of model size (a 12-block
+\ stack never has >2 outstanding). So the ring stays a fixed constant.
 EQ-FCAP 1- constant CAP-PEND-CAP           \ max OUTSTANDING refs before one op (widest = an equation)
 create CAP-PEND CAP-PEND-CAP cells allot   \ ring of pending reference NT slot indices
 create CAP-PEND-TR CAP-PEND-CAP cells allot \ ring of per-reference "^T" transpose flags (0/1)
@@ -184,9 +214,19 @@ variable CAP-PEND-HD                       \ monotonic head counter (physical sl
 
 \ compiled-body source buffer: MODEL: emits a checked ": ... ;" over package PLAN here, then
 \ one nested `evaluate` compiles it (the checker certifies the whole composition) and runs it
-\ once to capture the plan. Sized for the largest single-line model body.
-2048 constant MSRC-CAP
-create MSRC-BUF MSRC-CAP allot
+\ once to capture the plan. Its size DERIVES from the capture length (dot habu-size-model-
+\ proportional 3iv): a translated body is a bounded expansion of the captured tokens (every
+\ emission - PLAN:<op>, `dup {: NAME :}`, scalar move params, the signature framing - is driven
+\ by a captured token expanded by a small constant, plus fixed prologue/epilogue). Measured
+\ ~2.1x (GBLK 838/399, GBLK2 1469/721); MSRC-EXPAND uses 4x + 512 (margin over measured, well
+\ inside the per-token proven ceiling). MSRC-PRESIZE pre-allots that from CAPSRC-N; MSRC+/MSRC-C
+\ still grow-to-largest on demand, so the estimate can never truncate. MSRC-CAP is the generous
+\ transactional ceiling. Byte buffer hand-defers via a DATA-BASE-relative offset var.
+$40000 constant MSRC-CAP                    \ generous translated-body ceiling (bytes; was 2048 cap)
+512 constant MSRC-SEED                      \ initial allotment (bytes); grows past this
+create MSRC-BUF MSRC-SEED allot  variable MSRC-P  MSRC-BUF data-base - MSRC-P !  variable MSRC-ALLOT  MSRC-SEED MSRC-ALLOT !
+: MSRC-BASE ( -- ptr a )  data-base MSRC-P @ + ;
+: MSRC-EXPAND ( n -- n )  4 *  512 + ;      \ derived translated-size bound from the capture length
 variable MSRC-N
 
 \ generated throwaway name for the capture word (redefinition is fatal, so each MODEL: mints a
@@ -231,46 +271,55 @@ public
 private
 
 \ ---- compiled-body source buffer (build the checked ": ... ;" MODEL: compiles) ------
+: MSRC-ENSURE ( n -- )  MSRC-N @ MSRC-P MSRC-ALLOT MAKI:RAW-ENSURE ;   \ grow allotment to n bytes (copy-on-grow)
 : MSRC-RESET ( -- )  0 MSRC-N ! ;
 : MSRC+ ( ptr u8 n -- ) {: a:ptr u:n :}
-   MSRC-N @ u + MSRC-CAP > if E-CAD-SYNTAX throw then
-   a  MSRC-BUF MSRC-N @ +  u  BYTE-COPY
+   MSRC-N @ u + MSRC-CAP > if E-CAD-SYNTAX throw then    \ generous ceiling (transactional)
+   MSRC-N @ u + MSRC-ENSURE                              \ grow-to-largest if past the derived size
+   a  MSRC-BASE MSRC-N @ +  u  BYTE-COPY
    MSRC-N @ u + MSRC-N ! ;
 : MSRC-C ( n -- ) {: c:n :}
    MSRC-N @ 1+ MSRC-CAP > if E-CAD-SYNTAX throw then
-   c  MSRC-BUF MSRC-N @ +  c!  MSRC-N @ 1+ MSRC-N ! ;
+   MSRC-N @ 1+ MSRC-ENSURE
+   c  MSRC-BASE MSRC-N @ +  c!  MSRC-N @ 1+ MSRC-N ! ;
 : MSRC-SP ( -- )  $20 MSRC-C ;
 : MSRC-INT ( n -- )  SB-RESET FMT:SB-INT SB$ MSRC+ ;   \ decimal text via the shared SB, copied stable
-: MSRC$ ( -- ptr u8 n )  MSRC-BUF MSRC-N @ ;
+: MSRC$ ( -- ptr u8 n )  MSRC-BASE MSRC-N @ ;
 
-\ ---- raw definition capture buffer + maki-side re-tokenizer (dot ...proportional 3ii) ----
+\ ---- raw definition capture buffer + maki-side re-tokenizer (dot ...proportional 3ii/3iv) ----
 \ MODEL: captures the whole "NAME ( sig ) body ;" token stream here BEFORE any parsing, then
-\ NEXT-TOK re-walks it. See the header note for WHY (no engine input redirection; two-pass
-\ counting for derived sizing; capture length bounds MSRC). CAPSRC-CAP is a fixed interim
-\ scratch: the largest in-tree MODEL: definition is 105 bytes, so 1024 is ~10x headroom; it
-\ becomes model-derived with the rest of stage 3. Overflow dies named (E-CAD-SYNTAX, the same
-\ code the translated MSRC overflow throws - a body this large overflows the translation too).
-1024 constant CAPSRC-CAP
-create CAPSRC-BUF CAPSRC-CAP allot
+\ NEXT-TOK re-walks it. See the header note for WHY (no engine input redirection; capture
+\ length bounds MSRC). The captured length is the raw input, so it CANNOT be pre-counted from
+\ a size (it IS the source); the buffer therefore GROWS-TO-LARGEST on demand (copy-on-grow,
+\ dot habu-size-model-proportional 3iv) from CAPSRC-SEED, reused across captures - a 12-block
+\ line (~4KB) never overflows the seed silently. CAPSRC-CAP is the generous transactional
+\ ceiling. Byte buffer hand-defers via a DATA-BASE-relative offset var.
+$40000 constant CAPSRC-CAP                          \ generous capture ceiling (bytes; was 1024 cap)
+256 constant CAPSRC-SEED                            \ initial allotment (bytes); grows past this
+create CAPSRC-BUF CAPSRC-SEED allot  variable CAPSRC-P  CAPSRC-BUF data-base - CAPSRC-P !  variable CAPSRC-ALLOT  CAPSRC-SEED CAPSRC-ALLOT !
+: CAPSRC-BASE ( -- ptr a )  data-base CAPSRC-P @ + ;
 variable CAPSRC-N                                   \ bytes captured
 variable CAPSRC-CUR                                 \ re-tokenization cursor (rewind to 0 for a second pass)
 : CAPSRC-RESET ( -- )  0 CAPSRC-N !  0 CAPSRC-CUR ! ;
-\ append one token followed by a single normalizing space; overflow fails closed
+\ append one token followed by a single normalizing space; grows on demand, overflow fails closed
 : CAPSRC+ ( ptr u8 n -- ) {: a:ptr u:n :}
-   CAPSRC-N @ u + 1+ CAPSRC-CAP > if E-CAD-SYNTAX throw then
-   a  CAPSRC-BUF CAPSRC-N @ +  u  BYTE-COPY
+   CAPSRC-N @ u + 1+ CAPSRC-CAP > if E-CAD-SYNTAX throw then    \ generous ceiling (transactional)
+   CAPSRC-N @ u + 1+ CAPSRC-N @ CAPSRC-P CAPSRC-ALLOT MAKI:RAW-ENSURE  \ grow-to-largest if needed
+   a  CAPSRC-BASE CAPSRC-N @ +  u  BYTE-COPY
    CAPSRC-N @ u +  CAPSRC-N !
-   $20  CAPSRC-BUF CAPSRC-N @ +  c!  CAPSRC-N @ 1+ CAPSRC-N ! ;
+   $20  CAPSRC-BASE CAPSRC-N @ +  c!  CAPSRC-N @ 1+ CAPSRC-N ! ;
 \ next whitespace-delimited token from the captured buffer (n=0 at end), matching parse-name's
 \ ( ptr u8 n ) so the signature/body parsers re-tokenize CAPSRC-BUF with no call-site change.
 \ The buffer is single-space normalized, so every token (incl. ';') is trailed by one space;
 \ the inner scan therefore always meets a space before CAPSRC-N and never reads past it.
 : NEXT-TOK ( -- ptr u8 n )
-   CAPSRC-CUR @ CAPSRC-N @ >= if  CAPSRC-BUF CAPSRC-CUR @ +  0  exit  then
+   CAPSRC-CUR @ CAPSRC-N @ >= if  CAPSRC-BASE CAPSRC-CUR @ +  0  exit  then
    CAPSRC-CUR @ {: s:n :}
-   begin  CAPSRC-BUF CAPSRC-CUR @ + c@ $20 <>  while  CAPSRC-CUR @ 1+ CAPSRC-CUR !  repeat
-   CAPSRC-BUF s +  CAPSRC-CUR @ s -                 \ ( ptr u8 n ) the token span
+   begin  CAPSRC-BASE CAPSRC-CUR @ + c@ $20 <>  while  CAPSRC-CUR @ 1+ CAPSRC-CUR !  repeat
+   CAPSRC-BASE s +  CAPSRC-CUR @ s -                \ ( ptr u8 n ) the token span
    CAPSRC-CUR @ 1+ CAPSRC-CUR ! ;                   \ step past its trailing space
+\ derive the translated-body allotment from the captured length (called after CAP-CAPTURE)
+: MSRC-PRESIZE ( -- )  CAPSRC-N @ MSRC-EXPAND MSRC-CAP min MSRC-ENSURE ;
 \ the ONE input-stream consumer: capture NAME through the terminating ';' (the ';' is captured,
 \ then the loop stops - anything after ';' on the line is left for normal interpretation, as
 \ the old streaming parser did). A definition with no ';' runs the line out -> E-CAD-SYNTAX.
@@ -302,8 +351,8 @@ $5E constant TR-C                                  \ '^' - the reserved transpos
      some OF drop true ENDOF
    ;MATCH ;
 : NT-RESET ( -- )  0 NT-N ! ;
-: NT-SLOT ( n -- ptr u8 )  NT-NAME-CAP *  NT-NAMES + ;
-: NT-NAME ( n -- ptr u8 n ) {: i:n :}  i NT-SLOT  i cells NT-LENS + @ ;   \ slot -> name text
+: NT-SLOT ( n -- ptr u8 )  NT-NAME-CAP *  NT-NAMES-BASE + ;
+: NT-NAME ( n -- ptr u8 n ) {: i:n :}  i NT-SLOT  i cells NT-LENS-BASE + @ ;   \ slot -> name text
 : NT-FIND ( ptr u8 n -- n bool ) {: a:ptr u:n :}   \ slot index valid only when true
    NT-N @ 0 ?do
       a u  i NT-NAME  STR= if  i true  unloop exit  then
@@ -313,10 +362,11 @@ $5E constant TR-C                                  \ '^' - the reserved transpos
    a u TR-MARKED? if E-CAD-NAME throw then                  \ '^' is reserved for "NAME^T" references
    a u OP-LOOKUP nip if E-CAD-NAME throw then               \ a name may not shadow an op token
    a u NT-FIND   nip if E-CAD-NAME throw then               \ no duplicate name
-   NT-N @ NT-CAP >= if E-CAD-NAME throw then                \ table full
+   NT-N @ NT-CAP >= if E-CAD-NAME throw then                \ generous ceiling (transactional)
+   NT-N @ NT-ENSURE                                         \ derive name-table size from the model
    NT-N @ {: i:n :}
    a  i NT-SLOT  u  BYTE-COPY
-   u  i cells NT-LENS + !
+   u  i cells NT-LENS-BASE + !
    i 1+ NT-N !  i ;
 
 \ ---- capture / translate state ---------------------------------------------
@@ -575,7 +625,8 @@ $5E constant TR-C                                  \ '^' - the reserved transpos
 : CAP-SYNTH-NAME ( -- )                             \ bare RxC input: bind IN<idx>
    SB-RESET  s" IN" SB-APPEND  CAP-IN-N @ FMT:SB-INT  SB$ NT-BIND drop ;
 : SIG-INPUT ( ptr u8 n -- ) {: a:ptr u:n :}
-   CAP-IN-N @ CAP-CAP >= if E-CAD-INPUTS throw then
+   CAP-IN-N @ CAP-CAP >= if E-CAD-INPUTS throw then     \ generous ceiling (transactional)
+   CAP-IN-N @ CAP-IN-ENSURE                             \ derive input-handle column from the model
    a u PARSE-SHAPE {: rows:n cols:n :}
    rows cols SHAPE MAKI-DTYPE:DF32 MAKI-LAYOUT:ROW SPACE-HOST TENSOR:TV-DESC
    CAP-IN-N @ CAP-IN!                                                        \ handle for the seed
@@ -752,6 +803,7 @@ public
 : MODEL: ( -- )
    CAP-BEGIN  CAP-GEN-NAME
    CAP-CAPTURE                                               \ whole definition -> CAPSRC-BUF (the one parse-name loop)
+   MSRC-PRESIZE                                              \ derive MSRC allotment from the captured length
    NEXT-TOK dup 0= if 2drop E-CAD-EMPTY throw then MIR-NAME!
    PARSE-SIG
    CAP-EMIT-PREFIX

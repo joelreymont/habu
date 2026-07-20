@@ -264,14 +264,23 @@ BW-BUILD                                       \ 2nd build succeeds (pilot above
 \ ---- model-proportional cotangent tables: derived sizes, ceilings, transactional ----------
 \ (dot habu-size-model-proportional) Both-size regression: two different-sized models in one image
 \ get EXACTLY-sized bindings, read back from the live-count cells (BW-CT-N = forward-node count,
-\ BW-ISG-N = input-slot count + 1 for the seed slot).
-MODEL: BSA ( x:4x8 -- y ) GELU GELU ;                  \ 1 slot, 2 forward nodes
+\ BW-ISG-N = input-slot count + 1 for the seed slot). Stage 3iv/3v extends this to the tensor-
+\ value + plan-store families (TV-COUNT / PLAN-N@) and the model-ir forward node count
+\ (BW-FWD-N@ mirrors MIR-N before the backward append): each is the exact live size of ITS
+\ model, re-derived (not a fixed cap) when the second, differently-shaped model is captured.
+MODEL: BSA ( x:4x8 -- y ) GELU GELU ;                  \ 1 slot, 2 forward nodes, 2 ops
+TENSOR:TV-COUNT 3 T=                                     \ 1 input + 2 op-output descriptors
+TENSOR:PLAN-N@  2 T=                                     \ exactly 2 plan ops
 BW-BUILD
+BW-FWD-N@ 2 T=                                           \ exactly 2 forward model-ir nodes
 BW-CT-N  @ 2 T=                                          \ exactly 2 forward-node cotangent cells
 BW-ISG-N @ 2 T=                                          \ 1 input slot + 1 seed slot
 BW-BWD-COUNT 2 T=
-MODEL: BSB ( x:2x3 w:3x4 -- y ) MATMUL ;                \ 2 slots, 1 forward node
+MODEL: BSB ( x:2x3 w:3x4 -- y ) MATMUL ;                \ 2 slots, 1 forward node, 1 op
+TENSOR:TV-COUNT 3 T=                                     \ 2 inputs + 1 op-output descriptor
+TENSOR:PLAN-N@  1 T=                                     \ re-derived exactly for the smaller plan
 BW-BUILD
+BW-FWD-N@ 1 T=                                           \ re-derived to the exact smaller node count
 BW-CT-N  @ 1 T=                                          \ re-bound to the exact smaller node count
 BW-ISG-N @ 3 T=                                          \ 2 input slots + 1 seed slot
 BW-BWD-COUNT 4 T=

@@ -127,37 +127,89 @@ ENUM lnform DERIVE eq
 
 private
 
-1024 constant MIR-CAP         \ max nodes
-384 constant MIR-INCAP        \ max operand refs across the table
-64  constant MIR-IN-CAP       \ max model-input slots
+\ Node / operand / input-slot sizing derives from the model (dot habu-size-model-
+\ proportional): the columns start at their SEED and grow-to-largest, reused across
+\ models; the caps are now the GENEROUS transactional ceilings (E-MIR-CAP / E-MIR-
+\ INCAP / E-MIR-INSLOT, still thrown before any allot). The node table is TWO-PHASE -
+\ the forward bridge fills it, then backward.f appends adjoint nodes past the forward
+\ count - so its columns COPY-ON-GROW (NAME-GROW / RAW-ENSURE), preserving the forward
+\ region as the backward pass extends it (stage-3i's copy-on-grow, the reason it exists).
+$8000 constant MIR-CAP        \ generous node-table ceiling (was 1024 cap)
+$8000 constant MIR-INCAP      \ generous operand-ref-pool ceiling (was 384 cap)
+$2000 constant MIR-IN-CAP     \ generous input-slot ceiling (was 64 cap)
+128 constant MIR-NODE-SEED    \ initial node-column allotment; grows past this
+256 constant MIR-INS-SEED     \ initial operand-pool allotment; grows past this
+32  constant MIR-SLOT-SEED    \ initial input-slot allotment; grows past this
 
 \ node table: one array per field (keeps each field's cell independent). The
-\ enum-typed columns are generative LAYOUT-BUFFER columns (dot habu-cad-adt-swap;
-\ the only typed-layout pointer introduction form): each owns extent, stride,
-\ bounds, and family provenance and publishes its own checked accessor, so a raw
-\ n or a foreign family can never enter or leave a descriptor cell.
-MIR-CAP LAYOUT-BUFFER MI-OP-AT opkind   \ op-kind column ( n -- ptr opkind )
-MIR-CAP  TYPED-BUFFER MI-INOFF-AT MIR:ref-pos \ operand window start in MI-INS ( n -- ptr MIR:ref-pos )
-create MI-INCNT MIR-CAP cells allot     \ operand window length
-MIR-CAP LAYOUT-BUFFER MI-ROWS-AT CAD-KIND:rows \ output rows column ( n -- ptr CAD-KIND:rows )
-MIR-CAP LAYOUT-BUFFER MI-COLS-AT CAD-KIND:cols \ output cols column ( n -- ptr CAD-KIND:cols )
-MIR-CAP LAYOUT-BUFFER MI-DT-AT dtype    \ dtype column ( n -- ptr dtype )
-MIR-CAP LAYOUT-BUFFER MI-LAY-AT layout  \ layout column ( n -- ptr layout )
-create MI-ATTR  MIR-CAP cells allot     \ attrs cell (variant/axis/eps, op-typed)
-create MI-MAT   MIR-CAP cells allot     \ materialization flag
-create MI-AD    MIR-CAP cells allot     \ autograd metadata (reserved)
+\ enum/nominal-typed columns are DEFER-LAYOUT-BUFFER columns (dot habu-cad-adt-swap;
+\ deferred-offset variant): each owns extent, stride, bounds, and family provenance
+\ and publishes its own checked accessor, so a raw n or a foreign family can never
+\ enter or leave a descriptor cell. The four family-less siblings hand-defer via
+\ DATA-BASE-relative offset vars + RAW-ENSURE, growing in lockstep off MIR-NODE-BOUND.
+DEFER-LAYOUT-BUFFER MI-OP-AT opkind   \ op-kind column ( n -- ptr opkind )
+DEFER-LAYOUT-BUFFER MI-INOFF-AT MIR:ref-pos \ operand window start in MI-INS ( n -- ptr MIR:ref-pos )
+create MI-INCNT MIR-NODE-SEED cells allot  variable MI-INCNT-P  MI-INCNT data-base - MI-INCNT-P !  variable MI-INCNT-CAP  MIR-NODE-SEED cells MI-INCNT-CAP !  \ operand window length (offset)
+DEFER-LAYOUT-BUFFER MI-ROWS-AT CAD-KIND:rows \ output rows column ( n -- ptr CAD-KIND:rows )
+DEFER-LAYOUT-BUFFER MI-COLS-AT CAD-KIND:cols \ output cols column ( n -- ptr CAD-KIND:cols )
+DEFER-LAYOUT-BUFFER MI-DT-AT dtype    \ dtype column ( n -- ptr dtype )
+DEFER-LAYOUT-BUFFER MI-LAY-AT layout  \ layout column ( n -- ptr layout )
+create MI-ATTR MIR-NODE-SEED cells allot  variable MI-ATTR-P  MI-ATTR data-base - MI-ATTR-P !  variable MI-ATTR-CAP  MIR-NODE-SEED cells MI-ATTR-CAP !  \ attrs cell (offset)
+create MI-MAT  MIR-NODE-SEED cells allot  variable MI-MAT-P   MI-MAT  data-base - MI-MAT-P  !  variable MI-MAT-CAP   MIR-NODE-SEED cells MI-MAT-CAP  !  \ materialization flag (offset)
+create MI-AD   MIR-NODE-SEED cells allot  variable MI-AD-P    MI-AD   data-base - MI-AD-P   !  variable MI-AD-CAP    MIR-NODE-SEED cells MI-AD-CAP   !  \ autograd metadata (offset)
+: MI-INCNT-BASE ( -- ptr a )  data-base MI-INCNT-P @ + ;   \ reconstruct the live bases
+: MI-ATTR-BASE  ( -- ptr a )  data-base MI-ATTR-P  @ + ;
+: MI-MAT-BASE   ( -- ptr a )  data-base MI-MAT-P   @ + ;
+: MI-AD-BASE    ( -- ptr a )  data-base MI-AD-P    @ + ;
 variable MIR-N
+variable MIR-NODE-BOUND               \ live node-column extent (grow-to-largest)
 
-MIR-INCAP TYPED-BUFFER MI-INS-AT MIR:operand-ref \ flat operand-ref pool ( n -- ptr MIR:operand-ref )
+DEFER-LAYOUT-BUFFER MI-INS-AT MIR:operand-ref \ flat operand-ref pool ( n -- ptr MIR:operand-ref )
 variable MIR-INS-U
+variable MIR-INS-BOUND                 \ live operand-pool extent (grow-to-largest)
 
 \ model-input slots (their own descriptor facts)
-MIR-IN-CAP LAYOUT-BUFFER MI-IS-ROWS-AT CAD-KIND:rows \ input rows column ( n -- ptr CAD-KIND:rows )
-MIR-IN-CAP LAYOUT-BUFFER MI-IS-COLS-AT CAD-KIND:cols \ input cols column ( n -- ptr CAD-KIND:cols )
-MIR-IN-CAP LAYOUT-BUFFER MI-IS-DT-AT  dtype    \ dtype column ( n -- ptr dtype )
-MIR-IN-CAP LAYOUT-BUFFER MI-IS-LAY-AT layout   \ layout column ( n -- ptr layout )
-MIR-IN-CAP LAYOUT-BUFFER MI-IS-AL-AT  align    \ align column (zero image = unknown)
+DEFER-LAYOUT-BUFFER MI-IS-ROWS-AT CAD-KIND:rows \ input rows column ( n -- ptr CAD-KIND:rows )
+DEFER-LAYOUT-BUFFER MI-IS-COLS-AT CAD-KIND:cols \ input cols column ( n -- ptr CAD-KIND:cols )
+DEFER-LAYOUT-BUFFER MI-IS-DT-AT  dtype    \ dtype column ( n -- ptr dtype )
+DEFER-LAYOUT-BUFFER MI-IS-LAY-AT layout   \ layout column ( n -- ptr layout )
+DEFER-LAYOUT-BUFFER MI-IS-AL-AT  align    \ align column (zero image = unknown)
 variable MIR-IS-N
+variable MIR-SLOT-BOUND                \ live input-slot extent (grow-to-largest)
+
+\ bind every deferred column at load to its seed + prime the group bounds (the
+\ grow-to-largest high-water starts here, never re-bound at MIR-RESET)
+MIR-NODE-SEED MI-OP-AT-BIND    MIR-NODE-SEED MI-INOFF-AT-BIND
+MIR-NODE-SEED MI-ROWS-AT-BIND  MIR-NODE-SEED MI-COLS-AT-BIND
+MIR-NODE-SEED MI-DT-AT-BIND    MIR-NODE-SEED MI-LAY-AT-BIND    MIR-NODE-SEED MIR-NODE-BOUND !
+MIR-INS-SEED  MI-INS-AT-BIND   MIR-INS-SEED  MIR-INS-BOUND !
+MIR-SLOT-SEED MI-IS-ROWS-AT-BIND  MIR-SLOT-SEED MI-IS-COLS-AT-BIND  MIR-SLOT-SEED MI-IS-DT-AT-BIND
+MIR-SLOT-SEED MI-IS-LAY-AT-BIND   MIR-SLOT-SEED MI-IS-AL-AT-BIND    MIR-SLOT-SEED MIR-SLOT-BOUND !
+
+\ grow every node-family column to hold node index n (doubling; copy-on-grow keeps
+\ the forward region as backward.f extends it - the two-phase table stage-3i built for)
+: MIR-NODE-ENSURE ( n -- ) {: n:n :}
+   n MIR-NODE-BOUND @ < if exit then
+   MIR-NODE-BOUND @ {: old:n :}
+   old 2 * n 1+ max {: nb:n :}
+   nb MI-OP-AT-GROW  nb MI-INOFF-AT-GROW  nb MI-ROWS-AT-GROW  nb MI-COLS-AT-GROW
+   nb MI-DT-AT-GROW  nb MI-LAY-AT-GROW
+   nb cells old cells MI-INCNT-P MI-INCNT-CAP MAKI:RAW-ENSURE
+   nb cells old cells MI-ATTR-P  MI-ATTR-CAP  MAKI:RAW-ENSURE
+   nb cells old cells MI-MAT-P   MI-MAT-CAP   MAKI:RAW-ENSURE
+   nb cells old cells MI-AD-P    MI-AD-CAP    MAKI:RAW-ENSURE
+   nb MIR-NODE-BOUND ! ;
+
+: MIR-INS-ENSURE ( n -- ) {: n:n :}   \ grow the operand-ref pool to hold ref index n
+   n MIR-INS-BOUND @ < if exit then
+   MIR-INS-BOUND @ 2 * n 1+ max {: nb:n :}
+   nb MI-INS-AT-GROW  nb MIR-INS-BOUND ! ;
+
+: MIR-SLOT-ENSURE ( n -- ) {: n:n :}  \ grow every input-slot column to hold slot index n
+   n MIR-SLOT-BOUND @ < if exit then
+   MIR-SLOT-BOUND @ 2 * n 1+ max {: nb:n :}
+   nb MI-IS-ROWS-AT-GROW  nb MI-IS-COLS-AT-GROW  nb MI-IS-DT-AT-GROW
+   nb MI-IS-LAY-AT-GROW   nb MI-IS-AL-AT-GROW    nb MIR-SLOT-BOUND ! ;
 
 \ model name (denormalized into the IR so the golden artifact store can key a file
 \ by model below the cad.f layer without a load-order cycle). Reset with the table.
@@ -307,6 +359,19 @@ public
 : MIR-N@ ( -- n )         MIR-N @ ;
 : MIR-IN-SLOTS@ ( -- n )  MIR-IS-N @ ;
 
+\ Ceiling pins (transactional, before any allot) / optional pre-size. The append
+\ words already size the tables on demand, so these are only the generous-ceiling
+\ assertions and a pre-sizing hint, never required for correctness.
+: MIR-BIND-NODES ( n -- ) {: n:n :}
+   n MIR-CAP > if E-MIR-CAP throw then
+   n 0 > if n 1- MIR-NODE-ENSURE then ;
+: MIR-BIND-OPERANDS ( n -- ) {: n:n :}
+   n MIR-INCAP > if E-MIR-INCAP throw then
+   n 0 > if n 1- MIR-INS-ENSURE then ;
+: MIR-BIND-SLOTS ( n -- ) {: n:n :}
+   n MIR-IN-CAP > if E-MIR-INSLOT throw then
+   n 0 > if n 1- MIR-SLOT-ENSURE then ;
+
 \ ---- provenance (a producer adopts the IR it just populated) -----------------
 : MIR-PROV@ ( -- prov )   MIR-PROV-AT @ ;
 : MIR-PROV! ( prov -- )   MIR-PROV-AT ! ;
@@ -339,7 +404,8 @@ public
 \ E-MK-DTYPE/E-TV-LAYOUT range validation is unrepresentable). The descriptor
 \ stores run from the stack before the extent locals bind.
 : MIR-INPUT+ ( CAD-KIND:rows CAD-KIND:cols dtype layout -- MIR:input-slot )
-   MIR-IS-N @ MIR-IN-CAP >= if E-MIR-INSLOT throw then
+   MIR-IS-N @ MIR-IN-CAP >= if E-MIR-INSLOT throw then   \ generous ceiling (transactional)
+   MIR-IS-N @ MIR-SLOT-ENSURE                    \ derive slot-table size from the model
    NEXT-SLOT {: s:MIR:input-slot :}
    s SLOT>RAW {: raw:n :}
    raw MI-IS-LAY-AT !                            \ layout (top)
@@ -383,7 +449,8 @@ public
 
 : MIR-IN+ ( MIR:operand-ref -- ) {: ref:MIR:operand-ref :}
    MIR-PEND-ON @ 0= if E-MIR-STATE throw then
-   MIR-INS-U @ MIR-INCAP >= if E-MIR-INCAP throw then
+   MIR-INS-U @ MIR-INCAP >= if E-MIR-INCAP throw then   \ generous ceiling (transactional)
+   MIR-INS-U @ MIR-INS-ENSURE                           \ derive pool size from the model
    ref MIR-REF-CK MIR-INS-U @ MIR-REF-POS REF!
    MIR-INS-U @ 1+ MIR-INS-U !
    MIR-PEND-CNT @ 1+ MIR-PEND-CNT ! ;
@@ -395,17 +462,18 @@ public
    MIR-PEND-KIND-AT @  attr  MIR-PEND-CNT @  MIR-LN-CK   \ variant guard: layernorm form matches arity
    NEXT-NODE {: k:CAD-KIND:node-id :}
    k NODE>RAW {: raw:n :}
+   raw MIR-NODE-ENSURE                   \ derive node-table size from the model (copy-on-grow)
    raw MI-LAY-AT !                       \ layout (top after attr/mat bound)
    raw MI-DT-AT !                        \ dtype
    {: rows:CAD-KIND:rows cols:CAD-KIND:cols :}
    MIR-PEND-KIND-AT @ raw MI-OP-AT !     \ op-kind family (staged by MIR-OP-BEGIN)
    PEND-OFF@ k INOFF!
-   MIR-PEND-CNT @ raw cells MI-INCNT + !
+   MIR-PEND-CNT @ raw cells MI-INCNT-BASE + !
    rows raw MI-ROWS-AT !
    cols raw MI-COLS-AT !
-   attr raw cells MI-ATTR + !
-   mat  raw cells MI-MAT  + !
-   0    raw cells MI-AD   + !
+   attr raw cells MI-ATTR-BASE + !
+   mat  raw cells MI-MAT-BASE  + !
+   0    raw cells MI-AD-BASE   + !
    raw 1+ MIR-N !
    0 MIR-PEND-ON !
    k ;
@@ -416,11 +484,11 @@ public
 : MIR-COLS@ ( CAD-KIND:node-id -- CAD-KIND:cols )  MIR-CK MI-COLS-AT @ ;
 : MIR-DT@   ( CAD-KIND:node-id -- dtype )   MIR-CK MI-DT-AT  @ ;
 : MIR-LAY@  ( CAD-KIND:node-id -- layout )  MIR-CK MI-LAY-AT @ ;
-: MIR-ATTR@ ( CAD-KIND:node-id -- n )     MIR-CK cells MI-ATTR  + @ ;
-: MIR-AD@   ( CAD-KIND:node-id -- n )     MIR-CK cells MI-AD    + @ ;
-: MIR-MAT@  ( CAD-KIND:node-id -- bool )  MIR-CK cells MI-MAT   + @ 0= 0= ;
+: MIR-ATTR@ ( CAD-KIND:node-id -- n )     MIR-CK cells MI-ATTR-BASE  + @ ;
+: MIR-AD@   ( CAD-KIND:node-id -- n )     MIR-CK cells MI-AD-BASE    + @ ;
+: MIR-MAT@  ( CAD-KIND:node-id -- bool )  MIR-CK cells MI-MAT-BASE   + @ 0= 0= ;
 
-: MIR-MAT! ( bool CAD-KIND:node-id -- )   MIR-CK cells MI-MAT + ! ;
+: MIR-MAT! ( bool CAD-KIND:node-id -- )   MIR-CK cells MI-MAT-BASE + ! ;
 
 \ ---- layernorm form decode boundary (consumers dispatch on this, never in-count) --
 \ LN-FORM decodes any layernorm node's stored form; LN-AFFINE? is the guarded predicate
@@ -439,15 +507,15 @@ public
 
 : MIR-ATTR! ( n CAD-KIND:node-id -- )
    {: attr:n node:CAD-KIND:node-id :}
-   attr node MIR-CK cells MI-ATTR + ! ;
+   attr node MIR-CK cells MI-ATTR-BASE + ! ;
 
-: MIR-IN-COUNT@ ( CAD-KIND:node-id -- n )  MIR-CK cells MI-INCNT + @ ;
+: MIR-IN-COUNT@ ( CAD-KIND:node-id -- n )  MIR-CK cells MI-INCNT-BASE + @ ;
 
 : MIR-IN@ ( CAD-KIND:node-id MIR:input-index -- MIR:operand-ref )
    {: node:CAD-KIND:node-id k:MIR:input-index :}
    node MIR-CK {: raw:n :}
    k INPUT-INDEX>RAW {: ki:n :}
-   ki 0 < ki raw cells MI-INCNT + @ >= or if E-MIR-REF throw then
+   ki 0 < ki raw cells MI-INCNT-BASE + @ >= or if E-MIR-REF throw then
    node INOFF@ REF-POS>RAW ki + MIR-REF-POS REF@ ;
 
 : MIR-MAT-COUNT ( -- n )                \ materialized node count (LOWER uses this)

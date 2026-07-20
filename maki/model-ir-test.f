@@ -168,10 +168,12 @@ MIR-PROV@ MAKI-PROV:NONE MAKI-PROV:EQ TTRUE
    MIR-RESET
    1 1 SHAPE MAKI-DTYPE:DF32 MAKI-LAYOUT:ROW MIR-INPUT+ MIR-IN-REF MIR-IN+ ;
 : TRY-MIR-INSLOT  ( -- )  MIR-RESET 0 RAW>SLOT MIR-SLOT-ROWS@ drop ;
-: TRY-MIR-CAP     ( -- )
-   MIR-RESET  MIR-CAP 1+ 0 ?do  MAKI-OPKIND:CAST MIR-OP-BEGIN  1 1 SHAPE MAKI-DTYPE:DF32 MAKI-LAYOUT:ROW 0 1 MIR-OP+ drop  loop ;
-: TRY-MIR-SLOTCAP ( -- )
-   MIR-RESET  MIR-IN-CAP 1+ 0 ?do  1 1 SHAPE MAKI-DTYPE:DF32 MAKI-LAYOUT:ROW MIR-INPUT+ drop  loop ;
+\ ceiling-pins (dot habu-size-model-proportional): the tables derive their size from the
+\ model and grow-to-largest, so the caps are the transactional generous ceilings - a
+\ request one past the ceiling throws NAMED before any allot (no 32768-node model built).
+: TRY-MIR-CAP     ( -- )  MIR-RESET  MIR-CAP 1+ MIR-BIND-NODES ;
+: TRY-MIR-INCAP   ( -- )  MIR-RESET  MIR-INCAP 1+ MIR-BIND-OPERANDS ;
+: TRY-MIR-SLOTCAP ( -- )  MIR-RESET  MIR-IN-CAP 1+ MIR-BIND-SLOTS ;
 
 \ a verdict requested from a non-movement (gelu) node fails closed
 : TRY-MIR-NOTMOVE ( -- )
@@ -190,6 +192,7 @@ MIR-PROV@ MAKI-PROV:NONE MAKI-PROV:EQ TTRUE
 ' TRY-MIR-STATE   E-MIR-STATE   TTHROWS
 ' TRY-MIR-INSLOT  E-MIR-INSLOT  TTHROWS
 ' TRY-MIR-CAP     E-MIR-CAP     TTHROWS
+' TRY-MIR-INCAP   E-MIR-INCAP   TTHROWS
 ' TRY-MIR-SLOTCAP E-MIR-INSLOT  TTHROWS
 ' TRY-MIR-NOTMOVE E-MV-NOTMOVE  TTHROWS
 ' TRY-MIR-MARK-GROW E-MIR-STATE TTHROWS
@@ -255,21 +258,26 @@ SLOT-COUNT@        CAD-NUM:MT-IC>RAW 0 T=
 OPERAND-COUNT@     CAD-NUM:MT-IC>RAW 0 T=
 MATERIALIZED-COUNT CAD-NUM:MT-IC>RAW 0 T=
 
-\ the raised node-table cap (dot habu-raise-mir-node): 128 -> 1024 gives Nx headroom - a
-\ differentiable 12-block GPT-2 stack is ~723 fwd+bwd nodes (59/block). TRY-MIR-CAP above
-\ pins cap+1 -> E-MIR-CAP, so this value is the boundary the fail-closed die guards.
-MIR-CAP 1024 T=
+\ the node table now DERIVES its size from the model (dot habu-size-model-proportional):
+\ MIR-CAP is the generous transactional CEILING (TRY-MIR-CAP pins cap+1 -> E-MIR-CAP), well
+\ above a 12-block GPT-2 stack (~723 fwd+bwd nodes). The live size grows-to-largest from
+\ MIR-NODE-SEED; the value below is the fail-closed boundary the ceiling die guards.
+MIR-CAP $8000 T=
 
-\ max: NODE-COUNT@ tracks the node column up to the table capacity; each node
-\ opens with zero operands and mat=0, so the other counts stay zero at the max.
+\ growth: fill well PAST the seed to exercise copy-on-grow (dot habu-size-model-proportional).
+\ NODE-COUNT@ tracks the live count EXACTLY; a node written before a grow survives it (the
+\ preservation copy-on-grow gives); each node opens with zero operands and mat=0.
+400 constant MT-FILL-N          \ > MIR-NODE-SEED (128): two doublings 128->256->512
 : MT-FILL-MAX ( -- )
    MIR-RESET
-   MIR-CAP 0 ?do
+   MT-FILL-N 0 ?do
       MAKI-OPKIND:CAST MIR-OP-BEGIN
       1 1 SHAPE MAKI-DTYPE:DF32 MAKI-LAYOUT:ROW 0 0 MIR-OP+ drop
    loop ;
 MT-FILL-MAX
-NODE-COUNT@        CAD-NUM:MT-IC>RAW MIR-CAP T=
+NODE-COUNT@        CAD-NUM:MT-IC>RAW MT-FILL-N T=                     \ live count is exact
+100 MIR-NODE-ID MIR-OP@ MAKI-OPKIND:CAST MAKI-OPKIND:EQ TTRUE        \ node written pre-grow survives
+MT-FILL-N 1- MIR-NODE-ID MIR-OP@ MAKI-OPKIND:CAST MAKI-OPKIND:EQ TTRUE  \ last (post-grow) node intact
 OPERAND-COUNT@     CAD-NUM:MT-IC>RAW 0 T=
 MATERIALIZED-COUNT CAD-NUM:MT-IC>RAW 0 T=
 MIR-RESET

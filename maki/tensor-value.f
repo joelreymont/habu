@@ -137,6 +137,26 @@ ENUM align DERIVE eq
    AL-16 = if MAKI-ALIGN:A16 exit then
    E-TV-ALIGN throw ;
 
+\ ---- deferred raw-sibling storage (dot habu-size-model-proportional 3iv/3v) ------
+\ The DEFER-LAYOUT-BUFFER typed columns cannot hold FAMILY-LESS cells (a plain n, a
+\ raw data pointer), so their parallel raw siblings defer by hand: a DATA-BASE-RELATIVE
+\ offset var + a capacity var (BYTES), grown to the largest model and REUSED across
+\ models (leak bounded), copying the live prefix into the fresh region so a within-build
+\ append never drops an earlier cell. This mirrors src/core/layout-buffer.f LDEFER-GROW
+\ on the raw surface (cell columns pass `n CELL *` bytes). The stored value is an offset
+\ (relocation-safe, like the DEFER accessor's baked offset) so no raw address persists;
+\ callers reconstruct `data-base off +`. Shared by tensor-value / model-ir / cad (all
+\ `require` this file); public in MAKI. The fresh tail is left as-is: every live slot is
+\ written by its append before any read (the TV-U / MIR-N / P-N liveness guards).
+: RAW-ENSURE ( n n ptr a ptr a -- )   \ needbytes livebytes off-var cap-var
+   {: need:n live:n ov:ptr cv:ptr :}
+   need cv @ <= if exit then                       \ fits the current region
+   cv @ 2 * need max {: newcap:n :}                 \ doubling floor (grow-to-at-least)
+   here {: nb:ptr :}
+   newcap allot
+   data-base ov @ + BYTE-VIEW  nb BYTE-VIEW  live BYTE-COPY   \ carry the live prefix forward
+   nb data-base -  ov !  newcap cv ! ;              \ store the fresh region's offset
+
 ;package
 
 \ ---------------------------------------------------------------------------
@@ -157,7 +177,13 @@ public
 \ closed once TV-RESET invalidates them.
 TYPEFAMILY tensor 0
 
-256 constant TV-CAP            \ max live tensor values (store capacity contract)
+\ Live-descriptor sizing derives from the model (dot habu-size-model-proportional):
+\ the columns start at TV-SEED and grow-to-largest, reused across captures. TV-CAP is
+\ now the GENEROUS transactional ceiling AND the handle stride (TV-HANDLE encodes
+\ gen*TV-CAP + idx), so idx < TV-CAP is the decode invariant; TV-GEN-MAX is lowered so
+\ TV-CAP*TV-GEN-MAX still fits a signed cell.
+$8000 constant TV-CAP          \ generous live-descriptor ceiling + handle stride (was 256 cap)
+64    constant TV-SEED         \ initial column allotment; grows past this per model
 
 private
 
@@ -170,18 +196,42 @@ TRUSTED: TENSOR>RAW ( tensor -- n ) ;
 \ only typed pointer introduction form), so a raw n (or a foreign family) can
 \ never enter or leave a descriptor cell either way. A fresh column reads as
 \ id 0 of its family (LAYOUT-BUFFER zero image); TV-U guards liveness.
-create TV-DATA TV-CAP cells allot      \ data pointer (materialized tensors only)
-TV-CAP LAYOUT-BUFFER TV-ROWS-AT  CAD-KIND:rows           \ rows column ( n -- ptr CAD-KIND:rows )
-TV-CAP LAYOUT-BUFFER TV-COLS-AT  CAD-KIND:cols           \ cols column ( n -- ptr CAD-KIND:cols )
-TV-CAP LAYOUT-BUFFER TV-SPACE-AT CAD-KIND:address-space  \ address-space column ( n -- ptr CAD-KIND:address-space )
-TV-CAP LAYOUT-BUFFER TV-DT-AT  dtype   \ dtype column ( n -- ptr dtype )
-TV-CAP LAYOUT-BUFFER TV-LAY-AT layout  \ layout column ( n -- ptr layout )
-TV-CAP LAYOUT-BUFFER TV-AL-AT  align   \ align column ( n -- ptr align )
-create TV-HAS  TV-CAP cells allot      \ 1 = has data buffer, 0 = descriptor
+\ The typed columns are DEFER-LAYOUT-BUFFER (deferred-offset: bound at load to
+\ TV-SEED, grown per model); the two family-less siblings (data pointer, has-flag)
+\ hand-defer via base+cap vars and RAW-ENSURE. All eight grow in LOCKSTEP off TV-BOUND
+\ (the live column extent) so a single TV-ENSURE keeps them parallel. A fresh column
+\ reads as id 0 of its family (DEFER zero image); TV-U guards liveness.
+DEFER-LAYOUT-BUFFER TV-ROWS-AT  CAD-KIND:rows           \ rows column ( n -- ptr CAD-KIND:rows )
+DEFER-LAYOUT-BUFFER TV-COLS-AT  CAD-KIND:cols           \ cols column ( n -- ptr CAD-KIND:cols )
+DEFER-LAYOUT-BUFFER TV-SPACE-AT CAD-KIND:address-space  \ address-space column ( n -- ptr CAD-KIND:address-space )
+DEFER-LAYOUT-BUFFER TV-DT-AT  dtype   \ dtype column ( n -- ptr dtype )
+DEFER-LAYOUT-BUFFER TV-LAY-AT layout  \ layout column ( n -- ptr layout )
+DEFER-LAYOUT-BUFFER TV-AL-AT  align   \ align column ( n -- ptr align )
+create TV-DATA TV-SEED cells allot   variable TV-DATA-P  TV-DATA data-base - TV-DATA-P !   variable TV-DATA-CAP  TV-SEED cells TV-DATA-CAP !  \ data ptr sibling (offset)
+create TV-HAS  TV-SEED cells allot   variable TV-HAS-P   TV-HAS  data-base - TV-HAS-P  !   variable TV-HAS-CAP   TV-SEED cells TV-HAS-CAP  !  \ has-flag sibling (offset)
+: TV-DATA-BASE ( -- ptr a )  data-base TV-DATA-P @ + ;   \ reconstruct the live base
+: TV-HAS-BASE  ( -- ptr a )  data-base TV-HAS-P  @ + ;
 variable TV-U                          \ free counter / live count
 variable TV-GEN                        \ store generation encoded into every handle
+variable TV-BOUND                      \ live column extent (grow-to-largest high-water)
 
-$7FFFFFFFFFFFFF constant TV-GEN-MAX
+\ bind the typed columns + prime the bound to TV-SEED (grow-to-largest from here)
+TV-SEED TV-ROWS-AT-BIND  TV-SEED TV-COLS-AT-BIND  TV-SEED TV-SPACE-AT-BIND
+TV-SEED TV-DT-AT-BIND    TV-SEED TV-LAY-AT-BIND   TV-SEED TV-AL-AT-BIND
+TV-SEED TV-BOUND !
+
+\ grow every TV column to hold slot index n (doubling; copy-on-grow preserves live cells)
+: TV-ENSURE ( n -- ) {: n:n :}
+   n TV-BOUND @ < if exit then
+   TV-BOUND @ {: old:n :}
+   old 2 * n 1+ max {: nb:n :}
+   nb TV-ROWS-AT-GROW  nb TV-COLS-AT-GROW  nb TV-SPACE-AT-GROW
+   nb TV-DT-AT-GROW    nb TV-LAY-AT-GROW   nb TV-AL-AT-GROW
+   nb cells old cells TV-DATA-P TV-DATA-CAP MAKI:RAW-ENSURE
+   nb cells old cells TV-HAS-P  TV-HAS-CAP  MAKI:RAW-ENSURE
+   nb TV-BOUND ! ;
+
+$FFFFFFFFFF constant TV-GEN-MAX   \ lowered so TV-GEN-MAX * TV-CAP fits a signed cell
 
 \ ---- alignment measurement ------------------------------------------------
 \ Record the pointer's real base alignment. P>N (lib/ffi-abi.f) is the audited
@@ -195,15 +245,16 @@ $7FFFFFFFFFFFFF constant TV-GEN-MAX
 
 \ ---- slot allocation + shared field tail -----------------------------------
 : TV-SLOT+ ( -- n )                    \ allocate the next slot index (fail closed)
-   TV-U @ TV-CAP >= if E-TV-FULL throw then
+   TV-U @ TV-CAP >= if E-TV-FULL throw then        \ generous ceiling (transactional)
+   TV-U @ TV-ENSURE                                \ derive column size from the model
    TV-U @ dup 1+ TV-U ! ;
 
 : TV-FIELDS! ( ptr a CAD-KIND:rows CAD-KIND:cols n n -- )   \ data rows cols has idx
    {: base:ptr rows:CAD-KIND:rows cols:CAD-KIND:cols has:n idx:n :}
-   base  TV-DATA idx cells + !
+   base  TV-DATA-BASE idx cells + !
    rows  idx TV-ROWS-AT !
    cols  idx TV-COLS-AT !
-   has   TV-HAS  idx cells + ! ;
+   has   TV-HAS-BASE  idx cells + ! ;
 
 \ ---- slot index -> generation-carrying handle ------------------------------
 : TV-HANDLE ( n -- tensor )
@@ -273,11 +324,11 @@ public
 : TV-ELEMS ( tensor -- CAD-KIND:dim )
    {: t:tensor :}
    t TV-ROWS@ t TV-COLS@ MAKI:SHAPE-ELEMS ;
-: TV-HAS-DATA? ( tensor -- bool )  TV-HAS TV-N@ 0= 0= ;
+: TV-HAS-DATA? ( tensor -- bool )  TV-HAS-BASE TV-N@ 0= 0= ;
 
 : TV-DATA@ ( tensor -- ptr a ) {: t:tensor :}
    t TV-HAS-DATA? 0= if E-TV-NODATA throw then
-   TV-DATA t TV-IX cells + @ ;
+   TV-DATA-BASE t TV-IX cells + @ ;
 
 \ ---- handle identity (no raw-n public conversion exists) -------------------
 : TV-EQUAL? ( tensor tensor -- bool )
@@ -287,35 +338,72 @@ public
 : TV-RESET ( -- )  TV-NEXT-GEN 0 TV-U ! ;      \ clears store; stale handles reject
 : TV-COUNT ( -- n )  TV-U @ ;
 
+\ Trip the generous ceiling transactionally (before any allot), else ensure the
+\ columns hold n live descriptors. The append words already size on demand, so
+\ this is only the ceiling assertion / an optional pre-size, never required.
+: TV-BIND ( n -- ) {: n:n :}
+   n TV-CAP > if E-TV-FULL throw then
+   n 0 > if n 1- TV-ENSURE then ;
+
 public
 
 \ ---- plan store (descriptor-mode IR: an ordered list of op records) -------
 \ Each op keeps op-kind, output tensor, and a (offset,count) window into a flat
 \ input-tensor pool. A pending record is staged by PLAN-OP-BEGIN / PLAN-IN+ and
 \ committed by PLAN-OP+, so any input arity records with a fixed-arity wordset.
-64  constant PLAN-CAP           \ max ops per plan (plan capacity contract)
+\ Op-count / operand-pool sizing derives from the model (dot habu-size-model-
+\ proportional): the columns start at their SEED and grow-to-largest, reused across
+\ captures; PLAN-CAP / PLAN-INCAP are now the GENEROUS transactional ceilings.
+$8000 constant PLAN-CAP         \ generous op-count ceiling (was 64 cap)
+32    constant PLAN-SEED        \ initial op-column allotment; grows past this
+$8000 constant PLAN-INCAP       \ generous operand-pool ceiling (was 256 cap)
 
 private
 
-256 constant PLAN-INCAP         \ max total input slots across the plan
+128   constant PLAN-IN-SEED     \ initial operand-pool allotment; grows past this
 
-\ typed op-kind column (dot habu-cad-adt-swap): a generative LAYOUT-BUFFER
-\ column owning extent, stride, bounds, and family provenance, so a raw n or a
-\ foreign family can never enter or leave. An opkind cannot bind into a local,
-\ so it rides the stack.
-PLAN-CAP LAYOUT-BUFFER P-KIND-AT opkind \ op-kind column ( n -- ptr opkind )
-PLAN-CAP  TYPED-BUFFER P-OUT-AT tensor  \ output tensor column ( n -- ptr tensor )
-create P-INOFF PLAN-CAP cells allot     \ input window start in P-INS
-create P-INCNT PLAN-CAP cells allot     \ input window length
-create P-ATTR  PLAN-CAP cells allot     \ movement attrs (packed; 0 for compute ops)
+\ Op-indexed columns (dot habu-cad-adt-swap keeps the typed provenance): the op-kind
+\ + output-tensor columns are DEFER-LAYOUT-BUFFER; the three window/attr siblings are
+\ family-less and hand-defer via base+cap vars. All five grow in LOCKSTEP off P-BOUND.
+DEFER-LAYOUT-BUFFER P-KIND-AT opkind \ op-kind column ( n -- ptr opkind )
+DEFER-LAYOUT-BUFFER P-OUT-AT tensor  \ output tensor column ( n -- ptr tensor )
+create P-INOFF PLAN-SEED cells allot  variable P-INOFF-P  P-INOFF data-base - P-INOFF-P !  variable P-INOFF-CAP  PLAN-SEED cells P-INOFF-CAP !  \ input window start (offset)
+create P-INCNT PLAN-SEED cells allot  variable P-INCNT-P  P-INCNT data-base - P-INCNT-P !  variable P-INCNT-CAP  PLAN-SEED cells P-INCNT-CAP !  \ input window length (offset)
+create P-ATTR  PLAN-SEED cells allot  variable P-ATTR-P   P-ATTR  data-base - P-ATTR-P  !  variable P-ATTR-CAP   PLAN-SEED cells P-ATTR-CAP  !  \ movement attrs (offset)
+: P-INOFF-BASE ( -- ptr a )  data-base P-INOFF-P @ + ;   \ reconstruct the live bases
+: P-INCNT-BASE ( -- ptr a )  data-base P-INCNT-P @ + ;
+: P-ATTR-BASE  ( -- ptr a )  data-base P-ATTR-P  @ + ;
 variable P-N                            \ committed op count
-PLAN-INCAP TYPED-BUFFER P-INS-AT tensor \ flat input-tensor pool ( n -- ptr tensor )
+variable P-BOUND                        \ live op-column extent (grow-to-largest)
+DEFER-LAYOUT-BUFFER P-INS-AT tensor  \ flat input-tensor pool ( n -- ptr tensor )
 variable P-INS-U
-1 LAYOUT-BUFFER PEND-KIND opkind        \ pending record staging (typed slot)
+variable P-INS-BOUND                     \ live operand-pool extent (grow-to-largest)
+1 LAYOUT-BUFFER PEND-KIND opkind        \ pending record staging (typed slot, fixed 1)
 variable PEND-OFF
 variable PEND-CNT
 variable PEND-ATTR                       \ pending attrs (0 unless a movement appender sets it)
 variable PEND-ON                        \ 1 while a record is being staged
+
+\ bind the typed plan columns + prime the bounds (grow-to-largest from the seeds)
+PLAN-SEED P-KIND-AT-BIND  PLAN-SEED P-OUT-AT-BIND  PLAN-SEED P-BOUND !
+PLAN-IN-SEED P-INS-AT-BIND  PLAN-IN-SEED P-INS-BOUND !
+
+\ grow the op-indexed columns to hold op index n (doubling; copy-on-grow preserves)
+: P-ENSURE ( n -- ) {: n:n :}
+   n P-BOUND @ < if exit then
+   P-BOUND @ {: old:n :}
+   old 2 * n 1+ max {: nb:n :}
+   nb P-KIND-AT-GROW  nb P-OUT-AT-GROW
+   nb cells old cells P-INOFF-P P-INOFF-CAP MAKI:RAW-ENSURE
+   nb cells old cells P-INCNT-P P-INCNT-CAP MAKI:RAW-ENSURE
+   nb cells old cells P-ATTR-P  P-ATTR-CAP  MAKI:RAW-ENSURE
+   nb P-BOUND ! ;
+
+\ grow the operand pool to hold operand index n (doubling; copy-on-grow preserves)
+: P-INS-ENSURE ( n -- ) {: n:n :}
+   n P-INS-BOUND @ < if exit then
+   P-INS-BOUND @ 2 * n 1+ max {: nb:n :}
+   nb P-INS-AT-GROW  nb P-INS-BOUND ! ;
 
 : PLAN-IX ( n -- n ) {: idx:n :}               \ validate a committed-op index
    idx 0 < idx P-N @ >= or if E-TV-PLAN-IDX throw then
@@ -331,6 +419,15 @@ public
 
 : PLAN-N@ ( -- n )  P-N @ ;
 
+\ Ceiling pins (transactional, before any allot) / optional pre-size for the op
+\ columns and the operand pool. Self-managing append still sizes on demand.
+: PLAN-BIND ( n -- ) {: n:n :}
+   n PLAN-CAP > if E-TV-PLAN-FULL throw then
+   n 0 > if n 1- P-ENSURE then ;
+: PLAN-IN-BIND ( n -- ) {: n:n :}
+   n PLAN-INCAP > if E-TV-PLAN-FULL throw then
+   n 0 > if n 1- P-INS-ENSURE then ;
+
 \ open a record with the op-kind family; a bad tag is a checker reject (the old
 \ E-TV-OPKIND range validation is unrepresentable). The family rides the stack
 \ into the typed pending slot before the bookkeeping counters set.
@@ -342,7 +439,8 @@ public
 : PLAN-IN+ ( tensor -- ) {: t:tensor :}        \ stage one input for the open record
    PEND-ON @ 0= if E-TV-PLAN-STATE throw then
    t TV-IX drop                                \ stale/forged handles reject here
-   P-INS-U @ PLAN-INCAP >= if E-TV-PLAN-FULL throw then
+   P-INS-U @ PLAN-INCAP >= if E-TV-PLAN-FULL throw then   \ generous ceiling (transactional)
+   P-INS-U @ P-INS-ENSURE                      \ derive operand-pool size from the model
    t P-INS-U @ P-INS-AT !
    P-INS-U @ 1+ P-INS-U !
    PEND-CNT @ 1+ PEND-CNT ! ;
@@ -354,26 +452,27 @@ public
 : PLAN-OP+ ( tensor -- ) {: out:tensor :}      \ commit the open record with its output
    PEND-ON @ 0= if E-TV-PLAN-STATE throw then
    out TV-IX drop                              \ stale/forged handles reject here
-   P-N @ PLAN-CAP >= if E-TV-PLAN-FULL throw then
+   P-N @ PLAN-CAP >= if E-TV-PLAN-FULL throw then         \ generous ceiling (transactional)
+   P-N @ P-ENSURE                              \ derive op-column size from the model
    P-N @ {: idx:n :}
    PEND-KIND-AT @  idx P-KIND-AT !          \ op-kind family (staged by PLAN-OP-BEGIN)
    out          idx P-OUT-AT !
-   PEND-OFF @   P-INOFF idx cells + !
-   PEND-CNT @   P-INCNT idx cells + !
-   PEND-ATTR @  P-ATTR  idx cells + !
+   PEND-OFF @   P-INOFF-BASE idx cells + !
+   PEND-CNT @   P-INCNT-BASE idx cells + !
+   PEND-ATTR @  P-ATTR-BASE  idx cells + !
    idx 1+ P-N !
    0 PEND-ON ! ;
 
 : PLAN-OP@ ( n -- opkind )   PLAN-IX P-KIND-AT @ ;
 : PLAN-OUT@ ( n -- tensor )
    PLAN-IX P-OUT-AT @ dup TV-IX drop ;         \ stored handles re-validate on read
-: PLAN-ATTR@ ( n -- n )      PLAN-IX cells P-ATTR  + @ ;
-: PLAN-IN-COUNT@ ( n -- n )  PLAN-IX cells P-INCNT + @ ;
+: PLAN-ATTR@ ( n -- n )      PLAN-IX cells P-ATTR-BASE  + @ ;
+: PLAN-IN-COUNT@ ( n -- n )  PLAN-IX cells P-INCNT-BASE + @ ;
 
 : PLAN-IN@ ( n n -- tensor ) {: idx:n k:n :}   \ k-th input tensor of op idx
    idx PLAN-IX drop
-   k 0 < k P-INCNT idx cells + @ >= or if E-TV-PLAN-IDX throw then
-   P-INOFF idx cells + @  k +  P-INS-AT @ dup TV-IX drop ;
+   k 0 < k P-INCNT-BASE idx cells + @ >= or if E-TV-PLAN-IDX throw then
+   P-INOFF-BASE idx cells + @  k +  P-INS-AT @ dup TV-IX drop ;
 
 \ ---- descriptor-mode model ops (append IR, do not compute) -----------------
 \ Output shape/dtype are inferred and recorded; both ops return a descriptor.

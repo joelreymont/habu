@@ -442,6 +442,35 @@ GB2-FL @ GB-MILLI 1661 T=                       \ committed final mean CE (deter
 GB2-FL @ GB2-IL @ f< TTRUE                      \ 2-block stack trains: loss decreased
 GB2-INIT GB2-ARESET  3 GB2-RUN  GB2-FL @ GB-MILLI 1661 T=   \ run-twice bit-identical
 
+\ ================= (12x) derive-from-model at scale + the capture locals wall ============
+\ (dot habu-size-model-proportional 3iv/3v) The literal 12-block GPT-2 stack the dot targets
+\ (164 inputs) CANNOT be captured through MODEL:: the translator turns every signature input +
+\ ">V" name into one typed LOCAL of the compiled capture word, and the FROZEN engine caps a
+\ definition at 64 LOCALS (verified: a definition's 65th typed local rejects; a 4-block stack
+\ dies at its 65th local). The original CAP-CAP=64 WAS that engine wall, not an arbitrary table
+\ cap - so the input/slot/name dimension is engine-bounded at ~3 blocks (~56 locals) regardless
+\ of table sizing. That is a genuine source seam (reported to the orchestrator; lifting it needs
+\ a capture-translation refactor that references inputs without one-local-each - out of this lane).
+\ What the -5045/-5040/-5024 repros actually blocked on was the OP / DESCRIPTOR / SOURCE size,
+\ reachable with ONE input (1 local): a 260-op GELU chain captures, builds, and gradchecks far
+\ past the OLD caps (PLAN-CAP 64, TV-CAP 256, MSRC 2048). Every size derives from the model and
+\ grows-to-largest; the forward node table grows past MIR-NODE-SEED (128) and the backward pass
+\ copy-on-grows it further, and gradcheck confirms the grown tables give a correct gradient.
+260 constant OPHN                                    \ > TV-CAP old 256, PLAN-CAP old 64, MSRC old 2048
+create OPH-BUF 8192 allot   variable OPH-U
+: OPH+ ( ptr u8 n -- ) {: a:ptr u:n :}  a OPH-BUF OPH-U @ + u BYTE-COPY  OPH-U @ u + OPH-U ! ;
+: OPH-BUILD ( -- )  0 OPH-U !  s" MODEL: OPH ( x:4x8 -- y ) " OPH+  OPHN 0 ?do s" GELU " OPH+ loop  s" ; " OPH+ ;
+OPH-BUILD  OPH-BUF OPH-U @ evaluate                  \ evaluate the generated MODEL: line at top level (like the literal ones above)
+TENSOR:PLAN-N@  OPHN    T=                            \ 260 plan ops   (old PLAN-CAP 64 would have died -5045)
+TENSOR:TV-COUNT OPHN 1+ T=                            \ 261 descriptors (old TV-CAP 256 would have died -5040)
+MODEL-K        OPHN    T=                             \ 260 forward IR nodes (> MIR-NODE-SEED 128: grew)
+MSRC-N @ 2048 > TTRUE                                 \ translated body past the old MSRC-CAP 2048 (-5024)
+GC-RUN V-PASS T=                                     \ gradcheck the grown tables: correct at scale (self-restores IR)
+GC-RE$ s" input(s) gradchecked" CONTAINS? TTRUE
+BW-BUILD                                             \ fresh backward over the 260-node forward IR
+BW-FWD-N@ OPHN T=                                     \ forward slice exact
+MIR-N@ OPHN 2 * T=                                   \ 520 = 260 fwd + 260 adjoint (backward copy-on-grow)
+
 T-REPORT
 
 ;package
