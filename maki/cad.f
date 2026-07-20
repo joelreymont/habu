@@ -419,9 +419,11 @@ $5E constant TR-C                                  \ '^' - the reserved transpos
       j TENSOR:PLAN-IN-COUNT@ 3 < if exit then                       \ matmul (no bias operand): skip
       j 0 TENSOR:PLAN-IN@  j 1 TENSOR:PLAN-IN@  j 2 TENSOR:PLAN-IN@  LIN-BIAS-CHECK exit then
    cls CLASS-ROW-REDUCE = if                                         \ affine layernorm: gamma/beta each 1xC vs x
-      j TENSOR:PLAN-OP@ MAKI-OPKIND:LAYERNORM MAKI-OPKIND:EQ  j TENSOR:PLAN-IN-COUNT@ 3 =  and if
-         j 0 TENSOR:PLAN-IN@  j 1 TENSOR:PLAN-IN@  j TENSOR:PLAN-OP@ EW-SHAPE-CHECK
-         j 0 TENSOR:PLAN-IN@  j 2 TENSOR:PLAN-IN@  j TENSOR:PLAN-OP@ EW-SHAPE-CHECK
+      j TENSOR:PLAN-OP@ MAKI-OPKIND:LAYERNORM MAKI-OPKIND:EQ if       \ dispatch on the explicit form, not the count
+         j TENSOR:PLAN-ATTR@ ATTR>LN-FORM MAKI-LNFORM:AFFINE MAKI-LNFORM:EQ if
+            j 0 TENSOR:PLAN-IN@  j 1 TENSOR:PLAN-IN@  j TENSOR:PLAN-OP@ EW-SHAPE-CHECK
+            j 0 TENSOR:PLAN-IN@  j 2 TENSOR:PLAN-IN@  j TENSOR:PLAN-OP@ EW-SHAPE-CHECK
+         then
       then then ;
 : PLAN-SHP-ALL ( -- )  TENSOR:PLAN-N@ 0 ?do  i PLAN-SHP-NODE  loop ;
 
@@ -867,7 +869,11 @@ private
    nd MIR-IN-COUNT@ 2 < if exit then
    nd 0 MIR-INPUT-IDX MIR-IN@ {: d:MIR:operand-ref :}
    nd 1 MIR-INPUT-IDX MIR-IN@ {: p:MIR:operand-ref :}
-   d RB-REF-ROWS d RB-REF-COLS  p RB-REF-ROWS p RB-REF-COLS  nd MIR-OP@  SHP-CHECK ;
+   d RB-REF-ROWS d RB-REF-COLS  p RB-REF-ROWS p RB-REF-COLS  nd MIR-OP@  SHP-CHECK
+   nd LN-AFFINE? if                                          \ affine layernorm also row-checks beta (operand 2)
+      nd 2 MIR-INPUT-IDX MIR-IN@ {: b:MIR:operand-ref :}
+      d RB-REF-ROWS d RB-REF-COLS  b RB-REF-ROWS b RB-REF-COLS  nd MIR-OP@  SHP-CHECK
+   then ;
 
 \ contraction re-check: the linear bias (operand 2) must be 1 x (output cols); matmul
 \ (no bias operand) skips. Inner-dim agreement stays in RB-MM.

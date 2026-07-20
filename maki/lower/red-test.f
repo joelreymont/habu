@@ -93,6 +93,23 @@ s" sqrt.rn.f32"                 LREDT-IN     \ std = sqrt(var + eps)
 s" div.rn.f32"                  LREDT-IN     \ (x - mu) / std
 s" ex2.approx"                  LREDT-ABSENT
 s" max.f32"                     LREDT-ABSENT
+s" add.rn.f32"                  LREDT-ABSENT \ plain LN has no affine beta add (contrast to LNA below)
+
+\ ---- affine LAYERNORM 4x8 + gamma/beta 1x8: LN reduction, then y = xhat*gamma + beta ------
+\ Same single block-per-row kernel; gamma (p_in1) and beta (p_in2) are 1xC row-broadcast
+\ operands (like BIAS), so the affine epilogue is mul.rn.f32 (gamma) + add.rn.f32 (beta). This
+\ is the device forward lowering for the affine form (dot habu-make-affine-layernorm).
+MODEL: LNA ( x:4x8 g:1x8 b:1x8 -- y ) g b LAYERNORM ;
+FP-BUILD
+LREDT-CAP0
+s" .visible .entry REGION_0"    LREDT-ONCE   \ still one fused kernel
+s" .param .u64 p_in1"           LREDT-IN     \ gamma
+s" .param .u64 p_in2"           LREDT-IN     \ beta
+s" sub.f32"                     LREDT-IN     \ x - mu (LN reduction)
+s" sqrt.rn.f32"                 LREDT-IN     \ std = sqrt(var + eps)
+s" div.rn.f32"                  LREDT-IN     \ xhat = (x - mu) / std
+s" mul.rn.f32"                  LREDT-IN     \ xhat * gamma (affine epilogue)
+s" add.rn.f32"                  LREDT-IN     \ + beta        (affine epilogue)
 
 \ ---- SOFTMAX-ROW 4x8: block-max, subtract, exp, block-sum, divide ---------------
 MODEL: SM ( x:4x8 -- y ) SOFTMAX-ROW ;

@@ -56,8 +56,7 @@ require lib/cad-num-arithmetic.f   \ CAD-NUM:item-count role for the typed count
 -5059 constant E-MIR-REF      \ operand ref names an uncommitted node / bad input slot
 -5060 constant E-MIR-INSLOT   \ input-slot index / capacity out of range
 -5061 constant E-MIR-STATE    \ node builder used out of order / bad release mark
-\ -5062 (E-MIR-ALIGN) retired: the align family makes an out-of-range class a
-\ checker reject; the code stays reserved to model-ir.
+-5062 constant E-MIR-LN-FORM  \ layernorm payload: attr not a valid form, or form's arity wrong
 -5063 constant E-MIR-NAME     \ model name longer than the name buffer
 
 package MIR
@@ -93,6 +92,37 @@ ENUM prov DERIVE eq
       none     OF s" none"     ENDOF
       captured OF s" captured" ENDOF
       imported OF s" imported" ENDOF
+   ;MATCH ;
+
+\ ---- layernorm form (dot habu-make-affine-layernorm) ------------------------
+\ The affine variant is an EXPLICIT typed payload on the shared OP-LAYERNORM opcode,
+\ carried in the node attr (plain=0, affine=1) and decoded at the boundary (LN-FORM) -
+\ never rediscovered from input count. plain: y = xhat (arity 1). affine (GPT-2):
+\ y = gamma*xhat + beta (arity 3; gamma/beta each 1xC). The variant schema the
+\ op-metadata dot (habu-structure-op-metadata) consumes. DERIVE eq: MAKI-LNFORM:EQ.
+ENUM lnform DERIVE eq
+  plain affine
+;ENUM
+
+\ form <-> attr codec. LN-FORM>ATTR is total (capture/bridge encode); ATTR>LN-FORM
+\ fails closed on a foreign attr (a corrupted layernorm payload is unrepresentable).
+: LN-FORM>ATTR ( lnform -- n )
+   MATCH lnform  plain OF 0 ENDOF  affine OF 1 ENDOF  ;MATCH ;
+: ATTR>LN-FORM ( n -- lnform )
+   dup 0= if drop MAKI-LNFORM:PLAIN exit then
+   1 = if MAKI-LNFORM:AFFINE exit then
+   E-MIR-LN-FORM throw ;
+
+\ transactional variant guard (dot: minimal 0/2/4-input MIR rejection before commit):
+\ a LAYERNORM node's stored form must match its input arity EXACTLY - plain==1, affine==3.
+\ Every other op is unconstrained here (its arity is the registry's concern). Reached
+\ from MIR-OP+ with the pending op-kind, staged attr, and final input count.
+: MIR-LN-CK ( opkind n n -- ) {: op:opkind at:n cnt:n :}
+   op MAKI-OPKIND:LAYERNORM MAKI-OPKIND:EQ 0= if exit then
+   at ATTR>LN-FORM
+   MATCH lnform
+      plain  OF cnt 1 <> if E-MIR-LN-FORM throw then ENDOF
+      affine OF cnt 3 <> if E-MIR-LN-FORM throw then ENDOF
    ;MATCH ;
 
 private
@@ -362,6 +392,7 @@ public
    {: attr:n mat:n :}                    \ rows cols dtype layout attr mat -- node
    MIR-PEND-ON @ 0= if E-MIR-STATE throw then
    MIR-N @ MIR-CAP >= if E-MIR-CAP throw then
+   MIR-PEND-KIND-AT @  attr  MIR-PEND-CNT @  MIR-LN-CK   \ variant guard: layernorm form matches arity
    NEXT-NODE {: k:CAD-KIND:node-id :}
    k NODE>RAW {: raw:n :}
    raw MI-LAY-AT !                       \ layout (top after attr/mat bound)
@@ -390,6 +421,14 @@ public
 : MIR-MAT@  ( CAD-KIND:node-id -- bool )  MIR-CK cells MI-MAT   + @ 0= 0= ;
 
 : MIR-MAT! ( bool CAD-KIND:node-id -- )   MIR-CK cells MI-MAT + ! ;
+
+\ ---- layernorm form decode boundary (consumers dispatch on this, never in-count) --
+\ LN-FORM decodes any layernorm node's stored form; LN-AFFINE? is the guarded predicate
+\ (false for every non-layernorm op), the single question shape/exec/adjoint/lowering ask.
+: LN-FORM ( CAD-KIND:node-id -- lnform )  MIR-ATTR@ ATTR>LN-FORM ;
+: LN-AFFINE? ( CAD-KIND:node-id -- bool )
+   dup MIR-OP@ MAKI-OPKIND:LAYERNORM MAKI-OPKIND:EQ
+   if LN-FORM MAKI-LNFORM:AFFINE MAKI-LNFORM:EQ else drop false then ;
 
 \ re-propagated node output extents + rewritten attrs (OPTIMIZE-time re-inference)
 : MIR-SHAPE! ( CAD-KIND:rows CAD-KIND:cols CAD-KIND:node-id -- )

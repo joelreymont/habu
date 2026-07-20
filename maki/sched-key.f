@@ -136,7 +136,11 @@ variable SK-FOLD               \ scratch for little-endian byte decomposition
    node MIR-ROWS@ ROWS-RAW FNV-CELL
    node MIR-COLS@ COLS-RAW FNV-CELL
    node MIR-DT@  DTYPE>N  FNV-CELL
-   node MIR-LAY@ LAYOUT>N FNV-CELL ;
+   node MIR-LAY@ LAYOUT>N FNV-CELL
+   node LN-AFFINE? if node LN-FORM LN-FORM>ATTR FNV-CELL then ;  \ affine LayerNorm shares OP-LAYERNORM's
+   \ wire code with the plain form, so its form payload folds here too - else a plain and an affine
+   \ LayerNorm over the same shape would collide on one region key. Plain LN keys are unchanged
+   \ (nothing extra folds), so only affine-LayerNorm cache/replay keys migrate on upgrade.
 
 : RSIG ( CAD-KIND:region -- n ) {: r:CAD-KIND:region :}   \ region -> content hash (nodes in order)
    FNV-BASIS

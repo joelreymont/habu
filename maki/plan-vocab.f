@@ -24,6 +24,7 @@
 
 require maki/op-kind.f
 require maki/plan-ops.f
+require maki/model-ir.f              \ MAKI:LN-FORM>ATTR + MAKI-LNFORM:AFFINE (explicit affine payload)
 
 package PLAN
 public
@@ -34,9 +35,16 @@ public
 : GELU        ( tensor -- tensor )  MAKI-OPKIND:GELU        MAKI:PLAN-UNARY ;
 : SILU        ( tensor -- tensor )  MAKI-OPKIND:SILU        MAKI:PLAN-UNARY ;
 : LAYERNORM   ( tensor -- tensor )  MAKI-OPKIND:LAYERNORM   MAKI:PLAN-UNARY ;
-\ affine LayerNorm (GPT-2): y = gamma*xhat + beta. Same op-kind OP-LAYERNORM, arity 3
-\ (x, gamma, beta); the 3-input node IS the affine form (dot habu-affine-layernorm-gamma).
-: LAYERNORM-AFFINE ( tensor tensor tensor -- tensor )  MAKI-OPKIND:LAYERNORM MAKI:PLAN-TERN-EW ;
+\ affine LayerNorm (GPT-2): y = gamma*xhat + beta. Shared OP-LAYERNORM opcode, arity 3
+\ (x, gamma, beta), but the affine variant is stamped EXPLICITLY into the plan attr as
+\ MAKI-LNFORM:AFFINE - not left to be rediscovered from the input count downstream
+\ (dot habu-make-affine-layernorm). Mirrors PLAN-TERN-EW plus the form-attr stamp.
+: LAYERNORM-AFFINE ( tensor tensor tensor -- tensor )
+   MAKI-OPKIND:LAYERNORM TENSOR:PLAN-OP-BEGIN {: x:tensor g:tensor b:tensor :}
+   x MAKI:PLAN-LIKE {: y:tensor :}
+   x TENSOR:PLAN-IN+  g TENSOR:PLAN-IN+  b TENSOR:PLAN-IN+
+   MAKI-LNFORM:AFFINE MAKI:LN-FORM>ATTR TENSOR:PLAN-ATTR!
+   y TENSOR:PLAN-OP+  y ;
 : RMSNORM     ( tensor -- tensor )  MAKI-OPKIND:RMSNORM     MAKI:PLAN-UNARY ;
 : SOFTMAX-ROW ( tensor -- tensor )  MAKI-OPKIND:SOFTMAX-ROW MAKI:PLAN-UNARY ;
 : CAST        ( tensor -- tensor )  MAKI-OPKIND:CAST        MAKI:PLAN-UNARY ;

@@ -302,6 +302,14 @@ private
    vare LRED-EMIT-SQRT {: std:n :}
    d std EMIT-B/ ;
 
+\ affine LayerNorm epilogue: y = xhat*gamma + beta. gamma (input 1) and beta (input 2) are
+\ 1xC row-broadcast operands (LRED-CLASSIFY-INS BC-ROW) loaded into the same broadcast binregs
+\ the mul/bias arms use; input 0 = x (full). Mirrors host EX-ROW-FWD-AFFINE op-for-op.
+: LRED-EMIT-LN-AFFINE ( CAD-KIND:node-id -- n ) {: nd:CAD-KIND:node-id :}
+   nd 0 MIR-INPUT-IDX LRED-OPREG LRED-EMIT-LN {: xh:n :}
+   xh  nd 1 MIR-INPUT-IDX LRED-OPREG  EMIT-MUL
+   nd 2 MIR-INPUT-IDX LRED-OPREG  EMIT-ADD ;
+
 \ SM-FWD: mx = max(x) ; e = exp(x-mx) ; y = e / sum(e)
 : LRED-EMIT-SM ( n -- n ) {: x:n :}
    x EMIT-BLOCK-MAX {: mx:n :}
@@ -320,7 +328,7 @@ private
       bias            OF nd LRED-BINREGS EMIT-ADD      ENDOF
       mul             OF nd LRED-BINREGS EMIT-MUL      ENDOF
       scale           OF nd LRED-BINREGS EMIT-MUL      ENDOF
-      layernorm       OF nd MIR-IN-COUNT@ 1 > if E-LRED-OP throw then  nd 0 MIR-INPUT-IDX LRED-OPREG LRED-EMIT-LN  ENDOF
+      layernorm       OF nd LN-AFFINE? if nd LRED-EMIT-LN-AFFINE else nd 0 MIR-INPUT-IDX LRED-OPREG LRED-EMIT-LN then  ENDOF
       rmsnorm         OF nd 0 MIR-INPUT-IDX LRED-OPREG LRED-EMIT-RMS ENDOF
       softmax-row     OF nd 0 MIR-INPUT-IDX LRED-OPREG LRED-EMIT-SM  ENDOF
       matmul OF E-LRED-OP throw ENDOF  linear OF E-LRED-OP throw ENDOF

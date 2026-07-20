@@ -216,7 +216,7 @@ private
    R 0 ?do  xb i C * T-AT   ob i C * T-AT   gb  bb  C   LN-AFFINE-FWD  loop ;
 
 : EX-ROW-FWD ( CAD-KIND:node-id -- ) {: nd:CAD-KIND:node-id :}
-   nd MIR-OP@ MAKI-OPKIND:LAYERNORM MAKI-OPKIND:EQ  nd MIR-IN-COUNT@ 3 =  and if  nd EX-ROW-FWD-AFFINE exit  then
+   nd LN-AFFINE? if  nd EX-ROW-FWD-AFFINE exit  then       \ explicit form, not the input count
    nd 0 MIR-INPUT-IDX MIR-IN@ EX-REF-PTR {: xb:ptr :}
    nd EX-NODE-PTR {: ob:ptr :}
    nd EX-NODE-NROWS {: R:n :}  nd EX-NODE-NCOLS {: C:n :}
