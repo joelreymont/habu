@@ -19,12 +19,13 @@
 \ hosts provide /dev/ptmx + a mounted /dev/pts (docs/process-pty.md).
 \
 \ Standalone:
-\   bin/hb --load lib/errors.f lib/string.f lib/memory.f lib/fs.f lib/fs-mutate.f \
+\   bin/hb --load lib/errors.f lib/string.f lib/fmt.f lib/memory.f lib/fs.f lib/fs-mutate.f \
 \     lib/process.f lib/process-argv.f lib/process-env.f lib/test.f \
 \     test/aot-data-span-forge.f
 
 require lib/errors.f
 require lib/string.f
+require lib/fmt.f
 require lib/memory.f
 require lib/fs.f
 require lib/fs-mutate.f
@@ -36,10 +37,22 @@ require lib/test.f
 package AOT-DATA-SPAN-FORGE
 
 \ Any span >= DATA-SIZE overflows the region (the seed headroom is always strictly
-\ under DATA-SIZE), so 2*DATA-SIZE is unambiguously oversized. Kept as a literal
-\ for the child env string; the drift self-check below fails loud if DATA-SIZE moves.
-67108864 constant OVERSIZED-SPAN                       \ = 2 * DATA-SIZE (33554432)
-: OVERSIZED-SPAN$ ( -- ptr u8 n ) s" 67108864" ;
+\ under DATA-SIZE), so 2*DATA-SIZE is unambiguously oversized. DATA-SIZE is
+\ per-target ($2000000 = 32 MiB on Linux, $10000000000 = 1 TiB on macOS), so the
+\ forged span is computed from it rather than pinned to one host's literal. The
+\ child needs it as a decimal string for its HABU_AOT_SPAN env var, so RENDER-SPAN
+\ formats OVERSIZED-SPAN into the persistent SPAN-BUF once and OVERSIZED-SPAN$
+\ hands back that buffer; the coherence self-check in BODY re-parses the rendered
+\ text and fails loud if the number-to-text rendering ever drifts.
+DATA-SIZE 2 * constant OVERSIZED-SPAN                  \ = 2 * DATA-SIZE (per-target)
+
+create SPAN-BUF 32 allot   variable SPAN-U             \ decimal text of OVERSIZED-SPAN
+
+: RENDER-SPAN ( -- )                                   \ format OVERSIZED-SPAN into SPAN-BUF
+   SB-RESET  OVERSIZED-SPAN SB-U  SB$ {: a:ptr u:n :}
+   a SPAN-BUF u BYTE-COPY  u SPAN-U ! ;
+
+: OVERSIZED-SPAN$ ( -- ptr u8 n )   SPAN-BUF SPAN-U @ ;
 
 240000 constant BUILD-TIMEOUT-MS
 
@@ -175,8 +188,12 @@ create HBPWID-BUF FS-PATH-CAP allot   variable HBPWID-U
    MFD @ close ;
 
 : BODY ( -- )
-   s" AOT data span guard: forged span literal is 2*DATA-SIZE" T-LABEL
-   DATA-SIZE 2 *  OVERSIZED-SPAN  T=
+   RENDER-SPAN
+   s" AOT data span guard: rendered span text parses back to 2*DATA-SIZE" T-LABEL
+   OVERSIZED-SPAN$ STR>NUMBER? MATCH option
+     some OF  DATA-SIZE 2 *  T=  ENDOF
+     none OF  T-FAIL  ENDOF
+   ;MATCH
    HB-TARGET-LINUX? 0= if
       s" aot-data-span-forge: PTY boot cases run on linux only; skipped" type cr exit then
    SETUP
