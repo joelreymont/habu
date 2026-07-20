@@ -61,4 +61,29 @@ REMAINING (the dedicated ENGINE lane, exact scope):
 3. Model arena mark/release + the two-different-sizes regression + pointer-rebind
    and snapshot/replay audits + the 12-block acceptance with pinned accounting.
 
-Claim: agent=lbufdefer workspace=.jj-ws/fable-lbufdefer machine=spark (THE ENGINE LANE for stage 2: owns src/core/layout-buffer.f deferred-offset definer + the typed-column rewires in maki/model-ir.f tensor-value.f backward.f cad.f + gptblock-attn stack tests + both gate size files; CODELEN rows same-commit, fixpoint x2)
+Stage-2 claim released (agent=lbufdefer landed the keystone 4f45b5d1).
+
+2026-07-20 STAGE 2 LANDED (4f45b5d1): DEFER-LAYOUT-BUFFER in src/core/layout-buffer.f -
+three data-base-relative control cells (offset/capacity/live-count, 0 = unbound), armed
+accessor reading them (unbound access dies E-LAYOUT-UNBOUND), NAME-BIND with
+grow-to-largest reuse mirroring stage 1, transactional E-LAYOUT-CEIL past $100000
+cells. THE MECHANISM CLAIM CONFIRMED EMPIRICALLY: the checker accepts the deferred
+body identically (armed window keyed on name+signature) - no checker.f edit. 19/19
+cases in test/layout-defer.f; fixpoint x2; CODELEN NEUTRAL (boot-loaded source, not
+seed image - rows unchanged 136112/944); indirection measured ~3 ns/read (count-cell
+bounds check + offset read), per accessor call not per element.
+
+STAGE 3 (remaining, mapped seams from the lane's full capture/build trace):
+the 12-block acceptance is ALL-OR-NOTHING across ~13 caps AND the raw create
+parallel arrays indexed in lockstep with the typed columns (MI-INCNT/MI-ATTR/
+MI-MAT/MI-AD, P-INOFF/P-INCNT/P-ATTR, BW-CT-SET/BW-ISG-SET, NT-NAMES/NT-LENS,
+CAP-PEND) - partial conversion is a broken intermediate. Binding seams:
+- MIR columns bind at CAP-FINISH entry (after the capture run, before BRIDGE-PLAN)
+  from PLAN-N@/P-INS-U/MIR-IS-N;
+- P-*/TV-* need count-during-parse (accumulate plan-op count incl. ^T transposes
+  + equation arities in PARSE-BODY, bind before CAP-COMPILE-RUN - they fill DURING
+  the run);
+- BW-* bind at BW-BUILD entry from NODE-COUNT@/SLOT-COUNT@;
+- CAP-IN-AT needs a signature pre-scan;
+- raw siblings convert to the same deferral (parallel bind) or accessor-routed reads;
+- the old caps become the deferred sanity ceiling.
