@@ -92,12 +92,29 @@ green first try; the softmax misses repair green in one and two rounds, so its
 pass@k column climbs to full pass by the third attempt — the replayed table
 itself is the pinned source for the exact per-mille numbers),
 which is also how the maki suite exercises the exact durable command. The maki model
-train/eval leg is `maki/eval/train.f`: it drives `maki/train.f`'s library training
-loop (forward -> MSE -> SGD) to convergence on two library-owned reference
-regressions (scalar `y = w*x` and per-element tensor `y[i] = w[i]*x[i]`) and reports
-steps, milli-loss initial/final, and the convergence verdict (loss at least halved).
-The concrete Adam MLP + attention trainers and their exact per-step loss regression
-locks live in the nanoGPT example (`maki/examples/nanogpt/adam-train-test.f`).
+train/eval leg is `maki/eval/train.f`: it grades the framework's authoring promise —
+"author this, it trains" — by running a small model through the SAME public path
+every example takes. A user authors it with the `MODEL:` composition surface
+(`MODEL: ET-NET ( x w bw g be -- y ) LINEAR GELU x RESIDUAL-ADD g be LAYERNORM ;` — a
+broadcast-bias LINEAR, a GELU activation, an elementwise RESIDUAL-ADD skip, and the
+EXPLICIT affine LayerNorm via gamma/beta named references); the leg trains it under
+MSE through the landed `BW-BUILD` → `EX-RUN` path with the library optimizer
+`OPTIM:TT-ADAM!`, a deterministic LCG init (the `maki/train-core.f` init-role
+policy), and BOTH opt-in trainer arming words — a per-step LR schedule and a
+global-norm gradient clip — armed for the whole run. It locks the exact final loss
+(micro-units) and asserts the run is bit-identical across two from-scratch runs. Two
+honest interim notes: (1) no `SPEC:` equation line yet — a new einsum needs
+`TENSOR:` rows and the cold image is near `TR-CAP`; the registered `A-SCORES`/`A-CTX`
+equations are reusable without new rows but their composition-training path is not on
+the committed floor, so a `SPEC:` line (canonical prefix-Σ infix-·) joins when
+`TR-CAP` lands; (2) the armed schedule + clip are eval-leg-local until the framework's
+generic `LR-SCHED`/`GRAD-CLIP` facilities are decoupled from the nanoGPT example into
+`maki/train-core.f`, after which the leg grades the exact framework arming words. This
+landing RETIRES the two former hand-wired reference regressions (scalar `y = w*x` +
+per-element tensor `y[i] = w[i]*x[i]` library SGD); their convergence coverage is
+locked in `maki/train-test.f`. The concrete Adam MLP + attention trainers and their
+exact per-step loss regression locks live in the nanoGPT example
+(`maki/examples/nanogpt/adam-train-test.f`).
 
 ## Off-device authoring tasks (collective / 2D-GEMM / attention)
 `maki/eval/emit.f` extends the autograder past the device-golden tasks with three
