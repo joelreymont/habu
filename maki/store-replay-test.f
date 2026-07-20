@@ -96,6 +96,39 @@ SK-TAB-COUNT 33 T=
 0  SRT-GET TTRUE 0  T=
 32 SRT-GET TTRUE 77 T=                     \ latest durable row wins for the superseded key
 
+\ ---- write path is durable-first: a failed durable append leaves the hot table clean --
+\ SK-PUT-DURABLE stages the hot entry, appends the durable row, THEN publishes the hot
+\ mutation. Block the durable append by planting a DIRECTORY where schedules.rows must be
+\ a file: APPEND-FILE rejects with E-FS-OPEN and the hot table must show NO entry for the
+\ key (it never serves a value that was never made durable). Clear the block and retry:
+\ the hot table and the durable file both take the row, and a cold rebuild replays it.
+STORE-RESET  SK-TAB-RESET  REPLAY-RESET
+STORE-ROOT+ 2drop                                       \ create the store root
+: SCHED-PATH ( -- ptr u8 n )  CLS-SCHED STORE-CLASS-PATH ;
+SCHED-PATH MAKE-DIRS                                    \ plant a directory at schedules.rows
+: TRY-DPUT-BLOCKED ( -- )  s" wblk" 5 SK-PUT-DURABLE ;
+' TRY-DPUT-BLOCKED E-FS-OPEN TTHROWS
+s" wblk" SK-GET nip TFALSE                              \ hot table NOT mutated by the failed write
+SK-TAB-COUNT 0 T=
+SCHED-PATH REMOVE-TREE                                  \ clear the block
+s" wblk" 5 SK-PUT-DURABLE                               \ retry: durable append + infallible hot publish
+s" wblk" SK-GET TTRUE 5 T=
+s" wblk" SCHED-GET TTRUE 5 T=                           \ durable row present
+SK-TAB-RESET  STORE-REPLAY-LOAD                         \ cold rebuild replays the durable row
+s" wblk" SK-GET TTRUE 5 T=
+
+\ ---- batch reserve tolerates duplicate keys in the file (over-reserve is safe) --------
+\ The load reserves for every ROW (worst case: all new keys); a file of duplicate keys
+\ over-reserves entry capacity, which must still load correctly - one entry per distinct
+\ key, latest row winning, no divergent KO/KL/SEL lengths.
+STORE-RESET  SK-TAB-RESET  REPLAY-RESET
+s" dupk" 1 SK-PUT-DURABLE
+s" dupk" 2 SK-PUT-DURABLE
+s" dupk" 3 SK-PUT-DURABLE                               \ three durable rows, one key
+SK-TAB-RESET  STORE-REPLAY-LOAD                        \ batch reserve for 3 rows, 1 distinct key
+SK-TAB-COUNT 1 T=                                       \ one entry, not three
+s" dupk" SK-GET TTRUE 3 T=                              \ latest row wins
+
 STORE-RESET  SK-TAB-RESET  REPLAY-RESET   \ leave no rows, table entries, or warm latch
 T-REPORT
 

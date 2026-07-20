@@ -339,13 +339,20 @@ public
    CLS-SCHED ka ku STORE-QUERY 0= if 2drop -1 false exit then
    STORE-PARSE-INT true ;
 
-\ SCHED-LOAD replays every schedules row (in file order, latest wins) to a caller
-\ quotation. STORE-READ-CLASS has already authenticated the framing (a torn tail is
-\ E-STORE-TORN before we get here), so the load's remaining job is to stay
-\ TRANSACTIONAL: parse every row in a validate pass BEFORE the apply pass touches
-\ the callback, so a framed-but-malformed row (missing pipe / non-numeric selection)
-\ rejects with E-STORE-ROW while NO partial rows have been published. A failed load
-\ therefore leaves the caller's table exactly as it was.
+\ SCHED-LOAD replays every schedules row (in file order, latest wins) through a caller
+\ RESERVE + APPLY quotation pair. STORE-READ-CLASS has already authenticated the framing
+\ (a torn tail is E-STORE-TORN before we get here), so the load's remaining job is to
+\ stay TRANSACTIONAL across three phases: pass 1 parses every row (a framed-but-malformed
+\ row - missing pipe / non-numeric selection - rejects with E-STORE-ROW here) and tallies
+\ the row count + total key bytes; the RESERVE quotation then reserves the whole batch up
+\ front (the last fallible step); pass 2 hands each row to the APPLY quotation, which -
+\ backed by that reservation - publishes without allocating and therefore cannot fail
+\ partway. A throw in pass 1 or the reserve leaves the caller's table exactly as it was;
+\ pass 2 publishes all rows or, by construction, none.
+private
+variable SL-ROWS                                  \ pass-1 tally: rows to apply (reserve preflight)
+variable SL-KEYBYTES                              \ pass-1 tally: total key-portion bytes (reserve preflight)
+public
 
 \ split a schedules row on its LAST "|": <key> | <selected-candidate>.
 : SCHED-ROW ( ptr u8 n -- ptr u8 n n ) {: la:ptr lu:n :}
@@ -354,11 +361,15 @@ public
    la pi
    la pi 1+ +  lu pi 1+ -  STORE-PARSE-INT ;
 
-\ advance over one line; the VALIDATE pass parses each row fail-closed but applies
-\ nothing, so a corrupt row anywhere throws before any row reaches the table.
+\ advance over one line; the VALIDATE pass parses each row fail-closed (a corrupt row
+\ anywhere throws before any row reaches the table) and tallies the reserve preflight:
+\ one more row, plus this row's key-portion byte length.
 : SCHED-VALIDATE-AT ( ptr u8 n n -- n ) {: ba:ptr bu:n off:n :}
    ba bu off STORE-LINE-END {: ed:n :}
-   ed off > if  ba off +  ed off -  SCHED-ROW  2drop drop  then
+   ed off > if
+      ba off +  ed off -  SCHED-ROW  drop nip     \ ( key-len ) : validates the row, drops sel + key ptr
+      SL-KEYBYTES +!  1 SL-ROWS +!
+   then
    ed 1+ ;
 
 \ advance over one line; the APPLY pass re-parses and hands <key> <selection> to q.
@@ -367,10 +378,12 @@ public
    ed off > if  ba off +  ed off -  SCHED-ROW  q execute  then
    ed 1+ ;
 
-: SCHED-LOAD ( [ ptr u8 n n -- ] -- ) {: q :} \ typed-local-lint: allow-bare-local - q is the schedule-row callback quotation
+: SCHED-LOAD ( [ n n -- ] [ ptr u8 n n -- ] -- ) {: rq aq :} \ typed-local-lint: allow-bare-local - rq/aq are the reserve + apply quotations
    CLS-SCHED STORE-READ-CLASS {: ba:ptr bu:n :}
-   0 begin dup bu < while  >r ba bu r> SCHED-VALIDATE-AT  repeat drop   \ pass 1: authenticate every row
-   0 begin dup bu < while  >r ba bu r> q SCHED-APPLY-AT   repeat drop ; \ pass 2: apply every row
+   0 SL-ROWS !  0 SL-KEYBYTES !
+   0 begin dup bu < while  >r ba bu r> SCHED-VALIDATE-AT repeat drop    \ pass 1: authenticate + tally every row
+   SL-ROWS @ SL-KEYBYTES @ rq execute                                  \ reserve the whole batch (last fallible step)
+   0 begin dup bu < while  >r ba bu r> aq SCHED-APPLY-AT repeat drop ;  \ pass 2: apply every row (infallible)
 
 \ ---- measurement history ---------------------------------------------------
 : MEAS-PUT ( ptr u8 n n n -- ) {: ka:ptr ku:n cand:n med:n :}

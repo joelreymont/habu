@@ -241,6 +241,50 @@ SK-TAB-COUNT 64 T=
 33 KT-GROW-GET TTRUE 99 T=
 SK-TAB-COUNT 64 T=
 
+\ ---- atomicity: reserve is the only fallible phase; commit publishes or nothing ------
+\ SK-PUT is transactional. Every allocation - backing the entry vectors, growing their
+\ capacity, growing the key arena - happens in the RESERVE phase; SK-APPEND1 then interns
+\ and pushes into reserved capacity and allocates nothing. Inject a REAL allocation
+\ refusal at each growth point and prove the table is byte-identical, then that a retry
+\ commits with no leak and no duplicate entry.
+SK-TAB-RESET
+s" ak" 5 SK-PUT
+SK-TAB-COUNT 1 T=
+
+\ (a) arena-growth refusal: reserving a 2^60-byte key span drives the arena grow path,
+\ whose mmap fails with E-MEM-MAP; the committed entry + every length stay unchanged.
+: TRY-ARENA-OOM ( -- )  1 $1000000000000000 SK-RESERVE ;
+' TRY-ARENA-OOM E-MEM-MAP TTHROWS
+s" ak" SK-GET TTRUE 5 T=                      \ prior selection byte-identical
+SK-TAB-COUNT 1 T=                             \ no partial entry landed
+s" ak2" 9 SK-PUT                              \ retry a real put -> commits (no leak, no duplicate)
+s" ak2" SK-GET TTRUE 9 T=
+s" ak"  SK-GET TTRUE 5 T=
+SK-TAB-COUNT 2 T=
+
+\ (b) vector-growth refusal: reserving past VEC-MAX-CELLS entries makes the vector grow
+\ path reject with E-VEC-CAPACITY before it grows; lengths + queries stay, retry commits.
+: TRY-VEC-OOM ( -- )  VEC-MAX-CELLS 1+ 0 SK-RESERVE ;
+' TRY-VEC-OOM E-VEC-CAPACITY TTHROWS
+s" ak"  SK-GET TTRUE 5 T=
+s" ak2" SK-GET TTRUE 9 T=
+SK-TAB-COUNT 2 T=
+s" ak3" 4 SK-PUT
+s" ak3" SK-GET TTRUE 4 T=
+SK-TAB-COUNT 3 T=
+
+\ (c) stage / commit boundary - the crash-store "drive the fallible prefix, publish
+\ nothing" idiom. SK-PUT-STAGE reserves a new key's capacity but makes nothing visible;
+\ SK-PUT-COMMIT then publishes. A failure in between (the durable append, exercised in
+\ store-replay-test.f) is exactly this staged-but-uncommitted state - invisible to a query.
+s" stg" SK-PUT-STAGE                          \ reserve only (the fallible prefix)
+s" stg" SK-GET nip TFALSE                     \ still a miss: the stage published nothing
+SK-TAB-COUNT 3 T=
+s" stg" 8 SK-PUT-COMMIT                        \ infallible publish (the commit)
+s" stg" SK-GET TTRUE 8 T=
+SK-TAB-COUNT 4 T=
+SK-TAB-RESET
+
 \ ---- fail-closed throws -----------------------------------------------------
 : TRY-REGION ( -- )  99 FP-REGION-ID TARGET:SM87 SK-KEY$ 2drop ;   \ region 99 rejects at the id refinement
 : TRY-ALIGN  ( -- )  AL-N AL-KEY 2drop ;                    \ AL-N is out of the AL-* domain

@@ -6,9 +6,12 @@
 \ stays pure in-memory; store stays pure storage; this file wires them.
 \
 \ SK-PUT-DURABLE records a selection in BOTH places: the in-memory table (so replay
-\ stays a cheap lookup) and schedules.rows (so a fresh process can rehydrate). Memory
-\ first - the hot table must succeed; the durable append is best-effort and its IO
-\ errors propagate (never swallowed). STORE-REPLAY-LOAD replays schedules.rows back
+\ stays a cheap lookup) and schedules.rows (so a fresh process can rehydrate). The
+\ DURABLE append lands FIRST; only after it commits does the hot table publish, through
+\ an allocation-free step whose capacity was reserved beforehand - so a failed append
+\ never leaves the process serving a value that was never made durable, and the hot
+\ publish can never fail after the durable row has landed. IO errors propagate (never
+\ swallowed). STORE-REPLAY-LOAD replays schedules.rows back
 \ into the table in file order, so the LATEST row for a key wins (append-only); the
 \ table GROWS on demand (maki/sched-key.f), so a store with any legal number of
 \ distinct keys rehydrates without a capacity wall. LOAD merges (update in place per
@@ -66,7 +69,7 @@ public
 \ rehydrate the in-memory table from schedules.rows (latest row per key wins);
 \ merges per key into the live table - SK-TAB-RESET first for a clean rebuild
 : STORE-REPLAY-LOAD ( -- )
-   [: SK-PUT ;] SCHED-LOAD ;
+   [: SK-RESERVE ;] [: SK-PUT ;] SCHED-LOAD ;
 
 private
 \ ---- recovery lifecycle: cold -> ready (fully loaded) | failed(error) ---------
@@ -122,7 +125,8 @@ public
 private
 : SK-PUT-DURABLE ( ptr u8 n n -- ) {: a:ptr u:n sel:n :}
    REPLAY-ENSURE
-   a u sel SK-PUT
-   a u sel SCHED-PUT ;
+   a u SK-PUT-STAGE          \ reserve the hot entry (fallible; publishes nothing observable)
+   a u sel SCHED-PUT         \ durable append (fallible); the hot table is untouched on a throw
+   a u sel SK-PUT-COMMIT ;   \ infallible hot publish, now that the durable row has landed
 
 ;package

@@ -397,11 +397,22 @@ variable SK-ARENA-U
 : SK-ARENA-FIELD ( -- ptr ptr u8 )  SK-ARENA-A 0 ptr-field ;
 : SK-ARENA@ ( -- ptr u8 )  SK-ARENA-FIELD @ ;
 
-: SK-TAB-ENSURE ( -- )               \ lazy entry-vector allocation (first PUT)
+: SK-VEC-INIT1 ( ptr a -- )          \ back one entry vector at boot capacity, once
+   dup VEC-DATA@ 0= if SK-TAB-CAP0 SK>ITEM VEC:INIT else drop then ;
+
+\ Atomic lazy entry-vector allocation (first PUT). The three entry vectors are ONE
+\ owned resource: SK-VECS? (the READY flag every reader observes through SK-N) is
+\ published exactly once, only after all three carry storage. Each per-vector init is
+\ idempotent - it skips a vector already backed - so a mid-init allocation failure
+\ leaves the backed vectors in place, the flag clear (SK-N reads 0: the table is
+\ invisibly empty, never half-published), and re-entry finishes the rest without
+\ re-allocating what it already has. No munmap exists in this arena/vector model, so
+\ that leak-free retry is the strongest recovery it admits.
+: SK-TAB-ENSURE ( -- )
    SK-VECS? @ 0<> if exit then
-   SK-KO-VEC  SK-TAB-CAP0 SK>ITEM VEC:INIT
-   SK-KL-VEC  SK-TAB-CAP0 SK>ITEM VEC:INIT
-   SK-SEL-VEC SK-TAB-CAP0 SK>ITEM VEC:INIT
+   SK-KO-VEC  SK-VEC-INIT1
+   SK-KL-VEC  SK-VEC-INIT1
+   SK-SEL-VEC SK-VEC-INIT1
    -1 SK-VECS? ! ;
 
 : SK-ARENA-COPY-OLD ( ptr u8 -- ) {: dst:ptr :}
@@ -440,6 +451,47 @@ variable SK-ARENA-U
 : SK-FIND ( ptr u8 n -- n ) {: a:ptr u:n :}      \ key -> entry index or -1
    SK-N 0 ?do  a u i SK-ENTRY$ STR= if i unloop exit then  loop  -1 ;
 
+\ ---- reserve / commit: all allocation up front, publish allocation-free -------
+\ Every fallible step of an insertion - backing the entry vectors, growing their
+\ capacity, growing the key arena - is a RESERVE; the matching COMMIT interns the key
+\ and pushes the three cells into already-reserved capacity, so it allocates nothing
+\ and cannot throw. A throw during RESERVE leaves the arena bytes below SK-ARENA-U,
+\ every vector length, and therefore every query answer byte-identical (only spare
+\ capacity may have grown - SK-TAB-RESET already documents grown capacity as
+\ persistent); a retry re-reserves over the now-sufficient capacity and commits, with
+\ no duplicate entry and no divergent KO/KL/SEL lengths. This is the store's
+\ transactional seam: the replay load reserves the whole batch before it applies any
+\ row, and the durable write reserves before the file append so the hot publish that
+\ follows the append is infallible.
+: SK-VEC-RESERVE ( n -- ) {: need:n :}           \ ensure each entry vector holds `need` items
+   SK-KO-VEC  need SK>ITEM VEC:ENSURE
+   SK-KL-VEC  need SK>ITEM VEC:ENSURE
+   SK-SEL-VEC need SK>ITEM VEC:ENSURE ;
+
+: SK-RESERVE ( n n -- ) {: add:n bytes:n :}       \ room for `add` new entries + `bytes` key bytes
+   SK-TAB-ENSURE
+   SK-N add + SK-VEC-RESERVE
+   bytes SK-ARENA-ROOM ;
+
+: SK-APPEND1 ( ptr u8 n n -- ) {: a:ptr u:n sel:n :}  \ publish one NEW entry into reserved capacity
+   a u SK-INTERN {: off:n len:n :}               \ arena room reserved -> the copy cannot grow
+   off SK-KO-VEC  VEC:PUSH drop                  \ vector capacity reserved -> the pushes cannot grow
+   len SK-KL-VEC  VEC:PUSH drop
+   sel SK-SEL-VEC VEC:PUSH drop ;
+
+: SK-PLACE ( ptr u8 n n n -- ) {: a:ptr u:n sel:n e:n :}  \ e>=0: update slot; e<0: append (reserved)
+   e 0 < 0= if sel SK-SEL-VEC e SK>INDEX VEC:! exit then
+   a u sel SK-APPEND1 ;
+
+\ ---- durable-write split (maki/store-replay.f SK-PUT-DURABLE) -------------------
+\ STAGE reserves the hot entry for a new key (nothing observable changes); after the
+\ durable append lands, COMMIT publishes with a step that cannot fail. A crash or throw
+\ between the two is exactly the staged-but-uncommitted state, which no query can see.
+: SK-PUT-STAGE ( ptr u8 n -- ) {: a:ptr u:n :}
+   a u SK-FIND 0 < if 1 u SK-RESERVE then ;      \ new key -> reserve; existing -> no allocation
+: SK-PUT-COMMIT ( ptr u8 n n -- ) {: a:ptr u:n sel:n :}  \ infallible after a matching SK-PUT-STAGE
+   a u sel  a u SK-FIND  SK-PLACE ;
+
 public
 
 : SK-TAB-RESET ( -- )                \ empty the table; grown capacity persists
@@ -449,14 +501,10 @@ public
    then ;
 : SK-TAB-COUNT ( -- n )  SK-N ;
 
-: SK-PUT ( ptr u8 n n -- ) {: a:ptr u:n sel:n :}  \ key selection -> store / update
+: SK-PUT ( ptr u8 n n -- ) {: a:ptr u:n sel:n :}  \ key selection -> store / update (atomic)
    a u SK-FIND {: e:n :}
-   e 0 < 0= if sel SK-SEL-VEC e SK>INDEX VEC:! exit then   \ update existing key
-   SK-TAB-ENSURE
-   a u SK-INTERN {: off:n len:n :}
-   off SK-KO-VEC  VEC:PUSH drop
-   len SK-KL-VEC  VEC:PUSH drop
-   sel SK-SEL-VEC VEC:PUSH drop ;
+   e 0 < if 1 u SK-RESERVE then                  \ NEW key: reserve one entry (the only fallible step)
+   a u sel e SK-PLACE ;                           \ publish: in-place update or reserved append (infallible)
 
 \ cad-5 store seam: a miss returns (-1 false) so the caller uses the defaults.
 : SK-GET ( ptr u8 n -- n bool ) {: a:ptr u:n :}
