@@ -240,6 +240,28 @@ public
    MEM-64K 1 + MEMT-64K-COUNT 2 T=
    MEM-MAX-N MEMT-64K-COUNT MEM-MAX-64K-BUFFERS 1 + T= ;
 
+\ ---- RELEASE-BYTES: the typed munmap inverse of ALLOC-BYTES -------------------
+\ Allocate a real mapping, write + read both ends, then release it; a clean return
+\ (munmap rc 0, no throw) is the positive proof. A one-byte-misaligned address is a
+\ forged pointer the kernel rejects, so RELEASE-BYTES propagates E-MEM-UNMAP. A
+\ zero/negative release length never narrows to an alloc role, so it is refused
+\ with E-MEM-SIZE at the typed boundary, before any munmap.
+: MEMT-ALLOC-WRITE-RELEASE ( -- )
+   MEM-64K MEM:BYTES-ALLOC-LEN MEM:ALLOC-BYTES         \ ptr-u8 alloc-byte-len
+   over MEMT-MARK-A swap c!                             \ first byte
+   over MEM-64K 1 - + MEMT-MARK-Z swap c!              \ last byte
+   over c@ MEMT-MARK-A T=
+   over MEM-64K 1 - + c@ MEMT-MARK-Z T=
+   MEM:RELEASE-BYTES ;
+: MEMT-RELEASE-FORGED ( -- )
+   MEM-64K MEM:BYTES-ALLOC-LEN MEM:ALLOC-BYTES         \ ptr-u8 alloc-byte-len
+   swap 1 + swap                                        \ misalign the address by one byte
+   MEM:RELEASE-BYTES ;
+: MEMT-RELEASE-ZERO ( -- )
+   MEM:ALLOC-64K drop  0 MEM:BYTES-ALLOC-LEN MEM:RELEASE-BYTES ;
+: MEMT-RELEASE-NEG ( -- )
+   MEM:ALLOC-64K drop -1 MEM:BYTES-ALLOC-LEN MEM:RELEASE-BYTES ;
+
 : RT-MEM ( -- )
    T-RESET
    MEMT-COUNT-PARITY
@@ -265,6 +287,12 @@ public
    [: 0 MEM:CELLS-ALLOC-COUNT drop ;] E-MEM-SIZE TTHROWSQ
    [: -1 MEM:CELLS-ALLOC-COUNT drop ;] E-MEM-SIZE TTHROWSQ
    [: MEM-MAX-CELLS 1 + MEM:CELLS-ALLOC-COUNT drop ;] E-MEM-SIZE TTHROWSQ
+   \ typed release round-trips a real mapping; a forged address propagates
+   \ E-MEM-UNMAP; a zero/negative length refuses at the typed boundary before munmap
+   MEMT-ALLOC-WRITE-RELEASE
+   [: MEMT-RELEASE-FORGED ;] E-MEM-UNMAP TTHROWSQ
+   [: MEMT-RELEASE-ZERO ;] E-MEM-SIZE TTHROWSQ
+   [: MEMT-RELEASE-NEG ;] E-MEM-SIZE TTHROWSQ
    T-REPORT ;
 RT-MEM
 
@@ -301,6 +329,20 @@ RT-MEM
    s" B-RAW-CELLS>BYTES ( n -- CAD-NUM:numeric-result<CAD-NUM:byte-len> ) MEM:CELLS>BYTES"
       CHECK-QUIET-CANDIDATE! 0 T=
    s" B-BYTE-ROLE-64K-BYTES ( CAD-NUM:byte-len -- CAD-NUM:numeric-result<CAD-NUM:byte-len> ) MEM:64K-BYTES"
+      CHECK-QUIET-CANDIDATE! 0 T=
+   \ RELEASE-BYTES demands the exact ptr u8 + alloc-byte-len ALLOC-BYTES mints: the
+   \ frozen signature resolves, while a raw-integer address, a raw-n length, a
+   \ zero-admitting byte-len, or a cell role are checker rejects, so no forged
+   \ address or unvalidated size reaches munmap.
+   s" G-RELEASE ( ptr u8 CAD-NUM:alloc-byte-len -- ) MEM:RELEASE-BYTES"
+      CHECK-QUIET-CANDIDATE! -1 T=
+   s" B-RELEASE-RAW-PTR ( n CAD-NUM:alloc-byte-len -- ) MEM:RELEASE-BYTES"
+      CHECK-QUIET-CANDIDATE! 0 T=
+   s" B-RELEASE-RAW-LEN ( ptr u8 n -- ) MEM:RELEASE-BYTES"
+      CHECK-QUIET-CANDIDATE! 0 T=
+   s" B-RELEASE-ZEROABLE-LEN ( ptr u8 CAD-NUM:byte-len -- ) MEM:RELEASE-BYTES"
+      CHECK-QUIET-CANDIDATE! 0 T=
+   s" B-RELEASE-CELL-LEN ( ptr u8 CAD-NUM:alloc-cell-count -- ) MEM:RELEASE-BYTES"
       CHECK-QUIET-CANDIDATE! 0 T=
    T-REPORT ;
 STAT-MEM

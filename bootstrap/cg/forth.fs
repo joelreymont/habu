@@ -893,6 +893,8 @@ previous definitions
    HB-TARGET-LINUX? IF OS-MMAP-FLAGS THEN
    NR-MMAP SYS,  SYS-PUSH ; \ ( addr len prot flags fd off -- addr|-1 )
 
+: BMUNMAP ( -- )  1 G-POP  0 G-POP  0 1 GUARD-SPAN  NR-MUNMAP SYS,  SYS-PUSH ; \ ( addr len -- 0|-1 )
+
 : C-FLUSH-X9-LINE ( -- )
    9 DCCVAU,  DSB-ISH,  9 ICIVAU,  DSB-ISH,  ISB, ;
 
@@ -1173,7 +1175,7 @@ previous definitions
 : EMIT-FS-PRIMS ( -- )
    s" open" ['] BOPEN FPRIM-L   s" open-rd" ['] BOPENRD FPRIM-L
    s" write" ['] BWRITE FPRIM-L   s" read" ['] BREAD FPRIM-L   s" ioctl" ['] BIOCTL FPRIM-L
-   s" mmap" ['] BMMAP FPRIM-L   s" patch32" ['] BPATCH32 FPRIM
+   s" mmap" ['] BMMAP FPRIM-L   s" munmap" ['] BMUNMAP FPRIM-L   s" patch32" ['] BPATCH32 FPRIM
    s" close" ['] BCLOSE FPRIM-L
    s" rbase" ['] BRBASE FPRIM-L ;
 

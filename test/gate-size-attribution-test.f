@@ -173,10 +173,17 @@ $4000 constant MACOS-DATA-CONST  \ __DATA_CONST page (__got + zero fill)
 \ to the shared LCEMITBL primitive and the captured AOT-REPL blob loses 12 bytes per call
 \ site, shrinking engine text by 3344, CODELEN 138416 -> 135072 (floor 3248 -> 4000); the
 \ whole file drops one 4 KiB page (LINUX-TOTAL 143552 -> 139456).
-135072 constant LINUX-CODE-TEXT   \ CODELEN: every emitter-phase row (baked-source incl.)
+\ 2026-07-20 re-measured at the merged fixpoint after the checked munmap primitive
+\ landed on top of the direct-BL engine (dot habu-expose-checked-mmap-06c1d522):
+\ native BMUNMAP + Gforth-recovery BMUNMAP + the checker munmap effect row, consumed
+\ by packaged MEM:RELEASE-BYTES, add +136 of engine text, CODELEN 135072 -> 135208.
+\ The BL landing left only 96 bytes above the 4 KiB floor (floor-dist 4000), so the
+\ +136 crosses the page boundary: the file regains the page the BL landing dropped
+\ (floor-dist 4000 -> 40, LINUX-TOTAL 139456 -> 143552).
+135208 constant LINUX-CODE-TEXT   \ CODELEN: every emitter-phase row (baked-source incl.)
 192 constant LINUX-RW             \ ELF read-write segment tail: DYNAMIC + GOT (ELF-RW-SZ)
-4000 constant LINUX-FLOOR-DIST     \ code above the 4 KiB floor: the page-recovery shave
-139456 constant LINUX-TOTAL       \ = FILE-SIZE bin/hb = GB-SIZE-BASELINE-LINUX
+40 constant LINUX-FLOOR-DIST     \ code above the 4 KiB floor: the page-recovery shave
+143552 constant LINUX-TOTAL       \ = FILE-SIZE bin/hb = GB-SIZE-BASELINE-LINUX
 
 : PAGE-UP ( n n -- n ) {: v:n page:n :}
    v page 1- + page 1- invert and ;

@@ -1597,6 +1597,11 @@ variable SZA-I
    HB-TARGET-LINUX? IF OS-MMAP-FLAGS THEN
    NR-MMAP SYS,  SYS-PUSH ; \ ( addr len prot flags fd off -- addr|-1 )
 
+: BMUNMAP ( -- )                   \ ( addr len -- 0|-1 ) release a mapping; span-guard the extent
+   1 G-POP  0 G-POP
+   0 1 PROT-GUARD:CALL             \ trap an unmap aimed at any protected engine band
+   NR-MUNMAP SYS,  SYS-PUSH ;
+
 : BFORK ( -- )                     \ ( -- pid|-1 ) parent gets pid, child gets 0
    HB-TARGET-LINUX? IF
       0 17 MOVZ,  1 0 MOVZ,  2 0 MOVZ,  3 0 MOVZ,  4 0 MOVZ,
@@ -2405,6 +2410,7 @@ SOURCE-INIT
 : EMIT-FS-PRIMS ( -- )
    s" open" ['] BOPEN FPRIM-L   s" write" ['] BWRITE FPRIM-L   s" read" ['] BREAD FPRIM   s" ioctl" ['] BIOCTL FPRIM
    s" mmap" ['] BMMAP FPRIM
+   s" munmap" ['] BMUNMAP FPRIM
    s" ffi-call" ['] BFFI-CALL 3 GDEREF-F
    s" ffi-call-n" ['] BFFI-CALL-N 3 GDEREF-F
    s" ffi-call-bounded" ['] BFFI-CALL-BOUNDED 4 GDEREF-F

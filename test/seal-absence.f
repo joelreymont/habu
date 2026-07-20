@@ -74,7 +74,7 @@ public
 $40000 constant SAB-CAP                 \ mirror scan buffer (forth.fs ~137 KB + headroom)
 $800 constant SAB-NAMES-CAP             \ packed absent-name table capacity (bytes)
 92 constant SAB-BSLASH                  \ ASCII '\' — the line-comment introducer
-10 constant SAB-GUARD-PINS              \ GUARD-SPAN definition + bounded/runtime sink lines
+11 constant SAB-GUARD-PINS              \ GUARD-SPAN definition + bounded/runtime sink lines (incl. BMUNMAP)
 3 constant SAB-SEAL-PINS                \ EMIT-SEAL-FRIEND code sites: 1 def + 2 entry seals
 2 constant SAB-CHKDEFER-PINS            \ CHECKER-DEFER code sites: C-CALL-CHECKER-DEFER def + C-DEFER call
 

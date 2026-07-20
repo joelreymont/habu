@@ -304,6 +304,7 @@ schema_version	module	file	kind	word	effect	test	doc	owner	status	notes
 1	memory	lib/memory.f	word	MEM:ALLOC-BYTES	(CAD-NUM:alloc-byte-len -- ptr u8 CAD-NUM:alloc-byte-len)	lib/memory-test.f	docs/stdlib.md	stdlib-memory	active	allocate a positive byte extent (alloc role rejects zero)
 1	memory	lib/memory.f	word	MEM:ALLOC-CELLS	(CAD-NUM:alloc-cell-count -- ptr a)	lib/memory-test.f	docs/stdlib.md	stdlib-memory	active	allocate a positive cell span (alloc role rejects zero/overflow)
 1	memory	lib/memory.f	word	MEM:ALLOC-64K	(-- ptr u8 CAD-NUM:alloc-byte-len)	lib/memory-test.f	docs/stdlib.md	stdlib-memory	active	allocate one 64K byte buffer via the typed alloc sink
+1	memory	lib/memory.f	word	MEM:RELEASE-BYTES	(ptr u8 CAD-NUM:alloc-byte-len --)	lib/memory-test.f	docs/stdlib.md	stdlib-memory	active	release an ALLOC-BYTES mapping via checked munmap (E-MEM-UNMAP on syscall failure)
 1	memory	lib/memory.f	word	MEM:BYTES-ALLOC-LEN	(n -- CAD-NUM:alloc-byte-len)	lib/memory-test.f	docs/stdlib.md	stdlib-memory	active	narrow a raw byte size to the positive alloc-byte-len role (E-MEM-SIZE on refusal)
 1	memory	lib/memory.f	word	MEM:CELLS-ALLOC-COUNT	(n -- CAD-NUM:alloc-cell-count)	lib/memory-test.f	docs/stdlib.md	stdlib-memory	active	narrow a raw cell count to the positive alloc-cell-count role (E-MEM-SIZE on refusal)
 1	fs-root	lib/fs-root.f	module			lib/build-cache-test.f	docs/stdlib.md	stdlib-build-cache	active	checked filesystem root readiness predicates

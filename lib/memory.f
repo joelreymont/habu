@@ -189,6 +189,17 @@ public
 : ALLOC-64K ( -- ptr u8 CAD-NUM:alloc-byte-len )
    64K-ALLOC-LEN ALLOC-BYTES ;
 
+\ ---- release: return an ALLOC-BYTES mapping to the OS (checked munmap) ----------
+\ The typed inverse of ALLOC-BYTES: it consumes the `ptr u8` mapping and the exact
+\ `alloc-byte-len` the allocation minted, so a caller cannot release a length it
+\ never validated (a byte/cell role swap or a raw `n` is a checker reject). The
+\ length projects to the raw munmap operand through the same audited ALLOC-BYTES>N
+\ reader the allocation sink uses - no new unchecked boundary - and a negative
+\ munmap rc (the kernel rejecting a misaligned/forged address) throws E-MEM-UNMAP.
+: RELEASE-BYTES ( ptr u8 CAD-NUM:alloc-byte-len -- )
+   ALLOC-BYTES>N munmap
+   dup 0 < if E-MEM-UNMAP throw then drop ;
+
 \ ---- caller-facing size narrowing: raw n -> validated alloc role --------------
 \ The fixed-capacity buffer callers (source, codesign, content-key, object-cache,
 \ process-argv, process-env) narrow a raw size to the positive alloc role BEFORE

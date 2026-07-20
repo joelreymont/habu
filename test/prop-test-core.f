@@ -1457,14 +1457,15 @@ variable SS-I  variable SS-J  variable SS-BAD
 \ AXR 309 0 1 1 prim - proc-watch-open - pe-n pe-in pe-n pe-out
 \ AXR 310 0 2 1 prim - kill-errno - pe-n pe-in pe-n pe-in pe-n pe-out
 \ AXR 311 0 3 1 prim - execve - pe-ptr-u8 pe-in pe-ptr-a pe-in pe-ptr-a pe-in pe-n pe-out
-\ AXR 312 0 2 0 prim - ext-mark-free-tail - pe-ptr-u8 pe-in pe-n pe-in
-\ AXR 313 0 0 0 prim - typefamily - -
-\ AXR 314 0 0 0 prim - sumtype - -
-\ AXR 315 0 0 0 prim - enum - -
-\ AXR 316 0 0 0 prim - product - -
-\ AXR 317 0 1 0 prim - layout-buffer - pe-n pe-in
-\ AXR 318 0 5 0 prim - ldefer-bind - pe-n pe-in pe-n pe-in pe-n pe-in pe-n pe-in pe-n pe-in
-\ AXR 319 0 5 0 prim - ldefer-grow - pe-n pe-in pe-n pe-in pe-n pe-in pe-n pe-in pe-n pe-in
-\ AXR 320 0 0 0 prim - defer-layout-buffer - -
-\ AXR 321 0 1 0 prim - typed-buffer - pe-n pe-in
-\ AXR 322 0 0 0 prim - typed-variable - -
+\ AXR 312 0 2 1 prim - munmap - pe-ptr-u8 pe-in pe-n pe-in pe-n pe-out
+\ AXR 313 0 2 0 prim - ext-mark-free-tail - pe-ptr-u8 pe-in pe-n pe-in
+\ AXR 314 0 0 0 prim - typefamily - -
+\ AXR 315 0 0 0 prim - sumtype - -
+\ AXR 316 0 0 0 prim - enum - -
+\ AXR 317 0 0 0 prim - product - -
+\ AXR 318 0 1 0 prim - layout-buffer - pe-n pe-in
+\ AXR 319 0 5 0 prim - ldefer-bind - pe-n pe-in pe-n pe-in pe-n pe-in pe-n pe-in pe-n pe-in
+\ AXR 320 0 5 0 prim - ldefer-grow - pe-n pe-in pe-n pe-in pe-n pe-in pe-n pe-in pe-n pe-in
+\ AXR 321 0 0 0 prim - defer-layout-buffer - -
+\ AXR 322 0 1 0 prim - typed-buffer - pe-n pe-in
+\ AXR 323 0 0 0 prim - typed-variable - -

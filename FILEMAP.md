@@ -1800,8 +1800,8 @@ points stay listed.
 - `lib/json-write-test.f` — focused coverage for JSON writer escaping, structure, and errors.
 - `lib/json-read.f` — checked zero-allocation JSON pull/cursor parser complementing the writer.
 - `lib/json-read-test.f` — focused coverage for JSON parser tokens, escapes, structure, errors, and round-trip.
-- `lib/memory.f` — checked OS-backed byte buffer allocation helpers.
-- `lib/memory-test.f` — focused coverage for memory allocation and 64K buffer spans.
+- `lib/memory.f` — checked OS-backed byte buffer allocation and release helpers.
+- `lib/memory-test.f` — focused coverage for memory allocation, release, and 64K buffer spans.
 - `lib/type/deftype.f` — the `DEFTYPE` declaration surface for value-nominal integer types: mints a package-scoped arity-0 type-family nominal plus its generated `>NAME`/`NAME>N` converter pair (TFAM substrate; docs/value-nominal-substrate.md).
 - `lib/vector.f` — checked growable cell-vector helpers backed by OS memory.
 - `lib/vector-test.f` — focused coverage for vector growth, bounds, typed pointer storage, and iteration.

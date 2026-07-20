@@ -5045,6 +5045,7 @@ PRIM: getpid   PE-N PE-OUT PRIM;   \ ( -- pid ) process-identity syscall
 PRIM: proc-watch-open PE-N PE-IN PE-N PE-OUT PRIM;   \ ( pid -- fd|-1 ) process-lifetime watch
 PRIM: kill-errno PE-N PE-IN PE-N PE-IN  PE-N PE-OUT PRIM;   \ ( pid sig -- 0|-errno ) signal with errno detail
 PRIM: execve   PE-PTR-U8 PE-IN PE-PTR-A PE-IN PE-PTR-A PE-IN  PE-N PE-OUT PRIM;   \ ( pathz argv envp -- -errno ) child-side exec; only returns on failure
+PRIM: munmap   PE-PTR-U8 PE-IN PE-N PE-IN  PE-N PE-OUT PRIM;   \ ( addr len -- 0|-1 ) release a mapping; consumed by MEM:RELEASE-BYTES
 \ BTC-7: EXTPROD: (maki/extent.f) marks a product's free factor via this axiom. The
 \ effect keeps it checker-known so the seal-time internal-word marking pass leaves it
 \ callable from the candidate-B surface (like CHECKER-DEFFAMILY for EXTENT:). Placed
