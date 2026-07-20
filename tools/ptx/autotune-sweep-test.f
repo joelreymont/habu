@@ -15,7 +15,8 @@
 \                      then over-run the MMA-EXACT host/packed buffers.
 \   ZERO side effect - a rejected sweep throws the validator's named code (only AT-SWEEP-VALIDATE
 \                      throws it), so control never reached MX-BUF-INIT / solo-wait / CUDA open /
-\                      emit / launch; the candidate canary is intact and the host arena unallocated.
+\                      emit / launch; the candidate canary is intact and MX-BUF-INIT's reach count
+\                      is unchanged (the shared arena may already be held by an earlier member).
 
 require lib/test.f
 require tools/ptx/autotune-sweep.f
@@ -90,16 +91,20 @@ create SRC AUTOTUNE:AT-CFG-N cells allot     \ a valid source config to copy
 \ ---- (zero side effect) a rejected sweep does no allocation / device work -----
 \ AT-SWEEP validates FIRST, so a bad count/edge throws the validator's own code
 \ (E-SW-COUNT / MX-E-CAP) - control never reached MX-BUF-INIT, the solo-wait, the
-\ CUDA open, the emit, or the launch. The host arena stays unallocated and the
-\ candidate canary stays intact: the committed witnesses that the reject was inert.
+\ CUDA open, the emit, or the launch. MX-BUF-INIT's reach count stays unchanged and
+\ the candidate canary stays intact: the committed witnesses that the reject was inert.
 : SWEEP-BADCOUNT ( -- )  AUTOTUNE:SW-CANDS-CAP 1+ 512 AUTOTUNE:AT-SWEEP ;
 : SWEEP-BADEDGE ( -- )   1 1024 AUTOTUNE:AT-SWEEP ;
 : ZERO-SIDE-EFFECT-TESTS ( -- )
-   MMA-EXACT:MX-BUF-READY? TFALSE                \ allocation witness: host arena unallocated at entry
+   MMA-EXACT:MX-BUF-INIT-CALLS {: init0:n :}     \ allocation witness: snapshot MX-BUF-INIT's reach count. The MMA-EXACT
+                                                 \ host arena is a shared, process-lifetime resource an earlier suite
+                                                 \ member may already hold, so absolute readiness is not this file's to
+                                                 \ assert - the reach count is (unchanged => the reject never allocated).
    AUTOTUNE:SW-CAND-CANARY-SEED
-   [: SWEEP-BADCOUNT ;] E-SW-COUNT TTHROWSQ      \ rejected before MX-BUF-INIT / OPEN / emit / launch
+   [: SWEEP-BADCOUNT ;] E-SW-COUNT TTHROWSQ      \ rejected in AT-SWEEP-VALIDATE, before MX-BUF-INIT / OPEN / emit / launch
+   MMA-EXACT:MX-BUF-INIT-CALLS init0 T=          \ the bad-count reject never reached MX-BUF-INIT (allocated nothing)
    [: SWEEP-BADEDGE ;]  MMA-EXACT:MX-E-CAP TTHROWSQ
-   MMA-EXACT:MX-BUF-READY? TFALSE                \ still unallocated: the rejections allocated nothing
+   MMA-EXACT:MX-BUF-INIT-CALLS init0 T=          \ the bad-edge reject never reached MX-BUF-INIT (allocated nothing)
    AUTOTUNE:SW-CAND-CANARY-INTACT? TTRUE ;       \ and wrote nothing into candidate storage
 
 T-RESET

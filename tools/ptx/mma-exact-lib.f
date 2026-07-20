@@ -53,6 +53,7 @@ MX-MAX MX-MAX * constant MX-CAP            \ 262144 elems at 512^2
 private
 variable MX-HA-P  variable MX-HB-P  variable MX-HREF-P  variable MX-HC-P
 variable MX-PA-P  variable MX-PB-P  variable MX-PC-P
+variable MX-INIT-CALLS                      \ monotone count of MX-BUF-INIT entries (side-effect-reachability observable)
 public
 : MX-HA   ( -- ptr a )  MX-HA-P @ ;
 : MX-HB   ( -- ptr a )  MX-HB-P @ ;
@@ -62,7 +63,9 @@ public
 : MX-PB   ( -- ptr a )  MX-PB-P @ ;
 : MX-PC   ( -- ptr a )  MX-PC-P @ ;
 : MX-BUF-READY? ( -- bool )  MX-HA-P @ 0 <> ;   \ import-safety probe: false until MX-BUF-INIT
+: MX-BUF-INIT-CALLS ( -- n )  MX-INIT-CALLS @ ;   \ reach-count witness: how many times MX-BUF-INIT was entered (unchanged => never reached => no allocation), robust to a sibling member already holding the shared arena
 : MX-BUF-INIT ( -- )                       \ heap-allocate the seven large buffers once (idempotent)
+   MX-INIT-CALLS @ 1+ MX-INIT-CALLS !      \ count the entry BEFORE the idempotent guard so reach-ness is observable even when the arena is already allocated
    MX-HA-P @ if exit then
    MX-CAP MX-GUARD + MEM:CELLS-ALLOC-COUNT MEM:ALLOC-CELLS MX-HA-P !     \ +MX-GUARD canary cell past index MX-CAP-1
    MX-CAP MX-GUARD + MEM:CELLS-ALLOC-COUNT MEM:ALLOC-CELLS MX-HB-P !
