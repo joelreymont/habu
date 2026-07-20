@@ -11,25 +11,26 @@
 \ maki -> habu only.
 \
 \ AUTHORING SURFACE EXERCISED (grows with the grammar - a new line, not a new harness):
-\   MODEL: ET-NET ( x w bw g be -- y ) LINEAR GELU x RESIDUAL-ADD g be LAYERNORM ;
+\   MODEL: ET-NET ( x w bw g be ew -- y ) LINEAR GELU x RESIDUAL-ADD g be LAYERNORM ew ET-PROJ ;
 \     LINEAR         - matmul + a 1xC broadcast bias (the landed suffix-broadcast bias add)
 \     GELU           - an activation
 \     x RESIDUAL-ADD - an elementwise (same-shape) add + a real skip (x fans out)
 \     g be LAYERNORM - the EXPLICIT affine LayerNorm (gamma/beta named references)
+\     ew ET-PROJ     - an authored SPEC: einsum Y[etm etn]=Σetk X[etm etk]·W[etk etn]
+\                      (canonical prefix-Σ infix-·): the equation enters the TRAINED
+\                      graph, so its DERIVED adjoint (maki/spec.f) carries the loss
+\                      gradient to the projection weight ew (not just forward)
 \   plus the MSE loss (maki/loss-tensor.f) and BOTH opt-in trainer arming words -
 \   the per-step LR schedule (LR-SCHED) and the global-norm gradient clip
 \   (GRAD-CLIP-COEF / GCLIP-SCALE!) - armed for the whole run (this leg is where the
 \   armed path is exercised continuously).
 \
-\ HONEST CONSTRAINTS + long-term targets (interim state labeled per the prime directive):
-\  - NO SPEC: equation line. A new SPEC: einsum needs TENSOR: rows, and the shared
-\    cold image is near TR-CAP (maki/extent-tensor.f, cap 64). The registered
-\    equations A-SCORES/A-CTX (maki/attn-eq.f) ARE reusable as composable equation
-\    ops with no new rows, but composing+training them needs the attention-sublayer
-\    wiring whose equation-composition training path is not on the committed floor
-\    (the committed attention trainer uses plain MATMUL). So the model is authored
-\    from the op vocabulary now; a SPEC:-equation line (canonical prefix-Σ infix-·)
-\    joins when TR-CAP lands or that path is committed.
+\ DESIGN NOTES + long-term targets (interim state labeled per the prime directive):
+\  - The SPEC: equation line is now authored (ET-PROJ above): TR-CAP 64->256 landed
+\    (maki/extent-tensor.f) frees the TENSOR: rows, so the model carries a checked
+\    einsum whose DERIVED adjoint (maki/spec.f EQ-ADJ-DERIVE) trains the projection
+\    weight ew end to end - equation-composition training, not just forward. The
+\    registered A-SCORES/A-CTX attention einsums remain a separate sublayer concern.
 \  - The armed schedule + clip ARE the framework words now: LR-SCHED (linear warmup
 \    + cosine decay) and GRAD-CLIP-COEF / GCLIP-SCALE! (torch clip_grad_norm_), both
 \    in maki/train-core.f, armed here every step over the committed
@@ -69,7 +70,7 @@ $ABCDEF constant ET-LCG      \ committed LCG seed (params + data stream)
 0.9   constant ET-BETA1      \ Adam first-moment decay
 0.999 constant ET-BETA2      \ Adam second-moment decay
 0.00000001 constant ET-EPS   \ Adam denominator epsilon (1e-8)
-116753 constant ET-LOCK      \ committed final loss micro-units (deterministic; cosine LR-SCHED, was 112759 under the retired linear ET-LR)
+144 constant ET-LOCK         \ committed final loss micro-units (deterministic; was 116753 pre-ET-PROJ)
 
 \ ---- operand extents: x,y = 4x8 ; w = 8x8 ; bw,g,be = 1x8 ---------------------
 32 constant ET-XN            \ 4x8 input / output / target elements
@@ -89,6 +90,22 @@ create ET-WM  ET-WN cells allot   create ET-WV  ET-WN cells allot
 create ET-BWM ET-VN cells allot   create ET-BWV ET-VN cells allot
 create ET-GAM ET-VN cells allot   create ET-GAV ET-VN cells allot
 create ET-BEM ET-VN cells allot   create ET-BEV ET-VN cells allot
+
+\ ---- authored SPEC: equation ET-PROJ (Y = X . W) -----------------------------
+\ A checked einsum joins the authored surface: TR-CAP 64->256 (maki/extent-tensor.f)
+\ freed the TENSOR: rows. ET-PROJ closes the model as an equation op whose DERIVED
+\ adjoint (maki/spec.f) carries the loss gradient to its weight ew, so the equation
+\ trains in-graph, not forward-only. Index vars etm/etk/etn fold to #ETM/#ETK/#ETN.
+4 EXTENT: #ETM               \ projection output/input rows (the 4 data rows)
+8 EXTENT: #ETK               \ contraction extent (the LayerNorm-output columns)
+8 EXTENT: #ETN               \ projection output columns
+TENSOR: ET-PX ( #ETM #ETK )  \ factor 0 = the running value (LayerNorm output, 4x8)
+TENSOR: ET-PW ( #ETK #ETN )  \ factor 1 = the trained projection weight ew (8x8)
+TENSOR: ET-PY ( #ETM #ETN )  \ equation output y (4x8)
+SPEC: ET-PROJ  ET-PY[etm etn] = Σetk ET-PX[etm etk] · ET-PW[etk etn] ;
+
+create ET-EW  ET-WN cells allot    \ ET-PROJ weight (8x8), trained via the derived adjoint
+create ET-EWM ET-WN cells allot   create ET-EWV ET-WN cells allot   \ its Adam moments
 
 variable ET-STEPCT           \ Adam step count t
 variable ET-B1P              \ running beta1^t
@@ -111,11 +128,13 @@ variable ET-F1  variable ET-F2   \ run-1 / run-2 final loss (determinism compare
    ET-LCG SC-SEED!
    ET-XN 0 ?do  SC-UNIT ET-X i T-SET  loop        \ input rows ~ U[-1,1)
    ET-W  ET-WN 1 IR-NORMAL   INIT-FILL            \ weight ~ N(0, 0.02^2)
+   ET-EW ET-WN 1 IR-NORMAL   INIT-FILL            \ ET-PROJ weight ~ N(0, 0.02^2)
    ET-BW ET-VN 1 IR-BIAS     INIT-FILL            \ bias  = 0
    ET-GA ET-VN 1 IR-LN-GAMMA INIT-FILL            \ gamma = 1
    ET-BE ET-VN 1 IR-LN-BETA  INIT-FILL            \ beta  = 0
    ET-XN 0 ?do  SC-UNIT ET-TGT i T-SET  loop      \ target rows ~ U[-1,1)
    ET-WM  ET-WN ET-Z  ET-WV  ET-WN ET-Z
+   ET-EWM ET-WN ET-Z  ET-EWV ET-WN ET-Z
    ET-BWM ET-VN ET-Z  ET-BWV ET-VN ET-Z
    ET-GAM ET-VN ET-Z  ET-GAV ET-VN ET-Z
    ET-BEM ET-VN ET-Z  ET-BEV ET-VN ET-Z
@@ -125,7 +144,7 @@ variable ET-F1  variable ET-F2   \ run-1 / run-2 final loss (determinism compare
 : ET-BIND ( -- )
    EX-RESET
    ET-X  0 SC-SLOT EX-BIND   ET-W  1 SC-SLOT EX-BIND   ET-BW 2 SC-SLOT EX-BIND
-   ET-GA 3 SC-SLOT EX-BIND   ET-BE 4 SC-SLOT EX-BIND
+   ET-GA 3 SC-SLOT EX-BIND   ET-BE 4 SC-SLOT EX-BIND   ET-EW 5 SC-SLOT EX-BIND
    ET-DY BW-SEED-SLOT@ EX-BIND ;
 
 : ET-OUT ( -- ptr a )  BW-FWD-N@ 1- MIR-NODE-ID EX-OUT@ ;   \ last forward node output
@@ -139,7 +158,7 @@ variable ET-F1  variable ET-F2   \ run-1 / run-2 final loss (determinism compare
    ob ET-TGT ET-XN LOSS:TT-MSE ET-INVN f* ;
 
 \ ---- global-norm gradient clip: the leg's grad norm feeds the framework clip ----
-\ ET-GNORM2 is the sum of squares over the four trained-param grad buffers; the
+\ ET-GNORM2 is the sum of squares over the five trained-param grad buffers; the
 \ clip coefficient (GRAD-CLIP-COEF) and per-buffer rescale (GCLIP-SCALE!) are the
 \ framework words (maki/train-core.f), armed every step in ET-STEP over ET-CLIPV,
 \ so this leg grades the exact clip the nanoGPT trainers arm.
@@ -147,7 +166,8 @@ variable ET-F1  variable ET-F2   \ run-1 / run-2 final loss (determinism compare
    1 SC-GRAD-AT ET-WN T-NORM2
    2 SC-GRAD-AT ET-VN T-NORM2 f+
    3 SC-GRAD-AT ET-VN T-NORM2 f+
-   4 SC-GRAD-AT ET-VN T-NORM2 f+ ;
+   4 SC-GRAD-AT ET-VN T-NORM2 f+
+   5 SC-GRAD-AT ET-WN T-NORM2 f+ ;
 
 \ Adam-update one bound parameter in place from its slot's backward gradient node
 : ET-UPD ( r n ptr a ptr a ptr a n -- ) {: lr:r slot:n wp:ptr mp:ptr vp:ptr len:n :}
@@ -168,12 +188,14 @@ variable ET-F1  variable ET-F2   \ run-1 / run-2 final loss (determinism compare
    coef 2 SC-GRAD-AT ET-VN GCLIP-SCALE!
    coef 3 SC-GRAD-AT ET-VN GCLIP-SCALE!
    coef 4 SC-GRAD-AT ET-VN GCLIP-SCALE!
+   coef 5 SC-GRAD-AT ET-WN GCLIP-SCALE!
    ET-TICK
    ET-WARM ET-N 1-  ET-LMIN ET-LMAX  ET-STEPCT @ 1-  LR-SCHED {: lr:r :}
    lr 1 ET-W  ET-WM  ET-WV  ET-WN ET-UPD
    lr 2 ET-BW ET-BWM ET-BWV ET-VN ET-UPD
    lr 3 ET-GA ET-GAM ET-GAV ET-VN ET-UPD
    lr 4 ET-BE ET-BEM ET-BEV ET-VN ET-UPD
+   lr 5 ET-EW ET-EWM ET-EWV ET-WN ET-UPD
    loss ;
 
 \ a fresh run from the just-captured MODEL:: init, build backward once, bind, then
@@ -203,12 +225,12 @@ variable ET-F1  variable ET-F2   \ run-1 / run-2 final loss (determinism compare
 T-RESET
 
 \ author the model as a user would, train, capture the result (run 1) ...
-MODEL: ET-NET ( x:4x8 w:8x8 bw:1x8 g:1x8 be:1x8 -- y ) LINEAR GELU x RESIDUAL-ADD g be LAYERNORM ;
+MODEL: ET-NET ( x:4x8 w:8x8 bw:1x8 g:1x8 be:1x8 ew:8x8 -- y ) LINEAR GELU x RESIDUAL-ADD g be LAYERNORM ew ET-PROJ ;
 ET-RUN
 ET-FL @ ET-F1 !
 
 \ ... then re-author + retrain from scratch (run 2) to prove bit-identical determinism.
-MODEL: ET-NET ( x:4x8 w:8x8 bw:1x8 g:1x8 be:1x8 -- y ) LINEAR GELU x RESIDUAL-ADD g be LAYERNORM ;
+MODEL: ET-NET ( x:4x8 w:8x8 bw:1x8 g:1x8 be:1x8 ew:8x8 -- y ) LINEAR GELU x RESIDUAL-ADD g be LAYERNORM ew ET-PROJ ;
 ET-RUN
 ET-FL @ ET-F2 !
 
@@ -217,6 +239,11 @@ ET-FL @ ET-IL @ f<               TTRUE   \ loss strictly falls (final < initial)
 ET-FL @ ET-IL @ 0.5 f* f<        TTRUE   \ loss at least halved
 ET-F1 @ ET-F2 @ f=               TTRUE   \ run-twice bit-identical (exact f64 equality)
 ET-FL @ ET-MICRO  ET-LOCK        T=      \ deterministic exact lock (micro-units)
+
+\ --- the authored SPEC: equation's weight slot receives gradients AND trains ------
+5 SC-SLOT BW-HAS-GRAD?                TTRUE   \ ET-PROJ's derived adjoint reaches ew's slot
+5 SC-GRAD-AT ET-WN T-NORM2 0.0 f>    TTRUE   \ a nonzero gradient flows through that adjoint
+ET-EW ET-WN T-NORM2  ET-INIT  ET-EW ET-WN T-NORM2  f= 0=  TTRUE   \ ew moved from its init: it trained
 
 ET-HEADER
 s" authored-net"  ET-N  ET-IL @ ET-MICRO  ET-FL @ ET-MICRO  ET-FL @ ET-IL @ 0.5 f* f<  ET-ROW

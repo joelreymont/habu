@@ -95,19 +95,21 @@ which is also how the maki suite exercises the exact durable command. The maki m
 train/eval leg is `maki/eval/train.f`: it grades the framework's authoring promise —
 "author this, it trains" — by running a small model through the SAME public path
 every example takes. A user authors it with the `MODEL:` composition surface
-(`MODEL: ET-NET ( x w bw g be -- y ) LINEAR GELU x RESIDUAL-ADD g be LAYERNORM ;` — a
-broadcast-bias LINEAR, a GELU activation, an elementwise RESIDUAL-ADD skip, and the
-EXPLICIT affine LayerNorm via gamma/beta named references); the leg trains it under
+(`MODEL: ET-NET ( x w bw g be ew -- y ) LINEAR GELU x RESIDUAL-ADD g be LAYERNORM ew ET-PROJ ;` —
+a broadcast-bias LINEAR, a GELU activation, an elementwise RESIDUAL-ADD skip, the
+EXPLICIT affine LayerNorm via gamma/beta named references, and a `SPEC:` einsum output
+layer `ET-PROJ` (`ET-PY[etm etn] = Σetk ET-PX[etm etk] · ET-PW[etk etn]`, canonical
+prefix-Σ infix-·) whose DERIVED adjoint carries the loss gradient to its weight `ew`);
+the leg trains it under
 MSE through the landed `BW-BUILD` → `EX-RUN` path with the library optimizer
 `OPTIM:TT-ADAM!`, a deterministic LCG init (the `maki/train-core.f` init-role
 policy), and BOTH opt-in trainer arming words — a per-step LR schedule and a
 global-norm gradient clip — armed for the whole run. It locks the exact final loss
-(micro-units) and asserts the run is bit-identical across two from-scratch runs. Two
-honest interim notes: (1) no `SPEC:` equation line yet — a new einsum needs
-`TENSOR:` rows and the cold image is near `TR-CAP`; the registered `A-SCORES`/`A-CTX`
-equations are reusable without new rows but their composition-training path is not on
-the committed floor, so a `SPEC:` line (canonical prefix-Σ infix-·) joins when
-`TR-CAP` lands; (2) the armed schedule + clip are eval-leg-local until the framework's
+(micro-units) and asserts the run is bit-identical across two from-scratch runs, and that the `ET-PROJ` weight slot both receives a derived-adjoint gradient and
+trains. `TR-CAP` 64→256 (`maki/extent-tensor.f`) freed the `TENSOR:` rows the `SPEC:`
+line needs, so the einsum now enters the trained graph through its `maki/spec.f`
+derived adjoints; the registered `A-SCORES`/`A-CTX` attention einsums remain a separate
+sublayer concern. One honest interim note: the armed schedule + clip are eval-leg-local until the framework's
 generic `LR-SCHED`/`GRAD-CLIP` facilities are decoupled from the nanoGPT example into
 `maki/train-core.f`, after which the leg grades the exact framework arming words. This
 landing RETIRES the two former hand-wired reference regressions (scalar `y = w*x` +
