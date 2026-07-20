@@ -51,3 +51,5 @@ Triton head-to-head is unverified and likely mistaken - do not treat the
 "measured best per shape" targets above as verified until they are
 re-measured on the sole benchmark platform, the GB10 spark. GB10
 conclusions stand on their own referee runs.
+
+2026-07-20 XSWIZ axis note (f9d6874b): MMA-XSWIZ joins the searched axes (off-by-default, per-shape win: 4-warp family yes, 256-row 8-warp B-ldm no - the autotuner is exactly the mechanism to pick this per shape).

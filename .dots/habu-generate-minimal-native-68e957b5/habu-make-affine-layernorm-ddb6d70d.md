@@ -1,11 +1,14 @@
 ---
 title: Make affine LayerNorm explicit
-status: open
+status: active
 priority: 1
 issue-type: task
-created-at: "2026-07-19T21:51:59.514100+02:00"
+created-at: "\"2026-07-19T21:51:59.514100+02:00\""
 ---
 
 Current master correctness defect: maki/plan-vocab.f:36-39 emits unary and affine LayerNorm with the same opkind, while maki/op-registry.f:202-211 declares OP-LAYERNORM arity 1. Consumers rediscover an undocumented variant from input count: cad.f:411-415 and 569-573 special-case three inputs or pending-count two, executor.f:209-223 runs count==3 as affine and every other count as unary, and backward.f:232-248 uses <3 versus affine. model-ir.f:361-379 commits any pending input count without registry validation. A checked two-input LayerNorm is therefore representable; executor and backward silently ignore its extra operand as unary, while the registry lies about valid three-input affine nodes. The feature is also incomplete and numerically inconsistent: lower/red.f:313-339 rejects affine device lowering, while backward.f:232-248 emits ordinary MUL where per-channel gradient propagation requires the landed BCAST-MUL semantics. Give affine LayerNorm an explicit closed identity: preferably distinct opkind layernorm-affine with exact arity 3; if persisted opcode compatibility requires one wire tag, decode it into payload ENUM layernorm-form = plain | affine(gamma-ref,beta-ref) at the boundary. Builders must validate and construct exact variants transactionally; shape, execution, adjoint, lowering, and reporting dispatch exhaustively on identity, never input count. Implement both host and device forward/backward semantics, using explicit broadcast multiplication and reductions for gamma/beta gradients. Preserve unary behavior and affine goldens, then prove host/device parity and wire/cache-key migration. Add minimal 0/2/4-input MIR rejection before commit; checker-negative plain/affine payload swaps; registry completeness/arity; exhaustive forward/backward/shape/lowering for both forms; adversarial nonuniform gamma and per-channel dy cases that distinguish MUL from BCAST-MUL; existing goldens. Measure JIT/DATA/CODELEN and build/dispatch latency. Correct the closed habu-affine-layernorm-gamma-d19a57e0 integration claim; habu-structure-op-metadata-7fec08bf must consume this canonical variant schema rather than encode arity folklore.
 
 2026-07-20 SERIALIZED behind the attn lane (spark): footprint overlap on cad.f/executor.f/backward.f — dispatch after habu-differentiable-attention-via-a23b42d4 merges.
+
+2026-07-20 serialization RELEASED: attn merged (a5da3318).
+Claim: agent=affine workspace=.jj-ws/fable-affine machine=spark (owns maki/cad.f op-registry.f plan-vocab.f model-ir.f executor.f backward.f lower/red.f layernorm files + tests this lane; gpt-2-block stays serialized behind this)
