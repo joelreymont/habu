@@ -74,6 +74,13 @@ TRUSTED: BLOCK-MAX ( tile<f32,b,m> -- uniform<f32> )
 TRUSTED: BLOCK-SUM ( tile<f32,b,m> -- uniform<f32> )
    EMIT-BLOCK-SUM ;
 
+\ UN : the row's active-lane count n (=%r1, the col extent k) as an f32 uniform -
+\ the reduction DENOMINATOR a mean needs (mean = BLOCK-SUM x PTX:U/ UN). Reads the
+\ kernel's ABI k register and MINTS a uniform from it, so it is a TRUSTED boundary
+\ like ROW / BROADCAST (a fresh phantom with no operand to project from).
+TRUSTED: UN ( -- uniform<f32> )
+   EMIT-UN ;
+
 package PTX
 public
 
@@ -92,6 +99,17 @@ public
 
 : EXP. ( tile<f32,b,m> -- tile<f32,b,m> )
    [: EMIT-EXP ;] PTXREP:REP1 ;
+
+\ RMS scale building blocks (the "rsqrt+scale" half of the RMSNorm row kernel).
+\ USQRT is the block-uniform square root; RMS-EPS+ adds the LLaMA RMSNorm epsilon
+\ (0f3727C5AC = F64>F32(1e-5), matching maki/rmsnorm.f RMS-EPS) BEFORE the sqrt, so
+\ the row scale is r = sqrt(mean(x^2) + eps) with the eps placement pinned in the
+\ body. Both PRESERVE the uniform phantom -> CHECKED REP1 callers, like EXP.
+: USQRT ( uniform<f32> -- uniform<f32> )
+   [: EMIT-USQRT ;] PTXREP:REP1 ;
+
+: RMS-EPS+ ( uniform<f32> -- uniform<f32> )
+   [: EMIT-RMS-EPS+ ;] PTXREP:REP1 ;
 
 \ BROADCAST is the named form of the implicit broadcast in PTX:B-/PTX:B/, and the type-dual
 \ (mutual adjoint) of BLOCK-SUM: reverse-mode AD substitutes BROADCAST for the
@@ -113,3 +131,22 @@ TRUSTED: BROADCAST ( uniform<f32> -- tile<f32,b,m> )
 \ shape-detector cannot see the barrier. Declare it explicitly, so a call reached
 \ under divergent control rejects as a divergent barrier exactly like BLOCK-MAX.
 s" BLOCK-MAX-SELECT" PTX-BARRIER!
+
+\ ROPE-ROT : RoPE pair rotation over a row tile, ADJACENT LANES on ADJACENT
+\ head_dim pairs (lane i and its partner i^1 are the two coordinates of one
+\ rotary pair). Given the loaded x tile, a cos tile and a sin tile - both laid out
+\ so lane i already carries cos/sin of its pair j=i>>1 (the table build duplicates
+\ each angle across its pair, and is a separate op, noted for the cad-2 planner as
+\ the QKV-layout fusion candidate) - it computes, per lane, the rotated coordinate:
+\   even lane 2j : x[2j]*c - x[2j+1]*s     odd lane 2j+1 : x[2j]*s + x[2j+1]*c
+\ via a within-warp shfl.bfly of the partner coordinate (no bar.sync; warp-scoped,
+\ so it is NOT a block barrier). The three operands share <f32,b,m> by token, so
+\ the checker proves cos/sin match x's block + mask; the result PRESERVES x's
+\ phantom (the FIRST operand) through REPMIX3. ROPE-ROT-BWD is the VJP: the same
+\ rotation by the NEGATIVE angle (the rotation is orthogonal), matching
+\ maki/rope.f ROPE-BWD - emitter-identical but for the flipped pair sign.
+: ROPE-ROT ( tile<f32,b,m> tile<f32,b,m> tile<f32,b,m> -- tile<f32,b,m> )
+   [: EMIT-ROPE-ROT ;] PTXREP:REPMIX3 ;
+
+: ROPE-ROT-BWD ( tile<f32,b,m> tile<f32,b,m> tile<f32,b,m> -- tile<f32,b,m> )
+   [: EMIT-ROPE-ROT-BWD ;] PTXREP:REPMIX3 ;

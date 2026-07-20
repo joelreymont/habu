@@ -59,4 +59,22 @@ s" , 256;"              CGCT-ABSENT     \ no O(B) fold
 s" max.f32"             CGCT-ABSENT     \ a sum reduce never maxes
 s" 0fFF800000"          CGCT-ABSENT     \ nor uses the -inf identity
 
+\ ---- RMSNorm scale ops: count / eps / sqrt shapes -------------------------------
+CG-SM-RESET  PTX-CAPTURE-ON  EMIT-UN drop  PTX-CAPTURE-OFF  PTX-CAPTURE$ CGCT-SAVE
+s" cvt.rn.f32.u32"      CGCT-IN         \ mean denominator n = %r1 as f32
+s" , %r1;"              CGCT-IN
+CG-SM-RESET  PTX-CAPTURE-ON  1 EMIT-RMS-EPS+ drop  PTX-CAPTURE-OFF  PTX-CAPTURE$ CGCT-SAVE
+s" add.f32"             CGCT-IN         \ eps added BEFORE the sqrt
+s" 0f3727C5AC"          CGCT-IN         \ eps = F64>F32(1e-5) = maki RMS-EPS
+CG-SM-RESET  PTX-CAPTURE-ON  1 EMIT-USQRT drop  PTX-CAPTURE-OFF  PTX-CAPTURE$ CGCT-SAVE
+s" sqrt.rn.f32"         CGCT-IN
+
+\ ---- RoPE pair rotation: partner shuffle + parity select ------------------------
+CG-SM-RESET  PTX-CAPTURE-ON  1 2 3 EMIT-ROPE-ROT drop  PTX-CAPTURE-OFF  PTX-CAPTURE$ CGCT-SAVE
+s" shfl.sync.bfly.b32"  CGCT-IN         \ partner coordinate = lane tid^1
+s" , 1, 0x1f, -1;"      CGCT-IN         \ xor-1 partner, full-warp segment + membermask
+s" and.b32"             CGCT-IN         \ lane parity (even/odd of the pair)
+s" selp.f32"            CGCT-IN         \ even -> xc-ps, odd -> xc+ps
+s" bar.sync"            CGCT-ABSENT     \ warp-scoped rotation: NO block barrier
+
 T-REPORT

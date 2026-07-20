@@ -420,6 +420,8 @@ SUITE ptx-toolchain
    tools/ptx/sum-launch.f
    tools/ptx/softmax-launch.f
    tools/ptx/softmax-gradcheck.f
+   tools/ptx/rmsnorm-device-test.f
+   tools/ptx/rope-device-test.f
    tools/ptx/cuda-launch.f
 ;SUITE
 

@@ -480,6 +480,13 @@ points stay listed.
 - `tools/ptx/softmax-fb-cg.f` — combined driver emitting ONE PTX module with both
   the forward SOFTMAX_ROWS and the AD-derived SOFTMAX_BWD entries under a single
   header, so softmax-gradcheck loads a single cubin and pulls both handles from it.
+- `tools/ptx/rmsnorm-cg.f` — combined driver emitting ONE PTX module with both the
+  checked RMSNORM_ROWS forward (reduce sum-of-squares + rsqrt + scale in one kernel)
+  and the checked closed-form RMSNORM_BWD_ROWS backward (maki/rmsnorm.f RMS-BWD:
+  dx = (dy - x*coef)/r), so rmsnorm-device-test loads a single cubin and pulls both.
+- `tools/ptx/rope-cg.f` — combined driver emitting ONE PTX module with both the
+  checked ROPE_ROWS pair-rotation forward and its ROPE_BWD_ROWS VJP (rotation by
+  the negative angle), an in-warp shfl.bfly over adjacent head_dim pairs.
 - `tools/ptx/ad-entry-lib.f` — per-VJP-entry kernel emitters for the device
   gradcheck gate: DAG op-lists isolating each ad-dag entry (EXP, x-max, x/sum,
   full softmax) plus the vjp.f table fixtures - two-input elementwise
@@ -678,6 +685,11 @@ points stay listed.
   softmax, and finite-difference gradient checking; each SELF-EMITS its checked
   producer to a private per-run PTXTC cubin fail-closed (E-PTX-EMIT), never a
   shared /tmp cubin. cuda-launch also proves f32 scalar marshalling host-side.
+- `tools/ptx/rmsnorm-device-test.f` / `tools/ptx/rope-device-test.f` — device
+  proofs of the checked RMSNORM_ROWS / ROPE_ROWS kernels and their VJPs: a forward
+  golden vs the maki CPU reference (RMS-FWD / ROPE-PAIR) plus a finite-difference
+  gradcheck of the backward, self-emitting to a private per-run cubin for the PROBED
+  arch (ATGT:LABEL$; verified on the GB10 sm_121a). Off-device: recorded SKIP.
 - `tools/ptx/profile.f`, `tools/ptx/bench.f`, `tools/ptx/bandwidth-lib.f`,
   `tools/ptx/bandwidth.f`, `tools/ptx/bandwidth-v4.f`, and
   `tools/ptx/fusion-compare.f` — reusable Orin kernel profile metrics, generic

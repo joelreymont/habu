@@ -324,3 +324,60 @@
    CG-NEXT-P {: p:n :}
    SB-RESET s" setp.lt.u32 " CG-S p CG-P s" , " CG-S rt CG-R s" , %r1;" CG-S CG-LINE
    SB-RESET s" @" CG-S p CG-P s"  red.global.add.f32 [" CG-S a CG-RD s" ], " CG-S tile CG-F s" ;" CG-S CG-LINE ;
+
+\ --- RMSNorm scale ops -----------------------------------------------------------
+\ UN : the ABI k register (row length n) converted to an f32 uniform, the mean
+\ denominator (mean = sum/n). Every lane holds the same value, so it is uniform.
+: EMIT-UN ( -- n )
+   CG-NEXT-F {: r:n :}
+   SB-RESET s" cvt.rn.f32.u32 " CG-S r CG-F s" , %r1;" CG-S CG-LINE
+   r ;
+
+\ USQRT : block-uniform sqrt.rn (correctly rounded); r = sqrt(u).
+: EMIT-USQRT ( n -- n ) {: u:n :}
+   CG-NEXT-F {: r:n :}
+   SB-RESET s" sqrt.rn.f32 " CG-S r CG-F s" , " CG-S u CG-F s" ;" CG-S CG-LINE
+   r ;
+
+\ RMS-EPS+ : add the RMSNorm epsilon 1e-5 (0f3727C5AC = F64>F32(1e-5), the exact
+\ f32 nearest maki/rmsnorm.f RMS-EPS) to the mean-square uniform BEFORE the sqrt.
+: EMIT-RMS-EPS+ ( n -- n ) {: u:n :}
+   CG-NEXT-F {: r:n :}
+   SB-RESET s" add.f32 " CG-S r CG-F s" , " CG-S u CG-F s" , 0f3727C5AC;" CG-S CG-LINE
+   r ;
+
+\ --- RoPE pair rotation ----------------------------------------------------------
+\ EMIT-ROPE-CORE : lane i, partner p=i^1 (its rotary-pair sibling, always in-warp).
+\ partner = shfl.bfly(x,1) reads p's coordinate; then xc = x*cos, ps = partner*sin,
+\ and the result selects by lane parity: even lane -> xc - ps, odd lane -> xc + ps
+\ (forward). The backward (bwd<>0) is the rotation by the negative angle, i.e. the
+\ SAME instructions with the even/odd branches swapped (the pair sign flipped).
+\ shfl.bfly is warp-scoped (no bar.sync); the -1 membermask is well-formed because
+\ the straight-line kernel body reaches it uniformly across the warp.
+: EMIT-ROPE-CORE ( n n n n -- n ) {: x:n cs:n sn:n bwd:n :}
+   CG-NEXT-F {: p:n :}
+   SB-RESET s" shfl.sync.bfly.b32 " CG-S p CG-F s" , " CG-S x CG-F s" , 1, 0x1f, -1;" CG-S CG-LINE
+   CG-NEXT-R {: rt:n :}
+   SB-RESET s" mov.u32 " CG-S rt CG-R s" , %tid.x;" CG-S CG-LINE
+   CG-NEXT-R {: ro:n :}
+   SB-RESET s" and.b32 " CG-S ro CG-R s" , " CG-S rt CG-R s" , 1;" CG-S CG-LINE
+   CG-NEXT-P {: podd:n :}
+   SB-RESET s" setp.eq.u32 " CG-S podd CG-P s" , " CG-S ro CG-R s" , 1;" CG-S CG-LINE
+   CG-NEXT-F {: xc:n :}
+   SB-RESET s" mul.f32 " CG-S xc CG-F s" , " CG-S x CG-F s" , " CG-S cs CG-F s" ;" CG-S CG-LINE
+   CG-NEXT-F {: ps:n :}
+   SB-RESET s" mul.f32 " CG-S ps CG-F s" , " CG-S p CG-F s" , " CG-S sn CG-F s" ;" CG-S CG-LINE
+   CG-NEXT-F {: fa:n :}
+   SB-RESET s" add.f32 " CG-S fa CG-F s" , " CG-S xc CG-F s" , " CG-S ps CG-F s" ;" CG-S CG-LINE
+   CG-NEXT-F {: fs:n :}
+   SB-RESET s" sub.f32 " CG-S fs CG-F s" , " CG-S xc CG-F s" , " CG-S ps CG-F s" ;" CG-S CG-LINE
+   CG-NEXT-F {: out:n :}
+   bwd 0= if
+      SB-RESET s" selp.f32 " CG-S out CG-F s" , " CG-S fa CG-F s" , " CG-S fs CG-F s" , " CG-S podd CG-P s" ;" CG-S CG-LINE
+   else
+      SB-RESET s" selp.f32 " CG-S out CG-F s" , " CG-S fs CG-F s" , " CG-S fa CG-F s" , " CG-S podd CG-P s" ;" CG-S CG-LINE
+   then
+   out ;
+
+: EMIT-ROPE-ROT ( n n n -- n )      0 EMIT-ROPE-CORE ;
+: EMIT-ROPE-ROT-BWD ( n n n -- n )  1 EMIT-ROPE-CORE ;

@@ -63,6 +63,69 @@ KERNEL: ROW-ONCE-ROWS ( matrix<space-global-once,f32,extent-r,extent-c> -- )  GR
    xs ctx ROW-LOAD-ONCE
    xs ctx ROW-STORE-ONCE ;
 
+\ RMSNORM-ROWS: one block per row, coalesced hidden-dim load, then reduce + rsqrt +
+\ scale in ONE kernel - y = x / sqrt(mean(x^2)+eps), the maki/rmsnorm.f RMS-FWD
+\ closed form. in/out share extent-r/extent-c by token, so one row ctx `c` serves
+\ both spans and the mask threads x -> square -> BLOCK-SUM -> scale -> store.
+KERNEL: RMSNORM-ROWS ( matrix<space-global,f32,extent-r,extent-c>  matrix<space-global,f32,extent-r,extent-c> -- )  GRID: extent-r  WHERE extent-c <= block-256
+   {: in out :}
+   ROW            {: r :}
+   in r ROW-SPAN  {: xs :}
+   xs ROW-CTX     {: c :}
+   xs c ROW-LOAD  {: x :}
+   x x *. BLOCK-SUM             {: ss :}    \ sum_i x_i^2
+   ss UN PTX:U/ RMS-EPS+ USQRT {: rr :}     \ r = sqrt(mean(x^2)+eps)
+   x rr PTX:B/  out r ROW-SPAN c ROW-STORE ;
+
+\ RMSNORM-ROWS-BWD: the CHECKED closed-form VJP (maki/rmsnorm.f RMS-BWD),
+\ dx = (dy - x*coef)/r with r = sqrt(mean(x^2)+eps), coef = mean(dy*x)/r^2 =
+\ S/(n r^2). x/dy/dx share extent-r/extent-c BY TOKEN, so len(dx)=len(x) is proven.
+KERNEL: RMSNORM-ROWS-BWD ( matrix<space-global,f32,extent-r,extent-c>  matrix<space-global,f32,extent-r,extent-c>  matrix<space-global,f32,extent-r,extent-c> -- )  GRID: extent-r  WHERE extent-c <= block-256
+   {: x dy dx :}
+   ROW            {: r :}
+   x  r ROW-SPAN  {: xs :}
+   dy r ROW-SPAN  {: dys :}
+   xs ROW-CTX     {: c :}
+   xs  c ROW-LOAD {: xt :}
+   dys c ROW-LOAD {: dyt :}
+   xt xt *. BLOCK-SUM UN PTX:U/  {: u :}      \ mean(x^2)
+   u RMS-EPS+                    {: r2 :}     \ mean(x^2)+eps = r^2
+   dyt xt *. BLOCK-SUM UN PTX:U/ {: sm :}     \ mean(dy*x) = S/n
+   sm r2 PTX:U/                  {: coef :}   \ S/(n r^2)
+   dyt  xt coef SCALE  -.  r2 USQRT PTX:B/    \ (dy - x*coef)/r
+   dx r ROW-SPAN c ROW-STORE ;
+
+\ ROPE-ROWS: pointwise pair rotation over a row (one head_dim vector per block),
+\ adjacent lanes = adjacent head_dim pairs. cos/sin arrive pre-broadcast per row
+\ (the table build is a separate op). x/cos/sin/out share extent-r/extent-c by
+\ token, so one ctx `c` loads all three tiles at the SAME mask and ROPE-ROT proves
+\ cos/sin match x's block+mask.
+KERNEL: ROPE-ROWS ( matrix<space-global,f32,extent-r,extent-c>  matrix<space-global,f32,extent-r,extent-c>  matrix<space-global,f32,extent-r,extent-c>  matrix<space-global,f32,extent-r,extent-c> -- )  GRID: extent-r  WHERE extent-c <= block-256
+   {: x cs sn out :}
+   ROW              {: r :}
+   x  r ROW-SPAN    {: xs :}
+   cs r ROW-SPAN    {: cspan :}
+   sn r ROW-SPAN    {: sspan :}
+   xs ROW-CTX       {: c :}
+   xs    c ROW-LOAD {: xt :}
+   cspan c ROW-LOAD {: ctile :}
+   sspan c ROW-LOAD {: stile :}
+   xt ctile stile ROPE-ROT  out r ROW-SPAN c ROW-STORE ;
+
+\ ROPE-ROWS-BWD: the VJP (rotation by -angle, maki/rope.f ROPE-BWD). dy is the
+\ output cotangent; ROPE-ROT-BWD rotates it back into dx.
+KERNEL: ROPE-ROWS-BWD ( matrix<space-global,f32,extent-r,extent-c>  matrix<space-global,f32,extent-r,extent-c>  matrix<space-global,f32,extent-r,extent-c>  matrix<space-global,f32,extent-r,extent-c> -- )  GRID: extent-r  WHERE extent-c <= block-256
+   {: dy cs sn dx :}
+   ROW              {: r :}
+   dy r ROW-SPAN    {: dys :}
+   cs r ROW-SPAN    {: cspan :}
+   sn r ROW-SPAN    {: sspan :}
+   dys ROW-CTX      {: c :}
+   dys   c ROW-LOAD {: dyt :}
+   cspan c ROW-LOAD {: ctile :}
+   sspan c ROW-LOAD {: stile :}
+   dyt ctile stile ROPE-ROT-BWD  dx r ROW-SPAN c ROW-STORE ;
+
 1024 %BLOCK
 SMEM-BYTES 4096 T=
 
@@ -81,6 +144,14 @@ s" PTX-BAD-ROW-ONCE-FROM-PLAIN ( tile<f32,block-256,mask-live> span<space-global
 s" PTX-BAD-ROW-PLAIN-FROM-ONCE ( tile<f32,block-256,mask-live> span<space-global-once,f32,extent-n> rowctx<block-256,extent-n,mask-live> -- ) ROW-STORE" PTXC-CHECK-REJECTS
 s" PTX-BAD-ROW-ONCE-CTX-FROM-PLAIN ( span<space-global,f32,extent-n> -- rowctx<block-256,extent-n,mask-live> ) ROW-CTX-ONCE" PTXC-CHECK-REJECTS
 
-\ Clean load past this point is the positive proof: SOFTMAX-ROWS certified.
+\ Fail-closed legality of the new RMSNorm/RoPE ops (red-first, per guard):
+\ USQRT is a uniform op - a tile operand is REJECTED (never silently scaled);
+\ ROPE-ROT needs THREE tiles of the SAME <element,block,mask> - a uniform for the
+\ sin operand is REJECTED, so cos/sin cannot be a block-uniform forgery.
+s" PTX-BAD-USQRT-ON-TILE ( tile<f32,block-256,mask-live> -- ) USQRT drop" PTXC-CHECK-REJECTS
+s" PTX-BAD-ROPE-SIN-UNIFORM ( tile<f32,block-256,mask-live> tile<f32,block-256,mask-live> uniform<f32> -- ) ROPE-ROT drop" PTXC-CHECK-REJECTS
+
+\ Clean load past this point is the positive proof: SOFTMAX-ROWS / RMSNORM-ROWS /
+\ RMSNORM-ROWS-BWD / ROPE-ROWS / ROPE-ROWS-BWD certified.
 
 T-REPORT
