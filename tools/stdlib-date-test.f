@@ -1,38 +1,19 @@
 \ stdlib-date-test.f - focused tests for lib/date.f.
+\
+\ Uses the shared lib/test.f assert vocabulary (T= / TTRUE / T$= / T-RESET /
+\ T-REPORT), like the sibling lib/property-test.f. A test file loaded into the
+\ resident in-process gate image (GSI-INCLUDE, stdlib/tail-fast) shares one
+\ dictionary with the already-loaded test framework, so defining a private T= /
+\ TTRUE / T$= here collides (duplicate definition: T=). Reusing the framework
+\ words composes cleanly standalone, spawned, and in-process.
 
 require lib/errors.f
 require lib/date.f
+require lib/test.f
 
-variable #DATE-FAIL
-variable #DATE-CASE
 32 constant DATE-TEST-BUF-LEN
-1 constant DATE-TEST-EX-FAIL
 
 create DATE-TEST-BUF DATE-TEST-BUF-LEN allot
-
-: T= {: got want :} ( n n -- )
-   #DATE-CASE @ 1+ #DATE-CASE !
-   got want <> IF
-      [char] F emit #DATE-CASE @ .
-      #DATE-FAIL @ 1+ #DATE-FAIL !
-   THEN ;
-
-: TTRUE ( bool -- )
-   #DATE-CASE @ 1+ #DATE-CASE !
-   0= IF
-      [char] F emit #DATE-CASE @ .
-      #DATE-FAIL @ 1+ #DATE-FAIL !
-   THEN ;
-
-: DATE-TEST-STR= {: a:ptr u b:ptr v :} ( ptr u8 n ptr u8 n -- bool )
-   u v <> IF 0 0= 0= exit THEN
-   0 begin dup u < while
-      dup a + c@ over b + c@ <> IF drop 0 0= 0= exit THEN
-      1+
-   repeat drop 0 0= ;
-
-: T$= ( ptr u8 n ptr u8 n -- )
-   DATE-TEST-STR= TTRUE ;
 
 : DATE-PARSE= {: a:ptr u:n days:n :} ( ptr u8 n n -- )   \ valid date -> SOME days
    a u DATE:PARSE-YMD MATCH option
@@ -46,15 +27,15 @@ create DATE-TEST-BUF DATE-TEST-BUF-LEN allot
      some OF drop 0 0= 0= TTRUE ENDOF                 \ SOME = unexpected parse success -> false
    ;MATCH ;
 
-: DATE-FORMAT= {: days a:ptr u :} ( n ptr u8 n -- )
+: DATE-FORMAT= {: days:n a:ptr u:n :} ( n ptr u8 n -- )
    days DATE-TEST-BUF DATE-TEST-BUF-LEN DATE:FORMAT-YMD
    a u T$= ;
 
-: DATE-TIMESTAMP= {: seconds a:ptr u :} ( n ptr u8 n -- )
+: DATE-TIMESTAMP= {: seconds:n a:ptr u:n :} ( n ptr u8 n -- )
    seconds DATE-TEST-BUF DATE-TEST-BUF-LEN DATE:FORMAT-EPOCH-UTC
    a u T$= ;
 
-: DATE-ROUNDTRIP {: y m d :} ( n n n -- )
+: DATE-ROUNDTRIP {: y:n m:n d:n :} ( n n n -- )
    y m d DATE:YMD>DAYS DATE:DAYS>YMD
    d T=
    m T=
@@ -83,6 +64,8 @@ create DATE-TEST-BUF DATE-TEST-BUF-LEN allot
      none OF -1 ENDOF
      some OF drop 0 ENDOF
    ;MATCH  -1 T= ;
+
+T-RESET
 
 $30 DATE:DIGIT? TTRUE
 $39 DATE:DIGIT? TTRUE
@@ -134,9 +117,4 @@ drop drop drop
 0 DATE-TEST-BUF DATE:TIME-LEN 1- ' DATE:FORMAT-EPOCH-UTC catch E-TIME-CAPACITY T=
 drop drop drop
 
-: DATE-TEST-REPORT ( -- )
-   #DATE-FAIL @ 0= IF s" stdlib-date-test: ok" type cr exit THEN
-   #DATE-FAIL @ . s" stdlib-date-test: failures" type cr
-   s" stdlib-date-test: failures" DATE-TEST-EX-FAIL die ;
-
-DATE-TEST-REPORT
+T-REPORT

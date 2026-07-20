@@ -13,7 +13,7 @@ require lib/test.f
 require lib/memory.f
 require lib/fs.f
 require tools/lint/text.f
-require tools/argv.f
+require lib/argv.f
 
 $40000 constant PIT-CAP
 create PIT-BUF PIT-CAP allot

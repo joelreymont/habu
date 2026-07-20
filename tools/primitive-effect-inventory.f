@@ -42,7 +42,7 @@ require lib/memory.f
 require lib/fs.f
 require lib/adt/option.f
 require tools/lint/text.f
-require tools/argv.f
+require lib/argv.f
 
 package PEINV
 

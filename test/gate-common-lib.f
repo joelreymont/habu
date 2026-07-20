@@ -399,8 +399,8 @@ variable GE-EVAL-SRC-U
    GE-HB$ ;
 
 : GE-CHECK-SUPPORT-ARGV ( -- )
-   s" lib/date.f" GE-ARG+
    s" lib/errors.f" GE-ARG+
+   s" lib/date.f" GE-ARG+
    s" lib/string.f" GE-ARG+
    s" lib/memory.f" GE-ARG+
    s" lib/vector.f" GE-ARG+
@@ -422,7 +422,7 @@ variable GE-EVAL-SRC-U
    s" tools/reserved-name-lint-core.f" GE-ARG+
    s" tools/trust-lint-core.f" GE-ARG+
    s" tools/check-all-errors-core.f" GE-ARG+
-   s" tools/argv.f" GE-ARG+
+   s" lib/argv.f" GE-ARG+
    s" tools/check-core.f" GE-ARG+ ;
 
 : GE-BIN-HB-RUN ( ptr u8 n -- ) {: label:ptr labelu:n :}

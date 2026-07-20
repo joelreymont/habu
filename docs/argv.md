@@ -1,7 +1,7 @@
 # Habu Tool Argv
 
 `lib/argv.f` is the checked parser for native `bin/hb tool.f args...` scripts.
-`tools/argv.f` is a compatibility path to the same module. Load either path
+`lib/argv.f` is a compatibility path to the same module. Load either path
 before the tool body, then call `ARGV-PARSE`.
 
 For multi-file tools, pass every source after `--load` and before `--`;
@@ -11,7 +11,7 @@ loaded tool:
 
 ```sh
 bin/hb --load lib/argv.f my-tool.f -- --json --label NAME -o out file.f
-bin/hb --load tools/argv.f my-tool.f -- --json --label NAME -o out file.f
+bin/hb --load lib/argv.f my-tool.f -- --json --label NAME -o out file.f
 printf DATA | bin/hb --load lib/source.f my-tool.f -- arg
 ```
 

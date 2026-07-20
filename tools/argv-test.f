@@ -1,7 +1,7 @@
-\ argv-test.f -- focused tests for tools/argv.f.
+\ argv-test.f -- focused tests for lib/argv.f.
 
 require lib/string.f
-require tools/argv.f
+require lib/argv.f
 
 variable TEST-N
 variable TEST-FAIL

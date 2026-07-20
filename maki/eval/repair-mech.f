@@ -25,7 +25,7 @@
 
 require lib/errors.f
 require lib/memory.f
-require tools/argv.f
+require lib/argv.f
 require tools/json.f
 require tools/repair-packet-core.f
 require maki/eval/repair-loop.f

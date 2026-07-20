@@ -16,7 +16,7 @@ require lib/process-argv.f
 require tools/lint/text.f
 require tools/lint/token.f
 require tools/lint/lib.f
-require tools/argv.f
+require lib/argv.f
 require tools/cli-run.f
 require tools/trust-lint-core.f
 

@@ -10,7 +10,7 @@ require tools/lint/intern.f
 require tools/lint/token.f
 require tools/lint/lib.f
 require tools/repl-lint-core.f
-require tools/argv.f
+require lib/argv.f
 
 : REPL-CONFIG ( -- )
    s" tools/repl-lint.f [ROOT]" ARGV:USAGE!

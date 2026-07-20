@@ -1,5 +1,5 @@
 \ aot-lint.f - CLI wrapper for stripped-AOT source lint.
-\ Load after tools/aot-lint-core.f and tools/argv.f.
+\ Load after tools/aot-lint-core.f and lib/argv.f.
 
 : AOT-LINT-ARGV-FILE ( n -- ) {: idx:n :}
    ARGV:LABEL? IF

@@ -186,7 +186,7 @@ variable GSI-TL-FILE-A
    s" tools/lint/lib.f" GSI-REQUIRE
    s" tools/lint/json-writer.f" GSI-REQUIRE
    s" tools/lint/source-lex.f" GSI-REQUIRE
-   s" tools/argv.f" GSI-REQUIRE
+   s" lib/argv.f" GSI-REQUIRE
    s" tools/check-all-errors-core.f" GSI-REQUIRE
    s" tools/diag-origin-core.f" GSI-REQUIRE
    s" tools/json.f" GSI-REQUIRE

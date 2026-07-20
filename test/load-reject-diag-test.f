@@ -10,7 +10,7 @@
 \
 \ Run: bin/hb --load lib/errors.f lib/string.f lib/test.f lib/memory.f lib/fs.f
 \   lib/fs-mutate.f lib/process.f lib/process-argv.f lib/process-env.f
-\   tools/json.f tools/gate-json-assert-core.f tools/argv.f
+\   tools/json.f tools/gate-json-assert-core.f lib/argv.f
 \   tools/repair-packet-core.f test/load-reject-diag-test.f
 
 require lib/errors.f
@@ -24,7 +24,7 @@ require lib/process-argv.f
 require lib/process-env.f
 require tools/json.f
 require tools/gate-json-assert-core.f
-require tools/argv.f
+require lib/argv.f
 require tools/repair-packet-core.f
 
 package LOAD-REJECT-TEST

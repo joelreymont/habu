@@ -1852,7 +1852,7 @@ points stay listed.
 - `lib/source.f` — checked source materialization and source-list transforms.
 - `lib/source-test.f` — focused coverage for source materialization helpers.
 - `test/process-env-child.f` — child fixture used by process-env tests.
-- `tools/argv.f` / `tools/argv-test.f` — checked argv parser for tool
+- `lib/argv.f` / `tools/argv-test.f` — checked argv parser for tool
   script arguments and its coverage.
 - `tools/json.f` / `tools/json-test.f` / `tools/json-file-test.f` — bounded
   JSON/JSONL parser and compact writer plus parser and file-cursor coverage.

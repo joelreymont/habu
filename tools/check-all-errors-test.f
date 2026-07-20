@@ -21,7 +21,7 @@ require tools/lint/lib.f
 require tools/lint/json-writer.f
 require tools/lint/source-lex.f
 require tools/check-all-errors-core.f
-require tools/argv.f
+require lib/argv.f
 
 4096 constant CAE-BUF-CAP
 1400 constant CAE-LARGE-LINES

@@ -1,7 +1,7 @@
 \ stale-status-lint-test.f - checked fixtures for tools/stale-status-lint.f.
 \ Run: bin/hb --load lib/date.f lib/errors.f lib/string.f lib/test.f
 \ lib/memory.f lib/fs.f lib/fs-mutate.f lib/process.f
-\ tools/lint/text.f tools/lint/token.f tools/lint/lib.f tools/argv.f
+\ tools/lint/text.f tools/lint/token.f tools/lint/lib.f lib/argv.f
 \ tools/stale-status-lint-core.f tools/stale-status-lint-test.f
 
 require lib/date.f
@@ -15,7 +15,7 @@ require lib/process.f
 require tools/lint/text.f
 require tools/lint/token.f
 require tools/lint/lib.f
-require tools/argv.f
+require lib/argv.f
 require tools/stale-status-lint-core.f
 
 4096 constant SST-CAP

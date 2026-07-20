@@ -9,7 +9,7 @@ require lib/fs.f
 require tools/lint/text.f
 require tools/lint/token.f
 require tools/lint/lib.f
-require tools/argv.f
+require lib/argv.f
 require tools/stale-status-lint-core.f
 
 SS-MAIN

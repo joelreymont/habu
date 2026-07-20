@@ -10,7 +10,7 @@ require lib/fs.f
 require tools/lint/text.f
 require tools/lint/json-writer.f
 require tools/checked-boundary-lint-core.f
-require tools/argv.f
+require lib/argv.f
 
 : CHECKED-BOUNDARY-LINT-ARGV-FILE ( n -- )
    ARGV:POS$ CHECKED-BOUNDARY-LINT-FILE ;

@@ -21,7 +21,7 @@ require tools/reserved-name-lint-core.f
 require tools/trust-lint-core.f
 require tools/public-signatures-core.f
 require tools/check-all-errors-core.f
-require tools/argv.f
+require lib/argv.f
 require tools/check-core.f
 include test/gate-diagnostics-lib.f
 include test/gate-diagnostics-entry-lib.f

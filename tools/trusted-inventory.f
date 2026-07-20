@@ -30,7 +30,7 @@ require lib/fs.f
 require lib/sort.f
 require lib/adt/option.f
 require tools/lint/text.f
-require tools/argv.f
+require lib/argv.f
 
 package TINV
 

@@ -1,7 +1,7 @@
 \ json-only-test.f - checked fixtures for tools/json-only.f.
 \ Run: bin/hb --load lib/errors.f lib/string.f lib/test.f lib/memory.f
 \ lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f
-\ tools/argv.f tools/cli-run.f tools/json.f tools/json-only-core.f
+\ lib/argv.f tools/cli-run.f tools/json.f tools/json-only-core.f
 \ tools/json-only-test.f
 
 1024 constant JOT-BUF-CAP
@@ -131,7 +131,7 @@ variable JOT-ERR-A
    s" --load"  >LEN PROC-ARGV+
    s" lib/errors.f"  >LEN PROC-ARGV+
    s" lib/memory.f"  >LEN PROC-ARGV+
-   s" tools/argv.f"  >LEN PROC-ARGV+
+   s" lib/argv.f"  >LEN PROC-ARGV+
    s" tools/json.f"  >LEN PROC-ARGV+
    s" tools/json-only-core.f"  >LEN PROC-ARGV+
    s" tools/json-only.f"  >LEN PROC-ARGV+ ;

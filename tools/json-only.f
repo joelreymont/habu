@@ -1,6 +1,6 @@
 \ json-only.f - CLI wrapper for JSON diagnostic line filtering.
 \ Run with argv/json support:
-\   bin/hb --load lib/errors.f lib/memory.f tools/argv.f tools/json.f \
+\   bin/hb --load lib/errors.f lib/memory.f lib/argv.f tools/json.f \
 \     tools/json-only-core.f tools/json-only.f -- stderr-file
 
 \ Checked CLI wrapper. Raw fd primitives are used through checked effects.

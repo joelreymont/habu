@@ -12,7 +12,7 @@ require tools/lint/token.f
 require tools/lint/lib.f
 require tools/ptx/perf-registry.f
 require tools/kernel-perf-lint-core.f
-require tools/argv.f
+require lib/argv.f
 
 package KERNEL-PERF-LINT-CLI
 private

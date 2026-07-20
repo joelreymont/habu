@@ -26,7 +26,7 @@ require lib/ptx/cg.f
 require lib/ptx/header.f
 require lib/ptx/tile.f
 require lib/ptx/kernel-manifest.f
-require tools/argv.f
+require lib/argv.f
 
 package KEXPORT
 

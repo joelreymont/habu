@@ -17,7 +17,7 @@ require tools/lint/text.f
 require tools/lint/token.f
 require tools/lint/lib.f
 require tools/trust-lint-core.f
-require tools/argv.f
+require lib/argv.f
 
 $40000 constant TL-ARGV-STR-CAP
 $80000 constant TL-ARGV-FILE-CAP        \ src/core/checker.f grew past $40000; largest-source watermark

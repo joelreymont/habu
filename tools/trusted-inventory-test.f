@@ -16,7 +16,7 @@ require lib/process.f
 require lib/process-argv.f
 require lib/test/outcome.f
 require tools/lint/text.f
-require tools/argv.f
+require lib/argv.f
 
 $40000 constant TIT-CAP
 create TIT-BUF TIT-CAP allot

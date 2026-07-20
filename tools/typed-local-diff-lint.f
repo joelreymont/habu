@@ -11,7 +11,7 @@ require tools/lint/token.f
 require tools/lint/lib.f
 require tools/lint/source-lex.f
 require tools/typed-local-diff-lint-core.f
-require tools/argv.f
+require lib/argv.f
 
 package TYPED-LOCAL-DIFF-CLI
 private

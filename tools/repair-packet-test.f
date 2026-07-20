@@ -4,7 +4,7 @@
 \ lib/vector.f tools/lint/text.f tools/lint/token.f tools/lint/lib.f
 \ tools/lint/json-writer.f tools/lint/source-lex.f
 \ tools/check-all-errors-core.f tools/json.f tools/gate-json-assert-core.f
-\ tools/argv.f tools/repair-packet-core.f tools/repair-packet-test.f
+\ lib/argv.f tools/repair-packet-core.f tools/repair-packet-test.f
 
 require lib/errors.f
 require lib/string.f
@@ -25,7 +25,7 @@ require tools/lint/source-lex.f
 require tools/check-all-errors-core.f
 require tools/json.f
 require tools/gate-json-assert-core.f
-require tools/argv.f
+require lib/argv.f
 require tools/repair-packet-core.f
 require test/golden.f
 
@@ -363,7 +363,7 @@ create RPT-PACKET-BUF FS-PATH-CAP allot
    s" --load"  >LEN PROC-ARGV+
    s" lib/errors.f"  >LEN PROC-ARGV+
    s" lib/memory.f"  >LEN PROC-ARGV+
-   s" tools/argv.f"  >LEN PROC-ARGV+
+   s" lib/argv.f"  >LEN PROC-ARGV+
    s" tools/json.f"  >LEN PROC-ARGV+
    s" tools/repair-packet-core.f"  >LEN PROC-ARGV+
    s" tools/repair-packet.f"  >LEN PROC-ARGV+
