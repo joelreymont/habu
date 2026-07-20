@@ -24,6 +24,19 @@ $2F constant BF-SLASH
 256 constant BF-STAMP-CAP
 128 constant BF-PIN-CAP
 
+\ Load-discipline guard. build-fixpoint.f is the caller-composed depth-0 --load
+\ entry (BF-CLI-SELF-DISPATCH below); the lib preamble is --load-ed by the caller,
+\ never require-d here, so an old native seed can supply the minimal set its
+\ primitives support (see lib/process-env.f). Without the preamble the FS-PATH-CAP
+\ buffer create just below otherwise dies mid-load with a bare
+\ `E-UNDEFINED: FS-PATH-CAP`; name the required load list instead. FS-PATH-CAP
+\ (lib/fs.f) is the preamble sentinel - it is the first preamble word this file
+\ references, so its absence is exactly the missing-preamble case.
+: BF-NEED-PREAMBLE ( -- )
+   s" FS-PATH-CAP" CHECKER-DEFINED? if exit then
+   S\" build-fixpoint: missing required load; --load lib/errors.f lib/string.f lib/memory.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f lib/process-env.f lib/codesign.f tools/build-fixpoint.f tools/build-fixpoint-main.f before the build verb\n" BF-USAGE-RC die ;
+BF-NEED-PREAMBLE
+
 create BF-LF-BUF 1 allot
 create BF-PIN-KEYS BF-PIN-CAP BF-STAMP-DG-U * allot
 create BF-PIN-DIGS BF-PIN-CAP BF-STAMP-DG-U * allot

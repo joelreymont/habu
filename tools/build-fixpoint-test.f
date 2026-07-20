@@ -254,6 +254,12 @@ create BFT-ERR BFT-CAPTURE-CAP allot
    BFT-ARGV-LOAD-LIBS
    PROC-ARGV-N @ COUNT>N ;
 
+: BFT-ARGV-NO-PREAMBLE ( ptr u8 n ptr u8 n -- n )   \ tool source WITHOUT the lib preamble: reproduces the missing-preamble footgun (bare `E-UNDEFINED: FS-PATH-CAP` pre-fix)
+   BFT-ARGV-ENV+
+   s" --load" >LEN PROC-ARGV+
+   s" tools/build-fixpoint.f" BFT-ARG+
+   PROC-ARGV-N @ COUNT>N ;
+
 : BFT-ARGV-BUILD ( -- n )
    BFT-ENV$ BFT-STAMP BFT-ARGV-FIXPOINT ;
 
@@ -379,6 +385,20 @@ create BFT-ERR BFT-CAPTURE-CAP allot
    rcn BF-BUILD-RC T=
    BFT-ERR erru s" build-fixpoint: failed" CONTAINS? TTRUE
    BFT-STAMP2 FILE? TFALSE ;
+
+\ Missing-preamble footgun (dot habu-make-build-fixpoint): build-fixpoint.f loaded
+\ WITHOUT its lib preamble handed an explicit `install` verb. Pre-fix the first
+\ FS-PATH-CAP buffer create died mid-load with a bare `E-UNDEFINED: FS-PATH-CAP`
+\ (rc 70) - no hint the preamble was missing. The load-discipline guard must now
+\ fail fast with BF-USAGE-RC and a named diagnostic that lists the required load.
+\ Base (unfixed source): rc 70, stderr `E-UNDEFINED: FS-PATH-CAP` -> both direction
+\ assertions fail.
+: BFT-TEST-MISSING-PREAMBLE ( -- )
+   BFT-NOTDIR BFT-STAMP2 BFT-ARGV-NO-PREAMBLE DROP
+   BFT-ARGV-INSTALL-FORCE
+   BFT-SPAWN-FIXPOINT {: outu:n erru:n rcn:n :}
+   rcn BF-USAGE-RC T=
+   BFT-ERR erru s" missing required load" CONTAINS? TTRUE ;
 
 : BFT-STAGE-MUTATED-KEY! ( -- )
    BF-STAMP-KEY-BEGIN
@@ -1412,6 +1432,7 @@ public
    s" cached skip" [: BFT-TEST-CACHED-SKIP ;] BFT-STEP
    s" build fail no stamp" [: BFT-TEST-BUILD-FAIL-NO-STAMP ;] BFT-STEP
    s" no-main self dispatch" [: BFT-TEST-NO-MAIN-DISPATCHES ;] BFT-STEP
+   s" missing preamble diag" [: BFT-TEST-MISSING-PREAMBLE ;] BFT-STEP
    s" stale seed install" [: BFT-TEST-STALE-INSTALL ;] BFT-STEP
    s" cert inject install" [: BFT-TEST-CERT-INJECT-INSTALL ;] BFT-STEP
    s" stamp source key" [: BFT-TEST-STAMP-SOURCE-KEY ;] BFT-STEP
