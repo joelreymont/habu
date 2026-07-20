@@ -1,9 +1,11 @@
 ---
 title: Enforce pinned ptxas identity
-status: open
+status: active
 priority: 1
 issue-type: task
-created-at: "2026-07-19T20:49:51.811755+02:00"
+created-at: "\"2026-07-19T20:49:51.811755+02:00\""
 ---
 
 Destruction of closed dot habu-pin-blackwell-grade-8ec5ee0a found its stated long-term contract did not land. That dot required the GB10 profile to require >=13.3 and provision the exact archive SHA-256-pinned. lib/ptx/toolchain.f:166-174 resolves PTXAS env first and the Habu-store path by FILE? only; no content digest or immutable tool identity is checked. PTXAS-VERSION maps spawn failure, timeout, truncated output, or malformed text to -1; STALE-SM121? explicitly treats -1 as acceptable; known pre-13.3 versions only print a warning and ASSEMBLE continues. Thus a replaced/corrupt store binary, arbitrary PTXAS override, unreadable tool, or known 13.0 scheduler can assemble sm_121 code despite the pin, silently in the unknown case and with the measured ~27% GEMM loss in the known-old case. Enforce a single fail-closed GB10 toolchain identity before assembly: resolve once, hash the executable bytes against the documented pinned artifact identity, parse and require an allowed version >=13.3, bind path+digest+version+target to the cached descriptor, and reject probe failures, output truncation, path/digest/version drift, and old versions with a named error before consuming PTX. If explicit PTXAS overrides are allowed, require an independently allowlisted digest/version rather than trusting presence. Non-GB10 targets may retain an explicit typed compatibility policy, never an implicit unknown-success branch. Add fake-tool tests for every probe outcome, old/new versions, digest replacement after probe, override/store/system precedence, oversized/malformed version output, and exact no-assembly-on-reject call counts; run the sm_121 device matrix with the real pinned digest. Coordinate the descriptor seam with habu-v2-r3-define-987402c7 and attestation with habu-attest-proprietary-ptxas-6ce9fda2e without duplicating their broader provenance model. Files: lib/ptx/toolchain.f/test, error registry, pinned-tool documentation/provisioning, GB10 gate. Depends: none. Ownership: mandatory ptxas resolver identity/version enforcement only.
+
+Claim: agent=ptxpin workspace=.jj-ws/fable-ptxpin machine=spark (owns lib/ptx/toolchain.f/test fail-closed ptxas identity + error registry + pinned-tool docs + GB10 gate rows)
