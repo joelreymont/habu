@@ -16,9 +16,9 @@
 
 require maki/array.f
 
--5152 constant E-TOK-EMPTY   \ build vocab from an empty corpus (no bytes -> no tokens)
--5153 constant E-TOK-RANGE   \ id outside [0,vocab) on decode, or byte absent from vocab on encode
--5154 constant E-TOK-CAP     \ encode/decode destination buffer smaller than the token/byte count
+-5152 constant E-TOK-EMPTY   \ no ready vocabulary: empty corpus on build, or a public word used before a successful TOK-BUILD
+-5153 constant E-TOK-RANGE   \ value outside its token/byte domain: byte outside [0,256) or absent from vocab; id outside [0,vocab); or a decoded cell not a finite exact id in [0,vocab)
+-5154 constant E-TOK-CAP     \ invalid length or capacity: negative length, negative capacity, or destination smaller than the token/byte count
 
 package MAKI
 private
@@ -30,17 +30,26 @@ create TOK-INV   TOK-BYTE-MAX cells allot  \ byte -> id, or -1 when the byte is 
 variable TOK-N                              \ vocab size (distinct bytes in the corpus)
 variable TOK-ID#                            \ scratch: next id to assign during a build
 
+\ Readiness gate: every public lookup/encode/decode requires a built vocab. TOK-N is
+\ 0 until a successful TOK-BUILD (which also fills TOK-INV with -1 for absent bytes),
+\ so a call before any build reads an unbuilt table - reject it up front.
+: TOK-READY ( -- )  TOK-N @ 1 < if E-TOK-EMPTY throw then ;
+
 public
 
 : TOK-SIZE ( -- n )  TOK-N @ ;
 
-\ id -> byte; rejects an id outside the built vocab
+\ id -> byte; requires a ready vocab; rejects an id outside [0,vocab)
 : TOK-CHAR ( n -- n ) {: k:n :}
+   TOK-READY
    k 0 <  k TOK-N @ >=  or if E-TOK-RANGE throw then
    TOK-VOCAB k + c@ ;
 
-\ byte -> id; rejects a byte that never occurred in the corpus
+\ byte -> id; requires a ready vocab; rejects a byte outside [0,256) before addressing
+\ TOK-INV, then a byte that never occurred in the corpus
 : TOK-ID ( n -- n ) {: b:n :}
+   TOK-READY
+   b 0 <  b TOK-BYTE-MAX >=  or if E-TOK-RANGE throw then
    TOK-INV b cells + @  dup 0 < if E-TOK-RANGE throw then ;
 
 private
@@ -50,6 +59,19 @@ private
 
 : TOK-SEEN-CLEAR ( -- )
    TOK-BYTE-MAX 0 ?do  0 TOK-SEEN i + c!  loop ;
+
+\ Validate a stored float cell as an exact token id, returning it as an int. The two
+\ float comparisons bound v into [0,vocab) before f>s: v<0 (or -inf) fails the first;
+\ v>=vocab, +inf, and NaN fail the second (NaN compares false, so NOT(v<vocab) holds).
+\ f>s is therefore reached only for a finite v in range; the round-trip equality then
+\ proves v is exactly integral (a fractional v differs from its truncation). TOK-N>0 is
+\ guaranteed by the decode-time readiness gate.
+: TOK-CELL>ID ( r -- n ) {: v:r :}
+   v f0< if E-TOK-RANGE throw then
+   v TOK-N @ s>f f< 0= if E-TOK-RANGE throw then
+   v f>s {: k:n :}
+   k s>f v f= 0= if E-TOK-RANGE throw then
+   k ;
 
 public
 
@@ -71,21 +93,31 @@ public
    TOK-ID# @ TOK-N ! ;
 
 \ Encode src bytes into dst as float-cell token ids (one id per cell). Returns the
-\ token count. Rejects a byte absent from the vocab (E-TOK-RANGE) and a dst too
-\ small (E-TOK-CAP).
+\ token count. Requires a ready vocab (E-TOK-EMPTY). Rejects a negative length or
+\ capacity and a dst too small (E-TOK-CAP) before the loop, and a byte absent from
+\ the vocab (E-TOK-RANGE).
 : TOK-ENCODE ( ptr u8 n ptr a n -- n ) {: a:ptr u:n d:ptr cap:n :}
+   TOK-READY
+   u 0 < if E-TOK-CAP throw then
+   cap 0 < if E-TOK-CAP throw then
    u cap > if E-TOK-CAP throw then
    u 0 ?do
       a i + c@ TOK-ID  s>f  d i T-SET
    loop
    u ;
 
-\ Decode float-cell token ids into dst bytes. Returns the byte count. Rejects an id
-\ outside the vocab (E-TOK-RANGE) and a dst too small (E-TOK-CAP).
+\ Decode float-cell token ids into dst bytes. Returns the byte count. Requires a ready
+\ vocab (E-TOK-EMPTY). Rejects a negative length or capacity and a dst too small
+\ (E-TOK-CAP) before the loop. Each stored cell must be a finite, exactly-integral id
+\ in [0,vocab) (E-TOK-RANGE) - NaN, infinite, fractional, and out-of-range are rejected
+\ before the byte is written.
 : TOK-DECODE ( ptr a n ptr u8 n -- n ) {: ids:ptr u:n d:ptr cap:n :}
+   TOK-READY
+   u 0 < if E-TOK-CAP throw then
+   cap 0 < if E-TOK-CAP throw then
    u cap > if E-TOK-CAP throw then
    u 0 ?do
-      ids i T-GET f>s TOK-CHAR  d i + c!
+      ids i T-GET TOK-CELL>ID TOK-CHAR  d i + c!
    loop
    u ;
 
