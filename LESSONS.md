@@ -1806,3 +1806,12 @@ fits.
   sole-writer state — engine-independent. Every fix review must independently
   answer the long-term-vs-patch question; a value heuristic where a structural
   invariant is possible is a patch and goes back.
+
+- **Checker signature comments are typed, not named.** The `( … -- … )` comment on
+  a checked definition is the certified signature: write type names (`n`, `ptr`,
+  `bool`), never parameter names, or certification fails with "unknown type in
+  signature". Found while writing the cache-failure fixtures.
+- **Make booleans explicit before `if` when a value rides along.** `dup if throw
+  then drop` trips the checker ("expected bool n actual bool") where
+  `dup 0 <> if throw then drop` certifies - the comparison makes the consumed
+  boolean explicit instead of reusing the numeric value as a flag.
