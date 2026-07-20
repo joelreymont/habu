@@ -87,3 +87,5 @@ CAP-PEND) - partial conversion is a broken intermediate. Binding seams:
 - CAP-IN-AT needs a signature pre-scan;
 - raw siblings convert to the same deferral (parallel bind) or accessor-routed reads;
 - the old caps become the deferred sanity ceiling.
+
+Stage-3 claim: agent=derive3 workspace=.jj-ws/fable-derive3 machine=spark (owns maki/cad.f model-ir.f tensor-value.f backward.f executor.f + gptblock-attn-test.f + capacity regressions; traincore2 lane owns train-core/from-scratch-train/adam-train/eval-train - disjoint; census owns tools+STATUS - disjoint)
