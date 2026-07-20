@@ -45,13 +45,13 @@ variable PCT-I
 
 : PCT-CAPTURE ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n n -- n n n )
    {: path:ptr pathu cwd:ptr cwdu out:ptr outcap err:ptr errcap timeout :}
-   path pathu >LEN cwd cwdu >LEN out outcap >LEN err errcap >LEN timeout >MS RUN-ARGV-ENV-CWD-CAPTURE
+   path pathu >LEN cwd cwdu >LEN out outcap >LEN err errcap >LEN timeout >MS PROC-CWD:RUN-ARGV-ENV-CWD-CAPTURE
    PCT-CAPTURE>N ;
 
 : PCT-STDIN-CAPTURE ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n ptr u8 n n -- n n n )
    {: path:ptr pathu cwd:ptr cwdu in:ptr inu out:ptr outcap err:ptr errcap timeout :}
    path pathu >LEN cwd cwdu >LEN in inu >LEN out outcap >LEN err errcap >LEN timeout >MS
-   RUN-ARGV-ENV-CWD-STDIN-CAPTURE
+   PROC-CWD:RUN-ARGV-ENV-CWD-STDIN-CAPTURE
    PCT-CAPTURE>N ;
 
 : PCT-SETUP-ROOT ( -- )
@@ -92,7 +92,7 @@ variable PCT-I
    PCT-RESET
    s" rel.txt"  >LEN PROC-ARGV+
    s" /bin/cat" >LEN s" /no/such/habu-process-cwd-test" >LEN -1 >FD -1 >FD -1 >FD
-   PROC-SPAWN-ARGV-ENV-CWD-IO drop ;
+   PROC-CWD:SPAWN-ARGV-ENV-CWD-IO drop ;
 
 : PCT-RUN-MISSING-CWD ( -- )
    [: PCT-MISSING-CWD ;] E-PROC-SPAWN TTHROWSQ
@@ -101,19 +101,19 @@ variable PCT-I
 
 : PCT-CWD-TOO-LONG ( -- )
    PCT-LONG!
-   PCT-LONG PCT-LONG-U >LEN PROC-CWDZ drop ;
+   PCT-LONG PCT-LONG-U >LEN PROC-CWD:CWDZ drop ;
 
 \ Direct both-arm coverage for RUN-ARGV-ENV-CWD-CAPTURE: true -> ok(captured),
 \ false -> err(failed) carrying lengths + the completion code (cwd = ".").
 : PCT-RUN-ARGV-ENV-CWD-CAPTURE-RESULT ( -- )
    PCT-RESET
-   s" /usr/bin/true" >LEN s" ." >LEN PCT-OUT PCT-CAP >LEN PCT-ERR PCT-CAP >LEN 1000 >MS RUN-ARGV-ENV-CWD-CAPTURE
+   s" /usr/bin/true" >LEN s" ." >LEN PCT-OUT PCT-CAP >LEN PCT-ERR PCT-CAP >LEN 1000 >MS PROC-CWD:RUN-ARGV-ENV-CWD-CAPTURE
    MATCH result
      ok  OF PCAP-CAPTURED:UNMAKE {: o:len e:len :} o LEN>N 0 T=  e LEN>N 0 T= ENDOF
      err OF PCAP-FAILED:UNMAKE 2drop drop 1 0 T= ENDOF
    ;MATCH
    PCT-RESET
-   s" /usr/bin/false" >LEN s" ." >LEN PCT-OUT PCT-CAP >LEN PCT-ERR PCT-CAP >LEN 1000 >MS RUN-ARGV-ENV-CWD-CAPTURE
+   s" /usr/bin/false" >LEN s" ." >LEN PCT-OUT PCT-CAP >LEN PCT-ERR PCT-CAP >LEN 1000 >MS PROC-CWD:RUN-ARGV-ENV-CWD-CAPTURE
    MATCH result
      ok  OF PCAP-CAPTURED:UNMAKE 2drop 1 0 T= ENDOF
      err OF PCAP-FAILED:UNMAKE {: o:len e:len c:rc :} o LEN>N 0 T=  e LEN>N 0 T=  c RC>N 1 T= ENDOF

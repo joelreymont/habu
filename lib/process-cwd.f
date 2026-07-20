@@ -1,5 +1,10 @@
 \ process-cwd.f - checked argv/env/cwd process helpers.
 \
+\ The module lives in `package PROC-CWD`. External callers use the qualified public
+\ API (PROC-CWD:SPAWN-ARGV-ENV-CWD-RAW, PROC-CWD:CWDZ, PROC-CWD:ARGV-ENV-CWD-RESET,
+\ PROC-CWD:SPAWN-ARGV-ENV-CWD-IO, PROC-CWD:RUN-ARGV-ENV-CWD-CAPTURE,
+\ PROC-CWD:RUN-ARGV-ENV-CWD-STDIN-CAPTURE); the working-directory copy buffer and
+\ the intermediate capture-spawn/wait helpers are package-private.
 require lib/errors.f
 require lib/string.f
 require lib/fs.f
@@ -7,36 +12,44 @@ require lib/process.f
 require lib/process-argv.f
 require lib/process-env.f
 
+package PROC-CWD
+
+private
+
 create PROC-CWDZ-BUF PROC-PATHZ-CAP allot
 
-: PROC-SPAWN-ARGV-ENV-CWD-RAW ( ptr u8 ptr a ptr a ptr u8 fd fd fd -- pid )
+public
+
+: SPAWN-ARGV-ENV-CWD-RAW ( ptr u8 ptr a ptr a ptr u8 fd fd fd -- pid )
    {: pathz:ptr argv:ptr envp:ptr cwdz:ptr infd outfd errfd :}
    pathz argv envp cwdz infd FD>N outfd FD>N errfd FD>N spawn-argv-env-cwd-io >PID
    pathz swap PROCESS-TRACE:EXECUTED ;
 
-: PROC-CWDZ ( ptr u8 len -- ptr u8 ) {: a:ptr u :}
+: CWDZ ( ptr u8 len -- ptr u8 ) {: a:ptr u:len :}
    u LEN>N 0 <= if E-PROC-OUTPUT throw then
    a u PROC-CWDZ-BUF PROC-PATHZ-CAP >LEN PROC-ZCOPY ;
 
-: PROC-ARGV-ENV-CWD-RESET ( -- )
+: ARGV-ENV-CWD-RESET ( -- )
    PROC-ARGV-ENV-RESET ;
 
-: PROC-SPAWN-ARGV-ENV-CWD-IO ( ptr u8 len ptr u8 len fd fd fd -- pid )
+: SPAWN-ARGV-ENV-CWD-IO ( ptr u8 len ptr u8 len fd fd fd -- pid )
    {: path:ptr pathu cwd:ptr cwdu infd outfd errfd :}
-   path pathu PROC-ARGV-PREPARE PROC-ENV-PREPARE cwd cwdu PROC-CWDZ
-   infd outfd errfd PROC-SPAWN-ARGV-ENV-CWD-RAW {: pid :}
-   PROC-ARGV-ENV-CWD-RESET
+   path pathu PROC-ARGV-PREPARE PROC-ENV-PREPARE cwd cwdu CWDZ
+   infd outfd errfd SPAWN-ARGV-ENV-CWD-RAW {: pid:pid :}
+   ARGV-ENV-CWD-RESET
    pid PID>N 0 < if E-PROC-SPAWN throw then
    pid ;
 
+private
+
 : PROC-RUN-ARGV-ENV-CWD-IO-RC ( ptr u8 len ptr u8 len fd fd fd -- result<n,n> )   \ ok = clean exit (0), err = nonzero completion rc
-   PROC-SPAWN-ARGV-ENV-CWD-IO PROC-WAIT-RC ;
+   SPAWN-ARGV-ENV-CWD-IO PROC-WAIT-RC ;
 
 : PROC-SPAWN-ARGV-ENV-CWD-CAPTURE ( ptr u8 ptr a ptr a ptr u8 -- )
    {: pathz:ptr argv:ptr envp:ptr cwdz:ptr :}
    pathz argv envp cwdz -1 >FD PROC-OUT-W @ PROC-ERR-W @
-   PROC-SPAWN-ARGV-ENV-CWD-RAW {: pid :}
-   PROC-ARGV-ENV-CWD-RESET
+   SPAWN-ARGV-ENV-CWD-RAW {: pid:pid :}
+   ARGV-ENV-CWD-RESET
    pid PID>N 0 < if E-PROC-SPAWN PROC-THROW-CAPTURE then
    pid PROC-CAPTURE-PID!
    PROC-OUT-W PROC-CLOSE-CELL
@@ -45,13 +58,15 @@ create PROC-CWDZ-BUF PROC-PATHZ-CAP allot
 : PROC-SPAWN-ARGV-ENV-CWD-STDIN-CAPTURE ( ptr u8 ptr a ptr a ptr u8 -- )
    {: pathz:ptr argv:ptr envp:ptr cwdz:ptr :}
    pathz argv envp cwdz PROC-IN-R @ PROC-OUT-W @ PROC-ERR-W @
-   PROC-SPAWN-ARGV-ENV-CWD-RAW {: pid :}
-   PROC-ARGV-ENV-CWD-RESET
+   SPAWN-ARGV-ENV-CWD-RAW {: pid:pid :}
+   ARGV-ENV-CWD-RESET
    pid PID>N 0 < if E-PROC-SPAWN PROC-THROW-CAPTURE then
    pid PROC-CAPTURE-PID!
    PROC-IN-R PROC-CLOSE-CELL
    PROC-OUT-W PROC-CLOSE-CELL
    PROC-ERR-W PROC-CLOSE-CELL ;
+
+public
 
 : RUN-ARGV-ENV-CWD-CAPTURE ( ptr u8 len ptr u8 len ptr u8 len ptr u8 len ms -- result<pcap:captured,pcap:failed> )
    {: path:ptr pathu cwd:ptr cwdu out:ptr outcap err:ptr errcap timeout :}
@@ -60,7 +75,7 @@ create PROC-CWDZ-BUF PROC-PATHZ-CAP allot
    outcap errcap PROC-CAPTURE-CHECK-CAPS
    path pathu PROC-ARGV-PREPARE {: pathz:ptr argv:ptr :}
    PROC-ENV-PREPARE {: envp:ptr :}
-   cwd cwdu PROC-CWDZ {: cwdz:ptr :}
+   cwd cwdu CWDZ {: cwdz:ptr :}
    timeout PROC-CAPTURE-BEGIN
    pathz argv envp cwdz PROC-SPAWN-ARGV-ENV-CWD-CAPTURE
    out outcap err errcap PROC-RUN-CAPTURE-LOOP
@@ -74,8 +89,10 @@ create PROC-CWDZ-BUF PROC-PATHZ-CAP allot
    outcap errcap PROC-CAPTURE-CHECK-CAPS
    path pathu PROC-ARGV-PREPARE {: pathz:ptr argv:ptr :}
    PROC-ENV-PREPARE {: envp:ptr :}
-   cwd cwdu PROC-CWDZ {: cwdz:ptr :}
+   cwd cwdu CWDZ {: cwdz:ptr :}
    timeout PROC-STDIN-CAPTURE-BEGIN
    pathz argv envp cwdz PROC-SPAWN-ARGV-ENV-CWD-STDIN-CAPTURE
    in inu out outcap err errcap PROC-RUN-STDIN-CAPTURE-LOOP
    PROC-CAPTURE-FINISH-RC ;
+
+;package

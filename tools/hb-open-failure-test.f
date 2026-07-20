@@ -56,7 +56,7 @@ variable HOF-EXE-U
 \ Run the copied engine with the empty temp dir as cwd; capture stdout/stderr/rc.
 : HOF-RUN ( -- n n n )
    HOF-EXE$ >LEN HOF-ROOT$ >LEN HOF-OUT HOF-CAP >LEN HOF-ERR HOF-CAP >LEN HOF-TIMEOUT-MS >MS
-   RUN-ARGV-ENV-CWD-CAPTURE
+   PROC-CWD:RUN-ARGV-ENV-CWD-CAPTURE
    HOF-CAPTURE>N ;
 
 : HOF-OUTSIDE-NAMES-MISSING ( -- )
