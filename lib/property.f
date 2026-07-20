@@ -1,16 +1,34 @@
 \ property.f - checked helpers for property-based tests.
+\
+\ The module lives in `package PROP`. External callers use the qualified public
+\ property-testing DSL (PROP:RUN-RESET, PROP:SEED!/SEED@, PROP:COUNT@, PROP:RND/
+\ RND%, PROP:BUF-RESET/BUF+/BUF-C+/BUF$/BUF-CHECK-ROOM, PROP:DIGIT+, PROP:GEN-START/
+\ GEN-STEP/GEN-DEPTH@, PROP:TRIM-TRAIL, PROP:DROP-LAST, PROP:SHRINK, PROP:DEFAULTS
+\ and the PROP:DEFAULT-SEED/DEFAULT-COUNT/MAX-COUNT/BUF-CAP constants); the LCG
+\ constants, PRNG/buffer state cells, and seed/count validators are package-private.
 
 require lib/errors.f
 
-1 constant PROP-DEFAULT-SEED
-250 constant PROP-DEFAULT-COUNT
-50000 constant PROP-MAX-COUNT
+package PROP
+
+public
+
+1 constant DEFAULT-SEED
+250 constant DEFAULT-COUNT
+50000 constant MAX-COUNT
+
+private
 
 $7FFFFFFF constant PROP-SEED-MASK
 1103515245 constant PROP-LCG-A
 12345 constant PROP-LCG-C
 
-4096 constant PROP-BUF-CAP
+public
+
+4096 constant BUF-CAP
+
+private
+
 255 constant PROP-BYTE-MAX
 32 constant PROP-SPACE
 48 constant PROP-ZERO
@@ -25,7 +43,7 @@ variable PROP-GEN-NEXT
 TYPED-VARIABLE PROP-SHRINK-PRED [ -- bool ]
 variable PROP-SHRINK-SAVE
 
-create PROP-BUF PROP-BUF-CAP allot
+create PROP-BUF BUF-CAP allot
 variable PROP-BUF-LEN
 
 : PROP-CHECK-SEED ( n -- ) {: seed :}
@@ -34,83 +52,85 @@ variable PROP-BUF-LEN
 
 : PROP-CHECK-COUNT ( n -- ) {: count :}
    count 0 < if E-PROP-SEED throw then
-   count PROP-MAX-COUNT > if E-PROP-SEED throw then ;
+   count MAX-COUNT > if E-PROP-SEED throw then ;
 
-: PROP-DEFAULTS ( -- n n )
-   PROP-DEFAULT-SEED PROP-DEFAULT-COUNT ;
+public
 
-: PROP-RUN-RESET ( n n -- ) {: seed count :}
+: DEFAULTS ( -- n n )
+   DEFAULT-SEED DEFAULT-COUNT ;
+
+: RUN-RESET ( n n -- ) {: seed:n count:n :}
    seed PROP-CHECK-SEED
    count PROP-CHECK-COUNT
    seed PROP-SEED !
    count PROP-COUNT ! ;
 
-: PROP-SEED! ( n -- )
+: SEED! ( n -- )
    dup PROP-CHECK-SEED
    PROP-SEED ! ;
 
-: PROP-SEED@ ( -- n )
+: SEED@ ( -- n )
    PROP-SEED @ ;
 
-: PROP-COUNT@ ( -- n )
+: COUNT@ ( -- n )
    PROP-COUNT @ ;
 
-: PROP-RND ( -- n )
+: RND ( -- n )
    PROP-SEED @ PROP-LCG-A * PROP-LCG-C + PROP-SEED-MASK and
    dup PROP-SEED ! ;
 
-: PROP-RND% ( n -- n ) {: bound :}
+: RND% ( n -- n ) {: bound:n :}
    bound 0 <= if E-PROP-GENERATOR throw then
-   PROP-RND bound mod ;
+   RND bound mod ;
 
-: PROP-BUF-CHECK-ROOM ( n -- ) {: add :}
+: BUF-CHECK-ROOM ( n -- ) {: add:n :}
    add 0 < if E-PROP-CAPACITY throw then
-   add PROP-BUF-CAP PROP-BUF-LEN @ - > if E-PROP-CAPACITY throw then ;
+   add BUF-CAP PROP-BUF-LEN @ - > if E-PROP-CAPACITY throw then ;
 
-: PROP-BUF-RESET ( -- )
+: BUF-RESET ( -- )
    0 PROP-BUF-LEN ! ;
 
-: PROP-BUF+ ( ptr u8 n -- ) {: a:ptr u :}
-   u PROP-BUF-CHECK-ROOM
+: BUF+ ( ptr u8 n -- ) {: a:ptr u:n :}
+   u BUF-CHECK-ROOM
    0 begin dup u < while
       dup a + c@ PROP-BUF PROP-BUF-LEN @ + c!
       PROP-BUF-LEN @ 1+ PROP-BUF-LEN !
       1+
    repeat drop ;
 
-: PROP-BUF-C+ ( n -- ) {: c :}
+: BUF-C+ ( n -- ) {: c:n :}
    c 0 < if E-PROP-GENERATOR throw then
    c PROP-BYTE-MAX > if E-PROP-GENERATOR throw then
-   1 PROP-BUF-CHECK-ROOM
+   1 BUF-CHECK-ROOM
    c PROP-BUF PROP-BUF-LEN @ + c!
    PROP-BUF-LEN @ 1+ PROP-BUF-LEN ! ;
 
-: PROP-DIGIT+ ( n -- ) {: digit :}
+: DIGIT+ ( n -- ) {: digit:n :}
    digit 0 < if E-PROP-GENERATOR throw then
    digit 9 > if E-PROP-GENERATOR throw then
-   digit PROP-ZERO + PROP-BUF-C+ ;
+   digit PROP-ZERO + BUF-C+ ;
 
-: PROP-BUF$ ( -- ptr u8 n )
+: BUF$ ( -- ptr u8 n )
    PROP-BUF PROP-BUF-LEN @ ;
 
-: PROP-GEN-DEPTH@ ( -- n )
+: GEN-DEPTH@ ( -- n )
    PROP-GEN-DEPTH @ ;
 
-: PROP-GEN-START ( n -- ) {: depth :}
+: GEN-START ( n -- ) {: depth:n :}
    depth 0 < if E-PROP-GENERATOR throw then
-   PROP-BUF-RESET
+   BUF-RESET
    depth PROP-GEN-DEPTH ! ;
 
-: PROP-GEN-STEP ( ptr u8 n n n -- ) {: a:ptr u need delta :}
+: GEN-STEP ( ptr u8 n n n -- ) {: a:ptr u:n need:n delta:n :}
    need 0 < if E-PROP-GENERATOR throw then
    PROP-GEN-DEPTH @ need < if E-PROP-GENERATOR throw then
    PROP-GEN-DEPTH @ delta + PROP-GEN-NEXT !
    PROP-GEN-NEXT @ 0 < if E-PROP-GENERATOR throw then
-   u PROP-BUF-CHECK-ROOM
-   a u PROP-BUF+
+   u BUF-CHECK-ROOM
+   a u BUF+
    PROP-GEN-NEXT @ PROP-GEN-DEPTH ! ;
 
-: PROP-TRIM-TRAIL ( -- )
+: TRIM-TRAIL ( -- )
    begin PROP-BUF-LEN @ 0 > while
       PROP-BUF PROP-BUF-LEN @ 1- + c@ PROP-SPACE = if
          PROP-BUF-LEN @ 1- PROP-BUF-LEN !
@@ -119,8 +139,8 @@ variable PROP-BUF-LEN
       then
    repeat ;
 
-: PROP-DROP-LAST ( -- bool )
-   PROP-TRIM-TRAIL
+: DROP-LAST ( -- bool )
+   TRIM-TRAIL
    PROP-BUF-LEN @ 0= if 0 0= 0= exit then
    begin PROP-BUF-LEN @ 0 > while
       PROP-BUF PROP-BUF-LEN @ 1- + c@ PROP-SPACE <> if
@@ -131,12 +151,12 @@ variable PROP-BUF-LEN
    repeat
    0 0= ;
 
-: PROP-SHRINK ( [ -- bool ] -- )
+: SHRINK ( [ -- bool ] -- )
    PROP-SHRINK-PRED !
    PROP-SHRINK-PRED @ execute 0= if E-PROP-SHRINK throw then
    begin
       PROP-BUF-LEN @ PROP-SHRINK-SAVE !
-      PROP-DROP-LAST if
+      DROP-LAST if
          PROP-SHRINK-PRED @ execute if
             0 0=
          else
@@ -147,3 +167,5 @@ variable PROP-BUF-LEN
          0 0= 0=
       then
    while repeat ;
+
+;package

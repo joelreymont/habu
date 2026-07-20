@@ -8,38 +8,38 @@
 4 constant PE-MIN-SHRUNK-LEN
 
 : PE-SMALL ( -- n )
-   PE-BOUND PROP-RND% ;
+   PE-BOUND PROP:RND% ;
 
 : PE-SQUARE-PROPERTY ( -- )
-   PE-SEED PE-COUNT PROP-RUN-RESET
-   0 begin dup PROP-COUNT@ < while
+   PE-SEED PE-COUNT PROP:RUN-RESET
+   0 begin dup PROP:COUNT@ < while
       PE-SMALL dup * 0 >= TTRUE
       1+
    repeat drop ;
 
 : PE-DIGITS! ( -- )
-   PROP-BUF-RESET
+   PROP:BUF-RESET
    PE-DIGITS 0 ?do
-      10 PROP-RND% PROP-DIGIT+
+      10 PROP:RND% PROP:DIGIT+
    loop ;
 
 : PE-DIGIT-PROPERTY ( -- )
-   PE-SEED PE-COUNT PROP-RUN-RESET
-   0 begin dup PROP-COUNT@ < while
+   PE-SEED PE-COUNT PROP:RUN-RESET
+   0 begin dup PROP:COUNT@ < while
       PE-DIGITS!
-      PROP-BUF$ STR-DIGITS? TTRUE
-      PROP-BUF$ nip PE-DIGITS T=
+      PROP:BUF$ STR-DIGITS? TTRUE
+      PROP:BUF$ nip PE-DIGITS T=
       1+
    repeat drop ;
 
 : PE-KEEP-FIRST? ( -- bool )
-   PROP-BUF$ nip PE-MIN-SHRUNK-LEN >= ;
+   PROP:BUF$ nip PE-MIN-SHRUNK-LEN >= ;
 
 : PE-SHRINK-EXAMPLE ( -- )
-   PROP-BUF-RESET
-   s" 123 456 789 " PROP-BUF+
-   [: PE-KEEP-FIRST? ;] PROP-SHRINK
-   PROP-BUF$ s" 123 " T$= ;
+   PROP:BUF-RESET
+   s" 123 456 789 " PROP:BUF+
+   [: PE-KEEP-FIRST? ;] PROP:SHRINK
+   PROP:BUF$ s" 123 " T$= ;
 
 : PE-MAIN ( -- )
    T-RESET
