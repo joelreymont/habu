@@ -287,6 +287,57 @@ public
   `;package` outside a package, nested packages, missing package names, and
   qualified package names).
 
+#### Importing a package's public words with `using`
+
+`using NAME` is the consumer-side import: it makes package `NAME`'s **public**
+wordlist visible to bare, unqualified lookup in the current scope, without
+opening `NAME`. It is the readable form for pure DSL files — a suite manifest
+reads `using TEST … SUITE foo … ;SUITE … ;using` instead of spelling
+`TEST:SUITE`/`TEST:;SUITE` at every site.
+
+```forth
+using TEST
+
+SUITE parser-cases
+   parser.f
+;SUITE
+
+;using
+```
+
+- `using NAME` consumes the next token, rejects a missing name and a name
+  containing `:`, and rejects a name that is not a known package. It is valid at
+  top level and inside an open package. Only `NAME`'s public wordlist joins the
+  search — its private words stay invisible, and no definition can ever land in
+  `NAME` through a `using` (definitions still target the current scope's
+  wordlist, exactly as without the `using`).
+- The scope of a `using` ends at the matching `;using` (the `FOO … ;FOO`
+  block-pair convention), at the enclosing `;package` when the `using` was opened
+  inside a package, or at the end of the load file — whichever comes first.
+  `;using` closes the most recent `using`; a `;using` with no open `using` is an
+  error. Multiple concurrent usings are allowed up to a small fixed capacity
+  (`USE-MAX`, 16); a further `using` past the limit is rejected.
+- Lookup order for a bare tail is the open-package scope (private then own
+  public) and the global wordlist FIRST, then each used package's public
+  wordlist. `using` is therefore purely additive: it only ever resolves a name
+  that was otherwise unresolved and can never silently shadow an existing
+  binding. A tail found both in the open scope and a used package resolves to the
+  open scope with no error (inner scope wins); a bare tail resolving in MORE THAN
+  ONE used public wordlist is a hard error (fail closed, matching the
+  no-duplicate wordlist discipline). The same package named by two usings is not
+  ambiguous.
+- Qualified `NAME:WORD` lookup is unchanged and always available regardless of
+  any `using`.
+- Resolution happens at compile/certify time: a call compiled inside a `using`
+  scope keeps resolving after `;using`, and the AOT/baked image needs no runtime
+  using-state. The checker resolves a bare tail through the used publics
+  identically to the runtime — a checked body that reads a used public certifies,
+  a used private or an ambiguous tail is rejected before runtime — so
+  certification and execution always agree.
+- `using` state is file-local: it is snapshotted per eval frame and per REPL
+  line and rolled back with the open-package scope, so a `using` left open in an
+  included file (or aborted by a throw) never leaks to the caller.
+
 ### Structures And Enums
 
 Habu's live composite-type declaration surface is the typed-family DSL in

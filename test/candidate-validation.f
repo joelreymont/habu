@@ -191,7 +191,7 @@ variable FAILS
 \ against the enumerated rows, so a case dropped without adjusting its count
 \ trips loudly. The lone top-row case is a positive, counted here too.
 22 constant N-POSITIVE
-3 constant N-DIAGNOSTIC
+4 constant N-DIAGNOSTIC
 9 constant N-NEGATIVE
 
 : SHARED-CASES ( -- )
@@ -210,6 +210,7 @@ variable FAILS
    s" test/layout-defer.f" construct case-kind positive 0 s" " s" " RUN-CASE
    s" test/engine-suite.f" construct case-kind diagnostic 0 s" " s" habu: in mea1:" RUN-CASE
    s" test/type-ctor-suite.f" construct case-kind diagnostic 0 s" " s" duplicate family" RUN-CASE
+   s" test/using-test.f" construct case-kind diagnostic 0 s" " s" hb: using: unknown package:" RUN-CASE
    s" test/type-export-suite.f" construct case-kind diagnostic 0 s" " s" habu: in xpu3:" RUN-CASE
    s" test/layout-buffer-forge.f" construct case-kind negative 70
       s" LAYOUT-BUFFER-FORGE-ARMED" s" E-UNDEFINED: LBUF-PEND!" RUN-CASE

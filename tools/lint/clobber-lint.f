@@ -123,6 +123,7 @@ variable RX  variable RACC
    a u s" Ltok" LINT-STR=CI if 0 0 CL-ADD exit then
    a u s" Lsrcrd" LINT-STR=CI if 0 9 CL-ADD exit then
    a u s" Lfind" LINT-STR=CI if 0 11 CL-ADD 12 CL-ADD 13 CL-ADD exit then
+   a u s" Lfindused" LINT-STR=CI if 0 11 CL-ADD 12 CL-ADD 13 CL-ADD exit then
    a u s" Lnum" LINT-STR=CI if 0 2 CL-ADD 11 CL-ADD 12 CL-ADD exit then
    a u s" Lvralloc" LINT-STR=CI if 0 14 CL-ADD exit then
    a u s" Lfralloc" LINT-STR=CI if 0 14 CL-ADD exit then

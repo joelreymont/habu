@@ -1412,58 +1412,59 @@ variable SS-I  variable SS-J  variable SS-BAD
 \ AXR 264 1 0 1 prim - schema-root-n@ - pe-n pe-out
 \ AXR 265 0 2 0 prim - checker-defer - pe-ptr-u8 pe-in pe-n pe-in
 \ AXR 266 0 2 0 prim - checker-package - pe-ptr-u8 pe-in pe-n pe-in
-\ AXR 267 0 0 0 prim - checker-public - -
-\ AXR 268 0 0 0 prim - checker-private - -
-\ AXR 269 0 0 0 prim - checker-end-package - -
-\ AXR 270 0 3 1 prim - ffi-call trusted-only pe-ptr-a pe-in pe-n pe-in pe-n pe-in pe-n pe-out
-\ AXR 271 0 3 1 prim - ffi-call-n trusted-only pe-ptr-a pe-in pe-n pe-in pe-n pe-in pe-n pe-out
-\ AXR 272 0 4 1 prim - ffi-call-bounded trusted-only pe-ptr-a pe-in pe-ptr-b pe-in pe-n pe-in pe-n pe-in pe-n pe-out
-\ AXR 273 0 7 1 prim - ffi-call-abi-bounded trusted-only pe-ptr-a pe-in pe-ptr-b pe-in pe-ptr-c pe-in pe-ptr-d pe-in pe-ptr-e pe-in pe-n pe-in pe-n pe-in pe-n pe-out
-\ AXR 274 0 7 1 prim - ffi-call-abi-r-bounded trusted-only pe-ptr-a pe-in pe-ptr-b pe-in pe-ptr-c pe-in pe-ptr-d pe-in pe-ptr-e pe-in pe-n pe-in pe-n pe-in pe-r pe-out
-\ AXR 275 0 7 1 prim - ffi-call-abi trusted-only pe-ptr-a pe-in pe-ptr-b pe-in pe-ptr-c pe-in pe-n pe-in pe-n pe-in pe-n pe-in pe-n pe-in pe-n pe-out
-\ AXR 276 0 7 1 prim - ffi-call-abi-r trusted-only pe-ptr-a pe-in pe-ptr-b pe-in pe-ptr-c pe-in pe-n pe-in pe-n pe-in pe-n pe-in pe-n pe-in pe-r pe-out
-\ AXR 277 3 2 1 prim - f+ - pe-r pe-in pe-r pe-in pe-r pe-out
-\ AXR 278 3 2 1 prim - f- - pe-r pe-in pe-r pe-in pe-r pe-out
-\ AXR 279 3 2 1 prim - f* - pe-r pe-in pe-r pe-in pe-r pe-out
-\ AXR 280 3 2 1 prim - f/ - pe-r pe-in pe-r pe-in pe-r pe-out
-\ AXR 281 3 1 1 prim - fnegate - pe-r pe-in pe-r pe-out
-\ AXR 282 3 1 1 prim - fabs - pe-r pe-in pe-r pe-out
-\ AXR 283 3 1 1 prim - fsqrt - pe-r pe-in pe-r pe-out
-\ AXR 284 3 2 1 prim - f< - pe-r pe-in pe-r pe-in pe-f pe-out
-\ AXR 285 3 2 1 prim - f> - pe-r pe-in pe-r pe-in pe-f pe-out
-\ AXR 286 3 2 1 prim - f= - pe-r pe-in pe-r pe-in pe-f pe-out
-\ AXR 287 3 1 1 prim - f0< - pe-r pe-in pe-f pe-out
-\ AXR 288 3 1 1 prim - f0= - pe-r pe-in pe-f pe-out
-\ AXR 289 1 1 1 prim - s>f - pe-n pe-in pe-r pe-out
-\ AXR 290 3 1 1 prim - f>s - pe-r pe-in pe-n pe-out
-\ AXR 291 0 1 0 prim - f. - pe-r pe-in
-\ AXR 292 0 0 2 prim - s" - pe-ptr-u8 pe-out pe-n pe-out
-\ AXR 293 0 0 1 prim - c" - pe-ptr-u8 pe-out
-\ AXR 294 0 0 0 prim - ." - -
-\ AXR 295 0 0 2 prim - s\" - pe-ptr-u8 pe-out pe-n pe-out
-\ AXR 296 0 0 1 prim - c\" - pe-ptr-u8 pe-out
-\ AXR 297 0 0 0 prim - .\" - -
-\ AXR 298 0 0 1 prim - ['] - pe-n pe-out
-\ AXR 299 0 0 1 prim - char - pe-n pe-out
-\ AXR 300 0 0 1 prim - [char] - pe-n pe-out
-\ AXR 301 1 1 0 prim - emit - pe-n pe-in
-\ AXR 302 1 0 0 prim - cr - -
-\ AXR 303 1 0 0 prim - space - -
-\ AXR 304 1 1 0 prim - u. - pe-n pe-in
-\ AXR 305 0 0 1 prim - create - pe-ptr-a pe-out
-\ AXR 306 0 0 1 prim - variable - pe-ptr-a pe-out
-\ AXR 307 0 0 1 prim - constant - pe-a pe-out
-\ AXR 308 0 0 1 prim - getpid - pe-n pe-out
-\ AXR 309 0 1 1 prim - proc-watch-open - pe-n pe-in pe-n pe-out
-\ AXR 310 0 2 1 prim - kill-errno - pe-n pe-in pe-n pe-in pe-n pe-out
-\ AXR 311 0 3 1 prim - execve - pe-ptr-u8 pe-in pe-ptr-a pe-in pe-ptr-a pe-in pe-n pe-out
-\ AXR 312 0 2 0 prim - ext-mark-free-tail - pe-ptr-u8 pe-in pe-n pe-in
-\ AXR 313 0 0 0 prim - typefamily - -
-\ AXR 314 0 0 0 prim - sumtype - -
-\ AXR 315 0 0 0 prim - enum - -
-\ AXR 316 0 0 0 prim - product - -
-\ AXR 317 0 1 0 prim - layout-buffer - pe-n pe-in
-\ AXR 318 0 5 0 prim - ldefer-bind - pe-n pe-in pe-n pe-in pe-n pe-in pe-n pe-in pe-n pe-in
-\ AXR 319 0 0 0 prim - defer-layout-buffer - -
-\ AXR 320 0 1 0 prim - typed-buffer - pe-n pe-in
-\ AXR 321 0 0 0 prim - typed-variable - -
+\ AXR 267 0 2 0 prim - checker-using - pe-ptr-u8 pe-in pe-n pe-in
+\ AXR 268 0 0 0 prim - checker-public - -
+\ AXR 269 0 0 0 prim - checker-private - -
+\ AXR 270 0 0 0 prim - checker-end-package - -
+\ AXR 271 0 3 1 prim - ffi-call trusted-only pe-ptr-a pe-in pe-n pe-in pe-n pe-in pe-n pe-out
+\ AXR 272 0 3 1 prim - ffi-call-n trusted-only pe-ptr-a pe-in pe-n pe-in pe-n pe-in pe-n pe-out
+\ AXR 273 0 4 1 prim - ffi-call-bounded trusted-only pe-ptr-a pe-in pe-ptr-b pe-in pe-n pe-in pe-n pe-in pe-n pe-out
+\ AXR 274 0 7 1 prim - ffi-call-abi-bounded trusted-only pe-ptr-a pe-in pe-ptr-b pe-in pe-ptr-c pe-in pe-ptr-d pe-in pe-ptr-e pe-in pe-n pe-in pe-n pe-in pe-n pe-out
+\ AXR 275 0 7 1 prim - ffi-call-abi-r-bounded trusted-only pe-ptr-a pe-in pe-ptr-b pe-in pe-ptr-c pe-in pe-ptr-d pe-in pe-ptr-e pe-in pe-n pe-in pe-n pe-in pe-r pe-out
+\ AXR 276 0 7 1 prim - ffi-call-abi trusted-only pe-ptr-a pe-in pe-ptr-b pe-in pe-ptr-c pe-in pe-n pe-in pe-n pe-in pe-n pe-in pe-n pe-in pe-n pe-out
+\ AXR 277 0 7 1 prim - ffi-call-abi-r trusted-only pe-ptr-a pe-in pe-ptr-b pe-in pe-ptr-c pe-in pe-n pe-in pe-n pe-in pe-n pe-in pe-n pe-in pe-r pe-out
+\ AXR 278 3 2 1 prim - f+ - pe-r pe-in pe-r pe-in pe-r pe-out
+\ AXR 279 3 2 1 prim - f- - pe-r pe-in pe-r pe-in pe-r pe-out
+\ AXR 280 3 2 1 prim - f* - pe-r pe-in pe-r pe-in pe-r pe-out
+\ AXR 281 3 2 1 prim - f/ - pe-r pe-in pe-r pe-in pe-r pe-out
+\ AXR 282 3 1 1 prim - fnegate - pe-r pe-in pe-r pe-out
+\ AXR 283 3 1 1 prim - fabs - pe-r pe-in pe-r pe-out
+\ AXR 284 3 1 1 prim - fsqrt - pe-r pe-in pe-r pe-out
+\ AXR 285 3 2 1 prim - f< - pe-r pe-in pe-r pe-in pe-f pe-out
+\ AXR 286 3 2 1 prim - f> - pe-r pe-in pe-r pe-in pe-f pe-out
+\ AXR 287 3 2 1 prim - f= - pe-r pe-in pe-r pe-in pe-f pe-out
+\ AXR 288 3 1 1 prim - f0< - pe-r pe-in pe-f pe-out
+\ AXR 289 3 1 1 prim - f0= - pe-r pe-in pe-f pe-out
+\ AXR 290 1 1 1 prim - s>f - pe-n pe-in pe-r pe-out
+\ AXR 291 3 1 1 prim - f>s - pe-r pe-in pe-n pe-out
+\ AXR 292 0 1 0 prim - f. - pe-r pe-in
+\ AXR 293 0 0 2 prim - s" - pe-ptr-u8 pe-out pe-n pe-out
+\ AXR 294 0 0 1 prim - c" - pe-ptr-u8 pe-out
+\ AXR 295 0 0 0 prim - ." - -
+\ AXR 296 0 0 2 prim - s\" - pe-ptr-u8 pe-out pe-n pe-out
+\ AXR 297 0 0 1 prim - c\" - pe-ptr-u8 pe-out
+\ AXR 298 0 0 0 prim - .\" - -
+\ AXR 299 0 0 1 prim - ['] - pe-n pe-out
+\ AXR 300 0 0 1 prim - char - pe-n pe-out
+\ AXR 301 0 0 1 prim - [char] - pe-n pe-out
+\ AXR 302 1 1 0 prim - emit - pe-n pe-in
+\ AXR 303 1 0 0 prim - cr - -
+\ AXR 304 1 0 0 prim - space - -
+\ AXR 305 1 1 0 prim - u. - pe-n pe-in
+\ AXR 306 0 0 1 prim - create - pe-ptr-a pe-out
+\ AXR 307 0 0 1 prim - variable - pe-ptr-a pe-out
+\ AXR 308 0 0 1 prim - constant - pe-a pe-out
+\ AXR 309 0 0 1 prim - getpid - pe-n pe-out
+\ AXR 310 0 1 1 prim - proc-watch-open - pe-n pe-in pe-n pe-out
+\ AXR 311 0 2 1 prim - kill-errno - pe-n pe-in pe-n pe-in pe-n pe-out
+\ AXR 312 0 3 1 prim - execve - pe-ptr-u8 pe-in pe-ptr-a pe-in pe-ptr-a pe-in pe-n pe-out
+\ AXR 313 0 2 0 prim - ext-mark-free-tail - pe-ptr-u8 pe-in pe-n pe-in
+\ AXR 314 0 0 0 prim - typefamily - -
+\ AXR 315 0 0 0 prim - sumtype - -
+\ AXR 316 0 0 0 prim - enum - -
+\ AXR 317 0 0 0 prim - product - -
+\ AXR 318 0 1 0 prim - layout-buffer - pe-n pe-in
+\ AXR 319 0 5 0 prim - ldefer-bind - pe-n pe-in pe-n pe-in pe-n pe-in pe-n pe-in pe-n pe-in
+\ AXR 320 0 0 0 prim - defer-layout-buffer - -
+\ AXR 321 0 1 0 prim - typed-buffer - pe-n pe-in
+\ AXR 322 0 0 0 prim - typed-variable - -

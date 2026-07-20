@@ -196,6 +196,7 @@ variable LKWIMM variable LKWPOST variable LKWCOMPC
 variable LKWDOES variable LKWQUOT variable LKWSEMIQ variable LKWPACKAGE variable LKWPUBLIC
 variable LKWTRUSTED variable LKWTRUST variable LKWCHKDOES variable LKWKERNEL variable LKWPRIVATE variable LKWSEMIPACKAGE variable LKWDUPDEF variable LCHKPACKAGE variable LCHKPUB variable LCHKPRI variable LCHKENDPKG
 variable LKWEXPORT variable LCHKEXPORT
+variable LKWUSING variable LKWSEMIUSING variable LCHKUSING variable LFINDUSED
 9 constant A   10 constant B   11 constant C
 12 constant DREG  13 constant EREG
 
@@ -1279,6 +1280,10 @@ variable SZA-I
    11 DATA PKG-PRI-CELL LDR,    11 12 PKGSNAP-PRI STR,
    11 DATA PKG-PARENT-CELL LDR, 11 12 PKGSNAP-PARENT STR,
    11 DATA PKG-REC-CELL LDR,    11 12 PKGSNAP-REC STR,
+   \ snapshot the `using`-scope depth alongside package scope, so a nested evaluate /
+   \ included file that opens usings has them rolled back to this boundary on clean
+   \ exit (EM-EVAL-CLEAN-EXIT) and on throw (LEVALREC) — usings are file-local.
+   11 USE-DEPTH-CELL LIT64,  11 DATA 11 ADD,  11 11 0 LDR,  11 12 PKGSNAP-USE STR,
    11 DATA EVALD-CELL LDR,  11 11 1 ADDI,  11 DATA EVALD-CELL STR,
    9 DATA INP-CELL STR,                              \ INP = a
    11 9 10 ADD,  11 DATA INE-CELL STR,               \ INE = a + u

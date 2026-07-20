@@ -511,11 +511,33 @@ $40 constant PKGSNAP-STRIDE              \ 8-cell slot (5 used), power-of-2 for 
 16 constant PKGSNAP-PRI
 24 constant PKGSNAP-PARENT
 32 constant PKGSNAP-REC
+40 constant PKGSNAP-USE                   \ in-slot: `using`-scope depth (slot 5 of the 8-cell stride)
 PKGSNAP-OFF EVAL-MAX-DEPTH PKGSNAP-STRIDE * + constant PKGSNAP-END
+
+\ --- `using`-scope import band (dot habu-using-import-pkg-a07dd7ba) ---
+\ Consumer-side namespace import: `using NAME` makes package NAME's PUBLIC wordlist
+\ visible to bare lookup until `;using`, `;package`, or the end of the load file.
+\ Live state is a small fixed-capacity stack of public wordlist IDs plus a depth
+\ counter, all in one DATA band above PKGSNAP (bumping DATA-START, the PKGSNAP /
+\ protected-WID growth precedent, so no existing engine offset moves). The depth
+\ cell is the single source of truth for how many usings are live: engine machine
+\ code owns it (C-USING pushes, C-END-USING pops, `package`/`;package` and the
+\ eval-frame / REPL boundaries save+restore it), and the checker reads the same
+\ cell through `data-base USE-DEPTH-CELL +` so its parallel package-name mirror
+\ (checker.f CHK-USE-NAMES) is bounded by the identical depth with no separate
+\ counter to drift. The depth is always 0 at rest (usings are file-local and closed
+\ before seal/snapshot), so the band is transient like PKGSNAP.
+16 constant USE-MAX                       \ concurrent `using` capacity (E-code on overflow)
+PKGSNAP-END constant USE-BAND-OFF
+USE-BAND-OFF          constant USE-DEPTH-CELL      \ live using depth (u64)
+USE-BAND-OFF 8 +      constant USE-PKG-SAVE-CELL   \ depth saved at `package` open (`;package` restores)
+USE-BAND-OFF 16 +     constant USE-RPKG-SAVE-CELL  \ depth saved at REPL line start (recover restores)
+USE-BAND-OFF 24 +     constant USE-WIDS-OFF        \ public-wid array base (USE-MAX u64 cells)
+USE-WIDS-OFF USE-MAX cells + constant USE-BAND-END
 
 \ DATA-START: first offset of the user DP heap (allot/,/c,); everything below is
 \ engine-reserved state (snapshot saves [0,DATA-START); DP-CHECK bounds the heap
 \ >= DATA-START; task-user cells stop at EVAL-FRAME and sixteen evaluator
 \ frames occupy $43C0..$47C0. The lowering state ends at $8000; the pre-trust defer
 \ pending band follows, then the immutable lowering blob lives outside DATA.
-PKGSNAP-END constant DATA-START
+USE-BAND-END constant DATA-START

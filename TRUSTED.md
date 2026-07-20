@@ -149,6 +149,13 @@ that source is explicitly certified; they are not stale-checked by the default
 | c-public | `--` | Interpreter `public` keyword switches the active package's current wordlist to the exported public wordlist and syncs checker public mode. | `test/gate-dictionary.f`, `test/run.f` | src/habu/habu2.f | 2026-06-27 |  |  |
 | c-private | `--` | Interpreter `private` keyword switches the active package's current wordlist back to the private wordlist and syncs checker private mode. | `test/gate-dictionary.f`, `test/run.f` | src/habu/habu2.f | 2026-06-27 |  |  |
 | c-end-package | `--` | Interpreter `;package` keyword restores the saved parent current wordlist and clears both runtime and checker package frames. | `test/gate-dictionary.f`, `test/run.f` | src/habu/habu2.f | 2026-06-27 |  |  |
+| c-call-checker-using | `--` | `using` keyword bridge pushes the package token to `CHECKER-USING`; raw dictionary lookup of the checker word and the generated call setup are outside Forth inference. | `test/using-test.f`, `test/run.f` | src/habu/habu2.f | 2026-07-20 |  |  |
+| c-using-name-guard | `--` | `using` name guard consumes the following token and rejects a missing name or an embedded namespace separator in generated registers before lookup. | `test/using-test.f`, `test/run.f` | src/habu/habu2.f | 2026-07-20 |  |  |
+| c-using-wid | `--` | `using` helper scans namespace records for the named package and leaves its public wordlist id in a generated register, failing closed on an unknown package. | `test/using-test.f`, `test/run.f` | src/habu/habu2.f | 2026-07-20 |  |  |
+| c-using-push | `--` | `using` helper pushes a public wordlist id onto the fixed-capacity using stack, rejects overflow, and mirrors the name into the checker; register and fixed-DATA effects are raw emitter state. | `test/using-test.f`, `test/run.f` | src/habu/habu2.f | 2026-07-20 |  |  |
+| c-using | `--` | Interpreter `using` keyword imports a package's public wordlist for bare lookup in the current scope. | `test/using-test.f`, `test/run.f` | src/habu/habu2.f | 2026-07-20 |  |  |
+| c-end-using | `--` | Interpreter `;using` keyword pops the most recent using from the using stack, rejecting an unbalanced close. | `test/using-test.f`, `test/run.f` | src/habu/habu2.f | 2026-07-20 |  |  |
+| emit-find-used | `--` | Used-publics resolver leaf scans the dictionary for a bare tail across the live used public wordlists, failing closed on a match in more than one; raw register scan is outside Forth inference. | `test/using-test.f`, `test/run.f` | src/habu/habu2.f | 2026-07-20 |  |  |
 | em-interpret-define-keywords | `--` | Emits interpreter-mode defining-word dispatch cases grouped separately from literal and lookup fallback. | `tools/compiler-dispatch-test.f`, `test/run.f` | src/habu/habu2.f | 2026-06-25 |  |  |
 | em-interpret-string-keywords | `--` | Emits interpreter-mode string parsing-word dispatch cases. | `tools/compiler-dispatch-test.f`, `test/run.f` | src/habu/habu2.f | 2026-06-25 |  |  |
 | em-interpret-number | `label --` | Emits interpreter-mode number parsing and branches to the caller's not-number label on failure. | `tools/compiler-dispatch-test.f`, `test/run.f` | src/habu/habu2.f | 2026-06-27 |  |  |
@@ -966,7 +973,7 @@ cap:wide-memory-lowering TRUSTED.md#cap-wide-memory-lowering
 <!-- trusted-inventory-classes
 fold-baseline 2
 src/habu/build.f builder-emit habu-builder-trust-rows-c5d41af6 1
-src/habu/habu2.f builder-emit habu-builder-trust-rows-c5d41af6 131
+src/habu/habu2.f builder-emit habu-builder-trust-rows-c5d41af6 138
 src/habu/hide.f builder-emit habu-builder-trust-rows-c5d41af6 1
 src/habu/maker.f builder-emit habu-builder-trust-rows-c5d41af6 1
 src/habu/verify-source.f:TRUST builder-emit habu-builder-trust-rows-c5d41af6
@@ -1604,6 +1611,7 @@ prim - schema-n@ - pe-n pe-out
 prim - schema-root-n@ - pe-n pe-out
 prim - checker-defer - pe-ptr-u8 pe-in pe-n pe-in
 prim - checker-package - pe-ptr-u8 pe-in pe-n pe-in
+prim - checker-using - pe-ptr-u8 pe-in pe-n pe-in
 prim - checker-public - -
 prim - checker-private - -
 prim - checker-end-package - -

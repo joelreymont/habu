@@ -1322,6 +1322,7 @@ here RESTAB-BUF - constant RESTAB-LEN
    LKWTRUST LABEL@ LBL, s" trust" BYTES,      LKWCHKDOES LABEL@ LBL, s" check-does!" BYTES,  LKWPACKAGE LABEL@ LBL, s" package" BYTES,  LKWPUBLIC LABEL@ LBL, s" public" BYTES,
    LKWPRIVATE LABEL@ LBL, s" private" BYTES,  LKWSEMIPACKAGE LABEL@ LBL, s" ;package" BYTES,  LKWDUPDEF LABEL@ LBL, s" duplicate definition: " BYTES,  LKWQUOT LABEL@ LBL,  QUOT-KW 2 BYTES,   LKWSEMIQ LABEL@ LBL,  SEMIQ-KW 2 BYTES,  LKWDEFER LABEL@ LBL, s" defer" BYTES,  LKWIS LABEL@ LBL, s" is" BYTES,  LKWDEFERUNSET LABEL@ LBL, s" defer-unset" BYTES,  LCHKPACKAGE LABEL@ LBL, s" checker-package" BYTES,  LCHKPUB LABEL@ LBL, s" checker-public" BYTES,  LCHKPRI LABEL@ LBL, s" checker-private" BYTES,  LCHKENDPKG LABEL@ LBL, s" checker-end-package" BYTES,  LCHKDEFER LABEL@ LBL, s" checker-defer" BYTES,  LRESTAB LABEL@ LBL, RESTAB-BUF RESTAB-LEN BYTES,  LSIGPTRA LABEL@ LBL, s" -- ptr a" BYTES,  LSIGA LABEL@ LBL, s" -- a" BYTES,  LRECWPUB LABEL@ LBL, s" rec-wide-publish" BYTES,  LRECMIQ LABEL@ LBL, s" rec-min-in@" BYTES,  LP2DOESW LABEL@ LBL, s" hb: does>-split cannot lower layout width facts: " BYTES,
    LKWEXPORT LABEL@ LBL, s" export" BYTES,  LCHKEXPORT LABEL@ LBL, s" checker-export" BYTES,
+   LKWUSING LABEL@ LBL, s" using" BYTES,  LKWSEMIUSING LABEL@ LBL, s" ;using" BYTES,  LCHKUSING LABEL@ LBL, s" checker-using" BYTES,
    LKWCONSTRUCT LABEL@ LBL, s" construct" BYTES,  LKWMATCH LABEL@ LBL, s" match" BYTES,  LKWSEMIMATCH LABEL@ LBL, s" ;match" BYTES,
    LTFLCONFAM LABEL@ LBL, s" tfl-con-fam?" BYTES,  LTFLCVAR LABEL@ LBL, s" tfl-cvar?" BYTES,
    LTFLMATCHFAM LABEL@ LBL, s" tfl-match-fam?" BYTES,  LTFLNAME LABEL@ LBL, s" tfam-name$" BYTES,
@@ -2810,14 +2811,20 @@ variable LTOPHOOK
    11 DATA TKA-CELL LDR,  11 11 0 LDRB,  LVPUSHC LABEL@ BL, ;
 
 : C-TICK ( -- )
-   LBL {: tk :}
+   LBL LBL LBL {: tk:label usedtry:label found:label :}
    LTOK LABEL@ BL,  C-QUALIFY-SEAL-GUARD                 \ reject `' RESERVED:tail` once sealed (TFAM 2b-iii)
    9 DATA TKA-CELL LDR,  10 DATA TKL-CELL LDR,  LFIND LABEL@ BL,
-   13 tk CBZ,
+   13 usedtry CBZ,                                       \ open-scope + global miss -> try used publics (` ' SUITE` under a `using`)
+   found LBL,
    14 13 8 ANDI,  14 LWIDE LABEL@ CBNZ,                  \ `' <wide-effect word>` would launder the bundle past the dispatch gate
    14 13 16 ANDI,  14 LINTERNAL LABEL@ CBNZ,             \ `' <internal word>` would launder the xt past the dispatch gate (execute)
    11 G-PUSH
    TOP-EV-TICK C-TOPHOOK-FLAGS
+   tk B,
+   usedtry LBL,
+      9 DATA TKA-CELL LDR,  10 DATA TKL-CELL LDR,  LFINDUSED LABEL@ BL,
+      13 tk CBZ,                                         \ undefined `' X` stays the pre-existing no-op
+      found B,
    tk LBL, ;
 
 : C-BTICK ( -- )
@@ -4341,6 +4348,20 @@ s" c-call-checker-private" s" --" TRUST
    done LBL, ;
 s" c-call-checker-end-package" s" --" TRUST
 
+\ Mirror `using NAME` into the checker so its resolution (checker.f
+\ CHECKER-FIND-ACTIVE-SYM) sees the same used publics as the engine. Passes the
+\ package name token (TKA/TKL); checker-using records it into CHK-USE-NAMES at the
+\ current shared USE-DEPTH. Skips (no-op) when the checker word is absent, exactly
+\ like the package hooks — the engine still owns USE-DEPTH / USE-WIDS.
+: C-CALL-CHECKER-USING ( -- )
+   LBL {: done:label :}
+   LCHKUSING 13 done C-FIND-CHECKER               \ 13 = len "checker-using"
+   9 DATA TKA-CELL LDR,  9 G-PUSH
+   9 DATA TKL-CELL LDR,  9 G-PUSH
+   C-CALL-X11-SAVED
+   done LBL, ;
+s" c-call-checker-using" s" --" TRUST
+
 : C-PACKAGE-FAIL ( n -- ) {: rc:n :}                  \ package keyword misuse ($4A no name / $4B wrong context): recoverable inside evaluate, fail-closed exit rc at top level
    0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,
    0 rc MOVZ,  LCOMPILEDIE LABEL@ B, ;
@@ -4465,6 +4486,11 @@ s" c-package-seal-guard" s" --" TRUST
    2 3 MOVZ,  LPROT LABEL@ BL,
    C-PACKAGE-ENSURE
    2 5 MOVZ,  LPROT LABEL@ BL,
+   \ remember the using-scope depth at package open; `;package` restores it so usings
+   \ opened inside this package block end at ;package (x9=addr, x10=value scratch;
+   \ x11/x12/x5 hold the package wids/record and stay live for the stores below).
+   9 USE-DEPTH-CELL LIT64,  9 DATA 9 ADD,  10 9 0 LDR,
+   9 USE-PKG-SAVE-CELL LIT64,  9 DATA 9 ADD,  10 9 0 STR,
    9 DATA CUR-CELL LDR,  9 DATA PKG-PARENT-CELL STR,
    11 DATA PKG-PUB-CELL STR,  12 DATA PKG-PRI-CELL STR,
    5 DATA PKG-REC-CELL STR,
@@ -4503,8 +4529,163 @@ s" c-private" s" --" TRUST
    9 DATA PKG-PARENT-CELL LDR,  9 DATA CUR-CELL STR,
    9 0 MOVZ,
    9 DATA PKG-PUB-CELL STR,  9 DATA PKG-PRI-CELL STR,
-   9 DATA PKG-PARENT-CELL STR,  9 DATA PKG-REC-CELL STR, ;
+   9 DATA PKG-PARENT-CELL STR,  9 DATA PKG-REC-CELL STR,
+   \ restore the using-scope depth to the package-open boundary: usings opened inside
+   \ this package block end here (the checker reads the same shared USE-DEPTH).
+   9 USE-PKG-SAVE-CELL LIT64,  9 DATA 9 ADD,  10 9 0 LDR,
+   9 USE-DEPTH-CELL LIT64,  9 DATA 9 ADD,  10 9 0 STR, ;
 s" c-end-package" s" --" TRUST
+
+\ ---- `using NAME` / `;using`: consumer-side package import (dot habu-using-import-pkg-a07dd7ba) ----
+\ `using NAME` makes package NAME's PUBLIC wordlist visible to bare lookup until the
+\ matching `;using`, the enclosing `;package`, or the end of the load file. Only NAME's
+\ public WID joins the search (privates stay invisible), definitions still target the
+\ current scope's wordlist (nothing lands in NAME), and qualified NAME:WORD is unchanged.
+\ The used-publics search (EMIT-FIND-USED) runs only after the open-scope + global chain
+\ misses, so `using` is purely additive and can never silently shadow an existing binding;
+\ a bare tail resolving in two used packages is a hard error.
+
+: C-USING-NAME-GUARD ( -- )   \ consume the next token; reject a missing name / a ':' in it
+   LBL LBL LBL LBL LBL LBL {: mmiss:label hastok:label cscan:label cbad:label cmsg:label cok:label :}
+   LTOK LABEL@ BL,  0 hastok CBNZ,
+      0 2 MOVZ,  1 mmiss ADR,  2 31 MOVZ,  NR-WRITE SYS,
+      0 2 MOVZ,  1 LQNL LABEL@ ADR,  1 1 1 ADDI,  2 1 MOVZ,  NR-WRITE SYS,
+      0 89 MOVZ,  LCOMPILEDIE LABEL@ B,               \ 89 = ENGINE-ERROR:USING-NO-NAME
+   mmiss LBL,  s" hb: using: missing package name" BYTES,
+   hastok LBL,
+   14 0 MOVZ,
+   cscan LBL,
+      15 DATA TKL-CELL LDR,  14 15 CMP,  C-GE cok BCOND,
+      15 DATA TKA-CELL LDR,  15 15 14 ADD,  15 15 0 LDRB,  15 $3A CMPI,  C-EQ cbad BCOND,
+      14 14 1 ADDI,  cscan B,
+   cbad LBL,
+      0 2 MOVZ,  1 cmsg ADR,  2 46 MOVZ,  NR-WRITE SYS,
+      90 C-DIE-TOKEN-NL                               \ 90 = ENGINE-ERROR:USING-BAD-NAME
+   cmsg LBL,  s" hb: using: package name must not contain ':': " BYTES,
+   cok LBL, ;
+s" c-using-name-guard" s" --" TRUST
+
+: C-USING-WID ( -- )   \ TKA/TKL name a package -> x2 = its public WID; die unknown otherwise
+   LBL LBL LBL LBL LBL LBL {: loop:label miss:label hit:label notfound:label umsg:label done:label :}
+   5 DBASE 0 ADDI,  6 NDICT 0 ADDI,
+   loop LBL,
+      6 notfound CBZ,
+      hit miss C-PACKAGE-RECORD-MATCH            \ x5 = candidate; hit iff wid==-1 && name==token
+      hit LBL,  2 5 0 LDR,  done B,              \ x2 = record[0] = package public WID
+      miss LBL,  5 5 DREC ADDI,  6 6 1 SUBI,  loop B,
+   notfound LBL,
+      0 2 MOVZ,  1 umsg ADR,  2 28 MOVZ,  NR-WRITE SYS,
+      91 C-DIE-TOKEN-NL                               \ 91 = ENGINE-ERROR:USING-UNKNOWN
+   umsg LBL,  s" hb: using: unknown package: " BYTES,
+   done LBL, ;
+s" c-using-wid" s" --" TRUST
+
+: C-USING-PUSH ( -- )   \ x2 = public WID; push it onto the using stack (overflow -> die)
+   LBL LBL {: fmsg:label pushok:label :}
+   7 USE-DEPTH-CELL LIT64,  7 DATA 7 ADD,  8 7 0 LDR,       \ x8 = live using depth (overflow test)
+   14 USE-MAX MOVZ,  8 14 CMP,  C-LT pushok BCOND,
+      0 2 MOVZ,  1 fmsg ADR,  2 39 MOVZ,  NR-WRITE SYS,
+      92 C-DIE-TOKEN-NL                               \ 92 = ENGINE-ERROR:USING-OVERFLOW
+   fmsg LBL,  s" hb: using: too many concurrent usings: " BYTES,
+   pushok LBL,
+      7 USE-DEPTH-CELL LIT64,  7 DATA 7 ADD,  8 7 0 LDR,   \ reload depth on the accepted path (no cross-syscall live reg)
+      14 USE-WIDS-OFF LIT64,  14 DATA 14 ADD,  15 8 3 LSLI,  14 14 15 ADD,  2 14 0 STR,   \ USE-WIDS[depth] = wid
+      C-CALL-CHECKER-USING                                 \ mirror name into CHK-USE-NAMES[depth] (reads pre-increment depth)
+      7 USE-DEPTH-CELL LIT64,  7 DATA 7 ADD,  8 7 0 LDR,  8 8 1 ADDI,  8 7 0 STR, ;      \ depth++
+s" c-using-push" s" --" TRUST
+
+: C-USING ( -- )
+   C-TASK-LIVE-GUARD
+   C-USING-NAME-GUARD
+   C-USING-WID
+   C-USING-PUSH ;
+s" c-using" s" --" TRUST
+
+: C-END-USING ( -- )
+   C-TASK-LIVE-GUARD
+   LBL LBL {: ok:label umsg:label :}
+   7 USE-DEPTH-CELL LIT64,  7 DATA 7 ADD,  8 7 0 LDR,       \ x8 = live using depth (underflow test)
+   8 ok CBNZ,
+      0 2 MOVZ,  1 umsg ADR,  2 32 MOVZ,  NR-WRITE SYS,
+      0 2 MOVZ,  1 LQNL LABEL@ ADR,  1 1 1 ADDI,  2 1 MOVZ,  NR-WRITE SYS,
+      0 93 MOVZ,  LCOMPILEDIE LABEL@ B,               \ 93 = ENGINE-ERROR:USING-UNBALANCED
+   umsg LBL,  s" hb: ;using without an open using" BYTES,
+   ok LBL,
+   7 USE-DEPTH-CELL LIT64,  7 DATA 7 ADD,  8 7 0 LDR,  8 8 1 SUBI,  8 7 0 STR, ;   \ reload depth (no cross-syscall live reg), depth--
+s" c-end-using" s" --" TRUST
+
+\ EMIT-FIND-USED (LFINDUSED leaf): searched only after the open-scope + global chain
+\ misses. Input x9=token addr, x10=token len; output x13=0 (miss) or FIND-shaped flags
+\ (hit) with x11=code x12=body-len. A single-pass dictionary scan collects records whose
+\ WID is one of the live USE-WIDS[0..depth) and whose folded name equals the token; a
+\ second distinct match is the ambiguity hard error. Qualified tokens (containing ':')
+\ never resolve here. Register/name-fold conventions mirror EMIT-FIND's authoritative
+\ linear scan; preserves x9/x10/x19(XDS)/x20(DATA).
+: EMIT-FIND-USED ( -- )
+   LFINDUSED LABEL@ LBL,
+   LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL
+   {: qscan:label qnone:label ret:label uloop:label mloop:label member:label
+      ninl:label ncmp:label nmatch:label unext:label udone:label amb:label ambmsg:label :}
+   13 0 MOVZ,
+   17 0 MOVZ,
+   qscan LBL,
+      17 10 CMP,  C-GE qnone BCOND,
+      14 9 17 ADD,  14 14 0 LDRB,  14 $3A CMPI,  C-EQ ret BCOND,   \ colon -> not a bare tail; miss
+      17 17 1 ADDI,  qscan B,
+   qnone LBL,
+   14 USE-DEPTH-CELL LIT64,  14 DATA 14 ADD,  8 14 0 LDR,          \ x8 = depth
+   8 ret CBZ,                                                       \ no usings -> miss
+   7 USE-WIDS-OFF LIT64,  7 DATA 7 ADD,                            \ x7 = &USE-WIDS[0]
+   16 0 MOVZ,  6 0 MOVZ,                                            \ x16 = matched record (0=none), x6 = match count
+   5 DBASE 0 ADDI,  4 NDICT 0 ADDI,
+   uloop LBL,
+      4 udone CBZ,
+      14 5 40 LDR,                                                 \ x14 = record wid
+      3 0 MOVZ,
+      mloop LBL,
+         3 8 CMP,  C-GE unext BCOND,                               \ record wid not among used wids -> skip
+         2 3 3 LSLI,  2 7 2 ADD,  15 2 0 LDR,                      \ x15 = USE-WIDS[x3]
+         15 14 CMP,  C-EQ member BCOND,
+         3 3 1 ADDI,  mloop B,
+      member LBL,
+         15 5 16 LDR,  15 15 12 LSLI,  15 15 12 LSRI,  15 10 CMP,  C-NE unext BCOND,   \ name-len mismatch
+         2 5 24 ADDI,
+         14 5 16 LDR,  14 14 DNAME-EXT ANDI,  14 ninl CBZ,
+            2 5 24 LDR,
+         ninl LBL,
+         17 0 MOVZ,
+         ncmp LBL,
+            17 10 CMP,  C-GE nmatch BCOND,
+            15 2 17 ADD,  15 15 0 LDRB,
+            3 15 $41 SUBI,  3 $1A CMPI,  3 C-CC CSET,  3 3 5 LSLI,  15 15 3 ORR,
+            14 9 17 ADD,  14 14 0 LDRB,
+            3 14 $41 SUBI,  3 $1A CMPI,  3 C-CC CSET,  3 3 5 LSLI,  14 14 3 ORR,
+            15 14 CMP,  C-NE unext BCOND,
+            17 17 1 ADDI,  ncmp B,
+         nmatch LBL,
+            6 6 1 ADDI,  16 5 0 ADDI,                              \ count++, remember record
+            6 2 CMPI,  C-GE amb BCOND,                             \ 2nd distinct match -> ambiguous
+      unext LBL,  5 5 DREC ADDI,  4 4 1 SUBI,  uloop B,
+   udone LBL,
+   16 ret CBZ,                                                     \ no match -> x13=0 miss
+   5 16 0 ADDI,
+   11 5 0 LDR,  12 5 8 LDR,
+   14 5 16 LDR,
+   15 14 DNAME-WIDE ANDI,  15 15 59 LSRI,
+   16 14 DNAME-INT ANDI,  16 16 59 LSRI,
+   15 15 16 ORR,
+   16 14 DNAME-MIN-IN-MASK ANDI,  16 16 44 LSRI,
+   15 15 16 ORR,
+   14 14 DNAME-IMM ANDI,  14 14 59 LSRI,
+   14 14 15 ORR,
+   13 1 MOVZ,  13 13 14 ORR,
+   ret LBL,  RET,
+   amb LBL,
+      0 2 MOVZ,  1 ambmsg ADR,  2 60 MOVZ,  NR-WRITE SYS,
+      2 5 MOVZ,  LPROT LABEL@ BL,                                  \ region -> RX (idempotent; a compile-path caller is RW here)
+      94 C-DIE-TOKEN-NL                               \ 94 = ENGINE-ERROR:USING-AMBIGUOUS
+   ambmsg LBL,  s" hb: ambiguous bare word resolves in multiple used packages: " BYTES, ;
+s" emit-find-used" s" --" TRUST
 
 : C-CALL-CHECKER-EXPORT ( -- )
    LCHKEXPORT 14 C-FIND-GLOBAL
@@ -4602,6 +4783,8 @@ s" c-export" s" --" TRUST
    s" public" KEEP? IF LMAIN LABEL@ LKWPUBLIC 6 ['] C-PUBLIC CF-ENTRY THEN
    s" private" KEEP? IF LMAIN LABEL@ LKWPRIVATE 7 ['] C-PRIVATE CF-ENTRY THEN
    s" ;package" KEEP? IF LMAIN LABEL@ LKWSEMIPACKAGE 8 ['] C-END-PACKAGE CF-ENTRY THEN
+   s" using" KEEP? IF LMAIN LABEL@ LKWUSING 5 ['] C-USING CF-ENTRY THEN
+   s" ;using" KEEP? IF LMAIN LABEL@ LKWSEMIUSING 6 ['] C-END-USING CF-ENTRY THEN
    s" export" KEEP? IF LMAIN LABEL@ LKWEXPORT 6 ['] C-EXPORT CF-ENTRY THEN
    s" trusted:" KEEP? IF LMAIN LABEL@ LKWTRUSTED 8 ['] C-TRUSTED CF-ENTRY THEN
    s" defer" KEEP? IF LMAIN LABEL@ LKWDEFER 5 ['] C-DEFER CF-ENTRY THEN
@@ -4630,9 +4813,10 @@ s" em-interpret-string-keywords" s" --" TRUST
 s" em-interpret-number" s" label --" TRUST
 
 : EM-INTERPRET-FIND ( -- )
-   LBL {: depthok:label :}
+   LBL LBL LBL {: depthok:label usedtry:label found:label :}
    9 DATA TKA-CELL LDR,  10 DATA TKL-CELL LDR,  LFIND LABEL@ BL,
-   13 LUNDEF LABEL@ CBZ,
+   13 usedtry CBZ,                                     \ open-scope + global miss -> try used publics
+   found LBL,
    14 13 8 ANDI,  14 LWIDE LABEL@ CBNZ,                \ DNAME-WIDE effect (TFAM): fail closed, never land a bundle on the interpret stack (x13 still holds the LFIND dict flags)
    14 13 16 ANDI,  14 LINTERNAL LABEL@ CBNZ,           \ DNAME-INT: engine-internal word with no checker-known effect - fail closed before the body runs on the untyped interpret stack
    14 13 $FF00 ANDI,  14 depthok CBZ,                  \ DNAME-MIN-IN (x13 bits 8-15): certified min input arity; 0 = unguarded boundary
@@ -4643,7 +4827,11 @@ s" em-interpret-number" s" label --" TRUST
    LARITY LABEL@ BL,          \ pre-exec arity guard (fable): deref/execute prims fault on a shallow
                               \ stack before the LMAIN depth-floor guard sees it; diverts to LUNDERFLOW
    C-TOPHOOK-CALL             \ every native gate passed: emit the pre-BLR word event (x13 = LFIND flags)
-   11 BLR,  LMAIN LABEL@ B, ;
+   11 BLR,  LMAIN LABEL@ B,
+   usedtry LBL,
+      9 DATA TKA-CELL LDR,  10 DATA TKL-CELL LDR,  LFINDUSED LABEL@ BL,   \ used-publics resolution (ambiguity dies)
+      13 LUNDEF LABEL@ CBZ,                            \ still nothing -> undefined
+      found B, ;                                       \ resolved via a used package: rejoin the normal dispatch
 s" em-interpret-find" s" --" TRUST
 
 : EM-INTERPRET-WORDS ( -- )
@@ -5754,7 +5942,7 @@ s" em-compile-float-ops" s" --" TRUST
 s" em-compile-ops" s" --" TRUST
 
 : EM-COMPILE-CALL ( -- )
-   LBL LBL LBL LBL LBL LBL {: notimm:label depthok:label callimm:label noxc:label ploop:label pdone:label :}
+   LBL LBL LBL LBL LBL LBL LBL LBL {: notimm:label depthok:label callimm:label noxc:label ploop:label pdone:label usedtry:label found:label :}
    9 DATA P2-CELL LDR,  9 noxc CBZ,               \ layout-cap slice 4: pass-2 wide generated-ctor call adds extra pads
       9 DATA TKA-CELL LDR,  10 DATA TXN-SRC-A-CELL LDR,  9 9 10 SUB,  10 0 MOVZ,
       LP2CWAT LABEL@ BL,                          \ x10 = extra pads, x11 = found
@@ -5770,7 +5958,8 @@ s" em-compile-ops" s" --" TRUST
    noxc LBL,
    LVSPILL LABEL@ BL,
    9 DATA TKA-CELL LDR,  10 DATA TKL-CELL LDR,  LFIND LABEL@ BL,
-   13 LUNDEF LABEL@ CBZ,
+   13 usedtry CBZ,                                        \ open-scope + global miss -> try used publics
+   found LBL,
    14 13 2 ANDI,  14 notimm CBZ,
       14 13 $FF00 ANDI,  14 depthok CBZ,                  \ DNAME-MIN-IN (x13 bits 8-15): the immediate's certified min input arity; 0 = unguarded boundary (compile path floor beneath the p5 checker/hook reject, reached under 0 set-check)
          14 14 8 LSRI,                                    \ x14 = min-in cells
@@ -5793,7 +5982,11 @@ s" em-compile-ops" s" --" TRUST
       30 SP 0 LDR,  SP SP 32 ADDI,
       LMAIN LABEL@ B,
    notimm LBL,
-   C-CALL  LMAIN LABEL@ B, ;
+   C-CALL  LMAIN LABEL@ B,
+   usedtry LBL,
+      9 DATA TKA-CELL LDR,  10 DATA TKL-CELL LDR,  LFINDUSED LABEL@ BL,   \ used-publics resolution (ambiguity dies; region-flip handled inside)
+      13 LUNDEF LABEL@ CBZ,                            \ still nothing -> undefined in this body
+      found B, ;                                       \ resolved via a used package: rejoin the normal compile path
 s" em-compile-call" s" --" TRUST
 
 : EM-RESET-COMPILE-STATE ( -- )
@@ -5846,6 +6039,7 @@ s" em-reset-compile-state" s" --" TRUST
       9 10 PKGSNAP-PRI LDR,     9 DATA PKG-PRI-CELL STR,
       9 10 PKGSNAP-PARENT LDR,  9 DATA PKG-PARENT-CELL STR,
       9 10 PKGSNAP-REC LDR,     9 DATA PKG-REC-CELL STR,
+      9 10 PKGSNAP-USE LDR,     12 USE-DEPTH-CELL LIT64,  12 DATA 12 ADD,  9 12 0 STR,   \ roll the using-scope depth back too (x12 reloaded below)
       9 1 MOVZ,  9 DATA PKGRESYNC-CELL STR,                  \ arm the checker resync (drained at next LMAIN)
       15 DATA EVALERR-CELL STR,                       \ EVALERR = code
       12 DATA EVALD-CELL LDR,  12 12 1 SUBI,  12 DATA EVALD-CELL STR,
@@ -5929,6 +6123,8 @@ s" em-eval-throw-recover" s" --" TRUST
    9 DATA RPKG-PRI LDR,      9 DATA PKG-PRI-CELL STR,
    9 DATA RPKG-PARENT LDR,   9 DATA PKG-PARENT-CELL STR,
    9 DATA RPKG-REC LDR,      9 DATA PKG-REC-CELL STR,
+   10 USE-RPKG-SAVE-CELL LIT64,  10 DATA 10 ADD,  9 10 0 LDR,     \ roll the using-scope depth back to this REPL line's snapshot
+   10 USE-DEPTH-CELL LIT64,  10 DATA 10 ADD,  9 10 0 STR,
    9 1 MOVZ,  9 DATA PKGRESYNC-CELL STR,
    9 DATA RSAVSP-CELL LDR,  SP 9 0 ADDI,
    LREAD LABEL@ B, ;
@@ -6065,6 +6261,14 @@ s" em-compile-undef" s" --" TRUST
    9 14 0 LDR,  9 DATA INP-CELL STR,
    9 14 8 LDR,  9 DATA INE-CELL STR,
    9 0 MOVZ,  9 DATA EVALERR-CELL STR,
+   \ end of load file: restore the using-scope depth to this frame's entry snapshot
+   \ (PKGSNAP[EVALD].PKGSNAP-USE) so usings opened in the evaluated source do not leak
+   \ to the caller. Package scope deliberately persists across a clean include; usings
+   \ are file-local. x15 = &PKGSNAP[idx]; x9 = value.
+   9 DATA EVALD-CELL LDR,
+   15 PKGSNAP-OFF LIT64,  9 9 PKGSNAP-SHIFT LSLI,  15 15 9 ADD,  15 DATA 15 ADD,
+   9 15 PKGSNAP-USE LDR,
+   15 USE-DEPTH-CELL LIT64,  15 DATA 15 ADD,  9 15 0 STR,
    9 14 24 LDR,  SP 9 0 ADDI,
    9 14 16 LDR,  9 BR, ;
 s" em-eval-clean-exit" s" --" TRUST
@@ -6081,6 +6285,8 @@ s" em-eval-clean-exit" s" --" TRUST
    9 DATA PKG-PRI-CELL LDR,   9 DATA RPKG-PRI STR,
    9 DATA PKG-PARENT-CELL LDR, 9 DATA RPKG-PARENT STR,
    9 DATA PKG-REC-CELL LDR,   9 DATA RPKG-REC STR,
+   10 USE-DEPTH-CELL LIT64,  10 DATA 10 ADD,  9 10 0 LDR,        \ snapshot the using-scope depth for this REPL line
+   10 USE-RPKG-SAVE-CELL LIT64,  10 DATA 10 ADD,  9 10 0 STR,
    9 DATA REPLH-CELL LDR,  9 BLR,
    XDS XDS 8 SUBI,  10 XDS 0 LDR,
    XDS XDS 8 SUBI,  11 XDS 0 LDR,
@@ -6517,6 +6723,7 @@ s" SRCA@" s" -- ptr u8" TRUST
    LBL LCHKPACKAGE !  LBL LCHKPUB !  LBL LCHKPRI !  LBL LCHKENDPKG !
    LBL LCHKDEFER !  LBL LRESTAB !  LBL LRECWPUB !  LBL LRECMIQ !  LBL LP2DOESW !
    LBL LKWEXPORT !  LBL LCHKEXPORT !
+   LBL LKWUSING !  LBL LKWSEMIUSING !  LBL LCHKUSING !  LBL LFINDUSED !
    LBL LKWQUOT !  LBL LKWSEMIQ !  LBL LKWDEFER !  LBL LKWIS !  LBL LKWDEFERUNSET !
    LBL LSIGPTRA !  LBL LSIGA !
    LBL LKWCONSTRUCT !  LBL LKWMATCH !  LBL LKWSEMIMATCH !
@@ -6781,6 +6988,7 @@ s" AOT-PWID-BUF@" s" -- ptr u8" TRUST
    EM-AOT-OWNER-ROUTINE       s" primitives/aot-owner" ENGINE-SIZE:MARK
    EMIT-FLUSH                 s" primitives/flush" ENGINE-SIZE:MARK
    EMIT-FIND                  s" primitives/find" ENGINE-SIZE:MARK
+   EMIT-FIND-USED             s" primitives/find-used" ENGINE-SIZE:MARK
    EMIT-HIDX                  s" primitives/hash-index" ENGINE-SIZE:MARK
    EMIT-NUM                   s" primitives/number" ENGINE-SIZE:MARK
    EMIT-TOPHOOK               s" primitives/top-hook" ENGINE-SIZE:MARK ;

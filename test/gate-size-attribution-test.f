@@ -81,9 +81,17 @@ $4000 constant MACOS-DATA-CONST  \ __DATA_CONST page (__got + zero fill)
 \ candidate at 127776 (STALE-BASELINE, was 127960), floor 984 -> 800. Page
 \ count, signature, and whole-file total are unchanged (the __TEXT pad absorbs
 \ the delta).
-127776 constant MACOS-CODE-TEXT   \ CODELEN: every emitter-phase row (baked-source incl.)
+\ 2026-07-20 re-measured live at the macOS-aarch64 fixpoint after the `using NAME
+\ … ;using` consumer-import landed (dot habu-using-import-pkg-a07dd7ba): the
+\ used-publics resolver leaf (EMIT-FIND-USED), the `using`/`;using` keyword
+\ emitters + their diagnostics, the interpret/compile/tick used-search injections,
+\ and the eval-frame / REPL / package using-depth snapshots add +1952 of engine
+\ text, CODELEN 127776 -> 129728 (floor 800 -> 2752); the whole file stays inside
+\ the same 16 KiB page (SIGNATURE and MACOS-TOTAL unchanged, the __TEXT pad absorbs
+\ the delta).
+129728 constant MACOS-CODE-TEXT   \ CODELEN: every emitter-phase row (baked-source incl.)
 1423 constant MACOS-SIGNATURE     \ ad-hoc code signature SuperBlob (grows with CODELEN)
-800 constant MACOS-FLOOR-DIST     \ code above the 16 KiB floor: the page-recovery shave
+2752 constant MACOS-FLOOR-DIST     \ code above the 16 KiB floor: the page-recovery shave
 165367 constant MACOS-TOTAL       \ = FILE-SIZE bin/hb = GB-SIZE-BASELINE-MACOS
 
 \ Linux committed attribution, measured at the byte-fixpoint on 2026-07-19 (DGX

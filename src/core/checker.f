@@ -4984,6 +4984,7 @@ PRIM: SCHEMA-N@ PE-N PE-OUT PRIM;
 PRIM: SCHEMA-ROOT-N@ PE-N PE-OUT PRIM;
 PRIM: CHECKER-DEFER PE-PTR-U8 PE-IN PE-N PE-IN PRIM;
 PRIM: CHECKER-PACKAGE PE-PTR-U8 PE-IN PE-N PE-IN PRIM;
+PRIM: CHECKER-USING PE-PTR-U8 PE-IN PE-N PE-IN PRIM;
 PRIM: CHECKER-PUBLIC PRIM;
 PRIM: CHECKER-PRIVATE PRIM;
 PRIM: CHECKER-END-PACKAGE PRIM;
@@ -5105,6 +5106,53 @@ variable DFER-END
       1 +
    REPEAT drop
    u CHECKER-PACKAGE-U ! ;
+
+\ --- `using`-scope import mirror (dot habu-using-import-pkg-a07dd7ba). The engine owns
+\ the live using depth in one fixed DATA cell (layout.f USE-DEPTH-CELL); the checker reads
+\ it through data-base so this parallel table of folded package names is bounded by the
+\ identical depth. There is no separate checker counter to drift across the ;using /
+\ ;package / end-of-file / throw / REPL boundaries — every boundary just restores the shared
+\ engine depth and the checker automatically follows. CHECKER-USING (called by the engine
+\ C-USING before it increments the shared depth, and by verify-source likewise) records the
+\ name into the slot at the current depth; resolution reads names[0..depth).
+16 constant CK-USE-MAX                     \ = layout.f USE-MAX (concurrent usings)
+$9C08 constant CK-USE-DEPTH-OFF            \ = layout.f USE-DEPTH-CELL (DATA-relative); engine owns it
+create CK-USE-NAMES CK-USE-MAX CHECKER-PACKAGE-CAP * allot
+create CK-USE-LENS  CK-USE-MAX cells allot
+7140 constant E-USING-AMBIGUOUS            \ bare tail resolves in more than one used public wordlist
+variable CK-USED-FOUND                     \ interned sym of the first used-public match while resolving
+
+: CK-USE-DEPTH ( -- n )  data-base CK-USE-DEPTH-OFF + @ ;
+: CK-USE-SLOT ( n -- ptr u8 )  CHECKER-PACKAGE-CAP * CK-USE-NAMES + ;
+: CK-USE-LEN@ ( n -- n )  cells CK-USE-LENS + @ ;
+
+: CHECKER-USING ( ptr u8 n -- ) {: a:ptr u:n :}
+   u CHECKER-PACKAGE-CAP >= IF s" checker: using name too long" 76 die THEN
+   CK-USE-DEPTH {: d:n :}
+   d CK-USE-MAX >= IF s" checker: using stack overflow" 76 die THEN
+   d CK-USE-SLOT {: dst:ptr :}
+   0 BEGIN dup u < WHILE
+      dup a + c@ CHECKER-FOLD-C  over dst + c!      \ dst[i] = fold(name[i])
+      1 +
+   REPEAT drop
+   u d cells CK-USE-LENS + ! ;
+
+\ Resolve a bare tail against the live used publics (searched only after the open-scope +
+\ global chain missed). A single distinct interned public sym wins; a second distinct sym
+\ across the used packages is the ambiguity hard error, matching the engine's used-search.
+: CHECKER-USED-SYM ( ptr u8 n -- n ) {: a:ptr u:n :}
+   0 CK-USED-FOUND !
+   CK-USE-DEPTH 0 ?DO
+      i CK-USE-SLOT i CK-USE-LEN@ SYM-PUBLIC a u SYM-FIND IF     ( -- sym )
+         CK-USED-FOUND @ 0= IF
+            CK-USED-FOUND !
+         ELSE
+            dup CK-USED-FOUND @ <> IF E-USING-AMBIGUOUS throw THEN
+            drop
+         THEN
+      ELSE drop THEN
+   LOOP
+   CK-USED-FOUND @ ;
 
 \ --- generated-constructor protection (item 8 slice 3). The registry-backed
 \ predicates live in type-family.f (loads later) and install into these friend
@@ -5278,7 +5326,8 @@ $20 constant CK-SEAL-LATCH-OFF          \ = layout.f FRIEND-LATCH-CELL
       CHECKER-PACKAGE-NAME CHECKER-PACKAGE-U @ SYM-PRIVATE a u CHECKER-PKG-SYM? dup 0 <> IF EXIT THEN drop
       CHECKER-PACKAGE-NAME CHECKER-PACKAGE-U @ SYM-PUBLIC a u CHECKER-PKG-SYM? dup 0 <> IF EXIT THEN drop
    THEN
-   a u CHECKER-GLOBAL-SYM? ;
+   a u CHECKER-GLOBAL-SYM? dup 0 <> IF EXIT THEN drop
+   a u CHECKER-USED-SYM ;
 
 \ CHECKER-FIND-USIG-SYM ( n -- bool ) : FEP = current active record for sym.
 \ Cache value: record offset+1, 0 = none/deleted; a miss re-derives from the
