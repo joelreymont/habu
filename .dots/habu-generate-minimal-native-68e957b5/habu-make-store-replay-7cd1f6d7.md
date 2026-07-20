@@ -1,11 +1,13 @@
 ---
 title: Make store replay transactional
-status: open
+status: active
 priority: 1
 issue-type: task
+created-at: "\"2026-07-19T21:59:05.007004+02:00\""
 blocks:
   - habu-lowering-hash-unified-586f7881
-created-at: "2026-07-19T21:59:05.007004+02:00"
 ---
 
 Current master correctness defect: maki/store.f:370-373 validates only row syntax in pass 1, then invokes an arbitrary fallible callback row by row in pass 2. Production replay calls SK-PUT through maki/store-replay.f:66-69. maki/sched-key.f:448-455 mutates the key arena before three independently fallible VEC:PUSH operations, so allocation failure can consume arena bytes and leave key, digest, and cost vector lengths divergent. SK-TAB-ENSURE at 396-401 also initializes three vectors separately, leaking or leaving partial state when a later allocation fails. A syntactically valid replay can therefore make earlier rows visible before a later apply failure, after which REPLAY-ENSURE records failed over a partially loaded table. The malformed-syntax regression never exercises this path. The write path has the same atomicity hole in the other direction: maki/store-replay.f:123-126 mutates the hot table through SK-PUT before fallible SCHED-PUT appends durable state, so append failure leaves the process serving a value that was never committed; reversing the calls is insufficient because SK-PUT can fail after a successful append. Build replay into a complete replacement or rollback-capable table whose row is a STRUCTURE and whose lifecycle is payload ENUM building | ready(table) | failed(code); preflight all memory, retain the original table while building, and publish or swap exactly once only after every row succeeds. Make table initialization one atomic resource owner rather than three independently published vectors. For writes, stage an infallible hot-table commit, complete the durable append or explicit commit-marker protocol, then publish the staged mutation exactly once. Inject allocation failure at arena growth, vector initialization 1/2/3, every VEC:PUSH position, every replayed row, and every file-write boundary; after each failure prove the original arena bytes, table contents, vector lengths, query results, replay state, and durable bytes have either remained byte-identical or form a recoverable committed prefix, then prove retry succeeds without leak or duplicate semantic row. Preserve file format unless an explicit commit marker is required, row order, duplicate-key policy, error identity, and successful replay behavior. Coordinate with habu-type-store-replay-634e025b, which owns the typed external lifecycle; serialize shared edits and make its no-partial-row acceptance depend on this proof.
+
+Claim: agent=replay workspace=.jj-ws/fable-replay machine=spark (owns maki/store.f store-replay.f sched-key.f atomicity + their tests; injection-failure proofs per the dot)
