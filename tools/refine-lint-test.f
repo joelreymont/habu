@@ -5,7 +5,7 @@
 \ literal so the lint's own string-body exclusion keeps the tree scan green.
 \ Run: bin/hb --load tools/refine-lint-test.f
 
-require tools/date.f
+require lib/date.f
 require lib/errors.f
 require lib/string.f
 require lib/test.f

@@ -1,14 +1,14 @@
 \ trust-lint.f - CLI wrapper for TRUSTED.md drift lint.
-\ Load after tools/date.f, lib/errors.f, lib/string.f, lib/memory.f, lib/fs.f,
+\ Load after lib/date.f, lib/errors.f, lib/string.f, lib/memory.f, lib/fs.f,
 \ tools/lint/text.f, tools/lint/token.f, tools/lint/lib.f,
 \ tools/trust-lint-core.f, and tools/argv.f.
-\ Run: bin/hb --load tools/date.f lib/errors.f lib/string.f lib/memory.f lib/fs.f
+\ Run: bin/hb --load lib/date.f lib/errors.f lib/string.f lib/memory.f lib/fs.f
 \ tools/lint/text.f tools/lint/token.f tools/lint/lib.f
 \ tools/trust-lint-core.f tools/argv.f tools/trust-lint.f -- [ROOT] [TODAY]
 \ Or:  bin/hb --load ... tools/trust-lint.f -- source-only SOURCE [ROOT] [TODAY]
 \ Or:  bin/hb --load ... tools/trust-lint.f -- source-list ROOT [TODAY] SOURCE...
 
-require tools/date.f
+require lib/date.f
 require lib/errors.f
 require lib/string.f
 require lib/memory.f
@@ -60,7 +60,7 @@ variable TL-ARGV-SOURCE-U
    1 throw ;
 
 : TL-ARGV-CONFIG-TODAY ( n -- ) {: idx :}
-   idx ARGV:POS$ 2dup PARSE-YMD MATCH option
+   idx ARGV:POS$ 2dup DATE:PARSE-YMD MATCH option
      none OF TL-ARGV-BAD-TODAY ENDOF
      some OF ENDOF
    ;MATCH
@@ -76,7 +76,7 @@ variable TL-ARGV-SOURCE-U
 
 : TL-ARGV-CONFIG-SOURCE-LIST-TODAY? ( -- bool )
    ARGV:POS# 4 < if TL-FALSE exit then
-   2 ARGV:POS$ 2dup PARSE-YMD MATCH option
+   2 ARGV:POS$ 2dup DATE:PARSE-YMD MATCH option
      none OF 2drop TL-FALSE exit ENDOF
      some OF ENDOF
    ;MATCH

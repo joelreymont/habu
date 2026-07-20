@@ -1,5 +1,5 @@
 \ trust-lint-core.f - keep TRUST sites pinned to TRUSTED.md.
-\ Load after tools/date.f, lib/errors.f, lib/string.f, lib/memory.f, lib/fs.f,
+\ Load after lib/date.f, lib/errors.f, lib/string.f, lib/memory.f, lib/fs.f,
 \ tools/lint/text.f, tools/lint/token.f, and tools/lint/lib.f.
 
 90 constant TL-MAX-AUDIT-AGE
@@ -639,7 +639,7 @@ variable TL-COPY-T
    TL-BAD+ ;
 
 : TL-CHECK-AUDIT-DATE ( n -- ) {: sk :}
-   TL-K @ TL-M-AUDIT$ PARSE-YMD MATCH option
+   TL-K @ TL-M-AUDIT$ DATE:PARSE-YMD MATCH option
      none OF sk TL-BAD-AUDIT-DATE exit ENDOF
      some OF ENDOF
    ;MATCH
@@ -713,7 +713,7 @@ variable TL-COPY-T
    TL-TODAY-DAYS ! ;
 
 : TRUST-LINT-TODAY-NOW ( -- )
-   epoch-seconds DATE-SECONDS-DAY / TRUST-LINT-TODAY! ;
+   epoch-seconds DATE:SECONDS-DAY / TRUST-LINT-TODAY! ;
 
 : TRUST-LINT ( -- )
    TRUST-LINT-RESET

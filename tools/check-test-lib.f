@@ -1,5 +1,5 @@
 \ check-test-lib.f - checked engine CLI/core smoke coverage library.
-\ Run: bin/hb --load tools/date.f lib/errors.f lib/string.f lib/test.f lib/memory.f
+\ Run: bin/hb --load lib/date.f lib/errors.f lib/string.f lib/test.f lib/memory.f
 \ lib/vector.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f
 \ lib/process-env.f lib/source.f
 \ tools/lint/text.f tools/lint/token.f tools/lint/lib.f
@@ -10,7 +10,7 @@
 \ tools/trust-lint-core.f tools/check-all-errors-core.f tools/argv.f
 \ tools/check-core.f tools/check-test.f
 
-require tools/date.f
+require lib/date.f
 require lib/errors.f
 require lib/string.f
 require lib/test.f

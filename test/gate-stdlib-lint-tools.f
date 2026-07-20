@@ -17,7 +17,7 @@
 
 : GSI-STALE-STATUS-LINT ( -- )
    s" ." SS-ROOT!
-   epoch-seconds DATE-SECONDS-DAY / SS-TODAY-DAYS !
+   epoch-seconds DATE:SECONDS-DAY / SS-TODAY-DAYS !
    STALE-STATUS-LINT ;
 
 : GSI-LINT-TOOLS-CLOBBER ( -- )

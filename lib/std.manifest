@@ -1064,17 +1064,17 @@ schema_version	module	file	kind	word	effect	test	doc	owner	status	notes
 1	time	lib/time.f	word	TIME-EPOCH-SECONDS	(-- n)	tools/stdlib-time-test.f	docs/stdlib.md	stdlib-time	active	checked wrapper around native UTC epoch seconds
 1	time	lib/time.f	word	TIME-MONO-NS	(-- n)	tools/stdlib-time-test.f	docs/stdlib.md	stdlib-time	active	checked wrapper around native monotonic nanoseconds
 1	date	lib/date.f	module			tools/stdlib-date-test.f	docs/stdlib.md	stdlib-date	active	checked UTC date parsing formatting and conversion
-1	date	lib/date.f	word	DATE-DIGIT?	(n -- bool)	tools/stdlib-date-test.f	docs/stdlib.md	stdlib-date	active	ASCII decimal digit predicate for date parsing
-1	date	lib/date.f	word	LEAP-YEAR?	(n -- bool)	tools/stdlib-date-test.f	docs/stdlib.md	stdlib-date	active	Gregorian leap-year predicate
-1	date	lib/date.f	word	MONTH-DAYS	(n n -- n)	tools/stdlib-date-test.f	docs/stdlib.md	stdlib-date	active	days in a Gregorian month for a year
-1	date	lib/date.f	word	VALID-YMD?	(n n n -- bool)	tools/stdlib-date-test.f	docs/stdlib.md	stdlib-date	active	validate Gregorian year month day triples
-1	date	lib/date.f	word	YMD>DAYS	(n n n -- n)	tools/stdlib-date-test.f	docs/stdlib.md	stdlib-date	active	convert Gregorian date to Unix epoch day
-1	date	lib/date.f	word	DAYS>YMD	(n -- n n n)	tools/stdlib-date-test.f	docs/stdlib.md	stdlib-date	active	convert Unix epoch day to Gregorian date
-1	date	lib/date.f	word	DATE-N	(ptr u8 n n -- option<n>)	tools/stdlib-date-test.f	docs/stdlib.md	stdlib-date	active	parse a fixed-width decimal field: SOME value, or NONE on a non-digit
-1	date	lib/date.f	word	PARSE-YMD	(ptr u8 n -- option<n>)	tools/stdlib-date-test.f	docs/stdlib.md	stdlib-date	active	parse yyyy-mm-dd: SOME Unix epoch day, or NONE on bad input
-1	date	lib/date.f	word	DATE-WIDTH!	(n n ptr u8 n --)	tools/stdlib-date-test.f	docs/stdlib.md	stdlib-date	active	write fixed-width zero-padded decimal field
-1	date	lib/date.f	word	FORMAT-YMD	(n ptr u8 n -- ptr u8 n)	tools/stdlib-date-test.f	docs/stdlib.md	stdlib-date	active	format Unix epoch day as yyyy-mm-dd
-1	date	lib/date.f	word	FORMAT-EPOCH-UTC	(n ptr u8 n -- ptr u8 n)	tools/stdlib-date-test.f	docs/stdlib.md	stdlib-date	active	format nonnegative Unix seconds as UTC timestamp
+1	date	lib/date.f	word	DATE:DIGIT?	(n -- bool)	tools/stdlib-date-test.f	docs/stdlib.md	stdlib-date	active	ASCII decimal digit predicate for date parsing
+1	date	lib/date.f	word	DATE:LEAP-YEAR?	(n -- bool)	tools/stdlib-date-test.f	docs/stdlib.md	stdlib-date	active	Gregorian leap-year predicate
+1	date	lib/date.f	word	DATE:MONTH-DAYS	(n n -- n)	tools/stdlib-date-test.f	docs/stdlib.md	stdlib-date	active	days in a Gregorian month for a year
+1	date	lib/date.f	word	DATE:VALID-YMD?	(n n n -- bool)	tools/stdlib-date-test.f	docs/stdlib.md	stdlib-date	active	validate Gregorian year month day triples
+1	date	lib/date.f	word	DATE:YMD>DAYS	(n n n -- n)	tools/stdlib-date-test.f	docs/stdlib.md	stdlib-date	active	convert Gregorian date to Unix epoch day
+1	date	lib/date.f	word	DATE:DAYS>YMD	(n -- n n n)	tools/stdlib-date-test.f	docs/stdlib.md	stdlib-date	active	convert Unix epoch day to Gregorian date
+1	date	lib/date.f	word	DATE:N	(ptr u8 n n -- option<n>)	tools/stdlib-date-test.f	docs/stdlib.md	stdlib-date	active	parse a fixed-width decimal field: SOME value, or NONE on a non-digit
+1	date	lib/date.f	word	DATE:PARSE-YMD	(ptr u8 n -- option<n>)	tools/stdlib-date-test.f	docs/stdlib.md	stdlib-date	active	parse yyyy-mm-dd: SOME Unix epoch day, or NONE on bad input
+1	date	lib/date.f	word	DATE:WIDTH!	(n n ptr u8 n --)	tools/stdlib-date-test.f	docs/stdlib.md	stdlib-date	active	write fixed-width zero-padded decimal field
+1	date	lib/date.f	word	DATE:FORMAT-YMD	(n ptr u8 n -- ptr u8 n)	tools/stdlib-date-test.f	docs/stdlib.md	stdlib-date	active	format Unix epoch day as yyyy-mm-dd
+1	date	lib/date.f	word	DATE:FORMAT-EPOCH-UTC	(n ptr u8 n -- ptr u8 n)	tools/stdlib-date-test.f	docs/stdlib.md	stdlib-date	active	format nonnegative Unix seconds as UTC timestamp
 1	ffi-abi	lib/ffi-abi.f	module			lib/ffi-abi-test.f	docs/stdlib.md	stdlib-ffi-abi	active	checked AAPCS64 FFI calls and marshalling without dynamic loader slots
 1	ffi-abi	lib/ffi-abi.f	word	FFI-BUF	(-- ptr a)	lib/ffi-abi-test.f	docs/stdlib.md	stdlib-ffi-abi	active	integer-argument scratch buffer base
 1	ffi-abi	lib/ffi-abi.f	word	FFI-FBUF	(-- ptr r)	lib/ffi-abi-test.f	docs/stdlib.md	stdlib-ffi-abi	active	float-argument scratch buffer base

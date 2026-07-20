@@ -1,7 +1,7 @@
 \ stale-status-lint-core.f - enforce STATUS.md as the only live self-check count.
-\ Load after tools/date.f, lib/errors.f, lib/string.f, lib/memory.f, lib/fs.f,
+\ Load after lib/date.f, lib/errors.f, lib/string.f, lib/memory.f, lib/fs.f,
 \ tools/lint/text.f, tools/lint/token.f, tools/lint/lib.f, and tools/argv.f.
-\ Run: bin/hb --load tools/date.f lib/errors.f lib/string.f lib/fs.f
+\ Run: bin/hb --load lib/date.f lib/errors.f lib/string.f lib/fs.f
 \ tools/lint/text.f tools/lint/token.f tools/lint/lib.f tools/argv.f
 \ tools/stale-status-lint-core.f provides SS-MAIN; tools/stale-status-lint.f is
 \ the CLI entrypoint.
@@ -14,7 +14,7 @@
 58 constant SS-COLON
 
 create SS-NUM-BUF SS-NUM-CAP allot
-create SS-TODAY-BUF DATE-LEN allot
+create SS-TODAY-BUF DATE:LEN allot
 create SS-PATH-BUF FS-PATH-CAP allot
 create SS-ONE 1 allot
 
@@ -335,7 +335,7 @@ variable SS-ERR-U
    repeat ;
 
 : SS-TODAY-FROM-EPOCH ( -- ptr u8 n )
-   SS-TODAY-DAYS @ SS-TODAY-BUF DATE-LEN FORMAT-YMD ;
+   SS-TODAY-DAYS @ SS-TODAY-BUF DATE:LEN DATE:FORMAT-YMD ;
 
 : SS-BAD+ ( -- )
    SS-BAD @ 1+ SS-BAD ! ;
@@ -347,7 +347,7 @@ variable SS-ERR-U
    1 throw ;
 
 : SS-PARSE-TODAY ( ptr u8 n -- n ) {: a:ptr u:n :}
-   a u PARSE-YMD MATCH option
+   a u DATE:PARSE-YMD MATCH option
      none OF a u SS-BAD-TODAY ENDOF
      some OF ENDOF
    ;MATCH ;
@@ -375,7 +375,7 @@ variable SS-ERR-U
 : SS-CHECK-STATUS ( -- )
    SS-STATUS-DATE!
    SS-FOUND? @ 0= IF SS-MISSING-STATUS exit THEN
-   SS-DATE$ PARSE-YMD MATCH option
+   SS-DATE$ DATE:PARSE-YMD MATCH option
      none OF SS-BAD-STATUS-DATE exit ENDOF
      some OF drop ENDOF
    ;MATCH
@@ -538,7 +538,7 @@ variable SS-ERR-U
    ARGV:POS# 1 > IF
       1 ARGV:POS$ SS-PARSE-TODAY SS-TODAY-DAYS !
    ELSE
-      epoch-seconds DATE-SECONDS-DAY / SS-TODAY-DAYS !
+      epoch-seconds DATE:SECONDS-DAY / SS-TODAY-DAYS !
    THEN ;
 
 : SS-MAIN ( -- )

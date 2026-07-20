@@ -35,7 +35,7 @@ require lib/source.f
 require lib/build.f
 require lib/codesign.f
 require lib/content-key.f
-require tools/date.f
+require lib/date.f
 require tools/build-fixpoint.f
 
 package AOT-WID-BUILD

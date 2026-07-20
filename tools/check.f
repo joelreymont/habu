@@ -1,7 +1,7 @@
 \ check.f - Habu-native checked engine CLI entry.
 \ Load after tools/check-core.f dependencies.
 
-require tools/date.f
+require lib/date.f
 require lib/errors.f
 require lib/string.f
 require lib/memory.f

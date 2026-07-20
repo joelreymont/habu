@@ -1,10 +1,10 @@
 \ trust-lint-test.f - checked fixtures for tools/trust-lint.f.
-\ Run: bin/hb --load tools/date.f lib/errors.f lib/string.f lib/test.f
+\ Run: bin/hb --load lib/date.f lib/errors.f lib/string.f lib/test.f
 \ lib/memory.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f
 \ tools/lint/text.f tools/lint/token.f tools/lint/lib.f tools/argv.f
 \ tools/cli-run.f tools/trust-lint-core.f tools/trust-lint-test.f
 
-require tools/date.f
+require lib/date.f
 require lib/errors.f
 require lib/string.f
 require lib/test.f
@@ -364,7 +364,7 @@ TLT-LF TLT-LF-BUF c!
    TLT-TIMEOUT-MS >MS RUN-ARGV-CAPTURE TLT-CAPTURE>N ;
 
 : TLT-TODAY>N ( ptr u8 n -- n )
-   PARSE-YMD MATCH option
+   DATE:PARSE-YMD MATCH option
      none OF E-FS-PATH throw ENDOF
      some OF ENDOF
    ;MATCH ;

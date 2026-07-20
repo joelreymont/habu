@@ -27,7 +27,7 @@
 \ qualified `PKG:NAME` references. Scanned roots: maki/ lib/ src/ tools/.
 \ Manifest rows are read through tools/trust-lint-core.f (TL-M-*).
 \
-\ Load after tools/date.f, lib/errors.f, lib/string.f, lib/memory.f, lib/fs.f,
+\ Load after lib/date.f, lib/errors.f, lib/string.f, lib/memory.f, lib/fs.f,
 \ tools/lint/text.f, tools/lint/token.f, tools/lint/lib.f, and
 \ tools/trust-lint-core.f.
 

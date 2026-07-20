@@ -4,7 +4,7 @@
 
 require tools/json.f
 require tools/gate-json-assert-core.f
-require tools/date.f
+require lib/date.f
 require lib/vector.f
 require lib/source.f
 require tools/lint/text.f

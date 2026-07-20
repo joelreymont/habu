@@ -2,7 +2,7 @@
 \ Load after tools/refine-lint-core.f.
 \ Run: bin/hb --load tools/refine-lint.f
 
-require tools/date.f
+require lib/date.f
 require lib/errors.f
 require lib/string.f
 require lib/memory.f

@@ -399,7 +399,7 @@ variable GE-EVAL-SRC-U
    GE-HB$ ;
 
 : GE-CHECK-SUPPORT-ARGV ( -- )
-   s" tools/date.f" GE-ARG+
+   s" lib/date.f" GE-ARG+
    s" lib/errors.f" GE-ARG+
    s" lib/string.f" GE-ARG+
    s" lib/memory.f" GE-ARG+

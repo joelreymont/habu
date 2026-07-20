@@ -1,5 +1,5 @@
 \ check-core.f - reusable Habu-native checked engine core.
-\ Load after tools/date.f, lib/errors.f lib/string.f lib/memory.f lib/vector.f lib/fs.f
+\ Load after lib/date.f, lib/errors.f lib/string.f lib/memory.f lib/vector.f lib/fs.f
 \ lib/fs-mutate.f lib/process.f lib/process-argv.f lib/source.f,
 \ tools/lint/text.f, tools/lint/token.f, tools/lint/lib.f,
 \ tools/lint/json-writer.f, tools/lint/source-lex.f,

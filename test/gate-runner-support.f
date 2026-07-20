@@ -23,7 +23,7 @@ require tools/json.f
 require tools/gate-json-assert-core.f
 require test/gate-pool.f
 require test/gate-stats.f
-require tools/date.f
+require lib/date.f
 require tools/lint/text.f
 require tools/lint/intern.f
 require tools/lint/token.f

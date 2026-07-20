@@ -74,7 +74,7 @@ TR-FILES: TR-GATE-HARNESS-FILES
 ;TR-FILES
 
 TR-FILES: TR-GATE-COMMON-FILES
-   test/gate-common-lib.f tools/date.f lib/source.f tools/lint/text.f
+   test/gate-common-lib.f lib/date.f lib/source.f tools/lint/text.f
    tools/lint/token.f tools/lint/lib.f tools/lint/json-writer.f
    tools/lint/source-lex.f tools/diag-origin-core.f tools/json.f
    tools/json-only-core.f tools/signature-lint-core.f

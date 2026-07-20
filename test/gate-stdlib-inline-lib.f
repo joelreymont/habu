@@ -174,7 +174,7 @@ variable GSI-TL-FILE-A
 
 : GSI-TOOL-BASE ( -- )
    GSI-TOOL-BASE-READY? if exit then
-   s" tools/date.f" GSI-REQUIRE
+   s" lib/date.f" GSI-REQUIRE
    GSI-TEST-READY? 0= if
       s" lib/test.f" GSI-REQUIRE
       GSI-TEST-READY!
@@ -384,7 +384,7 @@ variable GSI-TL-FILE-A
 
 : GSI-TAIL-FAST-SETUP ( -- )
    GSI-TEST-SETUP
-   GSI-TOOL-BASE-READY? 0= if s" tools/date.f" GSI-REQUIRE then
+   GSI-TOOL-BASE-READY? 0= if s" lib/date.f" GSI-REQUIRE then
    s" lib/property.f" GSI-REQUIRE
    GSI-TEST! ;
 
@@ -396,7 +396,7 @@ variable GSI-TL-FILE-A
    s" lib/test/snap-test.f" GSI-INCLUDE
    s" lib/test/record-test.f" GSI-INCLUDE
    s" lib/property-test.f" GSI-INCLUDE
-   s" tools/date-test.f" GSI-INCLUDE
+   s" tools/stdlib-date-test.f" GSI-INCLUDE
    s" tools/spawn-emitter-test.f" GSI-INCLUDE
    s" tools/c-call-emitter-test.f" GSI-INCLUDE
    s" tools/signature-scan-emitter-test.f" GSI-INCLUDE

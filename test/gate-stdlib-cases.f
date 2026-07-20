@@ -443,7 +443,7 @@ TEST:SUITE property-stdlib
 TEST:;SUITE
 
 TEST:SUITE date-helpers
-   tools/date-test.f
+   tools/stdlib-date-test.f
 TEST:;SUITE
 
 TEST:SUITE spawn-emitter-shape
