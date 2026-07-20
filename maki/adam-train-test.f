@@ -414,6 +414,77 @@ MODEL: SCRATCH-MLP ( x:8x6 w1:6x16 b1:1x16 w2:16x2 b2:1x2 -- y ) LINEAR GELU LIN
 RGT-MLP-N AMT-RUN
 AMT-FINAL@ SC-MILLI -2749 T=
 
+\ ============================================================================
+\ Training-state checkpoint: resume equivalence + t-matters divergence (BTC-3+)
+\ Proves a run trained N+M steps is BIT-IDENTICAL to one trained N, checkpointed,
+\ then RESUMED into a FRESH trainer and trained M more - under a fixed LR AND with
+\ the LR schedule + global-norm clip armed (the schedule reads ADAM-T, which the
+\ checkpoint persists, so a resume continues it at the right step). A resume that
+\ RESETS the step counter (ADAM-STEP-RESET) diverges, proving ADAM-T is
+\ load-bearing. Equivalence is witnessed by byte-identical state checkpoints
+\ (maki/train-state.f digests every captured cell), which also re-exercises
+\ save->load->save determinism on the real f64 parameter + moment buffers.
+\ ============================================================================
+20 constant TSR-N                    \ steps trained before the checkpoint
+40 constant TSR-M                    \ steps resumed after it
+
+$4000 constant TSR-FCAP
+create TSR-REF TSR-FCAP allot  variable TSR-REFU
+create TSR-CMP TSR-FCAP allot  variable TSR-CMPU
+
+: TSR-STEPS ( n -- )  0 ?do  AMT-STEP drop  loop ;
+: TSR-READ-REF ( ptr u8 n -- ) {: na:ptr nu:n :}  na nu TSC-PATH$ TSR-REF TSR-FCAP READ-ALL TSR-REFU ! ;
+: TSR-READ-CMP ( ptr u8 n -- ) {: na:ptr nu:n :}  na nu TSC-PATH$ TSR-CMP TSR-FCAP READ-ALL TSR-CMPU ! ;
+: TSR-SAME? ( -- bool )              \ ref vs cmp checkpoint byte-identical
+   TSR-REFU @ TSR-CMPU @ <> if false exit then
+   TSR-REFU @ 0 ?do  TSR-REF i + c@ TSR-CMP i + c@ <> if false unloop exit then  loop true ;
+: TSR-ARM ( -- )  10 50 0.002 0.02 AMT-SCHED!  0.1 AMT-CLIP! ;   \ LR schedule + real global-norm clip
+: TSR-DISARM ( -- )  AMT-SCHED-OFF AMT-CLIP-OFF ;
+
+\ ---- fixed-LR resume equivalence --------------------------------------------
+STORE-RESET
+\ uninterrupted N+M -> snapshot the final state to "ref"
+MODEL: SCRATCH-MLP ( x:8x6 w1:6x16 b1:1x16 w2:16x2 b2:1x2 -- y ) LINEAR GELU LINEAR ;
+AMT-SETUP  TSR-N TSR-M + TSR-STEPS
+ADAM-T@ TSR-N TSR-M + T=
+AMT-CKPT-SEGS s" ref" TSC-SAVE
+\ producer: fresh trainer, N steps, checkpoint at step N
+MODEL: SCRATCH-MLP ( x:8x6 w1:6x16 b1:1x16 w2:16x2 b2:1x2 -- y ) LINEAR GELU LINEAR ;
+AMT-SETUP  TSR-N TSR-STEPS  AMT-CKPT-SAVE
+\ resume: FRESH trainer, load step-N state, train M -> snapshot to "cmp"
+MODEL: SCRATCH-MLP ( x:8x6 w1:6x16 b1:1x16 w2:16x2 b2:1x2 -- y ) LINEAR GELU LINEAR ;
+AMT-SETUP  AMT-CKPT-LOAD
+ADAM-T@ TSR-N T=
+TSR-M TSR-STEPS
+AMT-CKPT-SEGS s" cmp" TSC-SAVE
+s" ref" TSR-READ-REF  s" cmp" TSR-READ-CMP
+TSR-SAME? TTRUE                      \ resumed final state == uninterrupted, bit-for-bit
+
+\ ---- t matters: a resume that drops the step counter diverges ----------------
+MODEL: SCRATCH-MLP ( x:8x6 w1:6x16 b1:1x16 w2:16x2 b2:1x2 -- y ) LINEAR GELU LINEAR ;
+AMT-SETUP  AMT-CKPT-LOAD
+ADAM-STEP-RESET                      \ forget t (keep params + moments)
+ADAM-T@ 0 T=
+TSR-M TSR-STEPS
+AMT-CKPT-SEGS s" cmp" TSC-SAVE
+s" cmp" TSR-READ-CMP
+TSR-SAME? 0= TTRUE                   \ diverges from the uninterrupted run
+
+\ ---- resume equivalence with the LR schedule AND clip armed ------------------
+STORE-RESET
+MODEL: SCRATCH-MLP ( x:8x6 w1:6x16 b1:1x16 w2:16x2 b2:1x2 -- y ) LINEAR GELU LINEAR ;
+AMT-SETUP  TSR-ARM  TSR-N TSR-M + TSR-STEPS  TSR-DISARM
+AMT-CKPT-SEGS s" ref" TSC-SAVE
+MODEL: SCRATCH-MLP ( x:8x6 w1:6x16 b1:1x16 w2:16x2 b2:1x2 -- y ) LINEAR GELU LINEAR ;
+AMT-SETUP  TSR-ARM  TSR-N TSR-STEPS  TSR-DISARM  AMT-CKPT-SAVE
+MODEL: SCRATCH-MLP ( x:8x6 w1:6x16 b1:1x16 w2:16x2 b2:1x2 -- y ) LINEAR GELU LINEAR ;
+AMT-SETUP  AMT-CKPT-LOAD
+ADAM-T@ TSR-N T=
+TSR-ARM  TSR-M TSR-STEPS  TSR-DISARM      \ re-arm the SAME schedule+clip; it continues at step N
+AMT-CKPT-SEGS s" cmp" TSC-SAVE
+s" ref" TSR-READ-REF  s" cmp" TSR-READ-CMP
+TSR-SAME? TTRUE
+
 T-REPORT
 
 ;package

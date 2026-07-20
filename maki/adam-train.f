@@ -35,6 +35,7 @@ require maki/from-scratch-train.f
 require maki/optim-tensor.f
 require maki/loss-tensor.f
 require maki/array.f
+require maki/train-state.f
 
 -5144 constant E-ADAM-RUN   \ a trainer accessor was used before its training run
 -5157 constant E-ADAMW-POLICY   \ a parameter's decay attribute is not a valid WD flag
@@ -468,6 +469,34 @@ public
 : AMT-BATCH-STEPS@   ( -- n )  AMT-BCK AMT-BSTEPS-V @ ;
 : AMT-BATCH-INITIAL@ ( -- r )  AMT-BCK AMT-BINIT-L @ ;
 : AMT-BATCH-FINAL@   ( -- r )  AMT-BCK AMT-BFINAL-L @ ;
+
+\ ---- training-state checkpoint (resume): params + Adam m/v + optimizer step ----
+\ Persists everything a resume needs to continue the AMT run BIT-IDENTICALLY: the
+\ four MLP parameter buffers, their eight Adam moment buffers, and the optimizer
+\ step state (ADAM-T plus the running bias-correction powers b1^t / b2^t). The
+\ batch data is NOT persisted - AMT-SETUP regenerates it deterministically from
+\ SC-DATA-SEED. The LR schedule and clip are re-armed by the resume caller; they
+\ read ADAM-T, which IS persisted, so a resumed schedule continues at the right
+\ step. maki/train-state.f owns the checked, atomic, integrity-checked codec.
+: AMT-CKPT-SEGS ( -- )   \ register the resume state in a fixed canonical order
+   TSC-BEGIN
+   SC-W1 SC-W1N TSC-SEG    SC-B1 SC-B1N TSC-SEG
+   SC-W2 SC-W2N TSC-SEG    SC-B2 SC-B2N TSC-SEG
+   AMT-W1M SC-W1N TSC-SEG  AMT-W1V SC-W1N TSC-SEG
+   AMT-B1M SC-B1N TSC-SEG  AMT-B1V SC-B1N TSC-SEG
+   AMT-W2M SC-W2N TSC-SEG  AMT-W2V SC-W2N TSC-SEG
+   AMT-B2M SC-B2N TSC-SEG  AMT-B2V SC-B2N TSC-SEG
+   ADAM-T 1 TSC-SEG  ADAM-B1T 1 TSC-SEG  ADAM-B2T 1 TSC-SEG ;
+: AMT-CKPT$ ( -- ptr u8 n )  s" amt" ;
+: AMT-CKPT-SAVE ( -- )  AMT-CKPT-SEGS  AMT-CKPT$ TSC-SAVE ;
+: AMT-CKPT-LOAD ( -- )  AMT-CKPT-SEGS  AMT-CKPT$ TSC-LOAD ;
+
+\ ADAM-T@ reads the persisted optimizer step; ADAM-STEP-RESET drops it (with the
+\ bias-correction powers) while leaving params + moments intact, so the resume
+\ test can build the "resume forgot the step" trajectory and prove ADAM-T is
+\ load-bearing (a t-reset resume diverges from the uninterrupted run).
+: ADAM-T@ ( -- n )  ADAM-T @ ;
+: ADAM-STEP-RESET ( -- )  ADAM-RESET ;
 
 public
 
