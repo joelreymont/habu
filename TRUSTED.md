@@ -990,6 +990,7 @@ test/layout-buffer.f:N>LBTK test-metaprog habu-epic-type-system-b88c9ecc
 test/layout-buffer.f:LBTK>N test-metaprog habu-epic-type-system-b88c9ecc
 test/layout-defer.f:N>DTK test-metaprog habu-size-model-proportional-16994186
 test/layout-defer.f:DTK>N test-metaprog habu-size-model-proportional-16994186
+test/layout-defer.f:DTK-ADDR test-metaprog habu-size-model-proportional-16994186
 test/typed-storage-test.f:N>TSK test-metaprog habu-checker-seal-nominal-0b2eaece
 test/typed-storage-test.f:TSK>N test-metaprog habu-checker-seal-nominal-0b2eaece
 test/typed-storage-test.f:TSRES-UN test-metaprog habu-checker-seal-nominal-0b2eaece
@@ -1664,6 +1665,7 @@ prim - enum - -
 prim - product - -
 prim - layout-buffer - pe-n pe-in
 prim - ldefer-bind - pe-n pe-in pe-n pe-in pe-n pe-in pe-n pe-in pe-n pe-in
+prim - ldefer-grow - pe-n pe-in pe-n pe-in pe-n pe-in pe-n pe-in pe-n pe-in
 prim - defer-layout-buffer - -
 prim - typed-buffer - pe-n pe-in
 prim - typed-variable - -

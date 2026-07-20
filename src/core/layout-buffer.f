@@ -76,6 +76,16 @@ variable LBUF-BYTES
       LBUF-I @ CELL + LBUF-I !
    repeat ;
 
+\ Cell-wise move (bytes is a whole number of cells: live-count * width). src and
+\ dst are the abandoned and fresh column regions — always disjoint — so a forward
+\ copy is safe. Sibling of LBUF-ZERO, on the same @/! surface.
+: LBUF-COPY ( ptr a ptr a n -- ) {: src:ptr dst:ptr bytes:n :}
+   0 LBUF-I !
+   begin LBUF-I @ bytes < while
+      src LBUF-I @ + @  dst LBUF-I @ + !
+      LBUF-I @ CELL + LBUF-I !
+   repeat ;
+
 : LBUF-NAME, ( ptr u8 n -- ptr u8 n ) {: name:ptr nameu:n :}
    LBUF-GEN-U @ {: start:n :}
    name nameu LBUF-APP
@@ -166,6 +176,19 @@ PRIM: LAYOUT-BUFFER PE-N PE-IN PRIM;
 \ are written). A bind past LDEFER-CELL-MAX dies NAMED (E-LAYOUT-CEIL) BEFORE
 \ any allot or cell store, so a too-big model leaves the prior tables intact
 \ (the transactional boundary).
+\
+\ NAME-GROW ( count -- ) is the copy-on-grow sibling of NAME-BIND for a two-phase
+\ table (bound once to a first-phase count, then extended incrementally): it
+\ carries the live cells into the fresh larger region before abandoning the old
+\ one, so nodes written before the grow survive. NAME-BIND stays fresh/zeroed
+\ (unchanged semantics); preservation is opt-in via NAME-GROW alone.
+\
+\ USAGE LAW: a deferred accessor reads the offset cell on EVERY call, so the
+\ column base may move between two accessor calls with no hazard — an index read
+\ before a grow and one after both resolve against the live base. The ONE unsafe
+\ act is holding a RAW pointer derived from an accessor across a NAME-GROW: the
+\ grow abandons the old region, so that pointer dangles. Re-derive through the
+\ accessor after any grow; never cache an accessor result across an append.
 
 \ Shared runtime binder: every generated NAME-BIND is `<offo capo cnto wc>
 \ LDEFER-BIND`, so the per-column emitted code stays tiny. Cell offsets are
@@ -193,10 +216,51 @@ PRIM: LAYOUT-BUFFER PE-N PE-IN PRIM;
 \ allot/!). Effect: ( count offo capo cnto wc -- ).
 PRIM: LDEFER-BIND PE-N PE-IN PE-N PE-IN PE-N PE-IN PE-N PE-IN PE-N PE-IN PRIM;
 
-\ Generate the deferred accessor plus its NAME-BIND into one source. The accessor
-\ is the FIRST definition so LBUF-EVAL's one-shot armed window authorizes it by
-\ name; NAME-BIND is an ordinary checked word (pushes the four baked literals and
-\ calls LDEFER-BIND).
+\ Copy-on-grow binder: extends a column already bound by LDEFER-BIND to `count`
+\ live cells, PRESERVING the cells written so far. Growing unbound (cnt-cell 0)
+\ dies NAMED (E-LAYOUT-UNBOUND) — the caller must BIND first (the MIR binds the
+\ forward count at capture-finish, then GROWs during backward-build). Grow-to-at-
+\ least lives here so callers stay dumb: when count outgrows the capacity the new
+\ region is `max(2*capacity, count)` cells (doubling floor, clamped to `count`
+\ when doubling would trip the ceiling), the live cells are carried over, and the
+\ tail past the old live count is zeroed (a within-capacity grow zeroes only the
+\ newly exposed [old-live, count) slots — a prior shrink may have left them dirty).
+\ Like LDEFER-BIND it dies NAMED past LDEFER-CELL-MAX BEFORE any allot or store,
+\ so a too-big grow leaves the prior region and its live data intact.
+: LDEFER-GROW ( n n n n n -- )   \ count offo capo cnto wc
+   {: count:n offo:n capo:n cnto:n wc:n :}
+   count 0 < if E-LAYOUT-BUFFER throw then
+   data-base cnto + @ 0= if E-LAYOUT-UNBOUND throw then    \ grow requires a prior BIND
+   count wc * {: need:n :}
+   need LDEFER-CELL-MAX > if E-LAYOUT-CEIL throw then       \ transactional: die before any mutation
+   count  data-base capo + @  > if                          \ count > capacity: copy-on-grow
+      data-base cnto + @ {: live:n :}                       \ live cells to carry to the fresh region
+      data-base  data-base offo + @  + {: obase:ptr :}      \ current region base
+      data-base capo + @ 2 *  count max {: dbl:n :}          \ grow-to-at-least: doubling floor
+      dbl wc * LDEFER-CELL-MAX > if count else dbl then {: newcap:n :}   \ clamp so doubling never trips the ceiling
+      here {: nbase:ptr :}
+      newcap wc * cells allot
+      nbase newcap wc * cells LBUF-ZERO                      \ fresh region zeroed (new cells read 0)
+      obase nbase  live wc * cells  LBUF-COPY                \ carry the live cells forward
+      nbase data-base -  offo data-base +  !                 \ off-cell = new region offset
+      newcap  capo data-base +  !                            \ cap-cell = new capacity
+   else count  data-base cnto + @  > if                      \ fits capacity but exposes new slots
+      data-base  data-base offo + @  +                       \ region base
+      data-base cnto + @ wc * cells +                        \ + old-live * width cells
+      count  data-base cnto + @  -  wc * cells  LBUF-ZERO     \ zero [old-live, count)
+   then then
+   count  cnto data-base +  ! ;                              \ cnt-cell = new live bound
+
+\ Same seal treatment as LDEFER-BIND: the axiom keeps the shared grow binder
+\ checker-known and top-level executable for the generated NAME-GROW callers; it
+\ is a raw-memory surface (allot/!), not a source-evaluating opener, so it is not
+\ UNSAFE-TOK?. Effect: ( count offo capo cnto wc -- ).
+PRIM: LDEFER-GROW PE-N PE-IN PE-N PE-IN PE-N PE-IN PE-N PE-IN PE-N PE-IN PRIM;
+
+\ Generate the deferred accessor plus its NAME-BIND and NAME-GROW into one source.
+\ The accessor is the FIRST definition so LBUF-EVAL's one-shot armed window
+\ authorizes it by name; NAME-BIND and NAME-GROW are ordinary checked words (each
+\ pushes the four baked literals and calls LDEFER-BIND / LDEFER-GROW).
 : LDEFER-SOURCE ( ptr u8 n ptr u8 n n n n -- ptr u8 n ptr u8 n )
    {: name:ptr nameu:n type:ptr typeu:n offo:n capo:n cnto:n :}
    LBUF-CLEAR
@@ -216,7 +280,11 @@ PRIM: LDEFER-BIND PE-N PE-IN PE-N PE-IN PE-N PE-IN PE-N PE-IN PE-N PE-IN PRIM;
    name nameu LBUF-APP  s" -BIND ( n -- ) " LBUF-APP
    offo LBUF-DEC,  s"  " LBUF-APP  capo LBUF-DEC,  s"  " LBUF-APP
    cnto LBUF-DEC,  s"  " LBUF-APP  LBUF-W @ LBUF-DEC,
-   s"  LDEFER-BIND ;" LBUF-APP
+   s"  LDEFER-BIND ; : " LBUF-APP
+   name nameu LBUF-APP  s" -GROW ( n -- ) " LBUF-APP
+   offo LBUF-DEC,  s"  " LBUF-APP  capo LBUF-DEC,  s"  " LBUF-APP
+   cnto LBUF-DEC,  s"  " LBUF-APP  LBUF-W @ LBUF-DEC,
+   s"  LDEFER-GROW ;" LBUF-APP
    LBUF-GEN LBUF-GEN-U @ pna pnu ;
 
 : DEFER-LAYOUT-BUFFER ( -- )
@@ -226,6 +294,8 @@ PRIM: LDEFER-BIND PE-N PE-IN PE-N PE-IN PE-N PE-IN PE-N PE-IN PE-N PE-IN PRIM;
    TDECL-EVAL-ARMED @ 0= if E-LAYOUT-BUFFER throw then
    name nameu LBUF-NAME-GUARD
    LBUF-CLEAR  name nameu LBUF-APP  s" -BIND" LBUF-APP     \ guard the published NAME-BIND too
+   LBUF-GEN LBUF-GEN-U @ LBUF-NAME-GUARD
+   LBUF-CLEAR  name nameu LBUF-APP  s" -GROW" LBUF-APP     \ guard the published NAME-GROW too
    LBUF-GEN LBUF-GEN-U @ LBUF-NAME-GUARD
    type typeu CHECKER-LAYOUT-INFO 0= if 2drop E-LAYOUT-BUFFER throw then
    LBUF-W !  drop                                          \ width (cells) from the layout family

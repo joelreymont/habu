@@ -70,6 +70,55 @@ $200000 DTK-BIND-RC E-LAYOUT-CEIL T=
 1 DTK-IDX-RC 0 T=                    \ index 1 still in bounds (prior bind intact)
 2 DTK-IDX-RC E-LAYOUT-BOUNDS T=      \ index 2 still oob (count unchanged at 2)
 
+\ ---- copy-on-grow (NAME-GROW): preserve live cells across a two-phase grow ----
+variable DTK-BASE
+TRUSTED: DTK-ADDR ( ptr dtk -- n ) ;   \ read the accessor's base pointer as a number
+: DTK-GROW ( -- )  DTK-I @ DTK-AT-GROW ;
+: DTK-GROW-RC ( n -- n )  DTK-I !  [: DTK-GROW ;] catch ;
+
+\ a second deferred column, left unbound, for the unbound-grow test
+DEFER-LAYOUT-BUFFER UGB-AT dtk
+: UGB-GROW ( -- )  DTK-I @ UGB-AT-GROW ;
+: UGB-GROW-RC ( n -- n )  DTK-I !  [: UGB-GROW ;] catch ;
+
+\ (G) copy-on-grow preserves live cells: bind to 3, write, GROW past capacity;
+\ every live cell is byte-identical in the moved region and new cells read 0.
+3 DTK-AT-BIND
+111 0 DTK-PUT  222 1 DTK-PUT  333 2 DTK-PUT
+7 DTK-AT-GROW                        \ 7 > cap 5 -> realloc, copy live 3, zero the tail
+0 DTK-GET 111 T=                     \ live cell carried byte-identical
+1 DTK-GET 222 T=
+2 DTK-GET 333 T=
+3 DTK-GET 0 T=                       \ grown-into cells zeroed
+6 DTK-GET 0 T=
+6 DTK-IDX-RC 0 T=                    \ live count is exactly 7: index 6 in bounds
+7 DTK-IDX-RC E-LAYOUT-BOUNDS T=      \ index 7 oob
+
+\ (H) grow-to-at-least: G's grow to 7 doubled the region (cap 5 -> max(10,7)=10),
+\ so growing to 8 fits and reuses it in place - the accessor base does not move.
+0 DTK-AT DTK-ADDR DTK-BASE !
+8 DTK-AT-GROW
+0 DTK-AT DTK-ADDR DTK-BASE @ T=      \ base unmoved => capacity grew past the request
+0 DTK-GET 111 T=                     \ live cells intact across the in-place grow
+7 DTK-GET 0 T=                       \ index 7 now exposed and zeroed
+
+\ (I) growing a never-bound column dies NAMED - the caller must BIND first
+0 UGB-GROW-RC E-LAYOUT-UNBOUND T=
+
+\ (J) ceiling is transactional for GROW too: a grow past LDEFER-CELL-MAX dies
+\ NAMED with NO mutation, so the prior (live 8) region and its cells survive.
+$200000 DTK-GROW-RC E-LAYOUT-CEIL T=
+0 DTK-GET 111 T=                     \ live cells intact
+7 DTK-IDX-RC 0 T=                    \ index 7 still in bounds (live unchanged at 8)
+8 DTK-IDX-RC E-LAYOUT-BOUNDS T=      \ index 8 still oob
+
+\ (K) a within-capacity grow ZEROES the newly exposed slots even when a prior
+\ shrink left them dirty: write index 5, shrink live below it, grow back -> 0.
+555 5 DTK-PUT
+3 DTK-AT-BIND                        \ shrink live to 3 (region reused, index 5 dirty)
+8 DTK-AT-GROW                        \ grow back within cap -> exposes [3,8), zeroes them
+5 DTK-GET 0 T=                       \ index 5 zeroed, not the stale 555
+
 \ ---- definer rejects the same illegal types LAYOUT-BUFFER does --------------
 DEFLINEAR dfl-lin
 SUMTYPE dfl-owned 0

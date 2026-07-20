@@ -1465,6 +1465,7 @@ variable SS-I  variable SS-J  variable SS-BAD
 \ AXR 317 0 0 0 prim - product - -
 \ AXR 318 0 1 0 prim - layout-buffer - pe-n pe-in
 \ AXR 319 0 5 0 prim - ldefer-bind - pe-n pe-in pe-n pe-in pe-n pe-in pe-n pe-in pe-n pe-in
-\ AXR 320 0 0 0 prim - defer-layout-buffer - -
-\ AXR 321 0 1 0 prim - typed-buffer - pe-n pe-in
-\ AXR 322 0 0 0 prim - typed-variable - -
+\ AXR 320 0 5 0 prim - ldefer-grow - pe-n pe-in pe-n pe-in pe-n pe-in pe-n pe-in pe-n pe-in
+\ AXR 321 0 0 0 prim - defer-layout-buffer - -
+\ AXR 322 0 1 0 prim - typed-buffer - pe-n pe-in
+\ AXR 323 0 0 0 prim - typed-variable - -
