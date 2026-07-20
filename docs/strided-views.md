@@ -142,6 +142,21 @@ rule the affine-LayerNorm form landing followed for cache keys.
 - **SV-8 (plan identity)**: sched-key carries the layout classification +
   stride signature where kernels specialize.
 
+## SV-6 status (re-evaluated 2026-07-20, boundary recorded in maki/mha.f:32-51)
+
+The SV-1..4 core landed, and the MHA lane then re-evaluated SV-6 against the
+landed consumers: NO attention copy is honestly convertible today. Every MHA
+consumer reads through contiguous accessors (generated `TENSOR:` words bake a
+row-major offset over one bound base; `T-GET`/`MATMUL` are cells+ contiguous;
+only `TV-AT@` consumes view descriptors and nothing in MHA calls it), and the
+core is 2D while MHA's per-head tensors are 4D-batched — a 2D head-split view
+cannot feed one 4D batched bind. The head-major materialization is therefore
+the honest bridge, not a retirable interim. SV-6-in-MHA requires EITHER N-D
+strided views plus stride-aware `TENSOR:`/`MATMUL` accessors (new capability
+work) OR a per-head-GEMM re-architecture accepting lock re-proofs; the natural
+eventual carrier is the tile-IR compiler layer's layout pass
+(`habu-ptx-opt-layer-325b9507`), which owns exactly this class of decision.
+
 ## Sequencing
 
 SV-1..4 are the library core and land together (one lane, all-or-nothing like
