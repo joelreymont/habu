@@ -1,9 +1,9 @@
 ---
 title: "ENUM: parse full and compact forms"
-status: open
+status: active
 priority: 1
 issue-type: task
-created-at: "2026-07-13T17:13:59.138732+02:00"
+created-at: "\"2026-07-13T17:13:59.138732+02:00\""
 blocks:
   - habu-type-dsl-unify-b65d46c1
   - habu-type-dsl-implement-50f8dc15
@@ -18,3 +18,5 @@ duplicates, reserved names, and malformed arity transactionally.
 Own the exact native and recovery post-hook load rows for src/core/enum-decl.f
 in src/habu/habu2.f and bootstrap/cg/forth.fs; do not modify unrelated loader
 rows.
+
+Claim: agent=enumparse workspace=.jj-ws/fable-enumparse machine=spark (owns NEW src/core/enum-decl.f + declaration tests; consumes the declaration-event contract; per the attach-variant re-sequencing this stage ALSO owns variant-field registration - names + the sum-declaration field transaction)

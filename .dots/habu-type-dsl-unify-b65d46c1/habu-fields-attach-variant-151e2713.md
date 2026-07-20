@@ -10,4 +10,27 @@ blocks:
 
 Own SUMV metadata in src/core/type-family.f and focused family tests. Replace positional payload schema ranges with shared named-field ranges while preserving tag ordinal, payload width, constructor symbol/package, rollback, and family identity. Do not change public syntax. Validate type-family and rollback suites.
 
-Claim: agent=sumvfields workspace=.jj-ws/fable-sumvfields machine=spark (owns SUMV metadata in src/core/type-family.f + family tests; builds against the add-shared record contract, Mac lane in flight - orchestrator reconciles at merge)
+Claim released (agent=sumvfields stopped with structural evidence, no edits - see the re-sequencing below).
+
+2026-07-20 RE-SEQUENCED (orchestrator decision from the sumvfields lane's evidence;
+the lane's full analysis is in its report, key anchors verified):
+TWO STRUCTURAL GAPS make this dot unimplementable at the unify stage:
+(1) NO NAMES: the shared field record requires canonical non-reserved names
+    (PF-NAME-REQUIRE/TF-CANON? demand a lowercase letter - ordinals rejected),
+    but the only current front end (legacy sumtype.f TDECL-VARIANT) produces
+    ANONYMOUS positional payloads; named variant fields only exist once the
+    payload-aware ENUM parser (habu-type-dsl-implement-a762cfaf, VARIANT ...
+    FIELD name type ... ;VARIANT) lands - a LATER chain stage. Fabricating
+    names would corrupt reflection and snapshot identity.
+(2) NO TRANSACTION: only PRODUCT opens a field transaction; TDECL-MARK/RESTORE
+    deliberately exclude PF marks ("SUMTYPE/ENUM/TYPEFAMILY never touch PF"),
+    so registering variant fields now would orphan committed rows after a
+    failed declaration - the rollback bar cannot be met from this dot's write
+    set.
+DECISION (option 2 of the lane's proposals): the payload-aware ENUM parser
+stage OWNS variant-field registration (it naturally owns both the names and
+the declaration transaction); THIS dot re-scopes to the SUMV record-shape swap
+(SV.SCH-START/COUNT -> SV.FLD-START/COUNT with re-derived positional
+accessors - the lane verified this part is mechanically feasible and
+consumer-preserving) and RUNS AFTER habu-enum-parse-full-39c0dc1b +
+habu-enum-generate-named-1f3261a3 land. Blocks added accordingly.
