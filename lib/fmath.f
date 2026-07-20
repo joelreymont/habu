@@ -5,14 +5,11 @@
 \ (both are downstream, so the core lives at the lib layer to keep the one-way dep).
 \
 \ The module lives in `package FMATH`. External callers use the qualified public API
-\ (FMATH:FEXP); the range-reduction helpers are package-private.
+\ (FMATH:FEXP, FMATH:FROUND); the other range-reduction helpers are package-private.
 
 package FMATH
 
 private
-
-\ round-to-nearest signed int (f>s truncates toward zero, so bias by the sign)
-: FROUND ( r -- n )  dup f0< if 0.5 f- else 0.5 f+ then f>s ;
 
 \ 2^n for signed int n (reference: |n| multiplies; n stays small after reduction)
 : F2^N ( n -- r )
@@ -33,6 +30,10 @@ private
    x  k s>f 0.6931471805599453 f*  f-  FEXP-POLY  k F2^N  f* ;
 
 public
+
+\ round-to-nearest signed int (f>s truncates toward zero, so bias by the sign).
+\ Public so cross-package callers (maki/causal-test.f gradcheck) round sign-aware.
+: FROUND ( r -- n )  dup f0< if 0.5 f- else 0.5 f+ then f>s ;
 
 : FEXP ( r -- r ) {: x:r :}
    x  x 1.4426950408889634 f* FROUND  FEXP-K ;

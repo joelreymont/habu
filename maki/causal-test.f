@@ -33,20 +33,20 @@ create MSKS 9 cells allot   create MSKA 9 cells allot
 MSKQ MSKK MSKS  3 3 2  MM-NT
 MSKS MSKA 3 CAUSAL-SOFTMAX-ROWS
 
-MSKA 0 T-GET 1000.0 f* FROUND  1000 T=          \ row0: attends to itself only
-MSKA 1 T-GET 1000.0 f* FROUND     0 T=          \ masked (future)
-MSKA 2 T-GET 1000.0 f* FROUND     0 T=          \ masked (future)
-MSKA 3 T-GET 1000.0 f* FROUND   269 T=          \ row1: softmax[0,1]
-MSKA 4 T-GET 1000.0 f* FROUND   731 T=
-MSKA 5 T-GET 1000.0 f* FROUND     0 T=          \ masked (future)
-MSKA 6 T-GET 1000.0 f* FROUND   212 T=          \ row2: softmax[1,1,2]
-MSKA 7 T-GET 1000.0 f* FROUND   212 T=
-MSKA 8 T-GET 1000.0 f* FROUND   576 T=
+MSKA 0 T-GET 1000.0 f* FMATH:FROUND  1000 T=          \ row0: attends to itself only
+MSKA 1 T-GET 1000.0 f* FMATH:FROUND     0 T=          \ masked (future)
+MSKA 2 T-GET 1000.0 f* FMATH:FROUND     0 T=          \ masked (future)
+MSKA 3 T-GET 1000.0 f* FMATH:FROUND   269 T=          \ row1: softmax[0,1]
+MSKA 4 T-GET 1000.0 f* FMATH:FROUND   731 T=
+MSKA 5 T-GET 1000.0 f* FMATH:FROUND     0 T=          \ masked (future)
+MSKA 6 T-GET 1000.0 f* FMATH:FROUND   212 T=          \ row2: softmax[1,1,2]
+MSKA 7 T-GET 1000.0 f* FMATH:FROUND   212 T=
+MSKA 8 T-GET 1000.0 f* FMATH:FROUND   576 T=
 
 \ each unmasked row is a distribution (sums to 1)
-MSKA 0 T-GET                                     1000.0 f* FROUND  1000 T=
-MSKA 3 T-GET MSKA 4 T-GET f+                     1000.0 f* FROUND  1000 T=
-MSKA 6 T-GET MSKA 7 T-GET f+ MSKA 8 T-GET f+     1000.0 f* FROUND  1000 T=
+MSKA 0 T-GET                                     1000.0 f* FMATH:FROUND  1000 T=
+MSKA 3 T-GET MSKA 4 T-GET f+                     1000.0 f* FMATH:FROUND  1000 T=
+MSKA 6 T-GET MSKA 7 T-GET f+ MSKA 8 T-GET f+     1000.0 f* FMATH:FROUND  1000 T=
 
 \ ---- perturb-future-invariance: scores at j>i must not move ANY output -------
 \ Recompute after adding arbitrary deltas to the strict-upper (future) entries
@@ -76,19 +76,19 @@ create MSKDY 4 cells allot  create MSKDX 4 cells allot
 MSKX MSKY 4 3 SM-FWD-CAUSAL
 MSKDY MSKY MSKDX 4 3 SM-BWD-CAUSAL
 
-MSKDX 0 T-GET 1000.0 f* FROUND
+MSKDX 0 T-GET 1000.0 f* FMATH:FROUND
    0.501 MSKX 0 T-SET MSK-LOSS  0.499 MSKX 0 T-SET MSK-LOSS  f- 0.002 f/  0.5 MSKX 0 T-SET
-   1000.0 f* FROUND  T=
-MSKDX 1 T-GET 1000.0 f* FROUND
+   1000.0 f* FMATH:FROUND  T=
+MSKDX 1 T-GET 1000.0 f* FMATH:FROUND
    1.001 MSKX 1 T-SET MSK-LOSS  0.999 MSKX 1 T-SET MSK-LOSS  f- 0.002 f/  1.0 MSKX 1 T-SET
-   1000.0 f* FROUND  T=
-MSKDX 2 T-GET 1000.0 f* FROUND
+   1000.0 f* FMATH:FROUND  T=
+MSKDX 2 T-GET 1000.0 f* FMATH:FROUND
    1.501 MSKX 2 T-SET MSK-LOSS  1.499 MSKX 2 T-SET MSK-LOSS  f- 0.002 f/  1.5 MSKX 2 T-SET
-   1000.0 f* FROUND  T=
+   1000.0 f* FMATH:FROUND  T=
 \ masked input: perturbing x3 cannot move the loss, so both analytic and FD are 0
-MSKDX 3 T-GET 1000.0 f* FROUND
+MSKDX 3 T-GET 1000.0 f* FMATH:FROUND
    2.001 MSKX 3 T-SET MSK-LOSS  1.999 MSKX 3 T-SET MSK-LOSS  f- 0.002 f/  2.0 MSKX 3 T-SET
-   1000.0 f* FROUND  T=
+   1000.0 f* FMATH:FROUND  T=
 
 \ ---- unmasked degeneracy: v=n reproduces plain SM-FWD bit-for-bit ------------
 create MSKEX 3 cells allot  create MSKYC 3 cells allot  create MSKYP 3 cells allot

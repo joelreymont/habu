@@ -9,17 +9,17 @@ package MAKI
 T-RESET
 
 \ FEXP across the range (exercises k = round(x/ln2) reduction)
-0.0 FEXP  1000.0 f* 0.5 f+ f>s    1000 T=        \ exp(0)=1
-1.0 FEXP  1000.0 f* 0.5 f+ f>s    2718 T=        \ exp(1)=2.71828
-2.0 FEXP  1000.0 f* 0.5 f+ f>s    7389 T=        \ exp(2)=7.38906
--1.0 FEXP 1000.0 f* 0.5 f+ f>s     368 T=        \ exp(-1)=0.36788
-0.5 FEXP  1000.0 f* 0.5 f+ f>s    1649 T=        \ exp(0.5)=1.64872
-5.0 FEXP  1000.0 f* 0.5 f+ f>s  148413 T=        \ exp(5)=148.413
--3.0 FEXP 1000.0 f* 0.5 f+ f>s      50 T=        \ exp(-3)=0.04979
+0.0 FMATH:FEXP  1000.0 f* 0.5 f+ f>s    1000 T=        \ exp(0)=1
+1.0 FMATH:FEXP  1000.0 f* 0.5 f+ f>s    2718 T=        \ exp(1)=2.71828
+2.0 FMATH:FEXP  1000.0 f* 0.5 f+ f>s    7389 T=        \ exp(2)=7.38906
+-1.0 FMATH:FEXP 1000.0 f* 0.5 f+ f>s     368 T=        \ exp(-1)=0.36788
+0.5 FMATH:FEXP  1000.0 f* 0.5 f+ f>s    1649 T=        \ exp(0.5)=1.64872
+5.0 FMATH:FEXP  1000.0 f* 0.5 f+ f>s  148413 T=        \ exp(5)=148.413
+-3.0 FMATH:FEXP 1000.0 f* 0.5 f+ f>s      50 T=        \ exp(-3)=0.04979
 
 \ EXP VJP (exp'=exp) + finite difference at x=1
 1.0 1.0 EXP-BWD  1000.0 f* 0.5 f+ f>s  2718 T=
-1.001 FEXP  0.999 FEXP  f-  0.002 f/  1000.0 f* 0.5 f+ f>s  2718 T=
+1.001 FMATH:FEXP  0.999 FMATH:FEXP  f-  0.002 f/  1000.0 f* 0.5 f+ f>s  2718 T=
 
 \ sigmoid
 0.0 SIGMOID-F  1000.0 f* 0.5 f+ f>s   500 T=     \ 0.5
@@ -45,7 +45,7 @@ T-RESET
 7.389056099 FLN  1000.0 f* 0.5 f+ f>s  2000 T=   \ ln(e^2)=2
 
 \ FEXP o FLN roundtrip + LOG VJP (ln'=1/x) + finite difference at x=2
-1.5 FEXP FLN  1000.0 f* 0.5 f+ f>s  1500 T=       \ ln(exp(1.5))=1.5
+1.5 FMATH:FEXP FLN  1000.0 f* 0.5 f+ f>s  1500 T=       \ ln(exp(1.5))=1.5
 1.0 2.0 LOG-BWD  1000.0 f* 0.5 f+ f>s  500 T=     \ ln'(2)=0.5
 3.001 FLN  2.999 FLN  f-  0.002 f/  1000.0 f* 0.5 f+ f>s  333 T=   \ ln'(3)=1/3 (away from the m=2 reduction boundary)
 

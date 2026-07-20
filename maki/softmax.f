@@ -14,7 +14,7 @@ package MAKI
 
 \ write e_i = exp(x_i - m) into yb, return sum
 : SM-EXP! ( ptr a ptr a n r -- r ) {: xb:ptr yb:ptr n:n m:r :}
-   0.0  n 0 ?do  xb i T-GET  m f-  FEXP  dup  yb i T-SET  f+  loop ;
+   0.0  n 0 ?do  xb i T-GET  m f-  FMATH:FEXP  dup  yb i T-SET  f+  loop ;
 
 \ in-place divide yb by the scalar sum
 : SM-DIV! ( ptr a n r -- ) {: yb:ptr n:n s:r :}

@@ -11,11 +11,11 @@ package MAKI
 public
 
 \ EXP activation + VJP (exp'(x) = exp(x)); FEXP is the shared lib/fmath.f core
-: EXP-F   ( r -- r )    FEXP ;
-: EXP-BWD ( r r -- r ) {: dz:r x:r :}  dz  x FEXP  f* ;
+: EXP-F   ( r -- r )    FMATH:FEXP ;
+: EXP-BWD ( r r -- r ) {: dz:r x:r :}  dz  x FMATH:FEXP  f* ;
 
 \ sigmoid(x) = 1/(1+exp(-x)) ; sigmoid'(x) = s(1-s)
-: SIGMOID-F   ( r -- r ) {: x:r :}  x fnegate FEXP 1.0 f+  1.0 swap f/ ;
+: SIGMOID-F   ( r -- r ) {: x:r :}  x fnegate FMATH:FEXP 1.0 f+  1.0 swap f/ ;
 : SIGMOID-BWD ( r r -- r ) {: dz:r x:r :}  x SIGMOID-F  dup 1.0 swap f-  f*  dz f* ;
 
 \ tanh(x) = 2*sigmoid(2x) - 1 ; tanh'(x) = 1 - tanh^2

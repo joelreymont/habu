@@ -64,7 +64,7 @@ private
 \ logsumexp of one V-length logit row: m + ln( sum_i exp(x_i - m) ), m = row max
 : XENT-LSE ( ptr a n -- r ) {: xb:ptr v:n :}
    xb 0 T-GET  v 1 ?do  xb i T-GET  MAKI:MAX-F  loop  {: m:r :}
-   0.0  v 0 ?do  xb i T-GET  m f-  FEXP  f+  loop  MAKI:FLN  m f+ ;
+   0.0  v 0 ?do  xb i T-GET  m f-  FMATH:FEXP  f+  loop  MAKI:FLN  m f+ ;
 
 \ read + range-check row r's integer class target (fail closed E-MK-TGT)
 : XENT-TGT ( ptr a n n -- n ) {: tb:ptr r:n v:n :}
