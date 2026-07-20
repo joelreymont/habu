@@ -356,6 +356,8 @@ TEST:SUITE maki/device-smoke.f
 TEST:;SUITE
 TEST:SUITE maki/examples/nanogpt/tokenizer-test.f
 TEST:;SUITE
+TEST:SUITE maki/examples/nanogpt/bpe-test.f
+TEST:;SUITE
 TEST:SUITE maki/examples/nanogpt/data-loader-test.f
 TEST:;SUITE
 TEST:SUITE maki/xent-loss-test.f
