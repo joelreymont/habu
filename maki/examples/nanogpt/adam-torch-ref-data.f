@@ -22,7 +22,7 @@
 
 require lib/prelude.f
 require lib/float.f
-require maki/from-scratch-model.f
+require maki/examples/nanogpt/from-scratch-model.f
 
 -5285 constant E-TREF-DATA   \ committed table fill arity mismatch
 -5286 constant E-TREF-STEP   \ reference step index outside the 3 committed steps

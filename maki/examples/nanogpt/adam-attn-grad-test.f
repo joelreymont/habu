@@ -53,7 +53,7 @@ require maki/array.f
 require maki/matmul.f
 require maki/softmax.f
 require maki/loss-tensor.f
-require maki/adam-train.f
+require maki/examples/nanogpt/adam-train.f
 
 package MAKI
 

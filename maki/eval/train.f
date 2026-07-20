@@ -13,9 +13,9 @@ require lib/test.f
 require lib/float.f
 require maki/executor.f          \ flatten the deep chain (engine include depth)
 require maki/backward.f
-require maki/from-scratch-model.f
-require maki/from-scratch-train.f
-require maki/adam-train.f
+require maki/examples/nanogpt/from-scratch-model.f
+require maki/examples/nanogpt/from-scratch-train.f
+require maki/examples/nanogpt/adam-train.f
 
 package MAKI
 

@@ -46,7 +46,7 @@
 \ their own device/PTX prelude.
 require maki/cad.f
 require maki/golden-artifact.f
-require maki/from-scratch-train.f
+require maki/examples/nanogpt/from-scratch-train.f
 require maki/train.f
 require maki/mlp.f
 require maki/attention.f

@@ -12,7 +12,7 @@
 
 require lib/test.f
 require lib/float.f
-require maki/from-scratch-train.f
+require maki/examples/nanogpt/from-scratch-train.f
 require maki/gradcheck.f
 
 package MAKI

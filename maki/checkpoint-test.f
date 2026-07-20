@@ -28,12 +28,12 @@ require maki/executor.f
 require maki/report.f
 require maki/plan-vocab.f
 require maki/cad.f
-require maki/from-scratch-model.f
+require maki/examples/nanogpt/from-scratch-model.f
 require maki/loss.f
-require maki/from-scratch-train.f
+require maki/examples/nanogpt/from-scratch-train.f
 require maki/optim-tensor.f
 require maki/loss-tensor.f
-require maki/adam-train.f
+require maki/examples/nanogpt/adam-train.f
 require maki/checkpoint.f
 
 package MAKI

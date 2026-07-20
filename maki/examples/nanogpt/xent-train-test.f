@@ -10,7 +10,7 @@
 
 require lib/test.f
 require lib/float.f
-require maki/xent-train.f
+require maki/examples/nanogpt/xent-train.f
 require maki/gradcheck.f
 
 package MAKI

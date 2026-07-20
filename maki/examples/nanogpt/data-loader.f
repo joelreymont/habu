@@ -17,7 +17,7 @@
 \ ones. maki -> habu only. data-loader owns -5155.
 
 require lib/fs.f
-require maki/tokenizer.f
+require maki/examples/nanogpt/tokenizer.f
 
 -5155 constant E-DL-EMPTY     \ corpus file is empty (zero bytes -> no tokens)
 

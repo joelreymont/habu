@@ -23,7 +23,7 @@
 
 require lib/test.f
 require lib/float.f
-require maki/adam-train.f
+require maki/examples/nanogpt/adam-train.f
 require maki/gradcheck.f
 
 package MAKI

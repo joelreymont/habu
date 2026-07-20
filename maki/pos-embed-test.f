@@ -18,7 +18,7 @@ require lib/test.f
 require lib/float.f
 require maki/cad.f
 require maki/gradcheck.f
-require maki/from-scratch-train.f       \ SC-SLOT / SC-GRAD-AT
+require maki/examples/nanogpt/from-scratch-train.f       \ SC-SLOT / SC-GRAD-AT
 require maki/optim-tensor.f             \ OPTIM:TT-ADAM!
 require maki/loss-tensor.f              \ LOSS:TT-MSE / LOSS:TT-MSE-DY
 

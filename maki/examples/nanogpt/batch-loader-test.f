@@ -11,7 +11,7 @@
 \ Names are BLT-prefixed: the maki suite shares one dictionary across every -test.f.
 
 require lib/test.f
-require maki/batch-loader.f
+require maki/examples/nanogpt/batch-loader.f
 require maki/segment.f
 
 package MAKI

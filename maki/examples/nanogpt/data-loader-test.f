@@ -21,8 +21,8 @@ require lib/test.f
 require lib/prelude.f
 require lib/fs.f
 require lib/fs-mutate.f
-require maki/data-loader.f
-require maki/batch-loader.f
+require maki/examples/nanogpt/data-loader.f
+require maki/examples/nanogpt/batch-loader.f
 
 package MAKI
 

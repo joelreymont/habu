@@ -7,7 +7,7 @@
 
 require lib/test.f
 require lib/prelude.f
-require maki/tokenizer.f
+require maki/examples/nanogpt/tokenizer.f
 
 package MAKI
 

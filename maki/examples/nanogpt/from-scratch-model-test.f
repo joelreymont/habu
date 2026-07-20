@@ -8,7 +8,7 @@
 
 require lib/test.f
 require lib/float.f
-require maki/from-scratch-model.f
+require maki/examples/nanogpt/from-scratch-model.f
 
 \ ---- audited count projection (MIR typed item-count -> raw count cell) ----------
 \ NODE-/SLOT-COUNT@ return CAD-NUM:item-count; the T= scalar assertions take the

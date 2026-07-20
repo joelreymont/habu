@@ -31,7 +31,7 @@
 \ maki -> habu only; adam-train defines E-ADAM-RUN (-5144), E-ADAMW-POLICY (-5157),
 \ E-INIT-ROLE (-5158).
 
-require maki/from-scratch-train.f
+require maki/examples/nanogpt/from-scratch-train.f
 require maki/optim-tensor.f
 require maki/loss-tensor.f
 require maki/array.f

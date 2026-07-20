@@ -33,7 +33,7 @@
 \ each independent run (e.g. the determinism check re-runs from a fresh capture).
 \ maki -> habu only; owns -5150..-5159.
 
-require maki/from-scratch-model.f
+require maki/examples/nanogpt/from-scratch-model.f
 require maki/backward.f
 require maki/executor.f
 require maki/loss.f

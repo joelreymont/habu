@@ -132,7 +132,7 @@ TEST:SUITE maki/segment-test.f
 TEST:;SUITE
 TEST:SUITE maki/mha-test.f
 TEST:;SUITE
-TEST:SUITE maki/batch-loader-test.f
+TEST:SUITE maki/examples/nanogpt/batch-loader-test.f
 TEST:;SUITE
 TEST:SUITE maki/mlp-test.f
 TEST:;SUITE
@@ -240,13 +240,13 @@ TEST:SUITE maki/bcast-mul-op-test.f
 TEST:;SUITE
 TEST:SUITE maki/demo-ffn-test.f
 TEST:;SUITE
-TEST:SUITE maki/from-scratch-model-test.f
+TEST:SUITE maki/examples/nanogpt/from-scratch-model-test.f
 TEST:;SUITE
-TEST:SUITE maki/from-scratch-train-test.f
+TEST:SUITE maki/examples/nanogpt/from-scratch-train-test.f
 TEST:;SUITE
-TEST:SUITE maki/from-scratch-test.f
+TEST:SUITE maki/examples/nanogpt/from-scratch-test.f
 TEST:;SUITE
-TEST:SUITE maki/adam-train-test.f
+TEST:SUITE maki/examples/nanogpt/adam-train-test.f
 TEST:;SUITE
 TEST:SUITE maki/train-state-test.f
 TEST:;SUITE
@@ -254,11 +254,11 @@ TEST:SUITE maki/adamw-test.f
 TEST:;SUITE
 TEST:SUITE maki/pos-embed-test.f
 TEST:;SUITE
-TEST:SUITE maki/gptblock-test.f
+TEST:SUITE maki/examples/nanogpt/gptblock-test.f
 TEST:;SUITE
-TEST:SUITE maki/adam-torch-ref-test.f
+TEST:SUITE maki/examples/nanogpt/adam-torch-ref-test.f
 TEST:;SUITE
-TEST:SUITE maki/adam-attn-grad-test.f
+TEST:SUITE maki/examples/nanogpt/adam-attn-grad-test.f
 TEST:;SUITE
 TEST:SUITE maki/attn-eq-test.f
 TEST:;SUITE
@@ -348,13 +348,13 @@ TEST:SUITE maki/gpu-emit-test.f
 TEST:;SUITE
 TEST:SUITE maki/device-smoke.f
 TEST:;SUITE
-TEST:SUITE maki/tokenizer-test.f
+TEST:SUITE maki/examples/nanogpt/tokenizer-test.f
 TEST:;SUITE
-TEST:SUITE maki/data-loader-test.f
+TEST:SUITE maki/examples/nanogpt/data-loader-test.f
 TEST:;SUITE
 TEST:SUITE maki/xent-loss-test.f
 TEST:;SUITE
-TEST:SUITE maki/xent-train-test.f
+TEST:SUITE maki/examples/nanogpt/xent-train-test.f
 TEST:;SUITE
 TEST:;GROUP
 
