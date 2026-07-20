@@ -11,8 +11,13 @@
 \  (c) PARAM-GROUP POLICY - the trainer's checked decay attribute (ADAMW-WD-FOR)
 \      routes wd only to WD-DECAY params; a WD-NONE param is bit-identical to
 \      plain Adam (untouched by wd), a WD-DECAY param is not.
+\  (d) INIT POLICY - the per-role init (adam-train.f INIT-FILL) draws a Gaussian
+\      RNG (polar Box-Muller over the LCG) whose fixed-seed sample mean/variance
+\      match a deterministic golden AND land within tolerance of (0, 0.02^2);
+\      constant roles fill LN gamma=1 / beta=0 / bias=0.
 \  Red guards: negative wd -> E-ADAMW-WD; a flag outside {WD-DECAY,WD-NONE} ->
-\  E-ADAMW-POLICY.
+\  E-ADAMW-POLICY; a role outside the five init flags -> E-INIT-ROLE; the polar
+\  accept predicate excludes s=0 (the FLN(0) radius).
 \ maki -> habu only.
 
 require lib/test.f
@@ -112,6 +117,56 @@ create TB 1 cells allot
 : AW-BAD-FLAG ( -- )  0.5 7 ADAMW-WD-FOR drop ;
 ' AW-BAD-WD   E-ADAMW-WD     TTHROWS
 ' AW-BAD-FLAG E-ADAMW-POLICY TTHROWS
+
+\ ================= init policy: Gaussian RNG + per-role fills ==================
+\ Deterministic: the fixed seed makes the sample mean/variance EXACT, committed
+\ as integer goldens (determinism, not statistical bounds re-derived each run);
+\ they also land within a tight tolerance of the target moments (0, 0.02^2). The
+\ RNG is the polar (Marsaglia) form of Box-Muller; its 0<s<1 rejection is the die
+\ that proves FLN's input is nonzero.
+8192 constant GI-N
+create GI-BUF GI-N cells allot
+create GI-C  4 cells allot
+$B5C0FFEE constant GI-SEED
+
+: GI-MEAN ( -- r )  GI-BUF GI-N T-SUM   GI-N s>f f/ ;
+: GI-VAR  ( -- r )  GI-BUF GI-N T-NORM2 GI-N s>f f/  GI-MEAN dup f*  f- ;   \ mean(x^2)-mean^2
+: GI-BAD-ROLE ( -- )  GI-C 4 0 99 INIT-FILL ;
+
+\ ---- normal(0,0.02): exact mean/variance golden + tolerance of (0, 0.02^2) ----
+GI-SEED SC-SEED!
+GI-BUF GI-N 0 IR-NORMAL INIT-FILL
+GI-MEAN 1000000.0 f* 0.5 f+ f>s    124 T=          \ exact golden mean*1e6 (0.000124)
+GI-MEAN fabs  0.001 f<  TTRUE                       \ |mean| within tolerance of 0
+GI-VAR 100000000.0 f* 0.5 f+ f>s  40227 T=         \ exact golden var*1e8 (0.00040227)
+GI-VAR 0.0004 f- fabs  0.00004 f<  TTRUE            \ within 10% of 0.02^2 = 0.0004
+
+\ ---- residual role routes n_layer into a scaled-down Gaussian fill -----------
+GI-SEED SC-SEED!
+GI-BUF GI-N 6 IR-RESID INIT-FILL                   \ n_layer=6 -> std=0.02/sqrt(12)
+GI-VAR 1000000000.0 f* 0.5 f+ f>s  33523 T=        \ exact golden rvar*1e9 (3.3523e-5)
+GI-VAR  6 INIT-RESID-STD dup f*  f-  fabs  0.000001 f<  TTRUE   \ var ~= std^2
+
+\ ---- init-std words: base 0.02, residual 0.02/sqrt(2*n_layer) ----------------
+INIT-STD 1000.0 f* 0.5 f+ f>s      20 T=           \ 0.020
+4 INIT-RESID-STD 1000000.0 f* 0.5 f+ f>s  7071 T=  \ 0.02/sqrt(8)=0.0070711
+
+\ ---- constant roles: LN gamma=1, LN beta=0, bias=0 ---------------------------
+GI-C 4 0 IR-LN-GAMMA INIT-FILL
+GI-C 0 T-GET 1000.0 f* 0.5 f+ f>s  1000 T=         \ gamma = 1
+GI-C 3 T-GET 1000.0 f* 0.5 f+ f>s  1000 T=
+GI-C 4 0 IR-LN-BETA INIT-FILL
+GI-C 0 T-GET 1000.0 f* 0.5 f+ f>s     0 T=         \ beta = 0
+GI-C 4 0 IR-BIAS INIT-FILL
+GI-C 2 T-GET 1000.0 f* 0.5 f+ f>s     0 T=         \ bias = 0
+
+\ ---- log(0) guard (red-first): the polar accept excludes s=0 and s>=1 --------
+0.0 SC-POLAR-OK?  TFALSE                            \ s=0 would feed FLN(0)=-inf -> rejected
+1.0 SC-POLAR-OK?  TFALSE                            \ s=1 (disk boundary) -> rejected
+0.5 SC-POLAR-OK?  TTRUE                             \ interior accepted
+
+\ ---- bad role -> E-INIT-ROLE (checked; no silent default) --------------------
+' GI-BAD-ROLE E-INIT-ROLE TTHROWS
 
 T-REPORT
 

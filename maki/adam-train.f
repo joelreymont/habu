@@ -28,7 +28,8 @@
 \ Preconditions mirror the from-scratch trainer: AMT-SETUP needs a fresh
 \ MODEL: SCRATCH-MLP capture, ATN-SETUP a fresh MODEL: ADAM-ATTN capture
 \ (MODEL: is a top-level parsing word; each consumer re-issues the exact line).
-\ maki -> habu only; adam-train defines E-ADAM-RUN (-5144), E-ADAMW-POLICY (-5157).
+\ maki -> habu only; adam-train defines E-ADAM-RUN (-5144), E-ADAMW-POLICY (-5157),
+\ E-INIT-ROLE (-5158).
 
 require maki/from-scratch-train.f
 require maki/optim-tensor.f
@@ -60,6 +61,40 @@ public
    flag WD-DECAY = if wd exit then
    flag WD-NONE  = if 0.0 exit then
    E-ADAMW-POLICY throw ;
+
+\ ---- per-parameter-role init policy (GPT-2 / nanoGPT initialisation) ---------
+\ Every parameter carries an EXPLICIT init role, mirroring the WD flags above:
+\ the fill is chosen by role, never by sniffing a buffer name. Weight matrices
+\ draw normal(0, 0.02); residual-projection weights draw
+\ normal(0, 0.02/sqrt(2*n_layer)) (nanoGPT's per-block output-projection scaling,
+\ n_layer supplied at fill time); LayerNorm gamma=1, LayerNorm beta=0 and
+\ biases=0 are constant fills. INIT-FILL is the checked applicator - a role
+\ outside the five named flags is a registration bug, not a silent default ->
+\ throw. NEW surface: no existing fill is rewired here, so the committed AMT/ATN
+\ trajectories keep their uniform init.
+-5158 constant E-INIT-ROLE   \ a parameter's init role is not a valid init policy flag
+
+1 constant IR-NORMAL         \ weight ~ normal(0, 0.02)
+2 constant IR-RESID          \ residual-projection weight ~ normal(0, 0.02/sqrt(2*n_layer))
+3 constant IR-LN-GAMMA       \ LayerNorm scale = 1
+4 constant IR-LN-BETA        \ LayerNorm shift = 0
+5 constant IR-BIAS           \ bias = 0
+
+: INIT-STD ( -- r )  0.02 ;                       \ GPT-2 base weight standard deviation
+
+: INIT-RESID-STD ( n -- r ) {: nlayer:n :}        \ 0.02 / sqrt(2 * n_layer)
+   INIT-STD  2 nlayer * s>f fsqrt  f/ ;
+
+: INIT-GFILL ( ptr a n r -- ) {: base:ptr len:n std:r :}   \ fill base with N(0,std^2)
+   len 0 ?do  SC-GAUSS std f*  base i T-SET  loop ;
+
+: INIT-FILL ( ptr a n n n -- ) {: base:ptr len:n nlayer:n role:n :}
+   role IR-NORMAL   = if  base len INIT-STD              INIT-GFILL  exit then
+   role IR-RESID    = if  base len nlayer INIT-RESID-STD INIT-GFILL  exit then
+   role IR-LN-GAMMA = if  1.0 base len T-FILL  exit then
+   role IR-LN-BETA  = if  0.0 base len T-FILL  exit then
+   role IR-BIAS     = if  0.0 base len T-FILL  exit then
+   E-INIT-ROLE throw ;
 
 private
 
