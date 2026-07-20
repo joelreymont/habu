@@ -129,6 +129,16 @@ variable ADAM-B2T           \ running b2^t
    lr ADAM-B1 ADAM-B2 ADAM-EPS ADAM-C1 ADAM-C2 wd2
    wp  slot SC-GRAD-AT  mp vp len  OPTIM:TT-ADAMW! ;
 
+\ AdamW-update from an EXPLICIT gradient buffer (the host-loop running-sum
+\ accumulator) instead of a slot's live grad node - the accumulation consumer for
+\ the batch trainer (BTC-3). Same math as ADAMW-UPD with gp supplied directly; the
+\ locked single-pass ADAMW-UPD reads SC-GRAD-AT and is left untouched.
+: ADAMW-UPD-G ( r ptr a ptr a ptr a ptr a n r n -- )
+   {: lr:r wp:ptr gp:ptr mp:ptr vp:ptr len:n wd:r flag:n :}
+   wd flag ADAMW-WD-FOR {: wd2:r :}
+   lr ADAM-B1 ADAM-B2 ADAM-EPS ADAM-C1 ADAM-C2 wd2
+   wp  gp  mp vp len  OPTIM:TT-ADAMW! ;
+
 \ ---- Adam MLP trainer: first/second-moment buffers per parameter ------------
 create AMT-W1M SC-W1N cells allot   create AMT-W1V SC-W1N cells allot
 create AMT-B1M SC-B1N cells allot   create AMT-B1V SC-B1N cells allot
@@ -289,6 +299,175 @@ public
 : AMT-CONVERGED? ( -- bool )
    AMT-FINAL@  AMT-INITIAL@ AMT-CONV-RATIO f*  f<
    AMT-FINAL@  SC-CONV-THRESH  f<  and ;
+
+\ ---- INTERIM host batch-loop + gradient-accumulation trainer (BTC-3) ----------
+\ docs/batch-sequence-design.md section 5 BTC-3 + section 4 point 5: the INTERIM
+\ execution strategy for (B,T,C) nanoGPT training on the 32768-cell host arena
+\ (maki/executor.f:75), UNDER Option D's 2D B*T-row layout. The 2D SCRATCH-MLP IR
+\ describes ONE sequence (T x C = 8 x 6 rows); a host loop runs it once per
+\ sequence over the SAME B*T-row buffer (AMT-BX, B OUTERMOST: sequence b occupies
+\ rows [b*8, b*8+8)), binding each sequence's T x C slice via EX-BIND
+\ (maki/executor.f:413) and accumulating the four parameter gradients across the B
+\ runs into per-slot running-sum buffers (the SC-GRAD-ACCUM! extension of
+\ SC-GRAD-AT). Adam applies ONCE per step from the accumulated grads. This is
+\ REPLACED, not rewritten, by the segment op (BTC-1): the segment op reads AMT-BX
+\ in one pass where this loop reads it T rows at a time.
+\
+\ Reduction: the running buffers SUM the per-sequence gradients (the contract's
+\ "running-sum buffer", same accumulate-across-slots pattern as weight-tying); the
+\ batch reduction is MEAN - the summed buffers are normalized by 1/B before the
+\ single Adam step, so the update equals nanoGPT's mean-over-batch gradient
+\ (equivalently nanoGPT's loss /= grad_accum_steps). B=1 divides by 1, so the path
+\ is bit-identical to AMT-STEP (asserted in maki/adam-train-test.f). Clip
+\ (AMT-CLIP!) applies to the MEANED accumulated global norm; the LR schedule
+\ (AMT-SCHED!) composes via the shared AMT-LR-EFF. Fail-closed: the running
+\ buffers are zeroed at step start (an un-zeroed buffer silently leaks step N-1's
+\ gradient into step N).
+
+8 constant AMT-BMAX          \ max sequences per host batch (toy-scale host golden)
+
+private
+\ per-slot running-sum gradient accumulators (one per trained parameter)
+create AMT-W1G SC-W1N cells allot
+create AMT-B1G SC-B1N cells allot
+create AMT-W2G SC-W2N cells allot
+create AMT-B2G SC-B2N cells allot
+
+\ the B*T-row batch store (B outermost) + its per-sequence targets
+create AMT-BX AMT-BMAX SC-XN * cells allot
+create AMT-BY AMT-BMAX SC-YN * cells allot
+variable AMT-B               \ sequences in the current host batch
+
+\ fail-closed: clear every running-sum buffer (must run at step start)
+: AMT-BATCH-ZERO-GRADS ( -- )
+   0.0 AMT-W1G SC-W1N T-FILL
+   0.0 AMT-B1G SC-B1N T-FILL
+   0.0 AMT-W2G SC-W2N T-FILL
+   0.0 AMT-B2G SC-B2N T-FILL ;
+
+\ add each slot's live gradient node into its running-sum buffer (one host iter)
+: AMT-ACCUM-GRADS ( -- )
+   AMT-W1G SC-W1-SLOT SC-W1N SC-GRAD-ACCUM!
+   AMT-B1G SC-B1-SLOT SC-B1N SC-GRAD-ACCUM!
+   AMT-W2G SC-W2-SLOT SC-W2N SC-GRAD-ACCUM!
+   AMT-B2G SC-B2-SLOT SC-B2N SC-GRAD-ACCUM! ;
+
+\ scale one running buffer in place by c (the 1/B batch-mean normalization; c=1
+\ for B=1 leaves it bit-unchanged since x*1.0 = x)
+: AMT-GSCALE ( r ptr a n -- ) {: c:r base:ptr len:n :}
+   len 0 ?do  base i T-GET c f*  base i T-SET  loop ;
+
+\ normalize the summed grads to the batch mean (1/B over all four buffers)
+: AMT-MEAN-GRADS ( -- )
+   1.0 AMT-B @ s>f f/ {: inv:r :}
+   inv AMT-W1G SC-W1N AMT-GSCALE
+   inv AMT-B1G SC-B1N AMT-GSCALE
+   inv AMT-W2G SC-W2N AMT-GSCALE
+   inv AMT-B2G SC-B2N AMT-GSCALE ;
+
+\ sum of squares over the four accumulated grad buffers (the clip global norm^2)
+: AMT-BATCH-GNORM2 ( -- r )
+   AMT-W1G SC-W1N T-NORM2
+   AMT-B1G SC-B1N T-NORM2 f+
+   AMT-W2G SC-W2N T-NORM2 f+
+   AMT-B2G SC-B2N T-NORM2 f+ ;
+
+\ clip the accumulated (already meaned) global norm to AMT-CLIP-V when armed; a
+\ no-op when disarmed, so an unclipped batch run is untouched
+: AMT-BATCH-CLIP-MAYBE ( -- )
+   AMT-CLIP? @ 0= if exit then
+   AMT-BATCH-GNORM2 fsqrt  AMT-CLIP-V @  GRAD-CLIP-COEF {: coef:r :}
+   coef AMT-W1G SC-W1N GCLIP-SCALE!
+   coef AMT-B1G SC-B1N GCLIP-SCALE!
+   coef AMT-W2G SC-W2N GCLIP-SCALE!
+   coef AMT-B2G SC-B2N GCLIP-SCALE! ;
+
+public
+
+\ fill AMT-BX/AMT-BY with b distinct sequences drawn from the COMMITTED data
+\ stream (SC-DATA-SEED). SC-GEN-ROW continues the LCG (only SC-GEN-DATA reseeds),
+\ so sequence 0's rows are bit-identical to SC-GEN-DATA's SC-X/SC-Y and later
+\ sequences are distinct continuations. B outermost: sequence j at rows [j*8,..).
+: AMT-LOAD-BATCH ( n -- ) {: b:n :}
+   b AMT-B !
+   SC-DATA-SEED SC-SEED!
+   b 0 ?do
+      SC-BATCH 0 ?do  i SC-GEN-ROW  loop      \ generate sequence j into SC-X/SC-Y
+      SC-XN 0 ?do  SC-X i T-GET  AMT-BX j SC-XN * i +  T-SET  loop
+      SC-YN 0 ?do  SC-Y i T-GET  AMT-BY j SC-YN * i +  T-SET  loop
+   loop ;
+
+\ bind sequence b's T x C slice into the model-input slot via EX-BIND, and copy
+\ its targets into SC-Y (the loss reads the shared SC-Y buffer, not a bound slot)
+: AMT-BIND-SEQ ( n -- ) {: b:n :}
+   AMT-BX b SC-XN * T-AT  SC-X-SLOT SC-SLOT EX-BIND
+   SC-YN 0 ?do  AMT-BY b SC-YN * i +  T-GET  SC-Y i  T-SET  loop ;
+
+\ fresh batch run setup: the Adam-MLP setup (init params, BW-BUILD, bind buffers,
+\ zero Adam state) plus b sequences loaded into the B*T store.
+\ Precondition: MODEL: SCRATCH-MLP just captured.
+: AMT-BATCH-SETUP ( n -- )
+   AMT-SETUP
+   AMT-LOAD-BATCH ;
+
+\ one host-loop step: zero the running buffers, run forward+backward once per
+\ sequence accumulating its grads, then ONE Adam step from the meaned grads.
+\ Returns the batch MEAN loss (1/B sum of the per-sequence pre-update losses).
+: AMT-BATCH-STEP ( -- r )
+   AMT-BATCH-ZERO-GRADS
+   0.0
+   AMT-B @ 0 ?do
+      i AMT-BIND-SEQ
+      AMT-GRADS f+
+      AMT-ACCUM-GRADS
+   loop
+   AMT-B @ s>f f/
+   ADAM-TICK
+   AMT-MEAN-GRADS
+   AMT-BATCH-CLIP-MAYBE
+   AMT-LR-EFF {: lr:r :}
+   lr SC-W1 AMT-W1G AMT-W1M AMT-W1V SC-W1N AMT-WD WD-DECAY ADAMW-UPD-G
+   lr SC-B1 AMT-B1G AMT-B1M AMT-B1V SC-B1N AMT-WD WD-NONE  ADAMW-UPD-G
+   lr SC-W2 AMT-W2G AMT-W2M AMT-W2V SC-W2N AMT-WD WD-DECAY ADAMW-UPD-G
+   lr SC-B2 AMT-B2G AMT-B2M AMT-B2V SC-B2N AMT-WD WD-NONE  ADAMW-UPD-G ;
+
+private
+variable AMT-BSTEPS-V
+variable AMT-BINIT-L
+variable AMT-BFINAL-L
+variable AMT-BRAN?
+: AMT-BCK ( -- )  AMT-BRAN? @ 0= if E-ADAM-RUN throw then ;
+public
+
+\ run n batch steps over a fresh b-sequence batch; record initial/final loss
+: AMT-BATCH-RUN ( n n -- ) {: b:n n:n :}
+   b AMT-BATCH-SETUP
+   n AMT-BSTEPS-V !
+   n 0 ?do
+      AMT-BATCH-STEP {: l:r :}
+      i 0=     if l AMT-BINIT-L  ! then
+      i n 1- = if l AMT-BFINAL-L ! then
+   loop
+   -1 AMT-BRAN? ! ;
+
+\ clipped batch run: arm the global-norm clip (on the accumulated norm), run,
+\ then disarm so the unclipped batch trajectory is untouched. Precondition:
+\ MODEL: SCRATCH-MLP just captured.
+: AMT-BATCH-RUN-CLIP ( r n n -- ) {: clip:r b:n n:n :}
+   clip AMT-CLIP!
+   b n AMT-BATCH-RUN
+   AMT-CLIP-OFF ;
+
+\ scheduled batch run: arm the LR schedule (composes via AMT-LR-EFF), run, then
+\ disarm. Precondition: MODEL: SCRATCH-MLP just captured.
+: AMT-BATCH-RUN-SCHED ( n n r r n n -- ) {: warm:n dec:n lmin:r lmax:r b:n n:n :}
+   warm dec lmin lmax AMT-SCHED!
+   b n AMT-BATCH-RUN
+   AMT-SCHED-OFF ;
+
+: AMT-BATCH-STEPS@   ( -- n )  AMT-BCK AMT-BSTEPS-V @ ;
+: AMT-BATCH-INITIAL@ ( -- r )  AMT-BCK AMT-BINIT-L @ ;
+: AMT-BATCH-FINAL@   ( -- r )  AMT-BCK AMT-BFINAL-L @ ;
 
 public
 

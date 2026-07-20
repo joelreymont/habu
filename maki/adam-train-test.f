@@ -276,6 +276,144 @@ MODEL: SCRATCH-MLP ( x:8x6 w1:6x16 b1:1x16 w2:16x2 b2:1x2 -- y ) LINEAR GELU LIN
 1000000.0 RGT-MLP-N AMT-RUN-CLIP
 AMT-FINAL@ SC-MILLI -2749 T=
 
+\ ============================================================================
+\ Host batch-loop + gradient-accumulation trainer (INTERIM; BTC-3)
+\ docs/batch-sequence-design.md section 5 BTC-3. Proves: the per-slot running-sum
+\ (SC-GRAD-ACCUM!) equals the SUM of the independent element-level reference
+\ gradients over the batch; a B=1 batch is bit-identical to the single-sequence
+\ AMT path; the running buffers are zeroed at step start so a stale grad cannot
+\ leak across steps; and deterministic B=4 training composes with clip (on the
+\ accumulated norm) and the LR schedule under committed locks.
+\ ============================================================================
+4 constant RGB-B                     \ sequences in the batch fixtures
+variable RGB-L1                      \ determinism stash for the batch final loss
+
+\ reference running-sum buffers (element-level grads summed over the batch)
+create RGB-W1S SC-W1N cells allot
+create RGB-B1S SC-B1N cells allot
+create RGB-W2S SC-W2N cells allot
+create RGB-B2S SC-B2N cells allot
+
+\ post-step parameter snapshots (grad-leak bit-identity comparison)
+create RGB-W1C SC-W1N cells allot
+create RGB-B1C SC-B1N cells allot
+create RGB-W2C SC-W2N cells allot
+create RGB-B2C SC-B2N cells allot
+
+: RGB-COPY ( ptr a ptr a n -- ) {: s:ptr d:ptr n:n :}
+   n 0 ?do  s i T-GET  d i T-SET  loop ;
+
+: RGB-ZERO-REF ( -- )
+   0.0 RGB-W1S SC-W1N T-FILL   0.0 RGB-B1S SC-B1N T-FILL
+   0.0 RGB-W2S SC-W2N T-FILL   0.0 RGB-B2S SC-B2N T-FILL ;
+
+\ mirror sequence b's stored X slice into SC-X so the SC-X-reading reference sees
+\ the same input the executor was bound to (AMT-BIND-SEQ binds the slice + targets)
+: RGB-SEQ-X! ( n -- ) {: b:n :}
+   SC-XN 0 ?do  AMT-BX b SC-XN * i +  T-GET  SC-X i  T-SET  loop ;
+
+: RGB-ACC-REF ( -- )                 \ running-sum the element-level reference grads
+   RGB-W1S RG-DW1 SC-W1N T-ADD!   RGB-B1S RG-DB1 SC-B1N T-ADD!
+   RGB-W2S RG-DW2 SC-W2N T-ADD!   RGB-B2S RG-DB2 SC-B2N T-ADD! ;
+
+\ one accumulation pass over the batch at the (unchanged) initial params: the
+\ trainer running-sum (device under test) alongside the element-level reference
+: RGB-ACCUM! ( -- )
+   AMT-BATCH-ZERO-GRADS
+   RGB-ZERO-REF
+   RGB-B 0 ?do
+      i AMT-BIND-SEQ                 \ bind seq i slice + copy its targets to SC-Y
+      i RGB-SEQ-X!                   \ mirror seq i's X into SC-X for the reference
+      AMT-GRADS drop                 \ executor forward+backward -> BW grad nodes
+      AMT-ACCUM-GRADS                \ running-sum the executor grads
+      RG-GRADS drop                  \ element-level reference at the same params
+      RGB-ACC-REF                    \ running-sum the reference grads
+   loop ;
+
+\ snapshot the live parameters after a step (grad-leak comparison)
+: RGB-SNAP-PARAMS ( -- )
+   SC-W1 RGB-W1C SC-W1N RGB-COPY   SC-B1 RGB-B1C SC-B1N RGB-COPY
+   SC-W2 RGB-W2C SC-W2N RGB-COPY   SC-B2 RGB-B2C SC-B2N RGB-COPY ;
+
+\ ---- accumulation correctness: running-sum == summed element-level reference ----
+MODEL: SCRATCH-MLP ( x:8x6 w1:6x16 b1:1x16 w2:16x2 b2:1x2 -- y ) LINEAR GELU LINEAR ;
+RGB-B AMT-BATCH-SETUP
+RGB-ACCUM!
+AMT-W1G RGB-W1S SC-W1N T-REL-L2  RG-TOL f< TTRUE
+AMT-B1G RGB-B1S SC-B1N T-REL-L2  RG-TOL f< TTRUE
+AMT-W2G RGB-W2S SC-W2N T-REL-L2  RG-TOL f< TTRUE
+AMT-B2G RGB-B2S SC-B2N T-REL-L2  RG-TOL f< TTRUE
+
+\ ---- B=1 identity: a one-sequence batch equals the single AMT path (exact) ------
+\ Strongest no-regression proof: sequence 0 of the loaded batch is the committed
+\ SC-GEN-DATA, so a 60-step B=1 batch run and AMT-RUN share the trajectory bit-for-
+\ bit (1/B = 1 leaves the summed grad and the loss unchanged).
+MODEL: SCRATCH-MLP ( x:8x6 w1:6x16 b1:1x16 w2:16x2 b2:1x2 -- y ) LINEAR GELU LINEAR ;
+RGT-MLP-N AMT-RUN
+AMT-FINAL@ RGB-L1 !
+MODEL: SCRATCH-MLP ( x:8x6 w1:6x16 b1:1x16 w2:16x2 b2:1x2 -- y ) LINEAR GELU LINEAR ;
+1 RGT-MLP-N AMT-BATCH-RUN
+AMT-BATCH-INITIAL@ SC-MILLI 130 T=          \ same committed init as the single path
+AMT-BATCH-FINAL@ RGB-L1 @ f= TTRUE          \ bit-identical final loss
+
+\ ---- fail-closed: the running buffers are zeroed at step start (no grad leak) ----
+\ A clean one-step update, then an identical step whose accumulators are POISONED
+\ before it: step-start zeroing neutralizes the poison, so the params are bit-
+\ identical. Removing AMT-BATCH-ZERO-GRADS lets the poison leak in and the params
+\ diverge (red-first).
+MODEL: SCRATCH-MLP ( x:8x6 w1:6x16 b1:1x16 w2:16x2 b2:1x2 -- y ) LINEAR GELU LINEAR ;
+2 AMT-BATCH-SETUP
+AMT-BATCH-STEP drop
+RGB-SNAP-PARAMS
+MODEL: SCRATCH-MLP ( x:8x6 w1:6x16 b1:1x16 w2:16x2 b2:1x2 -- y ) LINEAR GELU LINEAR ;
+2 AMT-BATCH-SETUP
+7.0 AMT-W1G SC-W1N T-FILL   7.0 AMT-B1G SC-B1N T-FILL
+7.0 AMT-W2G SC-W2N T-FILL   7.0 AMT-B2G SC-B2N T-FILL
+AMT-BATCH-STEP drop
+SC-W1 RGB-W1C SC-W1N T-DIST2  0.0 f= TTRUE
+SC-B1 RGB-B1C SC-B1N T-DIST2  0.0 f= TTRUE
+SC-W2 RGB-W2C SC-W2N T-DIST2  0.0 f= TTRUE
+SC-B2 RGB-B2C SC-B2N T-DIST2  0.0 f= TTRUE
+
+\ ---- B=4 deterministic training + committed locks -------------------------------
+MODEL: SCRATCH-MLP ( x:8x6 w1:6x16 b1:1x16 w2:16x2 b2:1x2 -- y ) LINEAR GELU LINEAR ;
+RGB-B RGT-MLP-N AMT-BATCH-RUN
+AMT-BATCH-STEPS@ RGT-MLP-N T=
+AMT-BATCH-INITIAL@ SC-MILLI 188 T=          \ mean initial NLL over the 4 sequences
+AMT-BATCH-FINAL@ AMT-BATCH-INITIAL@ f< TTRUE
+AMT-BATCH-FINAL@ SC-MILLI -2453 T=          \ committed batch final NLL (new lock)
+AMT-BATCH-FINAL@ RGB-L1 !
+\ determinism: same seed -> identical final loss (exact)
+MODEL: SCRATCH-MLP ( x:8x6 w1:6x16 b1:1x16 w2:16x2 b2:1x2 -- y ) LINEAR GELU LINEAR ;
+RGB-B RGT-MLP-N AMT-BATCH-RUN
+AMT-BATCH-FINAL@ RGB-L1 @ f= TTRUE
+
+\ ---- clip on the ACCUMULATED global norm ----------------------------------------
+\ A small clip (0.1, below the meaned batch-grad norms) rescales the accumulated
+\ gradient, giving a deterministic final distinct from the unclipped -2453 lock;
+\ AMT-BATCH-RUN-CLIP disarms on exit so the unclipped trajectory is untouched.
+MODEL: SCRATCH-MLP ( x:8x6 w1:6x16 b1:1x16 w2:16x2 b2:1x2 -- y ) LINEAR GELU LINEAR ;
+0.1 RGB-B RGT-MLP-N AMT-BATCH-RUN-CLIP
+AMT-BATCH-FINAL@ SC-MILLI -2423 T=          \ clipped batch final NLL (new lock)
+AMT-BATCH-FINAL@ RGB-L1 @ f= 0= TTRUE       \ distinct from the unclipped trajectory
+\ a clip above every meaned batch-grad norm never rescales -> bit-identical to the
+\ unclipped -2453 run (no eps perturbation on the accumulated norm)
+MODEL: SCRATCH-MLP ( x:8x6 w1:6x16 b1:1x16 w2:16x2 b2:1x2 -- y ) LINEAR GELU LINEAR ;
+1000000.0 RGB-B RGT-MLP-N AMT-BATCH-RUN-CLIP
+AMT-BATCH-FINAL@ RGB-L1 @ f= TTRUE
+
+\ ---- LR schedule composes with the batch loop -----------------------------------
+\ LR-SCHED(warmup=10, decay=50, min=0.002, max=0.02) over the batch step count;
+\ deterministic final distinct from the fixed-lr -2453 lock; disarms on exit.
+MODEL: SCRATCH-MLP ( x:8x6 w1:6x16 b1:1x16 w2:16x2 b2:1x2 -- y ) LINEAR GELU LINEAR ;
+10 50 0.002 0.02 RGB-B RGT-MLP-N AMT-BATCH-RUN-SCHED
+AMT-BATCH-FINAL@ SC-MILLI -1912 T=          \ scheduled batch final NLL (new lock)
+
+\ ---- zero regression: the single-path -2749 lock survives the batch runs --------
+MODEL: SCRATCH-MLP ( x:8x6 w1:6x16 b1:1x16 w2:16x2 b2:1x2 -- y ) LINEAR GELU LINEAR ;
+RGT-MLP-N AMT-RUN
+AMT-FINAL@ SC-MILLI -2749 T=
+
 T-REPORT
 
 ;package

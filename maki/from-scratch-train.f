@@ -149,6 +149,14 @@ create SC-SEED SC-BATCH SC-OUT * cells allot
 \ (E-EX-NODE) if a slot ever carried no gradient node (never, for this model).
 : SC-GRAD-AT ( n -- ptr a )  SC-SLOT BW-SLOT-GRAD@ MIR-REF-NODE EX-OUT@ ;
 
+\ running-sum extension of SC-GRAD-AT: add a slot's live gradient node into a
+\ per-slot running buffer. The accumulation primitive for the INTERIM host
+\ batch-loop trainer (docs/batch-sequence-design.md section 5 BTC-3, Option C
+\ under Option D's layout) - the segment op (BTC-1) replaces the host loop, not
+\ this read.
+: SC-GRAD-ACCUM! ( ptr a n n -- ) {: buf:ptr slot:n len:n :}
+   buf  slot SC-GRAD-AT  len  T-ADD! ;
+
 \ SGD one parameter buffer in place from its backward gradient node
 : SC-UPD ( ptr a n n -- ) {: wp:ptr s:n len:n :}
    SC-LR  wp  s SC-GRAD-AT  len  T-SGD! ;
