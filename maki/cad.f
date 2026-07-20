@@ -410,6 +410,7 @@ $5E constant TR-C                                  \ '^' - the reserved transpos
 \ populates the plan store, each elementwise/linear node's parameter operand is re-checked
 \ against its data operand's shape. An unbound (0) extent defers to BIND-SHAPES reprop.
 : PLAN-SHP-NODE ( n -- ) {: j:n :}
+   j TENSOR:PLAN-OP@ MAKI-OPKIND:EQUATION MAKI-OPKIND:EQ if exit then  \ equation (CLASS-MATMUL) operand extents are checked by EQ-OPERAND-CK, not a broadcast/linear-bias class
    j TENSOR:PLAN-OP@ OPR-CLASS {: cls:n :}   \ op is a family; refetch it for the check below
    cls CLASS-EW = if
       j TENSOR:PLAN-IN-COUNT@ 2 < if exit then                       \ unary elementwise: no param operand
@@ -561,11 +562,12 @@ $5E constant TR-C                                  \ '^' - the reserved transpos
 
 \ an equation body token (a registered SPEC: einsum, maki/spec.f): emit its (K-1)
 \ parameter operands (the running value is factor 0), then the registry slot literal and
-\ the composer word PLAN:EQUATION (maki/plan-vocab.f). K is the equation's factor count.
+\ the arity-matched composer word (maki/plan-vocab.f): PLAN:EQUATION3 for a three-factor
+\ equation (a folded projection), PLAN:EQUATION otherwise. K is the equation's factor count.
 : EMIT-EQ-TOKEN ( eq-slot -- ) {: s:eq-slot :}
    s EQ-K@ 1- CAP-EMIT-PARAMS
    s EQ-SLOT>N MSRC-INT MSRC-SP
-   s" PLAN:EQUATION " MSRC+
+   s EQ-K@ 3 = if s" PLAN:EQUATION3 " MSRC+ else s" PLAN:EQUATION " MSRC+ then
    1 CAP-OPS +! ;
 
 \ ---- "<OP>:<PREC>" per-op compute-precision grammar (GEMM-class only) -----------------

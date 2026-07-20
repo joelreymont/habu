@@ -132,9 +132,12 @@ public
 \ sequence-design.md section 4); a mismatch is E-TV-SHAPE, like the matmul inner-dim
 \ check. Output extents are the equation's (rows,cols); the node carries the registry
 \ slot in its attrs so the executor (maki/executor.f) dispatches to the generated RUN
-\ word. Operand order is factor order. Stage 1 composes two-factor equations (Q Kᵀ);
-\ a one- or three-factor equation underflows / overflows the fixed arity and is a
-\ fail-closed checker reject of the composition. The registry slot is the attrs cell's
+\ word. Operand order is factor order. PLAN-EQUATION composes two-factor equations
+\ (Q Kᵀ); PLAN-EQUATION3 composes three-factor equations (a projection folded into a
+\ score/context contraction, dot habu-differentiable-attention) - the executor and
+\ backward already run K factors generically, this is the capture-side arity. A one-
+\ factor equation underflows the fixed arity and is a fail-closed checker reject of the
+\ composition. The registry slot is the attrs cell's
 \ LOW payload; the resolved compute precision (CPREC-NEXT@: per-op override else the
 \ workload default) packs into the HIGH field (maki/prec-attr.f), so the slot survives
 \ an fp16/bf16 tag.
@@ -146,6 +149,15 @@ public
    s EQ-ROWS@ s EQ-COLS@ SHAPE  q TENSOR:TV-DTYPE@ MAKI-LAYOUT:ROW q TENSOR:TV-SPACE@ TENSOR:TV-DESC {: y:tensor :}
    MAKI-OPKIND:EQUATION TENSOR:PLAN-OP-BEGIN
    q TENSOR:PLAN-IN+  k TENSOR:PLAN-IN+
+   s EQ-SLOT>N CPREC-NEXT@ MAKI-OPKIND:EQUATION CPREC-TAG TENSOR:PLAN-ATTR!  y TENSOR:PLAN-OP+  y ;
+
+\ three-factor equation composer: same per-factor extent check, three operands appended
+\ in factor order. Output extents/dtype/space follow factor 0, like the two-factor form.
+: PLAN-EQUATION3 ( tensor tensor tensor eq-slot -- tensor ) {: q:tensor k:tensor v:tensor s:eq-slot :}
+   q s 0 EQ-OPERAND-CK   k s 1 EQ-OPERAND-CK   v s 2 EQ-OPERAND-CK
+   s EQ-ROWS@ s EQ-COLS@ SHAPE  q TENSOR:TV-DTYPE@ MAKI-LAYOUT:ROW q TENSOR:TV-SPACE@ TENSOR:TV-DESC {: y:tensor :}
+   MAKI-OPKIND:EQUATION TENSOR:PLAN-OP-BEGIN
+   q TENSOR:PLAN-IN+  k TENSOR:PLAN-IN+  v TENSOR:PLAN-IN+
    s EQ-SLOT>N CPREC-NEXT@ MAKI-OPKIND:EQUATION CPREC-TAG TENSOR:PLAN-ATTR!  y TENSOR:PLAN-OP+  y ;
 
 ;package

@@ -70,5 +70,7 @@ public
 \ as a literal (maki/cad.f), so this crosses the raw slot to its EQ-SLOT type and
 \ re-exports the composer (extent check + node append) in maki/plan-ops.f.
 : EQUATION ( tensor tensor n -- tensor )  MAKI:>EQ-SLOT MAKI:PLAN-EQUATION ;
+\ three-factor equation (a folded projection contraction, dot habu-differentiable-attention).
+: EQUATION3 ( tensor tensor tensor n -- tensor )  MAKI:>EQ-SLOT MAKI:PLAN-EQUATION3 ;
 
 ;package
