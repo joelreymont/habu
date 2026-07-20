@@ -220,7 +220,7 @@ points stay listed.
 - `src/habu/xref.f` — baked live dictionary lifecycle/inspection words:
   `undefine`, `LATEST`, `XREF-FIND`, `XREF.`, `XREF`, `SEE`, and `WORDS`.
 - `src/arch/ptx/emit.f` — checked PTX text encoder for the sm_87 SAXPY M3
-  toolchain spike.
+  toolchain spike; the shared encoder the `tools/ptx` emit drivers load.
 - `src/arch/ptx/vjp.f` / `src/arch/ptx/vjp-test.f` — the `VJP:` paired-word
   table for the M6 forward primitives (adjoint expansion + saves count per
   entry, consumed by lib/ptx/ad.f) plus per-entry unit tests including the
@@ -638,7 +638,6 @@ points stay listed.
 - `lib/ptx/ad-saved.f` / `lib/ptx/ad-saved-test.f` — typed saved-value
   vocabulary for auto-derived backward kernels and its checked coverage.
 - `lib/ptx/autograd-test.f` — checked verified-gradient kernel regression.
-- `tools/ptx/emit.f` — checked PTX text encoder behind the emit drivers.
 - `tools/ptx/saxpy-v4-cg.f` / `tools/ptx/relu-v4-cg.f` /
   `tools/ptx/fused-relu-cg.f` / `tools/ptx/maxselect-cg.f` /
   `tools/ptx/matmul-cg.f` / `tools/ptx/attention-cg.f` — checked kernel emit
@@ -1644,6 +1643,10 @@ points stay listed.
   including wrapped emitter calls (a `PKG:CALL` macro that emits a
   branch-with-link, e.g. `PROT-GUARD:CALL`); its negative syscall-scratch and
   wrapped-call fixture files are committed filemap-lint exclusions.
+- `tools/lint/ptx-emitter-lint.f` — reachability guard: the PTX SAXPY
+  text-emitter surface (`PTX-L`/`PTX-HEADER`/`PTX-EMIT-SAXPY` family, owned by
+  `src/arch/ptx/emit.f`) must have exactly one GLOBAL-scope definition across the
+  source tree; a second copy reds the gate.
 - `tools/signature-lint-core.f` — reusable strict typed-signature lint core.
 - `tools/signature-lint.f` — CLI wrapper for strict typed-signature lint.
 - `tools/signature-lint-test-lib.f` — load-only strict typed-signature lint fixture library for resident runner tests.

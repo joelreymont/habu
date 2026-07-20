@@ -40,6 +40,10 @@ SUITE filemap-lint
    tools/filemap-lint-test.f
 ;SUITE
 
+SUITE ptx-emitter-lint
+   tools/lint/ptx-emitter-lint.f
+;SUITE
+
 SUITE stdin-closure-lint
    tools/stdin-closure-lint.f
 ;SUITE

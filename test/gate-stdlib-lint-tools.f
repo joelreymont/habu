@@ -26,6 +26,7 @@
 
 : GSI-LINT-TOOLS-REPO ( -- )
    s" tools/lint/shadow-lint.f" GSI-INCLUDE
+   s" tools/lint/ptx-emitter-lint.f" GSI-INCLUDE
    s" tools/host-lint.f" GSI-REQUIRE
    s" tools/process-primitive-lint.f" GSI-INCLUDE
    s" tools/process-primitive-lint-test.f" GSI-INCLUDE
