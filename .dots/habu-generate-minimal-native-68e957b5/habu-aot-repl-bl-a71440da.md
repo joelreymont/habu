@@ -3,7 +3,7 @@ title: Emit direct BL for every known native call
 status: active
 priority: 1
 issue-type: task
-created-at: "\"2026-07-03T17:59:14.114649+02:00\""
+created-at: "\"\\\"2026-07-03T17:59:14.114649+02:00\\\"\""
 ---
 
 Measured root defect, expanded from the earlier AOT-only compaction proposal on
@@ -122,3 +122,6 @@ ORIGINALLY SPECIFIED once the first two land):
      not the stale 156 / 1872.
 
 2026-07-20 PREREQ A LANDED (e5ecd233, dot habu-identify-code-pointers-b973e6cc closed): aot-lib.f CELL-TEXTPTR? now classifies from live dictionary extents, not magnitude. RESIDUAL FOLDED INTO THIS DOT: aot-capture.f ACAP-SCAN-DATA (:248) / ACAP-SCAN-CODE (:269) still classify x9-chain literal VALUES by range against the DATA/code spans - converting them needs an emit-time relocation kind tag threaded through the ~9 C-LIT/C-X9-LIT sites in habu2.f, which is exactly this dot ("record relocation kind and site explicitly when emitting an address"; also the habu-separate-scalar-and-dffe142e acceptance). Sequence stands: B (habu-map-the-code-5268af94, now unblocked) then this dot, which must ALSO retire the capture-side value-range scan.
+
+2026-07-20 STAGE C DISPATCHED: prerequisites A (e5ecd233 extent-based classification) and B (80636de2 region within BL range + boot assertion exit 81) are LANDED - this dot is implementable as ORIGINALLY specified, ONE wire format, dictionary and helper calls alike. Re-baseline acceptance to the MEASURED site count at implementation time (219/2628 as of the morning capture; re-measure).
+Claim: agent=blconv workspace=.jj-ws/fable-blconv machine=spark (engine lane: owns src/habu/habu2.f C-CALL emitters + jit.f call sites + aot-capture.f wire format + aot-lib/aot-closure reflow + AOT tests + gate size files + STATUS census row; NOTHING else running or staged touches src/habu)
