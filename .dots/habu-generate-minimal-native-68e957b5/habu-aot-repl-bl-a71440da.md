@@ -1,9 +1,9 @@
 ---
 title: Emit direct BL for every known native call
-status: open
+status: active
 priority: 1
 issue-type: task
-created-at: "2026-07-03T17:59:14.114649+02:00"
+created-at: "\"2026-07-03T17:59:14.114649+02:00\""
 ---
 
 Measured root defect, expanded from the earlier AOT-only compaction proposal on
@@ -47,3 +47,5 @@ fixpoint x2, both target builds, full AOT suites, host/filemap/dot lints, and fu
 pass; CODELEN and whole-file ratchets are lowered honestly. Compact u16 blob offsets
 remain fail-closed at 64 KiB. Files: src/habu/habu2.f, src/habu/aot-capture.f,
 src/habu/aot-closure.f tests, bootstrap/cg/forth.fs, AOT tests, and size gates.
+
+Claim: agent=aotbl workspace=.jj-ws/fable-aotbl machine=spark (owns src/habu emitters + aot-capture + AOT tests; CODELEN rows same-commit)
