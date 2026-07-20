@@ -29,17 +29,26 @@
 \
 \ SV-6 HEAD HANDLING (this lane OWNS the decision, docs/strided-views.md SV-6). Per-head
 \ BATCHED EQUATIONS win over head-split strided VIEWS, on evidence: the batched-equation
-\ route needs NO new machinery (it is the landed grammar), while head-split views need the
-\ entire unlanded SV-1..4 library core (a tensor-value record grown with storage-ref +
-\ offset + strides, checked view constructors, the write-through-view guard, and the
-\ scatter-add view adjoint) - unavailable here (maki/tensor-value.f is another lane's
-\ surface, and a new value representation reaches into the landed executor/backward). The
-\ only cost of the equation route is a PHYSICAL head-major materialization: the projection
-\ writes flat (B*T,C) and the batched attention reads head-major (B,H,T,hd), so a
-\ (B,T,H,hd)<->(B,H,T,hd) transpose sits between them, done here as host layout glue
-\ (MHA-FLAT>HM / MHA-HM>FLAT) with its inverse-permutation adjoint. That copy is the
-\ labeled INTERIM; the SV-6 view program (which reads H per-head views of one buffer with
-\ no copy) remains the perf-optimal long-term form and stays sequenced behind this outcome.
+\ route needs NO new machinery (it is the landed grammar), while head-split views, RE-
+\ EVALUATED 2026-07-20 now that SV-1..4 HAS landed (maki/tensor-value.f TV-HEAD-SPLIT /
+\ TV-VIEW / TV-VIEW-ADJOINT+), are STILL insufficient here: that view core is 2D (offset +
+\ row/col strides over rows x cols) read ONLY through the TV-AT@ strided seam, but this
+\ sublayer's consumers are the 4D batched SPEC equations (MHA-SCORE / MHA-CTX) reading ONE
+\ contiguous head-major buffer via extent-tensor.f's baked row-major Horner accessors, plus
+\ MATMUL - all contiguous-only, NONE reading TV-AT@ (T-GET is a plain cells+ fetch). A 2D
+\ head-split view of the fused buffer holds one head across all (b,t) rows: it cannot feed a
+\ single 4D batched bind, and the baked accessor cannot apply its strides. Retiring the copy
+\ would need N-D strided views + stride-aware equation/GEMM feeds (unlanded, on other lanes'
+\ extent-tensor.f / spec.f / matmul.f surfaces) OR a per-head view-GEMM rewrite that abandons
+\ the batched machinery and moves the 1789/532 block-training locks - so the equation route
+\ STILL wins. Its only cost is a PHYSICAL head-major materialization: the projection writes
+\ fused (B*T,3C) and the batched attention reads head-major (B,H,T,hd), so a fused <-> head-
+\ major permutation (MHA-FLATIDX / MHA-QKVIDX, a 4D reindex, NOT a 2D affine stride) sits
+\ between them as host layout glue (MHA-QKV>HM / MHA-HM>QKV forward, MHA-FLAT>HM / MHA-HM>FLAT
+\ for the O merge) with its inverse-permutation adjoint. That materialization is the HONEST
+\ BRIDGE, not a retirable copy; the SV-6 view program (H per-head views of one buffer, no
+\ copy) remains the perf-optimal long-term form, sequenced behind this outcome AND those
+\ still-unlanded view capabilities.
 \
 \ FIXED TOY MAGNITUDES ARE AN ORACLE, NOT A COMPLETION PROOF. Every extent magnitude is a
 \ compile-time SPEC: constant, so this runs at ONE toy shape (B=2, T=4, C=6, H=2, hd=3),
