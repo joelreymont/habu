@@ -37,14 +37,14 @@ MHA-BT constant BKT                    \ B*T rows
 8 constant BKH                         \ MLP hidden
 6 constant BKV                         \ vocab
 BKT BKC * constant BK-XN               \ (BT,C) elements
-BKC BKC * constant BK-WN               \ (C,C) projection weight
+BKC BKC * constant BK-WN               \ (C,C) per-Q/K/V weight (reference block size)
+BK-WN 3 * constant BK-WQKVN            \ (C,3C) fused c_attn projection weight
+BKC 3 * constant BK-3C                 \ fused bias width 3C
 BKT BKV * constant BK-ON               \ logit elements
 
 \ ---- trainable params ----------------------------------------------------------------
 create BK-X  BK-XN cells allot
-create BK-WQ BK-WN cells allot   create BK-BQ BKC cells allot
-create BK-WK BK-WN cells allot   create BK-BK BKC cells allot
-create BK-WV BK-WN cells allot   create BK-BV BKC cells allot
+create BK-WQKV BK-WQKVN cells allot   create BK-BQKV BK-3C cells allot   \ fused c_attn projection
 create BK-WO BK-WN cells allot   create BK-BO BKC cells allot
 create BK-W1 BKC BKH * cells allot   create BK-B1 BKH cells allot
 create BK-W2 BKH BKC * cells allot   create BK-B2 BKC cells allot
@@ -62,9 +62,7 @@ create BK-SEED BK-ON cells allot        \ CE seed cotangent
 
 \ ---- gradients -----------------------------------------------------------------------
 create BK-DX  BK-XN cells allot
-create BK-DWQ BK-WN cells allot   create BK-DBQ BKC cells allot
-create BK-DWK BK-WN cells allot   create BK-DBK BKC cells allot
-create BK-DWV BK-WN cells allot   create BK-DBV BKC cells allot
+create BK-DWQKV BK-WQKVN cells allot   create BK-DBQKV BK-3C cells allot
 create BK-DWO BK-WN cells allot   create BK-DBO BKC cells allot
 create BK-DW1 BKC BKH * cells allot   create BK-DB1 BKH cells allot
 create BK-DW2 BKH BKC * cells allot   create BK-DB2 BKC cells allot
@@ -85,18 +83,28 @@ variable BK-RNG
 : BK-NEXT ( -- r )  BK-RNG @ 1664525 * 1013904223 + $FFFFFFFF and dup BK-RNG !  s>f 4294967296.0 f/ ;
 : BK-UNIT ( -- r )  BK-NEXT 2.0 f* 1.0 f- ;
 : BK-SMALL ( ptr a n -- ) {: p:ptr n:n :}  n 0 ?do  BK-UNIT 0.1 f*  p i T-SET  loop ;
+\ fill the (C,C) column block at `base` of the fused (C,3C) weight with C*C draws in the
+\ SAME row-major order BK-SMALL uses on a standalone (C,C) weight, so the Q/K/V blocks get
+\ element-for-element the values the three separate weights got - the fused init is a bit-
+\ identical rearrangement of the three-projection init (training trajectory is preserved).
+: BK-SMALL-QKVBLK ( n -- ) {: base:n :}
+   BKC 0 ?do  BKC 0 ?do  BK-UNIT 0.1 f*  BK-WQKV j BK-3C * base + i +  T-SET  loop  loop ;
+: BK-SMALL-QKVBIAS ( n -- ) {: base:n :}
+   BKC 0 ?do  BK-UNIT 0.1 f*  BK-BQKV base i +  T-SET  loop ;
 : BK-INIT ( -- )
    $C0FFEE BK-RNG !
    BK-X BK-XN BK-SMALL
-   BK-WQ BK-WN BK-SMALL  BK-BQ BKC BK-SMALL  BK-WK BK-WN BK-SMALL  BK-BK BKC BK-SMALL
-   BK-WV BK-WN BK-SMALL  BK-BV BKC BK-SMALL  BK-WO BK-WN BK-SMALL  BK-BO BKC BK-SMALL
+   0       BK-SMALL-QKVBLK  0       BK-SMALL-QKVBIAS      \ Q block draws, then Q bias (baseline WQ,BQ order)
+   BKC     BK-SMALL-QKVBLK  BKC     BK-SMALL-QKVBIAS      \ K block, K bias
+   BKC 2 * BK-SMALL-QKVBLK  BKC 2 * BK-SMALL-QKVBIAS      \ V block, V bias
+   BK-WO BK-WN BK-SMALL  BK-BO BKC BK-SMALL
    BK-W1 BKC BKH * BK-SMALL  BK-B1 BKH BK-SMALL  BK-W2 BKH BKC * BK-SMALL  BK-B2 BKC BK-SMALL
    BK-WL BKC BKV * BK-SMALL  BK-BL BKV BK-SMALL
    BKT 0 ?do  i BKV mod s>f  BK-TGT i T-SET  loop ;
 
 \ ---- forward: attention sublayer (mine) -> MLP sublayer -> LM head --------------------
 : BK-FWD ( -- )
-   BK-X BK-WQ BK-BQ BK-WK BK-BK BK-WV BK-BV BK-WO BK-BO BK-H MHA-FWD     \ H = attn(X)+X
+   BK-X BK-WQKV BK-BQKV BK-WO BK-BO BK-H MHA-FWD     \ H = attn(X)+X (fused c_attn projection)
    BK-H BK-W1 BK-HID  BKT BKC BKH  MATMUL   BK-HID BKT BKH BK-B1 BK-ROWBIAS
    BKT BKH * 0 ?do  BK-HID i T-GET GELU-F  BK-A i T-SET  loop
    BK-A BK-W2 BK-M  BKT BKH BKC  MATMUL   BK-M BKT BKC BK-B2 BK-ROWBIAS
@@ -127,34 +135,34 @@ variable BK-RNG
    BK-DHID BK-W1 BK-DHM  BKT BKC BKH  MATMUL-DX
    BK-DZ BK-DHM BK-DH BK-XN BK-ADD                                      \ dH = dZ + dMLP (residual)
    \ attention sublayer
-   BK-X BK-WQ BK-WK BK-WV BK-WO BK-DH
-   BK-DX BK-DWQ BK-DBQ BK-DWK BK-DBK BK-DWV BK-DBV BK-DWO BK-DBO MHA-BWD ;
+   BK-X BK-WQKV BK-WO BK-DH
+   BK-DX BK-DWQKV BK-DBQKV BK-DWO BK-DBO MHA-BWD ;
 
 \ ============ (A) repeated-batch gradient accumulation ================================
-\ full-batch dWq == sum of the per-batch dWq (seed masked to one batch's rows at a time).
-create BK-DWQ-FULL BK-WN cells allot   create BK-DWQ-B0 BK-WN cells allot
-create BK-DWQ-SUM  BK-WN cells allot
+\ full-batch dWqkv == sum of the per-batch dWqkv (seed masked to one batch's rows at a time).
+create BK-DWQKV-FULL BK-WQKVN cells allot   create BK-DWQKV-B0 BK-WQKVN cells allot
+create BK-DWQKV-SUM  BK-WQKVN cells allot
 #MQ BKV * constant BK-BATCH-ON          \ logit rows of one batch = T*V
 : BK-MASK-SEED-B1 ( -- )  BK-BATCH-ON 0 ?do  0.0 BK-SEED BK-BATCH-ON i + T-SET  loop ;   \ zero batch 1 rows
 : BK-MASK-SEED-B0 ( -- )  BK-BATCH-ON 0 ?do  0.0 BK-SEED i T-SET  loop ;                 \ zero batch 0 rows
 : BK-ACCUM? ( -- bool )
    BK-INIT  BK-FWD  BK-LOSS drop
-   BK-BWD  BK-DWQ BK-DWQ-FULL BK-WN BK-COPY                    \ full-batch dWq
+   BK-BWD  BK-DWQKV BK-DWQKV-FULL BK-WQKVN BK-COPY             \ full-batch dWqkv
    BK-FWD  BK-LOSS drop  BK-MASK-SEED-B1                        \ re-seed, keep only batch 0
    BK-Z BK-SEED BK-DWL BKT BKC BKV MATMUL-DW  BK-SEED BK-WL BK-DZ BKT BKC BKV MATMUL-DX
    BK-DZ BK-DM BK-XN BK-COPY  BK-A BK-DM BK-DW2 BKT BKH BKC MATMUL-DW  BK-DM BK-W2 BK-DA BKT BKH BKC MATMUL-DX
    BKT BKH * 0 ?do  BK-DA i T-GET BK-HID i T-GET GELU-BWD BK-DHID i T-SET  loop
    BK-DHID BK-W1 BK-DHM BKT BKC BKH MATMUL-DX  BK-DZ BK-DHM BK-DH BK-XN BK-ADD
-   BK-X BK-WQ BK-WK BK-WV BK-WO BK-DH  BK-DX BK-DWQ BK-DBQ BK-DWK BK-DBK BK-DWV BK-DBV BK-DWO BK-DBO MHA-BWD
-   BK-DWQ BK-DWQ-B0 BK-WN BK-COPY                              \ batch-0-only dWq
+   BK-X BK-WQKV BK-WO BK-DH  BK-DX BK-DWQKV BK-DBQKV BK-DWO BK-DBO MHA-BWD
+   BK-DWQKV BK-DWQKV-B0 BK-WQKVN BK-COPY                       \ batch-0-only dWqkv
    BK-FWD  BK-LOSS drop  BK-MASK-SEED-B0                        \ re-seed, keep only batch 1
    BK-Z BK-SEED BK-DWL BKT BKC BKV MATMUL-DW  BK-SEED BK-WL BK-DZ BKT BKC BKV MATMUL-DX
    BK-DZ BK-DM BK-XN BK-COPY  BK-A BK-DM BK-DW2 BKT BKH BKC MATMUL-DW  BK-DM BK-W2 BK-DA BKT BKH BKC MATMUL-DX
    BKT BKH * 0 ?do  BK-DA i T-GET BK-HID i T-GET GELU-BWD BK-DHID i T-SET  loop
    BK-DHID BK-W1 BK-DHM BKT BKC BKH MATMUL-DX  BK-DZ BK-DHM BK-DH BK-XN BK-ADD
-   BK-X BK-WQ BK-WK BK-WV BK-WO BK-DH  BK-DX BK-DWQ BK-DBQ BK-DWK BK-DBK BK-DWV BK-DBV BK-DWO BK-DBO MHA-BWD
-   BK-DWQ-B0 BK-DWQ BK-DWQ-SUM BK-WN BK-ADD                    \ b0 + b1
-   BK-DWQ-FULL BK-DWQ-SUM BK-WN T-DIST2  1000000.0 f* 0.5 f+ f>s 0= ;
+   BK-X BK-WQKV BK-WO BK-DH  BK-DX BK-DWQKV BK-DBQKV BK-DWO BK-DBO MHA-BWD
+   BK-DWQKV-B0 BK-DWQKV BK-DWQKV-SUM BK-WQKVN BK-ADD           \ b0 + b1
+   BK-DWQKV-FULL BK-DWQKV-SUM BK-WQKVN T-DIST2  1000000.0 f* 0.5 f+ f>s 0= ;
 BK-ACCUM? TTRUE
 
 \ ============ (B) block gradcheck: analytic vs central FD on representative params =====
@@ -169,7 +177,7 @@ BK-INIT  BK-FWD  BK-LOSS drop  BK-BWD          \ analytic grads for the block lo
 BK-X  BK-XN BK-DX  BK-GC? TTRUE                 \ dX flows through the whole block
 BK-WL BKC BKV * BK-DWL BK-GC? TTRUE             \ LM head weight
 BK-W1 BKC BKH * BK-DW1 BK-GC? TTRUE             \ MLP first linear
-BK-WQ BK-WN BK-DWQ BK-GC? TTRUE                 \ attention query projection (through the block)
+BK-WQKV BK-WQKVN BK-DWQKV BK-GC? TTRUE          \ fused attention QKV projection (through the block)
 BK-BO BKC BK-DBO BK-GC? TTRUE                   \ attention output bias (through the block)
 
 \ ============ (C) training: Adam more than halves mean CE, deterministic, run-twice ====
@@ -180,7 +188,7 @@ variable BK-T  variable BK-B1T  variable BK-B2T
 : BK-TICK ( -- )  BK-T @ 1+ BK-T !  BK-B1T @ BK-BET1 f* BK-B1T !  BK-B2T @ BK-BET2 f* BK-B2T ! ;
 : BK-LR ( -- r )  0.03 ;
 
-\ 14 params: buffer, grad, length, moment m, moment v.
+\ 10 params (fused c_attn folds Q/K/V into one weight + one bias): buffer, grad, length, moment m, moment v.
 create BK-MBUF 2400 cells allot   variable BK-MOFF
 : BK-M+ ( n -- ptr a )  {: n:n :}  BK-MOFF @ {: o:n :}  o n + BK-MOFF !  BK-MBUF o cells + ;
 create BK-VBUF 2400 cells allot   variable BK-VOFF
@@ -188,9 +196,7 @@ create BK-VBUF 2400 cells allot   variable BK-VOFF
 \ the moment slabs (assigned once, in param order)
 0 BK-MOFF !  0 BK-VOFF !
 BK-XN BK-M+ constant MBX   BK-XN BK-V+ constant VBX
-BK-WN BK-M+ constant MBWQ  BK-WN BK-V+ constant VBWQ   BKC BK-M+ constant MBBQ  BKC BK-V+ constant VBBQ
-BK-WN BK-M+ constant MBWK  BK-WN BK-V+ constant VBWK   BKC BK-M+ constant MBBK  BKC BK-V+ constant VBBK
-BK-WN BK-M+ constant MBWV  BK-WN BK-V+ constant VBWV   BKC BK-M+ constant MBBV  BKC BK-V+ constant VBBV
+BK-WQKVN BK-M+ constant MBWQKV  BK-WQKVN BK-V+ constant VBWQKV   BK-3C BK-M+ constant MBBQKV  BK-3C BK-V+ constant VBBQKV
 BK-WN BK-M+ constant MBWO  BK-WN BK-V+ constant VBWO   BKC BK-M+ constant MBBO  BKC BK-V+ constant VBBO
 BKC BKH * BK-M+ constant MBW1  BKC BKH * BK-V+ constant VBW1   BKH BK-M+ constant MBB1  BKH BK-V+ constant VBB1
 BKH BKC * BK-M+ constant MBW2  BKH BKC * BK-V+ constant VBW2   BKC BK-M+ constant MBB2  BKC BK-V+ constant VBB2
@@ -203,9 +209,7 @@ BKC BKV * BK-M+ constant MBWL  BKC BKV * BK-V+ constant VBWL   BKV BK-M+ constan
    BK-LR BK-BET1 BK-BET2 BK-EPS BK-C1 BK-C2  p g m v n  OPTIM:TT-ADAM! ;
 : BK-STEP ( -- r )
    BK-FWD  BK-LOSS {: loss:r :}  BK-BWD  BK-TICK       \ X is the fixed block input (frozen); train the weights
-   BK-WQ BK-DWQ MBWQ VBWQ BK-WN BK-UPD   BK-BQ BK-DBQ MBBQ VBBQ BKC BK-UPD
-   BK-WK BK-DWK MBWK VBWK BK-WN BK-UPD   BK-BK BK-DBK MBBK VBBK BKC BK-UPD
-   BK-WV BK-DWV MBWV VBWV BK-WN BK-UPD   BK-BV BK-DBV MBBV VBBV BKC BK-UPD
+   BK-WQKV BK-DWQKV MBWQKV VBWQKV BK-WQKVN BK-UPD   BK-BQKV BK-DBQKV MBBQKV VBBQKV BK-3C BK-UPD
    BK-WO BK-DWO MBWO VBWO BK-WN BK-UPD   BK-BO BK-DBO MBBO VBBO BKC BK-UPD
    BK-W1 BK-DW1 MBW1 VBW1 BKC BKH * BK-UPD   BK-B1 BK-DB1 MBB1 VBB1 BKH BK-UPD
    BK-W2 BK-DW2 MBW2 VBW2 BKH BKC * BK-UPD   BK-B2 BK-DB2 MBB2 VBB2 BKC BK-UPD

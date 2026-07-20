@@ -40,24 +40,26 @@ package MAKI
 
 \ ---- sizes (B=2, T=4, C=6, H=2, hd=3) ------------------------------------------------
 MHA-BT #MC * constant MHAT-XN         \ flat input/output elements B*T*C
-#MC #MC * constant MHAT-WN            \ projection weight elements C*C
+#MC #MC * constant MHAT-WN            \ per-Q/K/V reference weight elements C*C
+#MC MHA-3C * constant MHAT-WQKVN      \ fused projection weight elements C*3C
 #MQ #MD * constant MHAT-HDN           \ one head block T*hd
 #MQ #MK * constant MHAT-SN            \ one head score block T*T
 
 \ ---- inputs + outputs ----------------------------------------------------------------
 create MHAT-X  MHAT-XN cells allot
+\ per-Q/K/V reference weights (the three-projection ground truth the fused path must match)
 create MHAT-WQ MHAT-WN cells allot   create MHAT-BQ #MC cells allot
 create MHAT-WK MHAT-WN cells allot   create MHAT-BK #MC cells allot
 create MHAT-WV MHAT-WN cells allot   create MHAT-BV #MC cells allot
+\ the FUSED projection params MHA-FWD consumes: Wqkv (C,3C) = [WQ|WK|WV], bqkv (3C) = [BQ|BK|BV]
+create MHAT-WQKV MHAT-WQKVN cells allot   create MHAT-BQKV MHA-3C cells allot
 create MHAT-WO MHAT-WN cells allot   create MHAT-BO #MC cells allot
 create MHAT-Y  MHAT-XN cells allot
 create MHAT-SEED MHAT-XN cells allot
 
 \ ---- analytic gradient outputs -------------------------------------------------------
 create MHAT-DX  MHAT-XN cells allot
-create MHAT-DWQ MHAT-WN cells allot   create MHAT-DBQ #MC cells allot
-create MHAT-DWK MHAT-WN cells allot   create MHAT-DBK #MC cells allot
-create MHAT-DWV MHAT-WN cells allot   create MHAT-DBV #MC cells allot
+create MHAT-DWQKV MHAT-WQKVN cells allot   create MHAT-DBQKV MHA-3C cells allot
 create MHAT-DWO MHAT-WN cells allot   create MHAT-DBO #MC cells allot
 create MHAT-DX2 MHAT-XN cells allot    \ dX after a cross-batch perturbation (isolation)
 
@@ -72,6 +74,23 @@ create MHAT-OSAVE MHAT-HDN cells allot   \ head-0 context snapshot (head isolati
    rows 0 ?do  cols 0 ?do  yb j cols * i + T-GET  bb i T-GET f+  yb j cols * i + T-SET  loop  loop ;
 : MHAT-COPY ( ptr a ptr a n -- ) {: s:ptr d:ptr n:n :}  n 0 ?do  s i T-GET  d i T-SET  loop ;
 
+\ pack the three reference weights/biases into the fused Wqkv (C,3C) / bqkv (3C) as the
+\ column blocks [0,C)|[C,2C)|[2C,3C) - the exact arrangement MHA-QKVPROJ assumes. This is
+\ the "same weights arranged into the fused Wqkv" the parity proof rests on.
+: MHAT-PACK ( -- )
+   #MC 0 ?do                                     \ p = j (weight row)
+      #MC 0 ?do                                  \ c = i (column within a C-block)
+         MHAT-WQ j #MC * i +  T-GET   MHAT-WQKV j MHA-3C * i +           T-SET
+         MHAT-WK j #MC * i +  T-GET   MHAT-WQKV j MHA-3C * #MC + i +     T-SET
+         MHAT-WV j #MC * i +  T-GET   MHAT-WQKV j MHA-3C * #MC 2 * + i + T-SET
+      loop
+   loop
+   #MC 0 ?do
+      MHAT-BQ i T-GET   MHAT-BQKV i           T-SET
+      MHAT-BK i T-GET   MHAT-BQKV #MC i +      T-SET
+      MHAT-BV i T-GET   MHAT-BQKV #MC 2 * i +  T-SET
+   loop ;
+
 \ deterministic non-degenerate fills (distinct sources per buffer)
 : MHAT-FILL ( -- )
    MHAT-XN 0 ?do  i 1 + s>f 23.0 f/  MHAT-X  i T-SET  loop
@@ -83,14 +102,15 @@ create MHAT-OSAVE MHAT-HDN cells allot   \ head-0 context snapshot (head isolati
    #MC 0 ?do  i 2 + s>f 47.0 f/  MHAT-BK i T-SET  loop
    #MC 0 ?do  i 3 + s>f 53.0 f/  MHAT-BV i T-SET  loop
    #MC 0 ?do  i 4 + s>f 59.0 f/  MHAT-BO i T-SET  loop
-   MHAT-XN 0 ?do  i 7 mod s>f 0.1 f* 0.2 f+  MHAT-SEED i T-SET  loop ;
+   MHAT-XN 0 ?do  i 7 mod s>f 0.1 f* 0.2 f+  MHAT-SEED i T-SET  loop
+   MHAT-PACK ;                          \ mirror the fill into the fused Wqkv/bqkv
 
 \ ---- MHA-FWD / MHA-BWD drivers -------------------------------------------------------
 : MHAT-RUNF ( -- )
-   MHAT-X MHAT-WQ MHAT-BQ MHAT-WK MHAT-BK MHAT-WV MHAT-BV MHAT-WO MHAT-BO MHAT-Y MHA-FWD ;
+   MHAT-X MHAT-WQKV MHAT-BQKV MHAT-WO MHAT-BO MHAT-Y MHA-FWD ;
 : MHAT-RUNB ( -- )    \ seed cotangent = MHAT-SEED, analytic grads into the MHAT-D* buffers
-   MHAT-X MHAT-WQ MHAT-WK MHAT-WV MHAT-WO MHAT-SEED
-   MHAT-DX MHAT-DWQ MHAT-DBQ MHAT-DWK MHAT-DBK MHAT-DWV MHAT-DBV MHAT-DWO MHAT-DBO MHA-BWD ;
+   MHAT-X MHAT-WQKV MHAT-WO MHAT-SEED
+   MHAT-DX MHAT-DWQKV MHAT-DBQKV MHAT-DWO MHAT-DBO MHA-BWD ;
 : MHAT-LOSS ( -- r )  0.0 MHAT-XN 0 ?do  MHAT-SEED i T-GET  MHAT-Y i T-GET  f*  f+  loop ;
 
 \ ---- (A) independent replicated-loop reference ---------------------------------------
@@ -147,15 +167,11 @@ MHAT-Y MHAT-RY MHAT-XN T-DIST2  1000000.0 f* 0.5 f+ f>s  0 T=      \ (A) forward
    n 0 ?do  gb i T-GET  pb i MHAT-FD  GC-CLOSE? 0= if drop false leave then  loop ;
 
 MHAT-FILL  MHAT-RUNF  MHAT-RUNB          \ analytic grads captured before FD perturbs the tape
-MHAT-X  MHAT-XN MHAT-DX  MHAT-GC? TTRUE           \ dX
-MHAT-WQ MHAT-WN MHAT-DWQ MHAT-GC? TTRUE           \ dWq
-MHAT-BQ #MC     MHAT-DBQ MHAT-GC? TTRUE           \ dbq
-MHAT-WK MHAT-WN MHAT-DWK MHAT-GC? TTRUE           \ dWk
-MHAT-BK #MC     MHAT-DBK MHAT-GC? TTRUE           \ dbk
-MHAT-WV MHAT-WN MHAT-DWV MHAT-GC? TTRUE           \ dWv
-MHAT-BV #MC     MHAT-DBV MHAT-GC? TTRUE           \ dbv
-MHAT-WO MHAT-WN MHAT-DWO MHAT-GC? TTRUE           \ dWo
-MHAT-BO #MC     MHAT-DBO MHAT-GC? TTRUE           \ dbo
+MHAT-X    MHAT-XN    MHAT-DX    MHAT-GC? TTRUE    \ dX
+MHAT-WQKV MHAT-WQKVN MHAT-DWQKV MHAT-GC? TTRUE    \ dWqkv (whole C*3C - covers the Q|K|V column blocks)
+MHAT-BQKV MHA-3C     MHAT-DBQKV MHAT-GC? TTRUE    \ dbqkv (whole 3C - covers bq|bk|bv)
+MHAT-WO   MHAT-WN    MHAT-DWO   MHAT-GC? TTRUE    \ dWo
+MHAT-BO   #MC        MHAT-DBO   MHAT-GC? TTRUE    \ dbo
 
 \ ---- (C) batch isolation: perturb batch 1's input, batch 0's dX is bit-identical ------
 #MQ #MC * constant MHAT-BATCHN            \ elements of one batch block in X/dX (T*C)

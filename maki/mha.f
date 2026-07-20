@@ -1,12 +1,13 @@
 \ maki/mha.f - trainable batched multi-head causal self-attention sublayer, the full
-\ GPT-2 c_attn shape: checked B,T,C,H,hd geometry, three separate Q/K/V projections
-\ each with its own bias, per-head batched scaled-dot-product attention with segment-
-\ causal masking, an output projection with weight+bias, and the residual add. The
-\ sublayer is differentiable end to end: MHA-FWD is paired with MHA-BWD, which produces
-\ the adjoints of X and EVERY weight and bias.
+\ GPT-2 c_attn shape: checked B,T,C,H,hd geometry, ONE fused Q/K/V projection with a
+\ combined bias, per-head batched scaled-dot-product attention with segment-causal
+\ masking, an output projection with weight+bias, and the residual add. The sublayer is
+\ differentiable end to end: MHA-FWD is paired with MHA-BWD, which produces the adjoints
+\ of X and EVERY weight and bias.
 \
 \   Y = residual(X) + ( concat_h softmax_causal( Q_h K_h^T / sqrt(hd) ) V_h ) Wo + bo
-\   Q = X Wq + bq   K = X Wk + bk   V = X Wv + bv   (three biased projections, NOT fused)
+\   [Q K V] = X Wqkv + bqkv   (ONE fused GPT-2 c_attn projection; Q|K|V are column blocks
+\                              [0,C)|[C,2C)|[2C,3C) of the (B*T,3C) output, split by offset)
 \
 \ WHAT IS "IN THE GRAPH" (batched SPEC equations) vs HOST GLUE.
 \   - The per-head scores and context are BATCHED SPEC: equations carrying b,h as FREE
@@ -19,9 +20,9 @@
 \     the batch extents riding along, so batch AND head isolation are structural: a
 \     cross-batch or cross-head perturbation has zero effect on another block's grad.
 \   - Everything the multiply-then-sum grammar cannot state stays a named HOST op, as in
-\     maki/attention.f / maki/causal.f: the three projections + biases (shared-weight
-\     GEMMs = plain 2D matmul over the flattened B*T rows, maki/matmul.f), the head-major
-\     layout glue, the 1/sqrt(hd) scale, the causal-masked row softmax, the head merge,
+\     maki/attention.f / maki/causal.f: the ONE fused QKV projection + combined bias (a
+\     shared-weight GEMM = plain 2D matmul over the flattened B*T rows, maki/matmul.f),
+\     the head-major layout glue, the 1/sqrt(hd) scale, the causal-masked row softmax, the head merge,
 \     the output projection + bias, and the residual add. Each host step has a hand-
 \     composed adjoint in MHA-BWD; the whole forward/backward pair is finite-difference
 \     gradchecked in maki/mha-test.f.
@@ -92,6 +93,7 @@ MHA-CONFIG-CHECK
 \ ---- derived magnitudes (flat row count, head-major and score buffer sizes) ----------
 : MHA-BT ( -- n )  #MB #MQ * ;                     \ flattened rows B*T
 : MHA-CC ( -- n )  #MC ;                            \ channels C
+: MHA-3C ( -- n )  #MC 3 * ;                        \ fused QKV width 3C (Q|K|V column blocks)
 : MHA-HM ( -- n )  #MB #MH * #MQ * #MD * ;          \ head-major Q/K/V/O elements = B*T*C
 : MHA-SS ( -- n )  #MB #MH * #MQ * #MK * ;          \ scores/attn elements B*H*T*T
 : MHA-INV ( -- r )  1.0 #MD s>f fsqrt f/ ;          \ 1/sqrt(hd)
@@ -112,9 +114,7 @@ SPEC: MHA-CTX    MHA-O[mb mh mq md] = MHA-A[mb mh mq mk] MHA-V[mb mh mk md] * +S
 private
 
 \ ---- private saved-activation scratch (the backward tape) -----------------------------
-create MHA-QF MHA-BT #MC * cells allot   \ flat projections (B*T,C)
-create MHA-KF MHA-BT #MC * cells allot
-create MHA-VF MHA-BT #MC * cells allot
+create MHA-QKVF MHA-BT MHA-3C * cells allot   \ fused flat projection (B*T,3C): Q|K|V column blocks
 create MHA-QM MHA-HM cells allot         \ head-major projections (B,H,T,hd)
 create MHA-KM MHA-HM cells allot
 create MHA-VM MHA-HM cells allot
@@ -132,10 +132,8 @@ create MHA-dSM MHA-SS cells allot
 create MHA-dQM MHA-HM cells allot
 create MHA-dKM MHA-HM cells allot
 create MHA-dVM MHA-HM cells allot
-create MHA-dQF MHA-BT #MC * cells allot
-create MHA-dKF MHA-BT #MC * cells allot
-create MHA-dVF MHA-BT #MC * cells allot
-create MHA-dXT MHA-BT #MC * cells allot   \ per-projection dX contribution accumulator
+create MHA-dQKVF MHA-BT MHA-3C * cells allot   \ fused flat projection cotangent (B*T,3C)
+create MHA-dXT MHA-BT #MC * cells allot   \ dX contribution accumulator (fused proj.W^T)
 
 \ ---- host glue -----------------------------------------------------------------------
 : MHA-COPY ( ptr a ptr a n -- ) {: s:ptr d:ptr n:n :}  n 0 ?do  s i T-GET  d i T-SET  loop ;
@@ -166,15 +164,33 @@ create MHA-dXT MHA-BT #MC * cells allot   \ per-projection dX contribution accum
 : MHA-HM>FLAT ( ptr a ptr a -- ) {: hb:ptr fb:ptr :}   \ flat[flatidx(e)] = hm[e]  (merge; the split's inverse)
    MHA-HM 0 ?do  hb i T-GET  fb i MHA-FLATIDX T-SET  loop ;
 
+\ THE ONE QKV LAYOUT CONTRACT. head-major elem e=(b,h,t,d) -> its index in the FUSED
+\ (B*T,3C) buffer's column block at `base` (base 0 = Q, #MC = K, 2*#MC = V): position
+\ (b*T+t)*3C + base + h*hd + d. Forward split AND adjoint merge both derive from this one
+\ map, so Q/K/V slices never disagree - the offset arithmetic that replaces strided views.
+: MHA-QKVIDX ( n n -- n ) {: e:n base:n :}
+   e #MD mod {: d:n :}
+   e #MD / #MQ mod {: t:n :}
+   e #MD #MQ * / #MH mod {: h:n :}
+   e #MD #MQ * #MH * / {: b:n :}
+   b #MQ * t +  MHA-3C *  base +  h #MD * +  d + ;
+: MHA-QKV>HM ( ptr a ptr a n -- ) {: fb:ptr hb:ptr base:n :}   \ hm[e] = fused[qkvidx(e,base)] (split)
+   MHA-HM 0 ?do  fb i base MHA-QKVIDX T-GET  hb i T-SET  loop ;
+: MHA-HM>QKV ( ptr a ptr a n -- ) {: hb:ptr fb:ptr base:n :}   \ fused[qkvidx(e,base)] = hm[e] (merge)
+   MHA-HM 0 ?do  hb i T-GET  fb i base MHA-QKVIDX T-SET  loop ;
+
 \ per-(b,h) T x T block base (elements) for the causal row softmax + its VJP.
 : MHA-BLK ( n -- n )  #MQ #MK * * ;
 
-\ project X.W into a flat (B*T,C) buffer, add the per-channel bias (row broadcast),
-\ then split to head-major.
-: MHA-PROJ ( ptr a ptr a ptr a ptr a ptr a -- ) {: xb:ptr wb:ptr bb:ptr fb:ptr hb:ptr :}
-   xb wb fb  MHA-BT #MC #MC  MATMUL
-   fb MHA-BT #MC bb MHA-ROWBIAS
-   fb hb MHA-FLAT>HM ;
+\ the fused QKV projection: ONE X.Wqkv GEMM into the (B*T,3C) buffer, ONE combined-bias
+\ row broadcast, then split the three column blocks to head-major by offset arithmetic -
+\ no materialized Q/K/V copy beyond the single fused buffer. wb: Wqkv (C,3C); bb: bqkv (3C).
+: MHA-QKVPROJ ( ptr a ptr a ptr a -- ) {: xb:ptr wb:ptr bb:ptr :}
+   xb wb MHA-QKVF  MHA-BT #MC MHA-3C  MATMUL     \ one fused contraction (X read once)
+   MHA-QKVF MHA-BT MHA-3C bb MHA-ROWBIAS         \ one combined bias over all 3C columns
+   MHA-QKVF MHA-QM 0        MHA-QKV>HM           \ Q = block [0,C)   -> head-major
+   MHA-QKVF MHA-KM #MC      MHA-QKV>HM           \ K = block [C,2C)  -> head-major
+   MHA-QKVF MHA-VM #MC 2 *  MHA-QKV>HM ;         \ V = block [2C,3C) -> head-major
 
 \ the scaled causal-softmax attention over all (b,h) score blocks: scale S in place,
 \ then the segment-causal row softmax per block into A (saved for the VJP).
@@ -188,14 +204,12 @@ create MHA-dXT MHA-BT #MC * cells allot   \ per-projection dX contribution accum
 public
 
 \ MHA-FWD - the full trainable sublayer forward. xb: input X (B*T,C row-major; row b*T+t
-\ is batch b position t). wqb/bqb, wkb/bkb, wvb/bvb: the three projection weights (C,C)
-\ and biases (C). wob/bob: output projection weight (C,C) and bias (C). yb: output Y
-\ (B*T,C) = residual(X) + attention. Saves the activation tape for MHA-BWD.
-: MHA-FWD ( ptr a ptr a ptr a ptr a ptr a ptr a ptr a ptr a ptr a ptr a -- )
-   {: xb:ptr wqb:ptr bqb:ptr wkb:ptr bkb:ptr wvb:ptr bvb:ptr wob:ptr bob:ptr yb:ptr :}
-   xb wqb bqb MHA-QF MHA-QM MHA-PROJ            \ Q = X.Wq + bq -> head-major
-   xb wkb bkb MHA-KF MHA-KM MHA-PROJ            \ K = X.Wk + bk
-   xb wvb bvb MHA-VF MHA-VM MHA-PROJ            \ V = X.Wv + bv
+\ is batch b position t). wqkvb/bqkvb: the fused GPT-2 c_attn projection weight (C,3C) and
+\ combined bias (3C) - Q|K|V are its column blocks. wob/bob: output projection weight (C,C)
+\ and bias (C). yb: output Y (B*T,C) = residual(X) + attention. Saves the tape for MHA-BWD.
+: MHA-FWD ( ptr a ptr a ptr a ptr a ptr a ptr a -- )
+   {: xb:ptr wqkvb:ptr bqkvb:ptr wob:ptr bob:ptr yb:ptr :}
+   xb wqkvb bqkvb MHA-QKVPROJ                   \ Q|K|V = X.Wqkv + bqkv (one GEMM) -> head-major
    MHA-QM MHA-Q-BIND  MHA-KM MHA-K-BIND  MHA-SM MHA-S-BIND  MHA-SCORE   \ S = Q.K^T per (b,h)
    MHA-ATTEND                                                          \ scale + causal softmax -> A
    MHA-AM MHA-A-BIND  MHA-VM MHA-V-BIND  MHA-OM MHA-O-BIND  MHA-CTX     \ O = A.V per (b,h)
@@ -206,13 +220,13 @@ public
    MHA-YF yb MHA-BT #MC * MHA-COPY ;            \ single final write (alias-safe)
 
 \ MHA-BWD - the sublayer backward: given the output cotangent dyb, produce the adjoints
-\ of X and every weight/bias. Reads the activation tape MHA-FWD saved. xb + the four
-\ weights are the forward inputs the adjoints reference (biases are not needed - their
-\ adjoint is a column sum of the projection-output cotangent). dxb: dX (B*T,C). The nine
-\ grad outputs mirror the forward params: dwqb,dbqb, dwkb,dbkb, dwvb,dbvb, dwob,dbob.
-: MHA-BWD ( ptr a ptr a ptr a ptr a ptr a ptr a ptr a ptr a ptr a ptr a ptr a ptr a ptr a ptr a ptr a -- )
-   {: xb:ptr wqb:ptr wkb:ptr wvb:ptr wob:ptr dyb:ptr dxb:ptr
-      dwqb:ptr dbqb:ptr dwkb:ptr dbkb:ptr dwvb:ptr dbvb:ptr dwob:ptr dbob:ptr :}
+\ of X and every weight/bias. Reads the activation tape MHA-FWD saved. xb + the two weights
+\ (Wqkv, Wo) are the forward inputs the adjoints reference (biases are not needed - their
+\ adjoint is a column sum of the projection-output cotangent). dxb: dX (B*T,C). The grad
+\ outputs mirror the fused forward params: dwqkvb (C,3C), dbqkvb (3C), dwob, dbob.
+: MHA-BWD ( ptr a ptr a ptr a ptr a ptr a ptr a ptr a ptr a ptr a -- )
+   {: xb:ptr wqkvb:ptr wob:ptr dyb:ptr dxb:ptr
+      dwqkvb:ptr dbqkvb:ptr dwob:ptr dbob:ptr :}
    \ output projection backward (Y = O.Wo + bo + X): dbo, dWo, dO_flat
    dyb MHA-BT #MC dbob MHA-COLSUM
    MHA-OF dyb dwob  MHA-BT #MC #MC  MATMUL-DW
@@ -230,16 +244,14 @@ public
    \ score backward (S = Q.K^T): dQ, dK
    MHA-dSM MHA-S-BIND  MHA-KM MHA-K-BIND  MHA-dQM MHA-Q-BIND  MHA-SCORE-ADJ0
    MHA-dSM MHA-S-BIND  MHA-QM MHA-Q-BIND  MHA-dKM MHA-K-BIND  MHA-SCORE-ADJ1
-   MHA-dQM MHA-dQF MHA-HM>FLAT                  \ merge grads back to flat (B*T,C)
-   MHA-dKM MHA-dKF MHA-HM>FLAT
-   MHA-dVM MHA-dVF MHA-HM>FLAT
-   \ projection backward (Q/K/V = X.W + b): dW = X^T.dProj, db = colsum, dX += dProj.W^T
-   xb MHA-dQF dwqb  MHA-BT #MC #MC  MATMUL-DW   MHA-dQF MHA-BT #MC dbqb MHA-COLSUM
-   xb MHA-dKF dwkb  MHA-BT #MC #MC  MATMUL-DW   MHA-dKF MHA-BT #MC dbkb MHA-COLSUM
-   xb MHA-dVF dwvb  MHA-BT #MC #MC  MATMUL-DW   MHA-dVF MHA-BT #MC dbvb MHA-COLSUM
+   MHA-dQM MHA-dQKVF 0        MHA-HM>QKV         \ merge dQ|dK|dV into ONE fused (B*T,3C) buffer
+   MHA-dKM MHA-dQKVF #MC      MHA-HM>QKV         \   by the same layout contract - no extra copy
+   MHA-dVM MHA-dQKVF #MC 2 *  MHA-HM>QKV
+   \ fused projection backward (Q|K|V = X.Wqkv + bqkv): dWqkv = X^T.dQKV, dbqkv = colsum,
+   \ dX += dQKV.Wqkv^T - one GEMM each (X read once), same scalars as the three-block form.
+   xb MHA-dQKVF dwqkvb  MHA-BT #MC MHA-3C  MATMUL-DW
+   MHA-dQKVF MHA-BT MHA-3C dbqkvb MHA-COLSUM
    dyb dxb MHA-BT #MC * MHA-COPY                \ dX starts at the residual passthrough
-   MHA-dQF wqb MHA-dXT  MHA-BT #MC #MC  MATMUL-DX   dxb MHA-dXT MHA-BT #MC * T-ADD!
-   MHA-dKF wkb MHA-dXT  MHA-BT #MC #MC  MATMUL-DX   dxb MHA-dXT MHA-BT #MC * T-ADD!
-   MHA-dVF wvb MHA-dXT  MHA-BT #MC #MC  MATMUL-DX   dxb MHA-dXT MHA-BT #MC * T-ADD! ;
+   MHA-dQKVF wqkvb MHA-dXT  MHA-BT #MC MHA-3C  MATMUL-DX   dxb MHA-dXT MHA-BT #MC * T-ADD! ;
 
 ;package
