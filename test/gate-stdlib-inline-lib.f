@@ -367,6 +367,7 @@ variable GSI-TL-FILE-A
    s" tools/suite-coverage-lint-core.f" GSI-REQUIRE
    s" tools/namespace-lint-core.f" GSI-REQUIRE
    s" tools/error-code-lint-core.f" GSI-REQUIRE
+   s" tools/nanogpt-inventory-lint-core.f" GSI-REQUIRE
    GSI-TEST! ;
 
 : GSI-LINT-TOOLS ( -- )

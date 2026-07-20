@@ -60,6 +60,14 @@ SUITE dot-dep-lint-fixtures
    tools/dot-dep-lint-test.f
 ;SUITE
 
+SUITE nanogpt-inventory-lint
+   tools/nanogpt-inventory-lint.f
+;SUITE
+
+SUITE nanogpt-inventory-lint-fixtures
+   tools/nanogpt-inventory-lint-test.f
+;SUITE
+
 SUITE maki-dep-lint
    tools/maki-dep-lint.f
 ;SUITE

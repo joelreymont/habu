@@ -52,6 +52,10 @@
    s" dot-dep-lint" [: DOT-DEP-LINT ;] GSI-RUN
    s" tools/dot-dep-lint-test.f" GSI-INCLUDE ;
 
+: GSI-LINT-TOOLS-NANOGPT ( -- )
+   s" nanogpt-inventory-lint" [: NANOGPT-INVENTORY-LINT ;] GSI-RUN
+   s" tools/nanogpt-inventory-lint-test.f" GSI-INCLUDE ;
+
 : GSI-LINT-TOOLS-MAKI ( -- )
    s" maki-dep-lint" [: MAKI-DEP-LINT ;] GSI-RUN
    s" tools/maki-dep-lint-test.f" GSI-INCLUDE ;
@@ -90,6 +94,7 @@
    s" lint-tools/repo" GSI-FORK-TIMEOUT-MS [: GSI-LINT-TOOLS-REPO ;] GT-POOL-START-FORK
    s" lint-tools/status" GSI-FORK-TIMEOUT-MS [: GSI-LINT-TOOLS-STATUS ;] GT-POOL-START-FORK
    s" lint-tools/dot" GSI-FORK-TIMEOUT-MS [: GSI-LINT-TOOLS-DOT ;] GT-POOL-START-FORK
+   s" lint-tools/nanogpt" GSI-FORK-TIMEOUT-MS [: GSI-LINT-TOOLS-NANOGPT ;] GT-POOL-START-FORK
    s" lint-tools/maki" GSI-FORK-TIMEOUT-MS [: GSI-LINT-TOOLS-MAKI ;] GT-POOL-START-FORK
    s" lint-tools/refine" GSI-FORK-TIMEOUT-MS [: GSI-LINT-TOOLS-REFINE ;] GT-POOL-START-FORK
    s" lint-tools/suite-coverage" GSI-FORK-TIMEOUT-MS [: GSI-LINT-TOOLS-SUITE-COVERAGE ;] GT-POOL-START-FORK

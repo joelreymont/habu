@@ -1786,6 +1786,9 @@ points stay listed.
 - `tools/dot-dep-lint-core.f` — reusable dot blocker dependency validator.
 - `tools/dot-dep-lint.f` — CLI wrapper for dot blocker dependency lint.
 - `tools/dot-dep-lint-test.f` — checked fixture coverage for dot blocker dependency lint.
+- `tools/nanogpt-inventory-lint-core.f` — checks docs/nanogpt-inventory.md owner links against live dot status + on-disk modules.
+- `tools/nanogpt-inventory-lint.f` — CLI wrapper for the nanoGPT inventory owner lint.
+- `tools/nanogpt-inventory-lint-test.f` — red-first fixture coverage for the nanoGPT inventory lint.
 - `tools/maki-dep-lint-core.f` — one-way habu<-maki dependency guard: token-scans src/ lib/ test/ for a forbidden maki/ path reference.
 - `tools/maki-dep-lint.f` — CLI wrapper for the maki one-way dependency lint.
 - `tools/maki-dep-lint-test.f` — checked fixture coverage for the maki one-way dependency lint.
