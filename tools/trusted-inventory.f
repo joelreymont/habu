@@ -1213,18 +1213,35 @@ public
 
 DOTS-ROOT-RESET
 
-\ An owning dot exists as <root><id>.md or, for a parent dot with children,
-\ <root><id>/<id>.md, where <root> defaults to .dots/ (DOTS-ROOT!/-RESET). Closed
-\ dots move to the ignored .dots/archive/, so a mapping row referencing a closed
-\ or never-minted dot fails here.
+private
+
+variable DOT-FOUND
+
+\ A walked path is archived (a closed dot) when the segment after the root is
+\ archive/...; the archive/ subtree stays ignored so a closed owner still fails.
+: DOT-ARCHIVED? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   a u DOTS-ROOT$ LINT-STARTS-WITH? 0= if LINT-FALSE exit then
+   a DOTS-ROOT-U @ +  u DOTS-ROOT-U @ -  s" archive/" LINT-STARTS-WITH? ;
+
+\ Walk callback: mark found when a non-archived file's basename is the target
+\ <id>.md held in DOTP$.
+: DOT-VISIT ( ptr u8 n -- ) {: a:ptr u:n :}
+   a u DOT-ARCHIVED? if exit then
+   a u BASENAME DOTP$ LINT-STR= if LINT-TRUE DOT-FOUND ! then ;
+
+public
+
+\ An owning dot exists as any <root>**/<id>.md outside the ignored <root>archive/
+\ subtree, where <root> defaults to .dots/ (DOTS-ROOT!/-RESET). A nested epic dir
+\ (<root><epic>/<id>.md) resolves the same as a top-level <id>.md -- the recursive
+\ resolution `dot show` uses -- so an epic-nested owner validates while a mapping
+\ row referencing a closed or never-minted dot fails here.
 : DOT-EXISTS? ( ptr u8 n -- bool ) {: a:ptr u:n :}
    0 DOTP-U !
-   DOTS-ROOT$ DOTP-APPEND a u DOTP-APPEND s" .md" DOTP-APPEND
-   DOTP$ FILE? if LINT-TRUE exit then
-   0 DOTP-U !
-   DOTS-ROOT$ DOTP-APPEND a u DOTP-APPEND s" /" DOTP-APPEND
    a u DOTP-APPEND s" .md" DOTP-APPEND
-   DOTP$ FILE? ;
+   LINT-FALSE DOT-FOUND !
+   DOTS-ROOT$ [: DOT-VISIT ;] WALK-FILES
+   DOT-FOUND @ ;
 
 private
 

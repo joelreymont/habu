@@ -413,11 +413,13 @@ create TLS-ERR TLS-ERR-CAP allot
    TINV:OWNERS-RESET ;
 
 \ ---- scratch owning-dot fixture tree (no dependence on live .dots/) ----------
-\ FIX-DOTS builds a private temp tree with one plain-layout dot (<id>.md) and one
-\ parent-layout dot (<id>/<id>.md), points TINV's dots root at it, asserts the
-\ two exist and a never-created id is missing, then resets the root and removes
-\ the tree. Obviously-fake ids keep these fixtures from being mistaken for real
-\ dots, and nothing here reads the live .dots/ tree.
+\ FIX-DOTS builds a private temp tree with a plain-layout dot (<id>.md), a
+\ parent-layout dot (<id>/<id>.md), an epic-nested dot (<epic>/<id>.md), and an
+\ archived dot (archive/<id>.md), points TINV's dots root at it, asserts the
+\ three live layouts resolve while the archived and a never-created id do not,
+\ then resets the root and removes the tree. Obviously-fake ids keep these
+\ fixtures from being mistaken for real dots, and nothing here reads the live
+\ .dots/ tree.
 $400 constant DF-CAP
 create DF-BASE DF-CAP allot
 create DF-ROOT DF-CAP allot
@@ -431,6 +433,9 @@ variable DF-FILE-U
 : DF-PLAIN-ID ( -- ptr u8 n )   s" tinv-fix-plain-00000001" ;
 : DF-PARENT-ID ( -- ptr u8 n )  s" tinv-fix-parent-00000002" ;
 : DF-MISSING-ID ( -- ptr u8 n ) s" tinv-fix-missing-00000003" ;
+: DF-EPIC-ID ( -- ptr u8 n )    s" tinv-fix-epic-00000004" ;
+: DF-ARCH-ID ( -- ptr u8 n )    s" tinv-fix-archived-00000005" ;
+: DF-EPIC-DIR$ ( -- ptr u8 n )  s" tinv-fix-epic-dir" ;   \ epic dir name differs from the dot id
 
 : DF-COPY! ( ptr u8 n ptr u8 ptr n -- ) {: a:ptr u:n dst:ptr lenp:ptr :}
    a dst u BYTE-COPY
@@ -469,11 +474,32 @@ variable DF-FILE-U
    DF-DIR$ DF-PARENT-ID DF-FILE-PATH!
    DF-FILE$ s" parent fixture dot" WRITE-ALL ;
 
+\ Build "<base>/<seg>" into DF-DIR and mkdir it, for a nested epic/archive dir.
+: DF-MK-SUBDIR ( ptr u8 n -- ) {: sa:ptr su:n :}
+   SB-RESET
+   DF-BASE$ SB-APPEND FS-MUT-SLASH SB-APPEND-C sa su SB-APPEND
+   SB$ DF-DIR DF-DIR-U DF-COPY!
+   DF-DIR$ MAKE-DIR ;
+
+\ Epic-nested layout: <base>/<epic-dir>/<id>.md, the dir named unlike the id.
+: DF-MK-EPIC ( -- )
+   DF-EPIC-DIR$ DF-MK-SUBDIR
+   DF-DIR$ DF-EPIC-ID DF-FILE-PATH!
+   DF-FILE$ s" epic fixture dot" WRITE-ALL ;
+
+\ Archived (closed) dot: <base>/archive/<id>.md, in the ignored archive subtree.
+: DF-MK-ARCHIVE ( -- )
+   s" archive" DF-MK-SUBDIR
+   DF-DIR$ DF-ARCH-ID DF-FILE-PATH!
+   DF-FILE$ s" archived fixture dot" WRITE-ALL ;
+
 : DF-SETUP ( -- )
    DF-MK-BASE
    DF-MK-ROOT
    DF-MK-PLAIN
    DF-MK-PARENT
+   DF-MK-EPIC
+   DF-MK-ARCHIVE
    DF-ROOT$ TINV:DOTS-ROOT! ;
 
 : DF-TEARDOWN ( -- )
@@ -481,12 +507,15 @@ variable DF-FILE-U
    DF-BASE$ REMOVE-TREE ;
 
 \ Strict validates that every owning dot referenced by the mapping exists under
-\ the dots root (plain <id>.md or parent-dot <id>/<id>.md); each distinct missing
-\ dot is reported once. The root points at the scratch tree for this fixture.
+\ the dots root as any <root>**/<id>.md outside the ignored archive/ subtree
+\ (plain, parent-dot, or epic-nested layout); each distinct missing dot is
+\ reported once. The root points at the scratch tree for this fixture.
 : FIX-DOTS ( -- )
    DF-SETUP
    DF-PLAIN-ID TINV:DOT-EXISTS? TTRUE
    DF-PARENT-ID TINV:DOT-EXISTS? TTRUE
+   DF-EPIC-ID TINV:DOT-EXISTS? TTRUE     \ epic-nested owner resolves recursively
+   DF-ARCH-ID TINV:DOT-EXISTS? TFALSE    \ closed dot in archive/ stays unresolved
    DF-MISSING-ID TINV:DOT-EXISTS? TFALSE
    \ Plain id resolves in the scratch tree; the missing id (referenced twice) is
    \ reported once, so OWNERS-MISSING# dedupes to 1.
