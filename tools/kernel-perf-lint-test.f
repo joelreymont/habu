@@ -12,6 +12,7 @@ require tools/lint/text.f
 require tools/lint/token.f
 require tools/lint/lib.f
 require tools/ptx/perf-registry.f
+require tools/ptx/perf-watch.f
 require tools/kernel-perf-lint-core.f
 
 package KPL-TEST
@@ -91,10 +92,10 @@ variable FILE2-U
    s" +# just a comment" SB-APPEND LF+
    SB$ ;
 
-: UNRELATED$ ( -- ptr u8 n )
+: UNRELATED$ ( -- ptr u8 n )   \ a test near-miss of a watched producer stays clean
    SB-RESET
-   s" lib/ptx/tile.f" KLT-HEAD+
-   s" +\ tile DSL change, not codegen" SB-APPEND LF+
+   s" lib/ptx/tile-test.f" KLT-HEAD+
+   s" +\ tile DSL test tweak" SB-APPEND LF+
    SB$ ;
 
 : TOOLSCG$ ( -- ptr u8 n )
@@ -173,6 +174,38 @@ variable FILE2-U
 : KLT-MISSING$ ( -- ptr u8 n )
    s" E-PERF-ROW-MISSING" ;
 
+: TOUCH$ ( ptr u8 n -- ptr u8 n ) {: pa:ptr pu:n :}   \ diff touching one path, no registry row
+   SB-RESET
+   pa pu KLT-HEAD+
+   s" +\ perf-relevant tweak" SB-APPEND LF+
+   SB$ ;
+
+: TOUCH-MISSING ( ptr u8 n -- )   \ a watched producer touched without a row must fail
+   TOUCH$ KLT-RUN KLT-MISSING$ KLT-EXPECT ;
+
+: TOUCH-CLEAN ( ptr u8 n -- )   \ a near-miss / non-producer path must stay clean
+   TOUCH$ KLT-RUN KLT-CLEAN ;
+
+: NEW-PRODUCER-TESTS ( -- )   \ every producer the fix newly names fails closed on a bare touch
+   s" lib/ptx/tile.f" TOUCH-MISSING
+   s" lib/ptx/tile-v4.f" TOUCH-MISSING
+   s" lib/ptx/opt.f" TOUCH-MISSING
+   s" lib/ptx/opt-ir.f" TOUCH-MISSING
+   s" lib/ptx/ir.f" TOUCH-MISSING
+   s" lib/ptx/collective.f" TOUCH-MISSING
+   s" lib/ptx/cg-collective.f" TOUCH-MISSING ;
+
+: NEAR-MISS-TESTS ( -- )   \ test near-misses and declared non-producers never trigger
+   s" lib/ptx/tile-test.f" TOUCH-CLEAN
+   s" lib/ptx/tile-v4-test.f" TOUCH-CLEAN
+   s" lib/ptx/opt-test.f" TOUCH-CLEAN
+   s" lib/ptx/opt-ir-test.f" TOUCH-CLEAN
+   s" lib/ptx/ir-test.f" TOUCH-CLEAN
+   s" lib/ptx/collective-test.f" TOUCH-CLEAN
+   s" lib/ptx/cg-collective-test.f" TOUCH-CLEAN
+   s" lib/ptx/cuda-driver.f" TOUCH-CLEAN
+   s" lib/ptx/toolchain.f" TOUCH-CLEAN ;
+
 : KLT-SOURCE-TESTS ( -- )
    WATCHED-NOROW$ KLT-RUN KLT-MISSING$ KLT-EXPECT
    TOOLSCG$ KLT-RUN KLT-MISSING$ KLT-EXPECT
@@ -212,7 +245,7 @@ variable FILE2-U
    ra ru s" watched.diff" KLT-FILE-BUF JOIN-PATH KLT-FILE-U !
    ra ru s" other.diff" FILE2-BUF JOIN-PATH FILE2-U !
    KLT-FILE$ CLEANUP+ FILE2$ CLEANUP+
-   KLT-FILE$ s" lib/ptx/cg-a.f" MODE$ WRITE-ALL
+   KLT-FILE$ s" lib/ptx/opt.f" MODE$ WRITE-ALL
    FILE2$ s" lib/ptx/tile.f" MODE$ WRITE-ALL
    KERNEL-PERF-LINT:RESET
    KLT-OUT KLT-CAP LINT-OUT-BUFFER!
@@ -322,12 +355,85 @@ variable REGFILE-U
    RF-EMPTY$ R-WRITE   R-UNKNOWN$ R-RUN s" E-PERF-BAD-ROW" KLT-EXPECT
    CLEANUP-RUN ;
 
+\ ---- watch-table: classify / dedup / resolve / completeness ratchet ----------
+
+create PW-SCRATCH  PERF-WATCH:SET-BYTES allot
+create PW-MANIFEST PERF-WATCH:SET-BYTES allot
+variable PW-BAD
+
+: CLASSIFY-TESTS ( -- )   \ the classifier keys every acceptance case exactly
+   s" lib/ptx/tile.f"               PERF-WATCH:CLASSIFY PERF-WATCH:PW-WATCHED  T=
+   s" lib/ptx/opt.f"                PERF-WATCH:CLASSIFY PERF-WATCH:PW-WATCHED  T=
+   s" lib/ptx/collective.f"         PERF-WATCH:CLASSIFY PERF-WATCH:PW-WATCHED  T=
+   s" lib/ptx/cg-collective.f"      PERF-WATCH:CLASSIFY PERF-WATCH:PW-WATCHED  T=
+   s" src/arch/ptx/emit.f"          PERF-WATCH:CLASSIFY PERF-WATCH:PW-WATCHED  T=
+   s" lib/ptx/cg-collective-test.f" PERF-WATCH:CLASSIFY PERF-WATCH:PW-TEST     T=
+   s" lib/ptx/tile-test.f"          PERF-WATCH:CLASSIFY PERF-WATCH:PW-TEST     T=
+   s" lib/ptx/cuda-driver.f"        PERF-WATCH:CLASSIFY PERF-WATCH:PW-EXCLUDED T=
+   s" tools/ptx/saxpy-wrong-cg.f"   PERF-WATCH:CLASSIFY PERF-WATCH:PW-EXCLUDED T=
+   s" lib/ptx/zz-new-producer.f"    PERF-WATCH:CLASSIFY PERF-WATCH:PW-UNKNOWN  T= ;
+
+: DEDUP-TESTS ( -- )   \ a path set accepts distinct paths and rejects a duplicate
+   PW-SCRATCH PERF-WATCH:PS-RESET
+   PW-SCRATCH s" lib/ptx/tile.f" PERF-WATCH:PS-ADD
+   PW-SCRATCH s" lib/ptx/opt.f"  PERF-WATCH:PS-ADD
+   PW-SCRATCH PERF-WATCH:PS-N 2 T=
+   [: PW-SCRATCH s" lib/ptx/tile.f" PERF-WATCH:PS-ADD ;] E-WATCH-DUP TTHROWSQ ;
+
+: PW-RESOLVE# ( ptr a -- n ) {: s:ptr :}   \ paths in the set that do not resolve on disk
+   0 PW-BAD !
+   0 begin dup s PERF-WATCH:PS-N < while
+      s over PERF-WATCH:PS-AT FILE? 0= if PW-BAD @ 1+ PW-BAD ! then
+      1+
+   repeat drop PW-BAD @ ;
+
+: RESOLVE-TESTS ( -- )   \ every watched + excluded path resolves; a bogus path is caught
+   PERF-WATCH:WATCH-SET   PW-RESOLVE# 0 T=
+   PERF-WATCH:EXCLUDE-SET PW-RESOLVE# 0 T=
+   PW-SCRATCH PERF-WATCH:PS-RESET
+   PW-SCRATCH s" lib/ptx/tile.f" PERF-WATCH:PS-ADD
+   PW-SCRATCH s" lib/ptx/zz-does-not-exist.f" PERF-WATCH:PS-ADD
+   PW-SCRATCH PW-RESOLVE# 1 T= ;
+
+: PW-MAN-LIB ( ptr u8 n -- ) {: a:ptr u:n :}   \ collect every lib/src .f source
+   a u s" .f" ENDS-WITH? 0= if exit then
+   PW-MANIFEST a u PERF-WATCH:PS-ADD ;
+
+: PW-MAN-CG ( ptr u8 n -- ) {: a:ptr u:n :}   \ collect every tools/ptx/*-cg.f driver
+   a u s" -cg.f" ENDS-WITH? 0= if exit then
+   PW-MANIFEST a u PERF-WATCH:PS-ADD ;
+
+: PW-MAN-COLLECT ( -- )   \ the on-disk producer manifest across the scanned dirs
+   PW-MANIFEST PERF-WATCH:PS-RESET
+   s" lib/ptx"      [: PW-MAN-LIB ;] WALK-FILES
+   s" src/arch/ptx" [: PW-MAN-LIB ;] WALK-FILES
+   s" tools/ptx"    [: PW-MAN-CG ;] WALK-FILES ;
+
+: PW-RATCHET# ( ptr a -- n ) {: s:ptr :}   \ unclassified producers in a manifest set
+   0 PW-BAD !
+   0 begin dup s PERF-WATCH:PS-N < while
+      s over PERF-WATCH:PS-AT PERF-WATCH:CLASSIFY PERF-WATCH:PW-UNKNOWN = if PW-BAD @ 1+ PW-BAD ! then
+      1+
+   repeat drop PW-BAD @ ;
+
+: RATCHET-COMPLETE-TESTS ( -- )   \ the live producer tree is fully owned; an addition fails
+   PW-MAN-COLLECT
+   PW-MANIFEST PW-RATCHET# 0 T=
+   PW-MANIFEST s" lib/ptx/zz-new-producer.f" PERF-WATCH:PS-ADD
+   PW-MANIFEST PW-RATCHET# 1 T= ;
+
 T-RESET
 KLT-SOURCE-TESTS
+NEW-PRODUCER-TESTS
+NEAR-MISS-TESTS
 KLT-FILE-TESTS
 MULTI-FILE-TESTS
 MALFORMED-TESTS
 RATCHET-TESTS
+CLASSIFY-TESTS
+DEDUP-TESTS
+RESOLVE-TESTS
+RATCHET-COMPLETE-TESTS
 T-REPORT
 
 ;package

@@ -50,8 +50,8 @@ variable WV-N
 : BAD+ ( -- )
    BAD @ 1+ BAD ! ;
 
-: WATCHED? ( ptr u8 n -- bool )   \ a kernel emitter (the registry owns the canonical rule)
-   PERF:EMITTER? ;
+: WATCHED? ( ptr u8 n -- bool )   \ a canonical PTX producer (perf-watch owns the table)
+   PERF-WATCH:PRODUCER? ;
 
 : WATCH$ ( n -- ptr u8 n ) {: idx:n :}
    WATCH-PATHS idx FS-PATH-CAP * +

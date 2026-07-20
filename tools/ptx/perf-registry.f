@@ -7,13 +7,14 @@
 \ the next diff touch of its emitter (kernel-perf-lint enforces the lifecycle):
 \   ... WAIVER 0 device date note emitter waiver_version
 \ Non-waiver rows stay exactly 12 fields (the extra fields are waiver-only, so no
-\ committed measurement row is rewritten). `emitter` must be a canonical kernel
-\ emitter (EMITTER?); `waiver_version` is an integer >= 1.
+\ committed measurement row is rewritten). `emitter` must be a canonical PTX
+\ producer (PERF-WATCH:PRODUCER?); `waiver_version` is an integer >= 1.
 
 require lib/errors.f
 require lib/string.f
 require lib/fs.f
 require lib/adt/option.f
+require tools/ptx/perf-watch.f
 
 -7300 constant E-PERF-ROW    \ malformed or invalid registry row
 -7301 constant E-PERF-CAP    \ registry buffer/row capacity exceeded
@@ -68,13 +69,6 @@ variable LOK-U
 
 : PERF-FALSE ( -- bool )
    PERF-TRUE 0= ;
-
-public
-: EMITTER? ( ptr u8 n -- bool ) {: a:ptr u:n :}   \ canonical kernel-emitter path
-   a u s" src/arch/ptx/emit.f" STR= if PERF-TRUE exit then
-   a u s" lib/ptx/cg" STARTS-WITH? a u s" .f" ENDS-WITH? and if PERF-TRUE exit then
-   a u s" tools/ptx/" STARTS-WITH? a u s" -cg.f" ENDS-WITH? and ;
-private
 
 : LOK-A-FIELD ( -- ptr ptr u8 )
    LOK-A 0 ptr-field ;
@@ -186,7 +180,7 @@ private
 : WAIVER-CHECK ( -- )
    F-VALUE CUR@ 0 <> if E-PERF-ROW throw then
    F-NOFF F-NU CUR-SPAN$ nip 0= if E-PERF-ROW throw then
-   F-EMOFF F-EMU CUR-SPAN$ EMITTER? 0= if E-PERF-ROW throw then
+   F-EMOFF F-EMU CUR-SPAN$ PERF-WATCH:PRODUCER? 0= if E-PERF-ROW throw then
    F-WVID CUR@ 1 < if E-PERF-ROW throw then ;
 
 : METRIC-CHECK ( -- )

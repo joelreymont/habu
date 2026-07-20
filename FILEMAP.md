@@ -719,9 +719,22 @@ points stay listed.
   kernel-optimization rung/shape/metric (GBS, GFLOPS, PCT-ROOF, WAIVER) with
   launch config, device, and date; owned by `tools/ptx/perf-registry.f`.
 - `tools/ptx/perf-registry.f` — checked parser/validator for the profile-row
-  registry (package PERF): row model, TSV parse, fail-closed row validation.
+  registry (package PERF): row model, TSV parse, fail-closed row validation; a
+  waiver's owning-emitter field must be a canonical producer
+  (`PERF-WATCH:PRODUCER?`).
 - `tools/ptx/perf-registry-test.f` — registry fixtures plus validation of the
   committed `tools/ptx/perf-rows.tsv`.
+- `tools/ptx/perf-watch.f` — the canonical PTX-producer watch table (package
+  PERF-WATCH): the EXACT-PATH set of sources whose content reaches lowered PTX
+  (the `src/arch/ptx` encoder + VJP table, the shared `lib/ptx` IR / tile-DSL /
+  optimizer / emit-mode-codegen / autodiff machinery, and the per-kernel emit
+  drivers under `tools/ptx` — the *-cg.f family), the reasoned NON-PRODUCER neighbours,
+  and the `CLASSIFY` predicate the completeness ratchet drives. Membership is
+  never a directory prefix or suffix rule, so every entry resolves on disk, a
+  test/near-miss path never matches, and a producer added under the scanned
+  dirs without a watch row is `PW-UNKNOWN` and fails the gate. Backed by a
+  deduped, capacity-bounded path set (`E-WATCH-DUP` / `E-WATCH-CAP` at build);
+  its coverage lives in `tools/kernel-perf-lint-test.f`.
 - `tools/ptx/autotune.f` — committed autotune (package AUTOTUNE): the config-record
   MENU over the `lib/ptx/cg-mma.f` knobs, the PRUNE that calls the emitter's own
   fail-closed guards (`MMA-CHECK-*`) for mechanical legality, and the WINNERS table
