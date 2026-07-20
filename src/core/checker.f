@@ -319,6 +319,18 @@ create ATOMU-BOOT MAXATOM-INIT cells allot
 create ATOMK-BOOT MAXATOM-INIT cells allot
 variable ATOMN
 variable RIGID-N
+\ Rigid host-allocation identity domains (dot habu-define-rigid-host). A host
+\ allocation is stamped by FRESH, RIGID, monotonic-nonreuse identities that ptr T
+\ and ordinary type vars cannot express: its host REGION (which allocation), its
+\ EXTENT (bounds), and its mutation GENERATION (epoch). Each domain owns a PRIVATE
+\ per-check counter (RGN-N/EXT-N/GEN-N); a numeric handle is never itself the
+\ authority — the atom's domain qualifies the id in ATOM-OK?, so equal ids from
+\ different domains never unify. RIGID-MAX bounds every domain BELOW the sign wrap
+\ so a counter EXHAUSTS (throws E-RIGID-EXHAUST) before it could wrap and re-grant
+\ a still-live id. Counters reset per check (RIGID-RESET); the bound is settable.
+7140 constant E-RIGID-EXHAUST   \ a rigid identity domain exhausted before wrap
+variable RGN-N   variable EXT-N   variable GEN-N
+variable RIGID-MAX   $4000000000000000 RIGID-MAX !
 variable ATOMA-P   variable ATOMU-P   variable ATOMK-P   variable ATOM-CAP
 ATOMA-BOOT ATOMA-P !   ATOMU-BOOT ATOMU-P !   ATOMK-BOOT ATOMK-P !   MAXATOM-INIT ATOM-CAP !
 : ATOMA ( -- ptr a ) ATOMA-P @ ;
@@ -334,9 +346,28 @@ ATOMA-BOOT ATOMA-P !   ATOMU-BOOT ATOMU-P !   ATOMK-BOOT ATOMK-P !   MAXATOM-INI
 : ATOMA-FIELD ( n -- ptr ptr u8 )
    cells ATOMA + 0 ptr-field ;
 : RIGID-RESET ( -- )
-   1 RIGID-N ! ;
+   1 RIGID-N !   1 RGN-N !   1 EXT-N !   1 GEN-N ! ;
 : RIGID-FRESH ( -- n )
    RIGID-N @ dup 1+ RIGID-N ! ;
+\ Per-domain mint. Each returns the current id then advances, but EXHAUSTS
+\ (throws) at RIGID-MAX rather than wrapping into a reused (or non-positive) id.
+: RGN-FRESH ( -- n )
+   RGN-N @ RIGID-MAX @ >= IF E-RIGID-EXHAUST throw THEN
+   RGN-N @ dup 1+ RGN-N ! ;
+: EXT-FRESH ( -- n )
+   EXT-N @ RIGID-MAX @ >= IF E-RIGID-EXHAUST throw THEN
+   EXT-N @ dup 1+ EXT-N ! ;
+: GEN-FRESH ( -- n )
+   GEN-N @ RIGID-MAX @ >= IF E-RIGID-EXHAUST throw THEN
+   GEN-N @ dup 1+ GEN-N ! ;
+\ Route a template fresh-atom's (stripped) name to its domain counter. The
+\ `fresh-` prefix is already stripped, so the tail begins with the domain word;
+\ mask- and any other fresh atom keep the shared RIGID-FRESH space.
+: RIGID-AK-MINT ( ptr u8 n -- n ) {: a:ptr u:n :}
+   u 7 >= IF a 7 s" region-" CORE-STR= IF RGN-FRESH EXIT THEN THEN
+   u 7 >= IF a 7 s" extent-" CORE-STR= IF EXT-FRESH EXIT THEN THEN
+   u 4 >= IF a 4 s" gen-"    CORE-STR= IF GEN-FRESH EXIT THEN THEN
+   RIGID-FRESH ;
 : MK-ATOM-K ( ptr u8 n n -- n ) {: a:ptr u:n k:n :}
    ATOMN @ 1 + ATOM-ENSURE
    a ATOMN @ ATOMA-FIELD !
@@ -1065,9 +1096,12 @@ CT-INIT
    RES-FALSE ;
 
 : ATOM-OK? ( n n -- bool ) {: t1:n t2:n :}
-   t1 ATOM>K t2 ATOM>K <> IF RES-FALSE EXIT THEN
-   t1 ATOM>K 0 < IF RES-FALSE EXIT THEN
-   t1 ATOM>K 0 = 0= IF RES-TRUE EXIT THEN
+   t1 ATOM>K t2 ATOM>K <> IF RES-FALSE EXIT THEN     \ kinds differ -> reject
+   t1 ATOM>K 0 < IF RES-FALSE EXIT THEN              \ rigid template slot -> never unify
+   \ Equal non-negative kind is NOT sufficient authority: a fresh rigid id (kind>0)
+   \ carries a domain in its name, and per-domain counters can mint equal ids in
+   \ different domains, so the name must also match. Same id always implies same
+   \ name in the single shared-counter case, so this rejects nothing that unified.
    t1 ATOM>A t1 ATOM>U t2 ATOM>A t2 ATOM>U CORE-STR= ;
 
 : PARAM-FAM-OK? ( n n -- bool ) {: t1:n t2:n :}
@@ -2326,13 +2360,13 @@ variable VREC-RB-I
 : VREC-I-AK-IDX ( n -- n )
    negate 1 - ;
 
-: VREC-I-AK ( n -- n ) {: k:n :}
-   k 0 >= IF k EXIT THEN
+: VREC-I-AK ( ptr u8 n n -- ptr u8 n n ) {: a:ptr u:n k:n :}   \ name kept for domain routing
+   k 0 >= IF a u k EXIT THEN
    k VREC-I-AK-IDX {: idx:n :}
    idx VRI-AK-ENSURE
-   idx cells VRI-AK + dup @ UNBOUND = IF
-      RIGID-FRESH over !
-   THEN @ ;
+   idx cells VRI-AK + dup @ UNBOUND = IF a u RIGID-AK-MINT over ! THEN @
+   {: id:n :}
+   a u id ;
 
 : VREC-BYTE+ ( ptr u8 n -- ptr u8 )
    + ;
@@ -2549,7 +2583,9 @@ variable SIG-RAW-MODE   0 SIG-RAW-MODE !
    a u s" parity-" SIG-PREFIX? IF RES-TRUE EXIT THEN   \ pipeline double-buffer parity (tile-pipe.f)
    a u s" align-" SIG-PREFIX? ;
 : FRESH-ATOM-TOK? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   a u s" fresh-region-" SIG-PREFIX? IF RES-TRUE EXIT THEN
    a u s" fresh-extent-" SIG-PREFIX? IF RES-TRUE EXIT THEN
+   a u s" fresh-gen-" SIG-PREFIX? IF RES-TRUE EXIT THEN
    a u s" fresh-mask-" SIG-PREFIX? ;
 : FRESH-ATOM>TYPE ( ptr u8 n -- n ) {: a:ptr u:n :}
    a u FAM-MARK FAM-K !
@@ -4326,12 +4362,12 @@ variable FMEND
 : E-I-AK-IDX ( n -- n )
    negate 1 - ;
 
-: E-I-AK ( n -- n ) {: k:n :}
-   k 0 >= if k exit then
+: E-I-AK ( ptr u8 n n -- ptr u8 n n ) {: a:ptr u:n k:n :}   \ name kept for domain routing
+   k 0 >= if a u k exit then
    k E-I-AK-IDX dup EI-AK-CAP >= if s" checker: fresh atom inst table full" 76 die then
-   cells EI-AK + dup @ UNBOUND = if
-      RIGID-FRESH over !
-   then @ ;
+   cells EI-AK + dup @ UNBOUND = if a u RIGID-AK-MINT over ! then @
+   {: id:n :}
+   a u id ;
 
 : E-I-STR ( ptr a -- ptr u8 n )
    dup EN.A @ E-PTR swap EN.B @ ;
@@ -7792,6 +7828,10 @@ variable MREJ    \ match structural-reject latch: forces verdict 0, never unchec
 19 constant MD-DIVBAR         \ M5: block collective/barrier reached under divergent control
 20 constant MD-EXEC-OPAQUE    \ execute of an opaque xt fetched from untyped memory (RSEXEC T-VAR)
 21 constant MD-CATCH-OPAQUE   \ catch of an opaque xt fetched from untyped memory (RSCATCH T-VAR); same E-EXEC-OPAQUE-XT code, prose names 'catch'
+22 constant MD-RIGID-REGION   \ two host allocations differ in host region (which allocation)
+23 constant MD-RIGID-EXTENT   \ two host allocations differ in extent (bounds)
+24 constant MD-RIGID-GEN      \ stale mutation generation: index outlived the container's epoch
+25 constant MD-RIGID-XDOM     \ rigid-identity domain confusion: a region/extent/generation used where another is required
 
 variable MDIAG        \ latched reason code (0 = none; reset per definition)
 variable MDIAG-FAM    \ nonexhaustive: family id for the name walk
@@ -7802,6 +7842,32 @@ variable MDIAG-VCNT   \ nonexhaustive: variant count
    MDIAG @ 0 <> IF EXIT THEN
    FAILSET @ 0 <> IF EXIT THEN
    code MDIAG ! ;
+
+\ Rigid host-identity mismatch naming (dot habu-define-rigid-host). RIGID-ATOM-DOMAIN
+\ classifies a resolved term as a rigid-identity atom of a given domain (0 = none).
+\ RIGID-DIAG-CLASSIFY runs on the captured mismatch pair after the verdict is a
+\ reject: when both sides are rigid-domain atoms it names WHICH bug it is, so a
+\ stale index, a wrong region, and a wrong extent are distinguishable rejects.
+: RIGID-ATOM-DOMAIN ( n -- n )   \ 0 none / 1 region / 2 extent / 3 gen
+   T-RES dup TAG T-ATOM <> IF drop 0 EXIT THEN
+   dup ATOM>K 0 <= IF drop 0 EXIT THEN            \ only an instantiated fresh id carries a domain
+   dup ATOM>A swap ATOM>U {: a:ptr u:n :}
+   u 7 >= IF a 7 s" region-" CORE-STR= IF 1 EXIT THEN THEN
+   u 7 >= IF a 7 s" extent-" CORE-STR= IF 2 EXIT THEN THEN
+   u 4 >= IF a 4 s" gen-"    CORE-STR= IF 3 EXIT THEN THEN
+   0 ;
+: RIGID-DIAG-CLASSIFY ( -- )
+   MDIAG @ IF EXIT THEN                           \ a match/construct reason already won
+   DF-EXP @ 0= IF EXIT THEN
+   DF-ACT @ 0= IF EXIT THEN
+   DF-EXP @ RIGID-ATOM-DOMAIN {: de:n :}
+   DF-ACT @ RIGID-ATOM-DOMAIN {: da:n :}
+   de 0= IF EXIT THEN
+   da 0= IF EXIT THEN                             \ both sides must be rigid-domain atoms
+   de da <> IF MD-RIGID-XDOM MDIAG ! EXIT THEN    \ different domains -> identity confusion
+   de 1 = IF MD-RIGID-REGION MDIAG ! EXIT THEN
+   de 2 = IF MD-RIGID-EXTENT MDIAG ! EXIT THEN
+   MD-RIGID-GEN MDIAG ! ;
 
 : MATCH-REJECT ( -- )
    0 OK !  -1 FAILSET !  -1 MREJ !  0 MM ! ;
@@ -9107,6 +9173,7 @@ variable CAST-PEND-A   variable CAST-PEND-U   0 CAST-PEND-U !
    CHECK-SIG? OK @ and IF NP-CHECK THEN               \ declared quantifiers must stay parametric
    CHECK-VERDICT                                      \ malformed/unsafe/non-parametric rejects
    dup DVERD !
+   dup 0= IF RIGID-DIAG-CLASSIFY THEN                 \ name a rigid host-identity mismatch
    dup 0 =  over 1 = JSON-DIAGS @ and  or
    dup MEO-ON @ and IF MEO-APPLY THEN     \ file-relative origin for this def's diagnostic
    DIAG-QUIET @ 0= and IF DIAGXT THEN

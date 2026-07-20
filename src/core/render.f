@@ -425,6 +425,10 @@ variable MDV-I   variable MDV-F
       MD-DIVBAR       of s" E-DIVERGENT-BARRIER" endof
       MD-EXEC-OPAQUE  of s" E-EXEC-OPAQUE-XT" endof
       MD-CATCH-OPAQUE of s" E-EXEC-OPAQUE-XT" endof
+      MD-RIGID-REGION of s" E-RIGID-REGION-MISMATCH" endof
+      MD-RIGID-EXTENT of s" E-RIGID-EXTENT-MISMATCH" endof
+      MD-RIGID-GEN    of s" E-RIGID-STALE-GENERATION" endof
+      MD-RIGID-XDOM   of s" E-RIGID-DOMAIN-CONFUSION" endof
       s" E-REJECTED" rot
    endcase ;
 
@@ -447,6 +451,10 @@ variable MDV-I   variable MDV-F
       MD-DIVBAR       of s" move_collective_to_block_uniform_control" endof
       MD-EXEC-OPAQUE  of s" fix_opaque_execute" endof
       MD-CATCH-OPAQUE of s" fix_opaque_execute" endof
+      MD-RIGID-REGION of s" fix_host_region" endof
+      MD-RIGID-EXTENT of s" fix_host_extent" endof
+      MD-RIGID-GEN    of s" fix_stale_generation" endof
+      MD-RIGID-XDOM   of s" fix_rigid_domain" endof
       s" fix_match_syntax" rot
    endcase ;
 
@@ -470,6 +478,10 @@ variable MDV-I   variable MDV-F
       MD-DIVBAR       of s" Call the block collective on the straight-line (block-uniform) path; do not place it inside if/loop/case or a quotation." endof
       MD-EXEC-OPAQUE  of s" Execute an xt whose effect is statically known: a quotation parameter, a defer bound with is, or a typed xt cell. Do not execute an xt fetched from untyped memory." endof
       MD-CATCH-OPAQUE of s" Catch an xt whose effect is statically known: a quotation parameter, a defer bound with is, or a typed xt cell. Do not catch an xt fetched from untyped memory." endof
+      MD-RIGID-REGION of s" These are different host allocations; a value carrying one region's identity cannot stand in for another. Thread the same allocation through, or re-borrow from the target." endof
+      MD-RIGID-EXTENT of s" These host allocations have different extents; a bound proved for one does not carry to another. Use the value whose extent identity the position requires." endof
+      MD-RIGID-GEN    of s" This index or borrow is from an earlier mutation generation; the container was mutated since. Re-derive the index after the mutation." endof
+      MD-RIGID-XDOM   of s" A host region, an extent, and a mutation generation are distinct identities that never interchange. Supply the identity the position requires." endof
       s" Complete the form: MATCH family, variant OF ... ENDOF per variant, ;MATCH." rot
    endcase ;
 
@@ -496,6 +508,10 @@ variable MDV-I   variable MDV-F
       MD-DIVBAR       of s" divergent barrier: block collective requires block-uniform control" endof
       MD-EXEC-OPAQUE  of s" execute: opaque xt of unknown provenance (fetched from untyped memory)" endof
       MD-CATCH-OPAQUE of s" catch: opaque xt of unknown provenance (fetched from untyped memory)" endof
+      MD-RIGID-REGION of s" rigid host: region mismatch (different allocation)" endof
+      MD-RIGID-EXTENT of s" rigid host: extent mismatch (different bounds identity)" endof
+      MD-RIGID-GEN    of s" rigid host: stale mutation generation" endof
+      MD-RIGID-XDOM   of s" rigid host: identity domain confusion" endof
       s" bad match: rejected" rot
    endcase ;
 

@@ -81,7 +81,7 @@ device · measured.
 | Dropout | y·y·y·y·n·n | `maki/dropout.f` inverted mask+scale, reseeded backward; `op-kind.f:36` `OP-DROPOUT`, `:37` bwd | pretrain default 0.0; `habu-dropout-op-train-fe0ad08d` (closed) |
 | Cross-entropy loss (logits+int) | y·y·~·y·–·– | `maki/loss-tensor.f:80` `TT-XENT`, `:90` `TT-XENT-SEED`; one-hot golden `maki/celoss.f:16` | trainer state `habu-own-cross-entropy-c78644e3`; double-forward `habu-fuse-cross-entropy-9e625f93` |
 | Weight tying (wte↔lm_head) | y·y·y·y·–·n | tied inside the block composition (`habu-compose-tied-wte-f276dc6a`, consuming `habu-weight-tying-wte-ab4145da`'s mirror + summed-grad machinery): one stored (V,C) parameter, head reads its transpose mirror asserted bit-identical each step, tied grad = both contributions, gradchecked, 12-step training locked (`gptblock-attn-test.f` (F)) | — |
-| GPT-2 block / full-model composition | y·~·y·–·–·– | `maki/examples/nanogpt/gptblock-attn-test.f` `GBLK` `MODEL:` + `GBR-FWD` internal golden (B=1, single-head via `maki/attn-eq.f`, untied, host oracle) | real owner `habu-gpt-2-composition-a90e901e`; B extent `habu-give-the-block-3bdedf46`; batched MHA `habu-compose-batched-mha-d3166a09`; external golden `habu-external-deterministic-golden-b7693e44`; device `habu-block-device-lowering-9f9270bb`; Nx `habu-train-n-block-25fb2316` |
+| GPT-2 block / full-model composition | y·~·y·–·–·– | `maki/examples/nanogpt/gptblock-attn-test.f` `GBLK` `MODEL:` + `GBR-FWD` internal golden (B=1, single-head via `maki/attn-eq.f`, host oracle); tied wte/LM-head with external torch f64 golden grounding the tied trace (`habu-external-deterministic-golden-b7693e44`, closed) | real owner `habu-gpt-2-composition-a90e901e`; B extent `habu-give-the-block-3bdedf46`; batched MHA `habu-compose-batched-mha-d3166a09`; device `habu-block-device-lowering-9f9270bb`; Nx `habu-train-n-block-25fb2316` |
 | Batch / sequence (B,T,C) | y·y·y·~·–·– | design `docs/batch-sequence-design.md`; `habu-get-batch-loader-542f6f22`, `habu-host-batch-loop-66773b33`, `habu-extent-roles-b-df9d232f`, `habu-extent-role-product-8e364885` (all closed) | device batched attention `habu-gb10-batched-attention-3055d565`; block B extent `habu-give-the-block-3bdedf46` |
 | Adam / AdamW | y·y·y·y·n·n | `maki/optim-tensor.f:33` `TT-ADAM!`, `:42` `TT-ADAMW!` decoupled decay (`habu-adamw-decoupled-weight-d322fe1f`) | optimizer-state packaging `habu-own-adam-optimizer-e542f1c8` |
 | Cosine LR + warmup | y·y·n·n·n·n | `LR-SCHED` (`maki/examples/nanogpt/adam-train.f`), degree-12 Maclaurin cosine, max err 6.32e-9 (`habu-cosine-lr-schedule-77c2d0f2`) | complete (host scheduling scaffold) |
@@ -160,7 +160,7 @@ open   habu-gpt-2-composition-a90e901e
 closed habu-compose-tied-wte-f276dc6a
 open   habu-give-the-block-3bdedf46
 open   habu-compose-batched-mha-d3166a09
-open   habu-external-deterministic-golden-b7693e44
+closed habu-external-deterministic-golden-b7693e44
 open   habu-block-device-lowering-9f9270bb
 open   habu-train-n-block-25fb2316
 open   habu-gb10-batched-attention-3055d565

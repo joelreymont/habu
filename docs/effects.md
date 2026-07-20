@@ -376,6 +376,39 @@ later callers; use `TRUST` only when the body itself cannot be checked.
 - Words the checker can't type (variadic `?DUP`, dynamic `PICK`/`ROLL`)
   must stay outside checked code or behind `TRUSTED:`.
 
+### Rigid host-allocation identity domains
+
+A host allocation needs identities that `ptr T` and ordinary type vars cannot
+name: two equal-sized containers, or a recreated owner, share a type and would
+unify, so a stale index could regain authority over reused storage. Three
+checker domains name these rigidly (`src/core/checker.f`, dot
+`habu-define-rigid-host`):
+
+- **host region** — *which* allocation. A constructor whose output spells
+  `fresh-region-*` mints a fresh, rigid region identity **per call**, shared
+  across that one call's outputs. Two allocations (or a recreated owner) get
+  distinct regions, so they never unify even at equal extent.
+- **extent** — the bounds identity, spelled `fresh-extent-*` (the incumbent
+  device-span extent, now a first-class domain).
+- **mutation generation** — the epoch, spelled `fresh-gen-*`. A mutation that
+  invalidates outstanding indices produces a value at a *new* `fresh-gen-*`, so
+  an index typed for the old generation no longer matches the container.
+
+Each domain has a **private, per-check counter** with **monotonic non-reuse**
+and **exhaustion before wrap**: a counter that reaches `RIGID-MAX` throws
+`E-RIGID-EXHAUST` rather than wrapping and re-granting a live id. The numeric id
+is never itself the authority — `ATOM-OK?` qualifies it by domain, so a region
+id and a generation id that are numerically equal (each the first mint of its
+domain) do **not** unify. A mismatch rejects with a named, distinguishable
+reason so a stale index, a wrong region, and a wrong extent read differently:
+`E-RIGID-REGION-MISMATCH` (`fix_host_region`), `E-RIGID-EXTENT-MISMATCH`
+(`fix_host_extent`), `E-RIGID-STALE-GENERATION` (`fix_stale_generation`), and
+`E-RIGID-DOMAIN-CONFUSION` (`fix_rigid_domain`). Identities are per-check
+template atoms, so they carry into the snapshot, native, and bootstrap checker
+paths with the rest of `checker.f`; no runtime counter, address, or
+allocation-order number ever becomes persistent authority. Fixtures:
+`test/rigid-region-suite.f`.
+
 ## Primitive axiom set
 
 The checker's typing rests on one explicit, minimal trust root: the **primitive

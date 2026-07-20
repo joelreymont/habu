@@ -190,7 +190,7 @@ variable FAILS
 \ here. The whitebox test reads these back out of this source and checks them
 \ against the enumerated rows, so a case dropped without adjusting its count
 \ trips loudly. The lone top-row case is a positive, counted here too.
-23 constant N-POSITIVE
+24 constant N-POSITIVE
 4 constant N-DIAGNOSTIC
 9 constant N-NEGATIVE
 
@@ -206,6 +206,7 @@ variable FAILS
    s" test/cast-negative-suite.f" construct case-kind positive 0 s" " s" " RUN-CASE
    s" test/type-linear-suite.f" construct case-kind positive 0 s" " s" " RUN-CASE
    s" test/type-match-suite.f" construct case-kind positive 0 s" " s" " RUN-CASE
+   s" test/rigid-region-suite.f" construct case-kind positive 0 s" " s" " RUN-CASE
    s" test/type-layout-lower-pending.f" construct case-kind positive 0 s" " s" " RUN-CASE
    s" test/layout-buffer.f" construct case-kind positive 0 s" " s" " RUN-CASE
    s" test/layout-defer.f" construct case-kind positive 0 s" " s" " RUN-CASE
