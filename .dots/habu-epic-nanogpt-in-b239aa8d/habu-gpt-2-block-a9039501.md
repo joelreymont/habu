@@ -1,9 +1,11 @@
 ---
 title: GPT-2 block + full model composition (Nx, pre-LN, residuals, LM head)
-status: active
+status: closed
 priority: 1
 issue-type: task
-created-at: "\"2026-07-18T15:25:04.149287+02:00\""
+created-at: "\"\\\"2026-07-18T15:25:04.149287+02:00\\\"\""
+closed-at: "2026-07-20T15:10:30.011662+02:00"
+close-reason: "Landed 8207fd54: the FULL attention-bearing GPT-2 block trains end-to-end. 18-node MODEL: pre-LN, causal self-attention over the running value (Q roots standalone, K/V folded into the score/context einsums, WO projects context back to C), residual, pre-LN, MLP, residual, final fused affine LN, LM head, plus token+pos embed. Proofs: structure asserted per node; gradcheck V-PASS analytic vs central FD; all 21 inputs enumerated (ids no-grad, mask carries-but-frozen - honest representation flagged; 19 trained); forward golden BIT-EXACT vs an independent reference mirroring the contraction nesting; Adam 12 steps 1741 -> 64 mCE deterministic run-twice bit-identical; causality in-composition (future keys < 1e-6). Ref ring a non-issue (max 2 outstanding vs cap 7). Nx WALL RECORDED NOT FAKED: 2-block forward composes, but the differentiable build dies E-MIR-CAP at node 128 - one block's fwd+bwd IR is 74 nodes so two blocks' adjoints exceed the MIR node-table cap (model-ir.f:130). See habu-raise-mir-cap dot"
 blocks:
   - habu-multi-head-self-a1e0692f
 ---
