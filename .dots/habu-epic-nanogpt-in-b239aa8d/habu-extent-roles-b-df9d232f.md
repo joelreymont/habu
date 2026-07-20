@@ -1,9 +1,11 @@
 ---
 title: Extent roles B/T/H in SPEC surface
-status: active
+status: closed
 priority: 2
 issue-type: task
-created-at: "\"2026-07-18T17:36:22.580117+02:00\""
+created-at: "\"\\\"2026-07-18T17:36:22.580117+02:00\\\"\""
+closed-at: "2026-07-20T13:55:24.820297+02:00"
+close-reason: "Landed 2b6ad8f8: BTC-2. FREE-EXTENT: declares a free extent role; SPEC: equations carry leading batch/head indices riding every factor (S[b h i j] = Σk Q[b h i k] · K[b h j k]). Generated accessors nest batch loops around the GEMM word (two-counter discipline held); contraction over a free extent is the BTC-7 LOAD reject exit 70 via per-equation redx witnesses; dataflow exposes the replication axes; PROMOTE carries free-extent magnitudes (live TMA-box consumer is BTC-6, reported not stubbed); adjoint = batched transposed contraction via the existing derive pipeline, central-FD gradchecked with batch isolation PROVEN (perturbing batch 1 leaves batch 0's grads bit-identical). Red-first negatives: contract-over-free, mismatched free extents, batch-not-leading, free-in-elementwise (fail-closed out of scope this lane, documented). Doc section added"
 blocks:
   - habu-extent-role-product-8e364885
 ---
