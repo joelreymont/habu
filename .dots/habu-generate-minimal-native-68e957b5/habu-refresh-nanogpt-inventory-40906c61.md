@@ -1,9 +1,11 @@
 ---
 title: Refresh nanoGPT inventory
-status: active
+status: closed
 priority: 2
 issue-type: task
-created-at: "\"2026-07-19T23:38:18.830019+02:00\""
+created-at: "\"\\\"2026-07-19T23:38:18.830019+02:00\\\"\""
+closed-at: "2026-07-20T23:45:35.033672+02:00"
+close-reason: "Landed (stacked under 03834011): docs/nanogpt-inventory.md rebuilt from code + live dot status with six-dimension grading (prototype/host/AD/batched/device/measured) replacing the binary labels, every incomplete dimension linked to its live owner, destruction-review narrowings recorded in a dated section. Stale ABSENT/PARTIAL claims corrected with file:line evidence (positional embedding, affine LN, MHA/causal, cross-entropy, tokenizer/batch all landed; AdamW/cosine/clip/dropout/init/checkpoint/tying/RMSNorm-RoPE/generation newly reflected). New checked owner-consistency lint (tools/nanogpt-inventory-lint*, 77 owners) binds prose to a machine manifest and fails on unknown/duplicate/status-mismatched/dead owners - red-first proven on all three failure classes; registered in the gate like dot-dep-lint. At merge I refreshed rows the day's landings outdated (tie-in-block and xent-validation now closed-cited-as-history). Loose ends recorded in the doc: device-LN backward unowned (proposed dot), SGD/attention trainers under cosine+clip unowned, archive dots not citeable cross-tree"
 ---
 
 docs/nanogpt-inventory.md:46-67 still classifies positional embedding, affine LayerNorm, MHA/causal masking, cross-entropy, tokenizer and batch design as absent or partial after their feature dots closed or changed state. The active GPT composition cites this inventory as architecture input, so stale rows can hide incomplete implementation behind old gaps or dispatch work that already landed. Rebuild every inventory row from current code and dot status, separating prototype golden, host production, trainable AD, batched semantics, device lowering and measured performance instead of one binary present/absent label. Link each incomplete dimension to its exact live owner, including corrective audit dots, and mark closed prototype claims that destruction review narrowed. Add a checked inventory-consistency lint derived from exact module/dot identifiers so closed/open changes cannot silently rot prose; fail on unknown, duplicate or status-mismatched owners. Preserve historical decisions in dated notes rather than current rows. Verify docs generation, owner links, filemap/dot/full gates. Files: docs/nanogpt-inventory.md, its checked generator/lint and owning gate.
