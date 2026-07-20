@@ -201,6 +201,7 @@ TENSOR: BVEC  ( #BN )          \ row-broadcast bias vector (1xC): indexed by the
 TENSOR: BXO   ( #BM #BN )      \ output
 TENSOR: BCOL  ( #BM )          \ a column vector: [bm] is a PREFIX (Rx1), an illegal broadcast
 TENSOR: BWRONG ( #BM )         \ wrong-extent operand used at the bn slot -> checker extent reject
+TENSOR: BSCL  ( )              \ rank-0 scalar operand (1x1 scale); dot habu-rank-0-tensor
 
 SPEC: BC-BIAS   BXO[bm bn] = BXA[bm bn] + BVEC[bn] ;        \ row-broadcast bias add (1xC)
 \ --- (2) dataflow record: two free indices, NO contraction axis; the bias is a rank-1 suffix
@@ -291,18 +292,69 @@ BC-GC-BIAS  -1 T=          \ row-broadcast bias adjoints gradcheck
 BC-GC-RESID -1 T=          \ same-shape add adjoints gradcheck
 BC-GC-HAD   -1 T=          \ same-shape mul (product-rule) adjoints gradcheck
 
+\ --- scalar 1x1 broadcast (dot habu-rank-0-tensor): a rank-0 factor BSCL[] scales (·) or
+\ offsets (+) every output element. An empty index list is a suffix of any output, so the
+\ forward falls out of the SAME suffix machinery as the bias/residual forms - an ordinary
+\ generated golden, matched here vs a plain scale/offset reference (the SHP-SCALE-OK? 1x1
+\ class). The full-sum adjoint is a rank-0 OUTPUT (ds = sum dO·A for the scale, ds = sum dO
+\ for the add). That rank-0-output einsum is not yet in the SPEC: contraction grammar (the
+\ auto-derived adjoint fails closed E-SPEC-ARITY, asserted below), so the analytic adjoint is
+\ authored in candidate-B form - writing the scalar through the rank-0 WRITE accessor BSCL! -
+\ and central-FD gradchecked, exactly as the composable forms gradcheck their derived words.
+create BSC  1 cells allot              \ scalar param buffer (1 element)
+create BCDS 1 cells allot              \ analytic dBSCL
+: BC-SCL-SET ( -- )  2.5 3.0 f/  BSC 0 T-SET ;         \ a non-trivial scale factor
+: BC-BIND-SCALE ( -- )  BCA BXA-BIND  BSC BSCL-BIND  BCO BXO-BIND ;
+: BC-BIND-ADDS  ( -- )  BCA BXA-BIND  BSC BSCL-BIND  BCO BXO-BIND ;
+SPEC: BC-SCALE  BXO[bm bn] = BXA[bm bn] · BSCL[] ;     \ scalar mul (scale), canonical ·
+SPEC: BC-ADDS   BXO[bm bn] = BXA[bm bn] + BSCL[] ;     \ scalar add (offset)
+: BC-REF-SCALE ( -- )  #BM #BN * 0 ?do  BCA i T-GET  BSC 0 T-GET  f*  BCR i T-SET  loop ;
+: BC-REF-ADDS  ( -- )  #BM #BN * 0 ?do  BCA i T-GET  BSC 0 T-GET  f+  BCR i T-SET  loop ;
+BC-FILL BC-SCL-SET  BC-BIND-SCALE  BC-SCALE  BC-REF-SCALE  BC-DIST0? -1 T=   \ scale == reference
+BC-FILL BC-SCL-SET  BC-BIND-ADDS   BC-ADDS   BC-REF-ADDS   BC-DIST0? -1 T=   \ offset == reference
+
+\ analytic adjoints, written through the rank-0 write accessor BSCL! (into BCDS, not BSC).
+: BC-SCALE-ADJ ( -- )   \ dBSCL = sum_bm,bn dO * BXA (full-sum dot)
+   BCDO BXO-BIND  BCDS BSCL-BIND  BCA BXA-BIND
+   0.0  #BM 0 ?do #BN 0 ?do  j >#BM i >#BN BXO@  j >#BM i >#BN BXA@  f* f+  loop loop
+   BSCL! ;
+: BC-ADDS-ADJ ( -- )    \ dBSCL = sum_bm,bn dO
+   BCDO BXO-BIND  BCDS BSCL-BIND
+   0.0  #BM 0 ?do #BN 0 ?do  j >#BM i >#BN BXO@  f+  loop loop
+   BSCL! ;
+: BC-FD-SCALE ( -- r )  \ central FD of L wrt the single scalar param
+   BSC 0 T-GET {: base:r :}
+   base BC-H f+ BSC 0 T-SET  BC-BIND-SCALE BC-SCALE BC-LOSS {: yp:r :}
+   base BC-H f- BSC 0 T-SET  BC-BIND-SCALE BC-SCALE BC-LOSS {: ym:r :}
+   base BSC 0 T-SET  yp ym f- BC-H 2.0 f* f/ ;
+: BC-FD-ADDS ( -- r )
+   BSC 0 T-GET {: base:r :}
+   base BC-H f+ BSC 0 T-SET  BC-BIND-ADDS BC-ADDS BC-LOSS {: yp:r :}
+   base BC-H f- BSC 0 T-SET  BC-BIND-ADDS BC-ADDS BC-LOSS {: ym:r :}
+   base BSC 0 T-SET  yp ym f- BC-H 2.0 f* f/ ;
+: BC-GC-SCALE ( -- bool )  BC-FILL BC-SCL-SET  BC-SCALE-ADJ  BCDS 0 T-GET  BC-FD-SCALE  GC-CLOSE? ;
+: BC-GC-ADDS  ( -- bool )  BC-FILL BC-SCL-SET  BC-ADDS-ADJ   BCDS 0 T-GET  BC-FD-ADDS   GC-CLOSE? ;
+BC-GC-SCALE -1 T=          \ scalar-scale full-sum-dot adjoint gradchecks
+BC-GC-ADDS  -1 T=          \ scalar-add full-sum adjoint gradchecks
+
+\ the SPEC: auto-derived adjoint of a scalar form IS that rank-0-output contraction; the
+\ einsum grammar does not yet admit it, so the training gate fails closed named (E-SPEC-ARITY,
+\ never a wrong gradient) - the boundary the authored adjoints above stand in for.
+: BC-SCL-ADJ-N ( -- ) s" BXO[bm bn] = BXA[bm bn] · BSCL[]" SPEC-ADJ-CHECK$ ;
+' BC-SCL-ADJ-N E-SPEC-ARITY TTHROWS
+
 \ --- named-throw negatives (reuse E-SPEC-SYNTAX/ARITY): every malformed form fails closed
 : BC-N-MIX     ( -- ) s" BXO[bm bn] = BXA[bm bn] + BXB[bm bn] * BXA[bm bn]" SPEC-CHECK$ ;  \ + and * mixed
 : BC-N-PLUSSUM ( -- ) s" BXO[bm bn] = BXA[bm bn] + BXB[bm bn] +SUM bn" SPEC-CHECK$ ;        \ + with a reduction
 : BC-N-COL     ( -- ) s" BXO[bm bn] = BXA[bm bn] + BCOL[bm]" SPEC-CHECK$ ;                  \ column (non-suffix) broadcast
 : BC-N-NOCOMB  ( -- ) s" BXO[bm bn] = BXA[bm bn] BXB[bm bn]" SPEC-CHECK$ ;                  \ two terms, no combiner
-: BC-N-SCALAR  ( -- ) s" BXO[bm bn] = BXA[bm bn] * BVEC[]" SPEC-CHECK$ ;                     \ empty index: the 1x1 wall
+: BC-N-SCLOUT  ( -- ) s" BSCL[] = BXA[bm bn] · BXB[bm bn] +SUM bm bn" SPEC-CHECK$ ;         \ rank-0 (scalar) OUTPUT: illegal shape
 : BC-N-OK      ( -- ) s" BXO[bm bn] = BXA[bm bn] + BVEC[bn]" SPEC-CHECK$ ;                  \ valid bias: no throw
 ' BC-N-MIX     E-SPEC-SYNTAX  TTHROWS
 ' BC-N-PLUSSUM E-SPEC-SYNTAX  TTHROWS
 ' BC-N-COL     E-SPEC-ARITY   TTHROWS
 ' BC-N-NOCOMB  E-SPEC-SYNTAX  TTHROWS
-' BC-N-SCALAR  E-SPEC-ARITY   TTHROWS       \ scalar 1x1 unauthorable: a rank-0 factor tensor is not emittable
+' BC-N-SCLOUT  E-SPEC-ARITY   TTHROWS       \ a scalar output has 0 free indices; einsum output is 1..2
 ' BC-N-OK      0              TTHROWS
 
 \ --- a valid-but-wrong-extent broadcast is a CHECKER reject of the generated accessor:

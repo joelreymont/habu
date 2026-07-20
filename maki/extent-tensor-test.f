@@ -96,6 +96,18 @@ s" TSOK  ( tr-slot -- n ) TR-RANK@ "            CHECK-QUIET-CANDIDATE! -1 T=
 s" TSRAW ( n -- n ) TR-RANK@ "                  CHECK-QUIET-CANDIDATE!  0 T=   \ raw n as a slot: reject
 s" TSMK  ( n -- n ) >TR-SLOT TR-RANK@ "         CHECK-QUIET-CANDIDATE! -1 T=   \ explicit crossing restores it
 
+\ --- (d) rank-0 accessors (dot habu-rank-0-tensor): TENSOR: NAME ( ) emits a
+\ zero-index read/write pair over a 1-element span. TG-OFFSET seeded the Horner fold
+\ with the local x0 that TG-PROJ never binds for rank 0, so TENSOR: died E-UNDEFINED:
+\ x0; the offset is now the constant 0 and the single element round-trips at offset 0.
+TENSOR: SC0 ( )                    \ SC0@ ( -- r )   SC0! ( r -- )
+create PS0 1 cells allot
+PS0 SC0-BIND
+42.0 SC0!                          \ write through the rank-0 accessor
+PS0 0 T-GET f>s 42 T=              \ landed at the 1-element span's offset 0 ...
+SC0@ f>s 42 T=                     \ ... and reads back through the accessor
+-3.0 SC0!  SC0@ f>s -3 T=          \ overwrite round-trips
+
 ;package
 
 T-REPORT

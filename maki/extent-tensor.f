@@ -155,7 +155,10 @@ private
    loop ;
 \ row-major offset as a Horner fold: x0 (*val1 +x1) (*val2 +x2) ... - valN is the
 \ N-th extent's runtime size, so the outer extent's size never enters the stride.
+\ Rank 0 has no index locals, so the single element sits at a constant offset 0
+\ (a 1-element span); emitting x0 there would reference an undefined local.
 : TG-OFFSET ( -- )
+   TG-NR @ 0= if s" 0 " XG+ exit then
    s" x0 " XG+
    TG-NR @ 1 ?do
       i TG-SLOT@ XR-VAL@ XG-INT  s"  * x" XG+  i XG-INT  s"  + " XG+
