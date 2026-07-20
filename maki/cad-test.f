@@ -26,7 +26,7 @@ variable CT-VA  variable CT-VU
 \ ---- MODEL: translator dry-run (the checker verdict without compiling) -------
 \ MODEL-CAND: runs MODEL:'s EXACT translation (CAP-BEGIN / PARSE-SIG / CAP-EMIT-SIG /
 \ PARSE-BODY) but frames the result as a CHECK-CANDIDATE! string ("NAME ( effect )
-\ {: locals :} body") instead of compiling it, so EVAL:CHECK-PASSES? can observe the checker's
+\ body", inputs read by slot index) instead of compiling it, so EVAL:CHECK-PASSES? can observe the checker's
 \ verdict in-process. This proves - through MODEL:'s real translator - that a malformed
 \ model body is rejected by the same checker MODEL: drives (which off the dry-run path is a
 \ load-time exit-70 diagnostic, uncatchable because the MODEL: driver crosses an evaluate).

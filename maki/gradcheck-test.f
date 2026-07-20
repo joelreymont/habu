@@ -183,6 +183,28 @@ DET-ANALYTIC DET-FD GC-CLOSE? TFALSE      \ wrong analytic caught
 DET-BUILD-OK  DET-RUN
 DET-ANALYTIC DET-FD GC-CLOSE? TTRUE
 
+\ ---- derived-sized input-offset column: a >64-input model gradchecks (dot habu-ref-model-inputs)
+\ GC-IN-OFF (the per-slot arena-offset column) was a FIXED 64-slot table; it survived the sizing
+\ program only because the capture-locals wall kept any model past ~64 inputs from ever reaching
+\ gradcheck. It now derives from the live slot count (grow-to-largest, generous transactional
+\ ceiling). Red-first: at 65 inputs the base overruns GC-IN-OFF and corrupts the MIR builder state
+\ (E-MIR-STATE / crash); here a 65-input model (past the old 64-slot table AND the old 64-local
+\ capture cap, which the slot-indexed translator lifts) gradchecks V-PASS across every input slot.
+create GCW-BUF 8192 allot   variable GCW-U
+: GCW+ ( ptr u8 n -- ) {: a:ptr u:n :}  a GCW-BUF GCW-U @ + u BYTE-COPY  GCW-U @ u + GCW-U ! ;
+: GCW# ( n -- )  SB-RESET FMT:SB-INT SB$ GCW+ ;
+: GCW-BUILD ( n -- ) {: n:n :}              \ "MODEL: GCWIDE ( a0:2x2 .. a<n-1>:2x2 -- y ) ADD .. ;"
+   0 GCW-U !  s" MODEL: GCWIDE ( " GCW+
+   n 0 ?do  s" a" GCW+  i GCW#  s" :2x2 " GCW+  loop
+   s" -- y ) " GCW+
+   n 1- 0 ?do  s" ADD " GCW+  loop  s" ; " GCW+ ;
+: GCW$ ( -- ptr u8 n )  GCW-BUF GCW-U @ ;
+65 GCW-BUILD  GCW$ evaluate
+MODEL-K 64 T=                               \ 65 inputs -> 64 ADD nodes (past the old 64-local capture wall)
+SLOT-COUNT@ CAD-NUM:GCT-IC>N 65 T=           \ 65 model input slots (past the old GC-IN-OFF 64-slot table)
+GC-RUN V-PASS T=                            \ every one of the 65 input slots gradchecks (grown offset column)
+s" input(s) gradchecked" GCT-REASON-IN
+
 T-REPORT
 
 ;package

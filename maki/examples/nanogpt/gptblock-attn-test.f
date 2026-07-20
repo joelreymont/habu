@@ -442,20 +442,15 @@ GB2-FL @ GB-MILLI 1661 T=                       \ committed final mean CE (deter
 GB2-FL @ GB2-IL @ f< TTRUE                      \ 2-block stack trains: loss decreased
 GB2-INIT GB2-ARESET  3 GB2-RUN  GB2-FL @ GB-MILLI 1661 T=   \ run-twice bit-identical
 
-\ ================= (12x) derive-from-model at scale + the capture locals wall ============
-\ (dot habu-size-model-proportional 3iv/3v) The literal 12-block GPT-2 stack the dot targets
-\ (164 inputs) CANNOT be captured through MODEL:: the translator turns every signature input +
-\ ">V" name into one typed LOCAL of the compiled capture word, and the FROZEN engine caps a
-\ definition at 64 LOCALS (verified: a definition's 65th typed local rejects; a 4-block stack
-\ dies at its 65th local). The original CAP-CAP=64 WAS that engine wall, not an arbitrary table
-\ cap - so the input/slot/name dimension is engine-bounded at ~3 blocks (~56 locals) regardless
-\ of table sizing. That is a genuine source seam (reported to the orchestrator; lifting it needs
-\ a capture-translation refactor that references inputs without one-local-each - out of this lane).
-\ What the -5045/-5040/-5024 repros actually blocked on was the OP / DESCRIPTOR / SOURCE size,
-\ reachable with ONE input (1 local): a 260-op GELU chain captures, builds, and gradchecks far
-\ past the OLD caps (PLAN-CAP 64, TV-CAP 256, MSRC 2048). Every size derives from the model and
-\ grows-to-largest; the forward node table grows past MIR-NODE-SEED (128) and the backward pass
-\ copy-on-grows it further, and gradcheck confirms the grown tables give a correct gradient.
+\ ================= (12x) derive-from-model at scale: single-input table-sizing focus ============
+\ (dot habu-size-model-proportional 3iv/3v) This 260-op GELU chain drives the DERIVED table sizing
+\ on ONE input (PLAN / DESCRIPTOR / SOURCE / node table), isolated from the input dimension: it
+\ captures, builds, and gradchecks far past the OLD caps (PLAN-CAP 64, TV-CAP 256, MSRC 2048).
+\ Every size derives from the model and grows-to-largest; the forward node table grows past
+\ MIR-NODE-SEED (128) and the backward pass copy-on-grows it further. The input/name dimension -
+\ once engine-bounded at ~3 blocks because the translator minted one typed LOCAL per input/name
+\ against the frozen 64-local cap - is lifted by dot habu-ref-model-inputs (slot-indexed capture);
+\ the (Nx-slot) section below captures the literal 4- and 12-block stacks the local cap blocked.
 260 constant OPHN                                    \ > TV-CAP old 256, PLAN-CAP old 64, MSRC old 2048
 create OPH-BUF 8192 allot   variable OPH-U
 : OPH+ ( ptr u8 n -- ) {: a:ptr u:n :}  a OPH-BUF OPH-U @ + u BYTE-COPY  OPH-U @ u + OPH-U ! ;
@@ -470,6 +465,64 @@ GC-RE$ s" input(s) gradchecked" CONTAINS? TTRUE
 BW-BUILD                                             \ fresh backward over the 260-node forward IR
 BW-FWD-N@ OPHN T=                                     \ forward slice exact
 MIR-N@ OPHN 2 * T=                                   \ 520 = 260 fwd + 260 adjoint (backward copy-on-grow)
+
+\ ================= (Nx-slot) any-size stacks: slot-indexed capture (dot habu-ref-model-inputs) ===
+\ The MODEL: translator used to mint ONE typed local of the compiled capture word per signature
+\ input + ">V" name; the frozen engine caps a definition at 64 locals, so a 4-block stack (60
+\ inputs + 12 names = 72 locals) died at its 65th local and a 12-block (164 inputs + 36 names =
+\ 200) was impossible - the old CAP-CAP=64 was THIS engine wall in a table costume. Now inputs and
+\ named values are referenced by SLOT INDEX into a runtime slot table (MAKI:CAP-SLOT@), minting no
+\ per-name local, so the capture word stays at zero input locals regardless of size. The captured
+\ PLAN is identical to the old per-local form (behavior-neutral, proven by the GBLK/GBLK2 checks
+\ above). Generator below emits the same block as GBLK/GBLK2 for any L (fixed tiny einsum shapes):
+\ inputs = 8 + 13L, >V names = 3L, forward nodes = 4 + 14L.
+create GBN-BUF 16384 allot   variable GBN-U
+: GBN+ ( ptr u8 n -- ) {: a:ptr u:n :}  a GBN-BUF GBN-U @ + u BYTE-COPY  GBN-U @ u + GBN-U ! ;
+: GBN# ( n -- )  SB-RESET FMT:SB-INT SB$ GBN+ ;
+: GBN-PN ( ptr u8 n n -- ) {: a:ptr u:n i:n :}  a u GBN+  i GBN# ;   \ emit "<prefix><i>"
+: GBN-SIG-BLK ( n -- ) {: i:n :}                    \ per-block cursor-drained params (consumption order)
+   s" wq" i GBN-PN s" :6x3 " GBN+  s" wk" i GBN-PN s" :6x3 " GBN+  s" sc" i GBN-PN s" :1x1 " GBN+
+   s" wv" i GBN-PN s" :6x3 " GBN+  s" wo" i GBN-PN s" :3x6 " GBN+
+   s" w1" i GBN-PN s" :6x8 " GBN+  s" b1" i GBN-PN s" :1x8 " GBN+
+   s" w2" i GBN-PN s" :8x6 " GBN+  s" b2" i GBN-PN s" :1x6 " GBN+ ;
+: GBN-SIG-LN ( n -- ) {: i:n :}                     \ per-block named-ref affine-LN gamma/beta pairs
+   s" ln1g" i GBN-PN s" :1x6 " GBN+  s" ln1b" i GBN-PN s" :1x6 " GBN+
+   s" ln2g" i GBN-PN s" :1x6 " GBN+  s" ln2b" i GBN-PN s" :1x6 " GBN+ ;
+: GBN-BLK ( n n -- ) {: i:n L:n :}                  \ one transformer block, block index i of L
+   s" ln1g" i GBN-PN  s"  ln1b" i GBN-PN  s"  LAYERNORM  >V LN1" i GBN-PN
+   s"  MATMUL LN1" i GBN-PN  s"  A-SCORES SCALE mask ADD SOFTMAX-ROW LN1" i GBN-PN  s"  A-CTX MATMUL X0" i GBN-PN
+   s"  RESIDUAL-ADD  >V X1" i GBN-PN
+   s"  ln2g" i GBN-PN  s"  ln2b" i GBN-PN  s"  LAYERNORM LINEAR GELU LINEAR X1" i GBN-PN  s"  RESIDUAL-ADD" GBN+
+   i 1+ L < if  s"  >V X0" i 1+ GBN-PN  then  s"  " GBN+ ;
+: GBN-BUILD ( n -- ) {: L:n :}
+   0 GBN-U !
+   s" MODEL: GBLKN ( wte:6x6 ids:4x1 wpe:4x6 " GBN+
+   L 0 ?do  i GBN-SIG-BLK  loop
+   s" wlm:6x6 blm:1x6 mask:4x4 " GBN+
+   L 0 ?do  i GBN-SIG-LN  loop
+   s" gfin:1x6 bfin:1x6 -- logits ) GATHER ADD  >V X00 " GBN+
+   L 0 ?do  i L GBN-BLK  loop
+   s" gfin bfin LAYERNORM LINEAR ; " GBN+ ;
+: GBN$ ( -- ptr u8 n )  GBN-BUF GBN-U @ ;
+
+\ (Nx-slot-A) the 4-block repro that DIES at the 65th local on base (72 locals) now LOADS and is
+\ differentiable - proof the slot-indexed capture mints no per-input local.
+4 GBN-BUILD  GBN$ evaluate
+MODEL-K 60 T=                                        \ 4 + 14*4 forward nodes
+SLOT-COUNT@ CAD-NUM:CAD-IC>N 60 T=                    \ 8 + 13*4 model inputs (past the old block-4 local wall)
+GC-RUN V-PASS T=                                     \ every trained input gradchecks (self-restores IR)
+
+\ (Nx-slot-B) THE 12-BLOCK GPT-2-SHAPED ACCEPTANCE (164 inputs): captures, gradchecks a sample of
+\ every input slot, backward-builds. Old scheme = 164 inputs + 36 >V names = 200 locals, impossible
+\ under the 64-local cap. Pinned MEASURED accounting = the sizing program's prediction, now realized.
+12 GBN-BUILD  GBN$ evaluate
+MODEL-K 172 T=                                       \ 4 + 14*12 forward nodes (measured; predicted ~172)
+SLOT-COUNT@ CAD-NUM:CAD-IC>N 164 T=                   \ 8 + 13*12 model inputs (measured; predicted 164)
+GC-RUN V-PASS T=                                     \ gradcheck-sample: each input slot's grad = central FD (self-restores IR)
+GC-RE$ s" input(s) gradchecked" CONTAINS? TTRUE
+BW-BUILD                                             \ backward builds over the 172-node forward IR
+BW-FWD-N@ 172 T=                                     \ forward slice exact
+MIR-N@ 723 T=                                        \ 172 fwd + 551 adjoint (measured; predicted ~723 total)
 
 T-REPORT
 

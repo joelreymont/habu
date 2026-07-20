@@ -13,8 +13,8 @@
 \ The translation is mechanical (op registry supplies each op's arity/class): the first
 \ signature input is the running value; each op's parameter operands are drained FIFO from
 \ pending named references then the declared-input cursor, and emitted as explicit stack
-\ pushes before the vocab word; ">V NAME" compiles to `dup {: NAME:tensor :}` (name the
-\ current value, keep it running); "RESHAPE:RxC"/"SLICE:R0..R1" rewrite to the vocab's
+\ pushes before the vocab word; ">V NAME" compiles to `dup <slot> MAKI:CAP-SLOT!` (store the
+\ current value into its slot, keep it running); "RESHAPE:RxC"/"SLICE:R0..R1" rewrite to the vocab's
 \ ( tensor n n -- tensor ) forms with the scalar params. A malformed composition - an op
 \ with too few operands (arity underflow), a non-tensor operand - is now a CHECKER
 \ diagnostic (load-time exit 70) from the nested compile, not a runtime E-CAD-ARITY throw.
@@ -164,12 +164,26 @@ variable CAP-IN-BOUND  CAP-IN-SEED CAP-IN-BOUND !   \ live input-column extent
    n CAP-IN-BOUND @ < if exit then
    CAP-IN-BOUND @ 2 * n 1+ max {: nb:n :}
    nb CAP-IN-AT-GROW  nb CAP-IN-BOUND ! ;
+
+\ runtime slot table: the compiled capture word reads each signature input and >V-named value
+\ from here BY NT SLOT INDEX (MAKI:CAP-SLOT@) instead of minting one typed local per name, so a
+\ 164-input stack no longer needs 164 locals - the frozen engine caps a definition at 64 (dot
+\ habu-ref-model-inputs). Input slots 0..N-1 are pre-populated at CAP-COMPILE-RUN; ">V" stores the
+\ running value into its slot during the run. Sized from the interned slot count, grow-to-largest
+\ across captures (every read slot is written first, so stale slots from a prior capture never leak).
+DEFER-LAYOUT-BUFFER CAP-SLOT-AT tensor     \ per-slot descriptor storage, index 0..NT-N-1 ( n -- ptr tensor )
+CAP-IN-SEED CAP-SLOT-AT-BIND
+variable CAP-SLOT-BOUND  CAP-IN-SEED CAP-SLOT-BOUND !   \ live slot-column extent
+: CAP-SLOT-ENSURE ( n -- ) {: n:n :}       \ grow the slot column to hold index n
+   n CAP-SLOT-BOUND @ < if exit then
+   CAP-SLOT-BOUND @ 2 * n 1+ max {: nb:n :}
+   nb CAP-SLOT-AT-GROW  nb CAP-SLOT-BOUND ! ;
 variable CAP-IN-N                          \ number of declared inputs
 variable CAP-IP                            \ declared-input cursor: next input a param may drain (starts 1)
 variable CAP-OPS                           \ ops emitted so far (a running value exists once >0)
 
 \ name set: signature input names occupy NT slots 0..N-1 (slot index == input index, so a
-\ by-name reference and the declared-input cursor resolve to the SAME compiled local); ">V"
+\ by-name reference and the declared-input cursor resolve to the SAME runtime slot); ">V"
 \ intermediates occupy the slots above. A bare body token that hits the set is a value
 \ reference (a parameter for the next op); anything else is an op token.
 $2000 constant NT-CAP                      \ generous name ceiling (was 96 cap)
@@ -217,9 +231,12 @@ variable CAP-PEND-HD                       \ monotonic head counter (physical sl
 \ once to capture the plan. Its size DERIVES from the capture length (dot habu-size-model-
 \ proportional 3iv): a translated body is a bounded expansion of the captured tokens (every
 \ emission - PLAN:<op>, `dup {: NAME :}`, scalar move params, the signature framing - is driven
-\ by a captured token expanded by a small constant, plus fixed prologue/epilogue). Measured
-\ ~2.1x (GBLK 838/399, GBLK2 1469/721); MSRC-EXPAND uses 4x + 512 (margin over measured, well
-\ inside the per-token proven ceiling). MSRC-PRESIZE pre-allots that from CAPSRC-N; MSRC+/MSRC-C
+\ by a captured token expanded by a small constant, plus fixed prologue/epilogue). Slot-indexed
+\ references emit "<slot> MAKI:CAP-SLOT@ " (~20 B) per operand, longer than the old per-name
+\ local, but the signature no longer emits the "{: in..:tensor :}" frame - the two offset, so the
+\ factor is unchanged: re-measured ~2.0x (GBLK 805/399, GBLK2 1404/721). MSRC-EXPAND stays 4x + 512
+\ (ample margin; MSRC+ grow-to-largest still catches any under-estimate). MSRC-PRESIZE pre-allots
+\ that from CAPSRC-N; MSRC+/MSRC-C
 \ still grow-to-largest on demand, so the estimate can never truncate. MSRC-CAP is the generous
 \ transactional ceiling. Byte buffer hand-defers via a DATA-BASE-relative offset var.
 $40000 constant MSRC-CAP                    \ generous translated-body ceiling (bytes; was 2048 cap)
@@ -267,6 +284,11 @@ public
 
 : OP-KIND ( ptr u8 n -- opkind )
    OP-LOOKUP 0= if E-CAD-OP throw then ;
+
+\ runtime slot accessors: the compiled capture body reads/writes model inputs and >V-named
+\ values by NT slot index rather than a per-name local (MAKI:CAP-SLOT@/CAP-SLOT! in the emit).
+: CAP-SLOT@ ( n -- tensor )  CAP-SLOT-AT @ ;
+: CAP-SLOT! ( tensor n -- )  CAP-SLOT-AT ! ;
 
 private
 
@@ -384,11 +406,18 @@ $5E constant TR-C                                  \ '^' - the reserved transpos
 : CAPNAME$ ( -- ptr u8 n )  CAPNAME-BUF CAPNAME-N @ ;
 
 \ ---- body emit helpers (translate one op's operands into explicit stack pushes) ------
+\ emit a slot read/write into the translated body: a model input (slot 0..N-1) or a >V-named
+\ value (slot above) is referenced by NT slot index through the runtime slot table
+\ (MAKI:CAP-SLOT@/CAP-SLOT!) - no per-name typed local, so the compiled word stays under the
+\ engine's 64-local cap regardless of input count (dot habu-ref-model-inputs).
+: MSRC-SLOT-READ ( n -- )   MSRC-INT MSRC-SP  s" MAKI:CAP-SLOT@ " MSRC+ ;
+: MSRC-SLOT-WRITE ( n -- )  MSRC-INT MSRC-SP  s" MAKI:CAP-SLOT! " MSRC+ ;
+
 \ emit the declared input at the cursor (advancing it); exhausted -> emit nothing so the op
 \ underflows and the nested checker rejects it (arity underflow is a checker diagnostic).
 : CAP-EMIT-DECL ( -- )
    CAP-IP @ CAP-IN-N @ < if
-      CAP-IP @ NT-NAME MSRC+ MSRC-SP  CAP-IP @ 1+ CAP-IP !
+      CAP-IP @ MSRC-SLOT-READ  CAP-IP @ 1+ CAP-IP !
    then ;
 
 \ emit one pending reference: push the named value; a "^T"-marked reference is wrapped
@@ -396,7 +425,7 @@ $5E constant TR-C                                  \ '^' - the reserved transpos
 \ transpose adjoint) enters the plan feeding the op - no new op kind, no new adjoint.
 : CAP-EMIT-PEND ( -- )
    CAP-PEND-DEQ {: sl:n tr:n :}
-   sl NT-NAME MSRC+ MSRC-SP
+   sl MSRC-SLOT-READ
    tr 0<> if s" PLAN:TRANSPOSE " MSRC+ then ;
 
 \ emit k parameter operands: pending references first (FIFO), then declared inputs
@@ -418,12 +447,13 @@ $5E constant TR-C                                  \ '^' - the reserved transpos
 : CAP-LN-AFFINE-EMIT ( -- )
    2 CAP-EMIT-PARAMS  s" PLAN:LAYERNORM-AFFINE " MSRC+  1 CAP-OPS +! ;
 
-\ ">V NAME": name the current running value, keep it running -> compile `dup {: NAME:tensor :}`
+\ ">V NAME": name the current running value, keep it running -> `dup <slot> MAKI:CAP-SLOT!`
+\ (store the running-value copy into NAME's slot; the value keeps flowing on the stack)
 : NT-BIND-CUR ( ptr u8 n -- ) {: a:ptr u:n :}
    CAP-HAS-VALUE? 0= if E-CAD-NOVALUE throw then
    CAP-PEND-CNT 0 > if E-CAD-REF throw then         \ a ref must be consumed before naming
-   a u NT-BIND drop
-   s" dup {: " MSRC+  a u MSRC+  s" :tensor :} " MSRC+ ;
+   a u NT-BIND                                      \ ( slot ) intern the name
+   s" dup " MSRC+  MSRC-SLOT-WRITE ;
 
 \ ---- param-operand shape legality (shared by capture + BIND-SHAPES reprop) ------
 \ A binary elementwise op's parameter must broadcast-match its data operand under the
@@ -769,29 +799,25 @@ $5E constant TR-C                                  \ '^' - the reserved transpos
    again ;
 
 \ ---- assemble + compile + run the capture definition -----------------------
-\ CAP-EMIT-SIG: "( tensor.. -- tensor ) {: <locals> :} <input0> " - the effect, typed locals,
-\ and initial running-value push shared by the compile framing (MODEL:) and any dry-run framing.
+\ CAP-EMIT-SIG: "( -- tensor ) <input0> " - the effect (no stack inputs; every input is read
+\ from the slot table by index) and the initial running-value push (input 0 read from slot 0);
+\ shared by the compile framing (MODEL:) and any dry-run framing.
 : CAP-EMIT-SIG ( -- )
-   s"  ( " MSRC+
-   CAP-IN-N @ 0 ?do  s" tensor " MSRC+  loop
-   s" -- tensor ) " MSRC+
-   CAP-IN-N @ 0 > if
-      s" {: " MSRC+
-      CAP-IN-N @ 0 ?do  i NT-NAME MSRC+  s" :tensor " MSRC+  loop
-      s" :} " MSRC+
-      0 NT-NAME MSRC+  MSRC-SP                     \ push input0 as the initial running value
-   then ;
-\ CAP-EMIT-PREFIX: ": <cap> ( ... ) {: ... :} <input0>" up to the body.
+   s"  ( -- tensor ) " MSRC+
+   CAP-IN-N @ 0 > if  0 MSRC-SLOT-READ  then ;      \ push input 0 (slot 0) as the initial running value
+\ CAP-EMIT-PREFIX: ": <cap> ( -- tensor ) <input0>" up to the body.
 : CAP-EMIT-PREFIX ( -- )  s" : " MSRC+  CAPNAME$ MSRC+  CAP-EMIT-SIG ;
 : CAP-EMIT-SUFFIX ( -- )  s" ; " MSRC+  CAPNAME$ MSRC+ ;
 
-\ seed the declared input descriptors onto the stack and run the assembled definition: the
-\ nested `evaluate` compiles it (the check hook certifies the whole composition) then, in the
-\ same string, runs the capture word once to populate the plan store. TRUSTED: `evaluate`
-\ and the dynamic-arity descriptor push are metaprogramming the checker cannot express;
-\ the compiled body is fully checked by the active hook (dot habu-checker-reentrancy-certify).
+\ populate the runtime slot table with the declared input descriptors (by index) and run the
+\ assembled definition: the nested `evaluate` compiles it (the check hook certifies the whole
+\ composition) then, in the same string, runs the capture word once to populate the plan store.
+\ The body reads every input / named value from the slot table by index (no per-input local,
+\ no dynamic-arity stack push). TRUSTED: `evaluate` is metaprogramming the checker cannot
+\ express; the compiled body is fully checked by the active hook (dot habu-checker-reentrancy-certify).
 TRUSTED: CAP-COMPILE-RUN ( -- )
-   CAP-IN-N @ 0 ?do  i CAP-IN@  loop               \ push all N input descriptor handles
+   NT-N @ 1- CAP-SLOT-ENSURE                       \ size the slot table to the interned slot count
+   CAP-IN-N @ 0 ?do  i CAP-IN@ i CAP-SLOT!  loop    \ store input descriptors into slots 0..N-1
    MSRC$ evaluate                                  \ compile + run the capture word
    drop ;                                          \ discard the captured output descriptor
 

@@ -49,11 +49,26 @@ package CAD-NUM public
 package MAKI
 private
 
-64    constant GC-SCAP        \ input slots (mirrors model-ir MIR-IN-CAP)
+$2000 constant GC-SCAP         \ generous input-slot ceiling (transactional; mirrors model-ir MIR-IN-CAP)
+64    constant GC-SLOT-SEED    \ initial per-slot offset allotment; grows past this
 $4000 constant GC-ARENA-CELLS  \ host input-buffer arena (float cells)
 
 create GC-ARENA  GC-ARENA-CELLS cells allot   \ per-input-slot host buffers
-create GC-IN-OFF GC-SCAP cells allot           \ per-slot arena offset (cells)
+\ The per-slot arena-offset column derives its size from the model (dot habu-ref-model-inputs):
+\ a fixed 64-slot table survived the sizing program only because the capture-locals wall kept any
+\ model past ~64 inputs from ever reaching gradcheck. It now hand-defers via a DATA-BASE-relative
+\ offset + capacity var, grown-to-largest off the live slot count with the shared MAKI:RAW-ENSURE
+\ (maki/tensor-value.f); a request past the generous GC-SCAP ceiling dies NAMED before any allot.
+create GC-IN-OFF GC-SLOT-SEED cells allot  variable GC-IN-OFF-P  GC-IN-OFF data-base - GC-IN-OFF-P !  variable GC-IN-OFF-CAP  GC-SLOT-SEED cells GC-IN-OFF-CAP !
+variable GC-IN-OFF-BOUND  GC-SLOT-SEED GC-IN-OFF-BOUND !   \ live per-slot offset-column extent
+: GC-IN-OFF-BASE ( -- ptr a )  data-base GC-IN-OFF-P @ + ;
+: GC-IN-OFF-ENSURE ( n -- ) {: n:n :}          \ grow the per-slot offset column to hold index n
+   n GC-IN-OFF-BOUND @ < if exit then
+   n GC-SCAP >= if E-GC-CAP throw then          \ generous transactional ceiling (no absurd allot)
+   GC-IN-OFF-BOUND @ {: old:n :}
+   old 2 * n 1+ max {: nb:n :}
+   nb cells old cells GC-IN-OFF-P GC-IN-OFF-CAP MAKI:RAW-ENSURE
+   nb GC-IN-OFF-BOUND ! ;
 variable GC-BUMP
 1 LAYOUT-BUFFER GC-MARK-BUF MIR:mark
 
@@ -84,7 +99,7 @@ private
 : GC-SLOT-ELEMS ( MIR:input-slot -- n ) {: s:MIR:input-slot :}
    s MIR-SLOT-ROWS@ s MIR-SLOT-COLS@ SHAPE-ELEMS DIM-RAW ;
 : GC-IN-PTR ( MIR:input-slot -- ptr a )
-   SLOT>RAW cells GC-IN-OFF + @ {: off:n :}  GC-ARENA off T-AT ;
+   SLOT>RAW cells GC-IN-OFF-BASE + @ {: off:n :}  GC-ARENA off T-AT ;
 
 \ deterministic non-degenerate fills (relu-safe: strictly positive, varied)
 : GC-INPUT-VAL ( MIR:input-slot n -- r ) {: s:MIR:input-slot e:n :}
@@ -122,7 +137,8 @@ private
       s GC-SLOT-ELEMS {: e:n :}
       GC-BUMP @ {: off:n :}
       off e + GC-ARENA-CELLS > if E-GC-CAP throw then
-      off s SLOT>RAW cells GC-IN-OFF + !
+      s SLOT>RAW GC-IN-OFF-ENSURE                 \ derive the offset column from the live slot count
+      off s SLOT>RAW cells GC-IN-OFF-BASE + !
       off e + GC-BUMP !
       s GC-IN-PTR s EX-BIND
       s GC-FILL-SLOT
