@@ -139,5 +139,16 @@ DECOMPOSITION (each lands gate-green independently):
        ceiling-pin conversions.
 
 Stage-3i claim: agent=ldgrow workspace=.jj-ws/fable-ldgrow machine=spark (engine lane: src/core/layout-buffer.f copy-on-grow + test/layout-defer.f + gate size files)
-Stage-3ii claim: agent=capbuf workspace=.jj-ws/fable-capbuf machine=spark (owns maki/cad.f parser buffer-capture refactor + cad tests)
+Stage-3ii LANDED (capbuf lane): see below.
 Stage-3iii claim: agent=cleanfam workspace=.jj-ws/fable-cleanfam machine=spark (owns maki/executor.f + maki/backward.f single-phase family conversions + their tests; NOT cad.f, NOT model-ir.f, NOT tensor-value.f)
+
+2026-07-20 STAGE 3(ii) LANDED (Buffer-capture MODEL: definition before parsing):
+MODEL: now captures the entire definition token-stream into CAPSRC-BUF via ONE
+parse-name loop, then all parsing (PARSE-SIG/PARSE-BODY/named forms) re-tokenizes
+the buffer with the maki-side NEXT-TOK cursor - the two-pass (count then fill)
+capability stage 3(iv) needs, with zero engine change. Behavior-neutral proven:
+all 307 in-tree MODEL: defs parse identically (bodies verified plain-token-only,
+first ; terminates, trailing-token behavior pinned); overflow die red-first
+(CAPSRC-CAP 1024, largest in-tree def 105 B, becomes derived later); timing +13ms
+on cad-test (~0.9%), noise elsewhere. BIND-SHAPES' BS-PARSE is a separate
+command left untouched.
