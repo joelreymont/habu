@@ -620,7 +620,8 @@ private
    SP-FAC-N @ 0 ?do  va vu i IDX-IN-FAC? 0= if E-SPEC-ARITY throw then  loop ;
 : SP-VALIDATE-CT ( -- )   \ contraction form: OUT[batch.. gemm..] = factors [*] +SUM ct
    SP-PLUS? @ if E-SPEC-SYNTAX throw then                          \ + is elementwise-only, never in a contraction
-   SP-GEMM-N 1 < SP-GEMM-N 2 > or if E-SPEC-ARITY throw then       \ 1..2 GEMM (output) axes
+   SP-GEMM-N 2 > if E-SPEC-ARITY throw then                        \ 0..2 GEMM (output) axes (0 = rank-0 full-reduction output)
+   SP-GEMM-N 0= SP-BATCH-N @ 0<> and if E-SPEC-ARITY throw then    \ a rank-0 GEMM under a batch axis (per-batch scalar) is stage-2, out of grammar
    SP-BATCH-N @ 2 > if E-SPEC-ARITY throw then                     \ 0..2 batch (replication) axes
    \ a free role after a plain output index is a mis-ordered batch axis (batch must lead).
    SP-FREE-N @ SP-BATCH-N @ ?do  i SPEC-FREE@ SP-EXT-SLOT XR-FREE? if E-SPEC-ARITY throw then  loop
@@ -759,23 +760,28 @@ private
 : EQ-FREE-EXT ( n -- n ) {: i:n :}  i SPEC-FREE@ SP-EXT-SLOT XR-VAL@ ;
 : EQ-FAC-EXT  ( n n -- n ) {: f:n j:n :}  f j SPEC-FAC-IDX@ SP-EXT-SLOT XR-VAL@ ;
 
-\ a factor is stage-1 plain when it is rank 1..2 and carries no gather index.
+\ a factor is stage-1 plain when it is rank 0..2 and carries no gather index (rank 0 is a
+\ scalar operand - a 1x1 broadcast, dot habu-rank-0-tensor - which maps to a 1x1 op-registry cell).
 : EQ-FAC-PLAIN? ( n -- bool ) {: f:n :}
-   f SPEC-FAC-RANK@ dup 1 < swap 2 > or if false exit then
+   f SPEC-FAC-RANK@ 2 > if false exit then
    f SPEC-FAC-RANK@ 0 ?do  f i SPEC-FAC-GATHER@ nip 0 > if false unloop exit then  loop
    true ;
 : EQ-COMPOSABLE? ( -- bool )
-   SP-FREE-N @ dup 1 < swap 2 > or if false exit then
+   SP-FREE-N @ 2 > if false exit then                 \ 0..2 free indices (0 = rank-0 full-reduction output)
    SP-FAC-N @  dup 1 < swap 3 > or if false exit then
    SP-FAC-N @ 0 ?do  i EQ-FAC-PLAIN? 0= if false unloop exit then  loop
    true ;
 
-\ output (rows,cols) from the free extents; a single free index is a rows x 1 column.
+\ output (rows,cols) from the free extents; a single free index is a rows x 1 column;
+\ a rank-0 (empty free list) full-reduction output is a 1x1 scalar.
 : EQ-OUT-DIMS ( -- n n )
+   SP-FREE-N @ 0= if 1 1 exit then
    0 EQ-FREE-EXT   SP-FREE-N @ 2 = if 1 EQ-FREE-EXT else 1 then ;
-\ store factor f's (rows,cols) into the registry row; a rank-1 factor is rows x 1.
+\ store factor f's (rows,cols) into the registry row; a rank-1 factor is rows x 1, a rank-0
+\ scalar factor is 1x1.
 : EQ-FAC-DIMS! ( eq-slot n -- ) {: s:eq-slot f:n :}
-   f 0 EQ-FAC-EXT   s EQ-SLOT>N EQ-FCAP * f + cells EQ-FROW-A + !
+   f SPEC-FAC-RANK@ 0= if 1 else f 0 EQ-FAC-EXT then
+      s EQ-SLOT>N EQ-FCAP * f + cells EQ-FROW-A + !
    f SPEC-FAC-RANK@ 2 = if f 1 EQ-FAC-EXT else 1 then
       s EQ-SLOT>N EQ-FCAP * f + cells EQ-FCOL-A + ! ;
 
@@ -846,6 +852,7 @@ create EQ-FWD-SRC SP-SRC-CAP allot  variable EQ-FWD-SRC-U   \ forward body, to r
 : ADJB-CT-IDX ( ptr u8 n n -- ) {: a:ptr u:n j:n :}
    a u j IDX-IN-FAC? 0= if  a u ADJB+  s"  " ADJB+  then ;
 : ADJB-CT ( n -- ) {: j:n :}
+   SP-FREE-N @ SP-CT-N @ +  j SPEC-FAC-RANK@ -  0= if exit then   \ Fj spans every forward index: elementwise adjoint, no +SUM (rank-0-output forward)
    s" +SUM " ADJB+
    SP-FREE-N @ 0 ?do  i SPEC-FREE@ j ADJB-CT-IDX  loop
    SP-CT-N   @ 0 ?do  i SPEC-CT@   j ADJB-CT-IDX  loop ;
@@ -870,10 +877,26 @@ create EQ-FWD-SRC SP-SRC-CAP allot  variable EQ-FWD-SRC-U   \ forward body, to r
 : EQ-HAS-GATHER? ( -- bool )
    SP-FAC-N @ 0 ?do  i FAC-HAS-GATHER? if true unloop exit then  loop  false ;
 
+\ factor a's index list is a trailing SUFFIX of factor b's (same vars, same order, tail-aligned).
+: FAC-SUFFIX? ( a b -- bool ) {: fa:n fb:n :}
+   fa SPEC-FAC-RANK@  fb SPEC-FAC-RANK@  {: ra:n rb:n :}
+   ra rb > if false exit then
+   rb ra -  {: base:n :}
+   ra 0 ?do  fa i SPEC-FAC-IDX@  fb base i + SPEC-FAC-IDX@  STR= 0= if false unloop exit then  loop
+   true ;
+\ the empty-contraction (ct=0) adjoint of factor j - Fj spans every forward index - is a legal
+\ derived form ONLY as a full-reduction (empty free list) whose other factors are suffixes of Fj:
+\ dFj[Fj-idx] = dS[] * the others, an elementwise/broadcast equation. A free axis (an outer-product
+\ adjoint) or a non-suffix co-factor is out of grammar - forward-only, fail closed, never mis-derive.
+: ADJ-CT0-OK? ( n -- bool ) {: j:n :}
+   SP-FREE-N @ 0<> if false exit then
+   SP-FAC-N @ 0 ?do  i j <> if  i j FAC-SUFFIX? 0= if false unloop exit then  then  loop  true ;
+
 \ every factor's adjoint lands within the grammar: its GEMM-free axes = Fj's rank minus the
-\ batch axes it also carries (1..2), its contraction = (all forward indices) - Fj's rank
-\ (1..2). Batch axes RIDE ALONG (they appear in Fj and dO, never contracted), so for the
-\ non-batched case (SP-BATCH-N=0) this is exactly the old rk-1..2 / ct-1..2 rule.
+\ batch axes it also carries (1..2), its contraction = (all forward indices) - Fj's rank. Batch
+\ axes RIDE ALONG (they appear in Fj and dO, never contracted), so for the non-batched case
+\ (SP-BATCH-N=0) this is the old rk-1..2 / ct-1..2 rule EXCEPT the ct=0 full-reduction case: Fj
+\ spans every index, so its adjoint is the elementwise dFj = dS[] * the others (ADJ-CT0-OK?).
 : EQ-ADJ-DERIVABLE? ( -- bool )
    SP-FREE-N @ SP-CT-N @ +  {: total:n :}
    SP-FAC-N @ 0 ?do
@@ -881,7 +904,11 @@ create EQ-FWD-SRC SP-SRC-CAP allot  variable EQ-FWD-SRC-U   \ forward body, to r
       rk SP-BATCH-N @ -  {: gf:n :}
       gf 1 < gf 2 > or if false unloop exit then
       total rk -  {: ct:n :}
-      ct 1 < ct 2 > or if false unloop exit then
+      ct 0= if
+         i ADJ-CT0-OK? 0= if false unloop exit then
+      else
+         ct 2 > if false unloop exit then
+      then
    loop  true ;
 
 : EQ-FWD-NM! ( -- )  SPEC-NAME$ {: a:ptr u:n :}  a EQ-FWD-NM u BYTE-COPY  u EQ-FWD-NM-U ! ;

@@ -313,15 +313,8 @@ SPEC: BC-ADDS   BXO[bm bn] = BXA[bm bn] + BSCL[] ;     \ scalar add (offset)
 BC-FILL BC-SCL-SET  BC-BIND-SCALE  BC-SCALE  BC-REF-SCALE  BC-DIST0? -1 T=   \ scale == reference
 BC-FILL BC-SCL-SET  BC-BIND-ADDS   BC-ADDS   BC-REF-ADDS   BC-DIST0? -1 T=   \ offset == reference
 
-\ analytic adjoints, written through the rank-0 write accessor BSCL! (into BCDS, not BSC).
-: BC-SCALE-ADJ ( -- )   \ dBSCL = sum_bm,bn dO * BXA (full-sum dot)
-   BCDO BXO-BIND  BCDS BSCL-BIND  BCA BXA-BIND
-   0.0  #BM 0 ?do #BN 0 ?do  j >#BM i >#BN BXO@  j >#BM i >#BN BXA@  f* f+  loop loop
-   BSCL! ;
-: BC-ADDS-ADJ ( -- )    \ dBSCL = sum_bm,bn dO
-   BCDO BXO-BIND  BCDS BSCL-BIND
-   0.0  #BM 0 ?do #BN 0 ?do  j >#BM i >#BN BXO@  f+  loop loop
-   BSCL! ;
+\ central-FD references (perturb the single scalar param) - the same L = sum(seed * O) the
+\ authored adjoints were checked against; now they check the SPEC:-DERIVED words instead.
 : BC-FD-SCALE ( -- r )  \ central FD of L wrt the single scalar param
    BSC 0 T-GET {: base:r :}
    base BC-H f+ BSC 0 T-SET  BC-BIND-SCALE BC-SCALE BC-LOSS {: yp:r :}
@@ -332,30 +325,84 @@ BC-FILL BC-SCL-SET  BC-BIND-ADDS   BC-ADDS   BC-REF-ADDS   BC-DIST0? -1 T=   \ o
    base BC-H f+ BSC 0 T-SET  BC-BIND-ADDS BC-ADDS BC-LOSS {: yp:r :}
    base BC-H f- BSC 0 T-SET  BC-BIND-ADDS BC-ADDS BC-LOSS {: ym:r :}
    base BSC 0 T-SET  yp ym f- BC-H 2.0 f* f/ ;
-: BC-GC-SCALE ( -- bool )  BC-FILL BC-SCL-SET  BC-SCALE-ADJ  BCDS 0 T-GET  BC-FD-SCALE  GC-CLOSE? ;
-: BC-GC-ADDS  ( -- bool )  BC-FILL BC-SCL-SET  BC-ADDS-ADJ   BCDS 0 T-GET  BC-FD-ADDS   GC-CLOSE? ;
-BC-GC-SCALE -1 T=          \ scalar-scale full-sum-dot adjoint gradchecks
-BC-GC-ADDS  -1 T=          \ scalar-add full-sum adjoint gradchecks
+\ the SPEC: auto-derived adjoints. The scale form's factor adjoints are BC-SCALE-ADJ0
+\ (dBXA[bm bn] = dO · BSCL, a rank-0-FACTOR broadcast) and BC-SCALE-ADJ1 (dBSCL[] = Σ dO · BXA,
+\ the rank-0-OUTPUT full-sum the dot names). The add form's are the analogous copy / column-sum.
+\ Both derive through the SAME parse+emit+register pipeline as every other adjoint now that the
+\ equation registry admits rank-0 (dot habu-equation-registry-rank); the authored special case
+\ retired. dBSCL is gradchecked against the identical central-FD reference the authored one passed.
+: BC-GC-SCALE ( -- bool )
+   BC-FILL BC-SCL-SET
+   BCDO BXO-BIND  BSC BSCL-BIND  BCDA BXA-BIND   BC-SCALE-ADJ0     \ dBXA = dO * BSCL (rank-0 factor)
+   BCDO BXO-BIND  BCA BXA-BIND   BCDS BSCL-BIND  BC-SCALE-ADJ1     \ dBSCL = Σ dO * BXA (rank-0 output)
+   BCDS 0 T-GET  BC-FD-SCALE  GC-CLOSE? ;
+: BC-GC-ADDS  ( -- bool )
+   BC-FILL BC-SCL-SET
+   BCDO BXO-BIND  BCDA BXA-BIND   BC-ADDS-ADJ0                     \ dBXA = dO
+   BCDO BXO-BIND  BCDS BSCL-BIND  BC-ADDS-ADJ1                     \ dBSCL = Σ dO (rank-0 output)
+   BCDS 0 T-GET  BC-FD-ADDS  GC-CLOSE? ;
+BC-GC-SCALE -1 T=          \ scalar-scale auto-derived rank-0-output adjoint gradchecks
+BC-GC-ADDS  -1 T=          \ scalar-add auto-derived rank-0-output adjoint gradchecks
 
-\ the SPEC: auto-derived adjoint of a scalar form IS that rank-0-output contraction; the
-\ einsum grammar does not yet admit it, so the training gate fails closed named (E-SPEC-ARITY,
-\ never a wrong gradient) - the boundary the authored adjoints above stand in for.
-: BC-SCL-ADJ-N ( -- ) s" BXO[bm bn] = BXA[bm bn] · BSCL[]" SPEC-ADJ-CHECK$ ;
-' BC-SCL-ADJ-N E-SPEC-ARITY TTHROWS
+\ the SPEC: auto-derived adjoint of a scalar form IS that rank-0-output contraction, now admitted
+\ through the equation registry, so the training gate ACCEPTS it (was the E-SPEC-ARITY reject the
+\ retired authored adjoints stood in for) - proven directly as the string-seam training verdict.
+: BC-SCL-ADJ-OK ( -- ) s" BXO[bm bn] = BXA[bm bn] · BSCL[]" SPEC-ADJ-CHECK$ ;
+' BC-SCL-ADJ-OK 0 TTHROWS
+
+\ --- full reduction (rank-0 output, dot habu-equation-registry-rank): s[] = Σbm,bn A · B is now
+\ authorable - the Frobenius inner product of two same-shape operands. Golden it against a plain
+\ summed reference, then gradcheck its DERIVED adjoints dA[bm bn] = ds · B, dB[bm bn] = ds · A
+\ (each a rank-0-FACTOR scalar broadcast, the same class the scale forward derives) against a
+\ central FD of L = s (seed ds = 1). Reuses BXA/BXB (#BM #BN) and the rank-0 BSCL as the scalar
+\ output (no new tensor registry rows); the derived words rebind BSCL per role.
+create FRSB 1 cells allot              \ scalar output buffer
+create FRSR 1 cells allot              \ plain summed reference
+create FRSD 1 cells allot              \ scalar cotangent (seed ds = 1, so L = s)
+create FREDA #BM #BN * cells allot     \ derived dA
+create FREDB #BM #BN * cells allot     \ derived dB
+SPEC: BC-FRED  BSCL[] = BXA[bm bn] · BXB[bm bn] +SUM bm bn ;
+: BC-FRED-REF ( -- )  0.0 #BM #BN * 0 ?do  BCA i T-GET  BCB i T-GET  f* f+  loop  FRSR 0 T-SET ;
+BC-FILL  BCA BXA-BIND  BCB BXB-BIND  FRSB BSCL-BIND  BC-FRED  BC-FRED-REF
+FRSB FRSR 1 T-DIST2  1000000.0 f* 0.5 f+ f>s  0 T=      \ full-reduction golden == plain summed reference
+: BC-FD-FRED ( ptr a n -- r ) {: p:ptr e:n :}          \ central FD of s wrt element e of buffer p
+   p e T-GET {: base:r :}
+   base BC-H f+ p e T-SET  BCA BXA-BIND BCB BXB-BIND FRSB BSCL-BIND BC-FRED  FRSB 0 T-GET {: yp:r :}
+   base BC-H f- p e T-SET  BCA BXA-BIND BCB BXB-BIND FRSB BSCL-BIND BC-FRED  FRSB 0 T-GET {: ym:r :}
+   base p e T-SET  yp ym f- BC-H 2.0 f* f/ ;
+: BC-GC-FRED ( -- bool )
+   BC-FILL  1.0 FRSD 0 T-SET
+   FRSD BSCL-BIND  BCB BXB-BIND  FREDA BXA-BIND  BC-FRED-ADJ0      \ dA = ds * B
+   FRSD BSCL-BIND  BCA BXA-BIND  FREDB BXB-BIND  BC-FRED-ADJ1      \ dB = ds * A
+   true
+   #BM #BN * 0 ?do  FREDA i T-GET  BCA i BC-FD-FRED  GC-CLOSE? 0= if drop false leave then  loop
+   dup if  #BM #BN * 0 ?do  FREDB i T-GET  BCB i BC-FD-FRED  GC-CLOSE? 0= if drop false leave then  loop  then ;
+BC-GC-FRED -1 T=          \ full-reduction derived adjoints (rank-0-factor scalar broadcasts) gradcheck
+: BC-FRED-ADJ-OK ( -- ) s" BSCL[] = BXA[bm bn] · BXB[bm bn] +SUM bm bn" SPEC-ADJ-CHECK$ ;
+' BC-FRED-ADJ-OK 0 TTHROWS   \ empty-contraction adjoint (ADJ-CT0-OK?): in-grammar elementwise broadcast
 
 \ --- named-throw negatives (reuse E-SPEC-SYNTAX/ARITY): every malformed form fails closed
 : BC-N-MIX     ( -- ) s" BXO[bm bn] = BXA[bm bn] + BXB[bm bn] * BXA[bm bn]" SPEC-CHECK$ ;  \ + and * mixed
 : BC-N-PLUSSUM ( -- ) s" BXO[bm bn] = BXA[bm bn] + BXB[bm bn] +SUM bn" SPEC-CHECK$ ;        \ + with a reduction
 : BC-N-COL     ( -- ) s" BXO[bm bn] = BXA[bm bn] + BCOL[bm]" SPEC-CHECK$ ;                  \ column (non-suffix) broadcast
 : BC-N-NOCOMB  ( -- ) s" BXO[bm bn] = BXA[bm bn] BXB[bm bn]" SPEC-CHECK$ ;                  \ two terms, no combiner
-: BC-N-SCLOUT  ( -- ) s" BSCL[] = BXA[bm bn] · BXB[bm bn] +SUM bm bn" SPEC-CHECK$ ;         \ rank-0 (scalar) OUTPUT: illegal shape
+: BC-P-SCLOUT  ( -- ) s" BSCL[] = BXA[bm bn] · BXB[bm bn] +SUM bm bn" SPEC-CHECK$ ;         \ rank-0 (full-reduction) OUTPUT: now legal
 : BC-N-OK      ( -- ) s" BXO[bm bn] = BXA[bm bn] + BVEC[bn]" SPEC-CHECK$ ;                  \ valid bias: no throw
 ' BC-N-MIX     E-SPEC-SYNTAX  TTHROWS
 ' BC-N-PLUSSUM E-SPEC-SYNTAX  TTHROWS
 ' BC-N-COL     E-SPEC-ARITY   TTHROWS
 ' BC-N-NOCOMB  E-SPEC-SYNTAX  TTHROWS
-' BC-N-SCLOUT  E-SPEC-ARITY   TTHROWS       \ a scalar output has 0 free indices; einsum output is 1..2
+' BC-P-SCLOUT  0              TTHROWS       \ replaces the old "rank-0 output illegal" negative: a full-reduction output (empty free list) is exactly what habu-equation-registry-rank legalizes
 ' BC-N-OK      0              TTHROWS
+
+\ the narrower reject that survives: a rank-0 GEMM UNDER a batch axis (a per-batch scalar loss,
+\ e.g. BFO[bf] = Σbm,bn A[bf bm bn] · B[bf bm bn]) has no GEMM axis for the batched machinery to
+\ replicate, so it is stage-2 and fails closed named (E-SPEC-ARITY, never a silent mis-derivation).
+\ The reject fires at the batch/GEMM arity check - ahead of any tensor lookup - so it needs only
+\ the free extent #BF declared; a rank-0 GEMM with NO batch axis is the legal full reduction above.
+2 FREE-EXTENT: #BF
+: BC-N-BATCHSCL ( -- ) s" BFO[bf] = BF3[bf bm bn] +SUM bm bn" SPEC-CHECK$ ;
+' BC-N-BATCHSCL E-SPEC-ARITY TTHROWS
 
 \ --- a valid-but-wrong-extent broadcast is a CHECKER reject of the generated accessor:
 \ BWRONG is declared ( #BM ) but read at the bn slot, so >#BN feeds an ix<extbn> where
