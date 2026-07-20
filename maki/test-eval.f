@@ -7,37 +7,41 @@
 
 require maki/test-harness.f
 
-TEST:RESET
+using TEST
 
-TEST:GROUP SEQ maki-eval
-TEST:SUITE maki/eval/eval-test.f
-TEST:;SUITE
-TEST:SUITE maki/eval/fixture.f
-TEST:;SUITE
-TEST:SUITE maki/eval/repair.f
-TEST:;SUITE
-TEST:SUITE maki/eval/repair-ab-test.f
-TEST:;SUITE
-TEST:SUITE maki/eval/repair-mech-test.f
-TEST:;SUITE
-TEST:SUITE maki/eval/passk-test.f
-TEST:;SUITE
-TEST:SUITE maki/eval/transcript-test.f
-TEST:;SUITE
-TEST:SUITE maki/eval/matrix-test.f
-TEST:;SUITE
-TEST:SUITE maki/eval/matrix-main.f
-TEST:;SUITE
-TEST:SUITE maki/eval/live-test.f
-TEST:;SUITE
-TEST:SUITE maki/eval/tokest-test.f
-TEST:;SUITE
-TEST:SUITE maki/eval/live-author-test.f
-TEST:;SUITE
-TEST:SUITE maki/eval/device-fault-test.f
-TEST:;SUITE
-TEST:SUITE maki/eval/train.f
-TEST:;SUITE
-TEST:;GROUP
+RESET
 
-TEST:RUN
+GROUP SEQ maki-eval
+SUITE maki/eval/eval-test.f
+;SUITE
+SUITE maki/eval/fixture.f
+;SUITE
+SUITE maki/eval/repair.f
+;SUITE
+SUITE maki/eval/repair-ab-test.f
+;SUITE
+SUITE maki/eval/repair-mech-test.f
+;SUITE
+SUITE maki/eval/passk-test.f
+;SUITE
+SUITE maki/eval/transcript-test.f
+;SUITE
+SUITE maki/eval/matrix-test.f
+;SUITE
+SUITE maki/eval/matrix-main.f
+;SUITE
+SUITE maki/eval/live-test.f
+;SUITE
+SUITE maki/eval/tokest-test.f
+;SUITE
+SUITE maki/eval/live-author-test.f
+;SUITE
+SUITE maki/eval/device-fault-test.f
+;SUITE
+SUITE maki/eval/train.f
+;SUITE
+;GROUP
+
+RUN
+
+;using

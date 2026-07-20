@@ -183,8 +183,9 @@ defer STDIN-RUNNER ( ptr u8 n ptr u8 n -- )
 : NAME-TOKEN ( -- ptr u8 n )
    parse-name CHECK-NAME ;
 
-: ;SUITE? ( ptr u8 n -- bool )
-   s" TEST:;SUITE" STR= ;
+: ;SUITE? ( ptr u8 n -- bool )              \ suite terminator: qualified TEST:;SUITE or bare ;SUITE under `using TEST`
+   2dup s" TEST:;SUITE" STR= if 2drop TRUE exit then
+   s" ;SUITE" STR= ;
 
 : ITEM-ALLOC ( -- n )
    ITEM-N @ ITEM-MAX >= if E-TBL-BOUNDS throw then

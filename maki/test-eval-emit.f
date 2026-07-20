@@ -7,13 +7,17 @@
 
 require maki/test-harness.f
 
-TEST:RESET
+using TEST
 
-TEST:GROUP SEQ maki-eval-emit
-TEST:SUITE maki/eval/emit-test.f
-TEST:;SUITE
-TEST:SUITE maki/eval/emit-device-test.f
-TEST:;SUITE
-TEST:;GROUP
+RESET
 
-TEST:RUN
+GROUP SEQ maki-eval-emit
+SUITE maki/eval/emit-test.f
+;SUITE
+SUITE maki/eval/emit-device-test.f
+;SUITE
+;GROUP
+
+RUN
+
+;using

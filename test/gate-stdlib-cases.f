@@ -1,158 +1,160 @@
 GATE-STDLIB-MAIN
 
-TEST:SUITE shadow-lint
+using TEST
+
+SUITE shadow-lint
    tools/lint/shadow-lint.f
    tools/lint/shadow-lint-test.f
-TEST:;SUITE
+;SUITE
 
-TEST:SUITE clobber-lint
+SUITE clobber-lint
    tools/lint/clobber-lint.f
-TEST:;SUITE
+;SUITE
 
-TEST:SUITE clobber-lint-fixtures
+SUITE clobber-lint-fixtures
    tools/lint/clobber-lint-test.f
-TEST:;SUITE
+;SUITE
 
-TEST:SUITE repl-lint
+SUITE repl-lint
    tools/repl-lint.f
-TEST:;SUITE
+;SUITE
 
-TEST:SUITE trust-lint
+SUITE trust-lint
    tools/trust-lint.f
-TEST:;SUITE
+;SUITE
 
-TEST:SUITE stale-status-lint
+SUITE stale-status-lint
    tools/stale-status-lint.f
-TEST:;SUITE
+;SUITE
 
-TEST:SUITE host-lint
+SUITE host-lint
    tools/host-lint.f
-TEST:;SUITE
+;SUITE
 
-TEST:SUITE parallel-agent-lint
+SUITE parallel-agent-lint
    tools/parallel-agent-lint.f
-TEST:;SUITE
+;SUITE
 
-TEST:SUITE filemap-lint
+SUITE filemap-lint
    tools/filemap-lint.f
    tools/filemap-lint-test.f
-TEST:;SUITE
+;SUITE
 
-TEST:SUITE stdin-closure-lint
+SUITE stdin-closure-lint
    tools/stdin-closure-lint.f
-TEST:;SUITE
+;SUITE
 
-TEST:SUITE gate-stats
+SUITE gate-stats
    test/gate-stats-test.f
-TEST:;SUITE
+;SUITE
 
-TEST:SUITE dot-dep-lint
+SUITE dot-dep-lint
    tools/dot-dep-lint.f
-TEST:;SUITE
+;SUITE
 
-TEST:SUITE dot-dep-lint-fixtures
+SUITE dot-dep-lint-fixtures
    tools/dot-dep-lint-test.f
-TEST:;SUITE
+;SUITE
 
-TEST:SUITE maki-dep-lint
+SUITE maki-dep-lint
    tools/maki-dep-lint.f
-TEST:;SUITE
+;SUITE
 
-TEST:SUITE maki-dep-lint-fixtures
+SUITE maki-dep-lint-fixtures
    tools/maki-dep-lint-test.f
-TEST:;SUITE
+;SUITE
 
-TEST:SUITE refine-lint
+SUITE refine-lint
    tools/refine-lint.f
-TEST:;SUITE
+;SUITE
 
-TEST:SUITE refine-lint-fixtures
+SUITE refine-lint-fixtures
    tools/refine-lint-test.f
-TEST:;SUITE
+;SUITE
 
-TEST:SUITE suite-coverage-lint
+SUITE suite-coverage-lint
    tools/suite-coverage-lint.f
    tools/suite-coverage-lint-test.f
-TEST:;SUITE
+;SUITE
 
-TEST:SUITE namespace-lint
+SUITE namespace-lint
    tools/namespace-lint.f
-TEST:;SUITE
+;SUITE
 
-TEST:SUITE namespace-lint-fixtures
+SUITE namespace-lint-fixtures
    tools/namespace-lint-test.f
-TEST:;SUITE
+;SUITE
 
-TEST:SUITE error-code-lint
+SUITE error-code-lint
    tools/error-code-lint.f
-TEST:;SUITE
+;SUITE
 
-TEST:SUITE error-code-lint-fixtures
+SUITE error-code-lint-fixtures
    tools/error-code-lint-test.f
-TEST:;SUITE
+;SUITE
 
-TEST:SUITE text-foundation-fixtures
+SUITE text-foundation-fixtures
    tools/lint/text-foundation-test.f
-TEST:;SUITE
+;SUITE
 
-TEST:SUITE lint-intern-set
+SUITE lint-intern-set
    tools/lint/set-test.f
-TEST:;SUITE
+;SUITE
 
-TEST:SUITE diff-parser
+SUITE diff-parser
    tools/lint/diff-test.f
-TEST:;SUITE
+;SUITE
 
-TEST:SUITE diff-frame-codec
+SUITE diff-frame-codec
    tools/lint/diff-frame-test.f
-TEST:;SUITE
+;SUITE
 
-TEST:SUITE stdlib-manifest
+SUITE stdlib-manifest
    tools/stdlib-manifest-test.f
-TEST:;SUITE
+;SUITE
 
-TEST:SUITE host-lint-fixtures
+SUITE host-lint-fixtures
    tools/host-lint-test.f
-TEST:;SUITE
+;SUITE
 
-TEST:SUITE trusted-inventory
+SUITE trusted-inventory
    tools/trusted-inventory-test.f
-TEST:;SUITE
+;SUITE
 
-TEST:SUITE primitive-effect-inventory
+SUITE primitive-effect-inventory
    tools/primitive-effect-inventory-test.f
-TEST:;SUITE
+;SUITE
 
-TEST:SUITE json-file-cursor
+SUITE json-file-cursor
    tools/json-file-test.f
-TEST:;SUITE
+;SUITE
 
-TEST:SUITE imgdump-compare
+SUITE imgdump-compare
    tools/imgdump-test.f
-TEST:;SUITE
+;SUITE
 
-TEST:SUITE imagedisasm-tool
+SUITE imagedisasm-tool
    tools/imagedisasm-test.f
-TEST:;SUITE
+;SUITE
 
-TEST:SUITE tool-boundary-trust
+SUITE tool-boundary-trust
    tools/trust-lint-test.f
    tools/aot-call-report-test.f
-TEST:;SUITE
+;SUITE
 
-TEST:SUITE tool-boundary-check-repair
+SUITE tool-boundary-check-repair
    tools/check-all-errors-test.f
    tools/repair-packet-test.f
-TEST:;SUITE
+;SUITE
 
-TEST:SUITE tool-boundary-doc-public
+SUITE tool-boundary-doc-public
    tools/public-signatures-test.f
    tools/stale-status-lint-test.f
    tools/repair-schema-doc-test.f
    tools/examples-test.f
-TEST:;SUITE
+;SUITE
 
-TEST:SUITE tool-boundary-lints
+SUITE tool-boundary-lints
    tools/repl-lint-test.f
    tools/diag-origin-test.f
    tools/aot-lint-test.f
@@ -162,147 +164,147 @@ TEST:SUITE tool-boundary-lints
    tools/duplicate-definition-lint-test.f
    tools/bundle-lib-test.f
    tools/json-only-test.f
-TEST:;SUITE
+;SUITE
 
-TEST:SUITE tool-boundary-typed-local
+SUITE tool-boundary-typed-local
    tools/typed-local-diff-lint-test.f
-TEST:;SUITE
+;SUITE
 
-TEST:SUITE check-cli-boundary
+SUITE check-cli-boundary
    tools/check-test.f
-TEST:;SUITE
+;SUITE
 
-TEST:SUITE streaming-sha256
+SUITE streaming-sha256
    tools/sha256-file-test.f
-TEST:;SUITE
+;SUITE
 
-TEST:SUITE content-key-cache
+SUITE content-key-cache
    lib/content-key-test.f
-TEST:;SUITE
+;SUITE
 
-TEST:SUITE engine-identity
+SUITE engine-identity
    lib/engine-id-test.f
-TEST:;SUITE
+;SUITE
 
-TEST:SUITE object-record-codec
+SUITE object-record-codec
    lib/object-test.f
-TEST:;SUITE
+;SUITE
 
-TEST:SUITE object-cache-store
+SUITE object-cache-store
    lib/object-cache-test.f
-TEST:;SUITE
+;SUITE
 
-TEST:SUITE object-source-index
+SUITE object-source-index
    lib/object-index-test.f
-TEST:;SUITE
+;SUITE
 
-TEST:SUITE object-source-resolver
+SUITE object-source-resolver
    lib/object-resolve-test.f
-TEST:;SUITE
+;SUITE
 
-TEST:SUITE object-link-symbols
+SUITE object-link-symbols
    lib/object-link-test.f
-TEST:;SUITE
+;SUITE
 
-TEST:SUITE object-image-writer
+SUITE object-image-writer
    tools/object-image-test.f
-TEST:;SUITE
+;SUITE
 
-TEST:SUITE tasking-primitive-smoke
+SUITE tasking-primitive-smoke
    test/atomics-smoke.f
    test/run-in-stack-smoke.f
-TEST:;SUITE
+;SUITE
 
-TEST:SUITE getpid-primitive-smoke
+SUITE getpid-primitive-smoke
    test/getpid-smoke.f
-TEST:;SUITE
+;SUITE
 
-TEST:SUITE proc-watch-primitive-smoke
+SUITE proc-watch-primitive-smoke
    test/proc-watch-smoke.f
-TEST:;SUITE
+;SUITE
 
-TEST:SUITE proc-signal-primitive-smoke
+SUITE proc-signal-primitive-smoke
    test/proc-signal-smoke.f
-TEST:;SUITE
+;SUITE
 
-TEST:SUITE process-fork-wrappers
+SUITE process-fork-wrappers
    lib/process-fork-test.f
-TEST:;SUITE
+;SUITE
 
-TEST:SUITE proc-pty-io-supervisor-smoke
+SUITE proc-pty-io-supervisor-smoke
    test/process-pty-io-smoke.f
-TEST:;SUITE
+;SUITE
 
-TEST:SUITE engine-candidate-resolver
+SUITE engine-candidate-resolver
    test/engine-candidate-test.f
-TEST:;SUITE
+;SUITE
 
-TEST:SUITE tasking-threads
+SUITE tasking-threads
    lib/task-test.f
-TEST:;SUITE
+;SUITE
 
-TEST:SUITE string-helpers
+SUITE string-helpers
    lib/string-test.f
-TEST:;SUITE
+;SUITE
 
-TEST:SUITE ffi-abi
+SUITE ffi-abi
    lib/ffi-abi-test.f
-TEST:;SUITE
+;SUITE
 
-TEST:SUITE ffi-cabi
+SUITE ffi-cabi
    lib/ffi-test.f
-TEST:;SUITE
+;SUITE
 
-TEST:SUITE float-parse
+SUITE float-parse
    lib/float-test.f
    lib/fmath-test.f
-TEST:;SUITE
+;SUITE
 
-TEST:SUITE fmt-numbers
+SUITE fmt-numbers
    lib/fmt-test.f
-TEST:;SUITE
+;SUITE
 
-TEST:SUITE float-sort
+SUITE float-sort
    lib/sort-test.f
-TEST:;SUITE
+;SUITE
 
-TEST:SUITE float-stats
+SUITE float-stats
    lib/stats-test.f
-TEST:;SUITE
+;SUITE
 
-TEST:SUITE hashmap
+SUITE hashmap
    lib/hashmap-test.f
-TEST:;SUITE
+;SUITE
 
-TEST:SUITE prelude
+SUITE prelude
    lib/prelude-test.f
-TEST:;SUITE
+;SUITE
 
-TEST:SUITE array-helpers
+SUITE array-helpers
    lib/array-test.f
-TEST:;SUITE
+;SUITE
 
-TEST:SUITE adt-result
+SUITE adt-result
    lib/adt/result-test.f
-TEST:;SUITE
+;SUITE
 
-TEST:SUITE table-stdlib
+SUITE table-stdlib
    lib/table-test.f
-TEST:;SUITE
+;SUITE
 
-TEST:SUITE regex-stdlib
+SUITE regex-stdlib
    lib/regex-test.f
-TEST:;SUITE
+;SUITE
 
-TEST:SUITE map-stdlib
+SUITE map-stdlib
    lib/map-test.f
-TEST:;SUITE
+;SUITE
 
-TEST:SUITE codegen-stdlib
+SUITE codegen-stdlib
    lib/codegen-test.f
-TEST:;SUITE
+;SUITE
 
-TEST:SUITE ptx-stdlib
+SUITE ptx-stdlib
    lib/ptx/header-test.f
    lib/ptx/kernel-abi-test.f
    lib/ptx/kernel-manifest-test.f
@@ -335,58 +337,58 @@ TEST:SUITE ptx-stdlib
    lib/ptx/cuda-driver-test.f
    lib/ptx/ad-gen-test.f
    src/arch/ptx/vjp-test.f
-TEST:;SUITE
+;SUITE
 
-TEST:SUITE ptx-rep-neg
+SUITE ptx-rep-neg
    lib/ptx/rep-neg-test.f
-TEST:;SUITE
+;SUITE
 
-TEST:SUITE ptx-mint-neg
+SUITE ptx-mint-neg
    lib/ptx/mint-neg-test.f
-TEST:;SUITE
+;SUITE
 
-TEST:SUITE ptx-tile-loop-neg
+SUITE ptx-tile-loop-neg
    lib/ptx/tile-loop-neg-test.f
-TEST:;SUITE
+;SUITE
 
-TEST:SUITE ptx-tile-smem-neg
+SUITE ptx-tile-smem-neg
    lib/ptx/tile-smem-neg-test.f
-TEST:;SUITE
+;SUITE
 
-TEST:SUITE ptx-tile-acc-neg
+SUITE ptx-tile-acc-neg
    lib/ptx/tile-acc-neg-test.f
-TEST:;SUITE
+;SUITE
 
-TEST:SUITE ptx-tile-v4a-neg
+SUITE ptx-tile-v4a-neg
    lib/ptx/tile-v4a-neg-test.f
-TEST:;SUITE
+;SUITE
 
-TEST:SUITE ptx-tile-pipe-neg
+SUITE ptx-tile-pipe-neg
    lib/ptx/tile-pipe-neg-test.f
-TEST:;SUITE
+;SUITE
 
-TEST:SUITE ptx-cpp-slot-neg
+SUITE ptx-cpp-slot-neg
    lib/ptx/cpp-slot-neg-test.f
    lib/ptx/cg-mma-slot-neg-test.f
-TEST:;SUITE
+;SUITE
 
-TEST:SUITE ptx-gemm-checked-neg
+SUITE ptx-gemm-checked-neg
    lib/ptx/gemm-checked-neg-test.f
-TEST:;SUITE
+;SUITE
 
-TEST:SUITE ptx-attention-checked-neg
+SUITE ptx-attention-checked-neg
    lib/ptx/attention-checked-neg-test.f
-TEST:;SUITE
+;SUITE
 
-TEST:SUITE ptx-autograd-neg
+SUITE ptx-autograd-neg
    lib/ptx/autograd-neg-test.f
-TEST:;SUITE
+;SUITE
 
-TEST:SUITE ptx-uniform-barrier
+SUITE ptx-uniform-barrier
    lib/ptx/uniform-barrier-test.f
-TEST:;SUITE
+;SUITE
 
-TEST:SUITE ptx-toolchain
+SUITE ptx-toolchain
    lib/ptx/toolchain-test.f
    tools/ptx/profile-test.f
    tools/ptx/bench-test.f
@@ -415,66 +417,66 @@ TEST:SUITE ptx-toolchain
    tools/ptx/softmax-launch.f
    tools/ptx/softmax-gradcheck.f
    tools/ptx/cuda-launch.f
-TEST:;SUITE
+;SUITE
 
-TEST:SUITE-STDIN source-stdlib-stdin DATA
+SUITE-STDIN source-stdlib-stdin DATA
    lib/source-test.f -- stdin
-TEST:;SUITE
+;SUITE
 
-TEST:SUITE argv-stdlib-mocks
+SUITE argv-stdlib-mocks
    lib/argv-test.f
-TEST:;SUITE
+;SUITE
 
-TEST:SUITE argv-stdlib-script-args
+SUITE argv-stdlib-script-args
    lib/argv-test.f -- --json --label NAME --strict-signatures --all-errors
    --strict-boundary -o OUT -- file.f --literal
-TEST:;SUITE
+;SUITE
 
-TEST:SUITE test-stdlib
+SUITE test-stdlib
    lib/test/assert-test.f
    lib/test/suite-test.f
    lib/test/snap-test.f
    lib/test/record-test.f
    lib/test/src-shape-test.f
-TEST:;SUITE
+;SUITE
 
-TEST:SUITE property-stdlib
+SUITE property-stdlib
    lib/property-test.f
-TEST:;SUITE
+;SUITE
 
-TEST:SUITE date-helpers
+SUITE date-helpers
    tools/stdlib-date-test.f
-TEST:;SUITE
+;SUITE
 
-TEST:SUITE spawn-emitter-shape
+SUITE spawn-emitter-shape
    tools/spawn-emitter-test.f
-TEST:;SUITE
+;SUITE
 
-TEST:SUITE c-call-emitter-shape
+SUITE c-call-emitter-shape
    tools/c-call-emitter-test.f
-TEST:;SUITE
+;SUITE
 
-TEST:SUITE signature-scan-emitter-shape
+SUITE signature-scan-emitter-shape
    tools/signature-scan-emitter-test.f
-TEST:;SUITE
+;SUITE
 
-TEST:SUITE compiler-dispatch-shape
+SUITE compiler-dispatch-shape
    tools/compiler-dispatch-test.f
-TEST:;SUITE
+;SUITE
 
-TEST:SUITE codegen-role
+SUITE codegen-role
    tools/codegen-role-test.f
-TEST:;SUITE
+;SUITE
 
-TEST:SUITE icode-fixup
+SUITE icode-fixup
    test/icode-fixup-test.f
-TEST:;SUITE
+;SUITE
 
-TEST:SUITE engine-size
+SUITE engine-size
    test/engine-size-test.f
-TEST:;SUITE
+;SUITE
 
-TEST:SUITE tail-pure-fixtures
+SUITE tail-pure-fixtures
    lib/json-write-test.f
    lib/json-read-test.f
    lib/memory-test.f
@@ -485,141 +487,144 @@ TEST:SUITE tail-pure-fixtures
    tools/asm-src-test.f
    tools/asm-checked-test.f
    tools/image-bytes-test.f
-TEST:;SUITE
+;SUITE
 
-TEST:SUITE stdlib-source-default
+SUITE stdlib-source-default
    lib/source-test.f
-TEST:;SUITE
+;SUITE
 
-TEST:SUITE stdlib-process-fixtures
+SUITE stdlib-process-fixtures
    tools/hb-cli-contracts-test.f
    tools/standalone-load-test.f
    lib/process-test.f
    lib/process-command-test.f
    lib/process-pty-handle-test.f
-TEST:;SUITE
+;SUITE
 
-TEST:SUITE friend-arena-seal
+SUITE friend-arena-seal
    test/seal.f
-TEST:;SUITE
+;SUITE
 
-TEST:SUITE internal-word-gate
+SUITE internal-word-gate
    test/internal-word-gate.f
-TEST:;SUITE
+;SUITE
 
-TEST:SUITE immediate-model
+SUITE immediate-model
    test/immediate-model-test.f
-TEST:;SUITE
+;SUITE
 
-TEST:SUITE pointer-storage
+SUITE pointer-storage
    test/pointer-storage-test.f
-TEST:;SUITE
+;SUITE
 
-TEST:SUITE typed-storage
+SUITE typed-storage
    test/typed-storage-test.f
-TEST:;SUITE
+;SUITE
 
-TEST:SUITE underdepth-gate
+SUITE underdepth-gate
    test/underdepth-gate.f
-TEST:;SUITE
+;SUITE
 
-TEST:SUITE top-row-hook
+SUITE top-row-hook
    test/top-row-hook-test.f
-TEST:;SUITE
+;SUITE
 
-TEST:SUITE top-row-warn
+SUITE top-row-warn
    test/top-row-warn-test.f
-TEST:;SUITE
+;SUITE
 
-TEST:SUITE xt-effect
+SUITE xt-effect
    test/xt-effect-test.f
-TEST:;SUITE
+;SUITE
 
-TEST:SUITE xt-cell
+SUITE xt-cell
    test/xt-cell-test.f
-TEST:;SUITE
+;SUITE
 
-TEST:SUITE effect-read-api
+SUITE effect-read-api
    test/effect-read-api-test.f
-TEST:;SUITE
+;SUITE
 
-TEST:SUITE owner-wid-internal
+SUITE owner-wid-internal
    test/owner-wid-internal.f
-TEST:;SUITE
+;SUITE
 
-TEST:SUITE owner-wid-snapshot
+SUITE owner-wid-snapshot
    test/owner-wid-snapshot.f
-TEST:;SUITE
+;SUITE
 
-TEST:SUITE stdlib-standalone-load
+SUITE stdlib-standalone-load
    test/stdlib-standalone-load.f
-TEST:;SUITE
+;SUITE
 
-TEST:SUITE aot-wid-restore
+SUITE aot-wid-restore
    test/aot-wid-suite.f
-TEST:;SUITE
+;SUITE
 
-TEST:SUITE friend-arena-absence
+SUITE friend-arena-absence
    test/seal-absence.f
-TEST:;SUITE
+;SUITE
 
-TEST:SUITE sealed-system-package
+SUITE sealed-system-package
    test/seal-package.f
-TEST:;SUITE
+;SUITE
 
-TEST:SUITE engine-error-package
+SUITE engine-error-package
    test/engine-error-package.f
-TEST:;SUITE
+;SUITE
 
-TEST:SUITE pre-trust-defer
+SUITE pre-trust-defer
    test/pre-trust-defer.f
-TEST:;SUITE
+;SUITE
 
-TEST:SUITE catch-frame
+SUITE catch-frame
    test/catch-frame.f
-TEST:;SUITE
+;SUITE
 
-TEST:SUITE export-keyword-package
+SUITE export-keyword-package
    test/export-package.f
-TEST:;SUITE
+;SUITE
 
-TEST:SUITE gate-runner-entry-load
+SUITE gate-runner-entry-load
    test/gate-runner-entry-test.f
-TEST:;SUITE
+;SUITE
 
-TEST:SUITE load-reject-diag
+SUITE load-reject-diag
    test/load-reject-diag-test.f
-TEST:;SUITE
+;SUITE
 
-TEST:SUITE dictionary-record-shapes
+SUITE dictionary-record-shapes
    test/drec-shape-test.f
-TEST:;SUITE
+;SUITE
 
-TEST:SUITE stdlib-runner-fixtures
+SUITE stdlib-runner-fixtures
    lib/test/runner-test.f
-TEST:;SUITE
+;SUITE
 
-TEST:SUITE stdlib-build-fixtures
+SUITE stdlib-build-fixtures
    lib/build-test.f
-TEST:;SUITE
+;SUITE
 
-TEST:SUITE build-fixpoint-fixtures
+SUITE build-fixpoint-fixtures
    tools/build-fixpoint-test.f
-TEST:;SUITE
+;SUITE
 
-TEST:SUITE boot-pin-fixtures
+SUITE boot-pin-fixtures
    test/boot-pin-test.f
-TEST:;SUITE
+;SUITE
 
-TEST:SUITE hb-build-fixtures
+SUITE hb-build-fixtures
    tools/hb-build-test.f
    lib/build-cache-test.f
    lib/codesign-test.f
-TEST:;SUITE
+;SUITE
 
-TEST:SUITE gate-pool
+SUITE gate-pool
    test/gate-pool-test.f
-TEST:;SUITE
+;SUITE
 
-TEST:RUN
+RUN
+
+;using
+
 s" PASS: native lint/stdlib test phase" type cr

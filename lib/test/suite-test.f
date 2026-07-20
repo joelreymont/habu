@@ -101,27 +101,31 @@ variable SELECT-SKIP-N
 T-RESET
 RESET-COUNTS
 INSTALL
-TEST:RESET
+using TEST
 
-TEST:GROUP SEQ seq-grp
-TEST:SUITE alpha
+RESET
+
+GROUP SEQ seq-grp
+SUITE alpha
    a.f -- one two
-TEST:;SUITE
-TEST:;GROUP
+;SUITE
+;GROUP
 
-TEST:GROUP PARA par
-TEST:SUITE beta
+GROUP PARA par
+SUITE beta
    b.f
-TEST:;SUITE
-TEST:SUITE-STDIN stdin-case DATA
+;SUITE
+SUITE-STDIN stdin-case DATA
    c.f -- arg
-TEST:;SUITE
-TEST:SUITE skip-me
+;SUITE
+SUITE skip-me
    skip.f
-TEST:;SUITE
-TEST:;GROUP
+;SUITE
+;GROUP
 
-TEST:RUN
+RUN
+
+;using
 
 SETUP-N @ 1 T=
 TEARDOWN-N @ 1 T=
@@ -136,16 +140,21 @@ ARGS-BEGIN-N @ 3 T=
 DRAIN-N @ 6 T=
 
 INSTALL-THROW
-TEST:RESET
-TEST:GROUP SEQ throw-loop
-TEST:SUITE throw-caught
+
+using TEST
+
+RESET
+GROUP SEQ throw-loop
+SUITE throw-caught
    throw-caught.f
-TEST:;SUITE
-TEST:SUITE throw-late
+;SUITE
+SUITE throw-late
    throw-late.f
-TEST:;SUITE
-TEST:;GROUP
-TEST:RUN
+;SUITE
+;GROUP
+RUN
+
+;using
 
 THROW-N @ 1 T=
 THROW-LATE-N @ 1 T=
@@ -173,8 +182,10 @@ package TEST
 
 T-RESET
 
-\ terminator recognizer renamed: ;SUITE, not END-SUITE
+\ terminator recognizer: qualified TEST:;SUITE and bare ;SUITE (under `using TEST`)
+\ both match; END-SUITE/END-GROUP were never the spelling.
 s" TEST:;SUITE"    ;SUITE? TTRUE
+s" ;SUITE"         ;SUITE? TTRUE
 s" TEST:END-SUITE" ;SUITE? TFALSE
 s" TEST:END-GROUP" ;SUITE? TFALSE
 

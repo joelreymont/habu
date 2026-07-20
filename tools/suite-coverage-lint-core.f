@@ -39,6 +39,7 @@ $800 constant SC-PTX-BUF-CAP       \ copied inprocess ptx-toolchain file names
 320 constant SC-CASE-MAX           \ (label,file) member rows; 167 live + headroom
 48 constant SC-PTX-MAX             \ inprocess ptx-toolchain files
 34 constant SC-DQUOTE
+16 constant SC-USE-MAX              \ mirror engine USE-MAX: concurrent `using` scopes tracked while linting
 
 create SC-CASES-BUF SC-CASES-CAP allot
 create SC-SCAN-BUF  SC-SCAN-CAP  allot
@@ -67,6 +68,11 @@ variable SC-QF                 \ ptr slot for a table-membership query target
 variable SC-QF-U
 variable SC-QF-HIT
 variable SC-NUM-L
+
+\ `using TEST` scope state (see SC-USE-* below): file-local, reset per scan.
+create SC-USE-STK SC-USE-MAX cells allot    \ per-open `using`: 1 if it imported TEST
+variable SC-USE-SP                            \ open-using stack depth
+variable SC-USE-TEST#                         \ count of currently-open usings that imported TEST
 
 : SC-NL ( -- ) 10 emit ;
 
@@ -321,7 +327,59 @@ variable SC-NUM-L
    u 0 > a u 1- + c@ SC-DQUOTE = and if a u 1- exit then
    a u ;
 
-\ ---- cases file: TEST:SUITE label + beginning-of-line .f members ------------
+\ ---- `using TEST` scope tracker --------------------------------------------
+\ A migrated manifest reads `using TEST … SUITE foo … ;SUITE … ;using`: the
+\ loader resolves a bare SUITE/;SUITE/SUITE-STDIN as the TEST verb ONLY while a
+\ `using TEST` scope is open. The lint walks manifests textually, so it must read
+\ them the same way and recognize BOTH the qualified `TEST:SUITE` spelling and the
+\ bare-in-using-scope spelling - going blind to neither. This mirrors the engine's
+\ using/;using/;package scoping (file-local, reset per scan, bounded by USE-MAX).
+: SC-USE-RESET ( -- )  0 SC-USE-SP !  0 SC-USE-TEST# ! ;
+
+: SC-USE-TEST? ( -- bool )  SC-USE-TEST# @ 0 > ;
+
+: SC-USE-PUSH ( n -- ) {: t:n :}            \ t nonzero if this `using` imported TEST
+   SC-USE-SP @ SC-USE-MAX >= if exit then    \ past USE-MAX the engine rejects; drop the overflow frame
+   t SC-USE-STK SC-USE-SP @ cells + !
+   t 0 <> if SC-USE-TEST# @ 1+ SC-USE-TEST# ! then
+   SC-USE-SP @ 1+ SC-USE-SP ! ;
+
+: SC-USE-POP ( -- )                          \ `;using` closes the most recent `using`
+   SC-USE-SP @ 0= if exit then
+   SC-USE-SP @ 1- SC-USE-SP !
+   SC-USE-STK SC-USE-SP @ cells + @ 0 <> if SC-USE-TEST# @ 1- SC-USE-TEST# ! then ;
+
+: SC-USE-NEXT-TEST? ( n -- n ) {: k:n :}     \ 1 if the token after `using` at k names TEST
+   k 1+ TN# @ >= if 0 exit then
+   k 1+ TOK s" TEST" LINT-STR= if 1 else 0 then ;
+
+: SC-USE-TOK ( n -- ) {: k:n :}              \ maintain the using-scope stack across token k
+   k TOK s" using" LINT-STR= if k SC-USE-NEXT-TEST? SC-USE-PUSH exit then
+   k TOK s" ;using" LINT-STR= if SC-USE-POP exit then
+   k TOK s" ;package" LINT-STR= if SC-USE-RESET then ;
+
+\ suite header / terminator recognizers: qualified TEST:… always; bare … only
+\ while `using TEST` is open.
+: SC-SUITE-OPEN? ( n -- bool ) {: k:n :}
+   k TOK s" TEST:SUITE" LINT-STR= if LINT-TRUE exit then
+   k TOK s" TEST:SUITE-STDIN" LINT-STR= if LINT-TRUE exit then
+   SC-USE-TEST? if
+      k TOK s" SUITE" LINT-STR= if LINT-TRUE exit then
+      k TOK s" SUITE-STDIN" LINT-STR= if LINT-TRUE exit then
+   then
+   LINT-FALSE ;
+
+: SC-SUITE-CLOSE? ( n -- bool ) {: k:n :}
+   k TOK s" TEST:;SUITE" LINT-STR= if LINT-TRUE exit then
+   SC-USE-TEST? if k TOK s" ;SUITE" LINT-STR= if LINT-TRUE exit then then
+   LINT-FALSE ;
+
+: SC-MK-SUITE? ( n -- bool ) {: k:n :}       \ maki header: qualified TEST:SUITE or bare SUITE in TEST scope
+   k TOK s" TEST:SUITE" LINT-STR= if LINT-TRUE exit then
+   SC-USE-TEST? if k TOK s" SUITE" LINT-STR= if LINT-TRUE exit then then
+   LINT-FALSE ;
+
+\ ---- cases file: SUITE label + beginning-of-line .f members (qualified or bare)
 : SC-OPEN-SUITE ( n -- ) {: k:n :}
    k 1+ dup TN# @ >= if drop exit then
    TOK SC-CUR-LABEL!
@@ -332,9 +390,9 @@ variable SC-NUM-L
    SC-CUR-LABEL$ k TOK SC-CASE+ ;
 
 : SC-CASES-TOK ( n -- ) {: k:n :}
-   k TOK s" TEST:SUITE" LINT-STR= if k SC-OPEN-SUITE exit then
-   k TOK s" TEST:SUITE-STDIN" LINT-STR= if k SC-OPEN-SUITE exit then
-   k TOK s" TEST:;SUITE" LINT-STR= if 0 SC-INBLOCK ! exit then
+   k SC-USE-TOK
+   k SC-SUITE-OPEN? if k SC-OPEN-SUITE exit then
+   k SC-SUITE-CLOSE? if 0 SC-INBLOCK ! exit then
    SC-INBLOCK @ 0= if exit then
    k TOK0? 0= if exit then                 \ members are the first token on a line
    k TOK s" .f" HAS-EXT? if k SC-ADD-MEMBER then ;
@@ -342,6 +400,7 @@ variable SC-NUM-L
 : SC-CASES-SCAN$ ( ptr u8 n -- )
    LINT-TRUE PARENS? ! TOKENIZE
    0 SC-INBLOCK !
+   SC-USE-RESET
    0 begin dup TN# @ < while
       dup SC-CASES-TOK
       1+
@@ -523,8 +582,9 @@ variable SC-NUM-L
 \ running under the gate; a double-accounted member (>=2 slices) runs twice and
 \ breaks the one-file-per-image guarantee; a slice member with no master entry is an
 \ extra. All three feed the same SC-FIND+ tally, so any break exits the lint red.
-\ maki files use `TEST:SUITE <file>` (the file is the token AFTER the header), unlike
-\ the gate-stdlib cases format (label on the header, member on its own BOL line).
+\ maki files use `SUITE <file>` under `using TEST` (or legacy `TEST:SUITE <file>`);
+\ either way the file is the token AFTER the header, unlike the gate-stdlib cases
+\ format (label on the header, member on its own BOL line).
 $8000 constant SC-MAKI-CAP
 create SC-MAKI-BUF SC-MAKI-CAP allot        \ maki/test.f master source (pointers held)
 create SC-MK-A SC-CASE-MAX cells allot      \ master file ptr
@@ -575,17 +635,19 @@ variable SC-MK-AFTER-SUITE                   \ previous token was TEST:SUITE
 : SC-MK-APPLY ( ptr u8 n -- )
    SC-MK-MODE @ 0= if SC-MK+ else SC-MK-BUMP then ;
 
-\ pick the token right after each TEST:SUITE header (the maki suite/member file)
+\ pick the token right after each SUITE header (the maki suite/member file)
 : SC-MK-TOK ( n -- ) {: k:n :}
    SC-MK-AFTER-SUITE @ if
       0 SC-MK-AFTER-SUITE !
       k TOK SC-STRIP-Q SC-MK-APPLY exit
    then
-   k TOK s" TEST:SUITE" LINT-STR= if -1 SC-MK-AFTER-SUITE ! then ;
+   k SC-USE-TOK
+   k SC-MK-SUITE? if -1 SC-MK-AFTER-SUITE ! then ;
 
 : SC-MK-SCAN$ ( ptr u8 n -- )
    LINT-TRUE PARENS? ! TOKENIZE
    0 SC-MK-AFTER-SUITE !
+   SC-USE-RESET
    0 begin dup TN# @ < while
       dup SC-MK-TOK
       1+
@@ -605,6 +667,7 @@ variable SC-MK-AFTER-SUITE                   \ previous token was TEST:SUITE
    0 SC-CASE# !  0 SC-SUITE# !  0 SC-PTX# !  0 SC-PTX-USED !
    0 SC-FIND !  0 SC-INBLOCK !  0 SC-INDEF !
    0 SC-MK# !  0 SC-MK-MODE !  0 SC-MK-AFTER-SUITE !
+   SC-USE-RESET
    INTERN-RESET ;
 
 : SC-CHECK-ALL ( -- )

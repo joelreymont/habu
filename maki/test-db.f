@@ -7,63 +7,67 @@
 
 require maki/test-harness.f
 
-TEST:RESET
+using TEST
 
-TEST:GROUP SEQ maki-db
-TEST:SUITE maki/db/artifact-test.f
-TEST:;SUITE
-TEST:SUITE maki/db/transaction-test.f
-TEST:;SUITE
-TEST:SUITE maki/db/commit-store-test.f
-TEST:;SUITE
-TEST:SUITE maki/db/commit-store-crash-test.f
-TEST:;SUITE
-TEST:SUITE maki/db/diagnostic-test.f
-TEST:;SUITE
-TEST:SUITE maki/db/obligation-test.f
-TEST:;SUITE
-TEST:SUITE maki/db/evidence-test.f
-TEST:;SUITE
-TEST:SUITE maki/db/evidence-applicability-test.f
-TEST:;SUITE
-TEST:SUITE maki/db/promotion-policy-test.f
-TEST:;SUITE
-TEST:SUITE maki/db/promotion-authority-test.f
-TEST:;SUITE
-TEST:SUITE maki/db/promotion-test.f
-TEST:;SUITE
-TEST:SUITE maki/db/action-test.f
-TEST:;SUITE
-TEST:SUITE maki/db/diff-suite-test.f
-TEST:;SUITE
-TEST:SUITE maki/db/diff-suite-id-test.f
-TEST:;SUITE
-TEST:SUITE maki/db/diff-runner-test.f
-TEST:;SUITE
-TEST:SUITE maki/db/diff-runner-tensor-test.f
-TEST:;SUITE
-TEST:SUITE maki/db/diff-runner-spawn-test.f
-TEST:;SUITE
-TEST:SUITE maki/db/diff-runner-inject-test.f
-TEST:;SUITE
-TEST:SUITE maki/db/diff-case-store-test.f
-TEST:;SUITE
-TEST:SUITE maki/db/diff-case-store-xproc-test.f
-TEST:;SUITE
-TEST:SUITE maki/db/capbud-test.f
-TEST:;SUITE
-TEST:SUITE maki/db/agent-loop-test.f
-TEST:;SUITE
-TEST:SUITE maki/db/audit-log-test.f
-TEST:;SUITE
-TEST:SUITE maki/db/commit-store-discharge-test.f
-TEST:;SUITE
-TEST:SUITE maki/db/keywire-xproc-test.f
-TEST:;SUITE
-TEST:SUITE maki/db/keywire-xproc-env-test.f
-TEST:;SUITE
-TEST:SUITE maki/db/audit-log-xproc-test.f
-TEST:;SUITE
-TEST:;GROUP
+RESET
 
-TEST:RUN
+GROUP SEQ maki-db
+SUITE maki/db/artifact-test.f
+;SUITE
+SUITE maki/db/transaction-test.f
+;SUITE
+SUITE maki/db/commit-store-test.f
+;SUITE
+SUITE maki/db/commit-store-crash-test.f
+;SUITE
+SUITE maki/db/diagnostic-test.f
+;SUITE
+SUITE maki/db/obligation-test.f
+;SUITE
+SUITE maki/db/evidence-test.f
+;SUITE
+SUITE maki/db/evidence-applicability-test.f
+;SUITE
+SUITE maki/db/promotion-policy-test.f
+;SUITE
+SUITE maki/db/promotion-authority-test.f
+;SUITE
+SUITE maki/db/promotion-test.f
+;SUITE
+SUITE maki/db/action-test.f
+;SUITE
+SUITE maki/db/diff-suite-test.f
+;SUITE
+SUITE maki/db/diff-suite-id-test.f
+;SUITE
+SUITE maki/db/diff-runner-test.f
+;SUITE
+SUITE maki/db/diff-runner-tensor-test.f
+;SUITE
+SUITE maki/db/diff-runner-spawn-test.f
+;SUITE
+SUITE maki/db/diff-runner-inject-test.f
+;SUITE
+SUITE maki/db/diff-case-store-test.f
+;SUITE
+SUITE maki/db/diff-case-store-xproc-test.f
+;SUITE
+SUITE maki/db/capbud-test.f
+;SUITE
+SUITE maki/db/agent-loop-test.f
+;SUITE
+SUITE maki/db/audit-log-test.f
+;SUITE
+SUITE maki/db/commit-store-discharge-test.f
+;SUITE
+SUITE maki/db/keywire-xproc-test.f
+;SUITE
+SUITE maki/db/keywire-xproc-env-test.f
+;SUITE
+SUITE maki/db/audit-log-xproc-test.f
+;SUITE
+;GROUP
+
+RUN
+
+;using

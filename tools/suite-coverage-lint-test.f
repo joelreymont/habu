@@ -55,6 +55,41 @@ variable SCT-GX-U
    SC-SUITE# @ 1 T=
    SC-CASE# @ 1 T= ;
 
+\ ---- bare `using TEST` manifest form is parsed like the qualified form --------
+: SCT-PARSE-MEMBERS-BARE ( -- )
+   SCT-QUIET SC-RESET
+   SCT-CASE-RESET
+   s" using TEST" SCT-CASE-LINE
+   s" SUITE argv-demo" SCT-CASE-LINE
+   s" lib/argv-test.f -- --json -o OUT -- file.f --literal" SCT-CASE-LINE
+   s" ;SUITE" SCT-CASE-LINE
+   s" ;using" SCT-CASE-LINE
+   \ after ;using the bare SUITE is out of TEST scope: NOT a header, member ignored
+   s" SUITE not-a-header" SCT-CASE-LINE
+   s" leaked-test.f" SCT-CASE-LINE
+   SCT-CASE$ SC-CASES-SCAN$
+   \ exactly one in-scope suite, one member; the mid-line fake file.f and the
+   \ post-;using SUITE/member are both excluded
+   SC-SUITE# @ 1 T=
+   SC-CASE# @ 1 T= ;
+
+\ ---- bare maki form (SUITE <file> under using TEST) captures master entries ----
+: SCT-MAKI-BARE ( -- )
+   SCT-QUIET SC-RESET
+   0 SC-MK-MODE !
+   SCT-CASE-RESET
+   s" using TEST" SCT-CASE-LINE
+   s" GROUP SEQ demo" SCT-CASE-LINE
+   s" SUITE maki/one-test.f" SCT-CASE-LINE
+   s" ;SUITE" SCT-CASE-LINE
+   s" SUITE maki/two-test.f" SCT-CASE-LINE
+   s" ;SUITE" SCT-CASE-LINE
+   s" ;GROUP" SCT-CASE-LINE
+   s" ;using" SCT-CASE-LINE
+   SCT-CASE$ SC-MK-SCAN$
+   \ two master entries captured from the bare `SUITE <file>` headers
+   SC-MK# @ 2 T= ;
+
 \ ---- (a) orphan: a member in no scheduled group / table is a finding ---------
 : SCT-ORPHAN ( -- )
    SCT-QUIET SC-RESET
@@ -189,6 +224,8 @@ variable SCT-GX-U
    T-RESET
    SCT-LIVE-GREEN
    SCT-PARSE-MEMBERS
+   SCT-PARSE-MEMBERS-BARE
+   SCT-MAKI-BARE
    SCT-ORPHAN
    SCT-CANDIDATE-SCHEDULE
    SCT-PTX-MISSING
