@@ -72,9 +72,18 @@ $4000 constant MACOS-DATA-CONST  \ __DATA_CONST page (__got + zero fill)
 \ composed candidate at 127960 (STALE-BASELINE, was 127524), floor 548 -> 984.
 \ Page count, signature, and whole-file total are unchanged (the __TEXT pad
 \ absorbs the growth).
-127960 constant MACOS-CODE-TEXT   \ CODELEN: every emitter-phase row (baked-source incl.)
+\ 2026-07-20 re-measured live at the composed macOS fixpoint after rebasing onto
+\ spark's linux-side landings: the AOT DATA-reserve boot guard + CAP-PEND ring
+\ (src/habu/habu2.f, spark measured +104 on linux-arm64) grow macOS engine text
+\ by +88, and the JIT constant-push / binary-prep de-duplication
+\ (dot habu-share-duplicated-jit, spark measured -272 on linux-arm64) shaves the
+\ exact same -272 on macOS. The exact-CODELEN ratchet measured the composed
+\ candidate at 127776 (STALE-BASELINE, was 127960), floor 984 -> 800. Page
+\ count, signature, and whole-file total are unchanged (the __TEXT pad absorbs
+\ the delta).
+127776 constant MACOS-CODE-TEXT   \ CODELEN: every emitter-phase row (baked-source incl.)
 1423 constant MACOS-SIGNATURE     \ ad-hoc code signature SuperBlob (grows with CODELEN)
-984 constant MACOS-FLOOR-DIST     \ code above the 16 KiB floor: the page-recovery shave
+800 constant MACOS-FLOOR-DIST     \ code above the 16 KiB floor: the page-recovery shave
 165367 constant MACOS-TOTAL       \ = FILE-SIZE bin/hb = GB-SIZE-BASELINE-MACOS
 
 \ Linux committed attribution, measured at the byte-fixpoint on 2026-07-19 (DGX
