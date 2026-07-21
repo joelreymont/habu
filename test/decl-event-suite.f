@@ -11,7 +11,8 @@
 \ the family/variant/schema registry cursors); STRUCTURE and ENUM consumers observe
 \ identical field events; the field-record name gate throws pass through unchanged;
 \ duplicate POLICY / DERIVE and out-of-range arity reject; snapshot identity is
-\ deterministic. A failure prints F<index> + detail; REPORT exits 1 on any fail.
+\ deterministic; standalone PUBLISH cannot bypass the contiguity preflight.
+\ A failure prints F<index> + detail; REPORT exits 1 on any fail.
 \
 \ Each field-publishing case uses its OWN family so committed field rows never
 \ collide on slot/byte layout across cases; header-only cases reuse one family.
@@ -235,6 +236,40 @@ DECL-EVENT:OPEN TOK !
 TOK @ 1 + FP1 @ ' DECL-EVENT:DECL catch TC ! drop drop
 TC @ 7161 T=
 TOK @ DECL-EVENT:ROLLBACK
+
+\ ---------------------------------------------------------------------------
+\ 11. Standalone PUBLISH runs the same contiguity preflight as the coordinator.
+\     Inject one field row through this package's own field token without its
+\     matching event; PUBLISH rejects before either published high-water moves.
+\ ---------------------------------------------------------------------------
+package DECL-EVENT
+
+: TEST-ADD-UNTRACKED-FIELD ( n -- ) {: fam:n :}
+   DEV-TX-TOP DEVTX.FLDTOK @ fam DEV-NO-VARIANT
+   s" untracked" SCHROOT @ 0 1 0 CELL CELL 0 DEV-FLD-ADD drop ;
+
+: TEST-PUBLISH ( -- ) TOK @ PUBLISH ;
+
+: TEST-PUBLISH-CATCH ( -- n )
+   [: TEST-PUBLISH ;] catch ;
+
+: TEST-STANDALONE-PREFLIGHT ( -- )
+   COUNT P-DEV !
+   TYPE-FIELD:COUNT P-PF !
+   OPEN TOK !
+   TOK @ FD3 @ DECL TOK !
+   FD3 @ TEST-ADD-UNTRACKED-FIELD
+   TEST-PUBLISH-CATCH TC !
+   TC @ E-DEV-STATE T=
+   COUNT P-DEV @ T=
+   TYPE-FIELD:COUNT P-PF @ T=
+   DEPTH 1 T=
+   TC @ 0 <> if TOK @ ROLLBACK then
+   DEPTH 0 T= ;
+
+TEST-STANDALONE-PREFLIGHT
+
+;package
 
 \ ---------------------------------------------------------------------------
 : REPORT ( -- )

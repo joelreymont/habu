@@ -378,6 +378,7 @@ variable DEV-TX-SERIAL
    DEV-TX-DEPTH @ 1 - DEV-TX-DEPTH ! ;
 
 : DEV-PUBLISH ( n -- ) {: tok:n :}
+   tok DEV-PREPARE
    tok DEV-COMMIT
    tok DEV-FINALIZE ;
 

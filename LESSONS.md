@@ -1,6 +1,6 @@
 # Lessons
 
-Last updated: 2026-07-21
+Last updated: 2026-07-22
 
 Durable, transferable rules only — "when X, do/never Y because Z", with the
 specific word / path / constant / error kept. Coding standards live in
@@ -1927,7 +1927,13 @@ fits.
   accidentally publish an outer transaction's still-provisional rows.
 - **Dictionary publication spans records, code, and data.** Retain all three
   high-waters until global finalization; restoring only one leaves a generated
-  declaration partly visible after rollback.
+  declaration partly visible after rollback. A monotonic, non-reused identity
+  counter such as WIDN remains consumed only when record truncation removes every
+  lookup path to the identity, leaving an unreachable hole rather than an alias.
+- **Every supported transaction commit entry runs the same preflight.** A
+  standalone convenience path that jumps directly to commit can publish state
+  the coordinated path rejects; route both through one prepare invariant before
+  advancing any visible high-water.
 - **Keep declaration grammar checked.** Store source spans in typed locals and
   express byte grammar directly, so parsing needs neither trusted character
   predicates nor return-stack hiding.
