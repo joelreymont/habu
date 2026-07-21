@@ -148,6 +148,27 @@ TRUSTED: CU-MEMCPY-DTOH ( ptr u8 cuda-devptr len -- rc )
    FFI:RESET  dst len 0 FFI:WRITABLE!  src 1 FFI:VALUE!  len 2 FFI:VALUE!
    FFI:ARGS FFI:REG-LENS 3 call ffi-call-bounded ;
 
+\ ---- host-memory registration (UMA zero-copy residency; epic habu-epic-gb10-uma-391d12e8).
+\ Register an existing host mapping (e.g. an mmap'd weight file) so a kernel reads
+\ it through the device address space; the host address is passed by value.
+TRUSTED: CU-MEM-HOST-REGISTER ( n len n -- rc )
+   {: p:n bytes:len flags:n :}
+   s" cuMemHostRegister_v2" SYMBOL {: call:n :}
+   FFI:RESET  p 0 FFI:VALUE!  bytes 1 FFI:VALUE!  flags 2 FFI:VALUE!
+   FFI:ARGS FFI:REG-LENS 3 call ffi-call-bounded ;
+
+TRUSTED: CU-MEM-HOST-GET-DEVICE-POINTER ( ptr a n n -- rc )
+   {: out:ptr p:n flags:n :}
+   s" cuMemHostGetDevicePointer_v2" SYMBOL {: call:n :}
+   FFI:RESET  out 8 0 FFI:WRITABLE!  p 1 FFI:VALUE!  flags 2 FFI:VALUE!
+   FFI:ARGS FFI:REG-LENS 3 call ffi-call-bounded ;
+
+TRUSTED: CU-MEM-HOST-UNREGISTER ( n -- rc )
+   {: p:n :}
+   s" cuMemHostUnregister" SYMBOL {: call:n :}
+   FFI:RESET  p 0 FFI:VALUE!
+   FFI:ARGS FFI:REG-LENS 1 call ffi-call-bounded ;
+
 TRUSTED: CU-FUNC-SET-BLOCK-SHAPE ( cuda-fn n n n -- rc )
    {: fn:cuda-fn x:n y:n z:n :}
    s" cuFuncSetBlockShape" SYMBOL {: call:n :}

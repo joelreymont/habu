@@ -23,6 +23,9 @@ test/*.tmp
 # runtime-fetched GPT-2 vocab artifacts (fetch-gpt2-vocab.sh; never committed)
 gpt2-vocab/
 
+# runtime-fetched GPT-2 safetensors weights (fetch-gpt2-model.sh; never committed)
+gpt2-model/
+
 # generated benchmark evidence and reports stay outside git
 bench/llm/RESULTS*.md
 bench/llm/*.json

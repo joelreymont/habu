@@ -251,6 +251,8 @@ SUITE maki/producer-test.f
 ;SUITE
 SUITE maki/config-test.f
 ;SUITE
+SUITE maki/infer/safetensors-test.f
+;SUITE
 SUITE maki/journal-test.f
 ;SUITE
 SUITE maki/rev-test.f

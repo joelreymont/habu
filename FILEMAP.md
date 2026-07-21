@@ -1462,6 +1462,21 @@ points stay listed.
   the named rejects (E-KV-CONFIG/POOL/SEQS/SEQ/STATE/BOUNDS), and a random
   alloc/append/fork/free churn holding the watermark exact (== distinct referenced
   pages) with `KV:CHECK` intact every round.
+- `maki/infer/safetensors.f` — native safetensors weight loader for the GB10 UMA
+  inference engine (`package SAFET`, epic habu-epic-gb10-uma-391d12e8 M1): mmaps the
+  checkpoint read-only and registers each tensor as a zero-copy typed span (dtype,
+  shape, data pointer, byte length) over the mapping, streaming the JSON header with
+  the pull reader `lib/json-read.f` (the DOM `tools/json.f` overflows on real
+  models). Fail-closed named `E-ST-*` codes, no partial registration. Owns -7600..-7607.
+- `maki/infer/safetensors-test.f` — hermetic red-first coverage: builds a synthetic
+  file in Forth and parses it back through mmap, rejects every malformed input
+  (truncated header, bad JSON, out-of-range / overlapping / misaligned / mismatched
+  offsets, unknown dtype, missing field) with its named code, and a presence-gated
+  real leg asserting the HF GPT-2 tensor census (160 tensors, wte [50257,768]).
+- `maki/infer/resid-kernel.cu` / `maki/infer/residency-probe.f` — the sanctioned
+  UMA weight-residency timing lane: a grid-stride read-reduction kernel timed over a
+  directly-mmap'd host pointer vs a registered mapping vs a copied device buffer
+  (docs/gb10-uma-residency.md). Manual device-only run; not part of the cold gate.
 - `maki/journal.f` — the append-only audit journal + audit-event-id wire codec (the
   audit-event-id leg of MODEL-CAD-V2-PLAN.md § 23.9): `JOURNAL:APPEND` records an event
   descriptor and mints the NEXT monotonic sequence id - OCCURRENCE-identified, so an
