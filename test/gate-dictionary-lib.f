@@ -566,7 +566,15 @@ variable GD-START-NS
    SB-RESET
    s" -1" GE-OUT-LINE
    s" 1" GE-OUT-LINE
-   SB$ s" hb package checker scope output" GE-EXPECT-OUT ;
+   SB$ s" hb package checker scope output" GE-EXPECT-OUT
+   GE-SRC-RESET
+   s" package GD-QCHECK" GE-SRC-LINE
+   s" public" GE-SRC-LINE
+   s" : TARGET ( -- n ) 41 ;" GE-SRC-LINE
+   s" ;package" GE-SRC-LINE
+   s" undefine GD-QCHECK:TARGET" GE-SRC-LINE
+   s" : GD-QCHECK-CALL ( -- n ) GD-QCHECK:TARGET ;" GE-SRC-LINE
+   $46 s" GD-QCHECK:TARGET" s" checker forgets qualified undefined word" GD-CHECK-BUF-BAD ;
 
 : GD-PACKAGE-NORET ( -- )
    GE-HB-RESET
@@ -750,12 +758,39 @@ variable GD-START-NS
    s" : GD-RV-FIVE ( -- n ) 5 ;" GE-SRC-LINE
    s" : GD-RV-INSTALL ( -- ) [: GD-RV-FIVE ;] is GD-RV ;" GE-SRC-LINE
    s" GD-RV-INSTALL GD-RV ." GE-SRC-LINE
+   s" package GD-QUNDEF" GE-SRC-LINE
+   s" public" GE-SRC-LINE
+   s" : TARGET ( -- n ) 41 ;" GE-SRC-LINE
+   s" ;package" GE-SRC-LINE
+   s" undefine GD-QUNDEF:TARGET" GE-SRC-LINE
+   s" s" GE-SRC+ GE-DQ GE-SRC-C s"  GD-QUNDEF:TARGET" GE-SRC+ GE-DQ GE-SRC-C
+   s"  XREF-FIND XREF-FOUND? ." GE-SRC-LINE
+   s" package GD-QUNDEF" GE-SRC-LINE
+   s" public" GE-SRC-LINE
+   s" : TARGET ( -- n ) 42 ;" GE-SRC-LINE
+   s" ;package" GE-SRC-LINE
+   s" GD-QUNDEF:TARGET ." GE-SRC-LINE
+   s" variable GD-UQ-A   variable GD-UQ-U" GE-SRC-LINE
+   s" : GD-UQ-GO ( -- ) GD-UQ-A @ GD-UQ-U @ INCLUDE-EVALUATE ;" GE-SRC-LINE
+   s" : GD-UQ-CATCH ( ptr u8 n -- n ) GD-UQ-U ! GD-UQ-A ! [: GD-UQ-GO ;] catch ;" GE-SRC-LINE
+   s" s" GE-SRC+ GE-DQ GE-SRC-C s"  undefine PCAP-CAPTURED:MAKE" GE-SRC+ GE-DQ GE-SRC-C
+   s"  GD-UQ-CATCH ." GE-SRC-LINE
+   s" s" GE-SRC+ GE-DQ GE-SRC-C s"  PCAP-CAPTURED:MAKE" GE-SRC+ GE-DQ GE-SRC-C
+   s"  XREF-FIND XREF-FOUND? ." GE-SRC-LINE
+   s" : GD-QROLL-CALL ( len len -- pcap:captured ) PCAP-CAPTURED:MAKE ;" GE-SRC-LINE
+   s" s" GE-SRC+ GE-DQ GE-SRC-C s"  checker-kept" GE-SRC+ GE-DQ GE-SRC-C
+   s"  type cr" GE-SRC-LINE
    s" hb explicit undefine redefinition" GE-EVAL-RUN-STDIN
    SB-RESET
    s" 2" GE-OUT-LINE
    s" 4" GE-OUT-LINE
    s" 6" GE-OUT-LINE
    s" 5" GE-OUT-LINE
+   s" 0" GE-OUT-LINE
+   s" 42" GE-OUT-LINE
+   s" 7111" GE-OUT-LINE
+   s" -1" GE-OUT-LINE
+   s" checker-kept" GE-OUT-LINE
    SB$ s" hb explicit undefine redefinition output" GE-EXPECT-OUT ;
 
 : GD-EXPLICIT-REDEF-CHECK-BODY ( -- )
@@ -905,7 +940,14 @@ variable GD-START-NS
    s" : E ( -- n ) 1 ;" GE-SRC-LINE
    s" ;package" GE-SRC-LINE
    s" E ." GE-SRC-LINE
-   $46 s" E" s" package hides public word from global lookup" GD-RUN-BAD-CHILD ;
+   $46 s" E" s" package hides public word from global lookup" GD-RUN-BAD-CHILD
+   GE-SRC-RESET
+   s" package GD-UQ" GE-SRC-LINE
+   s" public" GE-SRC-LINE
+   s" : KEEP ( -- n ) 73 ;" GE-SRC-LINE
+   s" ;package" GE-SRC-LINE
+   s" undefine GD-UQ:MISSING" GE-SRC-LINE
+   70 s" undefine: word not found" s" unknown qualified undefine fails closed" GD-RUN-BAD-SOURCE ;
 
 : GD-STRUCTURE-SOURCE ( -- )
    GE-SRC-RESET

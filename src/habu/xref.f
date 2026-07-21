@@ -257,19 +257,22 @@ TRUSTED: XREF-PATCH32 ( n ptr a -- )
       1-
    repeat drop ;
 
+\ A qualified token names PACKAGE:TAIL, but its dictionary record stores TAIL
+\ in the package wordlist. Retire from that resolved record identity; the
+\ original spelling remains the checker-side symbol identity below.
+: XREF-RETIRE-INDEX ( n -- )
+   XREF-REC dup XREF-NAME$ rot XREF-WORDLIST XREF-RETIRE-WL ;
+
 : UNDEFINE-NAME ( ptr u8 n -- )
    XREF-SU ! XREF-SN!
-   XREF-SN@ XREF-SU @ CHECKER-UNDEFINE-GUARD   \ generated ctors reject BEFORE retirement
-   XREF-SN@ XREF-SU @ XREF-FIND-TARGET-INDEX XREF-REQUIRE-UNDEFINE XREF-REC XREF-WORDLIST XREF-WID !
-   XREF-SN@ XREF-SU @ XREF-WID @ XREF-RETIRE-WL
-   XREF-SN@ XREF-SU @ CHECKER-UNDEFINE ;
+   XREF-SN@ XREF-SU @ XREF-FIND-TARGET-INDEX XREF-REQUIRE-UNDEFINE XREF-IDX !
+   XREF-SN@ XREF-SU @ CHECKER-UNDEFINE   \ guarded checker mutation completes before retirement
+   XREF-IDX @ XREF-RETIRE-INDEX ;
 
 : UNDEFINE-FOUND ( ptr u8 n n -- )
    XREF-IDX ! XREF-SU ! XREF-SN!
-   XREF-SN@ XREF-SU @ CHECKER-UNDEFINE-GUARD   \ generated ctors reject BEFORE retirement
-   XREF-IDX @ XREF-REC XREF-WORDLIST
-   XREF-SN@ XREF-SU @ rot XREF-RETIRE-WL
-   XREF-SN@ XREF-SU @ CHECKER-UNDEFINE ;
+   XREF-SN@ XREF-SU @ CHECKER-UNDEFINE
+   XREF-IDX @ XREF-RETIRE-INDEX ;
 
 : UNDEFINE-IF-DEFINED ( ptr u8 n -- )
    XREF-SU ! XREF-SN!
