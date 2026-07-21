@@ -60,6 +60,11 @@ PRODUCT scalar 0
    FIELD value n
 ;PRODUCT
 
+ENUM-DECL:ED-RUN lcnamed 0
+   VARIANT empty ;VARIANT
+   VARIANT shade FIELD value color ;VARIANT
+;ENUM
+
 : CLEARED-CERT ( -- )
    SNAPSHOT
    CERT-N @ 10 EQ
@@ -101,12 +106,23 @@ LOWER-CERT:FETCH-DATA-CELLS-CELL BLOB@ 4 EQ
 19 BLOB@ 2 EQ
 20 BLOB@ 0 EQ
 
+\ A unified named-field enum walks the committed field schema, including the
+\ nested enum guard, while its fieldless sibling contributes no payload task.
+s" LC-NAMED ( ptr lcnamed -- lcnamed ) @" 2dup SOURCE! CHECK! -1 EQ
+SNAPSHOT
+CERT-N @ 10 > YES
+LOWER-CERT:NEEDS-CELL BLOB@ 1 EQ
+LOWER-CERT:WF-COUNT-CELL BLOB@ 1 EQ
+LOWER-CERT:FETCH-COUNT-CELL BLOB@ 1 EQ
+LOWER-CERT:FETCH-DATA-CELLS-CELL BLOB@ 10 EQ
+
 \ A forced-success multi-error publication must not freeze the prior enum
 \ fetch descriptor. The hook replaces it with a canonical empty certificate.
 LCT-MULTI-ERR-BEGIN
 s" : LC-MULTI-BAD ( n -- n ) drop ;" evaluate
 LCT-MULTI-ERR-END 1 EQ
 CLEARED-CERT
+s" LC-NAMED-BAD ( ptr lcnamed -- color ) @" 2dup SOURCE! CHECK! 0 EQ
 
 s" LC-SCALAR ( ptr scalar -- scalar ) @" 2dup SOURCE! CHECK! -1 EQ
 SNAPSHOT

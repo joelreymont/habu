@@ -268,6 +268,22 @@ s" ENUM-DECL:ED-RUN idc ia ib ic id ;ENUM" EV
 DECL-EVENT:IDENTITY RC @ <> T-TRUE                    \ different declaration -> different identity
 REG-RESTORE
 
+\ Named payload declarations have the same deterministic snapshot contract for
+\ their ordered schema-bearing FIELD event sequence.
+REG-MARK
+DECL-EVENT:RESET
+s" ENUM-DECL:ED-RUN ids 0 VARIANT empty ;VARIANT VARIANT pair FIELD first n FIELD second f ;VARIANT ;ENUM" EV
+DECL-EVENT:IDENTITY RC !
+REG-RESTORE
+DECL-EVENT:RESET
+s" ENUM-DECL:ED-RUN ids 0 VARIANT empty ;VARIANT VARIANT pair FIELD first n FIELD second f ;VARIANT ;ENUM" EV
+DECL-EVENT:IDENTITY RC @ T=
+REG-RESTORE
+DECL-EVENT:RESET
+s" ENUM-DECL:ED-RUN ids 0 VARIANT empty ;VARIANT VARIANT pair FIELD first n FIELD second f FIELD third n ;VARIANT ;ENUM" EV
+DECL-EVENT:IDENTITY RC @ <> T-TRUE
+REG-RESTORE
+
 \ ---------------------------------------------------------------------------
 : REPORT ( -- )
    #FAIL @ 0 = if s" ok" type cr exit then

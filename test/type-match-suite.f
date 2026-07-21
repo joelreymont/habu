@@ -55,6 +55,10 @@ SUMTYPE mlin 2
   VARIANT ok  a ;VARIANT
   VARIANT err b ;VARIANT
 ;SUMTYPE
+ENUM-DECL:ED-RUN mnamedlin 0
+  VARIANT hold FIELD token mtok ;VARIANT
+  VARIANT empty ;VARIANT
+;ENUM
 \ variants spelled like stack words: the generated constructors MWV:DUP/MWV:SWAP
 \ are qualified defs. Declared EARLY (dot habu-qualified-defs-leak-aadeb5c9 fixed):
 \ a qualified def no longer leaks a bare-global `dup`/`swap` effect row, so the
@@ -113,6 +117,9 @@ s" MATCH-OK" type cr
 \ (test-fixture boundary, engine-suite T-FREE-OWN pattern; the sole checked way
 \ to release a linear to nothing), so a branch can fully discharge the payload.
 \ ---------------------------------------------------------------------------
+s" MLC=" type s" KLC ( mtok -- mtok mtok ) dup" CHECK-QUIET-CANDIDATE! 0 T=
+s" MLN1=" type s" KNL1 ( mnamedlin -- mnamedlin mnamedlin ) dup" CHECK-QUIET-CANDIDATE! 0 T=
+s" MLN2=" type s" KNL2 ( mnamedlin -- ) drop" CHECK-QUIET-CANDIDATE! 0 T=
 s" ML1=" type s" K1 ( mlin<mtok,n> -- mlin<mtok,n> ) MATCH mlin ok OF construct mlin ok ENDOF err OF construct mlin err ENDOF ;MATCH" CHECK-QUIET-CANDIDATE! -1 T=
 \ moving the linear payload out through the join is legitimate consumption.
 SUMTYPE mlin2 2
@@ -125,6 +132,11 @@ s" ML3=" type s" KB1 ( mlin<mtok,n> -- mlin<mtok,n> ) MATCH mlin ok OF drop 0 co
 s" ML4=" type s" KB2 ( mlin<mtok,n> -- mlin<mtok,n> ) MATCH mlin ok OF dup drop construct mlin ok ENDOF err OF construct mlin err ENDOF ;MATCH" CHECK-QUIET-CANDIDATE! 0 T=
 \ FREE-MTOK: abstract linear consumer (test-fixture boundary; released to nothing).
 s" FREE-MTOK" s" mtok --" TRUST
+\ Named-field construct and MATCH use the same declared payload and preserve
+\ the linear token exactly once.
+s" MLN3=" type s" KNL3 ( mtok -- mnamedlin ) construct mnamedlin hold" CHECK-QUIET-CANDIDATE! -1 T=
+s" MLN4=" type s" KNL4 ( mnamedlin -- n ) MATCH mnamedlin hold OF FREE-MTOK 0 ENDOF empty OF 0 ENDOF ;MATCH" CHECK-QUIET-CANDIDATE! -1 T=
+s" MLN5=" type s" KNL5 ( mnamedlin -- n ) MATCH mnamedlin hold OF 0 ENDOF empty OF 0 ENDOF ;MATCH" CHECK-QUIET-CANDIDATE! 0 T=
 \ full consume: the linear arm frees its refined payload to nothing, the err arm
 \ (payload n, non-linear) passes it through -> accept. The single-consumption
 \ contract: the scrutinee's linear resource is discharged exactly once.
@@ -396,6 +408,47 @@ s" MN1 ( mnopt<mnres<n,n>> -- n ) MATCH mnopt none OF 999 ENDOF some OF MATCH mn
 s" MN2 ( mnopt<mnres<n,n>> -- n ) MATCH mnopt none OF 0 ENDOF some OF drop drop 1 ENDOF ;MATCH" CHECK-QUIET-CANDIDATE! 0 T=
 s" MN3 ( mnopt<mnres<n,n>> -- mnopt<mnres<n,n>> ) MATCH mnopt none OF MNOPT:NONE ENDOF some OF MNOPT:SOME ENDOF ;MATCH" CHECK-QUIET-CANDIDATE! -1 T=
 s" MATCH-NESTED" type cr
+
+\ ---------------------------------------------------------------------------
+\ Unified ENUM declarations store named payload rows in TYPE-FIELD instead of
+\ the legacy positional SUMV schema. These cases prove construct, MATCH,
+\ generic substitution, nested applications, payload order, and diagnostics
+\ all consume the same declared-payload accessors as linearity.
+\ ---------------------------------------------------------------------------
+ENUM-DECL:ED-RUN nec red green blue ;ENUM
+ENUM-DECL:ED-RUN nep 0
+  VARIANT mk FIELD x n FIELD y n ;VARIANT
+;ENUM
+ENUM-DECL:ED-RUN nei 0
+  VARIANT quit ;VARIANT
+  VARIANT move FIELD dx n FIELD dy n ;VARIANT
+;ENUM
+ENUM-DECL:ED-RUN neg 1
+  VARIANT some FIELD value a ;VARIANT
+  VARIANT none ;VARIANT
+;ENUM
+ENUM-DECL:ED-RUN nen 0
+  VARIANT wrap FIELD child nec ;VARIANT
+;ENUM
+
+s" NEC1=" type s" NEC1 ( -- nec ) construct nec green" CHECK-QUIET-CANDIDATE! -1 T=
+s" NEC2=" type s" NEC2 ( nec -- n ) MATCH nec red OF 0 ENDOF green OF 1 ENDOF blue OF 2 ENDOF ;MATCH" CHECK-QUIET-CANDIDATE! -1 T=
+s" NEC3=" type s" NEC3 ( nec -- n ) MATCH nec red OF 0 ENDOF green OF 1 ENDOF ;MATCH" CHECK-QUIET-CANDIDATE! 0 T=
+s" NEP1=" type s" NEP1 ( n n -- nep ) construct nep mk" CHECK-QUIET-CANDIDATE! -1 T=
+s" NEP2=" type s" NEP2 ( nep -- n ) MATCH nep mk OF + ENDOF ;MATCH" CHECK-QUIET-CANDIDATE! -1 T=
+s" NEP3=" type s" NEP3 ( n n -- n ) construct nep mk MATCH nep mk OF + ENDOF ;MATCH" CHECK-QUIET-CANDIDATE! -1 T=
+s" NEP4=" type s" NEP4 ( n ptr u8 -- nep ) construct nep mk" CHECK-QUIET-CANDIDATE! 0 T=
+s" NEI1=" type s" NEI1 ( nei -- n ) MATCH nei quit OF 0 ENDOF move OF + ENDOF ;MATCH" CHECK-QUIET-CANDIDATE! -1 T=
+s" NEG1=" type s" NEG1 ( n -- neg<n> ) construct neg some" CHECK-QUIET-CANDIDATE! -1 T=
+s" NEG2=" type s" NEG2 ( neg<n> -- n ) MATCH neg some OF ENDOF none OF 0 ENDOF ;MATCH" CHECK-QUIET-CANDIDATE! -1 T=
+s" NEN1=" type s" NEN1 ( nen -- n ) MATCH nen wrap OF MATCH nec red OF 0 ENDOF green OF 1 ENDOF blue OF 2 ENDOF ;MATCH ENDOF ;MATCH" CHECK-QUIET-CANDIDATE! -1 T=
+
+s" NED1 ( n ptr u8 -- nep ) construct nep mk" MDG<
+s\" \"variant\":\"mk\"" MDG?
+s\" \"payload_pos\":1" MDG?
+s\" \"field\":\"y\"" MDG?
+MDG-END
+s" ENUM-CONSTRUCT-MATCH" type cr
 
 \ ---------------------------------------------------------------------------
 \ report: "ok" on success, nonzero exit on any failure.

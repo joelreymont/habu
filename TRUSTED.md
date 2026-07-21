@@ -1392,6 +1392,9 @@ test/type-decl-suite.f:TWX-SUMV-SCH-COUNT@ test-metaprog habu-seal-set-check-b36
 test/type-decl-suite.f:TWX-SUMV-SCH-START@ test-metaprog habu-seal-set-check-b3676b33
 test/type-decl-suite.f:TWX-SUMV-TAG@ test-metaprog habu-seal-set-check-b3676b33
 test/type-decl-suite.f:TWX-TAG test-metaprog habu-seal-set-check-b3676b33
+test/type-decl-suite.f:TWX-TDECL-CTOR-PUBLISH test-metaprog habu-seal-set-check-b3676b33
+test/type-decl-suite.f:TWX-TDECL-DERIVE-REQUIRE test-metaprog habu-seal-set-check-b3676b33
+test/type-decl-suite.f:TWX-TDECL-DRV-WORDS test-metaprog habu-seal-set-check-b3676b33
 test/type-decl-suite.f:TWX-TDECL-POLICY test-metaprog habu-seal-set-check-b3676b33
 test/type-decl-suite.f:TWX-TDECL-THROW test-metaprog habu-seal-set-check-b3676b33
 test/type-decl-suite.f:TWX-TFAM-CELL? test-metaprog habu-seal-set-check-b3676b33
@@ -1461,6 +1464,9 @@ test/type-family-suite.f:TWX-SUMV-ADD test-metaprog habu-seal-set-check-b3676b33
 test/type-family-suite.f:TWX-SUMV-CTOR-PKG! test-metaprog habu-seal-set-check-b3676b33
 test/type-family-suite.f:TWX-SUMV-FAM@ test-metaprog habu-seal-set-check-b3676b33
 test/type-family-suite.f:TWX-SUMV-FIND test-metaprog habu-seal-set-check-b3676b33
+test/type-family-suite.f:TWX-SUMV-PAY-FIELD test-metaprog habu-seal-set-check-b3676b33
+test/type-family-suite.f:TWX-SUMV-PAY-N test-metaprog habu-seal-set-check-b3676b33
+test/type-family-suite.f:TWX-SUMV-PAY-ROOT test-metaprog habu-seal-set-check-b3676b33
 test/type-family-suite.f:TWX-SUMV-PAYCELLS@ test-metaprog habu-seal-set-check-b3676b33
 test/type-family-suite.f:TWX-SUMV-TAG@ test-metaprog habu-seal-set-check-b3676b33
 test/type-family-suite.f:TWX-TF-CANON? test-metaprog habu-seal-set-check-b3676b33

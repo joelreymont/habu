@@ -699,8 +699,8 @@ variable TDD-I   variable TDD-J   variable TDD-K
    0 TDD-I !
    BEGIN TDD-I @ count < WHILE
       0 TDD-J !
-      BEGIN TDD-J @ vstart TDD-I @ + SUMV-SCH-COUNT@ < WHILE
-         vstart TDD-I @ + SUMV-SCH-START@ TDD-J @ + SCHEMA-ROOT@ TDECL-DERIVE-NODE-OK
+      BEGIN TDD-J @ vstart TDD-I @ + SUMV-PAY-N < WHILE
+         vstart TDD-I @ + TDD-J @ SUMV-PAY-ROOT SCHEMA-ROOT@ TDECL-DERIVE-NODE-OK
          TDD-J @ 1 + TDD-J !
       REPEAT
       TDD-I @ 1 + TDD-I !
@@ -1040,10 +1040,10 @@ defer TDGEN-QUOT-ROW ( n -- )   \ ( rownode -- )
 TDGEN-QUOT-ROW-INSTALL
 
 : TDGEN-PAYLOAD ( n -- ) {: vid:n :}     \ declared inputs, one per schema root
-   vid SUMV-SCH-COUNT@ {: k:n :}
+   vid SUMV-PAY-N {: k:n :}
    0 TDGEN-J !
    BEGIN TDGEN-J @ k < WHILE
-      vid SUMV-SCH-START@ TDGEN-J @ + SCHEMA-ROOT@ TDGEN-SCH
+      vid TDGEN-J @ SUMV-PAY-ROOT SCHEMA-ROOT@ TDGEN-SCH
       32 TDGEN-C,
       TDGEN-J @ 1 + TDGEN-J !
    REPEAT ;
@@ -1168,7 +1168,7 @@ TDGEN-QUOT-ROW-INSTALL
 : TDGEN-LOCAL1 ( n n -- ) {: c:n i:n :}   \ "<c><i>:n "
    c TDGEN-C,  i TDGEN-DEC  s" :n " TDGEN-APP ;
 : TDGEN-BINDS ( n n -- ) {: vid:n c:n :}  \ "{: c0:n .. :} " over vid's payload slots
-   vid SUMV-SCH-COUNT@ {: m:n :}
+   vid SUMV-PAY-N {: m:n :}
    m 0= IF EXIT THEN
    s" {: " TDGEN-APP
    0 TDD-J !
@@ -1193,7 +1193,7 @@ TDGEN-QUOT-ROW-INSTALL
    BEGIN TDD-I @ fam TFAM-VAR-COUNT@ < WHILE
       vstart TDD-I @ + SUMV-NAME$ TDGEN-APP
       s"  of " TDGEN-APP
-      vstart TDD-I @ + SUMV-SCH-COUNT@ TDGEN-DROPS
+      vstart TDD-I @ + SUMV-PAY-N TDGEN-DROPS
       vstart TDD-I @ + SUMV-TAG@ TDGEN-DEC
       s"  endof " TDGEN-APP
       TDD-I @ 1 + TDD-I !
@@ -1203,9 +1203,9 @@ TDGEN-QUOT-ROW-INSTALL
    vin SUMV-NAME$ TDGEN-APP  s"  of " TDGEN-APP
    vin vout = IF
       vin 112 TDGEN-BINDS
-      vin SUMV-SCH-COUNT@ TDGEN-CMP
+      vin SUMV-PAY-N TDGEN-CMP
    ELSE
-      vin SUMV-SCH-COUNT@ TDGEN-DROPS
+      vin SUMV-PAY-N TDGEN-DROPS
       s" 1 0= " TDGEN-APP
    THEN
    s" endof " TDGEN-APP ;
@@ -1230,9 +1230,9 @@ TDGEN-QUOT-ROW-INSTALL
 : TDGEN-UNBIND ( n n -- ) {: fam:n c:n :} \ "PKG:UNMAKE " + top-down field binds
    fam s" unmake" TDGEN-DRV-REF  32 TDGEN-C,
    fam TFAM-VAR-START@ {: mk:n :}
-   mk SUMV-SCH-COUNT@ TDD-J !
+   mk SUMV-PAY-N TDD-J !
    BEGIN TDD-J @ 0 > WHILE
-      mk SUMV-SCH-START@ TDD-J @ + 1 - SCHEMA-ROOT@ dup SCHEMA-APP? IF
+      mk TDD-J @ 1 - SUMV-PAY-ROOT SCHEMA-ROOT@ dup SCHEMA-APP? IF
          dup SCHEMA-A@ s" tag" TDGEN-DRV-REF  32 TDGEN-C, THEN
       drop
       s" {: " TDGEN-APP  c TDD-J @ 1 - TDGEN-LOCAL1  s" :} " TDGEN-APP
@@ -1241,7 +1241,7 @@ TDGEN-QUOT-ROW-INSTALL
 : TDGEN-EQ-PROD ( n -- ) {: fam:n :}      \ UNMAKE both values, field-wise compare
    fam 113 TDGEN-UNBIND
    fam 112 TDGEN-UNBIND
-   fam TFAM-VAR-START@ SUMV-SCH-COUNT@ TDGEN-CMP
+   fam TFAM-VAR-START@ SUMV-PAY-N TDGEN-CMP
    59 TDGEN-C, ;
 : TDGEN-EQ-TAGS ( n -- ) {: fam:n :}      \ payload-free family: tag equality (O(V))
    fam s" tag" TDGEN-DRV-REF  s"  swap " TDGEN-APP
@@ -1281,7 +1281,7 @@ variable TDD-H
    vid 112 TDGEN-BINDS
    DRV-FNV-BASIS TDGEN-HEX
    vid SUMV-TAG@ TDGEN-DEC  32 TDGEN-C,  TDGEN-HMIX
-   vid SUMV-SCH-COUNT@ TDGEN-HASH-FOLDS ;
+   vid SUMV-PAY-N TDGEN-HASH-FOLDS ;
 : TDGEN-HASH-BODY ( n -- ) {: fam:n :}    \ sum/enum: MATCH ladder of per-arm folds
    fam TDGEN-MATCH-OPEN
    fam TFAM-VAR-START@ {: vstart:n :}
@@ -1296,7 +1296,7 @@ variable TDD-H
 : TDGEN-HASH-PROD ( n -- ) {: fam:n :}    \ product: UNMAKE, fold fields (no tag)
    fam 112 TDGEN-UNBIND
    DRV-FNV-BASIS TDGEN-HEX
-   fam TFAM-VAR-START@ SUMV-SCH-COUNT@ TDGEN-HASH-FOLDS
+   fam TFAM-VAR-START@ SUMV-PAY-N TDGEN-HASH-FOLDS
    59 TDGEN-C, ;
 : TDECL-TAG-WORD ( n -- ) {: fam:n :}
    TDGEN-CLEAR

@@ -99,6 +99,9 @@ TRUSTED: TWX-SUMV-ADD ( n ptr u8 n n n n n -- n ) SUMV-ADD ;
 TRUSTED: TWX-SUMV-CTOR-PKG! ( n n n -- ) SUMV-CTOR-PKG! ;
 TRUSTED: TWX-SUMV-FAM@ ( n -- n ) SUMV-FAM@ ;
 TRUSTED: TWX-SUMV-FIND ( n ptr u8 n -- n bool ) SUMV-FIND ;
+TRUSTED: TWX-SUMV-PAY-FIELD ( n n -- n bool ) SUMV-PAY-FIELD ;
+TRUSTED: TWX-SUMV-PAY-N ( n -- n ) SUMV-PAY-N ;
+TRUSTED: TWX-SUMV-PAY-ROOT ( n n -- n ) SUMV-PAY-ROOT ;
 TRUSTED: TWX-SUMV-PAYCELLS@ ( n -- n ) SUMV-PAYCELLS@ ;
 TRUSTED: TWX-SUMV-TAG@ ( n -- n ) SUMV-TAG@ ;
 TRUSTED: TWX-TF-CANON? ( ptr u8 n -- bool ) TF-CANON? ;
@@ -318,6 +321,10 @@ FID @ 40 6 TWX-TFAM-SPAN!              FID @ TWX-TFAM-SPAN@ 6 T= 40 T=
 FID @ 0 TWX-TFAM-PK@ PK-CELL T=
 FID @ 0 PK-TYPE TWX-TFAM-PK!           FID @ 0 TWX-TFAM-PK@ PK-TYPE T=
 PID @ 0 TWX-TFAM-PK@ PK-CELL T=        PID @ 1 TWX-TFAM-PK@ PK-CELL T=
+\ The setter probe above uses a synthetic, unpublished field range. Retire it
+\ before later semantic payload reads; a nonzero count now correctly selects
+\ named representation and rejects invalid committed bounds.
+FID @ 0 0 TWX-TFAM-FLD-RANGE!
 
 \ ---------------------------------------------------------------------------
 \ 9. SCHEMA nodes: valid builders, malformed rejection, root pool + growth.
@@ -465,6 +472,65 @@ PFOUT @ TYPE-FIELD:VARIANT@ VOK @ T=
 PFOUT @ TYPE-FIELD:BYTES@ CELL T=  PFOUT @ TYPE-FIELD:ALIGN@ CELL T=
 PFIN @ TYPE-FIELD:VARIANT@ VERR @ T=
 PFIN @ TYPE-FIELD:BYTES@ CELL T=   PFIN @ TYPE-FIELD:ALIGN@ CELL T=
+
+\ The canonical payload seam selects one representation for the whole family.
+\ Named rows preserve declaration order, a fieldless sibling stays empty, and
+\ neither a missing named index nor a mixed legacy schema can fall back.
+variable UFAM   variable UEMPTY   variable UNAMED   variable UBASE
+variable USCH0  variable USCH1   variable MFAM     variable MRAW
+variable MNAMED variable MBASE
+CC-N TWX-SCHEMA-CON TWX-SCHEMA-ROOT+ USCH0 !
+CC-BOOL TWX-SCHEMA-CON TWX-SCHEMA-ROOT+ USCH1 !
+s" pkgu" CHECKER-PACKAGE-PUBLIC s" uenum" 0 TK-SUM TWX-TFAM-DECL UFAM !
+UFAM @ s" empty" 0 0 0 0 TWX-SUMV-ADD UEMPTY !
+UFAM @ s" named" 1 0 0 0 TWX-SUMV-ADD UNAMED !
+UFAM @ UEMPTY @ 2 TWX-TFAM-VAR-RANGE!
+UFAM @ 2 TWX-TFAM-SLOTS!
+TYPE-FIELD:COUNT UBASE !
+TWX-PF-BEGIN PFTX !
+PFTX @ UFAM @ UNAMED @ s" first" USCH0 @ 0 1 0 CELL CELL PF-FLAGS-NONE TWX-PF-ADD PFTX !
+PFTX @ UFAM @ UNAMED @ s" second" USCH1 @ 1 1 CELL CELL CELL PF-FLAGS-NONE TWX-PF-ADD PFTX !
+PFTX @ TWX-PF-COMMIT
+UFAM @ UBASE @ 2 TWX-TFAM-FLD-RANGE!
+UEMPTY @ TWX-SUMV-PAY-N 0 T=
+UNAMED @ TWX-SUMV-PAY-N 2 T=
+UNAMED @ 0 TWX-SUMV-PAY-ROOT USCH0 @ T=
+UNAMED @ 1 TWX-SUMV-PAY-ROOT USCH1 @ T=
+UNAMED @ 0 TWX-SUMV-PAY-FIELD FOUNDF ! PFOUT !
+FOUNDF @ -1 T=  PFOUT @ TYPE-FIELD:NAME$ s" first" T$=
+UNAMED @ 1 TWX-SUMV-PAY-FIELD FOUNDF ! PFOUT !
+FOUNDF @ -1 T=  PFOUT @ TYPE-FIELD:NAME$ s" second" T$=
+UNAMED @ 2 ' TWX-SUMV-PAY-ROOT catch TC ! 2drop  TC @ E-TFAM-PAYLOAD T=
+\ A nonempty field count selects named representation. Corrupt bounds reject;
+\ they never make the same family fall back to its legacy SUMV storage.
+UFAM @ TYPE-FIELD:COUNT 1 + 1 TWX-TFAM-FLD-RANGE!
+UNAMED @ ' TWX-SUMV-PAY-N catch TC ! drop  TC @ E-TFAM-PAYLOAD T=
+UFAM @ UBASE @ 2 TWX-TFAM-FLD-RANGE!
+UNAMED @ TWX-SUMV-PAY-N 2 T=
+
+\ A rolled-back provisional field never enters the committed payload view.
+TWX-PF-BEGIN PFTX !
+PFTX @ UFAM @ UNAMED @ s" provisional" USCH0 @ 2 1 2 cells CELL CELL PF-FLAGS-NONE
+   TWX-PF-ADD PFTX !
+PFTX @ TWX-PF-ROLLBACK
+UNAMED @ TWX-SUMV-PAY-N 2 T=
+UNAMED @ 1 TWX-SUMV-PAY-FIELD FOUNDF ! PFOUT !
+FOUNDF @ -1 T=  PFOUT @ TYPE-FIELD:NAME$ s" second" T$=
+
+\ If any variant carries a legacy positional schema while the family publishes
+\ named rows, both variants fail at the family-level representation boundary.
+s" pkgu" CHECKER-PACKAGE-PUBLIC s" umixed" 0 TK-SUM TWX-TFAM-DECL MFAM !
+MFAM @ s" raw" 0 USCH0 @ 1 1 TWX-SUMV-ADD MRAW !
+MFAM @ s" named" 1 0 0 0 TWX-SUMV-ADD MNAMED !
+MFAM @ MRAW @ 2 TWX-TFAM-VAR-RANGE!
+MFAM @ 1 TWX-TFAM-SLOTS!
+TYPE-FIELD:COUNT MBASE !
+TWX-PF-BEGIN PFTX !
+PFTX @ MFAM @ MNAMED @ s" value" USCH0 @ 0 1 0 CELL CELL PF-FLAGS-NONE TWX-PF-ADD PFTX !
+PFTX @ TWX-PF-COMMIT
+MFAM @ MBASE @ 1 TWX-TFAM-FLD-RANGE!
+MRAW @ ' TWX-SUMV-PAY-N catch TC ! drop  TC @ E-TFAM-PAYLOAD T=
+MNAMED @ ' TWX-SUMV-PAY-N catch TC ! drop  TC @ E-TFAM-PAYLOAD T=
 
 \ Recursive schema validation: owner param bounds, concrete liveness, malformed
 \ PTR/QUOT shapes, APP family/arity/root/kind/visibility, and a valid APP.
@@ -773,7 +839,7 @@ FID @ TFAM-ARITY@ 1 T=
 FID @ TFAM-KIND@ TK-SUM T=
 FID @ 0 TWX-TFAM-PK@ PK-TYPE T=
 s" pkgd" s" tree" TWX-TFAM-FIND-IN FOUNDF ! drop  FOUNDF @ -1 T=
-TFAM-N@ 9 T=
+TFAM-N@ 11 T=                           \ includes the two unified-payload fixtures
 
 \ ---------------------------------------------------------------------------
 \ 14. snapshot persist/restore: run the exact words TWX-CHECKER-SNAPSHOT-PREPARE
@@ -800,6 +866,12 @@ NQ @ TWX-SCHEMA-QUOT-DIN@  NQDIN @ T=
 NQ @ TWX-SCHEMA-QUOT-DIN@  0 TWX-SCHEMA-ROW-ELEM@ NP @ T=
 NQ @ TWX-SCHEMA-QUOT-ROUT@ 0 TWX-SCHEMA-ROW-ELEM@ NP @ T=
 NQ @ TWX-SCHEMA-QUOT-HASR@ -1 T=
+\ The committed named-field view survives snapshot persistence byte-for-byte.
+UEMPTY @ TWX-SUMV-PAY-N 0 T=
+UNAMED @ TWX-SUMV-PAY-N 2 T=
+UNAMED @ 0 TWX-SUMV-PAY-ROOT USCH0 @ T=
+UNAMED @ 1 TWX-SUMV-PAY-FIELD FOUNDF ! PFOUT !
+FOUNDF @ -1 T=  PFOUT @ TYPE-FIELD:NAME$ s" second" T$=
 
 \ ---------------------------------------------------------------------------
 \ 15. ambiguous unqualified public resolution: two OTHER-package publics sharing

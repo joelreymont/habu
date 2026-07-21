@@ -100,6 +100,9 @@ TRUSTED: TWX-SUMV-PAYCELLS@ ( n -- n ) SUMV-PAYCELLS@ ;
 TRUSTED: TWX-SUMV-SCH-COUNT@ ( n -- n ) SUMV-SCH-COUNT@ ;
 TRUSTED: TWX-SUMV-SCH-START@ ( n -- n ) SUMV-SCH-START@ ;
 TRUSTED: TWX-SUMV-TAG@ ( n -- n ) SUMV-TAG@ ;
+TRUSTED: TWX-TDECL-CTOR-PUBLISH ( n n n -- ) TDECL-CTOR-PUBLISH ;
+TRUSTED: TWX-TDECL-DERIVE-REQUIRE ( n n n -- ) TDECL-DERIVE-REQUIRE ;
+TRUSTED: TWX-TDECL-DRV-WORDS ( n -- ) TDECL-DRV-WORDS ;
 TRUSTED: TWX-TDECL-POLICY ( n -- ) TDECL-POLICY ;
 TRUSTED: TWX-TDECL-THROW ( ptr u8 n ptr u8 n n -- ) TDECL-THROW ;
 TRUSTED: TWX-CAND-START ( -- ) CHECK-CANDIDATE-START ;
@@ -1888,6 +1891,51 @@ s" ENUM tdhb1 DERIVE eq order aa bb ;ENUM" E-TDECL-DERIVE TDT-NEG
 s" SUMTYPE tdhb2 0 DERIVE hash VARIANT hash n ;VARIANT ;SUMTYPE" E-TDECL-NAME TDT-NEG
 s" SUMTYPE tdhb3 0 DERIVE hash VARIANT hold ptr u8 ;VARIANT ;SUMTYPE" E-TDECL-DERIVE TDT-NEG
 s" PRODUCT tdhb4 0 DERIVE hash FIELD cc tdrw ;PRODUCT" E-TDECL-DERIVE TDT-NEG
+
+\ Unified named-field ENUM metadata drives the same derivation validator and
+\ semantic generators. Constructor publication for this front end is a later
+\ dot, so this focused whitebox installs only the existing constructor-package
+\ metadata needed to exercise TAG, EQ, and HASH over the canonical payload seam.
+ENUM-DECL:ED-RUN tdnu 0 DERIVE eq hash
+  VARIANT empty ;VARIANT
+  VARIANT pair FIELD first n FIELD second n ;VARIANT
+;ENUM
+s" " s" tdnu" TWX-TFAM-FIND-IN TDOK ! TDF !
+TDOK @ -1 T=
+TDF @ TDF @ TFAM-VAR-START@ TDF @ TFAM-VAR-COUNT@ TWX-TDECL-DERIVE-REQUIRE
+TDF @ TDF @ TFAM-VAR-START@ TDF @ TFAM-VAR-COUNT@ TWX-TDECL-CTOR-PUBLISH
+TDF @ TWX-TDECL-DRV-WORDS
+: TDNU-EQ-EMPTY ( -- bool ) construct tdnu empty construct tdnu empty TDNU:EQ ;
+: TDNU-EQ-PAIR ( -- bool ) 1 2 construct tdnu pair 1 2 construct tdnu pair TDNU:EQ ;
+: TDNU-NEQ-PAY ( -- bool ) 1 2 construct tdnu pair 1 3 construct tdnu pair TDNU:EQ ;
+: TDNU-NEQ-ORDER ( -- bool ) 1 2 construct tdnu pair 2 1 construct tdnu pair TDNU:EQ ;
+: TDNU-NEQ-CROSS ( -- bool ) construct tdnu empty 1 2 construct tdnu pair TDNU:EQ ;
+: TDNU-TAG-PAIR ( -- n ) 1 2 construct tdnu pair TDNU:TAG ;
+: TDNU-HASH-EQ ( -- bool )
+   1 2 construct tdnu pair TDNU:HASH
+   1 2 construct tdnu pair TDNU:HASH = ;
+: TDNU-HASH-ORDER ( -- bool )
+   1 2 construct tdnu pair TDNU:HASH
+   2 1 construct tdnu pair TDNU:HASH = ;
+TDNU-EQ-EMPTY -1 T=
+TDNU-EQ-PAIR -1 T=
+TDNU-NEQ-PAY 0 T=
+TDNU-NEQ-ORDER 0 T=
+TDNU-NEQ-CROSS 0 T=
+TDNU-TAG-PAIR 1 T=
+TDNU-HASH-EQ -1 T=
+TDNU-HASH-ORDER 0 T=
+
+\ The named-field derivation validator resolves the field schema too: a pointer
+\ payload rejects with the same declaration-time error as a legacy SUMTYPE.
+ENUM-DECL:ED-RUN tdnu-bad 0 DERIVE eq
+  VARIANT hold FIELD raw ptr u8 ;VARIANT
+;ENUM
+s" " s" tdnu-bad" TWX-TFAM-FIND-IN TDOK ! TDF !
+TDOK @ -1 T=
+TDF @ TDF @ TFAM-VAR-START@ TDF @ TFAM-VAR-COUNT@
+   ' TWX-TDECL-DERIVE-REQUIRE catch TDTC ! 2drop drop
+TDTC @ E-TDECL-DERIVE T=
 
 \ ---------------------------------------------------------------------------
 \ typed locals for family types (slice 1): a bare arity-0 family tail is a

@@ -746,9 +746,13 @@ variable JPOS  variable JLINE  variable JCOL
 \ the failure was not inside the variant's payload cells.
 : DIAG-PAYLOAD-POS ( -- )                \ "payload_pos":<decl-order slot> when captured
    DPOS @ 0 < IF EXIT THEN
-   DVAR @ SUMV-SCH-COUNT@ {: cnt:n :}
+   DVAR @ SUMV-PAY-N {: cnt:n :}
    DPOS @ cnt < 0= IF EXIT THEN
-   44 EMIT1 s" payload_pos" JKEY  cnt 1 - DPOS @ - JNUM ;
+   cnt 1 - DPOS @ - {: pos:n :}
+   44 EMIT1 s" payload_pos" JKEY  pos JNUM
+   DVAR @ pos SUMV-PAY-FIELD IF
+      44 EMIT1 s" field" JKEY  PF-NAME$ JSTR
+   ELSE drop THEN ;
 : DIAG-VARIANT ( -- )                    \ "variant":"<name>","tag":<n> for the captured arm
    DVAR @ 0 < IF EXIT THEN
    44 EMIT1 s" variant" JKEY  DVAR @ SUMV-NAME$ JSTR

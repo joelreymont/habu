@@ -189,16 +189,16 @@ variable FIELD-I
 : VARIANT-OFF ( n n n n -- n ) {: term:n vid:n idx:n base:n :}
    term ENV-TERM!
    base 0 begin dup idx < while
-      vid SUMV-SCH-START@ over + SCHEMA-ROOT@ SCHEMA-TERM T-WIDTH
+      vid over SUMV-PAY-ROOT SCHEMA-ROOT@ SCHEMA-TERM T-WIDTH
       rot + swap 1 +
    repeat drop ;
 
 : QUEUE-VARIANT ( n n n n -- ) {: term:n off:n tag-off:n vid:n :}
    UNGUARD-TASK 0 0 0 TASK-PUSH
-   vid SUMV-SCH-COUNT@ 1 - PAY-I !
+   vid SUMV-PAY-N 1 - PAY-I !
    begin PAY-I @ 0 >= while
       term ENV-TERM!
-      vid SUMV-SCH-START@ PAY-I @ + SCHEMA-ROOT@ SCHEMA-TERM {: child:n :}
+      vid PAY-I @ SUMV-PAY-ROOT SCHEMA-ROOT@ SCHEMA-TERM {: child:n :}
       term vid PAY-I @ off VARIANT-OFF {: child-off:n :}
       WALK-TASK child child-off 0 TASK-PUSH
       PAY-I @ 1 - PAY-I !

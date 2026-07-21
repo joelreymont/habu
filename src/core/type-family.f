@@ -53,6 +53,7 @@ CELL constant TAGW-CELL     \ default tag width: one stack cell
 7126 constant E-PF-SCHEMA     \ malformed or owner-incompatible schema
 7127 constant E-PF-LAYOUT     \ invalid field layout metadata / policy
 7128 constant E-PF-FLAGS      \ undefined field flag bits
+7132 constant E-TFAM-PAYLOAD  \ malformed or mixed unified payload metadata
 
 variable TF-I                 \ private scan/copy index
 variable TF-PUB               \ private first-public-match accumulator (-1 = none)
@@ -510,7 +511,7 @@ variable SUMV-N   0 SUMV-N !   REG-PROTECT
 : SUMV-TAG@ ( n -- n ) SUMV-REC@ SV.TAG @ ;
 : SUMV-SCH-START@ ( n -- n ) SUMV-REC@ SV.SCH-START @ ;
 : SUMV-SCH-COUNT@ ( n -- n ) SUMV-REC@ SV.SCH-COUNT @ ;
-: SUMV-PAYCELLS@ ( n -- n ) SUMV-REC@ SV.PAYCELLS @ ;
+: SUMV-RAW-PAYCELLS@ ( n -- n ) SUMV-REC@ SV.PAYCELLS @ ;
 : SUMV-N@ ( -- n ) SUMV-N @ ;
 
 \ generated-constructor metadata (item 8). A PUBLIC sum/enum family stores its
@@ -841,6 +842,104 @@ PF-REC CELL / constant PF-REC-CELLS   \ product-field record stride, in cells
 : PF-FLAGS@ ( n -- n ) PF-REC@ PF.FLAGS @ ;
 : PF-N@ ( -- n ) PF-COMMIT-N @ ;
 
+\ A variant has one declared-payload source. Legacy SUMTYPE declarations store
+\ positional roots in the SUMV schema range. The unified ENUM front end stores
+\ named rows in TYPE-FIELD and leaves that range empty. The accessors below are
+\ the single semantic seam for both representations. A sum/enum family with a
+\ nonzero declared field count uses TYPE-FIELD for every variant; invalid bounds,
+\ ownership, or a missing named index are invariant failures, never reasons to
+\ fall back into positional storage. PRODUCT keeps positional schemas for its
+\ generated make/unmake variants. An all-empty family has no payload under either
+\ representation and stays equivalent. Only a bounded, committed,
+\ variant-owned field slice is a valid named representation.
+: SUMV-NAMED-FIELD ( n n -- n bool ) {: vid:n wanted:n :}
+   wanted 0 < IF 0 RES-FALSE EXIT THEN
+   vid SUMV-FAM@ {: fam:n :}
+   fam TFAM-FLD-START@ {: base:n :}
+   fam TFAM-FLD-COUNT@ {: count:n :}
+   base 0 < IF 0 RES-FALSE EXIT THEN
+   count 0 < IF 0 RES-FALSE EXIT THEN
+   base PF-COMMIT-N @ > IF 0 RES-FALSE EXIT THEN
+   count PF-COMMIT-N @ base - > IF 0 RES-FALSE EXIT THEN
+   0
+   0 BEGIN dup count < WHILE
+      base over + {: fid:n :}
+      fid PF-FAM@ fam = fid PF-VAR@ vid = and IF
+         over wanted = IF 2drop fid RES-TRUE EXIT THEN
+         swap 1 + swap
+      THEN
+      1 +
+   REPEAT 2drop 0 RES-FALSE ;
+
+: SUMV-FAMILY-LEGACY-PAYLOAD? ( n -- bool ) {: fam:n :}
+   fam TFAM-VAR-START@ {: base:n :}
+   fam TFAM-VAR-COUNT@ {: count:n :}
+   base 0 < count 0 < or IF E-TFAM-PAYLOAD throw THEN
+   base SUMV-N @ > IF E-TFAM-PAYLOAD throw THEN
+   count SUMV-N @ base - > IF E-TFAM-PAYLOAD throw THEN
+   0 BEGIN dup count < WHILE
+      base over + {: vid:n :}
+      vid SUMV-FAM@ fam <> IF E-TFAM-PAYLOAD throw THEN
+      vid SUMV-SCH-COUNT@ 0 <> IF drop RES-TRUE EXIT THEN
+      1 +
+   REPEAT drop RES-FALSE ;
+
+: SUMV-NAMED-PAYLOAD? ( n -- bool ) {: vid:n :}
+   vid SUMV-FAM@ {: fam:n :}
+   fam TFAM-SUM? fam TFAM-ENUM? or 0= IF RES-FALSE EXIT THEN
+   fam TFAM-FLD-START@ {: base:n :}
+   fam TFAM-FLD-COUNT@ {: count:n :}
+   count 0 < IF E-TFAM-PAYLOAD throw THEN
+   count 0= IF RES-FALSE EXIT THEN
+   base 0 < IF E-TFAM-PAYLOAD throw THEN
+   base PF-COMMIT-N @ > IF E-TFAM-PAYLOAD throw THEN
+   count PF-COMMIT-N @ base - > IF E-TFAM-PAYLOAD throw THEN
+   0 BEGIN dup count < WHILE
+      base over + {: fid:n :}
+      fid PF-FAM@ fam <> IF E-TFAM-PAYLOAD throw THEN
+      fid PF-VAR@ {: owner:n :}
+      owner PF-NO-VARIANT = IF E-TFAM-PAYLOAD throw THEN
+      owner 0 < owner SUMV-N @ >= or IF E-TFAM-PAYLOAD throw THEN
+      owner SUMV-FAM@ fam <> IF E-TFAM-PAYLOAD throw THEN
+      1 +
+   REPEAT drop
+   fam SUMV-FAMILY-LEGACY-PAYLOAD? IF E-TFAM-PAYLOAD throw THEN
+   RES-TRUE ;
+
+: SUMV-PAY-FIELD ( n n -- n bool ) {: vid:n wanted:n :}
+   vid SUMV-NAMED-PAYLOAD? 0= IF 0 RES-FALSE EXIT THEN
+   vid wanted SUMV-NAMED-FIELD ;
+
+: SUMV-PAY-N ( n -- n ) {: vid:n :}
+   vid SUMV-NAMED-PAYLOAD? 0= IF vid SUMV-SCH-COUNT@ EXIT THEN
+   vid SUMV-FAM@ {: fam:n :}
+   fam TFAM-FLD-START@ {: base:n :}
+   0
+   0 BEGIN dup fam TFAM-FLD-COUNT@ < WHILE
+      base over + {: fid:n :}
+      fid PF-FAM@ fam = fid PF-VAR@ vid = and IF swap 1 + swap THEN
+      1 +
+   REPEAT drop ;
+
+: SUMV-PAY-ROOT ( n n -- n ) {: vid:n index:n :}
+   index 0 < IF E-TFAM-PAYLOAD throw THEN
+   vid SUMV-NAMED-PAYLOAD? IF
+      vid index SUMV-NAMED-FIELD 0= IF drop E-TFAM-PAYLOAD throw THEN
+      PF-SCH@ EXIT
+   THEN
+   index vid SUMV-SCH-COUNT@ >= IF E-TFAM-PAYLOAD throw THEN
+   vid SUMV-SCH-START@ index + ;
+
+: SUMV-PAYCELLS@ ( n -- n ) {: vid:n :}
+   vid SUMV-NAMED-PAYLOAD? 0= IF vid SUMV-RAW-PAYCELLS@ EXIT THEN
+   vid SUMV-PAY-N {: count:n :}
+   0
+   0 BEGIN dup count < WHILE
+      vid over SUMV-NAMED-FIELD 0= IF drop E-TFAM-PAYLOAD throw THEN
+      PF-CELLS@ rot + swap
+      1 +
+   REPEAT drop ;
+
 \ --- arg-aware instantiated width (item 12 / layout-cap slice 1, docs §18). The
 \ registry TFAM-WIDTH@ assumes every parameter contributes one cell; that is exact
 \ WHILE family parameters stay cell-kinded, but §18's WIDTH function is defined
@@ -857,10 +956,9 @@ PF-REC CELL / constant PF-REC-CELLS   \ product-field record stride, in cells
    node SCHEMA-APP?   IF node SCHEMA-A@ TFAM-WIDTH@ EXIT THEN
    1 ;
 : SUMV-IWIDTH ( n n -- n ) {: vid:n term:n :}   \ sum of variant vid's payload field inst-widths
-   vid SUMV-SCH-START@ {: ss:n :}
    0                                            \ acc
-   0 BEGIN dup vid SUMV-SCH-COUNT@ < WHILE       \ ( acc j )
-      ss over + SCHEMA-ROOT@ term SCH-NODE-IWIDTH   \ ( acc j wj )
+   0 BEGIN dup vid SUMV-PAY-N < WHILE             \ ( acc j )
+      vid over SUMV-PAY-ROOT SCHEMA-ROOT@ term SCH-NODE-IWIDTH   \ ( acc j wj )
       rot + swap                                 \ ( acc' j )
       1 +
    REPEAT drop ;
@@ -1306,8 +1404,8 @@ defer TFCL-NODE-XT ( n -- bool )
    fam TFAM-SUM? fam TFAM-ENUM? or IF
       0 BEGIN dup fam TFAM-VAR-COUNT@ < WHILE
          fam TFAM-VAR-START@ over + {: vid:n :}
-         0 BEGIN dup vid SUMV-SCH-COUNT@ < WHILE
-            vid SUMV-SCH-START@ over + SCHEMA-ROOT@ TFCL-NODE-XT IF 2drop RES-TRUE EXIT THEN
+         0 BEGIN dup vid SUMV-PAY-N < WHILE
+            vid over SUMV-PAY-ROOT SCHEMA-ROOT@ TFCL-NODE-XT IF 2drop RES-TRUE EXIT THEN
             1 +
          REPEAT drop
          1 +
@@ -1861,22 +1959,16 @@ defer TFC-QUOT-ROW ( n n -- n )   \ ( rownode base -- row )
 : TFC-QUOT-ROW-INSTALL ( -- ) [: TFC-QUOT-ROW-IMPL ;] is TFC-QUOT-ROW ;
 TFC-QUOT-ROW-INSTALL
 
-\ TFC-PUSH-PAY ( term row -- row ) : push one payload term. A genuinely
-\ MULTI-CELL (T-WIDTH>1) resolved layout arg expands to its W hidden physical
-\ fields (PUSH-LOGICAL) so the checker row and the runtime cells agree (docs §11)
-\ and the branch/UNMAKE consumes the whole bundle. Everything else — a cell or
-\ pointer payload, a W=1 layout (enum / single-field product, whose one logical
-\ cell IS the value the branch uses), an OPEN param var (construct's fresh var
-\ before any declared-output recovery), and a possibly-linear arg — stays one
-\ logical cell exactly as MK-PUSH did, so every pre-existing construction and
-\ match arm keeps its verdict AND its payload term shape.
-: TFC-PUSH-PAY ( n n -- n )
-   over T-WIDTH 1 > IF PUSH-LOGICAL ELSE MK-PUSH THEN ;
+\ Payload transport uses the canonical logical-value seam. PUSH-LOGICAL expands
+\ every closed layout to its hidden physical fields, including a width-one enum,
+\ while scalar, pointer, and open terms retain their ordinary one-cell form.
+\ Construct and MATCH therefore share the same representation as signatures.
+: TFC-PUSH-PAY ( n n -- n ) PUSH-LOGICAL ;
 : TFC-PAY-ROW ( n n -- n ) {: vid:n row0:n :}
    row0 TFC-ROW !
    0 TFC-J !
-   BEGIN TFC-J @ vid SUMV-SCH-COUNT@ < WHILE
-      vid SUMV-SCH-START@ TFC-J @ + SCHEMA-ROOT@ TFC-SCH-TERM
+   BEGIN TFC-J @ vid SUMV-PAY-N < WHILE
+      vid TFC-J @ SUMV-PAY-ROOT SCHEMA-ROOT@ TFC-SCH-TERM
       TFC-ROW @ TFC-PUSH-PAY TFC-ROW !
       TFC-J @ 1 + TFC-J !
    REPEAT
@@ -1920,8 +2012,8 @@ TFC-QUOT-ROW-INSTALL
 : TFC-VAR-PAYCELLS ( n -- n ) {: vid:n :}   \ sum of instantiated payload cell widths for a variant
    0
    0 TFC-J !
-   BEGIN TFC-J @ vid SUMV-SCH-COUNT@ < WHILE
-      vid SUMV-SCH-START@ TFC-J @ + SCHEMA-ROOT@ TFC-SCH-TERM T-WIDTH +
+   BEGIN TFC-J @ vid SUMV-PAY-N < WHILE
+      vid TFC-J @ SUMV-PAY-ROOT SCHEMA-ROOT@ TFC-SCH-TERM T-WIDTH +
       TFC-J @ 1 + TFC-J !
    REPEAT ;
 
