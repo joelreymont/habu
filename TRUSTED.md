@@ -1025,12 +1025,18 @@ test/rigid-region-suite.f:RR-BOXR test-metaprog habu-add-bounded-host-b40b048f
 test/rigid-region-suite.f:RR-MK1 test-metaprog habu-add-bounded-host-b40b048f
 test/rigid-region-suite.f:RR-OWN test-metaprog habu-add-bounded-host-b40b048f
 test/rigid-region-suite.f:RR-SHARE test-metaprog habu-add-bounded-host-b40b048f
+test/rigid-region-suite.f:RR-SHARE3 test-metaprog habu-add-bounded-host-b40b048f
+test/rigid-region-suite.f:RR-U3R test-metaprog habu-add-bounded-host-b40b048f
 test/rigid-region-suite.f:RR-UBOX test-metaprog habu-add-bounded-host-b40b048f
 test/rigid-region-suite.f:RR-UEQ test-metaprog habu-add-bounded-host-b40b048f
+test/rigid-region-suite.f:RR-UEQ3 test-metaprog habu-add-bounded-host-b40b048f
 test/rigid-region-suite.f:RR-UONE test-metaprog habu-add-bounded-host-b40b048f
 test/rigid-region-suite.f:RR-XEXT test-metaprog habu-add-bounded-host-b40b048f
+test/rigid-region-suite.f:RR-XEXT3 test-metaprog habu-add-bounded-host-b40b048f
 test/rigid-region-suite.f:RR-XGEN test-metaprog habu-add-bounded-host-b40b048f
+test/rigid-region-suite.f:RR-XGEN3 test-metaprog habu-add-bounded-host-b40b048f
 test/rigid-region-suite.f:RR-XRGN test-metaprog habu-add-bounded-host-b40b048f
+test/rigid-region-suite.f:RR-XRGN3 test-metaprog habu-add-bounded-host-b40b048f
 test/type-layout-lower-pending.f test-metaprog habu-interpret-wide-gate-1d70acf7 4
 test/type-layout-lower-pending.f:TWX-TFAM-FIND-IN test-metaprog habu-seal-set-check-b3676b33
 test/type-match-suite.f:FREE-MTOK test-metaprog habu-tfam-11b-open-ee9c72c6

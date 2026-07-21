@@ -10,10 +10,15 @@
 \ Run standalone:  bin/hb < test/rigid-region-suite.f   (exit 0 + "ok"; dies on miss)
 \ Routed positive case in test/candidate-validation.f.
 \
-\ Modeling note: the checker binds a consumer var to at most a small number of
-\ co-resident fresh atoms per family application, so each fixture carries the one
-\ or two identities it exercises in a device family's early argument slots
-\ (space-global stays concrete). The domains themselves are independent.
+\ Modeling note: consumer type-var binding across 3+ co-resident fresh atoms in
+\ one family application is SOUND — a matrix carrying region+extent+generation on
+\ one owner certifies pairwise (case 8) and rejects each domain mismatch by name
+\ (cases 9-11). The one real constraint on an identity variable is its SPELLING:
+\ the single letters n/f/r are the reserved int/bool/float cons (CT-INIT /
+\ TOK-TYPE checker.f), resolved as concrete types BEFORE the single-letter type-
+\ var branch, so `r` (the natural mnemonic for a region) is silently the float
+\ type and never binds a fresh-region atom (case 12). Identity vars must avoid
+\ n/f/r; the domains themselves are independent, and space-global stays concrete.
 
 require test/checker-assert.f
 0 set-check
@@ -67,6 +72,20 @@ s" RR-MK1"  s" -- matrix<space-global,fresh-region-a,fresh-extent-x,f32>" TRUST
 s" RR-BOXR" s" -- span<space-global,f32,fresh-region-a>" TRUST
 s" RR-BOXG" s" -- span<space-global,f32,fresh-gen-a>" TRUST
 
+\ THREE co-resident identities on ONE owner (region+extent+generation), the shape
+\ habu-add-unique-bounded needs. Consumer binds all three with non-reserved vars
+\ a/b/c; each producer is one allocation whose two outputs share all three ids.
+\ (TRUSTED probe rows owner = habu-add-bounded-host-b40b048f.)
+s" RR-UEQ3"   s" matrix<space-global,a,b,c> matrix<space-global,a,b,c> --" TRUST
+s" RR-SHARE3" s" -- matrix<space-global,fresh-region-a,fresh-extent-x,fresh-gen-g> matrix<space-global,fresh-region-a,fresh-extent-x,fresh-gen-g>" TRUST
+s" RR-XRGN3"  s" -- matrix<space-global,fresh-region-a,fresh-extent-x,fresh-gen-g> matrix<space-global,fresh-region-b,fresh-extent-x,fresh-gen-g>" TRUST
+s" RR-XEXT3"  s" -- matrix<space-global,fresh-region-a,fresh-extent-x,fresh-gen-g> matrix<space-global,fresh-region-a,fresh-extent-y,fresh-gen-g>" TRUST
+s" RR-XGEN3"  s" -- matrix<space-global,fresh-region-a,fresh-extent-x,fresh-gen-g> matrix<space-global,fresh-region-a,fresh-extent-x,fresh-gen-h>" TRUST
+\ SAME shape as RR-UEQ3 but the region slot is spelled `r` — the reserved FLOAT con,
+\ not a type var, so it can never bind a fresh-region atom (the sole reason the
+\ >=3-identity owner looked "unbindable"; the fix is a non-reserved letter).
+s" RR-U3R"    s" matrix<space-global,r,b,c> matrix<space-global,r,b,c> --" TRUST
+
 \ (1) two accesses within one region+generation certify.
 s" C-CERT ( -- ) RR-SHARE RR-UEQ"  RR-CHECK -1 T=
 \ (2) equal-sized cross-region unification rejects — named region mismatch.
@@ -87,6 +106,22 @@ s" C-REUSE ( -- ) RR-OWN RR-OWN RR-UONE"   RR-CHECK 0 T=
 s" rigid host: region mismatch" RR-DIAG? -1 T=
 \ (7) exhaustion-before-wrap: the domain counter throws rather than reusing an id.
 RR-WRAP  RR-EC @ E-RIGID-EXHAUST T=
+\ (8) THREE co-resident identities bind: two accesses to one owner certify — the
+\ >=3-fresh-atom case is SOUND, no unifier limit.
+s" C-CERT3 ( -- ) RR-SHARE3 RR-UEQ3"  RR-CHECK -1 T=
+\ (9) region mismatch among three identities still rejects, named region.
+s" C-XRGN3 ( -- ) RR-XRGN3 RR-UEQ3"    RR-CHECK 0 T=
+s" rigid host: region mismatch" RR-DIAG? -1 T=
+\ (10) extent mismatch among three identities rejects, named extent.
+s" C-XEXT3 ( -- ) RR-XEXT3 RR-UEQ3"    RR-CHECK 0 T=
+s" rigid host: extent mismatch" RR-DIAG? -1 T=
+\ (11) generation mismatch among three identities rejects, named stale generation.
+s" C-XGEN3 ( -- ) RR-XGEN3 RR-UEQ3"    RR-CHECK 0 T=
+s" rigid host: stale mutation generation" RR-DIAG? -1 T=
+\ (12) reserved-letter footgun: RR-U3R is C-CERT3's shape with the region var
+\ spelled `r`. `r` parses as the float con, so it can't bind the fresh-region
+\ atom and the SAME allocation now rejects — the naming trap, not a binding limit.
+s" C-RSVD3 ( -- ) RR-SHARE3 RR-U3R"    RR-CHECK 0 T=
 
 : REPORT ( -- )
    #FAIL @ 0 = if s" ok" type cr exit then
