@@ -436,6 +436,9 @@ variable GSI-TL-FILE-A
    s" tools/include-events-test.f" GSI-FORK-INCLUDE
    s" tools/source-discovery-test.f" GSI-FORK-INCLUDE
    s" tools/event-closure-test.f" GSI-FORK-INCLUDE
+   s" lib/unicode/class-test.f" GSI-FORK-INCLUDE
+   s" tools/unicode/class-tool-test.f" GSI-FORK-INCLUDE
+   s" tools/unicode/class-verify-main.f" GSI-FORK-INCLUDE
    GSI-FORK-DRAIN ;
 
 : GSI-TAIL-RUNNER ( -- )

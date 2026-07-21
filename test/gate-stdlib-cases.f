@@ -316,6 +316,18 @@ SUITE codegen-stdlib
    lib/codegen-test.f
 ;SUITE
 
+SUITE unicode-class-runtime
+   lib/unicode/class-test.f
+;SUITE
+
+SUITE unicode-class-tools
+   tools/unicode/class-tool-test.f
+;SUITE
+
+SUITE unicode-class-exhaustive
+   tools/unicode/class-verify-main.f
+;SUITE
+
 SUITE ptx-stdlib
    lib/ptx/header-test.f
    lib/ptx/kernel-abi-test.f

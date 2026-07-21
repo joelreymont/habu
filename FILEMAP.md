@@ -317,6 +317,24 @@ points stay listed.
 
 ## Tools And Gates
 
+### Pinned Unicode character classes
+
+- `data/unicode/16.0.0/ReadMe.txt` — authoritative final Unicode Character Database 16.0.0 release marker.
+- `data/unicode/16.0.0/UnicodeData.txt` — authoritative General_Category source used for complete letter and number truth.
+- `data/unicode/16.0.0/PropList.txt` — authoritative White_Space property source.
+- `data/unicode/16.0.0/LICENSE.txt` — Unicode Data Files and Software License for the pinned inputs.
+- `data/unicode/16.0.0/PROVENANCE.md` — source, version, tokenizer compatibility, and SHA-256 provenance for inputs and generated output.
+- `data/unicode/16.0.0/class-data.sha256` — non-self-referential SHA-256 lock for the generated runtime table.
+- `lib/unicode/class-data.f` — generated immutable canonical Unicode 16.0.0 letter, number, and whitespace ranges with bounds-checked accessors.
+- `lib/unicode/class.f` — scalar validation and binary-search queries over the generated Unicode class tables.
+- `lib/unicode/class-test.f` — focused runtime, scalar-boundary, table-accessor, metadata, and invalid-index coverage.
+- `tools/unicode/class-parse.f` — checked transactional parser for pinned UnicodeData and PropList inputs; failed parses preserve the last accepted tables.
+- `tools/unicode/class-generate.f` — digest-gated deterministic generator for the canonical runtime table and its output hash lock.
+- `tools/unicode/class-generate-main.f` — command entry that regenerates the pinned Unicode table and hash lock.
+- `tools/unicode/class-tool-test.f` — malformed-input, range, surrogate, capacity, digest, coalescing, and transaction rollback coverage.
+- `tools/unicode/class-verify.f` — independent raw-input truth-map parser, canonical-table audit, exhaustive scalar comparison, output-lock check, and byte-identical regeneration proof.
+- `tools/unicode/class-verify-main.f` — command entry for exhaustive Unicode table verification.
+
 - `test/gate-stats.f` — checked append-only counter log, complete exec/fork
   attribution, per-process live counters, owner-row queries, and summary helpers
   for native gate duplicate-work RCA.

@@ -1880,3 +1880,8 @@ fits.
   frames replaced that design. Closing the obsolete work and re-scoping the
   remaining diagnostic owner produced an honest acyclic order; removing an
   arbitrary edge would have left both stale work and a false dependency graph.
+- **Table validation must not turn data growth into return-stack growth.**
+  A recursive validator may be safe for today's pinned row count but becomes a
+  hidden limit as generated tables grow. Thread the index and prior bound
+  through one checked iterative loop, and pass table accessors as typed
+  quotations so every table shares the same constant-depth canonical proof.
