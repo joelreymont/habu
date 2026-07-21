@@ -200,10 +200,16 @@ T-REPORT
 
 \ The returned alloc role's raw projection is MEM-private, so the tests touch
 \ memory over the KNOWN raw extent and drop the role.
-: MEMT-TYPED-BYTES ( -- )                    \ typed byte alloc is writable end to end
-   MEM-64K MEM:BYTES-ALLOC-LEN MEM:ALLOC-BYTES drop {: a:ptr :}
+\ EXEMPLAR MIGRATION: a bounded-lifetime scratch mapping that formerly leaked
+\ (`MEM:ALLOC-BYTES drop {: a:ptr :}` used the buffer then dropped its length, so it
+\ could never be released) now scopes the mapping in MEM:WITH-BYTES - written+read end
+\ to end inside the body, released on scope exit. The write/read body is a named word
+\ because a quotation cannot hold locals.
+: MEMT-TYPED-BYTES-BODY ( ptr u8 CAD-NUM:alloc-byte-len -- ) {: a:ptr len :}
    MEMT-MARK-A a c!  MEMT-MARK-Z a MEM-64K 1 - + c!
    a c@ MEMT-MARK-A T=  a MEM-64K 1 - + c@ MEMT-MARK-Z T= ;
+: MEMT-TYPED-BYTES ( -- )                    \ typed byte alloc is writable end to end, scoped (no leak)
+   MEM-64K MEM:BYTES-ALLOC-LEN [: MEMT-TYPED-BYTES-BODY ;] MEM:WITH-BYTES ;
 : MEMT-TYPED-64K ( -- )                      \ typed single-64K alloc is writable end to end
    MEM:ALLOC-64K drop {: a:ptr :}
    MEMT-MARK-A a c!  MEMT-MARK-Z a MEM-64K 1 - + c!
@@ -296,6 +302,67 @@ public
    T-REPORT ;
 RT-MEM
 
+\ ---- MEM:WITH-BYTES: quotation-scoped mapped memory (RAII) --------------------
+\ Release is proved by ADDRESS REUSE (the lib/vector-test.f idiom): a mapping freed
+\ to the OS leaves a hole the next same-size mmap refills, so a fresh allocation lands
+\ on the freed address. RED-FIRST both ways: an UNSCOPED raw alloc that throws leaks
+\ (its hole is NOT refilled - fresh alloc lands elsewhere); the SCOPED version releases
+\ on the throw so its hole IS refilled. Nested WITH-BYTES releases the inner mapping
+\ before the outer (reverse order); the outer address is refilled only after the outer
+\ scope exits, and its correct refill proves the per-call frame was not clobbered by the
+\ inner call (the double-release / wrong-buffer guard). Distinct sizes keep each probe's
+\ freed hole unambiguous. Bodies are named words (a quotation cannot hold locals).
+-7777 constant E-PRIMARY                              \ a body error distinct from the E-MEM-* codes
+$20000 constant WBT-SZ-A                              \ 128K: throw + nested-outer probe size
+$30000 constant WBT-SZ-B                              \ 192K: nested-inner probe size
+$40000 constant WBT-SZ-C                              \ 256K: unscoped-leak control size
+create WBT-CAP-A  2 cells allot                       \ ptr-field slots capturing a mapping's fat pointer
+create WBT-OUT-A  2 cells allot
+create WBT-IN-A   2 cells allot
+create WBT-LEAK-A 2 cells allot
+
+: WBT-RES ( ptr u8 CAD-NUM:alloc-byte-len -- n ) {: buf:ptr len :}   \ write+read the mapping, return the byte
+   MEMT-MARK-A buf c!  buf c@ ;
+: WBT-THROW ( ptr u8 CAD-NUM:alloc-byte-len -- ) {: buf:ptr len :}   \ capture the mapping, then throw mid-body
+   buf WBT-CAP-A 0 ptr-field !  E-PRIMARY throw ;
+: WBT-INNER ( ptr u8 CAD-NUM:alloc-byte-len -- ) {: buf:ptr len :}
+   buf WBT-IN-A 0 ptr-field ! ;
+: WBT-OUTER ( ptr u8 CAD-NUM:alloc-byte-len -- ) {: buf:ptr len :}
+   buf WBT-OUT-A 0 ptr-field !
+   WBT-SZ-B MEM:BYTES-ALLOC-LEN [: WBT-INNER ;] MEM:WITH-BYTES         \ inner scope releases on exit
+   WBT-SZ-B MEM:BYTES-ALLOC-LEN MEM:ALLOC-BYTES {: xb:ptr xl :}        \ fresh inner-size alloc
+   xb WBT-IN-A 0 ptr-field @ = TTRUE                                    \ refills the inner hole (inner freed, outer live)
+   xb xl MEM:RELEASE-BYTES ;
+: WBT-LEAK ( -- ) {: :}                                                 \ UNSCOPED: raw alloc + throw, no release
+   WBT-SZ-C MEM:BYTES-ALLOC-LEN MEM:ALLOC-BYTES {: lb:ptr ll :}
+   lb WBT-LEAK-A 0 ptr-field !  E-PRIMARY throw ;
+
+: WBT-RESULT ( -- n )      MEM-64K MEM:BYTES-ALLOC-LEN [: WBT-RES ;] MEM:WITH-BYTES ;
+: WBT-THROW-CALL ( -- )    WBT-SZ-A MEM:BYTES-ALLOC-LEN [: WBT-THROW ;] MEM:WITH-BYTES ;
+
+: RT-WITH-BYTES ( -- )
+   T-RESET
+   \ 1. result threading: the body's row S flows out through the scope
+   WBT-RESULT MEMT-MARK-A T=
+   \ 2. RED-FIRST control: an unscoped alloc that throws LEAKS (hole NOT refilled)
+   [: WBT-LEAK ;] E-PRIMARY TTHROWSQ
+   WBT-SZ-C MEM:BYTES-ALLOC-LEN MEM:ALLOC-BYTES {: cb:ptr cl :}
+   cb WBT-LEAK-A 0 ptr-field @ = 0= TTRUE                               \ distinct address: the leak is resident
+   cb cl MEM:RELEASE-BYTES
+   WBT-LEAK-A 0 ptr-field @ WBT-SZ-C MEM:BYTES-ALLOC-LEN MEM:RELEASE-BYTES   \ reclaim the control leak
+   \ 3. SCOPED throw releases exactly once: the freed hole IS refilled + primary error preserved
+   [: WBT-THROW-CALL ;] E-PRIMARY TTHROWSQ
+   WBT-SZ-A MEM:BYTES-ALLOC-LEN MEM:ALLOC-BYTES {: rb:ptr rl :}
+   rb WBT-CAP-A 0 ptr-field @ = TTRUE
+   rb rl MEM:RELEASE-BYTES
+   \ 4. nested two-buffer: inner released before outer (reverse order); outer frame intact
+   WBT-SZ-A MEM:BYTES-ALLOC-LEN [: WBT-OUTER ;] MEM:WITH-BYTES
+   WBT-SZ-A MEM:BYTES-ALLOC-LEN MEM:ALLOC-BYTES {: yb:ptr yl :}
+   yb WBT-OUT-A 0 ptr-field @ = TTRUE                                   \ outer hole refilled only after outer exit
+   yb yl MEM:RELEASE-BYTES
+   T-REPORT ;
+RT-WITH-BYTES
+
 \ ---- static rejection matrix: frozen signatures accept; role swaps reject ------
 \ CHECK-QUIET-CANDIDATE!: -1 accepted, 0 rejected (type error), 1 uncheckable.
 : STAT-MEM ( -- )
@@ -343,6 +410,16 @@ RT-MEM
    s" B-RELEASE-ZEROABLE-LEN ( ptr u8 CAD-NUM:byte-len -- ) MEM:RELEASE-BYTES"
       CHECK-QUIET-CANDIDATE! 0 T=
    s" B-RELEASE-CELL-LEN ( ptr u8 CAD-NUM:alloc-cell-count -- ) MEM:RELEASE-BYTES"
+      CHECK-QUIET-CANDIDATE! 0 T=
+   \ WITH-BYTES types the quotation body row: the frozen signature (row-polymorphic S
+   \ threaded from the body) resolves, while a raw-n length or a cell-count role in the
+   \ scoped length + body row are checker rejects, so a caller cannot scope a mapping
+   \ over an unvalidated size or a byte/cell role swap.
+   s" G-WITH-BYTES ( R CAD-NUM:alloc-byte-len [ R ptr u8 CAD-NUM:alloc-byte-len -- S ] -- S ) MEM:WITH-BYTES"
+      CHECK-QUIET-CANDIDATE! -1 T=
+   s" B-WB-RAW-LEN ( R n [ R ptr u8 CAD-NUM:alloc-byte-len -- S ] -- S ) MEM:WITH-BYTES"
+      CHECK-QUIET-CANDIDATE! 0 T=
+   s" B-WB-CELL-LEN ( R CAD-NUM:alloc-cell-count [ R ptr u8 CAD-NUM:alloc-cell-count -- S ] -- S ) MEM:WITH-BYTES"
       CHECK-QUIET-CANDIDATE! 0 T=
    T-REPORT ;
 STAT-MEM

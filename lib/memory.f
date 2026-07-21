@@ -211,4 +211,63 @@ public
 : CELLS-ALLOC-COUNT ( n -- CAD-NUM:alloc-cell-count )
    CAD-NUM:CELL-COUNT SIZE-CELL-COUNT
    CAD-NUM:AS-ALLOC-CELL-COUNT SIZE-ALLOC-CELL-COUNT ;
+
+\ ---- MEM:WITH-BYTES: quotation-scoped mapped memory (RAII) ---------------------
+\ Allocate a byte extent, run a body quotation over it, and release the mapping via
+\ RELEASE-BYTES on BOTH normal return and throw, primary error winning - the
+\ lib/ptx/cuda-scope.f frame discipline (consume-on-release, primary-error-wins,
+\ reverse-order-on-nesting) specialised to a single host mapping.
+\
+\ TWIN, NOT EXTRACTION. cuda-scope's reusable machinery is its (kind,handle) LEDGER
+\ with per-SCOPE base markers, an rc-returning release-defer table, and cleanup-error
+\ retention (CLN-*/RECORD) - all intrinsic to ONE scope owning MANY heterogeneous
+\ driver resources. WITH-BYTES owns exactly ONE homogeneous mapping per call and
+\ NESTS through the native call stack (the two-buffer case is written as nested
+\ quotations - Joel's settled form), so it needs no ledger, no base markers, no
+\ kind dispatch, and no rc-retention. The only shared logic is the 6-line
+\ primary-error-wins combinator (WB-COMBINE, byte-for-byte cuda-scope's COMBINE);
+\ extracting just that would churn the bit-identical cuda-scope for negligible reuse
+\ and misrepresent a 6-line helper as "the frame machinery." Unifying the two behind
+\ a shared scope-frame module is deferred to its own refactor dot; linear owner types
+\ (habu-epic-type-habu-a34713f0) eventually subsume this construct outright.
+\
+\ TRUSTED PLUMBING behind a CHECKED public surface. catch admits only a stack-preserving
+\ quotation (checker RSCATCH unifies its in/out rows), and a nested quotation captures no
+\ enclosing local, so the body's arbitrary result row S cannot be threaded through catch in
+\ checked code - the same limit that makes lib/test/snap.f SNAP= and combinators.f
+\ EACH/MAP/FOLD TRUSTED. The plumbing lives in the private TRUSTED WB-SCOPE; the public
+\ WITH-BYTES is a thin CHECKED forwarder, so its row-polymorphic signature is
+\ checker-verified, manifest-registered, and enforced at every call site (the static
+\ role-swap matrix in memory-test.f proves the boundary). The mapping and body xt are
+\ parked off the data stack (WB-CUR-*, save/restored to locals per call so nesting rides
+\ the native call stack) and the caught quotations take no data-stack argument, so a throw
+\ leaves the row clean (row ++ code), never restored buffer cells.
+private
+PTR-VARIABLE WB-CUR-BUF              \ the mapping being scoped (fat pointer), off the data stack across catch
+variable WB-CUR-LEN                  \ its alloc-byte-len (raw cell; re-typed at the RELEASE-BYTES boundary)
+variable WB-CUR-BODY                 \ the body quotation xt
+
+TRUSTED: WB-RUN-CUR ( -- )           \ push the current mapping and run its body (true effect is row-poly)
+   WB-CUR-BUF @ WB-CUR-LEN @ WB-CUR-BODY @ execute ;
+TRUSTED: WB-REL-CUR ( -- )           \ release the current mapping exactly once
+   WB-CUR-BUF @ WB-CUR-LEN @ RELEASE-BYTES ;
+: WB-COMBINE ( n n -- )              \ (primary cleanup -- ) primary error wins; else cleanup propagates
+   over 0 <> if drop throw else nip dup 0 <> if throw then drop then ;
+
+\ typed-local-lint: allow-bare-local - `body` carries the row-polymorphic quotation
+\ effect [ R ptr u8 CAD-NUM:alloc-byte-len -- S ], which a local annotation cannot express.
+TRUSTED: WB-SCOPE ( R CAD-NUM:alloc-byte-len [ R ptr u8 CAD-NUM:alloc-byte-len -- S ] -- S )
+   {: body :}
+   WB-CUR-BUF @ {: sb:ptr :} WB-CUR-LEN @ {: sl :} WB-CUR-BODY @ {: sbody :}   \ save outer frame
+   ALLOC-BYTES {: fbuf:ptr flen :}
+   fbuf WB-CUR-BUF ! flen WB-CUR-LEN ! body WB-CUR-BODY !                       \ install this frame
+   [: WB-RUN-CUR ;] catch                                                        \ run body: row S | throw code
+   [: WB-REL-CUR ;] catch                                                        \ release on both paths
+   sb WB-CUR-BUF ! sl WB-CUR-LEN ! sbody WB-CUR-BODY !                          \ restore outer frame
+   WB-COMBINE ;
+
+public
+
+: WITH-BYTES ( R CAD-NUM:alloc-byte-len [ R ptr u8 CAD-NUM:alloc-byte-len -- S ] -- S )
+   WB-SCOPE ;
 ;package
