@@ -5157,6 +5157,7 @@ create CK-USE-NAMES CK-USE-MAX CHECKER-PACKAGE-CAP * allot
 create CK-USE-LENS  CK-USE-MAX cells allot
 7140 constant E-USING-AMBIGUOUS            \ bare tail resolves in more than one used public wordlist
 variable CK-USED-FOUND                     \ interned sym of the first used-public match while resolving
+variable CK-USED-SLOT                      \ used-scan slot of that first match (-1 = none), for the shadow diagnostic
 
 : CK-USE-DEPTH ( -- n )  data-base CK-USE-DEPTH-OFF + @ ;   \ engine-owned live using depth (USE-DEPTH-CELL)
 : CK-USE-SLOT ( n -- ptr u8 )  CHECKER-PACKAGE-CAP * CK-USE-NAMES + ;
@@ -5198,9 +5199,11 @@ variable CK-USED-FOUND                     \ interned sym of the first used-publ
 \ across the used packages is the ambiguity hard error, matching the engine's used-search.
 : CHECKER-USED-SYM ( ptr u8 n -- n ) {: a:ptr u:n :}
    0 CK-USED-FOUND !
+   -1 CK-USED-SLOT !
    CK-USE-SCAN-N 0 ?DO
       i CK-USE-SLOT i CK-USE-LEN@ SYM-PUBLIC a u SYM-FIND IF     ( -- sym )
          CK-USED-FOUND @ 0= IF
+            i CK-USED-SLOT !
             CK-USED-FOUND !
          ELSE
             dup CK-USED-FOUND @ <> IF E-USING-AMBIGUOUS throw THEN
@@ -5209,6 +5212,45 @@ variable CK-USED-FOUND                     \ interned sym of the first used-publ
       ELSE drop THEN
    LOOP
    CK-USED-FOUND @ ;
+
+\ --- global-vs-used-public shadow rejection (dot habu-err-on-global-e62f806c).
+\ Resolution order puts the open-scope + global wordlist ahead of the used
+\ publics (docs/forth.md Packages), so a bare tail that already hits a global
+\ never consults the used scan: a `using` import of the same name is silently
+\ dead and the reference binds the GLOBAL with the global's effect. When the two
+\ effects differ the mismatch only surfaces later, far from the cause (the
+\ data-loader incident, where a kernel `LOAD` shadowed a loader's public `LOAD`);
+\ when they coincide the wrong word binds and certifies with no diagnostic at
+\ all. This extends the two-used-package ambiguity rule to the global-vs-used
+\ collision: a bare tail inside a live `using` scope that resolves to a global
+\ while a used package also exports it is ambiguous and fails closed AT THE
+\ REFERENCE SITE. Escape hatches: qualify the package word as PKG:WORD (still
+\ certifies), or rename the collision to reach the global (the grammar has no
+\ bare qualifier for the global "" wordlist).
+7141 constant E-USING-SHADOW-GLOBAL
+variable USH-TOK-A   variable USH-TOK-U     \ the ambiguous bare token (raw, valid while rendering)
+variable USH-GSYM    variable USH-USYM      \ the two colliding syms: global, used public
+variable USH-PKG-A   variable USH-PKG-U     \ the used package's folded name (renders PKG:WORD)
+defer USHADOW-DIAG-XT ( -- )                \ render.f installs the reference-site diagnostic
+: USHADOW-DIAG-DEFAULT ( -- ) [: ;] is USHADOW-DIAG-XT ;
+USHADOW-DIAG-DEFAULT
+
+\ gsym has already resolved the bare tail to a global; if a live used public
+\ exports the same tail the reference is ambiguous — capture both candidates for
+\ the diagnostic and fail closed. CHECKER-USED-SYM throws E-USING-AMBIGUOUS first
+\ if TWO used publics also match, so the pre-existing rule keeps precedence.
+: CHECKER-USED-SHADOW ( ptr u8 n n -- ) {: a:ptr u:n gsym:n :}
+   a u CHECKER-USED-SYM {: usym:n :}
+   usym 0= IF EXIT THEN
+   a USH-TOK-A !  u USH-TOK-U !
+   gsym USH-GSYM !  usym USH-USYM !
+   CK-USED-SLOT @ dup 0 >= IF
+      dup CK-USE-SLOT USH-PKG-A !  CK-USE-LEN@ USH-PKG-U !
+   ELSE
+      drop  0 USH-PKG-A !  0 USH-PKG-U !
+   THEN
+   USHADOW-DIAG-XT
+   E-USING-SHADOW-GLOBAL throw ;
 
 \ --- generated-constructor protection (item 8 slice 3). The registry-backed
 \ predicates live in type-family.f (loads later) and install into these friend
@@ -5382,7 +5424,10 @@ $20 constant CK-SEAL-LATCH-OFF          \ = layout.f FRIEND-LATCH-CELL
       CHECKER-PACKAGE-NAME CHECKER-PACKAGE-U @ SYM-PRIVATE a u CHECKER-PKG-SYM? dup 0 <> IF EXIT THEN drop
       CHECKER-PACKAGE-NAME CHECKER-PACKAGE-U @ SYM-PUBLIC a u CHECKER-PKG-SYM? dup 0 <> IF EXIT THEN drop
    THEN
-   a u CHECKER-GLOBAL-SYM? dup 0 <> IF EXIT THEN drop
+   a u CHECKER-GLOBAL-SYM? dup 0 <> IF
+      dup >r a u r> CHECKER-USED-SHADOW      \ throws if a live used public also exports this bare tail
+      EXIT
+   THEN drop
    a u CHECKER-USED-SYM ;
 
 \ CHECKER-FIND-USIG-SYM ( n -- bool ) : FEP = current active record for sym.

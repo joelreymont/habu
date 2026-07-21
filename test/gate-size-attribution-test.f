@@ -121,9 +121,13 @@ $4000 constant MACOS-DATA-CONST  \ __DATA_CONST page (__got + zero fill)
 \ -128). Whole file 165367 -> 148855 (-16384 page - 128 signature = -16512).
 \ MACOS-DATA-CONST and MACOS-LINKEDIT are unchanged. Keep MACOS-TOTAL equal to
 \ GB-SIZE-BASELINE-MACOS in test/gate-build-size.f.
-126724 constant MACOS-CODE-TEXT   \ CODELEN: every emitter-phase row (baked-source incl.)
+\ 2026-07-21 second owed re-measure: the FINDPTR primitive retirement (linux
+\ commit 017524d8, spark cannot measure macOS) shrank baked __text by 392 bytes
+\ within the same 16 KiB page, so only CODE-TEXT and the floor distance move;
+\ signature and whole-file total are unchanged. Candidate ratchet measured 126332.
+126332 constant MACOS-CODE-TEXT   \ CODELEN: every emitter-phase row (baked-source incl.)
 1295 constant MACOS-SIGNATURE     \ ad-hoc code signature SuperBlob (grows with CODELEN)
-16132 constant MACOS-FLOOR-DIST     \ code above the 16 KiB floor: the page-recovery shave
+15740 constant MACOS-FLOOR-DIST     \ code above the 16 KiB floor: the page-recovery shave
 148855 constant MACOS-TOTAL       \ = FILE-SIZE bin/hb = GB-SIZE-BASELINE-MACOS
 
 \ Linux committed attribution, measured at the byte-fixpoint on 2026-07-19 (DGX

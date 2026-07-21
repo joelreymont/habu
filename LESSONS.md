@@ -1835,3 +1835,23 @@ fits.
   re-exposes it to bareword collision with globals; a generic public name like
   `LOAD` is a latent "passes alone, fails co-loaded" trap. Gap for a dot: the
   compiler should warn when a `using` import is dead because a global shadows it.
+
+- **The global-vs-used-public shadow is now a hard checker error, not a silent
+  dead import (dot habu-err-on-global-e62f806c).** The one enforcement point is
+  the checker's sole bareword resolver `CHECKER-FIND-ACTIVE-SYM`: when its global
+  branch hits, it also runs the used-publics scan (`CHECKER-USED-SHADOW`), and if
+  a live used public exports the same tail it throws `E-USING-SHADOW-GLOBAL`
+  (7141) at the reference site, naming both candidates (`global TOK` /
+  `PKG:TOK`) with their effect arity. This is the single point because every
+  checked bareword reference funnels through it and it is the only side that has
+  the effects (the engine's machine-code used-scan has names, not effects); the
+  engine keeps global-first resolution as the explicit unchecked boundary, and
+  checked code is fail-closed so the checker rejecting means the program never
+  runs. The strongest regression is the effects-coincide case (a global whose
+  effect equals the used public's): today it certified and silently bound the
+  GLOBAL; now it rejects. Escape: qualify `PKG:WORD` for the package word (still
+  certifies); the grammar has no bare qualifier for the global "" wordlist, so
+  renaming the collision is the documented way to reach the global. The
+  diagnostic effects render through the read-only USIGS accessors
+  (`CHECKER-FIND-USIG-SYM`/`ER.DIN`/`EFF-ROW-N`), never the bare-name resolver,
+  so rendering cannot re-trigger the shadow throw.

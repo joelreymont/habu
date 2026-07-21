@@ -318,14 +318,32 @@ SUITE parser-cases
   error. Multiple concurrent usings are allowed up to a small fixed capacity
   (`USE-MAX`, 16); a further `using` past the limit is rejected.
 - Lookup order for a bare tail is the open-package scope (private then own
-  public) and the global wordlist FIRST, then each used package's public
-  wordlist. `using` is therefore purely additive: it only ever resolves a name
-  that was otherwise unresolved and can never silently shadow an existing
-  binding. A tail found both in the open scope and a used package resolves to the
-  open scope with no error (inner scope wins); a bare tail resolving in MORE THAN
-  ONE used public wordlist is a hard error (fail closed, matching the
-  no-duplicate wordlist discipline). The same package named by two usings is not
-  ambiguous.
+  public) FIRST, then the global wordlist, then each used package's public
+  wordlist. A tail found in the OPEN-PACKAGE scope silently wins over a used
+  public with no error (inner scope wins): defining your own tail while a package
+  is open is deliberate local shadowing. A bare tail resolving in MORE THAN ONE
+  used public wordlist is a hard error (`E-USING-AMBIGUOUS`, fail closed, matching
+  the no-duplicate wordlist discipline); the same package named by two usings is
+  not ambiguous. `using` never silently changes an existing binding: it is either
+  the sole resolver of an otherwise-unresolved name, or the collision is a hard
+  error.
+- A bare tail that resolves to a GLOBAL while a used package ALSO exports the
+  same tail is a hard error at the reference site (`E-USING-SHADOW-GLOBAL`,
+  checker code 7141). This extends the two-used-package ambiguity rule to the
+  global-vs-used collision. Without it the global-first order made the `using`
+  import silently dead: the reference bound the global with the global's effect,
+  so the mismatch either surfaced far from the cause or — when the two effects
+  coincided — bound the wrong word and certified with no diagnostic at all (the
+  data-loader incident, dot `habu-err-on-global-e62f806c`, where a kernel `LOAD`
+  shadowed a loader's public `LOAD`). The diagnostic names both candidates
+  (`global TOK` and `PKG:TOK`) with their effect arity. Escape hatches: to mean
+  the package word, qualify it as `PKG:WORD` (always certifies); to mean the
+  global there is no bare qualifier for the global "" wordlist, so RENAME the
+  collision — a uniquely named package public is the sanctioned fix (this is why
+  public surfaces must be uniquely named). The rule is enforced by the checker at
+  the reference site, so it holds for every checked body; the engine's raw
+  interpret / `0 set-check` resolution keeps the global-first order as the
+  explicit unchecked boundary.
 - Qualified `NAME:WORD` lookup is unchanged and always available regardless of
   any `using`.
 - Resolution happens at compile/certify time: a call compiled inside a `using`

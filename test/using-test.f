@@ -38,12 +38,27 @@ variable UCE-A   variable UCE-U
 93 constant E-UNBALANCED
 94 constant E-AMBIGUOUS
 70 constant E-REJECT            \ E-UNDEFINED / checker rejection
+7141 constant E-SHADOW          \ E-USING-SHADOW-GLOBAL: a global shadows a used public of the same name
 
 \ --- shared fixture packages (defined once; cases reference them) ---
 package UA public : AW ( -- n ) 11 ; ;package
 package UB public : BW ( -- n ) 22 ; ;package
 package UC public : AW ( -- n ) 33 ; ;package   \ same tail AW as UA -> ambiguity source
 package UP  : SECP ( -- n ) 99 ; public : PUBW ( -- n ) SECP ; ;package   \ SECP is private
+
+\ shadow fixtures (dot habu-err-on-global-e62f806c): a used package whose publics
+\ collide with globals of the same name. GW's global effect DIFFERS from the
+\ public's; MW's global effect COINCIDES with the public's (the dangerous
+\ silent-wrong-bind case: no mismatch would ever surface). NC has no global, SW's
+\ global is defined later inside the using scope (the order-swapped variant).
+package USG public
+   : GW ( -- n ) 1 ;
+   : MW ( -- n ) 2 ;
+   : SW ( -- n ) 3 ;
+   : NC ( -- n ) 4 ;
+;package
+: GW ( n n -- n ) + ;              \ global GW (2 -- 1): differs from USG:GW (0 -- 1)
+: MW ( -- n ) 111 ;                \ global MW (0 -- 1): coincides with USG:MW (0 -- 1)
 
 \ === positives (accepted) ===
 \ top-level using: bare public resolves
@@ -90,6 +105,22 @@ s" using UA using UA using UA using UA using UA using UA using UA using UA using
 s" using UA AW drop ;using AW drop" UCE-CATCH E-REJECT T=
 \ ;package clears a using opened inside the package
 s" package UJ using UA public : UT-J1 ( -- n ) AW ; ;package AW drop" UCE-CATCH E-REJECT T=
+
+\ === global-vs-used-public shadow (dot habu-err-on-global-e62f806c) ===
+\ A bare tail inside a using scope that resolves to a global AND a used public of
+\ the same name is ambiguous and fails closed at the reference site.
+\ global defined by an earlier load, then using-import of the same name -> reject
+s" using USG : USG-R1 ( -- n ) GW ; ;using" UCE-CATCH E-SHADOW T=
+\ order-swapped: using first, global defined later in the same scope, then bareword
+s" using USG : SW ( -- n ) 9 ; : USG-R2 ( -- n ) SW ; ;using" UCE-CATCH E-SHADOW T=
+\ effects coincide: today binds the global silently and CERTIFIES; must still reject
+s" using USG : USG-R3 ( -- n ) MW ; ;using" UCE-CATCH E-SHADOW T=
+\ qualified access is the escape: PKG:WORD reaches the used public and certifies
+s" using USG : USG-R4 ( -- n ) USG:GW ; ;using" UCE-CATCH 0 T=
+\ a used import with NO global collision keeps resolving (purely-additive contract)
+s" using USG : USG-R5 ( -- n ) NC ; ;using" UCE-CATCH 0 T=
+\ no using in scope: a bare global is never a shadow error (resolves to the global)
+s" MW drop" UCE-CATCH 0 T=
 
 \ ---------------------------------------------------------------------------
 : REPORT ( -- )

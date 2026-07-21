@@ -933,3 +933,45 @@ BADSIG-DIAG-INSTALL
    na nu REC-REFUSE-DIAG ;
 : REC-SIG-INSTALL ( -- ) [: REC-SIG ;] is RECXT ;
 REC-SIG-INSTALL
+
+\ --- global-vs-used-public shadow diagnostic (dot habu-err-on-global-e62f806c).
+\ CHECKER-USED-SHADOW captured the ambiguous bare token and the two colliding
+\ candidates (global and used public); this renders the reference-site reject
+\ naming both with their effect arity so the author knows to qualify (PKG:WORD)
+\ or rename the collision. The sym effects read through the read-only USIGS
+\ accessors (CHECKER-FIND-USIG-SYM / ER.DIN / ER.DOUT / EFF-ROW-N), never through
+\ the bare-name resolver, so rendering cannot re-trigger the shadow throw.
+: USH-EFF ( n -- )                        \ append " (Din -- Dout)" for a sym's effect, " (?)" if none
+   {: sym:n :}
+   sym CHECKER-FIND-USIG-SYM 0= IF s"  (?)" DTXT EXIT THEN
+   s"  (" DTXT
+   FEP @ ER.DIN @ EFF-ROW-N RNUM
+   s"  -- " DTXT
+   FEP @ ER.DOUT @ EFF-ROW-N RNUM
+   41 EMIT1 ;
+: USHADOW-PROSE ( -- )
+   s" E-USING-SHADOW-GLOBAL habu: bare '" DTXT  USH-TOK-A @ USH-TOK-U @ DTXT
+   s" ' is ambiguous under using: the global '" DTXT  USH-TOK-A @ USH-TOK-U @ DTXT  39 EMIT1
+   USH-GSYM @ USH-EFF
+   s"  and used public '" DTXT  USH-PKG-A @ USH-PKG-U @ DTXT  58 EMIT1  USH-TOK-A @ USH-TOK-U @ DTXT  39 EMIT1
+   USH-USYM @ USH-EFF
+   s"  export the same name; qualify " DTXT  USH-PKG-A @ USH-PKG-U @ DTXT  58 EMIT1  USH-TOK-A @ USH-TOK-U @ DTXT
+   s"  for the package word, or rename the collision to reach the global" DTXT ;
+: USHADOW-JSON ( -- )
+   123 EMIT1
+   s" schema_version" JKEY 1 JNUM 44 EMIT1
+   s" code" JKEY s" E-USING-SHADOW-GLOBAL" JSTR 44 EMIT1
+   s" repair_class" JKEY s" disambiguate_using_shadow" JSTR 44 EMIT1
+   s" verdict" JKEY s" rejected" JSTR 44 EMIT1
+   s" token" JKEY USH-TOK-A @ USH-TOK-U @ JSTR 44 EMIT1
+   s" used_package" JKEY USH-PKG-A @ USH-PKG-U @ JSTR 44 EMIT1
+   s" suggestion" JKEY s" A global word and a used package public share this name. Qualify the package word as PKG:WORD, or rename the collision; the global has no bare qualifier." JSTR
+   125 EMIT1 ;
+: USHADOW-DIAG ( -- )
+   1 RDST !  0 RSN !  0 RQM !
+   JSON-DIAGS @ IF USHADOW-JSON ELSE USHADOW-PROSE THEN
+   10 EMIT1
+   RSBUF RSN @ RDIAG-APPEND
+   0 RDST !  0 RSN ! ;
+: USHADOW-DIAG-INSTALL ( -- ) [: USHADOW-DIAG ;] is USHADOW-DIAG-XT ;
+USHADOW-DIAG-INSTALL
