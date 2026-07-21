@@ -11,19 +11,20 @@
 \ chunk (GPT-2's bpe(): repeatedly take the lowest-rank adjacent pair present, merge
 \ every non-overlapping occurrence left-to-right, recompute, until none remain).
 \
-\ PRE-SPLIT DECISION (honest byte-level simplification, documented - no silent
-\ approximation). GPT-2's pattern is
+\ PRE-SPLIT DECISION. GPT-2's pattern is
 \   's|'t|'re|'ve|'m|'ll|'d| ?\p{L}+| ?\p{N}+| ?[^\s\p{L}\p{N}]+|\s+(?!\S)|\s+
-\ No regex engine exists in-tree, so BPE-CHUNK-LEN is a hand-rolled matcher for
-\ exactly that pattern with \p{L}->ASCII [A-Za-z], \p{N}->[0-9], \s->[ \t\n\v\f\r].
-\ It reproduces the regex's leftmost-alternative + greedy + whitespace-backtracking
-\ semantics EXACTLY on ASCII (verified in maki/bpe-test.f against Python `re` with
-\ the same pattern - see maki/bpe-data.f provenance). DIVERGENCE CLASS: bytes >=0x80
-\ (UTF-8 lead/continuation) are Unicode letters/digits under \p{L}/\p{N} but fall in
-\ this matcher's "other" class, so non-ASCII text chunks differently; pure-ASCII
-\ input matches real GPT-2 exactly (measured zero divergence on the ASCII fixtures).
-\ The round-trip property is independent of the split: the matcher is a total
-\ partition (every byte lands in exactly one chunk), so decode reconstructs all bytes.
+\ No regex engine exists in-tree, so BPE-CHUNK-LEN is a hand-rolled matcher for exactly
+\ that pattern, reproducing its leftmost-alternative + greedy + whitespace-backtracking
+\ semantics (verified in maki/bpe-test.f against Python `re`/`regex` - see the bpe-data.f
+\ and bpe-real-data.f provenance). BPE-CP@ decodes each UTF-8 codepoint (soft byte-fallback
+\ on invalid sequences), so \p{L}/\p{N} classify by real unicode Letter/Number category via
+\ the BPE-ULET/BPE-UNUM tables below (\s stays ASCII [ \t\n\v\f\r]). This closes the former
+\ ASCII-only divergence (a multi-byte L/N codepoint abutting an ASCII letter/digit: "naïve"
+\ now folds to one \p{L}+ run). The table is BOUNDED to the unicode blocks the GPT-2 vocab
+\ exercises - its provenance, cost, and the residual boundary are documented at BPE-ULET.
+\ The round-trip property is independent of the split: the matcher is a total partition
+\ (every byte lands in exactly one chunk, decoder fallback included), so decode reconstructs
+\ all bytes for ARBITRARY input including invalid UTF-8.
 \
 \ TRAINING (from-scratch merges). BPE-TRAIN learns ranks from a corpus, DETERMINISTIC:
 \ each round counts adjacent pairs within chunks and picks the most frequent, TIE-BROKEN
@@ -105,27 +106,125 @@ variable BPE-KI variable BPE-STOP              \ training loop control
 : BPE-READY  ( -- )  BPE-DONE @ 0= if E-BPE-EMPTY throw then ;
 : BPE-BUILD? ( -- )  BPE-BUILDING @ 0= if E-BPE-STATE throw then ;
 
-\ engine-layer bool false (lib/prelude.f `false`, unavailable to this layer)
+\ engine-layer bools (lib/prelude.f `true`/`false` unavailable to this layer)
 : BPE-FALSE ( -- bool )  0 0= 0= ;
+: BPE-TRUE  ( -- bool )  0 0= ;
 
-\ ---- character classes (ASCII simplification of \p{L} \p{N} \s) -------------------
-: BPE-WS?  ( n -- bool )  {: b:n :}
-   b 32 =  b 9 =  or  b 10 =  or  b 11 =  or  b 12 =  or  b 13 =  or ;
-: BPE-LET? ( n -- bool )  {: b:n :}
-   b 65 >= b 90 <= and  b 97 >= b 122 <= and  or ;
-: BPE-DIG? ( n -- bool )  {: b:n :}  b 48 >= b 57 <= and ;
-: BPE-OTHER? ( n -- bool )  {: b:n :}
-   b BPE-WS?  b BPE-LET?  or  b BPE-DIG?  or  0= ;
+\ ---- unicode Letter/Number tables (GENERATED - regenerate, do not hand-edit) ------
+\ PROVENANCE. The GPT-2 regex pre-splits over \p{L}/\p{N} on UNICODE codepoints; the
+\ ASCII-only matcher diverged whenever a multi-byte Letter/Number codepoint abutted an
+\ ASCII letter/digit (e.g. "naïve": na|ï|ve vs the folded \p{L}+ run). These two tables
+\ close that class over a BOUNDED codepoint domain - NOT a full UCD import.
+\ RECIPE (scratchpad gen_table.py, ~/Work/ml venv, python unicodedata + tiktoken 0.13.0):
+\   1. Decode every GPT-2 vocab token (encoder.json, sha256 196139..636783 - same artifact
+\      pinned in maki/bpe-real-data.f) through the bytes_to_unicode inverse to its text
+\      codepoints; take the set the vocab can produce (456 distinct, 328 non-ASCII).
+\   2. Select every Unicode BLOCK containing >=1 such codepoint (12 blocks - the domain
+\      the vocab exercises): Latin-1 Supplement, Latin Extended-A, Spacing Modifier
+\      Letters, Greek and Coptic, Cyrillic, Hebrew, Arabic, Devanagari, Hiragana,
+\      Katakana, Hangul Compatibility Jamo, CJK Unified Ideographs.
+\   3. Enumerate the FULL \p{L} (category L*) and \p{N} (category N*) membership across
+\      those blocks via unicodedata.category, emitting sorted [lo,hi] codepoint ranges.
+\ Block-complete coverage (not just the exact vocab codepoints) keeps every covered
+\ script internally whole, so a pure non-ASCII run never gains a spurious split.
+\ COST: 43 letter ranges + 6 number ranges = 98 cells (784 bytes @ 8).
+\ BOUNDARY (honest, measured). Codepoints in blocks the vocab never exercises (fullwidth
+\ forms, Thai, astral planes, ...) stay in the "other" class: the matcher may chunk them
+\ differently from tiktoken at an ASCII boundary, but GPT-2 has no learned merge crossing
+\ such a boundary, so the emitted token ids still coincide (scratchpad scan2.py: 0
+\ id-level residuals across all 65408 BMP L/N codepoints in ascii-adjacency probes).
+\ Unicode whitespace (\s beyond ASCII, e.g. U+00A0) is a separate class, left ASCII-only.
+create BPE-ULET
+   170 , 170 , 181 , 181 , 186 , 186 , 192 , 214 , 216 , 246 , 248 , 383 ,
+   688 , 705 , 710 , 721 , 736 , 740 , 748 , 748 , 750 , 750 , 880 , 884 ,
+   886 , 887 , 890 , 893 , 895 , 895 , 902 , 902 , 904 , 906 , 908 , 908 ,
+   910 , 929 , 931 , 1013 , 1015 , 1153 , 1162 , 1279 , 1488 , 1514 , 1519 , 1522 ,
+   1568 , 1610 , 1646 , 1647 , 1649 , 1747 , 1749 , 1749 , 1765 , 1766 , 1774 , 1775 ,
+   1786 , 1788 , 1791 , 1791 , 2308 , 2361 , 2365 , 2365 , 2384 , 2384 , 2392 , 2401 ,
+   2417 , 2431 , 12353 , 12438 , 12445 , 12447 , 12449 , 12538 , 12540 , 12543 , 12593 , 12686 ,
+   19968 , 40959 ,
+43 constant BPE-ULET-N        \ letter [lo,hi] range pairs
+create BPE-UNUM
+   178 , 179 , 185 , 185 , 188 , 190 , 1632 , 1641 , 1776 , 1785 , 2406 , 2415 ,
+6 constant BPE-UNUM-N         \ number [lo,hi] range pairs
 
-\ ---- maximal class runs from p (len>=0; caller guarantees the class at p) ---------
+\ codepoint c in the sorted [lo,hi] range table at a (rn pairs)? O(log rn) binary search
+variable BPE-BS-LO  variable BPE-BS-HI  variable BPE-BS-M
+: BPE-URANGE? ( n ptr a n -- bool )  {: c:n a:ptr rn:n :}
+   0 BPE-BS-LO !  rn 1- BPE-BS-HI !
+   begin BPE-BS-LO @ BPE-BS-HI @ <= while
+      BPE-BS-LO @ BPE-BS-HI @ + 1 rshift BPE-BS-M !
+      c  a BPE-BS-M @ 2 * cells + @  < if
+         BPE-BS-M @ 1- BPE-BS-HI !
+      else c  a BPE-BS-M @ 2 * cells + cell+ @  > if
+         BPE-BS-M @ 1+ BPE-BS-LO !
+      else BPE-TRUE exit then then
+   repeat  BPE-FALSE ;
+
+\ ---- character classes over a CODEPOINT: \p{L}=ASCII[A-Za-z]|BPE-ULET, \p{N}=
+\ ASCII[0-9]|BPE-UNUM, \s=ASCII whitespace; "other" is everything else --------------
+: BPE-WS?  ( n -- bool )  {: c:n :}
+   c 32 =  c 9 =  or  c 10 =  or  c 11 =  or  c 12 =  or  c 13 =  or ;
+: BPE-LET? ( n -- bool )  {: c:n :}
+   c 65 >= c 90 <= and  c 97 >= c 122 <= and  or
+   c 128 >= if  c BPE-ULET BPE-ULET-N BPE-URANGE?  or  then ;
+: BPE-DIG? ( n -- bool )  {: c:n :}
+   c 48 >= c 57 <= and
+   c 128 >= if  c BPE-UNUM BPE-UNUM-N BPE-URANGE?  or  then ;
+: BPE-OTHER? ( n -- bool )  {: c:n :}
+   c BPE-WS?  c BPE-LET?  or  c BPE-DIG?  or  0= ;
+
+\ ---- UTF-8 codepoint decoder (soft fallback) -------------------------------------
+\ Decode the codepoint at a+p (0<=p<n): returns (codepoint, byte-width>=1, p+w<=n).
+\ A truncated/overlong/surrogate/stray sequence SOFT-fails to the single raw lead byte
+\ (byte,1) - it NEVER throws, so encode accepts arbitrary bytes incl. invalid UTF-8 (the
+\ GPT-2 byte-level contract). The byte-level BPE still runs on the raw chunk bytes; this
+\ decoder only decides chunk BOUNDARIES, so every fallback keeps the split a total partition.
+: BPE-CP@ ( ptr u8 n n -- n n )  {: a:ptr n:n p:n :}
+   a p + c@ {: b0:n :}
+   b0 128 < if b0 1 exit then                        \ ASCII
+   b0 192 < if b0 1 exit then                        \ stray continuation byte
+   b0 224 < if  b0 31 and  2 128
+   else b0 240 < if  b0 15 and  3 2048
+   else b0 248 < if  b0 7 and  4 65536
+   else b0 1 exit
+   then then then {: acc0:n L:n mn:n :}
+   p L + n > if b0 1 exit then                        \ truncated at end of input
+   acc0
+   L 1 ?do
+      a p + i + c@
+      dup 192 and 128 <> if drop drop b0 1 unloop exit then
+      63 and  swap 6 lshift  or
+   loop
+   dup mn < if drop b0 1 exit then                    \ overlong encoding
+   dup 1114111 > if drop b0 1 exit then               \ beyond U+10FFFF
+   dup 55296 >= over 57343 <= and if drop b0 1 exit then  \ surrogate
+   L ;
+
+\ ---- maximal class runs from p by CODEPOINT (len>=0; caller guarantees class at p) -
+\ BPE-RO accumulates the byte offset; each step decodes the codepoint at p+off and
+\ advances by its width while the class holds (runs never nest, so one var is safe).
+variable BPE-RO
 : BPE-LET-RUN ( ptr u8 n n -- n )  {: a:ptr n:n p:n :}
-   0 begin dup p + n < if a p + over + c@ BPE-LET? else BPE-FALSE then while 1+ repeat ;
+   0 BPE-RO !
+   begin  p BPE-RO @ + n < if a n p BPE-RO @ + BPE-CP@ swap BPE-LET?
+                          else 0 BPE-FALSE then
+   while  BPE-RO @ + BPE-RO !  repeat  drop  BPE-RO @ ;
 : BPE-DIG-RUN ( ptr u8 n n -- n )  {: a:ptr n:n p:n :}
-   0 begin dup p + n < if a p + over + c@ BPE-DIG? else BPE-FALSE then while 1+ repeat ;
+   0 BPE-RO !
+   begin  p BPE-RO @ + n < if a n p BPE-RO @ + BPE-CP@ swap BPE-DIG?
+                          else 0 BPE-FALSE then
+   while  BPE-RO @ + BPE-RO !  repeat  drop  BPE-RO @ ;
 : BPE-OTHER-RUN ( ptr u8 n n -- n )  {: a:ptr n:n p:n :}
-   0 begin dup p + n < if a p + over + c@ BPE-OTHER? else BPE-FALSE then while 1+ repeat ;
+   0 BPE-RO !
+   begin  p BPE-RO @ + n < if a n p BPE-RO @ + BPE-CP@ swap BPE-OTHER?
+                          else 0 BPE-FALSE then
+   while  BPE-RO @ + BPE-RO !  repeat  drop  BPE-RO @ ;
 : BPE-WS-RUN ( ptr u8 n n -- n )  {: a:ptr n:n p:n :}
-   0 begin dup p + n < if a p + over + c@ BPE-WS? else BPE-FALSE then while 1+ repeat ;
+   0 BPE-RO !
+   begin  p BPE-RO @ + n < if a n p BPE-RO @ + BPE-CP@ swap BPE-WS?
+                          else 0 BPE-FALSE then
+   while  BPE-RO @ + BPE-RO !  repeat  drop  BPE-RO @ ;
 
 \ contraction at p (a[p] is '): length (2 or 3) for 's 't 're 've 'm 'll 'd, else 0.
 : BPE-CONTRACT ( ptr u8 n n -- n )  {: a:ptr n:n p:n :}
@@ -148,15 +247,16 @@ public
 \ Rule order mirrors the regex alternation, with the ` ?` (literal space) leading only
 \ the letter/digit/other alternatives and the \s runs handled by the whitespace tail.
 : BPE-CHUNK-LEN ( ptr u8 n n -- n )  {: a:ptr n:n p:n :}
-   a p + c@ {: b:n :}
+   a n p BPE-CP@ drop {: b:n :}               \ first codepoint (' and space are ASCII, w=1)
    b 39 = if  a n p BPE-CONTRACT dup 0 > if exit then drop  then
    b BPE-LET? if a n p BPE-LET-RUN exit then
    b BPE-DIG? if a n p BPE-DIG-RUN exit then
    b 32 = if
       p 1+ n < if
-         a p 1+ + c@ BPE-LET?   if 1 a n p 1+ BPE-LET-RUN   + exit then
-         a p 1+ + c@ BPE-DIG?   if 1 a n p 1+ BPE-DIG-RUN   + exit then
-         a p 1+ + c@ BPE-OTHER? if 1 a n p 1+ BPE-OTHER-RUN + exit then
+         a n p 1+ BPE-CP@ drop {: c1:n :}
+         c1 BPE-LET?   if 1 a n p 1+ BPE-LET-RUN   + exit then
+         c1 BPE-DIG?   if 1 a n p 1+ BPE-DIG-RUN   + exit then
+         c1 BPE-OTHER? if 1 a n p 1+ BPE-OTHER-RUN + exit then
       then
    then
    b BPE-OTHER? if a n p BPE-OTHER-RUN exit then

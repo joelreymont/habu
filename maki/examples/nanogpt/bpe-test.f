@@ -94,6 +94,33 @@ create BPT-L6  3 , 1 , 2 ,                    \ "end.  "         -> end|.|'  '
    BPT-L5 3 s" abc123!!"         BPT-SPLIT? and
    BPT-L6 3 s" end.  "           BPT-SPLIT? and ;
 
+\ ---- unicode pre-split matcher parity (mixed-script chunk boundaries) -------------
+\ Byte-length chunk vectors from tiktoken 0.13.0's gpt2 regex; these exercise
+\ BPE-CHUNK-LEN's codepoint classification directly (no vocab). \x escapes pin exact
+\ NFC/NFD bytes where accented Latin is otherwise ambiguous. Covers the closed classes
+\ (Latin/CJK/arabic-indic/superscript adjacency), a pure-script regression, a combining
+\ mark (stays "other"), and the honest RESIDUAL (fullwidth, an uncovered block).
+create BPT-U1  6 ,          \ "naïve"       one \p{L}+ run (was na|ï|ve) - the FLIP
+create BPT-U2  5 ,          \ "café"        one \p{L}+ run (precomposed U+00E9)
+create BPT-U3  10 ,         \ "test日本"     latin+CJK folded into one \p{L}+ run
+create BPT-U4  3 ,          \ "4٢"          ASCII + arabic-indic digit, one \p{N}+ run
+create BPT-U5  1 , 2 ,      \ "x²"          letter | superscript-two number
+create BPT-U6  12 ,         \ "привет"      pure Cyrillic, one run (no spurious split)
+create BPT-U7  4 , 2 ,      \ "cafe"+U+0301 combining mark stays "other": cafe|mark
+create BPT-U8  6 ,          \ " café"       space-prefixed \p{L}+ (space peeks a codepoint)
+create BPT-U9  3 , 4 ,      \ "ｎtest"       RESIDUAL: fullwidth (uncovered block) NOT folded;
+                            \               tiktoken folds to one [7] chunk - ids still coincide
+: BPT-USPLITS? ( -- bool )
+   BPT-U1 1 s\" na\xC3\xAFve"        BPT-SPLIT?
+   BPT-U2 1 s\" caf\xC3\xA9"         BPT-SPLIT? and
+   BPT-U3 1 s" test日本"             BPT-SPLIT? and
+   BPT-U4 1 s" 4٢"                   BPT-SPLIT? and
+   BPT-U5 2 s" x²"                   BPT-SPLIT? and
+   BPT-U6 1 s" привет"              BPT-SPLIT? and
+   BPT-U7 2 s\" cafe\xCC\x81"        BPT-SPLIT? and
+   BPT-U8 1 s\"  caf\xC3\xA9"        BPT-SPLIT? and
+   BPT-U9 2 s" ｎtest"               BPT-SPLIT? and ;
+
 \ ---- red-first guards -------------------------------------------------------------
 \ pre-ready: every operational/query word rejects before any table is built
 : BPT-PRE-ENC  ( -- )  BPD-S1 BPT-IDS BPT-CAP BPE-ENCODE drop ;
@@ -218,21 +245,22 @@ create BPR-BK  BPT-CAP allot
    BPR-IDS m BPR-BK BPT-CAP BPR-DECODE {: nb:n :}
    nb u =  BPR-BK nb a u T-STR=  and ;
 : BPR-RT-SAMPLE? ( -- bool )  BPR-RT-S BPR-RT? ;   \ real multi-byte corpus sample
-: BPR-RT-FIX? ( -- bool )     \ every multi-byte fixture (incl. the divergent one) round-trips
+: BPR-RT-FIX? ( -- bool )     \ every multi-byte fixture (incl. the closed-divergence ones) round-trips
    BPR-S11 BPR-RT?  BPR-S12 BPR-RT? and  BPR-S13 BPR-RT? and
    BPR-S14 BPR-RT? and  BPR-S15 BPR-RT? and  BPR-S16 BPR-RT? and
-   BPR-DIV-S BPR-RT? and ;
+   BPR-DIV-S BPR-RT? and  BPR-CAFE-S BPR-RT? and ;
 
 : BPR-STRUCT? ( -- bool )
    BPR-VOCAB 50257 =  BPR-EOT 50256 =  and  BPR-MERGES BPR-D-MERGES =  and ;
 
-\ boundary proof: the byte-level matcher output for "naïve" equals the pinned matcher
-\ ids AND differs from the pinned tiktoken (unicode pre-split) ids - measured, not silent.
+\ closure proof: the former divergence fixtures now MATCH tiktoken exactly (the codepoint
+\ matcher folds the accented-Latin words into one \p{L}+ run). Red-first: on the unfixed
+\ ASCII matcher "naïve" byte-split to [2616,26884,303] and this MATCH assertion failed.
 : BPR-DIV? ( -- bool )
-   BPR-DIV-HABU BPR-DIV-HABU-N BPR-DIV-S BPR-ENC-EQ?
-   BPR-DIV-TIK  BPR-DIV-TIK-N  BPR-DIV-S BPR-ENC-EQ? 0=  and ;
+   BPR-DIV-I  BPR-DIV-N  BPR-DIV-S  BPR-ENC-EQ?
+   BPR-CAFE-I BPR-CAFE-N BPR-CAFE-S BPR-ENC-EQ? and ;
 
-\ full-table red-first (dot habu-bpe-full-50k-a598ba57): with only the 79-merge subset loaded,
+\ full-table red-first (dot habu-bpe-full-50k-a598ba57): with only the 91-merge subset loaded,
 \ "tokenization" encodes to the subset ids and NOT the full/tiktoken ids - so the full table
 \ changes the outcome and this parity fixture fails with the subset-only table (the full-load
 \ test proves the full-table ids). Both directions pinned, no silent skip.
@@ -302,8 +330,9 @@ T-RESET
 ' BPT-BAD-MERGE+  E-BPE-STATE TTHROWS
 ' BPT-BAD-SEAL    E-BPE-STATE TTHROWS
 
-\ (2) pre-split matcher parity (needs no table)
-BPT-SPLITS? TTRUE
+\ (2) pre-split matcher parity (needs no table): ASCII, then mixed-script unicode
+BPT-SPLITS?  TTRUE
+BPT-USPLITS? TTRUE
 
 \ (3) load the committed fixture table, then prove encode parity + round-trip
 BPD-LOAD

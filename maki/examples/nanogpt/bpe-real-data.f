@@ -22,26 +22,23 @@
 \ SUBSET that makes the parity suite HERMETIC: the 256 real byte-token ids (a fixed
 \ 2 KB table) plus exactly the merges that FIRE when the fixture strings below are
 \ encoded (the closed fired-merge set - any full-table merge able to fire on a fixture
-\ IS in this set), remapped to compact ranks 0..78 preserving priority order.
-\ Subset = 79 merges; committed footprint (256+3*79 cells + fixtures) is a
+\ IS in this set), remapped to compact ranks 0..90 preserving priority order.
+\ Subset = 91 merges; committed footprint (256+3*91 cells + fixtures) is a
 \ few KB, measured well within the suite DATA budget. Loading the subset and encoding
 \ any fixture reproduces the full-table result exactly (proven in maki/bpe-test.f).
 \
-\ DIVERGENCE BOUNDARY (honest, measured - NO silent approximation). The landed
-\ pre-split matcher (bpe.f BPE-CHUNK-LEN) classifies raw bytes with ASCII classes
-\ (\p{L}->[A-Za-z], \p{N}->[0-9]); GPT-2 pre-splits UNICODE codepoints. Measured result:
-\ token-id parity HOLDS for pure-ASCII text AND for runs of purely non-ASCII codepoints
-\ (CJK, cyrillic, greek, emoji/symbol, punctuation, non-ASCII digits) - a byte >=0x80 is
-\ "other" in the matcher and GPT-2 groups the same run into one chunk, and BPE is a pure
-\ function of the chunk's bytes, so the ids agree (fixtures below, incl. multi-byte).
-\ Parity DIVERGES exactly when a multi-byte \p{L}/\p{N} codepoint is adjacent to an
-\ ASCII letter/digit that GPT-2 folds into one \p{L}+/\p{N}+ run but the matcher splits
-\ at the ASCII/non-ASCII boundary. Demonstrator: "naive" with an i-with-diaeresis (the
-\ precomposed U+00EF, 2 UTF-8 bytes) between the ASCII letters -> the matcher chunks
-\ [2,2,2] bytes (na|i-diaeresis|ve) giving ids [2616, 26884, 303]; tiktoken folds the
-\ whole word into one \p{L}+ run giving [2616, 38776]. Both round-trip (split-independent).
-\ Closing this class fully needs a UTF-8 codepoint matcher with real unicode L/N tables
-\ (its own dot); here the boundary is recorded and PROVEN by fixtures on both sides.
+\ DIVERGENCE CLOSED (dot habu-bpe-unicode-pre-e6e7f34f). The matcher (bpe.f
+\ BPE-CHUNK-LEN) now decodes each UTF-8 codepoint (BPE-CP@) and classifies \p{L}/\p{N}
+\ by real unicode Letter/Number category over the bounded BPE-ULET/BPE-UNUM tables
+\ (provenance + recipe + cost + residual boundary documented at bpe.f BPE-ULET). The
+\ former demonstrator flips to MATCH: "naive" with a precomposed i-with-diaeresis
+\ (U+00EF) now folds to one \p{L}+ run giving tiktoken's [2616, 38776] (was the ASCII
+\ matcher's [2616, 26884, 303]) - pinned MATCH in BPR-DIV below, red-first (the unfixed
+\ base's byte-split ids fail the MATCH assertion). Coverage is BOUNDED to the unicode
+\ blocks the GPT-2 vocab exercises; codepoints outside (fullwidth forms, Thai, astral)
+\ stay "other", so the matcher may chunk them unlike tiktoken at an ASCII boundary, but
+\ GPT-2 has no learned merge crossing such a boundary, so the emitted ids still coincide
+\ (measured: 0 id-level residuals over the BMP - see bpe.f). All fixtures round-trip.
 \ bpe-real-data owns no E-codes (it declares none).
 
 require maki/examples/nanogpt/bpe-real.f
@@ -49,7 +46,7 @@ require maki/examples/nanogpt/bpe-real.f
 package MAKI
 public
 
-79 constant BPR-D-MERGES        \ committed fired-merge subset size
+91 constant BPR-D-MERGES        \ committed fired-merge subset size
 
 \ byte value -> real GPT-2 token id (bytes_to_unicode single-char token, encoder.json)
 create BPR-D-BYTEID
@@ -77,31 +74,33 @@ create BPR-D-BYTEID
 \ compact subset merges (rank -> child a, child b as ENGINE-internal ids: byte=b,
 \ merge=256+rank); priority order preserved from vocab.bpe. Loaded via BPE-MERGE+.
 create BPR-D-MA
-   32 , 104 , 111 , 32 , 105 , 111 , 101 , 32 , 101 , 32 , 111 , 256 , 32 ,
-   105 , 97 , 105 , 108 , 118 , 114 , 263 , 111 , 105 , 108 , 32 , 259 , 97 ,
-   262 , 113 , 266 , 84 , 39 , 259 , 281 , 266 , 270 , 32 , 269 , 32 , 119 ,
-   268 , 105 , 287 , 277 , 111 , 116 , 39 , 293 , 263 , 256 , 110 , 302 ,
-   293 , 84 , 110 , 296 , 291 , 279 , 303 , 114 , 240 , 130 , 32 , 257 , 208 ,
-   230 , 208 , 209 , 67 , 209 , 265 , 312 , 226 , 153 , 226 , 195 , 318 ,
-   230 , 208 , 232 ,
+   32 , 104 , 111 , 32 , 105 , 111 , 101 , 32 , 101 , 32 , 111 , 256 ,
+   32 , 105 , 97 , 105 , 108 , 32 , 118 , 114 , 263 , 111 , 105 , 108 ,
+   32 , 259 , 97 , 262 , 113 , 226 , 266 , 84 , 39 , 259 , 282 , 266 ,
+   32 , 270 , 32 , 269 , 32 , 119 , 268 , 105 , 292 , 289 , 278 , 111 ,
+   116 , 39 , 296 , 263 , 256 , 110 , 306 , 97 , 296 , 32 , 84 , 110 ,
+   195 , 299 , 294 , 280 , 307 , 114 , 240 , 130 , 32 , 273 , 257 , 208 ,
+   230 , 208 , 32 , 209 , 67 , 209 , 265 , 319 , 226 , 153 , 226 , 195 ,
+   326 , 230 , 313 , 339 , 208 , 325 , 232 ,
 create BPR-D-MB
    116 , 101 , 110 , 119 , 115 , 114 , 115 , 98 , 100 , 102 , 117 , 111 ,
-   100 , 99 , 115 , 258 , 108 , 101 , 111 , 101 , 116 , 109 , 100 , 257 ,
-   101 , 103 , 116 , 117 , 116 , 257 , 116 , 261 , 101 , 115 , 101 , 52 ,
-   107 , 283 , 110 , 258 , 120 , 278 , 262 , 120 , 257 , 272 , 282 , 274 ,
-   298 , 276 , 271 , 292 , 111 , 97 , 264 , 50 , 272 , 294 , 288 , 159 , 172 ,
-   230 , 272 , 181 , 156 , 184 , 130 , 290 , 128 , 299 , 111 , 152 , 130 ,
-   316 , 175 , 111 , 151 , 178 , 170 ,
+   100 , 99 , 115 , 258 , 108 , 110 , 101 , 111 , 101 , 116 , 109 , 100 ,
+   257 , 101 , 103 , 116 , 117 , 128 , 116 , 257 , 116 , 261 , 101 , 115 ,
+   285 , 101 , 52 , 107 , 284 , 110 , 258 , 120 , 148 , 279 , 262 , 120 ,
+   257 , 272 , 283 , 275 , 302 , 277 , 271 , 102 , 295 , 226 , 111 , 97 ,
+   169 , 264 , 50 , 272 , 297 , 290 , 159 , 172 , 230 , 97 , 272 , 181 ,
+   156 , 184 , 217 , 130 , 293 , 128 , 303 , 111 , 152 , 130 , 323 , 175 ,
+   111 , 151 , 152 , 274 , 178 , 343 , 170 ,
 \ rank -> REAL GPT-2 id of the merged token (encoder.json), for the id translation
 create BPR-D-MID
    256 , 258 , 261 , 266 , 271 , 273 , 274 , 275 , 276 , 277 , 280 , 284 ,
-   288 , 291 , 292 , 295 , 297 , 303 , 305 , 307 , 313 , 320 , 335 , 339 ,
-   356 , 363 , 395 , 421 , 448 , 464 , 470 , 476 , 496 , 516 , 589 , 604 ,
-   624 , 627 , 675 , 836 , 844 , 995 , 999 , 1140 , 1169 , 1183 , 1235 ,
-   1379 , 1661 , 1662 , 1808 , 2068 , 2514 , 2616 , 2966 , 5433 , 5968 ,
-   7586 , 8394 , 8582 , 8955 , 10545 , 12758 , 16843 , 17312 , 18849 , 20375 ,
-   20448 , 21169 , 21831 , 23748 , 24583 , 25081 , 26391 , 26884 , 31373 ,
-   33768 , 38857 , 45739 ,
+   288 , 291 , 292 , 295 , 297 , 299 , 303 , 305 , 307 , 313 , 320 , 335 ,
+   339 , 356 , 363 , 395 , 421 , 447 , 448 , 464 , 470 , 476 , 496 , 516 ,
+   564 , 589 , 604 , 624 , 627 , 675 , 836 , 844 , 851 , 995 , 999 , 1140 ,
+   1169 , 1183 , 1235 , 1379 , 1661 , 1662 , 1808 , 1878 , 2068 , 2343 , 2514 , 2616 ,
+   2634 , 2966 , 5433 , 5968 , 7586 , 8394 , 8582 , 8955 , 10545 , 12385 , 12758 , 16843 ,
+   17312 , 18849 , 18923 , 20375 , 20448 , 21169 , 21831 , 23748 , 24583 , 25081 , 26391 , 26884 ,
+   31373 , 33768 , 34719 , 38776 , 38857 , 41492 , 45739 ,
 
 \ Install the committed real subset into the engine + real-id translation layer.
 : BPR-D-LOAD ( -- )
@@ -176,20 +175,22 @@ create BPR-I16
 10 constant BPR-ASCII-HI        \ fixtures 1..10 are pure ASCII
 16 constant BPR-FIX-HI           \ fixtures 11..16 are multi-byte MATCH
 
-\ ---- divergence fixture: matcher output vs tiktoken (boundary proof) --------------
-: BPR-DIV-S ( -- ptr u8 n )  s" naïve" ;   \ multi-byte letter inside an ASCII letter run
-create BPR-DIV-HABU
-   2616 , 26884 , 303 ,   \ engine (byte-level matcher) ids
-3 constant BPR-DIV-HABU-N
-create BPR-DIV-TIK
-   2616 , 38776 ,    \ tiktoken (unicode presplit) ids - DIFFERENT
-2 constant BPR-DIV-TIK-N
+\ ---- former divergence fixture, now CLOSED (asserted MATCH in bpe-test.f, red-first).
+\ "naïve" (precomposed U+00EF between ASCII letters) folds to one \p{L}+ run -> tiktoken's
+\ [2616, 38776]; the unfixed ASCII matcher byte-split it to [2616, 26884, 303]. café adds a
+\ second precomposed-Latin id-level closure (U+00E9). Escapes pin the exact NFC bytes.
+: BPR-DIV-S  ( -- ptr u8 n )  s\" na\xC3\xAFve" ;
+create BPR-DIV-I    2616 , 38776 ,
+2 constant BPR-DIV-N
+: BPR-CAFE-S ( -- ptr u8 n )  s\" caf\xC3\xA9" ;
+create BPR-CAFE-I   66 , 1878 , 2634 ,
+3 constant BPR-CAFE-N
 
 \ ---- real multi-byte round-trip sample (decode(encode(x))==x; split-independent) --
 : BPR-RT-S ( -- ptr u8 n )  s" café ☕ 日本語 — naïve? 42%" ;
 
 \ ---- full-table red-first fixture (dot habu-bpe-full-50k-a598ba57) ----------------
-\ "tokenization" needs merges beyond the committed 79-merge subset. tiktoken 0.13.0 and the
+\ "tokenization" needs merges beyond the committed 91-merge subset. tiktoken 0.13.0 and the
 \ full 50000-merge table (maki/bpe-full.f) fold it to BPR-TOK-FULL; the subset table (those
 \ merges absent) yields BPR-TOK-SUB, reproduced by the committed subset engine. The hermetic
 \ gate proves the subset gives BPR-TOK-SUB and NOT BPR-TOK-FULL (so the full table changes the
