@@ -619,7 +619,10 @@ fits.
 - **Stdlib files have three registry points (source file, `lib/std.manifest`,
   `FILEMAP.md`) plus `TEST:SUITE` + `TRUSTED.md` for any `TRUSTED:`.** Match
   `tools/public-signatures.f` output EXACTLY (`TRUSTED:`/constants get no row; effect must
-  sit immediately after the word name, before `{: :}` locals, or it is invisible). Miss the
+  sit immediately after the word name, before `{: :}` locals, or it is invisible). Keep an
+  unavoidable trusted seam private behind an ordinary checked public wrapper so the general
+  signature drift gate owns the public manifest row and `TRUSTED.md` owns only the raw seam.
+  Miss the
   manifest → direct manifest gate fails; miss FILEMAP.md → derived filemap-lint fails (every
   .f/.fs under src/tools/test/lib must be listed or a committed exclusion). The lint-manifest
   slice is the OWNING gate a new-lib lane must run (host/filemap/trust/coverage do NOT cover

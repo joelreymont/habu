@@ -389,6 +389,40 @@ FFI:DLOPEN        ( ptr u8 n -- n )
 FFI:DLSYM         ( n ptr u8 -- n )
 ```
 
+## IEEE-754 Scalar Conversion
+
+`lib/ieee754.f` publishes scalar bit reinterpretation and integer rounding
+shared by reduced-precision floating-point encoders. `IEEE754:F64>BITS ( r -- n )`
+reinterprets a Habu `f64` as its exact 64-bit IEEE-754 pattern, and
+`IEEE754:BITS>F64 ( n -- r )` performs the inverse reinterpretation. These are
+bit casts, not numeric conversions: every bit is preserved, including signed
+zero and NaN payload bits. The published words are ordinary checked wrappers.
+They call the private audited `F64>BITS-RAW` and `BITS>F64-RAW` boundaries
+because the checker has no typed primitive for moving one cell between the
+floating-point and integer stacks.
+
+`IEEE754:ROUND-SHIFT-EVEN ( n n -- n )` rounds a nonnegative significand right
+by a nonnegative bit count using round-to-nearest, ties-to-even. A zero shift
+returns the input, and a shift greater than 63 returns zero. A negative
+significand or shift throws `IEEE754:E-ROUND-DOMAIN`; valid inputs have no
+other error result.
+
+`lib/float32.f` publishes scalar IEEE-754 binary32 conversion. `F32:NARROW
+( r -- n )` accepts every Habu `f64` value and returns its binary32 bit pattern,
+rounded to nearest with ties to even. It preserves signed zero, gradually
+underflows representable binary32 subnormals, rounds smaller values to signed
+zero, and converts overflow to signed infinity. NaNs retain the sign and the
+representable high payload bits and are made quiet. `F32:WIDEN ( n -- r )`
+interprets the low 32 bits as a binary32 pattern and widens it exactly,
+preserving signed zero, normal and subnormal values, infinities, and NaN sign,
+payload, and quiet/signaling state. Higher input bits do not participate in the
+binary32 pattern. Neither conversion throws for an IEEE-754 input.
+
+Both packages are deliberately scalar-only. They expose no pointer, byte-load,
+byte-store, packing, or unpacking surface. Byte marshalling belongs to the
+bounded `MEM` span and subspan APIs, where capacity and access width can be
+checked before memory is touched.
+
 ## Core Bytes
 
 `src/core/bytes.f` provides small checked byte-buffer helpers that are part of

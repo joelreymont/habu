@@ -6,12 +6,20 @@
 
 package IEEE754
 
+private
+
+TRUSTED: F64>BITS-RAW ( r -- n ) ;
+TRUSTED: BITS>F64-RAW ( n -- r ) ;
+
 public
 
 -7661 constant E-ROUND-DOMAIN
 
-TRUSTED: F64>BITS ( r -- n ) ;
-TRUSTED: BITS>F64 ( n -- r ) ;
+: F64>BITS ( r -- n )
+   F64>BITS-RAW ;
+
+: BITS>F64 ( n -- r )
+   BITS>F64-RAW ;
 
 : ROUND-SHIFT-EVEN ( n n -- n ) {: sig:n shift:n :}
    sig 0 < shift 0 < or if E-ROUND-DOMAIN throw then

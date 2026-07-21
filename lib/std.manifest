@@ -1171,6 +1171,8 @@ schema_version	module	file	kind	word	effect	test	doc	owner	status	notes
 1	fmath	lib/fmath.f	word	FMATH:FROUND	(r -- n)	lib/fmath-test.f	docs/stdlib.md	stdlib-fmath	published	round a float to the nearest signed integer
 1	fmath	lib/fmath.f	word	FMATH:FEXP	(r -- r)	lib/fmath-test.f	docs/stdlib.md	stdlib-fmath	published	exponential of a float by range reduction
 1	ieee754	lib/ieee754.f	module			lib/ieee754-test.f	docs/stdlib.md	habu-infer-gpt-2-412c6f04	active	shared IEEE-754 f64 bit reinterpretation and width-independent round-to-nearest-even shifting
+1	ieee754	lib/ieee754.f	word	IEEE754:F64>BITS	(r -- n)	lib/ieee754-test.f	docs/stdlib.md	habu-infer-gpt-2-412c6f04	published	reinterpret one Habu f64 value as its exact 64-bit IEEE-754 bit pattern at the audited scalar boundary
+1	ieee754	lib/ieee754.f	word	IEEE754:BITS>F64	(n -- r)	lib/ieee754-test.f	docs/stdlib.md	habu-infer-gpt-2-412c6f04	published	reinterpret one 64-bit IEEE-754 bit pattern as a Habu f64 value at the audited scalar boundary
 1	ieee754	lib/ieee754.f	word	IEEE754:ROUND-SHIFT-EVEN	(n n -- n)	lib/ieee754-test.f	docs/stdlib.md	habu-infer-gpt-2-412c6f04	published	round a nonnegative significand right by a nonnegative bit count using ties-to-even; negative inputs throw E-ROUND-DOMAIN
 1	float32	lib/float32.f	module			lib/float32-test.f	docs/stdlib.md	habu-infer-gpt-2-412c6f04	active	state-free exact scalar F32 conversion with no pointer surface
 1	float32	lib/float32.f	word	F32:NARROW	(r -- n)	lib/float32-test.f	docs/stdlib.md	habu-infer-gpt-2-412c6f04	published	round one Habu f64 value to its IEEE-754 F32 bit pattern using ties-to-even
