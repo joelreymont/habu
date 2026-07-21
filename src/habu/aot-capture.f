@@ -636,3 +636,39 @@ ACAP-WID-SELFTEST
    ACAP-PWID-MAXWID 1000 <> if s" aot-capture: pwid self-test: max-WID for WIDN advance wrong" 74 die then
    0 AOT-PWID-N ! ;                                  \ leave clean for the real capture
 ACAP-PWID-SELFTEST
+
+\ --- build-time regression (dot habu-separate-aot-records): owner freeze rows are
+\ written through AOT-OWNER:ROW@ into the dedicated ROWS buffer and must never reach
+\ AOT-REC-BUF. A shared buffer would let a full OWNER-WID-MAX-row freeze
+\ (OWNER-WID-MAX * AOT-OWNER-ROW = 4096 bytes) overwrite dict records 0..85 -- the
+\ exact prefix clobber this dot separates. This stamps the AOT-REC-BUF record prefix,
+\ writes a distinct sentinel through ROW@ for every row (the precise destination
+\ FREEZE-ROW targets), then proves the record prefix is byte-intact and the freeze
+\ sentinel landed in ROWS. Fail-closed via die; red-first: aliasing ROW@ to
+\ AOT-REC-BUF@ turns the record prefix into the freeze sentinel and this dies. Runs
+\ in the live metabuild BEFORE stdin.f's real ACAP-CAPTURE and re-zeros both regions,
+\ so the real capture is unaffected. Host-only (aot-capture.f is not baked), so
+\ CODELEN is unchanged -- exactly like ACAP-WID-SELFTEST / ACAP-PWID-SELFTEST above.
+package AOT-OWNER
+$A5 constant SEP-REC-MARK                            \ record-prefix sentinel
+$5A constant SEP-ROW-MARK                            \ owner-freeze-row sentinel
+: SEP-SELFTEST ( -- )
+   OWNER-WID-MAX AOT-OWNER-ROW * {: span:n :}                    \ bytes a shared freeze would clobber
+   span 0 ?do  SEP-REC-MARK AOT-REC-BUF@ i + c!  loop            \ stamp record prefix
+   OWNER-WID-MAX 0 ?do
+      i ROW@ {: dst:ptr :}                                       \ exact FREEZE-ROW destination
+      AOT-OWNER-ROW 0 ?do  SEP-ROW-MARK dst i + c!  loop
+   loop
+   span 0 ?do
+      AOT-REC-BUF@ i + c@ SEP-REC-MARK <> if
+         s" aot-capture: owner freeze aliased AOT-REC-BUF (record prefix clobbered)" 74 die
+      then
+   loop
+   OWNER-WID-MAX 0 ?do
+      i ROW@ c@ SEP-ROW-MARK <> if
+         s" aot-capture: owner freeze row missing from ROWS buffer" 74 die
+      then
+   loop
+   span 0 ?do  0 AOT-REC-BUF@ i + c!  0 ROWS i + c!  loop ;      \ leave both regions clean
+SEP-SELFTEST
+;package
