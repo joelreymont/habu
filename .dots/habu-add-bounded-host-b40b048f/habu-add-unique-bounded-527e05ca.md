@@ -6,6 +6,7 @@ issue-type: task
 created-at: "2026-07-13T16:44:00.233981+02:00"
 blocks:
   - habu-define-rigid-host-71b010a0
+  - habu-use-non-reserved-67821d1c
 ---
 
 Problem: raw allocated pointers permit unchecked aliasing, copy/drop, out-of-bounds byte access, free-while-live, stale use, and ownership that escapes its mapping lifetime. Fix: reopen package MEM in new lib/memory-region.f and implement `WITH-REGION ( CAD-NUM:alloc-byte-len [ owner<q> -- S ] -- S )` on the existing `MEM:WITH-BYTES` cleanup primitive. Within that lexical scope, BORROW consumes owner<q> to produce one unique transient span<q,u8,e,unique,transient,g>, typed INDEX/C@/C! operate only through bounded evidence, ;BORROW consumes the span and returns the same owner, and FREE consumes logical ownership before callback return. `MEM:WITH-BYTES` performs the physical unmap after the checked callback and preserves its established cleanup and primary-error precedence. No owner, span, raw pointer, index, or generation token may escape the callback. Use PRODUCT values with concrete linear tokens; do not edit lib/memory.f in this leaf. Acceptance: raw index, cross-region, extent/generation mismatch, owner/span copy or drop, free while borrowed, callback return without FREE, post-;BORROW span use, escaped authority, and later-generation index reuse reject; first/last byte access works; negative/index=len throw E-MEM-BOUNDS without modifying sentinels; callback throws still unmap; nested scopes release in reverse order; allocation identity exhausts before reuse. Files: lib/memory-region.f, lib/memory-region-test.f, FILEMAP.md. Verify: exact test load, checker/linear/type-family suites, lib/memory-test.f, refine/trust/host/filemap/dot lints, typed-local diff lint, full native gate.
@@ -24,5 +25,11 @@ premise-falsification above and the landed rigid-region suite prove that this
 leaf needs only the closed rigid-host capability. This common memory type must
 land before tensor, model-pack, or inference consumers introduce ownership
 surfaces.
+
+Implementation blocker 2026-07-21: the family signature is expressible, but
+the PRODUCT generator names its sixth open parameter `f`, which is the reserved
+bool scalar token. The generated MAKE effect therefore changes that parameter
+to bool. This leaf waits on habu-use-non-reserved-67821d1c; a MEM-local trusted
+constructor or retagging shim is forbidden.
 
 Claim: agent=mem-region workspace=.jj-ws/habu-add-unique-bounded-527e05ca

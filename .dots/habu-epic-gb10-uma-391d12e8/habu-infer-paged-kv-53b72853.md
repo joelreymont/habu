@@ -13,12 +13,17 @@ allocator described below; no implementation remains active under that claim.
 
 Review incorporation 2026-07-21 (docs/inference-engine-plan.md M2): (1) SEPARATE the host ownership table from the GPU-consumed block-table snapshot and define the exact synchronization point at which the GPU may read a new snapshot - device-visible metadata must never race host mutation; (2) page size is a MEASURED lane, not frozen at 16 (named constant stays, measurement dot follows); (3) add cancellation and failed-prefill cleanup tests (no leak on any failed model step); (4) allocator metrics: total/free/shared pages, tail waste, high-water mark, per-model KV bytes-per-token; (5) test the declared maximum-context admission policy explicitly.
 
-Base allocator LANDED 1835f711 (2026-07-21): maki/infer/kv-cache.f (package KV, new maki/infer/ home for the phase-1 modules) - geometry from an overflow-checked config record (KV-P=16 named), two owned mappings (pool + partitioned meta), capacity-as-ownership with install-under-catch and consume-before-release, DEFTYPE sequence handles, refcounted pages, COW fork proven byte-wise, boundary-append allocates exactly one page, churn property test with the recomputed-refcount invariant, negative proof (removing the refc bump reds the suite). The remaining review work is open and unassigned: device-visible snapshot + sync contract, cancellation/failed-prefill cleanup, page-size measurement lane, allocator metrics, and max-context admission test.
+Base allocator LANDED 1835f711 (2026-07-21): maki/infer/kv-cache.f (package KV, new maki/infer/ home for the phase-1 modules) - geometry from an overflow-checked config record (KV-P=16 named), two owned mappings (pool + partitioned meta), capacity-as-ownership with install-under-catch and consume-before-release, DEFTYPE sequence handles, refcounted pages, COW fork proven byte-wise, boundary-append allocates exactly one page, churn property test with the recomputed-refcount invariant, negative proof (removing the refc bump reds the suite). The remaining host work is generation-bearing sequence identity, checked geometry arithmetic, failure-atomic cancellation/fork, physical allocator metrics, page-size parameterization without a fake host-performance verdict, and max-context admission. Device-visible publication moved to habu-lease-kv-snapshot-9ef40f19 and waits on the common immutable memory-borrow chain.
 
 Destruction review 2026-07-21: released the stale `kvrem` claim. The landed base
 allocator remains, but the preserved remainder is rejected evidence: it lacks
 page pins, buffer leases and acknowledgement, real reservations, an explicit
 memory-ordering contract, and transactional ownership for publication and
-cancellation. It must not merge.
+cancellation. It must not merge. Independent review also found that a raw slot
+`kvseq` aliases a later sequence after slot reuse, tail waste double-counts a
+shared physical page, page-count and snapshot-size arithmetic can overflow, and
+host allocation timing does not select a device page size. The current lane
+must correct those structural defects and delete the rejected snapshot code;
+it may not relabel them as later integration work.
 
-Claim: agent=enumcert_impl workspace=.jj-ws/habu-infer-paged-kv-53b72853 machine=spark
+Claim: agent=enumcert_impl workspace=.jj-ws/habu-infer-paged-kv-53b72853 machine=spark (owns the host allocator correction only; leased device publication is the blocked child habu-lease-kv-snapshot-9ef40f19)
