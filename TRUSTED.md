@@ -1404,7 +1404,7 @@ test/type-decl-suite.f:TWX-SUMV-TAG@ test-metaprog habu-seal-set-check-b3676b33
 test/type-decl-suite.f:TWX-TAG test-metaprog habu-seal-set-check-b3676b33
 test/type-decl-suite.f:TWX-TDECL-CTOR-PUBLISH test-metaprog habu-seal-set-check-b3676b33
 test/type-decl-suite.f:TWX-TDECL-DERIVE-REQUIRE test-metaprog habu-seal-set-check-b3676b33
-test/type-decl-suite.f:TWX-TDECL-DRV-WORDS test-metaprog habu-seal-set-check-b3676b33
+test/type-decl-suite.f:TWX-TDECL-DRV-PUBLISH test-metaprog habu-seal-set-check-b3676b33
 test/type-decl-suite.f:TWX-TDECL-POLICY test-metaprog habu-seal-set-check-b3676b33
 test/type-decl-suite.f:TWX-TDECL-THROW test-metaprog habu-seal-set-check-b3676b33
 test/type-decl-suite.f:TWX-TFAM-CELL? test-metaprog habu-seal-set-check-b3676b33

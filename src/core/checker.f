@@ -6082,11 +6082,13 @@ variable REG-PERSIST-DELTA
 \ shape the checker already uses for the source-check hook (`set-check`).
 defer REG-EXT-PERSIST-XT ( -- )
 defer REG-SCRATCH-SNAP-XT ( -- )
+defer REG-LATE-SCRATCH-SNAP-XT ( -- )
 \ registry-not-loaded defaults: no extension registry to persist / no scratch to
 \ snapshot before type-schema.f / type-family.f / render.f install the real words.
 : REG-EXT-DEFAULTS ( -- )
    [: ;] is REG-EXT-PERSIST-XT
-   [: ;] is REG-SCRATCH-SNAP-XT ;
+   [: ;] is REG-SCRATCH-SNAP-XT
+   [: ;] is REG-LATE-SCRATCH-SNAP-XT ;
 REG-EXT-DEFAULTS
 
 : CHECKER-SNAPSHOT-PREPARE ( -- )
@@ -6101,7 +6103,8 @@ REG-EXT-DEFAULTS
    HIDX-EFF-BASE-CLEAR
    NORET-SNAPSHOT-PERSIST
    REG-EXT-PERSIST-XT
-   REG-SCRATCH-SNAP-XT ;
+   REG-SCRATCH-SNAP-XT
+   REG-LATE-SCRATCH-SNAP-XT ;
 
 : NORET-REC ( -- ptr a )
    NORET-END @ NORET-CELL ;
@@ -9258,27 +9261,110 @@ variable NP-OUT-I       \ output cell param arg index (NP-OUT-TERM is non-recurs
 \ --- generated-constructor certification (item 8, docs/type-families.md §12).
 \ Hidden physical fields are checker-owned, so no user body can produce a
 \ layout-typed output — that reject IS the anti-forgery rule. The one intro
-\ form is the generated constructor: ;SUMTYPE arms this single-shot pending
-\ record (word name + the physical pad+tag n-cell count from SUMV metadata)
-\ around the one evaluate that defines it, and the boundary unification below
-\ verifies the body against the metadata-derived RAW row — the declared inputs
-\ untouched underneath, the counted type-n cells (zero pads + tag) on top. The
-\ declared hidden-field sig is then recorded/published through the normal
-\ certify path, coercing the raw cells into the layout bundle by construction:
-\ both rows derive from the same SUMV record, and only the sumtype declaration
-\ path (sealed against user reopening) can arm the window.
-variable CTOR-PEND-A   variable CTOR-PEND-U   0 CTOR-PEND-U !
-variable CTOR-PEND-N   variable CTOR-PEND-I
-: CTOR-PEND! ( ptr u8 n n -- ) {: a:ptr u:n k:n :}
-   k CTOR-PEND-N !  u CTOR-PEND-U !  a CTOR-PEND-A ! ;
-: CTOR-PEND-CLEAR ( -- ) 0 CTOR-PEND-U ! ;
+\ form is a generated-constructor plan. ;SUMTYPE queues every constructor's
+\ symbol and physical pad+tag cell count from SUMV metadata before evaluating
+\ the complete generated source once. Boundary unification consumes that sealed
+\ queue in source order and verifies each body against its metadata-derived RAW
+\ row — the declared inputs untouched underneath, the counted type-n cells
+\ (zero pads + tag) on top. The declared hidden-field sig is then recorded
+\ through the normal certify path, coercing the raw cells into the layout bundle
+\ by construction. Both rows derive from the same SUMV record, and only the
+\ sumtype declaration path (sealed against user reopening) can arm the queue.
+4 constant CTOR-PEND-CAP-INIT
+2 cells constant CTOR-PEND-REC
+$7FFFFFFFFFFFFFFF constant CTOR-PEND-BYTE-MAX
+CTOR-PEND-BYTE-MAX CTOR-PEND-REC / constant CTOR-PEND-ROW-MAX
+create CTOR-PEND-BOOT CTOR-PEND-CAP-INIT CTOR-PEND-REC * allot
+PTR-VARIABLE CTOR-PEND-P   CTOR-PEND-BOOT CTOR-PEND-P !
+variable CTOR-PEND-CAP     CTOR-PEND-CAP-INIT CTOR-PEND-CAP !
+variable CTOR-PEND-COUNT
+variable CTOR-PEND-POS
+variable CTOR-PEND-K
+variable CTOR-PEND-I
+
+: CTOR-PEND-ROW ( n -- ptr a )
+   dup 0 < over CTOR-PEND-CAP @ >= or IF
+      s" checker: generated constructor plan capacity overflow" 76 die
+   THEN
+   CTOR-PEND-REC * CTOR-PEND-P @ + ;
+
+: CTOR-PEND-SYM ( n -- ptr a )
+   CTOR-PEND-ROW ;
+
+: CTOR-PEND-CELLS ( n -- ptr a )
+   CTOR-PEND-ROW CELL + ;
+
+: CTOR-PEND-ROWS>BYTES ( n -- n )
+   dup 0 < over CTOR-PEND-ROW-MAX > or IF
+      s" checker: generated constructor plan capacity overflow" 76 die
+   THEN
+   CTOR-PEND-REC * ;
+
+: CTOR-PEND-NEXT-CAP ( -- n )
+   CTOR-PEND-COUNT @ CTOR-PEND-ROW-MAX >= IF
+      s" checker: generated constructor plan capacity overflow" 76 die
+   THEN
+   CTOR-PEND-COUNT @ 1 + {: need:n :}
+   CTOR-PEND-CAP @ 0 <= CTOR-PEND-CAP @ CTOR-PEND-ROW-MAX > or IF
+      s" checker: generated constructor plan capacity overflow" 76 die
+   THEN
+   CTOR-PEND-CAP @ CTOR-PEND-ROW-MAX 2 / <= IF
+      CTOR-PEND-CAP @ 2 * need max EXIT
+   THEN
+   need ;
+
+: CTOR-PEND-ENSURE ( -- )
+   CTOR-PEND-COUNT @ CTOR-PEND-CAP @ < IF EXIT THEN
+   CTOR-PEND-NEXT-CAP {: cap:n :}
+   CTOR-PEND-P @ CTOR-PEND-CAP @ CTOR-PEND-ROWS>BYTES
+      cap CTOR-PEND-ROWS>BYTES ARENA-BYTES-GROW CTOR-PEND-P !
+   cap CTOR-PEND-CAP ! ;
+
+: CTOR-PEND-CLEAR ( -- )
+   0 CTOR-PEND-COUNT !
+   0 CTOR-PEND-POS !
+   0 CTOR-PEND-K ! ;
+
+: CTOR-PEND-REWIND ( -- )
+   0 CTOR-PEND-POS !
+   0 CTOR-PEND-K ! ;
+
+: CTOR-PEND-SYM+ ( n n -- ) {: sym:n cells:n :}
+   cells 0 < IF s" checker: negative generated constructor width" 76 die THEN
+   CTOR-PEND-ENSURE
+   0
+   BEGIN dup CTOR-PEND-COUNT @ < WHILE
+      dup CTOR-PEND-SYM @ sym = IF
+         drop s" checker: duplicate generated constructor plan" 76 die
+      THEN
+      1 +
+   REPEAT
+   drop
+   sym CTOR-PEND-COUNT @ CTOR-PEND-SYM !
+   cells CTOR-PEND-COUNT @ CTOR-PEND-CELLS !
+   CTOR-PEND-COUNT @ 1 + CTOR-PEND-COUNT ! ;
+
+: CTOR-PEND! ( ptr u8 n n -- ) {: a:ptr u:n cells:n :}
+   CTOR-PEND-CLEAR
+   a u CHECKER-RECORD-SYM cells CTOR-PEND-SYM+ ;
+
 : CTOR-PEND-MATCH? ( -- bool )
-   CTOR-PEND-U @ 0 >  NMU @ 0 >  and 0= IF RES-FALSE EXIT THEN
-   CTOR-PEND-A @ CTOR-PEND-U @ NMA @ NMU @ CORE-STR=CI ;   \ NMA holds the case-folded token; the armed buffer is uppercase
-: CTOR-EXPECTED-ROW ( -- n )          \ SGIN + (pads+tag) type-n cells on top
+   CTOR-PEND-POS @ CTOR-PEND-COUNT @ <  NMU @ 0 > and 0= IF RES-FALSE EXIT THEN
+   NMA @ NMU @ CHECKER-RECORD-SYM
+      CTOR-PEND-POS @ CTOR-PEND-SYM @ <> IF RES-FALSE EXIT THEN
+   CTOR-PEND-POS @ CTOR-PEND-CELLS @ CTOR-PEND-K !
+   CTOR-PEND-POS @ 1 + CTOR-PEND-POS !
+   RES-TRUE ;
+
+: CTOR-PEND-REQUIRE-DONE ( -- )
+   CTOR-PEND-POS @ CTOR-PEND-COUNT @ <> IF
+      s" checker: incomplete generated constructor plan" 76 die
+   THEN ;
+
+: CTOR-EXPECTED-ROW ( -- n )          \ SGIN + planned raw cells on top
    SGIN @
    0 CTOR-PEND-I !
-   BEGIN CTOR-PEND-I @ CTOR-PEND-N @ < WHILE
+   BEGIN CTOR-PEND-I @ CTOR-PEND-K @ < WHILE
       CC-N MK-CON swap MK-PUSH
       CTOR-PEND-I @ 1 + CTOR-PEND-I !
    REPEAT ;
@@ -9354,7 +9440,8 @@ variable CAST-PEND-A   variable CAST-PEND-U   0 CAST-PEND-U !
    CHECK-SIG? IF CHECK-NO-BORROW THEN
    CHECK-SIG? IF
       CTOR-PEND-MATCH? IF
-         CTOR-PEND-CLEAR                            \ single shot, even on reject
+         \ Matching consumes exactly one row from the sealed constructor plan.
+         \ TDECL-GEN-EVAL's catch boundary clears it on every exit.
          CTOR-EXPECTED-ROW SUNI-COERCE
       ELSE CAST-PEND-MATCH? IF
          CAST-PEND-CLEAR                            \ single shot, even on reject

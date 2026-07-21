@@ -1471,6 +1471,37 @@ The generated constructor body is checked code. The generator must not emit
 `TRUST`, `TRUSTED:`, `set-check`, or require a `TRUSTED.md` manifest row,
 including inside generated strings later passed to `evaluate`.
 
+Publication is declaration-wide, not word-wide. The generator first renders
+every constructor and derived word into an ordered plan. It rejects duplicate,
+already-live, or visibility-invalid names; bounds and grows the plan and
+constructor-symbol arenas; preflights the exact native dictionary records, the
+possible new wordlist identifier, and the one protected-wordlist row determined
+by that plan; and checks every declared effect and body in one dependency-ordered
+checker candidate scope. Earlier candidate rows are available to later generated
+bodies, but the scope is discarded and the constructor authorization queue is
+rewound before publication, so this pass cannot publish a dictionary word,
+checker row, event, protected wordlist, or ready state. The candidate pass also
+grows the checker stores needed by the exact definitions; those stores retain
+process-local allocation but their registry high-waters are discarded. Cross
+reference lookup is a view of the native dictionary, not a separate registry.
+
+Only a fully accepted plan crosses the single transactional `evaluate` boundary.
+The checker, family, variant, schema, field, event, dictionary, code, and data
+high-waters are rollback-owned. The wordlist allocator may consume one monotonic,
+never-reused identity when a new constructor package is needed, but the dictionary
+namespace record is its only lookup path and is removed on rollback. Native code-
+or data-space exhaustion therefore remains a compiler-storage failure inside the
+rollback boundary; it cannot publish the final event, protection, sealing, or
+ready state. Plan and constructor arena size arithmetic rejects overflow before
+allocation or address formation. One catch-safe declaration-generation owner
+starts before rendering and covers preflight, real evaluation, and protection
+staging: success requires exact constructor-queue consumption, while every
+failure clears that temporary authority before it propagates.
+Snapshot preparation requires every declaration transaction to be idle, then
+repoints all grown plan, constructor-queue, transaction-frame, and protection-
+staging arenas at their baked boot buffers so no process-local mapped address
+enters an image.
+
 Do not expose public unchecked converters from `n` to enum/sum tags.
 
 ---

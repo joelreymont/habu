@@ -1906,6 +1906,23 @@ fits.
   Letter and Number data cannot be bounded to scalars seen in a vocabulary.
 - **Generated declarations are one transaction.** Snapshot every mutable owner,
   publish once, and roll all participants back in reverse order on failure.
+- **Rollback is not an atomic publication boundary when a generator yields
+  between words.** Render the complete declaration plan, check every name,
+  effect, body, visibility rule, and plan-determined capacity in one discardable
+  dependency-ordered checker scope, rewind its authorization queue, and only
+  then cross one transactional evaluator boundary. One evaluator call without
+  that non-publishing preflight still lets the first word become visible before
+  a later word fails, even if rollback eventually removes it.
+- **Geometric scratch arenas need an explicit arithmetic ceiling.** Bound the
+  requested element count, multiplication into bytes, and capacity doubling
+  before allocation; signed wrap is not a valid out-of-memory path. If an arena
+  can grow into process-local mapped memory, snapshot preparation must also
+  repoint it at baked storage while its logical state is idle.
+- **A generated-constructor queue is temporary authority, not ordinary scratch
+  state.** Its owning catch boundary must start before plan rendering and clear
+  it on every render, name, capacity, checker, evaluator, and staging failure; a
+  cleanup in the earlier metadata parser does not cover generation that runs
+  after that parser returns.
 - **Qualified lifecycle operations have two spellings for one identity.** The
   checker owns `PACKAGE:TAIL`, while the dictionary record stores bare `TAIL` in
   the package wordlist; resolve once, mutate checker state with the qualified

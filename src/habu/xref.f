@@ -236,6 +236,47 @@ variable XREF-QWID
 PROT-WID-CTOR-INSTALL
 -1 TDECL-PROT-WID-ARMED !
 
+package GENERATED-DECL-NAME-PREFLIGHT
+
+private
+
+$7FFFFFFFFFFFFFFF constant COUNT-MAX
+
+: NAMESPACE-EXISTS? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   a u XREF-QUAL-INDEX {: split:n :}
+   split 0 < IF s" xref: generated declaration is not qualified" 76 die THEN
+   XREF-SN@ split XREF-NAMESPACE-WL XREF-FIND-WL XREF-FOUND? ;
+
+public
+
+: CHECK ( ptr u8 n -- ) {: a:ptr u:n :}
+   a u TFAM-CTOR-WORD? 0= IF
+      s" xref: generated declaration visibility mismatch" 76 die
+   THEN
+   a u XREF-FIND XREF-FOUND? IF
+      s" xref: generated declaration already exists" 76 die
+   THEN ;
+
+: DICTIONARY-RECORDS ( ptr u8 n n -- n ) {: a:ptr u:n words:n :}
+   words 0 <= words COUNT-MAX >= or IF
+      s" xref: generated declaration word count overflow" 76 die
+   THEN
+   a u NAMESPACE-EXISTS? IF words EXIT THEN
+   words 1 + ;
+
+: NEW-WORDLIST? ( ptr u8 n -- bool )
+   NAMESPACE-EXISTS? 0= ;
+
+private
+
+: INSTALL ( -- )
+   [: CHECK ;] is TDECL-NAME-PREFLIGHT-XT ;
+
+INSTALL
+get-current prot-wid-add
+
+;package
+
 TRUSTED: XREF-PATCH32 ( n ptr a -- )
    patch32 ;
 

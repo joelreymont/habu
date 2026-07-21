@@ -86,7 +86,6 @@ variable TDECL-FAM-REG   \ family id registered by the LAST successful sum (-1 =
    -1 TDECL-FAM-REG !               \ set by a successful sum registration only
    catch {: rc:n :}
    rc 0= IF EXIT THEN
-   CTOR-PEND-CLEAR                  \ no armed constructor window survives a reject
    TDECL-RESTORE
    TDECL-REPORT
    MULTI-ERR? IF 1 MULTI-ERR-N +! EXIT THEN
@@ -938,16 +937,19 @@ variable TDP-TX
 \ the tool dictionary and checker rollback stays complete. Each PUBLIC variant
 \ becomes one checked qualified definition
 \    : <CTOR-PKG>:<VARIANT> ( payload.. -- family<a,..> ) 0 .. 0 <tag> ;
-\ rendered from interned SUMV metadata only and evaluated with the checker's
-\ single-shot pending-constructor window armed (checker.f CTOR-PEND!): the
-\ body certifies against the SUMV-derived raw row and the declared
-\ hidden-field sig publishes through the normal certify path. The generated
+\ rendered from interned SUMV metadata only. Before any generated source reaches
+\ the evaluator, the generator renders every constructor and derived word,
+\ rejects duplicate, live, or visibility-invalid symbols, grows all
+\ plan-determined registry storage, and seals the checker's ordered constructor
+\ queue. It checks the complete dependency-ordered source in one candidate scope,
+\ discards every provisional checker row, and rewinds the queue. Only that fully
+\ accepted plan crosses the audited INCLUDE-EVALUATE boundary once. The generated
 \ text never contains TRUST, TRUSTED:, or set-check.
-\ the one evaluate crossing rides the audited INCLUDE-EVALUATE boundary
+\ The one complete-plan evaluate crossing rides the audited boundary
 \ (include.f), reached through this friend xt installed by type-family-sha.f
 \ once both sides exist (the TF-SHA16-XT pattern) — the generator itself
 \ adds no unchecked code.
-\ Generated-constructor eval crossing and protected-width recorder, reached
+\ Generated-plan eval crossing and protected-wordlist recorder, reached
 \ through `defer` hooks so the call is statically effect-known (no execute of a
 \ raw stored xt). include.f / aot.f bind TDECL-EVAL-XT; xref.f binds
 \ TDECL-PROT-WID-XT. A separate ARMED flag records whether the real word is
@@ -957,9 +959,22 @@ variable TDP-TX
 defer TDECL-EVAL-XT ( ptr u8 n -- )
 defer TDECL-PROT-WID-XT ( ptr u8 n -- )
 defer TDECL-TXN-XT ( [ -- ] -- )
+defer TDECL-NAME-PREFLIGHT-XT ( ptr u8 n -- )
+defer TDECL-CAPACITY-PREFLIGHT-XT ( ptr u8 n n -- )
 variable TDECL-EVAL-ARMED
 variable TDECL-PROT-WID-ARMED
 variable TDECL-TXN-ARMED
+
+: TDECL-NAME-PREFLIGHT-MISSING ( ptr u8 n -- )
+   2drop s" sumtype: generated name preflight not installed" 76 die ;
+
+: TDECL-CAPACITY-PREFLIGHT-MISSING ( ptr u8 n n -- )
+   2drop drop s" sumtype: generated capacity preflight not installed" 76 die ;
+
+: TDECL-PREFLIGHT-DEFAULTS ( -- )
+   [: TDECL-NAME-PREFLIGHT-MISSING ;] is TDECL-NAME-PREFLIGHT-XT
+   [: TDECL-CAPACITY-PREFLIGHT-MISSING ;] is TDECL-CAPACITY-PREFLIGHT-XT ;
+TDECL-PREFLIGHT-DEFAULTS
 
 $1000 constant TDGEN-CAP   \ derived-eq diagonal text is O(V^2); the C, guard still dies at the cap
 create TDGEN-BUF TDGEN-CAP allot
@@ -967,6 +982,239 @@ variable TDGEN-U
 variable TDGEN-NA   variable TDGEN-NU     \ word-name span inside TDGEN-BUF
 variable TDGEN-I    variable TDGEN-J      \ render loop indexes
 variable TDGEN-K    variable TDGEN-M    variable TDGEN-B
+
+\ Generated declarations are planned and checked in full before the evaluator
+\ sees any source. The per-word renderer remains bounded by TDGEN-CAP, while this
+\ plan arena grows before publication so a large family cannot fail halfway
+\ through merely because the aggregate source outgrew one scratch page. Each row
+\ retains relocation-safe offsets for its name and checker definition span. The
+\ symbol table rejects collisions within the plan; post-xref name and capacity
+\ hooks validate live visibility and every plan-determined fixed registry.
+$1000 constant TDPLAN-CAP-INIT
+4 constant TDPLAN-ROW-CAP-INIT
+5 cells constant TDPLAN-REC
+$7FFFFFFFFFFFFFFF constant TDPLAN-BYTE-MAX
+TDPLAN-BYTE-MAX TDPLAN-REC / constant TDPLAN-ROW-MAX
+0 cells constant TDPLAN.SYM-OFF
+1 cells constant TDPLAN.DEF-OFF-OFF
+2 cells constant TDPLAN.DEF-U-OFF
+3 cells constant TDPLAN.NAME-OFF-OFF
+4 cells constant TDPLAN.NAME-U-OFF
+create TDPLAN-BOOT TDPLAN-CAP-INIT allot
+create TDPLAN-ROW-BOOT TDPLAN-ROW-CAP-INIT TDPLAN-REC * allot
+PTR-VARIABLE TDPLAN-P       TDPLAN-BOOT TDPLAN-P !
+PTR-VARIABLE TDPLAN-ROW-P   TDPLAN-ROW-BOOT TDPLAN-ROW-P !
+variable TDPLAN-CAP         TDPLAN-CAP-INIT TDPLAN-CAP !
+variable TDPLAN-ROW-CAP     TDPLAN-ROW-CAP-INIT TDPLAN-ROW-CAP !
+variable TDPLAN-U
+variable TDPLAN-N
+variable TDPLAN-I
+
+defer TDECL-OWNER-SNAPSHOT-XT ( -- )
+: TDECL-OWNER-SNAPSHOT-DEFAULT ( -- ) ;
+: TDECL-OWNER-SNAPSHOT-DEFAULTS ( -- )
+   [: TDECL-OWNER-SNAPSHOT-DEFAULT ;] is TDECL-OWNER-SNAPSHOT-XT ;
+TDECL-OWNER-SNAPSHOT-DEFAULTS
+
+: TDECL-SCRATCH-SNAPSHOT-RESET ( -- )
+   CTOR-PEND-COUNT @ 0 <> IF
+      s" sumtype: snapshot inside generated declaration" 76 die
+   THEN
+   CTOR-PEND-BOOT CTOR-PEND-P !
+   CTOR-PEND-CAP-INIT CTOR-PEND-CAP !
+   CTOR-PEND-CLEAR
+   TDPLAN-BOOT TDPLAN-P !
+   TDPLAN-ROW-BOOT TDPLAN-ROW-P !
+   TDPLAN-CAP-INIT TDPLAN-CAP !
+   TDPLAN-ROW-CAP-INIT TDPLAN-ROW-CAP !
+   0 TDPLAN-U !
+   0 TDPLAN-N !
+   TDECL-OWNER-SNAPSHOT-XT ;
+
+: TDECL-SCRATCH-SNAPSHOT-INSTALL ( -- )
+   [: TDECL-SCRATCH-SNAPSHOT-RESET ;] is REG-LATE-SCRATCH-SNAP-XT ;
+TDECL-SCRATCH-SNAPSHOT-INSTALL
+
+: TDPLAN-BYTE-NEED ( n -- n ) {: add:n :}
+   add 0 < add TDPLAN-BYTE-MAX > or IF
+      s" sumtype: generated declaration plan capacity overflow" 76 die
+   THEN
+   TDPLAN-U @ 0 < IF
+      s" sumtype: generated declaration plan capacity overflow" 76 die
+   THEN
+   TDPLAN-U @ TDPLAN-BYTE-MAX add - > IF
+      s" sumtype: generated declaration plan capacity overflow" 76 die
+   THEN
+   TDPLAN-U @ add + ;
+
+: TDPLAN-GROW-CAP ( n n -- n ) {: need:n cap:n :}
+   need 0 <= need TDPLAN-BYTE-MAX > or IF
+      s" sumtype: generated declaration plan capacity overflow" 76 die
+   THEN
+   cap 0 <= cap TDPLAN-BYTE-MAX > or IF
+      s" sumtype: generated declaration plan capacity overflow" 76 die
+   THEN
+   cap TDPLAN-BYTE-MAX 2 / <= IF cap 2 * need max EXIT THEN
+   need ;
+
+: TDPLAN-ENSURE ( n -- ) {: need:n :}
+   need TDPLAN-CAP @ <= IF EXIT THEN
+   need TDPLAN-CAP @ TDPLAN-GROW-CAP {: cap:n :}
+   TDPLAN-P @ TDPLAN-CAP @ cap ARENA-BYTES-GROW TDPLAN-P !
+   cap TDPLAN-CAP ! ;
+
+: TDPLAN-ROWS>BYTES ( n -- n )
+   dup 0 < over TDPLAN-ROW-MAX > or IF
+      s" sumtype: generated declaration row capacity overflow" 76 die
+   THEN
+   TDPLAN-REC * ;
+
+: TDPLAN-NEXT-ROW-CAP ( -- n )
+   TDPLAN-N @ TDPLAN-ROW-MAX >= IF
+      s" sumtype: generated declaration row capacity overflow" 76 die
+   THEN
+   TDPLAN-N @ 1 + {: need:n :}
+   TDPLAN-ROW-CAP @ 0 <= TDPLAN-ROW-CAP @ TDPLAN-ROW-MAX > or IF
+      s" sumtype: generated declaration row capacity overflow" 76 die
+   THEN
+   TDPLAN-ROW-CAP @ TDPLAN-ROW-MAX 2 / <= IF
+      TDPLAN-ROW-CAP @ 2 * need max EXIT
+   THEN
+   need ;
+
+: TDPLAN-ROW-ENSURE ( -- )
+   TDPLAN-N @ TDPLAN-ROW-CAP @ < IF EXIT THEN
+   TDPLAN-NEXT-ROW-CAP {: cap:n :}
+   TDPLAN-ROW-P @ TDPLAN-ROW-CAP @ TDPLAN-ROWS>BYTES
+      cap TDPLAN-ROWS>BYTES ARENA-BYTES-GROW TDPLAN-ROW-P !
+   cap TDPLAN-ROW-CAP ! ;
+
+: TDPLAN-BEGIN ( -- )
+   0 TDPLAN-U !
+   0 TDPLAN-N !
+   CTOR-PEND-CLEAR ;
+
+: TDPLAN-C, ( n -- )
+   1 TDPLAN-BYTE-NEED {: need:n :}
+   need TDPLAN-ENSURE
+   TDPLAN-P @ TDPLAN-U @ + c!
+   need TDPLAN-U ! ;
+
+: TDPLAN-APP ( ptr u8 n -- ) {: a:ptr u:n :}
+   u TDPLAN-BYTE-NEED {: need:n :}
+   need TDPLAN-ENSURE
+   TDPLAN-U @ {: off:n :}
+   0 TDPLAN-I !
+   BEGIN TDPLAN-I @ u < WHILE
+      a TDPLAN-I @ + c@ TDPLAN-P @ off + TDPLAN-I @ + c!
+      TDPLAN-I @ 1 + TDPLAN-I !
+   REPEAT
+   need TDPLAN-U ! ;
+
+: TDPLAN-ROW ( n -- ptr a )
+   dup 0 < over TDPLAN-ROW-CAP @ >= or IF
+      s" sumtype: generated declaration row capacity overflow" 76 die
+   THEN
+   TDPLAN-REC * TDPLAN-ROW-P @ + ;
+
+: TDPLAN.SYM ( ptr a -- ptr a ) TDPLAN.SYM-OFF + ;
+: TDPLAN.DEF-OFF ( ptr a -- ptr a ) TDPLAN.DEF-OFF-OFF + ;
+: TDPLAN.DEF-U ( ptr a -- ptr a ) TDPLAN.DEF-U-OFF + ;
+: TDPLAN.NAME-OFF ( ptr a -- ptr a ) TDPLAN.NAME-OFF-OFF + ;
+: TDPLAN.NAME-U ( ptr a -- ptr a ) TDPLAN.NAME-U-OFF + ;
+
+: TDPLAN-SYM@ ( n -- n )
+   TDPLAN-ROW TDPLAN.SYM @ ;
+
+: TDPLAN-SYM+ ( n -- ) {: sym:n :}
+   0
+   BEGIN dup TDPLAN-N @ < WHILE
+      dup TDPLAN-SYM@ sym = IF
+         drop s" sumtype: duplicate generated declaration name" 76 die
+      THEN
+      1 +
+   REPEAT
+   drop
+   TDPLAN-ROW-ENSURE
+   sym TDPLAN-N @ TDPLAN-ROW TDPLAN.SYM !
+   TDPLAN-N @ 1 + TDPLAN-N ! ;
+
+: TDPLAN-WORD+ ( -- )
+   TDPLAN-N @ 1 - TDPLAN-ROW {: r:ptr :}
+   TDGEN-U @ 3 < IF s" sumtype: malformed generated declaration" 76 die THEN
+   TDGEN-NA @ TDGEN-BUF - {: noff:n :}
+   noff 0 < noff TDGEN-U @ > or
+   TDGEN-NU @ 0 < or
+   TDGEN-NU @ TDGEN-U @ noff - > or IF
+      s" sumtype: malformed generated declaration name span" 76 die
+   THEN
+   2 TDPLAN-BYTE-NEED r TDPLAN.DEF-OFF !
+   TDGEN-U @ 3 - r TDPLAN.DEF-U !
+   noff TDPLAN-BYTE-NEED r TDPLAN.NAME-OFF !
+   TDGEN-NU @ r TDPLAN.NAME-U !
+   TDGEN-BUF TDGEN-U @ TDPLAN-APP
+   10 TDPLAN-C, ;
+
+: TDPLAN-NAME+ ( -- n )
+   TDGEN-NA @ TDGEN-NU @ CHECKER-DEFINED? IF
+      s" sumtype: generated declaration already defined" 76 die
+   THEN
+   TDGEN-NA @ TDGEN-NU @ CHECKER-RECORD-SYM dup TDPLAN-SYM+ ;
+
+: TDPLAN-CTOR+ ( n n -- ) {: vid:n cells:n :}
+   TDPLAN-NAME+ dup cells CTOR-PEND-SYM+
+   vid swap SUMV-CTOR-SYM!
+   TDPLAN-WORD+ ;
+
+: TDPLAN-DERIVED+ ( -- )
+   TDPLAN-NAME+ drop
+   TDPLAN-WORD+ ;
+
+: TDPLAN-SPAN$ ( n n -- ptr u8 n ) {: off:n u:n :}
+   off 0 < u 0 < or off TDPLAN-U @ > or IF
+      s" sumtype: invalid generated declaration span" 76 die
+   THEN
+   u TDPLAN-U @ off - > IF
+      s" sumtype: invalid generated declaration span" 76 die
+   THEN
+   TDPLAN-P @ off + u ;
+
+: TDPLAN-DEF$ ( n -- ptr u8 n )
+   TDPLAN-ROW {: r:ptr :}
+   r TDPLAN.DEF-OFF @ r TDPLAN.DEF-U @ TDPLAN-SPAN$ ;
+
+: TDPLAN-NAME$ ( n -- ptr u8 n )
+   TDPLAN-ROW {: r:ptr :}
+   r TDPLAN.NAME-OFF @ r TDPLAN.NAME-U @ TDPLAN-SPAN$ ;
+
+: TDPLAN-PREFLIGHT-NAMES ( -- )
+   0 TDPLAN-I !
+   BEGIN TDPLAN-I @ TDPLAN-N @ < WHILE
+      TDPLAN-I @ TDPLAN-NAME$ TDECL-NAME-PREFLIGHT-XT
+      TDPLAN-I @ 1 + TDPLAN-I !
+   REPEAT ;
+
+: TDPLAN-PREFLIGHT-DEFINITIONS ( -- )
+   0 TDPLAN-I !
+   BEGIN TDPLAN-I @ TDPLAN-N @ < WHILE
+      TDPLAN-I @ TDPLAN-DEF$ CHECK! -1 <> IF 70 throw THEN
+      TDPLAN-I @ 1 + TDPLAN-I !
+   REPEAT
+   CTOR-PEND-REQUIRE-DONE ;
+
+: TDPLAN-PREFLIGHT-CHECKER ( -- )
+   CTOR-PEND-REWIND
+   CHECKER-CANDIDATE-SCOPE-START
+   [: TDPLAN-PREFLIGHT-DEFINITIONS ;] catch {: rc:n :}
+   CHECKER-CANDIDATE-SCOPE-DONE
+   CTOR-PEND-REWIND
+   rc 0 <> IF rc throw THEN ;
+
+: TDPLAN-PREFLIGHT ( -- )
+   TDPLAN-PREFLIGHT-NAMES
+   TDPLAN-N @ 0= IF s" sumtype: empty generated declaration plan" 76 die THEN
+   0 TDPLAN-NAME$ TDPLAN-N @ TDECL-CAPACITY-PREFLIGHT-XT
+   TDPLAN-PREFLIGHT-CHECKER ;
 
 : TDGEN-CLEAR ( -- ) 0 TDGEN-U ! ;
 : TDGEN-C, ( n -- )
@@ -1093,9 +1341,19 @@ TDGEN-QUOT-ROW-INSTALL
    vid SUMV-TAG@ TDGEN-DEC
    s"  ;" TDGEN-APP ;
 
-: TDECL-GEN-EVAL ( -- )   \ the one audited eval crossing for generated words
+: TDECL-GEN-EVAL-BODY ( -- )
    TDECL-EVAL-ARMED @ 0= IF s" sumtype: constructor eval hook not installed" 76 die THEN
-   TDGEN-BUF TDGEN-U @ TDECL-EVAL-XT ;
+   TDPLAN-PREFLIGHT
+   TDPLAN-P @ TDPLAN-U @ TDECL-EVAL-XT
+   CTOR-PEND-REQUIRE-DONE ;
+
+\ The constructor queue is an authority, not scratch state. This inner boundary
+\ proves exact consumption on success and clears name/capacity/candidate/evaluator
+\ failures. TDECL-CTOR-WORDS starts the outer owner before plan rendering.
+: TDECL-GEN-EVAL ( -- )
+   [: TDECL-GEN-EVAL-BODY ;] catch {: rc:n :}
+   CTOR-PEND-CLEAR
+   rc 0 <> IF rc throw THEN ;
 
 : TDECL-CTOR-WORD ( n n -- ) {: fam:n vid:n :}
    TDGEN-CLEAR
@@ -1106,10 +1364,7 @@ TDGEN-QUOT-ROW-INSTALL
    fam TDGEN-OUT-TYPE
    s"  ) " TDGEN-APP
    fam vid TDGEN-BODY
-   TDGEN-NA @ TDGEN-NU @  fam TFAM-SLOTS@ vid SUMV-PAYCELLS@ - 1 +  CTOR-PEND!
-   TDECL-GEN-EVAL
-   CTOR-PEND-CLEAR
-   vid TDGEN-NA @ TDGEN-NU @ CHECKER-RECORD-SYM SUMV-CTOR-SYM! ;
+   vid fam TFAM-SLOTS@ vid SUMV-PAYCELLS@ - 1 + TDPLAN-CTOR+ ;
 
 : TDECL-CTOR-PROT-WID ( n -- ) {: vid:n :}
    TDECL-PROT-WID-ARMED @ 0= IF s" sumtype: protected-wid hook not installed" 76 die THEN
@@ -1138,10 +1393,7 @@ TDGEN-QUOT-ROW-INSTALL
       vid TDGEN-PAYLOAD
       s" ) ;" TDGEN-APP
    THEN
-   TDGEN-NA @ TDGEN-NU @ 0 CTOR-PEND!
-   TDECL-GEN-EVAL
-   CTOR-PEND-CLEAR
-   vid TDGEN-NA @ TDGEN-NU @ CHECKER-RECORD-SYM SUMV-CTOR-SYM! ;
+   vid 0 TDPLAN-CTOR+ ;
 
 \ --- derived typed equality (derive S1+S2, dot habu-checker-capability-derive):
 \ `DERIVE eq` on a PUBLIC arity-0 ENUM/SUMTYPE/PRODUCT generates ORDINARY
@@ -1315,7 +1567,7 @@ variable TDD-H
    fam s" tag" TDGEN-DRV-NAME
    s" ( " TDGEN-APP  fam TDGEN-OUT-TYPE  s"  -- n ) " TDGEN-APP
    fam TDGEN-TAG-BODY
-   TDECL-GEN-EVAL ;
+   TDPLAN-DERIVED+ ;
 : TDECL-EQ-WORD ( n -- ) {: fam:n :}
    TDGEN-CLEAR
    fam s" eq" TDGEN-DRV-NAME
@@ -1324,13 +1576,13 @@ variable TDD-H
    s"  -- bool ) " TDGEN-APP
    fam TFAM-PRODUCT? IF fam TDGEN-EQ-PROD ELSE
    fam TFAM-SLOTS@ 0= IF fam TDGEN-EQ-TAGS ELSE fam TDGEN-EQ-DIAG THEN THEN
-   TDECL-GEN-EVAL ;
+   TDPLAN-DERIVED+ ;
 : TDECL-HASH-WORD ( n -- ) {: fam:n :}
    TDGEN-CLEAR
    fam s" hash" TDGEN-DRV-NAME
    s" ( " TDGEN-APP  fam TDGEN-OUT-TYPE  s"  -- n ) " TDGEN-APP
    fam TFAM-PRODUCT? IF fam TDGEN-HASH-PROD ELSE fam TDGEN-HASH-BODY THEN
-   TDECL-GEN-EVAL ;
+   TDPLAN-DERIVED+ ;
 : TDECL-DRV-WORDS ( n -- ) {: fam:n :}
    fam TFAM-DERIVE-ANY? 0= IF EXIT THEN
    fam TFAM-PRODUCT? 0= IF fam TDECL-TAG-WORD THEN   \ discriminant rides any derive
@@ -1339,12 +1591,14 @@ variable TDD-H
 
 : TDECL-PROD-WORDS ( n -- ) {: fam:n :}   \ make (row 0) + unmake (row 1)
    fam TFAM-VAR-START@ {: vstart:n :}
+   TDPLAN-BEGIN
    fam vstart 1 TDECL-PROD-WORD
    fam vstart 1 + 0 TDECL-PROD-WORD
    fam TDECL-DRV-WORDS                    \ derived words BEFORE the WID closes
+   TDECL-GEN-EVAL
    vstart TDECL-CTOR-PROT-WID ;
 
-: TDECL-CTOR-WORDS ( -- )                \ engine-load generation for the last sum
+: TDECL-CTOR-WORDS-BODY ( -- )           \ engine-load generation for the last sum
    TDECL-FAM-REG @ {: fam:n :}
    fam 0 < IF EXIT THEN
    fam TFAM-PUBLIC? 0= IF EXIT THEN
@@ -1357,13 +1611,23 @@ variable TDD-H
    \ whole-bundle linear counting lands.
    fam TFAM-VAR-START@ {: vstart:n :}
    fam TFAM-VAR-COUNT@ {: k:n :}
+   TDPLAN-BEGIN
    0 TDGEN-M !
    BEGIN TDGEN-M @ k < WHILE
       fam vstart TDGEN-M @ + TDECL-CTOR-WORD
       TDGEN-M @ 1 + TDGEN-M !
    REPEAT
    fam TDECL-DRV-WORDS                   \ derived words BEFORE the WID closes
+   TDECL-GEN-EVAL
    vstart TDECL-CTOR-PROT-WID ;
+
+\ Rendering itself can fail after constructors have entered the authority queue,
+\ before TDECL-GEN-EVAL is reached. Own the whole render/preflight/evaluate/stage
+\ lifetime here and clear the queue before every result escapes.
+: TDECL-CTOR-WORDS ( -- )
+   [: TDECL-CTOR-WORDS-BODY ;] catch {: rc:n :}
+   CTOR-PEND-CLEAR
+   rc 0 <> IF rc throw THEN ;
 
 \ --- public defining words. TYPEFAMILY consumes name + arity; SUMTYPE buffers
 \ the block up to ;SUMTYPE (VALUE-RECORD's shape), then registers it whole.

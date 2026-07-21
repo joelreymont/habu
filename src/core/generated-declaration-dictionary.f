@@ -12,6 +12,7 @@
 package GENERATED-DECL-DICTIONARY
 
 7174 constant E-DICTIONARY-TX
+7175 constant E-DICTIONARY-CAP
 
 0 cells constant ROW.NDICT-OFF
 1 cells constant ROW.CP-OFF
@@ -19,13 +20,17 @@ package GENERATED-DECL-DICTIONARY
 3 cells constant ROW-REC
 
 4 constant CAP-INIT
+$7FFFFFFFFFFFFFFF constant FRAME-BYTE-MAX
+FRAME-BYTE-MAX ROW-REC / constant FRAME-ROW-MAX
 create FRAME-BOOT CAP-INIT ROW-REC * allot
 PTR-VARIABLE FRAME-P FRAME-BOOT FRAME-P !
 variable FRAME-CAP CAP-INIT FRAME-CAP !
 variable FRAME-N
 
 : FRAME-BASE ( -- ptr a ) FRAME-P @ ;
-: FRAME-ROW ( n -- ptr a ) ROW-REC * FRAME-BASE + ;
+: FRAME-ROW ( n -- ptr a )
+   dup 0 < over FRAME-CAP @ >= or IF E-DICTIONARY-CAP throw THEN
+   ROW-REC * FRAME-BASE + ;
 : ROW.NDICT ( ptr a -- ptr a ) ROW.NDICT-OFF + ;
 : ROW.CP ( ptr a -- ptr a ) ROW.CP-OFF + ;
 : ROW.DP ( ptr a -- ptr ptr a ) ROW.DP-OFF CELL / ptr-field ;
@@ -35,9 +40,15 @@ TRUSTED: DICTIONARY-DP! ( ptr a -- ) data-base DP-CELL + ! ;
 
 : ENSURE-ROOM ( -- )
    FRAME-N @ FRAME-CAP @ < IF EXIT THEN
+   FRAME-N @ FRAME-ROW-MAX >= IF E-DICTIONARY-CAP throw THEN
+   FRAME-N @ 1 + {: need:n :}
+   FRAME-CAP @ 0 <= FRAME-CAP @ FRAME-ROW-MAX > or
+      IF E-DICTIONARY-CAP throw THEN
+   FRAME-CAP @ FRAME-ROW-MAX 2 / <=
+      IF FRAME-CAP @ 2 * need max ELSE need THEN {: cap:n :}
    FRAME-P @ FRAME-CAP @ ROW-REC *
-      FRAME-CAP @ 2 * ROW-REC * FRAME-GROW FRAME-P !
-   FRAME-CAP @ 2 * FRAME-CAP ! ;
+      cap ROW-REC * FRAME-GROW FRAME-P !
+   cap FRAME-CAP ! ;
 
 : REQUIRE-DEPTH ( n -- ) FRAME-N @ <> IF E-DICTIONARY-TX throw THEN ;
 
@@ -83,6 +94,15 @@ TRUSTED: DICTIONARY-DP! ( ptr a -- ) data-base DP-CELL + ! ;
 public
 
 : DEPTH ( -- n ) FRAME-N @ ;
+
+: PREFLIGHT ( n -- )
+   dup 0 < IF E-DICTIONARY-CAP throw THEN
+   DICT-CAP ndict@ - > IF E-DICTIONARY-CAP throw THEN ;
+
+: SNAPSHOT-RESET ( -- )
+   FRAME-N @ 0 <> IF E-DICTIONARY-TX throw THEN
+   FRAME-BOOT FRAME-P !
+   CAP-INIT FRAME-CAP ! ;
 
 private
 

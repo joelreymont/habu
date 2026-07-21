@@ -6,8 +6,8 @@
 \ declaration-order provisional field schemas. A STRUCTURE is a single-shape
 \ record (docs/type-families.md §9.4, §18) — exactly the PRODUCT kind — so this
 \ reuses the shared sum/product constructor-seal machinery (sumtype.f
-\ TDECL-CTOR-PUBLISH / TDECL-PROD-WORDS, the CTOR-PEND! pending window, the one
-\ audited generated-word eval crossing, the CHECKER-RECORD-SYM record, and the
+\ TDECL-CTOR-PUBLISH / TDECL-PROD-WORDS, the ordered constructor plan, the one
+\ audited complete-plan eval crossing, the CHECKER-RECORD-SYM records, and the
 \ closed-but-callable word-id protection) verbatim rather than re-implementing
 \ the security-critical publication discipline a second time. The only new
 \ logic here is the STRUCTURE adapter: validate the family the shared

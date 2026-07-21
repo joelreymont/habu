@@ -10,7 +10,9 @@
 package GENERATED-DECL-PROTECTION
 
 7169 constant E-PROTECTION-CAP
+$FFFFFFFF constant WID-MAX
 4 constant CAP-INIT
+$0FFFFFFFFFFFFFFF constant CELL-CAP-MAX
 
 private
 
@@ -30,18 +32,27 @@ TRUSTED: ARENA-GROW ( ptr a n n -- ptr a ) ARENA-BYTES-GROW ;
 : CELL! ( a ptr a n -- ) {: value:a base:ptr idx:n :}
    value base idx cells + ! ;
 
-: GROW ( ptr ptr a n -- ) {: pvar:ptr cap:n :}
-   pvar @ cap cells cap 2 * cells ARENA-GROW pvar ! ;
+: GROW-CAP ( n n -- n ) {: need:n cap:n :}
+   need 0 <= need CELL-CAP-MAX > or
+   cap 0 <= cap CELL-CAP-MAX > or or IF E-PROTECTION-CAP throw THEN
+   cap CELL-CAP-MAX 2 / <= IF cap 2 * need max EXIT THEN
+   need ;
+
+: GROW ( ptr ptr a n n -- ) {: pvar:ptr oldcap:n newcap:n :}
+   pvar @ oldcap cells newcap cells ARENA-GROW pvar ! ;
 
 : STAGE-ENSURE ( -- )
    STAGE-N @ STAGE-CAP @ < IF EXIT THEN
-   STAGE-P STAGE-CAP @ GROW
-   STAGE-CAP @ 2 * STAGE-CAP ! ;
+   STAGE-N @ CELL-CAP-MAX >= IF E-PROTECTION-CAP throw THEN
+   STAGE-N @ 1 + STAGE-CAP @ GROW-CAP {: cap:n :}
+   STAGE-P STAGE-CAP @ cap GROW
+   cap STAGE-CAP ! ;
 
 : BASE-ENSURE ( -- )
    GENERATED-DECL:DEPTH BASE-CAP @ <= IF EXIT THEN
-   BASE-P BASE-CAP @ GROW
-   BASE-CAP @ 2 * BASE-CAP ! ;
+   GENERATED-DECL:DEPTH BASE-CAP @ GROW-CAP {: cap:n :}
+   BASE-P BASE-CAP @ cap GROW
+   cap BASE-CAP ! ;
 
 : BASE-SLOT ( -- n )
    GENERATED-DECL:DEPTH 1 - ;
@@ -99,6 +110,24 @@ TRUSTED: ARENA-GROW ( ptr a n n -- ptr a ) ARENA-BYTES-GROW ;
    THEN
    XREF-WORDLIST STAGE+ ;
 
+: PLAN-PREFLIGHT ( ptr u8 n n -- ) {: a:ptr u:n words:n :}
+   a u words GENERATED-DECL-NAME-PREFLIGHT:DICTIONARY-RECORDS
+      GENERATED-DECL-DICTIONARY:PREFLIGHT
+   a u GENERATED-DECL-NAME-PREFLIGHT:NEW-WORDLIST? IF
+      data-base WIDN-CELL + @ dup 0 < swap WID-MAX > or
+         IF E-PROTECTION-CAP throw THEN
+   THEN
+   words 0 > prot-wid-room 0= and IF E-PROTECTION-CAP throw THEN
+   STAGE-ENSURE ;
+
+: SNAPSHOT-RESET ( -- )
+   GENERATED-DECL:DEPTH 0 <> STAGE-N @ 0 <> or IF E-PROTECTION-CAP throw THEN
+   STAGE-BOOT STAGE-P !
+   BASE-BOOT BASE-P !
+   CAP-INIT STAGE-CAP !
+   CAP-INIT BASE-CAP !
+   GENERATED-DECL-DICTIONARY:SNAPSHOT-RESET ;
+
 3 constant PARTICIPANT
 
 : INSTALL ( -- )
@@ -112,7 +141,9 @@ TRUSTED: ARENA-GROW ( ptr a n n -- ptr a ) ARENA-BYTES-GROW ;
    [: ROLLBACK ;]
    [: FINALIZE ;]
    GENERATED-DECL-OWNER:REGISTER-LAST
-   [: STAGE-WORDLIST ;] is TDECL-PROT-WID-XT ;
+   [: STAGE-WORDLIST ;] is TDECL-PROT-WID-XT
+   [: PLAN-PREFLIGHT ;] is TDECL-CAPACITY-PREFLIGHT-XT
+   [: SNAPSHOT-RESET ;] is TDECL-OWNER-SNAPSHOT-XT ;
 
 public
 
@@ -132,6 +163,8 @@ undefine GENERATED-DECL-OWNER:POISONED?
 undefine GENERATED-DECL-OWNER:LAST-FAILURE-PHASE
 undefine GENERATED-DECL-OWNER:LAST-FAILURE-PARTICIPANT
 undefine GENERATED-DECL-OWNER:LAST-CLEANUP-PARTICIPANT
+undefine GENERATED-DECL-DICTIONARY:PREFLIGHT
+undefine GENERATED-DECL-DICTIONARY:SNAPSHOT-RESET
 undefine TYPE-FIELD-OWNER:TX-SCHEMA-FOR
 
 get-current prot-wid-add
