@@ -1,9 +1,11 @@
 ---
 title: "BPE: full 50k-merge load (rank hashmap)"
-status: active
+status: closed
 priority: 2
 issue-type: task
-created-at: "\"2026-07-20T23:03:34.674885+02:00\""
+created-at: "\"\\\"2026-07-20T23:03:34.674885+02:00\\\"\""
+closed-at: "2026-07-21T07:41:15.413528+02:00"
+close-reason: "Landed in stack cb1e4cae: full 50000-merge GPT-2 vocab load. Rank lookup measured head-to-head on the real query stream (21792 lookups x200, GB10): hashmap 51ns vs binary-search 270ns - hashmap chosen (5.3x, and O(1) incremental build fits BPE-MERGE+). Caps 512->50000 with measured DATA budget (~4.4MB static + ~6MB full-load-only); two more O(N^2)/O(N) walls fixed en route (BPR-MID-OK? presence-set, BPR-REAL>INT direct-index inverse). New bpe-full.f resolves all 100000 child refs through an FNV string map and installs the full table; proven: exact tiktoken 0.13.0 parity on all committed fixtures, real-text round-trip, 753k tokens/sec. Red-first: capacity guard fires at the old cap; the tokenization fixture proves subset-table and full-table ids DIVERGE exactly as pinned. Presence-gated on the fetched artifacts; hermetic gate path unchanged"
 blocks:
   - habu-bpe-real-vocab-c973932a
 ---
