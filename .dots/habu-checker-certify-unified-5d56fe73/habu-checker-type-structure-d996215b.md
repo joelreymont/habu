@@ -1,9 +1,11 @@
 ---
 title: "Checker: type STRUCTURE words"
-status: active
+status: closed
 priority: 1
 issue-type: task
-created-at: "\"2026-07-13T17:14:41.079256+02:00\""
+created-at: "\"\\\"2026-07-13T17:14:41.079256+02:00\\\"\""
+closed-at: "2026-07-21T17:10:54.473629+02:00"
+close-reason: "Landed 5852e5f7: the checker field-projection armed window. Reserved op field-project ( ptr family<args> byte-offset -- ptr field-type ) certifies ONLY inside a name-keyed single-shot window armed by FIELD-PROJ! from the generative crossing (pre-hook internal, sealed like CTOR-PEND!); the committed FIELD ID is the sole authority - owning family, offset, byte extent, role, and instantiated schema all derive from it via TYPE-FIELD reflection with generic substitution from the input pointer's args, and the baked offset is cross-checked against the committed one. Fail-closed default hook; deferred FIELD-PROJ-XT bound in type-family.f mirroring MATCH-PAY-XT. Nine red-first negatives (unarmed, forged offset, past-width, non-layout ptr, foreign family, role confusion, wrong scalar, uncommitted id, seal=uncheckable) + four positives (cell/byte/pointer-role/generic fields projected from MAKE bundles); the two pre-existing layout-pointer rejects stay red. Contract documented in docs/type-families.md section 2.2 - generate-field's re-dispatch binds to it (design in that dot's released claim). Capacity fixes riding the train: lint intern table $400->$800, plus the owed macOS census/CODELEN re-measures (3732, 114444/3852) after spark's literal-split and definer-publication shrinks. Fixpoint x2 (engine 9a9f3724); correctness fully green, perf under waiver 0922330e."
 ---
 
 Graph repair 2026-07-21: dropped the habu-checker-certify-type-89504a7e blocker.
