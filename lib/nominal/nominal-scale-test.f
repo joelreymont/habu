@@ -28,9 +28,9 @@ private
 
 : NS-TIME ( n -- n ) {: m:n :}                 \ ns to build+freeze a row of m distinct bindings
    RESET
-   TIME-MONO-NS {: t0:n :}
+   TIME:MONO-NS {: t0:n :}
    m 0 NS-BUILD drop
-   TIME-MONO-NS t0 - ;
+   TIME:MONO-NS t0 - ;
 
 \ ---- functional scale: compose / remap / union / snapshot / replay -----------
 : NS-FUNC ( -- )

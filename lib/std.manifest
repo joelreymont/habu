@@ -1062,8 +1062,8 @@ schema_version	module	file	kind	word	effect	test	doc	owner	status	notes
 1	object-link	lib/object-link.f	word	OBJLINK:CHECK	(--)	lib/object-link-test.f	docs/stdlib.md	stdlib-object	published	validate that every accumulated import has an export
 1	object-link	lib/object-link.f	word	OBJLINK:APPLY	(--)	lib/object-link-test.f	docs/stdlib.md	stdlib-object	published	resolve and apply supported relocations to merged text bytes
 1	time	lib/time.f	module			tools/stdlib-time-test.f	docs/stdlib.md	stdlib-time	active	monotonic and wall-clock helpers
-1	time	lib/time.f	word	TIME-EPOCH-SECONDS	(-- n)	tools/stdlib-time-test.f	docs/stdlib.md	stdlib-time	active	checked wrapper around native UTC epoch seconds
-1	time	lib/time.f	word	TIME-MONO-NS	(-- n)	tools/stdlib-time-test.f	docs/stdlib.md	stdlib-time	active	checked wrapper around native monotonic nanoseconds
+1	time	lib/time.f	word	TIME:EPOCH-SECONDS	(-- n)	tools/stdlib-time-test.f	docs/stdlib.md	stdlib-time	active	checked wrapper around native UTC epoch seconds
+1	time	lib/time.f	word	TIME:MONO-NS	(-- n)	tools/stdlib-time-test.f	docs/stdlib.md	stdlib-time	active	checked wrapper around native monotonic nanoseconds
 1	date	lib/date.f	module			tools/stdlib-date-test.f	docs/stdlib.md	stdlib-date	active	checked UTC date parsing formatting and conversion
 1	date	lib/date.f	word	DATE:DIGIT?	(n -- bool)	tools/stdlib-date-test.f	docs/stdlib.md	stdlib-date	active	ASCII decimal digit predicate for date parsing
 1	date	lib/date.f	word	DATE:LEAP-YEAR?	(n -- bool)	tools/stdlib-date-test.f	docs/stdlib.md	stdlib-date	active	Gregorian leap-year predicate

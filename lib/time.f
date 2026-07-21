@@ -1,7 +1,13 @@
-\ time.f - checked wrappers around native clocks.
+\ time.f - checked wrappers around native clocks, in `package TIME`.
 
-: TIME-EPOCH-SECONDS ( -- n )
+package TIME
+
+public
+
+: EPOCH-SECONDS ( -- n )
    epoch-seconds ;
 
-: TIME-MONO-NS ( -- n )
+: MONO-NS ( -- n )
    mono-ns ;
+
+;package

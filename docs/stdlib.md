@@ -1485,15 +1485,16 @@ of SwiftForth's source-body parsing form.
 
 ## Date And Time
 
-`lib/time.f` exposes checked public wrappers around the native clock primitives:
+`lib/time.f` exposes checked public wrappers around the native clock primitives
+through `package TIME`:
 
 ```forth
-TIME-EPOCH-SECONDS  ( -- n )
-TIME-MONO-NS        ( -- n )
+TIME:EPOCH-SECONDS  ( -- n )
+TIME:MONO-NS        ( -- n )
 ```
 
-`TIME-EPOCH-SECONDS` returns UTC Unix seconds from `epoch-seconds`.
-`TIME-MONO-NS` returns monotonic nanoseconds from `mono-ns`; callers should only
+`TIME:EPOCH-SECONDS` returns UTC Unix seconds from `epoch-seconds`.
+`TIME:MONO-NS` returns monotonic nanoseconds from `mono-ns`; callers should only
 compare ordering or elapsed time, never exact values.
 
 `lib/date.f` exposes checked Gregorian UTC helpers through `package DATE`:
