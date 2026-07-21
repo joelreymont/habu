@@ -32,6 +32,8 @@ SUITE maki/fmath-test.f
 ;SUITE
 SUITE maki/softmax-test.f
 ;SUITE
+SUITE maki/sampling-test.f
+;SUITE
 SUITE maki/causal-test.f
 ;SUITE
 SUITE maki/celoss-test.f
