@@ -18,9 +18,9 @@ create VECT-REL-VEC VEC-HEADER-CELLS cells allot   \ dedicated header for releas
 variable VECT-SUM
 variable VECT-IDX-SUM
 
-: VECT-RESET ( -- )
-   VECT-VEC 2 VEC-CAP-COUNT VEC-INIT
-   VECT-PTR-VEC 1 VEC-CAP-COUNT VEC-INIT
+: VECT-RESET ( -- )                     \ dispose-then-init: re-init of a live header now rejects
+   VECT-VEC VEC-DISPOSE  VECT-VEC 2 VEC-CAP-COUNT VEC-INIT
+   VECT-PTR-VEC VEC-DISPOSE  VECT-PTR-VEC 1 VEC-CAP-COUNT VEC-INIT
    0 VECT-SUM !
    0 VECT-IDX-SUM ! ;
 
@@ -115,6 +115,11 @@ variable VECT-IDX-SUM
 : VECT-DISPOSE-USE-RESIZE ( -- )                       \ resize after dispose
    2 VECT-REL-INIT  VECT-REL-VEC VEC-DISPOSE
    VECT-REL-VEC 5 VEC-CAP-COUNT VEC-RESIZE ;
+
+: VECT-INIT-LIVE-REJECTS ( -- )                        \ re-init of a live header rejects (fail-closed)
+   VECT-REL-VEC VEC-DISPOSE
+   VECT-REL-VEC 2 VEC-CAP-COUNT VEC-INIT               \ header now owns a live mapping
+   VECT-REL-VEC 2 VEC-CAP-COUNT VEC-INIT ;             \ re-init without dispose throws (else old mapping leaks)
 
 : VECT-RESIZE-FAIL-ATOMIC ( -- )                       \ a failed grow leaves the old vector valid
    2 VECT-REL-INIT
@@ -232,13 +237,17 @@ public
 : VECT-TAT  ( ptr a n -- a ) VECT-N>INDEX VEC:@ ;              \ typed fetch at a raw index
 : VECT-TPUT ( a ptr a n -- ) VECT-N>INDEX VEC:! ;              \ typed store at a raw index
 
+\ dispose-then-init the shared typed header at raw cap n: re-init of a live header
+\ now rejects, so each test opens from a disposed header.
+: VECT-T-FRESH ( n -- )  VECT-VEC VEC-DISPOSE  VECT-VEC swap VECT-N>ITEM VEC:INIT ;
+
 : VECT-T-INIT ( -- )                                    \ zero length valid, capacity honoured
-   VECT-VEC 2 VECT-N>ITEM VEC:INIT
+   2 VECT-T-FRESH
    VECT-VEC VECT-TLEN 0 T=
    VECT-VEC VECT-TCAP 2 T= ;
 
 : VECT-T-PUSH ( -- )                                    \ push returns the landing index; growth survives
-   VECT-VEC 2 VECT-N>ITEM VEC:INIT
+   2 VECT-T-FRESH
    11 VECT-VEC VEC:PUSH CAD-NUM:VECT-IX>RAW 0 T=
    22 VECT-VEC VEC:PUSH CAD-NUM:VECT-IX>RAW 1 T=
    33 VECT-VEC VEC:PUSH CAD-NUM:VECT-IX>RAW 2 T=                   \ third push grows through the typed adapter
@@ -248,13 +257,13 @@ public
    VECT-VEC 2 VECT-TAT 33 T= ;
 
 : VECT-T-SET ( -- )                                     \ store overwrites a live cell
-   VECT-VEC 2 VECT-N>ITEM VEC:INIT
+   2 VECT-T-FRESH
    77 VECT-VEC VEC:PUSH drop
    123 VECT-VEC 0 VECT-TPUT
    VECT-VEC 0 VECT-TAT 123 T= ;
 
 : VECT-T-CLEAR ( -- )                                   \ clear zeroes length, keeps capacity
-   VECT-VEC 2 VECT-N>ITEM VEC:INIT
+   2 VECT-T-FRESH
    7 VECT-VEC VEC:PUSH drop  8 VECT-VEC VEC:PUSH drop
    VECT-VEC VEC:CLEAR
    VECT-VEC VECT-TLEN 0 T=
@@ -262,7 +271,7 @@ public
    9 VECT-VEC VEC:PUSH CAD-NUM:VECT-IX>RAW 0 T= ;
 
 : VECT-T-RESIZE ( -- )                                  \ resize grows capacity, preserves cells
-   VECT-VEC 2 VECT-N>ITEM VEC:INIT
+   2 VECT-T-FRESH
    41 VECT-VEC VEC:PUSH drop  42 VECT-VEC VEC:PUSH drop
    VECT-VEC 5 VECT-N>ITEM VEC:RESIZE
    VECT-VEC VECT-TLEN 2 T=
@@ -271,7 +280,7 @@ public
    VECT-VEC 1 VECT-TAT 42 T= ;
 
 : VECT-T-ENSURE ( -- )                                  \ ensure is a no-op below cap, grows above
-   VECT-VEC 4 VECT-N>ITEM VEC:INIT
+   4 VECT-T-FRESH
    VECT-VEC 3 VECT-N>ITEM VEC:ENSURE   VECT-VEC VECT-TCAP 4 T=  \ need <= cap: no reallocation
    VECT-VEC 9 VECT-N>ITEM VEC:ENSURE   VECT-VEC VECT-TCAP 16 T= ;  \ need > cap: double 4 -> 8 -> 16
 
@@ -280,23 +289,23 @@ variable VECT-TSUM   variable VECT-TIXSUM
    VECT-TSUM @ value + VECT-TSUM !
    VECT-TIXSUM @ ix CAD-NUM:VECT-IX>RAW + VECT-TIXSUM ! ;
 : VECT-T-EACH ( -- )                                    \ EACH visits cells index-first
-   VECT-VEC 2 VECT-N>ITEM VEC:INIT
+   2 VECT-T-FRESH
    0 VECT-TSUM !  0 VECT-TIXSUM !
    5 VECT-VEC VEC:PUSH drop  6 VECT-VEC VEC:PUSH drop  7 VECT-VEC VEC:PUSH drop
    VECT-VEC [: VECT-T-EACH-ACC ;] VEC:EACH
    VECT-TSUM @ 18 T=
    VECT-TIXSUM @ 3 T= ;
 
-: VECT-T-CAP-ZERO ( -- )   VECT-VEC 0 VECT-N>ITEM VEC:INIT ;               \ zero capacity allocation
-: VECT-T-CAP-OVER ( -- )   VECT-VEC VEC-MAX-CELLS 1 + VECT-N>ITEM VEC:INIT ; \ overflowing capacity
+: VECT-T-CAP-ZERO ( -- )   0 VECT-T-FRESH ;               \ zero capacity allocation
+: VECT-T-CAP-OVER ( -- )   VEC-MAX-CELLS 1 + VECT-T-FRESH ; \ overflowing capacity
 : VECT-T-RESIZE-ZERO ( -- )
-   VECT-VEC 2 VECT-N>ITEM VEC:INIT  VECT-VEC 0 VECT-N>ITEM VEC:RESIZE ;        \ resize to zero capacity
+   2 VECT-T-FRESH  VECT-VEC 0 VECT-N>ITEM VEC:RESIZE ;        \ resize to zero capacity
 : VECT-T-RESIZE-SHRINK ( -- )
-   VECT-VEC 2 VECT-N>ITEM VEC:INIT
+   2 VECT-T-FRESH
    41 VECT-VEC VEC:PUSH drop  42 VECT-VEC VEC:PUSH drop
    VECT-VEC 1 VECT-N>ITEM VEC:RESIZE ;                                     \ cap below active length
 : VECT-T-GET-HIGH ( -- )
-   VECT-VEC 2 VECT-N>ITEM VEC:INIT  1 VECT-VEC VEC:PUSH drop
+   2 VECT-T-FRESH  1 VECT-VEC VEC:PUSH drop
    VECT-VEC 1 VECT-TAT drop ;                                             \ index at length rejects
 
 : VECT-T-DISPOSE-RELEASES ( -- )                       \ typed dispose frees the owned mapping
@@ -315,6 +324,10 @@ variable VECT-TSUM   variable VECT-TIXSUM
    VECT-REL-VEC VEC-DISPOSE
    VECT-REL-VEC 2 VECT-N>ITEM VEC:INIT  VECT-REL-VEC VEC:DISPOSE
    VECT-REL-VEC 0 VECT-TAT drop ;
+: VECT-T-INIT-LIVE-REJECTS ( -- )                      \ typed re-init of a live header rejects
+   VECT-REL-VEC VEC-DISPOSE
+   VECT-REL-VEC 2 VECT-N>ITEM VEC:INIT                 \ header now owns a live mapping
+   VECT-REL-VEC 2 VECT-N>ITEM VEC:INIT ;               \ re-init without dispose throws (else old mapping leaks)
 
 : VECT-RUN ( -- )
    T-RESET
@@ -345,6 +358,7 @@ variable VECT-TSUM   variable VECT-TIXSUM
    [: VECT-DISPOSE-USE-GET ;] E-VEC-STATE TTHROWSQ
    [: VECT-DISPOSE-USE-PUSH ;] E-VEC-STATE TTHROWSQ
    [: VECT-DISPOSE-USE-RESIZE ;] E-VEC-STATE TTHROWSQ
+   [: VECT-INIT-LIVE-REJECTS ;] E-VEC-STATE TTHROWSQ   \ live re-init rejects; no owned mapping leaks
    \ ---- typed VEC surface: positive behavior ----------------------------------
    VECT-T-INIT
    VECT-T-PUSH
@@ -363,6 +377,7 @@ variable VECT-TSUM   variable VECT-TIXSUM
    VECT-T-DISPOSE-RELEASES
    VECT-T-DISPOSE-DOUBLE
    [: VECT-T-DISPOSE-USE ;] E-VEC-STATE TTHROWSQ
+   [: VECT-T-INIT-LIVE-REJECTS ;] E-VEC-STATE TTHROWSQ  \ typed live re-init rejects; no owned mapping leaks
    \ ---- typed VEC surface: static role-swap rejections (0) + resolving positives (-1)
    s" VOK-INIT ( ptr a CAD-NUM:item-count -- ) VEC:INIT" CHECK-QUIET-CANDIDATE! -1 T=
    s" VOK-AT ( ptr a CAD-NUM:index -- a ) VEC:@"        CHECK-QUIET-CANDIDATE! -1 T=

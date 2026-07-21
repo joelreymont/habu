@@ -64,6 +64,7 @@ schema_version	module	file	kind	word	effect	test	doc	owner	status	notes
 1	vector	lib/vector.f	word	VEC-LEN@	(ptr a -- len)	lib/vector-test.f	docs/stdlib.md	stdlib-vector	published	read a vector active length
 1	vector	lib/vector.f	word	VEC-CAP@	(ptr a -- count)	lib/vector-test.f	docs/stdlib.md	stdlib-vector	published	read a vector capacity
 1	vector	lib/vector.f	word	VEC-CAP!	(count ptr a --)	lib/vector-test.f	docs/stdlib.md	stdlib-vector	published	write a checked vector capacity
+1	vector	lib/vector.f	word	VEC-CHECK-DEAD	(ptr a --)	lib/vector-test.f	docs/stdlib.md	stdlib-vector	published	reject re-init of a live vector; callers dispose an owned mapping first
 1	vector	lib/vector.f	word	VEC-CHECK-LIVE	(ptr a --)	lib/vector-test.f	docs/stdlib.md	stdlib-vector	published	reject a disposed or uninitialized vector before a storage-touching use
 1	vector	lib/vector.f	word	VEC-LEN!	(len ptr a --)	lib/vector-test.f	docs/stdlib.md	stdlib-vector	published	write a checked vector active length
 1	vector	lib/vector.f	word	VEC-INIT	(ptr a count --)	lib/vector-test.f	docs/stdlib.md	stdlib-vector	published	initialize a vector header with OS-backed cell storage

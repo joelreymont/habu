@@ -90,12 +90,20 @@ MEM-MAX-CELLS constant VEC-MAX-CELLS
 : VEC-CHECK-LIVE ( ptr a -- ) {: vec:ptr :}
    vec VEC-CAP-FIELD @ 0= if E-VEC-STATE throw then ;
 
+\ Init-time inverse of VEC-CHECK-LIVE: a positive VEC.CAP means the header already
+\ owns a live mapping, so initializing over it would overwrite VEC.DATA and orphan
+\ that mapping (the one remaining leak path after resize/dispose). Fail closed -
+\ callers dispose an owned vector before re-initializing it.
+: VEC-CHECK-DEAD ( ptr a -- ) {: vec:ptr :}
+   vec VEC-CAP-FIELD @ 0 <> if E-VEC-STATE throw then ;
+
 : VEC-LEN! ( len ptr a -- ) {: len vec:ptr :}
    len VEC-CHECK-LEN
    len LEN>N vec VEC-CAP@ COUNT>N > if E-VEC-BOUNDS throw then
    len LEN>N vec VEC-LEN-FIELD ! ;
 
 : VEC-INIT ( ptr a count -- ) {: vec:ptr cap :}
+   vec VEC-CHECK-DEAD
    cap VEC-ALLOC-CELLS vec VEC-DATA!
    cap vec VEC-CAP!
    0 VEC-LEN vec VEC-LEN! ;
@@ -295,6 +303,7 @@ public
 
 \ ---- init / clear -------------------------------------------------------------
 : INIT ( ptr a CAD-NUM:item-count -- ) {: vec:ptr cap:CAD-NUM:item-count :}
+   vec VEC-CHECK-DEAD                             \ reject re-init of a live header (no leak)
    cap CAP-ALLOC MEM:ALLOC-CELLS vec VEC-DATA!   \ typed alloc; 0/overflow -> E-VEC-CAPACITY
    cap ITEM>RC vec VEC-CAP!
    0 VEC-LEN vec VEC-LEN! ;
