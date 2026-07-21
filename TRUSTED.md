@@ -281,7 +281,6 @@ that source is explicitly certified; they are not stale-checked by the default
 | DEV-FLD-ROLLBACK | `n -- ` | Field-record seam: forwards to the pre-hook `PF-ROLLBACK` (retire provisional field rows); the checker cannot type the sealed pre-hook registry word from a post-hook checked body. | `test/decl-event-suite.f`, `test/run.f` | src/core/decl-event.f | 2026-07-20 | stdlib-boundary | habu-type-dsl-unify-b65d46c1 |
 | DEV-FLD-COUNT | `-- n` | Field-record seam: forwards to `TYPE-FIELD:COUNT` (committed field high-water); the checker cannot type the sealed pre-hook registry word from a post-hook checked body. | `test/decl-event-suite.f`, `test/run.f` | src/core/decl-event.f | 2026-07-20 | stdlib-boundary | habu-type-dsl-unify-b65d46c1 |
 | DEV-SUMV-ADD | `n ptr u8 n n n n n -- n` | Variant-registry seam: forwards to the pre-hook `SUMV-ADD` (register one variant with the dup/canon/reserved gate); the checker cannot type the sealed pre-hook registry word from a post-hook checked body. | `test/decl-event-suite.f`, `test/run.f` | src/core/decl-event.f | 2026-07-20 | stdlib-boundary | habu-type-dsl-unify-b65d46c1 |
-| DEV-DECL-PARAM-COUNT | `-- n` | Declaration-alphabet seam: reads the canonical pre-hook `TFAM-DECL-PARAM-COUNT` so the shared event validator cannot drift from the declaration parsers; the checker cannot resolve the sealed constant from a post-hook checked body. | `test/decl-event-suite.f`, `test/structure-decl-suite.f`, `test/enum-decl-suite.f` | src/core/decl-event.f | 2026-07-22 | stdlib-boundary | habu-use-non-reserved-67821d1c |
 | DEV-REG-GROW1 | `ptr a n n -- ` | Growable-arena boundary: forwards to the pre-hook `REG-GROW1` (relocating buffer realloc storing the new base back); raw relocating-memory grow the checker cannot model. Missing checked growable-arena capability is a chain dot. | `test/decl-event-suite.f`, `test/run.f` | src/core/decl-event.f | 2026-07-20 | stdlib-boundary | habu-type-dsl-unify-b65d46c1 |
 | SM-FAM-LIVE? | `n -- bool` | STRUCTURE generator seam: forwards to the pre-hook `PF-FAM-LIVE?` (is a family id live) so the checked validation rejects a stale/rolled-back id before touching any TFAM reader; the checker cannot type the sealed pre-hook registry word from a post-hook checked body. Re-points to the shared constructor-gen module at the type-DSL cutover. | `test/structure-make-suite.f`, `test/run.f` | src/core/structure-make.f | 2026-07-21 | stdlib-boundary | habu-structure-generate-make-872a6e75 |
 | SM-PRODUCT? | `n -- bool` | STRUCTURE generator seam: forwards to the pre-hook `TFAM-PRODUCT?` (family is product-kind); the checker cannot type the sealed pre-hook registry word from a post-hook checked body. Re-points to the shared constructor-gen module at the type-DSL cutover. | `test/structure-make-suite.f`, `test/run.f` | src/core/structure-make.f | 2026-07-21 | stdlib-boundary | habu-structure-generate-make-872a6e75 |
@@ -312,8 +311,6 @@ that source is explicitly certified; they are not stale-checked by the default
 | CON-N | `-- n` | Named-constant seam: reads the sealed pre-hook checker con code `CC-N` (single-letter `n` field type); the checker cannot resolve the sealed constant from a post-hook checked body. | `test/structure-decl-suite.f`, `test/run.f` | src/core/structure-decl.f | 2026-07-21 | stdlib-boundary | habu-structure-parse-typed-c5a01e1f |
 | CON-BOOL | `-- n` | Named-constant seam: reads the sealed pre-hook checker con code `CC-BOOL` (single-letter `f` field type maps to boolean); the checker cannot resolve the sealed constant from a post-hook checked body. | `test/structure-decl-suite.f`, `test/run.f` | src/core/structure-decl.f | 2026-07-21 | stdlib-boundary | habu-structure-parse-typed-c5a01e1f |
 | CON-R | `-- n` | Named-constant seam: reads the sealed pre-hook checker con code `CC-R` (single-letter `r` field type); the checker cannot resolve the sealed constant from a post-hook checked body. | `test/structure-decl-suite.f`, `test/run.f` | src/core/structure-decl.f | 2026-07-21 | stdlib-boundary | habu-structure-parse-typed-c5a01e1f |
-| DECL-PARAM-COUNT | `-- n` | Declaration-alphabet seam: reads the canonical pre-hook parameter count for STRUCTURE arity validation; the checker cannot resolve the sealed constant from a post-hook checked body. | `test/structure-decl-suite.f`, `test/run.f` | src/core/structure-decl.f | 2026-07-22 | stdlib-boundary | habu-use-non-reserved-67821d1c |
-| DECL-CHAR>PARAM | `n -- n bool` | Declaration-alphabet seam: forwards to the canonical pre-hook character-to-parameter inverse so STRUCTURE field parsing shares the exact scalar-safe alphabet; the checker cannot type the sealed pre-hook word from a post-hook checked body. | `test/structure-decl-suite.f`, `test/run.f` | src/core/structure-decl.f | 2026-07-22 | stdlib-boundary | habu-use-non-reserved-67821d1c |
 | LT-STACK | `-- n` | Named-constant seam: reads the sealed pre-hook layout code `TL-STACK-CELL-TAG` (default POLICY); the checker cannot resolve the sealed constant from a post-hook checked body. | `test/structure-decl-suite.f`, `test/run.f` | src/core/structure-decl.f | 2026-07-21 | stdlib-boundary | habu-structure-parse-typed-c5a01e1f |
 | LT-PACKED | `-- n` | Named-constant seam: reads the sealed pre-hook layout code `TL-PACKED-TAG` (packed-tag POLICY); the checker cannot resolve the sealed constant from a post-hook checked body. | `test/structure-decl-suite.f`, `test/run.f` | src/core/structure-decl.f | 2026-07-21 | stdlib-boundary | habu-structure-parse-typed-c5a01e1f |
 | DV-EQ | `-- n` | Named-constant seam: reads the sealed pre-hook derive feature code `DRV-EQ` (recorded on the DERIVE event); the checker cannot resolve the sealed constant from a post-hook checked body. | `test/structure-decl-suite.f`, `test/run.f` | src/core/structure-decl.f | 2026-07-21 | stdlib-boundary | habu-structure-parse-typed-c5a01e1f |
@@ -357,8 +354,6 @@ that source is explicitly certified; they are not stale-checked by the default
 | CON-N | `-- n` | Named-constant seam: reads the sealed pre-hook checker con code `CC-N` (single-letter `n` field type); the checker cannot resolve the sealed constant from a post-hook checked body. | `test/enum-decl-suite.f`, `test/run.f` | src/core/enum-decl.f | 2026-07-21 | stdlib-boundary | habu-enum-parse-full-39c0dc1b |
 | CON-BOOL | `-- n` | Named-constant seam: reads the sealed pre-hook checker con code `CC-BOOL` (single-letter `f` field type maps to boolean); the checker cannot resolve the sealed constant from a post-hook checked body. | `test/enum-decl-suite.f`, `test/run.f` | src/core/enum-decl.f | 2026-07-21 | stdlib-boundary | habu-enum-parse-full-39c0dc1b |
 | CON-R | `-- n` | Named-constant seam: reads the sealed pre-hook checker con code `CC-R` (single-letter `r` field type); the checker cannot resolve the sealed constant from a post-hook checked body. | `test/enum-decl-suite.f`, `test/run.f` | src/core/enum-decl.f | 2026-07-21 | stdlib-boundary | habu-enum-parse-full-39c0dc1b |
-| DECL-PARAM-COUNT | `-- n` | Declaration-alphabet seam: reads the canonical pre-hook parameter count for full ENUM arity validation; the checker cannot resolve the sealed constant from a post-hook checked body. | `test/enum-decl-suite.f`, `test/run.f` | src/core/enum-decl.f | 2026-07-22 | stdlib-boundary | habu-use-non-reserved-67821d1c |
-| DECL-CHAR>PARAM | `n -- n bool` | Declaration-alphabet seam: forwards to the canonical pre-hook character-to-parameter inverse so full ENUM field parsing shares the exact scalar-safe alphabet; the checker cannot type the sealed pre-hook word from a post-hook checked body. | `test/enum-decl-suite.f`, `test/run.f` | src/core/enum-decl.f | 2026-07-22 | stdlib-boundary | habu-use-non-reserved-67821d1c |
 | LT-STACK | `-- n` | Named-constant seam: reads the sealed pre-hook layout code `TL-STACK-CELL-TAG` (default POLICY); the checker cannot resolve the sealed constant from a post-hook checked body. | `test/enum-decl-suite.f`, `test/run.f` | src/core/enum-decl.f | 2026-07-21 | stdlib-boundary | habu-enum-parse-full-39c0dc1b |
 | LT-PACKED | `-- n` | Named-constant seam: reads the sealed pre-hook layout code `TL-PACKED-TAG` (packed-tag POLICY); the checker cannot resolve the sealed constant from a post-hook checked body. | `test/enum-decl-suite.f`, `test/run.f` | src/core/enum-decl.f | 2026-07-21 | stdlib-boundary | habu-enum-parse-full-39c0dc1b |
 | DV-EQ | `-- n` | Named-constant seam: reads the sealed pre-hook derive feature code `DRV-EQ` (recorded on the DERIVE event); the checker cannot resolve the sealed constant from a post-hook checked body. | `test/enum-decl-suite.f`, `test/run.f` | src/core/enum-decl.f | 2026-07-21 | stdlib-boundary | habu-enum-parse-full-39c0dc1b |
@@ -866,7 +861,6 @@ that source is explicitly certified; they are not stale-checked by the default
 | XG-EVAL | `--` | Audited `evaluate` wrapper for EXTENT:/TENSOR:/ITENSOR: - compiles the generated extent constant, injector, and accessor definitions so the active checker hook certifies each; `evaluate` cannot be checker-typed (the src/core/roles.f DTC-EVAL / maki/cad.f CAP-COMPILE-RUN pattern). | `maki/extent-test.f`, `maki/extent-tensor-test.f`, `maki/test.f` | maki/extent.f | 2026-07-18 | prim-axiom | habu-primitive-effect-axiom-1119f176 |
 | JIT-EVALUATE | `ptr u8 n --` | JIT inspection CLI evaluates user-supplied source before resolving and disassembling the requested word; dynamic evaluation cannot be expressed by the checker. | `test/gate-debug.f` | tools/jitdump-core.f | 2026-07-12 | builder-emit | habu-builder-trust-rows-c5d41af6 |
 | CHECK! | `ptr u8 n -- n` | Shared lint prelude models the engine checker entrypoint so its fail-closed hook can compile checked before lint sources load. | `tools/trust-lint-test.f`, `test/run.f` | tools/lint/text.f | 2026-07-12 | prim-axiom | habu-primitive-effect-axiom-1119f176 |
-| PS-DECL-PARAM>CHAR | `n -- n bool` | Declaration-alphabet seam: forwards to the sealed pre-hook index-to-character mapping so synthesized public signatures use the same scalar-safe parameter spelling as declaration parsers and generated constructors. | `tools/public-signatures-test.f`, `test/run.f` | tools/public-signatures-core.f | 2026-07-22 | stdlib-boundary | habu-use-non-reserved-67821d1c |
 | CGR-EVALUATE | `ptr u8 n --` | Code-role transformer evaluates normalized generated definitions only through its checked driver and converts failures into the tool's explicit evaluation error. | `tools/codegen-role-test.f`, `test/run.f` | tools/codegen-role.f | 2026-07-12 | test-metaprog | habu-primitive-effect-axiom-1119f176 |
 | CGR-CHECK! | `ptr u8 n -- n` | Code-role transformer invokes the engine checker on extracted definitions before any dynamic compilation. | `tools/codegen-role-test.f`, `test/run.f` | tools/codegen-role.f | 2026-07-12 | test-metaprog | habu-primitive-effect-axiom-1119f176 |
 | CGR-EVALUATE-UNCHECKED | `ptr u8 n --` | Post-certification compiler briefly disables the hook because the preceding checker pass already published the certified definition record; the hook is restored immediately afterward. | `tools/codegen-role-test.f`, `test/run.f` | tools/codegen-role.f | 2026-07-12 | test-metaprog | cap:checker-hook-identity |
@@ -1308,10 +1302,7 @@ test/structure-decl-suite.f:SCH-A@ test-metaprog habu-structure-parse-typed-c5a0
 test/structure-decl-suite.f:PACKED# test-metaprog habu-structure-parse-typed-c5a01e1f
 test/structure-decl-suite.f:STACK# test-metaprog habu-structure-parse-typed-c5a01e1f
 test/structure-decl-suite.f:SCHCON# test-metaprog habu-structure-parse-typed-c5a01e1f
-test/structure-decl-suite.f:SCHPARAM# test-metaprog habu-use-non-reserved-67821d1c
 test/structure-decl-suite.f:CCN# test-metaprog habu-structure-parse-typed-c5a01e1f
-test/structure-decl-suite.f:CCF# test-metaprog habu-use-non-reserved-67821d1c
-test/structure-decl-suite.f:CCR# test-metaprog habu-use-non-reserved-67821d1c
 test/structure-decl-suite.f:REG-MARK test-metaprog habu-structure-parse-typed-c5a01e1f
 test/structure-decl-suite.f:REG-RESTORE test-metaprog habu-structure-parse-typed-c5a01e1f
 test/structure-decl-suite.f:TFAMN@ test-metaprog habu-structure-parse-typed-c5a01e1f
@@ -1338,10 +1329,7 @@ test/enum-decl-suite.f:SCH-TAG@ test-metaprog habu-enum-parse-full-39c0dc1b
 test/enum-decl-suite.f:SCH-A@ test-metaprog habu-enum-parse-full-39c0dc1b
 test/enum-decl-suite.f:PACKED# test-metaprog habu-enum-parse-full-39c0dc1b
 test/enum-decl-suite.f:SCHCON# test-metaprog habu-enum-parse-full-39c0dc1b
-test/enum-decl-suite.f:SCHPARAM# test-metaprog habu-use-non-reserved-67821d1c
-test/enum-decl-suite.f:CCF# test-metaprog habu-use-non-reserved-67821d1c
 test/enum-decl-suite.f:CCN# test-metaprog habu-enum-parse-full-39c0dc1b
-test/enum-decl-suite.f:CCR# test-metaprog habu-use-non-reserved-67821d1c
 test/enum-decl-suite.f:REG-MARK test-metaprog habu-enum-parse-full-39c0dc1b
 test/enum-decl-suite.f:REG-RESTORE test-metaprog habu-enum-parse-full-39c0dc1b
 test/enum-decl-suite.f:TFAMN@ test-metaprog habu-enum-parse-full-39c0dc1b
@@ -1363,11 +1351,6 @@ test/type-decl-suite.f:TWX-CAND-DONE test-metaprog habu-seal-set-check-b3676b33
 test/type-decl-suite.f:TWX-CAND-START test-metaprog habu-seal-set-check-b3676b33
 test/type-decl-suite.f:TWX-CHECKER-FIND-USIG test-metaprog habu-seal-set-check-b3676b33
 test/type-decl-suite.f:TWX-CON-OF test-metaprog habu-seal-set-check-b3676b33
-test/type-decl-suite.f:TWX-EFFECT-QUERY test-metaprog habu-use-non-reserved-67821d1c
-test/type-decl-suite.f:TWX-EFFECT-DIN-N test-metaprog habu-use-non-reserved-67821d1c
-test/type-decl-suite.f:TWX-EFFECT-DOUT-N test-metaprog habu-use-non-reserved-67821d1c
-test/type-decl-suite.f:TWX-EFFECT-DIN-FAM test-metaprog habu-use-non-reserved-67821d1c
-test/type-decl-suite.f:TWX-EFFECT-DOUT-FAM test-metaprog habu-use-non-reserved-67821d1c
 test/type-decl-suite.f:TWX-FRESH test-metaprog habu-seal-set-check-b3676b33
 test/type-decl-suite.f:TWX-HIDDEN-PARAM? test-metaprog habu-seal-set-check-b3676b33
 test/type-decl-suite.f:TWX-HIDDEN-SLOT@ test-metaprog habu-seal-set-check-b3676b33
@@ -1432,9 +1415,6 @@ test/type-family-suite.f:TWX-CHECKER-SNAPSHOT-PREPARE test-metaprog habu-seal-se
 test/type-family-suite.f:TWX-T-WIDTH test-metaprog habu-epic-type-system-b88c9ecc
 test/type-family-suite.f:TWX-MK-NULLARY test-metaprog habu-epic-type-system-b88c9ecc
 test/type-family-suite.f:TWX-MK-UNARY test-metaprog habu-epic-type-system-b88c9ecc
-test/type-family-suite.f:TWX-DECL-PARAM-COUNT test-metaprog habu-use-non-reserved-67821d1c
-test/type-family-suite.f:TWX-DECL-PARAM>CHAR test-metaprog habu-use-non-reserved-67821d1c
-test/type-family-suite.f:TWX-DECL-CHAR>PARAM test-metaprog habu-use-non-reserved-67821d1c
 test/type-family-suite.f:TWX-FRESH test-metaprog habu-seal-set-check-b3676b33
 test/type-family-suite.f:TWX-LAY-ADD test-metaprog habu-seal-set-check-b3676b33
 test/type-family-suite.f:TWX-LAY-ALIGN@ test-metaprog habu-seal-set-check-b3676b33
@@ -1788,6 +1768,9 @@ prim - tfam-n@ - pe-n pe-out
 prim - tfam-width@ - pe-n pe-in pe-n pe-out
 prim - tfam-name$ - pe-n pe-in pe-ptr-u8 pe-out pe-n pe-out
 prim - tfam-arity@ - pe-n pe-in pe-n pe-out
+prim - tfam-decl-param-count - pe-n pe-out
+prim - tfam-decl-param>char - pe-n pe-in pe-n pe-out pe-f pe-out
+prim - tfam-decl-char>param - pe-n pe-in pe-n pe-out pe-f pe-out
 prim - tfam-kind@ - pe-n pe-in pe-n pe-out
 prim - tfam-public? - pe-n pe-in pe-f pe-out
 prim - tfam-derive-eq? - pe-n pe-in pe-f pe-out

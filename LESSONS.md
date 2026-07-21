@@ -1940,3 +1940,9 @@ fits.
   schema and its generated signature. Keep one index-to-character table, derive
   character-to-index by searching it, and make every parser, generator, and
   arity gate consume that shared boundary.
+- **Test a finite mapping once, then exercise only its behavioral boundaries.**
+  A complete direct inverse-table test plus the first reserved-letter boundary
+  and the maximum arity proves more than instantiating every intermediate
+  declaration, while preserving scarce dictionary space. Diagnostic variable
+  rendering and generic effect quantifiers remain separate full alphabet
+  domains; declaration spelling rules must not narrow either one.

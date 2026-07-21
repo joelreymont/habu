@@ -2439,6 +2439,8 @@ variable VREC-RB-I
 \ across in/out within one signature); `n` = int (con 1), `f` = flag (con 2).
 \ Unknown multi-char tokens mark the signature malformed; row variables are
 \ shared so the effect is row-polymorphic.
+\ Signature quantifiers retain their source-letter identity for generic effect
+\ parsing and diagnostics.  This is not the declaration parameter alphabet.
 create NMAP 26 cells allot
 
 : NMAP-RESET 0 BEGIN dup cells NMAP + UNBOUND swap ! 1 + dup 25 > UNTIL drop ;
@@ -4962,6 +4964,9 @@ PRIM: TFAM-WIDTH@ PE-N PE-IN  PE-N PE-OUT PRIM;
 \ Read-only registry reads (never hidden fields); NOT trust boundaries.
 PRIM: TFAM-NAME$ PE-N PE-IN  PE-PTR-U8 PE-OUT PE-N PE-OUT PRIM;
 PRIM: TFAM-ARITY@ PE-N PE-IN  PE-N PE-OUT PRIM;
+PRIM: TFAM-DECL-PARAM-COUNT PE-N PE-OUT PRIM;
+PRIM: TFAM-DECL-PARAM>CHAR PE-N PE-IN  PE-N PE-OUT PE-F PE-OUT PRIM;
+PRIM: TFAM-DECL-CHAR>PARAM PE-N PE-IN  PE-N PE-OUT PE-F PE-OUT PRIM;
 PRIM: TFAM-KIND@ PE-N PE-IN  PE-N PE-OUT PRIM;
 PRIM: TFAM-PUBLIC? PE-N PE-IN  PE-F PE-OUT PRIM;
 PRIM: TFAM-DERIVE-EQ? PE-N PE-IN  PE-F PE-OUT PRIM;
@@ -8967,7 +8972,7 @@ variable NP-SEEN-N
    SGOUT @ NP-COLLECT-ROW
    SGHASR @ IF SGRIN @ NP-COLLECT-ROW  SGROUT @ NP-COLLECT-ROW THEN ;
 
-: NP-LETTER ( n -- n )   \ source letter (char) of a declared quantifier id, else '?'
+: NP-LETTER ( n -- n )   \ generic effect source letter, else '?'; not a declaration position
    {: id:n :}
    0 BEGIN dup 26 < WHILE
       dup cells NMAP + @ id = IF 97 + EXIT THEN

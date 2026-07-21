@@ -111,7 +111,6 @@ TRUSTED: DEV-FLD-COMMIT ( n -- ) PF-COMMIT ;
 TRUSTED: DEV-FLD-ROLLBACK ( n -- ) PF-ROLLBACK ;
 TRUSTED: DEV-FLD-COUNT ( -- n ) TYPE-FIELD:COUNT ;
 TRUSTED: DEV-SUMV-ADD ( n ptr u8 n n n n n -- n ) SUMV-ADD ;
-TRUSTED: DEV-DECL-PARAM-COUNT ( -- n ) TFAM-DECL-PARAM-COUNT ;
 
 \ ---------------------------------------------------------------------------
 \ event record arena (interleaved cells, pointer-free: KIND/FAM/VAR/FLD are all
@@ -265,7 +264,7 @@ variable DEV-TX-SERIAL
 
 : DEV-ARITY ( n n n -- n ) {: tok:n fam:n arity:n :}   \ header: arity value (shared bound)
    tok DEV-TX-REQUIRE
-   arity 0 < arity DEV-DECL-PARAM-COUNT > or IF E-DEV-ARITY throw THEN
+   arity 0 < arity TFAM-DECL-PARAM-COUNT > or IF E-DEV-ARITY throw THEN
    DEV-K-ARITY fam arity DEV-NO-FIELD DEV-EMIT
    tok ;
 

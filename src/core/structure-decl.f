@@ -130,8 +130,6 @@ TRUSTED: CON-CODE ( ptr u8 n -- n ) CON-OF ;
 TRUSTED: CON-N ( -- n ) CC-N ;          \ single-letter n : signed cell
 TRUSTED: CON-BOOL ( -- n ) CC-BOOL ;    \ single-letter f : boolean/flag
 TRUSTED: CON-R ( -- n ) CC-R ;          \ single-letter r : real/float
-TRUSTED: DECL-PARAM-COUNT ( -- n ) TFAM-DECL-PARAM-COUNT ;
-TRUSTED: DECL-CHAR>PARAM ( n -- n bool ) TFAM-DECL-CHAR>PARAM ;
 TRUSTED: LT-STACK ( -- n ) TL-STACK-CELL-TAG ;   \ default layout policy code
 TRUSTED: LT-PACKED ( -- n ) TL-PACKED-TAG ;      \ packed-tag layout policy code
 TRUSTED: DV-EQ ( -- n ) DRV-EQ ;                 \ derive feature code: equality
@@ -232,7 +230,7 @@ SD-RESET
 : PARSE-ARITY ( ptr u8 n -- n )
    dup 0= IF 2drop E-ARITY throw THEN
    2dup SD-ALLDIG? 0= IF 2drop E-ARITY throw THEN
-   DEC dup DECL-PARAM-COUNT > IF drop E-ARITY throw THEN ;
+   DEC dup TFAM-DECL-PARAM-COUNT > IF drop E-ARITY throw THEN ;
 
 \ ---------------------------------------------------------------------------
 \ field type resolution -> a schema node (docs §8): concrete cell types (n/f/r +
@@ -252,7 +250,7 @@ SD-RESET
    dup ASCII-N = IF drop CON-N SD-SCH-CON EXIT THEN
    dup ASCII-F = IF drop CON-BOOL SD-SCH-CON EXIT THEN
    dup ASCII-R = IF drop CON-R SD-SCH-CON EXIT THEN
-   DECL-CHAR>PARAM 0= IF drop E-PAYLOAD throw THEN
+   TFAM-DECL-CHAR>PARAM 0= IF drop E-PAYLOAD throw THEN
    dup SD-ARITY @ < IF SD-SCH-PARAM EXIT THEN
    drop
    E-PAYLOAD throw ;

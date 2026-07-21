@@ -50,10 +50,7 @@ TRUSTED: SCH-A@ ( n -- n ) SCHEMA-A@ ;
 TRUSTED: PACKED# ( -- n ) TL-PACKED-TAG ;
 TRUSTED: STACK# ( -- n ) TL-STACK-CELL-TAG ;
 TRUSTED: SCHCON# ( -- n ) SCH-CON ;
-TRUSTED: SCHPARAM# ( -- n ) SCH-PARAM ;
 TRUSTED: CCN# ( -- n ) CC-N ;
-TRUSTED: CCF# ( -- n ) CC-BOOL ;
-TRUSTED: CCR# ( -- n ) CC-R ;
 
 \ --- registry snapshot, so a reject can be proven byte-identical and the
 \ identity test can re-run an identical declaration against a fresh registry
@@ -221,21 +218,10 @@ s" STRUCTURE gp 1 FIELD v a ;STRUCTURE" EV
 : GPRT ( n -- n ) GP:MAKE GP:UNMAKE ;
 42 GPRT 42 T=
 
-\ The post-hook STRUCTURE parser consumes the shared declaration alphabet:
-\ g is parameter 5, z is parameter 22, and f/n/r remain concrete scalar fields
-\ even though the declared arity extends past their old letter positions.
-TYPE-FIELD:COUNT B !
+\ The post-hook STRUCTURE parser consumes the shared declaration alphabet.  A
+\ maximum-arity declaration accepts g and z while f/n/r stay scalar fields; the
+\ exact inverse table is tested once in type-family-suite.f.
 s" STRUCTURE sdmap 23 FIELD p00 a FIELD p01 b FIELD p02 c FIELD p03 d FIELD p04 e FIELD p05 g FIELD flag f FIELD integer n FIELD real r FIELD last z ;STRUCTURE" EV
-B @ 5 + TYPE-FIELD:SCHEMA@ SCH-ROOT@ NODE !
-NODE @ SCH-TAG@ SCHPARAM# T=   NODE @ SCH-A@ 5 T=
-B @ 6 + TYPE-FIELD:SCHEMA@ SCH-ROOT@ NODE !
-NODE @ SCH-TAG@ SCHCON# T=     NODE @ SCH-A@ CCF# T=
-B @ 7 + TYPE-FIELD:SCHEMA@ SCH-ROOT@ NODE !
-NODE @ SCH-TAG@ SCHCON# T=     NODE @ SCH-A@ CCN# T=
-B @ 8 + TYPE-FIELD:SCHEMA@ SCH-ROOT@ NODE !
-NODE @ SCH-TAG@ SCHCON# T=     NODE @ SCH-A@ CCR# T=
-B @ 9 + TYPE-FIELD:SCHEMA@ SCH-ROOT@ NODE !
-NODE @ SCH-TAG@ SCHPARAM# T=   NODE @ SCH-A@ 22 T=
 s" SDMAPRT ( n n n n n n bool n r char -- n n n n n n bool n r char ) SDMAP:MAKE SDMAP:UNMAKE" CHECK-QUIET-CANDIDATE! -1 T=
 s" SDMAPBAD ( n n n n n bool n n r char -- n n n n n bool n n r char ) SDMAP:MAKE SDMAP:UNMAKE" CHECK-QUIET-CANDIDATE! 0 T=
 

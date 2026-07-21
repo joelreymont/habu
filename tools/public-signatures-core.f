@@ -756,10 +756,8 @@ create PS-CSIG-BUF PS-SIG-CAP allot   variable PS-CSIG-W
    u 0 ?do  a i + c@ PS-CSIG-C,  loop ;
 : PS-CSIG$ ( -- ptr u8 n ) PS-CSIG-BUF PS-CSIG-W @ ;
 
-TRUSTED: PS-DECL-PARAM>CHAR ( n -- n bool ) TFAM-DECL-PARAM>CHAR ;
-
 : PS-PARAM-CHAR ( n -- n )
-   PS-DECL-PARAM>CHAR 0= IF
+   TFAM-DECL-PARAM>CHAR 0= IF
       drop s" public-signatures: declaration parameter index out of range" PS-DIE
    THEN ;
 

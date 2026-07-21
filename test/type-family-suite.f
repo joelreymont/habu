@@ -112,13 +112,10 @@ TRUSTED: TWX-TF-CTOR-PKG$ ( ptr u8 n ptr u8 n -- ptr u8 n ) TF-CTOR-PKG$ ;
 TRUSTED: TWX-TF-HIDDEN? ( ptr u8 n -- bool ) TF-HIDDEN? ;
 TRUSTED: TWX-TF-INTERN ( ptr u8 n -- n ) TF-INTERN ;
 TRUSTED: TWX-TF-OFF$ ( n n -- ptr u8 n ) TF-OFF$ ;
-TRUSTED: TWX-DECL-PARAM-COUNT ( -- n ) TFAM-DECL-PARAM-COUNT ;
-TRUSTED: TWX-DECL-PARAM>CHAR ( n -- n bool ) TFAM-DECL-PARAM>CHAR ;
-TRUSTED: TWX-DECL-CHAR>PARAM ( n -- n bool ) TFAM-DECL-CHAR>PARAM ;
 : TDP-INDEX>CHAR ( n n -- ) {: index:n char:n :}
-   index TWX-DECL-PARAM>CHAR T-TRUE char T= ;
+   index TFAM-DECL-PARAM>CHAR T-TRUE char T= ;
 : TDP-CHAR>INDEX ( n n -- ) {: index:n char:n :}
-   char TWX-DECL-CHAR>PARAM T-TRUE index T= ;
+   char TFAM-DECL-CHAR>PARAM T-TRUE index T= ;
 : TDP-PAIR ( n n -- ) {: index:n char:n :}
    index char TDP-INDEX>CHAR
    index char TDP-CHAR>INDEX ;
@@ -195,7 +192,7 @@ LAY-REC-PTR-MASK 0 T=
 \ Declaration parameters use one reserved-safe positional alphabet.  These
 \ direct whitebox checks pin both directions and every ordered character;
 \ f/n/r are concrete scalar tokens and therefore never map to a parameter.
-TWX-DECL-PARAM-COUNT 23 T=
+TFAM-DECL-PARAM-COUNT 23 T=
 0  $61 TDP-PAIR
 1  $62 TDP-PAIR
 2  $63 TDP-PAIR
@@ -219,15 +216,15 @@ TWX-DECL-PARAM-COUNT 23 T=
 20 $78 TDP-PAIR
 21 $79 TDP-PAIR
 22 $7A TDP-PAIR
-0 TWX-DECL-PARAM>CHAR nip -1 T=
-22 TWX-DECL-PARAM>CHAR nip -1 T=
--1 TWX-DECL-PARAM>CHAR nip 0 T=
-23 TWX-DECL-PARAM>CHAR nip 0 T=
-$66 TWX-DECL-CHAR>PARAM nip 0 T=   \ f is bool
-$6E TWX-DECL-CHAR>PARAM nip 0 T=   \ n is int
-$72 TWX-DECL-CHAR>PARAM nip 0 T=   \ r is real
-$41 TWX-DECL-CHAR>PARAM nip 0 T=   \ uppercase is never positional
-$30 TWX-DECL-CHAR>PARAM nip 0 T=   \ non-letter is never positional
+0 TFAM-DECL-PARAM>CHAR nip -1 T=
+22 TFAM-DECL-PARAM>CHAR nip -1 T=
+-1 TFAM-DECL-PARAM>CHAR nip 0 T=
+23 TFAM-DECL-PARAM>CHAR nip 0 T=
+$66 TFAM-DECL-CHAR>PARAM nip 0 T=   \ f is bool
+$6E TFAM-DECL-CHAR>PARAM nip 0 T=   \ n is int
+$72 TFAM-DECL-CHAR>PARAM nip 0 T=   \ r is real
+$41 TFAM-DECL-CHAR>PARAM nip 0 T=   \ uppercase is never positional
+$30 TFAM-DECL-CHAR>PARAM nip 0 T=   \ non-letter is never positional
 TF-RBF-REC 6 cells T=
 TF-RBF-REC-ALIGN CELL T=
 TF-RBF-REC-PTR-MASK 0 T=

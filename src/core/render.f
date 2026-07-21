@@ -93,6 +93,8 @@ REG-SCRATCH-SNAP-INSTALL
 : RATOM-RESET ( -- )
    0 RATOM-N ! ;
 
+\ Diagnostic alpha-renaming has its own a..z namespace.  It renders generic
+\ checker variables and is deliberately independent of declaration positions.
 : LET-OF {: vp :}
    vp cells SEEN + @ UNBOUND = IF NLET @ vp cells SEEN + ! NLET @ 1 + NLET ! THEN
    vp cells SEEN + @ 97 + ;

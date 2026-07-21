@@ -63,10 +63,7 @@ TRUSTED: SCH-TAG@ ( n -- n ) SCHEMA-TAG@ ;
 TRUSTED: SCH-A@ ( n -- n ) SCHEMA-A@ ;
 TRUSTED: PACKED# ( -- n ) TL-PACKED-TAG ;
 TRUSTED: SCHCON# ( -- n ) SCH-CON ;
-TRUSTED: SCHPARAM# ( -- n ) SCH-PARAM ;
-TRUSTED: CCF# ( -- n ) CC-BOOL ;
 TRUSTED: CCN# ( -- n ) CC-N ;
-TRUSTED: CCR# ( -- n ) CC-R ;
 
 \ --- registry snapshot, so a reject can be proven byte-identical and the identity
 \ test can re-run an identical declaration against a fresh registry (family id
@@ -155,27 +152,12 @@ TFAMN@ FID @ 1 + T=                                   \ family registered (param
 s" boxe" FAMID F-FLD-COUNT 1 T=                       \ the parameter field committed
 
 \ ---------------------------------------------------------------------------
-\ 4b. The full ENUM parser shares the declaration parameter alphabet with the
-\     core declaration parser.  Its sixth parameter is g, f/n/r remain concrete
-\     scalar types at arity 23, and z names zero-based parameter 22.
+\ 4b. The full ENUM parser consumes the shared declaration alphabet.  A
+\     maximum-arity declaration accepts g and z while f/n/r remain concrete;
+\     the exact inverse table is tested once in type-family-suite.f.
 \ ---------------------------------------------------------------------------
-TYPE-FIELD:COUNT B !
 s" ENUM-DECL:ED-RUN emap 23 VARIANT values FIELD pa a FIELD pb b FIELD pc c FIELD pd d FIELD pe e FIELD pg g FIELD flag f FIELD integer n FIELD real r FIELD last z ;VARIANT ;ENUM" EV
-B @ 5 + TYPE-FIELD:SCHEMA@ SCH-ROOT@ NODE !
-NODE @ SCH-TAG@ SCHPARAM# T=
-NODE @ SCH-A@ 5 T=                                    \ g is declaration parameter 5
-B @ 6 + TYPE-FIELD:SCHEMA@ SCH-ROOT@ NODE !
-NODE @ SCH-TAG@ SCHCON# T=
-NODE @ SCH-A@ CCF# T=                                 \ f remains bool, not a parameter
-B @ 7 + TYPE-FIELD:SCHEMA@ SCH-ROOT@ NODE !
-NODE @ SCH-TAG@ SCHCON# T=
-NODE @ SCH-A@ CCN# T=                                 \ n remains int, not a parameter
-B @ 8 + TYPE-FIELD:SCHEMA@ SCH-ROOT@ NODE !
-NODE @ SCH-TAG@ SCHCON# T=
-NODE @ SCH-A@ CCR# T=                                 \ r remains real, not a parameter
-B @ 9 + TYPE-FIELD:SCHEMA@ SCH-ROOT@ NODE !
-NODE @ SCH-TAG@ SCHPARAM# T=
-NODE @ SCH-A@ 22 T=                                   \ z is declaration parameter 22
+s" emap" FAMID F-FLD-COUNT 10 T=                      \ every mapped/scalar field committed
 
 \ ---------------------------------------------------------------------------
 \ 5. Compact event stream: DECL then one VARIANT + VARIANT-END pair per variant,

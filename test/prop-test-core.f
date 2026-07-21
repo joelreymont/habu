@@ -1335,137 +1335,140 @@ variable SS-I  variable SS-J  variable SS-BAD
 \ AXR 187 0 1 1 prim - tfam-width@ - pe-n pe-in pe-n pe-out
 \ AXR 188 0 1 2 prim - tfam-name$ - pe-n pe-in pe-ptr-u8 pe-out pe-n pe-out
 \ AXR 189 0 1 1 prim - tfam-arity@ - pe-n pe-in pe-n pe-out
-\ AXR 190 0 1 1 prim - tfam-kind@ - pe-n pe-in pe-n pe-out
-\ AXR 191 0 1 1 prim - tfam-public? - pe-n pe-in pe-f pe-out
-\ AXR 192 0 1 1 prim - tfam-derive-eq? - pe-n pe-in pe-f pe-out
-\ AXR 193 0 1 1 prim - tfam-derive-hash? - pe-n pe-in pe-f pe-out
-\ AXR 194 0 1 1 prim - tfam-var-start@ - pe-n pe-in pe-n pe-out
-\ AXR 195 0 1 1 prim - tfam-var-count@ - pe-n pe-in pe-n pe-out
-\ AXR 196 0 1 2 prim - sumv-name$ - pe-n pe-in pe-ptr-u8 pe-out pe-n pe-out
-\ AXR 197 0 1 2 prim - sumv-ctor-pkg$ - pe-n pe-in pe-ptr-u8 pe-out pe-n pe-out
-\ AXR 198 0 0 1 pprim type-field count - pe-n pe-out
-\ AXR 199 0 0 1 pprim type-field no-variant - pe-n pe-out
-\ AXR 200 0 4 2 pprim type-field find - pe-n pe-in pe-n pe-in pe-ptr-u8 pe-in pe-n pe-in pe-n pe-out pe-f pe-out
-\ AXR 201 0 3 2 pprim type-field each - pe-n pe-in pe-n pe-in pe-n pe-in pe-n pe-out pe-f pe-out
-\ AXR 202 0 1 1 pprim type-field family@ - pe-n pe-in pe-n pe-out
-\ AXR 203 0 1 1 pprim type-field variant@ - pe-n pe-in pe-n pe-out
-\ AXR 204 0 1 2 pprim type-field name$ - pe-n pe-in pe-ptr-u8 pe-out pe-n pe-out
-\ AXR 205 0 1 1 pprim type-field schema@ - pe-n pe-in pe-n pe-out
-\ AXR 206 0 1 1 pprim type-field slot@ - pe-n pe-in pe-n pe-out
-\ AXR 207 0 1 1 pprim type-field cells@ - pe-n pe-in pe-n pe-out
-\ AXR 208 0 1 1 pprim type-field byte-off@ - pe-n pe-in pe-n pe-out
-\ AXR 209 0 1 1 pprim type-field bytes@ - pe-n pe-in pe-n pe-out
-\ AXR 210 0 1 1 pprim type-field align@ - pe-n pe-in pe-n pe-out
-\ AXR 211 0 1 1 pprim type-field flags@ - pe-n pe-in pe-n pe-out
-\ AXR 212 1 0 1 prim - wf-n@ - pe-n pe-out
-\ AXR 213 0 1 1 prim - wf-off@ - pe-n pe-in pe-n pe-out
-\ AXR 214 0 1 1 prim - wf-pos@ - pe-n pe-in pe-n pe-out
-\ AXR 215 0 1 1 prim - wf-fam@ - pe-n pe-in pe-n pe-out
-\ AXR 216 0 1 1 prim - wf-width@ - pe-n pe-in pe-n pe-out
-\ AXR 217 0 1 1 prim - wf-term@ - pe-n pe-in pe-n pe-out
-\ AXR 218 0 1 1 prim - wf-flags@ - pe-n pe-in pe-n pe-out
-\ AXR 219 1 0 1 prim - wf-wide? - pe-f pe-out
-\ AXR 220 1 0 1 prim - wf-needs-p2? - pe-f pe-out
-\ AXR 221 1 2 1 prim - wf-w-at - pe-n pe-in pe-n pe-in pe-n pe-out
-\ AXR 222 0 0 0 prim - wide-mark - -
-\ AXR 223 0 0 0 prim - rec-wide-publish - -
-\ AXR 224 0 0 1 prim - rec-min-in@ - pe-n pe-out
-\ AXR 225 0 1 1 prim - locw-hw@ - pe-n pe-in pe-n pe-out
-\ AXR 226 1 0 1 prim - locw-hw-n@ - pe-n pe-out
-\ AXR 227 1 0 1 pprim lower-cert magic - pe-n pe-out
-\ AXR 228 1 0 1 pprim lower-cert version - pe-n pe-out
-\ AXR 229 1 0 1 pprim lower-cert header-cells - pe-n pe-out
-\ AXR 230 1 0 1 pprim lower-cert magic-cell - pe-n pe-out
-\ AXR 231 1 0 1 pprim lower-cert version-cell - pe-n pe-out
-\ AXR 232 1 0 1 pprim lower-cert total-bytes-cell - pe-n pe-out
-\ AXR 233 1 0 1 pprim lower-cert needs-cell - pe-n pe-out
-\ AXR 234 1 0 1 pprim lower-cert wf-count-cell - pe-n pe-out
-\ AXR 235 1 0 1 pprim lower-cert bind-count-cell - pe-n pe-out
-\ AXR 236 1 0 1 pprim lower-cert fetch-count-cell - pe-n pe-out
-\ AXR 237 1 0 1 pprim lower-cert fetch-data-cells-cell - pe-n pe-out
-\ AXR 238 1 0 1 pprim lower-cert wf-cells - pe-n pe-out
-\ AXR 239 1 0 1 pprim lower-cert fetch-cells - pe-n pe-out
-\ AXR 240 1 0 1 pprim lower-cert check-cells - pe-n pe-out
-\ AXR 241 1 0 1 pprim lower-cert guard-cells - pe-n pe-out
-\ AXR 242 1 0 1 pprim lower-cert fetch-flag - pe-n pe-out
-\ AXR 243 1 0 1 pprim lower-cert store-flag - pe-n pe-out
-\ AXR 244 1 0 1 pprim lower-cert xpad-flag - pe-n pe-out
-\ AXR 245 1 0 1 pprim lower-cert body-len-cell - pe-n pe-out
-\ AXR 246 1 0 1 pprim lower-cert body-hash-cell - pe-n pe-out
-\ AXR 247 1 0 1 pprim lower-cert fnv-offset - pe-n pe-out
-\ AXR 248 1 0 1 pprim lower-cert fnv-prime - pe-n pe-out
-\ AXR 249 1 0 1 pprim lower-cert cell-count - pe-n pe-out
-\ AXR 250 0 1 1 pprim lower-cert cell@ - pe-n pe-in pe-n pe-out
-\ AXR 251 0 0 2 pprim lower-cert bytes trusted-only pe-ptr-u8 pe-out pe-n pe-out
-\ AXR 252 0 2 1 pprim lower-cert-hook hook - pe-ptr-u8 pe-in pe-n pe-in pe-n pe-out
-\ AXR 253 0 1 0 pprim checker-cert install - pe-n pe-in
-\ AXR 254 0 3 0 pprim checker-cert produce - pe-ptr-u8 pe-in pe-n pe-in pe-n pe-in
-\ AXR 255 0 0 0 prim - p2-locseq-reset - -
-\ AXR 256 0 1 1 prim - p2-carve-w - pe-n pe-in pe-n pe-out
-\ AXR 257 0 1 1 prim - p2-live-w@ - pe-n pe-in pe-n pe-out
-\ AXR 258 0 1 1 prim - p2-live-cum@ - pe-n pe-in pe-n pe-out
-\ AXR 259 1 0 1 prim - sumv-n@ - pe-n pe-out
-\ AXR 260 1 0 1 prim - tf-str-u@ - pe-n pe-out
-\ AXR 261 1 0 1 prim - tf-pk-n@ - pe-n pe-out
-\ AXR 262 1 0 1 prim - schema-n@ - pe-n pe-out
-\ AXR 263 1 0 1 prim - schema-root-n@ - pe-n pe-out
-\ AXR 264 0 2 0 prim - checker-defer - pe-ptr-u8 pe-in pe-n pe-in
-\ AXR 265 0 2 0 prim - checker-package - pe-ptr-u8 pe-in pe-n pe-in
-\ AXR 266 0 2 0 prim - checker-using - pe-ptr-u8 pe-in pe-n pe-in
-\ AXR 267 0 0 0 prim - checker-public - -
-\ AXR 268 0 0 0 prim - checker-private - -
-\ AXR 269 0 0 0 prim - checker-end-package - -
-\ AXR 270 0 3 1 prim - ffi-call trusted-only pe-ptr-a pe-in pe-n pe-in pe-n pe-in pe-n pe-out
-\ AXR 271 0 3 1 prim - ffi-call-n trusted-only pe-ptr-a pe-in pe-n pe-in pe-n pe-in pe-n pe-out
-\ AXR 272 0 4 1 prim - ffi-call-bounded trusted-only pe-ptr-a pe-in pe-ptr-b pe-in pe-n pe-in pe-n pe-in pe-n pe-out
-\ AXR 273 0 7 1 prim - ffi-call-abi-bounded trusted-only pe-ptr-a pe-in pe-ptr-b pe-in pe-ptr-c pe-in pe-ptr-d pe-in pe-ptr-e pe-in pe-n pe-in pe-n pe-in pe-n pe-out
-\ AXR 274 0 7 1 prim - ffi-call-abi-r-bounded trusted-only pe-ptr-a pe-in pe-ptr-b pe-in pe-ptr-c pe-in pe-ptr-d pe-in pe-ptr-e pe-in pe-n pe-in pe-n pe-in pe-r pe-out
-\ AXR 275 0 7 1 prim - ffi-call-abi trusted-only pe-ptr-a pe-in pe-ptr-b pe-in pe-ptr-c pe-in pe-n pe-in pe-n pe-in pe-n pe-in pe-n pe-in pe-n pe-out
-\ AXR 276 0 7 1 prim - ffi-call-abi-r trusted-only pe-ptr-a pe-in pe-ptr-b pe-in pe-ptr-c pe-in pe-n pe-in pe-n pe-in pe-n pe-in pe-n pe-in pe-r pe-out
-\ AXR 277 3 2 1 prim - f+ - pe-r pe-in pe-r pe-in pe-r pe-out
-\ AXR 278 3 2 1 prim - f- - pe-r pe-in pe-r pe-in pe-r pe-out
-\ AXR 279 3 2 1 prim - f* - pe-r pe-in pe-r pe-in pe-r pe-out
-\ AXR 280 3 2 1 prim - f/ - pe-r pe-in pe-r pe-in pe-r pe-out
-\ AXR 281 3 1 1 prim - fnegate - pe-r pe-in pe-r pe-out
-\ AXR 282 3 1 1 prim - fabs - pe-r pe-in pe-r pe-out
-\ AXR 283 3 1 1 prim - fsqrt - pe-r pe-in pe-r pe-out
-\ AXR 284 3 2 1 prim - f< - pe-r pe-in pe-r pe-in pe-f pe-out
-\ AXR 285 3 2 1 prim - f> - pe-r pe-in pe-r pe-in pe-f pe-out
-\ AXR 286 3 2 1 prim - f= - pe-r pe-in pe-r pe-in pe-f pe-out
-\ AXR 287 3 1 1 prim - f0< - pe-r pe-in pe-f pe-out
-\ AXR 288 3 1 1 prim - f0= - pe-r pe-in pe-f pe-out
-\ AXR 289 1 1 1 prim - s>f - pe-n pe-in pe-r pe-out
-\ AXR 290 3 1 1 prim - f>s - pe-r pe-in pe-n pe-out
-\ AXR 291 0 1 0 prim - f. - pe-r pe-in
-\ AXR 292 0 0 2 prim - s" - pe-ptr-u8 pe-out pe-n pe-out
-\ AXR 293 0 0 1 prim - c" - pe-ptr-u8 pe-out
-\ AXR 294 0 0 0 prim - ." - -
-\ AXR 295 0 0 2 prim - s\" - pe-ptr-u8 pe-out pe-n pe-out
-\ AXR 296 0 0 1 prim - c\" - pe-ptr-u8 pe-out
-\ AXR 297 0 0 0 prim - .\" - -
-\ AXR 298 0 0 1 prim - ['] - pe-n pe-out
-\ AXR 299 0 0 1 prim - char - pe-n pe-out
-\ AXR 300 0 0 1 prim - [char] - pe-n pe-out
-\ AXR 301 1 1 0 prim - emit - pe-n pe-in
-\ AXR 302 1 0 0 prim - cr - -
-\ AXR 303 1 0 0 prim - space - -
-\ AXR 304 1 1 0 prim - u. - pe-n pe-in
-\ AXR 305 0 0 1 prim - create - pe-ptr-a pe-out
-\ AXR 306 0 0 1 prim - variable - pe-ptr-a pe-out
-\ AXR 307 0 0 1 prim - constant - pe-a pe-out
-\ AXR 308 0 0 1 prim - getpid - pe-n pe-out
-\ AXR 309 0 1 1 prim - proc-watch-open - pe-n pe-in pe-n pe-out
-\ AXR 310 0 2 1 prim - kill-errno - pe-n pe-in pe-n pe-in pe-n pe-out
-\ AXR 311 0 3 1 prim - execve - pe-ptr-u8 pe-in pe-ptr-a pe-in pe-ptr-a pe-in pe-n pe-out
-\ AXR 312 0 2 1 prim - munmap - pe-ptr-u8 pe-in pe-n pe-in pe-n pe-out
-\ AXR 313 0 2 0 prim - ext-mark-free-tail - pe-ptr-u8 pe-in pe-n pe-in
-\ AXR 314 0 0 0 prim - typefamily - -
-\ AXR 315 0 0 0 prim - sumtype - -
-\ AXR 316 0 0 0 prim - enum - -
-\ AXR 317 0 0 0 prim - product - -
-\ AXR 318 0 1 0 prim - layout-buffer - pe-n pe-in
-\ AXR 319 0 5 0 prim - ldefer-bind - pe-n pe-in pe-n pe-in pe-n pe-in pe-n pe-in pe-n pe-in
-\ AXR 320 0 5 0 prim - ldefer-grow - pe-n pe-in pe-n pe-in pe-n pe-in pe-n pe-in pe-n pe-in
-\ AXR 321 0 0 0 prim - defer-layout-buffer - -
-\ AXR 322 0 1 0 prim - typed-buffer - pe-n pe-in
-\ AXR 323 0 0 0 prim - typed-variable - -
+\ AXR 190 1 0 1 prim - tfam-decl-param-count - pe-n pe-out
+\ AXR 191 1 1 2 prim - tfam-decl-param>char - pe-n pe-in pe-n pe-out pe-f pe-out
+\ AXR 192 1 1 2 prim - tfam-decl-char>param - pe-n pe-in pe-n pe-out pe-f pe-out
+\ AXR 193 0 1 1 prim - tfam-kind@ - pe-n pe-in pe-n pe-out
+\ AXR 194 0 1 1 prim - tfam-public? - pe-n pe-in pe-f pe-out
+\ AXR 195 0 1 1 prim - tfam-derive-eq? - pe-n pe-in pe-f pe-out
+\ AXR 196 0 1 1 prim - tfam-derive-hash? - pe-n pe-in pe-f pe-out
+\ AXR 197 0 1 1 prim - tfam-var-start@ - pe-n pe-in pe-n pe-out
+\ AXR 198 0 1 1 prim - tfam-var-count@ - pe-n pe-in pe-n pe-out
+\ AXR 199 0 1 2 prim - sumv-name$ - pe-n pe-in pe-ptr-u8 pe-out pe-n pe-out
+\ AXR 200 0 1 2 prim - sumv-ctor-pkg$ - pe-n pe-in pe-ptr-u8 pe-out pe-n pe-out
+\ AXR 201 0 0 1 pprim type-field count - pe-n pe-out
+\ AXR 202 0 0 1 pprim type-field no-variant - pe-n pe-out
+\ AXR 203 0 4 2 pprim type-field find - pe-n pe-in pe-n pe-in pe-ptr-u8 pe-in pe-n pe-in pe-n pe-out pe-f pe-out
+\ AXR 204 0 3 2 pprim type-field each - pe-n pe-in pe-n pe-in pe-n pe-in pe-n pe-out pe-f pe-out
+\ AXR 205 0 1 1 pprim type-field family@ - pe-n pe-in pe-n pe-out
+\ AXR 206 0 1 1 pprim type-field variant@ - pe-n pe-in pe-n pe-out
+\ AXR 207 0 1 2 pprim type-field name$ - pe-n pe-in pe-ptr-u8 pe-out pe-n pe-out
+\ AXR 208 0 1 1 pprim type-field schema@ - pe-n pe-in pe-n pe-out
+\ AXR 209 0 1 1 pprim type-field slot@ - pe-n pe-in pe-n pe-out
+\ AXR 210 0 1 1 pprim type-field cells@ - pe-n pe-in pe-n pe-out
+\ AXR 211 0 1 1 pprim type-field byte-off@ - pe-n pe-in pe-n pe-out
+\ AXR 212 0 1 1 pprim type-field bytes@ - pe-n pe-in pe-n pe-out
+\ AXR 213 0 1 1 pprim type-field align@ - pe-n pe-in pe-n pe-out
+\ AXR 214 0 1 1 pprim type-field flags@ - pe-n pe-in pe-n pe-out
+\ AXR 215 1 0 1 prim - wf-n@ - pe-n pe-out
+\ AXR 216 0 1 1 prim - wf-off@ - pe-n pe-in pe-n pe-out
+\ AXR 217 0 1 1 prim - wf-pos@ - pe-n pe-in pe-n pe-out
+\ AXR 218 0 1 1 prim - wf-fam@ - pe-n pe-in pe-n pe-out
+\ AXR 219 0 1 1 prim - wf-width@ - pe-n pe-in pe-n pe-out
+\ AXR 220 0 1 1 prim - wf-term@ - pe-n pe-in pe-n pe-out
+\ AXR 221 0 1 1 prim - wf-flags@ - pe-n pe-in pe-n pe-out
+\ AXR 222 1 0 1 prim - wf-wide? - pe-f pe-out
+\ AXR 223 1 0 1 prim - wf-needs-p2? - pe-f pe-out
+\ AXR 224 1 2 1 prim - wf-w-at - pe-n pe-in pe-n pe-in pe-n pe-out
+\ AXR 225 0 0 0 prim - wide-mark - -
+\ AXR 226 0 0 0 prim - rec-wide-publish - -
+\ AXR 227 0 0 1 prim - rec-min-in@ - pe-n pe-out
+\ AXR 228 0 1 1 prim - locw-hw@ - pe-n pe-in pe-n pe-out
+\ AXR 229 1 0 1 prim - locw-hw-n@ - pe-n pe-out
+\ AXR 230 1 0 1 pprim lower-cert magic - pe-n pe-out
+\ AXR 231 1 0 1 pprim lower-cert version - pe-n pe-out
+\ AXR 232 1 0 1 pprim lower-cert header-cells - pe-n pe-out
+\ AXR 233 1 0 1 pprim lower-cert magic-cell - pe-n pe-out
+\ AXR 234 1 0 1 pprim lower-cert version-cell - pe-n pe-out
+\ AXR 235 1 0 1 pprim lower-cert total-bytes-cell - pe-n pe-out
+\ AXR 236 1 0 1 pprim lower-cert needs-cell - pe-n pe-out
+\ AXR 237 1 0 1 pprim lower-cert wf-count-cell - pe-n pe-out
+\ AXR 238 1 0 1 pprim lower-cert bind-count-cell - pe-n pe-out
+\ AXR 239 1 0 1 pprim lower-cert fetch-count-cell - pe-n pe-out
+\ AXR 240 1 0 1 pprim lower-cert fetch-data-cells-cell - pe-n pe-out
+\ AXR 241 1 0 1 pprim lower-cert wf-cells - pe-n pe-out
+\ AXR 242 1 0 1 pprim lower-cert fetch-cells - pe-n pe-out
+\ AXR 243 1 0 1 pprim lower-cert check-cells - pe-n pe-out
+\ AXR 244 1 0 1 pprim lower-cert guard-cells - pe-n pe-out
+\ AXR 245 1 0 1 pprim lower-cert fetch-flag - pe-n pe-out
+\ AXR 246 1 0 1 pprim lower-cert store-flag - pe-n pe-out
+\ AXR 247 1 0 1 pprim lower-cert xpad-flag - pe-n pe-out
+\ AXR 248 1 0 1 pprim lower-cert body-len-cell - pe-n pe-out
+\ AXR 249 1 0 1 pprim lower-cert body-hash-cell - pe-n pe-out
+\ AXR 250 1 0 1 pprim lower-cert fnv-offset - pe-n pe-out
+\ AXR 251 1 0 1 pprim lower-cert fnv-prime - pe-n pe-out
+\ AXR 252 1 0 1 pprim lower-cert cell-count - pe-n pe-out
+\ AXR 253 0 1 1 pprim lower-cert cell@ - pe-n pe-in pe-n pe-out
+\ AXR 254 0 0 2 pprim lower-cert bytes trusted-only pe-ptr-u8 pe-out pe-n pe-out
+\ AXR 255 0 2 1 pprim lower-cert-hook hook - pe-ptr-u8 pe-in pe-n pe-in pe-n pe-out
+\ AXR 256 0 1 0 pprim checker-cert install - pe-n pe-in
+\ AXR 257 0 3 0 pprim checker-cert produce - pe-ptr-u8 pe-in pe-n pe-in pe-n pe-in
+\ AXR 258 0 0 0 prim - p2-locseq-reset - -
+\ AXR 259 0 1 1 prim - p2-carve-w - pe-n pe-in pe-n pe-out
+\ AXR 260 0 1 1 prim - p2-live-w@ - pe-n pe-in pe-n pe-out
+\ AXR 261 0 1 1 prim - p2-live-cum@ - pe-n pe-in pe-n pe-out
+\ AXR 262 1 0 1 prim - sumv-n@ - pe-n pe-out
+\ AXR 263 1 0 1 prim - tf-str-u@ - pe-n pe-out
+\ AXR 264 1 0 1 prim - tf-pk-n@ - pe-n pe-out
+\ AXR 265 1 0 1 prim - schema-n@ - pe-n pe-out
+\ AXR 266 1 0 1 prim - schema-root-n@ - pe-n pe-out
+\ AXR 267 0 2 0 prim - checker-defer - pe-ptr-u8 pe-in pe-n pe-in
+\ AXR 268 0 2 0 prim - checker-package - pe-ptr-u8 pe-in pe-n pe-in
+\ AXR 269 0 2 0 prim - checker-using - pe-ptr-u8 pe-in pe-n pe-in
+\ AXR 270 0 0 0 prim - checker-public - -
+\ AXR 271 0 0 0 prim - checker-private - -
+\ AXR 272 0 0 0 prim - checker-end-package - -
+\ AXR 273 0 3 1 prim - ffi-call trusted-only pe-ptr-a pe-in pe-n pe-in pe-n pe-in pe-n pe-out
+\ AXR 274 0 3 1 prim - ffi-call-n trusted-only pe-ptr-a pe-in pe-n pe-in pe-n pe-in pe-n pe-out
+\ AXR 275 0 4 1 prim - ffi-call-bounded trusted-only pe-ptr-a pe-in pe-ptr-b pe-in pe-n pe-in pe-n pe-in pe-n pe-out
+\ AXR 276 0 7 1 prim - ffi-call-abi-bounded trusted-only pe-ptr-a pe-in pe-ptr-b pe-in pe-ptr-c pe-in pe-ptr-d pe-in pe-ptr-e pe-in pe-n pe-in pe-n pe-in pe-n pe-out
+\ AXR 277 0 7 1 prim - ffi-call-abi-r-bounded trusted-only pe-ptr-a pe-in pe-ptr-b pe-in pe-ptr-c pe-in pe-ptr-d pe-in pe-ptr-e pe-in pe-n pe-in pe-n pe-in pe-r pe-out
+\ AXR 278 0 7 1 prim - ffi-call-abi trusted-only pe-ptr-a pe-in pe-ptr-b pe-in pe-ptr-c pe-in pe-n pe-in pe-n pe-in pe-n pe-in pe-n pe-in pe-n pe-out
+\ AXR 279 0 7 1 prim - ffi-call-abi-r trusted-only pe-ptr-a pe-in pe-ptr-b pe-in pe-ptr-c pe-in pe-n pe-in pe-n pe-in pe-n pe-in pe-n pe-in pe-r pe-out
+\ AXR 280 3 2 1 prim - f+ - pe-r pe-in pe-r pe-in pe-r pe-out
+\ AXR 281 3 2 1 prim - f- - pe-r pe-in pe-r pe-in pe-r pe-out
+\ AXR 282 3 2 1 prim - f* - pe-r pe-in pe-r pe-in pe-r pe-out
+\ AXR 283 3 2 1 prim - f/ - pe-r pe-in pe-r pe-in pe-r pe-out
+\ AXR 284 3 1 1 prim - fnegate - pe-r pe-in pe-r pe-out
+\ AXR 285 3 1 1 prim - fabs - pe-r pe-in pe-r pe-out
+\ AXR 286 3 1 1 prim - fsqrt - pe-r pe-in pe-r pe-out
+\ AXR 287 3 2 1 prim - f< - pe-r pe-in pe-r pe-in pe-f pe-out
+\ AXR 288 3 2 1 prim - f> - pe-r pe-in pe-r pe-in pe-f pe-out
+\ AXR 289 3 2 1 prim - f= - pe-r pe-in pe-r pe-in pe-f pe-out
+\ AXR 290 3 1 1 prim - f0< - pe-r pe-in pe-f pe-out
+\ AXR 291 3 1 1 prim - f0= - pe-r pe-in pe-f pe-out
+\ AXR 292 1 1 1 prim - s>f - pe-n pe-in pe-r pe-out
+\ AXR 293 3 1 1 prim - f>s - pe-r pe-in pe-n pe-out
+\ AXR 294 0 1 0 prim - f. - pe-r pe-in
+\ AXR 295 0 0 2 prim - s" - pe-ptr-u8 pe-out pe-n pe-out
+\ AXR 296 0 0 1 prim - c" - pe-ptr-u8 pe-out
+\ AXR 297 0 0 0 prim - ." - -
+\ AXR 298 0 0 2 prim - s\" - pe-ptr-u8 pe-out pe-n pe-out
+\ AXR 299 0 0 1 prim - c\" - pe-ptr-u8 pe-out
+\ AXR 300 0 0 0 prim - .\" - -
+\ AXR 301 0 0 1 prim - ['] - pe-n pe-out
+\ AXR 302 0 0 1 prim - char - pe-n pe-out
+\ AXR 303 0 0 1 prim - [char] - pe-n pe-out
+\ AXR 304 1 1 0 prim - emit - pe-n pe-in
+\ AXR 305 1 0 0 prim - cr - -
+\ AXR 306 1 0 0 prim - space - -
+\ AXR 307 1 1 0 prim - u. - pe-n pe-in
+\ AXR 308 0 0 1 prim - create - pe-ptr-a pe-out
+\ AXR 309 0 0 1 prim - variable - pe-ptr-a pe-out
+\ AXR 310 0 0 1 prim - constant - pe-a pe-out
+\ AXR 311 0 0 1 prim - getpid - pe-n pe-out
+\ AXR 312 0 1 1 prim - proc-watch-open - pe-n pe-in pe-n pe-out
+\ AXR 313 0 2 1 prim - kill-errno - pe-n pe-in pe-n pe-in pe-n pe-out
+\ AXR 314 0 3 1 prim - execve - pe-ptr-u8 pe-in pe-ptr-a pe-in pe-ptr-a pe-in pe-n pe-out
+\ AXR 315 0 2 1 prim - munmap - pe-ptr-u8 pe-in pe-n pe-in pe-n pe-out
+\ AXR 316 0 2 0 prim - ext-mark-free-tail - pe-ptr-u8 pe-in pe-n pe-in
+\ AXR 317 0 0 0 prim - typefamily - -
+\ AXR 318 0 0 0 prim - sumtype - -
+\ AXR 319 0 0 0 prim - enum - -
+\ AXR 320 0 0 0 prim - product - -
+\ AXR 321 0 1 0 prim - layout-buffer - pe-n pe-in
+\ AXR 322 0 5 0 prim - ldefer-bind - pe-n pe-in pe-n pe-in pe-n pe-in pe-n pe-in pe-n pe-in
+\ AXR 323 0 5 0 prim - ldefer-grow - pe-n pe-in pe-n pe-in pe-n pe-in pe-n pe-in pe-n pe-in
+\ AXR 324 0 0 0 prim - defer-layout-buffer - -
+\ AXR 325 0 1 0 prim - typed-buffer - pe-n pe-in
+\ AXR 326 0 0 0 prim - typed-variable - -
