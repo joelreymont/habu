@@ -1,0 +1,9 @@
+---
+title: Make the dot ledger a validated state machine
+status: open
+priority: 1
+issue-type: task
+created-at: "2026-07-21T22:00:40.906425+02:00"
+---
+
+The review found a live six-node dependency cycle in the exact modular-build chain while tools/dot-dep-lint-core.f reported zero findings. This metadata batch re-derived the architecture, closed five obsolete flat-source-map/remap tasks, re-scoped diagnostic quoting to authenticated source frames, and removed the stale edges, so the known cycle is no longer left active. The validator still cannot prevent recurrence and the ledger also permits unsupported states, multiple or missing live claims, released prose on active records, prose-only dependencies, malformed timestamps, missing required brief fields, missing parents, and empty ready records. Replace ad hoc Markdown mutation as the semantic source with a versioned package-owned structured ledger and append-only transition events. Define the allowed state transition table, exactly one canonical live claim for active work, declared dependencies, validated timestamps, required Acceptance/Files/Verify fields, and parent identity. Build a real directed graph, reject self-cycles and strongly connected components with the exact cycle path, and make dot ready consume that same graph. Provide a lossless importer that reports every legacy violation before publication, generated human-readable pages and archived journals, and transactional mutation. Add mutation tests for every illegal transition, cycle shape, claim cardinality, missing parent/reference, timestamp, brief omission, and interrupted write, including the repaired six-node shape as a regression. Files: checked Habu dot schema/parser/validator/renderer and ledger records; no host parser. Verify importer round-trip, dot ready parity, current-ledger migration report, native dot gate, host/filemap lints, and full native gate.

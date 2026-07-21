@@ -17,3 +17,5 @@ because the save-vs-recompute pass materialises values the checker cannot see.
 Completing the per-op saved-register bindings here retires the SAVED-*
 placeholders; NEG rides until the emitters carry kernel types (see
 habu-ptx-phantom-preserving-3df9db92).
+
+CODE-REVIEW 2026-07-21 acceptance correction: public SAVED-X/Y/Z/MX/S currently certify but unconditionally throw E-PTX-NOIMPL at runtime. This dot is not complete until those public always-throwing words are either implemented through the same real per-operation save/reload owner used by generated backward code and proven on device, or removed from the public API until that implementation exists. Add successful materialization/reload behavior, wrong-operation and missing-save rejects, generated PTX goldens, and a device gradient case. Type acceptance by itself is not implementation evidence.

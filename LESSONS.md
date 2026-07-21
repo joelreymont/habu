@@ -1874,3 +1874,9 @@ fits.
   size artifacts so concurrent work cannot perturb or duplicate the proof.
 - **Subagents inherit model and reasoning effort unless explicitly overridden.**
   Dispatch should not silently select a weaker model or effort level.
+- **Repair dependency cycles by re-deriving the architecture, not by deleting a
+  convenient edge.** The modular-build cycle existed because five flat
+  source-map and diagnostic-remap tasks survived after authenticated source
+  frames replaced that design. Closing the obsolete work and re-scoping the
+  remaining diagnostic owner produced an honest acyclic order; removing an
+  arbitrary edge would have left both stale work and a false dependency graph.

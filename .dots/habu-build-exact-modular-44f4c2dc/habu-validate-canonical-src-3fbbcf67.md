@@ -1,12 +1,11 @@
 ---
 title: Validate canonical source maps
-status: open
+status: closed
 priority: 1
 issue-type: task
 created-at: "2026-07-15T23:48:26.543832+02:00"
-blocks:
-  - habu-remove-synthetic-compose-373b117a
-  - habu-cut-hb-build-6e53c639
+closed-at: "2026-07-21T22:08:46.733329+02:00"
+close-reason: Superseded by authenticated source frames. Flat composed source maps are being deleted by habu-remove-synthetic-compose-373b117a, so there is no canonical source-map format to validate.
 ---
 
 NOT READY 2026-07-16: target files tools/source-map.f and
