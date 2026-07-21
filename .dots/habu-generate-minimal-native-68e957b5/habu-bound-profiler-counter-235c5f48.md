@@ -1,9 +1,11 @@
 ---
 title: Bound profiler counter storage
-status: active
+status: closed
 priority: 1
 issue-type: task
-created-at: "\"\\\"2026-07-19T20:15:02.741902+02:00\\\"\""
+created-at: "\"\\\"\\\\\\\"2026-07-19T20:15:02.741902+02:00\\\\\\\"\\\"\""
+closed-at: "2026-07-21T12:40:49.595260+02:00"
+close-reason: "Fully landed across two changes: (1) 9aceba4f - the profiler counter band is derived from the dictionary capacity in the layout contract (256 KiB, lockstep growth, no magic tail), bootstrap mirror identical, with a strengthened source pin rejecting the old magic form; (2) cd16a08a - the user heap is now capped BELOW the band: the inline DP-advance check's high bound consumes the same shared band constant, so the heap ceiling and the band base are provably the same offset and can never drift. Red-first both ways: on the base engine an over-band allot succeeded silently (clobbering a counter); fixed, it rejects with the named out-of-range error at rc 76 while an allot ending exactly at the boundary succeeds; the old region-top allot now also rejects. Engine size and census UNCHANGED (the 11 inline check copies each stay a single MOVZ - only the immediate differs, 22 bytes of immediates); boundary test retargeted, bootstrap source pin covers the mirror. Full tests green at both landings"
 ---
 
 Frozen review f7ed6085, major correctness and data-integrity defect. src/habu/prof.f:9 reserves a fixed 65536-byte high-data band, only 8192 cell counters, while src/habu/layout.f:66 permits DICT-CAP 32768. BPROF-ON at prof.f:105-117 zeros NDICT cells and EMIT-PROF/EMIT-PROFDUMP at prof.f:14-67 index the same array by every dictionary slot. At NDICT 8193 the zero loop writes index 8192 exactly at DATA plus DATA-SIZE, outside the mapping; up to 32768 is otherwise legal. Independently, habu1.f:1508-1531 lets the user DP grow through DATA plus DATA-SIZE without reserving the hidden profiler band, so valid allot data can be silently zeroed or incremented by prof-on. Root cause: profiler storage is an unowned magic tail, not part of the shared layout contract. Fix: derive counter bytes from DICT-CAP, declare the reserved interval in layout.f, cap DP below it, and make every profiler loop fail closed against the same capacity; mirror bootstrap/cg/prof.fs and bootstrap layout. Acceptance: exact-cap dictionary profiles safely; cap-plus-one is rejected by the dictionary gate before profiling; DP ending at the profiler boundary succeeds and one byte beyond rejects without corruption; snapshot/AOT data never overlaps counters; both targets, profiler gate, layout mutations, fixpoint, size map, and full gates pass.
