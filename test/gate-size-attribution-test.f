@@ -238,9 +238,12 @@ $4000 constant MACOS-DATA-CONST  \ __DATA_CONST page (__got + zero fill)
 \ landing (shared engine source, spark owes the Linux rows per the per-target
 \ asymmetry): +48 of engine text, CODELEN 134860 -> 134908 (floor 3788 -> 3836);
 \ same 4 KiB page, LINUX-TOTAL unchanged.
-134908 constant LINUX-CODE-TEXT   \ CODELEN: every emitter-phase row (baked-source incl.)
+\ 2026-07-21 re-measured at the merged fixpoint after the Mac's structure-make
+\ split landing (spark owes the Linux rows): +48 of engine text, CODELEN
+\ 134908 -> 134956 (floor 3836 -> 3884); same 4 KiB page, LINUX-TOTAL unchanged.
+134956 constant LINUX-CODE-TEXT   \ CODELEN: every emitter-phase row (baked-source incl.)
 192 constant LINUX-RW             \ ELF read-write segment tail: DYNAMIC + GOT (ELF-RW-SZ)
-3836 constant LINUX-FLOOR-DIST     \ code above the 4 KiB floor: the page-recovery shave
+3884 constant LINUX-FLOOR-DIST     \ code above the 4 KiB floor: the page-recovery shave
 139456 constant LINUX-TOTAL       \ = FILE-SIZE bin/hb = GB-SIZE-BASELINE-LINUX
 
 \ --- Per-region __text budgets (dot habu-enforce-native-region-1003651b) -------
@@ -258,8 +261,12 @@ $4000 constant MACOS-DATA-CONST  \ __DATA_CONST page (__got + zero fill)
 \ owed until a macOS host measures them (HOST-REGION-BUDGETS-MEASURED?), mirroring
 \ the CODE-TEXT/census per-target asymmetry; the macOS whole-file and CODE-TEXT
 \ ceilings above are untouched.
+\ 2026-07-21 first live drift, re-measured at the merged fixpoint: the Mac's
+\ structure-make split (+48 total) attributes as main/startup +16 (new load row)
+\ and dictionary-code +32 (the generator's baked entry) - exactly the
+\ attribution this ratchet exists to give.
 : LINUX-REGION-BUDGETS ( [ ptr u8 n n -- ] -- ) {: q :}   \ typed-local-lint: allow-bare-local - q carries the row effect
-   s" main/startup"            5656 q execute
+   s" main/startup"            5672 q execute
    s" main/comment"             380 q execute
    s" interpret/colon"         3540 q execute
    s" interpret/define"       19328 q execute
@@ -297,7 +304,7 @@ $4000 constant MACOS-DATA-CONST  \ __DATA_CONST page (__got + zero fill)
    s" primitives/hash-index"    852 q execute
    s" primitives/number"        332 q execute
    s" primitives/top-hook"       68 q execute
-   s" dictionary-code"         7292 q execute
+   s" dictionary-code"         7324 q execute
    s" runtime"                 9508 q execute
    s" seed-dictionary"         8652 q execute
    s" aot-seed"               22880 q execute
