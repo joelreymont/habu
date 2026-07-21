@@ -432,6 +432,7 @@ SUITE ptx-toolchain
    tools/ptx/softmax-gradcheck.f
    tools/ptx/rmsnorm-device-test.f
    tools/ptx/rope-device-test.f
+   tools/ptx/layernorm-device-test.f
    tools/ptx/cuda-launch.f
 ;SUITE
 

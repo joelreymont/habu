@@ -503,6 +503,12 @@ points stay listed.
 - `tools/ptx/rope-cg.f` — combined driver emitting ONE PTX module with both the
   checked ROPE_ROWS pair-rotation forward and its ROPE_BWD_ROWS VJP (rotation by
   the negative angle), an in-warp shfl.bfly over adjacent head_dim pairs.
+- `tools/ptx/layernorm-cg.f` — combined driver emitting ONE PTX module with both the
+  checked LAYERNORM_ROWS forward (mean + variance + normalize in one block-per-row
+  kernel) and the checked closed-form LAYERNORM_BWD_ROWS backward (maki/layernorm.f
+  LN-BWD: dx = (dy - mean(dy) - xhat*mean(dy*xhat))/std), plain (no-affine) LayerNorm;
+  reuses the shared 1e-5 normalization eps (RMS-EPS+), so layernorm-device-test loads
+  a single cubin and pulls both handles.
 - `tools/ptx/ad-entry-lib.f` — per-VJP-entry kernel emitters for the device
   gradcheck gate: DAG op-lists isolating each ad-dag entry (EXP, x-max, x/sum,
   full softmax) plus the vjp.f table fixtures - two-input elementwise
@@ -706,6 +712,11 @@ points stay listed.
   golden vs the maki CPU reference (RMS-FWD / ROPE-PAIR) plus a finite-difference
   gradcheck of the backward, self-emitting to a private per-run cubin for the PROBED
   arch (ATGT:LABEL$; verified on the GB10 sm_121a). Off-device: recorded SKIP.
+- `tools/ptx/layernorm-device-test.f` — device proof of the checked LAYERNORM_ROWS /
+  LAYERNORM_BWD_ROWS kernels: a forward golden vs maki LN-FWD, a finite-difference
+  gradcheck of the backward, and a backward parity check vs the maki LN-BWD closed
+  form, self-emitting to a private per-run cubin for the PROBED arch (ATGT:LABEL$;
+  verified on the GB10 sm_121a). Off-device: recorded SKIP.
 - `tools/ptx/profile.f`, `tools/ptx/bench.f`, `tools/ptx/bandwidth-lib.f`,
   `tools/ptx/bandwidth.f`, `tools/ptx/bandwidth-v4.f`, and
   `tools/ptx/fusion-compare.f` — reusable Orin kernel profile metrics, generic

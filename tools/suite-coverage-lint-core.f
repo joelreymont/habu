@@ -272,6 +272,7 @@ variable SC-USE-TEST#                         \ count of currently-open usings t
    s" tools/ptx/softmax-gradcheck.f" q execute
    s" tools/ptx/rmsnorm-device-test.f" q execute
    s" tools/ptx/rope-device-test.f" q execute
+   s" tools/ptx/layernorm-device-test.f" q execute
    s" tools/ptx/cuda-launch.f" q execute ;
 
 \ closure-run lint cores: their suite member is the CLI tool file, exercised by a
