@@ -416,6 +416,145 @@ SPEC-CAND$ CHECK-QUIET-CANDIDATE!  0 T=
 : BC-ADJ-OK ( -- ) s" BXO[bm bn] = BXA[bm bn] · BXB[bm bn]" SPEC-ADJ-CHECK$ ;
 ' BC-ADJ-OK 0 TTHROWS
 
+\ ============================================================================
+\ Bounds checks on the public SPEC accessors (dot habu-bounds-check-public).
+\ Every public dataflow/shape/registry accessor rejects an out-of-domain index
+\ with the named E-SPEC-RANGE BEFORE any addressing or cast. RED-FIRST: on the
+\ unfixed base each call reaches raw addressing and RETURNS arbitrary data (the
+\ two extent readers instead throw the coincidental E-SPEC-EXTENT off the garbage
+\ span) - never E-SPEC-RANGE, which did not exist. So each ' W E-SPEC-RANGE
+\ TTHROWS below FAILS on the base and PASSES on the fix.
+\ ----------------------------------------------------------------------------
+\ Shared setup: re-establish the SGEMM dataflow (SP-FREE-N=2, SP-CT-N=1,
+\ SP-FAC-N=2, factor ranks 2/2, SP-FI-N=4) that the later SPEC:/SPEC-CHECK$
+\ lines in this file have since clobbered, so the throw under test is the
+\ accessor's own, not a stale-state artifact.
+: SB-SET ( -- )  s" O[p q] = A[ IX[p] r ] B[q r] * +SUM r" SPEC-CHECK$ ;
+
+\ --- free-index domain (SPEC-FREE@ and its SPEC-FREE-EXTENT@/SPEC-BATCH@ views) ---
+: SB-FREE-NEG   ( -- )  SB-SET  -1 SPEC-FREE@ 2drop ;
+: SB-FREE-CNT   ( -- )  SB-SET   2 SPEC-FREE@ 2drop ;            \ == live count
+: SB-FREE-CNT1  ( -- )  SB-SET   3 SPEC-FREE@ 2drop ;            \ count + 1
+: SB-FREE-BIG   ( -- )  SB-SET  99 SPEC-FREE@ 2drop ;
+: SB-FREXT-NEG  ( -- )  SB-SET  -1 SPEC-FREE-EXTENT@ drop ;
+: SB-FREXT-BIG  ( -- )  SB-SET  99 SPEC-FREE-EXTENT@ drop ;
+: SB-BATCH-BIG  ( -- )  SB-SET  99 SPEC-BATCH@ 2drop ;
+' SB-FREE-NEG   E-SPEC-RANGE TTHROWS
+' SB-FREE-CNT   E-SPEC-RANGE TTHROWS
+' SB-FREE-CNT1  E-SPEC-RANGE TTHROWS
+' SB-FREE-BIG   E-SPEC-RANGE TTHROWS
+' SB-FREXT-NEG  E-SPEC-RANGE TTHROWS
+' SB-FREXT-BIG  E-SPEC-RANGE TTHROWS
+' SB-BATCH-BIG  E-SPEC-RANGE TTHROWS
+SB-SET  1 SPEC-FREE@ s" q" STR= -1 T=                            \ last valid index still returns (guard is >=, not >)
+
+\ --- contraction-index domain (SPEC-CT@ and SPEC-CT-EXTENT@) ---
+: SB-CT-NEG     ( -- )  SB-SET  -1 SPEC-CT@ 2drop ;
+: SB-CT-CNT     ( -- )  SB-SET   1 SPEC-CT@ 2drop ;              \ == live count
+: SB-CT-CNT1    ( -- )  SB-SET   2 SPEC-CT@ 2drop ;              \ count + 1
+: SB-CT-BIG     ( -- )  SB-SET  99 SPEC-CT@ 2drop ;
+: SB-CTEXT-BIG  ( -- )  SB-SET  99 SPEC-CT-EXTENT@ drop ;
+' SB-CT-NEG     E-SPEC-RANGE TTHROWS
+' SB-CT-CNT     E-SPEC-RANGE TTHROWS
+' SB-CT-CNT1    E-SPEC-RANGE TTHROWS
+' SB-CT-BIG     E-SPEC-RANGE TTHROWS
+' SB-CTEXT-BIG  E-SPEC-RANGE TTHROWS
+SB-SET  0 SPEC-CT@ s" r" STR= -1 T=                              \ last valid index still returns
+
+\ --- factor domain (SPEC-FAC-NAME@ / SPEC-FAC-RANK@ against SP-FAC-N) ---
+: SB-FAC-NEG    ( -- )  SB-SET  -1 SPEC-FAC-NAME@ 2drop ;
+: SB-FAC-CNT    ( -- )  SB-SET   2 SPEC-FAC-NAME@ 2drop ;        \ == live count
+: SB-FAC-CNT1   ( -- )  SB-SET   3 SPEC-FAC-NAME@ 2drop ;
+: SB-FAC-BIG    ( -- )  SB-SET  99 SPEC-FAC-NAME@ 2drop ;
+: SB-RANK-NEG   ( -- )  SB-SET  -1 SPEC-FAC-RANK@ drop ;
+: SB-RANK-CNT   ( -- )  SB-SET   2 SPEC-FAC-RANK@ drop ;
+: SB-RANK-BIG   ( -- )  SB-SET  99 SPEC-FAC-RANK@ drop ;
+' SB-FAC-NEG    E-SPEC-RANGE TTHROWS
+' SB-FAC-CNT    E-SPEC-RANGE TTHROWS
+' SB-FAC-CNT1   E-SPEC-RANGE TTHROWS
+' SB-FAC-BIG    E-SPEC-RANGE TTHROWS
+' SB-RANK-NEG   E-SPEC-RANGE TTHROWS
+' SB-RANK-CNT   E-SPEC-RANGE TTHROWS
+' SB-RANK-BIG   E-SPEC-RANGE TTHROWS
+SB-SET  1 SPEC-FAC-NAME@ s" B" STR= -1 T=                        \ last valid factor still returns
+SB-SET  0 SPEC-FAC-RANK@ 2 T=
+
+\ --- factor-member domain (SPEC-FAC-IDX@ / SPEC-FAC-GATHER@ against factor f's rank) ---
+\ f=0 has rank 2, so k in {2,3,99} escapes factor 0's SP-FI window. On the base, 0 2
+\ SPEC-FAC-IDX@ BLEEDS into factor 1's first index and returns "q"; the guard rejects it.
+: SB-FIDX-FNEG  ( -- )  SB-SET  -1 0 SPEC-FAC-IDX@ 2drop ;
+: SB-FIDX-FCNT  ( -- )  SB-SET   2 0 SPEC-FAC-IDX@ 2drop ;       \ factor == count
+: SB-FIDX-KNEG  ( -- )  SB-SET   0 -1 SPEC-FAC-IDX@ 2drop ;
+: SB-FIDX-KRANK ( -- )  SB-SET   0  2 SPEC-FAC-IDX@ 2drop ;      \ k == rank (cross-factor bleed on base)
+: SB-FIDX-KRNK1 ( -- )  SB-SET   0  3 SPEC-FAC-IDX@ 2drop ;
+: SB-FIDX-KBIG  ( -- )  SB-SET   0 99 SPEC-FAC-IDX@ 2drop ;
+: SB-FGAT-FCNT  ( -- )  SB-SET   2  0 SPEC-FAC-GATHER@ 2drop ;
+: SB-FGAT-KRANK ( -- )  SB-SET   0  2 SPEC-FAC-GATHER@ 2drop ;
+' SB-FIDX-FNEG  E-SPEC-RANGE TTHROWS
+' SB-FIDX-FCNT  E-SPEC-RANGE TTHROWS
+' SB-FIDX-KNEG  E-SPEC-RANGE TTHROWS
+' SB-FIDX-KRANK E-SPEC-RANGE TTHROWS
+' SB-FIDX-KRNK1 E-SPEC-RANGE TTHROWS
+' SB-FIDX-KBIG  E-SPEC-RANGE TTHROWS
+' SB-FGAT-FCNT  E-SPEC-RANGE TTHROWS
+' SB-FGAT-KRANK E-SPEC-RANGE TTHROWS
+SB-SET  0 1 SPEC-FAC-IDX@ s" r" STR= -1 T=                       \ last valid member of factor 0
+SB-SET  1 0 SPEC-FAC-IDX@ s" q" STR= -1 T=                       \ first member of factor 1 (the base bleed target)
+
+\ --- factor-index row (public SP-FI-VAR@ / SP-FI-GATH@ against SP-FI-N): a directly
+\ forged >SP-FI must fail closed, not just an accidental raw counter. SGEMM has SP-FI-N=4.
+: SB-FI-NEG   ( -- )  SB-SET  -1 >SP-FI SP-FI-VAR@ 2drop ;
+: SB-FI-CNT   ( -- )  SB-SET   4 >SP-FI SP-FI-VAR@ 2drop ;       \ row == live SP-FI-N
+: SB-FI-BIG   ( -- )  SB-SET  99 >SP-FI SP-FI-GATH@ 2drop ;
+' SB-FI-NEG   E-SPEC-RANGE TTHROWS
+' SB-FI-CNT   E-SPEC-RANGE TTHROWS
+' SB-FI-BIG   E-SPEC-RANGE TTHROWS
+SB-SET  3 >SP-FI SP-FI-VAR@ s" r" STR= -1 T=                     \ last valid row (confirms SP-FI-N=4)
+
+\ --- empty-domain (zero free indices): the full-reduction BC-FRED output has SP-FREE-N=0,
+\ so EVERY free index - including 0 - is out of domain and rejected.
+: SB-FRED-SET   ( -- )  s" BSCL[] = BXA[bm bn] · BXB[bm bn] +SUM bm bn" SPEC-CHECK$ ;
+: SB-FRED-FREE0 ( -- )  SB-FRED-SET  0 SPEC-FREE@ 2drop ;
+' SB-FRED-FREE0 E-SPEC-RANGE TTHROWS
+SB-FRED-SET  SPEC-FREE-N 0 T=                                    \ confirm the empty free domain
+
+\ --- equation-factor domain (EQ-FROW@ / EQ-FCOL@ / EQ-ADJ@ against EQ-K@). PGEMM is the
+\ registered composable equation above; EQ-K@ = 2. k in {2,3,99} escapes its live factor
+\ window; EQ-ADJ@ with a bad k would otherwise forge an eq-slot from a neighbouring cell.
+: PG-SLOT ( -- eq-slot )  s" PGEMM" EQ-FIND MATCH option  none OF E-SPEC-SYNTAX throw ENDOF  some OF ENDOF ;MATCH ;
+: SB-FROW-KNEG  ( -- )  PG-SLOT -1 EQ-FROW@ drop ;
+: SB-FROW-KCNT  ( -- )  PG-SLOT  2 EQ-FROW@ drop ;              \ == EQ-K@
+: SB-FROW-KCNT1 ( -- )  PG-SLOT  3 EQ-FROW@ drop ;
+: SB-FROW-KBIG  ( -- )  PG-SLOT 99 EQ-FROW@ drop ;
+: SB-FCOL-KCNT  ( -- )  PG-SLOT  2 EQ-FCOL@ drop ;
+: SB-FCOL-KBIG  ( -- )  PG-SLOT 99 EQ-FCOL@ drop ;
+: SB-ADJ-KNEG   ( -- )  PG-SLOT -1 EQ-ADJ@ drop ;
+: SB-ADJ-KCNT   ( -- )  PG-SLOT  2 EQ-ADJ@ drop ;
+: SB-ADJ-KBIG   ( -- )  PG-SLOT 99 EQ-ADJ@ drop ;
+PG-SLOT EQ-K@ 2 T=                                              \ the live factor window is [0,2)
+' SB-FROW-KNEG  E-SPEC-RANGE TTHROWS
+' SB-FROW-KCNT  E-SPEC-RANGE TTHROWS
+' SB-FROW-KCNT1 E-SPEC-RANGE TTHROWS
+' SB-FROW-KBIG  E-SPEC-RANGE TTHROWS
+' SB-FCOL-KCNT  E-SPEC-RANGE TTHROWS
+' SB-FCOL-KBIG  E-SPEC-RANGE TTHROWS
+' SB-ADJ-KNEG   E-SPEC-RANGE TTHROWS
+' SB-ADJ-KCNT   E-SPEC-RANGE TTHROWS
+' SB-ADJ-KBIG   E-SPEC-RANGE TTHROWS
+PG-SLOT 1 EQ-FROW@ 0 > -1 T=                                    \ last valid factor still returns a live dim
+
+\ --- arena invariant: every VALID accessor span has a length within its slot cap, so with
+\ the index-in-[0,count) guard the whole [ptr,ptr+len) lies inside the live table arena.
+: SPANS-IN-ARENA? ( -- bool )
+   SB-SET  true
+   SPEC-FREE-N 0 ?do  i SPEC-FREE@ nip SP-IDX-NAME <= and  loop
+   SPEC-CT-N   0 ?do  i SPEC-CT@   nip SP-IDX-NAME <= and  loop
+   SPEC-FAC-N  0 ?do
+      i SPEC-FAC-NAME@ nip SP-TNAME <= and
+      i SPEC-FAC-RANK@ 0 ?do  j i SPEC-FAC-IDX@ nip SP-IDX-NAME <= and  loop
+   loop ;
+SPANS-IN-ARENA? TTRUE
+
 ;package
 
 T-REPORT

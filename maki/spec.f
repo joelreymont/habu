@@ -49,7 +49,11 @@
 \ tensor's rank or an unsupported free/contraction arity (E-SPEC-ARITY), and any
 \ grammar violation (E-SPEC-SYNTAX). An extent-flipping spec is caught one layer
 \ deeper: the generated accessor call is rejected by the checker at XG-EVAL time
-\ (the candidate-B flip protection). maki -> habu only; maki owns -5018..-5019, -5036..-5039.
+\ (the candidate-B flip protection). Past parse time, every public dataflow/shape/registry
+\ accessor bounds-checks its index against the live count BEFORE any addressing or cast: an
+\ out-of-domain free/contraction/factor/factor-member/equation-factor index is the named
+\ E-SPEC-RANGE reject, never an out-of-arena read or a forged slot. maki -> habu only; maki
+\ owns -5007, -5018..-5019, -5036..-5039.
 
 require maki/extent-tensor.f
 require lib/string.f                 \ STR=, ASCII-UPPER: token compares + index-var -> extent-name fold
@@ -62,6 +66,7 @@ require lib/type/deftype.f           \ DEFTYPE: the factor-index (SP-FI) table i
 -5039 constant E-SPEC-TENSOR    \ a tensor/gather name is not declared, or has the wrong kind
 -5019 constant E-SPEC-ARITY     \ factor index count != tensor rank, or free/contraction arity > 2
 -5018 constant E-CAD-GRAD       \ training requested for a forward-only equation (gather adjoint = scatter-add, not expressible)
+-5007 constant E-SPEC-RANGE     \ a public dataflow/shape/registry accessor index is outside its live domain
 
 package MAKI
 
@@ -99,11 +104,15 @@ variable SP-CT-N
 : SP-FREE+ ( ptr u8 n -- )  SP-FREE SP-FREE-L SP-FREE-N SP-LIST+ ;
 : SP-CT+   ( ptr u8 n -- )  SP-CT   SP-CT-L   SP-CT-N   SP-LIST+ ;
 
+\ owner guards: a free/contraction index must lie in [0, live count) before any addressing.
+: SP-FREE-BOUNDS ( n -- ) {: i:n :}  i 0 <  i SP-FREE-N @ >=  or if E-SPEC-RANGE throw then ;
+: SP-CT-BOUNDS   ( n -- ) {: i:n :}  i 0 <  i SP-CT-N   @ >=  or if E-SPEC-RANGE throw then ;
+
 public
 : SPEC-FREE-N ( -- n )  SP-FREE-N @ ;
 : SPEC-CT-N   ( -- n )  SP-CT-N @ ;
-: SPEC-FREE@ ( n -- ptr u8 n ) {: i:n :}  SP-FREE i SP-IDX-SLOT  i cells SP-FREE-L + @ ;
-: SPEC-CT@   ( n -- ptr u8 n ) {: i:n :}  SP-CT   i SP-IDX-SLOT  i cells SP-CT-L   + @ ;
+: SPEC-FREE@ ( n -- ptr u8 n ) {: i:n :}  i SP-FREE-BOUNDS  SP-FREE i SP-IDX-SLOT  i cells SP-FREE-L + @ ;
+: SPEC-CT@   ( n -- ptr u8 n ) {: i:n :}  i SP-CT-BOUNDS    SP-CT   i SP-IDX-SLOT  i cells SP-CT-L   + @ ;
 private
 
 \ ---- parsed factors: each = tensor name + a window into the factor-index list.
@@ -134,11 +143,22 @@ private
 : SP-FI-VAR-SLOT  ( sp-fi -- ptr a )  SP-FI>N SP-IDX-NAME * SP-FI-VAR + ;
 : SP-FI-GATH-SLOT ( sp-fi -- ptr a )  SP-FI>N SP-TNAME * SP-FI-GATH + ;
 : SP-FAC-OFF@     ( n -- sp-fi )      cells SP-FAC-OFF + @ >SP-FI ;   \ a factor's base SP-FI row
+\ owner guard: a factor-index (SP-FI) row must lie in [0, live SP-FI-N) before any addressing.
+\ SPEC-FAC-IDX@/GATHER@ always cross to an in-window row; this also fails closed on a directly
+\ forged >SP-FI passed straight to the public SP-FI-VAR@/GATH@ readers.
+: SP-FI-BOUNDS ( sp-fi -- ) {: fi:sp-fi :}  fi SP-FI>N 0 <  fi SP-FI>N SP-FI-N @ >=  or if E-SPEC-RANGE throw then ;
 
 public
-: SP-FI-VAR@  ( sp-fi -- ptr u8 n ) {: fi:sp-fi :}  fi SP-FI-VAR-SLOT   fi SP-FI>N cells SP-FI-VARL + @ ;
-: SP-FI-GATH@ ( sp-fi -- ptr u8 n ) {: fi:sp-fi :}  fi SP-FI-GATH-SLOT  fi SP-FI>N cells SP-FI-GATHL + @ ;
+: SP-FI-VAR@  ( sp-fi -- ptr u8 n ) {: fi:sp-fi :}  fi SP-FI-BOUNDS  fi SP-FI-VAR-SLOT   fi SP-FI>N cells SP-FI-VARL + @ ;
+: SP-FI-GATH@ ( sp-fi -- ptr u8 n ) {: fi:sp-fi :}  fi SP-FI-BOUNDS  fi SP-FI-GATH-SLOT  fi SP-FI>N cells SP-FI-GATHL + @ ;
 private
+
+\ owner guards for the factor domain: a factor number in [0, SP-FAC-N), and a factor-member
+\ index k in [0, that factor's rank). SP-FAC-CNT@ is the raw rank read (f already bounded).
+: SP-FAC-CNT@ ( n -- n )  cells SP-FAC-CNT + @ ;
+: SP-FAC-BOUNDS ( n -- ) {: f:n :}  f 0 <  f SP-FAC-N @ >=  or if E-SPEC-RANGE throw then ;
+: SP-FAC-IDX-BOUNDS ( n n -- ) {: f:n k:n :}
+   f SP-FAC-BOUNDS  k 0 <  k f SP-FAC-CNT@ >=  or if E-SPEC-RANGE throw then ;
 
 : SP-FI+ ( ptr u8 n ptr u8 n -- ) {: va:ptr vu:n ga:ptr gu:n :}
    SP-FI-N @ SP-FI-CAP >= if E-SPEC-ARITY throw then
@@ -156,12 +176,12 @@ private
 
 public
 : SPEC-FAC-N ( -- n )  SP-FAC-N @ ;
-: SPEC-FAC-NAME@ ( n -- ptr u8 n ) {: i:n :}  i SP-FAC-T-SLOT  i cells SP-FAC-TL + @ ;
-: SPEC-FAC-RANK@ ( n -- n ) cells SP-FAC-CNT + @ ;
+: SPEC-FAC-NAME@ ( n -- ptr u8 n ) {: i:n :}  i SP-FAC-BOUNDS  i SP-FAC-T-SLOT  i cells SP-FAC-TL + @ ;
+: SPEC-FAC-RANK@ ( n -- n ) {: f:n :}  f SP-FAC-BOUNDS  f SP-FAC-CNT@ ;
 : SPEC-FAC-IDX@ ( n n -- ptr u8 n ) {: f:n k:n :}   \ k-th factor index's variable
-   f SP-FAC-OFF@ SP-FI>N k + >SP-FI SP-FI-VAR@ ;
+   f k SP-FAC-IDX-BOUNDS  f SP-FAC-OFF@ SP-FI>N k + >SP-FI SP-FI-VAR@ ;
 : SPEC-FAC-GATHER@ ( n n -- ptr u8 n ) {: f:n k:n :}  \ k-th factor index's gather ("" if none)
-   f SP-FAC-OFF@ SP-FI>N k + >SP-FI SP-FI-GATH@ ;
+   f k SP-FAC-IDX-BOUNDS  f SP-FAC-OFF@ SP-FI>N k + >SP-FI SP-FI-GATH@ ;
 private
 
 \ ---- lexer over the collected spec body: whitespace separates, and `[ ] = *`
@@ -715,16 +735,22 @@ variable EQ-N
 
 : EQ-NAME-PTR ( eq-slot -- ptr a )  EQ-SLOT>N EQ-NAME-CAP *  EQ-NAMES + ;
 
+\ owner guard for the equation-factor domain: a factor index k must lie in the equation's
+\ LIVE factor window [0, EQ-K@) before any column addressing. EQ-K@ never exceeds EQ-FCAP
+\ (the physical column allocation), so this keeps every read inside the slot's live columns.
+: EQ-FAC-BOUNDS ( eq-slot n -- ) {: s:eq-slot k:n :}
+   k 0 <  k  s EQ-SLOT>N cells EQ-K-A + @  >=  or if E-SPEC-RANGE throw then ;
+
 public
 : EQ-NAME@ ( eq-slot -- ptr u8 n ) {: s:eq-slot :}  s EQ-NAME-PTR  s EQ-SLOT>N cells EQ-NLEN + @ ;
 : EQ-K@    ( eq-slot -- n )  EQ-SLOT>N cells EQ-K-A    + @ ;
 : EQ-ROWS@ ( eq-slot -- n )  EQ-SLOT>N cells EQ-ROWS-A + @ ;
 : EQ-COLS@ ( eq-slot -- n )  EQ-SLOT>N cells EQ-COLS-A + @ ;
-: EQ-FROW@ ( eq-slot n -- n ) {: s:eq-slot k:n :}  s EQ-SLOT>N EQ-FCAP * k + cells EQ-FROW-A + @ ;
-: EQ-FCOL@ ( eq-slot n -- n ) {: s:eq-slot k:n :}  s EQ-SLOT>N EQ-FCAP * k + cells EQ-FCOL-A + @ ;
+: EQ-FROW@ ( eq-slot n -- n ) {: s:eq-slot k:n :}  s k EQ-FAC-BOUNDS  s EQ-SLOT>N EQ-FCAP * k + cells EQ-FROW-A + @ ;
+: EQ-FCOL@ ( eq-slot n -- n ) {: s:eq-slot k:n :}  s k EQ-FAC-BOUNDS  s EQ-SLOT>N EQ-FCAP * k + cells EQ-FCOL-A + @ ;
 \ stage-2 adjoint queries (the reverse transform, maki/backward.f, reads them).
 : EQ-ADJ@ ( eq-slot n -- eq-slot ) {: s:eq-slot k:n :}   \ factor k's derived adjoint equation
-   s EQ-SLOT>N EQ-FCAP * k + cells EQ-ADJ-A + @ >EQ-SLOT ;
+   s k EQ-FAC-BOUNDS  s EQ-SLOT>N EQ-FCAP * k + cells EQ-ADJ-A + @ >EQ-SLOT ;
 : EQ-DIFF? ( eq-slot -- bool )       EQ-SLOT>N cells EQ-DIFF-A + @ 0<> ;  \ trainable (not forward-only)
 
 \ NAME -> registry slot; absent = option<eq-slot> none, so a caller must handle it.
