@@ -1885,6 +1885,8 @@ points stay listed.
 - `tools/error-code-lint.f` — CLI wrapper for the E- throw-code uniqueness lint (enforcing).
 - `tools/error-code-lint-test.f` — checked fixture coverage for the E- throw-code uniqueness lint.
 - `lib/string-test.f` — focused coverage for checked string helpers.
+- `lib/utf8-scalar.f` — package `UTF8` strict scalar decoder over an explicit counted-span cursor; returns a typed scalar or exact one-byte fallback and owns no mutable scanner state.
+- `lib/utf8-scalar-test.f` — scalar-boundary, malformed/truncated, canary, nested, interleaved-state, and randomized property coverage for `UTF8:NEXT`.
 - `lib/json-write.f` — checked emit-only JSON writer vocabulary for fixtures and native tools.
 - `lib/json-write-test.f` — focused coverage for JSON writer escaping, structure, and errors.
 - `lib/json-read.f` — checked zero-allocation JSON pull/cursor parser complementing the writer.

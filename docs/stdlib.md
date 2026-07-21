@@ -476,6 +476,20 @@ buffer appends use the same rule and keep the current length in a `ptr len`
 cell. `SPLIT-NEXT` returns the next field, the next scan index, and a success
 flag.
 
+## UTF-8 Scalar
+
+`lib/utf8-scalar.f` provides one reentrant decoder in `package UTF8`.
+`UTF8:NEXT` takes a counted byte span and an explicit absolute cursor. Its
+`UTF8:scalar-step` result has two exhaustive arms: `scalar` carries the valid
+Unicode scalar and next cursor, while `raw-byte` carries the exact lead byte and
+cursor plus one. Malformed, truncated, non-shortest, surrogate, and out-of-range
+sequences use `raw-byte`; a cursor outside the span throws `E-STR-BOUNDS` before
+any read. The package owns no mutable cursor, scratch cell, or return buffer.
+
+```forth
+UTF8:NEXT ( ptr u8 n n -- scalar-step )
+```
+
 ## JSON Write
 
 `lib/json-write.f` is a checked emit-only JSON vocabulary for fixtures, benchmark

@@ -1863,6 +1863,11 @@ fits.
 - **Diagnostic provenance is separate from semantic identity.** Paths, include
   chains, lines, columns, and spans help locate source but must not alter
   declaration hashes.
+- **A soft byte fallback is a state transition, not a sentinel.** A reentrant
+  UTF-8 decoder takes its cursor explicitly and returns a sum whose scalar and
+  raw-byte arms both carry the absolute next cursor. Validate remaining bytes
+  before each continuation read; every malformed sequence returns the lead byte
+  with `next = cursor + 1`, leaving the rest for later decoding.
 - **GPT-2 byte vocabulary makes the classification domain all Unicode scalars.**
   Letter and Number data cannot be bounded to scalars seen in a vocabulary.
 - **Generated declarations are one transaction.** Snapshot every mutable owner,

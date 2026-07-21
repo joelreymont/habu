@@ -494,6 +494,7 @@ variable GSI-TL-FILE-A
    GSI-TEST-SETUP
    GSI-FORK-RESET
    s" lib/string-test.f" GSI-FORK-INCLUDE
+   s" lib/utf8-scalar-test.f" GSI-FORK-INCLUDE
    s" lib/ffi-abi-test.f" GSI-FORK-INCLUDE
    s" lib/array-test.f" GSI-FORK-INCLUDE
    s" lib/table-test.f" GSI-FORK-INCLUDE

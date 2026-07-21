@@ -112,6 +112,8 @@ schema_version	module	file	kind	word	effect	test	doc	owner	status	notes
 1	byte-buffer	lib/byte-buffer.f	word	BUF:APPEND-BYTE	(n ptr a --)	lib/byte-buffer-test.f	docs/stdlib.md	stdlib-byte-buffer	active	append one byte, doubling capacity through the checked adapter when full
 1	byte-buffer	lib/byte-buffer.f	word	BUF:APPEND-SPAN	(ptr u8 CAD-NUM:byte-len ptr a --)	lib/byte-buffer-test.f	docs/stdlib.md	stdlib-byte-buffer	active	append a byte span, doubling capacity through the checked adapter when needed
 1	byte-buffer	lib/byte-buffer.f	word	BUF:REPLACE	(ptr u8 CAD-NUM:byte-len ptr a --)	lib/byte-buffer-test.f	docs/stdlib.md	stdlib-byte-buffer	active	replace the buffer contents with a byte span, reserving capacity as needed
+1	utf8-scalar	lib/utf8-scalar.f	module			lib/utf8-scalar-test.f	docs/stdlib.md	stdlib-utf8-scalar	active	strict reentrant UTF-8 scalar decoding with typed raw-byte fallback
+1	utf8-scalar	lib/utf8-scalar.f	word	UTF8:NEXT	(ptr u8 n n -- scalar-step)	lib/utf8-scalar-test.f	docs/stdlib.md	stdlib-utf8-scalar	active	decode at an explicit cursor and return scalar or exact one-byte fallback with the next cursor
 1	string	lib/string.f	module			lib/string-test.f	docs/stdlib.md	stdlib-string	active	checked byte-string predicates builders split and parse helpers
 1	string	lib/string.f	word	STR-LEN	(n -- len)	lib/string-test.f	docs/stdlib.md	stdlib-string	published	refine a nonnegative raw integer into a string length role
 1	string	lib/string.f	word	STR-OFF	(n -- off)	lib/string-test.f	docs/stdlib.md	stdlib-string	published	refine a nonnegative raw integer into a string offset role
