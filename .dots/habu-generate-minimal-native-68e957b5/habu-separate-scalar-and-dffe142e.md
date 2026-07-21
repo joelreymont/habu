@@ -1,9 +1,11 @@
 ---
 title: Separate scalar and relocatable literal emission
-status: active
+status: closed
 priority: 1
 issue-type: task
-created-at: "\"2026-07-19T19:51:39.428058+02:00\""
+created-at: "\"\\\"2026-07-19T19:51:39.428058+02:00\\\"\""
+closed-at: "2026-07-21T16:56:23.138587+02:00"
+close-reason: "Landed 6856f799: scalar and relocatable literal emission are now structurally separate. Scalars route through a minimal MOVZ/MOVN+MOVK synthesizer into x16 - a 42-constant body drops 28->16 bytes and a scalar whose VALUE happens to land in an address range can never present the fixed x9 chain the AOT relocation recognizes (the latent misclassification class closed at the emitter). Addresses keep the constant-width x9 chain (preserving boot-reloc patch space) with each of the 10 sites naming its relocation kind. Both-direction size proof against a base engine; -1364 of engine text re-measured at the merged tip over the structure-make base (CODELEN 133592, floor 2520; regions: define -136, keywords -760, aot-seed -468); fixpoint x2 byte-identical; bootstrap mirror 1:1 verified. Deferred with reasoning recorded: fully REMOVING the capture-side value-range scan needs an explicit per-site relocation record (the register-kind-marker alternative is value-fragile - rejected); scan stays as the fail-closed backstop; follow-up dotted. macOS rows owed per the per-target asymmetry"
 blocks:
   - habu-aot-repl-bl-a71440da
 ---
