@@ -1078,23 +1078,25 @@ variable GE-DFULL-I                 \ copy/definition loop index
    s" hb: dictionary full at: " s" dict-capacity exit diagnostic" GE-EXPECT-ERR-HAS
    s" PASS: dictionary-capacity exit is labeled" type cr ;
 
-\ DP heap (allot/,/c,/definer) past its DATA-region capacity. The bound (habu1.f
-\ DP-CHECK) always fired, but as a bare silent exit_group(76) with NO diagnostic —
-\ the split-K lane hit it with ~28 MB of host buffers and read the messageless kill
-\ as corruption (dot habu-dictionary-allot-past-4e5c3c2b). Fail-closed is now NAMED:
-\ "hb: data space out of range" on fd 2 (catchable rc-76 throw inside evaluate, exit
-\ 76 at top level). The err-HAS probe is the RED discriminator: on the unfixed base
-\ the same exit 76 carries NO message. `data-base`/`DATA-SIZE`/`here` are runtime
-\ words, so the over/exact offsets are computed against the live region top.
+\ DP heap (allot/,/c,/definer) must stop below the profiler counter band reserved at
+\ the top PROF-CNT-BYTES of the DATA region (layout.f). DP-CHECK (habu1.f) caps the
+\ heap at DATA-SIZE - PROF-CNT-BYTES so a large allot + prof-on can never let profiler
+\ writes corrupt user data (dot habu-bound-profiler-counter-235c5f48). Over-bound fails
+\ closed NAMED "hb: data space out of range" on fd 2 (catchable rc-76 throw inside
+\ evaluate, exit 76 at top level). RED discriminator: on the unfixed base an allot one
+\ byte INTO the band SUCCEEDS silently (rc 0, no message) and clobbers a counter.
+\ `data-base`/`DATA-SIZE`/`PROF-CNT-BYTES`/`here` are runtime words, so the boundary is
+\ computed against the live band base.
 : GE-DATA-FULL ( -- )
-   s" data-base DATA-SIZE + here - 1+ allot"
-      76 s" data-space over-bound exit rc" RUNTIME-RUNNER:LINE-RC
-   s" hb: data space out of range" s" data-space over-bound diagnostic" GE-EXPECT-ERR-HAS
-   \ off-by-one boundary: allot to EXACTLY the top (DP == DATA+DATA-SIZE, the max the
-   \ <= bound admits) must SUCCEED and exit clean.
-   s" data-base DATA-SIZE + here - allot"
-      0 s" data-space exact-top allot succeeds" RUNTIME-RUNNER:LINE-RC
-   s" PASS: data-space capacity exit is labeled + off-by-one boundary holds" type cr ;
+   \ one byte past the band base rejects (base: succeeds silently — the RED discriminator)
+   s" data-base DATA-SIZE PROF-CNT-BYTES - + here - 1+ allot"
+      76 s" data-space over-band exit rc" RUNTIME-RUNNER:LINE-RC
+   s" hb: data space out of range" s" data-space over-band diagnostic" GE-EXPECT-ERR-HAS
+   \ allot ending EXACTLY at the band base (DP == DATA + DATA-SIZE - PROF-CNT-BYTES, the
+   \ max the <= bound admits) must SUCCEED and exit clean.
+   s" data-base DATA-SIZE PROF-CNT-BYTES - + here - allot"
+      0 s" data-space band-base allot succeeds" RUNTIME-RUNNER:LINE-RC
+   s" PASS: data-space profiler-band cap is labeled + off-by-one boundary holds" type cr ;
 
 : GE-DIV-TRAP ( ptr u8 n ptr u8 n -- )
    {: src:ptr srcu:n label:ptr labelu:n :}

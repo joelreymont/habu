@@ -70,7 +70,8 @@ require rt.fs              \ G-PRINT9 (shared signed-decimal printer)
 require crash.fs           \ in-binary crash handler (register dump on signal)
 
 \ x20 (RBASE) is dead after startup, so it doubles as DATA: the data-space base.
-\ [x20] holds DP (next-free pointer); usable space is [x20+8 .. x20+DATA-SIZE).
+\ [x20] holds DP (next-free pointer); usable space is [x20+8 .. x20+DATA-SIZE-PROF-CNT-BYTES)
+\ (the top PROF-CNT-BYTES is the reserved profiler counter band; DP-CHECK caps the heap below it).
 20 constant DATA
 \ data-region header (all at [x20]): DP, HND (catch chain), and the locals table
 \ for the word being compiled — LOC-N count, LOC-F frame bytes, then 16 name slots
@@ -831,7 +832,7 @@ previous definitions
    reg 5 CMP,  C-GE low-ok BCOND,
       s" bootstrap: data pointer below data start" C-EXIT76
    low-ok LBL,
-   5 DATA-SIZE LIT64,  5 DATA 5 ADD,
+   5 DATA-SIZE PROF-CNT-BYTES - LIT64,  5 DATA 5 ADD,
    reg 5 CMP,  C-LE high-ok BCOND,
       s" bootstrap: data pointer exceeds data region" C-EXIT76
    high-ok LBL, ;

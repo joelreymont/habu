@@ -1172,6 +1172,24 @@ public
    s" DATA-SIZE $10000 - constant PROF-CNT" BCG-MUST-LACK
    s" $1F0000 constant PROF-CNT" BCG-MUST-LACK ;
 
+\ DP-CHECK (habu1.f + bootstrap mirror) caps the user heap below the profiler counter
+\ band: the high bound is DATA-SIZE - PROF-CNT-BYTES, not the bare DATA-SIZE region top,
+\ so a large allot + prof-on can never overlap the counters (dot
+\ habu-bound-profiler-counter-235c5f48). Red-first: the unfixed DP-CHECK loads a bare
+\ `5 DATA-SIZE LIT64,` high bound; the fix subtracts PROF-CNT-BYTES. Native and bootstrap
+\ mirror the same cap.
+: BCG-TEST-DP-CHECK-BAND-CAP ( -- )
+   s" src/habu/habu1.f" BCG-LOAD
+   s" : DP-CHECK" BCG-POS-FOUND {: hstart:n :}
+   hstart s" : BALLOT" BCG-AFTER-FOUND {: hend:n :}
+   hstart hend s" DATA-SIZE PROF-CNT-BYTES - LIT64," BCG-MUST-FIND-BEFORE
+   hstart hend s" 5 DATA-SIZE LIT64," BCG-MUST-NOT-FIND-BEFORE
+   s" bootstrap/cg/forth.fs" BCG-LOAD
+   s" : DP-CHECK" BCG-POS-FOUND {: bstart:n :}
+   bstart s" : BALLOT" BCG-AFTER-FOUND {: bend:n :}
+   bstart bend s" DATA-SIZE PROF-CNT-BYTES - LIT64," BCG-MUST-FIND-BEFORE
+   bstart bend s" 5 DATA-SIZE LIT64," BCG-MUST-NOT-FIND-BEFORE ;
+
 : BCG-TEST-PUBLISH-HOOK-SPLIT ( -- )
    s" bootstrap/cg/forth.fs" BCG-LOAD
    s" : EMIT-COMPILE-PUBLISH-TRUSTED" BCG-MUST-HAVE
@@ -1396,6 +1414,7 @@ public
    BCG-TEST-LINUX-SPAWN-SCOPED-LABELS
    BCG-TEST-BOOTSTRAP-DATA-SIZE
    BCG-TEST-PROF-CNT-HIGH
+   BCG-TEST-DP-CHECK-BAND-CAP
    BCG-TEST-PUBLISH-HOOK-SPLIT
    BCG-TEST-BOOTSTRAP-LOCAL-SHADOW
    BCG-TEST-BOOTSTRAP-HIDE-PRELUDE

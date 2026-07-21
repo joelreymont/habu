@@ -1512,8 +1512,11 @@ variable SZA-I
 : BHERE ( -- )
    7 DATA 0 LDR,  7 G-PUSH ;
 
-\ Bound the DP heap ( [DATA-START, DATA-SIZE] within the DATA region ) before any
-\ allot/,/c,/definer advance stores the new DP. Out of range routes to LDPBAD
+\ Bound the DP heap ( [DATA-START, DATA-SIZE - PROF-CNT-BYTES] within the DATA
+\ region ) before any allot/,/c,/definer advance stores the new DP. The top
+\ PROF-CNT-BYTES bytes are the profiler counter band (layout.f); capping the heap
+\ below it keeps a large allot + prof-on from corrupting user data with profiler
+\ writes (dot habu-bound-profiler-counter-235c5f48). Out of range routes to LDPBAD
 \ (habu2.f EM-COMPILE-DIE): named "hb: data space out of range" fd-2 diagnostic,
 \ then rc 76 via LCOMPILEDIE -- a catchable throw inside evaluate (DP rolled back,
 \ nothing written past the region since this check precedes every DP store), a
@@ -1527,7 +1530,7 @@ variable SZA-I
    DP-REG @ 5 CMP,  C-GE DP-LOW LABEL@ BCOND,
       LDPBAD LABEL@ B,
    DP-LOW LABEL@ LBL,
-   5 DATA-SIZE LIT64,  5 DATA 5 ADD,
+   5 DATA-SIZE PROF-CNT-BYTES - LIT64,  5 DATA 5 ADD,
    DP-REG @ 5 CMP,  C-LE DP-HIGH LABEL@ BCOND,
       LDPBAD LABEL@ B,
    DP-HIGH LABEL@ LBL, ;
