@@ -34,6 +34,7 @@ require lib/fmt.f
 require lib/fs.f                    \ GETENV
 require lib/fs-mutate.f            \ WRITE-ALL
 require lib/process-argv.f         \ PROC-ARGV+ / RUN-ARGV-CAPTURE-OUTCOME
+require lib/engine-candidate.f
 require maki/device-artifacts.f    \ MAKI-GRADE:PREPARE / DRIVER$ / CLEAN (private temp driver path)
 require maki/db/diff-runner.f      \ package DIFFRUN: CLASSIFY-OUTCOME, run-result wrappers, installers
 
@@ -83,7 +84,7 @@ create SP-SRC SP-SRC-CAP allot      \ stable source copy (a caller may pass a sh
    s" diffrun-spawn" MAKI-GRADE:PREPARE
    MAKI-GRADE:DRIVER$ SP-SRC u WRITE-ALL
    SPAWN-ARGV
-   s" bin/hb" >LEN  SP-OUT SP-OUT-CAP >LEN  SP-ERR SP-ERR-CAP >LEN  ms >MS  RUN-ARGV-CAPTURE-OUTCOME
+   ENGINE-CANDIDATE:PATH$ >LEN  SP-OUT SP-OUT-CAP >LEN  SP-ERR SP-ERR-CAP >LEN  ms >MS  RUN-ARGV-CAPTURE-OUTCOME
    CLASSIFY-OUTCOME {: outu:len erru:len clean:bool :}
    MAKI-GRADE:CLEAN
    outu LEN>N clean ;

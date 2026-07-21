@@ -16,6 +16,7 @@ require src/arch/ptx/emit.f
 require lib/ptx/cg.f
 require lib/ptx/sentinel.f
 require lib/ptx/toolchain.f
+require lib/engine-candidate.f
 require maki/eval/active-target.f
 
 \ package GPU owns the stateful launch machinery. The G- stem drops (GPU carries it:
@@ -62,7 +63,7 @@ create GQ-ERR $1000 allot
    s" lib/ptx/header.f"     >LEN PROC-ARGV+  s" lib/ptx/cg-collective.f" >LEN PROC-ARGV+
    s" lib/ptx/tile.f"       >LEN PROC-ARGV+  s" lib/ptx/collective.f" >LEN PROC-ARGV+
    s" tools/ptx/saxpy-cg.f" >LEN PROC-ARGV+
-   s" bin/hb" >LEN  GEMIT-OUT $4000 >LEN  GEMIT-ERR $1000 >LEN  20000 >MS  RUN-ARGV-CAPTURE
+   ENGINE-CANDIDATE:PATH$ >LEN  GEMIT-OUT $4000 >LEN  GEMIT-ERR $1000 >LEN  20000 >MS  RUN-ARGV-CAPTURE
    MATCH result
      ok  OF PCAP-CAPTURED:UNMAKE 0 >RC ENDOF          \ clean exit -> rc 0
      err OF PCAP-FAILED:UNMAKE ENDOF                  \ nonzero child: (out err code) on stack

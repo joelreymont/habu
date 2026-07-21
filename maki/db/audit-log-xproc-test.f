@@ -17,6 +17,7 @@ require lib/fs.f
 require lib/fs-mutate.f
 require lib/process.f
 require lib/process-argv.f
+require lib/engine-candidate.f
 require maki/device-artifacts.f              \ MAKI-GRADE: private tmp driver path (PREPARE/DRIVER$/CLEAN)
 require maki/db/audit-log-xproc-child.f      \ AUDIT-XPROC: shared BUILD-LOG + RUN-CHILD
 
@@ -56,7 +57,7 @@ create XP-OUT $2000 allot   create XP-ERR $1000 allot
    PROC-ARGV-RESET
    s" --load"             >LEN PROC-ARGV+
    MAKI-GRADE:DRIVER$     >LEN PROC-ARGV+
-   s" bin/hb" >LEN  XP-OUT $2000 >LEN  XP-ERR $1000 >LEN  30000 >MS  RUN-ARGV-CAPTURE
+   ENGINE-CANDIDATE:PATH$ >LEN  XP-OUT $2000 >LEN  XP-ERR $1000 >LEN  30000 >MS  RUN-ARGV-CAPTURE
    MATCH result
      ok  OF PCAP-CAPTURED:UNMAKE 0 >RC ENDOF               \ clean child exit -> rc 0
      err OF PCAP-FAILED:UNMAKE ENDOF                       \ nonzero child: (out err code) on stack

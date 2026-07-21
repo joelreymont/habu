@@ -38,6 +38,7 @@
 require lib/test.f
 require lib/process.f
 require lib/process-argv.f
+require lib/engine-candidate.f
 require lib/fs.f
 require lib/fs-mutate.f
 require lib/float.f
@@ -74,7 +75,7 @@ create LMDM-RP   FS-PATH-CAP allot  variable LMDM-RP-U
    PROC-ARGV-RESET
    s" --load"           >LEN PROC-ARGV+
    MAKI-GRADE:DRIVER$   >LEN PROC-ARGV+
-   s" bin/hb" >LEN  LMDM-OUT $4000 >LEN  LMDM-ERR $1000 >LEN  30000 >MS  RUN-ARGV-CAPTURE
+   ENGINE-CANDIDATE:PATH$ >LEN  LMDM-OUT $4000 >LEN  LMDM-ERR $1000 >LEN  30000 >MS  RUN-ARGV-CAPTURE
    MATCH result
      ok  OF PCAP-CAPTURED:UNMAKE 0 >RC ENDOF          \ clean exit -> rc 0
      err OF PCAP-FAILED:UNMAKE ENDOF                  \ nonzero child: (out err code) on stack

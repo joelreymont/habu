@@ -38,6 +38,7 @@
 require lib/test.f
 require lib/float.f
 require lib/fmt.f
+require lib/engine-candidate.f
 require maki/onnx/import.f
 require maki/onnx/ort-ref-data.f
 require maki/lower/model-device.f
@@ -95,7 +96,7 @@ package MAKI
    PROC-ARGV-RESET
    s" --load"           >LEN PROC-ARGV+
    MAKI-GRADE:DRIVER$   >LEN PROC-ARGV+
-   s" bin/hb" >LEN  LMDM-OUT $4000 >LEN  LMDM-ERR $1000 >LEN  30000 >MS  RUN-ARGV-CAPTURE
+   ENGINE-CANDIDATE:PATH$ >LEN  LMDM-OUT $4000 >LEN  LMDM-ERR $1000 >LEN  30000 >MS  RUN-ARGV-CAPTURE
    MATCH result
      ok  OF PCAP-CAPTURED:UNMAKE 0 >RC ENDOF          \ clean exit -> rc 0
      err OF PCAP-FAILED:UNMAKE ENDOF                  \ nonzero child: (out err code) on stack

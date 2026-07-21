@@ -53,6 +53,7 @@ require lib/fs.f
 require lib/fs-mutate.f
 require lib/process.f
 require lib/process-argv.f
+require lib/engine-candidate.f
 require lib/ffi.f
 require src/arch/ptx/emit.f
 require lib/ptx/cg.f
@@ -157,9 +158,9 @@ create PA-OUT PA-OUT-CAP allot  create PA-ERR PA-ERR-CAP allot
    s" lib/ptx/cg-attention.f" >LEN PROC-ARGV+
    MAKI-GRADE:DRIVER$         >LEN PROC-ARGV+ ;
 
-\ spawn bin/hb over the built argv; capture the emitted PTX to MAKI-GRADE:PTX$
+\ spawn the resolved engine over the built argv; capture the emitted PTX to MAKI-GRADE:PTX$
 : EMIT-CHILD ( -- )
-   s" bin/hb" >LEN  CH-OUT CH-OUT-CAP >LEN  CH-ERR CH-ERR-CAP >LEN  EMIT-TIMEOUT-MS >MS  RUN-ARGV-CAPTURE
+   ENGINE-CANDIDATE:PATH$ >LEN  CH-OUT CH-OUT-CAP >LEN  CH-ERR CH-ERR-CAP >LEN  EMIT-TIMEOUT-MS >MS  RUN-ARGV-CAPTURE
    MATCH result
      ok  OF PCAP-CAPTURED:UNMAKE 0 >RC ENDOF          \ clean exit -> rc 0
      err OF PCAP-FAILED:UNMAKE ENDOF                  \ nonzero child: (out err code) on stack

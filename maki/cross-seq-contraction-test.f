@@ -24,6 +24,9 @@
 \     diagnostic — so the committed suite stays green while proving the reject. Spawn
 \     (fork+exec), not bare fork: safe inside the maki gate where an earlier suite may
 \     have initialized CUDA (maki/eval/device-fault-test.f:8-12).
+\     The child path comes from ENGINE-CANDIDATE:PATH$, so this same fixture also
+\     exercises the override-or-running-engine contract from a clean jj workspace,
+\     where an ignored workspace-local bin/hb does not exist.
 \
 \ Overlap with BTC-7 (honest): the CHECKER RULE this fixture exercises — redx over a
 \ whole product rejects — is the one BTC-7 landed, and BTC-7's in-process candidate
@@ -36,7 +39,7 @@
 require lib/test.f
 require lib/process.f
 require lib/process-argv.f
-require lib/process-env.f
+require lib/engine-candidate.f
 require maki/extent.f
 
 T-RESET
@@ -74,12 +77,6 @@ variable CS-EXITED
 : CS-BAD$ ( -- ptr u8 n )
    s" require maki/extent.f package MAKI 128 EXTENT: #XCR 8 EXTENT: #XCB 16 EXTENT: #XCT EXTPROD: #XCR ( #XCB #XCT ) : XS-CROSS ( ix<extprod<extxcb,extxct>> -- redx<extprod<extxcb,extxct>> ) >RED ; ;package" ;
 
-\ the child engine: the gate's HABU_UNDER_TEST when set, else bin/hb (load-reject-diag pattern).
-: CS-HB$ ( -- ptr u8 n )
-   s" HABU_UNDER_TEST" >LEN PROC-ENV-DEFAULT$? if LEN>N exit then
-   2drop
-   s" HABU_UNDER_TEST" GETENV dup 0= if 2drop s" bin/hb" exit then ;
-
 : CS-STORE! ( len len outcome -- )
    MATCH outcome
      exited   OF CS-RC ! 0 0=    CS-EXITED ! ENDOF
@@ -90,7 +87,7 @@ variable CS-EXITED
 
 : CS-RUN ( -- )   \ spawn the child engine, feed the bad program on stdin, capture the outcome
    PROC-ARGV-RESET
-   CS-HB$ >LEN  CS-BAD$ >LEN  CS-OUT CS-CAP >LEN  CS-ERR CS-CAP >LEN  CS-TIMEOUT-MS >MS
+   ENGINE-CANDIDATE:PATH$ >LEN  CS-BAD$ >LEN  CS-OUT CS-CAP >LEN  CS-ERR CS-CAP >LEN  CS-TIMEOUT-MS >MS
    RUN-ARGV-STDIN-CAPTURE-OUTCOME  CS-STORE! ;
 
 : CS-ERR$ ( -- ptr u8 n )  CS-ERR CS-ERRU @ ;

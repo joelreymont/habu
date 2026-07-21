@@ -41,6 +41,7 @@ require lib/fs.f
 require lib/fs-mutate.f
 require lib/process.f
 require lib/process-argv.f
+require lib/engine-candidate.f
 require src/arch/ptx/emit.f
 require lib/ptx/cg.f
 require lib/ptx/header.f
@@ -111,7 +112,7 @@ EE-DRIVER-LIVE!
    0 EE-OUT-U !
    0 EE-ERR-U !
    EE-DRIVER$              >LEN PROC-ARGV+
-   s" bin/hb" >LEN
+   ENGINE-CANDIDATE:PATH$ >LEN
    EE-OUT EE-OUT-CAP >LEN
    EE-ERR EE-ERR-CAP >LEN
    EE-TIMEOUT-MS >MS RUN-ARGV-CAPTURE

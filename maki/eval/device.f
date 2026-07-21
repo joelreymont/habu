@@ -16,6 +16,7 @@ require lib/fs.f
 require lib/fs-mutate.f
 require lib/process.f
 require lib/process-argv.f
+require lib/engine-candidate.f
 require lib/ffi.f
 require lib/float.f
 require lib/fmt.f
@@ -143,7 +144,7 @@ create GP-OUT $4000 allot  create GP-ERR $1000 allot
    s" src/arch/ptx/emit.f"  >LEN PROC-ARGV+  s" lib/ptx/cg.f" >LEN PROC-ARGV+
    s" lib/ptx/header.f"     >LEN PROC-ARGV+  s" lib/ptx/tile.f" >LEN PROC-ARGV+
    MAKI-GRADE:DRIVER$       >LEN PROC-ARGV+
-   s" bin/hb" >LEN  GP-OUT $4000 >LEN  GP-ERR $1000 >LEN  20000 >MS  RUN-ARGV-CAPTURE
+   ENGINE-CANDIDATE:PATH$ >LEN  GP-OUT $4000 >LEN  GP-ERR $1000 >LEN  20000 >MS  RUN-ARGV-CAPTURE
    MATCH result
      ok  OF PCAP-CAPTURED:UNMAKE 0 >RC ENDOF          \ clean exit -> rc 0
      err OF PCAP-FAILED:UNMAKE ENDOF                  \ nonzero FFI exit is expected; PTX on stdout is the signal
@@ -234,7 +235,7 @@ create GL-OUT $1000 allot  create GL-ERR $1000 allot
 : GRADE-DEVICE-VERDICT ( -- n )   \ spawn-isolated launch -> EVN-GREEN / -WRONG / -FAULT
    GRADE-WRITE-LAUNCHER
    GRADE-LAUNCH-ARGV
-   s" bin/hb" >LEN  GL-OUT $1000 >LEN  GL-ERR $1000 >LEN  30000 >MS  RUN-ARGV-CAPTURE-OUTCOME
+   ENGINE-CANDIDATE:PATH$ >LEN  GL-OUT $1000 >LEN  GL-ERR $1000 >LEN  30000 >MS  RUN-ARGV-CAPTURE-OUTCOME
    ED-OUTCOME>VERDICT {: outu:len erru:len v:n :}
    v ;
 

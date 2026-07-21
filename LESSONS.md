@@ -1964,3 +1964,10 @@ fits.
   until its ordinary timeout. Record process group and terminal foreground group
   in hang diagnostics; a noninteractive worker needs an explicit standard-input
   contract rather than the caller's accidental terminal.
+- **Nested engine tests must resolve execution identity through one owner.** A
+  relative `bin/hb` fallback silently assumes the current working tree contains
+  an ignored build artifact, so it breaks in a clean Jujutsu workspace even when
+  that workspace was launched by a valid absolute engine path. Use
+  `ENGINE-CANDIDATE:PATH$`: it preserves the explicit `HABU_UNDER_TEST` override,
+  otherwise resolves the running engine itself, and validates the executable
+  before spawn.

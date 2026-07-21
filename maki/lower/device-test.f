@@ -17,6 +17,7 @@
 require lib/test.f
 require lib/process.f
 require lib/process-argv.f
+require lib/engine-candidate.f
 require lib/fs.f
 require lib/fs-mutate.f
 require lib/float.f
@@ -38,7 +39,7 @@ create LD-QO  $1000 allot  create LD-QE  $2000 allot
    PROC-ARGV-RESET
    s" --load"           >LEN PROC-ARGV+
    MAKI-GRADE:DRIVER$   >LEN PROC-ARGV+
-   s" bin/hb" >LEN  LD-OUT $4000 >LEN  LD-ERR $1000 >LEN  30000 >MS  RUN-ARGV-CAPTURE
+   ENGINE-CANDIDATE:PATH$ >LEN  LD-OUT $4000 >LEN  LD-ERR $1000 >LEN  30000 >MS  RUN-ARGV-CAPTURE
    MATCH result
      ok  OF PCAP-CAPTURED:UNMAKE 0 >RC ENDOF          \ clean exit -> rc 0
      err OF PCAP-FAILED:UNMAKE ENDOF                  \ nonzero child: (out err code) on stack

@@ -22,6 +22,7 @@ require lib/fs.f
 require lib/fs-mutate.f
 require lib/process.f
 require lib/process-argv.f          \ RUN-ARGV-CAPTURE
+require lib/engine-candidate.f
 require maki/device-artifacts.f     \ MAKI-GRADE: private tmp driver path
 require maki/db/diff-case-store-xproc-child.f   \ CSXP: STORE-ALL / VERIFY-ALL + shared builders
 
@@ -51,7 +52,7 @@ create XP-OUT $2000 allot   create XP-ERR $1000 allot
    PROC-ARGV-RESET
    s" --load"          >LEN PROC-ARGV+
    MAKI-GRADE:DRIVER$  >LEN PROC-ARGV+
-   s" bin/hb" >LEN  XP-OUT $2000 >LEN  XP-ERR $1000 >LEN  30000 >MS  RUN-ARGV-CAPTURE
+   ENGINE-CANDIDATE:PATH$ >LEN  XP-OUT $2000 >LEN  XP-ERR $1000 >LEN  30000 >MS  RUN-ARGV-CAPTURE
    MATCH result
      ok  OF PCAP-CAPTURED:UNMAKE {: outu:len erru:len :}
         XP-OUT outu LEN>N ENDOF
