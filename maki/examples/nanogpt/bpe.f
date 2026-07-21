@@ -42,6 +42,7 @@
 \ representation the embedding + batch buffers use. maki -> habu only. bpe owns -5322..-5327.
 
 require maki/array.f
+require lib/hashmap.f     \ HM:PROBE/HM:CLEAR pair->rank open-addressing lookup (O(1) vs the old linear scan)
 
 -5322 constant E-BPE-EMPTY    \ public op before a table is ready (no BPE-SEAL / BPE-TRAIN yet)
 -5323 constant E-BPE-RANGE    \ id/byte outside its domain: decode cell not a finite exact id in [0,256+merges), or the special/out-of-range id in a byte decode
@@ -54,7 +55,7 @@ package MAKI
 private
 
 256  constant BPE-BYTE-N       \ base byte tokens: ids 0..255
-512  constant BPE-MAX-MERGE     \ merge-table capacity (merged token id = 256+rank)
+50000 constant BPE-MAX-MERGE   \ merge-table capacity: the full GPT-2 table (merged token id = 256+rank)
 1024 constant BPE-CHUNK-CAP     \ max bytes in one pre-split chunk (encode work buffer)
 4096 constant BPE-OUT-CAP       \ max token ids one BPE-ENCODE stages (>= input bytes)
 8192 constant BPE-DEC-CAP       \ max bytes one BPE-DECODE stages
@@ -63,6 +64,18 @@ private
 
 create BPE-A BPE-MAX-MERGE cells allot   \ rank -> child a id
 create BPE-B BPE-MAX-MERGE cells allot   \ rank -> child b id
+
+\ pair -> rank lookup: an open-addressing hashmap (lib/hashmap.f) keyed by the pair
+\ (a,b). The child ids a,b are internal ids in [0,BPE-BYTE-N+BPE-N), so the pair packs
+\ into one integer key a*BPE-KSTRIDE+b, then multiplied by an odd constant (a bijection
+\ mod 2^64, so distinct pairs keep distinct keys) to spread the low bits the probe masks.
+\ This replaces the old O(BPE-N) linear scan, making encode O(1)/pair even at 50000 merges.
+BPE-BYTE-N BPE-MAX-MERGE + constant BPE-KSTRIDE   \ id bound: every internal id < KSTRIDE
+131072 constant BPE-HCAP                          \ probe slots: power of two > 1.4*BPE-MAX-MERGE
+$9E3779B97F4A7C15 constant BPE-HMIX               \ odd multiplier (golden ratio); key bijection
+create BPE-HK BPE-HCAP cells allot   \ slot -> packed pair key
+create BPE-HU BPE-HCAP cells allot   \ slot -> used flag (0 = empty)
+create BPE-HV BPE-HCAP cells allot   \ slot -> rank
 variable BPE-N                            \ merges in the table (ranks 0..N-1)
 variable BPE-BUILDING                     \ 1 between BPE-BEGIN and BPE-SEAL
 variable BPE-DONE                         \ 1 once a table is sealed/trained (ready)
@@ -154,11 +167,23 @@ public
 
 private
 
-\ rank of adjacent pair (a,b) in the table, or -1 (linear scan; ranks are priority order)
+\ packed, spread key for the pair (a,b): a*KSTRIDE+b is a unique integer id for the pair
+\ (b<KSTRIDE), and *BPE-HMIX is a bijection mod 2^64 so the key stays unique while its low
+\ bits (the ones HM:PROBE masks) mix well
+: BPE-HKEY ( n n -- n )  {: a:n b:n :}  a BPE-KSTRIDE * b +  BPE-HMIX * ;
+: BPE-HCLEAR ( -- )  BPE-HU BPE-HCAP HM:CLEAR ;
+\ record rank rk for pair (a,b) in the hashmap (caller guarantees the pair is new)
+: BPE-HPUT ( n n n -- )  {: a:n b:n rk:n :}
+   BPE-HK BPE-HU BPE-HCAP  a b BPE-HKEY  HM:PROBE {: s:n :}
+   a b BPE-HKEY  BPE-HK s cells + !
+   1            BPE-HU s cells + !
+   rk           BPE-HV s cells + ! ;
+
+\ rank of adjacent pair (a,b) in the table, or -1 (O(1) hashmap probe; ranks are priority order)
 : BPE-RANK ( n n -- n )  {: a:n b:n :}
-   BPE-N @ 0 ?do
-      BPE-A i cells + @ a =  BPE-B i cells + @ b =  and if i unloop exit then
-   loop -1 ;
+   BPE-HK BPE-HU BPE-HCAP  a b BPE-HKEY  HM:PROBE {: s:n :}
+   BPE-HU s cells + @ 0= if -1 exit then
+   BPE-HV s cells + @ ;
 
 \ load one chunk's bytes into BPE-WORK as byte-ids
 : BPE-CHUNK>WORK ( ptr u8 n n -- )  {: a:ptr s:n L:n :}
@@ -224,7 +249,7 @@ private
 public
 
 \ ---- table build (fixture path): BPE-BEGIN, BPE-MERGE+*, BPE-SEAL ----------------
-: BPE-BEGIN ( -- )  0 BPE-N !  1 BPE-BUILDING !  0 BPE-DONE ! ;
+: BPE-BEGIN ( -- )  0 BPE-N !  1 BPE-BUILDING !  0 BPE-DONE !  BPE-HCLEAR ;
 
 \ append merge (a,b): both must already be tokens (0<=id<256+rank), pair unique
 : BPE-MERGE+ ( n n -- )  {: a:n b:n :}
@@ -235,6 +260,7 @@ public
    BPE-N @ BPE-MAX-MERGE >= if E-BPE-CAP throw then
    a BPE-A BPE-N @ cells + !
    b BPE-B BPE-N @ cells + !
+   a b BPE-N @ BPE-HPUT
    BPE-N @ 1+ BPE-N ! ;
 
 : BPE-SEAL ( -- )  BPE-BUILD?  0 BPE-BUILDING !  1 BPE-DONE ! ;
@@ -360,6 +386,7 @@ private
    BPE-WI @ BPE-TR-M !
    fa BPE-A BPE-N @ cells + !
    fb BPE-B BPE-N @ cells + !
+   fa fb BPE-N @ BPE-HPUT
    BPE-N @ 1+ BPE-N ! ;
 
 public
@@ -372,7 +399,7 @@ public
    k 0 < if E-BPE-CORPUS throw then
    k BPE-MAX-MERGE > if E-BPE-CAP throw then
    a u BPE-TR-INIT
-   0 BPE-N !  0 BPE-KI !  0 BPE-STOP !  0 BPE-BUILDING !
+   0 BPE-N !  0 BPE-KI !  0 BPE-STOP !  0 BPE-BUILDING !  BPE-HCLEAR
    begin BPE-KI @ k <  BPE-STOP @ 0=  and while
       BPE-TR-COUNT
       BPE-TR-BEST 0= if  1 BPE-STOP !

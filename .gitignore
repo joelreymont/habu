@@ -20,6 +20,9 @@ __pycache__/
 # generated test scratch
 test/*.tmp
 
+# runtime-fetched GPT-2 vocab artifacts (fetch-gpt2-vocab.sh; never committed)
+gpt2-vocab/
+
 # generated benchmark evidence and reports stay outside git
 bench/llm/RESULTS*.md
 bench/llm/*.json

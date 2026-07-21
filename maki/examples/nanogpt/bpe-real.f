@@ -32,11 +32,13 @@ private
 
 50257 constant BPR-VMAX        \ real GPT-2 vocab size: ids 0..50256 (50256 = <|endoftext|>)
 256   constant BPR-BYTE-N       \ base byte tokens (internal ids 0..255)
-512   constant BPR-MAX          \ merge-subset capacity (internal merged id = 256+rank)
-768   constant BPR-GID-CAP      \ BPR-BYTE-N + BPR-MAX: internal-id -> real-id table size
+50000 constant BPR-MAX          \ merge capacity: the full GPT-2 table (internal merged id = 256+rank)
+BPR-BYTE-N BPR-MAX + constant BPR-GID-CAP   \ internal-id -> real-id table size (50256)
 4096  constant BPR-INT-CAP      \ max ids one BPR-DECODE stages into internal-id scratch
 
 create BPR-GID BPR-GID-CAP cells allot   \ internal id -> real GPT-2 id (bytes 0..255, then merges)
+create BPR-R2I BPR-VMAX cells allot       \ real GPT-2 id -> internal id (inverse of BPR-GID), -1 = unmapped
+create BPR-SEEN BPR-VMAX allot            \ install-time presence set for O(nm) id-distinctness validation
 create BPR-INT BPR-INT-CAP cells allot    \ decode: real ids translated to internal, then expanded
 variable BPR-GN                           \ live BPR-GID length = 256 + loaded merges
 variable BPR-DONE                         \ 1 once BPR-INSTALL has loaded a real vocab (ready)
@@ -55,20 +57,18 @@ variable BPR-DONE                         \ 1 once BPR-INSTALL has loaded a real
          bid i cells + @  bid j cells + @  = if E-BPR-VOCAB throw then
       loop
    loop ;
-\ nm merged ids: each in [0,VMAX), pairwise distinct, and disjoint from the byte ids
+\ nm merged ids: each in [0,VMAX), pairwise distinct, and disjoint from the byte ids.
+\ O(nm): mark the byte ids in a presence set (they are already range+distinct from BPR-BID-OK?),
+\ then each merged id must be in range and unmarked (a set slot already on = a byte or earlier-merge
+\ collision). Replaces the old O(nm^2) pairwise scan, which was unusable at 50000 merges.
 : BPR-MID-OK? ( ptr a ptr a n -- )  {: mid:ptr bid:ptr nm:n :}
+   BPR-VMAX 0 ?do  0 BPR-SEEN i + c!  loop
+   BPR-BYTE-N 0 ?do  1 BPR-SEEN bid i cells + @ + c!  loop
    nm 0 ?do
-      mid i cells + @  dup 0 <  swap BPR-VMAX >=  or if E-BPR-VOCAB throw then
-   loop
-   nm 0 ?do
-      nm i 1+ ?do
-         mid i cells + @  mid j cells + @  = if E-BPR-VOCAB throw then
-      loop
-   loop
-   nm 0 ?do
-      BPR-BYTE-N 0 ?do
-         mid j cells + @  bid i cells + @  = if E-BPR-VOCAB throw then
-      loop
+      mid i cells + @ {: m:n :}
+      m 0 <  m BPR-VMAX >=  or if E-BPR-VOCAB throw then
+      BPR-SEEN m + c@ 1 = if E-BPR-VOCAB throw then
+      1 BPR-SEEN m + c!
    loop ;
 
 \ ---- id translation --------------------------------------------------------------
@@ -83,10 +83,16 @@ variable BPR-DONE                         \ 1 once BPR-INSTALL has loaded a real
    v f>s {: k:n :}
    k s>f v f= 0= if E-BPR-RANGE throw then
    k ;
+\ build the real->internal inverse over [0,BPR-GN) from BPR-GID (all ids distinct by validation).
+: BPR-R2I-BUILD ( -- )
+   BPR-VMAX 0 ?do  -1 BPR-R2I i cells + !  loop
+   BPR-GN @ 0 ?do  i  BPR-R2I BPR-GID i cells + @ cells + !  loop ;
 \ real GPT-2 id -> internal id (the map is injective, so the match is unique); a real id
-\ absent from the loaded map (e.g. the special, or any token outside the subset) is rejected
+\ absent from the loaded map (e.g. the special, or any token outside the subset) is rejected.
+\ O(1) direct-indexed inverse (was an O(BPR-GN) linear scan, unusable at 50000 merges).
 : BPR-REAL>INT ( n -- n )  {: r:n :}
-   BPR-GN @ 0 ?do  BPR-GID i cells + @ r = if i unloop exit then  loop  E-BPR-RANGE throw ;
+   r 0 <  r BPR-VMAX >=  or if E-BPR-RANGE throw then
+   BPR-R2I r cells + @  dup 0 < if E-BPR-RANGE throw then ;
 
 public
 
@@ -105,6 +111,7 @@ public
    BPR-BYTE-N 0 ?do  bid i cells + @  BPR-GID i cells + !  loop
    nm 0 ?do  mid i cells + @  BPR-GID BPR-BYTE-N i + cells + !  loop
    BPR-BYTE-N nm + BPR-GN !
+   BPR-R2I-BUILD
    1 BPR-DONE ! ;
 
 \ ---- ready-gated queries ---------------------------------------------------------

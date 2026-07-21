@@ -232,6 +232,24 @@ create BPR-BK  BPT-CAP allot
    BPR-DIV-HABU BPR-DIV-HABU-N BPR-DIV-S BPR-ENC-EQ?
    BPR-DIV-TIK  BPR-DIV-TIK-N  BPR-DIV-S BPR-ENC-EQ? 0=  and ;
 
+\ full-table red-first (dot habu-bpe-full-50k-a598ba57): with only the 79-merge subset loaded,
+\ "tokenization" encodes to the subset ids and NOT the full/tiktoken ids - so the full table
+\ changes the outcome and this parity fixture fails with the subset-only table (the full-load
+\ test proves the full-table ids). Both directions pinned, no silent skip.
+: BPR-CAP-DIV? ( -- bool )
+   BPR-TOK-SUB  BPR-TOK-SUB-N  BPR-TOK-S BPR-ENC-EQ?
+   BPR-TOK-FULL BPR-TOK-FULL-N BPR-TOK-S BPR-ENC-EQ? 0=  and ;
+
+\ capacity red-first: the raised merge cap holds a table far past the old 512 (the old cap threw
+\ E-BPE-CAP at merge 513). Builds BPT-BIGN valid (0,i) merges through the engine and confirms the
+\ table holds them all; leaves a sealed junk table, so it runs just before section (8)'s re-load.
+600 constant BPT-BIGN
+: BPT-CAP-BIG? ( -- bool )
+   BPE-BEGIN
+   BPT-BIGN 0 ?do  0 i BPE-MERGE+  loop
+   BPE-SEAL
+   BPE-MERGES BPT-BIGN = ;
+
 \ pre-ready: every real-vocab public word rejects before BPR-INSTALL (even though the
 \ engine is already sealed from the synthetic-table tests above)
 : BPR-PRE-ENC ( -- )  BPR-S1 BPR-IDS BPT-CAP BPR-ENCODE drop ;
@@ -328,6 +346,10 @@ BPT-PARITY?      TTRUE       \ the trained table encodes identically to the fixt
 ' BPT-TR-EMPTY     E-BPE-CORPUS TTHROWS
 ' BPT-TR-NEGK      E-BPE-CORPUS TTHROWS
 
+\ (7b) capacity: the raised cap holds a table far past the old 512 (red-first: the old cap threw
+\ E-BPE-CAP at merge 513). Leaves a sealed junk table; section (8)'s BPR-D-LOAD re-seals.
+BPT-CAP-BIG?     TTRUE
+
 \ (8) real GPT-2 vocab: pre-ready guards, then load the committed real subset and prove
 \ exact tiktoken parity (ASCII + multi-byte), real-id round-trip, the measured pre-split
 \ boundary, and the loader domain / bijection / canary guards. BPR-D-LOAD re-seals the
@@ -344,6 +366,7 @@ BPR-PARITY?      TTRUE
 BPR-RT-SAMPLE?   TTRUE
 BPR-RT-FIX?      TTRUE
 BPR-DIV?         TTRUE
+BPR-CAP-DIV?     TTRUE
 BPR-CAN-ENC-CAP? TTRUE
 BPR-CAN-DEC-BAD? TTRUE
 

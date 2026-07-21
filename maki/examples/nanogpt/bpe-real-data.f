@@ -188,4 +188,17 @@ create BPR-DIV-TIK
 \ ---- real multi-byte round-trip sample (decode(encode(x))==x; split-independent) --
 : BPR-RT-S ( -- ptr u8 n )  s" café ☕ 日本語 — naïve? 42%" ;
 
+\ ---- full-table red-first fixture (dot habu-bpe-full-50k-a598ba57) ----------------
+\ "tokenization" needs merges beyond the committed 79-merge subset. tiktoken 0.13.0 and the
+\ full 50000-merge table (maki/bpe-full.f) fold it to BPR-TOK-FULL; the subset table (those
+\ merges absent) yields BPR-TOK-SUB, reproduced by the committed subset engine. The hermetic
+\ gate proves the subset gives BPR-TOK-SUB and NOT BPR-TOK-FULL (so the full table changes the
+\ outcome - the parity fixture fails with the subset-only table); the presence-gated full-load
+\ test proves the full table gives BPR-TOK-FULL.
+: BPR-TOK-S ( -- ptr u8 n )  s" tokenization" ;
+create BPR-TOK-SUB   83 , 78 , 74 , 68 , 77 , 72 , 89 , 64 , 83 , 295 ,
+10 constant BPR-TOK-SUB-N
+create BPR-TOK-FULL  30001 , 1634 ,
+2 constant BPR-TOK-FULL-N
+
 ;package
