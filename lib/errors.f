@@ -233,3 +233,11 @@
 -4900 constant E-REPORT-FIRST
 -4999 constant E-REPORT-LAST
 -4900 constant E-REPORT-CAPACITY   \ column set is full (more than 64 columns declared)
+
+\ Owned growable byte buffer: -5700..-5799 (the stdlib range -2000..-4999 is full;
+\ -5000..-5699 are owned by research/maki modules that keep codes in their own files)
+-5700 constant E-BUF-FIRST
+-5799 constant E-BUF-LAST
+-5700 constant E-BUF-BOUNDS      \ byte offset / active length outside the buffer
+-5701 constant E-BUF-CAPACITY    \ zero, negative, or cell-overflowing byte capacity
+-5702 constant E-BUF-STATE       \ touch of a disposed buffer, or re-init of a live one

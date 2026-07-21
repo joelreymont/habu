@@ -1837,6 +1837,8 @@ points stay listed.
 - `lib/json-read-test.f` — focused coverage for JSON parser tokens, escapes, structure, errors, and round-trip.
 - `lib/memory.f` — checked OS-backed byte buffer allocation and release helpers.
 - `lib/memory-test.f` — focused coverage for memory allocation, release, and 64K buffer spans.
+- `lib/byte-buffer.f` — one package-owned growable byte buffer (`package BUF`): copy-on-grow with capacity-as-ownership and MEM-backed release, over typed byte-len roles.
+- `lib/byte-buffer-test.f` — focused coverage for byte-buffer growth, append/reserve/replace, release/dispose lifecycle, use-after-dispose, multi-megabyte fill, and a property test.
 - `lib/type/deftype.f` — the `DEFTYPE` declaration surface for value-nominal integer types: mints a package-scoped arity-0 type-family nominal plus its generated `>NAME`/`NAME>N` converter pair (TFAM substrate; docs/value-nominal-substrate.md).
 - `lib/vector.f` — checked growable cell-vector helpers backed by OS memory.
 - `lib/vector-test.f` — focused coverage for vector growth, bounds, typed pointer storage, and iteration.

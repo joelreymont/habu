@@ -100,6 +100,18 @@ schema_version	module	file	kind	word	effect	test	doc	owner	status	notes
 1	vector	lib/vector.f	word	VEC:!	(a ptr a CAD-NUM:index --)	lib/vector-test.f	docs/stdlib.md	stdlib-vector	active	store a typed vector cell at a checked index
 1	vector	lib/vector.f	word	VEC:PUSH	(a ptr a -- CAD-NUM:index)	lib/vector-test.f	docs/stdlib.md	stdlib-vector	active	append a cell to a typed vector and return its landing index
 1	vector	lib/vector.f	word	VEC:EACH	(R ptr a [ R CAD-NUM:index a -- R ] -- R)	lib/vector-test.f	docs/stdlib.md	stdlib-vector	active	visit active typed vector cells index-first over the index role
+1	byte-buffer	lib/byte-buffer.f	module			lib/byte-buffer-test.f	docs/stdlib.md	stdlib-byte-buffer	active	owned growable byte buffer with checked doubling growth, capacity-as-ownership liveness, and MEM-backed release
+1	byte-buffer	lib/byte-buffer.f	word	BUF:HDR-BYTES	(-- n)	lib/byte-buffer-test.f	docs/stdlib.md	stdlib-byte-buffer	active	header footprint the caller allots for one buffer
+1	byte-buffer	lib/byte-buffer.f	word	BUF:INIT	(ptr a CAD-NUM:byte-len --)	lib/byte-buffer-test.f	docs/stdlib.md	stdlib-byte-buffer	active	initialize a dead header with an owned byte mapping of the given capacity
+1	byte-buffer	lib/byte-buffer.f	word	BUF:DISPOSE	(ptr a --)	lib/byte-buffer-test.f	docs/stdlib.md	stdlib-byte-buffer	active	release the owned mapping and void ownership; a second dispose is a proved no-op
+1	byte-buffer	lib/byte-buffer.f	word	BUF:CLEAR	(ptr a --)	lib/byte-buffer-test.f	docs/stdlib.md	stdlib-byte-buffer	active	reset active length to zero, preserving the capacity and mapping
+1	byte-buffer	lib/byte-buffer.f	word	BUF:LEN@	(ptr a -- CAD-NUM:byte-len)	lib/byte-buffer-test.f	docs/stdlib.md	stdlib-byte-buffer	active	read the active byte length of a live buffer
+1	byte-buffer	lib/byte-buffer.f	word	BUF:CAP@	(ptr a -- CAD-NUM:byte-len)	lib/byte-buffer-test.f	docs/stdlib.md	stdlib-byte-buffer	active	read the byte capacity of a live buffer
+1	byte-buffer	lib/byte-buffer.f	word	BUF:SPAN$	(ptr a -- ptr u8 CAD-NUM:byte-len)	lib/byte-buffer-test.f	docs/stdlib.md	stdlib-byte-buffer	active	borrow the live bytes as a pointer and active length
+1	byte-buffer	lib/byte-buffer.f	word	BUF:RESERVE	(ptr a CAD-NUM:byte-len --)	lib/byte-buffer-test.f	docs/stdlib.md	stdlib-byte-buffer	active	grow capacity to exactly the request if larger than the current capacity
+1	byte-buffer	lib/byte-buffer.f	word	BUF:APPEND-BYTE	(n ptr a --)	lib/byte-buffer-test.f	docs/stdlib.md	stdlib-byte-buffer	active	append one byte, doubling capacity through the checked adapter when full
+1	byte-buffer	lib/byte-buffer.f	word	BUF:APPEND-SPAN	(ptr u8 CAD-NUM:byte-len ptr a --)	lib/byte-buffer-test.f	docs/stdlib.md	stdlib-byte-buffer	active	append a byte span, doubling capacity through the checked adapter when needed
+1	byte-buffer	lib/byte-buffer.f	word	BUF:REPLACE	(ptr u8 CAD-NUM:byte-len ptr a --)	lib/byte-buffer-test.f	docs/stdlib.md	stdlib-byte-buffer	active	replace the buffer contents with a byte span, reserving capacity as needed
 1	string	lib/string.f	module			lib/string-test.f	docs/stdlib.md	stdlib-string	active	checked byte-string predicates builders split and parse helpers
 1	string	lib/string.f	word	STR-LEN	(n -- len)	lib/string-test.f	docs/stdlib.md	stdlib-string	published	refine a nonnegative raw integer into a string length role
 1	string	lib/string.f	word	STR-OFF	(n -- off)	lib/string-test.f	docs/stdlib.md	stdlib-string	published	refine a nonnegative raw integer into a string offset role

@@ -498,6 +498,7 @@ SUITE tail-pure-fixtures
    lib/json-read-test.f
    lib/memory-test.f
    lib/vector-test.f
+   lib/byte-buffer-test.f
    lib/layout/box-test.f
    lib/fs-test.f
    tools/bootstrap-codegen-test.f
