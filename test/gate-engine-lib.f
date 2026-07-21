@@ -1057,8 +1057,7 @@ variable GE-DFULL-I                 \ copy/definition loop index
    buf i GE-DFULL-DIGITS
    buf 32 GE-DFULL-C  buf 59 GE-DFULL-C  buf 10 GE-DFULL-C ;
 
-: GE-DFULL-SOURCE ( -- ptr u8 n )                     \ generated define-past-cap program
-   DICT-CAP 1+ 16 * 32 + MEM:BYTES-ALLOC-LEN MEM:ALLOC-BYTES drop {: buf:ptr :}
+: GE-DFULL-WRITE ( ptr u8 CAD-NUM:alloc-byte-len -- ) {: buf:ptr len :}   \ generate the define-past-cap program into the scoped buffer, then persist it
    0 GE-DFULL-P !
    buf s" 0 set-check" GE-DFULL-S  buf 10 GE-DFULL-C
    0 GE-DFULL-I !
@@ -1066,12 +1065,11 @@ variable GE-DFULL-I                 \ copy/definition loop index
       buf GE-DFULL-I @ GE-DFULL-DEF
       GE-DFULL-I @ 1+ GE-DFULL-I !
    repeat
-   buf GE-DFULL-P @ ;
+   GE-SCRIPT-PATH GE-SCRIPT-U @ buf GE-DFULL-P @ WRITE-ALL ;
 
 : GE-DICT-FULL ( -- )
-   GE-DFULL-SOURCE {: src:ptr srcu:n :}
    GT-ROOT s" hb-dict-full.f" GE-SCRIPT-PATH JOIN-PATH GE-SCRIPT-U !
-   GE-SCRIPT-PATH GE-SCRIPT-U @ src srcu WRITE-ALL
+   DICT-CAP 1+ 16 * 32 + MEM:BYTES-ALLOC-LEN [: GE-DFULL-WRITE ;] MEM:WITH-BYTES
    GE-HB-RESET
    GE-SCRIPT-PATH GE-SCRIPT-U @ RUNTIME-DIRECT:FILE-LOADER
    77 s" dict-capacity exit rc" GE-EXPECT-RC
