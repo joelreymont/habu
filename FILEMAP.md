@@ -2314,6 +2314,15 @@ points stay listed.
 - `test/run-worker-debug.f` — resident prop/debug phase support and dispatch.
 - `test/run-worker-aot.f` — resident positive AOT phase support.
 - `test/run-worker-aot-neg.f` — resident negative AOT closure phase support.
+- `tools/nested-validation-rca-core.f` — checked reproducer for the resident
+  engine-validation fork, its nested validation pool, the exact candidate
+  capture, and the candidate's nested subject tree; writes generation, process
+  ID, process group, terminal foreground group, and stage rows to the gate
+  statistics log without replacing gate code.
+- `tools/nested-validation-rca.f` — command-line entry for the resident nested
+  validation reproducer.
+- `test/nested-validation-rca-test.f` — focused two-level fork and durable
+  process-step evidence coverage for the nested validation reproducer.
 - `test/run-files.f` — file sets that key native test suite caches.
 - `test/gate-common.f` — thin entry wrapper for native gate helper definitions.
 - `test/gate-common-lib.f` — side-effect-free native test-suite helper definitions.

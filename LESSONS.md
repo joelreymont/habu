@@ -1951,3 +1951,16 @@ fits.
   or disposal can invalidate it while the pointer remains copyable. Keep mutable
   backing addresses private, and give later consumers an immutable snapshot with
   a lease and completion acknowledgement.
+- **Process ancestry must survive an exec boundary explicitly.** A fork worker's
+  in-memory generation identifies its nested pool, but rebuilding the child
+  environment can drop that generation before an executable starts. Then all
+  of the executable's subject forks look like unrelated roots. Incident tools
+  need both generation and process ID at named stages so the last completed
+  source line can be tied to the process that stopped advancing.
+- **A background process group must not inherit a controlling terminal for a
+  noninteractive capture.** Linux job control can stop the whole group with
+  `SIGTTOU` when a nested test issues a terminal-changing `ioctl` on inherited
+  standard input. The capture parent then sees neither exit nor output and waits
+  until its ordinary timeout. Record process group and terminal foreground group
+  in hang diagnostics; a noninteractive worker needs an explicit standard-input
+  contract rather than the caller's accidental terminal.
