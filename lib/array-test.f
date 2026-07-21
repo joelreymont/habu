@@ -6,6 +6,8 @@ require lib/array.f
 require lib/test.f
 require test/checker-assert.f
 
+using ARRAY
+
 create AT-EMPTY
 create AT-ONE 42 ,
 create AT-NORMAL 3 , -1 , 4 , 4 , 2 ,
@@ -472,3 +474,5 @@ create AT-WORK 5 cells allot
 
 T-RESET
 AT-MAIN
+
+;using

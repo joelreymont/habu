@@ -115,8 +115,10 @@ sm_87 PTX module.
 
 ## Array
 
-`lib/array.f` provides checked helpers for cell arrays. Public array helpers use
-nominal role types: array lengths are `len`, valid indexes are `idx`, and range
+`lib/array.f` provides checked helpers for cell arrays in `package ARRAY`. Call
+them across package boundaries with the qualifier, for example `ARRAY:A-SUM` and
+`ARRAY:A@`; the tail names used in the descriptions below are the in-package
+names. Public array helpers use nominal role types: array lengths are `len`, valid indexes are `idx`, and range
 counts are `count`. Enter these roles explicitly with `>LEN`, `>IDX`, and
 `>COUNT` at call boundaries. `A@ ( ptr a len idx -- a )` fetches `arr[index]`,
 and `A! ( a ptr a len idx -- )` stores one element.

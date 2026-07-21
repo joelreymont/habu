@@ -6,6 +6,8 @@ require lib/test.f
 require lib/array.f
 require lib/table.f
 
+using ARRAY
+
 create TBLT-TABLE 12 cells allot
 
 : TBLT-CLEAR ( -- )
@@ -113,3 +115,5 @@ create TBLT-TABLE 12 cells allot
    T-REPORT ;
 
 TBLT-RUN
+
+;using

@@ -1,39 +1,39 @@
 schema_version	module	file	kind	word	effect	test	doc	owner	status	notes
 1	errors	lib/errors.f	module			lib/errors-test.f	docs/stdlib.md	stdlib-errors	planned	central named throw-code ranges and stdlib failure policy
 1	array	lib/array.f	module			lib/array-test.f	docs/stdlib.md	stdlib-array	active	checked array handles indexing bounds and scalar kernels
-1	array	lib/array.f	word	A-LEN	(n -- len)	lib/array-test.f	docs/stdlib.md	stdlib-array	published	refine a nonnegative raw integer into an array length role
-1	array	lib/array.f	word	A-IDX	(n -- idx)	lib/array-test.f	docs/stdlib.md	stdlib-array	published	refine a nonnegative raw integer into an array index role
-1	array	lib/array.f	word	A-COUNT	(n -- count)	lib/array-test.f	docs/stdlib.md	stdlib-array	published	refine a nonnegative raw integer into an array count role
-1	array	lib/array.f	word	A-CHECK-INDEX	(len idx --)	lib/array-test.f	docs/stdlib.md	stdlib-array	published	validate one zero-based index against an array length
-1	array	lib/array.f	word	A-CHECK-RANGE	(len idx count --)	lib/array-test.f	docs/stdlib.md	stdlib-array	published	validate start and count against an array length
-1	array	lib/array.f	word	A-CHECK-NONEMPTY	(len --)	lib/array-test.f	docs/stdlib.md	stdlib-array	published	require a positive array length
-1	array	lib/array.f	word	A-CHECK-WHOLE	(len --)	lib/array-test.f	docs/stdlib.md	stdlib-array	published	require a nonnegative whole-array length
-1	array	lib/array.f	word	A@	(ptr a len idx -- a)	lib/array-test.f	docs/stdlib.md	stdlib-array	published	fetch a checked cell-array element
-1	array	lib/array.f	word	A!	(a ptr a len idx --)	lib/array-test.f	docs/stdlib.md	stdlib-array	published	store a checked cell-array element
-1	array	lib/array.f	word	A+!	(n ptr a len idx --)	lib/array-test.f	docs/stdlib.md	stdlib-array	published	add a delta to array[index]
-1	array	lib/array.f	word	A-SWAP	(ptr a len idx idx --)	lib/array-test.f	docs/stdlib.md	stdlib-array	published	swap two checked cell-array elements
-1	array	lib/array.f	word	LAST-INDEX	(len -- idx)	lib/array-test.f	docs/stdlib.md	stdlib-array	published	return the last valid index for a non-empty length
-1	array	lib/array.f	word	MIRROR-INDEX	(len idx -- idx)	lib/array-test.f	docs/stdlib.md	stdlib-array	published	return the mirrored index len-1-index
-1	array	lib/array.f	word	EVEN?	(n -- bool)	lib/array-test.f	docs/stdlib.md	stdlib-array	published	return true when an integer is even
-1	array	lib/array.f	word	A-SUM	(ptr n len -- n)	lib/array-test.f	docs/stdlib.md	stdlib-array	published	sum numeric cell-array elements
-1	array	lib/array.f	word	A-MIN	(ptr n len -- n)	lib/array-test.f	docs/stdlib.md	stdlib-array	published	find the minimum numeric cell-array element
-1	array	lib/array.f	word	A-MAX	(ptr n len -- n)	lib/array-test.f	docs/stdlib.md	stdlib-array	published	find the maximum numeric cell-array element
-1	array	lib/array.f	word	A-COUNT-EVEN	(ptr n len -- count)	lib/array-test.f	docs/stdlib.md	stdlib-array	published	count even numeric cell-array elements
-1	array	lib/array.f	word	A-ARGMAX	(ptr n len -- idx)	lib/array-test.f	docs/stdlib.md	stdlib-array	published	find the first index of the maximum element
-1	array	lib/array.f	word	A-MAX-INDEX	(ptr n len -- idx)	lib/array-test.f	docs/stdlib.md	stdlib-array	published	alias for A-ARGMAX
-1	array	lib/array.f	word	A-REVERSE-RANGE!	(ptr a len idx count --)	lib/array-test.f	docs/stdlib.md	stdlib-array	published	reverse a checked subrange in place
-1	array	lib/array.f	word	A-REVERSE!	(ptr a len --)	lib/array-test.f	docs/stdlib.md	stdlib-array	published	reverse cell-array elements in place
-1	array	lib/array.f	word	A-PREFIX-SUM!	(ptr n len --)	lib/array-test.f	docs/stdlib.md	stdlib-array	published	replace numeric cells with prefix sums
-1	array	lib/array.f	word	A-RUNMAX!	(ptr n len --)	lib/array-test.f	docs/stdlib.md	stdlib-array	published	replace numeric cells with running maxima
-1	array	lib/array.f	word	A-FILL!	(a ptr a len --)	lib/array-test.f	docs/stdlib.md	stdlib-array	published	fill a cell array with one value
-1	array	lib/array.f	word	A-MAP!	(ptr a len [ a -- a ] --)	lib/array-test.f	docs/stdlib.md	stdlib-array	published	map one quotation over cells in place
-1	array	lib/array.f	word	A-MAPI!	(ptr a len [ idx a -- a ] --)	lib/array-test.f	docs/stdlib.md	stdlib-array	published	map index and value quotation over cells in place
-1	array	lib/array.f	word	A-FOLD	(ptr a len b [ b a -- b ] -- b)	lib/array-test.f	docs/stdlib.md	stdlib-array	published	fold cells with an accumulator
-1	array	lib/array.f	word	A-FOLDI	(ptr a len b [ b idx a -- b ] -- b)	lib/array-test.f	docs/stdlib.md	stdlib-array	published	fold indexes and cells with an accumulator
-1	array	lib/array.f	word	A-SCAN!	(ptr n len n [ n n -- n ] --)	lib/array-test.f	docs/stdlib.md	stdlib-array	published	write prefix scan values from an explicit seed
-1	array	lib/array.f	word	A-SCAN1!	(ptr n len [ n n -- n ] --)	lib/array-test.f	docs/stdlib.md	stdlib-array	published	write prefix scan values using the first cell as seed
-1	array	lib/array.f	word	A-FIND-INDEX	(ptr a len [ a -- bool ] -- option<idx>)	lib/array-test.f	docs/stdlib.md	stdlib-array	published	SOME first value-matching index, else NONE
-1	array	lib/array.f	word	A-FIND-INDEXI	(ptr a len [ idx a -- bool ] -- option<idx>)	lib/array-test.f	docs/stdlib.md	stdlib-array	published	SOME first index-aware match, else NONE
+1	array	lib/array.f	word	ARRAY:A-LEN	(n -- len)	lib/array-test.f	docs/stdlib.md	stdlib-array	published	refine a nonnegative raw integer into an array length role
+1	array	lib/array.f	word	ARRAY:A-IDX	(n -- idx)	lib/array-test.f	docs/stdlib.md	stdlib-array	published	refine a nonnegative raw integer into an array index role
+1	array	lib/array.f	word	ARRAY:A-COUNT	(n -- count)	lib/array-test.f	docs/stdlib.md	stdlib-array	published	refine a nonnegative raw integer into an array count role
+1	array	lib/array.f	word	ARRAY:A-CHECK-INDEX	(len idx --)	lib/array-test.f	docs/stdlib.md	stdlib-array	published	validate one zero-based index against an array length
+1	array	lib/array.f	word	ARRAY:A-CHECK-RANGE	(len idx count --)	lib/array-test.f	docs/stdlib.md	stdlib-array	published	validate start and count against an array length
+1	array	lib/array.f	word	ARRAY:A-CHECK-NONEMPTY	(len --)	lib/array-test.f	docs/stdlib.md	stdlib-array	published	require a positive array length
+1	array	lib/array.f	word	ARRAY:A-CHECK-WHOLE	(len --)	lib/array-test.f	docs/stdlib.md	stdlib-array	published	require a nonnegative whole-array length
+1	array	lib/array.f	word	ARRAY:A@	(ptr a len idx -- a)	lib/array-test.f	docs/stdlib.md	stdlib-array	published	fetch a checked cell-array element
+1	array	lib/array.f	word	ARRAY:A!	(a ptr a len idx --)	lib/array-test.f	docs/stdlib.md	stdlib-array	published	store a checked cell-array element
+1	array	lib/array.f	word	ARRAY:A+!	(n ptr a len idx --)	lib/array-test.f	docs/stdlib.md	stdlib-array	published	add a delta to array[index]
+1	array	lib/array.f	word	ARRAY:A-SWAP	(ptr a len idx idx --)	lib/array-test.f	docs/stdlib.md	stdlib-array	published	swap two checked cell-array elements
+1	array	lib/array.f	word	ARRAY:LAST-INDEX	(len -- idx)	lib/array-test.f	docs/stdlib.md	stdlib-array	published	return the last valid index for a non-empty length
+1	array	lib/array.f	word	ARRAY:MIRROR-INDEX	(len idx -- idx)	lib/array-test.f	docs/stdlib.md	stdlib-array	published	return the mirrored index len-1-index
+1	array	lib/array.f	word	ARRAY:EVEN?	(n -- bool)	lib/array-test.f	docs/stdlib.md	stdlib-array	published	return true when an integer is even
+1	array	lib/array.f	word	ARRAY:A-SUM	(ptr n len -- n)	lib/array-test.f	docs/stdlib.md	stdlib-array	published	sum numeric cell-array elements
+1	array	lib/array.f	word	ARRAY:A-MIN	(ptr n len -- n)	lib/array-test.f	docs/stdlib.md	stdlib-array	published	find the minimum numeric cell-array element
+1	array	lib/array.f	word	ARRAY:A-MAX	(ptr n len -- n)	lib/array-test.f	docs/stdlib.md	stdlib-array	published	find the maximum numeric cell-array element
+1	array	lib/array.f	word	ARRAY:A-COUNT-EVEN	(ptr n len -- count)	lib/array-test.f	docs/stdlib.md	stdlib-array	published	count even numeric cell-array elements
+1	array	lib/array.f	word	ARRAY:A-ARGMAX	(ptr n len -- idx)	lib/array-test.f	docs/stdlib.md	stdlib-array	published	find the first index of the maximum element
+1	array	lib/array.f	word	ARRAY:A-MAX-INDEX	(ptr n len -- idx)	lib/array-test.f	docs/stdlib.md	stdlib-array	published	alias for A-ARGMAX
+1	array	lib/array.f	word	ARRAY:A-REVERSE-RANGE!	(ptr a len idx count --)	lib/array-test.f	docs/stdlib.md	stdlib-array	published	reverse a checked subrange in place
+1	array	lib/array.f	word	ARRAY:A-REVERSE!	(ptr a len --)	lib/array-test.f	docs/stdlib.md	stdlib-array	published	reverse cell-array elements in place
+1	array	lib/array.f	word	ARRAY:A-PREFIX-SUM!	(ptr n len --)	lib/array-test.f	docs/stdlib.md	stdlib-array	published	replace numeric cells with prefix sums
+1	array	lib/array.f	word	ARRAY:A-RUNMAX!	(ptr n len --)	lib/array-test.f	docs/stdlib.md	stdlib-array	published	replace numeric cells with running maxima
+1	array	lib/array.f	word	ARRAY:A-FILL!	(a ptr a len --)	lib/array-test.f	docs/stdlib.md	stdlib-array	published	fill a cell array with one value
+1	array	lib/array.f	word	ARRAY:A-MAP!	(ptr a len [ a -- a ] --)	lib/array-test.f	docs/stdlib.md	stdlib-array	published	map one quotation over cells in place
+1	array	lib/array.f	word	ARRAY:A-MAPI!	(ptr a len [ idx a -- a ] --)	lib/array-test.f	docs/stdlib.md	stdlib-array	published	map index and value quotation over cells in place
+1	array	lib/array.f	word	ARRAY:A-FOLD	(ptr a len b [ b a -- b ] -- b)	lib/array-test.f	docs/stdlib.md	stdlib-array	published	fold cells with an accumulator
+1	array	lib/array.f	word	ARRAY:A-FOLDI	(ptr a len b [ b idx a -- b ] -- b)	lib/array-test.f	docs/stdlib.md	stdlib-array	published	fold indexes and cells with an accumulator
+1	array	lib/array.f	word	ARRAY:A-SCAN!	(ptr n len n [ n n -- n ] --)	lib/array-test.f	docs/stdlib.md	stdlib-array	published	write prefix scan values from an explicit seed
+1	array	lib/array.f	word	ARRAY:A-SCAN1!	(ptr n len [ n n -- n ] --)	lib/array-test.f	docs/stdlib.md	stdlib-array	published	write prefix scan values using the first cell as seed
+1	array	lib/array.f	word	ARRAY:A-FIND-INDEX	(ptr a len [ a -- bool ] -- option<idx>)	lib/array-test.f	docs/stdlib.md	stdlib-array	published	SOME first value-matching index, else NONE
+1	array	lib/array.f	word	ARRAY:A-FIND-INDEXI	(ptr a len [ idx a -- bool ] -- option<idx>)	lib/array-test.f	docs/stdlib.md	stdlib-array	published	SOME first index-aware match, else NONE
 1	table	lib/table.f	module			lib/table-test.f	docs/stdlib.md	stdlib-table	active	checked fixed-capacity cell table record helpers
 1	table	lib/table.f	word	TBL:CELL-COUNT	(count count -- count)	lib/table-test.f	docs/stdlib.md	stdlib-table	published	return total cell count for a fixed-capacity table layout
 1	table	lib/table.f	word	TBL:FIELD	(ptr a count count idx idx -- ptr a)	lib/table-test.f	docs/stdlib.md	stdlib-table	published	return a checked table field address

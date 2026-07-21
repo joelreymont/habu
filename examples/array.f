@@ -5,6 +5,8 @@
 
 create AE-DATA AE-LEN cells allot
 
+using ARRAY
+
 : AE-LOAD ( -- )
    1 AE-DATA AE-LEN >LEN 0 >IDX A!
    2 AE-DATA AE-LEN >LEN 1 >IDX A!
@@ -47,3 +49,5 @@ create AE-DATA AE-LEN cells allot
    T-REPORT ;
 
 AE-MAIN
+
+;using

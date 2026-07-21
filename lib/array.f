@@ -3,6 +3,10 @@
 require lib/errors.f
 require lib/adt/option.f                        \ option<idx> for A-FIND-INDEX / A-FIND-INDEXI (switchover wave A)
 
+package ARRAY
+
+public
+
 : A-LEN ( n -- len )
    dup 0 < if E-A-BOUNDS throw then
    >LEN ;
@@ -195,3 +199,5 @@ require lib/adt/option.f                        \ option<idx> for A-FIND-INDEX /
       i A-IDX arr len i A-IDX A@ q execute if i >IDX OPTION:SOME unloop exit then
    loop
    OPTION:NONE ;
+
+;package
