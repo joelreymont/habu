@@ -31,6 +31,7 @@ require lib/ptx/sentinel.f
 require lib/ptx/cuda-driver.f
 require lib/ptx/cuda-scope.f
 require lib/test.f
+require maki/eval/active-target.f
 
 create LL-PATH 64 allot
 create LL-KN   32 allot          \ kernel name
@@ -60,6 +61,7 @@ variable LL-DX variable LL-DY variable LL-ABITS variable LL-NV variable LL-RBUF
    ;MATCH ;
 
 : LL-PTXAS ( -- n )
+   ATGT:LABEL$ PTXTC:TC-ARCH!                        \ assembler arch from the probed active target
    LL-QO $1000 >LEN LL-QE $1000 >LEN PTXTC:ASSEMBLE ;
 
 : LL-SETUP ( -- )                                 \ ctx + module (private cubin) + function

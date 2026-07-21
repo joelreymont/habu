@@ -43,6 +43,7 @@ require lib/ptx/toolchain.f
 require lib/ptx/sentinel.f
 require lib/ptx/cuda-driver.f
 require lib/ptx/cuda-scope.f
+require maki/eval/active-target.f
 
 package DEVGOLD
 
@@ -143,6 +144,7 @@ create SP-X SP-BYTES allot    create SP-Y SP-BYTES allot
 : EMIT-FUSED ( -- )  ARGV-BASE ARGV-V4+  s" tools/ptx/fused-relu-cg.f" >LEN PROC-ARGV+  SPAWN-EMIT ;
 : EMIT-BW ( -- )     ARGV-BASE ARGV-V4+  s" tools/ptx/saxpy-cg.f"       >LEN PROC-ARGV+  SPAWN-EMIT ;
 : ASSEMBLE-OK ( -- )                             \ ptxas-assemble PTXTC:PTX$ -> cubin, assert rc 0 (stderr surfaced)
+   ATGT:LABEL$ PTXTC:TC-ARCH!                     \ assembler arch from the probed active target
    ASM-OUT CAP-ERR-CAP >LEN  ASM-ERR CAP-ERR-CAP >LEN  PTXTC:ASSEMBLE  PTXTC:ASM-REPORT 0 T= ;
 
 \ ---- CUDA context + module load/unload (shared across the four kernels) ------

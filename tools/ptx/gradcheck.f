@@ -17,6 +17,7 @@ require lib/ptx/toolchain.f
 require lib/ptx/sentinel.f
 require lib/ptx/cuda-driver.f
 require lib/ptx/cuda-scope.f
+require maki/eval/active-target.f
 
 create GC-PATH 64 allot  create GC-KN 32 allot
 variable GC-DEV variable GC-CTX variable GC-MOD variable GC-FUNC
@@ -47,6 +48,7 @@ create GC-QOUT $1000 allot create GC-QERR $1000 allot
 : GC-EMIT-EXPBWD ( -- n ) GC-PRELUDE  s" tools/ptx/expbwd-cg.f" >LEN PROC-ARGV+  GC-RUN-EMIT ;
 
 : GC-PTXAS ( -- n )
+   ATGT:LABEL$ PTXTC:TC-ARCH!                        \ assembler arch from the probed active target
    GC-QOUT $1000 >LEN GC-QERR $1000 >LEN PTXTC:ASSEMBLE ;
 
 \ ctx + DX/DY are long-lived across all four kernels; the run scope owns them so a throw

@@ -27,6 +27,7 @@ require lib/ptx/toolchain.f
 require lib/ptx/sentinel.f
 require lib/ptx/cuda-driver.f
 require lib/ptx/cuda-scope.f
+require maki/eval/active-target.f
 
 4 constant GCK
 create GC-P1 64 allot
@@ -68,6 +69,7 @@ variable GC-FWD variable GC-BWD variable GC-dX variable GC-dDY variable GC-dO va
    ;MATCH ;
 
 : GC-PTXAS ( -- n )
+   ATGT:LABEL$ PTXTC:TC-ARCH!                        \ assembler arch from the probed active target
    GC-QO $1000 >LEN GC-QE $1000 >LEN PTXTC:ASSEMBLE ;
 
 \ load the ONE combined cubin and pull BOTH function handles from the SAME module

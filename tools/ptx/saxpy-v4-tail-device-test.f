@@ -11,6 +11,7 @@ require lib/ptx/toolchain.f
 require lib/ptx/sentinel.f
 require lib/ptx/cuda-scope.f
 require tools/ptx/bench.f
+require maki/eval/active-target.f
 
 package PTXV4TAIL
 
@@ -74,6 +75,7 @@ variable CN-N                                     \ current CHECK-N element coun
    ;MATCH ;
 
 : RUN-PTXAS ( -- n )
+   ATGT:LABEL$ PTXTC:TC-ARCH!                        \ assembler arch from the probed active target
    PTXAS-OUT ERR-CAP >LEN PTXAS-ERR ERR-CAP >LEN PTXTC:ASSEMBLE ;
 
 : PTXAS-V4-SAXPY ( -- n )

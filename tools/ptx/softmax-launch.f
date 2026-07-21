@@ -27,6 +27,7 @@ require lib/ptx/toolchain.f
 require lib/ptx/sentinel.f
 require lib/ptx/cuda-driver.f
 require lib/ptx/cuda-scope.f
+require maki/eval/active-target.f
 
 create SL-PATH 64 allot  create SL-KN 32 allot
 create SL-HIN 32 allot  create SL-HOUT 32 allot
@@ -63,6 +64,7 @@ variable SL-DIN variable SL-DOUT variable SL-KV
    ;MATCH ;
 
 : SL-PTXAS ( -- n )
+   ATGT:LABEL$ PTXTC:TC-ARCH!                        \ assembler arch from the probed active target
    SL-QO $1000 >LEN SL-QE $1000 >LEN PTXTC:ASSEMBLE ;
 
 : SL-PUT ( -- )                                       \ in = [1,2,3,4, 1,1,1,1]

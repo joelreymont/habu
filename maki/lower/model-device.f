@@ -46,6 +46,7 @@ require lib/ptx/toolchain.f
 require maki/device-artifacts.f
 require maki/cad.f
 require maki/lower/golden.f
+require maki/eval/active-target.f
 
 package MAKI
 
@@ -82,7 +83,9 @@ create LMDM-RP   FS-PATH-CAP allot  variable LMDM-RP-U
    LMDM-ERR erru LEN>N  rc RC>N  PTXTC:EMIT-GUARD          \ surface child stderr + throw on nonzero
    PTXTC:PTX$ LMDM-OUT outu LEN>N WRITE-ALL ;
 
-: LMDM-PTXAS ( -- n )  LMDM-QO $1000 >LEN LMDM-QE $2000 >LEN PTXTC:ASSEMBLE ;
+: LMDM-PTXAS ( -- n )
+   ATGT:LABEL$ PTXTC:TC-ARCH!                             \ assembler arch from the probed active target
+   LMDM-QO $1000 >LEN LMDM-QE $2000 >LEN PTXTC:ASSEMBLE ;
 
 \ ---- per-region cubin path under a private model dir -------------------------
 \ RGN>RAW is the one per-region path render boundary (region<rid>.cubin)

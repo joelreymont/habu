@@ -11,6 +11,7 @@ require lib/ptx/toolchain.f
 require lib/ptx/sentinel.f
 require lib/ptx/cuda-driver.f
 require lib/ptx/cuda-scope.f
+require maki/eval/active-target.f
 
 package ACCDEV        \ AD-* names are package-local: avoid colliding with autograd AD-* (lib/ptx/ad-dag.f) in the shared spawned suite image
 
@@ -40,6 +41,7 @@ create AD-QOUT $1000 allot create AD-QERR $1000 allot
    ;MATCH ;
 
 : AD-PTXAS ( -- n )
+   ATGT:LABEL$ PTXTC:TC-ARCH!                        \ assembler arch from the probed active target
    AD-QOUT $1000 >LEN AD-QERR $1000 >LEN PTXTC:ASSEMBLE ;
 
 \ launch x=2.0 y=3.0 n=4 -> y[0] f32 bits

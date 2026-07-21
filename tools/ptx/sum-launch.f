@@ -19,6 +19,7 @@ require lib/ptx/toolchain.f
 require lib/ptx/sentinel.f
 require lib/ptx/cuda-driver.f
 require lib/ptx/cuda-scope.f
+require maki/eval/active-target.f
 
 create RS-PATH 64 allot  create RS-KN 32 allot
 create RS-HIN 32 allot  create RS-HOUT 32 allot
@@ -56,6 +57,7 @@ variable RS-DIN variable RS-DOUT variable RS-KV
    ;MATCH ;
 
 : RS-PTXAS ( -- n )
+   ATGT:LABEL$ PTXTC:TC-ARCH!                        \ assembler arch from the probed active target
    RS-QO $1000 >LEN RS-QE $1000 >LEN PTXTC:ASSEMBLE ;
 
 \ Two NONUNIFORM rows so an index/broadcast bug cannot pass on all-equal data:

@@ -10,6 +10,7 @@ require lib/ptx/toolchain.f
 require lib/ptx/sentinel.f
 require lib/ptx/cuda-driver.f
 require lib/ptx/cuda-scope.f
+require maki/eval/active-target.f
 
 create RA-PATH 64 allot  create RA-KN 32 allot
 variable RA-DEV variable RA-CTX variable RA-MOD variable RA-FUNC
@@ -30,6 +31,7 @@ create RA-O $4000 allot  create RA-E $1000 allot  create RA-QO $1000 allot creat
    ;MATCH ;
 
 : RA-PTXAS ( -- n )
+   ATGT:LABEL$ PTXTC:TC-ARCH!                        \ assembler arch from the probed active target
    RA-QO $1000 >LEN RA-QE $1000 >LEN PTXTC:ASSEMBLE ;
 
 : RA-RUN ( -- n )   \ launch 256 threads, out=0 -> out[0] f32 bits (= 256.0)

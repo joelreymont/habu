@@ -14,6 +14,7 @@ require lib/ptx/cg.f
 require lib/ptx/toolchain.f
 require lib/ptx/cuda-scope.f
 require tools/ptx/bench.f
+require maki/eval/active-target.f
 
 package PTXSCATTERGRAD
 
@@ -76,6 +77,7 @@ variable NVAR
    ;MATCH ;
 
 : RUN-PTXAS ( -- n )
+   ATGT:LABEL$ PTXTC:TC-ARCH!                        \ assembler arch from the probed active target
    PTXAS-OUT ERR-CAP >LEN PTXAS-ERR ERR-CAP >LEN PTXTC:ASSEMBLE ;
 
 : PTXAS-FANIN ( -- n )

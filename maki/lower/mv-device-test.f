@@ -27,6 +27,7 @@ require lib/ptx/toolchain.f
 require maki/device-artifacts.f
 require maki/cad.f
 require maki/lower/golden.f
+require maki/eval/active-target.f
 
 package MAKI
 
@@ -49,7 +50,9 @@ create LMD-QO  $1000 allot  create LMD-QE  $2000 allot
    LMD-ERR erru LEN>N  rc RC>N  PTXTC:EMIT-GUARD           \ surface stderr + throw on a nonzero child
    PTXTC:PTX$ LMD-OUT outu LEN>N WRITE-ALL ;
 
-: LMD-PTXAS ( -- n )  LMD-QO $1000 >LEN LMD-QE $2000 >LEN PTXTC:ASSEMBLE ;
+: LMD-PTXAS ( -- n )
+   ATGT:LABEL$ PTXTC:TC-ARCH!                          \ assembler arch from the probed active target
+   LMD-QO $1000 >LEN LMD-QE $2000 >LEN PTXTC:ASSEMBLE ;
 
 \ ---- per-element evidence (device value | host value rounded to f32) --------
 : LMD-FP ( r -- )  SB-RESET 6 FMT:SB-FIX SB$ type ;
