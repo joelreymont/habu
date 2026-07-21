@@ -8,11 +8,12 @@ require src/habu/aot-closure.f
 LOWER-CERT-HOOK:INSTALL
 
 \ Unit + registry coverage for the direct-branch closure capability: the decoder
-\ recognizes B/BL and excludes conditional/compare branches, and the closed
-\ helper allowlist (FINDPTR) resolves ONLY a registered engine helper's exact
-\ code entry - never a raw address, a non-entry offset, or an ordinary
-\ (non-helper) record's entry. Those negatives are the security boundary: an
-\ unregistered direct-branch target is not followed and still fails closed.
+\ recognizes B/BL and excludes conditional/compare branches, and the direct-branch
+\ resolver (FINDADDR-PTR) resolves a direct-BL target to its record ONLY by exact
+\ code entry - a registered engine helper's entry and an ordinary word's entry both
+\ resolve (both carry a record), while a non-entry offset and an unregistered
+\ (no-record) address resolve to nothing. Those negatives are the security boundary:
+\ an unregistered direct-branch target is not followed and still fails closed.
 package AOT-BRANCH-TEST
 
 create CODE 4 allot
@@ -43,10 +44,10 @@ public
    $17FFFFFF CODE 4 - s" AOT backward B target" TARGET=
    $97FFFFFE CODE 8 - s" AOT backward BL target" TARGET=
    HELPER-REC XREF-FOUND? s" AOT registered helper present" EXPECT
-   HELPER-REC dup REC-CODE-PTR@ FINDPTR = s" AOT registered helper resolved by direct target" EXPECT
-   HELPER-REC REC-CODE-PTR@ 4 + FINDPTR XREF-FOUND? 0= s" AOT non-entry address excluded" EXPECT
-   CODE FINDPTR XREF-FOUND? 0= s" AOT unregistered address excluded" EXPECT
-   0 REC REC-CODE-PTR@ FINDPTR XREF-FOUND? 0= s" AOT non-helper record entry excluded" EXPECT ;
+   HELPER-REC dup REC-CODE-PTR@ FINDADDR-PTR = s" AOT registered helper resolved by direct target" EXPECT
+   HELPER-REC REC-CODE-PTR@ 4 + FINDADDR-PTR XREF-FOUND? 0= s" AOT non-entry address excluded" EXPECT
+   CODE FINDADDR-PTR XREF-FOUND? 0= s" AOT unregistered address excluded" EXPECT
+   0 REC dup REC-CODE-PTR@ FINDADDR-PTR = s" AOT ordinary word resolved by direct target" EXPECT ;
 
 ;package
 

@@ -508,10 +508,11 @@ ENGINE-ERROR:SEAL-PACKAGE constant SLV-PWID-RC       \ protected-WID table full
 
 \ The two engine-reserved OWNER-API wordlists are permanently protected, so a
 \ checked program cannot forge a record into them with set-current. Without this,
-\ `2 set-current : X ;` would stamp X with OWNER-API-PRI-WID -- the marker the
-\ ahead-of-time closure walker (src/habu/aot-closure.f FINDPTR) treats as a
-\ registered engine helper -- and a crafted image could reach that forged code
-\ by a direct branch.
+\ `2 set-current : X ;` would stamp X with OWNER-API-PRI-WID -- the marker that
+\ seals a record as a system-private engine helper and hides it from raw word
+\ searches -- and a crafted image could reach that forged code by a direct branch,
+\ which the ahead-of-time closure walker resolves to any record by its exact code
+\ entry (src/habu/aot-closure.f FINDADDR-PTR).
 : SLV-OWNER-PRI-FORGE$ ( -- ptr u8 n )       \ publish into the private engine-API wordlist (helper marker)
    SB-RESET
    s" 2 set-current : OWNERFORGE ( -- ) ;" SB-APPEND SLV-LF

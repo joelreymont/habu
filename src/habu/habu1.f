@@ -73,9 +73,10 @@ variable FP-A  variable FP-U  variable FP-XT
 \ by a direct branch (a shared span guard, a bounds loop). REGISTER records it as
 \ a sealed, system-private dictionary record spanning [start-addr, end-addr) and
 \ stamps it with OWNER-API-PRI-WID. That stamp is the closed registration marker:
-\ it hides the helper from raw word searches (BSWL) and is the ONLY thing the
-\ ahead-of-time closure walker will follow a direct branch into (aot-closure.f
-\ FINDPTR). No unmarked address is ever followed, so the AOT image can never pull
+\ it hides the helper from raw word searches (BSWL) and gives it a sealed dictionary
+\ record, so the ahead-of-time closure walker resolves a direct branch into the
+\ helper by its exact code entry like any record (aot-closure.f FINDADDR-PTR). Only a
+\ record's exact code entry is ever followed, so the AOT image can never pull
 \ in unintended code. DNAME folds the same marker into a record's baked name/flags
 \ cell so the seed dictionary carries the internal bit for helper records.
 package ENGINE-HELPER

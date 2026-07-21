@@ -166,20 +166,6 @@ variable FX
 : REC-CODE-PTR@ ( ptr a -- ptr u8 )  REC-CODE-PTR @ ;
 : REC-WID@ ( ptr a -- n ) {: r:ptr :}  r 40 + @ ;
 
-\ Resolve a registered engine helper by its EXACT code entry: a record whose WID
-\ is OWNER-API-PRI-WID (stamped by ENGINE-HELPER:REGISTER) and whose code entry
-\ equals the target. A raw address, a non-entry offset, or an ordinary word's
-\ entry is not matched. (Under universal direct-BL the closure walk itself follows
-\ every call by exact entry via FINDADDR/SCAN-DIRECT; this narrower helper-only
-\ predicate is exercised by the AOT registry security test.)
-: FINDPTR ( ptr u8 -- ptr a ) {: t:ptr :}  0 FX !
-   BEGIN FX @ ndict@ < WHILE
-      FX @ REC dup REC-WID@ OWNER-API-PRI-WID = IF
-         dup REC-CODE-PTR@ t = IF exit THEN
-      THEN drop
-      FX @ 1+ FX !
-   REPEAT
-   XREF-NULL ;
 : FINDMAIN ( -- ptr a )  0 FX !
    BEGIN FX @ ndict@ < WHILE  FX @ REC MAIN? IF FX @ REC exit THEN  FX @ 1+ FX ! REPEAT  XREF-NULL ;
 
