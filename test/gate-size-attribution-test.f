@@ -224,9 +224,13 @@ $4000 constant MACOS-DATA-CONST  \ __DATA_CONST page (__got + zero fill)
 \ BL call sites, and the restore-path dead x16 setup shaves -392 of engine text, CODELEN
 \ 135252 -> 134860 (floor 84 -> 3788); the shave crosses the 4 KiB floor so the whole
 \ file drops one page (LINUX-TOTAL 143552 -> 139456).
-134860 constant LINUX-CODE-TEXT   \ CODELEN: every emitter-phase row (baked-source incl.)
+\ 2026-07-21 re-measured at the merged fixpoint after the Mac's field-generation
+\ landing (shared engine source, spark owes the Linux rows per the per-target
+\ asymmetry): +48 of engine text, CODELEN 134860 -> 134908 (floor 3788 -> 3836);
+\ same 4 KiB page, LINUX-TOTAL unchanged.
+134908 constant LINUX-CODE-TEXT   \ CODELEN: every emitter-phase row (baked-source incl.)
 192 constant LINUX-RW             \ ELF read-write segment tail: DYNAMIC + GOT (ELF-RW-SZ)
-3788 constant LINUX-FLOOR-DIST     \ code above the 4 KiB floor: the page-recovery shave
+3836 constant LINUX-FLOOR-DIST     \ code above the 4 KiB floor: the page-recovery shave
 139456 constant LINUX-TOTAL       \ = FILE-SIZE bin/hb = GB-SIZE-BASELINE-LINUX
 
 : PAGE-UP ( n n -- n ) {: v:n page:n :}
