@@ -1,9 +1,11 @@
 ---
 title: "BPE: strict reentrant UTF-8 scalars"
-status: active
+status: closed
 priority: 1
 issue-type: task
 created-at: "2026-07-21T19:22:10+02:00"
+closed-at: "2026-07-21T22:44:11.506589+02:00"
+close-reason: The strict reentrant UTF-8 decoder and malformed-input property coverage passed the full native gate on b925e8e427ab.
 ---
 
 Problem: `BPE-CP@` and the matcher use package-global cursor/scratch cells and

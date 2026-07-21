@@ -1,9 +1,11 @@
 ---
 title: "BPE: pinned Unicode class data"
-status: active
+status: closed
 priority: 1
 issue-type: task
 created-at: "2026-07-21T19:22:10+02:00"
+closed-at: "2026-07-21T22:44:11.502394+02:00"
+close-reason: Pinned Unicode 16 data, checked generation, independent verification, and complete scalar classification passed the full native gate on b925e8e427ab.
 ---
 
 Problem: the current Letter/Number table is bounded by blocks exercised by one
