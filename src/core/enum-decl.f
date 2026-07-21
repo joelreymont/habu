@@ -89,9 +89,6 @@ package ENUM-DECL
 7119 constant E-DERIVE      \ unknown or not-yet-supported derive feature
 7101 constant E-CASE        \ family name is not a lowercase canonical tail
 
-26 constant ARITY-CAP       \ positional params are letters a..z (docs §9.2)
-97 constant ASCII-A
-122 constant ASCII-Z
 110 constant ASCII-N
 102 constant ASCII-F
 114 constant ASCII-R
@@ -130,6 +127,8 @@ TRUSTED: SUMV-N@ ( -- n ) SUMV-N @ ;    \ variant-cursor high-water (variant ran
 TRUSTED: CON-N ( -- n ) CC-N ;          \ single-letter n : signed cell
 TRUSTED: CON-BOOL ( -- n ) CC-BOOL ;    \ single-letter f : boolean/flag
 TRUSTED: CON-R ( -- n ) CC-R ;          \ single-letter r : real/float
+TRUSTED: DECL-PARAM-COUNT ( -- n ) TFAM-DECL-PARAM-COUNT ;
+TRUSTED: DECL-CHAR>PARAM ( n -- n bool ) TFAM-DECL-CHAR>PARAM ;
 TRUSTED: LT-STACK ( -- n ) TL-STACK-CELL-TAG ;   \ default layout policy code
 TRUSTED: LT-PACKED ( -- n ) TL-PACKED-TAG ;      \ packed-tag layout policy code
 TRUSTED: DV-EQ ( -- n ) DRV-EQ ;                 \ derive feature code: equality
@@ -211,7 +210,7 @@ ED-RESET
    2dup CANON? 0= IF 2drop E-CASE throw THEN
    NAME-RESERVED? IF E-NAME throw THEN ;
 
-\ --- mode-selection / arity token: a small decimal in [0, ARITY-CAP].
+\ --- mode-selection / arity token: a decimal within the shared alphabet.
 : ED-DIGIT? ( n -- bool ) dup 47 > swap 58 < and ;
 : ED-ALLDIG? ( ptr u8 n -- bool )    \ true when every byte is a digit (mode selector)
    dup 0= IF 2drop NO EXIT THEN
@@ -234,7 +233,7 @@ ED-RESET
 : PARSE-ARITY ( ptr u8 n -- n )
    dup 0= IF 2drop E-ARITY throw THEN
    2dup ED-ALLDIG? 0= IF 2drop E-ARITY throw THEN
-   DEC dup ARITY-CAP > IF drop E-ARITY throw THEN ;
+   DEC dup DECL-PARAM-COUNT > IF drop E-ARITY throw THEN ;
 
 \ ---------------------------------------------------------------------------
 \ field type resolution -> a schema node (docs §8): concrete cell types (n/f/r +
@@ -250,19 +249,14 @@ ED-RESET
    id FAM-LINEAR? IF 0 NO EXIT THEN
    id YES ;
 
-: REQUIRE-LETTER ( n -- n )
-   dup ASCII-A >= over ASCII-Z <= and IF EXIT THEN
-   drop E-PAYLOAD throw ;
-
-: PARAMETER-LETTER? ( n -- bool )
-   ASCII-A - ED-ARITY @ < ;
-
 : LETTER-TYPE ( ptr u8 n -- n )         \ single-char type: param / n / f / r
-   drop c@ REQUIRE-LETTER
-   dup PARAMETER-LETTER? IF ASCII-A - ED-SCH-PARAM EXIT THEN
+   drop c@
    dup ASCII-N = IF drop CON-N ED-SCH-CON EXIT THEN
    dup ASCII-F = IF drop CON-BOOL ED-SCH-CON EXIT THEN
-   ASCII-R = IF CON-R ED-SCH-CON EXIT THEN
+   dup ASCII-R = IF drop CON-R ED-SCH-CON EXIT THEN
+   DECL-CHAR>PARAM 0= IF drop E-PAYLOAD throw THEN
+   dup ED-ARITY @ < IF ED-SCH-PARAM EXIT THEN
+   drop
    E-PAYLOAD throw ;
 
 : RESOLVE-TYPE ( ptr u8 n -- n )        \ type token(s) -> schema node

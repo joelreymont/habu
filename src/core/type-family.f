@@ -59,6 +59,32 @@ variable TF-I                 \ private scan/copy index
 variable TF-PUB               \ private first-public-match accumulator (-1 = none)
 
 \ ---------------------------------------------------------------------------
+\ declaration parameter spelling.  This is the one reversible alphabet used by
+\ every declaration parser and signature generator.  The concrete scalar tokens
+\ f, n, and r are deliberately absent, so their meaning never depends on arity.
+\ The registry may store wider internal schemas; this count bounds only the
+\ source-language spelling of positional declaration parameters.
+\ ---------------------------------------------------------------------------
+23 constant TFAM-DECL-PARAM-COUNT
+create TFAM-DECL-PARAM-ALPHABET
+   97 c,  98 c,  99 c,  100 c, 101 c,
+   103 c, 104 c, 105 c, 106 c, 107 c,
+   108 c, 109 c, 111 c, 112 c, 113 c,
+   115 c, 116 c, 117 c, 118 c, 119 c,
+   120 c, 121 c, 122 c,
+
+: TFAM-DECL-PARAM>CHAR ( n -- n bool ) {: index:n :}
+   index 0 < index TFAM-DECL-PARAM-COUNT >= or IF 0 RES-FALSE EXIT THEN
+   TFAM-DECL-PARAM-ALPHABET index + c@ RES-TRUE ;
+
+: TFAM-DECL-CHAR>PARAM ( n -- n bool ) {: char:n :}
+   0 BEGIN dup TFAM-DECL-PARAM-COUNT < WHILE
+      TFAM-DECL-PARAM-ALPHABET over + c@ char = IF RES-TRUE EXIT THEN
+      1 +
+   REPEAT
+   drop 0 RES-FALSE ;
+
+\ ---------------------------------------------------------------------------
 \ shared string pool. Names are interned as byte offsets; offsets stay valid
 \ across a pool grow, so no stored offset ever needs rebasing.
 \ ---------------------------------------------------------------------------
@@ -1894,7 +1920,7 @@ variable TFSR-ID   variable TFSR-FLAG
 \ the step; open-arg parametric results stay one conservative logical cell and
 \ expand at the boundary through the LOGHID coercion.
 \ ---------------------------------------------------------------------------
-26 constant TFC-VAR-CAP          \ positional params are letters a..z (TDECL-ARITY-CAP parity)
+26 constant TFC-VAR-CAP          \ internal construct scratch; not the declaration spelling cap
 create TFC-VARS TFC-VAR-CAP cells allot
 variable TFC-I   variable TFC-J   variable TFC-ROW
 

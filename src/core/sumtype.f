@@ -31,7 +31,6 @@
 7118 constant E-TDECL-CAP       \ declaration body exceeds TDECL-CAP (item 13 C2)
 7119 constant E-TDECL-DERIVE    \ unknown, deferred, or kind-gated DERIVE clause (derive S1)
 
-26 constant TDECL-ARITY-CAP     \ positional params are letters a..z (docs §9.2)
 $1000 constant TDECL-CAP        \ buffered declaration body bytes
 
 \ --- declaration context (set before TDECL-RUN, read by bodies + diagnostics).
@@ -235,11 +234,11 @@ variable TDA-I
 : TDECL-ARITY ( ptr u8 n -- n ) {: a:ptr u:n :}
    u 0= IF a u s" missing arity" E-TDECL-ARITY TDECL-THROW THEN
    a u TDECL-DEC? 0= u 2 > or IF
-      a u s" arity must be a decimal, at most 26 (a..z)" E-TDECL-ARITY TDECL-THROW
+      a u s" arity must be a decimal, at most 23 parameters" E-TDECL-ARITY TDECL-THROW
    THEN
    a u TDECL-DEC
-   dup TDECL-ARITY-CAP > IF
-      drop a u s" arity must be a decimal, at most 26 (a..z)" E-TDECL-ARITY TDECL-THROW
+   dup TFAM-DECL-PARAM-COUNT > IF
+      drop a u s" arity must be a decimal, at most 23 parameters" E-TDECL-ARITY TDECL-THROW
    THEN ;
 
 \ --- package scope: a declaration registers in the active checker package with
@@ -266,11 +265,14 @@ variable TDECL-FAM-ARITY
 
 : TDECL-LETTER ( ptr u8 n -- n ) {: a:ptr u:n :}
    a c@ {: c:n :}
-   c LOWER? 0= IF a u s" unknown payload type" E-TDECL-PAYLOAD TDECL-THROW THEN
-   c 97 - TDECL-FAM-ARITY @ < IF c 97 - SCHEMA-PARAM EXIT THEN
    c 110 = IF CC-N SCHEMA-CON EXIT THEN
    c 102 = IF CC-BOOL SCHEMA-CON EXIT THEN
    c 114 = IF CC-R SCHEMA-CON EXIT THEN
+   c TFAM-DECL-CHAR>PARAM 0= IF
+      drop a u s" unknown payload type" E-TDECL-PAYLOAD TDECL-THROW
+   THEN
+   dup TDECL-FAM-ARITY @ < IF SCHEMA-PARAM EXIT THEN
+   drop
    a u s" unknown payload type" E-TDECL-PAYLOAD TDECL-THROW ;
 
 \ item 16 boxed sub-slice 1: a DIRECT self-family reference is a payload token
@@ -525,13 +527,17 @@ variable TDV-PAY-N
 \ standard high-water rollback leaves the registries byte-identical, and the
 \ authoritative structural check sits beside the PRODUCT field one (PF-SCHEMA-OK?)
 \ rather than living only as an emergent property of the TDECL-LETTER parse gate.
-\ The offending letter is rendered from the reported parameter index (a..z).
+\ The offending letter is rendered through the shared declaration alphabet.
 create TDV-BADLETTER 1 allot
 : TDECL-VPAY-ARITY ( n n n -- ) {: fam:n base:n count:n :}
    0 BEGIN dup count < WHILE
       base over + SCHEMA-ROOT@ fam swap TFAM-SCH-ARITY   \ ( i bad-idx )
       dup 0 >= IF
-         97 + TDV-BADLETTER c!
+         TFAM-DECL-PARAM>CHAR 0= IF
+            drop TDN-A @ TDN-U @ s" payload parameter has no declaration spelling"
+            E-TDECL-PAYLOAD TDECL-THROW
+         THEN
+         TDV-BADLETTER c!
          TDV-BADLETTER 1 s" payload parameter out of family arity"
          E-TDECL-PAYLOAD TDECL-THROW
       THEN
@@ -980,7 +986,11 @@ variable TDGEN-K    variable TDGEN-M    variable TDGEN-B
 : TDGEN-DEC ( n -- ) {: v:n :}           \ non-negative decimal (tag literal)
    v 10 >= IF v 10 / RECURSE THEN
    v 10 mod 48 + TDGEN-C, ;
-: TDGEN-LETTER ( n -- ) 97 + TDGEN-C, ;  \ positional param -> a..z
+: TDGEN-LETTER ( n -- )                   \ positional param -> shared spelling
+   TFAM-DECL-PARAM>CHAR 0= IF
+      drop s" sumtype: declaration parameter index out of range" 76 die
+   THEN
+   TDGEN-C, ;
 
 \ a family-application field (SC-APP, arity 0 in the S1 tier) renders as its
 \ signature reference: PKG:tail when the family lives in a package (the sig

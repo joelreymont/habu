@@ -146,10 +146,21 @@ compact-variant = variant-name
 `type-name`, `field-name`, `variant-name`, and every family tail inside a
 `type-expr` are lowercase. Package qualifiers remain uppercase project package
 names. `arity` is mandatory for `STRUCTURE` and full `ENUM`; arity parameters
-are the positional lowercase tokens `a`, `b`, and so on. Compact `ENUM`
-omits both arity and header clauses and is implicitly arity zero. Header clauses
-occur after the arity in full declarations. A clause may occur at most once;
-`DERIVE` features are order-independent and duplicates reject.
+use this zero-based ordered alphabet:
+
+```text
+a b c d e g h i j k l m o p q s t u v w x y z
+```
+
+The alphabet has 23 entries, so 23 is the declaration-language arity cap. The
+letters `f`, `n`, and `r` are excluded because they always name the concrete
+boolean, integer, and real scalar types, regardless of declared arity. Parsers,
+schema parameter indices, generated signatures, and arity diagnostics all use
+the same reversible mapping; internal type-family storage is not limited by this
+source spelling cap. Compact `ENUM` omits both arity and header clauses and is
+implicitly arity zero. Header clauses occur after the arity in full declarations.
+A clause may occur at most once; `DERIVE` features are order-independent and
+duplicates reject.
 
 The compact `ENUM name v0 v1 ... ;ENUM` form is legal only when every variant
 is payloadless. The first token after the enum name selects the form: a decimal
@@ -924,11 +935,13 @@ Parameter names are positional:
 arity 1 => a
 arity 2 => a b
 arity 3 => a b c
+arity 6 => a b c d e g
 ```
 
-Arity is stored in growable schema lists. Do not bake `PARAM-MAX-ARGS` into the
-type-family design; the old four-argument checker storage is an implementation
-limit to remove.
+The complete alphabet and its 23-parameter declaration cap are specified in
+§2.1. Arity is stored in growable schema lists. Do not bake the source spelling
+cap or `PARAM-MAX-ARGS` into internal type-family storage; the old four-argument
+checker storage is an implementation limit to remove.
 
 ### 9.3 Pre-cutover payloadless `ENUM`
 
@@ -1146,8 +1159,8 @@ until width instantiation exists for variable-width parameter kinds.
 
 Field names are their own tail namespace (single letters such as `x` are
 legal, lowercase canon enforced, duplicates reject). Field and variant payload
-types are positional letter params within arity, concrete cell types, `ptr T`,
-or a closed, non-linear, arity-0 layout family. The family form becomes an
+types use the §2.1 positional parameter alphabet within arity, concrete cell
+types, `ptr T`, or a closed, non-linear, arity-0 layout family. The family form becomes an
 SC-APP carrying the resolved family id. Its physical width is the referenced
 family's full `WIDTH`, so `PF.SLOT`, product width, sum padding, constructors,
 destructors, and `MATCH` preserve nested layouts rather than counting the

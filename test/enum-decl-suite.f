@@ -63,7 +63,10 @@ TRUSTED: SCH-TAG@ ( n -- n ) SCHEMA-TAG@ ;
 TRUSTED: SCH-A@ ( n -- n ) SCHEMA-A@ ;
 TRUSTED: PACKED# ( -- n ) TL-PACKED-TAG ;
 TRUSTED: SCHCON# ( -- n ) SCH-CON ;
+TRUSTED: SCHPARAM# ( -- n ) SCH-PARAM ;
+TRUSTED: CCF# ( -- n ) CC-BOOL ;
 TRUSTED: CCN# ( -- n ) CC-N ;
+TRUSTED: CCR# ( -- n ) CC-R ;
 
 \ --- registry snapshot, so a reject can be proven byte-identical and the identity
 \ test can re-run an identical declaration against a fresh registry (family id
@@ -152,6 +155,29 @@ TFAMN@ FID @ 1 + T=                                   \ family registered (param
 s" boxe" FAMID F-FLD-COUNT 1 T=                       \ the parameter field committed
 
 \ ---------------------------------------------------------------------------
+\ 4b. The full ENUM parser shares the declaration parameter alphabet with the
+\     core declaration parser.  Its sixth parameter is g, f/n/r remain concrete
+\     scalar types at arity 23, and z names zero-based parameter 22.
+\ ---------------------------------------------------------------------------
+TYPE-FIELD:COUNT B !
+s" ENUM-DECL:ED-RUN emap 23 VARIANT values FIELD pa a FIELD pb b FIELD pc c FIELD pd d FIELD pe e FIELD pg g FIELD flag f FIELD integer n FIELD real r FIELD last z ;VARIANT ;ENUM" EV
+B @ 5 + TYPE-FIELD:SCHEMA@ SCH-ROOT@ NODE !
+NODE @ SCH-TAG@ SCHPARAM# T=
+NODE @ SCH-A@ 5 T=                                    \ g is declaration parameter 5
+B @ 6 + TYPE-FIELD:SCHEMA@ SCH-ROOT@ NODE !
+NODE @ SCH-TAG@ SCHCON# T=
+NODE @ SCH-A@ CCF# T=                                 \ f remains bool, not a parameter
+B @ 7 + TYPE-FIELD:SCHEMA@ SCH-ROOT@ NODE !
+NODE @ SCH-TAG@ SCHCON# T=
+NODE @ SCH-A@ CCN# T=                                 \ n remains int, not a parameter
+B @ 8 + TYPE-FIELD:SCHEMA@ SCH-ROOT@ NODE !
+NODE @ SCH-TAG@ SCHCON# T=
+NODE @ SCH-A@ CCR# T=                                 \ r remains real, not a parameter
+B @ 9 + TYPE-FIELD:SCHEMA@ SCH-ROOT@ NODE !
+NODE @ SCH-TAG@ SCHPARAM# T=
+NODE @ SCH-A@ 22 T=                                   \ z is declaration parameter 22
+
+\ ---------------------------------------------------------------------------
 \ 5. Compact event stream: DECL then one VARIANT + VARIANT-END pair per variant,
 \    with no arity header (compact is implicitly arity zero).
 \ ---------------------------------------------------------------------------
@@ -234,7 +260,7 @@ s" ENUM-DECL:ED-RUN ech POLICY packed-tag red ;ENUM" TRY 7107 T=         \ heade
 s" ENUM-DECL:ED-RUN ecp red FIELD y n ;ENUM" TRY 7107 T=                 \ positional/named payload in compact
 s" ENUM-DECL:ED-RUN emv 0 VARIANT a FIELD x n ;ENUM" TRY 7107 T=         \ missing ;VARIANT
 s" ENUM-DECL:ED-RUN eme red green" TRY 7107 T=                           \ missing ;ENUM
-s" ENUM-DECL:ED-RUN ear 99 VARIANT a ;VARIANT ;ENUM" TRY 7108 T=         \ arity above the a..z cap
+s" ENUM-DECL:ED-RUN ear 24 VARIANT a ;VARIANT ;ENUM" TRY 7108 T=         \ arity above the shared 23 cap
 s" ENUM-DECL:ED-RUN eempty ;ENUM" TRY 7107 T=                            \ an enum needs a variant
 s" ENUM-DECL:ED-RUN enum red ;ENUM" TRY 7110 T=                          \ reserved opener keyword as a name
 s" ENUM-DECL:ED-RUN Bad red ;ENUM" TRY 7101 T=                           \ upper-case family name (case)
@@ -244,6 +270,7 @@ s" ENUM-DECL:ED-RUN ecf 0 VARIANT a FIELD Zed n ;VARIANT ;ENUM" TRY 7101 T=    \
 s" ENUM-DECL:ED-RUN ebs 0 VARIANT a FIELD x nope ;VARIANT ;ENUM" TRY 7109 T=   \ unresolved field type
 s" ENUM-DECL:ED-RUN euc 0 VARIANT a FIELD x Q ;VARIANT ;ENUM" TRY 7109 T=      \ upper-case single-letter type
 s" ENUM-DECL:ED-RUN epa 0 VARIANT a FIELD x a ;VARIANT ;ENUM" TRY 7109 T=      \ parameter outside declared arity
+s" ENUM-DECL:ED-RUN epg 6 VARIANT a FIELD x h ;VARIANT ;ENUM" TRY 7109 T=      \ parameter 6 is outside arity 6
 
 \ ---------------------------------------------------------------------------
 \ 12. A duplicate family name rejects (E-TFAM-DUP 7102 from TFAM-DECL).

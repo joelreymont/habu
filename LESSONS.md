@@ -1934,3 +1934,9 @@ fits.
   hidden limit as generated tables grow. Thread the index and prior bound
   through one checked iterative loop, and pass table accessors as typed
   quotations so every table shares the same constant-depth canonical proof.
+- **A declaration alphabet must be one reversible table.** If parsers derive
+  parameter indices with character arithmetic while generators derive spellings
+  separately, a reserved scalar token can silently change meaning between the
+  schema and its generated signature. Keep one index-to-character table, derive
+  character-to-index by searching it, and make every parser, generator, and
+  arity gate consume that shared boundary.

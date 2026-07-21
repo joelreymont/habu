@@ -21,6 +21,9 @@ variable #CASE
    got want <> if
       T-FAIL s" assert: expected " type want . s" got " type got . cr
    then ;
+: T-TRUE ( bool -- ) {: got:bool :}
+   #CASE @ 1 + #CASE !
+   got 0= if T-FAIL s" assert: expected true" type cr then ;
 : T$= ( ptr u8 n ptr u8 n -- ) {: ga:ptr gu:n wa:ptr wu:n :}
    #CASE @ 1 + #CASE !
    gu wu <> if
@@ -67,6 +70,11 @@ variable TDB-PF
 \ whitebox boundary (dot habu-hb-crash-bare-c5be6634): checker-internal colon
 \ words probed at top level go through named trusted shims.
 TRUSTED: TWX-CHECKER-FIND-USIG ( ptr u8 n -- bool ) CHECKER-FIND-USIG ;
+TRUSTED: TWX-EFFECT-QUERY ( ptr u8 n -- bool ) EFFECT-QUERY ;
+TRUSTED: TWX-EFFECT-DIN-N ( -- n ) EFFECT-DIN-N ;
+TRUSTED: TWX-EFFECT-DOUT-N ( -- n ) EFFECT-DOUT-N ;
+TRUSTED: TWX-EFFECT-DIN-FAM ( n -- n ) EFFECT-DIN-FAM ;
+TRUSTED: TWX-EFFECT-DOUT-FAM ( n -- n ) EFFECT-DOUT-FAM ;
 TRUSTED: TWX-FRESH ( -- n ) FRESH ;
 TRUSTED: TWX-HIDDEN-PARAM? ( n -- bool ) HIDDEN-PARAM? ;
 TRUSTED: TWX-HIDDEN-SLOT@ ( n -- n ) HIDDEN-SLOT@ ;
@@ -251,13 +259,131 @@ TDF @ TFAM-VAR-START@ 2 + TWX-SUMV-TAG@ 2 T=
 \ arity above the old 4-arg cap parses through growable schema storage.
 SUMTYPE tdwide 8
   VARIANT lo a ;VARIANT
-  VARIANT hi h ;VARIANT
+  VARIANT hi i ;VARIANT
 ;SUMTYPE
 s" " s" tdwide" TWX-TFAM-FIND-IN TDOK ! TDF !
 TDOK @ -1 T=
 TDF @ TFAM-ARITY@ 8 T=
 TDF @ TFAM-VAR-START@ 1 + TWX-SUMV-SCH-START@ TWX-SCHEMA-ROOT@ TWX-SCHEMA-A@ 7 T=
 s" TDOK-WIDE ( tdwide<n,n,n,n,n,n,n,n> -- tdwide<n,n,n,n,n,n,n,n> )" CHECK-QUIET-CANDIDATE! -1 T=
+
+\ Every legal declaration arity generates both PRODUCT words.  The last field
+\ of each row selects that arity's last positional character, so the series
+\ exercises every mapping position rather than repeatedly selecting parameter 0.
+PRODUCT tdga01 1 FIELD v a ;PRODUCT
+PRODUCT tdga02 2 FIELD v b ;PRODUCT
+PRODUCT tdga03 3 FIELD v c ;PRODUCT
+PRODUCT tdga04 4 FIELD v d ;PRODUCT
+PRODUCT tdga05 5 FIELD v e ;PRODUCT
+PRODUCT tdga06 6
+  FIELD p00 a FIELD p01 b FIELD p02 c
+  FIELD p03 d FIELD p04 e FIELD p05 g
+;PRODUCT
+PRODUCT tdga07 7 FIELD v h ;PRODUCT
+PRODUCT tdga08 8 FIELD v i ;PRODUCT
+PRODUCT tdga09 9 FIELD v j ;PRODUCT
+PRODUCT tdga10 10 FIELD v k ;PRODUCT
+PRODUCT tdga11 11 FIELD v l ;PRODUCT
+PRODUCT tdga12 12 FIELD v m ;PRODUCT
+PRODUCT tdga13 13 FIELD v o ;PRODUCT
+PRODUCT tdga14 14 FIELD v p ;PRODUCT
+PRODUCT tdga15 15 FIELD v q ;PRODUCT
+PRODUCT tdga16 16 FIELD v s ;PRODUCT
+PRODUCT tdga17 17 FIELD v t ;PRODUCT
+PRODUCT tdga18 18 FIELD v u ;PRODUCT
+PRODUCT tdga19 19 FIELD v v ;PRODUCT
+PRODUCT tdga20 20 FIELD v w ;PRODUCT
+PRODUCT tdga21 21 FIELD v x ;PRODUCT
+PRODUCT tdga22 22 FIELD v y ;PRODUCT
+
+\ The six-parameter MEM-shaped reproducer uses a,b,c,d,e,g.  Its last field is
+\ schema parameter index 5, every generated input remains polymorphic, and both
+\ generated directions preserve exact positions.
+s" " s" tdga06" TWX-TFAM-FIND-IN TDOK ! TDF !
+TDF @ TYPE-FIELD:NO-VARIANT s" p05" TYPE-FIELD:FIND TDOK ! TDX !
+TDOK @ -1 T=
+TDX @ TYPE-FIELD:SCHEMA@ TWX-SCHEMA-ROOT@ TWX-SCHEMA-PARAM? -1 T=
+TDX @ TYPE-FIELD:SCHEMA@ TWX-SCHEMA-ROOT@ TWX-SCHEMA-A@ 5 T=
+: TDT-TDGA06-MAKE-EFFECT ( -- )
+   s" TDGA06:MAKE" TWX-EFFECT-QUERY T-TRUE
+   TWX-EFFECT-DIN-N 6 T=   TWX-EFFECT-DOUT-N 1 T=
+   0 TWX-EFFECT-DIN-FAM 0 T=  1 TWX-EFFECT-DIN-FAM 0 T=
+   2 TWX-EFFECT-DIN-FAM 0 T=  3 TWX-EFFECT-DIN-FAM 0 T=
+   4 TWX-EFFECT-DIN-FAM 0 T=  5 TWX-EFFECT-DIN-FAM 0 T=
+   0 TWX-EFFECT-DOUT-FAM 0 T= ;
+: TDT-TDGA06-UNMAKE-EFFECT ( -- )
+   s" TDGA06:UNMAKE" TWX-EFFECT-QUERY T-TRUE
+   TWX-EFFECT-DIN-N 1 T=   TWX-EFFECT-DOUT-N 6 T=
+   0 TWX-EFFECT-DIN-FAM 0 T=
+   0 TWX-EFFECT-DOUT-FAM 0 T=  1 TWX-EFFECT-DOUT-FAM 0 T=
+   2 TWX-EFFECT-DOUT-FAM 0 T=  3 TWX-EFFECT-DOUT-FAM 0 T=
+   4 TWX-EFFECT-DOUT-FAM 0 T=  5 TWX-EFFECT-DOUT-FAM 0 T= ;
+TDT-TDGA06-MAKE-EFFECT
+TDT-TDGA06-UNMAKE-EFFECT
+s" TDGA06-RT ( n bool char u8 i64 r -- n bool char u8 i64 r ) TDGA06:MAKE TDGA06:UNMAKE" CHECK-QUIET-CANDIDATE! -1 T=
+s" TDGA06-BAD-MAKE ( bool n char u8 i64 r -- tdga06<n,bool,char,u8,i64,r> ) TDGA06:MAKE" CHECK-QUIET-CANDIDATE! 0 T=
+s" TDGA06-BAD-UNMAKE ( tdga06<n,bool,char,u8,i64,r> -- bool n char u8 i64 r ) TDGA06:UNMAKE" CHECK-QUIET-CANDIDATE! 0 T=
+
+\ The maximum declaration arity keeps 23 independent schema positions.  Its
+\ generated MAKE/UNMAKE pair also executes as a physical round trip.
+TYPE-FIELD:COUNT TDTC !
+PRODUCT tdga23 23
+  FIELD p00 a FIELD p01 b FIELD p02 c FIELD p03 d FIELD p04 e
+  FIELD p05 g FIELD p06 h FIELD p07 i FIELD p08 j FIELD p09 k
+  FIELD p10 l FIELD p11 m FIELD p12 o FIELD p13 p FIELD p14 q
+  FIELD p15 s FIELD p16 t FIELD p17 u FIELD p18 v FIELD p19 w
+  FIELD p20 x FIELD p21 y FIELD p22 z
+;PRODUCT
+TDTC @      TYPE-FIELD:SCHEMA@ TWX-SCHEMA-ROOT@ TWX-SCHEMA-A@ 0 T=
+TDTC @ 1 +  TYPE-FIELD:SCHEMA@ TWX-SCHEMA-ROOT@ TWX-SCHEMA-A@ 1 T=
+TDTC @ 2 +  TYPE-FIELD:SCHEMA@ TWX-SCHEMA-ROOT@ TWX-SCHEMA-A@ 2 T=
+TDTC @ 3 +  TYPE-FIELD:SCHEMA@ TWX-SCHEMA-ROOT@ TWX-SCHEMA-A@ 3 T=
+TDTC @ 4 +  TYPE-FIELD:SCHEMA@ TWX-SCHEMA-ROOT@ TWX-SCHEMA-A@ 4 T=
+TDTC @ 5 +  TYPE-FIELD:SCHEMA@ TWX-SCHEMA-ROOT@ TWX-SCHEMA-A@ 5 T=
+TDTC @ 6 +  TYPE-FIELD:SCHEMA@ TWX-SCHEMA-ROOT@ TWX-SCHEMA-A@ 6 T=
+TDTC @ 7 +  TYPE-FIELD:SCHEMA@ TWX-SCHEMA-ROOT@ TWX-SCHEMA-A@ 7 T=
+TDTC @ 8 +  TYPE-FIELD:SCHEMA@ TWX-SCHEMA-ROOT@ TWX-SCHEMA-A@ 8 T=
+TDTC @ 9 +  TYPE-FIELD:SCHEMA@ TWX-SCHEMA-ROOT@ TWX-SCHEMA-A@ 9 T=
+TDTC @ 10 + TYPE-FIELD:SCHEMA@ TWX-SCHEMA-ROOT@ TWX-SCHEMA-A@ 10 T=
+TDTC @ 11 + TYPE-FIELD:SCHEMA@ TWX-SCHEMA-ROOT@ TWX-SCHEMA-A@ 11 T=
+TDTC @ 12 + TYPE-FIELD:SCHEMA@ TWX-SCHEMA-ROOT@ TWX-SCHEMA-A@ 12 T=
+TDTC @ 13 + TYPE-FIELD:SCHEMA@ TWX-SCHEMA-ROOT@ TWX-SCHEMA-A@ 13 T=
+TDTC @ 14 + TYPE-FIELD:SCHEMA@ TWX-SCHEMA-ROOT@ TWX-SCHEMA-A@ 14 T=
+TDTC @ 15 + TYPE-FIELD:SCHEMA@ TWX-SCHEMA-ROOT@ TWX-SCHEMA-A@ 15 T=
+TDTC @ 16 + TYPE-FIELD:SCHEMA@ TWX-SCHEMA-ROOT@ TWX-SCHEMA-A@ 16 T=
+TDTC @ 17 + TYPE-FIELD:SCHEMA@ TWX-SCHEMA-ROOT@ TWX-SCHEMA-A@ 17 T=
+TDTC @ 18 + TYPE-FIELD:SCHEMA@ TWX-SCHEMA-ROOT@ TWX-SCHEMA-A@ 18 T=
+TDTC @ 19 + TYPE-FIELD:SCHEMA@ TWX-SCHEMA-ROOT@ TWX-SCHEMA-A@ 19 T=
+TDTC @ 20 + TYPE-FIELD:SCHEMA@ TWX-SCHEMA-ROOT@ TWX-SCHEMA-A@ 20 T=
+TDTC @ 21 + TYPE-FIELD:SCHEMA@ TWX-SCHEMA-ROOT@ TWX-SCHEMA-A@ 21 T=
+TDTC @ 22 + TYPE-FIELD:SCHEMA@ TWX-SCHEMA-ROOT@ TWX-SCHEMA-A@ 22 T=
+: TDGA23-RT ( n n n n n n n n n n n n n n n n n n n n n n n -- n n n n n n n n n n n n n n n n n n n n n n n )
+   TDGA23:MAKE TDGA23:UNMAKE ;
+1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 TDGA23-RT
+23 T= 22 T= 21 T= 20 T= 19 T= 18 T= 17 T= 16 T= 15 T= 14 T= 13 T= 12 T=
+11 T= 10 T= 9 T= 8 T= 7 T= 6 T= 5 T= 4 T= 3 T= 2 T= 1 T=
+
+\ f, n, and r remain concrete bool/int/real fields even at arity 23.  Only z
+\ resolves to schema parameter 22; wrong concrete positions stay rejected.
+PRODUCT tdscalar 23
+  FIELD flag f FIELD integer n FIELD real r FIELD last z
+;PRODUCT
+s" " s" tdscalar" TWX-TFAM-FIND-IN TDOK ! TDF !
+TDF @ TYPE-FIELD:NO-VARIANT s" flag" TYPE-FIELD:FIND TDOK ! TDX !
+TDX @ TYPE-FIELD:SCHEMA@ TWX-SCHEMA-ROOT@ TWX-SCHEMA-CON? -1 T=
+TDX @ TYPE-FIELD:SCHEMA@ TWX-SCHEMA-ROOT@ TWX-SCHEMA-A@ CC-BOOL T=
+TDF @ TYPE-FIELD:NO-VARIANT s" integer" TYPE-FIELD:FIND TDOK ! TDX !
+TDX @ TYPE-FIELD:SCHEMA@ TWX-SCHEMA-ROOT@ TWX-SCHEMA-A@ CC-N T=
+TDF @ TYPE-FIELD:NO-VARIANT s" real" TYPE-FIELD:FIND TDOK ! TDX !
+TDX @ TYPE-FIELD:SCHEMA@ TWX-SCHEMA-ROOT@ TWX-SCHEMA-A@ CC-R T=
+TDF @ TYPE-FIELD:NO-VARIANT s" last" TYPE-FIELD:FIND TDOK ! TDX !
+TDX @ TYPE-FIELD:SCHEMA@ TWX-SCHEMA-ROOT@ TWX-SCHEMA-PARAM? -1 T=
+TDX @ TYPE-FIELD:SCHEMA@ TWX-SCHEMA-ROOT@ TWX-SCHEMA-A@ 22 T=
+s" TDSCAL-MAKE ( bool n r char -- tdscalar<n,n,n,n,n,n,n,n,n,n,n,n,n,n,n,n,n,n,n,n,n,n,char> ) TDSCALAR:MAKE" CHECK-QUIET-CANDIDATE! -1 T=
+s" TDSCAL-UNMAKE ( tdscalar<n,n,n,n,n,n,n,n,n,n,n,n,n,n,n,n,n,n,n,n,n,n,char> -- bool n r char ) TDSCALAR:UNMAKE" CHECK-QUIET-CANDIDATE! -1 T=
+s" TDSCAL-BADF ( n n r char -- tdscalar<n,n,n,n,n,n,n,n,n,n,n,n,n,n,n,n,n,n,n,n,n,n,char> ) TDSCALAR:MAKE" CHECK-QUIET-CANDIDATE! 0 T=
+s" TDSCAL-BADN ( bool bool r char -- tdscalar<n,n,n,n,n,n,n,n,n,n,n,n,n,n,n,n,n,n,n,n,n,n,char> ) TDSCALAR:MAKE" CHECK-QUIET-CANDIDATE! 0 T=
+s" TDSCAL-BADR ( bool n n char -- tdscalar<n,n,n,n,n,n,n,n,n,n,n,n,n,n,n,n,n,n,n,n,n,n,char> ) TDSCALAR:MAKE" CHECK-QUIET-CANDIDATE! 0 T=
 
 \ mixed payload widths: slots = max across variants.
 SUMTYPE tdmix 2
@@ -1119,7 +1245,8 @@ s" TYPEFAMILY tdfoo 2" E-TFAM-DUP TDT-NEG
 s" TYPEFAMILY tdnoar" E-TDECL-ARITY TDT-NEG
 s" TYPEFAMILY tdarx x" E-TDECL-ARITY TDT-NEG
 s" TYPEFAMILY tdarneg -1" E-TDECL-ARITY TDT-NEG
-s" TYPEFAMILY tdarbig 27" E-TDECL-ARITY TDT-NEG
+s" TYPEFAMILY tdarbig 24" E-TDECL-ARITY TDT-NEG
+s" PRODUCT tdarprod 24 FIELD v z ;PRODUCT" E-TDECL-ARITY TDT-NEG
 s" SUMTYPE tdarv VARIANT ok a ;VARIANT ;SUMTYPE" E-TDECL-ARITY TDT-NEG
 \ unterminated body (no ;SUMTYPE) reports the declaration packet via SUM-NOEND (S2).
 s" SUMTYPE tdnoend 1 VARIANT ok a ;VARIANT" E-TDECL-SYNTAX TDT-NEG

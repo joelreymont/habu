@@ -756,12 +756,19 @@ create PS-CSIG-BUF PS-SIG-CAP allot   variable PS-CSIG-W
    u 0 ?do  a i + c@ PS-CSIG-C,  loop ;
 : PS-CSIG$ ( -- ptr u8 n ) PS-CSIG-BUF PS-CSIG-W @ ;
 
+TRUSTED: PS-DECL-PARAM>CHAR ( n -- n bool ) TFAM-DECL-PARAM>CHAR ;
+
+: PS-PARAM-CHAR ( n -- n )
+   PS-DECL-PARAM>CHAR 0= IF
+      drop s" public-signatures: declaration parameter index out of range" PS-DIE
+   THEN ;
+
 : PS-FAM-ARGS ( n -- )                   \ append `<a,b,..>` for arity>0 (nothing at 0)
    dup 0= IF drop EXIT THEN {: ar:n :}
    60 PS-CSIG-C,                          \ '<'
    ar 0 ?do
       i 0 > IF 44 PS-CSIG-C, THEN         \ ','
-      i 97 + PS-CSIG-C,                   \ 'a'+i
+      i PS-PARAM-CHAR PS-CSIG-C,
    loop
    62 PS-CSIG-C, ;                        \ '>'
 

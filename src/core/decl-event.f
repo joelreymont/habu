@@ -94,14 +94,10 @@ package DECL-EVENT
 7163 constant E-DEV-DUP-POLICY  \ a second POLICY clause in one declaration
 7164 constant E-DEV-DUP-DERIVE  \ the same DERIVE feature recorded twice in one declaration
 
-\ The shared "malformed arity" code + cap. Values mirror sumtype.f
-\ (E-TDECL-ARITY 7108, TDECL-ARITY-CAP 26, docs §9.2 positional params a..z);
-\ they are re-declared here rather than referenced because those globals are
-\ pre-hook and do not survive the checked engine's fixpoint self-rebuild, and
-\ because the legacy sumtype.f owning them is removed by the type-DSL cutover.
-\ Unify into a shared declaration-codes module when that lands (dot: chain).
+\ The shared malformed-arity code mirrors sumtype.f.  The bound itself comes
+\ from type-family.f's canonical declaration alphabet through the normal
+\ post-hook seam below, so front ends and the event validator cannot drift.
 7108 constant E-DEV-ARITY       \ arity outside [0, cap] — the shared malformed-arity code
-26 constant DEV-ARITY-CAP       \ positional params are letters a..z (docs §9.2)
 
 72 constant DEV-BUG-RC          \ internal invariant violation (bad id / oob): fail-closed die
 
@@ -115,6 +111,7 @@ TRUSTED: DEV-FLD-COMMIT ( n -- ) PF-COMMIT ;
 TRUSTED: DEV-FLD-ROLLBACK ( n -- ) PF-ROLLBACK ;
 TRUSTED: DEV-FLD-COUNT ( -- n ) TYPE-FIELD:COUNT ;
 TRUSTED: DEV-SUMV-ADD ( n ptr u8 n n n n n -- n ) SUMV-ADD ;
+TRUSTED: DEV-DECL-PARAM-COUNT ( -- n ) TFAM-DECL-PARAM-COUNT ;
 
 \ ---------------------------------------------------------------------------
 \ event record arena (interleaved cells, pointer-free: KIND/FAM/VAR/FLD are all
@@ -268,7 +265,7 @@ variable DEV-TX-SERIAL
 
 : DEV-ARITY ( n n n -- n ) {: tok:n fam:n arity:n :}   \ header: arity value (shared bound)
    tok DEV-TX-REQUIRE
-   arity 0 < arity DEV-ARITY-CAP > or IF E-DEV-ARITY throw THEN
+   arity 0 < arity DEV-DECL-PARAM-COUNT > or IF E-DEV-ARITY throw THEN
    DEV-K-ARITY fam arity DEV-NO-FIELD DEV-EMIT
    tok ;
 

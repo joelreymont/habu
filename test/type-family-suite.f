@@ -18,6 +18,9 @@ variable #CASE
    got want <> if
       T-FAIL s" assert: expected " type want . s" got " type got . cr
    then ;
+: T-TRUE ( bool -- )
+   #CASE @ 1 + #CASE !
+   0= if T-FAIL s" assert: expected true" type cr then ;
 : T$= ( ptr u8 n ptr u8 n -- ) {: ga:ptr gu:n wa:ptr wu:n :}
    #CASE @ 1 + #CASE !
    gu wu <> if
@@ -109,6 +112,16 @@ TRUSTED: TWX-TF-CTOR-PKG$ ( ptr u8 n ptr u8 n -- ptr u8 n ) TF-CTOR-PKG$ ;
 TRUSTED: TWX-TF-HIDDEN? ( ptr u8 n -- bool ) TF-HIDDEN? ;
 TRUSTED: TWX-TF-INTERN ( ptr u8 n -- n ) TF-INTERN ;
 TRUSTED: TWX-TF-OFF$ ( n n -- ptr u8 n ) TF-OFF$ ;
+TRUSTED: TWX-DECL-PARAM-COUNT ( -- n ) TFAM-DECL-PARAM-COUNT ;
+TRUSTED: TWX-DECL-PARAM>CHAR ( n -- n bool ) TFAM-DECL-PARAM>CHAR ;
+TRUSTED: TWX-DECL-CHAR>PARAM ( n -- n bool ) TFAM-DECL-CHAR>PARAM ;
+: TDP-INDEX>CHAR ( n n -- ) {: index:n char:n :}
+   index TWX-DECL-PARAM>CHAR T-TRUE char T= ;
+: TDP-CHAR>INDEX ( n n -- ) {: index:n char:n :}
+   char TWX-DECL-CHAR>PARAM T-TRUE index T= ;
+: TDP-PAIR ( n n -- ) {: index:n char:n :}
+   index char TDP-INDEX>CHAR
+   index char TDP-CHAR>INDEX ;
 TRUSTED: TWX-TFAM-CELL? ( n -- bool ) TFAM-CELL? ;
 TRUSTED: TWX-TFAM-DECL ( ptr u8 n n ptr u8 n n n -- n ) TFAM-DECL ;
 TRUSTED: TWX-TFAM-ENUM? ( n -- bool ) TFAM-ENUM? ;
@@ -178,6 +191,43 @@ PF-TX-REC-PTR-MASK 0 T=
 LAY-REC 5 cells T=
 LAY-REC-ALIGN CELL T=
 LAY-REC-PTR-MASK 0 T=
+
+\ Declaration parameters use one reserved-safe positional alphabet.  These
+\ direct whitebox checks pin both directions and every ordered character;
+\ f/n/r are concrete scalar tokens and therefore never map to a parameter.
+TWX-DECL-PARAM-COUNT 23 T=
+0  $61 TDP-PAIR
+1  $62 TDP-PAIR
+2  $63 TDP-PAIR
+3  $64 TDP-PAIR
+4  $65 TDP-PAIR
+5  $67 TDP-PAIR
+6  $68 TDP-PAIR
+7  $69 TDP-PAIR
+8  $6A TDP-PAIR
+9  $6B TDP-PAIR
+10 $6C TDP-PAIR
+11 $6D TDP-PAIR
+12 $6F TDP-PAIR
+13 $70 TDP-PAIR
+14 $71 TDP-PAIR
+15 $73 TDP-PAIR
+16 $74 TDP-PAIR
+17 $75 TDP-PAIR
+18 $76 TDP-PAIR
+19 $77 TDP-PAIR
+20 $78 TDP-PAIR
+21 $79 TDP-PAIR
+22 $7A TDP-PAIR
+0 TWX-DECL-PARAM>CHAR nip -1 T=
+22 TWX-DECL-PARAM>CHAR nip -1 T=
+-1 TWX-DECL-PARAM>CHAR nip 0 T=
+23 TWX-DECL-PARAM>CHAR nip 0 T=
+$66 TWX-DECL-CHAR>PARAM nip 0 T=   \ f is bool
+$6E TWX-DECL-CHAR>PARAM nip 0 T=   \ n is int
+$72 TWX-DECL-CHAR>PARAM nip 0 T=   \ r is real
+$41 TWX-DECL-CHAR>PARAM nip 0 T=   \ uppercase is never positional
+$30 TWX-DECL-CHAR>PARAM nip 0 T=   \ non-letter is never positional
 TF-RBF-REC 6 cells T=
 TF-RBF-REC-ALIGN CELL T=
 TF-RBF-REC-PTR-MASK 0 T=

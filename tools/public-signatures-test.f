@@ -475,6 +475,11 @@ variable PST-NUM-U
    PST-OUT outu s" $F0" PST-WORD$ CONTAINS? TTRUE   \ lowercase hex, uppercased row
    PST-OUT outu s" ..." PST-WORD$ CONTAINS? TFALSE ;
 
+: PST-TEST-PARAM-ALPHABET ( -- )
+   PS-CSIG-RESET
+   23 PS-FAM-ARGS
+   PS-CSIG$ s" <a,b,c,d,e,g,h,i,j,k,l,m,o,p,q,s,t,u,v,w,x,y,z>" T$= ;
+
 \ item 13: the registered public ENUM `pstcolor` publishes one synthesized
 \ nullary constructor per variant, `PSTCOLOR:<VARIANT> ( -- pstcolor )`.
 : PST-TEST-ENUM-CTORS ( -- )
@@ -508,6 +513,7 @@ variable PST-NUM-U
    PST-TEST-GOOD
    PST-TEST-FIXTURE
    PST-TEST-NUM-NAMES
+   PST-TEST-PARAM-ALPHABET
    PST-TEST-ENUM-CTORS
    PST-TEST-TRUST
    PST-TEST-NOARG
