@@ -1289,6 +1289,8 @@ test/structure-make-suite.f:TWX-TFAM-VAR-RANGE! test-metaprog habu-structure-gen
 test/field-proj-suite.f:FP-ARM test-metaprog habu-checker-type-structure-d996215b
 test/field-proj-suite.f:FP-CLEAR test-metaprog habu-checker-type-structure-d996215b
 test/field-proj-suite.f:TWX-FAM test-metaprog habu-checker-type-structure-d996215b
+test/structure-certify-suite.f:EV test-metaprog habu-seal-set-check-b3676b33
+test/structure-certify-suite.f:TRY test-metaprog habu-seal-set-check-b3676b33
 test/structure-decl-suite.f:EV test-metaprog habu-structure-parse-typed-c5a01e1f
 test/structure-decl-suite.f:TRY test-metaprog habu-structure-parse-typed-c5a01e1f
 test/structure-decl-suite.f:FAMID test-metaprog habu-structure-parse-typed-c5a01e1f
