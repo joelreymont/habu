@@ -2,8 +2,9 @@
 \ (dot habu-autoregressive-gen-sampling): turn a trained MODEL: from "trains" to
 \ "runs". The nanoGPT sample loop, host-side, built on the landed pieces: forward-
 \ only execution of the model (the executor runs forward without BW-BUILD), the
-\ stable host softmax (maki/softmax.f SM-FWD), and the shared library LCG
-\ (maki/train-core.f: SC-SEED! + SC-NEXT, [0,1)) for multinomial sampling.
+\ stable host softmax (maki/softmax.f SM-FWD), the shared library LCG
+\ (maki/train-core.f: SC-SEED! + SC-NEXT, [0,1)), and the host-side sampling ops
+\ (maki/sampling.f: SMP-ARGMAX/SMP-TEMP!/SMP-TOPK!/SMP-SAMPLE) that GEN-* re-exports.
 \
 \ Per generated token: crop the running sequence to the model's block T (feed only
 \ the last T ids), forward, take the LAST-position logit row, temperature-divide,
@@ -26,6 +27,7 @@
 require maki/array.f          \ T-GET / T-SET / T-AT / T-FILL
 require maki/softmax.f        \ SM-FWD (numerically-stable host softmax)
 require maki/train-core.f     \ SC-SEED! + the shared 32-bit LCG (SC-NEXT, [0,1))
+require maki/sampling.f       \ SMP-* host sampling ops (argmax / temp / top-k / sample)
 
 package MAKI
 public
@@ -34,60 +36,13 @@ public
 -5329 constant E-GEN-TOPK     \ top-k parameter outside [1,vocab]
 -5399 constant E-GEN-TEMP     \ negative sampling temperature
 
-private
-
-\ finite -inf-equivalent for top-k masking: rowmax + this stays FEXP-safe (|k|~72),
-\ exp(-50) ~ 2e-22 is structurally 0 (maki/attn-eq.f A-MASK-NEG uses the same value).
-: GEN-NEG ( -- r )  -50.0 ;
-
-variable GEN-BI               \ argmax scratch: winning index
-variable GEN-BV               \ argmax scratch: winning value (float bits in a cell)
-variable GEN-THR              \ top-k scratch: the kept-set threshold (k-th largest value)
-
-\ count row entries strictly greater than v (rank of v within the row)
-: GEN-GT# ( ptr a n r -- n ) {: r:ptr n:n v:r :}
-   0  n 0 ?do  r i T-GET v f> if 1+ then  loop ;
-
-public
-
-\ index of the largest entry; the FIRST index wins ties (strict >)
-: GEN-ARGMAX ( ptr a n -- n ) {: r:ptr n:n :}
-   0 GEN-BI !   r 0 T-GET GEN-BV !
-   n 1 ?do
-      r i T-GET GEN-BV @ f> if  i GEN-BI !  r i T-GET GEN-BV !  then
-   loop
-   GEN-BI @ ;
-
-\ scale each logit by 1/temp in place (temp>0; greedy takes the argmax path instead)
-: GEN-TEMP! ( ptr a n r -- ) {: r:ptr n:n t:r :}
-   n 0 ?do  r i T-GET t f/  r i T-SET  loop ;
-
-\ keep the k largest logits; mask the rest to (rowmax - 50) so the row softmax excludes
-\ them (finite -inf-equivalent). Ties at the threshold are all kept (may exceed k), the
-\ nanoGPT `logits < topk[-1]` rule. k==n is a no-op (nothing below the min is masked).
-: GEN-TOPK! ( ptr a n n -- ) {: r:ptr n:n k:n :}
-   r n GEN-ARGMAX {: mi:n :}   r mi T-GET {: mx:r :}      \ rowmax (always kept)
-   mx GEN-THR !                                           \ threshold starts at the max
-   n 0 ?do
-      r i T-GET {: v:r :}
-      r n v GEN-GT#  k < if  v GEN-THR @ f< if  v GEN-THR !  then  then
-   loop
-   n 0 ?do
-      r i T-GET GEN-THR @ f< if  mx GEN-NEG f+  r i T-SET  then
-   loop ;
-
-\ multinomial sample from a probability row (probs>=0, sum ~ 1) by inverse-CDF over the
-\ shared LCG: draw u in [0,1), return the first index whose running cumulative exceeds u.
-\ The final bucket absorbs rounding: if the cumulative never overtakes u (u just under 1,
-\ sum a hair under 1) the last index is returned - u never falls off the row end.
-: GEN-SAMPLE ( ptr a n -- n ) {: p:ptr n:n :}
-   SC-NEXT {: u:r :}
-   0.0
-   n 0 ?do
-      p i T-GET f+
-      dup u f> if  drop i unloop exit  then
-   loop
-   drop  n 1- ;
+\ The sampling primitives are folded onto maki/sampling.f (SMP-*), the canonical
+\ owner of the host-side algebra; generate re-exports them under its GEN-* names so
+\ the committed sampling locks (generate-test.f) keep pinning identical behaviour.
+: GEN-ARGMAX ( ptr a n -- n )  SMP-ARGMAX ;      \ FIRST index wins ties (strict f>)
+: GEN-TEMP!  ( ptr a n r -- )  SMP-TEMP! ;       \ scale each logit by 1/temp in place
+: GEN-TOPK!  ( ptr a n n -- )  SMP-TOPK! ;       \ keep k largest, mask the rest to rowmax-50
+: GEN-SAMPLE ( ptr a n -- n )  SMP-SAMPLE ;      \ inverse-CDF multinomial over the shared LCG
 
 \ pick the next token id from a raw LAST-position logit row. temp<0 and k outside
 \ [1,vocab] are rejected up front (named, red-first). temp=0 is TRUE argmax (greedy,

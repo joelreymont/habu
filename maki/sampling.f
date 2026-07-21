@@ -35,11 +35,10 @@
 \ Storage: allocation-free per call. The per-row scratch for top-p is caller-
 \ owned (SMP-NEXT takes a scratch span the width of the logit row - the engine
 \ allocates it once and reuses it every decode step); the small argmax/top-k/
-\ heap cursors are module-owned cells (host is single-threaded here). generate.f
-\ still carries its own inline copies of these ops; folding that example onto this
-\ module is a behaviour-preserving follow-up (its committed sampling locks pin the
-\ algebra) left for a separate change to keep this one addition-only, not a
-\ drive-by edit of landed code. maki -> habu only.
+\ heap cursors are module-owned cells (host is single-threaded here). The nanoGPT
+\ example (maki/examples/nanogpt/generate.f) re-exports these ops under its GEN-*
+\ names rather than carrying inline copies; its committed sampling locks pin the
+\ shared algebra so the fold stays behaviour-preserving. maki -> habu only.
 
 require maki/array.f          \ T-GET / T-SET / T-AT / T-SUM
 require maki/softmax.f        \ SM-FWD (numerically-stable f64 host softmax)
