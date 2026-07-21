@@ -763,7 +763,6 @@ public
 
 : INIT ( ptr a KV:kvcfg -- )  KV-INIT ;
 : DISPOSE ( ptr a -- )  KV-DISPOSE ;
-: LIVE-CACHE? ( ptr a -- bool )  POOLCAP-OFF H@ 0<> ;
 
 : ALLOC-SEQ ( ptr a -- kvseq )  KV-ALLOC-SEQ ;
 : ALLOC-SEQ/MAX ( ptr a n -- kvseq )  KV-ALLOC-SEQ/MAX ;
@@ -780,13 +779,8 @@ public
 : BYTES-PER-TOKEN ( ptr a -- n ) {: h:ptr :}  h KV-LIVE-CK h TOKB-OFF H@ ;
 
 : SEQ-LEN ( ptr a kvseq -- n )  KV-SEQ-LEN ;
-: SEQ-PAGES ( ptr a kvseq -- n )  KV-SEQ-PAGES ;
-: SEQ-PAGE ( ptr a kvseq n -- n )  KV-SEQ-PAGE ;
 : SEQ-RESERVED ( ptr a kvseq -- n )
    KV-SEQ-CK SEQRES@ ;
-: TOKEN-PTR ( ptr a kvseq n -- ptr u8 )  KV-TOKEN-PTR ;
-: PAGE-REFC ( ptr a n -- n )  KV-PAGE-REFC ;
-: LIVE? ( ptr a kvseq -- bool )  KV-LIVE-HANDLE? ;
 : NUM-PAGES ( ptr a -- n ) {: h:ptr :}  h KV-LIVE-CK h NPAGES-OFF H@ ;
 : PAGE-SIZE ( ptr a -- n ) {: h:ptr :}  h KV-LIVE-CK h PTOK-OFF H@ ;
 : PAGE-BYTES ( ptr a -- n ) {: h:ptr :}  h KV-LIVE-CK h PAGEB-OFF H@ ;
@@ -794,6 +788,16 @@ public
 : PAGES-FOR ( ptr a n -- n ) {: h:ptr toks:n :}
    h KV-LIVE-CK toks h PTOK-OFF H@ KV-PAGES-FOR-RAW ;
 
+private
+
+\ These views exist only for the owner-package invariant suite. In particular,
+\ TOKEN-PTR cannot escape the cache lifetime. The later immutable publication
+\ module reopens KV and reads the private ownership tables under its own lease.
+: LIVE-CACHE? ( ptr a -- bool )  POOLCAP-OFF H@ 0<> ;
+: SEQ-PAGES ( ptr a kvseq -- n )  KV-SEQ-PAGES ;
+: SEQ-PAGE ( ptr a kvseq n -- n )  KV-SEQ-PAGE ;
+: TOKEN-PTR ( ptr a kvseq n -- ptr u8 )  KV-TOKEN-PTR ;
+: PAGE-REFC ( ptr a n -- n )  KV-PAGE-REFC ;
 : CHECK ( ptr a -- )  KV-CHECK ;
 
 ;package

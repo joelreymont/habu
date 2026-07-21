@@ -559,6 +559,14 @@ s" multi-fork reservation" T-LABEL ' KVT-FORK-MULTI-SHARE 0 TTHROWS
 
 s" failure churn" T-LABEL ' KVT-CHURN 0 TTHROWS
 
+\ Mutable addresses and ownership-table inspection stay inside package KV.
+s" KV:TOKEN-PTR" 0 search-wl 0= TTRUE
+s" KV:SEQ-PAGES" 0 search-wl 0= TTRUE
+s" KV:SEQ-PAGE" 0 search-wl 0= TTRUE
+s" KV:PAGE-REFC" 0 search-wl 0= TTRUE
+s" KV:LIVE-CACHE?" 0 search-wl 0= TTRUE
+s" KV:CHECK" 0 search-wl 0= TTRUE
+
 KVT-CACHE DISPOSE
 KVT-OTHER DISPOSE
 T-REPORT

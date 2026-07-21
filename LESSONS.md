@@ -1946,3 +1946,8 @@ fits.
   declaration, while preserving scarce dictionary space. Diagnostic variable
   rendering and generic effect quantifiers remain separate full alphabet
   domains; declaration spelling rules must not narrow either one.
+- **A validated mutable address is not lifetime authority.** Returning a raw
+  pointer after checking its cache or page only proves that instant; cancellation
+  or disposal can invalidate it while the pointer remains copyable. Keep mutable
+  backing addresses private, and give later consumers an immutable snapshot with
+  a lease and completion acknowledgement.

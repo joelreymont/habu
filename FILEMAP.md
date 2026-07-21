@@ -1459,21 +1459,21 @@ points stay listed.
   distinct flags distinct id), the wire round-trip, fail-closed decode (wrong-width +
   unresolved raw), cross-role rejection, and the private-mint unforgeability
   negatives.
-- `maki/infer/kv-cache.f` — the UMA-simplified paged KV cache allocator (phase 1 of the
-  GB10 UMA inference engine, dot habu-infer-paged-kv-53b72853). Fixed-size KV pages over
-  ONE `MEM:ALLOC-BYTES` pool sized from a `kvcfg` model-dims record (page = KV-P=16
-  tokens * n_kv_heads * head_dim * 2 * dtype-bytes); a per-page free stack, per-page
-  refcounts for prefix sharing, and per-sequence block tables on the lib/vector.f
-  discipline. `KV:INIT`/`DISPOSE` (two leak-free mappings, capacity-as-ownership),
-  `KV:ALLOC-SEQ`/`APPEND-TOKEN`/`FORK-SEQ`/`FREE-SEQ`, `KV:WATERMARK`, and `KV:CHECK`
-  (the refcount / free-list invariant). Fork shares pages byte-identically; append COWs
-  only a shared tail page. Host-side only - the device decode kernel reads pages via the
-  block table later. Owns -5622..-5628.
-- `maki/infer/kv-cache-test.f` — page geometry from the config, one-page-per-boundary
-  append, page recycling, byte-identical fork then tail-page copy-on-write divergence,
-  the named rejects (E-KV-CONFIG/POOL/SEQS/SEQ/STATE/BOUNDS), and a random
-  alloc/append/fork/free churn holding the watermark exact (== distinct referenced
-  pages) with `KV:CHECK` intact every round.
+- `maki/infer/kv-cache.f` — the host paged key/value cache allocator for the GB10
+  inference engine (dot habu-infer-paged-kv-53b72853). An overflow-checked `kvcfg`
+  selects page size and model geometry for one owned byte pool. Generation-bearing
+  sequence handles prevent stale slot and rebuilt-cache reuse; per-sequence vectors,
+  page reference counts, tail copy-on-write, cancellation, and maximum-context
+  reservations update transactionally. The scheduler API owns allocation, append,
+  fork, cancellation, admission, and physical capacity metrics. Raw token addresses,
+  page identifiers, reference counts, and the invariant checker stay private; the
+  later immutable device-publication module reopens package KV under its own lease.
+  Owns -5622..-5630.
+- `maki/infer/kv-cache-test.f` — checked arithmetic, configurable page geometry,
+  generation exhaustion and stale-handle rejection, allocation and fork failure
+  atomicity, exact reservation accounting, physical tail waste, byte-preserving
+  copy-on-write, private ownership-table visibility, and randomized churn with the
+  complete private allocator invariant checked after every mutation.
 - `maki/infer/safetensors.f` — native safetensors weight loader for the GB10 UMA
   inference engine (`package SAFET`, epic habu-epic-gb10-uma-391d12e8 M1): mmaps the
   checkpoint read-only and registers each tensor as a zero-copy typed span (dtype,
