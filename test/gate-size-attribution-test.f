@@ -243,6 +243,83 @@ $4000 constant MACOS-DATA-CONST  \ __DATA_CONST page (__got + zero fill)
 3836 constant LINUX-FLOOR-DIST     \ code above the 4 KiB floor: the page-recovery shave
 139456 constant LINUX-TOTAL       \ = FILE-SIZE bin/hb = GB-SIZE-BASELINE-LINUX
 
+\ --- Per-region __text budgets (dot habu-enforce-native-region-1003651b) -------
+\ The whole-file (GB-SIZE) and __text-total (CODE-TEXT / SUM-TEXT) ratchets catch
+\ aggregate growth, but a region that grows while a sibling shrinks nets zero at
+\ the total and hides which emitter moved, and a lone region regression only
+\ surfaces once it crosses a page. These committed rows decompose CODE-TEXT into
+\ one budget per emitter phase (plus baked-source), measured same-commit at the
+\ byte fixpoint (HABU_ENGINE_SIZE_MAP=1 -> tools/size-report.f). They sum to
+\ LINUX-CODE-TEXT (RUN asserts it), so a bump/lowering here is the per-region
+\ analogue of the CODE-TEXT ratchet: the owning change re-measures and updates
+\ exactly the rows it moved, and the gate names any region whose measured size
+\ drifts from its budget. Container regions keep their independent ceilings
+\ (SUM-TEXT / floor-dist / the container rows above). macOS per-region budgets are
+\ owed until a macOS host measures them (HOST-REGION-BUDGETS-MEASURED?), mirroring
+\ the CODE-TEXT/census per-target asymmetry; the macOS whole-file and CODE-TEXT
+\ ceilings above are untouched.
+: LINUX-REGION-BUDGETS ( [ ptr u8 n n -- ] -- ) {: q :}   \ typed-local-lint: allow-bare-local - q carries the row effect
+   s" main/startup"            5656 q execute
+   s" main/comment"             380 q execute
+   s" interpret/colon"         3540 q execute
+   s" interpret/define"       19328 q execute
+   s" interpret/string"        1148 q execute
+   s" interpret/number"          48 q execute
+   s" interpret/find"           132 q execute
+   s" compile/adt"             2140 q execute
+   s" compile/semi"            6892 q execute
+   s" compile/local"            552 q execute
+   s" compile/p2wide"          2460 q execute
+   s" compile/keywords"       10676 q execute
+   s" compile/literal"           36 q execute
+   s" compile/ops"             2456 q execute
+   s" compile/call"             628 q execute
+   s" compile/undef"            924 q execute
+   s" compile/die"              200 q execute
+   s" compile/exit"            1724 q execute
+   s" compile/eval-recover"     724 q execute
+   s" main/underflow"           192 q execute
+   s" primitives/base"        17772 q execute
+   s" primitives/arity"         856 q execute
+   s" primitives/extra"         572 q execute
+   s" primitives/prof"          220 q execute
+   s" primitives/float"         764 q execute
+   s" primitives/cemit"         108 q execute
+   s" primitives/cemitbl"       100 q execute
+   s" primitives/capture"       156 q execute
+   s" primitives/token"         104 q execute
+   s" primitives/protect"       336 q execute
+   s" primitives/protected-wid" 1540 q execute
+   s" primitives/aot-owner"    1416 q execute
+   s" primitives/flush"          72 q execute
+   s" primitives/find"          952 q execute
+   s" primitives/find-used"     520 q execute
+   s" primitives/hash-index"    852 q execute
+   s" primitives/number"        332 q execute
+   s" primitives/top-hook"       68 q execute
+   s" dictionary-code"         7292 q execute
+   s" runtime"                 9508 q execute
+   s" seed-dictionary"         8652 q execute
+   s" aot-seed"               22880 q execute
+   s" baked-source"               0 q execute ;
+
+variable RB-ACC
+: RB-SUM-STEP ( ptr u8 n n -- ) {: na:ptr nu:n v:n :}
+   v RB-ACC @ + RB-ACC ! ;
+: LINUX-REGION-BUDGET-SUM ( -- n )
+   0 RB-ACC ! [: RB-SUM-STEP ;] LINUX-REGION-BUDGETS RB-ACC @ ;
+
+variable RB-Q-A  variable RB-Q-U  variable RB-Q-V  variable RB-Q-HIT
+: RB-FIND-STEP ( ptr u8 n n -- ) {: na:ptr nu:n v:n :}
+   na nu RB-Q-A @ RB-Q-U @ STR= if v RB-Q-V ! -1 RB-Q-HIT ! then ;
+
+\ Page-crossing prediction, per target, from THAT target's own measured layout
+\ (never inferred across targets): headroom = the __text growth the current text
+\ segment absorbs before the file gains a page. macOS reads its 16 KiB __TEXT
+\ floor, Linux its 4 KiB text floor; each uses only its own measured FLOOR-DIST.
+: MACOS-PAGE-HEADROOM ( -- n )  MACOS-PAGE MACOS-FLOOR-DIST - ;
+: LINUX-PAGE-HEADROOM ( -- n )  LINUX-PAGE LINUX-FLOOR-DIST - ;
+
 : PAGE-UP ( n n -- n ) {: v:n page:n :}
    v page 1- + page 1- invert and ;
 
@@ -291,6 +368,28 @@ public
    HB-TARGET-LINUX? if LINUX-CODE-TEXT exit then
    0 ;
 
+\ Committed per-region __text budgets for the running target, applied to xt as
+\ ( ptr u8 n budget -- ) per row. macOS is owed (no rows) until a macOS host
+\ measures it; HOST-REGION-BUDGETS-MEASURED? gates live per-region enforcement.
+: HOST-REGION-BUDGETS ( [ ptr u8 n n -- ] -- ) {: q :}   \ typed-local-lint: allow-bare-local - q carries the row effect
+   HB-TARGET-LINUX? if q LINUX-REGION-BUDGETS then ;
+
+: HOST-REGION-BUDGETS-MEASURED? ( -- bool )
+   HB-TARGET-LINUX? ;
+
+\ SOME committed budget for the named region on the running target, else NONE.
+: HOST-REGION-BUDGET-FIND ( ptr u8 n -- option<n> ) {: qa:ptr qu:n :}
+   qa RB-Q-A ! qu RB-Q-U ! 0 RB-Q-HIT !
+   [: RB-FIND-STEP ;] HOST-REGION-BUDGETS
+   RB-Q-HIT @ if RB-Q-V @ OPTION:SOME else OPTION:NONE then ;
+
+\ Per-target page-crossing prediction, each from its own measured layout.
+: PAGE-CROSS-REPORT ( -- )
+   s" page-cross(macos): " type MACOS-PAGE-HEADROOM .
+   s" bytes __text headroom to the 16 KiB __TEXT floor (measured macos layout)" type cr
+   s" page-cross(linux): " type LINUX-PAGE-HEADROOM .
+   s" bytes __text headroom to the 4 KiB text floor (measured linux layout)" type cr ;
+
 \ Pure self-check (no build): each target's committed decomposition reconstructs
 \ its whole file and page-floor shave, and the running target's committed total
 \ equals the live installed engine. Any drift - a bigger engine, a stale row -
@@ -302,6 +401,7 @@ public
    LINUX-MODEL-SUM LINUX-TOTAL T=
    LINUX-MODEL-FLOOR LINUX-FLOOR-DIST T=
    HOST-TOTAL LIVE-ENGINE T=
+   LINUX-REGION-BUDGET-SUM LINUX-CODE-TEXT T=   \ per-region budgets decompose __text exactly
    T-REPORT ;
 
 \ Live drift check against a captured map + its engine (for a build-and-capture

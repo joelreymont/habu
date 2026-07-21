@@ -404,6 +404,133 @@ GE-FILES: GE-REPAIR-HINTS-RUN-FILES
    GE-SZMAP$ GE-CANDIDATE$ SIZE-ATTR:VALIDATE
    s" PASS: exact CODELEN ratchet (SUM-TEXT held to committed CODE-TEXT row)" type cr ;
 
+\ --- Per-region __text budget ratchet (dot habu-enforce-native-region-1003651b) -
+\ The exact-CODELEN ratchet above holds the __text TOTAL to its committed row, but a
+\ region that grows while a sibling shrinks nets zero there and hides which emitter
+\ moved. This holds EACH committed per-region budget (SIZE-ATTR:HOST-REGION-BUDGETS,
+\ measured same-commit at the byte fixpoint) to the candidate's measured region
+\ size, mirroring the GB-SIZE / CODE-TEXT directional semantics per region: a grown
+\ region is bumped, a shrunk region is STALE, and the reject NAMES the region.
+\ Coverage is bidirectional - a newly emitted region with no budget and a budget row
+\ whose region vanished both fail closed, named. macOS budgets are owed
+\ (HOST-REGION-BUDGETS-MEASURED? false): the ratchet reports the owed state and the
+\ measured page-crossing prediction, skipping enforcement on that host exactly as
+\ the census skips its owed target.
+: GE-REGION-CLASS ( n n -- n ) {: m:n b:n :}
+   m b > if GB-SIZE-GROWN exit then
+   m b < if GB-SIZE-SHRUNK exit then
+   GB-SIZE-OK ;
+
+: GE-REGION-CLASS-EXPECT ( n n n -- ) {: m:n b:n want:n :}
+   m b GE-REGION-CLASS want <> if
+      s" candidate region ratchet classifier boundary" GE-FAIL
+   then ;
+
+: GE-N>SB ( n -- ) {: v:n :}
+   v 10 >= if v 10 / recurse then
+   v 10 mod [char] 0 + SB-APPEND-C ;
+
+\ Named directional reject: region + which way it drifted + budget/candidate + the
+\ owning-commit action. Returned as a string so the fixtures can prove it names the
+\ region and baseline without tripping the die.
+: GE-REGION-REJECT$ ( ptr u8 n n n n -- ptr u8 n ) {: na:ptr nu:n m:n b:n dir:n :}
+   SB-RESET
+   s" region " SB-APPEND na nu SB-APPEND
+   dir GB-SIZE-GROWN = if s"  grew past budget " else s"  shrank below budget (STALE-BASELINE) " then SB-APPEND
+   b GE-N>SB s"  to candidate " SB-APPEND m GE-N>SB
+   s"  - update its row in test/gate-size-attribution-test.f this commit" SB-APPEND
+   SB$ ;
+
+: GE-REGION-GROWN-FAIL ( ptr u8 n n n -- ) {: na:ptr nu:n m:n b:n :}
+   na nu m b GB-SIZE-GROWN GE-REGION-REJECT$ GE-FAIL ;
+
+: GE-REGION-STALE-FAIL ( ptr u8 n n n -- ) {: na:ptr nu:n m:n b:n :}
+   na nu m b GB-SIZE-SHRUNK GE-REGION-REJECT$ GE-FAIL ;
+
+: GE-REGION-VANISHED-FAIL ( ptr u8 n n -- ) {: na:ptr nu:n b:n :}
+   SB-RESET
+   s" budgeted region " SB-APPEND na nu SB-APPEND
+   s"  is no longer emitted (budget " SB-APPEND b GE-N>SB
+   s" ) - remove its row from test/gate-size-attribution-test.f this commit" SB-APPEND
+   SB$ GE-FAIL ;
+
+: GE-REGION-UNBUDGETED-FAIL ( ptr u8 n n -- ) {: na:ptr nu:n m:n :}
+   SB-RESET
+   s" unbudgeted __text region " SB-APPEND na nu SB-APPEND
+   s"  (measured " SB-APPEND m GE-N>SB
+   s" ) - commit its budget row to test/gate-size-attribution-test.f this commit" SB-APPEND
+   SB$ GE-FAIL ;
+
+: GE-REGION-ENFORCE-ONE ( ptr u8 n n n -- ) {: na:ptr nu:n m:n b:n :}
+   m b GE-REGION-CLASS
+   case
+      GB-SIZE-GROWN  of na nu m b GE-REGION-GROWN-FAIL endof
+      GB-SIZE-SHRUNK of na nu m b GE-REGION-STALE-FAIL endof
+   endcase ;
+
+\ Forward: every committed budget row is present in the map and matches exactly; a
+\ budget whose region vanished fails named.
+: GE-REGION-STEP ( ptr u8 n n -- ) {: na:ptr nu:n b:n :}
+   na nu SIZE-REPORT:FIND MATCH option
+      none OF na nu b GE-REGION-VANISHED-FAIL ENDOF
+      some OF {: m:n :} na nu m b GE-REGION-ENFORCE-ONE ENDOF
+   ;MATCH ;
+
+\ Reverse: every measured non-container map row has a committed budget; a newly
+\ emitted region fails named with its measured byte count to commit.
+: GE-REGION-COVER-ONE ( n -- ) {: i:n :}
+   i SIZE-REPORT:CONTAINER? if exit then
+   i SIZE-REPORT:NAME$ {: na:ptr nu:n :}
+   na nu SIZE-ATTR:HOST-REGION-BUDGET-FIND MATCH option
+      none OF na nu i SIZE-REPORT:VAL@ GE-REGION-UNBUDGETED-FAIL ENDOF
+      some OF drop ENDOF
+   ;MATCH ;
+
+: GE-REGION-ENFORCE-ALL ( -- )
+   [: GE-REGION-STEP ;] SIZE-ATTR:HOST-REGION-BUDGETS
+   0 begin dup SIZE-REPORT:COUNT < while
+      dup GE-REGION-COVER-ONE
+      1+
+   repeat drop ;
+
+\ Red-first per boundary, target-agnostic: at-budget green, one-past and +4 red,
+\ shrink STALE, and the reject names the region - proven without a fake engine.
+: GE-REGION-SYNTH-CHECK ( -- )
+   100 100 GB-SIZE-OK     GE-REGION-CLASS-EXPECT
+   101 100 GB-SIZE-GROWN  GE-REGION-CLASS-EXPECT
+   104 100 GB-SIZE-GROWN  GE-REGION-CLASS-EXPECT
+    99 100 GB-SIZE-SHRUNK GE-REGION-CLASS-EXPECT
+    96 100 GB-SIZE-SHRUNK GE-REGION-CLASS-EXPECT
+   s" main/startup" 104 100 GB-SIZE-GROWN GE-REGION-REJECT$ s" main/startup" CONTAINS? 0= if
+      s" candidate region ratchet reject omits region name" GE-FAIL
+   then ;
+
+\ +4 into EACH committed region rejects GROWN and the reject names that region;
+\ at-budget stays green, -4 is STALE. Runs where budgets are measured (host Linux).
+: GE-REGION-BOUNDARY-STEP ( ptr u8 n n -- ) {: na:ptr nu:n b:n :}
+   b     b GB-SIZE-OK     GE-REGION-CLASS-EXPECT
+   b 4 + b GB-SIZE-GROWN  GE-REGION-CLASS-EXPECT
+   b 4 - b GB-SIZE-SHRUNK GE-REGION-CLASS-EXPECT
+   na nu b 4 + b GB-SIZE-GROWN GE-REGION-REJECT$ na nu CONTAINS? 0= if
+      s" candidate region ratchet reject omits region name" GE-FAIL
+   then ;
+
+: GE-REGION-SELF-CHECK ( -- )
+   GE-REGION-SYNTH-CHECK
+   [: GE-REGION-BOUNDARY-STEP ;] SIZE-ATTR:HOST-REGION-BUDGETS ;
+
+: GE-REGION-RATCHET ( -- )
+   GE-REGION-SELF-CHECK
+   SIZE-ATTR:HOST-REGION-BUDGETS-MEASURED? 0= if
+      s" per-region budgets owed for this target (measure on that host); page prediction only" type cr
+      SIZE-ATTR:PAGE-CROSS-REPORT
+      exit
+   then
+   GE-SZMAP$ SIZE-REPORT:LOAD
+   GE-REGION-ENFORCE-ALL
+   SIZE-ATTR:PAGE-CROSS-REPORT
+   s" PASS: per-region __text budget ratchet (every region held to its committed budget)" type cr ;
+
 \ --- self-check certification census ratchet (dot habu-census-assert-...) ----
 \ STATUS.md carries one `Certified (<target>): N  Uncheckable: 0  Rejected: 0`
 \ row per build target (the SSOT). This slice re-measures the current target's
@@ -493,6 +620,7 @@ variable GE-CEN-P
    GE-BUILD-SOURCE-SHAPE
    GE-PROMOTE-CANDIDATE
    GE-CODELEN-RATCHET
+   GE-REGION-RATCHET
    BF-TMP-RESET
    GE-EXPECT-CANDIDATE
    GE-CANDIDATE-SIZE-CHECK

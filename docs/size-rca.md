@@ -59,6 +59,49 @@ dispatch, compile-keyword dispatch, and semicolon publication. Permanent region
 measurement prevents stale attribution and makes every future size change
 assignable to an emitter boundary.
 
+## Per-region budget ratchet (dot `habu-enforce-native-region-1003651b`)
+
+The whole-file ratchet (`test/gate-build-size.f` `GB-SIZE-*`) measures the
+page-rounded container, and the exact-CODELEN ratchet
+(`test/gate-engine-lib.f` `GE-CODELEN-*`) holds the whole `__text` **total**
+(`SUM-TEXT`) to a committed row. Neither attributes growth to an emitter: a
+region that grows while a sibling shrinks nets zero at the total, and a lone
+region regression stays invisible until it crosses a page — obscuring which
+emitter moved.
+
+The region map above is now a **committed per-region budget**. One row per
+emitter phase (plus `baked-source`) lives in
+`test/gate-size-attribution-test.f` (`SIZE-ATTR:LINUX-REGION-BUDGETS`), measured
+same-commit at the byte fixpoint (`HABU_ENGINE_SIZE_MAP=1` →
+`tools/size-report.f`). The rows sum to `LINUX-CODE-TEXT` — `SIZE-ATTR:RUN`
+asserts the decomposition against the `__text` ceiling — so the budgets can
+never silently diverge from the committed total.
+
+`GE-REGION-RATCHET` (in `GE-BUILD-FIXPOINT`, right after the CODELEN ratchet)
+holds each candidate region to its budget with the same directional semantics as
+`GB-SIZE` / `CODE-TEXT`, per region and **naming the region**:
+
+- a region measured over budget fails `grew past budget … - update its row`;
+- a region under budget fails `shrank below budget (STALE-BASELINE) …`;
+- coverage is bidirectional — a newly emitted region with no budget fails
+  `unbudgeted __text region … - commit its budget row`, and a budget whose
+  region is no longer emitted fails `budgeted region … is no longer emitted …`.
+
+So the owning change re-measures and bumps exactly the row(s) it moved, and any
+approved increase is an explicit committed row (its evidence). A compensating
+swap that keeps the total identical — the case both total ratchets miss — is
+caught and attributed: e.g. `main/startup` +4 with `main/comment` −4 leaves
+`SUM-TEXT` = `LINUX-CODE-TEXT` (both total ratchets green) yet fails
+`region main/startup grew past budget 5652 to candidate 5656`.
+
+The `__text` and container ceilings are retained independently (`SUM-TEXT` /
+floor-distance / the `container/*` rows). Page-crossing is **reported from each
+target's own measured layout, never inferred across targets**
+(`SIZE-ATTR:PAGE-CROSS-REPORT`): macOS from its 16 KiB `__TEXT` floor, Linux from
+its 4 KiB text floor. macOS per-region budgets are **owed** until a macOS host
+measures them (`HOST-REGION-BUDGETS-MEASURED?`), mirroring the CODE-TEXT/census
+per-target asymmetry; the macOS whole-file and CODE-TEXT ceilings are untouched.
+
 The first current repair shares the mutually exclusive hooked publication
 tail in `EM-COMPILE-PUBLISH`, reducing `compile/semi` by exactly 3200 bytes.
 Sharing the successful record-publication and final state-reset tails removes
