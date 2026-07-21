@@ -6,7 +6,17 @@ issue-type: task
 created-at: "\"2026-07-13T17:12:42.577284+02:00\""
 blocks:
   - habu-fields-add-shared-6b063c62
+  - habu-enum-parse-full-39c0dc1b
+  - habu-enum-generate-named-1f3261a3
 ---
+
+Re-sequenced 2026-07-21 (fieldtok lane evidence, no edits made): the re-scoped
+SUMV record-shape swap (SV.SCH-START/COUNT -> SV.FLD-START/COUNT) must run AFTER
+habu-enum-parse-full-39c0dc1b and habu-enum-generate-named-1f3261a3 land, because
+src/core/sumtype.f:67 still guarantees SUMTYPE/ENUM/TYPEFAMILY never touch the
+product-field registry and no front end registers named variant fields yet;
+swapping the schema range now would point SUMV metadata into a registry with no
+variant rows, corrupting reflection and snapshot identity.
 
 Own SUMV metadata in src/core/type-family.f and focused family tests. Replace positional payload schema ranges with shared named-field ranges while preserving tag ordinal, payload width, constructor symbol/package, rollback, and family identity. Do not change public syntax. Validate type-family and rollback suites.
 

@@ -1,9 +1,11 @@
 ---
 title: Harden field tokens and IDs
-status: open
+status: closed
 priority: 1
 issue-type: task
-created-at: "2026-07-17T12:11:52.142245+02:00"
+created-at: "\"2026-07-17T12:11:52.142245+02:00\""
+closed-at: "2026-07-21T06:39:56.176501+02:00"
+close-reason: "Landed 1271cac2: PF-ROW/PF-REC@ reject bad ids with catchable E-PF-ID 7122 (not die 76); TFAM-RESET refuses under a live field transaction (E-PF-TX) and no longer rewinds PF-TX-SERIAL - PF-BEGIN is the sole writer of a process-monotonic token generation counter, so pre-reset tokens can never alias post-reset transactions. Regressions in type-family-suite; suites + battery green on the merged tree; install --force x2 byte-identical."
 blocks:
   - habu-internalize-field-liveness-7c1d7e14
 ---
