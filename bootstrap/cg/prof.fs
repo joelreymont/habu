@@ -13,7 +13,7 @@ variable LPROFH   variable LPROFDUMP
 $1E0 constant PROF-TOT          \ samples taken
 $1E8 constant PROF-LIM          \ sample limit (auto-dump + exit(99) when reached)
 $1F8 constant PROF-OTHER      \ samples outside any dict word (main loop, helpers)
-DATA-SIZE $10000 - constant PROF-CNT \ counters: one cell per dict slot (high in data region)
+DATA-SIZE PROF-CNT-BYTES - constant PROF-CNT \ counters: one cell per dict slot (band = DICT-CAP cells, high in data region)
 14  constant SIGALRM
 48 constant PROF-MACOS-MCTX-OFF
 176 constant PROF-LINUX-UC-MCTX-OFF
@@ -65,15 +65,15 @@ $0042 constant MACOS-SA-PROF-FLAGS
       9 21 PROF-MACOS-MCTX-PC-OFF LDR,
    THEN ;
 
-\ Bump the owning word's counter; at the sample limit dump + exit(99); else
-\ sigreturn — the kernel restores the interrupted context, so clobbering
-\ registers here is safe.
+\ Attribute the owning word's counter (or (other)) FIRST, THEN bump PROF-TOT once
+\ and test the limit, so every delivered sample is counted:
+\ sum(word counters) + (other) == PROF-TOT exactly, including the sample that hits
+\ the limit. Below the limit sigreturn — the kernel restores the interrupted
+\ context, so clobbering registers here is safe; at the limit dump + exit(99).
 : EMIT-PROF ( -- )
    LPROFH @ LBL,
    LBL {: pl :}  LBL {: pnext :}  LBL {: pdone :}  LBL {: prep :}  LBL {: psig :}
    C-PROF-MCTX>R21  C-PROF-PC>R9                    \ x9 = interrupted pc
-   10 DATA PROF-TOT LDR,  10 10 1 ADDI,  10 DATA PROF-TOT STR,
-   11 DATA PROF-LIM LDR,  10 11 CMP,  C-GE prep BCOND,
    5 DBASE 0 ADDI,  6 0 MOVZ,                       \ rec, i
    pl LBL,
       7 NDICT 0 ADDI,  6 7 CMP,  C-GE pdone BCOND,
@@ -86,6 +86,8 @@ $0042 constant MACOS-SA-PROF-FLAGS
    pdone LBL,                                       \ no owning word: count as (other)
    12 DATA PROF-OTHER LDR,  12 12 1 ADDI,  12 DATA PROF-OTHER STR,
    psig LBL,
+   10 DATA PROF-TOT LDR,  10 10 1 ADDI,  10 DATA PROF-TOT STR,
+   11 DATA PROF-LIM LDR,  10 11 CMP,  C-GE prep BCOND,
    0 4 0 ADDI,  NR-SIGRETURN SYS,     \ sigreturn(ucontext, infostyle=x1)
    prep LBL,  LPROFDUMP @ BL,  0 99 MOVZ,  NR-EXIT-GROUP SYS, ;
 

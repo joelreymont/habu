@@ -6,7 +6,7 @@ variable LPROFH   variable LPROFDUMP
 $1E0 constant PROF-TOT
 $1E8 constant PROF-LIM
 $1F8 constant PROF-OTHER      \ samples outside any dict word (main loop, helpers)
-DATA-SIZE $10000 - constant PROF-CNT
+DATA-SIZE PROF-CNT-BYTES - constant PROF-CNT   \ band base: PROF-CNT-BYTES (= DICT-CAP cells, layout.f) below DATA top
 14  constant SIGALRM
 $10000004 constant LINUX-SA-PROF-FLAGS
 $0042 constant MACOS-SA-PROF-FLAGS
@@ -45,12 +45,14 @@ s" c-prof-mctx>r21" s" --" TRUST
    9 21 MACOS-MCTX-PC-OFF LDR, ;
 s" c-prof-pc>r9" s" --" TRUST
 
+\ Attribute the interrupted pc FIRST (a dict word's counter or PROF-OTHER), THEN
+\ bump PROF-TOT once and test the limit, so every delivered sample is counted:
+\ sum(word counters) + PROF-OTHER == PROF-TOT exactly, including the sample that
+\ reaches the limit. Below the limit we sigreturn; at it we dump + exit(99).
 : EMIT-PROF ( -- )
    LPROFH LABEL@ LBL,
    LBL LBL LBL LBL LBL {: pl pnext pdone prep psig :}
    C-PROF-MCTX>R21  C-PROF-PC>R9
-   10 DATA PROF-TOT LDR,  10 10 1 ADDI,  10 DATA PROF-TOT STR,
-   11 DATA PROF-LIM LDR,  10 11 CMP,  C-GE prep BCOND,
    5 DBASE 0 ADDI,  6 0 MOVZ,
    pl LBL,
       7 NDICT 0 ADDI,  6 7 CMP,  C-GE pdone BCOND,
@@ -63,6 +65,8 @@ s" c-prof-pc>r9" s" --" TRUST
    pdone LBL,
    12 DATA PROF-OTHER LDR,  12 12 1 ADDI,  12 DATA PROF-OTHER STR,
    psig LBL,
+   10 DATA PROF-TOT LDR,  10 10 1 ADDI,  10 DATA PROF-TOT STR,
+   11 DATA PROF-LIM LDR,  10 11 CMP,  C-GE prep BCOND,
    0 4 0 ADDI,  NR-SIGRETURN SYS,
    prep LBL,  LPROFDUMP LABEL@ BL,  0 99 MOVZ,  NR-EXIT-GROUP SYS, ;
 

@@ -1152,12 +1152,24 @@ public
    s" $2000000 constant DATA-SIZE" BCG-MUST-HAVE
    s" $300000 constant DATA-SIZE" BCG-MUST-LACK ;
 
+\ The profiler counter band is sized from DICT-CAP (one 64-bit counter per dict
+\ slot) and reserved high in the DATA region: PROF-CNT-BYTES = DICT-CAP cells, and
+\ PROF-CNT = DATA-SIZE - PROF-CNT-BYTES. Neither the old magic byte count
+\ ($10000 - ...) nor a hardcoded absolute base ($1F0000) may return, so the band
+\ can never fall short of the NDICT<=DICT-CAP slots BPROF-ON zeroes and EMIT-PROF
+\ indexes (dot habu-bound-profiler-counter-235c5f48). Native and bootstrap mirror.
 : BCG-TEST-PROF-CNT-HIGH ( -- )
+   s" bootstrap/cg/forth.fs" BCG-LOAD
+   s" DICT-CAP cells constant PROF-CNT-BYTES" BCG-MUST-HAVE
    s" bootstrap/cg/prof.fs" BCG-LOAD
-   s" DATA-SIZE $10000 - constant PROF-CNT" BCG-MUST-HAVE
+   s" DATA-SIZE PROF-CNT-BYTES - constant PROF-CNT" BCG-MUST-HAVE
+   s" DATA-SIZE $10000 - constant PROF-CNT" BCG-MUST-LACK
    s" $1F0000 constant PROF-CNT" BCG-MUST-LACK
+   s" src/habu/layout.f" BCG-LOAD
+   s" DICT-CAP cells constant PROF-CNT-BYTES" BCG-MUST-HAVE
    s" src/habu/prof.f" BCG-LOAD
-   s" DATA-SIZE $10000 - constant PROF-CNT" BCG-MUST-HAVE
+   s" DATA-SIZE PROF-CNT-BYTES - constant PROF-CNT" BCG-MUST-HAVE
+   s" DATA-SIZE $10000 - constant PROF-CNT" BCG-MUST-LACK
    s" $1F0000 constant PROF-CNT" BCG-MUST-LACK ;
 
 : BCG-TEST-PUBLISH-HOOK-SPLIT ( -- )

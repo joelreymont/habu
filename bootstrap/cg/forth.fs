@@ -56,6 +56,10 @@ $180000 constant CFSTK-OFF     \ control-flow stack: cell[0]=CFSP, then CF-REC f
 \ hard rc-70 seed sibling of the LCFPOP orphan-underflow guard).
 DICT-SIZE CFSTK-OFF - 1 cells - CF-REC / 256 min constant CFSTK-DEPTH-MAX   \ 170
 $2000000 constant DATA-SIZE    \ data-space mmap (always RW, separate from the RX code region)
+\ Profiler counter band (mirror of src/habu/layout.f): one 64-bit counter per dict
+\ slot, sized from DICT-CAP so it always covers the slots BPROF-ON zeroes and
+\ EMIT-PROF indexes (NDICT <= DICT-CAP). prof.fs derives PROF-CNT = DATA-SIZE - this.
+DICT-CAP cells constant PROF-CNT-BYTES
 25 constant SOURCE-HEADROOM-PCT
 $400000 constant SOURCE-ARENA-CAP
 SOURCE-ARENA-CAP constant IBUFSZ  \ native mirror src/habu/layout.f
