@@ -516,6 +516,27 @@ variable TDV-PAY-N
       TDN-A @ TDN-U @ s" too many variant payload elements" E-TDECL-PAYLOAD TDECL-THROW THEN
    node TDV-PAY-N @ cells TDV-PAY-SCR + !
    TDV-PAY-N @ 1 + TDV-PAY-N ! ;
+\ Declaration-time arity gate (dot habu-declaration-time-arity-4c70e37c): once a
+\ variant's payload elements are landed as one contiguous schema-root block, walk
+\ each element's schema subtree and resolve every SCH-PARAM index against the
+\ declaring family's arity (TFAM-SCH-ARITY, type-family.f). An out-of-arity
+\ parameter -- in a plain element, a parametric application argument, or any
+\ quotation effect side -- rejects here, inside TDECL-RUN's transaction, so the
+\ standard high-water rollback leaves the registries byte-identical, and the
+\ authoritative structural check sits beside the PRODUCT field one (PF-SCHEMA-OK?)
+\ rather than living only as an emergent property of the TDECL-LETTER parse gate.
+\ The offending letter is rendered from the reported parameter index (a..z).
+create TDV-BADLETTER 1 allot
+: TDECL-VPAY-ARITY ( n n n -- ) {: fam:n base:n count:n :}
+   0 BEGIN dup count < WHILE
+      base over + SCHEMA-ROOT@ fam swap TFAM-SCH-ARITY   \ ( i bad-idx )
+      dup 0 >= IF
+         97 + TDV-BADLETTER c!
+         TDV-BADLETTER 1 s" payload parameter out of family arity"
+         E-TDECL-PAYLOAD TDECL-THROW
+      THEN
+      drop 1 +
+   REPEAT drop ;
 : TDECL-VARIANT-FINISH ( n -- ) {: fam:n :}
    SCHEMA-ROOT-N@ TDV-SS !
    0 TDV-PC !
@@ -524,6 +545,7 @@ variable TDV-PAY-N
       TDV-PC @ 1 + TDV-PC !
       1 +
    REPEAT drop
+   fam TDV-SS @ TDV-PC @ TDECL-VPAY-ARITY
    fam TDECL-VARIANT-CLOSE ;
 : TDECL-VARIANT ( n -- ) {: fam:n :}
    TDECL-VARIANT-NAME

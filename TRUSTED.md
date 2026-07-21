@@ -1229,11 +1229,18 @@ test/type-decl-suite.f:TWX-PARAM>HID test-metaprog habu-seal-set-check-b3676b33
 test/type-decl-suite.f:TWX-PUSH-LOGICAL test-metaprog habu-seal-set-check-b3676b33
 test/type-decl-suite.f:TWX-R-RES test-metaprog habu-seal-set-check-b3676b33
 test/type-decl-suite.f:TWX-SCHEMA-A@ test-metaprog habu-seal-set-check-b3676b33
+test/type-decl-suite.f:TWX-SCHEMA-APP test-metaprog habu-seal-set-check-b3676b33
 test/type-decl-suite.f:TWX-SCHEMA-APP? test-metaprog habu-seal-set-check-b3676b33
 test/type-decl-suite.f:TWX-SCHEMA-CON? test-metaprog habu-seal-set-check-b3676b33
+test/type-decl-suite.f:TWX-SCHEMA-PARAM test-metaprog habu-seal-set-check-b3676b33
 test/type-decl-suite.f:TWX-SCHEMA-PARAM? test-metaprog habu-seal-set-check-b3676b33
+test/type-decl-suite.f:TWX-SCHEMA-PTR test-metaprog habu-seal-set-check-b3676b33
 test/type-decl-suite.f:TWX-SCHEMA-PTR? test-metaprog habu-seal-set-check-b3676b33
+test/type-decl-suite.f:TWX-SCHEMA-QUOT test-metaprog habu-seal-set-check-b3676b33
+test/type-decl-suite.f:TWX-SCHEMA-ROOT+ test-metaprog habu-seal-set-check-b3676b33
+test/type-decl-suite.f:TWX-SCHEMA-ROOT-N test-metaprog habu-seal-set-check-b3676b33
 test/type-decl-suite.f:TWX-SCHEMA-ROOT@ test-metaprog habu-seal-set-check-b3676b33
+test/type-decl-suite.f:TWX-SCHEMA-ROW test-metaprog habu-seal-set-check-b3676b33
 test/type-decl-suite.f:TWX-SUMV-FAM@ test-metaprog habu-seal-set-check-b3676b33
 test/type-decl-suite.f:TWX-SUMV-PAYCELLS@ test-metaprog habu-seal-set-check-b3676b33
 test/type-decl-suite.f:TWX-SUMV-SCH-COUNT@ test-metaprog habu-seal-set-check-b3676b33
@@ -1252,6 +1259,7 @@ test/type-decl-suite.f:TWX-TFAM-LAYOUT-POLICY@ test-metaprog habu-seal-set-check
 test/type-decl-suite.f:TWX-TFAM-LAYOUT? test-metaprog habu-seal-set-check-b3676b33
 test/type-decl-suite.f:TWX-TFAM-PKG$ test-metaprog habu-seal-set-check-b3676b33
 test/type-decl-suite.f:TWX-TFAM-PRODUCT? test-metaprog habu-seal-set-check-b3676b33
+test/type-decl-suite.f:TWX-TFAM-SCH-ARITY test-metaprog habu-seal-set-check-b3676b33
 test/type-decl-suite.f:TWX-TFAM-SLOTS@ test-metaprog habu-seal-set-check-b3676b33
 test/type-decl-suite.f:TWX-TFAM-SUM? test-metaprog habu-seal-set-check-b3676b33
 test/type-decl-suite.f:TWX-TFAM-VIS@ test-metaprog habu-seal-set-check-b3676b33

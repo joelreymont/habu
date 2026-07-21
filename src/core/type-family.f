@@ -1124,6 +1124,66 @@ PF-QUOT-ROW-INSTALL
    sch SCHEMA-ROOT@ {: node:n :}
    node SCHEMA-APP? IF node SCHEMA-A@ TFAM-WIDTH@ ELSE 1 THEN ;
 
+\ --- declaration-time parameter-arity walk for SUM variant payload schemas
+\ (dot habu-declaration-time-arity-4c70e37c). PRODUCT fields validate their whole
+\ field-schema tree at declaration through PF-SCHEMA-OK? / PF-NODE-KIND?; SUM
+\ variant payloads had no equivalent authoritative whole-tree check, so the
+\ invariant "every payload parameter is within the declaring family's arity" held
+\ only as an emergent side effect of the per-token TDECL-LETTER arity gate
+\ (sumtype.f). TFC-SCH-TERM (the construct/MATCH consumer) indexes its minted-var
+\ scratch by the parameter index with no bounds guard, so a payload parameter
+\ beyond arity would be a silent out-of-bounds read rather than a fail-closed
+\ reject; this walk makes the arity invariant a structural whole-tree property
+\ enforced at declaration and keeps the parse gate as the front line.
+\
+\ It is deliberately NOT PF-NODE-KIND? reused verbatim: PF-NODE-KIND?'s SCH-APP
+\ branch also requires each argument's physical kind to match the applied
+\ family's parameter kind (PF-KIND-OK?), which would reject a valid nested-layout
+\ sum payload such as option<result<n,f>> (a layout-kind family argument in a
+\ cell parameter slot, which the checker's LOGHID width coercion makes sound).
+\ Sum payload validation is purely the parameter-index/arity concern, so this
+\ focused walk descends the same node kinds -- SCH-APP arguments, SCH-PTR
+\ pointee, SCH-QUOT effect-side rows (SCH-ROW elements) -- and resolves every
+\ SCH-PARAM index against the declaring family's arity, returning the first
+\ out-of-arity index or -1 when the whole subtree is in range (indices are 0..25,
+\ so -1 is an unambiguous "in range" sentinel).
+defer TFAM-SCH-ROW-ARITY ( n n -- n )   \ ( owner rownode -- bad-idx ) forward ref for the SCH-QUOT recursion
+
+: TFAM-SCH-ARITY ( n n -- n ) {: owner:n node:n :}   \ first out-of-arity SCH-PARAM index in node's subtree, else -1
+   node SCHEMA-NODE-OK? 0= IF -1 EXIT THEN
+   node SCHEMA-PARAM? IF
+      node SCHEMA-A@ dup owner TFAM-ARITY@ < IF drop -1 THEN EXIT
+   THEN
+   node SCHEMA-PTR? IF owner node SCHEMA-A@ RECURSE EXIT THEN
+   node SCHEMA-APP? IF
+      node SCHEMA-C@ {: cnt:n :}
+      node SCHEMA-B@ {: start:n :}
+      0 BEGIN dup cnt < WHILE
+         start over + SCHEMA-ROOT@ owner swap RECURSE
+         dup 0 >= IF nip EXIT THEN drop
+         1 +
+      REPEAT drop -1 EXIT
+   THEN
+   node SCHEMA-QUOT? IF
+      0 BEGIN dup SCH-QUOT-ROWS < WHILE
+         node over SCHEMA-QUOT-ROW@ owner swap TFAM-SCH-ROW-ARITY
+         dup 0 >= IF nip EXIT THEN drop
+         1 +
+      REPEAT drop -1 EXIT
+   THEN
+   -1 ;
+
+: TFAM-SCH-ROW-ARITY-IMPL ( n n -- n ) {: owner:n rownode:n :}   \ first out-of-arity index in a SCH-ROW's elements, else -1
+   rownode SCHEMA-ROW? 0= IF -1 EXIT THEN
+   rownode SCHEMA-ROW-COUNT@ {: cnt:n :}
+   0 BEGIN dup cnt < WHILE
+      rownode over SCHEMA-ROW-ELEM@ owner swap TFAM-SCH-ARITY
+      dup 0 >= IF nip EXIT THEN drop
+      1 +
+   REPEAT drop -1 ;
+: TFAM-SCH-ROW-ARITY-INSTALL ( -- ) [: TFAM-SCH-ROW-ARITY-IMPL ;] is TFAM-SCH-ROW-ARITY ;
+TFAM-SCH-ROW-ARITY-INSTALL
+
 : PF-RANGE-OK? ( n n -- bool ) {: off:n len:n :}
    off 0 >= len 0 > and IF off PF-MAX-N len - <= ELSE RES-FALSE THEN ;
 : PF-POW2? ( n -- bool ) {: n:n :}

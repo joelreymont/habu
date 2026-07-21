@@ -118,6 +118,17 @@ TRUSTED: TWX-TFAM-SLOTS@ ( n -- n ) TFAM-SLOTS@ ;
 TRUSTED: TWX-TFAM-SUM? ( n -- bool ) TFAM-SUM? ;
 TRUSTED: TWX-TFAM-VIS@ ( n -- n ) TFAM-VIS@ ;
 TRUSTED: TWX-UNIFY ( n n -- bool ) UNIFY ;
+\ schema-node builders + the declaration-time arity walk, for the whitebox proof
+\ that TFAM-SCH-ARITY descends every payload node kind (dot
+\ habu-declaration-time-arity-4c70e37c).
+TRUSTED: TWX-SCHEMA-PARAM ( n -- n ) SCHEMA-PARAM ;
+TRUSTED: TWX-SCHEMA-PTR ( n -- n ) SCHEMA-PTR ;
+TRUSTED: TWX-SCHEMA-APP ( n n n -- n ) SCHEMA-APP ;
+TRUSTED: TWX-SCHEMA-ROW ( n n -- n ) SCHEMA-ROW ;
+TRUSTED: TWX-SCHEMA-QUOT ( n n n n n -- n ) SCHEMA-QUOT ;
+TRUSTED: TWX-SCHEMA-ROOT+ ( n -- n ) SCHEMA-ROOT+ ;
+TRUSTED: TWX-SCHEMA-ROOT-N ( -- n ) SCHEMA-ROOT-N@ ;
+TRUSTED: TWX-TFAM-SCH-ARITY ( n n -- n ) TFAM-SCH-ARITY ;
 
 : TDT-BASE! ( -- )
    TFAM-N@ TDB-TFAM !   SUMV-N@ TDB-SUMV !
@@ -1137,6 +1148,59 @@ SUMTYPE tdpqd 0 VARIANT run [ n -- ] ;VARIANT VARIANT nop ;VARIANT ;SUMTYPE
 s" " s" tdpqd" TWX-TFAM-FIND-IN nip -1 T=
 SUMTYPE tdpqm 0 VARIANT run [ n ptr u8 -- n | n -- n ] ;VARIANT VARIANT nop ;VARIANT ;SUMTYPE
 s" " s" tdpqm" TWX-TFAM-FIND-IN nip -1 T=
+
+\ ---------------------------------------------------------------------------
+\ declaration-time parameter-arity gate for SUM variant payloads
+\ (dot habu-declaration-time-arity-4c70e37c). A payload parameter letter beyond
+\ the declaring family's arity rejects AT DECLARATION -- not at a later
+\ construct/MATCH site -- in a plain element, a parametric application argument,
+\ and every quotation effect side (input, output, return-input, return-output).
+\ The parse front line (TDECL-LETTER) and the authoritative whole-tree walk
+\ (TFAM-SCH-ARITY) both refuse it with E-TDECL-PAYLOAD, and TDT-NEG proves the
+\ registry high-water marks are restored byte-identical after each reject. Cases
+\ (a) plain and (b) application argument are the pre-existing tdpay1/tdpay4 above;
+\ these add the four quotation-side positions.
+s" SUMTYPE tdpaq1 1 VARIANT ok [ z -- ] ;VARIANT ;SUMTYPE"       E-TDECL-PAYLOAD TDT-NEG
+s" SUMTYPE tdpaq2 1 VARIANT ok [ -- z ] ;VARIANT ;SUMTYPE"       E-TDECL-PAYLOAD TDT-NEG
+s" SUMTYPE tdpaq3 1 VARIANT ok [ n -- | z -- ] ;VARIANT ;SUMTYPE" E-TDECL-PAYLOAD TDT-NEG
+s" SUMTYPE tdpaq4 1 VARIANT ok [ n -- | -- z ] ;VARIANT ;SUMTYPE" E-TDECL-PAYLOAD TDT-NEG
+\ an out-of-arity parameter nested inside an application argument that itself sits
+\ on a quotation side still rejects at declaration (whole-subtree descent).
+s" SUMTYPE tdpaq5 1 VARIANT ok [ tdres<a,z> -- ] ;VARIANT ;SUMTYPE" E-TDECL-PAYLOAD TDT-NEG
+
+\ whitebox: the authoritative arity walk (TFAM-SCH-ARITY, type-family.f) that
+\ backs the parse gate reports the first out-of-arity SCH-PARAM index (or -1),
+\ descending SCH-PTR pointees, SCH-APP arguments, and SCH-QUOT effect-side rows.
+\ It is parameter-index only, so it never over-tightens a nested-layout argument.
+\ tdopt has arity 1, so parameter index 5 is out of range and index 0 is in range.
+s" " s" tdopt" TWX-TFAM-FIND-IN drop TDF !
+TDF @  0 TWX-SCHEMA-PARAM  TWX-TFAM-SCH-ARITY  -1 T=            \ in-range param 0 -> ok
+TDF @  5 TWX-SCHEMA-PARAM  TWX-TFAM-SCH-ARITY   5 T=            \ out-of-arity param 5 -> index 5
+TDF @  5 TWX-SCHEMA-PARAM TWX-SCHEMA-PTR  TWX-TFAM-SCH-ARITY  5 T=   \ through a ptr pointee
+5 TWX-SCHEMA-PARAM TWX-SCHEMA-ROOT+ TDX !                       \ param5 as one argument root
+TDF @  TDF @ TDX @ 1 TWX-SCHEMA-APP  TWX-TFAM-SCH-ARITY  5 T=   \ through an application argument
+5 TWX-SCHEMA-PARAM TWX-SCHEMA-ROOT+ 1 TWX-SCHEMA-ROW TDX !      \ an input-side row over param5
+TWX-SCHEMA-ROOT-N 0 TWX-SCHEMA-ROW TDY !                        \ an empty effect-side row
+TDF @  TDX @ TDY @ TDY @ TDY @ 0 TWX-SCHEMA-QUOT  TWX-TFAM-SCH-ARITY  5 T=   \ through a quotation input side
+
+\ no over-tightening: in-range parameter letters in a plain element, a parametric
+\ application argument, and both quotation sides all declare; a nested-layout
+\ argument (a layout family in a cell-parameter slot, sound via LOGHID width
+\ coercion) declares too -- the gate resolves parameter indices only.
+SUMTYPE tdpga 2
+  VARIANT plain   a ;VARIANT
+  VARIANT applied tdres<a,b> ;VARIANT
+  VARIANT quoted  [ a -- b ] ;VARIANT
+;SUMTYPE
+s" " s" tdpga" TWX-TFAM-FIND-IN nip -1 T=
+\ and the in-range variants still construct through the untouched construct path.
+s" TDPGA-MK1 ( n -- tdpga<n,n> ) TDPGA:PLAIN"           CHECK-QUIET-CANDIDATE! -1 T=
+s" TDPGA-MK2 ( tdres<n,n> -- tdpga<n,n> ) TDPGA:APPLIED" CHECK-QUIET-CANDIDATE! -1 T=
+SUMTYPE tdpgn 0
+  VARIANT nested tdopt<tdres<n,f>> ;VARIANT
+  VARIANT nop ;VARIANT
+;SUMTYPE
+s" " s" tdpgn" TWX-TFAM-FIND-IN nip -1 T=
 
 \ malformed enum declarations (item 14): every reject rolls back to baseline via
 \ the shared transactional path (TDT-NEG asserts TDT-BASE=), so no family or
