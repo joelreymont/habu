@@ -173,13 +173,16 @@ EOF
 emit_decl_src() {
   # The shared declaration-event transaction, then the STRUCTURE constructor
   # generator, then the STRUCTURE declarer (which calls the generator, so it must
-  # come after it; ENUM is a later dot) -- all after the checker hook.
+  # come after it), then the ENUM declarer (a pure event-driven leaf) -- all after
+  # the checker hook.
   local out="$1"
   cat src/core/decl-event.f >> "$out"
   printf '\n' >> "$out"
   cat src/core/structure-make.f >> "$out"
   printf '\n' >> "$out"
   cat src/core/structure-decl.f >> "$out"
+  printf '\n' >> "$out"
+  cat src/core/enum-decl.f >> "$out"
   printf '\n' >> "$out"
 }
 

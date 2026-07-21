@@ -150,9 +150,12 @@ $4000 constant MACOS-DATA-CONST  \ __DATA_CONST page (__got + zero fill)
 \ definer-publication landing shrank baked __text by a further 10692 bytes;
 \ candidate ratchet measured 114444. Same page span per the floor arithmetic;
 \ signature/total unchanged.
-114444 constant MACOS-CODE-TEXT   \ CODELEN: every emitter-phase row (baked-source incl.)
+\ 2026-07-21 ENUM front end landed (src/core/enum-decl.f): parser source is
+\ prelude-loaded from disk; the +40 baked delta is its habu2.f label wiring.
+\ Candidate ratchet measured 114484.
+114484 constant MACOS-CODE-TEXT   \ CODELEN: every emitter-phase row (baked-source incl.)
 1295 constant MACOS-SIGNATURE     \ ad-hoc code signature SuperBlob (grows with CODELEN)
-3852 constant MACOS-FLOOR-DIST     \ code above the 16 KiB floor: the page-recovery shave
+3892 constant MACOS-FLOOR-DIST     \ code above the 16 KiB floor: the page-recovery shave
 148855 constant MACOS-TOTAL       \ = FILE-SIZE bin/hb = GB-SIZE-BASELINE-MACOS
 
 \ Linux committed attribution, measured at the byte-fixpoint on 2026-07-19 (DGX

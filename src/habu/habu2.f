@@ -177,7 +177,7 @@ variable LPHOOK         variable LPCELLEFF      variable LPPTRSTORAGEEFF
 variable LPHABULAYOUT   variable LPENVBASE      variable LPINCLUDE
 variable LPSCRIPTARGV   variable LPINTMARK
 variable LPROLES
-variable LPDECLEVENT     variable LPSTRUCTMAKE   variable LPSTRUCTDECL
+variable LPDECLEVENT     variable LPSTRUCTMAKE   variable LPSTRUCTDECL   variable LPENUMDECL
 variable LPENUMS        variable LPEXECVECTOR   variable LPSHA256       variable LPTFAMSHA
 variable LPCOMBINATORS  variable LPXREF  variable LPLAYOUTSEAL  variable LPLOWERCERTSEAL
 variable LPTOPROW
@@ -599,11 +599,12 @@ s" c-bp-watch-dump" s" label label --" TRUST
 : PFX-LOAD-DECL-FILES ( -- )
    \ The shared declaration-event transaction loads first, then the STRUCTURE
    \ constructor generator, then the STRUCTURE declarer (which calls the
-   \ generator, so it must load after it; ENUM is a later dot) — all after the
-   \ checker hook.
+   \ generator, so it must load after it), then the ENUM declarer (a pure
+   \ event-driven leaf) — all after the checker hook.
    PFX-COMMON LPDECLEVENT    s" src/core/decl-event.f"     PFX-LOAD-ROW
    PFX-COMMON LPSTRUCTMAKE   s" src/core/structure-make.f" PFX-LOAD-ROW
-   PFX-COMMON LPSTRUCTDECL   s" src/core/structure-decl.f" PFX-LOAD-ROW ;
+   PFX-COMMON LPSTRUCTDECL   s" src/core/structure-decl.f" PFX-LOAD-ROW
+   PFX-COMMON LPENUMDECL     s" src/core/enum-decl.f"      PFX-LOAD-ROW ;
 
 : PFX-LOAD-CORE-FILES ( -- )
    PFX-COMMON LPSTRUCTURES   s" src/core/structures.f"  PFX-LOAD-ROW
@@ -697,7 +698,8 @@ s" c-bp-watch-dump" s" label label --" TRUST
 : PFX-PATH-DECL-FILES ( -- )
    PFX-COMMON LPDECLEVENT    s" src/core/decl-event.f"     PFX-PATH-ROW
    PFX-COMMON LPSTRUCTMAKE   s" src/core/structure-make.f" PFX-PATH-ROW
-   PFX-COMMON LPSTRUCTDECL   s" src/core/structure-decl.f" PFX-PATH-ROW ;
+   PFX-COMMON LPSTRUCTDECL   s" src/core/structure-decl.f" PFX-PATH-ROW
+   PFX-COMMON LPENUMDECL     s" src/core/enum-decl.f"      PFX-PATH-ROW ;
 
 : PFX-PATH-CORE-FILES ( -- )
    PFX-COMMON LPSTRUCTURES   s" src/core/structures.f"  PFX-PATH-ROW
@@ -966,7 +968,8 @@ public
 : PFX-PROVIDE-DECL-FILES ( -- )
    PFX-COMMON LPDECLEVENT    s" src/core/decl-event.f"     PFX-PROVIDE-ROW
    PFX-COMMON LPSTRUCTMAKE   s" src/core/structure-make.f" PFX-PROVIDE-ROW
-   PFX-COMMON LPSTRUCTDECL   s" src/core/structure-decl.f" PFX-PROVIDE-ROW ;
+   PFX-COMMON LPSTRUCTDECL   s" src/core/structure-decl.f" PFX-PROVIDE-ROW
+   PFX-COMMON LPENUMDECL     s" src/core/enum-decl.f"      PFX-PROVIDE-ROW ;
 
 : PFX-PROVIDE-CORE-FILES ( -- )
    PFX-COMMON LPSTRUCTURES   s" src/core/structures.f"  PFX-PROVIDE-ROW
@@ -6835,7 +6838,7 @@ s" SRCA@" s" -- ptr u8" TRUST
    LBL LPTYPESCHEMA !  LBL LPTYPEFAM !  LBL LPSUMTYPE !  LBL LPLAYOUTBUF !  LBL LPLAYOUTVALID !
    LBL LPHABULAYOUT !
    LBL LPENVBASE !  LBL LPINCLUDE !  LBL LPSCRIPTARGV !  LBL LPINTMARK !  LBL LPROLES !
-   LBL LPDECLEVENT !  LBL LPSTRUCTMAKE !  LBL LPSTRUCTDECL !
+   LBL LPDECLEVENT !  LBL LPSTRUCTMAKE !  LBL LPSTRUCTDECL !  LBL LPENUMDECL !
    LBL LPENUMS !  LBL LPEXECVECTOR !  LBL LPSHA256 !  LBL LPTFAMSHA !
    LBL LPCOMBINATORS !  LBL LPXREF !  LBL LPLAYOUTSEAL !  LBL LPLOWERCERTSEAL !
    LBL LPTOPROW !  LBL LCHKSNAPTOKEN ! ;
