@@ -472,6 +472,7 @@ defer MATCH-VAR-XT ( ptr u8 n n -- n bool )             \ variant tail -> SUMV i
 defer MATCH-VTAG-XT ( n -- n )                           \ SUMV id -> declaration-order tag (seen-bitset index)
 defer MATCH-VCOUNT-XT ( n -- n )                        \ family id -> variant count (exhaustiveness domain)
 defer MATCH-PAY-XT ( n n n -- n )                        \ vid famterm row -- row + instantiated payload
+defer FIELD-PROJ-XT ( n n n -- n bool )                 \ field-id off famterm -- fieldterm ok : instantiated field type from a committed field id + the input pointer's family args (dot habu-checker-type-structure)
 variable FIELD-FAM   -1 FIELD-FAM !              \ reserved family-id of the internal `field` ctor
 
 \ M5 barrier-uniformity: the `tile` and `uniform` family ids, captured by
@@ -649,7 +650,8 @@ variable EXT-FREE-N   0 EXT-FREE-N !
    [: PARAM>FAM TFAM-WIDTH@* ;] is TFAM-INST-WIDTH-XT
    [: 2drop 0 RES-FALSE ;] is CONSTRUCT-FAM-XT
    [: 2drop 0 RES-FALSE ;] is MATCH-FAM-XT
-   [: drop RES-FALSE ;] is CTOR-STEP-XT ;
+   [: drop RES-FALSE ;] is CTOR-STEP-XT
+   [: 2drop drop 0 RES-FALSE ;] is FIELD-PROJ-XT ;   \ no registry: field projection fails closed
 TFAM-QUERY-DEFAULTS
 
 \ registry-not-armed default for the PTX block-barrier hook: drop the sym (do not
@@ -1294,6 +1296,20 @@ variable TWALK-D
 \ closed through the same guards.
 variable LAYOUT-XPORT
 variable LAYOUT-INTRO
+\ --- field-projection armed window (dot habu-checker-type-structure). A sealed,
+\ schema-aware window that lets a generated FAMILY:FIELD accessor body mint
+\ `ptr <field-type>` from a `ptr family<args>` input and a committed field id —
+\ the one shape (byte offset added to a layout pointer, retyped to the field's
+\ instantiated schema) that is otherwise fail-closed (`+`/`cell+` preserve the
+\ pointee, CAST refuses T-PTR). Armed ONLY by the generative crossing (the path
+\ structure-make.f/generate-field use) around the one audited accessor eval, and
+\ keyed on the accessor word name; it fires once at the `field-project` op token
+\ inside that word's body and disarms. The arming word is pre-hook (checker.f
+\ before the check hook) so the seal-time internal-word pass marks it internal —
+\ user source can neither execute nor tick it, exactly like CTOR-PEND!.
+variable FIELD-PROJ-A   variable FIELD-PROJ-U   0 FIELD-PROJ-U !   \ armed accessor word name span
+variable FIELD-PROJ-FID     \ committed field id (the authority: offset/type/role derive from it)
+variable FIELD-PROJ-OFF     \ baked byte offset (cross-checked against the committed offset)
 variable LBUF-PEND-A
 variable LBUF-PEND-U   0 LBUF-PEND-U !
 
@@ -8689,6 +8705,50 @@ variable CONFAM    \ resolved family id while CONM = 2
    THEN
    0 CONM ! ;
 
+\ --- field-projection op (dot habu-checker-type-structure, docs/type-families.md
+\ §2.2). `field-project` is a reserved checker operation: inside the sealed armed
+\ window it consumes `ptr family<args>` plus a baked byte-offset literal and
+\ produces `ptr <instantiated field type>`, deriving the field's family, offset,
+\ byte extent, role, and schema from the committed field id via TYPE-FIELD
+\ reflection (FIELD-PROJ-XT, bound in type-family.f). It is the single shape the
+\ ordinary layout fence refuses (`+`/`cell+` preserve the pointee; CAST refuses
+\ T-PTR), so nothing else can retype a layout pointer. Runtime is a plain
+\ pointer+offset add (the generator/consumer supplies the `( ptr n -- ptr )`
+\ word); the checker judges only the type effect here.
+: FIELD-PROJ! ( ptr u8 n n n -- ) {: a:ptr u:n fid:n off:n :}   \ arm: accessor name span + committed field id + baked byte offset
+   a FIELD-PROJ-A !  u FIELD-PROJ-U !  fid FIELD-PROJ-FID !  off FIELD-PROJ-OFF ! ;
+: FIELD-PROJ-CLEAR ( -- ) 0 FIELD-PROJ-U ! ;
+: FIELD-PROJ-MATCH? ( -- bool )   \ armed AND the word under check is the armed accessor
+   FIELD-PROJ-U @ 0 >  NMU @ 0 >  and 0= IF RES-FALSE EXIT THEN
+   FIELD-PROJ-A @ FIELD-PROJ-U @ NMA @ NMU @ CORE-STR=CI ;   \ NMA is case-folded; the armed name is verbatim
+: FIELD-PROJ-REJECT ( -- ) TKF TKFU @ CAP-FAIL  0 OK ! ;   \ pin the field-project token, fail closed
+\ Row surgery: peek `ptr family<args>` (second from top; the offset literal is on
+\ top), validate the pointer shape, ask FIELD-PROJ-XT for the instantiated field
+\ type, then consume (ptr family, offset) and produce (ptr field-type) through the
+\ ordinary CHECKER-STEP so linearity/row plumbing stay consistent. The peeked
+\ family term is used verbatim in the step's input row so its `family ~ family`
+\ pairing is the sanctioned same-family bind, not a fenced var<->layout bind.
+: FIELD-PROJ-STEP ( -- )
+   FIELD-PROJ-CLEAR                                       \ single shot, even on reject
+   DCUR @ R-RES {: r0:n :}                                \ top = baked offset literal
+   r0 TAG S-PUSH <> IF FIELD-PROJ-REJECT EXIT THEN
+   r0 P>REST R-RES {: r1:n :}                             \ below = ptr family<args>
+   r1 TAG S-PUSH <> IF FIELD-PROJ-REJECT EXIT THEN
+   r1 P>TYPE T-RES {: pt:n :}
+   pt TAG T-PTR <> IF FIELD-PROJ-REJECT EXIT THEN         \ not a pointer
+   pt PTR>INNER T-RES {: famterm:n :}
+   famterm LAYOUT-PARAM? 0= IF FIELD-PROJ-REJECT EXIT THEN   \ pointee is not a layout family
+   FIELD-PROJ-FID @ FIELD-PROJ-OFF @ famterm FIELD-PROJ-XT {: fieldterm:n ok:bool :}
+   ok 0= IF FIELD-PROJ-REJECT EXIT THEN                   \ wrong offset / off-past-width / arity / role / uncommitted id
+   FRESH MK-ROW {: base:n :}
+   famterm MK-PTR base MK-PUSH FRESH MK-VAR swap MK-PUSH {: din:n :}   \ base, ptr family<args>, offset-var (MK-PUSH: type rest -- row)
+   fieldterm MK-PTR base MK-PUSH {: dout:n :}                          \ base, ptr field-type
+   din dout CHECKER-STEP ;
+: FIELD-PROJ-STEP? ( ptr u8 n -- bool )   \ handle a field-project token inside the armed window; report whether handled
+   FIELD-PROJ-MATCH? 0= IF 2drop RES-FALSE EXIT THEN
+   s" field-project" CORE-STR= 0= IF RES-FALSE EXIT THEN
+   FIELD-PROJ-STEP RES-TRUE ;
+
 : DO-TOK1 {: a u :}
    a u TOKFOLD drop
    a u CAP-FAIL
@@ -8715,6 +8775,7 @@ variable CONFAM    \ resolved family id while CONM = 2
    TKF TKFU @ HIDROW-STEP? 0= IF                       \ depth/.s fail closed over hidden cells
    TKF TKFU @ XPORT-STEP? 0= IF                        \ whole-bundle transport row surgery
    TKF TKFU @ RS-TOK? 0= IF
+   TKF TKFU @ FIELD-PROJ-STEP? 0= IF                   \ armed FAMILY:FIELD projection: ptr family<args> -> ptr field-type
    TKF TKFU @ CHECKER-PREFLIGHT:BODY-TOK? IF
       a u FAIL-PIN! REJECT-IMMEDIATE
    THEN   \ live immediate with a usig: wrong-certificate reject (p5)
@@ -8730,7 +8791,7 @@ variable CONFAM    \ resolved family id while CONM = 2
    PIMM-STREAM @ 0 = IF
       CURSYM @ PIMM-IX dup 0 < 0= IF PIMM-CNT@ PIMM-SKIP ELSE drop THEN
    THEN
-   THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN
+   THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN
    EXEC-OPAQUE @ IF MD-EXEC-OPAQUE MDIAG! THEN   \ name the opaque-execute reject on the pinned 'execute' token
    CATCH-OPAQUE @ IF MD-CATCH-OPAQUE MDIAG! THEN   \ name the opaque-catch reject on the pinned 'catch' token
    LIN-TAINT-SCAN

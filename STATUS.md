@@ -43,7 +43,7 @@ post-candidate is 11.161s, dictionary/checker is 7.815s, `check-cli` is 3.162s,
 tail/lint groups are under 7.7s, and AOT negative is 7.837s with no AOT maker
 run.
 Certified (linux-arm64): 3716  Uncheckable: 0  Rejected: 0
-Certified (macos-arm64): 3717
+Certified (macos-arm64): 3732
 Host-script workflow hooks: retired and gated
 
 This is the single source of truth for the self-check counts. Other docs

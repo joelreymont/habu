@@ -2029,6 +2029,41 @@ TFC-QUOT-ROW-INSTALL
    vid term TFAM-MATCH-XPAD-RECORD            \ layout-cap slice 4: wide arm records its extra-pad lowering fact
    vid row TFC-PAY-ROW ;
 
+\ --- field projection (dot habu-checker-type-structure). The registry-reflection
+\ half of the checker's FIELD-PROJ-XT hook: given a committed field id, the baked
+\ byte offset from the accessor body, and the resolved family term of the input
+\ pointer (`ptr family<args>`), validate the projection against the committed
+\ layout and return the instantiated field type. The field id is the sole
+\ authority; the byte offset, family, byte extent, role, and schema all derive
+\ from it via TYPE-FIELD reflection, so a forged offset, an offset past the family
+\ width, a foreign family, a wrong generic arity, or a non-addressable field role
+\ each fail closed. TFC-ARGS!/TFC-SCH-TERM instantiate the field's schema over the
+\ input family's args, so a generic field yields the caller's substituted type.
+\ Lives here because the field/schema registries and TFC-SCH-TERM (which
+\ checker.f loads before) are this module's; the checker reaches it only through
+\ the sealed friend hook, exactly like TFAM-MATCH-PAY / TFAM-CONSTRUCT-STEP.
+variable FPRJ-TERM   variable FPRJ-OK
+variable FPRJ-FID    variable FPRJ-OFF   variable FPRJ-FAM
+\ Inner validation reads the request from the FPRJ-* cells (so the caught
+\ quotation stays stack-neutral for `catch`), may throw E-PF-ID on an uncommitted
+\ field id, and publishes the instantiated field type + verdict into FPRJ-TERM /
+\ FPRJ-OK.
+: TFAM-FIELD-PROJ-DO ( -- )
+   0 FPRJ-OK !  0 FPRJ-TERM !
+   FPRJ-FID @ TYPE-FIELD:FAMILY@ {: ffam:n :}
+   ffam FPRJ-FAM @ PARAM>FAM <> IF EXIT THEN                    \ field not owned by the input family
+   FPRJ-OFF @ FPRJ-FID @ TYPE-FIELD:BYTE-OFF@ <> IF EXIT THEN   \ baked offset disagrees with the committed offset (forged access)
+   FPRJ-FID @ TYPE-FIELD:FLAGS@ PF-FLAGS-NONE <> IF EXIT THEN   \ non-addressable field role (niche/boxed/custom): no projection
+   FPRJ-FAM @ PARAM>ARGC ffam TFAM-ARITY@ <> IF EXIT THEN       \ generic arity mismatch
+   FPRJ-OFF @ FPRJ-FID @ TYPE-FIELD:BYTES@ +  ffam TFAM-SLOTS@ CELL *  > IF EXIT THEN   \ field extent past the family width
+   FPRJ-FAM @ TFC-ARGS!
+   FPRJ-FID @ TYPE-FIELD:SCHEMA@ SCHEMA-ROOT@ TFC-SCH-TERM FPRJ-TERM !   \ root index -> node -> instantiate the field schema over the input args
+   -1 FPRJ-OK ! ;
+: TFAM-FIELD-PROJ ( n n n -- n bool )   \ fid off famterm -- fieldterm ok
+   FPRJ-FAM !  FPRJ-OFF !  FPRJ-FID !
+   [: TFAM-FIELD-PROJ-DO ;] catch drop           \ E-PF-ID (uncommitted id) -> ok stays 0
+   FPRJ-TERM @ FPRJ-OK @ 0= 0= ;                  \ ok as a boolean flag
+
 \ ---------------------------------------------------------------------------
 \ item 10 slice 1: compiler-facing lowering surface (docs §16; dot
 \ habu-tfam-10-native design A). Pure resolution + metadata for the native
@@ -2099,5 +2134,6 @@ TFC-QUOT-ROW-INSTALL
    [: TFAM-MATCH-VARIANT ;] is MATCH-VAR-XT     \ item 9: MATCH branch variant resolve
    [: SUMV-TAG@ ;]          is MATCH-VTAG-XT    \ item 9: variant id -> declaration-order tag (bitset index)
    [: TFAM-VAR-COUNT@ ;]    is MATCH-VCOUNT-XT  \ item 9: exhaustiveness domain size
-   [: TFAM-MATCH-PAY ;]     is MATCH-PAY-XT ;   \ item 9: branch payload row from the scrutinee's args
+   [: TFAM-MATCH-PAY ;]     is MATCH-PAY-XT     \ item 9: branch payload row from the scrutinee's args
+   [: TFAM-FIELD-PROJ ;]    is FIELD-PROJ-XT ;  \ dot habu-checker-type-structure: instantiated field type for the FAMILY:FIELD projection window
 TFAM-HOOK-INSTALL

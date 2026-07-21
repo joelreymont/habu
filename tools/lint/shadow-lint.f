@@ -26,7 +26,7 @@ require tools/lint/source-lex.f
 
 package SHADOW-LINT-TOOL
 
-$60000 constant SL-FB-CAP                    \ largest linted source + headroom (item 9 pushed checker.f near $40000)
+$80000 constant SL-FB-CAP                    \ largest linted source + headroom (checker.f is the largest and crossed $60000 with the field-projection window)
 create FB SL-FB-CAP allot                    \ one file at a time
 
 \ ---- prim-name store: copied out of habu1.f so FB can be reused per file ----

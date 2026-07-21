@@ -143,9 +143,16 @@ $4000 constant MACOS-DATA-CONST  \ __DATA_CONST page (__got + zero fill)
 \ assignment), +48 macOS __text, measured live at the lane fixpoint: CODELEN 126424
 \ -> 126472, floor 15832 -> 15880. Whole file, signature, and page count unchanged.
 \ The linux row below is owed a linux-host re-measure.
-126472 constant MACOS-CODE-TEXT   \ CODELEN: every emitter-phase row (baked-source incl.)
+\ 2026-07-21 owed re-measure at the fieldproj merge: spark's literal-split/per-site
+\ relocation work (landed linux-side, cannot measure macOS) shrank baked __text by
+\ 1336 bytes; candidate ratchet measured 125136. Same page, signature/total unchanged.
+\ 2026-07-21 owed re-measure at the fieldproj merge (second composition): spark's
+\ definer-publication landing shrank baked __text by a further 10692 bytes;
+\ candidate ratchet measured 114444. Same page span per the floor arithmetic;
+\ signature/total unchanged.
+114444 constant MACOS-CODE-TEXT   \ CODELEN: every emitter-phase row (baked-source incl.)
 1295 constant MACOS-SIGNATURE     \ ad-hoc code signature SuperBlob (grows with CODELEN)
-15880 constant MACOS-FLOOR-DIST     \ code above the 16 KiB floor: the page-recovery shave
+3852 constant MACOS-FLOOR-DIST     \ code above the 16 KiB floor: the page-recovery shave
 148855 constant MACOS-TOTAL       \ = FILE-SIZE bin/hb = GB-SIZE-BASELINE-MACOS
 
 \ Linux committed attribution, measured at the byte-fixpoint on 2026-07-19 (DGX

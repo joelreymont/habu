@@ -217,6 +217,57 @@ addressable field.
 Private declarations expose generated operations only inside their owning
 package. Generated packages are sealed after publication.
 
+#### Field-projection checker capability (IMPLEMENTED)
+
+The checker half of the `FAMILY:FIELD` accessor — the sealed, schema-aware
+armed window that lets a generated accessor body mint `ptr <field-type>` from a
+`ptr family<args>` input — has landed (dot
+`habu-checker-type-structure-d996215b`, `src/core/checker.f` +
+`src/core/type-family.f`; regression `test/field-proj-suite.f`). The
+accessor-generator lane (`generate-field`) binds to the contract below; nothing
+else is generated yet, so no accessor ships until that lane lands.
+
+**Why it needs a dedicated operation.** A layout pointer is fenced against
+ordinary retyping: `+` and `cell+` preserve the pointee (`ptr point + n` stays
+`ptr point`, and both reject a layout pointer outright), and `CAST` refuses a
+`ptr` operand. So "add a static byte offset to a `ptr family<args>` and retype
+the result as the field's instantiated schema type" is a shape the checker
+otherwise has no sound way to express. Field projection is that one shape,
+admitted only inside the armed window.
+
+**The operation.** The generated accessor body is
+`( ptr family<args> -- ptr field-type ) <byte-offset> field-project`:
+
+- `field-project` is a reserved checker operation. Its *operand order on the
+  stack* is `( ptr family<args> byte-offset -- ptr field-type )`: the input
+  layout pointer is deeper, the baked byte-offset literal is on top. Runtime is a
+  plain pointer + byte-offset add (a `( ptr n -- ptr )` word the generator/consumer
+  supplies); the checker judges only the type effect.
+- **Arming contract.** The window is armed by the generative crossing only —
+  `FIELD-PROJ! ( accessor-name-addr accessor-name-len field-id byte-offset -- )`,
+  a pre-hook internal the seal marks non-executable, so user source can neither
+  execute nor tick it (identical to the `CTOR-PEND!` constructor window). The
+  generator arms it immediately before evaluating the one accessor definition,
+  keyed on the accessor word name; the window fires once at the `field-project`
+  token inside that word's body and disarms (single-shot, even on reject).
+- **Authority.** The committed **field id** is the sole authority. The checker
+  derives the field's owning family, committed byte offset, byte extent,
+  addressability role, and type schema from it by `TYPE-FIELD` reflection, and
+  instantiates that schema over the input pointer's family arguments — so a
+  generic field yields the caller's substituted type. The baked byte offset is
+  cross-checked against the committed offset.
+
+**Fail-closed outside the window and on any inconsistency.** Every one of these
+is a checker reject, each pinned in `test/field-proj-suite.f`: `field-project`
+used with no matching armed window; a baked offset that disagrees with the
+committed offset; a field extent past the committed family width; a projection
+on a non-pointer or a non-layout pointer; a field id owned by a different family
+than the input; a wrong generic arity; a non-addressable field role; a declared
+output type that does not match the projected field type; and a malformed
+(uncommitted-id) arming. The pre-existing layout-pointer rejects in
+`test/layout-buffer.f` (`cell+` on a layout pointer, an empty-body retype to
+`ptr u8`) stay red.
+
 Former `TYPEFAMILY` declarations become zero-field structures. Authority-bearing
 ids keep raw representation refinement and decoding private to the validating
 owner; there is no universal `n` cast or generated `MAKE`. Former

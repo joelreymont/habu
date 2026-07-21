@@ -9,7 +9,7 @@ require tools/lint/text.f
 s" E-LINT-INTERN-CAP" E-LINT-INTERN-CAP LINT-CODE-NAME+
 \ Sized by the largest interned set: filemap-lint interns every FILEMAP.md
 \ path (513 as of 2026-07, past the old $200); keep growth headroom.
-$400 constant INTERN-MAX
+$800 constant INTERN-MAX   \ crossed $400 on 2026-07-21 as FILEMAP grew past 1024 interned paths (structure-decl/make, field-proj, enum suites)
 $1000 constant INTERN-CHUNK-MIN
 $100 constant INTERN-FOLD-CAP
 8 constant INTERN-VEC-CAP

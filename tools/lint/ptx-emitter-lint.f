@@ -34,7 +34,7 @@ require tools/lint/source-lex.f
 
 package PTX-EMITTER-LINT-TOOL
 
-$60000 constant PE-FB-CAP                       \ one file at a time; headroom past the largest scanned source
+$80000 constant PE-FB-CAP                       \ one file at a time; headroom past the largest scanned source (checker.f crossed $60000 with the field-projection window)
 create PE-FB PE-FB-CAP allot
 
 \ ---- emitter-surface family: name -> abs ptr / len / per-run count ----------
