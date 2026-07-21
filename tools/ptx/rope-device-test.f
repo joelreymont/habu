@@ -32,6 +32,10 @@ require lib/ptx/cuda-driver.f
 require lib/ptx/cuda-scope.f
 require maki/eval/active-target.f
 
+package ROPE-DEVICE-TEST
+
+private
+
 4 constant ROK
 create RO-P1 64 allot
 create RO-KF 32 allot   create RO-KB 32 allot
@@ -167,3 +171,5 @@ variable RO-FWD variable RO-BWD variable RO-dX variable RO-dCOS variable RO-dSIN
    T-REPORT ;
 
 ROPE-DEVICE-MAIN
+
+;package

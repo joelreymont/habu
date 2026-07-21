@@ -33,6 +33,10 @@ require lib/ptx/cuda-scope.f
 require lib/test.f
 require maki/eval/active-target.f
 
+package CUDA-LAUNCH-TEST
+
+private
+
 create LL-PATH 64 allot
 create LL-KN   32 allot          \ kernel name
 create LL-OUT $8000 allot  create LL-ERR $1000 allot   \ spawned emit capture
@@ -146,3 +150,5 @@ variable LL-DX variable LL-DY variable LL-ABITS variable LL-NV variable LL-RBUF
    T-REPORT ;
 
 RUN
+
+;package

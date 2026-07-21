@@ -21,6 +21,10 @@ require lib/ptx/cuda-driver.f
 require lib/ptx/cuda-scope.f
 require maki/eval/active-target.f
 
+package SUM-DEVICE-TEST
+
+private
+
 create RS-PATH 64 allot  create RS-KN 32 allot
 create RS-HIN 32 allot  create RS-HOUT 32 allot
 create RS-OUT $4000 allot  create RS-ERR $1000 allot
@@ -120,3 +124,5 @@ variable RS-DIN variable RS-DOUT variable RS-KV
    T-REPORT ;
 
 SUM-MAIN
+
+;package

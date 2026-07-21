@@ -37,6 +37,10 @@ require lib/ptx/cuda-driver.f
 require lib/ptx/cuda-scope.f
 require maki/eval/active-target.f
 
+package SWIGLU-DEVICE-TEST
+
+private
+
 4 constant SWK
 create SW-P1 64 allot
 create SW-KF 32 allot
@@ -169,3 +173,5 @@ variable SW-FWD variable SW-dG variable SW-dU variable SW-dO variable SW-KV
    T-REPORT ;
 
 SWIGLU-DEVICE-MAIN
+
+;package

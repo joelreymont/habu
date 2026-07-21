@@ -8,6 +8,10 @@ require lib/string.f
 require lib/fmt.f
 require tools/ptx/perf-compare.f
 
+package PERF-REGRESS-CLI
+
+private
+
 : PERF-REGRESS-PATH$ ( -- ptr u8 n )
    SCRIPT-ARGC 0 > if 0 SCRIPT-ARGV$ exit then
    s" tools/ptx/perf-rows.tsv" ;
@@ -26,3 +30,5 @@ require tools/ptx/perf-compare.f
    then ;
 
 PERF-REGRESS-MAIN
+
+;package

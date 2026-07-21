@@ -12,6 +12,10 @@ require lib/ptx/cuda-driver.f
 require lib/ptx/cuda-scope.f
 require maki/eval/active-target.f
 
+package REDADD-DEVICE-TEST
+
+private
+
 create RA-PATH 64 allot  create RA-KN 32 allot
 variable RA-DEV variable RA-CTX variable RA-MOD variable RA-FUNC
 variable RA-OUT variable RA-NV variable RA-RBUF
@@ -75,3 +79,5 @@ create RA-O $4000 allot  create RA-E $1000 allot  create RA-QO $1000 allot creat
    T-REPORT ;
 
 REDADD-MAIN
+
+;package

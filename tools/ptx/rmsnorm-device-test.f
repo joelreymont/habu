@@ -33,6 +33,10 @@ require lib/ptx/cuda-driver.f
 require lib/ptx/cuda-scope.f
 require maki/eval/active-target.f
 
+package RMSNORM-DEVICE-TEST
+
+private
+
 4 constant RNK
 create RN-P1 64 allot
 create RN-KF 32 allot   create RN-KB 32 allot
@@ -170,3 +174,5 @@ variable RN-FWD variable RN-BWD variable RN-dX variable RN-dDY variable RN-dO va
    T-REPORT ;
 
 RMSNORM-DEVICE-MAIN
+
+;package

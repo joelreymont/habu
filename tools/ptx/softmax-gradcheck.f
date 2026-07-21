@@ -29,6 +29,10 @@ require lib/ptx/cuda-driver.f
 require lib/ptx/cuda-scope.f
 require maki/eval/active-target.f
 
+package SOFTMAX-GRADCHECK
+
+private
+
 4 constant GCK
 create GC-P1 64 allot
 create GC-KF 32 allot   create GC-KB 32 allot
@@ -164,3 +168,5 @@ variable GC-FWD variable GC-BWD variable GC-dX variable GC-dDY variable GC-dO va
    T-REPORT ;
 
 SOFTMAX-GRADCHECK-MAIN
+
+;package

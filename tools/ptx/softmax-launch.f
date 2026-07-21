@@ -29,6 +29,10 @@ require lib/ptx/cuda-driver.f
 require lib/ptx/cuda-scope.f
 require maki/eval/active-target.f
 
+package SOFTMAX-DEVICE-TEST
+
+private
+
 create SL-PATH 64 allot  create SL-KN 32 allot
 create SL-HIN 32 allot  create SL-HOUT 32 allot
 create SL-OUT $8000 allot  create SL-ERR $1000 allot
@@ -129,3 +133,5 @@ variable SL-DIN variable SL-DOUT variable SL-KV
    T-REPORT ;
 
 SOFTMAX-MAIN
+
+;package
