@@ -411,13 +411,39 @@ defer TDV-ELEM-XT ( ptr u8 n -- n )   \ forward ref for the ELEM<->ARGS<->QUOT r
       THEN THEN
    AGAIN ;
 
-\ quotation payload `[ din -- dout | rin -- rout ]`, the opening `[` consumed. The
-\ landed SC-QUOT schema carries one node per effect side, so each side is exactly
-\ one payload element; an empty side (a `--`/`]` where a type is expected) is
-\ rejected by TDECL-PAY-ELEM's delimiter guard, and a multi-type side fails the
-\ EXPECT below. No return clause stores hasr 0 with the din/dout nodes reused as
-\ ignored placeholders for rin/rout.
-: TDV-QUOT-SIDE ( -- n ) TDECL-NEXT TDV-ELEM-XT ;
+\ quotation payload `[ din -- dout | rin -- rout ]`, the opening `[` consumed. Each
+\ effect side is a full ordered row of zero-or-more payload elements, so a multi-type
+\ side (`[ n n -- n ]`) or an empty side (`[ -- n ]`, `[ n -- ]`) is legal. Element
+\ node ids collect in a reentrant scratch — a nested quotation element reuses it and
+\ rewinds to its own base — then land as one contiguous run of schema roots per side
+\ (built after every element's own arg roots already interleaved during parsing), so
+\ each SCH-ROW element range stays contiguous. No `|` clause stores hasr 0 with two
+\ empty rin/rout rows (row-polymorphic neutral return); an explicit clause pins both.
+$100 constant TDV-QUOT-CAP
+create TDV-QUOT-SCR TDV-QUOT-CAP cells allot
+variable TDV-QUOT-N
+: TDV-QUOT+ ( n -- ) {: node:n :}
+   TDV-QUOT-N @ TDV-QUOT-CAP >= IF
+      TDN-A @ TDN-U @ s" quotation effect side too long" E-TDECL-PAYLOAD TDECL-THROW THEN
+   node TDV-QUOT-N @ cells TDV-QUOT-SCR + !
+   TDV-QUOT-N @ 1 + TDV-QUOT-N ! ;
+: TDV-QUOT-BUILD-ROW ( n -- n ) {: base:n :}   \ [base,top) scratch node ids -> contiguous SCH-ROW
+   SCHEMA-ROOT-N@ {: estart:n :}
+   TDV-QUOT-N @ base - {: cnt:n :}
+   base BEGIN dup TDV-QUOT-N @ < WHILE
+      dup cells TDV-QUOT-SCR + @ SCHEMA-ROOT+ drop
+      1 +
+   REPEAT drop
+   base TDV-QUOT-N !
+   estart cnt SCHEMA-ROW ;
+: TDV-QUOT-EMPTY-ROW ( -- n ) SCHEMA-ROOT-N@ 0 SCHEMA-ROW ;
+: TDV-QUOT-SIDE ( -- n )                        \ parse one side's elements -> SCH-ROW node
+   TDV-QUOT-N @ {: base:n :}
+   BEGIN TDECL-NEXT 2dup DELIM? 0= WHILE
+      TDV-ELEM-XT TDV-QUOT+
+   REPEAT
+   PK!                                          \ leave the delimiter for the caller
+   base TDV-QUOT-BUILD-ROW ;
 : TDV-QUOT-EXPECT ( ptr u8 n -- ) {: ea:ptr eu:n :}
    TDECL-NEXT 2dup ea eu CORE-STR= IF 2drop EXIT THEN
    s" malformed quotation payload" E-TDECL-SYNTAX TDECL-THROW ;
@@ -436,7 +462,7 @@ defer TDV-ELEM-XT ( ptr u8 n -- n )   \ forward ref for the ELEM<->ARGS<->QUOT r
       2dup s" ]" CORE-STR= 0= IF
          s" malformed quotation payload" E-TDECL-SYNTAX TDECL-THROW
       THEN 2drop
-      din dout din dout 0 SCHEMA-QUOT
+      din dout TDV-QUOT-EMPTY-ROW TDV-QUOT-EMPTY-ROW 0 SCHEMA-QUOT
    THEN ;
 
 \ a resolved family head followed by `<` is a parametric application; any other
@@ -944,22 +970,28 @@ variable TDGEN-K    variable TDGEN-M    variable TDGEN-B
    pu 0 > IF pa pu TDGEN-APP 58 TDGEN-C, THEN
    fam TFAM-NAME$ TDGEN-APP ;
 
+\ render one quotation effect side (a SCH-ROW node): each element type node followed
+\ by a space, so an empty side emits nothing and a multi-type side reads back as its
+\ ordered tokens. Deferred so the SCH-QUOT case can reach it before its impl (which
+\ calls TDGEN-SCH back) is defined and installed below.
+defer TDGEN-QUOT-ROW ( n -- )   \ ( rownode -- )
+
 : TDGEN-SCH ( n -- ) {: node:n :}        \ one payload schema node -> sig text
    node SCHEMA-PARAM? IF node SCHEMA-A@ TDGEN-LETTER EXIT THEN
    node SCHEMA-CON?   IF node SCHEMA-A@ CT-NAME$ TDGEN-APP EXIT THEN
    node SCHEMA-PTR?   IF s" ptr " TDGEN-APP node SCHEMA-A@ RECURSE EXIT THEN
-   node SCHEMA-QUOT? IF               \ "[ din -- dout | rin -- rout ]" (RECURSE per side)
+   node SCHEMA-QUOT? IF               \ "[ din -- dout | rin -- rout ]" (row per side)
       s" [ " TDGEN-APP
-      node SCHEMA-QUOT-DIN@ RECURSE
-      s"  -- " TDGEN-APP
-      node SCHEMA-QUOT-DOUT@ RECURSE
+      node SCHEMA-QUOT-DIN@ TDGEN-QUOT-ROW
+      s" -- " TDGEN-APP
+      node SCHEMA-QUOT-DOUT@ TDGEN-QUOT-ROW
       node SCHEMA-QUOT-HASR@ 0= 0= IF
-         s"  | " TDGEN-APP
-         node SCHEMA-QUOT-RIN@ RECURSE
-         s"  -- " TDGEN-APP
-         node SCHEMA-QUOT-ROUT@ RECURSE
+         s" | " TDGEN-APP
+         node SCHEMA-QUOT-RIN@ TDGEN-QUOT-ROW
+         s" -- " TDGEN-APP
+         node SCHEMA-QUOT-ROUT@ TDGEN-QUOT-ROW
       THEN
-      s"  ] " TDGEN-APP
+      s" ] " TDGEN-APP
       EXIT
    THEN
    node SCHEMA-APP? IF               \ "fam" or "fam<arg,arg,..>" (RECURSE per arg)
@@ -977,6 +1009,13 @@ variable TDGEN-K    variable TDGEN-M    variable TDGEN-B
       EXIT
    THEN
    s" sumtype: unsupported constructor payload schema" 76 die ;
+
+: TDGEN-QUOT-ROW-IMPL ( n -- ) {: rownode:n :}
+   0 BEGIN dup rownode SCHEMA-ROW-COUNT@ < WHILE
+      rownode over SCHEMA-ROW-ELEM@ TDGEN-SCH  32 TDGEN-C,  1 +
+   REPEAT drop ;
+: TDGEN-QUOT-ROW-INSTALL ( -- ) [: TDGEN-QUOT-ROW-IMPL ;] is TDGEN-QUOT-ROW ;
+TDGEN-QUOT-ROW-INSTALL
 
 : TDGEN-PAYLOAD ( n -- ) {: vid:n :}     \ declared inputs, one per schema root
    vid SUMV-SCH-COUNT@ {: k:n :}

@@ -1156,6 +1156,13 @@ test/type-family-rollback-suite.f:TWX-TFAM-FIND-IN test-metaprog habu-seal-set-c
 test/type-family-rollback-suite.f:TWX-SCHEMA-PARAM test-metaprog habu-seal-set-check-b3676b33
 test/type-family-rollback-suite.f:TWX-SCHEMA-CON test-metaprog habu-seal-set-check-b3676b33
 test/type-family-rollback-suite.f:TWX-SCHEMA-ROOT+ test-metaprog habu-seal-set-check-b3676b33
+test/type-family-rollback-suite.f:TWX-SCHEMA-ROOT@ test-metaprog habu-seal-set-check-b3676b33
+test/type-family-rollback-suite.f:TWX-SCHEMA-ROW test-metaprog habu-seal-set-check-b3676b33
+test/type-family-rollback-suite.f:TWX-SCHEMA-QUOT test-metaprog habu-seal-set-check-b3676b33
+test/type-family-rollback-suite.f:TWX-SCHEMA-TAG@ test-metaprog habu-seal-set-check-b3676b33
+test/type-family-rollback-suite.f:TWX-SCHEMA-A@ test-metaprog habu-seal-set-check-b3676b33
+test/type-family-rollback-suite.f:TWX-SCHEMA-B@ test-metaprog habu-seal-set-check-b3676b33
+test/type-family-rollback-suite.f:TWX-SCHEMA-C@ test-metaprog habu-seal-set-check-b3676b33
 test/type-family-rollback-suite.f:TWX-LAY-N@ test-metaprog habu-seal-set-check-b3676b33
 test/type-family-rollback-suite.f:TWX-LAY-ADD test-metaprog habu-seal-set-check-b3676b33
 test/type-family-rollback-suite.f:TWX-PF-BEGIN test-metaprog habu-seal-set-check-b3676b33
@@ -1283,6 +1290,12 @@ test/type-family-suite.f:TWX-SCHEMA-QUOT-HASR@ test-metaprog habu-seal-set-check
 test/type-family-suite.f:TWX-SCHEMA-QUOT-RIN@ test-metaprog habu-seal-set-check-b3676b33
 test/type-family-suite.f:TWX-SCHEMA-QUOT-ROUT@ test-metaprog habu-seal-set-check-b3676b33
 test/type-family-suite.f:TWX-SCHEMA-QUOT? test-metaprog habu-seal-set-check-b3676b33
+test/type-family-suite.f:TWX-SCHEMA-ROW test-metaprog habu-seal-set-check-b3676b33
+test/type-family-suite.f:TWX-SCHEMA-ROW? test-metaprog habu-seal-set-check-b3676b33
+test/type-family-suite.f:TWX-SCHEMA-ROW-START@ test-metaprog habu-seal-set-check-b3676b33
+test/type-family-suite.f:TWX-SCHEMA-ROW-COUNT@ test-metaprog habu-seal-set-check-b3676b33
+test/type-family-suite.f:TWX-SCHEMA-ROW-ELEM@ test-metaprog habu-seal-set-check-b3676b33
+test/type-family-suite.f:TWX-SCHEMA-ROW-OK? test-metaprog habu-seal-set-check-b3676b33
 test/type-family-suite.f:TWX-SCHEMA-RESET test-metaprog habu-seal-set-check-b3676b33
 test/type-family-suite.f:TWX-SCHEMA-ROOT+ test-metaprog habu-seal-set-check-b3676b33
 test/type-family-suite.f:TWX-SCHEMA-ROOT@ test-metaprog habu-seal-set-check-b3676b33

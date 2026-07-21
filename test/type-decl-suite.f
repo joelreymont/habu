@@ -1119,16 +1119,24 @@ s" SUMTYPE tdvcase 1 VARIANT Ok a ;VARIANT ;SUMTYPE" E-TFAM-CASE TDT-NEG
 s" SUMTYPE tdvdup 1 VARIANT ok a ;VARIANT VARIANT ok a ;VARIANT ;SUMTYPE" E-TFAM-DUP TDT-NEG
 s" SUMTYPE tdbadptr 1 VARIANT ok ptr ;VARIANT ;SUMTYPE" E-TDECL-SYNTAX TDT-NEG
 \ unknown payload types: an out-of-arity letter and a truly-unknown tail still
-\ reject. Parametric family applications and single-effect quotations now RESOLVE
-\ as payloads (dot habu-universal-enum-parametric-ad011c21); the surviving reject
-\ paths are a wrong-arity application, an unbound argument letter, an empty
-\ quotation side, and a multi-type quotation side. tdres has arity 2.
+\ reject. Parametric family applications and quotations now RESOLVE as payloads
+\ (dot habu-universal-enum-parametric-ad011c21); the surviving reject paths are a
+\ wrong-arity application and an unbound argument letter. tdres has arity 2.
 s" SUMTYPE tdpay1 1 VARIANT ok q ;VARIANT ;SUMTYPE" E-TDECL-PAYLOAD TDT-NEG
 s" SUMTYPE tdpay2 1 VARIANT ok whatnot ;VARIANT ;SUMTYPE" E-TDECL-PAYLOAD TDT-NEG
 s" SUMTYPE tdpay3 1 VARIANT ok tdres<a> ;VARIANT ;SUMTYPE" E-TDECL-PAYLOAD TDT-NEG
 s" SUMTYPE tdpay4 1 VARIANT ok tdres<a,z> ;VARIANT ;SUMTYPE" E-TDECL-PAYLOAD TDT-NEG
-s" SUMTYPE tdpay5 0 VARIANT ok [ -- n ] ;VARIANT ;SUMTYPE" E-TDECL-SYNTAX TDT-NEG
-s" SUMTYPE tdpay6 0 VARIANT ok [ n n -- n ] ;VARIANT ;SUMTYPE" E-TDECL-SYNTAX TDT-NEG
+\ quotation effect sides now carry full rows (dot habu-sc-quot-full-db4d0518): an
+\ empty input side, a multi-type input side, an empty output side, and a multi-type
+\ input (with a ptr element) plus an explicit return clause all declare and resolve.
+SUMTYPE tdpq0 0 VARIANT run [ -- n ] ;VARIANT VARIANT nop ;VARIANT ;SUMTYPE
+s" " s" tdpq0" TWX-TFAM-FIND-IN nip -1 T=
+SUMTYPE tdpq2 0 VARIANT run [ n n -- n ] ;VARIANT VARIANT nop ;VARIANT ;SUMTYPE
+s" " s" tdpq2" TWX-TFAM-FIND-IN nip -1 T=
+SUMTYPE tdpqd 0 VARIANT run [ n -- ] ;VARIANT VARIANT nop ;VARIANT ;SUMTYPE
+s" " s" tdpqd" TWX-TFAM-FIND-IN nip -1 T=
+SUMTYPE tdpqm 0 VARIANT run [ n ptr u8 -- n | n -- n ] ;VARIANT VARIANT nop ;VARIANT ;SUMTYPE
+s" " s" tdpqm" TWX-TFAM-FIND-IN nip -1 T=
 
 \ malformed enum declarations (item 14): every reject rolls back to baseline via
 \ the shared transactional path (TDT-NEG asserts TDT-BASE=), so no family or

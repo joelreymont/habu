@@ -601,6 +601,35 @@ SUMTYPE pqact 0 VARIANT run [ n -- n ] ;VARIANT VARIANT nop ;VARIANT ;SUMTYPE
 PQ-RUN 6 T=
 \ a wrong-effect quotation cannot be stored where [ n -- n ] is required (rc 70).
 s" : PQ-BADQ ( -- pqact ) [: 0 0= ;] PQACT:RUN ;" TCE-CATCH 70 T=
+
+\ dot habu-sc-quot-full-db4d0518: full effect ROWS per quotation side. A multi-type
+\ input side, an empty input side, an empty output side, and a multi-type input (with
+\ a ptr element) plus an explicit return clause each construct, MATCH, and execute.
+\ [ n n -- n ]: the arm feeds two inputs and executes the recovered xt.
+SUMTYPE pq2 0 VARIANT run [ n n -- n ] ;VARIANT VARIANT nop ;VARIANT ;SUMTYPE
+: PQ2-APP ( pq2 -- n ) MATCH pq2 run OF 3 4 rot execute ENDOF nop OF 0 ENDOF ;MATCH ;
+: PQ2-RUN ( -- n ) [: + ;] PQ2:RUN PQ2-APP ;
+PQ2-RUN 7 T=
+\ wrong effect ([ n -- n ], not [ n n -- n ]) cannot be stored at the construct site.
+s" : PQ2-BADQ ( -- pq2 ) [: 1 + ;] PQ2:RUN ;" TCE-CATCH 70 T=
+\ [ -- n ]: empty input side; the arm executes the xt with no inputs.
+SUMTYPE pq0 0 VARIANT run [ -- n ] ;VARIANT VARIANT nop ;VARIANT ;SUMTYPE
+: PQ0-APP ( pq0 -- n ) MATCH pq0 run OF execute ENDOF nop OF 0 ENDOF ;MATCH ;
+: PQ0-RUN ( -- n ) [: 9 ;] PQ0:RUN PQ0-APP ;
+PQ0-RUN 9 T=
+\ [ n -- ]: empty output side; the xt consumes its input into a sink for observation.
+variable PQD-SINK
+SUMTYPE pqd 0 VARIANT run [ n -- ] ;VARIANT VARIANT nop ;VARIANT ;SUMTYPE
+: PQD-APP ( pqd -- n ) MATCH pqd run OF 5 swap execute PQD-SINK @ ENDOF nop OF 0 ENDOF ;MATCH ;
+: PQD-RUN ( -- n ) 0 PQD-SINK ! [: PQD-SINK ! ;] PQD:RUN PQD-APP ;
+PQD-RUN 5 T=
+\ [ n ptr u8 -- n | n -- n ]: multi-type input with a ptr element and an explicit
+\ return clause; the arm sets up the return cell, executes, and recovers both sides.
+create PQM-BUF 4 allot  3 PQM-BUF c!
+SUMTYPE pqm 0 VARIANT run [ n ptr u8 -- n | n -- n ] ;VARIANT VARIANT nop ;VARIANT ;SUMTYPE
+: PQM-APP ( pqm -- n ) MATCH pqm run OF 5 PQM-BUF 100 >r rot execute r> + ENDOF nop OF 0 ENDOF ;MATCH ;
+: PQM-RUN ( -- n ) [: drop r> swap >r ;] PQM:RUN PQM-APP ;
+PQM-RUN 105 T=
 s" PARAMETRIC-QUOT-PAYLOAD" type cr
 
 \ ---------------------------------------------------------------------------

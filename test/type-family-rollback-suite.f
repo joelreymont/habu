@@ -48,6 +48,13 @@ TRUSTED: TWX-TFAM-FIND-IN ( ptr u8 n ptr u8 n -- n bool ) TFAM-FIND-IN ;
 TRUSTED: TWX-SCHEMA-PARAM ( n -- n ) SCHEMA-PARAM ;
 TRUSTED: TWX-SCHEMA-CON ( n -- n ) SCHEMA-CON ;
 TRUSTED: TWX-SCHEMA-ROOT+ ( n -- n ) SCHEMA-ROOT+ ;
+TRUSTED: TWX-SCHEMA-ROOT@ ( n -- n ) SCHEMA-ROOT@ ;
+TRUSTED: TWX-SCHEMA-ROW ( n n -- n ) SCHEMA-ROW ;
+TRUSTED: TWX-SCHEMA-QUOT ( n n n n n -- n ) SCHEMA-QUOT ;
+TRUSTED: TWX-SCHEMA-TAG@ ( n -- n ) SCHEMA-TAG@ ;
+TRUSTED: TWX-SCHEMA-A@ ( n -- n ) SCHEMA-A@ ;
+TRUSTED: TWX-SCHEMA-B@ ( n -- n ) SCHEMA-B@ ;
+TRUSTED: TWX-SCHEMA-C@ ( n -- n ) SCHEMA-C@ ;
 TRUSTED: TWX-LAY-N@ ( -- n ) LAY-N@ ;
 TRUSTED: TWX-LAY-ADD ( n n n n n -- n ) LAY-ADD ;
 TRUSTED: TWX-PF-BEGIN ( -- n ) PF-BEGIN ;
@@ -285,6 +292,60 @@ TYPE-FIELD:COUNT P-PF @ T=              \ committed high-water restored
 P-PF @ 0 TWX-PF-RAW@ 0 T=              \ FAM scrubbed in the retired row
 P-PF @ 5 TWX-PF-RAW@ 0 T=              \ SLOT scrubbed
 P-PF @ 10 TWX-PF-RAW@ 0 T=             \ FLAGS scrubbed
+
+\ ---------------------------------------------------------------------------
+\ O. deterministic + canonical SC-QUOT encoding (dot habu-sc-quot-full-db4d0518):
+\    two identical multi-type quotation payloads built from the SAME reset baseline
+\    (the within-process stand-in for two fresh processes) produce a byte-identical
+\    schema node arena and root pool. This holds only if node/root ids are assigned
+\    deterministically, hasr is canonicalized through SCH-FLAG, and no node field
+\    carries uninitialized padding -- exactly the snapshot/fixpoint identity the
+\    persisted encoding relies on.
+\ ---------------------------------------------------------------------------
+create QD-TAG 128 cells allot   create QD-A 128 cells allot
+create QD-B 128 cells allot     create QD-C 128 cells allot
+create QD-ROOT 128 cells allot
+variable QD-N   variable QD-R   variable QD-QA   variable QD-QB
+\ din=[con-n,con-u8], dout=[con-n], rin=[con-n], rout=[con-n], explicit return clause.
+: QD-BUILD ( -- n )
+   1 TWX-SCHEMA-CON {: cn:n :}
+   2 TWX-SCHEMA-CON {: cu:n :}
+   cn TWX-SCHEMA-ROOT+ cu TWX-SCHEMA-ROOT+ drop 2 TWX-SCHEMA-ROW {: din:n :}
+   cn TWX-SCHEMA-ROOT+ 1 TWX-SCHEMA-ROW {: dout:n :}
+   cn TWX-SCHEMA-ROOT+ 1 TWX-SCHEMA-ROW {: rin:n :}
+   cn TWX-SCHEMA-ROOT+ 1 TWX-SCHEMA-ROW {: rout:n :}
+   din dout rin rout -1 TWX-SCHEMA-QUOT ;
+: QD-SAVE ( -- )                          \ capture node fields + roots into side buffers
+   1 BEGIN dup SCHEMA-N@ < WHILE
+      dup TWX-SCHEMA-TAG@ over cells QD-TAG + !
+      dup TWX-SCHEMA-A@   over cells QD-A + !
+      dup TWX-SCHEMA-B@   over cells QD-B + !
+      dup TWX-SCHEMA-C@   over cells QD-C + !
+      1 +
+   REPEAT drop
+   0 BEGIN dup SCHEMA-ROOT-N@ < WHILE
+      dup TWX-SCHEMA-ROOT@ over cells QD-ROOT + !
+      1 +
+   REPEAT drop
+   SCHEMA-N@ QD-N !  SCHEMA-ROOT-N@ QD-R ! ;
+: QD-CMP ( -- )                           \ assert the rebuild matches the saved capture
+   SCHEMA-N@ QD-N @ T=   SCHEMA-ROOT-N@ QD-R @ T=
+   1 BEGIN dup SCHEMA-N@ < WHILE
+      dup TWX-SCHEMA-TAG@ over cells QD-TAG + @ T=
+      dup TWX-SCHEMA-A@   over cells QD-A + @ T=
+      dup TWX-SCHEMA-B@   over cells QD-B + @ T=
+      dup TWX-SCHEMA-C@   over cells QD-C + @ T=
+      1 +
+   REPEAT drop
+   0 BEGIN dup SCHEMA-ROOT-N@ < WHILE
+      dup TWX-SCHEMA-ROOT@ over cells QD-ROOT + @ T=
+      1 +
+   REPEAT drop ;
+TWX-SCHEMA-RESET  QD-BUILD QD-QA !  QD-SAVE
+QD-QA @ TWX-SCHEMA-A@ -1 T=               \ explicit clause canonicalizes hasr to -1
+TWX-SCHEMA-RESET  QD-BUILD QD-QB !
+QD-QB @ QD-QA @ T=                        \ same node id from the same baseline
+QD-CMP                                     \ byte-identical node arena + root pool
 
 \ ---------------------------------------------------------------------------
 \ report: "ok" on success, nonzero exit on any failure.

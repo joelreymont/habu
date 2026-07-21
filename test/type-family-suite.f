@@ -47,6 +47,8 @@ variable FID    variable PID    variable AID    variable PTID   variable CLID
 variable VOK    variable VERR   variable FX     variable NP     variable NC
 variable NA     variable R1     variable L0     variable NQ
 variable NPTR   variable WBX
+variable NQDIN   variable NQDOUT  variable NQRIN   variable NQROUT
+variable NQEMP   variable NQMUL variable NQST
 \ whitebox boundary (dot habu-hb-crash-bare-c5be6634): checker-internal colon
 \ words probed at top level go through named trusted shims.
 TRUSTED: TWX-CHECKER-SNAPSHOT-PREPARE ( -- ) CHECKER-SNAPSHOT-PREPARE ;
@@ -82,6 +84,12 @@ TRUSTED: TWX-SCHEMA-QUOT-HASR@ ( n -- n ) SCHEMA-QUOT-HASR@ ;
 TRUSTED: TWX-SCHEMA-QUOT-RIN@ ( n -- n ) SCHEMA-QUOT-RIN@ ;
 TRUSTED: TWX-SCHEMA-QUOT-ROUT@ ( n -- n ) SCHEMA-QUOT-ROUT@ ;
 TRUSTED: TWX-SCHEMA-QUOT? ( n -- bool ) SCHEMA-QUOT? ;
+TRUSTED: TWX-SCHEMA-ROW ( n n -- n ) SCHEMA-ROW ;
+TRUSTED: TWX-SCHEMA-ROW? ( n -- bool ) SCHEMA-ROW? ;
+TRUSTED: TWX-SCHEMA-ROW-START@ ( n -- n ) SCHEMA-ROW-START@ ;
+TRUSTED: TWX-SCHEMA-ROW-COUNT@ ( n -- n ) SCHEMA-ROW-COUNT@ ;
+TRUSTED: TWX-SCHEMA-ROW-ELEM@ ( n n -- n ) SCHEMA-ROW-ELEM@ ;
+TRUSTED: TWX-SCHEMA-ROW-OK? ( n -- bool ) SCHEMA-ROW-OK? ;
 TRUSTED: TWX-SCHEMA-RESET ( -- ) SCHEMA-RESET ;
 TRUSTED: TWX-SCHEMA-ROOT+ ( n -- n ) SCHEMA-ROOT+ ;
 TRUSTED: TWX-SCHEMA-ROOT@ ( n -- n ) SCHEMA-ROOT@ ;
@@ -331,20 +339,39 @@ NC @ TWX-SCHEMA-ROOT+ drop   NA @ TWX-SCHEMA-ROOT+ drop
 NP @ TWX-SCHEMA-ROOT+ drop   NC @ TWX-SCHEMA-ROOT+ drop
 SCHEMA-ROOT-N@ 5 T=
 
-\ SC-QUOT quotation payload node (dot habu-tfam-4-remainder): four row roots
-\ (din,dout,rin,rout) + hasr flag, round-trip read-back, hasr normalization, and
-\ malformed-row rejection (a child that is not a live schema node).
-NP @ NC @ NA @ NP @ -1 TWX-SCHEMA-QUOT NQ !
+\ SC-QUOT quotation payload node (dot habu-sc-quot-full-db4d0518): each effect side
+\ is a full SCH-ROW node listing that side's ordered element type nodes. Build four
+\ single-element rows (din=[NP] dout=[NC] rin=[NA] rout=[NP]), then a quot; verify the
+\ side roots are SCH-ROW nodes with the expected elements, an empty side, a multi-type
+\ side, hasr normalization, and malformed-side rejection.
+NP @ TWX-SCHEMA-ROOT+ 1 TWX-SCHEMA-ROW NQDIN !
+NC @ TWX-SCHEMA-ROOT+ 1 TWX-SCHEMA-ROW NQDOUT !
+NA @ TWX-SCHEMA-ROOT+ 1 TWX-SCHEMA-ROW NQRIN !
+NP @ TWX-SCHEMA-ROOT+ 1 TWX-SCHEMA-ROW NQROUT !
+NQDIN @ TWX-SCHEMA-TAG@ SCH-ROW T=   NQDIN @ TWX-SCHEMA-ROW? -1 T=
+NQDIN @ TWX-SCHEMA-ROW-COUNT@ 1 T=   NQDIN @ TWX-SCHEMA-ROW-OK? -1 T=
+NQDIN @ NQDOUT @ NQRIN @ NQROUT @ -1 TWX-SCHEMA-QUOT NQ !
 NQ @ TWX-SCHEMA-TAG@ SCH-QUOT T=   NQ @ TWX-SCHEMA-QUOT? -1 T=
 NQ @ TWX-SCHEMA-PARAM? 0 T=        NQ @ TWX-SCHEMA-C@ SCH-QUOT-ROWS T=
 NQ @ TWX-SCHEMA-QUOT-HASR@ -1 T=
-NQ @ TWX-SCHEMA-QUOT-DIN@  NP @ T=   NQ @ TWX-SCHEMA-QUOT-DOUT@ NC @ T=
-NQ @ TWX-SCHEMA-QUOT-RIN@  NA @ T=   NQ @ TWX-SCHEMA-QUOT-ROUT@ NP @ T=
-NC @ NC @ NC @ NC @ 0 TWX-SCHEMA-QUOT TWX-SCHEMA-QUOT-HASR@ 0 T=   \ hasr normalizes to 0
-\ malformed row = nil node (0) rejected (5 args before catch: din dout rin rout hasr)
-NP @ NC @ NA @ 0 -1 ' TWX-SCHEMA-QUOT catch   TC ! 2drop 2drop drop  TC @ E-SCHEMA-BAD T=
-\ malformed row = out-of-range node rejected
-NP @ NC @ NA @ 99999 -1 ' TWX-SCHEMA-QUOT catch   TC ! 2drop 2drop drop  TC @ E-SCHEMA-BAD T=
+NQ @ TWX-SCHEMA-QUOT-DIN@  NQDIN @ T=   NQ @ TWX-SCHEMA-QUOT-DOUT@ NQDOUT @ T=
+NQ @ TWX-SCHEMA-QUOT-RIN@  NQRIN @ T=   NQ @ TWX-SCHEMA-QUOT-ROUT@ NQROUT @ T=
+NQ @ TWX-SCHEMA-QUOT-DIN@  0 TWX-SCHEMA-ROW-ELEM@ NP @ T=
+NQ @ TWX-SCHEMA-QUOT-DOUT@ 0 TWX-SCHEMA-ROW-ELEM@ NC @ T=
+NQ @ TWX-SCHEMA-QUOT-RIN@  0 TWX-SCHEMA-ROW-ELEM@ NA @ T=
+NQ @ TWX-SCHEMA-QUOT-ROUT@ 0 TWX-SCHEMA-ROW-ELEM@ NP @ T=
+\ empty side (count 0) is a legal SCH-ROW; hasr normalizes to 0 through SCH-FLAG.
+SCHEMA-ROOT-N@ 0 TWX-SCHEMA-ROW NQEMP !
+NQEMP @ TWX-SCHEMA-ROW? -1 T=   NQEMP @ TWX-SCHEMA-ROW-COUNT@ 0 T=
+NQEMP @ NQEMP @ NQEMP @ NQEMP @ 0 TWX-SCHEMA-QUOT TWX-SCHEMA-QUOT-HASR@ 0 T=
+\ multi-type side: din=[NP,NC], read both elements back in order.
+NP @ TWX-SCHEMA-ROOT+ NC @ TWX-SCHEMA-ROOT+ drop 2 TWX-SCHEMA-ROW NQMUL !
+NQMUL @ TWX-SCHEMA-ROW-COUNT@ 2 T=
+NQMUL @ 0 TWX-SCHEMA-ROW-ELEM@ NP @ T=   NQMUL @ 1 TWX-SCHEMA-ROW-ELEM@ NC @ T=
+\ malformed side = not a live SCH-ROW node: a bare type node, nil (0), or oob rejected.
+NQDIN @ NQDOUT @ NQRIN @ NP @    -1 ' TWX-SCHEMA-QUOT catch   TC ! 2drop 2drop drop  TC @ E-SCHEMA-BAD T=
+NQDIN @ NQDOUT @ NQRIN @ 0       -1 ' TWX-SCHEMA-QUOT catch   TC ! 2drop 2drop drop  TC @ E-SCHEMA-BAD T=
+NQDIN @ NQDOUT @ NQRIN @ 99999   -1 ' TWX-SCHEMA-QUOT catch   TC ! 2drop 2drop drop  TC @ E-SCHEMA-BAD T=
 
 \ SC-PTR pointer payload node (PLAN item 6, docs §8 SC-PTR): child round-trip,
 \ nesting, predicate discrimination, and malformed-child rejection.
@@ -492,6 +519,17 @@ TC @ E-PF-SCHEMA T=  PFTX @ TWX-PF-ROLLBACK
 SCH-QUOT 2 0 SCH-QUOT-ROWS TWX-SCHEMA-NEW TWX-SCHEMA-ROOT+ PFBAD !
 TWX-PF-BEGIN PFTX !
 PFTX @ PTID @ PF-NO-VARIANT s" bad-quot" PFBAD @ 20 1 20 cells CELL CELL PF-FLAGS-NONE
+   ' TWX-PF-ADD catch TC ! T-PF-DROP
+TC @ E-PF-SCHEMA T=  PFTX @ TWX-PF-ROLLBACK
+
+\ a SC-QUOT with a valid hasr but sides that are live nodes yet NOT SCH-ROW nodes:
+\ PF-QUOT-ROW-OK? rejects each non-row side, so PF-ADD reports E-PF-SCHEMA.
+SCHEMA-ROOT-N@ NQST !
+NP @ TWX-SCHEMA-ROOT+ drop   NC @ TWX-SCHEMA-ROOT+ drop
+NA @ TWX-SCHEMA-ROOT+ drop   NP @ TWX-SCHEMA-ROOT+ drop
+SCH-QUOT -1 NQST @ SCH-QUOT-ROWS TWX-SCHEMA-NEW TWX-SCHEMA-ROOT+ PFBAD !
+TWX-PF-BEGIN PFTX !
+PFTX @ PTID @ PF-NO-VARIANT s" nonrow-quot" PFBAD @ 20 1 20 cells CELL CELL PF-FLAGS-NONE
    ' TWX-PF-ADD catch TC ! T-PF-DROP
 TC @ E-PF-SCHEMA T=  PFTX @ TWX-PF-ROLLBACK
 
@@ -754,12 +792,13 @@ PTID @ TYPE-FIELD:NO-VARIANT s" x" TYPE-FIELD:FIND FOUNDF ! FX @ T= FOUNDF @ -1 
 FID @ TWX-LAY-FIND FOUNDF ! TWX-LAY-SIZE@ 16 T= FOUNDF @ -1 T=
 R1 @ TWX-SCHEMA-ROOT@ TWX-SCHEMA-TAG@ SCH-PARAM T=
 NA @ TWX-SCHEMA-TAG@ SCH-APP T=
-\ SC-QUOT node (NQ, built in section 9: din=NP dout=NC rin=NA rout=NP hasr=-1)
-\ survives the bake: tag, row roots, and hasr read back from the persisted node
-\ arena + root pool (destruction review finding 3).
+\ SC-QUOT node (NQ, built in section 9: din=[NP] dout=[NC] rin=[NA] rout=[NP] hasr=-1)
+\ survives the bake: tag, side SCH-ROW roots, their elements, and hasr all read back
+\ from the persisted node arena + root pool (destruction review finding 3).
 NQ @ TWX-SCHEMA-TAG@ SCH-QUOT T=
-NQ @ TWX-SCHEMA-QUOT-DIN@  NP @ T=
-NQ @ TWX-SCHEMA-QUOT-ROUT@ NP @ T=
+NQ @ TWX-SCHEMA-QUOT-DIN@  NQDIN @ T=
+NQ @ TWX-SCHEMA-QUOT-DIN@  0 TWX-SCHEMA-ROW-ELEM@ NP @ T=
+NQ @ TWX-SCHEMA-QUOT-ROUT@ 0 TWX-SCHEMA-ROW-ELEM@ NP @ T=
 NQ @ TWX-SCHEMA-QUOT-HASR@ -1 T=
 
 \ ---------------------------------------------------------------------------

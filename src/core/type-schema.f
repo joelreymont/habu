@@ -14,13 +14,17 @@
 1 constant SCH-PARAM      \ A = parameter index (>= 0)
 2 constant SCH-CON        \ A = concrete con code
 3 constant SCH-APP        \ A = family-id, B = arg-root start, C = arg count
-4 constant SCH-QUOT       \ A = hasr flag, B = row-root start, C = row count (SCH-QUOT-ROWS)
+4 constant SCH-QUOT       \ A = hasr flag, B = side-row-root start, C = SCH-QUOT-ROWS
 5 constant SCH-PTR        \ A = pointee schema node (docs §8 SC-PTR)
-5 constant SCH-KIND-MAX   \ highest valid creatable tag
+6 constant SCH-ROW        \ A = element-root start, B = element count (one quotation effect side)
+6 constant SCH-KIND-MAX   \ highest valid creatable tag
 
-\ A quotation payload is four effect-row schema roots stored contiguously in the
-\ schema-root pool: din, dout, rin, rout (in that order). B indexes the first; the
-\ hasr flag (A) records whether the return-stack rows carry a non-neutral effect.
+\ A quotation payload has four effect SIDES stored as four schema roots contiguous
+\ in the schema-root pool: din-row, dout-row, rin-row, rout-row (in that order). B
+\ indexes the first. Each root is a SCH-ROW node whose own element roots list that
+\ side's ordered type nodes (possibly empty), so a side can be multi-type or empty.
+\ The hasr flag (A) records whether the return-stack sides carry a non-neutral
+\ effect (an explicit `| rin -- rout` clause).
 4 constant SCH-QUOT-ROWS
 
 \ --- named reject code. Thrown (not `die`d) so the parser/CHECK path and unit
@@ -158,20 +162,37 @@ SCHEMA-RESET
    idx cells SCH-ROOT-BASE + @ ;
 : SCHEMA-ROOT-N@ ( -- n ) SCH-ROOT-N @ ;
 
-\ --- SCH-QUOT quotation payload node. Mirrors the checker's VR-QUOT/EN-QUOT/MK-QUOT
-\ rows (din, dout, rin, rout) as four schema roots plus a hasr flag, so a family or
-\ product schema can carry a quotation-typed argument without collapsing it to a
-\ string. Malformed rows (a child that is not a live schema node) throw
-\ E-SCHEMA-BAD so parse/CHECK and unit tests can trap them with `catch`.
+\ --- SCH-ROW effect-side node: one ordered row of schema element type nodes,
+\ referenced by [start, start+count) contiguous schema roots. An empty side has
+\ count 0. SCH-ROW nodes never stand alone as a payload element — only SCH-QUOT
+\ reaches them (as its four side roots), and PF-NODE-KIND? walks into them there.
 : SCHEMA-NODE-OK? ( n -- bool ) {: node:n :}
    node 0 > node SCH-N @ < and ;
+: SCHEMA-ROW ( n n -- n ) {: start:n count:n :}   \ row over [start,start+count) element roots
+   count 0 < IF E-SCHEMA-BAD throw THEN
+   SCH-ROW start count 0 SCHEMA-NEW ;
+: SCHEMA-ROW? ( n -- bool ) SCHEMA-TAG@ SCH-ROW = ;
+: SCHEMA-ROW-START@ ( n -- n ) SCHEMA-A@ ;
+: SCHEMA-ROW-COUNT@ ( n -- n ) SCHEMA-B@ ;
+: SCHEMA-ROW-ELEM@ ( n n -- n ) {: node:n i:n :}   \ i-th element type node of the row
+   i 0 < i node SCHEMA-ROW-COUNT@ >= or IF s" tfam: bad quot row elem index" 76 die THEN
+   node SCHEMA-ROW-START@ i + SCHEMA-ROOT@ ;
+: SCHEMA-ROW-OK? ( n -- bool )                     \ live SCH-ROW node (no die on nil/oob)
+   dup SCHEMA-NODE-OK? IF SCHEMA-ROW? ELSE drop RES-FALSE THEN ;
+
+\ --- SCH-QUOT quotation payload node. Mirrors the checker's VR-QUOT/EN-QUOT/MK-QUOT
+\ effect sides (din, dout, rin, rout) as four SCH-ROW roots plus a hasr flag, so a
+\ family or product schema can carry a quotation-typed argument without collapsing it
+\ to a string. Each side is a full ordered row (multi-type or empty). A side that is
+\ not a live SCH-ROW node throws E-SCHEMA-BAD so parse/CHECK and unit tests can trap
+\ it with `catch`.
 : SCH-FLAG ( n -- n )                       \ canonical 0/-1 flag as a plain cell (any nonzero -> -1)
    0= IF 0 ELSE -1 THEN ;
 : SCHEMA-QUOT ( n n n n n -- n )
    {: din:n dout:n rin:n rout:n hasr:n :}
-   din SCHEMA-NODE-OK? dout SCHEMA-NODE-OK? and
-   rin SCHEMA-NODE-OK? and rout SCHEMA-NODE-OK? and 0= IF E-SCHEMA-BAD throw THEN
-   din SCHEMA-ROOT+ {: start:n :}          \ first row root; dout/rin/rout follow contiguously
+   din SCHEMA-ROW-OK? dout SCHEMA-ROW-OK? and
+   rin SCHEMA-ROW-OK? and rout SCHEMA-ROW-OK? and 0= IF E-SCHEMA-BAD throw THEN
+   din SCHEMA-ROOT+ {: start:n :}          \ first side root; dout/rin/rout follow contiguously
    dout SCHEMA-ROOT+ drop
    rin SCHEMA-ROOT+ drop
    rout SCHEMA-ROOT+ drop
@@ -179,8 +200,8 @@ SCHEMA-RESET
 
 : SCHEMA-QUOT? ( n -- bool ) SCHEMA-TAG@ SCH-QUOT = ;
 : SCHEMA-QUOT-HASR@ ( n -- n ) SCHEMA-A@ ;
-: SCHEMA-QUOT-ROW@ ( n n -- n ) {: node:n i:n :}
-   i 0 < i SCH-QUOT-ROWS >= or IF s" tfam: bad quot row index" 76 die THEN
+: SCHEMA-QUOT-ROW@ ( n n -- n ) {: node:n i:n :}    \ i-th effect side's SCH-ROW node
+   i 0 < i SCH-QUOT-ROWS >= or IF s" tfam: bad quot side index" 76 die THEN
    node SCHEMA-B@ i + SCHEMA-ROOT@ ;
 : SCHEMA-QUOT-DIN@ ( n -- n ) 0 SCHEMA-QUOT-ROW@ ;
 : SCHEMA-QUOT-DOUT@ ( n -- n ) 1 SCHEMA-QUOT-ROW@ ;

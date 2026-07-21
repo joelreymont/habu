@@ -1032,6 +1032,11 @@ $7FFFFFFFFFFFFFFF constant PF-MAX-N
    want PK-TYPE = IF got PK-EVIDENCE <> EXIT THEN
    got want = ;
 
+\ Validate one quotation effect side: a live SCH-ROW node whose element type nodes
+\ each pass PF-NODE-KIND?. Deferred so PF-NODE-KIND?'s SCH-QUOT case can reach it
+\ before the impl (which calls PF-NODE-KIND? back) is defined and installed below.
+defer PF-QUOT-ROW-OK? ( n n -- bool )   \ ( owner rownode -- bool )
+
 : PF-NODE-KIND? ( n n -- n bool ) {: owner:n node:n :}
    node SCHEMA-NODE-OK? 0= IF 0 RES-FALSE EXIT THEN
    node SCHEMA-PARAM? IF
@@ -1057,15 +1062,15 @@ $7FFFFFFFFFFFFFFF constant PF-MAX-N
       node SCHEMA-B@ {: start:n :}
       start 0 < start SCH-ROOT-N @ > or IF 0 RES-FALSE EXIT THEN
       SCH-QUOT-ROWS SCH-ROOT-N @ start - > IF 0 RES-FALSE EXIT THEN
-      0 BEGIN dup SCH-QUOT-ROWS < WHILE
+      0 BEGIN dup SCH-QUOT-ROWS < WHILE            \ each of the four sides is a valid SCH-ROW
          dup >r
-         start r@ + SCHEMA-ROOT@ dup node >= IF
+         start r@ + SCHEMA-ROOT@ dup node >= IF    \ side root -> row node, must be built before node
             drop r> drop drop 0 RES-FALSE EXIT
          THEN
-         owner swap RECURSE 0= IF
-            drop r> drop drop 0 RES-FALSE EXIT
+         owner swap PF-QUOT-ROW-OK? 0= IF
+            r> drop drop 0 RES-FALSE EXIT
          THEN
-         drop r> drop 1 +
+         r> drop 1 +
       REPEAT drop
       PK-CELL RES-TRUE EXIT
    THEN
@@ -1092,6 +1097,26 @@ $7FFFFFFFFFFFFFFF constant PF-MAX-N
       fam PF-APP-KIND RES-TRUE EXIT
    THEN
    0 RES-FALSE ;
+
+\ A quotation side row is valid when it is a SCH-ROW node with an in-range element
+\ range and every element type node passes PF-NODE-KIND?. Elements are built before
+\ the row (parser order), so each must sit below the row id — the same acyclic guard
+\ PF-NODE-KIND? applies to APP/PTR children.
+: PF-QUOT-ROW-OK-IMPL ( n n -- bool ) {: owner:n rownode:n :}
+   rownode SCHEMA-ROW? 0= IF RES-FALSE EXIT THEN
+   rownode SCHEMA-ROW-COUNT@ {: cnt:n :}
+   rownode SCHEMA-ROW-START@ {: estart:n :}
+   cnt 0 < IF RES-FALSE EXIT THEN
+   estart 0 < estart SCH-ROOT-N @ > or IF RES-FALSE EXIT THEN
+   cnt SCH-ROOT-N @ estart - > IF RES-FALSE EXIT THEN
+   0 BEGIN dup cnt < WHILE                          \ ( j )
+      dup estart + SCHEMA-ROOT@                     \ ( j elem )
+      dup rownode >= IF 2drop RES-FALSE EXIT THEN
+      owner swap PF-NODE-KIND? nip 0= IF drop RES-FALSE EXIT THEN
+      1 +
+   REPEAT drop RES-TRUE ;
+: PF-QUOT-ROW-INSTALL ( -- ) [: PF-QUOT-ROW-OK-IMPL ;] is PF-QUOT-ROW-OK? ;
+PF-QUOT-ROW-INSTALL
 : PF-SCHEMA-OK? ( n n -- bool ) {: owner:n sch:n :}
    sch 0 < sch SCH-ROOT-N @ >= or IF RES-FALSE EXIT THEN
    owner sch SCHEMA-ROOT@ PF-NODE-KIND? nip ;
@@ -1731,6 +1756,13 @@ variable TFC-I   variable TFC-J   variable TFC-ROW
       TFC-I @ 1 + TFC-I !
    REPEAT ;
 
+\ Fold one quotation effect side (a SCH-ROW node) onto a shared base row: each
+\ element type node becomes a checker term (TFC-SCH-TERM, mutually recursive so a
+\ nested quotation element resolves) and is pushed in declaration order (element 0
+\ deepest), matching the checker's PSTACK/SIG-PARSE-QUOT bottom->top fold. Deferred
+\ because the SCH-QUOT case of TFC-SCH-TERM calls it before its impl is defined.
+defer TFC-QUOT-ROW ( n n -- n )   \ ( rownode base -- row )
+
 : TFC-SCH-TERM ( n -- n ) {: node:n :}    \ payload schema node -> checker type term
    node SCHEMA-PARAM? IF node SCHEMA-A@ cells TFC-VARS + @ EXIT THEN
    node SCHEMA-CON?   IF node SCHEMA-A@ MK-CON EXIT THEN
@@ -1747,16 +1779,27 @@ variable TFC-I   variable TFC-J   variable TFC-ROW
    node SCHEMA-QUOT? IF                       \ xt-carrying payload: din/dout share a
       FRESH MK-ROW {: dbase:n :}              \ data base, rin/rout a return base (row-poly)
       FRESH MK-ROW {: rbase:n :}
-      node SCHEMA-QUOT-DIN@  RECURSE dbase PUSH-LOGICAL {: din:n :}
-      node SCHEMA-QUOT-DOUT@ RECURSE dbase PUSH-LOGICAL {: dout:n :}
+      node SCHEMA-QUOT-DIN@  dbase TFC-QUOT-ROW {: din:n :}
+      node SCHEMA-QUOT-DOUT@ dbase TFC-QUOT-ROW {: dout:n :}
       node SCHEMA-QUOT-HASR@ 0= 0= IF
-         node SCHEMA-QUOT-RIN@  RECURSE rbase PUSH-LOGICAL {: rin:n :}
-         node SCHEMA-QUOT-ROUT@ RECURSE rbase PUSH-LOGICAL {: rout:n :}
+         node SCHEMA-QUOT-RIN@  rbase TFC-QUOT-ROW {: rin:n :}
+         node SCHEMA-QUOT-ROUT@ rbase TFC-QUOT-ROW {: rout:n :}
          din dout rin rout MK-QUOT EXIT
       THEN
       din dout rbase rbase MK-QUOT EXIT       \ no return clause: neutral rin = rout
    THEN
    s" tfam: unsupported construct payload schema" 76 die ;
+
+: TFC-QUOT-ROW-IMPL ( n n -- n ) {: rownode:n base:n :}
+   base 0                                                \ ( row j )
+   BEGIN dup rownode SCHEMA-ROW-COUNT@ < WHILE            \ ( row j )
+      dup rownode swap SCHEMA-ROW-ELEM@ TFC-SCH-TERM      \ ( row j term )
+      swap >r                                             \ ( row term ) R: j
+      swap PUSH-LOGICAL                                   \ ( row' )     R: j
+      r> 1 +                                              \ ( row' j+1 )
+   REPEAT drop ;
+: TFC-QUOT-ROW-INSTALL ( -- ) [: TFC-QUOT-ROW-IMPL ;] is TFC-QUOT-ROW ;
+TFC-QUOT-ROW-INSTALL
 
 \ TFC-PUSH-PAY ( term row -- row ) : push one payload term. A genuinely
 \ MULTI-CELL (T-WIDTH>1) resolved layout arg expands to its W hidden physical
