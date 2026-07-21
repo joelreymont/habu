@@ -88,6 +88,7 @@ variable BPT-OFF
 : BPT-SETUP-SBX ( -- )                                    \ fresh pristine target-specific prefix copy
    s" src/core" BPT-MKDIR
    s" src/os/macos" BPT-MKDIR
+   s" src/os/linux" BPT-MKDIR
    s" src/habu" BPT-MKDIR
    [: BPT-COPY ;] BP-EACH ;
 
