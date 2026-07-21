@@ -1,6 +1,6 @@
 ---
 title: "Infer: paged KV cache allocator"
-status: open
+status: active
 priority: 1
 issue-type: task
 created-at: "\"2026-07-21T15:57:38.309268+02:00\""
@@ -20,3 +20,5 @@ allocator remains, but the preserved remainder is rejected evidence: it lacks
 page pins, buffer leases and acknowledgement, real reservations, an explicit
 memory-ordering contract, and transactional ownership for publication and
 cancellation. It must not merge.
+
+Claim: agent=enumcert_impl workspace=.jj-ws/habu-infer-paged-kv-53b72853 machine=spark
