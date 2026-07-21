@@ -1,21 +1,25 @@
-\ refine-lint-core.f - confine TRUSTED refinement mints to their owning files.
+\ refine-lint-core.f - confine raw->nominal refinement mints to their owning files.
 \
-\ TRUSTED refinement mints (rows shaped `n -- <nominal family>`, e.g.
-\ ROWS-REFINE `n -- CAD-KIND:rows`) forge nominal values from raw cells. They
-\ are package-private by convention, but any maki file can reopen the package
-\ and call one bare, minting an unvalidated nominal with no gate failing. This
-\ lint pins the convention: every reference to a mint outside its owning file
-\ is a finding unless the referencing file is cited by the mint's TRUSTED.md
-\ Tests cell or named on the explicit allowlist (RFL-ALLOW+).
+\ Refinement mints (declared `TRUSTED: NAME ( n -- <nominal family> )` or, once
+\ migrated, `CAST: NAME ( ... )`, e.g. ROWS-REFINE `n -- CAD-KIND:rows`) forge
+\ nominal values from raw cells. They are package-private by convention, but any
+\ maki file can reopen the package and call one bare, minting an unvalidated
+\ nominal with no gate failing. This lint pins the convention: every reference to
+\ a mint outside its owning file is a finding unless the referencing file is the
+\ mint owner's module test (`<owner-stem>-test.f`) or named on the explicit
+\ allowlist (RFL-ALLOW+). The confinement is name-and-path based, so it is
+\ identical for both declarer forms - migrating a mint from TRUSTED: to CAST:
+\ neither weakens nor relaxes it.
 \
-\ The mint set is inventory-driven: an explicit seed list of (name, owner)
-\ pairs is cross-checked against TRUSTED.md rows (SEED-DRIFT / STALE-SEED),
-\ and a signature-shape scan flags NEW mint-shaped manifest rows (a raw `n`
-\ input producing a colon-qualified nominal-family output) that are missing
-\ from the seed list (NEW-MINT), so the lint cannot silently rot as mints are
-\ added. Bare-nominal mints such as RAW>TENSOR (`n -- tensor`) and the
-\ importer projections are seed-only: the shape scan covers the qualified
-\ CAD-KIND:/MIR: family namespace where mints are minted today.
+\ The mint set is a seed list of (name, owner) pairs. Its liveness is
+\ source-derived: each seed must be declared in its owner file via CAST: or
+\ TRUSTED:, else STALE-SEED fires (the declaration was retired or moved - retire
+\ or update the seed). A signature-shape scan over TRUSTED.md flags NEW
+\ mint-shaped manifest rows (a raw `n` input producing a colon-qualified
+\ nominal-family output) that are missing from the seed list (NEW-MINT), so the
+\ seed list cannot silently rot as TRUSTED: mints are added. Bare-nominal mints
+\ such as RAW>TENSOR (`n -- tensor`) and the importer projections are seed-only:
+\ the shape scan covers the qualified CAD-KIND:/MIR: family namespace.
 \
 \ INTERIM enforcement only: the principled endpoint is the TVK-RAW checker
 \ capability (dot habu-nominal-storage-raw-a3430ef2), which closes the mint
@@ -25,7 +29,8 @@
 \ and `( )` comments and string-literal bodies are excluded; matching is
 \ case-insensitive (the dictionary is case-insensitive) and also catches
 \ qualified `PKG:NAME` references. Scanned roots: maki/ lib/ src/ tools/.
-\ Manifest rows are read through tools/trust-lint-core.f (TL-M-*).
+\ Owner liveness reads the owner source; NEW-MINT rows are read through
+\ tools/trust-lint-core.f (TL-M-*).
 \
 \ Load after lib/date.f, lib/errors.f, lib/string.f, lib/memory.f, lib/fs.f,
 \ tools/lint/text.f, tools/lint/token.f, tools/lint/lib.f, and
@@ -40,12 +45,10 @@ $80000 constant RFL-FILE-CAP    \ largest scanned source watermark (checker.f cl
 10 constant RFL-LF
 48 constant RFL-ZERO
 58 constant RFL-COLON
-96 constant RFL-BTICK
 
 create RFL-NUM-BUF RFL-NUM-CAP allot
 create RFL-ONE 1 allot
-create RFL-TICK-BUF FS-PATH-CAP 2 + allot
-create RFL-ROW-T RFL-SEED# cells allot
+create RFL-STEM-BUF FS-PATH-CAP allot
 create RFL-ALW-NO RFL-ALLOW-MAX cells allot
 create RFL-ALW-NU RFL-ALLOW-MAX cells allot
 create RFL-ALW-PO RFL-ALLOW-MAX cells allot
@@ -278,15 +281,6 @@ variable RFL-LE
       E-TBL-BOUNDS throw
    endcase ;
 
-: RFL-ROW@ ( n -- n ) cells RFL-ROW-T + @ ;
-: RFL-ROW! ( n n -- ) {: m:n k:n :} m RFL-ROW-T k cells + ! ;
-
-: RFL-ROW-INIT ( -- )
-   0 begin dup RFL-SEED# < while
-      -1 over RFL-ROW!
-      1+
-   repeat drop ;
-
 : RFL-SEEDED? ( ptr u8 n -- bool ) {: a:ptr u:n :}
    0 begin dup RFL-SEED# < while
       dup RFL-SEED-NAME$ a u LINT-STR=CI if drop LINT-TRUE exit then
@@ -352,18 +346,10 @@ variable RFL-LE
    dash RFL-EFF-RAW-IN? 0= if LINT-FALSE exit then
    dash RFL-EFF-FAMILY-OUT? ;
 
-: RFL-SEED-DRIFT ( n n -- ) {: k:n m:n :}
-   RFL-REPORT? @ if
-      s" SEED-DRIFT TRUSTED.md: `" RFL-OUT k RFL-SEED-NAME$ RFL-OUT
-      s" ` row site " RFL-OUT m TL-M-KEY-PATH$ RFL-OUT
-      s"  != refine-lint seed owner " RFL-OUT k RFL-SEED-OWNER$ RFL-OUT RFL-NL
-   then
-   RFL-BAD+ ;
-
 : RFL-STALE-SEED ( n -- ) {: k:n :}
    RFL-REPORT? @ if
       s" STALE-SEED refine-lint: `" RFL-OUT k RFL-SEED-NAME$ RFL-OUT
-      s" ` has no TRUSTED.md row at seed owner " RFL-OUT k RFL-SEED-OWNER$ RFL-OUT
+      s" ` is not declared (CAST:/TRUSTED:) in owner " RFL-OUT k RFL-SEED-OWNER$ RFL-OUT
       s" ; retire or update the seed list" RFL-OUT RFL-NL
    then
    RFL-BAD+ ;
@@ -377,25 +363,40 @@ variable RFL-LE
    then
    RFL-BAD+ ;
 
-: RFL-SELECT-SEED ( n -- ) {: k:n :}
-   0 begin dup TL-M# @ < while
-      dup TL-M-NAME$ k RFL-SEED-NAME$ LINT-STR=CI if
-         dup TL-M-KEY-PATH$ k RFL-SEED-OWNER$ FS-PATH= if
-            dup k RFL-ROW!
-         else
-            k over RFL-SEED-DRIFT
+\ ---- source-derived liveness: the owner file must still declare the mint ------
+\ STALE-SEED is decided by the OWNER SOURCE declaration (CAST: or TRUSTED:), not
+\ a manifest row, so a mint migrated from TRUSTED: to CAST: stays live while a
+\ retired or moved declaration trips the ratchet.
+
+: RFL-DECLARER-TOK? ( -- bool )                 \ current PAT token is a mint declarer
+   s" CAST:" PAT-TOK= if LINT-TRUE exit then
+   s" TRUSTED:" PAT-TOK= ;
+
+: RFL-DECLARES? ( ptr u8 n ptr u8 n -- bool ) {: ca:ptr cu:n na:ptr nu:n :}
+   ca cu PAT-RESET
+   begin PAT-READ-TOKEN while
+      RFL-DECLARER-TOK? if
+         PAT-CAP-TOKEN-1 if
+            P1A@ P1U @ na nu LINT-STR=CI if LINT-TRUE exit then
          then
+      else
+         PAT-TOK-STRING? if PAT-SKIP-STRING-BODY then
       then
-      1+
-   repeat drop
-   k RFL-ROW@ 0 < if
-      k RFL-SEED-OWNER$ TL-SCANNED-SITE? if k RFL-STALE-SEED then
-   then ;
+   repeat LINT-FALSE ;
+
+: RFL-CONTENT-LIVE? ( ptr u8 n n -- bool ) {: ca:ptr cu:n k:n :}
+   ca cu k RFL-SEED-NAME$ RFL-DECLARES? ;
+
+: RFL-STALE-IF-DEAD ( ptr u8 n n -- ) {: ca:ptr cu:n k:n :}
+   ca cu k RFL-CONTENT-LIVE? 0= if k RFL-STALE-SEED then ;
+
+: RFL-CHECK-LIVE ( n -- ) {: k:n :}
+   k RFL-SEED-OWNER$ EXISTS? 0= if k RFL-STALE-SEED exit then
+   k RFL-SEED-OWNER$ RFL-FILE-BUF RFL-FILE-CAP READ-FILE k RFL-STALE-IF-DEAD ;
 
 : RFL-SELECT ( -- )
-   RFL-ROW-INIT
    0 begin dup RFL-SEED# < while
-      dup RFL-SELECT-SEED
+      dup RFL-CHECK-LIVE
       1+
    repeat drop ;
 
@@ -416,20 +417,28 @@ variable RFL-LE
 
 \ ---- confinement scan --------------------------------------------------------
 
-: RFL-TICKED$ ( ptr u8 n -- ptr u8 n ) {: a:ptr u:n :}
-   u FS-PATH-CAP > if s" refine-lint: path too long" RFL-FAIL then
-   RFL-BTICK RFL-TICK-BUF c!
-   a RFL-TICK-BUF 1+ u LINT-BMOVE
-   RFL-BTICK RFL-TICK-BUF 1+ u + c!
-   RFL-TICK-BUF u 2 + ;
+\ The owner's module test - <owner-stem>-test.f (owner `maki/tensor.f` ->
+\ `maki/tensor-test.f`) - may reference the mint. Any other module test that
+\ exercises a mint (e.g. a shared package harness) is a documented RFL-ALLOW+
+\ entry, not an implicit exception.
+: RFL-STEM$ ( ptr u8 n -- ptr u8 n ) {: a:ptr u:n :}
+   a u s" .fs" HAS-EXT? if a u 3 - exit then
+   a u s" .f"  HAS-EXT? if a u 2 - exit then
+   a u ;
 
-: RFL-TESTS-CITED? ( n -- bool ) {: k:n :}
-   k RFL-ROW@ dup 0 < if drop LINT-FALSE exit then
-   TL-M-TEST$ RFL-CUR$ RFL-TICKED$ LINT-CONTAINS? ;
+: RFL-STEM-TEST$ ( n -- ptr u8 n ) {: k:n :}
+   k RFL-SEED-OWNER$ RFL-STEM$ {: sa:ptr su:n :}
+   su 7 + FS-PATH-CAP > if s" refine-lint: stem path too long" RFL-FAIL then
+   sa RFL-STEM-BUF su LINT-BMOVE
+   s" -test.f" RFL-STEM-BUF su + swap LINT-BMOVE
+   RFL-STEM-BUF su 7 + ;
+
+: RFL-STEM-TEST? ( n -- bool ) {: k:n :}
+   RFL-CUR$ k RFL-STEM-TEST$ FS-PATH= ;
 
 : RFL-ALLOWED? ( n -- bool ) {: k:n :}
    RFL-CUR$ k RFL-SEED-OWNER$ FS-PATH= if LINT-TRUE exit then
-   k RFL-TESTS-CITED? if LINT-TRUE exit then
+   k RFL-STEM-TEST? if LINT-TRUE exit then
    k RFL-ALLOW-LISTED? ;
 
 : RFL-QUAL-TOK? ( n -- bool ) {: k:n :}
@@ -527,8 +536,16 @@ variable RFL-LE
 : RFL-RESET ( -- )
    0 RFL-BAD !
    0 RFL-ALLOW# !
-   RFL-REPORT-ON
-   RFL-ROW-INIT ;
+   RFL-REPORT-ON ;
+
+\ Documented module-test exceptions: the lib/nominal package confines its private
+\ representation mints (MINT-PATH/MINT-BINDING/MINT-ROW) but exercises them from
+\ shared harnesses, not per-owner <owner-stem>-test.f files. Each cites the owner
+\ and the reviewed test (dot habu-epic-type-system-b88c9ecc).
+: RFL-ALLOW-SEED ( -- )
+   s" MINT-PATH"    s" lib/nominal/nominal-test.f"      RFL-ALLOW+
+   s" MINT-BINDING" s" lib/nominal/nominal-prop-test.f" RFL-ALLOW+
+   s" MINT-ROW"     s" lib/nominal/nominal-test.f"      RFL-ALLOW+ ;
 
 : RFL-REPORT ( -- )
    s" refine-lint: " RFL-OUT RFL-SEED# RFL-U. s"  mint(s), " RFL-OUT
@@ -538,6 +555,7 @@ variable RFL-LE
 : REFINE-LINT ( -- )
    RFL-BUFFERS
    RFL-RESET
+   RFL-ALLOW-SEED
    RFL-INVENTORY
    s" maki" RFL-SCAN-ROOT
    s" lib" RFL-SCAN-ROOT

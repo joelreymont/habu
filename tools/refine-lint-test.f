@@ -151,11 +151,6 @@ create RFLT-OUT-BUF RFLT-OUT-CAP allot
    s" | RFLT-FAKE-MINT | `n -- CAD-KIND:fake` | test | `maki/fake-test.f` | maki/fake.f | 2026-07-13 |" SB-APPEND RFLT-LF
    SB$ ;
 
-: RFLT-DRIFT-MAN$ ( -- ptr u8 n )
-   SB-RESET RFLT-MAN-HEADER
-   s" | ROWS-REFINE | `n -- CAD-KIND:rows` | test | `maki/tensor-test.f` | maki/moved.f | 2026-07-13 |" SB-APPEND RFLT-LF
-   SB$ ;
-
 : RFLT-MAN-LOAD ( ptr u8 n -- ) {: a:ptr u:n :}
    RFLT-MAN$ a u WRITE-ALL
    RFLT-ROOT$ TRUST-LINT-ROOT!
@@ -171,14 +166,36 @@ create RFLT-OUT-BUF RFLT-OUT-CAP allot
    0 RFL-BAD !
    RFL-REPORT-ON ;
 
-: RFLT-DRIFT-RED ( -- )
-   RFLT-DRIFT-MAN$ RFLT-MAN-LOAD
-   RFL-REPORT-OFF
+\ ---- source-derived anti-rot ratchet ----------------------------------------
+\ Seed 1 is ROWS-REFINE (owner maki/tensor.f). STALE-SEED liveness now comes from
+\ the owner-source declaration, not a manifest row; confinement is name-and-path
+\ based, so it is identical for both declarer forms.
+
+: RFLT-FORM-CONFINED ( ptr u8 n -- ) {: ca:ptr cu:n :}
+   \ this declarer form keeps the seed live (no STALE-SEED) ...
    0 RFL-BAD !
-   RFL-SELECT
-   \ 1 SEED-DRIFT plus one STALE-SEED per in-root seed; the test/-owned seed
-   \ is exempt, so the total remains exactly RFL-SEED#.
-   RFL-BAD @ RFL-SEED# T=
+   ca cu 1 RFL-STALE-IF-DEAD
+   RFL-BAD @ 0 T=
+   \ ... and its raw->nominal forge stays module-private: an out-of-owner
+   \ reference is a finding (red), owner + <owner-stem>-test.f are the greens.
+   s" maki/eval/eval.f"   s" 1 ROWS-REFINE drop" RFL-COUNT-STR-AT 1 T=
+   s" maki/tensor.f"      s" 1 ROWS-REFINE drop" RFL-COUNT-STR-AT 0 T=
+   s" maki/tensor-test.f" s" 1 ROWS-REFINE drop" RFL-COUNT-STR-AT 0 T= ;
+
+: RFLT-DRIFT-RED ( -- )
+   RFL-REPORT-OFF
+   \ STALE-SEED, source-derived (red-first): a seed whose owner source no longer
+   \ declares it (plain `:` colon def, no CAST:/TRUSTED:) trips the ratchet.
+   0 RFL-BAD !
+   s" : ROWS-REFINE ( n -- CAD-KIND:rows ) ROWS-RAW ;" 1 RFL-STALE-IF-DEAD
+   RFL-BAD @ 1 T=
+   \ both declarer forms keep it live and confined (REFINE-CONFINE red-first each):
+   s" TRUSTED: ROWS-REFINE ( n -- CAD-KIND:rows ) ;" RFLT-FORM-CONFINED
+   s" CAST: ROWS-REFINE ( n -- CAD-KIND:rows ) ;"    RFLT-FORM-CONFINED
+   \ the manifest Tests cell is no longer consulted: MINT-PATH's old row cited
+   \ lib/nominal/nominal-test.f, which is not <owner-stem>-test.f, so absent an
+   \ RFL-ALLOW+ entry it is now a finding - the semantics genuinely changed.
+   s" lib/nominal/nominal-test.f" s" 1 MINT-PATH drop" RFL-COUNT-STR-AT 1 T=
    0 RFL-BAD !
    RFL-REPORT-ON ;
 
