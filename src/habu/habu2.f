@@ -3,22 +3,40 @@
 \ main loop, and EMIT-FORTH. Needs habu1.f (part 1). EMIT-MAIN is split into
 \ phase words sharing label VARIABLES (a giant single word would need dozens of
 \ locals); emission order is stable so the self-rebuild reaches a fixpoint.
-\ ---- compile-mode literal: emit movz/movk x9=val then the push stencil ----
+\ ---- literal emitters: scalars vs relocatable addresses ---------------------------
+\ A relocatable address must never be emitted through the scalar path. Scalars use the
+\ shared minimal MOVZ/MOVN+MOVK synthesizer (LVMOVK, via LVLITPUSH) and materialize into
+\ x16 -- never the fixed four-instruction x9 chain the AOT relocation recognises -- so a
+\ scalar whose value numerically lands inside a DATA/CODE address range can never be
+\ mistaken for an address. DATA/CODE addresses keep the fixed four-instruction x9 chain
+\ (constant width preserves the boot-reloc patch space) and flow only through the
+\ dedicated C-DATA-ADDR* / C-CODE-ADDR words, which name the relocation kind at the site.
+
+\ scalar-push: minimal chain + push (LVLITPUSH synthesizes x16, then pushes it).
 : C-LIT ( -- )
-   6 11 0 ADDI,  5 $FFFF MOVZ,
-   7 6 5 AND,    7 7 5 LSLI,  8 W-MOVZ0 LIT64,  9 8 7 ORR,  LCEMIT LABEL@ BL,
-   7 6 16 LSRI,  7 7 5 AND,   7 7 5 LSLI,  8 W-MOVK1 LIT64,  9 8 7 ORR,  LCEMIT LABEL@ BL,
-   7 6 32 LSRI,  7 7 5 AND,   7 7 5 LSLI,  8 W-MOVK2 LIT64,  9 8 7 ORR,  LCEMIT LABEL@ BL,
-   7 6 48 LSRI,  7 7 5 AND,   7 7 5 LSLI,  8 W-MOVK3 LIT64,  9 8 7 ORR,  LCEMIT LABEL@ BL,
-   9 W-PUSH0 LIT64,  LCEMIT LABEL@ BL,  9 W-PUSH1 LIT64,  LCEMIT LABEL@ BL, ;
-\ compile-mode raw literal materialization: emit movz/movk x9=val.  `val` is in
-\ the compiler's x11 at definition time; unlike C-LIT this does not push it.
-: C-X9-LIT ( -- )
+   LVLITPUSH LABEL@ BL, ;
+\ raw scalar into x16 (no push). x11 holds the value; LVMOVK emits the minimal chain.
+: C-RAW-LIT ( -- )
+   14 16 MOVZ,  LVMOVK LABEL@ BL, ;
+
+\ fixed four-instruction MOVZ/MOVK x9 chain (no push): the relocatable-address form the
+\ AOT boot pass rewrites in place. `val` is in x11 at emit time.
+: C-ADDR-RAW ( -- )
    6 11 0 ADDI,  5 $FFFF MOVZ,
    7 6 5 AND,    7 7 5 LSLI,  8 W-MOVZ0 LIT64,  9 8 7 ORR,  LCEMIT LABEL@ BL,
    7 6 16 LSRI,  7 7 5 AND,   7 7 5 LSLI,  8 W-MOVK1 LIT64,  9 8 7 ORR,  LCEMIT LABEL@ BL,
    7 6 32 LSRI,  7 7 5 AND,   7 7 5 LSLI,  8 W-MOVK2 LIT64,  9 8 7 ORR,  LCEMIT LABEL@ BL,
    7 6 48 LSRI,  7 7 5 AND,   7 7 5 LSLI,  8 W-MOVK3 LIT64,  9 8 7 ORR,  LCEMIT LABEL@ BL, ;
+\ the same fixed chain followed by the push stencil.
+: C-ADDR-PUSH ( -- )
+   C-ADDR-RAW
+   9 W-PUSH0 LIT64,  LCEMIT LABEL@ BL,  9 W-PUSH1 LIT64,  LCEMIT LABEL@ BL, ;
+\ push a DATA-region address (create/variable data field).
+: C-DATA-ADDR ( -- )  C-ADDR-PUSH ;
+\ raw DATA-region address into x9, no push (the defer dispatch-cell address).
+: C-DATA-ADDR-RAW ( -- )  C-ADDR-RAW ;
+\ push a CODE-region address (quotation entry xt, ['] / postpone target xt).
+: C-CODE-ADDR ( -- )  C-ADDR-PUSH ;
 \ ---- compile-mode CALL-or-INLINE (x11=target addr, x12=clen from FIND) ----
 $28 constant INL-MAX
 $D10043FF constant C-CALL-PROLOGUE-INSTR
@@ -1746,12 +1764,12 @@ s" c-call-checker-defer" s" --" TRUST
    good LBL,
    nohook LBL, ;
 
-: C-EMIT-DATA-X9! ( n -- ) {: off :}
-   9 20 off W-STRX C-EMITW ;
+: C-EMIT-DATA-X16! ( n -- ) {: off :}
+   16 20 off W-STRX C-EMITW ;
 
 : C-EMIT-CRSIG-PART! ( n n -- ) {: src dst :}
-   11 DATA src LDR,  C-X9-LIT
-   dst C-EMIT-DATA-X9! ;
+   11 DATA src LDR,  C-RAW-LIT
+   dst C-EMIT-DATA-X16! ;
 
 : C-EMIT-CRSIG-A! ( -- )
    TCSIG-A-CELL CRSIG-A-CELL C-EMIT-CRSIG-PART! ;
@@ -1900,7 +1918,7 @@ s" c-call-checker-defer" s" --" TRUST
    9 $910043FF LIT64,  LCEMIT LABEL@ BL,                \ add sp,#16
    9 W-RET LIT64,  LCEMIT LABEL@ BL,
    9 DATA QPATCH-CELL LDR,  LPAT LABEL@ BL,             \ b-over lands here
-   11 DATA QENT-CELL LDR,  C-LIT                   \ push the xt in the outer word
+   11 DATA QENT-CELL LDR,  C-CODE-ADDR             \ push the xt in the outer word (relocatable code addr)
    12 0 MOVZ,  12 DATA QPATCH-CELL STR, ;
 
 : EMIT-DOESPATCH ( -- )
@@ -2206,7 +2224,7 @@ s" c-store-def-name" s" --" TRUST
    C-STORE-DEF-NAME
    CP 9 0 STR,
    11 DATA 0 LDR,
-   C-LIT
+   C-DATA-ADDR
    9 W-RET LIT64,  LCEMIT LABEL@ BL,
    9 NDICT 0 ADDI,  10 DREC MOVZ,  9 9 10 MUL,  9 DBASE 9 ADD,
    10 9 0 LDR,  10 CP 10 SUB,  10 10 4 SUBI,  10 9 8 STR,
@@ -2337,7 +2355,7 @@ s" c-defer-cell" s" --" TRUST
    $D10043FF C-EMITW
    $F90003FE C-EMITW
    11 DATA DEFER-XT-CELL LDR,
-   C-X9-LIT
+   C-DATA-ADDR-RAW                                 \ movz/movk x9 = dispatch-cell addr (relocatable data addr)
    16 9 0 W-LDRX C-EMITW
    C-CALL-BLR-X16 C-EMITW
    $F94003FE C-EMITW
@@ -2477,7 +2495,7 @@ s" c-defer-target-meta" s" --" TRUST
    LVSPILL LABEL@ BL,
    C-POP-X16
    11 DATA DEFER-META-CELL LDR,
-   C-X9-LIT
+   C-DATA-ADDR-RAW                                  \ movz/movk x9 = dispatch-cell addr (relocatable data addr)
    16 9 0 W-STRX C-EMITW ;
 s" j-is" s" --" TRUST
 
@@ -2525,7 +2543,7 @@ s" bdrainpretrust" s" --" TRUST
    14 13 2 ANDI,  14 pnimm CBZ,
       C-CALL  pdone B,
    pnimm LBL,
-      C-LIT
+      C-CODE-ADDR
       9 LKWCOMPC LABEL@ ADR,  10 8 MOVZ,  LFIND LABEL@ BL,
       C-CALL
    pdone LBL, ;
@@ -2847,7 +2865,7 @@ variable LTOPHOOK
    LBL {: bk :}
    LTOK LABEL@ BL,  C-QUALIFY-SEAL-GUARD                 \ reject `['] RESERVED:tail` once sealed (TFAM 2b-iii)
    9 DATA TKA-CELL LDR,  10 DATA TKL-CELL LDR,  LFIND LABEL@ BL,
-   13 bk CBZ,  C-LIT  bk LBL, ;
+   13 bk CBZ,  C-CODE-ADDR  bk LBL, ;
 
 \ ---- item 12 slice 3b: pass-2 width-aware recompile, certificate side ------
 \ A definition whose certified check recorded any wider-than-cell width fact is
@@ -6851,7 +6869,7 @@ create AOT-DSITE-BUF AOT-DSITE-MAX 2 * allot    variable AOT-DSITE-N   \ packed 
 variable AOT-DATA-D0    variable AOT-DATA-SIZE
 \ CODE-literal relocation table (fourth relocation class): blob offsets of the
 \ movz/movk x9 literals whose value lands in the captured code range [B0,B1) --
-\ anonymous quotation-body entry addresses (J-SEMIQUOT `C-LIT QENT`). Rebased by
+\ anonymous quotation-body entry addresses (J-SEMIQUOT `C-CODE-ADDR QENT`). Rebased by
 \ the code delta (seedCP - captureB0); no name (quotations are anonymous). Stored in
 \ the DATA-site buffer right after the AOT-DSITE-N DATA offsets (one fewer scratch
 \ view), and baked as its own contiguous LAOTCSITES section.

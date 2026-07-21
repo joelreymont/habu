@@ -400,6 +400,7 @@ variable GSI-TL-FILE-A
    s" tools/stdlib-date-test.f" GSI-INCLUDE
    s" tools/spawn-emitter-test.f" GSI-INCLUDE
    s" tools/c-call-emitter-test.f" GSI-INCLUDE
+   s" test/lit-emit-size-test.f" GSI-INCLUDE
    s" tools/signature-scan-emitter-test.f" GSI-INCLUDE
    s" tools/compiler-dispatch-test.f" GSI-INCLUDE ;
 

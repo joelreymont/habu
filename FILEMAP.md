@@ -2288,6 +2288,7 @@ points stay listed.
 - `test/gate-build-hbb.f` — in-process checked hb-build helpers for positive AOT gate coverage.
 - `test/gate-build-size.f` — committed candidate binary size ratchet (per-target baselines, fail-closed on growth).
 - `test/gate-size-attribution-test.f` — committed per-region byte-attribution manifest + gate: reconstructs the whole file from the committed macOS regions, checks the distance-to-page-floor, and couples each target's committed total to the live installed engine (fail-closed on drift); VALIDATE reconciles a captured map against its engine.
+- `test/lit-emit-size-test.f` — exact compiled-body sizes for scalar literal emission (constants and string lengths now use the shared minimal MOVZ/MOVN+MOVK synthesizer, not the fixed four-instruction x9 chain), by needed-chunk count, plus the source-shape proof that scalars materialize into x16 and relocatable addresses flow only through the dedicated C-DATA-ADDR/C-CODE-ADDR emitters.
 - `test/run-result-cache.f` — per-phase content-keyed PASS-stamp store for the native gate result cache.
 - `test/run-result-cache-test.f` — fixtures for result-cache hit/miss/invalidation and red-never-cached rules.
 - `test/run-budget-cal-test.f` — fixtures for the startup spin-probe budget calibration and clamping.

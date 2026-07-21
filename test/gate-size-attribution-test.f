@@ -241,9 +241,15 @@ $4000 constant MACOS-DATA-CONST  \ __DATA_CONST page (__got + zero fill)
 \ 2026-07-21 re-measured at the merged fixpoint after the Mac's structure-make
 \ split landing (spark owes the Linux rows): +48 of engine text, CODELEN
 \ 134908 -> 134956 (floor 3836 -> 3884); same 4 KiB page, LINUX-TOTAL unchanged.
-134956 constant LINUX-CODE-TEXT   \ CODELEN: every emitter-phase row (baked-source incl.)
+\ 2026-07-21 re-measured at the merged fixpoint: the scalar/relocatable literal
+\ split (dot habu-separate-scalar-and-dffe142e) shaves -1364 of engine text on the
+\ structure-make base (CODELEN 134956 -> 133592; floor 3884 -> 2520; file unchanged) -
+\ scalars now emit minimal MOVZ/MOVN+MOVK into x16, addresses keep the fixed x9
+\ relocation chain. Region attribution: interpret/define -136, compile/keywords -760,
+\ aot-seed -468.
+133592 constant LINUX-CODE-TEXT   \ CODELEN: every emitter-phase row (baked-source incl.)
 192 constant LINUX-RW             \ ELF read-write segment tail: DYNAMIC + GOT (ELF-RW-SZ)
-3884 constant LINUX-FLOOR-DIST     \ code above the 4 KiB floor: the page-recovery shave
+2520 constant LINUX-FLOOR-DIST     \ code above the 4 KiB floor: the page-recovery shave
 139456 constant LINUX-TOTAL       \ = FILE-SIZE bin/hb = GB-SIZE-BASELINE-LINUX
 
 \ --- Per-region __text budgets (dot habu-enforce-native-region-1003651b) -------
@@ -269,7 +275,7 @@ $4000 constant MACOS-DATA-CONST  \ __DATA_CONST page (__got + zero fill)
    s" main/startup"            5672 q execute
    s" main/comment"             380 q execute
    s" interpret/colon"         3540 q execute
-   s" interpret/define"       19328 q execute
+   s" interpret/define"       19192 q execute
    s" interpret/string"        1148 q execute
    s" interpret/number"          48 q execute
    s" interpret/find"           132 q execute
@@ -277,7 +283,7 @@ $4000 constant MACOS-DATA-CONST  \ __DATA_CONST page (__got + zero fill)
    s" compile/semi"            6892 q execute
    s" compile/local"            552 q execute
    s" compile/p2wide"          2460 q execute
-   s" compile/keywords"       10676 q execute
+   s" compile/keywords"       9916 q execute
    s" compile/literal"           36 q execute
    s" compile/ops"             2456 q execute
    s" compile/call"             628 q execute
@@ -307,7 +313,7 @@ $4000 constant MACOS-DATA-CONST  \ __DATA_CONST page (__got + zero fill)
    s" dictionary-code"         7324 q execute
    s" runtime"                 9508 q execute
    s" seed-dictionary"         8652 q execute
-   s" aot-seed"               22880 q execute
+   s" aot-seed"               22412 q execute
    s" baked-source"               0 q execute ;
 
 variable RB-ACC
