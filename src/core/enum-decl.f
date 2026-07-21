@@ -90,6 +90,11 @@ package ENUM-DECL
 7101 constant E-CASE        \ family name is not a lowercase canonical tail
 
 26 constant ARITY-CAP       \ positional params are letters a..z (docs §9.2)
+97 constant ASCII-A
+122 constant ASCII-Z
+110 constant ASCII-N
+102 constant ASCII-F
+114 constant ASCII-R
 
 \ typed boolean producers (core has no `true`/`false`).
 : YES ( -- bool ) 0 0= ;
@@ -121,7 +126,6 @@ TRUSTED: PKG-MODE@ ( -- n ) CHECKER-PACKAGE-MODE @ ;
 TRUSTED: CANON? ( ptr u8 n -- bool ) TF-CANON? ;
 TRUSTED: GRAMMAR-KW? ( ptr u8 n -- bool ) TF-GRAMMAR-KEYWORD? ;
 TRUSTED: CON-CODE ( ptr u8 n -- n ) CON-OF ;
-TRUSTED: LOW? ( n -- bool ) LOWER? ;
 TRUSTED: SUMV-N@ ( -- n ) SUMV-N @ ;    \ variant-cursor high-water (variant range start)
 TRUSTED: CON-N ( -- n ) CC-N ;          \ single-letter n : signed cell
 TRUSTED: CON-BOOL ( -- n ) CC-BOOL ;    \ single-letter f : boolean/flag
@@ -246,14 +250,20 @@ ED-RESET
    id FAM-LINEAR? IF 0 NO EXIT THEN
    id YES ;
 
+: REQUIRE-LETTER ( n -- n )
+   dup ASCII-A >= over ASCII-Z <= and IF EXIT THEN
+   drop E-PAYLOAD throw ;
+
+: PARAMETER-LETTER? ( n -- bool )
+   ASCII-A - ED-ARITY @ < ;
+
 : LETTER-TYPE ( ptr u8 n -- n )         \ single-char type: param / n / f / r
-   over c@ {: c:n :}                     \ ( a u )
-   c LOW? 0= IF 2drop E-PAYLOAD throw THEN
-   c 97 - ED-ARITY @ < IF 2drop c 97 - ED-SCH-PARAM EXIT THEN
-   c [char] n = IF 2drop CON-N ED-SCH-CON EXIT THEN
-   c [char] f = IF 2drop CON-BOOL ED-SCH-CON EXIT THEN
-   c [char] r = IF 2drop CON-R ED-SCH-CON EXIT THEN
-   2drop E-PAYLOAD throw ;
+   drop c@ REQUIRE-LETTER
+   dup PARAMETER-LETTER? IF ASCII-A - ED-SCH-PARAM EXIT THEN
+   dup ASCII-N = IF drop CON-N ED-SCH-CON EXIT THEN
+   dup ASCII-F = IF drop CON-BOOL ED-SCH-CON EXIT THEN
+   ASCII-R = IF CON-R ED-SCH-CON EXIT THEN
+   E-PAYLOAD throw ;
 
 : RESOLVE-TYPE ( ptr u8 n -- n )        \ type token(s) -> schema node
    dup 0= IF 2drop E-SYNTAX throw THEN
@@ -322,16 +332,15 @@ ED-RESET
    NFLD @ 1 + NFLD ! ;
 : FIELD-CLAUSE ( -- )
    ED-NEXT dup 0= IF 2drop E-SYNTAX throw THEN   \ field name
-   2>r                                        \ r: na nu   (held; span stays valid)
-   ED-NEXT RESOLVE-TYPE                           \ ( node )
-   2r> rot                                     \ ( na nu node )
-   EMIT-FIELD ;
+   {: na:ptr nu:n :}
+   ED-NEXT RESOLVE-TYPE {: node:n :}
+   na nu node EMIT-FIELD ;
 
 : VARIANT-NAME ( -- ptr u8 n )          \ next token = variant name (must be present)
    ED-NEXT dup 0= IF 2drop E-SYNTAX throw THEN ;
 : OPEN-VARIANT ( -- )
-   VARIANT-NAME 2>r                     \ r: na nu
-   TOK @ FAM @ 2r>                      \ ( tok fam na nu )
+   VARIANT-NAME {: na:ptr nu:n :}
+   TOK @ FAM @ na nu
    DECL-EVENT:VARIANT TOK !             \ SUMV-ADD + set current-variant selector
    0 VCELLS ! ;
 : CLOSE-VARIANT ( -- )
@@ -360,8 +369,9 @@ ED-RESET
    2dup s" policy" CORE-STR=CI IF 2drop YES EXIT THEN
    s" derive" CORE-STR=CI ;
 : COMPACT-VARIANT ( ptr u8 n -- )       \ register one payloadless variant
-   2dup COMPACT-KW? IF 2drop E-SYNTAX throw THEN
-   2>r TOK @ FAM @ 2r>                  \ ( tok fam na nu )
+   {: na:ptr nu:n :}
+   na nu COMPACT-KW? IF E-SYNTAX throw THEN
+   TOK @ FAM @ na nu
    DECL-EVENT:VARIANT TOK !
    TOK @ FAM @ DECL-EVENT:END-VARIANT TOK !
    NVAR @ 1 + NVAR ! ;
@@ -378,15 +388,16 @@ ED-RESET
    DECL-EVENT:OPEN TOK !
    TOK @ FAM @ DECL-EVENT:DECL TOK ! ;
 : REGISTER-FULL ( ptr u8 n n -- )          \ ( na nu arity -- ) TK-SUM family, arity header event
-   {: ar:n :}                           \ ( na nu )
+   {: na:ptr nu:n ar:n :}
    ar ED-ARITY !
-   2>r ACTIVE-PKG$ VIS 2r>              \ ( pa pu vis na nu )
+   ACTIVE-PKG$ VIS na nu
    ar TK-SUM-K FAM-DECL FAM !
    OPEN-TX
    TOK @ FAM @ ar DECL-EVENT:ARITY TOK ! ;
 : REGISTER-COMPACT ( ptr u8 n -- )         \ ( na nu -- ) TK-ENUM family, arity 0, no header event
+   {: na:ptr nu:n :}
    0 ED-ARITY !
-   2>r ACTIVE-PKG$ VIS 2r>              \ ( pa pu vis na nu )
+   ACTIVE-PKG$ VIS na nu
    0 TK-ENUM-K FAM-DECL FAM !
    OPEN-TX ;
 
@@ -416,11 +427,15 @@ ED-RESET
 
 : DRIVE ( -- )                          \ name + mode select + register + body
    parse-name 2dup REQUIRE-NAME         \ ( na nu )  keep the span
-   ED-NEXT                              \ ( na nu ta tu )  first body token selects the mode
-   2dup ED-ALLDIG? IF
-      PARSE-ARITY REGISTER-FULL FULL-BODY
+   {: na:ptr nu:n :}
+   ED-NEXT {: ta:ptr tu:n :}            \ first body token selects the mode
+   ta tu ED-ALLDIG? IF
+      ta tu PARSE-ARITY {: ar:n :}
+      na nu ar REGISTER-FULL
+      FULL-BODY
    ELSE
-      2>r REGISTER-COMPACT 2r> COMPACT-BODY
+      na nu REGISTER-COMPACT
+      ta tu COMPACT-BODY
    THEN
    ED-CLOSE ;
 

@@ -242,6 +242,8 @@ s" ENUM-DECL:ED-RUN n red ;ENUM" TRY 7110 T=                             \ singl
 s" ENUM-DECL:ED-RUN erf 0 VARIANT a FIELD make n ;VARIANT ;ENUM" TRY 7125 T=   \ reserved field name
 s" ENUM-DECL:ED-RUN ecf 0 VARIANT a FIELD Zed n ;VARIANT ;ENUM" TRY 7101 T=    \ upper-case field name (case)
 s" ENUM-DECL:ED-RUN ebs 0 VARIANT a FIELD x nope ;VARIANT ;ENUM" TRY 7109 T=   \ unresolved field type
+s" ENUM-DECL:ED-RUN euc 0 VARIANT a FIELD x Q ;VARIANT ;ENUM" TRY 7109 T=      \ upper-case single-letter type
+s" ENUM-DECL:ED-RUN epa 0 VARIANT a FIELD x a ;VARIANT ;ENUM" TRY 7109 T=      \ parameter outside declared arity
 
 \ ---------------------------------------------------------------------------
 \ 12. A duplicate family name rejects (E-TFAM-DUP 7102 from TFAM-DECL).
