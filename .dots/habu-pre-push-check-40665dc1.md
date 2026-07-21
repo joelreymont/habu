@@ -1,11 +1,26 @@
 ---
 title: Pre-push check tool
-status: active
+status: open
 priority: 3
 issue-type: task
 created-at: "\"2026-07-21T16:31:12.726263+02:00\""
 ---
 
-Orchestrator process hardening from the 2026-07-21 mistakes (a worker's half-finished lib edit swept onto the trunk in a dots-only commit because jj diff --stat was skipped on a trivial push; a census fix pushed minutes before its sibling CODELEN red was found): tools/pre-push-check.f (or a small shell driver) that runs, in one command, jj diff --stat against the outgoing range with a loud list of touched NON-dots files, dot-dep-lint, the size-attribution + build-size + census spot tests, and trusted-inventory strict. Exit nonzero on any finding. The orchestrator (and workers via instruction) run it before every push; the point is mechanizing the checklist that keeps being skipped when a push feels trivial.
+Build a cheap checked Habu preflight, not another full gate. The tool and any
+launcher logic are checked Habu run by `bin/hb`; no shell implementation or
+host-language reducer is permitted. It reads the exact
+outgoing Jujutsu range, prints every touched path grouped by owning source class,
+fails when a purported dots-only publication contains another file, runs the
+native dot dependency check for dot mutations, and selects the focused checks
+the change owner must have recorded. It may perform cheap structural inventory
+checks whose inputs are already present, but it must not rebuild the engine,
+repeat full Maki/PTX/native gates, run performance measurements, or treat itself
+as merge proof. The exact rebased integration tree still runs its one owning
+merge gate separately; this focused preflight must never cause redundant full
+gate runs. Implement the tool in checked Habu; no shell driver,
+awk, sed, jq, Python, or JavaScript allowance exists. Exit nonzero on ambiguous
+ranges, unowned paths, mixed hidden changes, or dependency findings. It prints
+the required focused checks but introduces no new proof-record registry.
 
-Claim: agent=fable-prepush workspace=.jj-ws/fable-prepush machine=spark
+Claim: RELEASED 2026-07-21. The empty `fable-prepush` workspace remains
+historical evidence; this leaf is open and unassigned.

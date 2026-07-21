@@ -1,13 +1,24 @@
 ---
 title: "BPE: unicode pre-split closure"
-status: active
+status: open
 priority: 2
 issue-type: task
 created-at: "\"2026-07-20T23:03:34.681237+02:00\""
 blocks:
   - habu-bpe-real-vocab-c973932a
+  - habu-bpe-unicode-data-45a7c2e9
+  - habu-bpe-utf8-scalar-8c1d6f34
+  - habu-bpe-unicode-integration-d3e95a72
 ---
 
-Loose end from the real-vocab BPE landing (808d6c99): the pre-split matcher is exact for pure-ASCII runs AND pure-non-ASCII runs, but diverges from the GPT-2 regex exactly when a multi-byte letter/number codepoint abuts an ASCII letter/digit (pinned divergence fixture: naive -> engine [2616,26884,303] vs tiktoken [2616,38776]). Close the class: a UTF-8 codepoint decoder + unicode Letter/Number category membership over the codepoints the vocab can produce (a generated bounded table with provenance, not a full UCD import), extending the matcher's letter/digit classes so the divergence fixture flips to MATCH. Red-first: the divergence fixture asserts MATCH after, and the old both-sided pin fails. Measure the table's DATA cost.
+This is the Unicode pre-split umbrella. The landed matcher and complete
+`White_Space` table are useful foundations, but the bounded Letter/Number table
+is not a valid domain: GPT-2's base byte vocabulary can encode arbitrary
+Unicode. Exact children own pinned Unicode data generation, strict reentrant
+UTF-8 scalar decoding, and BPE integration/parity. The umbrella closes only
+after all three prove complete classification and exact reference behavior.
 
-Claim: agent=unicode workspace=.jj-ws/fable-unicode machine=spark (owns the UTF-8 codepoint matcher + bounded Letter/Number tables closing the BPE pre-split divergence: maki/examples/nanogpt/bpe*.f)
+Claim: RELEASED 2026-07-21. The `unicode` workspace is preserved as evidence,
+but its bounded-block Letter/Number implementation is obsolete and must never
+merge. The already-landed decoder and White_Space foundation may be retained
+only after the complete, pinned, checked proof above validates them.

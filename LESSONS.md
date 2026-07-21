@@ -1792,6 +1792,7 @@ fits.
 - **Optimizer policy and bias state belong to the optimizer.** Rebuilding beta powers and correction helpers in each trainer duplicates code and permits drift; explicit state also makes independent optimizers composable.
 - **Fuse Q, K and V before planner boundaries disappear.** Three host-dispatched projections reread the same input and cannot be recovered by a later IR fusion pass that never sees them together.
 - **A build-dependency file cannot reference a new engine/checker word in the same commit.** `bin/hb` marks its baked prefix (checker.f, engine-error.f) as `provided`, so a tool the build itself `require`s (verify-source.f, check-core.f) is certified against the OLD baked dictionary; a new `PRIM:`/`:` word or a new `ENGINE-ERROR:` code it names is undefined there. Reference new named codes from the engine as raw numbers (like `C-PACKAGE-FAIL` does) with a naming comment, and defer new-word references from build-dependency tools to a follow-up commit after the word is baked.
+- **Acceptance criteria can create a dependency cycle even when the dot says it has no dependencies.** If a foundation task requires future consumers or a future registry to pass, those consumers cannot depend on the foundation honestly. Keep the foundation's proof on current owners plus one representative fixture; enroll future owners in their own dots.
 - **Let one authoritative DATA cell coordinate engine and checker; do not keep two counters.** The `using` depth lives in a single engine DATA cell the machine code owns and the checker reads through `data-base OFFSET +`; every scope boundary (`;using`, `;package`, end-of-file, throw, REPL) just restores that one cell and the checker's parallel name table is automatically bounded by it, so no boundary needs a cross-side resync call and the two views cannot drift.
 - **A used-package search belongs at the token-resolution sites, not in the leaf FIND.** Injecting the used-publics scan into `LFIND` itself would fire on the engine's own internal keyword lookups (`trust`, `checker-does`, …); it must sit only in the interpret/compile/tick user-token resolvers so `using` never captures an engine-internal name.
 - **Adding a `PRIM:`/`TRUST` site or a validation-suite case ripples into committed inventories.** A new prim bumps the prop-test axiom ledger count and its per-index `\ AXR` rows, a new TRUST site bumps `TRUSTED.md` rows and its per-file class ceiling, engine growth trips the exact-CODELEN ratchet, and a new candidate-validation case bumps its declared kind tally — each is a committed ratchet that fails loudly and must move in the same commit.
@@ -1855,3 +1856,17 @@ fits.
   diagnostic effects render through the read-only USIGS accessors
   (`CHECKER-FIND-USIG-SYM`/`ER.DIN`/`EFF-ROW-N`), never the bare-name resolver,
   so rendering cannot re-trigger the shadow throw.
+
+- **Diagnostic provenance is separate from semantic identity.** Paths, include
+  chains, lines, columns, and spans help locate source but must not alter
+  declaration hashes.
+- **GPT-2 byte vocabulary makes the classification domain all Unicode scalars.**
+  Letter and Number data cannot be bounded to scalars seen in a vocabulary.
+- **Generated declarations are one transaction.** Snapshot every mutable owner,
+  publish once, and roll all participants back in reverse order on failure.
+- **Device snapshots need pins, leases, and completion acknowledgement.** A host
+  page reference cannot keep device-visible bytes stable until use completes.
+- **Measurement needs structural ownership.** One evidence lane owns timing and
+  size artifacts so concurrent work cannot perturb or duplicate the proof.
+- **Subagents inherit model and reasoning effort unless explicitly overridden.**
+  Dispatch should not silently select a weaker model or effort level.

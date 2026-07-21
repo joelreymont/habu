@@ -222,20 +222,26 @@ codes, never silent; named constants; and a `T{ … -> … }T` test for every wo
   `Claim: agent=<name> workspace=.jj-ws/<dot-id>` in the exact leaf, run
   `dot on <exact-id>`, inspect the diff, and run
   `HB_TMP=<private-root> bin/hb --load tools/dot-dep-lint.f` plus focused
-  mutation gates before committing; require exit 0 and `0 finding(s)`.
-  Commit the claim on a feature change, then fetch/rebase.
+  mutation gates before publishing; require exit 0 and `0 finding(s)`.
+  A single orchestrator may dispatch before that claim change reaches
+  `master@origin`: rebase the empty worker workspace onto the exact locally
+  reviewed claim change, then verify from the worker workspace that its parent
+  is that change, the dot has the same claim and `status: active`, and `jj st` is
+  clean. This lets implementation run while the orchestrator validates and
+  publishes the control change without weakening sole ownership. No worker
+  commit may merge or push until the claim change is verified at
+  `master@origin`; a competing remote claim stops the worker and releases or
+  reconciles the losing local claim before any publication.
   Before fast-forwarding `master`, run `maki/test.f`, ptx-stdlib plus touched
   native slices, `host-lint`, `filemap-lint`, and the native dot gate on the exact
   rebased tree; then push with
   `jj git push --bookmark master --remote origin`. A competing claim aborts the
   dispatch; preserve its owner and release the losing local claim. Verify the
-  fetched remote dot with `jj file show -r master@origin <dot-file>`, then rebase
-  the empty worker workspace with
-  `jj rebase -s <workspace-name>@ -d master@origin`. Immediately before
-  spawning, verify from `.jj-ws/<dot-id>` that its parent is `master@origin`, the
-  dot has the same claim and `Status: active`, and `jj st` is clean. Do not rerun
-  `dot on` on an active dot because it rewrites metadata. If
-  any transition, synchronization, or verification fails, do not dispatch.
+  fetched remote dot with `jj file show -r master@origin <dot-file>`. Rebase the
+  worker onto verified `master@origin` before integration, preserving its code
+  change, and recheck the exact active claim. Do not rerun `dot on` on an active
+  dot because it rewrites metadata. If any ownership transition,
+  synchronization, or verification fails, stop that lane before publication.
   The dot remains active through implementation, destruction review,
   integration, and owning gates; run `dot off <exact-id> -r "..."` only after
   the reviewed commit is merged and verified. Rerun the native dot gate and every
@@ -247,8 +253,10 @@ codes, never silent; named constants; and a `T{ … -> … }T` test for every wo
 - **Dot mutation publication (BLOCKING):** every add, description/dependency/
   claim edit, reopen, closure, or removal must pass the configured gates on the
   exact post-mutation tree, be committed on a feature change, fast-forwarded to
-  and pushed on green `master`, then verified at `master@origin` before another
-  lane relies on it.
+  and pushed on green `master`, then verified at `master@origin` before any
+  dependent implementation merges or pushes. A worker may rely on an exact
+  locally reviewed active claim only under the single-orchestrator dispatch
+  procedure above.
 - Gate: use the target/checker/env prelude and native gate command from
   `docs/bootstrap.md` — Habu-native, no gforth. If `bin/hb`
   is missing, recover with `HABU_ALLOW_BOOTSTRAP=1 tools/bootstrap.sh` as

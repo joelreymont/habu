@@ -1,11 +1,23 @@
 ---
 title: One-shot re-measure tool for all size ratchets
-status: active
+status: open
 priority: 2
 issue-type: task
 created-at: "\"\\\"2026-07-21T16:31:12.721005+02:00\\\"\""
 ---
 
-Orchestration friction, recurring ~8x on 2026-07-21 alone: every cross-machine src landing obligates this box to re-measure census (STATUS.md), CODELEN + floor-dist (gate-size-attribution), whole-file baseline (gate-build-size), and now the 43 per-region budgets - currently done by hand (fixpoint rebuild, size-report, edit 3-4 files, re-run tests), error-prone (the floor-direction arithmetic was mis-predicted twice; rule: MEASURE then transcribe, never predict). Build tools/re-measure.f: one command that (1) fixpoint-rebuilds with the size map, (2) measures census + code-total + floor + per-region rows + file size, (3) REWRITES all committed rows in place with a dated provenance comment naming the commit being absorbed, (4) re-runs the size/census tests, (5) prints the delta table for the commit message. Fail-closed if the map does not reconcile. Red-first: run against a tree with deliberately stale rows, verify every row lands at measured truth and the tests flip green.
+Orchestration friction recurs when an engine/source landing changes census,
+CODELEN, floor distance, whole-file size, and per-region budgets. Build one
+checked Habu tool, `tools/re-measure.f`, run only by `bin/hb` with no shell or
+host-language measurement or reducer logic. This focused tool runs the canonical fixpoint and size
+map once, derives every committed row from the same authenticated artifact,
+fails closed if the map does not reconcile, and emits a deterministic proposed
+update plus delta/provenance report. Applying the proposal is an explicit
+reviewed action; the tool must never silently rewrite unrelated files or predict
+measurements. Red-first: a fixture with stale rows reports every exact change,
+the reviewed application makes the owning size/census tests green, and a second
+measurement emits an empty proposal. It is not a full merge gate, does not run
+unrelated Maki, PTX, or native suites, and must not cause redundant full gates.
 
-Claim: agent=fable-remeasure workspace=.jj-ws/fable-remeasure machine=spark
+Claim: RELEASED 2026-07-21. The empty `fable-remeasure` workspace remains
+historical evidence; this leaf is open and unassigned.
