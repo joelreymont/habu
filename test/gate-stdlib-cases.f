@@ -564,6 +564,10 @@ SUITE effect-read-api
    test/effect-read-api-test.f
 ;SUITE
 
+SUITE prim-link
+   test/prim-link-test.f
+;SUITE
+
 SUITE owner-wid-internal
    test/owner-wid-internal.f
 ;SUITE

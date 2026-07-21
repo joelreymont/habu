@@ -506,6 +506,40 @@ This count of authoritative axiom rows stays distinct from the trust-site classe
 so permanent trust owners and the primitive rows they read remain separate
 quantities.
 
+### ARM64 contract link (`PRIM-LINK`, `src/core/checker.f`)
+
+A typed ARM64 routine effect schema describes generated register state, but each
+callable it lowers ultimately bottoms out in a checked primitive whose stack
+effect is one PES axiom row. Binding an emitted primitive/callable contract to
+that row must not depend on mutable symbol-interning order or on walking the whole
+trust-owner lifecycle: the link needs a **stable key** and a way to detect a row
+that has since drifted. `PRIM-LINK` is that package-scoped, read-only query (no
+global prefix word; it never mutates a row):
+
+- `PRIM-LINK:COUNT ( pkg-a pkg-u name-a name-u -- n )` — active PES rows sharing
+  the key. The key is a row's stable identity coordinates: its **defining package**
+  (empty for a bare `PRIM:`) and **word spelling**, interned exactly as `PRIM:` /
+  `PPRIM:` intern their symbols.
+- `PRIM-LINK:RESOLVE ( … -- bool )` — true iff the key resolves to *exactly one*
+  active row; it latches that row and its effect through the shared effect-read
+  query state, so a consumer then reads the linked row's arity/family with the same
+  `EFFECT-DIN-N` / `EFFECT-DOUT-FAM` readers above.
+- `PRIM-LINK:FP ( -- fp )` — the resolved row's identity **fingerprint**: its
+  declared din/dout arity, the per-slot `EFAM-*` family of every din then dout
+  term, and the `PE-TRUSTED-ONLY` flag, bit-packed (marker-led) into one cell,
+  exact while `din + dout <= 24` and fail-closed above. It is a *shape* identity —
+  two rows of identical shape share one — so it is always combined with the key.
+- `PRIM-LINK:CHECK ( … expect-fp -- bool )` — a sound link: the key resolves to one
+  row whose fingerprint equals the contract's recorded `expect-fp`.
+
+Every rejection the acceptance names falls out of this. An **unknown primitive** or
+the **wrong package** interns to no live row's symbol (`COUNT 0`). A **duplicate
+spelling** — an overloaded prim like `+`, or the `path0`/`PATH0` pair — has no
+single immutable row (`COUNT > 1`), so the link is ambiguous and rejected rather
+than silently binding the first match. A **row mutation** flips the fingerprint, so
+a contract carrying the pre-mutation `expect-fp` fails `CHECK`, making a recorded
+link a staleness ratchet against axiom drift. Regression: `test/prim-link-test.f`.
+
 ## Typed depth introspection
 
 Stack-snapshot assertions historically could not be typed: `T{ code -> expected

@@ -483,6 +483,7 @@ variable GSI-TL-FILE-A
    s" test/xt-effect-test.f" GSI-FORK-INCLUDE
    s" test/xt-cell-test.f" GSI-FORK-INCLUDE
    s" test/effect-read-api-test.f" GSI-FORK-INCLUDE
+   s" test/prim-link-test.f" GSI-FORK-INCLUDE
    GSI-FORK-DRAIN ;
 
 : GSI-LINT-LIBS-CORE ( -- )

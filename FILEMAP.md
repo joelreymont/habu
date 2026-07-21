@@ -2133,6 +2133,12 @@ points stay listed.
   `EFFECT-DOUT-FAM` and asserts a certified word's din/dout arity + per-position
   family class (scalar/pointer/gray), unknown-word and out-of-range edges;
   renaming or removing any entry breaks the load loudly (rc 70).
+- `test/prim-link-test.f` — focused ARM64-contract link query over the
+  primitive-effect (PES) axiom rows (dot habu-link-arm64-contracts-8cca6cc1): a
+  cold-prefix file exercises `PRIM-LINK:COUNT` / `RESOLVE` / `FP` / `CHECK` and
+  asserts that a global prim resolves one immutable row while wrong-package,
+  duplicate-spelling, unknown, and stale-fingerprint links reject, with pinned
+  identity fingerprints as the axiom-mutation ratchet.
 - `test/seal.f` — friend-arena seal regressions: one negative forge per guarded
   PROT-GUARD sink (`!`/`c!`/`+!`/`atomic!`/`atomic-add`/`atomic-cas` plus the
   `read`/`ioctl`/`poll`/`readlink`/`stat64`/`lstat64`/`getdirentries64`/`mmap`

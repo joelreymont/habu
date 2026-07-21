@@ -5581,6 +5581,92 @@ TRUSTED: EFFECT-QUERY ( ptr u8 n -- bool )    \ resolve NAME's active effect int
 : EFFECT-DIN-FAM ( i -- n )    EFFQ-DIN @ EFF-ROW-FAM ;    \ EFAM-* of din term i (top = 0)
 : EFFECT-DOUT-FAM ( i -- n )   EFFQ-DOUT @ EFF-ROW-FAM ;   \ EFAM-* of dout term i (top = 0)
 
+\ ---- ARM64 contract link: stable link from an emitted primitive/callable
+\ contract to its checker primitive-effect (PES) row (dot
+\ habu-link-arm64-contracts-8cca6cc1). A typed ARM64 routine effect schema binds
+\ each contract to exactly ONE immutable axiom row WITHOUT depending on mutable
+\ symbol-interning order or the whole trust-owner lifecycle. The link key is a
+\ row's stable identity coordinates — its defining package (empty for a bare
+\ PRIM:) and word spelling — resolved against the immutable PES table, together
+\ with the row's identity FINGERPRINT so a mutated row is caught. Package-scoped
+\ (PRIM-LINK:*, not a global prefix word) and read-only: it never mutates a row.
+\
+\   COUNT   ( pkg-a pkg-u name-a name-u -- n )        live PES rows for the key
+\   RESOLVE ( pkg-a pkg-u name-a name-u -- bool )     true iff exactly one; latch it
+\   FP      ( -- fp )                                 identity of the resolved row
+\   CHECK   ( pkg-a pkg-u name-a name-u expect-fp -- bool )   the link is sound
+\
+\ Rejections: an unknown primitive or the wrong package interns to no live row's
+\ symbol (COUNT 0); a duplicate spelling — an overloaded prim like `+`, or the
+\ path0/PATH0 pair — has no single immutable row (COUNT > 1); a mutated row
+\ disagrees with the contract's recorded expected fingerprint (FP mismatch). The
+\ fingerprint folds the row's checker-exposed identity — declared din/dout arity,
+\ the per-slot EFAM-* family of every din then dout term, and the PE-TRUSTED-ONLY
+\ flag — into one cell (bit-packed, marker-led, exact for din+dout <= PL-ARITY-CAP;
+\ a wider row fails closed rather than alias). RESOLVE latches the effect through
+\ the shared query state above, so a consumer reads the linked row's effect with
+\ the same EFFECT-DIN-N/… readers, and FP pins exactly that published family ABI.
+package PRIM-LINK
+
+private
+
+variable LINK-IDX          \ PES index of the last uniquely-resolved row
+variable LNK-CNT           \ active PES rows for the last scanned key
+variable LNK-I  variable LNK-J
+24 constant PL-ARITY-CAP   \ din+dout fitting the 62-bit fingerprint (each fam = 2 bits)
+
+\ typed-local-lint: allow-bare-local - pa/na preserve ptr u8 roles.
+: KEY-SYM ( ptr u8 n ptr u8 n -- n )  {: pa pu:n na nu:n :}   \ 0 = no such (pkg,spelling) row
+   pu 0= if na nu CHECKER-GLOBAL-SYM? exit then
+   pa pu na nu CHECKER-PUBLIC-SYM? ;
+
+: SCAN ( n -- )   \ LNK-CNT = active PES rows for sym; LINK-IDX = the (unique) match
+   0 LNK-CNT !  0 LINK-IDX !
+   {: sym:n :}
+   sym 0= if exit then
+   0 LNK-I !
+   begin LNK-I @ #PE @ < while
+      LNK-I @ PE-ACTIVE? if
+         LNK-I @ PE-SYM@ sym = if 1 LNK-CNT +!  LNK-I @ LINK-IDX ! then
+      then
+      LNK-I @ 1+ LNK-I !
+   repeat ;
+
+: PUT ( n n n -- n )  {: bits:n w:n :}  w lshift bits or ;
+
+public
+
+: COUNT ( ptr u8 n ptr u8 n -- n )   \ live PES rows sharing the (pkg,spelling) key
+   KEY-SYM SCAN LNK-CNT @ ;
+
+: RESOLVE ( ptr u8 n ptr u8 n -- bool )   \ true iff exactly one row; latch it + its effect
+   KEY-SYM SCAN
+   LNK-CNT @ 1 = if
+      LINK-IDX @ PE-EFF@ E-PTR dup ER.DIN @ EFFQ-DIN ! ER.DOUT @ EFFQ-DOUT !
+      RES-TRUE EFFQ-OK !  RES-TRUE
+   else
+      0 EFFQ-DIN !  0 EFFQ-DOUT !  RES-FALSE EFFQ-OK !  RES-FALSE
+   then ;
+
+: FP ( -- n )   \ identity fingerprint of the last RESOLVE'd row (call after true RESOLVE)
+   EFFECT-DIN-N {: din:n :}  EFFECT-DOUT-N {: dout:n :}
+   din dout + PL-ARITY-CAP > if
+      s" prim-link: row arity exceeds fingerprint capacity" 76 die then
+   1
+   din 6 PUT
+   dout 6 PUT
+   LINK-IDX @ PE-TRUSTED-ONLY? if 1 else 0 then 1 PUT
+   0 LNK-J !
+   begin LNK-J @ din < while  LNK-J @ EFFECT-DIN-FAM 2 PUT  LNK-J @ 1+ LNK-J ! repeat
+   0 LNK-J !
+   begin LNK-J @ dout < while LNK-J @ EFFECT-DOUT-FAM 2 PUT LNK-J @ 1+ LNK-J ! repeat ;
+
+: CHECK ( ptr u8 n ptr u8 n n -- bool )   \ sound link: one row whose identity matches
+   {: fp:n :}
+   RESOLVE if FP fp = else RES-FALSE then ;
+
+;package
+
 \ HIDX-DFR-SYNC ( -- ) : flush the cache when DFERS rewound below a cached defer
 \ answer. Rollback frames restore DFER-END, so a cached flag whose scan reached a
 \ now-retired tail must be dropped before the stale answer masks the rewind.

@@ -1514,6 +1514,7 @@ test/gate-common-lib.f:GE-EVAL-SOURCE-ACT test-metaprog habu-primitive-effect-ax
 test/gate-common-lib.f:GE-EVAL-SOURCE test-metaprog habu-primitive-effect-axiom-1119f176
 test/prop-test-core.f test-metaprog habu-seal-set-check-b3676b33 2
 test/effect-read-api-test.f test-metaprog habu-checker-self-typing-9ff8ba86 1
+test/prim-link-test.f test-metaprog habu-seal-set-check-b3676b33 1
 test/prop-test-core.f:PROP-INSTALL-HOOK test-metaprog cap:checker-hook-identity
 test/prop-test-core.f:CLEAR-MEAS test-metaprog habu-typed-depth-introspection-18f0efda
 test/prop-test-core.f:ERR@ test-metaprog habu-typed-depth-introspection-18f0efda
