@@ -50,6 +50,13 @@ variable RR-EC
    RIGID-MAX @  2 RIGID-MAX !
    [: s" RRW ( -- ) RR-MK1 drop RR-MK1 drop" CHECK-CANDIDATE! drop ;] catch RR-EC !
    RIGID-MAX ! ;
+\ Same probe for the LEGACY shared RIGID-FRESH counter (fresh-mask-* and every
+\ non-domain fresh atom mint from it): two mask mints in one check, bound to 2,
+\ so the second mint must throw E-RIGID-EXHAUST instead of wrapping to a live id.
+: RR-WRAPM ( -- )
+   RIGID-MAX @  2 RIGID-MAX !
+   [: s" RRWM ( -- ) RR-BOXM drop RR-BOXM drop" CHECK-CANDIDATE! drop ;] catch RR-EC !
+   RIGID-MAX ! ;
 
 \ Trusted host/index constructors and equality consumers. `space-global` is a
 \ concrete device atom; the rigid identities sit in the following early slots.
@@ -71,6 +78,11 @@ s" RR-MK1"  s" -- matrix<space-global,fresh-region-a,fresh-extent-x,f32>" TRUST
 \ a region and a generation carried in the SAME slot of two boxes
 s" RR-BOXR" s" -- span<space-global,f32,fresh-region-a>" TRUST
 s" RR-BOXG" s" -- span<space-global,f32,fresh-gen-a>" TRUST
+\ a mask identity (fresh-mask-*): the LEGACY shared RIGID-FRESH domain, the
+\ catch-all every non-region/extent/gen fresh atom still mints from.
+s" RR-BOXM" s" -- span<space-global,f32,fresh-mask-a>" TRUST
+\ one call, two outputs sharing ONE mask id (the equal-id ⇒ unify anchor).
+s" RR-SHM"  s" -- span<space-global,f32,fresh-mask-a> span<space-global,f32,fresh-mask-a>" TRUST
 
 \ THREE co-resident identities on ONE owner (region+extent+generation), the shape
 \ habu-add-unique-bounded needs. Consumer binds all three with non-reserved vars
@@ -122,6 +134,17 @@ s" rigid host: stale mutation generation" RR-DIAG? -1 T=
 \ spelled `r`. `r` parses as the float con, so it can't bind the fresh-region
 \ atom and the SAME allocation now rejects — the naming trap, not a binding limit.
 s" C-RSVD3 ( -- ) RR-SHARE3 RR-U3R"    RR-CHECK 0 T=
+\ (13) LEGACY mask domain, equal-id anchor: one call's two outputs share ONE
+\ mask id, so the equal-id consumer certifies — the mask domain unifies ON id.
+s" C-MSK= ( -- ) RR-SHM RR-UBOX"           RR-CHECK -1 T=
+\ (14) two SEPARATE mask allocations get distinct ids and reject: no wrap-reuse,
+\ no false unify. A wrapped id colliding with the still-live first would flip
+\ THIS reject to a certify — the exact soundness hole the guard closes.
+s" C-MSKX ( -- ) RR-BOXM RR-BOXM RR-UBOX"  RR-CHECK 0 T=
+\ (15) exhaustion-before-wrap on the LEGACY RIGID-FRESH counter: the shared
+\ counter throws E-RIGID-EXHAUST rather than wrapping into a reused id, the
+\ same guard the per-domain counters got (case 7).
+RR-WRAPM  RR-EC @ E-RIGID-EXHAUST T=
 
 : REPORT ( -- )
    #FAIL @ 0 = if s" ok" type cr exit then

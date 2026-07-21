@@ -347,7 +347,11 @@ ATOMA-BOOT ATOMA-P !   ATOMU-BOOT ATOMU-P !   ATOMK-BOOT ATOMK-P !   MAXATOM-INI
    cells ATOMA + 0 ptr-field ;
 : RIGID-RESET ( -- )
    1 RIGID-N !   1 RGN-N !   1 EXT-N !   1 GEN-N ! ;
+\ Shared catch-all domain: fresh-mask-* and every non-domain fresh atom mint
+\ here. It EXHAUSTS at RIGID-MAX exactly like the per-domain counters below, so
+\ a wrap can never reuse a still-live id and unify two distinct identities.
 : RIGID-FRESH ( -- n )
+   RIGID-N @ RIGID-MAX @ >= IF E-RIGID-EXHAUST throw THEN
    RIGID-N @ dup 1+ RIGID-N ! ;
 \ Per-domain mint. Each returns the current id then advances, but EXHAUSTS
 \ (throws) at RIGID-MAX rather than wrapping into a reused (or non-positive) id.

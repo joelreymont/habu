@@ -1021,11 +1021,13 @@ test/layout-valid-product-bad.f:RAW test-metaprog cap:fetched-adt-validation
 test/layout-valid-w1-bad.f:RAW test-metaprog cap:fetched-adt-validation
 test/rigid-region-suite.f test-metaprog habu-add-bounded-host-b40b048f 1
 test/rigid-region-suite.f:RR-BOXG test-metaprog habu-add-bounded-host-b40b048f
+test/rigid-region-suite.f:RR-BOXM test-metaprog habu-add-bounded-host-b40b048f
 test/rigid-region-suite.f:RR-BOXR test-metaprog habu-add-bounded-host-b40b048f
 test/rigid-region-suite.f:RR-MK1 test-metaprog habu-add-bounded-host-b40b048f
 test/rigid-region-suite.f:RR-OWN test-metaprog habu-add-bounded-host-b40b048f
 test/rigid-region-suite.f:RR-SHARE test-metaprog habu-add-bounded-host-b40b048f
 test/rigid-region-suite.f:RR-SHARE3 test-metaprog habu-add-bounded-host-b40b048f
+test/rigid-region-suite.f:RR-SHM test-metaprog habu-add-bounded-host-b40b048f
 test/rigid-region-suite.f:RR-U3R test-metaprog habu-add-bounded-host-b40b048f
 test/rigid-region-suite.f:RR-UBOX test-metaprog habu-add-bounded-host-b40b048f
 test/rigid-region-suite.f:RR-UEQ test-metaprog habu-add-bounded-host-b40b048f
