@@ -1868,6 +1868,11 @@ fits.
   raw-byte arms both carry the absolute next cursor. Validate remaining bytes
   before each continuation read; every malformed sequence returns the lead byte
   with `next = cursor + 1`, leaving the rest for later decoding.
+- **An integration workspace must not be a live worker's ancestor.** Reusing an
+  old integration workspace by rebasing it can move descendant worker changes
+  and leave their working copies stale. Create a fresh workspace at the verified
+  base, duplicate reviewed commits onto it, and verify the live workspace graph
+  before changing ancestry.
 - **GPT-2 byte vocabulary makes the classification domain all Unicode scalars.**
   Letter and Number data cannot be bounded to scalars seen in a vocabulary.
 - **Generated declarations are one transaction.** Snapshot every mutable owner,
