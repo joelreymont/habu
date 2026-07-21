@@ -1,9 +1,11 @@
 ---
 title: "STRUCTURE: parse typed declarations"
-status: active
+status: closed
 priority: 1
 issue-type: task
-created-at: "\"\\\"2026-07-13T17:13:20.867544+02:00\\\"\""
+created-at: "\"\\\"\\\\\\\"2026-07-13T17:13:20.867544+02:00\\\\\\\"\\\"\""
+closed-at: "2026-07-21T13:16:43.286020+02:00"
+close-reason: "Landed 44dcb7ff: src/core/structure-decl.f (package STRUCTURE-DECL) implements STRUCTURE name arity [POLICY p] [DERIVE f+] (FIELD name type)* ;STRUCTURE as one provisional transaction over the landed decl-event contract - persist-unframed with SD-MARK/RESTORE rollback (the checker candidate frame is rollback-only and cannot commit; the lane proved this empirically and the composition matches the sumtype TDECL-MARK/RESTORE precedent). Every reject anchor fires at the offending token; mid-declaration rejects leave registries byte-identical; snapshot IDENTITY deterministic. Post-hook load rows in all four assembly paths mirroring decl-event exactly. Found+fixed en route: package-local names shadowing globals broke the RUN-PRELUDE re-interpretation under a corrupted checker-package keyword - all renamed SD-*, lesson recorded (RUN-PRELUDE packages must not shadow globals). Suite registered in candidate-validation (N-POSITIVE 26 with the generator suite). Census 3712 measured; CODELEN 126424 measured (+48 wiring +44 concurrent linux-side); fixpoint x2 (engine 6839ab10); full battery + run.f green including perf pass."
 blocks:
   - habu-type-declarations-shared-14ab0e48
   - habu-fields-add-shared-6b063c62
