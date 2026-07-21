@@ -138,8 +138,10 @@
 \ The block reduce is the standard two-level pattern, replacing the O(B) thread-0
 \ fold: (1) each lane seeds active?tile:identity; (2) a full-warp membermask
 \ shfl.down tree (offsets 16..1) reduces each 32-lane warp so its lane 0 holds the
-\ warp partial; (3) lane 0 of each warp stages that partial to SMEM[warp], one
-\ bar.sync; (4) warp 0 loads the CG-WARP-COUNT partials (identity past the count),
+\ warp partial; (3) a leading reuse bar.sync (WAR-guards SMEM against a prior
+\ reduce in the same kernel, see EMIT-STAGE-PARTIAL) then lane 0 of each warp
+\ stages that partial to SMEM[warp], one bar.sync; (4) warp 0 loads the
+\ CG-WARP-COUNT partials (identity past the count),
 \ shfl-reduces them, and lane 0 writes the block result to SMEM[0]; (5) one
 \ bar.sync then every lane loads SMEM[0]. Blocks are always a warp multiple
 \ (PTX-BLOCK-LEGAL?), so all 32 lanes of every warp participate and the -1
@@ -180,8 +182,26 @@
    SB-RESET s" shr.u32 " CG-S rwarp CG-R s" , " CG-S rt CG-R s" , 5;" CG-S CG-LINE
    rlane rwarp ;
 
+\ Leading reuse barrier (WAR): a prior reduce in the same kernel ends with
+\ EMIT-BCAST-SMEM0's `ld.shared [SMEM]` on every lane; this word's stage-write
+\ clobbers SMEM (warp 0's lane 0 hits SMEM[0]). Read and write are on different
+\ threads (warp k reads, warp 0 writes) with no barrier between them, so the PTX
+\ memory consistency model orders them only through a CTA-scope barrier - without
+\ one it is a write-after-read data race whose result is undefined, latent today
+\ only because a CTA's warps run near-lockstep (empirically LN's 4-reduce backward,
+\ softmax, rmsnorm, LRED-LN all gradcheck on the GB10, but that is a scheduling
+\ property, not an architectural guarantee). The leading bar.sync forces every
+\ prior SMEM read to finish before the reuse-write; it is the canonical "sync
+\ before reusing shared memory" and is redundant-but-harmless on the first reduce.
+\ Rule: PTX ISA "Memory Consistency Model" - two conflicting accesses (>=1 a write)
+\ from different threads not ordered by the causality (happens-before) relation form
+\ a data race with undefined result, and bar.sync is the CTA synchronization that
+\ establishes that order. Paraphrased from training knowledge of
+\ docs.nvidia.com/cuda/parallel-thread-execution, not a verbatim quote.
+\ (dot habu-harden-emit-reduce-dc4eef6f)
 \ warp lane 0 writes its partial to SMEM[warp]; then bar.sync stages all partials.
 : EMIT-STAGE-PARTIAL ( n n n -- ) {: v:n rlane:n rwarp:n :}
+   SB-RESET s" bar.sync 0;" CG-S CG-LINE     \ WAR reuse barrier (see comment above)
    CG-NEXT-R {: rsm:n :}
    SB-RESET s" mov.u32 " CG-S rsm CG-R s" , SMEM;" CG-S CG-LINE
    CG-NEXT-R {: roff:n :}
