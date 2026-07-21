@@ -95,6 +95,11 @@ package STRUCTURE-DECL
 7101 constant E-CASE        \ family name is not a lowercase canonical tail
 
 26 constant ARITY-CAP       \ positional params are letters a..z (docs §9.2)
+97 constant ASCII-A
+122 constant ASCII-Z
+110 constant ASCII-N
+102 constant ASCII-F
+114 constant ASCII-R
 
 \ typed boolean producers (core has no `true`/`false`).
 : YES ( -- bool ) 0 0= ;
@@ -125,7 +130,6 @@ TRUSTED: PKG-MODE@ ( -- n ) CHECKER-PACKAGE-MODE @ ;
 TRUSTED: CANON? ( ptr u8 n -- bool ) TF-CANON? ;
 TRUSTED: GRAMMAR-KW? ( ptr u8 n -- bool ) TF-GRAMMAR-KEYWORD? ;
 TRUSTED: CON-CODE ( ptr u8 n -- n ) CON-OF ;
-TRUSTED: LOW? ( n -- bool ) LOWER? ;
 TRUSTED: CON-N ( -- n ) CC-N ;          \ single-letter n : signed cell
 TRUSTED: CON-BOOL ( -- n ) CC-BOOL ;    \ single-letter f : boolean/flag
 TRUSTED: CON-R ( -- n ) CC-R ;          \ single-letter r : real/float
@@ -244,14 +248,20 @@ SD-RESET
    id FAM-LINEAR? IF 0 NO EXIT THEN
    id YES ;
 
+: REQUIRE-LETTER ( n -- n )
+   dup ASCII-A >= over ASCII-Z <= and IF EXIT THEN
+   drop E-PAYLOAD throw ;
+
+: PARAMETER-LETTER? ( n -- bool )
+   ASCII-A - SD-ARITY @ < ;
+
 : LETTER-TYPE ( ptr u8 n -- n )         \ single-char type: param / n / f / r
-   over c@ {: c:n :}                     \ ( a u )
-   c LOW? 0= IF 2drop E-PAYLOAD throw THEN
-   c 97 - SD-ARITY @ < IF 2drop c 97 - SD-SCH-PARAM EXIT THEN
-   c [char] n = IF 2drop CON-N SD-SCH-CON EXIT THEN
-   c [char] f = IF 2drop CON-BOOL SD-SCH-CON EXIT THEN
-   c [char] r = IF 2drop CON-R SD-SCH-CON EXIT THEN
-   2drop E-PAYLOAD throw ;
+   drop c@ REQUIRE-LETTER
+   dup PARAMETER-LETTER? IF ASCII-A - SD-SCH-PARAM EXIT THEN
+   dup ASCII-N = IF drop CON-N SD-SCH-CON EXIT THEN
+   dup ASCII-F = IF drop CON-BOOL SD-SCH-CON EXIT THEN
+   ASCII-R = IF CON-R SD-SCH-CON EXIT THEN
+   E-PAYLOAD throw ;
 
 : RESOLVE-TYPE ( ptr u8 n -- n )        \ type token(s) -> schema node
    dup 0= IF 2drop E-SYNTAX throw THEN
@@ -313,10 +323,9 @@ SD-RESET
    NFLD @ 1 + NFLD ! ;
 : FIELD-CLAUSE ( -- )
    SD-NEXT dup 0= IF 2drop E-SYNTAX throw THEN   \ field name
-   2>r                                        \ r: na nu   (held; span stays valid)
-   SD-NEXT RESOLVE-TYPE                           \ ( node )
-   2r> rot                                     \ ( na nu node )
-   EMIT-FIELD
+   {: na:ptr nu:n :}
+   SD-NEXT RESOLVE-TYPE {: node:n :}
+   na nu node EMIT-FIELD
    -1 SEEN-FIELD ! ;
 
 \ ---------------------------------------------------------------------------
@@ -325,9 +334,9 @@ SD-RESET
 : VIS ( -- n )                          \ declaration visibility (public at top level)
    PKG-ACTIVE? 0= IF PKG-PUBLIC EXIT THEN PKG-MODE@ ;
 : SD-REGISTER ( ptr u8 n n -- )            \ ( na nu arity -- ) register the family, open the tx
-   {: ar:n :}                           \ ( na nu )
+   {: na:ptr nu:n ar:n :}
    ar SD-ARITY !
-   2>r ACTIVE-PKG$ VIS 2r>              \ ( pa pu vis na nu )
+   ACTIVE-PKG$ VIS na nu
    ar TK-PROD FAM-DECL FAM !
    TYPE-FIELD:COUNT FLDBASE !
    0 NFLD !   0 SD-CELLS !
