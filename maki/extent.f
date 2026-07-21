@@ -18,11 +18,13 @@
 \ throws E-TFAM-DUP through CHECKER-DEFFAMILY - a NAMED reject, never a silent
 \ rename.
 \
-\ CROSSING BOUNDARY: `>#name` (per-extent, PINS the extent) and `IX>N` (generic
-\ projection) are TRUSTED casts - the same sanctioned nominal-cast pattern
-\ src/core/roles.f uses for idx/len/fd (one cell at runtime, retyped for the
-\ checker). The checker cannot yet express a checked injection into a parametric
-\ cell family; that gap is the roles.f role-cast gap, tracked project-wide.
+\ CROSSING BOUNDARY: `>#name` (per-extent, PINS the extent) is a TRUSTED cast -
+\ its range guard is not yet expressed as a checked body. `IX>N` (generic
+\ projection) and `>RED` (reduction retype) are CHECKED identity casts (`CAST:`,
+\ dot habu-checked-cast-primitive): the checker certifies the single-cell
+\ identity retype of a parametric family cell directly, so they are no longer
+\ trust rows - the same sanctioned nominal-cast pattern src/core/roles.f uses
+\ for idx/len/fd (one cell at runtime, retyped for the checker).
 \
 \ WHAT THE CROSSING DOES AND DOES NOT GUARANTEE (be honest here):
 \   - Explicit: a bare n is never an ix<extm> without a `>#name` call
@@ -66,7 +68,7 @@ TYPEFAMILY ix 1
 \ (type var `e`), so one word serves every extent - the projection direction is
 \ always sound (a nominal cell IS a cell). The reverse `>#name` is per-extent so
 \ the target extent is pinned, never inferred.
-TRUSTED: IX>N ( ix<e> -- n ) ;
+CAST: IX>N ( ix<e> -- n ) ;
 
 \ Registry data-layer nominals (deftype.f). The extent registry is a set of
 \ parallel arrays; making its slot index and its two string-length columns their
@@ -231,11 +233,13 @@ public
 \ new work over that representation. maki -> habu only.
 
 \ >RED ( ix<e> -- redx<e> ): contraction-entry cast — mark an extent index as a
-\ summation (reduction) axis. TRUSTED like IX>N / >#name (the retype is not
-\ checker-expressible). It cannot launder a free factor into a contraction: a word
-\ whose DECLARED signature carries redx<#B> (or redx over a whole product) is a
-\ load-time reject, so a free #B can never name a summable axis.
-TRUSTED: >RED ( ix<e> -- redx<e> ) ;
+\ summation (reduction) axis. A CHECKED identity retype (CAST:, like IX>N): the
+\ single-cell parametric retype is certifiable, so this is no longer a trust row.
+\ It cannot launder a free factor into a contraction: a word whose DECLARED
+\ signature carries redx<#B> (or redx over a whole product) is a load-time reject
+\ (the checker's SIG-END-PARAM rule, independent of this cast), so a free #B can
+\ never name a summable axis.
+CAST: >RED ( ix<e> -- redx<e> ) ;
 
 private
 
