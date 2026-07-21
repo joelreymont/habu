@@ -328,6 +328,8 @@ fits.
   COMMON/SNAP-KEEP), `boot-pin.f`, `diagnose-hb-core.f` (+ count in its test),
   `hb-build-lib.f` key list, `test/run-files.f`, `FILEMAP.md`, and pinned row counts
   (`boot-pin-test.f` PFX-LOAD-ROW, `diagnose-hb-test.f` common-source, `bootstrap-codegen-test.f`).
+  The codegen test's expected rows are the order proof, not bookkeeping: update its
+  exact native, recovery, and fixpoint sequences whenever a prefix owner is added.
   Baked prefix files must be marked `provided` (else `require src/core/sha256.f`
   reloads `W32`). The first ceiling a new prefix file trips is stage2's `S2-SOURCE-CAP`.
 - **A NEW engine PRIM used by boot-prefix source lands in TWO stages** (the running

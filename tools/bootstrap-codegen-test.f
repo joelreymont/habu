@@ -404,7 +404,9 @@ create LF $0A c,
    s" PFX-COMMON" s" LPLAYOUTVALID" s" src/core/layout-valid.f" EXPECT-ROW
    s" PFX-COMMON" s" LPHOOK" s" src/core/check-hook.f" EXPECT-ROW
    s" PFX-COMMON" s" LPCELLEFF" s" src/core/cell-effects.f" EXPECT-ROW
-   s" PFX-COMMON" s" LPPTRSTORAGEEFF" s" src/core/pointer-storage-effects.f" EXPECT-ROW ;
+   s" PFX-COMMON" s" LPPTRSTORAGEEFF" s" src/core/pointer-storage-effects.f" EXPECT-ROW
+   s" PFX-COMMON" s" LPDECLTXN" s" src/core/declaration-transaction.f" EXPECT-ROW
+   s" PFX-COMMON" s" LPGENDECL" s" src/core/generated-declaration.f" EXPECT-ROW ;
 
 : EXPECT-DECL ( -- )
    s" PFX-COMMON" s" LPDECLEVENT" s" src/core/decl-event.f" EXPECT-ROW
@@ -428,6 +430,8 @@ create LF $0A c,
    s" PFX-COMMON" s" LPTFAMSHA" s" src/core/type-family-sha.f" EXPECT-ROW
    s" PFX-COMMON" s" LPCOMBINATORS" s" src/core/combinators.f" EXPECT-ROW
    s" PFX-COMMON" s" LPXREF" s" src/habu/xref.f" EXPECT-ROW
+   s" PFX-COMMON" s" LPGENDECLDICT" s" src/core/generated-declaration-dictionary.f" EXPECT-ROW
+   s" PFX-COMMON" s" LPGENDECLPROT" s" src/core/generated-declaration-protection.f" EXPECT-ROW
    s" PFX-COMMON" s" LPLAYOUTSEAL" s" src/core/layout-buffer-seal.f" EXPECT-ROW ;
 
 : EXPECT-NATIVE ( -- )
@@ -491,14 +495,14 @@ create LF $0A c,
 : NATIVE-ROWS ( -- )
    CAPTURE-PREFIX
    EXPECT-NATIVE
-   41 ASSERT-EQUAL
+   45 ASSERT-EQUAL
    s" src/core/structures-effects.f" BCG-MUST-LACK
    s" LPSTRUCTEFF" BCG-MUST-LACK ;
 
 : GFORTH-ROWS ( -- )
    CAPTURE-PREFIX
    EXPECT-GFORTH
-   38 ASSERT-EQUAL
+   42 ASSERT-EQUAL
    s" src/core/structures-effects.f" BCG-MUST-LACK
    s" LPSTRUCTEFF" BCG-MUST-LACK ;
 
@@ -523,7 +527,9 @@ create LF $0A c,
    s" src/core/layout-valid.f" EXPECT-FILE
    s" src/core/check-hook.f" EXPECT-FILE
    s" src/core/cell-effects.f" EXPECT-FILE
-   s" src/core/pointer-storage-effects.f" EXPECT-FILE ;
+   s" src/core/pointer-storage-effects.f" EXPECT-FILE
+   s" src/core/declaration-transaction.f" EXPECT-FILE
+   s" src/core/generated-declaration.f" EXPECT-FILE ;
 
 \ RECOVERY emit_src() cats only the checker-boot span + structures; the DECL
 \ files ride the separate emit_decl_src() helper (asserted below).
@@ -572,6 +578,8 @@ create LF $0A c,
    s" src/habu/engine-size.f" EXPECT-FILE
    s" src/habu/habu2.f" EXPECT-FILE
    s" src/habu/xref.f" EXPECT-FILE
+   s" src/core/generated-declaration-dictionary.f" EXPECT-FILE
+   s" src/core/generated-declaration-protection.f" EXPECT-FILE
    s" src/habu/owner-wid-emit-seal.f" EXPECT-FILE
    s" src/core/layout-buffer-seal.f" EXPECT-FILE
    s" src/core/lower-cert-seal.f" EXPECT-FILE ;
@@ -608,6 +616,8 @@ create LF $0A c,
    s" src/habu/engine-size.f" EXPECT-FILE
    s" src/habu/habu2.f" EXPECT-FILE
    s" src/habu/xref.f" EXPECT-FILE
+   s" src/core/generated-declaration-dictionary.f" EXPECT-FILE
+   s" src/core/generated-declaration-protection.f" EXPECT-FILE
    s" src/habu/owner-wid-emit-seal.f" EXPECT-FILE
    s" src/core/layout-buffer-seal.f" EXPECT-FILE
    s" src/core/lower-cert-seal.f" EXPECT-FILE ;
@@ -888,10 +898,10 @@ public
 : RECOVERY ( -- )
    0 RECOVERY-U !
    s" emit_src() {" s"   local f" MODE-CAT s" cat"
-   [: RECOVERY+ ;] CAPTURE 18 T=
+   [: RECOVERY+ ;] CAPTURE 20 T=
    EXPECT-RECOVERY
    RECOVERY$ EXPECT$ T$=
-   RECOVERY$ 18 ASSERT-UNIQUE
+   RECOVERY$ 20 ASSERT-UNIQUE
    s" emit_decl_src() {" s" emit_src() {" s" cat src/" SCOPE-N 4 T=
    s" emit_src() {" s"   local f" S\" emit_decl_src \"$out\"" SCOPE-N 1 T=
    s" emit_src() {" s"   local f" s" LOWER-CERT-HOOK:INSTALL" SCOPE-N 1 T=
@@ -903,19 +913,19 @@ public
       s" src/core/structures.f" s" LOWER-CERT-HOOK:INSTALL" SCOPE-BEFORE
    0 RECOVERY-U !
    s" SRC_COMMON=(" s" emit_boot_hide() {" MODE-ARRAY s" "
-      [: RECOVERY+ ;] CAPTURE 32 T=
+      [: RECOVERY+ ;] CAPTURE 34 T=
    EXPECT-RECOVERY-COMMON
    RECOVERY$ EXPECT$ T$=
-   RECOVERY$ 32 ASSERT-UNIQUE
+   RECOVERY$ 34 ASSERT-UNIQUE
    RECOVERY-TARGETS ;
 
 : FIXPOINT ( -- )
    0 FIXPOINT-U !
    s" : BF-APPEND-CHECKER-BOOT" s" : BF-APPEND-CORE-BYTES"
-   MODE-SOURCE s" BF-APPEND-SOURCE" [: FIXPOINT+ ;] CAPTURE 22 T=
+   MODE-SOURCE s" BF-APPEND-SOURCE" [: FIXPOINT+ ;] CAPTURE 24 T=
    EXPECT-FIXPOINT-SRC
    FIXPOINT$ EXPECT$ T$=
-   FIXPOINT$ 22 ASSERT-UNIQUE
+   FIXPOINT$ 24 ASSERT-UNIQUE
    s" : BF-APPEND-DECL-FILES" s" : BF-APPEND-CORE-FILES"
    s" BF-APPEND-SOURCE" SCOPE-N 4 T=
    s" : BF-APPEND-RUN-PRELUDE" s" : BF-APPEND-STDIN-RUN-PRELUDE"
@@ -934,10 +944,10 @@ public
       s" BF-APPEND-CORE-FILES" s" LOWER-CERT-HOOK:INSTALL" SCOPE-BEFORE
    0 FIXPOINT-U !
    s" : BF-APPEND-COMMON" s" : BF-APPEND-DRIVER-IO" MODE-COMMON s" "
-      [: FIXPOINT+ ;] CAPTURE 33 T=
+      [: FIXPOINT+ ;] CAPTURE 35 T=
    EXPECT-FIXPOINT-COMMON
    FIXPOINT$ EXPECT$ T$=
-   FIXPOINT$ 33 ASSERT-UNIQUE
+   FIXPOINT$ 35 ASSERT-UNIQUE
    FIXPOINT-TARGETS ;
 
 ;package
