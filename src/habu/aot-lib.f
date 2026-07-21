@@ -74,10 +74,7 @@ s" AOT-PB@" s" -- ptr u8" TRUST
 
 \ --- emit the image: minimal entry + compacted, relocated blobs.
 variable MLBL  variable REC2
-create OLDA MAX-CLO cells allot   create NEWOFF MAX-CLO cells allot   create BLEN MAX-CLO cells allot
-
-: AOT-W32! ( n ptr u8 -- ) {: w:n a:ptr :}
-   w a c!  w 8 rshift a 1+ c!  w 16 rshift a 2 + c!  w 24 rshift a 3 + c! ;
+create NEWOFF MAX-CLO cells allot   create BLEN MAX-CLO cells allot
 
 \ --- persistent data region: the program's compile-time create/variable/allot/
 \ ,/s" data lives contiguously in the maker's fixed DATA region at
@@ -198,7 +195,7 @@ create SEED-CELLS SEED-MAX cells allot   variable SEED-N
    EMIT-SEED                                     \ push preseeded value-stack cells (empty for MAIN)
    MLBL LABEL@ BL,                              \ bl <entry root> (resolved when MLBL is placed)
    0 0 MOVZ,  NR-EXIT-GROUP SYS, ;               \ exit(0)
-variable CP2  variable CEND  variable CLEN  variable NEXT-OFF
+variable CP2  variable CEND  variable NEXT-OFF
 : BCOND? {: w:n :}  w $FF000010 and $54000000 = ;
 : CBZIMM? {: w:n :}  w $7E000000 and $34000000 = ;
 : TBZIMM? {: w:n :}  w $7E000000 and $36000000 = ;
@@ -208,38 +205,23 @@ variable CP2  variable CEND  variable CLEN  variable NEXT-OFF
    r 8 + @ 4 + ;
 : REC-END {: r:ptr :} ( ptr a -- ptr u8 )
    r @ r RAW-LEN + ;
-: COMPACT-LEN {: r:ptr :} ( ptr a -- n )
-   0 CLEN !  r @ CP2 !  r @ r RAW-LEN + CEND !
-   BEGIN CP2 @ CEND @ < WHILE
-      CP2 @ CEND @ CALL-AT? IF
-         CP2 @ CALL-IN-CLO? IF
-            CLEN @ 4 + CLEN !  CP2 @ 16 + CP2 !
-         ELSE
-            CLEN @ 4 + CLEN !  CP2 @ 4 + CP2 !
-         THEN
-      ELSE
-         CLEN @ 4 + CLEN !  CP2 @ 4 + CP2 !
-      THEN
-   REPEAT CLEN @ ;
+\ Compacted blob length. Under the direct-BL-only contract every word maps 1:1
+\ (no movz/movk/movk/blr chain is ever collapsed), so the compacted length is the
+\ raw length.
+: COMPACT-LEN {: r:ptr :} ( ptr a -- n )  r RAW-LEN ;
 : PLAN-BLOBS
    ASM-LEN NEXT-OFF !
    0 WI ! BEGIN WI @ NCLO @ < WHILE
       WI @ cells CLO + @ REC2 !
-      REC2 @ @         OLDA   WI @ cells + !
       NEXT-OFF @       NEWOFF WI @ cells + !
       REC2 @ COMPACT-LEN dup BLEN WI @ cells + !
       NEXT-OFF @ + NEXT-OFF !
       WI @ 1+ WI ! REPEAT ;
-\ code offset (in CODE) of the blob whose OLD addr is t, or -1. The binary is PIE
-\ (arm64 macOS requires it), so absolute call targets would be wrong under the
-\ ASLR slide — instead we rewrite each abs call to a PC-RELATIVE bl, whose offset
-\ within __text is slide-independent. No runtime relocation needed.
-: CLO-OFF ( n -- n ) {: t:n :}  0 CLO-CX !
-   BEGIN CLO-CX @ NCLO @ < WHILE
-      OLDA CLO-CX @ cells + @ t = IF  NEWOFF CLO-CX @ cells + @  exit THEN
-      CLO-CX @ 1+ CLO-CX ! REPEAT  -1 ;
-\ encode a compact PC-relative BL. The AOT __text is small today, but range
-\ checking makes linker corruption fail at build time if that ever changes.
+\ Relocation math for direct branches. The binary is PIE (arm64 macOS requires it),
+\ so absolute targets would be wrong under the ASLR slide — instead each direct
+\ branch is rewritten to a PC-RELATIVE form whose offset within __text is
+\ slide-independent (no runtime relocation needed). Range checking makes linker
+\ corruption fail at build time if the AOT __text ever outgrows the branch reach.
 variable BDELTA  variable TNEW
 : BITS {: w:n lo:n width:n :}  w lo rshift  1 width lshift 1 - and ;
 : SX {: f:n width:n :}  f 1 width 1 - lshift xor  1 width 1 - lshift - ;
@@ -261,18 +243,10 @@ variable BDELTA  variable TNEW
    BDELTA @ 4 / BDELTA !
    BDELTA @ -8192 <  BDELTA @ 8191 > or IF s" aot: rel14 target out of range" 74 die THEN
    BDELTA @ $3FFF and ;
-: BL32 {: site:n target:n :}  site target REL26 $94000000 or ;
 : ADRD32 {: site:n target:n :}
    target site - BDELTA !
    BDELTA @ -1048576 <  BDELTA @ 1048575 > or IF s" aot: ADR target out of range" 74 die THEN
    BDELTA @ 3 and 29 lshift  BDELTA @ 2 rshift $7FFFF and 5 lshift or ;
-\ replace the 4-instr `movz/movk/movk x16; blr x16` at CODE byte offset `site`
-\ with `nop; nop; nop; bl target` (target = the callee's CODE offset).
-: PATCH-BL {: site:n target:n :}
-   $D503201F CODE site +     AOT-W32!
-   $D503201F CODE site 4 + + AOT-W32!
-   $D503201F CODE site 8 + + AOT-W32!
-   site 12 + target BL32  CODE site 12 + + AOT-W32! ;
 
 variable MAPOUT  variable MAPP  variable MAPE
 : REC-NEWOFF {: r:ptr :} ( ptr a -- n )
@@ -285,14 +259,8 @@ TRUSTED: MAP-IN-BLOB ( ptr a ptr u8 -- n ) {: r:ptr t:ptr :}
    t r REC-END >= IF -1 EXIT THEN                \ a target at the record end is the
    0 MAPOUT !  r @ MAPP !  r REC-END MAPE !      \ adjacent record's start, not this one's
    BEGIN MAPP @ MAPE @ < WHILE
-      MAPP @ MAPE @ CALL-AT?  MAPP @ CALL-IN-CLO? and IF
-         t MAPP @ = IF r REC-NEWOFF MAPOUT @ + EXIT THEN
-         t MAPP @ 16 + < IF -1 EXIT THEN
-         MAPOUT @ 4 + MAPOUT !  MAPP @ 16 + MAPP !
-      ELSE
-         t MAPP @ 4 + < IF r REC-NEWOFF MAPOUT @ +  t MAPP @ - + EXIT THEN
-         MAPOUT @ 4 + MAPOUT !  MAPP @ 4 + MAPP !
-      THEN
+      t MAPP @ 4 + < IF r REC-NEWOFF MAPOUT @ +  t MAPP @ - + EXIT THEN
+      MAPOUT @ 4 + MAPOUT !  MAPP @ 4 + MAPP !
    REPEAT
    -1 ;
 : OLD>NEW {: t:ptr :} ( ptr u8 -- n )
@@ -330,20 +298,37 @@ TRUSTED: MAP-IN-BLOB ( ptr a ptr u8 -- n ) {: r:ptr t:ptr :}
    w ADRP? IF s" aot: ADRP relocation unsupported" 74 die THEN
    w ;
 
-variable DENSE-RV
+\ --- fail-closed abs-chain guard. The AOT linker contract is DIRECT-BL-ONLY: no
+\ native emitter produces the absolute movz/movk/movk x16 + blr x16 call form (only
+\ the gforth seed ever did, and seed output never reaches AOT closure/link). ABS-CHAIN?
+\ is the minimal 4-word pattern match; the copier and relocator die loudly with a named
+\ error if one is ever present, instead of silently carrying it into the shipped image.
+: ABS-CHAIN? ( ptr u8 ptr u8 -- bool ) {: p:ptr e:ptr :}
+   p 16 + e <= IF
+      p AOT-W32@ $FFE0001F and $D2800010 =
+      p 4 + AOT-W32@ $FFE0001F and $F2A00010 = and
+      p 8 + AOT-W32@ $FFE0001F and $F2C00010 = and
+      p 12 + AOT-W32@ $D63F0200 = and
+   ELSE AOT-FALSE THEN ;
+: ABS-CHAIN-JSON ( -- )
+   123 AE1
+   s" schema_version" AEJKEY 1 AEJNUM 44 AE1
+   s" code" AEJKEY s" E-AOT-ABS-CHAIN" AEJSTR 44 AE1
+   s" verdict" AEJKEY s" rejected" AEJSTR 44 AE1
+   s" reason" AEJKEY s" stripped AOT linker input carries an absolute movz/movk/movk/blr call chain; the contract is direct-BL only" AEJSTR 44 AE1
+   s" suggestion" AEJKEY
+   s" rebuild the AOT input with the native engine (every call a direct BL); the absolute call-chain form is not linkable" AEJSTR
+   125 AE1 10 AE1 ;
+: ABS-CHAIN-PROSE ( -- )
+   s" hb-build: stripped AOT linker input carries an absolute movz/movk/movk/blr call chain (direct-BL only)" AETXT 10 AE1 ;
+: ABS-CHAIN-DIE ( -- )
+   JSON-DIAGS @ IF ABS-CHAIN-JSON ELSE ABS-CHAIN-PROSE THEN
+   s" aot: absolute call chain in linker input" 74 die ;
 : COPY-COMPACT-BLOB {: r:ptr :} ( ptr a -- )
    r @ CP2 !  r @ r RAW-LEN + CEND !
    BEGIN CP2 @ CEND @ < WHILE
-      CP2 @ CEND @ CALL-AT? IF
-         CP2 @ TGT CLO-OFF DENSE-RV !
-         DENSE-RV @ -1 <> IF
-            ASM-LEN DENSE-RV @ BL32 EMITW  CP2 @ 16 + CP2 !
-         ELSE
-            r CP2 @ CP2 @ AOT-W32@ RELOC-W32 EMITW  CP2 @ 4 + CP2 !
-         THEN
-      ELSE
-         r CP2 @ CP2 @ AOT-W32@ RELOC-W32 EMITW  CP2 @ 4 + CP2 !
-      THEN
+      CP2 @ CEND @ ABS-CHAIN? IF ABS-CHAIN-DIE THEN
+      r CP2 @ CP2 @ AOT-W32@ RELOC-W32 EMITW  CP2 @ 4 + CP2 !
    REPEAT ;
 : COPY-PLANNED-BLOBS
    0 WI ! BEGIN WI @ NCLO @ < WHILE
@@ -352,17 +337,18 @@ variable DENSE-RV
       REC2 @ COPY-COMPACT-BLOB
       WI @ 1+ WI ! REPEAT ;
 : COPY-BLOBS  PLAN-BLOBS  COPY-PLANNED-BLOBS ;
-variable RP  variable RE  variable RV
+variable RP  variable RE
+\ Fail-closed output verification. COPY-COMPACT-BLOB (via RELOC-W32) already relocated
+\ every direct branch as it emitted the blobs, so under the direct-BL-only contract
+\ there is nothing left to relocate. This second pass re-walks the emitted __text and
+\ dies with the named error if any absolute call chain survived into the shipped image.
 : RELOCATE
    0 WI ! BEGIN WI @ NCLO @ < WHILE
       NEWOFF WI @ cells + @ RP !
       RP @ BLEN WI @ cells + @ + RE !
       BEGIN RP @ RE @ < WHILE
-         CODE RP @ + CODE RE @ + CALL-AT? IF
-            CODE RP @ + TGT CLO-OFF RV !
-            RV @ -1 <> IF RP @ RV @ PATCH-BL THEN
-            RP @ 16 + RP !
-         ELSE RP @ 4 + RP ! THEN
+         CODE RP @ + CODE RE @ + ABS-CHAIN? IF ABS-CHAIN-DIE THEN
+         RP @ 4 + RP !
       REPEAT
       WI @ 1+ WI ! REPEAT ;
 

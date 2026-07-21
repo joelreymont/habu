@@ -7,13 +7,14 @@ require test/gate-pool.f
 46 constant GAP-DOT
 99 constant GAP-C-LOWER
 $10000 constant GAP-STRIPPED-TEXT-MAX
-$D63F0200 constant GAP-BLR-X16     \ arm64 `blr x16`: the tail of an un-collapsed absolute movz/movk+blr call
+$D63F0200 constant GAP-BLR-X16     \ arm64 `blr x16`: an indirect engine-address call the linker never emits
 
 variable GAP-BLR-CNT
 \ Count `blr x16` words in the built image's executable text region. A correctly
-\ linked stripped image has none: every in-closure absolute call is collapsed to a
-\ PC-relative branch (aot-lib.f COPY-COMPACT-BLOB / RELOCATE), so a surviving
-\ blr x16 is an un-relocated build-time engine address that would crash at load.
+\ linked stripped image has none: under the direct-BL-only contract every native call
+\ is a direct BL that the linker relocates in place to a PC-relative branch into the
+\ copied blobs (aot-lib.f COPY-COMPACT-BLOB / RELOC-W32), so a surviving blr x16 is an
+\ un-relocated build-time engine address that would crash at load.
 : GAP-COUNT-BLR-X16 ( n n -- n ) {: foff:n fsize:n :}      \ text-file-offset text-size -- count
    0 GAP-BLR-CNT !
    foff begin dup foff fsize + < while
@@ -317,6 +318,50 @@ variable GAP-BLR-CNT
    s" hb-build AOT layout-bundle fetch zero un-collapsed blr x16" GAP-ASSERT-NO-BLR-X16
    s" PASS: hb-build AOT layout-bundle fetch (LP2VEXEC reaches via a relocated call; zero blr x16)" type cr ;
 
+\ Fail-closed abs-chain reject (red-first negative case). The AOT linker contract is
+\ DIRECT-BL-ONLY: no native emitter produces the absolute movz/movk/movk x16 + blr x16 call
+\ form, so the copier and relocator (aot-lib.f COPY-COMPACT-BLOB / RELOCATE) die with
+\ E-AOT-ABS-CHAIN if one is ever encountered. This hand-builds one full chain in a synthetic
+\ blob and drives the copier over it in a real hb-build. The maker's rejection is a die (not
+\ a catchable result), so per the gate boundary rule it runs as a subprocess sentinel; it
+\ lives here rather than in the in-process negative gate because the copier is in the
+\ maker-only aot-lib.f. Red-first: before the retirement the copier silently collapsed/copied
+\ the chain and hb-build exited 0; now it rejects with the named error (exit 74).
+: GAP-ABS-CHAIN-SOURCE ( -- )
+   GE-SRC-RESET
+   s" -1 JSON-DIAGS !" GE-SRC-LINE
+   s" package ABS-CHAIN-TEST" GE-SRC-LINE
+   s" create ACH 16 allot" GE-SRC-LINE
+   s" create ACREC DREC allot" GE-SRC-LINE
+   s" : AW! ( n ptr u8 -- ) {: w:n a:ptr :} w a c! w 8 rshift a 1+ c! w 16 rshift a 2 + c! w 24 rshift a 3 + c! ;" GE-SRC-LINE
+   s" : BUILD-ACH ( -- ) $D2800010 ACH AW! $F2A00010 ACH 4 + AW! $F2C00010 ACH 8 + AW! $D63F0200 ACH 12 + AW! ;" GE-SRC-LINE
+   s" public" GE-SRC-LINE
+   s" : RUN ( -- ) BUILD-ACH ACH ACREC 0 ptr-field ! 12 ACREC 8 + ! ACREC CLO 0 ptr-field ! 0 NEWOFF ! 1 NCLO ! ACREC COPY-COMPACT-BLOB ;" GE-SRC-LINE
+   s" ;package" GE-SRC-LINE
+   s" ABS-CHAIN-TEST:RUN" GE-SRC-LINE
+   s" : MAIN ( -- ) ;" GE-SRC-LINE ;
+
+: GAP-ABS-CHAIN-ARGV ( -- )                      \ --load <hb-build layers> -- SRC -o OUT
+   GE-HB-RESET
+   s" --load" GE-ARG+
+   s" lib/errors.f" GE-ARG+  s" lib/string.f" GE-ARG+  s" lib/memory.f" GE-ARG+
+   s" lib/fs.f" GE-ARG+  s" lib/fs-mutate.f" GE-ARG+  s" lib/process.f" GE-ARG+
+   s" lib/process-argv.f" GE-ARG+  s" lib/process-env.f" GE-ARG+  s" lib/source.f" GE-ARG+
+   s" lib/build.f" GE-ARG+  s" lib/codesign.f" GE-ARG+  s" lib/content-key.f" GE-ARG+
+   s" tools/build-fixpoint.f" GE-ARG+  s" tools/cli-run.f" GE-ARG+
+   s" tools/hb-build-lib.f" GE-ARG+  s" tools/hb-build.f" GE-ARG+
+   s" --" GE-ARG+  GB-SRC$ GE-ARG+  s" -o" GE-ARG+  GB-OUT$ GE-ARG+ ;
+
+: GAP-ABS-CHAIN ( -- )
+   s" hb-aot-abschain.f" s" hb-aot-abschain" s" hb-aot-abschain-report.json" GAP-PATHS
+   GAP-ABS-CHAIN-SOURCE
+   GB-WRITE-SRC
+   GAP-ABS-CHAIN-ARGV
+   s" bin/hb" GE-TIMEOUT-MS GE-RUN-ENV
+   74 s" hb-build AOT abs-chain reject rc" GE-EXPECT-RC
+   s" E-AOT-ABS-CHAIN" s" hb-build AOT abs-chain reject code" GE-EXPECT-ERR-HAS
+   s" PASS: hb-build AOT abs-chain reject (E-AOT-ABS-CHAIN; copier fails closed on a direct-BL-only violation)" type cr ;
+
 \ item 10 slice 5: a preseeded bad-tag object/AOT test entry. A source declaring a
 \ matched family + helper is AOT-built with a SELECTED non-MAIN entry (the helper)
 \ and a forged value-stack seed (payload slots + an out-of-range tag), so the
@@ -443,6 +488,7 @@ variable GAP-BLR-CNT
    GAP-DATA-WINDOW
    GAP-LAYOUT-STORE
    GAP-LAYOUT-FETCH
+   GAP-ABS-CHAIN
    GT-CLEANUP ;
 
 : GAP-RUN-PRESEED ( -- )

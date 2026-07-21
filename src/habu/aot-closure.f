@@ -23,17 +23,13 @@ s" AOT-CP-N" s" -- n" TRUST
    a @ ;
 s" AOT-PTR@" s" ptr a -- ptr a" TRUST
 
-\ --- read 32-bit words; recognize the compiled call (movz/movk/movk x16 + blr x16)
+\ --- read a little-endian 32-bit instruction word from a code pointer. Used by the
+\ direct-BL closure scan (SCAN-DIRECT) and the linker's fail-closed abs-chain guard
+\ (aot-lib.f ABS-CHAIN?). The absolute movz/movk/movk x16 + blr x16 call form is no
+\ longer recognized here: every native call is a direct BL, so the closure walks BL
+\ only and the linker narrows to direct-BL-only input.
 : AOT-W32@ ( ptr u8 -- n ) {: a:ptr :}
    a c@  a 1+ c@ 8 lshift or  a 2 + c@ 16 lshift or  a 3 + c@ 24 lshift or ;
-: TGT ( ptr u8 -- n ) {: p:ptr :} p AOT-W32@ 5 rshift $FFFF and
-   p 4 + AOT-W32@ 5 rshift $FFFF and 16 lshift or
-   p 8 + AOT-W32@ 5 rshift $FFFF and 32 lshift or ;
-: CALL? ( ptr u8 -- bool ) {: p:ptr :} p AOT-W32@ $FFE0001F and $D2800010 =
-   p 4 + AOT-W32@ $FFE0001F and $F2A00010 = and
-   p 8 + AOT-W32@ $FFE0001F and $F2C00010 = and
-   p 12 + AOT-W32@ $D63F0200 = and ;
-: CALL-AT? {: p:ptr e:ptr :}  p 16 + e <= IF p CALL? ELSE 0 0= 0= THEN ;
 
 \ Decode an AArch64 direct branch (B / BL). Both share opcode bits: masking off
 \ the link bit leaves $14000000, so DIRECT? recognizes B and BL and excludes the
@@ -159,9 +155,6 @@ create AENB 20 allot  variable AENV  variable AENN
    s" hb-build: AOT unsupported word" 70 die ;
 
 variable FX
-: FINDADDR ( n -- ptr a ) {: t:n :}  0 FX !
-   BEGIN FX @ ndict@ < WHILE  FX @ REC @ t = IF FX @ REC exit THEN  FX @ 1+ FX ! REPEAT  XREF-NULL ;
-
 : REC-CODE-PTR ( ptr a -- ptr ptr u8 ) {: r:ptr :}  r 0 ptr-field ;
 : REC-CODE-PTR@ ( ptr a -- ptr u8 )  REC-CODE-PTR @ ;
 : REC-WID@ ( ptr a -- n ) {: r:ptr :}  r 40 + @ ;
@@ -170,7 +163,7 @@ variable FX
    BEGIN FX @ ndict@ < WHILE  FX @ REC MAIN? IF FX @ REC exit THEN  FX @ 1+ FX ! REPEAT  XREF-NULL ;
 
 \ --- closure: BFS from MAIN over the native call graph. CLO and the parallel
-\ COPY/RELOCATE arrays (OLDA/NEWOFF/BLEN) are all sized by MAX-CLO; ADD-CLO fails
+\ COPY/RELOCATE arrays (NEWOFF/BLEN) are all sized by MAX-CLO; ADD-CLO fails
 \ closed at the cap so a large closure can never write past the tables.
 1024 constant MAX-CLO
 create CLO MAX-CLO cells allot   variable NCLO  variable CLO-CX
@@ -183,8 +176,6 @@ variable CLO-LIMIT
 MAX-CLO CLO-LIMIT!
 : IN-CLO? {: r:ptr :} ( ptr a -- bool )
    0 CLO-CX ! BEGIN CLO-CX @ NCLO @ < WHILE CLO-CX @ cells CLO + @ r = IF 0 0= exit THEN CLO-CX @ 1+ CLO-CX ! REPEAT 0 0= 0= ;
-: CALL-IN-CLO? {: p:ptr :} ( ptr u8 -- bool )
-   p TGT FINDADDR dup 0= 0= IF IN-CLO? ELSE drop 0 0= 0= THEN ;
 : CLO-OVERFLOW-JSON {: r:ptr :} ( ptr a -- )
    123 AE1
    s" schema_version" AEJKEY 1 AEJNUM 44 AE1
@@ -217,15 +208,10 @@ variable SP2  variable SEND
    callee dup AOT-UNSAFE? if caller swap AOT-UNSAFE-DIE then
    ADD-CLO ;
 
-\ A native call resolves the callee by its exact record code entry (FINDADDR):
-\ ordinary words and registered engine helpers alike, since both carry a record.
-: SCAN-TARGET ( ptr a n -- ) {: caller:ptr target:n :}
-   caller target FINDADDR SCAN-CALLEE ;
-
-\ Resolve a call target (a code address) to its record by EXACT code entry, like
-\ FINDADDR but comparing the entry pointer directly (REC-CODE-PTR@) so a direct-BL
-\ target needs no address-to-cell cast. Ordinary words and registered engine helpers
-\ both carry a record; a non-entry address matches nothing (fails closed later).
+\ Resolve a call target (a code address) to its record by EXACT code entry: scan the
+\ dict records and match on the code-entry pointer directly (REC-CODE-PTR@) so a
+\ direct-BL target needs no address-to-cell cast. Ordinary words and registered engine
+\ helpers both carry a record; a non-entry address matches nothing (fails closed later).
 : FINDADDR-PTR ( ptr u8 -- ptr a ) {: t:ptr :}  0 FX !
    BEGIN FX @ ndict@ < WHILE  FX @ REC REC-CODE-PTR@ t = IF FX @ REC exit THEN  FX @ 1+ FX ! REPEAT  XREF-NULL ;
 
@@ -241,13 +227,8 @@ variable SP2  variable SEND
 : SCAN-REC {: r:ptr :} ( ptr a -- )
    r @ SP2 !  r @ r 8 + @ + SEND !
    BEGIN SP2 @ SEND @ < WHILE
-      SP2 @ CALL? IF
-         r SP2 @ TGT SCAN-TARGET
-         SP2 @ 16 + SP2 !
-      ELSE
-         r SP2 @ SCAN-DIRECT
-         SP2 @ 4 + SP2 !
-      THEN
+      r SP2 @ SCAN-DIRECT
+      SP2 @ 4 + SP2 !
    REPEAT ;
 variable WI
 : NO-ENTRY-DIE ( -- )
