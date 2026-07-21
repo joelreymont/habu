@@ -171,10 +171,12 @@ EOF
 }
 
 emit_decl_src() {
-  # The shared declaration-event transaction, then (later dots) the unified
-  # STRUCTURE and ENUM declarers -- all after the checker hook.
+  # The shared declaration-event transaction, then the unified STRUCTURE
+  # declarer (ENUM is a later dot) -- all after the checker hook.
   local out="$1"
   cat src/core/decl-event.f >> "$out"
+  printf '\n' >> "$out"
+  cat src/core/structure-decl.f >> "$out"
   printf '\n' >> "$out"
 }
 

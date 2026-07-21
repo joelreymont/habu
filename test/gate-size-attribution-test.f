@@ -125,9 +125,17 @@ $4000 constant MACOS-DATA-CONST  \ __DATA_CONST page (__got + zero fill)
 \ commit 017524d8, spark cannot measure macOS) shrank baked __text by 392 bytes
 \ within the same 16 KiB page, so only CODE-TEXT and the floor distance move;
 \ signature and whole-file total are unchanged. Candidate ratchet measured 126332.
-126332 constant MACOS-CODE-TEXT   \ CODELEN: every emitter-phase row (baked-source incl.)
+\ 2026-07-21 STRUCTURE front end landed (src/core/structure-decl.f, dot
+\ habu-structure-parse-typed-c5a01e1f): the parser source is re-loaded from disk
+\ in the boot run-prelude, not baked __text, so it contributes 0 bytes here; the
+\ only baked-engine delta is its habu2.f boot wiring (the LPSTRUCTDECL label
+\ variable + the load/path/provide rows + the label assignment), +48 macOS
+\ __text measured on the lane base; composed on the post-FINDPTR baseline:
+\ CODELEN 126332 -> 126380, floor 15740 -> 15788. Whole file, signature, and
+\ page count unchanged. The linux row below is owed a linux-host re-measure.
+126380 constant MACOS-CODE-TEXT   \ CODELEN: every emitter-phase row (baked-source incl.)
 1295 constant MACOS-SIGNATURE     \ ad-hoc code signature SuperBlob (grows with CODELEN)
-15740 constant MACOS-FLOOR-DIST     \ code above the 16 KiB floor: the page-recovery shave
+15788 constant MACOS-FLOOR-DIST     \ code above the 16 KiB floor: the page-recovery shave
 148855 constant MACOS-TOTAL       \ = FILE-SIZE bin/hb = GB-SIZE-BASELINE-MACOS
 
 \ Linux committed attribution, measured at the byte-fixpoint on 2026-07-19 (DGX

@@ -53,7 +53,7 @@ private
 8192 constant ROW-MAX
 9 constant TAB#
 variable FB-COUNT   \ committed `fold-baseline N` (separable file-level rows allowed)
-1024 constant CMAX   \ row-granularity classification block (fold split) exceeds 512
+2048 constant CMAX   \ row-granularity classification block (fold split); crossed 1024 on 2026-07-21 when the STRUCTURE front-end/generator, SC-QUOT, and arity-gate suites added their audited whitebox-shim rows
 64 constant OWNER-MAX
 11 constant CTAB#
 -1 constant COUNT-UNSET
