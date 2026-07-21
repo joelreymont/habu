@@ -68,6 +68,9 @@ public
 : BIAS         ( tensor tensor -- tensor )  MAKI-OPKIND:BIAS         MAKI:PLAN-BIN-EW ;
 : BCAST-MUL    ( tensor tensor -- tensor )  MAKI-OPKIND:BCAST-MUL    MAKI:PLAN-BIN-EW ;
 : RESIDUAL-ADD ( tensor tensor -- tensor )  MAKI-OPKIND:RESIDUAL-ADD MAKI:PLAN-BIN-EW ;
+\ SwiGLU (dot habu-infer-swiglu-op): silu(gate)*up, both operands same-shape data (gate
+\ then up). A fused arity-2 EW op; cad.f SHP-CHECK enforces the same-shape legality.
+: SWIGLU       ( tensor tensor -- tensor )  MAKI-OPKIND:SWIGLU       MAKI:PLAN-BIN-EW ;
 
 \ ---- ternary elementwise ( tensor tensor tensor -- tensor ) : data then two params --
 : ROPE ( tensor tensor tensor -- tensor )  MAKI-OPKIND:ROPE MAKI:PLAN-TERN-EW ;

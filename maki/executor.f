@@ -54,6 +54,7 @@ require maki/segment.f
 require maki/spec.f
 require maki/prec-attr.f              \ CPREC-PAYLOAD@: read the equation slot past the precision field
 require maki/dropout.f                \ DO-APPLY / DO-PFIX / DO-ATTR-EVAL? / DO-NODE-SEED
+require maki/swiglu.f                 \ SWIGLU-F: the fused silu(gate)*up scalar reference (EX-EW2)
 
 \ ---- audited count projection (MIR typed item-count -> raw loop/compare cell) ---
 \ Reopen the unsealed CAD-NUM package for one checked bridge over its private
@@ -182,6 +183,7 @@ private
       seg-attn OF E-EX-UNSUP throw ENDOF  seg-attn-bwd OF E-EX-UNSUP throw ENDOF
       equation OF E-EX-UNSUP throw ENDOF  bcast-mul OF E-EX-UNSUP throw ENDOF
       dropout OF E-EX-UNSUP throw ENDOF  dropout-bwd OF E-EX-UNSUP throw ENDOF
+      swiglu OF E-EX-UNSUP throw ENDOF                 \ arity 2, not a unary scalar
    ;MATCH ;
 
 : EX-U ( CAD-KIND:node-id -- ) {: nd:CAD-KIND:node-id :}
@@ -199,6 +201,7 @@ private
    MATCH opkind
       add OF ADD-F ENDOF  residual-add OF ADD-F ENDOF  bias OF ADD-F ENDOF
       mul OF MUL-F ENDOF  scale OF MUL-F ENDOF  bcast-mul OF MUL-F ENDOF
+      swiglu OF SWIGLU-F ENDOF                          \ silu(gate)*up, both operands data
       relu-bwd OF RELU-BWD ENDOF  gelu-bwd OF GELU-BWD ENDOF  silu-bwd OF SILU-BWD ENDOF
       gelu-bwd2 OF GELU-BWD2 ENDOF
       relu OF E-EX-UNSUP throw ENDOF  gelu OF E-EX-UNSUP throw ENDOF
@@ -249,6 +252,7 @@ private
       seg-attn OF E-EX-UNSUP throw ENDOF  seg-attn-bwd OF E-EX-UNSUP throw ENDOF
       equation OF E-EX-UNSUP throw ENDOF  bcast-mul OF E-EX-UNSUP throw ENDOF
       dropout OF E-EX-UNSUP throw ENDOF  dropout-bwd OF E-EX-UNSUP throw ENDOF
+      swiglu OF E-EX-UNSUP throw ENDOF                 \ not a row op (elementwise)
    ;MATCH ;
 
 \ affine LayerNorm (arity 3): y = gamma*xhat + beta with gamma/beta (1xC) shared per row.
@@ -288,6 +292,7 @@ private
       seg-attn OF E-EX-UNSUP throw ENDOF  seg-attn-bwd OF E-EX-UNSUP throw ENDOF
       equation OF E-EX-UNSUP throw ENDOF  bcast-mul OF E-EX-UNSUP throw ENDOF
       dropout OF E-EX-UNSUP throw ENDOF  dropout-bwd OF E-EX-UNSUP throw ENDOF
+      swiglu OF E-EX-UNSUP throw ENDOF                 \ not a row op (elementwise)
    ;MATCH ;
 
 \ p0 = cotangent row ; p1 = saved input (norms) or saved output (softmax) row.
@@ -505,6 +510,7 @@ private
       equation        OF nd EX-EQUATION     ENDOF
       dropout         OF nd EX-DROPOUT      ENDOF
       dropout-bwd     OF nd EX-DROPOUT-BWD  ENDOF
+      swiglu          OF nd EX-EW2          ENDOF
    ;MATCH ;
 
 \ ---- buffer plan + execute over a node prefix ------------------------------
@@ -555,6 +561,7 @@ public
       pad-scatter OF true ENDOF  scatter-add OF true ENDOF  gelu-bwd2 OF true ENDOF
       seg-attn OF true ENDOF  seg-attn-bwd OF true ENDOF
       dropout OF true ENDOF  dropout-bwd OF true ENDOF
+      swiglu OF true ENDOF
    ;MATCH ;
 
 \ ---- input binding + lifecycle ---------------------------------------------

@@ -31,6 +31,7 @@ require maki/matmul.f
 require maki/linear.f
 require maki/segment.f
 require maki/dropout.f                \ DO-APPLY: the dropout forward/VJP buffer reference
+require maki/swiglu.f                 \ SWIGLU-F: the fused silu(gate)*up forward reference
 
 -5050 constant E-OPR-KIND        \ op-kind out of range
 -5051 constant E-OPR-INCOMPLETE  \ reference requested from an op with no scalar oracle
@@ -173,6 +174,7 @@ public
       bcast-mul       OF s" bcast-mul"       ENDOF
       dropout         OF s" dropout"         ENDOF
       dropout-bwd     OF s" dropout-bwd"     ENDOF
+      swiglu          OF s" swiglu"          ENDOF
    ;MATCH ;
 
 : OPR-CLASS-NAME ( n -- ptr u8 n )
@@ -266,7 +268,11 @@ private
    \ arity 1 (x; mode/p ride the attr), the VJP arity 2 (dy + the forward node, read for
    \ its seed index). ulp-exact (a single survivor multiply). Reference: DO-APPLY.
    CLASS-EW         1 ACC-SAME NUM-ULP    1 OP-DROPOUT         OPR!
-   CLASS-EW         1 ACC-SAME NUM-ULP    2 OP-DROPOUT-BWD     OPR! ;
+   CLASS-EW         1 ACC-SAME NUM-ULP    2 OP-DROPOUT-BWD     OPR!
+   \ SwiGLU (dot habu-infer-swiglu-op): CLASS-EW, arity 2 (gate, up - both data, same
+   \ shape). silu carries a sigmoid, so NUM-RELTOL (transcendental) like OP-SILU; flops
+   \ per element ~ silu (5) + one multiply. Reference: SWIGLU-F.
+   CLASS-EW         6 ACC-SAME NUM-RELTOL 2 OP-SWIGLU          OPR! ;
 
 OPR-BUILD
 
@@ -327,5 +333,9 @@ OPR-BUILD
 \ train masks-and-scales under the seeded stream. Binding completes both op rows.
 ' DO-APPLY       OP-DROPOUT          cells R-REF + !
 ' DO-APPLY       OP-DROPOUT-BWD      cells R-REF + !
+\ swiglu: the fused silu(gate)*up scalar reference; the executor (EX-EW2) maps it over
+\ elements like OP-MUL reuses MUL-F. Binding completes the op row. The VJP needs no
+\ reference here - it decomposes into OP-SILU/OP-MUL/OP-SILU-BWD (maki/backward.f).
+' SWIGLU-F       OP-SWIGLU           cells R-REF + !
 
 ;package

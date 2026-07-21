@@ -111,6 +111,7 @@ public
       bcast-mul       OF false ENDOF
       dropout         OF false ENDOF
       dropout-bwd     OF false ENDOF
+      swiglu          OF false ENDOF
    ;MATCH ;
 
 : CPREC-GEMM-CK ( opkind -- )  CPREC-GEMM? 0= if E-CPREC-OP throw then ;

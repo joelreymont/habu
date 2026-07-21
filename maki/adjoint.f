@@ -68,7 +68,8 @@ public
 21 constant ADJ-EQUATION      \ derived einsum adjoints (maki/spec.f EQ-ADJ@); reverse transform runs them
 22 constant ADJ-BCAST-MUL     \ dx = ct*g (1xC bcast) ; d-g = OP-ROWSUM-BWD(ct*x) -> 1xC
 23 constant ADJ-DROPOUT       \ dx = mask*scale*ct (OP-DROPOUT-BWD, same mask as forward)
-24 constant ADJ-N             \ range bound
+24 constant ADJ-SWIGLU        \ d_gate = OP-SILU-BWD(ct*up,gate) ; d_up = OP-MUL(ct,OP-SILU(gate))
+25 constant ADJ-N             \ range bound
 
 \ ---- what the adjoint must read from the forward pass ------------------------
 0 constant SAVE-NONE          \ needs only static shape / operand refs (add/reshape/rope)
@@ -185,6 +186,7 @@ public
       bcast-mul       OF E-ADJ-UNSUP throw ENDOF
       dropout         OF E-ADJ-UNSUP throw ENDOF
       dropout-bwd     OF E-ADJ-UNSUP throw ENDOF
+      swiglu          OF E-ADJ-UNSUP throw ENDOF
    ;MATCH ;
 
 private
@@ -257,7 +259,13 @@ private
    \ node's index). A dedicated emitter builds it (BW-STEP-DROPOUT), so bop = -1; it reads the
    \ forward node (for that seed index) -> SAVE-OUTPUT. dropout-bwd stays ADJ-NONE (second
    \ order is fail-closed E-BW-NOADJ). ---
-   ADJ-DROPOUT SAVE-OUTPUT 1 1 -1 OP-DROPOUT ADJ! ;
+   ADJ-DROPOUT SAVE-OUTPUT 1 1 -1 OP-DROPOUT ADJ!
+   \ ---- SwiGLU (dot habu-infer-swiglu-op): y = silu(gate)*up. Both operands receive a
+   \ gradient (mask 3): d_gate = ct*up*silu'(gate) = OP-SILU-BWD(ct*up, gate); d_up =
+   \ ct*silu(gate) = OP-MUL(ct, OP-SILU(gate)) - all three ops already registry-complete,
+   \ so a dedicated emitter (BW-STEP-SWIGLU) builds it and bop = -1 (no new *-BWD op, the
+   \ bcast-mul precedent). It reads the forward inputs gate and up -> SAVE-INPUT. ---
+   ADJ-SWIGLU SAVE-INPUT 3 1 -1 OP-SWIGLU ADJ! ;
 
 \ ---- wire the op-registry vjp field to the adjoint id (cad-9 requirement) ----
 \ pure private-table wiring over the code index space: copy A-ID[i] -> registry

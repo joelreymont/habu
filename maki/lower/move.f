@@ -99,6 +99,7 @@ variable LMV-BUILT?
       seg-attn OF false ENDOF  seg-attn-bwd OF false ENDOF
       equation OF false ENDOF  bcast-mul OF false ENDOF
       dropout OF false ENDOF  dropout-bwd OF false ENDOF
+      swiglu OF false ENDOF
    ;MATCH ;
 
 \ ---- operand-ref shape: a model input slot, or a MATERIALIZED producer node in another region
@@ -180,6 +181,7 @@ variable LMV-BUILT?
       seg-attn OF E-LMV-OP throw ENDOF  seg-attn-bwd OF E-LMV-OP throw ENDOF
       equation OF E-LMV-OP throw ENDOF  bcast-mul OF E-LMV-OP throw ENDOF
       dropout OF E-LMV-OP throw ENDOF  dropout-bwd OF E-LMV-OP throw ENDOF
+      swiglu OF E-LMV-OP throw ENDOF
    ;MATCH ;
 
 : LMV-CHECK-DIMS ( -- )
@@ -317,6 +319,7 @@ private
       seg-attn OF E-LMV-OP throw ENDOF  seg-attn-bwd OF E-LMV-OP throw ENDOF
       equation OF E-LMV-OP throw ENDOF  bcast-mul OF E-LMV-OP throw ENDOF
       dropout OF E-LMV-OP throw ENDOF  dropout-bwd OF E-LMV-OP throw ENDOF
+      swiglu OF E-LMV-OP throw ENDOF
    ;MATCH
    LMV-STORE ;
 

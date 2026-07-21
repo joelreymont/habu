@@ -82,7 +82,12 @@ public
 \ same mask (OP-DROPOUT-BWD reads the forward node for its seed index).
 36 constant OP-DROPOUT           \ x -> mask*scale*x (train) / x (eval)       (ref: DO-APPLY)
 37 constant OP-DROPOUT-BWD       \ dy -> mask*scale*dy (same mask as forward)  (ref: DO-APPLY)
-38 constant OP-N               \ op-kind range bound (private op-registry / adjoint table dimension + wire code range)
+\ ---- SwiGLU: the LLaMA-family gated-MLP activation (dot habu-infer-swiglu-op) ----
+\ swiglu(gate,up) = silu(gate)*up, a FUSED arity-2 elementwise op (both operands data).
+\ MODEL:-typed, CLASS-EW. Reference is SWIGLU-F (maki/swiglu.f); the VJP decomposes into
+\ OP-SILU/OP-MUL/OP-SILU-BWD (no dedicated *-BWD op-kind, the bcast-mul precedent).
+38 constant OP-SWIGLU           \ silu(gate) * up  (fused gated activation)   (ref: SWIGLU-F)
+39 constant OP-N               \ op-kind range bound (private op-registry / adjoint table dimension + wire code range)
 
 \ ---- the op-kind family (dot habu-cad-adt-swap, corrected plan) -------------
 \ `opkind` is the semantic type carried from construction (MIR-OP-BEGIN /
@@ -105,6 +110,7 @@ ENUM opkind DERIVE eq
   equation
   bcast-mul
   dropout dropout-bwd
+  swiglu
 ;ENUM
 
 \ named render boundary: opkind -> wire/table code (exhaustive MATCH; a bad tag
@@ -150,6 +156,7 @@ ENUM opkind DERIVE eq
       bcast-mul       OF OP-BCAST-MUL       ENDOF
       dropout         OF OP-DROPOUT         ENDOF
       dropout-bwd     OF OP-DROPOUT-BWD     ENDOF
+      swiglu          OF OP-SWIGLU          ENDOF
    ;MATCH ;
 
 ;package

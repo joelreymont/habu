@@ -100,6 +100,7 @@ $FFFFF constant MV-PMASK     \ 20-bit param mask (max 1048575)
       bcast-mul       OF E-MV-NOTMOVE throw ENDOF
       dropout         OF E-MV-NOTMOVE throw ENDOF
       dropout-bwd     OF E-MV-NOTMOVE throw ENDOF
+      swiglu          OF E-MV-NOTMOVE throw ENDOF
    ;MATCH ;
 : OP-OF-MV ( n -- opkind )                     \ transform tag -> movement op-kind
    MV-TF-CK
@@ -212,6 +213,7 @@ $FFFFF constant MV-PMASK     \ 20-bit param mask (max 1048575)
       bcast-mul       OF E-MV-TF throw ENDOF
       dropout         OF E-MV-TF throw ENDOF
       dropout-bwd     OF E-MV-TF throw ENDOF
+      swiglu          OF E-MV-TF throw ENDOF
    ;MATCH ;
 
 ;package

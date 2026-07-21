@@ -160,7 +160,8 @@ create EXCLUDE PS-SIZE allot
    s" tools/ptx/softmax-rows-bwd-cg.f" +P
    s" tools/ptx/rmsnorm-cg.f" +P
    s" tools/ptx/layernorm-cg.f" +P
-   s" tools/ptx/rope-cg.f" +P ;
+   s" tools/ptx/rope-cg.f" +P
+   s" tools/ptx/swiglu-cg.f" +P ;
 
 : BUILD-EXCLUDE ( -- )
    EXCLUDE PS-RESET

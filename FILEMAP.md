@@ -511,6 +511,12 @@ points stay listed.
   LN-BWD: dx = (dy - mean(dy) - xhat*mean(dy*xhat))/std), plain (no-affine) LayerNorm;
   reuses the shared 1e-5 normalization eps (RMS-EPS+), so layernorm-device-test loads
   a single cubin and pulls both handles.
+- `tools/ptx/swiglu-cg.f` — driver emitting the checked SWIGLU_ROWS device kernel,
+  y = silu(gate)*up (the LLaMA-family gated-MLP activation), elementwise over a row:
+  load the gate/up tiles, apply silu to the gate tile (EMIT-SILU wrapped as the
+  phantom-preserving pointwise SILU.), multiply by the up tile, masked-store. The VJP
+  runs on the host (maki/swiglu.f decomposes it into OP-SILU/OP-MUL/OP-SILU-BWD), so
+  the module carries the forward entry only.
 - `tools/ptx/ad-entry-lib.f` — per-VJP-entry kernel emitters for the device
   gradcheck gate: DAG op-lists isolating each ad-dag entry (EXP, x-max, x/sum,
   full softmax) plus the vjp.f table fixtures - two-input elementwise
@@ -719,6 +725,11 @@ points stay listed.
   gradcheck of the backward, and a backward parity check vs the maki LN-BWD closed
   form, self-emitting to a private per-run cubin for the PROBED arch (ATGT:LABEL$;
   verified on the GB10 sm_121a). Off-device: recorded SKIP.
+- `tools/ptx/swiglu-device-test.f` — device proof of the checked SWIGLU_ROWS kernel
+  (silu(gate)*up): a forward golden vs maki SWIGLU-F plus a finite-difference gradcheck
+  of BOTH input gradients vs the host closed forms (SWIGLU-DGATE / SWIGLU-DUP), self-
+  emitting to a private per-run cubin for the PROBED arch (ATGT:LABEL$; verified on the
+  GB10 sm_121a). Off-device: recorded SKIP.
 - `tools/ptx/profile.f`, `tools/ptx/bench.f`, `tools/ptx/bandwidth-lib.f`,
   `tools/ptx/bandwidth.f`, `tools/ptx/bandwidth-v4.f`, and
   `tools/ptx/fusion-compare.f` — reusable Orin kernel profile metrics, generic

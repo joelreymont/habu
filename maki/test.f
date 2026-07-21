@@ -256,6 +256,8 @@ SUITE maki/bcast-mul-op-test.f
 ;SUITE
 SUITE maki/dropout-op-test.f
 ;SUITE
+SUITE maki/swiglu-op-test.f
+;SUITE
 SUITE maki/demo-ffn-test.f
 ;SUITE
 SUITE maki/examples/nanogpt/from-scratch-model-test.f

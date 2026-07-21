@@ -281,6 +281,7 @@ public
    2dup s" GATHER"       STR= if 2drop MAKI-OPKIND:GATHER       true exit then
    2dup s" BCAST-MUL"    STR= if 2drop MAKI-OPKIND:BCAST-MUL    true exit then
    2dup s" DROPOUT"      STR= if 2drop MAKI-OPKIND:DROPOUT      true exit then
+   2dup s" SWIGLU"       STR= if 2drop MAKI-OPKIND:SWIGLU       true exit then
    2drop MAKI-OPKIND:ADD false ;                       \ placeholder value (bool false; callers ignore it)
 
 : OP-KIND ( ptr u8 n -- opkind )
@@ -531,6 +532,7 @@ $5E constant TR-C                                  \ '^' - the reserved transpos
       bcast-mul       OF SHP-ROW-OK?   ENDOF   \ 1xC param row-broadcasts over AxC data
       dropout         OF 2drop 2drop true ENDOF   \ arity 1 (mode/p are attrs); no param operand
       dropout-bwd     OF 2drop 2drop true ENDOF
+      swiglu          OF SHP-SAME-OK?  ENDOF       \ gate and up must be the SAME shape (like mul)
    ;MATCH ;
 : SHP-CHECK ( CAD-KIND:rows CAD-KIND:cols CAD-KIND:rows CAD-KIND:cols opkind -- )
    SHP-LEGAL? 0= if E-CAD-PARAM-SHAPE throw then ;
@@ -945,6 +947,7 @@ private
       bcast-mul       OF E-CAD-BIND-SHAPE throw ENDOF
       dropout         OF E-CAD-BIND-SHAPE throw ENDOF
       dropout-bwd     OF E-CAD-BIND-SHAPE throw ENDOF
+      swiglu          OF E-CAD-BIND-SHAPE throw ENDOF
    ;MATCH ;
 
 \ movement dissolution verdict re-derived from the new extents (slice re-checks its
@@ -996,6 +999,7 @@ private
       bcast-mul       OF E-CAD-BIND-SHAPE throw ENDOF
       dropout         OF E-CAD-BIND-SHAPE throw ENDOF
       dropout-bwd     OF E-CAD-BIND-SHAPE throw ENDOF
+      swiglu          OF E-CAD-BIND-SHAPE throw ENDOF
    ;MATCH ;
 
 : REPROP-MOVE ( CAD-KIND:node-id -- ) {: nd:CAD-KIND:node-id :}

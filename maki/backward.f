@@ -370,6 +370,24 @@ variable BW-BUILT?
    x REF-ROWS x REF-COLS x REF-DT x REF-LAY  attr  1  MIR-OP+ MIR-NODE-REF {: dx:MIR:operand-ref :}
    dx x BW-ACCUM ;
 
+\ recompute silu(gate) as a plain OP-SILU node over the saved gate (recompute-over-save,
+\ like BW-LN-FWD recomputes xhat); output descriptor from the gate reference.
+: BW-SILU-FWD ( MIR:operand-ref -- MIR:operand-ref ) {: g:MIR:operand-ref :}
+   MAKI-OPKIND:SILU MIR-OP-BEGIN  g MIR-IN+
+   g REF-ROWS g REF-COLS g REF-DT g REF-LAY  0  1  MIR-OP+ MIR-NODE-REF ;
+
+\ SwiGLU adjoint (dot habu-infer-swiglu-op): y = silu(gate)*up. Both operands receive a
+\ gradient; the closed form decomposes into ops that are ALL registry-complete, so no
+\ dedicated *-BWD op-kind (the bcast-mul precedent). With ct the output cotangent:
+\   d_gate = ct*up*silu'(gate) = OP-SILU-BWD(ct*up, gate)  (ct*up is one OP-MUL)
+\   d_up   = ct*silu(gate)     = OP-MUL(ct, OP-SILU(gate)) (silu(gate) recomputed above)
+: BW-STEP-SWIGLU ( CAD-KIND:node-id MIR:operand-ref -- )
+   {: fn:CAD-KIND:node-id ct:MIR:operand-ref :}
+   fn 0 MIR-INPUT-IDX MIR-IN@ {: g:MIR:operand-ref :}
+   fn 1 MIR-INPUT-IDX MIR-IN@ {: u:MIR:operand-ref :}
+   ct u MAKI-OPKIND:MUL g BW-OP2  g MAKI-OPKIND:SILU-BWD g BW-OP2  g BW-ACCUM \ d_gate = silu-bwd(ct*up, gate)
+   ct  g BW-SILU-FWD  MAKI-OPKIND:MUL u BW-OP2  u BW-ACCUM ;                   \ d_up   = ct * silu(gate)
+
 \ linear adjoint: the matmul adjoints for x and w plus the bias row-reduce.
 \ dX = ct @ Wt, dW = Xt @ ct, dB = rowsum(ct)
 : BW-STEP-LINEAR ( CAD-KIND:node-id MIR:operand-ref -- )
@@ -502,6 +520,7 @@ variable BW-BUILT?
       bcast-mul       OF BW-STEP-BCAST-MUL ENDOF
       dropout         OF BW-STEP-DROPOUT   ENDOF
       dropout-bwd     OF E-BW-UNSUP throw  ENDOF
+      swiglu          OF BW-STEP-SWIGLU    ENDOF
    ;MATCH ;
 
 \ ---- supported-op gate (usable BEFORE build to classify not-run) -------------
